@@ -1,0 +1,21 @@
+/* Feuille de style d'impression (CSS Paged Media, rendue par WeasyPrint).
+   Point de départ minimal — à remplacer par la charte de la revue. */
+
+@page {
+  size: A4;
+  margin: 25mm 20mm;
+  @bottom-center { content: counter(page) " / " counter(pages); font-size: 9pt; color: #666; }
+}
+
+body {
+  font-family: "Noto Serif", Georgia, serif;
+  font-size: 11pt;
+  line-height: 1.5;
+  hyphens: auto;
+}
+
+h1, h2, h3 { font-family: "Noto Sans", Arial, sans-serif; line-height: 1.2; }
+h1 { font-size: 20pt; break-before: page; }
+h2 { font-size: 15pt; }
+
+blockquote { border-left: 3px solid #ccc; margin-left: 0; padding-left: 1em; color: #444; }

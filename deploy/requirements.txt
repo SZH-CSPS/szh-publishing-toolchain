@@ -1,0 +1,7 @@
+# Épinglage WeasyPrint pour un rendu reproductible sur toute la flotte.
+# Régénérer avec hashes :  uv pip compile --generate-hashes requirements.in
+# (le Containerfile installe weasyprint==69.0 dans /opt/weasyprint)
+
+weasyprint==69.0
+# Dépendances tirées automatiquement (pinner si besoin de reproductibilité stricte) :
+#   pydyf, tinycss2, cssselect2, Pyphen, fontTools, Pillow, html5lib

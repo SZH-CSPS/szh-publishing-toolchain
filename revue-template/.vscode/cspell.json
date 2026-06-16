@@ -1,0 +1,14 @@
+{
+  "version": "0.2",
+  "language": "fr,de,en",
+  "enableFiletypes": ["markdown"],
+  // Bascule de la langue de correction selon le suffixe du fichier :
+  //   article.de.md -> allemand seul ;  article.en.md -> anglais seul
+  "overrides": [
+    { "filename": "**/*.de.md", "language": "de" },
+    { "filename": "**/*.fr.md", "language": "fr" },
+    { "filename": "**/*.en.md", "language": "en" }
+  ],
+  // Mots propres à la revue à ne pas signaler
+  "words": ["CSPS", "SZH", "WeasyPrint", "Pandoc"]
+}

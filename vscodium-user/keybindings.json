@@ -1,0 +1,10 @@
+[
+  // Exporter / régénérer l'aperçu PDF (= la tâche de build par défaut)
+  { "key": "ctrl+e", "command": "workbench.action.tasks.build" },
+
+  // Secours si l'aperçu PDF ne se rafraîchit pas tout seul : recharge la fenêtre
+  { "key": "ctrl+alt+r", "command": "workbench.action.reloadWindow" }
+
+  // NB : on NE désactive PAS Ctrl+Maj+P (palette) : c'est le filet de secours assumé.
+  //      La palette ne peut pas être « réduite » proprement sans forker VSCodium.
+]

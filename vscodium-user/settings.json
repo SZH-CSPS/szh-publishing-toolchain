@@ -1,0 +1,66 @@
+{
+  // ============ Interface épurée (« 0 technique ») ============
+  "workbench.activityBar.location": "hidden",
+  "workbench.statusBar.visible": true,
+  "workbench.editor.showTabs": "single",
+  "workbench.layoutControl.enabled": false,
+  "workbench.startupEditor": "none",
+  "workbench.tips.enabled": false,
+  "workbench.editor.editorActionsLocation": "hidden",
+  "window.commandCenter": false,
+  "window.menuBarVisibility": "compact",
+  "editor.minimap.enabled": false,
+  "breadcrumbs.enabled": false,
+  "editor.lineNumbers": "off",
+  "editor.glyphMargin": false,
+  "editor.folding": false,
+  "editor.guides.indentation": false,
+  "editor.renderWhitespace": "none",
+  "editor.overviewRulerBorder": false,
+  "scm.diffDecorations": "none",
+
+  // ============ Confort de rédaction ============
+  "editor.wordWrap": "on",
+  "editor.wordWrapColumn": 90,
+  "editor.fontSize": 15,
+  "editor.lineHeight": 1.7,
+  "editor.cursorBlinking": "smooth",
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 1000,
+  "files.trimTrailingWhitespace": false,
+
+  // Pas de bruit « développeur » dans un fichier Markdown
+  "markdown.validate.enabled": false,
+  "editor.quickSuggestions": { "other": false, "comments": false, "strings": false },
+  "editor.suggestOnTriggerCharacters": false,
+  "editor.parameterHints.enabled": false,
+
+  // ============ Correction orthographique FR / DE / EN ============
+  // Un mot est accepté s'il est valide dans AU MOINS une de ces langues
+  // (moins de faux positifs en contexte bilingue). Override par fichier dans .vscode/cspell.json.
+  "cSpell.language": "fr,de,en",
+  "cSpell.enableFiletypes": ["markdown"],
+
+  // ============ Sécurité / déploiement flotte ============
+  // Machine dédiée + contenu connu : on évite la pop-up de confiance (sinon le build
+  // auto à la sauvegarde serait bloqué et le rédacteur perdu). Compromis assumé.
+  "security.workspace.trust.enabled": false,
+  "task.allowAutomaticTasks": "on",
+
+  // Extensions : pas de mise à jour live (VSIX vendorisés -> anti-GlassWorm)
+  "extensions.autoCheckUpdates": false,
+  "extensions.autoUpdate": false,
+  "extensions.ignoreRecommendations": true,
+  "update.mode": "manual",
+  "update.showReleaseNotes": false,
+  "telemetry.telemetryLevel": "off",
+
+  // ============ Langue de l'interface ============
+  // Défaut : anglais (seule option à jour et propre sur VSCodium).
+  // Pour passer au FR figé (mai 2021) : vendoriser MS-CEINTL.vscode-language-pack-fr
+  // et mettre "locale": "fr" dans %APPDATA%\VSCodium\argv.json.
+
+  // ============ Aperçu PDF ============
+  // Reload auto natif de tomoki1207.pdf — si capricieux, voir keybindings (Ctrl+Alt+R).
+  "files.watcherExclude": { "**/out/**": true, "**/*.tmp": true }
+}

@@ -1,0 +1,31 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      // Régénère le PDF. Déclenchée à la sauvegarde (triggertaskonsave),
+      // par Ctrl+Maj+B (build par défaut) et par Ctrl+E.
+      "label": "Aperçu / Export PDF",
+      "type": "process",                 // pas de shell Windows -> aucun souci de guillemets
+      "command": "wsl.exe",
+      "args": ["-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--", "make", "pdf"],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": {
+        "reveal": "silent",
+        "showReuseMessage": false,
+        "clear": true,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      // Démarre la VM WSL à l'ouverture du dossier -> évite le délai à froid au 1er Ctrl+S.
+      "label": "Préchauffer WSL",
+      "type": "process",
+      "command": "wsl.exe",
+      "args": ["-d", "SZH-Publishing", "--", "/bin/true"],
+      "runOptions": { "runOn": "folderOpen" },
+      "presentation": { "reveal": "never", "panel": "shared" },
+      "problemMatcher": []
+    }
+  ]
+}

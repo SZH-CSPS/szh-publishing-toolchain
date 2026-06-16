@@ -1,0 +1,8 @@
+# Le dépôt d'outillage est versionné (Forgejo). Garantir LF pour ce qui tourne sous Linux.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+Makefile text eol=lf
+*.sh   text eol=lf
+*.conf text eol=lf
+*.tar  binary
+*.vsix binary
