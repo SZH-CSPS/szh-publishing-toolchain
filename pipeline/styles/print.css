@@ -10,8 +10,9 @@
 body {
   font-family: "Noto Serif", Georgia, serif;
   font-size: 11pt;
-  line-height: 1.5;
+  line-height: 1.55;
   hyphens: auto;
+  color: #1a1a1a;
 }
 
 h1, h2, h3 { font-family: "Noto Sans", Arial, sans-serif; line-height: 1.2; }
