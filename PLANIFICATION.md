@@ -212,20 +212,27 @@ Ordre : **P1 → P2 → P3** (P4 en parallèle de P3) **→ P5**. Estimations gr
 - **Livrable** : sur machine vierge — bootstrap 1× admin, puis MAJ de bout en bout sans admin, silencieuse quand rien à faire.
 
 ### P4 — Config VSCodium user-level (~0,5 j, parallèle à P3)
-- [ ] `tasks.json` **utilisateur** : « Aperçu / Export PDF » (make pdf), « Importer les articles Word » (make import,
-      `runOn: folderOpen` + manuelle) — **validation V1 en premier** ; repli : mini `.vscode/` dans le template, masqué.
-- [ ] `settings.json` : + `files.exclude`/`search.exclude` utiles, `editor.quickSuggestions` réactivé **scope `[markdown]`** (D15).
-- [ ] `snippets/markdown.json` : un snippet par style de la maquette (`::: {.encadre} … :::`), liste synchronisée avec `print.css`.
-- [ ] `keybindings.json` : conserver Ctrl+E (export) et Ctrl+Alt+R ; ajouter « Importer les Word » et
-      « Insérer un bloc de style » (`editor.action.insertSnippet`) — choix des touches à l'implémentation.
-- [ ] Supprimer `revue.code-workspace` et `.vscode/` du template (si V1 OK).
-- **Livrable** : ouvrir un dossier de revue nu → import auto, build on save, snippets — sans aucun fichier de config dans le dossier.
+- [x] `tasks.json` **utilisateur** : « Aperçu / Export PDF » (**make all** = import + pdf) et « Importer les articles
+      Word » (make import, `runOn: folderOpen` best-effort + Ctrl+Alt+I). **Décision de conception** : l'import est
+      replié dans le build (`make all`, récursion validée) → l'inclusion des Word ne dépend plus de `folderOpen`,
+      ce qui neutralise le point le plus fragile de V1. Repli inchangé : mini `.vscode/` masqué.
+- [x] `settings.json` : `triggerTaskOnSave`, `files.exclude`/`search.exclude`, `editor.quickSuggestions` réactivé
+      **scope `[markdown]`** (D15), config cSpell complète (mots + bascule `.de/.fr/.en`) rapatriée du template.
+- [x] `snippets/markdown.json` : blocs `::: {.classe}` (chapô, encadré, exergue, résumé, note, avertissement,
+      front-matter) — classes assorties ajoutées à `print.css`.
+- [x] `keybindings.json` : Ctrl+E (export) et Ctrl+Alt+R conservés ; **Ctrl+Alt+I** (importer),
+      **Ctrl+Alt+S** (insérer un bloc de style).
+- [x] Supprimer `revue.code-workspace`, `.vscode/` **et** `.editorconfig` du template (config 100 % user-level).
+- **Livrable** : ✅ **validé le 2026-07-03** — `make all` importe et inclut un Word déposé en une seule action ;
+      les classes `chapo/encadre/exergue/avertissement` sont rendues dans le PDF ; le dossier de revue ne
+      contient plus que du contenu. ⏳ Reste V1 côté poste : confirmer que *Trigger Task on Save* voit bien la
+      tâche utilisateur (build à la sauvegarde) — à cocher au pilote.
 
 ### P5 — Documentation & pilote (~0,5–1 j)
-- [ ] README : nouvelle architecture, nouveau runbook (bootstrap 1×, releases par tag, plus d'édition de script).
-- [ ] `BIENVENUE.md` : workflow rédacteur (déposer les Word → ouvrir la revue → Ctrl+S), mention de la liste « Récents ».
-- [ ] Doc polices (D7/§6) et doc « masquage résiduel » (`files.exclude`/`attrib +h`, §6).
-- [ ] **Poste pilote** : dérouler la checklist V1–V8 ci-dessous, corriger, puis généraliser.
+- [x] README : nouvelle architecture, nouveau runbook (bootstrap 1×, releases par tag, plus d'édition de script).
+- [x] `BIENVENUE.md` : workflow rédacteur (déposer les Word → ouvrir la revue → Ctrl+S), lanceur menu Démarrer.
+- [x] Doc polices (D7/§6) et doc « masquage résiduel » (`files.exclude`/`attrib +h`, §6) — dans README + §6.
+- [ ] **Poste pilote** : dérouler la checklist V1–V8 ci-dessous, corriger, puis généraliser. *(à faire sur poste réel)*
 
 ---
 
@@ -233,7 +240,7 @@ Ordre : **P1 → P2 → P3** (P4 en parallèle de P3) **→ P5**. Estimations gr
 
 | # | Risque / à valider | Impact | Repli |
 |---|---|---|---|
-| V1 | Tâches **user-level** : `runOn: folderOpen`, résolution de `${workspaceFolder}`, détection par *Trigger Task on Save* | Bloque « zéro fichier dans la revue » | Mini `.vscode/tasks.json` dans le template, masqué via `files.exclude` |
+| V1 | Tâches **user-level** : `folderOpen` **neutralisé** (import replié dans `make all`) ; reste à confirmer au pilote que *Trigger Task on Save* voit la tâche utilisateur pour le build à la sauvegarde | Build auto à la sauvegarde | Mini `.vscode/tasks.json` dans le template, masqué via `files.exclude` |
 | V2 | `winget` sous compte SYSTEM (tâche « SZH – Apps ») : winget n'est pas nativement dispo pour SYSTEM | VSCodium/Sumatra ne se MAJ pas seuls | Workaround chemin WindowsApps, sinon upgrade lors d'un passage admin occasionnel (documenté) |
 | V3 | ✅ **Validé 2026-07-03** — résolu par `pandoc --embed-resources` (HTML autonome en tmp WSL, images et CSS inlinés ; testé docx→media→PDF) | ~~PDF sans images~~ | (plus nécessaire) |
 | V4 | Rechargement auto de l'aperçu (tomoki1207.pdf) avec le PDF à la racine | Confort | Inchangé vs actuel ; secours Ctrl+Alt+R / SumatraPDF |

@@ -1,87 +1,129 @@
-# SZH/CSPS — Toolchain de publication (VSCodium + WSL, Option A)
+# SZH/CSPS — Toolchain de publication (VSCodium + WSL)
 
 Chaîne `.md → Pandoc → WeasyPrint → PDF` pour rédacteurs **non‑techniques**, sous **Windows**,
-fichiers sur **OneDrive/SharePoint**, toolchain isolée dans **WSL** (reproductible), **rootfs construit par GitHub Actions**.
-Décision et justification : voir `01-strategie-choix-option-A.md` et `02-option-A-fonctionnement.md`.
+fichiers sur **OneDrive/SharePoint**, toolchain isolée dans **WSL** (reproductible), **rootfs et
+outillage construits par GitHub Actions** et **auto‑déployés en silence** sur les postes.
 
-> Dépôt : `SZH-CSPS/szh-publishing-toolchain`. Il contient l'**outillage** (Containerfile, déploiement,
-> config éditeur, template) — **pas les revues**, qui restent sur OneDrive.
-> La distro WSL s'appelle **`SZH-Publishing`** (une seule distro‑toolchain, réutilisable pour d'autres
-> sorties Pandoc/WeasyPrint) ; le dossier `revue-template/` est un *consommateur* de cette toolchain.
+> Ce dépôt contient l'**outillage** — **pas les revues**, qui vivent sur OneDrive.
+> La distro WSL s'appelle **`SZH-Publishing`** (une seule distro‑toolchain, réutilisable).
+> Décisions d'architecture et plan : voir [`PLANIFICATION.md`](PLANIFICATION.md).
 
-## Arborescence
+## Principes
+
+- **Une source de vérité par élément, zéro copie par revue.** Le pipeline (Makefile, styles) et la
+  config éditeur vivent dans le *toolkit* (`C:\ProgramData\SZH\toolkit`), pas dans les dossiers de revue.
+  Corriger un style ou un bug = **une release**, pas N dossiers à retoucher.
+- **Mise à jour silencieuse, sans administrateur.** Une tâche planifiée vérifie chaque jour un petit
+  `manifest.json` (~1 Ko) ; elle ne télécharge que ce qui a changé et n'affiche une fenêtre que s'il y a
+  vraiment une mise à jour. Le gros rootfs (centaines de Mo, en `.tar.gz`) n'est retiré que lors d'un
+  changement de toolchain — jamais pour une simple retouche de maquette.
+- **Dossier de revue épuré.** Le rédacteur ne voit que son contenu (articles, métadonnées, PDF).
+- **Reproductible et épinglé.** Rootfs vérifié par sha256, dépendances Python figées (pins transitifs),
+  extensions VSCodium épinglées + empreintes vérifiées (anti‑GlassWorm).
+
+## Arborescence du dépôt
 
 ```
 szh-publishing-toolchain/
 ├── .github/workflows/
-│   └── build-rootfs.yml        # CI : build du rootfs -> Release GitHub
-├── deploy/                     # outillage
-│   ├── Containerfile           # construit le rootfs WSL (= future base bootc)
-│   ├── wsl.conf                # /etc/wsl.conf baked (user par défaut, montage /mnt/c)
-│   ├── build-rootfs.sh         # build (podman en local / docker en CI) -> .tar + sha256
-│   ├── deploy.ps1              # déploiement idempotent par poste (À LANCER EN ADMIN)
-│   ├── requirements.txt        # WeasyPrint épinglé
-│   └── vsix/VENDOR.md          # quels VSIX vendoriser (anti-GlassWorm)
-├── vscodium-user/              # config seedée dans %APPDATA%\VSCodium\User\
-│   ├── settings.json           # interface épurée + sécurité + correcteur
-│   └── keybindings.json        # Ctrl+E (export), Ctrl+Alt+R (secours aperçu)
-└── revue-template/             # copié dans le dossier OneDrive de CHAQUE revue
-    ├── revue.code-workspace    # point d'entrée du rédacteur
-    ├── .vscode/                # tasks (wsl->make) · settings (build on save) · cspell
-    ├── Makefile                # source de vérité du pipeline (LF + tabs)
-    ├── dossier.yaml · articles/ · styles/print.css · BIENVENUE.md
-    └── .editorconfig
+│   └── release.yml           # CI : toolkit.zip + manifest.json à chaque tag ;
+│                             #      rootfs reconstruit seulement si image/ a changé ; push GHCR
+├── image/                    # rootfs WSL — change rarement
+│   ├── Containerfile         # Debian + Pandoc + WeasyPrint (venv, pins transitifs) — base bootc future
+│   ├── requirements.txt      # environnement WeasyPrint figé (pip freeze)
+│   ├── wsl.conf              # /etc/wsl.conf baked (user par défaut, montage /mnt/c)
+│   └── build-rootfs.sh       # build (podman en local / docker en CI) -> .tar.gz + sha256
+├── pipeline/                 # → C:\ProgramData\SZH\toolkit\pipeline\  (consommé par WSL)
+│   ├── Makefile              # source de vérité du pipeline (cibles all / pdf / import / clean)
+│   └── styles/print.css      # maquette (CSS Paged Media) + classes des blocs :::
+├── windows/                  # → C:\ProgramData\SZH\toolkit\windows\
+│   ├── bootstrap.ps1         # ADMIN, 1× par poste (WSL, winget, ACL, tâches planifiées)
+│   ├── update-launcher.ps1   # check silencieux (tâche planifiée) — s'auto‑met à jour
+│   ├── update.ps1            # mise à jour visible et rassurante, sans admin
+│   ├── new-revue.ps1         # crée une revue + raccourci « Ouvrir la revue »
+│   ├── open-revue.ps1        # lanceur « Revues SZH » (menu Démarrer)
+│   ├── szh-common.ps1        # socle commun (manifest, téléchargement, UI, e-mail support)
+│   ├── hidden.vbs            # lance une commande sans fenêtre
+│   └── vsix.lock             # extensions épinglées (id + version + sha256)
+├── vscodium-user/            # → %APPDATA%\VSCodium\User\  (seedé par update.ps1)
+│   ├── settings.json · keybindings.json · tasks.json
+│   └── snippets/markdown.json # blocs de style :::
+└── revue-template/           # copié dans le dossier OneDrive de CHAQUE revue (contenu seul)
+    ├── BIENVENUE.md · dossier.yaml
+    ├── articles/             # les .md de la revue
+    └── articles-word/        # dépôt des Word/LibreOffice à convertir
 ```
 
 ## Runbook
 
-### A. Fabriquer la toolchain — automatique via GitHub Actions
-Pousser un tag `vX` déclenche `.github/workflows/build-rootfs.yml` : build du `Containerfile`,
-export du rootfs, publication en **Release GitHub** (tar + sha256).
+### A. Fabriquer / publier une version — GitHub Actions
+Pousser un tag `vX` déclenche [`release.yml`](.github/workflows/release.yml) :
 
 ```bash
-git tag v2026.06.1 && git push origin v2026.06.1
+git tag v2026.07.0 && git push origin v2026.07.0
 ```
-(ou onglet **Actions → build-rootfs → Run workflow**, avec la version en entrée.)
-Build local éventuel : `cd deploy && ./build-rootfs.sh 2026.06.1`.
 
-### B. Préparer un poste (admin)
-1. Dans `deploy/deploy.ps1` : ajuster `$TargetVersion` (= tag sans le `v`) et `$Repo` si besoin.
-2. Déposer les `.vsix` dans `deploy/vsix/` (voir `VENDOR.md`).
-3. Activer le moteur WSL si absent : `wsl --install --no-distribution` (puis redémarrer).
-4. Lancer :
+La CI publie une **Release** avec `manifest.json`, `toolkit-X.zip` et les VSIX épinglés. Le **rootfs**
+n'est reconstruit **que si `image/` a changé** depuis la release précédente (sinon le manifest réutilise
+le rootfs existant) — une retouche de styles produit donc une release de quelques Ko. Reconstruction
+forcée : onglet **Actions → release → Run workflow**, case *force_rootfs*.
+
+### B. Préparer un poste — une seule fois, en administrateur
+1. Cloner ce dépôt (ou récupérer le dossier `windows/`).
+2. Déposer les `.vsix` listés dans [`windows/vsix.lock`](windows/vsix.lock) — ou laisser la CI les publier.
+3. Lancer :
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\deploy\deploy.ps1 -NewRevue "$env:OneDrive\Revues\2026-01"
+   powershell -ExecutionPolicy Bypass -File .\windows\bootstrap.ps1
    ```
-   → tire le rootfs depuis la **Release GitHub** (vérif sha256), importe la distro `SZH-Publishing`,
-   installe/configure VSCodium **et SumatraPDF** (winget), scaffolde la revue, crée le raccourci bureau.
-   *Dépôt privé ?* ajouter `-GhToken <PAT lecture>`.
-5. Exclusions antivirus : `…\WSL\SZH-Publishing\*.vhdx`, le dossier de staging, et les processus
+   → active le moteur WSL, installe VSCodium + SumatraPDF (winget), donne aux Utilisateurs le droit
+   d'écrire dans `C:\ProgramData\SZH` (pour les MAJ sans admin), crée les tâches planifiées
+   (**mise à jour** à la connexion + 11h00, **préchauffage WSL** à la connexion) et lance la première
+   mise à jour. Si WSL était absent : **redémarrer** puis relancer `bootstrap.ps1`.
+4. Exclusions antivirus : `…\SZH\WSL\*.vhdx`, le dossier `…\SZH\staging`, et les processus
    `vmcompute.exe`, `vmmem.exe`, `wsl.exe`, `wslservice.exe`.
-6. Dans OneDrive : clic droit sur le dossier de la revue → **« Toujours conserver sur cet appareil »**.
 
-### C. Mises à jour de la toolchain
-Bumper la version → pousser le tag (`git tag v2026.07.0 && git push --tags`) → Actions republie la Release.
-Sur les postes : bumper `$TargetVersion` dans `deploy.ps1`, relancer → `deploy.ps1` détecte le décalage
-de `/etc/szh-publishing-version` et **détruit + réimporte** la distro — sans risque, **aucune donnée n'y vit**.
+Ensuite, **plus besoin d'administrateur** : les postes se mettent à jour seuls. (Seul le bump de
+VSCodium/SumatraPDF reste manuel — voir V2 dans `PLANIFICATION.md`.)
+
+### C. Créer une revue
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\ProgramData\SZH\toolkit\windows\new-revue.ps1" -Dossier "$env:OneDrive\Revues\2026-01"
+```
+→ copie le template, crée « Ouvrir la revue.lnk » dans le dossier, enregistre la revue pour le lanceur
+« Revues SZH » du menu Démarrer. Puis, dans OneDrive : clic droit sur le dossier →
+**« Toujours conserver sur cet appareil »**.
+
+### D. Mises à jour de la toolchain
+Bumper la version → pousser le tag → la CI republie la Release. Les postes détectent le nouveau
+`manifest.json` et appliquent ce qui a changé, en silence. Revenir en arrière sur un poste :
+`update.ps1 -Version <X>` (l'archive N‑1 est conservée en staging).
 
 ## Flux rédacteur (0 technique)
-Double‑clic sur **« Revue SZH »** → écrit → **Ctrl+S** → le PDF se régénère à droite. Rien d'autre.
+1. Déposer les articles Word/LibreOffice **finalisés** dans le dossier **`articles-word`**.
+2. Ouvrir la revue (**« Ouvrir la revue »** dans le dossier, ou **« Revues SZH »** dans le menu Démarrer).
+3. Les Word sont convertis en Markdown dans **`articles`** (images récupérées, originaux archivés).
+4. Écrire, puis **Ctrl + S** → `revue.pdf` se régénère (et intègre au passage tout nouveau Word déposé).
+
+Blocs de style : taper `:::` puis le nom (chapô, encadré, exergue…), ou **Ctrl+Alt+S**.
 
 ## Options & décisions
 - **Langue de l'interface** : anglais par défaut (seule option à jour/propre sur VSCodium ; quasi invisible
   vu l'UI épurée). FR figé (mai 2021) : vendoriser `MS-CEINTL.vscode-language-pack-fr` + `"locale": "fr"`
   dans `%APPDATA%\VSCodium\argv.json`. FR à jour : reconstruire `vscode-loc` (MIT) en interne.
-- **Correction FR/DE/EN** : pleinement supportée ; bascule par suffixe de fichier (`.de.md`, `.fr.md`).
-- **Aperçu PDF natif** (tomoki1207.pdf 1.2.2) : à valider à l'usage ; secours `Ctrl+Alt+R`.
-  Repli : **SumatraPDF**, installé automatiquement par `deploy.ps1` (winget, id `SumatraPDF.SumatraPDF`) — open source,
-  **ne verrouille pas le PDF** (recompilation possible fichier ouvert) + recharge auto.
+- **Correction FR/DE/EN** : bascule par suffixe de fichier (`.de.md`, `.fr.md`, `.en.md`).
+- **Aperçu PDF** (tomoki1207.pdf) : reload auto natif ; secours `Ctrl+Alt+R`. Repli : **SumatraPDF**
+  (open source, ne verrouille pas le PDF, recharge auto), installé par `bootstrap.ps1`.
 - **Workspace Trust désactivé** (machine dédiée) pour permettre le build auto sans pop‑up — compromis assumé.
 
 ## Points de vigilance
-- **Aperçu** : la génération du PDF est fiable ; seul le *rafraîchissement auto du volet* peut être capricieux.
-- **Dossier projet léger** : éviter d'y entasser des binaires (scan via 9P au build).
+- **Config au niveau utilisateur (V1)** : les tâches, réglages et snippets sont déployés dans
+  `%APPDATA%\VSCodium\User\`. Le build à la sauvegarde couvre aussi l'import des Word (`make all`), donc
+  l'ouverture d'une revue n'a pas besoin de `runOn:folderOpen`. Si un poste montrait un souci de tâche
+  utilisateur, repli documenté : un mini `.vscode/tasks.json` dans le template, masqué via `files.exclude`.
+- **`deploy.ps1` supprimé** : remplacé par `bootstrap.ps1` / `update.ps1` / `new-revue.ps1`.
 - **`inotify` ne traverse pas `/mnt/c`** : ne jamais bâtir une amélioration sur `pandoc --watch` lisant `/mnt/c`.
-- **`deploy.ps1` doit rester compatible Windows PowerShell 5.1** (version par défaut de Windows ; PowerShell 7 non garanti
-  sur les postes) : proscrire la syntaxe PS7 — opérateurs `?.` (null-conditionnel), `??`, `?:`, `&&`/`||`.
+- **Scripts `.ps1` compatibles Windows PowerShell 5.1** : proscrire `?.`, `??`, `?:`, `&&`/`||`.
+- **Polices** : `fonts-noto` est le plus gros poste du rootfs ; cible = embarquer Open Sans (D7, `PLANIFICATION.md` §6).
+- **macOS** : ~80 % du système est agnostique (image OCI poussée sur GHCR, pipeline, config) ;
+  portage estimé 2–4 j si des Mac entrent dans la flotte (`PLANIFICATION.md` §6).
 - **Migration Silverblue** : `Makefile`, config et `Containerfile` ne bougent pas ; on remplacera WSL par l'OS natif.
