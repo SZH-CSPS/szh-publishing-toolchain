@@ -1,7 +1,8 @@
 # Planification — Refonte du déploiement & workflow de layout
 
 > Document de pilotage du projet. Décisions actées le **2026-07-03** (Robin Morand).
-> Statut : ✅ **toutes les décisions sont closes** — prêt pour implémentation (phases P1 → P5).
+> Statut : ✅ **P1 → P5 implémentés, commités et validés** (2026-07-03). Deux releases de test publiées
+> sur le dépôt public. **Reste** : dérouler le pilote sur un poste réel (checklist V1–V8, §5).
 > Ce fichier est vivant : cocher les tâches au fur et à mesure, consigner ici toute nouvelle décision.
 
 ---
@@ -194,8 +195,11 @@ Ordre : **P1 → P2 → P3** (P4 en parallèle de P3) **→ P5**. Estimations gr
       (simplification vs D11 : publiés à **chaque** release — quelques Mo — le manifest reste trivial).
 - [x] Générer et publier `manifest.json` (schéma §3.2).
 - [x] *(option macOS-ready, coût ~nul)* Pousser aussi l'image OCI sur GHCR (`ghcr.io/szh-csps/…:X`) — voir §6 « Portabilité macOS ».
-- **Livrable** : ⏳ deux releases de test — une « bump toolchain » (avec rootfs) puis une « styles seuls » (~Ko).
-  Nécessite commit + tag (`git tag v2026.07.0 && git push --tags`).
+- **Livrable** : ✅ **validé le 2026-07-03** sur la CI réelle (dépôt public) :
+  - `v2026.07.0` (bump toolchain) : rootfs `.tar.gz` de **128 Mo**, toolkit **20 Ko**, 5 VSIX, manifest sha256 OK ;
+  - `v2026.07.1` (retouche de `print.css` hors `image/`) : **aucun rootfs republié**, toolkit **28 Ko** ; le
+    `manifest.json` réutilise le rootfs de `v2026.07.0` (`rootfs.version = 2026.07.0`). Un poste en 07.0 qui
+    passe en 07.1 ne télécharge donc que ~30 Ko. Découpage gros-immuable / petit-mutable prouvé.
 
 ### P3 — Scripts Windows (~1–2 j)
 - [ ] `bootstrap.ps1` (admin, 1×) : moteur WSL, winget (VSCodium, SumatraPDF), ACL `C:\ProgramData\SZH`,
