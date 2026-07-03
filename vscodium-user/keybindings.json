@@ -1,6 +1,20 @@
 [
-  // Exporter / régénérer l'aperçu PDF (= la tâche de build par défaut)
+  // Exporter / régénérer l'aperçu PDF (= la tâche de build par défaut : make all)
   { "key": "ctrl+e", "command": "workbench.action.tasks.build" },
+
+  // Importer à la demande les Word/LibreOffice déposés dans articles-word/
+  {
+    "key": "ctrl+alt+i",
+    "command": "workbench.action.tasks.runTask",
+    "args": "Importer les articles Word"
+  },
+
+  // Insérer un bloc de style (::: encadré, chapô, exergue…) : ouvre la liste des snippets
+  {
+    "key": "ctrl+alt+s",
+    "command": "editor.action.insertSnippet",
+    "when": "editorTextFocus && editorLangId == markdown"
+  },
 
   // Secours si l'aperçu PDF ne se rafraîchit pas tout seul : recharge la fenêtre
   { "key": "ctrl+alt+r", "command": "workbench.action.reloadWindow" }

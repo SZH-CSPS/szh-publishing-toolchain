@@ -1,17 +1,19 @@
 {
-  // PROVISOIRE : ces tâches migrent au niveau UTILISATEUR en P4 (V1, PLANIFICATION.md),
-  // ce .vscode/ disparaîtra alors du template. Le Makefile est central (toolkit, D1/D2).
+  // Tâches au niveau UTILISATEUR (déployées dans %APPDATA%\VSCodium\User\ par update.ps1).
+  // Le dossier de revue ne contient donc plus aucun fichier technique (D8).
+  // Le Makefile est central (toolkit, D1/D2).
   "version": "2.0.0",
   "tasks": [
     {
-      // Régénère le PDF (revue.pdf à la racine). Déclenchée à la sauvegarde
-      // (triggertaskonsave), par Ctrl+Maj+B (build par défaut) et par Ctrl+E.
+      // Build par défaut (Ctrl+S via triggerTaskOnSave, Ctrl+Maj+B, Ctrl+E).
+      // `make all` = importe d'abord les Word éventuellement déposés, PUIS régénère
+      // revue.pdf -> déposer un Word + Ctrl+S suffit, sans dépendre de folderOpen.
       "label": "Aperçu / Export PDF",
       "type": "process",                 // pas de shell Windows -> aucun souci de guillemets
       "command": "wsl.exe",
       "args": [
         "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
-        "make", "-f", "/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile", "pdf"
+        "make", "-f", "/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile", "all"
       ],
       "group": { "kind": "build", "isDefault": true },
       "presentation": {
@@ -23,8 +25,10 @@
       "problemMatcher": []
     },
     {
-      // Convertit les Word/LibreOffice déposés dans articles-word/ (D12).
-      // Lancée automatiquement à l'ouverture de la revue + disponible à la demande.
+      // Import des Word/LibreOffice à la demande (Ctrl+Alt+I). L'import est aussi
+      // fait par le build ci-dessus ; cette tâche sert de secours explicite (D12).
+      // runOn:folderOpen est un bonus « best-effort » (peut ne pas se déclencher
+      // pour les tâches utilisateur — le build au 1er Ctrl+S prend alors le relais).
       "label": "Importer les articles Word",
       "type": "process",
       "command": "wsl.exe",

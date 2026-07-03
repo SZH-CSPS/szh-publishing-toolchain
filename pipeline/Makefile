@@ -11,8 +11,10 @@ SHELL      := /bin/bash
 PANDOC     ?= pandoc
 WEASYPRINT ?= weasyprint
 
+# Chemin absolu de CE Makefile (pour la récursion de la cible `all`).
+THIS         := $(abspath $(lastword $(MAKEFILE_LIST)))
 # Dossier du pipeline = dossier de ce Makefile (styles centraux, futurs filtres Lua).
-PIPELINE_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
+PIPELINE_DIR := $(patsubst %/,%,$(dir $(THIS)))
 
 # Style : override local si la revue fournit styles/print.css (p. ex. pour figer un
 # numéro face à un changement de maquette), sinon style central du toolkit.
@@ -36,7 +38,15 @@ WORD_DIR   := articles-word
 DONE_DIR   := $(WORD_DIR)/_convertis
 MEDIA_DIR  := articles/media
 
-.PHONY: pdf import clean verifie-dossier
+.PHONY: all pdf import clean verifie-dossier
+
+# Cible du build (Ctrl+S, Ctrl+E) : importe d'abord les Word éventuellement déposés,
+# PUIS régénère le PDF. Deux sous-make séparés pour que les .md fraîchement convertis
+# soient vus par la passe pdf (le wildcard ARTICLES est réévalué au 2e make).
+# Le « - » rend l'import non bloquant : un Word corrompu n'empêche pas le PDF des autres.
+all:
+	-@$(MAKE) --no-print-directory -f $(THIS) import
+	@$(MAKE) --no-print-directory -f $(THIS) pdf
 
 pdf: verifie-dossier $(PDF)
 

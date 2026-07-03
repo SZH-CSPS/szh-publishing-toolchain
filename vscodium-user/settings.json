@@ -29,23 +29,57 @@
   "files.autoSaveDelay": 1000,
   "files.trimTrailingWhitespace": false,
 
-  // Pas de bruit « développeur » dans un fichier Markdown
+  // Pas de bruit « développeur »… SAUF en Markdown, où les suggestions servent aux
+  // blocs de style ::: (snippets, voir snippets/markdown.json). Réglage global = muet,
+  // override [markdown] = suggestions actives (D15).
   "markdown.validate.enabled": false,
   "editor.quickSuggestions": { "other": false, "comments": false, "strings": false },
   "editor.suggestOnTriggerCharacters": false,
   "editor.parameterHints.enabled": false,
+  "[markdown]": {
+    "editor.quickSuggestions": { "other": true, "comments": false, "strings": false },
+    "editor.suggestOnTriggerCharacters": true,
+    "editor.wordBasedSuggestions": "off"
+  },
+
+  // ============ Build automatique à la sauvegarde ============
+  // Régénère revue.pdf (via la tâche « Aperçu / Export PDF » = make all) à chaque
+  // sauvegarde de contenu. Tâche définie au niveau utilisateur (tasks.json).
+  "triggerTaskOnSave.tasks": {
+    "Aperçu / Export PDF": ["**/*.md", "**/*.css", "**/dossier.yaml"]
+  },
+  "triggerTaskOnSave.restart": true,           // sauvegardes rapprochées -> on relance (debounce)
+  "triggerTaskOnSave.showStatusBarToggle": true,
+  "task.allowAutomaticTasks": "on",
+
+  "search.exclude": { "**/media/**": true, "**/_convertis/**": true },
+  "files.watcherExclude": { "**/media/**": true, "**/*.tmp": true },
+
+  // ============ Masquage de fichiers dans l'explorateur (réserve, §6) ============
+  // Le dossier de revue est déjà quasi vide de technique. Ajouter ici tout résidu
+  // à cacher au rédacteur (le fichier reste sur le disque, il est juste masqué).
+  "files.exclude": {
+    "**/.DS_Store": true,
+    "**/Thumbs.db": true,
+    "**/~$*": true
+  },
 
   // ============ Correction orthographique FR / DE / EN ============
-  // Un mot est accepté s'il est valide dans AU MOINS une de ces langues
-  // (moins de faux positifs en contexte bilingue). Override par fichier dans .vscode/cspell.json.
+  // Un mot est accepté s'il est valide dans AU MOINS une de ces langues (moins de faux
+  // positifs en contexte bilingue). Bascule par suffixe de fichier via cSpell.overrides.
   "cSpell.language": "fr,de,en",
   "cSpell.enableFiletypes": ["markdown"],
+  "cSpell.words": ["CSPS", "SZH", "WeasyPrint", "Pandoc"],
+  "cSpell.overrides": [
+    { "filename": "**/*.de.md", "language": "de" },
+    { "filename": "**/*.fr.md", "language": "fr" },
+    { "filename": "**/*.en.md", "language": "en" }
+  ],
 
   // ============ Sécurité / déploiement flotte ============
   // Machine dédiée + contenu connu : on évite la pop-up de confiance (sinon le build
   // auto à la sauvegarde serait bloqué et le rédacteur perdu). Compromis assumé.
   "security.workspace.trust.enabled": false,
-  "task.allowAutomaticTasks": "on",
 
   // Extensions : pas de mise à jour live (VSIX vendorisés -> anti-GlassWorm)
   "extensions.autoCheckUpdates": false,
@@ -62,5 +96,5 @@
 
   // ============ Aperçu PDF ============
   // Reload auto natif de tomoki1207.pdf — si capricieux, voir keybindings (Ctrl+Alt+R).
-  "files.watcherExclude": { "**/out/**": true, "**/*.tmp": true }
+  "editor.acceptSuggestionOnEnter": "smart"
 }
