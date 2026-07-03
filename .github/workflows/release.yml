@@ -84,6 +84,7 @@ jobs:
 
       - name: Pousser l'image sur GHCR (option macOS, §6)
         if: steps.need.outputs.rootfs == 'true'
+        continue-on-error: true      # option macOS : ne doit pas faire échouer la release Windows
         run: |
           V="${{ steps.ver.outputs.v }}"
           IMG="ghcr.io/${GITHUB_REPOSITORY,,}"
