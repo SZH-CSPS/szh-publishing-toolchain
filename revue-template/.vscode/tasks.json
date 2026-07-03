@@ -1,13 +1,18 @@
 {
+  // PROVISOIRE : ces tâches migrent au niveau UTILISATEUR en P4 (V1, PLANIFICATION.md),
+  // ce .vscode/ disparaîtra alors du template. Le Makefile est central (toolkit, D1/D2).
   "version": "2.0.0",
   "tasks": [
     {
-      // Régénère le PDF. Déclenchée à la sauvegarde (triggertaskonsave),
-      // par Ctrl+Maj+B (build par défaut) et par Ctrl+E.
+      // Régénère le PDF (revue.pdf à la racine). Déclenchée à la sauvegarde
+      // (triggertaskonsave), par Ctrl+Maj+B (build par défaut) et par Ctrl+E.
       "label": "Aperçu / Export PDF",
       "type": "process",                 // pas de shell Windows -> aucun souci de guillemets
       "command": "wsl.exe",
-      "args": ["-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--", "make", "pdf"],
+      "args": [
+        "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
+        "make", "-f", "/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile", "pdf"
+      ],
       "group": { "kind": "build", "isDefault": true },
       "presentation": {
         "reveal": "silent",
@@ -18,13 +23,21 @@
       "problemMatcher": []
     },
     {
-      // Démarre la VM WSL à l'ouverture du dossier -> évite le délai à froid au 1er Ctrl+S.
-      "label": "Préchauffer WSL",
+      // Convertit les Word/LibreOffice déposés dans articles-word/ (D12).
+      // Lancée automatiquement à l'ouverture de la revue + disponible à la demande.
+      "label": "Importer les articles Word",
       "type": "process",
       "command": "wsl.exe",
-      "args": ["-d", "SZH-Publishing", "--", "/bin/true"],
+      "args": [
+        "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
+        "make", "-f", "/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile", "import"
+      ],
       "runOptions": { "runOn": "folderOpen" },
-      "presentation": { "reveal": "never", "panel": "shared" },
+      "presentation": {
+        "reveal": "silent",
+        "showReuseMessage": false,
+        "panel": "shared"
+      },
       "problemMatcher": []
     }
   ]

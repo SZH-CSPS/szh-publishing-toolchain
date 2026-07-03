@@ -1,0 +1,162 @@
+name: release
+
+# Publie une Release par tag vX (ex. v2026.07.0) — voir PLANIFICATION.md §3.2 :
+#   manifest.json          (toujours)  versions + sha256 de tous les assets
+#   toolkit-X.zip          (toujours)  pipeline/ + vscodium-user/ + revue-template/ + windows/
+#   <id>-<ver>.vsix        (toujours)  extensions épinglées (windows/vsix.lock), empreintes vérifiées
+#   rootfs .tar.gz+.sha256 (seulement si image/ a changé depuis la release précédente, ou force_rootfs)
+#   image OCI -> GHCR      (quand le rootfs est reconstruit) — option macOS-ready (§6)
+#
+# -> une retouche de styles = release de quelques Ko ; le gros rootfs ne repart
+#    que pour un bump toolchain. update.ps1 lit manifest.json et ne télécharge
+#    que ce qui a changé.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (ex. 2026.07.0)"
+        required: true
+      force_rootfs:
+        description: "Forcer la reconstruction du rootfs"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write          # créer/mettre à jour la Release
+  packages: write          # pousser l'image sur GHCR
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0        # tags + historique : nécessaires au diff image/
+
+      - name: Déterminer la version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "v=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "v=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Récupérer la release précédente (manifest)
+        id: prev
+        run: |
+          PREV_TAG="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName 2>/dev/null || true)"
+          echo "tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
+          rm -f prev-manifest.json
+          if [ -n "$PREV_TAG" ]; then
+            gh release download "$PREV_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern manifest.json --output prev-manifest.json || true
+          fi
+
+      - name: Faut-il reconstruire le rootfs ?
+        id: need
+        run: |
+          NEED=false
+          if [ "${{ inputs.force_rootfs }}" = "true" ]; then
+            NEED=true; echo "force_rootfs demandé"
+          elif [ ! -s prev-manifest.json ]; then
+            NEED=true; echo "pas de manifest précédent (1re release nouveau format)"
+          elif ! git diff --quiet "${{ steps.prev.outputs.tag }}"..HEAD -- image/; then
+            NEED=true; echo "image/ a changé depuis ${{ steps.prev.outputs.tag }}"
+          else
+            echo "image/ inchangé -> réutilisation du rootfs de ${{ steps.prev.outputs.tag }}"
+          fi
+          echo "rootfs=$NEED" >> "$GITHUB_OUTPUT"
+
+      - name: Construire le rootfs (.tar.gz)
+        if: steps.need.outputs.rootfs == 'true'
+        working-directory: image
+        env:
+          ENGINE: docker        # Docker est préinstallé sur les runners ubuntu-latest
+        run: |
+          bash ./build-rootfs.sh "${{ steps.ver.outputs.v }}"
+          mv szh-publishing-rootfs-*.tar.gz* "$GITHUB_WORKSPACE/"
+
+      - name: Pousser l'image sur GHCR (option macOS, §6)
+        if: steps.need.outputs.rootfs == 'true'
+        run: |
+          V="${{ steps.ver.outputs.v }}"
+          IMG="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "${{ github.token }}" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag "szh-publishing:$V" "$IMG:$V"
+          docker tag "szh-publishing:$V" "$IMG:latest"
+          docker push "$IMG:$V"
+          docker push "$IMG:latest"
+
+      - name: Télécharger et vérifier les VSIX (vsix.lock)
+        run: |
+          mkdir -p vsix-out
+          jq -c '.extensions[]' windows/vsix.lock | while read -r e; do
+            id="$(echo "$e"   | jq -r .id)"
+            ver="$(echo "$e"  | jq -r .version)"
+            url="$(echo "$e"  | jq -r .source)"
+            want="$(echo "$e" | jq -r .sha256)"
+            f="vsix-out/${id}-${ver}.vsix"
+            curl -fsSL "$url" -o "$f"
+            got="$(sha256sum "$f" | cut -d' ' -f1)"
+            if [ "$got" != "$want" ]; then
+              echo "::error::Empreinte inattendue pour $id $ver (obtenu $got, attendu $want)"
+              exit 1
+            fi
+            echo "OK $id $ver"
+          done
+
+      - name: Construire le toolkit
+        run: |
+          V="${{ steps.ver.outputs.v }}"
+          mkdir -p toolkit
+          cp -r pipeline vscodium-user revue-template windows toolkit/
+          echo "$V" > toolkit/VERSION
+          (cd toolkit && zip -qr "../toolkit-$V.zip" .)
+          sha256sum "toolkit-$V.zip" | tee "toolkit-$V.zip.sha256"
+
+      - name: Générer manifest.json
+        run: |
+          V="${{ steps.ver.outputs.v }}"
+          BASE="https://github.com/$GITHUB_REPOSITORY/releases/download"
+          if [ "${{ steps.need.outputs.rootfs }}" = "true" ]; then
+            RF="szh-publishing-rootfs-$V.tar.gz"
+            ROOTFS_JSON="$(jq -n --arg v "$V" --arg f "$RF" \
+              --arg u "$BASE/v$V/$RF" \
+              --arg s "$(cut -d' ' -f1 "$RF.sha256")" \
+              '{version:$v, file:$f, url:$u, sha256:$s}')"
+          else
+            ROOTFS_JSON="$(jq -c .rootfs prev-manifest.json)"
+          fi
+          TOOLKIT_JSON="$(jq -n --arg f "toolkit-$V.zip" \
+            --arg u "$BASE/v$V/toolkit-$V.zip" \
+            --arg s "$(cut -d' ' -f1 "toolkit-$V.zip.sha256")" \
+            '{file:$f, url:$u, sha256:$s}')"
+          VSIX_JSON="$(jq --arg base "$BASE/v$V" \
+            '[.extensions[] | {id, version, file: (.id+"-"+.version+".vsix"), url: ($base+"/"+.id+"-"+.version+".vsix"), sha256}]' \
+            windows/vsix.lock)"
+          jq -n --arg v "$V" \
+            --argjson rootfs  "$ROOTFS_JSON" \
+            --argjson toolkit "$TOOLKIT_JSON" \
+            --argjson vsix    "$VSIX_JSON" \
+            '{version:$v, rootfs:$rootfs, toolkit:$toolkit, vsix:$vsix}' | tee manifest.json
+
+      - name: Publier la Release
+        run: |
+          V="${{ steps.ver.outputs.v }}"
+          ASSETS=(manifest.json "toolkit-$V.zip" "toolkit-$V.zip.sha256" vsix-out/*.vsix)
+          if [ "${{ steps.need.outputs.rootfs }}" = "true" ]; then
+            ASSETS+=("szh-publishing-rootfs-$V.tar.gz" "szh-publishing-rootfs-$V.tar.gz.sha256")
+          fi
+          # Crée la Release (1re fois) ; si elle existe déjà (re-run), met à jour les assets.
+          gh release create "v$V" "${ASSETS[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Toolchain v$V" \
+              --notes "Toolkit (pipeline + config + template + scripts) et extensions épinglées. Rootfs WSL : voir manifest.json (réutilisé si image/ inchangé). Déployé automatiquement par update.ps1." \
+          || gh release upload "v$V" "${ASSETS[@]}" \
+              --repo "$GITHUB_REPOSITORY" --clobber

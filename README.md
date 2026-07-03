@@ -54,7 +54,7 @@ Build local éventuel : `cd deploy && ./build-rootfs.sh 2026.06.1`.
    powershell -ExecutionPolicy Bypass -File .\deploy\deploy.ps1 -NewRevue "$env:OneDrive\Revues\2026-01"
    ```
    → tire le rootfs depuis la **Release GitHub** (vérif sha256), importe la distro `SZH-Publishing`,
-   installe/configure VSCodium, scaffolde la revue, crée le raccourci bureau.
+   installe/configure VSCodium **et SumatraPDF** (winget), scaffolde la revue, crée le raccourci bureau.
    *Dépôt privé ?* ajouter `-GhToken <PAT lecture>`.
 5. Exclusions antivirus : `…\WSL\SZH-Publishing\*.vhdx`, le dossier de staging, et les processus
    `vmcompute.exe`, `vmmem.exe`, `wsl.exe`, `wslservice.exe`.
@@ -73,11 +73,15 @@ Double‑clic sur **« Revue SZH »** → écrit → **Ctrl+S** → le PDF se r�
   vu l'UI épurée). FR figé (mai 2021) : vendoriser `MS-CEINTL.vscode-language-pack-fr` + `"locale": "fr"`
   dans `%APPDATA%\VSCodium\argv.json`. FR à jour : reconstruire `vscode-loc` (MIT) en interne.
 - **Correction FR/DE/EN** : pleinement supportée ; bascule par suffixe de fichier (`.de.md`, `.fr.md`).
-- **Aperçu PDF natif** (tomoki1207.pdf 1.2.2) : à valider à l'usage ; secours `Ctrl+Alt+R`. Repli : SumatraPDF.
+- **Aperçu PDF natif** (tomoki1207.pdf 1.2.2) : à valider à l'usage ; secours `Ctrl+Alt+R`.
+  Repli : **SumatraPDF**, installé automatiquement par `deploy.ps1` (winget, id `SumatraPDF.SumatraPDF`) — open source,
+  **ne verrouille pas le PDF** (recompilation possible fichier ouvert) + recharge auto.
 - **Workspace Trust désactivé** (machine dédiée) pour permettre le build auto sans pop‑up — compromis assumé.
 
 ## Points de vigilance
 - **Aperçu** : la génération du PDF est fiable ; seul le *rafraîchissement auto du volet* peut être capricieux.
 - **Dossier projet léger** : éviter d'y entasser des binaires (scan via 9P au build).
 - **`inotify` ne traverse pas `/mnt/c`** : ne jamais bâtir une amélioration sur `pandoc --watch` lisant `/mnt/c`.
+- **`deploy.ps1` doit rester compatible Windows PowerShell 5.1** (version par défaut de Windows ; PowerShell 7 non garanti
+  sur les postes) : proscrire la syntaxe PS7 — opérateurs `?.` (null-conditionnel), `??`, `?:`, `&&`/`||`.
 - **Migration Silverblue** : `Makefile`, config et `Containerfile` ne bougent pas ; on remplacera WSL par l'OS natif.

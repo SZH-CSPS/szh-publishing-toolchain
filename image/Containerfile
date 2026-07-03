@@ -1,15 +1,18 @@
 # Toolchain SZH/CSPS pour la chaîne .md -> Pandoc -> WeasyPrint -> PDF.
-# Construit un rootfs Debian reproductible, exporté en .tar puis importé via `wsl --import`.
-# Le MÊME Containerfile servira de base bootc à la future migration Silverblue.
+# Construit un rootfs Debian reproductible, exporté en .tar.gz puis importé via `wsl --import`.
+# Le MÊME Containerfile servira de base bootc à la future migration Silverblue,
+# et l'image est aussi poussée sur GHCR (portabilité macOS, PLANIFICATION.md §6).
+#
+# Toolchain PURE (D2) : le pipeline (Makefile, styles) vit dans le toolkit côté
+# Windows — ce rootfs ne change que pour un bump Debian/Pandoc/WeasyPrint (rare).
 #
 # Build : voir build-rootfs.sh (passe les --build-arg).
 
 ARG DEBIAN_TAG=13-slim
 FROM debian:${DEBIAN_TAG}
 
-# --- Paramètres (surchageables au build) ---
+# --- Paramètres (surchargeables au build) ---
 ARG PANDOC_VERSION=3.5
-ARG WEASYPRINT_VERSION=69.0
 ARG FONTS="fonts-noto fonts-dejavu"
 ARG DISTRO_VERSION=0.0.0-dev
 ARG WSL_USER=redac
@@ -17,6 +20,10 @@ ARG WSL_USER=redac
 ENV DEBIAN_FRONTEND=noninteractive
 
 # --- Dépendances système : Pango + fontconfig (WeasyPrint), make, python, curl ---
+# TODO polices (D7, PLANIFICATION.md §6) : fonts-noto est un métapaquet de plusieurs
+# centaines de Mo — le plus gros poste du rootfs après Pandoc. Cible : embarquer les
+# polices réelles de la maquette (Open Sans, licence OFL) via le COPY fonts/ ci-dessous,
+# puis retirer fonts-noto de ARG FONTS (garder fonts-dejavu en filet de sécurité).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         make curl ca-certificates \
         python3 python3-venv \
@@ -24,10 +31,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ${FONTS} \
     && rm -rf /var/lib/apt/lists/*
 
-# --- WeasyPrint épinglé dans un venv isolé (rendu reproductible) ---
+# --- WeasyPrint : venv isolé, épinglage COMPLET (transitif) via requirements.txt ---
+# (la version de WeasyPrint est DANS requirements.txt — régénération : voir son en-tête)
+COPY requirements.txt /tmp/requirements.txt
 RUN python3 -m venv /opt/weasyprint \
-    && /opt/weasyprint/bin/pip install --no-cache-dir "weasyprint==${WEASYPRINT_VERSION}" \
-    && ln -s /opt/weasyprint/bin/weasyprint /usr/local/bin/weasyprint
+    && /opt/weasyprint/bin/pip install --no-cache-dir -r /tmp/requirements.txt \
+    && ln -s /opt/weasyprint/bin/weasyprint /usr/local/bin/weasyprint \
+    && rm /tmp/requirements.txt
 
 # --- Pandoc : binaire statique, version épinglée ---
 RUN curl -fsSL "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-1-amd64.deb" \
@@ -42,7 +52,7 @@ RUN useradd -m -s /bin/bash "${WSL_USER}"
 COPY wsl.conf /etc/wsl.conf
 RUN echo "${DISTRO_VERSION}" > /etc/szh-publishing-version
 
-# --- Polices supplémentaires de la revue : déposer ici puis fc-cache ---
+# --- Polices de la maquette : déposer image/fonts/ puis décommenter (voir TODO D7) ---
 # COPY fonts/ /usr/local/share/fonts/szh/
 RUN fc-cache -f
 

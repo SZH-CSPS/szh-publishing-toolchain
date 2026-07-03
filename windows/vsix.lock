@@ -1,0 +1,35 @@
+{
+  "_doc": "Extensions VSCodium épinglées (anti-GlassWorm, D11). La CI télécharge chaque VSIX depuis `source`, vérifie `sha256`, et le publie en asset de release ; update.ps1 l'installe via `codium --install-extension`. Tout bump est une décision explicite : mettre à jour version + sha256 (procédure dans VSIX.md).",
+  "extensions": [
+    {
+      "id": "tomoki1207.pdf",
+      "version": "1.2.2",
+      "sha256": "5697cd022caf93fa0fdb8c5b9c3624951394d8126ed09184ad4fdbcad62dadce",
+      "source": "https://open-vsx.org/api/tomoki1207/pdf/1.2.2/file/tomoki1207.pdf-1.2.2.vsix"
+    },
+    {
+      "id": "Gruntfuggly.triggertaskonsave",
+      "version": "0.2.18",
+      "sha256": "0d0289308faa38ea323cc24778f4be986e9fcf80ddf8855fc8a89d67e3369491",
+      "source": "https://open-vsx.org/api/Gruntfuggly/triggertaskonsave/0.2.18/file/Gruntfuggly.triggertaskonsave-0.2.18.vsix"
+    },
+    {
+      "id": "streetsidesoftware.code-spell-checker",
+      "version": "4.6.0",
+      "sha256": "4c7396a310a691029fee63e8c9eaeea95c65f84fb833f16fa13e77b791ca6136",
+      "source": "https://open-vsx.org/api/streetsidesoftware/code-spell-checker/4.6.0/file/streetsidesoftware.code-spell-checker-4.6.0.vsix"
+    },
+    {
+      "id": "streetsidesoftware.code-spell-checker-french",
+      "version": "0.4.4",
+      "sha256": "8ab9dc597b7f4123ac55a7e8cef7fca13b435c3e6f1b712d64d94da44aa1bac5",
+      "source": "https://open-vsx.org/api/streetsidesoftware/code-spell-checker-french/0.4.4/file/streetsidesoftware.code-spell-checker-french-0.4.4.vsix"
+    },
+    {
+      "id": "streetsidesoftware.code-spell-checker-swiss-german",
+      "version": "1.2.4",
+      "sha256": "8ad996e3f7fbb7deabe70e1305f9d3f5305c652ab0e08b794c81defc0adb061c",
+      "source": "https://open-vsx.org/api/streetsidesoftware/code-spell-checker-swiss-german/1.2.4/file/streetsidesoftware.code-spell-checker-swiss-german-1.2.4.vsix"
+    }
+  ]
+}
