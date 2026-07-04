@@ -17,8 +17,11 @@ cd "$DIR" || exit 1
 rm -f media/refs-brutes.txt media/rapport.json media/conversion-stats.json
 
 # --- Passe A : docx -> markdown (structure, figures, extraction des références) ---
+# -simple_tables-multiline_tables : les tableaux sortent en PIPE (| … |), le format
+# que les extensions d'édition de tableaux manipulent ; grid en repli si trop complexe.
+MD_FMT="markdown-simple_tables-multiline_tables"
 SZH_STATS="media/conversion-stats.json" SZH_REFS="media/refs-brutes.txt" \
-pandoc "$DOCX_ABS" --track-changes=accept -f docx -t markdown \
+pandoc "$DOCX_ABS" --track-changes=accept -f docx -t "$MD_FMT" \
   --wrap=none --markdown-headings=atx \
   --extract-media=media \
   --lua-filter="$PIPE/filters/szh-import.lua" \
@@ -38,7 +41,7 @@ fi
 # --- Passe B : liaison des citations + métadonnées bibliographiques ---
 # --standalone : indispensable pour que le YAML (bibliography, titre…) soit RÉÉCRIT dans le md.
 SZH_BIB="$BIB" SZH_REFS="media/refs-brutes.txt" SZH_LANG="$LANG_ART" SZH_STATS="media/conversion-stats.json" \
-pandoc "$SLUG.md" -f markdown -t markdown --standalone --wrap=none --markdown-headings=atx \
+pandoc "$SLUG.md" -f markdown -t "$MD_FMT" --standalone --wrap=none --markdown-headings=atx \
   --lua-filter="$PIPE/filters/szh-citations.lua" \
   -o "$SLUG.md.tmp" && mv -f "$SLUG.md.tmp" "$SLUG.md"
 

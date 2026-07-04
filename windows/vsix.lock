@@ -30,6 +30,18 @@
       "version": "1.2.4",
       "sha256": "8ad996e3f7fbb7deabe70e1305f9d3f5305c652ab0e08b794c81defc0adb061c",
       "source": "https://open-vsx.org/api/streetsidesoftware/code-spell-checker-swiss-german/1.2.4/file/streetsidesoftware.code-spell-checker-swiss-german-1.2.4.vsix"
+    },
+    {
+      "id": "TakumiI.markdowntable",
+      "version": "0.10.4",
+      "sha256": "2712fdec67d7540dd17d5601bbd2d949d70c044bd67da81e463151b2324d89aa",
+      "source": "https://open-vsx.org/api/TakumiI/markdowntable/0.10.4/file/TakumiI.markdowntable-0.10.4.vsix"
+    },
+    {
+      "id": "csholmq.excel-to-markdown-table",
+      "version": "1.4.0",
+      "sha256": "92eb0b04138d5e65d77ed5dd7dd042443db8c7f4b115f59363985b6230950d0c",
+      "source": "https://open-vsx.org/api/csholmq/excel-to-markdown-table/1.4.0/file/csholmq.excel-to-markdown-table-1.4.0.vsix"
     }
   ]
 }
