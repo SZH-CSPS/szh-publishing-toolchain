@@ -48,6 +48,8 @@ szh-publishing-toolchain/
 ├── vscodium-user/            # → %APPDATA%\VSCodium\User\  (seedé par update.ps1)
 │   ├── settings.json · keybindings.json · tasks.json
 │   └── snippets/markdown.json # blocs de style :::
+├── vscodium-extension/
+│   └── szh-apercu/           # extension maison (D24) : aperçu auto en vue scindée — VSIX construit par la CI
 └── revue-template/           # copié dans le dossier OneDrive de CHAQUE revue (contenu seul)
     ├── BIENVENUE.md · ausgabe.yaml
     ├── articles/             # les .md de la revue
