@@ -1,6 +1,7 @@
 ﻿<#
 .SYNOPSIS
-  Mise à jour de l'outil Revue SZH — fenêtre VISIBLE, interface sobre et rassurante (D5).
+  Mise à jour de l'outil Revue SZH — fenêtre VISIBLE, interface sobre et rassurante (D5),
+  trilingue FR/DE/EN selon la langue d'affichage de Windows (D25).
   Lancée normalement par update-launcher.ps1 ; utilisable aussi à la main :
 
     powershell -ExecutionPolicy Bypass -File update.ps1                  # dernière version
@@ -19,50 +20,49 @@ param(
 
 . "$PSScriptRoot\szh-common.ps1"
 
-try { $Host.UI.RawUI.WindowTitle = 'Mise à jour de l''outil Revue SZH' } catch { }
+try { $Host.UI.RawUI.WindowTitle = (T 'maj.fenetre') } catch { }
 
 New-Item -ItemType Directory -Force -Path $SzhBase, $SzhStaging, $SzhLogs, $SzhToolkit | Out-Null
 $journal = Join-Path $SzhLogs ('update-{0}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 try { Start-Transcript -Path $journal | Out-Null } catch { }
 
-$etape = 'préparation'
+$etape = (T 'etape.prepa')
 try {
-  Write-SzhBanniere 'Mise à jour de l''outil Revue'
-  Write-SzhInfo 'Vos textes et vos revues ne sont pas touchés par cette opération.'
-  Write-SzhInfo 'Vous pouvez continuer à travailler pendant ce temps.'
+  Write-SzhBanniere (T 'maj.soustitre')
+  Write-SzhInfo (T 'maj.intro1')
+  Write-SzhInfo (T 'maj.intro2')
   Write-Host ''
 
   # ---- Quoi de neuf ? -------------------------------------------------------
-  $etape = 'lecture de la version disponible'
-  Write-SzhEtape 'Vérification de la version disponible…'
+  $etape = (T 'etape.manifest')
+  Write-SzhEtape (T 'maj.verif')
   $manifest = Get-SzhManifest $Version
   $etat = Get-SzhState
-  Write-SzhOk ('Version cible : {0}' -f $manifest.version)
+  Write-SzhOk (T 'maj.cible' @($manifest.version))
 
   # ---- 1/5 Maquette, réglages et scripts (toolkit) --------------------------
-  $etape = 'mise à jour de la maquette et des réglages'
+  $etape = (T 'etape.toolkit')
   $verToolkit = ''
   $fichierVer = Join-Path $SzhToolkit 'VERSION'
   if (Test-Path $fichierVer) { $verToolkit = (Get-Content $fichierVer -Raw).Trim() }
+  Write-SzhEtape (T 'maj.e1')
   if ($verToolkit -ne $manifest.version) {
-    Write-SzhEtape '1/5  Maquette et réglages…'
     $zip = Join-Path $SzhStaging $manifest.toolkit.file
     if (-not (Test-SzhSha256 -Fichier $zip -Attendu $manifest.toolkit.sha256)) {
       Get-SzhFichier -Url $manifest.toolkit.url -Destination $zip
       if (-not (Test-SzhSha256 -Fichier $zip -Attendu $manifest.toolkit.sha256)) {
-        throw ('Empreinte invalide pour {0}.' -f $manifest.toolkit.file)
+        throw (T 'err.empreinte' @($manifest.toolkit.file))
       }
     }
     Expand-Archive -Path $zip -DestinationPath $SzhToolkit -Force
-    Write-SzhOk 'Maquette et réglages à jour.'
+    Write-SzhOk (T 'maj.e1.ok')
   } else {
-    Write-SzhEtape '1/5  Maquette et réglages…'
-    Write-SzhOk 'Déjà à jour.'
+    Write-SzhOk (T 'maj.deja')
   }
 
   # ---- 2/5 Environnement de fabrication (distro WSL) ------------------------
-  $etape = 'mise à jour de l''environnement de fabrication'
-  Write-SzhEtape '2/5  Environnement de fabrication du PDF…'
+  $etape = (T 'etape.env')
+  Write-SzhEtape (T 'maj.e2')
   $rootfsActuel = ''
   if ($etat -and $etat.rootfs) { $rootfsActuel = $etat.rootfs }
   $wsl = Get-WslExe
@@ -72,15 +72,15 @@ try {
   if (($rootfsActuel -ne $manifest.rootfs.version) -or (-not $distroPresente)) {
     $tar = Join-Path $SzhStaging $manifest.rootfs.file
     if (Test-SzhSha256 -Fichier $tar -Attendu $manifest.rootfs.sha256) {
-      Write-SzhInfo 'Archive déjà téléchargée, réutilisée.'
+      Write-SzhInfo (T 'maj.dl.cache')
     } else {
-      Write-SzhInfo 'C''est le plus gros téléchargement — merci de patienter.'
+      Write-SzhInfo (T 'maj.dl.gros')
       Get-SzhFichier -Url $manifest.rootfs.url -Destination $tar
       if (-not (Test-SzhSha256 -Fichier $tar -Attendu $manifest.rootfs.sha256)) {
-        throw ('Empreinte invalide pour {0}.' -f $manifest.rootfs.file)
+        throw (T 'err.empreinte' @($manifest.rootfs.file))
       }
     }
-    Write-SzhInfo 'Installation (l''ancien environnement est jetable : aucune donnée dedans)…'
+    Write-SzhInfo (T 'maj.install')
     if ($distroPresente) {
       Invoke-SzhNatif { & $wsl --terminate $SzhDistro 2>$null | Out-Null }
       Invoke-SzhNatif { & $wsl --unregister $SzhDistro 2>$null | Out-Null }
@@ -88,16 +88,16 @@ try {
     $dirDistro = Join-Path $SzhBase 'WSL\SZH-Publishing'
     New-Item -ItemType Directory -Force -Path $dirDistro | Out-Null
     & $wsl --import $SzhDistro $dirDistro $tar --version 2
-    if ($LASTEXITCODE -ne 0) { throw 'L''import de l''environnement WSL a échoué.' }
+    if ($LASTEXITCODE -ne 0) { throw (T 'err.wsl') }
     Invoke-SzhNatif { & $wsl --terminate $SzhDistro 2>$null | Out-Null }   # relit /etc/wsl.conf
-    Write-SzhOk ('Environnement {0} installé.' -f $manifest.rootfs.version)
+    Write-SzhOk (T 'maj.env.ok' @($manifest.rootfs.version))
   } else {
-    Write-SzhOk ('Déjà à jour ({0}).' -f $manifest.rootfs.version)
+    Write-SzhOk (T 'maj.env.deja' @($manifest.rootfs.version))
   }
 
   # ---- 3/5 Extensions de l'éditeur ------------------------------------------
-  $etape = 'mise à jour des extensions de l''éditeur'
-  Write-SzhEtape '3/5  Extensions de l''éditeur…'
+  $etape = (T 'etape.ext')
+  Write-SzhEtape (T 'maj.e3')
   $etatVsix = @{}
   if ($etat -and $etat.vsix) {
     foreach ($p in $etat.vsix.PSObject.Properties) { $etatVsix[$p.Name] = [string]$p.Value }
@@ -113,21 +113,21 @@ try {
         $vf = Join-Path $SzhStaging $ext.file
         Get-SzhFichier -Url $ext.url -Destination $vf -Silencieux
         if (-not (Test-SzhSha256 -Fichier $vf -Attendu $ext.sha256)) {
-          throw ('Empreinte invalide pour {0}.' -f $ext.file)
+          throw (T 'err.empreinte' @($ext.file))
         }
         & $cli --install-extension $vf --force | Out-Null
         $etatVsix[$ext.id] = $ext.version
         $changement = $true
       }
     }
-    if ($changement) { Write-SzhOk 'Extensions à jour.' } else { Write-SzhOk 'Déjà à jour.' }
+    if ($changement) { Write-SzhOk (T 'maj.ext.ok') } else { Write-SzhOk (T 'maj.deja') }
   } else {
-    Write-SzhInfo 'VSCodium introuvable — extensions ignorées (bootstrap.ps1 pas encore passé ?).'
+    Write-SzhInfo (T 'maj.codium.absent')
   }
 
   # ---- 4/5 Réglages de l'éditeur + menu Démarrer ----------------------------
-  $etape = 'application des réglages de l''éditeur'
-  Write-SzhEtape '4/5  Réglages de l''éditeur…'
+  $etape = (T 'etape.reglages')
+  Write-SzhEtape (T 'maj.e4')
   $src = Join-Path $SzhToolkit 'vscodium-user'
   if (Test-Path $src) {
     $dst = Join-Path $env:APPDATA 'VSCodium\User'
@@ -151,11 +151,11 @@ try {
   $codium = Get-VSCodiumExe
   if ($codium) { $lnk.IconLocation = $codium }
   $lnk.Save()
-  Write-SzhOk 'Réglages appliqués, raccourci « Revues SZH » à jour.'
+  Write-SzhOk (T 'maj.e4.ok')
 
   # ---- 5/5 Nettoyage ---------------------------------------------------------
-  $etape = 'nettoyage'
-  Write-SzhEtape '5/5  Nettoyage…'
+  $etape = (T 'etape.nettoyage')
+  Write-SzhEtape (T 'maj.e5')
   # Rootfs : garder l'archive courante + la précédente (rollback N-1, D10)
   $archives = @(Get-ChildItem (Join-Path $SzhStaging 'szh-publishing-rootfs-*.tar.gz') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
   if ($archives.Count -gt 2) { $archives | Select-Object -Skip 2 | Remove-Item -Force }
@@ -166,7 +166,7 @@ try {
   # Le -ErrorAction SilentlyContinue évite l'échec si un vieux fichier appartient à l'admin.
   Get-ChildItem (Join-Path $SzhStaging 'szh-publishing-rootfs-*.tar') -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
   Get-ChildItem (Join-Path $SzhStaging 'szh-publishing-rootfs-*.tar.sha256') -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-  Write-SzhOk 'Terminé.'
+  Write-SzhOk (T 'maj.e5.ok')
 
   # ---- État final -------------------------------------------------------------
   $nouvelEtat = [ordered]@{
@@ -180,8 +180,8 @@ try {
   Write-SzhLog ('update OK -> {0}' -f $manifest.version)
 
   Write-Host ''
-  Write-Host ('  ✓ Tout est à jour (version {0}). Bonne rédaction !' -f $manifest.version) -ForegroundColor Green
-  Write-Host '    Cette fenêtre se ferme toute seule dans quelques secondes.' -ForegroundColor Gray
+  Write-Host ('  ' + (T 'maj.fini' @($manifest.version))) -ForegroundColor Green
+  Write-Host ('    ' + (T 'maj.ferme')) -ForegroundColor Gray
   try { Stop-Transcript | Out-Null } catch { }
   Start-Sleep -Seconds 6
   exit 0

@@ -42,17 +42,13 @@ foreach ($racine in $racines) {
 $revues = @($revues | Sort-Object LastWriteTime -Descending)
 
 if ($revues.Count -eq 0) {
-  [void][System.Windows.Forms.MessageBox]::Show(
-    ("Aucune revue trouvée.`n`nVérifiez que le dossier OneDrive\Revues est bien synchronisé," +
-     "`nou demandez la création d'une revue (" + $SzhSupport + ")."),
-    'Revues SZH')
+  [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.aucune' @($SzhSupport)), 'Revues SZH')
   exit 0
 }
 
 $codium = Get-VSCodiumExe
 if (-not $codium) {
-  [void][System.Windows.Forms.MessageBox]::Show(
-    ('L''éditeur VSCodium est introuvable sur ce poste. Contact : ' + $SzhSupport), 'Revues SZH')
+  [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.codium' @($SzhSupport)), 'Revues SZH')
   exit 1
 }
 
@@ -66,7 +62,7 @@ $form.MaximizeBox = $false
 $form.MinimizeBox = $false
 
 $intro = New-Object System.Windows.Forms.Label
-$intro.Text = 'Choisissez la revue à ouvrir :'
+$intro.Text = (T 'lanceur.choisir')
 $intro.Location = New-Object System.Drawing.Point(16, 14)
 $intro.AutoSize = $true
 $form.Controls.Add($intro)
@@ -76,13 +72,13 @@ $liste.Location = New-Object System.Drawing.Point(16, 40)
 $liste.Size = New-Object System.Drawing.Size(408, 270)
 $liste.Font = New-Object System.Drawing.Font('Segoe UI', 11)
 foreach ($r in $revues) {
-  [void]$liste.Items.Add(('{0}    (modifiée le {1})' -f $r.Name, $r.LastWriteTime.ToString('dd.MM.yyyy')))
+  [void]$liste.Items.Add((T 'lanceur.modifie' @($r.Name, $r.LastWriteTime.ToString('dd.MM.yyyy'))))
 }
 $liste.SelectedIndex = 0
 $form.Controls.Add($liste)
 
 $boutonOk = New-Object System.Windows.Forms.Button
-$boutonOk.Text = 'Ouvrir'
+$boutonOk.Text = (T 'lanceur.ouvrir')
 $boutonOk.Location = New-Object System.Drawing.Point(238, 326)
 $boutonOk.Size = New-Object System.Drawing.Size(90, 32)
 $boutonOk.DialogResult = [System.Windows.Forms.DialogResult]::OK
@@ -90,7 +86,7 @@ $form.Controls.Add($boutonOk)
 $form.AcceptButton = $boutonOk
 
 $boutonNon = New-Object System.Windows.Forms.Button
-$boutonNon.Text = 'Annuler'
+$boutonNon.Text = (T 'lanceur.annuler')
 $boutonNon.Location = New-Object System.Drawing.Point(334, 326)
 $boutonNon.Size = New-Object System.Drawing.Size(90, 32)
 $boutonNon.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
