@@ -5,8 +5,12 @@ Cet espace sert à mettre en page la revue. C'est simple :
 ## 1. Déposer les articles
 Glisse les fichiers **Word** (`.docx`) ou **LibreOffice** (`.odt`) **finalisés** dans le dossier
 **articles-word** (à gauche). À l'ouverture — ou à la première sauvegarde — ils sont convertis
-tout seuls en fichiers de travail dans le dossier **articles** (les images sont récupérées, les
-originaux rangés dans *_convertis*).
+tout seuls en fichiers de travail dans le dossier **articles** : un dossier par article, avec
+ses images, sa bibliographie structurée et ses citations reliées (les originaux sont rangés
+dans *_convertis*).
+
+📋 Un **rapport de conversion** (`…-rapport.html`) est déposé à côté de chaque article :
+il dit ce qui a été converti et ce qu'il vaut la peine de vérifier — ouvre-le d'un double-clic.
 
 ## 2. Écrire et mettre en forme
 Ouvre un fichier dans **articles** et ajuste le texte. Pour appliquer un style de la revue

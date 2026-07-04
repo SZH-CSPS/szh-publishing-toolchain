@@ -65,6 +65,12 @@ revue.pdf régénéré à la racine du dossier
 | D23 | **Import « à la volée » : non retenu.** L'import des Word tourne à l'ouverture de la revue ET à chaque build (Ctrl+S, ~2 s, validé) — déposer un Word puis enregistrer n'importe quoi suffit. Un vrai watcher du dossier `articles-word/` exigerait une extension ou un daemon supplémentaire (inotify ne traverse pas `/mnt/c`). À reconsidérer seulement si un besoin réel émerge. | Zéro dépendance en plus ; comportement déterministe. |
 | D24 | **Aperçu ouvert automatiquement en vue scindée après compilation** (2026-07-04) via la mini-extension maison `szh-csps.szh-apercu` (~50 lignes, zéro dépendance) : à la fin réussie de la tâche de build, ouvre `out/<article-actif>/<article>.pdf` avec `pdf.preview` en `ViewColumn.Beside` + `preserveFocus`, **seulement s'il n'est pas déjà ouvert** (le rechargement continu reste assuré par tomoki). Réglage `szh.apercuAuto`. VSIX construit par la CI, livré via `manifest.json` comme les extensions épinglées. | Aucune voie sans extension : la CLI ne sait pas ouvrir « à côté » (elle recouvrirait le texte), les keybindings n'acceptent pas de chemins dynamiques, le hack « task inputs » vole le focus à chaque autosave sans test « déjà ouvert ». |
 | D25 | **UI de mise à jour trilingue FR/DE/EN** (2026-07-04), selon la **langue d'affichage de Windows** (`Get-UICulture`, code à deux lettres) : `fr-CH`/`fr-FR` → FR, `de-CH`/`de-DE` → DE, tout le reste → EN (fallback). Table de textes + fonction `T` dans `szh-common.ps1` ; couvre update.ps1, l'écran d'erreur, l'e-mail support et le lanceur « Revues SZH ». Allemand en **orthographe suisse** (ss, pas de ß) ; unités Mo (FR) / MB (DE, EN). Variable `SZH_LANGUE=fr|de|en` pour forcer (test/support). `bootstrap.ps1` et `new-revue.ps1` restent en FR (outils du référent). | Les formats régionaux (fr-CH vs fr-FR) n'affectent pas la détection : seul le préfixe de langue compte. Validé en rendu PS 5.1 dans les trois langues. |
+| D26 | **Structure de travail par article** (2026-07-05) : `articles/<slug>/<slug>.md` + `articles/<slug>/media/` (images, `.bib`, matières premières de l'article) — miroir de `out/<slug>/`. Migration automatique des `.md` à plat par la cible `import`. | Chaque article devient une unité autonome et déplaçable ; le `.bib` vit dans `media/` (exigence). |
+| D27 | **Convertisseur v2, idiomatique pandoc** (2026-07-05) : filtres **Lua** exécutés dans pandoc — ① suppression des titres vides ; ② titres déduits des paragraphes tout-gras courts (fondé : 1/6 article réel sans styles, « Chanier ») ; ③ listes à puces manuelles (•, -, –) regroupées en vraies listes ; ④ images et tableaux enveloppés en **Figures** avec légende détectée dans le texte voisin (`Figure|Fig\.|Abbildung|Abb\.|Tableau|Tabelle|Table` + n°, avant OU après, deux-points optionnel), numéro manuel retiré (numérotation auto D31), alt-texts « générés par l'IA » purgés ; ⑤ notes de bas de page : natif pandoc (compté au rapport). Commentaires Word ignorés + suivi de modifications accepté (`--track-changes=accept`). | Heuristiques fondées sur l'analyse AST des **6 articles réels** de la revue 2026-01. |
+| D28 | **Références via AnyStyle** (2026-07-05) : Ruby + gem `anystyle-cli` ajoutés au **rootfs**. Détection de la liste de références par **contenu + position** (séquence terminale de ≥3 paragraphes « ref-like » : année `\d{4}[a-z]?`/« sous presse »/« en préparation »/« in press », motifs auteurs, URLs ; le nom du titre n'est qu'un signal secondaire) ; entrées multi-paragraphes regroupées (fondé : « Dentz ») ; headers vides au milieu tolérés (fondé : « Piricò »). Sortie : `articles/<slug>/media/<slug>.bib`. Fallback : pas de détection → l'article reste intact + signalé au rapport. | « On part du principe que la liste est juste » ; AnyStyle ne fait que structurer. |
+| D29 | **Citations liées citeproc** (2026-07-05) : après création du `.bib`, 2ᵉ passe pandoc avec filtre Lua qui convertit les citations en `[@clé]` : parenthétiques et [crochets], multiples (`;`), locators (`p./pp./S. n`), multi-années (`2011, 2016`), `et`/`&`/`et al.`/`et al`, sigles d'organisations (`[CDIP]`, `[OMS]`…), narratives `Nom (2020)`, insensible aux accents (Fauré≡Faure). Non-résolues → laissées telles quelles + listées au rapport. Rendu : `--citeproc` + **CSL APA vendorisé** (`pipeline/csl/apa.csl`), titre de section de bibliographie selon la langue de l'article. | Tout ce qui précède est du pandoc standard (Cite AST, citeproc) — zéro moteur custom. |
+| D30 | **Rapport de conversion HTML trilingue** par article (`articles/<slug>/<slug>-rapport.html`) : converti / à vérifier / conseils Word ; autonome (CSS+JS inline) ; langue par défaut = langue du navigateur (`navigator.language`), boutons FR/DE/EN. Généré par `pipeline/rapport.py` (python3 de l'image) depuis les stats JSON émises par les filtres. | Fallback humain de toutes les heuristiques ; zéro plomberie de langue Windows→WSL. |
+| D31 | **Numérotation automatique Figures/Tableaux** par compteurs **CSS** dans la maquette (`figcaption::before`/`caption::before` + `:lang(fr/de/en)` pour Figure/Abbildung/Tableau/Tabelle/Table) — idiomatique WeasyPrint, aucun binaire en plus (pandoc-crossref écarté). Les numéros manuels des légendes sont retirés à l'import ; le rapport signale de vérifier les renvois du texte. | Fonctionne pour le PDF et le HTML autonome (images base64 via `--embed-resources`, déjà en place). |
 
 ---
 
@@ -264,6 +270,29 @@ Ordre : **P1 → P2 → P3** (P4 en parallèle de P3) **→ P5**. Estimations gr
 - [ ] T6.5 Étoffer `userdoc.md` au fil des besoins (doc utilisateur du poste, versionnée au dépôt).
 - **Livrable** : double-clic sur un `.md` → la revue s'ouvre complète (éditeur + aperçu à jour) ;
   un dossier `profil: presentation` produit un `.pptx` au Ctrl+S, sans aucun changement côté poste.
+
+### P7 — Convertisseur v2 (décidé et implémenté le 2026-07-05 — D26 à D31)
+- [x] Analyse AST des **6 articles réels** (styles, légendes, références, formes de citation) — chaque heuristique fondée sur des preuves.
+- [x] `image/` : **Ruby + AnyStyle 1.6.0** dans le rootfs (outils de compilation purgés après build de wapiti).
+- [x] `pipeline/filters/szh-import.lua` : purge des titres vides (sans avaler les images à alt vide !), titres
+      déduits du tout-gras (« Chanier »), listes manuelles, normalisation des paragraphes d'images
+      (`[Image, déchet]`, `[Image, Image]` — « Leclerc »), figures/tableaux légendés (voisin avant puis après,
+      espaces insécables assainis partout), extraction des références par contenu+position (tables bio
+      intercalées sautées — « Piricò », continuations regroupées — « Dentz »), alt-texts IA purgés.
+- [x] `pipeline/filters/szh-citations.lua` : liaison citeproc — parenthétiques, [crochets], multiples (;),
+      locators (p./pp./S.), multi-années (2011, 2016), « sous presse »/« en préparation », sigles
+      d'organisations indexés depuis les lignes brutes (AnyStyle perd les [OMS]), narratives « Nom (année) »,
+      insensible aux accents (Fauré≡Faure) ; délimiteurs éclatés en tokens (ponctuation collée, nbsp) ;
+      non-résolues → rapport. Passe B en `--standalone` (sinon le YAML bibliography est perdu — bug trouvé au test).
+- [x] `pipeline/import-docx.sh` (2 passes pandoc + AnyStyle + rapport), `pipeline/rapport.py` (HTML trilingue
+      autonome : langue du navigateur + boutons FR/DE/EN), `pipeline/csl/apa.csl` (APA 7 vendorisé),
+      compteurs CSS figures/tableaux (D31) + style bibliographie.
+- [x] Makefile : structure `articles/<slug>/{<slug>.md, media/}` (D26), **migration automatique** des `.md`
+      à plat, build par article avec `--citeproc` conditionnel (présence du `.bib`).
+- **Livrable** : ✅ **validé le 2026-07-05 sur les 6 articles réels** — 6/6 convertis, **85/107 citations
+  liées (~80 %)**, 86 références structurées en `.bib`, 6 PDF/HTML avec bibliographie APA rendue et titre
+  localisé, figures numérotées automatiquement, rapports générés. Chaque citation non liée est listée
+  dans le rapport de l'article — c'est le fallback humain prévu (D29/D30).
 
 ---
 
