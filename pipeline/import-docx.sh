@@ -14,10 +14,10 @@ DOCX_ABS="$(realpath "$F")"
 
 mkdir -p "$DIR/media"
 cd "$DIR" || exit 1
-rm -f media/refs-brutes.txt media/rapport.json
+rm -f media/refs-brutes.txt media/rapport.json media/conversion-stats.json
 
 # --- Passe A : docx -> markdown (structure, figures, extraction des références) ---
-SZH_STATS="media/rapport.json" SZH_REFS="media/refs-brutes.txt" \
+SZH_STATS="media/conversion-stats.json" SZH_REFS="media/refs-brutes.txt" \
 pandoc "$DOCX_ABS" --track-changes=accept -f docx -t markdown \
   --wrap=none --markdown-headings=atx \
   --extract-media=media \
@@ -37,13 +37,13 @@ fi
 
 # --- Passe B : liaison des citations + métadonnées bibliographiques ---
 # --standalone : indispensable pour que le YAML (bibliography, titre…) soit RÉÉCRIT dans le md.
-SZH_BIB="$BIB" SZH_REFS="media/refs-brutes.txt" SZH_LANG="$LANG_ART" SZH_STATS="media/rapport.json" \
+SZH_BIB="$BIB" SZH_REFS="media/refs-brutes.txt" SZH_LANG="$LANG_ART" SZH_STATS="media/conversion-stats.json" \
 pandoc "$SLUG.md" -f markdown -t markdown --standalone --wrap=none --markdown-headings=atx \
   --lua-filter="$PIPE/filters/szh-citations.lua" \
   -o "$SLUG.md.tmp" && mv -f "$SLUG.md.tmp" "$SLUG.md"
 
 # --- Rapport de conversion trilingue ---
-python3 "$PIPE/rapport.py" media/rapport.json "$SLUG" > "$SLUG-rapport.html" 2>/dev/null \
+python3 "$PIPE/rapport.py" media/conversion-stats.json "$SLUG" > "$SLUG-rapport.html" 2>/dev/null \
   || rm -f "$SLUG-rapport.html"
 
 exit 0

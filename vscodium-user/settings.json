@@ -65,7 +65,10 @@
     "**/.DS_Store": true,
     "**/Thumbs.db": true,
     "**/~$*": true,
-    "**/*.lnk": true
+    "**/*.lnk": true,
+    "**/media/conversion-stats.json": true,
+    "**/media/rapport.json": true,
+    "**/media/refs-brutes.txt": true
   },
 
   // ============ Correction orthographique FR / DE / EN ============
