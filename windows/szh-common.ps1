@@ -157,6 +157,22 @@ function Write-SzhTitre([string]$Texte) {
   Write-Host ('  ' + ('─' * $Texte.Length)) -ForegroundColor DarkCyan
 }
 
+# Bannière encadrée pour l'installateur et l'updater.
+function Write-SzhBanniere([string]$SousTitre) {
+  $titre = 'SZH/CSPS — Toolchain de publication'
+  $larg = [Math]::Max($titre.Length, $SousTitre.Length) + 4
+  $h = ('─' * $larg)
+  Write-Host ''
+  Write-Host ('  ┌' + $h + '┐') -ForegroundColor DarkCyan
+  Write-Host '  │  ' -ForegroundColor DarkCyan -NoNewline
+  Write-Host $titre.PadRight($larg - 4) -ForegroundColor Cyan -NoNewline
+  Write-Host '  │' -ForegroundColor DarkCyan
+  Write-Host '  │  ' -ForegroundColor DarkCyan -NoNewline
+  Write-Host $SousTitre.PadRight($larg - 4) -ForegroundColor White -NoNewline
+  Write-Host '  │' -ForegroundColor DarkCyan
+  Write-Host ('  └' + $h + '┘') -ForegroundColor DarkCyan
+}
+
 function Write-SzhEtape([string]$Texte) { Write-Host ('  > ' + $Texte) }
 function Write-SzhOk([string]$Texte)    { Write-Host ('    ✓ ' + $Texte) -ForegroundColor Green }
 function Write-SzhInfo([string]$Texte)  { Write-Host ('    ' + $Texte) -ForegroundColor Gray }

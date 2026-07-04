@@ -7,7 +7,7 @@
     {
       // Build par défaut (Ctrl+S via triggerTaskOnSave, Ctrl+Maj+B, Ctrl+E).
       // `make all` = importe d'abord les Word éventuellement déposés, PUIS régénère
-      // revue.pdf -> déposer un Word + Ctrl+S suffit, sans dépendre de folderOpen.
+      // out/<article>/ -> déposer un Word + Ctrl+S suffit, sans dépendre de folderOpen.
       "label": "Aperçu / Export PDF",
       "type": "process",                 // pas de shell Windows -> aucun souci de guillemets
       "command": "wsl.exe",

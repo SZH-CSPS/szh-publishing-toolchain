@@ -1,7 +1,7 @@
 ﻿<#
 .SYNOPSIS
   Lanceur « Revues SZH » (raccourci du menu Démarrer, via hidden.vbs -> pas de console).
-  Liste toutes les revues trouvées (dossiers contenant dossier.yaml sous les racines
+  Liste toutes les revues trouvées (dossiers contenant ausgabe.yaml sous les racines
   connues, OneDrive\Revues par défaut) et ouvre la sélection dans VSCodium (D14).
 
   Compatibilité : Windows PowerShell 5.1.
@@ -22,7 +22,7 @@ if ($cfg -and $cfg.revuesRoots) {
 }
 if ($env:OneDrive) { [void]$racines.Add((Join-Path $env:OneDrive 'Revues')) }
 
-# ---- Découverte des revues (dossier contenant dossier.yaml) ---------------------
+# ---- Découverte des revues (dossier contenant ausgabe.yaml) ---------------------
 $revues = New-Object System.Collections.ArrayList
 $vus = @{}
 foreach ($racine in $racines) {
@@ -30,7 +30,7 @@ foreach ($racine in $racines) {
   if (-not (Test-Path $racine)) { continue }
   Get-ChildItem -Path $racine -Directory -ErrorAction SilentlyContinue | ForEach-Object {
     $d = $_
-    if (Test-Path (Join-Path $d.FullName 'dossier.yaml')) {
+    if (Test-Path (Join-Path $d.FullName 'ausgabe.yaml')) {
       $cle = $d.FullName.ToLower()
       if (-not $vus.ContainsKey($cle)) {
         $vus[$cle] = $true

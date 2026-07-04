@@ -55,11 +55,14 @@ revue.pdf régénéré à la racine du dossier
 | D13 | **Pas de compilation de `.md` isolés** : le modèle « un dossier = une revue » est conservé (ordre des articles, `dossier.yaml`, styles). | Robustesse ; l'ergonomie est réglée par D14. |
 | D14 | Points d'entrée : **raccourci « Ouvrir la revue.lnk » dans le dossier** (voyage avec la revue) + **lanceur « Revues SZH » dans le menu Démarrer** listant toutes les revues détectées (scan des dossiers contenant `dossier.yaml`). **Pas** de raccourci bureau par revue. | Menu Démarrer utilisateur (`%APPDATA%\…\Start Menu`) → installable sans admin par `update.ps1`. VSCodium offre en plus sa liste « Récents » (jump list). |
 | D15 | Autocomplétion des styles `:::` via **snippets Markdown user-level** + raccourci « Insérer un bloc de style ». Réactiver `editor.quickSuggestions` **uniquement pour le Markdown** (actuellement désactivé globalement). | Liste des styles maintenue avec la maquette, livrée par le même canal. |
-| D16 | **PDF final à la racine** du dossier (`revue.pdf`) ; intermédiaires (HTML, tmp) **hors OneDrive** (tmp WSL) — à valider (V3), repli : `out/` local exclu de l'éditeur. | L'utilisateur retrouve « son » PDF ; moins de churn de synchro OneDrive. |
+| D16 | ~~PDF final à la racine (`revue.pdf`), intermédiaires en tmp WSL~~ — validée, puis **remplacée par D21** le 2026-07-04 (sorties par article dans `out/`). | La leçon associée (ne jamais exclure les PDF du watcher) est reprise en D21. |
 | D17 | Contact support affiché et pré-rempli : **robin.morand@szh.ch** (paramètre central, changeable en une ligne). | |
 | D18 | **Association `.md` → VSCodium** (2026-07-04) : enregistrement dans « Ouvrir avec » (ProgId posé par les scripts, ciblant à terme le lanceur intelligent T6.2) **+ geste « Toujours » unique par utilisateur**, documenté dans `userdoc.md`. Ni outil tiers (type SetUserFTA), ni forçage du défaut ; XML DISM optionnel au bootstrap pour les nouveaux profils. | Windows scelle le choix par défaut (clé `UserChoice` hashée) : le geste utilisateur est la seule voie 100 % propre sur un profil existant. |
 | D19 | **Aperçu PDF : préview intégrée dans l'éditeur** (volet), via tomoki1207.pdf. Analyse du code 1.2.2 (2026-07-04) : l'auto-reload **existe et est soigné** (watcher + reload du webview, scroll/zoom préservés, anti-scintillement) ; la panne historique s'explique par notre ancienne config (`files.watcherExclude: **/out/**` + PDF dans `out/` → événements étouffés), corrigée en P4 (PDF à la racine). Pas de verrou fichier (lecture ponctuelle via webview). « Sumatra dans un onglet » : impossible (les webviews n'hébergent pas de fenêtres natives), écarté. Fork maison (licence MIT, base PDF.js) : **dernier recours** si T6.1 échoue. | Reste T6.1 : test GUI de 2 min — vérifier que le remplacement atomique déclenche « change » (reload) et non « delete » (le code fermerait le volet). |
-| D20 | **Profil de compilation par DOSSIER** : champ `profil:` dans `dossier.yaml` — `article` (défaut, existant), `book` (WeasyPrint, différé), vide = aucun build (no-op propre), `presentation` (`pandoc -t pptx`, natif, zéro ajout au rootfs). Dispatch dans le Makefile central ; le lanceur Windows reste « bête » (ouvre l'artefact le plus récent). Profil par fichier non retenu (réservé à d'éventuels produits monofichiers). | « Un dossier = un produit = un moteur » prolonge D13 ; toute l'intelligence voyage par le canal toolkit (zéro impact poste/admin/update). |
+| D20 | **Profil de compilation par DOSSIER** : champ `profil:` dans `ausgabe.yaml` — `article` (défaut, existant), `book` (WeasyPrint, différé), vide = aucun build (no-op propre), `presentation` (`pandoc -t pptx`, natif, zéro ajout au rootfs). Dispatch dans le Makefile central ; le lanceur Windows reste « bête » (ouvre l'artefact le plus récent). Profil par fichier non retenu (réservé à d'éventuels produits monofichiers). | « Un dossier = un produit = un moteur » prolonge D13 ; toute l'intelligence voyage par le canal toolkit (zéro impact poste/admin/update). |
+| D21 | **Sorties PAR ARTICLE** (2026-07-04, remplace D16) : `out/<article>/<article>.pdf` + `<article>.html` — chaque article de la revue est un produit publié séparément. Le HTML est la sortie Pandoc brute pour l'instant (la version « responsive » propre la remplacera au même endroit) et sert aussi d'entrée à WeasyPrint (tmp WSL supprimé, `--embed-resources` suffit). PDF écrit atomiquement (`~$…` ignoré par OneDrive). ⚠ Interdit d'exclure `out/` de `files.watcherExclude` (l'aperçu cesserait de se rafraîchir — leçon T6.1) ; `search.exclude` seulement. | Reflète le modèle de publication réel de la revue (articles individuels). Rebuild incrémental : seuls les articles modifiés sont régénérés. |
+| D22 | **`dossier.yaml` → `ausgabe.yaml`** (2026-07-04) : renommé partout (pipeline, lanceur, scaffold, template, réglages, docs). Les revues existantes doivent être renommées (fait pour `2026-01`). Masquage de `*.lnk` dans l'explorateur VSCodium (files.exclude). | « Ausgabe » = le numéro/l'édition — vocabulaire métier bilingue de la SZH. |
+| D23 | **Import « à la volée » : non retenu.** L'import des Word tourne à l'ouverture de la revue ET à chaque build (Ctrl+S, ~2 s, validé) — déposer un Word puis enregistrer n'importe quoi suffit. Un vrai watcher du dossier `articles-word/` exigerait une extension ou un daemon supplémentaire (inotify ne traverse pas `/mnt/c`). À reconsidérer seulement si un besoin réel émerge. | Zéro dépendance en plus ; comportement déterministe. |
 
 ---
 
@@ -243,11 +246,11 @@ Ordre : **P1 → P2 → P3** (P4 en parallèle de P3) **→ P5**. Estimations gr
 - [ ] **Poste pilote** : dérouler la checklist V1–V8 ci-dessous, corriger, puis généraliser. *(à faire sur poste réel)*
 
 ### P6 — Lanceur intelligent, associations & profils (décidé le 2026-07-04 — D18/D19/D20)
-- [ ] **T6.1 Test GUI de l'aperçu intégré** (2 min, poste réel) : ouvrir une revue, cliquer `revue.pdf`
-      (volet PDF), le placer à droite (`Ctrl+\` ou glisser l'onglet), modifier un article, **Ctrl+S** →
-      le volet doit se rafraîchir **sans se fermer**, position de lecture conservée.
-      S'il se ferme (événement « delete » au remplacement atomique) → repli D19 : fork maison.
-      S'il ne bouge pas → vérifier `files.watcherExclude` dans les réglages déployés.
+- [x] **T6.1 Test GUI de l'aperçu intégré** — ✅ **validé 2026-07-04** (poste de Robin, après
+      migration de la revue au nouveau format) : volet rafraîchi **sans se fermer**, position de
+      lecture conservée, ~2 s après Ctrl+S → **D19 confirmée, pas de fork**. Le remplacement
+      atomique est bien rapporté « change ». Prérequis découvert : la revue doit être au nouveau
+      format (l'ancien `.vscode` local avec `watcherExclude **/out/**` reproduisait la panne).
 - [ ] T6.2 `open-md.ps1` (lanceur intelligent, toolkit) : remonte l'arborescence jusqu'à `dossier.yaml`,
       compile si l'artefact manque (feedback « Préparation de l'aperçu… »), ouvre VSCodium sur le
       DOSSIER + le fichier, ouvre l'aperçu.
@@ -266,7 +269,7 @@ Ordre : **P1 → P2 → P3** (P4 en parallèle de P3) **→ P5**. Estimations gr
 
 | # | Risque / à valider | Impact | Repli |
 |---|---|---|---|
-| V1 | Tâches **user-level** : `folderOpen` **neutralisé** (import replié dans `make all`) ; reste à confirmer au pilote que *Trigger Task on Save* voit la tâche utilisateur pour le build à la sauvegarde | Build auto à la sauvegarde | Mini `.vscode/tasks.json` dans le template, masqué via `files.exclude` |
+| V1 | ✅ **Validé 2026-07-04** (poste de Robin) — build ~2 s après Ctrl+S (et via l'autosave) : la tâche user-level est bien vue par *Trigger Task on Save* ; `folderOpen` neutralisé par `make all` | ~~Build auto à la sauvegarde~~ | (plus nécessaire) |
 | V2 | `winget` sous compte SYSTEM (tâche « SZH – Apps ») : winget n'est pas nativement dispo pour SYSTEM | VSCodium/Sumatra ne se MAJ pas seuls | Workaround chemin WindowsApps, sinon upgrade lors d'un passage admin occasionnel (documenté) |
 | V3 | ✅ **Validé 2026-07-03** — résolu par `pandoc --embed-resources` (HTML autonome en tmp WSL, images et CSS inlinés ; testé docx→media→PDF) | ~~PDF sans images~~ | (plus nécessaire) |
 | V4 | Rechargement auto de l'aperçu : **analyse code 2026-07-04 (D19)** — mécanisme présent dans tomoki 1.2.2 ; cause de la panne historique identifiée (`watcherExclude **/out/**` + PDF dans `out/`, corrigé en P4). Reste T6.1 : « change » vs « delete » au remplacement atomique | Confort | Secours Ctrl+Alt+R / SumatraPDF ; dernier recours : fork maison (D19) |

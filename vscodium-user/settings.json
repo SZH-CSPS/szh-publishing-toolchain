@@ -43,17 +43,20 @@
   },
 
   // ============ Build automatique à la sauvegarde ============
-  // Régénère revue.pdf (via la tâche « Aperçu / Export PDF » = make all) à chaque
+  // Régénère out/<article>/ (via la tâche « Aperçu / Export PDF » = make all) à chaque
   // sauvegarde de contenu. Tâche définie au niveau utilisateur (tasks.json).
   "triggerTaskOnSave.tasks": {
-    "Aperçu / Export PDF": ["**/*.md", "**/*.css", "**/dossier.yaml"]
+    "Aperçu / Export PDF": ["**/*.md", "**/*.css", "**/ausgabe.yaml"]
   },
   "triggerTaskOnSave.restart": true,           // sauvegardes rapprochées -> on relance (debounce)
   "triggerTaskOnSave.showStatusBarToggle": true,
   "task.allowAutomaticTasks": "on",
 
-  "search.exclude": { "**/media/**": true, "**/_convertis/**": true },
-  "files.watcherExclude": { "**/media/**": true, "**/*.tmp": true },
+  "search.exclude": { "**/out/**": true, "**/media/**": true, "**/_convertis/**": true },
+  // ⚠ NE JAMAIS ajouter "**/out/**" à files.watcherExclude : cela étoufferait les
+  // événements de modification des PDF et l'aperçu cesserait de se rafraîchir
+  // (cause de la panne historique — leçon V4/T6.1, PLANIFICATION.md).
+  "files.watcherExclude": { "**/media/**": true, "**/*.tmp": true, "**/~$*": true },
 
   // ============ Masquage de fichiers dans l'explorateur (réserve, §6) ============
   // Le dossier de revue est déjà quasi vide de technique. Ajouter ici tout résidu
@@ -61,7 +64,8 @@
   "files.exclude": {
     "**/.DS_Store": true,
     "**/Thumbs.db": true,
-    "**/~$*": true
+    "**/~$*": true,
+    "**/*.lnk": true
   },
 
   // ============ Correction orthographique FR / DE / EN ============

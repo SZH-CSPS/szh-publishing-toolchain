@@ -1,0 +1,6 @@
+# Métadonnées du numéro / de l'édition (« Ausgabe »), consommées par Pandoc
+# via --metadata-file pour chaque article. Adapter à la revue SZH/CSPS.
+title: "Revue suisse de pédagogie spécialisée"
+subtitle: "Dossier — numéro d'exemple"
+date: "2026"
+lang: fr

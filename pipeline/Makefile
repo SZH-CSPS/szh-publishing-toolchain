@@ -1,7 +1,10 @@
-# Pipeline central SZH/CSPS — .md -> Pandoc -> WeasyPrint -> PDF.
+# Pipeline central SZH/CSPS — .md -> Pandoc -> WeasyPrint -> PDF (+ HTML) par article.
 # Vit dans le toolkit (C:\ProgramData\SZH\toolkit\pipeline), PAS dans les dossiers de revue.
 # S'invoque DEPUIS le dossier de revue (cwd), le Makefile étant passé par -f :
-#   wsl.exe -d SZH-Publishing --cd <dossier revue> -- make -f /mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile pdf
+#   wsl.exe -d SZH-Publishing --cd <dossier revue> -- make -f /mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile all
+#
+# Sorties (D21) : un dossier PAR ARTICLE -> out/<article>/<article>.pdf + <article>.html
+#   (HTML : sortie Pandoc brute pour l'instant ; la version « responsive » propre la remplacera ici.)
 #
 # ⚠ Aucun chemin /mnt/c codé en dur ici (portabilité macOS, PLANIFICATION.md §6) :
 #   tout est relatif au dossier de revue (cwd) ou au dossier de CE Makefile.
@@ -21,17 +24,16 @@ PIPELINE_DIR := $(patsubst %/,%,$(dir $(THIS)))
 STYLE      := $(firstword $(wildcard styles/print.css) $(PIPELINE_DIR)/styles/print.css)
 
 ARTICLES   := $(sort $(wildcard articles/*.md))
-PDF        := revue.pdf
+SLUGS      := $(basename $(notdir $(ARTICLES)))
+OUT        := out
 
-# Intermédiaires HORS OneDrive (tmp WSL), isolés par dossier de revue :
-# moins de churn de synchro, rien de technique visible dans le dossier.
-WORKDIR    := /tmp/szh-publishing/$(shell pwd | md5sum | cut -c1-12)
-HTML       := $(WORKDIR)/revue.html
+# Cibles : out/<article>/<article>.pdf + .html (les deux sont des livrables).
+PDFS       := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).pdf)
+HTMLS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).html)
 
-# Écriture quasi atomique côté OneDrive : le PDF temporaire est écrit dans le MÊME
-# dossier (rename local), et le préfixe « ~$ » l'exclut de la synchro OneDrive
-# (convention des fichiers temporaires Office) -> jamais de PDF partiel synchronisé.
-PDF_TMP    := ~$$revue.pdf
+# Sans ceci, make considérerait les .html comme intermédiaires de la chaîne de
+# pattern rules et les SUPPRIMERAIT après la génération du PDF.
+.SECONDARY: $(HTMLS)
 
 # Import Word/LibreOffice (cible `import`)
 WORD_DIR   := articles-word
@@ -39,46 +41,53 @@ DONE_DIR   := $(WORD_DIR)/_convertis
 MEDIA_DIR  := articles/media
 
 .PHONY: all pdf import clean verifie-dossier
+.SECONDEXPANSION:
 
 # Cible du build (Ctrl+S, Ctrl+E) : importe d'abord les Word éventuellement déposés,
-# PUIS régénère le PDF. Deux sous-make séparés pour que les .md fraîchement convertis
-# soient vus par la passe pdf (le wildcard ARTICLES est réévalué au 2e make).
-# Le « - » rend l'import non bloquant : un Word corrompu n'empêche pas le PDF des autres.
+# PUIS régénère les sorties. Deux sous-make séparés pour que les .md fraîchement
+# convertis soient vus par la passe pdf (les wildcards sont réévalués au 2e make).
+# Le « - » rend l'import non bloquant : un Word corrompu n'empêche pas les autres sorties.
 all:
 	-@$(MAKE) --no-print-directory -f $(THIS) import
 	@$(MAKE) --no-print-directory -f $(THIS) pdf
 
-pdf: verifie-dossier $(PDF)
+pdf: verifie-dossier $(PDFS)
 
 verifie-dossier:
-	@test -f dossier.yaml || { echo "[pipeline] Ce dossier n'est pas une revue (dossier.yaml introuvable) : $$PWD"; exit 1; }
-	@test -n "$(ARTICLES)" || { echo "[pipeline] Aucun article dans articles/*.md — déposez les Word dans $(WORD_DIR)/ puis rouvrez la revue."; exit 1; }
+	@test -f ausgabe.yaml || { echo "[pipeline] Ce dossier n'est pas une revue (ausgabe.yaml introuvable) : $$PWD"; exit 1; }
+	@test -n "$(ARTICLES)" || { echo "[pipeline] Aucun article dans articles/*.md — déposez les Word dans $(WORD_DIR)/ puis enregistrez (Ctrl+S)."; exit 1; }
+	@if ls articles/*.md 2>/dev/null | grep -q ' '; then \
+	  echo "[pipeline] ⚠ Un fichier de articles/ contient des espaces — renommez-le sans espaces (ex. mon-article.md)."; exit 1; \
+	fi
 
-$(WORKDIR):
-	mkdir -p "$(WORKDIR)"
-
-# .md (+ dossier.yaml + front-matter) -> HTML autonome. --embed-resources inline
-# images et CSS -> WeasyPrint n'a plus besoin d'accéder au dossier de la revue.
-$(HTML): $(ARTICLES) dossier.yaml $(STYLE) | $(WORKDIR)
+# .md (+ ausgabe.yaml + front-matter) -> HTML autonome (--embed-resources : images et
+# CSS inlinés). Livrable HTML « brut » pour l'instant — la sortie responsive propre
+# remplacera template et CSS ici (D21).
+$(OUT)/%.html: articles/$$(notdir $$*).md ausgabe.yaml $(STYLE)
+	@mkdir -p "$(dir $@)"
 	$(PANDOC) \
 	  --from=markdown --to=html5 \
-	  --metadata-file=dossier.yaml \
+	  --metadata-file=ausgabe.yaml \
 	  --standalone --embed-resources \
 	  --css=$(STYLE) \
-	  $(ARTICLES) --output=$@
+	  "articles/$(notdir $*).md" --output=$@
 	# ⇩ REMPLACER par la commande Pandoc réelle de la maquette :
-	#   template HTML, filtres lua ($(PIPELINE_DIR)/filters/), sommaire, pages de garde…
+	#   template HTML, filtres lua ($(PIPELINE_DIR)/filters/), pages de garde…
 
-# HTML -> PDF (CSS Paged Media), à la RACINE de la revue (D16).
-$(PDF): $(HTML)
-	$(WEASYPRINT) $< "$(PDF_TMP)"
-	mv -f "$(PDF_TMP)" $@
+# HTML -> PDF (CSS Paged Media). Écriture quasi atomique : le temporaire est écrit
+# dans le MÊME dossier (rename local) et son préfixe « ~$ » l'exclut de la synchro
+# OneDrive (convention Office) -> jamais de PDF partiel synchronisé.
+# ⚠ Quotes SIMPLES obligatoires : entre guillemets doubles, bash substituerait
+#   « $0… » (~$01-exemple.pdf -> ~/bin/bash…). $$ = un $ littéral pour make.
+$(OUT)/%.pdf: $(OUT)/%.html
+	$(WEASYPRINT) $< '$(dir $@)~$$$(notdir $@)'
+	mv -f '$(dir $@)~$$$(notdir $@)' $@
 
 # Conversion des Word/LibreOffice finalisés déposés dans articles-word/ (D12).
 #  - ne convertit JAMAIS par-dessus un .md existant (le .md est la copie de travail) ;
 #  - originaux déplacés dans articles-word/_convertis/ après succès ;
 #  - images extraites dans articles/media/<nom>/ ;
-#  - silencieux s'il n'y a rien à faire (la cible est lancée à l'ouverture de la revue).
+#  - silencieux s'il n'y a rien à faire (lancé à l'ouverture et à chaque build).
 import:
 	@set -u; \
 	[ -d "$(WORD_DIR)" ] || exit 0; \
@@ -110,4 +119,4 @@ import:
 	[ $$rate -eq 0 ]
 
 clean:
-	rm -rf "$(WORKDIR)" "$(PDF_TMP)" "$(PDF)"
+	rm -rf "$(OUT)"

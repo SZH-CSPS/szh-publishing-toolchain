@@ -49,7 +49,7 @@ szh-publishing-toolchain/
 │   ├── settings.json · keybindings.json · tasks.json
 │   └── snippets/markdown.json # blocs de style :::
 └── revue-template/           # copié dans le dossier OneDrive de CHAQUE revue (contenu seul)
-    ├── BIENVENUE.md · dossier.yaml
+    ├── BIENVENUE.md · ausgabe.yaml
     ├── articles/             # les .md de la revue
     └── articles-word/        # dépôt des Word/LibreOffice à convertir
 ```
@@ -102,7 +102,8 @@ Bumper la version → pousser le tag → la CI republie la Release. Les postes d
 1. Déposer les articles Word/LibreOffice **finalisés** dans le dossier **`articles-word`**.
 2. Ouvrir la revue (**« Ouvrir la revue »** dans le dossier, ou **« Revues SZH »** dans le menu Démarrer).
 3. Les Word sont convertis en Markdown dans **`articles`** (images récupérées, originaux archivés).
-4. Écrire, puis **Ctrl + S** → `revue.pdf` se régénère (et intègre au passage tout nouveau Word déposé).
+4. Écrire, puis **Ctrl + S** → chaque article est régénéré dans `out/<article>/` (PDF + HTML),
+   en intégrant au passage tout nouveau Word déposé.
 
 Blocs de style : taper `:::` puis le nom (chapô, encadré, exergue…), ou **Ctrl+Alt+S**.
 

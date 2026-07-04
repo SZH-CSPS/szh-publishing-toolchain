@@ -3,7 +3,7 @@
   Crée une nouvelle revue à partir du template du toolkit (sans admin) :
     powershell -ExecutionPolicy Bypass -File new-revue.ps1 -Dossier "$env:OneDrive\Revues\2026-01"
 
-  - copie le template (BIENVENUE, dossier.yaml, articles/, articles-word/) ;
+  - copie le template (BIENVENUE, ausgabe.yaml, articles/, articles-word/) ;
   - crée « Ouvrir la revue.lnk » DANS le dossier (D14 — il voyage avec la revue) ;
   - enregistre l'emplacement pour le lanceur « Revues SZH » du menu Démarrer.
 
@@ -19,11 +19,11 @@ param(
 Write-SzhTitre 'Nouvelle revue'
 
 $template = Join-Path $SzhToolkit 'revue-template'
-if (-not (Test-Path (Join-Path $template 'dossier.yaml'))) {
+if (-not (Test-Path (Join-Path $template 'ausgabe.yaml'))) {
   throw ('Template introuvable ({0}) — lancer d''abord bootstrap.ps1 (ou update.ps1).' -f $template)
 }
 
-$existait = Test-Path (Join-Path $Dossier 'dossier.yaml')
+$existait = Test-Path (Join-Path $Dossier 'ausgabe.yaml')
 New-Item -ItemType Directory -Force -Path $Dossier | Out-Null
 if ($existait) {
   Write-SzhInfo 'Ce dossier contient déjà une revue : rien n''est écrasé, seul le raccourci est (re)créé.'

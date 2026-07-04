@@ -27,7 +27,7 @@ try { Start-Transcript -Path $journal | Out-Null } catch { }
 
 $etape = 'préparation'
 try {
-  Write-SzhTitre 'Mise à jour de l''outil Revue SZH'
+  Write-SzhBanniere 'Mise à jour de l''outil Revue'
   Write-SzhInfo 'Vos textes et vos revues ne sont pas touchés par cette opération.'
   Write-SzhInfo 'Vous pouvez continuer à travailler pendant ce temps.'
   Write-Host ''

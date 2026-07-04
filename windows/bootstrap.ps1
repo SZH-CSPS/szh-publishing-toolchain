@@ -32,6 +32,7 @@ function Attention([string]$m) { Write-Host ('[bootstrap] ' + $m) -ForegroundCol
 $estAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
             ).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
 if (-not $estAdmin) { throw 'Lancer ce script en tant qu''administrateur.' }
+Write-SzhBanniere 'Installation du poste (administrateur)'
 
 # ---- 1. Dossiers + droits ------------------------------------------------------
 Info 'Dossiers C:\ProgramData\SZH + droits Utilisateurs (mises à jour sans admin)'

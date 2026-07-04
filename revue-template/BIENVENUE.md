@@ -14,7 +14,10 @@ Ouvre un fichier dans **articles** et ajuste le texte. Pour appliquer un style d
 **Ctrl + Alt + S** pour voir la liste.
 
 ## 3. Sauvegarder
-Appuie sur **Ctrl + S**. Le PDF **revue.pdf** se régénère et l'aperçu se met à jour à droite. C'est tout.
+Appuie sur **Ctrl + S**. Le PDF de chaque article se régénère dans le dossier **out**
+(un sous-dossier par article, avec le PDF et une version web). Ouvre une fois le PDF de
+ton article (clic dans **out/nom-de-l-article**), place-le à droite : ensuite il se met
+à jour tout seul à chaque sauvegarde.
 
 ---
 
