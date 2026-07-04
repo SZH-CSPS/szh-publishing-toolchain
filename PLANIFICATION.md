@@ -2,7 +2,8 @@
 
 > Document de pilotage du projet. Décisions actées le **2026-07-03** (Robin Morand).
 > Statut : ✅ **P1 → P5 implémentés, commités et validés** (2026-07-03). Deux releases de test publiées
-> sur le dépôt public. **Reste** : dérouler le pilote sur un poste réel (checklist V1–V8, §5).
+> sur le dépôt public. **Reste** : pilote sur poste réel (checklist V1–V8, §5) et **phase P6**
+> (lanceur intelligent, association `.md`, profils de compilation — décisions D18–D20 du 2026-07-04).
 > Ce fichier est vivant : cocher les tâches au fur et à mesure, consigner ici toute nouvelle décision.
 
 ---
@@ -56,6 +57,9 @@ revue.pdf régénéré à la racine du dossier
 | D15 | Autocomplétion des styles `:::` via **snippets Markdown user-level** + raccourci « Insérer un bloc de style ». Réactiver `editor.quickSuggestions` **uniquement pour le Markdown** (actuellement désactivé globalement). | Liste des styles maintenue avec la maquette, livrée par le même canal. |
 | D16 | **PDF final à la racine** du dossier (`revue.pdf`) ; intermédiaires (HTML, tmp) **hors OneDrive** (tmp WSL) — à valider (V3), repli : `out/` local exclu de l'éditeur. | L'utilisateur retrouve « son » PDF ; moins de churn de synchro OneDrive. |
 | D17 | Contact support affiché et pré-rempli : **robin.morand@szh.ch** (paramètre central, changeable en une ligne). | |
+| D18 | **Association `.md` → VSCodium** (2026-07-04) : enregistrement dans « Ouvrir avec » (ProgId posé par les scripts, ciblant à terme le lanceur intelligent T6.2) **+ geste « Toujours » unique par utilisateur**, documenté dans `userdoc.md`. Ni outil tiers (type SetUserFTA), ni forçage du défaut ; XML DISM optionnel au bootstrap pour les nouveaux profils. | Windows scelle le choix par défaut (clé `UserChoice` hashée) : le geste utilisateur est la seule voie 100 % propre sur un profil existant. |
+| D19 | **Aperçu PDF : préview intégrée dans l'éditeur** (volet), via tomoki1207.pdf. Analyse du code 1.2.2 (2026-07-04) : l'auto-reload **existe et est soigné** (watcher + reload du webview, scroll/zoom préservés, anti-scintillement) ; la panne historique s'explique par notre ancienne config (`files.watcherExclude: **/out/**` + PDF dans `out/` → événements étouffés), corrigée en P4 (PDF à la racine). Pas de verrou fichier (lecture ponctuelle via webview). « Sumatra dans un onglet » : impossible (les webviews n'hébergent pas de fenêtres natives), écarté. Fork maison (licence MIT, base PDF.js) : **dernier recours** si T6.1 échoue. | Reste T6.1 : test GUI de 2 min — vérifier que le remplacement atomique déclenche « change » (reload) et non « delete » (le code fermerait le volet). |
+| D20 | **Profil de compilation par DOSSIER** : champ `profil:` dans `dossier.yaml` — `article` (défaut, existant), `book` (WeasyPrint, différé), vide = aucun build (no-op propre), `presentation` (`pandoc -t pptx`, natif, zéro ajout au rootfs). Dispatch dans le Makefile central ; le lanceur Windows reste « bête » (ouvre l'artefact le plus récent). Profil par fichier non retenu (réservé à d'éventuels produits monofichiers). | « Un dossier = un produit = un moteur » prolonge D13 ; toute l'intelligence voyage par le canal toolkit (zéro impact poste/admin/update). |
 
 ---
 
@@ -238,6 +242,24 @@ Ordre : **P1 → P2 → P3** (P4 en parallèle de P3) **→ P5**. Estimations gr
 - [x] Doc polices (D7/§6) et doc « masquage résiduel » (`files.exclude`/`attrib +h`, §6) — dans README + §6.
 - [ ] **Poste pilote** : dérouler la checklist V1–V8 ci-dessous, corriger, puis généraliser. *(à faire sur poste réel)*
 
+### P6 — Lanceur intelligent, associations & profils (décidé le 2026-07-04 — D18/D19/D20)
+- [ ] **T6.1 Test GUI de l'aperçu intégré** (2 min, poste réel) : ouvrir une revue, cliquer `revue.pdf`
+      (volet PDF), le placer à droite (`Ctrl+\` ou glisser l'onglet), modifier un article, **Ctrl+S** →
+      le volet doit se rafraîchir **sans se fermer**, position de lecture conservée.
+      S'il se ferme (événement « delete » au remplacement atomique) → repli D19 : fork maison.
+      S'il ne bouge pas → vérifier `files.watcherExclude` dans les réglages déployés.
+- [ ] T6.2 `open-md.ps1` (lanceur intelligent, toolkit) : remonte l'arborescence jusqu'à `dossier.yaml`,
+      compile si l'artefact manque (feedback « Préparation de l'aperçu… »), ouvre VSCodium sur le
+      DOSSIER + le fichier, ouvre l'aperçu.
+- [ ] T6.3 Association : ProgId `SZH.Markdown` dans « Ouvrir avec » (HKCU, posé par update.ps1) pointant
+      le lanceur ; option XML DISM au bootstrap (nouveaux profils) ; procédure « Toujours » → `userdoc.md` (✅ fait).
+- [ ] T6.4 Dispatch `profil:` dans le Makefile : lecture du champ (pandoc ou python3 de l'image),
+      routes `article` (existant), vide (no-op avec message doux), `presentation` (pptx) ;
+      erreur claire si profil inconnu ; `book` différé.
+- [ ] T6.5 Étoffer `userdoc.md` au fil des besoins (doc utilisateur du poste, versionnée au dépôt).
+- **Livrable** : double-clic sur un `.md` → la revue s'ouvre complète (éditeur + aperçu à jour) ;
+  un dossier `profil: presentation` produit un `.pptx` au Ctrl+S, sans aucun changement côté poste.
+
 ---
 
 ## 5. Points de validation & risques
@@ -247,7 +269,7 @@ Ordre : **P1 → P2 → P3** (P4 en parallèle de P3) **→ P5**. Estimations gr
 | V1 | Tâches **user-level** : `folderOpen` **neutralisé** (import replié dans `make all`) ; reste à confirmer au pilote que *Trigger Task on Save* voit la tâche utilisateur pour le build à la sauvegarde | Build auto à la sauvegarde | Mini `.vscode/tasks.json` dans le template, masqué via `files.exclude` |
 | V2 | `winget` sous compte SYSTEM (tâche « SZH – Apps ») : winget n'est pas nativement dispo pour SYSTEM | VSCodium/Sumatra ne se MAJ pas seuls | Workaround chemin WindowsApps, sinon upgrade lors d'un passage admin occasionnel (documenté) |
 | V3 | ✅ **Validé 2026-07-03** — résolu par `pandoc --embed-resources` (HTML autonome en tmp WSL, images et CSS inlinés ; testé docx→media→PDF) | ~~PDF sans images~~ | (plus nécessaire) |
-| V4 | Rechargement auto de l'aperçu (tomoki1207.pdf) avec le PDF à la racine | Confort | Inchangé vs actuel ; secours Ctrl+Alt+R / SumatraPDF |
+| V4 | Rechargement auto de l'aperçu : **analyse code 2026-07-04 (D19)** — mécanisme présent dans tomoki 1.2.2 ; cause de la panne historique identifiée (`watcherExclude **/out/**` + PDF dans `out/`, corrigé en P4). Reste T6.1 : « change » vs « delete » au remplacement atomique | Confort | Secours Ctrl+Alt+R / SumatraPDF ; dernier recours : fork maison (D19) |
 | V5 | `mailto:` : corps limité (~2 000 caractères) | Trace incomplète dans l'e-mail | Trace tronquée + log complet désigné dans l'Explorateur (à joindre) |
 | V6 | API GitHub non authentifiée : 60 req/h/IP | Échec du check | 2 checks/jour/poste → très en dessous ; réessai silencieux au prochain déclenchement |
 | V7 | `.lnk` synchronisés par OneDrive et chemin absolu de VSCodium | Raccourci mort | Flotte homogène (install machine par bootstrap) ; le lanceur du menu Démarrer reste l'entrée de secours |
