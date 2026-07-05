@@ -42,6 +42,12 @@
       "version": "1.4.0",
       "sha256": "92eb0b04138d5e65d77ed5dd7dd042443db8c7f4b115f59363985b6230950d0c",
       "source": "https://open-vsx.org/api/csholmq/excel-to-markdown-table/1.4.0/file/csholmq.excel-to-markdown-table-1.4.0.vsix"
+    },
+    {
+      "id": "yzhang.markdown-all-in-one",
+      "version": "3.6.2",
+      "sha256": "75037cc2e0f940ead6cb2db25c5e6f139031885f7dc07d56abe1e0bc0781dd1a",
+      "source": "https://open-vsx.org/api/yzhang/markdown-all-in-one/3.6.2/file/yzhang.markdown-all-in-one-3.6.2.vsix"
     }
   ]
 }
