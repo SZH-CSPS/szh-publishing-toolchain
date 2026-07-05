@@ -107,7 +107,20 @@ Bumper la version → pousser le tag → la CI republie la Release. Les postes d
 4. Écrire, puis **Ctrl + S** → chaque article est régénéré dans `out/<article>/` (PDF + HTML),
    en intégrant au passage tout nouveau Word déposé.
 
-Blocs de style : taper `:::` puis le nom (chapô, encadré, exergue…), ou **Ctrl+Alt+S**.
+### Raccourcis clavier (déployés par `vscodium-user/keybindings.json` + extensions épinglées)
+
+| Raccourci | Effet | Fourni par |
+|---|---|---|
+| `Ctrl+S` | Enregistrer → import des Word déposés + régénération des PDF (`make all`) | triggertaskonsave + tâche user |
+| `Ctrl+B` / `Ctrl+I` | Gras / italique (fichiers markdown) | markdown-all-in-one |
+| `Entrée` (dans une liste) | Continuation automatique de la liste | markdown-all-in-one |
+| `Tab` / `Maj+Tab` (dans un tableau) | Cellule suivante/précédente + formatage auto | markdowntable |
+| `Maj+Alt+V` | Coller un tableau copié depuis Excel/Word | excel-to-markdown-table |
+| `Ctrl+Alt+S` | Insérer un bloc de style `:::` (snippets de la maquette) | keybindings + snippets |
+| `Ctrl+Espace` | Suggestions (snippets `:::`) | VS Code (réactivé scope markdown) |
+| `Ctrl+Alt+I` | Importer les Word à la demande (`make import`) | keybindings + tâche user |
+| `Ctrl+E` / `Ctrl+Maj+B` | Relancer la compilation | keybindings / build par défaut |
+| `Ctrl+Alt+R` | Secours : recharger la fenêtre (aperçu figé) | keybindings |
 
 ## Options & décisions
 - **Langue de l'interface** : anglais par défaut (seule option à jour/propre sur VSCodium ; quasi invisible
