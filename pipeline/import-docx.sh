@@ -17,9 +17,11 @@ cd "$DIR" || exit 1
 rm -f media/refs-brutes.txt media/rapport.json media/conversion-stats.json
 
 # --- Passe A : docx -> markdown (structure, figures, extraction des références) ---
-# -simple_tables-multiline_tables : les tableaux sortent en PIPE (| … |), le format
-# que les extensions d'édition de tableaux manipulent ; grid en repli si trop complexe.
-MD_FMT="markdown-simple_tables-multiline_tables"
+# Tableaux TOUJOURS en PIPE (| … |), le format que les extensions d'édition manipulent
+# (D33 : les tableaux sont normalisés par le filtre — fusions dépliées, cellules aplaties).
+# grid_tables désactivé aussi : sinon la relecture d'un tableau pipe plus large que
+# --columns lui attribue des largeurs, et le writer retomberait en grid.
+MD_FMT="markdown-simple_tables-multiline_tables-grid_tables"
 SZH_STATS="media/conversion-stats.json" SZH_REFS="media/refs-brutes.txt" \
 pandoc "$DOCX_ABS" --track-changes=accept -f docx -t "$MD_FMT" \
   --wrap=none --markdown-headings=atx \

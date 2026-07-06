@@ -16,6 +16,7 @@ local stats = {
   listes_reconstruites = 0, notes = 0, images = 0,
   figures_legendees = 0, figures_sans_legende = 0, alt_ia_purges = 0,
   numeros_figures_retires = {}, tableaux = 0, tableaux_legendes = 0,
+  tableaux_simplifies = 0,
   refs = { n = 0, titre = '', entrees = {} },
   avertissements = {},
 }
@@ -93,6 +94,118 @@ local function alt_pollue(txt)
       or b:find('ki%-generierte') or b:find('kann fehlerhaft', 1, true)
       or b:find('une image contenant', 1, true) or b:find('ein bild, das', 1, true)
       or b:find('a picture containing', 1, true)
+end
+
+-- ---------- normalisation des tableaux (D33) ----------
+-- Tout tableau devient exprimable en PIPE : fusions dépliées (cellules vides à la
+-- place), cellules multi-blocs aplaties (blocs joints par <br>, préservé au rendu),
+-- largeurs de colonnes réinitialisées. Perte assumée : la géométrie des fusions.
+
+local function aplatir_cellule(blocks)
+  local sep = pandoc.Inlines({ pandoc.RawInline('html', '<br>') })
+  local inls = pandoc.utils.blocks_to_inlines(blocks, sep)
+  -- LineBreak rendrait la cellule inexprimable en pipe — remplacement RÉCURSIF
+  -- (un saut de ligne peut se nicher dans un gras, un lien…)
+  local bloc = pandoc.walk_block(pandoc.Plain(inls), {
+    LineBreak = function() return pandoc.RawInline('html', '<br>') end,
+  })
+  return pandoc.Blocks({ bloc })
+end
+
+local function cellule_complexe(c)
+  if (c.col_span or 1) > 1 or (c.row_span or 1) > 1 then return true end
+  local blocs = c.contents
+  if #blocs > 1 then return true end
+  if #blocs == 1 and blocs[1].t ~= 'Plain' and blocs[1].t ~= 'Para' then return true end
+  local saut = false
+  for _, b in ipairs(blocs) do
+    pandoc.walk_block(b, { LineBreak = function() saut = true end })
+  end
+  return saut
+end
+
+local function normaliser_lignes(rows, ncols)
+  local en_attente = {}   -- en_attente[col] = nb de lignes restant à combler (rowspan)
+  local sortie = pandoc.List()
+  for _, row in ipairs(rows) do
+    local cellules = pandoc.List()
+    local ci = 1
+    local col = 1
+    while col <= ncols do
+      if en_attente[col] and en_attente[col] > 0 then
+        en_attente[col] = en_attente[col] - 1
+        cellules:insert(pandoc.Cell({}))
+        col = col + 1
+      else
+        local c = row.cells[ci]
+        ci = ci + 1
+        if c then
+          local cs = c.col_span or 1
+          local rs = c.row_span or 1
+          cellules:insert(pandoc.Cell(aplatir_cellule(c.contents), c.alignment))
+          if rs > 1 then en_attente[col] = rs - 1 end
+          for _ = 1, cs - 1 do
+            col = col + 1
+            if col <= ncols then
+              cellules:insert(pandoc.Cell({}))
+              if rs > 1 then en_attente[col] = rs - 1 end
+            end
+          end
+          col = col + 1
+        else
+          cellules:insert(pandoc.Cell({}))
+          col = col + 1
+        end
+      end
+    end
+    sortie:insert(pandoc.Row(cellules))
+  end
+  return sortie
+end
+
+local function normaliser_tableau(tbl)
+  -- complexe ? (spans, multi-blocs, sauts de ligne, largeurs explicites)
+  local complexe = false
+  local function inspecter(rows)
+    for _, row in ipairs(rows) do
+      for _, c in ipairs(row.cells) do
+        if cellule_complexe(c) then complexe = true end
+      end
+    end
+  end
+  inspecter(tbl.head.rows)
+  for _, body in ipairs(tbl.bodies) do
+    inspecter(body.head); inspecter(body.body)
+  end
+  inspecter(tbl.foot.rows)
+  -- un tableau SANS ligne d'en-tête ne peut pas s'écrire en pipe -> à normaliser
+  if #tbl.head.rows == 0 then complexe = true end
+
+  local ncols = #tbl.colspecs
+  local specs = pandoc.List()
+  for _, cs in ipairs(tbl.colspecs) do
+    if cs[2] then complexe = true end        -- largeur explicite -> grid : on la retire
+    specs:insert({ cs[1] })                  -- alignement conservé, largeur par défaut
+  end
+  if not complexe then return tbl, false end
+
+  tbl.head.rows = normaliser_lignes(tbl.head.rows, ncols)
+  for _, body in ipairs(tbl.bodies) do
+    body.head = normaliser_lignes(body.head, ncols)
+    body.body = normaliser_lignes(body.body, ncols)
+  end
+  tbl.foot.rows = normaliser_lignes(tbl.foot.rows, ncols)
+  -- pas d'en-tête : la première ligne du corps devient l'en-tête (exigence du pipe)
+  if #tbl.head.rows == 0 then
+    local premier = tbl.bodies[1]
+    if premier and #premier.body > 0 then
+      tbl.head.rows = pandoc.List({ premier.body[1] })
+      premier.body:remove(1)
+    end
+  end
+  -- Reconstruction complète : l'affectation de colspecs sur l'objet existant ne prend
+  -- pas ; or toute largeur explicite interdit le format pipe au writer pandoc.
+  return pandoc.Table(tbl.caption, specs, tbl.head, tbl.bodies, tbl.foot, tbl.attr), true
 end
 
 -- Une ligne « ressemble à une référence » ?
@@ -269,6 +382,9 @@ function Pandoc(doc)
       end
     elseif b.t == 'Table' then
       stats.tableaux = stats.tableaux + 1
+      local simplifie
+      b, simplifie = normaliser_tableau(b)
+      if simplifie then stats.tableaux_simplifies = stats.tableaux_simplifies + 1 end
       -- légende voisine (avant ou après)
       local cap, num, capidx = nil, nil, nil
       for _, j in ipairs({ idx - 1, idx + 1 }) do

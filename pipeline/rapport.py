@@ -35,12 +35,14 @@ T = {
     's_fig_leg': 'figures avec légende reconnue',
     's_tab': 'tableaux',
     's_tab_leg': 'dont avec légende reconnue',
+    's_tab_simple': 'tableaux simplifiés (cellules fusionnées ou multi-lignes aplaties)',
     's_listes': 'listes reconstruites à partir de puces manuelles',
     's_refs': 'références bibliographiques structurées (fichier .bib créé)',
     's_cit': 'citations liées à la bibliographie',
     's_alt': 'descriptions d''images parasites supprimées',
     'v_cit_titre': 'Citations non reliées (laissées telles quelles dans le texte) :',
     'v_fig': 'figure(s) sans légende reconnue — ajouter une légende « Figure n : … » sous l''image.',
+    'v_tab': 'tableau(x) contenaient des cellules fusionnées ou multi-lignes : ils ont été aplatis — vérifier leur lisibilité.',
     'v_num': 'Les numéros de figures/tableaux sont désormais automatiques : vérifier que les renvois du texte (« voir Figure 2 ») correspondent toujours.',
     'v_refs_aucune': 'Aucune liste de références n''a été détectée — si l''article en contient une, elle est restée telle quelle dans le texte.',
     'v_relire': 'Relire une fois l''article converti côte à côte avec l''original Word.',
@@ -65,12 +67,14 @@ T = {
     's_fig_leg': 'Abbildungen mit erkannter Legende',
     's_tab': 'Tabellen',
     's_tab_leg': 'davon mit erkannter Legende',
+    's_tab_simple': 'Tabellen vereinfacht (verbundene oder mehrzeilige Zellen aufgelöst)',
     's_listes': 'Listen aus manuellen Aufzählungszeichen rekonstruiert',
     's_refs': 'Literaturangaben strukturiert (.bib-Datei erstellt)',
     's_cit': 'Zitate mit der Literaturliste verknüpft',
     's_alt': 'störende Bildbeschreibungen entfernt',
     'v_cit_titre': 'Nicht verknüpfte Zitate (unverändert im Text belassen):',
     'v_fig': 'Abbildung(en) ohne erkannte Legende — eine Legende « Abbildung n: … » unter dem Bild ergänzen.',
+    'v_tab': 'Tabelle(n) enthielten verbundene oder mehrzeilige Zellen: sie wurden aufgelöst — Lesbarkeit prüfen.',
     'v_num': 'Abbildungs-/Tabellennummern sind jetzt automatisch: prüfen Sie, ob Verweise im Text («siehe Abbildung 2») noch stimmen.',
     'v_refs_aucune': 'Es wurde keine Literaturliste erkannt — falls der Artikel eine enthält, blieb sie unverändert im Text.',
     'v_relire': 'Den konvertierten Artikel einmal neben dem Word-Original gegenlesen.',
@@ -95,12 +99,14 @@ T = {
     's_fig_leg': 'figures with a recognised caption',
     's_tab': 'tables',
     's_tab_leg': 'of which with a recognised caption',
+    's_tab_simple': 'tables simplified (merged or multi-line cells flattened)',
     's_listes': 'lists rebuilt from manual bullets',
     's_refs': 'references structured (.bib file created)',
     's_cit': 'citations linked to the bibliography',
     's_alt': 'noisy image descriptions removed',
     'v_cit_titre': 'Unlinked citations (left as-is in the text):',
     'v_fig': 'figure(s) without a recognised caption — add “Figure n: …” below the image.',
+    'v_tab': 'table(s) contained merged or multi-line cells: they were flattened — check readability.',
     'v_num': 'Figure/table numbers are now automatic: check that in-text references (“see Figure 2”) still match.',
     'v_refs_aucune': 'No reference list was detected — if the article has one, it was left unchanged in the text.',
     'v_relire': 'Proofread the converted article once, side by side with the Word original.',
@@ -128,6 +134,7 @@ def bloc_langue(lg):
     item(g('figures_legendees'), 's_fig_leg')
     item(g('tableaux'), 's_tab', toujours=True)
     item(g('tableaux_legendes'), 's_tab_leg')
+    item(g('tableaux_simplifies'), 's_tab_simple')
     item(g('listes_reconstruites'), 's_listes')
     item(g('refs', 'n'), 's_refs')
     item(g('citations', 'liees'), 's_cit')
@@ -141,6 +148,8 @@ def bloc_langue(lg):
         averts.append(f'<li>{e(t["v_cit_titre"])}<ul>{li}</ul></li>')
     if g('figures_sans_legende'):
         averts.append(f'<li><b>{g("figures_sans_legende")}</b> {e(t["v_fig"])}</li>')
+    if g('tableaux_simplifies'):
+        averts.append(f'<li><b>{g("tableaux_simplifies")}</b> {e(t["v_tab"])}</li>')
     if g('numeros_figures_retires', defaut=[]) or g('tableaux_legendes'):
         averts.append(f'<li>{e(t["v_num"])}</li>')
     if 'pas-de-liste-references-detectee' in (g('avertissements', defaut=[]) or []):
