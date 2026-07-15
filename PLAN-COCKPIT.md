@@ -45,8 +45,19 @@ depuis une barre latérale, sans explorateur de fichiers ni terminal, et sans ja
 - Aucun ajout au rootfs (pandoc suffit). AnyStyle/Ruby restent dans l'image pour l'instant
   (retrait = optimisation ultérieure, nécessiterait un rebuild rootfs).
 - Extension : JavaScript pur, zéro dépendance npm, API VS Code ^1.75 — même posture que szh-apercu.
-- Hypothèse à valider en S1 : `--extract-media` + cwd article donne des chemins `media/…`
-  relatifs corrects dans le `.md` (sinon réutiliser le `sed` existant du Makefile).
+- ~~Hypothèse à valider en S1~~ **Validée (2026-07-15), avec correctif** : `--extract-media=media`
+  doublait le dossier (`media/media/…`, pandoc crée lui-même un sous-dossier `media`) →
+  remplacé par `--extract-media=.` : fichiers dans `media/`, chemins `./media/…` corrects.
+
+**Journal S1 (gate du 2026-07-15)** — S1 implémentée (commit `86964cd`), revue et validée :
+placeholders 01…12 OK (0 tableau = intact, padding OK), non-écrasement OK (`make import` →
+« déjà converti »), slug avec accents OK. Déviations acceptées : 4ᵉ arg `lang` retiré de
+l'appel `import-docx.sh` (mort depuis D35) ; commentaires Makefile mis à jour ; flags writer
+`-…-grid_tables` conservés verbatim. Correctifs post-commit : `--extract-media=.` (ci-dessus)
+et réparation du fichier `import-docx.sh` sur disque (≈1 Ko d'octets NUL ajoutés en fin après
+le commit — artefact d'écriture ; contenu committé intact, restauré depuis HEAD).
+Restent à vérifier sur poste réel (pandoc/WeasyPrint du rootfs) : les 6 articles 2026-01 et la
+compilation PDF — commande : déposer les docx dans `articles-word/` puis Ctrl+S.
 
 ## 3. Approche technique
 
@@ -86,12 +97,12 @@ filtre), tâches user existantes (`tasks.json` : labels de build/import réutili
   un article existant n'est jamais écrasé (re-dépôt du même docx → « déjà converti »).
 
 ### S2 — Extension : squelette + barre latérale lecture seule *(taille M)*
-- [ ] `vscodium-extension/szh-cockpit/` : `package.json` (publisher `szh-csps`, engines ^1.75,
+- [x] `vscodium-extension/szh-cockpit/` : `package.json` (publisher `szh-csps`, engines ^1.75,
       `onStartupFinished`), `extension.js`, LICENSE, README — calqués sur szh-apercu.
-- [ ] `viewsContainers.activitybar` « Revue SZH » (icône SVG sobre) + TreeView à 2 sections :
+- [x] `viewsContainers.activitybar` « Revue SZH » (icône SVG sobre) + TreeView à 2 sections :
       **Articles** (scan `articles/*/<slug>.md` ; clic = ouvrir le .md) et **Word en attente**
       (`articles-word/*.docx`, hors `_convertis/`) avec badge de compte sur l'icône.
-- [ ] Activation seulement si `ausgabe.yaml` existe à la racine du workspace (sinon vue masquée —
+- [x] Activation seulement si `ausgabe.yaml` existe à la racine du workspace (sinon vue masquée —
       `"when"` contexte). FileSystemWatcher sur `articles/**` et `articles-word/*` → refresh.
 - **Acceptation** : ouvrir la revue 2026-01 → les articles listés, tri alphabétique ; déposer un
   docx à la main → il apparaît sous « Word en attente » ≤ 2 s ; dossier non-revue → pas d'icône.

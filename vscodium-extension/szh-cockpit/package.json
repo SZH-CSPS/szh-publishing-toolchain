@@ -1,0 +1,53 @@
+{
+  "name": "szh-cockpit",
+  "displayName": "SZH — Revue (cockpit)",
+  "description": "Barre latérale « Revue SZH » : articles et Word en attente d'un numéro (lecture seule).",
+  "version": "0.1.0",
+  "publisher": "szh-csps",
+  "license": "MIT",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "szhRevue",
+          "title": "Revue SZH",
+          "icon": "media/revue.svg"
+        }
+      ]
+    },
+    "views": {
+      "szhRevue": [
+        {
+          "id": "szhCockpitVue",
+          "name": "Revue",
+          "when": "szh.estRevue"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "szh.cockpit.rafraichir",
+        "title": "Rafraîchir la barre Revue",
+        "category": "Revue SZH",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "szh.cockpit.rafraichir",
+          "when": "view == szhCockpitVue",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SZH-CSPS/szh-publishing-toolchain"
+  }
+}
