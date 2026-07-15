@@ -194,13 +194,36 @@ redémarrage » disparaît avec la livraison CI/vsix.lock ; la réparation szh-a
 reste à caser en S5 (décision Robin).
 
 ### S5 — Livraison flotte *(taille S ; dépend S2–S4)*
-- [ ] `release.yml` : packager `szh-cockpit` comme szh-apercu (vsce/ovsx package) ; entrée dans
-      `windows/vsix.lock` (id, version, sha256) ; VSIX en asset de release.
-- [ ] `userdoc.md` : section « La barre Revue » (3 captures max) ; README : arborescence + tableau
-      raccourcis mis à jour ; PLANIFICATION.md : cocher D35/D36.
+- [x] `release.yml` : packager `szh-cockpit` comme szh-apercu (vsce package) ; VSIX en asset de
+      release. *(Voir note S5 : les extensions maison ne sont PAS épinglées dans `vsix.lock` — sha
+      calculé au build, écrit dans `manifest.json`, comme szh-apercu.)*
+- [x] `userdoc.md` : section « La barre Revue » (placeholders captures) ; README : arborescence +
+      pointeur barre latérale. *(PLANIFICATION.md : cochage D35/D36 différé — voir note S5.)*
 - **Acceptation (bout en bout, poste pilote)** : tag de release → le poste se met à jour seul →
   scénario complet « revue vierge → 2 docx importés → 2 PDF ouverts » réalisé par un tiers
   non technicien, chrono < 5 min, zéro question posée.
+
+**Note d'implémentation S5 (2026-07-15)** — commits `S5: livraison flotte cockpit` (+ `S5: correctif
+szh-apercu D26`).
+- **CI** : étape « Construire les extensions maison » packageant **szh-apercu ET szh-cockpit**
+  (boucle `vsce package`) ; génération du manifest en boucle sur les deux (id `szh-csps.<nom>`,
+  sha256 calculé au build). YAML validé (ruby `YAML.load_file`).
+- **Divergence assumée vs consigne** : **pas d'entrée `vsix.lock`** pour szh-cockpit. `vsix.lock`
+  épingle les VSIX **tiers téléchargés** (source Open VSX + sha figé, vérifié par la CI). Une
+  extension maison est **construite** par la CI ; son `vsce package` n'est pas déterministe (mtime
+  du zip) → aucun sha stable à épingler. Elle suit donc le patron **szh-apercu** (déjà en prod
+  depuis v2026.07.3, jamais dans `vsix.lock`) : sha calculé au build → `manifest.json` → `update.ps1`
+  vérifie le VSIX téléchargé contre ce sha. `update.ps1` **inchangé**.
+- **Packaging local** non exécutable sur ce poste (ni node/npm/npx/vsce) — commande CI documentée ;
+  chemin déjà éprouvé par la CI pour szh-apercu.
+- **`media/revue.svg`** supprimé (icône de conteneur abandonnée en S2.1).
+- **szh-apercu** : correctif D26 (chemin `articles/<slug>/<slug>.md`, 3 segments) + version
+  0.1.0 → 0.1.1 ; commit séparé (concern distinct : régression d'une autre extension). Testé headless.
+- **PLANIFICATION.md (cochage D35/D36) NON fait ici** : `git diff PLANIFICATION.md` montre des
+  modifications locales **D34** (config WSL) non commitées → **STOP** comme demandé ; à cocher par
+  Robin dans un commit dédié (D34/D35/D36), hors de cette tranche.
+- **Vérification S1 poste réel** : la revue `test` (20 articles convertis + PDF compilés via le
+  pipeline déployé) couvre de fait le rendu WeasyPrint — à consigner au journal S5 de gate.
 
 ## 5. Definition of Done (chaque tranche)
 - Testé sur la revue réelle 2026-01 (pas seulement sur fixture) ; S1 : les 6 articles.
