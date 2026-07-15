@@ -1,0 +1,13 @@
+Déposez ici les articles Word (.docx) ou LibreOffice (.odt) FINALISÉS.
+
+À la prochaine ouverture de la revue, ils seront convertis automatiquement
+en fichiers de travail dans le dossier « articles » (les images sont
+récupérées aussi). Les originaux sont ensuite rangés dans « _convertis ».
+
+Remarques :
+- un article déjà converti n'est jamais écrasé : le fichier dans
+  « articles » est la copie de travail, c'est lui qui fait foi ;
+- l'ordre des articles dans la revue suit l'ordre alphabétique des
+  fichiers dans « articles » — renommez-les au besoin (01-…, 02-…) ;
+- les anciens fichiers .doc (Word 2003) ne sont pas pris en charge :
+  enregistrez-les d'abord en .docx.

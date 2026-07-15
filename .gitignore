@@ -1,0 +1,11 @@
+# Session locale Claude Code
+.claude/
+
+# Artefacts de build locaux (la CI publie les siens en Release)
+*.tar.gz
+*.tar.gz.sha256
+toolkit-*.zip
+toolkit-*.zip.sha256
+manifest.json
+vsix-out/
+*.vsix

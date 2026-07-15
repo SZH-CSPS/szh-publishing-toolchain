@@ -1,0 +1,28 @@
+{
+  "name": "szh-apercu",
+  "displayName": "SZH — Aperçu automatique",
+  "description": "Ouvre l'aperçu PDF de l'article actif en vue scindée après chaque compilation réussie (revues SZH/CSPS).",
+  "version": "0.1.0",
+  "publisher": "szh-csps",
+  "license": "MIT",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "SZH",
+      "properties": {
+        "szh.apercuAuto": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ouvrir automatiquement l'aperçu PDF de l'article actif (vue scindée à droite) après la compilation."
+        }
+      }
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SZH-CSPS/szh-publishing-toolchain"
+  }
+}

@@ -1,0 +1,15 @@
+# Garantir LF pour tout ce qui tourne sous Linux (WSL, CI) ; CRLF pour PowerShell.
+* text=auto eol=lf
+*.ps1  text eol=crlf
+*.cmd  text eol=crlf
+Makefile text eol=lf
+*.sh   text eol=lf
+*.conf text eol=lf
+*.tar  binary
+*.gz   binary
+*.zip  binary
+*.vsix binary
+*.png  binary
+*.jpg  binary
+*.woff2 binary
+*.ttf  binary

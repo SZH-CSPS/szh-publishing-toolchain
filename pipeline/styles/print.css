@@ -1,0 +1,109 @@
+/* Feuille de style d'impression (CSS Paged Media, rendue par WeasyPrint).
+   Point de départ minimal — à remplacer par la charte de la revue. */
+
+@page {
+  size: A4;
+  margin: 25mm 20mm;
+  @bottom-center { content: counter(page) " / " counter(pages); font-size: 9pt; color: #666; }
+}
+
+body {
+  font-family: "Noto Serif", Georgia, serif;
+  font-size: 11pt;
+  line-height: 1.55;
+  hyphens: auto;
+  color: #1a1a1a;
+}
+
+h1, h2, h3 { font-family: "Noto Sans", Arial, sans-serif; line-height: 1.2; }
+h1 { font-size: 20pt; break-before: page; }
+h2 { font-size: 15pt; }
+
+blockquote { border-left: 3px solid #ccc; margin-left: 0; padding-left: 1em; color: #444; }
+
+/* ── Numérotation automatique des figures et tableaux (D31) ─────────────
+   Les numéros manuels sont retirés à l'import ; la numérotation suit l'ordre
+   du document et le libellé suit la langue de l'article (:lang). */
+body { counter-reset: compteur-figure compteur-tableau; }
+
+figure { break-inside: avoid; margin: 1.2em 0; text-align: center; }
+figure img { max-width: 100%; }
+figure > figcaption { font-size: 9.5pt; color: #444; margin-top: 0.5em; text-align: left; }
+figure > figcaption::before {
+  counter-increment: compteur-figure;
+  content: "Figure " counter(compteur-figure) " — ";
+  font-weight: 600;
+}
+:lang(de) figure > figcaption::before { content: "Abbildung " counter(compteur-figure) " — "; }
+
+table { border-collapse: collapse; font-size: 10pt; margin: 1.2em 0; width: 100%; }
+th, td { border: 1px solid #999; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }
+th { background: #eee; }
+table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: #444; margin-bottom: 0.4em; }
+table > caption::before {
+  counter-increment: compteur-tableau;
+  content: "Tableau " counter(compteur-tableau) " — ";
+  font-weight: 600;
+}
+:lang(de) table > caption::before { content: "Tabelle " counter(compteur-tableau) " — "; }
+:lang(en) table > caption::before { content: "Table " counter(compteur-tableau) " — "; }
+
+/* ── Bibliographie (citeproc) ────────────────────────────────────────────── */
+#refs { font-size: 10pt; }
+#refs .csl-entry { margin-bottom: 0.5em; padding-left: 1.4em; text-indent: -1.4em; }
+
+/* ── Blocs de style de la revue ──────────────────────────────────────────
+   Ces classes correspondent aux snippets ::: (vscodium-user/snippets/markdown.json).
+   Garder les deux listes synchronisées. Styles volontairement neutres : à
+   remplacer par la charte réelle de la revue. */
+
+.chapo {
+  font-size: 12.5pt;
+  line-height: 1.45;
+  color: #222;
+  font-weight: 600;
+  margin-bottom: 1.2em;
+}
+
+.encadre {
+  border: 1px solid #bbb;
+  background: #f5f5f5;
+  padding: 0.8em 1em;
+  margin: 1em 0;
+  break-inside: avoid;
+}
+.encadre h3 { margin-top: 0; font-size: 12pt; }
+
+.exergue {
+  font-size: 15pt;
+  font-style: italic;
+  color: #555;
+  text-align: center;
+  margin: 1.5em 2em;
+}
+.exergue blockquote { border: 0; padding: 0; color: inherit; }
+
+.resume {
+  font-size: 10pt;
+  color: #333;
+  border-top: 2px solid #333;
+  border-bottom: 1px solid #ccc;
+  padding: 0.6em 0;
+  margin-bottom: 1.5em;
+}
+
+.note {
+  font-size: 9.5pt;
+  color: #555;
+  border-left: 2px solid #ddd;
+  padding-left: 0.8em;
+  margin: 1em 0;
+}
+
+.avertissement {
+  border-left: 4px solid #c07a00;
+  background: #fdf6e9;
+  padding: 0.7em 1em;
+  margin: 1em 0;
+  break-inside: avoid;
+}

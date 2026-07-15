@@ -1,0 +1,20 @@
+# Épinglage COMPLET (transitif) de l'environnement WeasyPrint — rendu reproductible
+# sur toute la flotte (D9, PLANIFICATION.md).
+# Généré depuis l'environnement réellement déployé (2026-07-03) :
+#   wsl -d SZH-Publishing -- /opt/weasyprint/bin/pip freeze
+# Après un bump de WeasyPrint : installer la nouvelle version dans un venv propre,
+# vérifier le rendu, puis refaire un freeze ici. Tout bump est une décision explicite.
+
+brotli==1.2.0
+cffi==2.0.0
+cssselect2==0.9.0
+fonttools==4.63.0
+pillow==12.2.0
+pycparser==3.0
+pydyf==0.12.1
+pyphen==0.17.2
+tinycss2==1.5.1
+tinyhtml5==2.1.0
+weasyprint==69.0
+webencodings==0.5.1
+zopfli==0.4.3

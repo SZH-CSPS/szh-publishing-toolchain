@@ -1,0 +1,47 @@
+{
+  // Blocs de style de la revue (D15). Tape ::: puis le début du nom -> la liste s'affiche.
+  // Rendus en « fenced divs » Pandoc : ::: {.classe} ... :::  et stylés par pipeline/styles/print.css.
+  // ⚠ Garder cette liste synchronisée avec les classes définies dans print.css.
+  "Chapô (introduction)": {
+    "prefix": [":::chapo", "chapo"],
+    "body": ["::: {.chapo}", "$0", ":::", ""],
+    "description": "Paragraphe d'introduction mis en avant en tête d'article"
+  },
+  "Encadré": {
+    "prefix": [":::encadre", "encadre"],
+    "body": ["::: {.encadre}", "### ${1:Titre de l'encadré}", "", "$0", ":::", ""],
+    "description": "Bloc encadré (complément, aparté)"
+  },
+  "Exergue (citation en exergue)": {
+    "prefix": [":::exergue", "exergue"],
+    "body": ["::: {.exergue}", "> ${1:Phrase mise en exergue}", ":::", ""],
+    "description": "Citation détachée mise en valeur"
+  },
+  "Résumé / Abstract": {
+    "prefix": [":::resume", "resume"],
+    "body": ["::: {.resume}", "**Résumé.** $0", ":::", ""],
+    "description": "Résumé de l'article"
+  },
+  "Note / Remarque": {
+    "prefix": [":::note", "note"],
+    "body": ["::: {.note}", "$0", ":::", ""],
+    "description": "Note ou remarque secondaire"
+  },
+  "Avertissement / Important": {
+    "prefix": [":::avertissement", "avertissement"],
+    "body": ["::: {.avertissement}", "**${1:À noter}** — $0", ":::", ""],
+    "description": "Point important à signaler"
+  },
+  "Métadonnées d'article (front-matter)": {
+    "prefix": ["frontmatter", "meta"],
+    "body": [
+      "---",
+      "title: \"${1:Titre de l'article}\"",
+      "author: \"${2:Prénom Nom}\"",
+      "---",
+      "",
+      "$0"
+    ],
+    "description": "En-tête de métadonnées en haut d'un fichier d'article"
+  }
+}
