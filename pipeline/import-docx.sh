@@ -18,15 +18,15 @@ DOCX_ABS="$(realpath "$F")"
 mkdir -p "$DIR/media"
 cd "$DIR" || exit 1
 
-# --extract-media=media : images extraites sous media/ (chemins relatifs au .md,
-#   corrects car le build HTML tourne DANS le dossier de l'article).
+# --extract-media=. : images extraites sous media/ (chemins relatifs au .md,
+#   corrects car le build HTML tourne DANS le dossier de l'article). ⚠ =media doublerait en media/media/.
 # -simple_tables-multiline_tables-grid_tables : sans objet ici (les tableaux sont
 #   remplacés par le filtre) — conservé par cohérence avec le writer du pipeline.
 pandoc "$DOCX_ABS" \
   --from=docx \
   --to=markdown-simple_tables-multiline_tables-grid_tables \
   --track-changes=accept \
-  --extract-media=media \
+  --extract-media=. \
   --lua-filter="$PIPE/filters/szh-tabelle-platzhalter.lua" \
   --wrap=none \
   -o "$SLUG.md" || exit 1
