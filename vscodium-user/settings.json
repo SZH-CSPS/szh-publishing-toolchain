@@ -1,5 +1,6 @@
 {
   // ============ Interface épurée (« 0 technique ») ============
+  "workbench.colorTheme": "Default Light+",
   "workbench.activityBar.location": "hidden",
   "workbench.statusBar.visible": true,
   "workbench.editor.showTabs": "single",

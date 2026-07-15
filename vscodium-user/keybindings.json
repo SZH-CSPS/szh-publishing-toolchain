@@ -1,10 +1,23 @@
 [
-  // Exporter / régénérer l'aperçu PDF (= la tâche de build par défaut)
+  // Ctrl+S : sauvegarder PUIS build + aperçu PDF (tâche « Build + Aperçu »).
+  // Limité à l'éditeur de texte pour ne pas perturber la sauvegarde ailleurs.
+  {
+    "key": "ctrl+s",
+    "command": "runCommands",
+    "args": {
+      "commands": [
+        "workbench.action.files.save",
+        { "command": "workbench.action.tasks.runTask", "args": "Build + Aperçu" }
+      ]
+    },
+    "when": "editorTextFocus"
+  },
+
+  // Ctrl+E : build + aperçu sans sauvegarde explicite (= tâche de build par défaut).
   { "key": "ctrl+e", "command": "workbench.action.tasks.build" },
 
-  // Secours si l'aperçu PDF ne se rafraîchit pas tout seul : recharge la fenêtre
+  // Filet de secours : recharge complète de la fenêtre si tout se fige.
   { "key": "ctrl+alt+r", "command": "workbench.action.reloadWindow" }
 
-  // NB : on NE désactive PAS Ctrl+Maj+P (palette) : c'est le filet de secours assumé.
-  //      La palette ne peut pas être « réduite » proprement sans forker VSCodium.
+  // NB : on NE désactive PAS Ctrl+Maj+P (palette) : filet de secours assumé.
 ]

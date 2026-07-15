@@ -4,7 +4,17 @@
   "settings": {
     // Réglages spécifiques au projet (l'épuration de l'UI est au niveau utilisateur)
     "files.associations": { "*.md": "markdown" },
-    "search.exclude": { "out/**": true }
+    "search.exclude": { "out/**": true },
+
+    // ⚠ triggerTaskOnSave.* est de portée « window » : dans un .code-workspace il DOIT
+    // être ici (pas dans .vscode/settings.json, qui serait ignoré).
+    // À chaque sauvegarde (auto-save inclus) : build PUIS rafraîchissement SumatraPDF.
+    "triggerTaskOnSave.tasks": {
+      "Build + Aperçu": ["**/*.md", "**/*.css", "dossier.yaml"]
+    },
+    "triggerTaskOnSave.restart": true,
+    "triggerTaskOnSave.showStatusBarToggle": true,
+    "triggerTaskOnSave.showNotifications": true
   },
   "extensions": {
     "recommendations": [

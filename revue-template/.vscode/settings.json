@@ -1,11 +1,6 @@
 {
-  // Rebuild automatique à chaque sauvegarde de .md / .css / dossier.yaml
-  "triggerTaskOnSave.tasks": {
-    "Aperçu / Export PDF": ["**/*.md", "**/*.css", "dossier.yaml"]
-  },
-  "triggerTaskOnSave.restart": true,        // sauvegardes rapprochées -> on relance (debounce)
-  "triggerTaskOnSave.showStatusBarToggle": true,
-
+  // NB : la config triggerTaskOnSave.* a été déplacée dans revue.code-workspace
+  // (portée « window » -> ignorée ici quand on ouvre via le .code-workspace).
   "search.exclude": { "out/**": true },
   "files.watcherExclude": { "**/out/**": true, "**/*.tmp": true }
 }

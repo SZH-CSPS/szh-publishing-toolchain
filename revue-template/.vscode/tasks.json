@@ -2,13 +2,11 @@
   "version": "2.0.0",
   "tasks": [
     {
-      // Régénère le PDF. Déclenchée à la sauvegarde (triggertaskonsave),
-      // par Ctrl+Maj+B (build par défaut) et par Ctrl+E.
+      // Régénère le PDF dans WSL. Brique de base (ne montre pas l'aperçu).
       "label": "Aperçu / Export PDF",
       "type": "process",                 // pas de shell Windows -> aucun souci de guillemets
       "command": "wsl.exe",
       "args": ["-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--", "make", "pdf"],
-      "group": { "kind": "build", "isDefault": true },
       "presentation": {
         "reveal": "silent",
         "showReuseMessage": false,
@@ -18,7 +16,28 @@
       "problemMatcher": []
     },
     {
-      // Démarre la VM WSL à l'ouverture du dossier -> évite le délai à froid au 1er Ctrl+S.
+      // Ouvre / rafraîchit l'aperçu dans SumatraPDF (NE VERROUILLE PAS le fichier,
+      // contrairement à l'aperçu intégré -> l'écriture du PDF n'échoue jamais).
+      // Chemin portable entre utilisateurs via %LOCALAPPDATA%.
+      "label": "Aperçu (SumatraPDF)",
+      "type": "process",
+      "command": "${env:LOCALAPPDATA}\\SumatraPDF\\SumatraPDF.exe",
+      "args": ["-reuse-instance", "${workspaceFolder}\\out\\revue.pdf"],
+      "presentation": { "reveal": "never", "panel": "shared" },
+      "problemMatcher": []
+    },
+    {
+      // Build PUIS aperçu, dans l'ordre : "sequence" attend la fin du build avant
+      // de (re)lancer SumatraPDF sur le PDF à jour. Résout le souci de timing async.
+      // = tâche de build par défaut -> lancée par Ctrl+E et par Ctrl+S.
+      "label": "Build + Aperçu",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Aperçu / Export PDF", "Aperçu (SumatraPDF)"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      // Démarre la VM WSL à l'ouverture du dossier -> évite le délai à froid au 1er build.
       "label": "Préchauffer WSL",
       "type": "process",
       "command": "wsl.exe",

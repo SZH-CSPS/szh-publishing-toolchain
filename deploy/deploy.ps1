@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Déploiement idempotent de l'environnement de rédaction SZH/CSPS (Option A) sur un poste Windows.
   À lancer en administrateur :  powershell -ExecutionPolicy Bypass -File .\deploy.ps1
@@ -17,11 +17,8 @@ param(
 #region ---- PARAMÈTRES (adapter) -----------------------------------------------
 $Repo            = 'SZH-CSPS/szh-publishing-toolchain'           # dépôt GitHub ; Releases = rootfs
 $DistroName      = 'SZH-Publishing'
-$TargetVersion   = '2026.06.1'                                   # = tag GitHub sans le « v » = DISTRO_VERSION
+$TargetVersion   = 'latest'                                      # 'latest' ou tag sans le « v », ex. '2026.06.1'
 $InstallDir      = 'C:\ProgramData\SZH\WSL\SZH-Publishing'
-$RootfsName      = "szh-publishing-rootfs-$TargetVersion.tar"
-$RootfsUrl       = "https://github.com/$Repo/releases/download/v$TargetVersion/$RootfsName"
-$RootfsShaUrl    = "$RootfsUrl.sha256"
 $VsixDir         = "$PSScriptRoot\vsix"
 $VSCodiumWinget  = 'VSCodium.VSCodium'
 $UserCfgSrc      = "$PSScriptRoot\..\vscodium-user"
@@ -33,6 +30,47 @@ $ErrorActionPreference = 'Stop'
 function Info($m){ Write-Host "[deploy] $m" -ForegroundColor Cyan }
 function Warn($m){ Write-Host "[deploy] $m" -ForegroundColor Yellow }
 
+# Téléchargement en streaming avec barre de progression (pourcentage + Mo).
+# Compatible Windows PowerShell 5.1 et PowerShell 7. Gère le header Authorization (dépôt privé).
+function Get-FileWithProgress {
+  param([string]$Uri, [string]$OutFile, [hashtable]$Headers)
+  Add-Type -AssemblyName System.Net.Http
+  $client = [System.Net.Http.HttpClient]::new()
+  $client.Timeout = [TimeSpan]::FromHours(1)
+  if ($Headers) { foreach ($k in $Headers.Keys) { $client.DefaultRequestHeaders.Add($k, $Headers[$k]) } }
+  $name = [System.IO.Path]::GetFileName($OutFile)
+  $resp = $null; $in = $null; $out = $null
+  try {
+    $resp = $client.GetAsync($Uri, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+    $resp.EnsureSuccessStatusCode() | Out-Null
+    $total = $resp.Content.Headers.ContentLength
+    $in  = $resp.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+    $out = [System.IO.File]::Create($OutFile)
+    $buffer = New-Object byte[] (1MB)
+    $sum = 0; $lastPct = -1
+    while (($read = $in.Read($buffer, 0, $buffer.Length)) -gt 0) {
+      $out.Write($buffer, 0, $read)
+      $sum += $read
+      if ($total) {
+        $pct = [int](($sum / $total) * 100)
+        if ($pct -ne $lastPct) {
+          $lastPct = $pct
+          Write-Progress -Activity "Téléchargement $name" `
+            -Status ("{0:N1} / {1:N1} Mo" -f ($sum/1MB), ($total/1MB)) -PercentComplete $pct
+        }
+      } else {
+        Write-Progress -Activity "Téléchargement $name" -Status ("{0:N1} Mo" -f ($sum/1MB))
+      }
+    }
+  } finally {
+    if ($out)  { $out.Dispose() }
+    if ($in)   { $in.Dispose() }
+    if ($resp) { $resp.Dispose() }
+    $client.Dispose()
+    Write-Progress -Activity "Téléchargement $name" -Completed
+  }
+}
+
 # 0. Admin requis
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
         ).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
@@ -42,8 +80,19 @@ New-Item -ItemType Directory -Force -Path $Staging | Out-Null
 $headers = @{}
 if ($GhToken) { $headers['Authorization'] = "Bearer $GhToken" }   # dépôt privé
 
+# Résolution de la version cible
+if ($TargetVersion -eq 'latest') {
+  Info "Résolution de la dernière release GitHub..."
+  $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -Headers $headers
+  $TargetVersion = $rel.tag_name -replace '^v', ''
+  Info "Version cible : $TargetVersion"
+}
+$RootfsName   = "szh-publishing-rootfs-$TargetVersion.tar"
+$RootfsUrl    = "https://github.com/$Repo/releases/download/v$TargetVersion/$RootfsName"
+$RootfsShaUrl = "$RootfsUrl.sha256"
+
 # Résolution robuste de wsl.exe (peut manquer du PATH ; cas 32 bits -> sysnative)
-$Wsl = (Get-Command wsl.exe -ErrorAction SilentlyContinue)?.Source
+$Wsl = (Get-Command wsl.exe -ErrorAction SilentlyContinue).Source
 if (-not $Wsl) { foreach ($p in "$env:WINDIR\System32\wsl.exe","$env:WINDIR\sysnative\wsl.exe") { if (Test-Path $p) { $Wsl = $p; break } } }
 if (-not $Wsl) { throw "wsl.exe introuvable." }
 
@@ -69,7 +118,7 @@ if ($current -ne $TargetVersion) {
   Info "Distro absente/obsolète ($current -> $TargetVersion). Import du rootfs."
   $tar = Join-Path $Staging $RootfsName
   Info "Téléchargement du rootfs depuis la Release GitHub"
-  Invoke-WebRequest -Uri $RootfsUrl    -Headers $headers -OutFile $tar
+  Get-FileWithProgress -Uri $RootfsUrl -Headers $headers -OutFile $tar
   $shaFile = "$tar.sha256"
   Invoke-WebRequest -Uri $RootfsShaUrl -Headers $headers -OutFile $shaFile
   $expected = ((Get-Content $shaFile -Raw) -split '\s+')[0].ToUpper()   # "<hash>  <nom>"
@@ -90,11 +139,11 @@ if ($current -ne $TargetVersion) {
 
 # 3. VSCodium présent + épinglé ?
 Info "Vérification de VSCodium"
-$codium = (Get-Command codium -ErrorAction SilentlyContinue)?.Source
+$codium = (Get-Command codium -ErrorAction SilentlyContinue).Source
 if (-not $codium) {
   Info "Installation de VSCodium (winget)"
   winget install --id $VSCodiumWinget -e --accept-source-agreements --accept-package-agreements
-  $codium = (Get-Command codium -ErrorAction SilentlyContinue)?.Source
+  $codium = (Get-Command codium -ErrorAction SilentlyContinue).Source
   if (-not $codium) { foreach ($p in "$env:ProgramFiles\VSCodium\bin\codium.cmd","$env:LOCALAPPDATA\Programs\VSCodium\bin\codium.cmd") { if (Test-Path $p) { $codium=$p; break } } }
 }
 if (-not $codium) { throw "codium introuvable après installation." }
