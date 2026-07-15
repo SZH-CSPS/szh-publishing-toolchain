@@ -14,10 +14,12 @@
 // G1 (D37) : formulaire « Méta-données du numéro » (webview szh.metadonnees) qui
 //   réécrit ausgabe.yaml — sérialiseur maison, lignes non gérées préservées,
 //   écriture atomique.
+// G3 (D40) : « Supprimer l'article » (szh.supprimerArticle) — confirmation MODALE
+//   obligatoire, puis rm de articles/<slug>/ ET out/<slug>/ (onglets fermés avant).
 //
-// Écritures autorisées : la COPIE des .docx choisis vers articles-word/ (S3) et
-// ausgabe.yaml (G1). Tout le reste est en lecture seule (ouverture/lancement de
-// tâche uniquement).
+// Écritures autorisées : la COPIE des .docx choisis vers articles-word/ (S3),
+// ausgabe.yaml (G1) et la SUPPRESSION confirmée d'un article (G3). Tout le reste
+// est en lecture seule (ouverture/lancement de tâche uniquement).
 // Posture szh-apercu : JavaScript pur, zéro dépendance, API VS Code ^1.75.
 'use strict';
 
@@ -380,6 +382,60 @@ async function importerWord(fournisseur, rafraichirTout) {
   await lancerConversion(fournisseur, rafraichirTout);
 }
 
+// ---- Suppression d'article (G3, D40) ---------------------------------------------
+
+// Ferme les onglets dont le fichier vit sous `dossier` (comparaison insensible à la
+// casse — système de fichiers Windows) : un onglet ouvert sur un fichier supprimé
+// resterait sinon en « fantôme » avec une erreur à la première interaction.
+async function fermerOngletsSous(dossier) {
+  const prefixe = (dossier + path.sep).toLowerCase();
+  const aFermer = [];
+  for (const groupe of vscode.window.tabGroups.all) {
+    for (const onglet of groupe.tabs) {
+      const entree = onglet.input;
+      if (entree && entree.uri && entree.uri.fsPath &&
+          entree.uri.fsPath.toLowerCase().indexOf(prefixe) === 0) {
+        aFermer.push(onglet);
+      }
+    }
+  }
+  if (aFermer.length > 0) {
+    try { await vscode.window.tabGroups.close(aFermer); } catch (e) { /* onglet déjà fermé */ }
+  }
+}
+
+// Première action DESTRUCTIVE du cockpit : confirmation modale obligatoire, nommant
+// l'article (D40, risque R6) — jamais de suppression silencieuse.
+async function supprimerArticle(fournisseur, rafraichirTout, item) {
+  const racine = fournisseur.racine;
+  if (!racine || !item || !item.slug) { return; }
+  const slug = item.slug;
+  // Pas de suppression pendant un build/import : make pourrait recréer out/<slug>
+  // ou lire un dossier à moitié effacé.
+  if (buildEnCours || importEnCours) {
+    vscode.window.setStatusBarMessage('Compilation ou import en cours — réessayez ensuite.', 3000);
+    return;
+  }
+  const reponse = await vscode.window.showWarningMessage(
+    'Supprimer l’article « ' + slug + ' » et son PDF ?',
+    { modal: true, detail: 'Les dossiers articles/' + slug + ' et out/' + slug + ' seront définitivement effacés.\nAction irréversible.' },
+    'Supprimer'
+  );
+  if (reponse !== 'Supprimer') { return; }         // annulé : rien n'est touché
+  const dossierArticle = path.join(racine, 'articles', slug);
+  const dossierSortie = path.join(racine, 'out', slug);
+  try {
+    await fermerOngletsSous(dossierArticle);
+    await fermerOngletsSous(dossierSortie);
+    fs.rmSync(dossierArticle, { recursive: true, force: true });
+    fs.rmSync(dossierSortie, { recursive: true, force: true });
+    vscode.window.setStatusBarMessage('Article « ' + slug + ' » supprimé.', 3000);
+  } catch (e) {
+    vscode.window.showErrorMessage('Suppression incomplète de « ' + slug + ' » : ' + e.message);
+  }
+  rafraichirTout();
+}
+
 // ---- Méta-données du numéro (G1, D37) --------------------------------------------
 //
 // ausgabe.yaml est un YAML PLAT (clé: valeur, une par ligne). Pas de lib YAML :
@@ -672,6 +728,7 @@ function activate(context) {
     vscode.commands.registerCommand('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.ouvrirPdf', (item) => ouvrirPdf(fournisseur, item)),
     vscode.commands.registerCommand('szh.compiler', () => compiler(fournisseur)),
+    vscode.commands.registerCommand('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte)
   );
 

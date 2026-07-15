@@ -118,7 +118,7 @@ indépendant ; puis G3, G5, G2.
   déjà converti → il **reste** (⚠), l'import le signale « ignoré » sans le supprimer.
 
 ### G3 — Supprimer un article *(taille S)*
-- [ ] Commande `szh.supprimerArticle` (inline corbeille, `viewItem == article`) → `showWarningMessage`
+- [x] Commande `szh.supprimerArticle` (inline corbeille, `viewItem == article`) → `showWarningMessage`
       modal (« Supprimer « X » et son PDF ? Action irréversible. ») → `rm -rf articles/<slug>` +
       `out/<slug>` → refresh. Ferme proprement si des onglets du dossier étaient ouverts.
 - **Acceptation** : supprimer un article → dossiers `articles/X` et `out/X` disparus, article hors

@@ -55,6 +55,12 @@
         "title": "Méta-données du numéro",
         "category": "Revue SZH",
         "icon": "$(gear)"
+      },
+      {
+        "command": "szh.supprimerArticle",
+        "title": "Supprimer l’article",
+        "category": "Revue SZH",
+        "icon": "$(trash)"
       }
     ],
     "menus": {
@@ -85,6 +91,11 @@
           "command": "szh.compiler",
           "when": "view == szhCockpitVue && viewItem == article",
           "group": "inline@2"
+        },
+        {
+          "command": "szh.supprimerArticle",
+          "when": "view == szhCockpitVue && viewItem == article",
+          "group": "inline@3"
         },
         {
           "command": "szh.convertirEnAttente",
