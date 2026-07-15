@@ -132,6 +132,13 @@ avant chaque commit reste la règle.
 - **Acceptation** : depuis la barre latérale uniquement — importer 2 docx, voir la notification,
   les articles apparaître, et `articles-word/` ne contenir que `_convertis/`.
 
+**Journal S3 (gate du 2026-07-15)** — S3 implémentée (commit `1ed9737`), revue et validée ;
+test GUI Robin OK (import 2 docx, notification, tooltip « déjà converti », annulation).
+Chemin « conflit » (modale Remplacer/Ignorer) relu mais non testé en GUI (conversion trop
+rapide pour créer le conflit) — accepté. Slugifieur JS conforme au Makefile (divergence
+documentée sur symboles exotiques, sans effet réel). Nit watchers S2 corrigé.
+Pour S5 : supprimer `media/revue.svg` (icône de conteneur abandonnée en S2.1).
+
 ### S4 — Actions d'article *(taille S ; dépend S2)*
 - [ ] Items article : boutons inline « Ouvrir le PDF » (`out/<slug>/<slug>.pdf` via `pdf.preview`,
       colonne Beside — réutiliser le code szh-apercu) et « Compiler » (tâche build existante).
