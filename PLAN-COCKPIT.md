@@ -225,6 +225,31 @@ szh-apercu D26`).
 - **Vérification S1 poste réel** : la revue `test` (20 articles convertis + PDF compilés via le
   pipeline déployé) couvre de fait le rendu WeasyPrint — à consigner au journal S5 de gate.
 
+**Journal S5 (gate du 2026-07-15)** — S5 implémentée (commits `e51100b` livraison + `a098e85`
+correctif szh-apercu, séparation des concerns respectée), revue et validée. Vérifications
+indépendantes au gate : YAML de `release.yml` re-validé (ruby du rootfs WSL) ; syntaxe + JSON
+des DEUX extensions OK (szh-apercu 0.1.1, szh-cockpit 0.1.0, zéro dépendance) ;
+`update.ps1` (inchangé) boucle génériquement sur `manifest.vsix` → le cockpit s'installera
+sans modification ; `media/revue.svg` bien supprimé ; journaux S1–S4 intacts ; résiduels D34
+NON committés (STOP respecté — le cochage D35/D36 attend le commit dédié D34–D36 de Robin).
+**Déviation acceptée — pas d'entrée `vsix.lock`** : vsix.lock n'épingle que les VSIX tiers
+téléchargés (URL `source` + sha figé) ; szh-apercu n'y a jamais figuré — les extensions maison
+passent par le sha256 calculé au build et écrit dans `manifest.json`, vérifié par update.ps1.
+C'est le texte du plan (§4 S5 « entrée dans vsix.lock ») qui était inexact ; amendé par la
+note ci-dessus. **Correctif szh-apercu/D26 accepté** (annoncé au journal S4) : re-vérification
+headless indépendante au gate — **10 contrôles, 10 OK** (article D26 → bon PDF, Beside +
+preserveFocus ; rien pour .md non homonyme, structure à plat, autre tâche, build en échec,
+PDF absent, déjà ouvert, non-markdown) — le harnais « 7/7 » de l'implémenteur n'était de
+nouveau pas committé. Correctif de gate (`be1bb36`) : ton du userdoc harmonisé (impersonnel).
+Déviation acceptée : packaging `vsce` non exécutable localement (pas de node/npm sur le
+poste) — chemin CI strictement identique à szh-apercu, éprouvé depuis v2026.07.3.
+Vérification S1 « poste réel » : couverte de fait par la revue test (20 articles réels
+convertis, PDF WeasyPrint compilés sur le rootfs déployé) ; le corpus nommé « 6 articles
+2026-01 » du journal S1 reste à déclarer couvert (ou remplacé) par Robin.
+**ACCEPTATION FINALE EN ATTENTE** : tag de release → mise à jour auto du poste pilote →
+scénario « revue vierge → 2 docx importés → 2 PDF ouverts » par un non-technicien, < 5 min.
+Le chantier cockpit n'est clos qu'après ce test pilote.
+
 ## 5. Definition of Done (chaque tranche)
 - Testé sur la revue réelle 2026-01 (pas seulement sur fixture) ; S1 : les 6 articles.
 - Aucun nouveau binaire dans le rootfs ; aucune dépendance npm ; PS 5.1 propre.
