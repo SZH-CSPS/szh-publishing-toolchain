@@ -184,19 +184,14 @@ class FournisseurRevue {
 
 // ---- PDF (S4) : ouverture calquée sur szh-apercu -------------------------------
 
-// Test « déjà ouvert » PARTAGÉ avec szh-apercu : évite un 2ᵉ onglet.
-function pdfDejaOuvert(uri) {
-  for (const groupe of vscode.window.tabGroups.all) {
-    for (const onglet of groupe.tabs) {
-      const entree = onglet.input;
-      if (entree && entree.uri && entree.uri.fsPath === uri.fsPath) { return true; }
-    }
-  }
-  return false;
-}
-
+// L'éditeur pdf.preview (tomoki1207.pdf) est MONO-INSTANCE (pas de
+// supportsMultipleEditorsPerDocument) : openWith RÉVÈLE l'onglet existant sans le
+// dupliquer. On appelle donc openWith même si le PDF est déjà ouvert -> « Ouvrir le
+// PDF » ramène l'aperçu au premier plan. preserveFocus:true : on révèle sans voler
+// le focus de l'éditeur. (C'était le rôle du test « déjà ouvert » retiré ici : il
+// empêchait le rappel au premier plan sans rien apporter, l'anti-doublon étant déjà
+// garanti par le mono-instance.)
 async function ouvrirApercuPdf(uri) {
-  if (pdfDejaOuvert(uri)) { return; }   // déjà ouvert -> rien (pas de double-ouverture)
   if (vscode.extensions.getExtension(EXT_PDF)) {
     await vscode.commands.executeCommand('vscode.openWith', uri, VUE_PDF, {
       viewColumn: vscode.ViewColumn.Beside,
@@ -265,10 +260,8 @@ async function ouvrirPdf(fournisseur, item) {
       vscode.window.showErrorMessage('La compilation a échoué. Ouvrez le panneau « ' + NOM_TACHE_BUILD + ' » pour le détail.');
       return;
     }
-    // szh-apercu ouvre déjà le PDF de l'article ACTIF après un build réussi ; on lui
-    // laisse un court instant pour enregistrer son onglet, puis le test « déjà ouvert »
-    // évite le 2ᵉ onglet si c'était le même article.
-    await new Promise((r) => setTimeout(r, 250));
+    // pdf.preview étant mono-instance, ouvrir ici révèle l'onglet même si szh-apercu
+    // l'a déjà ouvert (article actif) — aucun doublon possible.
     if (fs.existsSync(pdf.fsPath)) { await ouvrirApercuPdf(pdf); }
     else { vscode.window.showErrorMessage('PDF introuvable après compilation : « ' + slug + ' ».'); }
   } finally {
