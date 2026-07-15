@@ -146,6 +146,25 @@ Pour S5 : supprimer `media/revue.svg` (icône de conteneur abandonnée en S2.1).
 - **Acceptation** : clic PDF sur article compilé → aperçu à droite ; sur article jamais compilé →
   build puis aperçu ; jamais de vol de focus de l'éditeur.
 
+**Journal S4 (gate du 2026-07-15)** — S4 implémentée (commit `82421c5`), périmètre respecté
+(extension seule ; pipeline et szh-apercu intacts), syntaxe et package.json vérifiés, zéro
+dépendance, aucune écriture disque en S4, labels de tâches exacts. Le harnais headless
+« 19/19 PASS » annoncé au commit n'était pas committé → re-vérification indépendante au gate
+(vrai `extension.js` + vscode factice, 16 contrôles, 16 OK) : openWith `pdf.preview`
+Beside + preserveFocus sans build si le PDF existe ; pas de 2ᵉ onglet si déjà ouvert ;
+absent → build → ouverture ; build échoué → erreur sobre, rien ouvert ; garde double-Compiler
+(un seul build + « déjà en cours ») ; Compiler n'ouvre rien ; repli openExternal si
+tomoki1207.pdf absente ; description « Word en attente (n) » / absente à 0.
+Déviations acceptées : watcher `out/**` (refresh quand un PDF apparaît — cohérent D21) ;
+« Compiler » lance la tâche globale (`make all`, incrémental — la tâche user est globale, pas
+par article) ; délai 250 ms + re-test avant ouverture post-build (défense anti double-onglet).
+**Découverte hors périmètre (rien « au passage », à planifier)** : szh-apercu (D24, jamais
+retouchée) teste `articles/<nom>.md` à 2 segments — la structure D26 `articles/<slug>/<slug>.md`
+ne matche plus jamais, donc l'aperçu auto après Ctrl+S est mort depuis D26 ; correctif d'une
+ligne à caser (S5 ou correctif séparé, décision Robin). Conséquence : le délai 250 ms ci-dessus
+est sans objet tant que szh-apercu n'est pas réparé (inoffensif, redevient utile ensuite).
+Test GUI Robin : EN ATTENTE (scénario remis) — le gate S4 n'est clos qu'à son feu vert.
+
 ### S5 — Livraison flotte *(taille S ; dépend S2–S4)*
 - [ ] `release.yml` : packager `szh-cockpit` comme szh-apercu (vsce/ovsx package) ; entrée dans
       `windows/vsix.lock` (id, version, sha256) ; VSIX en asset de release.
