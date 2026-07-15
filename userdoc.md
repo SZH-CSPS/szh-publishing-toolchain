@@ -34,7 +34,7 @@ ouvrira automatiquement toute la revue (éditeur + aperçu PDF à jour).
 
 ## La barre « Revue » (tout gérer sans l'explorateur)
 
-Quand tu ouvres une revue, une barre **« Revue SZH »** apparaît dans le panneau de
+À l'ouverture d'une revue, une barre **« Revue SZH »** apparaît dans le panneau de
 gauche (l'Explorateur). Elle regroupe tout le travail courant, sans toucher aux
 fichiers ni au terminal.
 
@@ -49,7 +49,7 @@ Elle a **deux sections** :
   - **▷ Compiler** — régénère le PDF.
 - **Word en attente (n)** — les fichiers Word déposés mais pas encore convertis ; le
   nombre entre parenthèses est le compte. Un ⚠ « déjà converti » signale un Word dont
-  l'article existe déjà (renomme le fichier si c'est une nouvelle version).
+  l'article existe déjà (renommer le fichier si c'est une nouvelle version).
 
 En haut de la barre, deux boutons :
 
