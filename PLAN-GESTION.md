@@ -137,12 +137,12 @@ indépendant ; puis G3, G5, G2.
   par une autre image de même nom → build → le PDF montre la nouvelle image.
 
 ### G2 — Créer / ouvrir une revue : lanceur PowerShell *(taille S ; indépendant de G1 ; PS 5.1)*
-- [ ] `windows/open-revue.ps1` : ajouter un bouton **« Nouvelle revue… »** dans la fenêtre WinForms
+- [x] `windows/open-revue.ps1` : ajouter un bouton **« Nouvelle revue… »** dans la fenêtre WinForms
       (à côté de « Ouvrir » / « Annuler ») → demande dossier parent + nom (ou un dossier) → appelle
       `new-revue.ps1 -Dossier <…>` → ouvre la revue créée dans VSCodium.
-- [ ] **Rien dans l'extension** (pas de commande create/open). `new-revue.ps1` inchangé (déjà :
+- [x] **Rien dans l'extension** (pas de commande create/open). `new-revue.ps1` inchangé (déjà :
       scaffold depuis le template + « Ouvrir la revue.lnk » + enregistrement pour le lanceur).
-- [ ] Garde-fous PS 5.1 (pas de `?.`/`??`/`&&`), français, BOM UTF-8 + CRLF comme les autres `.ps1`.
+- [x] Garde-fous PS 5.1 (pas de `?.`/`??`/`&&`), français, BOM UTF-8 + CRLF comme les autres `.ps1`.
 - **Acceptation** : menu Démarrer → « Revues SZH » → « Nouvelle revue… » → saisir un nom → une revue
   valide est créée, enregistrée et ouverte ; ouvrir une revue existante marche comme avant.
 

@@ -50,7 +50,7 @@ szh-publishing-toolchain/
 │   └── snippets/markdown.json # blocs de style :::
 ├── vscodium-extension/       # extensions maison — VSIX packagés par la CI, sha256 -> manifest.json
 │   ├── szh-apercu/           #   (D24) aperçu PDF auto en vue scindée après compilation
-│   └── szh-cockpit/          #   (D36) barre latérale « Revue SZH » (articles, Word, PDF)
+│   └── szh-cockpit/          #   (D36) barre latérale « Revue SZH » (articles, Word, PDF, méta-données, images)
 └── revue-template/           # copié dans le dossier OneDrive de CHAQUE revue (contenu seul)
     ├── BIENVENUE.md · ausgabe.yaml
     ├── articles/             # les .md de la revue
@@ -110,8 +110,12 @@ Bumper la version → pousser le tag → la CI republie la Release. Les postes d
 
 La barre latérale **« Revue SZH »** (extension `szh-cockpit`) rassemble ces gestes sans
 explorateur : sections *Articles* / *Word en attente (n)*, boutons **➕ Importer**,
-**▶▶ Convertir les Word en attente**, **👁 Ouvrir le PDF**, **▷ Compiler**. Voir
-[`userdoc.md`](userdoc.md).
+**▶▶ Convertir les Word en attente**, **👁 Ouvrir le PDF**, **▷ Compiler**, **⚙ Méta-données
+du numéro** (formulaire → `ausgabe.yaml`), **🗑 Supprimer l'article** (confirmation), et par
+article déplié : ses **images** (dimensions + poids, **Remplacer** à nom conservé). Après
+conversion réussie, le `.docx` source est **supprimé** d'`articles-word/` (D39) ; un fichier
+« déjà converti » y reste (⚠). « **Nouvelle revue…** » se crée depuis le lanceur
+**Revues SZH** du menu Démarrer (D38). Voir [`userdoc.md`](userdoc.md).
 
 ### Raccourcis clavier (déployés par `vscodium-user/keybindings.json` + extensions épinglées)
 

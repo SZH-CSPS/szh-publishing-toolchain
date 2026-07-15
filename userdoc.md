@@ -43,18 +43,31 @@ fichiers ni au terminal.
 Elle a **deux sections** :
 
 - **Articles** — un article par ligne. **Clic** = ouvrir le texte (à gauche).
-  Au survol d'un article, deux boutons apparaissent à droite :
+  Au survol d'un article, trois boutons apparaissent à droite :
   - **👁 Ouvrir le PDF** — affiche l'aperçu à droite (le compile d'abord s'il n'existe
     pas encore) ;
-  - **▷ Compiler** — régénère le PDF.
+  - **▷ Compiler** — régénère le PDF ;
+  - **🗑 Supprimer l'article** — efface l'article **et** son PDF, après une demande de
+    confirmation explicite (l'action est irréversible : rien n'est supprimé sans accord).
+
+  Si l'article contient des **images**, une petite flèche permet de le **déplier** : chaque
+  image apparaît avec ses dimensions et son poids (p. ex. « 1200 × 800 · 245 Ko »).
+  **Clic** sur une image = l'afficher. Le bouton **Remplacer** au survol échange le fichier
+  contre une autre image **en gardant le même nom** — le texte de l'article n'a pas à changer,
+  la nouvelle image apparaît à la compilation suivante.
 - **Word en attente (n)** — les fichiers Word déposés mais pas encore convertis ; le
   nombre entre parenthèses est le compte. Un ⚠ « déjà converti » signale un Word dont
   l'article existe déjà (renommer le fichier si c'est une nouvelle version).
+  Après une conversion réussie, le fichier Word **disparaît de ce dossier** : l'article
+  (`.md`) devient l'unique copie de travail — c'est voulu, plus de doublons.
 
-En haut de la barre, deux boutons :
+En haut de la barre, trois boutons :
 
 - **➕ Importer des Word** — ouvre un sélecteur pour **choisir des `.docx` sur le disque** ;
   ils sont copiés dans la revue puis convertis.
+- **⚙ Méta-données du numéro** — un petit formulaire (titre du dossier, nom de la revue,
+  volume, numéro, date, langue) ; **Enregistrer** met à jour la revue sans rien toucher
+  d'autre. Aucun fichier technique à ouvrir.
 - **⟳ Rafraîchir** — recharge la liste (utile si OneDrive a tardé à synchroniser).
 
 Et sur la section « Word en attente », un bouton :
@@ -63,13 +76,23 @@ Et sur la section « Word en attente », un bouton :
   déposés dans le dossier (le cas le plus courant : on glisse les Word dans la revue via
   OneDrive, puis on clique ici).
 
-[capture : survol d'un article montrant « Ouvrir le PDF » et « Compiler »]
+[capture : survol d'un article montrant « Ouvrir le PDF », « Compiler » et « Supprimer »]
 [capture : la section « Word en attente (2) » avec le bouton « Convertir »]
+[capture : le formulaire « Méta-données du numéro »]
+[capture : un article déplié montrant ses images et le bouton « Remplacer »]
 
 ### Le geste type
 
 1. Glisser les `.docx` finalisés dans le dossier **articles-word** de la revue (ou via **➕**).
 2. Dans la barre « Revue », cliquer **▶▶ Convertir les Word en attente** → une notification
-   « N article(s) importé(s) » confirme.
+   « N article(s) importé(s) » confirme (les `.docx` convertis sont retirés du dossier).
 3. Cliquer un article, puis **👁** pour voir son PDF à droite. Ensuite, chaque **Ctrl + S**
    régénère l'aperçu.
+
+## Créer une nouvelle revue
+
+Menu Démarrer → **« Revues SZH »** → bouton **« Nouvelle revue… »** (en bas à gauche) :
+choisir l'emplacement (le dossier `OneDrive\Revues` est proposé), donner un nom (p. ex.
+`2026-02`), et la revue s'ouvre toute prête — dossiers `articles-word` et `articles`,
+raccourci « Ouvrir la revue » inclus. Elle apparaîtra ensuite dans la liste du lanceur
+comme les autres.
