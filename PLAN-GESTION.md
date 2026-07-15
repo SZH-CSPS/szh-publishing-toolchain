@@ -112,7 +112,7 @@ indépendant ; puis G3, G5, G2.
   formulaire ré-affiche les valeurs. Vérif headless du sérialiseur (round-trip + préservation).
 
 ### G4 — Import : suppression du docx *(taille XS ; pipeline)*
-- [ ] `pipeline/Makefile` cible `import` : `rm -f` au lieu de `mv … _convertis/` sur succès ; ne
+- [x] `pipeline/Makefile` cible `import` : `rm -f` au lieu de `mv … _convertis/` sur succès ; ne
       plus créer `_convertis/` ; « déjà converti (ignoré) » **laisse** le docx. Commentaires à jour.
 - **Acceptation** : importer 2 docx → 2 articles + `articles-word/` **vide** ; re-déposer un docx
   déjà converti → il **reste** (⚠), l'import le signale « ignoré » sans le supprimer.

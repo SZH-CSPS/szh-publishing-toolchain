@@ -38,9 +38,8 @@ HTMLS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).html)
 # Sans ceci, make considérerait les .html comme intermédiaires et les SUPPRIMERAIT.
 .SECONDARY: $(HTMLS)
 
-# Import Word/LibreOffice
+# Import Word (D35) — le .docx source est SUPPRIMÉ après conversion réussie (D39).
 WORD_DIR   := articles-word
-DONE_DIR   := $(WORD_DIR)/_convertis
 
 .PHONY: all pdf import clean verifie-dossier
 .SECONDEXPANSION:
@@ -84,9 +83,11 @@ $(OUT)/%.pdf: $(OUT)/%.html
 	$(WEASYPRINT) $< '$(dir $@)~$$$(notdir $@)'
 	mv -f '$(dir $@)~$$$(notdir $@)' $@
 
-# Conversion des Word déposés dans articles-word/ (D12, D26, D35) :
+# Conversion des Word déposés dans articles-word/ (D12, D26, D35, D39) :
 #  - migre au passage les anciens articles « à plat » vers articles/<slug>/ ;
-#  - jamais d'écrasement d'un article existant ; originaux -> _convertis/ ;
+#  - jamais d'écrasement d'un article existant (D12) ;
+#  - converti avec succès -> le .docx source est SUPPRIMÉ (D39, plus de _convertis/) ;
+#    « déjà converti (ignoré) » ou échec -> le .docx RESTE dans articles-word/ ;
 #  - import simplifié : structure pandoc nue + placeholders {{TABELLE NN}} (D35).
 #  - .docx uniquement (D35 : un seul chemin d'import).
 import:
@@ -108,7 +109,7 @@ import:
 	files=("$(WORD_DIR)"/*.docx); \
 	shopt -u nocaseglob; \
 	[ $${#files[@]} -gt 0 ] || exit 0; \
-	mkdir -p articles "$(DONE_DIR)"; \
+	mkdir -p articles; \
 	ok=0; deja=0; rate=0; \
 	for f in "$${files[@]}"; do \
 	  nom=$$(basename "$$f"); slug="$${nom%.*}"; \
@@ -120,7 +121,7 @@ import:
 	    echo "[import] déjà converti (ignoré) : $$nom -> $$cible existe"; deja=$$((deja+1)); continue; \
 	  fi; \
 	  if bash "$(PIPELINE_DIR)/import-docx.sh" "$$f" "$$slug" "$(PIPELINE_DIR)"; then \
-	    mv -f "$$f" "$(DONE_DIR)/"; \
+	    rm -f "$$f"; \
 	    echo "[import] converti : $$nom -> $$cible"; ok=$$((ok+1)); \
 	  else \
 	    rm -rf "articles/$$slug"; \
