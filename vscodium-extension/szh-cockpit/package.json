@@ -49,6 +49,12 @@
         "title": "Convertir les Word en attente",
         "category": "Revue SZH",
         "icon": "$(run-all)"
+      },
+      {
+        "command": "szh.metadonnees",
+        "title": "Méta-données du numéro",
+        "category": "Revue SZH",
+        "icon": "$(gear)"
       }
     ],
     "menus": {
@@ -62,6 +68,11 @@
           "command": "szh.cockpit.rafraichir",
           "when": "view == szhCockpitVue",
           "group": "navigation@2"
+        },
+        {
+          "command": "szh.metadonnees",
+          "when": "view == szhCockpitVue",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [

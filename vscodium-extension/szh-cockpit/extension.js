@@ -11,15 +11,20 @@
 //   (szh.compiler). Ouverture du PDF calquée sur szh-apercu (pdf.preview,
 //   ViewColumn.Beside, preserveFocus, test « déjà ouvert » partagé pour éviter la
 //   double-ouverture). Jamais de vol de focus.
+// G1 (D37) : formulaire « Méta-données du numéro » (webview szh.metadonnees) qui
+//   réécrit ausgabe.yaml — sérialiseur maison, lignes non gérées préservées,
+//   écriture atomique.
 //
-// Seule écriture (S3) : la COPIE des .docx choisis vers articles-word/. S4 est en
-// lecture seule (ouverture/lancement de tâche uniquement).
+// Écritures autorisées : la COPIE des .docx choisis vers articles-word/ (S3) et
+// ausgabe.yaml (G1). Tout le reste est en lecture seule (ouverture/lancement de
+// tâche uniquement).
 // Posture szh-apercu : JavaScript pur, zéro dépendance, API VS Code ^1.75.
 'use strict';
 
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const CLE_CONTEXTE = 'szh.estRevue';
 const ID_VUE = 'szhCockpitVue';
@@ -375,6 +380,245 @@ async function importerWord(fournisseur, rafraichirTout) {
   await lancerConversion(fournisseur, rafraichirTout);
 }
 
+// ---- Méta-données du numéro (G1, D37) --------------------------------------------
+//
+// ausgabe.yaml est un YAML PLAT (clé: valeur, une par ligne). Pas de lib YAML :
+// un sérialiseur maison qui ne touche QUE les lignes des clés du schéma D37 —
+// toute autre ligne (commentaires, subtitle:, clés futures) est préservée
+// byte pour byte, fins de ligne (LF/CRLF) et BOM compris.
+
+const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang'];
+
+// Découpe la partie droite d'un « clé: reste » en { valeur, suite } — `suite` est
+// l'éventuel commentaire de fin de ligne, AVEC ses espaces de tête, restitué tel
+// quel à l'écriture. Gère les scalaires nus, « … » (échappes \" et \\) et '…'
+// (échappe ''). Un droit malformé est traité comme scalaire nu (best effort).
+function decouperValeurYaml(reste) {
+  reste = String(reste);
+  if (reste.startsWith('"')) {
+    let i = 1, fin = -1;
+    while (i < reste.length) {
+      if (reste[i] === '\\') { i += 2; continue; }
+      if (reste[i] === '"') { fin = i; break; }
+      i++;
+    }
+    if (fin !== -1 && /^\s*(#.*)?$/.test(reste.slice(fin + 1))) {
+      return {
+        valeur: reste.slice(1, fin).replace(/\\(["\\])/g, '$1'),
+        suite: reste.slice(fin + 1).replace(/\s+$/, '')
+      };
+    }
+  } else if (reste.startsWith("'")) {
+    const m = reste.match(/^'((?:[^']|'')*)'(\s*(?:#.*)?)$/);
+    if (m) { return { valeur: m[1].replace(/''/g, "'"), suite: m[2].replace(/\s+$/, '') }; }
+  }
+  // Scalaire nu : le commentaire commence à « espace(s) + # » (ou « # » en tête) ;
+  // toute la plage d'espaces fait partie de `suite` (alignement restitué tel quel).
+  let debutComm = -1;
+  if (reste.startsWith('#')) { debutComm = 0; }
+  else {
+    const m = reste.match(/\s+#/);
+    if (m) { debutComm = m.index; }
+  }
+  if (debutComm === -1) { return { valeur: reste.trim(), suite: '' }; }
+  return { valeur: reste.slice(0, debutComm).trim(), suite: reste.slice(debutComm).replace(/\s+$/, '') };
+}
+
+// Valeurs du schéma D37 actuellement dans le fichier (clés absentes : non définies).
+function analyserAusgabe(contenu) {
+  const valeurs = {};
+  for (const ligne of contenu.split(/\r?\n/)) {
+    const m = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!m || CLES_METADONNEES.indexOf(m[1]) === -1) { continue; }
+    if (!(m[1] in valeurs)) { valeurs[m[1]] = decouperValeurYaml(m[2]).valeur; }
+  }
+  return valeurs;
+}
+
+// Représentation YAML d'une valeur du formulaire. Tout est cité « "…" » (sûr pour
+// deux-points, dièses, guillemets, accents), SAUF `lang` : le Makefile lit cette
+// clé avec un sed qui ne comprend pas les guillemets (LANG_LUE) → jeton nu,
+// restreint à [a-zA-Z-] (le formulaire ne propose que fr/de/en/it).
+function formaterValeurYaml(cle, valeur) {
+  if (cle === 'lang') { return String(valeur).replace(/[^a-zA-Z-]/g, '') || 'fr'; }
+  return '"' + String(valeur).replace(/([\\"])/g, '\\$1') + '"';
+}
+
+// Réécrit `contenu` avec les clés de `modifies` : lignes existantes mises à jour
+// (commentaire de fin conservé), clés absentes ajoutées en fin de fichier (ordre
+// D37, sauf valeur vide : rien à ajouter). Aucune autre ligne n'est modifiée.
+function serialiserAusgabe(contenu, modifies) {
+  const eol = contenu.indexOf('\r\n') !== -1 ? '\r\n' : '\n';
+  const bom = contenu.charAt(0) === '\uFEFF' ? '\uFEFF' : '';
+  const corps = bom ? contenu.slice(1) : contenu;
+  const lignes = corps === '' ? [] : corps.split(/\r?\n/);
+  if (lignes.length > 0 && lignes[lignes.length - 1] === '') { lignes.pop(); }
+  const restantes = new Set(Object.keys(modifies));
+  const resultat = lignes.map((ligne) => {
+    const m = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!m || !restantes.has(m[1])) { return ligne; }
+    restantes.delete(m[1]);
+    // `suite` garde ses espaces de tête (restitution telle quelle de l'alignement
+    // du commentaire) ; s'il colle à la valeur (droit « "x"# c »), on intercale un espace.
+    const suite = decouperValeurYaml(m[2]).suite;
+    return m[1] + ': ' + formaterValeurYaml(m[1], modifies[m[1]]) + (suite ? (/^\s/.test(suite) ? suite : ' ' + suite) : '');
+  });
+  for (const cle of CLES_METADONNEES) {
+    if (!restantes.has(cle)) { continue; }
+    if (String(modifies[cle]) === '') { continue; }
+    resultat.push(cle + ': ' + formaterValeurYaml(cle, modifies[cle]));
+  }
+  return bom + resultat.join(eol) + (resultat.length > 0 ? eol : '');
+}
+
+// Écriture atomique : temporaire « ~$… » dans le même dossier (préfixe ignoré par
+// la synchro OneDrive, comme le PDF du Makefile) puis rename — jamais de fichier
+// à moitié écrit, même si l'éditeur est fermé en plein enregistrement.
+function ecrireAusgabeAtomique(chemin, contenu) {
+  const tmp = path.join(path.dirname(chemin), '~$' + path.basename(chemin));
+  try {
+    fs.writeFileSync(tmp, contenu, 'utf8');
+    fs.renameSync(tmp, chemin);
+  } finally {
+    try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
+  }
+}
+
+// Formulaire (webview) — CSP stricte : aucun réseau, styles inline, script à nonce.
+// Les valeurs ne sont PAS injectées dans le HTML : elles arrivent par postMessage
+// (le webview envoie « pret » au chargement), donc zéro échappement HTML à gérer.
+function htmlMetadonnees(nonce) {
+  return '<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="UTF-8">\n' +
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; script-src \'nonce-' + nonce + '\'">\n' +
+    '<title>Méta-données du numéro</title>\n' +
+    '<style>\n' +
+    'body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);\n' +
+    '  color: var(--vscode-foreground); background: var(--vscode-editor-background);\n' +
+    '  padding: 1rem 1.2rem; max-width: 34rem; }\n' +
+    'h1 { font-size: 1.15em; font-weight: 600; margin: 0 0 .25rem; }\n' +
+    'p.note { color: var(--vscode-descriptionForeground); margin: 0 0 1rem; font-size: .88em; }\n' +
+    'label { display: block; margin: .8rem 0 .25rem; font-weight: 600; font-size: .92em; }\n' +
+    'input, select { width: 100%; box-sizing: border-box; padding: .35em .5em; font: inherit;\n' +
+    '  color: var(--vscode-input-foreground); background: var(--vscode-input-background);\n' +
+    '  border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; }\n' +
+    'input:focus, select:focus { outline: 1px solid var(--vscode-focusBorder); }\n' +
+    '.indice { color: var(--vscode-descriptionForeground); font-size: .82em; margin-top: .2rem; }\n' +
+    'button { margin-top: 1.2rem; padding: .45em 1.1em; border: none; border-radius: 2px; font: inherit;\n' +
+    '  color: var(--vscode-button-foreground); background: var(--vscode-button-background); cursor: pointer; }\n' +
+    'button:hover { background: var(--vscode-button-hoverBackground); }\n' +
+    '#etat { margin-left: .8rem; font-size: .92em; color: var(--vscode-descriptionForeground); }\n' +
+    '</style>\n</head>\n<body>\n' +
+    '<h1>Méta-données du numéro</h1>\n' +
+    '<p class="note">Enregistrées dans <code>ausgabe.yaml</code> — seuls les champs modifiés sont réécrits, le reste du fichier est préservé.</p>\n' +
+    '<form id="formulaire">\n' +
+    '<label for="title">Titre du dossier thématique</label><input id="title" type="text">\n' +
+    '<label for="revue">Nom de la revue</label><input id="revue" type="text">\n' +
+    '<label for="volume">Volume</label><input id="volume" type="text">\n' +
+    '<label for="numero">Numéro</label><input id="numero" type="text">\n' +
+    '<label for="date">Date de publication</label><input id="date" type="date">\n' +
+    '<div class="indice" id="indiceDate" hidden></div>\n' +
+    '<label for="lang">Langue du numéro</label>\n' +
+    '<select id="lang"><option value="">(non définie)</option><option value="fr">français</option>' +
+    '<option value="de">allemand</option><option value="en">anglais</option><option value="it">italien</option></select>\n' +
+    '<button type="submit">Enregistrer</button><span id="etat" role="status"></span>\n' +
+    '</form>\n' +
+    '<script nonce="' + nonce + '">\n' +
+    '(function () {\n' +
+    "  'use strict';\n" +
+    '  const vscodeApi = acquireVsCodeApi();\n' +
+    "  const CLES = ['title', 'revue', 'volume', 'numero', 'date', 'lang'];\n" +
+    '  const modifies = new Set();\n' +
+    "  const etat = document.getElementById('etat');\n" +
+    '  function remplir(valeurs) {\n' +
+    '    for (const cle of CLES) {\n' +
+    '      const champ = document.getElementById(cle);\n' +
+    "      const v = valeurs[cle] === undefined ? '' : String(valeurs[cle]);\n" +
+    '      champ.value = v;\n' +
+    "      if (cle === 'date') {\n" +
+    "        const indice = document.getElementById('indiceDate');\n" +
+    '        if (v && champ.value !== v) {\n' +
+    "          indice.textContent = 'Valeur actuelle dans le fichier : « ' + v + ' » — choisir une date la remplacera.';\n" +
+    '          indice.hidden = false;\n' +
+    '        } else { indice.hidden = true; }\n' +
+    '      }\n' +
+    "      if (cle === 'lang' && champ.value !== v) { champ.value = ''; }\n" +
+    '    }\n' +
+    '    modifies.clear();\n' +
+    "    etat.textContent = '';\n" +
+    '  }\n' +
+    '  for (const cle of CLES) {\n' +
+    "    document.getElementById(cle).addEventListener('input', function () { modifies.add(cle); etat.textContent = ''; });\n" +
+    '  }\n' +
+    "  document.getElementById('formulaire').addEventListener('submit', function (e) {\n" +
+    '    e.preventDefault();\n' +
+    "    if (modifies.size === 0) { etat.textContent = 'Aucune modification.'; return; }\n" +
+    '    const envoi = {};\n' +
+    '    for (const cle of modifies) { envoi[cle] = document.getElementById(cle).value; }\n' +
+    "    vscodeApi.postMessage({ type: 'enregistrer', modifies: envoi });\n" +
+    '  });\n' +
+    "  window.addEventListener('message', function (e) {\n" +
+    '    const msg = e.data || {};\n' +
+    "    if (msg.type === 'valeurs') { remplir(msg.valeurs || {}); }\n" +
+    "    if (msg.type === 'enregistre') { modifies.clear(); etat.textContent = '✓ Enregistré'; }\n" +
+    "    if (msg.type === 'erreur') { etat.textContent = '⚠ ' + msg.message; }\n" +
+    '  });\n' +
+    "  vscodeApi.postMessage({ type: 'pret' });\n" +
+    '})();\n' +
+    '</script>\n</body>\n</html>\n';
+}
+
+let panneauMetadonnees = null;
+
+function envoyerValeursMetadonnees(panneau, chemin) {
+  let valeurs = {};
+  try { valeurs = analyserAusgabe(fs.readFileSync(chemin, 'utf8')); }
+  catch (e) { /* fichier illisible : formulaire vide */ }
+  panneau.webview.postMessage({ type: 'valeurs', valeurs: valeurs });
+}
+
+// Panneau singleton : rouvrir la commande RÉVÈLE le formulaire existant (valeurs
+// relues du disque) au lieu d'en empiler un deuxième. Colonne 1 = côté texte.
+function ouvrirMetadonnees(fournisseur) {
+  const racine = fournisseur.racine;
+  if (!racine) { return; }
+  const chemin = path.join(racine, 'ausgabe.yaml');
+  if (panneauMetadonnees) {
+    panneauMetadonnees.reveal(vscode.ViewColumn.One);
+    envoyerValeursMetadonnees(panneauMetadonnees, chemin);
+    return;
+  }
+  const panneau = vscode.window.createWebviewPanel(
+    'szhMetadonnees', 'Méta-données du numéro', vscode.ViewColumn.One,
+    { enableScripts: true, localResourceRoots: [] }
+  );
+  panneauMetadonnees = panneau;
+  panneau.onDidDispose(() => { if (panneauMetadonnees === panneau) { panneauMetadonnees = null; } });
+  panneau.webview.html = htmlMetadonnees(crypto.randomBytes(16).toString('hex'));
+  panneau.webview.onDidReceiveMessage((msg) => {
+    if (!msg) { return; }
+    if (msg.type === 'pret') { envoyerValeursMetadonnees(panneau, chemin); return; }
+    if (msg.type !== 'enregistrer') { return; }
+    // Seuls les champs MODIFIÉS arrivent : un champ que le formulaire n'a pas su
+    // afficher (ex. date « 2026 » dans un type=date) n'est jamais écrasé en douce.
+    const modifies = {};
+    for (const cle of CLES_METADONNEES) {
+      if (msg.modifies && typeof msg.modifies[cle] === 'string') {
+        modifies[cle] = msg.modifies[cle].replace(/[\r\n]+/g, ' ').slice(0, 500).trim();
+      }
+    }
+    if (Object.keys(modifies).length === 0) { return; }
+    try {
+      let contenu = '';
+      try { contenu = fs.readFileSync(chemin, 'utf8'); } catch (e) { /* absent : recréé plat */ }
+      ecrireAusgabeAtomique(chemin, serialiserAusgabe(contenu, modifies));
+      panneau.webview.postMessage({ type: 'enregistre' });
+      vscode.window.setStatusBarMessage('ausgabe.yaml enregistré.', 3000);
+    } catch (e) {
+      panneau.webview.postMessage({ type: 'erreur', message: 'Écriture impossible : ' + e.message });
+    }
+  });
+}
+
 function activate(context) {
   const fournisseur = new FournisseurRevue();
   const vue = vscode.window.createTreeView(ID_VUE, {
@@ -423,6 +667,7 @@ function activate(context) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('szh.cockpit.rafraichir', majContexte),
+    vscode.commands.registerCommand('szh.metadonnees', () => ouvrirMetadonnees(fournisseur)),
     vscode.commands.registerCommand('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.ouvrirPdf', (item) => ouvrirPdf(fournisseur, item)),

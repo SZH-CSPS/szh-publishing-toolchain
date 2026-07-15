@@ -100,13 +100,13 @@ Ordre par risque : **G1 d'abord** (webview = techno nouvelle, à dérisquer) ; *
 indépendant ; puis G3, G5, G2.
 
 ### G1 — Méta-données (webview) *(taille M ; dérisque la webview)*
-- [ ] Commande `szh.metadonnees` + bouton en tête de vue ; `WebviewPanel` « Méta-données du numéro ».
-- [ ] Lecture `ausgabe.yaml` → parse des clés du schéma D37 → pré-remplit le formulaire (langue =
+- [x] Commande `szh.metadonnees` + bouton en tête de vue ; `WebviewPanel` « Méta-données du numéro ».
+- [x] Lecture `ausgabe.yaml` → parse des clés du schéma D37 → pré-remplit le formulaire (langue =
       liste déroulante fr/de/en/it ; date = champ `type=date`).
-- [ ] « Enregistrer » → `postMessage` → l'hôte réécrit `ausgabe.yaml` : met à jour les clés du
+- [x] « Enregistrer » → `postMessage` → l'hôte réécrit `ausgabe.yaml` : met à jour les clés du
       schéma, **préserve les lignes non gérées**, échappe correctement les valeurs (deux-points,
       accents, guillemets). Écriture atomique (fichier temporaire + rename).
-- [ ] CSP stricte, styles via variables de thème VS Code, aucun script/ressource externe.
+- [x] CSP stricte, styles via variables de thème VS Code, aucun script/ressource externe.
 - **Acceptation** : modifier « Volume » → Enregistrer → `ausgabe.yaml` contient `volume: …` ; une
   clé `subtitle:` préexistante et un commentaire d'en-tête sont **toujours là** ; rouvrir le
   formulaire ré-affiche les valeurs. Vérif headless du sérialiseur (round-trip + préservation).
