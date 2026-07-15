@@ -108,7 +108,12 @@ class FournisseurRevue {
       it.resourceUri = md;              // icône de fichier selon le thème
       it.tooltip = md.fsPath;
       it.contextValue = 'article';      // pilote les boutons inline (menus view/item/context)
-      it.command = { command: 'vscode.open', title: 'Ouvrir l’article', arguments: [md] };
+      // Le .md s'ouvre TOUJOURS dans la colonne 1 (gauche) : mise en page à deux
+      // vues stable (gauche = texte, droite = aperçu), jamais de 3ᵉ colonne.
+      it.command = {
+        command: 'vscode.open', title: 'Ouvrir l’article',
+        arguments: [md, { viewColumn: vscode.ViewColumn.One }]
+      };
       return it;
     });
   }
@@ -193,8 +198,10 @@ class FournisseurRevue {
 // garanti par le mono-instance.)
 async function ouvrirApercuPdf(uri) {
   if (vscode.extensions.getExtension(EXT_PDF)) {
+    // Colonne 2 (droite) FIXE — pas « Beside » (relatif), qui empilait des colonnes
+    // 3, 4… selon la vue active. Mise en page à deux vues : gauche = .md, droite = PDF.
     await vscode.commands.executeCommand('vscode.openWith', uri, VUE_PDF, {
-      viewColumn: vscode.ViewColumn.Beside,
+      viewColumn: vscode.ViewColumn.Two,
       preserveFocus: true
     });
   } else {
