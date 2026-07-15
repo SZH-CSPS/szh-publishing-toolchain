@@ -107,6 +107,20 @@ filtre), tâches user existantes (`tasks.json` : labels de build/import réutili
 - **Acceptation** : ouvrir la revue 2026-01 → les articles listés, tri alphabétique ; déposer un
   docx à la main → il apparaît sous « Word en attente » ≤ 2 s ; dossier non-revue → pas d'icône.
 
+**Journal S2 (gate du 2026-07-15)** — S2 implémentée (commit `61abe86`), revue et validée
+(code lecture seule, cas limites couverts, syntaxe/JSON vérifiés). Déviations acceptées :
+bouton Rafraîchir (couvert par la table des risques) et items « Aucun … pour l'instant ».
+**Correctif de plan S2.1** : la flotte masque la barre d'activité
+(`workbench.activityBar.location: "hidden"`, UI « 0 technique ») → la vue est déplacée dans
+le conteneur **Explorateur** (`views.explorer`, nom « Revue SZH ») ; `viewsContainers` et
+l'icône de conteneur retirés. Conséquence : le badge TreeView n'est plus visible (il
+s'affichait sur l'icône de conteneur) — le retour visuel « Word en attente » reste assuré
+par la section elle-même ; à réévaluer en S4. Le plan (§4 S2, 2ᵉ puce) est amendé en ce sens.
+Nit pour S3 : watchers réinstallés accumulés dans `context.subscriptions` (double-dispose
+inoffensif) — à nettoyer en S3. Lectures périmées du montage (« troncatures ») élucidées :
+artefact de cache côté session distante, fichiers réels sains — vérifier `git diff --stat`
+avant chaque commit reste la règle.
+
 ### S3 — Import guidé de bout en bout *(taille S ; dépend S1+S2)*
 - [ ] Commande `szh.importerWord` (bouton en tête de vue) : `showOpenDialog` (multi, filtre
       `.docx`) → copie dans `articles-word/` → exécute la tâche user existante d'import

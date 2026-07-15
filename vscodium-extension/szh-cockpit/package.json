@@ -10,20 +10,11 @@
   "activationEvents": ["onStartupFinished"],
   "main": "./extension.js",
   "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "szhRevue",
-          "title": "Revue SZH",
-          "icon": "media/revue.svg"
-        }
-      ]
-    },
     "views": {
-      "szhRevue": [
+      "explorer": [
         {
           "id": "szhCockpitVue",
-          "name": "Revue",
+          "name": "Revue SZH",
           "when": "szh.estRevue"
         }
       ]
