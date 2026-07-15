@@ -2,7 +2,7 @@
   "name": "szh-apercu",
   "displayName": "SZH — Aperçu automatique",
   "description": "Ouvre l'aperçu PDF de l'article actif en vue scindée après chaque compilation réussie (revues SZH/CSPS).",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "szh-csps",
   "license": "MIT",
   "engines": { "vscode": "^1.75.0" },

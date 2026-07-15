@@ -36,12 +36,14 @@ function ouvrirApercuArticleActif() {
   const ws = vscode.workspace.getWorkspaceFolder(doc.uri);
   if (!ws) { return; }
 
-  // Seulement les articles : <revue>/articles/<nom>.md
+  // Seulement les articles : <revue>/articles/<slug>/<slug>.md (structure par article, D26).
+  // ⚠ Corrigé S5 : l'ancien test (2 segments, articles/<nom>.md) ne matchait plus la
+  // structure D26 (3 segments) -> l'aperçu auto ne se déclenchait plus depuis le 2026-07-05.
   const rel = path.relative(ws.uri.fsPath, doc.uri.fsPath);
   const parties = rel.split(path.sep);
-  if (parties.length !== 2 || parties[0] !== 'articles') { return; }
-
-  const slug = path.basename(parties[1], '.md');
+  if (parties.length !== 3 || parties[0] !== 'articles') { return; }
+  const slug = parties[1];
+  if (parties[2] !== slug + '.md') { return; }   // le .md doit être homonyme du dossier
   const pdfPath = path.join(ws.uri.fsPath, 'out', slug, slug + '.pdf');
   if (!fs.existsSync(pdfPath)) { return; }
   const uri = vscode.Uri.file(pdfPath);
