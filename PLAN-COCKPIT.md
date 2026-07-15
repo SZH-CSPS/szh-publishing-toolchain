@@ -140,7 +140,7 @@ documentée sur symboles exotiques, sans effet réel). Nit watchers S2 corrigé.
 Pour S5 : supprimer `media/revue.svg` (icône de conteneur abandonnée en S2.1).
 
 ### S4 — Actions d'article *(taille S ; dépend S2)*
-- [ ] Items article : boutons inline « Ouvrir le PDF » (`out/<slug>/<slug>.pdf` via `pdf.preview`,
+- [x] Items article : boutons inline « Ouvrir le PDF » (`out/<slug>/<slug>.pdf` via `pdf.preview`,
       colonne Beside — réutiliser le code szh-apercu) et « Compiler » (tâche build existante).
       PDF absent → l'action lance la compilation d'abord (même tâche, message discret).
 - **Acceptation** : clic PDF sur article compilé → aperçu à droite ; sur article jamais compilé →

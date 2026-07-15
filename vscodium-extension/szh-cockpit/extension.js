@@ -1,17 +1,19 @@
-// SZH — Revue (cockpit), tranches S2 + S3 (D36).
-// Barre latérale « Revue SZH » : deux sections — « Articles »
-// (articles/<slug>/<slug>.md, clic = ouvrir) et « Word en attente »
-// (articles-word/*.docx hors _convertis/, badge de compte ; tooltip « déjà
-// converti » si le .md cible existe déjà). La vue n'apparaît que si
-// ausgabe.yaml existe à la racine (contexte szh.estRevue).
+// SZH — Revue (cockpit), tranches S2 + S3 + S4 (D36).
+// Barre latérale « Revue SZH » (dans l'Explorateur, cf. S2.1) : deux sections —
+// « Articles » (articles/<slug>/<slug>.md, clic = ouvrir ; actions inline
+// « Ouvrir le PDF » et « Compiler ») et « Word en attente » (articles-word/*.docx
+// hors _convertis/ ; compte affiché dans la description de la section ; tooltip
+// « déjà converti » si le .md cible existe). La vue n'apparaît que si ausgabe.yaml
+// existe à la racine (contexte szh.estRevue).
 //
-// S3 : commande « Importer des Word » (szh.importerWord) — sélecteur de
-// fichiers .docx -> copie dans articles-word/ -> exécution de la tâche user
-// « Importer les articles Word » -> notification « N article(s) importé(s) »
-// (compte par DIFF de la liste d'articles avant/après, pas par parsing).
+// S3 : commande « Importer des Word » (szh.importerWord).
+// S4 : actions d'article « Ouvrir le PDF » (szh.ouvrirPdf) et « Compiler »
+//   (szh.compiler). Ouverture du PDF calquée sur szh-apercu (pdf.preview,
+//   ViewColumn.Beside, preserveFocus, test « déjà ouvert » partagé pour éviter la
+//   double-ouverture). Jamais de vol de focus.
 //
-// Seule écriture : la COPIE des .docx choisis vers articles-word/ (jamais
-// d'écrasement silencieux — confirmation modale en cas de conflit).
+// Seule écriture (S3) : la COPIE des .docx choisis vers articles-word/. S4 est en
+// lecture seule (ouverture/lancement de tâche uniquement).
 // Posture szh-apercu : JavaScript pur, zéro dépendance, API VS Code ^1.75.
 'use strict';
 
@@ -21,8 +23,12 @@ const path = require('path');
 
 const CLE_CONTEXTE = 'szh.estRevue';
 const ID_VUE = 'szhCockpitVue';
-// ⚠ Doit correspondre EXACTEMENT au label dans vscodium-user/tasks.json.
+// ⚠ Doivent correspondre EXACTEMENT aux labels de vscodium-user/tasks.json.
 const NOM_TACHE_IMPORT = 'Importer les articles Word';
+const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
+// Éditeur PDF (extension tomoki1207.pdf), comme szh-apercu.
+const VUE_PDF = 'pdf.preview';
+const EXT_PDF = 'tomoki1207.pdf';
 
 // Reproduit le slug du Makefile (cible import) :
 //   nom sans extension | iconv ASCII//TRANSLIT | minuscules | [^a-z0-9]+ -> '-' | trim '-'
@@ -67,9 +73,12 @@ class FournisseurRevue {
   getChildren(element) {
     if (!this.racine) { return []; }
     if (!element) {
+      // Compte des Word en attente dans la DESCRIPTION de la section (S4) : le badge
+      // de conteneur n'est plus visible depuis que la vue est dans l'Explorateur (S2.1).
+      const n = this.compterWord();
       return [
-        this._section('articles', 'Articles', 'book'),
-        this._section('word', 'Word en attente', 'inbox')
+        this._section('articles', 'Articles', 'book', undefined),
+        this._section('word', 'Word en attente', 'inbox', n > 0 ? '(' + n + ')' : undefined)
       ];
     }
     if (element.categorie === 'articles') { return this._itemsArticles(); }
@@ -77,11 +86,12 @@ class FournisseurRevue {
     return [];
   }
 
-  _section(categorie, libelle, icone) {
+  _section(categorie, libelle, icone, description) {
     const it = new vscode.TreeItem(libelle, vscode.TreeItemCollapsibleState.Expanded);
     it.categorie = categorie;
     it.iconPath = new vscode.ThemeIcon(icone);
     it.contextValue = 'section';
+    if (description) { it.description = description; }
     return it;
   }
 
@@ -94,9 +104,10 @@ class FournisseurRevue {
     return slugs.map((slug) => {
       const md = vscode.Uri.file(path.join(base, slug, slug + '.md'));
       const it = new vscode.TreeItem(slug, vscode.TreeItemCollapsibleState.None);
+      it.slug = slug;                   // utilisé par les actions S4 (Ouvrir le PDF / Compiler)
       it.resourceUri = md;              // icône de fichier selon le thème
       it.tooltip = md.fsPath;
-      it.contextValue = 'article';
+      it.contextValue = 'article';      // pilote les boutons inline (menus view/item/context)
       it.command = { command: 'vscode.open', title: 'Ouvrir l’article', arguments: [md] };
       return it;
     });
@@ -171,9 +182,103 @@ class FournisseurRevue {
   }
 }
 
-// Exécute la tâche user d'import et résout avec son code de sortie (ou null si
-// la tâche est introuvable / non lançable). Même mécanique que szh-apercu
-// (onDidEndTaskProcess), corrélée à l'exécution précise démarrée ici.
+// ---- PDF (S4) : ouverture calquée sur szh-apercu -------------------------------
+
+// Test « déjà ouvert » PARTAGÉ avec szh-apercu : évite un 2ᵉ onglet.
+function pdfDejaOuvert(uri) {
+  for (const groupe of vscode.window.tabGroups.all) {
+    for (const onglet of groupe.tabs) {
+      const entree = onglet.input;
+      if (entree && entree.uri && entree.uri.fsPath === uri.fsPath) { return true; }
+    }
+  }
+  return false;
+}
+
+async function ouvrirApercuPdf(uri) {
+  if (pdfDejaOuvert(uri)) { return; }   // déjà ouvert -> rien (pas de double-ouverture)
+  if (vscode.extensions.getExtension(EXT_PDF)) {
+    await vscode.commands.executeCommand('vscode.openWith', uri, VUE_PDF, {
+      viewColumn: vscode.ViewColumn.Beside,
+      preserveFocus: true
+    });
+  } else {
+    // Repli propre (hôte de dev sans tomoki1207.pdf) : lecteur système.
+    vscode.window.showInformationMessage('Aperçu PDF intégré indisponible — ouverture dans le lecteur système.');
+    await vscode.env.openExternal(uri);
+  }
+}
+
+// ---- Tâche de build (S4) : réutilise la tâche user, écoute la fin ---------------
+
+let buildEnCours = false;
+
+// Lance la tâche « Aperçu / Export PDF » et résout avec son code de sortie
+// (null si la tâche est introuvable). Même mécanique que szh-apercu.
+async function lancerBuild() {
+  const taches = await vscode.tasks.fetchTasks();
+  const tache = taches.find((t) => t.name === NOM_TACHE_BUILD);
+  if (!tache) {
+    vscode.window.showErrorMessage('Tâche « ' + NOM_TACHE_BUILD + ' » introuvable. Réglages de l’éditeur incomplets ?');
+    return null;
+  }
+  const execution = await vscode.tasks.executeTask(tache);
+  return await new Promise((resolve) => {
+    const abo = vscode.tasks.onDidEndTaskProcess((e) => {
+      if (e.execution === execution) { abo.dispose(); resolve(e.exitCode); }
+    });
+  });
+}
+
+async function compiler(fournisseur) {
+  if (!fournisseur.racine) { return; }
+  if (buildEnCours) { vscode.window.setStatusBarMessage('Compilation déjà en cours…', 3000); return; }
+  buildEnCours = true;
+  const statut = vscode.window.setStatusBarMessage('Compilation en cours…');
+  try {
+    const code = await lancerBuild();
+    if (code !== null && code !== 0) {
+      vscode.window.showErrorMessage('La compilation a échoué. Ouvrez le panneau « ' + NOM_TACHE_BUILD + ' » pour le détail.');
+    }
+  } finally {
+    statut.dispose();
+    buildEnCours = false;
+  }
+}
+
+async function ouvrirPdf(fournisseur, item) {
+  const racine = fournisseur.racine;
+  if (!racine || !item || !item.slug) { return; }
+  const slug = item.slug;
+  const pdf = vscode.Uri.file(path.join(racine, 'out', slug, slug + '.pdf'));
+
+  if (fs.existsSync(pdf.fsPath)) { await ouvrirApercuPdf(pdf); return; }
+
+  // PDF absent : compiler d'abord, ouvrir SEULEMENT en cas de succès.
+  if (buildEnCours) { vscode.window.setStatusBarMessage('Compilation déjà en cours…', 3000); return; }
+  buildEnCours = true;
+  const statut = vscode.window.setStatusBarMessage('Compilation de « ' + slug + ' »…');
+  try {
+    const code = await lancerBuild();
+    if (code === null) { return; }
+    if (code !== 0) {
+      vscode.window.showErrorMessage('La compilation a échoué. Ouvrez le panneau « ' + NOM_TACHE_BUILD + ' » pour le détail.');
+      return;
+    }
+    // szh-apercu ouvre déjà le PDF de l'article ACTIF après un build réussi ; on lui
+    // laisse un court instant pour enregistrer son onglet, puis le test « déjà ouvert »
+    // évite le 2ᵉ onglet si c'était le même article.
+    await new Promise((r) => setTimeout(r, 250));
+    if (fs.existsSync(pdf.fsPath)) { await ouvrirApercuPdf(pdf); }
+    else { vscode.window.showErrorMessage('PDF introuvable après compilation : « ' + slug + ' ».'); }
+  } finally {
+    statut.dispose();
+    buildEnCours = false;
+  }
+}
+
+// ---- Import guidé (S3) ---------------------------------------------------------
+
 async function executerImport() {
   const taches = await vscode.tasks.fetchTasks();
   const tache = taches.find((t) => t.name === NOM_TACHE_IMPORT);
@@ -261,19 +366,12 @@ function activate(context) {
   context.subscriptions.push(vue);
 
   let watchers = [];
-  // Un SEUL nettoyage enregistré (les watchers eux-mêmes ne sont plus poussés
-  // dans context.subscriptions à chaque réinstallation — correctif du nit S2).
+  // Un SEUL nettoyage enregistré (les watchers ne sont plus poussés dans
+  // context.subscriptions à chaque réinstallation — correctif du nit S2).
   context.subscriptions.push({ dispose: () => { for (const w of watchers) { w.dispose(); } } });
 
-  const majBadge = () => {
-    const n = fournisseur.compterWord();
-    vue.badge = n > 0 ? { value: n, tooltip: n + ' Word en attente' } : undefined;
-  };
-
-  const rafraichirTout = () => {
-    fournisseur.rafraichir();
-    majBadge();
-  };
+  // Le compte « Word en attente » est recalculé par getChildren (description de section).
+  const rafraichirTout = () => { fournisseur.rafraichir(); };
 
   // Regroupe les rafales d'événements FS (OneDrive peut en émettre plusieurs).
   let minuteur = null;
@@ -286,8 +384,8 @@ function activate(context) {
     for (const w of watchers) { w.dispose(); }
     watchers = [];
     if (!racine) { return; }
-    // Surveillance des articles et des Word déposés (plan S2).
-    for (const motif of ['articles/**', 'articles-word/*']) {
+    // Articles, Word déposés, ET sorties (le PDF apparaît/disparaît après build).
+    for (const motif of ['articles/**', 'articles-word/*', 'out/**']) {
       const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(racine, motif));
       w.onDidCreate(rafraichirBientot);
       w.onDidChange(rafraichirBientot);
@@ -308,6 +406,8 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('szh.cockpit.rafraichir', majContexte),
     vscode.commands.registerCommand('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
+    vscode.commands.registerCommand('szh.ouvrirPdf', (item) => ouvrirPdf(fournisseur, item)),
+    vscode.commands.registerCommand('szh.compiler', () => compiler(fournisseur)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte)
   );
 

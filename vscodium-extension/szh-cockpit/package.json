@@ -31,6 +31,18 @@
         "title": "Rafraîchir la barre Revue",
         "category": "Revue SZH",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "szh.ouvrirPdf",
+        "title": "Ouvrir le PDF",
+        "category": "Revue SZH",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "szh.compiler",
+        "title": "Compiler",
+        "category": "Revue SZH",
+        "icon": "$(play)"
       }
     ],
     "menus": {
@@ -44,6 +56,18 @@
           "command": "szh.cockpit.rafraichir",
           "when": "view == szhCockpitVue",
           "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "szh.ouvrirPdf",
+          "when": "view == szhCockpitVue && viewItem == article",
+          "group": "inline@1"
+        },
+        {
+          "command": "szh.compiler",
+          "when": "view == szhCockpitVue && viewItem == article",
+          "group": "inline@2"
         }
       ]
     }
