@@ -16,10 +16,14 @@
 //   écriture atomique.
 // G3 (D40) : « Supprimer l'article » (szh.supprimerArticle) — confirmation MODALE
 //   obligatoire, puis rm de articles/<slug>/ ET out/<slug>/ (onglets fermés avant).
+// G5 (D41) : article dépliable -> ses images (articles/<slug>/media/, récursif)
+//   avec dimensions + poids ; clic = aperçu natif ; « Remplacer » (szh.remplacerAsset)
+//   écrase l'image EN GARDANT son nom (le lien du .md reste valide).
 //
 // Écritures autorisées : la COPIE des .docx choisis vers articles-word/ (S3),
-// ausgabe.yaml (G1) et la SUPPRESSION confirmée d'un article (G3). Tout le reste
-// est en lecture seule (ouverture/lancement de tâche uniquement).
+// ausgabe.yaml (G1), la SUPPRESSION confirmée d'un article (G3) et l'ÉCRASEMENT
+// confirmé d'une image (G5). Tout le reste est en lecture seule (ouverture/
+// lancement de tâche uniquement).
 // Posture szh-apercu : JavaScript pur, zéro dépendance, API VS Code ^1.75.
 'use strict';
 
@@ -90,6 +94,7 @@ class FournisseurRevue {
     }
     if (element.categorie === 'articles') { return this._itemsArticles(); }
     if (element.categorie === 'word') { return this._itemsWord(); }
+    if (element.contextValue === 'article') { return this._itemsAssets(element.slug); }
     return [];
   }
 
@@ -104,14 +109,19 @@ class FournisseurRevue {
 
   // Article = dossier articles/<slug>/ contenant le .md homonyme <slug>.md
   // (même règle que le Makefile : un dossier sans .md homonyme est ignoré).
+  // G5 : l'article est DÉPLIABLE s'il a des images (la flèche montre les assets,
+  // le clic sur le libellé ouvre toujours le .md — risque R2, à confirmer en GUI).
   _itemsArticles() {
     const base = path.join(this.racine, 'articles');
     const slugs = this._sousDossiersAvecMd(base);
     if (slugs.length === 0) { return [this._vide('Aucun article pour l’instant')]; }
     return slugs.map((slug) => {
       const md = vscode.Uri.file(path.join(base, slug, slug + '.md'));
-      const it = new vscode.TreeItem(slug, vscode.TreeItemCollapsibleState.None);
-      it.slug = slug;                   // utilisé par les actions S4 (Ouvrir le PDF / Compiler)
+      const aDesImages = this._imagesArticle(slug).length > 0;
+      const it = new vscode.TreeItem(slug, aDesImages
+        ? vscode.TreeItemCollapsibleState.Collapsed
+        : vscode.TreeItemCollapsibleState.None);
+      it.slug = slug;                   // utilisé par les actions S4/G3/G5
       it.resourceUri = md;              // icône de fichier selon le thème
       it.tooltip = md.fsPath;
       it.contextValue = 'article';      // pilote les boutons inline (menus view/item/context)
@@ -120,6 +130,45 @@ class FournisseurRevue {
       it.command = {
         command: 'vscode.open', title: 'Ouvrir l’article',
         arguments: [md, { viewColumn: vscode.ViewColumn.One }]
+      };
+      return it;
+    });
+  }
+
+  // Images d'un article : articles/<slug>/media/, récursif, extensions d'image
+  // seulement. Chemins RELATIFS à media/ (lisibles en libellé), triés.
+  _imagesArticle(slug) {
+    const base = path.join(this.racine, 'articles', slug, 'media');
+    const resultats = [];
+    const parcourir = (dossier, prefixe) => {
+      let entrees;
+      try { entrees = fs.readdirSync(dossier, { withFileTypes: true }); }
+      catch (e) { return; }
+      for (const e of entrees) {
+        if (e.isDirectory()) { parcourir(path.join(dossier, e.name), prefixe + e.name + '/'); }
+        else if (e.isFile() && /\.(png|jpe?g|gif|svg)$/i.test(e.name)) { resultats.push(prefixe + e.name); }
+      }
+    };
+    parcourir(base, '');
+    return resultats.sort((a, b) => a.localeCompare(b, 'fr'));
+  }
+
+  // Enfants d'un article (G5) : ses images, avec « L × H · poids » en description.
+  _itemsAssets(slug) {
+    const base = path.join(this.racine, 'articles', slug, 'media');
+    return this._imagesArticle(slug).map((relatif) => {
+      const chemin = path.join(base, relatif);
+      const it = new vscode.TreeItem(relatif, vscode.TreeItemCollapsibleState.None);
+      it.slug = slug;
+      it.cheminAsset = chemin;
+      it.resourceUri = vscode.Uri.file(chemin);
+      it.contextValue = 'asset';
+      it.description = decrireImage(chemin);
+      it.tooltip = chemin;
+      // Aperçu natif de VSCodium, colonne 1 (côté texte, comme le .md).
+      it.command = {
+        command: 'vscode.open', title: 'Aperçu de l’image',
+        arguments: [it.resourceUri, { viewColumn: vscode.ViewColumn.One }]
       };
       return it;
     });
@@ -380,6 +429,115 @@ async function importerWord(fournisseur, rafraichirTout) {
   // Conversion + notification (compte par diff) — mutualisée avec « Convertir les
   // Word en attente ».
   await lancerConversion(fournisseur, rafraichirTout);
+}
+
+// ---- Assets (G5, D41) : dimensions sans dépendance + « Remplacer » ----------------
+
+// Dimensions lues des en-têtes de fichier — PNG/GIF/SVG sûrs, JPEG au mieux
+// (parcours des marqueurs jusqu'au SOF). null si indéterminable : la description
+// retombe alors sur le poids seul. Seuls les premiers Ko sont lus.
+function lireDimensionsImage(chemin) {
+  let fd = null;
+  try {
+    fd = fs.openSync(chemin, 'r');
+    const tampon = Buffer.alloc(65536);
+    const lu = fs.readSync(fd, tampon, 0, tampon.length, 0);
+    const b = tampon.subarray(0, lu);
+    if (lu >= 24 && b.readUInt32BE(0) === 0x89504e47) {          // PNG : IHDR
+      return { largeur: b.readUInt32BE(16), hauteur: b.readUInt32BE(20) };
+    }
+    if (lu >= 10 && (b.toString('latin1', 0, 6) === 'GIF87a' || b.toString('latin1', 0, 6) === 'GIF89a')) {
+      return { largeur: b.readUInt16LE(6), hauteur: b.readUInt16LE(8) };
+    }
+    if (lu >= 4 && b[0] === 0xff && b[1] === 0xd8) {             // JPEG : marqueurs SOF
+      let i = 2;
+      while (i + 9 < lu) {
+        if (b[i] !== 0xff) { i++; continue; }
+        const marqueur = b[i + 1];
+        if (marqueur === 0xff) { i++; continue; }                 // bourrage FF
+        if (marqueur === 0xd8 || (marqueur >= 0xd0 && marqueur <= 0xd7) || marqueur === 0x01) { i += 2; continue; }
+        if (marqueur === 0xda) { break; }                         // début des données : SOF manqué
+        const longueur = b.readUInt16BE(i + 2);
+        if (marqueur >= 0xc0 && marqueur <= 0xcf && marqueur !== 0xc4 && marqueur !== 0xc8 && marqueur !== 0xcc) {
+          return { largeur: b.readUInt16BE(i + 7), hauteur: b.readUInt16BE(i + 5) };
+        }
+        if (longueur < 2) { break; }                              // en-tête corrompu
+        i += 2 + longueur;
+      }
+      return null;
+    }
+    if (/\.svg$/i.test(chemin)) {                                 // SVG : attributs ou viewBox
+      const texte = b.toString('utf8');
+      const balise = texte.match(/<svg[^>]*>/i);
+      if (balise) {
+        const l = balise[0].match(/[\s"']width\s*=\s*["']?([0-9.]+)(?:px)?["']?/i);
+        const h = balise[0].match(/[\s"']height\s*=\s*["']?([0-9.]+)(?:px)?["']?/i);
+        if (l && h) { return { largeur: Math.round(parseFloat(l[1])), hauteur: Math.round(parseFloat(h[1])) }; }
+        const vb = balise[0].match(/viewBox\s*=\s*["']\s*[0-9.+-]+[\s,]+[0-9.+-]+[\s,]+([0-9.]+)[\s,]+([0-9.]+)/i);
+        if (vb) { return { largeur: Math.round(parseFloat(vb[1])), hauteur: Math.round(parseFloat(vb[2])) }; }
+      }
+    }
+    return null;
+  } catch (e) {
+    return null;
+  } finally {
+    if (fd !== null) { try { fs.closeSync(fd); } catch (e) { /* déjà fermé */ } }
+  }
+}
+
+// « 1 234 × 567 · 245 Ko » — poids en o/Ko/Mo (virgule française pour les Mo).
+function decrireImage(chemin) {
+  let octets = 0;
+  try { octets = fs.statSync(chemin).size; } catch (e) { return ''; }
+  let poids;
+  if (octets < 1024) { poids = octets + ' o'; }
+  else if (octets < 1024 * 1024) { poids = Math.round(octets / 1024) + ' Ko'; }
+  else { poids = (octets / (1024 * 1024)).toFixed(1).replace('.', ',') + ' Mo'; }
+  const dims = lireDimensionsImage(chemin);
+  return dims ? dims.largeur + ' × ' + dims.hauteur + ' · ' + poids : poids;
+}
+
+// Extension « logique » pour la comparaison de formats (jpg et jpeg = même format).
+function formatImage(nom) {
+  const ext = (nom.match(/\.([a-z0-9]+)$/i) || ['', ''])[1].toLowerCase();
+  return ext === 'jpeg' ? 'jpg' : ext;
+}
+
+// « Remplacer » (D41) : écrase l'image cible EN GARDANT son nom — le lien du .md
+// reste valide. Jamais silencieux : confirmation modale, renforcée si le format
+// du fichier choisi diffère de la cible (risque R4 : contenu ≠ extension).
+async function remplacerAsset(fournisseur, rafraichirTout, item) {
+  if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
+  if (buildEnCours || importEnCours) {
+    vscode.window.setStatusBarMessage('Compilation ou import en cours — réessayez ensuite.', 3000);
+    return;
+  }
+  const cible = item.cheminAsset;
+  const nomCible = path.basename(cible);
+  const choix = await vscode.window.showOpenDialog({
+    canSelectMany: false,
+    filters: { 'Images': ['png', 'jpg', 'jpeg', 'gif', 'svg'] },
+    openLabel: 'Choisir cette image',
+    title: 'Choisir l’image de remplacement pour « ' + nomCible + ' »'
+  });
+  if (!choix || choix.length === 0) { return; }    // dialogue annulé
+  const source = choix[0].fsPath;
+  const nomSource = path.basename(source);
+  let question = 'Remplacer « ' + nomCible + ' » par « ' + nomSource + ' » ?';
+  let detail = 'L’ancienne image sera écrasée. Le nom « ' + nomCible + ' » est conservé (le texte de l’article pointe ce nom).';
+  if (formatImage(nomSource) !== formatImage(nomCible)) {
+    detail = '⚠ Le fichier choisi est un .' + formatImage(nomSource) + ' mais l’image de l’article est un .' +
+      formatImage(nomCible) + ' : le contenu ne correspondra plus à l’extension et le rendu peut casser.\n' + detail;
+  }
+  const reponse = await vscode.window.showWarningMessage(question, { modal: true, detail: detail }, 'Remplacer');
+  if (reponse !== 'Remplacer') { return; }         // annulé : rien n'est touché
+  try {
+    fs.copyFileSync(source, cible);                // même nom : lien du .md intact
+    vscode.window.setStatusBarMessage('Image « ' + nomCible + ' » remplacée — recompilez pour voir le PDF à jour.', 5000);
+  } catch (e) {
+    vscode.window.showErrorMessage('Remplacement impossible : ' + e.message);
+  }
+  rafraichirTout();
 }
 
 // ---- Suppression d'article (G3, D40) ---------------------------------------------
@@ -729,6 +887,7 @@ function activate(context) {
     vscode.commands.registerCommand('szh.ouvrirPdf', (item) => ouvrirPdf(fournisseur, item)),
     vscode.commands.registerCommand('szh.compiler', () => compiler(fournisseur)),
     vscode.commands.registerCommand('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
+    vscode.commands.registerCommand('szh.remplacerAsset', (item) => remplacerAsset(fournisseur, rafraichirTout, item)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte)
   );
 

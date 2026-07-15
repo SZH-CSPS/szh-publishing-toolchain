@@ -125,14 +125,14 @@ indépendant ; puis G3, G5, G2.
   liste ; annuler la modale → rien n'est touché.
 
 ### G5 — Assets : lister + remplacer *(taille M)*
-- [ ] Article `collapsibleState = Collapsed` s'il a des images (sinon `None`) ; le clic ouvre
+- [x] Article `collapsibleState = Collapsed` s'il a des images (sinon `None`) ; le clic ouvre
       toujours le `.md`, la flèche déplie les assets.
-- [ ] `getChildren(article)` → images de `media/` (png/jpg/jpeg/gif/svg), légende « L×H, taille » ;
+- [x] `getChildren(article)` → images de `media/` (png/jpg/jpeg/gif/svg), légende « L×H, taille » ;
       clic = `vscode.open` (aperçu natif) ; `contextValue = 'asset'`.
-- [ ] Bouton inline « Remplacer » (`viewItem == asset`) → `showOpenDialog` (filtre images) → si
+- [x] Bouton inline « Remplacer » (`viewItem == asset`) → `showOpenDialog` (filtre images) → si
       l'extension diffère de la cible, **avertir** (le lien `.md` pointe l'ancien nom) ; écraser le
       fichier cible (même nom) ; refresh.
-- [ ] Helper dimensions sans dépendance (PNG/GIF/SVG sûrs ; JPEG au mieux).
+- [x] Helper dimensions sans dépendance (PNG/GIF/SVG sûrs ; JPEG au mieux).
 - **Acceptation** : déplier un article importé → ses images listées avec dimensions ; « Remplacer »
   par une autre image de même nom → build → le PDF montre la nouvelle image.
 

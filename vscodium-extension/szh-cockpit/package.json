@@ -61,6 +61,12 @@
         "title": "Supprimer l’article",
         "category": "Revue SZH",
         "icon": "$(trash)"
+      },
+      {
+        "command": "szh.remplacerAsset",
+        "title": "Remplacer l’image",
+        "category": "Revue SZH",
+        "icon": "$(replace)"
       }
     ],
     "menus": {
@@ -100,6 +106,11 @@
         {
           "command": "szh.convertirEnAttente",
           "when": "view == szhCockpitVue && viewItem == section-word",
+          "group": "inline"
+        },
+        {
+          "command": "szh.remplacerAsset",
+          "when": "view == szhCockpitVue && viewItem == asset",
           "group": "inline"
         }
       ]
