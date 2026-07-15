@@ -122,12 +122,12 @@ artefact de cache côté session distante, fichiers réels sains — vérifier `
 avant chaque commit reste la règle.
 
 ### S3 — Import guidé de bout en bout *(taille S ; dépend S1+S2)*
-- [ ] Commande `szh.importerWord` (bouton en tête de vue) : `showOpenDialog` (multi, filtre
+- [x] Commande `szh.importerWord` (bouton en tête de vue) : `showOpenDialog` (multi, filtre
       `.docx`) → copie dans `articles-word/` → exécute la tâche user existante d'import
       (`vscode.tasks.fetchTasks` par label, même mécanique que szh-apercu écoute les tâches)
       → à la fin : refresh + `showInformationMessage` « N article(s) importé(s) » (compte tiré
       du diff de la liste, pas du parsing de sortie).
-- [ ] Si le `.md` cible existe déjà : l'item « Word en attente » porte un tooltip « déjà converti —
+- [x] Si le `.md` cible existe déjà : l'item « Word en attente » porte un tooltip « déjà converti —
       renommez le fichier si c'est une nouvelle version ».
 - **Acceptation** : depuis la barre latérale uniquement — importer 2 docx, voir la notification,
   les articles apparaître, et `articles-word/` ne contenir que `_convertis/`.

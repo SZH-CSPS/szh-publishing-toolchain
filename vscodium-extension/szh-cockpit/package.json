@@ -21,6 +21,12 @@
     },
     "commands": [
       {
+        "command": "szh.importerWord",
+        "title": "Importer des Word",
+        "category": "Revue SZH",
+        "icon": "$(add)"
+      },
+      {
         "command": "szh.cockpit.rafraichir",
         "title": "Rafraîchir la barre Revue",
         "category": "Revue SZH",
@@ -30,9 +36,14 @@
     "menus": {
       "view/title": [
         {
+          "command": "szh.importerWord",
+          "when": "view == szhCockpitVue",
+          "group": "navigation@1"
+        },
+        {
           "command": "szh.cockpit.rafraichir",
           "when": "view == szhCockpitVue",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ]
     }
