@@ -43,6 +43,12 @@
         "title": "Compiler",
         "category": "Revue SZH",
         "icon": "$(play)"
+      },
+      {
+        "command": "szh.convertirEnAttente",
+        "title": "Convertir les Word en attente",
+        "category": "Revue SZH",
+        "icon": "$(run-all)"
       }
     ],
     "menus": {
@@ -68,6 +74,11 @@
           "command": "szh.compiler",
           "when": "view == szhCockpitVue && viewItem == article",
           "group": "inline@2"
+        },
+        {
+          "command": "szh.convertirEnAttente",
+          "when": "view == szhCockpitVue && viewItem == section-word",
+          "group": "inline"
         }
       ]
     }

@@ -90,7 +90,7 @@ class FournisseurRevue {
     const it = new vscode.TreeItem(libelle, vscode.TreeItemCollapsibleState.Expanded);
     it.categorie = categorie;
     it.iconPath = new vscode.ThemeIcon(icone);
-    it.contextValue = 'section';
+    it.contextValue = 'section-' + categorie;   // 'section-articles' / 'section-word'
     if (description) { it.description = description; }
     return it;
   }
@@ -279,6 +279,8 @@ async function ouvrirPdf(fournisseur, item) {
 
 // ---- Import guidé (S3) ---------------------------------------------------------
 
+let importEnCours = false;
+
 async function executerImport() {
   const taches = await vscode.tasks.fetchTasks();
   const tache = taches.find((t) => t.name === NOM_TACHE_IMPORT);
@@ -294,6 +296,37 @@ async function executerImport() {
       if (e.execution === execution) { abo.dispose(); resolve(e.exitCode); }
     });
   });
+}
+
+// Convertit les Word présents dans articles-word/ (déposés à la main OU copiés par
+// « Importer des Word »). Compte les NOUVEAUX articles par diff avant/après (jamais
+// par parsing de la sortie). Garde anti-double (clics rapprochés).
+async function lancerConversion(fournisseur, rafraichirTout) {
+  if (importEnCours) { vscode.window.setStatusBarMessage('Import déjà en cours…', 3000); return; }
+  importEnCours = true;
+  const statut = vscode.window.setStatusBarMessage('Import des Word en attente…');
+  try {
+    const avant = new Set(fournisseur.listerArticles());
+    const code = await executerImport();
+    rafraichirTout();
+    if (code === null) { return; }               // tâche introuvable (déjà signalé)
+    if (code !== 0) {
+      vscode.window.showErrorMessage(
+        'L’import a rencontré un problème. Ouvrez le panneau de la tâche « ' + NOM_TACHE_IMPORT + ' » pour le détail.'
+      );
+      return;
+    }
+    let n = 0;
+    for (const slug of fournisseur.listerArticles()) { if (!avant.has(slug)) { n++; } }
+    if (n > 0) {
+      vscode.window.showInformationMessage(n + (n > 1 ? ' articles importés.' : ' article importé.'));
+    } else {
+      vscode.window.showInformationMessage('Aucun nouvel article importé (déjà présent(s) ?).');
+    }
+  } finally {
+    statut.dispose();
+    importEnCours = false;
+  }
 }
 
 async function importerWord(fournisseur, rafraichirTout) {
@@ -337,24 +370,9 @@ async function importerWord(fournisseur, rafraichirTout) {
   }
   if (copies === 0) { rafraichirTout(); return; }
 
-  // Diff avant/après (le compte ne repose PAS sur la sortie de la tâche).
-  const avant = new Set(fournisseur.listerArticles());
-  const codeSortie = await executerImport();
-  rafraichirTout();
-  if (codeSortie === null) { return; }             // tâche introuvable (déjà signalé)
-  if (codeSortie !== 0) {
-    vscode.window.showErrorMessage(
-      'L’import a rencontré un problème. Ouvrez le panneau de la tâche « ' + NOM_TACHE_IMPORT + ' » pour le détail.'
-    );
-    return;
-  }
-  let n = 0;
-  for (const slug of fournisseur.listerArticles()) { if (!avant.has(slug)) { n++; } }
-  if (n > 0) {
-    vscode.window.showInformationMessage(n + (n > 1 ? ' articles importés.' : ' article importé.'));
-  } else {
-    vscode.window.showInformationMessage('Aucun nouvel article importé (déjà présent(s) ?).');
-  }
+  // Conversion + notification (compte par diff) — mutualisée avec « Convertir les
+  // Word en attente ».
+  await lancerConversion(fournisseur, rafraichirTout);
 }
 
 function activate(context) {
@@ -406,6 +424,7 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('szh.cockpit.rafraichir', majContexte),
     vscode.commands.registerCommand('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
+    vscode.commands.registerCommand('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.ouvrirPdf', (item) => ouvrirPdf(fournisseur, item)),
     vscode.commands.registerCommand('szh.compiler', () => compiler(fournisseur)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte)
