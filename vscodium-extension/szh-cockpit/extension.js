@@ -19,6 +19,8 @@
 // G5 (D41) : article dépliable -> ses images (articles/<slug>/media/, récursif)
 //   avec dimensions + poids ; clic = aperçu natif ; « Remplacer » (szh.remplacerAsset)
 //   écrase l'image EN GARDANT son nom (le lien du .md reste valide).
+// N1 (D42) : dormant WSL (sleep infinity dans SZH-Publishing) tant qu'une revue est
+//   ouverte — pas de démarrage à froid à la première compilation.
 //
 // Écritures autorisées : la COPIE des .docx choisis vers articles-word/ (S3),
 // ausgabe.yaml (G1), la SUPPRESSION confirmée d'un article (G3) et l'ÉCRASEMENT
@@ -31,6 +33,7 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { spawn } = require('child_process');
 
 const CLE_CONTEXTE = 'szh.estRevue';
 const ID_VUE = 'szhCockpitVue';
@@ -54,6 +57,47 @@ function slugifier(nomFichier) {
     .normalize('NFD').replace(/[̀-ͯ]/g, '');
   s = s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   return s || 'article';
+}
+
+// ---- Maintien en vie de WSL (N1, D42) ---------------------------------------------
+//
+// Les builds sont des `wsl.exe` éphémères : entre deux Ctrl+S la VM WSL s'éteint
+// (vmIdleTimeout) et la compilation suivante paie un démarrage à froid. Tant qu'une
+// revue est ouverte, on maintient un processus DORMANT dans la distro du pipeline —
+// il ne consomme rien et empêche l'extinction de la VM. Tué quand on quitte la
+// revue, à la désactivation, et de toute façon nettoyé par un `wsl --shutdown`/reboot.
+
+// ⚠ Doit correspondre à la distro de vscodium-user/tasks.json et szh-common.ps1.
+const DISTRO = 'SZH-Publishing';
+
+let dormeurWsl = null;
+
+// wsl.exe : System32 en priorité (chemin sûr), PATH en repli.
+function cheminWsl() {
+  const systeme = path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'wsl.exe');
+  try { if (fs.existsSync(systeme)) { return systeme; } } catch (e) { /* PATH en repli */ }
+  return 'wsl.exe';
+}
+
+function demarrerDormeurWsl() {
+  if (dormeurWsl) { return; }                      // un seul dormant à la fois
+  let proc;
+  try {
+    proc = spawn(cheminWsl(), ['-d', DISTRO, '--', 'sh', '-c', 'exec sleep infinity'],
+      { windowsHide: true, stdio: 'ignore' });
+  } catch (e) { return; }                          // wsl introuvable : poste non bootstrappé
+  dormeurWsl = proc;
+  // Distro absente ou wsl en erreur : silencieux (l'activation ne doit jamais être
+  // bloquée ni bruyante) ; on retentera au prochain changement de contexte.
+  proc.on('error', () => { if (dormeurWsl === proc) { dormeurWsl = null; } });
+  proc.on('exit', () => { if (dormeurWsl === proc) { dormeurWsl = null; } });
+}
+
+function arreterDormeurWsl() {
+  if (!dormeurWsl) { return; }
+  const proc = dormeurWsl;
+  dormeurWsl = null;                               // avant kill : l'écouteur exit ne re-nettoie pas
+  try { proc.kill(); } catch (e) { /* déjà mort */ }
 }
 
 // Racine de revue = premier dossier du workspace contenant ausgabe.yaml (D22),
@@ -845,6 +889,7 @@ function activate(context) {
   // Un SEUL nettoyage enregistré (les watchers ne sont plus poussés dans
   // context.subscriptions à chaque réinstallation — correctif du nit S2).
   context.subscriptions.push({ dispose: () => { for (const w of watchers) { w.dispose(); } } });
+  context.subscriptions.push({ dispose: arreterDormeurWsl });   // N1 : pas de dormant orphelin
 
   // Le compte « Word en attente » est recalculé par getChildren (description de section).
   const rafraichirTout = () => { fournisseur.rafraichir(); };
@@ -870,12 +915,14 @@ function activate(context) {
     }
   };
 
-  // Recalcule racine + contexte (montre/masque la vue) + watchers, puis rafraîchit.
+  // Recalcule racine + contexte (montre/masque la vue) + watchers + dormant WSL,
+  // puis rafraîchit.
   const majContexte = () => {
     const racine = trouverRacineRevue();
     fournisseur.definirRacine(racine);
     vscode.commands.executeCommand('setContext', CLE_CONTEXTE, !!racine);
     reinstallerWatchers(racine);
+    if (racine) { demarrerDormeurWsl(); } else { arreterDormeurWsl(); }   // N1 (D42)
     rafraichirTout();
   };
 
@@ -894,6 +941,6 @@ function activate(context) {
   majContexte();
 }
 
-function deactivate() {}
+function deactivate() { arreterDormeurWsl(); }
 
 module.exports = { activate, deactivate };

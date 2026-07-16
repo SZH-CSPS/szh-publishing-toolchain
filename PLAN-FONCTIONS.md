@@ -126,15 +126,15 @@ en banque.
 
 ### N1 · WSL démarrée + maintenue en vie (a) — *taille S ; extension ; indépendant*
 
-- [ ] Constante `DISTRO = 'SZH-Publishing'` (aligne `tasks.json` / `szh-common.ps1`).
-- [ ] `child_process.spawn` d'un dormant quand une revue est ouverte (dans
+- [x] Constante `DISTRO = 'SZH-Publishing'` (aligne `tasks.json` / `szh-common.ps1`).
+- [x] `child_process.spawn` d'un dormant quand une revue est ouverte (dans
   `majContexte`, quand `racine` devient non nul) :
   `spawn('wsl.exe', ['-d', DISTRO, '--', 'sh', '-c', 'exec sleep infinity'], { windowsHide: true, stdio: 'ignore' })`.
   Repli du chemin : `wsl.exe` sur PATH, sinon `%WINDIR%\System32\wsl.exe`.
-- [ ] **Un seul** dormant à la fois : garder le handle ; ne pas en relancer si vivant ;
+- [x] **Un seul** dormant à la fois : garder le handle ; ne pas en relancer si vivant ;
   le **tuer** (`proc.kill()`) quand `racine` redevient nul **et** dans `deactivate`
   et via `context.subscriptions.push({ dispose })`.
-- [ ] Robustesse : `proc.on('error', …)` avale l'échec (distro absente = poste non
+- [x] Robustesse : `proc.on('error', …)` avale l'échec (distro absente = poste non
   bootstrappé) sans notification bruyante ; aucun blocage de l'activation.
 - **Vérif** : `node --check` OK ; harnais headless qui stub `child_process.spawn`,
   appelle le hook d'activation avec une racine simulée puis une racine nulle, et
