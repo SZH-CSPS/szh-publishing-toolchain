@@ -56,7 +56,8 @@ Elle a **deux sections** :
     « 1200 × 800 · 245 Ko ») ; **clic** = l'afficher ; **Remplacer** au survol échange le
     fichier contre une autre image **en gardant le même nom** ;
   - chaque **tableau** (fichiers `table-01.html`, `table-02.html`…) vient du document
-    Word d'origine ; **clic** = ouvrir le tableau pour le **modifier directement** ;
+    Word d'origine, **fidèlement** : les cellules fusionnées, le gras et l'italique
+    sont préservés ; **clic** = ouvrir le tableau pour le **modifier directement** ;
     **Remplacer** au survol l'échange contre un autre fichier HTML, même nom conservé.
     La modification apparaît à la compilation suivante (Ctrl + S ou re-clic).
 - **Word en attente (n)** — les fichiers Word déposés mais pas encore convertis ; le
@@ -76,8 +77,13 @@ mis à jour dès que les méta-données changent. En haut de la barre, cinq bout
 - **⬆ Tout exporter** — régénère **tous** les PDF de la revue, même ceux à jour
   (utile avant une livraison : tout est reconstruit proprement d'un coup).
 - **☰ Métadonnées des articles** — un formulaire qui liste **tous les articles** :
-  titre, sous-titre, auteur(s) (nom, affiliation, ORCID), DOI, mots-clés. Seuls les
-  articles modifiés (●) sont réécrits à l'enregistrement.
+  **type d'article** (menu déroulant, libellés dans la langue de la revue), titre,
+  sous-titre et mots-clés **en français et en allemand** (case « + Italien » pour
+  ajouter l'italien à un article), auteur(s) (prénom, nom, fonction, affiliation,
+  ORCID) et DOI. Seuls les articles modifiés (●) sont réécrits à l'enregistrement.
+  Ces informations vivent dans une **fiche cachée** à côté de l'article (invisible
+  dans l'explorateur) — le texte de l'article n'est jamais touché, et la fiche ne
+  s'édite **que** par ce formulaire.
 - **⟳ Rafraîchir** — recharge la liste (utile si OneDrive a tardé à synchroniser).
 
 À l'ouverture d'une revue, l'environnement de compilation démarre en arrière-plan et

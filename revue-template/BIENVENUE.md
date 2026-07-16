@@ -3,19 +3,19 @@
 Cet espace sert à mettre en page la revue. C'est simple :
 
 ## 1. Déposer les articles
-Glisse les fichiers **Word** (`.docx`) ou **LibreOffice** (`.odt`) **finalisés** dans le dossier
-**articles-word** (à gauche). À l'ouverture — ou à la première sauvegarde — ils sont convertis
-tout seuls en fichiers de travail dans le dossier **articles** : un dossier par article, avec
-ses images, sa bibliographie structurée et ses citations reliées (les originaux sont rangés
-dans *_convertis*).
-
-📋 Un **rapport de conversion** (`…-rapport.html`) est déposé à côté de chaque article :
-il dit ce qui a été converti et ce qu'il vaut la peine de vérifier — ouvre-le d'un double-clic.
+Glisse les fichiers **Word** (`.docx`) **finalisés** dans le dossier **articles-word**,
+puis clique **▶▶ Convertir les Word en attente** dans la barre **« Revue SZH »** (panneau
+de gauche). Chaque article devient un dossier de travail dans **articles** — texte, images
+et **tableaux fidèles** (fusions de cellules comprises). Une fois converti, le fichier Word
+disparaît d'**articles-word** : le texte de travail devient l'unique version.
 
 ## 2. Écrire et mettre en forme
-Ouvre un fichier dans **articles** et ajuste le texte. Pour appliquer un style de la revue
-(chapô, encadré, citation en exergue…), tape **`:::`** puis le début du nom, ou appuie sur
-**Ctrl + Alt + S** pour voir la liste.
+**Clique un article** dans la barre « Revue SZH » : son texte s'ouvre à gauche, son aperçu
+à droite. Pour appliquer un style de la revue (chapô, encadré, citation en exergue…), tape
+**`:::`** puis le début du nom, ou appuie sur **Ctrl + Alt + S** pour voir la liste.
+Le **titre, les auteurs, le DOI et les mots-clés** de chaque article se saisissent dans le
+formulaire **« Métadonnées des articles »** (bouton ☰ de la barre) — en français et en
+allemand, l'italien s'ajoute à la demande. Rien de tout cela ne s'écrit dans le texte.
 
 ## 3. Sauvegarder
 Appuie sur **Ctrl + S**. L'article est compilé et **son aperçu PDF s'ouvre tout seul

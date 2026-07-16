@@ -184,11 +184,11 @@ fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
 
 ### M3 · Uniformisation de l'exemple + docs (D51) — *taille S ; template + docs*
 
-- [ ] `revue-template/articles/01-exemple/01-exemple.md` : **retirer le frontmatter**
+- [x] `revue-template/articles/01-exemple/01-exemple.md` : **retirer le frontmatter**
   (ne garder que le corps).
-- [ ] Créer `revue-template/articles/01-exemple/01-exemple.meta.yaml` au schéma D51
+- [x] Créer `revue-template/articles/01-exemple/01-exemple.meta.yaml` au schéma D51
   (fr + de remplis, it absent, un auteur d'exemple, un `type`).
-- [ ] `userdoc.md` / `README.md` : documenter le formulaire « Métadonnées des articles »
+- [x] `userdoc.md` / `README.md` : documenter le formulaire « Métadonnées des articles »
   (champs traductibles FR/DE + IT à la demande, `type` traduit), le fichier `.meta.yaml`
   masqué (édition par formulaire seulement), et la fidélité des tableaux (fusions).
   Ajuster `BIENVENUE.md` s'il évoque l'édition directe des métadonnées.
