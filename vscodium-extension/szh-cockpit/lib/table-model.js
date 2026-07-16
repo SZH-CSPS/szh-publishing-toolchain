@@ -61,7 +61,8 @@ function extraireCellules(interieur) {
           colspan: Math.max(1, parseInt(courant.attrs.colspan, 10) || 1),
           rowspan: Math.max(1, parseInt(courant.attrs.rowspan, 10) || 1),
           th: th,
-          scope: th ? (sc === 'row' ? 'row' : (sc === 'col' ? 'col' : '')) : ''
+          scope: th ? (sc === 'row' ? 'row' : (sc === 'col' ? 'col' : '')) : '',
+          align: enumOu((courant.attrs['data-align'] || '').toLowerCase(), ['left', 'center', 'right'], 'left')
         });
         courant = null;
         profondeur = 0;
@@ -72,6 +73,12 @@ function extraireCellules(interieur) {
 }
 
 function enumOu(v, liste, defaut) { return liste.indexOf(v) !== -1 ? v : defaut; }
+
+// Échappe le texte BRUT (collage TSV) en inline sûr : &, <, > seulement. Le résultat
+// passe ensuite par canoniserInline (aucune balise -> texte conservé, jamais d'injection).
+function echapTexteBrut(s) {
+  return String(s === undefined || s === null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
 
 // Matrice d'occupation (RT1) : place chaque cellule (colspan/rowspan) sur une grille
 // visuelle. grid[r][c] = { li, ci, c0, colspan, rowspan } (indices MODÈLE de la
@@ -114,7 +121,7 @@ function etendreGrille(modele) {
     modele.lignes[r].cellules.forEach((cell, ci) => {
       const pos = occ.positions[r][ci];
       const id = cellules.length;
-      cellules.push({ contenu: cell.contenu, th: !!cell.th, scope: cell.scope || '' });
+      cellules.push({ contenu: cell.contenu, th: !!cell.th, scope: cell.scope || '', align: cell.align || 'left' });
       for (let dr = 0; dr < pos.rowspan && r + dr < nbL; dr++) {
         for (let dc = 0; dc < pos.colspan && pos.c0 + dc < nbC; dc++) { grid[r + dr][pos.c0 + dc] = id; }
       }
@@ -122,7 +129,7 @@ function etendreGrille(modele) {
   }
   for (let r = 0; r < nbL; r++) {
     for (let c = 0; c < nbC; c++) {
-      if (grid[r][c] == null) { grid[r][c] = cellules.length; cellules.push({ contenu: '', th: false, scope: '' }); }
+      if (grid[r][c] == null) { grid[r][c] = cellules.length; cellules.push({ contenu: '', th: false, scope: '', align: 'left' }); }
     }
   }
   return {
@@ -153,7 +160,7 @@ function compacterGrille(g) {
       let cs = 0; while (c + cs < nbC && g.grid[r][c + cs] === id) { cs++; }
       let rs = 0; while (r + rs < nbL && g.grid[r + rs][c] === id) { rs++; }
       const cell = g.cellules[id];
-      cellules.push({ contenu: cell.contenu, colspan: cs, rowspan: rs, th: !!cell.th, scope: cell.scope || '' });
+      cellules.push({ contenu: cell.contenu, colspan: cs, rowspan: rs, th: !!cell.th, scope: cell.scope || '', align: cell.align || 'left' });
     }
     lignes.push({ total: g.infosLignes[r].total, teinte: g.infosLignes[r].teinte, gras: g.infosLignes[r].gras, cellules: cellules });
   }
@@ -208,7 +215,8 @@ function normaliserModele(modele) {
         colspan: Math.max(1, parseInt(c && c.colspan, 10) || 1),
         rowspan: Math.max(1, parseInt(c && c.rowspan, 10) || 1),
         th: th,
-        scope: th ? ((c && c.scope) === 'row' ? 'row' : ((c && c.scope) === 'col' ? 'col' : '')) : ''
+        scope: th ? ((c && c.scope) === 'row' ? 'row' : ((c && c.scope) === 'col' ? 'col' : '')) : '',
+        align: enumOu(c && c.align, ['left', 'center', 'right'], 'left')
       };
     })
   }));
@@ -324,6 +332,7 @@ function serialiserTable(modele) {
       if (cell.th && (cell.scope === 'col' || cell.scope === 'row')) { t += ' scope="' + cell.scope + '"'; }
       if (cell.colspan > 1) { t += ' colspan="' + cell.colspan + '"'; }
       if (cell.rowspan > 1) { t += ' rowspan="' + cell.rowspan + '"'; }
+      if (cell.align === 'center' || cell.align === 'right') { t += ' data-align="' + cell.align + '"'; }
       out.push(t + '>' + cell.contenu + '</' + tag + '>');
     }
     out.push('</tr>');
@@ -346,7 +355,7 @@ function disposition(modele) {
       cellules: lg.cellules.map((cell, ci) => ({
         li: r, ci: ci, r0: r, c0: occ.positions[r][ci].c0,
         colspan: occ.positions[r][ci].colspan, rowspan: occ.positions[r][ci].rowspan,
-        th: cell.th, scope: cell.scope, contenu: cell.contenu
+        th: cell.th, scope: cell.scope, align: cell.align || 'left', contenu: cell.contenu
       }))
     }))
   };
@@ -364,7 +373,7 @@ function ajouterLigne(modele, pos) {
   for (let c = 0; c < nbC; c++) {
     if (pos > 0 && pos < g.grid.length && g.grid[pos - 1][c] != null && g.grid[pos - 1][c] === g.grid[pos][c]) {
       rangee[c] = g.grid[pos - 1][c];
-    } else { rangee[c] = g.cellules.length; g.cellules.push({ contenu: '', th: false, scope: '' }); }
+    } else { rangee[c] = g.cellules.length; g.cellules.push({ contenu: '', th: false, scope: '', align: 'left' }); }
   }
   g.grid.splice(pos, 0, rangee);
   g.infosLignes.splice(pos, 0, { total: false, teinte: 'gris', gras: 'non' });
@@ -390,7 +399,7 @@ function ajouterColonne(modele, pos) {
     let id;
     if (pos > 0 && pos < nbC && g.grid[r][pos - 1] != null && g.grid[r][pos - 1] === g.grid[r][pos]) {
       id = g.grid[r][pos - 1];
-    } else { id = g.cellules.length; g.cellules.push({ contenu: '', th: false, scope: '' }); }
+    } else { id = g.cellules.length; g.cellules.push({ contenu: '', th: false, scope: '', align: 'left' }); }
     g.grid[r].splice(pos, 0, id);
   }
   return compacterGrille(g);
@@ -451,7 +460,7 @@ function scinder(modele, r, c) {
   const base = g.cellules[id];
   for (let k = 1; k < positions.length; k++) {
     const nid = g.cellules.length;
-    g.cellules.push({ contenu: '', th: base.th, scope: base.scope });
+    g.cellules.push({ contenu: '', th: base.th, scope: base.scope, align: base.align || 'left' });
     g.grid[positions[k][0]][positions[k][1]] = nid;
   }
   return compacterGrille(g);
@@ -483,6 +492,69 @@ function viderCellules(modele, rMin, cMin, rMax, cMax, mode) {
   return finaliserModele(m);
 }
 
+// Alignement horizontal (D59) des cellules dont l'origine est dans la plage visuelle.
+// Par colonne = sélectionner la colonne entière puis appliquer. Pure : modèle -> modèle.
+function alignerCellules(modele, rMin, cMin, rMax, cMax, valeur) {
+  const v = enumOu(valeur, ['left', 'center', 'right'], 'left');
+  const m = normaliserModele(modele);
+  const occ = matriceOccupation(m.lignes);
+  const nbL = occ.nbLignes, nbC = occ.nbColonnes;
+  const r0 = Math.max(0, Math.min(rMin, rMax)), r1 = Math.min(nbL - 1, Math.max(rMin, rMax));
+  const c0 = Math.max(0, Math.min(cMin, cMax)), c1 = Math.min(nbC - 1, Math.max(cMin, cMax));
+  const vus = new Set();
+  for (let r = r0; r <= r1; r++) {
+    for (let c = c0; c <= c1; c++) {
+      const ref = occ.grid[r] && occ.grid[r][c];
+      if (!ref) { continue; }
+      const clef = ref.li + '/' + ref.ci;
+      if (vus.has(clef)) { continue; }
+      vus.add(clef);
+      m.lignes[ref.li].cellules[ref.ci].align = v;
+    }
+  }
+  return finaliserModele(m);
+}
+
+// Presse-papier TEXTE (TSV) -> modèle : lignes = \n, cellules = \t. Texte échappé
+// (jamais d'injection). Ex. « a\tb\nc\td » -> tableau 2×2.
+function tableauDepuisTsv(texte) {
+  const s = String(texte === undefined || texte === null ? '' : texte).replace(/\r\n?/g, '\n').replace(/\n+$/, '');
+  const lignesTxt = s.split('\n');
+  const lignes = lignesTxt.map((l) => ({
+    total: false, teinte: 'gris', gras: 'non',
+    cellules: l.split('\t').map((v) => ({ contenu: echapTexteBrut(v), colspan: 1, rowspan: 1, th: false, scope: '', align: 'left' }))
+  }));
+  return finaliserModele({ attrs: {}, lignes: lignes });
+}
+
+// Colle le modèle `source` dans `modele` à l'ancre visuelle (ancreR,ancreC) : la
+// grille cible s'agrandit au besoin, les cellules source sont ESTAMPÉES (fusions
+// colspan/rowspan préservées : chaque origine source occupe le même rectangle dans
+// la cible). Pure : modèle -> modèle ; round-trip garanti par compacterGrille.
+function collerDans(modele, ancreR, ancreC, source) {
+  const g = etendreGrille(normaliserModele(modele));
+  const sg = etendreGrille(normaliserModele(source));
+  const sL = sg.grid.length, sC = sL ? sg.grid[0].length : 0;
+  if (sL === 0 || sC === 0) { return finaliserModele(modele); }
+  ancreR = Math.max(0, ancreR | 0); ancreC = Math.max(0, ancreC | 0);
+  let curC = g.grid.length ? g.grid[0].length : 0;
+  const needC = ancreC + sC, needL = ancreR + sL;
+  for (; curC < needC; curC++) { for (let r = 0; r < g.grid.length; r++) { const id = g.cellules.length; g.cellules.push({ contenu: '', th: false, scope: '', align: 'left' }); g.grid[r].push(id); } }
+  while (g.grid.length < needL) { const row = []; for (let c = 0; c < curC; c++) { const id = g.cellules.length; g.cellules.push({ contenu: '', th: false, scope: '', align: 'left' }); row.push(id); } g.grid.push(row); g.infosLignes.push({ total: false, teinte: 'gris', gras: 'non' }); }
+  const origines = {};
+  for (let r = 0; r < sL; r++) { for (let c = 0; c < sC; c++) { const id = sg.grid[r][c]; if (!(id in origines)) { origines[id] = { r: r, c: c }; } } }
+  Object.keys(origines).forEach((idStr) => {
+    const id = +idStr, o = origines[id];
+    let cs = 0; while (o.c + cs < sC && sg.grid[o.r][o.c + cs] === id) { cs++; }
+    let rs = 0; while (o.r + rs < sL && sg.grid[o.r + rs][o.c] === id) { rs++; }
+    const sc = sg.cellules[id];
+    const nid = g.cellules.length;
+    g.cellules.push({ contenu: sc.contenu, th: !!sc.th, scope: sc.scope || '', align: sc.align || 'left' });
+    for (let dr = 0; dr < rs; dr++) { for (let dc = 0; dc < cs; dc++) { g.grid[ancreR + o.r + dr][ancreC + o.c + dc] = nid; } }
+  });
+  return compacterGrille(g);
+}
+
 // Applique une opération nommée (venue de la webview) au modèle (assaini). Les
 // plages (rMin..rMax / cMin..cMax) sont dépliées en appels unitaires des ops pures.
 function appliquerOperationTable(nom, modeleBrut, args) {
@@ -502,6 +574,11 @@ function appliquerOperationTable(nom, modeleBrut, args) {
     return m;
   }
   if (nom === 'vider') { return viderCellules(modele, n(a.rMin), n(a.cMin), n(a.rMax), n(a.cMax), a.mode === 'forme' ? 'forme' : 'contenu'); }
+  if (nom === 'aligner') { return alignerCellules(modele, n(a.rMin), n(a.cMin), n(a.rMax), n(a.cMax), a.valeur); }
+  if (nom === 'coller') {
+    const src = (a.html && /<table/i.test(String(a.html))) ? analyserTable(String(a.html)) : tableauDepuisTsv(a.texte);
+    return collerDans(modele, n(a.ancreR), n(a.ancreC), src);
+  }
   if (nom === 'fusionner') { return fusionner(modele, n(a.rMin), n(a.cMin), n(a.rMax), n(a.cMax)); }
   if (nom === 'scinder') {
     const occ = matriceOccupation(modele.lignes);
@@ -556,10 +633,11 @@ function appliquerOperationTable(nom, modeleBrut, args) {
 }
 
 module.exports = {
-  lireAttributsHtml, canoniserInline, extraireCellules, enumOu,
+  lireAttributsHtml, canoniserInline, echapTexteBrut, extraireCellules, enumOu,
   matriceOccupation, etendreGrille, compacterGrille, reappliquerEntetes,
   normaliserModele, finaliserModele, infererEnteteLignes, infererEnteteColonnes,
   analyserTable, serialiserTable, disposition,
   ajouterLigne, supprimerLigne, ajouterColonne, supprimerColonne,
-  fusionner, scinder, viderCellules, appliquerOperationTable
+  fusionner, scinder, viderCellules, alignerCellules,
+  tableauDepuisTsv, collerDans, appliquerOperationTable
 };

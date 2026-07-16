@@ -71,7 +71,8 @@ const {
   analyserTable, serialiserTable, disposition, matriceOccupation,
   etendreGrille, compacterGrille, normaliserModele, finaliserModele, canoniserInline,
   ajouterLigne, supprimerLigne, ajouterColonne, supprimerColonne,
-  fusionner, scinder, viderCellules, appliquerOperationTable
+  fusionner, scinder, viderCellules, alignerCellules,
+  tableauDepuisTsv, collerDans, appliquerOperationTable
 } = require('./lib/table-model');
 // ---- Assemblage des webviews -> lib/webviews/util.js -----------------------------
 const { construireHtml, lireMedia } = require('./lib/webviews/util');
@@ -1533,7 +1534,8 @@ module.exports = {
     matriceOccupation, etendreGrille, compacterGrille,
     normaliserModele, finaliserModele, canoniserInline,
     ajouterLigne, supprimerLigne, ajouterColonne, supprimerColonne,
-    fusionner, scinder, viderCellules, appliquerOperationTable,
+    fusionner, scinder, viderCellules, alignerCellules,
+    tableauDepuisTsv, collerDans, appliquerOperationTable,
     TEXTES_COCKPIT
   }
 };

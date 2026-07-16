@@ -111,6 +111,10 @@ table > caption::before {
 .szh-tableau th, .szh-tableau td { border: 0; padding: 0.35em 0.6em; text-align: left; vertical-align: top; }
 .szh-tableau th { background: transparent; font-weight: 400; }
 
+/* Alignement horizontal par cellule (D59) — défaut « left » via la règle ci-dessus. */
+.szh-tableau th[data-align="center"], .szh-tableau td[data-align="center"] { text-align: center; }
+.szh-tableau th[data-align="right"], .szh-tableau td[data-align="right"] { text-align: right; }
+
 /* En-têtes de LIGNE (rangées du haut = <th scope="col">) — data-entete-ligne-style */
 .szh-tableau[data-entete-ligne-style="gras"] th[scope="col"] { font-weight: 700; }
 .szh-tableau[data-entete-ligne-style="fond"] th[scope="col"] { background: var(--szh-accent-clair); font-weight: 700; }
