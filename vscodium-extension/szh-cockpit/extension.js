@@ -2868,7 +2868,7 @@ async function ouvrirMiseEnForme() {
   }
   const items = PALETTE_MEF.map((e) => (e[0] === '--'
     ? { label: T(e[1]), kind: vscode.QuickPickItemKind.Separator }
-    : { label: (e[3] ? e[3] + ' ' : '') + T(e[0]), description: e[2], commande: e[1] }));
+    : { label: (e[3] ? e[3] + ' ' : '') + T(e[0]), description: '[' + e[2] + ']', commande: e[1] }));
   const choix = await vscode.window.showQuickPick(items, { placeHolder: T('palette.placeholder') });
   if (choix && choix.commande) { await vscode.commands.executeCommand(choix.commande); }
 }
