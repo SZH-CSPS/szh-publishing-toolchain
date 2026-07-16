@@ -25,6 +25,12 @@ STYLE      := $(firstword $(wildcard styles/print.css) $(PIPELINE_DIR)/styles/pr
 STYLE_ABS  := $(abspath $(STYLE))
 CSL        := $(PIPELINE_DIR)/csl/apa.csl
 
+# Maquette définitive (D69–D74) : template pandoc de la couverture + filtre Lua qui
+# dérive les métadonnées de couverture/en-tête (étiquette de dossier D71, revue D74).
+TEMPLATE     := $(PIPELINE_DIR)/templates/szh-article.html
+TEMPLATE_ABS := $(abspath $(TEMPLATE))
+MAQUETTE_LUA := $(PIPELINE_DIR)/filters/szh-maquette.lua
+
 # Langue du numéro (bibliographie, :lang du rendu) — lue dans ausgabe.yaml, défaut fr.
 LANG_LUE   := $(shell sed -n 's/^lang:[[:space:]]*\([a-zA-Z-]*\).*/\1/p' ausgabe.yaml 2>/dev/null | head -1)
 LANG_REVUE := $(if $(LANG_LUE),$(LANG_LUE),fr)
@@ -89,7 +95,7 @@ $(ACCENT_CSS): ausgabe.yaml
 # citeproc + CSL APA seulement si l'article a une bibliographie (media/<slug>.bib).
 # Les tableaux extraits (tables/*.html, D47) sont des PRÉREQUIS : en éditer un
 # déclenche la recompilation de l'article (SECONDEXPANSION déjà active).
-$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
+$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(TEMPLATE) $(MAQUETTE_LUA) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
 	extra=""; \
@@ -97,14 +103,15 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 	meta=""; \
 	if [ -f "articles/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
 	echo "pandoc articles/$$slug/$$slug.md -> $@ $$extra"; \
-	cd "articles/$$slug" && $(PANDOC) "$$slug.md" \
+	cd "articles/$$slug" && SZH_AUSGABE="$(abspath ausgabe.yaml)" $(PANDOC) "$$slug.md" \
 	  --from=markdown --to=html5 \
 	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
 	  --standalone --embed-resources \
+	  --template="$(TEMPLATE_ABS)" \
 	  --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
+	  --lua-filter="$(MAQUETTE_LUA)" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" $$extra \
 	  --output="$(abspath $@)"
-	# ⇩ REMPLACER ici par le template HTML/filtres finaux de la maquette si besoin.
 
 # .md -> HTML d'APERÇU (D53) : mêmes filtres/CSS/métadonnées que la sortie PDF,
 # mais reader commonmark_x+sourcepos -> chaque bloc porte data-pos (position

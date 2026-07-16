@@ -5,6 +5,7 @@
 __pycache__/
 
 # Artefacts de build locaux (la CI publie les siens en Release)
+out/
 *.tar.gz
 *.tar.gz.sha256
 toolkit-*.zip

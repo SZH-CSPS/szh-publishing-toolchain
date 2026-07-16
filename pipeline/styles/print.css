@@ -1,27 +1,156 @@
-/* Feuille de style d'impression (CSS Paged Media, rendue par WeasyPrint).
-   Point de départ minimal — à remplacer par la charte de la revue. */
+/* Feuille de style d'impression (CSS Paged Media, rendue par WeasyPrint 69).
+   Maquette définitive SZH/CSPS (PLAN-MAQUETTE.md, D69–D74).
+   Pas de JavaScript au rendu : tout est CSS statique + compteurs + jetons précalculés.
 
+   Plan du fichier :
+     1. Polices empaquetées (@font-face, ../fonts/)                       [M1]
+     2. Jetons :root (couleurs, tailles, polices ; repli gris annuel)     [M1]
+     3. Géométrie de page (@page A4 ; couverture :first pleine-marge ;
+        en-tête / pied courants en margin boxes)                          [M1]
+     4. Typographie de base (corps, justification, césure)                [M1]
+     5. Couverture (hero, filet, résumés, mots-clés)                      [M2]
+     6. Éléments de corps (titres H1–H4, listes, citation, encadrés)      [M3]
+     7. Tableaux .szh-tableau (refonte T1/T2 — NE PAS régresser)          [hérité]
+   La couleur annuelle (§2 repli gris) est SURCHARGÉE à la compilation par
+   accent-css.py (out/.szh-accent.css) — voir couleurs.css et D72. */
+
+/* ═══ 1. Polices empaquetées (OFL, voir ../fonts/README.md) ═══════════════════
+   Open Sans est figée à largeur 87,5 % (semi-condensé de la maquette) une face
+   par poids : WeasyPrint 69 refuse les intervalles de poids en @font-face et son
+   rendu des axes variables est partiel (D73, adaptation documentée). */
+@font-face { font-family: 'Open Sans'; font-weight: 400; font-style: normal;
+  src: url("../fonts/OpenSans-SemiCondensed-Regular.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans'; font-weight: 600; font-style: normal;
+  src: url("../fonts/OpenSans-SemiCondensed-SemiBold.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans'; font-weight: 700; font-style: normal;
+  src: url("../fonts/OpenSans-SemiCondensed-Bold.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans'; font-weight: 400; font-style: italic;
+  src: url("../fonts/OpenSans-SemiCondensed-Italic.ttf") format('truetype'); }
+@font-face { font-family: 'Source Serif 4'; font-weight: 400; font-style: normal;
+  src: url("../fonts/SourceSerif4-Regular.ttf") format('truetype'); }
+@font-face { font-family: 'Source Serif 4'; font-weight: 400; font-style: italic;
+  src: url("../fonts/SourceSerif4-Italic.ttf") format('truetype'); }
+@font-face { font-family: 'IBM Plex Mono'; font-weight: 400; font-style: normal;
+  src: url("../fonts/IBMPlexMono-Regular.ttf") format('truetype'); }
+@font-face { font-family: 'IBM Plex Mono'; font-weight: 500; font-style: normal;
+  src: url("../fonts/IBMPlexMono-Medium.ttf") format('truetype'); }
+
+/* ═══ 2. Jetons :root ═════════════════════════════════════════════════════════ */
+:root {
+  --font-sans:  'Open Sans', system-ui, sans-serif;
+  --font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  --font-mono:  'IBM Plex Mono', ui-monospace, monospace;
+  --title-family: var(--font-sans);
+
+  --c-paper: #ffffff;
+  --c-ink:   #16161f;  --c-ink2: #3d3d49;  --c-ink3: #5b5b66;
+  --c-nuit:  #252B46;                       /* hero bleu nuit PERMANENT (D70) */
+  --c-rule:  #d0cdc4;  --c-ruleSoft: #e4e1d8;
+
+  --body-size: 12px;
+  --leading:   1.55;
+
+  /* Couleur annuelle — REPLI GRIS neutre (D72). accent-css.py surcharge ces
+     jetons quand ausgabe.yaml définit `couleur:` (M4). Le hero, lui, reste nuit. */
+  --c-annual:        #8f8f95;
+  --c-annual-deep:   #6f6f76;
+  --c-annual-text:   #5c5c63;   /* texte annuel sur blanc (contraste garanti) */
+  --c-annual-ui:     #8f8f95;   /* filets / barres */
+  --c-on-annual:     #ffffff;   /* texte sur aplat annuel */
+  --c-abstract-border: var(--c-annual);
+  --c-kw-bg:         #ececec;   /* fond des mots-clés */
+  --c-kw-border:     transparent;
+  --annual-soft:     #f2f2f2;   /* fond d'encadré « wichtig » */
+  --annual-tint:     #f0f0f0;   /* bande teintée */
+
+  /* Marqueurs de liste et numéros de titre : TOUJOURS NOIRS (D70, fidèle maquette). */
+  --c-bullet-marker: #000000;
+  --c-num-marker:    #000000;
+}
+
+/* ═══ 3. Géométrie de page ════════════════════════════════════════════════════
+   A4. Pages courantes : marges réservant l'en-tête et le pied courants, rendus
+   dans des margin boxes (D69). L'en-tête / le pied sont des éléments « running »
+   posés une seule fois par le template et tirés ici. */
 @page {
   size: A4;
-  margin: 25mm 20mm;
-  @bottom-center { content: counter(page) " / " counter(pages); font-size: 9pt; color: #666; }
+  margin: 74px 64px 66px 64px;
+
+  /* width: 100% donne une largeur définie à la boîte -> l'élément running (flex,
+     justify-content: space-between) occupe toute la largeur imprimable et écarte
+     gauche/droite (sinon la boîte se réduit au contenu et « space-between » n'a pas d'effet). */
+  @top-center    { content: element(enteteCourante); vertical-align: bottom; width: 100%; }
+  @bottom-center { content: element(piedCourant);    vertical-align: top;    width: 100%; }
 }
 
+/* Couverture = première page : pleine-marge, le hero déborde jusqu'au bord (D69).
+   Marges nulles -> les margin boxes se replient : pas d'en-tête / pied sur la
+   couverture (l'en-tête / le pied ne concernent que les pages courantes). */
+@page :first {
+  margin: 0;
+}
+
+/* En-tête courant : dossier/type à gauche, Vol·numéro/année à droite, filet dessous. */
+.szh-entete-courante {
+  position: running(enteteCourante);
+  display: flex; justify-content: space-between; align-items: baseline;
+  width: 100%; padding-bottom: 7px; border-bottom: 1px solid var(--c-rule);
+  font-family: var(--font-sans); font-size: 9px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.14em;
+}
+.szh-entete-courante .g { color: var(--c-ink2); }
+.szh-entete-courante .d { color: var(--c-ink3); font-variant-numeric: tabular-nums; }
+
+/* Pied courant : ISSN à gauche, folio (numéro de page) à droite, filet dessus. */
+.szh-pied-courant {
+  position: running(piedCourant);
+  display: flex; justify-content: space-between; align-items: baseline;
+  width: 100%; padding-top: 8px; border-top: 1px solid var(--c-rule);
+  font-family: var(--font-sans); font-size: 9px; color: var(--c-ink3);
+}
+.szh-pied-courant .folio {
+  font-weight: 700; color: var(--c-ink); font-variant-numeric: tabular-nums;
+}
+.szh-pied-courant .folio::after { content: counter(page); }
+
+/* ═══ 4. Typographie de base ══════════════════════════════════════════════════ */
+html { font-size: 100%; }
 body {
-  font-family: "Noto Serif", Georgia, serif;
-  font-size: 11pt;
-  line-height: 1.55;
+  font-family: var(--font-sans);
+  font-size: var(--body-size);
+  line-height: var(--leading);
+  color: var(--c-ink);
   hyphens: auto;
-  color: #1a1a1a;
+}
+p { margin: 0 0 0.62em; text-align: justify; hyphens: auto; overflow-wrap: break-word; }
+p:last-child { margin-bottom: 0; }
+a { color: inherit; text-decoration: none; }
+strong, b { font-weight: 700; }
+em, i { font-style: italic; }
+code, pre, kbd, samp { font-family: var(--font-mono); }
+
+/* Le bloc-titre par défaut de pandoc est masqué : la couverture est fournie par
+   le template de la maquette (M2). Sans template, on évite un titre parasite. */
+#title-block-header { display: none; }
+
+/* ═══ 5. Couverture (hero, filet, résumés, mots-clés) — M2 ════════════════════ */
+/* (ajouté en tranche M2) */
+
+/* ═══ 6. Éléments de corps (titres, listes, citation, encadrés) — M3 ══════════ */
+/* Provisoire M1 : styles neutres, remplacés par la maquette fidèle en M3. */
+h1, h2, h3, h4 { font-family: var(--font-sans); font-weight: 700; line-height: 1.2;
+  color: var(--c-ink); margin: 0.2em 0 0.3em; text-align: left; }
+h1 { font-size: 16px; }
+h2 { font-size: 14px; }
+h3 { font-size: 12.5px; }
+h4 { font-size: 12px; }
+blockquote { font-style: italic; margin: 0.6em 0; }
+.important, .highlight, .hervorhebung, .question {
+  padding: 0.7em 1em; margin: 1em 0; break-inside: avoid;
+  border-left: 4px solid var(--c-annual); background: var(--annual-soft);
 }
 
-h1, h2, h3 { font-family: "Noto Sans", Arial, sans-serif; line-height: 1.2; }
-h1 { font-size: 20pt; break-before: page; }
-h2 { font-size: 15pt; }
-
-blockquote { border-left: 3px solid #ccc; margin-left: 0; padding-left: 1em; color: #444; }
-
-/* ── Numérotation automatique des figures et tableaux (D31) ─────────────
+/* ═══ Numérotation automatique des figures et tableaux (D31) — hérité ═════════
    Les numéros manuels sont retirés à l'import ; la numérotation suit l'ordre
    du document et le libellé suit la langue de l'article (:lang). */
 body { counter-reset: compteur-figure compteur-tableau; }
@@ -36,6 +165,7 @@ figure > figcaption::before {
 }
 :lang(de) figure > figcaption::before { content: "Abbildung " counter(compteur-figure) " — "; }
 
+/* Tableaux importés bruts (<table> nu, non .szh-tableau) : style générique sobre. */
 table { border-collapse: collapse; font-size: 10pt; margin: 1.2em 0; width: 100%; }
 th, td { border: 1px solid #999; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }
 th { background: #eee; }
@@ -47,48 +177,15 @@ table > caption::before {
 }
 :lang(de) table > caption::before { content: "Tabelle " counter(compteur-tableau) " — "; }
 :lang(en) table > caption::before { content: "Table " counter(compteur-tableau) " — "; }
+/* .szh-tableau réintroduit sa propre grille : la bordure générique ne doit pas s'y appliquer. */
+.szh-tableau th, .szh-tableau td { border: 0; }
+.szh-tableau th { background: transparent; }
 
 /* ── Bibliographie (citeproc) ────────────────────────────────────────────── */
 #refs { font-size: 10pt; }
 #refs .csl-entry { margin-bottom: 0.5em; padding-left: 1.4em; text-indent: -1.4em; }
 
-/* ── Blocs de style de la revue (M6, D55) ─────────────────────────────────
-   Ces classes correspondent aux snippets ::: (vscodium-user/snippets/markdown.json)
-   et au sous-menu « Mise en forme » de l'extension. Garder les listes synchronisées.
-   Styles volontairement neutres : à remplacer par la charte réelle de la revue.
-   Le résumé (abrégé) est désormais une MÉTADONNÉE d'article (D51), plus un bloc. */
-
-.important {
-  border-left: 4px solid #c07a00;
-  background: #fdf6e9;
-  padding: 0.7em 1em;
-  margin: 1em 0;
-  break-inside: avoid;
-}
-/* Titre paramétrable : ::: {.important data-titre="…"} — rendu seulement si présent. */
-.important[data-titre]::before {
-  content: attr(data-titre);
-  display: block;
-  font-weight: 700;
-  margin-bottom: 0.3em;
-}
-
-.highlight {
-  background: #fff7cc;
-  padding: 0.6em 1em;
-  margin: 1em 0;
-  break-inside: avoid;
-}
-
-.question {
-  border-left: 4px solid #5f9fbc;
-  background: #eef5f9;
-  padding: 0.7em 1em;
-  margin: 1em 0;
-  break-inside: avoid;
-}
-
-/* ── Tableaux stylés de l'éditeur maison (.szh-tableau, D57/T3) ────────────────
+/* ═══ 7. Tableaux stylés de l'éditeur maison (.szh-tableau, D57/T3) ════════════
    Style porté par des attributs data-* (posés par l'éditeur de tableau du cockpit)
    et par <th scope>. L'ACCENT est « gris » (repli neutre ci-dessous) OU la couleur
    annuelle du numéro : accent-css.py lit ausgabe.yaml et, SI une couleur est

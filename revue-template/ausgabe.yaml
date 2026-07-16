@@ -1,6 +1,16 @@
-# Métadonnées du numéro / de l'édition (« Ausgabe »), consommées par Pandoc
-# via --metadata-file pour chaque article. Adapter à la revue SZH/CSPS.
-title: "Revue suisse de pédagogie spécialisée"
-subtitle: "Dossier — numéro d'exemple"
+# Métadonnées du numéro / de l'édition (« Ausgabe »), consommées par Pandoc via
+# --metadata-file pour chaque article. Éditées par le formulaire « Métadonnées du
+# numéro » du cockpit (ne pas modifier à la main sauf besoin).
+#
+#   title   : titre du DOSSIER thématique (pas le nom de la revue)
+#   revue   : choix fermé (D74) -> nom + ISSN + langue par défaut
+#             « revue »       = Revue suisse de pédagogie spécialisée (ISSN 2813-4915, fr)
+#             « zeitschrift » = Schweizerische Zeitschrift für Heilpädagogik (ISSN 2813-4907, de)
+#   couleur : couleur annuelle (hex de la palette figée), repeint tous les accents.
+title: "Dossier — numéro d'exemple"
+revue: revue
+volume: "44"
+numero: "2"
 date: "2026"
 lang: fr
+couleur: "#5F9FBC"

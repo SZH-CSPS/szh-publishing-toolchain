@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="$lang$" xml:lang="$lang$"$if(dir)$ dir="$dir$"$endif$>
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+$for(author-meta)$
+  <meta name="author" content="$author-meta$" />
+$endfor$
+$if(date-meta)$
+  <meta name="dcterms.date" content="$date-meta$" />
+$endif$
+  <title>$if(titre-affiche)$$titre-affiche$$else$$pagetitle$$endif$</title>
+  <style>
+    $styles.html()$
+  </style>
+$for(css)$
+  <link rel="stylesheet" href="$css$" />
+$endfor$
+$for(header-includes)$
+  $header-includes$
+$endfor$
+$if(math)$
+  $math$
+$endif$
+</head>
+<body>
+$for(include-before)$
+$include-before$
+$endfor$
+
+<!-- En-tête / pied courants (pages intérieures) : posés une fois, tirés dans les
+     margin boxes @top-center / @bottom-center par print.css (position: running()).
+     Absents de la couverture (@page:first marge 0 -> margin boxes repliées). -->
+<div class="szh-entete-courante" role="presentation" aria-hidden="true">
+  <span class="g">$etiquette-dossier$</span>
+  <span class="d">$vol-ligne$</span>
+</div>
+<div class="szh-pied-courant" role="presentation" aria-hidden="true">
+  <span class="issn">$if(issn)$ISSN $issn$$endif$</span>
+  <span class="folio"></span>
+</div>
+
+$-- COUVERTURE : insérée en tranche M2 (hero, filet, résumés, mots-clés). --$
+$body$
+
+$for(include-after)$
+$include-after$
+$endfor$
+</body>
+</html>
