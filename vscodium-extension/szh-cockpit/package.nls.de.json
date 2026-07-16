@@ -1,0 +1,13 @@
+{
+  "cmd.importerWord": "Word-Dateien importieren",
+  "cmd.rafraichir": "Zeitschriften-Leiste aktualisieren",
+  "cmd.convertirEnAttente": "Wartende Word-Dateien konvertieren",
+  "cmd.metadonnees": "Metadaten der Ausgabe",
+  "cmd.supprimerArticle": "Artikel löschen",
+  "cmd.remplacerAsset": "Bild ersetzen",
+  "cmd.toutExporter": "Alles exportieren (vollständiger Rebuild)",
+  "cmd.remplacerTable": "Tabelle ersetzen",
+  "cmd.apercuMetadonnees": "Metadaten der Artikel",
+  "cmd.reglages": "SZH-Einstellungen",
+  "config.langue": "Sprache der Cockpit-Texte (fr/de). Leer = Sprache des Editors."
+}

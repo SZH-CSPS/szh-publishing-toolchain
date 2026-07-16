@@ -42,6 +42,247 @@ const ID_VUE = 'szhCockpitVue';
 const NOM_TACHE_IMPORT = 'Importer les articles Word';
 const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
 const NOM_TACHE_EXPORT = 'Tout exporter';
+
+// ---- i18n du cockpit (M4, D52) ------------------------------------------------------
+//
+// Toutes les chaînes VISIBLES passent par T(clé[, args]). Langue : réglage
+// szh.langue (fr/de) s'il est défini, sinon la langue de VSCodium (de -> de,
+// tout le reste -> fr). Les traductions DE sont un premier jet à valider.
+// Les titres de commandes de package.json passent par %clé% + package.nls*.json
+// (résolus par VSCodium selon SA langue d'interface, pas szh.langue).
+
+const TEXTES_COCKPIT = {
+  fr: {
+    'arbre.articles': 'Articles',
+    'arbre.word': 'Word en attente',
+    'arbre.vide.articles': 'Aucun article pour l’instant',
+    'arbre.vide.word': 'Aucun Word en attente',
+    'arbre.deja.badge': 'déjà converti',
+    'arbre.deja.tooltip': 'Déjà converti — renommez le fichier si c’est une nouvelle version.',
+    'arbre.word.tooltip': 'Word en attente d’import : {0}',
+    'arbre.table.tooltip': '{0} — clic = éditer le HTML du tableau',
+    'arbre.titre.defaut': 'Revue SZH',
+    'statut.build.encours': 'Compilation déjà en cours…',
+    'statut.build.de': 'Compilation de « {0} »…',
+    'statut.import.encours': 'Import déjà en cours…',
+    'statut.import': 'Import des Word en attente…',
+    'statut.export': 'Export complet de la revue…',
+    'statut.occupe': 'Compilation ou import en cours — réessayez ensuite.',
+    'statut.supprime': 'Article « {0} » supprimé.',
+    'statut.image.remplacee': 'Image « {0} » remplacée — recompilez pour voir le PDF à jour.',
+    'statut.table.remplacee': 'Tableau « {0} » remplacé — recompilez pour voir le PDF à jour.',
+    'statut.ausgabe': 'ausgabe.yaml enregistré.',
+    'statut.fiches': '{0} fiche(s) de métadonnées enregistrée(s).',
+    'err.tache': 'Tâche « {0} » introuvable. Réglages de l’éditeur incomplets ?',
+    'err.build': 'La compilation a échoué. Ouvrez le panneau « {0} » pour le détail.',
+    'err.import': 'L’import a rencontré un problème. Ouvrez le panneau de la tâche « {0} » pour le détail.',
+    'err.export': 'L’export complet a échoué. Ouvrez le panneau « {0} » pour le détail.',
+    'err.pdf.introuvable': 'PDF introuvable après compilation : « {0} ».',
+    'err.suppression': 'Suppression incomplète de « {0} » : {1}',
+    'err.copie': 'Copie impossible : {0} ({1})',
+    'err.remplacement': 'Remplacement impossible : {0}',
+    'err.ecriture': 'Écriture impossible : {0}',
+    'info.importes.un': '1 article importé.',
+    'info.importes': '{0} articles importés.',
+    'info.importes.aucun': 'Aucun nouvel article importé (déjà présent(s) ?).',
+    'info.exportes.un': '1 article exporté.',
+    'info.exportes': '{0} articles exportés.',
+    'info.pdf.externe': 'Aperçu PDF intégré indisponible — ouverture dans le lecteur système.',
+    'info.redemarrer': 'Langue de l’interface enregistrée — redémarrez VSCodium pour appliquer les menus natifs.',
+    'modale.supprimer.question': 'Supprimer l’article « {0} » et son PDF ?',
+    'modale.supprimer.detail': 'Les dossiers articles/{0} et out/{0} seront définitivement effacés.\nAction irréversible.',
+    'modale.supprimer.bouton': 'Supprimer',
+    'modale.remplacer.question': 'Remplacer « {0} » par « {1} » ?',
+    'modale.remplacer.detail.image': 'L’ancienne image sera écrasée. Le nom « {0} » est conservé (le texte de l’article pointe ce nom).',
+    'modale.remplacer.detail.format': '⚠ Le fichier choisi est un .{0} mais l’image de l’article est un .{1} : le contenu ne correspondra plus à l’extension et le rendu peut casser.\n',
+    'modale.remplacer.detail.table': 'L’ancien tableau sera écrasé. Le nom « {0} » est conservé (l’article pointe ce nom).',
+    'modale.remplacer.bouton': 'Remplacer',
+    'modale.conflit.question': 'Ces fichiers sont déjà en attente : {0}.\nQue faire ?',
+    'modale.conflit.ignorer': 'Ignorer ces fichiers',
+    'dial.importer.titre': 'Choisir les fichiers Word à importer',
+    'dial.importer.bouton': 'Importer',
+    'dial.importer.filtre': 'Documents Word',
+    'dial.image.titre': 'Choisir l’image de remplacement pour « {0} »',
+    'dial.image.bouton': 'Choisir cette image',
+    'dial.image.filtre': 'Images',
+    'dial.table.titre': 'Choisir le fichier HTML de remplacement pour « {0} »',
+    'dial.table.bouton': 'Choisir ce tableau',
+    'dial.table.filtre': 'Tableaux HTML',
+    'meta.titre': 'Méta-données du numéro',
+    'meta.note': 'Enregistrées dans ausgabe.yaml — seuls les champs modifiés sont réécrits, le reste du fichier est préservé.',
+    'meta.title': 'Titre du dossier thématique',
+    'meta.revue': 'Nom de la revue',
+    'meta.volume': 'Volume',
+    'meta.numero': 'Numéro',
+    'meta.date': 'Date de publication',
+    'meta.date.indice': 'Valeur actuelle dans le fichier : « {0} » — choisir une date la remplacera.',
+    'meta.langue': 'Langue du numéro',
+    'meta.langue.aucune': '(non définie)',
+    'meta.langue.fr': 'français',
+    'meta.langue.de': 'allemand',
+    'meta.langue.en': 'anglais',
+    'meta.langue.it': 'italien',
+    'form.enregistrer': 'Enregistrer',
+    'form.rien': 'Aucune modification.',
+    'form.enregistre': '✓ Enregistré',
+    'fiches.titre': 'Métadonnées des articles',
+    'fiches.note': 'Enregistrées dans la fiche de l’article (fichier caché, édité par ce formulaire uniquement) — seuls les articles modifiés (●) sont réécrits. Le texte de l’article n’est jamais touché.',
+    'fiches.enregistre': '✓ {0} article(s) enregistré(s)',
+    'fiches.type': 'Type d’article',
+    'fiches.type.aucun': '(non défini)',
+    'fiches.titre.champ': 'Titre ({0})',
+    'fiches.soustitre': 'Sous-titre ({0})',
+    'fiches.auteurs': 'Auteur(s) — prénom, nom, fonction, affiliation, ORCID',
+    'fiches.auteur.ajouter': '➕ Ajouter un auteur',
+    'fiches.auteur.retirer': 'Retirer cet auteur',
+    'fiches.auteur.prenom': 'Prénom',
+    'fiches.auteur.nom': 'Nom',
+    'fiches.auteur.fonction': 'Fonction',
+    'fiches.auteur.affiliation': 'Affiliation',
+    'fiches.auteur.orcid': 'ORCID',
+    'fiches.motscles': 'Mots-clés ({0}, séparés par des virgules)',
+    'fiches.italien': ' + Italien (champs IT)',
+    'regl.titre': 'Réglages SZH',
+    'regl.note': 'Appliqués immédiatement, pour cet utilisateur, sur ce poste.',
+    'regl.theme': 'Thème',
+    'regl.theme.systeme': 'Système',
+    'regl.theme.clair': 'Clair',
+    'regl.theme.sombre': 'Sombre',
+    'regl.zoom': 'Taille de l’interface',
+    'regl.zoom.normal': 'Normale',
+    'regl.zoom.grand': 'Grande',
+    'regl.zoom.tresgrand': 'Très grande',
+    'regl.policemd': 'Taille du texte des articles (affichage seulement)',
+    'regl.langue': 'Langue de l’interface',
+    'regl.langue.note': 'Les menus natifs de l’éditeur changeront au prochain redémarrage (allemand : nécessite le pack de langue déployé).'
+  },
+  de: {
+    'arbre.articles': 'Artikel',
+    'arbre.word': 'Word in Warteschlange',
+    'arbre.vide.articles': 'Noch keine Artikel',
+    'arbre.vide.word': 'Kein Word in Warteschlange',
+    'arbre.deja.badge': 'bereits konvertiert',
+    'arbre.deja.tooltip': 'Bereits konvertiert — Datei umbenennen, falls es eine neue Version ist.',
+    'arbre.word.tooltip': 'Word wartet auf Import: {0}',
+    'arbre.table.tooltip': '{0} — Klick = HTML der Tabelle bearbeiten',
+    'arbre.titre.defaut': 'Zeitschrift SZH',
+    'statut.build.encours': 'Kompilierung läuft bereits…',
+    'statut.build.de': 'Kompilierung von « {0} »…',
+    'statut.import.encours': 'Import läuft bereits…',
+    'statut.import': 'Import der wartenden Word-Dateien…',
+    'statut.export': 'Vollständiger Export der Zeitschrift…',
+    'statut.occupe': 'Kompilierung oder Import läuft — bitte danach erneut versuchen.',
+    'statut.supprime': 'Artikel « {0} » gelöscht.',
+    'statut.image.remplacee': 'Bild « {0} » ersetzt — neu kompilieren, um das PDF zu aktualisieren.',
+    'statut.table.remplacee': 'Tabelle « {0} » ersetzt — neu kompilieren, um das PDF zu aktualisieren.',
+    'statut.ausgabe': 'ausgabe.yaml gespeichert.',
+    'statut.fiches': '{0} Metadaten-Datei(en) gespeichert.',
+    'err.tache': 'Aufgabe « {0} » nicht gefunden. Editor-Einstellungen unvollständig?',
+    'err.build': 'Die Kompilierung ist fehlgeschlagen. Öffnen Sie das Panel « {0} » für Details.',
+    'err.import': 'Beim Import ist ein Problem aufgetreten. Öffnen Sie das Panel der Aufgabe « {0} » für Details.',
+    'err.export': 'Der vollständige Export ist fehlgeschlagen. Öffnen Sie das Panel « {0} » für Details.',
+    'err.pdf.introuvable': 'PDF nach der Kompilierung nicht gefunden: « {0} ».',
+    'err.suppression': 'Unvollständige Löschung von « {0} »: {1}',
+    'err.copie': 'Kopieren nicht möglich: {0} ({1})',
+    'err.remplacement': 'Ersetzen nicht möglich: {0}',
+    'err.ecriture': 'Schreiben nicht möglich: {0}',
+    'info.importes.un': '1 Artikel importiert.',
+    'info.importes': '{0} Artikel importiert.',
+    'info.importes.aucun': 'Kein neuer Artikel importiert (bereits vorhanden?).',
+    'info.exportes.un': '1 Artikel exportiert.',
+    'info.exportes': '{0} Artikel exportiert.',
+    'info.pdf.externe': 'Integrierte PDF-Vorschau nicht verfügbar — Öffnen im System-Viewer.',
+    'info.redemarrer': 'Oberflächensprache gespeichert — VSCodium neu starten, um die nativen Menüs anzuwenden.',
+    'modale.supprimer.question': 'Artikel « {0} » und sein PDF löschen?',
+    'modale.supprimer.detail': 'Die Ordner articles/{0} und out/{0} werden endgültig gelöscht.\nDies kann nicht rückgängig gemacht werden.',
+    'modale.supprimer.bouton': 'Löschen',
+    'modale.remplacer.question': '« {0} » durch « {1} » ersetzen?',
+    'modale.remplacer.detail.image': 'Das alte Bild wird überschrieben. Der Name « {0} » bleibt erhalten (der Artikeltext verweist auf diesen Namen).',
+    'modale.remplacer.detail.format': '⚠ Die gewählte Datei ist eine .{0}, das Bild des Artikels aber eine .{1}: Inhalt und Endung passen nicht mehr zusammen, die Ausgabe kann brechen.\n',
+    'modale.remplacer.detail.table': 'Die alte Tabelle wird überschrieben. Der Name « {0} » bleibt erhalten (der Artikel verweist auf diesen Namen).',
+    'modale.remplacer.bouton': 'Ersetzen',
+    'modale.conflit.question': 'Diese Dateien warten bereits: {0}.\nWas tun?',
+    'modale.conflit.ignorer': 'Diese Dateien überspringen',
+    'dial.importer.titre': 'Word-Dateien zum Import auswählen',
+    'dial.importer.bouton': 'Importieren',
+    'dial.importer.filtre': 'Word-Dokumente',
+    'dial.image.titre': 'Ersatzbild für « {0} » auswählen',
+    'dial.image.bouton': 'Dieses Bild wählen',
+    'dial.image.filtre': 'Bilder',
+    'dial.table.titre': 'HTML-Ersatzdatei für « {0} » auswählen',
+    'dial.table.bouton': 'Diese Tabelle wählen',
+    'dial.table.filtre': 'HTML-Tabellen',
+    'meta.titre': 'Metadaten der Ausgabe',
+    'meta.note': 'In ausgabe.yaml gespeichert — nur geänderte Felder werden neu geschrieben, der Rest der Datei bleibt erhalten.',
+    'meta.title': 'Titel des Themenschwerpunkts',
+    'meta.revue': 'Name der Zeitschrift',
+    'meta.volume': 'Band',
+    'meta.numero': 'Nummer',
+    'meta.date': 'Erscheinungsdatum',
+    'meta.date.indice': 'Aktueller Wert in der Datei: « {0} » — die Wahl eines Datums ersetzt ihn.',
+    'meta.langue': 'Sprache der Ausgabe',
+    'meta.langue.aucune': '(nicht festgelegt)',
+    'meta.langue.fr': 'Französisch',
+    'meta.langue.de': 'Deutsch',
+    'meta.langue.en': 'Englisch',
+    'meta.langue.it': 'Italienisch',
+    'form.enregistrer': 'Speichern',
+    'form.rien': 'Keine Änderung.',
+    'form.enregistre': '✓ Gespeichert',
+    'fiches.titre': 'Metadaten der Artikel',
+    'fiches.note': 'In der Artikel-Karteikarte gespeichert (versteckte Datei, nur über dieses Formular bearbeitet) — nur geänderte Artikel (●) werden neu geschrieben. Der Artikeltext wird nie verändert.',
+    'fiches.enregistre': '✓ {0} Artikel gespeichert',
+    'fiches.type': 'Artikeltyp',
+    'fiches.type.aucun': '(nicht festgelegt)',
+    'fiches.titre.champ': 'Titel ({0})',
+    'fiches.soustitre': 'Untertitel ({0})',
+    'fiches.auteurs': 'Autor(en) — Vorname, Name, Funktion, Affiliation, ORCID',
+    'fiches.auteur.ajouter': '➕ Autor hinzufügen',
+    'fiches.auteur.retirer': 'Diesen Autor entfernen',
+    'fiches.auteur.prenom': 'Vorname',
+    'fiches.auteur.nom': 'Name',
+    'fiches.auteur.fonction': 'Funktion',
+    'fiches.auteur.affiliation': 'Affiliation',
+    'fiches.auteur.orcid': 'ORCID',
+    'fiches.motscles': 'Schlagwörter ({0}, durch Kommas getrennt)',
+    'fiches.italien': ' + Italienisch (IT-Felder)',
+    'regl.titre': 'SZH-Einstellungen',
+    'regl.note': 'Werden sofort angewendet, für diese Benutzerin / diesen Benutzer, auf diesem Computer.',
+    'regl.theme': 'Design',
+    'regl.theme.systeme': 'System',
+    'regl.theme.clair': 'Hell',
+    'regl.theme.sombre': 'Dunkel',
+    'regl.zoom': 'Grösse der Oberfläche',
+    'regl.zoom.normal': 'Normal',
+    'regl.zoom.grand': 'Gross',
+    'regl.zoom.tresgrand': 'Sehr gross',
+    'regl.policemd': 'Textgrösse der Artikel (nur Anzeige)',
+    'regl.langue': 'Sprache der Oberfläche',
+    'regl.langue.note': 'Die nativen Menüs des Editors ändern sich beim nächsten Neustart (Deutsch: erfordert das installierte Sprachpaket).'
+  }
+};
+
+function langueCockpit() {
+  let choix = '';
+  try { choix = String(vscode.workspace.getConfiguration('szh').get('langue', '') || ''); }
+  catch (e) { /* configuration indisponible : repli env */ }
+  if (choix === 'fr' || choix === 'de') { return choix; }
+  const env = String((vscode.env && vscode.env.language) || 'fr').toLowerCase();
+  return env.indexOf('de') === 0 ? 'de' : 'fr';
+}
+
+// T('clé', [args]) -> texte dans la langue du cockpit, repli fr, sinon la clé.
+// Les {0} {1} … sont substitués par les args.
+function T(cle, args) {
+  const langue = langueCockpit();
+  let texte = (TEXTES_COCKPIT[langue] && TEXTES_COCKPIT[langue][cle]);
+  if (texte === undefined) { texte = TEXTES_COCKPIT.fr[cle]; }
+  if (texte === undefined) { return cle; }
+  if (args) {
+    for (let i = 0; i < args.length; i++) { texte = texte.split('{' + i + '}').join(String(args[i])); }
+  }
+  return texte;
+}
 // Éditeur PDF (extension tomoki1207.pdf), comme szh-apercu.
 const VUE_PDF = 'pdf.preview';
 const EXT_PDF = 'tomoki1207.pdf';
@@ -134,8 +375,8 @@ class FournisseurRevue {
       // de conteneur n'est plus visible depuis que la vue est dans l'Explorateur (S2.1).
       const n = this.compterWord();
       return [
-        this._section('articles', 'Articles', 'book', undefined),
-        this._section('word', 'Word en attente', 'inbox', n > 0 ? '(' + n + ')' : undefined)
+        this._section('articles', T('arbre.articles'), 'book', undefined),
+        this._section('word', T('arbre.word'), 'inbox', n > 0 ? '(' + n + ')' : undefined)
       ];
     }
     if (element.categorie === 'articles') { return this._itemsArticles(); }
@@ -160,7 +401,7 @@ class FournisseurRevue {
   _itemsArticles() {
     const base = path.join(this.racine, 'articles');
     const slugs = this._sousDossiersAvecMd(base);
-    if (slugs.length === 0) { return [this._vide('Aucun article pour l’instant')]; }
+    if (slugs.length === 0) { return [this._vide(T('arbre.vide.articles'))]; }
     return slugs.map((slug) => {
       const md = vscode.Uri.file(path.join(base, slug, slug + '.md'));
       const aDesAssets = this._imagesArticle(slug).length > 0 || this._tablesArticle(slug).length > 0;
@@ -239,7 +480,7 @@ class FournisseurRevue {
       it.iconPath = new vscode.ThemeIcon('table');
       it.contextValue = 'table';
       it.description = decrireImage(chemin);      // pas une image : poids seul
-      it.tooltip = chemin + ' — clic = éditer le HTML du tableau';
+      it.tooltip = T('arbre.table.tooltip', [chemin]);
       // Édition directe du HTML (copier-coller possible), colonne 1.
       it.command = {
         command: 'vscode.open', title: 'Ouvrir le tableau',
@@ -253,18 +494,18 @@ class FournisseurRevue {
   // Word en attente = articles-word/*.docx (niveau racine seulement -> _convertis/ exclu).
   _itemsWord() {
     const noms = this._docxEnAttente(path.join(this.racine, 'articles-word'));
-    if (noms.length === 0) { return [this._vide('Aucun Word en attente')]; }
+    if (noms.length === 0) { return [this._vide(T('arbre.vide.word'))]; }
     return noms.map((nom) => {
       const it = new vscode.TreeItem(nom, vscode.TreeItemCollapsibleState.None);
       it.contextValue = 'word';
       if (this._articleExiste(slugifier(nom))) {
         // Le .md cible existe déjà : l'import l'ignorera (D12, non-écrasement).
         it.iconPath = new vscode.ThemeIcon('warning');
-        it.description = 'déjà converti';
-        it.tooltip = 'Déjà converti — renommez le fichier si c’est une nouvelle version.';
+        it.description = T('arbre.deja.badge');
+        it.tooltip = T('arbre.deja.tooltip');
       } else {
         it.iconPath = new vscode.ThemeIcon('file');
-        it.tooltip = 'Word en attente d’import : ' + nom;
+        it.tooltip = T('arbre.word.tooltip', [nom]);
       }
       return it;
     });
@@ -338,7 +579,7 @@ async function ouvrirApercuPdf(uri) {
     });
   } else {
     // Repli propre (hôte de dev sans tomoki1207.pdf) : lecteur système.
-    vscode.window.showInformationMessage('Aperçu PDF intégré indisponible — ouverture dans le lecteur système.');
+    vscode.window.showInformationMessage(T('info.pdf.externe'));
     await vscode.env.openExternal(uri);
   }
 }
@@ -353,7 +594,7 @@ async function lancerTache(nomTache) {
   const taches = await vscode.tasks.fetchTasks();
   const tache = taches.find((t) => t.name === nomTache);
   if (!tache) {
-    vscode.window.showErrorMessage('Tâche « ' + nomTache + ' » introuvable. Réglages de l’éditeur incomplets ?');
+    vscode.window.showErrorMessage(T('err.tache', [nomTache]));
     return null;
   }
   const execution = await vscode.tasks.executeTask(tache);
@@ -373,11 +614,11 @@ async function toutExporter(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
   if (buildEnCours || importEnCours) {
-    vscode.window.setStatusBarMessage('Compilation ou import en cours — réessayez ensuite.', 3000);
+    vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
   }
   buildEnCours = true;
-  const statut = vscode.window.setStatusBarMessage('Export complet de la revue…');
+  const statut = vscode.window.setStatusBarMessage(T('statut.export'));
   try {
     await fermerOngletsSous(path.join(racine, 'out'));
     apercuCourantUri = null;                       // tous les aperçus viennent d'être fermés
@@ -385,11 +626,11 @@ async function toutExporter(fournisseur, rafraichirTout) {
     rafraichirTout();
     if (code === null) { return; }                 // tâche introuvable (déjà signalé)
     if (code !== 0) {
-      vscode.window.showErrorMessage('L’export complet a échoué. Ouvrez le panneau « ' + NOM_TACHE_EXPORT + ' » pour le détail.');
+      vscode.window.showErrorMessage(T('err.export', [NOM_TACHE_EXPORT]));
       return;
     }
     const n = fournisseur.listerArticles().length;
-    vscode.window.showInformationMessage(n + (n > 1 ? ' articles exportés.' : ' article exporté.'));
+    vscode.window.showInformationMessage(n > 1 ? T('info.exportes', [n]) : T('info.exportes.un'));
   } finally {
     statut.dispose();
     buildEnCours = false;
@@ -456,14 +697,14 @@ async function ouvrirArticle(fournisseur, slug) {
   } catch (e) { obsolete = true; }                 // PDF (ou .md) illisible -> on compile
 
   if (obsolete) {
-    if (buildEnCours) { vscode.window.setStatusBarMessage('Compilation déjà en cours…', 3000); return; }
+    if (buildEnCours) { vscode.window.setStatusBarMessage(T('statut.build.encours'), 3000); return; }
     buildEnCours = true;
-    const statut = vscode.window.setStatusBarMessage('Compilation de « ' + slug + ' »…');
+    const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
     try {
       const code = await lancerBuild();
       if (code === null) { return; }               // tâche introuvable (déjà signalé)
       if (code !== 0) {
-        vscode.window.showErrorMessage('La compilation a échoué. Ouvrez le panneau « ' + NOM_TACHE_BUILD + ' » pour le détail.');
+        vscode.window.showErrorMessage(T('err.build', [NOM_TACHE_BUILD]));
         return;
       }
     } finally {
@@ -472,7 +713,7 @@ async function ouvrirArticle(fournisseur, slug) {
     }
   }
   if (!fs.existsSync(pdf.fsPath)) {
-    vscode.window.showErrorMessage('PDF introuvable après compilation : « ' + slug + ' ».');
+    vscode.window.showErrorMessage(T('err.pdf.introuvable', [slug]));
     return;
   }
   await fermerApercuCourant(pdf);                  // l'aperçu du précédent article
@@ -505,26 +746,24 @@ async function executerImport() {
 // « Importer des Word »). Compte les NOUVEAUX articles par diff avant/après (jamais
 // par parsing de la sortie). Garde anti-double (clics rapprochés).
 async function lancerConversion(fournisseur, rafraichirTout) {
-  if (importEnCours) { vscode.window.setStatusBarMessage('Import déjà en cours…', 3000); return; }
+  if (importEnCours) { vscode.window.setStatusBarMessage(T('statut.import.encours'), 3000); return; }
   importEnCours = true;
-  const statut = vscode.window.setStatusBarMessage('Import des Word en attente…');
+  const statut = vscode.window.setStatusBarMessage(T('statut.import'));
   try {
     const avant = new Set(fournisseur.listerArticles());
     const code = await executerImport();
     rafraichirTout();
     if (code === null) { return; }               // tâche introuvable (déjà signalé)
     if (code !== 0) {
-      vscode.window.showErrorMessage(
-        'L’import a rencontré un problème. Ouvrez le panneau de la tâche « ' + NOM_TACHE_IMPORT + ' » pour le détail.'
-      );
+      vscode.window.showErrorMessage(T('err.import', [NOM_TACHE_IMPORT]));
       return;
     }
     let n = 0;
     for (const slug of fournisseur.listerArticles()) { if (!avant.has(slug)) { n++; } }
     if (n > 0) {
-      vscode.window.showInformationMessage(n + (n > 1 ? ' articles importés.' : ' article importé.'));
+      vscode.window.showInformationMessage(n > 1 ? T('info.importes', [n]) : T('info.importes.un'));
     } else {
-      vscode.window.showInformationMessage('Aucun nouvel article importé (déjà présent(s) ?).');
+      vscode.window.showInformationMessage(T('info.importes.aucun'));
     }
   } finally {
     statut.dispose();
@@ -536,11 +775,13 @@ async function importerWord(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
 
+  const filtresImport = {};
+  filtresImport[T('dial.importer.filtre')] = ['docx'];
   const choix = await vscode.window.showOpenDialog({
     canSelectMany: true,
-    filters: { 'Documents Word': ['docx'] },
-    openLabel: 'Importer',
-    title: 'Choisir les fichiers Word à importer'
+    filters: filtresImport,
+    openLabel: T('dial.importer.bouton'),
+    title: T('dial.importer.titre')
   });
   if (!choix || choix.length === 0) { return; }   // dialogue annulé
 
@@ -556,12 +797,12 @@ async function importerWord(fournisseur, rafraichirTout) {
   if (conflits.length > 0) {
     const noms = conflits.map((u) => path.basename(u.fsPath)).join(', ');
     const rep = await vscode.window.showWarningMessage(
-      'Ces fichiers sont déjà en attente : ' + noms + '.\nQue faire ?',
+      T('modale.conflit.question', [noms]),
       { modal: true },
-      'Remplacer', 'Ignorer ces fichiers'
+      T('modale.remplacer.bouton'), T('modale.conflit.ignorer')
     );
     if (rep === undefined) { return; }             // annulé
-    remplacer = (rep === 'Remplacer');
+    remplacer = (rep === T('modale.remplacer.bouton'));
   }
 
   let copies = 0;
@@ -569,7 +810,7 @@ async function importerWord(fournisseur, rafraichirTout) {
     const dest = path.join(dossierWord, path.basename(u.fsPath));
     if (fs.existsSync(dest) && !remplacer) { continue; }
     try { fs.copyFileSync(u.fsPath, dest); copies++; }
-    catch (e) { vscode.window.showErrorMessage('Copie impossible : ' + path.basename(u.fsPath) + ' (' + e.message + ')'); }
+    catch (e) { vscode.window.showErrorMessage(T('err.copie', [path.basename(u.fsPath), e.message])); }
   }
   if (copies === 0) { rafraichirTout(); return; }
 
@@ -656,33 +897,37 @@ function formatImage(nom) {
 async function remplacerAsset(fournisseur, rafraichirTout, item) {
   if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
   if (buildEnCours || importEnCours) {
-    vscode.window.setStatusBarMessage('Compilation ou import en cours — réessayez ensuite.', 3000);
+    vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
   }
   const cible = item.cheminAsset;
   const nomCible = path.basename(cible);
+  const filtresImage = {};
+  filtresImage[T('dial.image.filtre')] = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
   const choix = await vscode.window.showOpenDialog({
     canSelectMany: false,
-    filters: { 'Images': ['png', 'jpg', 'jpeg', 'gif', 'svg'] },
-    openLabel: 'Choisir cette image',
-    title: 'Choisir l’image de remplacement pour « ' + nomCible + ' »'
+    filters: filtresImage,
+    openLabel: T('dial.image.bouton'),
+    title: T('dial.image.titre', [nomCible])
   });
   if (!choix || choix.length === 0) { return; }    // dialogue annulé
   const source = choix[0].fsPath;
   const nomSource = path.basename(source);
-  let question = 'Remplacer « ' + nomCible + ' » par « ' + nomSource + ' » ?';
-  let detail = 'L’ancienne image sera écrasée. Le nom « ' + nomCible + ' » est conservé (le texte de l’article pointe ce nom).';
+  let detail = T('modale.remplacer.detail.image', [nomCible]);
   if (formatImage(nomSource) !== formatImage(nomCible)) {
-    detail = '⚠ Le fichier choisi est un .' + formatImage(nomSource) + ' mais l’image de l’article est un .' +
-      formatImage(nomCible) + ' : le contenu ne correspondra plus à l’extension et le rendu peut casser.\n' + detail;
+    detail = T('modale.remplacer.detail.format', [formatImage(nomSource), formatImage(nomCible)]) + detail;
   }
-  const reponse = await vscode.window.showWarningMessage(question, { modal: true, detail: detail }, 'Remplacer');
-  if (reponse !== 'Remplacer') { return; }         // annulé : rien n'est touché
+  const reponse = await vscode.window.showWarningMessage(
+    T('modale.remplacer.question', [nomCible, nomSource]),
+    { modal: true, detail: detail },
+    T('modale.remplacer.bouton')
+  );
+  if (reponse !== T('modale.remplacer.bouton')) { return; }   // annulé : rien n'est touché
   try {
     fs.copyFileSync(source, cible);                // même nom : lien du .md intact
-    vscode.window.setStatusBarMessage('Image « ' + nomCible + ' » remplacée — recompilez pour voir le PDF à jour.', 5000);
+    vscode.window.setStatusBarMessage(T('statut.image.remplacee', [nomCible]), 5000);
   } catch (e) {
-    vscode.window.showErrorMessage('Remplacement impossible : ' + e.message);
+    vscode.window.showErrorMessage(T('err.remplacement', [e.message]));
   }
   rafraichirTout();
 }
@@ -693,30 +938,32 @@ async function remplacerAsset(fournisseur, rafraichirTout, item) {
 async function remplacerTable(fournisseur, rafraichirTout, item) {
   if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
   if (buildEnCours || importEnCours) {
-    vscode.window.setStatusBarMessage('Compilation ou import en cours — réessayez ensuite.', 3000);
+    vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
   }
   const cible = item.cheminAsset;
   const nomCible = path.basename(cible);
+  const filtresTable = {};
+  filtresTable[T('dial.table.filtre')] = ['html', 'htm'];
   const choix = await vscode.window.showOpenDialog({
     canSelectMany: false,
-    filters: { 'Tableaux HTML': ['html', 'htm'] },
-    openLabel: 'Choisir ce tableau',
-    title: 'Choisir le fichier HTML de remplacement pour « ' + nomCible + ' »'
+    filters: filtresTable,
+    openLabel: T('dial.table.bouton'),
+    title: T('dial.table.titre', [nomCible])
   });
   if (!choix || choix.length === 0) { return; }    // dialogue annulé
   const source = choix[0].fsPath;
   const reponse = await vscode.window.showWarningMessage(
-    'Remplacer « ' + nomCible + ' » par « ' + path.basename(source) + ' » ?',
-    { modal: true, detail: 'L’ancien tableau sera écrasé. Le nom « ' + nomCible + ' » est conservé (l’article pointe ce nom).' },
-    'Remplacer'
+    T('modale.remplacer.question', [nomCible, path.basename(source)]),
+    { modal: true, detail: T('modale.remplacer.detail.table', [nomCible]) },
+    T('modale.remplacer.bouton')
   );
-  if (reponse !== 'Remplacer') { return; }         // annulé : rien n'est touché
+  if (reponse !== T('modale.remplacer.bouton')) { return; }   // annulé : rien n'est touché
   try {
     fs.copyFileSync(source, cible);
-    vscode.window.setStatusBarMessage('Tableau « ' + nomCible + ' » remplacé — recompilez pour voir le PDF à jour.', 5000);
+    vscode.window.setStatusBarMessage(T('statut.table.remplacee', [nomCible]), 5000);
   } catch (e) {
-    vscode.window.showErrorMessage('Remplacement impossible : ' + e.message);
+    vscode.window.showErrorMessage(T('err.remplacement', [e.message]));
   }
   rafraichirTout();
 }
@@ -752,15 +999,15 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
   // Pas de suppression pendant un build/import : make pourrait recréer out/<slug>
   // ou lire un dossier à moitié effacé.
   if (buildEnCours || importEnCours) {
-    vscode.window.setStatusBarMessage('Compilation ou import en cours — réessayez ensuite.', 3000);
+    vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
   }
   const reponse = await vscode.window.showWarningMessage(
-    'Supprimer l’article « ' + slug + ' » et son PDF ?',
-    { modal: true, detail: 'Les dossiers articles/' + slug + ' et out/' + slug + ' seront définitivement effacés.\nAction irréversible.' },
-    'Supprimer'
+    T('modale.supprimer.question', [slug]),
+    { modal: true, detail: T('modale.supprimer.detail', [slug]) },
+    T('modale.supprimer.bouton')
   );
-  if (reponse !== 'Supprimer') { return; }         // annulé : rien n'est touché
+  if (reponse !== T('modale.supprimer.bouton')) { return; }   // annulé : rien n'est touché
   const dossierArticle = path.join(racine, 'articles', slug);
   const dossierSortie = path.join(racine, 'out', slug);
   try {
@@ -768,9 +1015,9 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
     await fermerOngletsSous(dossierSortie);
     fs.rmSync(dossierArticle, { recursive: true, force: true });
     fs.rmSync(dossierSortie, { recursive: true, force: true });
-    vscode.window.setStatusBarMessage('Article « ' + slug + ' » supprimé.', 3000);
+    vscode.window.setStatusBarMessage(T('statut.supprime', [slug]), 3000);
   } catch (e) {
-    vscode.window.showErrorMessage('Suppression incomplète de « ' + slug + ' » : ' + e.message);
+    vscode.window.showErrorMessage(T('err.suppression', [slug, e.message]));
   }
   rafraichirTout();
 }
@@ -1323,9 +1570,14 @@ function ecrireAusgabeAtomique(chemin, contenu) {
 // Les valeurs ne sont PAS injectées dans le HTML : elles arrivent par postMessage
 // (le webview envoie « pret » au chargement), donc zéro échappement HTML à gérer.
 function htmlMetadonnees(nonce) {
+  const txt = JSON.stringify({
+    indiceDate: T('meta.date.indice'),
+    rien: T('form.rien'),
+    enregistre: T('form.enregistre')
+  });
   return '<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="UTF-8">\n' +
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; script-src \'nonce-' + nonce + '\'">\n' +
-    '<title>Méta-données du numéro</title>\n' +
+    '<title>' + T('meta.titre') + '</title>\n' +
     '<style>\n' +
     'body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);\n' +
     '  color: var(--vscode-foreground); background: var(--vscode-editor-background);\n' +
@@ -1343,23 +1595,24 @@ function htmlMetadonnees(nonce) {
     'button:hover { background: var(--vscode-button-hoverBackground); }\n' +
     '#etat { margin-left: .8rem; font-size: .92em; color: var(--vscode-descriptionForeground); }\n' +
     '</style>\n</head>\n<body>\n' +
-    '<h1>Méta-données du numéro</h1>\n' +
-    '<p class="note">Enregistrées dans <code>ausgabe.yaml</code> — seuls les champs modifiés sont réécrits, le reste du fichier est préservé.</p>\n' +
+    '<h1>' + T('meta.titre') + '</h1>\n' +
+    '<p class="note">' + T('meta.note') + '</p>\n' +
     '<form id="formulaire">\n' +
-    '<label for="title">Titre du dossier thématique</label><input id="title" type="text">\n' +
-    '<label for="revue">Nom de la revue</label><input id="revue" type="text">\n' +
-    '<label for="volume">Volume</label><input id="volume" type="text">\n' +
-    '<label for="numero">Numéro</label><input id="numero" type="text">\n' +
-    '<label for="date">Date de publication</label><input id="date" type="date">\n' +
+    '<label for="title">' + T('meta.title') + '</label><input id="title" type="text">\n' +
+    '<label for="revue">' + T('meta.revue') + '</label><input id="revue" type="text">\n' +
+    '<label for="volume">' + T('meta.volume') + '</label><input id="volume" type="text">\n' +
+    '<label for="numero">' + T('meta.numero') + '</label><input id="numero" type="text">\n' +
+    '<label for="date">' + T('meta.date') + '</label><input id="date" type="date">\n' +
     '<div class="indice" id="indiceDate" hidden></div>\n' +
-    '<label for="lang">Langue du numéro</label>\n' +
-    '<select id="lang"><option value="">(non définie)</option><option value="fr">français</option>' +
-    '<option value="de">allemand</option><option value="en">anglais</option><option value="it">italien</option></select>\n' +
-    '<button type="submit">Enregistrer</button><span id="etat" role="status"></span>\n' +
+    '<label for="lang">' + T('meta.langue') + '</label>\n' +
+    '<select id="lang"><option value="">' + T('meta.langue.aucune') + '</option><option value="fr">' + T('meta.langue.fr') + '</option>' +
+    '<option value="de">' + T('meta.langue.de') + '</option><option value="en">' + T('meta.langue.en') + '</option><option value="it">' + T('meta.langue.it') + '</option></select>\n' +
+    '<button type="submit">' + T('form.enregistrer') + '</button><span id="etat" role="status"></span>\n' +
     '</form>\n' +
     '<script nonce="' + nonce + '">\n' +
     '(function () {\n' +
     "  'use strict';\n" +
+    '  const TXT = ' + txt + ';\n' +
     '  const vscodeApi = acquireVsCodeApi();\n' +
     "  const CLES = ['title', 'revue', 'volume', 'numero', 'date', 'lang'];\n" +
     '  const modifies = new Set();\n' +
@@ -1372,7 +1625,7 @@ function htmlMetadonnees(nonce) {
     "      if (cle === 'date') {\n" +
     "        const indice = document.getElementById('indiceDate');\n" +
     '        if (v && champ.value !== v) {\n' +
-    "          indice.textContent = 'Valeur actuelle dans le fichier : « ' + v + ' » — choisir une date la remplacera.';\n" +
+    "          indice.textContent = TXT.indiceDate.split('{0}').join(v);\n" +
     '          indice.hidden = false;\n' +
     '        } else { indice.hidden = true; }\n' +
     '      }\n' +
@@ -1386,7 +1639,7 @@ function htmlMetadonnees(nonce) {
     '  }\n' +
     "  document.getElementById('formulaire').addEventListener('submit', function (e) {\n" +
     '    e.preventDefault();\n' +
-    "    if (modifies.size === 0) { etat.textContent = 'Aucune modification.'; return; }\n" +
+    '    if (modifies.size === 0) { etat.textContent = TXT.rien; return; }\n' +
     '    const envoi = {};\n' +
     '    for (const cle of modifies) { envoi[cle] = document.getElementById(cle).value; }\n' +
     "    vscodeApi.postMessage({ type: 'enregistrer', modifies: envoi });\n" +
@@ -1394,7 +1647,7 @@ function htmlMetadonnees(nonce) {
     "  window.addEventListener('message', function (e) {\n" +
     '    const msg = e.data || {};\n' +
     "    if (msg.type === 'valeurs') { remplir(msg.valeurs || {}); }\n" +
-    "    if (msg.type === 'enregistre') { modifies.clear(); etat.textContent = '✓ Enregistré'; }\n" +
+    "    if (msg.type === 'enregistre') { modifies.clear(); etat.textContent = TXT.enregistre; }\n" +
     "    if (msg.type === 'erreur') { etat.textContent = '⚠ ' + msg.message; }\n" +
     '  });\n' +
     "  vscodeApi.postMessage({ type: 'pret' });\n" +
@@ -1424,7 +1677,7 @@ function ouvrirMetadonnees(fournisseur, rafraichirTout) {
     return;
   }
   const panneau = vscode.window.createWebviewPanel(
-    'szhMetadonnees', 'Méta-données du numéro', vscode.ViewColumn.One,
+    'szhMetadonnees', T('meta.titre'), vscode.ViewColumn.One,
     { enableScripts: true, localResourceRoots: [] }
   );
   panneauMetadonnees = panneau;
@@ -1448,10 +1701,10 @@ function ouvrirMetadonnees(fournisseur, rafraichirTout) {
       try { contenu = fs.readFileSync(chemin, 'utf8'); } catch (e) { /* absent : recréé plat */ }
       ecrireAusgabeAtomique(chemin, serialiserAusgabe(contenu, modifies));
       panneau.webview.postMessage({ type: 'enregistre' });
-      vscode.window.setStatusBarMessage('ausgabe.yaml enregistré.', 3000);
+      vscode.window.setStatusBarMessage(T('statut.ausgabe'), 3000);
       if (rafraichirTout) { rafraichirTout(); }    // titre de la vue à jour (N2)
     } catch (e) {
-      panneau.webview.postMessage({ type: 'erreur', message: 'Écriture impossible : ' + e.message });
+      panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [e.message]) });
     }
   });
 }
@@ -1463,9 +1716,20 @@ function ouvrirMetadonnees(fournisseur, rafraichirTout) {
 // IT révélé par la case « + Italien »), auteurs répétables à 5 champs. DOM
 // construit sans injection HTML, valeurs par postMessage, dirty PAR ARTICLE.
 function htmlApercuMetadonnees(nonce) {
+  const txt = JSON.stringify({
+    type: T('fiches.type'), typeAucun: T('fiches.type.aucun'),
+    titreChamp: T('fiches.titre.champ'), sousTitre: T('fiches.soustitre'),
+    auteurs: T('fiches.auteurs'), ajouterAuteur: T('fiches.auteur.ajouter'),
+    retirerAuteur: T('fiches.auteur.retirer'),
+    aPrenom: T('fiches.auteur.prenom'), aNom: T('fiches.auteur.nom'),
+    aFonction: T('fiches.auteur.fonction'), aAffiliation: T('fiches.auteur.affiliation'),
+    aOrcid: T('fiches.auteur.orcid'),
+    motsCles: T('fiches.motscles'), italien: T('fiches.italien'),
+    rien: T('form.rien'), enregistre: T('fiches.enregistre')
+  });
   return '<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="UTF-8">\n' +
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; script-src \'nonce-' + nonce + '\'">\n' +
-    '<title>Métadonnées des articles</title>\n' +
+    '<title>' + T('fiches.titre') + '</title>\n' +
     '<style>\n' +
     'body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);\n' +
     '  color: var(--vscode-foreground); background: var(--vscode-editor-background);\n' +
@@ -1497,13 +1761,14 @@ function htmlApercuMetadonnees(nonce) {
     '#etat { margin-left: .8rem; font-size: .92em; color: var(--vscode-descriptionForeground); }\n' +
     '.modifie h2::after { content: " ●"; color: var(--vscode-charts-orange, orange); }\n' +
     '</style>\n</head>\n<body>\n' +
-    '<h1>Métadonnées des articles</h1>\n' +
-    '<p class="note">Enregistrées dans la fiche de l’article (fichier caché, édité par ce formulaire uniquement) — seuls les articles modifiés (●) sont réécrits. Le texte de l’article n’est jamais touché.</p>\n' +
-    '<div class="barre"><button class="principal" id="enregistrer">Enregistrer</button><span id="etat" role="status"></span></div>\n' +
+    '<h1>' + T('fiches.titre') + '</h1>\n' +
+    '<p class="note">' + T('fiches.note') + '</p>\n' +
+    '<div class="barre"><button class="principal" id="enregistrer">' + T('form.enregistrer') + '</button><span id="etat" role="status"></span></div>\n' +
     '<div id="cartes"></div>\n' +
     '<script nonce="' + nonce + '">\n' +
     '(function () {\n' +
     "  'use strict';\n" +
+    '  const TXT = ' + txt + ';\n' +
     '  const vscodeApi = acquireVsCodeApi();\n' +
     "  const etat = document.getElementById('etat');\n" +
     "  const conteneur = document.getElementById('cartes');\n" +
@@ -1525,7 +1790,7 @@ function htmlApercuMetadonnees(nonce) {
     '  function ligneAuteur(carte, slug, zone, auteur) {\n' +
     "    const rangee = document.createElement('div');\n" +
     "    rangee.className = 'auteur';\n" +
-    "    for (const [cle, indice] of [['prenom', 'Prénom'], ['nom', 'Nom'], ['fonction', 'Fonction'], ['affiliation', 'Affiliation'], ['orcid', 'ORCID']]) {\n" +
+    "    for (const [cle, indice] of [['prenom', TXT.aPrenom], ['nom', TXT.aNom], ['fonction', TXT.aFonction], ['affiliation', TXT.aAffiliation], ['orcid', TXT.aOrcid]]) {\n" +
     "      const i = document.createElement('input');\n" +
     "      i.type = 'text';\n" +
     '      i.placeholder = indice;\n' +
@@ -1539,7 +1804,7 @@ function htmlApercuMetadonnees(nonce) {
     "    retirer.type = 'button';\n" +
     "    retirer.className = 'retirer';\n" +
     "    retirer.textContent = '✕';\n" +
-    "    retirer.title = 'Retirer cet auteur';\n" +
+    '    retirer.title = TXT.retirerAuteur;\n' +
     "    retirer.addEventListener('click', function () { rangee.remove(); marquer(carte, slug); });\n" +
     '    rangee.appendChild(retirer);\n' +
     '    zone.appendChild(rangee);\n' +
@@ -1559,13 +1824,13 @@ function htmlApercuMetadonnees(nonce) {
     '        (v.keywords && v.keywords.it && v.keywords.it.length > 0);\n' +
     '      if (avecIt) { carte.classList.add(\'avec-it\'); }\n' +
     "      const lType = document.createElement('label');\n" +
-    "      lType.textContent = 'Type d’article';\n" +
+    '      lType.textContent = TXT.type;\n' +
     '      carte.appendChild(lType);\n' +
     "      const selection = document.createElement('select');\n" +
     "      selection.dataset.cle = 'type';\n" +
     "      const optVide = document.createElement('option');\n" +
     "      optVide.value = '';\n" +
-    "      optVide.textContent = '(non défini)';\n" +
+    '      optVide.textContent = TXT.typeAucun;\n' +
     '      selection.appendChild(optVide);\n' +
     '      for (const t of TYPES) {\n' +
     "        const opt = document.createElement('option');\n" +
@@ -1580,13 +1845,13 @@ function htmlApercuMetadonnees(nonce) {
     '      const langues = [\'fr\', \'de\', \'it\'];   // IT toujours construit, révélé par CSS\n' +
     '      const nomsLangues = { fr: \'FR\', de: \'DE\', it: \'IT\' };\n' +
     '      for (const lg of langues) {\n' +
-    '        champTexte(carte, carte, article.slug, \'title\', lg, \'Titre (\' + nomsLangues[lg] + \')\', (v.title || {})[lg]);\n' +
+    '        champTexte(carte, carte, article.slug, \'title\', lg, TXT.titreChamp.split(\'{0}\').join(nomsLangues[lg]), (v.title || {})[lg]);\n' +
     '      }\n' +
     '      for (const lg of langues) {\n' +
-    '        champTexte(carte, carte, article.slug, \'subtitle\', lg, \'Sous-titre (\' + nomsLangues[lg] + \')\', (v.subtitle || {})[lg]);\n' +
+    '        champTexte(carte, carte, article.slug, \'subtitle\', lg, TXT.sousTitre.split(\'{0}\').join(nomsLangues[lg]), (v.subtitle || {})[lg]);\n' +
     '      }\n' +
     "      const lAuteurs = document.createElement('label');\n" +
-    "      lAuteurs.textContent = 'Auteur(s) — prénom, nom, fonction, affiliation, ORCID';\n" +
+    '      lAuteurs.textContent = TXT.auteurs;\n' +
     '      carte.appendChild(lAuteurs);\n' +
     "      const zone = document.createElement('div');\n" +
     "      zone.className = 'auteurs';\n" +
@@ -1594,12 +1859,12 @@ function htmlApercuMetadonnees(nonce) {
     '      for (const a of (v.author || [])) { ligneAuteur(carte, article.slug, zone, a); }\n' +
     "      const ajouter = document.createElement('button');\n" +
     "      ajouter.type = 'button';\n" +
-    "      ajouter.textContent = '➕ Ajouter un auteur';\n" +
+    '      ajouter.textContent = TXT.ajouterAuteur;\n' +
     "      ajouter.addEventListener('click', function () { ligneAuteur(carte, article.slug, zone, null); marquer(carte, article.slug); });\n" +
     '      carte.appendChild(ajouter);\n' +
     '      champTexte(carte, carte, article.slug, \'doi\', null, \'DOI\', v.doi);\n' +
     '      for (const lg of langues) {\n' +
-    '        champTexte(carte, carte, article.slug, \'keywords\', lg, \'Mots-clés (\' + nomsLangues[lg] + \', séparés par des virgules)\', ((v.keywords || {})[lg] || []).join(\', \'));\n' +
+    '        champTexte(carte, carte, article.slug, \'keywords\', lg, TXT.motsCles.split(\'{0}\').join(nomsLangues[lg]), ((v.keywords || {})[lg] || []).join(\', \'));\n' +
     '      }\n' +
     '      const caseIt = document.createElement(\'label\');\n' +
     "      caseIt.className = 'case-it';\n" +
@@ -1607,7 +1872,7 @@ function htmlApercuMetadonnees(nonce) {
     "      coche.type = 'checkbox';\n" +
     '      coche.checked = avecIt;\n' +
     '      caseIt.appendChild(coche);\n' +
-    "      caseIt.appendChild(document.createTextNode(' + Italien (champs IT)'));\n" +
+    '      caseIt.appendChild(document.createTextNode(TXT.italien));\n' +
     "      coche.addEventListener('change', function () {\n" +
     "        carte.classList.toggle('avec-it', coche.checked);\n" +
     '      });\n' +
@@ -1636,7 +1901,7 @@ function htmlApercuMetadonnees(nonce) {
     '    return resultat;\n' +
     '  }\n' +
     "  document.getElementById('enregistrer').addEventListener('click', function () {\n" +
-    "    if (modifies.size === 0) { etat.textContent = 'Aucune modification.'; return; }\n" +
+    '    if (modifies.size === 0) { etat.textContent = TXT.rien; return; }\n' +
     '    const envoi = {};\n' +
     "    for (const carte of conteneur.querySelectorAll('.carte')) {\n" +
     '      if (modifies.has(carte.dataset.slug)) { envoi[carte.dataset.slug] = collecter(carte); }\n' +
@@ -1646,7 +1911,7 @@ function htmlApercuMetadonnees(nonce) {
     "  window.addEventListener('message', function (e) {\n" +
     '    const msg = e.data || {};\n' +
     "    if (msg.type === 'valeurs') { TYPES = msg.types || []; rendre(msg.articles || []); }\n" +
-    "    if (msg.type === 'enregistre') { etat.textContent = '✓ ' + msg.n + ' article(s) enregistré(s)'; }\n" +
+    "    if (msg.type === 'enregistre') { etat.textContent = TXT.enregistre.split('{0}').join(msg.n); }\n" +
     "    if (msg.type === 'erreur') { etat.textContent = '⚠ ' + msg.message; }\n" +
     '  });\n' +
     "  vscodeApi.postMessage({ type: 'pret' });\n" +
@@ -1756,7 +2021,7 @@ function ouvrirApercuMetadonnees(fournisseur, rafraichirTout) {
     return;
   }
   const panneau = vscode.window.createWebviewPanel(
-    'szhApercuMetadonnees', 'Métadonnées des articles', vscode.ViewColumn.One,
+    'szhApercuMetadonnees', T('fiches.titre'), vscode.ViewColumn.One,
     { enableScripts: true, localResourceRoots: [] }
   );
   panneauArticles = panneau;
@@ -1785,13 +2050,203 @@ function ouvrirApercuMetadonnees(fournisseur, rafraichirTout) {
       }
     }
     if (erreurs.length > 0) {
-      panneau.webview.postMessage({ type: 'erreur', message: 'Écriture impossible : ' + erreurs.join(', ') });
+      panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [erreurs.join(', ')]) });
     } else {
       panneau.webview.postMessage({ type: 'enregistre', n: n });
-      vscode.window.setStatusBarMessage(n + ' fiche(s) de métadonnées enregistrée(s).', 3000);
+      vscode.window.setStatusBarMessage(T('statut.fiches', [n]), 3000);
     }
     if (rafraichirTout) { rafraichirTout(); }
     envoyerValeurs(panneau);                       // resynchronise les cartes (dirty remis à zéro)
+  });
+}
+
+// ---- Réglages « SZH » (M4, D52) -----------------------------------------------------
+//
+// Formulaire webview qui écrit les réglages AU NIVEAU UTILISATEUR via l'API
+// getConfiguration().update(…, Global) — jamais d'édition manuelle de
+// settings.json. Chaque changement s'applique immédiatement. Thèmes : uniquement
+// Default Light/Dark Modern (intégrés). La langue FR/DE pilote les chaînes du
+// cockpit (szh.langue) ET la locale native (argv.json, redémarrage requis —
+// menus natifs DE seulement si le pack de langue est déployé, cf. vsix.lock).
+
+const REGL_TEXTES = () => JSON.stringify({
+  theme: T('regl.theme'),
+  themeSysteme: T('regl.theme.systeme'), themeClair: T('regl.theme.clair'), themeSombre: T('regl.theme.sombre'),
+  zoom: T('regl.zoom'),
+  zoomNormal: T('regl.zoom.normal'), zoomGrand: T('regl.zoom.grand'), zoomTresGrand: T('regl.zoom.tresgrand'),
+  policeMd: T('regl.policemd'),
+  langue: T('regl.langue'), langueNote: T('regl.langue.note')
+});
+
+function htmlReglages(nonce) {
+  return '<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="UTF-8">\n' +
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; script-src \'nonce-' + nonce + '\'">\n' +
+    '<title>' + T('regl.titre') + '</title>\n' +
+    '<style>\n' +
+    'body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);\n' +
+    '  color: var(--vscode-foreground); background: var(--vscode-editor-background);\n' +
+    '  padding: 1rem 1.2rem; max-width: 34rem; }\n' +
+    'h1 { font-size: 1.15em; font-weight: 600; margin: 0 0 .25rem; }\n' +
+    'p.note { color: var(--vscode-descriptionForeground); margin: 0 0 1rem; font-size: .88em; }\n' +
+    'fieldset { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));\n' +
+    '  border-radius: 4px; margin: 0 0 1rem; padding: .6rem 1rem .8rem; }\n' +
+    'legend { font-weight: 600; padding: 0 .4em; }\n' +
+    'label { display: inline-flex; align-items: center; margin: .25rem 1.1rem .25rem 0; gap: .35em; }\n' +
+    '.indice { color: var(--vscode-descriptionForeground); font-size: .82em; margin-top: .3rem; }\n' +
+    '</style>\n</head>\n<body>\n' +
+    '<h1>' + T('regl.titre') + '</h1>\n' +
+    '<p class="note">' + T('regl.note') + '</p>\n' +
+    '<div id="zones"></div>\n' +
+    '<script nonce="' + nonce + '">\n' +
+    '(function () {\n' +
+    "  'use strict';\n" +
+    '  const TXT = ' + REGL_TEXTES() + ';\n' +
+    '  const vscodeApi = acquireVsCodeApi();\n' +
+    "  const zones = document.getElementById('zones');\n" +
+    '  const GROUPES = [\n' +
+    "    { cle: 'theme', legende: TXT.theme, options: [['systeme', TXT.themeSysteme], ['clair', TXT.themeClair], ['sombre', TXT.themeSombre]] },\n" +
+    "    { cle: 'zoom', legende: TXT.zoom, options: [['0', TXT.zoomNormal], ['1', TXT.zoomGrand], ['2', TXT.zoomTresGrand]] },\n" +
+    "    { cle: 'policeMd', legende: TXT.policeMd, options: [['14', '14 px'], ['16', '16 px'], ['18', '18 px']] },\n" +
+    "    { cle: 'langue', legende: TXT.langue, options: [['fr', 'Français'], ['de', 'Deutsch']], indice: TXT.langueNote }\n" +
+    '  ];\n' +
+    '  function rendre() {\n' +
+    '    for (const g of GROUPES) {\n' +
+    "      const zone = document.createElement('fieldset');\n" +
+    "      const legende = document.createElement('legend');\n" +
+    '      legende.textContent = g.legende;\n' +
+    '      zone.appendChild(legende);\n' +
+    '      for (const [valeur, libelle] of g.options) {\n' +
+    "        const l = document.createElement('label');\n" +
+    "        const radio = document.createElement('input');\n" +
+    "        radio.type = 'radio';\n" +
+    '        radio.name = g.cle;\n' +
+    '        radio.value = valeur;\n' +
+    "        radio.addEventListener('change', function () {\n" +
+    "          vscodeApi.postMessage({ type: 'regler', cle: g.cle, valeur: valeur });\n" +
+    '        });\n' +
+    '        l.appendChild(radio);\n' +
+    '        l.appendChild(document.createTextNode(libelle));\n' +
+    '        zone.appendChild(l);\n' +
+    '      }\n' +
+    '      if (g.indice) {\n' +
+    "        const indice = document.createElement('div');\n" +
+    "        indice.className = 'indice';\n" +
+    '        indice.textContent = g.indice;\n' +
+    '        zone.appendChild(indice);\n' +
+    '      }\n' +
+    '      zones.appendChild(zone);\n' +
+    '    }\n' +
+    '  }\n' +
+    '  function cocher(valeurs) {\n' +
+    '    for (const cle of Object.keys(valeurs)) {\n' +
+    "      const radio = document.querySelector('input[name=\"' + cle + '\"][value=\"' + String(valeurs[cle]) + '\"]');\n" +
+    '      if (radio) { radio.checked = true; }\n' +
+    '    }\n' +
+    '  }\n' +
+    '  rendre();\n' +
+    "  window.addEventListener('message', function (e) {\n" +
+    '    const msg = e.data || {};\n' +
+    "    if (msg.type === 'valeurs') { cocher(msg.valeurs || {}); }\n" +
+    '  });\n' +
+    "  vscodeApi.postMessage({ type: 'pret' });\n" +
+    '})();\n' +
+    '</script>\n</body>\n</html>\n';
+}
+
+// Écrit/Met à jour "locale" dans %APPDATA%\VSCodium\argv.json — édition ciblée
+// par regex (le fichier accepte des commentaires : pas de JSON.parse/stringify
+// qui les perdrait). Retourne false en cas d'échec (signalé sobrement).
+function ecrireLocaleArgv(langue) {
+  try {
+    const dossier = path.join(process.env.APPDATA || '', 'VSCodium');
+    const chemin = path.join(dossier, 'argv.json');
+    let contenu = '';
+    try { contenu = fs.readFileSync(chemin, 'utf8'); } catch (e) { contenu = '{\n}\n'; }
+    if (/"locale"\s*:\s*"[^"]*"/.test(contenu)) {
+      contenu = contenu.replace(/"locale"\s*:\s*"[^"]*"/, '"locale": "' + langue + '"');
+    } else {
+      const pos = contenu.lastIndexOf('}');
+      if (pos === -1) {
+        contenu = '{\n\t"locale": "' + langue + '"\n}\n';
+      } else {
+        const avant = contenu.slice(0, pos).replace(/\s*$/, '');
+        const virgule = /[{,]\s*$/.test(avant) ? '' : ',';
+        contenu = avant + virgule + '\n\t"locale": "' + langue + '"\n' + contenu.slice(pos);
+      }
+    }
+    fs.mkdirSync(dossier, { recursive: true });
+    fs.writeFileSync(chemin, contenu, 'utf8');
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function lireReglagesActuels() {
+  const cfg = vscode.workspace.getConfiguration();
+  const autoDetect = cfg.get('window.autoDetectColorScheme', false) === true;
+  const theme = String(cfg.get('workbench.colorTheme', '') || '');
+  const etatTheme = autoDetect ? 'systeme'
+    : (theme.toLowerCase().indexOf('light') !== -1 ? 'clair' : 'sombre');
+  const zoom = Number(cfg.get('window.zoomLevel', 0)) || 0;
+  let policeMd = 16;
+  try {
+    policeMd = Number(vscode.workspace.getConfiguration('editor', { languageId: 'markdown' }).get('fontSize', 16)) || 16;
+  } catch (e) { /* repli 16 */ }
+  return { theme: etatTheme, zoom: String(zoom), policeMd: String(policeMd), langue: langueCockpit() };
+}
+
+let panneauReglages = null;
+
+function ouvrirReglages(rafraichirTout) {
+  if (panneauReglages) {
+    panneauReglages.reveal(vscode.ViewColumn.One);
+    panneauReglages.webview.postMessage({ type: 'valeurs', valeurs: lireReglagesActuels() });
+    return;
+  }
+  const panneau = vscode.window.createWebviewPanel(
+    'szhReglages', T('regl.titre'), vscode.ViewColumn.One,
+    { enableScripts: true, localResourceRoots: [] }
+  );
+  panneauReglages = panneau;
+  panneau.onDidDispose(() => { if (panneauReglages === panneau) { panneauReglages = null; } });
+  panneau.webview.html = htmlReglages(crypto.randomBytes(16).toString('hex'));
+  panneau.webview.onDidReceiveMessage(async (msg) => {
+    if (!msg) { return; }
+    if (msg.type === 'pret') {
+      panneau.webview.postMessage({ type: 'valeurs', valeurs: lireReglagesActuels() });
+      return;
+    }
+    if (msg.type !== 'regler') { return; }
+    const Global = vscode.ConfigurationTarget.Global;
+    const cfg = vscode.workspace.getConfiguration();
+    try {
+      if (msg.cle === 'theme') {
+        if (msg.valeur === 'systeme') {
+          await cfg.update('workbench.preferredLightColorTheme', 'Default Light Modern', Global);
+          await cfg.update('workbench.preferredDarkColorTheme', 'Default Dark Modern', Global);
+          await cfg.update('window.autoDetectColorScheme', true, Global);
+        } else {
+          await cfg.update('window.autoDetectColorScheme', false, Global);
+          await cfg.update('workbench.colorTheme',
+            msg.valeur === 'clair' ? 'Default Light Modern' : 'Default Dark Modern', Global);
+        }
+      } else if (msg.cle === 'zoom') {
+        await cfg.update('window.zoomLevel', Number(msg.valeur) || 0, Global);
+      } else if (msg.cle === 'policeMd') {
+        // Scopé [markdown] : la taille du CONTENU affiché, pas le contenu lui-même.
+        await vscode.workspace.getConfiguration('editor', { languageId: 'markdown' })
+          .update('fontSize', Number(msg.valeur) || 16, Global, true);
+      } else if (msg.cle === 'langue') {
+        const langue = msg.valeur === 'de' ? 'de' : 'fr';
+        await vscode.workspace.getConfiguration('szh').update('langue', langue, Global);
+        ecrireLocaleArgv(langue);                  // langue native : au prochain démarrage
+        vscode.window.showInformationMessage(T('info.redemarrer'));
+        if (rafraichirTout) { rafraichirTout(); }  // libellés de l'arbre à jour tout de suite
+      }
+    } catch (e) {
+      vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
+    }
   });
 }
 
@@ -1813,7 +2268,7 @@ function activate(context) {
   // section) ; le TITRE de la vue reflète le numéro (N2, D43) à chaque rafraîchissement.
   const rafraichirTout = () => {
     fournisseur.rafraichir();
-    vue.title = fournisseur.racine ? titreNumero(fournisseur.racine) : 'Revue SZH';
+    vue.title = fournisseur.racine ? titreNumero(fournisseur.racine) : T('arbre.titre.defaut');
   };
 
   // Regroupe les rafales d'événements FS (OneDrive peut en émettre plusieurs).
@@ -1853,6 +2308,7 @@ function activate(context) {
     vscode.commands.registerCommand('szh.cockpit.rafraichir', majContexte),
     vscode.commands.registerCommand('szh.metadonnees', () => ouvrirMetadonnees(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.apercuMetadonnees', () => ouvrirApercuMetadonnees(fournisseur, rafraichirTout)),
+    vscode.commands.registerCommand('szh.reglages', () => ouvrirReglages(rafraichirTout)),
     vscode.commands.registerCommand('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.toutExporter', () => toutExporter(fournisseur, rafraichirTout)),

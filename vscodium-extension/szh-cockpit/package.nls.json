@@ -1,0 +1,13 @@
+{
+  "cmd.importerWord": "Importer des Word",
+  "cmd.rafraichir": "Rafraîchir la barre Revue",
+  "cmd.convertirEnAttente": "Convertir les Word en attente",
+  "cmd.metadonnees": "Méta-données du numéro",
+  "cmd.supprimerArticle": "Supprimer l’article",
+  "cmd.remplacerAsset": "Remplacer l’image",
+  "cmd.toutExporter": "Tout exporter (rebuild complet)",
+  "cmd.remplacerTable": "Remplacer le tableau",
+  "cmd.apercuMetadonnees": "Métadonnées des articles",
+  "cmd.reglages": "Réglages SZH",
+  "config.langue": "Langue des textes du cockpit (fr/de). Vide = langue de l’éditeur."
+}

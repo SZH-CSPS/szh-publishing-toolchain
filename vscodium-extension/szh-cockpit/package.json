@@ -10,6 +10,17 @@
   "activationEvents": ["onStartupFinished"],
   "main": "./extension.js",
   "contributes": {
+    "configuration": {
+      "title": "SZH",
+      "properties": {
+        "szh.langue": {
+          "type": "string",
+          "enum": ["", "fr", "de"],
+          "default": "",
+          "description": "%config.langue%"
+        }
+      }
+    },
     "views": {
       "explorer": [
         {
@@ -22,57 +33,63 @@
     "commands": [
       {
         "command": "szh.importerWord",
-        "title": "Importer des Word",
+        "title": "%cmd.importerWord%",
         "category": "Revue SZH",
         "icon": "$(add)"
       },
       {
         "command": "szh.cockpit.rafraichir",
-        "title": "Rafraîchir la barre Revue",
+        "title": "%cmd.rafraichir%",
         "category": "Revue SZH",
         "icon": "$(refresh)"
       },
       {
         "command": "szh.convertirEnAttente",
-        "title": "Convertir les Word en attente",
+        "title": "%cmd.convertirEnAttente%",
         "category": "Revue SZH",
         "icon": "$(run-all)"
       },
       {
         "command": "szh.metadonnees",
-        "title": "Méta-données du numéro",
+        "title": "%cmd.metadonnees%",
         "category": "Revue SZH",
         "icon": "$(gear)"
       },
       {
         "command": "szh.supprimerArticle",
-        "title": "Supprimer l’article",
+        "title": "%cmd.supprimerArticle%",
         "category": "Revue SZH",
         "icon": "$(trash)"
       },
       {
         "command": "szh.remplacerAsset",
-        "title": "Remplacer l’image",
+        "title": "%cmd.remplacerAsset%",
         "category": "Revue SZH",
         "icon": "$(replace)"
       },
       {
         "command": "szh.toutExporter",
-        "title": "Tout exporter (rebuild complet)",
+        "title": "%cmd.toutExporter%",
         "category": "Revue SZH",
         "icon": "$(export)"
       },
       {
         "command": "szh.remplacerTable",
-        "title": "Remplacer le tableau",
+        "title": "%cmd.remplacerTable%",
         "category": "Revue SZH",
         "icon": "$(replace)"
       },
       {
         "command": "szh.apercuMetadonnees",
-        "title": "Métadonnées des articles",
+        "title": "%cmd.apercuMetadonnees%",
         "category": "Revue SZH",
         "icon": "$(list-flat)"
+      },
+      {
+        "command": "szh.reglages",
+        "title": "%cmd.reglages%",
+        "category": "Revue SZH",
+        "icon": "$(settings-gear)"
       }
     ],
     "menus": {
@@ -101,6 +118,11 @@
           "command": "szh.apercuMetadonnees",
           "when": "view == szhCockpitVue",
           "group": "navigation@5"
+        },
+        {
+          "command": "szh.reglages",
+          "when": "view == szhCockpitVue",
+          "group": "navigation@6"
         }
       ],
       "view/item/context": [

@@ -196,26 +196,26 @@ fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
 
 ### M4 · Menu de réglages « SZH » : thème, polices, langue (D52) — *taille L ; extension*
 
-- [ ] Commande `szh.reglages` + bouton en tête de vue (`$(settings-gear)`), après
+- [x] Commande `szh.reglages` + bouton en tête de vue (`$(settings-gear)`), après
   « Métadonnées des articles ».
-- [ ] **Webview « Réglages SZH »** (CSP stricte, DOM, thème) — valeurs initiales lues
+- [x] **Webview « Réglages SZH »** (CSP stricte, DOM, thème) — valeurs initiales lues
   des réglages actuels (postMessage) :
   - **Thème** : radio Système / Clair / Sombre.
   - **Police de l'interface** : paliers (ex. Normal / Grand / Très grand → `window.zoomLevel` 0 / 1 / 2).
   - **Police des `.md`** : paliers (ex. 14 / 16 / 18 px).
   - **Langue** : FR / DE.
-- [ ] Écriture via `getConfiguration().update(clé, valeur, vscode.ConfigurationTarget.Global)` :
+- [x] Écriture via `getConfiguration().update(clé, valeur, vscode.ConfigurationTarget.Global)` :
   `window.autoDetectColorScheme`, `workbench.colorTheme`,
   `workbench.preferredLightColorTheme` = `"Default Light Modern"`,
   `workbench.preferredDarkColorTheme` = `"Default Dark Modern"`, `window.zoomLevel`,
   et `editor.fontSize` **scopé** `[markdown]` (via `update` avec `overrideInLanguage`
   ou en écrivant l'objet `[markdown]`).
-- [ ] **Couche i18n du cockpit** : helper `T(clé[, args])` + tables `fr`/`de` couvrant
+- [x] **Couche i18n du cockpit** : helper `T(clé[, args])` + tables `fr`/`de` couvrant
   **toutes** les chaînes visibles (titres de commandes `package.json` via `%clé%` +
   `package.nls.json`/`package.nls.de.json`, messages, modales, libellés des webviews).
   Langue = réglage `szh.langue` si défini, sinon `vscode.env.language` (`de`→de, sinon fr).
   **Traductions DE à valider par Robin.**
-- [ ] **Langue native VSCodium** : écrire `locale` (`fr`/`de`) dans
+- [x] **Langue native VSCodium** : écrire `locale` (`fr`/`de`) dans
   `%APPDATA%\VSCodium\argv.json` + `showInformationMessage` invitant au redémarrage.
   **Dépendance déploiement** (à consigner, hors commit ici) : ajouter
   `MS-CEINTL.vscode-language-pack-de` à `windows/vsix.lock` + release, sinon les menus
