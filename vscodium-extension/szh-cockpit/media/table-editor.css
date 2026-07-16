@@ -1,0 +1,42 @@
+body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: .6rem .8rem; }
+.barre { position: sticky; top: 0; z-index: 5; background: var(--vscode-editor-background);
+  display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; padding: .3rem 0 .5rem; }
+.grp { display: inline-flex; align-items: center; gap: .25rem; padding: .1rem .3rem;
+  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.3)); border-radius: 4px; }
+.grp > .lbl { font-size: .78em; color: var(--vscode-descriptionForeground); margin-right: .1rem; }
+button { font: inherit; padding: .25em .6em; border: none; border-radius: 3px; cursor: pointer;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
+  background: var(--vscode-button-secondaryBackground, rgba(128,128,128,.18)); }
+button:hover { background: var(--vscode-button-hoverBackground); color: var(--vscode-button-foreground); }
+button.principal { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+button[aria-pressed="true"] { outline: 2px solid var(--vscode-focusBorder); outline-offset: -1px; }
+select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; }
+p.aide { color: var(--vscode-descriptionForeground); font-size: .82em; margin: .1rem 0 .6rem; }
+#etat { font-size: .85em; color: var(--vscode-descriptionForeground); margin-left: .3rem; }
+#zone { overflow: auto; }
+table.grille { border-collapse: collapse; }
+table.grille th, table.grille td { border: 1px solid var(--vscode-panel-border, #888);
+  padding: .3em .5em; min-width: 3em; height: 1.9em; vertical-align: top; text-align: left; }
+table.grille td.cell, table.grille th.cell { background: var(--vscode-editor-background); cursor: text; }
+table.grille .sel { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px;
+  background: var(--vscode-editor-selectionBackground, rgba(90,140,220,.25)); }
+.poignee { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15));
+  color: var(--vscode-descriptionForeground); cursor: pointer; text-align: center; user-select: none;
+  min-width: 1.4em; padding: .15em .3em; font-size: .8em; }
+.poignee.pnum { min-width: 2.4em; }
+.poignee.selh { background: var(--vscode-editor-selectionBackground, rgba(90,140,220,.35));
+  color: var(--vscode-foreground); }
+.poignee:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.3)); }
+.coin { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15)); }
+.ctxmenu { position: fixed; z-index: 1000; min-width: 13em; padding: .25em 0;
+  background: var(--vscode-menu-background, var(--vscode-editor-background));
+  color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border, rgba(128,128,128,.4)));
+  border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.35); font-size: .92em; }
+.ctxmenu .ctxitem { padding: .32em .9em; cursor: pointer; white-space: nowrap; }
+.ctxmenu .ctxitem:hover { background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground, rgba(90,140,220,.3)));
+  color: var(--vscode-menu-selectionForeground, var(--vscode-menu-foreground, var(--vscode-foreground))); }
+.ctxmenu .ctxsep { height: 1px; margin: .25em 0;
+  background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border, rgba(128,128,128,.4))); }
