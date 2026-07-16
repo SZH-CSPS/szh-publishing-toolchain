@@ -71,6 +71,7 @@ const TEXTES_COCKPIT = {
     'statut.supprime': 'Article « {0} » supprimé.',
     'statut.image.remplacee': 'Image « {0} » remplacée — recompilez pour voir le PDF à jour.',
     'statut.table.remplacee': 'Tableau « {0} » remplacé — recompilez pour voir le PDF à jour.',
+    'statut.table.enregistree': 'Tableau « {0} » enregistré — recompilez (cliquez l’article) pour voir le PDF à jour.',
     'statut.ausgabe': 'ausgabe.yaml enregistré.',
     'statut.fiches': '{0} fiche(s) de métadonnées enregistrée(s).',
     'err.tache': 'Tâche « {0} » introuvable. Réglages de l’éditeur incomplets ?',
@@ -165,6 +166,54 @@ const TEXTES_COCKPIT = {
     'fmt.figure.horsarticle': 'Ouvrez d’abord un article (.md) pour insérer une figure.',
     'fmt.figure.copiee': 'Image « {0} » ajoutée à l’article.',
     'fmt.tableau.colonne': 'Colonne',
+    'table.titre': 'Tableau — {0}',
+    'table.aide': 'Cliquez une cellule pour l’éditer (Ctrl+B gras, Ctrl+I italique). Maj+clic = plage rectangulaire. Cliquez une poignée grise pour une ligne ou une colonne entière.',
+    'table.enregistrer': 'Enregistrer',
+    'table.ajouterLigne': '＋ Ligne',
+    'table.supprimerLigne': '－ Ligne',
+    'table.ajouterColonne': '＋ Colonne',
+    'table.supprimerColonne': '－ Colonne',
+    'table.fusionner': 'Fusionner',
+    'table.scinder': 'Scinder',
+    'table.rien': 'Sélectionnez d’abord une cellule.',
+    'table.fusionImpossible': 'Pour fusionner, la sélection doit être un rectangle plein (aucune cellule ne doit dépasser).',
+    'table.enregistre': '✓ Tableau enregistré',
+    'table.grpStructure': 'Structure',
+    'table.grpEntetes': 'En-têtes',
+    'table.grpStyles': 'Styles',
+    'table.entete': 'Définir comme en-tête',
+    'table.enteteRetirer': 'Retirer l’en-tête',
+    'table.styleEntete': 'Style d’en-tête',
+    'table.styleLigne': 'En-tête (haut)',
+    'table.styleColonne': 'En-tête (gauche)',
+    'table.st.normal': 'Normal',
+    'table.st.gras': 'Gras',
+    'table.st.negatif': 'Négatif',
+    'table.st.fond': 'Fond',
+    'table.zebre': 'Zébrage',
+    'table.zebre.non': 'Aucun',
+    'table.zebre.lignes': 'Lignes',
+    'table.zebre.colonnes': 'Colonnes',
+    'table.teinte': 'Teinte',
+    'table.teinte.gris': 'Gris',
+    'table.teinte.couleur': 'Couleur',
+    'table.separateurs': 'Séparateurs',
+    'table.sep.non': 'Aucun',
+    'table.sep.gris': 'Gris',
+    'table.sep.couleur': 'Couleur',
+    'table.bordureHaute': 'Bordure haute',
+    'table.bordureBasse': 'Bordure basse',
+    'table.oui': 'Oui',
+    'table.non': 'Non',
+    'table.total': 'Ligne de total',
+    'table.total.non': 'Non',
+    'table.total.gris': 'Total gris',
+    'table.total.couleur': 'Total couleur',
+    'table.total.gras': 'Gras',
+    'table.accent': 'Accent (aperçu)',
+    'table.accent.gris': 'Gris',
+    'table.accent.couleur': 'Couleur annuelle',
+    'table.accent.aucune': 'Aucune couleur annuelle définie — l’aperçu couleur retombe sur le gris (comme le PDF).',
     'regl.titre': 'Réglages SZH',
     'regl.note': 'Appliqués immédiatement, pour cet utilisateur, sur ce poste.',
     'regl.theme': 'Thème',
@@ -204,6 +253,7 @@ const TEXTES_COCKPIT = {
     'statut.supprime': 'Artikel « {0} » gelöscht.',
     'statut.image.remplacee': 'Bild « {0} » ersetzt — neu kompilieren, um das PDF zu aktualisieren.',
     'statut.table.remplacee': 'Tabelle « {0} » ersetzt — neu kompilieren, um das PDF zu aktualisieren.',
+    'statut.table.enregistree': 'Tabelle « {0} » gespeichert — neu kompilieren (Artikel anklicken), um das PDF zu aktualisieren.',
     'statut.ausgabe': 'ausgabe.yaml gespeichert.',
     'statut.fiches': '{0} Metadaten-Datei(en) gespeichert.',
     'err.tache': 'Aufgabe « {0} » nicht gefunden. Editor-Einstellungen unvollständig?',
@@ -298,6 +348,54 @@ const TEXTES_COCKPIT = {
     'fmt.figure.horsarticle': 'Öffnen Sie zuerst einen Artikel (.md), um eine Abbildung einzufügen.',
     'fmt.figure.copiee': 'Bild « {0} » zum Artikel hinzugefügt.',
     'fmt.tableau.colonne': 'Spalte',
+    'table.titre': 'Tabelle — {0}',
+    'table.aide': 'Klicken Sie eine Zelle zum Bearbeiten (Ctrl+B fett, Ctrl+I kursiv). Umschalt+Klick = rechteckiger Bereich. Klicken Sie einen grauen Griff für eine ganze Zeile oder Spalte.',
+    'table.enregistrer': 'Speichern',
+    'table.ajouterLigne': '＋ Zeile',
+    'table.supprimerLigne': '－ Zeile',
+    'table.ajouterColonne': '＋ Spalte',
+    'table.supprimerColonne': '－ Spalte',
+    'table.fusionner': 'Verbinden',
+    'table.scinder': 'Teilen',
+    'table.rien': 'Wählen Sie zuerst eine Zelle aus.',
+    'table.fusionImpossible': 'Zum Verbinden muss die Auswahl ein volles Rechteck sein (keine Zelle darf herausragen).',
+    'table.enregistre': '✓ Tabelle gespeichert',
+    'table.grpStructure': 'Struktur',
+    'table.grpEntetes': 'Überschriften',
+    'table.grpStyles': 'Stile',
+    'table.entete': 'Als Überschrift festlegen',
+    'table.enteteRetirer': 'Überschrift entfernen',
+    'table.styleEntete': 'Überschriftenstil',
+    'table.styleLigne': 'Überschrift (oben)',
+    'table.styleColonne': 'Überschrift (links)',
+    'table.st.normal': 'Normal',
+    'table.st.gras': 'Fett',
+    'table.st.negatif': 'Negativ',
+    'table.st.fond': 'Hintergrund',
+    'table.zebre': 'Zebrastreifen',
+    'table.zebre.non': 'Keine',
+    'table.zebre.lignes': 'Zeilen',
+    'table.zebre.colonnes': 'Spalten',
+    'table.teinte': 'Tönung',
+    'table.teinte.gris': 'Grau',
+    'table.teinte.couleur': 'Farbe',
+    'table.separateurs': 'Trennlinien',
+    'table.sep.non': 'Keine',
+    'table.sep.gris': 'Grau',
+    'table.sep.couleur': 'Farbe',
+    'table.bordureHaute': 'Obere Linie',
+    'table.bordureBasse': 'Untere Linie',
+    'table.oui': 'Ja',
+    'table.non': 'Nein',
+    'table.total': 'Summenzeile',
+    'table.total.non': 'Nein',
+    'table.total.gris': 'Summe grau',
+    'table.total.couleur': 'Summe farbig',
+    'table.total.gras': 'Fett',
+    'table.accent': 'Akzent (Vorschau)',
+    'table.accent.gris': 'Grau',
+    'table.accent.couleur': 'Jahresfarbe',
+    'table.accent.aucune': 'Keine Jahresfarbe festgelegt — die Farbvorschau fällt auf Grau zurück (wie das PDF).',
     'regl.titre': 'SZH-Einstellungen',
     'regl.note': 'Werden sofort angewendet, für diese Benutzerin / diesen Benutzer, auf diesem Computer.',
     'regl.theme': 'Design',
@@ -2716,6 +2814,744 @@ function enregistrerCommandesMiseEnForme(context) {
   c('szh.fmt.tableau', () => fmtTableau());
 }
 
+// ---- Éditeur de tableau maison (webview) — D57, T1 -------------------------------
+//
+// L'asset tableau (viewItem == table) reste un <table> autonome dans
+// articles/<slug>/tables/table-NN.html. « Éditer » (szh.editerTable) ouvre une
+// webview (grille éditable) qui charge le fichier, l'édite (texte + fusions +
+// ajout/suppression de lignes/colonnes) et le réécrit (écriture atomique).
+//
+// PARSEUR / SÉRIALISEUR PURS (exportés via _pur, testés headless) :
+//   analyserTable(html)  -> modèle { attrs, lignes:[{ total, teinte, gras,
+//                            cellules:[{ contenu, colspan, rowspan, th, scope }] }] }
+//   serialiserTable(mod) -> <table>…</table> propre et STABLE.
+// Contrat GATE : analyser -> serialiser -> analyser identique (table nue M2 comprise).
+//
+// MODÈLE (encodage HTML, cf. PLAN-TABLEAU §Modèle) : le fichier est un <table
+// class="szh-tableau"> ; le style est porté par des attributs data-* sur <table>
+// et <tr> ; les en-têtes par <th scope>. Le contenu de cellule est de l'inline
+// simple : texte échappé, <strong>, <em>, <br> (canonisé, jamais d'injection).
+//
+// Robustesse : un <table> nu (import M2, docx-tables.py) s'ouvre en mode neutre —
+// les <th> d'en-tête sont préservés (comptes data-entete-* déduits à la volée).
+
+// Attributs HTML d'une chaîne « a="b" c='d' e » -> { a:'b', c:'d', e:'' } (clés en
+// minuscules). Best effort, tolérant (valeurs nues, guillemets simples/doubles).
+function lireAttributsHtml(source) {
+  const attrs = {};
+  const re = /([A-Za-z_:][-A-Za-z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  let m;
+  while ((m = re.exec(String(source))) !== null) {
+    const val = m[2] !== undefined ? m[2] : (m[3] !== undefined ? m[3] : (m[4] !== undefined ? m[4] : ''));
+    attrs[m[1].toLowerCase()] = val;
+  }
+  return attrs;
+}
+
+// Canonise le contenu inline d'une cellule : ne garde que <strong>/<em>/<br> et le
+// texte (déjà échappé), normalise <b>->strong, <i>->em, <br/>->br, retire tout
+// autre balisage (texte conservé). Idempotent — clé du round-trip stable.
+function canoniserInline(contenu) {
+  const s = String(contenu === undefined || contenu === null ? '' : contenu);
+  let out = '';
+  const re = /<[^>]*>/g;
+  let dernier = 0, m;
+  while ((m = re.exec(s)) !== null) {
+    out += s.slice(dernier, m.index);
+    dernier = re.lastIndex;
+    const t = m[0].toLowerCase();
+    if (/^<br\b[^>]*\/?>$/.test(t)) { out += '<br>'; }
+    else if (/^<(strong|b)\b[^>]*>$/.test(t)) { out += '<strong>'; }
+    else if (/^<\/(strong|b)\s*>$/.test(t)) { out += '</strong>'; }
+    else if (/^<(em|i)\b[^>]*>$/.test(t)) { out += '<em>'; }
+    else if (/^<\/(em|i)\s*>$/.test(t)) { out += '</em>'; }
+    // sinon : balise inconnue -> abandonnée (le texte autour est conservé)
+  }
+  out += s.slice(dernier);
+  return out.trim();
+}
+
+// Cellules d'un <tr> intérieur. Scan à profondeur td/th : un tableau imbriqué dans
+// une cellule (rare, cf. docx-tables.py) ne casse pas le découpage — son contenu
+// reste dans la cellule englobante (aplati en texte par canoniserInline).
+function extraireCellules(interieur) {
+  const cellules = [];
+  const re = /<(\/?)(td|th)\b([^>]*)>/gi;
+  let m, profondeur = 0, courant = null, debut = 0;
+  while ((m = re.exec(String(interieur))) !== null) {
+    if (m[1] !== '/') {
+      if (profondeur === 0) { courant = { tag: m[2].toLowerCase(), attrs: lireAttributsHtml(m[3]) }; debut = re.lastIndex; }
+      profondeur++;
+    } else {
+      profondeur--;
+      if (profondeur <= 0 && courant) {
+        const th = courant.tag === 'th';
+        const sc = courant.attrs.scope;
+        cellules.push({
+          contenu: canoniserInline(String(interieur).slice(debut, m.index)),
+          colspan: Math.max(1, parseInt(courant.attrs.colspan, 10) || 1),
+          rowspan: Math.max(1, parseInt(courant.attrs.rowspan, 10) || 1),
+          th: th,
+          scope: th ? (sc === 'row' ? 'row' : (sc === 'col' ? 'col' : '')) : ''
+        });
+        courant = null;
+        profondeur = 0;
+      }
+    }
+  }
+  return cellules;
+}
+
+function enumOu(v, liste, defaut) { return liste.indexOf(v) !== -1 ? v : defaut; }
+
+// Matrice d'occupation (RT1) : place chaque cellule (colspan/rowspan) sur une grille
+// visuelle. grid[r][c] = { li, ci, c0, colspan, rowspan } (indices MODÈLE de la
+// cellule occupant la case) ; positions[r][ci] = { c0, colspan, rowspan } (origine
+// visuelle d'une cellule modèle). Base commune du rendu, de la sélection et des ops.
+function matriceOccupation(lignes) {
+  const grid = [], positions = [];
+  for (let r = 0; r < lignes.length; r++) {
+    if (!grid[r]) { grid[r] = []; }
+    positions[r] = [];
+    let c = 0;
+    const cells = lignes[r].cellules || [];
+    for (let ci = 0; ci < cells.length; ci++) {
+      while (grid[r][c]) { c++; }
+      const cs = Math.max(1, parseInt(cells[ci].colspan, 10) || 1);
+      const rs = Math.max(1, parseInt(cells[ci].rowspan, 10) || 1);
+      positions[r][ci] = { c0: c, colspan: cs, rowspan: rs };
+      for (let dr = 0; dr < rs; dr++) {
+        if (!grid[r + dr]) { grid[r + dr] = []; }
+        for (let dc = 0; dc < cs; dc++) { grid[r + dr][c + dc] = { li: r, ci: ci, c0: c, colspan: cs, rowspan: rs }; }
+      }
+      c += cs;
+    }
+  }
+  let nbC = 0;
+  for (let r = 0; r < grid.length; r++) { if (grid[r]) { nbC = Math.max(nbC, grid[r].length); } }
+  return { grid: grid, positions: positions, nbLignes: Math.max(lignes.length, grid.length), nbColonnes: nbC };
+}
+
+// Modèle -> grille « dépliée » (une case = un id de cellule ; fusions = plusieurs
+// cases au même id). Les trous d'un tableau ragged sont comblés par des cellules
+// vides -> grille toujours rectangulaire. Base des opérations de structure.
+function etendreGrille(modele) {
+  const occ = matriceOccupation(modele.lignes);
+  const nbL = modele.lignes.length, nbC = occ.nbColonnes;
+  const grid = [];
+  for (let r = 0; r < nbL; r++) { grid[r] = new Array(nbC).fill(null); }
+  const cellules = [];
+  for (let r = 0; r < nbL; r++) {
+    modele.lignes[r].cellules.forEach((cell, ci) => {
+      const pos = occ.positions[r][ci];
+      const id = cellules.length;
+      cellules.push({ contenu: cell.contenu, th: !!cell.th, scope: cell.scope || '' });
+      for (let dr = 0; dr < pos.rowspan && r + dr < nbL; dr++) {
+        for (let dc = 0; dc < pos.colspan && pos.c0 + dc < nbC; dc++) { grid[r + dr][pos.c0 + dc] = id; }
+      }
+    });
+  }
+  for (let r = 0; r < nbL; r++) {
+    for (let c = 0; c < nbC; c++) {
+      if (grid[r][c] == null) { grid[r][c] = cellules.length; cellules.push({ contenu: '', th: false, scope: '' }); }
+    }
+  }
+  return {
+    cellules: cellules, grid: grid,
+    infosLignes: modele.lignes.map((lg) => ({ total: !!lg.total, teinte: lg.teinte || 'gris', gras: lg.gras || 'non' })),
+    attrs: Object.assign({}, modele.attrs)
+  };
+}
+
+// Grille dépliée -> modèle (colspan/rowspan recalculés depuis les blocs rectangulaires
+// contigus). L'origine d'un id = case la plus haute puis la plus à gauche.
+function compacterGrille(g) {
+  const nbL = g.grid.length, nbC = nbL ? g.grid[0].length : 0;
+  const origine = {};
+  for (let r = 0; r < nbL; r++) {
+    for (let c = 0; c < nbC; c++) {
+      const id = g.grid[r][c];
+      if (id != null && !(id in origine)) { origine[id] = { r: r, c: c }; }
+    }
+  }
+  const lignes = [];
+  for (let r = 0; r < nbL; r++) {
+    const cellules = [];
+    for (let c = 0; c < nbC; c++) {
+      const id = g.grid[r][c];
+      if (id == null) { continue; }
+      if (origine[id].r !== r || origine[id].c !== c) { continue; }
+      let cs = 0; while (c + cs < nbC && g.grid[r][c + cs] === id) { cs++; }
+      let rs = 0; while (r + rs < nbL && g.grid[r + rs][c] === id) { rs++; }
+      const cell = g.cellules[id];
+      cellules.push({ contenu: cell.contenu, colspan: cs, rowspan: rs, th: !!cell.th, scope: cell.scope || '' });
+    }
+    lignes.push({ total: g.infosLignes[r].total, teinte: g.infosLignes[r].teinte, gras: g.infosLignes[r].gras, cellules: cellules });
+  }
+  return finaliserModele({ attrs: g.attrs, lignes: lignes });
+}
+
+// Réaligne th/scope de CHAQUE cellule sur les comptes data-entete-lignes/colonnes
+// (source de vérité unique). Cellule en tête si son origine est dans les N lignes du
+// haut (scope=col) OU les M colonnes de gauche (scope=row ; le haut l'emporte au coin).
+function reappliquerEntetes(modele) {
+  const occ = matriceOccupation(modele.lignes);
+  const eL = modele.attrs.enteteLignes, eC = modele.attrs.enteteColonnes;
+  modele.lignes.forEach((lg, r) => {
+    lg.cellules.forEach((cell, ci) => {
+      const enHaut = r < eL;
+      const aGauche = occ.positions[r][ci].c0 < eC;
+      cell.th = enHaut || aGauche;
+      cell.scope = enHaut ? 'col' : (aGauche ? 'row' : '');
+    });
+  });
+  return modele;
+}
+
+// Normalise (bornes + énumérations) un modèle, sans toucher à la structure.
+function normaliserModele(modele) {
+  const a = (modele && modele.attrs) || {};
+  const lignesEntree = (modele && modele.lignes) || [];
+  const nbLignes = lignesEntree.length;
+  const attrs = {
+    classe: 'szh-tableau',
+    enteteLignes: Math.max(0, Math.min(2, Math.min(parseInt(a.enteteLignes, 10) || 0, nbLignes))),
+    enteteColonnes: Math.max(0, Math.min(2, parseInt(a.enteteColonnes, 10) || 0)),
+    enteteLigneStyle: enumOu(a.enteteLigneStyle, ['gras', 'negatif', 'fond', 'normal'], 'normal'),
+    enteteColonneStyle: enumOu(a.enteteColonneStyle, ['gras', 'negatif', 'fond', 'normal'], 'normal'),
+    zebre: enumOu(a.zebre, ['lignes', 'colonnes', 'non'], 'non'),
+    zebreTeinte: enumOu(a.zebreTeinte, ['gris', 'couleur'], 'gris'),
+    separateurs: enumOu(a.separateurs, ['gris', 'couleur', 'non'], 'non'),
+    bordureHaute: a.bordureHaute === 'oui' ? 'oui' : 'non',
+    bordureBasse: a.bordureBasse === 'oui' ? 'oui' : 'non'
+  };
+  if (attrs.enteteLignes === 0) { attrs.enteteLigneStyle = 'normal'; }
+  if (attrs.enteteColonnes === 0) { attrs.enteteColonneStyle = 'normal'; }
+  if (attrs.zebre === 'non') { attrs.zebreTeinte = 'gris'; }
+  const lignes = lignesEntree.map((lg) => ({
+    total: !!(lg && lg.total),
+    teinte: enumOu(lg && lg.teinte, ['gris', 'couleur'], 'gris'),
+    gras: (lg && lg.gras) === 'oui' ? 'oui' : 'non',
+    cellules: ((lg && lg.cellules) || []).map((c) => {
+      const th = !!(c && c.th);
+      return {
+        contenu: canoniserInline(c && c.contenu),
+        colspan: Math.max(1, parseInt(c && c.colspan, 10) || 1),
+        rowspan: Math.max(1, parseInt(c && c.rowspan, 10) || 1),
+        th: th,
+        scope: th ? ((c && c.scope) === 'row' ? 'row' : ((c && c.scope) === 'col' ? 'col' : '')) : ''
+      };
+    })
+  }));
+  if (lignes.length === 0) { lignes.push({ total: false, teinte: 'gris', gras: 'non', cellules: [{ contenu: '', colspan: 1, rowspan: 1, th: false, scope: '' }] }); }
+  return { attrs: attrs, lignes: lignes };
+}
+
+// Modèle prêt à l'emploi : normalisé PUIS th/scope réalignés sur les comptes.
+function finaliserModele(modele) {
+  const m = normaliserModele(modele);
+  reappliquerEntetes(m);
+  return m;
+}
+
+// Déduit un compte d'en-tête à partir des <th> d'un import nu (M2) quand l'attribut
+// data-entete-* est absent : nombre de lignes/colonnes de tête entièrement en <th>.
+function infererEnteteLignes(occ, lignes) {
+  let n = 0;
+  for (let r = 0; r < occ.nbLignes && r < lignes.length; r++) {
+    let toutTh = occ.nbColonnes > 0;
+    for (let c = 0; c < occ.nbColonnes; c++) {
+      const ref = occ.grid[r] && occ.grid[r][c];
+      if (!ref || !lignes[ref.li].cellules[ref.ci].th) { toutTh = false; break; }
+    }
+    if (toutTh) { n++; } else { break; }
+  }
+  return Math.min(n, 2);
+}
+function infererEnteteColonnes(occ, lignes) {
+  let m = 0;
+  for (let c = 0; c < occ.nbColonnes; c++) {
+    let toutTh = occ.nbLignes > 0;
+    for (let r = 0; r < occ.nbLignes && r < lignes.length; r++) {
+      const ref = occ.grid[r] && occ.grid[r][c];
+      if (!ref || !lignes[ref.li].cellules[ref.ci].th) { toutTh = false; break; }
+    }
+    if (toutTh) { m++; } else { break; }
+  }
+  return Math.min(m, 2);
+}
+
+// analyserTable(html) -> modèle. Tolère un <table> nu (M2) ; déduit les comptes
+// d'en-tête des <th> si les data-entete-* manquent ; ignore thead/tbody/caption/col.
+function analyserTable(html) {
+  const s = String(html === undefined || html === null ? '' : html);
+  const mTable = s.match(/<table\b([^>]*)>/i);
+  const at = mTable ? lireAttributsHtml(mTable[1]) : {};
+  let corps;
+  if (mTable) {
+    const debut = mTable.index + mTable[0].length;
+    const fin = s.toLowerCase().indexOf('</table>', debut);
+    corps = fin === -1 ? s.slice(debut) : s.slice(debut, fin);
+  } else { corps = s; }
+  corps = corps
+    .replace(/<\/?(thead|tbody|tfoot)\b[^>]*>/gi, '')
+    .replace(/<colgroup\b[^>]*>[\s\S]*?<\/colgroup>/gi, '')
+    .replace(/<col\b[^>]*\/?>/gi, '')
+    .replace(/<caption\b[^>]*>[\s\S]*?<\/caption>/gi, '');
+  const lignes = [];
+  const reTr = /<tr\b([^>]*)>([\s\S]*?)<\/tr>/gi;
+  let mtr;
+  while ((mtr = reTr.exec(corps)) !== null) {
+    const attrsTr = lireAttributsHtml(mtr[1]);
+    const classes = String(attrsTr['class'] || '').split(/\s+/);
+    lignes.push({
+      total: classes.indexOf('szh-total') !== -1,
+      teinte: attrsTr['data-teinte'] === 'couleur' ? 'couleur' : 'gris',
+      gras: attrsTr['data-gras'] === 'oui' ? 'oui' : 'non',
+      cellules: extraireCellules(mtr[2])
+    });
+  }
+  if (lignes.length === 0) { lignes.push({ total: false, teinte: 'gris', gras: 'non', cellules: [{ contenu: '', colspan: 1, rowspan: 1, th: false, scope: '' }] }); }
+  const occ = matriceOccupation(lignes);
+  const attrs = {
+    classe: 'szh-tableau',
+    enteteLignes: at['data-entete-lignes'] !== undefined ? Math.max(0, Math.min(2, parseInt(at['data-entete-lignes'], 10) || 0)) : infererEnteteLignes(occ, lignes),
+    enteteColonnes: at['data-entete-colonnes'] !== undefined ? Math.max(0, Math.min(2, parseInt(at['data-entete-colonnes'], 10) || 0)) : infererEnteteColonnes(occ, lignes),
+    enteteLigneStyle: enumOu(at['data-entete-ligne-style'], ['gras', 'negatif', 'fond', 'normal'], 'normal'),
+    enteteColonneStyle: enumOu(at['data-entete-colonne-style'], ['gras', 'negatif', 'fond', 'normal'], 'normal'),
+    zebre: enumOu(at['data-zebre'], ['lignes', 'colonnes', 'non'], 'non'),
+    zebreTeinte: enumOu(at['data-zebre-teinte'], ['gris', 'couleur'], 'gris'),
+    separateurs: enumOu(at['data-separateurs'], ['gris', 'couleur', 'non'], 'non'),
+    bordureHaute: at['data-bordure-haute'] === 'oui' ? 'oui' : 'non',
+    bordureBasse: at['data-bordure-basse'] === 'oui' ? 'oui' : 'non'
+  };
+  return finaliserModele({ attrs: attrs, lignes: lignes });
+}
+
+// serialiserTable(modèle) -> <table> propre et STABLE (attributs en ordre fixe, un
+// data-* émis seulement s'il est signifiant). Une balise par ligne (lisible, diff-able).
+function serialiserTable(modele) {
+  const m = normaliserModele(modele);
+  const a = m.attrs;
+  let ouv = '<table class="' + a.classe + '"';
+  if (a.enteteLignes > 0) { ouv += ' data-entete-lignes="' + a.enteteLignes + '"'; }
+  if (a.enteteColonnes > 0) { ouv += ' data-entete-colonnes="' + a.enteteColonnes + '"'; }
+  if (a.enteteLignes > 0 && a.enteteLigneStyle !== 'normal') { ouv += ' data-entete-ligne-style="' + a.enteteLigneStyle + '"'; }
+  if (a.enteteColonnes > 0 && a.enteteColonneStyle !== 'normal') { ouv += ' data-entete-colonne-style="' + a.enteteColonneStyle + '"'; }
+  if (a.zebre !== 'non') { ouv += ' data-zebre="' + a.zebre + '"'; if (a.zebreTeinte === 'couleur') { ouv += ' data-zebre-teinte="couleur"'; } }
+  if (a.separateurs !== 'non') { ouv += ' data-separateurs="' + a.separateurs + '"'; }
+  if (a.bordureHaute === 'oui') { ouv += ' data-bordure-haute="oui"'; }
+  if (a.bordureBasse === 'oui') { ouv += ' data-bordure-basse="oui"'; }
+  ouv += '>';
+  const out = [ouv];
+  for (const lg of m.lignes) {
+    let tr = '<tr';
+    if (lg.total) { tr += ' class="szh-total"'; if (lg.teinte === 'couleur') { tr += ' data-teinte="couleur"'; } if (lg.gras === 'oui') { tr += ' data-gras="oui"'; } }
+    tr += '>';
+    out.push(tr);
+    for (const cell of lg.cellules) {
+      const tag = cell.th ? 'th' : 'td';
+      let t = '<' + tag;
+      if (cell.th && (cell.scope === 'col' || cell.scope === 'row')) { t += ' scope="' + cell.scope + '"'; }
+      if (cell.colspan > 1) { t += ' colspan="' + cell.colspan + '"'; }
+      if (cell.rowspan > 1) { t += ' rowspan="' + cell.rowspan + '"'; }
+      out.push(t + '>' + cell.contenu + '</' + tag + '>');
+    }
+    out.push('</tr>');
+  }
+  out.push('</table>');
+  return out.join('\n') + '\n';
+}
+
+// Structure d'affichage pour la webview : chaque cellule avec ses coordonnées
+// VISUELLES (r0,c0) et ses spans -> rendu direct + sélection sans dupliquer la
+// matrice côté webview.
+function disposition(modele) {
+  const occ = matriceOccupation(modele.lignes);
+  return {
+    nbLignes: modele.lignes.length,
+    nbColonnes: occ.nbColonnes,
+    attrs: modele.attrs,
+    lignes: modele.lignes.map((lg, r) => ({
+      total: lg.total, teinte: lg.teinte, gras: lg.gras,
+      cellules: lg.cellules.map((cell, ci) => ({
+        li: r, ci: ci, r0: r, c0: occ.positions[r][ci].c0,
+        colspan: occ.positions[r][ci].colspan, rowspan: occ.positions[r][ci].rowspan,
+        th: cell.th, scope: cell.scope, contenu: cell.contenu
+      }))
+    }))
+  };
+}
+
+// ---- Opérations de structure (pures, modèle -> modèle) ----------------------------
+
+// Insère une ligne vide à l'index visuel `pos` (0..nbLignes). Une cellule qui
+// FRANCHIT la frontière voit son rowspan grandir (elle couvre la nouvelle ligne).
+function ajouterLigne(modele, pos) {
+  const g = etendreGrille(modele);
+  const nbC = g.grid.length ? g.grid[0].length : 1;
+  pos = Math.max(0, Math.min(pos, g.grid.length));
+  const rangee = new Array(nbC);
+  for (let c = 0; c < nbC; c++) {
+    if (pos > 0 && pos < g.grid.length && g.grid[pos - 1][c] != null && g.grid[pos - 1][c] === g.grid[pos][c]) {
+      rangee[c] = g.grid[pos - 1][c];
+    } else { rangee[c] = g.cellules.length; g.cellules.push({ contenu: '', th: false, scope: '' }); }
+  }
+  g.grid.splice(pos, 0, rangee);
+  g.infosLignes.splice(pos, 0, { total: false, teinte: 'gris', gras: 'non' });
+  return compacterGrille(g);
+}
+
+function supprimerLigne(modele, index) {
+  const g = etendreGrille(modele);
+  if (g.grid.length <= 1) { return finaliserModele(modele); }
+  index = Math.max(0, Math.min(index, g.grid.length - 1));
+  g.grid.splice(index, 1);
+  g.infosLignes.splice(index, 1);
+  return compacterGrille(g);
+}
+
+// Insère une colonne vide à l'index visuel `pos` (0..nbColonnes). Idem : un colspan
+// qui franchit la frontière grandit.
+function ajouterColonne(modele, pos) {
+  const g = etendreGrille(modele);
+  const nbC = g.grid.length ? g.grid[0].length : 1;
+  pos = Math.max(0, Math.min(pos, nbC));
+  for (let r = 0; r < g.grid.length; r++) {
+    let id;
+    if (pos > 0 && pos < nbC && g.grid[r][pos - 1] != null && g.grid[r][pos - 1] === g.grid[r][pos]) {
+      id = g.grid[r][pos - 1];
+    } else { id = g.cellules.length; g.cellules.push({ contenu: '', th: false, scope: '' }); }
+    g.grid[r].splice(pos, 0, id);
+  }
+  return compacterGrille(g);
+}
+
+function supprimerColonne(modele, index) {
+  const g = etendreGrille(modele);
+  const nbC = g.grid.length ? g.grid[0].length : 0;
+  if (nbC <= 1) { return finaliserModele(modele); }
+  index = Math.max(0, Math.min(index, nbC - 1));
+  for (let r = 0; r < g.grid.length; r++) { g.grid[r].splice(index, 1); }
+  return compacterGrille(g);
+}
+
+// Fusionne une plage visuelle rectangulaire -> une cellule (colspan/rowspan),
+// contenus non vides concaténés (séparés par <br>). Refuse une plage non
+// rectangulaire (une cellule dépasserait) -> { erreur:'table.fusionImpossible' }.
+function fusionner(modele, ra, ca, rb, cb) {
+  const g = etendreGrille(modele);
+  const nbL = g.grid.length, nbC = nbL ? g.grid[0].length : 0;
+  const rMin = Math.max(0, Math.min(ra, rb)), rMax = Math.min(nbL - 1, Math.max(ra, rb));
+  const cMin = Math.max(0, Math.min(ca, cb)), cMax = Math.min(nbC - 1, Math.max(ca, cb));
+  const idsRect = new Set();
+  for (let r = rMin; r <= rMax; r++) { for (let c = cMin; c <= cMax; c++) { idsRect.add(g.grid[r][c]); } }
+  for (let r = 0; r < nbL; r++) {
+    for (let c = 0; c < nbC; c++) {
+      if (idsRect.has(g.grid[r][c]) && (r < rMin || r > rMax || c < cMin || c > cMax)) {
+        return { erreur: 'table.fusionImpossible' };
+      }
+    }
+  }
+  const idCoin = g.grid[rMin][cMin];
+  const contenus = [], vu = new Set();
+  for (let r = rMin; r <= rMax; r++) {
+    for (let c = cMin; c <= cMax; c++) {
+      const id = g.grid[r][c];
+      if (vu.has(id)) { continue; }
+      vu.add(id);
+      if (g.cellules[id].contenu !== '') { contenus.push(g.cellules[id].contenu); }
+    }
+  }
+  g.cellules[idCoin].contenu = contenus.join('<br>');
+  for (let r = rMin; r <= rMax; r++) { for (let c = cMin; c <= cMax; c++) { g.grid[r][c] = idCoin; } }
+  return compacterGrille(g);
+}
+
+// Scinde la cellule fusionnée dont l'origine visuelle est (r,c) : chaque case
+// libérée redevient une cellule vide (contenu conservé sur la cellule d'origine).
+function scinder(modele, r, c) {
+  const g = etendreGrille(modele);
+  const nbL = g.grid.length, nbC = nbL ? g.grid[0].length : 0;
+  if (r < 0 || r >= nbL || c < 0 || c >= nbC) { return finaliserModele(modele); }
+  const id = g.grid[r][c];
+  const positions = [];
+  for (let rr = 0; rr < nbL; rr++) { for (let cc = 0; cc < nbC; cc++) { if (g.grid[rr][cc] === id) { positions.push([rr, cc]); } } }
+  if (positions.length <= 1) { return finaliserModele(modele); }
+  positions.sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
+  const base = g.cellules[id];
+  for (let k = 1; k < positions.length; k++) {
+    const nid = g.cellules.length;
+    g.cellules.push({ contenu: '', th: base.th, scope: base.scope });
+    g.grid[positions[k][0]][positions[k][1]] = nid;
+  }
+  return compacterGrille(g);
+}
+
+// Applique une opération nommée (venue de la webview) au modèle (assaini). Les
+// plages (rMin..rMax / cMin..cMax) sont dépliées en appels unitaires des ops pures.
+function appliquerOperationTable(nom, modeleBrut, args) {
+  const modele = normaliserModele(modeleBrut);
+  const a = args || {};
+  const n = (v) => { const x = parseInt(v, 10); return isNaN(x) ? 0 : x; };
+  if (nom === 'ajouterLigne') { return ajouterLigne(modele, n(a.pos)); }
+  if (nom === 'supprimerLigne') {
+    let m = modele;
+    for (let i = n(a.rMax); i >= n(a.rMin); i--) { m = supprimerLigne(m, i); }
+    return m;
+  }
+  if (nom === 'ajouterColonne') { return ajouterColonne(modele, n(a.pos)); }
+  if (nom === 'supprimerColonne') {
+    let m = modele;
+    for (let i = n(a.cMax); i >= n(a.cMin); i--) { m = supprimerColonne(m, i); }
+    return m;
+  }
+  if (nom === 'fusionner') { return fusionner(modele, n(a.rMin), n(a.cMin), n(a.rMax), n(a.cMax)); }
+  if (nom === 'scinder') {
+    const occ = matriceOccupation(modele.lignes);
+    const coins = [];
+    for (let r = n(a.rMin); r <= n(a.rMax); r++) {
+      for (let c = n(a.cMin); c <= n(a.cMax); c++) {
+        const ref = occ.grid[r] && occ.grid[r][c];
+        if (ref && (ref.colspan > 1 || ref.rowspan > 1)) { coins.push(ref.c0 + '/' + ref.li); }
+      }
+    }
+    let m = modele;
+    for (const clef of new Set(coins)) {
+      const parts = clef.split('/');
+      m = scinder(m, parseInt(parts[1], 10), parseInt(parts[0], 10));
+    }
+    return m;
+  }
+  return finaliserModele(modele);
+}
+
+// Couleur annuelle (hex) d'ausgabe.yaml (M7) pour l'APERÇU webview — repli '' si
+// aucune couleur (l'aperçu « couleur » retombe alors sur le gris, comme le PDF).
+function lireCouleurAccent(racine) {
+  try {
+    const c = String(analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')).couleur || '').toUpperCase();
+    return HEX_COULEURS.indexOf(c) !== -1 ? c : '';
+  } catch (e) { return ''; }
+}
+
+// Libellés localisés transmis à la webview de l'éditeur de tableau.
+function textesTable() {
+  const cles = [
+    'table.aide', 'table.enregistrer', 'table.ajouterLigne', 'table.supprimerLigne',
+    'table.ajouterColonne', 'table.supprimerColonne', 'table.fusionner', 'table.scinder',
+    'table.rien', 'table.fusionImpossible', 'table.enregistre',
+    'table.grpStructure', 'table.grpEntetes', 'table.grpStyles',
+    'table.entete', 'table.enteteRetirer', 'table.styleEntete', 'table.styleLigne', 'table.styleColonne',
+    'table.st.normal', 'table.st.gras', 'table.st.negatif', 'table.st.fond',
+    'table.zebre', 'table.zebre.non', 'table.zebre.lignes', 'table.zebre.colonnes',
+    'table.teinte', 'table.teinte.gris', 'table.teinte.couleur',
+    'table.separateurs', 'table.sep.non', 'table.sep.gris', 'table.sep.couleur',
+    'table.bordureHaute', 'table.bordureBasse', 'table.oui', 'table.non',
+    'table.total', 'table.total.non', 'table.total.gris', 'table.total.couleur', 'table.total.gras',
+    'table.accent', 'table.accent.gris', 'table.accent.couleur', 'table.accent.aucune'
+  ];
+  const o = {};
+  for (const c of cles) { o[c.slice('table.'.length)] = T(c); }
+  return o;
+}
+
+// Webview de l'éditeur — CSP stricte : aucun réseau, styles inline, script à nonce.
+// Le contenu du tableau n'est JAMAIS injecté dans le HTML : le modèle arrive par
+// postMessage et la grille est construite en DOM (createElement/textContent). Le
+// contenu inline (déjà canonisé côté hôte : texte échappé + <strong>/<em>/<br>) est
+// posé en nœuds DOM, pas via innerHTML.
+function htmlEditeurTable(nonce) {
+  return '<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="UTF-8">\n' +
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; script-src \'nonce-' + nonce + '\'">\n' +
+    '<title>' + T('table.titre', ['']) + '</title>\n' +
+    '<style>\n' +
+    'body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);\n' +
+    '  color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: .6rem .8rem; }\n' +
+    '.barre { position: sticky; top: 0; z-index: 5; background: var(--vscode-editor-background);\n' +
+    '  display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; padding: .3rem 0 .5rem; }\n' +
+    '.grp { display: inline-flex; align-items: center; gap: .25rem; padding: .1rem .3rem;\n' +
+    '  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.3)); border-radius: 4px; }\n' +
+    '.grp > .lbl { font-size: .78em; color: var(--vscode-descriptionForeground); margin-right: .1rem; }\n' +
+    'button { font: inherit; padding: .25em .6em; border: none; border-radius: 3px; cursor: pointer;\n' +
+    '  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));\n' +
+    '  background: var(--vscode-button-secondaryBackground, rgba(128,128,128,.18)); }\n' +
+    'button:hover { background: var(--vscode-button-hoverBackground); color: var(--vscode-button-foreground); }\n' +
+    'button.principal { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }\n' +
+    'button[aria-pressed="true"] { outline: 2px solid var(--vscode-focusBorder); outline-offset: -1px; }\n' +
+    'select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground);\n' +
+    '  background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; }\n' +
+    'p.aide { color: var(--vscode-descriptionForeground); font-size: .82em; margin: .1rem 0 .6rem; }\n' +
+    '#etat { font-size: .85em; color: var(--vscode-descriptionForeground); margin-left: .3rem; }\n' +
+    '#zone { overflow: auto; }\n' +
+    'table.grille { border-collapse: collapse; }\n' +
+    'table.grille th, table.grille td { border: 1px solid var(--vscode-panel-border, #888);\n' +
+    '  padding: .3em .5em; min-width: 3em; vertical-align: top; text-align: left; }\n' +
+    'table.grille td.cell, table.grille th.cell { background: var(--vscode-editor-background); cursor: text; }\n' +
+    'table.grille .sel { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px;\n' +
+    '  background: var(--vscode-editor-selectionBackground, rgba(90,140,220,.25)); }\n' +
+    '.poignee { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15));\n' +
+    '  color: var(--vscode-descriptionForeground); cursor: pointer; text-align: center; user-select: none;\n' +
+    '  min-width: 1.4em; padding: .15em .3em; font-size: .8em; }\n' +
+    '.poignee:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.3)); }\n' +
+    '.coin { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15)); }\n' +
+    '</style>\n</head>\n<body>\n' +
+    '<div class="barre" id="barre"></div>\n' +
+    '<p class="aide" id="aide"></p>\n' +
+    '<div id="zone"></div>\n' +
+    '<script nonce="' + nonce + '">\n' + scriptEditeurTable() + '\n</script>\n</body>\n</html>\n';
+}
+
+// Script de la webview (chaîne). Séparé pour la lisibilité ; aucune valeur dynamique
+// n'y est interpolée (tout arrive par postMessage).
+function scriptEditeurTable() {
+  return "(function(){\n" +
+    "'use strict';\n" +
+    "var api=acquireVsCodeApi();\n" +
+    "var modele=null, dispo=null, TXT={}, accent='', selection=null, ancre=null;\n" +
+    "var barre=document.getElementById('barre'), zone=document.getElementById('zone'), aide=document.getElementById('aide');\n" +
+    // --- inline <-> DOM (sans innerHTML) ---
+    "function dechap(s){return String(s).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'\\\"').replace(/&#x27;/g,\"'\").replace(/&#39;/g,\"'\").replace(/&amp;/g,'&');}\n" +
+    "function echap(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}\n" +
+    "function poserInline(el,contenu){el.textContent='';var re=/<\\/?(?:strong|em)>|<br>/g,dernier=0,m,pile=[el];\n" +
+    "  while((m=re.exec(contenu))!==null){var txt=contenu.slice(dernier,m.index);if(txt){pile[pile.length-1].appendChild(document.createTextNode(dechap(txt)));}\n" +
+    "    dernier=re.lastIndex;var tg=m[0];\n" +
+    "    if(tg==='<br>'){pile[pile.length-1].appendChild(document.createElement('br'));}\n" +
+    "    else if(tg==='<strong>'){var s=document.createElement('strong');pile[pile.length-1].appendChild(s);pile.push(s);}\n" +
+    "    else if(tg==='<em>'){var e=document.createElement('em');pile[pile.length-1].appendChild(e);pile.push(e);}\n" +
+    "    else if(pile.length>1){pile.pop();}}\n" +
+    "  var reste=contenu.slice(dernier);if(reste){pile[pile.length-1].appendChild(document.createTextNode(dechap(reste)));}}\n" +
+    "function inlineDeNoeud(n){var out='';n.childNodes.forEach(function(ch){\n" +
+    "  if(ch.nodeType===3){out+=echap(ch.nodeValue);}\n" +
+    "  else if(ch.nodeType===1){var tg=ch.tagName.toLowerCase();\n" +
+    "    if(tg==='br'){out+='<br>';}\n" +
+    "    else if(tg==='strong'||tg==='b'){out+='<strong>'+inlineDeNoeud(ch)+'</strong>';}\n" +
+    "    else if(tg==='em'||tg==='i'){out+='<em>'+inlineDeNoeud(ch)+'</em>';}\n" +
+    "    else{out+=inlineDeNoeud(ch);}}});return out;}\n" +
+    // --- récolte des contenus édités vers le modèle ---
+    "function recolter(){if(!modele)return;zone.querySelectorAll('[data-li]').forEach(function(el){\n" +
+    "  var li=+el.dataset.li,ci=+el.dataset.ci;if(modele.lignes[li]&&modele.lignes[li].cellules[ci]){modele.lignes[li].cellules[ci].contenu=inlineDeNoeud(el).trim();}});}\n" +
+    // --- géométrie de sélection ---
+    "function rectCell(c){return {rMin:c.r0,cMin:c.c0,rMax:c.r0+c.rowspan-1,cMax:c.c0+c.colspan-1};}\n" +
+    "function union(a,b){return {rMin:Math.min(a.rMin,b.rMin),cMin:Math.min(a.cMin,b.cMin),rMax:Math.max(a.rMax,b.rMax),cMax:Math.max(a.cMax,b.cMax)};}\n" +
+    "function chevauche(a,b){return !(a.rMax<b.rMin||a.rMin>b.rMax||a.cMax<b.cMin||a.cMin>b.cMax);}\n" +
+    "function etendre(rect){var change=true;while(change){change=false;dispo.lignes.forEach(function(lg){lg.cellules.forEach(function(c){\n" +
+    "  var cr=rectCell(c);if(chevauche(cr,rect)){var nr=union(rect,cr);if(nr.rMin!==rect.rMin||nr.cMin!==rect.cMin||nr.rMax!==rect.rMax||nr.cMax!==rect.cMax){rect=nr;change=true;}}});});}return rect;}\n" +
+    "function plage(){return selection&&(selection.rMax>selection.rMin||selection.cMax>selection.cMin);}\n" +
+    // --- rendu ---
+    "function cellDom(c){var el=document.createElement(c.th?'th':'td');el.className='cell';el.dataset.li=c.li;el.dataset.ci=c.ci;\n" +
+    "  el.dataset.r0=c.r0;el.dataset.c0=c.c0;el.dataset.rs=c.rowspan;el.dataset.cs=c.colspan;\n" +
+    "  if(c.colspan>1)el.colSpan=c.colspan;if(c.rowspan>1)el.rowSpan=c.rowspan;\n" +
+    "  poserInline(el,c.contenu);\n" +
+    "  el.addEventListener('mousedown',function(ev){onCell(ev,c);});\n" +
+    "  el.addEventListener('input',function(){etat('');});\n" +
+    "  return el;}\n" +
+    "function rendre(){zone.textContent='';if(!dispo)return;\n" +
+    "  var t=document.createElement('table');t.className='grille';\n" +
+    "  var trh=document.createElement('tr');var coin=document.createElement('th');coin.className='coin';trh.appendChild(coin);\n" +
+    "  for(var c=0;c<dispo.nbColonnes;c++){var ph=document.createElement('th');ph.className='poignee';ph.textContent='';(function(cc){ph.addEventListener('click',function(){selCol(cc);});})(c);trh.appendChild(ph);}\n" +
+    "  t.appendChild(trh);\n" +
+    "  dispo.lignes.forEach(function(lg,r){var tr=document.createElement('tr');\n" +
+    "    var pl=document.createElement('td');pl.className='poignee';pl.textContent='';(function(rr){pl.addEventListener('click',function(){selLigne(rr);});})(r);tr.appendChild(pl);\n" +
+    "    lg.cellules.forEach(function(c){tr.appendChild(cellDom(c));});t.appendChild(tr);});\n" +
+    "  zone.appendChild(t);majEditable();marquer();}\n" +
+    "function majEditable(){var ed=!plage();zone.querySelectorAll('.cell').forEach(function(el){el.contentEditable=ed?'true':'false';});}\n" +
+    "function marquer(){zone.querySelectorAll('.cell').forEach(function(el){\n" +
+    "  var cr={rMin:+el.dataset.r0,cMin:+el.dataset.c0,rMax:+el.dataset.r0+ +el.dataset.rs-1,cMax:+el.dataset.c0+ +el.dataset.cs-1};\n" +
+    "  var dans=selection&&cr.rMin>=selection.rMin&&cr.rMax<=selection.rMax&&cr.cMin>=selection.cMin&&cr.cMax<=selection.cMax;\n" +
+    "  el.classList.toggle('sel',!!dans);});}\n" +
+    // --- interactions de sélection ---
+    "function onCell(ev,c){if(ev.shiftKey&&ancre){ev.preventDefault();var sel=window.getSelection&&window.getSelection();if(sel)sel.removeAllRanges();\n" +
+    "  selection=etendre(union(rectCell(ancre),rectCell(c)));majEditable();marquer();return;}\n" +
+    "  ancre=c;selection=rectCell(c);majEditable();marquer();}\n" +
+    "function selLigne(r){ancre=null;selection=etendre({rMin:r,cMin:0,rMax:r,cMax:dispo.nbColonnes-1});majEditable();marquer();}\n" +
+    "function selCol(c){ancre=null;selection=etendre({rMin:0,cMin:c,rMax:dispo.nbLignes-1,cMax:c});majEditable();marquer();}\n" +
+    // --- barre d'outils (T1 : structure) ---
+    "function bouton(txt,fn,cls){var b=document.createElement('button');b.type='button';b.textContent=txt;if(cls)b.className=cls;b.addEventListener('click',fn);return b;}\n" +
+    "function groupe(label){var g=document.createElement('span');g.className='grp';if(label){var l=document.createElement('span');l.className='lbl';l.textContent=label;g.appendChild(l);}return g;}\n" +
+    "function op(nom,args){recolter();api.postMessage({type:'operation',nom:nom,args:args,modele:modele});}\n" +
+    "function exigeSel(){if(!selection){etat(TXT.rien);return false;}return true;}\n" +
+    "function construireBarre(){barre.textContent='';\n" +
+    "  var gs=groupe(TXT.grpStructure);\n" +
+    "  gs.appendChild(bouton(TXT.ajouterLigne,function(){op('ajouterLigne',{pos:selection?selection.rMax+1:dispo.nbLignes});}));\n" +
+    "  gs.appendChild(bouton(TXT.supprimerLigne,function(){if(exigeSel())op('supprimerLigne',{rMin:selection.rMin,rMax:selection.rMax});}));\n" +
+    "  gs.appendChild(bouton(TXT.ajouterColonne,function(){op('ajouterColonne',{pos:selection?selection.cMax+1:dispo.nbColonnes});}));\n" +
+    "  gs.appendChild(bouton(TXT.supprimerColonne,function(){if(exigeSel())op('supprimerColonne',{cMin:selection.cMin,cMax:selection.cMax});}));\n" +
+    "  barre.appendChild(gs);\n" +
+    "  var gf=groupe('');\n" +
+    "  gf.appendChild(bouton(TXT.fusionner,function(){if(!exigeSel())return;if(!plage()){etat(TXT.fusionImpossible);return;}op('fusionner',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax});}));\n" +
+    "  gf.appendChild(bouton(TXT.scinder,function(){if(exigeSel())op('scinder',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax});}));\n" +
+    "  barre.appendChild(gf);\n" +
+    "  barreT2(barre);\n" +
+    "  var enr=bouton(TXT.enregistrer,function(){recolter();api.postMessage({type:'enregistrer',modele:modele});},'principal');\n" +
+    "  barre.appendChild(enr);\n" +
+    "  var e=document.createElement('span');e.id='etat';e.setAttribute('role','status');barre.appendChild(e);}\n" +
+    "function barreT2(barre){}\n" +
+    "function majT2(){}\n" +
+    "function etat(msg){var e=document.getElementById('etat');if(e)e.textContent=msg;}\n" +
+    // --- clavier : Ctrl+B / Ctrl+I intra-cellule ---
+    "try{document.execCommand('styleWithCSS',false,false);}catch(e){}\n" +
+    "document.addEventListener('keydown',function(ev){if(!(ev.ctrlKey||ev.metaKey))return;var k=(ev.key||'').toLowerCase();\n" +
+    "  if(k==='b'){ev.preventDefault();try{document.execCommand('bold');}catch(e){}}\n" +
+    "  else if(k==='i'){ev.preventDefault();try{document.execCommand('italic');}catch(e){}}\n" +
+    "  else if(k==='s'){ev.preventDefault();recolter();api.postMessage({type:'enregistrer',modele:modele});}});\n" +
+    // --- messages ---
+    "window.addEventListener('message',function(ev){var msg=ev.data||{};\n" +
+    "  if(msg.type==='charger'){modele=msg.modele;dispo=msg.disposition;if(msg.i18n)TXT=msg.i18n;if(msg.accent!==undefined)accent=msg.accent;\n" +
+    "    selection=null;ancre=null;aide.textContent=TXT.aide||'';construireBarre();rendre();majT2();etat('');}\n" +
+    "  else if(msg.type==='enregistre'){etat(TXT.enregistre||'');}\n" +
+    "  else if(msg.type==='erreur'){etat('\\u26A0 '+msg.message);}});\n" +
+    "api.postMessage({type:'pret'});\n" +
+    "})();";
+}
+
+let panneauxTable = new Map();   // fsPath -> WebviewPanel (un éditeur par fichier)
+
+// Ouvre l'éditeur de tableau pour l'asset (viewItem == table) : lit table-NN.html,
+// l'analyse, et alimente la webview. Écrit atomiquement à l'enregistrement.
+function ouvrirEditeurTable(fournisseur, item) {
+  if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
+  const chemin = item.cheminAsset;
+  const nom = path.basename(chemin);
+  const existant = panneauxTable.get(chemin);
+  if (existant) { existant.reveal(vscode.ViewColumn.One); return; }
+  const panneau = vscode.window.createWebviewPanel(
+    'szhEditeurTable', T('table.titre', [nom]), vscode.ViewColumn.One,
+    { enableScripts: true, localResourceRoots: [] }
+  );
+  panneauxTable.set(chemin, panneau);
+  panneau.onDidDispose(() => { if (panneauxTable.get(chemin) === panneau) { panneauxTable.delete(chemin); } });
+  panneau.webview.html = htmlEditeurTable(crypto.randomBytes(16).toString('hex'));
+  const charger = () => {
+    let html = '';
+    try { html = fs.readFileSync(chemin, 'utf8'); } catch (e) { html = '<table><tr><td></td></tr></table>'; }
+    const modele = analyserTable(html);
+    panneau.webview.postMessage({
+      type: 'charger', modele: modele, disposition: disposition(modele),
+      accent: lireCouleurAccent(fournisseur.racine), i18n: textesTable()
+    });
+  };
+  panneau.webview.onDidReceiveMessage((msg) => {
+    if (!msg) { return; }
+    if (msg.type === 'pret') { charger(); return; }
+    if (msg.type === 'operation') {
+      const res = appliquerOperationTable(String(msg.nom || ''), msg.modele, msg.args);
+      if (res && res.erreur) { panneau.webview.postMessage({ type: 'erreur', message: T(res.erreur) }); return; }
+      panneau.webview.postMessage({ type: 'charger', modele: res, disposition: disposition(res), accent: lireCouleurAccent(fournisseur.racine) });
+      return;
+    }
+    if (msg.type === 'enregistrer') {
+      try {
+        ecrireAusgabeAtomique(chemin, serialiserTable(normaliserModele(msg.modele)));
+        panneau.webview.postMessage({ type: 'enregistre' });
+        vscode.window.setStatusBarMessage(T('statut.table.enregistree', [nom]), 5000);
+      } catch (e) {
+        panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [e.message]) });
+      }
+    }
+  });
+}
+
 function activate(context) {
   const fournisseur = new FournisseurRevue();
   const vue = vscode.window.createTreeView(ID_VUE, {
@@ -2796,6 +3632,7 @@ function activate(context) {
     vscode.commands.registerCommand('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
     vscode.commands.registerCommand('szh.remplacerAsset', (item) => remplacerAsset(fournisseur, rafraichirTout, item)),
     vscode.commands.registerCommand('szh.remplacerTable', (item) => remplacerTable(fournisseur, rafraichirTout, item)),
+    vscode.commands.registerCommand('szh.editerTable', (item) => ouvrirEditeurTable(fournisseur, item)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte)
   );
 
@@ -2815,6 +3652,11 @@ module.exports = {
     analyserAusgabe, serialiserAusgabe,
     basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
     enroberBloc, squeletteTableau,
+    analyserTable, serialiserTable, disposition,
+    matriceOccupation, etendreGrille, compacterGrille,
+    normaliserModele, finaliserModele, canoniserInline,
+    ajouterLigne, supprimerLigne, ajouterColonne, supprimerColonne,
+    fusionner, scinder, appliquerOperationTable,
     TEXTES_COCKPIT
   }
 };

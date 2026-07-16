@@ -7,6 +7,7 @@
   "cmd.remplacerAsset": "Remplacer l’image",
   "cmd.toutExporter": "Tout exporter (rebuild complet)",
   "cmd.remplacerTable": "Remplacer le tableau",
+  "cmd.editerTable": "Éditer le tableau",
   "cmd.apercuMetadonnees": "Métadonnées des articles",
   "cmd.reglages": "Réglages SZH",
   "cmd.basculerApercu": "Basculer l’aperçu HTML ⇄ PDF",
