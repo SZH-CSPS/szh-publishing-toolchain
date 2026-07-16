@@ -144,14 +144,14 @@ en banque.
 
 ### N2 · Titre de vue dynamique (d) — *taille S ; extension ; indépendant*
 
-- [ ] Fonction `titreNumero(racine)` : lit `ausgabe.yaml` via `analyserAusgabe`,
+- [x] Fonction `titreNumero(racine)` : lit `ausgabe.yaml` via `analyserAusgabe`,
   construit `{Z|R}{AAAA}-{numero} | {title}` :
   - préfixe `Z` si `lang` commence par `de`, sinon `R` ;
   - `AAAA` = première séquence de 4 chiffres de `date` (ex. `2026` depuis `"2026"` ou
     `"2026-07-15"`) ; omise si absente ;
   - `-{numero}` omis si `numero` vide ; ` | {title}` omis si `title` vide ;
   - **repli** : si tout est vide → nom du dossier de la revue ; jamais de chaîne vide.
-- [ ] `vue.title = titreNumero(racine)` dans `majContexte`, et **rafraîchi à la volée**
+- [x] `vue.title = titreNumero(racine)` dans `majContexte`, et **rafraîchi à la volée**
   quand `ausgabe.yaml` change → ajouter `ausgabe.yaml` aux motifs surveillés
   (`reinstallerWatchers`) et rappeler la mise à jour du titre dans le debounce ; le
   formulaire N7/G1 qui enregistre `ausgabe.yaml` doit aussi déclencher le rafraîchissement.

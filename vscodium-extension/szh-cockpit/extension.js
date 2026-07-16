@@ -693,6 +693,27 @@ function analyserAusgabe(contenu) {
   return valeurs;
 }
 
+// ---- Titre de la vue (N2, D43) -----------------------------------------------------
+//
+// « {Z|R}{AAAA}-{numero} | {title} » : Z pour une revue allemande (lang commence
+// par de), R sinon ; AAAA = première séquence de 4 chiffres de `date` ; chaque
+// morceau manquant est omis (le préfixe seul ne compte pas). Si rien n'est
+// exploitable -> nom du dossier de la revue. Jamais de titre vide.
+function titreNumero(racine) {
+  let valeurs = {};
+  try { valeurs = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')); }
+  catch (e) { /* illisible : replis ci-dessous */ }
+  const prefixe = String(valeurs.lang || '').toLowerCase().indexOf('de') === 0 ? 'Z' : 'R';
+  const annee = (String(valeurs.date || '').match(/\d{4}/) || [''])[0];
+  const numero = String(valeurs.numero || '').trim();
+  const titre = String(valeurs.title || '').trim();
+  const morceaux = [];
+  if (annee || numero) { morceaux.push(prefixe + annee + (numero ? '-' + numero : '')); }
+  if (titre) { morceaux.push(titre); }
+  if (morceaux.length === 0) { return path.basename(racine); }
+  return morceaux.join(' | ');
+}
+
 // Représentation YAML d'une valeur du formulaire. Tout est cité « "…" » (sûr pour
 // deux-points, dièses, guillemets, accents), SAUF `lang` : le Makefile lit cette
 // clé avec un sed qui ne comprend pas les guillemets (LANG_LUE) → jeton nu,
@@ -836,7 +857,8 @@ function envoyerValeursMetadonnees(panneau, chemin) {
 
 // Panneau singleton : rouvrir la commande RÉVÈLE le formulaire existant (valeurs
 // relues du disque) au lieu d'en empiler un deuxième. Colonne 1 = côté texte.
-function ouvrirMetadonnees(fournisseur) {
+// `rafraichirTout` (N2) : le titre de la vue suit immédiatement l'enregistrement.
+function ouvrirMetadonnees(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
   const chemin = path.join(racine, 'ausgabe.yaml');
@@ -871,6 +893,7 @@ function ouvrirMetadonnees(fournisseur) {
       ecrireAusgabeAtomique(chemin, serialiserAusgabe(contenu, modifies));
       panneau.webview.postMessage({ type: 'enregistre' });
       vscode.window.setStatusBarMessage('ausgabe.yaml enregistré.', 3000);
+      if (rafraichirTout) { rafraichirTout(); }    // titre de la vue à jour (N2)
     } catch (e) {
       panneau.webview.postMessage({ type: 'erreur', message: 'Écriture impossible : ' + e.message });
     }
@@ -891,8 +914,12 @@ function activate(context) {
   context.subscriptions.push({ dispose: () => { for (const w of watchers) { w.dispose(); } } });
   context.subscriptions.push({ dispose: arreterDormeurWsl });   // N1 : pas de dormant orphelin
 
-  // Le compte « Word en attente » est recalculé par getChildren (description de section).
-  const rafraichirTout = () => { fournisseur.rafraichir(); };
+  // Le compte « Word en attente » est recalculé par getChildren (description de
+  // section) ; le TITRE de la vue reflète le numéro (N2, D43) à chaque rafraîchissement.
+  const rafraichirTout = () => {
+    fournisseur.rafraichir();
+    vue.title = fournisseur.racine ? titreNumero(fournisseur.racine) : 'Revue SZH';
+  };
 
   // Regroupe les rafales d'événements FS (OneDrive peut en émettre plusieurs).
   let minuteur = null;
@@ -905,8 +932,9 @@ function activate(context) {
     for (const w of watchers) { w.dispose(); }
     watchers = [];
     if (!racine) { return; }
-    // Articles, Word déposés, ET sorties (le PDF apparaît/disparaît après build).
-    for (const motif of ['articles/**', 'articles-word/*', 'out/**']) {
+    // Articles, Word déposés, sorties (le PDF apparaît/disparaît après build) ET
+    // ausgabe.yaml (le titre de la vue suit les métadonnées — N2).
+    for (const motif of ['articles/**', 'articles-word/*', 'out/**', 'ausgabe.yaml']) {
       const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(racine, motif));
       w.onDidCreate(rafraichirBientot);
       w.onDidChange(rafraichirBientot);
@@ -928,7 +956,7 @@ function activate(context) {
 
   context.subscriptions.push(
     vscode.commands.registerCommand('szh.cockpit.rafraichir', majContexte),
-    vscode.commands.registerCommand('szh.metadonnees', () => ouvrirMetadonnees(fournisseur)),
+    vscode.commands.registerCommand('szh.metadonnees', () => ouvrirMetadonnees(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.ouvrirPdf', (item) => ouvrirPdf(fournisseur, item)),
@@ -943,4 +971,5 @@ function activate(context) {
 
 function deactivate() { arreterDormeurWsl(); }
 
-module.exports = { activate, deactivate };
+// `_pur` : fonctions pures exposées pour les harnais headless (VS Code les ignore).
+module.exports = { activate, deactivate, _pur: { titreNumero } };
