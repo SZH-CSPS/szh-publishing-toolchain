@@ -137,7 +137,7 @@ Démarrer (D38). Voir [`userdoc.md`](userdoc.md).
 | `Entrée` (dans une liste) | Continuation automatique de la liste | markdown-all-in-one |
 | `Tab` / `Maj+Tab` (dans un tableau) | Cellule suivante/précédente + formatage auto | markdowntable |
 | `Maj+Alt+V` | Coller un tableau copié depuis Excel/Word | excel-to-markdown-table |
-| `Ctrl+Alt+S` | Insérer un bloc de style `:::` (snippets : important, mise en évidence, question, citation) | keybindings + snippets |
+| `Ctrl+Alt+S` | Ouvrir la palette « Mise en forme SZH » (gras, titres, blocs, figure, tableau) | szh-cockpit |
 | `Ctrl+Espace` | Suggestions (snippets `:::`) | VS Code (réactivé scope markdown) |
 | `Ctrl+Alt+I` | Importer les Word à la demande (`make import`) | keybindings + tâche user |
 | `Ctrl+E` / `Ctrl+Maj+B` | Relancer la compilation | keybindings / build par défaut |

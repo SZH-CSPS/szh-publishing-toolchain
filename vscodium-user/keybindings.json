@@ -9,11 +9,12 @@
     "args": "Importer les articles Word"
   },
 
-  // Insérer un bloc de style (::: important, mise en évidence, question, citation) :
-  // ouvre la liste des snippets
+  // Palette « Mise en forme SZH » (menu SZH-only : gras/italique/souligné, titres,
+  // blocs, figure, tableau). Remplace l'ancien raccourci d'insertion de snippet ; les
+  // blocs ::: restent accessibles en tapant « ::: » puis Ctrl+Espace.
   {
     "key": "ctrl+alt+s",
-    "command": "editor.action.insertSnippet",
+    "command": "szh.miseEnForme",
     "when": "editorTextFocus && editorLangId == markdown"
   },
 
@@ -31,7 +32,6 @@
   { "key": "ctrl+alt+c", "command": "szh.fmt.citation",  "when": "editorTextFocus && editorLangId == markdown" },
   { "key": "ctrl+alt+f", "command": "szh.fmt.figure",    "when": "editorTextFocus && editorLangId == markdown" },
   { "key": "ctrl+alt+t", "command": "szh.fmt.tableau",   "when": "editorTextFocus && editorLangId == markdown" },
-  { "key": "ctrl+alt+m", "command": "szh.miseEnForme",   "when": "editorTextFocus && editorLangId == markdown" },
 
   // Secours si l'aperçu PDF ne se rafraîchit pas tout seul : recharge la fenêtre
   { "key": "ctrl+alt+r", "command": "workbench.action.reloadWindow" }
