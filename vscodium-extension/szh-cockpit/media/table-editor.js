@@ -35,7 +35,13 @@ function union(a,b){return {rMin:Math.min(a.rMin,b.rMin),cMin:Math.min(a.cMin,b.
 function chevauche(a,b){return !(a.rMax<b.rMin||a.rMin>b.rMax||a.cMax<b.cMin||a.cMin>b.cMax);}
 function etendre(rect){var change=true;while(change){change=false;dispo.lignes.forEach(function(lg){lg.cellules.forEach(function(c){
   var cr=rectCell(c);if(chevauche(cr,rect)){var nr=union(rect,cr);if(nr.rMin!==rect.rMin||nr.cMin!==rect.cMin||nr.rMax!==rect.rMax||nr.cMax!==rect.cMax){rect=nr;change=true;}}});});}return rect;}
-function plage(){return selection&&(selection.rMax>selection.rMin||selection.cMax>selection.cMin);}
+// F2 : « plage » = plus d'UNE cellule DISTINCTE sélectionnée (comptée via occ2). Une
+// cellule fusionnée seule couvre plusieurs cases visuelles mais reste UNE cellule ->
+// pas une plage -> éditable (majEditable).
+function plage(){if(!selection||!occ2)return false;var vu={},n=0;
+  for(var r=selection.rMin;r<=selection.rMax;r++){for(var c=selection.cMin;c<=selection.cMax;c++){
+    var ce=occ2[r]&&occ2[r][c];if(!ce)continue;var k=ce.li+'/'+ce.ci;if(vu[k])continue;vu[k]=1;if(++n>1)return true;}}
+  return false;}
 function clampSel(s){if(!s||!dispo)return null;var rMax=Math.min(s.rMax,dispo.nbLignes-1),cMax=Math.min(s.cMax,dispo.nbColonnes-1);if(s.rMin>rMax||s.cMin>cMax||s.rMin<0||s.cMin<0)return null;return etendre({rMin:s.rMin,cMin:s.cMin,rMax:rMax,cMax:cMax});}
 
 // ---- Teintes de l'aperçu (mêmes valeurs que print.css / --szh-accent) ----
