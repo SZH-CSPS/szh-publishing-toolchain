@@ -432,12 +432,52 @@ let panneauApercuHtml = null;
 let apercuCourantSlug = null;
 let apercuHtmlMtime = 0;
 
+// A1 — défilement synchronisé (.md <-> aperçu). Garde anti-boucle côté hôte : quand
+// c'est NOUS qui révélons une ligne dans l'éditeur (suite à un scroll de l'aperçu),
+// on ignore l'événement onDidChangeTextEditorVisibleRanges qui en découle.
+let defilementProgrammatiqueHote = false;
+let minuteurHoteVersApercu = null;
+let minuteurHoteRelache = null;
+
 // « 01-exemple.md@12:3-14:1 » (ou « 12:3-14:1 ») -> 12. null si illisible.
 function lignePos(pos) {
   const texte = String(pos || '');
   const droite = texte.indexOf('@') !== -1 ? texte.slice(texte.indexOf('@') + 1) : texte;
   const m = droite.match(/^(\d+):/);
   return m ? parseInt(m[1], 10) : null;
+}
+
+// Éditeur visible du .md de l'article actuellement affiché en aperçu (colonne 1),
+// ou null. Sert au défilement synchronisé (A1) : révéler une ligne SANS voler le focus.
+function editeurArticleCourant(fournisseur) {
+  if (!apercuCourantSlug || !fournisseur.racine) { return null; }
+  const cible = path.join(fournisseur.racine, 'articles', apercuCourantSlug, apercuCourantSlug + '.md').toLowerCase();
+  for (const ed of vscode.window.visibleTextEditors) {
+    if (ed.document && ed.document.uri && ed.document.uri.fsPath.toLowerCase() === cible) { return ed; }
+  }
+  return null;
+}
+
+// Aperçu -> éditeur : révèle `ligne` (1-based) au sommet, sans focus. Pose la garde
+// anti-boucle le temps que l'événement de visibilité qui en résulte soit ignoré.
+function revelerLigneSource(fournisseur, ligne) {
+  const ed = editeurArticleCourant(fournisseur);
+  if (!ed) { return; }
+  const l = Math.max(0, Math.min((parseInt(ligne, 10) || 1) - 1, ed.document.lineCount - 1));
+  defilementProgrammatiqueHote = true;
+  ed.revealRange(new vscode.Range(l, 0, l, 0), vscode.TextEditorRevealType.AtTop);
+  if (minuteurHoteRelache) { clearTimeout(minuteurHoteRelache); }
+  minuteurHoteRelache = setTimeout(() => { defilementProgrammatiqueHote = false; }, 200);
+}
+
+// Éditeur -> aperçu : première ligne visible (1-based) postée à la webview (débounce).
+function pousserDefilementVersApercu(ligne0Based) {
+  if (minuteurHoteVersApercu) { clearTimeout(minuteurHoteVersApercu); }
+  minuteurHoteVersApercu = setTimeout(() => {
+    if (!panneauApercuHtml) { return; }
+    try { panneauApercuHtml.webview.postMessage({ type: 'scroll', ligne: ligne0Based + 1 }); }
+    catch (e) { /* webview fermée entre-temps */ }
+  }, 60);
 }
 
 // Injecte dans le HTML autonome de pandoc : CSP stricte, bandeau, styles de
@@ -504,6 +544,7 @@ function ouvrirApercuHtml(fournisseur, slug) {
       if (!msg) { return; }
       if (msg.type === 'basculer') { vscode.commands.executeCommand('szh.basculerApercu'); }
       if (msg.type === 'revele' && apercuCourantSlug) { revelerLigne(fournisseur, apercuCourantSlug, lignePos(msg.pos)); }
+      if (msg.type === 'scrollSource') { revelerLigneSource(fournisseur, msg.ligne); }   // A1
     });
   }
   panneauApercuHtml.title = slug;
@@ -1519,7 +1560,17 @@ function activate(context) {
     vscode.commands.registerCommand('szh.remplacerAsset', (item) => remplacerAsset(fournisseur, rafraichirTout, item)),
     vscode.commands.registerCommand('szh.remplacerTable', (item) => remplacerTable(fournisseur, rafraichirTout, item)),
     vscode.commands.registerCommand('szh.editerTable', (item) => ouvrirEditeurTable(fournisseur, item)),
-    vscode.workspace.onDidChangeWorkspaceFolders(majContexte)
+    vscode.workspace.onDidChangeWorkspaceFolders(majContexte),
+    // A1 — défilement synchronisé éditeur -> aperçu : la 1re ligne visible du .md de
+    // l'article courant est poussée à la webview. Ignoré si l'aperçu HTML n'est pas
+    // à l'écran, ou si c'est notre propre révélation (aperçu -> éditeur) qui l'a déclenché.
+    vscode.window.onDidChangeTextEditorVisibleRanges((e) => {
+      if (!panneauApercuHtml || modeApercu() !== 'html' || defilementProgrammatiqueHote) { return; }
+      if (!e.visibleRanges || !e.visibleRanges.length) { return; }
+      const ed = editeurArticleCourant(fournisseur);
+      if (!ed || e.textEditor !== ed) { return; }
+      pousserDefilementVersApercu(e.visibleRanges[0].start.line);
+    })
   );
 
   enregistrerCommandesMiseEnForme(context);          // M6, D55
