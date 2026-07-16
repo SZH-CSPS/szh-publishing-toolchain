@@ -34,7 +34,6 @@ const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
 
 const CLE_CONTEXTE = 'szh.estRevue';
 const ID_VUE = 'szhCockpitVue';
@@ -62,66 +61,21 @@ const {
 } = require('./lib/table-model');
 // ---- Assemblage des webviews -> lib/webviews/util.js -----------------------------
 const { construireHtml, lireMedia } = require('./lib/webviews/util');
+// ---- Modules impératifs -> lib/{slug,wsl,formatting}.js --------------------------
+const { slugifier } = require('./lib/slug');
+const { demarrerDormeurWsl, arreterDormeurWsl } = require('./lib/wsl');
+const {
+  basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
+  enroberBloc, squeletteTableau, enregistrerCommandesMiseEnForme
+} = require('./lib/formatting');
 
 // Éditeur PDF (extension tomoki1207.pdf), comme szh-apercu.
 const VUE_PDF = 'pdf.preview';
 const EXT_PDF = 'tomoki1207.pdf';
 
-// Reproduit le slug du Makefile (cible import) :
-//   nom sans extension | iconv ASCII//TRANSLIT | minuscules | [^a-z0-9]+ -> '-' | trim '-'
-// En JS sans iconv : on translittère les ligatures françaises courantes puis on
-// supprime les diacritiques (NFD). Divergence connue (rare) : un symbole exotique
-// qu'iconv//TRANSLIT convertirait en mot précis devient ici un tiret — sans effet
-// visible sur des titres d'articles réels (accents et ligatures usuels couverts).
-function slugifier(nomFichier) {
-  let s = nomFichier.replace(/\.[^.]*$/, '');
-  s = s
-    .replace(/[œŒ]/g, 'oe').replace(/[æÆ]/g, 'ae').replace(/ß/g, 'ss')
-    .normalize('NFD').replace(/[̀-ͯ]/g, '');
-  s = s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  return s || 'article';
-}
+// slugifier -> lib/slug.js
 
-// ---- Maintien en vie de WSL (N1, D42) ---------------------------------------------
-//
-// Les builds sont des `wsl.exe` éphémères : entre deux Ctrl+S la VM WSL s'éteint
-// (vmIdleTimeout) et la compilation suivante paie un démarrage à froid. Tant qu'une
-// revue est ouverte, on maintient un processus DORMANT dans la distro du pipeline —
-// il ne consomme rien et empêche l'extinction de la VM. Tué quand on quitte la
-// revue, à la désactivation, et de toute façon nettoyé par un `wsl --shutdown`/reboot.
-
-// ⚠ Doit correspondre à la distro de vscodium-user/tasks.json et szh-common.ps1.
-const DISTRO = 'SZH-Publishing';
-
-let dormeurWsl = null;
-
-// wsl.exe : System32 en priorité (chemin sûr), PATH en repli.
-function cheminWsl() {
-  const systeme = path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'wsl.exe');
-  try { if (fs.existsSync(systeme)) { return systeme; } } catch (e) { /* PATH en repli */ }
-  return 'wsl.exe';
-}
-
-function demarrerDormeurWsl() {
-  if (dormeurWsl) { return; }                      // un seul dormant à la fois
-  let proc;
-  try {
-    proc = spawn(cheminWsl(), ['-d', DISTRO, '--', 'sh', '-c', 'exec sleep infinity'],
-      { windowsHide: true, stdio: 'ignore' });
-  } catch (e) { return; }                          // wsl introuvable : poste non bootstrappé
-  dormeurWsl = proc;
-  // Distro absente ou wsl en erreur : silencieux (l'activation ne doit jamais être
-  // bloquée ni bruyante) ; on retentera au prochain changement de contexte.
-  proc.on('error', () => { if (dormeurWsl === proc) { dormeurWsl = null; } });
-  proc.on('exit', () => { if (dormeurWsl === proc) { dormeurWsl = null; } });
-}
-
-function arreterDormeurWsl() {
-  if (!dormeurWsl) { return; }
-  const proc = dormeurWsl;
-  dormeurWsl = null;                               // avant kill : l'écouteur exit ne re-nettoie pas
-  try { proc.kill(); } catch (e) { /* déjà mort */ }
-}
+// Maintien en vie de WSL (N1) -> lib/wsl.js
 
 // Racine de revue = premier dossier du workspace contenant ausgabe.yaml (D22),
 // ou null si aucun (dossier quelconque -> la vue reste masquée).
@@ -1307,222 +1261,7 @@ function ouvrirReglages(rafraichirTout) {
   });
 }
 
-// ---- Mise en forme au clic droit + raccourcis (M6, D55) ----------------------------
-//
-// Sous-menu « Mise en forme » (editor/context, markdown) + raccourcis clavier
-// (keybindings.json). Chaque action transforme la SÉLECTION via editor.edit.
-// Les transformations sont des fonctions PURES (testées headless via _pur) ;
-// les enrobages inline sont des TOGGLES (ré-appliquer retire le marquage).
-// Blocs = classes canoniques .important / .highlight / .question ; citation =
-// blockquote natif « > » ; le bloc « important » porte un titre paramétrable
-// (::: {.important data-titre="…"}), rendu par print.css.
-
-function estEnrobe(t, marqueur) {
-  if (t.length < marqueur.length * 2) { return false; }
-  if (!t.startsWith(marqueur) || !t.endsWith(marqueur)) { return false; }
-  // Italique (*) : ne pas confondre avec gras (**) — sinon « **x** » se dé-graisserait
-  // en « *x* » au lieu d'ajouter l'italique.
-  if (marqueur === '*' && (t.startsWith('**') || t.endsWith('**'))) { return false; }
-  return true;
-}
-
-// Toggle **…** (gras) ou *…* (italique) sur la sélection.
-function basculerEnrobage(texte, marqueur) {
-  const t = String(texte);
-  if (estEnrobe(t, marqueur)) { return t.slice(marqueur.length, t.length - marqueur.length); }
-  return marqueur + t + marqueur;
-}
-
-// Toggle [texte]{.underline} (souligné — attribut natif Pandoc).
-function basculerSouligne(texte) {
-  const t = String(texte);
-  const m = t.match(/^\[([\s\S]*)\]\{\.underline\}$/);
-  return m ? m[1] : '[' + t + ']{.underline}';
-}
-
-// Toggle de titre : préfixe #/##/### selon `niveau`. Même niveau -> retire ;
-// niveau différent -> remplace ; aucun -> ajoute.
-function basculerTitre(texte, niveau) {
-  const t = String(texte);
-  const m = t.match(/^(#{1,6})\s+/);
-  if (m && m[1].length === niveau) { return t.replace(/^#{1,6}\s+/, ''); }
-  return '#'.repeat(niveau) + ' ' + t.replace(/^#{1,6}\s+/, '');
-}
-
-// Toggle de citation : « > » par ligne (blockquote natif). Retire si toutes les
-// lignes non vides sont déjà citées.
-function basculerCitation(texte) {
-  const lignes = String(texte).split('\n');
-  const nonVides = lignes.filter((l) => l !== '');
-  const toutesCitees = nonVides.length > 0 && nonVides.every((l) => /^>\s?/.test(l));
-  if (toutesCitees) { return lignes.map((l) => l.replace(/^>\s?/, '')).join('\n'); }
-  return lignes.map((l) => '> ' + l).join('\n');
-}
-
-// Enrobe la sélection dans un bloc « fenced div » Pandoc. `titre` (bloc important
-// seulement) devient data-titre, rendu par CSS ; les guillemets en sont retirés.
-function enroberBloc(texte, classe, titre) {
-  const t = String(texte);
-  const titrePropre = String(titre || '').replace(/"/g, '').trim();
-  const attr = titrePropre ? '{.' + classe + ' data-titre="' + titrePropre + '"}' : '{.' + classe + '}';
-  return '::: ' + attr + '\n' + t + '\n:::';
-}
-
-// Squelette de tableau Markdown (3 colonnes, 2 lignes) — édité ensuite via
-// markdowntable (Tab) ou collage Excel (Maj+Alt+V).
-function squeletteTableau(colonne) {
-  const c = String(colonne || 'Colonne');
-  return [
-    '| ' + c + ' 1 | ' + c + ' 2 | ' + c + ' 3 |',
-    '|---|---|---|',
-    '|  |  |  |',
-    '|  |  |  |'
-  ].join('\n');
-}
-
-// Applique `transformer` (fonction pure texte->texte) à la sélection courante.
-// opt.parLigne : étend la sélection aux lignes entières (titres, citation).
-// opt.milieu : après une insertion sur sélection vide, place le curseur à N
-// caractères du début (entre les marqueurs).
-async function appliquerSelection(transformer, opt) {
-  const editeur = vscode.window.activeTextEditor;
-  if (!editeur) { return; }
-  opt = opt || {};
-  const doc = editeur.document;
-  let sel = editeur.selection;
-  if (opt.parLigne) {
-    sel = new vscode.Selection(new vscode.Position(sel.start.line, 0), doc.lineAt(sel.end.line).range.end);
-  }
-  const texte = doc.getText(sel);
-  const vide = texte === '';
-  await editeur.edit((b) => { b.replace(sel, transformer(texte)); });
-  if (vide && typeof opt.milieu === 'number') {
-    const pos = doc.positionAt(doc.offsetAt(sel.start) + opt.milieu);
-    editeur.selection = new vscode.Selection(pos, pos);
-  }
-}
-
-// QuickPick de titres pour le bloc « important » (localisés + saisie libre).
-// Retourne undefined si l'utilisateur annule (rien n'est inséré).
-async function choisirTitreImportant() {
-  const presets = [
-    T('fmt.titre.information'), T('fmt.titre.important'),
-    T('fmt.titre.attention'), T('fmt.titre.note')
-  ];
-  const autre = T('fmt.titre.autre');
-  const choix = await vscode.window.showQuickPick(presets.concat([autre]), {
-    placeHolder: T('fmt.titre.placeholder')
-  });
-  if (choix === undefined) { return undefined; }
-  if (choix !== autre) { return choix; }
-  const libre = await vscode.window.showInputBox({ prompt: T('fmt.titre.libre') });
-  return libre === undefined ? undefined : libre.trim();
-}
-
-async function fmtImportant() {
-  const titre = await choisirTitreImportant();
-  if (titre === undefined) { return; }               // annulé : rien n'est inséré
-  await appliquerSelection((t) => enroberBloc(t, 'important', titre));
-}
-
-// Nom de fichier libre dans `dossier` (jamais d'écrasement d'un média existant).
-function nomMediaUnique(dossier, nom) {
-  const ext = path.extname(nom);
-  const base = path.basename(nom, ext);
-  let candidat = nom;
-  let i = 1;
-  while (fs.existsSync(path.join(dossier, candidat))) { candidat = base + '-' + i + ext; i++; }
-  return candidat;
-}
-
-// Insérer une figure : choisir une image, la copier dans articles/<slug>/media/
-// (nom rendu unique), insérer ![Légende](media/nom.ext) à la sélection.
-async function fmtFigure() {
-  const editeur = vscode.window.activeTextEditor;
-  if (!editeur) { return; }
-  const doc = editeur.document;
-  if (!/\.md$/i.test(doc.uri.fsPath)) {
-    vscode.window.showInformationMessage(T('fmt.figure.horsarticle'));
-    return;
-  }
-  const filtres = {};
-  filtres[T('fmt.figure.filtre')] = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
-  const choix = await vscode.window.showOpenDialog({
-    canSelectMany: false, filters: filtres,
-    openLabel: T('fmt.figure.bouton'), title: T('fmt.figure.titre')
-  });
-  if (!choix || choix.length === 0) { return; }      // dialogue annulé
-  const source = choix[0].fsPath;
-  const mediaDir = path.join(path.dirname(doc.uri.fsPath), 'media');
-  try { fs.mkdirSync(mediaDir, { recursive: true }); } catch (e) { /* existe déjà */ }
-  const nom = nomMediaUnique(mediaDir, path.basename(source));
-  try { fs.copyFileSync(source, path.join(mediaDir, nom)); }
-  catch (e) { vscode.window.showErrorMessage(T('err.copie', [path.basename(source), e.message])); return; }
-  const md = '![' + T('fmt.figure.legende') + '](media/' + nom + ')';
-  await editeur.edit((b) => { b.replace(editeur.selection, md); });
-  vscode.window.setStatusBarMessage(T('fmt.figure.copiee', [nom]), 4000);
-}
-
-function fmtTableau() {
-  const editeur = vscode.window.activeTextEditor;
-  if (!editeur) { return; }
-  const sq = squeletteTableau(T('fmt.tableau.colonne'));
-  return editeur.edit((b) => { b.replace(editeur.selection, sq); });
-}
-
-// Palette « Mise en forme » (Ctrl+Alt+M + entrée clic droit) : menu SZH-only,
-// localisé, raccourci affiché à droite. Réutilise les commandes szh.fmt.*.
-// Format : ['--', cléGroupe] = séparateur ; sinon [cléLibellé, commande, raccourci, icône].
-const PALETTE_MEF = [
-  ['--', 'palette.g.style'],
-  ['palette.gras', 'szh.fmt.gras', 'Ctrl+B', '$(bold)'],
-  ['palette.italique', 'szh.fmt.italique', 'Ctrl+I', '$(italic)'],
-  ['palette.souligne', 'szh.fmt.souligne', 'Ctrl+U', ''],
-  ['--', 'palette.g.titres'],
-  ['palette.titre1', 'szh.fmt.titre1', 'Ctrl+Alt+1', ''],
-  ['palette.titre2', 'szh.fmt.titre2', 'Ctrl+Alt+2', ''],
-  ['palette.titre3', 'szh.fmt.titre3', 'Ctrl+Alt+3', ''],
-  ['--', 'palette.g.blocs'],
-  ['palette.important', 'szh.fmt.important', 'Ctrl+Alt+W', ''],
-  ['palette.highlight', 'szh.fmt.highlight', 'Ctrl+Alt+H', ''],
-  ['palette.question', 'szh.fmt.question', 'Ctrl+Alt+Q', ''],
-  ['palette.citation', 'szh.fmt.citation', 'Ctrl+Alt+C', ''],
-  ['--', 'palette.g.inserer'],
-  ['palette.figure', 'szh.fmt.figure', 'Ctrl+Alt+F', ''],
-  ['palette.tableau', 'szh.fmt.tableau', 'Ctrl+Alt+T', '']
-];
-
-// Ouvre la palette (QuickPick) et applique la commande choisie à la sélection
-// courante (l'éditeur .md reste l'éditeur actif pendant la QuickPick).
-async function ouvrirMiseEnForme() {
-  const ed = vscode.window.activeTextEditor;
-  if (!ed || ed.document.languageId !== 'markdown') {
-    vscode.window.setStatusBarMessage(T('palette.horsmd'), 3000);
-    return;
-  }
-  const items = PALETTE_MEF.map((e) => (e[0] === '--'
-    ? { label: T(e[1]), kind: vscode.QuickPickItemKind.Separator }
-    : { label: (e[3] ? e[3] + ' ' : '') + T(e[0]), description: '[' + e[2] + ']', commande: e[1] }));
-  const choix = await vscode.window.showQuickPick(items, { placeHolder: T('palette.placeholder') });
-  if (choix && choix.commande) { await vscode.commands.executeCommand(choix.commande); }
-}
-
-function enregistrerCommandesMiseEnForme(context) {
-  const c = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
-  c('szh.fmt.gras', () => appliquerSelection((t) => basculerEnrobage(t, '**'), { milieu: 2 }));
-  c('szh.fmt.italique', () => appliquerSelection((t) => basculerEnrobage(t, '*'), { milieu: 1 }));
-  c('szh.fmt.souligne', () => appliquerSelection((t) => basculerSouligne(t), { milieu: 1 }));
-  c('szh.fmt.titre1', () => appliquerSelection((t) => basculerTitre(t, 1), { parLigne: true }));
-  c('szh.fmt.titre2', () => appliquerSelection((t) => basculerTitre(t, 2), { parLigne: true }));
-  c('szh.fmt.titre3', () => appliquerSelection((t) => basculerTitre(t, 3), { parLigne: true }));
-  c('szh.fmt.important', () => fmtImportant());
-  c('szh.fmt.highlight', () => appliquerSelection((t) => enroberBloc(t, 'highlight', '')));
-  c('szh.fmt.question', () => appliquerSelection((t) => enroberBloc(t, 'question', '')));
-  c('szh.fmt.citation', () => appliquerSelection((t) => basculerCitation(t), { parLigne: true }));
-  c('szh.fmt.figure', () => fmtFigure());
-  c('szh.fmt.tableau', () => fmtTableau());
-  c('szh.miseEnForme', () => ouvrirMiseEnForme());
-}
+// ---- Mise en forme (M6, D55) -> lib/formatting.js ------------------------------
 
 // ---- Éditeur de tableau maison (webview) — D57, T1 -------------------------------
 //
