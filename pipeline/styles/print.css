@@ -196,24 +196,95 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
   background: var(--c-kw-bg); border: 1px solid var(--c-kw-border);
 }
 
-/* ═══ 6. Éléments de corps (titres, listes, citation, encadrés) — M3 ══════════ */
-/* Provisoire M1 : styles neutres, remplacés par la maquette fidèle en M3. */
-h1, h2, h3, h4 { font-family: var(--font-sans); font-weight: 700; line-height: 1.2;
-  color: var(--c-ink); margin: 0.2em 0 0.3em; text-align: left; }
-h1 { font-size: 16px; }
-h2 { font-size: 14px; }
-h3 { font-size: 12.5px; }
-h4 { font-size: 12px; }
-blockquote { font-style: italic; margin: 0.6em 0; }
-.important, .highlight, .hervorhebung, .question {
-  padding: 0.7em 1em; margin: 1em 0; break-inside: avoid;
-  border-left: 4px solid var(--c-annual); background: var(--annual-soft);
+/* ═══ 6. Éléments de corps (titres, listes, citation, encadrés) — M3 ══════════
+   Les styles sont GLOBAUX (non préfixés) pour que l'aperçu du cockpit (template
+   pandoc par défaut, sans couverture) rende les mêmes éléments que le PDF.
+   Seul le titre de la COUVERTURE (h1.szh-title) est exclu de la numérotation. */
+
+/* Titres H1–H4 : numérotation hiérarchique par COMPTEURS CSS (1, 1.1, 1.1.1,
+   1.1.1.1). Le rédacteur n'écrit pas les numéros (adaptation : la maquette les
+   posait à la main). Numéro en NOIR, titre en encre. Sans, semi-condensé, gras. */
+h1:not(.szh-title), h2, h3, h4 {
+  font-family: var(--title-family); font-weight: 700; line-height: 1.22;
+  color: var(--c-ink); text-align: left; letter-spacing: -0.005em;
+  margin: 0.55em 0 0.3em; break-after: avoid; hyphens: manual;
 }
+h1:not(.szh-title):first-child, h2:first-child, h3:first-child, h4:first-child { margin-top: 0; }
+h1:not(.szh-title) { font-size: 16px; counter-increment: h1; counter-reset: h2 h3 h4; }
+h2 { font-size: 14px;   counter-increment: h2; counter-reset: h3 h4; }
+h3 { font-size: 12.5px; counter-increment: h3; counter-reset: h4; }
+h4 { font-size: 12px;   counter-increment: h4; }
+h1:not(.szh-title)::before { content: counter(h1) "\A0"; }
+h2::before { content: counter(h1) "." counter(h2) "\A0"; }
+h3::before { content: counter(h1) "." counter(h2) "." counter(h3) "\A0"; }
+h4::before { content: counter(h1) "." counter(h2) "." counter(h3) "." counter(h4) "\A0"; }
+h1:not(.szh-title)::before, h2::before, h3::before, h4::before {
+  color: #000000; font-variant-numeric: tabular-nums; margin-right: 0.35em;
+}
+
+/* Listes : puce = triangle ▸ NOIR (~1.2 em) ; numérotée « 1. » NOIRE, via compteurs.
+   Texte justifié + césure (hérité de `p`/`li`). */
+ul, ol { margin: 0.5em 0; padding: 0; list-style: none; }
+li { position: relative; padding-left: 1.5em; margin: 0.34em 0;
+  text-align: justify; hyphens: auto; overflow-wrap: break-word; }
+ul > li::before {
+  content: "\25B8";                       /* ▸ triangle noir (BLACK RIGHT-POINTING SMALL TRIANGLE) */
+  position: absolute; left: 0.1em; top: -0.04em;
+  color: var(--c-bullet-marker); font-weight: 700; font-size: 1.2em; line-height: 1;
+}
+ol { counter-reset: liste-ol; }
+ol > li { padding-left: 1.7em; }
+ol > li::before {
+  content: counter(liste-ol) ".";
+  counter-increment: liste-ol;
+  position: absolute; left: 0; top: 0;
+  color: var(--c-num-marker); font-weight: 700; font-variant-numeric: tabular-nums;
+}
+/* Listes imbriquées : re-numérotation / re-puçage cohérents. */
+li > ul, li > ol { margin: 0.2em 0 0.1em; }
+
+/* Citation (blockquote « > ») : italique, justifiée, SANS bordure ni retrait (BFZitat). */
+blockquote { margin: 0.6em 0; padding: 0; border: 0; font-style: italic; }
+blockquote p { margin: 0 0 0.4em; text-align: justify; hyphens: auto; }
+blockquote p:last-child { margin-bottom: 0; }
+
+/* Hervorhebung (::: {.hervorhebung} / alias .highlight) : barre latérale gauche
+   couleur annuelle + texte agrandi (BFPull « bar »). */
+.hervorhebung, .highlight {
+  margin: 0.85em 0; padding: 0 0 0 20px; border: 0;
+  border-left: 4px solid var(--c-annual); break-inside: avoid;
+}
+.hervorhebung > *, .highlight > * {
+  margin: 0; font-size: 1.42em; line-height: 1.34; font-weight: 500;
+  color: var(--c-ink); text-align: left; hyphens: none;
+}
+
+/* Wichtig box (::: {.important}) : fond teinté annuel doux + bordure gauche 4 px
+   annuelle + titre capitales noir (data-titre, défaut « Information ») (BFInfoBox). */
+.important {
+  background: var(--annual-soft); border-left: 4px solid var(--c-annual);
+  padding: 15px 18px; margin: 1em 0; break-inside: avoid;
+}
+.important::before {
+  content: "Information"; display: block;
+  text-transform: uppercase; letter-spacing: 0.12em;
+  font-size: 9.5px; font-weight: 800; color: #000000; margin-bottom: 5px;
+}
+.important[data-titre]::before { content: attr(data-titre); }
+.important > *:not(:first-child) { text-align: justify; }
+.important > *:last-child { margin-bottom: 0; }
+
+/* Question (::: {.question}) — hors maquette, conservé pour l'éditeur ; accent annuel. */
+.question {
+  background: var(--annual-tint); border-left: 4px solid var(--c-annual-ui);
+  padding: 12px 16px; margin: 1em 0; break-inside: avoid;
+}
+.question > *:last-child { margin-bottom: 0; }
 
 /* ═══ Numérotation automatique des figures et tableaux (D31) — hérité ═════════
    Les numéros manuels sont retirés à l'import ; la numérotation suit l'ordre
    du document et le libellé suit la langue de l'article (:lang). */
-body { counter-reset: compteur-figure compteur-tableau; }
+body { counter-reset: h1 h2 h3 h4 compteur-figure compteur-tableau; }
 
 figure { break-inside: avoid; margin: 1.2em 0; text-align: center; }
 figure img { max-width: 100%; }
