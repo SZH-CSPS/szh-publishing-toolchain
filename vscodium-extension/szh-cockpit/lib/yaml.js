@@ -330,15 +330,26 @@ function serialiserFrontmatter(texte, modifies) {
 // restituées par prudence. Lu par pandoc via --metadata-file (après ausgabe.yaml :
 // l'article surcharge le numéro).
 
-const TYPES_ARTICLE = ['varia', 'documentation', 'article', 'interview', 'tribune-libre', 'editorial'];
+// 6 types d'article (D71) en 2 groupes : « liés au dossier » (le libellé affiché
+// sera le titre du dossier) puis « hors dossier » (libellé = nom du type). Ordre
+// dossier-first, aligné sur szh-maquette.lua (TYPES_DOSSIER / LIBELLES).
+const TYPES_DOSSIER = ['article', 'editorial', 'interview'];
+const TYPES_HORS = ['varia', 'tribune-libre', 'documentation'];
+const TYPES_ARTICLE = TYPES_DOSSIER.concat(TYPES_HORS);
 // Libellés traduits des types (DE/IT : premier jet à valider par Robin).
 const LIBELLES_TYPES = {
-  'varia':         { fr: 'Varia',         de: 'Varia',         it: 'Varia' },
-  'documentation': { fr: 'Documentation', de: 'Dokumentation', it: 'Documentazione' },
   'article':       { fr: 'Article',       de: 'Artikel',       it: 'Articolo' },
+  'editorial':     { fr: 'Éditorial',     de: 'Editorial',     it: 'Editoriale' },
   'interview':     { fr: 'Interview',     de: 'Interview',     it: 'Intervista' },
+  'varia':         { fr: 'Varia',         de: 'Varia',         it: 'Varia' },
   'tribune-libre': { fr: 'Tribune libre', de: 'Freie Tribüne',  it: 'Tribuna libera' },
-  'editorial':     { fr: 'Éditorial',     de: 'Editorial',     it: 'Editoriale' }
+  'documentation': { fr: 'Documentation', de: 'Dokumentation', it: 'Documentazione' }
+};
+// En-têtes des 2 groupes du menu « Type d'article » (parité fr=de ; DE premier
+// jet). Localisés dans la langue par défaut du numéro, comme les libellés de type.
+const GROUPES_TYPES = {
+  dossier: { fr: 'Liés au dossier thématique', de: 'Zum Themenschwerpunkt gehörend', it: 'Legati al dossier tematico' },
+  hors:    { fr: 'Hors dossier',               de: 'Ausserhalb des Schwerpunkts',     it: 'Fuori dossier' }
 };
 const LANGUES_META = ['fr', 'de', 'it'];   // fr + de affichées ; it activable par carte
 const CHAMPS_AUTEUR = ['prenom', 'nom', 'fonction', 'affiliation', 'orcid'];
@@ -585,7 +596,7 @@ function ecrireAusgabeAtomique(chemin, contenu) {
 module.exports = {
   CLES_METADONNEES, COULEURS_NUMERO, HEX_COULEURS, CLES_FRONTMATTER,
   REVUES, normaliserRevue,
-  TYPES_ARTICLE, LIBELLES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
+  TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
   decouperValeurYaml, decouperFlowYaml, analyserAusgabe,
   separerFrontmatter, analyserFrontmatter, citerFrontmatter, lignesCleFrontmatter, serialiserFrontmatter,
   langueRevue, analyserMeta, serialiserMeta, titreNumero,

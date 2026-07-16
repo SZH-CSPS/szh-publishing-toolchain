@@ -61,7 +61,7 @@ const { TEXTES_COCKPIT, T, langueCockpit } = require('./lib/i18n');
 // ---- Sérialiseurs YAML -> lib/yaml.js --------------------------------------------
 const {
   CLES_METADONNEES, COULEURS_NUMERO, HEX_COULEURS, normaliserRevue,
-  TYPES_ARTICLE, LIBELLES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
+  TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
   analyserAusgabe, serialiserAusgabe, ecrireAusgabeAtomique,
   separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
   analyserMeta, serialiserMeta, langueRevue, titreNumero
@@ -1200,11 +1200,18 @@ function ouvrirApercuMetadonnees(fournisseur, rafraichirTout) {
   if (!fournisseur.racine) { return; }
   const envoyerValeurs = (panneau) => {
     const langue = langueRevue(fournisseur.racine);
+    // Menu « Type d'article » (E2, D71) : 6 types en 2 groupes (liés au dossier /
+    // hors dossier), libellés + en-têtes de groupe dans la langue par défaut du
+    // numéro. Le champ `groupe` pilote la construction des <optgroup> côté webview.
+    const options = (liste, groupe) => liste.map((t) => ({
+      valeur: t, libelle: (LIBELLES_TYPES[t] || {})[langue] || t,
+      groupe: (GROUPES_TYPES[groupe] || {})[langue] || (GROUPES_TYPES[groupe] || {}).fr || ''
+    }));
     panneau.webview.postMessage({
       type: 'valeurs',
       articles: lireMetadonneesArticles(fournisseur),
       langue: langue,
-      types: TYPES_ARTICLE.map((t) => ({ valeur: t, libelle: (LIBELLES_TYPES[t] || {})[langue] || t }))
+      types: options(TYPES_DOSSIER, 'dossier').concat(options(TYPES_HORS, 'hors'))
     });
   };
   if (panneauArticles) {

@@ -64,11 +64,22 @@
       optVide.value = '';
       optVide.textContent = TXT.typeAucun;
       selection.appendChild(optVide);
+      // Groupes (E2) : chaque option porte un `groupe` ; on ouvre un <optgroup>
+      // quand il change (option sans groupe -> directement dans le select).
+      let cible = selection, groupeCourant = null;
       for (const t of TYPES) {
+        if (t.groupe) {
+          if (t.groupe !== groupeCourant) {
+            groupeCourant = t.groupe;
+            cible = document.createElement('optgroup');
+            cible.label = t.groupe;
+            selection.appendChild(cible);
+          }
+        } else { cible = selection; groupeCourant = null; }
         const opt = document.createElement('option');
         opt.value = t.valeur;
         opt.textContent = t.libelle;
-        selection.appendChild(opt);
+        cible.appendChild(opt);
       }
       selection.value = v.type || '';
       if (selection.value !== (v.type || '')) { selection.value = ''; }
