@@ -71,7 +71,7 @@ const {
   analyserTable, serialiserTable, disposition, matriceOccupation,
   etendreGrille, compacterGrille, normaliserModele, finaliserModele, canoniserInline,
   ajouterLigne, supprimerLigne, ajouterColonne, supprimerColonne,
-  fusionner, scinder, appliquerOperationTable
+  fusionner, scinder, viderCellules, appliquerOperationTable
 } = require('./lib/table-model');
 // ---- Assemblage des webviews -> lib/webviews/util.js -----------------------------
 const { construireHtml, lireMedia } = require('./lib/webviews/util');
@@ -1325,7 +1325,17 @@ function textesTable() {
     'table.separateurs', 'table.sep.non', 'table.sep.gris', 'table.sep.couleur',
     'table.bordureHaute', 'table.bordureBasse', 'table.oui', 'table.non',
     'table.total', 'table.total.non', 'table.total.gris', 'table.total.couleur', 'table.total.gras',
-    'table.accent', 'table.accent.gris', 'table.accent.couleur', 'table.accent.aucune'
+    'table.accent', 'table.accent.gris', 'table.accent.couleur', 'table.accent.aucune',
+    'table.grpEdition', 'table.annuler', 'table.retablir', 'table.vider', 'table.effacerForme',
+    'table.retour', 'table.nonEnregistre',
+    'table.tip.annuler', 'table.tip.retablir', 'table.tip.vider', 'table.tip.effacerForme',
+    'table.tip.retour', 'table.tip.enregistrer',
+    'table.grpAlign', 'table.alignGauche', 'table.alignCentre', 'table.alignDroite',
+    'table.tip.alignGauche', 'table.tip.alignCentre', 'table.tip.alignDroite', 'table.coller',
+    'table.plusLigne', 'table.plusColonne', 'table.deplacementImpossible',
+    'table.suppr.question', 'table.suppr.detail', 'table.suppr.bouton',
+    'table.tip.zebre', 'table.tip.separateurs', 'table.tip.total', 'table.tip.accent',
+    'table.tip.entete', 'table.tip.enteteRetirer', 'table.tip.styleEntete'
   ];
   const o = {};
   for (const c of cles) { o[c.slice('table.'.length)] = T(c); }
@@ -1368,20 +1378,50 @@ function ouvrirEditeurTable(fournisseur, item) {
       accent: lireCouleurAccent(fournisseur.racine), i18n: textesTable()
     });
   };
-  panneau.webview.onDidReceiveMessage((msg) => {
+  // Applique une opération : le modèle reste la source de vérité — tout passe par
+  // appliquerOperationTable (round-trip préservé), l'hôte renvoie la disposition.
+  const appliquer = async (msg) => {
+    const res = appliquerOperationTable(String(msg.nom || ''), msg.modele, msg.args);
+    if (res && res.erreur) { panneau.webview.postMessage({ type: 'erreur', message: T(res.erreur) }); return; }
+    panneau.webview.postMessage({ type: 'charger', modele: res, disposition: disposition(res), accent: lireCouleurAccent(fournisseur.racine) });
+  };
+  const enregistrer = (modele) => {
+    ecrireAusgabeAtomique(chemin, serialiserTable(normaliserModele(modele)));
+    vscode.window.setStatusBarMessage(T('statut.table.enregistree', [nom]), 5000);
+  };
+  panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
     if (msg.type === 'pret') { charger(); return; }
-    if (msg.type === 'operation') {
-      const res = appliquerOperationTable(String(msg.nom || ''), msg.modele, msg.args);
-      if (res && res.erreur) { panneau.webview.postMessage({ type: 'erreur', message: T(res.erreur) }); return; }
-      panneau.webview.postMessage({ type: 'charger', modele: res, disposition: disposition(res), accent: lireCouleurAccent(fournisseur.racine) });
+    if (msg.type === 'operation') { await appliquer(msg); return; }
+    if (msg.type === 'restaurer') {
+      // Annuler/rétablir (D60) : la pile d'états vit dans la webview ; l'hôte n'est
+      // qu'un calculateur pur de disposition (pas de duplication du modèle côté webview).
+      const m = normaliserModele(msg.modele);
+      panneau.webview.postMessage({ type: 'charger', modele: m, disposition: disposition(m), accent: lireCouleurAccent(fournisseur.racine) });
+      return;
+    }
+    if (msg.type === 'modifie') {
+      // Indicateur ● « non enregistré » sur l'onglet (D1 : confirmation, pas d'auto-save).
+      panneau.title = (msg.modifie ? '● ' : '') + T('table.titre', [nom]);
+      return;
+    }
+    if (msg.type === 'retourArticle') {
+      // Garde « non-enregistré » (D1) sur un chemin de fermeture QUE l'on contrôle.
+      if (msg.modifie) {
+        const choix = await vscode.window.showWarningMessage(
+          T('table.quitter.question', [nom]), { modal: true, detail: T('table.quitter.detail') },
+          T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
+        if (choix === undefined) { return; }                       // Annuler : on reste
+        if (choix === T('form.enregistrer')) { try { enregistrer(msg.modele); } catch (e) { panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [e.message]) }); return; } }
+      }
+      if (item.slug) { await ouvrirArticle(fournisseur, item.slug); }
+      panneau.dispose();
       return;
     }
     if (msg.type === 'enregistrer') {
       try {
-        ecrireAusgabeAtomique(chemin, serialiserTable(normaliserModele(msg.modele)));
+        enregistrer(msg.modele);
         panneau.webview.postMessage({ type: 'enregistre' });
-        vscode.window.setStatusBarMessage(T('statut.table.enregistree', [nom]), 5000);
       } catch (e) {
         panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [e.message]) });
       }
@@ -1493,7 +1533,7 @@ module.exports = {
     matriceOccupation, etendreGrille, compacterGrille,
     normaliserModele, finaliserModele, canoniserInline,
     ajouterLigne, supprimerLigne, ajouterColonne, supprimerColonne,
-    fusionner, scinder, appliquerOperationTable,
+    fusionner, scinder, viderCellules, appliquerOperationTable,
     TEXTES_COCKPIT
   }
 };

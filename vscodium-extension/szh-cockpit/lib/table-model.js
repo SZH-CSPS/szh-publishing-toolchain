@@ -457,6 +457,32 @@ function scinder(modele, r, c) {
   return compacterGrille(g);
 }
 
+// Vide la sélection visuelle (rMin..rMax / cMin..cMax) : mode 'contenu' -> texte
+// effacé ; mode 'forme' -> mise en forme inline (<strong>/<em>) retirée, texte et
+// sauts <br> conservés. N'affecte QUE les cellules dont l'origine est dans la plage
+// (une cellule fusionnée traitée une seule fois). Pure : modèle -> modèle.
+function viderCellules(modele, rMin, cMin, rMax, cMax, mode) {
+  const m = normaliserModele(modele);
+  const occ = matriceOccupation(m.lignes);
+  const nbL = occ.nbLignes, nbC = occ.nbColonnes;
+  const r0 = Math.max(0, Math.min(rMin, rMax)), r1 = Math.min(nbL - 1, Math.max(rMin, rMax));
+  const c0 = Math.max(0, Math.min(cMin, cMax)), c1 = Math.min(nbC - 1, Math.max(cMin, cMax));
+  const vus = new Set();
+  for (let r = r0; r <= r1; r++) {
+    for (let c = c0; c <= c1; c++) {
+      const ref = occ.grid[r] && occ.grid[r][c];
+      if (!ref) { continue; }
+      const clef = ref.li + '/' + ref.ci;
+      if (vus.has(clef)) { continue; }
+      vus.add(clef);
+      const cell = m.lignes[ref.li].cellules[ref.ci];
+      if (mode === 'forme') { cell.contenu = canoniserInline(String(cell.contenu).replace(/<\/?(strong|em)\b[^>]*>/gi, '')); }
+      else { cell.contenu = ''; }
+    }
+  }
+  return finaliserModele(m);
+}
+
 // Applique une opération nommée (venue de la webview) au modèle (assaini). Les
 // plages (rMin..rMax / cMin..cMax) sont dépliées en appels unitaires des ops pures.
 function appliquerOperationTable(nom, modeleBrut, args) {
@@ -475,6 +501,7 @@ function appliquerOperationTable(nom, modeleBrut, args) {
     for (let i = n(a.cMax); i >= n(a.cMin); i--) { m = supprimerColonne(m, i); }
     return m;
   }
+  if (nom === 'vider') { return viderCellules(modele, n(a.rMin), n(a.cMin), n(a.rMax), n(a.cMax), a.mode === 'forme' ? 'forme' : 'contenu'); }
   if (nom === 'fusionner') { return fusionner(modele, n(a.rMin), n(a.cMin), n(a.rMax), n(a.cMax)); }
   if (nom === 'scinder') {
     const occ = matriceOccupation(modele.lignes);
@@ -534,5 +561,5 @@ module.exports = {
   normaliserModele, finaliserModele, infererEnteteLignes, infererEnteteColonnes,
   analyserTable, serialiserTable, disposition,
   ajouterLigne, supprimerLigne, ajouterColonne, supprimerColonne,
-  fusionner, scinder, appliquerOperationTable
+  fusionner, scinder, viderCellules, appliquerOperationTable
 };
