@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # accent-css.py — expose la couleur annuelle (ausgabe.yaml `couleur`, M7/D56) en
-# variables CSS d'accent pour les tableaux .szh-tableau (D57, T3).
+# variables CSS d'accent. UN SEUL bloc :root canonique (D72), consommé à la fois par :
+#   - les TABLEAUX .szh-tableau  -> --szh-accent / -clair / -fonce (D57, T3) ;
+#   - la MAQUETTE (couverture + corps) -> --c-annual* / --annual-* (D69–D71).
+# WeasyPrint 69 n'implémente pas color-mix() et n'exécute pas le JS d'applyTweaks
+# (contraste APCA) : tous les jetons dérivés sont donc PRÉCALCULÉS ici (voir
+# jetons_annuels). Aucune couleur -> aucun jeton -> repli gris de print.css (D72).
 #
 #   python3 accent-css.py <ausgabe.yaml>   ->  bloc :root sur stdout
 #
@@ -126,6 +131,52 @@ def variations_calculees(hexa):
     return {'normal': hexa, 'clair': vers_hex(clair(rgb)), 'fonce': vers_hex(fonce(rgb))}
 
 
+# ---- Jetons de la MAQUETTE (D72) : précalcul des color-mix() + contraste ----------
+# WeasyPrint 69 n'implémente pas color-mix() et n'exécute pas le JS d'applyTweaks
+# (contraste APCA). On précalcule donc, en Python, TOUS les jetons dérivés de la
+# couleur annuelle consommés par print.css (couverture + corps). Les formules
+# reprennent la maquette (base-finale-source.jsx / Pages export.html) à l'identique.
+
+def melange(hex_a, hex_b, poids_a):
+    """color-mix(in srgb, A poids_a, B) : mélange sRGB par canal (gamma, comme CSS)."""
+    a, b = vers_rgb(hex_a), vers_rgb(hex_b)
+    return vers_hex(tuple(a[i] * poids_a + b[i] * (1 - poids_a) for i in range(3)))
+
+
+def assombrir_vers(hexa, lum_cible):
+    """Assombrit (teinte préservée) jusqu'à luminance <= lum_cible (quasi-noir)."""
+    rgb = vers_rgb(hexa)
+    if luminance(rgb) <= lum_cible:
+        return hexa
+    bas, haut = 0.0, 1.0
+    for _ in range(24):
+        k = (bas + haut) / 2
+        if luminance(tuple(c * k for c in rgb)) > lum_cible:
+            haut = k
+        else:
+            bas = k
+    return vers_hex(tuple(c * bas for c in rgb))
+
+
+def jetons_annuels(hexa):
+    """Tous les jetons --c-annual* / --annual-* dérivés de la couleur annuelle.
+    Cas particulier « couleur très claire » (moutarde #C7CF1C) : le texte sur aplat
+    passe au noir et le filet fin (--c-annual-ui) devient quasi-noir (les barres
+    ÉPAISSES gardent la couleur brute var(--c-annual), fidèle à la maquette)."""
+    tres_claire = luminance(vers_rgb(hexa)) > 0.5
+    return [
+        ('--c-annual',          hexa),
+        ('--c-annual-deep',     vers_hex(fonce(vers_rgb(hexa)))),
+        ('--c-annual-text',     melange(hexa, '#0A0D14', 0.60)),   # texte annuel sur blanc
+        ('--c-annual-ui',       assombrir_vers(hexa, 0.045) if tres_claire else hexa),
+        ('--c-on-annual',       '#000000' if tres_claire else '#ffffff'),
+        ('--c-abstract-border', hexa),
+        ('--c-kw-bg',           melange(hexa, '#FFFFFF', 0.22)),
+        ('--annual-soft',       melange(hexa, '#FFFFFF', 0.12)),
+        ('--annual-tint',       melange(hexa, '#FFFFFF', 0.13)),
+    ]
+
+
 def main(argv):
     chemin = argv[1] if len(argv) > 1 else 'ausgabe.yaml'
     hexa = lire_couleur(chemin)
@@ -136,6 +187,9 @@ def main(argv):
         lignes.append('  --szh-accent: %s;' % v['normal'])
         lignes.append('  --szh-accent-clair: %s;' % v['clair'])
         lignes.append('  --szh-accent-fonce: %s;' % v['fonce'])
+        # Jetons de la maquette (D72) : mêmes source (la couleur annuelle), un seul bloc.
+        for var, hexv in jetons_annuels(hexa):
+            lignes.append('  %s: %s;' % (var, hexv))
     for var, hexv in neutres.items():
         lignes.append('  %s: %s;' % (var, hexv))
     if not lignes:
