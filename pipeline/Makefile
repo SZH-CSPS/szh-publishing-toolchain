@@ -39,6 +39,13 @@ HTMLS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).html)
 # nourrir WeasyPrint ; le PDF reste sur -f markdown, inchangé par construction).
 APERCUS    := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).apercu.html)
 
+# Accent des tableaux (.szh-tableau, D57) : accent-css.py lit la couleur annuelle
+# d'ausgabe.yaml et écrit un :root qui SURCHARGE les gris de repli de print.css.
+# Aucune couleur -> fichier « commentaire seul » -> gris de repli -> PDF inchangé.
+# Prérequis des HTML : le changer (via les métadonnées) recompile les articles.
+ACCENT_CSS := $(OUT)/.szh-accent.css
+ACCENT_ABS := $(abspath $(ACCENT_CSS))
+
 # Sans ceci, make considérerait les .html comme intermédiaires et les SUPPRIMERAIT.
 .SECONDARY: $(HTMLS) $(APERCUS)
 
@@ -70,12 +77,19 @@ verifie-dossier:
 	  echo "[pipeline] ⚠ Un dossier de articles/ contient des espaces — renommez-le sans espaces."; exit 1; \
 	fi
 
+# Accent des tableaux (D57) : (re)génère out/.szh-accent.css depuis la couleur
+# annuelle d'ausgabe.yaml (repli commentaire seul si aucune couleur -> gris de
+# print.css). stdlib python3 (comme docx-tables.py), aucun /mnt/c en dur.
+$(ACCENT_CSS): ausgabe.yaml
+	@mkdir -p "$(OUT)"
+	@python3 "$(PIPELINE_DIR)/accent-css.py" ausgabe.yaml > "$@"
+
 # .md -> HTML autonome (--embed-resources : images/CSS en base64, zéro dépendance).
 # Exécuté DANS le dossier de l'article (chemins media/ et tables/ relatifs au .md).
 # citeproc + CSL APA seulement si l'article a une bibliographie (media/<slug>.bib).
 # Les tableaux extraits (tables/*.html, D47) sont des PRÉREQUIS : en éditer un
 # déclenche la recompilation de l'article (SECONDEXPANSION déjà active).
-$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
+$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
 	extra=""; \
@@ -87,7 +101,7 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 	  --from=markdown --to=html5 \
 	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
 	  --standalone --embed-resources \
-	  --css="$(STYLE_ABS)" \
+	  --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" $$extra \
 	  --output="$(abspath $@)"
 	# ⇩ REMPLACER ici par le template HTML/filtres finaux de la maquette si besoin.
@@ -95,7 +109,7 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 # .md -> HTML d'APERÇU (D53) : mêmes filtres/CSS/métadonnées que la sortie PDF,
 # mais reader commonmark_x+sourcepos -> chaque bloc porte data-pos (position
 # source pour le clic->texte de la webview). Consommé par le cockpit uniquement.
-$(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
+$(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
 	extra=""; \
@@ -107,7 +121,7 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --from=commonmark_x+sourcepos --to=html5 \
 	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
 	  --standalone --embed-resources \
-	  --css="$(STYLE_ABS)" \
+	  --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" $$extra \
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
