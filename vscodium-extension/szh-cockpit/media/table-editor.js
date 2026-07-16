@@ -228,13 +228,21 @@ function onDefinirEntete(){if(!selection){etat(TXT.rien);return;}var s=selection
   else if(s.rMin===0){op('entete',{sens:'lignes',n:Math.min(2,s.rMax+1)});}
   else if(s.cMin===0){op('entete',{sens:'colonnes',n:Math.min(2,s.cMax+1)});}
   else{etat(TXT.rien);}}
+// F3 : « Retirer l'en-tête » déduit le SENS de la sélection (même logique que
+// onDefinirEntete) et ne retire QUE cet en-tête (lignes OU colonnes, pas les deux).
+function onRetirerEntete(){if(!selection){etat(TXT.rien);return;}var s=selection,nbC=dispo.nbColonnes,nbL=dispo.nbLignes;
+  if(s.rMin===0&&(s.cMax-s.cMin+1)===nbC&&!(s.rMax===nbL-1&&nbC===1)){op('enteteRetirer',{sens:'lignes'});}
+  else if(s.cMin===0&&(s.rMax-s.rMin+1)===nbL){op('enteteRetirer',{sens:'colonnes'});}
+  else if(s.rMin===0){op('enteteRetirer',{sens:'lignes'});}
+  else if(s.cMin===0){op('enteteRetirer',{sens:'colonnes'});}
+  else{etat(TXT.rien);}}
 function appliquerTotal(){if(!selection){etat(TXT.rien);return;}op('total',{rMin:selection.rMin,rMax:selection.rMax,teinte:ctl.total.value,gras:ctl.totalGras.checked?'oui':'non'});}
 function viderSel(mode){if(!selection){etat(TXT.rien);return;}op('vider',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax,mode:mode});}
 function aligner(v){if(!selection){etat(TXT.rien);return;}op('aligner',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax,valeur:v});}
 function barreT2(barre){
   var ge=groupe(TXT.grpEntetes);
   ge.appendChild(bouton(TXT.entete,onDefinirEntete,'',TXT['tip.entete']));
-  ge.appendChild(bouton(TXT.enteteRetirer,function(){op('enteteRetirer',{});},'',TXT['tip.enteteRetirer']));
+  ge.appendChild(bouton(TXT.enteteRetirer,onRetirerEntete,'',TXT['tip.enteteRetirer']));
   barre.appendChild(ge);
   ctl.styleLigne=selCtrl(barre,TXT.styleLigne,STYLES(),function(v){op('styleEntete',{cible:'ligne',valeur:v});},TXT['tip.styleEntete']);
   ctl.styleColonne=selCtrl(barre,TXT.styleColonne,STYLES(),function(v){op('styleEntete',{cible:'colonne',valeur:v});},TXT['tip.styleEntete']);

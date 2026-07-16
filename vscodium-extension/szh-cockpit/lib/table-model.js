@@ -650,7 +650,11 @@ function appliquerOperationTable(nom, modeleBrut, args) {
     return finaliserModele(modele);   // reapplique th/scope depuis les comptes
   }
   if (nom === 'enteteRetirer') {
-    modele.attrs.enteteLignes = 0; modele.attrs.enteteColonnes = 0;
+    // F3 : ne retirer QUE le sens demandé (lignes OU colonnes). Sans `sens` (ancien
+    // appel), on retire les deux — compat ascendante.
+    if (a.sens === 'lignes') { modele.attrs.enteteLignes = 0; }
+    else if (a.sens === 'colonnes') { modele.attrs.enteteColonnes = 0; }
+    else { modele.attrs.enteteLignes = 0; modele.attrs.enteteColonnes = 0; }
     return finaliserModele(modele);
   }
   if (nom === 'styleEntete') {
