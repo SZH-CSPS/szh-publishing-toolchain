@@ -1407,15 +1407,15 @@ function textesTable() {
     'table.rien', 'table.fusionImpossible', 'table.enregistre',
     'table.ctx.ligneAvant', 'table.ctx.ligneApres', 'table.ctx.ligneSuppr',
     'table.ctx.colAvant', 'table.ctx.colApres', 'table.ctx.colSuppr',
-    'table.grpEntetes', 'table.grpStyles',
-    'table.entete', 'table.enteteRetirer', 'table.styleEntete', 'table.styleLigne', 'table.styleColonne',
-    'table.st.normal', 'table.st.gras', 'table.st.negatif', 'table.st.fond',
-    'table.zebre', 'table.zebre.non', 'table.zebre.lignes', 'table.zebre.colonnes',
-    'table.teinte', 'table.teinte.gris', 'table.teinte.couleur',
-    'table.separateurs', 'table.sep.non', 'table.sep.gris', 'table.sep.couleur',
-    'table.bordureHaute', 'table.bordureBasse', 'table.oui', 'table.non',
-    'table.total', 'table.total.non', 'table.total.gris', 'table.total.couleur', 'table.total.gras',
-    'table.accent', 'table.accent.gris', 'table.accent.couleur', 'table.accent.aucune',
+    'table.entete', 'table.enteteRetirer',
+    // Panneau de mise en forme (T2) : 3 zones.
+    'table.zone.styles', 'table.zone.preset', 'table.preset.bientot', 'table.modele',
+    'table.zone.entetes', 'table.entetesLignes', 'table.entetesColonnes', 'table.entetes.aucun',
+    'table.total', 'table.gras',
+    'table.fond.aucun', 'table.fond.negatif', 'table.fond.couleur', 'table.fond.gris',
+    'table.zone.tableau', 'table.bordureHaute', 'table.bordureBasse',
+    'table.zebreCol', 'table.zebreLig',
+    'table.zebre.aucun', 'table.zebre.paires', 'table.zebre.impaires', 'table.zebre.entetes',
     'table.grpEdition', 'table.annuler', 'table.retablir', 'table.vider', 'table.effacerForme',
     'table.retour', 'table.nonEnregistre',
     'table.tip.annuler', 'table.tip.retablir', 'table.tip.vider', 'table.tip.effacerForme',
@@ -1424,8 +1424,7 @@ function textesTable() {
     'table.tip.alignGauche', 'table.tip.alignCentre', 'table.tip.alignDroite', 'table.coller',
     'table.plusLigne', 'table.plusColonne', 'table.tirerReordonner', 'table.deplacementImpossible',
     'table.suppr.question', 'table.suppr.detail', 'table.suppr.bouton',
-    'table.tip.zebre', 'table.tip.separateurs', 'table.tip.total', 'table.tip.accent',
-    'table.tip.entete', 'table.tip.enteteRetirer', 'table.tip.styleEntete'
+    'table.tip.entete', 'table.tip.enteteRetirer'
   ];
   const o = {};
   for (const c of cles) { o[c.slice('table.'.length)] = T(c); }

@@ -1,15 +1,15 @@
 (function(){
 'use strict';
 var api=acquireVsCodeApi();
-var modele=null, dispo=null, occ2=null, TXT={}, accent='', accentMode='gris';
-var selection=null, ancre=null, cellActive=null, premierChargement=true, ctl={};
+var modele=null, dispo=null, occ2=null, TXT={}, accent='';
+var selection=null, ancre=null, cellActive=null, ctl={};
 // Historique (D60, F1) : deux piles d'états du MODÈLE, dans la webview. Chaque
 // opération de structure empile l'état PRÉ-op (voir op) ; les éditions de texte sont
 // empilées au blur d'une cellule (avantEdition = instantané pris au focus).
 // modeleEnregistre = état écrit sur disque (garde non-enregistré).
 var annuler=[], retablir=[], avantEdition=null, modeleEnregistre=null, enrEnCours=null, dernierModifie=false;
 var glisse=null;   // sélection par glisser : { ancre:cellule, actif:bool }
-var barre=document.getElementById('barre'), zone=document.getElementById('zone'), aide=document.getElementById('aide');
+var barre=document.getElementById('barre'), zone=document.getElementById('zone'), aide=document.getElementById('aide'), panneau=document.getElementById('panneau');
 function clone(o){return JSON.parse(JSON.stringify(o));}
 function dechap(s){return String(s).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'\"').replace(/&#x27;/g,"'").replace(/&#39;/g,"'").replace(/&amp;/g,'&');}
 function echap(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -44,33 +44,60 @@ function plage(){if(!selection||!occ2)return false;var vu={},n=0;
   return false;}
 function clampSel(s){if(!s||!dispo)return null;var rMax=Math.min(s.rMax,dispo.nbLignes-1),cMax=Math.min(s.cMax,dispo.nbColonnes-1);if(s.rMin>rMax||s.cMin>cMax||s.rMin<0||s.cMin<0)return null;return etendre({rMin:s.rMin,cMin:s.cMin,rMax:rMax,cMax:cMax});}
 
-// ---- Teintes de l'aperçu (mêmes valeurs que print.css / --szh-accent) ----
+// ---- Teintes de l'aperçu (mêmes valeurs que print.css / couleurs.css) ----
 function hx(h){h=String(h||'').replace('#','');if(h.length===3){h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];}return [parseInt(h.slice(0,2),16)||0,parseInt(h.slice(2,4),16)||0,parseInt(h.slice(4,6),16)||0];}
 function hx2(v){var s=Math.max(0,Math.min(255,Math.round(v))).toString(16);return s.length<2?'0'+s:s;}
-function accBrut(){return (accentMode==='couleur'&&accent)?accent:null;}
+// Couleur annuelle brute (repli gris si non définie -> l'aperçu retombe sur les valeurs
+// par défaut de print.css, comme le PDF d'un numéro sans couleur).
+function accBrut(){return accent||null;}
 // Teintes IDENTIQUES à print.css/accent-css.py (aperçu fidèle, RV3) : clair = 18% couleur
 // + 82% blanc ; foncé = assombri jusqu'à luminance <= 0.16 (contraste blanc >= 4.5:1).
 function lum(r){var f=function(c){c=c/255;return c<=0.03928?c/12.92:Math.pow((c+0.055)/1.055,2.4);};return 0.2126*f(r[0])+0.7152*f(r[1])+0.0722*f(r[2]);}
 function clairAccent(hex){var r=hx(hex);return '#'+hx2(r[0]*0.18+255*0.82)+hx2(r[1]*0.18+255*0.82)+hx2(r[2]*0.18+255*0.82);}
 function fonceAccent(hex){var r=hx(hex);if(lum(r)<=0.16)return hex;var bas=0,haut=1;for(var i=0;i<24;i++){var k=(bas+haut)/2;if(lum([r[0]*k,r[1]*k,r[2]*k])>0.16)haut=k;else bas=k;}return '#'+hx2(r[0]*bas)+hx2(r[1]*bas)+hx2(r[2]*bas);}
-// --szh-accent-clair : #ededed (gris) OU clair(couleur annuelle) si aperçu « couleur ».
-function fondVarClair(useColor){if(!useColor)return '#ededed';var a=accBrut();return a?clairAccent(a):'#ededed';}
-// --szh-accent-fonce : #4a4a4a (gris) OU foncé(couleur).   --szh-accent : #9a9a9a OU couleur.
-function fondVarFonce(){var a=accBrut();return a?fonceAccent(a):'#4a4a4a';}
-function accentVar(){var a=accBrut();return a?a:'#9a9a9a';}
-function styleEnt(el,st){if(st==='gras'){el.style.fontWeight='700';}else if(st==='fond'){el.style.background=fondVarClair(true);el.style.fontWeight='700';}else if(st==='negatif'){el.style.background=fondVarFonce();el.style.color='#ffffff';el.style.fontWeight='700';}}
-function stylerApercu(){if(!dispo||!modele)return;var a=modele.attrs;zone.querySelectorAll('.cell').forEach(function(el){
-  el.style.background='';el.style.color='';el.style.fontWeight='';el.style.borderBottom='';el.style.borderTop='';
-  var r=+el.dataset.r0,c=+el.dataset.c0,rs=+el.dataset.rs,li=+el.dataset.li,lg=dispo.lignes[li];
-  var entL=r<a.enteteLignes,entC=(c<a.enteteColonnes)&&!entL,tot=lg&&lg.total,zc=a.zebreTeinte==='couleur';
-  if(a.zebre==='lignes'&&!entL&&!entC&&!tot){var di=r-a.enteteLignes;if(di>=0&&di%2===1)el.style.background=zc?fondVarClair(true):'#f2f2f2';}
-  else if(a.zebre==='colonnes'&&!entC&&!entL&&!tot){var dc=c-a.enteteColonnes;if(dc>=0&&dc%2===1)el.style.background=zc?fondVarClair(true):'#f2f2f2';}
-  if(entL){styleEnt(el,a.enteteLigneStyle);}else if(entC){styleEnt(el,a.enteteColonneStyle);}
-  if(tot){el.style.background=fondVarClair(lg.teinte==='couleur');if(lg.gras==='oui')el.style.fontWeight='700';}
-  if(a.separateurs!=='non'){el.style.borderBottom='1px solid '+(a.separateurs==='couleur'?accentVar():'#cccccc');}
-  if(a.bordureHaute==='oui'){if(a.enteteLignes>0&&r===a.enteteLignes-1)el.style.borderBottom='2px solid '+accentVar();else if(a.enteteLignes===0&&r===0)el.style.borderTop='2px solid '+accentVar();}
-  if(a.bordureBasse==='oui'&&(r+rs===dispo.nbLignes))el.style.borderBottom='2px solid '+accentVar();
-});}
+// Repli neutre (= --szh-gris-clair / --szh-zebre / --szh-accent de couleurs.css/print.css).
+var GRIS_CLAIR='#e6e6e6', TEINTE_ZEBRE='#f2f2f2', ACCENT_GRIS='#9a9a9a';
+// fond (D67) -> { bg, fg } ou null : negatif = accent foncé + blanc ; couleur = accent
+// clair + noir ; gris = gris clair neutre + noir ; aucun = pas de remplissage.
+function fondDe(v){var a=accBrut();
+  if(v==='negatif'){return {bg:a?fonceAccent(a):'#4a4a4a',fg:'#ffffff'};}
+  if(v==='couleur'){return {bg:a?clairAccent(a):'#ededed',fg:'#000000'};}
+  if(v==='gris'){return {bg:GRIS_CLAIR,fg:'#000000'};}
+  return null;}
+// Aperçu fidèle des styles au NIVEAU tableau (D64/D67, miroir de print.css) : zébrage
+// colonnes/lignes, fonds des en-têtes (el=th[scope=row], ec=th[scope=col]), ligne de
+// total (dernière rangée du <tbody>), bordures haute/basse. Appliqué en style INLINE sur
+// les .cell (le round-trip reste piloté par le modèle, jamais par ces styles). L'ordre
+// suit print.css : zébrage, puis en-têtes, puis total, puis bordures (le dernier gagne).
+function stylerApercu(){if(!dispo||!modele)return;var a=modele.attrs;
+  var eL=a.enteteLignes,N=dispo.nbLignes;
+  var accLigne=accBrut()||ACCENT_GRIS;
+  zone.querySelectorAll('.cell').forEach(function(el){
+    el.style.background='';el.style.color='';el.style.fontWeight='';el.style.borderTop='';el.style.borderBottom='';
+    var r=+el.dataset.r0,li=+el.dataset.li,ci=+el.dataset.ci;
+    var cell=dispo.lignes[li]&&dispo.lignes[li].cellules[ci];if(!cell)return;
+    var thead=r<eL;
+    // Zébrage des lignes : rangées de données (tbody) ; « en-têtes » l'étend au thead.
+    if(a.zebreLig!=='aucun'){
+      if(thead){if(a.zebreLigEntetes&&((a.zebreLig==='paires')===((r+1)%2===0)))el.style.background=TEINTE_ZEBRE;}
+      else if((a.zebreLig==='paires')===(((r-eL)+1)%2===0))el.style.background=TEINTE_ZEBRE;
+    }
+    // Zébrage des colonnes (miroir de nth-child : ordinal = rang de la cellule dans sa
+    // rangée). Sans « en-têtes » : uniquement les cellules de données (td) du tbody.
+    if(a.zebreCol!=='aucun'){
+      var par=(a.zebreCol==='paires')===((ci+1)%2===0);
+      if(a.zebreColEntetes){if(par)el.style.background=TEINTE_ZEBRE;}
+      else if(!thead&&!cell.th&&par)el.style.background=TEINTE_ZEBRE;
+    }
+    // Fonds des en-têtes (el = scope row / colonnes de gauche ; ec = scope col / rangées du haut).
+    if(cell.th&&cell.scope==='row'){var fe=fondDe(a.elFond);if(fe){el.style.background=fe.bg;el.style.color=fe.fg;}if(a.elGras)el.style.fontWeight='700';}
+    else if(cell.th&&cell.scope==='col'){var fc=fondDe(a.ecFond);if(fc){el.style.background=fc.bg;el.style.color=fc.fg;}if(a.ecGras)el.style.fontWeight='700';}
+    // Ligne de total = dernière rangée du tbody (D65) : toutes ses cellules.
+    if(!thead&&r===N-1){var ft=fondDe(a.totalFond);if(ft){el.style.background=ft.bg;el.style.color=ft.fg;}if(a.totalGras)el.style.fontWeight='700';}
+    // Bordures : haute sous la zone d'en-tête (ou en tête du tableau si aucun en-tête) ; basse en pied.
+    if(a.bordureHaute){if(eL>0){if(r===eL-1)el.style.borderBottom='2px solid '+accLigne;}else if(r===0)el.style.borderTop='2px solid '+accLigne;}
+    if(a.bordureBasse&&!thead&&r===N-1)el.style.borderBottom='2px solid '+accLigne;
+  });}
 
 // ---- Grille : rendu, matrice d'occupation visuelle, sélection ----
 function construireOcc(){occ2=[];if(!dispo)return;for(var r=0;r<dispo.nbLignes;r++){occ2[r]=new Array(dispo.nbColonnes).fill(null);}
@@ -85,7 +112,11 @@ function cellDom(c){var el=document.createElement(c.th?'th':'td');el.className='
   el.addEventListener('mousedown',function(ev){onCell(ev,c);});
   el.addEventListener('focus',function(){cellActive=c;if(!avantEdition&&modele)avantEdition=clone(modele);});
   el.addEventListener('blur',function(){commitTexte();});
-  el.addEventListener('contextmenu',function(ev){ouvrirMenu(ev,{lignes:true,colonnes:true,rMin:c.r0,rMax:c.r0+c.rowspan-1,cMin:c.c0,cMax:c.c0+c.colspan-1,fusionnee:(c.rowspan>1||c.colspan>1)});});
+  el.addEventListener('contextmenu',function(ev){
+    var cr={rMin:c.r0,cMin:c.c0,rMax:c.r0+c.rowspan-1,cMax:c.c0+c.colspan-1};
+    var dans=selection&&cr.rMin>=selection.rMin&&cr.rMax<=selection.rMax&&cr.cMin>=selection.cMin&&cr.cMax<=selection.cMax;
+    if(!dans){ancre=c;cellActive=c;selection=etendre(cr);majEditable();marquer();}
+    ouvrirMenu(ev,{lignes:true,colonnes:true,rMin:c.r0,rMax:c.r0+c.rowspan-1,cMin:c.c0,cMax:c.c0+c.colspan-1,fusionnee:(c.rowspan>1||c.colspan>1)});});
   el.addEventListener('input',function(){etat('');majModifie();});
   return el;}
 function colLettre(n){var s='';n=n+1;while(n>0){var r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s;}
@@ -190,6 +221,13 @@ function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.crea
     m.appendChild(itemMenu(TXT['ctx.colSuppr'],function(){supprimer('supprimerColonne',{cMin:ctx.cMin,cMax:ctx.cMax},0,ctx.cMin,dispo.nbLignes-1,ctx.cMax);}));}
   if(plage()){sepMenu(m);m.appendChild(itemMenu(TXT.fusionner,function(){op('fusionner',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax});}));}
   if(ctx.fusionnee){if(!plage())sepMenu(m);m.appendChild(itemMenu(TXT.scinder,function(){op('scinder',{rMin:ctx.rMin,cMin:ctx.cMin,rMax:ctx.rMax,cMax:ctx.cMax});}));}
+  // En-têtes (F3, déplacés de la barre en menu contextuel) : le SENS est déduit de la
+  // sélection (rangée du haut -> lignes ; colonne de gauche -> colonnes). « Retirer »
+  // n'apparaît que si l'en-tête correspondant existe.
+  var sens=sensEntete(selection);
+  if(sens){sepMenu(m);m.appendChild(itemMenu(TXT.entete,onDefinirEntete));
+    var aRetirer=sens==='lignes'?(modele.attrs.enteteLignes>0):(modele.attrs.enteteColonnes>0);
+    if(aRetirer){m.appendChild(itemMenu(TXT.enteteRetirer,onRetirerEntete));}}
   document.body.appendChild(m);
   var vw=window.innerWidth||document.documentElement.clientWidth,vh=window.innerHeight||document.documentElement.clientHeight,rc=m.getBoundingClientRect();
   var x=ev.clientX,y=ev.clientY;if(x+rc.width>vw)x=Math.max(2,vw-rc.width-2);if(y+rc.height>vh)y=Math.max(2,vh-rc.height-2);
@@ -215,52 +253,97 @@ function construireBarre(){barre.textContent='';
   ga.appendChild(bouton(TXT.alignCentre,function(){aligner('center');},'',TXT['tip.alignCentre']));
   ga.appendChild(bouton(TXT.alignDroite,function(){aligner('right');},'',TXT['tip.alignDroite']));
   barre.appendChild(ga);
-  barreT2(barre);
   var ret=bouton(TXT.retour,retourArticle,'',TXT['tip.retour']);barre.appendChild(ret);
   var enr=bouton(TXT.enregistrer,enregistrerTable,'principal',TXT['tip.enregistrer']);barre.appendChild(enr);
   var e=document.createElement('span');e.id='etat';e.setAttribute('role','status');barre.appendChild(e);
-  var ind=document.createElement('span');ind.id='indic';ind.setAttribute('aria-live','polite');barre.appendChild(ind);}
-function selCtrl(parent,label,options,onCh,titre){var g=groupe('');var l=document.createElement('span');l.className='lbl';l.textContent=label;g.appendChild(l);var s=document.createElement('select');if(titre)s.title=titre;options.forEach(function(o){var op=document.createElement('option');op.value=o[0];op.textContent=o[1];s.appendChild(op);});s.addEventListener('change',function(){onCh(s.value);});g.appendChild(s);parent.appendChild(g);return s;}
-function STYLES(){return [['normal',TXT['st.normal']],['gras',TXT['st.gras']],['negatif',TXT['st.negatif']],['fond',TXT['st.fond']]];}
-function onDefinirEntete(){if(!selection){etat(TXT.rien);return;}var s=selection,nbC=dispo.nbColonnes,nbL=dispo.nbLignes;
-  if(s.rMin===0&&(s.cMax-s.cMin+1)===nbC&&!(s.rMax===nbL-1&&nbC===1)){op('entete',{sens:'lignes',n:Math.min(2,s.rMax+1)});}
-  else if(s.cMin===0&&(s.rMax-s.rMin+1)===nbL){op('entete',{sens:'colonnes',n:Math.min(2,s.cMax+1)});}
-  else if(s.rMin===0){op('entete',{sens:'lignes',n:Math.min(2,s.rMax+1)});}
-  else if(s.cMin===0){op('entete',{sens:'colonnes',n:Math.min(2,s.cMax+1)});}
-  else{etat(TXT.rien);}}
-// F3 : « Retirer l'en-tête » déduit le SENS de la sélection (même logique que
-// onDefinirEntete) et ne retire QUE cet en-tête (lignes OU colonnes, pas les deux).
-function onRetirerEntete(){if(!selection){etat(TXT.rien);return;}var s=selection,nbC=dispo.nbColonnes,nbL=dispo.nbLignes;
-  if(s.rMin===0&&(s.cMax-s.cMin+1)===nbC&&!(s.rMax===nbL-1&&nbC===1)){op('enteteRetirer',{sens:'lignes'});}
-  else if(s.cMin===0&&(s.rMax-s.rMin+1)===nbL){op('enteteRetirer',{sens:'colonnes'});}
-  else if(s.rMin===0){op('enteteRetirer',{sens:'lignes'});}
-  else if(s.cMin===0){op('enteteRetirer',{sens:'colonnes'});}
-  else{etat(TXT.rien);}}
-function appliquerTotal(){if(!selection){etat(TXT.rien);return;}op('total',{rMin:selection.rMin,rMax:selection.rMax,teinte:ctl.total.value,gras:ctl.totalGras.checked?'oui':'non'});}
+  var ind=document.createElement('span');ind.id='indic';ind.setAttribute('aria-live','polite');barre.appendChild(ind);
+  construirePanneau();}
+// « Sens » d'en-tête déduit de la sélection (F3) : rangée du haut pleine largeur ->
+// 'lignes' (fixe enteteLignes) ; colonne de gauche pleine hauteur -> 'colonnes' (fixe
+// enteteColonnes) ; sinon selon le bord touché ; null si la sélection ne touche ni le
+// haut ni la gauche. Partagé par le menu contextuel et onDefinir/onRetirerEntete.
+function sensEntete(s){if(!s||!dispo)return null;var nbC=dispo.nbColonnes,nbL=dispo.nbLignes;
+  var pleineLargeur=(s.cMin===0&&s.cMax===nbC-1),pleineHauteur=(s.rMin===0&&s.rMax===nbL-1);
+  // Bande de rangées touchant le haut (ligne entière) -> en-têtes de colonnes (haut).
+  if(s.rMin===0&&pleineLargeur&&!(pleineHauteur&&nbC===1))return 'lignes';
+  // Bande de colonnes touchant la gauche (colonne entière) -> en-têtes de lignes (gauche).
+  if(s.cMin===0&&pleineHauteur)return 'colonnes';
+  // Cellule/plage touchant le bord haut -> lignes ; touchant SEULEMENT le bord gauche -> colonnes.
+  if(s.rMin===0&&!pleineLargeur)return 'lignes';
+  if(s.cMin===0&&!pleineLargeur&&s.rMin!==0)return 'colonnes';
+  return null;}
+function onDefinirEntete(){var sens=sensEntete(selection);if(!sens){etat(TXT.rien);return;}var s=selection;
+  if(sens==='lignes'){op('entete',{sens:'lignes',n:Math.min(2,s.rMax+1)});}
+  else{op('entete',{sens:'colonnes',n:Math.min(2,s.cMax+1)});}}
+// F3 : « Retirer l'en-tête » déduit le SENS de la sélection (même logique) et ne retire
+// QUE cet en-tête (lignes OU colonnes, pas les deux).
+function onRetirerEntete(){var sens=sensEntete(selection);if(!sens){etat(TXT.rien);return;}op('enteteRetirer',{sens:sens});}
 function viderSel(mode){if(!selection){etat(TXT.rien);return;}op('vider',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax,mode:mode});}
 function aligner(v){if(!selection){etat(TXT.rien);return;}op('aligner',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax,valeur:v});}
-function barreT2(barre){
-  var ge=groupe(TXT.grpEntetes);
-  ge.appendChild(bouton(TXT.entete,onDefinirEntete,'',TXT['tip.entete']));
-  ge.appendChild(bouton(TXT.enteteRetirer,onRetirerEntete,'',TXT['tip.enteteRetirer']));
-  barre.appendChild(ge);
-  ctl.styleLigne=selCtrl(barre,TXT.styleLigne,STYLES(),function(v){op('styleEntete',{cible:'ligne',valeur:v});},TXT['tip.styleEntete']);
-  ctl.styleColonne=selCtrl(barre,TXT.styleColonne,STYLES(),function(v){op('styleEntete',{cible:'colonne',valeur:v});},TXT['tip.styleEntete']);
-  var etiq=groupe('');var le=document.createElement('span');le.className='lbl';le.textContent=TXT.grpStyles;etiq.appendChild(le);barre.appendChild(etiq);
-  ctl.zebre=selCtrl(barre,TXT.zebre,[['non',TXT['zebre.non']],['lignes',TXT['zebre.lignes']],['colonnes',TXT['zebre.colonnes']]],function(v){op('reglage',{champ:'zebre',valeur:v});},TXT['tip.zebre']);
-  ctl.zebreTeinte=selCtrl(barre,TXT.teinte,[['gris',TXT['teinte.gris']],['couleur',TXT['teinte.couleur']]],function(v){op('reglage',{champ:'zebreTeinte',valeur:v});});
-  ctl.separateurs=selCtrl(barre,TXT.separateurs,[['non',TXT['sep.non']],['gris',TXT['sep.gris']],['couleur',TXT['sep.couleur']]],function(v){op('reglage',{champ:'separateurs',valeur:v});},TXT['tip.separateurs']);
-  ctl.bordureHaute=selCtrl(barre,TXT.bordureHaute,[['non',TXT.non],['oui',TXT.oui]],function(v){op('reglage',{champ:'bordureHaute',valeur:v});});
-  ctl.bordureBasse=selCtrl(barre,TXT.bordureBasse,[['non',TXT.non],['oui',TXT.oui]],function(v){op('reglage',{champ:'bordureBasse',valeur:v});});
-  ctl.total=selCtrl(barre,TXT.total,[['non',TXT['total.non']],['gris',TXT['total.gris']],['couleur',TXT['total.couleur']]],function(v){appliquerTotal();},TXT['tip.total']);
-  var gg=groupe('');var lab=document.createElement('label');lab.style.display='inline-flex';lab.style.alignItems='center';lab.style.gap='.25em';var cb=document.createElement('input');cb.type='checkbox';ctl.totalGras=cb;cb.addEventListener('change',appliquerTotal);lab.appendChild(cb);lab.appendChild(document.createTextNode(TXT['total.gras']));gg.appendChild(lab);barre.appendChild(gg);
-  ctl.accent=selCtrl(barre,TXT.accent,[['gris',TXT['accent.gris']],['couleur',TXT['accent.couleur']]],function(v){accentMode=v;stylerApercu();},TXT['tip.accent']);
-  if(!accent){ctl.accent.title=TXT['accent.aucune'];}
-}
-function majT2(){if(!modele||!ctl.zebre)return;var a=modele.attrs;
-  ctl.styleLigne.value=a.enteteLigneStyle;ctl.styleColonne.value=a.enteteColonneStyle;
-  ctl.zebre.value=a.zebre;ctl.zebreTeinte.value=a.zebreTeinte;ctl.separateurs.value=a.separateurs;
-  ctl.bordureHaute.value=a.bordureHaute;ctl.bordureBasse.value=a.bordureBasse;ctl.accent.value=accentMode;}
+
+// ---- Panneau de mise en forme : 3 zones (Preset désactivé / En-têtes / Tableau) ----
+// Les contrôles LISENT le modèle (majPanneau) et POSTENT au changement les opérations
+// styleEntete/reglage (mêmes qu'appliquerOperationTable côté hôte) -> l'hôte met à jour
+// les attrs -> renvoie « charger » -> aperçu live. Annuler/rétablir : via op() (empile
+// l'état pré-op comme toute autre opération). Aucune injection HTML : DOM uniquement.
+function fmt(s,v){return String(s||'').split('{0}').join(v);}
+function fieldsetZone(legende){var fs=document.createElement('fieldset');fs.className='zone';var lg=document.createElement('legend');lg.textContent=legende;fs.appendChild(lg);return fs;}
+function caseACocher(label,onCh){var l=document.createElement('label');l.className='opt';var i=document.createElement('input');i.type='checkbox';i.addEventListener('change',onCh);l.appendChild(i);l.appendChild(document.createTextNode(label));return {label:l,input:i};}
+function groupeRadios(nom,options,onCh){var wrap=document.createElement('div');wrap.className='radios';var inputs={};
+  options.forEach(function(o){var l=document.createElement('label');l.className='opt';var i=document.createElement('input');i.type='radio';i.name=nom;i.value=o[0];
+    i.addEventListener('change',function(){if(i.checked)onCh(o[0]);});l.appendChild(i);l.appendChild(document.createTextNode(o[1]));wrap.appendChild(l);inputs[o[0]]=i;});
+  return {wrap:wrap,inputs:inputs};}
+function FONDS_OPT(){return [['aucun',TXT['fond.aucun']],['negatif',TXT['fond.negatif']],['couleur',TXT['fond.couleur']],['gris',TXT['fond.gris']]];}
+function ZEBRES_OPT(){return [['aucun',TXT['zebre.aucun']],['paires',TXT['zebre.paires']],['impaires',TXT['zebre.impaires']]];}
+function fondChoisi(rd){for(var k in rd.inputs){if(rd.inputs[k].checked)return k;}return 'aucun';}
+function envoyerEntete(o){op('styleEntete',{cible:o.cible,gras:o.gras.checked,fond:fondChoisi(o.radios)});}
+function sousBlocEntete(parent,titre,cible){var bloc=document.createElement('div');bloc.className='sousbloc';
+  var h=document.createElement('div');h.className='sbtitre';h.textContent=titre;bloc.appendChild(h);
+  var o={cible:cible,bloc:bloc};
+  var g=caseACocher(TXT.gras,function(){envoyerEntete(o);});bloc.appendChild(g.label);o.gras=g.input;
+  o.radios=groupeRadios('fond-'+cible,FONDS_OPT(),function(){envoyerEntete(o);});bloc.appendChild(o.radios.wrap);
+  var hint=document.createElement('p');hint.className='note';hint.textContent=TXT['entetes.aucun'];hint.style.display='none';bloc.appendChild(hint);o.hint=hint;
+  parent.appendChild(bloc);return o;}
+function sousBlocZebre(parent,titre,champ,champEnt){var bloc=document.createElement('div');bloc.className='sousbloc';
+  var h=document.createElement('div');h.className='sbtitre';h.textContent=titre;bloc.appendChild(h);
+  var o={bloc:bloc};
+  o.radios=groupeRadios(champ,ZEBRES_OPT(),function(v){op('reglage',{champ:champ,valeur:v});});bloc.appendChild(o.radios.wrap);
+  var ent=caseACocher(TXT['zebre.entetes'],function(){op('reglage',{champ:champEnt,valeur:ent.input.checked});});bloc.appendChild(ent.label);o.entetes=ent.input;
+  parent.appendChild(bloc);return o;}
+function construirePanneau(){panneau.textContent='';panneau.setAttribute('aria-label',TXT['zone.styles']||'');
+  // Zone 1 : Preset (désactivé — à implémenter plus tard).
+  var z1=fieldsetZone(TXT['zone.preset']);
+  var rp=groupeRadios('preset',[['1',fmt(TXT.modele,1)],['2',fmt(TXT.modele,2)],['3',fmt(TXT.modele,3)],['4',fmt(TXT.modele,4)]],function(){});
+  Object.keys(rp.inputs).forEach(function(k){rp.inputs[k].disabled=true;});z1.appendChild(rp.wrap);
+  var note=document.createElement('p');note.className='note';note.textContent=TXT['preset.bientot'];z1.appendChild(note);
+  panneau.appendChild(z1);
+  // Zone 2 : Styles des en-têtes (en-têtes de lignes / colonnes / ligne de total).
+  var z2=fieldsetZone(TXT['zone.entetes']);
+  ctl.el=sousBlocEntete(z2,TXT.entetesLignes,'lignes');
+  ctl.ec=sousBlocEntete(z2,TXT.entetesColonnes,'colonnes');
+  ctl.tot=sousBlocEntete(z2,TXT.total,'total');
+  panneau.appendChild(z2);
+  // Zone 3 : Styles du tableau (bordures + zébrage colonnes/lignes).
+  var z3=fieldsetZone(TXT['zone.tableau']);
+  var cbh=caseACocher(TXT.bordureHaute,function(){op('reglage',{champ:'bordureHaute',valeur:cbh.input.checked});});z3.appendChild(cbh.label);ctl.bordureHaute=cbh.input;
+  var cbb=caseACocher(TXT.bordureBasse,function(){op('reglage',{champ:'bordureBasse',valeur:cbb.input.checked});});z3.appendChild(cbb.label);ctl.bordureBasse=cbb.input;
+  ctl.zebreCol=sousBlocZebre(z3,TXT.zebreCol,'zebreCol','zebreColEntetes');
+  ctl.zebreLig=sousBlocZebre(z3,TXT.zebreLig,'zebreLig','zebreLigEntetes');
+  panneau.appendChild(z3);}
+function cocherRadio(rd,val){for(var k in rd.inputs){rd.inputs[k].checked=(k===val);}}
+// Un sous-bloc d'en-tête n'agit que si l'en-tête correspondant existe (el = colonnes de
+// gauche -> enteteColonnes ; ec = rangées du haut -> enteteLignes) : sinon grisé + indice.
+function majEntete(o,gras,fond,actif){o.gras.checked=!!gras;cocherRadio(o.radios,fond);
+  o.gras.disabled=!actif;for(var k in o.radios.inputs){o.radios.inputs[k].disabled=!actif;}
+  o.bloc.classList.toggle('inactif',!actif);if(o.hint)o.hint.style.display=actif?'none':'';}
+function majZebre(o,val,ent){cocherRadio(o.radios,val);o.entetes.checked=!!ent;o.entetes.disabled=(val==='aucun');}
+function majPanneau(){if(!modele||!ctl.el)return;var a=modele.attrs;
+  majEntete(ctl.el,a.elGras,a.elFond,a.enteteColonnes>0);
+  majEntete(ctl.ec,a.ecGras,a.ecFond,a.enteteLignes>0);
+  majEntete(ctl.tot,a.totalGras,a.totalFond,true);
+  ctl.bordureHaute.checked=!!a.bordureHaute;ctl.bordureBasse.checked=!!a.bordureBasse;
+  majZebre(ctl.zebreCol,a.zebreCol,a.zebreColEntetes);
+  majZebre(ctl.zebreLig,a.zebreLig,a.zebreLigEntetes);}
 function etat(msg){var e=document.getElementById('etat');if(e)e.textContent=msg;}
 
 // ---- Historique, garde non-enregistré, enregistrement, retour ----
@@ -302,13 +385,12 @@ window.addEventListener('message',function(ev){var msg=ev.data||{};
   if(msg.type==='charger'){
     modele=msg.modele;dispo=msg.disposition;if(msg.accent!==undefined)accent=msg.accent;
     if(msg.i18n){TXT=msg.i18n;
-      if(premierChargement){accentMode=accent?'couleur':'gris';premierChargement=false;}
       modeleEnregistre=clone(modele);annuler=[];retablir=[];avantEdition=null;dernierModifie=false;
       aide.textContent=TXT.aide||'';construireBarre();}
     // F1 : un « charger » sans i18n = résultat d'une opération / d'une annulation-
     // rétablissement. On NE réinitialise PLUS l'historique ici (c'était la cause de
     // « Annuler ne fait rien ») : les piles vivent uniquement dans op / commitTexte.
-    selection=clampSel(selection);ancre=null;rendre();majT2();etat('');majModifie();}
+    selection=clampSel(selection);ancre=null;rendre();majPanneau();etat('');majModifie();}
   else if(msg.type==='enregistre'){modeleEnregistre=enrEnCours||clone(modele);etat(TXT.enregistre||'');majModifie();}
   else if(msg.type==='erreur'){etat('⚠ '+msg.message);}});
 api.postMessage({type:'pret'});

@@ -17,7 +17,30 @@ select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground
 p.aide { color: var(--vscode-descriptionForeground); font-size: .82em; margin: .1rem 0 .6rem; flex: 0 0 auto; }
 #etat { font-size: .85em; color: var(--vscode-descriptionForeground); margin-left: .3rem; }
 #indic { font-size: .95em; color: var(--vscode-editorWarning-foreground, #d1901e); margin-left: .1rem; font-weight: 700; }
-#zone { overflow: auto; flex: 1 1 auto; }
+/* Corps = grille (à gauche) + panneau de mise en forme (à droite) ; empile sur écran
+   étroit (flex-wrap). Chacun défile indépendamment. */
+.corps { display: flex; flex: 1 1 auto; gap: .8rem; min-height: 0; align-items: flex-start; flex-wrap: wrap; }
+#zone { overflow: auto; flex: 1 1 22rem; min-width: 0; align-self: stretch; }
+
+/* ── Panneau des 3 zones de style (Preset / En-têtes / Tableau) ─────────────── */
+.panneau { flex: 0 0 17rem; max-width: 20rem; overflow: auto; align-self: stretch;
+  display: flex; flex-direction: column; gap: .55rem; }
+.panneau .zone { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));
+  border-radius: 5px; padding: .1rem .6rem .5rem; margin: 0; min-width: 0; }
+.panneau legend { font-size: .82em; font-weight: 700; padding: 0 .3em;
+  color: var(--vscode-foreground); }
+.panneau .sousbloc { padding: .25rem 0 .1rem; }
+.panneau .sousbloc + .sousbloc { border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,.2)); margin-top: .2rem; }
+.panneau .sbtitre { font-size: .82em; font-weight: 600; margin: .15rem 0 .2rem;
+  color: var(--vscode-descriptionForeground); }
+.panneau .radios { display: flex; flex-direction: column; gap: .05rem; }
+.panneau label.opt { display: flex; align-items: center; gap: .35em; font-size: .86em;
+  padding: .08rem 0; cursor: pointer; }
+.panneau label.opt input { margin: 0; cursor: pointer; }
+.panneau .note { font-size: .78em; color: var(--vscode-descriptionForeground); margin: .25rem 0 0; font-style: italic; }
+/* Sous-bloc désactivé (aucun en-tête correspondant) : grisé + indice affiché. */
+.panneau .sousbloc.inactif { opacity: .5; }
+.panneau label.opt input:disabled { cursor: default; }
 table.grille { border-collapse: collapse; }
 table.grille th, table.grille td { border: 1px solid var(--vscode-panel-border, #888);
   padding: .3em .5em; min-width: 3em; height: 1.9em; vertical-align: top; text-align: left; }
