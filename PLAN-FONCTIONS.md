@@ -261,7 +261,7 @@ en banque.
 
 ### N7 · Éditeur de métadonnées de tous les articles (g) — *taille L ; extension ; en dernier (risque n°1)*
 
-- [ ] **Sérialiseur de frontmatter** (le point dur) — dans un module de fonctions
+- [x] **Sérialiseur de frontmatter** (le point dur) — dans un module de fonctions
   pures testable :
   - `separerFrontmatter(texte)` → `{ avant, fm, corps }` : le frontmatter n'existe que
     si le fichier **commence** (ligne 1) par `---` ; il se termine à la 1ʳᵉ ligne
@@ -275,15 +275,15 @@ en banque.
     mappings ; `keywords` en séquence), **préserve** les lignes de clés inconnues et le
     **corps verbatim**, ré-encadre par `---` ; crée le bloc s'il manque (préfixé au
     corps). BOM/CRLF/écriture atomique comme G1.
-- [ ] **Commande + bouton** `szh.apercuMetadonnees` en tête de vue (`$(list-flat)` ou
+- [x] **Commande + bouton** `szh.apercuMetadonnees` en tête de vue (`$(list-flat)` ou
   `$(preview)`), après ⚙.
-- [ ] **Webview** (CSP stricte, thème) : une **carte par article** (slug en titre) avec
+- [x] **Webview** (CSP stricte, thème) : une **carte par article** (slug en titre) avec
   champs `title`, `subtitle`, `doi` ; sous-liste **auteurs** répétable (ajouter /
   retirer, chaque auteur = `name`, `affiliation`, `orcid`) ; `keywords` (saisie type
   tags / séparés par virgule). Valeurs chargées par `postMessage` (l'hôte lit chaque
   `<slug>.md`). **Dirty-tracking par article** : « Enregistrer » ne réécrit que les
   articles modifiés.
-- [ ] **Hôte** : à l'enregistrement, pour chaque article modifié, lit le `.md`,
+- [x] **Hôte** : à l'enregistrement, pour chaque article modifié, lit le `.md`,
   `serialiserFrontmatter`, écriture atomique ; renvoie un accusé au webview ; rafraîchit.
   Clé pandoc = `author` (liste), `keywords` (liste), `doi` (clé libre) — alimente
   Pandoc via le frontmatter (présentation = template final, hors périmètre).

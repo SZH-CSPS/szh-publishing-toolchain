@@ -827,6 +827,234 @@ function analyserAusgabe(contenu) {
   return valeurs;
 }
 
+// ---- Frontmatter d'article (N7, D48) -----------------------------------------------
+//
+// Les métadonnées d'un article vivent dans le frontmatter YAML de son <slug>.md
+// (créé s'il manque). Clés gérées : title, subtitle, author (liste structurée
+// name/affiliation/orcid), doi, keywords (liste). Tout le reste — corps de
+// l'article, clés inconnues, commentaires — est préservé VERBATIM (risque R1).
+
+const CLES_FRONTMATTER = ['title', 'subtitle', 'author', 'doi', 'keywords'];
+
+// Découpe un article : { bom, fm, corps, eol }. Le frontmatter n'existe que si la
+// PREMIÈRE ligne du fichier est exactement « --- » ; il se ferme à la première
+// ligne « --- » ou « ... ». Un « --- » plus loin dans le corps (règle horizontale)
+// n'est JAMAIS pris pour une borne. `fm` = texte brut entre les bornes (null si
+// absent) ; `corps` = tout le reste, restitué tel quel.
+function separerFrontmatter(texte) {
+  texte = String(texte);
+  const bom = texte.charAt(0) === '\uFEFF' ? '\uFEFF' : '';
+  const sansBom = bom ? texte.slice(1) : texte;
+  const eol = sansBom.indexOf('\r\n') !== -1 ? '\r\n' : '\n';
+  const finLigne1 = sansBom.search(/\r?\n/);
+  const ligne1 = finLigne1 === -1 ? sansBom : sansBom.slice(0, finLigne1);
+  if (finLigne1 === -1 || !/^---\s*$/.test(ligne1)) {
+    return { bom: bom, fm: null, corps: sansBom, eol: eol };
+  }
+  const debutFm = finLigne1 + (sansBom.charAt(finLigne1) === '\r' ? 2 : 1);
+  let position = debutFm;
+  while (position <= sansBom.length) {
+    const finLigne = sansBom.indexOf('\n', position);
+    const finBrute = finLigne === -1 ? sansBom.length : finLigne;
+    let ligne = sansBom.slice(position, finBrute);
+    if (ligne.charAt(ligne.length - 1) === '\r') { ligne = ligne.slice(0, -1); }
+    if (/^(---|\.\.\.)\s*$/.test(ligne)) {
+      const fm = sansBom.slice(debutFm, position).replace(/\r?\n$/, '');
+      const corps = finLigne === -1 ? '' : sansBom.slice(finLigne + 1);
+      return { bom: bom, fm: fm, corps: corps, eol: eol };
+    }
+    if (finLigne === -1) { break; }
+    position = finLigne + 1;
+  }
+  return { bom: bom, fm: null, corps: sansBom, eol: eol };  // borne jamais fermée
+}
+
+// Valeurs des clés gérées d'un frontmatter (best effort sur l'existant).
+// author accepte : scalaire (« author: Jean ») -> [{name}], liste de scalaires,
+// liste de mappings (name/affiliation/orcid). keywords accepte : scalaire,
+// flow ([a, b]) et liste « - mot ».
+// Découpe l'intérieur d'une liste flow « [a, "b, c", d] » sur les virgules HORS
+// guillemets (échappes \" et '' respectées).
+function decouperFlowYaml(interieur) {
+  const morceaux = [];
+  let courant = '';
+  let guillemet = null;
+  for (let j = 0; j < interieur.length; j++) {
+    const c = interieur.charAt(j);
+    if (guillemet !== null) {
+      courant += c;
+      if (guillemet === '"' && c === '\\') { courant += interieur.charAt(j + 1); j++; continue; }
+      if (c === guillemet) {
+        if (guillemet === "'" && interieur.charAt(j + 1) === "'") { courant += "'"; j++; continue; }
+        guillemet = null;
+      }
+      continue;
+    }
+    if (c === '"' || c === "'") { guillemet = c; courant += c; continue; }
+    if (c === ',') { morceaux.push(courant); courant = ''; continue; }
+    courant += c;
+  }
+  if (courant.trim() !== '') { morceaux.push(courant); }
+  return morceaux;
+}
+
+function analyserFrontmatter(fm) {
+  const valeurs = {};
+  if (fm === null || fm === undefined) { return valeurs; }
+  const lignes = String(fm).split(/\r?\n/);
+  let i = 0;
+  while (i < lignes.length) {
+    const m = lignes[i].match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!m) { i++; continue; }
+    const cle = m[1];
+    const reste = m[2];
+    if (cle === 'author') {
+      const auteurs = [];
+      const net = reste.trim();
+      if (net !== '' && net.charAt(0) !== '#') {
+        auteurs.push({ name: decouperValeurYaml(reste).valeur });
+        i++;
+      } else {
+        i++;
+        let courant = null;
+        while (i < lignes.length && !/^[A-Za-z0-9_-]+:/.test(lignes[i])) {
+          const item = lignes[i].match(/^\s*-\s*(.*)$/);
+          const champ = lignes[i].match(/^\s+([A-Za-z0-9_-]+):\s*(.*)$/);
+          if (item) {
+            courant = {};
+            auteurs.push(courant);
+            const interne = item[1].match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+            if (interne) { courant[interne[1]] = decouperValeurYaml(interne[2]).valeur; }
+            else if (item[1].trim() !== '') { courant.name = decouperValeurYaml(item[1]).valeur; }
+          } else if (champ && courant) {
+            courant[champ[1]] = decouperValeurYaml(champ[2]).valeur;
+          }
+          i++;
+        }
+      }
+      valeurs.author = auteurs
+        .map((a) => ({
+          name: String(a.name || ''), affiliation: String(a.affiliation || ''), orcid: String(a.orcid || '')
+        }))
+        .filter((a) => a.name !== '' || a.affiliation !== '' || a.orcid !== '');
+      continue;
+    }
+    if (cle === 'keywords') {
+      const mots = [];
+      const net = reste.trim();
+      if (net.charAt(0) === '[') {
+        for (const morceau of decouperFlowYaml(net.replace(/^\[/, '').replace(/\]\s*$/, ''))) {
+          const v = decouperValeurYaml(morceau.trim()).valeur;
+          if (v !== '') { mots.push(v); }
+        }
+        i++;
+      } else if (net !== '' && net.charAt(0) !== '#') {
+        mots.push(decouperValeurYaml(net).valeur);
+        i++;
+      } else {
+        i++;
+        while (i < lignes.length && !/^[A-Za-z0-9_-]+:/.test(lignes[i])) {
+          const item = lignes[i].match(/^\s*-\s*(.*)$/);
+          if (item) {
+            const v = decouperValeurYaml(item[1]).valeur;
+            if (v !== '') { mots.push(v); }
+          }
+          i++;
+        }
+      }
+      valeurs.keywords = mots;
+      continue;
+    }
+    if (CLES_FRONTMATTER.indexOf(cle) !== -1 && !(cle in valeurs)) {
+      valeurs[cle] = decouperValeurYaml(reste).valeur;
+    }
+    i++;
+  }
+  return valeurs;
+}
+
+function citerFrontmatter(valeur) {
+  return '"' + String(valeur).replace(/([\\"])/g, '\\$1') + '"';
+}
+
+// Lignes canoniques d'une clé gérée. [] si la valeur est « vide » -> la clé est
+// RETIRÉE du frontmatter (pas de clé fantôme « "" » côté pandoc).
+function lignesCleFrontmatter(cle, valeur) {
+  if (cle === 'author') {
+    const auteurs = (Array.isArray(valeur) ? valeur : [])
+      .map((a) => ({
+        name: String((a && a.name) || '').trim(),
+        affiliation: String((a && a.affiliation) || '').trim(),
+        orcid: String((a && a.orcid) || '').trim()
+      }))
+      .filter((a) => a.name !== '' || a.affiliation !== '' || a.orcid !== '');
+    if (auteurs.length === 0) { return []; }
+    const lignes = ['author:'];
+    for (const a of auteurs) {
+      let premiere = true;
+      for (const champ of ['name', 'affiliation', 'orcid']) {
+        if (a[champ] === '') { continue; }
+        lignes.push((premiere ? '- ' : '  ') + champ + ': ' + citerFrontmatter(a[champ]));
+        premiere = false;
+      }
+    }
+    return lignes;
+  }
+  if (cle === 'keywords') {
+    const mots = (Array.isArray(valeur) ? valeur : [])
+      .map((v) => String(v).trim())
+      .filter((v) => v !== '');
+    if (mots.length === 0) { return []; }
+    return ['keywords:'].concat(mots.map((v) => '- ' + citerFrontmatter(v)));
+  }
+  const v = String(valeur === undefined || valeur === null ? '' : valeur).trim();
+  if (v === '') { return []; }
+  return [cle + ': ' + citerFrontmatter(v)];
+}
+
+// Réécrit le document : les clés gérées de `modifies` sont régénérées EN PLACE
+// (à la position de leur première occurrence), les clés absentes sont ajoutées en
+// fin de frontmatter (ordre D48), les lignes inconnues (clés libres, commentaires,
+// vides) sont restituées telles quelles et le CORPS n'est jamais touché. Crée le
+// bloc s'il manque ; le supprime s'il devient vide. BOM/CRLF préservés.
+function serialiserFrontmatter(texte, modifies) {
+  const partie = separerFrontmatter(texte);
+  const fmLignes = (partie.fm === null || partie.fm === '') ? [] : partie.fm.split(/\r?\n/);
+  const segments = [];
+  for (const ligne of fmLignes) {
+    const cle = (ligne.match(/^([A-Za-z0-9_-]+):/) || [])[1];
+    if (cle) { segments.push({ cle: cle, lignes: [ligne] }); continue; }
+    const dernier = segments[segments.length - 1];
+    // Continuation d'une clé : ligne indentée ou item de liste « - … ».
+    if (dernier && dernier.cle && (/^\s+\S/.test(ligne) || /^\s*-\s/.test(ligne))) {
+      dernier.lignes.push(ligne);
+    } else {
+      segments.push({ cle: null, lignes: [ligne] });
+    }
+  }
+  const restantes = new Set(
+    Object.keys(modifies).filter((c) => CLES_FRONTMATTER.indexOf(c) !== -1)
+  );
+  const sortie = [];
+  for (const s of segments) {
+    if (s.cle && restantes.has(s.cle)) {
+      restantes.delete(s.cle);
+      const nouvelles = lignesCleFrontmatter(s.cle, modifies[s.cle]);
+      for (const l of nouvelles) { sortie.push(l); }
+    } else {
+      for (const l of s.lignes) { sortie.push(l); }
+    }
+  }
+  for (const cle of CLES_FRONTMATTER) {
+    if (!restantes.has(cle)) { continue; }
+    const nouvelles = lignesCleFrontmatter(cle, modifies[cle]);
+    for (const l of nouvelles) { sortie.push(l); }
+  }
+  if (sortie.length === 0) { return partie.bom + partie.corps; }  // plus de frontmatter
+  const eol = partie.eol;
+  return partie.bom + '---' + eol + sortie.join(eol) + eol + '---' + eol + partie.corps;
+}
+
 // ---- Titre de la vue (N2, D43) -----------------------------------------------------
 //
 // « {Z|R}{AAAA}-{numero} | {title} » : Z pour une revue allemande (lang commence
@@ -1034,6 +1262,238 @@ function ouvrirMetadonnees(fournisseur, rafraichirTout) {
   });
 }
 
+// ---- Éditeur des métadonnées de TOUS les articles (N7, D48) ------------------------
+
+// Webview « Métadonnées des articles » : une carte par article (title, subtitle,
+// doi, auteurs répétables name/affiliation/orcid, keywords séparés par des
+// virgules). Les cartes sont construites par DOM (jamais d'injection HTML), les
+// valeurs arrivent par postMessage. Dirty-tracking PAR ARTICLE : « Enregistrer »
+// ne réécrit que les articles modifiés.
+function htmlApercuMetadonnees(nonce) {
+  return '<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="UTF-8">\n' +
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; script-src \'nonce-' + nonce + '\'">\n' +
+    '<title>Métadonnées des articles</title>\n' +
+    '<style>\n' +
+    'body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);\n' +
+    '  color: var(--vscode-foreground); background: var(--vscode-editor-background);\n' +
+    '  padding: 1rem 1.2rem; max-width: 46rem; }\n' +
+    'h1 { font-size: 1.15em; font-weight: 600; margin: 0 0 .25rem; }\n' +
+    'p.note { color: var(--vscode-descriptionForeground); margin: 0 0 1rem; font-size: .88em; }\n' +
+    '.carte { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));\n' +
+    '  border-radius: 4px; padding: .8rem 1rem 1rem; margin: 0 0 1rem; }\n' +
+    '.carte h2 { font-size: 1em; font-weight: 600; margin: 0 0 .2rem; font-family: var(--vscode-editor-font-family, monospace); }\n' +
+    'label { display: block; margin: .6rem 0 .2rem; font-weight: 600; font-size: .9em; }\n' +
+    'input { width: 100%; box-sizing: border-box; padding: .3em .5em; font: inherit;\n' +
+    '  color: var(--vscode-input-foreground); background: var(--vscode-input-background);\n' +
+    '  border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; }\n' +
+    'input:focus { outline: 1px solid var(--vscode-focusBorder); }\n' +
+    '.auteur { display: flex; gap: .4rem; margin: .3rem 0; align-items: center; }\n' +
+    '.auteur input { flex: 1 1 0; }\n' +
+    'button { padding: .35em .9em; border: none; border-radius: 2px; font: inherit; cursor: pointer;\n' +
+    '  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));\n' +
+    '  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background)); }\n' +
+    'button.principal { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }\n' +
+    'button.principal:hover { background: var(--vscode-button-hoverBackground); }\n' +
+    'button.retirer { flex: 0 0 auto; padding: .3em .6em; }\n' +
+    '.barre { position: sticky; top: 0; background: var(--vscode-editor-background);\n' +
+    '  padding: .4rem 0 .6rem; margin-bottom: .6rem; z-index: 1; }\n' +
+    '#etat { margin-left: .8rem; font-size: .92em; color: var(--vscode-descriptionForeground); }\n' +
+    '.modifie h2::after { content: " ●"; color: var(--vscode-charts-orange, orange); }\n' +
+    '</style>\n</head>\n<body>\n' +
+    '<h1>Métadonnées des articles</h1>\n' +
+    '<p class="note">Enregistrées dans le frontmatter de chaque article — seuls les articles modifiés (●) sont réécrits ; corps et clés inconnues préservés.</p>\n' +
+    '<div class="barre"><button class="principal" id="enregistrer">Enregistrer</button><span id="etat" role="status"></span></div>\n' +
+    '<div id="cartes"></div>\n' +
+    '<script nonce="' + nonce + '">\n' +
+    '(function () {\n' +
+    "  'use strict';\n" +
+    '  const vscodeApi = acquireVsCodeApi();\n' +
+    "  const etat = document.getElementById('etat');\n" +
+    "  const conteneur = document.getElementById('cartes');\n" +
+    '  const modifies = new Set();\n' +
+    '  function champ(carte, slug, cle, libelle, valeur) {\n' +
+    "    const l = document.createElement('label');\n" +
+    '    l.textContent = libelle;\n' +
+    "    const i = document.createElement('input');\n" +
+    "    i.type = 'text';\n" +
+    '    i.value = valeur || \'\';\n' +
+    '    i.dataset.cle = cle;\n' +
+    "    i.addEventListener('input', function () { modifies.add(slug); carte.classList.add('modifie'); etat.textContent = ''; });\n" +
+    '    carte.appendChild(l);\n' +
+    '    carte.appendChild(i);\n' +
+    '    return i;\n' +
+    '  }\n' +
+    '  function ligneAuteur(carte, slug, zone, auteur) {\n' +
+    "    const rangee = document.createElement('div');\n" +
+    "    rangee.className = 'auteur';\n" +
+    "    for (const [cle, indice] of [['name', 'Nom'], ['affiliation', 'Affiliation'], ['orcid', 'ORCID']]) {\n" +
+    "      const i = document.createElement('input');\n" +
+    "      i.type = 'text';\n" +
+    '      i.placeholder = indice;\n' +
+    '      i.value = (auteur && auteur[cle]) || \'\';\n' +
+    '      i.dataset.cle = cle;\n' +
+    "      i.addEventListener('input', function () { modifies.add(slug); carte.classList.add('modifie'); etat.textContent = ''; });\n" +
+    '      rangee.appendChild(i);\n' +
+    '    }\n' +
+    "    const retirer = document.createElement('button');\n" +
+    "    retirer.type = 'button';\n" +
+    "    retirer.className = 'retirer';\n" +
+    "    retirer.textContent = '✕';\n" +
+    "    retirer.title = 'Retirer cet auteur';\n" +
+    "    retirer.addEventListener('click', function () { rangee.remove(); modifies.add(slug); carte.classList.add('modifie'); });\n" +
+    '    rangee.appendChild(retirer);\n' +
+    '    zone.appendChild(rangee);\n' +
+    '  }\n' +
+    '  function rendre(articles) {\n' +
+    '    conteneur.textContent = \'\';\n' +
+    '    modifies.clear();\n' +
+    '    for (const article of articles) {\n' +
+    "      const carte = document.createElement('div');\n" +
+    "      carte.className = 'carte';\n" +
+    '      carte.dataset.slug = article.slug;\n' +
+    "      const titre = document.createElement('h2');\n" +
+    '      titre.textContent = article.slug;\n' +
+    '      carte.appendChild(titre);\n' +
+    '      const v = article.valeurs || {};\n' +
+    "      champ(carte, article.slug, 'title', 'Titre', v.title);\n" +
+    "      champ(carte, article.slug, 'subtitle', 'Sous-titre', v.subtitle);\n" +
+    "      const lAuteurs = document.createElement('label');\n" +
+    "      lAuteurs.textContent = 'Auteur(s)';\n" +
+    '      carte.appendChild(lAuteurs);\n' +
+    "      const zone = document.createElement('div');\n" +
+    "      zone.className = 'auteurs';\n" +
+    '      carte.appendChild(zone);\n' +
+    '      for (const a of (v.author || [])) { ligneAuteur(carte, article.slug, zone, a); }\n' +
+    "      const ajouter = document.createElement('button');\n" +
+    "      ajouter.type = 'button';\n" +
+    "      ajouter.textContent = '➕ Ajouter un auteur';\n" +
+    "      ajouter.addEventListener('click', function () { ligneAuteur(carte, article.slug, zone, null); modifies.add(article.slug); carte.classList.add('modifie'); });\n" +
+    '      carte.appendChild(ajouter);\n' +
+    "      champ(carte, article.slug, 'doi', 'DOI', v.doi);\n" +
+    "      champ(carte, article.slug, 'keywords', 'Mots-clés (séparés par des virgules)', (v.keywords || []).join(', '));\n" +
+    '      conteneur.appendChild(carte);\n' +
+    '    }\n' +
+    '  }\n' +
+    '  function collecter(carte) {\n' +
+    '    const resultat = { author: [], keywords: [] };\n' +
+    "    for (const i of carte.querySelectorAll(':scope > input')) { resultat[i.dataset.cle] = i.value; }\n" +
+    "    for (const rangee of carte.querySelectorAll('.auteur')) {\n" +
+    '      const a = {};\n' +
+    "      for (const i of rangee.querySelectorAll('input')) { a[i.dataset.cle] = i.value; }\n" +
+    '      resultat.author.push(a);\n' +
+    '    }\n' +
+    "    resultat.keywords = String(resultat.keywords || '').split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s !== ''; });\n" +
+    '    return resultat;\n' +
+    '  }\n' +
+    "  document.getElementById('enregistrer').addEventListener('click', function () {\n" +
+    "    if (modifies.size === 0) { etat.textContent = 'Aucune modification.'; return; }\n" +
+    '    const envoi = {};\n' +
+    "    for (const carte of conteneur.querySelectorAll('.carte')) {\n" +
+    '      if (modifies.has(carte.dataset.slug)) { envoi[carte.dataset.slug] = collecter(carte); }\n' +
+    '    }\n' +
+    "    vscodeApi.postMessage({ type: 'enregistrer', articles: envoi });\n" +
+    '  });\n' +
+    "  window.addEventListener('message', function (e) {\n" +
+    '    const msg = e.data || {};\n' +
+    "    if (msg.type === 'valeurs') { rendre(msg.articles || []); }\n" +
+    "    if (msg.type === 'enregistre') { etat.textContent = '✓ ' + msg.n + ' article(s) enregistré(s)'; }\n" +
+    "    if (msg.type === 'erreur') { etat.textContent = '⚠ ' + msg.message; }\n" +
+    '  });\n' +
+    "  vscodeApi.postMessage({ type: 'pret' });\n" +
+    '})();\n' +
+    '</script>\n</body>\n</html>\n';
+}
+
+let panneauArticles = null;
+
+function lireMetadonneesArticles(fournisseur) {
+  const articles = [];
+  for (const slug of fournisseur.listerArticles()) {
+    let valeurs = {};
+    try {
+      const texte = fs.readFileSync(path.join(fournisseur.racine, 'articles', slug, slug + '.md'), 'utf8');
+      valeurs = analyserFrontmatter(separerFrontmatter(texte).fm);
+    } catch (e) { /* illisible : carte vide */ }
+    articles.push({ slug: slug, valeurs: valeurs });
+  }
+  return articles;
+}
+
+// Nettoie une carte reçue du webview (types + bornes ; le slug est validé contre
+// la liste réelle des articles — jamais de chemin construit sur une entrée libre).
+function nettoyerCarte(brut) {
+  const texteCourt = (v, max) => String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' ').slice(0, max);
+  const carte = {
+    title: texteCourt(brut && brut.title, 500),
+    subtitle: texteCourt(brut && brut.subtitle, 500),
+    doi: texteCourt(brut && brut.doi, 200),
+    author: [],
+    keywords: []
+  };
+  if (brut && Array.isArray(brut.author)) {
+    for (const a of brut.author.slice(0, 20)) {
+      carte.author.push({
+        name: texteCourt(a && a.name, 200),
+        affiliation: texteCourt(a && a.affiliation, 300),
+        orcid: texteCourt(a && a.orcid, 100)
+      });
+    }
+  }
+  if (brut && Array.isArray(brut.keywords)) {
+    for (const k of brut.keywords.slice(0, 50)) {
+      const v = texteCourt(k, 100).trim();
+      if (v !== '') { carte.keywords.push(v); }
+    }
+  }
+  return carte;
+}
+
+function ouvrirApercuMetadonnees(fournisseur, rafraichirTout) {
+  if (!fournisseur.racine) { return; }
+  const envoyerValeurs = (panneau) => {
+    panneau.webview.postMessage({ type: 'valeurs', articles: lireMetadonneesArticles(fournisseur) });
+  };
+  if (panneauArticles) {
+    panneauArticles.reveal(vscode.ViewColumn.One);
+    envoyerValeurs(panneauArticles);
+    return;
+  }
+  const panneau = vscode.window.createWebviewPanel(
+    'szhApercuMetadonnees', 'Métadonnées des articles', vscode.ViewColumn.One,
+    { enableScripts: true, localResourceRoots: [] }
+  );
+  panneauArticles = panneau;
+  panneau.onDidDispose(() => { if (panneauArticles === panneau) { panneauArticles = null; } });
+  panneau.webview.html = htmlApercuMetadonnees(crypto.randomBytes(16).toString('hex'));
+  panneau.webview.onDidReceiveMessage((msg) => {
+    if (!msg) { return; }
+    if (msg.type === 'pret') { envoyerValeurs(panneau); return; }
+    if (msg.type !== 'enregistrer' || !msg.articles) { return; }
+    const connus = new Set(fournisseur.listerArticles());
+    let n = 0;
+    const erreurs = [];
+    for (const slug of Object.keys(msg.articles)) {
+      if (!connus.has(slug)) { continue; }         // slug inconnu : ignoré (sécurité)
+      const chemin = path.join(fournisseur.racine, 'articles', slug, slug + '.md');
+      try {
+        const texte = fs.readFileSync(chemin, 'utf8');
+        ecrireAusgabeAtomique(chemin, serialiserFrontmatter(texte, nettoyerCarte(msg.articles[slug])));
+        n++;
+      } catch (e) {
+        erreurs.push(slug + ' (' + e.message + ')');
+      }
+    }
+    if (erreurs.length > 0) {
+      panneau.webview.postMessage({ type: 'erreur', message: 'Écriture impossible : ' + erreurs.join(', ') });
+    } else {
+      panneau.webview.postMessage({ type: 'enregistre', n: n });
+      vscode.window.setStatusBarMessage(n + ' frontmatter(s) enregistré(s).', 3000);
+    }
+    if (rafraichirTout) { rafraichirTout(); }
+    envoyerValeurs(panneau);                       // resynchronise les cartes (dirty remis à zéro)
+  });
+}
+
 function activate(context) {
   const fournisseur = new FournisseurRevue();
   const vue = vscode.window.createTreeView(ID_VUE, {
@@ -1091,6 +1551,7 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('szh.cockpit.rafraichir', majContexte),
     vscode.commands.registerCommand('szh.metadonnees', () => ouvrirMetadonnees(fournisseur, rafraichirTout)),
+    vscode.commands.registerCommand('szh.apercuMetadonnees', () => ouvrirApercuMetadonnees(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.toutExporter', () => toutExporter(fournisseur, rafraichirTout)),
@@ -1107,4 +1568,7 @@ function activate(context) {
 function deactivate() { arreterDormeurWsl(); }
 
 // `_pur` : fonctions pures exposées pour les harnais headless (VS Code les ignore).
-module.exports = { activate, deactivate, _pur: { titreNumero } };
+module.exports = {
+  activate, deactivate,
+  _pur: { titreNumero, separerFrontmatter, analyserFrontmatter, serialiserFrontmatter }
+};

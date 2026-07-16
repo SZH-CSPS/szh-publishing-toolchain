@@ -67,6 +67,12 @@
         "title": "Remplacer le tableau",
         "category": "Revue SZH",
         "icon": "$(replace)"
+      },
+      {
+        "command": "szh.apercuMetadonnees",
+        "title": "Métadonnées des articles",
+        "category": "Revue SZH",
+        "icon": "$(list-flat)"
       }
     ],
     "menus": {
@@ -90,6 +96,11 @@
           "command": "szh.toutExporter",
           "when": "view == szhCockpitVue",
           "group": "navigation@4"
+        },
+        {
+          "command": "szh.apercuMetadonnees",
+          "when": "view == szhCockpitVue",
+          "group": "navigation@5"
         }
       ],
       "view/item/context": [
