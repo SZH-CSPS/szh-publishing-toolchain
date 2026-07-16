@@ -150,7 +150,7 @@ fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
 
 ### M2 · Extracteur Python de tableaux, fusions préservées (D50) — *taille L ; pipeline ; après N6*
 
-- [ ] **`pipeline/docx-tables.py`** : `python3 docx-tables.py <docx> <outdir>` — pour
+- [x] **`pipeline/docx-tables.py`** : `python3 docx-tables.py <docx> <outdir>` — pour
   chaque `<w:tbl>` (ordre du document) écrit `<outdir>/table-NN.html` (NN sur 2
   chiffres) :
   - `<table>`/`<tr>`/`<td>` ; **`colspan`** depuis `w:gridSpan` ; **`rowspan`** depuis
@@ -159,15 +159,22 @@ fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
   - contenu de cellule : paragraphes → `<br>`, **gras** `w:b`→`<strong>`, *italique*
     `w:i`→`<em>` ; texte échappé HTML. (Formatage riche au-delà = extensible plus tard.)
   - aucun tableau → n'écrit rien, sort 0.
-- [ ] **Filtre Lua `szh-tabelle-reference.lua`** (remplace `szh-tabelle-extraire.lua`,
+- [x] **Filtre Lua `szh-tabelle-reference.lua`** (remplace `szh-tabelle-extraire.lua`,
   déplacé en `attic/`) : `Table` → incrémente NN, renvoie la référence
   `::: {.szh-tabelle src="tables/table-NN.html"}`, **n'écrit aucun fichier**.
-- [ ] **`import-docx.sh`** : `mkdir -p tables` ; lancer
+  *(Alignement RM2 : top-down sans descendre dans le tableau remplacé = premier
+  niveau seulement, comme docx-tables.py ; les imbriqués sont rendus dedans.)*
+- [x] **`import-docx.sh`** : `mkdir -p tables` ; lancer
   `python3 "$PIPE/docx-tables.py" "$DOCX_ABS" tables` **puis** pandoc avec le filtre
   `szh-tabelle-reference.lua` ; `rmdir tables` si vide ; conserver la normalisation
   media (N4).
-- [ ] **`szh-tabelle-inclure.lua`** (compilation) : **inchangé** (lit `src`, `RawBlock`,
+- [x] **`szh-tabelle-inclure.lua`** (compilation) : **inchangé** (lit `src`, `RawBlock`,
   bloc ⚠ visible si fichier manquant).
+  **Spike consigné (2026-07-16)** : docx OOXML réel forgé (vMerge restart/continue +
+  gridSpan + gras/italique + 2ᵉ tableau simple) → `table-01.html` avec `rowspan="2"`,
+  `colspan="2"`, `<strong>`/`<em>` ; refs `.md` = fichiers (2 = 2) ; compilation :
+  sortie avec fusions, PDF OK, zéro ⚠ ; docx sans tableau → rien d'écrit, exit 0,
+  pas de `tables/`. `py_compile` OK.
 - **Vérif (SPIKE obligatoire, consigné)** : dans une revue de test (toolkit synchronisé),
   importer un `.docx` avec un tableau à **cellules fusionnées** →
   `tables/table-01.html` contient `colspan`/`rowspan` ; **le nombre de références dans

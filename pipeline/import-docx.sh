@@ -4,11 +4,12 @@
 #   import-docx.sh <chemin-docx> <slug> <pipeline_dir>
 #
 # Produit : articles/<slug>/<slug>.md + articles/<slug>/media/ (images extraites)
-#           + articles/<slug>/tables/table-NN.html (un fichier par tableau, D47)
+#           + articles/<slug>/tables/table-NN.html (un fichier par tableau, D47/D50)
 #
-# Conversion Pandoc nue + un filtre unique : chaque tableau est EXTRAIT en HTML
-# (tables/) et remplacé par une référence ::: {.szh-tabelle src="…"} résolue à la
-# compilation. Suivi de modifications accepté, commentaires Word ignorés.
+# Les tableaux sont rendus par docx-tables.py (Python stdlib, FUSIONS préservées :
+# colspan/rowspan — D50) AVANT pandoc ; le filtre Lua ne pose plus que la
+# référence ::: {.szh-tabelle src="…"} résolue à la compilation. Suivi de
+# modifications accepté, commentaires Word ignorés.
 # Les heuristiques D27-D30 (titres, listes, figures, AnyStyle, citations, rapports)
 # sont débranchées (voir pipeline/attic/) ; retour arrière = git.
 set -u
@@ -20,16 +21,21 @@ DOCX_ABS="$(realpath "$F")"
 mkdir -p "$DIR/media" "$DIR/tables"
 cd "$DIR" || exit 1
 
+# Tableaux d'abord (D50) : docx-tables.py rend chaque tableau en HTML fidèle
+# (fusions colspan/rowspan préservées) dans tables/. La numérotation (ordre du
+# document, premier niveau) DOIT rester alignée avec szh-tabelle-reference.lua.
+python3 "$PIPE/docx-tables.py" "$DOCX_ABS" tables || exit 1
+
 # --extract-media=. : images extraites sous media/ (chemins relatifs au .md,
 #   corrects car le build HTML tourne DANS le dossier de l'article). ⚠ =media doublerait en media/media/.
 # -simple_tables-multiline_tables-grid_tables : sans objet ici (les tableaux sont
-#   extraits par le filtre) — conservé par cohérence avec le writer du pipeline.
+#   remplacés par des références) — conservé par cohérence avec le writer du pipeline.
 pandoc "$DOCX_ABS" \
   --from=docx \
   --to=markdown-simple_tables-multiline_tables-grid_tables \
   --track-changes=accept \
   --extract-media=. \
-  --lua-filter="$PIPE/filters/szh-tabelle-extraire.lua" \
+  --lua-filter="$PIPE/filters/szh-tabelle-reference.lua" \
   --wrap=none \
   -o "$SLUG.md" || exit 1
 

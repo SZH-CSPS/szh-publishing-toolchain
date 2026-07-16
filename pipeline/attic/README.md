@@ -9,3 +9,8 @@ depuis l'historique git et remettre ces fichiers à leur place.
 `szh-tabelle-platzhalter.lua` (D35, placeholder `{{TABELLE NN}}`) : débranché par
 D47 (2026-07-16) au profit de `filters/szh-tabelle-extraire.lua` (tableaux extraits
 en `tables/table-NN.html`, référencés par `::: {.szh-tabelle src="…"}`).
+
+`szh-tabelle-extraire.lua` (D47, extraction pandoc.write) : débranché par D50
+(2026-07-16) — l'extraction passe par `pipeline/docx-tables.py` (fusions
+colspan/rowspan préservées) ; le filtre `filters/szh-tabelle-reference.lua` ne
+pose plus que la référence.
