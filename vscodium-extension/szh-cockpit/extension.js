@@ -447,6 +447,36 @@ function lignePos(pos) {
   return m ? parseInt(m[1], 10) : null;
 }
 
+// A2 — plage source complète d'un data-pos : « …@L:C-L:C » -> {l1,c1,l2,c2} (1-based)
+// ou null. Pur (testé headless via _pur).
+function plagePos(pos) {
+  const texte = String(pos || '');
+  const droite = texte.indexOf('@') !== -1 ? texte.slice(texte.indexOf('@') + 1) : texte;
+  const m = droite.match(/^(\d+):(\d+)-(\d+):(\d+)/);
+  if (!m) { return null; }
+  return { l1: parseInt(m[1], 10), c1: parseInt(m[2], 10), l2: parseInt(m[3], 10), c2: parseInt(m[4], 10) };
+}
+
+// A2 — 1re occurrence de `mot` dans la plage source [l1:c1 .. l2] d'un bloc.
+// `lignes` : tableau des lignes du .md. Renvoie {ligne, colonne, longueur} (0-based
+// ligne/colonne, pour l'API VS Code) ou null. Précision « au mieux » : le mot vient
+// du texte RENDU, on le cherche tel quel dans la source (repli bloc si introuvable —
+// mot dans du balisage éclaté, entité HTML, etc.). Pur (testé headless via _pur).
+function positionMot(lignes, l1, c1, l2, mot) {
+  const m = String(mot == null ? '' : mot);
+  if (!m || !Array.isArray(lignes)) { return null; }
+  const debut = Math.max(1, l1 | 0);
+  const fin = Math.max(debut, l2 | 0);
+  for (let L = debut; L <= fin && L <= lignes.length; L++) {
+    const ligne = lignes[L - 1];
+    if (ligne == null) { continue; }
+    const depart = (L === debut) ? Math.max(0, (c1 | 0) - 1) : 0;
+    const idx = ligne.indexOf(m, depart);
+    if (idx !== -1) { return { ligne: L - 1, colonne: idx, longueur: m.length }; }
+  }
+  return null;
+}
+
 // Éditeur visible du .md de l'article actuellement affiché en aperçu (colonne 1),
 // ou null. Sert au défilement synchronisé (A1) : révéler une ligne SANS voler le focus.
 function editeurArticleCourant(fournisseur) {
@@ -495,15 +525,32 @@ function injecterApercu(contenu, nonce) {
   return html;
 }
 
-async function revelerLigne(fournisseur, slug, ligne) {
-  if (!ligne || !fournisseur.racine) { return; }
+// Clic dans l'aperçu -> texte source (N5 + A2). Vise le MOT cliqué s'il est fourni
+// et retrouvé dans la plage source du bloc ; sinon repli sur le début du bloc
+// (comportement historique, jamais régressé). Ouvre le .md en colonne 1 et y place
+// le curseur (focus donné : c'est un clic explicite pour éditer).
+async function revelerPos(fournisseur, slug, pos, mot) {
+  const pl = plagePos(pos);
+  const ligneDebut = pl ? pl.l1 : lignePos(pos);
+  if (!ligneDebut || !fournisseur.racine) { return; }
   const md = path.join(fournisseur.racine, 'articles', slug, slug + '.md');
   try {
     const doc = await vscode.workspace.openTextDocument(md);
     const editeur = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One, preserveFocus: false });
-    const l = Math.max(0, Math.min(ligne - 1, doc.lineCount - 1));
-    editeur.revealRange(new vscode.Range(l, 0, l, 0), vscode.TextEditorRevealType.InCenter);
-    editeur.selection = new vscode.Selection(l, 0, l, 0);
+    let selection = null;
+    if (mot && pl) {
+      const p = positionMot(doc.getText().split(/\r?\n/), pl.l1, pl.c1, pl.l2, mot);
+      if (p) {
+        const l = Math.max(0, Math.min(p.ligne, doc.lineCount - 1));
+        selection = new vscode.Selection(l, p.colonne, l, p.colonne + p.longueur);
+      }
+    }
+    if (!selection) {
+      const l = Math.max(0, Math.min(ligneDebut - 1, doc.lineCount - 1));
+      selection = new vscode.Selection(l, 0, l, 0);
+    }
+    editeur.selection = selection;
+    editeur.revealRange(selection, vscode.TextEditorRevealType.InCenter);
   } catch (e) { /* fichier disparu entre-temps */ }
 }
 
@@ -543,7 +590,7 @@ function ouvrirApercuHtml(fournisseur, slug) {
     panneau.webview.onDidReceiveMessage((msg) => {
       if (!msg) { return; }
       if (msg.type === 'basculer') { vscode.commands.executeCommand('szh.basculerApercu'); }
-      if (msg.type === 'revele' && apercuCourantSlug) { revelerLigne(fournisseur, apercuCourantSlug, lignePos(msg.pos)); }
+      if (msg.type === 'revele' && apercuCourantSlug) { revelerPos(fournisseur, apercuCourantSlug, msg.pos, msg.mot); }
       if (msg.type === 'scrollSource') { revelerLigneSource(fournisseur, msg.ligne); }   // A1
     });
   }
@@ -1606,7 +1653,7 @@ module.exports = {
   activate, deactivate,
   _pur: {
     titreNumero, separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
-    analyserMeta, serialiserMeta, lignePos,
+    analyserMeta, serialiserMeta, lignePos, plagePos, positionMot,
     analyserAusgabe, serialiserAusgabe,
     basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
     enroberBloc, squeletteTableau,

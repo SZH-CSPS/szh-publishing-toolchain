@@ -18,8 +18,32 @@
     var c = e.target && e.target.closest ? e.target.closest('[data-pos]') : null;
     if (!c) { return; }
     e.preventDefault();
-    vscodeApi.postMessage({ type: 'revele', pos: c.getAttribute('data-pos') });
+    // A2 : en plus du bloc (data-pos), on transmet le MOT sous le curseur pour viser
+    // le mot exact dans la source (repli bloc côté hôte si vide/introuvable).
+    vscodeApi.postMessage({ type: 'revele', pos: c.getAttribute('data-pos'), mot: motAuPoint(e.clientX, e.clientY) });
   });
+
+  // A2 — mot sous le point (x, y) via l'API de caret du moteur (Chromium/Electron).
+  // Étend depuis l'offset du clic jusqu'aux délimiteurs (espaces + ponctuation
+  // courante). Chaîne vide si clic hors texte ou entre deux mots.
+  function motAuPoint(x, y) {
+    var noeud = null, offset = 0;
+    if (document.caretRangeFromPoint) {
+      var r = document.caretRangeFromPoint(x, y);
+      if (r) { noeud = r.startContainer; offset = r.startOffset; }
+    } else if (document.caretPositionFromPoint) {
+      var p = document.caretPositionFromPoint(x, y);
+      if (p) { noeud = p.offsetNode; offset = p.offset; }
+    }
+    if (!noeud || noeud.nodeType !== 3) { return ''; }
+    var texte = noeud.nodeValue || '';
+    var i = Math.max(0, Math.min(offset, texte.length));
+    var estMot = function (ch) { return ch !== '' && /[^\s.,;:!?()\[\]{}«»"'…—–\/]/.test(ch); };
+    var deb = i, fin = i;
+    while (deb > 0 && estMot(texte.charAt(deb - 1))) { deb--; }
+    while (fin < texte.length && estMot(texte.charAt(fin))) { fin++; }
+    return texte.slice(deb, fin);
+  }
 
   // --- A1 : défilement synchronisé -----------------------------------------------
   // « fichier@L:C-L:C » (ou « L:C-… ») -> L (numéro de ligne source, 1-based). null si illisible.
