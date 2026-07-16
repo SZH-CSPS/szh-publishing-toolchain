@@ -71,15 +71,17 @@ verifie-dossier:
 # citeproc + CSL APA seulement si l'article a une bibliographie (media/<slug>.bib).
 # Les tableaux extraits (tables/*.html, D47) sont des PRÉREQUIS : en éditer un
 # déclenche la recompilation de l'article (SECONDEXPANSION déjà active).
-$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $$(wildcard articles/$$(notdir $$*)/tables/*.html)
+$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
 	extra=""; \
 	if [ -s "articles/$$slug/media/$$slug.bib" ]; then extra="--citeproc --csl=$(CSL)"; fi; \
+	meta=""; \
+	if [ -f "articles/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
 	echo "pandoc articles/$$slug/$$slug.md -> $@ $$extra"; \
 	cd "articles/$$slug" && $(PANDOC) "$$slug.md" \
 	  --from=markdown --to=html5 \
-	  --metadata-file="$(abspath ausgabe.yaml)" \
+	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
 	  --standalone --embed-resources \
 	  --css="$(STYLE_ABS)" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" $$extra \

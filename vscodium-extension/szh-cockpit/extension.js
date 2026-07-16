@@ -436,8 +436,9 @@ async function ouvrirArticle(fournisseur, slug) {
 
   await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(md), { viewColumn: vscode.ViewColumn.One });
 
-  // Obsolète = PDF plus ancien que la source la plus récente (.md OU un tableau
-  // extrait — même graphe de dépendances que la règle HTML du Makefile, N6).
+  // Obsolète = PDF plus ancien que la source la plus récente (.md, un tableau
+  // extrait OU la fiche .meta.yaml — même graphe de dépendances que la règle
+  // HTML du Makefile, N6 + M1).
   let obsolete = true;
   try {
     let mSource = fs.statSync(md).mtimeMs;
@@ -449,6 +450,8 @@ async function ouvrirArticle(fournisseur, slug) {
       try { mSource = Math.max(mSource, fs.statSync(path.join(dossierTables, t)).mtimeMs); }
       catch (e) { /* fichier disparu entre-temps */ }
     }
+    try { mSource = Math.max(mSource, fs.statSync(cheminMeta(racine, slug)).mtimeMs); }
+    catch (e) { /* pas de fiche */ }
     obsolete = fs.statSync(pdf.fsPath).mtimeMs < mSource;
   } catch (e) { obsolete = true; }                 // PDF (ou .md) illisible -> on compile
 
@@ -1055,6 +1058,197 @@ function serialiserFrontmatter(texte, modifies) {
   return partie.bom + '---' + eol + sortie.join(eol) + eol + '---' + eol + partie.corps;
 }
 
+// ---- Métadonnées d'article : fichier caché <slug>.meta.yaml (M1, D49/D51) ----------
+//
+// SUPERSEDE le stockage frontmatter de N7 : le .md ne contient QUE le texte ; les
+// métadonnées vivent dans articles/<slug>/<slug>.meta.yaml (masqué par
+// files.exclude, édité UNIQUEMENT par le formulaire). Fichier « form-owned » :
+// régénéré à chaque enregistrement — les clés inconnues de haut niveau sont
+// restituées par prudence. Lu par pandoc via --metadata-file (après ausgabe.yaml :
+// l'article surcharge le numéro).
+
+const TYPES_ARTICLE = ['varia', 'documentation', 'article', 'interview', 'tribune-libre', 'editorial'];
+// Libellés traduits des types (DE/IT : premier jet à valider par Robin).
+const LIBELLES_TYPES = {
+  'varia':         { fr: 'Varia',         de: 'Varia',         it: 'Varia' },
+  'documentation': { fr: 'Documentation', de: 'Dokumentation', it: 'Documentazione' },
+  'article':       { fr: 'Article',       de: 'Artikel',       it: 'Articolo' },
+  'interview':     { fr: 'Interview',     de: 'Interview',     it: 'Intervista' },
+  'tribune-libre': { fr: 'Tribune libre', de: 'Freie Tribüne',  it: 'Tribuna libera' },
+  'editorial':     { fr: 'Éditorial',     de: 'Editorial',     it: 'Editoriale' }
+};
+const LANGUES_META = ['fr', 'de', 'it'];   // fr + de affichées ; it activable par carte
+const CHAMPS_AUTEUR = ['prenom', 'nom', 'fonction', 'affiliation', 'orcid'];
+
+// Langue de la revue (base : « de-CH » -> « de ») limitée aux langues du schéma.
+function langueRevue(racine) {
+  let valeurs = {};
+  try { valeurs = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')); }
+  catch (e) { /* repli fr */ }
+  const base = String(valeurs.lang || 'fr').toLowerCase().slice(0, 2);
+  return LANGUES_META.indexOf(base) !== -1 ? base : 'fr';
+}
+
+// analyserMeta(texte) -> { type, doi, title:{}, subtitle:{}, keywords:{}, author:[],
+// _inconnues:[lignes brutes] }. Best effort : maps par langue en bloc OU en flow
+// ({ fr: "…" }), listes en bloc OU en flow, auteurs en mappings.
+function analyserMeta(texte) {
+  const valeurs = { type: '', doi: '', title: {}, subtitle: {}, keywords: {}, author: [], _inconnues: [] };
+  if (!texte) { return valeurs; }
+  const lignes = String(texte).split(/\r?\n/);
+  let i = 0;
+  while (i < lignes.length) {
+    const m = lignes[i].match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!m) {
+      if (lignes[i].trim() !== '' && lignes[i].trim().charAt(0) !== '#') { valeurs._inconnues.push(lignes[i]); }
+      i++;
+      continue;
+    }
+    const cle = m[1];
+    const reste = m[2];
+    if (cle === 'type') { valeurs.type = decouperValeurYaml(reste).valeur; i++; continue; }
+    if (cle === 'doi') { valeurs.doi = decouperValeurYaml(reste).valeur; i++; continue; }
+    if (cle === 'title' || cle === 'subtitle') {
+      const map = {};
+      const net = reste.trim();
+      if (net.charAt(0) === '{') {
+        for (const partie of decouperFlowYaml(net.replace(/^\{/, '').replace(/\}\s*$/, ''))) {
+          const mm = partie.match(/^\s*([A-Za-z-]+)\s*:\s*(.*)$/);
+          if (mm) { map[mm[1]] = decouperValeurYaml(mm[2].trim()).valeur; }
+        }
+        i++;
+      } else {
+        i++;
+        while (i < lignes.length && /^\s+\S/.test(lignes[i])) {
+          const mm = lignes[i].match(/^\s+([A-Za-z-]+):\s*(.*)$/);
+          if (mm) { map[mm[1]] = decouperValeurYaml(mm[2]).valeur; }
+          i++;
+        }
+      }
+      valeurs[cle] = map;
+      continue;
+    }
+    if (cle === 'keywords') {
+      const map = {};
+      let langue = null;
+      i++;
+      while (i < lignes.length && /^\s+\S/.test(lignes[i])) {
+        const mItem = lignes[i].match(/^\s+-\s*(.*)$/);
+        const mLang = mItem ? null : lignes[i].match(/^\s+([A-Za-z-]+):\s*(.*)$/);
+        if (mLang) {
+          langue = mLang[1];
+          map[langue] = map[langue] || [];
+          const netL = mLang[2].trim();
+          if (netL.charAt(0) === '[') {
+            for (const p of decouperFlowYaml(netL.replace(/^\[/, '').replace(/\]\s*$/, ''))) {
+              const v = decouperValeurYaml(p.trim()).valeur;
+              if (v !== '') { map[langue].push(v); }
+            }
+          }
+        } else if (mItem && langue) {
+          const v = decouperValeurYaml(mItem[1]).valeur;
+          if (v !== '') { map[langue].push(v); }
+        }
+        i++;
+      }
+      valeurs.keywords = map;
+      continue;
+    }
+    if (cle === 'author') {
+      const auteurs = [];
+      let courant = null;
+      i++;
+      while (i < lignes.length && !/^[A-Za-z0-9_-]+:/.test(lignes[i])) {
+        const item = lignes[i].match(/^\s*-\s*(.*)$/);
+        const champ = item ? null : lignes[i].match(/^\s+([A-Za-z0-9_-]+):\s*(.*)$/);
+        if (item) {
+          courant = {};
+          auteurs.push(courant);
+          const interne = item[1].match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+          if (interne) { courant[interne[1]] = decouperValeurYaml(interne[2]).valeur; }
+          else if (item[1].trim() !== '') { courant.nom = decouperValeurYaml(item[1]).valeur; }
+        } else if (champ && courant) {
+          courant[champ[1]] = decouperValeurYaml(champ[2]).valeur;
+        }
+        i++;
+      }
+      valeurs.author = auteurs
+        .map((a) => {
+          const propre = {};
+          for (const c of CHAMPS_AUTEUR) { propre[c] = String(a[c] || ''); }
+          return propre;
+        })
+        .filter((a) => CHAMPS_AUTEUR.some((c) => a[c] !== ''));
+      continue;
+    }
+    // Clé inconnue de haut niveau : sa ligne + ses continuations, restituées telles quelles.
+    valeurs._inconnues.push(lignes[i]);
+    i++;
+    while (i < lignes.length && (/^\s+\S/.test(lignes[i]) || /^\s*-\s/.test(lignes[i]))) {
+      valeurs._inconnues.push(lignes[i]);
+      i++;
+    }
+  }
+  return valeurs;
+}
+
+// serialiserMeta(valeurs) -> YAML régénéré (ordre D51 : type, doi, title, subtitle,
+// keywords, author, puis clés inconnues). Valeurs vides omises ; langue sans
+// contenu omise ; auteur entièrement vide ignoré. LF, fin de fichier à la ligne.
+function serialiserMeta(valeurs) {
+  const v = valeurs || {};
+  const lignes = [];
+  const type = String(v.type || '').trim();
+  if (TYPES_ARTICLE.indexOf(type) !== -1) { lignes.push('type: ' + type); }
+  const doi = String(v.doi || '').trim();
+  if (doi !== '') { lignes.push('doi: ' + citerFrontmatter(doi)); }
+  for (const cle of ['title', 'subtitle']) {
+    const map = v[cle] || {};
+    const sous = [];
+    for (const l of LANGUES_META) {
+      const t = String(map[l] || '').trim();
+      if (t !== '') { sous.push('  ' + l + ': ' + citerFrontmatter(t)); }
+    }
+    if (sous.length > 0) {
+      lignes.push(cle + ':');
+      for (const s of sous) { lignes.push(s); }
+    }
+  }
+  const km = v.keywords || {};
+  const sousMots = [];
+  for (const l of LANGUES_META) {
+    const liste = (Array.isArray(km[l]) ? km[l] : []).map((x) => String(x).trim()).filter((x) => x !== '');
+    if (liste.length > 0) {
+      sousMots.push('  ' + l + ':');
+      for (const mot of liste) { sousMots.push('  - ' + citerFrontmatter(mot)); }
+    }
+  }
+  if (sousMots.length > 0) {
+    lignes.push('keywords:');
+    for (const s of sousMots) { lignes.push(s); }
+  }
+  const auteurs = (Array.isArray(v.author) ? v.author : [])
+    .map((a) => {
+      const propre = {};
+      for (const c of CHAMPS_AUTEUR) { propre[c] = String((a && a[c]) || '').trim(); }
+      return propre;
+    })
+    .filter((a) => CHAMPS_AUTEUR.some((c) => a[c] !== ''));
+  if (auteurs.length > 0) {
+    lignes.push('author:');
+    for (const a of auteurs) {
+      let premiere = true;
+      for (const c of CHAMPS_AUTEUR) {
+        if (a[c] === '') { continue; }
+        lignes.push((premiere ? '- ' : '  ') + c + ': ' + citerFrontmatter(a[c]));
+        premiere = false;
+      }
+    }
+  }
+  for (const brute of (Array.isArray(v._inconnues) ? v._inconnues : [])) { lignes.push(brute); }
+  return lignes.length > 0 ? lignes.join('\n') + '\n' : '';
+}
+
 // ---- Titre de la vue (N2, D43) -----------------------------------------------------
 //
 // « {Z|R}{AAAA}-{numero} | {title} » : Z pour une revue allemande (lang commence
@@ -1262,13 +1456,12 @@ function ouvrirMetadonnees(fournisseur, rafraichirTout) {
   });
 }
 
-// ---- Éditeur des métadonnées de TOUS les articles (N7, D48) ------------------------
+// ---- Éditeur des métadonnées de TOUS les articles (N7 refondu par M1, D49/D51) -----
 
-// Webview « Métadonnées des articles » : une carte par article (title, subtitle,
-// doi, auteurs répétables name/affiliation/orcid, keywords séparés par des
-// virgules). Les cartes sont construites par DOM (jamais d'injection HTML), les
-// valeurs arrivent par postMessage. Dirty-tracking PAR ARTICLE : « Enregistrer »
-// ne réécrit que les articles modifiés.
+// Webview « Métadonnées des articles » : une carte par article — type (menu
+// déroulant traduit), doi, title/subtitle/keywords TRADUCTIBLES (FR/DE toujours,
+// IT révélé par la case « + Italien »), auteurs répétables à 5 champs. DOM
+// construit sans injection HTML, valeurs par postMessage, dirty PAR ARTICLE.
 function htmlApercuMetadonnees(nonce) {
   return '<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="UTF-8">\n' +
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; script-src \'nonce-' + nonce + '\'">\n' +
@@ -1283,12 +1476,16 @@ function htmlApercuMetadonnees(nonce) {
     '  border-radius: 4px; padding: .8rem 1rem 1rem; margin: 0 0 1rem; }\n' +
     '.carte h2 { font-size: 1em; font-weight: 600; margin: 0 0 .2rem; font-family: var(--vscode-editor-font-family, monospace); }\n' +
     'label { display: block; margin: .6rem 0 .2rem; font-weight: 600; font-size: .9em; }\n' +
-    'input { width: 100%; box-sizing: border-box; padding: .3em .5em; font: inherit;\n' +
+    'input, select { width: 100%; box-sizing: border-box; padding: .3em .5em; font: inherit;\n' +
     '  color: var(--vscode-input-foreground); background: var(--vscode-input-background);\n' +
     '  border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; }\n' +
-    'input:focus { outline: 1px solid var(--vscode-focusBorder); }\n' +
+    'input:focus, select:focus { outline: 1px solid var(--vscode-focusBorder); }\n' +
     '.auteur { display: flex; gap: .4rem; margin: .3rem 0; align-items: center; }\n' +
-    '.auteur input { flex: 1 1 0; }\n' +
+    '.auteur input { flex: 1 1 0; min-width: 0; }\n' +
+    '.champ-it { display: none; }\n' +
+    '.carte.avec-it .champ-it { display: block; }\n' +
+    '.case-it { font-weight: normal; margin-top: .8rem; }\n' +
+    '.case-it input { width: auto; margin-right: .35em; }\n' +
     'button { padding: .35em .9em; border: none; border-radius: 2px; font: inherit; cursor: pointer;\n' +
     '  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));\n' +
     '  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background)); }\n' +
@@ -1301,7 +1498,7 @@ function htmlApercuMetadonnees(nonce) {
     '.modifie h2::after { content: " ●"; color: var(--vscode-charts-orange, orange); }\n' +
     '</style>\n</head>\n<body>\n' +
     '<h1>Métadonnées des articles</h1>\n' +
-    '<p class="note">Enregistrées dans le frontmatter de chaque article — seuls les articles modifiés (●) sont réécrits ; corps et clés inconnues préservés.</p>\n' +
+    '<p class="note">Enregistrées dans la fiche de l’article (fichier caché, édité par ce formulaire uniquement) — seuls les articles modifiés (●) sont réécrits. Le texte de l’article n’est jamais touché.</p>\n' +
     '<div class="barre"><button class="principal" id="enregistrer">Enregistrer</button><span id="etat" role="status"></span></div>\n' +
     '<div id="cartes"></div>\n' +
     '<script nonce="' + nonce + '">\n' +
@@ -1311,28 +1508,31 @@ function htmlApercuMetadonnees(nonce) {
     "  const etat = document.getElementById('etat');\n" +
     "  const conteneur = document.getElementById('cartes');\n" +
     '  const modifies = new Set();\n' +
-    '  function champ(carte, slug, cle, libelle, valeur) {\n' +
+    '  let TYPES = [];\n' +
+    '  function marquer(carte, slug) { modifies.add(slug); carte.classList.add(\'modifie\'); etat.textContent = \'\'; }\n' +
+    '  function champTexte(carte, parent, slug, cle, langue, libelle, valeur) {\n' +
     "    const l = document.createElement('label');\n" +
     '    l.textContent = libelle;\n' +
     "    const i = document.createElement('input');\n" +
     "    i.type = 'text';\n" +
     '    i.value = valeur || \'\';\n' +
     '    i.dataset.cle = cle;\n' +
-    "    i.addEventListener('input', function () { modifies.add(slug); carte.classList.add('modifie'); etat.textContent = ''; });\n" +
-    '    carte.appendChild(l);\n' +
-    '    carte.appendChild(i);\n' +
-    '    return i;\n' +
+    '    if (langue) { i.dataset.langue = langue; l.classList.add(\'champ-\' + langue); i.classList.add(\'champ-\' + langue); }\n' +
+    "    i.addEventListener('input', function () { marquer(carte, slug); });\n" +
+    '    parent.appendChild(l);\n' +
+    '    parent.appendChild(i);\n' +
     '  }\n' +
     '  function ligneAuteur(carte, slug, zone, auteur) {\n' +
     "    const rangee = document.createElement('div');\n" +
     "    rangee.className = 'auteur';\n" +
-    "    for (const [cle, indice] of [['name', 'Nom'], ['affiliation', 'Affiliation'], ['orcid', 'ORCID']]) {\n" +
+    "    for (const [cle, indice] of [['prenom', 'Prénom'], ['nom', 'Nom'], ['fonction', 'Fonction'], ['affiliation', 'Affiliation'], ['orcid', 'ORCID']]) {\n" +
     "      const i = document.createElement('input');\n" +
     "      i.type = 'text';\n" +
     '      i.placeholder = indice;\n' +
+    '      i.title = indice;\n' +
     '      i.value = (auteur && auteur[cle]) || \'\';\n' +
     '      i.dataset.cle = cle;\n' +
-    "      i.addEventListener('input', function () { modifies.add(slug); carte.classList.add('modifie'); etat.textContent = ''; });\n" +
+    "      i.addEventListener('input', function () { marquer(carte, slug); });\n" +
     '      rangee.appendChild(i);\n' +
     '    }\n' +
     "    const retirer = document.createElement('button');\n" +
@@ -1340,7 +1540,7 @@ function htmlApercuMetadonnees(nonce) {
     "    retirer.className = 'retirer';\n" +
     "    retirer.textContent = '✕';\n" +
     "    retirer.title = 'Retirer cet auteur';\n" +
-    "    retirer.addEventListener('click', function () { rangee.remove(); modifies.add(slug); carte.classList.add('modifie'); });\n" +
+    "    retirer.addEventListener('click', function () { rangee.remove(); marquer(carte, slug); });\n" +
     '    rangee.appendChild(retirer);\n' +
     '    zone.appendChild(rangee);\n' +
     '  }\n' +
@@ -1355,10 +1555,38 @@ function htmlApercuMetadonnees(nonce) {
     '      titre.textContent = article.slug;\n' +
     '      carte.appendChild(titre);\n' +
     '      const v = article.valeurs || {};\n' +
-    "      champ(carte, article.slug, 'title', 'Titre', v.title);\n" +
-    "      champ(carte, article.slug, 'subtitle', 'Sous-titre', v.subtitle);\n" +
+    '      const avecIt = [\'title\', \'subtitle\'].some(function (c) { return v[c] && v[c].it; }) ||\n' +
+    '        (v.keywords && v.keywords.it && v.keywords.it.length > 0);\n' +
+    '      if (avecIt) { carte.classList.add(\'avec-it\'); }\n' +
+    "      const lType = document.createElement('label');\n" +
+    "      lType.textContent = 'Type d’article';\n" +
+    '      carte.appendChild(lType);\n' +
+    "      const selection = document.createElement('select');\n" +
+    "      selection.dataset.cle = 'type';\n" +
+    "      const optVide = document.createElement('option');\n" +
+    "      optVide.value = '';\n" +
+    "      optVide.textContent = '(non défini)';\n" +
+    '      selection.appendChild(optVide);\n' +
+    '      for (const t of TYPES) {\n' +
+    "        const opt = document.createElement('option');\n" +
+    '        opt.value = t.valeur;\n' +
+    '        opt.textContent = t.libelle;\n' +
+    '        selection.appendChild(opt);\n' +
+    '      }\n' +
+    '      selection.value = v.type || \'\';\n' +
+    '      if (selection.value !== (v.type || \'\')) { selection.value = \'\'; }\n' +
+    "      selection.addEventListener('input', function () { marquer(carte, article.slug); });\n" +
+    '      carte.appendChild(selection);\n' +
+    '      const langues = [\'fr\', \'de\', \'it\'];   // IT toujours construit, révélé par CSS\n' +
+    '      const nomsLangues = { fr: \'FR\', de: \'DE\', it: \'IT\' };\n' +
+    '      for (const lg of langues) {\n' +
+    '        champTexte(carte, carte, article.slug, \'title\', lg, \'Titre (\' + nomsLangues[lg] + \')\', (v.title || {})[lg]);\n' +
+    '      }\n' +
+    '      for (const lg of langues) {\n' +
+    '        champTexte(carte, carte, article.slug, \'subtitle\', lg, \'Sous-titre (\' + nomsLangues[lg] + \')\', (v.subtitle || {})[lg]);\n' +
+    '      }\n' +
     "      const lAuteurs = document.createElement('label');\n" +
-    "      lAuteurs.textContent = 'Auteur(s)';\n" +
+    "      lAuteurs.textContent = 'Auteur(s) — prénom, nom, fonction, affiliation, ORCID';\n" +
     '      carte.appendChild(lAuteurs);\n' +
     "      const zone = document.createElement('div');\n" +
     "      zone.className = 'auteurs';\n" +
@@ -1367,22 +1595,44 @@ function htmlApercuMetadonnees(nonce) {
     "      const ajouter = document.createElement('button');\n" +
     "      ajouter.type = 'button';\n" +
     "      ajouter.textContent = '➕ Ajouter un auteur';\n" +
-    "      ajouter.addEventListener('click', function () { ligneAuteur(carte, article.slug, zone, null); modifies.add(article.slug); carte.classList.add('modifie'); });\n" +
+    "      ajouter.addEventListener('click', function () { ligneAuteur(carte, article.slug, zone, null); marquer(carte, article.slug); });\n" +
     '      carte.appendChild(ajouter);\n' +
-    "      champ(carte, article.slug, 'doi', 'DOI', v.doi);\n" +
-    "      champ(carte, article.slug, 'keywords', 'Mots-clés (séparés par des virgules)', (v.keywords || []).join(', '));\n" +
+    '      champTexte(carte, carte, article.slug, \'doi\', null, \'DOI\', v.doi);\n' +
+    '      for (const lg of langues) {\n' +
+    '        champTexte(carte, carte, article.slug, \'keywords\', lg, \'Mots-clés (\' + nomsLangues[lg] + \', séparés par des virgules)\', ((v.keywords || {})[lg] || []).join(\', \'));\n' +
+    '      }\n' +
+    '      const caseIt = document.createElement(\'label\');\n' +
+    "      caseIt.className = 'case-it';\n" +
+    "      const coche = document.createElement('input');\n" +
+    "      coche.type = 'checkbox';\n" +
+    '      coche.checked = avecIt;\n' +
+    '      caseIt.appendChild(coche);\n' +
+    "      caseIt.appendChild(document.createTextNode(' + Italien (champs IT)'));\n" +
+    "      coche.addEventListener('change', function () {\n" +
+    "        carte.classList.toggle('avec-it', coche.checked);\n" +
+    '      });\n' +
+    '      carte.appendChild(caseIt);\n' +
     '      conteneur.appendChild(carte);\n' +
     '    }\n' +
     '  }\n' +
     '  function collecter(carte) {\n' +
-    '    const resultat = { author: [], keywords: [] };\n' +
-    "    for (const i of carte.querySelectorAll(':scope > input')) { resultat[i.dataset.cle] = i.value; }\n" +
+    '    const resultat = { type: \'\', doi: \'\', title: {}, subtitle: {}, keywords: {}, author: [] };\n' +
+    "    const sel = carte.querySelector('select[data-cle=type]');\n" +
+    '    if (sel) { resultat.type = sel.value; }\n' +
+    "    for (const i of carte.querySelectorAll(':scope > input')) {\n" +
+    '      const cle = i.dataset.cle;\n' +
+    '      const langue = i.dataset.langue;\n' +
+    "      if (cle === 'doi') { resultat.doi = i.value; }\n" +
+    "      else if (cle === 'title' || cle === 'subtitle') { resultat[cle][langue] = i.value; }\n" +
+    "      else if (cle === 'keywords') {\n" +
+    '        resultat.keywords[langue] = i.value.split(\',\').map(function (s) { return s.trim(); }).filter(function (s) { return s !== \'\'; });\n' +
+    '      }\n' +
+    '    }\n' +
     "    for (const rangee of carte.querySelectorAll('.auteur')) {\n" +
     '      const a = {};\n' +
     "      for (const i of rangee.querySelectorAll('input')) { a[i.dataset.cle] = i.value; }\n" +
     '      resultat.author.push(a);\n' +
     '    }\n' +
-    "    resultat.keywords = String(resultat.keywords || '').split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s !== ''; });\n" +
     '    return resultat;\n' +
     '  }\n' +
     "  document.getElementById('enregistrer').addEventListener('click', function () {\n" +
@@ -1395,7 +1645,7 @@ function htmlApercuMetadonnees(nonce) {
     '  });\n' +
     "  window.addEventListener('message', function (e) {\n" +
     '    const msg = e.data || {};\n' +
-    "    if (msg.type === 'valeurs') { rendre(msg.articles || []); }\n" +
+    "    if (msg.type === 'valeurs') { TYPES = msg.types || []; rendre(msg.articles || []); }\n" +
     "    if (msg.type === 'enregistre') { etat.textContent = '✓ ' + msg.n + ' article(s) enregistré(s)'; }\n" +
     "    if (msg.type === 'erreur') { etat.textContent = '⚠ ' + msg.message; }\n" +
     '  });\n' +
@@ -1406,14 +1656,50 @@ function htmlApercuMetadonnees(nonce) {
 
 let panneauArticles = null;
 
+function cheminMeta(racine, slug) {
+  return path.join(racine, 'articles', slug, slug + '.meta.yaml');
+}
+
+// Migration défensive (M1, idempotente) : un <slug>.md qui porte encore un
+// frontmatter N7 (lot non déployé) est déplacé vers <slug>.meta.yaml — scalaires
+// rangés sous la langue de la revue, name -> nom — puis le frontmatter est retiré
+// du .md (le bloc disparaît s'il ne contenait que des clés gérées). Sans objet
+// (no-op) si le .meta.yaml existe déjà ou si le .md n'a pas de frontmatter géré.
+function migrerFrontmatterVersMeta(racine, slug) {
+  const fichierMeta = cheminMeta(racine, slug);
+  if (fs.existsSync(fichierMeta)) { return; }
+  const fichierMd = path.join(racine, 'articles', slug, slug + '.md');
+  let texte;
+  try { texte = fs.readFileSync(fichierMd, 'utf8'); } catch (e) { return; }
+  const partie = separerFrontmatter(texte);
+  if (partie.fm === null) { return; }
+  const ancien = analyserFrontmatter(partie.fm);
+  const aDesCles = ancien.title !== undefined || ancien.subtitle !== undefined ||
+    ancien.doi !== undefined || (ancien.author || []).length > 0 || (ancien.keywords || []).length > 0;
+  if (!aDesCles) { return; }
+  const langue = langueRevue(racine);
+  const valeurs = { type: '', doi: String(ancien.doi || ''), title: {}, subtitle: {}, keywords: {}, author: [] };
+  if (ancien.title) { valeurs.title[langue] = String(ancien.title); }
+  if (ancien.subtitle) { valeurs.subtitle[langue] = String(ancien.subtitle); }
+  if ((ancien.keywords || []).length > 0) { valeurs.keywords[langue] = ancien.keywords.map(String); }
+  for (const a of (ancien.author || [])) {
+    valeurs.author.push({ prenom: '', nom: String(a.name || ''), fonction: '', affiliation: String(a.affiliation || ''), orcid: String(a.orcid || '') });
+  }
+  try {
+    ecrireAusgabeAtomique(fichierMeta, serialiserMeta(valeurs));
+    ecrireAusgabeAtomique(fichierMd, serialiserFrontmatter(texte, { title: '', subtitle: '', doi: '', author: [], keywords: [] }));
+  } catch (e) { /* migration best effort : la carte restera vide */ }
+}
+
 function lireMetadonneesArticles(fournisseur) {
   const articles = [];
   for (const slug of fournisseur.listerArticles()) {
-    let valeurs = {};
+    migrerFrontmatterVersMeta(fournisseur.racine, slug);
+    let valeurs = { type: '', doi: '', title: {}, subtitle: {}, keywords: {}, author: [] };
     try {
-      const texte = fs.readFileSync(path.join(fournisseur.racine, 'articles', slug, slug + '.md'), 'utf8');
-      valeurs = analyserFrontmatter(separerFrontmatter(texte).fm);
-    } catch (e) { /* illisible : carte vide */ }
+      valeurs = analyserMeta(fs.readFileSync(cheminMeta(fournisseur.racine, slug), 'utf8'));
+    } catch (e) { /* pas encore de fiche : carte vide */ }
+    delete valeurs._inconnues;                     // le webview n'a pas à les voir
     articles.push({ slug: slug, valeurs: valeurs });
   }
   return articles;
@@ -1422,27 +1708,32 @@ function lireMetadonneesArticles(fournisseur) {
 // Nettoie une carte reçue du webview (types + bornes ; le slug est validé contre
 // la liste réelle des articles — jamais de chemin construit sur une entrée libre).
 function nettoyerCarte(brut) {
-  const texteCourt = (v, max) => String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' ').slice(0, max);
-  const carte = {
-    title: texteCourt(brut && brut.title, 500),
-    subtitle: texteCourt(brut && brut.subtitle, 500),
-    doi: texteCourt(brut && brut.doi, 200),
-    author: [],
-    keywords: []
-  };
-  if (brut && Array.isArray(brut.author)) {
-    for (const a of brut.author.slice(0, 20)) {
-      carte.author.push({
-        name: texteCourt(a && a.name, 200),
-        affiliation: texteCourt(a && a.affiliation, 300),
-        orcid: texteCourt(a && a.orcid, 100)
-      });
+  const texteCourt = (v, max) => String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' ').slice(0, max).trim();
+  const carte = { type: '', doi: texteCourt(brut && brut.doi, 200), title: {}, subtitle: {}, keywords: {}, author: [] };
+  const type = texteCourt(brut && brut.type, 40);
+  if (TYPES_ARTICLE.indexOf(type) !== -1) { carte.type = type; }
+  for (const cle of ['title', 'subtitle']) {
+    const map = (brut && brut[cle]) || {};
+    for (const l of LANGUES_META) {
+      const t = texteCourt(map[l], 500);
+      if (t !== '') { carte[cle][l] = t; }
     }
   }
-  if (brut && Array.isArray(brut.keywords)) {
-    for (const k of brut.keywords.slice(0, 50)) {
-      const v = texteCourt(k, 100).trim();
-      if (v !== '') { carte.keywords.push(v); }
+  const km = (brut && brut.keywords) || {};
+  for (const l of LANGUES_META) {
+    if (!Array.isArray(km[l])) { continue; }
+    const liste = [];
+    for (const k of km[l].slice(0, 50)) {
+      const v = texteCourt(k, 100);
+      if (v !== '') { liste.push(v); }
+    }
+    if (liste.length > 0) { carte.keywords[l] = liste; }
+  }
+  if (brut && Array.isArray(brut.author)) {
+    for (const a of brut.author.slice(0, 20)) {
+      const propre = {};
+      for (const c of CHAMPS_AUTEUR) { propre[c] = texteCourt(a && a[c], 300); }
+      carte.author.push(propre);
     }
   }
   return carte;
@@ -1451,7 +1742,13 @@ function nettoyerCarte(brut) {
 function ouvrirApercuMetadonnees(fournisseur, rafraichirTout) {
   if (!fournisseur.racine) { return; }
   const envoyerValeurs = (panneau) => {
-    panneau.webview.postMessage({ type: 'valeurs', articles: lireMetadonneesArticles(fournisseur) });
+    const langue = langueRevue(fournisseur.racine);
+    panneau.webview.postMessage({
+      type: 'valeurs',
+      articles: lireMetadonneesArticles(fournisseur),
+      langue: langue,
+      types: TYPES_ARTICLE.map((t) => ({ valeur: t, libelle: (LIBELLES_TYPES[t] || {})[langue] || t }))
+    });
   };
   if (panneauArticles) {
     panneauArticles.reveal(vscode.ViewColumn.One);
@@ -1474,10 +1771,14 @@ function ouvrirApercuMetadonnees(fournisseur, rafraichirTout) {
     const erreurs = [];
     for (const slug of Object.keys(msg.articles)) {
       if (!connus.has(slug)) { continue; }         // slug inconnu : ignoré (sécurité)
-      const chemin = path.join(fournisseur.racine, 'articles', slug, slug + '.md');
+      const fichierMeta = cheminMeta(fournisseur.racine, slug);
       try {
-        const texte = fs.readFileSync(chemin, 'utf8');
-        ecrireAusgabeAtomique(chemin, serialiserFrontmatter(texte, nettoyerCarte(msg.articles[slug])));
+        // Fichier « form-owned » : régénéré — mais les clés inconnues de haut
+        // niveau de la fiche existante sont restituées par prudence (D49).
+        const carte = nettoyerCarte(msg.articles[slug]);
+        try { carte._inconnues = analyserMeta(fs.readFileSync(fichierMeta, 'utf8'))._inconnues; }
+        catch (e) { /* pas de fiche existante */ }
+        ecrireAusgabeAtomique(fichierMeta, serialiserMeta(carte));
         n++;
       } catch (e) {
         erreurs.push(slug + ' (' + e.message + ')');
@@ -1487,7 +1788,7 @@ function ouvrirApercuMetadonnees(fournisseur, rafraichirTout) {
       panneau.webview.postMessage({ type: 'erreur', message: 'Écriture impossible : ' + erreurs.join(', ') });
     } else {
       panneau.webview.postMessage({ type: 'enregistre', n: n });
-      vscode.window.setStatusBarMessage(n + ' frontmatter(s) enregistré(s).', 3000);
+      vscode.window.setStatusBarMessage(n + ' fiche(s) de métadonnées enregistrée(s).', 3000);
     }
     if (rafraichirTout) { rafraichirTout(); }
     envoyerValeurs(panneau);                       // resynchronise les cartes (dirty remis à zéro)
@@ -1570,5 +1871,8 @@ function deactivate() { arreterDormeurWsl(); }
 // `_pur` : fonctions pures exposées pour les harnais headless (VS Code les ignore).
 module.exports = {
   activate, deactivate,
-  _pur: { titreNumero, separerFrontmatter, analyserFrontmatter, serialiserFrontmatter }
+  _pur: {
+    titreNumero, separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
+    analyserMeta, serialiserMeta
+  }
 };

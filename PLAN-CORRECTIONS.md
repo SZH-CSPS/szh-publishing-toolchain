@@ -109,15 +109,15 @@ fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
 
 ### M1 · Métadonnées en fichier caché `.meta.yaml` (D49, D51) — *taille L ; extension + Makefile + settings.json*
 
-- [ ] **Sérialiseur `.meta.yaml`** (fonctions pures, exportées via `_pur`) :
+- [x] **Sérialiseur `.meta.yaml`** (fonctions pures, exportées via `_pur`) :
   - `analyserMeta(texte)` → `{ type, doi, title:{}, subtitle:{}, keywords:{}, author:[{prenom,nom,fonction,affiliation,orcid}] }` (best effort ; maps par langue ; listes).
   - `serialiserMeta(valeurs)` → YAML (régénère le fichier ; ordre D51 ; clés inconnues de haut niveau restituées ; valeurs vides omises ; langues sans contenu omises ; auteur entièrement vide ignoré).
-- [ ] **Makefile** — règle HTML : ajouter `--metadata-file="$$slug.meta.yaml"` **si le
+- [x] **Makefile** — règle HTML : ajouter `--metadata-file="$$slug.meta.yaml"` **si le
   fichier existe** (après `ausgabe.yaml`, pour que l'article surcharge le numéro) et
   ajouter `$$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)` aux prérequis
   (éditer les métadonnées déclenche la recompilation). TABULATIONS + LF.
-- [ ] **settings.json** — `files.exclude` += `"**/*.meta.yaml": true` (masqué à l'explorateur).
-- [ ] **Webview « Métadonnées des articles »** (remplace le stockage frontmatter de N7 ;
+- [x] **settings.json** — `files.exclude` += `"**/*.meta.yaml": true` (masqué à l'explorateur).
+- [x] **Webview « Métadonnées des articles »** (remplace le stockage frontmatter de N7 ;
   garder la structure carte/article, CSP stricte, DOM, dirty par article) :
   - `type` : menu déroulant `<select>` ; options = les 6 types ; **libellés traduits**
     selon la langue de la revue (table i18n fournie par l'hôte) ; valeur canonique stockée.
@@ -126,16 +126,16 @@ fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
   - **Titre / sous-titre / mots-clés traductibles** : champs **FR** et **DE** toujours
     visibles ; case **« + Italien »** par carte qui révèle les champs IT. Mots-clés
     saisis séparés par des virgules, par langue.
-- [ ] **Hôte** : lit `articles/<slug>/<slug>.meta.yaml` (plus le frontmatter) ; à
+- [x] **Hôte** : lit `articles/<slug>/<slug>.meta.yaml` (plus le frontmatter) ; à
   l'enregistrement, `serialiserMeta` + écriture atomique par article modifié ;
   transmet au webview la **langue de la revue** (pour les libellés de `type`) ;
   valide le slug contre la liste réelle.
-- [ ] **N5 (obsolescence)** : inclure `<slug>.meta.yaml` dans le calcul mtime (comme
+- [x] **N5 (obsolescence)** : inclure `<slug>.meta.yaml` dans le calcul mtime (comme
   `tables/*.html`) — modifier les métadonnées rend le PDF obsolète.
-- [ ] **Migration défensive (idempotente)** : si un `<slug>.md` porte encore un
+- [x] **Migration défensive (idempotente)** : si un `<slug>.md` porte encore un
   frontmatter avec des clés gérées (issu de N7 non déployé), le déplacer vers
   `<slug>.meta.yaml` puis retirer le frontmatter du `.md`. Sans objet si rien n'existe.
-- [ ] **Table i18n des types** (à VALIDER par Robin pour DE/IT) :
+- [x] **Table i18n des types** (à VALIDER par Robin pour DE/IT) :
   `article`→{fr:Article, de:Artikel, it:Articolo} ; `varia`→{Varia,Varia,Varia} ;
   `documentation`→{Documentation, Dokumentation, Documentazione} ;
   `interview`→{Interview, Interview, Intervista} ;
