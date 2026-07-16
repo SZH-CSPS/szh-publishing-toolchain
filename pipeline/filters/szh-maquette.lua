@@ -83,6 +83,13 @@ local TYPES_DOSSIER = { article = true, editorial = true, interview = true }
 local LABELS_RESUME = { de = 'Zusammenfassung', fr = 'Résumé', it = 'Riassunto' }
 local ORDRE_LANGUES = { 'de', 'fr', 'it' }
 
+-- Mention de licence CC-BY 4.0, localisée (couverture).
+local LICENCES = {
+  de = 'Dieser Artikel steht unter der Lizenz Creative Commons CC-BY 4.0',
+  fr = 'Cet article est sous licence Creative Commons CC-BY 4.0',
+  it = 'Questo articolo è pubblicato sotto licenza Creative Commons CC-BY 4.0',
+}
+
 -- Choisit map[lang] sinon la première langue non vide (ordre : lang, de, fr, it).
 local function choisir(map, lang)
   if map == nil then return '' end
@@ -164,5 +171,6 @@ function Meta(meta)
   meta['titre-affiche']    = pandoc.MetaString(choisir(meta.title, lang))
   meta['sous-titre-affiche'] = pandoc.MetaString(choisir(meta.subtitle, lang))
   meta['resumes']          = pandoc.MetaList(resumes)
+  meta['licence-texte']    = pandoc.MetaString(LICENCES[lang] or LICENCES.fr)
   return meta
 end

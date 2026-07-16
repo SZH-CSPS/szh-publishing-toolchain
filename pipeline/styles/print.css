@@ -133,8 +133,68 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
    le template de la maquette (M2). Sans template, on évite un titre parasite. */
 #title-block-header { display: none; }
 
-/* ═══ 5. Couverture (hero, filet, résumés, mots-clés) — M2 ════════════════════ */
-/* (ajouté en tranche M2) */
+/* ═══ 5. Couverture (hero, filet, résumés, mots-clés) — M2 ════════════════════
+   La couverture occupe la 1re page (pleine-marge). Le corps de l'article démarre
+   à la page suivante (break-after: page) : le rédacteur n'écrit pas la couverture,
+   elle est peuplée depuis les métadonnées (template + filtre). */
+.szh-cover { break-after: page; }
+
+/* Hero — fond bleu nuit PERMANENT (D70), déborde jusqu'aux bords (@page:first marge 0). */
+.szh-hero {
+  position: relative; overflow: hidden;
+  background: var(--c-nuit); color: #fff;
+  padding: 44px 56px 40px; min-height: 250px;
+}
+.szh-hero-top { position: relative; display: flex; justify-content: space-between;
+  align-items: flex-start; gap: 16px; }
+.szh-hero-eyebrow, .szh-hero-dossier, .szh-hero-vol {
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em;
+}
+.szh-hero-eyebrow { color: #C5C8D4; }
+.szh-hero-dossier { margin-top: 8px; min-height: 14px; color: #ffffff; }
+.szh-hero-vol { color: #C5C8D4; white-space: nowrap; text-align: right;
+  font-variant-numeric: tabular-nums; }
+
+.szh-hero-main { position: relative; max-width: 68%; }
+.szh-title {
+  font-family: var(--title-family); font-weight: 600; font-size: 28px; line-height: 1.12;
+  letter-spacing: -0.005em; color: #fff; margin: 20px 0 0; text-align: left; hyphens: manual;
+}
+.szh-subtitle { font-family: var(--title-family); font-weight: 400; font-size: 14.5px;
+  line-height: 1.35; color: #E2E4EC; margin: 12px 0 0; text-align: left; }
+.szh-hero-meta { margin-top: 20px; }
+.szh-authors { font-size: 12.5px; font-weight: 700; color: #fff; }
+.szh-authors .sep { opacity: 0.5; margin: 0 6px; font-weight: 400; }
+.szh-doi, .szh-licence {
+  display: inline-flex; align-items: center; gap: 6px; color: #E2E4EC;
+  font-weight: 400; text-decoration: none;
+}
+.szh-doi { margin-top: 6px; font-size: 12.5px; }
+.szh-licence { margin-top: 15px; font-size: 11.5px; }
+.szh-arrow { width: 11px; height: 11px; opacity: 0.9; flex-shrink: 0; display: block; }
+.szh-book { position: absolute; right: -30px; bottom: -56px; width: 300px; height: 300px;
+  opacity: 0.07; }
+
+/* Filet 6 px couleur annuelle sous le hero (pleine largeur, D70). */
+.szh-filet { height: 6px; background: var(--c-annual); }
+
+/* Résumés (Zusammenfassung / Résumé) + mots-clés. */
+.szh-cover-body { padding: 24px 56px 40px; }
+.szh-abstract {
+  background: #f3f3f4; padding: 16px 20px; margin-bottom: 14px;
+  border-left: 3px solid var(--c-abstract-border);
+}
+.szh-abstract:last-child { margin-bottom: 0; }
+.szh-abstract-label {
+  font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em;
+  font-size: 9.5px; color: #000; margin-bottom: 8px;
+}
+.szh-abstract p { margin: 0; color: var(--c-ink); text-align: justify; hyphens: auto; }
+.szh-kws { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.szh-kw {
+  font-size: 10px; padding: 2px 9px; border-radius: 3px; color: #000;
+  background: var(--c-kw-bg); border: 1px solid var(--c-kw-border);
+}
 
 /* ═══ 6. Éléments de corps (titres, listes, citation, encadrés) — M3 ══════════ */
 /* Provisoire M1 : styles neutres, remplacés par la maquette fidèle en M3. */
