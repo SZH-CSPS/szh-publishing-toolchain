@@ -42,33 +42,46 @@ fichiers ni au terminal.
 
 Elle a **deux sections** :
 
-- **Articles** — un article par ligne. **Clic** = ouvrir le texte (à gauche).
-  Au survol d'un article, trois boutons apparaissent à droite :
-  - **👁 Ouvrir le PDF** — affiche l'aperçu à droite (le compile d'abord s'il n'existe
-    pas encore) ;
-  - **▷ Compiler** — régénère le PDF ;
+- **Articles** — un article par ligne. **Un clic fait tout** : le texte s'ouvre à
+  gauche, l'article est recompilé **si besoin** (texte ou tableau plus récent que le
+  PDF), et l'aperçu PDF s'affiche à droite — celui de l'article précédent se ferme
+  tout seul (toujours deux volets : texte à gauche, PDF à droite).
+  Au survol d'un article, un bouton :
   - **🗑 Supprimer l'article** — efface l'article **et** son PDF, après une demande de
     confirmation explicite (l'action est irréversible : rien n'est supprimé sans accord).
 
-  Si l'article contient des **images**, une petite flèche permet de le **déplier** : chaque
-  image apparaît avec ses dimensions et son poids (p. ex. « 1200 × 800 · 245 Ko »).
-  **Clic** sur une image = l'afficher. Le bouton **Remplacer** au survol échange le fichier
-  contre une autre image **en gardant le même nom** — le texte de l'article n'a pas à changer,
-  la nouvelle image apparaît à la compilation suivante.
+  Si l'article contient des **images ou des tableaux**, une petite flèche permet de le
+  **déplier** :
+  - chaque **image** apparaît avec ses dimensions et son poids (p. ex.
+    « 1200 × 800 · 245 Ko ») ; **clic** = l'afficher ; **Remplacer** au survol échange le
+    fichier contre une autre image **en gardant le même nom** ;
+  - chaque **tableau** (fichiers `table-01.html`, `table-02.html`…) vient du document
+    Word d'origine ; **clic** = ouvrir le tableau pour le **modifier directement** ;
+    **Remplacer** au survol l'échange contre un autre fichier HTML, même nom conservé.
+    La modification apparaît à la compilation suivante (Ctrl + S ou re-clic).
 - **Word en attente (n)** — les fichiers Word déposés mais pas encore convertis ; le
   nombre entre parenthèses est le compte. Un ⚠ « déjà converti » signale un Word dont
   l'article existe déjà (renommer le fichier si c'est une nouvelle version).
   Après une conversion réussie, le fichier Word **disparaît de ce dossier** : l'article
   (`.md`) devient l'unique copie de travail — c'est voulu, plus de doublons.
 
-En haut de la barre, trois boutons :
+Le **titre de la barre** affiche le numéro en cours (p. ex. « R2026-2 | Autodétermination »),
+mis à jour dès que les méta-données changent. En haut de la barre, cinq boutons :
 
 - **➕ Importer des Word** — ouvre un sélecteur pour **choisir des `.docx` sur le disque** ;
   ils sont copiés dans la revue puis convertis.
 - **⚙ Méta-données du numéro** — un petit formulaire (titre du dossier, nom de la revue,
   volume, numéro, date, langue) ; **Enregistrer** met à jour la revue sans rien toucher
   d'autre. Aucun fichier technique à ouvrir.
+- **⬆ Tout exporter** — régénère **tous** les PDF de la revue, même ceux à jour
+  (utile avant une livraison : tout est reconstruit proprement d'un coup).
+- **☰ Métadonnées des articles** — un formulaire qui liste **tous les articles** :
+  titre, sous-titre, auteur(s) (nom, affiliation, ORCID), DOI, mots-clés. Seuls les
+  articles modifiés (●) sont réécrits à l'enregistrement.
 - **⟳ Rafraîchir** — recharge la liste (utile si OneDrive a tardé à synchroniser).
+
+À l'ouverture d'une revue, l'environnement de compilation démarre en arrière-plan et
+reste prêt : la première compilation n'a plus de temps de chauffe.
 
 Et sur la section « Word en attente », un bouton :
 
@@ -76,18 +89,19 @@ Et sur la section « Word en attente », un bouton :
   déposés dans le dossier (le cas le plus courant : on glisse les Word dans la revue via
   OneDrive, puis on clique ici).
 
-[capture : survol d'un article montrant « Ouvrir le PDF », « Compiler » et « Supprimer »]
+[capture : la barre avec son titre « R2026-2 | … » et les cinq boutons]
 [capture : la section « Word en attente (2) » avec le bouton « Convertir »]
 [capture : le formulaire « Méta-données du numéro »]
-[capture : un article déplié montrant ses images et le bouton « Remplacer »]
+[capture : le formulaire « Métadonnées des articles » (cartes par article)]
+[capture : un article déplié montrant images et tableaux, boutons « Remplacer »]
 
 ### Le geste type
 
 1. Glisser les `.docx` finalisés dans le dossier **articles-word** de la revue (ou via **➕**).
 2. Dans la barre « Revue », cliquer **▶▶ Convertir les Word en attente** → une notification
    « N article(s) importé(s) » confirme (les `.docx` convertis sont retirés du dossier).
-3. Cliquer un article, puis **👁** pour voir son PDF à droite. Ensuite, chaque **Ctrl + S**
-   régénère l'aperçu.
+3. **Cliquer un article** : son texte s'ouvre à gauche et son PDF apparaît à droite
+   (compilé au passage si nécessaire). Ensuite, chaque **Ctrl + S** régénère l'aperçu.
 
 ## Créer une nouvelle revue
 

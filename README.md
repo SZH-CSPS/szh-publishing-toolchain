@@ -108,14 +108,19 @@ Bumper la version → pousser le tag → la CI republie la Release. Les postes d
 4. Écrire, puis **Ctrl + S** → chaque article est régénéré dans `out/<article>/` (PDF + HTML),
    en intégrant au passage tout nouveau Word déposé.
 
-La barre latérale **« Revue SZH »** (extension `szh-cockpit`) rassemble ces gestes sans
-explorateur : sections *Articles* / *Word en attente (n)*, boutons **➕ Importer**,
-**▶▶ Convertir les Word en attente**, **👁 Ouvrir le PDF**, **▷ Compiler**, **⚙ Méta-données
-du numéro** (formulaire → `ausgabe.yaml`), **🗑 Supprimer l'article** (confirmation), et par
-article déplié : ses **images** (dimensions + poids, **Remplacer** à nom conservé). Après
-conversion réussie, le `.docx` source est **supprimé** d'`articles-word/` (D39) ; un fichier
-« déjà converti » y reste (⚠). « **Nouvelle revue…** » se crée depuis le lanceur
-**Revues SZH** du menu Démarrer (D38). Voir [`userdoc.md`](userdoc.md).
+La barre latérale **« Revue SZH »** (extension `szh-cockpit`, titre = numéro en cours, D43)
+rassemble ces gestes sans explorateur : **un clic sur un article** ouvre le texte, compile
+si besoin et affiche l'aperçu (D46) ; sections *Articles* / *Word en attente (n)* ; boutons
+**➕ Importer**, **▶▶ Convertir les Word en attente**, **⚙ Méta-données du numéro**
+(formulaire → `ausgabe.yaml`), **⬆ Tout exporter** (rebuild forcé, D44), **☰ Métadonnées des
+articles** (frontmatter : titre, auteurs structurés, DOI, mots-clés — D48), **🗑 Supprimer
+l'article** (confirmation) ; par article déplié : **images** (dimensions + poids) et
+**tableaux** (`tables/*.html`, extraits du Word à l'import et ré-injectés à la compilation,
+D47), chacun avec **Remplacer** à nom conservé. Après conversion réussie, le `.docx` source
+est **supprimé** d'`articles-word/` (D39) ; un « déjà converti » y reste (⚠). Les médias
+vivent à un seul niveau `media/` (D45). La VM WSL est maintenue prête tant qu'une revue est
+ouverte (D42). « **Nouvelle revue…** » se crée depuis le lanceur **Revues SZH** du menu
+Démarrer (D38). Voir [`userdoc.md`](userdoc.md).
 
 ### Raccourcis clavier (déployés par `vscodium-user/keybindings.json` + extensions épinglées)
 
