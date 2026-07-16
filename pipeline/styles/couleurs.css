@@ -9,6 +9,13 @@
  * lit la couleur choisie dans le numéro (ausgabe.yaml : `couleur:`) et applique la
  * variation correspondante aux tableaux. Les valeurs par défaut ont été calculées
  * (luminance WCAG) pour respecter les contrastes indiqués.
+ *
+ * Deux teintes NEUTRES (indépendantes de la couleur annuelle) servent aussi les
+ * tableaux et sont ré-émises telles quelles par `accent-css.py` (donc éditables ici) :
+ *   --szh-gris-clair : fond « gris » des en-têtes / de la ligne de total. FOND CLAIR
+ *                      prévu pour du texte NOIR → garder un contraste ≥ 4.5:1 avec #000.
+ *   --szh-zebre      : teinte du zébrage (une ligne/colonne sur deux). Très légère, en
+ *                      fond de cellules à texte noir → garder un bon contraste avec #000.
  */
 :root {
   /* Rouge */
@@ -23,4 +30,8 @@
   --c-bleuacier-normal: #5F9FBC;   --c-bleuacier-clair: #E2EEF3;   --c-bleuacier-fonce: #46758B;
   /* Mountbatten */
   --c-mountbatten-normal: #A98899; --c-mountbatten-clair: #F0EAED; --c-mountbatten-fonce: #826875;
+
+  /* Teintes neutres des tableaux (voir ci-dessus) — éditables. */
+  --szh-gris-clair: #E6E6E6;
+  --szh-zebre: #F2F2F2;
 }

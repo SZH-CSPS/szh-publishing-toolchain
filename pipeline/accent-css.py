@@ -47,21 +47,41 @@ def lire_couleur(chemin):
     return None
 
 
-def variations_depuis_css(nom):
-    """Lit --c-<nom>-normal/-clair/-fonce dans styles/couleurs.css (à côté de ce
-    script). Renvoie {normal, clair, fonce} si les 3 sont trouvées, sinon None."""
+def _couleurs_css():
+    """Contenu de styles/couleurs.css (à côté de ce script), ou '' si absent."""
     chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'styles', 'couleurs.css')
     try:
         with open(chemin, encoding='utf-8') as f:
-            css = f.read()
+            return f.read()
     except OSError:
-        return None
+        return ''
+
+
+def variations_depuis_css(nom):
+    """Lit --c-<nom>-normal/-clair/-fonce dans styles/couleurs.css. Renvoie
+    {normal, clair, fonce} si les 3 sont trouvées, sinon None."""
+    css = _couleurs_css()
     out = {}
     for var in ('normal', 'clair', 'fonce'):
         m = re.search(r'--c-' + re.escape(nom) + r'-' + var + r'\s*:\s*(#[0-9A-Fa-f]{6})', css)
         if m:
             out[var] = m.group(1)
     return out if len(out) == 3 else None
+
+
+def teintes_neutres_depuis_css():
+    """Teintes NEUTRES des tableaux (--szh-gris-clair, --szh-zebre) éditées dans
+    styles/couleurs.css. Indépendantes de la couleur annuelle : ré-émises telles
+    quelles pour que les modifications de couleurs.css prennent effet dans le PDF.
+    Renvoie un dict {var: hex} (vide si couleurs.css absent/incomplet -> repli de
+    print.css)."""
+    css = _couleurs_css()
+    out = {}
+    for var in ('--szh-gris-clair', '--szh-zebre'):
+        m = re.search(re.escape(var) + r'\s*:\s*(#[0-9A-Fa-f]{3,6})', css)
+        if m:
+            out[var] = m.group(1)
+    return out
 
 
 # ---- Repli : calcul WCAG contraste-safe (si couleurs.css absent/incomplet) ----------
@@ -109,17 +129,21 @@ def variations_calculees(hexa):
 def main(argv):
     chemin = argv[1] if len(argv) > 1 else 'ausgabe.yaml'
     hexa = lire_couleur(chemin)
-    if hexa not in PALETTE:
+    neutres = teintes_neutres_depuis_css()   # --szh-gris-clair / --szh-zebre (éditables)
+    lignes = []
+    if hexa in PALETTE:
+        v = variations_depuis_css(PALETTE[hexa]) or variations_calculees(hexa)
+        lignes.append('  --szh-accent: %s;' % v['normal'])
+        lignes.append('  --szh-accent-clair: %s;' % v['clair'])
+        lignes.append('  --szh-accent-fonce: %s;' % v['fonce'])
+    for var, hexv in neutres.items():
+        lignes.append('  %s: %s;' % (var, hexv))
+    if not lignes:
         sys.stdout.write('/* Aucune couleur annuelle : accent = repli gris de print.css. */\n')
         return 0
-    v = variations_depuis_css(PALETTE[hexa]) or variations_calculees(hexa)
-    sys.stdout.write(
-        ':root {\n'
-        '  --szh-accent: %s;\n'
-        '  --szh-accent-clair: %s;\n'
-        '  --szh-accent-fonce: %s;\n'
-        '}\n' % (v['normal'], v['clair'], v['fonce'])
-    )
+    if hexa not in PALETTE:
+        sys.stdout.write('/* Aucune couleur annuelle : accent = repli gris de print.css ; teintes neutres ci-dessous. */\n')
+    sys.stdout.write(':root {\n' + '\n'.join(lignes) + '\n}\n')
     return 0
 
 

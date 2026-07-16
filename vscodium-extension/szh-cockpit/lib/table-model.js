@@ -74,6 +74,14 @@ function extraireCellules(interieur) {
 
 function enumOu(v, liste, defaut) { return liste.indexOf(v) !== -1 ? v : defaut; }
 
+// Booléen tolérant : accepte true / 1 / '1' / 'oui' / 'true' (les attributs data-*
+// booléens sont sérialisés en « 1 », le modèle webview envoie des vrais booléens).
+function vrai(v) { return v === true || v === 1 || v === '1' || v === 'oui' || v === 'true'; }
+
+// Énumérations de style de tableau (D64/D67), partagées analyser/serialiser/normaliser.
+const FONDS = ['aucun', 'negatif', 'couleur', 'gris'];   // data-*-fond
+const ZEBRES = ['aucun', 'paires', 'impaires'];          // data-zebre-*
+
 // Échappe le texte BRUT (collage TSV) en inline sûr : &, <, > seulement. Le résultat
 // passe ensuite par canoniserInline (aucune balise -> texte conservé, jamais d'injection).
 function echapTexteBrut(s) {
@@ -134,7 +142,6 @@ function etendreGrille(modele) {
   }
   return {
     cellules: cellules, grid: grid,
-    infosLignes: modele.lignes.map((lg) => ({ total: !!lg.total, teinte: lg.teinte || 'gris', gras: lg.gras || 'non' })),
     attrs: Object.assign({}, modele.attrs)
   };
 }
@@ -162,7 +169,7 @@ function compacterGrille(g) {
       const cell = g.cellules[id];
       cellules.push({ contenu: cell.contenu, colspan: cs, rowspan: rs, th: !!cell.th, scope: cell.scope || '', align: cell.align || 'left' });
     }
-    lignes.push({ total: g.infosLignes[r].total, teinte: g.infosLignes[r].teinte, gras: g.infosLignes[r].gras, cellules: cellules });
+    lignes.push({ cellules: cellules });
   }
   return finaliserModele({ attrs: g.attrs, lignes: lignes });
 }
@@ -184,7 +191,11 @@ function reappliquerEntetes(modele) {
   return modele;
 }
 
-// Normalise (bornes + énumérations) un modèle, sans toucher à la structure.
+// Normalise (bornes + énumérations) un modèle, sans toucher à la structure. Les styles
+// vivent au NIVEAU tableau (D64) : en-têtes de lignes (el = th[scope=row], colonnes de
+// gauche), en-têtes de colonnes (ec = th[scope=col], rangées du haut), total (dernière
+// rangée auto, D65), bordures, zébrage colonnes/lignes. Aucun style par cellule hormis
+// l'alignement et la mise en forme inline du contenu.
 function normaliserModele(modele) {
   const a = (modele && modele.attrs) || {};
   const lignesEntree = (modele && modele.lignes) || [];
@@ -193,21 +204,19 @@ function normaliserModele(modele) {
     classe: 'szh-tableau',
     enteteLignes: Math.max(0, Math.min(2, Math.min(parseInt(a.enteteLignes, 10) || 0, nbLignes))),
     enteteColonnes: Math.max(0, Math.min(2, parseInt(a.enteteColonnes, 10) || 0)),
-    enteteLigneStyle: enumOu(a.enteteLigneStyle, ['gras', 'negatif', 'fond', 'normal'], 'normal'),
-    enteteColonneStyle: enumOu(a.enteteColonneStyle, ['gras', 'negatif', 'fond', 'normal'], 'normal'),
-    zebre: enumOu(a.zebre, ['lignes', 'colonnes', 'non'], 'non'),
-    zebreTeinte: enumOu(a.zebreTeinte, ['gris', 'couleur'], 'gris'),
-    separateurs: enumOu(a.separateurs, ['gris', 'couleur', 'non'], 'non'),
-    bordureHaute: a.bordureHaute === 'oui' ? 'oui' : 'non',
-    bordureBasse: a.bordureBasse === 'oui' ? 'oui' : 'non'
+    elGras: vrai(a.elGras), elFond: enumOu(a.elFond, FONDS, 'aucun'),
+    ecGras: vrai(a.ecGras), ecFond: enumOu(a.ecFond, FONDS, 'aucun'),
+    totalGras: vrai(a.totalGras), totalFond: enumOu(a.totalFond, FONDS, 'aucun'),
+    bordureHaute: vrai(a.bordureHaute), bordureBasse: vrai(a.bordureBasse),
+    zebreCol: enumOu(a.zebreCol, ZEBRES, 'aucun'), zebreColEntetes: vrai(a.zebreColEntetes),
+    zebreLig: enumOu(a.zebreLig, ZEBRES, 'aucun'), zebreLigEntetes: vrai(a.zebreLigEntetes)
   };
-  if (attrs.enteteLignes === 0) { attrs.enteteLigneStyle = 'normal'; }
-  if (attrs.enteteColonnes === 0) { attrs.enteteColonneStyle = 'normal'; }
-  if (attrs.zebre === 'non') { attrs.zebreTeinte = 'gris'; }
+  // Style d'en-tête sans en-tête correspondant -> défaut (sortie minimale, round-trip).
+  if (attrs.enteteColonnes === 0) { attrs.elGras = false; attrs.elFond = 'aucun'; }   // el = colonnes de gauche
+  if (attrs.enteteLignes === 0) { attrs.ecGras = false; attrs.ecFond = 'aucun'; }       // ec = rangées du haut
+  if (attrs.zebreCol === 'aucun') { attrs.zebreColEntetes = false; }
+  if (attrs.zebreLig === 'aucun') { attrs.zebreLigEntetes = false; }
   const lignes = lignesEntree.map((lg) => ({
-    total: !!(lg && lg.total),
-    teinte: enumOu(lg && lg.teinte, ['gris', 'couleur'], 'gris'),
-    gras: (lg && lg.gras) === 'oui' ? 'oui' : 'non',
     cellules: ((lg && lg.cellules) || []).map((c) => {
       const th = !!(c && c.th);
       return {
@@ -220,7 +229,7 @@ function normaliserModele(modele) {
       };
     })
   }));
-  if (lignes.length === 0) { lignes.push({ total: false, teinte: 'gris', gras: 'non', cellules: [{ contenu: '', colspan: 1, rowspan: 1, th: false, scope: '' }] }); }
+  if (lignes.length === 0) { lignes.push({ cellules: [{ contenu: '', colspan: 1, rowspan: 1, th: false, scope: '', align: 'left' }] }); }
   return { attrs: attrs, lignes: lignes };
 }
 
@@ -259,7 +268,9 @@ function infererEnteteColonnes(occ, lignes) {
 }
 
 // analyserTable(html) -> modèle. Tolère un <table> nu (M2) ; déduit les comptes
-// d'en-tête des <th> si les data-entete-* manquent ; ignore thead/tbody/caption/col.
+// d'en-tête des <th> si les data-entete-* manquent ; ignore thead/tbody/caption/col
+// ET le markup accessible dérivé (id/headers/scope=colgroup/rowgroup) régénéré par
+// serialiserTable (D68) -> le modèle est inchangé, le round-trip stable.
 function analyserTable(html) {
   const s = String(html === undefined || html === null ? '' : html);
   const mTable = s.match(/<table\b([^>]*)>/i);
@@ -279,64 +290,118 @@ function analyserTable(html) {
   const reTr = /<tr\b([^>]*)>([\s\S]*?)<\/tr>/gi;
   let mtr;
   while ((mtr = reTr.exec(corps)) !== null) {
-    const attrsTr = lireAttributsHtml(mtr[1]);
-    const classes = String(attrsTr['class'] || '').split(/\s+/);
-    lignes.push({
-      total: classes.indexOf('szh-total') !== -1,
-      teinte: attrsTr['data-teinte'] === 'couleur' ? 'couleur' : 'gris',
-      gras: attrsTr['data-gras'] === 'oui' ? 'oui' : 'non',
-      cellules: extraireCellules(mtr[2])
-    });
+    lignes.push({ cellules: extraireCellules(mtr[2]) });
   }
-  if (lignes.length === 0) { lignes.push({ total: false, teinte: 'gris', gras: 'non', cellules: [{ contenu: '', colspan: 1, rowspan: 1, th: false, scope: '' }] }); }
+  if (lignes.length === 0) { lignes.push({ cellules: [{ contenu: '', colspan: 1, rowspan: 1, th: false, scope: '' }] }); }
   const occ = matriceOccupation(lignes);
   const attrs = {
     classe: 'szh-tableau',
     enteteLignes: at['data-entete-lignes'] !== undefined ? Math.max(0, Math.min(2, parseInt(at['data-entete-lignes'], 10) || 0)) : infererEnteteLignes(occ, lignes),
     enteteColonnes: at['data-entete-colonnes'] !== undefined ? Math.max(0, Math.min(2, parseInt(at['data-entete-colonnes'], 10) || 0)) : infererEnteteColonnes(occ, lignes),
-    enteteLigneStyle: enumOu(at['data-entete-ligne-style'], ['gras', 'negatif', 'fond', 'normal'], 'normal'),
-    enteteColonneStyle: enumOu(at['data-entete-colonne-style'], ['gras', 'negatif', 'fond', 'normal'], 'normal'),
-    zebre: enumOu(at['data-zebre'], ['lignes', 'colonnes', 'non'], 'non'),
-    zebreTeinte: enumOu(at['data-zebre-teinte'], ['gris', 'couleur'], 'gris'),
-    separateurs: enumOu(at['data-separateurs'], ['gris', 'couleur', 'non'], 'non'),
-    bordureHaute: at['data-bordure-haute'] === 'oui' ? 'oui' : 'non',
-    bordureBasse: at['data-bordure-basse'] === 'oui' ? 'oui' : 'non'
+    elGras: at['data-el-gras'] === '1', elFond: enumOu(at['data-el-fond'], FONDS, 'aucun'),
+    ecGras: at['data-ec-gras'] === '1', ecFond: enumOu(at['data-ec-fond'], FONDS, 'aucun'),
+    totalGras: at['data-total-gras'] === '1', totalFond: enumOu(at['data-total-fond'], FONDS, 'aucun'),
+    bordureHaute: at['data-bordure-haute'] === '1', bordureBasse: at['data-bordure-basse'] === '1',
+    zebreCol: enumOu(at['data-zebre-col'], ZEBRES, 'aucun'), zebreColEntetes: at['data-zebre-col-entetes'] === '1',
+    zebreLig: enumOu(at['data-zebre-lig'], ZEBRES, 'aucun'), zebreLigEntetes: at['data-zebre-lig-entetes'] === '1'
   };
   return finaliserModele({ attrs: attrs, lignes: lignes });
 }
 
-// serialiserTable(modèle) -> <table> propre et STABLE (attributs en ordre fixe, un
-// data-* émis seulement s'il est signifiant). Une balise par ligne (lisible, diff-able).
+// Liste « headers » d'une cellule de données (D68) : ids des en-têtes de COLONNE qui la
+// couvrent (tous les niveaux, de haut en bas), puis ids des en-têtes de LIGNE (colonnes
+// de gauche). occ = matrice d'occupation ; idTh(li,c0) = id de l'en-tête d'origine (li,c0).
+function headersDe(occ, r, c0, colspan, rowspan, eL, eC, idTh) {
+  const ids = [], vus = {};
+  const ajouter = (li, cc) => {
+    const ref = occ.grid[li] && occ.grid[li][cc];
+    if (!ref) { return; }
+    const id = idTh(ref.li, ref.c0);
+    if (!vus[id]) { vus[id] = 1; ids.push(id); }
+  };
+  for (let hr = 0; hr < eL; hr++) { for (let cc = c0; cc < c0 + colspan; cc++) { ajouter(hr, cc); } }
+  for (let hc = 0; hc < eC; hc++) { for (let rr = r; rr < r + rowspan; rr++) { ajouter(rr, hc); } }
+  return ids.join(' ');
+}
+
+// serialiserTable(modèle) -> <table> propre et STABLE (attributs data-* en ordre fixe,
+// émis seulement s'ils sont signifiants -> sortie minimale ; une balise par ligne,
+// lisible/diff-able). Markup accessible (D68/AX1) : tableau SIMPLE (≤1 rangée ET ≤1
+// colonne d'en-tête, sans en-tête fusionné) -> scope="col"/"row" ; tableau COMPLEXE
+// (2 niveaux d'en-tête OU en-tête fusionné) -> id sur chaque en-tête + headers="…" sur
+// chaque cellule de données + scope="colgroup"/"rowgroup" pour un en-tête de groupe.
+// Les rangées d'en-tête (les enteteLignes premières) vont dans <thead>, le reste dans
+// <tbody> ; total = dernière rangée de <tbody> (D65). id/headers/thead/tbody sont
+// DÉRIVÉS du modèle (dépouillés par analyserTable) -> le round-trip reste stable.
 function serialiserTable(modele) {
   const m = normaliserModele(modele);
   const a = m.attrs;
+  const eL = a.enteteLignes, eC = a.enteteColonnes;
   let ouv = '<table class="' + a.classe + '"';
-  if (a.enteteLignes > 0) { ouv += ' data-entete-lignes="' + a.enteteLignes + '"'; }
-  if (a.enteteColonnes > 0) { ouv += ' data-entete-colonnes="' + a.enteteColonnes + '"'; }
-  if (a.enteteLignes > 0 && a.enteteLigneStyle !== 'normal') { ouv += ' data-entete-ligne-style="' + a.enteteLigneStyle + '"'; }
-  if (a.enteteColonnes > 0 && a.enteteColonneStyle !== 'normal') { ouv += ' data-entete-colonne-style="' + a.enteteColonneStyle + '"'; }
-  if (a.zebre !== 'non') { ouv += ' data-zebre="' + a.zebre + '"'; if (a.zebreTeinte === 'couleur') { ouv += ' data-zebre-teinte="couleur"'; } }
-  if (a.separateurs !== 'non') { ouv += ' data-separateurs="' + a.separateurs + '"'; }
-  if (a.bordureHaute === 'oui') { ouv += ' data-bordure-haute="oui"'; }
-  if (a.bordureBasse === 'oui') { ouv += ' data-bordure-basse="oui"'; }
+  if (eL > 0) { ouv += ' data-entete-lignes="' + eL + '"'; }
+  if (eC > 0) { ouv += ' data-entete-colonnes="' + eC + '"'; }
+  if (eC > 0 && a.elGras) { ouv += ' data-el-gras="1"'; }
+  if (eC > 0 && a.elFond !== 'aucun') { ouv += ' data-el-fond="' + a.elFond + '"'; }
+  if (eL > 0 && a.ecGras) { ouv += ' data-ec-gras="1"'; }
+  if (eL > 0 && a.ecFond !== 'aucun') { ouv += ' data-ec-fond="' + a.ecFond + '"'; }
+  if (a.totalGras) { ouv += ' data-total-gras="1"'; }
+  if (a.totalFond !== 'aucun') { ouv += ' data-total-fond="' + a.totalFond + '"'; }
+  if (a.bordureHaute) { ouv += ' data-bordure-haute="1"'; }
+  if (a.bordureBasse) { ouv += ' data-bordure-basse="1"'; }
+  if (a.zebreCol !== 'aucun') { ouv += ' data-zebre-col="' + a.zebreCol + '"'; if (a.zebreColEntetes) { ouv += ' data-zebre-col-entetes="1"'; } }
+  if (a.zebreLig !== 'aucun') { ouv += ' data-zebre-lig="' + a.zebreLig + '"'; if (a.zebreLigEntetes) { ouv += ' data-zebre-lig-entetes="1"'; } }
   ouv += '>';
+
+  const occ = matriceOccupation(m.lignes);
+  // Complexité (D68) : 2 niveaux d'en-tête OU au moins un en-tête fusionné.
+  let complexe = eL >= 2 || eC >= 2;
+  if (!complexe) {
+    for (const lg of m.lignes) {
+      for (const cell of lg.cellules) {
+        if (cell.th && (cell.colspan > 1 || cell.rowspan > 1)) { complexe = true; break; }
+      }
+      if (complexe) { break; }
+    }
+  }
+  const idTh = (li, c0) => 'szh-th-r' + li + 'c' + c0;
+
   const out = [ouv];
-  for (const lg of m.lignes) {
-    let tr = '<tr';
-    if (lg.total) { tr += ' class="szh-total"'; if (lg.teinte === 'couleur') { tr += ' data-teinte="couleur"'; } if (lg.gras === 'oui') { tr += ' data-gras="oui"'; } }
-    tr += '>';
-    out.push(tr);
-    for (const cell of lg.cellules) {
+  const emettreRangee = (lg, r) => {
+    out.push('<tr>');
+    lg.cellules.forEach((cell, ci) => {
+      const c0 = occ.positions[r][ci].c0;
       const tag = cell.th ? 'th' : 'td';
       let t = '<' + tag;
-      if (cell.th && (cell.scope === 'col' || cell.scope === 'row')) { t += ' scope="' + cell.scope + '"'; }
+      if (cell.th) {
+        const estColonne = r < eL;   // rangée du haut -> en-tête de colonne (scope col)
+        if (complexe) {
+          t += ' id="' + idTh(r, c0) + '"';
+          const sc = estColonne ? (cell.colspan > 1 ? 'colgroup' : 'col')
+                                 : (cell.rowspan > 1 ? 'rowgroup' : 'row');
+          t += ' scope="' + sc + '"';
+        } else if (cell.scope === 'col' || cell.scope === 'row') {
+          t += ' scope="' + cell.scope + '"';
+        }
+      } else if (complexe) {
+        const ids = headersDe(occ, r, c0, cell.colspan, cell.rowspan, eL, eC, idTh);
+        if (ids) { t += ' headers="' + ids + '"'; }
+      }
       if (cell.colspan > 1) { t += ' colspan="' + cell.colspan + '"'; }
       if (cell.rowspan > 1) { t += ' rowspan="' + cell.rowspan + '"'; }
       if (cell.align === 'center' || cell.align === 'right') { t += ' data-align="' + cell.align + '"'; }
       out.push(t + '>' + cell.contenu + '</' + tag + '>');
-    }
+    });
     out.push('</tr>');
+  };
+
+  if (eL > 0) {
+    out.push('<thead>');
+    for (let r = 0; r < eL && r < m.lignes.length; r++) { emettreRangee(m.lignes[r], r); }
+    out.push('</thead>');
   }
+  out.push('<tbody>');
+  for (let r = eL; r < m.lignes.length; r++) { emettreRangee(m.lignes[r], r); }
+  out.push('</tbody>');
   out.push('</table>');
   return out.join('\n') + '\n';
 }
@@ -351,7 +416,6 @@ function disposition(modele) {
     nbColonnes: occ.nbColonnes,
     attrs: modele.attrs,
     lignes: modele.lignes.map((lg, r) => ({
-      total: lg.total, teinte: lg.teinte, gras: lg.gras,
       cellules: lg.cellules.map((cell, ci) => ({
         li: r, ci: ci, r0: r, c0: occ.positions[r][ci].c0,
         colspan: occ.positions[r][ci].colspan, rowspan: occ.positions[r][ci].rowspan,
@@ -376,7 +440,6 @@ function ajouterLigne(modele, pos) {
     } else { rangee[c] = g.cellules.length; g.cellules.push({ contenu: '', th: false, scope: '', align: 'left' }); }
   }
   g.grid.splice(pos, 0, rangee);
-  g.infosLignes.splice(pos, 0, { total: false, teinte: 'gris', gras: 'non' });
   return compacterGrille(g);
 }
 
@@ -385,7 +448,6 @@ function supprimerLigne(modele, index) {
   if (g.grid.length <= 1) { return finaliserModele(modele); }
   index = Math.max(0, Math.min(index, g.grid.length - 1));
   g.grid.splice(index, 1);
-  g.infosLignes.splice(index, 1);
   return compacterGrille(g);
 }
 
@@ -519,8 +581,8 @@ function deplacerLigne(modele, de, vers) {
   const nbL = g.grid.length;
   de = Math.max(0, Math.min(de, nbL - 1)); vers = Math.max(0, Math.min(vers, nbL - 1));
   if (de === vers) { return compacterGrille(g); }
-  const row = g.grid.splice(de, 1)[0]; const info = g.infosLignes.splice(de, 1)[0];
-  g.grid.splice(vers, 0, row); g.infosLignes.splice(vers, 0, info);
+  const row = g.grid.splice(de, 1)[0];
+  g.grid.splice(vers, 0, row);
   if (!grilleRectangulaire(g.grid)) { return { erreur: 'table.deplacementImpossible' }; }
   return compacterGrille(g);
 }
@@ -566,7 +628,6 @@ function tableauDepuisTsv(texte) {
   const s = String(texte === undefined || texte === null ? '' : texte).replace(/\r\n?/g, '\n').replace(/\n+$/, '');
   const lignesTxt = s.split('\n');
   const lignes = lignesTxt.map((l) => ({
-    total: false, teinte: 'gris', gras: 'non',
     cellules: l.split('\t').map((v) => ({ contenu: echapTexteBrut(v), colspan: 1, rowspan: 1, th: false, scope: '', align: 'left' }))
   }));
   return finaliserModele({ attrs: {}, lignes: lignes });
@@ -585,7 +646,7 @@ function collerDans(modele, ancreR, ancreC, source) {
   let curC = g.grid.length ? g.grid[0].length : 0;
   const needC = ancreC + sC, needL = ancreR + sL;
   for (; curC < needC; curC++) { for (let r = 0; r < g.grid.length; r++) { const id = g.cellules.length; g.cellules.push({ contenu: '', th: false, scope: '', align: 'left' }); g.grid[r].push(id); } }
-  while (g.grid.length < needL) { const row = []; for (let c = 0; c < curC; c++) { const id = g.cellules.length; g.cellules.push({ contenu: '', th: false, scope: '', align: 'left' }); row.push(id); } g.grid.push(row); g.infosLignes.push({ total: false, teinte: 'gris', gras: 'non' }); }
+  while (g.grid.length < needL) { const row = []; for (let c = 0; c < curC; c++) { const id = g.cellules.length; g.cellules.push({ contenu: '', th: false, scope: '', align: 'left' }); row.push(id); } g.grid.push(row); }
   const origines = {};
   for (let r = 0; r < sL; r++) { for (let c = 0; c < sC; c++) { const id = sg.grid[r][c]; if (!(id in origines)) { origines[id] = { r: r, c: c }; } } }
   Object.keys(origines).forEach((idStr) => {
@@ -657,27 +718,24 @@ function appliquerOperationTable(nom, modeleBrut, args) {
     else { modele.attrs.enteteLignes = 0; modele.attrs.enteteColonnes = 0; }
     return finaliserModele(modele);
   }
+  // Styles des en-têtes / du total (D64/D67) : gras (bool) + fond (aucun|negatif|couleur|gris).
+  // cible : 'lignes' = en-têtes de lignes (el, th[scope=row]) ; 'colonnes' = en-têtes de
+  // colonnes (ec, th[scope=col]) ; 'total' = dernière rangée (D65).
   if (nom === 'styleEntete') {
-    const v = enumOu(a.valeur, ['gras', 'negatif', 'fond', 'normal'], 'normal');
-    if (a.cible === 'colonne') { modele.attrs.enteteColonneStyle = v; } else { modele.attrs.enteteLigneStyle = v; }
+    const fond = enumOu(a.fond, FONDS, 'aucun');
+    const gras = vrai(a.gras);
+    if (a.cible === 'colonnes') { modele.attrs.ecGras = gras; modele.attrs.ecFond = fond; }
+    else if (a.cible === 'total') { modele.attrs.totalGras = gras; modele.attrs.totalFond = fond; }
+    else { modele.attrs.elGras = gras; modele.attrs.elFond = fond; }
     return finaliserModele(modele);
   }
+  // Réglages du tableau (D64) : bordures (bool), zébrage colonnes/lignes (enum) + « inclure
+  // les en-têtes » (bool). Un seul champ par appel (les zones postent au changement).
   if (nom === 'reglage') {
-    const champs = {
-      zebre: ['lignes', 'colonnes', 'non'], zebreTeinte: ['gris', 'couleur'],
-      separateurs: ['gris', 'couleur', 'non'], bordureHaute: ['oui', 'non'], bordureBasse: ['oui', 'non']
-    };
-    if (champs[a.champ]) { modele.attrs[a.champ] = enumOu(a.valeur, champs[a.champ], champs[a.champ][champs[a.champ].length - 1]); }
-    return finaliserModele(modele);
-  }
-  if (nom === 'total') {
-    const teinte = enumOu(a.teinte, ['gris', 'couleur', 'non'], 'non');
-    const gras = a.gras === 'oui' || a.gras === true ? 'oui' : 'non';
-    for (let r = n(a.rMin); r <= n(a.rMax); r++) {
-      if (!modele.lignes[r]) { continue; }
-      if (teinte === 'non') { modele.lignes[r].total = false; modele.lignes[r].gras = 'non'; }
-      else { modele.lignes[r].total = true; modele.lignes[r].teinte = teinte; modele.lignes[r].gras = gras; }
-    }
+    const enums = { zebreCol: ZEBRES, zebreLig: ZEBRES };
+    const bools = ['bordureHaute', 'bordureBasse', 'zebreColEntetes', 'zebreLigEntetes'];
+    if (enums[a.champ]) { modele.attrs[a.champ] = enumOu(a.valeur, enums[a.champ], 'aucun'); }
+    else if (bools.indexOf(a.champ) !== -1) { modele.attrs[a.champ] = vrai(a.valeur); }
     return finaliserModele(modele);
   }
   return finaliserModele(modele);

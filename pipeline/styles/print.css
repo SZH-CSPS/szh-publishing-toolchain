@@ -101,16 +101,24 @@ table > caption::before {
    les tableaux importés bruts (<table> nu) gardent le style générique ci-dessus. */
 
 :root {
-  --szh-accent: #9a9a9a;          /* filets / séparateurs « couleur » -> gris par défaut */
-  --szh-accent-clair: #ededed;    /* fond clair : en-tête « fond », zébrage/total « couleur » */
-  --szh-accent-fonce: #4a4a4a;    /* en-tête « negatif » : foncé, texte clair */
+  --szh-accent: #9a9a9a;          /* filets / bordures « couleur » -> gris par défaut */
+  --szh-accent-clair: #ededed;    /* fond « couleur annuelle » (texte noir) : en-têtes/total */
+  --szh-accent-fonce: #4a4a4a;    /* fond « negatif » (texte blanc) : en-têtes/total */
+  /* Repli si out/.szh-accent.css absent : accent-css.py réémet ces deux variables
+     depuis styles/couleurs.css (éditables par la revue). Voir couleurs.css. */
+  --szh-gris-clair: #e6e6e6;      /* fond « gris » des en-têtes/total (texte noir >= 4.5:1) */
+  --szh-zebre: #f2f2f2;           /* teinte neutre du zébrage (une ligne/colonne sur deux) */
 }
 
 /* Table éditoriale : pas de grille pleine ; seuls les filets choisis apparaissent.
    D58 — largeurs 100 % AUTOMATIQUES : table-layout auto + width 100% ; les colonnes
    se distribuent selon le contenu, les cellules reviennent à la ligne. AUCUNE largeur
    fixe n'est émise ni stockée par l'éditeur (le <table> ne porte pas de style de
-   largeur ; cf. serialiserTable). */
+   largeur ; cf. serialiserTable). Styles au NIVEAU tableau (D64) portés par data-* ;
+   défauts (attributs absents) = tableau nu, rétrocompatible.
+   Markup accessible (D68) : en-têtes de colonnes = th[scope="col"|"colgroup"] (rangées
+   du haut) ; en-têtes de lignes = th[scope="row"|"rowgroup"] (colonnes de gauche) ;
+   total = dernière rangée du <tbody> (D65). */
 .szh-tableau { border-collapse: collapse; width: 100%; table-layout: auto; }
 .szh-tableau th, .szh-tableau td { border: 0; padding: 0.35em 0.6em; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 .szh-tableau th { background: transparent; font-weight: 400; }
@@ -119,43 +127,42 @@ table > caption::before {
 .szh-tableau th[data-align="center"], .szh-tableau td[data-align="center"] { text-align: center; }
 .szh-tableau th[data-align="right"], .szh-tableau td[data-align="right"] { text-align: right; }
 
-/* En-têtes de LIGNE (rangées du haut = <th scope="col">) — data-entete-ligne-style */
-.szh-tableau[data-entete-ligne-style="gras"] th[scope="col"] { font-weight: 700; }
-.szh-tableau[data-entete-ligne-style="fond"] th[scope="col"] { background: var(--szh-accent-clair); font-weight: 700; }
-.szh-tableau[data-entete-ligne-style="negatif"] th[scope="col"] { background: var(--szh-accent-fonce); color: #fff; font-weight: 700; }
+/* ── Zébrage (placé AVANT en-têtes/total pour être surchargé par eux) ────────────── */
+/* Lignes : rangées de données (<tbody>) paires/impaires ; « inclure les en-têtes »
+   étend au <thead>. */
+.szh-tableau[data-zebre-lig="paires"] tbody tr:nth-child(even) > * { background: var(--szh-zebre); }
+.szh-tableau[data-zebre-lig="impaires"] tbody tr:nth-child(odd) > * { background: var(--szh-zebre); }
+.szh-tableau[data-zebre-lig="paires"][data-zebre-lig-entetes="1"] thead tr:nth-child(even) > * { background: var(--szh-zebre); }
+.szh-tableau[data-zebre-lig="impaires"][data-zebre-lig-entetes="1"] thead tr:nth-child(odd) > * { background: var(--szh-zebre); }
+/* Colonnes (best effort : nth-child ; approximatif avec fusions/en-têtes de gauche).
+   Par défaut : cellules de données ; « inclure les en-têtes » étend aux th. */
+.szh-tableau[data-zebre-col="paires"] tbody td:nth-child(even) { background: var(--szh-zebre); }
+.szh-tableau[data-zebre-col="impaires"] tbody td:nth-child(odd) { background: var(--szh-zebre); }
+.szh-tableau[data-zebre-col="paires"][data-zebre-col-entetes="1"] tr > :nth-child(even) { background: var(--szh-zebre); }
+.szh-tableau[data-zebre-col="impaires"][data-zebre-col-entetes="1"] tr > :nth-child(odd) { background: var(--szh-zebre); }
 
-/* En-têtes de COLONNE (colonnes de gauche = <th scope="row">) — data-entete-colonne-style */
-.szh-tableau[data-entete-colonne-style="gras"] th[scope="row"] { font-weight: 700; }
-.szh-tableau[data-entete-colonne-style="fond"] th[scope="row"] { background: var(--szh-accent-clair); font-weight: 700; }
-.szh-tableau[data-entete-colonne-style="negatif"] th[scope="row"] { background: var(--szh-accent-fonce); color: #fff; font-weight: 700; }
+/* ── En-têtes de LIGNES (el) = th[scope=row|rowgroup], colonnes de gauche — data-el-* ─ */
+.szh-tableau[data-el-gras="1"] th[scope^="row"] { font-weight: 700; }
+.szh-tableau[data-el-fond="negatif"] th[scope^="row"] { background: var(--szh-accent-fonce); color: #fff; }
+.szh-tableau[data-el-fond="couleur"] th[scope^="row"] { background: var(--szh-accent-clair); color: #000; }
+.szh-tableau[data-el-fond="gris"] th[scope^="row"] { background: var(--szh-gris-clair); color: #000; }
 
-/* Zébrage de LIGNES (nth-child) : tint des <td> des rangées de données seulement
-   (jamais les en-têtes ni la ligne de total). Décalé selon le nombre de rangées
-   d'en-tête pour coller à l'aperçu (1re rangée de données non teintée). */
-.szh-tableau[data-zebre="lignes"]:not([data-entete-lignes]) tr:nth-child(even):not(.szh-total) > td,
-.szh-tableau[data-zebre="lignes"][data-entete-lignes="1"] tr:nth-child(2n+3):not(.szh-total) > td,
-.szh-tableau[data-zebre="lignes"][data-entete-lignes="2"] tr:nth-child(2n+4):not(.szh-total) > td { background: #f2f2f2; }
-.szh-tableau[data-zebre="lignes"][data-zebre-teinte="couleur"]:not([data-entete-lignes]) tr:nth-child(even):not(.szh-total) > td,
-.szh-tableau[data-zebre="lignes"][data-zebre-teinte="couleur"][data-entete-lignes="1"] tr:nth-child(2n+3):not(.szh-total) > td,
-.szh-tableau[data-zebre="lignes"][data-zebre-teinte="couleur"][data-entete-lignes="2"] tr:nth-child(2n+4):not(.szh-total) > td { background: var(--szh-accent-clair); }
+/* ── En-têtes de COLONNES (ec) = th[scope=col|colgroup], rangées du haut — data-ec-* ─ */
+.szh-tableau[data-ec-gras="1"] th[scope^="col"] { font-weight: 700; }
+.szh-tableau[data-ec-fond="negatif"] th[scope^="col"] { background: var(--szh-accent-fonce); color: #fff; }
+.szh-tableau[data-ec-fond="couleur"] th[scope^="col"] { background: var(--szh-accent-clair); color: #000; }
+.szh-tableau[data-ec-fond="gris"] th[scope^="col"] { background: var(--szh-gris-clair); color: #000; }
 
-/* Zébrage de COLONNES (best effort : nth-child ; approximatif avec fusions/en-têtes gauche). */
-.szh-tableau[data-zebre="colonnes"] tr:not(.szh-total) > td:nth-child(even) { background: #f2f2f2; }
-.szh-tableau[data-zebre="colonnes"][data-zebre-teinte="couleur"] tr:not(.szh-total) > td:nth-child(even) { background: var(--szh-accent-clair); }
+/* ── Ligne de TOTAL = dernière rangée du <tbody> (D65) — placée après le zébrage ──── */
+.szh-tableau[data-total-fond="negatif"] tbody tr:last-child > * { background: var(--szh-accent-fonce); color: #fff; }
+.szh-tableau[data-total-fond="couleur"] tbody tr:last-child > * { background: var(--szh-accent-clair); color: #000; }
+.szh-tableau[data-total-fond="gris"] tbody tr:last-child > * { background: var(--szh-gris-clair); color: #000; }
+.szh-tableau[data-total-gras="1"] tbody tr:last-child > * { font-weight: 700; }
 
-/* Séparateurs de lignes (2g) */
-.szh-tableau[data-separateurs="gris"] tr:not(:last-child) > * { border-bottom: 1px solid #cccccc; }
-.szh-tableau[data-separateurs="couleur"] tr:not(:last-child) > * { border-bottom: 1px solid var(--szh-accent); }
-
-/* Bordure haute : filet épais sous la zone d'en-tête (2e) — ou en tête si aucun en-tête */
-.szh-tableau[data-bordure-haute="oui"]:not([data-entete-lignes]) tr:nth-child(1) > * { border-top: 2px solid var(--szh-accent); }
-.szh-tableau[data-bordure-haute="oui"][data-entete-lignes="1"] tr:nth-child(1) > * { border-bottom: 2px solid var(--szh-accent); }
-.szh-tableau[data-bordure-haute="oui"][data-entete-lignes="2"] tr:nth-child(2) > * { border-bottom: 2px solid var(--szh-accent); }
-
-/* Bordure basse : filet épais sous la dernière ligne (2f) */
-.szh-tableau[data-bordure-basse="oui"] tr:last-child > * { border-bottom: 2px solid var(--szh-accent); }
-
-/* Ligne de total (2h) — placée APRÈS le zébrage pour l'emporter ; gras ± teinte */
-.szh-tableau tr.szh-total > * { background: #ededed; }
-.szh-tableau tr.szh-total[data-teinte="couleur"] > * { background: var(--szh-accent-clair); }
-.szh-tableau tr.szh-total[data-gras="oui"] > * { font-weight: 700; }
+/* ── Bordures ─────────────────────────────────────────────────────────────────────── */
+/* Haute : filet épais sous la zone d'en-tête (dernière rangée du <thead>) ; si aucun
+   en-tête de colonne, filet en tête de la 1re rangée de données. */
+.szh-tableau[data-bordure-haute="1"] thead tr:last-child > * { border-bottom: 2px solid var(--szh-accent); }
+.szh-tableau[data-bordure-haute="1"]:not([data-entete-lignes]) tbody tr:first-child > * { border-top: 2px solid var(--szh-accent); }
+/* Basse : filet épais sous la dernière rangée. */
+.szh-tableau[data-bordure-basse="1"] tbody tr:last-child > * { border-bottom: 2px solid var(--szh-accent); }
