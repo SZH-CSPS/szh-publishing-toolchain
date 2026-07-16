@@ -31,6 +31,7 @@
   { "key": "ctrl+alt+c", "command": "szh.fmt.citation",  "when": "editorTextFocus && editorLangId == markdown" },
   { "key": "ctrl+alt+f", "command": "szh.fmt.figure",    "when": "editorTextFocus && editorLangId == markdown" },
   { "key": "ctrl+alt+t", "command": "szh.fmt.tableau",   "when": "editorTextFocus && editorLangId == markdown" },
+  { "key": "ctrl+alt+m", "command": "szh.miseEnForme",   "when": "editorTextFocus && editorLangId == markdown" },
 
   // Secours si l'aperçu PDF ne se rafraîchit pas tout seul : recharge la fenêtre
   { "key": "ctrl+alt+r", "command": "workbench.action.reloadWindow" }

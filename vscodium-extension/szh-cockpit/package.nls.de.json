@@ -11,6 +11,7 @@
   "cmd.apercuMetadonnees": "Metadaten der Artikel",
   "cmd.reglages": "SZH-Einstellungen",
   "cmd.basculerApercu": "Vorschau HTML ⇄ PDF umschalten",
+  "cmd.miseEnForme": "SZH-Formatierung…",
   "menu.miseEnForme": "Formatierung",
   "cmd.fmt.gras": "Fett",
   "cmd.fmt.italique": "Kursiv",

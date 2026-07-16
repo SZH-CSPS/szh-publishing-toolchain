@@ -166,6 +166,24 @@ const TEXTES_COCKPIT = {
     'fmt.figure.horsarticle': 'Ouvrez d’abord un article (.md) pour insérer une figure.',
     'fmt.figure.copiee': 'Image « {0} » ajoutée à l’article.',
     'fmt.tableau.colonne': 'Colonne',
+    'palette.placeholder': 'Mise en forme — choisir une action',
+    'palette.horsmd': 'Ouvrez un article (.md) pour la mise en forme.',
+    'palette.g.style': 'Style',
+    'palette.g.titres': 'Titres',
+    'palette.g.blocs': 'Blocs',
+    'palette.g.inserer': 'Insérer',
+    'palette.gras': 'Gras',
+    'palette.italique': 'Italique',
+    'palette.souligne': 'Souligné',
+    'palette.titre1': 'Titre 1',
+    'palette.titre2': 'Titre 2',
+    'palette.titre3': 'Titre 3',
+    'palette.important': 'Important',
+    'palette.highlight': 'Mise en évidence',
+    'palette.question': 'Question',
+    'palette.citation': 'Citation',
+    'palette.figure': 'Insérer une figure',
+    'palette.tableau': 'Insérer un tableau',
     'table.titre': 'Tableau — {0}',
     'table.aide': 'Cliquez une cellule pour l’éditer (Ctrl+B gras, Ctrl+I italique). Maj+clic = plage rectangulaire. Cliquez une poignée grise pour une ligne ou une colonne entière.',
     'table.enregistrer': 'Enregistrer',
@@ -348,6 +366,24 @@ const TEXTES_COCKPIT = {
     'fmt.figure.horsarticle': 'Öffnen Sie zuerst einen Artikel (.md), um eine Abbildung einzufügen.',
     'fmt.figure.copiee': 'Bild « {0} » zum Artikel hinzugefügt.',
     'fmt.tableau.colonne': 'Spalte',
+    'palette.placeholder': 'Formatierung — Aktion wählen',
+    'palette.horsmd': 'Öffnen Sie einen Artikel (.md) für die Formatierung.',
+    'palette.g.style': 'Stil',
+    'palette.g.titres': 'Überschriften',
+    'palette.g.blocs': 'Blöcke',
+    'palette.g.inserer': 'Einfügen',
+    'palette.gras': 'Fett',
+    'palette.italique': 'Kursiv',
+    'palette.souligne': 'Unterstrichen',
+    'palette.titre1': 'Überschrift 1',
+    'palette.titre2': 'Überschrift 2',
+    'palette.titre3': 'Überschrift 3',
+    'palette.important': 'Wichtig',
+    'palette.highlight': 'Hervorhebung',
+    'palette.question': 'Frage',
+    'palette.citation': 'Zitat',
+    'palette.figure': 'Abbildung einfügen',
+    'palette.tableau': 'Tabelle einfügen',
     'table.titre': 'Tabelle — {0}',
     'table.aide': 'Klicken Sie eine Zelle zum Bearbeiten (Ctrl+B fett, Ctrl+I kursiv). Umschalt+Klick = rechteckiger Bereich. Klicken Sie einen grauen Griff für eine ganze Zeile oder Spalte.',
     'table.enregistrer': 'Speichern',
@@ -2798,6 +2834,43 @@ function fmtTableau() {
   return editeur.edit((b) => { b.replace(editeur.selection, sq); });
 }
 
+// Palette « Mise en forme » (Ctrl+Alt+M + entrée clic droit) : menu SZH-only,
+// localisé, raccourci affiché à droite. Réutilise les commandes szh.fmt.*.
+// Format : ['--', cléGroupe] = séparateur ; sinon [cléLibellé, commande, raccourci, icône].
+const PALETTE_MEF = [
+  ['--', 'palette.g.style'],
+  ['palette.gras', 'szh.fmt.gras', 'Ctrl+B', '$(bold)'],
+  ['palette.italique', 'szh.fmt.italique', 'Ctrl+I', '$(italic)'],
+  ['palette.souligne', 'szh.fmt.souligne', 'Ctrl+U', ''],
+  ['--', 'palette.g.titres'],
+  ['palette.titre1', 'szh.fmt.titre1', 'Ctrl+Alt+1', ''],
+  ['palette.titre2', 'szh.fmt.titre2', 'Ctrl+Alt+2', ''],
+  ['palette.titre3', 'szh.fmt.titre3', 'Ctrl+Alt+3', ''],
+  ['--', 'palette.g.blocs'],
+  ['palette.important', 'szh.fmt.important', 'Ctrl+Alt+W', ''],
+  ['palette.highlight', 'szh.fmt.highlight', 'Ctrl+Alt+H', ''],
+  ['palette.question', 'szh.fmt.question', 'Ctrl+Alt+Q', ''],
+  ['palette.citation', 'szh.fmt.citation', 'Ctrl+Alt+C', ''],
+  ['--', 'palette.g.inserer'],
+  ['palette.figure', 'szh.fmt.figure', 'Ctrl+Alt+F', ''],
+  ['palette.tableau', 'szh.fmt.tableau', 'Ctrl+Alt+T', '']
+];
+
+// Ouvre la palette (QuickPick) et applique la commande choisie à la sélection
+// courante (l'éditeur .md reste l'éditeur actif pendant la QuickPick).
+async function ouvrirMiseEnForme() {
+  const ed = vscode.window.activeTextEditor;
+  if (!ed || ed.document.languageId !== 'markdown') {
+    vscode.window.setStatusBarMessage(T('palette.horsmd'), 3000);
+    return;
+  }
+  const items = PALETTE_MEF.map((e) => (e[0] === '--'
+    ? { label: T(e[1]), kind: vscode.QuickPickItemKind.Separator }
+    : { label: (e[3] ? e[3] + ' ' : '') + T(e[0]), description: e[2], commande: e[1] }));
+  const choix = await vscode.window.showQuickPick(items, { placeHolder: T('palette.placeholder') });
+  if (choix && choix.commande) { await vscode.commands.executeCommand(choix.commande); }
+}
+
 function enregistrerCommandesMiseEnForme(context) {
   const c = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   c('szh.fmt.gras', () => appliquerSelection((t) => basculerEnrobage(t, '**'), { milieu: 2 }));
@@ -2812,6 +2885,7 @@ function enregistrerCommandesMiseEnForme(context) {
   c('szh.fmt.citation', () => appliquerSelection((t) => basculerCitation(t), { parLigne: true }));
   c('szh.fmt.figure', () => fmtFigure());
   c('szh.fmt.tableau', () => fmtTableau());
+  c('szh.miseEnForme', () => ouvrirMiseEnForme());
 }
 
 // ---- Éditeur de tableau maison (webview) — D57, T1 -------------------------------

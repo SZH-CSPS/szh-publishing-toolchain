@@ -11,6 +11,7 @@
   "cmd.apercuMetadonnees": "Métadonnées des articles",
   "cmd.reglages": "Réglages SZH",
   "cmd.basculerApercu": "Basculer l’aperçu HTML ⇄ PDF",
+  "cmd.miseEnForme": "Mise en forme SZH…",
   "menu.miseEnForme": "Mise en forme",
   "cmd.fmt.gras": "Gras",
   "cmd.fmt.italique": "Italique",
