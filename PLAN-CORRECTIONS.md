@@ -5,7 +5,8 @@ Corrections décidées après tests de Robin. À exécuter **tranche par tranche
 SUPERSEDE deux points de `PLAN-FONCTIONS.md`** : le stockage frontmatter de N7
 (→ fichier caché `.meta.yaml`) et l'extraction Lua des tableaux de N6
 (→ extracteur Python fidèle). Lire d'abord `PLAN-FONCTIONS.md` (N6, N7) puis ce
-fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
+fichier. Décisions **D49–D56**, tranches **M1–M7**. Français partout.
+**M1–M5 sont faits** (commits `6c06a5d`→`179d9ee`) ; **M6–M7 restent à implémenter.**
 
 ## Contexte (vérifié le 2026-07-16)
 
@@ -48,6 +49,7 @@ fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
   doi: "10.xxxx/yyyy"
   title:    { fr: "…", de: "…" }        # map langue→texte ; it ajouté à la demande
   subtitle: { fr: "…", de: "…" }
+  resume:   { fr: "…", de: "…" }        # abrégé — JAMAIS dans le .md (D55), ajouté par M6
   keywords: { fr: ["…","…"], de: ["…"] }# map langue→liste
   author:
     - prenom: "…"
@@ -93,6 +95,24 @@ fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
   PDF après compilation **qu'en mode `pdf`**, en lisant le réglage **partagé** `szh.apercuMode`
   (`workspace.getConfiguration('szh')`). En mode `html`, il ne fait rien (le cockpit possède la
   colonne 2 avec la webview HTML). Pas de refonte de szh-apercu — juste cette garde.
+
+- **D55 (nouvelle demande) — Menu de mise en forme (clic droit) + raccourcis** — Un sous-menu
+  **« Mise en forme »** (`editor/context`, `editorLangId == markdown`) applique à la sélection :
+  **gras, italique, souligné**, **H1/H2/H3**, les blocs **wichtig / hervorhebung / Frage /
+  citation**, **insérer une figure**, **insérer un tableau**. Chaque action = **commande maison
+  avec raccourci** (dans `keybindings.json`), **affiché dans le menu** et **localisé FR/DE**
+  (`package.nls`). **Blocs = classe canonique + libellé traduit** (comme le `type`) : le menu
+  montre « Important / Wichtig… » mais insère `::: {.important}` / `.highlight` / `.question`
+  (**citation = blockquote natif** `>`). Le bloc **`important` (wichtig) a un TITRE paramétrable**
+  (`::: {.important data-titre="…"}`, choisi via une liste Information/Important/Attention… +
+  libre), rendu par CSS. **Les anciens blocs sont supprimés** (chapo, encadre, exergue, note,
+  avertissement) ; **`resume` devient une métadonnée d'article** (D51), **jamais un bloc `:::`**.
+
+- **D56 (nouvelle demande) — Couleur annuelle du numéro** — `ausgabe.yaml` gagne un champ
+  **`couleur`** (valeur hex), choisi via un **menu déroulant à aperçu** (pastilles) dans le
+  formulaire « Méta-données du numéro » (G1/D37), parmi : Rouge `#D31932`, Capucine `#EB5E51`,
+  Moutarde `#C7CF1C`, Poireau `#51A66D`, Bleu acier `#5F9FBC`, Mountbatten `#A98899`. (Consommation
+  dans la maquette = étape template ultérieure ; ici : **stockage + choix visuel**.)
 
 ## Garde-fous (en plus de ceux de PLAN-FONCTIONS §Garde-fous)
 
@@ -261,6 +281,56 @@ fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
   défaut = aperçu HTML cliquable ; toggle → PDF ; `Ctrl+S` rafraîchit dans les deux modes ;
   jamais deux aperçus concurrents ; pas de 3ᵉ colonne.
 
+### M6 · Menu de mise en forme au clic droit + raccourcis (D55) — *taille M ; extension + snippets + print.css + keybindings ; À FAIRE*
+
+- [ ] **Sous-menu `editor/context`** (`contributes.submenus` + `menus`), libellé « Mise en
+  forme » (localisé), `when: editorLangId == markdown && editorTextFocus`. Items : Gras,
+  Italique, Souligné, Titre 1/2/3, Important, Mise en évidence, Question, Citation, Insérer une
+  figure, Insérer un tableau.
+- [ ] **Commandes maison** (szh-cockpit) éditant la sélection via `editor.edit` :
+  - gras/italique = **toggle** `**…**` / `*…*` ; souligné = `[…]{.underline}` ; titres = préfixe
+    de ligne `#`/`##`/`###` (toggle) ; citation = `> ` par ligne (**blockquote natif**) ;
+  - blocs = enrobage `::: {.classe}\n…\n:::` avec **classes canoniques** `.important` /
+    `.highlight` / `.question` ;
+  - **important** : `QuickPick` de titres (Information / Important / Attention / Note … localisés
+    + saisie libre) → `::: {.important data-titre="…"}` ;
+  - **figure** : `showOpenDialog` (image) → copie dans `articles/<slug>/media/` → insère
+    `![Légende](media/nom.ext)` au curseur ;
+  - **tableau** : insère un **squelette Markdown** (`| … |`) — édition ensuite via markdowntable
+    (Tab) ou collage Excel (Maj+Alt+V).
+- [ ] **Raccourcis** dans `vscodium-user/keybindings.json` (`when` markdown) : `Ctrl+B` / `Ctrl+I`
+  / `Ctrl+U` (gras/italique/souligné — **niveau utilisateur ⇒ priment sur Markdown All in One**),
+  `Ctrl+Alt+1/2/3` (titres) + combinaisons **sans conflit** (cf. README §Raccourcis) pour les 4
+  blocs, figure, tableau. Le menu **affiche** ces raccourcis ; **libellés localisés FR/DE** via
+  `package.nls` (mécanisme M4).
+- [ ] **print.css** : ajouter `.important` (+ `.important::before { content: attr(data-titre); }`),
+  `.highlight`, `.question` ; **retirer** `.chapo`, `.encadre`, `.exergue`, `.resume`, `.note`,
+  `.avertissement`.
+- [ ] **snippets/markdown.json** : ne garder que les 4 nouveaux blocs (retirer les anciens).
+- [ ] **`resume` → métadonnée** (D51/D55) : ajouter le champ **`resume`** (map traductible
+  fr/de/it) au schéma `<slug>.meta.yaml` (**`analyserMeta` + `serialiserMeta`**) **et au formulaire
+  M1** ; jamais de bloc `:::resume`.
+- [ ] **Exemple + docs** : mettre `revue-template/articles/01-exemple/` au nouveau jeu de blocs
+  (plus de chapo/encadre) ; mettre à jour la **table des raccourcis** (README) + `userdoc.md`.
+- **Vérif** : `node --check` ; harnais (chaque commande transforme correctement une sélection de
+  test : gras/toggle, titre, bloc, important+titre, souligné, citation) ; i18n (labels fr/de pour
+  chaque commande). GUI : clic droit → sous-menu **localisé** avec raccourcis ; blocs rendus après
+  recompilation (dont le titre de `important`) ; figure insérée + image copiée ; tableau éditable ;
+  anciens blocs disparus, `01-exemple` toujours rendu.
+
+### M7 · Couleur annuelle du numéro (D56) — *taille S ; extension (formulaire G1) + serializer ; À FAIRE*
+
+- [ ] `CLES_METADONNEES` (ausgabe) **+= `couleur`** ; `serialiserAusgabe`/`analyserAusgabe` la
+  gèrent (clé plate citée) — round-trip préservé.
+- [ ] **Formulaire « Méta-données du numéro »** (webview G1, `htmlMetadonnees`) : ajouter un champ
+  **couleur** — 6 **pastilles** nommées (Rouge/Capucine/Moutarde/Poireau/Bleu acier/Mountbatten)
+  avec **aperçu visuel** (carré de couleur) ; sélection = écrit le **hex** dans `ausgabe.yaml` ;
+  valeur initiale relue → pastille active mise en évidence ; lisible en thème clair **et** sombre.
+- [ ] (Optionnel, noté) exposer `couleur` en variable CSS `--couleur-annuelle` à la compilation —
+  **étape template ultérieure**, hors périmètre strict.
+- **Vérif** : `node --check` ; round-trip `ausgabe.yaml` avec `couleur` (relue à l'identique) ;
+  GUI : les 6 pastilles s'affichent avec l'aperçu, sélection persistée, lisible clair/sombre.
+
 ## Risques
 
 | # | Risque | Prob. | Impact | Mitigation |
@@ -272,6 +342,8 @@ fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
 | **RM5** | M4 langue : i18n incomplet / pack DE non déployé → menus natifs en anglais | Moy | Moyen | Couche i18n couvre les chaînes SZH ; défaut = `vscode.env.language` ; pack DE = dépendance déploiement notée |
 | **RM6** | M5 : précision du mapping clic→source / changer le reader casse le rendu PDF | Moy | Moyen | Spike ; `commonmark_x+sourcepos` **seulement si PDF identique**, sinon rendu preview séparé ; `data-*` ignoré par WeasyPrint ; précision au **bloc** (suffisant pour naviguer) |
 | **RM7** | Deux gestionnaires d'aperçu (cockpit vs szh-apercu) → aperçu en **double** en colonne 2 | Moy | Moyen | **D54** : retrait de szh-apercu (ou mode-aware) → **propriétaire unique** |
+| **RM8** | M6 : retrait des anciens blocs casse le style d'articles qui les utilisent | Faible | Faible | Un `:::` de classe inconnue = rendu **neutre** (pas d'erreur) ; migrer `01-exemple` ; documenter |
+| **RM9** | M6 : conflit de raccourcis (ex. `Ctrl+B` avec Markdown All in One) | Moy | Faible | Bindings **niveau utilisateur** (priment) ; table sans collision avec README §Raccourcis |
 
 ## Points d'intégration
 
@@ -282,6 +354,8 @@ fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
 - `revue-template/articles/01-exemple/` (M3), `userdoc.md`/`README.md`/`BIENVENUE.md` (M3).
 - `extension.js` + `package.json` + `package.nls*.json` (M4 : réglages + i18n), `settings.json`/`argv.json` écrits à l'exécution (M4).
 - `extension.js` + `package.json` (M5 : webview HTML cliquable + bascule + barre d'état + réglage `szh.apercuMode`) ; `pipeline/` (position source dans le HTML) ; `szh-apercu/extension.js` (garde de mode, D54).
+- **M6** : `extension.js` + `package.json` + `package.nls*.json` (sous-menu + commandes + i18n) ; `vscodium-user/keybindings.json` (raccourcis) ; `vscodium-user/snippets/markdown.json` + `pipeline/styles/print.css` (blocs) ; `revue-template/articles/01-exemple/` + `README.md`/`userdoc.md` ; **`extension.js` M1** (champ `resume` dans le schéma + formulaire).
+- **M7** : `extension.js` (champ couleur du formulaire G1 + `CLES_METADONNEES`).
 - **Ne pas toucher** : `szh-tabelle-inclure.lua`, lot D34. (`szh-apercu` : garde de mode seulement, pas de refonte.)
 
 ## À valider par Robin (n'empêche pas de démarrer)
@@ -292,3 +366,6 @@ fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
 - **Traduction DE de toutes les chaînes du cockpit** (M4 i18n).
 - Résultat du **spike sourcepos** (M5) : reader unifié `commonmark_x+sourcepos` si le PDF
   reste identique, sinon rendu preview séparé.
+- Titres proposés pour le bloc **important** (Information / Important / Attention / Note…) en FR/DE (M6).
+- Affectation exacte des **raccourcis** M6 (sans collision) — à figer/documenter.
+- `couleur` stockée en **hex** (retenu) vs nom canonique (M7).
