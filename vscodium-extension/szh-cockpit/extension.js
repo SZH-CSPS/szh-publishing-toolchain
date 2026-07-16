@@ -79,7 +79,7 @@ const {
 const { construireHtml, lireMedia } = require('./lib/webviews/util');
 // ---- Modules impératifs -> lib/{slug,wsl,formatting}.js --------------------------
 const { slugifier } = require('./lib/slug');
-const { demarrerDormeurWsl, arreterDormeurWsl } = require('./lib/wsl');
+const { demarrerDormeurWsl, arreterDormeurWsl, reveillerWsl } = require('./lib/wsl');
 const {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
   enroberBloc, squeletteTableau, enregistrerCommandesMiseEnForme
@@ -1524,7 +1524,28 @@ function activate(context) {
 
   enregistrerCommandesMiseEnForme(context);          // M6, D55
 
-  majContexte();
+  // F7 : au démarrage, si une revue est ouverte, l'init lente (réveil de la VM WSL —
+  // le vrai coût, puis chargement de l'arbre) se fait derrière un indicateur de
+  // progression + un item de barre d'état animé, pour ne pas laisser l'utilisatrice
+  // devant une fenêtre « vide » qui semble figée. Sans revue : init normale, silencieuse.
+  const demarrageInitial = async () => {
+    if (!trouverRacineRevue()) { majContexte(); return; }
+    const barre = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+    barre.text = '$(sync~spin) ' + T('demarrage.barre');
+    barre.tooltip = T('demarrage.titre');
+    barre.show();
+    try {
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: T('demarrage.titre'), cancellable: false },
+        async (progress) => {
+          progress.report({ message: T('demarrage.env') });
+          await reveillerWsl();                    // réveil WSL (démarrage à froid de la VM)
+          progress.report({ message: T('demarrage.revue') });
+          majContexte();                           // racine + contexte + watchers + dormant + arbre
+        });
+    } finally { barre.dispose(); }
+  };
+  demarrageInitial();
 }
 
 function deactivate() { arreterDormeurWsl(); }
