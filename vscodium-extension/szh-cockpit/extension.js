@@ -1382,7 +1382,14 @@ function ouvrirEditeurTable(fournisseur, item) {
   };
   // Applique une opération : le modèle reste la source de vérité — tout passe par
   // appliquerOperationTable (round-trip préservé), l'hôte renvoie la disposition.
+  // Confirmation MODALE préalable si demandée (V2d : suppression d'une ligne/colonne
+  // contenant du texte ; la webview ne pose le drapeau que dans ce cas).
   const appliquer = async (msg) => {
+    if (msg.confirmer) {
+      const choix = await vscode.window.showWarningMessage(
+        T('table.suppr.question'), { modal: true, detail: T('table.suppr.detail') }, T('table.suppr.bouton'));
+      if (choix !== T('table.suppr.bouton')) { return; }
+    }
     const res = appliquerOperationTable(String(msg.nom || ''), msg.modele, msg.args);
     if (res && res.erreur) { panneau.webview.postMessage({ type: 'erreur', message: T(res.erreur) }); return; }
     panneau.webview.postMessage({ type: 'charger', modele: res, disposition: disposition(res), accent: lireCouleurAccent(fournisseur.racine) });

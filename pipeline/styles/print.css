@@ -106,9 +106,13 @@ table > caption::before {
   --szh-accent-fonce: #4a4a4a;    /* en-tête « negatif » : foncé, texte clair */
 }
 
-/* Table éditoriale : pas de grille pleine ; seuls les filets choisis apparaissent. */
-.szh-tableau { border-collapse: collapse; width: 100%; }
-.szh-tableau th, .szh-tableau td { border: 0; padding: 0.35em 0.6em; text-align: left; vertical-align: top; }
+/* Table éditoriale : pas de grille pleine ; seuls les filets choisis apparaissent.
+   D58 — largeurs 100 % AUTOMATIQUES : table-layout auto + width 100% ; les colonnes
+   se distribuent selon le contenu, les cellules reviennent à la ligne. AUCUNE largeur
+   fixe n'est émise ni stockée par l'éditeur (le <table> ne porte pas de style de
+   largeur ; cf. serialiserTable). */
+.szh-tableau { border-collapse: collapse; width: 100%; table-layout: auto; }
+.szh-tableau th, .szh-tableau td { border: 0; padding: 0.35em 0.6em; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 .szh-tableau th { background: transparent; font-weight: 400; }
 
 /* Alignement horizontal par cellule (D59) — défaut « left » via la règle ci-dessus. */

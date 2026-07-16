@@ -1,5 +1,6 @@
 body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
-  color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: .6rem .8rem; }
+  color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: .6rem .8rem;
+  box-sizing: border-box; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 .barre { position: sticky; top: 0; z-index: 5; background: var(--vscode-editor-background);
   display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; padding: .3rem 0 .5rem; }
 .grp { display: inline-flex; align-items: center; gap: .25rem; padding: .1rem .3rem;
@@ -13,13 +14,17 @@ button.principal { color: var(--vscode-button-foreground); background: var(--vsc
 button[aria-pressed="true"] { outline: 2px solid var(--vscode-focusBorder); outline-offset: -1px; }
 select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground);
   background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; }
-p.aide { color: var(--vscode-descriptionForeground); font-size: .82em; margin: .1rem 0 .6rem; }
+p.aide { color: var(--vscode-descriptionForeground); font-size: .82em; margin: .1rem 0 .6rem; flex: 0 0 auto; }
 #etat { font-size: .85em; color: var(--vscode-descriptionForeground); margin-left: .3rem; }
 #indic { font-size: .95em; color: var(--vscode-editorWarning-foreground, #d1901e); margin-left: .1rem; font-weight: 700; }
-#zone { overflow: auto; }
+#zone { overflow: auto; flex: 1 1 auto; }
 table.grille { border-collapse: collapse; }
 table.grille th, table.grille td { border: 1px solid var(--vscode-panel-border, #888);
   padding: .3em .5em; min-width: 3em; height: 1.9em; vertical-align: top; text-align: left; }
+/* En-tête figé (D V2d) : rangée A/B/C collée en haut, colonne 1/2/3 collée à gauche. */
+table.grille tr:first-child .poignee { position: sticky; top: 0; z-index: 3; }
+table.grille .poignee.pnum { position: sticky; left: 0; z-index: 2; }
+table.grille .coin { position: sticky; top: 0; left: 0; z-index: 4; }
 table.grille td.cell, table.grille th.cell { background: var(--vscode-editor-background); cursor: text; }
 table.grille .sel { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px;
   background: var(--vscode-editor-selectionBackground, rgba(90,140,220,.25)); }
