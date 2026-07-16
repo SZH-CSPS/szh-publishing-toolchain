@@ -45,4 +45,10 @@ function construireHtml(base, nonce, opts) {
     '<script nonce="' + nonce + '">\n' + js + '\n</script>\n</body>\n</html>\n';
 }
 
-module.exports = { construireHtml };
+// Lit un fichier media/ (fragment inline : CSS/JS d'aperçu HTML injecté dans le
+// document pandoc par preview). Chemin via __dirname -> jamais de requête externe.
+function lireMedia(nom) {
+  return fs.readFileSync(path.join(MEDIA, nom), 'utf8');
+}
+
+module.exports = { construireHtml, lireMedia };
