@@ -133,7 +133,7 @@
         { "command": "szh.miseEnForme", "group": "navigation@1", "when": "editorLangId == markdown && editorTextFocus" }
       ],
       "editor/title": [
-        { "command": "szh.basculerApercu", "group": "navigation", "when": "resourceExtname == .pdf && szh.estRevue" }
+        { "command": "szh.basculerApercu", "group": "navigation", "when": "resourceExtname == .pdf && szh.estRevue || activeCustomEditorId == 'pdf.preview' && szh.estRevue" }
       ],
       "view/title": [
         {
