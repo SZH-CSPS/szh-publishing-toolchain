@@ -78,9 +78,9 @@ mis à jour dès que les méta-données changent. En haut de la barre, cinq bout
   (utile avant une livraison : tout est reconstruit proprement d'un coup).
 - **☰ Métadonnées des articles** — un formulaire qui liste **tous les articles** :
   **type d'article** (menu déroulant, libellés dans la langue de la revue), titre,
-  sous-titre et mots-clés **en français et en allemand** (case « + Italien » pour
-  ajouter l'italien à un article), auteur(s) (prénom, nom, fonction, affiliation,
-  ORCID) et DOI. Seuls les articles modifiés (●) sont réécrits à l'enregistrement.
+  sous-titre, **résumé** et mots-clés **en français et en allemand** (case « + Italien »
+  pour ajouter l'italien à un article), auteur(s) (prénom, nom, fonction, affiliation,
+  ORCID) et DOI. Le **résumé** (abrégé) se saisit ici — jamais dans le texte de l'article. Seuls les articles modifiés (●) sont réécrits à l'enregistrement.
   Ces informations vivent dans une **fiche cachée** à côté de l'article (invisible
   dans l'explorateur) — le texte de l'article n'est jamais touché, et la fiche ne
   s'édite **que** par ce formulaire.
@@ -108,6 +108,24 @@ Et sur la section « Word en attente », un bouton :
    « N article(s) importé(s) » confirme (les `.docx` convertis sont retirés du dossier).
 3. **Cliquer un article** : son texte s'ouvre à gauche et son PDF apparaît à droite
    (compilé au passage si nécessaire). Ensuite, chaque **Ctrl + S** régénère l'aperçu.
+
+## Mettre en forme le texte
+
+Pas besoin de connaître le Markdown : **sélectionne du texte, puis clic droit →
+« Mise en forme »**. Le sous-menu propose (chaque raccourci y est rappelé) :
+
+- **Gras**, **Italique**, **Souligné** (`Ctrl+B`, `Ctrl+I`, `Ctrl+U`) ;
+- **Titre 1 / 2 / 3** (`Ctrl+Alt+1/2/3`) ;
+- les blocs de la maquette — **Important**, **Mise en évidence**, **Question**
+  (`Ctrl+Alt+W / H / Q`) et **Citation** (`Ctrl+Alt+C`). Le bloc « Important »
+  demande un **titre** (Information, Attention, Note… ou un titre libre) ;
+- **Insérer une figure** (`Ctrl+Alt+F`) : choisis une image ; elle est copiée dans
+  l'article et il ne reste qu'à écrire la légende ;
+- **Insérer un tableau** (`Ctrl+Alt+T`) : un petit tableau vierge à remplir (`Tab`
+  passe d'une cellule à l'autre ; `Maj+Alt+V` colle un tableau copié depuis Excel).
+
+Appliquer deux fois gras, italique, souligné, un titre ou une citation **retire** la
+mise en forme (bascule).
 
 ## Créer une nouvelle revue
 

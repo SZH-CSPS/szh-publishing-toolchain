@@ -129,11 +129,15 @@ Démarrer (D38). Voir [`userdoc.md`](userdoc.md).
 | Raccourci | Effet | Fourni par |
 |---|---|---|
 | `Ctrl+S` | Enregistrer → import des Word déposés + régénération des PDF (`make all`) | triggertaskonsave + tâche user |
-| `Ctrl+B` / `Ctrl+I` | Gras / italique (fichiers markdown) | markdown-all-in-one |
+| `Ctrl+B` / `Ctrl+I` / `Ctrl+U` | Gras / italique / souligné (aussi **clic droit → « Mise en forme »**) | szh-cockpit (M6, D55) |
+| `Ctrl+Alt+1` / `Ctrl+Alt+2` / `Ctrl+Alt+3` | Titre 1 / 2 / 3 | szh-cockpit (M6, D55) |
+| `Ctrl+Alt+W` / `Ctrl+Alt+H` / `Ctrl+Alt+Q` | Bloc Important / Mise en évidence / Question | szh-cockpit (M6, D55) |
+| `Ctrl+Alt+C` | Citation (blockquote) | szh-cockpit (M6, D55) |
+| `Ctrl+Alt+F` / `Ctrl+Alt+T` | Insérer une figure / un tableau | szh-cockpit (M6, D55) |
 | `Entrée` (dans une liste) | Continuation automatique de la liste | markdown-all-in-one |
 | `Tab` / `Maj+Tab` (dans un tableau) | Cellule suivante/précédente + formatage auto | markdowntable |
 | `Maj+Alt+V` | Coller un tableau copié depuis Excel/Word | excel-to-markdown-table |
-| `Ctrl+Alt+S` | Insérer un bloc de style `:::` (snippets de la maquette) | keybindings + snippets |
+| `Ctrl+Alt+S` | Insérer un bloc de style `:::` (snippets : important, mise en évidence, question, citation) | keybindings + snippets |
 | `Ctrl+Espace` | Suggestions (snippets `:::`) | VS Code (réactivé scope markdown) |
 | `Ctrl+Alt+I` | Importer les Word à la demande (`make import`) | keybindings + tâche user |
 | `Ctrl+E` / `Ctrl+Maj+B` | Relancer la compilation | keybindings / build par défaut |

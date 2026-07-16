@@ -132,6 +132,7 @@ const TEXTES_COCKPIT = {
     'fiches.type.aucun': '(non défini)',
     'fiches.titre.champ': 'Titre ({0})',
     'fiches.soustitre': 'Sous-titre ({0})',
+    'fiches.resume': 'Résumé ({0})',
     'fiches.auteurs': 'Auteur(s) — prénom, nom, fonction, affiliation, ORCID',
     'fiches.auteur.ajouter': '➕ Ajouter un auteur',
     'fiches.auteur.retirer': 'Retirer cet auteur',
@@ -142,6 +143,20 @@ const TEXTES_COCKPIT = {
     'fiches.auteur.orcid': 'ORCID',
     'fiches.motscles': 'Mots-clés ({0}, séparés par des virgules)',
     'fiches.italien': ' + Italien (champs IT)',
+    'fmt.titre.placeholder': 'Titre du bloc « Important »',
+    'fmt.titre.libre': 'Saisir un titre personnalisé',
+    'fmt.titre.information': 'Information',
+    'fmt.titre.important': 'Important',
+    'fmt.titre.attention': 'Attention',
+    'fmt.titre.note': 'Note',
+    'fmt.titre.autre': 'Autre…',
+    'fmt.figure.legende': 'Légende',
+    'fmt.figure.filtre': 'Images',
+    'fmt.figure.titre': 'Choisir une image à insérer',
+    'fmt.figure.bouton': 'Insérer cette image',
+    'fmt.figure.horsarticle': 'Ouvrez d’abord un article (.md) pour insérer une figure.',
+    'fmt.figure.copiee': 'Image « {0} » ajoutée à l’article.',
+    'fmt.tableau.colonne': 'Colonne',
     'regl.titre': 'Réglages SZH',
     'regl.note': 'Appliqués immédiatement, pour cet utilisateur, sur ce poste.',
     'regl.theme': 'Thème',
@@ -242,6 +257,7 @@ const TEXTES_COCKPIT = {
     'fiches.type.aucun': '(nicht festgelegt)',
     'fiches.titre.champ': 'Titel ({0})',
     'fiches.soustitre': 'Untertitel ({0})',
+    'fiches.resume': 'Zusammenfassung ({0})',
     'fiches.auteurs': 'Autor(en) — Vorname, Name, Funktion, Affiliation, ORCID',
     'fiches.auteur.ajouter': '➕ Autor hinzufügen',
     'fiches.auteur.retirer': 'Diesen Autor entfernen',
@@ -252,6 +268,20 @@ const TEXTES_COCKPIT = {
     'fiches.auteur.orcid': 'ORCID',
     'fiches.motscles': 'Schlagwörter ({0}, durch Kommas getrennt)',
     'fiches.italien': ' + Italienisch (IT-Felder)',
+    'fmt.titre.placeholder': 'Titel des Blocks « Wichtig »',
+    'fmt.titre.libre': 'Eigenen Titel eingeben',
+    'fmt.titre.information': 'Information',
+    'fmt.titre.important': 'Wichtig',
+    'fmt.titre.attention': 'Achtung',
+    'fmt.titre.note': 'Hinweis',
+    'fmt.titre.autre': 'Andere…',
+    'fmt.figure.legende': 'Bildunterschrift',
+    'fmt.figure.filtre': 'Bilder',
+    'fmt.figure.titre': 'Bild zum Einfügen auswählen',
+    'fmt.figure.bouton': 'Dieses Bild einfügen',
+    'fmt.figure.horsarticle': 'Öffnen Sie zuerst einen Artikel (.md), um eine Abbildung einzufügen.',
+    'fmt.figure.copiee': 'Bild « {0} » zum Artikel hinzugefügt.',
+    'fmt.tableau.colonne': 'Spalte',
     'regl.titre': 'SZH-Einstellungen',
     'regl.note': 'Werden sofort angewendet, für diese Benutzerin / diesen Benutzer, auf diesem Computer.',
     'regl.theme': 'Design',
@@ -1504,11 +1534,11 @@ function langueRevue(racine) {
   return LANGUES_META.indexOf(base) !== -1 ? base : 'fr';
 }
 
-// analyserMeta(texte) -> { type, doi, title:{}, subtitle:{}, keywords:{}, author:[],
-// _inconnues:[lignes brutes] }. Best effort : maps par langue en bloc OU en flow
-// ({ fr: "…" }), listes en bloc OU en flow, auteurs en mappings.
+// analyserMeta(texte) -> { type, doi, title:{}, subtitle:{}, resume:{}, keywords:{},
+// author:[], _inconnues:[lignes brutes] }. Best effort : maps par langue en bloc OU
+// en flow ({ fr: "…" }), listes en bloc OU en flow, auteurs en mappings.
 function analyserMeta(texte) {
-  const valeurs = { type: '', doi: '', title: {}, subtitle: {}, keywords: {}, author: [], _inconnues: [] };
+  const valeurs = { type: '', doi: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [], _inconnues: [] };
   if (!texte) { return valeurs; }
   const lignes = String(texte).split(/\r?\n/);
   let i = 0;
@@ -1523,7 +1553,7 @@ function analyserMeta(texte) {
     const reste = m[2];
     if (cle === 'type') { valeurs.type = decouperValeurYaml(reste).valeur; i++; continue; }
     if (cle === 'doi') { valeurs.doi = decouperValeurYaml(reste).valeur; i++; continue; }
-    if (cle === 'title' || cle === 'subtitle') {
+    if (cle === 'title' || cle === 'subtitle' || cle === 'resume') {
       const map = {};
       const net = reste.trim();
       if (net.charAt(0) === '{') {
@@ -1608,7 +1638,7 @@ function analyserMeta(texte) {
 }
 
 // serialiserMeta(valeurs) -> YAML régénéré (ordre D51 : type, doi, title, subtitle,
-// keywords, author, puis clés inconnues). Valeurs vides omises ; langue sans
+// resume, keywords, author, puis clés inconnues). Valeurs vides omises ; langue sans
 // contenu omise ; auteur entièrement vide ignoré. LF, fin de fichier à la ligne.
 function serialiserMeta(valeurs) {
   const v = valeurs || {};
@@ -1617,7 +1647,7 @@ function serialiserMeta(valeurs) {
   if (TYPES_ARTICLE.indexOf(type) !== -1) { lignes.push('type: ' + type); }
   const doi = String(v.doi || '').trim();
   if (doi !== '') { lignes.push('doi: ' + citerFrontmatter(doi)); }
-  for (const cle of ['title', 'subtitle']) {
+  for (const cle of ['title', 'subtitle', 'resume']) {
     const map = v[cle] || {};
     const sous = [];
     for (const l of LANGUES_META) {
@@ -1887,6 +1917,7 @@ function htmlApercuMetadonnees(nonce) {
   const txt = JSON.stringify({
     type: T('fiches.type'), typeAucun: T('fiches.type.aucun'),
     titreChamp: T('fiches.titre.champ'), sousTitre: T('fiches.soustitre'),
+    resume: T('fiches.resume'),
     auteurs: T('fiches.auteurs'), ajouterAuteur: T('fiches.auteur.ajouter'),
     retirerAuteur: T('fiches.auteur.retirer'),
     aPrenom: T('fiches.auteur.prenom'), aNom: T('fiches.auteur.nom'),
@@ -1908,10 +1939,11 @@ function htmlApercuMetadonnees(nonce) {
     '  border-radius: 4px; padding: .8rem 1rem 1rem; margin: 0 0 1rem; }\n' +
     '.carte h2 { font-size: 1em; font-weight: 600; margin: 0 0 .2rem; font-family: var(--vscode-editor-font-family, monospace); }\n' +
     'label { display: block; margin: .6rem 0 .2rem; font-weight: 600; font-size: .9em; }\n' +
-    'input, select { width: 100%; box-sizing: border-box; padding: .3em .5em; font: inherit;\n' +
+    'input, select, textarea { width: 100%; box-sizing: border-box; padding: .3em .5em; font: inherit;\n' +
     '  color: var(--vscode-input-foreground); background: var(--vscode-input-background);\n' +
     '  border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; }\n' +
-    'input:focus, select:focus { outline: 1px solid var(--vscode-focusBorder); }\n' +
+    'textarea { resize: vertical; min-height: 3.4em; font-family: inherit; }\n' +
+    'input:focus, select:focus, textarea:focus { outline: 1px solid var(--vscode-focusBorder); }\n' +
     '.auteur { display: flex; gap: .4rem; margin: .3rem 0; align-items: center; }\n' +
     '.auteur input { flex: 1 1 0; min-width: 0; }\n' +
     '.champ-it { display: none; }\n' +
@@ -1943,11 +1975,11 @@ function htmlApercuMetadonnees(nonce) {
     '  const modifies = new Set();\n' +
     '  let TYPES = [];\n' +
     '  function marquer(carte, slug) { modifies.add(slug); carte.classList.add(\'modifie\'); etat.textContent = \'\'; }\n' +
-    '  function champTexte(carte, parent, slug, cle, langue, libelle, valeur) {\n' +
+    '  function champTexte(carte, parent, slug, cle, langue, libelle, valeur, multiligne) {\n' +
     "    const l = document.createElement('label');\n" +
     '    l.textContent = libelle;\n' +
-    "    const i = document.createElement('input');\n" +
-    "    i.type = 'text';\n" +
+    "    const i = document.createElement(multiligne ? 'textarea' : 'input');\n" +
+    "    if (multiligne) { i.rows = 3; } else { i.type = 'text'; }\n" +
     '    i.value = valeur || \'\';\n' +
     '    i.dataset.cle = cle;\n' +
     '    if (langue) { i.dataset.langue = langue; l.classList.add(\'champ-\' + langue); i.classList.add(\'champ-\' + langue); }\n' +
@@ -1988,7 +2020,7 @@ function htmlApercuMetadonnees(nonce) {
     '      titre.textContent = article.slug;\n' +
     '      carte.appendChild(titre);\n' +
     '      const v = article.valeurs || {};\n' +
-    '      const avecIt = [\'title\', \'subtitle\'].some(function (c) { return v[c] && v[c].it; }) ||\n' +
+    '      const avecIt = [\'title\', \'subtitle\', \'resume\'].some(function (c) { return v[c] && v[c].it; }) ||\n' +
     '        (v.keywords && v.keywords.it && v.keywords.it.length > 0);\n' +
     '      if (avecIt) { carte.classList.add(\'avec-it\'); }\n' +
     "      const lType = document.createElement('label');\n" +
@@ -2017,6 +2049,9 @@ function htmlApercuMetadonnees(nonce) {
     '      }\n' +
     '      for (const lg of langues) {\n' +
     '        champTexte(carte, carte, article.slug, \'subtitle\', lg, TXT.sousTitre.split(\'{0}\').join(nomsLangues[lg]), (v.subtitle || {})[lg]);\n' +
+    '      }\n' +
+    '      for (const lg of langues) {\n' +
+    '        champTexte(carte, carte, article.slug, \'resume\', lg, TXT.resume.split(\'{0}\').join(nomsLangues[lg]), (v.resume || {})[lg], true);\n' +
     '      }\n' +
     "      const lAuteurs = document.createElement('label');\n" +
     '      lAuteurs.textContent = TXT.auteurs;\n' +
@@ -2049,14 +2084,14 @@ function htmlApercuMetadonnees(nonce) {
     '    }\n' +
     '  }\n' +
     '  function collecter(carte) {\n' +
-    '    const resultat = { type: \'\', doi: \'\', title: {}, subtitle: {}, keywords: {}, author: [] };\n' +
+    '    const resultat = { type: \'\', doi: \'\', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };\n' +
     "    const sel = carte.querySelector('select[data-cle=type]');\n" +
     '    if (sel) { resultat.type = sel.value; }\n' +
-    "    for (const i of carte.querySelectorAll(':scope > input')) {\n" +
+    "    for (const i of carte.querySelectorAll(':scope > input, :scope > textarea')) {\n" +
     '      const cle = i.dataset.cle;\n' +
     '      const langue = i.dataset.langue;\n' +
     "      if (cle === 'doi') { resultat.doi = i.value; }\n" +
-    "      else if (cle === 'title' || cle === 'subtitle') { resultat[cle][langue] = i.value; }\n" +
+    "      else if (cle === 'title' || cle === 'subtitle' || cle === 'resume') { resultat[cle][langue] = i.value; }\n" +
     "      else if (cle === 'keywords') {\n" +
     '        resultat.keywords[langue] = i.value.split(\',\').map(function (s) { return s.trim(); }).filter(function (s) { return s !== \'\'; });\n' +
     '      }\n' +
@@ -2128,7 +2163,7 @@ function lireMetadonneesArticles(fournisseur) {
   const articles = [];
   for (const slug of fournisseur.listerArticles()) {
     migrerFrontmatterVersMeta(fournisseur.racine, slug);
-    let valeurs = { type: '', doi: '', title: {}, subtitle: {}, keywords: {}, author: [] };
+    let valeurs = { type: '', doi: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
     try {
       valeurs = analyserMeta(fs.readFileSync(cheminMeta(fournisseur.racine, slug), 'utf8'));
     } catch (e) { /* pas encore de fiche : carte vide */ }
@@ -2142,13 +2177,14 @@ function lireMetadonneesArticles(fournisseur) {
 // la liste réelle des articles — jamais de chemin construit sur une entrée libre).
 function nettoyerCarte(brut) {
   const texteCourt = (v, max) => String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' ').slice(0, max).trim();
-  const carte = { type: '', doi: texteCourt(brut && brut.doi, 200), title: {}, subtitle: {}, keywords: {}, author: [] };
+  const carte = { type: '', doi: texteCourt(brut && brut.doi, 200), title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
   const type = texteCourt(brut && brut.type, 40);
   if (TYPES_ARTICLE.indexOf(type) !== -1) { carte.type = type; }
-  for (const cle of ['title', 'subtitle']) {
+  for (const cle of ['title', 'subtitle', 'resume']) {
     const map = (brut && brut[cle]) || {};
+    const max = cle === 'resume' ? 2000 : 500;   // le résumé est un abrégé, plus long
     for (const l of LANGUES_META) {
-      const t = texteCourt(map[l], 500);
+      const t = texteCourt(map[l], max);
       if (t !== '') { carte[cle][l] = t; }
     }
   }
@@ -2418,6 +2454,185 @@ function ouvrirReglages(rafraichirTout) {
   });
 }
 
+// ---- Mise en forme au clic droit + raccourcis (M6, D55) ----------------------------
+//
+// Sous-menu « Mise en forme » (editor/context, markdown) + raccourcis clavier
+// (keybindings.json). Chaque action transforme la SÉLECTION via editor.edit.
+// Les transformations sont des fonctions PURES (testées headless via _pur) ;
+// les enrobages inline sont des TOGGLES (ré-appliquer retire le marquage).
+// Blocs = classes canoniques .important / .highlight / .question ; citation =
+// blockquote natif « > » ; le bloc « important » porte un titre paramétrable
+// (::: {.important data-titre="…"}), rendu par print.css.
+
+function estEnrobe(t, marqueur) {
+  if (t.length < marqueur.length * 2) { return false; }
+  if (!t.startsWith(marqueur) || !t.endsWith(marqueur)) { return false; }
+  // Italique (*) : ne pas confondre avec gras (**) — sinon « **x** » se dé-graisserait
+  // en « *x* » au lieu d'ajouter l'italique.
+  if (marqueur === '*' && (t.startsWith('**') || t.endsWith('**'))) { return false; }
+  return true;
+}
+
+// Toggle **…** (gras) ou *…* (italique) sur la sélection.
+function basculerEnrobage(texte, marqueur) {
+  const t = String(texte);
+  if (estEnrobe(t, marqueur)) { return t.slice(marqueur.length, t.length - marqueur.length); }
+  return marqueur + t + marqueur;
+}
+
+// Toggle [texte]{.underline} (souligné — attribut natif Pandoc).
+function basculerSouligne(texte) {
+  const t = String(texte);
+  const m = t.match(/^\[([\s\S]*)\]\{\.underline\}$/);
+  return m ? m[1] : '[' + t + ']{.underline}';
+}
+
+// Toggle de titre : préfixe #/##/### selon `niveau`. Même niveau -> retire ;
+// niveau différent -> remplace ; aucun -> ajoute.
+function basculerTitre(texte, niveau) {
+  const t = String(texte);
+  const m = t.match(/^(#{1,6})\s+/);
+  if (m && m[1].length === niveau) { return t.replace(/^#{1,6}\s+/, ''); }
+  return '#'.repeat(niveau) + ' ' + t.replace(/^#{1,6}\s+/, '');
+}
+
+// Toggle de citation : « > » par ligne (blockquote natif). Retire si toutes les
+// lignes non vides sont déjà citées.
+function basculerCitation(texte) {
+  const lignes = String(texte).split('\n');
+  const nonVides = lignes.filter((l) => l !== '');
+  const toutesCitees = nonVides.length > 0 && nonVides.every((l) => /^>\s?/.test(l));
+  if (toutesCitees) { return lignes.map((l) => l.replace(/^>\s?/, '')).join('\n'); }
+  return lignes.map((l) => '> ' + l).join('\n');
+}
+
+// Enrobe la sélection dans un bloc « fenced div » Pandoc. `titre` (bloc important
+// seulement) devient data-titre, rendu par CSS ; les guillemets en sont retirés.
+function enroberBloc(texte, classe, titre) {
+  const t = String(texte);
+  const titrePropre = String(titre || '').replace(/"/g, '').trim();
+  const attr = titrePropre ? '{.' + classe + ' data-titre="' + titrePropre + '"}' : '{.' + classe + '}';
+  return '::: ' + attr + '\n' + t + '\n:::';
+}
+
+// Squelette de tableau Markdown (3 colonnes, 2 lignes) — édité ensuite via
+// markdowntable (Tab) ou collage Excel (Maj+Alt+V).
+function squeletteTableau(colonne) {
+  const c = String(colonne || 'Colonne');
+  return [
+    '| ' + c + ' 1 | ' + c + ' 2 | ' + c + ' 3 |',
+    '|---|---|---|',
+    '|  |  |  |',
+    '|  |  |  |'
+  ].join('\n');
+}
+
+// Applique `transformer` (fonction pure texte->texte) à la sélection courante.
+// opt.parLigne : étend la sélection aux lignes entières (titres, citation).
+// opt.milieu : après une insertion sur sélection vide, place le curseur à N
+// caractères du début (entre les marqueurs).
+async function appliquerSelection(transformer, opt) {
+  const editeur = vscode.window.activeTextEditor;
+  if (!editeur) { return; }
+  opt = opt || {};
+  const doc = editeur.document;
+  let sel = editeur.selection;
+  if (opt.parLigne) {
+    sel = new vscode.Selection(new vscode.Position(sel.start.line, 0), doc.lineAt(sel.end.line).range.end);
+  }
+  const texte = doc.getText(sel);
+  const vide = texte === '';
+  await editeur.edit((b) => { b.replace(sel, transformer(texte)); });
+  if (vide && typeof opt.milieu === 'number') {
+    const pos = doc.positionAt(doc.offsetAt(sel.start) + opt.milieu);
+    editeur.selection = new vscode.Selection(pos, pos);
+  }
+}
+
+// QuickPick de titres pour le bloc « important » (localisés + saisie libre).
+// Retourne undefined si l'utilisateur annule (rien n'est inséré).
+async function choisirTitreImportant() {
+  const presets = [
+    T('fmt.titre.information'), T('fmt.titre.important'),
+    T('fmt.titre.attention'), T('fmt.titre.note')
+  ];
+  const autre = T('fmt.titre.autre');
+  const choix = await vscode.window.showQuickPick(presets.concat([autre]), {
+    placeHolder: T('fmt.titre.placeholder')
+  });
+  if (choix === undefined) { return undefined; }
+  if (choix !== autre) { return choix; }
+  const libre = await vscode.window.showInputBox({ prompt: T('fmt.titre.libre') });
+  return libre === undefined ? undefined : libre.trim();
+}
+
+async function fmtImportant() {
+  const titre = await choisirTitreImportant();
+  if (titre === undefined) { return; }               // annulé : rien n'est inséré
+  await appliquerSelection((t) => enroberBloc(t, 'important', titre));
+}
+
+// Nom de fichier libre dans `dossier` (jamais d'écrasement d'un média existant).
+function nomMediaUnique(dossier, nom) {
+  const ext = path.extname(nom);
+  const base = path.basename(nom, ext);
+  let candidat = nom;
+  let i = 1;
+  while (fs.existsSync(path.join(dossier, candidat))) { candidat = base + '-' + i + ext; i++; }
+  return candidat;
+}
+
+// Insérer une figure : choisir une image, la copier dans articles/<slug>/media/
+// (nom rendu unique), insérer ![Légende](media/nom.ext) à la sélection.
+async function fmtFigure() {
+  const editeur = vscode.window.activeTextEditor;
+  if (!editeur) { return; }
+  const doc = editeur.document;
+  if (!/\.md$/i.test(doc.uri.fsPath)) {
+    vscode.window.showInformationMessage(T('fmt.figure.horsarticle'));
+    return;
+  }
+  const filtres = {};
+  filtres[T('fmt.figure.filtre')] = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
+  const choix = await vscode.window.showOpenDialog({
+    canSelectMany: false, filters: filtres,
+    openLabel: T('fmt.figure.bouton'), title: T('fmt.figure.titre')
+  });
+  if (!choix || choix.length === 0) { return; }      // dialogue annulé
+  const source = choix[0].fsPath;
+  const mediaDir = path.join(path.dirname(doc.uri.fsPath), 'media');
+  try { fs.mkdirSync(mediaDir, { recursive: true }); } catch (e) { /* existe déjà */ }
+  const nom = nomMediaUnique(mediaDir, path.basename(source));
+  try { fs.copyFileSync(source, path.join(mediaDir, nom)); }
+  catch (e) { vscode.window.showErrorMessage(T('err.copie', [path.basename(source), e.message])); return; }
+  const md = '![' + T('fmt.figure.legende') + '](media/' + nom + ')';
+  await editeur.edit((b) => { b.replace(editeur.selection, md); });
+  vscode.window.setStatusBarMessage(T('fmt.figure.copiee', [nom]), 4000);
+}
+
+function fmtTableau() {
+  const editeur = vscode.window.activeTextEditor;
+  if (!editeur) { return; }
+  const sq = squeletteTableau(T('fmt.tableau.colonne'));
+  return editeur.edit((b) => { b.replace(editeur.selection, sq); });
+}
+
+function enregistrerCommandesMiseEnForme(context) {
+  const c = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
+  c('szh.fmt.gras', () => appliquerSelection((t) => basculerEnrobage(t, '**'), { milieu: 2 }));
+  c('szh.fmt.italique', () => appliquerSelection((t) => basculerEnrobage(t, '*'), { milieu: 1 }));
+  c('szh.fmt.souligne', () => appliquerSelection((t) => basculerSouligne(t), { milieu: 1 }));
+  c('szh.fmt.titre1', () => appliquerSelection((t) => basculerTitre(t, 1), { parLigne: true }));
+  c('szh.fmt.titre2', () => appliquerSelection((t) => basculerTitre(t, 2), { parLigne: true }));
+  c('szh.fmt.titre3', () => appliquerSelection((t) => basculerTitre(t, 3), { parLigne: true }));
+  c('szh.fmt.important', () => fmtImportant());
+  c('szh.fmt.highlight', () => appliquerSelection((t) => enroberBloc(t, 'highlight', '')));
+  c('szh.fmt.question', () => appliquerSelection((t) => enroberBloc(t, 'question', '')));
+  c('szh.fmt.citation', () => appliquerSelection((t) => basculerCitation(t), { parLigne: true }));
+  c('szh.fmt.figure', () => fmtFigure());
+  c('szh.fmt.tableau', () => fmtTableau());
+}
+
 function activate(context) {
   const fournisseur = new FournisseurRevue();
   const vue = vscode.window.createTreeView(ID_VUE, {
@@ -2501,6 +2716,8 @@ function activate(context) {
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte)
   );
 
+  enregistrerCommandesMiseEnForme(context);          // M6, D55
+
   majContexte();
 }
 
@@ -2511,6 +2728,10 @@ module.exports = {
   activate, deactivate,
   _pur: {
     titreNumero, separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
-    analyserMeta, serialiserMeta, lignePos
+    analyserMeta, serialiserMeta, lignePos,
+    analyserAusgabe, serialiserAusgabe,
+    basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
+    enroberBloc, squeletteTableau,
+    TEXTES_COCKPIT
   }
 };

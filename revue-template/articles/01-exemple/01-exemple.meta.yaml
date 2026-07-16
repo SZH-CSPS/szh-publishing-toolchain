@@ -5,6 +5,9 @@ title:
 subtitle:
   fr: "Comment démarrer"
   de: "So geht's los"
+resume:
+  fr: "Un court résumé de l'article, saisi dans le formulaire « Métadonnées des articles »."
+  de: "Eine kurze Zusammenfassung des Artikels, erfasst im Formular « Metadaten der Artikel »."
 keywords:
   fr:
   - "exemple"
