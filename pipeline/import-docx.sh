@@ -31,4 +31,13 @@ pandoc "$DOCX_ABS" \
   --wrap=none \
   -o "$SLUG.md" || exit 1
 
+# D45 : les médias vivent à UN seul niveau (media/). Vérifié (spike N4, pandoc 3.5) :
+# --extract-media=. produit déjà media/ simple ; cette normalisation idempotente est
+# une ceinture de sécurité (comportement pandoc futur, docx exotique). Copie AVANT
+# suppression : aucune image n'est jamais perdue.
+if [ -d media/media ]; then
+  cp -r media/media/. media/ && rm -rf media/media
+  sed -i 's|media/media/|media/|g' "$SLUG.md"
+fi
+
 exit 0

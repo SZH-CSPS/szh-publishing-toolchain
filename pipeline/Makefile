@@ -111,6 +111,14 @@ import:
 	  echo "[import] structure migrée : $$m -> articles/$$base/$$base.md"; \
 	done; \
 	rmdir articles/media 2>/dev/null || true; \
+	for d in articles/*/; do \
+	  slug=$$(basename "$$d"); \
+	  if [ -d "$$d/media/media" ]; then \
+	    cp -r "$$d/media/media/." "$$d/media/" && rm -rf "$$d/media/media"; \
+	    if [ -f "$$d/$$slug.md" ]; then sed -i 's|media/media/|media/|g' "$$d/$$slug.md"; fi; \
+	    echo "[import] media aplati (D45) : $${d}media/media -> $${d}media"; \
+	  fi; \
+	done; \
 	[ -d "$(WORD_DIR)" ] || exit 0; \
 	shopt -s nocaseglob; \
 	files=("$(WORD_DIR)"/*.docx); \

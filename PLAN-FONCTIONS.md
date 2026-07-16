@@ -177,13 +177,18 @@ en banque.
 
 ### N4 · Un seul dossier `media/` (f) — *taille S–M ; pipeline ; indépendant*
 
-- [ ] **Spike (obligatoire, à consigner)** : dans une revue de test, importer un `.docx`
+- [x] **Spike (obligatoire, à consigner)** : dans une revue de test, importer un `.docx`
   contenant une image et constater où atterrissent les médias (`media/` vs `media/media/`)
   avec le `import-docx.sh` actuel. Consigner le résultat dans le journal de tranche.
-- [ ] `import-docx.sh` : après pandoc, **normaliser** (idempotent) — si
+  **Consigné (2026-07-16, pandoc 3.5 rootfs)** : import frais → `media/rId20.png` à UN
+  niveau, lien HTML `src="./media/rId20.png"` — le `media/media` observé vient des revues
+  importées avec l'ANCIEN toolkit (bug `--extract-media=media` d'avant le correctif S1
+  `f2febae`). La migration Makefile couvre ces revues ; la normalisation import-docx.sh
+  est une ceinture (no-op aujourd'hui).
+- [x] `import-docx.sh` : après pandoc, **normaliser** (idempotent) — si
   `media/media/` existe, `cp -r media/media/. media/`, `rm -rf media/media`, et
   `sed -i 's|media/media/|media/|g' "$SLUG.md"`. (No-op si déjà simple.)
-- [ ] `Makefile` cible `import`, dans la boucle de migration des articles existants :
+- [x] `Makefile` cible `import`, dans la boucle de migration des articles existants :
   pour chaque `articles/<slug>/`, même normalisation idempotente (revues déjà importées
   avec l'ancien toolkit). **Ne perd aucune image** (copie puis suppression).
 - **Vérif** : `bash -n import-docx.sh` ; test bash reproduisant un faux
