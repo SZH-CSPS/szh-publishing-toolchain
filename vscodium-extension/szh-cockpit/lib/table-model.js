@@ -492,6 +492,51 @@ function viderCellules(modele, rMin, cMin, rMax, cMax, mode) {
   return finaliserModele(m);
 }
 
+// Vrai si CHAQUE id de la grille occupe un rectangle plein et contigu (aucune fusion
+// coupée). Sert de garde au réordonnancement (RV5) : un déplacement qui fragmenterait
+// une cellule fusionnée est refusé.
+function grilleRectangulaire(grid) {
+  const nbL = grid.length, nbC = nbL ? grid[0].length : 0;
+  const info = {};
+  for (let r = 0; r < nbL; r++) {
+    for (let c = 0; c < nbC; c++) {
+      const id = grid[r][c];
+      if (id == null) { continue; }
+      if (!info[id]) { info[id] = { rmin: r, rmax: r, cmin: c, cmax: c, n: 0 }; }
+      const b = info[id];
+      b.rmin = Math.min(b.rmin, r); b.rmax = Math.max(b.rmax, r);
+      b.cmin = Math.min(b.cmin, c); b.cmax = Math.max(b.cmax, c); b.n++;
+    }
+  }
+  for (const id in info) { const b = info[id]; if (b.n !== (b.rmax - b.rmin + 1) * (b.cmax - b.cmin + 1)) { return false; } }
+  return true;
+}
+
+// Déplace la ligne visuelle `de` à l'index `vers` (0..nbLignes-1) ; refuse si cela
+// couperait une fusion verticale -> { erreur:'table.deplacementImpossible' }. Pure.
+function deplacerLigne(modele, de, vers) {
+  const g = etendreGrille(normaliserModele(modele));
+  const nbL = g.grid.length;
+  de = Math.max(0, Math.min(de, nbL - 1)); vers = Math.max(0, Math.min(vers, nbL - 1));
+  if (de === vers) { return compacterGrille(g); }
+  const row = g.grid.splice(de, 1)[0]; const info = g.infosLignes.splice(de, 1)[0];
+  g.grid.splice(vers, 0, row); g.infosLignes.splice(vers, 0, info);
+  if (!grilleRectangulaire(g.grid)) { return { erreur: 'table.deplacementImpossible' }; }
+  return compacterGrille(g);
+}
+
+// Déplace la colonne visuelle `de` à l'index `vers` ; refuse si cela couperait une
+// fusion horizontale. Pure : modèle -> modèle.
+function deplacerColonne(modele, de, vers) {
+  const g = etendreGrille(normaliserModele(modele));
+  const nbC = g.grid.length ? g.grid[0].length : 0;
+  de = Math.max(0, Math.min(de, nbC - 1)); vers = Math.max(0, Math.min(vers, nbC - 1));
+  if (de === vers) { return compacterGrille(g); }
+  for (let r = 0; r < g.grid.length; r++) { const cell = g.grid[r].splice(de, 1)[0]; g.grid[r].splice(vers, 0, cell); }
+  if (!grilleRectangulaire(g.grid)) { return { erreur: 'table.deplacementImpossible' }; }
+  return compacterGrille(g);
+}
+
 // Alignement horizontal (D59) des cellules dont l'origine est dans la plage visuelle.
 // Par colonne = sélectionner la colonne entière puis appliquer. Pure : modèle -> modèle.
 function alignerCellules(modele, rMin, cMin, rMax, cMax, valeur) {
@@ -575,6 +620,8 @@ function appliquerOperationTable(nom, modeleBrut, args) {
   }
   if (nom === 'vider') { return viderCellules(modele, n(a.rMin), n(a.cMin), n(a.rMax), n(a.cMax), a.mode === 'forme' ? 'forme' : 'contenu'); }
   if (nom === 'aligner') { return alignerCellules(modele, n(a.rMin), n(a.cMin), n(a.rMax), n(a.cMax), a.valeur); }
+  if (nom === 'deplacerLigne') { return deplacerLigne(modele, n(a.de), n(a.vers)); }
+  if (nom === 'deplacerColonne') { return deplacerColonne(modele, n(a.de), n(a.vers)); }
   if (nom === 'coller') {
     const src = (a.html && /<table/i.test(String(a.html))) ? analyserTable(String(a.html)) : tableauDepuisTsv(a.texte);
     return collerDans(modele, n(a.ancreR), n(a.ancreC), src);
@@ -639,5 +686,6 @@ module.exports = {
   analyserTable, serialiserTable, disposition,
   ajouterLigne, supprimerLigne, ajouterColonne, supprimerColonne,
   fusionner, scinder, viderCellules, alignerCellules,
+  deplacerLigne, deplacerColonne, grilleRectangulaire,
   tableauDepuisTsv, collerDans, appliquerOperationTable
 };

@@ -31,6 +31,13 @@ table.grille .sel { outline: 2px solid var(--vscode-focusBorder); outline-offset
   color: var(--vscode-foreground); }
 .poignee:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.3)); }
 .coin { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15)); }
+.poignee { position: relative; }
+.poignee.drop { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+.plusins { position: fixed; z-index: 900; width: 18px; height: 18px; padding: 0; line-height: 16px;
+  border-radius: 50%; font-size: 13px; font-weight: 700; text-align: center;
+  color: var(--vscode-button-foreground); background: var(--vscode-button-background);
+  border: 1px solid var(--vscode-editor-background); cursor: pointer; }
+.plusins:hover { background: var(--vscode-button-hoverBackground); }
 .ctxmenu { position: fixed; z-index: 1000; min-width: 13em; padding: .25em 0;
   background: var(--vscode-menu-background, var(--vscode-editor-background));
   color: var(--vscode-menu-foreground, var(--vscode-foreground));

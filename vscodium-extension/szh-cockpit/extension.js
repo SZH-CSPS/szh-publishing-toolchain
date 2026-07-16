@@ -72,6 +72,7 @@ const {
   etendreGrille, compacterGrille, normaliserModele, finaliserModele, canoniserInline,
   ajouterLigne, supprimerLigne, ajouterColonne, supprimerColonne,
   fusionner, scinder, viderCellules, alignerCellules,
+  deplacerLigne, deplacerColonne,
   tableauDepuisTsv, collerDans, appliquerOperationTable
 } = require('./lib/table-model');
 // ---- Assemblage des webviews -> lib/webviews/util.js -----------------------------
@@ -1333,7 +1334,7 @@ function textesTable() {
     'table.tip.retour', 'table.tip.enregistrer',
     'table.grpAlign', 'table.alignGauche', 'table.alignCentre', 'table.alignDroite',
     'table.tip.alignGauche', 'table.tip.alignCentre', 'table.tip.alignDroite', 'table.coller',
-    'table.plusLigne', 'table.plusColonne', 'table.deplacementImpossible',
+    'table.plusLigne', 'table.plusColonne', 'table.tirerReordonner', 'table.deplacementImpossible',
     'table.suppr.question', 'table.suppr.detail', 'table.suppr.bouton',
     'table.tip.zebre', 'table.tip.separateurs', 'table.tip.total', 'table.tip.accent',
     'table.tip.entete', 'table.tip.enteteRetirer', 'table.tip.styleEntete'
@@ -1535,6 +1536,7 @@ module.exports = {
     normaliserModele, finaliserModele, canoniserInline,
     ajouterLigne, supprimerLigne, ajouterColonne, supprimerColonne,
     fusionner, scinder, viderCellules, alignerCellules,
+    deplacerLigne, deplacerColonne,
     tableauDepuisTsv, collerDans, appliquerOperationTable,
     TEXTES_COCKPIT
   }
