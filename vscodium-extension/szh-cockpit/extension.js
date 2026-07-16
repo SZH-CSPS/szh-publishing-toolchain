@@ -122,6 +122,14 @@ const TEXTES_COCKPIT = {
     'meta.langue.de': 'allemand',
     'meta.langue.en': 'anglais',
     'meta.langue.it': 'italien',
+    'meta.couleur': 'Couleur du numéro',
+    'meta.couleur.aucune': '(aucune)',
+    'meta.couleur.rouge': 'Rouge',
+    'meta.couleur.capucine': 'Capucine',
+    'meta.couleur.moutarde': 'Moutarde',
+    'meta.couleur.poireau': 'Poireau',
+    'meta.couleur.bleuacier': 'Bleu acier',
+    'meta.couleur.mountbatten': 'Mountbatten',
     'form.enregistrer': 'Enregistrer',
     'form.rien': 'Aucune modification.',
     'form.enregistre': '✓ Enregistré',
@@ -247,6 +255,14 @@ const TEXTES_COCKPIT = {
     'meta.langue.de': 'Deutsch',
     'meta.langue.en': 'Englisch',
     'meta.langue.it': 'Italienisch',
+    'meta.couleur': 'Farbe der Ausgabe',
+    'meta.couleur.aucune': '(keine)',
+    'meta.couleur.rouge': 'Rot',
+    'meta.couleur.capucine': 'Kapuzinerkresse',
+    'meta.couleur.moutarde': 'Senfgelb',
+    'meta.couleur.poireau': 'Lauchgrün',
+    'meta.couleur.bleuacier': 'Stahlblau',
+    'meta.couleur.mountbatten': 'Mountbatten-Rosa',
     'form.enregistrer': 'Speichern',
     'form.rien': 'Keine Änderung.',
     'form.enregistre': '✓ Gespeichert',
@@ -1227,7 +1243,19 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
 // toute autre ligne (commentaires, subtitle:, clés futures) est préservée
 // byte pour byte, fins de ligne (LF/CRLF) et BOM compris.
 
-const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang'];
+const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 'couleur'];
+
+// Couleur annuelle du numéro (M7, D56) : palette figée, stockée en hex dans
+// ausgabe.yaml (clé plate `couleur`, citée). Libellés traduits via T().
+const COULEURS_NUMERO = [
+  { cle: 'rouge',       hex: '#D31932' },
+  { cle: 'capucine',    hex: '#EB5E51' },
+  { cle: 'moutarde',    hex: '#C7CF1C' },
+  { cle: 'poireau',     hex: '#51A66D' },
+  { cle: 'bleuacier',   hex: '#5F9FBC' },
+  { cle: 'mountbatten', hex: '#A98899' }
+];
+const HEX_COULEURS = COULEURS_NUMERO.map((c) => c.hex.toUpperCase());
 
 // Découpe la partie droite d'un « clé: reste » en { valeur, suite } — `suite` est
 // l'éventuel commentaire de fin de ligne, AVEC ses espaces de tête, restitué tel
@@ -1771,7 +1799,9 @@ function htmlMetadonnees(nonce) {
   const txt = JSON.stringify({
     indiceDate: T('meta.date.indice'),
     rien: T('form.rien'),
-    enregistre: T('form.enregistre')
+    enregistre: T('form.enregistre'),
+    couleurAucune: T('meta.couleur.aucune'),
+    couleurs: COULEURS_NUMERO.map((c) => ({ hex: c.hex, nom: T('meta.couleur.' + c.cle) }))
   });
   return '<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="UTF-8">\n' +
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; script-src \'nonce-' + nonce + '\'">\n' +
@@ -1788,6 +1818,13 @@ function htmlMetadonnees(nonce) {
     '  border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; }\n' +
     'input:focus, select:focus { outline: 1px solid var(--vscode-focusBorder); }\n' +
     '.indice { color: var(--vscode-descriptionForeground); font-size: .82em; margin-top: .2rem; }\n' +
+    '.pastilles { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .3rem; }\n' +
+    '.pastille { display: inline-flex; align-items: center; gap: .4em; cursor: pointer;\n' +
+    '  padding: .3em .7em .3em .4em; border: 1px solid var(--vscode-input-border, rgba(128,128,128,.4));\n' +
+    '  border-radius: 999px; background: var(--vscode-input-background); color: var(--vscode-foreground);\n' +
+    '  font: inherit; margin: 0; width: auto; box-sizing: border-box; }\n' +
+    '.pastille .puce { width: 1em; height: 1em; border-radius: 50%; border: 1px solid rgba(128,128,128,.5); flex: 0 0 auto; }\n' +
+    '.pastille[aria-pressed="true"] { outline: 2px solid var(--vscode-focusBorder); outline-offset: 1px; font-weight: 600; }\n' +
     'button { margin-top: 1.2rem; padding: .45em 1.1em; border: none; border-radius: 2px; font: inherit;\n' +
     '  color: var(--vscode-button-foreground); background: var(--vscode-button-background); cursor: pointer; }\n' +
     'button:hover { background: var(--vscode-button-hoverBackground); }\n' +
@@ -1805,6 +1842,8 @@ function htmlMetadonnees(nonce) {
     '<label for="lang">' + T('meta.langue') + '</label>\n' +
     '<select id="lang"><option value="">' + T('meta.langue.aucune') + '</option><option value="fr">' + T('meta.langue.fr') + '</option>' +
     '<option value="de">' + T('meta.langue.de') + '</option><option value="en">' + T('meta.langue.en') + '</option><option value="it">' + T('meta.langue.it') + '</option></select>\n' +
+    '<label>' + T('meta.couleur') + '</label>\n' +
+    '<div class="pastilles" id="couleurs"></div>\n' +
     '<button type="submit">' + T('form.enregistrer') + '</button><span id="etat" role="status"></span>\n' +
     '</form>\n' +
     '<script nonce="' + nonce + '">\n' +
@@ -1815,6 +1854,38 @@ function htmlMetadonnees(nonce) {
     "  const CLES = ['title', 'revue', 'volume', 'numero', 'date', 'lang'];\n" +
     '  const modifies = new Set();\n' +
     "  const etat = document.getElementById('etat');\n" +
+    "  let couleurChoisie = '';\n" +
+    '  function majPastilles() {\n' +
+    "    for (const b of document.querySelectorAll('#couleurs .pastille')) {\n" +
+    "      b.setAttribute('aria-pressed', b.dataset.hex === couleurChoisie ? 'true' : 'false');\n" +
+    '    }\n' +
+    '  }\n' +
+    '  function rendreCouleurs() {\n' +
+    "    const conteneur = document.getElementById('couleurs');\n" +
+    "    conteneur.textContent = '';\n" +
+    "    const items = [{ hex: '', nom: TXT.couleurAucune }].concat(TXT.couleurs);\n" +
+    '    for (const c of items) {\n' +
+    "      const b = document.createElement('button');\n" +
+    "      b.type = 'button';\n" +
+    "      b.className = 'pastille';\n" +
+    '      b.dataset.hex = c.hex;\n' +
+    "      b.setAttribute('aria-pressed', 'false');\n" +
+    '      if (c.hex) {\n' +
+    "        const puce = document.createElement('span');\n" +
+    "        puce.className = 'puce';\n" +
+    '        puce.style.background = c.hex;\n' +
+    '        b.appendChild(puce);\n' +
+    '      }\n' +
+    '      b.appendChild(document.createTextNode(c.nom));\n' +
+    "      b.addEventListener('click', function () {\n" +
+    '        couleurChoisie = c.hex;\n' +
+    '        majPastilles();\n' +
+    "        modifies.add('couleur');\n" +
+    "        etat.textContent = '';\n" +
+    '      });\n' +
+    '      conteneur.appendChild(b);\n' +
+    '    }\n' +
+    '  }\n' +
     '  function remplir(valeurs) {\n' +
     '    for (const cle of CLES) {\n' +
     '      const champ = document.getElementById(cle);\n' +
@@ -1829,17 +1900,22 @@ function htmlMetadonnees(nonce) {
     '      }\n' +
     "      if (cle === 'lang' && champ.value !== v) { champ.value = ''; }\n" +
     '    }\n' +
+    "    couleurChoisie = valeurs.couleur === undefined ? '' : String(valeurs.couleur);\n" +
+    '    majPastilles();\n' +
     '    modifies.clear();\n' +
     "    etat.textContent = '';\n" +
     '  }\n' +
     '  for (const cle of CLES) {\n' +
     "    document.getElementById(cle).addEventListener('input', function () { modifies.add(cle); etat.textContent = ''; });\n" +
     '  }\n' +
+    '  rendreCouleurs();\n' +
     "  document.getElementById('formulaire').addEventListener('submit', function (e) {\n" +
     '    e.preventDefault();\n' +
     '    if (modifies.size === 0) { etat.textContent = TXT.rien; return; }\n' +
     '    const envoi = {};\n' +
-    '    for (const cle of modifies) { envoi[cle] = document.getElementById(cle).value; }\n' +
+    '    for (const cle of modifies) {\n' +
+    "      envoi[cle] = cle === 'couleur' ? couleurChoisie : document.getElementById(cle).value;\n" +
+    '    }\n' +
     "    vscodeApi.postMessage({ type: 'enregistrer', modifies: envoi });\n" +
     '  });\n' +
     "  window.addEventListener('message', function (e) {\n" +
@@ -1892,6 +1968,13 @@ function ouvrirMetadonnees(fournisseur, rafraichirTout) {
       if (msg.modifies && typeof msg.modifies[cle] === 'string') {
         modifies[cle] = msg.modifies[cle].replace(/[\r\n]+/g, ' ').slice(0, 500).trim();
       }
+    }
+    // couleur (M7, D56) : soit vide (« aucune »), soit un hex de la palette —
+    // toute autre valeur est ignorée (jamais écrite dans ausgabe.yaml).
+    if ('couleur' in modifies) {
+      const c = modifies.couleur.toUpperCase();
+      if (c !== '' && HEX_COULEURS.indexOf(c) === -1) { delete modifies.couleur; }
+      else { modifies.couleur = c; }
     }
     if (Object.keys(modifies).length === 0) { return; }
     try {
