@@ -185,18 +185,19 @@ const TEXTES_COCKPIT = {
     'palette.figure': 'Insérer une figure',
     'palette.tableau': 'Insérer un tableau',
     'table.titre': 'Tableau — {0}',
-    'table.aide': 'Cliquez une cellule pour l’éditer (Ctrl+B gras, Ctrl+I italique). Maj+clic = plage rectangulaire. Cliquez une poignée grise pour une ligne ou une colonne entière.',
+    'table.aide': 'Cliquez une cellule pour l’éditer (Ctrl+B gras, Ctrl+I italique). Maj+clic = plage rectangulaire. En-têtes A/B/C (colonnes) et 1/2/3 (lignes) : cliquez-les pour sélectionner toute la colonne ou la ligne. Clic droit sur une cellule ou un en-tête pour insérer, supprimer, fusionner ou scinder.',
     'table.enregistrer': 'Enregistrer',
-    'table.ajouterLigne': '＋ Ligne',
-    'table.supprimerLigne': '－ Ligne',
-    'table.ajouterColonne': '＋ Colonne',
-    'table.supprimerColonne': '－ Colonne',
     'table.fusionner': 'Fusionner',
     'table.scinder': 'Scinder',
     'table.rien': 'Sélectionnez d’abord une cellule.',
     'table.fusionImpossible': 'Pour fusionner, la sélection doit être un rectangle plein (aucune cellule ne doit dépasser).',
     'table.enregistre': '✓ Tableau enregistré',
-    'table.grpStructure': 'Structure',
+    'table.ctx.ligneAvant': 'Insérer une ligne au-dessus',
+    'table.ctx.ligneApres': 'Insérer une ligne en dessous',
+    'table.ctx.ligneSuppr': 'Supprimer la ligne',
+    'table.ctx.colAvant': 'Insérer une colonne à gauche',
+    'table.ctx.colApres': 'Insérer une colonne à droite',
+    'table.ctx.colSuppr': 'Supprimer la colonne',
     'table.grpEntetes': 'En-têtes',
     'table.grpStyles': 'Styles',
     'table.entete': 'Définir comme en-tête',
@@ -385,18 +386,19 @@ const TEXTES_COCKPIT = {
     'palette.figure': 'Abbildung einfügen',
     'palette.tableau': 'Tabelle einfügen',
     'table.titre': 'Tabelle — {0}',
-    'table.aide': 'Klicken Sie eine Zelle zum Bearbeiten (Ctrl+B fett, Ctrl+I kursiv). Umschalt+Klick = rechteckiger Bereich. Klicken Sie einen grauen Griff für eine ganze Zeile oder Spalte.',
+    'table.aide': 'Klicken Sie eine Zelle zum Bearbeiten (Ctrl+B fett, Ctrl+I kursiv). Umschalt+Klick = rechteckiger Bereich. Kopfzeilen A/B/C (Spalten) und 1/2/3 (Zeilen): anklicken, um die ganze Spalte oder Zeile auszuwählen. Rechtsklick auf eine Zelle oder eine Kopfzeile zum Einfügen, Löschen, Verbinden oder Teilen.',
     'table.enregistrer': 'Speichern',
-    'table.ajouterLigne': '＋ Zeile',
-    'table.supprimerLigne': '－ Zeile',
-    'table.ajouterColonne': '＋ Spalte',
-    'table.supprimerColonne': '－ Spalte',
     'table.fusionner': 'Verbinden',
     'table.scinder': 'Teilen',
     'table.rien': 'Wählen Sie zuerst eine Zelle aus.',
     'table.fusionImpossible': 'Zum Verbinden muss die Auswahl ein volles Rechteck sein (keine Zelle darf herausragen).',
     'table.enregistre': '✓ Tabelle gespeichert',
-    'table.grpStructure': 'Struktur',
+    'table.ctx.ligneAvant': 'Zeile oberhalb einfügen',
+    'table.ctx.ligneApres': 'Zeile unterhalb einfügen',
+    'table.ctx.ligneSuppr': 'Zeile löschen',
+    'table.ctx.colAvant': 'Spalte links einfügen',
+    'table.ctx.colApres': 'Spalte rechts einfügen',
+    'table.ctx.colSuppr': 'Spalte löschen',
     'table.grpEntetes': 'Überschriften',
     'table.grpStyles': 'Stile',
     'table.entete': 'Als Überschrift festlegen',
@@ -3445,10 +3447,11 @@ function lireCouleurAccent(racine) {
 // Libellés localisés transmis à la webview de l'éditeur de tableau.
 function textesTable() {
   const cles = [
-    'table.aide', 'table.enregistrer', 'table.ajouterLigne', 'table.supprimerLigne',
-    'table.ajouterColonne', 'table.supprimerColonne', 'table.fusionner', 'table.scinder',
+    'table.aide', 'table.enregistrer', 'table.fusionner', 'table.scinder',
     'table.rien', 'table.fusionImpossible', 'table.enregistre',
-    'table.grpStructure', 'table.grpEntetes', 'table.grpStyles',
+    'table.ctx.ligneAvant', 'table.ctx.ligneApres', 'table.ctx.ligneSuppr',
+    'table.ctx.colAvant', 'table.ctx.colApres', 'table.ctx.colSuppr',
+    'table.grpEntetes', 'table.grpStyles',
     'table.entete', 'table.enteteRetirer', 'table.styleEntete', 'table.styleLigne', 'table.styleColonne',
     'table.st.normal', 'table.st.gras', 'table.st.negatif', 'table.st.fond',
     'table.zebre', 'table.zebre.non', 'table.zebre.lignes', 'table.zebre.colonnes',
@@ -3493,15 +3496,28 @@ function htmlEditeurTable(nonce) {
     '#zone { overflow: auto; }\n' +
     'table.grille { border-collapse: collapse; }\n' +
     'table.grille th, table.grille td { border: 1px solid var(--vscode-panel-border, #888);\n' +
-    '  padding: .3em .5em; min-width: 3em; vertical-align: top; text-align: left; }\n' +
+    '  padding: .3em .5em; min-width: 3em; height: 1.9em; vertical-align: top; text-align: left; }\n' +
     'table.grille td.cell, table.grille th.cell { background: var(--vscode-editor-background); cursor: text; }\n' +
     'table.grille .sel { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px;\n' +
     '  background: var(--vscode-editor-selectionBackground, rgba(90,140,220,.25)); }\n' +
     '.poignee { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15));\n' +
     '  color: var(--vscode-descriptionForeground); cursor: pointer; text-align: center; user-select: none;\n' +
     '  min-width: 1.4em; padding: .15em .3em; font-size: .8em; }\n' +
+    '.poignee.pnum { min-width: 2.4em; }\n' +
+    '.poignee.selh { background: var(--vscode-editor-selectionBackground, rgba(90,140,220,.35));\n' +
+    '  color: var(--vscode-foreground); }\n' +
     '.poignee:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.3)); }\n' +
     '.coin { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15)); }\n' +
+    '.ctxmenu { position: fixed; z-index: 1000; min-width: 13em; padding: .25em 0;\n' +
+    '  background: var(--vscode-menu-background, var(--vscode-editor-background));\n' +
+    '  color: var(--vscode-menu-foreground, var(--vscode-foreground));\n' +
+    '  border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border, rgba(128,128,128,.4)));\n' +
+    '  border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.35); font-size: .92em; }\n' +
+    '.ctxmenu .ctxitem { padding: .32em .9em; cursor: pointer; white-space: nowrap; }\n' +
+    '.ctxmenu .ctxitem:hover { background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground, rgba(90,140,220,.3)));\n' +
+    '  color: var(--vscode-menu-selectionForeground, var(--vscode-menu-foreground, var(--vscode-foreground))); }\n' +
+    '.ctxmenu .ctxsep { height: 1px; margin: .25em 0;\n' +
+    '  background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border, rgba(128,128,128,.4))); }\n' +
     '</style>\n</head>\n<body>\n' +
     '<div class="barre" id="barre"></div>\n' +
     '<p class="aide" id="aide"></p>\n' +
@@ -3573,44 +3589,60 @@ function scriptEditeurTable() {
     "  if(c.colspan>1)el.colSpan=c.colspan;if(c.rowspan>1)el.rowSpan=c.rowspan;\n" +
     "  poserInline(el,c.contenu);\n" +
     "  el.addEventListener('mousedown',function(ev){onCell(ev,c);});\n" +
+    "  el.addEventListener('contextmenu',function(ev){ouvrirMenu(ev,{lignes:true,colonnes:true,rMin:c.r0,rMax:c.r0+c.rowspan-1,cMin:c.c0,cMax:c.c0+c.colspan-1,fusionnee:(c.rowspan>1||c.colspan>1)});});\n" +
     "  el.addEventListener('input',function(){etat('');});\n" +
     "  return el;}\n" +
+    "function colLettre(n){var s='';n=n+1;while(n>0){var r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s;}\n" +
     "function rendre(){zone.textContent='';if(!dispo)return;\n" +
     "  var t=document.createElement('table');t.className='grille';\n" +
     "  var trh=document.createElement('tr');var coin=document.createElement('th');coin.className='coin';trh.appendChild(coin);\n" +
-    "  for(var c=0;c<dispo.nbColonnes;c++){var ph=document.createElement('th');ph.className='poignee';ph.textContent='';(function(cc){ph.addEventListener('click',function(){selCol(cc);});})(c);trh.appendChild(ph);}\n" +
+    "  for(var c=0;c<dispo.nbColonnes;c++){var ph=document.createElement('th');ph.className='poignee';ph.dataset.pcol=c;ph.textContent=colLettre(c);(function(cc){ph.addEventListener('click',function(){selCol(cc);});ph.addEventListener('contextmenu',function(ev){selCol(cc);ouvrirMenu(ev,{lignes:false,colonnes:true,rMin:0,rMax:dispo.nbLignes-1,cMin:cc,cMax:cc,fusionnee:false});});})(c);trh.appendChild(ph);}\n" +
     "  t.appendChild(trh);\n" +
     "  dispo.lignes.forEach(function(lg,r){var tr=document.createElement('tr');\n" +
-    "    var pl=document.createElement('td');pl.className='poignee';pl.textContent='';(function(rr){pl.addEventListener('click',function(){selLigne(rr);});})(r);tr.appendChild(pl);\n" +
+    "    var pl=document.createElement('td');pl.className='poignee pnum';pl.dataset.prow=r;pl.textContent=String(r+1);(function(rr){pl.addEventListener('click',function(){selLigne(rr);});pl.addEventListener('contextmenu',function(ev){selLigne(rr);ouvrirMenu(ev,{lignes:true,colonnes:false,rMin:rr,rMax:rr,cMin:0,cMax:dispo.nbColonnes-1,fusionnee:false});});})(r);tr.appendChild(pl);\n" +
     "    lg.cellules.forEach(function(c){tr.appendChild(cellDom(c));});t.appendChild(tr);});\n" +
     "  zone.appendChild(t);majEditable();marquer();stylerApercu();}\n" +
     "function majEditable(){var ed=!plage();zone.querySelectorAll('.cell').forEach(function(el){el.contentEditable=ed?'true':'false';});}\n" +
     "function marquer(){zone.querySelectorAll('.cell').forEach(function(el){\n" +
     "  var cr={rMin:+el.dataset.r0,cMin:+el.dataset.c0,rMax:+el.dataset.r0+ +el.dataset.rs-1,cMax:+el.dataset.c0+ +el.dataset.cs-1};\n" +
     "  var dans=selection&&cr.rMin>=selection.rMin&&cr.rMax<=selection.rMax&&cr.cMin>=selection.cMin&&cr.cMax<=selection.cMax;\n" +
-    "  el.classList.toggle('sel',!!dans);});}\n" +
+    "  el.classList.toggle('sel',!!dans);});\n" +
+    "  zone.querySelectorAll('.poignee[data-pcol]').forEach(function(el){var c=+el.dataset.pcol;el.classList.toggle('selh',!!(selection&&c>=selection.cMin&&c<=selection.cMax));});\n" +
+    "  zone.querySelectorAll('.poignee[data-prow]').forEach(function(el){var r=+el.dataset.prow;el.classList.toggle('selh',!!(selection&&r>=selection.rMin&&r<=selection.rMax));});}\n" +
     // --- interactions de sélection ---
-    "function onCell(ev,c){if(ev.shiftKey&&ancre){ev.preventDefault();var sel=window.getSelection&&window.getSelection();if(sel)sel.removeAllRanges();\n" +
+    "function onCell(ev,c){if(ev.button===2){return;}if(ev.shiftKey&&ancre){ev.preventDefault();var sel=window.getSelection&&window.getSelection();if(sel)sel.removeAllRanges();\n" +
     "  selection=etendre(union(rectCell(ancre),rectCell(c)));majEditable();marquer();return;}\n" +
     "  ancre=c;selection=rectCell(c);majEditable();marquer();}\n" +
     "function selLigne(r){ancre=null;selection=etendre({rMin:r,cMin:0,rMax:r,cMax:dispo.nbColonnes-1});majEditable();marquer();}\n" +
     "function selCol(c){ancre=null;selection=etendre({rMin:0,cMin:c,rMax:dispo.nbLignes-1,cMax:c});majEditable();marquer();}\n" +
-    // --- barre d'outils (T1 : structure) ---
+    // --- menu contextuel (clic droit) : opérations de structure ---
+    "var menu=null;\n" +
+    "function fermerMenu(){if(!menu)return;if(menu.parentNode)menu.parentNode.removeChild(menu);menu=null;document.removeEventListener('mousedown',surMenuMousedown,true);document.removeEventListener('keydown',surMenuKey,true);window.removeEventListener('blur',fermerMenu);}\n" +
+    "function surMenuMousedown(ev){if(menu&&menu.contains(ev.target))return;fermerMenu();}\n" +
+    "function surMenuKey(ev){if(ev.key==='Escape'){ev.preventDefault();fermerMenu();}}\n" +
+    "function itemMenu(txt,fn){var d=document.createElement('div');d.className='ctxitem';d.setAttribute('role','menuitem');d.textContent=txt;d.addEventListener('click',function(){fermerMenu();fn();});return d;}\n" +
+    "function sepMenu(m){var d=document.createElement('div');d.className='ctxsep';m.appendChild(d);}\n" +
+    "function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.createElement('div');m.className='ctxmenu';m.setAttribute('role','menu');\n" +
+    "  m.addEventListener('contextmenu',function(e){e.preventDefault();});\n" +
+    "  if(ctx.lignes){m.appendChild(itemMenu(TXT['ctx.ligneAvant'],function(){op('ajouterLigne',{pos:ctx.rMin});}));\n" +
+    "    m.appendChild(itemMenu(TXT['ctx.ligneApres'],function(){op('ajouterLigne',{pos:ctx.rMax+1});}));\n" +
+    "    m.appendChild(itemMenu(TXT['ctx.ligneSuppr'],function(){op('supprimerLigne',{rMin:ctx.rMin,rMax:ctx.rMax});}));}\n" +
+    "  if(ctx.lignes&&ctx.colonnes)sepMenu(m);\n" +
+    "  if(ctx.colonnes){m.appendChild(itemMenu(TXT['ctx.colAvant'],function(){op('ajouterColonne',{pos:ctx.cMin});}));\n" +
+    "    m.appendChild(itemMenu(TXT['ctx.colApres'],function(){op('ajouterColonne',{pos:ctx.cMax+1});}));\n" +
+    "    m.appendChild(itemMenu(TXT['ctx.colSuppr'],function(){op('supprimerColonne',{cMin:ctx.cMin,cMax:ctx.cMax});}));}\n" +
+    "  if(plage()){sepMenu(m);m.appendChild(itemMenu(TXT.fusionner,function(){op('fusionner',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax});}));}\n" +
+    "  if(ctx.fusionnee){if(!plage())sepMenu(m);m.appendChild(itemMenu(TXT.scinder,function(){op('scinder',{rMin:ctx.rMin,cMin:ctx.cMin,rMax:ctx.rMax,cMax:ctx.cMax});}));}\n" +
+    "  document.body.appendChild(m);\n" +
+    "  var vw=window.innerWidth||document.documentElement.clientWidth,vh=window.innerHeight||document.documentElement.clientHeight,rc=m.getBoundingClientRect();\n" +
+    "  var x=ev.clientX,y=ev.clientY;if(x+rc.width>vw)x=Math.max(2,vw-rc.width-2);if(y+rc.height>vh)y=Math.max(2,vh-rc.height-2);\n" +
+    "  m.style.left=x+'px';m.style.top=y+'px';menu=m;\n" +
+    "  document.addEventListener('mousedown',surMenuMousedown,true);document.addEventListener('keydown',surMenuKey,true);window.addEventListener('blur',fermerMenu);}\n" +
+    // --- barre d'outils (helpers ; la structure est passée dans le menu contextuel) ---
     "function bouton(txt,fn,cls){var b=document.createElement('button');b.type='button';b.textContent=txt;if(cls)b.className=cls;b.addEventListener('click',fn);return b;}\n" +
     "function groupe(label){var g=document.createElement('span');g.className='grp';if(label){var l=document.createElement('span');l.className='lbl';l.textContent=label;g.appendChild(l);}return g;}\n" +
     "function op(nom,args){recolter();api.postMessage({type:'operation',nom:nom,args:args,modele:modele});}\n" +
-    "function exigeSel(){if(!selection){etat(TXT.rien);return false;}return true;}\n" +
     "function construireBarre(){barre.textContent='';\n" +
-    "  var gs=groupe(TXT.grpStructure);\n" +
-    "  gs.appendChild(bouton(TXT.ajouterLigne,function(){op('ajouterLigne',{pos:selection?selection.rMax+1:dispo.nbLignes});}));\n" +
-    "  gs.appendChild(bouton(TXT.supprimerLigne,function(){if(exigeSel())op('supprimerLigne',{rMin:selection.rMin,rMax:selection.rMax});}));\n" +
-    "  gs.appendChild(bouton(TXT.ajouterColonne,function(){op('ajouterColonne',{pos:selection?selection.cMax+1:dispo.nbColonnes});}));\n" +
-    "  gs.appendChild(bouton(TXT.supprimerColonne,function(){if(exigeSel())op('supprimerColonne',{cMin:selection.cMin,cMax:selection.cMax});}));\n" +
-    "  barre.appendChild(gs);\n" +
-    "  var gf=groupe('');\n" +
-    "  gf.appendChild(bouton(TXT.fusionner,function(){if(!exigeSel())return;if(!plage()){etat(TXT.fusionImpossible);return;}op('fusionner',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax});}));\n" +
-    "  gf.appendChild(bouton(TXT.scinder,function(){if(exigeSel())op('scinder',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax});}));\n" +
-    "  barre.appendChild(gf);\n" +
     "  barreT2(barre);\n" +
     "  var enr=bouton(TXT.enregistrer,function(){recolter();api.postMessage({type:'enregistrer',modele:modele});},'principal');\n" +
     "  barre.appendChild(enr);\n" +
