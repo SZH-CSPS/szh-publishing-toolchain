@@ -7,10 +7,11 @@
 // existe à la racine (contexte szh.estRevue).
 //
 // S3 : commande « Importer des Word » (szh.importerWord).
-// S4 : actions d'article « Ouvrir le PDF » (szh.ouvrirPdf) et « Compiler »
-//   (szh.compiler). Ouverture du PDF calquée sur szh-apercu (pdf.preview,
-//   ViewColumn.Beside, preserveFocus, test « déjà ouvert » partagé pour éviter la
-//   double-ouverture). Jamais de vol de focus.
+// S4 puis N5 (D46) : le CLIC sur un article fait tout — ouvre le .md (colonne 1),
+//   compile si le PDF est obsolète (mtime) ou absent, ferme l'aperçu de l'article
+//   précédent et affiche le sien (colonne 2, pdf.preview, preserveFocus). Les
+//   boutons « Ouvrir le PDF » / « Compiler » de S4 sont supprimés. Jamais de vol
+//   de focus. szh-apercu reste en place (rafraîchissement après Ctrl+S).
 // G1 (D37) : formulaire « Méta-données du numéro » (webview szh.metadonnees) qui
 //   réécrit ausgabe.yaml — sérialiseur maison, lignes non gérées préservées,
 //   écriture atomique.
@@ -170,11 +171,11 @@ class FournisseurRevue {
       it.resourceUri = md;              // icône de fichier selon le thème
       it.tooltip = md.fsPath;
       it.contextValue = 'article';      // pilote les boutons inline (menus view/item/context)
-      // Le .md s'ouvre TOUJOURS dans la colonne 1 (gauche) : mise en page à deux
-      // vues stable (gauche = texte, droite = aperçu), jamais de 3ᵉ colonne.
+      // N5 (D46) : le clic fait tout — .md en colonne 1, build si obsolète,
+      // aperçu en colonne 2 (l'aperçu du précédent article est fermé).
       it.command = {
-        command: 'vscode.open', title: 'Ouvrir l’article',
-        arguments: [md, { viewColumn: vscode.ViewColumn.One }]
+        command: 'szh.ouvrirArticle', title: 'Ouvrir l’article',
+        arguments: [slug]
       };
       return it;
     });
@@ -349,6 +350,7 @@ async function toutExporter(fournisseur, rafraichirTout) {
   const statut = vscode.window.setStatusBarMessage('Export complet de la revue…');
   try {
     await fermerOngletsSous(path.join(racine, 'out'));
+    apercuCourantUri = null;                       // tous les aperçus viennent d'être fermés
     const code = await lancerTache(NOM_TACHE_EXPORT);
     rafraichirTout();
     if (code === null) { return; }                 // tâche introuvable (déjà signalé)
@@ -364,49 +366,73 @@ async function toutExporter(fournisseur, rafraichirTout) {
   }
 }
 
-async function compiler(fournisseur) {
-  if (!fournisseur.racine) { return; }
-  if (buildEnCours) { vscode.window.setStatusBarMessage('Compilation déjà en cours…', 3000); return; }
-  buildEnCours = true;
-  const statut = vscode.window.setStatusBarMessage('Compilation en cours…');
-  try {
-    const code = await lancerBuild();
-    if (code !== null && code !== 0) {
-      vscode.window.showErrorMessage('La compilation a échoué. Ouvrez le panneau « ' + NOM_TACHE_BUILD + ' » pour le détail.');
+// ---- Clic = aperçu direct (N5, D46) -----------------------------------------------
+
+// URI du PDF actuellement affiché PAR LE COCKPIT (l'aperçu du précédent article est
+// fermé avant d'ouvrir le suivant — deux colonnes stables, pas d'onglets qui
+// s'empilent). szh-apercu, lui, ne fait que rafraîchir/ouvrir l'article ACTIF.
+let apercuCourantUri = null;
+
+async function fermerApercuCourant(saufUri) {
+  const courant = apercuCourantUri;
+  if (!courant) { return; }
+  if (saufUri && courant.fsPath.toLowerCase() === saufUri.fsPath.toLowerCase()) { return; }
+  apercuCourantUri = null;
+  const cible = courant.fsPath.toLowerCase();
+  const aFermer = [];
+  for (const groupe of vscode.window.tabGroups.all) {
+    for (const onglet of groupe.tabs) {
+      const entree = onglet.input;
+      if (entree && entree.uri && entree.uri.fsPath && entree.uri.fsPath.toLowerCase() === cible) {
+        aFermer.push(onglet);
+      }
     }
-  } finally {
-    statut.dispose();
-    buildEnCours = false;
+  }
+  if (aFermer.length > 0) {
+    try { await vscode.window.tabGroups.close(aFermer); } catch (e) { /* déjà fermé */ }
   }
 }
 
-async function ouvrirPdf(fournisseur, item) {
+// Le geste unique du rédacteur : cliquer un article = voir son texte ET son PDF.
+// 1. .md en colonne 1 ; 2. build si PDF absent/obsolète (mtime), incrémental ;
+// 3. fermer l'aperçu de l'article précédent ; 4. aperçu en colonne 2.
+// En cas d'échec de build : le .md reste ouvert, erreur sobre, PAS d'aperçu
+// obsolète trompeur.
+async function ouvrirArticle(fournisseur, slug) {
   const racine = fournisseur.racine;
-  if (!racine || !item || !item.slug) { return; }
-  const slug = item.slug;
+  if (!racine || typeof slug !== 'string' || slug === '') { return; }
+  const md = path.join(racine, 'articles', slug, slug + '.md');
   const pdf = vscode.Uri.file(path.join(racine, 'out', slug, slug + '.pdf'));
 
-  if (fs.existsSync(pdf.fsPath)) { await ouvrirApercuPdf(pdf); return; }
+  await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(md), { viewColumn: vscode.ViewColumn.One });
 
-  // PDF absent : compiler d'abord, ouvrir SEULEMENT en cas de succès.
-  if (buildEnCours) { vscode.window.setStatusBarMessage('Compilation déjà en cours…', 3000); return; }
-  buildEnCours = true;
-  const statut = vscode.window.setStatusBarMessage('Compilation de « ' + slug + ' »…');
-  try {
-    const code = await lancerBuild();
-    if (code === null) { return; }
-    if (code !== 0) {
-      vscode.window.showErrorMessage('La compilation a échoué. Ouvrez le panneau « ' + NOM_TACHE_BUILD + ' » pour le détail.');
-      return;
+  let obsolete = true;
+  try { obsolete = fs.statSync(pdf.fsPath).mtimeMs < fs.statSync(md).mtimeMs; }
+  catch (e) { obsolete = true; }                   // PDF (ou .md) illisible -> on compile
+
+  if (obsolete) {
+    if (buildEnCours) { vscode.window.setStatusBarMessage('Compilation déjà en cours…', 3000); return; }
+    buildEnCours = true;
+    const statut = vscode.window.setStatusBarMessage('Compilation de « ' + slug + ' »…');
+    try {
+      const code = await lancerBuild();
+      if (code === null) { return; }               // tâche introuvable (déjà signalé)
+      if (code !== 0) {
+        vscode.window.showErrorMessage('La compilation a échoué. Ouvrez le panneau « ' + NOM_TACHE_BUILD + ' » pour le détail.');
+        return;
+      }
+    } finally {
+      statut.dispose();
+      buildEnCours = false;
     }
-    // pdf.preview étant mono-instance, ouvrir ici révèle l'onglet même si szh-apercu
-    // l'a déjà ouvert (article actif) — aucun doublon possible.
-    if (fs.existsSync(pdf.fsPath)) { await ouvrirApercuPdf(pdf); }
-    else { vscode.window.showErrorMessage('PDF introuvable après compilation : « ' + slug + ' ».'); }
-  } finally {
-    statut.dispose();
-    buildEnCours = false;
   }
+  if (!fs.existsSync(pdf.fsPath)) {
+    vscode.window.showErrorMessage('PDF introuvable après compilation : « ' + slug + ' ».');
+    return;
+  }
+  await fermerApercuCourant(pdf);                  // l'aperçu du précédent article
+  await ouvrirApercuPdf(pdf);                      // mono-instance : révèle si déjà là
+  apercuCourantUri = pdf;
 }
 
 // ---- Import guidé (S3) ---------------------------------------------------------
@@ -992,8 +1018,7 @@ function activate(context) {
     vscode.commands.registerCommand('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.toutExporter', () => toutExporter(fournisseur, rafraichirTout)),
-    vscode.commands.registerCommand('szh.ouvrirPdf', (item) => ouvrirPdf(fournisseur, item)),
-    vscode.commands.registerCommand('szh.compiler', () => compiler(fournisseur)),
+    vscode.commands.registerCommand('szh.ouvrirArticle', (slug) => ouvrirArticle(fournisseur, slug)),
     vscode.commands.registerCommand('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
     vscode.commands.registerCommand('szh.remplacerAsset', (item) => remplacerAsset(fournisseur, rafraichirTout, item)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte)

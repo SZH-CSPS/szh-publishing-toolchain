@@ -199,10 +199,10 @@ en banque.
 
 ### N5 · Clic = aperçu direct (b) — *taille M ; extension ; après N1 pour la réactivité*
 
-- [ ] **Supprimer** les commandes `szh.ouvrirPdf` et `szh.compiler` (package.json
+- [x] **Supprimer** les commandes `szh.ouvrirPdf` et `szh.compiler` (package.json
   `commands` + `menus view/item/context`) et leurs boutons inline. Conserver les
   fonctions internes utiles (`ouvrirApercuPdf`, `lancerBuild`) réutilisées ci-dessous.
-- [ ] Nouveau handler de **clic d'article** (remplace le `command: vscode.open` de
+- [x] Nouveau handler de **clic d'article** (remplace le `command: vscode.open` de
   `_itemsArticles`) : commande `szh.ouvrirArticle(item)` qui, en séquence :
   1. ouvre `<slug>.md` en colonne 1 ;
   2. si `out/<slug>/<slug>.pdf` **absent** ou **plus ancien** que `<slug>.md`
@@ -212,7 +212,7 @@ en banque.
      dans une variable module ; fermer son onglet via `tabGroups` avant d'ouvrir le
      nouveau) ;
   4. ouvre l'aperçu du PDF en colonne 2 (`ouvrirApercuPdf`), met à jour l'URI courant.
-- [ ] Robustesse : clics rapprochés ne doivent pas empiler les builds (garde
+- [x] Robustesse : clics rapprochés ne doivent pas empiler les builds (garde
   `buildEnCours` + ignorer si déjà en cours) ; si la compilation échoue, ouvrir quand
   même le `.md`, message d'erreur, pas d'aperçu obsolète trompeur ; colonnes **fixes**
   (1 = md, 2 = PDF), jamais de 3ᵉ colonne.

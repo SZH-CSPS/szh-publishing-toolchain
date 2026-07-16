@@ -33,18 +33,6 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "szh.ouvrirPdf",
-        "title": "Ouvrir le PDF",
-        "category": "Revue SZH",
-        "icon": "$(open-preview)"
-      },
-      {
-        "command": "szh.compiler",
-        "title": "Compiler",
-        "category": "Revue SZH",
-        "icon": "$(play)"
-      },
-      {
         "command": "szh.convertirEnAttente",
         "title": "Convertir les Word en attente",
         "category": "Revue SZH",
@@ -100,19 +88,9 @@
       ],
       "view/item/context": [
         {
-          "command": "szh.ouvrirPdf",
-          "when": "view == szhCockpitVue && viewItem == article",
-          "group": "inline@1"
-        },
-        {
-          "command": "szh.compiler",
-          "when": "view == szhCockpitVue && viewItem == article",
-          "group": "inline@2"
-        },
-        {
           "command": "szh.supprimerArticle",
           "when": "view == szhCockpitVue && viewItem == article",
-          "group": "inline@3"
+          "group": "inline@1"
         },
         {
           "command": "szh.convertirEnAttente",
