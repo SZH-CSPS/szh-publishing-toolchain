@@ -5,7 +5,7 @@ Corrections décidées après tests de Robin. À exécuter **tranche par tranche
 SUPERSEDE deux points de `PLAN-FONCTIONS.md`** : le stockage frontmatter de N7
 (→ fichier caché `.meta.yaml`) et l'extraction Lua des tableaux de N6
 (→ extracteur Python fidèle). Lire d'abord `PLAN-FONCTIONS.md` (N6, N7) puis ce
-fichier. Décisions **D49–D53**, tranches **M1–M5**. Français partout.
+fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
 
 ## Contexte (vérifié le 2026-07-16)
 
@@ -76,14 +76,23 @@ fichier. Décisions **D49–D53**, tranches **M1–M5**. Français partout.
     **pack DE déployé** (`vsix.lock` + release) + `locale` dans `argv.json` + redémarrage
     → dépendance déploiement notée. **N'influence aucun YAML.**
 
-- **D53 (a)** — L'aperçu **PDF↔source** (survol = surligner, clic = aller à la source)
-  est un problème **SyncTeX-like** : `tomoki1207.pdf` n'expose **aucune API** de
-  survol/clic et **WeasyPrint n'exporte pas** de correspondance élément→coordonnées PDF.
-  **Traité comme un SPIKE go/no-go**, pas une fonctionnalité livrée d'emblée. Voie
-  réaliste à prototyper : **aperçu HTML** (le pipeline produit déjà `out/<slug>/<slug>.html`)
-  dans une **webview maison**, blocs porteurs d'une position source → survol `:hover` +
-  clic → `revealRange` dans le `.md`. Voie PDF native (lecteur pdf.js maison + coordonnées
-  via l'API Python de WeasyPrint) documentée mais **hors de portée de ce lot**.
+- **D53 (a) — Aperçu commutable HTML↔PDF** — Un **bascule global** (élément de barre
+  d'état + bouton en tête de vue, + bandeau en tête de l'aperçu HTML) fait passer **tous
+  les aperçus** entre deux modes, **persistant** (`szh.apercuMode`, **défaut : html**) :
+  - **HTML** (défaut) : la colonne 2 affiche `out/<slug>/<slug>.html` dans une **webview
+    maison** — **survol = surligner l'élément**, **clic = `revealRange`** sur la ligne
+    source du `.md` (colonne 1).
+  - **PDF** : la colonne 2 affiche le PDF (`tomoki1207.pdf`), **sans clic**.
+  La **position source** est portée dans le HTML par pandoc (spike M5 : `commonmark_x+sourcepos`
+  unifié si le PDF reste identique, sinon rendu preview séparé) ; l'attribut de position est
+  **ignoré par WeasyPrint** → **le PDF reste inchangé** (on reste sur WeasyPrint, aucun
+  Chromium — cf. revue comparative WeasyPrint vs Paged.js).
+
+- **D54 — `szh-apercu` conscient du mode** — La colonne 2 n'a **qu'un seul** gestionnaire à
+  la fois. `szh-apercu` est **conservé** mais **modifié a minima** : il n'ouvre/rafraîchit le
+  PDF après compilation **qu'en mode `pdf`**, en lisant le réglage **partagé** `szh.apercuMode`
+  (`workspace.getConfiguration('szh')`). En mode `html`, il ne fait rien (le cockpit possède la
+  colonne 2 avec la webview HTML). Pas de refonte de szh-apercu — juste cette garde.
 
 ## Garde-fous (en plus de ceux de PLAN-FONCTIONS §Garde-fous)
 
@@ -93,7 +102,8 @@ fichier. Décisions **D49–D53**, tranches **M1–M5**. Français partout.
 - `<slug>.meta.yaml` : sérialiseur maison (comme ausgabe.yaml), valeurs **échappées/
   citées**, écriture **atomique** (`~$…` + rename), UTF-8. Préserver les clés
   inconnues de haut niveau.
-- **Ne pas toucher** : `szh-apercu`, lot D34. `git status` avant chaque commit.
+- **Ne pas toucher** : le lot D34 ; `szh-tabelle-inclure.lua`. (`szh-apercu` : **touche minimale
+  autorisée** en M5/D54 — garde de mode uniquement, pas de refonte.) `git status` avant chaque commit.
 
 ## Tranches
 
@@ -208,21 +218,32 @@ fichier. Décisions **D49–D53**, tranches **M1–M5**. Français partout.
   `.md` visibles ; bascule FR/DE des chaînes du cockpit ; invite au redémarrage pour la
   langue native.
 
-### M5 · Aperçu PDF↔source — SPIKE go/no-go (D53) — *taille M ; RECHERCHE ; en dernier ; ne bloque pas le lot*
+### M5 · Bascule d'aperçu HTML↔PDF, HTML cliquable par défaut (D53, D54) — *taille L ; pipeline + extension ; en dernier*
 
-- [ ] **Spike (livrable = rapport + PoC minimal), timeboxé** :
-  - Évaluer si pandoc peut stamper une **position source** sur les blocs HTML sans
-    casser le rendu (le reader `markdown` par défaut ne suit pas les positions → tester
-    `commonmark_x`+`sourcepos`, ou un filtre Lua qui numérote les blocs).
-  - **PoC** : commande **expérimentale** `szh.apercuSource` (non annoncée, séparée de
-    l'aperçu PDF de N5) ouvrant une **webview** qui affiche le HTML de l'article,
-    **surligne le bloc au survol** et, **au clic**, `revealRange` la ligne approximative
-    dans le `.md`.
-  - **Rapport** : faisabilité + précision de la correspondance clic→source (HTML),
-    et verdict argumenté sur la voie **PDF natif** (coordonnées WeasyPrint) — recommander
-    go/no-go à Robin.
-- [ ] **Ne PAS** remplacer l'aperçu PDF de N5. **Aucune régression** sur l'existant.
-- **Vérif** : le PoC se charge sans erreur ; rapport écrit ; l'aperçu PDF actuel intact.
+- [ ] **Spike sourcepos (court, consigné)** : `--from=commonmark_x+sourcepos` garde-t-il le
+  rendu PDF **identique** (surtout blocs `:::` et snippets) ? Si oui → build unifié avec
+  positions ; sinon → **rendu preview séparé** en `commonmark_x+sourcepos` (le build PDF reste
+  en `markdown`). Décider et consigner.
+- [ ] **Pipeline** : la sortie HTML servant à l'aperçu porte une **position source par bloc**
+  (`data-pos`/`data-line`). Vérifier que le **PDF WeasyPrint est inchangé** (attribut ignoré).
+- [ ] **Webview d'aperçu HTML** (colonne 2) : charge `out/<slug>/<slug>.html` (déjà autonome —
+  CSS/images en base64) ; CSP stricte (`img-src data:`, `style-src 'unsafe-inline'`,
+  `script-src 'nonce-…'`) + script injecté à nonce ; **survol → contour** de l'élément ;
+  **clic → `postMessage(ligne)`** → l'hôte fait `revealRange` dans le `.md` (colonne 1) ;
+  **rechargement** quand `out/<slug>/*.html` change (watcher).
+- [ ] **Bascule globale** : commande `szh.basculerApercu` + **élément de barre d'état**
+  « Aperçu : HTML ⇄ PDF » + bouton en tête de vue (+ bonus : bouton dans le bandeau de la
+  webview HTML) ; état **persistant** `szh.apercuMode` (défaut `html`) ; clé de contexte pour l'icône.
+- [ ] **Intégration au clic (N5)** : le clic d'article ouvre l'aperçu **du mode courant** ;
+  **basculer** échange l'aperçu de l'article courant (ferme l'un, ouvre l'autre) ; colonnes
+  fixes (1 = texte, 2 = aperçu), jamais de 3ᵉ colonne.
+- [ ] **`szh-apercu` conscient du mode** (D54) : il ne doit ouvrir/rafraîchir le PDF **qu'en
+  mode `pdf`** — lit le réglage partagé `szh.apercuMode` et ne fait rien en mode `html`. Touche
+  minimale, szh-apercu reste déployé (packaging CI inchangé).
+- **Vérif** : `node --check` ; harnais (la bascule persiste le mode ; le clic ouvre le bon
+  type ; mapping clic→ligne sur un HTML de test porteur de `data-pos`). Spike consigné. GUI :
+  défaut = aperçu HTML cliquable ; toggle → PDF ; `Ctrl+S` rafraîchit dans les deux modes ;
+  jamais deux aperçus concurrents ; pas de 3ᵉ colonne.
 
 ## Risques
 
@@ -233,7 +254,8 @@ fichier. Décisions **D49–D53**, tranches **M1–M5**. Français partout.
 | **RM3** | `docx-tables.py` : `vMerge`/`gridSpan` mal interprétés (tableaux complexes) | Moy | Moyen | Spike sur un vrai docx fusionné ; portée = fusions + gras/italique/paragraphes ; reste extensible |
 | **RM4** | Non déployé → non testable | Certain | — | Sync `pipeline/` → toolkit pour test, ou release ; **documenté** |
 | **RM5** | M4 langue : i18n incomplet / pack DE non déployé → menus natifs en anglais | Moy | Moyen | Couche i18n couvre les chaînes SZH ; défaut = `vscode.env.language` ; pack DE = dépendance déploiement notée |
-| **RM6** | M5 : faisabilité PDF↔source incertaine | Élevée | Faible | **Spike go/no-go** ; PoC HTML séparé ; **aucune** régression ni remplacement de l'aperçu PDF |
+| **RM6** | M5 : précision du mapping clic→source / changer le reader casse le rendu PDF | Moy | Moyen | Spike ; `commonmark_x+sourcepos` **seulement si PDF identique**, sinon rendu preview séparé ; `data-*` ignoré par WeasyPrint ; précision au **bloc** (suffisant pour naviguer) |
+| **RM7** | Deux gestionnaires d'aperçu (cockpit vs szh-apercu) → aperçu en **double** en colonne 2 | Moy | Moyen | **D54** : retrait de szh-apercu (ou mode-aware) → **propriétaire unique** |
 
 ## Points d'intégration
 
@@ -243,8 +265,8 @@ fichier. Décisions **D49–D53**, tranches **M1–M5**. Français partout.
 - `pipeline/docx-tables.py` (M2, nouveau), `pipeline/filters/szh-tabelle-reference.lua` (M2, remplace extraire → attic), `pipeline/import-docx.sh` (M2).
 - `revue-template/articles/01-exemple/` (M3), `userdoc.md`/`README.md`/`BIENVENUE.md` (M3).
 - `extension.js` + `package.json` + `package.nls*.json` (M4 : réglages + i18n), `settings.json`/`argv.json` écrits à l'exécution (M4).
-- `extension.js` (M5 : webview expérimentale `szh.apercuSource`) + un filtre pandoc de position source (spike M5).
-- **Ne pas toucher** : `szh-apercu`, `szh-tabelle-inclure.lua`, lot D34.
+- `extension.js` + `package.json` (M5 : webview HTML cliquable + bascule + barre d'état + réglage `szh.apercuMode`) ; `pipeline/` (position source dans le HTML) ; `szh-apercu/extension.js` (garde de mode, D54).
+- **Ne pas toucher** : `szh-tabelle-inclure.lua`, lot D34. (`szh-apercu` : garde de mode seulement, pas de refonte.)
 
 ## À valider par Robin (n'empêche pas de démarrer)
 
@@ -252,4 +274,5 @@ fichier. Décisions **D49–D53**, tranches **M1–M5**. Français partout.
 - Clés d'auteur en français (`prenom`/`nom`/`fonction`/`affiliation`/`orcid`) — retenu ;
   bascule possible vers `given`/`family` (CSL) si des citations d'articles sont prévues.
 - **Traduction DE de toutes les chaînes du cockpit** (M4 i18n).
-- Décision **go/no-go** sur l'aperçu PDF↔source après le rapport de spike (M5).
+- Résultat du **spike sourcepos** (M5) : reader unifié `commonmark_x+sourcepos` si le PDF
+  reste identique, sinon rendu preview séparé.
