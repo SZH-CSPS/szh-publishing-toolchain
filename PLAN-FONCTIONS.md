@@ -161,12 +161,12 @@ en banque.
 
 ### N3 · « Tout exporter » = rebuild forcé (c=e) — *taille S ; Makefile + tasks.json + extension*
 
-- [ ] `pipeline/Makefile` : cible `.PHONY: tout-exporter` qui force le rebuild complet
+- [x] `pipeline/Makefile` : cible `.PHONY: tout-exporter` qui force le rebuild complet
   — `$(MAKE) --no-print-directory -f $(THIS) clean` **puis**
   `$(MAKE) --no-print-directory -f $(THIS) all` (TABULATIONS, pas d'espaces).
-- [ ] `vscodium-user/tasks.json` : nouvelle tâche `type:process`, label **`Tout exporter`**,
+- [x] `vscodium-user/tasks.json` : nouvelle tâche `type:process`, label **`Tout exporter`**,
   `command: wsl.exe`, args `-d SZH-Publishing --cd ${workspaceFolder} -- make -f /mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile tout-exporter`, `presentation.reveal: silent`.
-- [ ] Extension : commande `szh.toutExporter` + bouton en tête de vue (`view/title`,
+- [x] Extension : commande `szh.toutExporter` + bouton en tête de vue (`view/title`,
   `$(export)`, après ⚙). Ferme les aperçus PDF ouverts **avant** (le `clean` supprime
   `out/` — un PDF verrouillé ferait échouer la suppression sous Windows), lance la
   tâche `Tout exporter` (mécanique `lancerBuild`/`onDidEndTaskProcess`), garde

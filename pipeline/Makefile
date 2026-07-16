@@ -41,7 +41,7 @@ HTMLS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).html)
 # Import Word (D35) — le .docx source est SUPPRIMÉ après conversion réussie (D39).
 WORD_DIR   := articles-word
 
-.PHONY: all pdf import clean verifie-dossier
+.PHONY: all pdf import clean verifie-dossier tout-exporter
 .SECONDEXPANSION:
 
 # Cible du build (Ctrl+S, Ctrl+E) : importe les Word déposés PUIS régénère les sorties.
@@ -49,6 +49,13 @@ WORD_DIR   := articles-word
 all:
 	-@$(MAKE) --no-print-directory -f $(THIS) import
 	@$(MAKE) --no-print-directory -f $(THIS) pdf
+
+# Rebuild FORCÉ de toute la revue (D44) : clean puis all — ignore les dates de
+# fichiers. Distinct du build incrémental de Ctrl+S. Le « - » sur clean : un PDF
+# verrouillé côté Windows ne doit pas empêcher la régénération (elle écrasera).
+tout-exporter:
+	-@$(MAKE) --no-print-directory -f $(THIS) clean
+	@$(MAKE) --no-print-directory -f $(THIS) all
 
 pdf: verifie-dossier $(PDFS)
 

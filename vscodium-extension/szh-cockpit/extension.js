@@ -40,6 +40,7 @@ const ID_VUE = 'szhCockpitVue';
 // ⚠ Doivent correspondre EXACTEMENT aux labels de vscodium-user/tasks.json.
 const NOM_TACHE_IMPORT = 'Importer les articles Word';
 const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
+const NOM_TACHE_EXPORT = 'Tout exporter';
 // Éditeur PDF (extension tomoki1207.pdf), comme szh-apercu.
 const VUE_PDF = 'pdf.preview';
 const EXT_PDF = 'tomoki1207.pdf';
@@ -315,13 +316,13 @@ async function ouvrirApercuPdf(uri) {
 
 let buildEnCours = false;
 
-// Lance la tâche « Aperçu / Export PDF » et résout avec son code de sortie
+// Lance une tâche user par son label exact et résout avec son code de sortie
 // (null si la tâche est introuvable). Même mécanique que szh-apercu.
-async function lancerBuild() {
+async function lancerTache(nomTache) {
   const taches = await vscode.tasks.fetchTasks();
-  const tache = taches.find((t) => t.name === NOM_TACHE_BUILD);
+  const tache = taches.find((t) => t.name === nomTache);
   if (!tache) {
-    vscode.window.showErrorMessage('Tâche « ' + NOM_TACHE_BUILD + ' » introuvable. Réglages de l’éditeur incomplets ?');
+    vscode.window.showErrorMessage('Tâche « ' + nomTache + ' » introuvable. Réglages de l’éditeur incomplets ?');
     return null;
   }
   const execution = await vscode.tasks.executeTask(tache);
@@ -330,6 +331,37 @@ async function lancerBuild() {
       if (e.execution === execution) { abo.dispose(); resolve(e.exitCode); }
     });
   });
+}
+
+function lancerBuild() { return lancerTache(NOM_TACHE_BUILD); }
+
+// « Tout exporter » (N3, D44) : rebuild FORCÉ de toute la revue. Ferme d'abord les
+// aperçus ouverts sous out/ — le clean du Makefile supprime out/, et un PDF affiché
+// est verrouillé côté Windows (R6). Notifie le compte d'articles exportés.
+async function toutExporter(fournisseur, rafraichirTout) {
+  const racine = fournisseur.racine;
+  if (!racine) { return; }
+  if (buildEnCours || importEnCours) {
+    vscode.window.setStatusBarMessage('Compilation ou import en cours — réessayez ensuite.', 3000);
+    return;
+  }
+  buildEnCours = true;
+  const statut = vscode.window.setStatusBarMessage('Export complet de la revue…');
+  try {
+    await fermerOngletsSous(path.join(racine, 'out'));
+    const code = await lancerTache(NOM_TACHE_EXPORT);
+    rafraichirTout();
+    if (code === null) { return; }                 // tâche introuvable (déjà signalé)
+    if (code !== 0) {
+      vscode.window.showErrorMessage('L’export complet a échoué. Ouvrez le panneau « ' + NOM_TACHE_EXPORT + ' » pour le détail.');
+      return;
+    }
+    const n = fournisseur.listerArticles().length;
+    vscode.window.showInformationMessage(n + (n > 1 ? ' articles exportés.' : ' article exporté.'));
+  } finally {
+    statut.dispose();
+    buildEnCours = false;
+  }
 }
 
 async function compiler(fournisseur) {
@@ -959,6 +991,7 @@ function activate(context) {
     vscode.commands.registerCommand('szh.metadonnees', () => ouvrirMetadonnees(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),
+    vscode.commands.registerCommand('szh.toutExporter', () => toutExporter(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.ouvrirPdf', (item) => ouvrirPdf(fournisseur, item)),
     vscode.commands.registerCommand('szh.compiler', () => compiler(fournisseur)),
     vscode.commands.registerCommand('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),

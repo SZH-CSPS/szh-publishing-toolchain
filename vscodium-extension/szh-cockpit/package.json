@@ -67,6 +67,12 @@
         "title": "Remplacer l’image",
         "category": "Revue SZH",
         "icon": "$(replace)"
+      },
+      {
+        "command": "szh.toutExporter",
+        "title": "Tout exporter (rebuild complet)",
+        "category": "Revue SZH",
+        "icon": "$(export)"
       }
     ],
     "menus": {
@@ -85,6 +91,11 @@
           "command": "szh.metadonnees",
           "when": "view == szhCockpitVue",
           "group": "navigation@3"
+        },
+        {
+          "command": "szh.toutExporter",
+          "when": "view == szhCockpitVue",
+          "group": "navigation@4"
         }
       ],
       "view/item/context": [
