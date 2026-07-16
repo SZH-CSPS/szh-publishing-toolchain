@@ -116,30 +116,23 @@
       { "command": "szh.fmt.figure", "title": "%cmd.fmt.figure%", "category": "Revue SZH" },
       { "command": "szh.fmt.tableau", "title": "%cmd.fmt.tableau%", "category": "Revue SZH" }
     ],
-    "submenus": [
-      { "id": "szh.miseEnForme", "label": "%menu.miseEnForme%" }
-    ],
     "menus": {
       "editor/context": [
-        {
-          "submenu": "szh.miseEnForme",
-          "group": "1_modification",
-          "when": "editorLangId == markdown && editorTextFocus"
-        }
+        { "command": "szh.fmt.gras", "group": "1_modification@1", "when": "editorLangId == markdown && editorTextFocus" },
+        { "command": "szh.fmt.italique", "group": "1_modification@2", "when": "editorLangId == markdown && editorTextFocus" },
+        { "command": "szh.fmt.souligne", "group": "1_modification@3", "when": "editorLangId == markdown && editorTextFocus" },
+        { "command": "szh.fmt.titre1", "group": "1_modification@4", "when": "editorLangId == markdown && editorTextFocus" },
+        { "command": "szh.fmt.titre2", "group": "1_modification@5", "when": "editorLangId == markdown && editorTextFocus" },
+        { "command": "szh.fmt.titre3", "group": "1_modification@6", "when": "editorLangId == markdown && editorTextFocus" },
+        { "command": "szh.fmt.important", "group": "1_modification@7", "when": "editorLangId == markdown && editorTextFocus" },
+        { "command": "szh.fmt.highlight", "group": "1_modification@8", "when": "editorLangId == markdown && editorTextFocus" },
+        { "command": "szh.fmt.question", "group": "1_modification@9", "when": "editorLangId == markdown && editorTextFocus" },
+        { "command": "szh.fmt.citation", "group": "1_modification@10", "when": "editorLangId == markdown && editorTextFocus" },
+        { "command": "szh.fmt.figure", "group": "1_modification@11", "when": "editorLangId == markdown && editorTextFocus" },
+        { "command": "szh.fmt.tableau", "group": "1_modification@12", "when": "editorLangId == markdown && editorTextFocus" }
       ],
-      "szh.miseEnForme": [
-        { "command": "szh.fmt.gras", "group": "1_inline@1" },
-        { "command": "szh.fmt.italique", "group": "1_inline@2" },
-        { "command": "szh.fmt.souligne", "group": "1_inline@3" },
-        { "command": "szh.fmt.titre1", "group": "2_titres@1" },
-        { "command": "szh.fmt.titre2", "group": "2_titres@2" },
-        { "command": "szh.fmt.titre3", "group": "2_titres@3" },
-        { "command": "szh.fmt.important", "group": "3_blocs@1" },
-        { "command": "szh.fmt.highlight", "group": "3_blocs@2" },
-        { "command": "szh.fmt.question", "group": "3_blocs@3" },
-        { "command": "szh.fmt.citation", "group": "3_blocs@4" },
-        { "command": "szh.fmt.figure", "group": "4_inserer@1" },
-        { "command": "szh.fmt.tableau", "group": "4_inserer@2" }
+      "editor/title": [
+        { "command": "szh.basculerApercu", "group": "navigation", "when": "resourceExtname == .pdf && szh.estRevue" }
       ],
       "view/title": [
         {
