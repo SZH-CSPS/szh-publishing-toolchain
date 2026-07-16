@@ -28,6 +28,20 @@
 // confirmé d'une image (G5). Tout le reste est en lecture seule (ouverture/
 // lancement de tâche uniquement).
 // Posture szh-apercu : JavaScript pur, zéro dépendance, API VS Code ^1.75.
+//
+// STRUCTURE (refactor R1–R6, SANS build — CommonJS require résolu à l'exécution +
+// fichiers statiques ; empaqueté tel quel par vsce, cf. .vscodeignore) :
+//   extension.js            activate/deactivate + câblage des commandes + _pur ré-agrégé
+//   lib/i18n.js             TEXTES_COCKPIT, T, langueCockpit
+//   lib/yaml.js             sérialiseurs ausgabe/frontmatter/meta, titreNumero, écriture atomique
+//   lib/table-model.js      parseur/sérialiseur/opérations PURS du tableau
+//   lib/slug.js             slugifier ; lib/wsl.js dormeur WSL ; lib/formatting.js mise en forme
+//   lib/webviews/util.js    construireHtml/lireMedia : inline media/ + nonce + CSP stricte
+//   media/*.{html,css,js}   webviews (table-editor, metadata-issue/articles, settings, apercu)
+// Les webviews n'injectent AUCUNE donnée dans le HTML (elles arrivent par postMessage) ;
+// les libellés i18n sont des marqueurs %%SZH:cle%% résolus par T() à l'assemblage.
+// lib/ et media/ DOIVENT être empaquetés (voir .vscodeignore). _pur = contrat immuable
+// des fonctions pures pour les harnais headless.
 'use strict';
 
 const vscode = require('vscode');
