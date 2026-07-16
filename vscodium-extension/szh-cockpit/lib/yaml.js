@@ -354,13 +354,25 @@ const GROUPES_TYPES = {
 const LANGUES_META = ['fr', 'de', 'it'];   // fr + de affichées ; it activable par carte
 const CHAMPS_AUTEUR = ['prenom', 'nom', 'fonction', 'affiliation', 'orcid'];
 
-// Langue de la revue (base : « de-CH » -> « de ») limitée aux langues du schéma.
+// Langue par défaut du numéro (D74), PURE : dérivée du choix de revue
+// (zeitschrift -> de, revue -> fr) ; à défaut de revue exploitable, la clé `lang`
+// (rétrocompat, « de-CH » -> « de ») ; à défaut, fr. `valeurs` = sortie
+// d'analyserAusgabe. Pilote la langue affichée EN PREMIER dans les formulaires (E3).
+function langueDefaut(valeurs) {
+  const revue = normaliserRevue((valeurs && valeurs.revue) || '');
+  if (revue) {
+    for (const r of REVUES) { if (r.cle === revue) { return r.langue; } }
+  }
+  const base = String((valeurs && valeurs.lang) || 'fr').toLowerCase().slice(0, 2);
+  return LANGUES_META.indexOf(base) !== -1 ? base : 'fr';
+}
+
+// Langue par défaut du numéro depuis le disque (repli fr si ausgabe.yaml illisible).
 function langueRevue(racine) {
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')); }
-  catch (e) { /* repli fr */ }
-  const base = String(valeurs.lang || 'fr').toLowerCase().slice(0, 2);
-  return LANGUES_META.indexOf(base) !== -1 ? base : 'fr';
+  catch (e) { /* illisible : repli fr via langueDefaut({}) */ }
+  return langueDefaut(valeurs);
 }
 
 // analyserMeta(texte) -> { type, doi, title:{}, subtitle:{}, resume:{}, keywords:{},
@@ -525,15 +537,16 @@ function serialiserMeta(valeurs) {
 
 // ---- Titre de la vue (N2, D43) -----------------------------------------------------
 //
-// « {Z|R}{AAAA}-{numero} | {title} » : Z pour une revue allemande (lang commence
-// par de), R sinon ; AAAA = première séquence de 4 chiffres de `date` ; chaque
-// morceau manquant est omis (le préfixe seul ne compte pas). Si rien n'est
-// exploitable -> nom du dossier de la revue. Jamais de titre vide.
+// « {Z|R}{AAAA}-{numero} | {title} » : Z pour une revue allemande, R sinon — la
+// langue par défaut vient du choix de revue (D74), avec repli sur `lang` ; AAAA =
+// première séquence de 4 chiffres de `date` ; chaque morceau manquant est omis (le
+// préfixe seul ne compte pas). Si rien n'est exploitable -> nom du dossier de la
+// revue. Jamais de titre vide.
 function titreNumero(racine) {
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')); }
   catch (e) { /* illisible : replis ci-dessous */ }
-  const prefixe = String(valeurs.lang || '').toLowerCase().indexOf('de') === 0 ? 'Z' : 'R';
+  const prefixe = langueDefaut(valeurs) === 'de' ? 'Z' : 'R';
   const annee = (String(valeurs.date || '').match(/\d{4}/) || [''])[0];
   const numero = String(valeurs.numero || '').trim();
   const titre = String(valeurs.title || '').trim();
@@ -599,6 +612,6 @@ module.exports = {
   TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
   decouperValeurYaml, decouperFlowYaml, analyserAusgabe,
   separerFrontmatter, analyserFrontmatter, citerFrontmatter, lignesCleFrontmatter, serialiserFrontmatter,
-  langueRevue, analyserMeta, serialiserMeta, titreNumero,
+  langueDefaut, langueRevue, analyserMeta, serialiserMeta, titreNumero,
   formaterValeurYaml, serialiserAusgabe, ecrireAusgabeAtomique
 };

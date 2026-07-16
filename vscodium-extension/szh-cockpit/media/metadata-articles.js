@@ -6,6 +6,7 @@
   const conteneur = document.getElementById('cartes');
   const modifies = new Set();
   let TYPES = [];
+  let LANGUE_DEFAUT = 'fr';   // langue par défaut du numéro (E3, dérivée du revue)
   function marquer(carte, slug) { modifies.add(slug); carte.classList.add('modifie'); etat.textContent = ''; }
   function champTexte(carte, parent, slug, cle, langue, libelle, valeur, multiligne) {
     const l = document.createElement('label');
@@ -85,7 +86,12 @@
       if (selection.value !== (v.type || '')) { selection.value = ''; }
       selection.addEventListener('input', function () { marquer(carte, article.slug); });
       carte.appendChild(selection);
-      const langues = ['fr', 'de', 'it'];   // IT toujours construit, révélé par CSS
+      // E3 : langue par défaut du numéro EN PREMIER (« Titre (DE) » pour la
+      // Zeitschrift, « Titre (FR) » pour la Revue), les autres en dessous.
+      // IT toujours construit, révélé par CSS.
+      const ordre = ['fr', 'de', 'it'];
+      const defaut = ordre.indexOf(LANGUE_DEFAUT) !== -1 ? LANGUE_DEFAUT : 'fr';
+      const langues = [defaut].concat(ordre.filter(function (l) { return l !== defaut; }));
       const nomsLangues = { fr: 'FR', de: 'DE', it: 'IT' };
       for (const lg of langues) {
         champTexte(carte, carte, article.slug, 'title', lg, TXT.titreChamp.split('{0}').join(nomsLangues[lg]), (v.title || {})[lg]);
@@ -156,7 +162,7 @@
   });
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
-    if (msg.type === 'valeurs') { TYPES = msg.types || []; rendre(msg.articles || []); }
+    if (msg.type === 'valeurs') { TYPES = msg.types || []; LANGUE_DEFAUT = msg.langue || 'fr'; rendre(msg.articles || []); }
     if (msg.type === 'enregistre') { etat.textContent = TXT.enregistre.split('{0}').join(msg.n); }
     if (msg.type === 'erreur') { etat.textContent = '⚠ ' + msg.message; }
   });
