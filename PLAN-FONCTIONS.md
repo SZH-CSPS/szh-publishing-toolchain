@@ -224,25 +224,31 @@ en banque.
 
 ### N6 · Tableaux gérés en fichiers HTML (h) — *taille L ; pipeline + extension ; après N4*
 
-- [ ] **Spike (obligatoire)** : vérifier `pandoc --version` du rootfs et que
+- [x] **Spike (obligatoire)** : vérifier `pandoc --version` du rootfs et que
   `pandoc.write(pandoc.Pandoc({tbl}), 'html')` est disponible (≥ 2.17). Sinon, repli
   `pandoc.utils`/`pandoc.pipe`. Consigner.
-- [ ] **Import** — nouveau filtre `filters/szh-tabelle-extraire.lua` (remplace
+  **Consigné (2026-07-16)** : rootfs = pandoc 3.5, sonde Lua `pandoc.write=true` — pas
+  de repli nécessaire. Bout-en-bout sur docx réel à 2 tableaux : extraction
+  `table-01.html`/`table-02.html` (contenu vérifié), références `.szh-tabelle` aux
+  bonnes positions, zéro `{{TABELLE}}`, compilation ré-injecte les 2 tableaux
+  (2 `<table>` + PDF), édition d'un tableau → rebuild (dépendance OK), fichier
+  manquant → « ⚠ Tableau introuvable » visible, docx sans tableau → pas de `tables/`.
+- [x] **Import** — nouveau filtre `filters/szh-tabelle-extraire.lua` (remplace
   `szh-tabelle-platzhalter.lua` dans `import-docx.sh`) : pour chaque `Table`,
   incrémente `NN`, écrit `tables/table-NN.html` (rendu HTML du tableau seul, `io.open`
   relatif au cwd = dossier article), et **remplace** le tableau par
   `pandoc.Div({}, pandoc.Attr('', {'szh-tabelle'}, {{'src', 'tables/table-'..NN..'.html'}}))`
   (sérialisé en `::: {.szh-tabelle src="tables/table-NN.html"} … :::`).
   `import-docx.sh` fait `mkdir -p tables` avant pandoc.
-- [ ] **Compilation** — nouveau filtre `filters/szh-tabelle-inclure.lua` ajouté à la
+- [x] **Compilation** — nouveau filtre `filters/szh-tabelle-inclure.lua` ajouté à la
   règle HTML du Makefile (`--lua-filter=$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua`) :
   handler `Div` avec classe `szh-tabelle` → lit le fichier `src` (relatif au cwd =
   dossier article), renvoie `pandoc.RawBlock('html', contenu)` ; fichier manquant →
   bloc d'avertissement visible (pas d'échec silencieux).
-- [ ] **Dépendance de rebuild** — la règle `$(OUT)/%.html` gagne
+- [x] **Dépendance de rebuild** — la règle `$(OUT)/%.html` gagne
   `$$(wildcard articles/$$(notdir $$*)/tables/*.html)` en prérequis (SECONDEXPANSION
   déjà activé) → éditer un tableau déclenche la recompilation.
-- [ ] **Extension** — `_itemsAssets(slug)` (ou un nœud dédié) liste aussi
+- [x] **Extension** — `_itemsAssets(slug)` (ou un nœud dédié) liste aussi
   `articles/<slug>/tables/*.html` : items `contextValue: 'table'`, clic = **ouvrir le
   .html** en colonne 1 (édition/copier-coller direct), bouton inline **« Remplacer »**
   (`szh.remplacerTable`) = `showOpenDialog` filtre `.html` → écrase en gardant le nom

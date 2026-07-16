@@ -61,6 +61,12 @@
         "title": "Tout exporter (rebuild complet)",
         "category": "Revue SZH",
         "icon": "$(export)"
+      },
+      {
+        "command": "szh.remplacerTable",
+        "title": "Remplacer le tableau",
+        "category": "Revue SZH",
+        "icon": "$(replace)"
       }
     ],
     "menus": {
@@ -100,6 +106,11 @@
         {
           "command": "szh.remplacerAsset",
           "when": "view == szhCockpitVue && viewItem == asset",
+          "group": "inline"
+        },
+        {
+          "command": "szh.remplacerTable",
+          "when": "view == szhCockpitVue && viewItem == table",
           "group": "inline"
         }
       ]

@@ -5,3 +5,7 @@ citations citeproc (`szh-citations.lua`) et rapport de conversion trilingue
 (`rapport.py`). Débranchés au profit de l'import simplifié (`{{TABELLE NN}}`),
 conservés pour réactivation. Retour arrière : restaurer `pipeline/import-docx.sh`
 depuis l'historique git et remettre ces fichiers à leur place.
+
+`szh-tabelle-platzhalter.lua` (D35, placeholder `{{TABELLE NN}}`) : débranché par
+D47 (2026-07-16) au profit de `filters/szh-tabelle-extraire.lua` (tableaux extraits
+en `tables/table-NN.html`, référencés par `::: {.szh-tabelle src="…"}`).

@@ -67,9 +67,11 @@ verifie-dossier:
 	fi
 
 # .md -> HTML autonome (--embed-resources : images/CSS en base64, zéro dépendance).
-# Exécuté DANS le dossier de l'article (chemins media/ relatifs au .md).
+# Exécuté DANS le dossier de l'article (chemins media/ et tables/ relatifs au .md).
 # citeproc + CSL APA seulement si l'article a une bibliographie (media/<slug>.bib).
-$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE)
+# Les tableaux extraits (tables/*.html, D47) sont des PRÉREQUIS : en éditer un
+# déclenche la recompilation de l'article (SECONDEXPANSION déjà active).
+$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $$(wildcard articles/$$(notdir $$*)/tables/*.html)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
 	extra=""; \
@@ -79,7 +81,8 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE)
 	  --from=markdown --to=html5 \
 	  --metadata-file="$(abspath ausgabe.yaml)" \
 	  --standalone --embed-resources \
-	  --css="$(STYLE_ABS)" $$extra \
+	  --css="$(STYLE_ABS)" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" $$extra \
 	  --output="$(abspath $@)"
 	# ⇩ REMPLACER ici par le template HTML/filtres finaux de la maquette si besoin.
 

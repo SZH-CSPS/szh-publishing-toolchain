@@ -155,16 +155,16 @@ class FournisseurRevue {
 
   // Article = dossier articles/<slug>/ contenant le .md homonyme <slug>.md
   // (même règle que le Makefile : un dossier sans .md homonyme est ignoré).
-  // G5 : l'article est DÉPLIABLE s'il a des images (la flèche montre les assets,
-  // le clic sur le libellé ouvre toujours le .md — risque R2, à confirmer en GUI).
+  // G5/N6 : l'article est DÉPLIABLE s'il a des images OU des tableaux (la flèche
+  // montre les assets, le clic sur le libellé ouvre l'article — risque R2).
   _itemsArticles() {
     const base = path.join(this.racine, 'articles');
     const slugs = this._sousDossiersAvecMd(base);
     if (slugs.length === 0) { return [this._vide('Aucun article pour l’instant')]; }
     return slugs.map((slug) => {
       const md = vscode.Uri.file(path.join(base, slug, slug + '.md'));
-      const aDesImages = this._imagesArticle(slug).length > 0;
-      const it = new vscode.TreeItem(slug, aDesImages
+      const aDesAssets = this._imagesArticle(slug).length > 0 || this._tablesArticle(slug).length > 0;
+      const it = new vscode.TreeItem(slug, aDesAssets
         ? vscode.TreeItemCollapsibleState.Collapsed
         : vscode.TreeItemCollapsibleState.None);
       it.slug = slug;                   // utilisé par les actions S4/G3/G5
@@ -199,10 +199,22 @@ class FournisseurRevue {
     return resultats.sort((a, b) => a.localeCompare(b, 'fr'));
   }
 
-  // Enfants d'un article (G5) : ses images, avec « L × H · poids » en description.
+  // Tableaux extraits d'un article (N6, D47) : tables/*.html, triés.
+  _tablesArticle(slug) {
+    const base = path.join(this.racine, 'articles', slug, 'tables');
+    let entrees;
+    try { entrees = fs.readdirSync(base, { withFileTypes: true }); }
+    catch (e) { return []; }
+    return entrees
+      .filter((e) => e.isFile() && /\.html?$/i.test(e.name))
+      .map((e) => e.name)
+      .sort((a, b) => a.localeCompare(b, 'fr'));
+  }
+
+  // Enfants d'un article : images (G5, « L × H · poids ») puis tableaux (N6).
   _itemsAssets(slug) {
     const base = path.join(this.racine, 'articles', slug, 'media');
-    return this._imagesArticle(slug).map((relatif) => {
+    const images = this._imagesArticle(slug).map((relatif) => {
       const chemin = path.join(base, relatif);
       const it = new vscode.TreeItem(relatif, vscode.TreeItemCollapsibleState.None);
       it.slug = slug;
@@ -218,6 +230,24 @@ class FournisseurRevue {
       };
       return it;
     });
+    const baseTables = path.join(this.racine, 'articles', slug, 'tables');
+    const tables = this._tablesArticle(slug).map((nom) => {
+      const chemin = path.join(baseTables, nom);
+      const it = new vscode.TreeItem(nom, vscode.TreeItemCollapsibleState.None);
+      it.slug = slug;
+      it.cheminAsset = chemin;
+      it.iconPath = new vscode.ThemeIcon('table');
+      it.contextValue = 'table';
+      it.description = decrireImage(chemin);      // pas une image : poids seul
+      it.tooltip = chemin + ' — clic = éditer le HTML du tableau';
+      // Édition directe du HTML (copier-coller possible), colonne 1.
+      it.command = {
+        command: 'vscode.open', title: 'Ouvrir le tableau',
+        arguments: [vscode.Uri.file(chemin), { viewColumn: vscode.ViewColumn.One }]
+      };
+      return it;
+    });
+    return images.concat(tables);
   }
 
   // Word en attente = articles-word/*.docx (niveau racine seulement -> _convertis/ exclu).
@@ -406,9 +436,21 @@ async function ouvrirArticle(fournisseur, slug) {
 
   await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(md), { viewColumn: vscode.ViewColumn.One });
 
+  // Obsolète = PDF plus ancien que la source la plus récente (.md OU un tableau
+  // extrait — même graphe de dépendances que la règle HTML du Makefile, N6).
   let obsolete = true;
-  try { obsolete = fs.statSync(pdf.fsPath).mtimeMs < fs.statSync(md).mtimeMs; }
-  catch (e) { obsolete = true; }                   // PDF (ou .md) illisible -> on compile
+  try {
+    let mSource = fs.statSync(md).mtimeMs;
+    const dossierTables = path.join(racine, 'articles', slug, 'tables');
+    let tables = [];
+    try { tables = fs.readdirSync(dossierTables); } catch (e) { /* pas de tableaux */ }
+    for (const t of tables) {
+      if (!/\.html?$/i.test(t)) { continue; }
+      try { mSource = Math.max(mSource, fs.statSync(path.join(dossierTables, t)).mtimeMs); }
+      catch (e) { /* fichier disparu entre-temps */ }
+    }
+    obsolete = fs.statSync(pdf.fsPath).mtimeMs < mSource;
+  } catch (e) { obsolete = true; }                 // PDF (ou .md) illisible -> on compile
 
   if (obsolete) {
     if (buildEnCours) { vscode.window.setStatusBarMessage('Compilation déjà en cours…', 3000); return; }
@@ -636,6 +678,40 @@ async function remplacerAsset(fournisseur, rafraichirTout, item) {
   try {
     fs.copyFileSync(source, cible);                // même nom : lien du .md intact
     vscode.window.setStatusBarMessage('Image « ' + nomCible + ' » remplacée — recompilez pour voir le PDF à jour.', 5000);
+  } catch (e) {
+    vscode.window.showErrorMessage('Remplacement impossible : ' + e.message);
+  }
+  rafraichirTout();
+}
+
+// « Remplacer » un tableau (N6, D47) : écrase tables/table-NN.html par un fichier
+// .html choisi, EN GARDANT le nom (la référence du .md reste valide). Jamais
+// silencieux : confirmation modale. L'édition fine se fait au clic (fichier HTML).
+async function remplacerTable(fournisseur, rafraichirTout, item) {
+  if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
+  if (buildEnCours || importEnCours) {
+    vscode.window.setStatusBarMessage('Compilation ou import en cours — réessayez ensuite.', 3000);
+    return;
+  }
+  const cible = item.cheminAsset;
+  const nomCible = path.basename(cible);
+  const choix = await vscode.window.showOpenDialog({
+    canSelectMany: false,
+    filters: { 'Tableaux HTML': ['html', 'htm'] },
+    openLabel: 'Choisir ce tableau',
+    title: 'Choisir le fichier HTML de remplacement pour « ' + nomCible + ' »'
+  });
+  if (!choix || choix.length === 0) { return; }    // dialogue annulé
+  const source = choix[0].fsPath;
+  const reponse = await vscode.window.showWarningMessage(
+    'Remplacer « ' + nomCible + ' » par « ' + path.basename(source) + ' » ?',
+    { modal: true, detail: 'L’ancien tableau sera écrasé. Le nom « ' + nomCible + ' » est conservé (l’article pointe ce nom).' },
+    'Remplacer'
+  );
+  if (reponse !== 'Remplacer') { return; }         // annulé : rien n'est touché
+  try {
+    fs.copyFileSync(source, cible);
+    vscode.window.setStatusBarMessage('Tableau « ' + nomCible + ' » remplacé — recompilez pour voir le PDF à jour.', 5000);
   } catch (e) {
     vscode.window.showErrorMessage('Remplacement impossible : ' + e.message);
   }
@@ -1021,6 +1097,7 @@ function activate(context) {
     vscode.commands.registerCommand('szh.ouvrirArticle', (slug) => ouvrirArticle(fournisseur, slug)),
     vscode.commands.registerCommand('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
     vscode.commands.registerCommand('szh.remplacerAsset', (item) => remplacerAsset(fournisseur, rafraichirTout, item)),
+    vscode.commands.registerCommand('szh.remplacerTable', (item) => remplacerTable(fournisseur, rafraichirTout, item)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte)
   );
 
