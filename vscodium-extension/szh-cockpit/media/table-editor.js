@@ -3,9 +3,11 @@
 var api=acquireVsCodeApi();
 var modele=null, dispo=null, occ2=null, TXT={}, accent='', accentMode='gris';
 var selection=null, ancre=null, cellActive=null, premierChargement=true, ctl={};
-// Historique (D60) : pile d'états du MODÈLE, dans la webview. dernierValide = l'état
-// courant « validé » ; modeleEnregistre = état écrit sur disque (garde non-enregistré).
-var annuler=[], retablir=[], dernierValide=null, modeleEnregistre=null, enrEnCours=null, dernierModifie=false;
+// Historique (D60, F1) : deux piles d'états du MODÈLE, dans la webview. Chaque
+// opération de structure empile l'état PRÉ-op (voir op) ; les éditions de texte sont
+// empilées au blur d'une cellule (avantEdition = instantané pris au focus).
+// modeleEnregistre = état écrit sur disque (garde non-enregistré).
+var annuler=[], retablir=[], avantEdition=null, modeleEnregistre=null, enrEnCours=null, dernierModifie=false;
 var glisse=null;   // sélection par glisser : { ancre:cellule, actif:bool }
 var barre=document.getElementById('barre'), zone=document.getElementById('zone'), aide=document.getElementById('aide');
 function clone(o){return JSON.parse(JSON.stringify(o));}
@@ -75,12 +77,13 @@ function cellDom(c){var el=document.createElement(c.th?'th':'td');el.className='
   poserInline(el,c.contenu);
   if(c.align&&c.align!=='left')el.style.textAlign=c.align;
   el.addEventListener('mousedown',function(ev){onCell(ev,c);});
-  el.addEventListener('focus',function(){cellActive=c;});
+  el.addEventListener('focus',function(){cellActive=c;if(!avantEdition&&modele)avantEdition=clone(modele);});
+  el.addEventListener('blur',function(){commitTexte();});
   el.addEventListener('contextmenu',function(ev){ouvrirMenu(ev,{lignes:true,colonnes:true,rMin:c.r0,rMax:c.r0+c.rowspan-1,cMin:c.c0,cMax:c.c0+c.colspan-1,fusionnee:(c.rowspan>1||c.colspan>1)});});
   el.addEventListener('input',function(){etat('');majModifie();});
   return el;}
 function colLettre(n){var s='';n=n+1;while(n>0){var r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s;}
-function rendre(){zone.textContent='';if(!dispo)return;construireOcc();
+function rendre(){avantEdition=null;zone.textContent='';if(!dispo)return;construireOcc();
   var t=document.createElement('table');t.className='grille';
   var trh=document.createElement('tr');var coin=document.createElement('th');coin.className='coin';trh.appendChild(coin);
   for(var c=0;c<dispo.nbColonnes;c++){var ph=document.createElement('th');ph.className='poignee';ph.dataset.pcol=c;ph.textContent=colLettre(c);ph.title=TXT.tirerReordonner||'';(function(cc,el){el.addEventListener('mousedown',function(ev){onPoignee(ev,'col',cc);});el.addEventListener('click',function(){if(!aGlisseFait)selCol(cc);});el.addEventListener('contextmenu',function(ev){selCol(cc);ouvrirMenu(ev,{lignes:false,colonnes:true,rMin:0,rMax:dispo.nbLignes-1,cMin:cc,cMax:cc,fusionnee:false});});})(c,ph);trh.appendChild(ph);}
@@ -190,7 +193,10 @@ function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.crea
 // ---- Barre d'outils ----
 function bouton(txt,fn,cls,titre){var b=document.createElement('button');b.type='button';b.textContent=txt;if(cls)b.className=cls;if(titre)b.title=titre;b.addEventListener('click',fn);return b;}
 function groupe(label){var g=document.createElement('span');g.className='grp';if(label){var l=document.createElement('span');l.className='lbl';l.textContent=label;g.appendChild(l);}return g;}
-function op(nom,args,extra){capturer();var msg={type:'operation',nom:nom,args:args,modele:modele};if(extra){for(var k in extra){msg[k]=extra[k];}}api.postMessage(msg);}
+// F1 : valide une éventuelle saisie de texte en cours, empile l'état PRÉ-op sur la
+// pile d'annulation et vide la pile de rétablissement AVANT d'envoyer l'opération.
+function op(nom,args,extra){if(modele){commitTexte();annuler.push(clone(modele));if(annuler.length>100)annuler.shift();retablir.length=0;}
+  var msg={type:'operation',nom:nom,args:args,modele:modele};if(extra){for(var k in extra){msg[k]=extra[k];}}api.postMessage(msg);}
 function construireBarre(){barre.textContent='';
   var ge=groupe(TXT.grpEdition);
   ctl.annuler=bouton(TXT.annuler,annulerAction,'',TXT['tip.annuler']);ge.appendChild(ctl.annuler);
@@ -244,12 +250,17 @@ function majT2(){if(!modele||!ctl.zebre)return;var a=modele.attrs;
 function etat(msg){var e=document.getElementById('etat');if(e)e.textContent=msg;}
 
 // ---- Historique, garde non-enregistré, enregistrement, retour ----
-function capturer(){if(!modele)return;recolter();var snap=clone(modele);
-  if(!dernierValide||JSON.stringify(snap)!==JSON.stringify(dernierValide)){if(dernierValide){annuler.push(dernierValide);if(annuler.length>100)annuler.shift();}retablir.length=0;dernierValide=snap;}
-  majModifie();}
+// F1 : au blur d'une cellule, valide (empile) l'édition de texte. avantEdition = état
+// pris au focus ; on n'empile QUE si le texte a réellement changé, puis on l'oublie.
+function commitTexte(){if(!modele)return;recolter();
+  if(avantEdition&&JSON.stringify(modele)!==JSON.stringify(avantEdition)){annuler.push(clone(avantEdition));if(annuler.length>100)annuler.shift();retablir.length=0;}
+  avantEdition=null;majModifie();}
 function restaurer(m){api.postMessage({type:'restaurer',modele:m});}
-function annulerAction(){capturer();if(!annuler.length){return;}retablir.push(dernierValide);dernierValide=annuler.pop();restaurer(dernierValide);}
-function retablirAction(){if(!retablir.length){return;}annuler.push(dernierValide);dernierValide=retablir.pop();restaurer(dernierValide);}
+// Annuler / rétablir : « courant » = clone(modele) (après recolte + validation d'une
+// saisie en cours par commitTexte) est poussé sur l'autre pile, puis on restaure l'état
+// dépilé (l'hôte renvoie la disposition via un message « charger » sans i18n).
+function annulerAction(){commitTexte();if(!annuler.length){return;}retablir.push(clone(modele));restaurer(annuler.pop());}
+function retablirAction(){commitTexte();if(!retablir.length){return;}annuler.push(clone(modele));restaurer(retablir.pop());}
 function estModifie(){if(!modele||!modeleEnregistre)return false;recolter();return JSON.stringify(modele)!==JSON.stringify(modeleEnregistre);}
 function majModifie(){var m=estModifie();var ind=document.getElementById('indic');if(ind){ind.textContent=m?' ●':'';ind.title=m?(TXT.nonEnregistre||''):'';}
   if(m!==dernierModifie){dernierModifie=m;api.postMessage({type:'modifie',modifie:m});}}
@@ -278,9 +289,11 @@ window.addEventListener('message',function(ev){var msg=ev.data||{};
     modele=msg.modele;dispo=msg.disposition;if(msg.accent!==undefined)accent=msg.accent;
     if(msg.i18n){TXT=msg.i18n;
       if(premierChargement){accentMode=accent?'couleur':'gris';premierChargement=false;}
-      dernierValide=clone(modele);modeleEnregistre=clone(modele);annuler=[];retablir=[];dernierModifie=false;
+      modeleEnregistre=clone(modele);annuler=[];retablir=[];avantEdition=null;dernierModifie=false;
       aide.textContent=TXT.aide||'';construireBarre();}
-    else{dernierValide=clone(modele);}
+    // F1 : un « charger » sans i18n = résultat d'une opération / d'une annulation-
+    // rétablissement. On NE réinitialise PLUS l'historique ici (c'était la cause de
+    // « Annuler ne fait rien ») : les piles vivent uniquement dans op / commitTexte.
     selection=clampSel(selection);ancre=null;rendre();majT2();etat('');majModifie();}
   else if(msg.type==='enregistre'){modeleEnregistre=enrEnCours||clone(modele);etat(TXT.enregistre||'');majModifie();}
   else if(msg.type==='erreur'){etat('⚠ '+msg.message);}});
