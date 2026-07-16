@@ -73,6 +73,31 @@ rendu = `pipeline/styles/print.css` + `pipeline/Makefile`.
 - **Gate** : docx forgé sans styles de titre — un paragraphe gras isolé court → `#`/`##` ;
   un paragraphe de corps normal → inchangé ; une phrase en gras longue → inchangée (pas de faux positif).
 
+### AX5 · Figures & tableaux sémantiques (légende liée) — À L'IMPORT — *raviver attic/szh-import.lua*
+Décision Robin : **baker la structure dans le `.md` à l'import** (ré-import des articles
+existants assumé). Ravive/adapte la logique D28–D30 de `pipeline/attic/szh-import.lua`
+(`legende_figure`, `legende_tableau`, `tout_gras`, image-seule-dans-Para, `pandoc.Table(caption…)`).
+- [ ] **Figures** : Para contenant une image seule + **paragraphe gras voisin** (avant OU après)
+  = légende → réécrire en `![<légende>](image)` (alt = légende, num. de figure nettoyé) et
+  **supprimer** le paragraphe gras séparé. Au rendu, `<figure><img alt><figcaption>` (légende sous l'image).
+- [ ] **Tableaux** : paragraphe gras voisin = légende → l'**extraction** (`szh-tabelle-extraire.lua`)
+  émet un `<caption>…</caption>` dans `tables/table-NN.html` (au-dessus) ; le paragraphe gras
+  séparé est retiré. Cohérent avec le markup accessible AX2 + la sérialisation de la refonte tableau.
+- [ ] **Cohérence des 2 lecteurs** (RISQUE) : le rendu de `![cap](img)` en `<figure>` diffère
+  entre HTML (`--from=markdown`, `implicit_figures` par défaut) et aperçu (`--from=commonmark_x`,
+  pas d'`implicit_figures`). → Ajouter un **filtre Lua de compilation commun aux deux invocations**
+  qui normalise image+légende en `<figure>` (et laisse passer le `<caption>` du tableau), pour un
+  rendu identique HTML/aperçu/PDF. Ne PAS unifier les lecteurs (l'aperçu a besoin de `sourcepos`,
+  absent du lecteur `markdown`).
+- [ ] Journaliser (`[import] N figures légendées, M tableaux légendés`). Conservateur : sans
+  légende voisine claire, l'image/tableau reste tel quel (pas de fausse association).
+- **Gate** : docx forgé (image + para gras ; tableau + para gras) → `.md` avec `![lég](img)` et
+  `tables/table-NN.html` avec `<caption>` ; build HTML **et** aperçu → `<figure>/<figcaption>` et
+  `<table><caption>` présents et identiques ; un docx sans légende voisine → image/tableau nus.
+  `py_compile`/Lua idempotent.
+- **Extension possible (hors périmètre, à noter)** : permettre d'éditer la légende d'un tableau
+  (`<caption>`) depuis l'éditeur de tableau du cockpit — après la refonte tableau.
+
 ## Garde-fous
 - Round-trip tableau PRÉSERVÉ (AX1). `id`/`headers` **déterministes** depuis le modèle.
 - Pipeline : Makefile TABULATIONS+LF, aucun `/mnt/c` en dur ; scripts Python stdlib only.
