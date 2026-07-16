@@ -154,7 +154,13 @@ const TEXTES_COCKPIT = {
     'regl.zoom.tresgrand': 'Très grande',
     'regl.policemd': 'Taille du texte des articles (affichage seulement)',
     'regl.langue': 'Langue de l’interface',
-    'regl.langue.note': 'Les menus natifs de l’éditeur changeront au prochain redémarrage (allemand : nécessite le pack de langue déployé).'
+    'regl.langue.note': 'Les menus natifs de l’éditeur changeront au prochain redémarrage (allemand : nécessite le pack de langue déployé).',
+    'apercu.barre.html': '$(preview) Aperçu : HTML',
+    'apercu.barre.pdf': '$(file-pdf) Aperçu : PDF',
+    'apercu.barre.tooltip': 'Basculer l’aperçu HTML ⇄ PDF (tous les articles)',
+    'apercu.bandeau': 'Aperçu HTML — cliquer un passage ouvre le texte correspondant',
+    'apercu.bandeau.pdf': 'Voir en PDF',
+    'apercu.indisponible': 'Aperçu HTML pas encore compilé pour cet article — enregistrez (Ctrl+S) ou recompilez, puis re-cliquez l’article.'
   },
   de: {
     'arbre.articles': 'Artikel',
@@ -258,7 +264,13 @@ const TEXTES_COCKPIT = {
     'regl.zoom.tresgrand': 'Sehr gross',
     'regl.policemd': 'Textgrösse der Artikel (nur Anzeige)',
     'regl.langue': 'Sprache der Oberfläche',
-    'regl.langue.note': 'Die nativen Menüs des Editors ändern sich beim nächsten Neustart (Deutsch: erfordert das installierte Sprachpaket).'
+    'regl.langue.note': 'Die nativen Menüs des Editors ändern sich beim nächsten Neustart (Deutsch: erfordert das installierte Sprachpaket).',
+    'apercu.barre.html': '$(preview) Vorschau: HTML',
+    'apercu.barre.pdf': '$(file-pdf) Vorschau: PDF',
+    'apercu.barre.tooltip': 'Vorschau HTML ⇄ PDF umschalten (alle Artikel)',
+    'apercu.bandeau': 'HTML-Vorschau — ein Klick auf eine Stelle öffnet den zugehörigen Text',
+    'apercu.bandeau.pdf': 'Als PDF anzeigen',
+    'apercu.indisponible': 'HTML-Vorschau für diesen Artikel noch nicht kompiliert — speichern (Ctrl+S) oder neu kompilieren, dann den Artikel erneut anklicken.'
   }
 };
 
@@ -664,6 +676,153 @@ async function fermerApercuCourant(saufUri) {
   }
 }
 
+// ---- Aperçu commutable HTML <-> PDF (M5, D53/D54) -----------------------------------
+//
+// Mode global persistant szh.apercuMode (défaut : html). En mode HTML, la
+// colonne 2 est une webview maison qui charge out/<slug>/<slug>.apercu.html
+// (rendu sourcepos) : survol = contour, clic = aller à la ligne source du .md.
+// En mode PDF, comportement historique (tomoki1207.pdf). Un SEUL propriétaire
+// de la colonne 2 à la fois : szh-apercu ne s'active qu'en mode pdf (D54).
+
+function modeApercu() {
+  try {
+    return String(vscode.workspace.getConfiguration('szh').get('apercuMode', 'html') || 'html') === 'pdf' ? 'pdf' : 'html';
+  } catch (e) { return 'html'; }
+}
+
+let panneauApercuHtml = null;
+let apercuCourantSlug = null;
+let apercuHtmlMtime = 0;
+
+// « 01-exemple.md@12:3-14:1 » (ou « 12:3-14:1 ») -> 12. null si illisible.
+function lignePos(pos) {
+  const texte = String(pos || '');
+  const droite = texte.indexOf('@') !== -1 ? texte.slice(texte.indexOf('@') + 1) : texte;
+  const m = droite.match(/^(\d+):/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+// Injecte dans le HTML autonome de pandoc : CSP stricte, bandeau, styles de
+// survol et script (nonce). Les valeurs n'entrent jamais en HTML non échappé.
+function injecterApercu(contenu, nonce) {
+  const csp = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'; script-src \'nonce-' + nonce + '\'">';
+  const ajout =
+    '<style>body{margin-top:2.4rem;}' +
+    '#szh-bandeau{position:fixed;top:0;left:0;right:0;z-index:9999;font:13px sans-serif;' +
+    'padding:.35rem .8rem;background:#1f6feb;color:#fff;display:flex;justify-content:space-between;align-items:center;}' +
+    '#szh-bandeau button{font:inherit;border:none;border-radius:3px;padding:.15rem .6rem;cursor:pointer;background:#fff;color:#1f6feb;}' +
+    '.szh-survol{outline:2px solid #1f6feb;outline-offset:2px;}</style>' +
+    '<div id="szh-bandeau"><span>' + T('apercu.bandeau') + '</span>' +
+    '<button id="szh-basculer" type="button">' + T('apercu.bandeau.pdf') + '</button></div>' +
+    '<script nonce="' + nonce + '">(function(){' +
+    "'use strict';" +
+    'var vscodeApi=acquireVsCodeApi();var courant=null;' +
+    "document.getElementById('szh-basculer').addEventListener('click',function(){vscodeApi.postMessage({type:'basculer'});});" +
+    "document.addEventListener('mouseover',function(e){var c=e.target&&e.target.closest?e.target.closest('[data-pos]'):null;" +
+    "if(courant===c){return;}if(courant){courant.classList.remove('szh-survol');}courant=c;if(courant){courant.classList.add('szh-survol');}});" +
+    "document.addEventListener('click',function(e){var c=e.target&&e.target.closest?e.target.closest('[data-pos]'):null;" +
+    "if(!c){return;}e.preventDefault();vscodeApi.postMessage({type:'revele',pos:c.getAttribute('data-pos')});});" +
+    '})();</script>';
+  let html = contenu;
+  html = html.indexOf('<head>') !== -1 ? html.replace('<head>', '<head>\n' + csp) : csp + html;
+  html = html.indexOf('</body>') !== -1 ? html.replace('</body>', ajout + '\n</body>') : html + ajout;
+  return html;
+}
+
+async function revelerLigne(fournisseur, slug, ligne) {
+  if (!ligne || !fournisseur.racine) { return; }
+  const md = path.join(fournisseur.racine, 'articles', slug, slug + '.md');
+  try {
+    const doc = await vscode.workspace.openTextDocument(md);
+    const editeur = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One, preserveFocus: false });
+    const l = Math.max(0, Math.min(ligne - 1, doc.lineCount - 1));
+    editeur.revealRange(new vscode.Range(l, 0, l, 0), vscode.TextEditorRevealType.InCenter);
+    editeur.selection = new vscode.Selection(l, 0, l, 0);
+  } catch (e) { /* fichier disparu entre-temps */ }
+}
+
+function fermerApercuHtml() {
+  if (!panneauApercuHtml) { return; }
+  const p = panneauApercuHtml;
+  panneauApercuHtml = null;
+  try { p.dispose(); } catch (e) { /* déjà fermé */ }
+}
+
+// Ouvre (ou recharge) l'aperçu HTML de l'article en colonne 2 (webview réutilisée).
+// Repli si le toolkit n'est pas resynchronisé : le .html du PDF (sans clic),
+// sinon un message « pas encore compilé ».
+function ouvrirApercuHtml(fournisseur, slug) {
+  const dossier = path.join(fournisseur.racine, 'out', slug);
+  let fichier = path.join(dossier, slug + '.apercu.html');
+  let contenu = null;
+  try { contenu = fs.readFileSync(fichier, 'utf8'); }
+  catch (e) {
+    fichier = path.join(dossier, slug + '.html');
+    try { contenu = fs.readFileSync(fichier, 'utf8'); } catch (e2) { contenu = null; }
+  }
+  let mtime = 0;
+  try { mtime = fs.statSync(fichier).mtimeMs; } catch (e) { /* placeholder */ }
+  if (contenu === null) {
+    contenu = '<!DOCTYPE html><html lang="fr"><head></head><body><p>' + T('apercu.indisponible') + '</p></body></html>';
+  }
+  const html = injecterApercu(contenu, crypto.randomBytes(16).toString('hex'));
+  if (!panneauApercuHtml) {
+    const panneau = vscode.window.createWebviewPanel(
+      'szhApercuHtml', slug,
+      { viewColumn: vscode.ViewColumn.Two, preserveFocus: true },
+      { enableScripts: true, localResourceRoots: [] }
+    );
+    panneauApercuHtml = panneau;
+    panneau.onDidDispose(() => { if (panneauApercuHtml === panneau) { panneauApercuHtml = null; } });
+    panneau.webview.onDidReceiveMessage((msg) => {
+      if (!msg) { return; }
+      if (msg.type === 'basculer') { vscode.commands.executeCommand('szh.basculerApercu'); }
+      if (msg.type === 'revele' && apercuCourantSlug) { revelerLigne(fournisseur, apercuCourantSlug, lignePos(msg.pos)); }
+    });
+  }
+  panneauApercuHtml.title = slug;
+  panneauApercuHtml.webview.html = html;
+  apercuCourantSlug = slug;
+  apercuHtmlMtime = mtime;
+}
+
+// Recharge l'aperçu HTML si le fichier régénéré a changé (appelé au refresh —
+// la perte du défilement n'arrive donc qu'à une vraie recompilation).
+function rechargerApercuHtmlSiChange(fournisseur) {
+  if (!panneauApercuHtml || !apercuCourantSlug || !fournisseur.racine || modeApercu() !== 'html') { return; }
+  const slug = apercuCourantSlug;
+  let mtime = 0;
+  try { mtime = fs.statSync(path.join(fournisseur.racine, 'out', slug, slug + '.apercu.html')).mtimeMs; }
+  catch (e) { return; }
+  if (mtime > apercuHtmlMtime) { ouvrirApercuHtml(fournisseur, slug); }
+}
+
+// Bascule globale HTML <-> PDF : persiste szh.apercuMode et échange l'aperçu
+// de l'article courant (jamais deux aperçus concurrents en colonne 2).
+async function basculerApercu(fournisseur, majBarreApercu) {
+  const nouveau = modeApercu() === 'html' ? 'pdf' : 'html';
+  try {
+    await vscode.workspace.getConfiguration('szh').update('apercuMode', nouveau, vscode.ConfigurationTarget.Global);
+  } catch (e) {
+    vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
+    return;
+  }
+  if (majBarreApercu) { majBarreApercu(); }
+  const slug = apercuCourantSlug;
+  if (!slug || !fournisseur.racine) { return; }
+  if (nouveau === 'html') {
+    if (apercuCourantUri) { await fermerApercuCourant(null); }   // l'onglet PDF courant
+    ouvrirApercuHtml(fournisseur, slug);
+  } else {
+    fermerApercuHtml();
+    const pdf = vscode.Uri.file(path.join(fournisseur.racine, 'out', slug, slug + '.pdf'));
+    if (fs.existsSync(pdf.fsPath)) {
+      await ouvrirApercuPdf(pdf);
+      apercuCourantUri = pdf;
+    }
+  }
+}
+
 // Le geste unique du rédacteur : cliquer un article = voir son texte ET son PDF.
 // 1. .md en colonne 1 ; 2. build si PDF absent/obsolète (mtime), incrémental ;
 // 3. fermer l'aperçu de l'article précédent ; 4. aperçu en colonne 2.
@@ -712,6 +871,13 @@ async function ouvrirArticle(fournisseur, slug) {
       buildEnCours = false;
     }
   }
+  // M5 : la colonne 2 affiche l'aperçu DU MODE COURANT (html par défaut).
+  if (modeApercu() === 'html') {
+    if (apercuCourantUri) { await fermerApercuCourant(null); }  // onglet PDF d'une bascule passée
+    ouvrirApercuHtml(fournisseur, slug);
+    return;
+  }
+  fermerApercuHtml();                              // webview HTML d'une bascule passée
   if (!fs.existsSync(pdf.fsPath)) {
     vscode.window.showErrorMessage(T('err.pdf.introuvable', [slug]));
     return;
@@ -719,6 +885,7 @@ async function ouvrirArticle(fournisseur, slug) {
   await fermerApercuCourant(pdf);                  // l'aperçu du précédent article
   await ouvrirApercuPdf(pdf);                      // mono-instance : révèle si déjà là
   apercuCourantUri = pdf;
+  apercuCourantSlug = slug;
 }
 
 // ---- Import guidé (S3) ---------------------------------------------------------
@@ -1011,6 +1178,7 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
   const dossierArticle = path.join(racine, 'articles', slug);
   const dossierSortie = path.join(racine, 'out', slug);
   try {
+    if (apercuCourantSlug === slug) { fermerApercuHtml(); apercuCourantSlug = null; }
     await fermerOngletsSous(dossierArticle);
     await fermerOngletsSous(dossierSortie);
     fs.rmSync(dossierArticle, { recursive: true, force: true });
@@ -2264,11 +2432,24 @@ function activate(context) {
   context.subscriptions.push({ dispose: () => { for (const w of watchers) { w.dispose(); } } });
   context.subscriptions.push({ dispose: arreterDormeurWsl });   // N1 : pas de dormant orphelin
 
+  // Barre d'état « Aperçu : HTML / PDF » (M5, D53) — clic = basculer.
+  const barreApercu = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
+  barreApercu.command = 'szh.basculerApercu';
+  context.subscriptions.push(barreApercu);
+  const majBarreApercu = () => {
+    barreApercu.text = T(modeApercu() === 'html' ? 'apercu.barre.html' : 'apercu.barre.pdf');
+    barreApercu.tooltip = T('apercu.barre.tooltip');
+    if (fournisseur.racine) { barreApercu.show(); } else { barreApercu.hide(); }
+  };
+
   // Le compte « Word en attente » est recalculé par getChildren (description de
-  // section) ; le TITRE de la vue reflète le numéro (N2, D43) à chaque rafraîchissement.
+  // section) ; le TITRE de la vue reflète le numéro (N2, D43) à chaque
+  // rafraîchissement ; l'aperçu HTML est rechargé si sa sortie a été régénérée (M5).
   const rafraichirTout = () => {
     fournisseur.rafraichir();
     vue.title = fournisseur.racine ? titreNumero(fournisseur.racine) : T('arbre.titre.defaut');
+    majBarreApercu();
+    rechargerApercuHtmlSiChange(fournisseur);
   };
 
   // Regroupe les rafales d'événements FS (OneDrive peut en émettre plusieurs).
@@ -2309,6 +2490,7 @@ function activate(context) {
     vscode.commands.registerCommand('szh.metadonnees', () => ouvrirMetadonnees(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.apercuMetadonnees', () => ouvrirApercuMetadonnees(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.reglages', () => ouvrirReglages(rafraichirTout)),
+    vscode.commands.registerCommand('szh.basculerApercu', () => basculerApercu(fournisseur, majBarreApercu)),
     vscode.commands.registerCommand('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.toutExporter', () => toutExporter(fournisseur, rafraichirTout)),
@@ -2329,6 +2511,6 @@ module.exports = {
   activate, deactivate,
   _pur: {
     titreNumero, separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
-    analyserMeta, serialiserMeta
+    analyserMeta, serialiserMeta, lignePos
   }
 };

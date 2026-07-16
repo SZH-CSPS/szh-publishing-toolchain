@@ -9,5 +9,7 @@
   "cmd.remplacerTable": "Tabelle ersetzen",
   "cmd.apercuMetadonnees": "Metadaten der Artikel",
   "cmd.reglages": "SZH-Einstellungen",
-  "config.langue": "Sprache der Cockpit-Texte (fr/de). Leer = Sprache des Editors."
+  "cmd.basculerApercu": "Vorschau HTML ⇄ PDF umschalten",
+  "config.langue": "Sprache der Cockpit-Texte (fr/de). Leer = Sprache des Editors.",
+  "config.apercuMode": "Vorschaumodus der rechten Spalte: html (klickbar, Standard) oder pdf."
 }

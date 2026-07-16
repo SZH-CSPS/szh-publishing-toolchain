@@ -18,6 +18,9 @@ function activate(context) {
       try {
         if (!e || !e.execution || e.execution.task.name !== NOM_TACHE_BUILD) { return; }
         if (e.exitCode !== 0) { return; } // build en échec : ne rien ouvrir
+        // D54 : la colonne 2 n'a qu'UN propriétaire — en mode html, c'est la
+        // webview du cockpit ; szh-apercu ne s'active qu'en mode pdf.
+        if (vscode.workspace.getConfiguration('szh').get('apercuMode', 'html') !== 'pdf') { return; }
         if (!vscode.workspace.getConfiguration('szh').get('apercuAuto', true)) { return; }
         ouvrirApercuArticleActif();
       } catch (err) {

@@ -227,26 +227,35 @@ fichier. Décisions **D49–D54**, tranches **M1–M5**. Français partout.
 
 ### M5 · Bascule d'aperçu HTML↔PDF, HTML cliquable par défaut (D53, D54) — *taille L ; pipeline + extension ; en dernier*
 
-- [ ] **Spike sourcepos (court, consigné)** : `--from=commonmark_x+sourcepos` garde-t-il le
+- [x] **Spike sourcepos (court, consigné)** : `--from=commonmark_x+sourcepos` garde-t-il le
   rendu PDF **identique** (surtout blocs `:::` et snippets) ? Si oui → build unifié avec
   positions ; sinon → **rendu preview séparé** en `commonmark_x+sourcepos` (le build PDF reste
   en `markdown`). Décider et consigner.
-- [ ] **Pipeline** : la sortie HTML servant à l'aperçu porte une **position source par bloc**
+  **Consigné (2026-07-16, pandoc 3.5)** : le reader `commonmark_x+sourcepos` introduit des
+  **Divs « wrapper » structurels** dans l'AST (diff natif non vide sur l'article-test :
+  chapo, listes, notes) → il ne doit PAS nourrir WeasyPrint. **DÉCISION : rendu preview
+  SÉPARÉ** — le PDF reste sur `-f markdown` (inchangé par construction, preuve : 0 `data-pos`
+  dans `<slug>.html`, 21 dans `<slug>.apercu.html` sur l'exemple compilé). Format des
+  positions : `data-pos="<fichier>@L:C-L:C"`.
+- [x] **Pipeline** : la sortie HTML servant à l'aperçu porte une **position source par bloc**
   (`data-pos`/`data-line`). Vérifier que le **PDF WeasyPrint est inchangé** (attribut ignoré).
-- [ ] **Webview d'aperçu HTML** (colonne 2) : charge `out/<slug>/<slug>.html` (déjà autonome —
+  *(Règle `$(OUT)/%.apercu.html` : mêmes filtres/CSS/métadonnées, reader sourcepos ; en cas
+  d'échec du reader, placeholder explicite — le build PDF n'est jamais bloqué.)*
+- [x] **Webview d'aperçu HTML** (colonne 2) : charge `out/<slug>/<slug>.html` (déjà autonome —
   CSS/images en base64) ; CSP stricte (`img-src data:`, `style-src 'unsafe-inline'`,
   `script-src 'nonce-…'`) + script injecté à nonce ; **survol → contour** de l'élément ;
   **clic → `postMessage(ligne)`** → l'hôte fait `revealRange` dans le `.md` (colonne 1) ;
   **rechargement** quand `out/<slug>/*.html` change (watcher).
-- [ ] **Bascule globale** : commande `szh.basculerApercu` + **élément de barre d'état**
+- [x] **Bascule globale** : commande `szh.basculerApercu` + **élément de barre d'état**
   « Aperçu : HTML ⇄ PDF » + bouton en tête de vue (+ bonus : bouton dans le bandeau de la
   webview HTML) ; état **persistant** `szh.apercuMode` (défaut `html`) ; clé de contexte pour l'icône.
-- [ ] **Intégration au clic (N5)** : le clic d'article ouvre l'aperçu **du mode courant** ;
+- [x] **Intégration au clic (N5)** : le clic d'article ouvre l'aperçu **du mode courant** ;
   **basculer** échange l'aperçu de l'article courant (ferme l'un, ouvre l'autre) ; colonnes
   fixes (1 = texte, 2 = aperçu), jamais de 3ᵉ colonne.
-- [ ] **`szh-apercu` conscient du mode** (D54) : il ne doit ouvrir/rafraîchir le PDF **qu'en
+- [x] **`szh-apercu` conscient du mode** (D54) : il ne doit ouvrir/rafraîchir le PDF **qu'en
   mode `pdf`** — lit le réglage partagé `szh.apercuMode` et ne fait rien en mode `html`. Touche
-  minimale, szh-apercu reste déployé (packaging CI inchangé).
+  minimale, szh-apercu reste déployé (packaging CI inchangé). *(Une garde d'une ligne +
+  version 0.1.2.)*
 - **Vérif** : `node --check` ; harnais (la bascule persiste le mode ; le clic ouvre le bon
   type ; mapping clic→ligne sur un HTML de test porteur de `data-pos`). Spike consigné. GUI :
   défaut = aperçu HTML cliquable ; toggle → PDF ; `Ctrl+S` rafraîchit dans les deux modes ;

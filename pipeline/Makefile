@@ -34,9 +34,13 @@ SLUGS      := $(sort $(foreach d,$(wildcard articles/*),$(if $(wildcard $(d)/$(n
 OUT        := out
 PDFS       := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).pdf)
 HTMLS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).html)
+# Aperçu HTML cliquable (D53/M5) : rendu SÉPARÉ en commonmark_x+sourcepos (le
+# spike M5 montre que ce reader ajoute des divs « wrapper » -> il ne doit PAS
+# nourrir WeasyPrint ; le PDF reste sur -f markdown, inchangé par construction).
+APERCUS    := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).apercu.html)
 
 # Sans ceci, make considérerait les .html comme intermédiaires et les SUPPRIMERAIT.
-.SECONDARY: $(HTMLS)
+.SECONDARY: $(HTMLS) $(APERCUS)
 
 # Import Word (D35) — le .docx source est SUPPRIMÉ après conversion réussie (D39).
 WORD_DIR   := articles-word
@@ -57,7 +61,7 @@ tout-exporter:
 	-@$(MAKE) --no-print-directory -f $(THIS) clean
 	@$(MAKE) --no-print-directory -f $(THIS) all
 
-pdf: verifie-dossier $(PDFS)
+pdf: verifie-dossier $(PDFS) $(APERCUS)
 
 verifie-dossier:
 	@test -f ausgabe.yaml || { echo "[pipeline] Ce dossier n'est pas une revue (ausgabe.yaml introuvable) : $$PWD"; exit 1; }
@@ -87,6 +91,26 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" $$extra \
 	  --output="$(abspath $@)"
 	# ⇩ REMPLACER ici par le template HTML/filtres finaux de la maquette si besoin.
+
+# .md -> HTML d'APERÇU (D53) : mêmes filtres/CSS/métadonnées que la sortie PDF,
+# mais reader commonmark_x+sourcepos -> chaque bloc porte data-pos (position
+# source pour le clic->texte de la webview). Consommé par le cockpit uniquement.
+$(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
+	@mkdir -p "$(dir $@)"
+	@slug="$(notdir $*)"; \
+	extra=""; \
+	if [ -s "articles/$$slug/media/$$slug.bib" ]; then extra="--citeproc --csl=$(CSL)"; fi; \
+	meta=""; \
+	if [ -f "articles/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
+	echo "pandoc articles/$$slug/$$slug.md -> $@ (aperçu sourcepos)"; \
+	cd "articles/$$slug" && $(PANDOC) "$$slug.md" \
+	  --from=commonmark_x+sourcepos --to=html5 \
+	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
+	  --standalone --embed-resources \
+	  --css="$(STYLE_ABS)" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" $$extra \
+	  --output="$(abspath $@)" || \
+	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
 
 # HTML -> PDF (CSS Paged Media). Temporaire « ~$… » dans le MÊME dossier :
 # rename local + ignoré par la synchro OneDrive -> jamais de PDF partiel.

@@ -18,6 +18,12 @@
           "enum": ["", "fr", "de"],
           "default": "",
           "description": "%config.langue%"
+        },
+        "szh.apercuMode": {
+          "type": "string",
+          "enum": ["html", "pdf"],
+          "default": "html",
+          "description": "%config.apercuMode%"
         }
       }
     },
@@ -90,6 +96,12 @@
         "title": "%cmd.reglages%",
         "category": "Revue SZH",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "szh.basculerApercu",
+        "title": "%cmd.basculerApercu%",
+        "category": "Revue SZH",
+        "icon": "$(preview)"
       }
     ],
     "menus": {
@@ -123,6 +135,11 @@
           "command": "szh.reglages",
           "when": "view == szhCockpitVue",
           "group": "navigation@6"
+        },
+        {
+          "command": "szh.basculerApercu",
+          "when": "view == szhCockpitVue",
+          "group": "navigation@7"
         }
       ],
       "view/item/context": [

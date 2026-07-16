@@ -9,5 +9,7 @@
   "cmd.remplacerTable": "Remplacer le tableau",
   "cmd.apercuMetadonnees": "Métadonnées des articles",
   "cmd.reglages": "Réglages SZH",
-  "config.langue": "Langue des textes du cockpit (fr/de). Vide = langue de l’éditeur."
+  "cmd.basculerApercu": "Basculer l’aperçu HTML ⇄ PDF",
+  "config.langue": "Langue des textes du cockpit (fr/de). Vide = langue de l’éditeur.",
+  "config.apercuMode": "Mode d’aperçu de la colonne de droite : html (cliquable, défaut) ou pdf."
 }
