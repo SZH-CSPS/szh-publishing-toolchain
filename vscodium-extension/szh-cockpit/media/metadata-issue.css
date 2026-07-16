@@ -9,6 +9,11 @@ input, select { width: 100%; box-sizing: border-box; padding: .35em .5em; font: 
   border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; }
 input:focus, select:focus { outline: 1px solid var(--vscode-focusBorder); }
 .indice { color: var(--vscode-descriptionForeground); font-size: .82em; margin-top: .2rem; }
+.radios { display: flex; flex-direction: column; gap: .45rem; margin-top: .3rem; }
+.radio { display: flex; align-items: flex-start; gap: .5em; margin: 0; font-weight: normal;
+  cursor: pointer; width: auto; }
+.radio input { width: auto; flex: 0 0 auto; margin: .15em 0 0; }
+.radio span { line-height: 1.35; }
 .pastilles { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .3rem; }
 .pastille { display: inline-flex; align-items: center; gap: .4em; cursor: pointer;
   padding: .3em .7em .3em .4em; border: 1px solid var(--vscode-input-border, rgba(128,128,128,.4));

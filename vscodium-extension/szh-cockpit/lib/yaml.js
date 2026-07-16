@@ -28,6 +28,25 @@ const COULEURS_NUMERO = [
 ];
 const HEX_COULEURS = COULEURS_NUMERO.map((c) => c.hex.toUpperCase());
 
+// Revue (D74) : jeton canonique -> ISSN + langue par défaut, TOUS DÉRIVÉS (jamais
+// stockés séparément dans ausgabe.yaml). Miroir exact de derive_revue() de
+// pipeline/filters/szh-maquette.lua. Le nom affiché de la revue vit côté i18n
+// (meta.revue.<jeton>) ; ici on ne garde que ce que le code doit calculer.
+const REVUES = [
+  { cle: 'zeitschrift', issn: '2813-4907', langue: 'de' },
+  { cle: 'revue',       issn: '2813-4915', langue: 'fr' }
+];
+
+// Jeton canonique de revue depuis une valeur brute d'ausgabe.yaml : accepte le
+// jeton (zeitschrift/revue) ET l'ancien nom complet (rétrocompat). Teste
+// « zeitschrift » avant « revue » (comme le Lua). '' si rien d'exploitable.
+function normaliserRevue(valeur) {
+  const v = String(valeur === undefined || valeur === null ? '' : valeur).toLowerCase();
+  if (v.indexOf('zeitschrift') !== -1) { return 'zeitschrift'; }
+  if (v.indexOf('revue') !== -1) { return 'revue'; }
+  return '';
+}
+
 // Découpe la partie droite d'un « clé: reste » en { valeur, suite } — `suite` est
 // l'éventuel commentaire de fin de ligne, AVEC ses espaces de tête, restitué tel
 // quel à l'écriture. Gère les scalaires nus, « … » (échappes \" et \\) et '…'
@@ -565,6 +584,7 @@ function ecrireAusgabeAtomique(chemin, contenu) {
 
 module.exports = {
   CLES_METADONNEES, COULEURS_NUMERO, HEX_COULEURS, CLES_FRONTMATTER,
+  REVUES, normaliserRevue,
   TYPES_ARTICLE, LIBELLES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
   decouperValeurYaml, decouperFlowYaml, analyserAusgabe,
   separerFrontmatter, analyserFrontmatter, citerFrontmatter, lignesCleFrontmatter, serialiserFrontmatter,

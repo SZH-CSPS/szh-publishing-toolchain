@@ -2,10 +2,33 @@
   'use strict';
   const TXT = __TXT__;
   const vscodeApi = acquireVsCodeApi();
-  const CLES = ['title', 'revue', 'volume', 'numero', 'date', 'lang'];
+  const CLES = ['title', 'volume', 'numero', 'date', 'lang'];
   const modifies = new Set();
   const etat = document.getElementById('etat');
   let couleurChoisie = '';
+  // revue (D74) : choix fermé (radio). Le jeton canonique zeitschrift/revue est
+  // écrit dans ausgabe.yaml ; l'ISSN et la langue par défaut en sont DÉRIVÉS.
+  let revueChoisie = '';
+  const RADIOS_REVUE = document.querySelectorAll('input[name="revue"]');
+  // Miroir de normaliserRevue() (lib/yaml.js) + derive_revue() (Lua) : accepte le
+  // jeton ET l'ancien nom complet (rétrocompat), teste « zeitschrift » avant « revue ».
+  function normaliserRevue(v) {
+    const s = String(v === undefined || v === null ? '' : v).toLowerCase();
+    if (s.indexOf('zeitschrift') !== -1) { return 'zeitschrift'; }
+    if (s.indexOf('revue') !== -1) { return 'revue'; }
+    return '';
+  }
+  function majRevue() {
+    for (const r of RADIOS_REVUE) { r.checked = (r.value === revueChoisie); }
+  }
+  for (const r of RADIOS_REVUE) {
+    r.addEventListener('change', function () {
+      if (!r.checked) { return; }
+      revueChoisie = r.value;
+      modifies.add('revue');
+      etat.textContent = '';
+    });
+  }
   function majPastilles() {
     for (const b of document.querySelectorAll('#couleurs .pastille')) {
       b.setAttribute('aria-pressed', b.dataset.hex === couleurChoisie ? 'true' : 'false');
@@ -51,6 +74,8 @@
       }
       if (cle === 'lang' && champ.value !== v) { champ.value = ''; }
     }
+    revueChoisie = normaliserRevue(valeurs.revue);
+    majRevue();
     couleurChoisie = valeurs.couleur === undefined ? '' : String(valeurs.couleur);
     majPastilles();
     modifies.clear();
@@ -65,7 +90,9 @@
     if (modifies.size === 0) { etat.textContent = TXT.rien; return; }
     const envoi = {};
     for (const cle of modifies) {
-      envoi[cle] = cle === 'couleur' ? couleurChoisie : document.getElementById(cle).value;
+      if (cle === 'couleur') { envoi[cle] = couleurChoisie; }
+      else if (cle === 'revue') { envoi[cle] = revueChoisie; }
+      else { envoi[cle] = document.getElementById(cle).value; }
     }
     vscodeApi.postMessage({ type: 'enregistrer', modifies: envoi });
   });

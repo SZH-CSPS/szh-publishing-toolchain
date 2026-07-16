@@ -60,7 +60,7 @@ const NOM_TACHE_EXPORT = 'Tout exporter';
 const { TEXTES_COCKPIT, T, langueCockpit } = require('./lib/i18n');
 // ---- Sérialiseurs YAML -> lib/yaml.js --------------------------------------------
 const {
-  CLES_METADONNEES, COULEURS_NUMERO, HEX_COULEURS,
+  CLES_METADONNEES, COULEURS_NUMERO, HEX_COULEURS, normaliserRevue,
   TYPES_ARTICLE, LIBELLES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
   analyserAusgabe, serialiserAusgabe, ecrireAusgabeAtomique,
   separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
@@ -1067,6 +1067,12 @@ function ouvrirMetadonnees(fournisseur, rafraichirTout) {
       const c = modifies.couleur.toUpperCase();
       if (c !== '' && HEX_COULEURS.indexOf(c) === -1) { delete modifies.couleur; }
       else { modifies.couleur = c; }
+    }
+    // revue (D74) : uniquement le jeton canonique zeitschrift/revue (dérivé du
+    // radio, ou d'un ancien nom complet). Toute autre valeur est ignorée.
+    if ('revue' in modifies) {
+      const r = normaliserRevue(modifies.revue);
+      if (r === '') { delete modifies.revue; } else { modifies.revue = r; }
     }
     if (Object.keys(modifies).length === 0) { return; }
     try {
