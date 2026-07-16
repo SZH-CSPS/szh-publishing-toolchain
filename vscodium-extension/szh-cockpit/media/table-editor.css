@@ -26,6 +26,14 @@ table.grille tr:first-child .poignee { position: sticky; top: 0; z-index: 3; }
 table.grille .poignee.pnum { position: sticky; left: 0; z-index: 2; }
 table.grille .coin { position: sticky; top: 0; left: 0; z-index: 4; }
 table.grille td.cell, table.grille th.cell { background: var(--vscode-editor-background); cursor: text; }
+/* F4 : une cellule d'en-tête est un <th> -> gras PAR DÉFAUT du navigateur, trompeur
+   (laisse croire au style « gras »). On annule ce gras : le style d'en-tête réel est
+   piloté par styleEnt (gras/négatif/fond en style inline, qui l'emporte). Un repère
+   discret ★ marque la cellule d'en-tête, quel que soit son style. Le pseudo-élément
+   n'est ni éditable ni récolté (round-trip intact). */
+table.grille th.cell { font-weight: 400; }
+table.grille th.cell::before { content: "\2605"; margin-right: .35em; font-size: .8em;
+  font-weight: 400; opacity: .5; vertical-align: .06em; }
 table.grille .sel { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px;
   background: var(--vscode-editor-selectionBackground, rgba(90,140,220,.25)); }
 .poignee { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15));
