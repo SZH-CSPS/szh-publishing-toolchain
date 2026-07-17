@@ -6,7 +6,10 @@ outillage construits par GitHub Actions** et **auto‑déployés en silence** su
 
 > Ce dépôt contient l'**outillage** — **pas les revues**, qui vivent sur OneDrive.
 > La distro WSL s'appelle **`SZH-Publishing`** (une seule distro‑toolchain, réutilisable).
-> Décisions d'architecture et plan : voir [`PLANIFICATION.md`](PLANIFICATION.md).
+>
+> **Documentation** : vue globale [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · maintenance WSL
+> [`docs/MAINTENANCE-WSL.md`](docs/MAINTENANCE-WSL.md) · sécurité & flotte [`docs/SECURITE.md`](docs/SECURITE.md).
+> Décisions & plan : [`PLANIFICATION.md`](PLANIFICATION.md).
 
 ## Principes
 

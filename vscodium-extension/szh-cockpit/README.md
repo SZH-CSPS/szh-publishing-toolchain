@@ -13,9 +13,9 @@ un dossier quelconque ne montre aucune icône. La liste se rafraîchit automatiq
 quand des fichiers changent (dépôt/retrait d'un Word, nouvel article) ; un bouton
 **Rafraîchir** est disponible en tête de vue.
 
-Cette tranche (S2) est **purement passive** : elle n'écrit jamais dans le dossier de
-revue. L'import guidé et les actions PDF/Compiler arrivent dans les tranches suivantes
-(voir `PLAN-COCKPIT.md`).
+La barre « Revue SZH » gère l'import Word, la compilation/aperçu, les métadonnées (numéro
+et articles), les tableaux et les images — sans quitter l'éditeur. Détail des gestes : le
+`BIENVENUE.md` d'une revue et la documentation du dépôt (`docs/`, `PLANIFICATION.md`).
 
 Construite et publiée par la CI du dépôt (`release.yml`), installée sur les postes par
 `update.ps1` via le `manifest.json` de la Release — même canal que les extensions épinglées.

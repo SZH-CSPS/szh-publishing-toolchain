@@ -1427,7 +1427,7 @@ function ouvrirReglages(rafraichirTout) {
 //   serialiserTable(mod) -> <table>…</table> propre et STABLE.
 // Contrat GATE : analyser -> serialiser -> analyser identique (table nue M2 comprise).
 //
-// MODÈLE (encodage HTML, cf. PLAN-TABLEAU §Modèle) : le fichier est un <table
+// MODÈLE (encodage HTML) : le fichier est un <table
 // class="szh-tableau"> ; le style est porté par des attributs data-* sur <table>
 // et <tr> ; les en-têtes par <th scope>. Le contenu de cellule est de l'inline
 // simple : texte échappé, <strong>, <em>, <br> (canonisé, jamais d'injection).
