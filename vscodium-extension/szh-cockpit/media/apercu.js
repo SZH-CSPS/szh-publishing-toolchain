@@ -175,10 +175,86 @@
     }, 35);
   }, { passive: true });
 
+  // --- G3 : curseur/clic dans le .md -> surlignage côté aperçu -------------------
+  var blocActif = null;      // dernier bloc surligné (classe szh-actif)
+  var motActifSpan = null;   // dernier span de mot surligné (szh-mot-actif)
+
+  // Bloc positionné dont la PLAGE source [ligne..ligneFin] contient `ligne`. Parmi
+  // les candidats imbriqués (le div du bloc ET ses spans inline la contiennent),
+  // on retient la plage la plus large -> le conteneur de bloc, pas un span de mot.
+  // Repli : le dernier bloc dont la ligne de début <= `ligne`.
+  function blocContenant(ligne) {
+    var choix = null, ampli = -1;
+    for (var i = 0; i < blocs.length; i++) {
+      var b = blocs[i];
+      if (b.ligne <= ligne && b.ligneFin >= ligne) {
+        var a = b.ligneFin - b.ligne;
+        if (a > ampli) { ampli = a; choix = b; }
+      }
+    }
+    if (!choix) {
+      for (var j = 0; j < blocs.length; j++) { if (blocs[j].ligne <= ligne) { choix = blocs[j]; } }
+    }
+    return choix;
+  }
+
+  // Enveloppe la 1re occurrence de `mot` (texte rendu du bloc) dans un span
+  // szh-mot-actif — via l'API Range (aucune injection HTML). « Au mieux » : mot
+  // répété -> 1re occurrence ; introuvable -> bloc seul.
+  function surlignerMot(el, mot) {
+    if (!mot) { return; }
+    var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+    var n;
+    while ((n = w.nextNode())) {
+      var idx = n.nodeValue.indexOf(mot);
+      if (idx !== -1) {
+        var r = document.createRange();
+        r.setStart(n, idx);
+        r.setEnd(n, idx + mot.length);
+        var span = document.createElement('span');
+        span.className = 'szh-mot-actif';
+        try { r.surroundContents(span); motActifSpan = span; } catch (e) { /* plage non enveloppable */ }
+        return;
+      }
+    }
+  }
+
+  // Retire le surlignage précédent (bloc + mot), en restaurant le texte d'origine.
+  function nettoyerSurlignage() {
+    if (blocActif) { blocActif.classList.remove('szh-actif'); blocActif = null; }
+    if (motActifSpan && motActifSpan.parentNode) {
+      var p = motActifSpan.parentNode;
+      while (motActifSpan.firstChild) { p.insertBefore(motActifSpan.firstChild, motActifSpan); }
+      p.removeChild(motActifSpan);
+      p.normalize();
+    }
+    motActifSpan = null;
+  }
+
+  function surligner(ligne, mot) {
+    if (!blocs.length) { indexerBlocs(); }
+    var cible = blocContenant(ligne);
+    nettoyerSurlignage();
+    if (!cible) { return; }
+    cible.el.classList.add('szh-actif');
+    blocActif = cible.el;
+    surlignerMot(cible.el, mot);
+    // Amener en vue SEULEMENT si hors écran, sous la garde anti-boucle (le scroll
+    // programmatique qui suit ne doit pas repartir en défilement inverse A1).
+    var r = cible.el.getBoundingClientRect();
+    if (r.top < bandeauHauteur() || r.bottom > (window.innerHeight || 0)) {
+      defilementProgrammatique = true;
+      cible.el.scrollIntoView({ block: 'nearest' });
+      if (minuteurProg) { clearTimeout(minuteurProg); }
+      minuteurProg = setTimeout(function () { defilementProgrammatique = false; }, 150);
+    }
+  }
+
   window.addEventListener('message', function (e) {
     var msg = e.data;
     if (!msg) { return; }
     if (msg.type === 'scroll') { scrollVersLigne(parseInt(msg.ligne, 10) || 1); }
+    if (msg.type === 'surligner') { surligner(parseInt(msg.ligne, 10) || 1, msg.mot || ''); }
   });
 
   indexerBlocs();

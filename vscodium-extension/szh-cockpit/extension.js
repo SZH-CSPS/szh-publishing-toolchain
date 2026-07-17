@@ -477,6 +477,20 @@ function positionMot(lignes, l1, c1, l2, mot) {
   return null;
 }
 
+// G3 — jeton (mot) sous le curseur dans une LIGNE source, colonne 0-based. Mêmes
+// délimiteurs que motAuPoint (apercu.js) pour que le jeton corresponde au texte
+// rendu côté aperçu. Chaîne vide si le curseur est sur un délimiteur / hors mot.
+// Pur (testé headless via _pur).
+function jetonSource(texte, colonne) {
+  const s = String(texte == null ? '' : texte);
+  const i = Math.max(0, Math.min(colonne | 0, s.length));
+  const estMot = (ch) => ch !== '' && /[^\s.,;:!?()\[\]{}«»"'…—–\/]/.test(ch);
+  let deb = i, fin = i;
+  while (deb > 0 && estMot(s.charAt(deb - 1))) { deb--; }
+  while (fin < s.length && estMot(s.charAt(fin))) { fin++; }
+  return s.slice(deb, fin);
+}
+
 // Éditeur visible du .md de l'article actuellement affiché en aperçu (colonne 1),
 // ou null. Sert au défilement synchronisé (A1) : révéler une ligne SANS voler le focus.
 function editeurArticleCourant(fournisseur) {
@@ -508,6 +522,26 @@ function pousserDefilementVersApercu(ligne0Based) {
     try { panneauApercuHtml.webview.postMessage({ type: 'scroll', ligne: ligne0Based + 1 }); }
     catch (e) { /* webview fermée entre-temps */ }
   }, 35);
+}
+
+// G3 — curseur/clic dans le .md -> surlignage côté aperçu. Poste la ligne (1-based)
+// et le mot sous le curseur ; la webview surligne le bloc (et le mot) correspondant
+// et l'amène en vue seulement s'il est hors écran. Débounce léger. Complément de
+// l'A2 (aperçu -> source) ; aucune boucle : la webview ne renvoie rien au survol.
+let minuteurHoteSurlignage = null;
+function pousserSurlignageVersApercu(fournisseur) {
+  if (minuteurHoteSurlignage) { clearTimeout(minuteurHoteSurlignage); }
+  minuteurHoteSurlignage = setTimeout(() => {
+    if (!panneauApercuHtml) { return; }
+    const ed = editeurArticleCourant(fournisseur);
+    if (!ed) { return; }
+    const pos = ed.selection.active;
+    let mot = '';
+    try { mot = jetonSource(ed.document.lineAt(pos.line).text, pos.character); }
+    catch (e) { mot = ''; }
+    try { panneauApercuHtml.webview.postMessage({ type: 'surligner', ligne: pos.line + 1, mot: mot }); }
+    catch (e) { /* webview fermée entre-temps */ }
+  }, 60);
 }
 
 // Injecte dans le HTML autonome de pandoc : CSP stricte, bandeau, styles de
@@ -1629,6 +1663,14 @@ function activate(context) {
       const ed = editeurArticleCourant(fournisseur);
       if (!ed || e.textEditor !== ed) { return; }
       pousserDefilementVersApercu(e.visibleRanges[0].start.line);
+    }),
+    // G3 — sens inverse : le curseur (ou un clic) dans le .md de l'article courant
+    // surligne le bloc/mot correspondant dans l'aperçu HTML.
+    vscode.window.onDidChangeTextEditorSelection((e) => {
+      if (!panneauApercuHtml || modeApercu() !== 'html') { return; }
+      const ed = editeurArticleCourant(fournisseur);
+      if (!ed || e.textEditor !== ed) { return; }
+      pousserSurlignageVersApercu(fournisseur);
     })
   );
 
@@ -1665,7 +1707,7 @@ module.exports = {
   activate, deactivate,
   _pur: {
     titreNumero, separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
-    analyserMeta, serialiserMeta, lignePos, plagePos, positionMot,
+    analyserMeta, serialiserMeta, lignePos, plagePos, positionMot, jetonSource,
     analyserAusgabe, serialiserAusgabe,
     basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
     enroberBloc, squeletteTableau,
