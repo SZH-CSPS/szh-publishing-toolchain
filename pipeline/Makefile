@@ -133,12 +133,23 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
 
-# HTML -> PDF (CSS Paged Media). Temporaire « ~$… » dans le MÊME dossier :
-# rename local + ignoré par la synchro OneDrive -> jamais de PDF partiel.
-# ⚠ Quotes SIMPLES obligatoires ($0 serait substitué entre guillemets doubles).
+# HTML -> PDF (CSS Paged Media), BALISÉ PDF/UA-1 (AX3/D62 : PDF accessible — arbre
+# de structure + langue). WeasyPrint 69 : --pdf-variant pdf/ua-1 pose /StructTreeRoot,
+# /MarkInfo /Marked true, /Lang et les StructElem (H, P, Table, Figure…). Repli
+# AUTOMATIQUE si la variante stricte échoue : tagged-PDF simple (--pdf-tags), puis
+# PDF nu — le balisage ne doit JAMAIS faire échouer le build.
+# Temporaire « ~$… » dans le MÊME dossier : rename local + ignoré par la synchro
+# OneDrive -> jamais de PDF partiel. ⚠ Quotes SIMPLES ($0/$notdir non substitués).
 $(OUT)/%.pdf: $(OUT)/%.html
-	$(WEASYPRINT) $< '$(dir $@)~$$$(notdir $@)'
-	mv -f '$(dir $@)~$$$(notdir $@)' $@
+	@tmp='$(dir $@)~$$$(notdir $@)'; \
+	if $(WEASYPRINT) --pdf-variant pdf/ua-1 $< "$$tmp" 2>/dev/null; then :; \
+	elif $(WEASYPRINT) --pdf-tags $< "$$tmp" 2>/dev/null; then \
+	  echo "[pipeline] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
+	else \
+	  echo "[pipeline] balisage PDF indisponible -> PDF non balisé : $@"; \
+	  $(WEASYPRINT) $< "$$tmp"; \
+	fi; \
+	mv -f "$$tmp" $@
 
 # Conversion des Word déposés dans articles-word/ (D12, D26, D35, D39) :
 #  - migre au passage les anciens articles « à plat » vers articles/<slug>/ ;
