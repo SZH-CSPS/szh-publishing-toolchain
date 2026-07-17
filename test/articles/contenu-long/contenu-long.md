@@ -143,6 +143,10 @@ Erstens muss die begriffliche Heterogenität explizit gemacht werden, statt sie 
 
 Dieser letzte Punkt verdient besondere Beachtung.
 
+#### Ein nicht nummerierter Zwischentitel
+
+Dieser Zwischentitel (h4) hat dieselbe Grösse und Fettung wie ein h3, trägt aber keine Nummer — nützlich für eine feine Gliederung, ohne die Systematik der Nummerierung zu überladen.
+
 ### Offene methodische Fragen
 
 Trotz aller Sorgfalt bleiben Fragen offen, die sich nicht allein durch eine bessere Begriffsarbeit lösen lassen, sondern eine Weiterentwicklung des methodischen Instrumentariums erfordern:

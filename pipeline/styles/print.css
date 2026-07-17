@@ -255,10 +255,12 @@ h1:not(.szh-title), h2, h3, h4 {
 }
 h1:not(.szh-title):first-child, h2:first-child, h3:first-child, h4:first-child { margin-top: 0; }
 /* Tailles en rem (dynamiques vs racine) : décroissantes, TOUJOURS >= corps (0.875rem). */
-/* 3 niveaux seulement (h1–h3) ; h3 = taille du corps (distingué par gras + numéro). */
+/* h1–h3 numérotés (1 / 1.1 / 1.1.1) ; h3 = taille du corps. h4 = MÊME taille et graisse
+   que h3, mais SANS numéro (titre non numéroté). */
 h1:not(.szh-title) { font-size: 1.2rem;  counter-increment: h1; counter-reset: h2 h3; }
 h2 { font-size: 1.05rem; counter-increment: h2; counter-reset: h3; }
 h3 { font-size: var(--body-size); counter-increment: h3; }
+h4 { font-size: var(--body-size); }   /* pas de counter-increment ni de ::before -> aucun numéro */
 h1:not(.szh-title)::before { content: counter(h1) "\A0"; }
 h2::before { content: counter(h1) "." counter(h2) "\A0"; }
 h3::before { content: counter(h1) "." counter(h2) "." counter(h3) "\A0"; }
@@ -273,7 +275,7 @@ li { position: relative; padding-left: 1.5em; margin: 0.3em 0;
   text-align: justify; hyphens: auto; overflow-wrap: break-word; }
 ul > li::before {
   content: "\25B8";                       /* ▸ triangle noir (BLACK RIGHT-POINTING SMALL TRIANGLE) */
-  position: absolute; left: 0.1em; top: -0.04em;
+  position: absolute; left: 0; top: -0.02em;   /* aligné sur la marge du texte (comme les numéros) */
   color: var(--c-bullet-marker); font-weight: 700; font-size: 1.05em; line-height: 1;
 }
 ol { counter-reset: liste-ol; }
