@@ -47,7 +47,7 @@
   --c-nuit:  #252B46;                       /* hero bleu nuit PERMANENT (D70) */
   --c-rule:  #d0cdc4;  --c-ruleSoft: #e4e1d8;
 
-  --body-size: 12px;
+  --body-size: 0.875rem;   /* corps : rem (accessibilité HTML) ; ~14px/10,5pt à l'export */
   --leading:   1.55;
 
   /* Couleur annuelle — REPLI GRIS neutre (D72). accent-css.py surcharge ces
@@ -87,7 +87,10 @@
    Marges nulles -> les margin boxes se replient : pas d'en-tête / pied sur la
    couverture (l'en-tête / le pied ne concernent que les pages courantes). */
 @page :first {
-  margin: 0;
+  /* C2 : marges héritées de @page (le corps coule AVEC marges dès la 1re page) ;
+     le hero déborde jusqu'aux bords via marges négatives (.szh-hero). On masque
+     seulement l'en-tête courant (le hero le remplace) ; le pied reste. */
+  @top-center { content: none; }
 }
 
 /* En-tête courant : dossier/type à gauche, Vol·numéro/année à droite, filet dessous. */
@@ -114,8 +117,9 @@
 .szh-pied-courant .folio::after { content: counter(page); }
 
 /* ═══ 4. Typographie de base ══════════════════════════════════════════════════ */
-html { font-size: 100%; }
+html { font-size: 100%; margin: 0; padding: 0; }
 body {
+  margin: 0; padding: 0;   /* C4 : annule la marge UA de WeasyPrint (liseré blanc). */
   font-family: var(--font-sans);
   font-size: var(--body-size);
   line-height: var(--leading);
@@ -124,7 +128,23 @@ body {
 }
 p { margin: 0 0 0.62em; text-align: justify; hyphens: auto; overflow-wrap: break-word; }
 p:last-child { margin-bottom: 0; }
-a { color: inherit; text-decoration: none; }
+/* ── Liens (C5) ────────────────────────────────────────────────────────────
+   Corps : bleu SZH #002A56, souligné léger, survol noir, + flèche « lien » auto
+   (même picto que le hero). Hero : liens clairs, flèche INLINE blanche (template),
+   pas de double flèche. */
+a[href] {
+  color: #002A56;
+  text-decoration: underline; text-decoration-thickness: 0.06em; text-underline-offset: 0.15em;
+}
+a[href]:hover { color: #000000; }
+a[href]::after {
+  content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23002A56' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 L17 7'/%3E%3Cpath d='M8 7 H17 V16'/%3E%3C/svg%3E");
+  margin-left: 0.15em;
+}
+.szh-hero a[href] { color: #E2E4EC; }
+.szh-hero a[href]:hover { color: #E2E4EC; }
+.szh-hero a[href]::after { content: none; }         /* flèche inline déjà présente */
+.szh-hero .szh-arrow { color: #ffffff; }             /* flèche du hero -> blanche */
 strong, b { font-weight: 700; }
 em, i { font-style: italic; }
 code, pre, kbd, samp { font-family: var(--font-mono); }
@@ -134,16 +154,19 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 #title-block-header { display: none; }
 
 /* ═══ 5. Couverture (hero, filet, résumés, mots-clés) — M2 ════════════════════
-   La couverture occupe la 1re page (pleine-marge). Le corps de l'article démarre
-   à la page suivante (break-after: page) : le rédacteur n'écrit pas la couverture,
-   elle est peuplée depuis les métadonnées (template + filtre). */
-.szh-cover { break-after: page; }
+   La couverture occupe le HAUT de la 1re page : le hero déborde jusqu'aux bords
+   (marges négatives, C2) et le corps de l'article coule juste après les résumés,
+   sur la même page (pas de saut forcé). Peuplée depuis les métadonnées. */
 
 /* Hero — fond bleu nuit PERMANENT (D70), déborde jusqu'aux bords (@page:first marge 0). */
 .szh-hero {
   position: relative; overflow: hidden;
   background: var(--c-nuit); color: #fff;
-  padding: 44px 56px 40px; min-height: 250px;
+  padding: 44px 64px 40px; min-height: 300px;
+  /* C2 : déborde jusqu'aux bords (annule les marges @page de la 1re page). */
+  margin: -74px -64px 0 -64px;
+  /* C3 : colonne flex -> bloc auteur/DOI/licence ancré en bas (hauteur fixe). */
+  display: flex; flex-direction: column;
 }
 .szh-hero-top { position: relative; display: flex; justify-content: space-between;
   align-items: flex-start; gap: 16px; }
@@ -155,14 +178,14 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .szh-hero-vol { color: #C5C8D4; white-space: nowrap; text-align: right;
   font-variant-numeric: tabular-nums; }
 
-.szh-hero-main { position: relative; max-width: 68%; }
+.szh-hero-main { position: relative; max-width: 68%; flex: 1; display: flex; flex-direction: column; }
 .szh-title {
   font-family: var(--title-family); font-weight: 600; font-size: 28px; line-height: 1.12;
   letter-spacing: -0.005em; color: #fff; margin: 20px 0 0; text-align: left; hyphens: manual;
 }
 .szh-subtitle { font-family: var(--title-family); font-weight: 400; font-size: 14.5px;
   line-height: 1.35; color: #E2E4EC; margin: 12px 0 0; text-align: left; }
-.szh-hero-meta { margin-top: 20px; }
+.szh-hero-meta { margin-top: auto; padding-top: 20px; }   /* C3 : ancré en bas du hero */
 .szh-authors { font-size: 12.5px; font-weight: 700; color: #fff; }
 .szh-authors .sep { opacity: 0.5; margin: 0 6px; font-weight: 400; }
 .szh-doi, .szh-licence {
@@ -176,10 +199,10 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
   opacity: 0.07; }
 
 /* Filet 6 px couleur annuelle sous le hero (pleine largeur, D70). */
-.szh-filet { height: 6px; background: var(--c-annual); }
+.szh-filet { height: 6px; background: var(--c-annual); margin: 0 -64px; }   /* C2 : pleine largeur */
 
 /* Résumés (Zusammenfassung / Résumé) + mots-clés. */
-.szh-cover-body { padding: 24px 56px 40px; }
+.szh-cover-body { padding: 24px 0 40px; }   /* C2 : marges gérées par @page (le corps s'aligne) */
 .szh-abstract {
   background: #f3f3f4; padding: 16px 20px; margin-bottom: 14px;
   border-left: 3px solid var(--c-abstract-border);

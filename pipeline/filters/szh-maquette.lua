@@ -172,5 +172,30 @@ function Meta(meta)
   meta['sous-titre-affiche'] = pandoc.MetaString(choisir(meta.subtitle, lang))
   meta['resumes']          = pandoc.MetaList(resumes)
   meta['licence-texte']    = pandoc.MetaString(LICENCES[lang] or LICENCES.fr)
+
+  -- Métadonnées de document tirées du meta.yaml de l'article : <title> + <meta>
+  -- HTML ET /Title, /Author, /Lang du PDF (requis pour PDF/UA). `pagetitle` évite
+  -- l'avertissement pandoc « nonempty <title> » + le repli sur le slug.
+  local titre = choisir(meta.title, lang)
+  meta['pagetitle'] = pandoc.MetaString(titre)
+  meta['lang'] = pandoc.MetaString(lang)
+  meta['description'] = pandoc.MetaString(choisir(meta.resume, lang))
+  local noms = {}
+  local auteurs = meta.author or meta.auteurs
+  if auteurs ~= nil then
+    for _, a in ipairs(auteurs) do
+      local nm
+      if type(a) == 'table' and (a.nom ~= nil or a.prenom ~= nil) then
+        local n = S(a.nom)
+        local p = S(a.prenom)
+        nm = n
+        if p ~= '' then nm = (n ~= '' and (n .. ', ' .. p) or p) end
+      else
+        nm = S(a)
+      end
+      if nm ~= '' then table.insert(noms, pandoc.MetaString(nm)) end
+    end
+  end
+  meta['auteurs-noms'] = pandoc.MetaList(noms)
   return meta
 end
