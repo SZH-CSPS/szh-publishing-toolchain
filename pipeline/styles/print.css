@@ -255,15 +255,14 @@ h1:not(.szh-title), h2, h3, h4 {
 }
 h1:not(.szh-title):first-child, h2:first-child, h3:first-child, h4:first-child { margin-top: 0; }
 /* Tailles en rem (dynamiques vs racine) : décroissantes, TOUJOURS >= corps (0.875rem). */
-h1:not(.szh-title) { font-size: 1.2rem;  counter-increment: h1; counter-reset: h2 h3 h4; }
-h2 { font-size: 1.1rem;  counter-increment: h2; counter-reset: h3 h4; }
-h3 { font-size: 1rem;    counter-increment: h3; counter-reset: h4; }
-h4 { font-size: 0.95rem; counter-increment: h4; }
+/* 3 niveaux seulement (h1–h3) ; h3 = taille du corps (distingué par gras + numéro). */
+h1:not(.szh-title) { font-size: 1.2rem;  counter-increment: h1; counter-reset: h2 h3; }
+h2 { font-size: 1.05rem; counter-increment: h2; counter-reset: h3; }
+h3 { font-size: var(--body-size); counter-increment: h3; }
 h1:not(.szh-title)::before { content: counter(h1) "\A0"; }
 h2::before { content: counter(h1) "." counter(h2) "\A0"; }
 h3::before { content: counter(h1) "." counter(h2) "." counter(h3) "\A0"; }
-h4::before { content: counter(h1) "." counter(h2) "." counter(h3) "." counter(h4) "\A0"; }
-h1:not(.szh-title)::before, h2::before, h3::before, h4::before {
+h1:not(.szh-title)::before, h2::before, h3::before {
   color: #000000; font-variant-numeric: tabular-nums; margin-right: 0.35em;
 }
 
@@ -329,7 +328,7 @@ blockquote p:last-child { margin-bottom: 0; }
 /* ═══ Numérotation automatique des figures et tableaux (D31) — hérité ═════════
    Les numéros manuels sont retirés à l'import ; la numérotation suit l'ordre
    du document et le libellé suit la langue de l'article (:lang). */
-body { counter-reset: h1 h2 h3 h4 compteur-figure compteur-tableau; }
+body { counter-reset: h1 h2 h3 compteur-figure compteur-tableau; }
 
 figure { break-inside: avoid; margin: 1.4em 0; text-align: center; }
 figure img { max-width: 100%; }
