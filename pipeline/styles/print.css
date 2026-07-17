@@ -255,9 +255,9 @@ h1:not(.szh-title), h2, h3, h4 {
 }
 h1:not(.szh-title):first-child, h2:first-child, h3:first-child, h4:first-child { margin-top: 0; }
 /* Tailles en rem (dynamiques vs racine) : décroissantes, TOUJOURS >= corps (0.875rem). */
-h1:not(.szh-title) { font-size: 1.75rem; counter-increment: h1; counter-reset: h2 h3 h4; }
-h2 { font-size: 1.45rem; counter-increment: h2; counter-reset: h3 h4; }
-h3 { font-size: 1.2rem;  counter-increment: h3; counter-reset: h4; }
+h1:not(.szh-title) { font-size: 1.35rem; counter-increment: h1; counter-reset: h2 h3 h4; }
+h2 { font-size: 1.2rem;  counter-increment: h2; counter-reset: h3 h4; }
+h3 { font-size: 1.1rem;  counter-increment: h3; counter-reset: h4; }
 h4 { font-size: 1rem;    counter-increment: h4; }
 h1:not(.szh-title)::before { content: counter(h1) "\A0"; }
 h2::before { content: counter(h1) "." counter(h2) "\A0"; }
