@@ -15,13 +15,46 @@
     if (courant) { courant.classList.add('szh-survol'); }
   });
   document.addEventListener('click', function (e) {
-    var c = e.target && e.target.closest ? e.target.closest('[data-pos]') : null;
-    if (!c) { return; }
+    // Le bandeau (bouton « Voir en PDF ») a son propre gestionnaire : ne jamais
+    // le traiter comme un clic de navigation.
+    if (e.target && e.target.closest && e.target.closest('#szh-bandeau')) { return; }
+    var res = resoudreClic(e.target, e.clientX, e.clientY);
+    if (!res) { return; }
     e.preventDefault();
     // A2 : en plus du bloc (data-pos), on transmet le MOT sous le curseur pour viser
     // le mot exact dans la source (repli bloc côté hôte si vide/introuvable).
-    vscodeApi.postMessage({ type: 'revele', pos: c.getAttribute('data-pos'), mot: motAuPoint(e.clientX, e.clientY) });
+    vscodeApi.postMessage({ type: 'revele', pos: res.pos, mot: res.mot });
   });
+
+  // G1 — résolution robuste d'un clic en { pos, mot }. Chemin normal : le bloc/mot
+  // sous le curseur (closest data-pos), qui porte aussi le MOT exact pour l'A2.
+  // Repli : un clic tombé dans une zone SANS position — typiquement un tableau
+  // inclus, dont le RawBlock HTML n'a pas de data-pos — vise le bloc positionné le
+  // plus proche dans l'ordre du document (jamais de clic « perdu », y compris pour
+  // les blocs qui suivent un tableau). Pas de mot dans ce cas : le texte cliqué
+  // (une cellule) n'appartient pas à la source .md.
+  function resoudreClic(cible, x, y) {
+    var c = cible && cible.closest ? cible.closest('[data-pos]') : null;
+    if (c) { return { pos: c.getAttribute('data-pos'), mot: motAuPoint(x, y) }; }
+    var voisin = blocPositionneLePlusProche(cible);
+    if (voisin) { return { pos: voisin.getAttribute('data-pos'), mot: '' }; }
+    return null;
+  }
+
+  // Bloc positionné (data-pos) le plus proche de `cible` dans l'ordre du document :
+  // le dernier qui la précède, sinon le premier qui la suit. Sert au repli de clic
+  // dans une zone non positionnée (tableau inclus).
+  function blocPositionneLePlusProche(cible) {
+    if (!cible || !cible.compareDocumentPosition) { return null; }
+    var els = document.querySelectorAll('[data-pos]');
+    var precedent = null, suivant = null;
+    for (var i = 0; i < els.length; i++) {
+      var rel = cible.compareDocumentPosition(els[i]);
+      if (rel & Node.DOCUMENT_POSITION_PRECEDING) { precedent = els[i]; }
+      else if ((rel & Node.DOCUMENT_POSITION_FOLLOWING) && !suivant) { suivant = els[i]; }
+    }
+    return precedent || suivant;
+  }
 
   // A2 — mot sous le point (x, y) via l'API de caret du moteur (Chromium/Electron).
   // Étend depuis l'offset du clic jusqu'aux délimiteurs (espaces + ponctuation
