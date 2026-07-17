@@ -62,15 +62,15 @@ $endfor$
 $if(sous-titre-affiche)$
       <p class="szh-subtitle">$sous-titre-affiche$</p>
 $endif$
-      <div class="szh-hero-meta">
+    </div>
+    <div class="szh-hero-meta">
 $if(author)$
-        <div class="szh-authors">$for(author)$$author.nom$$if(author.prenom)$, $author.prenom$$endif$$sep$<span class="sep">·</span>$endfor$</div>
+      <div class="szh-authors">$for(author)$$author.nom$$if(author.prenom)$, $author.prenom$$endif$$sep$<span class="sep">·</span>$endfor$</div>
 $endif$
 $if(doi)$
-        <a class="szh-doi" href="https://doi.org/$doi$"><span>DOI: $doi$</span><svg class="szh-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 L17 7"/><path d="M8 7 H17 V16"/></svg></a>
+      <a class="szh-doi" href="https://doi.org/$doi$"><span>DOI: $doi$</span><svg class="szh-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 L17 7"/><path d="M8 7 H17 V16"/></svg></a>
 $endif$
-        <a class="szh-licence" href="https://creativecommons.org/licenses/by/4.0/"><span>$licence-texte$</span><svg class="szh-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 L17 7"/><path d="M8 7 H17 V16"/></svg></a>
-      </div>
+      <a class="szh-licence" href="https://creativecommons.org/licenses/by/4.0/"><span>$licence-texte$</span><svg class="szh-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 L17 7"/><path d="M8 7 H17 V16"/></svg></a>
     </div>
   </header>
   <div class="szh-filet"></div>

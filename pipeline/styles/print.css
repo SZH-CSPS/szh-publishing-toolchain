@@ -162,11 +162,13 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .szh-hero {
   position: relative; overflow: hidden;
   background: var(--c-nuit); color: #fff;
-  padding: 44px 64px 40px; min-height: 300px;
+  padding: 44px 64px 40px;
+  /* Hauteur FIXE -> le hero fait toujours la même hauteur, le titre commence
+     toujours à la même position, DOI/licence toujours au même endroit. */
+  height: 380px;
   /* C2 : déborde jusqu'aux bords (annule les marges @page de la 1re page). */
   margin: -74px -64px 0 -64px;
-  /* C3 : colonne flex -> bloc auteur/DOI/licence ancré en bas (hauteur fixe). */
-  display: flex; flex-direction: column;
+  box-sizing: border-box;   /* height = hauteur TOTALE (padding inclus) */
 }
 .szh-hero-top { position: relative; display: flex; justify-content: space-between;
   align-items: flex-start; gap: 16px; }
@@ -178,14 +180,18 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .szh-hero-vol { color: #C5C8D4; white-space: nowrap; text-align: right;
   font-variant-numeric: tabular-nums; }
 
-.szh-hero-main { position: relative; max-width: 68%; flex: 1; display: flex; flex-direction: column; }
+/* Largeur limitée (dégage le filigrane « livre ») ; hauteur bornée pour que le titre
+   ne chevauche jamais le bloc auteurs/DOI (un titre vraiment trop long est rogné). */
+.szh-hero-main { max-width: 62%; max-height: 168px; overflow: hidden; }
 .szh-title {
   font-family: var(--title-family); font-weight: 600; font-size: 28px; line-height: 1.12;
   letter-spacing: -0.005em; color: #fff; margin: 20px 0 0; text-align: left; hyphens: manual;
 }
 .szh-subtitle { font-family: var(--title-family); font-weight: 400; font-size: 14.5px;
   line-height: 1.35; color: #E2E4EC; margin: 12px 0 0; text-align: left; }
-.szh-hero-meta { margin-top: auto; padding-top: 20px; }   /* C3 : ancré en bas du hero */
+/* Ancré en bas du hero par position absolue (le flexbox de WeasyPrint ne gère pas
+   margin-top:auto) : DOI/licence TOUJOURS à la même position, indépendante du titre. */
+.szh-hero-meta { position: absolute; left: 64px; bottom: 38px; max-width: 76%; }
 .szh-authors { font-size: 12.5px; font-weight: 700; color: #fff; }
 .szh-authors .sep { opacity: 0.5; margin: 0 6px; font-weight: 400; }
 .szh-doi, .szh-licence {
