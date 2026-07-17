@@ -26,6 +26,14 @@ cd "$DIR" || exit 1
 # document, premier niveau) DOIT rester alignée avec szh-tabelle-reference.lua.
 python3 "$PIPE/docx-tables.py" "$DOCX_ABS" tables || exit 1
 
+# Titres déduits (AX4) : pré-pass Python qui lit les tailles de police dans
+# word/document.xml (pandoc les perd) et écrit un fichier de titres présumés,
+# consommé par szh-titres.lua pendant la conversion. Non bloquant : mktemp crée
+# déjà le fichier (vide = aucun titre), un échec du pré-pass laisse l'import passer.
+TITRES="$(mktemp)"
+python3 "$PIPE/docx-titres.py" "$DOCX_ABS" "$TITRES" || true
+export SZH_TITRES="$TITRES"
+
 # --extract-media=. : images extraites sous media/ (chemins relatifs au .md,
 #   corrects car le build HTML tourne DANS le dossier de l'article). ⚠ =media doublerait en media/media/.
 # -simple_tables-multiline_tables-grid_tables : sans objet ici (les tableaux sont
@@ -35,9 +43,11 @@ pandoc "$DOCX_ABS" \
   --to=markdown-simple_tables-multiline_tables-grid_tables \
   --track-changes=accept \
   --extract-media=. \
+  --lua-filter="$PIPE/filters/szh-titres.lua" \
   --lua-filter="$PIPE/filters/szh-tabelle-reference.lua" \
   --wrap=none \
-  -o "$SLUG.md" || exit 1
+  -o "$SLUG.md" || { rm -f "$TITRES"; exit 1; }
+rm -f "$TITRES"
 
 # Pas de tableau dans ce docx : ne pas laisser un tables/ vide.
 rmdir tables 2>/dev/null || true
