@@ -507,7 +507,7 @@ function pousserDefilementVersApercu(ligne0Based) {
     if (!panneauApercuHtml) { return; }
     try { panneauApercuHtml.webview.postMessage({ type: 'scroll', ligne: ligne0Based + 1 }); }
     catch (e) { /* webview fermée entre-temps */ }
-  }, 60);
+  }, 35);
 }
 
 // Injecte dans le HTML autonome de pandoc : CSP stricte, bandeau, styles de

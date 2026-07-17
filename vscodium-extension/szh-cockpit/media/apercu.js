@@ -79,22 +79,28 @@
   }
 
   // --- A1 : défilement synchronisé -----------------------------------------------
-  // « fichier@L:C-L:C » (ou « L:C-… ») -> L (numéro de ligne source, 1-based). null si illisible.
-  function ligneDe(pos) {
+  // « fichier@L1:C-L2:C » (ou « L1:C-L2:C ») -> { l1, l2 } (lignes source 1-based).
+  // null si illisible. l2 = ligne de FIN (utile à l'interpolation G2 et au bloc
+  // contenant une ligne, G3).
+  function bornesDe(pos) {
     var t = String(pos || '');
     var d = t.indexOf('@') !== -1 ? t.slice(t.indexOf('@') + 1) : t;
-    var m = d.match(/^(\d+):/);
-    return m ? parseInt(m[1], 10) : null;
+    var m = d.match(/^(\d+):\d+-(\d+):/);
+    if (!m) {
+      var s = d.match(/^(\d+):/);
+      return s ? { l1: parseInt(s[1], 10), l2: parseInt(s[1], 10) } : null;
+    }
+    return { l1: parseInt(m[1], 10), l2: parseInt(m[2], 10) };
   }
 
-  // Blocs positionnés, triés par ligne source (= ordre du document).
+  // Blocs positionnés, triés par ligne source de début (= ordre du document).
   var blocs = [];
   function indexerBlocs() {
     blocs = [];
     var els = document.querySelectorAll('[data-pos]');
     for (var i = 0; i < els.length; i++) {
-      var l = ligneDe(els[i].getAttribute('data-pos'));
-      if (l !== null) { blocs.push({ el: els[i], ligne: l }); }
+      var b = bornesDe(els[i].getAttribute('data-pos'));
+      if (b) { blocs.push({ el: els[i], ligne: b.l1, ligneFin: b.l2 }); }
     }
     blocs.sort(function (a, b) { return a.ligne - b.ligne; });
   }
@@ -109,18 +115,39 @@
   var minuteurProg = null;
   var minuteurScroll = null;
 
-  // Éditeur -> aperçu : amener au sommet le bloc dont la ligne de début est la plus
-  // proche (<=) de `ligne`.
+  function sommetAbsolu(el) {
+    return el.getBoundingClientRect().top + (window.pageYOffset || 0);
+  }
+
+  // Éditeur -> aperçu : positionner l'aperçu en face de `ligne` (fractionnaire
+  // possible). G2 — interpolation INTRA-bloc : au lieu de caler au début du bloc
+  // courant (paliers de plusieurs lignes dans un long paragraphe), on interpole
+  // PROPORTIONNELLEMENT entre le sommet du bloc courant (dernière position <=
+  // ligne) et celui du bloc suivant (première position à une ligne strictement
+  // supérieure) -> suivi continu. Les positions inline (un span par mot, sur
+  // chaque ligne rendue) donnent déjà une granularité fine ; l'interpolation
+  // couvre les lignes sans span (lignes vides, ruptures internes).
   function scrollVersLigne(ligne) {
     if (!blocs.length) { indexerBlocs(); }
     if (!blocs.length) { return; }
-    var cible = blocs[0];
-    for (var i = 0; i < blocs.length; i++) {
-      if (blocs[i].ligne <= ligne) { cible = blocs[i]; } else { break; }
+    var i = 0;
+    for (var k = 0; k < blocs.length; k++) {
+      if (blocs[k].ligne <= ligne) { i = k; } else { break; }
+    }
+    var courant = blocs[i];
+    var y = sommetAbsolu(courant.el);
+    var suivant = null;
+    for (var j = i + 1; j < blocs.length; j++) {
+      if (blocs[j].ligne > courant.ligne) { suivant = blocs[j]; break; }
+    }
+    if (suivant) {
+      var portee = suivant.ligne - courant.ligne;
+      var frac = portee > 0 ? (ligne - courant.ligne) / portee : 0;
+      if (frac < 0) { frac = 0; } else if (frac > 1) { frac = 1; }
+      y += frac * (sommetAbsolu(suivant.el) - y);
     }
     defilementProgrammatique = true;
-    var y = cible.el.getBoundingClientRect().top + (window.pageYOffset || 0) - bandeauHauteur() - 4;
-    window.scrollTo(0, Math.max(0, y));
+    window.scrollTo(0, Math.max(0, y - bandeauHauteur() - 4));
     if (minuteurProg) { clearTimeout(minuteurProg); }
     minuteurProg = setTimeout(function () { defilementProgrammatique = false; }, 150);
   }
@@ -145,7 +172,7 @@
       if (!blocs.length) { indexerBlocs(); }
       var c = blocAuSommet();
       if (c) { vscodeApi.postMessage({ type: 'scrollSource', ligne: c.ligne }); }
-    }, 70);
+    }, 35);
   }, { passive: true });
 
   window.addEventListener('message', function (e) {
