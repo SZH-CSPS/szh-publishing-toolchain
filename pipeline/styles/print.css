@@ -74,7 +74,7 @@
    posés une seule fois par le template et tirés ici. */
 @page {
   size: A4;
-  margin: 86px 64px 78px 64px;
+  margin: 86px 72px 78px 72px;
 
   /* width: 100% donne une largeur définie à la boîte -> l'élément running (flex,
      justify-content: space-between) occupe toute la largeur imprimable et écarte
@@ -128,7 +128,7 @@ body {
   color: var(--c-ink);
   hyphens: auto;
 }
-p { margin: 0 0 0.62em; text-align: justify; hyphens: auto; overflow-wrap: break-word; }
+p { margin: 0 0 0.7em; text-align: justify; hyphens: auto; overflow-wrap: break-word; }
 p:last-child { margin-bottom: 0; }
 /* ── Liens (C5) ────────────────────────────────────────────────────────────
    Corps : bleu SZH #002A56, souligné léger, survol noir, + flèche « lien » auto
@@ -155,7 +155,7 @@ a.footnote-ref, a.footnote-back { text-decoration: none; }
 /* ── Veuves & orphelines / coupures propres ────────────────────────────────
    Jamais une ligne seule en bas (orphan) ni en haut (widow) d'une page ; les
    titres restent avec le texte qui suit ; les encadrés ne se coupent pas. */
-p, li, blockquote p { orphans: 2; widows: 2; }
+p, li, blockquote p { orphans: 3; widows: 3; }
 h1:not(.szh-title), h2, h3, h4 { break-after: avoid-page; break-inside: avoid; }
 blockquote, .hervorhebung, .important, .question, figure, .szh-abstract { break-inside: avoid; }
 li { break-inside: avoid; }
@@ -176,13 +176,13 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .szh-hero {
   position: relative; overflow: hidden;
   background: var(--c-nuit); color: #fff;
-  padding: 44px 64px 40px;
+  padding: 44px 72px 40px;
   /* Hauteur FIXE -> le hero fait toujours la même hauteur, le titre commence
      toujours à la même position, DOI/licence toujours au même endroit. */
   height: 380px;
   /* C2 : déborde jusqu'aux bords (annule les marges @page de la 1re page :
      le haut DOIT égaler la marge @page en cours — sinon bande blanche en haut). */
-  margin: -86px -64px 0 -64px;
+  margin: -86px -72px 0 -72px;
   box-sizing: border-box;   /* height = hauteur TOTALE (padding inclus) */
 }
 .szh-hero-top { position: relative; display: flex; justify-content: space-between;
@@ -206,7 +206,7 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
   line-height: 1.35; color: #E2E4EC; margin: 12px 0 0; text-align: left; }
 /* Ancré en bas du hero par position absolue (le flexbox de WeasyPrint ne gère pas
    margin-top:auto) : DOI/licence TOUJOURS à la même position, indépendante du titre. */
-.szh-hero-meta { position: absolute; left: 64px; bottom: 38px; max-width: 76%; }
+.szh-hero-meta { position: absolute; left: 72px; bottom: 38px; max-width: 76%; }
 .szh-authors { font-size: 12.5px; font-weight: 700; color: #fff; }
 .szh-authors .sep { opacity: 0.5; margin: 0 6px; font-weight: 400; }
 .szh-doi, .szh-licence {
@@ -220,7 +220,7 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
   opacity: 0.07; }
 
 /* Filet 6 px couleur annuelle sous le hero (pleine largeur, D70). */
-.szh-filet { height: 6px; background: var(--c-annual); margin: 0 -64px; }   /* C2 : pleine largeur */
+.szh-filet { height: 6px; background: var(--c-annual); margin: 0 -72px; }   /* C2 : pleine largeur */
 
 /* Résumés (Zusammenfassung / Résumé) + mots-clés. */
 .szh-cover-body { padding: 24px 0 40px; }   /* C2 : marges gérées par @page (le corps s'aligne) */
@@ -251,13 +251,13 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 h1:not(.szh-title), h2, h3, h4 {
   font-family: var(--title-family); font-weight: 700; line-height: 1.22;
   color: var(--c-ink); text-align: left; letter-spacing: -0.005em;
-  margin: 0.55em 0 0.3em; break-after: avoid; hyphens: manual;
+  margin: 1.4em 0 0.4em; break-after: avoid; hyphens: manual;
 }
 h1:not(.szh-title):first-child, h2:first-child, h3:first-child, h4:first-child { margin-top: 0; }
 /* Tailles en rem (dynamiques vs racine) : décroissantes, TOUJOURS >= corps (0.875rem). */
-h1:not(.szh-title) { font-size: 1.5rem;  counter-increment: h1; counter-reset: h2 h3 h4; }
-h2 { font-size: 1.3rem;  counter-increment: h2; counter-reset: h3 h4; }
-h3 { font-size: 1.15rem; counter-increment: h3; counter-reset: h4; }
+h1:not(.szh-title) { font-size: 1.75rem; counter-increment: h1; counter-reset: h2 h3 h4; }
+h2 { font-size: 1.45rem; counter-increment: h2; counter-reset: h3 h4; }
+h3 { font-size: 1.2rem;  counter-increment: h3; counter-reset: h4; }
 h4 { font-size: 1rem;    counter-increment: h4; }
 h1:not(.szh-title)::before { content: counter(h1) "\A0"; }
 h2::before { content: counter(h1) "." counter(h2) "\A0"; }
@@ -269,8 +269,8 @@ h1:not(.szh-title)::before, h2::before, h3::before, h4::before {
 
 /* Listes : puce = triangle ▸ NOIR (~1.2 em) ; numérotée « 1. » NOIRE, via compteurs.
    Texte justifié + césure (hérité de `p`/`li`). */
-ul, ol { margin: 0.5em 0; padding: 0; list-style: none; }
-li { position: relative; padding-left: 1.5em; margin: 0.34em 0;
+ul, ol { margin: 0.7em 0; padding: 0; list-style: none; }
+li { position: relative; padding-left: 1.5em; margin: 0.3em 0;
   text-align: justify; hyphens: auto; overflow-wrap: break-word; }
 ul > li::before {
   content: "\25B8";                       /* ▸ triangle noir (BLACK RIGHT-POINTING SMALL TRIANGLE) */
@@ -288,15 +288,15 @@ ol > li::before {
 /* Listes imbriquées : re-numérotation / re-puçage cohérents. */
 li > ul, li > ol { margin: 0.2em 0 0.1em; }
 
-/* Citation (blockquote « > ») : italique, justifiée, SANS bordure ni retrait (BFZitat). */
-blockquote { margin: 0.6em 0; padding: 0; border: 0; font-style: italic; }
+/* Citation (blockquote « > ») : italique, justifiée, léger retrait gauche (sans bordure). */
+blockquote { margin: 0.8em 0; padding: 0 0 0 0.8em; border: 0; font-style: italic; }
 blockquote p { margin: 0 0 0.4em; text-align: justify; hyphens: auto; }
 blockquote p:last-child { margin-bottom: 0; }
 
 /* Hervorhebung (::: {.hervorhebung} / alias .highlight) : barre latérale gauche
    couleur annuelle + texte agrandi (BFPull « bar »). */
 .hervorhebung, .highlight {
-  margin: 0.85em 0; padding: 0 0 0 20px; border: 0;
+  margin: 1em 0; padding: 0 0 0 20px; border: 0;
   border-left: 4px solid var(--c-annual); break-inside: avoid;
 }
 .hervorhebung > *, .highlight > * {
@@ -308,7 +308,7 @@ blockquote p:last-child { margin-bottom: 0; }
    annuelle + titre capitales noir (data-titre, défaut « Information ») (BFInfoBox). */
 .important {
   background: var(--annual-soft); border-left: 4px solid var(--c-annual);
-  padding: 15px 18px; margin: 1em 0; break-inside: avoid;
+  padding: 15px 18px; margin: 1.2em 0; break-inside: avoid;
 }
 .important::before {
   content: "Information"; display: block;
@@ -322,7 +322,7 @@ blockquote p:last-child { margin-bottom: 0; }
 /* Question (::: {.question}) — hors maquette, conservé pour l'éditeur ; accent annuel. */
 .question {
   background: var(--annual-tint); border-left: 4px solid var(--c-annual-ui);
-  padding: 12px 16px; margin: 1em 0; break-inside: avoid;
+  padding: 12px 16px; margin: 1.2em 0; break-inside: avoid;
 }
 .question > *:last-child { margin-bottom: 0; }
 
@@ -331,9 +331,9 @@ blockquote p:last-child { margin-bottom: 0; }
    du document et le libellé suit la langue de l'article (:lang). */
 body { counter-reset: h1 h2 h3 h4 compteur-figure compteur-tableau; }
 
-figure { break-inside: avoid; margin: 1.2em 0; text-align: center; }
+figure { break-inside: avoid; margin: 1.4em 0; text-align: center; }
 figure img { max-width: 100%; }
-figure > figcaption { font-size: 9.5pt; color: #444; margin-top: 0.5em; text-align: left; }
+figure > figcaption { font-size: 0.85rem; color: #444; margin-top: 0.5em; text-align: left; }
 figure > figcaption::before {
   counter-increment: compteur-figure;
   content: "Figure " counter(compteur-figure) " — ";
@@ -342,7 +342,7 @@ figure > figcaption::before {
 :lang(de) figure > figcaption::before { content: "Abbildung " counter(compteur-figure) " — "; }
 
 /* Tableaux importés bruts (<table> nu, non .szh-tableau) : style générique sobre. */
-table { border-collapse: collapse; font-size: 10pt; margin: 1.2em 0; width: 100%; }
+table { border-collapse: collapse; font-size: 0.85rem; margin: 1.4em 0; width: 100%; }
 th, td { border: 1px solid #999; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }
 th { background: #eee; }
 table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: #444; margin-bottom: 0.4em; }
