@@ -1,0 +1,24 @@
+type: article
+title:
+  fr: "Article d'itération pour éprouver les coupures de page"
+  de: "Testartikel zur Prüfung der Seitenumbrüche"
+subtitle:
+  fr: "Veuves, orphelines, styles éditoriaux et redimensionnement des tableaux"
+  de: "Witwen, Waisen, Stile und Tabellen"
+resume:
+  fr: "Cet article de test enchaîne titres, listes, citations, encadrés et tableaux afin de provoquer des coupures de page difficiles et de vérifier l'absence de veuves et d'orphelines."
+  de: "Dieser Testartikel reiht Überschriften, Listen, Zitate, Kästen und Tabellen aneinander, um schwierige Seitenumbrüche zu provozieren."
+keywords:
+  fr:
+  - "test"
+  - "coupures"
+  - "styles"
+  de:
+  - "Test"
+  - "Umbrüche"
+doi: "10.57262/szh/2026-iter-001"
+author:
+- prenom: "Robin"
+  nom: "Morand"
+- prenom: "Alice"
+  nom: "Meier"
