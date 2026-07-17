@@ -74,7 +74,7 @@
    posés une seule fois par le template et tirés ici. */
 @page {
   size: A4;
-  margin: 74px 64px 66px 64px;
+  margin: 86px 64px 78px 64px;
 
   /* width: 100% donne une largeur définie à la boîte -> l'élément running (flex,
      justify-content: space-between) occupe toute la largeur imprimable et écarte
@@ -98,6 +98,7 @@
   position: running(enteteCourante);
   display: flex; justify-content: space-between; align-items: baseline;
   width: 100%; padding-bottom: 7px; border-bottom: 1px solid var(--c-rule);
+  margin-bottom: 20px;   /* espace en-tête -> contenu */
   font-family: var(--font-sans); font-size: 9px; font-weight: 700;
   text-transform: uppercase; letter-spacing: 0.14em;
 }
@@ -109,6 +110,7 @@
   position: running(piedCourant);
   display: flex; justify-content: space-between; align-items: baseline;
   width: 100%; padding-top: 8px; border-top: 1px solid var(--c-rule);
+  margin-top: 20px;   /* espace contenu -> pied */
   font-family: var(--font-sans); font-size: 9px; color: var(--c-ink3);
 }
 .szh-pied-courant .folio {
@@ -145,6 +147,18 @@ a[href]::after {
 .szh-hero a[href]:hover { color: #E2E4EC; }
 .szh-hero a[href]::after { content: none; }         /* flèche inline déjà présente */
 .szh-hero .szh-arrow { color: #ffffff; }             /* flèche du hero -> blanche */
+/* Notes de bas de page : pas de flèche « lien » automatique (l'appel de note et le
+   renvoi ↩ tiennent déjà lieu de repère). */
+.footnotes a::after, a.footnote-ref::after, a.footnote-back::after { content: none; }
+a.footnote-ref, a.footnote-back { text-decoration: none; }
+
+/* ── Veuves & orphelines / coupures propres ────────────────────────────────
+   Jamais une ligne seule en bas (orphan) ni en haut (widow) d'une page ; les
+   titres restent avec le texte qui suit ; les encadrés ne se coupent pas. */
+p, li, blockquote p { orphans: 2; widows: 2; }
+h1:not(.szh-title), h2, h3, h4 { break-after: avoid-page; break-inside: avoid; }
+blockquote, .hervorhebung, .important, .question, figure, .szh-abstract { break-inside: avoid; }
+li { break-inside: avoid; }
 strong, b { font-weight: 700; }
 em, i { font-style: italic; }
 code, pre, kbd, samp { font-family: var(--font-mono); }
@@ -182,7 +196,7 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 
 /* Largeur limitée (dégage le filigrane « livre ») ; hauteur bornée pour que le titre
    ne chevauche jamais le bloc auteurs/DOI (un titre vraiment trop long est rogné). */
-.szh-hero-main { max-width: 62%; max-height: 168px; overflow: hidden; }
+.szh-hero-main { max-width: 67%; max-height: 168px; overflow: hidden; }
 .szh-title {
   font-family: var(--title-family); font-weight: 600; font-size: 28px; line-height: 1.12;
   letter-spacing: -0.005em; color: #fff; margin: 20px 0 0; text-align: left; hyphens: manual;
