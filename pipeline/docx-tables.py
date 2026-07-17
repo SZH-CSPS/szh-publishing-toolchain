@@ -26,6 +26,8 @@
 # n'écrit rien, sort 0. La numérotation suit l'ordre du document : elle doit
 # rester alignée avec szh-tabelle-reference.lua (RM2).
 
+import os
+import re
 import sys
 import zipfile
 import xml.etree.ElementTree as ET
@@ -137,7 +139,49 @@ def ligne_a_tblheader(tr):
     return trpr is not None and trpr.find(W + 'tblHeader') is not None
 
 
-def html_du_tableau(tbl):
+# ---- Légendes de tableau (AX5) : un paragraphe VOISIN tout en gras = légende. ----
+# Elle est bakée en <caption> dans le HTML extrait (numéro manuel retiré : la
+# numérotation « Tableau N — » est automatique en CSS, D31) ; son texte normalisé
+# est consigné pour que szh-legendes.lua retire le paragraphe gras du .md.
+
+RE_NUM_TABLE = re.compile(
+    r'^(?:tableau|tabelle|table)\s+\d+[a-z]?\s*[:.–—‑-]?\s*', re.I)
+
+
+def normaliser(t):
+    """Espaces spéciaux -> espace, tirets spéciaux -> '-', compacté, rogné.
+    DOIT rester identique à la normalisation Lua (szh-legendes.lua)."""
+    for a, b in ((u' ', ' '), (u' ', ' '), (u' ', ' '),
+                 (u'–', '-'), (u'—', '-'), (u'‑', '-')):
+        t = t.replace(a, b)
+    return ' '.join(t.split())
+
+
+def texte_plat(p):
+    """Texte brut d'un paragraphe (sans balisage), tabulations -> espace."""
+    morceaux = []
+    for r in p.iter(W + 'r'):
+        for e in r:
+            if e.tag == W + 't':
+                morceaux.append(e.text or '')
+            elif e.tag == W + 'tab':
+                morceaux.append(' ')
+    return ''.join(morceaux)
+
+
+def paragraphe_tout_gras(p):
+    """Vrai si tous les runs porteurs de texte du paragraphe (w:p) sont en gras.
+    ⚠ prend un PARAGRAPHE (ses propres runs), pas une cellule comme _runs_directs."""
+    vu = False
+    for run in p.iter(W + 'r'):
+        if _run_texte(run):
+            vu = True
+            if not _run_gras(run):
+                return False
+    return vu
+
+
+def html_du_tableau(tbl, caption=None):
     """Rend un w:tbl en <table>, fusions préservées + en-têtes accessibles (AX2)."""
     lignes = [tr for tr in tbl if tr.tag == W + 'tr']
     # Pré-analyse : pour chaque ligne, cellules avec (colonne de départ, colspan,
@@ -253,6 +297,8 @@ def html_du_tableau(tbl):
         return out
 
     sortie = ['<table>']
+    if caption:
+        sortie.append('<caption>%s</caption>' % escape(caption))
     if lignes_entete > 0:
         sortie.append('<thead>')
         for i in range(lignes_entete):
@@ -271,20 +317,40 @@ def html_du_tableau(tbl):
 
 
 def tableaux_de_premier_niveau(racine):
-    """Tous les w:tbl du document SAUF ceux imbriqués dans un autre w:tbl,
-    dans l'ordre du document (parcours en profondeur qui ne descend pas
-    dans les tableaux)."""
+    """Tous les w:tbl du document SAUF ceux imbriqués dans un autre w:tbl, dans
+    l'ordre du document, chacun avec son PARENT (pour repérer la légende voisine).
+    Le parcours ne descend pas dans les tableaux (les imbriqués sont rendus dedans)."""
     resultats = []
 
     def parcourir(element):
         for enfant in element:
             if enfant.tag == W + 'tbl':
-                resultats.append(enfant)      # ne pas descendre : imbriqués rendus dedans
+                resultats.append((enfant, element))
             else:
                 parcourir(enfant)
 
     parcourir(racine)
     return resultats
+
+
+def legende_de_table(parent, tbl, consommes):
+    """Cherche un paragraphe VOISIN (avant, puis après) tout en gras = légende.
+    Retourne (element_paragraphe, texte_pour_caption_nettoye) ou (None, None).
+    `consommes` = ids déjà pris (évite qu'un même paragraphe serve 2 tableaux)."""
+    enfants = list(parent)
+    try:
+        i = enfants.index(tbl)
+    except ValueError:
+        return None, None
+    for j in (i - 1, i + 1):
+        if 0 <= j < len(enfants):
+            e = enfants[j]
+            if e.tag == W + 'p' and id(e) not in consommes and paragraphe_tout_gras(e):
+                brut = normaliser(texte_plat(e))
+                if brut:
+                    consommes.add(id(e))
+                    return e, RE_NUM_TABLE.sub('', brut, count=1).strip()
+    return None, None
 
 
 def principal(argv):
@@ -301,13 +367,27 @@ def principal(argv):
     tableaux = tableaux_de_premier_niveau(racine)
     if not tableaux:
         return 0                              # rien à faire, rien d'écrit
-    import os
     os.makedirs(dossier, exist_ok=True)
-    for n, tbl in enumerate(tableaux, start=1):
+    consommes = set()
+    legendes = []                             # textes normalisés des légendes prises
+    for n, (tbl, parent) in enumerate(tableaux, start=1):
+        el, caption = legende_de_table(parent, tbl, consommes)
+        if el is not None and caption:
+            legendes.append(normaliser(texte_plat(el)))
+        else:
+            caption = None
         chemin = os.path.join(dossier, 'table-%02d.html' % n)
         with open(chemin, 'w', encoding='utf-8', newline='\n') as f:
-            f.write(html_du_tableau(tbl) + '\n')
-    print('[docx-tables] %d tableau(x) extrait(s)' % len(tableaux))
+            f.write(html_du_tableau(tbl, caption) + '\n')
+    # Sidecar : légendes consommées -> szh-legendes.lua retire les paragraphes gras
+    # correspondants du .md (le <caption> est déjà baké ci-dessus).
+    chemin_leg = os.getenv('SZH_LEGENDES_TABLES')
+    if chemin_leg and legendes:
+        with open(chemin_leg, 'w', encoding='utf-8', newline='\n') as f:
+            for t in legendes:
+                f.write(t + '\n')
+    print('[docx-tables] %d tableau(x) extrait(s), %d légendé(s)'
+          % (len(tableaux), len(legendes)))
     return 0
 
 

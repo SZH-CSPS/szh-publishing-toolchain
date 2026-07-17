@@ -24,7 +24,12 @@ cd "$DIR" || exit 1
 # Tableaux d'abord (D50) : docx-tables.py rend chaque tableau en HTML fidèle
 # (fusions colspan/rowspan préservées) dans tables/. La numérotation (ordre du
 # document, premier niveau) DOIT rester alignée avec szh-tabelle-reference.lua.
-python3 "$PIPE/docx-tables.py" "$DOCX_ABS" tables || exit 1
+# Légendes de tableau (AX5) : le <caption> est baké dans le HTML extrait et le
+# texte des légendes prises est consigné dans SZH_LEGENDES_TABLES pour que
+# szh-legendes.lua retire les paragraphes gras correspondants du .md.
+LEGT="$(mktemp)"
+export SZH_LEGENDES_TABLES="$LEGT"
+python3 "$PIPE/docx-tables.py" "$DOCX_ABS" tables || { rm -f "$LEGT"; exit 1; }
 
 # Titres déduits (AX4) : pré-pass Python qui lit les tailles de police dans
 # word/document.xml (pandoc les perd) et écrit un fichier de titres présumés,
@@ -38,16 +43,20 @@ export SZH_TITRES="$TITRES"
 #   corrects car le build HTML tourne DANS le dossier de l'article). ⚠ =media doublerait en media/media/.
 # -simple_tables-multiline_tables-grid_tables : sans objet ici (les tableaux sont
 #   remplacés par des références) — conservé par cohérence avec le writer du pipeline.
+# Ordre des filtres : szh-legendes (consomme les légendes, retire les paragraphes
+# gras) AVANT szh-titres (pour qu'un paragraphe déjà pris comme légende ne soit
+# pas aussi promu en titre), puis szh-tabelle-reference (remplace les Table).
 pandoc "$DOCX_ABS" \
   --from=docx \
   --to=markdown-simple_tables-multiline_tables-grid_tables \
   --track-changes=accept \
   --extract-media=. \
+  --lua-filter="$PIPE/filters/szh-legendes.lua" \
   --lua-filter="$PIPE/filters/szh-titres.lua" \
   --lua-filter="$PIPE/filters/szh-tabelle-reference.lua" \
   --wrap=none \
-  -o "$SLUG.md" || { rm -f "$TITRES"; exit 1; }
-rm -f "$TITRES"
+  -o "$SLUG.md" || { rm -f "$TITRES" "$LEGT"; exit 1; }
+rm -f "$TITRES" "$LEGT"
 
 # Pas de tableau dans ce docx : ne pas laisser un tables/ vide.
 rmdir tables 2>/dev/null || true

@@ -110,7 +110,8 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 	  --template="$(TEMPLATE_ABS)" \
 	  --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
 	  --lua-filter="$(MAQUETTE_LUA)" \
-	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" $$extra \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" $$extra \
 	  --output="$(abspath $@)"
 
 # .md -> HTML d'APERÇU (D53) : mêmes filtres/CSS/métadonnées que la sortie PDF,
@@ -129,7 +130,8 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
 	  --standalone --embed-resources \
 	  --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
-	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" $$extra \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" $$extra \
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
 

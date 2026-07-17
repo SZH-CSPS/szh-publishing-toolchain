@@ -21,6 +21,7 @@
 #     corps : >= SEUIL_TAILLE x la taille dominante du corps).
 # Niveau : plus grande taille de titre -> 1 (#), le reste -> 2 (##).
 
+import re
 import sys
 import zipfile
 import xml.etree.ElementTree as ET
@@ -31,6 +32,11 @@ MAX_MOTS = 12          # au-delà, ce n'est pas un titre (à valider par Robin)
 SEUIL_TAILLE = 1.2     # « nettement plus grand » = +20 % (à valider par Robin)
 PONCT_PHRASE = '.;:!?…'
 PUCES = '•▪◦-–—'
+
+# Une légende (« Figure 1 : … », « Tableau 2 — … ») n'est PAS un titre : elle est
+# traitée par szh-legendes.lua (AX5). L'exclure évite de la promouvoir par erreur.
+RE_LEGENDE = re.compile(
+    r'^(?:figure|fig\.?|abbildung|illustration|tableau|tabelle|table)\s+\d+', re.I)
 
 
 def actif(prop):
@@ -153,6 +159,8 @@ def principal(argv):
         txt = normaliser(brut)
         if len(txt) < 2 or txt[0] in PUCES:
             continue
+        if RE_LEGENDE.match(txt):
+            continue                          # légende (AX5), pas un titre
         if len(txt.split()) > MAX_MOTS:
             continue
         if txt[-1] in PONCT_PHRASE:
