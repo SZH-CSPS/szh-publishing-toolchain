@@ -68,7 +68,7 @@ function enroberBloc(texte, classe, titre) {
   return '::: ' + attr + '\n' + t + '\n:::';
 }
 
-// TSV -> tableau Markdown pipe (D57). Ce que Excel/Word mettent dans le
+// TSV -> tableau Markdown pipe (D75). Ce que Excel/Word mettent dans le
 // presse-papiers est du TSV : une ligne par ligne de tableau, cellules séparées
 // par des tabulations. Première ligne promue en en-tête (le pipe l'exige, D33) ;
 // les tabulations finales ne créent pas de colonne fantôme ; les `|` des cellules
@@ -189,7 +189,7 @@ function fmtTableau() {
   return editeur.edit((b) => { b.replace(editeur.selection, sq); });
 }
 
-// Coller un tableau copié depuis Excel/Word (Maj+Alt+V, D57) : lit le
+// Coller un tableau copié depuis Excel/Word (Maj+Alt+V, D75) : lit le
 // presse-papiers, le convertit de TSV en tableau pipe et l'insère. Remplace
 // csholmq.excel-to-markdown-table, retiré d'Open VSX.
 async function fmtCollerTableau() {
