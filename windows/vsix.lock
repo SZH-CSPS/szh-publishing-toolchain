@@ -44,6 +44,13 @@
       "source": "https://open-vsx.org/api/csholmq/excel-to-markdown-table/1.4.0/file/csholmq.excel-to-markdown-table-1.4.0.vsix"
     },
     {
+      "id": "MS-CEINTL.vscode-language-pack-de",
+      "version": "1.108.0",
+      "sha256": "2aac00585164424d13a92c7ebbf306ca767c5749aee5baa92bd14fbde8a4b8ac",
+      "source": "https://open-vsx.org/api/MS-CEINTL/vscode-language-pack-de/1.108.0/file/MS-CEINTL.vscode-language-pack-de-1.108.0.vsix",
+      "_note": "Interface DE (M4/D25) : les chaînes du cockpit basculent en DE, les menus natifs suivent. Version volontairement PAS la plus récente : les packs déclarent engines ^1.<minor>.0 — 1.108.0 est compatible avec VSCodium 1.109 (poste de référence) et toute version ultérieure ; un pack 1.131.0 serait refusé."
+    },
+    {
       "id": "yzhang.markdown-all-in-one",
       "version": "3.6.2",
       "sha256": "75037cc2e0f940ead6cb2db25c5e6f139031885f7dc07d56abe1e0bc0781dd1a",

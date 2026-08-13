@@ -1,9 +1,9 @@
 # Planification — Refonte du déploiement & workflow de layout
 
-> Document de pilotage du projet. Décisions actées le **2026-07-03** (Robin Morand).
-> Statut : ✅ **P1 → P5 implémentés, commités et validés** (2026-07-03). Deux releases de test publiées
-> sur le dépôt public. **Reste** : pilote sur poste réel (checklist V1–V8, §5) et **phase P6**
-> (lanceur intelligent, association `.md`, profils de compilation — décisions D18–D20 du 2026-07-04).
+> Document de pilotage du projet. Décisions actées le **2026-07-03** (Robin Morand), poursuivies
+> jusqu'à **D56**. Statut au **2026-08-13** : ✅ **P0 → P5 et P7 faits** ; lots cockpit **G, N, M1–M7**
+> faits ; **reste** le pilote sur poste réel (checklist V1–V8, §5), la **phase P6** hors T6.1 (lanceur
+> intelligent, association `.md`, profils de compilation) et les validations humaines du §7.
 > Ce fichier est vivant : cocher les tâches au fur et à mesure, consigner ici toute nouvelle décision.
 
 ---
@@ -64,22 +64,53 @@ revue.pdf régénéré à la racine du dossier
 | D22 | **`dossier.yaml` → `ausgabe.yaml`** (2026-07-04) : renommé partout (pipeline, lanceur, scaffold, template, réglages, docs). Les revues existantes doivent être renommées (fait pour `2026-01`). Masquage de `*.lnk` dans l'explorateur VSCodium (files.exclude). | « Ausgabe » = le numéro/l'édition — vocabulaire métier bilingue de la SZH. |
 | D23 | **Import « à la volée » : non retenu.** L'import des Word tourne à l'ouverture de la revue ET à chaque build (Ctrl+S, ~2 s, validé) — déposer un Word puis enregistrer n'importe quoi suffit. Un vrai watcher du dossier `articles-word/` exigerait une extension ou un daemon supplémentaire (inotify ne traverse pas `/mnt/c`). À reconsidérer seulement si un besoin réel émerge. | Zéro dépendance en plus ; comportement déterministe. |
 | D24 | **Aperçu ouvert automatiquement en vue scindée après compilation** (2026-07-04) via la mini-extension maison `szh-csps.szh-apercu` (~50 lignes, zéro dépendance) : à la fin réussie de la tâche de build, ouvre `out/<article-actif>/<article>.pdf` avec `pdf.preview` en `ViewColumn.Beside` + `preserveFocus`, **seulement s'il n'est pas déjà ouvert** (le rechargement continu reste assuré par tomoki). Réglage `szh.apercuAuto`. VSIX construit par la CI, livré via `manifest.json` comme les extensions épinglées. | Aucune voie sans extension : la CLI ne sait pas ouvrir « à côté » (elle recouvrirait le texte), les keybindings n'acceptent pas de chemins dynamiques, le hack « task inputs » vole le focus à chaque autosave sans test « déjà ouvert ». |
-| D25 | **UI de mise à jour trilingue FR/DE/EN** (2026-07-04), selon la **langue d'affichage de Windows** (`Get-UICulture`, code à deux lettres) : `fr-CH`/`fr-FR` → FR, `de-CH`/`de-DE` → DE, tout le reste → EN (fallback). Table de textes + fonction `T` dans `szh-common.ps1` ; couvre update.ps1, l'écran d'erreur, l'e-mail support et le lanceur « Revues SZH ». Allemand en **orthographe suisse** (ss, pas de ß) ; unités Mo (FR) / MB (DE, EN). Variable `SZH_LANGUE=fr|de|en` pour forcer (test/support). `bootstrap.ps1` et `new-revue.ps1` restent en FR (outils du référent). | Les formats régionaux (fr-CH vs fr-FR) n'affectent pas la détection : seul le préfixe de langue compte. Validé en rendu PS 5.1 dans les trois langues. |
+| D25 | **UI de mise à jour trilingue FR/DE/EN** (2026-07-04), selon la **langue d'affichage de Windows** (`Get-UICulture`, code à deux lettres) : `fr-CH`/`fr-FR` → FR, `de-CH`/`de-DE` → DE, tout le reste → EN (fallback). Table de textes + fonction `T` dans `szh-common.ps1` ; couvre update.ps1, l'écran d'erreur, l'e-mail support et le lanceur « Revues SZH ». Allemand en **orthographe suisse** (ss, pas de ß) ; unités Mo (FR) / MB (DE, EN). Variable `SZH_LANGUE=fr\|de\|en` pour forcer (test/support). `bootstrap.ps1` et `new-revue.ps1` restent en FR (outils du référent). | Les formats régionaux (fr-CH vs fr-FR) n'affectent pas la détection : seul le préfixe de langue compte. Validé en rendu PS 5.1 dans les trois langues. |
 | D26 | **Structure de travail par article** (2026-07-05) : `articles/<slug>/<slug>.md` + `articles/<slug>/media/` (images, `.bib`, matières premières de l'article) — miroir de `out/<slug>/`. Migration automatique des `.md` à plat par la cible `import`. | Chaque article devient une unité autonome et déplaçable ; le `.bib` vit dans `media/` (exigence). |
-| D27 | **Convertisseur v2, idiomatique pandoc** (2026-07-05) : filtres **Lua** exécutés dans pandoc — ① suppression des titres vides ; ② titres déduits des paragraphes tout-gras courts (fondé : 1/6 article réel sans styles, « Chanier ») ; ③ listes à puces manuelles (•, -, –) regroupées en vraies listes ; ④ images et tableaux enveloppés en **Figures** avec légende détectée dans le texte voisin (`Figure|Fig\.|Abbildung|Abb\.|Tableau|Tabelle|Table` + n°, avant OU après, deux-points optionnel), numéro manuel retiré (numérotation auto D31), alt-texts « générés par l'IA » purgés ; ⑤ notes de bas de page : natif pandoc (compté au rapport). Commentaires Word ignorés + suivi de modifications accepté (`--track-changes=accept`). | Heuristiques fondées sur l'analyse AST des **6 articles réels** de la revue 2026-01. |
+| D27 | **Convertisseur v2, idiomatique pandoc** (2026-07-05) : filtres **Lua** exécutés dans pandoc — ① suppression des titres vides ; ② titres déduits des paragraphes tout-gras courts (fondé : 1/6 article réel sans styles, « Chanier ») ; ③ listes à puces manuelles (•, -, –) regroupées en vraies listes ; ④ images et tableaux enveloppés en **Figures** avec légende détectée dans le texte voisin (`Figure\|Fig\.\|Abbildung\|Abb\.\|Tableau\|Tabelle\|Table` + n°, avant OU après, deux-points optionnel), numéro manuel retiré (numérotation auto D31), alt-texts « générés par l'IA » purgés ; ⑤ notes de bas de page : natif pandoc (compté au rapport). Commentaires Word ignorés + suivi de modifications accepté (`--track-changes=accept`). | Heuristiques fondées sur l'analyse AST des **6 articles réels** de la revue 2026-01. |
 | D28 | **Références via AnyStyle** (2026-07-05) : Ruby + gem `anystyle-cli` ajoutés au **rootfs**. Détection de la liste de références par **contenu + position** (séquence terminale de ≥3 paragraphes « ref-like » : année `\d{4}[a-z]?`/« sous presse »/« en préparation »/« in press », motifs auteurs, URLs ; le nom du titre n'est qu'un signal secondaire) ; entrées multi-paragraphes regroupées (fondé : « Dentz ») ; headers vides au milieu tolérés (fondé : « Piricò »). Sortie : `articles/<slug>/media/<slug>.bib`. Fallback : pas de détection → l'article reste intact + signalé au rapport. | « On part du principe que la liste est juste » ; AnyStyle ne fait que structurer. |
 | D29 | **Citations liées citeproc** (2026-07-05) : après création du `.bib`, 2ᵉ passe pandoc avec filtre Lua qui convertit les citations en `[@clé]` : parenthétiques et [crochets], multiples (`;`), locators (`p./pp./S. n`), multi-années (`2011, 2016`), `et`/`&`/`et al.`/`et al`, sigles d'organisations (`[CDIP]`, `[OMS]`…), narratives `Nom (2020)`, insensible aux accents (Fauré≡Faure). Non-résolues → laissées telles quelles + listées au rapport. Rendu : `--citeproc` + **CSL APA vendorisé** (`pipeline/csl/apa.csl`), titre de section de bibliographie selon la langue de l'article. | Tout ce qui précède est du pandoc standard (Cite AST, citeproc) — zéro moteur custom. |
 | D30 | **Rapport de conversion HTML trilingue** par article (`articles/<slug>/<slug>-rapport.html`) : converti / à vérifier / conseils Word ; autonome (CSS+JS inline) ; langue par défaut = langue du navigateur (`navigator.language`), boutons FR/DE/EN. Généré par `pipeline/rapport.py` (python3 de l'image) depuis les stats JSON émises par les filtres. | Fallback humain de toutes les heuristiques ; zéro plomberie de langue Windows→WSL. |
 | D31 | **Numérotation automatique Figures/Tableaux** par compteurs **CSS** dans la maquette (`figcaption::before`/`caption::before` + `:lang(fr/de/en)` pour Figure/Abbildung/Tableau/Tabelle/Table) — idiomatique WeasyPrint, aucun binaire en plus (pandoc-crossref écarté). Les numéros manuels des légendes sont retirés à l'import ; le rapport signale de vérifier les renvois du texte. | Fonctionne pour le PDF et le HTML autonome (images base64 via `--embed-resources`, déjà en place). |
 | D33 | **Tableaux : tout en pipe, fusions supprimées** (2026-07-06, option 1 choisie par Robin ; option « tableaux dans des fichiers séparés » écartée — elle fragmenterait l'article). Le filtre d'import **normalise tout tableau complexe** : fusions dépliées (cellules vides comblées, grille d'occupation), cellules multi-blocs aplaties (blocs joints par `<br>`, préservé au rendu ; `LineBreak` remplacés **récursivement**), largeurs de colonnes retirées (**reconstruction** `pandoc.Table` — l'affectation de colspecs ne prend pas), première ligne promue en en-tête si absent (le pipe l'exige). Writer sans `grid_tables` (sinon la relecture d'un pipe large ré-attribue des largeurs → retour au grid). Simplifications comptées et signalées au rapport (« vérifier la lisibilité »). | Validé : 0 ligne grid et 0 table HTML brute sur les 6 articles réels (7 tableaux, tous pipe éditables au Tab). |
-| D36 | **Extension « szh-cockpit »** (2026-07-15) : barre latérale « Revue SZH » (articles, Word en attente, badge) + commande « Importer des Word » (sélecteur → copie → tâche import → notification) + actions Ouvrir le PDF / Compiler. Extension **séparée** de szh-apercu (isolation des risques), zéro dépendance, livrée par le canal CI/vsix.lock existant. Plan détaillé, tranches S1–S5 et critères d'acceptation : **`PLAN-COCKPIT.md`**. | Comble l'essentiel de l'écart UX identifié face aux plateformes web (bilan Stylo du 2026-07-15) sans toucher au pipeline ni au modèle de déploiement. |
+| D36 | **Extension « szh-cockpit »** (2026-07-15) : barre latérale « Revue SZH » (articles, Word en attente, badge) + commande « Importer des Word » (sélecteur → copie → tâche import → notification) + actions Ouvrir le PDF / Compiler. Extension **séparée** de szh-apercu (isolation des risques), zéro dépendance, livrée par le canal CI/vsix.lock existant. Plan détaillé, tranches S1–S5 et critères d'acceptation : `PLAN-COCKPIT.md`, retiré du dépôt le 2026-08-13 → `git show 94c7866^:PLAN-COCKPIT.md`. | Comble l'essentiel de l'écart UX identifié face aux plateformes web (bilan Stylo du 2026-07-15) sans toucher au pipeline ni au modèle de déploiement. |
 | D35 | **Import docx simplifié** (2026-07-15, remplace le comportement D27–D30 ; D33 suspendue) : `make import` = pandoc nu (`--track-changes=accept`, `--extract-media`) + filtre unique `szh-tabelle-platzhalter.lua` remplaçant chaque tableau par un placeholder **`{{TABELLE NN}}`** en gras (rappel : insérer le tableau manuellement — gestion des tableaux à re-décider plus tard). Heuristiques, AnyStyle/.bib, citations liées et rapports **débranchés, pas supprimés** (`pipeline/attic/`), réactivables. `.docx` uniquement. Citeproc de la règle html reste conditionnel (ne se déclenche plus faute de .bib). | Chaîne d'import minimale et prévisible pendant la construction de l'UX cockpit ; retour arrière = git. |
 | D34 | **Empreinte WSL maîtrisée** (2026-07-15) : `windows/user.wslconfig` seedé par `update.ps1` vers `%UserProfile%\.wslconfig` — `memory=3GB` (défaut Windows : 50 % de la RAM, cache vmmem compris), `processors=2`, **`vmIdleTimeout=300000`** (extinction de la VM 5 min après le dernier build ; défaut 60 s), `autoMemoryReclaim=gradual`, `sparseVhd=true`. Fichier **global** à toutes les distros du poste — acceptable (postes dédiés). Le préchauffage à la connexion reste utile (premier build de la session). | Les builds étant des `wsl.exe` éphémères, la VM s'éteint déjà seule ; on borne surtout la RAM (`vmmem` gonfle avec le cache disque Linux) et on garde 5 min de réactivité pour les rafales de Ctrl+S. |
 | D32 | **Édition des tableaux markdown** (2026-07-05) : deux extensions épinglées — `TakumiI.markdowntable` (navigation **Tab** de cellule en cellule, insertion/déplacement de lignes et colonnes, formatage auto ; édition Open VSX de « Markdown Table », takumisoft68 étant absent d'Open VSX) et `csholmq.excel-to-markdown-table` (**coller un tableau depuis Excel/Word** en markdown, Maj+Alt+V). Convertisseur : tableaux émis en **pipe** (`-simple_tables-multiline_tables`), grid en repli pour les cellules complexes. **+ `yzhang.markdown-all-in-one` 3.6.2** (validé par Robin) : **Ctrl+B/Ctrl+I** gras/italique, **continuation automatique des listes** à Entrée, formatage de tableaux — les gestes que les rédacteurs venant de Word attendent. | Les extensions de tableaux ne manipulent que le format pipe ; le repli grid préserve les tableaux riches (à simplifier dans Word — conseil au rapport). |
+| D37 | **Métadonnées du numéro par formulaire** (2026-07-15) : commande `szh.metadonnees` → webview « Méta-données du numéro » ; le formulaire réécrit `ausgabe.yaml` (`title`, `revue`, `volume`, `numero`, `date`, `lang`), les autres clés sont **préservées**. | Le rédacteur ne voit jamais de YAML. Première webview du dépôt (volontairement dérisquée en premier). |
+| D38 | **Créer / ouvrir une revue restent dans le lanceur PowerShell**, pas dans l'extension : `open-revue.ps1` gagne une action « ＋ Nouvelle revue… » qui appelle `new-revue.ps1`. | La vue cockpit n'existe **que dans une revue déjà ouverte** (`szh.estRevue`) : « ouvrir une autre revue » depuis le cockpit serait un chicken-and-egg. Source unique, zéro duplication. |
+| D39 | **Le `.docx` est supprimé après conversion réussie** (cible `import` : `rm -f` au lieu du `mv` vers `_convertis/`) ; un docx « déjà converti (ignoré) » **reste**, signalé ⚠ (ce peut être une nouvelle version à renommer). | Plus de doublons fantômes dans le dossier de revue ; le `.md` est déjà la copie de travail, retour arrière = git. |
+| D40 | **Suppression d'article depuis l'arborescence** : bouton corbeille → **confirmation modale** → efface `articles/<slug>/` et `out/<slug>/`. | Première action destructive du cockpit : garde-fou modal obligatoire, jamais silencieux. |
+| D41 | **Assets dans l'arborescence** : l'article est dépliable, ses enfants sont les images de `articles/<slug>/media/` (poids + dimensions en légende), clic = aperçu natif, « Remplacer » écrase le fichier **en conservant son nom**. Dimensions lues des en-têtes PNG/GIF/SVG, JPEG au mieux (marqueurs SOF). | Gestion des images sans quitter l'éditeur ni ouvrir l'Explorateur. |
+| D42 | **WSL maintenue en vie par l'extension** : à l'ouverture d'une revue, un processus dormant (`wsl -d SZH-Publishing -- sh -c 'exec sleep infinity'`) empêche l'extinction de la VM ; tué au `deactivate` ou en quittant la revue. | Réactivité du premier build sans tâche planifiée supplémentaire ; **ne touche pas** au `.wslconfig` (D34). |
+| D43 | **Titre de vue dynamique** lu dans `ausgabe.yaml` : `{Z\|R}{AAAA}-{numero} \| {title}` (`Z` si `lang: de`, sinon `R` ; `AAAA` extraite de `date`), rafraîchi à la volée, repli gracieux si une clé manque. | Le rédacteur voit immédiatement sur quel numéro il travaille. Hors revue, le libellé `package.json` (« Revue SZH ») reste. |
+| D44 | **« Tout exporter » = rebuild FORCÉ** de tous les articles : cible `tout-exporter` (= `clean` puis `all`), tâche dédiée, bouton en tête de vue. | Distinct du build incrémental de Ctrl+S : sert quand la maquette (et non le contenu) a changé. |
+| D45 | **Un seul niveau de médias** : `articles/<slug>/media/`. Normalisation dans `import-docx.sh` (nouveaux imports) **et** migration idempotente dans la cible `import` (fusion de `media/media/`, réécriture des liens, suppression du dossier en trop). | Corrige le `media/media/` produit par `--extract-media` sur les revues existantes. |
+| D46 | **Clic sur un article = tout** : ouvre le `.md` (colonne 1), **compile s'il est obsolète** (`.md` plus récent que la sortie, ou sortie absente), affiche l'aperçu (colonne 2), **ferme celui de l'article précédent**. Les boutons inline « Ouvrir le PDF » et « Compiler » sont supprimés. | Un geste au lieu de trois ; `szh-apercu` reste chargé du rafraîchissement après Ctrl+S. |
+| D47 | **Tableaux en fichiers HTML** (abandonne le placeholder `{{TABELLE NN}}` de D35 comme mécanisme final) : 1 fichier par tableau dans `articles/<slug>/tables/`, référence `::: {.szh-tabelle src="tables/table-NN.html"}` dans le `.md`, **ré-injectée à la compilation** par `szh-tabelle-inclure.lua` ; tableaux listés comme assets (ouvrir / remplacer). Éditeur WYSIWYG : hors lot. | Le `.md` reste lisible et éditable ; la richesse du tableau (fusions) survit hors du markdown. Extraction elle-même : voir D50. |
+| D48 | ~~Métadonnées d'article dans le frontmatter YAML du `.md`~~ — **remplacée par D49**. | Le frontmatter obligeait à préserver le corps de l'article à chaque enregistrement du formulaire (risque de perte de texte). |
+| D49 | **Métadonnées d'article dans `articles/<slug>/<slug>.meta.yaml`** (masqué par `files.exclude`), **édité uniquement par le formulaire** ; le `.md` ne contient que du texte ; lu par pandoc via `--metadata-file` en plus d'`ausgabe.yaml` (l'article surcharge le numéro). | Fichier « form-owned », régénéré à chaque enregistrement (clés inconnues préservées par prudence) : plus aucun corps d'article à préserver. |
+| D50 | **Extraction des tableaux par `pipeline/docx-tables.py`** (stdlib `zipfile` + `xml`, zéro dépendance) : lit `word/document.xml` et rend chaque `<w:tbl>` en HTML **fusions préservées** (`w:gridSpan` → `colspan`, `w:vMerge` → `rowspan`) ; le placement de la référence dans le `.md` reste fait par un filtre Lua (ordre du document). | Corrige l'aplatissement des cellules par pandoc constaté en D33, sans binaire supplémentaire. |
+| D51 | **Schéma unifié de `<slug>.meta.yaml`** : `type` (jeton canonique ∈ varia, documentation, article, interview, tribune-libre, editorial — **libellé traduit** selon `lang`), `doi`, `title`/`subtitle`/`resume` en maps langue→texte, `keywords` en map langue→liste, `author[]` (`prenom`, `nom`, `fonction`, `affiliation`, `orcid`). Langues : **fr + de** par défaut, **it** activable par article, **pas d'en**. | Même posture que les blocs de style : jeton canonique dans le fichier, libellé traduit à l'écran. `resume` est une métadonnée, **jamais** un bloc `:::` (D55). |
+| D52 | **Menu de réglages « SZH »** (webview) écrivant au niveau **utilisateur** via `ConfigurationTarget.Global` : thème Système/Clair/Sombre (uniquement *Default Light/Dark Modern*), taille de police de l'interface (`window.zoomLevel`), taille de police des `.md` (`[markdown].editor.fontSize`, l'affichage seulement), langue FR/DE des chaînes du cockpit. | Jamais d'édition manuelle de `settings.json`, jamais d'effet sur un YAML. La langue **native** de VSCodium exige en plus le pack DE (`vsix.lock`) + `locale` dans `argv.json` + redémarrage. |
+| D53 | **Aperçu commutable HTML↔PDF** (`szh.apercuMode`, **défaut `html`**), bascule globale (barre d'état + bouton + bandeau de l'aperçu) : en HTML, la colonne 2 affiche `out/<slug>/<slug>.html` dans une **webview maison** (survol = surlignage, clic = `revealRange` sur la ligne source) ; en PDF, tomoki, sans clic. La position source est portée par pandoc et **ignorée par WeasyPrint** → **le PDF reste inchangé**. | Navigation aperçu → source sans quitter WeasyPrint (aucun Chromium ; cf. comparatif WeasyPrint vs Paged.js). |
+| D54 | **`szh-apercu` conscient du mode** : conservé, modifié a minima — il n'ouvre/rafraîchit le PDF **qu'en mode `pdf`** (lecture du réglage partagé `szh.apercuMode`) et ne fait rien en mode `html`. | La colonne 2 n'a qu'un seul propriétaire à la fois ; une garde, pas une refonte. |
+| D55 | **Menu « Mise en forme » (clic droit) + raccourcis** : gras / italique / souligné, H1–H3, blocs **important** (titre paramétrable `data-titre`, rendu par CSS), **highlight**, **question**, **citation** (blockquote natif `>`), insérer une figure, insérer un tableau. Commandes maison `szh.fmt.*`, localisées FR/DE (`package.nls`), raccourcis dans `keybindings.json`. **Les anciens blocs sont supprimés** (chapo, encadre, exergue, note, avertissement). | Les gestes attendus par un rédacteur venant de Word, avec la classe canonique insérée (`::: {.important}`…) et le libellé traduit à l'écran. |
+| D56 | **Couleur annuelle du numéro** : champ `couleur` (hex) dans `ausgabe.yaml`, choisi par **pastilles** dans le formulaire du numéro — Rouge `#D31932`, Capucine `#EB5E51`, Moutarde `#C7CF1C`, Poireau `#51A66D`, Bleu acier `#5F9FBC`, Mountbatten `#A98899`. | Stockage + choix visuel ; consommation par la maquette (`pipeline/styles/couleurs.css`, `pipeline/accent-css.py`). |
+
+> **Provenance de D37–D56** : décisions prises dans les plans de lot `PLAN-GESTION.md` (D37–D41),
+> `PLAN-FONCTIONS.md` (D42–D48) et `PLAN-CORRECTIONS.md` (D49–D56), retirés du dépôt le 2026-08-13
+> (commit `94c7866`) après réalisation. Les plans détaillés (tranches G1–G5, N1–N7, M1–M7, critères
+> d'acceptation) restent consultables : `git show 94c7866^:PLAN-CORRECTIONS.md`.
 
 ---
 
 ## 3. Architecture cible
+
+> ⚠ Les arborescences ci-dessous sont celles **décidées le 2026-07-03** ; elles ont depuis évolué
+> (D21 sorties par article, D22 `ausgabe.yaml`, D26 `articles/<slug>/`, D49 `.meta.yaml`, extensions
+> maison). L'état **courant** du dépôt et du poste est décrit dans
+> [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — source de vérité ; ce §3 reste ici comme trace de
+> la décision initiale.
 
 ### 3.1 Dépôt
 
@@ -156,10 +187,10 @@ ACL : bootstrap.ps1 donne Modify aux Utilisateurs sur C:\ProgramData\SZH (update
 OneDrive\Revues\2026-01\
 ├── Ouvrir la revue.lnk       ← double-clic = tout démarre
 ├── BIENVENUE.md
-├── dossier.yaml              ← métadonnées du numéro
-├── articles-word\            ← déposer ici les Word finalisés (originaux archivés dans _convertis\)
-├── articles\                 ← les .md de travail (+ media\ extraits des Word)
-└── revue.pdf                 ← se régénère à chaque Ctrl+S
+├── ausgabe.yaml              ← métadonnées du numéro (D22 ; ex-dossier.yaml)
+├── articles-word\            ← déposer ici les Word finalisés (supprimés après conversion, D39)
+├── articles\<slug>\          ← <slug>.md + media\ + tables\ + <slug>.meta.yaml masqué (D26/D47/D49)
+└── out\<slug>\               ← <slug>.pdf + <slug>.html, régénérés à chaque Ctrl+S (D21)
 ```
 
 Plus aucun fichier d'outillage. (Si un résidu doit être masqué plus tard : `files.exclude` + `attrib +h`, voir §6.)
@@ -191,7 +222,8 @@ La distro étant jetable, une MAJ pendant l'édition est sans risque (au pire un
 Ordre : **P1 → P2 → P3** (P4 en parallèle de P3) **→ P5**. Estimations grossières à titre indicatif.
 
 ### P0 — Prérequis (Robin)
-- [ ] Passer le dépôt GitHub en **public** (bloque l'auto-update sans PAT).
+- [x] Passer le dépôt GitHub en **public** (bloque l'auto-update sans PAT) — ✅ vérifié le 2026-08-13
+      (`releases/latest` répond 200 sans authentification).
 
 ### P1 — Réorganisation du dépôt & pipeline central (~0,5–1 j)
 - [x] Restructurer : `deploy/` → `image/` + `windows/` ; créer `pipeline/` (Makefile + styles sortis de `revue-template/`).
@@ -222,18 +254,21 @@ Ordre : **P1 → P2 → P3** (P4 en parallèle de P3) **→ P5**. Estimations gr
     passe en 07.1 ne télécharge donc que ~30 Ko. Découpage gros-immuable / petit-mutable prouvé.
 
 ### P3 — Scripts Windows (~1–2 j)
-- [ ] `bootstrap.ps1` (admin, 1×) : moteur WSL, winget (VSCodium, SumatraPDF), ACL `C:\ProgramData\SZH`,
+- [x] `bootstrap.ps1` (admin, 1×) : moteur WSL, winget (VSCodium, SumatraPDF), ACL `C:\ProgramData\SZH`,
       création des tâches planifiées, rappel exclusions antivirus, puis premier `update.ps1`.
-- [ ] `update-launcher.ps1` (stable) : fetch manifest → si toolkit plus récent, le télécharger → déléguer à `toolkit\windows\update.ps1`.
-- [ ] `update.ps1` : logique du §3.5 ; paramètre `-Version` (pin/rollback) ; logging complet dans `logs\` ;
+- [x] `update-launcher.ps1` (stable) : fetch manifest → si toolkit plus récent, le télécharger → déléguer à `toolkit\windows\update.ps1`.
+- [x] `update.ps1` : logique du §3.5 ; paramètre `-Version` (pin/rollback) ; logging complet dans `logs\` ;
       **UI terminal** : ton amical, barre de progression sobre (pas de pathos), erreurs claires + contact +
       `mailto:` pré-rempli (trace tronquée ~1 500 caractères, chemin du log en corps) + ouverture de l'Explorateur sur le log.
-- [ ] `new-revue.ps1` : scaffold depuis `toolkit\revue-template\` ; création de « Ouvrir la revue.lnk » dans le dossier ;
+- [x] `new-revue.ps1` : scaffold depuis `toolkit\revue-template\` ; création de « Ouvrir la revue.lnk » dans le dossier ;
       rappel « Toujours conserver sur cet appareil » ; enregistrement de la racine des revues dans la config du lanceur.
-- [ ] `open-revue.ps1` : scan des dossiers contenant `dossier.yaml` sous la racine configurée
-      (défaut `$env:OneDrive\Revues`) ; petite fenêtre de sélection (WinForms, PS 5.1) triée par date ; raccourci menu Démarrer.
-- [ ] Contrainte transverse : **compatibilité Windows PowerShell 5.1** (pas de `?.`, `??`, `&&`/`||`).
-- **Livrable** : sur machine vierge — bootstrap 1× admin, puis MAJ de bout en bout sans admin, silencieuse quand rien à faire.
+- [x] `open-revue.ps1` : scan des dossiers contenant `ausgabe.yaml` (D22) sous la racine configurée
+      (défaut `$env:OneDrive\Revues`) ; petite fenêtre de sélection (WinForms, PS 5.1) triée par date ; raccourci menu
+      Démarrer ; action « ＋ Nouvelle revue… » (D38).
+- [x] Contrainte transverse : **compatibilité Windows PowerShell 5.1** (pas de `?.`, `??`, `&&`/`||`).
+- **Livrable** : les cinq scripts sont écrits, publiés dans le toolkit et exercés par les releases
+      `v2026.07.*`/`v2026.08.*`. ⏳ Reste la validation « machine vierge » de bout en bout, qui se confond
+      avec le poste pilote (P5).
 
 ### P4 — Config VSCodium user-level (~0,5 j, parallèle à P3)
 - [x] `tasks.json` **utilisateur** : « Aperçu / Export PDF » (**make all** = import + pdf) et « Importer les articles
@@ -264,7 +299,7 @@ Ordre : **P1 → P2 → P3** (P4 en parallèle de P3) **→ P5**. Estimations gr
       lecture conservée, ~2 s après Ctrl+S → **D19 confirmée, pas de fork**. Le remplacement
       atomique est bien rapporté « change ». Prérequis découvert : la revue doit être au nouveau
       format (l'ancien `.vscode` local avec `watcherExclude **/out/**` reproduisait la panne).
-- [ ] T6.2 `open-md.ps1` (lanceur intelligent, toolkit) : remonte l'arborescence jusqu'à `dossier.yaml`,
+- [ ] T6.2 `open-md.ps1` (lanceur intelligent, toolkit) : remonte l'arborescence jusqu'à `ausgabe.yaml` (D22),
       compile si l'artefact manque (feedback « Préparation de l'aperçu… »), ouvre VSCodium sur le
       DOSSIER + le fichier, ouvre l'aperçu.
 - [ ] T6.3 Association : ProgId `SZH.Markdown` dans « Ouvrir avec » (HKCU, posé par update.ps1) pointant
@@ -350,12 +385,18 @@ Ordre : **P1 → P2 → P3** (P4 en parallèle de P3) **→ P5**. Estimations gr
 
 ## 7. Restes à faire (après le lot M1–M5, 2026-08-13)
 
-- [ ] **Transcrire les décisions D37–D54** dans la table du § 2 (actuellement consignées dans
-  `PLAN-GESTION.md` (D37–D41), `PLAN-FONCTIONS.md` (D42–D48) et `PLAN-CORRECTIONS.md` (D49–D54)).
-- [ ] **Pack de langue DE** : ajouter `MS-CEINTL.vscode-language-pack-de` à `windows/vsix.lock`
-  (M4 — sans lui, les chaînes du cockpit basculent en DE mais les menus natifs restent en anglais).
-- [ ] **Bump de version szh-cockpit** : `0.1.0` → `0.2.0` dans `package.json` + corriger la
-  description devenue fausse (« (lecture seule) » — le cockpit écrit désormais fiches et réglages).
-- [ ] **Tag de release** : livre sur les postes les deux extensions (szh-cockpit, szh-apercu 0.1.2)
+- [x] **Transcrire les décisions D37–D56** dans la table du § 2 — fait le 2026-08-13 (les plans de lot
+  avaient été retirés du dépôt : récupérés depuis `git show 94c7866^:PLAN-*.md`). La série va jusqu'à
+  **D56** : M6 (D55, menu de mise en forme) et M7 (D56, couleur du numéro) ont été réalisés après la
+  rédaction du plan, qui les notait encore « À FAIRE ».
+- [x] **Pack de langue DE** : `MS-CEINTL.vscode-language-pack-de` **1.108.0** ajouté à `windows/vsix.lock`
+  (M4). Version choisie *sous* celle de l'éditeur : un pack déclare `engines ^1.<minor>.0`, et VSCodium
+  est en 1.109 sur le poste de référence — la « dernière » (1.131.0) serait refusée. `update.ps1` écrit
+  en plus `"locale"` dans `%APPDATA%\VSCodium\argv.json` quand Windows est en allemand : sans cela, le
+  pack est installé mais les menus natifs restent en anglais.
+- [x] **Bump de version szh-cockpit** : `0.2.0` + description corrigée (elle annonçait « lecture seule »).
+- [ ] **Tag de release** : livre sur les postes les deux extensions (szh-cockpit 0.2.0, szh-apercu)
   **et** le pipeline (extracteur Python D50, aperçu HTML D53). En attendant, tester M2/M5 exige un
   re-sync manuel de `pipeline/` vers `C:\ProgramData\SZH\toolkit\pipeline\`.
+- [ ] **Validations humaines du lot M** (ne peuvent pas être automatisées) : scénarios GUI, libellés
+  DE/IT des 6 types d'article, relecture germanophone des 102 clés `TEXTES_COCKPIT`. Voir `TODORMO.md`.

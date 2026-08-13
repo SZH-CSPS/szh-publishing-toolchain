@@ -140,6 +140,30 @@ try {
     if (Test-Path $sn) { Copy-Item (Join-Path $sn '*') (Join-Path $dst 'snippets') -Force }
   }
 
+  # Langue de l'interface (M4, dans l'esprit de D25) : le pack DE est épinglé dans vsix.lock,
+  # mais VSCodium ne bascule ses menus natifs que si %APPDATA%\VSCodium\argv.json porte
+  # « locale ». On l'aligne donc sur la langue d'affichage de Windows — DE uniquement
+  # (aucun pack FR n'est épinglé ; le défaut reste l'anglais, voir settings.json).
+  # argv.json est du JSON *avec commentaires* : retouche textuelle, pas de ConvertFrom-Json.
+  if ($SzhLangue -eq 'de') {
+    $argv = Join-Path $env:APPDATA 'VSCodium\argv.json'
+    if (Test-Path $argv) {
+      $contenu = Get-Content $argv -Raw
+      if ($contenu -match '"locale"\s*:\s*"([^"]*)"') {
+        if ($Matches[1] -ne 'de') {
+          $rx = New-Object System.Text.RegularExpressions.Regex '"locale"\s*:\s*"[^"]*"'
+          Set-Content -Path $argv -Value $rx.Replace($contenu, '"locale": "de"', 1) -Encoding UTF8
+        }
+      } else {
+        $rx = New-Object System.Text.RegularExpressions.Regex '\{'
+        Set-Content -Path $argv -Value $rx.Replace($contenu, ('{' + "`r`n" + '  "locale": "de",'), 1) -Encoding UTF8
+      }
+    } else {
+      New-Item -ItemType Directory -Force -Path (Split-Path $argv) | Out-Null
+      Set-Content -Path $argv -Value ('{' + "`r`n" + '  "locale": "de"' + "`r`n" + '}') -Encoding UTF8
+    }
+  }
+
   # Config WSL du poste (D34) : plafond RAM + extinction auto de la VM (5 min)
   $wslCfg = Join-Path $SzhToolkit 'windows\user.wslconfig'
   if (Test-Path $wslCfg) { Copy-Item $wslCfg (Join-Path $env:USERPROFILE '.wslconfig') -Force }
