@@ -156,12 +156,13 @@ def pastille(hexa, cran, charte=False):
 
     Toutes les cases ont la MÊME forme ; ce qui change, c'est la taille de l'échantillon
     et ce qu'annonce l'étiquette, tous deux dictés par apca.CONTRAT :
-      texte courant : échantillon à 14 px, la taille réelle du corps de la maquette ;
-      gros titres   : échantillon à 19 px gras — le plancher du « gros texte » d'APCA,
+      texte courant : « Texte » à 14 px, la taille réelle du corps de la maquette ;
+      gros titres   : « Titre » à 19 px gras — le plancher du « gros texte » d'APCA,
                       seul texte que le cran autorise ;
-      sans texte    : même échantillon en gros, dans la meilleure polarité, mais
-                      l'étiquette dit « Pas pour les textes ». On montre la couleur
-                      buter contre son seuil au lieu de laisser une case muette.
+      sans texte    : « Titre » en gros lui aussi, dans la meilleure polarité, mais
+                      l'étiquette dit « Pas pour les textes ». On montre le cas le
+                      plus FAVORABLE échouer, ce qui est l'information utile ;
+                      laisser la case muette n'en donnait aucune.
     Chaque case porte en plus son verdict d'usage en INTERFACE (filet, bordure, puce) :
     voir usage_interface().
 
@@ -200,11 +201,12 @@ def pastille(hexa, cran, charte=False):
     role = '%s · %s' % ('texte blanc' if texte_admis == apca.BLANC else 'texte noir',
                         TAILLE_TITRE if gros else TAILLE_CORPS)
     classe_texte = 'case__texte case__texte--gros' if gros else 'case__texte'
+    echantillon = 'Titre' if gros else 'Texte'
     return (
         '<div class="case%s" style="--fond:%s;--encre-case:%s">'
-        '%s%s<p class="%s">Titre</p>%s%s</div>'
+        '%s%s<p class="%s">%s</p>%s%s</div>'
     ) % (classe_charte, hexa, texte_admis, badge, _tete(cran, hexa), classe_texte,
-         _pied('Lc&nbsp;%s' % fr(lc), role), ui)
+         echantillon, _pied('Lc&nbsp;%s' % fr(lc), role), ui)
 
 
 def note_charte(cle, libelle_cran, hexa, clarte, ecart):
@@ -553,9 +555,9 @@ td.num {
   verticalement d'une teinte à l'autre — c'est tout l'intérêt de la grille, et ce que l'ancienne
   échelle (où chaque niveau visait un contraste, donc une clarté différente selon la teinte) ne
   permettait pas.</p>
-  <p class="chapo">La lecture est directe : chaque case porte le mot « Titre » dans la couleur
-  de texte qu'elle admet et <em>à la taille qu'elle autorise</em> — 14 px, la taille réelle du
-  corps de la maquette, ou 19 px gras, le plancher du gros texte. Si un échantillon vous paraît
+  <p class="chapo">La lecture est directe : chaque case porte un échantillon dans la couleur de
+  texte qu'elle admet et <em>à la taille qu'elle autorise</em> — « Texte » à 14 px, la taille
+  réelle du corps de la maquette, ou « Titre » à 19 px gras, le plancher du gros texte. Si un échantillon vous paraît
   difficile à lire à l'écran, c'est que la mesure mentait, pas l'inverse. Un cran ne porte
   <strong>aucun texte</strong>, le 400 : c'est le point où ni le noir ni le blanc ne passent,
   inhérent à toute échelle saturée. Il est montré comme les autres, avec son étiquette
