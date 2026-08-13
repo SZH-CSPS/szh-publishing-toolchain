@@ -39,9 +39,11 @@ COULEURS = [
     ('poireau', 'Poireau'), ('bleuacier', 'Bleu acier'), ('mountbatten', 'Mountbatten'),
 ]
 # Les 11 crans de la grille à clarté fixe, dans l'ordre (apca.CLARTES est la source :
-# la planche ne doit jamais avoir sa propre idée de l'échelle). La couleur de MARQUE
-# n'est pas dans cette liste — elle est hors grille et se présente à part.
+# la planche ne doit jamais avoir sa propre idée de l'échelle). La couleur de CHARTE n'a
+# plus de case à part : elle EST l'un de ces onze crans, celui que désigne
+# apca.cran_de_charte, et c'est ce cran-là qui porte le badge dans la rampe.
 CRANS = [cran for cran, _ in apca.CLARTES]
+CIBLES = dict(apca.CLARTES)
 # Police de la maquette -> rôle dans la planche.
 FONTS = [
     ('Source Serif 4', 400, 'SourceSerif4-Regular.ttf'),
@@ -104,7 +106,7 @@ def _pied(lc_txt, role):
             '<span class="case__role">%s</span></div>' % (lc_txt, role))
 
 
-def pastille(hexa, cran):
+def pastille(hexa, cran, charte=False):
     """Une case de la planche : le fond, et DESSUS le texte de la couleur qu'il doit
     porter. La preuve est visuelle — si c'est illisible à l'écran, la valeur mentait.
 
@@ -115,18 +117,29 @@ def pastille(hexa, cran):
       aucun texte   : PAS d'échantillon. La couleur devient un aplat muet et toutes les
                       étiquettes sortent de l'aplat, sur le fond de la page. Afficher un
                       faux texte lisible ici — ou même y poser le numéro du cran —
-                      reviendrait à mentir sur ce que le cran permet."""
-    texte_admis, garanti, usage = apca.CONTRAT[cran]
+                      reviendrait à mentir sur ce que le cran permet.
 
-    # ── Cran DÉCORATIF (400) : aucun texte, ni noir ni blanc.
+    `charte` : ce cran ne calcule rien, il PORTE le hex de la charte. Il est alors cerclé
+    et badgé DANS la rampe — plus de case séparée. Le badge garde les couleurs de la page
+    (encre nuit sur papier) et non celles de la case : c'est la seule étiquette de la
+    planche qui doit rester lisible quel que soit le cran badgé, y compris un futur cran
+    sombre, et on ne va pas faire dépendre sa lisibilité de la couleur montrée."""
+    texte_admis, garanti, usage = apca.CONTRAT[cran]
+    badge = '<span class="case__badge">couleur de charte</span>' if charte else ''
+    classe_charte = ' case--charte' if charte else ''
+
+    # ── Cran DÉCORATIF (400) : aucun texte, ni noir ni blanc. Structurellement, aucune
+    #    charte ne peut atterrir ici (apca.cran_de_charte exige une polarité de texte, que
+    #    ce cran n'a pas) — le paramètre est honoré quand même, pour que la case ne puisse
+    #    pas mentir si la règle changeait un jour.
     if texte_admis is None:
         _, meilleur = apca.meilleure_polarite(hexa)
         return (
-            '<div class="case case--deco">'
-            '%s'
+            '<div class="case case--deco%s">'
+            '%s%s'
             '<div class="case__aplat" style="background:%s"></div>'
             '%s</div>'
-        ) % (_tete(cran, hexa),
+        ) % (classe_charte, badge, _tete(cran, hexa),
              hexa,
              _pied('Lc&nbsp;%s au mieux' % fr(meilleur), 'aucun texte · décoratif'))
 
@@ -142,62 +155,78 @@ def pastille(hexa, cran):
     else:
         echantillon = '<p class="case__texte">Zusammenfassung / Résumé</p>'
     return (
-        '<div class="case" style="--fond:%s;--encre-case:%s">%s%s%s</div>'
-    ) % (hexa, texte_admis, _tete(cran, hexa), echantillon,
+        '<div class="case%s" style="--fond:%s;--encre-case:%s">%s%s%s%s</div>'
+    ) % (classe_charte, hexa, texte_admis, badge, _tete(cran, hexa), echantillon,
          _pied('Lc&nbsp;%s' % fr(lc), role))
 
 
-def case_marque(hexa):
-    """La couleur de MARQUE, hors grille. Même principe que les autres cases (elle porte
-    le texte qu'elle peut porter, et seulement en gros titre : aucune des six n'atteint 75
-    dans une polarité ou dans l'autre), mais présentée à part et badgée « hors grille » :
-    son hex est imposé par la charte, il ne tombe sur aucun cran."""
-    texte, lc = apca.meilleure_polarite(hexa)
-    role = '%s · gros titres' % ('texte blanc' if texte == apca.BLANC else 'texte noir')
+def note_charte(cle, libelle_cran, hexa, clarte, ecart):
+    """Le texte explicatif sous la rampe : quel cran porte la charte, et à quel prix.
+
+    L'écart de clarté est TOUJOURS affiché (c'est le prix du choix, il ne se cache pas),
+    mais il n'est SIGNALÉ comme notable qu'au-delà d'apca.DISPERSION_CLARTE — le même
+    seuil que celui que fait respecter test/apca-check.py, pour que la planche et le
+    vérificateur ne racontent jamais deux histoires différentes. Un seul cas dépasse
+    aujourd'hui : le 700 du rouge."""
+    notable = abs(ecart) > apca.DISPERSION_CLARTE
+    if notable:
+        avertissement = (
+            ' <strong>Cet écart dépasse les %s que la grille se donne pour marge</strong> : '
+            'sur ce cran, et sur lui seul, les six teintes ne sont plus rigoureusement '
+            'aussi claires. C\'est inévitable ici — cette charte tombe à mi-chemin entre '
+            'deux crans, l\'écart serait le même sur le voisin — et c\'est le prix assumé '
+            'd\'un seul hex par couleur.' % nombre(apca.DISPERSION_CLARTE, 2))
+    else:
+        avertissement = (
+            ' L\'écart reste sous les %s de marge de la grille : le cran demeure comparable '
+            'd\'une teinte à l\'autre, à l\'œil comme à la mesure.'
+            % nombre(apca.DISPERSION_CLARTE, 2))
     return (
-        '<div class="case case--marque" style="--fond:%s;--encre-case:%s">'
-        '<div class="case__haut"><span class="case__niveau">marque</span>'
-        '<span class="case__hex">%s</span></div>'
-        '<p class="case__texte case__texte--gros">Titre</p>'
-        '%s'
-        '<span class="case__badge">hors grille</span></div>'
-    ) % (hexa, texte, hexa, _pied('Lc&nbsp;%s' % fr(lc), role))
+        '<p class="teinte__note">Le cran <strong>%s</strong> n\'est pas calculé : il '
+        '<strong>EST la couleur de charte</strong>, <strong>%s</strong>, posée telle quelle '
+        '(badge dans la rampe ci-dessus). Sa clarté réelle est donc %s là où le barreau '
+        'visait %s, soit un écart de <strong>%s</strong>.%s '
+        'Le jeton <code>--c-%s-marque</code> existe toujours, mais comme simple ALIAS de ce '
+        'cran : un seul hex par couleur, deux noms pour l\'atteindre.</p>'
+    ) % (libelle_cran, hexa, nombre(clarte, 3), nombre(CIBLES[libelle_cran], 2),
+         ('%+.3f' % ecart).replace('.', ','), avertissement, cle)
 
 
 def main():
     css = io.open(CSS_COULEURS, encoding='utf-8').read()
     lignes = []
     for cle, libelle in COULEURS:
-        cases = []
         marque = resoudre(css, '--c-%s-marque' % cle)
+        # Quel cran porte la charte : la RÈGLE vient d'apca (même calcul que le CSS), et le
+        # fichier la CONFIRME. Si le cran désigné ne porte pas le hex de charte, la planche
+        # se tait plutôt que de mentir — et test/apca-check.py, lui, échoue.
+        cran_charte = apca.cran_de_charte(marque)
+        if resoudre(css, '--c-%s-%s' % (cle, cran_charte)) != marque:
+            cran_charte = None
+        cases = []
         for cran in CRANS:
             hexa = resoudre(css, '--c-%s-%s' % (cle, cran))
             if hexa:
-                cases.append(pastille(hexa, cran))
+                cases.append(pastille(hexa, cran, charte=(cran == cran_charte)))
         # Les alias sont lus dans le CSS, pas récités : si quelqu'un repointe -clair vers
-        # un autre cran, la planche doit le montrer. On retrouve le cran par son hex.
+        # un autre cran, la planche doit le montrer. On retrouve le cran par son hex — et
+        # comme la charte EST un cran, -normal y aboutit lui aussi : la planche montre donc
+        # noir sur blanc que les deux noms mènent au même barreau.
         par_hex = {resoudre(css, '--c-%s-%s' % (cle, c)): c for c in CRANS}
         alias = []
         for nom in ('normal', 'clair', 'fonce'):
             hexa = resoudre(css, '--c-%s-%s' % (cle, nom))
-            cible = 'marque' if hexa == marque else par_hex.get(hexa, hexa or '?')
+            cible = par_hex.get(hexa, hexa or '?')
+            if hexa == marque and cran_charte:
+                cible = '%s (charte)' % cible
             alias.append('<code>-%s</code> → %s' % (nom, cible))
-        # La marque, hors grille : sa clarté OKLab et le cran dont elle est la plus proche.
-        # C'est le chiffre qui explique pourquoi elle ne peut PAS être un cran.
-        clarte = apca.srgb_vers_oklab(apca.vers_rgb(marque))[0]
-        proche = min(apca.CLARTES, key=lambda c: abs(c[1] - clarte))[0]
-        # Cas de la capucine : sa clarté est si proche du cran 500 que le cran CALCULÉ
-        # retombe sur le hex de marque, au 1/255 près. Écrire « tout près n'est pas égal »
-        # serait faux ici — la planche doit dire la coïncidence, pas la masquer.
-        if resoudre(css, '--c-%s-%s' % (cle, proche)) == marque:
-            nuance = ('Ici la coïncidence est totale : le cran %s calculé retombe sur ce '
-                      'hex, à l\'arrondi près. C\'est propre à cette teinte, et c\'est '
-                      'précisément le piège de l\'ancienne convention « la marque = 500 » — '
-                      'vraie pour quatre teintes sur six, fausse pour les deux autres.'
-                      % proche)
-        else:
-            nuance = ('Mais « tout près » n\'est pas « égal » : le cran %s ci-dessus est '
-                      'calculé, et il diffère de ce hex.' % proche)
+        if cran_charte:
+            clarte = apca.srgb_vers_oklab(apca.vers_rgb(marque))[0]
+            note = note_charte(cle, cran_charte, marque, clarte,
+                               clarte - CIBLES[cran_charte])
+        else:   # ne doit jamais arriver : le vérificateur refuse cet état
+            note = ('<p class="teinte__note">Aucun cran ne porte le hex de charte %s : '
+                    'lancez <code>python3 test/apca-check.py</code>.</p>' % marque)
         lignes.append(
             '<section class="teinte">'
             '<header class="teinte__tete">'
@@ -206,17 +235,9 @@ def main():
             '<p class="teinte__alias">%s</p>'
             '</header>'
             '<div class="rampe">%s</div>'
-            '<div class="horsgrille">%s'
-            '<p class="horsgrille__note">La couleur de marque <strong>ne tombe sur aucun '
-            'cran</strong> : son hex est imposé par la charte, sa clarté tombe où elle '
-            'tombe. Ici elle vaut <strong>%s</strong>, le cran le plus proche étant le %s '
-            '(%s). %s C\'est pourquoi la marque porte son propre jeton, '
-            '<code>--c-%s-marque</code> — le seul hex du fichier qui ne se recalcule pas.</p>'
-            '</div>'
+            '%s'
             '</section>' % (echapper(libelle), marque, marque, ' · '.join(alias),
-                            ''.join(cases), case_marque(marque),
-                            nombre(clarte, 3), proche,
-                            nombre(dict(apca.CLARTES)[proche], 2), nuance, cle))
+                            ''.join(cases), note))
 
     neutres = []
     for var, role in (('--szh-gris-clair', 'fond « gris » des en-têtes et de la ligne de total'),
@@ -362,21 +383,16 @@ h1 {
 }
 .case--deco .case__role { font-weight: 600; opacity: 1; color: var(--encre-cal); }
 
-/* La marque : hors grille, donc hors rampe. Encadrée et badgée. */
-.horsgrille {
-  display: flex; flex-wrap: wrap; align-items: stretch; gap: 16px; margin-top: 18px;
-  padding-top: 16px; border-top: 1px dashed var(--filet);
+/* La charte n'a plus de case à part : c'est UN cran de la rampe, cerclé et badgé. */
+.case--charte { box-shadow: inset 0 0 0 2px var(--nuit); }
+.teinte__note {
+  margin: 18px 0 0; padding-top: 14px; border-top: 1px dashed var(--filet);
+  color: var(--encre-cal); font-size: 13px; max-width: 92ch;
 }
-.horsgrille .case { flex: 0 0 200px; max-width: 200px; }
-.horsgrille__note {
-  flex: 1 1 300px; margin: 0; align-self: center;
-  color: var(--encre-cal); font-size: 13px;
-}
-.horsgrille__note strong { color: var(--encre); font-weight: 600; }
-.horsgrille__note code {
+.teinte__note strong { color: var(--encre); font-weight: 600; }
+.teinte__note code {
   font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;
 }
-.case--marque { box-shadow: inset 0 0 0 2px var(--nuit); }
 .case__haut { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
 .case__niveau {
   font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 14px; font-weight: 600;
@@ -402,10 +418,17 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 .case__role { font-size: 10px; letter-spacing: .02em; opacity: .8; }
+/* Le badge est DANS la case (il ne dépasse plus au-dessus, sinon il chevaucherait la
+   rangée précédente quand la rampe se replie sur les petits écrans). Il garde les couleurs
+   de la PAGE — encre nuit sur papier — et non celles de la case : c'est la seule étiquette
+   dont la lisibilité ne doit pas dépendre du cran badgé.
+   Il n'a PAS de white-space:nowrap : « COULEUR DE CHARTE » mesure ~109 px et une colonne de
+   la rampe en fait 92 px au plus large des points de rupture — le badge se replie donc sur
+   deux lignes au lieu de déborder de la case. */
 .case__badge {
-  position: absolute; top: -9px; left: 10px; background: var(--nuit); color: var(--papier);
+  align-self: flex-start; max-width: 100%%; background: var(--nuit); color: var(--papier);
   font-size: 9px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
-  padding: 2px 6px; border-radius: 2px;
+  line-height: 1.35; padding: 2px 6px; border-radius: 2px;
 }
 
 .neutres { margin: 56px 0 0; }
@@ -439,7 +462,7 @@ td.num {
   <p class="eyebrow">SZH / CSPS · Maquette de revue</p>
   <h1>Palette annuelle et contrastes</h1>
   <p class="chapo">Chaque numéro de la revue est repeint dans une couleur annuelle. Les six
-  couleurs de marque se déclinent en <strong>onze crans de même teinte</strong>, calculés en
+  couleurs de charte se déclinent en <strong>onze crans de même teinte</strong>, calculés en
   OKLab pour ne pas délaver la couleur, puis mesurés avec <strong>APCA</strong> — le calcul de
   contraste du futur WCAG 3.</p>
   <p class="chapo">Un <strong>cran est une clarté</strong>, pas une cible de contraste : le 200
@@ -449,10 +472,15 @@ td.num {
   permettait pas.</p>
   <p class="chapo">La lecture est directe : chaque case porte le texte de la couleur qu'elle
   doit recevoir, <em>à la taille qu'elle autorise</em>. Si un échantillon vous paraît difficile
-  à lire à l'écran, c'est que la mesure mentait, pas l'inverse. Deux cases font exception, et
-  elles le disent : le <strong>cran 400 ne porte aucun texte</strong> (aplat muet — c'est le
-  point où ni le noir ni le blanc ne passent, inhérent à toute échelle saturée), et la
-  <strong>couleur de marque est hors grille</strong>, présentée sous chaque rampe.</p>
+  à lire à l'écran, c'est que la mesure mentait, pas l'inverse. Une case fait exception, et elle
+  le dit : le <strong>cran 400 ne porte aucun texte</strong> (aplat muet — c'est le point où ni
+  le noir ni le blanc ne passent, inhérent à toute échelle saturée).</p>
+  <p class="chapo">Dans chaque rampe, un cran est badgé <strong>couleur de charte</strong> : ce
+  cran n'est pas calculé, il porte <em>exactement</em> le hex donné par le graphiste. La charte
+  ne vit donc plus à côté de la grille, elle en occupe un barreau — un seul hex par couleur, et
+  ce hex a un numéro. La contrepartie est chiffrée sous chaque rampe : ce cran-là adopte la
+  clarté de la charte, pas celle du barreau, et les six teintes n'y sont plus rigoureusement
+  aussi claires.</p>
 
   <div class="seuils">
     <div class="seuil"><div class="seuil__val">75</div>

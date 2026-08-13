@@ -242,7 +242,7 @@ def couleur_sur(hexa, fond, cible):
     return _resoudre(hexa, lambda h: abs(lc(h, fond)) >= cible, 0.0)
 
 
-# ═══ 5. L'échelle : 11 crans à CLARTÉ FIXE ════════════════════════════════════════
+# ═══ 5. L'échelle : 11 crans à CLARTÉ FIXE, dont UN est la couleur de charte ══════
 #
 # POURQUOI une grille à clarté fixe, et non des crans ancrés sur des cibles de contraste ?
 #   L'échelle précédente définissait chaque cran par un objectif de Lc (« le plus coloré
@@ -255,15 +255,30 @@ def couleur_sur(hexa, fond, cible):
 #   = une même clarté = des crans comparables d'une couleur à l'autre. Le contraste n'est
 #   plus une cible mais une CONSÉQUENCE, qu'on mesure et qu'on garantit (voir CONTRAT).
 #
-# POURQUOI la couleur de marque n'est plus un cran ?
-#   Une marque est une contrainte EXTERNE : son hex est donné, sa clarté tombe où elle
-#   tombe. Elle ne peut donc pas être simultanément « le cran 500 » et « inchangée » pour
-#   les six teintes. Elle sort de la numérotation et prend son propre jeton, 'marque'.
-#   Fait notable : quatre des six marques (capucine 0,661 / poireau 0,657 / bleu acier
-#   0,671 / mountbatten 0,663) vivent autour de la clarté du cran 500 (0,66). C'est
-#   précisément pour ça que l'ancienne convention « la marque = 500 » PARAISSAIT juste :
-#   elle l'était pour ces quatre-là, et fausse pour le rouge (0,555, entre 600 et 700) et
-#   pour la moutarde (0,821, près de 300).
+# POURQUOI la couleur de CHARTE remplace un cran au lieu de vivre à côté ?
+#   Une charte est une contrainte EXTERNE : son hex est donné, sa clarté tombe où elle
+#   tombe, et elle ne coïncide donc avec aucune clarté de la grille. L'étape précédente en
+#   tirait la conclusion la plus rigoureuse : la sortir de la numérotation et lui donner un
+#   jeton à part ('marque'). Rigoureux, mais coûteux à l'usage — chaque teinte portait DEUX
+#   hex quasi identiques (mountbatten #A98899 la charte, #A88798 le cran 500 calculé, un
+#   demi-point de Lc d'écart), et il fallait choisir entre les deux à chaque emploi. Un
+#   lecteur de la maquette ne peut pas deviner que « le rouge SZH » n'est aucun des crans
+#   nommés rouge.
+#   On tranche donc dans l'autre sens : la charte REMPLACE le cran dont elle est la plus
+#   proche. Un seul hex par teinte et par cran, et le hex de charte est atteignable par un
+#   numéro de la grille. Le prix est explicite et mesuré : sur ce cran-là, les six teintes
+#   n'ont plus EXACTEMENT la même clarté. L'écart reste sous 0,015 pour cinq des six
+#   remplacements ; il monte à 0,035 pour le rouge, dont la charte tombe pile entre les
+#   crans 600 et 700 (0,555 pour 0,59 et 0,52 visés — le même 0,035 quel que soit celui
+#   des deux qu'on retienne : c'est la charte qui est entre deux crans, pas le code qui
+#   choisit mal). Ces écarts sont ANNONCÉS cran par cran dans styles/couleurs.css et
+#   vérifiés par test/apca-check.py, jamais dissimulés.
+#
+# POURQUOI le cran est CALCULÉ et non codé en dur ?
+#   Pour qu'un changement de charte (nouvelle couleur annuelle, retouche d'un hex par le
+#   graphiste) déplace tout seul le remplacement sur le bon cran. Coder « rouge -> 700 »
+#   en dur, c'est garantir qu'un futur rouge légèrement plus clair restera collé au 700
+#   alors que sa vraie place serait le 600, sans que rien ne proteste.
 
 CLARTES = (
     ('50', 0.97), ('100', 0.93), ('200', 0.87), ('300', 0.81), ('400', 0.74),
@@ -284,38 +299,103 @@ CRAN_DECORATIF = '400'
 #   texte courant  -> |Lc| >= 75 : corps, cellules et en-têtes de tableau.
 #   gros titres    -> |Lc| >= 60 : texte >= 24 px seulement.
 #   aucun texte    -> cran décoratif (aplat, bande, filet), vérifié au seuil non textuel.
+# Deux garanties sont désormais fixées par un hex de CHARTE, et non par un cran calculé —
+# c'est la conséquence directe du remplacement, et elle est à la baisse :
+#   500 : 61,1 -> 60,9 (charte bleu acier #5F9FBC). Le seuil gros titre (60) tient encore.
+#   700 : 81,3 -> 79,7 (charte rouge #D31932). Le seuil texte courant (75) tient encore.
+# Les neuf autres crans gardent exactement leur garantie précédente.
 CONTRAT = {
     '50':  (NOIR,  99.8, 'texte courant'),
     '100': (NOIR,  91.4, 'texte courant'),
     '200': (NOIR,  79.6, 'texte courant'),
     '300': (NOIR,  68.3, 'gros titres seulement'),
     '400': (None,  56.3, 'aucun texte (cran décoratif)'),
-    '500': (BLANC, 61.1, 'gros titres seulement'),
+    '500': (BLANC, 60.9, 'gros titres seulement'),
     '600': (BLANC, 71.7, 'gros titres seulement'),
-    '700': (BLANC, 81.3, 'texte courant'),
+    '700': (BLANC, 79.7, 'texte courant'),
     '800': (BLANC, 89.5, 'texte courant'),
     '900': (BLANC, 96.4, 'texte courant'),
     '950': (BLANC, 102.0, 'texte courant'),
 }
 
+# Dispersion de clarté TOLÉRÉE à l'intérieur d'un cran (max - min des six teintes).
+# Sans remplacement elle vaut 0,001 à 0,003 : le seul écart est l'arrondi à l'octet.
+# 0,02 laisse passer cet arrondi et les remplacements « serrés » (300 : 0,012 avec la
+# moutarde ; 500 : 0,014 avec le bleu acier) et rien d'autre.
+DISPERSION_CLARTE = 0.02
+# L'exception documentée : la charte rouge tombe à mi-chemin entre les crans 600 et 700,
+# donc le cran 700 porte 0,035 de dispersion, inévitablement (0,036 si l'on retenait le
+# 600 à la place). On la nomme ici plutôt que d'élargir la tolérance générale, pour qu'une
+# dérive sur les DIX autres crans reste détectée.
+DISPERSION_CLARTE_EXCEPTION = {'700': 0.04}
+
 # Alias historiques lus par accent-css.py (regex) et par les tableaux .szh-tableau.
 # Les NOMS sont figés (accent-css.py et print.css les cherchent tels quels) ; seules
 # leurs cibles suivent la nouvelle grille :
-#   normal -> la MARQUE (accents « couleur », filets, aplats de couverture) ;
+#   normal -> 'marque', c'est-à-dire le CRAN de charte (accents « couleur », filets,
+#             aplats de couverture) — le hex n'a pas changé, seul son statut a changé :
+#             ce n'est plus un jeton hors grille mais un cran nommé ;
 #   clair  -> 200 (le plus coloré des fonds à texte noir : Lc garanti 79,6) ;
-#   fonce  -> 700 (le plus clair des fonds à texte blanc : Lc garanti 81,3).
+#   fonce  -> 700 (le plus clair des fonds à texte blanc : Lc garanti 79,7).
 ALIAS = (('normal', 'marque'), ('clair', '200'), ('fonce', '700'))
+
+# Marge de QUASI-ÉGALITÉ sur le |Lc|, pour le choix du cran remplacé. En dessous de cet
+# écart, deux crans candidats sont perceptuellement indiscernables : le flottant ne doit
+# pas décider seul (une refonte de `variante` d'un centième renverrait un autre cran).
+MARGE_EGALITE_LC = 0.3
+
+
+def cran_de_charte(hexa):
+    """Le cran que la couleur de charte REMPLACE dans l'échelle de `hexa`.
+
+    Règle : le cran dont le |Lc| calculé est le plus proche de celui de la charte, PARMI
+    LES CRANS DE MÊME POLARITÉ DE TEXTE. La polarité est la contrainte dure — un cran
+    « fond sombre à texte blanc » ne peut pas être remplacé par une couleur qui se lit au
+    noir, quel que soit son |Lc|. C'est ce qui envoie la moutarde (Lc +73,7, elle se lit
+    au NOIR) sur le 300 et non sur le 600, dont le |Lc| est pourtant plus proche.
+    On compare des |Lc| plutôt que des clartés parce que c'est le contraste, et lui seul,
+    qui décide de ce qu'un cran peut porter : remplacer un cran par une couleur de même
+    clarté mais de contraste différent casserait le CONTRAT ; l'inverse le préserve.
+    Le cran DÉCORATIF (400) n'a pas de polarité de texte (CONTRAT -> None) : il n'est
+    jamais candidat, et c'est heureux — y loger une charte reviendrait à interdire tout
+    texte sur la couleur même de la revue.
+
+    Égalité : si plusieurs crans sont à moins de MARGE_EGALITE_LC du meilleur, on prend le
+    plus SOMBRE. Cas réel, le rouge #D31932 : 700 à 3,9 d'écart et 600 à 4,1, soit 0,2 —
+    sous la marge. Le plus sombre est aussi le meilleur choix éditorial, parce que le |Lc|
+    monte quand on descend l'échelle : à 79,7 la charte rouge devient un fond à TEXTE
+    COURANT (cran 700), alors que la même couleur posée sur le cran 600 hériterait de
+    l'étiquette « gros titres seulement ». En cas de doute, la règle donne donc l'usage le
+    plus large."""
+    charte = vers_hex(vers_rgb(hexa))
+    encre, lc_charte = meilleure_polarite(charte)
+    cible = abs(lc_charte)
+    candidats = [
+        (abs(abs(lc(encre, variante(charte, clarte))) - cible), clarte, cran)
+        for cran, clarte in CLARTES if CONTRAT[cran][0] == encre
+    ]
+    meilleur = min(ecart for ecart, _, _ in candidats)
+    # clarte la plus basse = cran le plus sombre = |Lc| le plus élevé.
+    return min((c for c in candidats if c[0] <= meilleur + MARGE_EGALITE_LC),
+               key=lambda c: c[1])[2]
 
 
 def echelle(hexa):
-    """Échelle complète d'une couleur de marque : {cran: hex} + la clé 'marque'.
+    """Échelle complète d'une couleur de charte : {cran: hex} pour les 11 crans, plus la
+    clé 'marque'.
 
-    Les 11 crans sont TOUS calculés : même teinte que `hexa`, clarté imposée par
-    CLARTES, chroma la plus vive qui reste dans le gamut sRGB (voir `variante`).
-    La clé 'marque' rend le hex d'entrée INTACT : c'est la contrainte externe, elle
-    ne tombe sur aucun cran et ne doit jamais être « recalculée »."""
-    out = {cran: variante(hexa, clarte) for cran, clarte in CLARTES}
-    out['marque'] = vers_hex(vers_rgb(hexa))
+    Dix crans sont calculés : même teinte que `hexa`, clarté imposée par CLARTES, chroma
+    la plus vive qui reste dans le gamut sRGB (voir `variante`). Le onzième — celui que
+    désigne `cran_de_charte` — vaut EXACTEMENT le hex d'entrée : la charte n'est pas
+    approchée, elle est posée telle quelle, et c'est le cran qui adopte sa clarté.
+    La clé 'marque' est un simple ALIAS vers ce cran (même hex, aucune nouvelle couleur) :
+    elle survit parce que le nom reste utile — « la couleur de la revue » se dit mieux que
+    « le cran 700 du rouge » — et parce que ALIAS et styles/couleurs.css l'exposent encore.
+    Un seul hex de charte par teinte, atteignable par deux noms."""
+    charte = vers_hex(vers_rgb(hexa))
+    out = {cran: variante(charte, clarte) for cran, clarte in CLARTES}
+    out[cran_de_charte(charte)] = charte
+    out['marque'] = charte
     return out
 
 
@@ -340,7 +420,8 @@ _autoverification()
 if __name__ == '__main__':
     # Générateur pour styles/couleurs.css :
     #     python3 apca.py '#D31932' rouge
-    # imprime le jeton de marque puis les 11 crans, Lc annoté, prêts à coller / comparer.
+    # imprime les 11 crans (Lc annoté, cran de charte signalé) puis l'alias -marque,
+    # prêts à coller / comparer.
     import sys
     try:   # signe moins typographique : sortie UTF-8 même en console Windows
         sys.stdout.reconfigure(encoding='utf-8')
@@ -354,19 +435,29 @@ if __name__ == '__main__':
     hexa = sys.argv[1] if len(sys.argv) > 1 else '#D31932'
     nom = sys.argv[2] if len(sys.argv) > 2 else 'teinte'
     ech = echelle(hexa)
-    clarte_marque = _clarte(ech['marque'])
-    proche = min(CLARTES, key=lambda c: abs(c[1] - clarte_marque))[0]
-    print('  --c-%s-marque: %s;   /* MARQUE, hors grille — clarté %.3f, près du cran %s */'
-          % (nom, ech['marque'], clarte_marque, proche))
+    charte = cran_de_charte(hexa)
     for cran, clarte in CLARTES:
         couleur = ech[cran]
         texte, garanti, usage = CONTRAT[cran]
+        # Le cran de charte porte la clarté RÉELLE de la charte, pas la clarté visée : on
+        # imprime donc la mesure et l'écart, seule façon de coller ce cran dans le CSS
+        # sans perdre l'information du compromis.
+        if cran == charte:
+            reelle = _clarte(couleur)
+            note = (' = COULEUR DE CHARTE, L réelle %.3f (cible %.2f, écart %s)'
+                    % (reelle, clarte, ('%+.3f' % (reelle - clarte)).replace('.', ',')
+                       .replace('-', '−')))
+        else:
+            note = ''
         if texte is None:   # cran décoratif : on annonce la MEILLEURE polarité, qui échoue
             gagnant, valeur = meilleure_polarite(couleur)
-            print('  --c-%s-%s: %s;   /* L %.2f — %s (le mieux : %s à Lc %s) */' % (
+            print('  --c-%s-%s: %s;   /* L %.2f — %s (le mieux : %s à Lc %s)%s */' % (
                 nom, cran, couleur, clarte, usage,
-                'noir' if gagnant == NOIR else 'blanc', _fr(valeur)))
+                'noir' if gagnant == NOIR else 'blanc', _fr(valeur), note))
             continue
-        print('  --c-%s-%s: %s;   /* L %.2f — texte %s : Lc %s (%s) */' % (
+        print('  --c-%s-%s: %s;   /* L %.2f — texte %s : Lc %s (%s)%s */' % (
             nom, cran, couleur, clarte,
-            'noir ' if texte == NOIR else 'blanc', _fr(lc(texte, couleur)), usage))
+            'noir ' if texte == NOIR else 'blanc', _fr(lc(texte, couleur)), usage, note))
+    # L'alias : un NOM de plus sur le cran de charte, jamais un hex de plus.
+    print('  --c-%s-marque: var(--c-%s-%s);   /* = le cran de charte ci-dessus */'
+          % (nom, nom, charte))

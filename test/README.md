@@ -22,8 +22,8 @@ destinée à la publication** — c'est un banc d'essai réutilisable.
   **À relancer après toute modification de `couleurs.css`** (les niveaux sont calculés au
   plus juste : marges de contraste serrées).
 - `palette-html.py` — régénère `docs/palette.html`, la planche de la palette : les 11 crans de
-  chaque couleur plus sa couleur de charte (hors grille), chaque cran portant le texte qu'il a
-  le droit de recevoir — corps de texte, gros titre seulement, ou rien — avec son Lc.
+  chaque couleur, dont celui qui porte la couleur de charte elle-même. Chaque cran montre son Lc
+  et le texte qu'il a le droit de recevoir : corps de texte, gros titre seulement, ou rien.
   Page autonome (polices de la maquette embarquées), à ouvrir dans un navigateur :
   ```sh
   python3 test/palette-html.py

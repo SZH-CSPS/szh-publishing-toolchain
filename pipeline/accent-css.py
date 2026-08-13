@@ -9,8 +9,8 @@
 #
 #   python3 accent-css.py <ausgabe.yaml>   ->  bloc :root sur stdout
 #
-# Les crans de chaque couleur (grille à clarté fixe -50 … -950, le jeton -marque hors
-# grille, et les alias -normal/-clair/-fonce) sont
+# Les crans de chaque couleur (grille à clarté fixe -50 … -950, dont l'un porte la
+# couleur de CHARTE elle-même, plus les alias -marque/-normal/-clair/-fonce) sont
 # ÉDITABLES dans styles/couleurs.css. Ce script lit la couleur choisie, la mappe à son
 # nom, et émet un :root reprenant les 3 variations que consomment les tableaux. Sans
 # couleur valide -> commentaire seul (le PDF d'un numéro SANS couleur reste identique,
@@ -130,9 +130,10 @@ def teintes_neutres_depuis_css():
 
 def variations_calculees(hexa):
     """Mêmes valeurs que couleurs.css, recalculées sur la grille à clarté fixe :
-      -normal = la MARQUE (hex d'entrée intact, hors grille) ;
+      -normal = la CHARTE (hex d'entrée intact ; elle occupe l'un des crans, D80) ;
       -clair  = cran 200 (fond à texte noir,  Lc garanti +79,6) ;
-      -fonce  = cran 700 (fond à texte blanc, Lc garanti −81,3).
+      -fonce  = cran 700 (fond à texte blanc, Lc garanti −79,7 depuis que la charte
+                rouge occupe ce cran — c'est elle qui fixe désormais le pire des six).
     La grille et les alias étant définis dans apca.py (CLARTES / ALIAS), ce repli ne peut
     pas divulguer une autre palette que celle du fichier CSS."""
     ech = apca.echelle(hexa)

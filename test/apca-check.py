@@ -34,9 +34,25 @@
 # blanc, c'est-à-dire « l'aplat se distingue de la page ». Aucun texte n'y est permis :
 # si vous cherchez un fond porteur de texte, prenez 200 (texte noir) ou 700 (texte blanc).
 #
-# La couleur de MARQUE est hors grille (jeton -marque) : son hex est imposé par la charte,
-# on ne lui applique donc aucun seuil de texte courant — seulement le seuil gros titre
-# dans sa meilleure polarité, et le seuil non textuel comme bordure épaisse.
+# ═══ Ce que vérifie le §1bis : le CRAN DE CHARTE ══════════════════════════════════
+# La couleur de charte n'est plus hors grille : elle REMPLACE le cran dont le |Lc| calculé
+# était le plus proche du sien, dans la même polarité de texte (apca.cran_de_charte). Trois
+# contrôles, tous éliminatoires :
+#   a) le cran désigné porte EXACTEMENT le hex de la charte (sinon quelqu'un a recalculé une
+#      valeur qui vient du graphiste, et la revue n'imprime plus sa propre couleur) ;
+#   b) `--c-<nom>-marque` est bien un ALIAS de ce cran et non un second hex ressuscité —
+#      c'est précisément la dualité que ce lot a supprimée ;
+#   c) la DISPERSION DE CLARTÉ à l'intérieur de chaque cran reste sous tolérance. C'est le
+#      prix du remplacement, et le seul endroit où il se paie : un cran est censé signifier
+#      une clarté unique pour les six teintes, et celui qui accueille une charte s'en écarte.
+#      apca.DISPERSION_CLARTE (0,02) couvre l'arrondi à l'octet et les remplacements serrés ;
+#      apca.DISPERSION_CLARTE_EXCEPTION nomme le seul cas large, le cran 700 du rouge (0,035,
+#      charte à mi-chemin entre deux crans). On préfère une exception NOMMÉE à une tolérance
+#      élargie : sur les dix autres crans, une dérive de 0,02 doit encore faire échouer.
+# Aucun seuil de texte courant n'est imposé au hex de charte lui-même en tant que « marque » :
+# on mesure sa meilleure polarité au seuil gros titre, et le seuil non textuel comme bordure
+# épaisse. Son cran, lui, est vérifié comme tous les autres au §1 — et c'est nouveau : la
+# charte est désormais soumise au contrat de la grille.
 #
 # Paire volontairement EXCLUE : un filet contre un aplat de la MÊME teinte (en-tête
 # « couleur » ou « negatif »). Un séparateur n'a besoin de se détacher que d'UN de ses
@@ -97,7 +113,9 @@ CSS = accent.couleurs_css()
 lignes = []      # (libelle, texte, fond, lc, seuil, ok)
 manquants = []   # variables introuvables dans couleurs.css
 ecarts = []      # (libelle, lc mesuré, |Lc| garanti annoncé) quand le contrat est en deçà
-alterees = []    # (nom, hex de charte, hex lu) si un jeton -marque a été retouché
+alterees = []    # (nom, cran, hex de charte, hex lu) si le cran de charte n'est pas la charte
+alias_faux = []  # (nom, cran, hex de charte, hex lu) si -marque n'est plus l'alias du cran
+dispersions = [] # (cran, min, max, dispersion, tolérance, ok) — une ligne par cran
 
 
 def var(nom):
@@ -166,27 +184,61 @@ for nom, marque in COULEURS:
             if valeur < garanti - MARGE_GARANTI:
                 ecarts.append(('%s -%s' % (nom, cran), valeur, garanti))
 
-    # La couleur de MARQUE est HORS GRILLE : son hex est imposé par la charte, donc on ne
-    # lui impose pas le seuil du texte courant (aucune des 6 ne l'atteint, dans aucune
+    # La couleur de CHARTE, prise en tant que « marque » (accent brut de la maquette) : on
+    # ne lui impose pas le seuil du texte courant (aucune des 6 ne l'atteint, dans aucune
     # polarité). On vérifie la MEILLEURE polarité au seuil « gros titre » et on annonce
     # laquelle gagne — c'est son seul usage textuel légitime (titres de couverture).
     fond = var('--c-%s-marque' % nom)
     if fond is not None:
         gagnant, valeur = apca.meilleure_polarite(fond)
-        mesure('%s -marque (hors grille, gros titre — %s gagne)'
+        mesure('%s -marque (= cran de charte, gros titre — %s gagne)'
                % (nom, 'noir' if gagnant == apca.NOIR else 'blanc'),
                gagnant, fond, GROS_TITRE)
-    # La marque brute sert aussi de bordure ÉPAISSE sur le papier (--c-annual : filet de
+    # La charte brute sert aussi de bordure ÉPAISSE sur le papier (--c-annual : filet de
     # couverture 6 px, bords d'encadré 4 px, --c-abstract-border 3 px) : non textuel.
     mesure('%s -marque (bordure épaisse sur papier)' % nom, fond, BLANC, NON_TEXTE)
-    # Le hex de marque doit être STRICTEMENT celui de la charte : c'est la seule valeur du
-    # fichier qui ne se recalcule pas. Une retouche accidentelle doit faire échouer le test.
+
+    # ── §1bis : le cran de CHARTE porte-t-il le hex de la charte ? ────────────────────
+    # Le cran est CALCULÉ ici (apca.cran_de_charte), pas récité : si la charte d'une teinte
+    # change un jour, le test cherchera le hex au nouvel endroit tout seul. Deux échecs
+    # distincts, parce qu'ils se réparent différemment :
+    #   - le cran ne porte pas la charte  -> une valeur du graphiste a été recalculée ;
+    #   - -marque n'aboutit pas au cran   -> la dualité « charte à côté du cran » revient.
+    cran_charte = apca.cran_de_charte(marque)
+    lu = var('--c-%s-%s' % (nom, cran_charte))
+    if lu is None or lu.upper() != marque.upper():
+        alterees.append((nom, cran_charte, marque, lu))
     if fond is None or fond.upper() != marque.upper():
-        alterees.append((nom, marque, fond))
+        alias_faux.append((nom, cran_charte, marque, fond))
+
+# ═══ 1ter. Dispersion de clarté : ce que COÛTE le cran de charte ══════════════════
+# Un cran est censé être UNE clarté, la même pour les six teintes. Dix crans sur onze le
+# sont à l'octet près (dispersion 0,001 à 0,003, c'est l'arrondi hexadécimal et rien
+# d'autre) ; celui qui accueille une charte adopte la clarté de cette charte et s'écarte
+# donc du barreau. On mesure l'écart au lieu de le supposer : c'est la contrepartie du choix
+# éditorial « un seul hex par couleur », et elle doit rester chiffrée et sous plafond.
+# On lit les hex du CSS (pas ceux qu'apca recalculerait) : c'est le fichier édité qui est
+# jugé, comme partout ailleurs dans ce script.
+for cran in CRANS:
+    clartes = []
+    for nom, _ in COULEURS:
+        hexa = var('--c-%s-%s' % (nom, cran))
+        if hexa is not None:
+            clartes.append(apca.srgb_vers_oklab(apca.vers_rgb(hexa))[0])
+    if len(clartes) < 2:
+        continue
+    disp = max(clartes) - min(clartes)
+    tolerance = apca.DISPERSION_CLARTE_EXCEPTION.get(cran, apca.DISPERSION_CLARTE)
+    dispersions.append((cran, min(clartes), max(clartes), disp, tolerance,
+                        disp <= tolerance))
+
 
 # ═══ 2. Alias lus par accent-css.py pour les tableaux ═════════════════════════════
-# Noms figés, cibles nouvelles : -normal = la marque (hors grille), -clair = cran 200,
-# -fonce = cran 700. On les remesure ICI, en suivant les renvois var(), au lieu de faire
+# Noms figés, cibles nouvelles : -normal = -marque, donc le CRAN de charte (700 pour le
+# rouge, 300 pour la moutarde, 500 pour les quatre autres) ; -clair = cran 200 ; -fonce =
+# cran 700 — qui, pour le rouge, EST la charte : le fond « negatif » d'un tableau rouge et
+# le --c-annual-deep d'un numéro rouge valent #D31932 et non plus le #C3112C calculé.
+# On les remesure ICI, en suivant les renvois var(), au lieu de faire
 # confiance au §1 : si quelqu'un repointe -clair vers le 300 ou le 400 (crans SANS texte
 # courant), le §1 resterait vert et c'est cette section-là qui doit crier.
 titre("Alias des tableaux (--szh-accent* = --c-<nom>-normal/-clair/-fonce)")
@@ -267,8 +319,9 @@ def afficher():
         print('  ÉCHEC  %s : %s sur %s -> Lc %+.1f (seuil %d)' % (
             libelle, texte.upper(), fond.upper(), valeur or 0.0, seuil))
 
-    # Deux familles d'échec qui ne sont pas des « paires » : le |Lc| garanti que l'en-tête
-    # de couleurs.css annonce, et l'intégrité des 6 hex de charte. Elles font échouer le
+    # Quatre familles d'échec qui ne sont pas des « paires » : le |Lc| garanti que l'en-tête
+    # de couleurs.css annonce, l'intégrité des 6 hex de charte sur leur cran, l'alias
+    # -marque, et la dispersion de clarté à l'intérieur d'un cran. Toutes font échouer le
     # script au même titre qu'un seuil manqué — un fichier qui promet plus qu'il ne tient
     # est aussi faux qu'un fichier illisible.
     if ecarts:
@@ -279,12 +332,39 @@ def afficher():
         print('Contrat des |Lc| garantis : tenu par les %d paires de la grille.'
               % (len(CRANS) * len(COULEURS)))
     if alterees:
-        print('Hex de MARQUE altéré(s) — la charte n\'est pas négociable :')
-        for nom, attendu, lu in alterees:
-            print('  MARQUE  %s : attendu %s, lu %s' % (nom, attendu, lu))
+        print('Cran(s) de CHARTE qui ne portent PAS la charte — elle n\'est pas négociable :')
+        for nom, cran, attendu, lu in alterees:
+            print('  CHARTE  %s -%s : attendu %s, lu %s' % (nom, cran, attendu, lu))
     else:
-        print('Hex de marque : les %d couleurs de charte sont strictement inchangées.'
-              % len(COULEURS))
+        print('Cran de charte : les %d couleurs de charte sont posées telles quelles (%s).'
+              % (len(COULEURS),
+                 ', '.join('%s %s' % (nom, apca.cran_de_charte(m)) for nom, m in COULEURS)))
+    if alias_faux:
+        print('Alias -marque désynchronisé(s) — la dualité charte/cran est de retour :')
+        for nom, cran, attendu, lu in alias_faux:
+            print('  ALIAS  --c-%s-marque : attendu var(--c-%s-%s) = %s, lu %s'
+                  % (nom, nom, cran, attendu, lu))
+    else:
+        print('Alias -marque : les %d pointent bien sur leur cran de charte '
+              '(un seul hex par couleur).' % len(COULEURS))
+
+    # Dispersion de clarté par cran : le PRIX du remplacement, affiché et plafonné. Le cran
+    # de charte apparaît en clair pour que la ligne se lise sans aller-retour avec le CSS.
+    ratees = [d for d in dispersions if not d[5]]
+    porteur = {}
+    for nom, m in COULEURS:
+        porteur.setdefault(apca.cran_de_charte(m), []).append(nom)
+    print('Dispersion de clarté OKLab par cran (max - min des six teintes) :')
+    for cran, mini, maxi, disp, tolerance, ok in dispersions:
+        qui = porteur.get(cran)
+        print('  %-4s %.3f-%.3f  écart %.3f  (tolérance %.2f) %-3s%s' % (
+            cran, mini, maxi, disp, tolerance, 'OK' if ok else 'HORS',
+            '  <- charte : %s' % '/'.join(qui) if qui else ''))
+    if ratees:
+        print('%d cran(s) au-delà de la dispersion de clarté tolérée :' % len(ratees))
+        for cran, mini, maxi, disp, tolerance, _ in ratees:
+            print('  CLARTÉ  cran %s : écart %.3f > %.3f toléré (de %.3f à %.3f)'
+                  % (cran, disp, tolerance, mini, maxi))
 
     # Le cahier des charges d'origine exige « au moins 3 et 3 » : au moins 3 crans portant
     # du texte courant NOIR et 3 du texte courant BLANC. On le recompte à partir du
@@ -301,7 +381,7 @@ def afficher():
     print('Cran(s) décoratif(s), AUCUN TEXTE autorisé : %s.' % '/'.join(decoratifs))
     if len(noirs) < 3 or len(blancs) < 3:
         return 1
-    return 1 if (echecs or ecarts or alterees) else 0
+    return 1 if (echecs or ecarts or alterees or alias_faux or ratees) else 0
 
 
 if __name__ == '__main__':
