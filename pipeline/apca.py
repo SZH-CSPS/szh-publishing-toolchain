@@ -234,18 +234,6 @@ def _resoudre(hexa, convient, clarte_extreme):
         lambda l: convient(variante(hexa, l)), clarte_extreme, _clarte(hexa)))
 
 
-def fond_clair(hexa, cible):
-    """Fond CLAIR de la teinte de `hexa` portant du texte NOIR à Lc >= cible.
-    Le plus foncé (= le plus coloré) qui tienne encore la cible."""
-    return _resoudre(hexa, lambda h: lc(NOIR, h) >= cible, 1.0)
-
-
-def fond_sombre(hexa, cible):
-    """Fond SOMBRE de la teinte de `hexa` portant du texte BLANC à |Lc| >= cible.
-    Le plus clair (= le plus coloré) qui tienne encore la cible."""
-    return _resoudre(hexa, lambda h: abs(lc(BLANC, h)) >= cible, 0.0)
-
-
 def couleur_sur(hexa, fond, cible):
     """Variante de `hexa` utilisable EN AVANT-PLAN (texte, filet, bordure) sur `fond`
     avec |Lc| >= cible. On assombrit le moins possible pour garder la couleur vive.
@@ -254,31 +242,84 @@ def couleur_sur(hexa, fond, cible):
     return _resoudre(hexa, lambda h: abs(lc(h, fond)) >= cible, 0.0)
 
 
-# Niveaux de l'échelle : (nom, cible Lc). Les clairs portent du texte NOIR, les
-# sombres du texte BLANC ; 500 = la couleur de marque, intouchable.
-NIVEAUX_CLAIRS = (('50', 90.0), ('100', 82.0), ('200', 75.0))
-NIVEAUX_SOMBRES = (('700', 75.0), ('800', 82.0), ('900', 90.0))
+# ═══ 5. L'échelle : 11 crans à CLARTÉ FIXE ════════════════════════════════════════
+#
+# POURQUOI une grille à clarté fixe, et non des crans ancrés sur des cibles de contraste ?
+#   L'échelle précédente définissait chaque cran par un objectif de Lc (« le plus coloré
+#   qui tienne encore Lc 82 »). Conséquence : un même numéro donnait une clarté DIFFÉRENTE
+#   selon la teinte, parce qu'atteindre Lc 82 demande d'assombrir beaucoup un bleu et très
+#   peu un jaune. Le « 500 » de la moutarde était donc bien plus clair que celui du rouge,
+#   et deux couleurs annuelles au même cran ne se ressemblaient pas.
+#   Ici on inverse la logique, comme le font tous les générateurs OKLCH (Tailwind, Radix,
+#   Open Props) : le cran FIXE LA CLARTÉ, identique pour les six teintes. Un même numéro
+#   = une même clarté = des crans comparables d'une couleur à l'autre. Le contraste n'est
+#   plus une cible mais une CONSÉQUENCE, qu'on mesure et qu'on garantit (voir CONTRAT).
+#
+# POURQUOI la couleur de marque n'est plus un cran ?
+#   Une marque est une contrainte EXTERNE : son hex est donné, sa clarté tombe où elle
+#   tombe. Elle ne peut donc pas être simultanément « le cran 500 » et « inchangée » pour
+#   les six teintes. Elle sort de la numérotation et prend son propre jeton, 'marque'.
+#   Fait notable : quatre des six marques (capucine 0,661 / poireau 0,657 / bleu acier
+#   0,671 / mountbatten 0,663) vivent autour de la clarté du cran 500 (0,66). C'est
+#   précisément pour ça que l'ancienne convention « la marque = 500 » PARAISSAIT juste :
+#   elle l'était pour ces quatre-là, et fausse pour le rouge (0,555, entre 600 et 700) et
+#   pour la moutarde (0,821, près de 300).
+
+CLARTES = (
+    ('50', 0.97), ('100', 0.93), ('200', 0.87), ('300', 0.81), ('400', 0.74),
+    ('500', 0.66), ('600', 0.59), ('700', 0.52), ('800', 0.45), ('900', 0.38),
+    ('950', 0.31),
+)
+
+# Cran DÉCORATIF : le point de croisement où NI le noir NI le blanc n'atteint le seuil
+# du gros titre (60). Ce n'est pas un défaut à corriger — toute échelle de couleur
+# saturée en possède un : en descendant, le noir perd du contraste plus vite que le
+# blanc n'en gagne, et les deux courbes se croisent sous le seuil. On le nomme, on
+# l'annote, et on interdit d'y mettre du texte.
+CRAN_DECORATIF = '400'
+
+# Contrat de chaque cran : {cran: (couleur de texte admise, |Lc| garanti, usage)}.
+# Le |Lc| est le PIRE des six teintes, MESURÉ (test/apca-check.py le revérifie cran par
+# cran et teinte par teinte : si une valeur d'ici est fausse, le test échoue).
+#   texte courant  -> |Lc| >= 75 : corps, cellules et en-têtes de tableau.
+#   gros titres    -> |Lc| >= 60 : texte >= 24 px seulement.
+#   aucun texte    -> cran décoratif (aplat, bande, filet), vérifié au seuil non textuel.
+CONTRAT = {
+    '50':  (NOIR,  99.8, 'texte courant'),
+    '100': (NOIR,  91.4, 'texte courant'),
+    '200': (NOIR,  79.6, 'texte courant'),
+    '300': (NOIR,  68.3, 'gros titres seulement'),
+    '400': (None,  56.3, 'aucun texte (cran décoratif)'),
+    '500': (BLANC, 61.1, 'gros titres seulement'),
+    '600': (BLANC, 71.7, 'gros titres seulement'),
+    '700': (BLANC, 81.3, 'texte courant'),
+    '800': (BLANC, 89.5, 'texte courant'),
+    '900': (BLANC, 96.4, 'texte courant'),
+    '950': (BLANC, 102.0, 'texte courant'),
+}
 
 # Alias historiques lus par accent-css.py (regex) et par les tableaux .szh-tableau.
-ALIAS = (('normal', '500'), ('clair', '100'), ('fonce', '800'))
+# Les NOMS sont figés (accent-css.py et print.css les cherchent tels quels) ; seules
+# leurs cibles suivent la nouvelle grille :
+#   normal -> la MARQUE (accents « couleur », filets, aplats de couverture) ;
+#   clair  -> 200 (le plus coloré des fonds à texte noir : Lc garanti 79,6) ;
+#   fonce  -> 700 (le plus clair des fonds à texte blanc : Lc garanti 81,3).
+ALIAS = (('normal', 'marque'), ('clair', '200'), ('fonce', '700'))
 
 
 def echelle(hexa):
-    """Échelle complète d'une couleur de marque : {niveau: hex}.
+    """Échelle complète d'une couleur de marque : {cran: hex} + la clé 'marque'.
 
-    50/100/200  : fonds clairs pour texte NOIR  (Lc >= 90 / 82 / 75)
-    500         : la couleur de marque, INCHANGÉE
-    700/800/900 : fonds sombres pour texte BLANC (|Lc| >= 75 / 82 / 90
-                  — 900 est le plus sombre)"""
-    out = {'500': vers_hex(vers_rgb(hexa))}
-    for niveau, cible in NIVEAUX_CLAIRS:
-        out[niveau] = fond_clair(hexa, cible)
-    for niveau, cible in NIVEAUX_SOMBRES:
-        out[niveau] = fond_sombre(hexa, cible)
+    Les 11 crans sont TOUS calculés : même teinte que `hexa`, clarté imposée par
+    CLARTES, chroma la plus vive qui reste dans le gamut sRGB (voir `variante`).
+    La clé 'marque' rend le hex d'entrée INTACT : c'est la contrainte externe, elle
+    ne tombe sur aucun cran et ne doit jamais être « recalculée »."""
+    out = {cran: variante(hexa, clarte) for cran, clarte in CLARTES}
+    out['marque'] = vers_hex(vers_rgb(hexa))
     return out
 
 
-# ═══ 5. Auto-vérification (exécutée à l'import : une palette fausse doit CASSER) ═══
+# ═══ 6. Auto-vérification (exécutée à l'import : une palette fausse doit CASSER) ═══
 
 def _autoverification():
     # Les deux valeurs de référence d'APCA-W3 0.1.9. Si elles bougent, l'implémentation
@@ -299,23 +340,33 @@ _autoverification()
 if __name__ == '__main__':
     # Générateur pour styles/couleurs.css :
     #     python3 apca.py '#D31932' rouge
-    # imprime les 7 lignes CSS du niveau, Lc annoté, prêtes à coller / comparer.
+    # imprime le jeton de marque puis les 11 crans, Lc annoté, prêts à coller / comparer.
     import sys
     try:   # signe moins typographique : sortie UTF-8 même en console Windows
         sys.stdout.reconfigure(encoding='utf-8')
     except (AttributeError, OSError):
         pass
+
+    def _fr(x):
+        """Virgule décimale et signe moins typographique : le style de couleurs.css."""
+        return ('%+.1f' % x).replace('.', ',').replace('-', '−')
+
     hexa = sys.argv[1] if len(sys.argv) > 1 else '#D31932'
     nom = sys.argv[2] if len(sys.argv) > 2 else 'teinte'
     ech = echelle(hexa)
-    for niveau in ('50', '100', '200', '500', '700', '800', '900'):
-        couleur = ech[niveau]
-        if niveau == '500':
-            texte, valeur = meilleure_polarite(couleur)
-        else:
-            texte = NOIR if niveau in dict(NIVEAUX_CLAIRS) else BLANC
-            valeur = lc(texte, couleur)
-        print('  --c-%s-%s: %s;   /* texte %s : Lc %s */' % (
-            nom, niveau, couleur, 'noir ' if texte == NOIR else 'blanc',
-            # Virgule décimale et signe moins typographique : même style que couleurs.css.
-            ('%+.1f' % valeur).replace('.', ',').replace('-', '−')))
+    clarte_marque = _clarte(ech['marque'])
+    proche = min(CLARTES, key=lambda c: abs(c[1] - clarte_marque))[0]
+    print('  --c-%s-marque: %s;   /* MARQUE, hors grille — clarté %.3f, près du cran %s */'
+          % (nom, ech['marque'], clarte_marque, proche))
+    for cran, clarte in CLARTES:
+        couleur = ech[cran]
+        texte, garanti, usage = CONTRAT[cran]
+        if texte is None:   # cran décoratif : on annonce la MEILLEURE polarité, qui échoue
+            gagnant, valeur = meilleure_polarite(couleur)
+            print('  --c-%s-%s: %s;   /* L %.2f — %s (le mieux : %s à Lc %s) */' % (
+                nom, cran, couleur, clarte, usage,
+                'noir' if gagnant == NOIR else 'blanc', _fr(valeur)))
+            continue
+        print('  --c-%s-%s: %s;   /* L %.2f — texte %s : Lc %s (%s) */' % (
+            nom, cran, couleur, clarte,
+            'noir ' if texte == NOIR else 'blanc', _fr(lc(texte, couleur)), usage))

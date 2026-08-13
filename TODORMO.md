@@ -13,11 +13,15 @@
 - [ ] **Collage de tableau Excel** (`Maj+Alt+V`, D75) : la conversion est testée headless
   (7 cas), le geste ne l'est pas.
 - [ ] **Planche de palette** : ouvrir `docs/palette.html` et juger **à l'œil** les nouvelles
-  teintes. Les fonds « couleur » des tableaux sont nettement plus colorés qu'avant (le fondu
-  à 18 % gaspillait une douzaine de points de contraste) : moutarde, poireau et bleu acier
-  changent beaucoup. Si un fond te paraît trop franc, il suffit de faire pointer l'alias
-  `--c-<nom>-clair` vers `-50` au lieu de `-100` dans `couleurs.css`, puis de relancer
-  `python3 test/apca-check.py` et `python3 test/palette-html.py`.
+  teintes. La palette est passée en **grille à clarté fixe de 11 crans** (D79) : un même numéro
+  = la même clarté pour les six couleurs, et la couleur de charte a son propre jeton `-marque`,
+  hors grille. Les fonds « couleur » des tableaux sont plus colorés qu'avant l'APCA (l'ancien
+  fondu à 18 % gaspillait une douzaine de points de contraste). Si un fond te paraît trop franc,
+  fais pointer l'alias `--c-<nom>-clair` vers `-100` au lieu de `-200` dans `couleurs.css`, puis
+  relance `python3 test/apca-check.py` et `python3 test/palette-html.py`.
+  À regarder en particulier : les crans clairs du **rouge** et de la **capucine** tirent au rose
+  (sRGB n'a pas de rouge clair vif : la chroma y est rabotée jusqu'à −49 %), et les crans sombres
+  de la **moutarde** sont olive plutôt que jaunes — même raison, en sens inverse.
 - [ ] **Rendu du `.pptx`** (`profil: presentation`) : validé structurellement (OOXML, texte
   complet), jamais ouvert dans PowerPoint. À voir à l'œil sur un article réel. ⚠ Limite
   mesurée : les tableaux de D47 (HTML réinjecté) **disparaissent** du diaporama.

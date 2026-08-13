@@ -9,7 +9,8 @@
 #
 #   python3 accent-css.py <ausgabe.yaml>   ->  bloc :root sur stdout
 #
-# Les niveaux de chaque couleur (échelle -50 … -900 + alias -normal/-clair/-fonce) sont
+# Les crans de chaque couleur (grille à clarté fixe -50 … -950, le jeton -marque hors
+# grille, et les alias -normal/-clair/-fonce) sont
 # ÉDITABLES dans styles/couleurs.css. Ce script lit la couleur choisie, la mappe à son
 # nom, et émet un :root reprenant les 3 variations que consomment les tableaux. Sans
 # couleur valide -> commentaire seul (le PDF d'un numéro SANS couleur reste identique,
@@ -79,8 +80,9 @@ def couleurs_css():
 def resoudre_variable(css, nom, sauts=4):
     """Valeur hex d'une variable CSS de couleurs.css, en suivant les renvois
     `var(--autre)`. Les alias -normal/-clair/-fonce pointent vers un niveau de
-    l'échelle (`--c-rouge-clair: var(--c-rouge-100)`) : un seul hex par teinte, donc
-    aucun risque de désynchronisation quand la revue édite un niveau. Renvoie None si
+    la grille, ou vers la marque (`--c-rouge-clair: var(--c-rouge-200)`) : un seul hex par
+    cran et par teinte, donc aucun risque de désynchronisation quand la revue édite un
+    cran. Renvoie None si
     la variable est absente ou si la chaîne de renvois n'aboutit pas à un hex."""
     for _ in range(sauts):
         m = re.search(re.escape(nom) + r'\s*:\s*([^;\n]+);', css)
@@ -127,10 +129,12 @@ def teintes_neutres_depuis_css():
 # ---- Repli : recalcul APCA (si couleurs.css absent/incomplet) ------------------------
 
 def variations_calculees(hexa):
-    """Mêmes valeurs que couleurs.css, recalculées : -clair = niveau 100 (fond à texte
-    noir, Lc >= 82), -fonce = niveau 800 (fond à texte blanc, |Lc| >= 82). L'échelle et
-    les alias étant définis dans apca.py, ce repli ne peut pas divulguer une autre
-    palette que celle du fichier CSS."""
+    """Mêmes valeurs que couleurs.css, recalculées sur la grille à clarté fixe :
+      -normal = la MARQUE (hex d'entrée intact, hors grille) ;
+      -clair  = cran 200 (fond à texte noir,  Lc garanti +79,6) ;
+      -fonce  = cran 700 (fond à texte blanc, Lc garanti −81,3).
+    La grille et les alias étant définis dans apca.py (CLARTES / ALIAS), ce repli ne peut
+    pas divulguer une autre palette que celle du fichier CSS."""
     ech = apca.echelle(hexa)
     return {nom: ech[niveau] for nom, niveau in apca.ALIAS}
 
@@ -174,7 +178,12 @@ def jetons_annuels(hexa):
     texte, _ = apca.meilleure_polarite(hexa)
     return [
         ('--c-annual',          hexa),
-        ('--c-annual-deep',     apca.echelle(hexa)['800']),
+        # Cran 700, comme l'alias -fonce : UNE SEULE règle « fond sombre à texte blanc »
+        # dans toute la chaîne, donc le fond négatif d'un tableau et celui de la maquette
+        # sont exactement la même couleur (avant : 800 ici, 800 pour -fonce sur l'ancienne
+        # échelle à cibles de contraste — la coïncidence était fortuite, elle est
+        # maintenant construite).
+        ('--c-annual-deep',     apca.echelle(hexa)['700']),
         ('--c-annual-text',     apca.couleur_sur(melange(hexa, '#0A0D14', 0.60),
                                                  '#FFFFFF', LC_TEXTE_ANNUEL)),
         ('--c-annual-ui',       apca.couleur_sur(hexa, '#FFFFFF', LC_FILET_CONFORT)),

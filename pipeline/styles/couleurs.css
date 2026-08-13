@@ -10,24 +10,56 @@
  * (APCA remplace l'ancien ratio WCAG 2 « 4,5:1 », qui se trompait sur les teintes vives :
  *  il refusait des jaunes lisibles et acceptait des gris sombres illisibles.)
  *
- * ═══ L'échelle ═══════════════════════════════════════════════════════════════
- * Chaque couleur de marque se décline en 7 niveaux de MÊME TEINTE (calculés en OKLab,
- * donc sans délavage), du plus clair au plus sombre :
- *   -50 / -100 / -200 : FONDS CLAIRS pour du texte NOIR   (Lc ≥ 90 / 82 / 75)
- *   -500             : LA COULEUR DE MARQUE, INCHANGÉE — ne la modifiez pas
- *   -700 / -800 / -900 : FONDS SOMBRES pour du texte BLANC (|Lc| ≥ 75 / 82 / 90)
- * -200 est donc le plus coloré des fonds clairs, -900 le plus sombre des fonds sombres.
- * Chaque niveau est la couleur la PLUS VIVE qui atteigne encore sa cible : on ne veut pas
- * des pastels fades. Les marges sont donc serrées — d'où le vérificateur ci-dessous.
+ * ═══ La grille : 11 crans à CLARTÉ FIXE ══════════════════════════════════════
+ * Le NUMÉRO D'UN CRAN EST UNE CLARTÉ, pas une cible de contraste. Les six teintes
+ * partagent exactement la même échelle de clartés OKLab (L) :
+ *      50 → 0,97    100 → 0,93    200 → 0,87    300 → 0,81    400 → 0,74
+ *     500 → 0,66    600 → 0,59    700 → 0,52    800 → 0,45    900 → 0,38    950 → 0,31
+ * Conséquence — la raison même de cette convention : « rouge-200 » et « poireau-200 » sont
+ * aussi clairs l'un que l'autre. On peut donc changer la couleur annuelle d'un numéro sans
+ * que la maquette change de densité. L'échelle PRÉCÉDENTE définissait chaque niveau par un
+ * objectif de Lc (« le plus coloré qui tienne Lc 82 ») : atteindre 82 demande d'assombrir
+ * beaucoup un bleu et très peu un jaune, donc un même numéro n'avait PAS la même clarté
+ * selon la teinte. Le « 500 » de la moutarde était bien plus clair que celui du rouge.
+ *
+ * ═══ Ce que GARANTIT chaque cran ═════════════════════════════════════════════
+ * Le contraste n'est plus une cible : c'est une conséquence, qu'on MESURE. Le |Lc| ci-dessous
+ * est le PIRE des six teintes (test/apca-check.py le revérifie cran par cran, teinte par
+ * teinte). Trois états, et trois seulement :
+ *   50 / 100 / 200      texte NOIR courant       |Lc| ≥ 79,6   (99,8 · 91,4 · 79,6)
+ *   300                 texte NOIR, GROS TITRES  |Lc| ≥ 68,3   (< 75 : pas de texte courant)
+ *   400                 AUCUN TEXTE — décoratif  |Lc| ≤ 56,3   (voir ci-dessous)
+ *   500 / 600           texte BLANC, GROS TITRES |Lc| ≥ 61,1   (61,1 · 71,7)
+ *   700 / 800 / 900 / 950  texte BLANC courant   |Lc| ≥ 81,3   (81,3 · 89,5 · 96,4 · 102,0)
+ * Soit 3 crans pour du texte noir courant et 4 pour du texte blanc courant.
+ *
+ * LE CRAN 400 NE PORTE AUCUN TEXTE. C'est le point de croisement de l'échelle : en
+ * descendant, le noir perd du contraste plus vite que le blanc n'en gagne, et les deux
+ * courbes se croisent SOUS le seuil du gros titre (60). Ni le noir ni le blanc n'y passent.
+ * Ce n'est pas un défaut à corriger : toute échelle de couleur saturée possède ce cran.
+ * Réservez-le aux aplats, bandes et surfaces décoratives — jamais à du texte, même gros.
+ *
+ * ═══ La couleur de MARQUE est HORS GRILLE ════════════════════════════════════
+ * Les 11 crans sont TOUS calculés. La marque, elle, est une contrainte EXTERNE : son hex
+ * est donné par la charte, sa clarté tombe où elle tombe et ne coïncide avec aucun cran.
+ * Elle a donc son propre jeton, `--c-<nom>-marque`, et c'est le SEUL hex de ce fichier
+ * qui ne doit jamais être recalculé ni retouché.
+ * `--c-<nom>-500` existe toujours, mais c'est désormais un cran CALCULÉ (L 0,66) : il n'est
+ * plus égal à la marque. Fait notable : quatre des six marques (capucine 0,661, poireau
+ * 0,657, bleu acier 0,671, mountbatten 0,663) vivent autour de la clarté du cran 500. C'est
+ * exactement pour ça que l'ancienne convention « la marque = 500 » PARAISSAIT juste — elle
+ * l'était pour ces quatre-là, et franchement fausse pour le rouge (0,555, entre 600 et 700)
+ * et pour la moutarde (0,821, près de 300).
  *
  * ═══ Qu'éditer, et comment vérifier ══════════════════════════════════════════
  * Éditez librement les hex. Pour recalculer une échelle entière à partir d'une teinte :
- *     python3 pipeline/apca.py '#RRGGBB'      (affiche les 7 niveaux et leurs Lc)
- * Après TOUTE modification de ce fichier :
- *     python3 test/apca-check.py              (vérifie toutes les paires réelles ; sortie
- *                                              non nulle si l'une échoue)
+ *     python3 pipeline/apca.py '#RRGGBB' nom   (affiche la marque + les 11 crans et leurs Lc)
+ * Après TOUTE modification de ce fichier, les deux commandes :
+ *     python3 test/apca-check.py               (vérifie toutes les paires réelles ; sortie
+ *                                               non nulle si l'une échoue)
+ *     python3 test/palette-html.py             (régénère docs/palette.html, la planche)
  * Les alias -normal / -clair / -fonce (fin de fichier) sont ce que lit `accent-css.py`
- * pour les tableaux : ils pointent vers un niveau de l'échelle, ne les dupliquez pas.
+ * pour les tableaux : ils pointent vers la marque ou vers un cran, ne les dupliquez pas.
  *
  * Deux teintes NEUTRES (indépendantes de la couleur annuelle) servent aussi les tableaux
  * et sont ré-émises telles quelles par `accent-css.py` (donc éditables ici aussi) :
@@ -35,89 +67,143 @@
  *   --szh-zebre      : teinte du zébrage, en fond de cellules à texte NOIR.
  */
 :root {
-  /* ── Rouge — marque #D31932 ─────────────────────────────────────────────────
-     Cas particulier : la couleur de marque est déjà assez sombre pour porter du
-     texte blanc (Lc −79,7), donc -700 vaut exactement -500. */
-  --c-rouge-50:   #FFDCD9;   /* texte noir  : Lc  +90,0 */
-  --c-rouge-100:  #FFC9C5;   /* texte noir  : Lc  +82,0 */
-  --c-rouge-200:  #FFB8B3;   /* texte noir  : Lc  +75,3 */
-  --c-rouge-500:  #D31932;   /* MARQUE — texte blanc : Lc −79,7 (gros titres seulement) */
-  --c-rouge-700:  #D31932;   /* texte blanc : Lc −79,7 */
-  --c-rouge-800:  #C9142E;   /* texte blanc : Lc −82,1 */
-  --c-rouge-900:  #A50121;   /* texte blanc : Lc −90,1 */
+  /* ── Rouge ──────────────────────────────────────────────────────────────────
+     Marque #D31932, clarté 0,555 : la plus sombre des six, à mi-chemin entre les
+     crans 600 (0,59) et 700 (0,52). C'est la teinte pour laquelle l'ancienne
+     convention « marque = 500 » était la plus trompeuse : la marque est presque
+     deux crans plus foncée que le 500 calculé. */
+  --c-rouge-marque:        #D31932;   /* MARQUE — hors grille, NE PAS RECALCULER */
+  --c-rouge-50:            #FFF2F1;   /* L 0,97 — texte noir  : Lc  +99,9 */
+  --c-rouge-100:           #FFDFDD;   /* L 0,93 — texte noir  : Lc  +91,4 */
+  --c-rouge-200:           #FFC3BF;   /* L 0,87 — texte noir  : Lc  +79,6 */
+  --c-rouge-300:           #FFA5A1;   /* L 0,81 — texte noir  : Lc  +68,3 — GROS TITRES SEULEMENT */
+  --c-rouge-400:           #F88480;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +56,4 */
+  --c-rouge-500:           #E95D5F;   /* L 0,66 — texte blanc : Lc  −66,0 — GROS TITRES SEULEMENT */
+  --c-rouge-600:           #DB3641;   /* L 0,59 — texte blanc : Lc  −75,6 — GROS TITRES SEULEMENT */
+  --c-rouge-700:           #C3112C;   /* L 0,52 — texte blanc : Lc  −83,5 */
+  --c-rouge-800:           #A20020;   /* L 0,45 — texte blanc : Lc  −90,7 */
+  --c-rouge-900:           #810017;   /* L 0,38 — texte blanc : Lc  −96,9 */
+  --c-rouge-950:           #61000F;   /* L 0,31 — texte blanc : Lc −102,0 */
 
-  /* ── Capucine — marque #EB5E51 ────────────────────────────────────────────── */
-  --c-capucine-50:   #FFDDD7;   /* texte noir  : Lc  +90,4 */
-  --c-capucine-100:  #FFCAC2;   /* texte noir  : Lc  +82,3 */
-  --c-capucine-200:  #FFB8AD;   /* texte noir  : Lc  +75,1 */
-  --c-capucine-500:  #EB5E51;   /* MARQUE — texte blanc : Lc −65,7 (gros titres seulement) */
-  --c-capucine-700:  #CD4E43;   /* texte blanc : Lc −75,2 */
-  --c-capucine-800:  #B54238;   /* texte blanc : Lc −82,1 */
-  --c-capucine-900:  #96322A;   /* texte blanc : Lc −90,2 */
+  /* ── Capucine ───────────────────────────────────────────────────────────────
+     Marque #EB5E51, clarté 0,661 : à un millième de la clarté du cran 500 (0,66).
+     Le -500 calculé retombe donc sur le hex de marque, au 1/255 près — coïncidence
+     propre à cette teinte, pas une règle : les cinq autres s'en écartent. */
+  --c-capucine-marque:     #EB5E51;   /* MARQUE — hors grille, NE PAS RECALCULER */
+  --c-capucine-50:         #FFF2F0;   /* L 0,97 — texte noir  : Lc  +99,9 */
+  --c-capucine-100:        #FFE0DB;   /* L 0,93 — texte noir  : Lc  +91,7 */
+  --c-capucine-200:        #FFC4BB;   /* L 0,87 — texte noir  : Lc  +79,8 */
+  --c-capucine-300:        #FFA69A;   /* L 0,81 — texte noir  : Lc  +68,4 — GROS TITRES SEULEMENT */
+  --c-capucine-400:        #F98476;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +56,3 */
+  --c-capucine-500:        #EB5E51;   /* L 0,66 — texte blanc : Lc  −65,7 — GROS TITRES SEULEMENT */
+  --c-capucine-600:        #CC4E42;   /* L 0,59 — texte blanc : Lc  −75,4 — GROS TITRES SEULEMENT */
+  --c-capucine-700:        #AE3E35;   /* L 0,52 — texte blanc : Lc  −84,0 */
+  --c-capucine-800:        #912F28;   /* L 0,45 — texte blanc : Lc  −91,4 */
+  --c-capucine-900:        #74211B;   /* L 0,38 — texte blanc : Lc  −97,8 */
+  --c-capucine-950:        #591410;   /* L 0,31 — texte blanc : Lc −102,6 */
 
-  /* ── Moutarde — marque #C7CF1C ─────────────────────────────────────────────
-     Couleur très claire : c'est le NOIR qui la lit le mieux (Lc +73,7), mais tout
-     juste sous 75 — réservez-la aux gros titres. -200 est presque la marque. */
-  --c-moutarde-50:   #E3EA98;   /* texte noir  : Lc  +90,1 */
-  --c-moutarde-100:  #D5DE6A;   /* texte noir  : Lc  +82,3 */
-  --c-moutarde-200:  #C9D231;   /* texte noir  : Lc  +75,3 */
-  --c-moutarde-500:  #C7CF1C;   /* MARQUE — texte noir : Lc  +73,7 (gros titres seulement) */
-  --c-moutarde-700:  #7A7F00;   /* texte blanc : Lc −75,2 */
-  --c-moutarde-800:  #6B6F00;   /* texte blanc : Lc −82,0 */
-  --c-moutarde-900:  #575A00;   /* texte blanc : Lc −90,2 */
+  /* ── Moutarde ───────────────────────────────────────────────────────────────
+     Marque #C7CF1C, clarté 0,821 : la plus CLAIRE des six, près du cran 300. Elle
+     se lit au noir (Lc +73,7), et seulement en gros titre. Attention au changement
+     de polarité dans la grille : le noir tient jusqu'au 300, puis le 400 ne porte
+     plus rien, et à partir du 500 c'est le BLANC qui lit — alors que la marque, plus
+     claire que le 300, restait une couleur « à texte noir ». */
+  --c-moutarde-marque:     #C7CF1C;   /* MARQUE — hors grille, NE PAS RECALCULER */
+  --c-moutarde-50:         #F5F9D6;   /* L 0,97 — texte noir  : Lc +100,6 */
+  --c-moutarde-100:        #E8EFAB;   /* L 0,93 — texte noir  : Lc  +93,3 */
+  --c-moutarde-200:        #D6DE6A;   /* L 0,87 — texte noir  : Lc  +82,5 */
+  --c-moutarde-300:        #C3CB19;   /* L 0,81 — texte noir  : Lc  +71,6 — GROS TITRES SEULEMENT */
+  --c-moutarde-400:        #ADB403;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +59,7 */
+  --c-moutarde-500:        #949A00;   /* L 0,66 — texte blanc : Lc  −62,5 — GROS TITRES SEULEMENT */
+  --c-moutarde-600:        #7F8400;   /* L 0,59 — texte blanc : Lc  −72,9 — GROS TITRES SEULEMENT */
+  --c-moutarde-700:        #6A6F00;   /* L 0,52 — texte blanc : Lc  −82,1 */
+  --c-moutarde-800:        #575A00;   /* L 0,45 — texte blanc : Lc  −90,2 */
+  --c-moutarde-900:        #434600;   /* L 0,38 — texte blanc : Lc  −97,1 */
+  --c-moutarde-950:        #313300;   /* L 0,31 — texte blanc : Lc −102,5 */
 
-  /* ── Poireau — marque #51A66D ─────────────────────────────────────────────── */
-  --c-poireau-50:   #CFEBD5;   /* texte noir  : Lc  +90,1 */
-  --c-poireau-100:  #B8E0C2;   /* texte noir  : Lc  +82,3 */
-  --c-poireau-200:  #A4D5B1;   /* texte noir  : Lc  +75,1 */
-  --c-poireau-500:  #51A66D;   /* MARQUE — texte blanc : Lc −61,7 (gros titres seulement) */
-  --c-poireau-700:  #3E8857;   /* texte blanc : Lc −75,2 */
-  --c-poireau-800:  #34774B;   /* texte blanc : Lc −82,1 */
-  --c-poireau-900:  #26613B;   /* texte blanc : Lc −90,2 */
+  /* ── Poireau ────────────────────────────────────────────────────────────────
+     Marque #51A66D, clarté 0,657 : quasiment sur le cran 500 (0,66). C'est aussi la
+     teinte qui FIXE les garanties des crans 500 à 950 : ses Lc sont les plus faibles
+     des six (61,1 / 71,7 / 81,3 / 89,5 / 96,4 / 102,0 — exactement le contrat annoncé
+     en tête de fichier). Autrement dit, si un cran sombre doit casser, c'est ici. */
+  --c-poireau-marque:      #51A66D;   /* MARQUE — hors grille, NE PAS RECALCULER */
+  --c-poireau-50:          #ECF9EF;   /* L 0,97 — texte noir  : Lc +100,4 */
+  --c-poireau-100:         #D7EFDC;   /* L 0,93 — texte noir  : Lc  +92,9 */
+  --c-poireau-200:         #B9E0C2;   /* L 0,87 — texte noir  : Lc  +82,4 */
+  --c-poireau-300:         #9CD0A9;   /* L 0,81 — texte noir  : Lc  +72,0 — GROS TITRES SEULEMENT */
+  --c-poireau-400:         #7ABD8D;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +60,5 */
+  --c-poireau-500:         #53A76E;   /* L 0,66 — texte blanc : Lc  −61,1 — GROS TITRES SEULEMENT */
+  --c-poireau-600:         #43905D;   /* L 0,59 — texte blanc : Lc  −71,7 — GROS TITRES SEULEMENT */
+  --c-poireau-700:         #35794C;   /* L 0,52 — texte blanc : Lc  −81,3 */
+  --c-poireau-800:         #27633C;   /* L 0,45 — texte blanc : Lc  −89,5 */
+  --c-poireau-900:         #1A4E2D;   /* L 0,38 — texte blanc : Lc  −96,4 */
+  --c-poireau-950:         #0E3A1F;   /* L 0,31 — texte blanc : Lc −102,0 */
 
-  /* ── Bleu acier — marque #5F9FBC ──────────────────────────────────────────── */
-  --c-bleuacier-50:   #D1E8F3;   /* texte noir  : Lc  +90,2 */
-  --c-bleuacier-100:  #BCDBE9;   /* texte noir  : Lc  +82,1 */
-  --c-bleuacier-200:  #AACFE1;   /* texte noir  : Lc  +75,0 */
-  --c-bleuacier-500:  #5F9FBC;   /* MARQUE — texte blanc : Lc −60,9 (gros titres seulement) */
-  --c-bleuacier-700:  #4A819A;   /* texte blanc : Lc −75,0 */
-  --c-bleuacier-800:  #3E7087;   /* texte blanc : Lc −82,2 */
-  --c-bleuacier-900:  #305C6F;   /* texte blanc : Lc −90,0 */
+  /* ── Bleu acier ─────────────────────────────────────────────────────────────
+     Marque #5F9FBC, clarté 0,671 : le plus clair des quatre « voisins du 500 ». */
+  --c-bleuacier-marque:    #5F9FBC;   /* MARQUE — hors grille, NE PAS RECALCULER */
+  --c-bleuacier-50:        #EDF7FC;   /* L 0,97 — texte noir  : Lc +100,2 */
+  --c-bleuacier-100:       #D8EBF5;   /* L 0,93 — texte noir  : Lc  +92,4 */
+  --c-bleuacier-200:       #BBDAE9;   /* L 0,87 — texte noir  : Lc  +81,6 */
+  --c-bleuacier-300:       #9FC8DC;   /* L 0,81 — texte noir  : Lc  +70,9 — GROS TITRES SEULEMENT */
+  --c-bleuacier-400:       #7FB3CC;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +59,1 */
+  --c-bleuacier-500:       #5D9CB8;   /* L 0,66 — texte blanc : Lc  −62,4 — GROS TITRES SEULEMENT */
+  --c-bleuacier-600:       #4D869F;   /* L 0,59 — texte blanc : Lc  −72,8 — GROS TITRES SEULEMENT */
+  --c-bleuacier-700:       #3E7087;   /* L 0,52 — texte blanc : Lc  −82,2 */
+  --c-bleuacier-800:       #305C6F;   /* L 0,45 — texte blanc : Lc  −90,0 */
+  --c-bleuacier-900:       #224858;   /* L 0,38 — texte blanc : Lc  −96,8 */
+  --c-bleuacier-950:       #153542;   /* L 0,31 — texte blanc : Lc −102,3 */
 
-  /* ── Mountbatten — marque #A98899 ─────────────────────────────────────────── */
-  --c-mountbatten-50:   #EDE1E7;   /* texte noir  : Lc  +90,2 */
-  --c-mountbatten-100:  #E2D2DA;   /* texte noir  : Lc  +82,2 */
-  --c-mountbatten-200:  #D9C4CE;   /* texte noir  : Lc  +75,1 */
-  --c-mountbatten-500:  #A98899;   /* MARQUE — texte blanc : Lc −64,0 (gros titres seulement) */
-  --c-mountbatten-700:  #907282;   /* texte blanc : Lc −75,0 */
-  --c-mountbatten-800:  #7E6371;   /* texte blanc : Lc −82,1 */
-  --c-mountbatten-900:  #67505C;   /* texte blanc : Lc −90,2 */
+  /* ── Mountbatten ────────────────────────────────────────────────────────────
+     Marque #A98899, clarté 0,663 : sur le cran 500. Teinte peu saturée — c'est elle
+     qui fixe les garanties des crans CLAIRS (50 à 300 : 99,8 / 91,4 / 80,6 / 69,4),
+     une couleur pâle contrastant un peu moins qu'une couleur vive à clarté égale. */
+  --c-mountbatten-marque:  #A98899;   /* MARQUE — hors grille, NE PAS RECALCULER */
+  --c-mountbatten-50:      #F9F3F6;   /* L 0,97 — texte noir  : Lc  +99,8 */
+  --c-mountbatten-100:     #F0E4EA;   /* L 0,93 — texte noir  : Lc  +91,9 */
+  --c-mountbatten-200:     #E0CFD7;   /* L 0,87 — texte noir  : Lc  +80,6 */
+  --c-mountbatten-300:     #D0B9C5;   /* L 0,81 — texte noir  : Lc  +69,4 — GROS TITRES SEULEMENT */
+  --c-mountbatten-400:     #BEA2B0;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +57,9 */
+  --c-mountbatten-500:     #A88798;   /* L 0,66 — texte blanc : Lc  −64,5 — GROS TITRES SEULEMENT */
+  --c-mountbatten-600:     #917383;   /* L 0,59 — texte blanc : Lc  −74,6 — GROS TITRES SEULEMENT */
+  --c-mountbatten-700:     #7A606E;   /* L 0,52 — texte blanc : Lc  −83,4 */
+  --c-mountbatten-800:     #644E59;   /* L 0,45 — texte blanc : Lc  −91,1 */
+  --c-mountbatten-900:     #4F3C46;   /* L 0,38 — texte blanc : Lc  −97,6 */
+  --c-mountbatten-950:     #3A2B33;   /* L 0,31 — texte blanc : Lc −102,9 */
 
   /* ── Alias de compatibilité — ce que lisent les tableaux via accent-css.py ───
-     -normal = 500 (filets, accents « couleur ») ; -clair = 100 (fond à texte noir) ;
-     -fonce = 800 (fond « négatif » à texte blanc). Pour changer l'intensité d'un fond
-     de tableau, pointez l'alias vers un AUTRE niveau (p. ex. -200 au lieu de -100) —
-     accent-css.py suit ce renvoi. Ne recopiez pas d'hex ici : il finirait désynchronisé. */
-  --c-rouge-normal:       var(--c-rouge-500);
-  --c-rouge-clair:        var(--c-rouge-100);
-  --c-rouge-fonce:        var(--c-rouge-800);
-  --c-capucine-normal:    var(--c-capucine-500);
-  --c-capucine-clair:     var(--c-capucine-100);
-  --c-capucine-fonce:     var(--c-capucine-800);
-  --c-moutarde-normal:    var(--c-moutarde-500);
-  --c-moutarde-clair:     var(--c-moutarde-100);
-  --c-moutarde-fonce:     var(--c-moutarde-800);
-  --c-poireau-normal:     var(--c-poireau-500);
-  --c-poireau-clair:      var(--c-poireau-100);
-  --c-poireau-fonce:      var(--c-poireau-800);
-  --c-bleuacier-normal:   var(--c-bleuacier-500);
-  --c-bleuacier-clair:    var(--c-bleuacier-100);
-  --c-bleuacier-fonce:    var(--c-bleuacier-800);
-  --c-mountbatten-normal: var(--c-mountbatten-500);
-  --c-mountbatten-clair:  var(--c-mountbatten-100);
-  --c-mountbatten-fonce:  var(--c-mountbatten-800);
+     Les NOMS sont figés (accent-css.py les cherche par expression régulière, print.css
+     les consomme). Seules leurs cibles suivent la nouvelle grille :
+       -normal = la MARQUE  (filets, accents « couleur », aplats de couverture) ;
+       -clair  = 200        (le plus coloré des fonds à texte noir,  Lc ≥ +79,6) ;
+       -fonce  = 700        (le plus clair des fonds à texte blanc,  Lc ≥ −81,3).
+     Une seule règle à retenir : « fond sombre à texte blanc » = cran 700, partout —
+     y compris pour --c-annual-deep, émis par accent-css.py.
+     Pour changer l'intensité d'un fond de tableau, pointez l'alias vers un AUTRE cran
+     (p. ex. -100 au lieu de -200) : accent-css.py suit ce renvoi. Ne recopiez jamais un
+     hex ici, il finirait désynchronisé. Et ne pointez -clair/-fonce ni sur le 300, ni sur
+     le 400, ni sur le 500/600 : ces crans ne portent pas de texte courant. */
+  --c-rouge-normal:       var(--c-rouge-marque);
+  --c-rouge-clair:        var(--c-rouge-200);
+  --c-rouge-fonce:        var(--c-rouge-700);
+  --c-capucine-normal:    var(--c-capucine-marque);
+  --c-capucine-clair:     var(--c-capucine-200);
+  --c-capucine-fonce:     var(--c-capucine-700);
+  --c-moutarde-normal:    var(--c-moutarde-marque);
+  --c-moutarde-clair:     var(--c-moutarde-200);
+  --c-moutarde-fonce:     var(--c-moutarde-700);
+  --c-poireau-normal:     var(--c-poireau-marque);
+  --c-poireau-clair:      var(--c-poireau-200);
+  --c-poireau-fonce:      var(--c-poireau-700);
+  --c-bleuacier-normal:   var(--c-bleuacier-marque);
+  --c-bleuacier-clair:    var(--c-bleuacier-200);
+  --c-bleuacier-fonce:    var(--c-bleuacier-700);
+  --c-mountbatten-normal: var(--c-mountbatten-marque);
+  --c-mountbatten-clair:  var(--c-mountbatten-200);
+  --c-mountbatten-fonce:  var(--c-mountbatten-700);
 
-  /* ── Teintes neutres des tableaux (voir en-tête) — éditables ───────────────── */
+  /* ── Teintes neutres des tableaux (voir en-tête) — éditables ─────────────────
+     Hors grille elles aussi : ce sont des gris, indépendants de la couleur annuelle. */
   --szh-gris-clair: #E6E6E6;   /* texte noir : Lc +91,3 */
   --szh-zebre:      #F2F2F2;   /* texte noir : Lc +98,3 */
 }
