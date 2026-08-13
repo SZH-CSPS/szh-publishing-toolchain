@@ -1,7 +1,11 @@
 # Session locale Claude Code
 .claude/
 
+# Bytecode Python (py_compile de docx-tables.py)
+__pycache__/
+
 # Artefacts de build locaux (la CI publie les siens en Release)
+out/
 *.tar.gz
 *.tar.gz.sha256
 toolkit-*.zip

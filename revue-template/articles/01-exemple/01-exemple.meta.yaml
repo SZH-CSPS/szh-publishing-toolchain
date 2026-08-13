@@ -1,0 +1,22 @@
+type: article
+title:
+  fr: "Article d'exemple"
+  de: "Beispielartikel"
+subtitle:
+  fr: "Comment démarrer"
+  de: "So geht's los"
+resume:
+  fr: "Un court résumé de l'article, saisi dans le formulaire « Métadonnées des articles »."
+  de: "Eine kurze Zusammenfassung des Artikels, erfasst im Formular « Metadaten der Artikel »."
+keywords:
+  fr:
+  - "exemple"
+  - "démarrage"
+  de:
+  - "Beispiel"
+  - "Einstieg"
+author:
+- prenom: "Prénom"
+  nom: "Nom"
+  fonction: "Rédacteur ou rédactrice"
+  affiliation: "SZH/CSPS"

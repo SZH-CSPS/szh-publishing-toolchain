@@ -1,0 +1,30 @@
+body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground); background: var(--vscode-editor-background);
+  padding: 1rem 1.2rem; max-width: 46rem; }
+h1 { font-size: 1.15em; font-weight: 600; margin: 0 0 .25rem; }
+p.note { color: var(--vscode-descriptionForeground); margin: 0 0 1rem; font-size: .88em; }
+.carte { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));
+  border-radius: 4px; padding: .8rem 1rem 1rem; margin: 0 0 1rem; }
+.carte h2 { font-size: 1em; font-weight: 600; margin: 0 0 .2rem; font-family: var(--vscode-editor-font-family, monospace); }
+label { display: block; margin: .6rem 0 .2rem; font-weight: 600; font-size: .9em; }
+input, select, textarea { width: 100%; box-sizing: border-box; padding: .3em .5em; font: inherit;
+  color: var(--vscode-input-foreground); background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; }
+textarea { resize: vertical; min-height: 3.4em; font-family: inherit; }
+input:focus, select:focus, textarea:focus { outline: 1px solid var(--vscode-focusBorder); }
+.auteur { display: flex; gap: .4rem; margin: .3rem 0; align-items: center; }
+.auteur input { flex: 1 1 0; min-width: 0; }
+.champ-it { display: none; }
+.carte.avec-it .champ-it { display: block; }
+.case-it { font-weight: normal; margin-top: .8rem; }
+.case-it input { width: auto; margin-right: .35em; }
+button { padding: .35em .9em; border: none; border-radius: 2px; font: inherit; cursor: pointer;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
+  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background)); }
+button.principal { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+button.principal:hover { background: var(--vscode-button-hoverBackground); }
+button.retirer { flex: 0 0 auto; padding: .3em .6em; }
+.barre { position: sticky; top: 0; background: var(--vscode-editor-background);
+  padding: .4rem 0 .6rem; margin-bottom: .6rem; z-index: 1; }
+#etat { margin-left: .8rem; font-size: .92em; color: var(--vscode-descriptionForeground); }
+.modifie h2::after { content: " ●"; color: var(--vscode-charts-orange, orange); }

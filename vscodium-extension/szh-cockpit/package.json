@@ -10,6 +10,23 @@
   "activationEvents": ["onStartupFinished"],
   "main": "./extension.js",
   "contributes": {
+    "configuration": {
+      "title": "SZH",
+      "properties": {
+        "szh.langue": {
+          "type": "string",
+          "enum": ["", "fr", "de"],
+          "default": "",
+          "description": "%config.langue%"
+        },
+        "szh.apercuMode": {
+          "type": "string",
+          "enum": ["html", "pdf"],
+          "default": "html",
+          "description": "%config.apercuMode%"
+        }
+      }
+    },
     "views": {
       "explorer": [
         {
@@ -22,36 +39,102 @@
     "commands": [
       {
         "command": "szh.importerWord",
-        "title": "Importer des Word",
+        "title": "%cmd.importerWord%",
         "category": "Revue SZH",
         "icon": "$(add)"
       },
       {
         "command": "szh.cockpit.rafraichir",
-        "title": "Rafraîchir la barre Revue",
+        "title": "%cmd.rafraichir%",
         "category": "Revue SZH",
         "icon": "$(refresh)"
       },
       {
-        "command": "szh.ouvrirPdf",
-        "title": "Ouvrir le PDF",
-        "category": "Revue SZH",
-        "icon": "$(open-preview)"
-      },
-      {
-        "command": "szh.compiler",
-        "title": "Compiler",
-        "category": "Revue SZH",
-        "icon": "$(play)"
-      },
-      {
         "command": "szh.convertirEnAttente",
-        "title": "Convertir les Word en attente",
+        "title": "%cmd.convertirEnAttente%",
         "category": "Revue SZH",
         "icon": "$(run-all)"
-      }
+      },
+      {
+        "command": "szh.metadonnees",
+        "title": "%cmd.metadonnees%",
+        "category": "Revue SZH",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "szh.supprimerArticle",
+        "title": "%cmd.supprimerArticle%",
+        "category": "Revue SZH",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "szh.remplacerAsset",
+        "title": "%cmd.remplacerAsset%",
+        "category": "Revue SZH",
+        "icon": "$(replace)"
+      },
+      {
+        "command": "szh.toutExporter",
+        "title": "%cmd.toutExporter%",
+        "category": "Revue SZH",
+        "icon": "$(export)"
+      },
+      {
+        "command": "szh.remplacerTable",
+        "title": "%cmd.remplacerTable%",
+        "category": "Revue SZH",
+        "icon": "$(replace)"
+      },
+      {
+        "command": "szh.editerTable",
+        "title": "%cmd.editerTable%",
+        "category": "Revue SZH",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "szh.apercuMetadonnees",
+        "title": "%cmd.apercuMetadonnees%",
+        "category": "Revue SZH",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "szh.reglages",
+        "title": "%cmd.reglages%",
+        "category": "Revue SZH",
+        "icon": "$(settings-gear)"
+      },
+      {
+        "command": "szh.basculerApercu",
+        "title": "%cmd.basculerApercu%",
+        "category": "Revue SZH",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "szh.miseEnForme",
+        "title": "%cmd.miseEnForme%",
+        "category": "Revue SZH",
+        "icon": "$(list-selection)"
+      },
+      { "command": "szh.fmt.gras", "title": "%cmd.fmt.gras%", "category": "Revue SZH" },
+      { "command": "szh.fmt.italique", "title": "%cmd.fmt.italique%", "category": "Revue SZH" },
+      { "command": "szh.fmt.souligne", "title": "%cmd.fmt.souligne%", "category": "Revue SZH" },
+      { "command": "szh.fmt.titre1", "title": "%cmd.fmt.titre1%", "category": "Revue SZH" },
+      { "command": "szh.fmt.titre2", "title": "%cmd.fmt.titre2%", "category": "Revue SZH" },
+      { "command": "szh.fmt.titre3", "title": "%cmd.fmt.titre3%", "category": "Revue SZH" },
+      { "command": "szh.fmt.important", "title": "%cmd.fmt.important%", "category": "Revue SZH" },
+      { "command": "szh.fmt.highlight", "title": "%cmd.fmt.highlight%", "category": "Revue SZH" },
+      { "command": "szh.fmt.question", "title": "%cmd.fmt.question%", "category": "Revue SZH" },
+      { "command": "szh.fmt.citation", "title": "%cmd.fmt.citation%", "category": "Revue SZH" },
+      { "command": "szh.fmt.figure", "title": "%cmd.fmt.figure%", "category": "Revue SZH" },
+      { "command": "szh.fmt.tableau", "title": "%cmd.fmt.tableau%", "category": "Revue SZH" }
     ],
     "menus": {
+      "editor/context": [
+        { "command": "szh.miseEnForme", "group": "navigation@1", "when": "editorLangId == markdown && editorTextFocus" }
+      ],
+      "editor/title": [
+        { "command": "szh.basculerApercu", "group": "navigation", "when": "resourceExtname == .pdf && szh.estRevue || activeCustomEditorId == 'pdf.preview' && szh.estRevue" }
+      ],
       "view/title": [
         {
           "command": "szh.importerWord",
@@ -62,23 +145,58 @@
           "command": "szh.cockpit.rafraichir",
           "when": "view == szhCockpitVue",
           "group": "navigation@2"
+        },
+        {
+          "command": "szh.metadonnees",
+          "when": "view == szhCockpitVue",
+          "group": "navigation@3"
+        },
+        {
+          "command": "szh.toutExporter",
+          "when": "view == szhCockpitVue",
+          "group": "navigation@4"
+        },
+        {
+          "command": "szh.apercuMetadonnees",
+          "when": "view == szhCockpitVue",
+          "group": "navigation@5"
+        },
+        {
+          "command": "szh.reglages",
+          "when": "view == szhCockpitVue",
+          "group": "navigation@6"
+        },
+        {
+          "command": "szh.basculerApercu",
+          "when": "view == szhCockpitVue",
+          "group": "navigation@7"
         }
       ],
       "view/item/context": [
         {
-          "command": "szh.ouvrirPdf",
+          "command": "szh.supprimerArticle",
           "when": "view == szhCockpitVue && viewItem == article",
           "group": "inline@1"
-        },
-        {
-          "command": "szh.compiler",
-          "when": "view == szhCockpitVue && viewItem == article",
-          "group": "inline@2"
         },
         {
           "command": "szh.convertirEnAttente",
           "when": "view == szhCockpitVue && viewItem == section-word",
           "group": "inline"
+        },
+        {
+          "command": "szh.remplacerAsset",
+          "when": "view == szhCockpitVue && viewItem == asset",
+          "group": "inline"
+        },
+        {
+          "command": "szh.editerTable",
+          "when": "view == szhCockpitVue && viewItem == table",
+          "group": "inline@1"
+        },
+        {
+          "command": "szh.remplacerTable",
+          "when": "view == szhCockpitVue && viewItem == table",
+          "group": "inline@2"
         }
       ]
     }

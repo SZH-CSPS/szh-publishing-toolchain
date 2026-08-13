@@ -79,6 +79,12 @@ $script:SzhTextes = @{
     'lanceur.modifie'   = '{0}    (modifiée le {1})'
     'lanceur.aucune'    = "Aucune revue trouvée.`n`nVérifiez que le dossier OneDrive\Revues est bien synchronisé,`nou demandez la création d'une revue ({0})."
     'lanceur.codium'    = 'L''éditeur VSCodium est introuvable sur ce poste. Contact : {0}'
+    'lanceur.vide'      = 'Aucune revue sur ce poste pour l''instant — « Nouvelle revue… » pour commencer.'
+    'lanceur.nouvelle'          = 'Nouvelle revue…'
+    'lanceur.nouvelle.dossier'  = 'Choisir l''emplacement (dossier parent) de la nouvelle revue — p. ex. OneDrive\Revues.'
+    'lanceur.nouvelle.nom'      = 'Nom du dossier de la nouvelle revue (p. ex. 2026-02) :'
+    'lanceur.nouvelle.invalide' = 'Le nom contient des caractères interdits ( < > : " / \ | ? * ).'
+    'lanceur.nouvelle.erreur'   = "La création de la revue a échoué :`n{0}"
   }
   de = @{
     'app.titre'         = 'SZH/CSPS — Publikations-Toolchain'
@@ -131,6 +137,12 @@ $script:SzhTextes = @{
     'lanceur.modifie'   = '{0}    (geändert am {1})'
     'lanceur.aucune'    = "Keine Zeitschrift gefunden.`n`nPrüfen Sie, ob der Ordner OneDrive\Revues synchronisiert ist,`noder lassen Sie eine Zeitschrift anlegen ({0})."
     'lanceur.codium'    = 'Der Editor VSCodium wurde auf diesem Computer nicht gefunden. Kontakt: {0}'
+    'lanceur.vide'      = 'Noch keine Zeitschrift auf diesem Computer — mit « Neue Zeitschrift… » beginnen.'
+    'lanceur.nouvelle'          = 'Neue Zeitschrift…'
+    'lanceur.nouvelle.dossier'  = 'Speicherort (übergeordneten Ordner) der neuen Zeitschrift wählen — z. B. OneDrive\Revues.'
+    'lanceur.nouvelle.nom'      = 'Ordnername der neuen Zeitschrift (z. B. 2026-02):'
+    'lanceur.nouvelle.invalide' = 'Der Name enthält unzulässige Zeichen ( < > : " / \ | ? * ).'
+    'lanceur.nouvelle.erreur'   = "Die Zeitschrift konnte nicht erstellt werden:`n{0}"
   }
   en = @{
     'app.titre'         = 'SZH/CSPS — Publishing toolchain'
@@ -183,6 +195,12 @@ $script:SzhTextes = @{
     'lanceur.modifie'   = '{0}    (modified on {1})'
     'lanceur.aucune'    = "No journal found.`n`nCheck that the OneDrive\Revues folder is synced,`nor ask for a journal to be created ({0})."
     'lanceur.codium'    = 'The VSCodium editor was not found on this computer. Contact: {0}'
+    'lanceur.vide'      = 'No journal on this computer yet — use “New journal…” to get started.'
+    'lanceur.nouvelle'          = 'New journal…'
+    'lanceur.nouvelle.dossier'  = 'Choose where to create the new journal (parent folder) — e.g. OneDrive\Revues.'
+    'lanceur.nouvelle.nom'      = 'Folder name for the new journal (e.g. 2026-02):'
+    'lanceur.nouvelle.invalide' = 'The name contains forbidden characters ( < > : " / \ | ? * ).'
+    'lanceur.nouvelle.erreur'   = "Creating the journal failed:`n{0}"
   }
 }
 

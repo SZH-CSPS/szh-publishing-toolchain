@@ -140,6 +140,10 @@ try {
     if (Test-Path $sn) { Copy-Item (Join-Path $sn '*') (Join-Path $dst 'snippets') -Force }
   }
 
+  # Config WSL du poste (D34) : plafond RAM + extinction auto de la VM (5 min)
+  $wslCfg = Join-Path $SzhToolkit 'windows\user.wslconfig'
+  if (Test-Path $wslCfg) { Copy-Item $wslCfg (Join-Path $env:USERPROFILE '.wslconfig') -Force }
+
   # Raccourci « Revues SZH » dans le menu Démarrer (niveau utilisateur, D14)
   $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
   New-Item -ItemType Directory -Force -Path $menu | Out-Null

@@ -1,0 +1,86 @@
+body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: .6rem .8rem;
+  box-sizing: border-box; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+.barre { position: sticky; top: 0; z-index: 5; background: var(--vscode-editor-background);
+  display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; padding: .3rem 0 .5rem; }
+.grp { display: inline-flex; align-items: center; gap: .25rem; padding: .1rem .3rem;
+  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.3)); border-radius: 4px; }
+.grp > .lbl { font-size: .78em; color: var(--vscode-descriptionForeground); margin-right: .1rem; }
+button { font: inherit; padding: .25em .6em; border: none; border-radius: 3px; cursor: pointer;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
+  background: var(--vscode-button-secondaryBackground, rgba(128,128,128,.18)); }
+button:hover { background: var(--vscode-button-hoverBackground); color: var(--vscode-button-foreground); }
+button.principal { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+button[aria-pressed="true"] { outline: 2px solid var(--vscode-focusBorder); outline-offset: -1px; }
+select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; }
+p.aide { color: var(--vscode-descriptionForeground); font-size: .82em; margin: .1rem 0 .6rem; flex: 0 0 auto; }
+#etat { font-size: .85em; color: var(--vscode-descriptionForeground); margin-left: .3rem; }
+#indic { font-size: .95em; color: var(--vscode-editorWarning-foreground, #d1901e); margin-left: .1rem; font-weight: 700; }
+/* Corps = grille (à gauche) + panneau de mise en forme (à droite) ; empile sur écran
+   étroit (flex-wrap). Chacun défile indépendamment. */
+.corps { display: flex; flex: 1 1 auto; gap: .8rem; min-height: 0; align-items: flex-start; flex-wrap: wrap; }
+#zone { overflow: auto; flex: 1 1 22rem; min-width: 0; align-self: stretch; }
+
+/* ── Panneau des 3 zones de style (Preset / En-têtes / Tableau) ─────────────── */
+.panneau { flex: 0 0 17rem; max-width: 20rem; overflow: auto; align-self: stretch;
+  display: flex; flex-direction: column; gap: .55rem; }
+.panneau .zone { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));
+  border-radius: 5px; padding: .1rem .6rem .5rem; margin: 0; min-width: 0; }
+.panneau legend { font-size: .82em; font-weight: 700; padding: 0 .3em;
+  color: var(--vscode-foreground); }
+.panneau .sousbloc { padding: .25rem 0 .1rem; }
+.panneau .sousbloc + .sousbloc { border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,.2)); margin-top: .2rem; }
+.panneau .sbtitre { font-size: .82em; font-weight: 600; margin: .15rem 0 .2rem;
+  color: var(--vscode-descriptionForeground); }
+.panneau .radios { display: flex; flex-direction: column; gap: .05rem; }
+.panneau label.opt { display: flex; align-items: center; gap: .35em; font-size: .86em;
+  padding: .08rem 0; cursor: pointer; }
+.panneau label.opt input { margin: 0; cursor: pointer; }
+.panneau .note { font-size: .78em; color: var(--vscode-descriptionForeground); margin: .25rem 0 0; font-style: italic; }
+/* Sous-bloc désactivé (aucun en-tête correspondant) : grisé + indice affiché. */
+.panneau .sousbloc.inactif { opacity: .5; }
+.panneau label.opt input:disabled { cursor: default; }
+table.grille { border-collapse: collapse; }
+table.grille th, table.grille td { border: 1px solid var(--vscode-panel-border, #888);
+  padding: .3em .5em; min-width: 3em; height: 1.9em; vertical-align: top; text-align: left; }
+/* En-tête figé (D V2d) : rangée A/B/C collée en haut, colonne 1/2/3 collée à gauche. */
+table.grille tr:first-child .poignee { position: sticky; top: 0; z-index: 3; }
+table.grille .poignee.pnum { position: sticky; left: 0; z-index: 2; }
+table.grille .coin { position: sticky; top: 0; left: 0; z-index: 4; }
+table.grille td.cell, table.grille th.cell { background: var(--vscode-editor-background); cursor: text; }
+/* F4 : une cellule d'en-tête est un <th> -> gras PAR DÉFAUT du navigateur, trompeur
+   (laisse croire au style « gras »). On annule ce gras : le style d'en-tête réel est
+   piloté par styleEnt (gras/négatif/fond en style inline, qui l'emporte). Un repère
+   discret ★ marque la cellule d'en-tête, quel que soit son style. Le pseudo-élément
+   n'est ni éditable ni récolté (round-trip intact). */
+table.grille th.cell { font-weight: 400; }
+table.grille th.cell::before { content: "\2605"; margin-right: .35em; font-size: .8em;
+  font-weight: 400; opacity: .5; vertical-align: .06em; }
+table.grille .sel { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px;
+  background: var(--vscode-editor-selectionBackground, rgba(90,140,220,.25)); }
+.poignee { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15));
+  color: var(--vscode-descriptionForeground); cursor: pointer; text-align: center; user-select: none;
+  min-width: 1.4em; padding: .15em .3em; font-size: .8em; }
+.poignee.pnum { min-width: 2.4em; }
+.poignee.selh { background: var(--vscode-editor-selectionBackground, rgba(90,140,220,.35));
+  color: var(--vscode-foreground); }
+.poignee:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.3)); }
+.coin { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15)); }
+.poignee { position: relative; }
+.poignee.drop { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+.plusins { position: fixed; z-index: 900; width: 18px; height: 18px; padding: 0; line-height: 16px;
+  border-radius: 50%; font-size: 13px; font-weight: 700; text-align: center;
+  color: var(--vscode-button-foreground); background: var(--vscode-button-background);
+  border: 1px solid var(--vscode-editor-background); cursor: pointer; }
+.plusins:hover { background: var(--vscode-button-hoverBackground); }
+.ctxmenu { position: fixed; z-index: 1000; min-width: 13em; padding: .25em 0;
+  background: var(--vscode-menu-background, var(--vscode-editor-background));
+  color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border, rgba(128,128,128,.4)));
+  border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.35); font-size: .92em; }
+.ctxmenu .ctxitem { padding: .32em .9em; cursor: pointer; white-space: nowrap; }
+.ctxmenu .ctxitem:hover { background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground, rgba(90,140,220,.3)));
+  color: var(--vscode-menu-selectionForeground, var(--vscode-menu-foreground, var(--vscode-foreground))); }
+.ctxmenu .ctxsep { height: 1px; margin: .25em 0;
+  background: var(--vscode-menu-separatorBackground, var(--vscode-panel-border, rgba(128,128,128,.4))); }

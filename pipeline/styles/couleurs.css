@@ -1,0 +1,37 @@
+/* Couleurs annuelles SZH/CSPS — FICHIER ÉDITABLE.
+ *
+ * Pour chaque couleur de base, 3 variations utilisées par les tableaux (.szh-tableau) :
+ *   -normal : la couleur telle quelle (filets, séparateurs, accents « couleur »)
+ *   -clair  : FOND CLAIR, prévu pour du texte NOIR   → garder un contraste ≥ 4.5:1 avec #000
+ *   -fonce  : FOND NÉGATIF, prévu pour du texte BLANC → garder un contraste ≥ 4.5:1 avec #fff
+ *
+ * Modifiez librement les valeurs ci-dessous (chaque couleur = 3 hex). `accent-css.py`
+ * lit la couleur choisie dans le numéro (ausgabe.yaml : `couleur:`) et applique la
+ * variation correspondante aux tableaux. Les valeurs par défaut ont été calculées
+ * (luminance WCAG) pour respecter les contrastes indiqués.
+ *
+ * Deux teintes NEUTRES (indépendantes de la couleur annuelle) servent aussi les
+ * tableaux et sont ré-émises telles quelles par `accent-css.py` (donc éditables ici) :
+ *   --szh-gris-clair : fond « gris » des en-têtes / de la ligne de total. FOND CLAIR
+ *                      prévu pour du texte NOIR → garder un contraste ≥ 4.5:1 avec #000.
+ *   --szh-zebre      : teinte du zébrage (une ligne/colonne sur deux). Très légère, en
+ *                      fond de cellules à texte noir → garder un bon contraste avec #000.
+ */
+:root {
+  /* Rouge */
+  --c-rouge-normal: #D31932;       --c-rouge-clair: #F7D6DA;       --c-rouge-fonce: #D31932;
+  /* Capucine */
+  --c-capucine-normal: #EB5E51;    --c-capucine-clair: #FBE2E0;    --c-capucine-fonce: #BB4B41;
+  /* Moutarde */
+  --c-moutarde-normal: #C7CF1C;    --c-moutarde-clair: #F5F6D6;    --c-moutarde-fonce: #707410;
+  /* Poireau */
+  --c-poireau-normal: #51A66D;     --c-poireau-clair: #E0EFE5;     --c-poireau-fonce: #3D7C51;
+  /* Bleu acier */
+  --c-bleuacier-normal: #5F9FBC;   --c-bleuacier-clair: #E2EEF3;   --c-bleuacier-fonce: #46758B;
+  /* Mountbatten */
+  --c-mountbatten-normal: #A98899; --c-mountbatten-clair: #F0EAED; --c-mountbatten-fonce: #826875;
+
+  /* Teintes neutres des tableaux (voir ci-dessus) — éditables. */
+  --szh-gris-clair: #E6E6E6;
+  --szh-zebre: #F2F2F2;
+}

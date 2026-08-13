@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="$lang$" xml:lang="$lang$"$if(dir)$ dir="$dir$"$endif$>
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+$for(auteurs-noms)$
+  <meta name="author" content="$auteurs-noms$" />
+$endfor$
+$if(description)$
+  <meta name="description" content="$description$" />
+$endif$
+$if(date-meta)$
+  <meta name="dcterms.date" content="$date-meta$" />
+$endif$
+  <title>$if(titre-affiche)$$titre-affiche$$else$$pagetitle$$endif$</title>
+  <style>
+    $styles.html()$
+  </style>
+$for(css)$
+  <link rel="stylesheet" href="$css$" />
+$endfor$
+$for(header-includes)$
+  $header-includes$
+$endfor$
+$if(math)$
+  $math$
+$endif$
+</head>
+<body>
+$for(include-before)$
+$include-before$
+$endfor$
+
+<!-- En-tête / pied courants (pages intérieures) : posés une fois, tirés dans les
+     margin boxes @top-center / @bottom-center par print.css (position: running()).
+     Absents de la couverture (@page:first marge 0 -> margin boxes repliées). -->
+<div class="szh-entete-courante" role="presentation" aria-hidden="true">
+  <span class="g">$etiquette-dossier$</span>
+  <span class="d">$vol-ligne$</span>
+</div>
+<div class="szh-pied-courant" role="presentation" aria-hidden="true">
+  <span class="issn">$if(issn)$ISSN $issn$$endif$</span>
+  <span class="folio"></span>
+</div>
+
+<!-- COUVERTURE (M2) : hero bleu nuit permanent (D70) + filet couleur annuelle +
+     résumés/mots-clés. Pleine-marge sur la 1re page (@page:first marge 0). Le corps
+     de l'article démarre à la page suivante (break-after: page sur .szh-cover). -->
+<div class="szh-cover">
+  <header class="szh-hero">
+    <svg class="szh-book" viewBox="0 0 141.73 141.73" aria-hidden="true"><path fill="#ffffff" d="M125.77,59.41v27.71l8.59-5.74V25.78s-26.5,15-29.13,16.21c-1.71.79-8.1,2.68-14.59.59-3.37-1.07-5.75-3.7-6.16-5.42-.6-2.46.97-4.7,3.33-6.37,1.71-1.23,37.86-21.85,37.86-21.85v5.17s-32.86,18.71-34.04,19.41c-2.75,1.68-3.65,3.4.2,4.9,4.37,1.72,10.76-.23,12.25-.78,1.49-.55,34.92-19.84,34.92-19.84.01,21.86,0,44.85,0,67.05l-13.33,9.03v32.95l-4.72-1.91v-62.73l-40.52-17.38c-3.6-1.47-8.66-1.01-11.01,1.94-1.72,2.14-.57,3.61,1.15,4.84l37.68,16.79v70.26s-41.09-21.85-42.98-22.84c-1.9-1-2.05-3.64-2.05-3.64v-5.31l-42.85,25.14V61.78c17.55-9.83,36.2-20.82,37.83-21.67,3.29-1.69,1.78-3.73-.46-4.88-3.18-1.59-7.08-1.8-9.99-.67-3.07.94-40.64,22.05-40.64,22.05v65.05l-4.73,2.6V53.73s28.89-15.87,28.89-15.87V12.76s39.1,16.63,41.61,17.28c2.51.64,4.99.23,6.86-1.49,1.14-1.3,1.9-2.77.5-4.38-1.57-1.83-34.18-15.51-34.18-15.51v-4.43s28,12.15,34.04,15.08c1.72.92,4.82,2.86,5.26,5.95.35,2.48-1.31,5.47-3.52,7.05-2.51,1.78-6.26,2.28-8.38,2-3.02-.39-10.05-3.36-37.45-14.8v16.19c4.7-2.4,9.24-6.36,17.52-5.88,4.87.44,11.07,3.32,11.75,7.58.34,2.15-.27,3.96-2.88,5.78l-37.29,21.37v58.88l38.12-22.4v-49.46s-.08-3.09.26-4.16c2.14-6.75,11.58-9.09,16.95-7.15,3.85,1.26,45.34,19.13,45.34,19.13ZM67.94,56.04v55.6l35.58,18.9v-59.01c-11.89-5.17-23.55-10.61-35.58-15.49Z"/></svg>
+    <div class="szh-hero-top">
+      <div class="szh-hero-ident">
+        <div class="szh-hero-eyebrow">$revue-nom$</div>
+        <div class="szh-hero-dossier">$etiquette-dossier$</div>
+      </div>
+      <div class="szh-hero-vol">$vol-ligne$</div>
+    </div>
+    <div class="szh-hero-main">
+      <h1 class="szh-title">$titre-affiche$</h1>
+$if(sous-titre-affiche)$
+      <p class="szh-subtitle">$sous-titre-affiche$</p>
+$endif$
+    </div>
+    <div class="szh-hero-meta">
+$if(author)$
+      <div class="szh-authors">$for(author)$$author.nom$$if(author.prenom)$, $author.prenom$$endif$$sep$<span class="sep">·</span>$endfor$</div>
+$endif$
+$if(doi)$
+      <a class="szh-doi" href="https://doi.org/$doi$"><span>DOI: $doi$</span><svg class="szh-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 L17 7"/><path d="M8 7 H17 V16"/></svg></a>
+$endif$
+      <a class="szh-licence" href="https://creativecommons.org/licenses/by/4.0/"><span>$licence-texte$</span><svg class="szh-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 L17 7"/><path d="M8 7 H17 V16"/></svg></a>
+    </div>
+  </header>
+  <div class="szh-filet"></div>
+$if(resumes)$
+  <section class="szh-cover-body">
+$for(resumes)$
+    <div class="szh-abstract" lang="$resumes.lang$">
+      <div class="szh-abstract-label">$resumes.label$</div>
+      <p>$resumes.texte$</p>
+$if(resumes.motscles)$
+      <div class="szh-kws">$for(resumes.motscles)$<span class="szh-kw">$resumes.motscles$</span>$endfor$</div>
+$endif$
+    </div>
+$endfor$
+  </section>
+$endif$
+</div>
+
+$body$
+
+$for(include-after)$
+$include-after$
+$endfor$
+</body>
+</html>

@@ -67,6 +67,7 @@
     "**/Thumbs.db": true,
     "**/~$*": true,
     "**/*.lnk": true,
+    "**/*.meta.yaml": true,
     "**/media/conversion-stats.json": true,
     "**/media/rapport.json": true,
     "**/media/refs-brutes.txt": true

@@ -1,0 +1,27 @@
+body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground); background: var(--vscode-editor-background);
+  padding: 1rem 1.2rem; max-width: 34rem; }
+h1 { font-size: 1.15em; font-weight: 600; margin: 0 0 .25rem; }
+p.note { color: var(--vscode-descriptionForeground); margin: 0 0 1rem; font-size: .88em; }
+label { display: block; margin: .8rem 0 .25rem; font-weight: 600; font-size: .92em; }
+input, select { width: 100%; box-sizing: border-box; padding: .35em .5em; font: inherit;
+  color: var(--vscode-input-foreground); background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; }
+input:focus, select:focus { outline: 1px solid var(--vscode-focusBorder); }
+.indice { color: var(--vscode-descriptionForeground); font-size: .82em; margin-top: .2rem; }
+.radios { display: flex; flex-direction: column; gap: .45rem; margin-top: .3rem; }
+.radio { display: flex; align-items: flex-start; gap: .5em; margin: 0; font-weight: normal;
+  cursor: pointer; width: auto; }
+.radio input { width: auto; flex: 0 0 auto; margin: .15em 0 0; }
+.radio span { line-height: 1.35; }
+.pastilles { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .3rem; }
+.pastille { display: inline-flex; align-items: center; gap: .4em; cursor: pointer;
+  padding: .3em .7em .3em .4em; border: 1px solid var(--vscode-input-border, rgba(128,128,128,.4));
+  border-radius: 999px; background: var(--vscode-input-background); color: var(--vscode-foreground);
+  font: inherit; margin: 0; width: auto; box-sizing: border-box; }
+.pastille .puce { width: 1em; height: 1em; border-radius: 50%; border: 1px solid rgba(128,128,128,.5); flex: 0 0 auto; }
+.pastille[aria-pressed="true"] { outline: 2px solid var(--vscode-focusBorder); outline-offset: 1px; font-weight: 600; }
+button { margin-top: 1.2rem; padding: .45em 1.1em; border: none; border-radius: 2px; font: inherit;
+  color: var(--vscode-button-foreground); background: var(--vscode-button-background); cursor: pointer; }
+button:hover { background: var(--vscode-button-hoverBackground); }
+#etat { margin-left: .8rem; font-size: .92em; color: var(--vscode-descriptionForeground); }

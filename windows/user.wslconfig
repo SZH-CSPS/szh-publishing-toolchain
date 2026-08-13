@@ -1,0 +1,18 @@
+# SZH — configuration globale WSL2 du poste (D34)
+# Seedé par update.ps1 vers %UserProfile%\.wslconfig — ne pas éditer localement.
+# Fichier GLOBAL à toutes les distros WSL du poste (acceptable : postes dédiés).
+
+[wsl2]
+# Plafonne vmmem (par défaut : 50 % de la RAM du poste). 3 Go suffisent
+# largement à Pandoc + WeasyPrint, y compris pour un futur profil « book ».
+memory=3GB
+processors=2
+# Extinction de la VM 5 minutes après la fin du dernier build (défaut : 60 s).
+# Assez long pour les rafales de Ctrl+S, assez court pour libérer la RAM.
+vmIdleTimeout=300000
+
+[experimental]
+# Rend le cache disque Linux à Windows quand la VM est inactive.
+autoMemoryReclaim=gradual
+# Les nouveaux VHDX se compactent automatiquement.
+sparseVhd=true

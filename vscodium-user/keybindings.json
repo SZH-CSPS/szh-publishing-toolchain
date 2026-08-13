@@ -9,12 +9,29 @@
     "args": "Importer les articles Word"
   },
 
-  // Insérer un bloc de style (::: encadré, chapô, exergue…) : ouvre la liste des snippets
+  // Palette « Mise en forme SZH » (menu SZH-only : gras/italique/souligné, titres,
+  // blocs, figure, tableau). Remplace l'ancien raccourci d'insertion de snippet ; les
+  // blocs ::: restent accessibles en tapant « ::: » puis Ctrl+Espace.
   {
     "key": "ctrl+alt+s",
-    "command": "editor.action.insertSnippet",
+    "command": "szh.miseEnForme",
     "when": "editorTextFocus && editorLangId == markdown"
   },
+
+  // ── Mise en forme SZH (M6, D55) — niveau utilisateur : prime sur Markdown All in One.
+  //    Ces raccourcis sont AUSSI affichés dans le sous-menu « Mise en forme » (clic droit).
+  { "key": "ctrl+b",     "command": "szh.fmt.gras",     "when": "editorTextFocus && editorLangId == markdown" },
+  { "key": "ctrl+i",     "command": "szh.fmt.italique", "when": "editorTextFocus && editorLangId == markdown" },
+  { "key": "ctrl+u",     "command": "szh.fmt.souligne", "when": "editorTextFocus && editorLangId == markdown" },
+  { "key": "ctrl+alt+1", "command": "szh.fmt.titre1",   "when": "editorTextFocus && editorLangId == markdown" },
+  { "key": "ctrl+alt+2", "command": "szh.fmt.titre2",   "when": "editorTextFocus && editorLangId == markdown" },
+  { "key": "ctrl+alt+3", "command": "szh.fmt.titre3",   "when": "editorTextFocus && editorLangId == markdown" },
+  { "key": "ctrl+alt+w", "command": "szh.fmt.important", "when": "editorTextFocus && editorLangId == markdown" },
+  { "key": "ctrl+alt+h", "command": "szh.fmt.highlight", "when": "editorTextFocus && editorLangId == markdown" },
+  { "key": "ctrl+alt+q", "command": "szh.fmt.question",  "when": "editorTextFocus && editorLangId == markdown" },
+  { "key": "ctrl+alt+c", "command": "szh.fmt.citation",  "when": "editorTextFocus && editorLangId == markdown" },
+  { "key": "ctrl+alt+f", "command": "szh.fmt.figure",    "when": "editorTextFocus && editorLangId == markdown" },
+  { "key": "ctrl+alt+t", "command": "szh.fmt.tableau",   "when": "editorTextFocus && editorLangId == markdown" },
 
   // Secours si l'aperçu PDF ne se rafraîchit pas tout seul : recharge la fenêtre
   { "key": "ctrl+alt+r", "command": "workbench.action.reloadWindow" }

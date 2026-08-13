@@ -1,0 +1,10 @@
+body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground); background: var(--vscode-editor-background);
+  padding: 1rem 1.2rem; max-width: 34rem; }
+h1 { font-size: 1.15em; font-weight: 600; margin: 0 0 .25rem; }
+p.note { color: var(--vscode-descriptionForeground); margin: 0 0 1rem; font-size: .88em; }
+fieldset { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));
+  border-radius: 4px; margin: 0 0 1rem; padding: .6rem 1rem .8rem; }
+legend { font-weight: 600; padding: 0 .4em; }
+label { display: inline-flex; align-items: center; margin: .25rem 1.1rem .25rem 0; gap: .35em; }
+.indice { color: var(--vscode-descriptionForeground); font-size: .82em; margin-top: .3rem; }
