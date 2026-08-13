@@ -7,6 +7,7 @@
 #             « revue »       = Revue suisse de pédagogie spécialisée (ISSN 2813-4915, fr)
 #             « zeitschrift » = Schweizerische Zeitschrift für Heilpädagogik (ISSN 2813-4907, de)
 #   couleur : couleur annuelle (hex de la palette figée), repeint tous les accents.
+#   profil  : produit du dossier (D20) — absent ou « article » = PDF + HTML (défaut) ; « presentation » = un .pptx par article ; « book » = différé ; clé présente et vide = aucun document.
 title: "Dossier — numéro d'exemple"
 revue: revue
 volume: "44"

@@ -9,20 +9,27 @@
 #
 #   python3 accent-css.py <ausgabe.yaml>   ->  bloc :root sur stdout
 #
-# Les 3 variations de chaque couleur (normal / clair / fonce) sont ÉDITABLES dans
-# styles/couleurs.css (--c-<nom>-normal/-clair/-fonce). Ce script lit la couleur
-# choisie, la mappe à son nom, et émet un :root reprenant ces 3 variations. Sans
+# Les niveaux de chaque couleur (échelle -50 … -900 + alias -normal/-clair/-fonce) sont
+# ÉDITABLES dans styles/couleurs.css. Ce script lit la couleur choisie, la mappe à son
+# nom, et émet un :root reprenant les 3 variations que consomment les tableaux. Sans
 # couleur valide -> commentaire seul (le PDF d'un numéro SANS couleur reste identique,
-# RT4). Repli si couleurs.css absent/incomplet : calcul WCAG contraste-safe.
+# RT4). Repli si couleurs.css absent/incomplet : recalcul APCA par le module apca.py,
+# avec les mêmes cibles que couleurs.css (donc les mêmes valeurs).
 #   --szh-accent        filets / séparateurs / accents « couleur »
 #   --szh-accent-clair  fond « fond » (texte noir), zébrage & total « couleur »
 #   --szh-accent-fonce  en-tête « negatif » (texte blanc), foncé à contraste garanti
 #
-# stdlib uniquement.
+# TOUS les contrastes de ce fichier sont calculés en APCA (module apca.py, seuils dans
+# styles/couleurs.css) : |Lc| >= 75 pour du texte, >= 60 pour un gros titre, >= 30 pour
+# un filet. L'ancien ratio WCAG 2 « 4,5:1 » n'est plus utilisé nulle part.
+#
+# stdlib uniquement (apca.py est à côté, donc importable tel quel).
 
 import sys
 import os
 import re
+
+import apca
 
 # Palette figée (COULEURS_NUMERO de l'extension) : hex -> nom (clé dans couleurs.css).
 PALETTE = {
@@ -32,8 +39,12 @@ PALETTE = {
 
 
 def lire_couleur(chemin):
+    # 'utf-8-sig' : un ausgabe.yaml écrit par un outil Windows peut porter un BOM
+    # UTF-8, qui collerait à la première clé du fichier et la rendrait invisible
+    # (couleur annuelle silencieusement perdue). Le sérialiseur du cockpit préserve
+    # un BOM existant : le cas est atteignable, pas théorique.
     try:
-        with open(chemin, encoding='utf-8') as f:
+        with open(chemin, encoding='utf-8-sig') as f:
             contenu = f.read()
     except OSError:
         return None
@@ -52,25 +63,49 @@ def lire_couleur(chemin):
     return None
 
 
-def _couleurs_css():
-    """Contenu de styles/couleurs.css (à côté de ce script), ou '' si absent."""
+def couleurs_css():
+    """Contenu de styles/couleurs.css (à côté de ce script), COMMENTAIRES RETIRÉS, ou
+    '' si absent. Le fichier est très commenté (mode d'emploi + valeurs Lc annotées) et
+    ses commentaires citent des noms de variables : les retirer évite qu'une phrase
+    d'explication soit prise pour une déclaration."""
     chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'styles', 'couleurs.css')
     try:
         with open(chemin, encoding='utf-8') as f:
-            return f.read()
+            return re.sub(r'/\*.*?\*/', '', f.read(), flags=re.S)
     except OSError:
         return ''
 
 
+def resoudre_variable(css, nom, sauts=4):
+    """Valeur hex d'une variable CSS de couleurs.css, en suivant les renvois
+    `var(--autre)`. Les alias -normal/-clair/-fonce pointent vers un niveau de
+    l'échelle (`--c-rouge-clair: var(--c-rouge-100)`) : un seul hex par teinte, donc
+    aucun risque de désynchronisation quand la revue édite un niveau. Renvoie None si
+    la variable est absente ou si la chaîne de renvois n'aboutit pas à un hex."""
+    for _ in range(sauts):
+        m = re.search(re.escape(nom) + r'\s*:\s*([^;\n]+);', css)
+        if not m:
+            return None
+        valeur = m.group(1).strip()
+        m_hex = re.match(r'(#[0-9A-Fa-f]{3,6})$', valeur)
+        if m_hex:
+            return m_hex.group(1)
+        m_var = re.match(r'var\(\s*(--[\w-]+)\s*\)$', valeur)
+        if not m_var:
+            return None
+        nom = m_var.group(1)
+    return None
+
+
 def variations_depuis_css(nom):
-    """Lit --c-<nom>-normal/-clair/-fonce dans styles/couleurs.css. Renvoie
-    {normal, clair, fonce} si les 3 sont trouvées, sinon None."""
-    css = _couleurs_css()
+    """Lit --c-<nom>-normal/-clair/-fonce dans styles/couleurs.css (renvois var()
+    suivis). Renvoie {normal, clair, fonce} si les 3 sont trouvées, sinon None."""
+    css = couleurs_css()
     out = {}
     for var in ('normal', 'clair', 'fonce'):
-        m = re.search(r'--c-' + re.escape(nom) + r'-' + var + r'\s*:\s*(#[0-9A-Fa-f]{6})', css)
-        if m:
-            out[var] = m.group(1)
+        hexa = resoudre_variable(css, '--c-%s-%s' % (nom, var))
+        if hexa:
+            out[var] = hexa
     return out if len(out) == 3 else None
 
 
@@ -80,96 +115,70 @@ def teintes_neutres_depuis_css():
     quelles pour que les modifications de couleurs.css prennent effet dans le PDF.
     Renvoie un dict {var: hex} (vide si couleurs.css absent/incomplet -> repli de
     print.css)."""
-    css = _couleurs_css()
+    css = couleurs_css()
     out = {}
     for var in ('--szh-gris-clair', '--szh-zebre'):
-        m = re.search(re.escape(var) + r'\s*:\s*(#[0-9A-Fa-f]{3,6})', css)
-        if m:
-            out[var] = m.group(1)
+        hexa = resoudre_variable(css, var)
+        if hexa:
+            out[var] = hexa
     return out
 
 
-# ---- Repli : calcul WCAG contraste-safe (si couleurs.css absent/incomplet) ----------
-
-def vers_rgb(hexa):
-    return tuple(int(hexa[i:i + 2], 16) for i in (1, 3, 5))
-
-
-def vers_hex(rgb):
-    return '#' + ''.join('%02X' % max(0, min(255, round(c))) for c in rgb)
-
-
-def luminance(rgb):
-    def lin(c):
-        c = c / 255.0
-        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
-    r, g, b = (lin(c) for c in rgb)
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b
-
-
-def clair(rgb):
-    # 18 % couleur + 82 % blanc : fond clair, texte noir lisible (contraste élevé).
-    return tuple(c * 0.18 + 255 * 0.82 for c in rgb)
-
-
-def fonce(rgb):
-    # Assombrit (teinte préservée) jusqu'à luminance <= 0.16 -> texte blanc >= 4.5:1.
-    if luminance(rgb) <= 0.16:
-        return rgb
-    bas, haut = 0.0, 1.0
-    for _ in range(24):
-        k = (bas + haut) / 2
-        if luminance(tuple(c * k for c in rgb)) > 0.16:
-            haut = k
-        else:
-            bas = k
-    return tuple(c * bas for c in rgb)
-
+# ---- Repli : recalcul APCA (si couleurs.css absent/incomplet) ------------------------
 
 def variations_calculees(hexa):
-    rgb = vers_rgb(hexa)
-    return {'normal': hexa, 'clair': vers_hex(clair(rgb)), 'fonce': vers_hex(fonce(rgb))}
+    """Mêmes valeurs que couleurs.css, recalculées : -clair = niveau 100 (fond à texte
+    noir, Lc >= 82), -fonce = niveau 800 (fond à texte blanc, |Lc| >= 82). L'échelle et
+    les alias étant définis dans apca.py, ce repli ne peut pas divulguer une autre
+    palette que celle du fichier CSS."""
+    ech = apca.echelle(hexa)
+    return {nom: ech[niveau] for nom, niveau in apca.ALIAS}
 
 
 # ---- Jetons de la MAQUETTE (D72) : précalcul des color-mix() + contraste ----------
 # WeasyPrint 69 n'implémente pas color-mix() et n'exécute pas le JS d'applyTweaks
 # (contraste APCA). On précalcule donc, en Python, TOUS les jetons dérivés de la
 # couleur annuelle consommés par print.css (couverture + corps). Les formules
-# reprennent la maquette (base-finale-source.jsx / Pages export.html) à l'identique.
+# reprennent la maquette (base-finale-source.jsx / Pages export.html) à l'identique,
+# et APCA sert de GARDE-FOU : on ne dévie de la maquette que lorsqu'une paire
+# texte/fond n'atteint pas son seuil (voir test/apca-check.py).
 
 def melange(hex_a, hex_b, poids_a):
     """color-mix(in srgb, A poids_a, B) : mélange sRGB par canal (gamma, comme CSS)."""
-    a, b = vers_rgb(hex_a), vers_rgb(hex_b)
-    return vers_hex(tuple(a[i] * poids_a + b[i] * (1 - poids_a) for i in range(3)))
+    a, b = apca.vers_rgb(hex_a), apca.vers_rgb(hex_b)
+    return apca.vers_hex(tuple(a[i] * poids_a + b[i] * (1 - poids_a) for i in range(3)))
 
 
-def assombrir_vers(hexa, lum_cible):
-    """Assombrit (teinte préservée) jusqu'à luminance <= lum_cible (quasi-noir)."""
-    rgb = vers_rgb(hexa)
-    if luminance(rgb) <= lum_cible:
-        return hexa
-    bas, haut = 0.0, 1.0
-    for _ in range(24):
-        k = (bas + haut) / 2
-        if luminance(tuple(c * k for c in rgb)) > lum_cible:
-            haut = k
-        else:
-            bas = k
-    return vers_hex(tuple(c * bas for c in rgb))
+# Filet / bordure de couleur sur le papier blanc : le plancher APCA du non-textuel est
+# 30 ; on vise 45 pour qu'un trait de 1 px reste franchement visible. Seule la moutarde
+# (Lc 30,1 sur blanc, à la limite) est concernée : elle est légèrement assombrie.
+LC_FILET_CONFORT = 45.0
+# Texte de couleur sur le papier blanc : plancher texte 75, on vise 78 (petite marge).
+LC_TEXTE_ANNUEL = 78.0
 
 
 def jetons_annuels(hexa):
     """Tous les jetons --c-annual* / --annual-* dérivés de la couleur annuelle.
-    Cas particulier « couleur très claire » (moutarde #C7CF1C) : le texte sur aplat
-    passe au noir et le filet fin (--c-annual-ui) devient quasi-noir (les barres
-    ÉPAISSES gardent la couleur brute var(--c-annual), fidèle à la maquette)."""
-    tres_claire = luminance(vers_rgb(hexa)) > 0.5
+
+    Décisions de contraste en APCA (et non plus par un seuil de luminance WCAG) :
+      --c-on-annual : noir OU blanc, la polarité qui maximise |Lc| sur l'aplat. Aucune
+        des 6 teintes de marque n'atteint 75 dans un sens ou dans l'autre : ce jeton
+        n'est valable que pour du GROS texte (>= 24 px, seuil 60) — c'est bien son
+        usage (titres de couverture sur aplat), pas du texte courant.
+      --c-annual-ui : les traits FINS d'une couleur trop pâle sur blanc sont assombris
+        jusqu'à LC_FILET_CONFORT. Les barres ÉPAISSES gardent la couleur brute
+        var(--c-annual), fidèle à la maquette.
+      --c-annual-text : le mélange de la maquette (60 % couleur + 40 % encre) est gardé
+        tel quel s'il tient le seuil texte, et seulement assombri sinon (cas moutarde,
+        où le mélange plafonne à Lc 68,9)."""
+    texte, _ = apca.meilleure_polarite(hexa)
     return [
         ('--c-annual',          hexa),
-        ('--c-annual-deep',     vers_hex(fonce(vers_rgb(hexa)))),
-        ('--c-annual-text',     melange(hexa, '#0A0D14', 0.60)),   # texte annuel sur blanc
-        ('--c-annual-ui',       assombrir_vers(hexa, 0.045) if tres_claire else hexa),
-        ('--c-on-annual',       '#000000' if tres_claire else '#ffffff'),
+        ('--c-annual-deep',     apca.echelle(hexa)['800']),
+        ('--c-annual-text',     apca.couleur_sur(melange(hexa, '#0A0D14', 0.60),
+                                                 '#FFFFFF', LC_TEXTE_ANNUEL)),
+        ('--c-annual-ui',       apca.couleur_sur(hexa, '#FFFFFF', LC_FILET_CONFORT)),
+        ('--c-on-annual',       texte.lower()),
         ('--c-abstract-border', hexa),
         ('--c-kw-bg',           melange(hexa, '#FFFFFF', 0.22)),
         ('--annual-soft',       melange(hexa, '#FFFFFF', 0.12)),

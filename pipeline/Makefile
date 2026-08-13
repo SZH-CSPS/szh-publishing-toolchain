@@ -35,11 +35,54 @@ MAQUETTE_LUA := $(PIPELINE_DIR)/filters/szh-maquette.lua
 LANG_LUE   := $(shell sed -n 's/^lang:[[:space:]]*\([a-zA-Z-]*\).*/\1/p' ausgabe.yaml 2>/dev/null | head -1)
 LANG_REVUE := $(if $(LANG_LUE),$(LANG_LUE),fr)
 
+# ---------------------------------------------------------------------------
+# Profil de compilation du DOSSIER (D20, T6.4) — « un dossier = un produit = un
+# moteur ». Lu dans ausgabe.yaml avec le MÊME mécanisme que lang: ci-dessus
+# (sed + head), sans dépendance ajoutée : l'image WSL n'embarque pas PyYAML.
+#
+# ⚠ Piège central : `sed` renvoie une chaîne vide dans DEUX cas très différents —
+#   (a) la clé `profil:` est absente du fichier (dossier « historique » : il doit
+#       continuer à se compiler exactement comme avant, sans rien changer) ;
+#   (b) la clé est là mais sans valeur (`profil:`), ce qui est un CHOIX explicite
+#       du rédacteur : « ce dossier ne produit aucun document ».
+#   Les deux se lisent « vide » : on détecte donc la PRÉSENCE de la clé à part,
+#   par un compte de lignes (`grep -c '^profil:'`). L'ancrage `^` est ce qui rend
+#   ce compte fiable : une ligne d'aide commentée (`# profil: …`, comme dans
+#   revue-template/ausgabe.yaml) ou une clé imbriquée (indentée) ne comptent pas.
+#   Fichier absent -> grep n'écrit rien -> chaîne vide -> traitée comme 0.
+PROFIL_PRESENT := $(shell grep -c "^profil:" ausgabe.yaml 2>/dev/null | head -1)
+# La valeur elle-même : on tolère les guillemets que pourrait écrire un
+# sérialiseur (`profil: "article"`) et on s'arrête au premier caractère hors
+# [a-zA-Z-] (espace, commentaire de fin de ligne, CR des fins de ligne Windows).
+# Conséquence assumée : une valeur exotique/accentuée est tronquée -> elle tombe
+# dans la branche « profil inconnu », qui échoue AVEC un message clair. Jamais
+# de repli silencieux sur un autre profil.
+PROFIL_LU      := $(shell sed -n "s/^profil:[[:space:]]*[\"']*\([a-zA-Z-]*\).*/\1/p" ausgabe.yaml 2>/dev/null | head -1)
+PROFIL         := $(strip $(PROFIL_LU))
+# Vide si la clé est absente (ou 0 occurrence) ; non vide sinon.
+PROFIL_DECLARE := $(filter-out 0,$(PROFIL_PRESENT))
+
+# Table de routage de la cible `all` (D20). Résolue à la LECTURE du Makefile :
+# `make -n all` montre donc directement la route prise, sans exécuter pandoc.
+ifeq ($(PROFIL_DECLARE),)
+PROFIL_ROUTE := article
+else ifeq ($(PROFIL),)
+PROFIL_ROUTE := rien
+else
+PROFIL_ROUTE := $(PROFIL)
+endif
+# ---------------------------------------------------------------------------
+
 # Articles : un dossier par article, articles/<slug>/<slug>.md (D26).
 SLUGS      := $(sort $(foreach d,$(wildcard articles/*),$(if $(wildcard $(d)/$(notdir $(d)).md),$(notdir $(d)))))
 OUT        := out
 PDFS       := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).pdf)
 HTMLS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).html)
+# Diaporamas (profil `presentation`, D20) : un .pptx par article, écrit par le
+# writer NATIF de pandoc (zéro ajout au rootfs). Liste calculée même si le profil
+# n'est pas `presentation` — une liste inutilisée ne coûte rien et garde
+# `make out/<slug>/<slug>.pptx` utilisable à la main pour un essai ponctuel.
+PPTXS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).pptx)
 # Aperçu HTML cliquable (D53/M5) : rendu SÉPARÉ en commonmark_x+sourcepos (le
 # spike M5 montre que ce reader ajoute des divs « wrapper » -> il ne doit PAS
 # nourrir WeasyPrint ; le PDF reste sur -f markdown, inchangé par construction).
@@ -58,14 +101,55 @@ ACCENT_ABS := $(abspath $(ACCENT_CSS))
 # Import Word (D35) — le .docx source est SUPPRIMÉ après conversion réussie (D39).
 WORD_DIR   := articles-word
 
-.PHONY: all pdf import clean verifie-dossier tout-exporter
+.PHONY: all pdf presentation import clean verifie-dossier tout-exporter \
+        profil-rien profil-differe profil-inconnu
 .SECONDEXPANSION:
 
 # Cible du build (Ctrl+S, Ctrl+E) : importe les Word déposés PUIS régénère les sorties.
 # Deux sous-make pour que les articles fraîchement convertis soient vus par la passe pdf.
+#
+# Dispatch du profil (D20) : les `ifeq` ci-dessous sont résolus à la lecture du
+# Makefile, donc UNE SEULE des recettes existe pour un dossier donné. Le code de
+# sortie compte autant que la route : dans l'éditeur, tout code non nul remonte en
+# erreur rouge à chaque Ctrl+S. On n'échoue donc QUE si la configuration ne peut
+# pas être honorée (`book` différé, valeur inconnue) — jamais pour un choix
+# délibéré du rédacteur (profil vide).
+ifeq ($(PROFIL_ROUTE),article)
+# Clé `profil:` absente OU `profil: article` : comportement historique, à l'octet.
 all:
 	-@$(MAKE) --no-print-directory -f $(THIS) import
 	@$(MAKE) --no-print-directory -f $(THIS) pdf
+else ifeq ($(PROFIL_ROUTE),rien)
+all: profil-rien
+else ifeq ($(PROFIL_ROUTE),presentation)
+all:
+	-@$(MAKE) --no-print-directory -f $(THIS) import
+	@$(MAKE) --no-print-directory -f $(THIS) presentation
+else ifeq ($(PROFIL_ROUTE),book)
+all: profil-differe
+else
+all: profil-inconnu
+endif
+
+# `profil:` présent et vide (D20) : choix explicite, PAS une panne -> sortie 0,
+# message doux. Aucune erreur rouge dans l'éditeur, aucun dossier out/ créé.
+profil-rien:
+	@echo "[pipeline] profil vide dans ausgabe.yaml : ce dossier ne produit volontairement aucun document (D20). Rien à compiler."
+
+# `profil: book` (D20) : moteur livre différé. Configuration légitime mais non
+# honorable en l'état -> code non nul (le rédacteur doit savoir que son réglage
+# reste sans effet, et non croire à une compilation silencieuse).
+profil-differe:
+	@echo "[pipeline] profil « book » : profil différé, non encore implémenté (D20)."
+	@echo "[pipeline] En attendant : « article » (PDF + HTML par article) ou « presentation » (.pptx)."
+	@exit 1
+
+# Valeur non reconnue : on nomme la valeur reçue ET les valeurs acceptées, la
+# faute de frappe étant le cas de très loin le plus probable. Code non nul.
+profil-inconnu:
+	@echo "[pipeline] profil inconnu dans ausgabe.yaml : « $(PROFIL) »"
+	@echo "[pipeline] Valeurs acceptées (D20) : article (défaut) | presentation | book (différé) | vide (aucun document)."
+	@exit 1
 
 # Rebuild FORCÉ de toute la revue (D44) : clean puis all — ignore les dates de
 # fichiers. Distinct du build incrémental de Ctrl+S. Le « - » sur clean : un PDF
@@ -75,6 +159,15 @@ tout-exporter:
 	@$(MAKE) --no-print-directory -f $(THIS) all
 
 pdf: verifie-dossier $(PDFS) $(APERCUS)
+
+# Profil `presentation` (D20) : les .pptx SONT le produit du dossier, mais on
+# régénère AUSSI les aperçus HTML — le cockpit n'affiche en volet d'aperçu que
+# out/<slug>/<slug>.apercu.html (mode html) ou <slug>.pdf (mode pdf) ; sans les
+# aperçus, la colonne 2 tomberait sur son repli « aperçu indisponible » alors que
+# la compilation, elle, réussit. Les PDF ne sont PAS produits ici (le dossier a
+# choisi un autre produit) : en mode pdf, le volet reste donc vide — le cockpit
+# devra forcer le mode html quand le profil n'est pas `article` (T6.4, reste à faire).
+presentation: verifie-dossier $(PPTXS) $(APERCUS)
 
 verifie-dossier:
 	@test -f ausgabe.yaml || { echo "[pipeline] Ce dossier n'est pas une revue (ausgabe.yaml introuvable) : $$PWD"; exit 1; }
@@ -134,6 +227,58 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" $$extra \
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
+
+# .md -> .pptx (profil `presentation`, D20) : writer NATIF de pandoc, aucune
+# dépendance ajoutée (ni WeasyPrint ni LibreOffice). Calquée sur la règle %.html,
+# MOINS tout ce qui est propre au HTML : pas de --to=html5, --standalone,
+# --embed-resources, --template ni --css (un pptx n'a ni feuille de style CSS ni
+# gabarit HTML ; les passer ferait échouer ou serait ignoré).
+# Le `cd articles/<slug>` reste OBLIGATOIRE : les liens media/… sont relatifs au
+# .md, et c'est pandoc lui-même qui va lire les images pour les empaqueter.
+#
+# Filtres Lua — choix raisonné (les autres ne s'appliquent pas ici) :
+#   * szh-figure.lua : GARDÉ. Il ne travaille que sur l'AST (Para{Image} -> Figure)
+#     et le writer pptx sait rendre une Figure (image + légende sous l'image).
+#     Avec le lecteur `markdown` il est quasi no-op (implicit_figures fait déjà le
+#     travail) mais il garantit le même traitement des légendes que le PDF.
+#   * szh-maquette.lua : ÉCARTÉ. Il ne calcule QUE des variables de gabarit
+#     (couverture, en-tête courant, ISSN, résumés) consommées par
+#     templates/szh-article.html — sans template HTML, sa sortie est inerte.
+#   * szh-tabelle-inclure.lua : ÉCARTÉ. Il réinjecte les tableaux extraits (D47)
+#     en RawBlock('html'), que le writer pptx ne peut pas convertir.
+# ⚠ LIMITE CONNUE, assumée : les tableaux D47 (::: {.szh-tabelle src=…}) NE
+#   figureront PAS dans le .pptx — leur contenu est du HTML brut, hors d'atteinte
+#   d'un writer OOXML. Le texte de l'article, lui, est complet. Les faire passer
+#   demanderait de reconstruire ces tableaux en AST Pandoc (chantier à part).
+# citeproc/CSL : conservé à l'identique — la bibliographie est produite en blocs
+# Pandoc, donc parfaitement rendue en pptx.
+# Prérequis : ni les CSS ni le template ni tables/*.html ne sont listés, puisque
+# aucun n'influence la sortie ; seuls le .md, ausgabe.yaml et le .meta.yaml (D49)
+# le font. Le .pptx n'est donc pas reconstruit pour un changement de couleur.
+# Découpage en diapositives : laissé au DÉFAUT de pandoc (le niveau de titre suivi
+# de contenu). Mesuré sur test/articles/couverture-stress : 5 diapositives au défaut
+# (le corps d'un article s'entasse sous son premier titre) contre 16 avec
+# --slide-level=2, et AUCUNE perte de texte dans les deux cas (11 436 caractères
+# extraits à l'identique). --slide-level=2 découpe donc mieux, mais transforme un
+# paragraphe placé juste sous un titre de niveau 1 en diapositive « sans titre »
+# dont la première phrase sert de titre. Aucun des deux n'est bon dans tous les cas :
+# arbitrage laissé à l'usage réel, le levier tient en une option ici.
+# Pas de --reference-doc dans ce dépôt (aucune maquette pptx SZH n'existe) :
+# c'est LE levier à utiliser le jour où une charte graphique de diaporama est
+# voulue (thème, polices, dispositions) — un .pptx modèle + --reference-doc=….
+$(OUT)/%.pptx: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
+	@mkdir -p "$(dir $@)"
+	@slug="$(notdir $*)"; \
+	extra=""; \
+	if [ -s "articles/$$slug/media/$$slug.bib" ]; then extra="--citeproc --csl=$(CSL)"; fi; \
+	meta=""; \
+	if [ -f "articles/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
+	echo "pandoc articles/$$slug/$$slug.md -> $@ (pptx) $$extra"; \
+	cd "articles/$$slug" && $(PANDOC) "$$slug.md" \
+	  --from=markdown --to=pptx \
+	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" $$extra \
+	  --output="$(abspath $@)"
 
 # HTML -> PDF (CSS Paged Media), BALISÉ PDF/UA-1 (AX3/D62 : PDF accessible — arbre
 # de structure + langue). WeasyPrint 69 : --pdf-variant pdf/ua-1 pose /StructTreeRoot,

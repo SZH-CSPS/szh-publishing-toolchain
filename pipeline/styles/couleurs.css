@@ -1,37 +1,123 @@
-/* Couleurs annuelles SZH/CSPS — FICHIER ÉDITABLE.
+/* Couleurs annuelles SZH/CSPS — FICHIER ÉDITABLE À LA MAIN.
  *
- * Pour chaque couleur de base, 3 variations utilisées par les tableaux (.szh-tableau) :
- *   -normal : la couleur telle quelle (filets, séparateurs, accents « couleur »)
- *   -clair  : FOND CLAIR, prévu pour du texte NOIR   → garder un contraste ≥ 4.5:1 avec #000
- *   -fonce  : FOND NÉGATIF, prévu pour du texte BLANC → garder un contraste ≥ 4.5:1 avec #fff
+ * ═══ Le contraste, en 5 lignes ═══════════════════════════════════════════════
+ * Les valeurs « Lc » annotées ci-dessous viennent d'APCA, le calcul de contraste du
+ * futur WCAG 3 : il mesure la LISIBILITÉ PERÇUE d'un texte sur son fond, de 0 (invisible)
+ * à ±106 (noir sur blanc). Le signe dit seulement le sens : Lc positif = texte NOIR sur
+ * fond clair, Lc négatif = texte BLANC sur fond sombre. Retenez trois nombres :
+ * |Lc| ≥ 75 pour du texte courant (90 = confortable), ≥ 60 pour un gros titre (≥ 24 px),
+ * ≥ 30 pour un simple filet ou une bordure. En dessous, c'est trop peu contrasté.
+ * (APCA remplace l'ancien ratio WCAG 2 « 4,5:1 », qui se trompait sur les teintes vives :
+ *  il refusait des jaunes lisibles et acceptait des gris sombres illisibles.)
  *
- * Modifiez librement les valeurs ci-dessous (chaque couleur = 3 hex). `accent-css.py`
- * lit la couleur choisie dans le numéro (ausgabe.yaml : `couleur:`) et applique la
- * variation correspondante aux tableaux. Les valeurs par défaut ont été calculées
- * (luminance WCAG) pour respecter les contrastes indiqués.
+ * ═══ L'échelle ═══════════════════════════════════════════════════════════════
+ * Chaque couleur de marque se décline en 7 niveaux de MÊME TEINTE (calculés en OKLab,
+ * donc sans délavage), du plus clair au plus sombre :
+ *   -50 / -100 / -200 : FONDS CLAIRS pour du texte NOIR   (Lc ≥ 90 / 82 / 75)
+ *   -500             : LA COULEUR DE MARQUE, INCHANGÉE — ne la modifiez pas
+ *   -700 / -800 / -900 : FONDS SOMBRES pour du texte BLANC (|Lc| ≥ 75 / 82 / 90)
+ * -200 est donc le plus coloré des fonds clairs, -900 le plus sombre des fonds sombres.
+ * Chaque niveau est la couleur la PLUS VIVE qui atteigne encore sa cible : on ne veut pas
+ * des pastels fades. Les marges sont donc serrées — d'où le vérificateur ci-dessous.
  *
- * Deux teintes NEUTRES (indépendantes de la couleur annuelle) servent aussi les
- * tableaux et sont ré-émises telles quelles par `accent-css.py` (donc éditables ici) :
- *   --szh-gris-clair : fond « gris » des en-têtes / de la ligne de total. FOND CLAIR
- *                      prévu pour du texte NOIR → garder un contraste ≥ 4.5:1 avec #000.
- *   --szh-zebre      : teinte du zébrage (une ligne/colonne sur deux). Très légère, en
- *                      fond de cellules à texte noir → garder un bon contraste avec #000.
+ * ═══ Qu'éditer, et comment vérifier ══════════════════════════════════════════
+ * Éditez librement les hex. Pour recalculer une échelle entière à partir d'une teinte :
+ *     python3 pipeline/apca.py '#RRGGBB'      (affiche les 7 niveaux et leurs Lc)
+ * Après TOUTE modification de ce fichier :
+ *     python3 test/apca-check.py              (vérifie toutes les paires réelles ; sortie
+ *                                              non nulle si l'une échoue)
+ * Les alias -normal / -clair / -fonce (fin de fichier) sont ce que lit `accent-css.py`
+ * pour les tableaux : ils pointent vers un niveau de l'échelle, ne les dupliquez pas.
+ *
+ * Deux teintes NEUTRES (indépendantes de la couleur annuelle) servent aussi les tableaux
+ * et sont ré-émises telles quelles par `accent-css.py` (donc éditables ici aussi) :
+ *   --szh-gris-clair : fond « gris » des en-têtes / de la ligne de total (texte NOIR).
+ *   --szh-zebre      : teinte du zébrage, en fond de cellules à texte NOIR.
  */
 :root {
-  /* Rouge */
-  --c-rouge-normal: #D31932;       --c-rouge-clair: #F7D6DA;       --c-rouge-fonce: #D31932;
-  /* Capucine */
-  --c-capucine-normal: #EB5E51;    --c-capucine-clair: #FBE2E0;    --c-capucine-fonce: #BB4B41;
-  /* Moutarde */
-  --c-moutarde-normal: #C7CF1C;    --c-moutarde-clair: #F5F6D6;    --c-moutarde-fonce: #707410;
-  /* Poireau */
-  --c-poireau-normal: #51A66D;     --c-poireau-clair: #E0EFE5;     --c-poireau-fonce: #3D7C51;
-  /* Bleu acier */
-  --c-bleuacier-normal: #5F9FBC;   --c-bleuacier-clair: #E2EEF3;   --c-bleuacier-fonce: #46758B;
-  /* Mountbatten */
-  --c-mountbatten-normal: #A98899; --c-mountbatten-clair: #F0EAED; --c-mountbatten-fonce: #826875;
+  /* ── Rouge — marque #D31932 ─────────────────────────────────────────────────
+     Cas particulier : la couleur de marque est déjà assez sombre pour porter du
+     texte blanc (Lc −79,7), donc -700 vaut exactement -500. */
+  --c-rouge-50:   #FFDCD9;   /* texte noir  : Lc  +90,0 */
+  --c-rouge-100:  #FFC9C5;   /* texte noir  : Lc  +82,0 */
+  --c-rouge-200:  #FFB8B3;   /* texte noir  : Lc  +75,3 */
+  --c-rouge-500:  #D31932;   /* MARQUE — texte blanc : Lc −79,7 (gros titres seulement) */
+  --c-rouge-700:  #D31932;   /* texte blanc : Lc −79,7 */
+  --c-rouge-800:  #C9142E;   /* texte blanc : Lc −82,1 */
+  --c-rouge-900:  #A50121;   /* texte blanc : Lc −90,1 */
 
-  /* Teintes neutres des tableaux (voir ci-dessus) — éditables. */
-  --szh-gris-clair: #E6E6E6;
-  --szh-zebre: #F2F2F2;
+  /* ── Capucine — marque #EB5E51 ────────────────────────────────────────────── */
+  --c-capucine-50:   #FFDDD7;   /* texte noir  : Lc  +90,4 */
+  --c-capucine-100:  #FFCAC2;   /* texte noir  : Lc  +82,3 */
+  --c-capucine-200:  #FFB8AD;   /* texte noir  : Lc  +75,1 */
+  --c-capucine-500:  #EB5E51;   /* MARQUE — texte blanc : Lc −65,7 (gros titres seulement) */
+  --c-capucine-700:  #CD4E43;   /* texte blanc : Lc −75,2 */
+  --c-capucine-800:  #B54238;   /* texte blanc : Lc −82,1 */
+  --c-capucine-900:  #96322A;   /* texte blanc : Lc −90,2 */
+
+  /* ── Moutarde — marque #C7CF1C ─────────────────────────────────────────────
+     Couleur très claire : c'est le NOIR qui la lit le mieux (Lc +73,7), mais tout
+     juste sous 75 — réservez-la aux gros titres. -200 est presque la marque. */
+  --c-moutarde-50:   #E3EA98;   /* texte noir  : Lc  +90,1 */
+  --c-moutarde-100:  #D5DE6A;   /* texte noir  : Lc  +82,3 */
+  --c-moutarde-200:  #C9D231;   /* texte noir  : Lc  +75,3 */
+  --c-moutarde-500:  #C7CF1C;   /* MARQUE — texte noir : Lc  +73,7 (gros titres seulement) */
+  --c-moutarde-700:  #7A7F00;   /* texte blanc : Lc −75,2 */
+  --c-moutarde-800:  #6B6F00;   /* texte blanc : Lc −82,0 */
+  --c-moutarde-900:  #575A00;   /* texte blanc : Lc −90,2 */
+
+  /* ── Poireau — marque #51A66D ─────────────────────────────────────────────── */
+  --c-poireau-50:   #CFEBD5;   /* texte noir  : Lc  +90,1 */
+  --c-poireau-100:  #B8E0C2;   /* texte noir  : Lc  +82,3 */
+  --c-poireau-200:  #A4D5B1;   /* texte noir  : Lc  +75,1 */
+  --c-poireau-500:  #51A66D;   /* MARQUE — texte blanc : Lc −61,7 (gros titres seulement) */
+  --c-poireau-700:  #3E8857;   /* texte blanc : Lc −75,2 */
+  --c-poireau-800:  #34774B;   /* texte blanc : Lc −82,1 */
+  --c-poireau-900:  #26613B;   /* texte blanc : Lc −90,2 */
+
+  /* ── Bleu acier — marque #5F9FBC ──────────────────────────────────────────── */
+  --c-bleuacier-50:   #D1E8F3;   /* texte noir  : Lc  +90,2 */
+  --c-bleuacier-100:  #BCDBE9;   /* texte noir  : Lc  +82,1 */
+  --c-bleuacier-200:  #AACFE1;   /* texte noir  : Lc  +75,0 */
+  --c-bleuacier-500:  #5F9FBC;   /* MARQUE — texte blanc : Lc −60,9 (gros titres seulement) */
+  --c-bleuacier-700:  #4A819A;   /* texte blanc : Lc −75,0 */
+  --c-bleuacier-800:  #3E7087;   /* texte blanc : Lc −82,2 */
+  --c-bleuacier-900:  #305C6F;   /* texte blanc : Lc −90,0 */
+
+  /* ── Mountbatten — marque #A98899 ─────────────────────────────────────────── */
+  --c-mountbatten-50:   #EDE1E7;   /* texte noir  : Lc  +90,2 */
+  --c-mountbatten-100:  #E2D2DA;   /* texte noir  : Lc  +82,2 */
+  --c-mountbatten-200:  #D9C4CE;   /* texte noir  : Lc  +75,1 */
+  --c-mountbatten-500:  #A98899;   /* MARQUE — texte blanc : Lc −64,0 (gros titres seulement) */
+  --c-mountbatten-700:  #907282;   /* texte blanc : Lc −75,0 */
+  --c-mountbatten-800:  #7E6371;   /* texte blanc : Lc −82,1 */
+  --c-mountbatten-900:  #67505C;   /* texte blanc : Lc −90,2 */
+
+  /* ── Alias de compatibilité — ce que lisent les tableaux via accent-css.py ───
+     -normal = 500 (filets, accents « couleur ») ; -clair = 100 (fond à texte noir) ;
+     -fonce = 800 (fond « négatif » à texte blanc). Pour changer l'intensité d'un fond
+     de tableau, pointez l'alias vers un AUTRE niveau (p. ex. -200 au lieu de -100) —
+     accent-css.py suit ce renvoi. Ne recopiez pas d'hex ici : il finirait désynchronisé. */
+  --c-rouge-normal:       var(--c-rouge-500);
+  --c-rouge-clair:        var(--c-rouge-100);
+  --c-rouge-fonce:        var(--c-rouge-800);
+  --c-capucine-normal:    var(--c-capucine-500);
+  --c-capucine-clair:     var(--c-capucine-100);
+  --c-capucine-fonce:     var(--c-capucine-800);
+  --c-moutarde-normal:    var(--c-moutarde-500);
+  --c-moutarde-clair:     var(--c-moutarde-100);
+  --c-moutarde-fonce:     var(--c-moutarde-800);
+  --c-poireau-normal:     var(--c-poireau-500);
+  --c-poireau-clair:      var(--c-poireau-100);
+  --c-poireau-fonce:      var(--c-poireau-800);
+  --c-bleuacier-normal:   var(--c-bleuacier-500);
+  --c-bleuacier-clair:    var(--c-bleuacier-100);
+  --c-bleuacier-fonce:    var(--c-bleuacier-800);
+  --c-mountbatten-normal: var(--c-mountbatten-500);
+  --c-mountbatten-clair:  var(--c-mountbatten-100);
+  --c-mountbatten-fonce:  var(--c-mountbatten-800);
+
+  /* ── Teintes neutres des tableaux (voir en-tête) — éditables ───────────────── */
+  --szh-gris-clair: #E6E6E6;   /* texte noir : Lc +91,3 */
+  --szh-zebre:      #F2F2F2;   /* texte noir : Lc +98,3 */
 }

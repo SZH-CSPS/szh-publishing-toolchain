@@ -22,6 +22,67 @@ param(
 
 try { $Host.UI.RawUI.WindowTitle = (T 'maj.fenetre') } catch { }
 
+# ---------------------------------------------------------------------------------
+# Association « Ouvrir avec » des .md (T6.3, D18)
+#
+# Pose le ProgId SZH.Markdown dans HKCU (donc SANS droits administrateur, D3) et
+# l'inscrit dans la liste « Ouvrir avec » de l'extension .md. INTERDIT de forcer
+# l'application par défaut (D18) : la clé UserChoice est scellée par un hachage voulu
+# par Microsoft, et l'écraser (SetUserFTA & consorts) casserait la garantie que le
+# geste vient de l'utilisateur. On se contente donc de PROPOSER l'entrée ; le geste
+# « Toujours utiliser cette application » reste à faire une fois par personne
+# (procédure dans userdoc.md).
+#
+# La valeur OpenWithProgids est de type REG_NONE, sans donnée : c'est la forme
+# attendue par le shell, et elle ne touche à rien d'autre (ni le défaut de .md, ni
+# UserChoice).
+#
+# Idempotent : on ne crée une clé que si elle manque (New-Item -Force sur une clé
+# existante la recrée) et on réécrit les valeurs, qui sont de simples chaînes.
+# $Racine est paramétrable pour pouvoir tester la fonction sans toucher la vraie
+# ruche des classes.
+function Set-SzhProgIdMarkdown {
+  param(
+    [string]$Racine  = 'HKCU:\Software\Classes',
+    [string]$Toolkit = $SzhToolkit
+  )
+  $vbs = Join-Path $Toolkit 'windows\hidden.vbs'
+  $ps1 = Join-Path $Toolkit 'windows\open-md.ps1'
+  # Même construction qu'au raccourci du menu Démarrer : wscript.exe //B hidden.vbs
+  # <script> <arguments…> — hidden.vbs requote chacun de ses arguments, donc le « %1 »
+  # (chemin du fichier double-cliqué, espaces compris) arrive intact à open-md.ps1.
+  $commande = ('"{0}\System32\wscript.exe" //B "{1}" "{2}" "%1"' -f $env:WINDIR, $vbs, $ps1)
+
+  $cleProg = Join-Path $Racine 'SZH.Markdown'
+  foreach ($c in $cleProg, (Join-Path $cleProg 'shell\open\command')) {
+    if (-not (Test-Path $c)) { New-Item -Path $c -Force | Out-Null }
+  }
+  # Libellé montré dans « Ouvrir avec ». La valeur par défaut du ProgId nomme le type ;
+  # FriendlyAppName est ce que le shell affiche pour l'application elle-même — sans elle,
+  # l'entrée s'appellerait « Microsoft ® Windows Based Script Host » (le nom de wscript.exe).
+  Set-ItemProperty -Path $cleProg -Name '(default)'      -Value 'Revue SZH'
+  Set-ItemProperty -Path $cleProg -Name 'FriendlyAppName' -Value 'Revue SZH'
+  Set-ItemProperty -Path (Join-Path $cleProg 'shell\open\command') -Name '(default)' -Value $commande
+
+  # Icône : celle de l'éditeur. Si VSCodium n'est pas encore installé, on saute l'icône
+  # — la clé DefaultIcon n'est même pas créée : vide, elle donnerait une icône blanche,
+  # alors qu'absente elle laisse le shell choisir son icône générique. La commande, elle,
+  # est posée dans tous les cas (le prochain update posera l'icône).
+  $codium = Get-VSCodiumExe
+  if ($codium) {
+    $cleIcone = Join-Path $cleProg 'DefaultIcon'
+    if (-not (Test-Path $cleIcone)) { New-Item -Path $cleIcone -Force | Out-Null }
+    Set-ItemProperty -Path $cleIcone -Name '(default)' -Value ('"{0}",0' -f $codium)
+  }
+
+  $cleOuvrirAvec = Join-Path $Racine '.md\OpenWithProgids'
+  if (-not (Test-Path $cleOuvrirAvec)) { New-Item -Path $cleOuvrirAvec -Force | Out-Null }
+  $deja = Get-ItemProperty -Path $cleOuvrirAvec -Name 'SZH.Markdown' -ErrorAction SilentlyContinue
+  if (-not $deja) {
+    New-ItemProperty -Path $cleOuvrirAvec -Name 'SZH.Markdown' -PropertyType None -Value ([byte[]]@()) | Out-Null
+  }
+}
+
 New-Item -ItemType Directory -Force -Path $SzhBase, $SzhStaging, $SzhLogs, $SzhToolkit | Out-Null
 $journal = Join-Path $SzhLogs ('update-{0}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 try { Start-Transcript -Path $journal | Out-Null } catch { }
@@ -179,6 +240,17 @@ try {
   $codium = Get-VSCodiumExe
   if ($codium) { $lnk.IconLocation = $codium }
   $lnk.Save()
+
+  # Association « Ouvrir avec » → « Revue SZH » pour les .md (T6.3, D18). Jamais
+  # bloquante : une ruche de classes verrouillée par une stratégie de groupe ne doit pas
+  # faire échouer une mise à jour par ailleurs réussie.
+  try {
+    Set-SzhProgIdMarkdown
+    Write-SzhLog 'update : ProgId SZH.Markdown posé (HKCU, Ouvrir avec)'
+  } catch {
+    Write-SzhLog ('update : ProgId SZH.Markdown non posé : ' + $_.Exception.Message)
+  }
+
   Write-SzhOk (T 'maj.e4.ok')
 
   # ---- 5/5 Nettoyage ---------------------------------------------------------

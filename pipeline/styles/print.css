@@ -369,18 +369,21 @@ table > caption::before {
    définie, SURCHARGE ces trois variables à la compilation. Un numéro sans couleur
    reste donc en gris — le PDF est inchangé (RT4). WeasyPrint 69 n'implémente pas
    color-mix() (vérifié au spike) : les variantes clair/foncé sont pré-calculées par
-   accent-css.py (foncé à contraste garanti >= 4.5:1 avec du blanc).
+   accent-css.py. Contrastes garantis en APCA (et non plus en ratio WCAG 2) : clair
+   porte du texte noir à Lc >= 82, foncé du texte blanc à |Lc| >= 82. Toutes les paires
+   sont vérifiables par `python3 test/apca-check.py`.
    ⚠ PREMIER JET à valider par Robin : nuances de gris, teintes clair/foncé de la
    couleur, contraste du négatif. Ne s'applique QU'aux tableaux édités (.szh-tableau) :
    les tableaux importés bruts (<table> nu) gardent le style générique ci-dessus. */
 
 :root {
-  --szh-accent: #9a9a9a;          /* filets / bordures « couleur » -> gris par défaut */
-  --szh-accent-clair: #ededed;    /* fond « couleur annuelle » (texte noir) : en-têtes/total */
-  --szh-accent-fonce: #4a4a4a;    /* fond « negatif » (texte blanc) : en-têtes/total */
+  --szh-accent: #9a9a9a;          /* accent brut (= couleur de marque) ; les FILETS des
+                                     tableaux utilisent --c-annual-ui, voir § Bordures */
+  --szh-accent-clair: #ededed;    /* fond « couleur annuelle » (texte noir : Lc +95) : en-têtes/total */
+  --szh-accent-fonce: #4a4a4a;    /* fond « negatif » (texte blanc : Lc −95) : en-têtes/total */
   /* Repli si out/.szh-accent.css absent : accent-css.py réémet ces deux variables
      depuis styles/couleurs.css (éditables par la revue). Voir couleurs.css. */
-  --szh-gris-clair: #e6e6e6;      /* fond « gris » des en-têtes/total (texte noir >= 4.5:1) */
+  --szh-gris-clair: #e6e6e6;      /* fond « gris » des en-têtes/total (texte noir : Lc +91) */
   --szh-zebre: #f2f2f2;           /* teinte neutre du zébrage (une ligne/colonne sur deux) */
 }
 
@@ -434,9 +437,18 @@ table > caption::before {
 .szh-tableau[data-total-gras="1"] tbody tr:last-child > * { font-weight: 700; }
 
 /* ── Bordures ─────────────────────────────────────────────────────────────────────── */
+/* ⚠ Ces trois filets utilisent --c-annual-ui, PAS --szh-accent — ne « corrigez » pas.
+   POURQUOI : ces filets tombent souvent sur une rangée ZÉBRÉE (--szh-zebre, #f2f2f2),
+   et --szh-accent est la couleur de marque brute. En moutarde (#C7CF1C) elle n'y atteint
+   que Lc +22 : le filet devient quasi invisible (plancher APCA du non-textuel : 30).
+   --c-annual-ui est LE jeton « filet / barre » de la chaîne (accent-css.py) : il porte la
+   garantie de contraste et n'assombrit QUE les teintes trop pâles — pour 5 des 6 couleurs
+   il vaut exactement la couleur de marque, donc le rendu est inchangé ; en moutarde il
+   vaut #ACB201 (Lc +37 sur le zébrage). Repli sans couleur annuelle : le gris #8f8f95 du
+   :root ci-dessus. Les APLATS épais, eux, gardent bien --szh-accent-clair/-fonce. */
 /* Haute : filet épais sous la zone d'en-tête (dernière rangée du <thead>) ; si aucun
    en-tête de colonne, filet en tête de la 1re rangée de données. */
-.szh-tableau[data-bordure-haute="1"] thead tr:last-child > * { border-bottom: 2px solid var(--szh-accent); }
-.szh-tableau[data-bordure-haute="1"]:not([data-entete-lignes]) tbody tr:first-child > * { border-top: 2px solid var(--szh-accent); }
+.szh-tableau[data-bordure-haute="1"] thead tr:last-child > * { border-bottom: 2px solid var(--c-annual-ui); }
+.szh-tableau[data-bordure-haute="1"]:not([data-entete-lignes]) tbody tr:first-child > * { border-top: 2px solid var(--c-annual-ui); }
 /* Basse : filet épais sous la dernière rangée. */
-.szh-tableau[data-bordure-basse="1"] tbody tr:last-child > * { border-bottom: 2px solid var(--szh-accent); }
+.szh-tableau[data-bordure-basse="1"] tbody tr:last-child > * { border-bottom: 2px solid var(--c-annual-ui); }

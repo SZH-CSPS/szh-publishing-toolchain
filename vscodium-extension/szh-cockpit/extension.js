@@ -422,7 +422,31 @@ async function fermerApercuCourant(saufUri) {
 // En mode PDF, comportement historique (tomoki1207.pdf). Un SEUL propriétaire
 // de la colonne 2 à la fois : szh-apercu ne s'active qu'en mode pdf (D54).
 
+// Profil de compilation du DOSSIER (D20/T6.4), relu par majContexte(). Miroir exact
+// de la lecture du Makefile (sed sur ausgabe.yaml) : clé absente = « article ».
+// Une clé PRÉSENTE mais VIDE est un choix (« ce dossier ne produit aucun document ») :
+// on la distingue, comme le Makefile, sous le jeton 'rien'.
+let profilRevue = 'article';
+
+function lireProfil(racine) {
+  if (!racine) { return 'article'; }
+  try {
+    const m = fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')
+      .match(/^profil:[ \t]*["']?([a-zA-Z-]*)/m);
+    if (!m) { return 'article'; }
+    return m[1] === '' ? 'rien' : m[1];
+  } catch (e) { return 'article'; }        // ausgabe.yaml illisible : comportement historique
+}
+
 function modeApercu() {
+  // Un dossier qui ne produit pas de PDF (profil « presentation », D20) n'a rien à
+  // montrer en mode pdf : la colonne 2 dirait « PDF introuvable » alors que la
+  // compilation a parfaitement réussi. On force donc l'aperçu HTML — que la route
+  // `presentation` du Makefile régénère exprès pour cette raison.
+  // Effet de bord assumé : sur un tel dossier, la bascule de la barre d'état écrit
+  // bien le réglage mais l'aperçu reste HTML. Masquer la bascule demanderait un
+  // nouveau texte traduit ; à faire au prochain lot de traduction.
+  if (profilRevue !== 'article') { return 'html'; }
   try {
     return String(vscode.workspace.getConfiguration('szh').get('apercuMode', 'html') || 'html') === 'pdf' ? 'pdf' : 'html';
   } catch (e) { return 'html'; }
@@ -672,6 +696,39 @@ async function basculerApercu(fournisseur, majBarreApercu) {
 }
 
 // Le geste unique du rédacteur : cliquer un article = voir son texte ET son PDF.
+// Slug de l'article correspondant à un chemin, ou null. Un article est un
+// <racine>/articles/<slug>/<slug>.md (structure D26, .md HOMONYME de son dossier) :
+// BIENVENUE.md, un .md à la racine ou un fichier d'un autre dossier ne sont PAS des
+// articles. Même test que szh-apercu (une seule définition de « article » dans la
+// chaîne). Pur : chemins -> slug.
+function slugDepuisChemin(racine, chemin) {
+  if (!racine || !chemin) { return null; }
+  const parties = path.relative(racine, chemin).split(path.sep);
+  if (parties.length !== 3 || parties[0] !== 'articles') { return null; }
+  return parties[2] === parties[1] + '.md' ? parties[1] : null;
+}
+
+// T6.2 — au démarrage, si l'éditeur actif EST déjà un article (cas du double-clic sur
+// un .md depuis l'Explorateur : le lanceur open-md.ps1 ouvre le DOSSIER + le FICHIER),
+// enchaîner exactement ce que fait un clic dans la barre latérale : compiler si
+// nécessaire puis afficher l'aperçu en colonne 2.
+//
+// POURQUOI ici et pas dans le lanceur PowerShell : le lanceur reste « bête » (D20).
+// Compiler depuis Windows lancerait un make concurrent de celui que déclenchent
+// `triggerTaskOnSave` et la tâche `folderOpen` — or le Makefile n'a aucun verrou et
+// deux make écriraient le même out/<slug>/. Et ouvrir le PDF hors de l'éditeur le
+// verrouillerait, faisant échouer le remplacement atomique du Makefile. Ici, tout
+// passe par le chemin unique de D46, avec ses garde-fous (buildEnCours, propriété de
+// la colonne 2 — D54).
+async function ouvrirArticleActifAuDemarrage(fournisseur) {
+  const editeur = vscode.window.activeTextEditor;
+  if (!editeur) { return; }
+  const slug = slugDepuisChemin(fournisseur.racine, editeur.document.uri.fsPath);
+  if (!slug) { return; }                            // pas un article : ne rien forcer
+  try { await ouvrirArticle(fournisseur, slug); }
+  catch (e) { /* démarrage : ne jamais bloquer l'ouverture de la revue */ }
+}
+
 // 1. .md en colonne 1 ; 2. build si PDF absent/obsolète (mtime), incrémental ;
 // 3. fermer l'aperçu de l'article précédent ; 4. aperçu en colonne 2.
 // En cas d'échec de build : le .md reste ouvert, erreur sobre, PAS d'aperçu
@@ -1447,6 +1504,28 @@ function lireCouleurAccent(racine) {
   } catch (e) { return ''; }
 }
 
+// Teintes RÉELLES de l'aperçu de l'éditeur de tableau (D76). On ne les RECALCULE pas :
+// l'éditeur est un WYSIWYG, il doit montrer les hex que WeasyPrint appliquera. Or ces
+// valeurs sont déjà écrites par le pipeline dans out/.szh-accent.css à chaque build
+// (accent-css.py) : on les y LIT. Une formule réimplémentée en JS a déjà divergé une
+// fois — c'est exactement ce qui a rendu l'aperçu plus pâle que le PDF au passage à APCA.
+// Repli : null -> la webview retombe sur les gris neutres de print.css, comme le PDF
+// d'un numéro sans couleur. Volontairement AUCUN calcul de secours.
+function lireTeintesAccent(racine) {
+  const jetons = { clair: null, fonce: null, filet: null };
+  try {
+    const css = fs.readFileSync(path.join(racine, 'out', '.szh-accent.css'), 'utf8');
+    const lire = (nom) => {
+      const m = css.match(new RegExp(nom + '\\s*:\\s*(#[0-9A-Fa-f]{3,6})'));
+      return m ? m[1] : null;
+    };
+    jetons.clair = lire('--szh-accent-clair');
+    jetons.fonce = lire('--szh-accent-fonce');
+    jetons.filet = lire('--c-annual-ui');
+  } catch (e) { /* jamais compilé : gris neutres */ }
+  return jetons;
+}
+
 // Libellés localisés transmis à la webview de l'éditeur de tableau.
 function textesTable() {
   const cles = [
@@ -1511,7 +1590,8 @@ function ouvrirEditeurTable(fournisseur, item) {
     const modele = analyserTable(html);
     panneau.webview.postMessage({
       type: 'charger', modele: modele, disposition: disposition(modele),
-      accent: lireCouleurAccent(fournisseur.racine), i18n: textesTable()
+      accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine),
+      i18n: textesTable()
     });
   };
   // Applique une opération : le modèle reste la source de vérité — tout passe par
@@ -1526,7 +1606,8 @@ function ouvrirEditeurTable(fournisseur, item) {
     }
     const res = appliquerOperationTable(String(msg.nom || ''), msg.modele, msg.args);
     if (res && res.erreur) { panneau.webview.postMessage({ type: 'erreur', message: T(res.erreur) }); return; }
-    panneau.webview.postMessage({ type: 'charger', modele: res, disposition: disposition(res), accent: lireCouleurAccent(fournisseur.racine) });
+    panneau.webview.postMessage({ type: 'charger', modele: res, disposition: disposition(res),
+      accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine) });
   };
   const enregistrer = (modele) => {
     ecrireAusgabeAtomique(chemin, serialiserTable(normaliserModele(modele)));
@@ -1540,7 +1621,8 @@ function ouvrirEditeurTable(fournisseur, item) {
       // Annuler/rétablir (D60) : la pile d'états vit dans la webview ; l'hôte n'est
       // qu'un calculateur pur de disposition (pas de duplication du modèle côté webview).
       const m = normaliserModele(msg.modele);
-      panneau.webview.postMessage({ type: 'charger', modele: m, disposition: disposition(m), accent: lireCouleurAccent(fournisseur.racine) });
+      panneau.webview.postMessage({ type: 'charger', modele: m, disposition: disposition(m),
+        accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine) });
       return;
     }
     if (msg.type === 'modifie') {
@@ -1633,6 +1715,7 @@ function activate(context) {
   const majContexte = () => {
     const racine = trouverRacineRevue();
     fournisseur.definirRacine(racine);
+    profilRevue = lireProfil(racine);            // T6.4 : pilote le mode d'aperçu
     vscode.commands.executeCommand('setContext', CLE_CONTEXTE, !!racine);
     reinstallerWatchers(racine);
     if (racine) { demarrerDormeurWsl(); } else { arreterDormeurWsl(); }   // N1 (D42)
@@ -1694,6 +1777,7 @@ function activate(context) {
           await reveillerWsl();                    // réveil WSL (démarrage à froid de la VM)
           progress.report({ message: T('demarrage.revue') });
           majContexte();                           // racine + contexte + watchers + dormant + arbre
+          await ouvrirArticleActifAuDemarrage(fournisseur);   // T6.2
         });
     } finally { barre.dispose(); }
   };
@@ -1706,7 +1790,8 @@ function deactivate() { arreterDormeurWsl(); }
 module.exports = {
   activate, deactivate,
   _pur: {
-    titreNumero, separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
+    titreNumero, slugDepuisChemin, lireProfil,
+    separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
     analyserMeta, serialiserMeta, lignePos, plagePos, positionMot, jetonSource,
     analyserAusgabe, serialiserAusgabe,
     basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,

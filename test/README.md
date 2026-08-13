@@ -12,6 +12,23 @@ destinée à la publication** — c'est un banc d'essai réutilisable.
   difficiles (veuves/orphelines) et stresser l'auto-dimensionnement des tableaux.
 - `articles/couverture-stress/` — couverture sous contrainte : **12 auteurs**,
   10 mots-clés, titre/sous-titre longs (hauteur de hero fixe, méta ancrée en bas).
+- `apca-check.py` — vérificateur de **contraste APCA** de la palette : lit les hex de
+  `pipeline/styles/couleurs.css` et les jetons émis par `pipeline/accent-css.py`, mesure
+  toutes les paires texte/fond réellement utilisées et sort en erreur si l'une échoue.
+  Aucune dépendance, aucun build :
+  ```sh
+  python3 test/apca-check.py
+  ```
+  **À relancer après toute modification de `couleurs.css`** (les niveaux sont calculés au
+  plus juste : marges de contraste serrées).
+- `palette-html.py` — régénère `docs/palette.html`, la planche de la palette : les 7 niveaux
+  de chaque couleur, chacun portant le texte de la couleur qu'il doit recevoir, avec son Lc.
+  Page autonome (polices de la maquette embarquées), à ouvrir dans un navigateur :
+  ```sh
+  python3 test/palette-html.py
+  ```
+  **À relancer aussi après toute modification de `couleurs.css`** — une planche périmée est
+  pire que pas de planche.
 
 ## Build + capture PNG
 Depuis WSL (distro `SZH-Publishing`), avec un venv Python contenant `pypdfium2`

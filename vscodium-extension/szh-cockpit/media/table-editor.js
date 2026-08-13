@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 var api=acquireVsCodeApi();
-var modele=null, dispo=null, occ2=null, TXT={}, accent='';
+var modele=null, dispo=null, occ2=null, TXT={}, accent='', teintes={};
 var selection=null, ancre=null, cellActive=null, ctl={};
 // Historique (D60, F1) : deux piles d'états du MODÈLE, dans la webview. Chaque
 // opération de structure empile l'état PRÉ-op (voir op) ; les éditions de texte sont
@@ -45,23 +45,24 @@ function plage(){if(!selection||!occ2)return false;var vu={},n=0;
 function clampSel(s){if(!s||!dispo)return null;var rMax=Math.min(s.rMax,dispo.nbLignes-1),cMax=Math.min(s.cMax,dispo.nbColonnes-1);if(s.rMin>rMax||s.cMin>cMax||s.rMin<0||s.cMin<0)return null;return etendre({rMin:s.rMin,cMin:s.cMin,rMax:rMax,cMax:cMax});}
 
 // ---- Teintes de l'aperçu (mêmes valeurs que print.css / couleurs.css) ----
-function hx(h){h=String(h||'').replace('#','');if(h.length===3){h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];}return [parseInt(h.slice(0,2),16)||0,parseInt(h.slice(2,4),16)||0,parseInt(h.slice(4,6),16)||0];}
-function hx2(v){var s=Math.max(0,Math.min(255,Math.round(v))).toString(16);return s.length<2?'0'+s:s;}
 // Couleur annuelle brute (repli gris si non définie -> l'aperçu retombe sur les valeurs
 // par défaut de print.css, comme le PDF d'un numéro sans couleur).
 function accBrut(){return accent||null;}
-// Teintes IDENTIQUES à print.css/accent-css.py (aperçu fidèle, RV3) : clair = 18% couleur
-// + 82% blanc ; foncé = assombri jusqu'à luminance <= 0.16 (contraste blanc >= 4.5:1).
-function lum(r){var f=function(c){c=c/255;return c<=0.03928?c/12.92:Math.pow((c+0.055)/1.055,2.4);};return 0.2126*f(r[0])+0.7152*f(r[1])+0.0722*f(r[2]);}
-function clairAccent(hex){var r=hx(hex);return '#'+hx2(r[0]*0.18+255*0.82)+hx2(r[1]*0.18+255*0.82)+hx2(r[2]*0.18+255*0.82);}
-function fonceAccent(hex){var r=hx(hex);if(lum(r)<=0.16)return hex;var bas=0,haut=1;for(var i=0;i<24;i++){var k=(bas+haut)/2;if(lum([r[0]*k,r[1]*k,r[2]*k])>0.16)haut=k;else bas=k;}return '#'+hx2(r[0]*bas)+hx2(r[1]*bas)+hx2(r[2]*bas);}
+// Teintes de l'aperçu : LUES, jamais recalculées (D76). L'hôte les transmet dans
+// `teintes` — il les a prises dans out/.szh-accent.css, le fichier que le pipeline
+// écrit et que WeasyPrint applique. Un aperçu WYSIWYG ne doit pas réimplémenter une
+// formule de contraste : la version WCAG qui vivait ici a divergé du PDF au passage
+// à APCA (fonds trop pâles). Sans valeur reçue (numéro jamais compilé), on retombe
+// sur les gris neutres de print.css — comme le PDF d'un numéro sans couleur.
+function clairAccent(){return teintes.clair||null;}
+function fonceAccent(){return teintes.fonce||null;}
 // Repli neutre (= --szh-gris-clair / --szh-zebre / --szh-accent de couleurs.css/print.css).
 var GRIS_CLAIR='#e6e6e6', TEINTE_ZEBRE='#f2f2f2', ACCENT_GRIS='#9a9a9a';
 // fond (D67) -> { bg, fg } ou null : negatif = accent foncé + blanc ; couleur = accent
 // clair + noir ; gris = gris clair neutre + noir ; aucun = pas de remplissage.
-function fondDe(v){var a=accBrut();
-  if(v==='negatif'){return {bg:a?fonceAccent(a):'#4a4a4a',fg:'#ffffff'};}
-  if(v==='couleur'){return {bg:a?clairAccent(a):'#ededed',fg:'#000000'};}
+function fondDe(v){
+  if(v==='negatif'){return {bg:fonceAccent()||'#4a4a4a',fg:'#ffffff'};}
+  if(v==='couleur'){return {bg:clairAccent()||'#ededed',fg:'#000000'};}
   if(v==='gris'){return {bg:GRIS_CLAIR,fg:'#000000'};}
   return null;}
 // Aperçu fidèle des styles au NIVEAU tableau (D64/D67, miroir de print.css) : zébrage
@@ -71,7 +72,7 @@ function fondDe(v){var a=accBrut();
 // suit print.css : zébrage, puis en-têtes, puis total, puis bordures (le dernier gagne).
 function stylerApercu(){if(!dispo||!modele)return;var a=modele.attrs;
   var eL=a.enteteLignes,N=dispo.nbLignes;
-  var accLigne=accBrut()||ACCENT_GRIS;
+  var accLigne=teintes.filet||accBrut()||ACCENT_GRIS;
   zone.querySelectorAll('.cell').forEach(function(el){
     el.style.background='';el.style.color='';el.style.fontWeight='';el.style.borderTop='';el.style.borderBottom='';
     var r=+el.dataset.r0,li=+el.dataset.li,ci=+el.dataset.ci;
@@ -383,7 +384,7 @@ document.addEventListener('keydown',function(ev){if(!(ev.ctrlKey||ev.metaKey))re
 
 window.addEventListener('message',function(ev){var msg=ev.data||{};
   if(msg.type==='charger'){
-    modele=msg.modele;dispo=msg.disposition;if(msg.accent!==undefined)accent=msg.accent;
+    modele=msg.modele;dispo=msg.disposition;if(msg.accent!==undefined)accent=msg.accent;if(msg.teintes)teintes=msg.teintes;
     if(msg.i18n){TXT=msg.i18n;
       modeleEnregistre=clone(modele);annuler=[];retablir=[];avantEdition=null;dernierModifie=false;
       aide.textContent=TXT.aide||'';construireBarre();}

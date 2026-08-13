@@ -117,6 +117,10 @@ revue.pdf régénéré à la racine du dossier
 | D74 | **Revue = choix fermé (radio)** qui fixe nom + ISSN + langue par défaut : `Schweizerische Zeitschrift für Heilpädagogik` → **ISSN 2813-4907**, défaut **de** ; `Revue suisse de pédagogie spécialisée` → **ISSN 2813-4915**, défaut **fr**. Un seul champ canonique (`revue: zeitschrift\|revue`) dans `ausgabe.yaml`, dont nom, ISSN et langue sont **dérivés**. Cette langue par défaut pilote (a) compilation / couverture / césure et libellés localisés (D71), (b) **l'ordre des champs traductibles** dans les formulaires (langue par défaut en premier). | Plus d'ISSN saisi à la main, plus de nom de revue en texte libre (assouplit D37) : deux produits, deux jeux de valeurs dérivées. |
 | D75 | **`csholmq.excel-to-markdown-table` retiré d'Open VSX** (constaté le 2026-08-13 : l'extension entière a disparu du registre, pas seulement la version épinglée — la CI échouait en 404 sur tout nouveau tag). Décision : **dépin** dans `vsix.lock` et **reprise de la fonction par le cockpit** — commande `szh.fmt.collerTableau` (Maj+Alt+V) qui lit le presse-papiers, le convertit de TSV en tableau pipe (première ligne en en-tête, `\|` échappés, lignes courtes complétées) et l'insère. Aucune ré-implémentation côté tableaux riches : les tableaux issus de Word restent sur le chemin D47/D50 (fichiers HTML + éditeur du cockpit). | Le pin protégeait d'une MAJ malveillante, pas d'une disparition : le repli est de **rapatrier la fonction** (7 lignes utiles, testées) plutôt que de chercher une source alternative non vérifiable. Une extension tierce en moins à auditer. |
 
+| D76 | **Contrastes en APCA, palette en 7 niveaux** (2026-08-13, remplace le calcul WCAG 2 de D67) : module `pipeline/apca.py` (APCA-W3 0.1.9 + conversions OKLab, stdlib) ; chaque couleur de marque se décline en `--c-<nom>-50/100/200` (fonds clairs à texte **noir**, Lc ≥ 90/82/75), `-500` (**la marque, inchangée**) et `-700/800/900` (fonds sombres à texte **blanc**, ≥ 75/82/90). Chaque niveau est la teinte la plus **vive** qui atteigne encore sa cible (dichotomie sur la clarté OKLab, chroma amortie vers les extrêmes) — pas des pastels. Alias `-normal/-clair/-fonce` conservés en `var()` vers un niveau : **un seul hex par teinte**. Vérificateur ré-exécutable `test/apca-check.py` (125 paires réelles, sortie non nulle si une échoue) et planche générée `docs/palette.html` (`test/palette-html.py`). | WCAG 2 se trompe sur les teintes vives : il refusait des jaunes lisibles et acceptait des gris sombres illisibles. Deux corrections concrètes trouvées par la mesure : le texte annuel **moutarde** était sous le seuil (Lc 68,9 → 78,0) et son filet fin avait été « corrigé » en quasi-noir, ce qui tuait la couleur (→ `#ACB201`). Constat utile : les 6 couleurs de marque brutes ne portent du **texte courant** qu'en rouge — d'où la nécessité des niveaux 700-900. |
+| D77 | **Le lanceur `.md` est BÊTE ; l'aperçu est ouvert par le cockpit** (2026-08-13, précise T6.2 de D18) : `windows/open-md.ps1` remonte jusqu'à `ausgabe.yaml`, ouvre VSCodium sur le **dossier + le fichier**, et s'arrête là — aucun `make`, aucun appel WSL. C'est le cockpit qui, au démarrage, détecte que l'éditeur actif est un `articles/<slug>/<slug>.md` et enchaîne le chemin unique de D46 (compiler si obsolète, puis aperçu en colonne 2). Association posée en HKCU par `update.ps1` (ProgId `SZH.Markdown` + `.md\OpenWithProgids` en REG_NONE, `FriendlyAppName` = « Revue SZH ») ; **jamais** de forçage de `UserChoice` (D18). | Compiler depuis le lanceur, c'était lancer un `make` en concurrence de `triggerTaskOnSave` et de la tâche `folderOpen` sur le même `out/` — or le Makefile n'a aucun verrou ; et ouvrir un PDF hors de l'éditeur le verrouille, faisant échouer le remplacement atomique (D21). Un seul endroit compile, un seul possède la colonne 2 (D54). Prolonge D20 : l'intelligence dans le toolkit, les scripts OS bêtes. |
+| D78 | **Arbitrages du dispatch `profil:`** (2026-08-13, met D20 en œuvre — T6.4) : lecture par `sed` comme `lang:`, avec détection **séparée** de la présence de la clé (`grep -c '^profil:'`) car « clé absente » et « clé vide » se lisent tous deux « vide ». Routes : absente ou `article` → comportement historique **à l'octet** ; **vide** → aucun build, message doux, **sortie 0** (c'est un choix, pas une panne) ; `presentation` → un `.pptx` par article **plus les aperçus HTML** ; `book` et valeur inconnue → message clair et **sortie non nulle**. Le cockpit lit le même champ et **force l'aperçu HTML** dès que le profil n'est pas `article`. | Le code de sortie est une décision d'UX : tout code non nul remonte en erreur rouge à chaque Ctrl+S. On n'échoue donc que si la configuration ne **peut pas** être honorée. Les aperçus HTML sont régénérés par la route `presentation` précisément pour que la colonne 2 ne tombe pas sur « aperçu indisponible » alors que la compilation a réussi. Limite mesurée : les tableaux de D47 (HTML brut réinjecté) **disparaissent** du `.pptx`. |
+
 > **Provenance de D37–D74** : décisions prises dans les plans de lot retirés du dépôt le 2026-08-13
 > (commit `94c7866`) après réalisation — `PLAN-GESTION.md` (D37–D41), `PLAN-FONCTIONS.md` (D42–D48),
 > `PLAN-CORRECTIONS.md` (D49–D56), `PLAN-TABLEAU.md` (D57), `PLAN-EDITEUR-V2.md` (D58–D60),
@@ -324,17 +328,27 @@ Ordre : **P1 → P2 → P3** (P4 en parallèle de P3) **→ P5**. Estimations gr
       lecture conservée, ~2 s après Ctrl+S → **D19 confirmée, pas de fork**. Le remplacement
       atomique est bien rapporté « change ». Prérequis découvert : la revue doit être au nouveau
       format (l'ancien `.vscode` local avec `watcherExclude **/out/**` reproduisait la panne).
-- [ ] T6.2 `open-md.ps1` (lanceur intelligent, toolkit) : remonte l'arborescence jusqu'à `ausgabe.yaml` (D22),
-      compile si l'artefact manque (feedback « Préparation de l'aperçu… »), ouvre VSCodium sur le
-      DOSSIER + le fichier, ouvre l'aperçu.
-- [ ] T6.3 Association : ProgId `SZH.Markdown` dans « Ouvrir avec » (HKCU, posé par update.ps1) pointant
-      le lanceur ; option XML DISM au bootstrap (nouveaux profils) ; procédure « Toujours » → `userdoc.md` (✅ fait).
-- [ ] T6.4 Dispatch `profil:` dans le Makefile : lecture du champ (pandoc ou python3 de l'image),
-      routes `article` (existant), vide (no-op avec message doux), `presentation` (pptx) ;
-      erreur claire si profil inconnu ; `book` différé.
-- [ ] T6.5 Étoffer `userdoc.md` au fil des besoins (doc utilisateur du poste, versionnée au dépôt).
-- **Livrable** : double-clic sur un `.md` → la revue s'ouvre complète (éditeur + aperçu à jour) ;
-  un dossier `profil: presentation` produit un `.pptx` au Ctrl+S, sans aucun changement côté poste.
+- [x] T6.2 `open-md.ps1` (lanceur, toolkit) — ✅ **2026-08-13**. Remonte jusqu'à `ausgabe.yaml` (D22)
+      et ouvre VSCodium sur le DOSSIER + le fichier. **Ne compile pas** : la compilation et
+      l'aperçu passent par le cockpit, qui ouvre l'article actif au démarrage (**D77** — le plan
+      prévoyait l'inverse ; les raisons sont dans la décision). Cas limites traités et testés :
+      hors revue, `.md` non article, chemin UNC, fichier absent, sans argument, VSCodium absent.
+- [x] T6.3 Association — ✅ **2026-08-13**. ProgId `SZH.Markdown` + `.md\OpenWithProgids` (REG_NONE)
+      posés en **HKCU** par `update.ps1`, avec `FriendlyAppName` (sans elle, « Ouvrir avec »
+      afficherait « Windows Based Script Host »). Aucun forçage de `UserChoice` (D18).
+      ⏳ Reste l'option XML DISM au bootstrap (nouveaux profils) et la vérification du libellé
+      réellement affiché dans la boîte « Ouvrir avec » — à cocher au pilote.
+- [x] T6.4 Dispatch `profil:` dans le Makefile — ✅ **2026-08-13** (lecture `sed`, comme `lang:`).
+      Les 6 routes sont vérifiées par un **build réel** dans la distro : absente et `article`
+      → PDF + HTML ; vide → aucun document, sortie 0 ; `presentation` → `.pptx` **+ aperçus HTML** ;
+      `book` et valeur inconnue → message clair, sortie non nulle. Arbitrages : **D78**.
+- [x] T6.5 `userdoc.md` — section « Ouvrir les `.md` » réécrite (« Revue SZH » et non « VSCodium » :
+      sceller `UserChoice` sur VSCodium contournerait définitivement le lanceur) + les 4 cas du
+      double-clic. ⏳ `profil:` n'y est pas encore documenté (ni dans `BIENVENUE.md`).
+- **Livrable** : ✅ double-clic sur un `.md` → la revue s'ouvre complète (dossier + texte, puis
+  aperçu ouvert par le cockpit) ; un dossier `profil: presentation` produit un `.pptx` au Ctrl+S,
+  sans aucun changement côté poste. ⏳ Reste la validation GUI (double-clic réel, libellé
+  « Ouvrir avec », rendu du `.pptx` à l'œil).
 
 ### P7 — Convertisseur v2 (décidé et implémenté le 2026-07-05 — D26 à D31)
 - [x] Analyse AST des **6 articles réels** (styles, légendes, références, formes de citation) — chaque heuristique fondée sur des preuves.

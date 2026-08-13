@@ -85,6 +85,11 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.nom'      = 'Nom du dossier de la nouvelle revue (p. ex. 2026-02) :'
     'lanceur.nouvelle.invalide' = 'Le nom contient des caractères interdits ( < > : " / \ | ? * ).'
     'lanceur.nouvelle.erreur'   = "La création de la revue a échoué :`n{0}"
+    # Double-clic sur un .md (open-md.ps1, T6.2) : messages des cas ANORMAUX seulement.
+    'openmd.vide'         = "Aucun fichier à ouvrir.`n`nCe raccourci s'utilise en double-cliquant un fichier .md."
+    'openmd.introuvable'  = "Ce fichier est introuvable.`n`nIl a peut-être été déplacé ou renommé, ou OneDrive ne l'a pas encore synchronisé."
+    'openmd.horsrevue'    = "Ce fichier ne fait pas partie d'une revue : l'aperçu et la régénération ne seront pas actifs.`n`nIl s'ouvre quand même, pour le lire ou le corriger."
+    'openmd.reseau'       = "Ce fichier est dans un dossier réseau. Il s'ouvre, mais la fabrication du PDF et l'aperçu ne fonctionnent pas depuis un chemin réseau.`n`nPour travailler dessus, copiez la revue dans OneDrive ou sur le disque de ce poste."
   }
   de = @{
     'app.titre'         = 'SZH/CSPS — Publikations-Toolchain'
@@ -143,6 +148,11 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.nom'      = 'Ordnername der neuen Zeitschrift (z. B. 2026-02):'
     'lanceur.nouvelle.invalide' = 'Der Name enthält unzulässige Zeichen ( < > : " / \ | ? * ).'
     'lanceur.nouvelle.erreur'   = "Die Zeitschrift konnte nicht erstellt werden:`n{0}"
+    # Doppelklick auf eine .md-Datei (open-md.ps1, T6.2) : nur die ANORMALEN Fälle.
+    'openmd.vide'         = "Keine Datei zum Öffnen.`n`nDieser Befehl wird per Doppelklick auf eine .md-Datei verwendet."
+    'openmd.introuvable'  = "Diese Datei wurde nicht gefunden.`n`nSie wurde vielleicht verschoben oder umbenannt, oder OneDrive hat sie noch nicht synchronisiert."
+    'openmd.horsrevue'    = "Diese Datei gehört zu keiner Zeitschrift: Vorschau und Neuerzeugung sind nicht aktiv.`n`nSie wird trotzdem geöffnet, zum Lesen oder Korrigieren."
+    'openmd.reseau'       = "Diese Datei liegt in einem Netzwerkordner. Sie wird geöffnet, aber die PDF-Erzeugung und die Vorschau funktionieren von einem Netzwerkpfad aus nicht.`n`nKopieren Sie die Zeitschrift zum Arbeiten nach OneDrive oder auf die Festplatte dieses Computers."
   }
   en = @{
     'app.titre'         = 'SZH/CSPS — Publishing toolchain'
@@ -201,6 +211,11 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.nom'      = 'Folder name for the new journal (e.g. 2026-02):'
     'lanceur.nouvelle.invalide' = 'The name contains forbidden characters ( < > : " / \ | ? * ).'
     'lanceur.nouvelle.erreur'   = "Creating the journal failed:`n{0}"
+    # Double-click on a .md file (open-md.ps1, T6.2): abnormal cases only.
+    'openmd.vide'         = "No file to open.`n`nThis shortcut is meant to be used by double-clicking a .md file."
+    'openmd.introuvable'  = "This file cannot be found.`n`nIt may have been moved or renamed, or OneDrive has not synced it yet."
+    'openmd.horsrevue'    = "This file is not part of a journal: the preview and automatic rebuild will not be active.`n`nIt opens anyway, so you can read or fix it."
+    'openmd.reseau'       = "This file sits on a network folder. It opens, but PDF building and the preview do not work from a network path.`n`nTo work on it, copy the journal to OneDrive or to this computer's disk."
   }
 }
 
