@@ -44,6 +44,10 @@ COULEURS = [
 # apca.cran_de_charte, et c'est ce cran-là qui porte le badge dans la rampe.
 CRANS = [cran for cran, _ in apca.CLARTES]
 CIBLES = dict(apca.CLARTES)
+# Les deux surfaces réelles contre lesquelles un FILET de couleur se juge : le papier de
+# la maquette, et le zébrage des tableaux (lu dans couleurs.css, jamais recopié ici).
+PAPIER = '#FFFFFF'
+ZEBRE = None        # renseigné par main() depuis couleurs.css
 # Police de la maquette -> rôle dans la planche.
 FONTS = [
     ('Source Serif 4', 400, 'SourceSerif4-Regular.ttf'),
@@ -106,58 +110,101 @@ def _pied(lc_txt, role):
             '<span class="case__role">%s</span></div>' % (lc_txt, role))
 
 
+# Taille des échantillons. Elles ne sont pas décoratives : ce sont les tailles que le
+# seuil du cran autorise, et c'est pour ça qu'elles sont affichées sur la case.
+#   corps  : 14 px = 0,875rem, la taille RÉELLE du corps de la maquette (print.css,
+#            --body-size) — l'échantillon montre donc ce que verra le lecteur.
+#   titre  : 19 px gras = le plancher du « gros texte » d'APCA, celui à partir duquel
+#            le seuil tombe de 75 à 60. Écrire plus gros flatterait le contraste.
+TAILLE_CORPS = '14 px'
+TAILLE_TITRE = '19 px gras'
+
+
+def usage_interface(hexa, papier, zebre):
+    """Ce cran peut-il servir d'ÉLÉMENT D'INTERFACE (filet, bordure, puce, icône) ?
+
+    Seuil APCA non textuel : |Lc| >= 30 contre la surface voisine. Deux surfaces réelles
+    dans la chaîne, et elles ne donnent pas le même verdict — d'où les trois états, plutôt
+    qu'un « oui/non » qui serait faux la moitié du temps :
+      le papier blanc de la maquette, et le zébrage des tableaux, plus clair que le papier
+      ne l'est pour un filet posé dessus (un cran peut passer sur l'un et pas sur l'autre :
+      c'est exactement le cas du 300)."""
+    sur_papier = abs(apca.lc(hexa, papier))
+    sur_zebre = abs(apca.lc(hexa, zebre))
+    seuil = apca.LC_NON_TEXTUEL
+    if sur_papier >= seuil and sur_zebre >= seuil:
+        return ('oui', 'partout', sur_papier)
+    if sur_papier >= seuil:
+        return ('partiel', 'sur papier seul', sur_papier)
+    return ('non', 'trop pâle', sur_papier)
+
+
+def _interface(hexa, papier, zebre):
+    """Le rappel d'usage en interface, sous les étiquettes de texte. Le trait est tracé
+    dans la couleur du cran SUR LE FOND DE LA PAGE (pas sur l'aplat) : c'est là qu'un
+    filet vit réellement, donc c'est là qu'il doit se juger."""
+    etat, libelle, valeur = usage_interface(hexa, papier, zebre)
+    return ('<div class="case__ui case__ui--%s"><span class="case__trait" '
+            'style="background:%s"></span><span class="case__uitxt">filet %s '
+            '<span class="case__uilc">Lc&nbsp;%s</span></span></div>'
+            % (etat, hexa, libelle, fr(valeur)))
+
+
 def pastille(hexa, cran, charte=False):
     """Une case de la planche : le fond, et DESSUS le texte de la couleur qu'il doit
     porter. La preuve est visuelle — si c'est illisible à l'écran, la valeur mentait.
 
-    Trois états, dictés par apca.CONTRAT, et la case CHANGE DE FORME selon l'état :
-      texte courant : un échantillon de texte courant, à la taille du corps ;
-      gros titres   : un échantillon en gros seulement (19 px gras = le seuil de la
-                      légende), parce que c'est le seul texte que le cran autorise ;
-      aucun texte   : PAS d'échantillon. La couleur devient un aplat muet et toutes les
-                      étiquettes sortent de l'aplat, sur le fond de la page. Afficher un
-                      faux texte lisible ici — ou même y poser le numéro du cran —
-                      reviendrait à mentir sur ce que le cran permet.
+    Toutes les cases ont la MÊME forme ; ce qui change, c'est la taille de l'échantillon
+    et ce qu'annonce l'étiquette, tous deux dictés par apca.CONTRAT :
+      texte courant : échantillon à 14 px, la taille réelle du corps de la maquette ;
+      gros titres   : échantillon à 19 px gras — le plancher du « gros texte » d'APCA,
+                      seul texte que le cran autorise ;
+      sans texte    : même échantillon en gros, dans la meilleure polarité, mais
+                      l'étiquette dit « Pas pour les textes ». On montre la couleur
+                      buter contre son seuil au lieu de laisser une case muette.
+    Chaque case porte en plus son verdict d'usage en INTERFACE (filet, bordure, puce) :
+    voir usage_interface().
 
     `charte` : ce cran ne calcule rien, il PORTE le hex de la charte. Il est alors cerclé
-    et badgé DANS la rampe — plus de case séparée. Le badge garde les couleurs de la page
-    (encre nuit sur papier) et non celles de la case : c'est la seule étiquette de la
-    planche qui doit rester lisible quel que soit le cran badgé, y compris un futur cran
-    sombre, et on ne va pas faire dépendre sa lisibilité de la couleur montrée."""
+    d'un liseré foncé et surmonté d'un badge posé AU-DESSUS de la case. Toutes les cases
+    réservent donc la même hauteur au-dessus d'elles (`.case`, marge haute) : sans cette
+    gouttière, le badge d'une rampe repliée recouvrirait la rangée du dessus.
+
+    Le badge garde les couleurs de la PAGE (encre nuit sur papier) et non celles de la
+    case : c'est la seule étiquette de la planche qui doit rester lisible quel que soit le
+    cran badgé, y compris un futur cran sombre."""
     texte_admis, garanti, usage = apca.CONTRAT[cran]
-    badge = '<span class="case__badge">couleur de charte</span>' if charte else ''
+    badge = '<span class="case__badge">charte</span>' if charte else ''
     classe_charte = ' case--charte' if charte else ''
+    ui = _interface(hexa, PAPIER, ZEBRE)
 
-    # ── Cran DÉCORATIF (400) : aucun texte, ni noir ni blanc. Structurellement, aucune
-    #    charte ne peut atterrir ici (apca.cran_de_charte exige une polarité de texte, que
-    #    ce cran n'a pas) — le paramètre est honoré quand même, pour que la case ne puisse
-    #    pas mentir si la règle changeait un jour.
+    # ── Cran sans texte (400) : même présentation que les autres — Robin l'a demandé, et
+    #    ça se défend : voir l'échantillon buter contre son seuil est plus parlant qu'une
+    #    case vide. Ce qui compte, c'est que l'étiquette ne mente pas : elle dit « Pas pour
+    #    les textes », et l'échantillon est rendu dans la meilleure polarité, sans prétendre
+    #    à un usage. La mention « au mieux » disparaît : elle alourdissait la lecture.
     if texte_admis is None:
-        _, meilleur = apca.meilleure_polarite(hexa)
+        meilleure, meilleur_lc = apca.meilleure_polarite(hexa)
         return (
-            '<div class="case case--deco%s">'
-            '%s%s'
-            '<div class="case__aplat" style="background:%s"></div>'
-            '%s</div>'
-        ) % (classe_charte, badge, _tete(cran, hexa),
-             hexa,
-             _pied('Lc&nbsp;%s au mieux' % fr(meilleur), 'aucun texte · décoratif'))
+            '<div class="case case--sanstexte%s" style="--fond:%s;--encre-case:%s">'
+            '%s%s<p class="case__texte case__texte--gros">Titre</p>%s%s</div>'
+        ) % (classe_charte, hexa, meilleure, badge, _tete(cran, hexa),
+             _pied('Lc&nbsp;%s' % fr(meilleur_lc), 'Pas pour les textes'), ui)
 
-    # ── Crans porteurs de texte : on met le texte que le contrat autorise, à la taille
-    #    qu'il autorise. Le noir/blanc n'est PAS choisi par mesure ici : il est imposé
-    #    par le contrat du cran (c'est tout l'intérêt d'une grille à clarté fixe).
+    # ── Crans porteurs de texte : l'échantillon est rendu à la TAILLE que le contrat
+    #    autorise, et cette taille est écrite sur la case — c'est l'information utile.
+    #    Le noir/blanc n'est PAS choisi par mesure ici : il est imposé par le contrat du
+    #    cran (c'est tout l'intérêt d'une grille à clarté fixe).
     lc = apca.lc(texte_admis, hexa)
     gros = (usage != 'texte courant')
     role = '%s · %s' % ('texte blanc' if texte_admis == apca.BLANC else 'texte noir',
-                        'gros titres' if gros else 'texte courant')
-    if gros:
-        echantillon = '<p class="case__texte case__texte--gros">Titre</p>'
-    else:
-        echantillon = '<p class="case__texte">Zusammenfassung / Résumé</p>'
+                        TAILLE_TITRE if gros else TAILLE_CORPS)
+    classe_texte = 'case__texte case__texte--gros' if gros else 'case__texte'
     return (
-        '<div class="case%s" style="--fond:%s;--encre-case:%s">%s%s%s%s</div>'
-    ) % (classe_charte, hexa, texte_admis, badge, _tete(cran, hexa), echantillon,
-         _pied('Lc&nbsp;%s' % fr(lc), role))
+        '<div class="case%s" style="--fond:%s;--encre-case:%s">'
+        '%s%s<p class="%s">Titre</p>%s%s</div>'
+    ) % (classe_charte, hexa, texte_admis, badge, _tete(cran, hexa), classe_texte,
+         _pied('Lc&nbsp;%s' % fr(lc), role), ui)
 
 
 def note_charte(cle, libelle_cran, hexa, clarte, ecart):
@@ -184,7 +231,8 @@ def note_charte(cle, libelle_cran, hexa, clarte, ecart):
     return (
         '<p class="teinte__note">Le cran <strong>%s</strong> n\'est pas calculé : il '
         '<strong>EST la couleur de charte</strong>, <strong>%s</strong>, posée telle quelle '
-        '(badge dans la rampe ci-dessus). Sa clarté réelle est donc %s là où le barreau '
+        '(liseré foncé et badge dans la rampe ci-dessus). Sa clarté réelle est donc %s '
+        'là où le barreau '
         'visait %s, soit un écart de <strong>%s</strong>.%s '
         'Le jeton <code>--c-%s-marque</code> existe toujours, mais comme simple ALIAS de ce '
         'cran : un seul hex par couleur, deux noms pour l\'atteindre.</p>'
@@ -193,7 +241,10 @@ def note_charte(cle, libelle_cran, hexa, clarte, ecart):
 
 
 def main():
+    global ZEBRE
     css = io.open(CSS_COULEURS, encoding='utf-8').read()
+    # Le zébrage vient du CSS : si Robin l'éclaircit, le verdict « filet » des cases suit.
+    ZEBRE = resoudre(css, '--szh-zebre') or '#F2F2F2'
     lignes = []
     for cle, libelle in COULEURS:
         marque = resoudre(css, '--c-%s-marque' % cle)
@@ -362,29 +413,32 @@ h1 {
 @media (max-width: 760px)  { .rampe { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 520px)  { .rampe { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
+/* GOUTTIÈRE HAUTE : toutes les cases réservent la même hauteur au-dessus d'elles, pour
+   que le badge « couleur de charte » puisse se poser SUR le bord supérieur sans jamais
+   recouvrir la rangée du dessus quand la rampe se replie. Une seule case sur onze porte
+   ce badge, mais la gouttière est commune : sinon les rampes ne s'aligneraient pas. */
 .case {
   background: var(--fond); color: var(--encre-case);
   border-radius: 3px; padding: 10px 10px 9px; min-height: 150px;
+  margin-top: 14px;
   display: flex; flex-direction: column; gap: 6px; position: relative;
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.14);
 }
 
-/* Cran DÉCORATIF (400) : la case ne porte AUCUN texte sur la couleur — ni échantillon,
-   ni même son propre numéro. La couleur est réduite à un aplat muet et les étiquettes
-   passent sur le fond de la page. Poser un texte lisible ici, sous prétexte de montrer
-   la case, contredirait ce que le cran interdit. */
-.case--deco {
-  background: var(--carte); color: var(--encre);
-  box-shadow: inset 0 0 0 1px var(--filet);
-}
-.case__aplat {
-  flex: 1 1 auto; min-height: 54px; border-radius: 2px; margin: 2px 0;
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,.14);
-}
-.case--deco .case__role { font-weight: 600; opacity: 1; color: var(--encre-cal); }
+/* Cran SANS TEXTE (400) : présenté comme les autres, avec son échantillon dans la
+   meilleure polarité. Ce n'est pas une contradiction — l'étiquette dit « Pas pour les
+   textes », et voir l'échantillon buter contre son seuil informe mieux qu'une case vide.
+   Le pointillé du liseré dit « cran à part » sans rien cacher de la couleur. */
+.case--sanstexte { box-shadow: inset 0 0 0 1px rgba(0,0,0,.28); }
+.case--sanstexte .case__role { font-weight: 600; opacity: 1; }
+.case--sanstexte .case__texte { opacity: .82; }
 
-/* La charte n'a plus de case à part : c'est UN cran de la rampe, cerclé et badgé. */
-.case--charte { box-shadow: inset 0 0 0 2px var(--nuit); }
+/* La charte est UN cran de la rampe : liseré foncé épais + badge posé au-dessus. Le
+   liseré est doublé (anneau intérieur ET contour extérieur) pour rester visible aussi
+   bien sur un cran très clair que sur un cran sombre. */
+.case--charte {
+  box-shadow: inset 0 0 0 3px var(--nuit), 0 0 0 1px var(--nuit);
+}
 .teinte__note {
   margin: 18px 0 0; padding-top: 14px; border-top: 1px dashed var(--filet);
   color: var(--encre-cal); font-size: 13px; max-width: 92ch;
@@ -418,6 +472,33 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 .case__role { font-size: 10px; letter-spacing: .02em; opacity: .8; }
+
+/* USAGE EN INTERFACE (filet, bordure, puce, icône) : seuil non textuel de 30. Le trait
+   est tracé dans la couleur du cran SUR LE FOND DE LA PAGE, jamais sur l'aplat — un
+   filet vit sur le papier, c'est donc là qu'il doit se juger. Trois états, parce que le
+   papier et le zébrage des tableaux ne donnent pas le même verdict (cran 300). */
+.case__ui {
+  display: flex; align-items: center; gap: 6px;
+  margin: 4px -10px -9px; padding: 5px 10px 4px;
+  background: var(--carte); color: var(--encre-cal);
+  border-radius: 0 0 3px 3px;
+}
+.case__trait { flex: 0 0 18px; height: 3px; border-radius: 2px; }
+.case__uitxt { font-size: 9.5px; letter-spacing: .02em; }
+.case__uilc {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums;
+  opacity: .75;
+}
+.case__ui--oui .case__uitxt { color: var(--encre); }
+.case__ui--partiel .case__uitxt { color: var(--encre-cal); }
+/* « non » : le trait serait invisible sur le papier — on le dit, et on barre le trait
+   plutôt que de le montrer comme utilisable. */
+.case__ui--non { opacity: .75; }
+.case__ui--non .case__trait { position: relative; }
+.case__ui--non .case__trait::after {
+  content: ''; position: absolute; inset: -4px -1px; border-top: 1px solid var(--encre-cal);
+  transform: rotate(-12deg); transform-origin: center;
+}
 /* Le badge est DANS la case (il ne dépasse plus au-dessus, sinon il chevaucherait la
    rangée précédente quand la rampe se replie sur les petits écrans). Il garde les couleurs
    de la PAGE — encre nuit sur papier — et non celles de la case : c'est la seule étiquette
@@ -426,9 +507,11 @@ h1 {
    la rampe en fait 92 px au plus large des points de rupture — le badge se replie donc sur
    deux lignes au lieu de déborder de la case. */
 .case__badge {
-  align-self: flex-start; max-width: 100%%; background: var(--nuit); color: var(--papier);
-  font-size: 9px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
-  line-height: 1.35; padding: 2px 6px; border-radius: 2px;
+  position: absolute; left: 0; right: 0; top: -15px;
+  background: var(--nuit); color: var(--papier);
+  font-size: 9px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  text-align: center; padding: 2px 4px 3px; border-radius: 3px 3px 0 0;
+  white-space: nowrap;
 }
 
 .neutres { margin: 56px 0 0; }
@@ -470,11 +553,19 @@ td.num {
   verticalement d'une teinte à l'autre — c'est tout l'intérêt de la grille, et ce que l'ancienne
   échelle (où chaque niveau visait un contraste, donc une clarté différente selon la teinte) ne
   permettait pas.</p>
-  <p class="chapo">La lecture est directe : chaque case porte le texte de la couleur qu'elle
-  doit recevoir, <em>à la taille qu'elle autorise</em>. Si un échantillon vous paraît difficile
-  à lire à l'écran, c'est que la mesure mentait, pas l'inverse. Une case fait exception, et elle
-  le dit : le <strong>cran 400 ne porte aucun texte</strong> (aplat muet — c'est le point où ni
-  le noir ni le blanc ne passent, inhérent à toute échelle saturée).</p>
+  <p class="chapo">La lecture est directe : chaque case porte le mot « Titre » dans la couleur
+  de texte qu'elle admet et <em>à la taille qu'elle autorise</em> — 14 px, la taille réelle du
+  corps de la maquette, ou 19 px gras, le plancher du gros texte. Si un échantillon vous paraît
+  difficile à lire à l'écran, c'est que la mesure mentait, pas l'inverse. Un cran ne porte
+  <strong>aucun texte</strong>, le 400 : c'est le point où ni le noir ni le blanc ne passent,
+  inhérent à toute échelle saturée. Il est montré comme les autres, avec son étiquette
+  « Pas pour les textes » — voir la couleur buter contre son seuil est plus parlant qu'une
+  case vide.</p>
+  <p class="chapo">Sous chaque case, un trait rappelle ce que la couleur vaut comme
+  <strong>élément d'interface</strong> — filet, bordure, puce, icône — au seuil non textuel de
+  30. Trois verdicts, parce que les deux surfaces réelles de la chaîne ne s'accordent pas : le
+  papier blanc et le fond zébré des tableaux. Le cran 300 passe sur papier et pas sur zébrage ;
+  les trois crans les plus clairs ne passent nulle part, leur trait est barré.</p>
   <p class="chapo">Dans chaque rampe, un cran est badgé <strong>couleur de charte</strong> : ce
   cran n'est pas calculé, il porte <em>exactement</em> le hex donné par le graphiste. La charte
   ne vit donc plus à côté de la grille, elle en occupe un barreau — un seul hex par couleur, et
