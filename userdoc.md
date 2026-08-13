@@ -122,7 +122,9 @@ Pas besoin de connaître le Markdown : **sélectionne du texte, puis clic droit 
 - **Insérer une figure** (`Ctrl+Alt+F`) : choisis une image ; elle est copiée dans
   l'article et il ne reste qu'à écrire la légende ;
 - **Insérer un tableau** (`Ctrl+Alt+T`) : un petit tableau vierge à remplir (`Tab`
-  passe d'une cellule à l'autre ; `Maj+Alt+V` colle un tableau copié depuis Excel).
+  passe d'une cellule à l'autre) ;
+- **Coller un tableau depuis Excel/Word** (`Maj+Alt+V`) : copie les cellules dans
+  Excel ou Word, puis `Maj+Alt+V` dans l'article — le tableau est écrit en Markdown.
 
 Appliquer deux fois gras, italique, souligné, un titre ou une citation **retire** la
 mise en forme (bascule).

@@ -18,7 +18,6 @@ l'installe ensuite sur les postes via `codium --install-extension`.
 | Dictionnaire FR | `streetsidesoftware.code-spell-checker-french` | |
 | Dictionnaire DE (Suisse) | `streetsidesoftware.code-spell-checker-swiss-german` | |
 | Tableaux markdown | `TakumiI.markdowntable` | navigation Tab, lignes/colonnes (D32) |
-| Coller un tableau Excel/Word | `csholmq.excel-to-markdown-table` | Maj+Alt+V (D32) |
 | Gestes Word | `yzhang.markdown-all-in-one` | Ctrl+B/I, continuation des listes (D32) |
 | Interface DE | `MS-CEINTL.vscode-language-pack-de` | menus natifs en allemand (M4) |
 

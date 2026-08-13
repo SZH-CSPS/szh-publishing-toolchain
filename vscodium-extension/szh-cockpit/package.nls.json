@@ -25,6 +25,7 @@
   "cmd.fmt.citation": "Citation",
   "cmd.fmt.figure": "Insérer une figure",
   "cmd.fmt.tableau": "Insérer un tableau",
+  "cmd.fmt.collerTableau": "Coller un tableau depuis Excel/Word",
   "config.langue": "Langue des textes du cockpit (fr/de). Vide = langue de l’éditeur.",
   "config.apercuMode": "Mode d’aperçu de la colonne de droite : html (cliquable, défaut) ou pdf."
 }

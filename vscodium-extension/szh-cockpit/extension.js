@@ -82,7 +82,7 @@ const { slugifier } = require('./lib/slug');
 const { demarrerDormeurWsl, arreterDormeurWsl, reveillerWsl } = require('./lib/wsl');
 const {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
-  enroberBloc, squeletteTableau, enregistrerCommandesMiseEnForme
+  enroberBloc, squeletteTableau, tsvVersTableau, enregistrerCommandesMiseEnForme
 } = require('./lib/formatting');
 
 // Éditeur PDF (extension tomoki1207.pdf), comme szh-apercu.
@@ -1710,7 +1710,7 @@ module.exports = {
     analyserMeta, serialiserMeta, lignePos, plagePos, positionMot, jetonSource,
     analyserAusgabe, serialiserAusgabe,
     basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
-    enroberBloc, squeletteTableau,
+    enroberBloc, squeletteTableau, tsvVersTableau,
     analyserTable, serialiserTable, disposition,
     matriceOccupation, etendreGrille, compacterGrille,
     normaliserModele, finaliserModele, canoniserInline,

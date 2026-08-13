@@ -68,6 +68,25 @@ function enroberBloc(texte, classe, titre) {
   return '::: ' + attr + '\n' + t + '\n:::';
 }
 
+// TSV -> tableau Markdown pipe (D57). Ce que Excel/Word mettent dans le
+// presse-papiers est du TSV : une ligne par ligne de tableau, cellules séparées
+// par des tabulations. Première ligne promue en en-tête (le pipe l'exige, D33) ;
+// les tabulations finales ne créent pas de colonne fantôme ; les `|` des cellules
+// sont échappés ; les lignes courtes sont complétées. Pure (testée via _pur).
+function tsvVersTableau(texte) {
+  const lignes = String(texte).replace(/\r\n?/g, '\n').replace(/\n+$/, '').split('\n');
+  const grille = lignes.map((l) => l.split('\t').map((c) => c.trim().replace(/\|/g, '\\|')));
+  const largeur = Math.max.apply(null, grille.map((r) => r.length));
+  const remplir = (r) => {
+    const copie = r.slice();
+    while (copie.length < largeur) { copie.push(''); }
+    return '| ' + copie.join(' | ') + ' |';
+  };
+  const sortie = [remplir(grille[0]), '|' + Array(largeur + 1).join('---|')];
+  for (let i = 1; i < grille.length; i++) { sortie.push(remplir(grille[i])); }
+  return sortie.join('\n');
+}
+
 // Squelette de tableau Markdown (3 colonnes, 2 lignes) — édité ensuite via
 // markdowntable (Tab) ou collage Excel (Maj+Alt+V).
 function squeletteTableau(colonne) {
@@ -170,6 +189,21 @@ function fmtTableau() {
   return editeur.edit((b) => { b.replace(editeur.selection, sq); });
 }
 
+// Coller un tableau copié depuis Excel/Word (Maj+Alt+V, D57) : lit le
+// presse-papiers, le convertit de TSV en tableau pipe et l'insère. Remplace
+// csholmq.excel-to-markdown-table, retiré d'Open VSX.
+async function fmtCollerTableau() {
+  const editeur = vscode.window.activeTextEditor;
+  if (!editeur) { return; }
+  const presse = await vscode.env.clipboard.readText();
+  if (!presse || presse.indexOf('\t') === -1) {
+    vscode.window.showInformationMessage(T('fmt.coller.pastableau'));
+    return;
+  }
+  const md = tsvVersTableau(presse);
+  await editeur.edit((b) => { b.replace(editeur.selection, md); });
+}
+
 // Palette « Mise en forme » (Ctrl+Alt+M + entrée clic droit) : menu SZH-only,
 // localisé, raccourci affiché à droite. Réutilise les commandes szh.fmt.*.
 // Format : ['--', cléGroupe] = séparateur ; sinon [cléLibellé, commande, raccourci, icône].
@@ -189,7 +223,8 @@ const PALETTE_MEF = [
   ['palette.citation', 'szh.fmt.citation', 'Ctrl+Alt+C', ''],
   ['--', 'palette.g.inserer'],
   ['palette.figure', 'szh.fmt.figure', 'Ctrl+Alt+F', ''],
-  ['palette.tableau', 'szh.fmt.tableau', 'Ctrl+Alt+T', '']
+  ['palette.tableau', 'szh.fmt.tableau', 'Ctrl+Alt+T', ''],
+  ['palette.collerTableau', 'szh.fmt.collerTableau', 'Maj+Alt+V', '']
 ];
 
 // Ouvre la palette (QuickPick) et applique la commande choisie à la sélection
@@ -221,10 +256,11 @@ function enregistrerCommandesMiseEnForme(context) {
   c('szh.fmt.citation', () => appliquerSelection((t) => basculerCitation(t), { parLigne: true }));
   c('szh.fmt.figure', () => fmtFigure());
   c('szh.fmt.tableau', () => fmtTableau());
+  c('szh.fmt.collerTableau', () => fmtCollerTableau());
   c('szh.miseEnForme', () => ouvrirMiseEnForme());
 }
 
 module.exports = {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
-  enroberBloc, squeletteTableau, enregistrerCommandesMiseEnForme
+  enroberBloc, squeletteTableau, tsvVersTableau, enregistrerCommandesMiseEnForme
 };

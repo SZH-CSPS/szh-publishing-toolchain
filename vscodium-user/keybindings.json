@@ -33,6 +33,15 @@
   { "key": "ctrl+alt+f", "command": "szh.fmt.figure",    "when": "editorTextFocus && editorLangId == markdown" },
   { "key": "ctrl+alt+t", "command": "szh.fmt.tableau",   "when": "editorTextFocus && editorLangId == markdown" },
 
+  // Coller un tableau copié depuis Excel/Word (même geste qu'avant, une seule frappe).
+  // csholmq.excel-to-markdown-table a été RETIRÉ d'Open VSX : la fonction est reprise
+  // par le cockpit, qui lit le presse-papiers TSV et écrit un tableau pipe (D57).
+  {
+    "key": "shift+alt+v",
+    "command": "szh.fmt.collerTableau",
+    "when": "editorTextFocus && editorLangId == markdown"
+  },
+
   // Secours si l'aperçu PDF ne se rafraîchit pas tout seul : recharge la fenêtre
   { "key": "ctrl+alt+r", "command": "workbench.action.reloadWindow" }
 

@@ -38,12 +38,6 @@
       "source": "https://open-vsx.org/api/TakumiI/markdowntable/0.10.4/file/TakumiI.markdowntable-0.10.4.vsix"
     },
     {
-      "id": "csholmq.excel-to-markdown-table",
-      "version": "1.4.0",
-      "sha256": "92eb0b04138d5e65d77ed5dd7dd042443db8c7f4b115f59363985b6230950d0c",
-      "source": "https://open-vsx.org/api/csholmq/excel-to-markdown-table/1.4.0/file/csholmq.excel-to-markdown-table-1.4.0.vsix"
-    },
-    {
       "id": "MS-CEINTL.vscode-language-pack-de",
       "version": "1.108.0",
       "sha256": "2aac00585164424d13a92c7ebbf306ca767c5749aee5baa92bd14fbde8a4b8ac",

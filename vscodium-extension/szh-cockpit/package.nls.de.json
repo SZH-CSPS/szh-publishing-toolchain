@@ -25,6 +25,7 @@
   "cmd.fmt.citation": "Zitat",
   "cmd.fmt.figure": "Abbildung einfügen",
   "cmd.fmt.tableau": "Tabelle einfügen",
+  "cmd.fmt.collerTableau": "Tabelle aus Excel/Word einfügen",
   "config.langue": "Sprache der Cockpit-Texte (fr/de). Leer = Sprache des Editors.",
   "config.apercuMode": "Vorschaumodus der rechten Spalte: html (klickbar, Standard) oder pdf."
 }

@@ -126,7 +126,8 @@
       { "command": "szh.fmt.question", "title": "%cmd.fmt.question%", "category": "Revue SZH" },
       { "command": "szh.fmt.citation", "title": "%cmd.fmt.citation%", "category": "Revue SZH" },
       { "command": "szh.fmt.figure", "title": "%cmd.fmt.figure%", "category": "Revue SZH" },
-      { "command": "szh.fmt.tableau", "title": "%cmd.fmt.tableau%", "category": "Revue SZH" }
+      { "command": "szh.fmt.tableau", "title": "%cmd.fmt.tableau%", "category": "Revue SZH" },
+      { "command": "szh.fmt.collerTableau", "title": "%cmd.fmt.collerTableau%", "category": "Revue SZH" }
     ],
     "menus": {
       "editor/context": [
