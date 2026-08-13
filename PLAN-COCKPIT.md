@@ -1,0 +1,254 @@
+# PLAN — Import simplifié + extension « szh-cockpit »
+
+> Spec d'implémentation auto-porteuse. Décisions D35–D36 actées le 2026-07-15 (Robin Morand).
+> Conçue pour être exécutée tranche par tranche par un agent/développeur **sans autre contexte
+> que ce fichier et le dépôt**. Cocher les cases au fur et à mesure ; toute déviation se consigne ici.
+> Conventions du dépôt à respecter impérativement : voir « Garde-fous » en fin de fichier.
+
+---
+
+## 1. Résumé
+
+Deux chantiers liés :
+
+1. **Import docx simplifié** : remplacer la chaîne d'import actuelle (D27–D30 : heuristiques Lua,
+   AnyStyle, citations liées, rapports) par une conversion Pandoc nue + un filtre unique qui
+   remplace chaque tableau par un placeholder `{{TABELLE XY}}`. Les heuristiques reviendront
+   plus tard (les fichiers restent dans le dépôt, débranchés).
+2. **Extension VSCodium « szh-cockpit »** : barre latérale « Revue » (liste des articles, Word en
+   attente) + commande « Importer des Word » guidée (sélecteur de fichiers → conversion →
+   notification). Livrée par le canal existant (CI → VSIX → vsix.lock → update.ps1).
+
+## 2. Périmètre
+
+**Objectif** : un rédacteur gère sa revue (voir les articles, importer un Word, ouvrir le PDF)
+depuis une barre latérale, sans explorateur de fichiers ni terminal, et sans jamais se demander
+« où en est la conversion ».
+
+**Critères de succès (observables)**
+- Depuis un dossier de revue vierge : bouton Importer → choisir 2 `.docx` → les articles
+  apparaissent dans la barre latérale et compilent en PDF, sans toucher à l'explorateur.
+- Un `.docx` contenant 3 tableaux produit un `.md` contenant exactement `{{TABELLE 01}}`,
+  `{{TABELLE 02}}`, `{{TABELLE 03}}` aux positions des tableaux, et aucun élément `Table`.
+- Les 6 articles réels de 2026-01 se convertissent sans erreur avec le nouvel import.
+- `update.ps1` installe le VSIX cockpit sur un poste pilote sans intervention admin.
+
+**Hors périmètre (explicitement)**
+- Rapports de conversion (D30) et diagnostics VS Code — **plus tard**.
+- Heuristiques d'import D27 (titres gras, listes manuelles, figures), AnyStyle/.bib (D28),
+  liaison citations (D29) — **débranchés, pas supprimés**.
+- Gestion des tableaux (HTML ou autre) — **plus tard** ; le placeholder est un rappel manuel.
+- Palette de styles `:::` visuelle et formulaire de métadonnées — phases ultérieures (§7).
+- `.odt` : l'import simplifié n'accepte **que `.docx`** (un seul chemin, demande explicite).
+
+**Contraintes et hypothèses**
+- Aucun ajout au rootfs (pandoc suffit). AnyStyle/Ruby restent dans l'image pour l'instant
+  (retrait = optimisation ultérieure, nécessiterait un rebuild rootfs).
+- Extension : JavaScript pur, zéro dépendance npm, API VS Code ^1.75 — même posture que szh-apercu.
+- ~~Hypothèse à valider en S1~~ **Validée (2026-07-15), avec correctif** : `--extract-media=media`
+  doublait le dossier (`media/media/…`, pandoc crée lui-même un sous-dossier `media`) →
+  remplacé par `--extract-media=.` : fichiers dans `media/`, chemins `./media/…` corrects.
+
+**Journal S1 (gate du 2026-07-15)** — S1 implémentée (commit `86964cd`), revue et validée :
+placeholders 01…12 OK (0 tableau = intact, padding OK), non-écrasement OK (`make import` →
+« déjà converti »), slug avec accents OK. Déviations acceptées : 4ᵉ arg `lang` retiré de
+l'appel `import-docx.sh` (mort depuis D35) ; commentaires Makefile mis à jour ; flags writer
+`-…-grid_tables` conservés verbatim. Correctifs post-commit : `--extract-media=.` (ci-dessus)
+et réparation du fichier `import-docx.sh` sur disque (≈1 Ko d'octets NUL ajoutés en fin après
+le commit — artefact d'écriture ; contenu committé intact, restauré depuis HEAD).
+Restent à vérifier sur poste réel (pandoc/WeasyPrint du rootfs) : les 6 articles 2026-01 et la
+compilation PDF — commande : déposer les docx dans `articles-word/` puis Ctrl+S.
+
+## 3. Approche technique
+
+**Options considérées**
+- *A. Étendre szh-apercu en un seul plugin* : un seul VSIX, mais on re-risque une extension
+  éprouvée à chaque itération cockpit.
+- *B. Nouvelle extension `szh-cockpit`, szh-apercu inchangée* ✅ : isolation des risques, CI
+  identique (2ᵉ VSIX, même job), fusion possible plus tard.
+- *C. Webview complète (mini-app)* : plus joli, mais 10× le code et l'entretien — écarté (V1).
+
+**ADR-D35 (import)** : contexte — la chaîne D27–D30 est puissante mais lourde à faire évoluer
+pendant qu'on construit l'UX ; décision — `make import` appelle une conversion pandoc nue +
+filtre placeholder tableaux ; conséquences — plus de `.bib` généré (citeproc dans la règle html
+reste conditionnel : il ne se déclenche simplement plus), références = texte brut, D33 suspendue
+(plus aucun tableau ne traverse l'import), retour arrière = re-brancher `import-docx.sh` (git).
+
+**Points d'intégration** : `pipeline/Makefile` (cible `import`), `pipeline/filters/` (nouveau
+filtre), tâches user existantes (`tasks.json` : labels de build/import réutilisés par l'extension),
+`release.yml` + `windows/vsix.lock` (2ᵉ VSIX), `update.ps1` (aucun changement : il lit vsix.lock).
+
+## 4. Découpage — tranches verticales, dans l'ordre
+
+### S1 — Pipeline : import simplifié `{{TABELLE XY}}` *(taille S ; fondation)*
+- [x] Nouveau `pipeline/filters/szh-tabelle-platzhalter.lua` : remplace chaque `Table` par
+      `pandoc.Para{pandoc.Strong{pandoc.Str("{{TABELLE NN}}")}}`, numérotation séquentielle
+      par document, zéro-paddée à 2 chiffres.
+- [x] `pipeline/import-docx.sh` réécrit (~15 lignes) : `cd articles/<slug> && pandoc <docx>
+      --from=docx --to=markdown-simple_tables-multiline_tables-grid_tables --track-changes=accept
+      --extract-media=media --lua-filter=<pipeline>/filters/szh-tabelle-platzhalter.lua
+      --wrap=none -o <slug>.md`. Plus d'appel aux filtres D27–D29, AnyStyle ni `rapport.py`.
+- [x] Makefile : cible `import` conservée telle quelle (migration structure, slug, non-écrasement,
+      `_convertis/`) sauf le message « + rapport … » retiré ; ne prendre que `*.docx` (retirer `*.odt`).
+- [x] `szh-import.lua`, `szh-citations.lua`, `rapport.py` : déplacés dans `pipeline/attic/`
+      avec un README d'une ligne (« débranchés par D35, réactivables »).
+- **Acceptation** : docx de test à 3 tableaux → `.md` avec les 3 placeholders dans l'ordre, images
+  extraites dans `media/`, compilation PDF OK ; les 6 articles 2026-01 convertissent sans erreur ;
+  un article existant n'est jamais écrasé (re-dépôt du même docx → « déjà converti »).
+
+### S2 — Extension : squelette + barre latérale lecture seule *(taille M)*
+- [x] `vscodium-extension/szh-cockpit/` : `package.json` (publisher `szh-csps`, engines ^1.75,
+      `onStartupFinished`), `extension.js`, LICENSE, README — calqués sur szh-apercu.
+- [x] `viewsContainers.activitybar` « Revue SZH » (icône SVG sobre) + TreeView à 2 sections :
+      **Articles** (scan `articles/*/<slug>.md` ; clic = ouvrir le .md) et **Word en attente**
+      (`articles-word/*.docx`, hors `_convertis/`) avec badge de compte sur l'icône.
+- [x] Activation seulement si `ausgabe.yaml` existe à la racine du workspace (sinon vue masquée —
+      `"when"` contexte). FileSystemWatcher sur `articles/**` et `articles-word/*` → refresh.
+- **Acceptation** : ouvrir la revue 2026-01 → les articles listés, tri alphabétique ; déposer un
+  docx à la main → il apparaît sous « Word en attente » ≤ 2 s ; dossier non-revue → pas d'icône.
+
+**Journal S2 (gate du 2026-07-15)** — S2 implémentée (commit `61abe86`), revue et validée
+(code lecture seule, cas limites couverts, syntaxe/JSON vérifiés). Déviations acceptées :
+bouton Rafraîchir (couvert par la table des risques) et items « Aucun … pour l'instant ».
+**Correctif de plan S2.1** : la flotte masque la barre d'activité
+(`workbench.activityBar.location: "hidden"`, UI « 0 technique ») → la vue est déplacée dans
+le conteneur **Explorateur** (`views.explorer`, nom « Revue SZH ») ; `viewsContainers` et
+l'icône de conteneur retirés. Conséquence : le badge TreeView n'est plus visible (il
+s'affichait sur l'icône de conteneur) — le retour visuel « Word en attente » reste assuré
+par la section elle-même ; à réévaluer en S4. Le plan (§4 S2, 2ᵉ puce) est amendé en ce sens.
+Nit pour S3 : watchers réinstallés accumulés dans `context.subscriptions` (double-dispose
+inoffensif) — à nettoyer en S3. Lectures périmées du montage (« troncatures ») élucidées :
+artefact de cache côté session distante, fichiers réels sains — vérifier `git diff --stat`
+avant chaque commit reste la règle.
+
+### S3 — Import guidé de bout en bout *(taille S ; dépend S1+S2)*
+- [x] Commande `szh.importerWord` (bouton en tête de vue) : `showOpenDialog` (multi, filtre
+      `.docx`) → copie dans `articles-word/` → exécute la tâche user existante d'import
+      (`vscode.tasks.fetchTasks` par label, même mécanique que szh-apercu écoute les tâches)
+      → à la fin : refresh + `showInformationMessage` « N article(s) importé(s) » (compte tiré
+      du diff de la liste, pas du parsing de sortie).
+- [x] Si le `.md` cible existe déjà : l'item « Word en attente » porte un tooltip « déjà converti —
+      renommez le fichier si c'est une nouvelle version ».
+- **Acceptation** : depuis la barre latérale uniquement — importer 2 docx, voir la notification,
+  les articles apparaître, et `articles-word/` ne contenir que `_convertis/`.
+
+**Journal S3 (gate du 2026-07-15)** — S3 implémentée (commit `1ed9737`), revue et validée ;
+test GUI Robin OK (import 2 docx, notification, tooltip « déjà converti », annulation).
+Chemin « conflit » (modale Remplacer/Ignorer) relu mais non testé en GUI (conversion trop
+rapide pour créer le conflit) — accepté. Slugifieur JS conforme au Makefile (divergence
+documentée sur symboles exotiques, sans effet réel). Nit watchers S2 corrigé.
+Pour S5 : supprimer `media/revue.svg` (icône de conteneur abandonnée en S2.1).
+
+### S4 — Actions d'article *(taille S ; dépend S2)*
+- [x] Items article : boutons inline « Ouvrir le PDF » (`out/<slug>/<slug>.pdf` via `pdf.preview`,
+      colonne Beside — réutiliser le code szh-apercu) et « Compiler » (tâche build existante).
+      PDF absent → l'action lance la compilation d'abord (même tâche, message discret).
+- **Acceptation** : clic PDF sur article compilé → aperçu à droite ; sur article jamais compilé →
+  build puis aperçu ; jamais de vol de focus de l'éditeur.
+
+**Journal S4 (gate du 2026-07-15)** — S4 implémentée (commit `82421c5`), périmètre respecté
+(extension seule ; pipeline et szh-apercu intacts), syntaxe et package.json vérifiés, zéro
+dépendance, aucune écriture disque en S4, labels de tâches exacts. Le harnais headless
+« 19/19 PASS » annoncé au commit n'était pas committé → re-vérification indépendante au gate
+(vrai `extension.js` + vscode factice, 16 contrôles, 16 OK) : openWith `pdf.preview`
+Beside + preserveFocus sans build si le PDF existe ; pas de 2ᵉ onglet si déjà ouvert ;
+absent → build → ouverture ; build échoué → erreur sobre, rien ouvert ; garde double-Compiler
+(un seul build + « déjà en cours ») ; Compiler n'ouvre rien ; repli openExternal si
+tomoki1207.pdf absente ; description « Word en attente (n) » / absente à 0.
+Déviations acceptées : watcher `out/**` (refresh quand un PDF apparaît — cohérent D21) ;
+« Compiler » lance la tâche globale (`make all`, incrémental — la tâche user est globale, pas
+par article) ; délai 250 ms + re-test avant ouverture post-build (défense anti double-onglet).
+**Découverte hors périmètre (rien « au passage », à planifier)** : szh-apercu (D24, jamais
+retouchée) teste `articles/<nom>.md` à 2 segments — la structure D26 `articles/<slug>/<slug>.md`
+ne matche plus jamais, donc l'aperçu auto après Ctrl+S est mort depuis D26 ; correctif d'une
+ligne à caser (S5 ou correctif séparé, décision Robin). Conséquence : le délai 250 ms ci-dessus
+est sans objet tant que szh-apercu n'est pas réparé (inoffensif, redevient utile ensuite).
+Test GUI Robin : EN ATTENTE (scénario remis) — le gate S4 n'est clos qu'à son feu vert.
+
+**Journal S4 — correctifs post-GUI + S3.1 (gate du 2026-07-15, clos)** — Le test GUI de Robin a
+produit 3 correctifs (commits `344d9a1`, `d63d55a`, `95bfa7f`), tous revus et validés ; feu vert
+Robin sur l'ensemble (revue test : 20 articles importés, 0 en attente). Périmètre : extension
+seule, pipeline et szh-apercu intacts, aucune écriture disque nouvelle, zéro dépendance.
+- `344d9a1` : « Ouvrir le PDF » RÉVÈLE l'aperçu déjà ouvert — `pdf.preview` (tomoki1207.pdf)
+  est mono-instance (pas de `supportsMultipleEditorsPerDocument`), donc `openWith` ramène
+  l'onglet existant sans doublon ; le test « déjà ouvert » et le délai 250 ms du gate précédent
+  sont retirés (supersédés — l'anti-doublon est garanti par le mono-instance). Accepté.
+- `d63d55a` : mise en page à deux colonnes FIXES — `.md` toujours en `ViewColumn.One`,
+  PDF en `ViewColumn.Two` (le `Beside` relatif empilait des colonnes 3–4). `preserveFocus`
+  conservé partout. Accepté (amende le plan §4 S4 : « colonne Beside » → « colonne 2 fixe »).
+- `95bfa7f` **S3.1 (ajout de périmètre demandé par Robin en test)** : bouton « Convertir les
+  Word en attente » (`szh.convertirEnAttente`, inline sur la section, `viewItem == section-word`)
+  — les docx déposés à la main dans `articles-word/` (workflow OneDrive, D12) n'avaient aucun
+  déclencheur dans la barre. Conversion factorisée (`lancerConversion`, garde anti-double,
+  compte par diff) et réutilisée par « Importer des Word ». Diagnostic de fond confirmé : un
+  docx « déjà converti » est ignoré (D12), il ne bloque jamais la file (10 convertis + 1 ignoré
+  en 11 s). Accepté.
+Vérification indépendante au gate (les harnais « 27/27 » et « 13/13 » de l'implémenteur ne sont
+pas committés) : re-test headless (vrai `extension.js` + vscode factice) — **23 contrôles, 23 OK**
+(colonne 2 fixe + preserveFocus, révélation si déjà ouvert, absent→build→ouvre, échec→erreur sans
+ouverture, garde double-Compiler, repli tomoki, sections `section-articles`/`section-word`,
+description « (n) », `.md` en colonne 1, S3.1 garde + label exact + compte par diff, non-régression
+S3 : annulation du dialogue et chemin nominal copie→import→notification). Syntaxe et JSON re-vérifiés.
+Rappel S5 : la déviation « déploiement dev = copie manuelle `~/.vscode-oss/extensions/` +
+redémarrage » disparaît avec la livraison CI/vsix.lock ; la réparation szh-apercu/D26 (ci-dessus)
+reste à caser en S5 (décision Robin).
+
+### S5 — Livraison flotte *(taille S ; dépend S2–S4)*
+- [x] `release.yml` : packager `szh-cockpit` comme szh-apercu (vsce package) ; VSIX en asset de
+      release. *(Voir note S5 : les extensions maison ne sont PAS épinglées dans `vsix.lock` — sha
+      calculé au build, écrit dans `manifest.json`, comme szh-apercu.)*
+- [x] `userdoc.md` : section « La barre Revue » (placeholders captures) ; README : arborescence +
+      pointeur barre latérale. *(PLANIFICATION.md : cochage D35/D36 différé — voir note S5.)*
+- **Acceptation (bout en bout, poste pilote)** : tag de release → le poste se met à jour seul →
+  scénario complet « revue vierge → 2 docx importés → 2 PDF ouverts » réalisé par un tiers
+  non technicien, chrono < 5 min, zéro question posée.
+
+**Note d'implémentation S5 (2026-07-15)** — commits `S5: livraison flotte cockpit` (+ `S5: correctif
+szh-apercu D26`).
+- **CI** : étape « Construire les extensions maison » packageant **szh-apercu ET szh-cockpit**
+  (boucle `vsce package`) ; génération du manifest en boucle sur les deux (id `szh-csps.<nom>`,
+  sha256 calculé au build). YAML validé (ruby `YAML.load_file`).
+- **Divergence assumée vs consigne** : **pas d'entrée `vsix.lock`** pour szh-cockpit. `vsix.lock`
+  épingle les VSIX **tiers téléchargés** (source Open VSX + sha figé, vérifié par la CI). Une
+  extension maison est **construite** par la CI ; son `vsce package` n'est pas déterministe (mtime
+  du zip) → aucun sha stable à épingler. Elle suit donc le patron **szh-apercu** (déjà en prod
+  depuis v2026.07.3, jamais dans `vsix.lock`) : sha calculé au build → `manifest.json` → `update.ps1`
+  vérifie le VSIX téléchargé contre ce sha. `update.ps1` **inchangé**.
+- **Packaging local** non exécutable sur ce poste (ni node/npm/npx/vsce) — commande CI documentée ;
+  chemin déjà éprouvé par la CI pour szh-apercu.
+- **`media/revue.svg`** supprimé (icône de conteneur abandonnée en S2.1).
+- **szh-apercu** : correctif D26 (chemin `articles/<slug>/<slug>.md`, 3 segments) + version
+  0.1.0 → 0.1.1 ; commit séparé (concern distinct : régression d'une autre extension). Testé headless.
+- **PLANIFICATION.md (cochage D35/D36) NON fait ici** : `git diff PLANIFICATION.md` montre des
+  modifications locales **D34** (config WSL) non commitées → **STOP** comme demandé ; à cocher par
+  Robin dans un commit dédié (D34/D35/D36), hors de cette tranche.
+- **Vérification S1 poste réel** : la revue `test` (20 articles convertis + PDF compilés via le
+  pipeline déployé) couvre de fait le rendu WeasyPrint — à consigner au journal S5 de gate.
+
+## 5. Definition of Done (chaque tranche)
+- Testé sur la revue réelle 2026-01 (pas seulement sur fixture) ; S1 : les 6 articles.
+- Aucun nouveau binaire dans le rootfs ; aucune dépendance npm ; PS 5.1 propre.
+- Docs à jour (README/PLANIFICATION/userdoc quand la tranche les touche).
+- Commit par tranche, message `S<n>: …` ; cases cochées ici (= suivi de progression).
+- Vérification de bout en bout de la tranche démontrée (pas « ça devrait marcher »).
+
+## 6. Risques
+| Risque | Prob. | Impact | Mitigation |
+|---|---|---|---|
+| Chemins `--extract-media` incorrects dans le .md (S1) | M | M | Valider en premier ; repli : `sed` existant du Makefile |
+| Watcher TreeView peu fiable sur OneDrive | M | F | Refresh aussi après chaque tâche + bouton refresh manuel |
+| Détection fin de tâche d'import fragile (S3) | F | M | Même API `onDidEndTaskProcess` que szh-apercu (éprouvée) |
+| Régression pour les revues déjà convties (bib existants) | F | M | `import` ne touche jamais un `.md` existant (inchangé) ; citeproc conditionnel conservé |
+| Placeholders oubliés dans le PDF final | M | M | Rendu en **gras** + (plus tard) compteur dans la barre latérale ; à terme, retour des rapports |
+
+## 7. Plus tard (hors plan, mémo)
+Rapports + diagnostics cliquables ; gestion des tableaux (HTML ou autre — remplacera les
+placeholders) ; palette visuelle des styles `:::` ; formulaire métadonnées `ausgabe.yaml` ;
+retrait AnyStyle/Ruby du rootfs ; fusion cockpit+apercu.
+
+## 8. Garde-fous pour l'implémentation (rappels du dépôt)
+- Makefile : **tabulations**, LF, aucun `/mnt/c` en dur, quotes simples pour `~$…`.
+- PowerShell : compatible **5.1** — proscrire `?.`, `??`, `?:`, `&&`/`||`.
+- Ne jamais exclure `out/` de `files.watcherExclude` (D21) ; `.md` existants jamais écrasés (D12).
+- Extensions : épinglées + sha256 dans `vsix.lock` (D11) ; zéro dépendance (posture szh-apercu).
+- Toute décision nouvelle → ligne D<n> dans PLANIFICATION.md.

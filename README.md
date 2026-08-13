@@ -48,8 +48,9 @@ szh-publishing-toolchain/
 ├── vscodium-user/            # → %APPDATA%\VSCodium\User\  (seedé par update.ps1)
 │   ├── settings.json · keybindings.json · tasks.json
 │   └── snippets/markdown.json # blocs de style :::
-├── vscodium-extension/
-│   └── szh-apercu/           # extension maison (D24) : aperçu auto en vue scindée — VSIX construit par la CI
+├── vscodium-extension/       # extensions maison — VSIX packagés par la CI, sha256 -> manifest.json
+│   ├── szh-apercu/           #   (D24) aperçu PDF auto en vue scindée après compilation
+│   └── szh-cockpit/          #   (D36) barre latérale « Revue SZH » (articles, Word, PDF)
 └── revue-template/           # copié dans le dossier OneDrive de CHAQUE revue (contenu seul)
     ├── BIENVENUE.md · ausgabe.yaml
     ├── articles/             # les .md de la revue
@@ -106,6 +107,11 @@ Bumper la version → pousser le tag → la CI republie la Release. Les postes d
 3. Les Word sont convertis en Markdown dans **`articles`** (images récupérées, originaux archivés).
 4. Écrire, puis **Ctrl + S** → chaque article est régénéré dans `out/<article>/` (PDF + HTML),
    en intégrant au passage tout nouveau Word déposé.
+
+La barre latérale **« Revue SZH »** (extension `szh-cockpit`) rassemble ces gestes sans
+explorateur : sections *Articles* / *Word en attente (n)*, boutons **➕ Importer**,
+**▶▶ Convertir les Word en attente**, **👁 Ouvrir le PDF**, **▷ Compiler**. Voir
+[`userdoc.md`](userdoc.md).
 
 ### Raccourcis clavier (déployés par `vscodium-user/keybindings.json` + extensions épinglées)
 

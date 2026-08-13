@@ -5,8 +5,9 @@
 #
 # Structure de travail (D26) :  articles/<article>/<article>.md  + articles/<article>/media/
 # Sorties (D21)              :  out/<article>/<article>.pdf + <article>.html (autonome, images base64)
-# Import Word (D27-D30)      :  filters/szh-import.lua + AnyStyle + filters/szh-citations.lua
-#                               + rapport de conversion trilingue (rapport.py)
+# Import Word (D35)          :  import-docx.sh = pandoc nu + filters/szh-tabelle-platzhalter.lua
+#                               (chaque tableau -> {{TABELLE NN}}). Heuristiques D27-D30
+#                               débranchées dans pipeline/attic/ (réactivables, cf. git).
 #
 # ⚠ Aucun chemin /mnt/c codé en dur ici (portabilité macOS, PLANIFICATION.md §6).
 # ⚠ Conserver l'indentation par TABULATIONS et les fins de ligne LF.
@@ -83,11 +84,11 @@ $(OUT)/%.pdf: $(OUT)/%.html
 	$(WEASYPRINT) $< '$(dir $@)~$$$(notdir $@)'
 	mv -f '$(dir $@)~$$$(notdir $@)' $@
 
-# Conversion des Word/LibreOffice déposés dans articles-word/ (D12, D26-D30) :
+# Conversion des Word déposés dans articles-word/ (D12, D26, D35) :
 #  - migre au passage les anciens articles « à plat » vers articles/<slug>/ ;
 #  - jamais d'écrasement d'un article existant ; originaux -> _convertis/ ;
-#  - import complet : structure + figures + références (AnyStyle) + citations liées
-#    + rapport de conversion trilingue <slug>-rapport.html.
+#  - import simplifié : structure pandoc nue + placeholders {{TABELLE NN}} (D35).
+#  - .docx uniquement (D35 : un seul chemin d'import).
 import:
 	@set -u; \
 	shopt -s nullglob; \
@@ -104,7 +105,7 @@ import:
 	rmdir articles/media 2>/dev/null || true; \
 	[ -d "$(WORD_DIR)" ] || exit 0; \
 	shopt -s nocaseglob; \
-	files=("$(WORD_DIR)"/*.docx "$(WORD_DIR)"/*.odt); \
+	files=("$(WORD_DIR)"/*.docx); \
 	shopt -u nocaseglob; \
 	[ $${#files[@]} -gt 0 ] || exit 0; \
 	mkdir -p articles "$(DONE_DIR)"; \
@@ -118,9 +119,9 @@ import:
 	  if [ -e "$$cible" ]; then \
 	    echo "[import] déjà converti (ignoré) : $$nom -> $$cible existe"; deja=$$((deja+1)); continue; \
 	  fi; \
-	  if bash "$(PIPELINE_DIR)/import-docx.sh" "$$f" "$$slug" "$(PIPELINE_DIR)" "$(LANG_REVUE)"; then \
+	  if bash "$(PIPELINE_DIR)/import-docx.sh" "$$f" "$$slug" "$(PIPELINE_DIR)"; then \
 	    mv -f "$$f" "$(DONE_DIR)/"; \
-	    echo "[import] converti : $$nom -> $$cible (+ rapport $$slug-rapport.html)"; ok=$$((ok+1)); \
+	    echo "[import] converti : $$nom -> $$cible"; ok=$$((ok+1)); \
 	  else \
 	    rm -rf "articles/$$slug"; \
 	    echo "[import] ⚠ échec sur : $$nom (le fichier reste dans $(WORD_DIR)/)"; rate=$$((rate+1)); \

@@ -9,3 +9,7 @@ toolkit-*.zip.sha256
 manifest.json
 vsix-out/
 *.vsix
+
+tmp/
+
+tmp/

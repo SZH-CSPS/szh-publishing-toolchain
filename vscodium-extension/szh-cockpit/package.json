@@ -1,0 +1,90 @@
+{
+  "name": "szh-cockpit",
+  "displayName": "SZH — Revue (cockpit)",
+  "description": "Barre latérale « Revue SZH » : articles et Word en attente d'un numéro (lecture seule).",
+  "version": "0.1.0",
+  "publisher": "szh-csps",
+  "license": "MIT",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "views": {
+      "explorer": [
+        {
+          "id": "szhCockpitVue",
+          "name": "Revue SZH",
+          "when": "szh.estRevue"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "szh.importerWord",
+        "title": "Importer des Word",
+        "category": "Revue SZH",
+        "icon": "$(add)"
+      },
+      {
+        "command": "szh.cockpit.rafraichir",
+        "title": "Rafraîchir la barre Revue",
+        "category": "Revue SZH",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "szh.ouvrirPdf",
+        "title": "Ouvrir le PDF",
+        "category": "Revue SZH",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "szh.compiler",
+        "title": "Compiler",
+        "category": "Revue SZH",
+        "icon": "$(play)"
+      },
+      {
+        "command": "szh.convertirEnAttente",
+        "title": "Convertir les Word en attente",
+        "category": "Revue SZH",
+        "icon": "$(run-all)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "szh.importerWord",
+          "when": "view == szhCockpitVue",
+          "group": "navigation@1"
+        },
+        {
+          "command": "szh.cockpit.rafraichir",
+          "when": "view == szhCockpitVue",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "szh.ouvrirPdf",
+          "when": "view == szhCockpitVue && viewItem == article",
+          "group": "inline@1"
+        },
+        {
+          "command": "szh.compiler",
+          "when": "view == szhCockpitVue && viewItem == article",
+          "group": "inline@2"
+        },
+        {
+          "command": "szh.convertirEnAttente",
+          "when": "view == szhCockpitVue && viewItem == section-word",
+          "group": "inline"
+        }
+      ]
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SZH-CSPS/szh-publishing-toolchain"
+  }
+}

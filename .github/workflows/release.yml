@@ -112,9 +112,11 @@ jobs:
             echo "OK $id $ver"
           done
 
-      - name: Construire l'extension maison (szh-apercu, D24)
-        working-directory: vscodium-extension/szh-apercu
-        run: npx --yes @vscode/vsce@latest package --out "$GITHUB_WORKSPACE/vsix-out/"
+      - name: Construire les extensions maison (szh-apercu D24, szh-cockpit D36)
+        run: |
+          for d in szh-apercu szh-cockpit; do
+            ( cd "vscodium-extension/$d" && npx --yes @vscode/vsce@latest package --out "$GITHUB_WORKSPACE/vsix-out/" )
+          done
 
       - name: Construire le toolkit
         run: |
@@ -145,14 +147,19 @@ jobs:
           VSIX_JSON="$(jq --arg base "$BASE/v$V" \
             '[.extensions[] | {id, version, file: (.id+"-"+.version+".vsix"), url: ($base+"/"+.id+"-"+.version+".vsix"), sha256}]' \
             windows/vsix.lock)"
-          # + l'extension maison construite ci-dessus (empreinte calculée à la volée)
-          OWN="$(ls vsix-out/szh-apercu-*.vsix)"
-          OWNBASE="$(basename "$OWN")"
-          OWNVER="${OWNBASE#szh-apercu-}"; OWNVER="${OWNVER%.vsix}"
-          OWNSHA="$(sha256sum "$OWN" | cut -d' ' -f1)"
-          VSIX_JSON="$(echo "$VSIX_JSON" | jq --arg base "$BASE/v$V" \
-            --arg id "szh-csps.szh-apercu" --arg v "$OWNVER" --arg f "$OWNBASE" --arg s "$OWNSHA" \
-            '. + [{id:$id, version:$v, file:$f, url:($base+"/"+$f), sha256:$s}]')"
+          # + les extensions maison construites ci-dessus (id szh-csps.<nom> ; sha256 calculé
+          #   au build, écrit dans le manifest — non épinglées dans vsix.lock car un VSIX
+          #   reconstruit a un sha différent). update.ps1 vérifie le VSIX téléchargé contre
+          #   ce sha du manifest, produit dans le même run que l'asset -> chaîne cohérente.
+          for NOM in szh-apercu szh-cockpit; do
+            OWN="$(ls vsix-out/$NOM-*.vsix)"
+            OWNBASE="$(basename "$OWN")"
+            OWNVER="${OWNBASE#$NOM-}"; OWNVER="${OWNVER%.vsix}"
+            OWNSHA="$(sha256sum "$OWN" | cut -d' ' -f1)"
+            VSIX_JSON="$(echo "$VSIX_JSON" | jq --arg base "$BASE/v$V" \
+              --arg id "szh-csps.$NOM" --arg v "$OWNVER" --arg f "$OWNBASE" --arg s "$OWNSHA" \
+              '. + [{id:$id, version:$v, file:$f, url:($base+"/"+$f), sha256:$s}]')"
+          done
           jq -n --arg v "$V" \
             --argjson rootfs  "$ROOTFS_JSON" \
             --argjson toolkit "$TOOLKIT_JSON" \
