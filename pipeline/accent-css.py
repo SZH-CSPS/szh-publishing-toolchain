@@ -21,8 +21,13 @@
 #   --szh-accent-fonce  en-tête « negatif » (texte blanc), foncé à contraste garanti
 #
 # TOUS les contrastes de ce fichier sont calculés en APCA (module apca.py, seuils dans
-# styles/couleurs.css) : |Lc| >= 75 pour du texte, >= 60 pour un gros titre, >= 30 pour
-# un filet. L'ancien ratio WCAG 2 « 4,5:1 » n'est plus utilisé nulle part.
+# styles/couleurs.css). Un seuil APCA dépend de la TAILLE du texte, il ne vaut jamais
+# seul : |Lc| >= 90 pour du texte courant dès 14 px, >= 75 seulement à partir de 18 px,
+# >= 60 pour un gros titre (>= 24 px, ou >= 19 px en gras), >= 30 pour un filet.
+# Ce qui compte ici : le texte des TABLEAUX est à 13,6 px (print.css, table { font-size:
+# 0.85rem }) et le corps à 14 px, donc les deux fonds d'accent (-clair et -fonce) se
+# jugent à 90 — et non à 75, comme ce fichier l'a longtemps supposé.
+# L'ancien ratio WCAG 2 « 4,5:1 » n'est plus utilisé nulle part.
 #
 # stdlib uniquement (apca.py est à côté, donc importable tel quel).
 
@@ -131,9 +136,12 @@ def teintes_neutres_depuis_css():
 def variations_calculees(hexa):
     """Mêmes valeurs que couleurs.css, recalculées sur la grille à clarté fixe :
       -normal = la CHARTE (hex d'entrée intact ; elle occupe l'un des crans, D80) ;
-      -clair  = cran 200 (fond à texte noir,  Lc garanti +79,6) ;
-      -fonce  = cran 700 (fond à texte blanc, Lc garanti −79,7 depuis que la charte
-                rouge occupe ce cran — c'est elle qui fixe désormais le pire des six).
+      -clair  = cran 100 (fond à texte noir,  Lc garanti +91) ;
+      -fonce  = cran 800 (fond à texte blanc, Lc garanti −90).
+    Ces deux cibles ont MONTÉ d'un cran (avant : 200 et 700, garantis à 80). Raison : le
+    texte d'un tableau est à 13,6 px, donc son seuil est 90 et non 75 — les crans 200 et
+    700 avaient été retenus sous un seuil faux. Conséquence à connaître : pour le rouge,
+    -fonce n'est plus la charte #D31932 (qui occupe le cran 700) mais le cran 800.
     La grille et les alias étant définis dans apca.py (CLARTES / ALIAS), ce repli ne peut
     pas divulguer une autre palette que celle du fichier CSS."""
     ech = apca.echelle(hexa)
@@ -156,9 +164,22 @@ def melange(hex_a, hex_b, poids_a):
 
 # Filet / bordure de couleur sur le papier blanc : le plancher APCA du non-textuel est
 # 30 ; on vise 45 pour qu'un trait de 1 px reste franchement visible. Seule la moutarde
-# (Lc 30,1 sur blanc, à la limite) est concernée : elle est légèrement assombrie.
+# (Lc 30 sur blanc, à la limite) est concernée : elle est légèrement assombrie.
+# Ce seuil-ci ne dépend PAS de la taille : un filet n'est pas du texte.
 LC_FILET_CONFORT = 45.0
-# Texte de couleur sur le papier blanc : plancher texte 75, on vise 78 (petite marge).
+# Texte de couleur sur le papier blanc.
+# ⚠ CETTE VALEUR EST UN HÉRITAGE, et elle n'est pas défendable comme seuil de texte : 78
+# avait été choisi comme « plancher texte 75 + petite marge », à l'époque où le projet
+# croyait que 75 suffisait au texte courant. Le vrai seuil dépend de la taille, et vaut 90
+# dès 14 px (voir apca.seuil_pour).
+# Pourquoi elle n'a pourtant pas été relevée ici : --c-annual-text n'a AUCUN consommateur.
+# Aucune règle de print.css ne fait `color: var(--c-annual-text)` — le jeton est déclaré
+# (print.css § variables) et émis, mais rien ne l'applique. Il n'a donc pas de taille, donc
+# pas de seuil déductible, et relever la cible ne changerait la couleur d'aucun texte rendu.
+# SI un jour une règle le consomme : mesurer la taille de cette règle et porter la cible à
+# apca.seuil_pour(taille) — pour du corps à 14 px, cela veut dire 90, ce qui assombrira
+# nettement les six teintes. test/apca-check.py signale ce jeton « à arbitrer » tant que le
+# point n'est pas tranché, plutôt que de le valider à un seuil qu'on sait faux.
 LC_TEXTE_ANNUEL = 78.0
 
 
@@ -174,17 +195,24 @@ def jetons_annuels(hexa):
         jusqu'à LC_FILET_CONFORT. Les barres ÉPAISSES gardent la couleur brute
         var(--c-annual), fidèle à la maquette.
       --c-annual-text : le mélange de la maquette (60 % couleur + 40 % encre) est gardé
-        tel quel s'il tient le seuil texte, et seulement assombri sinon (cas moutarde,
-        où le mélange plafonne à Lc 68,9)."""
+        tel quel s'il tient LC_TEXTE_ANNUEL, et seulement assombri sinon (cas moutarde,
+        où le mélange plafonne à Lc 69). Voir la mise en garde sur LC_TEXTE_ANNUEL : ce
+        jeton n'a aucun consommateur, donc aucune taille, donc aucun seuil déductible.
+      --c-kw-bg : fond des puces de mots-clés (.szh-kw), qui portent du texte noir de
+        10 px — plus petit que tout ce que les quatre niveaux d'APCA couvrent. Le mélange
+        de la maquette (22 % couleur) n'atteint 90 ni en rouge (82) ni en capucine (89).
+        La corriger demanderait de toucher la maquette (taille des puces, print.css) ou
+        d'éclaircir le mélange : hors du périmètre de ce lot, donc signalé « à arbitrer »
+        par test/apca-check.py au lieu d'être validé à un seuil complaisant."""
     texte, _ = apca.meilleure_polarite(hexa)
     return [
         ('--c-annual',          hexa),
-        # Cran 700, comme l'alias -fonce : UNE SEULE règle « fond sombre à texte blanc »
+        # Cran 800, comme l'alias -fonce : UNE SEULE règle « fond sombre à texte blanc »
         # dans toute la chaîne, donc le fond négatif d'un tableau et celui de la maquette
-        # sont exactement la même couleur (avant : 800 ici, 800 pour -fonce sur l'ancienne
-        # échelle à cibles de contraste — la coïncidence était fortuite, elle est
-        # maintenant construite).
-        ('--c-annual-deep',     apca.echelle(hexa)['700']),
+        # sont exactement la même couleur. Le cran est lu dans apca.ALIAS plutôt qu'écrit
+        # en dur : ces deux jetons doivent bouger ENSEMBLE ou pas du tout, et un numéro
+        # recopié ici est précisément ce qui les avait laissés se désynchroniser.
+        ('--c-annual-deep',     apca.echelle(hexa)[dict(apca.ALIAS)['fonce']]),
         ('--c-annual-text',     apca.couleur_sur(melange(hexa, '#0A0D14', 0.60),
                                                  '#FFFFFF', LC_TEXTE_ANNUEL)),
         ('--c-annual-ui',       apca.couleur_sur(hexa, '#FFFFFF', LC_FILET_CONFORT)),

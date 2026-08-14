@@ -30,6 +30,20 @@
   l'**éditeur de tableau** (la grille), pas le fichier HTML. Le bouton « Éditer » du survol a
   disparu — seul « Remplacer » reste. À vérifier aussi que rouvrir un tableau déjà ouvert le
   ramène au premier plan au lieu d'en ouvrir un second.
+- [ ] **Aplats de tableau plus pâles et plus sombres** (D87) : les fonds « couleur » et
+  « négatif » des tableaux ont changé pour tenir le seuil de lisibilité à la taille réelle
+  du texte de tableau (13,6 px). À juger à l'œil sur un tableau réel : `-clair` passe du
+  cran 200 au 100, `-fonce` du 700 au 800. Pour un numéro **rouge**, le fond négatif n'est
+  plus le rouge de charte mais `#9F001F`.
+- [ ] **Deux jetons de maquette à arbitrer** (D87, laissés en attente parce qu'ils touchent
+  la couverture) :
+  - `--c-kw-bg` : les puces de mots-clés sont à **10 px**, plus petit que tout ce que les
+    quatre niveaux couvrent. Rouge 82, capucine 90 — sous le seuil. Soit on grossit la puce
+    dans `print.css`, soit on éclaircit le mélange dans `accent-css.py`. Mon avis : à 10 px,
+    éclaircir ne suffira jamais vraiment ; c'est la taille qu'il faut revoir.
+  - `--c-annual-text` : **aucune règle ne le consomme**. Il est déclaré et émis, rien ne
+    l'applique. Soit une règle l'utilise et il faut le porter à 90, soit c'est du code mort
+    à supprimer.
 - [ ] **Saut de page** (`Ctrl+Alt+Entrée`, D86) : vérifier sur un article réel que la page
   se coupe où voulu dans le PDF, et que l'aperçu HTML reste inchangé. Le comportement est
   prouvé par un build (1 page → 2 pages), mais le geste et le placement du marqueur dans

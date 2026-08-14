@@ -33,11 +33,103 @@ _I_FOND, _I_TEXTE, _I_ECHELLE, _I_CLIP, _I_OFFSET = 0.65, 0.62, 1.14, -0.1, 0.02
 
 NOIR, BLANC = '#000000', '#FFFFFF'
 
-# ─── Seuils retenus pour ce projet (voir styles/couleurs.css) ─────────────────────
-LC_TEXTE = 75.0        # texte courant : corps, cellules et en-têtes de tableau
-LC_TEXTE_CONFORT = 90.0
-LC_GROS_TITRE = 60.0   # texte >= 24 px (titres de couverture, aplats)
-LC_NON_TEXTUEL = 30.0  # filets, bordures, séparateurs vs la surface adjacente
+# ─── Les quatre niveaux d'APCA, et la TAILLE qui va avec chacun ───────────────────
+#
+# POURQUOI un seuil ne peut PAS être une constante du projet.
+#   Ce fichier a longtemps posé « LC_TEXTE = 75 = texte courant », et c'était FAUX. Un
+#   seuil APCA n'a aucun sens tout seul : il ne vaut que pour un couple (taille, graisse).
+#   Le même Lc 75 est confortable sur un intertitre de 18 px et nettement insuffisant sur
+#   une cellule de tableau de 13,6 px. Poser 75 comme « le » seuil du texte courant, c'est
+#   donc valider en bloc tout ce qui est plus petit que 18 px — c'est-à-dire, dans cette
+#   maquette, le corps ET les tableaux.
+#   Les seuils ci-dessous portent donc la taille DANS leur nom, et le code ne compare
+#   jamais une mesure à un seuil sans être passé par `seuil_pour()`.
+#
+# POURQUOI ces niveaux-là (critères officiels d'APCA, et non un choix maison) :
+LC_TEXTE_14 = 90.0      # niveau PRÉFÉRÉ du texte courant, dès 14 px / graisse 400
+LC_TEXTE_18 = 75.0      # niveau MINIMUM du texte courant, et seulement dès 18 px / 400
+LC_GROS_TITRE = 60.0    # gros texte : >= 24 px, ou >= 19 px en gras
+LC_NON_TEXTUEL = 30.0   # plancher non textuel : filets, bordures, séparateurs
+#
+# POURQUOI 90 est le seuil réel de CETTE maquette, et non 75.
+#   Le corps est à 14 px (print.css, --body-size: 0.875rem) et le texte des TABLEAUX à
+#   0,85rem, soit 13,6 px. Les deux tombent sous les 18 px qu'exige le niveau 75 : le
+#   seuil applicable est donc 90 partout où il y a du texte de lecture, aplats de tableau
+#   compris. C'est tout l'objet de cette correction.
+#   La revue est principalement NUMÉRIQUE : APCA, conçu pour les écrans auto-lumineux,
+#   est pleinement dans son domaine ici.
+
+# Tolérance appliquée à TOUTE comparaison d'une mesure à un seuil. Les hex sont arrondis
+# à l'octet : un Lc ne retombe jamais au centième sur une valeur ronde, et refuser 89,7
+# au motif qu'il n'est pas 90 serait une rigueur de façade — l'écart est très en dessous
+# du seuil de perception. 0,5 laisse passer l'arrondi et rien d'autre ; c'est aussi, et
+# ce n'est pas un hasard, la moitié de l'unité d'affichage (voir `lc_affiche`) : une
+# valeur qui S'AFFICHE « 90 » SATISFAIT le seuil de 90.
+TOLERANCE_SEUIL = 0.5
+
+
+def seuil_pour(taille_px, gras=False):
+    """Le |Lc| qu'exige APCA pour du texte de `taille_px` (graisse 400, ou 700 si `gras`).
+
+    L'ordre des tests va du plus permissif au plus strict, parce que c'est la TAILLE qui
+    achète le droit à un seuil bas : plus le texte est gros, moins il demande de
+    contraste. Le gras ne vaut que 5 px environ, d'où le 19 px du second test.
+
+    Sous 14 px, le modèle à quatre niveaux ne dit plus rien : APCA ne documente AUCUN
+    niveau permissif en dessous — un texte plus petit que 14 px demande davantage que 90,
+    pas moins. On renvoie donc le plus exigeant des quatre niveaux, faute de mieux, et
+    c'est le cas du texte de TABLEAU à 13,6 px. Le seuil rendu ici est donc un PLANCHER
+    pour ces tailles-là, jamais une autorisation."""
+    if taille_px >= 24.0 or (gras and taille_px >= 19.0):
+        return LC_GROS_TITRE
+    if taille_px >= 18.0:
+        return LC_TEXTE_18
+    return LC_TEXTE_14
+
+
+def tient(mesure, seuil):
+    """La mesure satisfait-elle le seuil, TOLERANCE_SEUIL comprise ?
+
+    Point de passage OBLIGÉ de toute comparaison mesure/seuil dans la chaîne : c'est ce
+    qui garantit que le vérificateur, le CSS et la planche disent la même chose d'une même
+    couleur. `mesure` peut être signée (la polarité n'entre pas dans le jugement)."""
+    return abs(mesure) >= seuil - TOLERANCE_SEUIL
+
+
+def lc_affiche(valeur, signe=False):
+    """Le Lc tel qu'il doit S'ÉCRIRE partout : ARRONDI À L'ENTIER, SANS DÉCIMALE.
+
+    POURQUOI pas de décimale. Un dixième de Lc n'est pas perceptible et ne se reproduit
+    pas d'un arrondi hexadécimal à l'autre : l'afficher donnait une fausse précision et,
+    pire, invitait à lire « 79,7 » comme « en dessous de 80 » alors que la différence est
+    invisible. Un entier dit exactement ce que la mesure sait.
+    `signe=True` conserve la polarité, avec le signe moins TYPOGRAPHIQUE (−, U+2212) et
+    non le trait d'union : c'est le style de toute la chaîne.
+    Arrondi au demi supérieur explicite (floor(x+0,5)) et non `round()`, qui en Python 3
+    arrondit 89,5 à 90 mais 90,5 à 90 lui aussi (arrondi bancaire) — un affichage doit
+    être prévisible."""
+    entier = int(math.floor(abs(valeur) + 0.5))
+    if not signe:
+        return '%d' % entier
+    return '%s%d' % ('+' if valeur >= 0 else '−', entier)
+
+
+# Libellés d'usage des crans. Ils ne sont pas décoratifs : chacun est une CLÉ de
+# SEUIL_USAGE, donc dire l'usage d'un cran suffit à en déduire le seuil à tenir. Écrire
+# la taille dans le libellé est délibéré — un cran ne « porte pas du texte courant », il
+# porte du texte courant À PARTIR D'UNE CERTAINE TAILLE, et c'est cette nuance que la
+# version précédente perdait.
+USAGE_TEXTE_14 = 'texte courant dès 14 px'
+USAGE_TEXTE_18 = 'texte courant à partir de 18 px'
+USAGE_GROS_TITRE = 'gros titre seulement'
+USAGE_AUCUN = 'aucun texte (cran décoratif)'
+
+SEUIL_USAGE = {
+    USAGE_TEXTE_14: LC_TEXTE_14,
+    USAGE_TEXTE_18: LC_TEXTE_18,
+    USAGE_GROS_TITRE: LC_GROS_TITRE,
+    USAGE_AUCUN: LC_NON_TEXTUEL,
+}
 
 
 # ═══ 1. Conversions élémentaires ══════════════════════════════════════════════════
@@ -282,8 +374,23 @@ def couleur_sur(hexa, fond, cible):
 
 CLARTES = (
     ('50', 0.97), ('100', 0.93), ('200', 0.87), ('300', 0.81), ('400', 0.74),
-    ('500', 0.66), ('600', 0.59), ('700', 0.52), ('800', 0.45), ('900', 0.38),
-    ('950', 0.31),
+    ('500', 0.66), ('600', 0.59), ('700', 0.52),
+    # 0,444 et NON 0,45 — ne pas « rétablir » 0,45 en croyant corriger une coquille.
+    # POURQUOI ce cran seul déroge à la progression régulière : à 0,45 le |Lc| garanti du
+    # cran (le pire des six teintes, le poireau) valait 89,51. Il ne franchissait donc le
+    # seuil de 90 que par la tolérance, avec 0,009 de marge — neuf MILLIÈMES, c'est-à-dire
+    # qu'un simple redécoupage d'un canal au 1/255 aurait fait basculer le cran hors
+    # contrat. Or ce cran-là est l'aplat le plus utilisé des tableaux (alias -fonce) et il
+    # porte du texte de 13,6 px : sa garantie ne peut pas tenir à un cheveu.
+    # Assombrir la cible de 0,006 porte la garantie à 90,19, soit 0,7 de marge SANS
+    # recourir à la tolérance. Le déplacement est invisible à l'œil (un à deux niveaux par
+    # canal : #A20020 -> #9F001F, #27633C -> #26613B, #575A00 -> #555900).
+    # Le prix, assumé : les écarts de clarté voisins passent de 0,07 à 0,076 (700 -> 800)
+    # et de 0,07 à 0,064 (800 -> 900). La progression régulière est une COMMODITÉ DE
+    # LECTURE de l'échelle ; le seuil de 90 sur un fond de tableau est une PROMESSE
+    # d'accessibilité. On sacrifie la première à la seconde.
+    ('800', 0.444),
+    ('900', 0.38), ('950', 0.31),
 )
 
 # Cran DÉCORATIF : le point de croisement où NI le noir NI le blanc n'atteint le seuil
@@ -296,26 +403,39 @@ CRAN_DECORATIF = '400'
 # Contrat de chaque cran : {cran: (couleur de texte admise, |Lc| garanti, usage)}.
 # Le |Lc| est le PIRE des six teintes, MESURÉ (test/apca-check.py le revérifie cran par
 # cran et teinte par teinte : si une valeur d'ici est fausse, le test échoue).
-#   texte courant  -> |Lc| >= 75 : corps, cellules et en-têtes de tableau.
-#   gros titres    -> |Lc| >= 60 : texte >= 24 px seulement.
-#   aucun texte    -> cran décoratif (aplat, bande, filet), vérifié au seuil non textuel.
-# Deux garanties sont désormais fixées par un hex de CHARTE, et non par un cran calculé —
-# c'est la conséquence directe du remplacement, et elle est à la baisse :
+#
+# L'USAGE PORTE UNE TAILLE, et c'est la correction de fond de ce lot. Un cran ne « porte
+# pas du texte courant » : il en porte à partir d'une certaine taille, parce que c'est la
+# taille qui fixe le seuil (voir seuil_pour). Ce que la lecture du contrat donne :
+#   dès 14 px      -> |Lc| >= 90 : le corps de la maquette ET les tableaux (13,6 px).
+#   à partir de 18 px -> |Lc| >= 75 : intertitres et libellés, PAS le corps ni les tableaux.
+#   gros titre     -> |Lc| >= 60 : >= 24 px, ou >= 19 px en gras.
+#   aucun texte    -> cran décoratif, vérifié au seul seuil non textuel (30).
+# Trois crans ont ainsi CHANGÉ D'USAGE sans changer de couleur, parce que le seuil qui les
+# jugeait était faux : 200 et 700 (79,6 et 79,7) passaient pour du « texte courant » alors
+# qu'ils ne tiennent 90 dans aucune teinte — ils sont bons dès 18 px, pas à 13,6 px ; et
+# 300 (68,3) reste au gros titre. Aucun hex n'a bougé pour eux : c'est l'étiquette qui
+# était fausse, pas la couleur.
+#
+# Deux garanties sont fixées par un hex de CHARTE et non par un cran calculé — conséquence
+# directe du remplacement, et elle est à la baisse :
 #   500 : 61,1 -> 60,9 (charte bleu acier #5F9FBC). Le seuil gros titre (60) tient encore.
-#   700 : 81,3 -> 79,7 (charte rouge #D31932). Le seuil texte courant (75) tient encore.
-# Les neuf autres crans gardent exactement leur garantie précédente.
+#   700 : 81,3 -> 79,7 (charte rouge #D31932). Le niveau des 18 px (75) tient encore.
+# Une troisième vient d'un déplacement de clarté assumé, et elle est à la HAUSSE :
+#   800 : 89,5 -> 90,2 (cible de clarté 0,45 -> 0,444, voir CLARTES). C'est ce qui rend le
+#         cran 800 utilisable à 14 px sans dépendre de la tolérance.
 CONTRAT = {
-    '50':  (NOIR,  99.8, 'texte courant'),
-    '100': (NOIR,  91.4, 'texte courant'),
-    '200': (NOIR,  79.6, 'texte courant'),
-    '300': (NOIR,  68.3, 'gros titres seulement'),
-    '400': (None,  56.3, 'aucun texte (cran décoratif)'),
-    '500': (BLANC, 60.9, 'gros titres seulement'),
-    '600': (BLANC, 71.7, 'gros titres seulement'),
-    '700': (BLANC, 79.7, 'texte courant'),
-    '800': (BLANC, 89.5, 'texte courant'),
-    '900': (BLANC, 96.4, 'texte courant'),
-    '950': (BLANC, 102.0, 'texte courant'),
+    '50':  (NOIR,  99.8, USAGE_TEXTE_14),
+    '100': (NOIR,  91.4, USAGE_TEXTE_14),
+    '200': (NOIR,  79.6, USAGE_TEXTE_18),
+    '300': (NOIR,  68.3, USAGE_GROS_TITRE),
+    '400': (None,  56.3, USAGE_AUCUN),
+    '500': (BLANC, 60.9, USAGE_GROS_TITRE),
+    '600': (BLANC, 71.7, USAGE_GROS_TITRE),
+    '700': (BLANC, 79.7, USAGE_TEXTE_18),
+    '800': (BLANC, 90.2, USAGE_TEXTE_14),
+    '900': (BLANC, 96.4, USAGE_TEXTE_14),
+    '950': (BLANC, 102.0, USAGE_TEXTE_14),
 }
 
 # Dispersion de clarté TOLÉRÉE à l'intérieur d'un cran (max - min des six teintes).
@@ -331,13 +451,27 @@ DISPERSION_CLARTE_EXCEPTION = {'700': 0.04}
 
 # Alias historiques lus par accent-css.py (regex) et par les tableaux .szh-tableau.
 # Les NOMS sont figés (accent-css.py et print.css les cherchent tels quels) ; seules
-# leurs cibles suivent la nouvelle grille :
+# leurs cibles suivent la grille :
 #   normal -> 'marque', c'est-à-dire le CRAN de charte (accents « couleur », filets,
 #             aplats de couverture) — le hex n'a pas changé, seul son statut a changé :
 #             ce n'est plus un jeton hors grille mais un cran nommé ;
-#   clair  -> 200 (le plus coloré des fonds à texte noir : Lc garanti 79,6) ;
-#   fonce  -> 700 (le plus clair des fonds à texte blanc : Lc garanti 79,7).
-ALIAS = (('normal', 'marque'), ('clair', '200'), ('fonce', '700'))
+#   clair  -> 100 (fond à texte noir,  |Lc| garanti 91 : conforme dès 14 px) ;
+#   fonce  -> 800 (fond à texte blanc, |Lc| garanti 90 : conforme dès 14 px).
+#
+# POURQUOI -clair et -fonce ont QUITTÉ les crans 200 et 700. Ces deux alias sont les fonds
+# des TABLEAUX, et le texte d'un tableau est à 13,6 px (print.css, table { font-size:
+# 0.85rem }). Le seuil applicable est donc 90. Or 200 et 700 plafonnent à 80 : ils étaient
+# choisis du temps où le projet croyait que « texte courant = 75 », c'est-à-dire pour une
+# taille que la maquette n'utilise nulle part. On monte donc d'un cran de chaque côté.
+#
+# ⚠ CONSÉQUENCE À CONNAÎTRE : le rouge de charte QUITTE le rôle de fond « négatif » des
+# tableaux. C'est D80 qui l'y avait amené, en faisant occuper au #D31932 le cran 700, alors
+# la cible de -fonce. Mais #D31932 plafonne à 80 avec du texte blanc — suffisant à 18 px,
+# insuffisant à 13,6 px. Le fond négatif d'un tableau rouge devient donc le cran 800
+# (#9F001F), plus sombre que la charte. La charte rouge reste évidemment partout ailleurs :
+# -normal, -marque, --c-annual, filets et aplats de couverture. Elle perd un rôle, pas sa
+# place. Aucune autre teinte n'est concernée (leur charte est au 500 ou au 300).
+ALIAS = (('normal', 'marque'), ('clair', '100'), ('fonce', '800'))
 
 # Marge de QUASI-ÉGALITÉ sur le |Lc|, pour le choix du cran remplacé. En dessous de cet
 # écart, deux crans candidats sont perceptuellement indiscernables : le flottant ne doit
@@ -363,10 +497,11 @@ def cran_de_charte(hexa):
     Égalité : si plusieurs crans sont à moins de MARGE_EGALITE_LC du meilleur, on prend le
     plus SOMBRE. Cas réel, le rouge #D31932 : 700 à 3,9 d'écart et 600 à 4,1, soit 0,2 —
     sous la marge. Le plus sombre est aussi le meilleur choix éditorial, parce que le |Lc|
-    monte quand on descend l'échelle : à 79,7 la charte rouge devient un fond à TEXTE
-    COURANT (cran 700), alors que la même couleur posée sur le cran 600 hériterait de
-    l'étiquette « gros titres seulement ». En cas de doute, la règle donne donc l'usage le
-    plus large."""
+    monte quand on descend l'échelle : à 79,7 la charte rouge hérite du cran 700, donc de
+    l'usage « texte courant à partir de 18 px », alors que sur le cran 600 elle serait
+    limitée au gros titre. En cas de doute, la règle donne donc l'usage le plus large.
+    (Elle ne va pas jusqu'à en faire un fond de TABLEAU : à 13,6 px il faut 90, et le 700
+    n'y arrive pas — voir la conséquence notée sous ALIAS.)"""
     charte = vers_hex(vers_rgb(hexa))
     encre, lc_charte = meilleure_polarite(charte)
     cible = abs(lc_charte)
@@ -412,6 +547,36 @@ def _autoverification():
         rgb = vers_rgb(h)
         retour = oklab_vers_srgb(srgb_vers_oklab(rgb))
         assert all(abs(a - b) <= 1.0 for a, b in zip(rgb, retour)), (h, retour)
+    # La RÈGLE D'AFFICHAGE (aucune décimale, signe conservé). Elle est vérifiée ici parce
+    # qu'elle est citée dans couleurs.css, dans la planche et dans le vérificateur : si
+    # elle dérive, trois fichiers se mettent à mentir en même temps.
+    assert lc_affiche(79.665) == '80', lc_affiche(79.665)
+    assert lc_affiche(101.997) == '102', lc_affiche(101.997)
+    assert lc_affiche(90.194) == '90', lc_affiche(90.194)
+    assert lc_affiche(91.392, signe=True) == '+91', lc_affiche(91.392, signe=True)
+    assert lc_affiche(-90.194, signe=True) == '−90', lc_affiche(-90.194, signe=True)
+    # Arrondi au demi SUPÉRIEUR, y compris sur le demi exact (round() ferait autrement).
+    assert lc_affiche(89.5) == '90' and lc_affiche(90.5) == '91'
+    # La TOLÉRANCE : « ce qui s'affiche 90 satisfait 90 ». C'est l'invariant qui lie la
+    # règle d'affichage à la règle de contrôle ; sans lui, la planche pourrait afficher
+    # « 90 » sur un cran que le vérificateur refuse.
+    assert tient(89.5, LC_TEXTE_14) and not tient(89.49, LC_TEXTE_14)
+    assert tient(-89.6, LC_TEXTE_14), 'la polarité ne doit pas entrer dans le jugement'
+    # Les seuils par TAILLE, y compris les deux tailles réelles de la maquette.
+    assert seuil_pour(13.6) == LC_TEXTE_14, 'texte de tableau (0,85rem) : 90, pas 75'
+    assert seuil_pour(14.0) == LC_TEXTE_14, 'corps (--body-size 0,875rem) : 90'
+    assert seuil_pour(18.0) == LC_TEXTE_18
+    assert seuil_pour(19.0) == LC_TEXTE_18 and seuil_pour(19.0, gras=True) == LC_GROS_TITRE
+    assert seuil_pour(24.0) == LC_GROS_TITRE
+    # Tout usage du CONTRAT doit savoir déduire son seuil, sinon le vérificateur ne peut
+    # pas juger le cran.
+    for _cran, (_encre, _garanti, _usage) in CONTRAT.items():
+        assert _usage in SEUIL_USAGE, (_cran, _usage)
+        # Le |Lc| annoncé doit être COHÉRENT avec l'usage annoncé : un cran qui promet
+        # « dès 14 px » avec une garantie de 80 serait un contrat auto-contradictoire, et
+        # c'est exactement l'erreur que ce lot corrige. On l'interdit à l'import.
+        if _encre is not None:
+            assert tient(_garanti, SEUIL_USAGE[_usage]), (_cran, _garanti, _usage)
 
 
 _autoverification()
@@ -429,8 +594,19 @@ if __name__ == '__main__':
         pass
 
     def _fr(x):
-        """Virgule décimale et signe moins typographique : le style de couleurs.css."""
-        return ('%+.1f' % x).replace('.', ',').replace('-', '−')
+        """Le Lc au format de couleurs.css : entier signé, signe moins typographique.
+        Aucune décimale — voir `lc_affiche`, dont c'est le simple relais nommé."""
+        return lc_affiche(x, signe=True)
+
+    def _clarte_fr(clarte):
+        """La CLARTÉ, elle, garde ses décimales : ce n'est pas un Lc mais une coordonnée
+        OKLab, et le cran 800 vaut 0,444 — un arrondi à deux décimales l'écrirait 0,44 et
+        ferait croire à une coquille (voir CLARTES). On affiche donc trois décimales quand
+        la troisième porte de l'information, deux sinon."""
+        texte = ('%.3f' % clarte).rstrip('0')
+        if len(texte.split('.')[1]) < 2:
+            texte = '%.2f' % clarte
+        return texte.replace('.', ',')
 
     hexa = sys.argv[1] if len(sys.argv) > 1 else '#D31932'
     nom = sys.argv[2] if len(sys.argv) > 2 else 'teinte'
@@ -444,19 +620,19 @@ if __name__ == '__main__':
         # sans perdre l'information du compromis.
         if cran == charte:
             reelle = _clarte(couleur)
-            note = (' = COULEUR DE CHARTE, L réelle %.3f (cible %.2f, écart %s)'
-                    % (reelle, clarte, ('%+.3f' % (reelle - clarte)).replace('.', ',')
-                       .replace('-', '−')))
+            note = (' — COULEUR DE CHARTE, clarté réelle %s pour %s visé (écart %s)'
+                    % (_clarte_fr(reelle), _clarte_fr(clarte),
+                       ('%+.3f' % (reelle - clarte)).replace('.', ',').replace('-', '−')))
         else:
             note = ''
         if texte is None:   # cran décoratif : on annonce la MEILLEURE polarité, qui échoue
             gagnant, valeur = meilleure_polarite(couleur)
-            print('  --c-%s-%s: %s;   /* L %.2f — %s (le mieux : %s à Lc %s)%s */' % (
-                nom, cran, couleur, clarte, usage,
+            print('  --c-%s-%s: %s;   /* L %s — %s (le mieux : %s à Lc %s)%s */' % (
+                nom, cran, couleur, _clarte_fr(clarte), usage,
                 'noir' if gagnant == NOIR else 'blanc', _fr(valeur), note))
             continue
-        print('  --c-%s-%s: %s;   /* L %.2f — texte %s : Lc %s (%s)%s */' % (
-            nom, cran, couleur, clarte,
+        print('  --c-%s-%s: %s;   /* L %s — texte %s : Lc %s — %s%s */' % (
+            nom, cran, couleur, _clarte_fr(clarte),
             'noir ' if texte == NOIR else 'blanc', _fr(lc(texte, couleur)), usage, note))
     # L'alias : un NOM de plus sur le cran de charte, jamais un hex de plus.
     print('  --c-%s-marque: var(--c-%s-%s);   /* = le cran de charte ci-dessus */'

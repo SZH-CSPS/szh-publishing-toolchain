@@ -12,27 +12,53 @@
 # réellement émis par accent-css.py, puis il mesure. C'est donc bien le fichier édité à
 # la main qui est validé, pas une théorie.
 #
-# Seuils (voir l'en-tête de couleurs.css) :
-#   texte courant (corps, cellules et en-têtes de tableau)   |Lc| >= 75
-#   gros titre / texte >= 24 px (aplat de couverture)        |Lc| >= 60
-#   non textuel (filets, bordures, séparateurs)              |Lc| >= 30
+# ═══ Les seuils dépendent de la TAILLE : c'est tout l'objet de cette version ══════
+# Ce script a longtemps comparé le texte courant à |Lc| >= 75. C'était FAUX pour nos
+# tailles. Les quatre niveaux d'APCA (apca.py) et la taille qui va avec chacun :
+#   |Lc| >= 90   texte courant, dès 14 px / graisse 400
+#   |Lc| >= 75   texte courant, mais seulement à partir de 18 px
+#   |Lc| >= 60   gros texte : >= 24 px, ou >= 19 px en gras
+#   |Lc| >= 30   non textuel : filet, bordure, séparateur
+# Les DEUX tailles réelles de la maquette sont sous 18 px : le corps est à 14 px
+# (print.css, --body-size: 0.875rem) et le texte des TABLEAUX à 0,85rem = 13,6 px. Le seuil
+# de tout texte de lecture de cette chaîne est donc 90. Aucune paire de ce script ne compare
+# plus à un seuil écrit en dur : chaque paire déclare sa TAILLE, et apca.seuil_pour en
+# déduit le niveau (voir TAILLE_* plus bas). La revue étant principalement numérique, APCA
+# est pleinement dans son domaine.
+#
+# DEUX RÈGLES D'AFFICHAGE ET DE CONTRÔLE, communes à toute la chaîne (définies dans apca.py
+# pour que CSS, planche et vérificateur ne puissent pas diverger) :
+#   1. les Lc s'affichent SANS DÉCIMALE, arrondis (apca.lc_affiche) ;
+#   2. une TOLÉRANCE de 0,5 joue à chaque comparaison mesure/seuil (apca.tient), de sorte
+#      qu'une valeur qui s'affiche « 90 » satisfait le seuil de 90.
+# EXCEPTION ASSUMÉE ET SIGNALÉE : les lignes de DIAGNOSTIC de ce script (écarts au |Lc|
+# garanti, dispersion de clarté, marges) gardent UNE décimale, parce qu'elles servent
+# justement à juger des marges de l'ordre du dixième — c'est là qu'on veut voir « 90,2 »
+# plutôt que « 90 ». Le tableau principal, lui, suit la règle commune. La sortie le redit
+# noir sur blanc, pour qu'un lecteur ne croie pas à une incohérence.
 #
 # ═══ Ce que vérifie le §1 : le CONTRAT de la grille à clarté fixe ═════════════════
 # La grille compte 11 crans, et un même numéro vise la MÊME CLARTÉ pour les six teintes.
 # Le contraste n'est donc plus une cible mais une conséquence : chaque cran annonce un
 # |Lc| GARANTI, qui est le pire des six teintes. Ce script vérifie ce contrat cran par
 # cran ET teinte par teinte — 11 x 6 = 66 paires — de deux façons :
-#   1. la paire tient le SEUIL D'USAGE du cran (75 texte courant / 60 gros titre) ;
+#   1. la paire tient le SEUIL D'USAGE du cran, et cet usage PORTE UNE TAILLE : « dès
+#      14 px » -> 90, « à partir de 18 px » -> 75, « gros titre » -> 60 (apca.SEUIL_USAGE) ;
 #   2. la paire tient le |Lc| GARANTI annoncé en tête de couleurs.css, à 0,5 près.
 # Le second point est le vrai filet de sécurité : sans lui, on pourrait éclaircir une
 # teinte jusqu'à ras du seuil sans que rien ne proteste, et l'en-tête du CSS mentirait.
+# La tolérance de 0,5 s'applique désormais aux DEUX contrôles. Elle ne jouait que sur le
+# second, ce qui était incohérent : le même arrondi hexadécimal pèse dans les deux cas.
 #
 # LE CRAN 400 NE PORTE AUCUN TEXTE, ni noir ni blanc. C'est le point de croisement de
 # l'échelle : le noir y est déjà tombé sous 60 et le blanc n'y est pas encore monté à 60.
 # Toute échelle de couleur saturée possède ce cran — ce n'est pas un défaut. Il est donc
 # vérifié comme DÉCORATIF : on n'exige que le seuil non textuel (30) contre le papier
-# blanc, c'est-à-dire « l'aplat se distingue de la page ». Aucun texte n'y est permis :
-# si vous cherchez un fond porteur de texte, prenez 200 (texte noir) ou 700 (texte blanc).
+# blanc, c'est-à-dire « l'aplat se distingue de la page ». Aucun texte n'y est permis.
+# Si vous cherchez un fond porteur de TEXTE DE TABLEAU (13,6 px, donc seuil 90), il n'y en
+# a que CINQ dans toute la grille : 50 et 100 au texte noir, 800, 900 et 950 au texte blanc.
+# Les crans 200 et 700 n'en font PAS partie, malgré leur ancienne étiquette « texte
+# courant » : ils plafonnent à 80, ce qui vaut à partir de 18 px et pas en dessous.
 #
 # ═══ Ce que vérifie le §1bis : le CRAN DE CHARTE ══════════════════════════════════
 # La couleur de charte n'est plus hors grille : elle REMPLACE le cran dont le |Lc| calculé
@@ -92,9 +118,22 @@ def _charger(nom_module, chemin):
 accent = _charger('accent_css', os.path.join(PIPELINE, 'accent-css.py'))
 
 NOIR, BLANC = '#000000', '#FFFFFF'
-TEXTE = apca.LC_TEXTE               # 75
-GROS_TITRE = apca.LC_GROS_TITRE     # 60
-NON_TEXTE = apca.LC_NON_TEXTUEL     # 30
+
+# ─── Les TAILLES réelles de la maquette, seule source des seuils ───────────────────
+# Aucun nombre de seuil n'est écrit dans ce fichier : on déclare la taille du texte de
+# chaque paire et apca.seuil_pour en déduit le niveau. C'est ce qui empêche le retour de
+# l'erreur corrigée ici — une constante « TEXTE = 75 » se recopie sans qu'on se demande à
+# quelle taille elle s'applique, une taille ne se recopie pas sans le dire.
+TAILLE_TABLEAU = 13.6   # print.css : table { font-size: 0.85rem } -> 13,6 px
+TAILLE_CORPS = 14.0     # print.css : --body-size: 0.875rem -> 14 px
+TAILLE_KW = 10.0        # print.css : .szh-kw { font-size: 10px } (puces de mots-clés)
+TAILLE_GROS_TITRE = 24.0
+
+# Seuil du texte de TABLEAU (13,6 px) : c'est le seuil de référence de tout ce script,
+# puisque les aplats d'accent sont d'abord des fonds de tableau.
+SEUIL_TABLEAU = apca.seuil_pour(TAILLE_TABLEAU)      # 90
+GROS_TITRE = apca.seuil_pour(TAILLE_GROS_TITRE)      # 60
+NON_TEXTE = apca.LC_NON_TEXTUEL                      # 30 — un filet n'a pas de taille
 
 # Les 6 couleurs de marque (COULEURS_NUMERO de l'extension / PALETTE d'accent-css.py).
 COULEURS = [('rouge', '#D31932'), ('capucine', '#EB5E51'), ('moutarde', '#C7CF1C'),
@@ -104,10 +143,12 @@ COULEURS = [('rouge', '#D31932'), ('capucine', '#EB5E51'), ('moutarde', '#C7CF1C
 # apca.CONTRAT[cran] = (couleur de texte admise ou None, |Lc| garanti, libellé d'usage).
 CRANS = [cran for cran, _ in apca.CLARTES]
 
-# Tolérance sur le |Lc| garanti : les hex de couleurs.css sont arrondis à l'octet, donc
-# le Lc mesuré ne retombe jamais au centième sur la valeur annoncée. 0,5 laisse passer
-# l'arrondi et rien d'autre.
-MARGE_GARANTI = 0.5
+# La tolérance ne vit plus ici : elle est UNIQUE pour toute la chaîne (apca.TOLERANCE_SEUIL
+# = 0,5) et s'applique par apca.tient, aussi bien au |Lc| garanti qu'au seuil d'usage. Ce
+# script en avait sa propre copie, appliquée au seul |Lc| garanti — d'où l'incohérence que
+# ce lot corrige : le même arrondi hexadécimal était toléré sur une comparaison et pas sur
+# l'autre. Le nom est conservé comme simple relais lisible.
+MARGE_GARANTI = apca.TOLERANCE_SEUIL
 
 CSS = accent.couleurs_css()
 lignes = []      # (libelle, texte, fond, lc, seuil, ok)
@@ -116,6 +157,26 @@ ecarts = []      # (libelle, lc mesuré, |Lc| garanti annoncé) quand le contrat
 alterees = []    # (nom, cran, hex de charte, hex lu) si le cran de charte n'est pas la charte
 alias_faux = []  # (nom, cran, hex de charte, hex lu) si -marque n'est plus l'alias du cran
 dispersions = [] # (cran, min, max, dispersion, tolérance, ok) — une ligne par cran
+arbitrages = []  # (libelle, lc mesuré, seuil, raison) — voir HORS_PERIMETRE
+
+# ─── Paires mesurées mais HORS PÉRIMÈTRE de ce lot ─────────────────────────────────
+# Ces paires sont mesurées et affichées comme les autres, au bon seuil ; simplement, leur
+# échec ne fait pas tomber le script — il est reporté dans une section « À ARBITRER ».
+# POURQUOI cette catégorie existe, et pourquoi elle est nommée plutôt qu'implicite : en
+# appliquant enfin le bon seuil, on découvre des manquements dans des jetons de MAQUETTE que
+# ce lot n'a pas mandat de retoucher (la corriger demanderait de changer la taille d'un
+# élément dans print.css, ou l'aspect d'un jeton annuel). Les taire serait malhonnête ; les
+# compter en échec rendrait le vérificateur rouge en permanence et le ferait ignorer. On les
+# isole donc, avec la raison écrite, pour qu'elles soient tranchées et non oubliées.
+# Toute autre paire qui échoue fait tomber le script, comme avant.
+HORS_PERIMETRE = {
+    '--c-kw-bg': "puces .szh-kw à 10 px (print.css) : plus petit que tout ce que les "
+                 "quatre niveaux d'APCA couvrent. Corriger = grossir la puce (print.css) "
+                 "ou éclaircir le mélange à 22 % (accent-css.py).",
+    '--c-annual-text': "aucun consommateur : nulle règle de print.css ne fait "
+                       "`color: var(--c-annual-text)`. Sans taille, pas de seuil "
+                       "déductible — le jeton est mesuré à titre indicatif.",
+}
 
 
 def var(nom):
@@ -126,18 +187,35 @@ def var(nom):
     return hexa
 
 
-def mesure(libelle, texte, fond, seuil):
+def mesure(libelle, texte, fond, seuil, hors_perimetre=None):
     """Ajoute une paire au tableau. `texte`/`fond` peuvent être None (variable absente
-    de couleurs.css) : la paire est alors comptée en échec."""
+    de couleurs.css) : la paire est alors comptée en échec.
+
+    La comparaison passe par apca.tient, donc avec la TOLÉRANCE de 0,5 : c'est le point
+    unique où mesure et seuil se rencontrent dans ce script, et il ne doit pas y en avoir
+    d'autre. `hors_perimetre` est la clé du jeton dans HORS_PERIMETRE : un échec y est
+    dérouté vers la section « à arbitrer » au lieu de faire tomber le script."""
     if texte is None or fond is None:
         lignes.append((libelle, texte or '?', fond or '?', None, seuil, False))
         return
     valeur = apca.lc(texte, fond)
-    lignes.append((libelle, texte, fond, valeur, seuil, abs(valeur) >= seuil))
+    ok = apca.tient(valeur, seuil)
+    if not ok and hors_perimetre:
+        arbitrages.append((libelle, valeur, seuil, HORS_PERIMETRE[hors_perimetre]))
+        ok = 'arbitrer'
+    lignes.append((libelle, texte, fond, valeur, seuil, ok))
 
 
 def titre(libelle):
     lignes.append((libelle, None, None, None, None, None))
+
+
+def _nb(x, decimales=1):
+    """Nombre à la française (virgule décimale), zéros de queue retirés : 13.6 -> « 13,6 »,
+    14.0 -> « 14 », 0.5 -> « 0,5 ». Sert aux TAILLES et aux marges de diagnostic, jamais aux
+    Lc du tableau — ceux-là passent par apca.lc_affiche, qui n'a pas de décimale du tout."""
+    texte = ('%.*f' % (decimales, x)).rstrip('0').rstrip('.')
+    return texte.replace('.', ',')
 
 
 # ═══ 1. La grille à clarté fixe, telle qu'écrite dans couleurs.css ════════════════
@@ -156,24 +234,27 @@ for nom, marque in COULEURS:
             # On AFFICHE quand même la meilleure polarité (sans en faire un seuil à tenir) :
             # c'est ce chiffre qui justifie l'interdiction écrite dans couleurs.css.
             # Attention à la lecture : la teinte la plus favorable peut FRÔLER les 60 du
-            # gros titre (poireau, +60,5). Ce n'est pas une autorisation. Dans une grille à
+            # gros titre (poireau, +60). Ce n'est pas une autorisation. Dans une grille à
             # clarté fixe, un cran doit signifier la MÊME chose pour les six teintes, et la
-            # garantie est le PIRE des six (56,3 < 60). « Aucun texte » vaut donc pour tout
+            # garantie est le PIRE des six (56 < 60). « Aucun texte » vaut donc pour tout
             # le cran, y compris la teinte qui s'en sortirait de justesse.
             if fond is not None:
                 gagnant, valeur = apca.meilleure_polarite(fond)
-                lignes.append(('%s -%s (au mieux : %s — garantie du cran : %.1f < 60)'
+                lignes.append(('%s -%s (au mieux : %s — garantie du cran : %s < 60)'
                                % (nom, cran, 'noir' if gagnant == apca.NOIR else 'blanc',
-                                  garanti),
+                                  apca.lc_affiche(garanti)),
                                gagnant, fond, valeur, None, 'info'))
-                # Le vrai contrôle du cran décoratif : le |Lc| annoncé (56,3) doit bien
+                # Le vrai contrôle du cran décoratif : le |Lc| annoncé (56) doit bien
                 # être le PLANCHER des six teintes. Si une teinte descend en dessous,
                 # l'en-tête de couleurs.css et la planche mentent.
-                if abs(valeur) < garanti - MARGE_GARANTI:
+                if not apca.tient(valeur, garanti):
                     ecarts.append(('%s -%s (meilleure polarité)' % (nom, cran),
                                    abs(valeur), garanti))
             continue
-        seuil = TEXTE if usage == 'texte courant' else GROS_TITRE
+        # Le seuil se DÉDUIT de l'usage annoncé par le contrat, parce que l'usage porte la
+        # taille (« dès 14 px » -> 90, « à partir de 18 px » -> 75, « gros titre » -> 60).
+        # Aucun seuil n'est choisi ici : c'est apca.py qui décide, et couleurs.css l'annonce.
+        seuil = apca.SEUIL_USAGE[usage]
         mesure('%s -%s (fond, texte %s — %s)'
                % (nom, cran, 'noir' if texte == NOIR else 'blanc', usage),
                texte, fond, seuil)
@@ -181,7 +262,7 @@ for nom, marque in COULEURS:
         # en tête de couleurs.css ? Sinon le CSS promet plus qu'il ne tient.
         if fond is not None:
             valeur = abs(apca.lc(texte, fond))
-            if valeur < garanti - MARGE_GARANTI:
+            if not apca.tient(valeur, garanti):
                 ecarts.append(('%s -%s' % (nom, cran), valeur, garanti))
 
     # La couleur de CHARTE, prise en tant que « marque » (accent brut de la maquette) : on
@@ -235,27 +316,64 @@ for cran in CRANS:
 
 # ═══ 2. Alias lus par accent-css.py pour les tableaux ═════════════════════════════
 # Noms figés, cibles nouvelles : -normal = -marque, donc le CRAN de charte (700 pour le
-# rouge, 300 pour la moutarde, 500 pour les quatre autres) ; -clair = cran 200 ; -fonce =
-# cran 700 — qui, pour le rouge, EST la charte : le fond « negatif » d'un tableau rouge et
-# le --c-annual-deep d'un numéro rouge valent #D31932 et non plus le #C3112C calculé.
-# On les remesure ICI, en suivant les renvois var(), au lieu de faire
-# confiance au §1 : si quelqu'un repointe -clair vers le 300 ou le 400 (crans SANS texte
-# courant), le §1 resterait vert et c'est cette section-là qui doit crier.
+# rouge, 300 pour la moutarde, 500 pour les quatre autres) ; -clair = cran 100 ; -fonce =
+# cran 800.
+# CES DEUX CIBLES ONT MONTÉ D'UN CRAN (avant : 200 et 700). Raison : ce sont les fonds des
+# TABLEAUX, et le texte d'un tableau est à 13,6 px, donc son seuil est 90 — les crans 200 et
+# 700 plafonnent à 80 et avaient été retenus sous l'ancien seuil, faux, de 75.
+# Conséquence pour le ROUGE : -fonce n'est plus la charte #D31932 (cran 700) mais #9F001F
+# (cran 800). Le rouge de charte quitte le rôle de fond « négatif » des tableaux.
+# On remesure ICI, en suivant les renvois var(), au lieu de faire confiance au §1 : si
+# quelqu'un repointe -clair ou -fonce vers un cran qui ne tient pas le seuil du texte de
+# tableau — les crans 200 à 700 en font tous partie, y compris ceux que le §1 déclare bons
+# « à partir de 18 px » —, le §1 resterait VERT et c'est cette section-là qui doit crier.
 titre("Alias des tableaux (--szh-accent* = --c-<nom>-normal/-clair/-fonce)")
+cran_clair, cran_fonce = dict(apca.ALIAS)['clair'], dict(apca.ALIAS)['fonce']
+
+
+def cran_vise(nom, hexa):
+    """Sur QUEL cran de la teinte `nom` l'alias aboutit-il réellement ?
+
+    On retrouve le cran par son hex, au lieu de croire l'intention : c'est ce qui permet à
+    un échec de dire « pointe sur le cran 700 » plutôt que le seul « Lc trop faible ». Un
+    message qui nomme le cran fautif se répare en une ligne ; un message qui ne donne que
+    la mesure oblige à rouvrir le CSS et à comparer six hex à la main."""
+    if hexa is None:
+        return '?'
+    for cran in CRANS:
+        if (var('--c-%s-%s' % (nom, cran)) or '').upper() == hexa.upper():
+            return cran
+    return 'hors grille'
+
+
 for nom, marque in COULEURS:
-    mesure('%s -clair (fond « couleur », texte noir) = cran 200' % nom,
-           NOIR, var('--c-%s-clair' % nom), TEXTE)
-    mesure('%s -fonce (fond « negatif », texte blanc) = cran 700' % nom,
-           BLANC, var('--c-%s-fonce' % nom), TEXTE)
+    # Seuil du texte de TABLEAU (13,6 px) = 90, et non le seuil d'usage du cran visé : un
+    # alias mal repointé doit échouer même si le cran, pris en lui-même, est conforme à sa
+    # propre étiquette. C'est exactement le cas des crans 200 et 700.
+    for alias, attendu, encre, role in (('clair', cran_clair, NOIR, 'couleur'),
+                                        ('fonce', cran_fonce, BLANC, 'negatif')):
+        hexa = var('--c-%s-%s' % (nom, alias))
+        atteint = cran_vise(nom, hexa)
+        # Le libellé porte le cran ATTEINT, et signale l'écart quand ce n'est pas celui
+        # qu'on attendait : c'est là que se lit la régression, pas dans le Lc.
+        ecart = '' if atteint == attendu else ' — ATTENDU le cran %s' % attendu
+        mesure('%s -%s (fond « %s », texte %s de %s px) -> cran %s%s'
+               % (nom, alias, role, 'noir' if encre == NOIR else 'blanc',
+                  _nb(TAILLE_TABLEAU), atteint, ecart),
+               encre, hexa, SEUIL_TABLEAU)
     mesure('%s -normal (accent brut sur papier) = marque' % nom,
            var('--c-%s-normal' % nom), BLANC, NON_TEXTE)
 
 # ═══ 3. Teintes neutres et replis gris ════════════════════════════════════════════
+# Tous ces fonds portent du texte de TABLEAU (13,6 px), donc tous se jugent à 90. Bonne
+# nouvelle du relèvement : les quatre passent sans retouche — les gris de repli de print.css
+# étaient déjà largement au-dessus (95 et 95), et les deux neutres aussi (91 et 98). Le
+# seuil faux n'avait donc jamais rien coûté ICI ; il ne coûtait que sur les aplats COLORÉS.
 titre("Teintes neutres des tableaux + replis gris de print.css")
-mesure('--szh-gris-clair (en-têtes/total gris)', NOIR, var('--szh-gris-clair'), TEXTE)
-mesure('--szh-zebre (zébrage, texte de corps)', NOIR, var('--szh-zebre'), TEXTE)
-mesure('repli --szh-accent-fonce #4a4a4a', BLANC, '#4a4a4a', TEXTE)
-mesure('repli --szh-accent-clair #ededed', NOIR, '#ededed', TEXTE)
+mesure('--szh-gris-clair (en-têtes/total gris)', NOIR, var('--szh-gris-clair'), SEUIL_TABLEAU)
+mesure('--szh-zebre (zébrage, texte de corps)', NOIR, var('--szh-zebre'), SEUIL_TABLEAU)
+mesure('repli --szh-accent-fonce #4a4a4a', BLANC, '#4a4a4a', SEUIL_TABLEAU)
+mesure('repli --szh-accent-clair #ededed', NOIR, '#ededed', SEUIL_TABLEAU)
 mesure('repli --szh-accent #9a9a9a (accent brut)', '#9a9a9a', BLANC, NON_TEXTE)
 # Numéro SANS couleur annuelle : les filets de tableau tombent sur ce gris (print.css).
 mesure('repli --c-annual-ui #8f8f95 (filet sur papier)', '#8f8f95', BLANC, NON_TEXTE)
@@ -268,10 +386,19 @@ for nom, marque in COULEURS:
     # Texte sur l'aplat annuel : GROS titre uniquement (cf. §1, niveau 500).
     mesure('%s --c-on-annual sur --c-annual' % nom,
            j['--c-on-annual'], j['--c-annual'], GROS_TITRE)
-    mesure('%s --c-annual-text sur papier' % nom, j['--c-annual-text'], BLANC, TEXTE)
-    mesure('%s --c-kw-bg (mots-clés, texte noir)' % nom, NOIR, j['--c-kw-bg'], TEXTE)
-    mesure('%s --annual-soft (encadré, texte noir)' % nom, NOIR, j['--annual-soft'], TEXTE)
-    mesure('%s --annual-tint (bande, texte noir)' % nom, NOIR, j['--annual-tint'], TEXTE)
+    # Deux jetons HORS PÉRIMÈTRE (voir HORS_PERIMETRE) : mesurés au bon seuil, mais leur
+    # échec est reporté « à arbitrer » et ne fait pas tomber le script.
+    mesure('%s --c-annual-text sur papier (aucun consommateur)' % nom,
+           j['--c-annual-text'], BLANC, apca.seuil_pour(TAILLE_CORPS),
+           hors_perimetre='--c-annual-text')
+    mesure('%s --c-kw-bg (puce .szh-kw, texte noir de %s px)' % (nom, _nb(TAILLE_KW)),
+           NOIR, j['--c-kw-bg'], apca.seuil_pour(TAILLE_KW),
+           hors_perimetre='--c-kw-bg')
+    # Encadré et bande portent du corps de texte à 14 px : seuil 90, tenu par les six.
+    mesure('%s --annual-soft (encadré, texte noir de %s px)' % (nom, _nb(TAILLE_CORPS)),
+           NOIR, j['--annual-soft'], apca.seuil_pour(TAILLE_CORPS))
+    mesure('%s --annual-tint (bande, texte noir de %s px)' % (nom, _nb(TAILLE_CORPS)),
+           NOIR, j['--annual-tint'], apca.seuil_pour(TAILLE_CORPS))
     mesure('%s --c-annual-ui (filet sur papier)' % nom, j['--c-annual-ui'], BLANC, NON_TEXTE)
     # Les 3 filets de tableau (print.css § Bordures) portent --c-annual-ui et tombent
     # souvent sur une rangée zébrée : c'est la paire réellement utilisée, pas la couleur
@@ -280,17 +407,18 @@ for nom, marque in COULEURS:
            j['--c-annual-ui'], var('--szh-zebre'), NON_TEXTE)
     mesure('%s --c-abstract-border (bordure/papier)' % nom,
            j['--c-abstract-border'], BLANC, NON_TEXTE)
-    # --c-annual-deep = cran 700, le MÊME que l'alias -fonce des tableaux : une seule
-    # règle « fond sombre à texte blanc » dans toute la chaîne.
-    mesure('%s --c-annual-deep (fond, texte blanc) = cran 700' % nom,
-           BLANC, j['--c-annual-deep'], TEXTE)
+    # --c-annual-deep = le MÊME cran que l'alias -fonce des tableaux (800) : une seule règle
+    # « fond sombre à texte blanc » dans toute la chaîne. Le cran est lu dans apca.ALIAS des
+    # deux côtés, donc les deux jetons ne peuvent plus se désynchroniser.
+    mesure('%s --c-annual-deep (fond, texte blanc) = cran %s' % (nom, cran_fonce),
+           BLANC, j['--c-annual-deep'], SEUIL_TABLEAU)
 
 
 # ═══ 5. Sortie ════════════════════════════════════════════════════════════════════
 
 def afficher():
     largeur = max(len(l[0]) for l in lignes)
-    entete = '%-*s  %-7s  %-7s  %8s  %6s  %s' % (
+    entete = '%-*s  %-7s  %-7s  %6s  %6s  %s' % (
         largeur, 'PAIRE', 'TEXTE', 'FOND', 'Lc', 'SEUIL', 'VERDICT')
     print(entete)
     # Filets en ASCII pur : la sortie doit rester lisible dans une console Windows
@@ -301,23 +429,53 @@ def afficher():
             print()
             print('-- %s ' % libelle + '-' * max(0, len(entete) - len(libelle) - 4))
             continue
+        # Lc SANS DÉCIMALE, signe conservé : la règle d'affichage de toute la chaîne
+        # (apca.lc_affiche). Les seules décimales de cette sortie sont dans les lignes de
+        # diagnostic qui suivent le tableau, et elles s'annoncent comme telles.
+        affiche = apca.lc_affiche(valeur, signe=True) if valeur is not None else '0'
         if ok == 'info':                     # mesure affichée, aucun seuil à tenir
-            print('%-*s  %-7s  %-7s  %+8.1f  %6s  %s' % (
-                largeur, libelle, texte.upper(), fond.upper(), valeur, '-', 'info'))
+            print('%-*s  %-7s  %-7s  %6s  %6s  %s' % (
+                largeur, libelle, texte.upper(), fond.upper(), affiche, '-', 'info'))
             continue
-        print('%-*s  %-7s  %-7s  %+8.1f  %6s  %s' % (
+        verdict = {True: 'OK', False: 'ÉCHEC', 'arbitrer': 'À ARBITRER'}[ok]
+        print('%-*s  %-7s  %-7s  %6s  %6s  %s' % (
             largeur, libelle, texte.upper(), fond.upper(),
-            valeur if valeur is not None else 0.0,
-            '>= %d' % seuil, 'OK' if ok else 'ÉCHEC'))
+            affiche, '>= %d' % seuil, verdict))
     echecs = [l for l in lignes if l[5] is False]
     total = len([l for l in lignes if l[5] is not None and l[5] != 'info'])
+    print()
+    print('Rappel de lecture : les Lc du tableau sont ARRONDIS À L\'ENTIER (règle commune à')
+    print('couleurs.css et à la planche). Les lignes de diagnostic ci-dessous gardent UNE')
+    print('décimale, parce qu\'elles servent à juger des marges de l\'ordre du dixième.')
+    print('Les seuils viennent de la TAILLE du texte : %s px -> %d, %s px -> %d, '
+          '18 px -> %d, 24 px -> %d.'
+          % (_nb(TAILLE_KW), apca.seuil_pour(TAILLE_KW), _nb(TAILLE_TABLEAU),
+             SEUIL_TABLEAU, apca.LC_TEXTE_18, GROS_TITRE))
+    print('Tolérance de %s sur toute comparaison mesure/seuil (apca.TOLERANCE_SEUIL).'
+          % _nb(apca.TOLERANCE_SEUIL))
     print()
     if manquants:
         print('Variables introuvables dans couleurs.css : %s' % ', '.join(sorted(set(manquants))))
     print('%d paires vérifiées, %d échec(s).' % (total, len(echecs)))
     for libelle, texte, fond, valeur, seuil, _ in echecs:
-        print('  ÉCHEC  %s : %s sur %s -> Lc %+.1f (seuil %d)' % (
-            libelle, texte.upper(), fond.upper(), valeur or 0.0, seuil))
+        print('  ÉCHEC  %s : %s sur %s -> Lc %+.1f (seuil %d, tolérance %.1f)' % (
+            libelle, texte.upper(), fond.upper(), valeur or 0.0, seuil,
+            apca.TOLERANCE_SEUIL))
+
+    # Les paires HORS PÉRIMÈTRE qui ne tiennent pas leur seuil. Elles ne font pas tomber le
+    # script (voir HORS_PERIMETRE), mais elles s'affichent en clair avec leur raison : ce
+    # sont des décisions à prendre, pas des détails à ranger sous le tapis.
+    if arbitrages:
+        print()
+        print('%d paire(s) À ARBITRER — mesurées au bon seuil, hors périmètre de ce lot :'
+              % len(arbitrages))
+        for libelle, valeur, seuil, raison in arbitrages:
+            print('  ARBITRER  %s : Lc %+.1f pour un seuil de %d' % (libelle, valeur, seuil))
+        # La raison est imprimée UNE fois par jeton et non par teinte : six lignes
+        # identiques noieraient l'information au lieu de la porter.
+        for cle, raison in sorted(HORS_PERIMETRE.items()):
+            if any(cle in l for l, _, _, _ in arbitrages):
+                print('    %s -> %s' % (cle, raison))
 
     # Quatre familles d'échec qui ne sont pas des « paires » : le |Lc| garanti que l'en-tête
     # de couleurs.css annonce, l'intégrité des 6 hex de charte sur leur cran, l'alias
@@ -331,6 +489,20 @@ def afficher():
     else:
         print('Contrat des |Lc| garantis : tenu par les %d paires de la grille.'
               % (len(CRANS) * len(COULEURS)))
+        # La MARGE de chaque cran au seuil de son usage, en clair et avec une décimale :
+        # c'est le tableau qui aurait montré tout de suite que le cran 800 ne tenait ses 90
+        # que par la tolérance (marge 0,0). Il est imprimé même quand tout passe — un
+        # contrat tenu « de justesse » est une information, pas un non-événement.
+        print('Marge de chaque cran au seuil de son usage (|Lc| garanti - seuil) :')
+        for cran in CRANS:
+            encre, garanti, usage = apca.CONTRAT[cran]
+            seuil = apca.SEUIL_USAGE[usage]
+            marge = garanti - seuil
+            alerte = ''
+            if encre is not None and marge < 0:
+                alerte = '  <- ne passe que par la tolérance de %s' % _nb(apca.TOLERANCE_SEUIL)
+            print('  %-4s garanti %5.1f  seuil %3d  marge %+5.1f  (%s)%s'
+                  % (cran, garanti, seuil, marge, usage, alerte))
     if alterees:
         print('Cran(s) de CHARTE qui ne portent PAS la charte — elle n\'est pas négociable :')
         for nom, cran, attendu, lu in alterees:
@@ -366,19 +538,40 @@ def afficher():
             print('  CLARTÉ  cran %s : écart %.3f > %.3f toléré (de %.3f à %.3f)'
                   % (cran, disp, tolerance, mini, maxi))
 
-    # Le cahier des charges d'origine exige « au moins 3 et 3 » : au moins 3 crans portant
-    # du texte courant NOIR et 3 du texte courant BLANC. On le recompte à partir du
-    # contrat réel plutôt que de l'affirmer en commentaire.
-    noirs = [c for c in CRANS if apca.CONTRAT[c][0] == NOIR
-             and apca.CONTRAT[c][2] == 'texte courant']
-    blancs = [c for c in CRANS if apca.CONTRAT[c][0] == BLANC
-              and apca.CONTRAT[c][2] == 'texte courant']
+    # Recomptage des crans porteurs de texte, à partir du contrat réel et non d'une
+    # affirmation en commentaire. Deux comptes, parce que la correction de ce lot les a
+    # SÉPARÉS et que ne montrer que l'un des deux tromperait :
+    #   - « texte courant », toutes tailles confondues : c'est l'exigence historique du
+    #     cahier des charges (« au moins 3 et 3 »), et elle reste tenue ;
+    #   - utilisables pour du TEXTE DE TABLEAU (13,6 px, seuil 90) : c'est le compte qui
+    #     compte désormais, et il est plus maigre — deux crans noirs, trois blancs.
+    def crans_pour(encre, usages):
+        return [c for c in CRANS if apca.CONTRAT[c][0] == encre
+                and apca.CONTRAT[c][2] in usages]
+
+    texte_courant = (apca.USAGE_TEXTE_14, apca.USAGE_TEXTE_18)
+    noirs, blancs = crans_pour(NOIR, texte_courant), crans_pour(BLANC, texte_courant)
+    noirs_14 = crans_pour(NOIR, (apca.USAGE_TEXTE_14,))
+    blancs_14 = crans_pour(BLANC, (apca.USAGE_TEXTE_14,))
     decoratifs = [c for c in CRANS if apca.CONTRAT[c][0] is None]
-    print('Texte courant : %d crans à texte noir (%s) et %d à texte blanc (%s) '
-          '-- exigence « au moins 3 et 3 » : %s.'
+    print('Texte courant, toutes tailles : %d crans à texte noir (%s) et %d à texte blanc '
+          '(%s) -- exigence « au moins 3 et 3 » : %s.'
           % (len(noirs), '/'.join(noirs), len(blancs), '/'.join(blancs),
              'tenue' if len(noirs) >= 3 and len(blancs) >= 3 else 'NON TENUE'))
+    print('Utilisables pour du TEXTE DE TABLEAU (%s px, seuil %d) : %d à texte noir (%s) '
+          'et %d à texte blanc (%s).'
+          % (_nb(TAILLE_TABLEAU), SEUIL_TABLEAU, len(noirs_14), '/'.join(noirs_14),
+             len(blancs_14), '/'.join(blancs_14)))
+    print('  (les crans %s portent du texte dès 18 px seulement : ni corps, ni tableau.)'
+          % '/'.join(c for c in CRANS if apca.CONTRAT[c][2] == apca.USAGE_TEXTE_18))
     print('Cran(s) décoratif(s), AUCUN TEXTE autorisé : %s.' % '/'.join(decoratifs))
+    # Les alias -clair et -fonce ont besoin d'AU MOINS un cran de chaque polarité utilisable
+    # à la taille du texte de tableau. C'est la vraie exigence structurelle depuis que le
+    # seuil est passé à 90 : sans elle, aucun fond de tableau coloré n'est possible.
+    if not noirs_14 or not blancs_14:
+        print('AUCUN cran utilisable pour un fond de tableau dans une polarité : '
+              'les alias -clair / -fonce n\'ont plus de cible valide.')
+        return 1
     if len(noirs) < 3 or len(blancs) < 3:
         return 1
     return 1 if (echecs or ecarts or alterees or alias_faux or ratees) else 0

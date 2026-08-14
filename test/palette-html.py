@@ -91,8 +91,11 @@ def echapper(t):
 
 
 def fr(x):
-    """Contraste à la française, signe compris : 90.1 -> « +90,1 »."""
-    return ('%+.1f' % x).replace('.', ',')
+    """Le Lc tel qu'il s'affiche PARTOUT dans la chaîne : entier signé, sans décimale
+    (79,7 -> « +80 » ; −102,0 -> « −102 »). La règle vit dans apca.lc_affiche, pas ici :
+    la planche ne doit pas avoir sa propre façon d'arrondir, sinon elle finirait par
+    contredire couleurs.css et le vérificateur sur la même couleur."""
+    return apca.lc_affiche(x, signe=True)
 
 
 def _tete(cran, hexa):
@@ -107,12 +110,27 @@ def _pied(lc_txt, role):
 
 # Taille des échantillons. Elles ne sont pas décoratives : ce sont les tailles que le
 # seuil du cran autorise, et c'est pour ça qu'elles sont affichées sur la case.
-#   corps  : 14 px = 0,875rem, la taille RÉELLE du corps de la maquette (print.css,
-#            --body-size) — l'échantillon montre donc ce que verra le lecteur.
-#   titre  : 19 px gras = le plancher du « gros texte » d'APCA, celui à partir duquel
-#            le seuil tombe de 75 à 60. Écrire plus gros flatterait le contraste.
-TAILLE_CORPS = '14 px'
-TAILLE_TITRE = '19 px gras'
+#   14 px : la taille RÉELLE du corps de la maquette (print.css, --body-size = 0,875rem),
+#           et le plancher du niveau 90. L'échantillon montre ce que verra le lecteur.
+#   18 px : le plancher du niveau 75. Un cran étiqueté « dès 18 px » ne peut PAS porter le
+#           corps de la maquette, et encore moins le texte des tableaux (13,6 px) — c'est
+#           exactement l'information que la version précédente de cette planche cachait,
+#           en présentant ces crans comme du « texte courant ».
+#   19 px gras : le plancher du « gros texte » d'APCA, celui à partir duquel le seuil tombe
+#           à 60. Écrire plus gros flatterait le contraste.
+# Chaque étiquette porte donc la taille, et l'échantillon est rendu À CETTE TAILLE : la
+# planche ne peut pas annoncer un seuil et montrer un autre corps.
+ETIQUETTE_TAILLE = {
+    apca.USAGE_TEXTE_14: 'dès 14 px',
+    apca.USAGE_TEXTE_18: 'dès 18 px',
+    apca.USAGE_GROS_TITRE: 'gros titre',
+}
+# Taille de rendu de l'échantillon, par usage (doit s'accorder avec les classes CSS).
+CLASSE_TAILLE = {
+    apca.USAGE_TEXTE_14: ('case__texte', 'Texte'),
+    apca.USAGE_TEXTE_18: ('case__texte case__texte--moyen', 'Texte'),
+    apca.USAGE_GROS_TITRE: ('case__texte case__texte--gros', 'Titre'),
+}
 
 
 def usage_interface(hexa, papier, zebre):
@@ -151,13 +169,17 @@ def pastille(hexa, cran, charte=False):
 
     Toutes les cases ont la MÊME forme ; ce qui change, c'est la taille de l'échantillon
     et ce qu'annonce l'étiquette, tous deux dictés par apca.CONTRAT :
-      texte courant : « Texte » à 14 px, la taille réelle du corps de la maquette ;
-      gros titres   : « Titre » à 19 px gras — le plancher du « gros texte » d'APCA,
-                      seul texte que le cran autorise ;
-      sans texte    : « Titre » en gros lui aussi, dans la meilleure polarité, mais
-                      l'étiquette dit « Pas pour les textes ». On montre le cas le
-                      plus FAVORABLE échouer, ce qui est l'information utile ;
-                      laisser la case muette n'en donnait aucune.
+      dès 14 px    : « Texte » à 14 px, la taille réelle du corps de la maquette. Ce sont
+                     les SEULS crans utilisables en fond de tableau (13,6 px) ;
+      dès 18 px    : « Texte » à 18 px. Le cran tient 75 mais pas 90 : il ne peut donc pas
+                     porter le corps de la maquette. L'étiquette le dit par sa taille, et
+                     l'échantillon est rendu à 18 px pour qu'on voie de quoi on parle ;
+      gros titre   : « Titre » à 19 px gras — le plancher du « gros texte » d'APCA,
+                     seul texte que le cran autorise ;
+      sans texte   : « Titre » en gros lui aussi, dans la meilleure polarité, mais
+                     l'étiquette dit « Pas pour les textes ». On montre le cas le
+                     plus FAVORABLE échouer, ce qui est l'information utile ;
+                     laisser la case muette n'en donnait aucune.
     Chaque case porte en plus son verdict d'usage en INTERFACE (filet, bordure, puce) :
     voir usage_interface().
 
@@ -192,11 +214,9 @@ def pastille(hexa, cran, charte=False):
     #    Le noir/blanc n'est PAS choisi par mesure ici : il est imposé par le contrat du
     #    cran (c'est tout l'intérêt d'une grille à clarté fixe).
     lc = apca.lc(texte_admis, hexa)
-    gros = (usage != 'texte courant')
+    classe_texte, echantillon = CLASSE_TAILLE[usage]
     role = '%s · %s' % ('texte blanc' if texte_admis == apca.BLANC else 'texte noir',
-                        TAILLE_TITRE if gros else TAILLE_CORPS)
-    classe_texte = 'case__texte case__texte--gros' if gros else 'case__texte'
-    echantillon = 'Titre' if gros else 'Texte'
+                        ETIQUETTE_TAILLE[usage])
     return (
         '<div class="case%s" style="--fond:%s;--encre-case:%s">'
         '%s%s<p class="%s">%s</p>%s%s</div>'
@@ -322,14 +342,23 @@ h1 {
   color: var(--encre-cal); margin: 0 0 14px;
 }
 
-/* Légende des trois seuils : la seule information à retenir avant de lire la planche. */
+/* Légende des QUATRE niveaux d'APCA : la seule information à retenir avant de lire la
+   planche. Ils étaient trois, et le premier était faux — « 75 = texte courant » sans dire
+   à partir de quelle taille. Un seuil APCA ne vaut que pour un couple (taille, graisse) :
+   la légende porte donc la taille sur chaque niveau, et le niveau qui s'applique VRAIMENT
+   ici (90, parce que le corps est à 14 px et les tableaux à 13,6 px) est mis en avant. */
 .seuils {
   display: flex; flex-wrap: wrap; gap: 0; margin: 32px 0 48px;
   border: 1px solid var(--filet); border-radius: 3px; background: var(--carte);
   box-shadow: var(--ombre); overflow: hidden;
 }
-.seuil { flex: 1 1 200px; padding: 16px 20px; border-right: 1px solid var(--filet); }
+.seuil { flex: 1 1 160px; padding: 16px 20px; border-right: 1px solid var(--filet); }
 .seuil:last-child { border-right: 0; }
+/* Le niveau réellement applicable à cette maquette : liseré haut en encre nuit. Une
+   emphase discrète suffit — la légende doit rester une légende, pas un panneau. */
+.seuil--notre { box-shadow: inset 0 3px 0 var(--nuit); }
+.seuil--notre .seuil__val { font-weight: 600; }
+.seuil__note strong { color: var(--encre); font-weight: 600; }
 .seuil__val {
   font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 21px;
   font-variant-numeric: tabular-nums; color: var(--nuit);
@@ -413,6 +442,14 @@ h1 {
   margin: 0; color: var(--encre-case); overflow-wrap: anywhere;
   height: 26px; display: flex; align-items: flex-end;
 }
+/* 18 px : le plancher du niveau 75. Les crans 200 et 700 ne portent du texte qu'à PARTIR
+   de cette taille — ils ne peuvent donc servir ni au corps de la maquette (14 px) ni au
+   texte des tableaux (13,6 px). L'échantillon est rendu à 18 px précisément pour qu'on
+   voie qu'il est plus gros que le corps : c'est la seule façon honnête de montrer un cran
+   que la version précédente de cette planche présentait comme du « texte courant ».
+   Même hauteur de bloc que les autres (la règle .case__texte ci-dessus) : seule la taille
+   de la police change, l'alignement des cases est préservé. */
+.case__texte--moyen { font-size: 18px; line-height: 1.15; }
 /* « Gros titre » au sens de la légende ci-dessus : 19 px en gras. Les crans 300, 500 et
    600 ne portent QUE ce texte-là — l'échantillon montre donc la taille autorisée, pas
    celle du corps de texte. */
@@ -495,9 +532,17 @@ td.num {
   couleurs de charte se déclinent en <strong>onze crans de même teinte</strong>, calculés en
   OKLab pour ne pas délaver la couleur, puis mesurés avec <strong>APCA</strong> — le calcul de
   contraste du futur WCAG 3.</p>
+  <p class="chapo"><strong>Un seuil de contraste ne vaut jamais seul : il dépend de la taille
+  du texte.</strong> C'est la correction que porte cette version de la planche. Le niveau 75,
+  longtemps présenté ici comme « le » seuil du texte courant, est en réalité le minimum
+  d'APCA et ne s'ouvre qu'à partir de 18 px. Or le corps de cette maquette est à 14 px et le
+  texte des tableaux à 13,6 px : le seuil qui s'applique à nous est <strong>90</strong>. Deux
+  crans en ont changé d'étiquette sans changer de couleur, le 200 et le 700 — ils plafonnent
+  à 80, ce qui est bon dès 18 px et insuffisant pour une cellule de tableau.</p>
   <p class="chapo">La lecture est directe : chaque case porte un échantillon dans la couleur de
   texte qu'elle admet et <em>à la taille qu'elle autorise</em> — « Texte » à 14 px, la taille
-  réelle du corps de la maquette, ou « Titre » à 19 px gras, le plancher du gros texte. Si un échantillon vous paraît
+  réelle du corps, « Texte » à 18 px pour les crans qui ne descendent pas plus bas, ou
+  « Titre » à 19 px gras, le plancher du gros texte. Si un échantillon vous paraît
   difficile à lire à l'écran, c'est que la mesure mentait, pas l'inverse. Un cran ne porte
   <strong>aucun texte</strong>, le 400 : c'est le point où ni le noir ni le blanc ne passent,
   inhérent à toute échelle saturée. Il est montré comme les autres, avec son étiquette
@@ -510,12 +555,17 @@ td.num {
   les trois crans les plus clairs ne passent nulle part, leur trait est barré.</p>
 
   <div class="seuils">
+    <div class="seuil seuil--notre"><div class="seuil__val">90</div>
+      <div class="seuil__quoi">Texte dès 14&nbsp;px</div>
+      <div class="seuil__note">le seuil de <strong>cette</strong> maquette : corps d'article
+      (14&nbsp;px) et texte de tableau (13,6&nbsp;px).</div></div>
     <div class="seuil"><div class="seuil__val">75</div>
-      <div class="seuil__quoi">Texte courant</div>
-      <div class="seuil__note">corps d'article, cellules et en-têtes de tableau. 90 = confortable.</div></div>
+      <div class="seuil__quoi">Texte dès 18&nbsp;px</div>
+      <div class="seuil__note">le minimum d'APCA, et seulement à cette taille. Ni le corps,
+      ni les tableaux.</div></div>
     <div class="seuil"><div class="seuil__val">60</div>
-      <div class="seuil__quoi">Gros titre</div>
-      <div class="seuil__note">à partir de 24 px, ou 19 px en gras.</div></div>
+      <div class="seuil__quoi">Gros texte</div>
+      <div class="seuil__note">à partir de 24&nbsp;px, ou 19&nbsp;px en gras.</div></div>
     <div class="seuil"><div class="seuil__val">30</div>
       <div class="seuil__quoi">Filet, bordure</div>
       <div class="seuil__note">tout élément qui n'est pas du texte mais porte du sens.</div></div>

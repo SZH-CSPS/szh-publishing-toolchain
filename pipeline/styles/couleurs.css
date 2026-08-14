@@ -1,43 +1,80 @@
 /* Couleurs annuelles SZH/CSPS — FICHIER ÉDITABLE À LA MAIN.
  *
- * ═══ Le contraste, en 5 lignes ═══════════════════════════════════════════════
+ * ═══ Le contraste, en 6 lignes ═══════════════════════════════════════════════
  * Les valeurs « Lc » annotées ci-dessous viennent d'APCA, le calcul de contraste du
  * futur WCAG 3 : il mesure la LISIBILITÉ PERÇUE d'un texte sur son fond, de 0 (invisible)
  * à ±106 (noir sur blanc). Le signe dit seulement le sens : Lc positif = texte NOIR sur
- * fond clair, Lc négatif = texte BLANC sur fond sombre. Retenez trois nombres :
- * |Lc| ≥ 75 pour du texte courant (90 = confortable), ≥ 60 pour un gros titre (≥ 24 px),
- * ≥ 30 pour un simple filet ou une bordure. En dessous, c'est trop peu contrasté.
+ * fond clair, Lc négatif = texte BLANC sur fond sombre.
+ * UN SEUIL NE VAUT JAMAIS SEUL : il dépend de la TAILLE et de la GRAISSE du texte.
+ * Quatre niveaux, et la taille qui va avec chacun :
+ *   |Lc| ≥ 90   texte courant, dès 14 px / graisse 400   ← le seuil de CETTE maquette
+ *   |Lc| ≥ 75   texte courant, mais seulement dès 18 px  (intertitres, libellés)
+ *   |Lc| ≥ 60   gros texte : ≥ 24 px, ou ≥ 19 px en gras (titres de couverture, aplats)
+ *   |Lc| ≥ 30   non textuel : filet, bordure, séparateur
  * (APCA remplace l'ancien ratio WCAG 2 « 4,5:1 », qui se trompait sur les teintes vives :
  *  il refusait des jaunes lisibles et acceptait des gris sombres illisibles.)
+ *
+ * ═══ POURQUOI 90, et non 75 ══════════════════════════════════════════════════
+ * Ce fichier a longtemps annoncé « ≥ 75 pour du texte courant ». C'était FAUX pour nos
+ * propres tailles. Le niveau 75 est le MINIMUM d'APCA, et il ne s'ouvre qu'à partir de
+ * 18 px. Or le corps de la maquette est à 14 px (print.css, --body-size: 0.875rem) et le
+ * texte des TABLEAUX à 0,85rem, soit 13,6 px. Les deux sont sous les 18 px : le seuil
+ * applicable est donc 90 partout où il y a du texte de lecture — aplats de tableau
+ * compris, et c'est précisément là que l'erreur se voyait.
+ * La revue est principalement NUMÉRIQUE : APCA, conçu pour les écrans auto-lumineux, est
+ * pleinement dans son domaine ici.
+ *
+ * ═══ Comment lire les Lc de ce fichier ═══════════════════════════════════════
+ * SANS DÉCIMALE, arrondis à l'entier. Un dixième de Lc n'est pas perceptible et ne se
+ * reproduit pas d'un arrondi hexadécimal à l'autre : l'afficher donnait une fausse
+ * précision, et invitait à lire « 79,7 » comme « en dessous de 80 » alors que l'écart est
+ * invisible. Corollaire, appliqué par tout le code : une TOLÉRANCE de 0,5 joue au moment
+ * de comparer une mesure à un seuil, de sorte qu'une valeur qui S'AFFICHE « 90 » SATISFAIT
+ * le seuil de 90. La clarté OKLab (« L »), elle, garde ses décimales : ce n'est pas un
+ * contraste mais une coordonnée.
  *
  * ═══ La grille : 11 crans à CLARTÉ FIXE ══════════════════════════════════════
  * Le NUMÉRO D'UN CRAN EST UNE CLARTÉ, pas une cible de contraste. Les six teintes
  * visent exactement la même échelle de clartés OKLab (L) :
  *      50 → 0,97    100 → 0,93    200 → 0,87    300 → 0,81    400 → 0,74
- *     500 → 0,66    600 → 0,59    700 → 0,52    800 → 0,45    900 → 0,38    950 → 0,31
+ *     500 → 0,66    600 → 0,59    700 → 0,52    800 → 0,444   900 → 0,38    950 → 0,31
  * Conséquence — la raison même de cette convention : « rouge-200 » et « poireau-200 » sont
  * aussi clairs l'un que l'autre. On peut donc changer la couleur annuelle d'un numéro sans
  * que la maquette change de densité. L'échelle PRÉCÉDENTE définissait chaque niveau par un
  * objectif de Lc (« le plus coloré qui tienne Lc 82 ») : atteindre 82 demande d'assombrir
  * beaucoup un bleu et très peu un jaune, donc un même numéro n'avait PAS la même clarté
  * selon la teinte. Le « 500 » de la moutarde était bien plus clair que celui du rouge.
- * (Une seule exception à la clarté commune, assumée : le cran qui porte la couleur de
- *  charte. Voir « La couleur de CHARTE EST un cran » ci-dessous.)
+ * LE 800 VAUT 0,444 ET NON 0,45 — ce n'est pas une coquille, ne la « corrigez » pas. À
+ * 0,45, la garantie du cran valait 90 pour 89,51 mesuré : elle ne franchissait le seuil que
+ * par la tolérance, avec neuf MILLIÈMES de marge. Or ce cran est le fond de tableau le plus
+ * utilisé (alias -fonce) et il porte du texte de 13,6 px : sa garantie ne peut pas tenir à
+ * un cheveu. Six millièmes de clarté en moins la portent à 90,2, soit 0,7 de marge sans
+ * tolérance, pour un déplacement invisible (un à deux niveaux par canal). Le prix, assumé :
+ * les écarts voisins passent de 0,07 à 0,076 (700 → 800) et à 0,064 (800 → 900). La
+ * progression régulière est une commodité de lecture, le seuil de 90 sur un fond de tableau
+ * est une promesse d'accessibilité.
+ * (Autre exception à la clarté commune, assumée elle aussi : le cran qui porte la couleur
+ *  de charte. Voir « La couleur de CHARTE EST un cran » ci-dessous.)
  *
  * ═══ Ce que GARANTIT chaque cran ═════════════════════════════════════════════
  * Le contraste n'est plus une cible : c'est une conséquence, qu'on MESURE. Le |Lc| ci-dessous
  * est le PIRE des six teintes (test/apca-check.py le revérifie cran par cran, teinte par
- * teinte). Trois états, et trois seulement :
- *   50 / 100 / 200      texte NOIR courant       |Lc| ≥ 79,6   (99,8 · 91,4 · 79,6)
- *   300                 texte NOIR, GROS TITRES  |Lc| ≥ 68,3   (< 75 : pas de texte courant)
- *   400                 AUCUN TEXTE — décoratif  |Lc| ≤ 56,3   (voir ci-dessous)
- *   500 / 600           texte BLANC, GROS TITRES |Lc| ≥ 60,9   (60,9 · 71,7)
- *   700 / 800 / 900 / 950  texte BLANC courant   |Lc| ≥ 79,7   (79,7 · 89,5 · 96,4 · 102,0)
- * Soit 3 crans pour du texte noir courant et 4 pour du texte blanc courant.
- * Deux de ces garanties sont fixées par un hex de CHARTE et non par un cran calculé :
- * le 500 par le bleu acier (60,9 — le seuil gros titre, 60, tient) et le 700 par le rouge
- * (79,7 — le seuil texte courant, 75, tient). C'est le seul effet mesurable, sur les
- * contrastes, du remplacement décrit plus bas.
+ * teinte). Chaque ligne porte la TAILLE à laquelle le cran est utilisable :
+ *   50 / 100         texte NOIR dès 14 px      |Lc| ≥ 91    (100 · 91)
+ *   200              texte NOIR dès 18 px      |Lc| ≥ 80    (< 90 : NI corps NI tableau)
+ *   300              texte NOIR, gros titre    |Lc| ≥ 68
+ *   400              AUCUN TEXTE — décoratif   |Lc| ≤ 56    (voir ci-dessous)
+ *   500 / 600        texte BLANC, gros titre   |Lc| ≥ 61    (61 · 72)
+ *   700              texte BLANC dès 18 px     |Lc| ≥ 80    (< 90 : NI corps NI tableau)
+ *   800 / 900 / 950  texte BLANC dès 14 px     |Lc| ≥ 90    (90 · 96 · 102)
+ * Soit DEUX crans pour du texte noir de 14 px et TROIS pour du texte blanc de 14 px : c'est
+ * ce qui reste quand on applique le bon seuil. Les crans 200 et 700 n'ont pas changé de
+ * couleur — seulement d'étiquette : ils passaient pour du « texte courant » sous l'ancien
+ * seuil de 75, ils sont en réalité bons dès 18 px et pas à 13,6 px.
+ * Trois garanties sont fixées autrement que par un cran calculé à sa clarté théorique :
+ * le 500 par la charte bleu acier (61 — le seuil gros titre tient, de justesse), le 700 par
+ * la charte rouge (80 — le niveau des 18 px tient), et le 800 par le déplacement de clarté
+ * décrit plus haut (90 au lieu de 89,5, seule façon de le rendre utilisable à 14 px).
  *
  * LE CRAN 400 NE PORTE AUCUN TEXTE. C'est le point de croisement de l'échelle : en
  * descendant, le noir perd du contraste plus vite que le blanc n'en gagne, et les deux
@@ -89,105 +126,110 @@
 :root {
   /* ── Rouge ──────────────────────────────────────────────────────────────────
      Charte #D31932, clarté 0,555 : la plus sombre des six, et la seule à tomber à
-     mi-chemin entre deux crans, 600 (0,59) et 700 (0,52). Son |Lc| de 79,7 désigne
+     mi-chemin entre deux crans, 600 (0,59) et 700 (0,52). Son |Lc| de 80 désigne
      le 700 de justesse (écart 3,9, contre 4,1 pour le 600) — et le calcul tranche
-     dans le bon sens : à 79,7 la charte franchit le seuil du texte courant (75),
-     alors que sur le 600 elle n'aurait été bonne qu'aux gros titres.
+     dans le bon sens : à 80 la charte franchit le niveau des 18 px (75), alors que
+     sur le 600 elle n'aurait été bonne qu'aux gros titres.
+     ⚠ Mais 80 ne suffit PAS à 13,6 px : la charte rouge n'est donc plus le fond
+     « negatif » des tableaux (c'est le cran 800 qui l'est, voir les alias en fin de
+     fichier). Elle reste la couleur de la revue partout ailleurs.
      C'est ici que le remplacement coûte le plus cher : le cran 700 porte 0,035 de
      dispersion de clarté entre les six teintes, contre 0,002 ailleurs. Inévitable —
      retenir le 600 donnerait le même 0,035, dans l'autre sens.
      L'ancienne convention « la charte = le 500 » était ici la plus trompeuse de
      toutes : la charte est presque deux crans plus foncée que le 500. */
-  --c-rouge-50:            #FFF2F1;   /* L 0,97 — texte noir  : Lc  +99,9 */
-  --c-rouge-100:           #FFDFDD;   /* L 0,93 — texte noir  : Lc  +91,4 */
-  --c-rouge-200:           #FFC3BF;   /* L 0,87 — texte noir  : Lc  +79,6 */
-  --c-rouge-300:           #FFA5A1;   /* L 0,81 — texte noir  : Lc  +68,3 — GROS TITRES SEULEMENT */
-  --c-rouge-400:           #F88480;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +56,4 */
-  --c-rouge-500:           #E95D5F;   /* L 0,66 — texte blanc : Lc  −66,0 — GROS TITRES SEULEMENT */
-  --c-rouge-600:           #DB3641;   /* L 0,59 — texte blanc : Lc  −75,6 — GROS TITRES SEULEMENT */
-  --c-rouge-700:           #D31932;   /* = COULEUR DE CHARTE — clarté réelle 0,555 pour 0,52 visé (écart +0,035, le plus grand des six) — texte blanc : Lc −79,7 */
-  --c-rouge-800:           #A20020;   /* L 0,45 — texte blanc : Lc  −90,7 */
-  --c-rouge-900:           #810017;   /* L 0,38 — texte blanc : Lc  −96,9 */
-  --c-rouge-950:           #61000F;   /* L 0,31 — texte blanc : Lc −102,0 */
+  --c-rouge-50:            #FFF2F1;   /* L 0,97 — texte noir  : Lc +100 — dès 14 px */
+  --c-rouge-100:           #FFDFDD;   /* L 0,93 — texte noir  : Lc  +91 — dès 14 px */
+  --c-rouge-200:           #FFC3BF;   /* L 0,87 — texte noir  : Lc  +80 — dès 18 px SEULEMENT */
+  --c-rouge-300:           #FFA5A1;   /* L 0,81 — texte noir  : Lc  +68 — GROS TITRE SEULEMENT */
+  --c-rouge-400:           #F88480;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +56 */
+  --c-rouge-500:           #E95D5F;   /* L 0,66 — texte blanc : Lc  −66 — GROS TITRE SEULEMENT */
+  --c-rouge-600:           #DB3641;   /* L 0,59 — texte blanc : Lc  −76 — GROS TITRE SEULEMENT */
+  --c-rouge-700:           #D31932;   /* = COULEUR DE CHARTE — clarté réelle 0,555 pour 0,52 visé (écart +0,035, le plus grand des six) — texte blanc : Lc −80 — dès 18 px SEULEMENT */
+  --c-rouge-800:           #9F001F;   /* L 0,444 — texte blanc : Lc  −91 — dès 14 px */
+  --c-rouge-900:           #810017;   /* L 0,38 — texte blanc : Lc  −97 — dès 14 px */
+  --c-rouge-950:           #61000F;   /* L 0,31 — texte blanc : Lc −102 — dès 14 px */
   --c-rouge-marque:        var(--c-rouge-700);   /* ALIAS du cran de charte — pas un hex de plus */
 
   /* ── Capucine ───────────────────────────────────────────────────────────────
      Charte #EB5E51, clarté 0,661 : à un millième de la clarté du cran 500 (0,66).
      Le remplacement ne coûte donc RIEN ici — le 500 calculé retombait déjà sur ce
-     hex, au 1/255 près, et son |Lc| est identique (65,7 dans les deux cas). C'est le
+     hex, au 1/255 près, et son |Lc| est identique (66 dans les deux cas). C'est le
      cas le plus favorable des six, et il est propre à cette teinte. */
-  --c-capucine-50:         #FFF2F0;   /* L 0,97 — texte noir  : Lc  +99,9 */
-  --c-capucine-100:        #FFE0DB;   /* L 0,93 — texte noir  : Lc  +91,7 */
-  --c-capucine-200:        #FFC4BB;   /* L 0,87 — texte noir  : Lc  +79,8 */
-  --c-capucine-300:        #FFA69A;   /* L 0,81 — texte noir  : Lc  +68,4 — GROS TITRES SEULEMENT */
-  --c-capucine-400:        #F98476;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +56,3 */
-  --c-capucine-500:        #EB5E51;   /* = COULEUR DE CHARTE — clarté réelle 0,661 pour 0,66 visé (écart +0,001) — texte blanc : Lc −65,7 — GROS TITRES SEULEMENT */
-  --c-capucine-600:        #CC4E42;   /* L 0,59 — texte blanc : Lc  −75,4 — GROS TITRES SEULEMENT */
-  --c-capucine-700:        #AE3E35;   /* L 0,52 — texte blanc : Lc  −84,0 */
-  --c-capucine-800:        #912F28;   /* L 0,45 — texte blanc : Lc  −91,4 */
-  --c-capucine-900:        #74211B;   /* L 0,38 — texte blanc : Lc  −97,8 */
-  --c-capucine-950:        #591410;   /* L 0,31 — texte blanc : Lc −102,6 */
+  --c-capucine-50:         #FFF2F0;   /* L 0,97 — texte noir  : Lc +100 — dès 14 px */
+  --c-capucine-100:        #FFE0DB;   /* L 0,93 — texte noir  : Lc  +92 — dès 14 px */
+  --c-capucine-200:        #FFC4BB;   /* L 0,87 — texte noir  : Lc  +80 — dès 18 px SEULEMENT */
+  --c-capucine-300:        #FFA69A;   /* L 0,81 — texte noir  : Lc  +68 — GROS TITRE SEULEMENT */
+  --c-capucine-400:        #F98476;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +56 */
+  --c-capucine-500:        #EB5E51;   /* = COULEUR DE CHARTE — clarté réelle 0,661 pour 0,66 visé (écart +0,001) — texte blanc : Lc −66 — GROS TITRE SEULEMENT */
+  --c-capucine-600:        #CC4E42;   /* L 0,59 — texte blanc : Lc  −75 — GROS TITRE SEULEMENT */
+  --c-capucine-700:        #AE3E35;   /* L 0,52 — texte blanc : Lc  −84 — dès 18 px SEULEMENT */
+  --c-capucine-800:        #8E2E27;   /* L 0,444 — texte blanc : Lc  −92 — dès 14 px */
+  --c-capucine-900:        #74211B;   /* L 0,38 — texte blanc : Lc  −98 — dès 14 px */
+  --c-capucine-950:        #591410;   /* L 0,31 — texte blanc : Lc −103 — dès 14 px */
   --c-capucine-marque:     var(--c-capucine-500);   /* ALIAS du cran de charte — pas un hex de plus */
 
   /* ── Moutarde ───────────────────────────────────────────────────────────────
      Charte #C7CF1C, clarté 0,821 : la plus CLAIRE des six. Elle se lit au NOIR
-     (Lc +73,7), et c'est cette polarité qui l'envoie sur le 300 — le seul cran à
-     texte noir dont le |Lc| en soit voisin (71,6). Un cran à texte blanc de |Lc|
-     plus proche existe (le 600, 72,9) mais ne peut PAS l'accueillir : on ne remplace
+     (Lc +74), et c'est cette polarité qui l'envoie sur le 300 — le seul cran à
+     texte noir dont le |Lc| en soit voisin (72). Un cran à texte blanc de |Lc|
+     plus proche existe (le 600, 73) mais ne peut PAS l'accueillir : on ne remplace
      jamais un cran par une couleur de polarité opposée.
      Attention au changement de polarité dans la grille : le noir tient jusqu'au 300 —
      charte comprise, donc —, le 400 ne porte plus rien, et à partir du 500 c'est le
      BLANC qui lit. La charte moutarde reste bien du côté « texte noir ». */
-  --c-moutarde-50:         #F5F9D6;   /* L 0,97 — texte noir  : Lc +100,6 */
-  --c-moutarde-100:        #E8EFAB;   /* L 0,93 — texte noir  : Lc  +93,3 */
-  --c-moutarde-200:        #D6DE6A;   /* L 0,87 — texte noir  : Lc  +82,5 */
-  --c-moutarde-300:        #C7CF1C;   /* = COULEUR DE CHARTE — clarté réelle 0,821 pour 0,81 visé (écart +0,011) — texte noir : Lc +73,7 — GROS TITRES SEULEMENT */
-  --c-moutarde-400:        #ADB403;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +59,7 */
-  --c-moutarde-500:        #949A00;   /* L 0,66 — texte blanc : Lc  −62,5 — GROS TITRES SEULEMENT */
-  --c-moutarde-600:        #7F8400;   /* L 0,59 — texte blanc : Lc  −72,9 — GROS TITRES SEULEMENT */
-  --c-moutarde-700:        #6A6F00;   /* L 0,52 — texte blanc : Lc  −82,1 */
-  --c-moutarde-800:        #575A00;   /* L 0,45 — texte blanc : Lc  −90,2 */
-  --c-moutarde-900:        #434600;   /* L 0,38 — texte blanc : Lc  −97,1 */
-  --c-moutarde-950:        #313300;   /* L 0,31 — texte blanc : Lc −102,5 */
+  --c-moutarde-50:         #F5F9D6;   /* L 0,97 — texte noir  : Lc +101 — dès 14 px */
+  --c-moutarde-100:        #E8EFAB;   /* L 0,93 — texte noir  : Lc  +93 — dès 14 px */
+  --c-moutarde-200:        #D6DE6A;   /* L 0,87 — texte noir  : Lc  +82 — dès 18 px SEULEMENT */
+  --c-moutarde-300:        #C7CF1C;   /* = COULEUR DE CHARTE — clarté réelle 0,821 pour 0,81 visé (écart +0,011) — texte noir : Lc +74 — GROS TITRE SEULEMENT */
+  --c-moutarde-400:        #ADB403;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +60 */
+  --c-moutarde-500:        #949A00;   /* L 0,66 — texte blanc : Lc  −63 — GROS TITRE SEULEMENT */
+  --c-moutarde-600:        #7F8400;   /* L 0,59 — texte blanc : Lc  −73 — GROS TITRE SEULEMENT */
+  --c-moutarde-700:        #6A6F00;   /* L 0,52 — texte blanc : Lc  −82 — dès 18 px SEULEMENT */
+  --c-moutarde-800:        #555900;   /* L 0,444 — texte blanc : Lc  −91 — dès 14 px */
+  --c-moutarde-900:        #434600;   /* L 0,38 — texte blanc : Lc  −97 — dès 14 px */
+  --c-moutarde-950:        #313300;   /* L 0,31 — texte blanc : Lc −103 — dès 14 px */
   --c-moutarde-marque:     var(--c-moutarde-300);   /* ALIAS du cran de charte — pas un hex de plus */
 
   /* ── Poireau ────────────────────────────────────────────────────────────────
      Charte #51A66D, clarté 0,657 : quasiment sur le cran 500 (0,66), qu'elle prend
      pour trois millièmes d'écart. C'est aussi la teinte qui FIXE les garanties des
-     crans sombres CALCULÉS : ses Lc y sont les plus faibles des six (71,7 / 81,3 /
-     89,5 / 96,4 / 102,0 pour les crans 600 à 950). Si un cran sombre doit casser,
-     c'est ici — sauf au 500 et au 700, où ce sont maintenant les chartes bleu acier
-     (60,9) et rouge (79,7) qui tiennent le plancher. */
-  --c-poireau-50:          #ECF9EF;   /* L 0,97 — texte noir  : Lc +100,4 */
-  --c-poireau-100:         #D7EFDC;   /* L 0,93 — texte noir  : Lc  +92,9 */
-  --c-poireau-200:         #B9E0C2;   /* L 0,87 — texte noir  : Lc  +82,4 */
-  --c-poireau-300:         #9CD0A9;   /* L 0,81 — texte noir  : Lc  +72,0 — GROS TITRES SEULEMENT */
-  --c-poireau-400:         #7ABD8D;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +60,5 */
-  --c-poireau-500:         #51A66D;   /* = COULEUR DE CHARTE — clarté réelle 0,657 pour 0,66 visé (écart −0,003) — texte blanc : Lc −61,7 — GROS TITRES SEULEMENT */
-  --c-poireau-600:         #43905D;   /* L 0,59 — texte blanc : Lc  −71,7 — GROS TITRES SEULEMENT */
-  --c-poireau-700:         #35794C;   /* L 0,52 — texte blanc : Lc  −81,3 */
-  --c-poireau-800:         #27633C;   /* L 0,45 — texte blanc : Lc  −89,5 */
-  --c-poireau-900:         #1A4E2D;   /* L 0,38 — texte blanc : Lc  −96,4 */
-  --c-poireau-950:         #0E3A1F;   /* L 0,31 — texte blanc : Lc −102,0 */
+     crans sombres CALCULÉS : ses Lc y sont les plus faibles des six (72 / 81 / 90 /
+     96 / 102 pour les crans 600 à 950). Si un cran sombre doit casser, c'est ici —
+     sauf au 500 et au 700, où ce sont maintenant les chartes bleu acier (61) et
+     rouge (80) qui tiennent le plancher.
+     C'est donc le poireau qui a commandé le déplacement du cran 800 à 0,444 : son
+     Lc y valait 89,51 pour un seuil de 90, il vaut désormais 90,19. */
+  --c-poireau-50:          #ECF9EF;   /* L 0,97 — texte noir  : Lc +100 — dès 14 px */
+  --c-poireau-100:         #D7EFDC;   /* L 0,93 — texte noir  : Lc  +93 — dès 14 px */
+  --c-poireau-200:         #B9E0C2;   /* L 0,87 — texte noir  : Lc  +82 — dès 18 px SEULEMENT */
+  --c-poireau-300:         #9CD0A9;   /* L 0,81 — texte noir  : Lc  +72 — GROS TITRE SEULEMENT */
+  --c-poireau-400:         #7ABD8D;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +60 */
+  --c-poireau-500:         #51A66D;   /* = COULEUR DE CHARTE — clarté réelle 0,657 pour 0,66 visé (écart −0,003) — texte blanc : Lc −62 — GROS TITRE SEULEMENT */
+  --c-poireau-600:         #43905D;   /* L 0,59 — texte blanc : Lc  −72 — GROS TITRE SEULEMENT */
+  --c-poireau-700:         #35794C;   /* L 0,52 — texte blanc : Lc  −81 — dès 18 px SEULEMENT */
+  --c-poireau-800:         #26613B;   /* L 0,444 — texte blanc : Lc  −90 — dès 14 px, plancher du cran */
+  --c-poireau-900:         #1A4E2D;   /* L 0,38 — texte blanc : Lc  −96 — dès 14 px */
+  --c-poireau-950:         #0E3A1F;   /* L 0,31 — texte blanc : Lc −102 — dès 14 px */
   --c-poireau-marque:      var(--c-poireau-500);   /* ALIAS du cran de charte — pas un hex de plus */
 
   /* ── Bleu acier ─────────────────────────────────────────────────────────────
      Charte #5F9FBC, clarté 0,671 : la plus claire des quatre « voisines du 500 »,
      donc la moins contrastée au blanc. En prenant le 500, elle en devient le point
-     bas : c'est elle, et non plus le poireau, qui fixe la garantie du cran à 60,9.
-     Le seuil du gros titre (60) tient, avec 0,9 de marge — la plus mince du fichier,
+     bas : c'est elle, et non plus le poireau, qui fixe la garantie du cran à 61.
+     Le seuil du gros titre (60) tient, mais c'est la marge la plus mince du fichier,
      et la raison pour laquelle test/apca-check.py revérifie ce cran nommément. */
-  --c-bleuacier-50:        #EDF7FC;   /* L 0,97 — texte noir  : Lc +100,2 */
-  --c-bleuacier-100:       #D8EBF5;   /* L 0,93 — texte noir  : Lc  +92,4 */
-  --c-bleuacier-200:       #BBDAE9;   /* L 0,87 — texte noir  : Lc  +81,6 */
-  --c-bleuacier-300:       #9FC8DC;   /* L 0,81 — texte noir  : Lc  +70,9 — GROS TITRES SEULEMENT */
-  --c-bleuacier-400:       #7FB3CC;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +59,1 */
-  --c-bleuacier-500:       #5F9FBC;   /* = COULEUR DE CHARTE — clarté réelle 0,671 pour 0,66 visé (écart +0,011) — texte blanc : Lc −60,9 — GROS TITRES SEULEMENT, plancher du cran */
-  --c-bleuacier-600:       #4D869F;   /* L 0,59 — texte blanc : Lc  −72,8 — GROS TITRES SEULEMENT */
-  --c-bleuacier-700:       #3E7087;   /* L 0,52 — texte blanc : Lc  −82,2 */
-  --c-bleuacier-800:       #305C6F;   /* L 0,45 — texte blanc : Lc  −90,0 */
-  --c-bleuacier-900:       #224858;   /* L 0,38 — texte blanc : Lc  −96,8 */
-  --c-bleuacier-950:       #153542;   /* L 0,31 — texte blanc : Lc −102,3 */
+  --c-bleuacier-50:        #EDF7FC;   /* L 0,97 — texte noir  : Lc +100 — dès 14 px */
+  --c-bleuacier-100:       #D8EBF5;   /* L 0,93 — texte noir  : Lc  +92 — dès 14 px */
+  --c-bleuacier-200:       #BBDAE9;   /* L 0,87 — texte noir  : Lc  +82 — dès 18 px SEULEMENT */
+  --c-bleuacier-300:       #9FC8DC;   /* L 0,81 — texte noir  : Lc  +71 — GROS TITRE SEULEMENT */
+  --c-bleuacier-400:       #7FB3CC;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +59 */
+  --c-bleuacier-500:       #5F9FBC;   /* = COULEUR DE CHARTE — clarté réelle 0,671 pour 0,66 visé (écart +0,011) — texte blanc : Lc −61 — GROS TITRE SEULEMENT, plancher du cran */
+  --c-bleuacier-600:       #4D869F;   /* L 0,59 — texte blanc : Lc  −73 — GROS TITRE SEULEMENT */
+  --c-bleuacier-700:       #3E7087;   /* L 0,52 — texte blanc : Lc  −82 — dès 18 px SEULEMENT */
+  --c-bleuacier-800:       #2E5A6D;   /* L 0,444 — texte blanc : Lc  −91 — dès 14 px */
+  --c-bleuacier-900:       #224858;   /* L 0,38 — texte blanc : Lc  −97 — dès 14 px */
+  --c-bleuacier-950:       #153542;   /* L 0,31 — texte blanc : Lc −102 — dès 14 px */
   --c-bleuacier-marque:    var(--c-bleuacier-500);   /* ALIAS du cran de charte — pas un hex de plus */
 
   /* ── Mountbatten ────────────────────────────────────────────────────────────
@@ -195,61 +237,74 @@
      trois millièmes. C'est le cas qui illustre le mieux POURQUOI la dualité a sauté :
      le 500 calculé valait #A88798, un demi-point de Lc et un tiers d'octet plus loin.
      Deux hex indiscernables pour la même intention — il n'en reste qu'un.
-     Teinte peu saturée, donc la moins contrastée des six sur le cran 50 (99,8, la
+     Teinte peu saturée, donc la moins contrastée des six sur le cran 50 (100, la
      garantie du cran) : à clarté égale, une couleur pâle contraste un peu moins
      qu'une couleur vive. */
-  --c-mountbatten-50:      #F9F3F6;   /* L 0,97 — texte noir  : Lc  +99,8 */
-  --c-mountbatten-100:     #F0E4EA;   /* L 0,93 — texte noir  : Lc  +91,9 */
-  --c-mountbatten-200:     #E0CFD7;   /* L 0,87 — texte noir  : Lc  +80,6 */
-  --c-mountbatten-300:     #D0B9C5;   /* L 0,81 — texte noir  : Lc  +69,4 — GROS TITRES SEULEMENT */
-  --c-mountbatten-400:     #BEA2B0;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +57,9 */
-  --c-mountbatten-500:     #A98899;   /* = COULEUR DE CHARTE — clarté réelle 0,663 pour 0,66 visé (écart +0,003) — texte blanc : Lc −64,0 — GROS TITRES SEULEMENT */
-  --c-mountbatten-600:     #917383;   /* L 0,59 — texte blanc : Lc  −74,6 — GROS TITRES SEULEMENT */
-  --c-mountbatten-700:     #7A606E;   /* L 0,52 — texte blanc : Lc  −83,4 */
-  --c-mountbatten-800:     #644E59;   /* L 0,45 — texte blanc : Lc  −91,1 */
-  --c-mountbatten-900:     #4F3C46;   /* L 0,38 — texte blanc : Lc  −97,6 */
-  --c-mountbatten-950:     #3A2B33;   /* L 0,31 — texte blanc : Lc −102,9 */
+  --c-mountbatten-50:      #F9F3F6;   /* L 0,97 — texte noir  : Lc +100 — dès 14 px, plancher du cran */
+  --c-mountbatten-100:     #F0E4EA;   /* L 0,93 — texte noir  : Lc  +92 — dès 14 px */
+  --c-mountbatten-200:     #E0CFD7;   /* L 0,87 — texte noir  : Lc  +81 — dès 18 px SEULEMENT */
+  --c-mountbatten-300:     #D0B9C5;   /* L 0,81 — texte noir  : Lc  +69 — GROS TITRE SEULEMENT */
+  --c-mountbatten-400:     #BEA2B0;   /* L 0,74 — AUCUN TEXTE (décoratif) : au mieux noir à Lc +58 */
+  --c-mountbatten-500:     #A98899;   /* = COULEUR DE CHARTE — clarté réelle 0,663 pour 0,66 visé (écart +0,003) — texte blanc : Lc −64 — GROS TITRE SEULEMENT */
+  --c-mountbatten-600:     #917383;   /* L 0,59 — texte blanc : Lc  −75 — GROS TITRE SEULEMENT */
+  --c-mountbatten-700:     #7A606E;   /* L 0,52 — texte blanc : Lc  −83 — dès 18 px SEULEMENT */
+  --c-mountbatten-800:     #624C58;   /* L 0,444 — texte blanc : Lc  −92 — dès 14 px */
+  --c-mountbatten-900:     #4F3C46;   /* L 0,38 — texte blanc : Lc  −98 — dès 14 px */
+  --c-mountbatten-950:     #3A2B33;   /* L 0,31 — texte blanc : Lc −103 — dès 14 px */
   --c-mountbatten-marque:  var(--c-mountbatten-500);   /* ALIAS du cran de charte — pas un hex de plus */
 
   /* ── Alias de compatibilité — ce que lisent les tableaux via accent-css.py ───
      Les NOMS sont figés (accent-css.py les cherche par expression régulière, print.css
-     les consomme). Seules leurs cibles suivent la nouvelle grille :
+     les consomme). Seules leurs cibles suivent la grille :
        -normal = -marque    (filets, accents « couleur », aplats de couverture), donc le
                             CRAN de charte : 700 pour le rouge, 300 pour la moutarde,
                             500 pour les quatre autres. Le hex n'a pas changé ;
-       -clair  = 200        (le plus coloré des fonds à texte noir,  Lc ≥ +79,6) ;
-       -fonce  = 700        (le plus clair des fonds à texte blanc,  Lc ≥ −79,7).
-     Une seule règle à retenir : « fond sombre à texte blanc » = cran 700, partout —
+       -clair  = 100        (fond à texte noir,  |Lc| ≥ +91) ;
+       -fonce  = 800        (fond à texte blanc, |Lc| ≥ −90).
+     POURQUOI 100 et 800, et non plus 200 et 700. Ces deux alias sont les FONDS DE
+     TABLEAU, et le texte d'un tableau est à 13,6 px (print.css, table { font-size:
+     0.85rem }) : le seuil applicable est 90. Or les crans 200 et 700 plafonnent à 80 —
+     ils avaient été choisis du temps où ce fichier croyait que « texte courant = 75 »,
+     c'est-à-dire pour une taille que la maquette n'emploie nulle part. On monte donc d'un
+     cran de chaque côté, sans rien changer d'autre : la couleur reste la même famille,
+     seulement un peu plus pâle en haut et un peu plus dense en bas.
+     ⚠ CONSÉQUENCE, pour le ROUGE et pour lui seul : le rouge de CHARTE quitte le rôle de
+     fond « négatif » des tableaux. C'est le lot précédent (D80) qui l'y avait amené, en
+     faisant occuper au #D31932 le cran 700, alors la cible de -fonce. Mais #D31932
+     plafonne à 80 avec du texte blanc : bon dès 18 px, insuffisant à 13,6 px. Le fond
+     négatif d'un tableau rouge et le --c-annual-deep d'un numéro rouge valent donc
+     désormais #9F001F (cran 800), plus sombre que la charte. La charte rouge reste
+     évidemment partout ailleurs : -normal, -marque, --c-annual, filets et aplats de
+     couverture. Elle perd un rôle, pas sa place.
+     Une seule règle à retenir : « fond de tableau à texte blanc » = cran 800, partout —
      y compris pour --c-annual-deep, émis par accent-css.py.
-     CONSÉQUENCE du remplacement, pour le ROUGE et pour lui seul : -fonce (cran 700) vaut
-     désormais #D31932, la charte, au lieu du #C3112C calculé. Le fond « negatif » des
-     tableaux et le --c-annual-deep d'un numéro rouge redeviennent donc le rouge de charte.
      Pour changer l'intensité d'un fond de tableau, pointez l'alias vers un AUTRE cran
-     (p. ex. -100 au lieu de -200) : accent-css.py suit ce renvoi. Ne recopiez jamais un
-     hex ici, il finirait désynchronisé. Et ne pointez -clair/-fonce ni sur le 300, ni sur
-     le 400, ni sur le 500/600 : ces crans ne portent pas de texte courant. */
+     (p. ex. -50 au lieu de -100) : accent-css.py suit ce renvoi. Ne recopiez jamais un
+     hex ici, il finirait désynchronisé. Et ne pointez -clair/-fonce sur AUCUN des crans
+     200, 300, 400, 500, 600 ni 700 : à 13,6 px, aucun d'eux ne tient le seuil de 90. */
   --c-rouge-normal:       var(--c-rouge-marque);
-  --c-rouge-clair:        var(--c-rouge-200);
-  --c-rouge-fonce:        var(--c-rouge-700);
+  --c-rouge-clair:        var(--c-rouge-100);
+  --c-rouge-fonce:        var(--c-rouge-800);
   --c-capucine-normal:    var(--c-capucine-marque);
-  --c-capucine-clair:     var(--c-capucine-200);
-  --c-capucine-fonce:     var(--c-capucine-700);
+  --c-capucine-clair:     var(--c-capucine-100);
+  --c-capucine-fonce:     var(--c-capucine-800);
   --c-moutarde-normal:    var(--c-moutarde-marque);
-  --c-moutarde-clair:     var(--c-moutarde-200);
-  --c-moutarde-fonce:     var(--c-moutarde-700);
+  --c-moutarde-clair:     var(--c-moutarde-100);
+  --c-moutarde-fonce:     var(--c-moutarde-800);
   --c-poireau-normal:     var(--c-poireau-marque);
-  --c-poireau-clair:      var(--c-poireau-200);
-  --c-poireau-fonce:      var(--c-poireau-700);
+  --c-poireau-clair:      var(--c-poireau-100);
+  --c-poireau-fonce:      var(--c-poireau-800);
   --c-bleuacier-normal:   var(--c-bleuacier-marque);
-  --c-bleuacier-clair:    var(--c-bleuacier-200);
-  --c-bleuacier-fonce:    var(--c-bleuacier-700);
+  --c-bleuacier-clair:    var(--c-bleuacier-100);
+  --c-bleuacier-fonce:    var(--c-bleuacier-800);
   --c-mountbatten-normal: var(--c-mountbatten-marque);
-  --c-mountbatten-clair:  var(--c-mountbatten-200);
-  --c-mountbatten-fonce:  var(--c-mountbatten-700);
+  --c-mountbatten-clair:  var(--c-mountbatten-100);
+  --c-mountbatten-fonce:  var(--c-mountbatten-800);
 
   /* ── Teintes neutres des tableaux (voir en-tête) — éditables ─────────────────
      Les SEULES couleurs hors grille du fichier : ce sont des gris, sans teinte et sans
-     lien avec la couleur annuelle, donc sans cran où les loger. */
-  --szh-gris-clair: #E6E6E6;   /* texte noir : Lc +91,3 */
-  --szh-zebre:      #F2F2F2;   /* texte noir : Lc +98,3 */
+     lien avec la couleur annuelle, donc sans cran où les loger. Toutes deux portent du
+     texte de tableau (13,6 px), donc toutes deux se jugent au seuil de 90. */
+  --szh-gris-clair: #E6E6E6;   /* texte noir : Lc +91 — dès 14 px */
+  --szh-zebre:      #F2F2F2;   /* texte noir : Lc +98 — dès 14 px */
 }
