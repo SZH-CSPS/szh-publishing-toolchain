@@ -95,11 +95,6 @@ def fr(x):
     return ('%+.1f' % x).replace('.', ',')
 
 
-def nombre(x, decimales):
-    """Nombre à la française, SANS signe : 0.555 -> « 0,555 » (les clartés OKLab)."""
-    return ('%.*f' % (decimales, x)).replace('.', ',')
-
-
 def _tete(cran, hexa):
     return ('<div class="case__haut"><span class="case__niveau">%s</span>'
             '<span class="case__hex">%s</span></div>' % (cran, hexa))
@@ -209,39 +204,6 @@ def pastille(hexa, cran, charte=False):
          echantillon, _pied('Lc&nbsp;%s' % fr(lc), role), ui)
 
 
-def note_charte(cle, libelle_cran, hexa, clarte, ecart):
-    """Le texte explicatif sous la rampe : quel cran porte la charte, et à quel prix.
-
-    L'écart de clarté est TOUJOURS affiché (c'est le prix du choix, il ne se cache pas),
-    mais il n'est SIGNALÉ comme notable qu'au-delà d'apca.DISPERSION_CLARTE — le même
-    seuil que celui que fait respecter test/apca-check.py, pour que la planche et le
-    vérificateur ne racontent jamais deux histoires différentes. Un seul cas dépasse
-    aujourd'hui : le 700 du rouge."""
-    notable = abs(ecart) > apca.DISPERSION_CLARTE
-    if notable:
-        avertissement = (
-            ' <strong>Cet écart dépasse les %s que la grille se donne pour marge</strong> : '
-            'sur ce cran, et sur lui seul, les six teintes ne sont plus rigoureusement '
-            'aussi claires. C\'est inévitable ici — cette charte tombe à mi-chemin entre '
-            'deux crans, l\'écart serait le même sur le voisin — et c\'est le prix assumé '
-            'd\'un seul hex par couleur.' % nombre(apca.DISPERSION_CLARTE, 2))
-    else:
-        avertissement = (
-            ' L\'écart reste sous les %s de marge de la grille : le cran demeure comparable '
-            'd\'une teinte à l\'autre, à l\'œil comme à la mesure.'
-            % nombre(apca.DISPERSION_CLARTE, 2))
-    return (
-        '<p class="teinte__note">Le cran <strong>%s</strong> n\'est pas calculé : il '
-        '<strong>EST la couleur de charte</strong>, <strong>%s</strong>, posée telle quelle '
-        '(liseré foncé et badge dans la rampe ci-dessus). Sa clarté réelle est donc %s '
-        'là où le barreau '
-        'visait %s, soit un écart de <strong>%s</strong>.%s '
-        'Le jeton <code>--c-%s-marque</code> existe toujours, mais comme simple ALIAS de ce '
-        'cran : un seul hex par couleur, deux noms pour l\'atteindre.</p>'
-    ) % (libelle_cran, hexa, nombre(clarte, 3), nombre(CIBLES[libelle_cran], 2),
-         ('%+.3f' % ecart).replace('.', ','), avertissement, cle)
-
-
 def main():
     global ZEBRE
     css = io.open(CSS_COULEURS, encoding='utf-8').read()
@@ -273,13 +235,6 @@ def main():
             if hexa == marque and cran_charte:
                 cible = '%s (charte)' % cible
             alias.append('<code>-%s</code> → %s' % (nom, cible))
-        if cran_charte:
-            clarte = apca.srgb_vers_oklab(apca.vers_rgb(marque))[0]
-            note = note_charte(cle, cran_charte, marque, clarte,
-                               clarte - CIBLES[cran_charte])
-        else:   # ne doit jamais arriver : le vérificateur refuse cet état
-            note = ('<p class="teinte__note">Aucun cran ne porte le hex de charte %s : '
-                    'lancez <code>python3 test/apca-check.py</code>.</p>' % marque)
         lignes.append(
             '<section class="teinte">'
             '<header class="teinte__tete">'
@@ -288,9 +243,8 @@ def main():
             '<p class="teinte__alias">%s</p>'
             '</header>'
             '<div class="rampe">%s</div>'
-            '%s'
             '</section>' % (echapper(libelle), marque, marque, ' · '.join(alias),
-                            ''.join(cases), note))
+                            ''.join(cases)))
 
     neutres = []
     for var, role in (('--szh-gris-clair', 'fond « gris » des en-têtes et de la ligne de total'),
@@ -441,14 +395,6 @@ h1 {
 .case--charte {
   box-shadow: inset 0 0 0 3px var(--nuit), 0 0 0 1px var(--nuit);
 }
-.teinte__note {
-  margin: 18px 0 0; padding-top: 14px; border-top: 1px dashed var(--filet);
-  color: var(--encre-cal); font-size: 13px; max-width: 92ch;
-}
-.teinte__note strong { color: var(--encre); font-weight: 600; }
-.teinte__note code {
-  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;
-}
 .case__haut { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
 .case__niveau {
   font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 14px; font-weight: 600;
@@ -540,15 +486,6 @@ td.num {
   display: flex; align-items: center; gap: 8px;
 }
 
-.pied {
-  margin: 64px 0 0; padding-top: 20px; border-top: 1px solid var(--filet);
-  color: var(--encre-cal); font-size: 13px; max-width: 74ch;
-}
-.pied code {
-  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;
-  background: var(--carte); border: 1px solid var(--filet); border-radius: 2px;
-  padding: 1px 5px;
-}
 </style>
 
 <div class="enveloppe">
@@ -558,11 +495,6 @@ td.num {
   couleurs de charte se déclinent en <strong>onze crans de même teinte</strong>, calculés en
   OKLab pour ne pas délaver la couleur, puis mesurés avec <strong>APCA</strong> — le calcul de
   contraste du futur WCAG 3.</p>
-  <p class="chapo">Un <strong>cran est une clarté</strong>, pas une cible de contraste : le 200
-  du rouge et le 200 du poireau sont aussi clairs l'un que l'autre. Comparez les colonnes
-  verticalement d'une teinte à l'autre — c'est tout l'intérêt de la grille, et ce que l'ancienne
-  échelle (où chaque niveau visait un contraste, donc une clarté différente selon la teinte) ne
-  permettait pas.</p>
   <p class="chapo">La lecture est directe : chaque case porte un échantillon dans la couleur de
   texte qu'elle admet et <em>à la taille qu'elle autorise</em> — « Texte » à 14 px, la taille
   réelle du corps de la maquette, ou « Titre » à 19 px gras, le plancher du gros texte. Si un échantillon vous paraît
@@ -576,12 +508,6 @@ td.num {
   30. Trois verdicts, parce que les deux surfaces réelles de la chaîne ne s'accordent pas : le
   papier blanc et le fond zébré des tableaux. Le cran 300 passe sur papier et pas sur zébrage ;
   les trois crans les plus clairs ne passent nulle part, leur trait est barré.</p>
-  <p class="chapo">Dans chaque rampe, un cran est badgé <strong>couleur de charte</strong> : ce
-  cran n'est pas calculé, il porte <em>exactement</em> le hex donné par le graphiste. La charte
-  ne vit donc plus à côté de la grille, elle en occupe un barreau — un seul hex par couleur, et
-  ce hex a un numéro. La contrepartie est chiffrée sous chaque rampe : ce cran-là adopte la
-  clarté de la charte, pas celle du barreau, et les six teintes n'y sont plus rigoureusement
-  aussi claires.</p>
 
   <div class="seuils">
     <div class="seuil"><div class="seuil__val">75</div>
@@ -612,13 +538,6 @@ td.num {
     </div>
   </section>
 
-  <p class="pied">Planche <strong>générée</strong> à partir de
-  <code>pipeline/styles/couleurs.css</code> : les valeurs affichées sont exactement celles que
-  le pipeline applique. Les contrastes sont calculés par <code>pipeline/apca.py</code>, le même
-  module que le rendu. Après toute modification des teintes, régénérez cette page avec
-  <code>python3 test/palette-html.py</code> et vérifiez l'ensemble des paires réelles avec
-  <code>python3 test/apca-check.py</code>. Les polices de la maquette (Source Serif 4, Open Sans
-  SemiCondensed, IBM Plex Mono) sont embarquées : la page est autonome, sans accès réseau.</p>
 </div>
 """
 
