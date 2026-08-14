@@ -1,11 +1,28 @@
 // SZH cockpit — mise en forme (M6, D55). Extrait de extension.js (R6). Toggles PURS
 // (basculer*/enrober/squelette, testés via _pur) + commandes szh.fmt.* et palette.
+// Contient aussi le seul accès IMPÉRATIF au presse-papiers HTML (PowerShell) — la
+// transformation, elle, est pure et vit dans lib/table-model.js.
 'use strict';
 
 const vscode = require('vscode');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 const { T } = require('./i18n');
+const { tableauDepuisHtmlBureautique, tableauDepuisTsv, serialiserTable } = require('./table-model');
+
+// Contexte de la revue, INJECTÉ par extension.js à l'enregistrement des commandes :
+//   racine()                       -> racine de la revue (ou null)
+//   slugDepuisChemin(racine, chem) -> slug si le chemin EST un article (D26), sinon null
+//   rafraichirTout()               -> rafraîchit l'arbre du cockpit (et le reste)
+// POURQUOI une injection et pas un require : extension.js require CE module — l'inverse
+// serait un cycle. On réutilise ainsi la SEULE définition de « est-ce un article » et le
+// SEUL rafraîchissement, sans les redéfinir ici.
+let revue = {
+  racine: () => null,
+  slugDepuisChemin: () => null,
+  rafraichirTout: () => {}
+};
 
 // ---- Mise en forme au clic droit + raccourcis (M6, D55) ----------------------------
 //
@@ -68,27 +85,9 @@ function enroberBloc(texte, classe, titre) {
   return '::: ' + attr + '\n' + t + '\n:::';
 }
 
-// TSV -> tableau Markdown pipe (D75). Ce que Excel/Word mettent dans le
-// presse-papiers est du TSV : une ligne par ligne de tableau, cellules séparées
-// par des tabulations. Première ligne promue en en-tête (le pipe l'exige, D33) ;
-// les tabulations finales ne créent pas de colonne fantôme ; les `|` des cellules
-// sont échappés ; les lignes courtes sont complétées. Pure (testée via _pur).
-function tsvVersTableau(texte) {
-  const lignes = String(texte).replace(/\r\n?/g, '\n').replace(/\n+$/, '').split('\n');
-  const grille = lignes.map((l) => l.split('\t').map((c) => c.trim().replace(/\|/g, '\\|')));
-  const largeur = Math.max.apply(null, grille.map((r) => r.length));
-  const remplir = (r) => {
-    const copie = r.slice();
-    while (copie.length < largeur) { copie.push(''); }
-    return '| ' + copie.join(' | ') + ' |';
-  };
-  const sortie = [remplir(grille[0]), '|' + Array(largeur + 1).join('---|')];
-  for (let i = 1; i < grille.length; i++) { sortie.push(remplir(grille[i])); }
-  return sortie.join('\n');
-}
-
 // Squelette de tableau Markdown (3 colonnes, 2 lignes) — édité ensuite via
-// markdowntable (Tab) ou collage Excel (Maj+Alt+V).
+// markdowntable (Tab). Un tableau VENU d'Excel/Word ne passe plus par le pipe : il
+// devient un fichier tables/table-NN.html (Ctrl+Alt+V, cf. fmtCollerTableau).
 function squeletteTableau(colonne) {
   const c = String(colonne || 'Colonne');
   return [
@@ -189,19 +188,154 @@ function fmtTableau() {
   return editeur.edit((b) => { b.replace(editeur.selection, sq); });
 }
 
-// Coller un tableau copié depuis Excel/Word (Maj+Alt+V, D75) : lit le
-// presse-papiers, le convertit de TSV en tableau pipe et l'insère. Remplace
-// csholmq.excel-to-markdown-table, retiré d'Open VSX.
+// ---- Coller un tableau depuis Excel/Word (Ctrl+Alt+V, D81) -------------------------
+//
+// Le collage d'origine (D75) lisait le presse-papiers en TEXTE et écrivait un pipe :
+// les cellules FUSIONNÉES étaient perdues, sans recours (le TSV ne les porte pas). Le
+// collage écrit désormais un FICHIER de tableau HTML — exactement le mécanisme D47 des
+// tableaux importés de Word : articles/<slug>/tables/table-NN.html, plus une référence
+// ::: {.szh-tabelle src="…"} dans le .md, résolue à la compilation par
+// pipeline/filters/szh-tabelle-inclure.lua. Le fichier est écrit par serialiserTable
+// (format canonique) : l'éditeur de tableau du cockpit sait le rouvrir et le réécrire.
+//
+// La source des fusions est la variante HTML du presse-papiers Windows, que l'API VS
+// Code ne sait pas lire (readText -> TSV seulement) mais que PowerShell, lui, atteint.
+
+// powershell.exe : System32 en priorité (chemin sûr), PATH en repli — même posture que
+// cheminWsl() dans lib/wsl.js.
+function cheminPowerShell() {
+  const systeme = path.join(process.env.WINDIR || 'C:\\Windows',
+    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  try { if (fs.existsSync(systeme)) { return systeme; } } catch (e) { /* PATH en repli */ }
+  return 'powershell.exe';
+}
+
+// Script de lecture du presse-papiers HTML.
+//
+// PIÈGE D'ENCODAGE, vérifié sur ce poste : les octets CF_HTML déposés par Excel/Word
+// sont de l'UTF-8, mais .NET Framework les rend DÉJÀ décodés — et décodés dans la page
+// de codes ANSI. « Élèves — Zürich » revient en « Ã‰lÃ¨ves â€” ZÃ¼rich », que ce soit
+// par « Get-Clipboard -TextFormatType Html » ou par GetData('HTML Format', $false)
+// (qui rend un System.String, PAS un flux d'octets, contrairement à ce qu'on lit
+// souvent). On répare donc en RE-ENCODANT la chaîne dans cette même page ANSI pour
+// retrouver les octets d'origine, puis en les décodant en UTF-8 — avec un décodeur
+// STRICT (throwOnInvalidBytes) : si la suite n'est pas de l'UTF-8 valide, c'est que la
+// chaîne n'avait pas été mal décodée et on la garde telle quelle. Un producteur qui
+// déposerait un vrai flux (autre application, autre version de .NET) passe par la
+// branche Stream, lue en UTF-8 directement.
+//
+// [Console]::Out.Write plutôt que Write-Output : le formateur de PowerShell insère des
+// retours à la ligne dans les chaînes longues quand la sortie est redirigée (largeur de
+// console supposée), ce qui couperait le HTML.
+const PS_LIRE_HTML_PRESSE = [
+  '$ErrorActionPreference = "SilentlyContinue"',
+  '[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false',
+  'Add-Type -AssemblyName System.Windows.Forms',
+  '$t = ""',
+  '$o = [System.Windows.Forms.Clipboard]::GetDataObject()',
+  'if ($o -and $o.GetDataPresent("HTML Format")) {',
+  '  $d = $o.GetData("HTML Format", $false)',
+  '  if ($d -is [System.IO.Stream]) {',
+  '    $d.Position = 0',
+  '    $r = New-Object System.IO.StreamReader($d, (New-Object System.Text.UTF8Encoding $false))',
+  '    $t = $r.ReadToEnd()',
+  '  } elseif ($d -ne $null) {',
+  '    $t = [string]$d',
+  '    $ansi = [System.Text.Encoding]::GetEncoding([System.Globalization.CultureInfo]::CurrentCulture.TextInfo.ANSICodePage)',
+  '    $strict = New-Object System.Text.UTF8Encoding($false, $true)',
+  '    try { $t = $strict.GetString($ansi.GetBytes($t)) } catch { }',
+  '  }',
+  '}',
+  '[Console]::Out.Write($t)'
+].join('\n');
+
+// Variante HTML du presse-papiers (CF_HTML brut, en-tête comprise) ou '' si absente.
+// Ne rejette JAMAIS : PowerShell introuvable, presse-papiers verrouillé par une autre
+// application ou trop lent -> chaîne vide, et l'appelant se replie sur le TSV.
+// -EncodedCommand (UTF-16LE/base64) : aucun échappement de guillemets à négocier.
+function lireHtmlPressePapiers(timeoutMs) {
+  return new Promise((resolve) => {
+    const args = ['-NoProfile', '-NonInteractive', '-Sta', '-EncodedCommand',
+      Buffer.from(PS_LIRE_HTML_PRESSE, 'utf16le').toString('base64')];
+    let proc;
+    try { proc = spawn(cheminPowerShell(), args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }); }
+    catch (e) { resolve(''); return; }
+    const morceaux = [];
+    let fini = false, minuteur = null;
+    const finir = (v) => { if (fini) { return; } fini = true; if (minuteur) { clearTimeout(minuteur); } resolve(v); };
+    minuteur = setTimeout(() => { try { proc.kill(); } catch (e) { /* déjà mort */ } finir(''); },
+      timeoutMs || 8000);
+    proc.stdout.on('data', (d) => morceaux.push(d));
+    proc.on('error', () => finir(''));
+    proc.on('close', () => finir(Buffer.concat(morceaux).toString('utf8')));
+  });
+}
+
+// Premier nom de tableau LIBRE dans `dossier` : table-NN.html, NN sur deux chiffres
+// comme pipeline/docx-tables.py. « Premier libre » et non « dernier + 1 » : on ne
+// réécrit jamais un tableau importé, même après suppression d'un intermédiaire.
+// Au-delà de 99 (jamais vu), on continue sans zéro de tête plutôt que d'échouer.
+function nomTableLibre(dossier) {
+  for (let n = 1; n < 1000; n++) {
+    const nom = 'table-' + (n < 10 ? '0' + n : String(n)) + '.html';
+    let pris = false;
+    try { pris = fs.existsSync(path.join(dossier, nom)); } catch (e) { pris = false; }
+    if (!pris) { return nom; }
+  }
+  return 'table-999.html';
+}
+
+// Bloc de référence D47 à insérer dans le .md — À LA LETTRE ce que pose
+// szh-tabelle-reference.lua à l'import et ce que résout szh-tabelle-inclure.lua.
+// `avant`/`apres` = le texte de la ligne courante de part et d'autre du curseur : un
+// « fenced div » Pandoc doit commencer en début de ligne et être séparé du paragraphe
+// voisin, on n'ajoute donc les lignes vides que si le curseur n'est pas déjà au calme.
+// Pure (testée via _pur).
+function blocReferenceTable(nom, avant, apres) {
+  const bloc = '::: {.szh-tabelle src="tables/' + nom + '"}\n:::';
+  return (String(avant || '').trim() === '' ? '' : '\n\n') + bloc
+       + (String(apres || '').trim() === '' ? '' : '\n\n');
+}
+
 async function fmtCollerTableau() {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
-  const presse = await vscode.env.clipboard.readText();
-  if (!presse || presse.indexOf('\t') === -1) {
+  const doc = editeur.document;
+  // Un tableau de la revue vit dans articles/<slug>/tables/ : hors d'un article, il n'y
+  // a aucun endroit légitime où l'écrire (même test d'« article » que partout, D26).
+  const racine = revue.racine();
+  const slug = racine ? revue.slugDepuisChemin(racine, doc.uri.fsPath) : null;
+  if (!slug) {
+    vscode.window.showInformationMessage(T('fmt.coller.horsarticle'));
+    return;
+  }
+  // 1. La variante HTML (fusions préservées) ; 2. à défaut, le TSV (fusions absentes,
+  //    mais mieux que rien : Bloc-notes, éditeur de texte, colonne unique).
+  const brut = await lireHtmlPressePapiers();
+  let modele = brut ? tableauDepuisHtmlBureautique(brut) : null;
+  if (!modele) {
+    const texte = await vscode.env.clipboard.readText();
+    if (texte && texte.indexOf('\t') !== -1) { modele = tableauDepuisTsv(texte); }
+  }
+  if (!modele) {
     vscode.window.showInformationMessage(T('fmt.coller.pastableau'));
     return;
   }
-  const md = tsvVersTableau(presse);
-  await editeur.edit((b) => { b.replace(editeur.selection, md); });
+  const dossier = path.join(path.dirname(doc.uri.fsPath), 'tables');
+  const nom = nomTableLibre(dossier);
+  try {
+    fs.mkdirSync(dossier, { recursive: true });
+    fs.writeFileSync(path.join(dossier, nom), serialiserTable(modele), 'utf8');
+  } catch (e) {
+    vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
+    return;
+  }
+  const sel = editeur.selection;
+  const avant = doc.lineAt(sel.start.line).text.slice(0, sel.start.character);
+  const apres = doc.lineAt(sel.end.line).text.slice(sel.end.character);
+  await editeur.edit((b) => { b.replace(sel, blocReferenceTable(nom, avant, apres)); });
+  vscode.window.setStatusBarMessage(T('fmt.coller.creee', [nom]), 5000);
+  revue.rafraichirTout();                            // le tableau apparaît sous l'article
 }
 
 // Palette « Mise en forme » (Ctrl+Alt+M + entrée clic droit) : menu SZH-only,
@@ -224,7 +358,7 @@ const PALETTE_MEF = [
   ['--', 'palette.g.inserer'],
   ['palette.figure', 'szh.fmt.figure', 'Ctrl+Alt+F', ''],
   ['palette.tableau', 'szh.fmt.tableau', 'Ctrl+Alt+T', ''],
-  ['palette.collerTableau', 'szh.fmt.collerTableau', 'Maj+Alt+V', '']
+  ['palette.collerTableau', 'szh.fmt.collerTableau', 'Ctrl+Alt+V', '']
 ];
 
 // Ouvre la palette (QuickPick) et applique la commande choisie à la sélection
@@ -242,7 +376,11 @@ async function ouvrirMiseEnForme() {
   if (choix && choix.commande) { await vscode.commands.executeCommand(choix.commande); }
 }
 
-function enregistrerCommandesMiseEnForme(context) {
+// `hote` (facultatif) : contexte de revue injecté par extension.js — cf. `revue`
+// en tête de fichier. Absent (harnais de test), les commandes qui en dépendent se
+// comportent comme hors revue.
+function enregistrerCommandesMiseEnForme(context, hote) {
+  if (hote) { revue = Object.assign({}, revue, hote); }
   const c = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   c('szh.fmt.gras', () => appliquerSelection((t) => basculerEnrobage(t, '**'), { milieu: 2 }));
   c('szh.fmt.italique', () => appliquerSelection((t) => basculerEnrobage(t, '*'), { milieu: 1 }));
@@ -262,5 +400,6 @@ function enregistrerCommandesMiseEnForme(context) {
 
 module.exports = {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
-  enroberBloc, squeletteTableau, tsvVersTableau, enregistrerCommandesMiseEnForme
+  enroberBloc, squeletteTableau, blocReferenceTable, nomTableLibre,
+  lireHtmlPressePapiers, enregistrerCommandesMiseEnForme
 };

@@ -10,8 +10,24 @@
   - le **libellé affiché** dans la boîte « Ouvrir avec » (il dépend de `FriendlyAppName` ;
     non vérifiable sans écrire dans le vrai registre) ;
   - le comportement quand **une autre revue est déjà ouverte** (nouvelle fenêtre ou réutilisation).
-- [ ] **Collage de tableau Excel** (`Maj+Alt+V`, D75) : la conversion est testée headless
-  (7 cas), le geste ne l'est pas.
+- [ ] **Collage de tableau** (`Ctrl+Alt+V`, D81 — le raccourci a CHANGÉ) : copier dans
+  Excel **puis** dans Word, coller dans un article. Attendu : un fichier
+  `articles/<slug>/tables/table-NN.html` créé, sa référence insérée au curseur, le tableau
+  visible aussitôt sous l'article dans la barre « Revue SZH », et « Éditer le tableau »
+  l'ouvre correctement. Points à regarder :
+  - **les cellules fusionnées** doivent survivre (c'était le défaut de l'ancienne version) ;
+  - depuis **Excel**, le tableau arrive **sans gras ni ligne d'en-tête** : Excel met ces
+    informations dans des classes CSS, jamais dans des balises. Ça se règle d'un clic dans
+    l'éditeur. Depuis **Word**, gras, italique et en-tête sont conservés ;
+  - le **délai** : la lecture du presse-papiers passe par un `powershell` court, soit
+    environ une demi-seconde à une seconde avant l'insertion. À dire si c'est gênant ;
+  - que `Ctrl+Alt+V` ne soit pas déjà pris par une des extensions installées.
+- [ ] **Entrée « Ouvrir avec »** (D18, corrigé) : elle doit s'appeler **« Revue SZH »** et
+  non plus « Microsoft ® Windows Based Script Host », avec l'icône SZH (tuile bleu nuit
+  barrée de rouge) — reconnaissable au premier coup d'œil face à l'entrée « VSCodium »
+  juste à côté. Et dans l'Explorateur, la colonne Type doit dire « Article de revue SZH ».
+- [ ] **Aperçu HTML : le survol prend le bloc** (D82) : survoler un mot au milieu d'une
+  phrase doit surligner **tout le paragraphe**, pas le mot ni le passage en gras.
 - [ ] **Planche de palette** — `docs/palette.html` (ou le lien partagé) : juger **à l'œil**.
   La palette est une **grille à clarté fixe de 11 crans** (D79) : un même numéro = la même
   clarté pour les six couleurs. La couleur de charte **occupe** l'un de ces crans (D80) —

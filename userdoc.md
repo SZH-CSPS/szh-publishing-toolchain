@@ -133,8 +133,12 @@ Pas besoin de connaître le Markdown : **sélectionne du texte, puis clic droit 
   l'article et il ne reste qu'à écrire la légende ;
 - **Insérer un tableau** (`Ctrl+Alt+T`) : un petit tableau vierge à remplir (`Tab`
   passe d'une cellule à l'autre) ;
-- **Coller un tableau depuis Excel/Word** (`Maj+Alt+V`) : copie les cellules dans
-  Excel ou Word, puis `Maj+Alt+V` dans l'article — le tableau est écrit en Markdown.
+- **Coller un tableau depuis Excel/Word** (`Ctrl+Alt+V`) : copie les cellules dans
+  Excel ou Word, puis `Ctrl+Alt+V` dans l'article. Le tableau est ajouté à l'article
+  comme les tableaux venus d'un Word — **cellules fusionnées comprises** — et apparaît
+  aussitôt sous l'article dans la barre « Revue SZH », où un clic permet de le modifier.
+  Un tableau collé depuis **Excel** arrive sans gras ni ligne d'en-tête (Excel ne les
+  transmet pas) : cela se règle d'un clic dans l'éditeur de tableau.
 
 Appliquer deux fois gras, italique, souligné, un titre ou une citation **retire** la
 mise en forme (bascule).

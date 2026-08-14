@@ -24,8 +24,10 @@
 //   ouverte — pas de démarrage à froid à la première compilation.
 //
 // Écritures autorisées : la COPIE des .docx choisis vers articles-word/ (S3),
-// ausgabe.yaml (G1), la SUPPRESSION confirmée d'un article (G3) et l'ÉCRASEMENT
-// confirmé d'une image (G5). Tout le reste est en lecture seule (ouverture/
+// ausgabe.yaml (G1), la SUPPRESSION confirmée d'un article (G3), l'ÉCRASEMENT
+// confirmé d'une image (G5) et la CRÉATION d'un tableau articles/<slug>/tables/
+// table-NN.html au collage depuis Excel/Word (D81, lib/formatting.js — jamais
+// d'écrasement : premier numéro libre). Tout le reste est en lecture seule (ouverture/
 // lancement de tâche uniquement).
 // Posture szh-apercu : JavaScript pur, zéro dépendance, API VS Code ^1.75.
 //
@@ -73,7 +75,8 @@ const {
   ajouterLigne, supprimerLigne, ajouterColonne, supprimerColonne,
   fusionner, scinder, viderCellules, alignerCellules,
   deplacerLigne, deplacerColonne,
-  tableauDepuisTsv, collerDans, appliquerOperationTable
+  tableauDepuisTsv, collerDans, appliquerOperationTable,
+  fragmentCfHtml, nettoyerHtmlBureautique, nettoyerContenuCellule, tableauDepuisHtmlBureautique
 } = require('./lib/table-model');
 // ---- Assemblage des webviews -> lib/webviews/util.js -----------------------------
 const { construireHtml, lireMedia } = require('./lib/webviews/util');
@@ -82,7 +85,8 @@ const { slugifier } = require('./lib/slug');
 const { demarrerDormeurWsl, arreterDormeurWsl, reveillerWsl } = require('./lib/wsl');
 const {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
-  enroberBloc, squeletteTableau, tsvVersTableau, enregistrerCommandesMiseEnForme
+  enroberBloc, squeletteTableau, blocReferenceTable, nomTableLibre,
+  enregistrerCommandesMiseEnForme
 } = require('./lib/formatting');
 
 // Éditeur PDF (extension tomoki1207.pdf), comme szh-apercu.
@@ -1757,7 +1761,14 @@ function activate(context) {
     })
   );
 
-  enregistrerCommandesMiseEnForme(context);          // M6, D55
+  // M6, D55 — le contexte de revue est INJECTÉ : le collage de tableau (Ctrl+Alt+V)
+  // doit savoir s'il est dans un article (slugDepuisChemin, définition unique) et
+  // rafraîchir l'arbre pour y faire apparaître le tableau créé.
+  enregistrerCommandesMiseEnForme(context, {
+    racine: () => fournisseur.racine,
+    slugDepuisChemin: slugDepuisChemin,
+    rafraichirTout: rafraichirTout
+  });
 
   // F7 : au démarrage, si une revue est ouverte, l'init lente (réveil de la VM WSL —
   // le vrai coût, puis chargement de l'arbre) se fait derrière un indicateur de
@@ -1795,7 +1806,7 @@ module.exports = {
     analyserMeta, serialiserMeta, lignePos, plagePos, positionMot, jetonSource,
     analyserAusgabe, serialiserAusgabe,
     basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
-    enroberBloc, squeletteTableau, tsvVersTableau,
+    enroberBloc, squeletteTableau, blocReferenceTable, nomTableLibre,
     analyserTable, serialiserTable, disposition,
     matriceOccupation, etendreGrille, compacterGrille,
     normaliserModele, finaliserModele, canoniserInline,
@@ -1803,6 +1814,7 @@ module.exports = {
     fusionner, scinder, viderCellules, alignerCellules,
     deplacerLigne, deplacerColonne,
     tableauDepuisTsv, collerDans, appliquerOperationTable,
+    fragmentCfHtml, nettoyerHtmlBureautique, nettoyerContenuCellule, tableauDepuisHtmlBureautique,
     TEXTES_COCKPIT
   }
 };

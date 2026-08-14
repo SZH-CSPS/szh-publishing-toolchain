@@ -225,6 +225,28 @@ def html_du_tableau(tbl, caption=None):
     else:
         lignes_entete = 0
 
+    # ---- INVARIANT DE GRILLE : aucune fusion de l'en-tête ne doit DÉPASSER dans le corps.
+    #      Un rowspan ne franchit pas la frontière <thead>/<tbody> : les navigateurs (et
+    #      WeasyPrint) le bornent à la section. Un en-tête d'une rangée sur un tableau dont
+    #      la rangée 0 porte un rowspan=2 — la forme même d'un en-tête Word à deux niveaux
+    #      dont seule la première rangée est en gras — donne donc une grille FAUSSE : la
+    #      rangée suivante remonte d'une colonne. On réduit le compte jusqu'à ce qu'aucune
+    #      fusion ne dépasse, quitte à tomber à 0 : un tableau sans <thead> reste JUSTE,
+    #      un tableau à <thead> tronqué est faux, et l'en-tête se repose d'un clic dans
+    #      l'éditeur du cockpit. Même invariant que normaliserModele() côté extension.
+    # Le rowspan n'est pas stocké dans la cellule ici : il se DÉDUIT des w:vMerge des
+    # rangées suivantes (rowspan_depuis, plus haut) — c'est la même source que celle
+    # utilisée pour écrire l'attribut, donc le contrôle porte bien sur la valeur émise.
+    def fusion_franchit_entete(n):
+        for r in range(min(n, len(grille))):
+            for cel in grille[r]:
+                if r + rowspan_depuis(r, cel['col']) > n:
+                    return True
+        return False
+
+    while lignes_entete > 0 and fusion_franchit_entete(lignes_entete):
+        lignes_entete -= 1
+
     # ---- Matrice d'occupation : origine[r][c] = (rangée, colonne) de la cellule qui
     #      couvre la case visuelle (r,c) — pour les headers="…" des cellules de données.
     origine = [[None] * ncols for _ in range(nb_lignes)]

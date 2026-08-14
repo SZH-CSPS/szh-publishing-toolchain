@@ -139,7 +139,7 @@ Démarrer (D38). Voir [`userdoc.md`](userdoc.md).
 | `Ctrl+Alt+F` / `Ctrl+Alt+T` | Insérer une figure / un tableau | szh-cockpit (M6, D55) |
 | `Entrée` (dans une liste) | Continuation automatique de la liste | markdown-all-in-one |
 | `Tab` / `Maj+Tab` (dans un tableau) | Cellule suivante/précédente + formatage auto | markdowntable |
-| `Maj+Alt+V` | Coller un tableau copié depuis Excel/Word | szh-cockpit (D75) |
+| `Ctrl+Alt+V` | Coller un tableau depuis Excel/Word (**fusions préservées**) | szh-cockpit (D81) |
 | `Ctrl+Alt+S` | Ouvrir la palette « Mise en forme SZH » (gras, titres, blocs, figure, tableau) | szh-cockpit |
 | `Ctrl+Espace` | Suggestions (snippets `:::`) | VS Code (réactivé scope markdown) |
 | `Ctrl+Alt+I` | Importer les Word à la demande (`make import`) | keybindings + tâche user |

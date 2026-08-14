@@ -230,6 +230,24 @@ function normaliserModele(modele) {
     })
   }));
   if (lignes.length === 0) { lignes.push({ cellules: [{ contenu: '', colspan: 1, rowspan: 1, th: false, scope: '', align: 'left' }] }); }
+
+  // INVARIANT DE GRILLE : aucune fusion de l'en-tête ne doit DÉPASSER dans le corps.
+  // Un rowspan ne franchit pas la frontière <thead>/<tbody> — les navigateurs le bornent
+  // à la section. Un en-tête d'une rangée sur un tableau dont la rangée 0 porte un
+  // rowspan=2 donne donc une grille FAUSSE : la rangée suivante remonte d'une colonne
+  // (mesuré au rendu, c'est le défaut trouvé sur le collage d'un tableau Word à en-tête
+  // à deux niveaux). On réduit donc le compte d'en-tête jusqu'à ce qu'aucune fusion ne
+  // dépasse, quitte à tomber à 0 : un tableau sans <thead> reste JUSTE, un tableau à
+  // <thead> tronqué est faux. L'en-tête se repose ensuite d'un clic dans l'éditeur.
+  //
+  // Placé ici, dans le passage OBLIGÉ de tous les chemins (analyse d'un fichier, collage,
+  // opérations de l'éditeur, sérialisation via finaliserModele), plutôt que dans chaque
+  // producteur : c'est le seul endroit où l'oubli est impossible.
+  while (attrs.enteteLignes > 0 && fusionFranchitEntete(lignes, attrs.enteteLignes)) {
+    attrs.enteteLignes--;
+  }
+  if (attrs.enteteLignes === 0) { attrs.ecGras = false; attrs.ecFond = 'aucun'; }
+
   return { attrs: attrs, lignes: lignes };
 }
 
@@ -633,6 +651,221 @@ function tableauDepuisTsv(texte) {
   return finaliserModele({ attrs: {}, lignes: lignes });
 }
 
+// ---- Presse-papiers HTML d'Excel/Word -> modèle (collage de tableau, D81) ----------
+//
+// POURQUOI ces fonctions vivent ICI : elles sont PURES (chaîne -> chaîne/modèle) et
+// forment la TROISIÈME entrée du modèle, à côté de analyserTable (HTML canonique D47)
+// et de tableauDepuisTsv (presse-papiers TEXTE). Elles se testent donc headless comme
+// leurs sœurs. La LECTURE du presse-papiers, elle, est impérative (PowerShell) et
+// reste dans lib/formatting.js.
+//
+// POURQUOI ce chemin existe : vscode.env.clipboard.readText() ne rend que du TEXTE,
+// donc du TSV — les cellules FUSIONNÉES n'y sont pas et aucune astuce ne les y fera
+// apparaître. Excel et Word déposent AUSSI une variante HTML sur le presse-papiers
+// Windows, et celle-là porte colspan/rowspan : c'est la seule source qui préserve les
+// fusions.
+
+// Attributs conservés sur <td>/<th> par le nettoyage : ceux que le modèle lit
+// (colspan/rowspan/scope/data-align) + le balisage accessible dérivé (id/headers,
+// ignoré par analyserTable). Tout le reste — class=xl63, style='mso-…', width, height,
+// nowrap, x:num, lang — est jeté.
+const ATTRS_CELLULE = ['colspan', 'rowspan', 'scope', 'data-align', 'id', 'headers'];
+
+// Balises conservées par le nettoyage : structure de tableau + inline canonisable par
+// canoniserInline. Toute autre balise est retirée EN GARDANT son texte.
+const BALISES_GARDEES = {
+  table: 1, thead: 1, tbody: 1, tfoot: 1, tr: 1, td: 1, th: 1,
+  br: 1, strong: 1, b: 1, em: 1, i: 1
+};
+
+// Sérialise les attributs retenus d'une balise (ordre = celui de `cles`, valeurs
+// requotées en double — jamais d'injection : les " internes sont retirés).
+function attributsRetenus(attrs, cles) {
+  let t = '';
+  cles.forEach((cle) => {
+    if (attrs[cle] === undefined || attrs[cle] === '') { return; }
+    t += ' ' + cle + '="' + String(attrs[cle]).replace(/"/g, '') + '"';
+  });
+  return t;
+}
+
+// CF_HTML -> fragment HTML. Le presse-papiers Windows livre le HTML dans le format
+// CF_HTML : un en-tête « Version:0.9 / StartHTML: / EndHTML: / StartFragment: /
+// EndFragment: / SourceURL: » suivi du document. On NE se fie PAS aux décalages
+// annoncés (ce sont des positions en OCTETS, inutilisables sur une chaîne JS déjà
+// décodée) mais aux marqueurs <!--StartFragment--> / <!--EndFragment-->, présents chez
+// Word comme chez Excel. Excel place ces marqueurs À L'INTÉRIEUR du <table> (juste
+// avant les <col>) : le fragment n'a alors PAS de balise <table> — sans conséquence,
+// analyserTable tolère un corps de tableau nu (M2) et les attributs de tableau d'Excel
+// ne nous intéressent pas. Sans marqueurs, on retire au moins l'en-tête ; sans en-tête
+// (HTML déjà propre), la chaîne est rendue telle quelle. Pure.
+function fragmentCfHtml(brut) {
+  const s = String(brut === undefined || brut === null ? '' : brut)
+    .replace(/\0/g, '')                              // la donnée CF_HTML est terminée par un NUL
+    .replace(/^\uFEFF/, '');                         // BOM éventuel en tête de flux
+  const debut = s.match(/<!--\s*StartFragment\s*-->/i);
+  const fin = s.match(/<!--\s*EndFragment\s*-->/i);
+  if (debut && fin && fin.index > debut.index) {
+    return s.slice(debut.index + debut[0].length, fin.index);
+  }
+  if (/^\s*Version\s*:/i.test(s)) {
+    const i = s.search(/<(?:!doctype|html|head|body|table|tbody|tr)\b/i);
+    if (i > 0) { return s.slice(i); }
+  }
+  return s;
+}
+
+// HTML d'Excel/Word -> HTML de tableau MINIMAL, digeste pour analyserTable. Le HTML
+// bureautique est très sale : îlots XML « <!--[if gte mso 9]><xml>…</xml><![endif]--> »,
+// conditionnels révélés « <![if !supportMisalignedColumns]> », <style> de classes
+// xl63, <o:p>, <span style='mso-…'>, <font>, paragraphes <p class=MsoNormal> dans les
+// cellules. On jette les blocs entiers sans contenu de tableau, on traduit les
+// FRONTIÈRES de paragraphe en <br> (sinon deux paragraphes d'une cellule se
+// colleraient), puis on filtre balise par balise en gardant le texte.
+//
+// Propriété voulue : sur du HTML canonique D47 (celui de serialiserTable), ce
+// nettoyage ne retire RIEN de signifiant — seul l'ordre des attributs peut changer.
+// C'est ce qui permet de le poser aussi sur le collage DANS l'éditeur de tableau
+// (appliquerOperationTable 'coller'), où l'on peut recoller du canonique. Pure.
+function nettoyerHtmlBureautique(html) {
+  let s = String(html === undefined || html === null ? '' : html);
+  // 1. Blocs entiers sans contenu de tableau.
+  s = s.replace(/<!--[\s\S]*?-->/g, '');                          // commentaires (dont les îlots mso)
+  // Conditionnels « révélés » (<![if !supportMisalignedColumns]>…<![endif]>) : contenu
+  // JETÉ avec le bloc. Ils ne portent jamais de données, seulement des rustines de mise
+  // en page — Excel y range une rangée FANTÔME (height=0, display:none, cellules vides)
+  // qui, gardée, ajouterait une ligne vide à chaque collage.
+  s = s.replace(/<!\[if\b[^\]]*\]>[\s\S]*?<!\[endif\]\s*>/gi, '');
+  s = s.replace(/<!\[if\b[^\]]*\]>/gi, '').replace(/<!\[endif\]\s*>/gi, '');   // marqueur orphelin
+  s = s.replace(/<\?[\s\S]*?\?>/g, '');                           // <?xml:namespace … ?>
+  s = s.replace(/<!doctype\b[^>]*>/gi, '');
+  s = s.replace(/<(style|script|head|title|xml)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
+  // 2. Frontière de paragraphe -> <br> (les <p>/<div> restants tombent en 3).
+  s = s.replace(/<\/(?:p|div|h[1-6])\s*>\s*<(?:p|div|h[1-6])\b[^>]*>/gi, '<br>');
+  // 3. Filtrage des balises (même technique que canoniserInline : texte conservé).
+  let out = '', dernier = 0, m;
+  const re = /<[^>]*>/g;
+  while ((m = re.exec(s)) !== null) {
+    out += s.slice(dernier, m.index);
+    dernier = re.lastIndex;
+    const tete = m[0].match(/^<\s*(\/?)\s*([A-Za-z][-A-Za-z0-9:]*)/);
+    if (!tete) { continue; }                                      // <! … > résiduel : jeté
+    const nom = tete[2].toLowerCase();
+    if (nom.indexOf(':') !== -1) { continue; }                    // <o:p>, <w:sdt>, <v:shape>
+    if (!BALISES_GARDEES[nom]) { continue; }
+    if (tete[1] === '/') { out += '</' + nom + '>'; continue; }
+    if (nom === 'td' || nom === 'th' || nom === 'table') {
+      const attrs = lireAttributsHtml(m[0].slice(tete[0].length).replace(/\/?>$/, ''));
+      // Sur <table>, on garde class + data-* : c'est tout l'encodage de style D64 du
+      // HTML canonique, qui doit traverser le nettoyage intact.
+      const cles = (nom === 'table')
+        ? Object.keys(attrs).filter((c) => c === 'class' || c.indexOf('data-') === 0)
+        : ATTRS_CELLULE;
+      out += '<' + nom + attributsRetenus(attrs, cles) + '>';
+      continue;
+    }
+    out += '<' + nom + '>';
+  }
+  out += s.slice(dernier);
+  return out;
+}
+
+// Blancs d'une cellule collée : Word/Excel émettent des retours à la ligne et des
+// indentations dans le source, et des &nbsp; de mise en page (une cellule « vide » est
+// un &nbsp;, un paragraphe vide un <o:p>&nbsp;</o:p>). On ramène tout à des espaces
+// simples, on retire les <br> de tête/fin et les paires inline vides -> une cellule
+// vide EST vide dans le modèle. Contrepartie ASSUMÉE : une espace insécable VOULUE
+// (« 50 % ») redevient une espace ordinaire — la typographie fine est de toute façon
+// posée par la chaîne de compilation, pas par le collage. Pure.
+function nettoyerContenuCellule(contenu) {
+  let s = String(contenu === undefined || contenu === null ? '' : contenu)
+    .replace(/&nbsp;|&#0*160;|&#x0*a0;/gi, ' ')
+    .replace(/\u00A0/g, ' ')
+    .replace(/^(?:\s*<br>)+/gi, '')
+    .replace(/(?:<br>\s*)+$/gi, '')
+    .replace(/\s+/g, ' ');
+  for (let i = 0; i < 3; i++) { s = s.replace(/<(strong|em)>\s*<\/\1>/g, ''); }
+  return s.trim();
+}
+
+// Vrai si la rangée porte du texte et que TOUT son texte est en gras. Même heuristique
+// que pipeline/docx-tables.py (ligne_toute_gras) : un tableau Word COLLÉ obtient ainsi
+// le même en-tête que le même tableau IMPORTÉ (RM2). Les cellules vides ne
+// disqualifient pas (elles ne portent aucun texte).
+function ligneToutGras(cellules) {
+  let vuTexte = false;
+  for (const cell of cellules || []) {
+    const c = String(cell.contenu || '');
+    if (c === '') { continue; }
+    vuTexte = true;
+    if (!/^<strong>[\s\S]*<\/strong>$/.test(c)) { return false; }
+    if (/<\/strong>[\s\S]*<strong>/.test(c)) { return false; }    // gras interrompu
+  }
+  return vuTexte;
+}
+
+// HAUTEUR de l'en-tête déduite d'une 1re rangée toute en gras. Elle n'est PAS toujours
+// de 1 : la forme que Word émet pour un en-tête à DEUX NIVEAUX est une cellule qui
+// couvre les deux rangées (« Canton », rowspan=2) à côté d'un groupe qui couvre deux
+// colonnes (« Élèves 2024 », colspan=2) et se subdivise à la rangée suivante. La hauteur
+// de l'en-tête est donc le plus grand rowspan de la rangée 0.
+//
+// POURQUOI c'est un défaut de GRILLE et pas de sémantique : un rowspan ne franchit
+// jamais la frontière d'un groupe de rangées — les navigateurs le BORNENT à son
+// <thead>/<tbody>. Un <thead> d'une seule rangée contenant « Canton » en rowspan=2
+// tronque la fusion, et la rangée suivante remonte d'une colonne vers la gauche : le
+// tableau est faux À L'AFFICHAGE.
+function hauteurEnteteGras(lignes) {
+  let h = 1;
+  for (const cell of lignes[0].cellules) { h = Math.max(h, Math.max(1, parseInt(cell.rowspan, 10) || 1)); }
+  return h;
+}
+
+// Vrai si une fusion verticale née dans les `n` premières rangées DÉPASSE de l'en-tête,
+// donc franchirait la frontière <thead>/<tbody> — cas où il vaut mieux n'émettre AUCUN
+// en-tête (tout en <tbody> : la grille reste juste) que d'émettre une grille fausse.
+function fusionFranchitEntete(lignes, n) {
+  for (let r = 0; r < n && r < lignes.length; r++) {
+    for (const cell of lignes[r].cellules) {
+      if (r + Math.max(1, parseInt(cell.rowspan, 10) || 1) > n) { return true; }
+    }
+  }
+  return false;
+}
+
+// Presse-papiers HTML (CF_HTML brut ou fragment) -> modèle, FUSIONS PRÉSERVÉES.
+// Rend `null` si la chaîne ne contient aucune cellule -> l'appelant se replie sur le
+// TSV (tableauDepuisTsv). Sans <th> ni compte d'en-tête déduit, les rangées de tête sont
+// promues en en-tête si la 1re est toute en gras (cf. ligneToutGras) — Excel, qui met son
+// gras dans une classe CSS, donne donc un tableau sans en-tête, à régler d'un clic dans
+// l'éditeur de tableau.
+//
+// On ne fait que POSER data-entete-lignes : serialiserTable en dérive seul <thead>, les
+// <th> de toutes les rangées comprises dans l'en-tête et leurs scope/headers (D61/D68),
+// via finaliserModele -> reappliquerEntetes. Rien de cette logique n'est réécrit ici.
+// Pure.
+function tableauDepuisHtmlBureautique(html) {
+  const propre = nettoyerHtmlBureautique(fragmentCfHtml(html));
+  if (!/<t[dh]\b/i.test(propre)) { return null; }
+  const m = analyserTable(propre);
+  m.lignes = m.lignes.filter((lg) => lg.cellules.length > 0);      // <tr> sans cellule : artefact
+  m.lignes.forEach((lg) => lg.cellules.forEach((c) => { c.contenu = nettoyerContenuCellule(c.contenu); }));
+  if (m.attrs.enteteLignes === 0 && m.lignes.length >= 2 && ligneToutGras(m.lignes[0].cellules)) {
+    const hauteur = hauteurEnteteGras(m.lignes);
+    // Plafond du modèle : 2 niveaux d'en-tête (normaliserModele borne de toute façon).
+    let n = Math.min(hauteur, 2);
+    // Ne pas promouvoir la moitié du tableau : une fusion qui couvre TOUTES les rangées
+    // ne décrit pas un en-tête de N rangées (il ne resterait aucune donnée).
+    if (hauteur >= m.lignes.length) { n = 1; }
+    // Dernier garde-fou, décisif pour le rendu : si une fusion dépasse encore de
+    // l'en-tête retenu (fusion de 3 rangées, ou cas dégénéré ci-dessus), aucun <thead>
+    // — mieux vaut un tableau sans en-tête qu'une grille tronquée par le navigateur.
+    if (fusionFranchitEntete(m.lignes, n)) { n = 0; }
+    m.attrs.enteteLignes = n;
+  }
+  return finaliserModele(m);
+}
+
 // Colle le modèle `source` dans `modele` à l'ancre visuelle (ancreR,ancreC) : la
 // grille cible s'agrandit au besoin, les cellules source sont ESTAMPÉES (fusions
 // colspan/rowspan préservées : chaque origine source occupe le même rectangle dans
@@ -684,7 +917,11 @@ function appliquerOperationTable(nom, modeleBrut, args) {
   if (nom === 'deplacerLigne') { return deplacerLigne(modele, n(a.de), n(a.vers)); }
   if (nom === 'deplacerColonne') { return deplacerColonne(modele, n(a.de), n(a.vers)); }
   if (nom === 'coller') {
-    const src = (a.html && /<table/i.test(String(a.html))) ? analyserTable(String(a.html)) : tableauDepuisTsv(a.texte);
+    // Le HTML vient du presse-papiers du navigateur (webview) : il est TOUT AUSSI sale
+    // que celui de CF_HTML (styles mso-*, <p> dans les cellules) et porte, lui aussi,
+    // les fusions. Même chemin de nettoyage que le collage Ctrl+Alt+V ; sans cellule
+    // exploitable, repli sur le TSV.
+    const src = (a.html ? tableauDepuisHtmlBureautique(String(a.html)) : null) || tableauDepuisTsv(a.texte);
     return collerDans(modele, n(a.ancreR), n(a.ancreC), src);
   }
   if (nom === 'fusionner') { return fusionner(modele, n(a.rMin), n(a.cMin), n(a.rMax), n(a.cMax)); }
@@ -749,5 +986,7 @@ module.exports = {
   ajouterLigne, supprimerLigne, ajouterColonne, supprimerColonne,
   fusionner, scinder, viderCellules, alignerCellules,
   deplacerLigne, deplacerColonne, grilleRectangulaire,
-  tableauDepuisTsv, collerDans, appliquerOperationTable
+  tableauDepuisTsv, collerDans, appliquerOperationTable,
+  fragmentCfHtml, nettoyerHtmlBureautique, nettoyerContenuCellule,
+  ligneToutGras, hauteurEnteteGras, fusionFranchitEntete, tableauDepuisHtmlBureautique
 };

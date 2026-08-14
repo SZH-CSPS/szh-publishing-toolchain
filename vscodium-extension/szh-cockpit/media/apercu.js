@@ -7,8 +7,31 @@
   document.getElementById('szh-basculer').addEventListener('click', function () {
     vscodeApi.postMessage({ type: 'basculer' });
   });
+  // Éléments de BLOC : ce sont les seuls que le survol surligne. Pandoc pose des
+  // positions (sourcepos) aussi sur l'INLINE — un <strong>, un <em>, un lien — donc un
+  // simple closest('[data-pos]') surlignait « Morand » au milieu de « je suis Robin
+  // Morand » au lieu du paragraphe entier. Or ce qu'on désigne ici, c'est un passage à
+  // retrouver dans le texte source : l'unité utile est le bloc.
+  var BLOCS = {
+    P: 1, H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1, LI: 1, DT: 1, DD: 1,
+    BLOCKQUOTE: 1, PRE: 1, FIGURE: 1, FIGCAPTION: 1, TABLE: 1, CAPTION: 1,
+    UL: 1, OL: 1, DL: 1, DIV: 1, SECTION: 1, HEADER: 1, ASIDE: 1
+  };
+
+  // Remonte de `cible` jusqu'au premier élément de BLOC portant une position. On
+  // s'arrête au plus INTERNE (le paragraphe, pas la section qui le contient) : c'est le
+  // plus petit passage qui ait un sens dans la source.
+  function blocDe(cible) {
+    var el = cible;
+    while (el && el.nodeType === 1 && el !== document.body) {
+      if (el.hasAttribute('data-pos') && BLOCS[el.tagName]) { return el; }
+      el = el.parentElement;
+    }
+    return null;
+  }
+
   document.addEventListener('mouseover', function (e) {
-    var c = e.target && e.target.closest ? e.target.closest('[data-pos]') : null;
+    var c = blocDe(e.target);
     if (courant === c) { return; }
     if (courant) { courant.classList.remove('szh-survol'); }
     courant = c;
@@ -34,7 +57,10 @@
   // les blocs qui suivent un tableau). Pas de mot dans ce cas : le texte cliqué
   // (une cellule) n'appartient pas à la source .md.
   function resoudreClic(cible, x, y) {
-    var c = cible && cible.closest ? cible.closest('[data-pos]') : null;
+    // Le BLOC, comme au survol : on ouvre exactement ce qu'on a surligné. Le mot sous
+    // le curseur reste transmis pour que l'hôte y place le curseur (A2) — c'est une
+    // précision de position, pas une réduction de la sélection.
+    var c = blocDe(cible);
     if (c) { return { pos: c.getAttribute('data-pos'), mot: motAuPoint(x, y) }; }
     var voisin = blocPositionneLePlusProche(cible);
     if (voisin) { return { pos: voisin.getAttribute('data-pos'), mot: '' }; }
