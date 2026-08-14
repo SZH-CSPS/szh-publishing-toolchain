@@ -142,9 +142,15 @@ h1 {
 .case__hex {
   font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 10px; opacity: .75;
 }
+/* 14 px : la taille RÉELLE du corps de la maquette (print.css, --body-size = 0,875rem),
+   celle qu'annonce l'étiquette de la case. Ces deux nombres doivent rester d'accord —
+   un échantillon rendu à une autre taille que celle affichée ferait mentir la planche.
+   Hauteur FIXE et contenu aligné en bas : c'est ce qui fait tomber l'échantillon à la
+   même hauteur dans les onze cases, qu'il soit à 14 px ou à 19 px gras. */
 .case__texte {
-  font-family: 'Source Serif 4', Georgia, serif; font-size: 13px; line-height: 1.25;
-  margin: auto 0 0; color: var(--encre-case); overflow-wrap: anywhere;
+  font-family: 'Source Serif 4', Georgia, serif; font-size: 14px; line-height: 1.25;
+  margin: 0; color: var(--encre-case); overflow-wrap: anywhere;
+  height: 26px; display: flex; align-items: flex-end;
 }
 /* « Gros titre » au sens de la légende ci-dessus : 19 px en gras. Les crans 300, 500 et
    600 ne portent QUE ce texte-là — l'échantillon montre donc la taille autorisée, pas
