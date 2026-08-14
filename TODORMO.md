@@ -30,6 +30,16 @@
   l'**éditeur de tableau** (la grille), pas le fichier HTML. Le bouton « Éditer » du survol a
   disparu — seul « Remplacer » reste. À vérifier aussi que rouvrir un tableau déjà ouvert le
   ramène au premier plan au lieu d'en ouvrir un second.
+- [ ] **Choisir 4 préréglages de tableau parmi les 8** (D85) : ouvrir un tableau, cliquer
+  chaque préréglage et juger au rendu. Les huit sont des propositions — académique, en-tête
+  foncé, en-tête couleur, en-tête gris, lignes alternées, colonnes alternées, synthèse,
+  matrice. Pour n'en garder que quatre : supprimer les entrées inutiles de `PRESETS_TABLE`
+  et `PRESETS_ORDRE` (`lib/table-model.js`) **et** leurs libellés `table.preset.<clé>` dans
+  `lib/i18n.js` (fr **et** de). Rien d'autre.
+- [ ] **Éditeur de tableau : la place** (D85) : vérifier que l'aperçu de l'article se ferme
+  bien à l'ouverture, que « Voir le tableau dans l'aperçu » le rouvre **et** amène la vue
+  sur le tableau (au pire il rouvre sans scroller : le tableau inclus n'a pas de position
+  source), et que les deux colonnes de réglages tiennent sans défilement.
 - [ ] **Aperçu HTML : le survol prend le bloc** (D82) : survoler un mot au milieu d'une
   phrase doit surligner **tout le paragraphe**, pas le mot ni le passage en gras.
 - [ ] **Planche de palette** — `docs/palette.html` (ou le lien partagé) : juger **à l'œil**.

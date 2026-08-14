@@ -71,6 +71,28 @@ Elle a **deux sections** :
     grille, comme dans Word — jamais de code HTML à lire) ;
     **Remplacer** au survol l'échange contre un autre fichier HTML, même nom conservé.
     La modification apparaît à la compilation suivante (Ctrl + S ou re-clic).
+
+  ### L'éditeur de tableau
+
+  Une grille, comme dans un tableur. Les gestes :
+
+  - **clic sur une cellule** pour l'éditer ; `Ctrl+B` gras, `Ctrl+I` italique ;
+  - **Tab** ou **Entrée** pour passer à la cellule suivante ;
+  - `Ctrl+Z` / `Ctrl+Y` pour annuler et rétablir ; `Ctrl+V` pour coller un tableau
+    venu d'Excel ;
+  - **Maj + clic**, ou glisser, pour sélectionner un bloc rectangulaire de cellules ;
+  - les **en-têtes A/B/C et 1/2/3** au bord de la grille : cliquer pour sélectionner
+    toute la ligne ou la colonne, glisser pour la déplacer ;
+  - **clic droit** pour insérer, supprimer, fusionner, scinder, ou désigner une ligne
+    ou une colonne comme en-tête.
+
+  À droite, deux colonnes de réglages : les **préréglages** (un clic habille tout le
+  tableau d'un coup) et les **styles du tableau** à gauche, les **styles des en-têtes**
+  à droite. Rien de tout cela ne change le contenu : uniquement l'apparence.
+
+  L'aperçu de l'article se ferme à l'ouverture de l'éditeur, pour laisser la place à la
+  grille. Deux boutons de la barre le rouvrent (**Voir le tableau dans l'aperçu**, qui
+  amène la vue sur le tableau) et le referment (**Cacher l'aperçu**).
 - **Word en attente (n)** — les fichiers Word déposés mais pas encore convertis ; le
   nombre entre parenthèses est le compte. Un ⚠ « déjà converti » signale un Word dont
   l'article existe déjà (renommer le fichier si c'est une nouvelle version).

@@ -2,7 +2,7 @@
   "name": "szh-cockpit",
   "displayName": "SZH — Revue (cockpit)",
   "description": "Barre latérale « Revue SZH » : articles, métadonnées du numéro, import des Word, aperçu et réglages.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "szh-csps",
   "license": "MIT",
   "engines": { "vscode": "^1.75.0" },

@@ -1538,13 +1538,23 @@ function lireTeintesAccent(racine) {
 // Libellés localisés transmis à la webview de l'éditeur de tableau.
 function textesTable() {
   const cles = [
-    'table.aide', 'table.enregistrer', 'table.fusionner', 'table.scinder',
+    'table.enregistrer', 'table.fusionner', 'table.scinder',
+    'table.grpApercu', 'table.apercuVoir', 'table.apercuCacher', 'table.preset.note',
+    'table.preset.academique',
+    'table.preset.entetenegatif',
+    'table.preset.entetecouleur',
+    'table.preset.entetegris',
+    'table.preset.lignesalternees',
+    'table.preset.colonnesalternees',
+    'table.preset.synthese',
+    'table.preset.matrice',
+    'table.tip.apercuVoir', 'table.tip.apercuCacher',
     'table.rien', 'table.fusionImpossible', 'table.enregistre',
     'table.ctx.ligneAvant', 'table.ctx.ligneApres', 'table.ctx.ligneSuppr',
     'table.ctx.colAvant', 'table.ctx.colApres', 'table.ctx.colSuppr',
     'table.entete', 'table.enteteRetirer',
     // Panneau de mise en forme (T2) : 3 zones.
-    'table.zone.styles', 'table.zone.preset', 'table.preset.bientot', 'table.modele',
+    'table.zone.styles', 'table.zone.preset',
     'table.zone.entetes', 'table.entetesLignes', 'table.entetesColonnes', 'table.entetes.aucun',
     'table.total', 'table.gras',
     'table.fond.aucun', 'table.fond.negatif', 'table.fond.couleur', 'table.fond.gris',
@@ -1584,6 +1594,12 @@ function ouvrirEditeurTable(fournisseur, item) {
   if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
   const chemin = item.cheminAsset;
   const nom = path.basename(chemin);
+  const slugArticle = item.slug || apercuCourantSlug;
+  // L'éditeur de tableau a besoin de largeur : la grille, plus deux colonnes de réglages.
+  // On ferme donc l'aperçu de l'ARTICLE (colonne 2) le temps de l'édition — les deux
+  // boutons « Voir dans l'aperçu » / « Cacher l'aperçu » de la barre le rouvrent et le
+  // referment à la demande. L'aperçu du tableau lui-même, c'est la grille : elle est là.
+  fermerApercuHtml();
   const existant = panneauxTable.get(chemin);
   if (existant) { existant.reveal(vscode.ViewColumn.One); return; }
   const panneau = vscode.window.createWebviewPanel(
@@ -1600,6 +1616,7 @@ function ouvrirEditeurTable(fournisseur, item) {
     panneau.webview.postMessage({
       type: 'charger', modele: modele, disposition: disposition(modele),
       accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine),
+      presets: PRESETS_ORDRE,
       i18n: textesTable()
     });
   };
@@ -1616,7 +1633,8 @@ function ouvrirEditeurTable(fournisseur, item) {
     const res = appliquerOperationTable(String(msg.nom || ''), msg.modele, msg.args);
     if (res && res.erreur) { panneau.webview.postMessage({ type: 'erreur', message: T(res.erreur) }); return; }
     panneau.webview.postMessage({ type: 'charger', modele: res, disposition: disposition(res),
-      accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine) });
+      accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine),
+      presets: PRESETS_ORDRE });
   };
   const enregistrer = (modele) => {
     ecrireAusgabeAtomique(chemin, serialiserTable(normaliserModele(modele)));
@@ -1631,9 +1649,38 @@ function ouvrirEditeurTable(fournisseur, item) {
       // qu'un calculateur pur de disposition (pas de duplication du modèle côté webview).
       const m = normaliserModele(msg.modele);
       panneau.webview.postMessage({ type: 'charger', modele: m, disposition: disposition(m),
-        accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine) });
+        accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine),
+      presets: PRESETS_ORDRE });
       return;
     }
+    if (msg.type === 'apercu-ouvrir') {
+      // Rouvre l'aperçu de l'article qui contient ce tableau, et tente d'y amener la vue :
+      // on cherche la LIGNE de la référence ::: {.szh-tabelle src="…"} dans le .md et on
+      // pousse le surlignage habituel (G3). Le tableau inclus est un bloc HTML brut, donc
+      // sans position source : si la webview ne trouve rien à surligner, elle ne fait rien
+      // — l'aperçu est rouvert, ce qui est l'essentiel.
+      if (!slugArticle) { return; }
+      ouvrirApercuHtml(fournisseur, slugArticle);
+      const md = path.join(fournisseur.racine, 'articles', slugArticle, slugArticle + '.md');
+      let ligne = 0;
+      try {
+        const lignes = fs.readFileSync(md, 'utf8').split(/\r?\n/);
+        for (let i = 0; i < lignes.length; i++) {
+          if (lignes[i].indexOf(nom) !== -1 && lignes[i].indexOf('szh-tabelle') !== -1) { ligne = i + 1; break; }
+        }
+      } catch (e) { /* .md illisible : on se contente d'avoir rouvert l'aperçu */ }
+      if (ligne > 0) {
+        // La webview vient d'être créée : son script n'écoute pas encore. Un seul report
+        // suffit (le HTML est déjà en mémoire, il n'y a pas de réseau).
+        setTimeout(() => {
+          if (!panneauApercuHtml) { return; }
+          try { panneauApercuHtml.webview.postMessage({ type: 'surligner', ligne: ligne, mot: '' }); }
+          catch (e) { /* aperçu refermé entre-temps */ }
+        }, 400);
+      }
+      return;
+    }
+    if (msg.type === 'apercu-fermer') { fermerApercuHtml(); return; }
     if (msg.type === 'modifie') {
       // Indicateur ● « non enregistré » sur l'onglet (D1 : confirmation, pas d'auto-save).
       panneau.title = (msg.modifie ? '● ' : '') + T('table.titre', [nom]);

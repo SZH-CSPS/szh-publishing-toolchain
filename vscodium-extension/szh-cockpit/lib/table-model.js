@@ -82,6 +82,73 @@ function vrai(v) { return v === true || v === 1 || v === '1' || v === 'oui' || v
 const FONDS = ['aucun', 'negatif', 'couleur', 'gris'];   // data-*-fond
 const ZEBRES = ['aucun', 'paires', 'impaires'];          // data-zebre-*
 
+// ─── Préréglages de mise en forme (huit PROPOSITIONS, à réduire à quatre) ────────────
+//
+// Chaque préréglage pose d'un coup tout l'habillage du tableau : styles des en-têtes de
+// colonnes (ec) et de lignes (el), ligne de total, bordures, zébrage. Il ne touche PAS
+// aux comptes d'en-tête, qui décrivent la structure et non l'apparence.
+//
+// Les huit sont là pour être COMPARÉS à l'écran, puis élagués : pour n'en garder que
+// quatre, supprimer les entrées inutiles ici ET leurs libellés dans lib/i18n.js
+// (`table.preset.<clé>`), rien d'autre — la liste des radios se construit depuis ce
+// tableau, dans cet ordre.
+//
+// Les fonds disponibles sont ceux de D67, avec leurs contrastes garantis : « negatif »
+// (accent foncé, texte blanc), « couleur » (accent clair, texte noir), « gris »
+// (gris neutre, texte noir). Aucun préréglage n'invente de couleur.
+const PRESETS_TABLE = {
+  // 1. La table de revue scientifique classique : aucun aplat, deux filets, en-tête gras.
+  academique: {
+    ecGras: true, ecFond: 'aucun', elGras: true, elFond: 'aucun',
+    totalGras: false, totalFond: 'aucun', bordureHaute: true, bordureBasse: true,
+    zebreCol: 'aucun', zebreColEntetes: false, zebreLig: 'aucun', zebreLigEntetes: false
+  },
+  // 2. En-tête en aplat foncé : le plus contrasté, pour un tableau qu'on lit de loin.
+  entetenegatif: {
+    ecGras: true, ecFond: 'negatif', elGras: true, elFond: 'aucun',
+    totalGras: false, totalFond: 'aucun', bordureHaute: false, bordureBasse: true,
+    zebreCol: 'aucun', zebreColEntetes: false, zebreLig: 'aucun', zebreLigEntetes: false
+  },
+  // 3. En-tête dans la couleur du numéro : la variante « maison ».
+  entetecouleur: {
+    ecGras: true, ecFond: 'couleur', elGras: true, elFond: 'aucun',
+    totalGras: false, totalFond: 'aucun', bordureHaute: false, bordureBasse: true,
+    zebreCol: 'aucun', zebreColEntetes: false, zebreLig: 'aucun', zebreLigEntetes: false
+  },
+  // 4. En-tête gris : neutre, indépendant de la couleur annuelle.
+  entetegris: {
+    ecGras: true, ecFond: 'gris', elGras: true, elFond: 'aucun',
+    totalGras: false, totalFond: 'aucun', bordureHaute: true, bordureBasse: true,
+    zebreCol: 'aucun', zebreColEntetes: false, zebreLig: 'aucun', zebreLigEntetes: false
+  },
+  // 5. Lignes alternées : pour un tableau long, où l'œil doit suivre une rangée.
+  lignesalternees: {
+    ecGras: true, ecFond: 'aucun', elGras: true, elFond: 'aucun',
+    totalGras: false, totalFond: 'aucun', bordureHaute: true, bordureBasse: true,
+    zebreCol: 'aucun', zebreColEntetes: false, zebreLig: 'paires', zebreLigEntetes: false
+  },
+  // 6. Colonnes alternées : pour un tableau large, où l'œil doit suivre une colonne.
+  colonnesalternees: {
+    ecGras: true, ecFond: 'aucun', elGras: true, elFond: 'aucun',
+    totalGras: false, totalFond: 'aucun', bordureHaute: true, bordureBasse: true,
+    zebreCol: 'paires', zebreColEntetes: false, zebreLig: 'aucun', zebreLigEntetes: false
+  },
+  // 7. Tableau de synthèse : en-tête foncé et dernière rangée détachée (D65).
+  synthese: {
+    ecGras: true, ecFond: 'negatif', elGras: true, elFond: 'aucun',
+    totalGras: true, totalFond: 'gris', bordureHaute: false, bordureBasse: true,
+    zebreCol: 'aucun', zebreColEntetes: false, zebreLig: 'aucun', zebreLigEntetes: false
+  },
+  // 8. Matrice à double entrée : les deux en-têtes habillés, lignes alternées légères.
+  matrice: {
+    ecGras: true, ecFond: 'couleur', elGras: true, elFond: 'gris',
+    totalGras: false, totalFond: 'aucun', bordureHaute: true, bordureBasse: true,
+    zebreCol: 'aucun', zebreColEntetes: false, zebreLig: 'paires', zebreLigEntetes: false
+  }
+};
+const PRESETS_ORDRE = ['academique', 'entetenegatif', 'entetecouleur', 'entetegris',
+  'lignesalternees', 'colonnesalternees', 'synthese', 'matrice'];
+
 // Échappe le texte BRUT (collage TSV) en inline sûr : &, <, > seulement. Le résultat
 // passe ensuite par canoniserInline (aucune balise -> texte conservé, jamais d'injection).
 function echapTexteBrut(s) {
@@ -968,6 +1035,20 @@ function appliquerOperationTable(nom, modeleBrut, args) {
   }
   // Réglages du tableau (D64) : bordures (bool), zébrage colonnes/lignes (enum) + « inclure
   // les en-têtes » (bool). Un seul champ par appel (les zones postent au changement).
+  if (nom === 'preset') {
+    // Un préréglage pose d'un coup TOUS les styles de mise en forme du tableau, donc un
+    // seul pas d'annulation — l'ancienne voie (un « reglage » par champ) en aurait empilé
+    // une dizaine, et un Ctrl+Z n'aurait défait qu'un huitième du changement.
+    const p = PRESETS_TABLE[String(a.nom || '')];
+    if (p) {
+      // On ne touche JAMAIS aux COMPTES d'en-tête (enteteLignes/Colonnes) : ils décrivent
+      // la structure du tableau, pas son habillage. Un préréglage qui styliserait un
+      // en-tête inexistant reste sans effet visible, et le sous-bloc correspondant est
+      // déjà grisé dans le panneau — c'est le comportement voulu.
+      Object.keys(p).forEach((champ) => { modele.attrs[champ] = p[champ]; });
+    }
+    return finaliserModele(modele);
+  }
   if (nom === 'reglage') {
     const enums = { zebreCol: ZEBRES, zebreLig: ZEBRES };
     const bools = ['bordureHaute', 'bordureBasse', 'zebreColEntetes', 'zebreLigEntetes'];
@@ -988,5 +1069,6 @@ module.exports = {
   deplacerLigne, deplacerColonne, grilleRectangulaire,
   tableauDepuisTsv, collerDans, appliquerOperationTable,
   fragmentCfHtml, nettoyerHtmlBureautique, nettoyerContenuCellule,
-  ligneToutGras, hauteurEnteteGras, fusionFranchitEntete, tableauDepuisHtmlBureautique
+  ligneToutGras, hauteurEnteteGras, fusionFranchitEntete, tableauDepuisHtmlBureautique,
+  PRESETS_TABLE, PRESETS_ORDRE
 };

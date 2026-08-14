@@ -1,7 +1,7 @@
 (function(){
 'use strict';
 var api=acquireVsCodeApi();
-var modele=null, dispo=null, occ2=null, TXT={}, accent='', teintes={};
+var modele=null, dispo=null, occ2=null, TXT={}, accent='', teintes={}, PRESETS=[];
 var selection=null, ancre=null, cellActive=null, ctl={};
 // Historique (D60, F1) : deux piles d'états du MODÈLE, dans la webview. Chaque
 // opération de structure empile l'état PRÉ-op (voir op) ; les éditions de texte sont
@@ -9,7 +9,7 @@ var selection=null, ancre=null, cellActive=null, ctl={};
 // modeleEnregistre = état écrit sur disque (garde non-enregistré).
 var annuler=[], retablir=[], avantEdition=null, modeleEnregistre=null, enrEnCours=null, dernierModifie=false;
 var glisse=null;   // sélection par glisser : { ancre:cellule, actif:bool }
-var barre=document.getElementById('barre'), zone=document.getElementById('zone'), aide=document.getElementById('aide'), panneau=document.getElementById('panneau');
+var barre=document.getElementById('barre'), zone=document.getElementById('zone'), panneau=document.getElementById('panneau');
 function clone(o){return JSON.parse(JSON.stringify(o));}
 function dechap(s){return String(s).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'\"').replace(/&#x27;/g,"'").replace(/&#39;/g,"'").replace(/&amp;/g,'&');}
 function echap(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -254,6 +254,13 @@ function construireBarre(){barre.textContent='';
   ga.appendChild(bouton(TXT.alignCentre,function(){aligner('center');},'',TXT['tip.alignCentre']));
   ga.appendChild(bouton(TXT.alignDroite,function(){aligner('right');},'',TXT['tip.alignDroite']));
   barre.appendChild(ga);
+  // Aperçu de l'ARTICLE (colonne 2) : fermé à l'ouverture de l'éditeur pour libérer la
+  // largeur, il se rouvre et se referme ici à la demande. « Voir dans l'aperçu » tente en
+  // plus d'amener la vue sur le tableau (l'hôte cherche la ligne de la référence).
+  var ga2=groupe(TXT.grpApercu);
+  ga2.appendChild(bouton(TXT.apercuVoir,function(){api.postMessage({type:'apercu-ouvrir'});},'',TXT['tip.apercuVoir']));
+  ga2.appendChild(bouton(TXT.apercuCacher,function(){api.postMessage({type:'apercu-fermer'});},'',TXT['tip.apercuCacher']));
+  barre.appendChild(ga2);
   var ret=bouton(TXT.retour,retourArticle,'',TXT['tip.retour']);barre.appendChild(ret);
   var enr=bouton(TXT.enregistrer,enregistrerTable,'principal',TXT['tip.enregistrer']);barre.appendChild(enr);
   var e=document.createElement('span');e.id='etat';e.setAttribute('role','status');barre.appendChild(e);
@@ -312,25 +319,34 @@ function sousBlocZebre(parent,titre,champ,champEnt){var bloc=document.createElem
   var ent=caseACocher(TXT['zebre.entetes'],function(){op('reglage',{champ:champEnt,valeur:ent.input.checked});});bloc.appendChild(ent.label);o.entetes=ent.input;
   parent.appendChild(bloc);return o;}
 function construirePanneau(){panneau.textContent='';panneau.setAttribute('aria-label',TXT['zone.styles']||'');
-  // Zone 1 : Preset (désactivé — à implémenter plus tard).
+  // DEUX COLONNES : les styles d'en-tête à DROITE (trois sous-blocs, c'est le plus haut),
+  // tout le reste à GAUCHE. Empilés en une seule colonne, l'ensemble dépassait la hauteur
+  // de la fenêtre et obligeait à défiler pour atteindre le zébrage.
+  var colG=document.createElement('div');colG.className='colonne';
+  var colD=document.createElement('div');colD.className='colonne';
+  panneau.appendChild(colG);panneau.appendChild(colD);
+  // Zone 1 : PRÉRÉGLAGES. La liste et l'ordre viennent de l'hôte (PRESETS_ORDRE du
+  // modèle) : la webview n'a pas sa propre idée des préréglages existants, donc en
+  // retirer un côté modèle le fait disparaître ici sans autre retouche.
   var z1=fieldsetZone(TXT['zone.preset']);
-  var rp=groupeRadios('preset',[['1',fmt(TXT.modele,1)],['2',fmt(TXT.modele,2)],['3',fmt(TXT.modele,3)],['4',fmt(TXT.modele,4)]],function(){});
-  Object.keys(rp.inputs).forEach(function(k){rp.inputs[k].disabled=true;});z1.appendChild(rp.wrap);
-  var note=document.createElement('p');note.className='note';note.textContent=TXT['preset.bientot'];z1.appendChild(note);
-  panneau.appendChild(z1);
+  var opts=(PRESETS||[]).map(function(cle){return [cle,TXT['preset.'+cle]||cle];});
+  ctl.preset=groupeRadios('preset',opts,function(v){op('preset',{nom:v});});
+  z1.appendChild(ctl.preset.wrap);
+  var note=document.createElement('p');note.className='note';note.textContent=TXT['preset.note']||'';z1.appendChild(note);
+  colG.appendChild(z1);
   // Zone 2 : Styles des en-têtes (en-têtes de lignes / colonnes / ligne de total).
   var z2=fieldsetZone(TXT['zone.entetes']);
   ctl.el=sousBlocEntete(z2,TXT.entetesLignes,'lignes');
   ctl.ec=sousBlocEntete(z2,TXT.entetesColonnes,'colonnes');
   ctl.tot=sousBlocEntete(z2,TXT.total,'total');
-  panneau.appendChild(z2);
+  colD.appendChild(z2);
   // Zone 3 : Styles du tableau (bordures + zébrage colonnes/lignes).
   var z3=fieldsetZone(TXT['zone.tableau']);
   var cbh=caseACocher(TXT.bordureHaute,function(){op('reglage',{champ:'bordureHaute',valeur:cbh.input.checked});});z3.appendChild(cbh.label);ctl.bordureHaute=cbh.input;
   var cbb=caseACocher(TXT.bordureBasse,function(){op('reglage',{champ:'bordureBasse',valeur:cbb.input.checked});});z3.appendChild(cbb.label);ctl.bordureBasse=cbb.input;
   ctl.zebreCol=sousBlocZebre(z3,TXT.zebreCol,'zebreCol','zebreColEntetes');
   ctl.zebreLig=sousBlocZebre(z3,TXT.zebreLig,'zebreLig','zebreLigEntetes');
-  panneau.appendChild(z3);}
+  colG.appendChild(z3);}
 function cocherRadio(rd,val){for(var k in rd.inputs){rd.inputs[k].checked=(k===val);}}
 // Un sous-bloc d'en-tête n'agit que si l'en-tête correspondant existe (el = colonnes de
 // gauche -> enteteColonnes ; ec = rangées du haut -> enteteLignes) : sinon grisé + indice.
@@ -384,10 +400,10 @@ document.addEventListener('keydown',function(ev){if(!(ev.ctrlKey||ev.metaKey))re
 
 window.addEventListener('message',function(ev){var msg=ev.data||{};
   if(msg.type==='charger'){
-    modele=msg.modele;dispo=msg.disposition;if(msg.accent!==undefined)accent=msg.accent;if(msg.teintes)teintes=msg.teintes;
+    modele=msg.modele;dispo=msg.disposition;if(msg.accent!==undefined)accent=msg.accent;if(msg.teintes)teintes=msg.teintes;if(msg.presets)PRESETS=msg.presets;
     if(msg.i18n){TXT=msg.i18n;
       modeleEnregistre=clone(modele);annuler=[];retablir=[];avantEdition=null;dernierModifie=false;
-      aide.textContent=TXT.aide||'';construireBarre();}
+      construireBarre();}
     // F1 : un « charger » sans i18n = résultat d'une opération / d'une annulation-
     // rétablissement. On NE réinitialise PLUS l'historique ici (c'était la cause de
     // « Annuler ne fait rien ») : les piles vivent uniquement dans op / commitTexte.
