@@ -44,6 +44,14 @@
     "when": "editorTextFocus && editorLangId == markdown"
   },
 
+  // Saut de page (D86) : ce qui suit repart en haut d'une page dans le PDF. Aucun effet
+  // en HTML, où il n'y a pas de page suivante — le marqueur y est simplement inerte.
+  {
+    "key": "ctrl+alt+enter",
+    "command": "szh.fmt.sautPage",
+    "when": "editorTextFocus && editorLangId == markdown"
+  },
+
   // Secours si l'aperçu PDF ne se rafraîchit pas tout seul : recharge la fenêtre
   { "key": "ctrl+alt+r", "command": "workbench.action.reloadWindow" }
 

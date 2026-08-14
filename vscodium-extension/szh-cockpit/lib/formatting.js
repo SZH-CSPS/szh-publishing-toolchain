@@ -297,6 +297,28 @@ function blocReferenceTable(nom, avant, apres) {
        + (String(apres || '').trim() === '' ? '' : '\n\n');
 }
 
+// Marqueur de SAUT DE PAGE (D86), même forme que la référence de tableau ci-dessus : un
+// bloc « fenced div » vide. Ce n'est PAS une balise spéciale de pandoc — il n'en existe
+// pas d'universelle : `\newpage` ne vaut que pour LaTeX, et notre PDF sort de WeasyPrint.
+// C'est print.css qui donne son sens au marqueur (`break-after: page`), et c'est ce qui le
+// rend INERTE en HTML : un média qui défile n'a pas de page suivante. Pure (via _pur).
+function blocSautPage(avant, apres) {
+  const bloc = '::: {.szh-saut}\n:::';
+  return (String(avant || '').trim() === '' ? '' : '\n\n') + bloc
+       + (String(apres || '').trim() === '' ? '' : '\n\n');
+}
+
+// Insère un saut de page au curseur. Un bloc a besoin d'être isolé par des lignes vides,
+// sinon pandoc l'avale dans le paragraphe courant et le div n'existe jamais.
+async function fmtSautPage() {
+  const editeur = vscode.window.activeTextEditor;
+  if (!editeur) { return; }
+  const ligne = editeur.document.lineAt(editeur.selection.active.line).text;
+  const col = editeur.selection.active.character;
+  const texte = blocSautPage(ligne.slice(0, col), ligne.slice(col));
+  await editeur.edit((b) => { b.replace(editeur.selection, texte); });
+}
+
 async function fmtCollerTableau() {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
@@ -358,7 +380,8 @@ const PALETTE_MEF = [
   ['--', 'palette.g.inserer'],
   ['palette.figure', 'szh.fmt.figure', 'Ctrl+Alt+F', ''],
   ['palette.tableau', 'szh.fmt.tableau', 'Ctrl+Alt+T', ''],
-  ['palette.collerTableau', 'szh.fmt.collerTableau', 'Ctrl+Alt+V', '']
+  ['palette.collerTableau', 'szh.fmt.collerTableau', 'Ctrl+Alt+V', ''],
+  ['palette.sautPage', 'szh.fmt.sautPage', 'Ctrl+Alt+Entrée', '']
 ];
 
 // Ouvre la palette (QuickPick) et applique la commande choisie à la sélection
@@ -395,11 +418,12 @@ function enregistrerCommandesMiseEnForme(context, hote) {
   c('szh.fmt.figure', () => fmtFigure());
   c('szh.fmt.tableau', () => fmtTableau());
   c('szh.fmt.collerTableau', () => fmtCollerTableau());
+  c('szh.fmt.sautPage', () => fmtSautPage());
   c('szh.miseEnForme', () => ouvrirMiseEnForme());
 }
 
 module.exports = {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
-  enroberBloc, squeletteTableau, blocReferenceTable, nomTableLibre,
+  enroberBloc, squeletteTableau, blocReferenceTable, blocSautPage, nomTableLibre,
   lireHtmlPressePapiers, enregistrerCommandesMiseEnForme
 };

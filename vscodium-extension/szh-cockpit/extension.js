@@ -76,7 +76,8 @@ const {
   fusionner, scinder, viderCellules, alignerCellules,
   deplacerLigne, deplacerColonne,
   tableauDepuisTsv, collerDans, appliquerOperationTable,
-  fragmentCfHtml, nettoyerHtmlBureautique, nettoyerContenuCellule, tableauDepuisHtmlBureautique
+  fragmentCfHtml, nettoyerHtmlBureautique, nettoyerContenuCellule, tableauDepuisHtmlBureautique,
+  PRESETS_ORDRE
 } = require('./lib/table-model');
 // ---- Assemblage des webviews -> lib/webviews/util.js -----------------------------
 const { construireHtml, lireMedia } = require('./lib/webviews/util');

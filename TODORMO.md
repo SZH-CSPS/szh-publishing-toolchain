@@ -30,6 +30,10 @@
   l'**éditeur de tableau** (la grille), pas le fichier HTML. Le bouton « Éditer » du survol a
   disparu — seul « Remplacer » reste. À vérifier aussi que rouvrir un tableau déjà ouvert le
   ramène au premier plan au lieu d'en ouvrir un second.
+- [ ] **Saut de page** (`Ctrl+Alt+Entrée`, D86) : vérifier sur un article réel que la page
+  se coupe où voulu dans le PDF, et que l'aperçu HTML reste inchangé. Le comportement est
+  prouvé par un build (1 page → 2 pages), mais le geste et le placement du marqueur dans
+  le texte n'ont pas été essayés en vrai.
 - [ ] **Choisir 4 préréglages de tableau parmi les 8** (D85) : ouvrir un tableau, cliquer
   chaque préréglage et juger au rendu. Les huit sont des propositions — académique, en-tête
   foncé, en-tête couleur, en-tête gris, lignes alternées, colonnes alternées, synthèse,

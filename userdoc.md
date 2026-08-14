@@ -154,6 +154,9 @@ Pas besoin de connaître le Markdown : **sélectionne du texte, puis clic droit 
   demande un **titre** (Information, Attention, Note… ou un titre libre) ;
 - **Insérer une figure** (`Ctrl+Alt+F`) : choisis une image ; elle est copiée dans
   l'article et il ne reste qu'à écrire la légende ;
+- **Insérer un saut de page** (`Ctrl+Alt+Entrée`) : ce qui suit repart en haut d'une
+  nouvelle page **dans le PDF**. Rien ne change dans l'aperçu ni dans la version HTML :
+  une page web n'a pas de pages, le saut n'y a donc aucun sens et n'y apparaît pas.
 - **Insérer un tableau** (`Ctrl+Alt+T`) : un petit tableau vierge à remplir (`Tab`
   passe d'une cellule à l'autre) ;
 - **Coller un tableau depuis Excel/Word** (`Ctrl+Alt+V`) : copie les cellules dans

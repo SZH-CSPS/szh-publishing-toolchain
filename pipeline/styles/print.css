@@ -159,6 +159,27 @@ p, li, blockquote p { orphans: 3; widows: 3; }
 h1:not(.szh-title), h2, h3, h4 { break-after: avoid-page; break-inside: avoid; }
 blockquote, .hervorhebung, .important, .question, figure, .szh-abstract { break-inside: avoid; }
 li { break-inside: avoid; }
+
+/* ── Saut de page volontaire (D86) ─────────────────────────────────────────
+   Écrit dans l'article comme un bloc vide : ::: {.szh-saut} … :::
+   Ce qui suit repart en haut d'une nouvelle page.
+
+   AUCUNE CONDITION DE MÉDIA n'est nécessaire, et c'est le point important : un
+   saut de page n'existe que dans un média PAGINÉ. Le même fichier CSS sert au
+   HTML autonome et à l'aperçu, où `break-after: page` est simplement inerte —
+   il n'y a pas de page suivante dans un document qui défile. Le marqueur ne
+   produit donc rien à l'écran, sans qu'on ait à l'exclure.
+   La hauteur nulle et les marges à zéro évitent qu'il laisse un blanc en HTML,
+   où le div existe bel et bien dans le flux.
+   `break-before: avoid` sur le marqueur lui-même : sans lui, une page pourrait
+   se couper JUSTE avant le marqueur, et le saut demandé deviendrait une page
+   blanche. */
+.szh-saut {
+  break-after: page;
+  break-before: avoid;
+  height: 0; margin: 0; padding: 0; border: 0;
+}
+
 strong, b { font-weight: 700; }
 em, i { font-style: italic; }
 code, pre, kbd, samp { font-family: var(--font-mono); }
