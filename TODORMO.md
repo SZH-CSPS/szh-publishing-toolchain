@@ -1,4 +1,4 @@
-# Todo Robin (mis à jour le 2026-08-13, après la palette APCA et P6)
+# Todo Robin (mis à jour le 2026-08-13, après la palette en grille et P6)
 
 ## Validations qui demandent un humain
 
@@ -12,16 +12,26 @@
   - le comportement quand **une autre revue est déjà ouverte** (nouvelle fenêtre ou réutilisation).
 - [ ] **Collage de tableau Excel** (`Maj+Alt+V`, D75) : la conversion est testée headless
   (7 cas), le geste ne l'est pas.
-- [ ] **Planche de palette** : ouvrir `docs/palette.html` et juger **à l'œil** les nouvelles
-  teintes. La palette est passée en **grille à clarté fixe de 11 crans** (D79) : un même numéro
-  = la même clarté pour les six couleurs, et la couleur de charte a son propre jeton `-marque`,
-  hors grille. Les fonds « couleur » des tableaux sont plus colorés qu'avant l'APCA (l'ancien
-  fondu à 18 % gaspillait une douzaine de points de contraste). Si un fond te paraît trop franc,
-  fais pointer l'alias `--c-<nom>-clair` vers `-100` au lieu de `-200` dans `couleurs.css`, puis
-  relance `python3 test/apca-check.py` et `python3 test/palette-html.py`.
-  À regarder en particulier : les crans clairs du **rouge** et de la **capucine** tirent au rose
-  (sRGB n'a pas de rouge clair vif : la chroma y est rabotée jusqu'à −49 %), et les crans sombres
-  de la **moutarde** sont olive plutôt que jaunes — même raison, en sens inverse.
+- [ ] **Planche de palette** — `docs/palette.html` (ou le lien partagé) : juger **à l'œil**.
+  La palette est une **grille à clarté fixe de 11 crans** (D79) : un même numéro = la même
+  clarté pour les six couleurs. La couleur de charte **occupe** l'un de ces crans (D80) —
+  rouge 700, capucine/poireau/bleu acier/mountbatten 500, moutarde 300 — badgé « charte ».
+  À regarder en particulier :
+  - le **fond « négatif » des tableaux d'un numéro rouge** est désormais *le* rouge de charte
+    `#D31932` au lieu du `#C3112C` assombri : plus vif, texte blanc à Lc 79,7 ;
+  - les crans clairs du **rouge** et de la **capucine** tirent au rose (sRGB n'a pas de rouge
+    clair vif : la chroma y est rabotée jusqu'à −49 %), et les crans sombres de la **moutarde**
+    sont olive plutôt que jaunes — même cause, en sens inverse ;
+  - le **cran 400** ne porte aucun texte : c'est le croisement où ni le noir ni le blanc ne
+    passent. Vérifier que sa présentation ne prête pas à confusion.
+  Si un fond te paraît trop franc, fais pointer l'alias `--c-<nom>-clair` vers `-100` au lieu
+  de `-200` dans `couleurs.css`, puis relance `python3 test/apca-check.py` **et**
+  `python3 test/palette-html.py`.
+- [ ] **Aperçu de l'éditeur de tableau** : il ne recalcule plus les teintes, il lit celles que
+  le pipeline écrit dans `out/.szh-accent.css`. Donc à vérifier sur un tableau réel, dans un
+  numéro **coloré** : les fonds « couleur » et « négatif » de l'éditeur doivent être
+  **identiques** à ceux du PDF. C'est le seul moyen de confirmer que la dérive WCAG/APCA est
+  bien éteinte. Repli documenté : un numéro jamais compilé montre les gris neutres.
 - [ ] **Rendu du `.pptx`** (`profil: presentation`) : validé structurellement (OOXML, texte
   complet), jamais ouvert dans PowerPoint. À voir à l'œil sur un article réel. ⚠ Limite
   mesurée : les tableaux de D47 (HTML réinjecté) **disparaissent** du diaporama.
@@ -66,10 +76,16 @@
 - **Poste installé** par `bootstrap.ps1` (toolkit, tâches planifiées, `.wslconfig`, extensions).
 - **Décisions D37–D74 transcrites** dans `PLANIFICATION.md` (la dette allait plus loin que prévu),
   **D75** retrait de `csholmq`, **D76** palette APCA, **D77** lanceur bête, **D78** dispatch `profil:`.
-- **Palette APCA** : module `pipeline/apca.py`, échelle 50→900 des 6 couleurs, vérificateur
-  `test/apca-check.py` (127 paires, 0 échec), planche `docs/palette.html`. Deux vraies fautes
-  corrigées : texte annuel moutarde sous le seuil, et son filet fin écrasé en quasi-noir.
-  L'éditeur de tableau ne recalcule plus les teintes : il lit celles du pipeline.
+- **Palette APCA** (D76) : module `pipeline/apca.py`, vérificateur `test/apca-check.py`
+  (157 paires, 0 échec), planche générée `docs/palette.html`. Trois vraies fautes corrigées :
+  texte annuel moutarde sous le seuil, son filet fin écrasé en quasi-noir, filet de tableau
+  moutarde invisible sur fond zébré. L'éditeur de tableau ne recalcule plus les teintes.
+- **Grille à clarté fixe de 11 crans** (D79, release v2026.08.9) : dispersion de clarté ramenée
+  de 0,266 à 0,002 par cran. Puis la **charte intégrée dans la grille** (D80, v2026.08.10) :
+  elle occupe le cran le plus proche de son Lc, calculé et non codé en dur.
+- **Planche** enrichie : cran 400 présenté comme les autres, badge « charte » au-dessus de la
+  case, liseré doublé, échantillons « Texte » (14 px) / « Titre » (19 px gras) à la taille que
+  le seuil autorise, et verdict d'usage en **élément d'interface** par cran.
 - **P6** : `open-md.ps1`, association `.md` en HKCU, dispatch `profil:` (6 routes vérifiées en
   build réel), aperçu ouvert au démarrage par le cockpit, `userdoc.md` réécrit.
 
