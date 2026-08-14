@@ -53,26 +53,47 @@ function Set-SzhProgIdMarkdown {
   # (chemin du fichier double-cliqué, espaces compris) arrive intact à open-md.ps1.
   $commande = ('"{0}\System32\wscript.exe" //B "{1}" "{2}" "%1"' -f $env:WINDIR, $vbs, $ps1)
 
+  $icone = Join-Path $Toolkit 'windows\szh-revue.ico'
+
   $cleProg = Join-Path $Racine 'SZH.Markdown'
-  foreach ($c in $cleProg, (Join-Path $cleProg 'shell\open\command')) {
+  $cleApp = Join-Path $cleProg 'Application'
+  foreach ($c in $cleProg, $cleApp, (Join-Path $cleProg 'shell\open\command'),
+                 (Join-Path $cleProg 'DefaultIcon')) {
     if (-not (Test-Path $c)) { New-Item -Path $c -Force | Out-Null }
   }
-  # Libellé montré dans « Ouvrir avec ». La valeur par défaut du ProgId nomme le type ;
-  # FriendlyAppName est ce que le shell affiche pour l'application elle-même — sans elle,
-  # l'entrée s'appellerait « Microsoft ® Windows Based Script Host » (le nom de wscript.exe).
-  Set-ItemProperty -Path $cleProg -Name '(default)'      -Value 'Revue SZH'
-  Set-ItemProperty -Path $cleProg -Name 'FriendlyAppName' -Value 'Revue SZH'
+
+  # ── Le nom affiché dans « Ouvrir avec » : sous-clé Application, PAS la racine ────────
+  # Constaté sur Windows 11 : un FriendlyAppName posé à la RACINE du ProgId est ignoré par
+  # la boîte « Ouvrir avec », qui affichait donc le nom de l'exécutable réellement lancé,
+  # « Microsoft ® Windows Based Script Host ». Le shell lit ce nom dans la sous-clé
+  # <ProgId>\Application (FriendlyAppName + ApplicationIcon + ApplicationName). La racine,
+  # elle, nomme le TYPE de fichier (colonne « Type » de l'Explorateur) : c'est ce que fait
+  # FriendlyTypeName ci-dessous, et les deux ne servent pas à la même chose.
+  Set-ItemProperty -Path $cleProg -Name '(default)'        -Value 'Article de revue SZH'
+  Set-ItemProperty -Path $cleProg -Name 'FriendlyTypeName' -Value 'Article de revue SZH'
+  Set-ItemProperty -Path $cleApp  -Name 'ApplicationName'  -Value 'Revue SZH'
+  Set-ItemProperty -Path $cleApp  -Name 'FriendlyAppName'  -Value 'Revue SZH'
+  Set-ItemProperty -Path $cleApp  -Name 'ApplicationCompany' -Value 'SZH / CSPS'
   Set-ItemProperty -Path (Join-Path $cleProg 'shell\open\command') -Name '(default)' -Value $commande
 
-  # Icône : celle de l'éditeur. Si VSCodium n'est pas encore installé, on saute l'icône
-  # — la clé DefaultIcon n'est même pas créée : vide, elle donnerait une icône blanche,
-  # alors qu'absente elle laisse le shell choisir son icône générique. La commande, elle,
-  # est posée dans tous les cas (le prochain update posera l'icône).
-  $codium = Get-VSCodiumExe
-  if ($codium) {
-    $cleIcone = Join-Path $cleProg 'DefaultIcon'
-    if (-not (Test-Path $cleIcone)) { New-Item -Path $cleIcone -Force | Out-Null }
-    Set-ItemProperty -Path $cleIcone -Name '(default)' -Value ('"{0}",0' -f $codium)
+  # ── L'icône : la nôtre, surtout PAS celle de VSCodium ────────────────────────────────
+  # Dans la liste « Ouvrir avec », l'entrée « Revue SZH » et l'entrée « VSCodium » se
+  # suivent : la même icône rendrait le choix impossible à faire d'un coup d'œil, or c'est
+  # le choix que l'utilisateur doit réussir une fois pour toutes (D18 — Windows scelle son
+  # « Toujours »). D'où szh-revue.ico, livré par le toolkit (voir windows/icone.py).
+  # Repli si l'icône manque (toolkit partiel) : VSCodium, faute de mieux ; et si VSCodium
+  # manque aussi, on ne pose rien — une clé d'icône vide donne un carré blanc, alors
+  # qu'absente elle laisse le shell choisir son icône générique.
+  $refIcone = ''
+  if (Test-Path $icone) {
+    $refIcone = ('"{0}",0' -f $icone)
+  } else {
+    $codium = Get-VSCodiumExe
+    if ($codium) { $refIcone = ('"{0}",0' -f $codium) }
+  }
+  if ($refIcone) {
+    Set-ItemProperty -Path (Join-Path $cleProg 'DefaultIcon') -Name '(default)' -Value $refIcone
+    Set-ItemProperty -Path $cleApp -Name 'ApplicationIcon' -Value $refIcone
   }
 
   $cleOuvrirAvec = Join-Path $Racine '.md\OpenWithProgids'

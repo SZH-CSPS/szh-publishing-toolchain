@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Ouverture d'un fichier .md par double-clic — cible de l'association « Ouvrir avec »
   → « Revue SZH » (ProgId SZH.Markdown posé par update.ps1, T6.2 / T6.3, D18).

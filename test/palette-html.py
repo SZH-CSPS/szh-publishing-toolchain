@@ -468,7 +468,9 @@ h1 {
   font-family: 'Open Sans', system-ui, sans-serif; font-size: 19px; font-weight: 600;
   line-height: 1.15; letter-spacing: -.01em;
 }
-.case__bas { display: flex; flex-direction: column; gap: 1px; }
+/* Hauteur FIXE aussi : l'étiquette de rôle tient sur une ou deux lignes selon le cran,
+   et sans cette réserve la ligne de Lc se décalait d'une case à l'autre. */
+.case__bas { display: flex; flex-direction: column; gap: 1px; min-height: 40px; }
 .case__lc {
   font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 11.5px; font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -481,7 +483,7 @@ h1 {
    papier et le zébrage des tableaux ne donnent pas le même verdict (cran 300). */
 .case__ui {
   display: flex; align-items: center; gap: 6px;
-  margin: 4px -10px -9px; padding: 5px 10px 4px;
+  margin: 4px -10px -9px; padding: 5px 10px 4px; margin-top: auto;
   background: var(--carte); color: var(--encre-cal);
   border-radius: 0 0 3px 3px;
 }
