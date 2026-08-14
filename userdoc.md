@@ -67,7 +67,8 @@ Elle a **deux sections** :
     fichier contre une autre image **en gardant le même nom** ;
   - chaque **tableau** (fichiers `table-01.html`, `table-02.html`…) vient du document
     Word d'origine, **fidèlement** : les cellules fusionnées, le gras et l'italique
-    sont préservés ; **clic** = ouvrir le tableau pour le **modifier directement** ;
+    sont préservés ; **clic** = ouvrir le tableau dans l'**éditeur de tableau** (une
+    grille, comme dans Word — jamais de code HTML à lire) ;
     **Remplacer** au survol l'échange contre un autre fichier HTML, même nom conservé.
     La modification apparaît à la compilation suivante (Ctrl + S ou re-clic).
 - **Word en attente (n)** — les fichiers Word déposés mais pas encore convertis ; le

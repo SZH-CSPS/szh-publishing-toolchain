@@ -235,10 +235,15 @@ class FournisseurRevue {
       it.contextValue = 'table';
       it.description = decrireImage(chemin);      // pas une image : poids seul
       it.tooltip = T('arbre.table.tooltip', [chemin]);
-      // Édition directe du HTML (copier-coller possible), colonne 1.
+      // Le clic ouvre l'ÉDITEUR de tableau, pas le HTML brut : personne dans l'équipe de
+      // rédaction n'a à lire du `<td colspan="2">` pour corriger une cellule. Du coup le
+      // bouton « Éditer » du survol n'a plus de raison d'être et a été retiré du menu
+      // (la commande szh.editerTable reste, c'est elle que ce clic appelle).
+      // Le HTML brut reste accessible à qui le veut : clic droit dans l'Explorateur, ou
+      // « Remplacer » pour échanger le fichier entier.
       it.command = {
-        command: 'vscode.open', title: 'Ouvrir le tableau',
-        arguments: [vscode.Uri.file(chemin), { viewColumn: vscode.ViewColumn.One }]
+        command: 'szh.editerTable', title: 'Ouvrir l’éditeur de tableau',
+        arguments: [it]
       };
       return it;
     });

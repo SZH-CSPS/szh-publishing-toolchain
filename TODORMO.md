@@ -26,6 +26,10 @@
   non plus « Microsoft ® Windows Based Script Host », avec l'icône SZH (tuile bleu nuit
   barrée de rouge) — reconnaissable au premier coup d'œil face à l'entrée « VSCodium »
   juste à côté. Et dans l'Explorateur, la colonne Type doit dire « Article de revue SZH ».
+- [ ] **Clic sur un tableau** (D84) : dans la barre latérale, cliquer un tableau doit ouvrir
+  l'**éditeur de tableau** (la grille), pas le fichier HTML. Le bouton « Éditer » du survol a
+  disparu — seul « Remplacer » reste. À vérifier aussi que rouvrir un tableau déjà ouvert le
+  ramène au premier plan au lieu d'en ouvrir un second.
 - [ ] **Aperçu HTML : le survol prend le bloc** (D82) : survoler un mot au milieu d'une
   phrase doit surligner **tout le paragraphe**, pas le mot ni le passage en gras.
 - [ ] **Planche de palette** — `docs/palette.html` (ou le lien partagé) : juger **à l'œil**.
