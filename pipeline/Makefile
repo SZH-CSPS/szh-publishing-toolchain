@@ -209,7 +209,9 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 	  --template="$(TEMPLATE_ABS)" \
 	  --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
 	  --lua-filter="$(MAQUETTE_LUA)" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" $$extra \
 	  --output="$(abspath $@)"
@@ -230,7 +232,9 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
 	  --standalone --embed-resources \
 	  --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" $$extra \
 	  --output="$(abspath $@)" || \
@@ -258,6 +262,11 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 #     templates/szh-article.html — sans template HTML, sa sortie est inerte.
 #   * szh-tabelle-inclure.lua : ÉCARTÉ. Il réinjecte les tableaux extraits (D47)
 #     en RawBlock('html'), que le writer pptx ne peut pas convertir.
+#   * szh-niveaux.lua : ÉCARTÉ. Le décalage des titres (corps à partir de h2, D110)
+#     n'a de sens que sous le h1 de couverture du template HTML ; le writer pptx
+#     découpe les diapositives d'après les niveaux d'ORIGINE.
+#   * szh-tabelle-scope.lua : ÉCARTÉ. Il pose scope= dans l'Attr des cellules
+#     (D112), attribut que seul le writer HTML émet — inerte en OOXML.
 # ⚠ LIMITE CONNUE, assumée : les tableaux D47 (::: {.szh-tabelle src=…}) NE
 #   figureront PAS dans le .pptx — leur contenu est du HTML brut, hors d'atteinte
 #   d'un writer OOXML. Le texte de l'article, lui, est complet. Les faire passer

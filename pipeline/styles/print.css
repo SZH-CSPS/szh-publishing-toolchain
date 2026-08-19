@@ -9,7 +9,7 @@
         en-tête / pied courants en margin boxes)                          [M1]
      4. Typographie de base (corps, justification, césure)                [M1]
      5. Couverture (hero, filet, résumés, mots-clés)                      [M2]
-     6. Éléments de corps (titres H1–H4, listes, citation, encadrés)      [M3]
+     6. Éléments de corps (titres h2–h6, listes, citation, encadrés)      [M3]
      7. Tableaux .szh-tableau (refonte T1/T2 — NE PAS régresser)          [hérité]
      8. Bloc « À propos des auteur·e·s » (portraits, ORCID, e-mail)       [F4]
    La couleur annuelle (§2 repli gris) est SURCHARGÉE à la compilation par
@@ -157,7 +157,7 @@ a.footnote-ref, a.footnote-back { text-decoration: none; }
    Jamais une ligne seule en bas (orphan) ni en haut (widow) d'une page ; les
    titres restent avec le texte qui suit ; les encadrés ne se coupent pas. */
 p, li, blockquote p { orphans: 3; widows: 3; }
-h1:not(.szh-title), h2, h3, h4 { break-after: avoid-page; break-inside: avoid; }
+h2, h3, h4, h5, h6 { break-after: avoid-page; break-inside: avoid; }
 blockquote, .hervorhebung, .important, .question, figure, .szh-abstract { break-inside: avoid; }
 li { break-inside: avoid; }
 
@@ -209,7 +209,11 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 }
 .szh-hero-top { position: relative; display: flex; justify-content: space-between;
   align-items: flex-start; gap: 16px; }
+/* D111 : eyebrow/dossier/vol sont des <p> (sémantique) — on annule la marge et la
+   justification du `p` global (§4), la géométrie du hero (hauteur fixe) n'en
+   dépendait pas et ne doit pas bouger. */
 .szh-hero-eyebrow, .szh-hero-dossier, .szh-hero-vol {
+  margin: 0; text-align: left;
   font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em;
 }
 .szh-hero-eyebrow { color: #C5C8D4; }
@@ -229,8 +233,20 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 /* Ancré en bas du hero par position absolue (le flexbox de WeasyPrint ne gère pas
    margin-top:auto) : DOI/licence TOUJOURS à la même position, indépendante du titre. */
 .szh-hero-meta { position: absolute; left: 72px; bottom: 38px; max-width: 76%; }
-.szh-authors { font-size: 12.5px; font-weight: 700; color: #fff; }
-.szh-authors .sep { opacity: 0.5; margin: 0 6px; font-weight: 400; }
+/* D111 : les auteur·e·s sont une <ul> (RGAA 9.3), rendue EN LIGNE comme l'ancienne
+   div. Chaque règle annule explicitement le style de liste global du §6 (puce ▸
+   absolue, retrait 1.5em) ; le point médian séparateur est décoratif, généré ici
+   (li + li::before) et non plus écrit dans le texte. */
+ul.szh-authors { margin: 0; padding: 0; list-style: none;
+  font-size: 12.5px; font-weight: 700; color: #fff; }
+.szh-authors li { display: inline; padding: 0; margin: 0; text-align: left; }
+.szh-authors li::before { content: none; }
+.szh-authors li + li::before {
+  content: "\B7";                          /* · point médian */
+  position: static; display: inline; left: auto; top: auto;
+  color: #fff; opacity: 0.5; font-weight: 400; font-size: inherit; line-height: inherit;
+  margin: 0 6px;
+}
 .szh-doi, .szh-licence {
   display: inline-flex; align-items: center; gap: 6px; color: #E2E4EC;
   font-weight: 400; text-decoration: none;
@@ -266,42 +282,57 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
   border-left: 3px solid var(--c-abstract-border);
 }
 .szh-abstract:last-child { margin-bottom: 0; }
+/* D110/D111 : « Résumé / Zusammenfassung » est un h2 (vrai titre, navigable au
+   lecteur d'écran) qui garde son rendu d'étiquette : on annule le style et la
+   NUMÉROTATION des h2 de section (§6) — comme .szh-auteurs-titre au §8. */
 .szh-abstract-label {
+  counter-increment: none; counter-reset: none;
+  margin: 0 0 8px; line-height: var(--leading);
   font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em;
-  font-size: 9.5px; color: #000; margin-bottom: 8px;
+  font-size: 9.5px; color: #000;
 }
+.szh-abstract-label::before { content: none; }
 .szh-abstract p { margin: 0; color: var(--c-ink); text-align: justify; hyphens: auto; }
-.szh-kws { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+/* D111 : mots-clés = <ul> de <li> (RGAA 9.3) ; le flex existant fait la mise en
+   ligne, on annule puce ▸ et retrait du style de liste global (§6). */
+ul.szh-kws { margin: 10px 0 0; padding: 0; list-style: none;
+  display: flex; flex-wrap: wrap; gap: 6px; }
 .szh-kw {
-  font-size: 10px; padding: 2px 9px; border-radius: 3px; color: #000;
+  margin: 0; font-size: 10px; padding: 2px 9px; border-radius: 3px; color: #000;
   background: var(--c-kw-bg); border: 1px solid var(--c-kw-border);
 }
+.szh-kw::before { content: none; }
 
 /* ═══ 6. Éléments de corps (titres, listes, citation, encadrés) — M3 ══════════
    Les styles sont GLOBAUX (non préfixés) pour que l'aperçu du cockpit (template
-   pandoc par défaut, sans couverture) rende les mêmes éléments que le PDF.
-   Seul le titre de la COUVERTURE (h1.szh-title) est exclu de la numérotation. */
+   pandoc par défaut, sans couverture) rende les mêmes éléments que le PDF. */
 
-/* Titres H1–H4 : numérotation hiérarchique par COMPTEURS CSS (1, 1.1, 1.1.1,
-   1.1.1.1). Le rédacteur n'écrit pas les numéros (adaptation : la maquette les
+/* Titres de CORPS h2–h6 (D110, RGAA 9.1) : le SEUL h1 du document est le titre de
+   l'article (h1.szh-title de la couverture) ; szh-niveaux.lua normalise le corps à
+   partir de h2 (« # » du .md -> h2) — les sélecteurs ici sont le MIROIR de ce
+   filtre, toute modification de l'un se répercute dans l'autre.
+   Numérotation hiérarchique par COMPTEURS CSS (1, 1.1, 1.1.1) sur h2–h4 ; h5/h6
+   sans numéro. Le rédacteur n'écrit pas les numéros (adaptation : la maquette les
    posait à la main). Numéro en NOIR, titre en encre. Sans, semi-condensé, gras. */
-h1:not(.szh-title), h2, h3, h4 {
+h2, h3, h4, h5, h6 {
   font-family: var(--title-family); font-weight: 700; line-height: 1.22;
   color: var(--c-ink); text-align: left; letter-spacing: -0.005em;
   margin: 1.4em 0 0.4em; break-after: avoid; hyphens: manual;
 }
-h1:not(.szh-title):first-child, h2:first-child, h3:first-child, h4:first-child { margin-top: 0; }
+h2:first-child, h3:first-child, h4:first-child, h5:first-child, h6:first-child { margin-top: 0; }
 /* Tailles en rem (dynamiques vs racine) : décroissantes, TOUJOURS >= corps (0.875rem). */
-/* h1–h3 numérotés (1 / 1.1 / 1.1.1) ; h3 = taille du corps. h4 = MÊME taille et graisse
-   que h3, mais SANS numéro (titre non numéroté). */
-h1:not(.szh-title) { font-size: 1.2rem;  counter-increment: h1; counter-reset: h2 h3; }
-h2 { font-size: 1.05rem; counter-increment: h2; counter-reset: h3; }
-h3 { font-size: var(--body-size); counter-increment: h3; }
-h4 { font-size: var(--body-size); }   /* pas de counter-increment ni de ::before -> aucun numéro */
-h1:not(.szh-title)::before { content: counter(h1) "\A0"; }
-h2::before { content: counter(h1) "." counter(h2) "\A0"; }
-h3::before { content: counter(h1) "." counter(h2) "." counter(h3) "\A0"; }
-h1:not(.szh-title)::before, h2::before, h3::before {
+/* h2–h4 numérotés (1 / 1.1 / 1.1.1) ; h4 = taille du corps. h5/h6 = MÊME taille et
+   graisse que h4, mais SANS numéro (titres non numérotés). Compteurs nommés
+   sec1/sec2/sec3 (« section »), PAS h1/h2/h3 : depuis D110 le nom de balise ne dit
+   plus le rang de section. */
+h2 { font-size: 1.2rem;  counter-increment: sec1; counter-reset: sec2 sec3; }
+h3 { font-size: 1.05rem; counter-increment: sec2; counter-reset: sec3; }
+h4 { font-size: var(--body-size); counter-increment: sec3; }
+h5, h6 { font-size: var(--body-size); }   /* pas de counter-increment ni de ::before -> aucun numéro */
+h2::before { content: counter(sec1) "\A0"; }
+h3::before { content: counter(sec1) "." counter(sec2) "\A0"; }
+h4::before { content: counter(sec1) "." counter(sec2) "." counter(sec3) "\A0"; }
+h2::before, h3::before, h4::before {
   color: #000000; font-variant-numeric: tabular-nums; margin-right: 0.35em;
 }
 
@@ -374,7 +405,7 @@ blockquote p:last-child { margin-bottom: 0; }
    n'existe que visuellement : aucun lecteur d'écran ne pouvait relier
    « voir figure 5 » à l'image. Ne pas les réintroduire — on numéroterait deux fois.
    Il ne reste ici que la MISE EN FORME du numéro (.szh-numero). */
-body { counter-reset: h1 h2 h3; }
+body { counter-reset: sec1 sec2 sec3; }
 
 /* Préfixe « Figure N — » / « Tableau N — » posé par szh-numerotation.lua. */
 figure > figcaption .szh-numero,
@@ -536,7 +567,7 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
    de section numéroté — on neutralise le compteur et le numéro posés sur h2
    au §6 (la classe l'emporte en spécificité). */
 .szh-auteurs-titre {
-  counter-increment: none;
+  counter-increment: none; counter-reset: none;
   margin: 0 0 1.1em;
   font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.14em; color: var(--c-ink2);
