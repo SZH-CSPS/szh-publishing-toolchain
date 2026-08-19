@@ -349,33 +349,31 @@ blockquote p:last-child { margin-bottom: 0; }
 }
 .question > *:last-child { margin-bottom: 0; }
 
-/* ═══ Numérotation automatique des figures et tableaux (D31) — hérité ═════════
-   Les numéros manuels sont retirés à l'import ; la numérotation suit l'ordre
-   du document et le libellé suit la langue de l'article (:lang). */
-body { counter-reset: h1 h2 h3 compteur-figure compteur-tableau; }
+/* ═══ Numérotation automatique des figures et tableaux (D31) ══════════════════
+   Les numéros manuels sont retirés à l'import ; la numérotation suit l'ordre du
+   document et le libellé suit la langue de composition.
+   ⚠ Elle n'est PLUS faite ici : les compteurs CSS (compteur-figure /
+   compteur-tableau + ::before) ont été retirés au profit de
+   filters/szh-numerotation.lua, qui écrit « Figure N — » DANS le texte de la
+   légende ET dans l'alt/aria-label de l'image. Un numéro posé par `content:`
+   n'existe que visuellement : aucun lecteur d'écran ne pouvait relier
+   « voir figure 5 » à l'image. Ne pas les réintroduire — on numéroterait deux fois.
+   Il ne reste ici que la MISE EN FORME du numéro (.szh-numero). */
+body { counter-reset: h1 h2 h3; }
+
+/* Préfixe « Figure N — » / « Tableau N — » posé par szh-numerotation.lua. */
+figure > figcaption .szh-numero,
+table > caption .szh-numero { font-weight: 600; }
 
 figure { break-inside: avoid; margin: 1.4em 0; text-align: center; }
 figure img { max-width: 100%; }
 figure > figcaption { font-size: 0.85rem; color: #444; margin-top: 0.5em; text-align: left; }
-figure > figcaption::before {
-  counter-increment: compteur-figure;
-  content: "Figure " counter(compteur-figure) " — ";
-  font-weight: 600;
-}
-:lang(de) figure > figcaption::before { content: "Abbildung " counter(compteur-figure) " — "; }
 
 /* Tableaux importés bruts (<table> nu, non .szh-tableau) : style générique sobre. */
 table { border-collapse: collapse; font-size: 0.85rem; margin: 1.4em 0; width: 100%; }
 th, td { border: 1px solid #999; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }
 th { background: #eee; }
 table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: #444; margin-bottom: 0.4em; }
-table > caption::before {
-  counter-increment: compteur-tableau;
-  content: "Tableau " counter(compteur-tableau) " — ";
-  font-weight: 600;
-}
-:lang(de) table > caption::before { content: "Tabelle " counter(compteur-tableau) " — "; }
-:lang(en) table > caption::before { content: "Table " counter(compteur-tableau) " — "; }
 /* .szh-tableau réintroduit sa propre grille : la bordure générique ne doit pas s'y appliquer. */
 .szh-tableau th, .szh-tableau td { border: 0; }
 .szh-tableau th { background: transparent; }

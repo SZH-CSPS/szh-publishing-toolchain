@@ -35,7 +35,8 @@
 // SUPPRESSION confirmée d'un article (G3), l'ÉCRASEMENT confirmé d'une image
 // (G5 ; aussi par dépôt depuis le dialogue de vérification d'import, F6),
 // la CRÉATION d'un tableau articles/<slug>/tables/table-NN.html au collage depuis
-// Excel/Word (D81, lib/formatting.js — jamais d'écrasement : premier numéro libre)
+// Excel/Word (D81) ET par « Insérer un tableau » (D95, grille vierge puis éditeur de
+// tableau) — lib/formatting.js, jamais d'écrasement : premier numéro libre
 // et les PORTRAITS d'auteur·e·s articles/<slug>/portraits/ (F3, D91/D92 : photo
 // déposée <slug-auteur>.original.<ext> — les anciens .original.* d'une autre
 // extension sont retirés — plus les versions .avec-fond.png/.sans-fond.png écrites
@@ -49,7 +50,8 @@
 //   lib/i18n.js             TEXTES_COCKPIT, T, langueCockpit
 //   lib/yaml.js             sérialiseurs ausgabe/frontmatter/meta, titreNumero, écriture atomique
 //   lib/table-model.js      parseur/sérialiseur/opérations PURS du tableau
-//   lib/slug.js             slugifier ; lib/wsl.js dormeur WSL ; lib/formatting.js mise en forme
+//   lib/slug.js             slugifier + slugifierArticle ; lib/wsl.js dormeur WSL ;
+//                           lib/formatting.js mise en forme
 //   lib/portraits.js        appel WSL du pipeline de portraits (F3, D91)
 //   lib/panneaux.js         les trois panneaux QuickPick de la barre (Commande/Édition/Export, F1)
 //   lib/webviews/util.js    construireHtml/lireMedia : inline media/ + nonce + CSP stricte
@@ -98,11 +100,11 @@ const {
 // ---- Assemblage des webviews -> lib/webviews/util.js -----------------------------
 const { construireHtml, lireMedia } = require('./lib/webviews/util');
 // ---- Modules impératifs -> lib/{slug,wsl,formatting}.js --------------------------
-const { slugifier } = require('./lib/slug');
+const { slugifier, slugifierArticle } = require('./lib/slug');
 const { demarrerDormeurWsl, arreterDormeurWsl, reveillerWsl } = require('./lib/wsl');
 const {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
-  enroberBloc, squeletteTableau, blocReferenceTable, nomTableLibre,
+  enroberBloc, squeletteTableau, tableauVierge, blocReferenceTable, nomTableLibre,
   enregistrerCommandesMiseEnForme
 } = require('./lib/formatting');
 const { enregistrerPanneaux } = require('./lib/panneaux');
@@ -131,15 +133,36 @@ function trouverRacineRevue() {
   return null;
 }
 
+// Réglage szh.replierAssetsAutres (D96) : au clic sur un article, ses images et
+// tableaux se déplient et ceux des AUTRES articles se replient — une seule liste
+// d'assets ouverte à la fois. À false : l'arbre se comporte comme avant (aucun
+// dépliage ni repliage automatique). Défaut true.
+function replierAssetsAutres() {
+  try { return vscode.workspace.getConfiguration('szh').get('replierAssetsAutres', true) !== false; }
+  catch (e) { return true; }                       // configuration indisponible : comportement par défaut
+}
+
 class FournisseurRevue {
   constructor() {
     this.racine = null;
+    // D96 : slug dont les assets sont DÉPLOYÉS (tous les autres sont repliés). null =
+    // aucun (état de départ, ou réglage désactivé).
+    this.slugDeploye = null;
     this._changement = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._changement.event;
   }
 
   definirRacine(racine) { this.racine = racine; }
   rafraichir() { this._changement.fire(); }
+
+  // Retourne true si l'état a CHANGÉ (l'appelant rafraîchit alors l'arbre) : cliquer
+  // deux fois le même article ne doit pas reconstruire la vue pour rien.
+  definirDeploye(slug) {
+    const cible = replierAssetsAutres() ? (slug || null) : null;
+    if (this.slugDeploye === cible) { return false; }
+    this.slugDeploye = cible;
+    return true;
+  }
 
   getTreeItem(element) { return element; }
 
@@ -177,12 +200,24 @@ class FournisseurRevue {
     const base = path.join(this.racine, 'articles');
     const slugs = this._sousDossiersAvecMd(base);
     if (slugs.length === 0) { return [this._vide(T('arbre.vide.articles'))]; }
+    const auto = replierAssetsAutres();
     return slugs.map((slug) => {
       const md = vscode.Uri.file(path.join(base, slug, slug + '.md'));
       const aDesAssets = this._imagesArticle(slug).length > 0 || this._tablesArticle(slug).length > 0;
-      const it = new vscode.TreeItem(slug, aDesAssets
-        ? vscode.TreeItemCollapsibleState.Collapsed
-        : vscode.TreeItemCollapsibleState.None);
+      // D96 : un article SANS asset n'a pas de chevron (None). Avec le repli
+      // automatique, l'article visé est Expanded et tous les autres Collapsed.
+      const deploye = auto && aDesAssets && slug === this.slugDeploye;
+      const it = new vscode.TreeItem(slug, !aDesAssets
+        ? vscode.TreeItemCollapsibleState.None
+        : (deploye ? vscode.TreeItemCollapsibleState.Expanded
+                   : vscode.TreeItemCollapsibleState.Collapsed));
+      // ⚠ VS Code MÉMORISE l'état plié/déplié d'un élément qu'il reconnaît et ignore
+      // alors le collapsibleState renvoyé : sans identité changeante, le repliage
+      // automatique n'aurait aucun effet visible. On fait donc varier l'`id` avec
+      // l'état voulu — l'élément est recréé, l'état est réappliqué. Sans le réglage,
+      // aucun `id` n'est posé : l'arbre retrouve exactement son comportement d'avant
+      // (c'est l'utilisateur qui plie et déplie, VS Code s'en souvient).
+      if (auto && aDesAssets) { it.id = 'article:' + slug + ':' + (deploye ? 'ouvert' : 'ferme'); }
       it.slug = slug;                   // utilisé par les actions S4/G3/G5
       it.resourceUri = md;              // icône de fichier selon le thème
       it.tooltip = md.fsPath;
@@ -278,7 +313,9 @@ class FournisseurRevue {
     return noms.map((nom) => {
       const it = new vscode.TreeItem(nom, vscode.TreeItemCollapsibleState.None);
       it.contextValue = 'word';
-      if (this._articleExiste(slugifier(nom))) {
+      // D93 : le slug d'un article complète le nombre de tête sur deux chiffres
+      // (« 4_Titre.docx » -> 04-titre) — même règle que la cible import du Makefile.
+      if (this._articleExiste(slugifierArticle(nom))) {
         // Le .md cible existe déjà : l'import l'ignorera (D12, non-écrasement).
         it.iconPath = new vscode.ThemeIcon('warning');
         it.description = T('arbre.deja.badge');
@@ -855,6 +892,10 @@ async function ouvrirArticleActifAuDemarrage(fournisseur) {
 async function ouvrirArticle(fournisseur, slug) {
   const racine = fournisseur.racine;
   if (!racine || typeof slug !== 'string' || slug === '') { return; }
+  // D96 : les assets de CET article se déplient, ceux des autres se replient. Fait
+  // AVANT le reste (ouverture du .md, compilation) : l'arbre suit le clic tout de
+  // suite, sans attendre la fin d'un build.
+  if (fournisseur.definirDeploye(slug)) { fournisseur.rafraichir(); }
   const md = path.join(racine, 'articles', slug, slug + '.md');
   const pdf = vscode.Uri.file(path.join(racine, 'out', slug, slug + '.pdf'));
   const modeCourant = modeApercu();
@@ -1599,7 +1640,11 @@ function ecrireCartesArticles(fournisseur, cartes, slugsAutorises) {
 }
 
 function htmlApercuMetadonnees(nonce) {
-  const txt = JSON.stringify(textesCarteArticle());
+  // + le bandeau de la vue filtrée (D97), propre à ce formulaire (le dialogue
+  // d'import, lui, a toujours sa propre liste d'articles).
+  const txt = JSON.stringify(Object.assign(textesCarteArticle(), {
+    filtreNote: T('fiches.filtre.note'), tous: T('fiches.tous')
+  }));
   return construireHtml('metadata-articles', nonce, {
     titre: T('fiches.titre'),
     remplacements: { '__TXT__': txt },
@@ -1647,9 +1692,12 @@ function migrerFrontmatterVersMeta(racine, slug) {
   } catch (e) { /* migration best effort : la carte restera vide */ }
 }
 
-function lireMetadonneesArticles(fournisseur) {
+// `filtre` (D97) : tableau de slugs à afficher, ou null pour tous. L'ordre reste
+// celui de l'arbre (listerArticles) — jamais celui du filtre.
+function lireMetadonneesArticles(fournisseur, filtre) {
   const articles = [];
   for (const slug of fournisseur.listerArticles()) {
+    if (filtre && filtre.indexOf(slug) === -1) { continue; }
     migrerFrontmatterVersMeta(fournisseur.racine, slug);
     let valeurs = { type: '', doi: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
     try {
@@ -1911,43 +1959,119 @@ function choisirPhotoAuteur(fournisseur, panneau, msg) {
   repondrePanneau(panneau, { type: 'photo-valeur', slug: slug, index: msg.index, photo: 'portraits/' + nom });
 }
 
+// ---- Formulaire de fiches : liste complète ou UN article (D97) ----------------------
+//
+// Le formulaire liste par défaut TOUS les articles. L'icône ✎ de l'arbre (et l'entrée
+// « Métadonnées de l'article courant » du panneau d'édition) l'ouvre FILTRÉ sur un seul
+// article : même webview, même gabarit de carte, même circuit d'écriture
+// (ecrireCartesArticles) — seule la liste envoyée change, plus un bouton « Voir tous
+// les articles » pour revenir. Un seul gabarit, un seul chemin d'écriture.
+//
+// Le panneau est un SINGLETON : passer de « tous » à « un » (et l'inverse) RECHARGE le
+// panneau existant au lieu d'en ouvrir un second. Comme un rechargement reconstruit les
+// cartes, les modifications non enregistrées seraient perdues : la webview annonce son
+// état par le message « modifie », et tout rechargement passe alors par la garde
+// (Enregistrer / Quitter sans enregistrer / Annuler), sur le patron du dialogue
+// d'import. Les cartes à écrire, elles, ne peuvent venir que de la webview : l'hôte les
+// lui demande (« demande-rechargement ») et la garde se joue à sa réponse.
+let filtreArticles = null;           // tableau de slugs affichés, ou null = tous
+let fichesModifie = false;           // ● côté webview (cartes modifiées non enregistrées)
+let rechargementEnAttente = null;    // { filtre } pendant l'aller-retour de la garde
+
+// Filtre demandé -> liste de slugs RÉELS, ou null (tous). Un slug inconnu (article
+// supprimé entre-temps) ne doit pas donner un formulaire vide : on retombe sur tous.
+function filtreValide(fournisseur, slugs) {
+  if (!Array.isArray(slugs) || slugs.length === 0) { return null; }
+  const connus = new Set(fournisseur.listerArticles());
+  const retenus = slugs.map(String).filter((s) => connus.has(s));
+  return retenus.length > 0 ? retenus : null;
+}
+
+function titreFiches(filtre) {
+  return (filtre && filtre.length === 1) ? T('fiches.titre.un', [filtre[0]]) : T('fiches.titre');
+}
+
 // F5 — pleine page : mêmes règles que « Méta-données du numéro » (fermer les
 // aperçus avant d'afficher, y compris quand le panneau existe déjà et est révélé).
-async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout) {
+async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
   if (!fournisseur.racine) { return; }
+  const filtre = filtreValide(fournisseur, slugs);
   await fermerTousLesApercus();
   const envoyerValeurs = (panneau) => {
     const langue = langueRevue(fournisseur.racine);
-    // Le champ `groupe` des types pilote la construction des <optgroup> côté webview.
+    // Le champ `groupe` des types pilote la construction des <optgroup> côté webview ;
+    // `filtre` y montre (ou non) le bandeau « Voir tous les articles ».
     panneau.webview.postMessage({
       type: 'valeurs',
-      articles: lireMetadonneesArticles(fournisseur),
+      articles: lireMetadonneesArticles(fournisseur, filtreArticles),
+      filtre: filtreArticles,
       langue: langue,
       types: typesTraduits(langue)
     });
+    fichesModifie = false;                         // les cartes viennent d'être reconstruites
+  };
+  const appliquerFiltre = (panneau, nouveau) => {
+    filtreArticles = nouveau;
+    panneau.title = titreFiches(filtreArticles);
+    envoyerValeurs(panneau);
   };
   if (panneauArticles) {
     panneauArticles.reveal(vscode.ViewColumn.One);
-    envoyerValeurs(panneauArticles);
+    if (fichesModifie) {
+      // Des cartes portent un ● : on demande à la webview de rendre ce qu'elle a, la
+      // garde (et le rechargement) se joue à sa réponse.
+      rechargementEnAttente = { filtre: filtre };
+      repondrePanneau(panneauArticles, { type: 'demande-rechargement' });
+      return;
+    }
+    appliquerFiltre(panneauArticles, filtre);
     return;
   }
+  filtreArticles = filtre;
+  fichesModifie = false;
   const panneau = vscode.window.createWebviewPanel(
-    'szhApercuMetadonnees', T('fiches.titre'), vscode.ViewColumn.One,
+    'szhApercuMetadonnees', titreFiches(filtreArticles), vscode.ViewColumn.One,
     { enableScripts: true, localResourceRoots: [] }
   );
   panneauArticles = panneau;
-  panneau.onDidDispose(() => { if (panneauArticles === panneau) { panneauArticles = null; } });
+  panneau.onDidDispose(() => {
+    if (panneauArticles === panneau) { panneauArticles = null; fichesModifie = false; rechargementEnAttente = null; }
+  });
   panneau.webview.html = htmlApercuMetadonnees(crypto.randomBytes(16).toString('hex'));
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
     if (msg.type === 'pret') { envoyerValeurs(panneau); return; }
+    if (msg.type === 'modifie') { fichesModifie = !!msg.modifie; return; }
+    // « Voir tous les articles » : même chemin que l'ouverture, garde comprise.
+    if (msg.type === 'tous') { await ouvrirApercuMetadonnees(fournisseur, rafraichirTout, null); return; }
+    // Réponse à « demande-rechargement » : garde « non enregistré » puis rechargement.
+    if (msg.type === 'rechargement') {
+      const attente = rechargementEnAttente;
+      rechargementEnAttente = null;
+      if (!attente) { return; }                    // réponse tardive : le rechargement a été abandonné
+      const choix = await vscode.window.showWarningMessage(
+        T('fiches.recharger.question'), { modal: true, detail: T('table.quitter.detail') },
+        T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
+      if (choix === undefined) { return; }         // Annuler : on reste sur les cartes en cours
+      if (choix === T('form.enregistrer')) {
+        const res = ecrireCartesArticles(fournisseur, msg.articles, filtreArticles);
+        if (res.erreurs.length > 0) {
+          repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [res.erreurs.join(', ')]) });
+          return;                                  // échec : rien n'est rechargé
+        }
+        vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000);
+        if (rafraichirTout) { rafraichirTout(); }
+      }
+      appliquerFiltre(panneau, attente.filtre);
+      return;
+    }
     // Modale photo (F3) : dépôt -> pipeline WSL ; ouverture sur photo existante ;
     // « Valider » -> chemin relatif de la version choisie.
     if (msg.type === 'photo-deposer') { await deposerPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type === 'photo-ouvrir') { ouvrirVersionsPhoto(fournisseur, panneau, msg); return; }
     if (msg.type === 'photo-choisir') { choisirPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type !== 'enregistrer' || !msg.articles) { return; }
-    const res = ecrireCartesArticles(fournisseur, msg.articles, null);
+    const res = ecrireCartesArticles(fournisseur, msg.articles, filtreArticles);
     if (res.erreurs.length > 0) {
       panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [res.erreurs.join(', ')]) });
     } else {
@@ -1957,6 +2081,24 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout) {
     if (rafraichirTout) { rafraichirTout(); }
     envoyerValeurs(panneau);                       // resynchronise les cartes (dirty remis à zéro)
   });
+}
+
+// Icône ✎ de l'arbre (item d'article) et entrée « Métadonnées de l'article courant »
+// du panneau d'édition. Sans item, l'article courant est celui du .md ACTIF ; à défaut
+// celui affiché en aperçu (on vient peut-être de cliquer dans la colonne 2).
+async function ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item) {
+  if (!fournisseur.racine) { return; }
+  let slug = (item && item.slug) ? String(item.slug) : null;
+  if (!slug) {
+    const ed = vscode.window.activeTextEditor;
+    slug = ed ? slugDepuisChemin(fournisseur.racine, ed.document.uri.fsPath) : null;
+  }
+  if (!slug) { slug = apercuCourantSlug; }
+  if (!slug) {
+    vscode.window.setStatusBarMessage(T('fiches.horsarticle'), 4000);
+    return;
+  }
+  await ouvrirApercuMetadonnees(fournisseur, rafraichirTout, [slug]);
 }
 
 // ---- Dialogue « Vérification de l'import » (F6) -------------------------------------
@@ -2193,6 +2335,8 @@ const REGL_TEXTES = () => JSON.stringify({
   policeMd: T('regl.policemd'),
   apercu: T('regl.apercu'),
   apercuHtml: T('regl.apercu.html'), apercuPdf: T('regl.apercu.pdf'), apercuNote: T('regl.apercu.note'),
+  assets: T('regl.assets'),
+  assetsOui: T('regl.assets.oui'), assetsNon: T('regl.assets.non'), assetsNote: T('regl.assets.note'),
   langue: T('regl.langue'), langueNote: T('regl.langue.note')
 });
 
@@ -2246,7 +2390,11 @@ function lireReglagesActuels() {
   try {
     apercu = String(vscode.workspace.getConfiguration('szh').get('apercuMode', 'html') || 'html') === 'pdf' ? 'pdf' : 'html';
   } catch (e) { /* repli html */ }
-  return { theme: etatTheme, zoom: String(zoom), policeMd: String(policeMd), apercu: apercu, langue: langueCockpit() };
+  return {
+    theme: etatTheme, zoom: String(zoom), policeMd: String(policeMd), apercu: apercu,
+    assets: replierAssetsAutres() ? 'oui' : 'non',   // D96
+    langue: langueCockpit()
+  };
 }
 
 let panneauReglages = null;
@@ -2296,6 +2444,13 @@ function ouvrirReglages(rafraichirTout) {
         await vscode.workspace.getConfiguration('szh')
           .update('apercuMode', msg.valeur === 'pdf' ? 'pdf' : 'html', Global);
         if (rafraichirTout) { rafraichirTout(); } // la barre d'état « Aperçu : … » suit
+      } else if (msg.cle === 'assets') {
+        // D96 : repli automatique des assets des autres articles. Le rafraîchissement
+        // fait suivre l'arbre tout de suite (les identités d'article changent avec le
+        // réglage : sans lui, l'arbre garderait l'état plié/déplié précédent).
+        await vscode.workspace.getConfiguration('szh')
+          .update('replierAssetsAutres', msg.valeur !== 'non', vscode.ConfigurationTarget.Global);
+        if (rafraichirTout) { rafraichirTout(); }
       } else if (msg.cle === 'langue') {
         const langue = msg.valeur === 'de' ? 'de' : 'fr';
         await vscode.workspace.getConfiguration('szh').update('langue', langue, Global);
@@ -2384,6 +2539,7 @@ function textesTable() {
     'table.ctx.ligneAvant', 'table.ctx.ligneApres', 'table.ctx.ligneSuppr',
     'table.ctx.colAvant', 'table.ctx.colApres', 'table.ctx.colSuppr',
     'table.entete', 'table.enteteRetirer',
+    'table.legende', 'table.legende.indice',
     // Panneau de mise en forme (T2) : 3 zones.
     'table.zone.styles', 'table.zone.preset',
     'table.zone.entetes', 'table.entetesLignes', 'table.entetesColonnes', 'table.entetes.aucun',
@@ -2617,7 +2773,10 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('szh.cockpit.rafraichir', majContexte),
     vscode.commands.registerCommand('szh.metadonnees', () => ouvrirMetadonnees(fournisseur, rafraichirTout)),
-    vscode.commands.registerCommand('szh.apercuMetadonnees', () => ouvrirApercuMetadonnees(fournisseur, rafraichirTout)),
+    vscode.commands.registerCommand('szh.apercuMetadonnees', () => ouvrirApercuMetadonnees(fournisseur, rafraichirTout, null)),
+    // D97 : le MÊME formulaire, filtré sur un article (icône ✎ de l'arbre, ou entrée
+    // « Métadonnées de l'article courant » du panneau d'édition, sans argument).
+    vscode.commands.registerCommand('szh.metadonneesArticle', (item) => ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item)),
     vscode.commands.registerCommand('szh.reglages', () => ouvrirReglages(rafraichirTout)),
     vscode.commands.registerCommand('szh.basculerApercu', () => basculerApercu(fournisseur, majBarreApercu)),
     vscode.commands.registerCommand('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
@@ -2704,7 +2863,8 @@ module.exports = {
     nettoyerCarte, assainirCheminPhoto, decomposerPhoto, relatifImageValide,
     retirerImage, retirerTable,
     basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
-    enroberBloc, squeletteTableau, blocReferenceTable, nomTableLibre,
+    enroberBloc, squeletteTableau, tableauVierge, blocReferenceTable, nomTableLibre,
+    slugifier, slugifierArticle,
     analyserTable, serialiserTable, disposition,
     matriceOccupation, etendreGrille, compacterGrille,
     normaliserModele, finaliserModele, canoniserInline,

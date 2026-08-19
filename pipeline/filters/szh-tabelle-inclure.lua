@@ -5,6 +5,12 @@
 -- les chemins relatifs tables/… tombent juste). Fichier manquant ou référence
 -- cassée -> bloc d'avertissement VISIBLE dans le rendu, jamais d'échec silencieux
 -- (le rédacteur voit le trou, le build n'échoue pas).
+--
+-- Légende du tableau : ce filtre ne fait QUE l'inclusion, il ne numérote pas.
+-- Le contrat de forme est un <caption> en tête du <table> dans le fichier inclus
+-- (écrit par docx-tables.py à l'import, par l'éditeur de tableau du cockpit
+-- ensuite). C'est szh-numerotation.lua, branché APRÈS celui-ci, qui y insère
+-- « Tableau N — ». Pas de <caption>, ou <caption> vide : aucun numéro consommé.
 
 local function avertissement(texte)
   return pandoc.Div(

@@ -45,20 +45,26 @@ function ouvrirPanneauCommande() {
 // Panneau « Édition » : la bascule d'aperçu, puis TOUTE la palette de mise en forme.
 // Les commandes szh.fmt.* n'ont PAS de garde markdown (elles transforment l'éditeur
 // actif, quel qu'il soit) : la garde d'ouvrirMiseEnForme est reprise ici, mais
-// seulement pour les entrées de mise en forme — la bascule d'aperçu, elle, n'a pas
-// besoin d'un .md et doit marcher depuis n'importe où dans la revue.
+// seulement pour les entrées de mise en forme. Deux entrées y échappent : la bascule
+// d'aperçu, qui doit marcher depuis n'importe où dans la revue, et — depuis D97 — les
+// métadonnées de l'article courant, qui savent aussi retrouver l'article affiché en
+// aperçu et disent elles-mêmes ce qui manque le cas échéant.
+const HORS_GARDE_MD = ['szh.basculerApercu', 'szh.metadonneesArticle'];
+
 async function ouvrirPanneauEdition() {
   const ed = vscode.window.activeTextEditor;
   const estMarkdown = !!(ed && ed.document.languageId === 'markdown');
   const entrees = [
     ['--', 'panneau.g.apercu'],
-    ['panneau.basculerApercu', 'szh.basculerApercu', 'Ctrl+Alt+P', '$(preview)']
+    ['panneau.basculerApercu', 'szh.basculerApercu', 'Ctrl+Alt+P', '$(preview)'],
+    ['--', 'panneau.g.article'],
+    ['panneau.metaArticle', 'szh.metadonneesArticle', '', '$(list-flat)']
   ].concat(PALETTE_MEF);
   const choix = await vscode.window.showQuickPick(itemsDepuisEntrees(entrees), {
     placeHolder: T('panneau.edition.placeholder')
   });
   if (!choix || !choix.commande) { return; }
-  if (choix.commande !== 'szh.basculerApercu' && !estMarkdown) {
+  if (HORS_GARDE_MD.indexOf(choix.commande) === -1 && !estMarkdown) {
     vscode.window.setStatusBarMessage(T('palette.horsmd'), 3000);
     return;
   }

@@ -12,6 +12,7 @@
   "cmd.remplacerTable": "Remplacer le tableau",
   "cmd.editerTable": "Éditer le tableau",
   "cmd.apercuMetadonnees": "Métadonnées des articles",
+  "cmd.metadonneesArticle": "Éditer les métadonnées de cet article",
   "cmd.reglages": "Réglages SZH",
   "cmd.basculerApercu": "Basculer l’aperçu HTML ⇄ PDF",
   "cmd.panneauCommande": "Panneau de commande",
@@ -34,5 +35,6 @@
   "cmd.fmt.collerTableau": "Coller un tableau depuis Excel/Word",
   "cmd.fmt.sautPage": "Insérer un saut de page",
   "config.langue": "Langue des textes du cockpit (fr/de). Vide = langue de l’éditeur.",
-  "config.apercuMode": "Mode d’aperçu de la colonne de droite : html (cliquable, défaut) ou pdf."
+  "config.apercuMode": "Mode d’aperçu de la colonne de droite : html (cliquable, défaut) ou pdf.",
+  "config.replierAssetsAutres": "Cacher automatiquement les images et tableaux des articles non sélectionnés."
 }

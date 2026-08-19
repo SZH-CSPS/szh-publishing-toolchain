@@ -9,7 +9,8 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { T } = require('./i18n');
-const { tableauDepuisHtmlBureautique, tableauDepuisTsv, serialiserTable } = require('./table-model');
+const { tableauDepuisHtmlBureautique, tableauDepuisTsv, serialiserTable,
+  finaliserModele, PRESETS_TABLE } = require('./table-model');
 
 // Contexte de la revue, INJECTÉ par extension.js à l'enregistrement des commandes :
 //   racine()                       -> racine de la revue (ou null)
@@ -85,9 +86,10 @@ function enroberBloc(texte, classe, titre) {
   return '::: ' + attr + '\n' + t + '\n:::';
 }
 
-// Squelette de tableau Markdown (3 colonnes, 2 lignes) — édité ensuite via
-// markdowntable (Tab). Un tableau VENU d'Excel/Word ne passe plus par le pipe : il
-// devient un fichier tables/table-NN.html (Ctrl+Alt+V, cf. fmtCollerTableau).
+// Squelette de tableau Markdown (3 colonnes, 2 lignes) — repli HORS article seulement
+// depuis D95 (dans un article, « Insérer un tableau » crée un fichier tables/table-NN.html
+// et ouvre l'éditeur de tableau, cf. fmtTableau). Un tableau VENU d'Excel/Word ne passe
+// pas non plus par le pipe (Ctrl+Alt+V, cf. fmtCollerTableau).
 function squeletteTableau(colonne) {
   const c = String(colonne || 'Colonne');
   return [
@@ -181,11 +183,71 @@ async function fmtFigure() {
   vscode.window.setStatusBarMessage(T('fmt.figure.copiee', [nom]), 4000);
 }
 
-function fmtTableau() {
+// ---- Insérer un tableau (Ctrl+Alt+T, D95) ------------------------------------------
+//
+// Le tableau inséré est un VRAI tableau de la revue — un fichier
+// articles/<slug>/tables/table-NN.html + la référence ::: {.szh-tabelle src="…"} au
+// curseur — puis l'éditeur de tableau s'ouvre dessus. Exactement la mécanique du
+// collage (D81), avec pour seule différence la SOURCE du modèle : ici, une grille
+// vierge. Le pipe Markdown ne survivait de toute façon pas à la mise en forme du PDF
+// (ni fusions, ni en-têtes, ni styles) et l'équipe de rédaction n'a pas à écrire des
+// « |---|---| » à la main.
+
+// Grille vierge 3 × 3 dont la première rangée est un en-tête (les colonnes sont
+// nommées « Colonne 1/2/3 » pour que la rangée d'en-tête ne soit pas vide à l'écran).
+// L'habillage est celui du préréglage « académique » — SOURCE UNIQUE : PRESETS_TABLE,
+// jamais recopié ici. finaliserModele pose th/scope depuis le compte d'en-tête.
+function tableauVierge(colonne) {
+  const c = String(colonne || 'Colonne');
+  const cellule = (contenu) => ({ contenu: contenu, colspan: 1, rowspan: 1, th: false, scope: '', align: 'left' });
+  const lignes = [{ cellules: [cellule(c + ' 1'), cellule(c + ' 2'), cellule(c + ' 3')] }];
+  for (let i = 0; i < 2; i++) { lignes.push({ cellules: [cellule(''), cellule(''), cellule('')] }); }
+  return finaliserModele({
+    attrs: Object.assign({ enteteLignes: 1 }, PRESETS_TABLE.academique),
+    lignes: lignes
+  });
+}
+
+async function fmtTableau() {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
-  const sq = squeletteTableau(T('fmt.tableau.colonne'));
-  return editeur.edit((b) => { b.replace(editeur.selection, sq); });
+  const doc = editeur.document;
+  const racine = revue.racine();
+  const slug = racine ? revue.slugDepuisChemin(racine, doc.uri.fsPath) : null;
+  if (!slug) {
+    // Hors article (BIENVENUE.md, .md d'un autre dossier, fichier hors revue) : il n'y
+    // a pas de articles/<slug>/tables/ où écrire, et pas d'article à recompiler. On
+    // garde donc le squelette Markdown historique — la commande reste utile partout —
+    // en le disant, pour que personne ne s'étonne d'obtenir deux choses différentes.
+    const sq = squeletteTableau(T('fmt.tableau.colonne'));
+    await editeur.edit((b) => { b.replace(editeur.selection, sq); });
+    vscode.window.setStatusBarMessage(T('fmt.tableau.markdown'), 5000);
+    return;
+  }
+  const dossier = path.join(path.dirname(doc.uri.fsPath), 'tables');
+  const nom = nomTableLibre(dossier);                // premier libre : jamais d'écrasement
+  try {
+    fs.mkdirSync(dossier, { recursive: true });
+    fs.writeFileSync(path.join(dossier, nom), serialiserTable(tableauVierge(T('fmt.tableau.colonne'))), 'utf8');
+  } catch (e) {
+    vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
+    return;
+  }
+  const sel = editeur.selection;
+  const avant = doc.lineAt(sel.start.line).text.slice(0, sel.start.character);
+  const apres = doc.lineAt(sel.end.line).text.slice(sel.end.character);
+  await editeur.edit((b) => { b.replace(sel, blocReferenceTable(nom, avant, apres)); });
+  // On ENREGISTRE l'article avant de partir vers l'éditeur de tableau : sinon la
+  // référence reste dans le tampon, l'article se recompile sans elle et « Retour à
+  // l'article » montrerait un aperçu sans le tableau qu'on vient de créer. (Le collage
+  // Ctrl+Alt+V, lui, laisse la main dans le texte : rien ne part, l'utilisateur
+  // enregistre quand il veut.)
+  try { await doc.save(); } catch (e) { /* fichier verrouillé : la référence reste au tampon */ }
+  vscode.window.setStatusBarMessage(T('fmt.tableau.creee', [nom]), 5000);
+  revue.rafraichirTout();                            // le tableau apparaît sous l'article
+  // On enchaîne sur l'éditeur de tableau : c'est là que la grille se remplit. Mêmes
+  // champs que l'item d'arbre attendu par ouvrirEditeurTable (slug + cheminAsset).
+  await vscode.commands.executeCommand('szh.editerTable', { slug: slug, cheminAsset: path.join(dossier, nom) });
 }
 
 // ---- Coller un tableau depuis Excel/Word (Ctrl+Alt+V, D81) -------------------------
@@ -426,6 +488,6 @@ function enregistrerCommandesMiseEnForme(context, hote) {
 
 module.exports = {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
-  enroberBloc, squeletteTableau, blocReferenceTable, blocSautPage, nomTableLibre,
+  enroberBloc, squeletteTableau, tableauVierge, blocReferenceTable, blocSautPage, nomTableLibre,
   lireHtmlPressePapiers, enregistrerCommandesMiseEnForme, PALETTE_MEF
 };

@@ -210,7 +210,8 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 	  --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
 	  --lua-filter="$(MAQUETTE_LUA)" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
-	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" $$extra \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" $$extra \
 	  --output="$(abspath $@)"
 
 # .md -> HTML d'APERÇU (D53) : mêmes filtres/CSS/métadonnées que la sortie PDF,
@@ -230,7 +231,8 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --standalone --embed-resources \
 	  --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
-	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" $$extra \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" $$extra \
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
 
@@ -247,6 +249,10 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 #     et le writer pptx sait rendre une Figure (image + légende sous l'image).
 #     Avec le lecteur `markdown` il est quasi no-op (implicit_figures fait déjà le
 #     travail) mais il garantit le même traitement des légendes que le PDF.
+#   * szh-numerotation.lua : GARDÉ. Il travaille lui aussi sur l'AST (préfixe
+#     « Figure N — » écrit DANS la légende) : une diapositive porte donc le même
+#     numéro de figure que le PDF et le HTML. Sa branche « tableaux » est inerte
+#     ici (szh-tabelle-inclure est écarté -> aucun RawBlock html à numéroter).
 #   * szh-maquette.lua : ÉCARTÉ. Il ne calcule QUE des variables de gabarit
 #     (couverture, en-tête courant, ISSN, résumés) consommées par
 #     templates/szh-article.html — sans template HTML, sa sortie est inerte.
@@ -283,7 +289,8 @@ $(OUT)/%.pptx: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $$(wildcar
 	cd "articles/$$slug" && $(PANDOC) "$$slug.md" \
 	  --from=markdown --to=pptx \
 	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
-	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" $$extra \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" $$extra \
 	  --output="$(abspath $@)"
 
 # HTML -> PDF (CSS Paged Media), BALISÉ PDF/UA-1 (AX3/D62 : PDF accessible — arbre
@@ -324,7 +331,14 @@ docx: verifie-dossier $(DOCXS)
 #    (jamais écrasé), tableau des auteurs et lignes de tête consommés, bibliographie
 #    -> media/<slug>.bib via AnyStyle ; l'échec d'UN article déclenche le rollback
 #    rm -rf articles/<slug> ci-dessous, meta.yaml compris ;
-#  - .docx uniquement (D35 : un seul chemin d'import).
+#  - .docx uniquement (D35 : un seul chemin d'import) ;
+#  - NUMÉRO D'ORDRE : un nom de fichier qui commence par UN chiffre seul (« 4_Titre »)
+#    donne un slug complété à deux chiffres (« 04-titre ») ; à partir de 10 le nombre
+#    est laissé tel quel. Le tri alphabétique des slugs devient l'ordre du numéro
+#    (SLUGS := $(sort …), listerArticles côté cockpit, seq de l'export OJS D93).
+#    ⚠ MIROIR OBLIGATOIRE : slugifierArticle() de vscodium-extension/szh-cockpit/
+#    lib/slug.js applique la MÊME règle — le cockpit devine le slug d'un .docx en
+#    attente pour dire « déjà converti » ; les deux doivent rester bijectifs.
 import:
 	@set -u; \
 	shopt -s nullglob; \
@@ -359,6 +373,7 @@ import:
 	  slug=$$(printf '%s' "$$slug" | LC_ALL=C.UTF-8 iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null || printf '%s' "$$slug"); \
 	  slug=$$(printf '%s' "$$slug" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$$//'); \
 	  [ -n "$$slug" ] || slug=article; \
+	  slug=$$(printf '%s' "$$slug" | sed -E 's/^([0-9])($$|[^0-9])/0\1\2/'); \
 	  cible="articles/$$slug/$$slug.md"; \
 	  if [ -e "$$cible" ]; then \
 	    echo "[import] déjà converti (ignoré) : $$nom -> $$cible existe"; deja=$$((deja+1)); continue; \

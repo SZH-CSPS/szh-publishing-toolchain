@@ -1,5 +1,55 @@
 # Todo Robin (mis à jour le 2026-08-19, après la vague 1 des features F1–F8)
 
+## Validations qui demandent un humain — numérotation figures/tableaux (D104)
+
+- [ ] **Arbitrage du séparateur** : l'`alt` dit « Figure 5 — Légende » (cadratin), là où la
+  demande initiale disait « Figure 5 - Légende » (trait d'union). Le cadratin est gardé
+  parce que l'`alt` doit être *identique au caractère près* au texte de la légende pour que
+  pandoc pose `aria-hidden` dessus — sinon le lecteur d'écran lit deux fois la même phrase.
+  Trancher : garder le cadratin (recommandé) ou changer la constante `CADRATIN` de
+  `pipeline/filters/szh-numerotation.lua` en acceptant la double annonce.
+- [ ] **Image sans légende et PDF/UA-1** : WeasyPrint 69 ne distingue pas `alt=""` d'un `alt`
+  absent et écrit `ERROR: Image … has no required alt description` (le PDF sort quand même,
+  code 0, aucun repli). Décider : exiger une légende à l'import (avertissement du cockpit sur
+  toute image non légendée) ou attendre une version de WeasyPrint qui le distingue.
+- [ ] **Libellés `it`/`en`** de `szh-numerotation.lua` (`Figura`/`Tabella`, `Figure`/`Table`) :
+  premier jet à valider comme le reste du catalogue.
+- [ ] **Revue avec un `styles/print.css` local** : un override antérieur contient encore les
+  compteurs CSS retirés → **double numérotation**. Aucune revue du dépôt n'est concernée ;
+  à vérifier au déploiement sur les revues réelles.
+- [ ] **Juger le rendu** sur un article réel : numéros de figures et de tableaux qui se suivent
+  indépendamment, en FR et en DE, dans le PDF **et** dans l'aperçu HTML.
+
+## Validations qui demandent un humain — lot ordre/métadonnées/assets (D99–D103)
+
+- [ ] **Ordre des articles (D99)** : déposer `4_Titre.docx` et `10_Titre.docx`, importer →
+  slugs `04-…` et `10-…`, articles rangés dans l'ordre du numéro. Réimporter le même
+  fichier → badge « déjà converti » (preuve que cockpit et Makefile calculent le même
+  slug). ⚠ `4_X.docx` et `04_X.docx` donnent le même slug : le second est ignoré.
+- [ ] **Métadonnées d'un article (D100)** : au survol, l'icône ✎ est **à gauche** de la
+  poubelle ; clic → panneau « Métadonnées — <slug> », une seule carte + bandeau « Voir
+  tous les articles ». Enchaîner tous → un → un autre → tous, **avec une carte modifiée
+  (●)** à chaque fois : la modale Enregistrer / Quitter sans enregistrer / Annuler doit
+  apparaître, « Annuler » laisser les saisies, « Enregistrer » n'écrire que l'article
+  affiché. Puis Ctrl+Alt+S → « Métadonnées de l'article courant » depuis un article,
+  depuis un `.md` hors article (message sobre), depuis un onglet non-`.md`.
+- [ ] **Repli des assets (D101)** : cliquer A puis B → les assets de B s'ouvrent, ceux de
+  A se referment ; un article sans asset n'a pas de chevron. **Juger si la sélection dans
+  l'arbre reste correcte** (le nœud est recréé à chaque bascule). Puis Réglages SZH →
+  « Cacher automatiquement… » = Non → plus aucun pliage automatique ; remettre Oui.
+- [ ] **Insérer un tableau (D102)** : Ctrl+Alt+T dans un article → fichier `table-NN.html`
+  créé, référence insérée, article enregistré, éditeur ouvert sur la grille 3 × 3 ;
+  « Retour à l'article » → le tableau est dans l'aperçu. Puis Ctrl+Alt+T dans
+  `BIENVENUE.md` → squelette Markdown + message.
+- [ ] **Légende de tableau (D103)** : saisir une légende → ● → Ctrl+S → `<caption>` dans le
+  fichier ; Ctrl+Z / Ctrl+Y sur la légende ; vider la légende → le `<caption>` disparaît ;
+  ouvrir un tableau importé dont le Word avait une légende → le champ la montre et le
+  fichier n'est **pas** modifié si on n'y touche pas. ⚠ Retoucher une légende importée
+  avec du gras/italique la remet à plat (champ texte simple) — **à arbitrer** : faut-il
+  préserver la mise en forme des légendes Word à l'édition ?
+- [ ] **Tout rejouer en allemand** (`szh.langue = de`) : nouveaux libellés (bandeau de
+  filtre, réglage, légende, messages Ctrl+Alt+T) et titre `%cmd.metadonneesArticle%`.
+
 ## Validations qui demandent un humain — correctifs C1–C3 (2026-08-19)
 
 - [ ] **C1 — compilation après import** : importer un ou deux `.docx` → la compilation

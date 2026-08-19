@@ -7,6 +7,8 @@
 --     markdown, pour que HTML/aperçu/PDF rendent la même chose.
 -- Le <caption> des tableaux est du HTML brut (inclus par szh-tabelle-inclure.lua) :
 -- il traverse les deux lecteurs à l'identique, rien à faire ici.
+-- La NUMÉROTATION (« Figure N — » dans la légende, l'alt et l'aria-label) est posée
+-- ensuite par szh-numerotation.lua, qui a besoin des Figure construites ici.
 -- Idempotent : une image sans légende (alt vide) reste une image inline.
 
 local function image_seule(inls)

@@ -68,3 +68,10 @@ button:disabled { opacity: .5; cursor: default; }
   padding: .4rem 0 .6rem; margin-bottom: .6rem; z-index: 1; }
 #etat { margin-left: .8rem; font-size: .92em; color: var(--vscode-descriptionForeground); }
 .modifie h2::after { content: " ●"; color: var(--vscode-charts-orange, orange); }
+/* Bandeau « un seul article affiché » (D97) — visible seulement en vue filtrée. */
+.filtre { display: flex; align-items: center; gap: .8rem; margin: 0 0 .8rem;
+  padding: .4em .6em; border-radius: 3px; font-size: .9em;
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-textBlockQuote-background, rgba(128,128,128,.12));
+  border-left: 3px solid var(--vscode-textBlockQuote-border, rgba(128,128,128,.5)); }
+.filtre[hidden] { display: none; }

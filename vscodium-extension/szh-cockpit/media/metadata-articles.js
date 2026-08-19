@@ -4,13 +4,25 @@
   const vscodeApi = acquireVsCodeApi();
   const etat = document.getElementById('etat');
   const conteneur = document.getElementById('cartes');
+  const bandeauFiltre = document.getElementById('filtre');
   const modifies = new Set();
   let TYPES = [];
+  let dernierModifie = false;
   let LANGUE_DEFAUT = 'fr';   // langue par défaut du numéro (E3, dérivée du revue)
   // Gardes photo (F3) — mêmes bornes que l'hôte (défense en profondeur).
   const TAILLE_MAX_PHOTO = 20 * 1024 * 1024;
   const EXTENSIONS_PHOTO = ['png', 'jpg', 'jpeg', 'webp'];
-  function marquer(carte, slug) { modifies.add(slug); carte.classList.add('modifie'); etat.textContent = ''; }
+  // L'hôte doit savoir si des cartes portent un ● : c'est lui qui pose la garde
+  // « non enregistré » avant de RECHARGER le formulaire (passage à la vue filtrée
+  // d'un article, ou retour à la liste complète — D97). On ne poste qu'aux
+  // changements d'état, pas à chaque frappe.
+  function signalerModifie() {
+    const m = modifies.size > 0;
+    if (m === dernierModifie) { return; }
+    dernierModifie = m;
+    vscodeApi.postMessage({ type: 'modifie', modifie: m });
+  }
+  function marquer(carte, slug) { modifies.add(slug); carte.classList.add('modifie'); etat.textContent = ''; signalerModifie(); }
 
   // Icônes SVG inline (currentColor, ~14 px) — chemins CONSTANTS posés en DOM
   // (createElementNS, jamais d'innerHTML), cohérents poubelle/appareil photo.
@@ -282,10 +294,27 @@
     lecteur.readAsDataURL(f);
   }
 
+  // Bandeau de la vue filtrée (D97) : rappelle qu'un seul article est affiché et
+  // ramène à la liste complète. Absent en vue complète.
+  function rendreFiltre(filtre) {
+    bandeauFiltre.textContent = '';
+    if (!filtre || !filtre.length) { bandeauFiltre.hidden = true; return; }
+    const texte = document.createElement('span');
+    texte.textContent = TXT.filtreNote.split('{0}').join(filtre.join(', '));
+    bandeauFiltre.appendChild(texte);
+    const bouton = document.createElement('button');
+    bouton.type = 'button';
+    bouton.textContent = TXT.tous;
+    bouton.addEventListener('click', function () { vscodeApi.postMessage({ type: 'tous' }); });
+    bandeauFiltre.appendChild(bouton);
+    bandeauFiltre.hidden = false;
+  }
+
   function rendre(articles) {
     if (ctx) { fermerModale(); }                   // re-rendu : la rangée visée n'existe plus
     conteneur.textContent = '';
     modifies.clear();
+    signalerModifie();
     for (const article of articles) {
       const carte = document.createElement('div');
       carte.className = 'carte';
@@ -394,17 +423,31 @@
     }
     return resultat;
   }
-  document.getElementById('enregistrer').addEventListener('click', function () {
-    if (modifies.size === 0) { etat.textContent = TXT.rien; return; }
+  // Cartes MODIFIÉES seules (les autres ne sont jamais réécrites) — partagé par le
+  // bouton « Enregistrer » et la réponse à « demande-rechargement ».
+  function cartesModifiees() {
     const envoi = {};
     for (const carte of conteneur.querySelectorAll('.carte')) {
       if (modifies.has(carte.dataset.slug)) { envoi[carte.dataset.slug] = collecter(carte); }
     }
-    vscodeApi.postMessage({ type: 'enregistrer', articles: envoi });
+    return envoi;
+  }
+  document.getElementById('enregistrer').addEventListener('click', function () {
+    if (modifies.size === 0) { etat.textContent = TXT.rien; return; }
+    vscodeApi.postMessage({ type: 'enregistrer', articles: cartesModifiees() });
   });
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
-    if (msg.type === 'valeurs') { TYPES = msg.types || []; LANGUE_DEFAUT = msg.langue || 'fr'; rendre(msg.articles || []); }
+    if (msg.type === 'valeurs') {
+      TYPES = msg.types || []; LANGUE_DEFAUT = msg.langue || 'fr';
+      rendre(msg.articles || []);
+      rendreFiltre(msg.filtre || null);
+    }
+    // L'hôte veut recharger le formulaire (changement de filtre) alors que des cartes
+    // portent un ● : il lui faut ce qu'elles contiennent pour pouvoir l'enregistrer.
+    if (msg.type === 'demande-rechargement') {
+      vscodeApi.postMessage({ type: 'rechargement', articles: cartesModifiees() });
+    }
     if (msg.type === 'enregistre') { etat.textContent = TXT.enregistre.split('{0}').join(msg.n); }
     if (msg.type === 'erreur') { etat.textContent = '⚠ ' + msg.message; }
     // Réponses de la modale photo : recontrôlées contre le contexte courant —

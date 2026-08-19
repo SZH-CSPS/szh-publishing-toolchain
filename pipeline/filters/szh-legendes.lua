@@ -43,7 +43,8 @@ local function tout_gras(inls)
   return reel > 0
 end
 
--- Nettoyage du numéro de figure en tête de légende (num. auto par CSS, D31).
+-- Nettoyage du numéro de figure en tête de légende : le numéro manuel du Word est
+-- retiré ici, il est reposé à la compilation par szh-numerotation.lua (D31).
 local MOTS_FIGURE = { '^[Ff]igure%s+%d+[a-z]?%s*[:%.%-–—]?%s*',
                       '^[FfAa]bb?%.%s*%d+[a-z]?%s*[:%.%-–—]?%s*',
                       '^[Aa]bbildung%s+%d+[a-z]?%s*[:%.%-–—]?%s*',

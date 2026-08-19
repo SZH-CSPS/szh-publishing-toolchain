@@ -36,6 +36,10 @@
   { "key": "ctrl+alt+q", "command": "szh.fmt.question",  "when": "editorTextFocus && editorLangId == markdown" },
   { "key": "ctrl+alt+c", "command": "szh.fmt.citation",  "when": "editorTextFocus && editorLangId == markdown" },
   { "key": "ctrl+alt+f", "command": "szh.fmt.figure",    "when": "editorTextFocus && editorLangId == markdown" },
+  // Ctrl+Alt+T « Insérer un tableau » (D95) : dans un article, crée un vrai tableau
+  // articles/<slug>/tables/table-NN.html (grille vierge 3 × 3, en-tête compris), insère
+  // sa référence ::: {.szh-tabelle src="…"} au curseur et ouvre l'éditeur de tableau.
+  // Hors article, repli sur le squelette Markdown d'avant.
   { "key": "ctrl+alt+t", "command": "szh.fmt.tableau",   "when": "editorTextFocus && editorLangId == markdown" },
 
   // Coller un tableau copié depuis Excel/Word (une seule frappe). csholmq.excel-to-

@@ -263,12 +263,29 @@ function reappliquerEntetes(modele) {
 // gauche), en-têtes de colonnes (ec = th[scope=col], rangées du haut), total (dernière
 // rangée auto, D65), bordures, zébrage colonnes/lignes. Aucun style par cellule hormis
 // l'alignement et la mise en forme inline du contenu.
+// Légende de tableau (D94) — le <caption> du fichier. Même convention que le contenu
+// d'une cellule : inline canonique (texte déjà échappé + <strong>/<em>/<br>), donc
+// canoniserInline suffit à l'assainir et le round-trip est stable. Chaîne vide = pas
+// de légende : serialiserTable n'émet alors AUCUN <caption> (un tableau sans légende
+// ne doit pas en gagner un vide).
+//
+// Comme le contenu d'une cellule, la légende est SAISIE dans la webview et arrive
+// avec le modèle : c'est ici — passage obligé de tous les chemins (analyse, opération,
+// annulation, enregistrement) — qu'elle est assainie. Une balise inconnue y perd sa
+// balise (le texte reste) : aucune injection possible, même si la webview envoyait
+// n'importe quoi. Les retours à la ligne d'une légende collée deviennent des espaces
+// (un <caption> est un titre d'une ligne ; les sauts voulus passent par <br>).
+function normaliserLegende(v) {
+  return canoniserInline(String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' '));
+}
+
 function normaliserModele(modele) {
   const a = (modele && modele.attrs) || {};
   const lignesEntree = (modele && modele.lignes) || [];
   const nbLignes = lignesEntree.length;
   const attrs = {
     classe: 'szh-tableau',
+    legende: normaliserLegende(a.legende),
     enteteLignes: Math.max(0, Math.min(2, Math.min(parseInt(a.enteteLignes, 10) || 0, nbLignes))),
     enteteColonnes: Math.max(0, Math.min(2, parseInt(a.enteteColonnes, 10) || 0)),
     elGras: vrai(a.elGras), elFond: enumOu(a.elFond, FONDS, 'aucun'),
@@ -366,6 +383,9 @@ function analyserTable(html) {
     const fin = s.toLowerCase().indexOf('</table>', debut);
     corps = fin === -1 ? s.slice(debut) : s.slice(debut, fin);
   } else { corps = s; }
+  // La LÉGENDE (D94) est lue AVANT que le <caption> ne soit retiré du corps : c'est
+  // elle que le pipeline numérote et affiche, et l'import Word en bake déjà une.
+  const mCaption = corps.match(/<caption\b[^>]*>([\s\S]*?)<\/caption>/i);
   corps = corps
     .replace(/<\/?(thead|tbody|tfoot)\b[^>]*>/gi, '')
     .replace(/<colgroup\b[^>]*>[\s\S]*?<\/colgroup>/gi, '')
@@ -381,6 +401,7 @@ function analyserTable(html) {
   const occ = matriceOccupation(lignes);
   const attrs = {
     classe: 'szh-tableau',
+    legende: mCaption ? canoniserInline(mCaption[1]) : '',
     enteteLignes: at['data-entete-lignes'] !== undefined ? Math.max(0, Math.min(2, parseInt(at['data-entete-lignes'], 10) || 0)) : infererEnteteLignes(occ, lignes),
     enteteColonnes: at['data-entete-colonnes'] !== undefined ? Math.max(0, Math.min(2, parseInt(at['data-entete-colonnes'], 10) || 0)) : infererEnteteColonnes(occ, lignes),
     elGras: at['data-el-gras'] === '1', elFond: enumOu(at['data-el-fond'], FONDS, 'aucun'),
@@ -451,6 +472,10 @@ function serialiserTable(modele) {
   const idTh = (li, c0) => 'szh-th-r' + li + 'c' + c0;
 
   const out = [ouv];
+  // Légende (D94) : <caption> — PREMIER enfant de <table>, comme l'exige HTML (et comme
+  // l'écrit l'import Word). Émis seulement s'il y a une légende : un tableau sans
+  // légende ne gagne jamais de <caption> vide (sortie minimale, round-trip stable).
+  if (a.legende !== '') { out.push('<caption>' + a.legende + '</caption>'); }
   const emettreRangee = (lg, r) => {
     out.push('<tr>');
     lg.cellules.forEach((cell, ci) => {
@@ -740,8 +765,10 @@ const ATTRS_CELLULE = ['colspan', 'rowspan', 'scope', 'data-align', 'id', 'heade
 
 // Balises conservées par le nettoyage : structure de tableau + inline canonisable par
 // canoniserInline. Toute autre balise est retirée EN GARDANT son texte.
+// `caption` en fait partie depuis D94 : la légende d'un tableau collé depuis Word
+// arrive dans un <caption> et doit survivre au nettoyage (analyserTable la lit).
 const BALISES_GARDEES = {
-  table: 1, thead: 1, tbody: 1, tfoot: 1, tr: 1, td: 1, th: 1,
+  table: 1, thead: 1, tbody: 1, tfoot: 1, tr: 1, td: 1, th: 1, caption: 1,
   br: 1, strong: 1, b: 1, em: 1, i: 1
 };
 
@@ -917,6 +944,7 @@ function tableauDepuisHtmlBureautique(html) {
   const m = analyserTable(propre);
   m.lignes = m.lignes.filter((lg) => lg.cellules.length > 0);      // <tr> sans cellule : artefact
   m.lignes.forEach((lg) => lg.cellules.forEach((c) => { c.contenu = nettoyerContenuCellule(c.contenu); }));
+  m.attrs.legende = nettoyerContenuCellule(m.attrs.legende);       // D94 : mêmes blancs que les cellules
   if (m.attrs.enteteLignes === 0 && m.lignes.length >= 2 && ligneToutGras(m.lignes[0].cellules)) {
     const hauteur = hauteurEnteteGras(m.lignes);
     // Plafond du modèle : 2 niveaux d'en-tête (normaliserModele borne de toute façon).
@@ -1049,6 +1077,9 @@ function appliquerOperationTable(nom, modeleBrut, args) {
     }
     return finaliserModele(modele);
   }
+  // (La LÉGENDE n'a pas d'opération : comme le TEXTE des cellules, elle est saisie
+  // dans la webview, voyage avec le modèle et est assainie par normaliserModele —
+  // elle participe donc à annuler/rétablir par le même chemin que le texte, D94.)
   if (nom === 'reglage') {
     const enums = { zebreCol: ZEBRES, zebreLig: ZEBRES };
     const bools = ['bordureHaute', 'bordureBasse', 'zebreColEntetes', 'zebreLigEntetes'];
@@ -1060,7 +1091,7 @@ function appliquerOperationTable(nom, modeleBrut, args) {
 }
 
 module.exports = {
-  lireAttributsHtml, canoniserInline, echapTexteBrut, extraireCellules, enumOu,
+  lireAttributsHtml, canoniserInline, normaliserLegende, echapTexteBrut, extraireCellules, enumOu,
   matriceOccupation, etendreGrille, compacterGrille, reappliquerEntetes,
   normaliserModele, finaliserModele, infererEnteteLignes, infererEnteteColonnes,
   analyserTable, serialiserTable, disposition,
