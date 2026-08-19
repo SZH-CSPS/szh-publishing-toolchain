@@ -246,6 +246,21 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 
 /* Résumés (Zusammenfassung / Résumé) + mots-clés. */
 .szh-cover-body { padding: 24px 0 40px; }   /* C2 : marges gérées par @page (le corps s'aligne) */
+
+/* Ordre de PEINTURE du PDF — NE PAS RETIRER (aucun effet visuel, mais essentiel).
+   Le hero est positionné (position:relative, nécessaire à ses enfants absolus
+   .szh-hero-meta et .szh-book) ; or CSS peint les éléments positionnés APRÈS le
+   contenu en flux normal (CSS 2.1, annexe E). Sans cette règle, WeasyPrint écrit
+   la couverture dans le flux PDF APRÈS les résumés et le corps : l'extraction de
+   texte, le copier-coller et « Read Out Loud » lisent la page 1 dans le désordre
+   (l'arbre de structure PDF/UA, lui, reste juste). Positionner aussi les frères
+   du hero (filet, résumés) et tout ce qui suit la couverture les fait entrer
+   dans la même couche de peinture, où l'ordre redevient celui du DOM.
+   `position: relative` sans décalage ne déplace rien — géométrie vérifiée
+   identique page par page (tmp/diagnostic-ordre-pdf, 2026-08-19). */
+.szh-filet,
+.szh-cover-body,
+.szh-cover ~ * { position: relative; }
 .szh-abstract {
   background: #f3f3f4; padding: 16px 20px; margin-bottom: 14px;
   border-left: 3px solid var(--c-abstract-border);
