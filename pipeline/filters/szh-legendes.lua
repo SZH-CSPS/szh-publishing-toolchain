@@ -1,8 +1,8 @@
 -- szh-legendes.lua — import (AX5/D28-D30, ravivé de attic/szh-import.lua ; élargi F6).
 -- « Bake » les légendes dans le .md à l'import (ré-import assumé) :
 --   * FIGURES : une image seule dans un Para + un paragraphe VOISIN légende (avant OU
---     après) -> l'image reçoit cette légende comme alt (numéro « Figure N » nettoyé),
---     et le paragraphe est RETIRÉ. Au rendu, szh-figure.lua en fait un
+--     après) -> l'image reçoit cette légende comme LÉGENDE (numéro « Figure N »
+--     nettoyé), et le paragraphe est RETIRÉ. Au rendu, szh-figure.lua en fait un
 --     <figure><figcaption>. Un voisin est une légende si :
 --       - il est tout en gras (heuristique historique), OU
 --       - docx-meta.py l'a identifié PAR STYLE (Abbildung Beschriftung, Caption… —
@@ -14,6 +14,15 @@
 --     RETIRE simplement les paragraphes correspondants du .md (pas de doublon).
 --     L'appariement se fait au TEXTE exact : le paragraphe n'a pas besoin d'être
 --     gras (les légendes stylées « Tabelle Beschriftung » ne le sont pas).
+--   * TEXTE ALTERNATIF (D104) : Word connaît DÉJÀ l'alt des images — l'auteur l'a
+--     saisi dans « Texte de remplacement » et Word l'écrit dans wp:docPr/@descr.
+--     Le lecteur docx de pandoc le met dans la DESCRIPTION de l'Image. Jusqu'ici
+--     l'import l'ÉCRASAIT par la légende ; on le récupère désormais et on l'écrit
+--     en {alt="…"} : le writer markdown produit `![Légende](media/x.png){alt="…"}`,
+--     exactement le contrat de format lu par szh-numerotation.lua à la compilation.
+--     Une image SANS légende voit aussi sa description passer en {alt="…"} : sinon
+--     l'extension implicit_figures en ferait une LÉGENDE VISIBLE au rendu (un texte
+--     alternatif affiché sous l'image — c'est le contraire de ce qu'on veut).
 -- CONSERVATEUR : sans légende voisine claire, l'image/tableau reste tel quel.
 -- Idempotent : sans voisin légende et sans sidecar, le document est renvoyé inchangé.
 
@@ -97,6 +106,45 @@ local function para_legende_et_image(b)
   return brut, img
 end
 
+-- ─── Texte alternatif venu de Word (D104) ─────────────────────────────────────
+-- Descriptions AUTOMATIQUES de Word/Copilot, très présentes dans le corpus réel :
+-- « Ein Bild, das Text, Person enthält.  Automatisch generierte Beschreibung ».
+-- Ce n'est PAS du texte alternatif : c'est du remplissage machine, souvent faux,
+-- jamais rédigé pour un lecteur. L'importer donnerait une fausse impression
+-- d'accessibilité sur des dizaines d'articles — on le jette, l'image reste sans
+-- alt (donc décorative au rendu) jusqu'à ce qu'un humain en écrive un.
+local MARQUEURS_AUTO = {
+  'automatisch generierte beschreibung',
+  'automatisch erstellte beschreibung',
+  'ki%-generierte inhalte',
+  'description g[eé]n[eé]r[eé]e automatiquement',
+  'contenu g[eé]n[eé]r[eé] par',
+  'automatically generated description',
+  'ai%-generated content',
+}
+local function alt_automatique(txt)
+  local bas = txt:lower()
+  for _, m in ipairs(MARQUEURS_AUTO) do
+    if bas:find(m) then return true end
+  end
+  return false
+end
+
+-- Déplace la description de l'image (= le descr de Word) vers l'attribut alt, et
+-- VIDE la description pour laisser la place à la légende. Renvoie 1 si un alt a
+-- été posé. Le texte est normalisé : le contrat interdit le saut de ligne dans un
+-- attribut, et Word met volontiers des retours à la ligne dans un descr.
+-- Rejeté si : vide, automatique, ou identique à la légende (le dupliquer
+-- n'apporterait rien et ferait annoncer deux fois la même phrase).
+local function alt_depuis_word(img, legende)
+  local descr = normaliser(s(img.caption))
+  img.caption = pandoc.Inlines({})
+  if descr == '' or alt_automatique(descr) then return 0 end
+  if legende and descr:lower() == normaliser(legende):lower() then return 0 end
+  img.attributes['alt'] = descr
+  return 1
+end
+
 -- Un Para dont le SEUL contenu significatif est une image -> renvoie l'image.
 local function para_image(b)
   if b.t ~= 'Para' then return nil end
@@ -147,7 +195,7 @@ end
 function Pandoc(doc)
   local legT = charger_legendes_table()
   local legF = charger_legendes_figures()
-  local nfig, ntab = 0, 0
+  local nfig, ntab, nalt = 0, 0, 0
 
   -- 1) retirer les paragraphes déjà bakés en <caption> de tableau (appariement au
   --    texte exact du sidecar — gras non requis : légendes stylées comprises)
@@ -170,6 +218,7 @@ function Pandoc(doc)
     if cap_soude then
       local propre = trim(nettoyer_figure(cap_soude))
       if propre ~= '' then
+        nalt = nalt + alt_depuis_word(img_soude, propre)
         img_soude.caption = pandoc.Inlines({ pandoc.Str(propre) })
         sortie:insert(pandoc.Para({ img_soude }))
         nfig = nfig + 1
@@ -194,11 +243,17 @@ function Pandoc(doc)
       if cap and cap ~= '' then
         consommes[capidx] = true
         if capidx == idx - 1 then sortie:remove(#sortie) end
-        img.caption = pandoc.Inlines({ pandoc.Str(cap) })   -- alt = légende
+        nalt = nalt + alt_depuis_word(img, cap)             -- descr Word -> {alt="…"}
+        img.caption = pandoc.Inlines({ pandoc.Str(cap) })   -- description = légende
         sortie:insert(pandoc.Para({ img }))
         nfig = nfig + 1
       else
-        sortie:insert(b)
+        -- Image seule SANS légende : sa description est le descr de Word, pas une
+        -- légende. La laisser là en ferait une <figcaption> visible au rendu
+        -- (implicit_figures) — on la déplace en {alt="…"}, ou on la jette si elle
+        -- est automatique.
+        nalt = nalt + alt_depuis_word(img, nil)
+        sortie:insert(pandoc.Para({ img }))
       end
     else
       sortie:insert(b)
@@ -206,8 +261,25 @@ function Pandoc(doc)
     ::continue::
   end
 
-  doc.blocks = sortie
+  -- 3) Balayage final : une description AUTOMATIQUE de Word survit partout où les
+  --    règles ci-dessus ne passent pas — typiquement une vignette dans un lien
+  --    (`[![descr](img)](url)`, rubrique « Actualités »), qui n'est pas un
+  --    para_image. La jeter ici aussi : partout dans la chaîne, du remplissage
+  --    machine vaut moins que rien (il serait annoncé comme le nom de l'image).
+  --    No-op sur tout ce qui a déjà été traité au-dessus.
+  --    (pandoc.Blocks() : `sortie` est une pandoc.List générique, sans :walk).
+  doc.blocks = pandoc.Blocks(sortie):walk({
+    Image = function(img)
+      local descr = trim(s(img.caption))
+      if descr ~= '' and alt_automatique(descr) then
+        img.caption = pandoc.Inlines({})
+        return img
+      end
+      return nil
+    end,
+  })
   io.stderr:write(string.format(
-    '[import] %d figure(s) légendée(s), %d tableau(x) légendé(s)\n', nfig, ntab))
+    '[import] %d figure(s) légendée(s), %d tableau(x) légendé(s), '
+    .. '%d texte(s) alternatif(s) repris de Word\n', nfig, ntab, nalt))
   return doc
 end

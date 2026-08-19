@@ -365,6 +365,39 @@ body { counter-reset: h1 h2 h3; }
 figure > figcaption .szh-numero,
 table > caption .szh-numero { font-weight: 600; }
 
+/* Crédits (© et source) à la suite de la légende, dans le MÊME élément — posés par
+   szh-numerotation.lua depuis copyright=/source= (figures) et data-copyright/
+   data-source (tableaux).
+   ⚠ CONTRASTE : la distinction est faite par la TAILLE, PAS par un gris plus clair.
+   Les légendes sont déjà à #444 sur blanc (Lc 92,6) et TOUT le texte de cette
+   maquette est sous 18 px, donc au seuil APCA de 90 (D87 : le seuil dépend de la
+   taille). Le premier gris plus clair envisagé, #505050, tombe à Lc 88,0 : il
+   échouerait. Ne pas éclaircir ce gris sans repasser par `python3 test/apca-check.py`
+   et par apca.seuil_pour(). */
+figure > figcaption .szh-credit,
+table > caption .szh-credit { font-size: 0.85em; color: #444; }
+
+/* Description longue d'un tableau (aria-describedby), posée par
+   szh-numerotation.lua depuis data-alt. Masquée VISUELLEMENT mais présente dans
+   l'arbre d'accessibilité : display:none / visibility:hidden la retireraient aussi
+   des lecteurs d'écran, ce qui viderait l'aria-describedby de son sens.
+   Le masquage est donc un dispositif d'ÉCRAN, et il est écrit comme tel : les
+   règles vivent dans @media screen. WeasyPrint compose en média `print` — il
+   n'applique PAS ce bloc, et n'en signale donc pas non plus le `clip-path`, qu'il
+   n'implémente pas (une règle hors média n'est même pas analysée).
+   @media print : là, on retire l'élément pour de bon. WeasyPrint ne transporte pas
+   aria-describedby dans le PDF ; un texte invisible n'y laisserait qu'un élément de
+   structure orphelin (un <P> vide de sens dans l'arbre PDF/UA), et un bloc
+   positionné en absolu de 1 px peut retomber n'importe où sur la page imprimée. */
+@media screen {
+  .szh-description {
+    position: absolute; width: 1px; height: 1px;
+    margin: -1px; padding: 0; border: 0; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
+  }
+}
+@media print { .szh-description { display: none; } }
+
 figure { break-inside: avoid; margin: 1.4em 0; text-align: center; }
 figure img { max-width: 100%; }
 figure > figcaption { font-size: 0.85rem; color: #444; margin-top: 0.5em; text-align: left; }

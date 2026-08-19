@@ -1,5 +1,57 @@
 # Todo Robin (mis à jour le 2026-08-19, après la vague 1 des features F1–F8)
 
+## Validations qui demandent un humain — accessibilité figures/tableaux (D108–D109)
+
+- [ ] **Juger le rendu** d'un article réel : la légende porte « Figure N — … » puis les crédits
+  en plus petit sur la même ligne ; vérifier que la taille distingue assez les crédits sans
+  descendre sous le seuil APCA (le gris n'a **pas** été éclairci exprès, cf. D87).
+- [ ] **Écouter avec un lecteur d'écran** (NVDA/Narrateur) une figure avec `alt=` distinct,
+  une figure sans `alt=` (la légende y est annoncée **deux fois** — c'est le prix de la
+  compatibilité, et le signal qu'il faut écrire un vrai texte alternatif), une image
+  décorative, un tableau avec description longue et un tableau sans.
+- [ ] **Arbitrer un signalement à la compilation** : « N figure(s) utilisent la légende comme
+  texte alternatif ». C'est le seul cas restant de double annonce ; à mettre en balance avec
+  le bruit ajouté au panneau.
+- [ ] **Crédits sur une figure sans légende** : aujourd'hui perdus (il n'y a pas de
+  `<figcaption>` où les mettre), alors que les tableaux se voient fabriquer une `<caption>`
+  crédit-seule. Aligner les figures ou non ?
+- [ ] **Import Word — texte alternatif** : les descriptions automatiques de Word/Copilot sont
+  jetées (majoritaires dans le corpus). Vérifier sur un numéro réel que les descriptions
+  **écrites à la main** par la rédaction sont bien reprises, et qu'aucune ne l'est à tort.
+  ⚠ Le filtrage repose sur une liste de formulations ; une future tournure de Microsoft
+  passerait au travers.
+- [ ] **Vignettes dans un lien** (`[![](img)](url)`, rubrique Actualités) : jamais légendées ni
+  décrites, donc décoratives par défaut — vérifier éditorialement qu'aucune ne porte de
+  l'information.
+- [ ] **Verser le corpus de test d'accessibilité dans `test/articles/`** : `test/` ne contient
+  aujourd'hui ni image ni tableau légendé, la non-régression y est donc peu informative.
+
+## Validations qui demandent un humain — fiche image et crédits (D105–D107)
+
+- [ ] **Fiche image (D106)** : cliquer une image dans l'arbre → fiche en colonne 1 (aperçu,
+  « L × H · poids », champs pré-remplis depuis le `.md`). Remplir les quatre champs,
+  Enregistrer, vérifier le `.md` ; **Ctrl+Z dans l'éditeur doit défaire l'écriture**. Taper
+  dans le `.md` sans enregistrer puis enregistrer depuis la fiche : la frappe ne doit pas
+  être perdue. Modifier puis « Retour à l'article » → modale ; indicateur ● sur l'onglet.
+- [ ] **Les trois états d'accessibilité (D105)** : « image décorative » → `alt=""` dans le
+  `.md` ; repasser à « apporte une information » avec le champ vide → l'attribut `alt`
+  **disparaît entièrement** ; remplir le champ → `alt="…"`. Vérifier au rendu que la
+  légende est lue dans les trois cas.
+- [ ] **Cas particuliers de la fiche** : image jamais insérée (bandeau, champs grisés) ;
+  image insérée deux fois (bandeau, les deux références mises à jour) ; figure portant déjà
+  `{width=50%}` (l'attribut doit survivre) ; vider les trois champs → plus aucun bloc `{…}` ;
+  SVG et image > 12 Mo (message d'aperçu indisponible) ; « Ouvrir l'image » → visionneuse
+  native ; supprimer l'image depuis l'arbre pendant que sa fiche est ouverte.
+- [ ] **Ctrl+Alt+F** : choisir une image → copiée, référence insérée, article enregistré,
+  fiche ouverte dessus. Hors article (BIENVENUE.md) : insertion seule, pas de fiche.
+- [ ] **Éditeur de tableau (D107)** : les quatre champs ; Ctrl+Z / Ctrl+Y les couvrent sans
+  re-rendu de la grille ; **rouvrir et réenregistrer un tableau sans y toucher doit laisser
+  `git diff` vide**.
+- [ ] **Tout rejouer en allemand** ; traductions DE de la fiche à relire (premier jet).
+- [ ] **Pistes non faites, à arbitrer** : entrée « Ouvrir l'image » dans le menu contextuel de
+  l'arbre ; report des crédits vers l'export OJS ; alerte de relecture listant les figures
+  sans légende **ni** texte alternatif avant livraison.
+
 ## Validations qui demandent un humain — numérotation figures/tableaux (D104)
 
 - [ ] **Arbitrage du séparateur** : l'`alt` dit « Figure 5 — Légende » (cadratin), là où la

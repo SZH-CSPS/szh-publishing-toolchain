@@ -279,6 +279,39 @@ function normaliserLegende(v) {
   return canoniserInline(String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' '));
 }
 
+// Texte alternatif / copyright / source d'un tableau : trois attributs data-* sur
+// <table>, mêmes rôles que sur une figure. Contrairement à la légende, ce sont des
+// chaînes de TEXTE PUR dans le modèle (aucun balisage inline n'y a de sens) :
+//   - à l'ANALYSE, les entités de l'attribut HTML sont décodées -> texte pur ;
+//   - à la SÉRIALISATION, le texte est ré-encodé pour un contexte d'attribut.
+// L'aller-retour est donc stable, et aucune valeur venue de la webview ne peut
+// s'échapper de son attribut (échappement au passage obligé qu'est serialiserTable).
+// Vide = attribut ABSENT : un tableau qui n'en a pas ne doit jamais en gagner un vide
+// (sortie minimale, réécriture à l'octet près des tableaux existants).
+// ⚠ Le pipeline n'écrit JAMAIS dans ces fichiers : le numéro et les crédits sont
+// ajoutés AU RENDU, en mémoire — aucun préfixe « Tableau N — » ici.
+const LONGUEUR_MAX_META = 1000;
+
+function normaliserTexteAttribut(v) {
+  return String(v === undefined || v === null ? '' : v)
+    .replace(/[\r\n\t]+/g, ' ').trim().slice(0, LONGUEUR_MAX_META);
+}
+
+// Entités d'un attribut HTML -> texte. &amp; en DERNIER : sinon « &amp;quot; »
+// (un « &quot; » littéral écrit par quelqu'un) serait décodé deux fois.
+function decoderEntites(s) {
+  return String(s === undefined || s === null ? '' : s)
+    .replace(/&quot;/g, '"').replace(/&apos;/g, '\'').replace(/&#0*39;/g, '\'')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+// Texte -> valeur d'attribut HTML (contexte « attribut entre guillemets doubles »).
+function echapAttribut(s) {
+  return String(s === undefined || s === null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function normaliserModele(modele) {
   const a = (modele && modele.attrs) || {};
   const lignesEntree = (modele && modele.lignes) || [];
@@ -286,6 +319,9 @@ function normaliserModele(modele) {
   const attrs = {
     classe: 'szh-tableau',
     legende: normaliserLegende(a.legende),
+    alt: normaliserTexteAttribut(a.alt),
+    copyright: normaliserTexteAttribut(a.copyright),
+    source: normaliserTexteAttribut(a.source),
     enteteLignes: Math.max(0, Math.min(2, Math.min(parseInt(a.enteteLignes, 10) || 0, nbLignes))),
     enteteColonnes: Math.max(0, Math.min(2, parseInt(a.enteteColonnes, 10) || 0)),
     elGras: vrai(a.elGras), elFond: enumOu(a.elFond, FONDS, 'aucun'),
@@ -402,6 +438,11 @@ function analyserTable(html) {
   const attrs = {
     classe: 'szh-tableau',
     legende: mCaption ? canoniserInline(mCaption[1]) : '',
+    // Texte pur : lireAttributsHtml rend la valeur telle qu'elle est écrite dans le
+    // fichier (entités comprises), il faut donc la décoder pour retrouver le texte.
+    alt: decoderEntites(at['data-alt'] || ''),
+    copyright: decoderEntites(at['data-copyright'] || ''),
+    source: decoderEntites(at['data-source'] || ''),
     enteteLignes: at['data-entete-lignes'] !== undefined ? Math.max(0, Math.min(2, parseInt(at['data-entete-lignes'], 10) || 0)) : infererEnteteLignes(occ, lignes),
     enteteColonnes: at['data-entete-colonnes'] !== undefined ? Math.max(0, Math.min(2, parseInt(at['data-entete-colonnes'], 10) || 0)) : infererEnteteColonnes(occ, lignes),
     elGras: at['data-el-gras'] === '1', elFond: enumOu(at['data-el-fond'], FONDS, 'aucun'),
@@ -446,6 +487,12 @@ function serialiserTable(modele) {
   let ouv = '<table class="' + a.classe + '"';
   if (eL > 0) { ouv += ' data-entete-lignes="' + eL + '"'; }
   if (eC > 0) { ouv += ' data-entete-colonnes="' + eC + '"'; }
+  // Accessibilité + crédits (contrat de format arrêté avec le pipeline) : émis
+  // seulement s'ils portent une valeur — un tableau sans eux se réécrit à l'octet
+  // près comme avant. Aucun « alt="" » ici : un tableau décoratif n'existe pas.
+  if (a.alt !== '') { ouv += ' data-alt="' + echapAttribut(a.alt) + '"'; }
+  if (a.copyright !== '') { ouv += ' data-copyright="' + echapAttribut(a.copyright) + '"'; }
+  if (a.source !== '') { ouv += ' data-source="' + echapAttribut(a.source) + '"'; }
   if (eC > 0 && a.elGras) { ouv += ' data-el-gras="1"'; }
   if (eC > 0 && a.elFond !== 'aucun') { ouv += ' data-el-fond="' + a.elFond + '"'; }
   if (eL > 0 && a.ecGras) { ouv += ' data-ec-gras="1"'; }
@@ -1077,9 +1124,10 @@ function appliquerOperationTable(nom, modeleBrut, args) {
     }
     return finaliserModele(modele);
   }
-  // (La LÉGENDE n'a pas d'opération : comme le TEXTE des cellules, elle est saisie
-  // dans la webview, voyage avec le modèle et est assainie par normaliserModele —
-  // elle participe donc à annuler/rétablir par le même chemin que le texte, D94.)
+  // (La LÉGENDE, le TEXTE ALTERNATIF, le COPYRIGHT et la SOURCE n'ont pas d'opération :
+  // comme le TEXTE des cellules, ils sont saisis dans la webview, voyagent avec le
+  // modèle et sont assainis par normaliserModele — ils participent donc à
+  // annuler/rétablir par le même chemin que le texte, sans re-rendu de la grille, D94.)
   if (nom === 'reglage') {
     const enums = { zebreCol: ZEBRES, zebreLig: ZEBRES };
     const bools = ['bordureHaute', 'bordureBasse', 'zebreColEntetes', 'zebreLigEntetes'];
@@ -1091,7 +1139,8 @@ function appliquerOperationTable(nom, modeleBrut, args) {
 }
 
 module.exports = {
-  lireAttributsHtml, canoniserInline, normaliserLegende, echapTexteBrut, extraireCellules, enumOu,
+  lireAttributsHtml, canoniserInline, normaliserLegende, normaliserTexteAttribut,
+  decoderEntites, echapAttribut, echapTexteBrut, extraireCellules, enumOu,
   matriceOccupation, etendreGrille, compacterGrille, reappliquerEntetes,
   normaliserModele, finaliserModele, infererEnteteLignes, infererEnteteColonnes,
   analyserTable, serialiserTable, disposition,

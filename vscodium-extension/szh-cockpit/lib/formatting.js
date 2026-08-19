@@ -156,7 +156,12 @@ function nomMediaUnique(dossier, nom) {
 }
 
 // Insérer une figure : choisir une image, la copier dans articles/<slug>/media/
-// (nom rendu unique), insérer ![Légende](media/nom.ext) à la sélection.
+// (nom rendu unique), insérer ![Légende](media/nom.ext) à la sélection — puis, dans un
+// article, ouvrir la FICHE de l'image pour que légende, texte alternatif et crédits se
+// remplissent tout de suite (même esprit que « Insérer un tableau », qui enchaîne sur
+// l'éditeur de tableau, D95/D102). Une figure sans texte alternatif ni crédits est un
+// défaut que personne ne va rattraper trois semaines plus tard : le moment de les
+// écrire, c'est celui où l'on choisit l'image.
 async function fmtFigure() {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
@@ -165,6 +170,8 @@ async function fmtFigure() {
     vscode.window.showInformationMessage(T('fmt.figure.horsarticle'));
     return;
   }
+  const racine = revue.racine();
+  const slug = racine ? revue.slugDepuisChemin(racine, doc.uri.fsPath) : null;
   const filtres = {};
   filtres[T('fmt.figure.filtre')] = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
   const choix = await vscode.window.showOpenDialog({
@@ -181,6 +188,15 @@ async function fmtFigure() {
   const md = '![' + T('fmt.figure.legende') + '](media/' + nom + ')';
   await editeur.edit((b) => { b.replace(editeur.selection, md); });
   vscode.window.setStatusBarMessage(T('fmt.figure.copiee', [nom]), 4000);
+  if (!slug) { return; }                             // hors article : pas de fiche à ouvrir
+  // On ENREGISTRE avant de partir vers la fiche (même raison que fmtTableau) : sinon
+  // la référence reste dans le tampon, l'article se recompile sans elle, et « Retour à
+  // l'article » montrerait un aperçu sans la figure qu'on vient d'insérer.
+  try { await doc.save(); } catch (e) { /* fichier verrouillé : la référence reste au tampon */ }
+  revue.rafraichirTout();                            // l'image apparaît sous l'article
+  // Mêmes champs que l'item d'arbre attendu par ouvrirFicheImage (slug + cheminAsset).
+  await vscode.commands.executeCommand('szh.ficheImage',
+    { slug: slug, cheminAsset: path.join(mediaDir, nom) });
 }
 
 // ---- Insérer un tableau (Ctrl+Alt+T, D95) ------------------------------------------

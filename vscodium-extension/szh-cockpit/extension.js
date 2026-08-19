@@ -30,6 +30,14 @@
 //   à compléter, photos d'auteur·e·s (modale F3 réutilisée) et remplacement des
 //   images de media/ par leurs originaux (dépôt base64 ≤ 50 Mo, nom conservé).
 //
+// Fiche image : le CLIC sur une image de l'arbre ouvre une fiche (webview
+//   szhFicheImage, une par image) où se saisissent la LÉGENDE, le TEXTE ALTERNATIF
+//   (avec un choix explicite « image décorative » qui écrit alt="") et les CRÉDITS
+//   (copyright / source). Ces données vivent dans le TEXTE de l'article —
+//   ![Légende](media/x.png){alt="…" copyright="…" source="…"} — et sont lues/écrites
+//   par les fonctions pures de lib/references.js, via WorkspaceEdit + doc.save().
+//   L'aperçu natif de VSCodium reste accessible (bouton « Ouvrir l'image »).
+//
 // Écritures autorisées : la COPIE des .docx choisis vers articles-word/ (S3 ;
 // mêmes règles pour les .docx DÉPOSÉS sur la vue, F2), ausgabe.yaml (G1), la
 // SUPPRESSION confirmée d'un article (G3), l'ÉCRASEMENT confirmé d'une image
@@ -40,8 +48,10 @@
 // et les PORTRAITS d'auteur·e·s articles/<slug>/portraits/ (F3, D91/D92 : photo
 // déposée <slug-auteur>.original.<ext> — les anciens .original.* d'une autre
 // extension sont retirés — plus les versions .avec-fond.png/.sans-fond.png écrites
-// par le pipeline WSL). Tout le reste est en lecture seule (ouverture/
-// lancement de tâche uniquement).
+// par le pipeline WSL), et la RÉÉCRITURE de la référence d'une image dans
+// articles/<slug>/<slug>.md par la fiche image (légende + attributs alt/copyright/
+// source ; WorkspaceEdit, donc annulable par Ctrl+Z). Tout le reste est en lecture
+// seule (ouverture/lancement de tâche uniquement).
 // Posture szh-apercu : JavaScript pur, zéro dépendance, API VS Code ^1.75.
 //
 // STRUCTURE (refactor R1–R6, SANS build — CommonJS require résolu à l'exécution +
@@ -109,7 +119,7 @@ const {
 } = require('./lib/formatting');
 const { enregistrerPanneaux } = require('./lib/panneaux');
 const { genererExportOjs } = require('./lib/export-ojs');
-const { retirerImage, retirerTable } = require('./lib/references');
+const { retirerImage, retirerTable, lireAttributsImage, ecrireAttributsImage } = require('./lib/references');
 const { traiterPortraits } = require('./lib/portraits');
 
 // Éditeur PDF (extension tomoki1207.pdf), comme szh-apercu.
@@ -273,11 +283,14 @@ class FournisseurRevue {
       it.resourceUri = vscode.Uri.file(chemin);
       it.contextValue = 'asset';
       it.description = decrireImage(chemin);
-      it.tooltip = chemin;
-      // Aperçu natif de VSCodium, colonne 1 (côté texte, comme le .md).
+      it.tooltip = T('arbre.image.tooltip', [chemin]);
+      // Le clic ouvre la FICHE de l'image, pas l'aperçu natif : ce qu'on vient faire
+      // sur une image, c'est écrire sa légende, son texte alternatif et ses crédits —
+      // données qui vivent dans le texte de l'article, pas dans le fichier. L'aperçu
+      // natif reste à un clic : le bouton « Ouvrir l'image » de la fiche le rouvre.
       it.command = {
-        command: 'vscode.open', title: 'Aperçu de l’image',
-        arguments: [it.resourceUri, { viewColumn: vscode.ViewColumn.One }]
+        command: 'szh.ficheImage', title: 'Ouvrir la fiche de l’image',
+        arguments: [it]
       };
       return it;
     });
@@ -1382,10 +1395,10 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
   }
 
   try {
-    if (estTable) {
-      const panneau = panneauxTable.get(cible);
-      if (panneau) { try { panneau.dispose(); } catch (e) { /* déjà fermé */ } }
-    }
+    // L'éditeur (tableau) ou la fiche (image) ouvert sur ce fichier n'a plus d'objet :
+    // le laisser à l'écran ferait réécrire un asset qui vient d'être supprimé.
+    const ouvert = estTable ? panneauxTable.get(cible) : panneauxFicheImage.get(cible);
+    if (ouvert) { try { ouvert.dispose(); } catch (e) { /* déjà fermé */ } }
     await fermerOngletDuFichier(cible);
     fs.rmSync(cible, { force: true });
   } catch (e) {
@@ -2540,6 +2553,8 @@ function textesTable() {
     'table.ctx.colAvant', 'table.ctx.colApres', 'table.ctx.colSuppr',
     'table.entete', 'table.enteteRetirer',
     'table.legende', 'table.legende.indice',
+    'table.alt', 'table.alt.indice', 'table.alt.aide',
+    'table.copyright', 'table.copyright.indice', 'table.source', 'table.source.indice',
     // Panneau de mise en forme (T2) : 3 zones.
     'table.zone.styles', 'table.zone.preset',
     'table.zone.entetes', 'table.entetesLignes', 'table.entetesColonnes', 'table.entetes.aucun',
@@ -2698,6 +2713,194 @@ async function ouvrirEditeurTable(fournisseur, item) {
   });
 }
 
+// ---- Fiche image (clic sur une image de la barre « Revue SZH ») ---------------------
+//
+// Le clic sur une image ouvrait l'aperçu natif de VSCodium. Or ce qu'on vient faire sur
+// une image d'article, c'est écrire sa LÉGENDE, son TEXTE ALTERNATIF et ses CRÉDITS —
+// et ces données ne vivent pas dans le fichier image mais dans le TEXTE de l'article :
+//     ![Légende](media/x.png){alt="…" copyright="…" source="…"}
+// La fiche lit et réécrit donc cette référence, par les fonctions PURES de
+// lib/references.js. L'aperçu natif reste à un clic (bouton « Ouvrir l'image »).
+//
+// Écriture : WorkspaceEdit + doc.save(), exactement comme supprimerAsset (C3) — le .md
+// est souvent ouvert à l'écran, l'édition doit passer par le TAMPON pour rester
+// annulable (Ctrl+Z) et ne pas écraser une frappe non enregistrée.
+//
+// Protocole (miroir de media/image-fiche.js) :
+//   webview -> hôte : pret ; modifie { modifie } ; ouvrirImage ;
+//                     enregistrer { valeurs } ; retourArticle { modifie, valeurs }
+//   hôte -> webview : charger { nom, description, apercu, occurrences, valeurs, i18n } ;
+//                     enregistre ; erreur { message }
+//   valeurs = { legende, alt, altDefini, copyright, source }
+
+// Formats affichables en data: URI dans la webview. Le SVG y est sûr : dans un <img>,
+// il ne peut ni exécuter de script ni charger de ressource externe (et la CSP de la
+// page reste default-src 'none' avec le seul img-src data:).
+const MIMES_FICHE_IMAGE = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+  svg: 'image/svg+xml', webp: 'image/webp'
+};
+// Au-delà, pas d'aperçu : une image de 30 Mo deviendrait 40 Mo de base64 dans un
+// postMessage, pour un vignettage que personne ne réclame. La fiche le dit.
+const TAILLE_MAX_APERCU_FICHE = 12 * 1024 * 1024;
+
+function apercuFicheImage(chemin) {
+  try {
+    if (fs.statSync(chemin).size > TAILLE_MAX_APERCU_FICHE) { return null; }
+    const ext = (chemin.match(/\.([a-z0-9]+)$/i) || ['', ''])[1].toLowerCase();
+    if (!MIMES_FICHE_IMAGE[ext]) { return null; }
+    return 'data:' + MIMES_FICHE_IMAGE[ext] + ';base64,' + fs.readFileSync(chemin).toString('base64');
+  } catch (e) { return null; }
+}
+
+function textesFicheImage() {
+  return {
+    legende: T('img.legende'), legendeIndice: T('img.legende.indice'), legendeAide: T('img.legende.aide'),
+    roleTitre: T('img.role.titre'),
+    roleDecrit: T('img.role.decrit'), roleDecritSous: T('img.role.decrit.sous'),
+    roleDeco: T('img.role.deco'), roleDecoSous: T('img.role.deco.sous'),
+    alt: T('img.alt'), altIndice: T('img.alt.indice'),
+    altAide: T('img.alt.aide'), altAideDeco: T('img.alt.aide.deco'),
+    copyright: T('img.copyright'), copyrightIndice: T('img.copyright.indice'),
+    source: T('img.source'), sourceIndice: T('img.source.indice'),
+    ouvrir: T('img.ouvrir'), ouvrirTip: T('img.tip.ouvrir'),
+    retour: T('img.retour'), retourTip: T('img.tip.retour'),
+    enregistrer: T('img.enregistrer'), enregistrerTip: T('img.tip.enregistrer'),
+    enregistre: T('img.enregistre'), nonEnregistre: T('img.nonEnregistre'),
+    occZero: T('img.occ.zero'), occPlusieurs: T('img.occ.plusieurs'),
+    apercuAbsent: T('img.apercu.absent')
+  };
+}
+
+function htmlFicheImage(nonce) {
+  return construireHtml('image-fiche', nonce, {
+    titre: T('img.titre', ['']),
+    // Comme la modale photo (F3) : l'aperçu est une data: URI, localResourceRoots [].
+    csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
+  });
+}
+
+let panneauxFicheImage = new Map();   // fsPath -> WebviewPanel (une fiche par image)
+
+async function ouvrirFicheImage(fournisseur, item) {
+  if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
+  const racine = fournisseur.racine;
+  const chemin = item.cheminAsset;
+  const nom = path.basename(chemin);
+  // L'item d'arbre porte toujours son slug ; le repli sert aux appels programmés
+  // (insertion d'une figure) faits depuis l'article courant.
+  const slug = item.slug || apercuCourantSlug;
+  if (!slug) { return; }
+  const relatif = path.relative(path.join(racine, 'articles', slug, 'media'), chemin).replace(/\\/g, '/');
+  const md = path.join(racine, 'articles', slug, slug + '.md');
+  // Même posture que l'éditeur de tableau (F5/D89) : la fiche prend toute la place, on
+  // ferme les aperçus d'abord — sinon la webview s'ouvre derrière un PDF.
+  await fermerTousLesApercus();
+  const existant = panneauxFicheImage.get(chemin);
+  if (existant) { existant.reveal(vscode.ViewColumn.One); return; }
+  const panneau = vscode.window.createWebviewPanel(
+    'szhFicheImage', T('img.titre', [nom]), vscode.ViewColumn.One,
+    { enableScripts: true, localResourceRoots: [] }
+  );
+  panneauxFicheImage.set(chemin, panneau);
+  panneau.onDidDispose(() => { if (panneauxFicheImage.get(chemin) === panneau) { panneauxFicheImage.delete(chemin); } });
+  panneau.webview.html = htmlFicheImage(crypto.randomBytes(16).toString('hex'));
+
+  // Le texte est lu par openTextDocument (le TAMPON, pas le disque) : une frappe non
+  // enregistrée dans le .md est donc déjà visible ici, et l'écriture repartira du même
+  // état — jamais d'écrasement d'une saisie en cours.
+  const lire = async () => {
+    try {
+      const doc = await vscode.workspace.openTextDocument(md);
+      return lireAttributsImage(doc.getText(), relatif);
+    } catch (e) {
+      return { legende: '', alt: '', altDefini: false, copyright: '', source: '', n: 0 };
+    }
+  };
+  const charger = async () => {
+    const v = await lire();
+    repondrePanneau(panneau, {
+      type: 'charger', nom: nom, description: decrireImage(chemin),
+      apercu: apercuFicheImage(chemin), occurrences: v.n,
+      valeurs: { legende: v.legende, alt: v.alt, altDefini: v.altDefini, copyright: v.copyright, source: v.source },
+      i18n: textesFicheImage()
+    });
+  };
+  // Écrit les valeurs dans TOUTES les insertions de l'image (une image n'a qu'un jeu de
+  // crédits ; deux insertions divergentes donneraient deux légendes pour une figure).
+  // Rend le nombre d'insertions écrites, ou -1 en cas d'échec (message déjà posé).
+  const enregistrer = async (valeurs) => {
+    let doc;
+    try { doc = await vscode.workspace.openTextDocument(md); }
+    catch (e) { repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) }); return -1; }
+    const res = ecrireAttributsImage(doc.getText(), relatif, valeurs || {});
+    if (res.n === 0) {
+      // Le .md a changé depuis l'ouverture (image retirée entre-temps) : rien à écrire.
+      vscode.window.setStatusBarMessage(T('img.statut.sansref', [nom]), 5000);
+      await charger();                               // la fiche se met en état « 0 insertion »
+      return 0;
+    }
+    if (res.texte === doc.getText()) { return res.n; }   // rien n'a changé : pas d'édition inutile
+    try {
+      const edition = new vscode.WorkspaceEdit();
+      const fin = doc.lineAt(doc.lineCount - 1).range.end;
+      edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), res.texte);
+      if (!(await vscode.workspace.applyEdit(edition))) {
+        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [md]) });
+        return -1;
+      }
+      await doc.save();                              // déclenche la recompilation (comme Ctrl+S)
+    } catch (e) {
+      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) });
+      return -1;
+    }
+    return res.n;
+  };
+
+  panneau.webview.onDidReceiveMessage(async (msg) => {
+    if (!msg) { return; }
+    if (msg.type === 'pret') { await charger(); return; }
+    if (msg.type === 'modifie') {
+      panneau.title = (msg.modifie ? '● ' : '') + T('img.titre', [nom]);
+      return;
+    }
+    if (msg.type === 'ouvrirImage') {
+      // L'ancien comportement du clic dans l'arbre, gardé accessible : la visionneuse
+      // native, en colonne 2 pour ne pas recouvrir la fiche.
+      try {
+        await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(chemin),
+          { viewColumn: vscode.ViewColumn.Two, preserveFocus: true });
+      } catch (e) { /* fichier disparu : rien à montrer */ }
+      return;
+    }
+    if (msg.type === 'enregistrer') {
+      const n = await enregistrer(msg.valeurs);
+      if (n > 0) {
+        repondrePanneau(panneau, { type: 'enregistre' });
+        vscode.window.setStatusBarMessage(T('img.statut.enregistree', [nom, n]), 5000);
+      }
+      return;
+    }
+    if (msg.type === 'retourArticle') {
+      // Garde « non enregistré » (patron retourArticle de l'éditeur de tableau, D1).
+      if (msg.modifie) {
+        const choix = await vscode.window.showWarningMessage(
+          T('img.quitter.question', [nom]), { modal: true, detail: T('table.quitter.detail') },
+          T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
+        if (choix === undefined) { return; }          // Annuler : on reste
+        if (choix === T('form.enregistrer')) {
+          const n = await enregistrer(msg.valeurs);
+          if (n < 0) { return; }                      // échec d'écriture : on reste
+          if (n > 0) { vscode.window.setStatusBarMessage(T('img.statut.enregistree', [nom, n]), 5000); }
+        }
+      }
+      await ouvrirArticle(fournisseur, slug);
+      panneau.dispose();
+      return;
+    }
+  });
+}
+
 function activate(context) {
   const fournisseur = new FournisseurRevue();
   const vue = vscode.window.createTreeView(ID_VUE, {
@@ -2790,6 +2993,7 @@ function activate(context) {
     vscode.commands.registerCommand('szh.supprimerAsset', (item) => supprimerAsset(fournisseur, rafraichirTout, item, false)),
     vscode.commands.registerCommand('szh.supprimerTable', (item) => supprimerAsset(fournisseur, rafraichirTout, item, true)),
     vscode.commands.registerCommand('szh.editerTable', (item) => ouvrirEditeurTable(fournisseur, item)),
+    vscode.commands.registerCommand('szh.ficheImage', (item) => ouvrirFicheImage(fournisseur, item)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte),
     // A1 — défilement synchronisé éditeur -> aperçu : la 1re ligne visible du .md de
     // l'article courant est poussée à la webview. Ignoré si l'aperçu HTML n'est pas
@@ -2861,7 +3065,7 @@ module.exports = {
     analyserMeta, serialiserMeta, lignePos, plagePos, positionMot, jetonSource,
     analyserAusgabe, serialiserAusgabe,
     nettoyerCarte, assainirCheminPhoto, decomposerPhoto, relatifImageValide,
-    retirerImage, retirerTable,
+    retirerImage, retirerTable, lireAttributsImage, ecrireAttributsImage,
     basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
     enroberBloc, squeletteTableau, tableauVierge, blocReferenceTable, nomTableLibre,
     slugifier, slugifierArticle,

@@ -10,7 +10,7 @@ var selection=null, ancre=null, cellActive=null, ctl={};
 var annuler=[], retablir=[], avantEdition=null, modeleEnregistre=null, enrEnCours=null, dernierModifie=false;
 var glisse=null;   // sélection par glisser : { ancre:cellule, actif:bool }
 var barre=document.getElementById('barre'), zone=document.getElementById('zone'), panneau=document.getElementById('panneau');
-var boiteLegende=document.getElementById('legende'), champLegende=null;
+var boiteChamps=document.getElementById('champs'), champs={};
 function clone(o){return JSON.parse(JSON.stringify(o));}
 function dechap(s){return String(s).replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'\"').replace(/&#x27;/g,"'").replace(/&#39;/g,"'").replace(/&amp;/g,'&');}
 function echap(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -29,7 +29,7 @@ function inlineDeNoeud(n){var out='';n.childNodes.forEach(function(ch){
     else if(tg==='strong'||tg==='b'){out+='<strong>'+inlineDeNoeud(ch)+'</strong>';}
     else if(tg==='em'||tg==='i'){out+='<em>'+inlineDeNoeud(ch)+'</em>';}
     else{out+=inlineDeNoeud(ch);}}});return out;}
-function recolter(){if(!modele)return;recolterLegende();zone.querySelectorAll('[data-li]').forEach(function(el){
+function recolter(){if(!modele)return;recolterChamps();zone.querySelectorAll('[data-li]').forEach(function(el){
   var li=+el.dataset.li,ci=+el.dataset.ci;if(modele.lignes[li]&&modele.lignes[li].cellules[ci]){modele.lignes[li].cellules[ci].contenu=inlineDeNoeud(el).trim();}});}
 function rectCell(c){return {rMin:c.r0,cMin:c.c0,rMax:c.r0+c.rowspan-1,cMax:c.c0+c.colspan-1};}
 function union(a,b){return {rMin:Math.min(a.rMin,b.rMin),cMin:Math.min(a.cMin,b.cMin),rMax:Math.max(a.rMax,b.rMax),cMax:Math.max(a.cMax,b.cMax)};}
@@ -266,38 +266,55 @@ function construireBarre(){barre.textContent='';
   var enr=bouton(TXT.enregistrer,enregistrerTable,'principal',TXT['tip.enregistrer']);barre.appendChild(enr);
   var e=document.createElement('span');e.id='etat';e.setAttribute('role','status');barre.appendChild(e);
   var ind=document.createElement('span');ind.id='indic';ind.setAttribute('aria-live','polite');barre.appendChild(ind);
-  construireLegende();construirePanneau();}
-// ---- Légende du tableau (D94) ----
-// Le <caption> du fichier, saisi dans un champ texte simple au-dessus de la grille.
-// Elle est traitée EXACTEMENT comme le texte d'une cellule : récoltée dans le modèle
-// par recolter(), instantané pris au focus (avantEdition) et empilée au blur par
-// commitTexte() -> elle participe à annuler/rétablir comme toute autre saisie, sans
-// re-rendu de la grille à chaque frappe. L'hôte, lui, réassainit la légende à chaque
-// passage dans normaliserModele (aucune confiance accordée à la webview).
-// Le champ montre du TEXTE : la mise en forme inline d'une légende importée de Word
-// (<strong>/<em>) y apparaît à plat, et retoucher le champ la remet à plat.
+  construireChamps();construirePanneau();}
+// ---- Légende (D94), texte alternatif et crédits du tableau ----
+// Quatre champs texte au-dessus de la grille :
+//   legende   -> <caption> du fichier (numéroté et affiché sous le tableau) ;
+//   alt       -> data-alt   (texte alternatif, pour un tableau à structure complexe) ;
+//   copyright -> data-copyright ; source -> data-source.
+// Tous sont traités EXACTEMENT comme le texte d'une cellule : récoltés dans le modèle
+// par recolter(), instantané pris au focus (avantEdition) et empilés au blur par
+// commitTexte() -> ils participent à annuler/rétablir comme toute autre saisie, sans
+// re-rendu de la grille à chaque frappe. L'hôte, lui, les réassainit à chaque passage
+// dans normaliserModele (aucune confiance accordée à la webview).
+// La LÉGENDE seule est de l'inline dans le modèle : le champ montre du TEXTE, la mise
+// en forme d'une légende importée de Word (<strong>/<em>) y apparaît à plat, et
+// retoucher le champ la remet à plat. Les trois autres sont du texte pur des deux côtés.
 function texteDeInline(s){return dechap(String(s||'').replace(/<br>/g,' ').replace(/<\/?(?:strong|em)>/g,''));}
-function construireLegende(){if(!boiteLegende)return;boiteLegende.textContent='';
-  var l=document.createElement('label');l.textContent=TXT.legende||'';l.setAttribute('for','champ-legende');
-  var i=document.createElement('input');i.type='text';i.id='champ-legende';i.maxLength=500;
-  i.placeholder=TXT['legende.indice']||'';
+function champTexte(cle,large){
+  var d=document.createElement('div');d.className='ch'+(large?' large':'');
+  var l=document.createElement('label');l.textContent=TXT[cle]||'';l.setAttribute('for','champ-'+cle);
+  var i=document.createElement('input');i.type='text';i.id='champ-'+cle;i.maxLength=500;
+  i.placeholder=TXT[cle+'.indice']||'';
   i.addEventListener('focus',function(){if(!avantEdition&&modele)avantEdition=clone(modele);});
   i.addEventListener('input',function(){etat('');majModifie();});
   i.addEventListener('blur',function(){commitTexte();});
-  boiteLegende.appendChild(l);boiteLegende.appendChild(i);champLegende=i;}
-// Champ -> modèle (appelée par recolter) : texte échappé comme une cellule, sur une
-// seule ligne. Un champ vidé retire la légende — donc le <caption> à l'écriture.
-// La comparaison se fait sur la PROJECTION À PLAT : tant que le champ n'a pas été
-// retouché, le modèle garde sa légende telle quelle — la mise en forme inline d'une
-// légende importée de Word n'est donc pas aplatie par le simple fait d'ouvrir l'éditeur.
-function recolterLegende(){if(!champLegende||!modele)return;
-  var saisi=String(champLegende.value||'').replace(/[\r\n]+/g,' ').trim();
-  if(saisi===texteDeInline(modele.attrs.legende||'').trim())return;
-  modele.attrs.legende=echap(saisi);}
-// Modèle -> champ (après un chargement, une annulation, un rétablissement).
-function majLegende(){if(!champLegende||!modele)return;
-  var v=texteDeInline(modele.attrs.legende||'');
-  if(champLegende.value!==v)champLegende.value=v;}
+  d.appendChild(l);d.appendChild(i);boiteChamps.appendChild(d);champs[cle]=i;}
+function aide(texte){var p=document.createElement('p');p.className='aide';p.textContent=texte||'';boiteChamps.appendChild(p);}
+function construireChamps(){if(!boiteChamps)return;boiteChamps.textContent='';champs={};
+  champTexte('legende',true);
+  champTexte('alt',true);
+  // Le cas COURANT est le champ vide : un tableau bien fait se lit tout seul, ses
+  // en-têtes disent déjà ce qu'il contient. On le dit, pour que personne ne croie
+  // devoir remplir un champ de plus.
+  aide(TXT['alt.aide']||'');
+  champTexte('copyright',false);
+  champTexte('source',false);}
+// Champs -> modèle (appelée par recolter). Un champ vidé retire la valeur — donc
+// l'attribut (ou le <caption>) à l'écriture : rien d'attribut vide n'est jamais écrit.
+// Pour la légende, la comparaison se fait sur la PROJECTION À PLAT : tant que le champ
+// n'a pas été retouché, le modèle garde sa légende inline telle quelle.
+function recolterChamps(){if(!modele)return;
+  if(champs.legende){var saisi=String(champs.legende.value||'').replace(/[\r\n]+/g,' ').trim();
+    if(saisi!==texteDeInline(modele.attrs.legende||'').trim())modele.attrs.legende=echap(saisi);}
+  ['alt','copyright','source'].forEach(function(cle){if(!champs[cle])return;
+    var v=String(champs[cle].value||'').replace(/[\r\n]+/g,' ').trim();
+    if(v!==String(modele.attrs[cle]||''))modele.attrs[cle]=v;});}
+// Modèle -> champs (après un chargement, une annulation, un rétablissement).
+function majChamps(){if(!modele)return;
+  if(champs.legende){var v=texteDeInline(modele.attrs.legende||'');if(champs.legende.value!==v)champs.legende.value=v;}
+  ['alt','copyright','source'].forEach(function(cle){if(!champs[cle])return;
+    var x=String(modele.attrs[cle]||'');if(champs[cle].value!==x)champs[cle].value=x;});}
 // « Sens » d'en-tête déduit de la sélection (F3) : rangée du haut pleine largeur ->
 // 'lignes' (fixe enteteLignes) ; colonne de gauche pleine hauteur -> 'colonnes' (fixe
 // enteteColonnes) ; sinon selon le bord touché ; null si la sélection ne touche ni le
@@ -439,7 +456,7 @@ window.addEventListener('message',function(ev){var msg=ev.data||{};
     // F1 : un « charger » sans i18n = résultat d'une opération / d'une annulation-
     // rétablissement. On NE réinitialise PLUS l'historique ici (c'était la cause de
     // « Annuler ne fait rien ») : les piles vivent uniquement dans op / commitTexte.
-    selection=clampSel(selection);ancre=null;rendre();majPanneau();majLegende();etat('');majModifie();}
+    selection=clampSel(selection);ancre=null;rendre();majPanneau();majChamps();etat('');majModifie();}
   else if(msg.type==='enregistre'){modeleEnregistre=enrEnCours||clone(modele);etat(TXT.enregistre||'');majModifie();}
   else if(msg.type==='erreur'){etat('⚠ '+msg.message);}});
 api.postMessage({type:'pret'});

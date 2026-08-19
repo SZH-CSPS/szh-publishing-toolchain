@@ -316,9 +316,15 @@ $(OUT)/%.pdf: $(OUT)/%.html
 # les tableaux D47 réinjectés en HTML brut (colspan/rowspan) et les images data:,
 # que le writer docx nourri au .md perdrait. Produit à la demande (cible `docx`),
 # volontairement hors de `all` et de `tout-exporter`.
-$(OUT)/%.docx: $(OUT)/%.html
+# szh-galley-docx.lua : le reader html voit le BALISAGE, jamais le CSS — ce que
+# print.css masque réapparaîtrait en clair dans le Word. Ce filtre retire les blocs
+# purement techniques (aujourd'hui .szh-description, cible des aria-describedby des
+# tableaux, D104). Sans lui, chaque tableau décrit traînerait sa description longue
+# en paragraphe visible sous lui dans le galley OJS.
+$(OUT)/%.docx: $(OUT)/%.html $(PIPELINE_DIR)/filters/szh-galley-docx.lua
 	@echo "pandoc $< -> $@ (docx)"
-	@$(PANDOC) "$<" --from=html --to=docx --output="$@"
+	@$(PANDOC) "$<" --from=html --to=docx \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-galley-docx.lua" --output="$@"
 
 docx: verifie-dossier $(DOCXS)
 

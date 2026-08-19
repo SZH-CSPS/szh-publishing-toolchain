@@ -16,14 +16,23 @@ select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground
   background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; }
 #etat { font-size: .85em; color: var(--vscode-descriptionForeground); margin-left: .3rem; }
 #indic { font-size: .95em; color: var(--vscode-editorWarning-foreground, #d1901e); margin-left: .1rem; font-weight: 700; }
-/* Légende du tableau (D94) : un champ texte AU-DESSUS de la grille — c'est le
-   <caption> du fichier, que le pipeline numérote et affiche sous le tableau. */
-.legende { display: flex; align-items: center; gap: .5rem; padding: 0 0 .5rem; }
-.legende label { font-size: .82em; font-weight: 600; color: var(--vscode-descriptionForeground); white-space: nowrap; }
-.legende input { flex: 1 1 auto; min-width: 0; font: inherit; padding: .25em .45em;
+/* Champs texte du tableau, AU-DESSUS de la grille : la légende (D94 — le <caption>
+   du fichier, que le pipeline numérote et affiche sous le tableau) puis le texte
+   alternatif et les crédits (data-alt / data-copyright / data-source). Grille à deux
+   colonnes : les champs longs (légende, texte alternatif) prennent toute la largeur,
+   copyright et source se partagent la dernière rangée. */
+.champs { display: grid; grid-template-columns: 1fr 1fr; gap: .15rem .8rem; padding: 0 0 .5rem; }
+.champs .ch { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+.champs .ch.large { grid-column: 1 / -1; }
+.champs label { font-size: .82em; font-weight: 600; color: var(--vscode-descriptionForeground);
+  white-space: nowrap; }
+.champs input { flex: 1 1 auto; min-width: 0; font: inherit; padding: .25em .45em;
   color: var(--vscode-input-foreground); background: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; }
-.legende input:focus { outline: 1px solid var(--vscode-focusBorder); }
+.champs input:focus { outline: 1px solid var(--vscode-focusBorder); }
+/* Aide sous un champ : alignée sur le champ, pas sur son étiquette. */
+.champs .aide { grid-column: 1 / -1; margin: 0 0 .25rem; font-size: .78em; font-style: italic;
+  color: var(--vscode-descriptionForeground); }
 /* Corps = grille (à gauche) + panneau de mise en forme (à droite) ; empile sur écran
    étroit (flex-wrap). Chacun défile indépendamment. */
 .corps { display: flex; flex: 1 1 auto; gap: .8rem; min-height: 0; align-items: flex-start; flex-wrap: wrap; }
