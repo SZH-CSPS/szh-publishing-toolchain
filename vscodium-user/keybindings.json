@@ -9,14 +9,19 @@
     "args": "Importer les articles Word"
   },
 
-  // Palette « Mise en forme SZH » (menu SZH-only : gras/italique/souligné, titres,
-  // blocs, figure, tableau). Remplace l'ancien raccourci d'insertion de snippet ; les
-  // blocs ::: restent accessibles en tapant « ::: » puis Ctrl+Espace.
+  // ── Les trois panneaux du cockpit (F1) : Commande / Édition / Export — les mêmes
+  //    menus que les trois boutons de la barre « Revue SZH ». Ctrl+Alt+S ouvrait la
+  //    palette « Mise en forme » seule ; il ouvre désormais le panneau d'édition, qui
+  //    la contient en entier (la palette pure reste au clic droit → « Mise en forme »).
+  //    Ctrl+Alt+P bascule l'aperçu HTML ⇄ PDF sans passer par un panneau (F8).
+  { "key": "ctrl+alt+a", "command": "szh.panneauCommande", "when": "szh.estRevue" },
   {
     "key": "ctrl+alt+s",
-    "command": "szh.miseEnForme",
-    "when": "editorTextFocus && editorLangId == markdown"
+    "command": "szh.panneauEdition",
+    "when": "szh.estRevue || (editorTextFocus && editorLangId == markdown)"
   },
+  { "key": "ctrl+alt+d", "command": "szh.panneauExport", "when": "szh.estRevue" },
+  { "key": "ctrl+alt+p", "command": "szh.basculerApercu", "when": "szh.estRevue" },
 
   // ── Mise en forme SZH (M6, D55) — niveau utilisateur : prime sur Markdown All in One.
   //    Ces raccourcis sont AUSSI affichés dans le sous-menu « Mise en forme » (clic droit).

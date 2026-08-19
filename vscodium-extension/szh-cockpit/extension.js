@@ -23,11 +23,23 @@
 // N1 (D42) : dormant WSL (sleep infinity dans SZH-Publishing) tant qu'une revue est
 //   ouverte — pas de démarrage à froid à la première compilation.
 //
-// Écritures autorisées : la COPIE des .docx choisis vers articles-word/ (S3),
-// ausgabe.yaml (G1), la SUPPRESSION confirmée d'un article (G3), l'ÉCRASEMENT
-// confirmé d'une image (G5) et la CRÉATION d'un tableau articles/<slug>/tables/
-// table-NN.html au collage depuis Excel/Word (D81, lib/formatting.js — jamais
-// d'écrasement : premier numéro libre). Tout le reste est en lecture seule (ouverture/
+// F6 (dialogue d'import) : à la fin d'une conversion qui produit AU MOINS UN
+//   nouvel article, le webview « Vérification de l'import » (szhImportVerif,
+//   singleton) remplace la notification « N importés » — cartes de métadonnées
+//   pré-remplies par le <slug>.meta.yaml du pipeline avec badges détecté /
+//   à compléter, photos d'auteur·e·s (modale F3 réutilisée) et remplacement des
+//   images de media/ par leurs originaux (dépôt base64 ≤ 50 Mo, nom conservé).
+//
+// Écritures autorisées : la COPIE des .docx choisis vers articles-word/ (S3 ;
+// mêmes règles pour les .docx DÉPOSÉS sur la vue, F2), ausgabe.yaml (G1), la
+// SUPPRESSION confirmée d'un article (G3), l'ÉCRASEMENT confirmé d'une image
+// (G5 ; aussi par dépôt depuis le dialogue de vérification d'import, F6),
+// la CRÉATION d'un tableau articles/<slug>/tables/table-NN.html au collage depuis
+// Excel/Word (D81, lib/formatting.js — jamais d'écrasement : premier numéro libre)
+// et les PORTRAITS d'auteur·e·s articles/<slug>/portraits/ (F3, D91/D92 : photo
+// déposée <slug-auteur>.original.<ext> — les anciens .original.* d'une autre
+// extension sont retirés — plus les versions .avec-fond.png/.sans-fond.png écrites
+// par le pipeline WSL). Tout le reste est en lecture seule (ouverture/
 // lancement de tâche uniquement).
 // Posture szh-apercu : JavaScript pur, zéro dépendance, API VS Code ^1.75.
 //
@@ -38,8 +50,11 @@
 //   lib/yaml.js             sérialiseurs ausgabe/frontmatter/meta, titreNumero, écriture atomique
 //   lib/table-model.js      parseur/sérialiseur/opérations PURS du tableau
 //   lib/slug.js             slugifier ; lib/wsl.js dormeur WSL ; lib/formatting.js mise en forme
+//   lib/portraits.js        appel WSL du pipeline de portraits (F3, D91)
+//   lib/panneaux.js         les trois panneaux QuickPick de la barre (Commande/Édition/Export, F1)
 //   lib/webviews/util.js    construireHtml/lireMedia : inline media/ + nonce + CSP stricte
-//   media/*.{html,css,js}   webviews (table-editor, metadata-issue/articles, settings, apercu)
+//   media/*.{html,css,js}   webviews (table-editor, metadata-issue/articles, settings,
+//                           apercu, import-verif)
 // Les webviews n'injectent AUCUNE donnée dans le HTML (elles arrivent par postMessage) ;
 // les libellés i18n sont des marqueurs %%SZH:cle%% résolus par T() à l'assemblage.
 // lib/ et media/ DOIVENT être empaquetés (voir .vscodeignore). _pur = contrat immuable
@@ -57,6 +72,7 @@ const ID_VUE = 'szhCockpitVue';
 const NOM_TACHE_IMPORT = 'Importer les articles Word';
 const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
 const NOM_TACHE_EXPORT = 'Tout exporter';
+const NOM_TACHE_DOCX = 'Galleys DOCX (OJS)';
 
 // ---- i18n du cockpit (M4, D52) -> lib/i18n.js ------------------------------------
 const { TEXTES_COCKPIT, T, langueCockpit } = require('./lib/i18n');
@@ -89,6 +105,9 @@ const {
   enroberBloc, squeletteTableau, blocReferenceTable, nomTableLibre,
   enregistrerCommandesMiseEnForme
 } = require('./lib/formatting');
+const { enregistrerPanneaux } = require('./lib/panneaux');
+const { genererExportOjs } = require('./lib/export-ojs');
+const { traiterPortraits } = require('./lib/portraits');
 
 // Éditeur PDF (extension tomoki1207.pdf), comme szh-apercu.
 const VUE_PDF = 'pdf.preview';
@@ -397,6 +416,58 @@ async function toutExporter(fournisseur, rafraichirTout) {
   }
 }
 
+// Export OJS (F7) : rebuild complet (PDF+HTML frais), galleys DOCX, puis XML natif
+// écrit à la racine de la revue. Les manques bloquants (type, titre, auteurs, produits
+// out/) arrivent en une seule erreur listée par lib/export-ojs.js.
+async function exporterXml(fournisseur, rafraichirTout) {
+  const racine = fournisseur.racine;
+  if (!racine) { return; }
+  if (buildEnCours || importEnCours) {
+    vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
+    return;
+  }
+  buildEnCours = true;
+  const statut = vscode.window.setStatusBarMessage(T('exportOjs.statut'));
+  try {
+    await fermerOngletsSous(path.join(racine, 'out'));
+    apercuCourantUri = null;                       // « Tout exporter » fait clean
+    let code = await lancerTache(NOM_TACHE_EXPORT);
+    rafraichirTout();
+    if (code === null) { return; }                 // tâche introuvable (déjà signalé)
+    if (code !== 0) {
+      vscode.window.showErrorMessage(T('err.export', [NOM_TACHE_EXPORT]));
+      return;
+    }
+    code = await lancerTache(NOM_TACHE_DOCX);
+    if (code === null) { return; }
+    if (code !== 0) {
+      vscode.window.showErrorMessage(T('exportOjs.erreurDocx'));
+      return;
+    }
+    const resultat = genererExportOjs(racine);     // synchrone : quelques secondes
+    const message = T('exportOjs.fini', [path.basename(resultat.chemin)]);
+    if (resultat.avertissements.length > 0) {
+      const bouton = T('exportOjs.voirAvertissements');
+      const choix = await vscode.window.showInformationMessage(
+        message + ' — ' + T('exportOjs.nAvertissements', [resultat.avertissements.length]), bouton
+      );
+      if (choix === bouton) {
+        const doc = await vscode.workspace.openTextDocument({
+          content: resultat.avertissements.join('\n'), language: 'plaintext'
+        });
+        await vscode.window.showTextDocument(doc, { preview: true });
+      }
+    } else {
+      vscode.window.showInformationMessage(message);
+    }
+  } catch (e) {
+    vscode.window.showErrorMessage(T('exportOjs.erreur', [String((e && e.message) || e)]));
+  } finally {
+    statut.dispose();
+    buildEnCours = false;
+  }
+}
+
 // ---- Clic = aperçu direct (N5, D46) -----------------------------------------------
 
 // URI du PDF actuellement affiché PAR LE COCKPIT (l'aperçu du précédent article est
@@ -629,6 +700,26 @@ function fermerApercuHtml() {
   try { p.dispose(); } catch (e) { /* déjà fermé */ }
 }
 
+// F5 — édition pleine page : ferme TOUT ce qui occupe la colonne 2 avant d'ouvrir
+// un formulaire ou l'éditeur de tableau. La webview HTML et l'onglet PDF suivi ne
+// suffisent pas : szh-apercu ouvre des onglets pdf.preview que le cockpit ne suit
+// pas (apercuCourantUri) — on balaie donc tabGroups sur le viewType.
+async function fermerTousLesApercus() {
+  fermerApercuHtml();
+  await fermerApercuCourant(null);
+  const aFermer = [];
+  for (const groupe of vscode.window.tabGroups.all) {
+    for (const onglet of groupe.tabs) {
+      const entree = onglet.input;
+      if (entree && entree.viewType === VUE_PDF) { aFermer.push(onglet); }
+    }
+  }
+  if (aFermer.length > 0) {
+    try { await vscode.window.tabGroups.close(aFermer); } catch (e) { /* déjà fermé */ }
+  }
+  apercuCourantUri = null;
+}
+
 // Ouvre (ou recharge) l'aperçu HTML de l'article en colonne 2 (webview réutilisée).
 // Repli si le toolkit n'est pas resynchronisé : le .html du PDF (sans clic),
 // sinon un message « pas encore compilé ».
@@ -840,10 +931,13 @@ async function lancerConversion(fournisseur, rafraichirTout) {
       vscode.window.showErrorMessage(T('err.import', [NOM_TACHE_IMPORT]));
       return;
     }
-    let n = 0;
-    for (const slug of fournisseur.listerArticles()) { if (!avant.has(slug)) { n++; } }
-    if (n > 0) {
-      vscode.window.showInformationMessage(n > 1 ? T('info.importes', [n]) : T('info.importes.un'));
+    const nouveaux = [];
+    for (const slug of fournisseur.listerArticles()) { if (!avant.has(slug)) { nouveaux.push(slug); } }
+    if (nouveaux.length > 0) {
+      // F6 : le dialogue « Vérification de l'import » remplace la notification
+      // « N importés » — c'est lui qui montre ce que la conversion a détecté
+      // (fiche .meta.yaml pré-remplie) et ce qui reste à compléter.
+      await ouvrirImportVerif(fournisseur, rafraichirTout, nouveaux);
     } else {
       vscode.window.showInformationMessage(T('info.importes.aucun'));
     }
@@ -853,19 +947,13 @@ async function lancerConversion(fournisseur, rafraichirTout) {
   }
 }
 
-async function importerWord(fournisseur, rafraichirTout) {
+// Tronc commun du bouton « Importer des Word » et du glisser-déposer sur la vue
+// (F2) : copie des .docx (`uris`, tableau de vscode.Uri déjà filtré) vers
+// articles-word/, conflits demandés en modale, puis conversion.
+async function importerFichiersWord(fournisseur, rafraichirTout, uris) {
   const racine = fournisseur.racine;
-  if (!racine) { return; }
-
-  const filtresImport = {};
-  filtresImport[T('dial.importer.filtre')] = ['docx'];
-  const choix = await vscode.window.showOpenDialog({
-    canSelectMany: true,
-    filters: filtresImport,
-    openLabel: T('dial.importer.bouton'),
-    title: T('dial.importer.titre')
-  });
-  if (!choix || choix.length === 0) { return; }   // dialogue annulé
+  if (!racine || !Array.isArray(uris) || uris.length === 0) { return; }
+  const choix = uris;
 
   const dossierWord = path.join(racine, 'articles-word');
   try { fs.mkdirSync(dossierWord, { recursive: true }); } catch (e) { /* existe déjà */ }
@@ -899,6 +987,52 @@ async function importerWord(fournisseur, rafraichirTout) {
   // Conversion + notification (compte par diff) — mutualisée avec « Convertir les
   // Word en attente ».
   await lancerConversion(fournisseur, rafraichirTout);
+}
+
+async function importerWord(fournisseur, rafraichirTout) {
+  if (!fournisseur.racine) { return; }
+  const filtresImport = {};
+  filtresImport[T('dial.importer.filtre')] = ['docx'];
+  const choix = await vscode.window.showOpenDialog({
+    canSelectMany: true,
+    filters: filtresImport,
+    openLabel: T('dial.importer.bouton'),
+    title: T('dial.importer.titre')
+  });
+  if (!choix || choix.length === 0) { return; }   // dialogue annulé
+  await importerFichiersWord(fournisseur, rafraichirTout, choix);
+}
+
+// F2 — dépôt de fichiers sur la vue « Revue SZH » : accepte les .docx de
+// l'Explorateur Windows (ou de l'arborescence de l'éditeur) déposés N'IMPORTE OÙ
+// dans la vue, et les passe au même circuit que le bouton « Importer des Word »
+// (conflits en modale + conversion). `text/uri-list` : une URI par ligne (CRLF),
+// lignes vides et commentaires « # » ignorés (RFC 2483). Pas de handleDrag : on
+// ne tire rien HORS de la vue. Des fichiers déposés mais aucun .docx -> message
+// d'information (jamais silencieux) ; dépôt sans fichier (texte…) -> ignoré.
+function controleurDepotVue(fournisseur, rafraichirTout) {
+  return {
+    dropMimeTypes: ['text/uri-list'],
+    dragMimeTypes: [],
+    handleDrop: async (cible, dataTransfer) => {
+      const item = dataTransfer.get('text/uri-list');
+      if (!item) { return; }
+      const brut = await item.asString();
+      const docx = [];
+      let fichiers = 0;
+      for (const ligne of String(brut || '').split(/\r?\n/)) {
+        const nette = ligne.trim();
+        if (nette === '' || nette.charAt(0) === '#') { continue; }
+        let uri = null;
+        try { uri = vscode.Uri.parse(nette); } catch (e) { continue; }
+        if (!uri || uri.scheme !== 'file') { continue; }
+        fichiers++;
+        if (/\.docx$/i.test(uri.fsPath)) { docx.push(uri); }
+      }
+      if (docx.length > 0) { await importerFichiersWord(fournisseur, rafraichirTout, docx); return; }
+      if (fichiers > 0) { vscode.window.showInformationMessage(T('drop.seulement.docx')); }
+    }
+  };
 }
 
 // ---- Assets (G5, D41) : dimensions sans dépendance + « Remplacer » ----------------
@@ -1134,9 +1268,12 @@ function envoyerValeursMetadonnees(panneau, chemin) {
 // Panneau singleton : rouvrir la commande RÉVÈLE le formulaire existant (valeurs
 // relues du disque) au lieu d'en empiler un deuxième. Colonne 1 = côté texte.
 // `rafraichirTout` (N2) : le titre de la vue suit immédiatement l'enregistrement.
-function ouvrirMetadonnees(fournisseur, rafraichirTout) {
+// F5 — pleine page : les aperçus sont fermés AVANT d'afficher (reveal compris),
+// le formulaire n'a pas de colonne 2 qui lui réponde.
+async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
+  await fermerTousLesApercus();
   const chemin = path.join(racine, 'ausgabe.yaml');
   if (panneauMetadonnees) {
     panneauMetadonnees.reveal(vscode.ViewColumn.One);
@@ -1195,8 +1332,11 @@ function ouvrirMetadonnees(fournisseur, rafraichirTout) {
 // déroulant traduit), doi, title/subtitle/keywords TRADUCTIBLES (FR/DE toujours,
 // IT révélé par la case « + Italien »), auteurs répétables à 5 champs. DOM
 // construit sans injection HTML, valeurs par postMessage, dirty PAR ARTICLE.
-function htmlApercuMetadonnees(nonce) {
-  const txt = JSON.stringify({
+// Libellés communs au gabarit de carte d'article (type, champs par langue,
+// auteurs, modale photo F3) — partagés entre « Métadonnées des articles » et le
+// dialogue « Vérification de l'import » (F6), qui reprend le même gabarit.
+function textesCarteArticle() {
+  return {
     type: T('fiches.type'), typeAucun: T('fiches.type.aucun'),
     titreChamp: T('fiches.titre.champ'), sousTitre: T('fiches.soustitre'),
     resume: T('fiches.resume'),
@@ -1204,11 +1344,71 @@ function htmlApercuMetadonnees(nonce) {
     retirerAuteur: T('fiches.auteur.retirer'),
     aPrenom: T('fiches.auteur.prenom'), aNom: T('fiches.auteur.nom'),
     aFonction: T('fiches.auteur.fonction'), aAffiliation: T('fiches.auteur.affiliation'),
-    aOrcid: T('fiches.auteur.orcid'),
+    aOrcid: T('fiches.auteur.orcid'), aEmail: T('fiches.auteur.email'),
     motsCles: T('fiches.motscles'), italien: T('fiches.italien'),
-    rien: T('form.rien'), enregistre: T('fiches.enregistre')
+    rien: T('form.rien'), enregistre: T('fiches.enregistre'),
+    // Photo d'auteur·e (F3, D92) : bouton par rangée + modale de dépôt/choix.
+    photoBouton: T('photo.bouton'), photoPresente: T('photo.bouton.presente'),
+    photoNomRequis: T('photo.nomrequis'), photoTitre: T('photo.titre'),
+    photoDeposer: T('photo.deposer'), photoOu: T('photo.ou'),
+    photoChoisirFichier: T('photo.choisirFichier'),
+    vOriginal: T('photo.version.original'), vAvecFond: T('photo.version.avecfond'),
+    vSansFond: T('photo.version.sansfond'),
+    valider: T('photo.valider'), annuler: T('photo.annuler'),
+    chargement: T('photo.chargement'), traitement: T('photo.traitement'),
+    sansVisage: T('photo.sansvisage'), padding: T('photo.padding'),
+    errTropVolumineux: T('photo.err.tropvolumineux'), errFormat: T('photo.err.format')
+  };
+}
+
+// Options traduites du menu « Type d'article » (E2, D71) : 6 types en 2 groupes,
+// libellés + en-têtes de groupe dans la langue par défaut du numéro. Partagé
+// par les deux panneaux de fiches (métadonnées des articles, vérification F6).
+function typesTraduits(langue) {
+  const options = (liste, groupe) => liste.map((t) => ({
+    valeur: t, libelle: (LIBELLES_TYPES[t] || {})[langue] || t,
+    groupe: (GROUPES_TYPES[groupe] || {})[langue] || (GROUPES_TYPES[groupe] || {}).fr || ''
+  }));
+  return options(TYPES_DOSSIER, 'dossier').concat(options(TYPES_HORS, 'hors'));
+}
+
+// Écrit les cartes reçues d'un webview de fiches : nettoyage (types/bornes, 20
+// auteurs max), clés inconnues de la fiche existante restituées (D49), écriture
+// atomique. `slugsAutorises` (F6) restreint en plus à la liste du panneau ;
+// dans tous les cas un slug hors de listerArticles() est ignoré (sécurité).
+function ecrireCartesArticles(fournisseur, cartes, slugsAutorises) {
+  const connus = new Set(fournisseur.listerArticles());
+  let n = 0;
+  const erreurs = [];
+  for (const slug of Object.keys(cartes || {})) {
+    if (!connus.has(slug)) { continue; }           // slug inconnu : ignoré (sécurité)
+    if (slugsAutorises && slugsAutorises.indexOf(slug) === -1) { continue; }
+    const fichierMeta = cheminMeta(fournisseur.racine, slug);
+    try {
+      // Fichier « form-owned » : régénéré — mais les clés inconnues de haut
+      // niveau de la fiche existante sont restituées par prudence (D49).
+      const carte = nettoyerCarte(cartes[slug]);
+      try { carte._inconnues = analyserMeta(fs.readFileSync(fichierMeta, 'utf8'))._inconnues; }
+      catch (e) { /* pas de fiche existante */ }
+      ecrireAusgabeAtomique(fichierMeta, serialiserMeta(carte));
+      n++;
+    } catch (e) {
+      erreurs.push(slug + ' (' + e.message + ')');
+    }
+  }
+  return { n: n, erreurs: erreurs };
+}
+
+function htmlApercuMetadonnees(nonce) {
+  const txt = JSON.stringify(textesCarteArticle());
+  return construireHtml('metadata-articles', nonce, {
+    titre: T('fiches.titre'),
+    remplacements: { '__TXT__': txt },
+    // Seule dérogation du cockpit à la CSP par défaut : les aperçus de la modale
+    // photo sont des <img> à data: URI poussées par postMessage (aucun réseau,
+    // localResourceRoots reste []).
+    csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
   });
-  return construireHtml('metadata-articles', nonce, { titre: T('fiches.titre'), remplacements: { '__TXT__': txt } });
 }
 
 let panneauArticles = null;
@@ -1262,6 +1462,23 @@ function lireMetadonneesArticles(fournisseur) {
   return articles;
 }
 
+// Assainit le champ `photo` d'un auteur (D92) : il n'est JAMAIS saisi au clavier
+// (posé par la modale photo uniquement), donc on n'accepte qu'un chemin RELATIF
+// à l'article, sous portraits/, sans remontée « .. » ni antislash ni jeton vide —
+// toute autre valeur VIDE le champ (il disparaît de la fiche à la sérialisation).
+function assainirCheminPhoto(valeur) {
+  const c = String(valeur === undefined || valeur === null ? '' : valeur).trim();
+  if (c === '' || c.length > 300) { return ''; }
+  if (c.indexOf('\\') !== -1 || /[\r\n:]/.test(c)) { return ''; }
+  // Exactement DEUX segments (les trois formes D92 sont « portraits/<fichier> ») :
+  // ni remontée, ni sous-dossier, ni segment vide.
+  const morceaux = c.split('/');
+  if (morceaux.length !== 2 || morceaux[0] !== 'portraits') { return ''; }
+  const nom = morceaux[1];
+  if (nom === '' || nom === '.' || nom === '..') { return ''; }
+  return c;
+}
+
 // Nettoie une carte reçue du webview (types + bornes ; le slug est validé contre
 // la liste réelle des articles — jamais de chemin construit sur une entrée libre).
 function nettoyerCarte(brut) {
@@ -1290,29 +1507,224 @@ function nettoyerCarte(brut) {
   if (brut && Array.isArray(brut.author)) {
     for (const a of brut.author.slice(0, 20)) {
       const propre = {};
-      for (const c of CHAMPS_AUTEUR) { propre[c] = texteCourt(a && a[c], 300); }
+      // Bornes par champ (D91/D92) : email 200, le reste 300 ; photo assainie
+      // en plus (chemin relatif portraits/… uniquement, sinon vidée).
+      for (const c of CHAMPS_AUTEUR) { propre[c] = texteCourt(a && a[c], c === 'email' ? 200 : 300); }
+      propre.photo = assainirCheminPhoto(propre.photo);
       carte.author.push(propre);
     }
   }
   return carte;
 }
 
-function ouvrirApercuMetadonnees(fournisseur, rafraichirTout) {
+// ---- Photos d'auteur·e·s (F3, D91/D92) ---------------------------------------------
+//
+// Flux : la modale du webview dépose une image (base64) -> l'hôte écrit
+// articles/<slug>/portraits/<slug-auteur>.original.<ext> puis appelle le pipeline
+// WSL (lib/portraits.js) qui produit .avec-fond.png / .sans-fond.png -> l'hôte
+// renvoie les TROIS versions en data: URIs (aperçu) -> « Valider » fige le champ
+// `photo` (chemin relatif) que la fiche emporte à l'enregistrement. Protocole :
+//   webview -> hôte : photo-ouvrir   { slug, index, photo }            (photo déjà posée)
+//                     photo-deposer  { slug, index, prenom, nom, nomFichier, donneesBase64 }
+//                     photo-choisir  { slug, index, base, version }
+//   hôte -> webview : photo-versions { slug, index, base, versions:{original,
+//                        avecFond, sansFond}, infos:{visage,padding}|null, actuelle|null }
+//                     photo-valeur   { slug, index, photo }
+//                     photo-erreur   { slug, index, message }
+// `base` (= <slug-auteur>) est TOUJOURS généré par l'hôte (slugifier ou champ
+// photo existant décomposé) ; quand la webview le renvoie, il est revalidé
+// (segment unique, alphabet sûr) avant toute construction de chemin.
+
+const EXTENSIONS_PHOTO = ['png', 'jpg', 'jpeg', 'webp'];
+const MIMES_PHOTO = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
+const TAILLE_MAX_PHOTO = 20 * 1024 * 1024;     // ~20 Mo — garde côté webview ET hôte
+const VERSIONS_PHOTO = ['original', 'avec-fond', 'sans-fond'];
+
+let photoEnCours = false;                       // garde anti-double (le pipeline est long)
+
+function dossierPortraitsArticle(racine, slug) {
+  return path.join(racine, 'articles', slug, 'portraits');
+}
+
+// data: URI d'une image du disque (null si illisible) — aperçus de la modale
+// (CSP img-src data:, localResourceRoots reste []).
+function dataUriImage(chemin) {
+  try {
+    const ext = (chemin.match(/\.([a-z0-9]+)$/i) || ['', ''])[1].toLowerCase();
+    return 'data:' + (MIMES_PHOTO[ext] || 'image/png') + ';base64,' +
+      fs.readFileSync(chemin).toString('base64');
+  } catch (e) { return null; }
+}
+
+// Nom de fichier du <base>.original.<ext> présent dans `dossier` (null si aucun) —
+// l'extension de l'original n'est pas connue de la webview, on la retrouve ici.
+function trouverOriginal(dossier, base) {
+  let noms = [];
+  try { noms = fs.readdirSync(dossier); } catch (e) { return null; }
+  for (const n of noms) {
+    if (n.indexOf(base + '.original.') === 0 && !n.startsWith('~$')) { return n; }
+  }
+  return null;
+}
+
+// Les trois versions d'un portrait en data: URIs (null pour chaque fichier absent).
+function versionsPhoto(dossier, base) {
+  const original = trouverOriginal(dossier, base);
+  return {
+    original: original ? dataUriImage(path.join(dossier, original)) : null,
+    avecFond: dataUriImage(path.join(dossier, base + '.avec-fond.png')),
+    sansFond: dataUriImage(path.join(dossier, base + '.sans-fond.png'))
+  };
+}
+
+// Décompose un champ `photo` DÉJÀ assaini en { base, version } (null si la forme
+// n'est aucune des trois de D92) : même base, trois suffixes.
+function decomposerPhoto(photo) {
+  const nom = String(photo || '').replace(/^portraits\//, '');
+  let m = nom.match(/^(.+)\.original\.[a-z0-9]+$/i);
+  if (m) { return { base: m[1], version: 'original' }; }
+  m = nom.match(/^(.+)\.avec-fond\.png$/i);
+  if (m) { return { base: m[1], version: 'avec-fond' }; }
+  m = nom.match(/^(.+)\.sans-fond\.png$/i);
+  if (m) { return { base: m[1], version: 'sans-fond' }; }
+  return null;
+}
+
+// `base` renvoyé par la webview : un SEUL segment de chemin, alphabet sûr (pas de
+// séparateur, donc pas de remontée possible sous portraits/).
+function baseAuteurValide(base) {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(String(base || ''));
+}
+
+// postMessage tolérant : le panneau peut être fermé pendant le traitement WSL.
+function repondrePanneau(panneau, message) {
+  try { panneau.webview.postMessage(message); } catch (e) { /* panneau fermé */ }
+}
+
+// photo-ouvrir : l'auteur a DÉJÀ une photo -> renvoyer les data: URIs des versions
+// existantes (déduites du champ), radio préselectionnée sur la version actuelle.
+function ouvrirVersionsPhoto(fournisseur, panneau, msg) {
+  const slug = String(msg.slug || '');
+  if (!new Set(fournisseur.listerArticles()).has(slug)) { return; }   // slug inconnu : ignoré
+  const photo = assainirCheminPhoto(msg.photo);
+  const d = photo === '' ? null : decomposerPhoto(photo);
+  if (!d) {
+    // Valeur hors des trois formes D92 (fiche retouchée à la main ?) : la modale
+    // ne doit pas rester sur « Chargement… » — on invite à redéposer.
+    repondrePanneau(panneau, { type: 'photo-erreur', slug: slug, index: msg.index, message: T('photo.err.introuvable') });
+    return;
+  }
+  repondrePanneau(panneau, {
+    type: 'photo-versions', slug: slug, index: msg.index, base: d.base,
+    versions: versionsPhoto(dossierPortraitsArticle(fournisseur.racine, slug), d.base),
+    infos: null, actuelle: d.version
+  });
+}
+
+// photo-deposer : écrit l'original (écriture « ~$ » + rename, comme ausgabe.yaml),
+// purge les anciens .original.* d'une autre extension, lance le pipeline WSL puis
+// renvoie les trois versions. Avertissement (hôte) si aucun visage détecté.
+async function deposerPhotoAuteur(fournisseur, panneau, msg) {
+  const slug = String(msg.slug || '');
+  const index = msg.index;
+  const erreur = (texte) => repondrePanneau(panneau, { type: 'photo-erreur', slug: slug, index: index, message: texte });
+  if (!new Set(fournisseur.listerArticles()).has(slug)) { return; }   // slug inconnu : ignoré
+  if (photoEnCours) { erreur(T('photo.encours')); return; }
+  const prenom = String(msg.prenom || '').trim();
+  const nom = String(msg.nom || '').trim();
+  if (prenom === '' && nom === '') { return; }    // la webview garde déjà (nom requis)
+  const slugAuteur = slugifier(prenom + '-' + nom);
+  const ext = (String(msg.nomFichier || '').match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
+  if (EXTENSIONS_PHOTO.indexOf(ext) === -1) { erreur(T('photo.err.format')); return; }
+  const donnees = Buffer.from(String(msg.donneesBase64 || ''), 'base64');
+  if (donnees.length === 0) { erreur(T('photo.err.format')); return; }
+  if (donnees.length > TAILLE_MAX_PHOTO) { erreur(T('photo.err.tropvolumineux')); return; }
+
+  photoEnCours = true;
+  try {
+    const dossier = dossierPortraitsArticle(fournisseur.racine, slug);
+    const nomOriginal = slugAuteur + '.original.' + ext;
+    const chemin = path.join(dossier, nomOriginal);
+    try {
+      fs.mkdirSync(dossier, { recursive: true });
+      // Un seul .original.* par auteur : sans cette purge, trouverOriginal
+      // deviendrait ambigu après un dépôt .jpg puis un dépôt .png.
+      for (const n of (fs.readdirSync(dossier) || [])) {
+        if (n.indexOf(slugAuteur + '.original.') === 0 && n !== nomOriginal) {
+          try { fs.unlinkSync(path.join(dossier, n)); } catch (e) { /* verrouillé : sans gravité */ }
+        }
+      }
+      const tmp = path.join(dossier, '~$' + nomOriginal);
+      try {
+        fs.writeFileSync(tmp, donnees);
+        fs.renameSync(tmp, chemin);
+      } finally {
+        try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
+      }
+    } catch (e) {
+      erreur(T('err.ecriture', [e.message]));
+      return;
+    }
+    let resultats;
+    try {
+      resultats = await traiterPortraits({
+        dossierPortraits: dossier,
+        entrees: [{ slug: slugAuteur, cheminSource: chemin }]
+      });
+    } catch (e) {
+      erreur(T(e && e.wsl ? 'photo.err.wsl' : 'photo.err.traitement', [e.message]));
+      return;
+    }
+    const r = resultats.filter((x) => x && x.slug === slugAuteur)[0] || resultats[0] || {};
+    if (!r.ok) { erreur(T('photo.err.traitement', [String(r.erreur || '?')])); return; }
+    if (!r.visage) { vscode.window.showWarningMessage(T('photo.sansvisage')); }
+    repondrePanneau(panneau, {
+      type: 'photo-versions', slug: slug, index: index, base: slugAuteur,
+      versions: versionsPhoto(dossier, slugAuteur),
+      infos: { visage: !!r.visage, padding: !!r.padding },
+      actuelle: null
+    });
+  } finally {
+    photoEnCours = false;
+  }
+}
+
+// photo-choisir : « Valider » de la modale -> chemin relatif de la version choisie,
+// vérifié SUR LE DISQUE avant d'être renvoyé (jamais de valeur photo aveugle).
+function choisirPhotoAuteur(fournisseur, panneau, msg) {
+  const slug = String(msg.slug || '');
+  if (!new Set(fournisseur.listerArticles()).has(slug)) { return; }   // slug inconnu : ignoré
+  const base = String(msg.base || '');
+  const version = String(msg.version || '');
+  if (!baseAuteurValide(base) || VERSIONS_PHOTO.indexOf(version) === -1) { return; }
+  const dossier = dossierPortraitsArticle(fournisseur.racine, slug);
+  let nom = null;
+  if (version === 'original') {
+    nom = trouverOriginal(dossier, base);
+  } else {
+    nom = base + '.' + version + '.png';
+    try { if (!fs.existsSync(path.join(dossier, nom))) { nom = null; } } catch (e) { nom = null; }
+  }
+  if (!nom) {
+    repondrePanneau(panneau, { type: 'photo-erreur', slug: slug, index: msg.index, message: T('photo.err.introuvable') });
+    return;
+  }
+  repondrePanneau(panneau, { type: 'photo-valeur', slug: slug, index: msg.index, photo: 'portraits/' + nom });
+}
+
+// F5 — pleine page : mêmes règles que « Méta-données du numéro » (fermer les
+// aperçus avant d'afficher, y compris quand le panneau existe déjà et est révélé).
+async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout) {
   if (!fournisseur.racine) { return; }
+  await fermerTousLesApercus();
   const envoyerValeurs = (panneau) => {
     const langue = langueRevue(fournisseur.racine);
-    // Menu « Type d'article » (E2, D71) : 6 types en 2 groupes (liés au dossier /
-    // hors dossier), libellés + en-têtes de groupe dans la langue par défaut du
-    // numéro. Le champ `groupe` pilote la construction des <optgroup> côté webview.
-    const options = (liste, groupe) => liste.map((t) => ({
-      valeur: t, libelle: (LIBELLES_TYPES[t] || {})[langue] || t,
-      groupe: (GROUPES_TYPES[groupe] || {})[langue] || (GROUPES_TYPES[groupe] || {}).fr || ''
-    }));
+    // Le champ `groupe` des types pilote la construction des <optgroup> côté webview.
     panneau.webview.postMessage({
       type: 'valeurs',
       articles: lireMetadonneesArticles(fournisseur),
       langue: langue,
-      types: options(TYPES_DOSSIER, 'dossier').concat(options(TYPES_HORS, 'hors'))
+      types: typesTraduits(langue)
     });
   };
   if (panneauArticles) {
@@ -1327,36 +1739,241 @@ function ouvrirApercuMetadonnees(fournisseur, rafraichirTout) {
   panneauArticles = panneau;
   panneau.onDidDispose(() => { if (panneauArticles === panneau) { panneauArticles = null; } });
   panneau.webview.html = htmlApercuMetadonnees(crypto.randomBytes(16).toString('hex'));
-  panneau.webview.onDidReceiveMessage((msg) => {
+  panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
     if (msg.type === 'pret') { envoyerValeurs(panneau); return; }
+    // Modale photo (F3) : dépôt -> pipeline WSL ; ouverture sur photo existante ;
+    // « Valider » -> chemin relatif de la version choisie.
+    if (msg.type === 'photo-deposer') { await deposerPhotoAuteur(fournisseur, panneau, msg); return; }
+    if (msg.type === 'photo-ouvrir') { ouvrirVersionsPhoto(fournisseur, panneau, msg); return; }
+    if (msg.type === 'photo-choisir') { choisirPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type !== 'enregistrer' || !msg.articles) { return; }
-    const connus = new Set(fournisseur.listerArticles());
-    let n = 0;
-    const erreurs = [];
-    for (const slug of Object.keys(msg.articles)) {
-      if (!connus.has(slug)) { continue; }         // slug inconnu : ignoré (sécurité)
-      const fichierMeta = cheminMeta(fournisseur.racine, slug);
-      try {
-        // Fichier « form-owned » : régénéré — mais les clés inconnues de haut
-        // niveau de la fiche existante sont restituées par prudence (D49).
-        const carte = nettoyerCarte(msg.articles[slug]);
-        try { carte._inconnues = analyserMeta(fs.readFileSync(fichierMeta, 'utf8'))._inconnues; }
-        catch (e) { /* pas de fiche existante */ }
-        ecrireAusgabeAtomique(fichierMeta, serialiserMeta(carte));
-        n++;
-      } catch (e) {
-        erreurs.push(slug + ' (' + e.message + ')');
-      }
-    }
-    if (erreurs.length > 0) {
-      panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [erreurs.join(', ')]) });
+    const res = ecrireCartesArticles(fournisseur, msg.articles, null);
+    if (res.erreurs.length > 0) {
+      panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [res.erreurs.join(', ')]) });
     } else {
-      panneau.webview.postMessage({ type: 'enregistre', n: n });
-      vscode.window.setStatusBarMessage(T('statut.fiches', [n]), 3000);
+      panneau.webview.postMessage({ type: 'enregistre', n: res.n });
+      vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000);
     }
     if (rafraichirTout) { rafraichirTout(); }
     envoyerValeurs(panneau);                       // resynchronise les cartes (dirty remis à zéro)
+  });
+}
+
+// ---- Dialogue « Vérification de l'import » (F6) -------------------------------------
+//
+// Ouvert automatiquement à la fin de lancerConversion dès qu'AU MOINS UN nouvel
+// article est apparu (diff avant/après de listerArticles — jamais de parsing de
+// sortie). Panneau singleton szhImportVerif, colonne 1, aperçus fermés d'abord
+// (F5) ; une nouvelle conversion le RÉVÈLE et recharge la liste de slugs (les
+// sections affichées sont celles de la DERNIÈRE vague). Une section par article :
+//   1. la carte de métadonnées du formulaire M1 (même gabarit, même écriture :
+//      nettoyerCarte + serialiserMeta + écriture atomique via ecrireCartesArticles),
+//      plus des badges par champ — rempli = « détecté » (pré-rempli par le
+//      pipeline dans <slug>.meta.yaml), vide = « à compléter » — et le compte de
+//      champs vides en tête de carte. Le dialogue ne lit QUE le .meta.yaml.
+//   2. les photos d'auteur·e·s : mêmes boutons 📷 / même modale que M1 — les
+//      handlers photo-* de F3 sont génériques (slug + index) et réutilisés tels quels.
+//   3. les originaux des images : articles/<slug>/media/ (nom + « L × H · poids »
+//      de decrireImage), chaque image avec une zone de dépôt / un bouton fichier
+//      pour la REMPLACER par l'original haute qualité EN GARDANT LE NOM — mêmes
+//      confirmation et renfort de format que szh.remplacerAsset (G5), contenu
+//      passé en base64 par postMessage (≤ 50 Mo), écriture « ~$ » + rename.
+// Protocole (en plus de photo-* de F3) :
+//   webview -> hôte : pret ; enregistrer { articles } ; fermer { modifie, articles } ;
+//                     remplacer-image { slug, relatif, nomFichier, donneesBase64 }
+//   hôte -> webview : valeurs { articles:[{slug, valeurs, images:[{relatif,
+//                     description}]}], langue, types } ; enregistre { n } ;
+//                     erreur { message } ; image-remplacee { slug, relatif,
+//                     description } ; image-erreur { slug, relatif, message } ;
+//                     image-annulee { slug, relatif }
+
+const TAILLE_MAX_IMAGE_IMPORT = 50 * 1024 * 1024;  // ~50 Mo — garde côté webview ET hôte
+const EXTENSIONS_IMAGE_IMPORT = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
+
+// Chemin relatif d'image reçu de la webview d'import : relatif à
+// articles/<slug>/media/, séparateur « / » (forme produite par _imagesArticle).
+// Jamais utilisé pour construire un chemin sans repasser ici — segments sûrs
+// uniquement (pas de remontée « .. », d'antislash, de deux-points, de segment
+// vide ni de temporaire « ~$ ») et extension d'image attendue. Pur (via _pur).
+function relatifImageValide(relatif) {
+  const c = String(relatif === undefined || relatif === null ? '' : relatif);
+  if (c === '' || c.length > 300 || /[\\:\r\n]/.test(c)) { return false; }
+  const segments = c.split('/');
+  for (const s of segments) {
+    if (s === '' || s === '.' || s === '..' || s.indexOf('~$') === 0) { return false; }
+  }
+  return /\.(png|jpe?g|gif|svg)$/i.test(segments[segments.length - 1]);
+}
+
+let panneauImportVerif = null;
+let slugsImportVerif = [];                         // slugs de la dernière conversion
+
+function htmlImportVerif(nonce) {
+  const txt = JSON.stringify(Object.assign(textesCarteArticle(), {
+    badgeDetecte: T('importv.badge.detecte'), badgeAcompleter: T('importv.badge.acompleter'),
+    vides: T('importv.vides'), videsZero: T('importv.vides.zero'),
+    photosNote: T('importv.photos.note'),
+    sectionImages: T('importv.section.images'), imagesNote: T('importv.images.note'),
+    imagesAucune: T('importv.images.aucune'), imageDeposer: T('importv.image.deposer'),
+    imageRemplacee: T('importv.image.remplacee'),
+    errImageTropVolumineuse: T('importv.err.tropvolumineux'),
+    errImageFormat: T('importv.err.format')
+  }));
+  return construireHtml('import-verif', nonce, {
+    titre: T('importv.titre'),
+    remplacements: { '__TXT__': txt },
+    // Comme metadata-articles (F3) : aperçus de la modale photo en data: URIs.
+    csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
+  });
+}
+
+// Fiches + images des articles de la dernière conversion (slugs revalidés contre
+// la liste réelle : un article supprimé entre-temps disparaît du dialogue).
+function lireArticlesImport(fournisseur) {
+  const connus = new Set(fournisseur.listerArticles());
+  const articles = [];
+  for (const slug of slugsImportVerif) {
+    if (!connus.has(slug)) { continue; }
+    migrerFrontmatterVersMeta(fournisseur.racine, slug);
+    let valeurs = { type: '', doi: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
+    try {
+      valeurs = analyserMeta(fs.readFileSync(cheminMeta(fournisseur.racine, slug), 'utf8'));
+    } catch (e) { /* pas (encore) de fiche : carte vide, tout « à compléter » */ }
+    delete valeurs._inconnues;                     // le webview n'a pas à les voir
+    const base = path.join(fournisseur.racine, 'articles', slug, 'media');
+    const images = fournisseur._imagesArticle(slug).map((relatif) => ({
+      relatif: relatif,
+      description: decrireImage(path.join(base, relatif))   // « L × H · poids », comme l'arbre (G5)
+    }));
+    articles.push({ slug: slug, valeurs: valeurs, images: images });
+  }
+  return articles;
+}
+
+function envoyerValeursImportVerif(panneau, fournisseur) {
+  const langue = langueRevue(fournisseur.racine);
+  repondrePanneau(panneau, {
+    type: 'valeurs',
+    articles: lireArticlesImport(fournisseur),
+    langue: langue,
+    types: typesTraduits(langue)
+  });
+}
+
+// remplacer-image : écrase articles/<slug>/media/<relatif> par le contenu déposé
+// dans la webview, EN GARDANT LE NOM (le lien du .md reste valide) — mêmes
+// gardes et mêmes textes de confirmation que szh.remplacerAsset (G5), écriture
+// « ~$ » + rename comme les portraits. L'annulation est signalée à la webview
+// (image-annulee) pour réactiver la zone de dépôt.
+async function remplacerImageImport(fournisseur, rafraichirTout, panneau, msg) {
+  const slug = String(msg.slug || '');
+  const relatif = String(msg.relatif || '');
+  const erreur = (texte) => repondrePanneau(panneau, { type: 'image-erreur', slug: slug, relatif: relatif, message: texte });
+  if (!new Set(fournisseur.listerArticles()).has(slug)) { return; }   // slug inconnu : ignoré
+  if (!relatifImageValide(relatif)) { return; }                       // chemin hors contrat : ignoré
+  if (buildEnCours || importEnCours) { erreur(T('statut.occupe')); return; }
+  const cible = path.join(fournisseur.racine, 'articles', slug, 'media', relatif);
+  let existe = false;
+  try { existe = fs.statSync(cible).isFile(); } catch (e) { existe = false; }
+  if (!existe) { erreur(T('err.remplacement', [relatif])); return; }  // disparu entre-temps
+  const nomCible = path.basename(cible);
+  const nomSource = String(msg.nomFichier || '');
+  const ext = (nomSource.match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
+  if (EXTENSIONS_IMAGE_IMPORT.indexOf(ext) === -1) { erreur(T('importv.err.format')); return; }
+  const donnees = Buffer.from(String(msg.donneesBase64 || ''), 'base64');
+  if (donnees.length === 0) { erreur(T('importv.err.format')); return; }
+  if (donnees.length > TAILLE_MAX_IMAGE_IMPORT) { erreur(T('importv.err.tropvolumineux')); return; }
+  // Jamais d'écrasement silencieux : confirmation modale, renforcée si le format
+  // du fichier déposé diffère de la cible (risque R4) — comme remplacerAsset.
+  let detail = T('modale.remplacer.detail.image', [nomCible]);
+  if (formatImage(nomSource) !== formatImage(nomCible)) {
+    detail = T('modale.remplacer.detail.format', [formatImage(nomSource), formatImage(nomCible)]) + detail;
+  }
+  const reponse = await vscode.window.showWarningMessage(
+    T('modale.remplacer.question', [nomCible, nomSource]),
+    { modal: true, detail: detail },
+    T('modale.remplacer.bouton')
+  );
+  if (reponse !== T('modale.remplacer.bouton')) {
+    repondrePanneau(panneau, { type: 'image-annulee', slug: slug, relatif: relatif });
+    return;
+  }
+  try {
+    const tmp = path.join(path.dirname(cible), '~$' + nomCible);
+    try {
+      fs.writeFileSync(tmp, donnees);
+      fs.renameSync(tmp, cible);                   // même nom : lien du .md intact
+    } finally {
+      try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
+    }
+    vscode.window.setStatusBarMessage(T('statut.image.remplacee', [nomCible]), 5000);
+    repondrePanneau(panneau, { type: 'image-remplacee', slug: slug, relatif: relatif, description: decrireImage(cible) });
+  } catch (e) {
+    erreur(T('err.remplacement', [e.message]));
+  }
+  if (rafraichirTout) { rafraichirTout(); }        // « L × H · poids » de l'arbre à jour
+}
+
+// Ouvre (ou révèle + recharge) le dialogue pour les articles `slugs`. Pleine
+// page comme les autres formulaires (F5) : aperçus fermés d'abord.
+async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
+  if (!fournisseur.racine || !Array.isArray(slugs) || slugs.length === 0) { return; }
+  slugsImportVerif = slugs.slice();
+  await fermerTousLesApercus();
+  if (panneauImportVerif) {
+    panneauImportVerif.reveal(vscode.ViewColumn.One);
+    envoyerValeursImportVerif(panneauImportVerif, fournisseur);
+    return;
+  }
+  const panneau = vscode.window.createWebviewPanel(
+    'szhImportVerif', T('importv.titre'), vscode.ViewColumn.One,
+    { enableScripts: true, localResourceRoots: [] }
+  );
+  panneauImportVerif = panneau;
+  panneau.onDidDispose(() => { if (panneauImportVerif === panneau) { panneauImportVerif = null; } });
+  panneau.webview.html = htmlImportVerif(crypto.randomBytes(16).toString('hex'));
+  panneau.webview.onDidReceiveMessage(async (msg) => {
+    if (!msg) { return; }
+    if (msg.type === 'pret') { envoyerValeursImportVerif(panneau, fournisseur); return; }
+    // Modale photo (F3) : handlers génériques slug + index, réutilisés tels quels.
+    if (msg.type === 'photo-deposer') { await deposerPhotoAuteur(fournisseur, panneau, msg); return; }
+    if (msg.type === 'photo-ouvrir') { ouvrirVersionsPhoto(fournisseur, panneau, msg); return; }
+    if (msg.type === 'photo-choisir') { choisirPhotoAuteur(fournisseur, panneau, msg); return; }
+    if (msg.type === 'remplacer-image') { await remplacerImageImport(fournisseur, rafraichirTout, panneau, msg); return; }
+    if (msg.type === 'fermer') {
+      // Garde « non-enregistré » sur le chemin de fermeture que l'on contrôle
+      // (patron retourArticle de l'éditeur de tableau, D1) : Enregistrer /
+      // Quitter sans enregistrer / Esc = rester. La croix de l'onglet, elle,
+      // ne peut pas être interceptée (limite de l'API webview).
+      if (msg.modifie) {
+        const choix = await vscode.window.showWarningMessage(
+          T('importv.quitter.question'), { modal: true, detail: T('table.quitter.detail') },
+          T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
+        if (choix === undefined) { return; }                       // Annuler : on reste
+        if (choix === T('form.enregistrer')) {
+          const res = ecrireCartesArticles(fournisseur, msg.articles, slugsImportVerif);
+          if (res.erreurs.length > 0) {
+            repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [res.erreurs.join(', ')]) });
+            return;                                                // échec : on reste
+          }
+          vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000);
+          if (rafraichirTout) { rafraichirTout(); }
+        }
+      }
+      panneau.dispose();
+      return;
+    }
+    if (msg.type !== 'enregistrer' || !msg.articles) { return; }
+    const res = ecrireCartesArticles(fournisseur, msg.articles, slugsImportVerif);
+    if (res.erreurs.length > 0) {
+      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [res.erreurs.join(', ')]) });
+    } else {
+      repondrePanneau(panneau, { type: 'enregistre', n: res.n });
+      vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000);
+    }
+    if (rafraichirTout) { rafraichirTout(); }
+    envoyerValeursImportVerif(panneau, fournisseur);   // resynchronise (dirty + badges depuis le disque)
   });
 }
 
@@ -1375,6 +1992,8 @@ const REGL_TEXTES = () => JSON.stringify({
   zoom: T('regl.zoom'),
   zoomNormal: T('regl.zoom.normal'), zoomGrand: T('regl.zoom.grand'), zoomTresGrand: T('regl.zoom.tresgrand'),
   policeMd: T('regl.policemd'),
+  apercu: T('regl.apercu'),
+  apercuHtml: T('regl.apercu.html'), apercuPdf: T('regl.apercu.pdf'), apercuNote: T('regl.apercu.note'),
   langue: T('regl.langue'), langueNote: T('regl.langue.note')
 });
 
@@ -1422,7 +2041,13 @@ function lireReglagesActuels() {
   try {
     policeMd = Number(vscode.workspace.getConfiguration('editor', { languageId: 'markdown' }).get('fontSize', 16)) || 16;
   } catch (e) { /* repli 16 */ }
-  return { theme: etatTheme, zoom: String(zoom), policeMd: String(policeMd), langue: langueCockpit() };
+  // F8 : la valeur ÉCRITE de szh.apercuMode, pas modeApercu() — qui force « html »
+  // sur un profil sans PDF et masquerait le choix réel enregistré.
+  let apercu = 'html';
+  try {
+    apercu = String(vscode.workspace.getConfiguration('szh').get('apercuMode', 'html') || 'html') === 'pdf' ? 'pdf' : 'html';
+  } catch (e) { /* repli html */ }
+  return { theme: etatTheme, zoom: String(zoom), policeMd: String(policeMd), apercu: apercu, langue: langueCockpit() };
 }
 
 let panneauReglages = null;
@@ -1466,6 +2091,12 @@ function ouvrirReglages(rafraichirTout) {
         // Scopé [markdown] : la taille du CONTENU affiché, pas le contenu lui-même.
         await vscode.workspace.getConfiguration('editor', { languageId: 'markdown' })
           .update('fontSize', Number(msg.valeur) || 16, Global, true);
+      } else if (msg.cle === 'apercu') {
+        // F8 : l'aperçu par défaut au clic sur un article — même réglage que la
+        // bascule Ctrl+Alt+P / barre d'état (szh.apercuMode, lu par modeApercu()).
+        await vscode.workspace.getConfiguration('szh')
+          .update('apercuMode', msg.valeur === 'pdf' ? 'pdf' : 'html', Global);
+        if (rafraichirTout) { rafraichirTout(); } // la barre d'état « Aperçu : … » suit
       } else if (msg.cle === 'langue') {
         const langue = msg.valeur === 'de' ? 'de' : 'fr';
         await vscode.workspace.getConfiguration('szh').update('langue', langue, Global);
@@ -1591,16 +2222,17 @@ let panneauxTable = new Map();   // fsPath -> WebviewPanel (un éditeur par fich
 
 // Ouvre l'éditeur de tableau pour l'asset (viewItem == table) : lit table-NN.html,
 // l'analyse, et alimente la webview. Écrit atomiquement à l'enregistrement.
-function ouvrirEditeurTable(fournisseur, item) {
+async function ouvrirEditeurTable(fournisseur, item) {
   if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
   const chemin = item.cheminAsset;
   const nom = path.basename(chemin);
   const slugArticle = item.slug || apercuCourantSlug;
   // L'éditeur de tableau a besoin de largeur : la grille, plus deux colonnes de réglages.
-  // On ferme donc l'aperçu de l'ARTICLE (colonne 2) le temps de l'édition — les deux
-  // boutons « Voir dans l'aperçu » / « Cacher l'aperçu » de la barre le rouvrent et le
-  // referment à la demande. L'aperçu du tableau lui-même, c'est la grille : elle est là.
-  fermerApercuHtml();
+  // On ferme donc TOUS les aperçus le temps de l'édition (F5 — y compris l'onglet PDF,
+  // qui restait ouvert quand le mode d'aperçu était pdf) — les deux boutons « Voir dans
+  // l'aperçu » / « Cacher l'aperçu » de la barre rouvrent et referment l'aperçu HTML à
+  // la demande. L'aperçu du tableau lui-même, c'est la grille : elle est là.
+  await fermerTousLesApercus();
   const existant = panneauxTable.get(chemin);
   if (existant) { existant.reveal(vscode.ViewColumn.One); return; }
   const panneau = vscode.window.createWebviewPanel(
@@ -1715,7 +2347,11 @@ function activate(context) {
   const fournisseur = new FournisseurRevue();
   const vue = vscode.window.createTreeView(ID_VUE, {
     treeDataProvider: fournisseur,
-    showCollapseAll: false
+    showCollapseAll: false,
+    // F2 : déposer des .docx depuis l'Explorateur = « Importer des Word ».
+    // rafraichirTout est défini plus bas -> indirection (jamais appelé avant
+    // la fin de l'activation : un drop est forcément postérieur).
+    dragAndDropController: controleurDepotVue(fournisseur, () => rafraichirTout())
   });
   context.subscriptions.push(vue);
 
@@ -1788,6 +2424,7 @@ function activate(context) {
     vscode.commands.registerCommand('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.toutExporter', () => toutExporter(fournisseur, rafraichirTout)),
+    vscode.commands.registerCommand('szh.exporterXml', () => exporterXml(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.ouvrirArticle', (slug) => ouvrirArticle(fournisseur, slug)),
     vscode.commands.registerCommand('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
     vscode.commands.registerCommand('szh.remplacerAsset', (item) => remplacerAsset(fournisseur, rafraichirTout, item)),
@@ -1822,6 +2459,11 @@ function activate(context) {
     slugDepuisChemin: slugDepuisChemin,
     rafraichirTout: rafraichirTout
   });
+
+  // F1 — les trois panneaux de la barre (Commande / Édition / Export) : la barre de
+  // titre de la vue ne porte plus que ces trois boutons, le reste passe par eux
+  // (les commandes individuelles restent enregistrées — filet Ctrl+Maj+P).
+  enregistrerPanneaux(context);
 
   // F7 : au démarrage, si une revue est ouverte, l'init lente (réveil de la VM WSL —
   // le vrai coût, puis chargement de l'arbre) se fait derrière un indicateur de
@@ -1858,6 +2500,7 @@ module.exports = {
     separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
     analyserMeta, serialiserMeta, lignePos, plagePos, positionMot, jetonSource,
     analyserAusgabe, serialiserAusgabe,
+    nettoyerCarte, assainirCheminPhoto, decomposerPhoto, relatifImageValide,
     basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
     enroberBloc, squeletteTableau, blocReferenceTable, nomTableLibre,
     analyserTable, serialiserTable, disposition,

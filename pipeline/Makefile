@@ -5,9 +5,12 @@
 #
 # Structure de travail (D26) :  articles/<article>/<article>.md  + articles/<article>/media/
 # Sorties (D21)              :  out/<article>/<article>.pdf + <article>.html (autonome, images base64)
-# Import Word (D35)          :  import-docx.sh = pandoc nu + filters/szh-tabelle-platzhalter.lua
-#                               (chaque tableau -> {{TABELLE NN}}). Heuristiques D27-D30
-#                               débranchées dans pipeline/attic/ (réactivables, cf. git).
+# Import Word (D35, F6)      :  import-docx.sh = docx-meta.py (métadonnées ->
+#                               <slug>.meta.yaml + blocs consommés) puis docx-tables.py
+#                               (tables/*.html, D50) puis pandoc + filtres szh-meta ->
+#                               szh-legendes -> szh-titres -> szh-biblio -> szh-tabelle-
+#                               reference, et AnyStyle -> media/<slug>.bib (repli sans
+#                               perte : liste conservée dans le .md si AnyStyle échoue).
 #
 # ⚠ Aucun chemin /mnt/c codé en dur ici (portabilité macOS, PLANIFICATION.md §6).
 # ⚠ Conserver l'indentation par TABULATIONS et les fins de ligne LF.
@@ -87,6 +90,9 @@ PPTXS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).pptx)
 # spike M5 montre que ce reader ajoute des divs « wrapper » -> il ne doit PAS
 # nourrir WeasyPrint ; le PDF reste sur -f markdown, inchangé par construction).
 APERCUS    := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).apercu.html)
+# Galleys DOCX pour l'export OJS (F7) : régénérés depuis le HTML autonome, à la
+# demande seulement (cible `docx`) — ni `all` ni `tout-exporter` ne les produisent.
+DOCXS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).docx)
 
 # Accent des tableaux (.szh-tableau, D57) : accent-css.py lit la couleur annuelle
 # d'ausgabe.yaml et écrit un :root qui SURCHARGE les gris de repli de print.css.
@@ -101,7 +107,7 @@ ACCENT_ABS := $(abspath $(ACCENT_CSS))
 # Import Word (D35) — le .docx source est SUPPRIMÉ après conversion réussie (D39).
 WORD_DIR   := articles-word
 
-.PHONY: all pdf presentation import clean verifie-dossier tout-exporter \
+.PHONY: all pdf presentation docx import clean verifie-dossier tout-exporter \
         profil-rien profil-differe profil-inconnu
 .SECONDEXPANSION:
 
@@ -298,12 +304,26 @@ $(OUT)/%.pdf: $(OUT)/%.html
 	fi; \
 	mv -f "$$tmp" $@
 
-# Conversion des Word déposés dans articles-word/ (D12, D26, D35, D39) :
+# HTML autonome -> DOCX (F7) : galley Word de l'export OJS, RÉGÉNÉRÉ depuis le HTML
+# final (--embed-resources) et non depuis le .md — le reader html de pandoc comprend
+# les tableaux D47 réinjectés en HTML brut (colspan/rowspan) et les images data:,
+# que le writer docx nourri au .md perdrait. Produit à la demande (cible `docx`),
+# volontairement hors de `all` et de `tout-exporter`.
+$(OUT)/%.docx: $(OUT)/%.html
+	@echo "pandoc $< -> $@ (docx)"
+	@$(PANDOC) "$<" --from=html --to=docx --output="$@"
+
+docx: verifie-dossier $(DOCXS)
+
+# Conversion des Word déposés dans articles-word/ (D12, D26, D35, D39, F6) :
 #  - migre au passage les anciens articles « à plat » vers articles/<slug>/ ;
 #  - jamais d'écrasement d'un article existant (D12) ;
 #  - converti avec succès -> le .docx source est SUPPRIMÉ (D39, plus de _convertis/) ;
 #    « déjà converti (ignoré) » ou échec -> le .docx RESTE dans articles-word/ ;
-#  - import simplifié : structure pandoc nue + placeholders {{TABELLE NN}} (D35).
+#  - import-docx.sh branche docx-meta.py (F6) : métadonnées -> <slug>.meta.yaml
+#    (jamais écrasé), tableau des auteurs et lignes de tête consommés, bibliographie
+#    -> media/<slug>.bib via AnyStyle ; l'échec d'UN article déclenche le rollback
+#    rm -rf articles/<slug> ci-dessous, meta.yaml compris ;
 #  - .docx uniquement (D35 : un seul chemin d'import).
 import:
 	@set -u; \

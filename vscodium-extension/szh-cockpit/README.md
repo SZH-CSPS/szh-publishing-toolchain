@@ -10,8 +10,10 @@ dossier de revue (repéré par `ausgabe.yaml`), liste en **lecture seule** :
 
 La vue n'apparaît que si le dossier ouvert est une revue (présence d'`ausgabe.yaml`) ;
 un dossier quelconque ne montre aucune icône. La liste se rafraîchit automatiquement
-quand des fichiers changent (dépôt/retrait d'un Word, nouvel article) ; un bouton
-**Rafraîchir** est disponible en tête de vue.
+quand des fichiers changent (dépôt/retrait d'un Word, nouvel article) ; la commande
+« Rafraîchir la barre Revue » reste disponible en palette (Ctrl+Maj+P) en secours.
+En tête de vue, trois boutons ouvrent les **panneaux** Commande / Édition / Export
+(raccourcis `Ctrl+Alt+A` / `Ctrl+Alt+S` / `Ctrl+Alt+D`).
 
 La barre « Revue SZH » gère l'import Word, la compilation/aperçu, les métadonnées (numéro
 et articles), les tableaux et les images — sans quitter l'éditeur. Détail des gestes : le
@@ -34,6 +36,7 @@ lib/
   slug.js               slugifier (miroir du slug Makefile)
   wsl.js                dormeur WSL (N1)
   formatting.js         mise en forme markdown (toggles + commandes szh.fmt.* + palette)
+  panneaux.js           les trois panneaux QuickPick (Commande / Édition / Export)
   webviews/util.js      construireHtml/lireMedia : lit media/, inline (nonce + CSP stricte)
 media/
   table-editor.{html,css,js}      éditeur de tableau

@@ -107,17 +107,30 @@ Bumper la version → pousser le tag → la CI republie la Release. Les postes d
 ## Flux rédacteur (0 technique)
 1. Déposer les articles Word/LibreOffice **finalisés** dans le dossier **`articles-word`**.
 2. Ouvrir la revue (**« Ouvrir la revue »** dans le dossier, ou **« Revues SZH »** dans le menu Démarrer).
-3. Les Word sont convertis en Markdown dans **`articles`** (images récupérées, originaux archivés).
+3. Les Word sont convertis en Markdown dans **`articles`** (images récupérées, métadonnées
+   pré-détectées, Word source retiré une fois converti — D39).
 4. Écrire, puis **Ctrl + S** → chaque article est régénéré dans `out/<article>/` (PDF + HTML),
    en intégrant au passage tout nouveau Word déposé.
 
 La barre latérale **« Revue SZH »** (extension `szh-cockpit`, titre = numéro en cours, D43)
 rassemble ces gestes sans explorateur : **un clic sur un article** ouvre le texte, compile
-si besoin et affiche l'aperçu (D46) ; sections *Articles* / *Word en attente (n)* ; boutons
-**➕ Importer**, **▶▶ Convertir les Word en attente**, **⚙ Méta-données du numéro**
-(formulaire → `ausgabe.yaml`), **⬆ Tout exporter** (rebuild forcé, D44), **☰ Métadonnées des
-articles** (fiche cachée `<slug>.meta.yaml`, D49/D51 : type traduit, titre/sous-titre/
-mots-clés FR/DE + IT à la demande, auteurs structurés, DOI), **🗑 Supprimer
+si besoin et affiche l'aperçu (D46) ; sections *Articles* / *Word en attente (n)* ; en barre
+de titre, **trois boutons = trois panneaux** (QuickPick) : **🚀 Commande** (`Ctrl+Alt+A` —
+➕ Importer des Word, ▶▶ Convertir les Word en attente, ⚙ Méta-données du numéro : formulaire
+→ `ausgabe.yaml`, ☰ Métadonnées des articles : fiche cachée `<slug>.meta.yaml`, D49/D51 —
+type traduit, titre/sous-titre/mots-clés FR/DE + IT à la demande, auteurs structurés, DOI —
+et ⚙ Réglages SZH : thème, zoom, police, **aperçu par défaut HTML/PDF**, langue),
+**✏ Édition** (`Ctrl+Alt+S` — bascule d'aperçu `Ctrl+Alt+P` + palette de mise en forme) et
+**⬆ Export** (`Ctrl+Alt+D` — rebuild forcé, D44 ; **export XML natif OJS**, D93 : un seul
+fichier avec galleys PDF+HTML+DOCX en base64, prêt pour l'import OJS). Le
+bouton ⟳ Rafraîchir a quitté la barre (la vue se rafraîchit seule ; la commande reste via
+Ctrl+Maj+P). Les `.docx` peuvent être **glissés-déposés directement sur la vue** (D94) ;
+après conversion, le panneau **« Vérification de l'import »** s'ouvre : métadonnées
+détectées à relire (badges), **photos d'auteur·e·s** (traitement local WSL : recadrage
+visage + détourage + N&B 400×400, D91) et remplacement des images par leurs originaux.
+Le formulaire auteurs porte prénom, nom, fonction, affiliation, ORCID, e-mail et photo
+(D95) ; le PDF/HTML gagne un bloc « À propos des auteur·e·s » (D92). Au survol d'un
+article : **🗑 Supprimer
 l'article** (confirmation) ; par article déplié : **images** (dimensions + poids) et
 **tableaux** (`tables/*.html`, rendus par `docx-tables.py` à l'import — **fusions
 colspan/rowspan préservées**, D50 — et ré-injectés à la compilation, D47), chacun avec
@@ -141,7 +154,10 @@ Démarrer (D38). Voir [`userdoc.md`](userdoc.md).
 | `Tab` / `Maj+Tab` (dans un tableau) | Cellule suivante/précédente + formatage auto | markdowntable |
 | `Ctrl+Alt+V` | Coller un tableau depuis Excel/Word (**fusions préservées**) | szh-cockpit (D81) |
 | `Ctrl+Alt+Entrée` | Insérer un saut de page (**PDF seulement**) | szh-cockpit (D86) |
-| `Ctrl+Alt+S` | Ouvrir la palette « Mise en forme SZH » (gras, titres, blocs, figure, tableau) | szh-cockpit |
+| `Ctrl+Alt+A` | Panneau de **commande** (import, conversion, métadonnées, réglages) | szh-cockpit |
+| `Ctrl+Alt+S` | Panneau d'**édition** (bascule d'aperçu + toute la mise en forme) | szh-cockpit |
+| `Ctrl+Alt+D` | Panneau d'**export** (rebuild complet ; export XML natif OJS) | szh-cockpit |
+| `Ctrl+Alt+P` | Basculer l'aperçu HTML ⇄ PDF | szh-cockpit |
 | `Ctrl+Espace` | Suggestions (snippets `:::`) | VS Code (réactivé scope markdown) |
 | `Ctrl+Alt+I` | Importer les Word à la demande (`make import`) | keybindings + tâche user |
 | `Ctrl+E` / `Ctrl+Maj+B` | Relancer la compilation | keybindings / build par défaut |

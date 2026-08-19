@@ -352,7 +352,13 @@ const GROUPES_TYPES = {
   hors:    { fr: 'Hors dossier',               de: 'Ausserhalb des Schwerpunkts',     it: 'Fuori dossier' }
 };
 const LANGUES_META = ['fr', 'de', 'it'];   // fr + de affichées ; it activable par carte
-const CHAMPS_AUTEUR = ['prenom', 'nom', 'fonction', 'affiliation', 'orcid'];
+// Champs auteur (D91/D92) : prenom/nom + fonction/affiliation/orcid/email/photo
+// optionnels. `photo` = chemin RELATIF à l'article vers la version choisie
+// (portraits/<slug-auteur>.original.<ext> | .avec-fond.png | .sans-fond.png),
+// posé par la modale photo du cockpit — jamais saisi au clavier. Cet ordre est
+// l'ordre canonique de sérialisation : analyserMeta/serialiserMeta itèrent cette
+// constante, l'étendre ici suffit aux deux.
+const CHAMPS_AUTEUR = ['prenom', 'nom', 'fonction', 'affiliation', 'orcid', 'email', 'photo'];
 
 // Langue par défaut du numéro (D74), PURE : dérivée du choix de revue
 // (zeitschrift -> de, revue -> fr) ; à défaut de revue exploitable, la clé `lang`

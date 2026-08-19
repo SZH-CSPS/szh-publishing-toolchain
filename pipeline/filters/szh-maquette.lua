@@ -6,6 +6,10 @@
 -- Décisions couvertes :
 --   D71 — étiquette de dossier selon le type d'article.
 --   D74 — `revue` (choix fermé) -> nom + ISSN + langue par défaut.
+--   F4  — bloc « À propos des auteur·e·s » : par auteur, `orcid-url` (ORCID
+--         normalisé en URL cliquable) et `photo-alt` (texte alternatif du
+--         portrait, PDF/UA-1 D62) ; plus `auteurs-titre` (titre localisé,
+--         accordé en nombre).
 --
 -- Le titre du DOSSIER (ausgabe.yaml `title`) est écrasé dans Meta par le `title`
 -- (map de/fr/it) de l'article : Pandoc, à clé égale, garde le dernier fichier.
@@ -82,6 +86,29 @@ local TYPES_DOSSIER = { article = true, editorial = true, interview = true }
 
 local LABELS_RESUME = { de = 'Zusammenfassung', fr = 'Résumé', it = 'Riassunto' }
 local ORDRE_LANGUES = { 'de', 'fr', 'it' }
+
+-- F4 : bloc « À propos des auteur·e·s » — titre localisé, accordé en nombre
+-- (de/it PREMIER JET à valider par Robin), et préfixe du texte alternatif du
+-- portrait (PDF/UA-1, D62 : l'alt est obligatoire sur toute image).
+local TITRES_AUTEURS = {
+  un   = { fr = "À propos de l'auteur·e",  de = 'Zur Autorin / zum Autor',
+           it = "Sull'autrice / sull'autore" },
+  plus = { fr = 'À propos des auteur·e·s', de = 'Zu den Autorinnen und Autoren',
+           it = 'Sulle autrici e sugli autori' },
+}
+local ALT_PORTRAIT = { fr = 'Portrait de ', de = 'Porträt von ', it = 'Ritratto di ' }
+
+-- Élision française : « Portrait d'Alice », pas « Portrait de Alice ». Voyelles
+-- ASCII + Y, et voyelles majuscules accentuées (comparaison sur les 2 octets
+-- UTF-8). H volontairement exclu (les prénoms germaniques à h aspiré dominent).
+local VOYELLES_ACCENTUEES = {
+  ['À']=true, ['Â']=true, ['Ä']=true, ['É']=true, ['È']=true, ['Ê']=true,
+  ['Ë']=true, ['Î']=true, ['Ï']=true, ['Ô']=true, ['Ö']=true, ['Û']=true, ['Ü']=true,
+}
+local function elision_fr(nom)
+  if nom:match('^[AEIOUYaeiouy]') then return true end
+  return VOYELLES_ACCENTUEES[nom:sub(1, 2)] == true
+end
 
 -- Mention de licence CC-BY 4.0, localisée (couverture).
 local LICENCES = {
@@ -190,6 +217,33 @@ function Meta(meta)
         local p = S(a.prenom)
         nm = n
         if p ~= '' then nm = (n ~= '' and (n .. ', ' .. p) or p) end
+
+        -- F4 : variables dérivées PAR AUTEUR pour le bloc « À propos » (les
+        -- templates pandoc ne savent pas manipuler les chaînes ; on mute la
+        -- MetaMap de l'auteur, relue par le template via $author.…$).
+        local complet = p
+        if n ~= '' then complet = (p ~= '' and (p .. ' ') or '') .. n end
+        -- ORCID : le champ saisi peut être l'identifiant nu (0000-0002-…) ou
+        -- une URL complète -> URL canonique https://orcid.org/<ID> (X final en
+        -- majuscule). URL sans identifiant reconnaissable : reprise telle
+        -- quelle ; autre valeur : pas de lien (jamais de lien cassé).
+        local orcid = S(a.orcid)
+        if orcid ~= '' then
+          local id = orcid:match('(%d%d%d%d%-%d%d%d%d%-%d%d%d%d%-%d%d%d[%dxX])')
+          if id then
+            a['orcid-url'] = pandoc.MetaString('https://orcid.org/' .. id:upper())
+          elseif orcid:match('^https?://') then
+            a['orcid-url'] = pandoc.MetaString(orcid)
+          end
+        end
+        -- Texte alternatif du portrait (PDF/UA-1, D62), avec élision en français.
+        if S(a.photo) ~= '' then
+          local prefixe = ALT_PORTRAIT[lang] or ALT_PORTRAIT.fr
+          if prefixe == ALT_PORTRAIT.fr and elision_fr(complet) then
+            prefixe = "Portrait d'"
+          end
+          a['photo-alt'] = pandoc.MetaString(prefixe .. complet)
+        end
       else
         nm = S(a)
       end
@@ -197,5 +251,10 @@ function Meta(meta)
     end
   end
   meta['auteurs-noms'] = pandoc.MetaList(noms)
+  -- F4 : titre du bloc auteurs, localisé et accordé en nombre.
+  if #noms > 0 then
+    local forme = (#noms == 1) and TITRES_AUTEURS.un or TITRES_AUTEURS.plus
+    meta['auteurs-titre'] = pandoc.MetaString(forme[lang] or forme.fr)
+  end
   return meta
 end

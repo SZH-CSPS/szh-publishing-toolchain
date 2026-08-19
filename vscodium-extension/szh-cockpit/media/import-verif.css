@@ -1,3 +1,6 @@
+/* SZH cockpit — « Vérification de l'import » (F6). Base reprise de
+   metadata-articles.css (cartes, rangées d'auteur, modale photo), plus les
+   badges d'état, le compteur de champs vides et les rangées d'images. */
 body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
   color: var(--vscode-foreground); background: var(--vscode-editor-background);
   padding: 1rem 1.2rem; max-width: 46rem; }
@@ -5,7 +8,9 @@ h1 { font-size: 1.15em; font-weight: 600; margin: 0 0 .25rem; }
 p.note { color: var(--vscode-descriptionForeground); margin: 0 0 1rem; font-size: .88em; }
 .carte { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));
   border-radius: 4px; padding: .8rem 1rem 1rem; margin: 0 0 1rem; }
-.carte h2 { font-size: 1em; font-weight: 600; margin: 0 0 .2rem; font-family: var(--vscode-editor-font-family, monospace); }
+.carte h2 { font-size: 1em; font-weight: 600; margin: 0 0 .2rem;
+  font-family: var(--vscode-editor-font-family, monospace);
+  display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
 label { display: block; margin: .6rem 0 .2rem; font-weight: 600; font-size: .9em; }
 input, select, textarea { width: 100%; box-sizing: border-box; padding: .3em .5em; font: inherit;
   color: var(--vscode-input-foreground); background: var(--vscode-input-background);
@@ -32,6 +37,40 @@ button.photo.avec-photo { color: var(--vscode-charts-green, #2ea043);
   background: var(--vscode-inputValidation-warningBackground, rgba(204,167,0,.15));
   border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(204,167,0,.5));
   border-radius: 2px; padding: .25em .5em; margin: .15rem 0 .3rem; font-size: .88em; }
+/* ---- Badges d'état (F6) : « détecté » (rempli) / « à compléter » (vide). */
+.badge { margin-left: .5em; font-weight: normal; font-size: .75em;
+  padding: .02em .55em; border-radius: 999px; white-space: nowrap;
+  color: var(--vscode-charts-green, #2ea043); border: 1px solid currentColor; }
+.badge.vide { color: var(--vscode-charts-orange, #d18616); }
+.badge:empty { display: none; }               /* avant le premier calcul */
+.compteur { font-weight: normal; font-size: .78em; padding: .1em .6em;
+  border-radius: 999px; font-family: var(--vscode-font-family); white-space: nowrap;
+  color: var(--vscode-charts-green, #2ea043); border: 1px solid currentColor; }
+.compteur.vide { color: var(--vscode-charts-orange, #d18616); }
+.photos-note { color: var(--vscode-descriptionForeground); font-size: .85em; margin: .35rem 0 .1rem; }
+/* ---- Originaux des images (F6) : une rangée par image + zone de dépôt. */
+.carte h3 { font-size: .95em; font-weight: 600; margin: 1.1rem 0 .15rem;
+  padding-top: .6rem; border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,.25)); }
+.images-note, .images-aucune { color: var(--vscode-descriptionForeground);
+  font-size: .85em; margin: .15rem 0 .45rem; }
+.image-ligne { display: flex; gap: .8rem; align-items: center; margin: .4rem 0; }
+.image-infos { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: .12rem; }
+.image-nom { font-family: var(--vscode-editor-font-family, monospace); font-size: .9em;
+  overflow-wrap: anywhere; }
+.image-desc { color: var(--vscode-descriptionForeground); font-size: .82em; }
+.image-etat { font-size: .82em; min-height: 1em; color: var(--vscode-charts-green, #2ea043); }
+.image-etat.erreur { color: var(--vscode-errorForeground, #f14c4c); }
+.zone-image { flex: 0 0 auto; display: flex; align-items: center; gap: .5rem;
+  border: 2px dashed var(--vscode-panel-border, rgba(128,128,128,.6));
+  border-radius: 4px; padding: .45rem .7rem; font-size: .85em;
+  color: var(--vscode-descriptionForeground); }
+.zone-image.survol { border-color: var(--vscode-focusBorder);
+  background: var(--vscode-list-hoverBackground, rgba(128,128,128,.12));
+  color: var(--vscode-foreground); }
+.zone-image .ou { font-size: .9em; }
+.zone-image.survol > * { pointer-events: none; }  /* pas de dragleave parasite sur les enfants */
+.zone-image button { pointer-events: auto; }
+.image-ligne.occupe .zone-image { opacity: .5; pointer-events: none; }
 /* ---- Modale photo (F3) — overlay plein écran, aucune interaction derrière. */
 #voile { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 10;
   display: flex; align-items: center; justify-content: center; }
@@ -40,7 +79,7 @@ button.photo.avec-photo { color: var(--vscode-charts-green, #2ea043);
   border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.5)); border-radius: 4px;
   padding: 1rem 1.2rem 1.1rem; width: min(30rem, calc(100vw - 3rem));
   max-height: calc(100vh - 3rem); overflow-y: auto; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
-.modale h3 { margin: 0 0 .7rem; font-size: 1.05em; font-weight: 600; }
+.modale h3 { margin: 0 0 .7rem; font-size: 1.05em; font-weight: 600; border: none; padding: 0; }
 .zone-depot { border: 2px dashed var(--vscode-panel-border, rgba(128,128,128,.6));
   border-radius: 4px; padding: 1rem; text-align: center;
   color: var(--vscode-descriptionForeground); }
@@ -66,5 +105,6 @@ button.photo.avec-photo { color: var(--vscode-charts-green, #2ea043);
 button:disabled { opacity: .5; cursor: default; }
 .barre { position: sticky; top: 0; background: var(--vscode-editor-background);
   padding: .4rem 0 .6rem; margin-bottom: .6rem; z-index: 1; }
+#fermer { margin-left: .6rem; }
 #etat { margin-left: .8rem; font-size: .92em; color: var(--vscode-descriptionForeground); }
-.modifie h2::after { content: " ●"; color: var(--vscode-charts-orange, orange); }
+.modifie h2 .nom-carte::after { content: " ●"; color: var(--vscode-charts-orange, orange); }

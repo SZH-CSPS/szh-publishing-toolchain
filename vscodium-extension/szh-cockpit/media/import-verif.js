@@ -1,3 +1,11 @@
+// SZH cockpit — webview « Vérification de l'import » (F6). Copie adaptée du
+// formulaire « Métadonnées des articles » (metadata-articles.js) : même gabarit
+// de carte, même modale photo, mêmes messages photo-*. En plus : badges d'état
+// par champ (« détecté » = rempli / « à compléter » = vide), compte des champs
+// vides en tête de carte, bouton « Fermer » gardé (l'hôte confirme si des
+// modifications ne sont pas enregistrées) et section « Originaux des images »
+// (dépôt drag & drop / bouton fichier -> remplacement par l'hôte, nom conservé).
+// Données par postMessage uniquement (CSP stricte, img-src data:).
 (function () {
   'use strict';
   const TXT = __TXT__;
@@ -10,7 +18,72 @@
   // Gardes photo (F3) — mêmes bornes que l'hôte (défense en profondeur).
   const TAILLE_MAX_PHOTO = 20 * 1024 * 1024;
   const EXTENSIONS_PHOTO = ['png', 'jpg', 'jpeg', 'webp'];
-  function marquer(carte, slug) { modifies.add(slug); carte.classList.add('modifie'); etat.textContent = ''; }
+  // Gardes images (F6) — mêmes bornes que l'hôte (remplacer-image).
+  const TAILLE_MAX_IMAGE = 50 * 1024 * 1024;
+  const EXTENSIONS_IMAGE = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
+  function marquer(carte, slug) {
+    modifies.add(slug);
+    carte.classList.add('modifie');
+    etat.textContent = '';
+    majBadges(carte);
+  }
+
+  // >>> pur : listeChampsVides — sélection des champs suivis par les badges.
+  // Entrée : l'objet valeurs d'une carte (forme de collecter()/analyserMeta) et
+  // l'état de la case « + Italien ». Sortie : identifiants des champs vides
+  // (type, title.<lg>, subtitle.<lg>, resume.<lg>, doi, keywords.<lg>, auteurs).
+  // Sans DOM — extraite telle quelle par le harnais headless.
+  function listeChampsVides(valeurs, avecIt) {
+    const v = valeurs || {};
+    const langues = avecIt ? ['fr', 'de', 'it'] : ['fr', 'de'];
+    const plein = function (s) { return String(s === undefined || s === null ? '' : s).trim() !== ''; };
+    const vides = [];
+    if (!plein(v.type)) { vides.push('type'); }
+    for (const cle of ['title', 'subtitle', 'resume']) {
+      for (const lg of langues) {
+        if (!plein((v[cle] || {})[lg])) { vides.push(cle + '.' + lg); }
+      }
+    }
+    if (!plein(v.doi)) { vides.push('doi'); }
+    for (const lg of langues) {
+      const liste = (v.keywords || {})[lg];
+      if (!Array.isArray(liste) || !liste.some(plein)) { vides.push('keywords.' + lg); }
+    }
+    const auteurs = Array.isArray(v.author) ? v.author : [];
+    const champs = ['prenom', 'nom', 'fonction', 'affiliation', 'orcid', 'email'];
+    const unAuteur = auteurs.some(function (a) {
+      return a && champs.some(function (c) { return plein(a[c]); });
+    });
+    if (!unAuteur) { vides.push('auteurs'); }
+    return vides;
+  }
+  // <<< pur
+
+  // Badge d'état d'un champ, ancré DANS son <label> (il suit la visibilité des
+  // champs IT). Texte et classe posés par majBadges.
+  function creerBadge(champId) {
+    const b = document.createElement('span');
+    b.className = 'badge';
+    b.dataset.champ = champId;
+    return b;
+  }
+
+  // Recalcule tous les badges + le compteur de la carte à partir des VALEURS
+  // COURANTES (mêmes objets que l'enregistrement : collecter()) — l'état suit
+  // la saisie en direct, pas seulement le contenu initial du .meta.yaml.
+  function majBadges(carte) {
+    const vides = new Set(listeChampsVides(collecter(carte), carte.classList.contains('avec-it')));
+    for (const b of carte.querySelectorAll('.badge')) {
+      const vide = vides.has(b.dataset.champ);
+      b.textContent = vide ? TXT.badgeAcompleter : TXT.badgeDetecte;
+      b.classList.toggle('vide', vide);
+    }
+    const compteur = carte.querySelector('.compteur');
+    if (compteur) {
+      compteur.textContent = vides.size > 0 ? TXT.vides.split('{0}').join(vides.size) : TXT.videsZero;
+      compteur.classList.toggle('vide', vides.size > 0);
+    }
+  }
 
   // Icônes SVG inline (currentColor, ~14 px) — chemins CONSTANTS posés en DOM
   // (createElementNS, jamais d'innerHTML), cohérents poubelle/appareil photo.
@@ -35,6 +108,7 @@
   function champTexte(carte, parent, slug, cle, langue, libelle, valeur, multiligne) {
     const l = document.createElement('label');
     l.textContent = libelle;
+    l.appendChild(creerBadge(langue ? cle + '.' + langue : cle));
     const i = document.createElement(multiligne ? 'textarea' : 'input');
     if (multiligne) { i.rows = 3; } else { i.type = 'text'; }
     i.value = valeur || '';
@@ -282,6 +356,121 @@
     lecteur.readAsDataURL(f);
   }
 
+  // ---- Originaux des images (F6) — une rangée par image de media/, avec zone de
+  // dépôt + bouton fichier. Le REMPLACEMENT est fait par l'hôte (confirmation
+  // modale côté éditeur, nom conservé) ; ici on ne fait que lire le fichier
+  // déposé (base64) et refléter l'état de la rangée (occupée / remplacée / erreur).
+  function poserEtatImage(ligne, texte, estErreur) {
+    const e = ligne.querySelector('.image-etat');
+    if (!e) { return; }
+    e.textContent = texte || '';
+    e.classList.toggle('erreur', !!estErreur);
+  }
+
+  function envoyerImage(ligne, slug, relatif, f) {
+    if (ligne.classList.contains('occupe')) { return; }
+    const ext = (String(f.name || '').match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
+    if (EXTENSIONS_IMAGE.indexOf(ext) === -1) { poserEtatImage(ligne, '⚠ ' + TXT.errImageFormat, true); return; }
+    if (f.size > TAILLE_MAX_IMAGE) { poserEtatImage(ligne, '⚠ ' + TXT.errImageTropVolumineuse, true); return; }
+    const lecteur = new FileReader();
+    lecteur.onload = function () {
+      const texte = String(lecteur.result || '');
+      const virgule = texte.indexOf(',');
+      if (virgule === -1) { poserEtatImage(ligne, '⚠ ' + TXT.errImageFormat, true); return; }
+      ligne.classList.add('occupe');               // levée par la réponse de l'hôte
+      poserEtatImage(ligne, '…');
+      vscodeApi.postMessage({
+        type: 'remplacer-image', slug: slug, relatif: relatif,
+        nomFichier: f.name, donneesBase64: texte.slice(virgule + 1)
+      });
+    };
+    lecteur.readAsDataURL(f);
+  }
+
+  function ligneImage(slug, zone, image) {
+    const ligne = document.createElement('div');
+    ligne.className = 'image-ligne';
+    ligne.dataset.relatif = image.relatif;
+    const infos = document.createElement('div');
+    infos.className = 'image-infos';
+    const nom = document.createElement('span');
+    nom.className = 'image-nom';
+    nom.textContent = image.relatif;
+    infos.appendChild(nom);
+    const desc = document.createElement('span');
+    desc.className = 'image-desc';
+    desc.textContent = image.description || '';
+    infos.appendChild(desc);
+    const etatImage = document.createElement('span');
+    etatImage.className = 'image-etat';
+    infos.appendChild(etatImage);
+    ligne.appendChild(infos);
+    const depot = document.createElement('div');
+    depot.className = 'zone-image';
+    const consigne = document.createElement('span');
+    consigne.textContent = TXT.imageDeposer;
+    depot.appendChild(consigne);
+    const ou = document.createElement('span');
+    ou.className = 'ou';
+    ou.textContent = TXT.photoOu;
+    depot.appendChild(ou);
+    const choisir = document.createElement('button');
+    choisir.type = 'button';
+    choisir.textContent = TXT.photoChoisirFichier;
+    depot.appendChild(choisir);
+    const fichier = document.createElement('input');
+    fichier.type = 'file';
+    fichier.accept = '.png,.jpg,.jpeg,.gif,.svg';
+    fichier.hidden = true;
+    depot.appendChild(fichier);
+    choisir.addEventListener('click', function () { fichier.click(); });
+    fichier.addEventListener('change', function () {
+      if (fichier.files && fichier.files[0]) { envoyerImage(ligne, slug, image.relatif, fichier.files[0]); }
+      fichier.value = '';
+    });
+    depot.addEventListener('dragover', function (e) { e.preventDefault(); depot.classList.add('survol'); });
+    depot.addEventListener('dragleave', function () { depot.classList.remove('survol'); });
+    depot.addEventListener('drop', function (e) {
+      e.preventDefault();
+      depot.classList.remove('survol');
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) { envoyerImage(ligne, slug, image.relatif, f); }
+    });
+    ligne.appendChild(depot);
+    zone.appendChild(ligne);
+  }
+
+  function sectionImages(carte, slug, images) {
+    const h3 = document.createElement('h3');
+    h3.textContent = TXT.sectionImages;
+    carte.appendChild(h3);
+    if (!Array.isArray(images) || images.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'images-aucune';
+      p.textContent = TXT.imagesAucune;
+      carte.appendChild(p);
+      return;
+    }
+    const note = document.createElement('p');
+    note.className = 'images-note';
+    note.textContent = TXT.imagesNote;
+    carte.appendChild(note);
+    const zone = document.createElement('div');
+    zone.className = 'images';
+    carte.appendChild(zone);
+    for (const image of images) { ligneImage(slug, zone, image); }
+  }
+
+  // Rangée d'image visée par une réponse de l'hôte (slug + relatif recontrôlés —
+  // jamais de sélecteur construit sur une valeur libre).
+  function trouverLigneImage(slug, relatif) {
+    for (const ligne of conteneur.querySelectorAll('.image-ligne')) {
+      const carte = ligne.closest('.carte');
+      if (carte && carte.dataset.slug === slug && ligne.dataset.relatif === relatif) { return ligne; }
+    }
+    return null;
+  }
+
   function rendre(articles) {
     if (ctx) { fermerModale(); }                   // re-rendu : la rangée visée n'existe plus
     conteneur.textContent = '';
@@ -291,7 +480,13 @@
       carte.className = 'carte';
       carte.dataset.slug = article.slug;
       const titre = document.createElement('h2');
-      titre.textContent = article.slug;
+      const nomCarte = document.createElement('span');
+      nomCarte.className = 'nom-carte';
+      nomCarte.textContent = article.slug;
+      titre.appendChild(nomCarte);
+      const compteur = document.createElement('span');
+      compteur.className = 'compteur';
+      titre.appendChild(compteur);
       carte.appendChild(titre);
       const v = article.valeurs || {};
       const avecIt = ['title', 'subtitle', 'resume'].some(function (c) { return v[c] && v[c].it; }) ||
@@ -299,6 +494,7 @@
       if (avecIt) { carte.classList.add('avec-it'); }
       const lType = document.createElement('label');
       lType.textContent = TXT.type;
+      lType.appendChild(creerBadge('type'));
       carte.appendChild(lType);
       const selection = document.createElement('select');
       selection.dataset.cle = 'type';
@@ -345,6 +541,7 @@
       }
       const lAuteurs = document.createElement('label');
       lAuteurs.textContent = TXT.auteurs;
+      lAuteurs.appendChild(creerBadge('auteurs'));
       carte.appendChild(lAuteurs);
       const zone = document.createElement('div');
       zone.className = 'auteurs';
@@ -355,6 +552,11 @@
       ajouter.textContent = TXT.ajouterAuteur;
       ajouter.addEventListener('click', function () { ligneAuteur(carte, article.slug, zone, null); marquer(carte, article.slug); });
       carte.appendChild(ajouter);
+      // Section 2 (photos) : les boutons 📷 des rangées d'auteur — un rappel suffit.
+      const notePhotos = document.createElement('p');
+      notePhotos.className = 'photos-note';
+      notePhotos.textContent = TXT.photosNote;
+      carte.appendChild(notePhotos);
       champTexte(carte, carte, article.slug, 'doi', null, 'DOI', v.doi);
       for (const lg of langues) {
         champTexte(carte, carte, article.slug, 'keywords', lg, TXT.motsCles.split('{0}').join(nomsLangues[lg]), ((v.keywords || {})[lg] || []).join(', '));
@@ -368,9 +570,13 @@
       caseIt.appendChild(document.createTextNode(TXT.italien));
       coche.addEventListener('change', function () {
         carte.classList.toggle('avec-it', coche.checked);
+        majBadges(carte);                          // les champs IT (dé)comptent
       });
       carte.appendChild(caseIt);
+      // Section 3 : originaux des images de articles/<slug>/media/.
+      sectionImages(carte, article.slug, article.images || []);
       conteneur.appendChild(carte);
+      majBadges(carte);                            // état initial : détecté / à compléter
     }
   }
   function collecter(carte) {
@@ -394,13 +600,22 @@
     }
     return resultat;
   }
-  document.getElementById('enregistrer').addEventListener('click', function () {
-    if (modifies.size === 0) { etat.textContent = TXT.rien; return; }
+  function cartesModifiees() {
     const envoi = {};
     for (const carte of conteneur.querySelectorAll('.carte')) {
       if (modifies.has(carte.dataset.slug)) { envoi[carte.dataset.slug] = collecter(carte); }
     }
-    vscodeApi.postMessage({ type: 'enregistrer', articles: envoi });
+    return envoi;
+  }
+  document.getElementById('enregistrer').addEventListener('click', function () {
+    if (modifies.size === 0) { etat.textContent = TXT.rien; return; }
+    vscodeApi.postMessage({ type: 'enregistrer', articles: cartesModifiees() });
+  });
+  // « Fermer » : l'hôte décide (modale « modifications non enregistrées » si
+  // besoin, patron retourArticle) — on lui passe l'état dirty ET les cartes
+  // modifiées pour qu'« Enregistrer » depuis la modale soit possible.
+  document.getElementById('fermer').addEventListener('click', function () {
+    vscodeApi.postMessage({ type: 'fermer', modifie: modifies.size > 0, articles: cartesModifiees() });
   });
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
@@ -438,8 +653,24 @@
       poserNote(msg.message || '?', true);
       majApercu();
     }
+    // Réponses du remplacement d'image : la rangée est retrouvée par slug +
+    // chemin relatif (une réponse pour une rangée disparue est ignorée).
+    if (msg.type === 'image-remplacee' || msg.type === 'image-erreur' || msg.type === 'image-annulee') {
+      const ligne = trouverLigneImage(String(msg.slug || ''), String(msg.relatif || ''));
+      if (!ligne) { return; }
+      ligne.classList.remove('occupe');
+      if (msg.type === 'image-remplacee') {
+        const desc = ligne.querySelector('.image-desc');
+        if (desc && msg.description) { desc.textContent = msg.description; }
+        poserEtatImage(ligne, TXT.imageRemplacee, false);
+      } else if (msg.type === 'image-erreur') {
+        poserEtatImage(ligne, '⚠ ' + (msg.message || '?'), true);
+      } else {
+        poserEtatImage(ligne, '');                 // annulé : zone simplement réactivée
+      }
+    }
   });
-  // Un dépôt HORS de la zone prévue ne doit jamais « naviguer » la webview.
+  // Un dépôt HORS d'une zone prévue ne doit jamais « naviguer » la webview.
   document.addEventListener('dragover', function (e) { e.preventDefault(); });
   document.addEventListener('drop', function (e) { e.preventDefault(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && ctx) { fermerModale(); } });

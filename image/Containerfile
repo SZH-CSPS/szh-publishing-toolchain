@@ -56,6 +56,37 @@ RUN curl -fsSL "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION
     && dpkg -i /tmp/pandoc.deb \
     && rm /tmp/pandoc.deb
 
+# --- Portraits (F4) : venv isolé /opt/portraits — rembg (détourage) + OpenCV
+# YuNet (détection de visage) pour pipeline/portraits.py. Le pipeline ne passe
+# PAS par le Makefile : le cockpit appelle directement
+#   /opt/portraits/bin/python .../pipeline/portraits.py
+# Épinglage COMPLET (transitif) via requirements-portraits.txt (même principe
+# que le venv WeasyPrint ci-dessus ; régénération : voir son en-tête). Le test
+# de fumée échoue au build si une bibliothèque système manque aux roues pip.
+COPY requirements-portraits.txt /tmp/requirements-portraits.txt
+RUN python3 -m venv /opt/portraits \
+    && /opt/portraits/bin/pip install --no-cache-dir -r /tmp/requirements-portraits.txt \
+    && rm /tmp/requirements-portraits.txt \
+    && /opt/portraits/bin/python -c "import cv2, rembg, PIL"
+
+# Modèles ONNX téléchargés AU BUILD et vérifiés par sha256 : AUCUN téléchargement
+# au runtime (portraits.py pose U2NET_HOME=/opt/portraits/models, où rembg
+# retrouve u2net_human_seg.onnx « à plat » sans re-télécharger).
+# YuNet : opencv_zoo stocke ses modèles en git-lfs — l'URL raw ne livre qu'un
+# pointeur ; on passe par media.githubusercontent.com, épinglé sur un COMMIT
+# (contenu immuable). Le sha256 attendu est aussi l'oid du pointeur LFS.
+ARG U2NET_URL=https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net_human_seg.onnx
+ARG U2NET_SHA256=01eb6a29a5c4d8edb30b56adad9bb3a2a0535338e480724a213e0acfd2d1c73c
+ARG YUNET_URL=https://media.githubusercontent.com/media/opencv/opencv_zoo/f12e12798e8314f7c074a6656816c048dcc95b7a/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
+ARG YUNET_SHA256=8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4
+RUN mkdir -p /opt/portraits/models \
+    && curl -fsSL "${U2NET_URL}" -o /opt/portraits/models/u2net_human_seg.onnx \
+    && curl -fsSL "${YUNET_URL}" -o /opt/portraits/models/face_detection_yunet_2023mar.onnx \
+    && printf '%s  %s\n' \
+        "${U2NET_SHA256}" /opt/portraits/models/u2net_human_seg.onnx \
+        "${YUNET_SHA256}" /opt/portraits/models/face_detection_yunet_2023mar.onnx \
+       | sha256sum -c -
+
 # --- Utilisateur par défaut (imported distro lit /etc/wsl.conf [user] default) ---
 RUN useradd -m -s /bin/bash "${WSL_USER}"
 

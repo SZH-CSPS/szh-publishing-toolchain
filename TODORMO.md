@@ -1,6 +1,86 @@
-# Todo Robin (mis à jour le 2026-08-13, après la palette en grille et P6)
+# Todo Robin (mis à jour le 2026-08-19, après la vague 1 des features F1–F8)
 
-## Validations qui demandent un humain
+## Validations qui demandent un humain — lot F1/F5/F8 + portraits + export OJS (D88–D93)
+
+- [ ] **Barre épurée (D88)** : ouvrir une revue → la vue « Revue SZH » ne montre que 3 boutons
+  (🚀 ✏ ⬆), tooltips FR ; en VSCodium DE, tooltips DE. Ctrl+Maj+P → « Rafraîchir la barre
+  Revue » fonctionne toujours (bouton retiré, commande conservée).
+- [ ] **Panneau Commande** (`Ctrl+Alt+A` et clic) : les 5 entrées ouvrent bien importer /
+  convertir / méta-données numéro / métadonnées articles / réglages.
+- [ ] **Panneau Édition** (`Ctrl+Alt+S`) : depuis un `.md`, chaque action s'applique à la
+  sélection ; depuis un non-`.md`, une action de mise en forme → message « Ouvrez un
+  article… », mais « Basculer l'aperçu » fonctionne. Vérifier aussi `Ctrl+Alt+S` dans un
+  `.md` **hors** revue. Le clic droit → « Mise en forme » reste la palette pure, inchangée.
+- [ ] **Panneau Export** (`Ctrl+Alt+D`) : « Recompiler toute la revue » lance le rebuild ;
+  l'entrée « Exporter en XML (OJS) » doit être **présente** (la commande est livrée).
+- [ ] **F5 pleine page (D89)** : article ouvert avec aperçu PDF à droite → « Méta-données du
+  numéro » : l'onglet PDF se ferme. Idem en mode HTML, idem via un aperçu ouvert par
+  szh-apercu (Ctrl+S). Rejouer avec « Métadonnées des articles » déjà ouvert en arrière-plan
+  (le reveal doit fermer les aperçus d'abord). Éditeur de tableau : ouverture = tout se ferme ;
+  « Voir le tableau dans l'aperçu » rouvre et scrolle ; « Cacher l'aperçu » referme.
+- [ ] **F8 (D90)** : Réglages SZH → radio « Aperçu par défaut » reflète l'état courant ;
+  passer sur PDF → barre d'état « Aperçu : PDF » immédiate, prochain clic d'article ouvre le
+  PDF ; `Ctrl+Alt+P` bascule ; radio resynchronisée à la réouverture des réglages.
+- [ ] **Raccourcis `Ctrl+Alt+A/S/D/P`** sur clavier suisse FR et DE (collision AltGr à
+  confirmer physiquement).
+- [ ] **Portraits (D91) — vraies photos** : le test automatique n'a couvert qu'un visage
+  synthétique. À valider sur de vraies photos : visages non frontaux, lunettes, groupes,
+  contre-jour, photo très serrée (padding), photo sans visage (fallback). Vérifier le rendu
+  N&B 400×400 des deux versions.
+- [ ] **Bloc auteurs (D92)** : jugement visuel sur un article réel (taille de la pastille
+  ORCID, wording du titre) ; les libellés DE/IT du bloc sont un PREMIER JET à relire.
+- [ ] **Taille du rootfs (D91)** : venv portraits ≈ 735 Mo + modèle 168 Mo (weasyprint : 80 Mo).
+  Accepter, ou épingler un rembg plus ancien sans scikit-image/numba (re-freeze à faire).
+  Premier build CI du Containerfile = la preuve finale (pas de podman local pour l'essai).
+- [ ] **Export OJS (D93)** : import d'essai du XML généré dans un OJS de test (ou le vrai,
+  numéro dépublié) — rubriques rattachées, galleys téléchargeables, résumés/mots-clés, et ce
+  qu'OJS fait **sans email d'auteur**. ⚠ `genre`/`uploader`/`user_group_ref` sont rattachés
+  par NOM (constantes en tête d'export-ojs.js) : valables pour le journal FR observé, à
+  vérifier pour la Zeitschrift (DE). Un XML de production fera 30-50 Mo : la limite d'upload
+  PHP peut imposer l'import CLI d'OJS.
+- [ ] **DOCX régénérés (D93)** : ouvrir un `out/<slug>/<slug>.docx` dans Word — tableaux
+  fusionnés, images, bibliographie. ⚠ Les SVG de la maquette sont perdus (« rsvg-convert is
+  not in path ») : ajouter `librsvg2-bin` au rootfs si ça se voit.
+- [ ] **Drop de .docx (D94)** : tirer depuis l'Explorateur Windows sur la vue « Revue SZH » —
+  1 fichier, plusieurs, conflit (→ modale Remplacer/Ignorer), mélange avec des non-docx
+  (→ message « seuls les .docx… »), drop de texte (→ rien). Confirmer que le `text/uri-list`
+  externe marche sur le VSCodium déployé (API ≥ 1.66).
+- [ ] **Modale photo (D95) — bout-en-bout sur un poste à jour** (rootfs avec `/opt/portraits`
+  ET toolkit avec `portraits.py`) : dépôt → 3 versions → Valider → Enregistrer → `photo:`
+  dans le meta.yaml → bloc « À propos » visible dans le PDF. Réouverture = radio
+  présélectionnée ; redépôt .jpg après .png ; photo « trop serrée » (note padding) ; image
+  sans visage (note + recadrage centré). Icônes poubelle/photo et damier de transparence
+  lisibles en thème clair ET sombre ; console webview sans erreur CSP.
+- [ ] **Sans WSL / distro absente (D95)** : la modale affiche une erreur propre, pas de
+  blocage ni de « Chargement… » figé.
+- [ ] **E-mail d'auteur → export OJS** : saisir un email dans le formulaire, exporter le XML,
+  vérifier `<email>` dans le bloc auteur.
+- [ ] **Dialogue de vérification d'import (F6)** : importer un vrai .docx → le panneau
+  s'ouvre seul (plus de simple notification) ; badges « détecté / à compléter » conformes au
+  meta.yaml, compteur recalculé à la saisie et au « + Italien » ; Enregistrer → fiche
+  réécrite (clés inconnues préservées) ; modale photo de bout en bout depuis le dialogue ;
+  remplacement d'image par drop ET par bouton (confirmation, nom conservé, description
+  rafraîchie, > 50 Mo refusé, refus pendant build/import) ; Fermer avec modifications →
+  modale ; deuxième conversion panneau ouvert → reveal + recharge (les saisies non
+  enregistrées de la vague précédente sont perdues — même logique que le formulaire) ;
+  0 nouveau → notification classique ; tout rejouer en DE ; console webview sans
+  violation CSP. ⚠ La croix de l'onglet ne passe pas par la garde « non enregistré »
+  (limite API webview, comme l'éditeur de tableau).
+- [ ] **Convertisseur (D96/D97) — relecture humaine d'un échantillon** : compiler et relire
+  1 article FR + 1 DE + 1 éditorial + 1 « Actualité et ressources » convertis depuis
+  tmp/docx-dev (le tableau complet des 64 est dans `tmp/rapport-calibration-f6.md`) :
+  corps sans perte, titres aux bons niveaux, résumés/mots-clés dans la bonne langue,
+  bibliographie rendue par citeproc sous son titre. Points connus à repérer : 2 cas
+  prénom/nom inversés dans la source, seconds prénoms rangés dans `nom`,
+  fonction/affiliation parfois fusionnées — se corrigent au formulaire.
+- [ ] **Citations (D97)** : décider si la liaison des citations (`szh-citations`, 72,6 %
+  auto) devient une action supervisée du cockpit — NE PAS l'activer à l'import.
+- [ ] **Charts/SmartArt Word** : 4 légendes orphelines dans le corpus (pandoc ne convertit
+  pas ces objets) — fournir les images via le dialogue d'import (zone « originaux »).
+- [ ] **Types `interview`** : non détectables automatiquement — requalifier à la main dans
+  le formulaire après import.
+
+## Validations qui demandent un humain (lots précédents)
 
 - [ ] **Scénarios GUI du lot M** : redémarrer VSCodium, puis vérifier l'aperçu HTML cliquable,
   le formulaire de métadonnées d'article, le menu de réglages, la bascule de langue.

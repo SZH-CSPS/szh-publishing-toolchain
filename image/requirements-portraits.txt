@@ -1,0 +1,43 @@
+# Épinglage COMPLET (transitif) du venv /opt/portraits — traitement des photos
+# d'autrices/auteurs (F4 : pipeline/portraits.py). Même principe que le venv
+# WeasyPrint (D9) : rendu reproductible sur toute la flotte, tout bump est une
+# décision explicite.
+# Généré depuis la WSL réelle (Debian 13 / python 3.13, 2026-08-19) :
+#   python3 -m venv venv && venv/bin/pip install rembg onnxruntime opencv-python-headless pillow numpy
+#   venv/bin/pip freeze
+# Directs : rembg (détourage u2net_human_seg), onnxruntime (exécution CPU des
+# modèles ONNX), opencv-python-headless (détection de visage YuNet), pillow et
+# numpy (recadrage, padding, conversion 'LA'). Tout le reste est transitif —
+# rembg 2.0.81 tire notamment scikit-image/scipy/pymatting/numba (lourds mais
+# épinglés ; un bump de rembg se re-freeze depuis un venv propre).
+
+attrs==26.1.0
+certifi==2026.7.22
+charset-normalizer==3.5.1
+flatbuffers==25.12.19
+idna==3.19
+imageio==2.37.4
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+lazy-loader==0.5
+llvmlite==0.49.0
+networkx==3.6.1
+numba==0.67.0
+numpy==2.5.2
+onnxruntime==1.29.0
+opencv-python-headless==5.0.0.93
+packaging==26.3
+pillow==12.3.0
+platformdirs==4.11.3
+pooch==1.9.0
+protobuf==7.35.1
+pymatting==1.1.15
+referencing==0.37.0
+rembg==2.0.81
+requests==2.34.2
+rpds-py==2026.6.3
+scikit-image==0.26.0
+scipy==1.18.0
+tifffile==2026.8.16
+tqdm==4.70.0
+urllib3==2.7.0

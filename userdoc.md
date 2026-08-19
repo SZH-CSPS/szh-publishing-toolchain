@@ -98,26 +98,63 @@ Elle a **deux sections** :
   l'article existe déjà (renommer le fichier si c'est une nouvelle version).
   Après une conversion réussie, le fichier Word **disparaît de ce dossier** : l'article
   (`.md`) devient l'unique copie de travail — c'est voulu, plus de doublons.
+  **Nouveau : on peut aussi glisser-déposer des `.docx` directement sur la barre
+  « Revue SZH »** (depuis l'Explorateur ou le bureau) : ils sont copiés puis convertis,
+  exactement comme avec le bouton « Importer des Word ».
 
 Le **titre de la barre** affiche le numéro en cours (p. ex. « R2026-2 | Autodétermination »),
-mis à jour dès que les méta-données changent. En haut de la barre, cinq boutons :
+mis à jour dès que les méta-données changent. En haut de la barre, **trois boutons** —
+chacun ouvre un petit menu qui regroupe les actions (le raccourci clavier fait pareil,
+depuis n'importe où dans la revue) :
 
-- **➕ Importer des Word** — ouvre un sélecteur pour **choisir des `.docx` sur le disque** ;
-  ils sont copiés dans la revue puis convertis.
-- **⚙ Méta-données du numéro** — un petit formulaire (titre du dossier, nom de la revue,
-  volume, numéro, date, langue) ; **Enregistrer** met à jour la revue sans rien toucher
-  d'autre. Aucun fichier technique à ouvrir.
-- **⬆ Tout exporter** — régénère **tous** les PDF de la revue, même ceux à jour
-  (utile avant une livraison : tout est reconstruit proprement d'un coup).
-- **☰ Métadonnées des articles** — un formulaire qui liste **tous les articles** :
-  **type d'article** (menu déroulant, libellés dans la langue de la revue), titre,
-  sous-titre, **résumé** et mots-clés **en français et en allemand** (case « + Italien »
-  pour ajouter l'italien à un article), auteur(s) (prénom, nom, fonction, affiliation,
-  ORCID) et DOI. Le **résumé** (abrégé) se saisit ici — jamais dans le texte de l'article. Seuls les articles modifiés (●) sont réécrits à l'enregistrement.
-  Ces informations vivent dans une **fiche cachée** à côté de l'article (invisible
-  dans l'explorateur) — le texte de l'article n'est jamais touché, et la fiche ne
-  s'édite **que** par ce formulaire.
-- **⟳ Rafraîchir** — recharge la liste (utile si OneDrive a tardé à synchroniser).
+- **🚀 Commande** (`Ctrl+Alt+A`) — la gestion de la revue :
+  - **Importer des Word** — ouvre un sélecteur pour **choisir des `.docx` sur le disque** ;
+    ils sont copiés dans la revue puis convertis.
+  - **Convertir les Word en attente** — convertit d'un clic tous les Word déjà déposés.
+  - **Méta-données du numéro** — un petit formulaire (titre du dossier, nom de la revue,
+    volume, numéro, date, langue, couleur) ; **Enregistrer** met à jour la revue sans rien
+    toucher d'autre. Aucun fichier technique à ouvrir.
+  - **Métadonnées des articles** — un formulaire qui liste **tous les articles** :
+    **type d'article** (menu déroulant, libellés dans la langue de la revue), titre,
+    sous-titre, **résumé** et mots-clés **en français et en allemand** (case « + Italien »
+    pour ajouter l'italien à un article), auteur(s) (prénom, nom, fonction, affiliation,
+    ORCID, **e-mail**) et DOI. Le **résumé** (abrégé) se saisit ici — jamais dans le texte
+    de l'article. Seuls les articles modifiés (●) sont réécrits à l'enregistrement.
+    Ces informations vivent dans une **fiche cachée** à côté de l'article (invisible
+    dans l'explorateur) — le texte de l'article n'est jamais touché, et la fiche ne
+    s'édite **que** par ce formulaire.
+    Chaque auteur·e a deux petits boutons : une **poubelle** (retirer la ligne — rien
+    n'est effacé tant qu'on n'enregistre pas) et une **photo**. Le bouton photo ouvre
+    une fenêtre où l'on **dépose le portrait original** (glisser-déposer ou choisir un
+    fichier) : la photo est **traitée sur place** (recadrage sur le visage, noir et
+    blanc, 400 × 400 — même une photo très serrée passe, l'outil complète les bords
+    tout seul) et trois versions sont proposées — **originale**, **avec fond**, **sans
+    fond** (détourée). On choisit celle qui paraîtra dans le **bloc « À propos des
+    auteur·e·s »** en fin d'article (photo, nom, pastille ORCID, fonction, affiliation,
+    e-mail).
+  - **Réglages SZH** — thème, taille de l'interface et du texte, **aperçu par défaut**
+    (voir ci-dessous) et langue de l'interface.
+- **✏ Édition** (`Ctrl+Alt+S`) — la **bascule d'aperçu HTML ⇄ PDF** (`Ctrl+Alt+P`) et
+  toutes les actions de **mise en forme** (gras, titres, blocs, figure, tableau…) — les
+  mêmes que le clic droit → « Mise en forme », chaque raccourci rappelé à droite.
+- **⬆ Export** (`Ctrl+Alt+D`) — deux actions :
+  - **Recompiler toute la revue** : régénère **tous** les PDF, même ceux à jour (utile
+    avant une livraison : tout est reconstruit proprement d'un coup) ;
+  - **Exporter la revue en XML (OJS)** : fabrique **un seul fichier** `native-….xml` à la
+    racine de la revue, avec tout dedans (métadonnées du numéro et des articles, et pour
+    chaque article ses trois fichiers PDF, HTML et Word encodés dans le XML). Ce fichier
+    s'importe tel quel dans OJS (« Importation XML des articles et numéros »). La revue
+    est recompilée au passage ; les informations manquantes (résumé, DOI, e-mail…) sont
+    listées en avertissements, sans bloquer.
+
+L'**aperçu par défaut** (dans **Réglages SZH**) choisit ce qui s'affiche à droite au clic
+sur un article : l'aperçu **HTML** (cliquable — un clic dans l'aperçu amène au passage
+correspondant du texte) ou directement le **PDF**. `Ctrl+Alt+P` bascule à tout moment,
+sans passer par les réglages. Et quand un formulaire ou l'éditeur de tableau s'ouvre,
+les aperçus se ferment tout seuls : la page de travail occupe tout l'écran.
+
+La liste des articles se met à jour toute seule (plus de bouton « Rafraîchir » : si
+OneDrive tarde à synchroniser, la liste suit dès que les fichiers arrivent).
 
 À l'ouverture d'une revue, l'environnement de compilation démarre en arrière-plan et
 reste prêt : la première compilation n'a plus de temps de chauffe.
@@ -128,7 +165,8 @@ Et sur la section « Word en attente », un bouton :
   déposés dans le dossier (le cas le plus courant : on glisse les Word dans la revue via
   OneDrive, puis on clique ici).
 
-[capture : la barre avec son titre « R2026-2 | … » et les cinq boutons]
+[capture : la barre avec son titre « R2026-2 | … » et les trois boutons]
+[capture : le panneau « Commande » ouvert (menu déroulant)]
 [capture : la section « Word en attente (2) » avec le bouton « Convertir »]
 [capture : le formulaire « Méta-données du numéro »]
 [capture : le formulaire « Métadonnées des articles » (cartes par article)]
@@ -136,16 +174,35 @@ Et sur la section « Word en attente », un bouton :
 
 ### Le geste type
 
-1. Glisser les `.docx` finalisés dans le dossier **articles-word** de la revue (ou via **➕**).
-2. Dans la barre « Revue », cliquer **▶▶ Convertir les Word en attente** → une notification
-   « N article(s) importé(s) » confirme (les `.docx` convertis sont retirés du dossier).
-3. **Cliquer un article** : son texte s'ouvre à gauche et son PDF apparaît à droite
+1. **Glisser les `.docx` finalisés sur la barre « Revue SZH »** (ou dans le dossier
+   **articles-word**, ou via **🚀 Commande → Importer des Word**).
+2. La conversion démarre ; à la fin, le panneau **« Vérification de l'import »** s'ouvre
+   tout seul (voir ci-dessous). Les `.docx` convertis sont retirés du dossier.
+3. **Cliquer un article** : son texte s'ouvre à gauche et son aperçu apparaît à droite
    (compilé au passage si nécessaire). Ensuite, chaque **Ctrl + S** régénère l'aperçu.
+
+### La vérification de l'import
+
+Après chaque conversion, un panneau liste les **articles tout juste importés**, un par
+carte. Le convertisseur a déjà **pré-rempli ce qu'il a reconnu** dans le Word — titre,
+sous-titre, résumés, mots-clés, DOI, auteur(s) — et chaque champ porte un badge :
+**« détecté »** (à relire) ou **« à compléter »** (le compteur en tête de carte suit).
+C'est aussi là qu'on finit l'article proprement :
+
+- **les photos des auteur·e·s** : le même bouton photo que dans les métadonnées —
+  déposer l'original, choisir la version (sans fond, avec fond, originale) ;
+- **les originaux des images** : le Word ne contient souvent que des images compressées ;
+  chaque image de l'article a sa zone « Remplacer par l'original » (glisser-déposer le
+  fichier haute qualité — le nom est conservé, le texte n'a pas à changer).
+
+**Enregistrer** écrit les fiches ; **Fermer** prévient si des modifications ne sont pas
+enregistrées. Les articles restent modifiables plus tard par **☰ Métadonnées des articles**.
 
 ## Mettre en forme le texte
 
 Pas besoin de connaître le Markdown : **sélectionne du texte, puis clic droit →
-« Mise en forme »**. Le sous-menu propose (chaque raccourci y est rappelé) :
+« Mise en forme »** (ou `Ctrl+Alt+S` : le panneau d'édition propose les mêmes actions,
+plus la bascule d'aperçu). Le sous-menu propose (chaque raccourci y est rappelé) :
 
 - **Gras**, **Italique**, **Souligné** (`Ctrl+B`, `Ctrl+I`, `Ctrl+U`) ;
 - **Titre 1 / 2 / 3** (`Ctrl+Alt+1/2/3`) ;

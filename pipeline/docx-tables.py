@@ -25,6 +25,18 @@
 # stdlib UNIQUEMENT (zipfile, xml.etree) — aucun pip. Docx sans tableau :
 # n'écrit rien, sort 0. La numérotation suit l'ordre du document : elle doit
 # rester alignée avec szh-tabelle-reference.lua (RM2).
+#
+# Tableau des auteurs (F6/WS-D) : docx-meta.py consigne dans $SZH_META les lignes
+# « T<TAB>k » (k-ième tableau de premier niveau consommé -> author[] du meta.yaml).
+# Ces tableaux sont SAUTÉS ici (ni fichier, ni légende) et les tableaux restants
+# sont numérotés séquentiellement — la symétrie RM2 tient car szh-meta.lua retire
+# les MÊMES blocs Table avant que szh-tabelle-reference.lua ne compte les siens.
+#
+# Légendes (AX5 élargi, F6) : un paragraphe voisin est une légende s'il est tout en
+# gras (historique), OU stylé « légende » (Tabelle Beschriftung, Caption… — style
+# invisible pour pandoc, lu ici dans styles.xml), OU s'il commence par « Tableau N » /
+# « Tabelle N » AVEC séparateur ( : . — ) — le séparateur est exigé pour ne pas
+# prendre « Tableau 3 présente… » pour une légende.
 
 import os
 import re
@@ -34,6 +46,57 @@ import xml.etree.ElementTree as ET
 from html import escape
 
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
+WP = '{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}'
+R = '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}'
+
+# Images DANS les cellules (F6) : rendues en <img src="media/…"> — pandoc extrait
+# tous les médias du docx sous media/ en gardant leurs noms (word/media/imageN.ext),
+# la table HTML vit dans tables/ mais est réinjectée dans le document compilé DEPUIS
+# le dossier de l'article -> le chemin relatif media/… est le bon. Sans ce rendu,
+# une photo ou un exemple illustré dans un tableau disparaissait silencieusement.
+RELS_IMAGES = {}                              # rId -> media/imageN.ext
+
+
+def charger_rels(z):
+    """word/_rels/document.xml.rels : rId -> cible media/ (basename conservé)."""
+    rels = {}
+    try:
+        racine = ET.fromstring(z.read('word/_rels/document.xml.rels'))
+    except Exception:
+        return rels
+    ns = '{http://schemas.openxmlformats.org/package/2006/relationships}'
+    for rel in racine.iter(ns + 'Relationship'):
+        cible = rel.get('Target') or ''
+        if 'media/' in cible.replace('\\', '/'):
+            rels[rel.get('Id')] = 'media/' + os.path.basename(cible.replace('\\', '/'))
+    return rels
+
+
+def html_du_drawing(drawing):
+    """<img> d'un w:drawing (image bitmap) : src via les rels, alt du wp:docPr
+    (@descr), largeur wp:extent (EMU -> px, 9525 EMU/px) pour garder la mise en
+    page. Dessin sans image (formes, graphiques) : rien — pandoc les perd aussi."""
+    blip = drawing.find('.//' + A + 'blip')
+    if blip is None:
+        return ''
+    src = RELS_IMAGES.get(blip.get(R + 'embed') or '')
+    if not src:
+        return ''
+    alt = ''
+    doc_pr = drawing.find('.//' + WP + 'docPr')
+    if doc_pr is not None:
+        alt = doc_pr.get('descr') or ''
+    largeur = ''
+    extent = drawing.find('.//' + WP + 'extent')
+    if extent is not None:
+        try:
+            px = int(extent.get('cx', '0')) // 9525
+            if px > 0:
+                largeur = ' width="%d"' % px
+        except (TypeError, ValueError):
+            pass
+    return '<img src="%s" alt="%s"%s>' % (escape(src), escape(alt), largeur)
 
 
 def actif(prop):
@@ -45,7 +108,7 @@ def actif(prop):
 
 
 def texte_du_run(run):
-    """Texte d'un w:r, avec gras/italique, sauts <br>, texte échappé."""
+    """Texte d'un w:r, avec gras/italique, sauts <br>, images <img>, texte échappé."""
     morceaux = []
     for enfant in run:
         if enfant.tag == W + 't':
@@ -54,9 +117,13 @@ def texte_du_run(run):
             morceaux.append('<br>')
         elif enfant.tag == W + 'tab':
             morceaux.append(' ')
+        elif enfant.tag == W + 'drawing':
+            morceaux.append(html_du_drawing(enfant))
     texte = ''.join(morceaux)
     if not texte:
         return ''
+    if texte.startswith('<img') and texte.count('<') == 1:
+        return texte                          # image seule : pas de gras/italique autour
     rpr = run.find(W + 'rPr')
     if rpr is not None:
         if actif(rpr.find(W + 'i')):
@@ -146,6 +213,10 @@ def ligne_a_tblheader(tr):
 
 RE_NUM_TABLE = re.compile(
     r'^(?:tableau|tabelle|table)\s+\d+[a-z]?\s*[:.–—‑-]?\s*', re.I)
+# Variante STRICTE (voisin non gras, non stylé) : séparateur obligatoire après le
+# numéro — « Tabelle 1: … » est une légende, « Tableau 3 présente… » n'en est pas une.
+RE_NUM_TABLE_STRICT = re.compile(
+    r'^(?:tableau|tabelle|table)\s+\d+[a-z]?\s*[:.–—‑-]\s*', re.I)
 
 
 def normaliser(t):
@@ -355,10 +426,47 @@ def tableaux_de_premier_niveau(racine):
     return resultats
 
 
-def legende_de_table(parent, tbl, consommes):
-    """Cherche un paragraphe VOISIN (avant, puis après) tout en gras = légende.
-    Retourne (element_paragraphe, texte_pour_caption_nettoye) ou (None, None).
-    `consommes` = ids déjà pris (évite qu'un même paragraphe serve 2 tableaux)."""
+def charger_styles_legende(z):
+    """ids des styles « légende » de styles.xml (Tabelle Beschriftung, Abbildung
+    Beschriftung, Caption, Légende…) — pandoc perd cette information, pas nous."""
+    try:
+        racine = ET.fromstring(z.read('word/styles.xml'))
+    except Exception:
+        return set()
+    ids = set()
+    for st in racine.iter(W + 'style'):
+        sid = st.get(W + 'styleId') or ''
+        nom_el = st.find(W + 'name')
+        nom = (nom_el.get(W + 'val') or '').lower() if nom_el is not None else ''
+        if 'beschriftung' in sid.lower() or 'beschriftung' in nom \
+                or nom == 'caption' or 'légende' in nom or 'legende' in nom:
+            ids.add(sid)
+    return ids
+
+
+def _pstyle(p):
+    ppr = p.find(W + 'pPr')
+    if ppr is None:
+        return ''
+    ps = ppr.find(W + 'pStyle')
+    return ps.get(W + 'val') if ps is not None else ''
+
+
+def est_legende_candidate(e, styles_legende):
+    """Un voisin est une légende s'il est tout en gras (historique), stylé légende,
+    ou s'il porte le motif STRICT « Tabelle N: » (séparateur exigé, <= 50 mots)."""
+    if paragraphe_tout_gras(e):
+        return True
+    if _pstyle(e) in styles_legende:
+        return True
+    brut = normaliser(texte_plat(e))
+    return bool(RE_NUM_TABLE_STRICT.match(brut)) and len(brut.split()) <= 50
+
+
+def legende_de_table(parent, tbl, consommes, styles_legende):
+    """Cherche un paragraphe VOISIN (avant, puis après) légende (gras, style ou
+    motif strict). Retourne (element_paragraphe, texte_pour_caption_nettoye) ou
+    (None, None). `consommes` = ids déjà pris (jamais 2 tableaux pour 1 légende)."""
     enfants = list(parent)
     try:
         i = enfants.index(tbl)
@@ -367,12 +475,33 @@ def legende_de_table(parent, tbl, consommes):
     for j in (i - 1, i + 1):
         if 0 <= j < len(enfants):
             e = enfants[j]
-            if e.tag == W + 'p' and id(e) not in consommes and paragraphe_tout_gras(e):
+            if e.tag == W + 'p' and id(e) not in consommes \
+                    and est_legende_candidate(e, styles_legende):
                 brut = normaliser(texte_plat(e))
                 if brut:
                     consommes.add(id(e))
                     return e, RE_NUM_TABLE.sub('', brut, count=1).strip()
     return None, None
+
+
+def tables_consommees_par_meta():
+    """Ordinaux (1-based) des tableaux consommés par docx-meta.py (lignes T de
+    $SZH_META) : le tableau des auteurs ne devient JAMAIS tables/table-NN.html."""
+    chemin = os.getenv('SZH_META')
+    if not chemin:
+        return set()
+    ordinaux = set()
+    try:
+        with open(chemin, encoding='utf-8') as f:
+            for ligne in f:
+                if ligne.startswith('T\t'):
+                    try:
+                        ordinaux.add(int(ligne[2:].strip()))
+                    except ValueError:
+                        pass
+    except OSError:
+        return set()
+    return ordinaux
 
 
 def principal(argv):
@@ -383,17 +512,25 @@ def principal(argv):
     try:
         with zipfile.ZipFile(chemin_docx) as z:
             racine = ET.fromstring(z.read('word/document.xml'))
+            styles_legende = charger_styles_legende(z)
+            RELS_IMAGES.update(charger_rels(z))
     except Exception as e:
         print('[docx-tables] lecture impossible de %s : %s' % (chemin_docx, e), file=sys.stderr)
         return 1
     tableaux = tableaux_de_premier_niveau(racine)
     if not tableaux:
         return 0                              # rien à faire, rien d'écrit
-    os.makedirs(dossier, exist_ok=True)
+    # Tableau des auteurs (F6) : sauté ici ET retiré du corps par szh-meta.lua —
+    # les tableaux restants sont renumérotés en séquence des deux côtés (RM2).
+    sautes = tables_consommees_par_meta()
     consommes = set()
     legendes = []                             # textes normalisés des légendes prises
-    for n, (tbl, parent) in enumerate(tableaux, start=1):
-        el, caption = legende_de_table(parent, tbl, consommes)
+    n = 0
+    for ordinal, (tbl, parent) in enumerate(tableaux, start=1):
+        if ordinal in sautes:
+            continue
+        n += 1
+        el, caption = legende_de_table(parent, tbl, consommes, styles_legende)
         if el is not None and caption:
             legendes.append(normaliser(texte_plat(el)))
         else:
@@ -401,6 +538,8 @@ def principal(argv):
         chemin = os.path.join(dossier, 'table-%02d.html' % n)
         with open(chemin, 'w', encoding='utf-8', newline='\n') as f:
             f.write(html_du_tableau(tbl, caption) + '\n')
+    if n == 0:
+        return 0                              # tous consommés : pas de tables/ vide
     # Sidecar : légendes consommées -> szh-legendes.lua retire les paragraphes gras
     # correspondants du .md (le <caption> est déjà baké ci-dessus).
     chemin_leg = os.getenv('SZH_LEGENDES_TABLES')
@@ -408,8 +547,10 @@ def principal(argv):
         with open(chemin_leg, 'w', encoding='utf-8', newline='\n') as f:
             for t in legendes:
                 f.write(t + '\n')
-    print('[docx-tables] %d tableau(x) extrait(s), %d légendé(s)'
-          % (len(tableaux), len(legendes)))
+    nb_sautes = sum(1 for o in sautes if 1 <= o <= len(tableaux))
+    print('[docx-tables] %d tableau(x) extrait(s), %d légendé(s)%s'
+          % (n, len(legendes),
+             ', %d consommé(s) (auteurs)' % nb_sautes if nb_sautes else ''))
     return 0
 
 

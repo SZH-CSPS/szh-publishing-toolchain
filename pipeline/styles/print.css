@@ -11,6 +11,7 @@
      5. Couverture (hero, filet, résumés, mots-clés)                      [M2]
      6. Éléments de corps (titres H1–H4, listes, citation, encadrés)      [M3]
      7. Tableaux .szh-tableau (refonte T1/T2 — NE PAS régresser)          [hérité]
+     8. Bloc « À propos des auteur·e·s » (portraits, ORCID, e-mail)       [F4]
    La couleur annuelle (§2 repli gris) est SURCHARGÉE à la compilation par
    accent-css.py (out/.szh-accent.css) — voir couleurs.css et D72. */
 
@@ -473,3 +474,57 @@ table > caption::before {
 .szh-tableau[data-bordure-haute="1"]:not([data-entete-lignes]) tbody tr:first-child > * { border-top: 2px solid var(--c-annual-ui); }
 /* Basse : filet épais sous la dernière rangée. */
 .szh-tableau[data-bordure-basse="1"] tbody tr:last-child > * { border-bottom: 2px solid var(--c-annual-ui); }
+
+/* ═══ 8. Bloc « À propos des auteur·e·s » (F4) ════════════════════════════════
+   Après le corps de l'article (template szh-article.html). Portrait 400 x 400
+   en niveaux de gris produit par pipeline/portraits.py, ~28 mm imprimé ; nom +
+   icône-lien ORCID ; fonction, affiliation, e-mail. Couleurs : uniquement des
+   encres/gris déjà validés APCA ailleurs (--c-ink, --c-ink2) et le filet
+   --c-rule de l'en-tête courant — aucune couleur nouvelle. */
+.szh-auteurs {
+  margin-top: 2.6em;
+  padding-top: 1.2em;
+  border-top: 1px solid var(--c-rule);
+}
+/* Titre du bloc : style « étiquette » (comme l'en-tête courant), PAS un titre
+   de section numéroté — on neutralise le compteur et le numéro posés sur h2
+   au §6 (la classe l'emporte en spécificité). */
+.szh-auteurs-titre {
+  counter-increment: none;
+  margin: 0 0 1.1em;
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.14em; color: var(--c-ink2);
+}
+.szh-auteurs-titre::before { content: none; }
+
+/* Un auteur = une rangée photo/texte, jamais coupée par un saut de page.
+   Sans photo, la colonne texte occupe simplement toute la largeur. */
+.szh-auteur {
+  display: flex; gap: 16px; align-items: flex-start;
+  break-inside: avoid;
+  margin: 0 0 1.2em;
+}
+.szh-auteur:last-child { margin-bottom: 0; }
+.szh-auteur-photo {
+  width: 28mm; height: 28mm;    /* ~28 mm imprimés ; la source est déjà carrée */
+  object-fit: cover; flex-shrink: 0;
+}
+.szh-auteur-texte { min-width: 0; }   /* autorise le repli du texte long */
+.szh-auteur-nom {
+  margin: 0 0 0.2em; text-align: left;
+  font-family: var(--font-sans); font-weight: 700; font-size: 0.95rem;
+  color: var(--c-ink);
+}
+.szh-auteur-fonction, .szh-auteur-affiliation {
+  margin: 0; text-align: left; font-size: 0.85rem; color: var(--c-ink2);
+}
+.szh-auteur-email { margin: 0.25em 0 0; text-align: left; font-size: 0.85rem; }
+.szh-auteur-email a[href] { overflow-wrap: anywhere; }
+
+/* Icône-lien ORCID (SVG inline du template : pastille bleu des liens du corps,
+   « iD » évidé en blanc) : pas de soulignement ni de flèche « lien »
+   automatique — l'icône EST le repère. Sélecteurs a.szh-orcid : il faut égaler
+   la spécificité de a[href] / a[href]::after du §4, sinon ils l'emportent. */
+a.szh-orcid { text-decoration: none; }
+a.szh-orcid::after { content: none; }
+a.szh-orcid svg { width: 12px; height: 12px; vertical-align: -1.5px; }

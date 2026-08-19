@@ -2,7 +2,7 @@
   "name": "szh-cockpit",
   "displayName": "SZH — Revue (cockpit)",
   "description": "Barre latérale « Revue SZH » : articles, métadonnées du numéro, import des Word, aperçu et réglages.",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "publisher": "szh-csps",
   "license": "MIT",
   "engines": { "vscode": "^1.75.0" },
@@ -80,6 +80,12 @@
         "icon": "$(export)"
       },
       {
+        "command": "szh.exporterXml",
+        "title": "%cmd.exporterXml%",
+        "category": "Revue SZH",
+        "icon": "$(file-code)"
+      },
+      {
         "command": "szh.remplacerTable",
         "title": "%cmd.remplacerTable%",
         "category": "Revue SZH",
@@ -108,6 +114,24 @@
         "title": "%cmd.basculerApercu%",
         "category": "Revue SZH",
         "icon": "$(preview)"
+      },
+      {
+        "command": "szh.panneauCommande",
+        "title": "%cmd.panneauCommande%",
+        "category": "Revue SZH",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "szh.panneauEdition",
+        "title": "%cmd.panneauEdition%",
+        "category": "Revue SZH",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "szh.panneauExport",
+        "title": "%cmd.panneauExport%",
+        "category": "Revue SZH",
+        "icon": "$(export)"
       },
       {
         "command": "szh.miseEnForme",
@@ -139,39 +163,19 @@
       ],
       "view/title": [
         {
-          "command": "szh.importerWord",
+          "command": "szh.panneauCommande",
           "when": "view == szhCockpitVue",
           "group": "navigation@1"
         },
         {
-          "command": "szh.cockpit.rafraichir",
+          "command": "szh.panneauEdition",
           "when": "view == szhCockpitVue",
           "group": "navigation@2"
         },
         {
-          "command": "szh.metadonnees",
+          "command": "szh.panneauExport",
           "when": "view == szhCockpitVue",
           "group": "navigation@3"
-        },
-        {
-          "command": "szh.toutExporter",
-          "when": "view == szhCockpitVue",
-          "group": "navigation@4"
-        },
-        {
-          "command": "szh.apercuMetadonnees",
-          "when": "view == szhCockpitVue",
-          "group": "navigation@5"
-        },
-        {
-          "command": "szh.reglages",
-          "when": "view == szhCockpitVue",
-          "group": "navigation@6"
-        },
-        {
-          "command": "szh.basculerApercu",
-          "when": "view == szhCockpitVue",
-          "group": "navigation@7"
         }
       ],
       "view/item/context": [

@@ -43,6 +43,25 @@
       "problemMatcher": []
     },
     {
+      // Galleys DOCX pour l'export OJS (F7) : régénère out/<slug>/<slug>.docx depuis
+      // le HTML autonome (cible `docx`, hors `all`). Lancée par « Exporter la revue
+      // en XML (OJS) » après « Tout exporter ».
+      "label": "Galleys DOCX (OJS)",
+      "type": "process",
+      "command": "wsl.exe",
+      "args": [
+        "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
+        "make", "-f", "/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile", "docx"
+      ],
+      "presentation": {
+        "reveal": "silent",
+        "showReuseMessage": false,
+        "clear": true,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
       // Import des Word/LibreOffice à la demande (Ctrl+Alt+I). L'import est aussi
       // fait par le build ci-dessus ; cette tâche sert de secours explicite (D12).
       // runOn:folderOpen est un bonus « best-effort » (peut ne pas se déclencher

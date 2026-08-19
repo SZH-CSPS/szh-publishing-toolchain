@@ -360,9 +360,11 @@ async function fmtCollerTableau() {
   revue.rafraichirTout();                            // le tableau apparaît sous l'article
 }
 
-// Palette « Mise en forme » (Ctrl+Alt+M + entrée clic droit) : menu SZH-only,
+// Palette « Mise en forme » (clic droit → « Mise en forme ») : menu SZH-only,
 // localisé, raccourci affiché à droite. Réutilise les commandes szh.fmt.*.
 // Format : ['--', cléGroupe] = séparateur ; sinon [cléLibellé, commande, raccourci, icône].
+// Exportée : le panneau d'édition (lib/panneaux.js, F1) reprend ces entrées EN BLOC —
+// une seule source pour la liste des actions de mise en forme.
 const PALETTE_MEF = [
   ['--', 'palette.g.style'],
   ['palette.gras', 'szh.fmt.gras', 'Ctrl+B', '$(bold)'],
@@ -425,5 +427,5 @@ function enregistrerCommandesMiseEnForme(context, hote) {
 module.exports = {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
   enroberBloc, squeletteTableau, blocReferenceTable, blocSautPage, nomTableLibre,
-  lireHtmlPressePapiers, enregistrerCommandesMiseEnForme
+  lireHtmlPressePapiers, enregistrerCommandesMiseEnForme, PALETTE_MEF
 };
