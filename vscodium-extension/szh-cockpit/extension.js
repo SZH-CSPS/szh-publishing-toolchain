@@ -107,6 +107,7 @@ const {
 } = require('./lib/formatting');
 const { enregistrerPanneaux } = require('./lib/panneaux');
 const { genererExportOjs } = require('./lib/export-ojs');
+const { retirerImage, retirerTable } = require('./lib/references');
 const { traiterPortraits } = require('./lib/portraits');
 
 // Éditeur PDF (extension tomoki1207.pdf), comme szh-apercu.
@@ -720,10 +721,19 @@ async function fermerTousLesApercus() {
   apercuCourantUri = null;
 }
 
+// Les seuls textes que le cockpit pose lui-même dans le HTML de l'aperçu sont des
+// libellés traduits (jamais de donnée de revue) — on les échappe quand même :
+// une apostrophe typographique ou un « & » dans une traduction ne doit pas
+// pouvoir casser la page.
+function echapperTexte(valeur) {
+  return String(valeur === undefined || valeur === null ? '' : valeur)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 // Ouvre (ou recharge) l'aperçu HTML de l'article en colonne 2 (webview réutilisée).
 // Repli si le toolkit n'est pas resynchronisé : le .html du PDF (sans clic),
 // sinon un message « pas encore compilé ».
-function ouvrirApercuHtml(fournisseur, slug) {
+function ouvrirApercuHtml(fournisseur, slug, enAttente) {
   const dossier = path.join(fournisseur.racine, 'out', slug);
   let fichier = path.join(dossier, slug + '.apercu.html');
   let contenu = null;
@@ -735,7 +745,14 @@ function ouvrirApercuHtml(fournisseur, slug) {
   let mtime = 0;
   try { mtime = fs.statSync(fichier).mtimeMs; } catch (e) { /* placeholder */ }
   if (contenu === null) {
-    contenu = '<!DOCTYPE html><html lang="fr"><head></head><body><p>' + T('apercu.indisponible') + '</p></body></html>';
+    // C2 : au message « pas encore compilé » s'ajoute l'attente quand une
+    // compilation vient d'être lancée (ou tourne déjà) — sinon l'utilisateur ne
+    // sait pas qu'il suffit de patienter. Les libellés sont échappés : ce sont
+    // des traductions, pas du HTML.
+    const lignes = [echapperTexte(T('apercu.indisponible'))];
+    if (enAttente) { lignes.push(echapperTexte(T('apercu.encours'))); }
+    contenu = '<!DOCTYPE html><html lang="fr"><head></head><body><p>'
+            + lignes.join('</p><p>') + '</p></body></html>';
   }
   const html = injecterApercu(contenu, crypto.randomBytes(16).toString('hex'));
   if (!panneauApercuHtml) {
@@ -830,8 +847,9 @@ async function ouvrirArticleActifAuDemarrage(fournisseur) {
   catch (e) { /* démarrage : ne jamais bloquer l'ouverture de la revue */ }
 }
 
-// 1. .md en colonne 1 ; 2. build si PDF absent/obsolète (mtime), incrémental ;
-// 3. fermer l'aperçu de l'article précédent ; 4. aperçu en colonne 2.
+// 1. .md en colonne 1 ; 2. build si l'aperçu du mode courant est absent/obsolète
+// (mtime), incrémental ; 3. fermer l'aperçu de l'article précédent ; 4. aperçu en
+// colonne 2.
 // En cas d'échec de build : le .md reste ouvert, erreur sobre, PAS d'aperçu
 // obsolète trompeur.
 async function ouvrirArticle(fournisseur, slug) {
@@ -839,10 +857,18 @@ async function ouvrirArticle(fournisseur, slug) {
   if (!racine || typeof slug !== 'string' || slug === '') { return; }
   const md = path.join(racine, 'articles', slug, slug + '.md');
   const pdf = vscode.Uri.file(path.join(racine, 'out', slug, slug + '.pdf'));
+  const modeCourant = modeApercu();
+  // C2 : la fraîcheur se juge sur l'aperçu DU MODE COURANT. Un PDF à jour ne dit
+  // rien de l'existence du HTML d'aperçu (out/ partiellement effacé, article
+  // compilé par un toolkit plus ancien) — on compilait alors sans jamais montrer
+  // autre chose que « pas encore compilé ».
+  const apercuAttendu = modeCourant === 'html'
+    ? path.join(racine, 'out', slug, slug + '.apercu.html')
+    : pdf.fsPath;
 
   await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(md), { viewColumn: vscode.ViewColumn.One });
 
-  // Obsolète = PDF plus ancien que la source la plus récente (.md, un tableau
+  // Obsolète = aperçu plus ancien que la source la plus récente (.md, un tableau
   // extrait OU la fiche .meta.yaml — même graphe de dépendances que la règle
   // HTML du Makefile, N6 + M1).
   let obsolete = true;
@@ -858,11 +884,21 @@ async function ouvrirArticle(fournisseur, slug) {
     }
     try { mSource = Math.max(mSource, fs.statSync(cheminMeta(racine, slug)).mtimeMs); }
     catch (e) { /* pas de fiche */ }
-    obsolete = fs.statSync(pdf.fsPath).mtimeMs < mSource;
-  } catch (e) { obsolete = true; }                 // PDF (ou .md) illisible -> on compile
+    obsolete = fs.statSync(apercuAttendu).mtimeMs < mSource;
+  } catch (e) { obsolete = true; }                 // aperçu (ou .md) illisible -> on compile
 
+  if (obsolete && buildEnCours) {
+    // C2 : une compilation tourne déjà (import, Ctrl+S, autre article). Ne plus
+    // abandonner en silence : on affiche l'aperçu avec le message d'attente, que
+    // le rafraîchissement de out/** remplacera par le rendu dès la fin.
+    vscode.window.setStatusBarMessage(T('statut.build.encours') + ' ' + T('apercu.encours'), 5000);
+    if (modeCourant === 'html') {
+      if (apercuCourantUri) { await fermerApercuCourant(null); }
+      ouvrirApercuHtml(fournisseur, slug, true);
+    }
+    return;
+  }
   if (obsolete) {
-    if (buildEnCours) { vscode.window.setStatusBarMessage(T('statut.build.encours'), 3000); return; }
     buildEnCours = true;
     const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
     try {
@@ -878,20 +914,61 @@ async function ouvrirArticle(fournisseur, slug) {
     }
   }
   // M5 : la colonne 2 affiche l'aperçu DU MODE COURANT (html par défaut).
-  if (modeApercu() === 'html') {
+  if (modeCourant === 'html') {
     if (apercuCourantUri) { await fermerApercuCourant(null); }  // onglet PDF d'une bascule passée
-    ouvrirApercuHtml(fournisseur, slug);
+    const pret = fs.existsSync(apercuAttendu);
+    ouvrirApercuHtml(fournisseur, slug, !pret);    // manquant -> message + attente
+    if (!pret) { relancerCompilation(fournisseur, slug); }      // C2 : et on (re)compile
     return;
   }
   fermerApercuHtml();                              // webview HTML d'une bascule passée
   if (!fs.existsSync(pdf.fsPath)) {
-    vscode.window.showErrorMessage(T('err.pdf.introuvable', [slug]));
+    vscode.window.showErrorMessage(T('err.pdf.introuvable', [slug]) + ' ' + T('apercu.encours'));
+    apercuCourantSlug = slug;                      // l'article visé en colonne 2
+    relancerCompilation(fournisseur, slug);        // C2 : relance, puis affiche
     return;
   }
   await fermerApercuCourant(pdf);                  // l'aperçu du précédent article
   await ouvrirApercuPdf(pdf);                      // mono-instance : révèle si déjà là
   apercuCourantUri = pdf;
   apercuCourantSlug = slug;
+}
+
+// Lance compilerPuisAfficher SANS attendre (le clic sur l'article a déjà rendu la
+// main : le texte est ouvert, le message d'attente est affiché). Une erreur
+// inattendue ne doit pas remonter en rejet non capturé de l'hôte d'extensions.
+function relancerCompilation(fournisseur, slug) {
+  compilerPuisAfficher(fournisseur, slug).catch(() => { /* signalé côté build */ });
+}
+
+// C2 : l'aperçu manque encore (article jamais compilé, out/ effacé, compilation
+// précédente en échec). On relance UNE passe en tâche de fond — jamais de boucle
+// si la compilation ne produit toujours rien — et on remplace le message d'attente
+// par le rendu dès qu'elle aboutit, à condition que l'utilisateur soit resté sur
+// le même article.
+async function compilerPuisAfficher(fournisseur, slug) {
+  if (buildEnCours || importEnCours) { return; }
+  buildEnCours = true;
+  const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
+  let code = null;
+  try {
+    code = await lancerBuild();
+  } finally {
+    statut.dispose();
+    buildEnCours = false;
+  }
+  if (code === null) { return; }                   // tâche introuvable (déjà signalé)
+  if (code !== 0) { vscode.window.showErrorMessage(T('err.build', [NOM_TACHE_BUILD])); return; }
+  if (apercuCourantSlug !== slug || !fournisseur.racine) { return; }   // article changé entre-temps
+  if (modeApercu() === 'html') {
+    if (panneauApercuHtml) { ouvrirApercuHtml(fournisseur, slug); }
+    return;
+  }
+  const pdf = vscode.Uri.file(path.join(fournisseur.racine, 'out', slug, slug + '.pdf'));
+  if (!fs.existsSync(pdf.fsPath)) { return; }
+  await fermerApercuCourant(pdf);
+  await ouvrirApercuPdf(pdf);
+  apercuCourantUri = pdf;
 }
 
 // ---- Import guidé (S3) ---------------------------------------------------------
@@ -915,6 +992,23 @@ async function executerImport() {
   });
 }
 
+// C1 : compilation qui suit immédiatement une conversion réussie. Appelée DEPUIS
+// lancerConversion, donc pendant que importEnCours est posé — d'où le drapeau de
+// build géré ici et non la garde de compilerPuisAfficher. Un échec est signalé
+// mais n'annule pas l'import : les articles sont là, seul l'aperçu manquera.
+async function compilerApresImport() {
+  if (buildEnCours) { return; }
+  buildEnCours = true;
+  const statut = vscode.window.setStatusBarMessage(T('statut.build.import'));
+  try {
+    const code = await lancerBuild();
+    if (code !== null && code !== 0) { vscode.window.showErrorMessage(T('err.build', [NOM_TACHE_BUILD])); }
+  } finally {
+    statut.dispose();
+    buildEnCours = false;
+  }
+}
+
 // Convertit les Word présents dans articles-word/ (déposés à la main OU copiés par
 // « Importer des Word »). Compte les NOUVEAUX articles par diff avant/après (jamais
 // par parsing de la sortie). Garde anti-double (clics rapprochés).
@@ -934,6 +1028,13 @@ async function lancerConversion(fournisseur, rafraichirTout) {
     const nouveaux = [];
     for (const slug of fournisseur.listerArticles()) { if (!avant.has(slug)) { nouveaux.push(slug); } }
     if (nouveaux.length > 0) {
+      // C1 : compiler TOUT DE SUITE (PDF + HTML + aperçu HTML) pour que le premier
+      // clic sur un article importé montre son aperçu sans attente. Avant le
+      // dialogue, pas pendant : « Remplacer » y refuse d'agir tant qu'un build
+      // tourne (garde statut.occupe), et deux écritures concurrentes dans out/
+      // n'auraient rien à s'apporter.
+      await compilerApresImport();
+      rafraichirTout();
       // F6 : le dialogue « Vérification de l'import » remplace la notification
       // « N importés » — c'est lui qui montre ce que la conversion a détecté
       // (fiche .meta.yaml pré-remplie) et ce qui reste à compléter.
@@ -1184,6 +1285,86 @@ async function remplacerTable(fournisseur, rafraichirTout, item) {
   rafraichirTout();
 }
 
+// C3 — Supprimer une image ou un tableau, RÉFÉRENCE COMPRISE. Effacer le seul
+// fichier laisserait un lien mort dans le .md : image cassée au rendu, ou bloc
+// d'avertissement pour un tableau (szh-tabelle-inclure.lua). Le texte est modifié
+// par un WorkspaceEdit (et non par un fs.writeFileSync) : l'article est souvent
+// ouvert à l'écran, l'édition doit passer par le tampon de l'éditeur pour rester
+// annulable (Ctrl+Z) et ne pas écraser des frappes non enregistrées.
+async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
+  const racine = fournisseur.racine;
+  if (!racine || !item || !item.cheminAsset || !item.slug) { return; }
+  // Comme « Remplacer » : pas de suppression pendant que make lit le dossier.
+  if (buildEnCours || importEnCours) {
+    vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
+    return;
+  }
+  const slug = item.slug;
+  const cible = item.cheminAsset;
+  const nom = path.basename(cible);
+  // Nom relatif à media/ pour une image (l'arbre affiche « sous/img.png »),
+  // nom simple pour un tableau.
+  const relatif = estTable
+    ? nom
+    : path.relative(path.join(racine, 'articles', slug, 'media'), cible).replace(/\\/g, '/');
+
+  const reponse = await vscode.window.showWarningMessage(
+    T(estTable ? 'modale.supprimerTable.question' : 'modale.supprimerAsset.question', [nom]),
+    { modal: true, detail: T(estTable ? 'modale.supprimerTable.detail' : 'modale.supprimerAsset.detail', [slug]) },
+    T('modale.supprimer.bouton')
+  );
+  if (reponse !== T('modale.supprimer.bouton')) { return; }   // annulé : rien n'est touché
+
+  // Ordre voulu : 1) retirer la référence DANS LE TAMPON (rien sur le disque),
+  // 2) effacer le fichier, 3) enregistrer le .md. L'enregistrement déclenche la
+  // compilation à la sauvegarde : il doit arriver EN DERNIER, quand le fichier a
+  // disparu et que le texte ne le cite plus — sinon pandoc lit un média qu'on est
+  // en train de supprimer. Si une étape échoue avant l'enregistrement, rien n'est
+  // écrit et le tampon reste annulable (Ctrl+Z).
+  let retirees = 0;
+  let doc = null;
+  const md = path.join(racine, 'articles', slug, slug + '.md');
+  try {
+    doc = await vscode.workspace.openTextDocument(md);
+    const resultat = estTable
+      ? retirerTable(doc.getText(), relatif)
+      : retirerImage(doc.getText(), relatif);
+    if (resultat.n > 0) {
+      const edition = new vscode.WorkspaceEdit();
+      const fin = doc.lineAt(doc.lineCount - 1).range.end;
+      edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), resultat.texte);
+      if (await vscode.workspace.applyEdit(edition)) { retirees = resultat.n; }
+    }
+  } catch (e) {
+    vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
+    return;
+  }
+
+  try {
+    if (estTable) {
+      const panneau = panneauxTable.get(cible);
+      if (panneau) { try { panneau.dispose(); } catch (e) { /* déjà fermé */ } }
+    }
+    await fermerOngletDuFichier(cible);
+    fs.rmSync(cible, { force: true });
+  } catch (e) {
+    vscode.window.showErrorMessage(T('err.suppression', [nom, e.message]));
+    rafraichirTout();
+    return;                                        // .md non enregistré : état cohérent
+  }
+  if (retirees > 0 && doc) {
+    try { await doc.save(); }                      // déclenche la recompilation (Ctrl+S)
+    catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [e.message])); }
+  }
+  vscode.window.setStatusBarMessage(
+    retirees > 0
+      ? T(estTable ? 'statut.table.supprimee' : 'statut.asset.supprime', [nom, retirees])
+      : T(estTable ? 'statut.table.supprimee.sansref' : 'statut.asset.supprime.sansref', [nom]),
+    5000
+  );
+  rafraichirTout();
+}
+
 // ---- Suppression d'article (G3, D40) ---------------------------------------------
 
 // Ferme les onglets dont le fichier vit sous `dossier` (comparaison insensible à la
@@ -1197,6 +1378,24 @@ async function fermerOngletsSous(dossier) {
       const entree = onglet.input;
       if (entree && entree.uri && entree.uri.fsPath &&
           entree.uri.fsPath.toLowerCase().indexOf(prefixe) === 0) {
+        aFermer.push(onglet);
+      }
+    }
+  }
+  if (aFermer.length > 0) {
+    try { await vscode.window.tabGroups.close(aFermer); } catch (e) { /* onglet déjà fermé */ }
+  }
+}
+
+// Même chose pour UN fichier (C3) : l'aperçu d'image ouvert en colonne 1 doit
+// disparaître avec le fichier, sinon l'onglet reste en « fantôme ».
+async function fermerOngletDuFichier(chemin) {
+  const vise = String(chemin).toLowerCase();
+  const aFermer = [];
+  for (const groupe of vscode.window.tabGroups.all) {
+    for (const onglet of groupe.tabs) {
+      const entree = onglet.input;
+      if (entree && entree.uri && entree.uri.fsPath && entree.uri.fsPath.toLowerCase() === vise) {
         aFermer.push(onglet);
       }
     }
@@ -2429,6 +2628,8 @@ function activate(context) {
     vscode.commands.registerCommand('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
     vscode.commands.registerCommand('szh.remplacerAsset', (item) => remplacerAsset(fournisseur, rafraichirTout, item)),
     vscode.commands.registerCommand('szh.remplacerTable', (item) => remplacerTable(fournisseur, rafraichirTout, item)),
+    vscode.commands.registerCommand('szh.supprimerAsset', (item) => supprimerAsset(fournisseur, rafraichirTout, item, false)),
+    vscode.commands.registerCommand('szh.supprimerTable', (item) => supprimerAsset(fournisseur, rafraichirTout, item, true)),
     vscode.commands.registerCommand('szh.editerTable', (item) => ouvrirEditeurTable(fournisseur, item)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte),
     // A1 — défilement synchronisé éditeur -> aperçu : la 1re ligne visible du .md de
@@ -2501,6 +2702,7 @@ module.exports = {
     analyserMeta, serialiserMeta, lignePos, plagePos, positionMot, jetonSource,
     analyserAusgabe, serialiserAusgabe,
     nettoyerCarte, assainirCheminPhoto, decomposerPhoto, relatifImageValide,
+    retirerImage, retirerTable,
     basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
     enroberBloc, squeletteTableau, blocReferenceTable, nomTableLibre,
     analyserTable, serialiserTable, disposition,

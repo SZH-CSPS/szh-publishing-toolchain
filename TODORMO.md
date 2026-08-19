@@ -1,5 +1,26 @@
 # Todo Robin (mis à jour le 2026-08-19, après la vague 1 des features F1–F8)
 
+## Validations qui demandent un humain — correctifs C1–C3 (2026-08-19)
+
+- [ ] **C1 — compilation après import** : importer un ou deux `.docx` → la compilation
+  s'enchaîne toute seule (statut « Compilation des articles importés… ») AVANT le
+  dialogue de vérification ; ensuite, le premier clic sur un article importé montre
+  l'aperçu sans attente. Vérifier sur un import de plusieurs fichiers que la durée
+  reste acceptable (sinon : à passer en tâche de fond).
+- [ ] **C2 — aperçu pas encore prêt** : cliquer un article dont `out/` a été effacé →
+  l'aperçu s'ouvre avec « pas encore compilé » **+ « Compilation en cours, merci de
+  patienter quelques secondes… »**, la compilation part, et le rendu remplace le
+  message tout seul. Rejouer en mode PDF (message d'erreur + même phrase, puis le PDF
+  s'ouvre), et pendant qu'une autre compilation tourne déjà (message d'attente au lieu
+  de l'abandon silencieux d'avant).
+- [ ] **C3 — poubelle images/tableaux** : au survol d'une image et d'un tableau, la 🗑
+  demande confirmation, supprime le fichier **et** retire l'insertion du texte
+  (`![…](media/…)` / bloc `::: {.szh-tabelle …}`). Vérifier : le compte annoncé dans la
+  barre d'état, le texte enregistré et recompilé, Ctrl+Z qui restaure le texte, un
+  tableau ouvert dans l'éditeur qui se ferme, une image ouverte en aperçu dont l'onglet
+  se ferme, et le cas « aucune insertion trouvée » (fichier orphelin) qui supprime quand
+  même sans rien casser.
+
 ## Validations qui demandent un humain — lot F1/F5/F8 + portraits + export OJS (D88–D93)
 
 - [ ] **Barre épurée (D88)** : ouvrir une revue → la vue « Revue SZH » ne montre que 3 boutons

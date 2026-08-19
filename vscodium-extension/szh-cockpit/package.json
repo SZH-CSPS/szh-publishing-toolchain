@@ -92,6 +92,18 @@
         "icon": "$(replace)"
       },
       {
+        "command": "szh.supprimerAsset",
+        "title": "%cmd.supprimerAsset%",
+        "category": "Revue SZH",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "szh.supprimerTable",
+        "title": "%cmd.supprimerTable%",
+        "category": "Revue SZH",
+        "icon": "$(trash)"
+      },
+      {
         "command": "szh.editerTable",
         "title": "%cmd.editerTable%",
         "category": "Revue SZH",
@@ -192,12 +204,22 @@
         {
           "command": "szh.remplacerAsset",
           "when": "view == szhCockpitVue && viewItem == asset",
-          "group": "inline"
+          "group": "inline@1"
+        },
+        {
+          "command": "szh.supprimerAsset",
+          "when": "view == szhCockpitVue && viewItem == asset",
+          "group": "inline@2"
         },
         {
           "command": "szh.remplacerTable",
           "when": "view == szhCockpitVue && viewItem == table",
           "group": "inline@1"
+        },
+        {
+          "command": "szh.supprimerTable",
+          "when": "view == szhCockpitVue && viewItem == table",
+          "group": "inline@2"
         }
       ]
     }

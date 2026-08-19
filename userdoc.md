@@ -72,6 +72,12 @@ Elle a **deux sections** :
     **Remplacer** au survol l'échange contre un autre fichier HTML, même nom conservé.
     La modification apparaît à la compilation suivante (Ctrl + S ou re-clic).
 
+  Au survol, images et tableaux ont aussi une **🗑 poubelle** : elle supprime le
+  fichier **et retire son insertion du texte de l'article** (l'image ou le tableau
+  ne laisse donc jamais de trou dans le rendu). Une confirmation est demandée ;
+  la modification du texte reste annulable par **Ctrl + Z** tant que l'article
+  est ouvert.
+
   ### L'éditeur de tableau
 
   Une grille, comme dans un tableur. Les gestes :
@@ -176,8 +182,10 @@ Et sur la section « Word en attente », un bouton :
 
 1. **Glisser les `.docx` finalisés sur la barre « Revue SZH »** (ou dans le dossier
    **articles-word**, ou via **🚀 Commande → Importer des Word**).
-2. La conversion démarre ; à la fin, le panneau **« Vérification de l'import »** s'ouvre
-   tout seul (voir ci-dessous). Les `.docx` convertis sont retirés du dossier.
+2. La conversion démarre, puis **les articles sont compilés dans la foulée** (PDF et
+   aperçu) : le premier clic sur un article importé affiche son aperçu tout de suite.
+   À la fin, le panneau **« Vérification de l'import »** s'ouvre tout seul (voir
+   ci-dessous). Les `.docx` convertis sont retirés du dossier.
 3. **Cliquer un article** : son texte s'ouvre à gauche et son aperçu apparaît à droite
    (compilé au passage si nécessaire). Ensuite, chaque **Ctrl + S** régénère l'aperçu.
 

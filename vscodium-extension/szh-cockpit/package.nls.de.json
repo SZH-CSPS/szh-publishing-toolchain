@@ -7,6 +7,8 @@
   "cmd.remplacerAsset": "Bild ersetzen",
   "cmd.toutExporter": "Alles exportieren (vollständiger Rebuild)",
   "cmd.exporterXml": "Zeitschrift als XML exportieren (OJS)",
+  "cmd.supprimerAsset": "Bild löschen (samt Einbindung im Text)",
+  "cmd.supprimerTable": "Tabelle löschen (samt Einbindung im Text)",
   "cmd.remplacerTable": "Tabelle ersetzen",
   "cmd.editerTable": "Tabelle bearbeiten",
   "cmd.apercuMetadonnees": "Metadaten der Artikel",

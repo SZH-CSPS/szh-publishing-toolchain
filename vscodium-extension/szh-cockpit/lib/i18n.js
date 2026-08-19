@@ -28,6 +28,11 @@ const TEXTES_COCKPIT = {
     'statut.import.encours': 'Import déjà en cours…',
     'statut.import': 'Import des Word en attente…',
     'statut.export': 'Export complet de la revue…',
+    'statut.build.import': 'Compilation des articles importés…',
+    'statut.asset.supprime': 'Image « {0} » supprimée ({1} insertion(s) retirée(s) du texte).',
+    'statut.asset.supprime.sansref': 'Image « {0} » supprimée (aucune insertion trouvée dans le texte).',
+    'statut.table.supprimee': 'Tableau « {0} » supprimé ({1} insertion(s) retirée(s) du texte).',
+    'statut.table.supprimee.sansref': 'Tableau « {0} » supprimé (aucune insertion trouvée dans le texte).',
     'statut.occupe': 'Compilation ou import en cours — réessayez ensuite.',
     'statut.supprime': 'Article « {0} » supprimé.',
     'statut.image.remplacee': 'Image « {0} » remplacée — recompilez pour voir le PDF à jour.',
@@ -60,6 +65,10 @@ const TEXTES_COCKPIT = {
     'modale.supprimer.question': 'Supprimer l’article « {0} » et son PDF ?',
     'modale.supprimer.detail': 'Les dossiers articles/{0} et out/{0} seront définitivement effacés.\nAction irréversible.',
     'modale.supprimer.bouton': 'Supprimer',
+    'modale.supprimerAsset.question': 'Supprimer l’image « {0} » ?',
+    'modale.supprimerAsset.detail': 'Le fichier sera effacé et son insertion retirée du texte de l’article « {0} ».\nAction irréversible (le texte reste annulable par Ctrl+Z tant que l’article est ouvert).',
+    'modale.supprimerTable.question': 'Supprimer le tableau « {0} » ?',
+    'modale.supprimerTable.detail': 'Le fichier sera effacé et son insertion retirée du texte de l’article « {0} ».\nAction irréversible (le texte reste annulable par Ctrl+Z tant que l’article est ouvert).',
     'modale.remplacer.question': 'Remplacer « {0} » par « {1} » ?',
     'modale.remplacer.detail.image': 'L’ancienne image sera écrasée. Le nom « {0} » est conservé (le texte de l’article pointe ce nom).',
     'modale.remplacer.detail.format': '⚠ Le fichier choisi est un .{0} mais l’image de l’article est un .{1} : le contenu ne correspondra plus à l’extension et le rendu peut casser.\n',
@@ -316,7 +325,8 @@ const TEXTES_COCKPIT = {
     'apercu.barre.tooltip': 'Basculer l’aperçu HTML ⇄ PDF (tous les articles)',
     'apercu.bandeau': 'Aperçu HTML — cliquer un passage ouvre le texte correspondant',
     'apercu.bandeau.pdf': 'Voir en PDF',
-    'apercu.indisponible': 'Aperçu HTML pas encore compilé pour cet article — enregistrez (Ctrl+S) ou recompilez, puis re-cliquez l’article.'
+    'apercu.indisponible': 'Aperçu HTML pas encore compilé pour cet article — enregistrez (Ctrl+S) ou recompilez, puis re-cliquez l’article.',
+    'apercu.encours': 'Compilation en cours, merci de patienter quelques secondes…'
   },
   de: {
     'arbre.articles': 'Artikel',
@@ -333,6 +343,11 @@ const TEXTES_COCKPIT = {
     'statut.import.encours': 'Import läuft bereits…',
     'statut.import': 'Import der wartenden Word-Dateien…',
     'statut.export': 'Vollständiger Export der Zeitschrift…',
+    'statut.build.import': 'Kompilierung der importierten Artikel…',
+    'statut.asset.supprime': 'Bild « {0} » gelöscht ({1} Einbindung(en) aus dem Text entfernt).',
+    'statut.asset.supprime.sansref': 'Bild « {0} » gelöscht (keine Einbindung im Text gefunden).',
+    'statut.table.supprimee': 'Tabelle « {0} » gelöscht ({1} Einbindung(en) aus dem Text entfernt).',
+    'statut.table.supprimee.sansref': 'Tabelle « {0} » gelöscht (keine Einbindung im Text gefunden).',
     'statut.occupe': 'Kompilierung oder Import läuft — bitte danach erneut versuchen.',
     'statut.supprime': 'Artikel « {0} » gelöscht.',
     'statut.image.remplacee': 'Bild « {0} » ersetzt — neu kompilieren, um das PDF zu aktualisieren.',
@@ -365,6 +380,10 @@ const TEXTES_COCKPIT = {
     'modale.supprimer.question': 'Artikel « {0} » und sein PDF löschen?',
     'modale.supprimer.detail': 'Die Ordner articles/{0} und out/{0} werden endgültig gelöscht.\nDies kann nicht rückgängig gemacht werden.',
     'modale.supprimer.bouton': 'Löschen',
+    'modale.supprimerAsset.question': 'Bild « {0} » löschen?',
+    'modale.supprimerAsset.detail': 'Die Datei wird gelöscht und ihre Einbindung aus dem Text des Artikels « {0} » entfernt.\nNicht umkehrbar (der Text bleibt mit Ctrl+Z widerrufbar, solange der Artikel offen ist).',
+    'modale.supprimerTable.question': 'Tabelle « {0} » löschen?',
+    'modale.supprimerTable.detail': 'Die Datei wird gelöscht und ihre Einbindung aus dem Text des Artikels « {0} » entfernt.\nNicht umkehrbar (der Text bleibt mit Ctrl+Z widerrufbar, solange der Artikel offen ist).',
     'modale.remplacer.question': '« {0} » durch « {1} » ersetzen?',
     'modale.remplacer.detail.image': 'Das alte Bild wird überschrieben. Der Name « {0} » bleibt erhalten (der Artikeltext verweist auf diesen Namen).',
     'modale.remplacer.detail.format': '⚠ Die gewählte Datei ist eine .{0}, das Bild des Artikels aber eine .{1}: Inhalt und Endung passen nicht mehr zusammen, die Ausgabe kann brechen.\n',
@@ -621,7 +640,8 @@ const TEXTES_COCKPIT = {
     'apercu.barre.tooltip': 'Vorschau HTML ⇄ PDF umschalten (alle Artikel)',
     'apercu.bandeau': 'HTML-Vorschau — ein Klick auf eine Stelle öffnet den zugehörigen Text',
     'apercu.bandeau.pdf': 'Als PDF anzeigen',
-    'apercu.indisponible': 'HTML-Vorschau für diesen Artikel noch nicht kompiliert — speichern (Ctrl+S) oder neu kompilieren, dann den Artikel erneut anklicken.'
+    'apercu.indisponible': 'HTML-Vorschau für diesen Artikel noch nicht kompiliert — speichern (Ctrl+S) oder neu kompilieren, dann den Artikel erneut anklicken.',
+    'apercu.encours': 'Kompilierung läuft, bitte einige Sekunden warten…'
   }
 };
 
