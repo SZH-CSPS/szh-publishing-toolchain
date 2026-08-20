@@ -232,9 +232,11 @@ if ($Lien) {
 
 # ---- Racines à scanner ---------------------------------------------------------
 #
-# Les quatre emplacements « en cours »/archives (D116, mode test compris D119), plus
-# les racines historiques de config.json et OneDrive\Revues : un poste qui a des
-# revues hors de l'arborescence officielle continue de les voir.
+# UNE SEULE source de vérité pour ce que le lanceur LISTE : les quatre emplacements
+# « en cours »/archives (D116, mode test compris D119). Les racines historiques
+# (config.json `revuesRoots`, OneDrive\Revues) ne sont plus balayées pour la liste —
+# elles ne servent qu'à SIGNALER ce qui est resté dehors (D125). Sans ça, le lanceur
+# mélangeait l'arborescence officielle et les dossiers d'essai d'avant.
 $emplacements = Get-SzhEmplacements
 # Mode test (D119) : les quatre dossiers de test sont créés s'ils manquent — sinon le
 # mode ne serait utilisable qu'après un montage manuel. En production, rien n'est créé.
@@ -246,13 +248,45 @@ foreach ($r in $emplacements.archives) {
   [void]$racines.Add($r)
   $racinesArchives[$r.ToLower()] = $true
 }
+
+# Racines HÉRITÉES, dédoublonnées : `revuesRoots` contient d'ordinaire déjà
+# « %OneDrive%\Revues », et le balayer deux fois n'apportait rien.
+$racinesHeritees = New-Object System.Collections.ArrayList
+$vuesHeritees = @{}
+$ajouterHeritee = {
+  param($chemin)
+  if (-not $chemin) { return }
+  $cle = ([string]$chemin).ToLower()
+  if ($racinesArchives.ContainsKey($cle)) { return }
+  if ($vuesHeritees.ContainsKey($cle)) { return }
+  foreach ($officielle in ($emplacements.encours + $emplacements.archives)) {
+    if ($officielle.ToLower() -eq $cle) { return }
+  }
+  $vuesHeritees[$cle] = $true
+  [void]$racinesHeritees.Add([string]$chemin)
+}
 $cfg = Get-SzhConfig
 if ($cfg -and $cfg.revuesRoots) {
   foreach ($r in $cfg.revuesRoots) {
-    [void]$racines.Add([Environment]::ExpandEnvironmentVariables([string]$r))
+    & $ajouterHeritee ([Environment]::ExpandEnvironmentVariables([string]$r))
   }
 }
-if ($env:OneDrive) { [void]$racines.Add((Join-Path $env:OneDrive 'Revues')) }
+if ($env:OneDrive) { & $ajouterHeritee (Join-Path $env:OneDrive 'Revues') }
+
+# Combien de revues sont restées dehors ? On les COMPTE (une vraie revue = un
+# ausgabe.yaml), on ne les liste pas : le lanceur le dit sous les listes, et le geste
+# reste à l'utilisateur — déplacer un dossier de revue derrière son dos serait pire.
+$horsArborescence = 0
+$dossierHors = ''
+foreach ($racine in $racinesHeritees) {
+  if (-not (Test-Path $racine)) { continue }
+  $trouvees = @(Get-ChildItem -Path $racine -Directory -ErrorAction SilentlyContinue |
+    Where-Object { Test-Path (Join-Path $_.FullName 'ausgabe.yaml') })
+  if ($trouvees.Count -gt 0) {
+    $horsArborescence += $trouvees.Count
+    if (-not $dossierHors) { $dossierHors = $racine }
+  }
+}
 
 # ---- Découverte des revues (dossier contenant ausgabe.yaml) ---------------------
 #
@@ -383,7 +417,9 @@ $lignesInfo = @()
 if ($vInstallee) { $lignesInfo += (T 'lanceur.version' @($vInstallee)) }
 else { $lignesInfo += (T 'lanceur.version.inconnue') }
 if ($emplacements.devMode) { $lignesInfo += (T 'lanceur.test' @($emplacements.base)) }
-$infos.Text = ($lignesInfo -join '     ')
+# D125 : ce qui est resté hors de l'arborescence est dit, pas caché.
+if ($horsArborescence -gt 0) { $lignesInfo += (T 'lanceur.hors' @($horsArborescence, $dossierHors)) }
+$infos.Text = ($lignesInfo -join "`n")
 $infos.Location = New-Object System.Drawing.Point(16, $yInfos)
 $infos.Size = New-Object System.Drawing.Size(488, 44)
 $infos.ForeColor = [System.Drawing.Color]::DimGray

@@ -43,7 +43,11 @@ New-Item -ItemType Directory -Force -Path $SzhBase, $SzhStaging, $SzhLogs, $SzhT
 if (-not (Test-Path $SzhConfigFile)) {
   $cfg = [ordered]@{
     repo        = $Repo
-    revuesRoots = @('%OneDrive%\Revues')    # étendu à l'exécution (chaque utilisateur a son OneDrive)
+    # D125 — les revues vivent dans l'arborescence officielle (basesRevues ci-dessous),
+    # et c'est la SEULE chose que le lanceur liste. Cette clé ne sert plus qu'à
+    # signaler des revues restées ailleurs : vide sur un poste neuf, à ne remplir à la
+    # main que pour surveiller un dossier historique.
+    revuesRoots = @()
     # D119 — mode développeur : VRAI tant que la chaîne n'est pas passée en production.
     # Les revues sont alors cherchées, créées et archivées sous basesRevues.dev.
     # Bascule depuis « Réglages SZH » du cockpit, ou en éditant cette clé.

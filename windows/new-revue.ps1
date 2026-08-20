@@ -47,8 +47,25 @@ if (-not $existait) {
 if (-not (Get-VSCodiumExe)) { throw 'VSCodium introuvable — lancer d''abord bootstrap.ps1.' }
 Set-SzhRaccourciRevue $chemin | Out-Null
 
-# Enregistrer la racine (parent) pour le lanceur « Revues SZH »
+# Enregistrer la racine (parent) — SEULEMENT si elle est hors de l'arborescence
+# officielle (D125). Le lanceur liste les emplacements de Get-SzhEmplacements ; y
+# ajouter un parent qui en fait déjà partie ne servait à rien, et enregistrer un parent
+# quelconque faisait grossir une liste que le lanceur n'utilise plus pour lister — elle
+# ne sert qu'à SIGNALER une revue restée dehors, ce qui est justement le cas ici.
 $parent = Split-Path $chemin -Parent
+$emp = Get-SzhEmplacements
+$officiel = $false
+foreach ($d in ($emp.encours + $emp.archives)) {
+  if ($d -ieq $parent) { $officiel = $true }
+}
+if ($officiel) {
+  Write-SzhOk ('Revue créée : {0}' -f $chemin)
+  Write-SzhInfo 'Dans OneDrive : clic droit sur ce dossier -> « Toujours conserver sur cet appareil ».'
+  Write-SzhInfo 'Déposez les articles Word finalisés dans « articles-word », puis double-cliquez « Ouvrir la revue ».'
+  Write-SzhInfo 'La revue apparaît dans le lanceur « Revues SZH » du menu Démarrer.'
+  return
+}
+Write-SzhInfo ('Ce dossier est hors de l''arborescence officielle : le lanceur le signalera au lieu de lister la revue.')
 $cfg = Get-SzhConfig
 if (-not $cfg) { $cfg = [pscustomobject]@{ repo = (Get-SzhRepo); revuesRoots = @() } }
 $racines = @()

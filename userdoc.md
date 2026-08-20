@@ -409,6 +409,11 @@ Le lanceur cherche les revues aux emplacements officiels :
 | En cours | `52_Revue\RV02_Redaction` | `53_Zeitschrift\ZS02_Redaktion` |
 | Archivées | `52_Revue\RV99_Archives` | `53_Zeitschrift\ZS99_Archives` |
 
+Le lanceur **ne montre que ces quatre dossiers**. Si une revue est restée ailleurs (un ancien
+dossier `OneDrive\Revues`, par exemple), elle n'apparaît pas dans les listes mais le lanceur le
+dit en bas : « N revue(s) hors arborescence dans … — à déplacer ». Déplacez le dossier de la revue
+dans `RV02_Redaction` (ou `ZS02_Redaktion`) et il apparaîtra.
+
 **Mode test.** Tant que la chaîne est en rodage, le poste travaille dans un dossier
 d'essai : `OneDrive - SZH CSPS\Revues-TESTING`, avec exactement la même arborescence.
 Le lanceur l'annonce (« Mode test : … ») et la bascule se fait dans **Réglages SZH →

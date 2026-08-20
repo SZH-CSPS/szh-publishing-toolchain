@@ -102,6 +102,11 @@ powershell -ExecutionPolicy Bypass -File "C:\ProgramData\SZH\toolkit\windows\new
 dossier, enregistre la revue pour le lanceur « Revues SZH » du menu Démarrer. Puis, dans OneDrive :
 clic droit sur le dossier → **« Toujours conserver sur cet appareil »**.
 
+**Le lanceur ne liste QUE ces emplacements (D125).** Les racines historiques (`revuesRoots` de
+`config.json`, `%OneDrive%\Revues`) ne peuplent plus les listes ; elles servent à **compter** les
+revues restées dehors, annoncées sous les listes. `bootstrap.ps1` ne sème plus rien dans
+`revuesRoots` et `new-revue.ps1` n'y enregistre un parent que s'il est hors de l'arborescence.
+
 **Emplacements des revues (D116/D119)** — connus d'un seul endroit, `Get-SzhEmplacements`
 (`windows/szh-common.ps1`) ; l'extension n'en calcule aucun (elle délègue à `archive-revue.ps1`).
 Base de production `%USERPROFILE%\SZH CSPS\Daten_Allgemein - General\2_Produkte`, base de test

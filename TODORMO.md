@@ -42,6 +42,24 @@ et un retrait défensif du BOM à la lecture côté JavaScript.
   confirmer que le message « trop de demandes vers GitHub depuis ce réseau » est compréhensible.
   Si le cas devient fréquent, il faudra mettre la liste des versions en cache elle aussi.
 
+## À vérifier — le lanceur ne liste que l'arborescence officielle (D125)
+
+Éprouvé ici avec de vraies fixtures : une revue dans `RV02_Redaction` est **listée**, une revue
+dans `OneDrive\Revues` est **signalée et non listée**, les racines héritées sont dédoublonnées et
+celles qui coïncident avec un emplacement officiel écartées (`revuesRoots` en contenait une, posée
+par l'ancien `new-revue.ps1`). Le lanceur reste vivant avec les fixtures en place.
+
+- [ ] Vérifier de visu la ligne « N revue(s) hors arborescence dans … — à déplacer » sous les
+  listes, et qu'elle disparaît une fois le dossier déplacé.
+- [ ] **Les deux dossiers de `OneDrive - SZH CSPS\Revues` de ce poste** (`2026-04`, `test`) n'ont
+  **pas** d'`ausgabe.yaml` : ce ne sont pas des revues (restes d'essais — `articles`, `out`,
+  `articles-word`). Ils n'étaient donc déjà pas listés. À supprimer si tu n'en as plus besoin.
+- [ ] `config.json` de ce poste porte encore `revuesRoots = ["…\Revues-TESTING+_Zeitschrift\ZS02_Redaktion"]`,
+  posé par l'ancien `new-revue.ps1`. Inoffensif (le lanceur écarte les emplacements officiels de la
+  liste héritée), mais tu peux vider la clé.
+- [ ] **Décider** si une revue hors arborescence doit rester non listée. Aujourd'hui : signalée,
+  jamais listée, jamais déplacée d'office.
+
 ## Constaté au déploiement de v2026.08.22 — `update.ps1` lancé à la main est en retard d'une passe
 
 `update.ps1` extrait le nouveau toolkit à son étape 1, mais PowerShell a déjà lu tout le fichier :
@@ -114,8 +132,8 @@ positionnel requoté) ; l'extension charge, i18n 487 = 487 (fr/de), tous les `%m
 - [ ] « Nouvelle revue… » depuis ce lanceur propose `ZS02_Redaktion` (et non `RV02_Redaction`).
 - [ ] Un numéro **sans** clé `revue:` n'apparaît dans **aucun** des deux lanceurs filtrés (mais
   reste visible dans « Revues SZH ») — vérifier que c'est acceptable, sinon il faut le signaler.
-- [ ] Une Zeitschrift rangée dans un dossier **historique** (`OneDrive\Revues`) apparaît quand même
-  dans le lanceur Zeitschrift.
+- [ ] Une Zeitschrift rangée dans un dossier **historique** (`OneDrive\Revues`) n'apparaît PAS dans
+  les listes (D125) mais est comptée dans « N revue(s) hors arborescence ».
 - [ ] Le bouton « Version du logiciel… » et l'affichage « Logiciel v. … » marchent dans les deux
   lanceurs.
 - [ ] **Décision** : faut-il aussi filtrer « Revues SZH » sur la Revue (au lieu de tout montrer) ?
@@ -247,7 +265,8 @@ ouvrir de fenêtre — même ligne que dans `open-revue.ps1` / `new-revue.ps1`).
 - [ ] Une revue déplacée **à la main** dans `RV99_Archives` (sans le bouton) apparaît quand même
   dans « Archivées ».
 - [ ] « Nouvelle revue… » propose par défaut le dossier de rédaction **en cours** du mode actif.
-- [ ] Les anciennes revues de `OneDrive\Revues` (et celles de `revuesRoots`) apparaissent encore.
+- [ ] Les anciennes revues de `OneDrive\Revues` (et de `revuesRoots`) ne sont plus listées mais
+  signalées sous les listes (D125).
 - [ ] Sur un poste **sans** aucune revue : la fenêtre s'ouvre quand même avec « Nouvelle revue… ».
 
 ### 6. Mode développeur (D119)
