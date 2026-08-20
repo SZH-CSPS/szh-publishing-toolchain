@@ -103,7 +103,9 @@ function Start-SzhCodium([string]$Codium, [string[]]$Chemins) {
     Write-Host ('[SIMULE] {0} {1}' -f $Codium, $arguments)
     return
   }
-  Start-Process -FilePath $Codium -ArgumentList $arguments
+  # D128 : ELECTRON_RUN_AS_NODE hérité ferait exécuter le dossier comme un script Node.
+if (Test-Path 'Env:ELECTRON_RUN_AS_NODE') { Remove-Item 'Env:ELECTRON_RUN_AS_NODE' -ErrorAction SilentlyContinue }
+Start-Process -FilePath $Codium -ArgumentList $arguments
 }
 
 # ---------------------------------------------------------------------------------

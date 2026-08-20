@@ -42,6 +42,38 @@ et un retrait défensif du BOM à la lecture côté JavaScript.
   confirmer que le message « trop de demandes vers GitHub depuis ce réseau » est compréhensible.
   Si le cas devient fréquent, il faudra mettre la liste des versions en cache elle aussi.
 
+## Corrigé — VSCodium ne s'ouvrait jamais depuis nos scripts, et l'aperçu suivait le thème (D128)
+
+**1. `ELECTRON_RUN_AS_NODE=1`.** L'hôte d'extensions de VSCodium tourne avec cette variable, et
+tout processus qu'il engendre en hérite. Elle dit à Electron « comporte-toi comme Node » :
+`VSCodium.exe "<dossier>"` cherche alors un **script** et meurt sur
+`Error: Cannot find module '<dossier>'`, code 1, sans fenêtre. C'est pourquoi l'archivage
+déplaçait la revue **sans la rouvrir**, et pourquoi un lien `szh://` « ne faisait rien ».
+Trouvé en capturant la sortie de VSCodium — le script, lui, sortait avec 0 sans un mot.
+`szh-common.ps1` purge la variable au dot-source, et `Start-SzhCodium` est le seul point de
+lancement de l'éditeur. **Vérifié dans les conditions réelles** : avec `ELECTRON_RUN_AS_NODE=1`
+posé et la chaîne complète (spawn Node → wscript → hidden.vbs → open-revue.ps1 -Lien), VSCodium
+s'ouvre **et l'intention est consommée** — donc le cockpit atterrit bien sur le panneau de
+traduction.
+
+**2. Protocole de confiance Office.** `szh:` est déclaré dans
+`HKCU\…\Office\Common\Security\Trusted Protocols\All Applications\szh:` — sans quoi Outlook
+affiche « cet emplacement peut ne pas être sûr » puis, selon la configuration, ne lance rien.
+La clé a été **posée sur ce poste** : le lien est retestable tout de suite.
+
+**3. Aperçu toujours clair.** `print.css` ne pose aucun `background` (WeasyPrint imprime sur du
+blanc) : sous un thème sombre, la webview fournissait le sien et l'encre sombre devenait
+illisible. `media/apercu.css` force le fond blanc, réaffirme `var(--c-ink)` et pose
+`color-scheme: light`.
+
+- [ ] **Refaire l'archivage depuis VSCodium** : la revue doit maintenant se rouvrir depuis les
+  archives (c'était la moitié manquante).
+- [ ] **Recliquer le lien dans Outlook** : plus de popup de sécurité, et le bon numéro s'ouvre.
+- [ ] **Thème sombre** (Réglages SZH → Sombre) : l'aperçu HTML reste sur fond blanc avec l'encre
+  sombre, y compris le message « pas encore compilé / numéro gelé ».
+- [ ] Vérifier aussi le double-clic sur un `.md` (`open-md.ps1`) depuis l'explorateur — même
+  garde ajoutée, mais ce chemin n'a pas été rejoué.
+
 ## À vérifier — l'e-mail de traduction (D127)
 
 **Éprouvé ici** : les deux gabarits rendent le bon sujet et un vrai `<a href="szh://…">` ; le

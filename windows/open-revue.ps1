@@ -229,7 +229,7 @@ if ($Lien) {
   # 5 minutes (lib/liens.js). Jamais bloquante : si elle ne peut pas s'écrire, la revue
   # s'ouvre quand même, simplement sans aller droit au panneau.
   try { Set-SzhIntention $dossierLien $cible.vue $cible.article } catch { }
-  Start-Process -FilePath $codium -ArgumentList ('"{0}"' -f $dossierLien)
+  [void](Start-SzhCodium $dossierLien)
   exit 0
 }
 
@@ -547,7 +547,7 @@ $boutonNouvelle.Add_Click({
     [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.nouvelle.erreur' @($_.Exception.Message)), $titreFenetre)
     return
   }
-  Start-Process -FilePath $codium -ArgumentList ('"{0}"' -f (Resolve-Path $cible).Path)
+  [void](Start-SzhCodium (Resolve-Path $cible).Path)
   $form.DialogResult = [System.Windows.Forms.DialogResult]::Cancel   # revue déjà ouverte ci-dessus
   $form.Close()
 })
@@ -563,5 +563,5 @@ if ($resultat -eq [System.Windows.Forms.DialogResult]::OK) {
   elseif (($listeArchives.SelectedIndex -ge 0) -and ($revuesArchivees.Count -gt 0)) {
     $choix = $revuesArchivees[$listeArchives.SelectedIndex]
   }
-  if ($choix) { Start-Process -FilePath $codium -ArgumentList ('"{0}"' -f $choix.chemin) }
+  if ($choix) { [void](Start-SzhCodium $choix.chemin) }
 }

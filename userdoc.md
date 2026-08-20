@@ -167,6 +167,9 @@ depuis n'importe où dans la revue) :
     numéro est verrouillé / archivé ;
   - **Exporter cet article** — présente seulement sur un numéro gelé (voir ci-dessous).
 
+L'aperçu HTML s'affiche **toujours sur fond blanc**, comme du papier, même si l'éditeur est en
+thème sombre : c'est ce que montrera le PDF.
+
 L'**aperçu par défaut** (dans **Réglages SZH**) choisit ce qui s'affiche à droite au clic
 sur un article : l'aperçu **HTML** (cliquable — un clic dans l'aperçu amène au passage
 correspondant du texte) ou directement le **PDF**. `Ctrl+Alt+P` bascule à tout moment,

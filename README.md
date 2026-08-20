@@ -278,6 +278,11 @@ pipeline. Voir [`userdoc.md`](userdoc.md).
   La tâche planifiée, elle, fait ce qu'il faut : `update-launcher.ps1` extrait le toolkit
   **d'abord**, puis lance le `update.ps1` fraîchement déployé. Après un `update.ps1` manuel qui
   change `update.ps1` lui-même, le relancer une fois.
+- **`ELECTRON_RUN_AS_NODE=1` est hérité de l'hôte d'extensions** : tout processus lancé par le
+  cockpit le reçoit, et `VSCodium.exe "<dossier>"` se met alors à chercher un *script* Node —
+  « Cannot find module », code 1, aucune fenêtre (D128). `szh-common.ps1` purge la variable au
+  dot-source et `Start-SzhCodium` est le seul point de lancement de l'éditeur. Ne jamais lancer
+  VSCodium autrement depuis un script.
 - **Ne JAMAIS lancer un script PowerShell avec `detached: true` depuis l'extension.** Sur Windows,
   libuv le traduit par `DETACHED_PROCESS` : `powershell.exe` démarre sans console et ressort
   aussitôt avec le code 0, **sans exécuter une ligne**. C'est ce qui rendait l'archivage inopérant

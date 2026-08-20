@@ -133,11 +133,8 @@ try {
   # ---- 6. Réouverture de la revue à sa nouvelle place -------------------------------
   # C'est ce qui rend le geste lisible : la revue revient sous les yeux, verrouillée
   # (ou libérée), à son nouvel emplacement.
-  $codium = Get-VSCodiumExe
-  if ($codium) {
-    Write-SzhEtape (T 'arch.rouvre')
-    Start-Process -FilePath $codium -ArgumentList ('"{0}"' -f $cible)
-  }
+  Write-SzhEtape (T 'arch.rouvre')
+  [void](Start-SzhCodium $cible)
   Write-SzhLog ('archive-revue OK : ' + $source + ' -> ' + $cible)
   Start-Sleep -Seconds 4
   exit 0

@@ -132,6 +132,14 @@ function Set-SzhProtocoleSzh {
   foreach ($c in $cle, (Join-Path $cle 'shell\open\command'), (Join-Path $cle 'DefaultIcon')) {
     if (-not (Test-Path $c)) { New-Item -Path $c -Force | Out-Null }
   }
+
+  # Office ne suit pas un schéma qu'il ne connaît pas : Outlook affiche « cet
+  # emplacement peut ne pas être sûr » puis, selon la configuration, ne lance rien du
+  # tout. Le schéma doit donc être déclaré de confiance — clé vide, dans HKCU, donc
+  # toujours sans administrateur. Le nom de la clé porte le DEUX-POINTS (« szh: »),
+  # c'est la forme qu'Office attend.
+  $confiance = 'HKCU:\Software\Microsoft\Office\Common\Security\Trusted Protocols\All Applications\szh:'
+  if (-not (Test-Path $confiance)) { New-Item -Path $confiance -Force | Out-Null }
   Set-ItemProperty -Path $cle -Name '(default)' -Value 'URL:Revue SZH'
   # « URL Protocol » (valeur VIDE) est ce qui fait d'une clé de classe un schéma d'URI.
   Set-ItemProperty -Path $cle -Name 'URL Protocol' -Value ''

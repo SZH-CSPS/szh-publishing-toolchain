@@ -4,6 +4,23 @@
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
+# ---------- Environnement hérité : ELECTRON_RUN_AS_NODE (D128) ----------
+#
+# ⚠ SANS CECI, AUCUN DE NOS SCRIPTS NE PEUT OUVRIR VSCODIUM quand il est lancé par le
+# cockpit. L'hôte d'extensions de VSCodium tourne avec ELECTRON_RUN_AS_NODE=1, et tout
+# processus qu'il engendre en hérite. Or cette variable dit à Electron « comporte-toi
+# comme Node » : `VSCodium.exe "<dossier>"` ne lit alors plus un dossier à ouvrir mais un
+# SCRIPT à exécuter, et meurt sur « Error: Cannot find module '<dossier>' », code 1, sans
+# fenêtre. Symptôme vu : l'archivage déplaçait la revue mais ne la rouvrait jamais, et un
+# lien szh:// « ne faisait rien ».
+# On nettoie donc l'environnement à l'entrée de CHAQUE script (le dot-source est le seul
+# passage obligé), avant que quoi que ce soit ne lance un exécutable.
+foreach ($nuisible in 'ELECTRON_RUN_AS_NODE', 'ELECTRON_NO_ATTACH_CONSOLE') {
+  if (Test-Path ('Env:' + $nuisible)) {
+    Remove-Item ('Env:' + $nuisible) -ErrorAction SilentlyContinue
+  }
+}
+
 $script:SzhBase       = 'C:\ProgramData\SZH'
 $script:SzhToolkit    = Join-Path $SzhBase 'toolkit'
 $script:SzhStaging    = Join-Path $SzhBase 'staging'
@@ -928,6 +945,29 @@ function Set-SzhIntention([string]$Revue, [string]$Vue, [string]$Article) {
     pose    = [long]([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
   }
   Set-SzhJson $SzhIntentionFile $intention
+}
+
+# ---------- Ouverture d'un dossier dans VSCodium (D128) ----------
+#
+# UN SEUL endroit lance l'éditeur. Deux raisons : l'environnement doit être assaini
+# (ELECTRON_RUN_AS_NODE, ci-dessus — la garde est répétée ici, un script pouvant régler
+# ses variables après le dot-source), et un échec de lancement doit se voir dans le
+# journal plutôt que de laisser croire que « rien ne se passe ».
+# Retourne $true si l'éditeur a été lancé.
+function Start-SzhCodium([string]$Dossier) {
+  $codium = Get-VSCodiumExe
+  if (-not $codium) {
+    Write-SzhLog ('codium : introuvable, impossible d''ouvrir ' + $Dossier)
+    return $false
+  }
+  if (Test-Path 'Env:ELECTRON_RUN_AS_NODE') { Remove-Item 'Env:ELECTRON_RUN_AS_NODE' -ErrorAction SilentlyContinue }
+  try {
+    Start-Process -FilePath $codium -ArgumentList ('"{0}"' -f $Dossier)
+    return $true
+  } catch {
+    Write-SzhLog ('codium : lancement impossible (' + $_.Exception.Message + ') pour ' + $Dossier)
+    return $false
+  }
 }
 
 # ---------- Raccourci « Ouvrir la revue » (D14) ----------
