@@ -51,18 +51,25 @@ try {
   $corpsTexte = ($g.texte -f $quoi, $Lien)
 
   # ---- Brouillon Outlook (le seul chemin qui donne un hyperlien) -------------------
+  # Sauf si le poste a demandé le contraire (D130) : « "mailTraduction": "mailto" » dans
+  # config.json ouvre le client par défaut — le nouvel Outlook, typiquement — en
+  # acceptant un lien inerte.
   $fait = $false
-  try {
-    $outlook = New-Object -ComObject Outlook.Application
-    $mail = $outlook.CreateItem(0)                          # 0 = olMailItem
-    $mail.To = $destinataire
-    $mail.Subject = $sujet
-    $mail.HTMLBody = $corpsHtml
-    $mail.Display($false)                                   # AFFICHE le brouillon, n'envoie rien
-    $fait = $true
-    Write-SzhLog ('mail-traduction : brouillon Outlook prepare (' + $langue + ' -> ' + $destinataire + ')')
-  } catch {
-    Write-SzhLog ('mail-traduction : Outlook indisponible (' + $_.Exception.Message + ') -> repli mailto')
+  if ((Get-SzhModeMailTraduction) -eq 'mailto') {
+    Write-SzhLog 'mail-traduction : mode mailto demande par config.json'
+  } else {
+    try {
+      $outlook = New-Object -ComObject Outlook.Application
+      $mail = $outlook.CreateItem(0)                        # 0 = olMailItem
+      $mail.To = $destinataire
+      $mail.Subject = $sujet
+      $mail.HTMLBody = $corpsHtml
+      $mail.Display($false)                                 # AFFICHE le brouillon, n'envoie rien
+      $fait = $true
+      Write-SzhLog ('mail-traduction : brouillon Outlook prepare (' + $langue + ' -> ' + $destinataire + ')')
+    } catch {
+      Write-SzhLog ('mail-traduction : Outlook indisponible (' + $_.Exception.Message + ') -> repli mailto')
+    }
   }
 
   # ---- Repli : mailto (texte brut, lien sur sa propre ligne) ----------------------

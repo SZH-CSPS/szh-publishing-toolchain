@@ -155,7 +155,11 @@ Le **brouillon d'e-mail** est fabriqué par `windows/mail-traduction.ps1` (D127)
 `mailto:` : seul un corps HTML (objet mail Outlook) donne un vrai hyperlien sur un schéma
 `szh://`. Le script déduit du produit la **langue de l'e-mail** et le **destinataire** — une
 Zeitschrift part en français à `redaction@csps.ch`, une Revue en allemand à `redaktion@szh.ch`
-(surchargeable par `config.json`, clé `mailsTraduction`). Repli `mailto:` sans Outlook.
+(surchargeable par `config.json`, clé `mailsTraduction`).
+
+⚠ **COM = Outlook CLASSIQUE uniquement** (D130). Le nouvel Outlook (`olk.exe`) n'expose aucune
+automatisation. `"mailTraduction": "mailto"` dans `config.json` bascule sur le client par défaut —
+au prix d'un lien en texte brut, donc inerte. Repli automatique sur `mailto:` si COM échoue.
 
 ### C ter. Réinstaller une version précédente (D120)
 `update.ps1 -Version X` fait déjà tout (l'archive N‑1 est en staging). Le geste est atteignable

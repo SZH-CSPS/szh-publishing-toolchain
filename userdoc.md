@@ -308,6 +308,11 @@ rédaction — vous n'avez rien à choisir :
 
 Le brouillon s'ouvre dans Outlook : relisez-le, ajoutez un mot si vous voulez, puis envoyez.
 
+> **Pourquoi l'ancien Outlook et pas le nouveau ?** Parce que c'est le seul qui accepte qu'un
+> programme lui prépare un message **mis en forme**, donc avec un lien cliquable. Le nouvel Outlook
+> ne le permet pas encore. Si vous préférez tout de même travailler dans le nouveau, c'est possible
+> (demandez-le au support) — mais le lien arrivera alors en texte simple, à copier-coller.
+
 La personne qui reçoit l'e-mail **clique le lien** : sur un poste de rédaction SZH, le bon numéro
 s'ouvre et le suivi de traduction s'affiche directement — pas besoin de chercher le dossier.
 Windows demande une fois l'autorisation d'ouvrir ce type de lien : c'est normal, il faut accepter.

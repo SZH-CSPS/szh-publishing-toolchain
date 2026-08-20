@@ -822,6 +822,24 @@ $script:SzhMailsTraduction = @{
   revue       = 'redaktion@szh.ch'       # français -> allemand
 }
 
+# Comment prépare-t-on le brouillon ? (D130)
+#   'outlook' (défaut) : objet mail COM -> corps HTML, donc un VRAI hyperlien. Mais COM
+#                        n'existe QUE pour l'Outlook classique : le nouvel Outlook
+#                        (olk.exe) n'expose aucune automatisation, Microsoft ayant
+#                        remplacé les compléments COM par des add-ins web.
+#   'mailto'           : ouvre le client mail PAR DÉFAUT (donc le nouvel Outlook s'il
+#                        l'est), au prix d'un corps en texte brut — le lien szh:// y
+#                        arrive inerte, aucun client ne linkifiant un schéma inconnu.
+# Il n'y a pas de troisième voie : c'est l'un ou l'autre, et c'est un choix de poste.
+function Get-SzhModeMailTraduction {
+  $cfg = Get-SzhConfig
+  if ($cfg -and $cfg.mailTraduction) {
+    $m = ([string]$cfg.mailTraduction).ToLower()
+    if ($m -eq 'mailto') { return 'mailto' }
+  }
+  return 'outlook'
+}
+
 function Get-SzhLangueTraduction([string]$Produit) {
   if ($Produit -eq 'zeitschrift') { return 'fr' }
   return 'de'

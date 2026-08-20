@@ -42,6 +42,23 @@ et un retrait défensif du BOM à la lecture côté JavaScript.
   confirmer que le message « trop de demandes vers GitHub depuis ce réseau » est compréhensible.
   Si le cas devient fréquent, il faudra mettre la liste des versions en cache elle aussi.
 
+## Répondu — l'e-mail ouvre l'ancien Outlook (D130)
+
+**Oui, c'est normal.** Le brouillon est fabriqué par automatisation COM
+(`Outlook.Application`), qui n'existe **que** pour l'Outlook classique : le nouvel Outlook
+(`olk.exe`, présent sur ce poste et **client mail par défaut**) n'expose aucune automatisation.
+Or COM est la seule voie vers un corps HTML, donc vers un lien **cliquable** — `mailto:`, qui
+ouvrirait le nouvel Outlook, ne transporte que du texte brut.
+
+Nouveau réglage : `"mailTraduction": "mailto"` dans `config.json` bascule sur le client par défaut.
+
+- [ ] **Décider** lequel on garde : l'ancien Outlook avec un lien cliquable (défaut), ou le
+  nouveau avec un lien à copier-coller.
+- [ ] **Vérifier côté DESTINATAIRE** : le protocole de confiance Office (D128) ne gouverne que les
+  applications Office classiques. Si la rédaction d'en face lit ses mails dans le nouvel Outlook,
+  le lien peut ne pas s'ouvrir — c'est le cas d'usage réel, à tester avec un vrai destinataire
+  avant de compter dessus.
+
 ## Corrigé — un numéro neuf s'annonçait avec les valeurs du gabarit (D129)
 
 Symptôme : le lien vers `2027-05` ouvrait bien `2027-05` (barre de titre de VSCodium correcte), mais
