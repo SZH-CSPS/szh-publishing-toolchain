@@ -319,5 +319,6 @@ var SZH = (function () {
     };
   }
 
+
   return { autoEnregistrement: autoEnregistrement, motsCles: motsCles, MARQUE_A_TRADUIRE: MARQUE };
 })();

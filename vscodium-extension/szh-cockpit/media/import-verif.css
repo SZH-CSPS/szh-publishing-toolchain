@@ -1,41 +1,9 @@
-/* Panneau « Vérification de l'import » : la base de metadata-articles.css, plus les badges
-   d'état, le compteur de champs vides et les rangées d'images. */
-body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
-  color: var(--vscode-foreground); background: var(--vscode-editor-background);
-  padding: 1rem 1.2rem; max-width: 46rem; }
-h1 { font-size: 1.15em; font-weight: 600; margin: 0 0 .25rem; }
-p.note { color: var(--vscode-descriptionForeground); margin: 0 0 1rem; font-size: .88em; }
-.carte { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));
-  border-radius: 4px; padding: .8rem 1rem 1rem; margin: 0 0 1rem; }
+/* Propre au panneau « Vérification de l'import » : les badges d'état, le compteur de
+   champs vides et les rangées d'images. La carte, les auteurs et la modale photo
+   viennent de _fiches.css. */
 .carte h2 { font-size: 1em; font-weight: 600; margin: 0 0 .2rem;
   font-family: var(--vscode-editor-font-family, monospace);
   display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
-label { display: block; margin: .6rem 0 .2rem; font-weight: 600; font-size: .9em; }
-input, select, textarea { width: 100%; box-sizing: border-box; padding: .3em .5em; font: inherit;
-  color: var(--vscode-input-foreground); background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; }
-textarea { resize: vertical; min-height: 3.4em; font-family: inherit; }
-input:focus, select:focus, textarea:focus { outline: 1px solid var(--vscode-focusBorder); }
-.auteur { display: flex; gap: .4rem; margin: .3rem 0; align-items: center; }
-.auteur input { flex: 1 1 0; min-width: 0; }
-.champ-it { display: none; }
-.carte.avec-it .champ-it { display: block; }
-.case-it { font-weight: normal; margin-top: .8rem; }
-.case-it input { width: auto; margin-right: .35em; }
-button { padding: .35em .9em; border: none; border-radius: 2px; font: inherit; cursor: pointer;
-  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
-  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background)); }
-button.principal { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
-button.principal:hover { background: var(--vscode-button-hoverBackground); }
-button.retirer, button.photo { flex: 0 0 auto; padding: .3em .5em; display: inline-flex;
-  align-items: center; justify-content: center; }
-button.retirer svg, button.photo svg { display: block; }
-button.photo.avec-photo { color: var(--vscode-charts-green, #2ea043);
-  outline: 1px solid var(--vscode-charts-green, #2ea043); }
-.note-auteur { color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
-  background: var(--vscode-inputValidation-warningBackground, rgba(204,167,0,.15));
-  border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(204,167,0,.5));
-  border-radius: 2px; padding: .25em .5em; margin: .15rem 0 .3rem; font-size: .88em; }
 /* ---- Badges d'état : « détecté » quand le champ est rempli, « à compléter » sinon. */
 .badge { margin-left: .5em; font-weight: normal; font-size: .75em;
   padding: .02em .55em; border-radius: 999px; white-space: nowrap;
@@ -70,40 +38,7 @@ button.photo.avec-photo { color: var(--vscode-charts-green, #2ea043);
 .zone-image.survol > * { pointer-events: none; }  /* pas de dragleave parasite sur les enfants */
 .zone-image button { pointer-events: auto; }
 .image-ligne.occupe .zone-image { opacity: .5; pointer-events: none; }
-/* ---- Modale photo : voile plein écran, aucune interaction possible derrière. */
-#voile { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 10;
-  display: flex; align-items: center; justify-content: center; }
-#voile[hidden] { display: none; }
-.modale { background: var(--vscode-editor-background); color: var(--vscode-foreground);
-  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.5)); border-radius: 4px;
-  padding: 1rem 1.2rem 1.1rem; width: min(30rem, calc(100vw - 3rem));
-  max-height: calc(100vh - 3rem); overflow-y: auto; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
 .modale h3 { margin: 0 0 .7rem; font-size: 1.05em; font-weight: 600; border: none; padding: 0; }
-.zone-depot { border: 2px dashed var(--vscode-panel-border, rgba(128,128,128,.6));
-  border-radius: 4px; padding: 1rem; text-align: center;
-  color: var(--vscode-descriptionForeground); }
-.zone-depot.survol { border-color: var(--vscode-focusBorder);
-  background: var(--vscode-list-hoverBackground, rgba(128,128,128,.12));
-  color: var(--vscode-foreground); }
-.zone-depot .ou { margin: .4rem 0; font-size: .85em; }
-.zone-depot button { pointer-events: auto; }
-.zone-depot.survol > * { pointer-events: none; }  /* pas de dragleave parasite sur les enfants */
-.radios { display: flex; gap: 1rem; flex-wrap: wrap; margin: .8rem 0 .4rem; }
-.radios label { display: inline-flex; align-items: center; gap: .3em; font-weight: normal; margin: 0; }
-.radios input { width: auto; }
-.apercu-photo { display: flex; justify-content: center; margin: .4rem 0;
-  /* damier : rend la transparence de « Sans fond » lisible, quel que soit le thème */
-  background: repeating-conic-gradient(rgba(128,128,128,.18) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
-  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35)); border-radius: 2px;
-  min-height: 3rem; }
-.apercu-photo img { max-width: 200px; max-height: 200px; display: block; }
-.note-modale { min-height: 1.2em; margin: .3rem 0 .6rem; font-size: .88em;
-  color: var(--vscode-descriptionForeground); }
-.note-modale.erreur { color: var(--vscode-errorForeground, #f14c4c); }
-.boutons-modale { display: flex; gap: .6rem; justify-content: flex-end; }
-button:disabled { opacity: .5; cursor: default; }
-.barre { position: sticky; top: 0; background: var(--vscode-editor-background);
-  padding: .4rem 0 .6rem; margin-bottom: .6rem; z-index: 1; }
 #fermer { margin-left: .6rem; }
 #etat { margin-left: .8rem; font-size: .92em; color: var(--vscode-descriptionForeground); }
 .modifie h2 .nom-carte::after { content: " ●"; color: var(--vscode-charts-orange, orange); }

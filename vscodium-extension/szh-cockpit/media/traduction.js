@@ -2,6 +2,15 @@
 // résumé, mots-clés appariés — avec le texte source en lecture seule, la traduction à
 // saisir et un état par bloc. DOM construit sans injection HTML, valeurs reçues par
 // postMessage, enregistrement automatique par SZH.autoEnregistrement (media/_commun.js).
+//
+// Protocole avec l'hôte :
+//   webview -> hôte : pret ; modifie { modifie } ; lien ; copier { texte } ;
+//                     deepl { texte, source, cible } ;
+//                     enregistrer { auto, slug, groupes, commentaire } ;
+//                     rechargement { … même charge utile qu'enregistrer }
+//   hôte -> webview : valeurs { slug, statuts, langueSource, groupes, commentaire } ;
+//                     demande-rechargement ; enregistre ; erreur { message } ;
+//                     copie ; focus
 (function () {
   'use strict';
   const TXT = __TXT__;

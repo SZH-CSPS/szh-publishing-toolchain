@@ -1782,6 +1782,7 @@ function htmlApercuMetadonnees(nonce) {
     filtreNote: T('fiches.filtre.note'), tous: T('fiches.tous')
   }));
   return construireHtml('metadata-articles', nonce, {
+    cssPartage: ['_fiches.css'], jsPartage: ['_fiches.js'],
     titre: T('fiches.titre'),
     remplacements: { '__TXT__': txt },
     // Seule dérogation à la CSP : les aperçus de la modale photo, en data: URI.
@@ -2645,6 +2646,7 @@ function htmlImportVerif(nonce) {
     errImageFormat: T('importv.err.format')
   }));
   return construireHtml('import-verif', nonce, {
+    cssPartage: ['_fiches.css'], jsPartage: ['_fiches.js'],
     titre: T('importv.titre'),
     remplacements: { '__TXT__': txt },
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"

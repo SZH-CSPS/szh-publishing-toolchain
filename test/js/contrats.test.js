@@ -175,3 +175,68 @@ test('la palette du formulaire est celle du pipeline', () => {
       'couleur du cockpit absente de accent-css.py : ' + hex);
   }
 });
+
+// ---- Webviews ----
+
+// Les libellés d'une webview viennent de l'hôte, dans un objet injecté à l'assemblage.
+// Une clé oubliée n'échoue pas : le texte s'affiche « undefined ».
+test('chaque libellé utilisé par une webview est fourni par l’hôte', () => {
+  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  const cles = (nom) => {
+    const i = src.indexOf('function ' + nom);
+    assert.notStrictEqual(i, -1, 'fonction introuvable : ' + nom);
+    const bloc = src.slice(i, src.indexOf('\n}', i));
+    return new Set([...bloc.matchAll(/([A-Za-z][A-Za-z0-9]*)\s*:\s*T\(/g)].map((m) => m[1]));
+  };
+  const communes = cles('textesCarteArticle');
+  const pages = {
+    'metadata-articles': new Set([...communes, ...cles('htmlApercuMetadonnees')]),
+    'import-verif': new Set([...communes, ...cles('htmlImportVerif')])
+  };
+  for (const page of Object.keys(pages)) {
+    const js = ['_commun.js', '_fiches.js', page + '.js']
+      .map((f) => fs.readFileSync(path.join(COCKPIT, 'media', f), 'utf8')).join('\n');
+    for (const m of js.matchAll(/\bTXT\.([A-Za-z0-9_]+)/g)) {
+      assert.ok(pages[page].has(m[1]),
+        'libellé « ' + m[1] +' » utilisé par ' + page + ' mais absent de l’hôte');
+    }
+  }
+});
+
+// Les deux formulaires de métadonnées ont longtemps été deux copies. Ce qu'ils partagent
+// vit désormais dans media/_fiches.{js,css} : ce contrôle empêche la copie de revenir.
+test('les deux formulaires de métadonnées ne se recopient pas', () => {
+  const lignes = (f) => fs.readFileSync(path.join(COCKPIT, 'media', f), 'utf8')
+    .split('\n').map((l) => l.trim()).filter((l) => l !== '' && !l.startsWith('//'));
+  const a = lignes('metadata-articles.js');
+  const b = new Set(lignes('import-verif.js'));
+  let suite = 0, pire = 0;
+  for (const l of a) { suite = b.has(l) ? suite + 1 : 0; pire = Math.max(pire, suite); }
+  assert.ok(pire < 10, 'bloc de ' + pire + ' lignes identiques : à remonter dans _fiches.js');
+});
+
+// Chaque webview décrit son protocole en tête de fichier. Une table qui ment est pire
+// qu'une table absente : on vérifie qu'elle cite tous les messages échangés.
+test('les tables de protocole des webviews sont à jour', () => {
+  const pages = {
+    'metadata-articles': ['_fiches.js'],
+    'import-verif': ['_fiches.js'],
+    'traduction': [],
+    'image-fiche': []
+  };
+  for (const page of Object.keys(pages)) {
+    const fichiers = [page + '.js'].concat(pages[page]);
+    let code = '', doc = '';
+    for (const f of fichiers) {
+      const src = fs.readFileSync(path.join(COCKPIT, 'media', f), 'utf8');
+      code += src + '\n';
+      doc += src.split('\n').filter((l) => l.trim().startsWith('//')).join('\n') + '\n';
+    }
+    const types = new Set();
+    for (const m of code.matchAll(/postMessage\(\s*\{\s*type:\s*'([^']+)'/g)) { types.add(m[1]); }
+    for (const m of code.matchAll(/msg\.type === '([^']+)'/g)) { types.add(m[1]); }
+    for (const t of types) {
+      assert.ok(doc.includes(t), 'message « ' + t + ' » absent de la table de protocole de ' + page);
+    }
+  }
+});

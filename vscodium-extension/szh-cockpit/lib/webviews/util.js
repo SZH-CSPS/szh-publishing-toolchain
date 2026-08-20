@@ -11,17 +11,23 @@ const { T } = require('../i18n');
 const MEDIA = path.join(__dirname, '..', '..', 'media');
 const RE_I18N = /%%SZH:([A-Za-z0-9_.]+)%%/g;
 
-// Options : `titre` pour le <title>, `csp` pour la Content-Security-Policy, et
+// Options : `titre` pour le <title>, `csp` pour la Content-Security-Policy,
+// `cssPartage` et `jsPartage`, les fragments de media/ à poser avant ceux de la page, et
 // `remplacements`, une map { marqueur: valeur } appliquée au HTML et au JS par split/join
 // — String.replace interpréterait les séquences « $& » d'une valeur.
 function construireHtml(base, nonce, opts) {
   opts = opts || {};
   let corps = fs.readFileSync(path.join(MEDIA, base + '.html'), 'utf8');
-  const css = fs.readFileSync(path.join(MEDIA, base + '.css'), 'utf8');
-  // Socle commun préfixé au script de la page : un seul <script>, donc un seul nonce,
-  // et `SZH` est défini avant la première ligne du webview.
-  const commun = fs.readFileSync(path.join(MEDIA, '_commun.js'), 'utf8');
-  let js = commun.replace(/\n+$/, '') + '\n\n' + fs.readFileSync(path.join(MEDIA, base + '.js'), 'utf8');
+  const partagees = (opts.cssPartage || []).map(function (nom) {
+    return fs.readFileSync(path.join(MEDIA, nom), 'utf8');
+  });
+  partagees.push(fs.readFileSync(path.join(MEDIA, base + '.css'), 'utf8'));
+  const css = partagees.join('\n');
+  // Socle commun, fragments partagés, puis script de la page : un seul <script>, donc un
+  // seul nonce, et `SZH` est défini avant la première ligne du webview.
+  const morceaux = ['_commun.js'].concat(opts.jsPartage || []).concat([base + '.js'])
+    .map((nom) => fs.readFileSync(path.join(MEDIA, nom), 'utf8').replace(/\n+$/, ''));
+  let js = morceaux.join('\n\n');
 
   corps = corps.replace(RE_I18N, function (_, cle) { return T(cle); });
   js = js.replace(RE_I18N, function (_, cle) { return T(cle); });
