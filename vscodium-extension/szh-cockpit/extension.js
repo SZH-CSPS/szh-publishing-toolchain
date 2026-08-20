@@ -128,7 +128,8 @@ const {
 // ---- Cycle de vie du numéro (D116-D117 et D120) -> lib/archivage.js -----------------------
 const {
   versionInstallee, versionsDivergent, tailleDossier, supprimerDossier,
-  lancerArchivage, lancerChoixVersion, lireModeDeveloppeur, ecrireModeDeveloppeur
+  lancerArchivage, lancerChoixVersion, lancerMailTraduction,
+  lireModeDeveloppeur, ecrireModeDeveloppeur
 } = require('./lib/archivage');
 // ---- Modèle de tableau -> lib/table-model.js -------------------------------------
 const {
@@ -2641,8 +2642,9 @@ function cibleTraduction(fournisseur, cible) {
 // emplacements du poste. Un numéro dont le dossier a un nom exotique, ou dont la revue
 // n'est pas déclarée, ne peut pas produire de lien : on le dit, on n'invente rien.
 
-// mailto: assemblé à la main puis parsé — encodeURIComponent sur CHAQUE valeur (le
-// corps contient des retours à la ligne et des accents).
+// Repli si le toolkit n'a pas encore mail-traduction.ps1 : un mailto en texte brut.
+// Le lien y est inerte (aucun client ne rend cliquable un schéma inconnu) — c'est
+// justement ce que D127 corrige, mais mieux vaut un e-mail imparfait que rien.
 function ouvrirBrouillonMail(sujet, corps) {
   const cible = 'mailto:?subject=' + encodeURIComponent(sujet) + '&body=' + encodeURIComponent(corps);
   return vscode.env.openExternal(vscode.Uri.parse(cible));
@@ -2665,6 +2667,19 @@ async function envoyerPourTraduction(fournisseur, cible) {
     return;
   }
   try { await vscode.env.clipboard.writeText(lien); } catch (e) { /* presse-papiers refusé */ }
+
+  // D127 : le brouillon est préparé par windows/mail-traduction.ps1 — lui seul peut
+  // produire un corps HTML, donc un VRAI hyperlien, et lui seul décide la langue de
+  // l'e-mail et le destinataire (déduits du produit : une Zeitschrift part à traduire
+  // vers le français, une Revue vers l'allemand). Rien de tout cela ne dépend de la
+  // langue d'interface de l'expéditeur, donc rien de tout cela n'est ici.
+  const erreur = lancerMailTraduction(lien);
+  if (erreur === null) {
+    vscode.window.setStatusBarMessage(T('trad.lien.copie', [lien]), 8000);
+    return;
+  }
+  // Toolkit trop ancien ou lancement refusé : repli mailto, en disant que le lien est
+  // de toute façon dans le presse-papiers.
   const quoi = slug === '' ? titreNumero(racine) : titreNumero(racine) + ' — ' + slug;
   const sujet = T('trad.lien.sujet', [quoi]);
   const corps = T('trad.lien.corps', [quoi, lien]);
@@ -2672,8 +2687,6 @@ async function envoyerPourTraduction(fournisseur, cible) {
     await ouvrirBrouillonMail(sujet, corps);
     vscode.window.setStatusBarMessage(T('trad.lien.copie', [lien]), 8000);
   } catch (e) {
-    // Pas de client de messagerie (ou refus) : le lien est déjà copié, on le dit et on
-    // laisse un bouton pour réessayer.
     const bouton = T('trad.lien.mail');
     const choix = await vscode.window.showInformationMessage(T('trad.lien.copie.seul', [lien]), bouton);
     if (choix === bouton) { ouvrirBrouillonMail(sujet, corps); }

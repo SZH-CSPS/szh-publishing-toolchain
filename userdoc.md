@@ -291,9 +291,19 @@ enregistrées. Les articles restent modifiables plus tard par **☰ Métadonnée
 ## Envoyer un numéro pour traduction
 
 Dans le panneau de traduction, le bouton **« Envoyer pour traduction »** (à côté d'*Enregistrer*)
-prépare tout : il **copie un lien** et **ouvre un brouillon d'e-mail** qui le contient. Les mêmes
-boutons ✉ existent dans la barre, sur la section **Traductions** (lien vers tout le numéro) et sur
-chaque article (lien vers cet article).
+prépare tout : il **copie un lien** et **ouvre un brouillon d'e-mail** déjà rédigé, où le lien est
+un **vrai hyperlien** cliquable. Les mêmes boutons ✉ existent dans la barre, sur la section
+**Traductions** (lien vers tout le numéro) et sur chaque article (lien vers cet article).
+
+L'e-mail est écrit **dans la langue de la personne qui va traduire**, et adressé à la bonne
+rédaction — vous n'avez rien à choisir :
+
+| Vous envoyez… | L'e-mail est en… | Adressé à |
+|---|---|---|
+| une **Zeitschrift** (allemand → français) | français | `redaction@csps.ch` |
+| une **Revue** (français → allemand) | allemand | `redaktion@szh.ch` |
+
+Le brouillon s'ouvre dans Outlook : relisez-le, ajoutez un mot si vous voulez, puis envoyez.
 
 La personne qui reçoit l'e-mail **clique le lien** : sur un poste de rédaction SZH, le bon numéro
 s'ouvre et le suivi de traduction s'affiche directement — pas besoin de chercher le dossier.
@@ -392,15 +402,15 @@ mise en forme (bascule).
 
 ## Créer une nouvelle revue
 
-Le menu Démarrer porte **deux** entrées : **« Revues SZH »**, qui montre tout, et
-**« Zeitschriften SZH »**, qui ne montre que les Zeitschriften. Les deux ouvrent la même fenêtre et
-offrent les mêmes gestes ; seule la liste change.
+Le menu Démarrer porte **deux** entrées : **« Revues SZH »** pour la Revue, et
+**« Zeitschriften SZH »** pour la Zeitschrift. Chacune ne montre **que son produit** et ne crée
+**que dans son dossier** — c'est ce qui garantit qu'un numéro ne se retrouve pas rangé du mauvais
+côté.
 
-Menu Démarrer → **« Revues SZH »** → bouton **« Nouvelle revue… »** (en bas à gauche) :
-choisir l'emplacement (le dossier de rédaction en cours est proposé), donner un nom
-(p. ex. `2026-02`), et la revue s'ouvre toute prête — dossiers `articles-word` et
-`articles`, raccourci « Ouvrir la revue » inclus. Elle apparaîtra ensuite dans la liste
-du lanceur comme les autres.
+Menu Démarrer → le lanceur du produit voulu → bouton **« Nouvelle revue… »** (en bas à gauche) :
+donner un nom (p. ex. `2026-02`) — la boîte rappelle où le numéro sera créé, il n'y a rien à
+choisir — et le numéro s'ouvre tout prêt : dossiers `articles-word` et `articles`, raccourci
+« Ouvrir la revue », et la bonne revue déjà renseignée dans ses métadonnées.
 
 Le lanceur cherche les revues aux emplacements officiels :
 

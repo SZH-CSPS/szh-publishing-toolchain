@@ -83,6 +83,8 @@ $script:SzhTextes = @{
     'lanceur.nouvelle'          = 'Nouvelle revue…'
     'lanceur.nouvelle.dossier'  = 'Choisir l''emplacement (dossier parent) de la nouvelle revue — p. ex. OneDrive\Revues.'
     'lanceur.nouvelle.nom'      = 'Nom du dossier de la nouvelle revue (p. ex. 2026-02) :'
+    'lanceur.nouvelle.ou'       = "Elle sera créée dans :`n{0}"
+    'lanceur.nouvelle.existe'   = 'Un dossier « {0} » existe déjà à cet emplacement.'
     'lanceur.nouvelle.invalide' = 'Le nom contient des caractères interdits ( < > : " / \ | ? * ).'
     'lanceur.nouvelle.erreur'   = "La création de la revue a échoué :`n{0}"
     # Cycle de vie du numéro (D116-D119) : deux listes dans le lanceur, version du
@@ -187,6 +189,8 @@ $script:SzhTextes = @{
     'lanceur.nouvelle'          = 'Neue Zeitschrift…'
     'lanceur.nouvelle.dossier'  = 'Speicherort (übergeordneten Ordner) der neuen Zeitschrift wählen — z. B. OneDrive\Revues.'
     'lanceur.nouvelle.nom'      = 'Ordnername der neuen Zeitschrift (z. B. 2026-02):'
+    'lanceur.nouvelle.ou'       = "Sie wird erstellt in:`n{0}"
+    'lanceur.nouvelle.existe'   = 'Ein Ordner « {0} » existiert an diesem Ort bereits.'
     'lanceur.nouvelle.invalide' = 'Der Name enthält unzulässige Zeichen ( < > : " / \ | ? * ).'
     'lanceur.nouvelle.erreur'   = "Die Zeitschrift konnte nicht erstellt werden:`n{0}"
     # Lebenszyklus der Ausgabe (D116-D119)
@@ -290,6 +294,8 @@ $script:SzhTextes = @{
     'lanceur.nouvelle'          = 'New journal…'
     'lanceur.nouvelle.dossier'  = 'Choose where to create the new journal (parent folder) — e.g. OneDrive\Revues.'
     'lanceur.nouvelle.nom'      = 'Folder name for the new journal (e.g. 2026-02):'
+    'lanceur.nouvelle.ou'       = "It will be created in:`n{0}"
+    'lanceur.nouvelle.existe'   = 'A folder named {0} already exists at this location.'
     'lanceur.nouvelle.invalide' = 'The name contains forbidden characters ( < > : " / \ | ? * ).'
     'lanceur.nouvelle.erreur'   = "Creating the journal failed:`n{0}"
     # Issue life cycle (D116-D119)
@@ -758,19 +764,106 @@ function Test-SzhSha256 {
 # que si elle manque, au moment d'archiver). Écriture minimale : ligne existante
 # remplacée, sinon ajoutée en fin de fichier — tout le reste est préservé, comme le fait
 # serialiserAusgabe côté cockpit. Valeur citée, même forme que les autres scalaires.
-function Set-SzhAusgabeVersion([string]$Dossier, [string]$Version) {
-  if (-not $Version) { return $false }
+# Écriture MINIMALE d'une clé plate : ligne existante remplacée, sinon ajoutée en fin de
+# fichier — tout le reste est préservé, comme le fait serialiserAusgabe côté cockpit.
+# `$Cite` suit la règle de formaterValeurYaml : les scalaires du formulaire sont cités,
+# mais `revue` et `lang` sont des jetons NUS (le Makefile les lit au sed, qui ne comprend
+# pas les guillemets).
+function Set-SzhAusgabeCle([string]$Dossier, [string]$Cle, [string]$Valeur, [bool]$Cite) {
+  if (-not $Valeur) { return $false }
   $fichier = Join-Path $Dossier 'ausgabe.yaml'
   if (-not (Test-Path $fichier)) { return $false }
   $lignes = @(Get-Content $fichier -Encoding UTF8)
-  $ligne = ('version-toolkit: "{0}"' -f $Version)
+  $ligne = ('{0}: {1}' -f $Cle, $Valeur)
+  if ($Cite) { $ligne = ('{0}: "{1}"' -f $Cle, $Valeur) }
   $trouvee = $false
   for ($i = 0; $i -lt $lignes.Count; $i++) {
-    if ($lignes[$i] -match '^version-toolkit:') { $lignes[$i] = $ligne; $trouvee = $true; break }
+    if ($lignes[$i] -match ('^' + [regex]::Escape($Cle) + ':')) { $lignes[$i] = $ligne; $trouvee = $true; break }
   }
   if (-not $trouvee) { $lignes += $ligne }
   Set-Content -Path $fichier -Value $lignes -Encoding UTF8
   return $true
+}
+
+function Set-SzhAusgabeVersion([string]$Dossier, [string]$Version) {
+  return (Set-SzhAusgabeCle $Dossier 'version-toolkit' $Version $true)
+}
+
+# ---------- Envoi pour traduction (D127) ----------
+#
+# Le SENS de la traduction découle du produit, et tout le reste en découle :
+#   zeitschrift (allemand) -> à traduire vers le FRANÇAIS -> rédaction francophone
+#   revue       (français) -> à traduire vers l'ALLEMAND  -> rédaction germanophone
+# La langue de l'E-MAIL est celle de la personne qui va traduire — pas celle de
+# l'interface de l'expéditeur. C'est pourquoi ces gabarits vivent ici et non dans
+# $SzhTextes, qui suit la langue d'affichage de Windows.
+$script:SzhMailsTraduction = @{
+  zeitschrift = 'redaction@csps.ch'      # allemand -> français
+  revue       = 'redaktion@szh.ch'       # français -> allemand
+}
+
+function Get-SzhLangueTraduction([string]$Produit) {
+  if ($Produit -eq 'zeitschrift') { return 'fr' }
+  return 'de'
+}
+
+# Adresse de destination, surchargeable par config.json (clé « mailsTraduction ») :
+# une adresse de rédaction peut changer sans qu'on republie le toolkit.
+function Get-SzhMailTraduction([string]$Produit) {
+  $cfg = Get-SzhConfig
+  if ($cfg -and $cfg.mailsTraduction -and $cfg.mailsTraduction.$Produit) {
+    return [string]$cfg.mailsTraduction.$Produit
+  }
+  if ($SzhMailsTraduction.ContainsKey($Produit)) { return $SzhMailsTraduction[$Produit] }
+  return $SzhSupport
+}
+
+# Gabarits d'e-mail par langue CIBLE. {0} = le numéro (et l'article s'il y en a un),
+# {1} = le lien szh://. Le corps HTML porte le VRAI hyperlien ; le texte brut est le
+# repli quand Outlook manque (lien sur sa propre ligne, à copier-coller).
+function Get-SzhGabaritTraduction([string]$Langue) {
+  if ($Langue -eq 'fr') {
+    return @{
+      sujet = 'Traduction allemand vers français — {0}'
+      html  = @'
+<p>Bonjour,</p>
+<p>Le numéro <strong>{0}</strong> de la <em>Schweizerische Zeitschrift für Heilpädagogik</em> est prêt pour la traduction de l&rsquo;<strong>allemand</strong> vers le <strong>français</strong>.</p>
+<p><a href="{1}">Ouvrir le suivi de traduction</a></p>
+<p style="color:#666666;font-size:90%">Ce lien ouvre directement le bon numéro sur un poste de rédaction SZH. S&rsquo;il ne s&rsquo;ouvre pas : menu Démarrer &rarr; &laquo;&nbsp;Zeitschriften SZH&nbsp;&raquo;, puis choisir le numéro.</p>
+'@
+      texte = @'
+Bonjour,
+
+Le numéro {0} de la Schweizerische Zeitschrift für Heilpädagogik est prêt pour la
+traduction de l'allemand vers le français.
+
+Ce lien ouvre directement le suivi de traduction sur un poste de rédaction SZH :
+{1}
+
+Si le lien ne s'ouvre pas : menu Démarrer -> « Zeitschriften SZH », puis choisir le numéro.
+'@
+    }
+  }
+  return @{
+    sujet = 'Übersetzung Französisch nach Deutsch — {0}'
+    html  = @'
+<p>Guten Tag</p>
+<p>Die Ausgabe <strong>{0}</strong> der <em>Revue suisse de pédagogie spécialisée</em> ist bereit für die Übersetzung vom <strong>Französischen</strong> ins <strong>Deutsche</strong>.</p>
+<p><a href="{1}">Übersetzungsstand öffnen</a></p>
+<p style="color:#666666;font-size:90%">Dieser Link öffnet die richtige Ausgabe direkt auf einem SZH-Redaktionscomputer. Falls er sich nicht öffnet: Startmenü &rarr; &laquo;&nbsp;Revues SZH&nbsp;&raquo;, dann die Ausgabe wählen.</p>
+'@
+    texte = @'
+Guten Tag
+
+Die Ausgabe {0} der Revue suisse de pédagogie spécialisée ist bereit für die
+Übersetzung vom Französischen ins Deutsche.
+
+Dieser Link öffnet den Übersetzungsstand direkt auf einem SZH-Redaktionscomputer:
+{1}
+
+Falls der Link sich nicht öffnet: Startmenü -> « Revues SZH », dann die Ausgabe wählen.
+'@
+  }
 }
 
 # ---------- Liens profonds « szh:// » (D123) ----------

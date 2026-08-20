@@ -33,20 +33,25 @@ param(
 
 . "$PSScriptRoot\szh-common.ps1"
 
-# Écran d'erreur PROPRE à l'archivage. On ne réutilise pas Show-SzhErreur : ses textes
-# sont ceux de la mise à jour (« la mise à jour réessaiera toute seule »), or ici rien
-# ne réessaiera et il n'y a pas de transcript à joindre. Le message doit dire deux
-# choses, et seulement elles : ce qui a empêché le déplacement, et que la revue est
-# intacte là où elle était.
+# Écran d'erreur PROPRE à l'archivage, en BOÎTE DE DIALOGUE.
+#
+# Pas la console : ce script est lancé par le cockpit via hidden.vbs, donc sa console est
+# cachée (D126 — c'est la seule façon fiable de survivre à la fermeture de la fenêtre de
+# VSCodium). Un message écrit dans une console invisible, c'est exactement le symptôme
+# « j'ai cliqué et rien ne s'est passé ».
+# Et pas Show-SzhErreur : ses textes sont ceux de la mise à jour (« la mise à jour
+# réessaiera toute seule »), or ici rien ne réessaiera. Le message dit deux choses, et
+# seulement elles : ce qui a empêché le déplacement, et que la revue est intacte.
 function Show-SzhErreurArchivage([string]$Etape, [string]$Message) {
+  $texte = $Etape + "`n`n" + $Message + "`n`n" + (T 'err.rassure') + "`n" + (T 'arch.err.suite' @($SzhSupport))
   Write-Host ''
-  Write-Host ('  ' + $Etape) -ForegroundColor Yellow
-  Write-Host ('  ' + $Message)
-  Write-Host ''
-  Write-Host ('  ' + (T 'err.rassure')) -ForegroundColor Green
-  Write-Host ('  ' + (T 'arch.err.suite' @($SzhSupport)))
-  Write-Host ''
-  try { [void]$Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown') } catch { Start-Sleep -Seconds 20 }
+  Write-Host ('  ' + $texte)
+  try {
+    Add-Type -AssemblyName System.Windows.Forms
+    [void][System.Windows.Forms.MessageBox]::Show($texte, (T 'arch.titre'),
+      [System.Windows.Forms.MessageBoxButtons]::OK,
+      [System.Windows.Forms.MessageBoxIcon]::Warning)
+  } catch { Start-Sleep -Seconds 10 }
 }
 
 $etatCible = 'archive'

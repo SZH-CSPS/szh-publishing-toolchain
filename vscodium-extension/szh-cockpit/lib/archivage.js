@@ -1,4 +1,4 @@
-// SZH cockpit — cycle de vie du numéro : verrouillage, archivage, version du
+﻿// SZH cockpit — cycle de vie du numéro : verrouillage, archivage, version du
 // logiciel (D116–D117 et D120).
 //
 // Ce module ne connaît RIEN de l'arborescence SharePoint. Le DÉPLACEMENT d'un
@@ -23,6 +23,7 @@ const BASE_SZH = 'C:\\ProgramData\\SZH';
 const TOOLKIT = path.join(BASE_SZH, 'toolkit');
 const SCRIPT_ARCHIVAGE = path.join(TOOLKIT, 'windows', 'archive-revue.ps1');
 const SCRIPT_LANCEUR = path.join(TOOLKIT, 'windows', 'open-revue.ps1');
+const SCRIPT_MAIL = path.join(TOOLKIT, 'windows', 'mail-traduction.ps1');
 
 // Version du logiciel INSTALLÉE sur ce poste. Source primaire : le fichier VERSION
 // du toolkit (écrit par la CI dans toolkit-X.zip) ; repli : state.json, écrit par
@@ -77,27 +78,37 @@ function supprimerDossier(chemin) {
   } catch (e) { return String((e && e.message) || e); }
 }
 
-// Lance un script PowerShell du toolkit, DÉTACHÉ : la fenêtre de VSCodium peut se
-// fermer juste après (c'est la condition pour déplacer un dossier), le script doit donc
-// survivre à l'hôte d'extensions et pouvoir parler tout seul.
-// `cache` décide s'il y a une console à l'écran, et c'est un choix d'interface :
-//   false -> archivage. Déplacer plusieurs centaines de Mo en silence passerait pour un
-//            plantage (D5) : la console nomme les étapes et garde l'erreur à l'écran.
-//   true  -> sélecteur de version. Il n'a rien à raconter avant que sa fenêtre
-//            n'apparaisse : une console derrière un dialogue ne serait que du bruit.
-//            `-WindowStyle Hidden` ET windowsHide — l'un sans l'autre laisse un flash.
-// Retourne null si le lancement a réussi, sinon le message d'erreur.
-function lancerScriptPowerShell(script, args, cache) {
-  if (!fs.existsSync(script)) {
-    return 'script introuvable : ' + script;
-  }
-  const avant = ['-NoProfile', '-ExecutionPolicy', 'Bypass'];
-  if (cache) { avant.push('-WindowStyle', 'Hidden'); }
+// Lance un script PowerShell du toolkit de façon à ce qu'il SURVIVE à cette fenêtre :
+// l'archivage ferme VSCodium (condition pour déplacer un dossier ouvert), et le
+// sélecteur de version doit rester là si l'utilisateur quitte l'éditeur.
+//
+// ⚠ NE JAMAIS UTILISER `detached: true` ICI. C'était le cas, et c'est ce qui rendait
+// l'archivage totalement inopérant : sur Windows, libuv traduit `detached` par
+// DETACHED_PROCESS, donc `powershell.exe` démarre SANS AUCUNE CONSOLE et ressort
+// immédiatement avec le code 0 — sans exécuter une seule ligne du script, sans un mot,
+// sans une ligne de journal. Mesuré : detached + stdio ignoré ou capturé = zéro sortie ;
+// non détaché = le script fait son travail.
+//
+// La voie qui marche est celle que le toolkit emploie déjà partout ailleurs (raccourcis
+// du menu Démarrer, tâches planifiées, protocole szh:) : `wscript.exe //B hidden.vbs`.
+// WScript.Shell.Run crée un vrai processus AVEC sa console (cachée) et rend la main
+// aussitôt — wscript sort en quelques millisecondes, le PowerShell continue seul. Il
+// n'y a donc plus rien à détacher : la durée de vie de l'appelant n'entre plus en jeu.
+// hidden.vbs requote chacun de ses arguments (vérifié : paramètre nommé, commutateur et
+// positionnel se lient correctement).
+//
+// Conséquence assumée : plus de console visible. Les scripts lancés d'ici rapportent donc
+// leurs erreurs par une boîte de dialogue et par le journal, jamais par la console.
+function lancerScriptPowerShell(script, args) {
+  if (!fs.existsSync(script)) { return 'script introuvable : ' + script; }
+  const vbs = path.join(TOOLKIT, 'windows', 'hidden.vbs');
+  if (!fs.existsSync(vbs)) { return 'script introuvable : ' + vbs; }
   try {
-    const proc = spawn('powershell.exe',
-      avant.concat(['-File', script]).concat(args || []),
-      { detached: true, stdio: 'ignore', windowsHide: !!cache });
-    proc.unref();
+    const proc = spawn('wscript.exe', ['//B', vbs, script].concat(args || []),
+      { stdio: 'ignore', windowsHide: true });
+    // wscript sort tout de suite ; on ne veut ni attendre son code, ni qu'une erreur
+    // d'écoute remonte en rejet non capturé de l'hôte d'extensions.
+    proc.on('error', () => { /* signalé par l'absence d'effet, et par le journal */ });
     return null;
   } catch (e) { return String((e && e.message) || e); }
 }
@@ -107,23 +118,29 @@ function lancerScriptPowerShell(script, args, cache) {
 function lancerArchivage(action, racine) {
   const args = ['-Dossier', racine];
   if (action === 'desarchiver') { args.push('-Desarchiver'); }
-  return lancerScriptPowerShell(SCRIPT_ARCHIVAGE, args, false);
+  return lancerScriptPowerShell(SCRIPT_ARCHIVAGE, args);
 }
 
 // « Changer de version du logiciel… » : ouvre le sélecteur de versions du lanceur
 // « Revues SZH » (D120) — une seule implémentation du choix de version, atteignable
 // depuis le lanceur comme depuis l'avertissement de divergence.
 //
-// On appelle le script DIRECTEMENT, pas via hidden.vbs : un argument de moins à
-// requoter, et `-WindowStyle Hidden` + windowsHide suffisent à ne montrer aucune
-// console. (Un « -Versions » requoté par hidden.vbs se lierait très bien — vérifié
-// à la mesure ; c'est simplement inutile ici.)
-// ⚠ Rien ne remonte de ce lancement : `stdio: 'ignore'` et le process est détaché. Le
-// lanceur journalise donc son entrée dans le chemin -Versions
+// ⚠ Rien ne remonte de ce lancement (`stdio: 'ignore'`, et wscript rend la main
+// tout de suite). Le lanceur journalise donc son entrée dans le chemin -Versions
 // (C:\ProgramData\SZH\logs) — c'est la seule trace exploitable si l'utilisateur dit
 // « je clique et rien ne se passe ».
 function lancerChoixVersion() {
-  return lancerScriptPowerShell(SCRIPT_LANCEUR, ['-Versions'], true);
+  return lancerScriptPowerShell(SCRIPT_LANCEUR, ['-Versions']);
+}
+
+// « Envoyer pour traduction » (D127) : le brouillon d'e-mail. Confié à PowerShell parce
+// qu'un corps `mailto:` est du TEXTE BRUT — aucun client ne rend cliquable un schéma
+// qu'il ne connaît pas, et le lien szh:// arrivait donc inerte. Seul l'objet mail
+// d'Outlook accepte un corps HTML, donc un vrai <a href>. Le script décide aussi la
+// LANGUE de l'e-mail et le destinataire, tous deux déduits du produit : ni l'un ni
+// l'autre ne dépend de la langue d'interface de l'expéditeur.
+function lancerMailTraduction(lien) {
+  return lancerScriptPowerShell(SCRIPT_MAIL, ['-Lien', lien]);
 }
 
 // ---- Mode développeur (D119) --------------------------------------------------------
@@ -164,7 +181,8 @@ function ecrireModeDeveloppeur(actif) {
 }
 
 module.exports = {
-  BASE_SZH, TOOLKIT, CONFIG, SCRIPT_ARCHIVAGE, SCRIPT_LANCEUR,
+  BASE_SZH, TOOLKIT, CONFIG, SCRIPT_ARCHIVAGE, SCRIPT_LANCEUR, SCRIPT_MAIL,
+  lancerMailTraduction,
   lireModeDeveloppeur, ecrireModeDeveloppeur,
   versionInstallee, versionsDivergent, tailleDossier, supprimerDossier,
   lancerArchivage, lancerChoixVersion

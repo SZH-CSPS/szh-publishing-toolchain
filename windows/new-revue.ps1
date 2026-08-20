@@ -11,7 +11,11 @@
 #>
 [CmdletBinding()]
 param(
-  [Parameter(Mandatory = $true)][string]$Dossier
+  [Parameter(Mandatory = $true)][string]$Dossier,
+  # Produit du numéro (D126) : écrit le jeton `revue:` d'ausgabe.yaml, donc le nom de la
+  # revue, son ISSN, sa langue par défaut (D74) ET le lanceur qui le listera. Vide =
+  # on laisse ce que dit le template (rétrocompatibilité des appels en ligne).
+  [string]$Produit = ''
 )
 
 . "$PSScriptRoot\szh-common.ps1"
@@ -31,6 +35,18 @@ if ($existait) {
   Copy-Item (Join-Path $template '*') $Dossier -Recurse -Force
 }
 $chemin = (Resolve-Path $Dossier).Path
+
+# Produit (D126) : c'est CE jeton qui décide dans quel lanceur le numéro apparaîtra.
+# Sans lui, un numéro créé dans le dossier de la Zeitschrift gardait le « revue: revue »
+# du template et se retrouvait listé du mauvais côté — exactement le décalage constaté.
+if (-not $existait) {
+  $jeton = Get-SzhJetonRevue $Produit
+  if ($jeton) {
+    if (Set-SzhAusgabeCle $chemin 'revue' $jeton $false) {
+      Write-SzhInfo ('Numéro marqué « revue: {0} ».' -f $jeton)
+    }
+  }
+}
 
 # Version du logiciel qui crée ce numéro (D120) : c'est elle qui permettra, plus tard,
 # de le recompiler dans les mêmes conditions — et c'est elle que le cockpit compare à
@@ -62,7 +78,9 @@ if ($officiel) {
   Write-SzhOk ('Revue créée : {0}' -f $chemin)
   Write-SzhInfo 'Dans OneDrive : clic droit sur ce dossier -> « Toujours conserver sur cet appareil ».'
   Write-SzhInfo 'Déposez les articles Word finalisés dans « articles-word », puis double-cliquez « Ouvrir la revue ».'
-  Write-SzhInfo 'La revue apparaît dans le lanceur « Revues SZH » du menu Démarrer.'
+  $lanceur = 'Revues SZH'
+  if ((Get-SzhJetonRevue $Produit) -eq 'zeitschrift') { $lanceur = 'Zeitschriften SZH' }
+  Write-SzhInfo ('Le numéro apparaît dans le lanceur « {0} » du menu Démarrer.' -f $lanceur)
   return
 }
 Write-SzhInfo ('Ce dossier est hors de l''arborescence officielle : le lanceur le signalera au lieu de lister la revue.')

@@ -18,10 +18,12 @@ param(
   # sans passer par la liste. Positionnel parce que hidden.vbs requote chacun de ses
   # arguments, et qu'un « %1 » requoté se lie à un paramètre positionnel (mesuré).
   [Parameter(Position = 0)][string]$Lien,
-  # Quel produit lister : « tout » (défaut, comportement historique), « revue » ou
-  # « zeitschrift » (D124). C'est ce qui distingue les deux raccourcis du menu
-  # Démarrer — « Revues SZH » et « Zeitschriften SZH ».
-  [string]$Produit = 'tout',
+  # Quel produit : « revue » (défaut) ou « zeitschrift » (D124/D126). C'est ce qui
+  # distingue les deux raccourcis du menu Démarrer — « Revues SZH » et
+  # « Zeitschriften SZH ». Il n'y a plus de valeur « tout » : un lanceur qui montrait
+  # les deux produits mélangés faisait apparaître une Zeitschrift dans la liste de la
+  # Revue, et « Nouvelle revue… » n'aurait pas su quel produit créer.
+  [string]$Produit = 'revue',
   # Ouvre directement le sélecteur de version du logiciel — c'est ce que lance
   # l'avertissement de divergence du cockpit (« Changer de version… », D120) : une
   # seule implémentation du choix de version, atteignable des deux côtés.
@@ -56,9 +58,10 @@ trap {
 
 # Normalisation MANUELLE plutôt que [ValidateSet] (D124) : une valeur inattendue ne
 # doit pas lever d'exception terminante ($ErrorActionPreference = 'Stop' dans le
-# socle) — sans console, le lanceur mourrait sans le moindre message.
+# socle) — sans console, le lanceur mourrait sans le moindre message. Toute valeur
+# inconnue retombe sur « revue ».
 $produitFiltre = ([string]$Produit).ToLower()
-if (@('revue', 'zeitschrift') -notcontains $produitFiltre) { $produitFiltre = 'tout' }
+if ($produitFiltre -ne 'zeitschrift') { $produitFiltre = 'revue' }
 $titreFenetre = (T 'lanceur.titre')
 if ($produitFiltre -eq 'zeitschrift') { $titreFenetre = (T 'lanceur.titre.zs') }
 
@@ -241,13 +244,16 @@ $emplacements = Get-SzhEmplacements
 # Mode test (D119) : les quatre dossiers de test sont créés s'ils manquent — sinon le
 # mode ne serait utilisable qu'après un montage manuel. En production, rien n'est créé.
 [void](Initialize-SzhEmplacementsTest)
+# D126 : les deux emplacements DU PRODUIT de ce lanceur, et eux seuls. Le lanceur de la
+# Revue pointe sur les dossiers Revue, celui de la Zeitschrift sur ceux de la
+# Zeitschrift — plus de mélange.
+$encoursProduit = Get-SzhEmplacementRevue $produitFiltre 'encours'
+$archiveProduit = Get-SzhEmplacementRevue $produitFiltre 'archive'
 $racines = New-Object System.Collections.ArrayList
+[void]$racines.Add($encoursProduit)
+[void]$racines.Add($archiveProduit)
 $racinesArchives = @{}
-foreach ($r in $emplacements.encours) { [void]$racines.Add($r) }
-foreach ($r in $emplacements.archives) {
-  [void]$racines.Add($r)
-  $racinesArchives[$r.ToLower()] = $true
-}
+$racinesArchives[$archiveProduit.ToLower()] = $true
 
 # Racines HÉRITÉES, dédoublonnées : `revuesRoots` contient d'ordinaire déjà
 # « %OneDrive%\Revues », et le balayer deux fois n'apportait rien.
@@ -262,6 +268,8 @@ $ajouterHeritee = {
   foreach ($officielle in ($emplacements.encours + $emplacements.archives)) {
     if ($officielle.ToLower() -eq $cle) { return }
   }
+  # Un dossier hérité qui EST l'emplacement de l'autre produit n'est pas « hors
+  # arborescence » : il est juste ailleurs. On ne le compte pas.
   $vuesHeritees[$cle] = $true
   [void]$racinesHeritees.Add([string]$chemin)
 }
@@ -307,11 +315,11 @@ foreach ($racine in $racines) {
       if (-not $vus.ContainsKey($cle)) {
         $vus[$cle] = $true
         $etat = Get-SzhRevueEtat $d.FullName
-        # D124 : un lanceur filtré ne montre que SON produit — et il le décide sur le
-        # jeton d'ausgabe.yaml, pas sur l'emplacement : une Zeitschrift rangée dans un
-        # dossier historique reste visible dans le lanceur Zeitschrift. Un numéro qui
-        # ne déclare pas sa revue n'est classable dans aucun des deux filtres.
-        if (($produitFiltre -ne 'tout') -and ($etat.jeton -ne $produitFiltre)) { return }
+        # D124/D126 : le produit est décidé par le jeton d'ausgabe.yaml, PAS par
+        # l'emplacement. Un numéro rangé dans le dossier Zeitschrift mais qui déclare
+        # « revue: revue » n'apparaît donc pas ici — c'est voulu : c'est le fichier qui
+        # dit ce qu'est un numéro, et un décalage doit se voir plutôt que se deviner.
+        if ($etat.jeton -ne $produitFiltre) { return }
         $entree = [pscustomobject]@{
           nom         = $d.Name
           chemin      = $d.FullName
@@ -458,12 +466,13 @@ $boutonVersions.Add_Click({
 
 # ---- « Nouvelle revue… » (G2, D38) : scaffold via new-revue.ps1 puis ouverture ----
 
-# Petite boîte : demande le nom du dossier de la nouvelle revue. $null si annulé.
+# Petite boîte : demande le nom du dossier de la nouvelle revue, et RAPPELLE où elle
+# sera créée — il n'y a plus rien à choisir (D126). $null si annulé.
 function Read-SzhNomRevue {
   $boite = New-Object System.Windows.Forms.Form
   $boite.Text = (T 'lanceur.nouvelle') -replace '…', ''
   $boite.StartPosition = 'CenterParent'
-  $boite.ClientSize = New-Object System.Drawing.Size(400, 118)
+  $boite.ClientSize = New-Object System.Drawing.Size(400, 160)
   $boite.FormBorderStyle = 'FixedDialog'
   $boite.MaximizeBox = $false
   $boite.MinimizeBox = $false
@@ -474,6 +483,13 @@ function Read-SzhNomRevue {
   $question.AutoSize = $true
   $boite.Controls.Add($question)
 
+  $ou = New-Object System.Windows.Forms.Label
+  $ou.Text = (T 'lanceur.nouvelle.ou' @($encoursProduit))
+  $ou.Location = New-Object System.Drawing.Point(16, 74)
+  $ou.Size = New-Object System.Drawing.Size(368, 34)
+  $ou.ForeColor = [System.Drawing.Color]::DimGray
+  $boite.Controls.Add($ou)
+
   $champ = New-Object System.Windows.Forms.TextBox
   $champ.Location = New-Object System.Drawing.Point(16, 40)
   $champ.Size = New-Object System.Drawing.Size(368, 24)
@@ -482,7 +498,7 @@ function Read-SzhNomRevue {
 
   $okBouton = New-Object System.Windows.Forms.Button
   $okBouton.Text = 'OK'
-  $okBouton.Location = New-Object System.Drawing.Point(198, 76)
+  $okBouton.Location = New-Object System.Drawing.Point(198, 118)
   $okBouton.Size = New-Object System.Drawing.Size(90, 30)
   $okBouton.DialogResult = [System.Windows.Forms.DialogResult]::OK
   $boite.Controls.Add($okBouton)
@@ -490,7 +506,7 @@ function Read-SzhNomRevue {
 
   $nonBouton = New-Object System.Windows.Forms.Button
   $nonBouton.Text = (T 'lanceur.annuler')
-  $nonBouton.Location = New-Object System.Drawing.Point(294, 76)
+  $nonBouton.Location = New-Object System.Drawing.Point(294, 118)
   $nonBouton.Size = New-Object System.Drawing.Size(90, 30)
   $nonBouton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
   $boite.Controls.Add($nonBouton)
@@ -512,29 +528,21 @@ $boutonNouvelle.Location = New-Object System.Drawing.Point(16, $yBoutons)
 $boutonNouvelle.Size = New-Object System.Drawing.Size(130, 32)
 $form.Controls.Add($boutonNouvelle)
 $boutonNouvelle.Add_Click({
-  # 1) Dossier parent, 2) nom du dossier. Par défaut : le dossier « en cours » de la
-  # Revue (D116) — celui de production ou celui de test selon le mode (D119) ; repli
-  # OneDrive\Revues pour un poste encore configuré à l'ancienne.
-  $dossierDlg = New-Object System.Windows.Forms.FolderBrowserDialog
-  $dossierDlg.Description = (T 'lanceur.nouvelle.dossier')
-  $dossierDlg.ShowNewFolderButton = $true
-  $defaut = ''
-  $encoursDefaut = $emplacements.revue.encours
-  if ($produitFiltre -eq 'zeitschrift') { $encoursDefaut = $emplacements.zeitschrift.encours }
-  if (Test-Path $encoursDefaut) { $defaut = $encoursDefaut }
-  elseif ($env:OneDrive) {
-    $repli = Join-Path $env:OneDrive 'Revues'
-    if (Test-Path $repli) { $defaut = $repli }
-  }
-  if ($defaut) { $dossierDlg.SelectedPath = $defaut }
-  if ($dossierDlg.ShowDialog($form) -ne [System.Windows.Forms.DialogResult]::OK) { return }
+  # D126 : plus de choix d'emplacement. Un numéro se crée dans le dossier « en cours »
+  # DU PRODUIT de ce lanceur — celui de production ou celui de test selon le mode
+  # (D119). Il n'y a qu'une bonne réponse : la laisser choisir ne servait qu'à se
+  # tromper, et c'est comme ça qu'une Zeitschrift a fini rangée avec un « revue: revue ».
   $nom = Read-SzhNomRevue
   if (-not $nom) { return }
-  $cible = Join-Path $dossierDlg.SelectedPath $nom
+  $cible = Join-Path $encoursProduit $nom
+  if (Test-Path $cible) {
+    [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.nouvelle.existe' @($nom)), $titreFenetre)
+    return
+  }
   try {
-    # new-revue.ps1 : scaffold depuis le template + estampille de version (D120) +
-    # « Ouvrir la revue.lnk » + enregistrement de la racine pour ce lanceur (D38).
-    & (Join-Path $PSScriptRoot 'new-revue.ps1') -Dossier $cible | Out-Null
+    # new-revue.ps1 : scaffold depuis le template, jeton `revue:` du produit (D126),
+    # estampille de version (D120) et « Ouvrir la revue.lnk » (D14).
+    & (Join-Path $PSScriptRoot 'new-revue.ps1') -Dossier $cible -Produit $produitFiltre | Out-Null
   } catch {
     [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.nouvelle.erreur' @($_.Exception.Message)), $titreFenetre)
     return

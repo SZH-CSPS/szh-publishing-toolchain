@@ -102,6 +102,11 @@ powershell -ExecutionPolicy Bypass -File "C:\ProgramData\SZH\toolkit\windows\new
 dossier, enregistre la revue pour le lanceur « Revues SZH » du menu Démarrer. Puis, dans OneDrive :
 clic droit sur le dossier → **« Toujours conserver sur cet appareil »**.
 
+**Un lanceur par produit (D126)** : « Revues SZH » (`-Produit revue`) et « Zeitschriften SZH »
+(`-Produit zeitschrift`) — il n'y a plus de valeur `tout`. Le produit vient du **jeton `revue:`
+d'`ausgabe.yaml`**, jamais de l'emplacement, et « Nouvelle revue… » ne demande plus où créer :
+`new-revue.ps1 -Produit` écrit le jeton et pose le numéro dans le dossier « en cours » du produit.
+
 **Le lanceur ne liste QUE ces emplacements (D125).** Les racines historiques (`revuesRoots` de
 `config.json`, `%OneDrive%\Revues`) ne peuplent plus les listes ; elles servent à **compter** les
 revues restées dehors, annoncées sous les listes. `bootstrap.ps1` ne sème plus rien dans
@@ -141,8 +146,15 @@ retrouve le dossier dans les seuls emplacements connus, dépose une **intention 
 (`%LOCALAPPDATA%\SZH\intention.json`, périmée à 5 min) et ouvre la revue ; le cockpit consomme
 l'intention à l'activation et ouvre le panneau. Le lien ne contient jamais de chemin.
 
-Le menu Démarrer porte deux entrées : **« Revues SZH »** (tout) et **« Zeitschriften SZH »**
-(`-Produit zeitschrift`) — le même script, filtré sur le jeton `revue:` d'`ausgabe.yaml`.
+Le menu Démarrer porte deux entrées : **« Revues SZH »** (`-Produit revue`) et
+**« Zeitschriften SZH »** (`-Produit zeitschrift`) — le même script, filtré sur le jeton `revue:`
+d'`ausgabe.yaml` (D126).
+
+Le **brouillon d'e-mail** est fabriqué par `windows/mail-traduction.ps1` (D127), pas par un
+`mailto:` : seul un corps HTML (objet mail Outlook) donne un vrai hyperlien sur un schéma
+`szh://`. Le script déduit du produit la **langue de l'e-mail** et le **destinataire** — une
+Zeitschrift part en français à `redaction@csps.ch`, une Revue en allemand à `redaktion@szh.ch`
+(surchargeable par `config.json`, clé `mailsTraduction`). Repli `mailto:` sans Outlook.
 
 ### C ter. Réinstaller une version précédente (D120)
 `update.ps1 -Version X` fait déjà tout (l'archive N‑1 est en staging). Le geste est atteignable
@@ -266,6 +278,11 @@ pipeline. Voir [`userdoc.md`](userdoc.md).
   La tâche planifiée, elle, fait ce qu'il faut : `update-launcher.ps1` extrait le toolkit
   **d'abord**, puis lance le `update.ps1` fraîchement déployé. Après un `update.ps1` manuel qui
   change `update.ps1` lui-même, le relancer une fois.
+- **Ne JAMAIS lancer un script PowerShell avec `detached: true` depuis l'extension.** Sur Windows,
+  libuv le traduit par `DETACHED_PROCESS` : `powershell.exe` démarre sans console et ressort
+  aussitôt avec le code 0, **sans exécuter une ligne**. C'est ce qui rendait l'archivage inopérant
+  (D126), et `stdio: 'ignore'` rendait la panne invisible. Passer par `wscript.exe //B hidden.vbs` :
+  un vrai processus avec sa console cachée, et la main rendue aussitôt — donc rien à détacher.
 - **`hidden.vbs` requote chacun de ses arguments** : vérifié, `powershell.exe -File script.ps1
   "-Produit" "zeitschrift"` et un `"%1"` requoté se lient correctement (paramètre nommé, switch et
   positionnel). C'est ce qui permet aux deux raccourcis et au protocole de passer par lui.

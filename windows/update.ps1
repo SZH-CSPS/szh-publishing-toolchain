@@ -315,7 +315,9 @@ try {
   $shell = New-Object -ComObject WScript.Shell
   $lnk = $shell.CreateShortcut((Join-Path $menu 'Revues SZH.lnk'))
   $lnk.TargetPath = "$env:WINDIR\System32\wscript.exe"
-  $lnk.Arguments = ('//B "{0}" "{1}"' -f (Join-Path $SzhToolkit 'windows\hidden.vbs'), (Join-Path $SzhToolkit 'windows\open-revue.ps1'))
+  # D126 : chaque raccourci pointe sur SON produit — la Revue ici, la Zeitschrift plus
+  # bas. Explicite des deux côtés, pour qu'un raccourci ancien ne montre pas les deux.
+  $lnk.Arguments = ('//B "{0}" "{1}" "-Produit" "revue"' -f (Join-Path $SzhToolkit 'windows\hidden.vbs'), (Join-Path $SzhToolkit 'windows\open-revue.ps1'))
   $lnk.Description = 'Ouvrir une revue SZH'
   $codium = Get-VSCodiumExe
   if ($codium) { $lnk.IconLocation = $codium }

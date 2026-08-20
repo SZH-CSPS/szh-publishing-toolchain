@@ -42,6 +42,72 @@ et un retrait défensif du BOM à la lecture côté JavaScript.
   confirmer que le message « trop de demandes vers GitHub depuis ce réseau » est compréhensible.
   Si le cas devient fréquent, il faudra mettre la liste des versions en cache elle aussi.
 
+## À vérifier — l'e-mail de traduction (D127)
+
+**Éprouvé ici** : les deux gabarits rendent le bon sujet et un vrai `<a href="szh://…">` ; le
+produit décide la langue et le destinataire (`zeitschrift` → français à `redaction@csps.ch`,
+`revue` → allemand à `redaktion@szh.ch`). **Routage des liens vérifié sur le cas dur** : deux
+numéros HOMONYMES, un par produit — le lien Revue tombe sur la Revue, le lien Zeitschrift sur la
+Zeitschrift, un numéro déplacé dans les archives reste atteignable par son lien, et un numéro qui
+n'existe pas du côté demandé est déclaré introuvable au lieu d'ouvrir l'homonyme.
+
+**Pas encore tourné** : la création du brouillon Outlook (COM) — je ne l'ai pas déclenchée pour ne
+pas ouvrir de fenêtre de message sur ton poste.
+
+- [ ] Cliquer « Envoyer pour traduction » sur une **Revue** : brouillon **en allemand**,
+  destinataire `redaktion@szh.ch`, et le lien **cliquable** dans le corps.
+- [ ] Idem sur une **Zeitschrift** : brouillon **en français**, `redaction@csps.ch`.
+- [ ] Changer la langue d'interface (Réglages SZH) et refaire : la langue de l'e-mail ne doit
+  **pas** bouger — elle suit le produit, pas l'interface.
+- [ ] S'envoyer l'e-mail et **cliquer le lien depuis Outlook** : le bon numéro s'ouvre, au bon
+  endroit. Refaire depuis Teams (coller le lien copié).
+- [ ] Fermer Outlook complètement et réessayer : le repli `mailto:` doit s'ouvrir (lien en texte
+  brut, non cliquable — c'est attendu, aucun client ne linkifie un schéma inconnu).
+- [ ] **Décider** si les adresses conviennent, ou les surcharger dans `config.json`
+  (`mailsTraduction`). Et si un « Cc » à l'expéditeur serait utile.
+- [ ] **Relire les deux gabarits** (fr et de) : ce sont des textes qui partent à l'extérieur de
+  l'équipe, ils méritent une relecture attentive.
+
+## Corrigé à l'usage — l'archivage ne déplaçait rien, et les produits se mélangeaient (D126)
+
+Trois pannes trouvées en essayant pour de vrai, toutes corrigées et vérifiées de bout en bout.
+
+**1. L'archivage ne déplaçait pas le dossier** — verrou posé, picto affiché, `out/` supprimé, mais
+le dossier restait sur place, et **aucune trace dans le journal**. Cause : `detached: true` dans
+`lib/archivage.js`. Sur Windows, libuv le traduit par `DETACHED_PROCESS` ; `powershell.exe` démarre
+alors **sans aucune console** et ressort aussitôt avec le code 0, **sans exécuter une seule ligne**.
+Mesuré sur trois variantes : détaché/stdio ignoré → rien ; détaché/stdio capturé → **aucune
+sortie** ; non détaché → bannière, déplacement, réouverture. Le lancement passe maintenant par
+`wscript.exe //B hidden.vbs`, comme les raccourcis et les tâches planifiées : vérifié, le dossier
+est déplacé, le `.lnk` réécrit, le journal écrit. Le même défaut frappait « Changer de version… »
+depuis le cockpit : corrigé du même coup.
+
+**2. Une Zeitschrift apparaissait dans le lanceur de la Revue.** Deux causes cumulées : « Revues
+SZH » passait `-Produit tout`, et surtout le numéro `2027-01`, créé depuis le lanceur Zeitschrift,
+portait `revue: revue` — le jeton du template, jamais réécrit. Désormais `-Produit` ne connaît que
+`revue` et `zeitschrift` (défaut `revue`), les deux raccourcis le passent explicitement, et
+`new-revue.ps1 -Produit` **écrit le jeton** à la création.
+
+**3. Le choix du dossier de création est supprimé.** « Nouvelle revue… » ne demande plus que le
+nom ; la boîte rappelle où le numéro sera créé — le dossier « en cours » du produit du lanceur,
+donc `Revues-TESTING` en mode dev.
+
+Vérifié en une passe : création `-Produit zeitschrift` → `revue: zeitschrift`, création
+`-Produit revue` → `revue: revue` ; le lanceur Revue ne liste que la Revue et celui de la
+Zeitschrift que la Zeitschrift ; archivage → dossier déplacé dans `ZS99_Archives`, `.lnk` réécrit,
+numéro toujours listé par le lanceur Zeitschrift ; les deux lanceurs démarrent.
+
+- [ ] **Refaire l'archivage depuis VSCodium** (c'est le seul chemin non rejoué : le mien passait
+  par le même `wscript.exe //B hidden.vbs`, mais pas depuis l'hôte d'extensions).
+- [ ] Vérifier que la fenêtre se ferme puis que la revue **se rouvre depuis les archives**.
+- [ ] Provoquer une erreur d'archivage (PDF ouvert dans SumatraPDF) et vérifier que la **boîte de
+  dialogue** apparaît — la console étant cachée, c'est le seul canal.
+- [ ] « Changer de version… » depuis le cockpit ouvre bien le sélecteur (même correctif).
+- [ ] Créer un numéro depuis chaque lanceur et vérifier le jeton `revue:` écrit.
+- [ ] **`2027-01`** : créé dans `ZS02_Redaktion` mais déclaré `revue: revue`, puis marqué archivé
+  sans avoir été déplacé. Corriger le jeton puis relancer l'archivage — ou le supprimer si c'était
+  un simple essai.
+
 ## À vérifier — le lanceur ne liste que l'arborescence officielle (D125)
 
 Éprouvé ici avec de vraies fixtures : une revue dans `RV02_Redaction` est **listée**, une revue
@@ -127,17 +193,16 @@ positionnel requoté) ; l'extension charge, i18n 487 = 487 (fr/de), tous les `%m
 - [ ] Le raccourci **« Zeitschriften SZH »** apparaît dans le menu Démarrer après une mise à jour,
   avec la bonne icône, et n'ouvre **aucune console**.
 - [ ] Il ne liste que les Zeitschriften (les deux listes, en cours et archivées), et « Revues SZH »
-  continue de tout lister.
+  ne liste que les Revues (D126 : plus de valeur « tout »).
 - [ ] Le titre de la fenêtre et le texte d'introduction sont bien ceux de la Zeitschrift.
-- [ ] « Nouvelle revue… » depuis ce lanceur propose `ZS02_Redaktion` (et non `RV02_Redaction`).
+- [ ] « Nouvelle revue… » depuis ce lanceur crée dans `ZS02_Redaktion` sans rien demander (D126).
 - [ ] Un numéro **sans** clé `revue:` n'apparaît dans **aucun** des deux lanceurs filtrés (mais
   reste visible dans « Revues SZH ») — vérifier que c'est acceptable, sinon il faut le signaler.
 - [ ] Une Zeitschrift rangée dans un dossier **historique** (`OneDrive\Revues`) n'apparaît PAS dans
   les listes (D125) mais est comptée dans « N revue(s) hors arborescence ».
 - [ ] Le bouton « Version du logiciel… » et l'affichage « Logiciel v. … » marchent dans les deux
   lanceurs.
-- [ ] **Décision** : faut-il aussi filtrer « Revues SZH » sur la Revue (au lieu de tout montrer) ?
-  Aujourd'hui il montre tout, pour ne rien retirer à qui l'utilise déjà.
+- [x] ~~Faut-il filtrer « Revues SZH » sur la Revue ?~~ Oui — fait en D126.
 - [ ] **Décision** : le lanceur Zeitschrift doit-il forcer l'interface en allemand ? Aujourd'hui
   non — la langue suit celle de Windows, comme partout.
 - [ ] **Relire les libellés DE/EN** ajoutés (titres des deux lanceurs, messages de lien).
