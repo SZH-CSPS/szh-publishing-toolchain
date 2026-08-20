@@ -15,7 +15,7 @@
 # scripts, ce qui est encore pire : ni parlant, ni rassurant. Le même raisonnement vaut
 # pour les raccourcis du menu Démarrer, qui passent eux aussi par wscript.exe.
 #
-# POURQUOI DEUX (D131) : le menu Démarrer porte une entrée par produit (D124, D126).
+# POURQUOI DEUX (D134) : le menu Démarrer porte une entrée par produit (D124, D126).
 # Une seule icône pour les deux et il ne reste que le libellé pour les distinguer —
 # donc plus rien dès qu'ils sont épinglés à la barre des tâches, où le libellé
 # disparaît. La tuile ne change pas (c'est la même maison) ; seule la barre change de

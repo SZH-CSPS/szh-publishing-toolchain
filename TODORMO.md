@@ -294,7 +294,7 @@ positionnel requoté) ; l'extension charge, i18n 487 = 487 (fr/de), tous les `%m
   les listes (D125) mais est comptée dans « N revue(s) hors arborescence ».
 - [ ] Le bouton « Version du logiciel… » et l'affichage « Logiciel v. … » marchent dans les deux
   lanceurs.
-- [ ] **Icônes par produit (D131)** : les deux entrées du menu Démarrer se distinguent d'un coup
+- [ ] **Icônes par produit (D134)** : les deux entrées du menu Démarrer se distinguent d'un coup
   d'œil — même tuile bleu nuit, barre **rouge** pour « Revues SZH », **moutarde** pour
   « Zeitschriften SZH » — et la fenêtre ouverte porte la même dans la barre des tâches (plus
   celle de `wscript.exe`).

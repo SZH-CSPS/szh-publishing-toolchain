@@ -322,7 +322,7 @@ try {
   New-Item -ItemType Directory -Force -Path $menu | Out-Null
   $shell = New-Object -ComObject WScript.Shell
   $codium = Get-VSCodiumExe
-  # D131 : chaque raccourci porte l'icône de SON produit (windows/icone.py), la même
+  # D134 : chaque raccourci porte l'icône de SON produit (windows/icone.py), la même
   # tuile à la barre de couleur près. Deux entrées voisines dans le menu Démarrer, et
   # surtout épinglables à la barre des tâches, où le libellé disparaît : avec une seule
   # icône, il ne reste plus rien pour les distinguer. Repli sur celle de VSCodium si le

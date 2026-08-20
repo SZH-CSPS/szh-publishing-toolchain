@@ -65,7 +65,7 @@ if ($produitFiltre -ne 'zeitschrift') { $produitFiltre = 'revue' }
 $titreFenetre = (T 'lanceur.titre')
 if ($produitFiltre -eq 'zeitschrift') { $titreFenetre = (T 'lanceur.titre.zs') }
 
-# ---- Icône des fenêtres (D131) ---------------------------------------------------
+# ---- Icône des fenêtres (D134) ---------------------------------------------------
 #
 # Toute fenêtre du lanceur porte l'icône de SON produit — celle-là même que le raccourci
 # du menu Démarrer (windows/icone.py, posée par update.ps1). FormBorderStyle
@@ -115,7 +115,7 @@ function Show-SzhVersions($Parent) {
   $boite.MaximizeBox = $false
   $boite.MinimizeBox = $false
   # Atteignable sans la fenêtre principale (`-Versions`, bouton du cockpit) : cette boîte
-  # a donc son propre bouton de barre des tâches, et son propre besoin d'icône (D131).
+  # a donc son propre bouton de barre des tâches, et son propre besoin d'icône (D134).
   Set-SzhIconeFenetre $boite
 
   $intro = New-Object System.Windows.Forms.Label

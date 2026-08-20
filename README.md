@@ -49,7 +49,7 @@ szh-publishing-toolchain/
 │   ├── archive-revue.ps1     # déplace une revue « en cours » <-> archives (D116) ; seul détenteur des chemins
 │   ├── szh-common.ps1        # socle commun (manifest, téléchargement, UI, e-mail support)
 │   ├── hidden.vbs            # lance une commande sans fenêtre
-│   ├── icone.py              # fabrique les deux .ico livrés à côté (D131) — stdlib seule
+│   ├── icone.py              # fabrique les deux .ico livrés à côté (D134) — stdlib seule
 │   └── vsix.lock             # extensions épinglées (id + version + sha256)
 ├── vscodium-user/            # → %APPDATA%\VSCodium\User\  (seedé par update.ps1)
 │   ├── settings.json · keybindings.json · tasks.json
@@ -152,7 +152,7 @@ Le menu Démarrer porte deux entrées : **« Revues SZH »** (`-Produit revue`) 
 **« Zeitschriften SZH »** (`-Produit zeitschrift`) — le même script, filtré sur le jeton `revue:`
 d'`ausgabe.yaml` (D126).
 
-**Une icône par produit (D131)** : même tuile bleu nuit, barre **rouge** pour la Revue
+**Une icône par produit (D134)** : même tuile bleu nuit, barre **rouge** pour la Revue
 (`szh-revue.ico`) et **moutarde** pour la Zeitschrift (`szh-zeitschrift.ico`), toutes deux
 fabriquées par `python3 windows/icone.py` (stdlib seule, 7 tailles de 16 à 256 px). Les deux
 raccourcis, *et* la fenêtre du lanceur, portent celle de leur produit — sans quoi la barre des
