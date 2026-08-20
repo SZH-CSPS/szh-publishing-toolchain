@@ -2,7 +2,7 @@ Déposez ici les articles Word (.docx) ou LibreOffice (.odt) FINALISÉS.
 
 À la prochaine ouverture de la revue, ils seront convertis automatiquement
 en fichiers de travail dans le dossier « articles » (les images sont
-récupérées aussi). Les originaux sont ensuite rangés dans « _convertis ».
+récupérées aussi). L’original est supprimé une fois la conversion réussie.
 
 Remarques :
 - un article déjà converti n'est jamais écrasé : le fichier dans

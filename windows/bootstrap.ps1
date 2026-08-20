@@ -155,4 +155,4 @@ Write-Host ''
 Info 'Terminé.'
 Attention ('Antivirus : exclure {0}\WSL\*.vhdx et {1}\*, + processus vmcompute.exe, vmmem.exe, wsl.exe, wslservice.exe.' -f $SzhBase, $SzhStaging)
 Attention 'Chaque utilisateur du poste recevra réglages + raccourcis à sa prochaine connexion (tâche planifiée).'
-Attention ('Nouvelle revue : powershell -ExecutionPolicy Bypass -File "{0}" -Dossier "<OneDrive>\Revues\2026-01"' -f (Join-Path $SzhToolkit 'windows\new-revue.ps1'))
+Attention 'Nouvelle revue : menu Démarrer > Revues SZH (ou Zeitschriften SZH) > « Nouvelle revue ».'

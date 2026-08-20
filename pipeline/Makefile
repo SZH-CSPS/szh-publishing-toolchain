@@ -34,10 +34,6 @@ TEMPLATE     := $(PIPELINE_DIR)/templates/szh-article.html
 TEMPLATE_ABS := $(abspath $(TEMPLATE))
 MAQUETTE_LUA := $(PIPELINE_DIR)/filters/szh-maquette.lua
 
-# Langue du numéro (bibliographie, :lang du rendu) — lue dans ausgabe.yaml, défaut fr.
-LANG_LUE   := $(shell sed -n 's/^lang:[[:space:]]*\([a-zA-Z-]*\).*/\1/p' ausgabe.yaml 2>/dev/null | head -1)
-LANG_REVUE := $(if $(LANG_LUE),$(LANG_LUE),fr)
-
 # ---------------------------------------------------------------------------
 # Profil de compilation du DOSSIER (D20, T6.4) — « un dossier = un produit = un
 # moteur ». Lu dans ausgabe.yaml avec le MÊME mécanisme que lang: ci-dessus

@@ -173,9 +173,6 @@ HORS_PERIMETRE = {
     '--c-kw-bg': "puces .szh-kw à 10 px (print.css) : plus petit que tout ce que les "
                  "quatre niveaux d'APCA couvrent. Corriger = grossir la puce (print.css) "
                  "ou éclaircir le mélange à 22 % (accent-css.py).",
-    '--c-annual-text': "aucun consommateur : nulle règle de print.css ne fait "
-                       "`color: var(--c-annual-text)`. Sans taille, pas de seuil "
-                       "déductible — le jeton est mesuré à titre indicatif.",
 }
 
 
@@ -374,7 +371,6 @@ mesure('--szh-gris-clair (en-têtes/total gris)', NOIR, var('--szh-gris-clair'),
 mesure('--szh-zebre (zébrage, texte de corps)', NOIR, var('--szh-zebre'), SEUIL_TABLEAU)
 mesure('repli --szh-accent-fonce #4a4a4a', BLANC, '#4a4a4a', SEUIL_TABLEAU)
 mesure('repli --szh-accent-clair #ededed', NOIR, '#ededed', SEUIL_TABLEAU)
-mesure('repli --szh-accent #9a9a9a (accent brut)', '#9a9a9a', BLANC, NON_TEXTE)
 # Numéro SANS couleur annuelle : les filets de tableau tombent sur ce gris (print.css).
 mesure('repli --c-annual-ui #8f8f95 (filet sur papier)', '#8f8f95', BLANC, NON_TEXTE)
 mesure('repli --c-annual-ui #8f8f95 (filet sur zébrage)', '#8f8f95', var('--szh-zebre'), NON_TEXTE)
@@ -383,14 +379,8 @@ mesure('repli --c-annual-ui #8f8f95 (filet sur zébrage)', '#8f8f95', var('--szh
 titre("Jetons de la maquette (accent-css.py / jetons_annuels)")
 for nom, marque in COULEURS:
     j = dict(accent.jetons_annuels(marque))
-    # Texte sur l'aplat annuel : GROS titre uniquement (cf. §1, niveau 500).
-    mesure('%s --c-on-annual sur --c-annual' % nom,
-           j['--c-on-annual'], j['--c-annual'], GROS_TITRE)
-    # Deux jetons HORS PÉRIMÈTRE (voir HORS_PERIMETRE) : mesurés au bon seuil, mais leur
+    # Jeton HORS PÉRIMÈTRE (voir HORS_PERIMETRE) : mesuré au bon seuil, mais son
     # échec est reporté « à arbitrer » et ne fait pas tomber le script.
-    mesure('%s --c-annual-text sur papier (aucun consommateur)' % nom,
-           j['--c-annual-text'], BLANC, apca.seuil_pour(TAILLE_CORPS),
-           hors_perimetre='--c-annual-text')
     mesure('%s --c-kw-bg (puce .szh-kw, texte noir de %s px)' % (nom, _nb(TAILLE_KW)),
            NOIR, j['--c-kw-bg'], apca.seuil_pour(TAILLE_KW),
            hors_perimetre='--c-kw-bg')
@@ -407,11 +397,6 @@ for nom, marque in COULEURS:
            j['--c-annual-ui'], var('--szh-zebre'), NON_TEXTE)
     mesure('%s --c-abstract-border (bordure/papier)' % nom,
            j['--c-abstract-border'], BLANC, NON_TEXTE)
-    # --c-annual-deep = le MÊME cran que l'alias -fonce des tableaux (800) : une seule règle
-    # « fond sombre à texte blanc » dans toute la chaîne. Le cran est lu dans apca.ALIAS des
-    # deux côtés, donc les deux jetons ne peuvent plus se désynchroniser.
-    mesure('%s --c-annual-deep (fond, texte blanc) = cran %s' % (nom, cran_fonce),
-           BLANC, j['--c-annual-deep'], SEUIL_TABLEAU)
 
 
 # ═══ 5. Sortie ════════════════════════════════════════════════════════════════════

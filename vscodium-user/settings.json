@@ -53,7 +53,7 @@
   "triggerTaskOnSave.showStatusBarToggle": true,
   "task.allowAutomaticTasks": "on",
 
-  "search.exclude": { "**/out/**": true, "**/media/**": true, "**/_convertis/**": true },
+  "search.exclude": { "**/out/**": true, "**/media/**": true },
   // ⚠ NE JAMAIS ajouter "**/out/**" à files.watcherExclude : cela étoufferait les
   // événements de modification des PDF et l'aperçu cesserait de se rafraîchir
   // (cause de la panne historique — leçon V4/T6.1, PLANIFICATION.md).
@@ -71,10 +71,7 @@
     "**/Thumbs.db": true,
     "**/~$*": true,
     "**/*.lnk": true,
-    "**/*.meta.yaml": true,
-    "**/media/conversion-stats.json": true,
-    "**/media/rapport.json": true,
-    "**/media/refs-brutes.txt": true
+    "**/*.meta.yaml": true
   },
 
   // ============ Correction orthographique FR / DE / EN ============

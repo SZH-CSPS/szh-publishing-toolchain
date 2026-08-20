@@ -212,11 +212,7 @@ def jetons_annuels(hexa):
         # sont exactement la même couleur. Le cran est lu dans apca.ALIAS plutôt qu'écrit
         # en dur : ces deux jetons doivent bouger ENSEMBLE ou pas du tout, et un numéro
         # recopié ici est précisément ce qui les avait laissés se désynchroniser.
-        ('--c-annual-deep',     apca.echelle(hexa)[dict(apca.ALIAS)['fonce']]),
-        ('--c-annual-text',     apca.couleur_sur(melange(hexa, '#0A0D14', 0.60),
-                                                 '#FFFFFF', LC_TEXTE_ANNUEL)),
         ('--c-annual-ui',       apca.couleur_sur(hexa, '#FFFFFF', LC_FILET_CONFORT)),
-        ('--c-on-annual',       texte.lower()),
         ('--c-abstract-border', hexa),
         ('--c-kw-bg',           melange(hexa, '#FFFFFF', 0.22)),
         ('--annual-soft',       melange(hexa, '#FFFFFF', 0.12)),
@@ -231,7 +227,6 @@ def main(argv):
     lignes = []
     if hexa in PALETTE:
         v = variations_depuis_css(PALETTE[hexa]) or variations_calculees(hexa)
-        lignes.append('  --szh-accent: %s;' % v['normal'])
         lignes.append('  --szh-accent-clair: %s;' % v['clair'])
         lignes.append('  --szh-accent-fonce: %s;' % v['fonce'])
         # Jetons de la maquette (D72) : mêmes source (la couleur annuelle), un seul bloc.

@@ -386,10 +386,6 @@ try {
   $manifests = @(Get-ChildItem (Join-Path $SzhStaging 'manifest-*.json') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
   if ($manifests.Count -gt 5) { $manifests | Select-Object -Skip 5 | Remove-Item -Force }
   Get-ChildItem (Join-Path $SzhStaging '*.vsix') -ErrorAction SilentlyContinue | Remove-Item -Force
-  # Résidus de l'ancien format non compressé (deploy.ps1 historique) : .tar sans .gz.
-  # Le -ErrorAction SilentlyContinue évite l'échec si un vieux fichier appartient à l'admin.
-  Get-ChildItem (Join-Path $SzhStaging 'szh-publishing-rootfs-*.tar') -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-  Get-ChildItem (Join-Path $SzhStaging 'szh-publishing-rootfs-*.tar.sha256') -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
   Write-SzhOk (T 'maj.e5.ok')
 
   # ---- État final -------------------------------------------------------------

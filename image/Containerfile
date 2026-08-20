@@ -92,10 +92,10 @@ RUN useradd -m -s /bin/bash "${WSL_USER}"
 
 # --- Config WSL + marqueur de version (idempotence du déploiement) ---
 COPY wsl.conf /etc/wsl.conf
-RUN echo "${DISTRO_VERSION}" > /etc/szh-publishing-version
 
-# --- Polices de la maquette : déposer image/fonts/ puis décommenter (voir TODO D7) ---
-# COPY fonts/ /usr/local/share/fonts/szh/
+# Les polices de la maquette ne passent pas par le rootfs : pipeline/styles/print.css
+# les embarque en base64 dans le HTML. Ici, seules celles d'apt, pour les caractères
+# que WeasyPrint ne trouverait nulle part ailleurs.
 RUN fc-cache -f
 
 # Vérification au build (échoue si la toolchain est cassée)

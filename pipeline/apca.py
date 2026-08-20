@@ -398,7 +398,6 @@ CLARTES = (
 # saturée en possède un : en descendant, le noir perd du contraste plus vite que le
 # blanc n'en gagne, et les deux courbes se croisent sous le seuil. On le nomme, on
 # l'annote, et on interdit d'y mettre du texte.
-CRAN_DECORATIF = '400'
 
 # Contrat de chaque cran : {cran: (couleur de texte admise, |Lc| garanti, usage)}.
 # Le |Lc| est le PIRE des six teintes, MESURÉ (test/apca-check.py le revérifie cran par

@@ -94,11 +94,9 @@ $script:SzhTextes = @{
     'lanceur.ouvrir'    = 'Ouvrir'
     'lanceur.annuler'   = 'Annuler'
     'lanceur.modifie'   = '{0}    (modifiée le {1})'
-    'lanceur.aucune'    = "Aucune revue trouvée.`n`nVérifiez que le dossier OneDrive\Revues est bien synchronisé,`nou demandez la création d'une revue ({0})."
     'lanceur.codium'    = 'L''éditeur VSCodium est introuvable sur ce poste. Contact : {0}'
     'lanceur.vide'      = 'Aucune revue sur ce poste pour l''instant — « Nouvelle revue… » pour commencer.'
     'lanceur.nouvelle'          = 'Nouvelle revue…'
-    'lanceur.nouvelle.dossier'  = 'Choisir l''emplacement (dossier parent) de la nouvelle revue — p. ex. OneDrive\Revues.'
     'lanceur.nouvelle.nom'      = 'Nom du dossier de la nouvelle revue (p. ex. 2026-02) :'
     'lanceur.nouvelle.ou'       = "Elle sera créée dans :`n{0}"
     'lanceur.nouvelle.existe'   = 'Un dossier « {0} » existe déjà à cet emplacement.'
@@ -111,7 +109,6 @@ $script:SzhTextes = @{
     'lanceur.versions.horsligne.deja' = "Aucune version n'est installable hors ligne sur ce poste : seule la version déjà installée est proposée."
     'lanceur.erreur'            = "Le lanceur n'a pas pu démarrer :`n`n{0}`n`nContact : {1}"
     'lanceur.titre'             = 'Revues SZH'
-    'lanceur.titre.revue'       = 'Revues SZH'
     'lanceur.titre.zs'          = 'Zeitschriften SZH'
     'lanceur.choisir.zs'        = 'Choisissez la Zeitschrift à ouvrir :'
     'lanceur.vide.zs'           = 'Aucune Zeitschrift sur ce poste pour l''instant — « Nouvelle revue… » pour commencer.'
@@ -200,11 +197,9 @@ $script:SzhTextes = @{
     'lanceur.ouvrir'    = 'Öffnen'
     'lanceur.annuler'   = 'Abbrechen'
     'lanceur.modifie'   = '{0}    (geändert am {1})'
-    'lanceur.aucune'    = "Keine Zeitschrift gefunden.`n`nPrüfen Sie, ob der Ordner OneDrive\Revues synchronisiert ist,`noder lassen Sie eine Zeitschrift anlegen ({0})."
     'lanceur.codium'    = 'Der Editor VSCodium wurde auf diesem Computer nicht gefunden. Kontakt: {0}'
     'lanceur.vide'      = 'Noch keine Zeitschrift auf diesem Computer — mit « Neue Zeitschrift… » beginnen.'
     'lanceur.nouvelle'          = 'Neue Zeitschrift…'
-    'lanceur.nouvelle.dossier'  = 'Speicherort (übergeordneten Ordner) der neuen Zeitschrift wählen — z. B. OneDrive\Revues.'
     'lanceur.nouvelle.nom'      = 'Ordnername der neuen Zeitschrift (z. B. 2026-02):'
     'lanceur.nouvelle.ou'       = "Sie wird erstellt in:`n{0}"
     'lanceur.nouvelle.existe'   = 'Ein Ordner « {0} » existiert an diesem Ort bereits.'
@@ -216,7 +211,6 @@ $script:SzhTextes = @{
     'lanceur.versions.horsligne.deja' = "Auf diesem Computer ist keine Version offline installierbar: es wird nur die bereits installierte Version angeboten."
     'lanceur.erreur'            = "Der Starter konnte nicht gestartet werden:`n`n{0}`n`nKontakt: {1}"
     'lanceur.titre'             = 'Revues SZH'
-    'lanceur.titre.revue'       = 'Revues SZH'
     'lanceur.titre.zs'          = 'Zeitschriften SZH'
     'lanceur.choisir.zs'        = 'Wählen Sie die zu öffnende Zeitschrift:'
     'lanceur.vide.zs'           = 'Noch keine Zeitschrift auf diesem Computer — mit « Neue Zeitschrift… » beginnen.'
@@ -305,11 +299,9 @@ $script:SzhTextes = @{
     'lanceur.ouvrir'    = 'Open'
     'lanceur.annuler'   = 'Cancel'
     'lanceur.modifie'   = '{0}    (modified on {1})'
-    'lanceur.aucune'    = "No journal found.`n`nCheck that the OneDrive\Revues folder is synced,`nor ask for a journal to be created ({0})."
     'lanceur.codium'    = 'The VSCodium editor was not found on this computer. Contact: {0}'
     'lanceur.vide'      = 'No journal on this computer yet — use “New journal…” to get started.'
     'lanceur.nouvelle'          = 'New journal…'
-    'lanceur.nouvelle.dossier'  = 'Choose where to create the new journal (parent folder) — e.g. OneDrive\Revues.'
     'lanceur.nouvelle.nom'      = 'Folder name for the new journal (e.g. 2026-02):'
     'lanceur.nouvelle.ou'       = "It will be created in:`n{0}"
     'lanceur.nouvelle.existe'   = 'A folder named {0} already exists at this location.'
@@ -321,7 +313,6 @@ $script:SzhTextes = @{
     'lanceur.versions.horsligne.deja' = "No version can be installed offline on this computer: only the version already installed is offered."
     'lanceur.erreur'            = "The launcher could not start:`n`n{0}`n`nContact: {1}"
     'lanceur.titre'             = 'Revues SZH'
-    'lanceur.titre.revue'       = 'Revues SZH'
     'lanceur.titre.zs'          = 'Zeitschriften SZH'
     'lanceur.choisir.zs'        = 'Choose the Zeitschrift to open:'
     'lanceur.vide.zs'           = 'No Zeitschrift on this computer yet — use "New journal…" to get started.'
@@ -544,16 +535,6 @@ function Get-SzhDevMode {
   return ([bool]$cfg.devMode)
 }
 
-function Set-SzhDevMode([bool]$Actif) {
-  $cfg = Get-SzhConfig
-  if (-not $cfg) { $cfg = [pscustomobject]@{ repo = (Get-SzhRepo); revuesRoots = @() } }
-  if ($null -eq $cfg.PSObject.Properties['devMode']) {
-    $cfg | Add-Member -MemberType NoteProperty -Name 'devMode' -Value $Actif
-  } else {
-    $cfg.devMode = $Actif
-  }
-  Set-SzhJson $SzhConfigFile $cfg
-}
 
 function Get-SzhBaseRevues {
   $cfg = Get-SzhConfig
@@ -652,8 +633,6 @@ function Get-SzhRevueEtat([string]$Dossier) {
   $valeurs = Get-SzhAusgabe (Join-Path $Dossier 'ausgabe.yaml')
   $titre = ''
   if ($valeurs.ContainsKey('title')) { $titre = $valeurs['title'] }
-  $version = ''
-  if ($valeurs.ContainsKey('version-toolkit')) { $version = $valeurs['version-toolkit'] }
   $jeton = ''
   if ($valeurs.ContainsKey('revue')) { $jeton = Get-SzhJetonRevue $valeurs['revue'] }
   $verrou = $false
@@ -664,7 +643,6 @@ function Get-SzhRevueEtat([string]$Dossier) {
     dossier     = $Dossier
     titre       = $titre
     jeton       = $jeton
-    version     = $version
     verrouillee = $verrou
     archivee    = $archive
   }
