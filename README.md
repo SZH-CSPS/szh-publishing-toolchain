@@ -44,7 +44,8 @@ szh-publishing-toolchain/
 │   ├── update-launcher.ps1   # check silencieux (tâche planifiée) — s'auto‑met à jour
 │   ├── update.ps1            # mise à jour visible et rassurante, sans admin
 │   ├── new-revue.ps1         # crée une revue + raccourci « Ouvrir la revue » + estampille de version
-│   ├── open-revue.ps1        # lanceur « Revues SZH » (menu Démarrer) — 2 listes, version du logiciel
+│   ├── open-revue.ps1        # lanceur (menu Démarrer) — 2 listes, version du logiciel,
+│                             #   -Produit revue|zeitschrift (D124), liens szh:// (D123)
 │   ├── archive-revue.ps1     # déplace une revue « en cours » <-> archives (D116) ; seul détenteur des chemins
 │   ├── szh-common.ps1        # socle commun (manifest, téléchargement, UI, e-mail support)
 │   ├── hidden.vbs            # lance une commande sans fenêtre
@@ -125,6 +126,18 @@ refusées. Archivé (ou verrouillé) : **plus aucune compilation automatique**, 
 (*Exporter cet article*, *Recompiler toute la revue*). L'archivage supprime `out/` (gain chiffré
 dans la confirmation) puis `archive-revue.ps1` déplace le dossier, réécrit le `.lnk` et rouvre
 l'éditeur.
+
+### C quater. Liens de traduction et second lanceur (D123/D124)
+« Envoyer pour traduction » (panneau de traduction, et section « Traductions » de la barre) copie
+un lien `szh://traduction/<produit>/<numero>[/<article>]` et ouvre un brouillon d'e-mail. Le schéma
+`szh:` est enregistré dans **HKCU** par `update.ps1` (sans admin) et pointe sur
+`open-revue.ps1 "%1"` via `hidden.vbs`. Le lanceur **revalide** la grammaire (`Get-SzhLien`),
+retrouve le dossier dans les seuls emplacements connus, dépose une **intention à usage unique**
+(`%LOCALAPPDATA%\SZH\intention.json`, périmée à 5 min) et ouvre la revue ; le cockpit consomme
+l'intention à l'activation et ouvre le panneau. Le lien ne contient jamais de chemin.
+
+Le menu Démarrer porte deux entrées : **« Revues SZH »** (tout) et **« Zeitschriften SZH »**
+(`-Produit zeitschrift`) — le même script, filtré sur le jeton `revue:` d'`ausgabe.yaml`.
 
 ### C ter. Réinstaller une version précédente (D120)
 `update.ps1 -Version X` fait déjà tout (l'archive N‑1 est en staging). Le geste est atteignable
@@ -238,6 +251,12 @@ pipeline. Voir [`userdoc.md`](userdoc.md).
 - **L'avertissement de version s'accroche à `onDidStartTask`**, pas aux fonctions du cockpit : le
   chemin de compilation le plus fréquent (`Ctrl+S` → `triggerTaskOnSave`, extension tierce) ne
   passe pas par nous.
+- **Un lien `szh://` vient de l'extérieur** : il ne porte aucun chemin, sa grammaire est revalidée
+  côté lanceur, et le dossier n'est cherché que dans les emplacements connus du poste. Ne jamais
+  construire un chemin sur un segment reçu sans repasser par `Get-SzhLien` / `Find-SzhRevue`.
+- **`hidden.vbs` requote chacun de ses arguments** : vérifié, `powershell.exe -File script.ps1
+  "-Produit" "zeitschrift"` et un `"%1"` requoté se lient correctement (paramètre nommé, switch et
+  positionnel). C'est ce qui permet aux deux raccourcis et au protocole de passer par lui.
 - **`inotify` ne traverse pas `/mnt/c`** : ne jamais bâtir une amélioration sur `pandoc --watch` lisant `/mnt/c`.
 - **Scripts `.ps1` compatibles Windows PowerShell 5.1** : proscrire `?.`, `??`, `?:`, `&&`/`||`.
 - **Polices** : `fonts-noto` est le plus gros poste du rootfs ; cible = embarquer Open Sans (D7, `PLANIFICATION.md` §6).

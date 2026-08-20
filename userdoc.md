@@ -288,6 +288,25 @@ C'est aussi là qu'on finit l'article proprement :
 **Enregistrer** écrit les fiches ; **Fermer** prévient si des modifications ne sont pas
 enregistrées. Les articles restent modifiables plus tard par **☰ Métadonnées des articles**.
 
+## Envoyer un numéro pour traduction
+
+Dans le panneau de traduction, le bouton **« Envoyer pour traduction »** (à côté d'*Enregistrer*)
+prépare tout : il **copie un lien** et **ouvre un brouillon d'e-mail** qui le contient. Les mêmes
+boutons ✉ existent dans la barre, sur la section **Traductions** (lien vers tout le numéro) et sur
+chaque article (lien vers cet article).
+
+La personne qui reçoit l'e-mail **clique le lien** : sur un poste de rédaction SZH, le bon numéro
+s'ouvre et le suivi de traduction s'affiche directement — pas besoin de chercher le dossier.
+Windows demande une fois l'autorisation d'ouvrir ce type de lien : c'est normal, il faut accepter.
+
+Si le lien ne fonctionne pas (poste sans la chaîne installée, dossier pas encore synchronisé par
+OneDrive), le message le dit et il reste toujours possible d'ouvrir le numéro à la main depuis
+« Revues SZH ». Le lien ne contient aucun chemin : il ne peut désigner qu'un numéro rangé aux
+emplacements officiels.
+
+Ce bouton **ne change aucun état** de traduction : pour lancer la campagne, c'est le bouton ✓✓ de
+la section « Traductions » (ou les boutons d'état du panneau).
+
 ## Terminer un numéro : archiver et verrouiller
 
 Quand un numéro est publié, il n'a plus à changer — et ses PDF, HTML et Word occupent
@@ -372,6 +391,10 @@ Appliquer deux fois gras, italique, souligné, un titre ou une citation **retire
 mise en forme (bascule).
 
 ## Créer une nouvelle revue
+
+Le menu Démarrer porte **deux** entrées : **« Revues SZH »**, qui montre tout, et
+**« Zeitschriften SZH »**, qui ne montre que les Zeitschriften. Les deux ouvrent la même fenêtre et
+offrent les mêmes gestes ; seule la liste change.
 
 Menu Démarrer → **« Revues SZH »** → bouton **« Nouvelle revue… »** (en bas à gauche) :
 choisir l'emplacement (le dossier de rédaction en cours est proposé), donner un nom

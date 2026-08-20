@@ -19,6 +19,7 @@
   "cmd.metadonneesArticle": "Éditer les métadonnées de cet article",
   "cmd.traduction": "Suivi de traduction de cet article",
   "cmd.traductionsToutPret": "Tout marquer prêt pour traduction",
+  "cmd.envoyerTraduction": "Envoyer pour traduction (lien)",
   "cmd.reglages": "Réglages SZH",
   "cmd.basculerApercu": "Basculer l’aperçu HTML ⇄ PDF",
   "cmd.panneauCommande": "Panneau de commande",

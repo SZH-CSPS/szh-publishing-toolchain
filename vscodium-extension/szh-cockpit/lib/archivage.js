@@ -112,9 +112,16 @@ function lancerArchivage(action, racine) {
 
 // « Changer de version du logiciel… » : ouvre le sélecteur de versions du lanceur
 // « Revues SZH » (D120) — une seule implémentation du choix de version, atteignable
-// depuis le lanceur comme depuis l'avertissement de divergence. Pas via hidden.vbs :
-// il requote chacun de ses arguments, et un « -Versions » cité ne se lie plus au
-// paramètre de commutateur du script.
+// depuis le lanceur comme depuis l'avertissement de divergence.
+//
+// On appelle le script DIRECTEMENT, pas via hidden.vbs : un argument de moins à
+// requoter, et `-WindowStyle Hidden` + windowsHide suffisent à ne montrer aucune
+// console. (Un « -Versions » requoté par hidden.vbs se lierait très bien — vérifié
+// à la mesure ; c'est simplement inutile ici.)
+// ⚠ Rien ne remonte de ce lancement : `stdio: 'ignore'` et le process est détaché. Le
+// lanceur journalise donc son entrée dans le chemin -Versions
+// (C:\ProgramData\SZH\logs) — c'est la seule trace exploitable si l'utilisateur dit
+// « je clique et rien ne se passe ».
 function lancerChoixVersion() {
   return lancerScriptPowerShell(SCRIPT_LANCEUR, ['-Versions'], true);
 }
@@ -130,8 +137,12 @@ function lancerChoixVersion() {
 // qui touche le dossier de test qu'un essai qui déplace un vrai numéro.
 const CONFIG = path.join(BASE_SZH, 'config.json');
 
+// ⚠ Le BOM est RETIRÉ avant l'analyse : les config.json écrits par les versions
+// antérieures de bootstrap.ps1 en portent un (Set-Content -Encoding UTF8), et
+// JSON.parse le refuse. Sans ce filet, devMode retombait silencieusement sur son
+// défaut. Les nouvelles écritures passent par Set-SzhJson, sans BOM.
 function lireConfigPoste() {
-  try { return JSON.parse(fs.readFileSync(CONFIG, 'utf8')); }
+  try { return JSON.parse(String(fs.readFileSync(CONFIG, 'utf8')).replace(/^﻿/, '')); }
   catch (e) { return null; }
 }
 

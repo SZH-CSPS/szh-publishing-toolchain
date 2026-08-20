@@ -233,7 +233,24 @@
     barreTout.hidden = false;
   }
 
+  // « Envoyer pour traduction » (D123) : l'hôte fabrique le lien szh:// et ouvre le
+  // brouillon d'e-mail. Le bouton vit dans la barre du haut, à côté d'« Enregistrer » —
+  // c'est le geste qui CLÔT le travail sur cet article. Il ne touche à rien : pas de
+  // garde « modifié », pas d'enregistrement forcé.
+  function poserBoutonEnvoyer() {
+    if (!TXT.envoyer || document.getElementById('envoyer')) { return; }
+    const bouton = document.createElement('button');
+    bouton.type = 'button';
+    bouton.id = 'envoyer';
+    bouton.textContent = TXT.envoyer;
+    if (TXT.envoyerTip) { bouton.title = TXT.envoyerTip; }
+    bouton.addEventListener('click', function () { vscodeApi.postMessage({ type: 'lien' }); });
+    const ancre = document.getElementById('enregistrer');
+    ancre.parentNode.insertBefore(bouton, ancre.nextSibling);
+  }
+
   function rendre(msg) {
+    poserBoutonEnvoyer();
     SLUG = msg.slug || null;
     STATUTS = msg.statuts || [];
     LANGUE_SOURCE = msg.langueSource || 'fr';

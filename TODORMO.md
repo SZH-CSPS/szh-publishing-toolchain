@@ -1,5 +1,114 @@
 # Todo Robin (mis à jour le 2026-08-20, après le cycle de vie des numéros)
 
+## Corrigé après revue adversariale du lanceur (2026-08-20) — à re-vérifier sur le terrain
+
+Une revue adversariale a été passée sur « Logiciel v. … » + « Version du logiciel… ». Dix
+constats, dix correctifs. Ce qui suit est **déjà corrigé et vérifié** ici ; ce qu'il reste à
+voir sur un vrai poste est marqué en case.
+
+| # | Constat | Correctif |
+|---|---|---|
+| 1 | `Get-SzhVersionInstallee` levait sur un `VERSION` **vide** (`Get-Content -Raw` → `$null`, `.Trim()` → exception) et, avec `Stop`, **tuait le lanceur avant l'affichage, sans un mot** — typiquement pendant une mise à jour. | `try/catch` sur chacune des deux lectures + repli `''` ; `Get-SzhConfig` / `Get-SzhState` blindés pareil. **Prouvé** : `VERSION` vide + `state.json` tronqué → `''`, script survivant. |
+| 2 | Chemin `-Versions` lancé détaché avec `stdio: 'ignore'` : un échec était **100 % muet** des deux côtés. | Le lanceur journalise son entrée dans le chemin (`open-revue : selecteur de versions demande`) et l'installation demandée. **Vérifié dans le journal.** |
+| 3 | L'appel réseau (`Get-SzhVersionsPubliees`) se faisait **avant** l'affichage de la boîte : jusqu'à 20 s de fenêtre figée derrière un pare-feu muet. | Boîte affichée d'abord avec « Recherche des versions publiées… », liste remplie au `Shown` ; timeout 20 s → 8 s. |
+| 4 | « les versions déjà téléchargées s'installent sans réseau » était **faux** : `update.ps1` télécharge le manifest en première action, et une seule archive de toolkit était conservée. | Manifest **mis en cache** (`staging\manifest-<v>.json`) et relu hors ligne ; **deux** archives de toolkit conservées ; `Get-SzhVersionsLocales` n'annonce que ce qui est réellement installable hors ligne ; textes corrigés (dont le faux « pas de connexion ? » sur un 403 de limite de débit). |
+| 5 | L'API GitHub trie par **date**, pas par numéro : `2026.08.10` s'affichait après `2026.08.7`. Un rédacteur cherchant « la précédente » se trompait. | `Sort-SzhVersions` (essai `[version]`, repli alphabétique inverse) ; `per_page` 30 → 100. **Prouvé** : `2026.08.11 > 2026.08.10 > 2026.08.9 > 2026.08.7`. |
+| 6 | Le sélecteur de version était **derrière** le test VSCodium : l'outil de réparation inaccessible quand l'installation est abîmée, et un message « VSCodium introuvable » hors sujet au clic depuis le cockpit. | `if ($Versions)` déplacé **avant** le test VSCodium. |
+| 7 | Fenêtre passée de 380 à 560 px : sur un 1366×768 à 125 %, elle **sortait de l'écran**, sans recours (`FixedDialog`). | Hauteur des deux listes **adaptée** à `WorkingArea.Height` (4 paliers), toutes les positions calculées. |
+| 8 | `$choix` était le seul argument non cité passé à `update.ps1` : `-Version '2026.08.0 -Verbose'` **injectait un paramètre** et n'installait pas la version demandée. | `Test-SzhVersionTag` (alphabet strict) + argument cité. **Prouvé** : l'injection est refusée. |
+| 9 | Rien ne bornait la concurrence : deux `update.ps1` écrivaient la même archive et dépliaient deux `Expand-Archive` sur le même toolkit ; le lanceur restait cliquable pendant le remplacement du rootfs. | Mutex nommé `Local\SZH-Publishing-Update` en tête d'`update.ps1` (sortie propre si occupé) ; le lanceur se **ferme** après avoir lancé une installation. |
+| 10 | `ShowDialog()` sans propriétaire sur le chemin `-Versions` : la boîte pouvait s'ouvrir **derrière** VSCodium (« le bouton ne fait rien »). | `TopMost` quand il n'y a pas de parent. |
+
+**Bonus, trouvé en testant le contrat des liens** : PowerShell 5.1 écrit un **BOM** avec
+`Set-Content -Encoding UTF8`, et `JSON.parse` de Node le refuse. `config.json` (écrit par
+`bootstrap.ps1`) en portait un → le cockpit lisait **toujours** le mode développeur par défaut,
+en silence ; et l'intention d'ouverture d'un lien `szh://` aurait été jugée illisible, donc le
+lien n'aurait **jamais** atterri sur le panneau. Corrigé des deux côtés : un seul écrivain JSON
+sans BOM (`Set-SzhJson`, utilisé par `bootstrap`, `new-revue`, `Set-SzhDevMode`, `Set-SzhIntention`)
+et un retrait défensif du BOM à la lecture côté JavaScript.
+
+- [ ] **Sur un poste réel** : lancer le lanceur pendant une mise à jour en cours (le cas du
+  constat 1) et vérifier qu'il s'ouvre, ou affiche une erreur — mais ne disparaît pas.
+- [ ] **Écran 1366×768** (ou 125/150 % de mise à l'échelle) : les deux listes, les infos et les
+  quatre boutons tiennent dans l'écran (constat 7 — non reproductible sur ce poste).
+- [ ] **Hors ligne** : ouvrir « Version du logiciel… » sans réseau → message correct, et la
+  version N‑1 doit être proposée **après une deuxième mise à jour** (le temps que staging ait
+  deux archives et deux manifests). Avant cela, la liste hors ligne est vide, c'est normal.
+- [ ] **Deux mises à jour concurrentes** : lancer une installation, puis relancer aussitôt le
+  sélecteur et réinstaller → la seconde doit dire « une mise à jour est déjà en cours » et sortir.
+- [ ] **`Get-SzhVersionsPubliees` derrière le proxy SZH** : mesurer le temps réel et vérifier que
+  8 s suffisent (sinon remonter le timeout).
+- [ ] **Limite de débit GitHub** (60 requêtes/h/IP publique, tout un bureau derrière la même) :
+  confirmer que le message « trop de demandes vers GitHub depuis ce réseau » est compréhensible.
+  Si le cas devient fréquent, il faudra mettre la liste des versions en cache elle aussi.
+
+## À vérifier — liens de traduction et second lanceur (D123, D124)
+
+**Éprouvé sur ce poste** : la grammaire `szh://` refuse tout ce qu'elle doit refuser (produit
+inconnu, `..`, `C:\Windows`, espace, segment surnuméraire, autre schéma, chaîne vide) des DEUX
+côtés — `lib/liens.js` et le motif PowerShell ; la liaison des arguments `-File` a été mesurée
+pour les quatre formes utilisées (nommé, nommé requoté par `hidden.vbs`, switch requoté,
+positionnel requoté) ; l'extension charge, i18n 487 = 487 (fr/de), tous les `%marqueurs%` traduits.
+
+**Pas encore tourné** : le protocole `szh:` n'est pas enregistré sur ce poste (il l'est par
+`update.ps1`, non exécuté), donc **aucun lien n'a jamais été cliqué**, et l'atterrissage
+(intention → panneau) n'a jamais été joué de bout en bout.
+
+### 8. Envoyer pour traduction (D123)
+
+- [ ] Le bouton **« Envoyer pour traduction »** apparaît dans le panneau de traduction, à côté
+  d'*Enregistrer*, et son infobulle est lisible.
+- [ ] Les boutons ✉ apparaissent dans la barre : sur la section **Traductions** (lien vers tout le
+  numéro) et sur **chaque article** de cette section.
+- [ ] Un clic : le lien est bien dans le presse-papiers (coller quelque part pour vérifier) **et**
+  le brouillon d'e-mail s'ouvre avec le sujet, le corps et le lien.
+- [ ] Vérifier la forme du lien : `szh://traduction/revue/2026-01/03-inklusion` depuis le panneau
+  d'un article, `szh://traduction/revue/2026-01` depuis la section.
+- [ ] Sur une **Zeitschrift**, le lien doit dire `zeitschrift` (et non `revue`).
+- [ ] Cas de refus : un numéro dont `ausgabe.yaml` n'a pas de clé `revue:`, ou dont le dossier
+  s'appelle p. ex. `2026 01` (espace) → message « Lien impossible à construire », **pas** de lien
+  bancal copié.
+- [ ] Le bouton fonctionne aussi sur un numéro **verrouillé** (il ne modifie rien) — c'est même là
+  qu'il sert le plus.
+- [ ] Il ne change **aucun statut** de traduction : vérifier qu'un champ « pas prêt » le reste.
+- [ ] **Le clic sur le lien**, depuis Outlook et depuis Teams : Windows demande l'autorisation la
+  première fois → accepter → la bonne revue s'ouvre et le panneau de traduction s'affiche sur le
+  bon article. À refaire une fois VSCodium **déjà ouvert** sur une autre revue, et une fois
+  VSCodium **fermé**.
+- [ ] Le lien d'un numéro **archivé** ouvre bien la revue depuis les archives.
+- [ ] Cas d'échec à provoquer : lien vers un numéro qui n'existe pas sur le poste → message
+  « introuvable sur ce poste » ; lien tordu à la main (`szh://traduction/revue/../x`) → message
+  « lien non valide », et **rien** ne s'ouvre.
+- [ ] `%LOCALAPPDATA%\SZH\intention.json` : créé au clic, **supprimé** dès que le cockpit l'a
+  consommée. Vérifier qu'il ne traîne pas.
+- [ ] Intention **périmée** : cliquer un lien, fermer la fenêtre avant qu'elle ne s'ouvre, attendre
+  6 minutes, ouvrir la revue à la main → le panneau ne doit **pas** s'ouvrir tout seul, et le
+  fichier doit disparaître.
+- [ ] Intention pour une **autre** revue : cliquer un lien vers 2026-01 puis ouvrir 2026-02 à la
+  main → 2026-02 ne doit rien ouvrir, et 2026-01 doit encore atterrir quand elle s'ouvre.
+- [ ] Sur un poste **sans** la chaîne installée, le lien ne fait rien (ou ouvre le navigateur) :
+  confirmer que le message de l'e-mail explique le repli (« menu Démarrer → Revues SZH »).
+
+### 9. Second lanceur « Zeitschriften SZH » (D124)
+
+- [ ] Le raccourci **« Zeitschriften SZH »** apparaît dans le menu Démarrer après une mise à jour,
+  avec la bonne icône, et n'ouvre **aucune console**.
+- [ ] Il ne liste que les Zeitschriften (les deux listes, en cours et archivées), et « Revues SZH »
+  continue de tout lister.
+- [ ] Le titre de la fenêtre et le texte d'introduction sont bien ceux de la Zeitschrift.
+- [ ] « Nouvelle revue… » depuis ce lanceur propose `ZS02_Redaktion` (et non `RV02_Redaction`).
+- [ ] Un numéro **sans** clé `revue:` n'apparaît dans **aucun** des deux lanceurs filtrés (mais
+  reste visible dans « Revues SZH ») — vérifier que c'est acceptable, sinon il faut le signaler.
+- [ ] Une Zeitschrift rangée dans un dossier **historique** (`OneDrive\Revues`) apparaît quand même
+  dans le lanceur Zeitschrift.
+- [ ] Le bouton « Version du logiciel… » et l'affichage « Logiciel v. … » marchent dans les deux
+  lanceurs.
+- [ ] **Décision** : faut-il aussi filtrer « Revues SZH » sur la Revue (au lieu de tout montrer) ?
+  Aujourd'hui il montre tout, pour ne rien retirer à qui l'utilise déjà.
+- [ ] **Décision** : le lanceur Zeitschrift doit-il forcer l'interface en allemand ? Aujourd'hui
+  non — la langue suit celle de Windows, comme partout.
+- [ ] **Relire les libellés DE/EN** ajoutés (titres des deux lanceurs, messages de lien).
+
 ## À vérifier — cycle de vie des numéros : archivage, verrou, export, version, mode test (D116, D117, D119, D120)
 
 **Ce qui est déjà éprouvé sur ce poste**, à ne pas refaire : sérialisation d'`ausgabe.yaml`

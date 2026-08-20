@@ -151,6 +151,8 @@ const {
   enroberBloc, squeletteTableau, tableauVierge, blocReferenceTable, nomTableLibre,
   enregistrerCommandesMiseEnForme
 } = require('./lib/formatting');
+// ---- Liens profonds « szh:// » (D123) -> lib/liens.js ----------------------------
+const { construireLienTraduction, consommerIntention } = require('./lib/liens');
 const { enregistrerPanneaux } = require('./lib/panneaux');
 const { genererExportOjs } = require('./lib/export-ojs');
 const { retirerImage, retirerTable, lireAttributsImage, ecrireAttributsImage } = require('./lib/references');
@@ -2478,6 +2480,7 @@ function textesTraduction() {
     rien: T('trad.rien'), aucuneModif: T('form.rien'), enregistre: T('trad.enregistre'),
     commentaire: T('trad.commentaire'), commentaireAide: T('trad.commentaire.aide'),
     deepl: T('trad.deepl'), deeplTip: T('trad.deepl.tooltip'),
+    envoyer: T('trad.envoyer'), envoyerTip: T('trad.envoyer.tooltip'),
     motCle: T('trad.motcle'), motCleSansEquiv: T('trad.motcle.sansequivalent'),
     motsClesAide: T('trad.motscles.aide')
   };
@@ -2625,6 +2628,76 @@ function cibleTraduction(fournisseur, cible) {
   return { slug: actif || apercuCourantSlug || null, cle: null };
 }
 
+// ---- « Envoyer pour traduction » : lien szh:// + e-mail (D123) -----------------------
+//
+// Ce qu'on veut éviter au traducteur : « ouvre Revues SZH, cherche 2026-01, clique
+// l'article, ouvre l'onglet Traductions ». Le bouton fabrique donc un lien
+// szh://traduction/<produit>/<numero>[/<article>] (lib/liens.js) qui, cliqué sur un
+// poste de rédaction, ouvre le bon numéro ET l'amène sur le suivi de traduction.
+// Le lien part dans le presse-papiers ET dans un brouillon d'e-mail : le presse-papiers
+// est le filet si le client de messagerie ne s'ouvre pas.
+//
+// Le lien ne porte AUCUN chemin — c'est le lanceur qui retrouve le dossier dans les
+// emplacements du poste. Un numéro dont le dossier a un nom exotique, ou dont la revue
+// n'est pas déclarée, ne peut pas produire de lien : on le dit, on n'invente rien.
+
+// mailto: assemblé à la main puis parsé — encodeURIComponent sur CHAQUE valeur (le
+// corps contient des retours à la ligne et des accents).
+function ouvrirBrouillonMail(sujet, corps) {
+  const cible = 'mailto:?subject=' + encodeURIComponent(sujet) + '&body=' + encodeURIComponent(corps);
+  return vscode.env.openExternal(vscode.Uri.parse(cible));
+}
+
+async function envoyerPourTraduction(fournisseur, cible) {
+  const racine = fournisseur.racine;
+  if (!racine) { return; }
+  // Article visé s'il y en a un (bouton d'une ligne de l'arbre, ou panneau ouvert) ;
+  // sinon le lien vise tout le numéro — les deux sont utiles.
+  const vise = cibleTraduction(fournisseur, cible);
+  const slug = (vise.slug && fournisseur.listerArticles().indexOf(vise.slug) !== -1) ? vise.slug : '';
+  let produit = '';
+  try {
+    produit = normaliserRevue(analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')).revue);
+  } catch (e) { produit = ''; }
+  const lien = construireLienTraduction(produit, path.basename(racine), slug);
+  if (lien === '') {
+    vscode.window.showWarningMessage(T('trad.lien.impossible'));
+    return;
+  }
+  try { await vscode.env.clipboard.writeText(lien); } catch (e) { /* presse-papiers refusé */ }
+  const quoi = slug === '' ? titreNumero(racine) : titreNumero(racine) + ' — ' + slug;
+  const sujet = T('trad.lien.sujet', [quoi]);
+  const corps = T('trad.lien.corps', [quoi, lien]);
+  try {
+    await ouvrirBrouillonMail(sujet, corps);
+    vscode.window.setStatusBarMessage(T('trad.lien.copie', [lien]), 8000);
+  } catch (e) {
+    // Pas de client de messagerie (ou refus) : le lien est déjà copié, on le dit et on
+    // laisse un bouton pour réessayer.
+    const bouton = T('trad.lien.mail');
+    const choix = await vscode.window.showInformationMessage(T('trad.lien.copie.seul', [lien]), bouton);
+    if (choix === bouton) { ouvrirBrouillonMail(sujet, corps); }
+  }
+}
+
+// Atterrissage d'un lien reçu (D123) : le lanceur a déposé une intention à usage
+// unique, on la consomme ICI, une fois la revue ouverte et l'arbre prêt. Une intention
+// qui vise une AUTRE revue est laissée en place (une autre fenêtre la prendra) ; une
+// intention périmée est effacée. Ne lève jamais : un lien ne doit pas pouvoir empêcher
+// une revue de s'ouvrir.
+async function honorerIntention(fournisseur, rafraichirTout) {
+  try {
+    const racine = fournisseur.racine;
+    if (!racine) { return; }
+    const intention = consommerIntention(racine);
+    if (!intention || intention.vue !== 'traduction') { return; }
+    const cible = (intention.article !== '' && fournisseur.listerArticles().indexOf(intention.article) !== -1)
+      ? { slug: intention.article } : undefined;
+    await ouvrirTraduction(fournisseur, rafraichirTout, cible);
+    vscode.window.setStatusBarMessage(T('intention.ouverte'), 6000);
+  } catch (e) { /* jamais bloquant */ }
+}
+
 // Panneau « Traduction » : formulaire en colonne 1, aperçu de l'article en colonne 2
 // (ouvrirArticle sans ouvrir le .md — F5 fermerait justement l'aperçu, ici on le veut).
 async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
@@ -2689,6 +2762,8 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
       return;
     }
     if (msg.type === 'deepl') { ouvrirDeepl(panneau, msg); return; }
+    // D123 : le bouton « Envoyer pour traduction » du panneau vise l'article ouvert.
+    if (msg.type === 'lien') { envoyerPourTraduction(fournisseur, { slug: slugTraduction }); return; }
     if (msg.type === 'rechargement') {
       const attente = rechargementTraduction;
       rechargementTraduction = null;
@@ -3973,6 +4048,9 @@ function activate(context) {
     // et bouton « tout marquer prêt pour traduction » de la barre de section.
     cmdEcriture('szh.traduction', (item) => ouvrirTraduction(fournisseur, rafraichirTout, item)),
     cmdEcriture('szh.traductionsToutPret', () => marquerToutPretTraduction(fournisseur, rafraichirTout)),
+    // D123 : « Envoyer pour traduction » ne modifie RIEN (il fabrique un lien) — il
+    // reste donc disponible sur un numéro verrouillé, où il est même le plus utile.
+    cmd('szh.envoyerTraduction', (item) => envoyerPourTraduction(fournisseur, item)),
     cmd('szh.reglages', () => ouvrirReglages(rafraichirTout)),
     cmd('szh.basculerApercu', () => basculerApercu(fournisseur, majBarreApercu)),
     cmdEcriture('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
@@ -4068,6 +4146,7 @@ function activate(context) {
           progress.report({ message: T('demarrage.revue') });
           majContexte();                           // racine + contexte + watchers + dormant + arbre
           await ouvrirArticleActifAuDemarrage(fournisseur);   // T6.2
+          await honorerIntention(fournisseur, rafraichirTout); // D123 : lien szh:// reçu
         });
     } finally { barre.dispose(); }
   };
@@ -4086,7 +4165,7 @@ module.exports = {
     analyserAusgabe, serialiserAusgabe,
     nettoyerCarte, assainirCheminPhoto, decomposerPhoto, relatifImageValide,
     analyserTraduction, serialiserTraduction, lignesTraduction, resumeTraduction,
-    versionsDivergent, poidsLisible,
+    versionsDivergent, poidsLisible, construireLienTraduction,
     texteChamp, valeurChamp,
     retirerImage, retirerTable, lireAttributsImage, ecrireAttributsImage,
     basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,

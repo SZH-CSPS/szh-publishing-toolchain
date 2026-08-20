@@ -104,6 +104,62 @@ function Set-SzhProgIdMarkdown {
   }
 }
 
+# ---------------------------------------------------------------------------------
+# Protocole « szh: » (D123)
+#
+# Enregistre le gestionnaire du schéma szh:// dans HKCU — donc SANS administrateur
+# (D3), exactement comme le ProgId .md ci-dessus. C'est ce qui rend cliquable, depuis
+# un e-mail ou un message Teams, le lien fabriqué par « Envoyer pour traduction ».
+#
+# Le lien arrive au lanceur en PREMIER argument positionnel (« %1 »), via hidden.vbs
+# pour qu'aucune console n'apparaisse. hidden.vbs requote chacun de ses arguments :
+# vérifié, un « %1 » requoté se lie bien au paramètre positionnel du script — qui
+# revalide la grammaire de toute façon (Get-SzhLien).
+#
+# Windows demandera UNE FOIS la permission d'ouvrir ce type de lien : c'est voulu — un
+# protocole qui s'exécuterait sans accord explicite serait un vecteur d'attaque.
+function Set-SzhProtocoleSzh {
+  param(
+    [string]$Racine  = 'HKCU:\Software\Classes',
+    [string]$Toolkit = $SzhToolkit
+  )
+  $vbs = Join-Path $Toolkit 'windows\hidden.vbs'
+  $ps1 = Join-Path $Toolkit 'windows\open-revue.ps1'
+  $commande = ('"{0}\System32\wscript.exe" //B "{1}" "{2}" "%1"' -f $env:WINDIR, $vbs, $ps1)
+  $icone = Join-Path $Toolkit 'windows\szh-revue.ico'
+
+  $cle = Join-Path $Racine 'szh'
+  foreach ($c in $cle, (Join-Path $cle 'shell\open\command'), (Join-Path $cle 'DefaultIcon')) {
+    if (-not (Test-Path $c)) { New-Item -Path $c -Force | Out-Null }
+  }
+  Set-ItemProperty -Path $cle -Name '(default)' -Value 'URL:Revue SZH'
+  # « URL Protocol » (valeur VIDE) est ce qui fait d'une clé de classe un schéma d'URI.
+  Set-ItemProperty -Path $cle -Name 'URL Protocol' -Value ''
+  Set-ItemProperty -Path (Join-Path $cle 'shell\open\command') -Name '(default)' -Value $commande
+  if (Test-Path $icone) {
+    Set-ItemProperty -Path (Join-Path $cle 'DefaultIcon') -Name '(default)' -Value ('"{0}",0' -f $icone)
+  }
+}
+
+# ---------------------------------------------------------------------------------
+# Une seule mise à jour à la fois (mutex nommé, portée session)
+#
+# Deux update.ps1 concurrents — la tâche planifiée pendant un changement de version
+# demandé à la main, ou deux clics — écrivent la MÊME archive de staging
+# (System.IO.File::Create -> violation de partage) et détendent deux Expand-Archive
+# sur le même toolkit : à l'arrivée, un toolkit à moitié écrit. On sort proprement
+# plutôt que d'abîmer l'installation ; l'autre passe finira le travail.
+$script:SzhMutex = New-Object System.Threading.Mutex($false, 'Local\SZH-Publishing-Update')
+$aLaMain = $false
+try { $aLaMain = $SzhMutex.WaitOne(0) } catch { $aLaMain = $false }
+if (-not $aLaMain) {
+  Write-SzhLog 'update : une autre mise à jour est déjà en cours -> sortie'
+  Write-SzhBanniere (T 'maj.soustitre')
+  Write-SzhInfo (T 'maj.concurrente')
+  Start-Sleep -Seconds 5
+  exit 0
+}
+
 New-Item -ItemType Directory -Force -Path $SzhBase, $SzhStaging, $SzhLogs, $SzhToolkit | Out-Null
 $journal = Join-Path $SzhLogs ('update-{0}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 try { Start-Transcript -Path $journal | Out-Null } catch { }
@@ -121,6 +177,9 @@ try {
   $manifest = Get-SzhManifest $Version
   $etat = Get-SzhState
   Write-SzhOk (T 'maj.cible' @($manifest.version))
+  # Le manifest est MIS EN CACHE : c'est ce qui rend une réinstallation hors ligne
+  # possible (Get-SzhManifest s'y replie). Jamais bloquant.
+  try { Set-SzhJson (Get-SzhManifestCache $manifest.version) $manifest } catch { }
 
   # ---- 1/5 Maquette, réglages et scripts (toolkit) --------------------------
   $etape = (T 'etape.toolkit')
@@ -262,6 +321,15 @@ try {
   if ($codium) { $lnk.IconLocation = $codium }
   $lnk.Save()
 
+  # Second raccourci « Zeitschriften SZH » (D124) : le MÊME lanceur, filtré sur la
+  # Zeitschrift. Deux entrées de menu Démarrer, deux publics, un seul script.
+  $lnkZs = $shell.CreateShortcut((Join-Path $menu 'Zeitschriften SZH.lnk'))
+  $lnkZs.TargetPath = "$env:WINDIR\System32\wscript.exe"
+  $lnkZs.Arguments = ('//B "{0}" "{1}" "-Produit" "zeitschrift"' -f (Join-Path $SzhToolkit 'windows\hidden.vbs'), (Join-Path $SzhToolkit 'windows\open-revue.ps1'))
+  $lnkZs.Description = 'Eine SZH-Zeitschrift öffnen'
+  if ($codium) { $lnkZs.IconLocation = $codium }
+  $lnkZs.Save()
+
   # Association « Ouvrir avec » → « Revue SZH » pour les .md (T6.3, D18). Jamais
   # bloquante : une ruche de classes verrouillée par une stratégie de groupe ne doit pas
   # faire échouer une mise à jour par ailleurs réussie.
@@ -272,6 +340,15 @@ try {
     Write-SzhLog ('update : ProgId SZH.Markdown non posé : ' + $_.Exception.Message)
   }
 
+  # Protocole « szh: » des liens « Envoyer pour traduction » (D123). Même posture :
+  # jamais bloquante.
+  try {
+    Set-SzhProtocoleSzh
+    Write-SzhLog 'update : protocole szh: posé (HKCU)'
+  } catch {
+    Write-SzhLog ('update : protocole szh: non posé : ' + $_.Exception.Message)
+  }
+
   Write-SzhOk (T 'maj.e4.ok')
 
   # ---- 5/5 Nettoyage ---------------------------------------------------------
@@ -280,8 +357,14 @@ try {
   # Rootfs : garder l'archive courante + la précédente (rollback N-1, D10)
   $archives = @(Get-ChildItem (Join-Path $SzhStaging 'szh-publishing-rootfs-*.tar.gz') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
   if ($archives.Count -gt 2) { $archives | Select-Object -Skip 2 | Remove-Item -Force }
+  # DEUX archives de toolkit conservées, comme pour le rootfs (D10) : sans la N-1, le
+  # « réinstaller une version précédente » de D120 n'aurait rien à réinstaller.
   $zips = @(Get-ChildItem (Join-Path $SzhStaging 'toolkit-*.zip') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
-  if ($zips.Count -gt 1) { $zips | Select-Object -Skip 1 | Remove-Item -Force }
+  if ($zips.Count -gt 2) { $zips | Select-Object -Skip 2 | Remove-Item -Force }
+  # Les manifests en cache sont minuscules : on en garde cinq, de quoi couvrir les
+  # archives conservées et un peu d'historique.
+  $manifests = @(Get-ChildItem (Join-Path $SzhStaging 'manifest-*.json') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
+  if ($manifests.Count -gt 5) { $manifests | Select-Object -Skip 5 | Remove-Item -Force }
   Get-ChildItem (Join-Path $SzhStaging '*.vsix') -ErrorAction SilentlyContinue | Remove-Item -Force
   # Résidus de l'ancien format non compressé (deploy.ps1 historique) : .tar sans .gz.
   # Le -ErrorAction SilentlyContinue évite l'échec si un vieux fichier appartient à l'admin.
@@ -304,6 +387,7 @@ try {
   Write-Host ('  ' + (T 'maj.fini' @($manifest.version))) -ForegroundColor Green
   Write-Host ('    ' + (T 'maj.ferme')) -ForegroundColor Gray
   try { Stop-Transcript | Out-Null } catch { }
+  try { $SzhMutex.ReleaseMutex() } catch { }
   Start-Sleep -Seconds 6
   exit 0
 
@@ -311,6 +395,7 @@ try {
   $message = $_.Exception.Message
   Write-SzhLog ('update ERREUR ({0}) : {1}' -f $etape, $message)
   try { Stop-Transcript | Out-Null } catch { }
+  try { $SzhMutex.ReleaseMutex() } catch { }
   Show-SzhErreur -Etape $etape -Message $message -Journal $journal
   exit 1
 }

@@ -87,6 +87,17 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.erreur'   = "La création de la revue a échoué :`n{0}"
     # Cycle de vie du numéro (D116-D119) : deux listes dans le lanceur, version du
     # logiciel affichée et changeable, mode test signalé.
+    'maj.concurrente'           = 'Une mise à jour est déjà en cours dans une autre fenêtre — celle-ci se ferme.'
+    'lanceur.versions.chargement' = 'Recherche des versions publiées…'
+    'lanceur.versions.horsligne.deja' = "Aucune version n'est installable hors ligne sur ce poste : seule la version déjà installée est proposée."
+    'lanceur.erreur'            = "Le lanceur n'a pas pu démarrer :`n`n{0}`n`nContact : {1}"
+    'lanceur.titre'             = 'Revues SZH'
+    'lanceur.titre.revue'       = 'Revues SZH'
+    'lanceur.titre.zs'          = 'Zeitschriften SZH'
+    'lanceur.choisir.zs'        = 'Choisissez la Zeitschrift à ouvrir :'
+    'lanceur.vide.zs'           = 'Aucune Zeitschrift sur ce poste pour l''instant — « Nouvelle revue… » pour commencer.'
+    'lien.invalide'             = "Ce lien n'est pas un lien de revue SZH valide :`n`n{0}"
+    'lien.introuvable'          = "Ce lien renvoie au numéro « {0} » ({1}), introuvable sur ce poste.`n`nVérifiez que OneDrive a fini de synchroniser le dossier, puis réessayez. Vous pouvez aussi ouvrir le numéro à la main depuis « Revues SZH »."
     'lanceur.encours'           = 'En cours :'
     'lanceur.archives'          = 'Archivées :'
     'lanceur.vide.archives'     = 'Aucune revue archivée.'
@@ -97,9 +108,9 @@ $script:SzhTextes = @{
     'lanceur.versions.titre'    = 'Version du logiciel'
     'lanceur.versions.intro'    = 'Version installée : {0}. Choisissez la version à installer :'
     'lanceur.versions.installee' = '{0}    (installée)'
-    'lanceur.versions.locale'   = '{0}    (déjà téléchargée sur ce poste)'
+    'lanceur.versions.locale'   = '{0}    (installable hors ligne)'
     'lanceur.versions.installer' = 'Installer'
-    'lanceur.versions.horsligne' = "Impossible de lister les versions publiées (pas de connexion ?).`nSeules les versions déjà téléchargées sur ce poste sont proposées."
+    'lanceur.versions.horsligne' = "Impossible de lister les versions publiées : pas de connexion, ou trop de demandes vers GitHub depuis ce réseau.`nSeules les versions installables hors ligne sont proposées."
     'lanceur.versions.vide'     = 'Aucune version disponible sur ce poste.'
     'lanceur.versions.avert'    = "Changer de version remplace la maquette, l'environnement de fabrication du PDF et les extensions de l'éditeur.`n`nFermez les fenêtres de rédaction avant de continuer, puis redémarrez l'éditeur à la fin.`n`nInstaller la version {0} ?"
     # Archivage / désarchivage d'une revue (archive-revue.ps1, D116)
@@ -178,6 +189,17 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.invalide' = 'Der Name enthält unzulässige Zeichen ( < > : " / \ | ? * ).'
     'lanceur.nouvelle.erreur'   = "Die Zeitschrift konnte nicht erstellt werden:`n{0}"
     # Lebenszyklus der Ausgabe (D116-D119)
+    'maj.concurrente'           = 'In einem anderen Fenster läuft bereits eine Aktualisierung — dieses schliesst sich.'
+    'lanceur.versions.chargement' = 'Suche nach veröffentlichten Versionen…'
+    'lanceur.versions.horsligne.deja' = "Auf diesem Computer ist keine Version offline installierbar: es wird nur die bereits installierte Version angeboten."
+    'lanceur.erreur'            = "Der Starter konnte nicht gestartet werden:`n`n{0}`n`nKontakt: {1}"
+    'lanceur.titre'             = 'Revues SZH'
+    'lanceur.titre.revue'       = 'Revues SZH'
+    'lanceur.titre.zs'          = 'Zeitschriften SZH'
+    'lanceur.choisir.zs'        = 'Wählen Sie die zu öffnende Zeitschrift:'
+    'lanceur.vide.zs'           = 'Noch keine Zeitschrift auf diesem Computer — mit « Neue Zeitschrift… » beginnen.'
+    'lien.invalide'             = "Dieser Link ist kein gültiger SZH-Zeitschriftenlink:`n`n{0}"
+    'lien.introuvable'          = "Dieser Link verweist auf die Ausgabe « {0} » ({1}), die auf diesem Computer nicht gefunden wurde.`n`nPrüfen Sie, ob OneDrive den Ordner fertig synchronisiert hat, und versuchen Sie es erneut. Sie können die Ausgabe auch von Hand über « Zeitschriften SZH » öffnen."
     'lanceur.encours'           = 'In Arbeit:'
     'lanceur.archives'          = 'Archiviert:'
     'lanceur.vide.archives'     = 'Keine archivierte Zeitschrift.'
@@ -188,9 +210,9 @@ $script:SzhTextes = @{
     'lanceur.versions.titre'    = 'Software-Version'
     'lanceur.versions.intro'    = 'Installierte Version: {0}. Wählen Sie die zu installierende Version:'
     'lanceur.versions.installee' = '{0}    (installiert)'
-    'lanceur.versions.locale'   = '{0}    (auf diesem Computer bereits heruntergeladen)'
+    'lanceur.versions.locale'   = '{0}    (offline installierbar)'
     'lanceur.versions.installer' = 'Installieren'
-    'lanceur.versions.horsligne' = "Die veröffentlichten Versionen konnten nicht abgerufen werden (keine Verbindung?).`nEs werden nur die bereits heruntergeladenen Versionen angeboten."
+    'lanceur.versions.horsligne' = "Die veröffentlichten Versionen konnten nicht abgerufen werden: keine Verbindung, oder zu viele Anfragen an GitHub aus diesem Netz.`nEs werden nur die offline installierbaren Versionen angeboten."
     'lanceur.versions.vide'     = 'Keine Version auf diesem Computer verfügbar.'
     'lanceur.versions.avert'    = "Ein Versionswechsel ersetzt das Layout, die PDF-Erzeugungsumgebung und die Editor-Erweiterungen.`n`nSchliessen Sie zuerst die Redaktionsfenster und starten Sie den Editor am Ende neu.`n`nVersion {0} installieren?"
     # Archivieren / Dearchivieren (archive-revue.ps1, D116)
@@ -269,6 +291,17 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.invalide' = 'The name contains forbidden characters ( < > : " / \ | ? * ).'
     'lanceur.nouvelle.erreur'   = "Creating the journal failed:`n{0}"
     # Issue life cycle (D116-D119)
+    'maj.concurrente'           = 'An update is already running in another window — this one is closing.'
+    'lanceur.versions.chargement' = 'Looking for published versions…'
+    'lanceur.versions.horsligne.deja' = "No version can be installed offline on this computer: only the version already installed is offered."
+    'lanceur.erreur'            = "The launcher could not start:`n`n{0}`n`nContact: {1}"
+    'lanceur.titre'             = 'Revues SZH'
+    'lanceur.titre.revue'       = 'Revues SZH'
+    'lanceur.titre.zs'          = 'Zeitschriften SZH'
+    'lanceur.choisir.zs'        = 'Choose the Zeitschrift to open:'
+    'lanceur.vide.zs'           = 'No Zeitschrift on this computer yet — use "New journal…" to get started.'
+    'lien.invalide'             = "This is not a valid SZH journal link:`n`n{0}"
+    'lien.introuvable'          = "This link points to issue {0} ({1}), which was not found on this computer.`n`nCheck that OneDrive has finished syncing the folder, then try again. You can also open the issue by hand from the Revues SZH launcher."
     'lanceur.encours'           = 'In progress:'
     'lanceur.archives'          = 'Archived:'
     'lanceur.vide.archives'     = 'No archived journal.'
@@ -279,9 +312,9 @@ $script:SzhTextes = @{
     'lanceur.versions.titre'    = 'Software version'
     'lanceur.versions.intro'    = 'Installed version: {0}. Choose the version to install:'
     'lanceur.versions.installee' = '{0}    (installed)'
-    'lanceur.versions.locale'   = '{0}    (already downloaded on this computer)'
+    'lanceur.versions.locale'   = '{0}    (installable offline)'
     'lanceur.versions.installer' = 'Install'
-    'lanceur.versions.horsligne' = "Could not list the published versions (no connection?).`nOnly versions already downloaded on this computer are offered."
+    'lanceur.versions.horsligne' = "Could not list the published versions: no connection, or too many requests to GitHub from this network.`nOnly versions installable offline are offered."
     'lanceur.versions.vide'     = 'No version available on this computer.'
     'lanceur.versions.avert'    = "Switching version replaces the layout, the PDF build environment and the editor extensions.`n`nClose the writing windows first, then restart the editor when it is done.`n`nInstall version {0}?"
     # Archiving / unarchiving a journal (archive-revue.ps1, D116)
@@ -318,8 +351,28 @@ function T {
 
 # ---------- Config / état ----------
 
+# Écrit du JSON en UTF-8 SANS BOM.
+#
+# POURQUOI ce détour : `Set-Content -Encoding UTF8` (PowerShell 5.1) écrit un BOM, et
+# JSON.parse() de Node le refuse — « Unexpected token  in JSON ». Or config.json et
+# l'intention d'ouverture (D123) sont écrits ICI et relus par le COCKPIT (lib/archivage.js,
+# lib/liens.js). Le BOM y rendait la lecture silencieusement vide : le mode développeur
+# retombait toujours sur son défaut, et un lien szh:// ouvrait la revue sans jamais
+# atteindre le panneau. ConvertFrom-Json, lui, tolère les deux — on peut donc écrire sans
+# BOM sans rien casser côté PowerShell.
+# (state.json reste écrit par Save-SzhState : il n'est lu que par PowerShell.)
+function Set-SzhJson([string]$Chemin, $Objet) {
+  $json = ($Objet | ConvertTo-Json -Depth 5)
+  [System.IO.File]::WriteAllText($Chemin, $json, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+# Lectures TOLÉRANTES : un fichier tronqué (mise à jour interrompue) ou en cours
+# d'écriture ne doit pas faire échouer un script qui n'a rien à voir — le lanceur en
+# particulier, qui n'a pas de console pour dire ce qui s'est passé.
 function Get-SzhConfig {
-  if (Test-Path $SzhConfigFile) { return (Get-Content $SzhConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json) }
+  try {
+    if (Test-Path $SzhConfigFile) { return (Get-Content $SzhConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json) }
+  } catch { }
   return $null
 }
 
@@ -330,7 +383,9 @@ function Get-SzhRepo {
 }
 
 function Get-SzhState {
-  if (Test-Path $SzhStateFile) { return (Get-Content $SzhStateFile -Raw -Encoding UTF8 | ConvertFrom-Json) }
+  try {
+    if (Test-Path $SzhStateFile) { return (Get-Content $SzhStateFile -Raw -Encoding UTF8 | ConvertFrom-Json) }
+  } catch { }
   return $null
 }
 
@@ -339,26 +394,66 @@ function Save-SzhState($Etat) {
 }
 
 # ---------- Version du logiciel installée (D120) ----------
+#
 # Source primaire : le fichier VERSION du toolkit (écrit par la CI dans toolkit-X.zip).
 # Repli : state.json (écrit par update.ps1). Chaîne vide si rien n'est lisible.
+#
+# ⚠ CETTE FONCTION NE DOIT JAMAIS LEVER. Elle est appelée sur le chemin d'AFFICHAGE du
+# lanceur, qui tourne sans console (hidden.vbs) et sans try/catch autrefois : avec
+# $ErrorActionPreference = 'Stop', une exception ici ne donnait pas un message laid,
+# elle donnait un lanceur qui ne s'ouvre pas du tout, sans trace. Deux pièges réels,
+# tous deux pendant une mise à jour :
+#   - VERSION vide ou en cours de réécriture par Expand-Archive -> Get-Content -Raw
+#     renvoie $null et .Trim() lève InvokeMethodOnNull ;
+#   - state.json tronqué -> ConvertFrom-Json lève.
+# D'où le try/catch autour de chacune des deux lectures, et le repli sur ''.
 function Get-SzhVersionInstallee {
-  $fichier = Join-Path $SzhToolkit 'VERSION'
-  if (Test-Path $fichier) {
-    $v = (Get-Content $fichier -Raw).Trim()
-    if ($v) { return $v }
-  }
-  $etat = Get-SzhState
-  if ($etat -and $etat.version) { return [string]$etat.version }
+  try {
+    $fichier = Join-Path $SzhToolkit 'VERSION'
+    if (Test-Path $fichier) {
+      $brut = Get-Content $fichier -Raw -ErrorAction Stop
+      if ($null -ne $brut) {
+        $v = ([string]$brut).Trim()
+        if ($v) { return $v }
+      }
+    }
+  } catch { }
+  try {
+    $etat = Get-SzhState
+    if ($etat -and $etat.version) { return ([string]$etat.version).Trim() }
+  } catch { }
   return ''
 }
 
+# Trie des versions de la PLUS RÉCENTE à la plus ancienne, par NUMÉRO.
+#
+# L'API GitHub, elle, trie par date de publication : « 2026.08.10 » y arrive après
+# « 2026.08.7 » (republication, release éditée…). Or c'est dans cette liste qu'on
+# cherche « la précédente » — un ordre faux fait installer la mauvaise version. On
+# trie donc soi-même : [version] quand les tags s'y prêtent (2026.08.10 > 2026.08.7,
+# ce qu'une comparaison de chaînes rate), repli sur l'ordre alphabétique inverse pour
+# un tag exotique (jamais d'exception).
+function Sort-SzhVersions($Versions) {
+  $paires = @()
+  foreach ($v in $Versions) {
+    $num = $null
+    try { $num = [version]($v -replace '[^0-9.]', '') } catch { $num = $null }
+    $paires += [pscustomobject]@{ texte = [string]$v; num = $num }
+  }
+  $avec = @($paires | Where-Object { $null -ne $_.num } | Sort-Object -Property num -Descending)
+  $sans = @($paires | Where-Object { $null -eq $_.num } | Sort-Object -Property texte -Descending)
+  return @(($avec + $sans) | ForEach-Object { $_.texte })
+}
+
 # Versions publiées (Releases GitHub), les plus récentes d'abord. Tableau VIDE si le
-# réseau est absent — l'appelant retombe alors sur les versions déjà téléchargées.
+# réseau est absent ou refuse (403 de limite de débit) — l'appelant le dit à l'écran.
+# `per_page=100` : il y a déjà des dizaines de releases, et une page manquée ferait
+# disparaître les anciennes en silence, c'est-à-dire exactement celles qu'on cherche.
 function Get-SzhVersionsPubliees {
   try {
-    $url = ('https://api.github.com/repos/{0}/releases?per_page=30' -f (Get-SzhRepo))
+    $url = ('https://api.github.com/repos/{0}/releases?per_page=100' -f (Get-SzhRepo))
     $entetes = @{ 'User-Agent' = 'SZH-Publishing'; 'Accept' = 'application/vnd.github+json' }
-    $releases = Invoke-RestMethod -Uri $url -Headers $entetes -UseBasicParsing -TimeoutSec 20
+    $releases = Invoke-RestMethod -Uri $url -Headers $entetes -UseBasicParsing -TimeoutSec 8
     $versions = @()
     foreach ($r in $releases) {
       if ($r.draft) { continue }
@@ -366,21 +461,34 @@ function Get-SzhVersionsPubliees {
       if (-not $tag) { continue }
       $versions += ($tag -replace '^v', '')
     }
-    return @($versions)
+    return (Sort-SzhVersions $versions)
   } catch {
     return @()
   }
 }
 
-# Versions déjà téléchargées sur ce poste (archives conservées en staging, D10) :
-# elles s'installent sans réseau. « toolkit-2026.08.0.zip » -> « 2026.08.0 ».
+# Versions réellement INSTALLABLES HORS LIGNE : il faut à la fois l'archive du toolkit
+# ET le manifest de cette version en staging (update.ps1 les conserve tous deux, D10).
+# Sans le manifest, update.ps1 s'arrête à sa première action (« lecture de la version
+# disponible ») : annoncer une telle version comme disponible serait un mensonge.
 function Get-SzhVersionsLocales {
   $versions = @()
   Get-ChildItem (Join-Path $SzhStaging 'toolkit-*.zip') -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending | ForEach-Object {
-      if ($_.Name -match '^toolkit-(.+)\.zip$') { $versions += $Matches[1] }
+      if ($_.Name -match '^toolkit-(.+)\.zip$') {
+        $v = $Matches[1]
+        if (Test-Path (Join-Path $SzhStaging ('manifest-{0}.json' -f $v))) { $versions += $v }
+      }
     }
-  return @($versions)
+  return (Sort-SzhVersions $versions)
+}
+
+# Une version est-elle un tag PLAUSIBLE ? Garde-fou de quoting : la valeur peut venir
+# d'un nom de fichier de staging (dossier inscriptible sans privilège), et elle part en
+# ARGUMENT de update.ps1 — un « 2026.08.0 -Verbose » y injecterait un paramètre.
+function Test-SzhVersionTag([string]$Version) {
+  if (-not $Version) { return $false }
+  return ($Version -match '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$')
 }
 
 # ---------- Mode développeur & emplacements des revues (D119) ----------
@@ -418,7 +526,7 @@ function Set-SzhDevMode([bool]$Actif) {
   } else {
     $cfg.devMode = $Actif
   }
-  $cfg | ConvertTo-Json -Depth 5 | Set-Content -Path $SzhConfigFile -Encoding UTF8
+  Set-SzhJson $SzhConfigFile $cfg
 }
 
 function Get-SzhBaseRevues {
@@ -544,12 +652,36 @@ function Get-SzhManifestUrl([string]$Version) {
   return "https://github.com/$repo/releases/latest/download/manifest.json"
 }
 
+# Chemin du manifest MIS EN CACHE pour une version donnée (staging).
+function Get-SzhManifestCache([string]$Version) {
+  return (Join-Path $SzhStaging ('manifest-{0}.json' -f $Version))
+}
+
+# Manifest d'une version : le réseau d'abord, le cache de staging ensuite.
+#
+# POURQUOI le cache : réinstaller une ancienne version (D120) doit rester possible sans
+# réseau, or c'était faux — update.ps1 commence par télécharger le manifest, donc un
+# poste hors ligne échouait à la première étape même quand l'archive du toolkit était
+# encore là. Le cache est écrit par update.ps1 à chaque passage réussi.
+# Le cache n'est consulté que pour une version EXPLICITE : « latest » n'a de sens qu'en
+# ligne, et servir un vieux « latest » de cache serait pire que d'échouer franchement.
 function Get-SzhManifest([string]$Version) {
-  # L'asset est servi en octet-stream : Invoke-RestMethod peut rendre une chaîne brute.
-  $brut = Invoke-RestMethod -Uri (Get-SzhManifestUrl $Version) -UseBasicParsing -TimeoutSec 30
-  if ($brut -is [string]) { return ($brut | ConvertFrom-Json) }
-  if ($brut -is [byte[]]) { return ([Text.Encoding]::UTF8.GetString($brut) | ConvertFrom-Json) }
-  return $brut
+  try {
+    # L'asset est servi en octet-stream : Invoke-RestMethod peut rendre une chaîne brute.
+    $brut = Invoke-RestMethod -Uri (Get-SzhManifestUrl $Version) -UseBasicParsing -TimeoutSec 30
+    if ($brut -is [string]) { return ($brut | ConvertFrom-Json) }
+    if ($brut -is [byte[]]) { return ([Text.Encoding]::UTF8.GetString($brut) | ConvertFrom-Json) }
+    return $brut
+  } catch {
+    if ($Version) {
+      $cache = Get-SzhManifestCache $Version
+      if (Test-Path $cache) {
+        Write-SzhLog ('manifest hors ligne : cache de staging utilisé pour ' + $Version)
+        return (Get-Content $cache -Raw -Encoding UTF8 | ConvertFrom-Json)
+      }
+    }
+    throw
+  }
 }
 
 # ---------- Journal ----------
@@ -636,6 +768,70 @@ function Set-SzhAusgabeVersion([string]$Dossier, [string]$Version) {
   if (-not $trouvee) { $lignes += $ligne }
   Set-Content -Path $fichier -Value $lignes -Encoding UTF8
   return $true
+}
+
+# ---------- Liens profonds « szh:// » (D123) ----------
+#
+# GRAMMAIRE — miroir EXACT de vscodium-extension/szh-cockpit/lib/liens.js, qui les
+# FABRIQUE. Deux langages, une seule grammaire : à maintenir ensemble.
+#     szh://traduction/<produit>/<numero>[/<article>]
+# Un lien arrive d'un e-mail : c'est une donnée NON FIABLE. Elle ne porte donc aucun
+# chemin — seulement un produit (choix fermé), un nom de dossier et un slug, aux
+# alphabets stricts — et le dossier est cherché UNIQUEMENT dans les emplacements
+# connus du poste. Aucun chemin n'est jamais construit sur l'entrée brute.
+$script:SzhLienMotif = '^szh://traduction/(revue|zeitschrift)/([A-Za-z0-9][A-Za-z0-9._-]{0,63})(?:/([a-z0-9][a-z0-9-]{0,63}))?/?$'
+
+# Analyse un lien -> { vue, produit, numero, article } ou $null si la grammaire n'est
+# pas respectée. Le protocole Windows peut ajouter un « / » final ou un caractère nul.
+function Get-SzhLien([string]$Lien) {
+  if (-not $Lien) { return $null }
+  $net = ([string]$Lien).Trim().Trim([char]0)
+  if ($net -notmatch $SzhLienMotif) { return $null }
+  $numero = [string]$Matches[2]
+  if ($numero -like '*..*') { return $null }
+  $article = ''
+  if ($Matches.Count -ge 4) { $article = [string]$Matches[3] }
+  return [pscustomobject]@{
+    vue     = 'traduction'
+    produit = [string]$Matches[1]
+    numero  = $numero
+    article = $article
+  }
+}
+
+# Retrouve le DOSSIER d'un numéro : « en cours » d'abord, puis les archives, et
+# seulement là. Le nom vient du lien, mais la racine vient toujours du poste, et le
+# dossier doit vraiment être une revue (ausgabe.yaml). '' si introuvable.
+function Find-SzhRevue([string]$Produit, [string]$Numero) {
+  foreach ($etat in @('encours', 'archive')) {
+    $racine = Get-SzhEmplacementRevue $Produit $etat
+    if (-not $racine) { continue }
+    $candidat = Join-Path $racine $Numero
+    if (Test-Path (Join-Path $candidat 'ausgabe.yaml')) { return (Resolve-Path $candidat).Path }
+  }
+  return ''
+}
+
+# ---------- Intention d'ouverture, à usage unique (D123) ----------
+#
+# Le lanceur ne peut pas dire à VSCodium « ouvre tel panneau ». Il dépose donc une
+# intention que le cockpit lit à l'activation, vérifie (elle doit viser LA revue qui
+# s'ouvre), consomme et supprime — cf. consommerIntention() dans lib/liens.js.
+# ⚠ Mêmes chemin, clés et unité de temps que lib/liens.js : `pose` est en
+# MILLISECONDES depuis l'époque Unix (Date.now() côté JavaScript), péremption 5 min.
+# Hors du dossier de revue exprès : rien de technique n'entre dans une revue (D8).
+$script:SzhIntentionFile = Join-Path $env:LOCALAPPDATA 'SZH\intention.json'
+
+function Set-SzhIntention([string]$Revue, [string]$Vue, [string]$Article) {
+  $dossier = Split-Path $SzhIntentionFile -Parent
+  New-Item -ItemType Directory -Force -Path $dossier | Out-Null
+  $intention = [ordered]@{
+    revue   = $Revue
+    vue     = $Vue
+    article = $Article
+    pose    = [long]([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
+  }
+  Set-SzhJson $SzhIntentionFile $intention
 }
 
 # ---------- Raccourci « Ouvrir la revue » (D14) ----------

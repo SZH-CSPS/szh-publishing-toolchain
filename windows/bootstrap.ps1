@@ -57,7 +57,7 @@ if (-not (Test-Path $SzhConfigFile)) {
       dev  = '%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING'
     }
   }
-  $cfg | ConvertTo-Json -Depth 5 | Set-Content -Path $SzhConfigFile -Encoding UTF8
+  Set-SzhJson $SzhConfigFile $cfg
 }
 
 # ---- 2. Moteur WSL --------------------------------------------------------------

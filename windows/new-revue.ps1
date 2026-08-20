@@ -59,7 +59,7 @@ foreach ($r in $racines) {
 }
 if (-not $connu) {
   $cfg.revuesRoots = @($racines + $parent)
-  $cfg | ConvertTo-Json | Set-Content -Path $SzhConfigFile -Encoding UTF8
+  Set-SzhJson $SzhConfigFile $cfg
 }
 
 Write-SzhOk ('Revue créée : {0}' -f $chemin)
