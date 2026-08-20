@@ -42,6 +42,21 @@ et un retrait défensif du BOM à la lecture côté JavaScript.
   confirmer que le message « trop de demandes vers GitHub depuis ce réseau » est compréhensible.
   Si le cas devient fréquent, il faudra mettre la liste des versions en cache elle aussi.
 
+## Constaté au déploiement de v2026.08.22 — `update.ps1` lancé à la main est en retard d'une passe
+
+`update.ps1` extrait le nouveau toolkit à son étape 1, mais PowerShell a déjà lu tout le fichier :
+la suite tourne avec l'ANCIEN code. Lancé à la main sur ce poste, il a donc bien installé le
+cockpit 0.13.0 mais **n'a créé ni le raccourci « Zeitschriften SZH » ni le protocole `szh:`** — il
+a fallu le relancer. La tâche planifiée n'a pas ce défaut (`update-launcher.ps1` extrait le
+toolkit **avant** de passer la main). Vérifié après relance : les deux raccourcis sont là avec les
+bons arguments, `HKCU\Software\Classes\szh` porte `URL Protocol` et la bonne commande, et la
+chaîne menu Démarrer → `hidden.vbs` → `open-revue.ps1 -Produit zeitschrift` lance bien le lanceur
+filtré.
+
+- [ ] **Décider** s'il faut qu'`update.ps1` se relance tout seul quand il constate que sa propre
+  copie a changé (une passe, un commutateur `-Relance` pour borner la récursion) — aujourd'hui
+  c'est à la main, et seul un lancement manuel est concerné.
+
 ## À vérifier — liens de traduction et second lanceur (D123, D124)
 
 **Éprouvé sur ce poste** : la grammaire `szh://` refuse tout ce qu'elle doit refuser (produit

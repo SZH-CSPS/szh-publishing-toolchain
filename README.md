@@ -254,6 +254,13 @@ pipeline. Voir [`userdoc.md`](userdoc.md).
 - **Un lien `szh://` vient de l'extérieur** : il ne porte aucun chemin, sa grammaire est revalidée
   côté lanceur, et le dossier n'est cherché que dans les emplacements connus du poste. Ne jamais
   construire un chemin sur un segment reçu sans repasser par `Get-SzhLien` / `Find-SzhRevue`.
+- **Une modification d'`update.ps1` ne prend effet qu'au passage SUIVANT si le script est lancé
+  À LA MAIN.** PowerShell lit tout le fichier avant d'exécuter : la passe qui extrait le nouveau
+  toolkit continue donc avec l'ANCIEN code (constaté sur v2026.08.22 : le raccourci
+  « Zeitschriften SZH » et le protocole `szh:` n'ont été posés qu'à la deuxième exécution).
+  La tâche planifiée, elle, fait ce qu'il faut : `update-launcher.ps1` extrait le toolkit
+  **d'abord**, puis lance le `update.ps1` fraîchement déployé. Après un `update.ps1` manuel qui
+  change `update.ps1` lui-même, le relancer une fois.
 - **`hidden.vbs` requote chacun de ses arguments** : vérifié, `powershell.exe -File script.ps1
   "-Produit" "zeitschrift"` et un `"%1"` requoté se lient correctement (paramètre nommé, switch et
   positionnel). C'est ce qui permet aux deux raccourcis et au protocole de passer par lui.
