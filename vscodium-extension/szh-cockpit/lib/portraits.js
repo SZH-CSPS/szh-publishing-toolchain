@@ -11,19 +11,8 @@
 // Aucune dépendance à vscode ni à i18n (testable headless).
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
 const { spawn } = require('child_process');
-const { reveillerWsl } = require('./wsl');
-
-// ⚠ Mêmes constantes que lib/wsl.js (non exportées là-bas) : distro du pipeline
-// et wsl.exe de System32 en priorité (chemin sûr), PATH en repli.
-const DISTRO = 'SZH-Publishing';
-function cheminWsl() {
-  const systeme = path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'wsl.exe');
-  try { if (fs.existsSync(systeme)) { return systeme; } } catch (e) { /* PATH en repli */ }
-  return 'wsl.exe';
-}
+const { reveillerWsl, DISTRO, cheminWsl } = require('./wsl');
 
 // Défauts du poste déployé (D91) : venv du rootfs + script du toolkit installé.
 // Surchargeables par les options — c'est ce qu'utilisent les tests headless

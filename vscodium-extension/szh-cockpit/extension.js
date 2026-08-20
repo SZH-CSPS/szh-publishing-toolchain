@@ -121,7 +121,7 @@ const { TEXTES_COCKPIT, T, langueCockpit } = require('./lib/i18n');
 const {
   CLES_METADONNEES, COULEURS_NUMERO, HEX_COULEURS, normaliserRevue, estVraiYaml,
   TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
-  analyserAusgabe, serialiserAusgabe, ecrireAusgabeAtomique,
+  analyserAusgabe, serialiserAusgabe, ecrireAtomique,
   separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
   analyserMeta, serialiserMeta, langueRevue, titreNumero, etatRevue
 } = require('./lib/yaml');
@@ -251,7 +251,7 @@ function ecrireClesAusgabe(racine, modifies) {
   try {
     let contenu = '';
     try { contenu = fs.readFileSync(chemin, 'utf8'); } catch (e) { /* absent : recréé plat */ }
-    ecrireAusgabeAtomique(chemin, serialiserAusgabe(contenu, modifies));
+    ecrireAtomique(chemin, serialiserAusgabe(contenu, modifies));
     return null;
   } catch (e) { return String((e && e.message) || e); }
 }
@@ -668,6 +668,20 @@ async function ouvrirApercuPdf(uri) {
   }
 }
 
+// Ferme tous les onglets dont l'entrée satisfait le prédicat. Les quatre appelants
+// ne diffèrent que par ce prédicat ; l'API des `TabInput` est typée en canard, d'où
+// les gardes sur les champs.
+async function fermerOnglets(predicat) {
+  const aFermer = [];
+  for (const groupe of vscode.window.tabGroups.all) {
+    for (const onglet of groupe.tabs) {
+      if (predicat(onglet.input)) { aFermer.push(onglet); }
+    }
+  }
+  if (aFermer.length === 0) { return; }
+  try { await vscode.window.tabGroups.close(aFermer); } catch (e) { /* déjà fermé */ }
+}
+
 // ---- Tâche de build (S4) : réutilise la tâche user, écoute la fin ---------------
 
 let buildEnCours = false;
@@ -1016,18 +1030,7 @@ async function fermerApercuCourant(saufUri) {
   if (saufUri && courant.fsPath.toLowerCase() === saufUri.fsPath.toLowerCase()) { return; }
   apercuCourantUri = null;
   const cible = courant.fsPath.toLowerCase();
-  const aFermer = [];
-  for (const groupe of vscode.window.tabGroups.all) {
-    for (const onglet of groupe.tabs) {
-      const entree = onglet.input;
-      if (entree && entree.uri && entree.uri.fsPath && entree.uri.fsPath.toLowerCase() === cible) {
-        aFermer.push(onglet);
-      }
-    }
-  }
-  if (aFermer.length > 0) {
-    try { await vscode.window.tabGroups.close(aFermer); } catch (e) { /* déjà fermé */ }
-  }
+  await fermerOnglets((e) => e && e.uri && e.uri.fsPath && e.uri.fsPath.toLowerCase() === cible);
 }
 
 // ---- Aperçu commutable HTML <-> PDF (M5, D53/D54) -----------------------------------
@@ -1241,16 +1244,7 @@ function fermerApercuHtml() {
 async function fermerTousLesApercus() {
   fermerApercuHtml();
   await fermerApercuCourant(null);
-  const aFermer = [];
-  for (const groupe of vscode.window.tabGroups.all) {
-    for (const onglet of groupe.tabs) {
-      const entree = onglet.input;
-      if (entree && entree.viewType === VUE_PDF) { aFermer.push(onglet); }
-    }
-  }
-  if (aFermer.length > 0) {
-    try { await vscode.window.tabGroups.close(aFermer); } catch (e) { /* déjà fermé */ }
-  }
+  await fermerOnglets((e) => e && e.viewType === VUE_PDF);
   apercuCourantUri = null;
 }
 
@@ -1530,23 +1524,6 @@ async function compilerPuisAfficher(fournisseur, slug) {
 
 let importEnCours = false;
 
-async function executerImport() {
-  const taches = await vscode.tasks.fetchTasks();
-  const tache = taches.find((t) => t.name === NOM_TACHE_IMPORT);
-  if (!tache) {
-    vscode.window.showErrorMessage(
-      'Tâche « ' + NOM_TACHE_IMPORT + ' » introuvable. Réglages de l’éditeur incomplets ?'
-    );
-    return null;
-  }
-  const execution = await vscode.tasks.executeTask(tache);
-  return await new Promise((resolve) => {
-    const abo = vscode.tasks.onDidEndTaskProcess((e) => {
-      if (e.execution === execution) { abo.dispose(); resolve(e.exitCode); }
-    });
-  });
-}
-
 // C1 : compilation qui suit immédiatement une conversion réussie. Appelée DEPUIS
 // lancerConversion, donc pendant que importEnCours est posé — d'où le drapeau de
 // build géré ici et non la garde de compilerPuisAfficher. Un échec est signalé
@@ -1573,7 +1550,7 @@ async function lancerConversion(fournisseur, rafraichirTout) {
   const statut = vscode.window.setStatusBarMessage(T('statut.import'));
   try {
     const avant = new Set(fournisseur.listerArticles());
-    const code = await executerImport();
+    const code = await lancerTache(NOM_TACHE_IMPORT);
     rafraichirTout();
     if (code === null) { return; }               // tâche introuvable (déjà signalé)
     if (code !== 0) {
@@ -1928,37 +1905,15 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
 // resterait sinon en « fantôme » avec une erreur à la première interaction.
 async function fermerOngletsSous(dossier) {
   const prefixe = (dossier + path.sep).toLowerCase();
-  const aFermer = [];
-  for (const groupe of vscode.window.tabGroups.all) {
-    for (const onglet of groupe.tabs) {
-      const entree = onglet.input;
-      if (entree && entree.uri && entree.uri.fsPath &&
-          entree.uri.fsPath.toLowerCase().indexOf(prefixe) === 0) {
-        aFermer.push(onglet);
-      }
-    }
-  }
-  if (aFermer.length > 0) {
-    try { await vscode.window.tabGroups.close(aFermer); } catch (e) { /* onglet déjà fermé */ }
-  }
+  await fermerOnglets((e) => e && e.uri && e.uri.fsPath &&
+    e.uri.fsPath.toLowerCase().indexOf(prefixe) === 0);
 }
 
 // Même chose pour UN fichier (C3) : l'aperçu d'image ouvert en colonne 1 doit
 // disparaître avec le fichier, sinon l'onglet reste en « fantôme ».
 async function fermerOngletDuFichier(chemin) {
   const vise = String(chemin).toLowerCase();
-  const aFermer = [];
-  for (const groupe of vscode.window.tabGroups.all) {
-    for (const onglet of groupe.tabs) {
-      const entree = onglet.input;
-      if (entree && entree.uri && entree.uri.fsPath && entree.uri.fsPath.toLowerCase() === vise) {
-        aFermer.push(onglet);
-      }
-    }
-  }
-  if (aFermer.length > 0) {
-    try { await vscode.window.tabGroups.close(aFermer); } catch (e) { /* onglet déjà fermé */ }
-  }
+  await fermerOnglets((e) => e && e.uri && e.uri.fsPath && e.uri.fsPath.toLowerCase() === vise);
 }
 
 // Première action DESTRUCTIVE du cockpit : confirmation modale obligatoire, nommant
@@ -2081,7 +2036,7 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
     try {
       let contenu = '';
       try { contenu = fs.readFileSync(chemin, 'utf8'); } catch (e) { /* absent : recréé plat */ }
-      ecrireAusgabeAtomique(chemin, serialiserAusgabe(contenu, modifies));
+      ecrireAtomique(chemin, serialiserAusgabe(contenu, modifies));
       panneau.webview.postMessage({ type: 'enregistre' });
       vscode.window.setStatusBarMessage(T('statut.ausgabe'), 3000);
       if (rafraichirTout) { rafraichirTout(); }    // titre de la vue à jour (N2)
@@ -2158,7 +2113,7 @@ function ecrireCartesArticles(fournisseur, cartes, slugsAutorises) {
       const carte = nettoyerCarte(cartes[slug]);
       try { carte._inconnues = analyserMeta(fs.readFileSync(fichierMeta, 'utf8'))._inconnues; }
       catch (e) { /* pas de fiche existante */ }
-      ecrireAusgabeAtomique(fichierMeta, serialiserMeta(carte));
+      ecrireAtomique(fichierMeta, serialiserMeta(carte));
       n++;
     } catch (e) {
       erreurs.push(slug + ' (' + e.message + ')');
@@ -2215,8 +2170,8 @@ function migrerFrontmatterVersMeta(racine, slug) {
     valeurs.author.push({ prenom: '', nom: String(a.name || ''), fonction: '', affiliation: String(a.affiliation || ''), orcid: String(a.orcid || '') });
   }
   try {
-    ecrireAusgabeAtomique(fichierMeta, serialiserMeta(valeurs));
-    ecrireAusgabeAtomique(fichierMd, serialiserFrontmatter(texte, { title: '', subtitle: '', doi: '', author: [], keywords: [] }));
+    ecrireAtomique(fichierMeta, serialiserMeta(valeurs));
+    ecrireAtomique(fichierMd, serialiserFrontmatter(texte, { title: '', subtitle: '', doi: '', author: [], keywords: [] }));
   } catch (e) { /* migration best effort : la carte restera vide */ }
 }
 
@@ -2393,7 +2348,7 @@ function ecrireSuiviTraduction(racine, slug, suivi) {
     try { if (fs.existsSync(chemin)) { fs.unlinkSync(chemin); } } catch (e) { /* déjà parti */ }
     return;
   }
-  ecrireAusgabeAtomique(chemin, contenu);
+  ecrireAtomique(chemin, contenu);
 }
 
 // Bouton de la section « Traductions » : lance la campagne. N'avance QUE les champs
@@ -3649,7 +3604,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
       presets: PRESETS_ORDRE });
   };
   const enregistrer = (modele, auto) => {
-    ecrireAusgabeAtomique(chemin, serialiserTable(normaliserModele(modele)));
+    ecrireAtomique(chemin, serialiserTable(normaliserModele(modele)));
     // D121 : l'enregistrement automatique reste silencieux — un message toutes les
     // trois secondes dans la barre d'état ne dit plus rien à personne.
     if (!auto) { vscode.window.setStatusBarMessage(T('statut.table.enregistree', [nom]), 5000); }

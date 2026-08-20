@@ -112,10 +112,15 @@ jobs:
             echo "OK $id $ver"
           done
 
-      - name: Construire les extensions maison (szh-apercu D24, szh-cockpit D36)
+      - name: Vérifier les contrats du cockpit
+        run: node --test test/js/*.test.js
+
+      - name: Construire les extensions maison
         run: |
+          # vsce est borné à sa version majeure : une majeure suivante peut durcir ses
+          # règles de validation et casser la release sans qu'une ligne du dépôt ait changé.
           for d in szh-apercu szh-cockpit; do
-            ( cd "vscodium-extension/$d" && npx --yes @vscode/vsce@latest package --out "$GITHUB_WORKSPACE/vsix-out/" )
+            ( cd "vscodium-extension/$d" && npx --yes '@vscode/vsce@^3' package --out "$GITHUB_WORKSPACE/vsix-out/" )
           done
 
       - name: Construire le toolkit

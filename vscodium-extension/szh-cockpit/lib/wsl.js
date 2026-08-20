@@ -66,4 +66,5 @@ function reveillerWsl(timeoutMs) {
   });
 }
 
-module.exports = { demarrerDormeurWsl, arreterDormeurWsl, reveillerWsl };
+module.exports = {
+  DISTRO, cheminWsl, demarrerDormeurWsl, arreterDormeurWsl, reveillerWsl };

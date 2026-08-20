@@ -1,58 +1,64 @@
 # SZH — Revue (cockpit)
 
-Extension interne SZH/CSPS. Ajoute une barre latérale **« Revue SZH »** qui, dans un
-dossier de revue (repéré par `ausgabe.yaml`), liste en **lecture seule** :
+Extension interne SZH/CSPS. Ajoute une barre latérale « Revue SZH » qui n'apparaît que
+dans un dossier de revue, repéré par la présence d'`ausgabe.yaml`. Elle y liste les
+articles, les Word en attente d'import et le suivi des traductions, et donne accès à
+tout le reste : import Word, compilation et aperçu, métadonnées du numéro et des
+articles, éditeur de tableau, fiches d'image, portraits d'auteurs, export OJS, cycle de
+vie du numéro (verrouillage et archivage).
 
-- **Articles** — un par dossier `articles/<slug>/<slug>.md` (tri alphabétique) ;
-  clic = ouvrir le `.md`.
-- **Word en attente** — les `.docx` déposés dans `articles-word/` (hors `_convertis/`),
-  avec un **badge** de compte sur l'icône de la barre.
-
-La vue n'apparaît que si le dossier ouvert est une revue (présence d'`ausgabe.yaml`) ;
-un dossier quelconque ne montre aucune icône. La liste se rafraîchit automatiquement
-quand des fichiers changent (dépôt/retrait d'un Word, nouvel article) ; la commande
-« Rafraîchir la barre Revue » reste disponible en palette (Ctrl+Maj+P) en secours.
-En tête de vue, trois boutons ouvrent les **panneaux** Commande / Édition / Export
-(raccourcis `Ctrl+Alt+A` / `Ctrl+Alt+S` / `Ctrl+Alt+D`).
-
-La barre « Revue SZH » gère l'import Word, la compilation/aperçu, les métadonnées (numéro
-et articles), les tableaux et les images — sans quitter l'éditeur. Détail des gestes : le
-`BIENVENUE.md` d'une revue et la documentation du dépôt (`docs/`, `PLANIFICATION.md`).
+En tête de vue, trois boutons ouvrent les panneaux Commande, Édition et Export
+(`Ctrl+Alt+A`, `Ctrl+Alt+S`, `Ctrl+Alt+D`). La liste se rafraîchit d'elle-même quand des
+fichiers changent.
 
 Construite et publiée par la CI du dépôt (`release.yml`), installée sur les postes par
-`update.ps1` via le `manifest.json` de la Release — même canal que les extensions épinglées.
+`update.ps1` — même canal que les extensions épinglées.
 
-## Structure du code (refactor R1–R6, sans build)
+## Structure du code
 
-L'extension reste chargée telle quelle (`main: ./extension.js`), **sans aucune étape de
-build** : uniquement du CommonJS `require` (résolu à l'exécution) et des fichiers statiques.
+Aucune étape de build : du CommonJS chargé tel quel, et des fichiers statiques.
 
 ```
-extension.js            activate/deactivate + câblage des commandes + _pur (contrat headless)
+extension.js            activation, câblage des commandes, hôtes de webview
 lib/
-  i18n.js               TEXTES_COCKPIT, T(clé[,args]), langueCockpit
-  yaml.js               (dé)sérialiseurs ausgabe/frontmatter/meta, titreNumero, écriture atomique
-  table-model.js        parseur/sérialiseur/opérations PURS du tableau
-  slug.js               slugifier (miroir du slug Makefile)
-  wsl.js                dormeur WSL (N1)
-  formatting.js         mise en forme markdown (toggles + commandes szh.fmt.* + palette)
-  panneaux.js           les trois panneaux QuickPick (Commande / Édition / Export)
-  webviews/util.js      construireHtml/lireMedia : lit media/, inline (nonce + CSP stricte)
+  archivage.js          verrouillage, archivage, appels aux scripts PowerShell du poste
+  export-ojs.js         génération du XML natif OJS
+  formatting.js         mise en forme markdown et commandes szh.fmt.*
+  i18n.js               textes fr/de et T(clé[, args])
+  liens.js              liens szh:// et intention déposée par le lanceur
+  panneaux.js           les trois panneaux QuickPick
+  portraits.js          appel du script de détourage des photos, dans WSL
+  references.js         insertions d'images et de tableaux dans le markdown
+  slug.js               slug d'article, miroir de celui du Makefile
+  table-model.js        analyse, sérialisation et opérations du modèle de tableau
+  traduction.js         sidecar <slug>.traduction.yaml et suivi des traductions
+  verrou.js             lecture seule du dossier quand le numéro est gelé
+  wsl.js                distro, localisation de wsl.exe, maintien en vie de la VM
+  yaml.js               (dé)sérialiseurs ausgabe/frontmatter/meta, écriture atomique
+  webviews/util.js      assemblage du HTML des webviews (nonce, CSP, fichiers de media/)
 media/
-  table-editor.{html,css,js}      éditeur de tableau
-  metadata-issue.{html,css,js}    métadonnées du numéro
+  _commun.js            fragments partagés par les formulaires (mots-clés, auto-enregistrement)
+  apercu.{css,js}       fragment injecté dans l'aperçu HTML
+  image-fiche.{html,css,js}       fiche d'une image
+  import-verif.{html,css,js}      vérification après import Word
   metadata-articles.{html,css,js} métadonnées des articles
-  settings.{html,css,js}          réglages SZH
-  apercu.{css,js}                 fragment injecté dans l'aperçu HTML
+  metadata-issue.{html,css,js}    métadonnées du numéro
+  settings.{html,css,js}          réglages
+  table-editor.{html,css,js}      éditeur de tableau
+  traduction.{html,css,js}        suivi des traductions
 ```
 
-**Empaquetage (RR4).** `vsce package` (via `release.yml`) empaquète **tout le dossier** ;
-`lib/` et `media/` en font partie et **doivent** être présents dans le VSIX (voir
-`.vscodeignore`, qui ne les exclut jamais). Le rendu des webviews est conservé à l'identique :
-les webviews n'injectent aucune **donnée** dans le HTML (elles arrivent par `postMessage`) ;
-les libellés i18n sont des marqueurs `%%SZH:clé%%` résolus par `T()` à l'assemblage.
+`test/js/contrats.test.js` vérifie que cette liste reste complète, en même temps que les
+autres valeurs recopiées d'un fichier à l'autre. `node --test "test/js/*.test.js"` depuis
+la racine du dépôt.
 
-**Déploiement dev.** Copier **tout le dossier** de l'extension (pas seulement `extension.js`)
-vers `%UserProfile%\.vscode-oss\extensions\szh-csps.szh-cockpit-<version>\`, puis redémarrer
-VSCodium. (Ancien réflexe « copier `extension.js` » désormais insuffisant : il manquerait
-`lib/` et `media/`.)
+## Empaquetage
+
+`vsce package` empaquète tout le dossier. `lib/` et `media/` doivent être dans le VSIX :
+`.vscodeignore` ne les exclut jamais. Les webviews ne reçoivent aucune donnée dans leur
+HTML — tout passe par `postMessage` ; seuls les libellés sont résolus à l'assemblage,
+via des marqueurs `%%SZH:clé%%`.
+
+Pour essayer une version de développement, copier **tout le dossier** vers
+`%UserProfile%\.vscode-oss\extensions\szh-csps.szh-cockpit-<version>\`, puis redémarrer
+VSCodium. Copier le seul `extension.js` ne suffit pas.

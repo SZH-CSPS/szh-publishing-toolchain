@@ -11,6 +11,7 @@ const { spawn } = require('child_process');
 const { T } = require('./i18n');
 const { tableauDepuisHtmlBureautique, tableauDepuisTsv, serialiserTable,
   finaliserModele, PRESETS_TABLE } = require('./table-model');
+const { ecrireAtomique } = require('./yaml');
 
 // Contexte de la revue, INJECTÉ par extension.js à l'enregistrement des commandes :
 //   racine()                       -> racine de la revue (ou null)
@@ -249,7 +250,7 @@ async function fmtTableau() {
   const nom = nomTableLibre(dossier);                // premier libre : jamais d'écrasement
   try {
     fs.mkdirSync(dossier, { recursive: true });
-    fs.writeFileSync(path.join(dossier, nom), serialiserTable(tableauVierge(T('fmt.tableau.colonne'))), 'utf8');
+    ecrireAtomique(path.join(dossier, nom), serialiserTable(tableauVierge(T('fmt.tableau.colonne'))));
   } catch (e) {
     vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
     return;
@@ -430,7 +431,7 @@ async function fmtCollerTableau() {
   const nom = nomTableLibre(dossier);
   try {
     fs.mkdirSync(dossier, { recursive: true });
-    fs.writeFileSync(path.join(dossier, nom), serialiserTable(modele), 'utf8');
+    ecrireAtomique(path.join(dossier, nom), serialiserTable(modele));
   } catch (e) {
     vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
     return;

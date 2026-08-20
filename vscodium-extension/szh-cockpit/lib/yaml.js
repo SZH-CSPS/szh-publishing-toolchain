@@ -647,10 +647,11 @@ function serialiserAusgabe(contenu, modifies) {
   return bom + resultat.join(eol) + (resultat.length > 0 ? eol : '');
 }
 
-// Écriture atomique : temporaire « ~$… » dans le même dossier (préfixe ignoré par
-// la synchro OneDrive, comme le PDF du Makefile) puis rename — jamais de fichier
-// à moitié écrit, même si l'éditeur est fermé en plein enregistrement.
-function ecrireAusgabeAtomique(chemin, contenu) {
+// Écriture atomique de n'importe quel fichier de la revue (ausgabe.yaml, .meta.yaml,
+// .md, tableau) : temporaire « ~$… » dans le même dossier — préfixe ignoré par la
+// synchro OneDrive — puis rename. Jamais de fichier à moitié écrit, même si
+// l'éditeur est fermé en plein enregistrement.
+function ecrireAtomique(chemin, contenu) {
   const tmp = path.join(path.dirname(chemin), '~$' + path.basename(chemin));
   try {
     fs.writeFileSync(tmp, contenu, 'utf8');
@@ -668,5 +669,5 @@ module.exports = {
   decouperValeurYaml, decouperFlowYaml, analyserAusgabe,
   separerFrontmatter, analyserFrontmatter, citerFrontmatter, lignesCleFrontmatter, serialiserFrontmatter,
   langueDefaut, langueRevue, analyserMeta, serialiserMeta, titreNumero,
-  formaterValeurYaml, serialiserAusgabe, ecrireAusgabeAtomique
+  formaterValeurYaml, serialiserAusgabe, ecrireAtomique
 };

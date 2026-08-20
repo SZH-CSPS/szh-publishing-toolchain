@@ -33,6 +33,8 @@ CSL        := $(PIPELINE_DIR)/csl/apa.csl
 TEMPLATE     := $(PIPELINE_DIR)/templates/szh-article.html
 TEMPLATE_ABS := $(abspath $(TEMPLATE))
 MAQUETTE_LUA := $(PIPELINE_DIR)/filters/szh-maquette.lua
+# Tous les filtres Lua sont prerequis des rendus : en modifier un doit recompiler.
+FILTRES      := $(wildcard $(PIPELINE_DIR)/filters/*.lua)
 
 # ---------------------------------------------------------------------------
 # Profil de compilation du DOSSIER (D20, T6.4) — « un dossier = un produit = un
@@ -163,7 +165,8 @@ verifie-dossier:
 # Accent des tableaux (D57) : (re)génère out/.szh-accent.css depuis la couleur
 # annuelle d'ausgabe.yaml (repli commentaire seul si aucune couleur -> gris de
 # print.css). stdlib python3 (comme docx-tables.py), aucun /mnt/c en dur.
-$(ACCENT_CSS): ausgabe.yaml
+$(ACCENT_CSS): ausgabe.yaml $(PIPELINE_DIR)/styles/couleurs.css \
+              $(PIPELINE_DIR)/accent-css.py $(PIPELINE_DIR)/apca.py
 	@mkdir -p "$(OUT)"
 	@python3 "$(PIPELINE_DIR)/accent-css.py" ausgabe.yaml > "$@"
 
@@ -172,7 +175,7 @@ $(ACCENT_CSS): ausgabe.yaml
 # citeproc + CSL APA seulement si l'article a une bibliographie (media/<slug>.bib).
 # Les tableaux extraits (tables/*.html, D47) sont des PRÉREQUIS : en éditer un
 # déclenche la recompilation de l'article (SECONDEXPANSION déjà active).
-$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(TEMPLATE) $(MAQUETTE_LUA) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
+$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
 	extra=""; \
@@ -198,7 +201,7 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 # .md -> HTML d'APERÇU (D53) : mêmes filtres/CSS/métadonnées que la sortie PDF,
 # mais reader commonmark_x+sourcepos -> chaque bloc porte data-pos (position
 # source pour le clic->texte de la webview). Consommé par le cockpit uniquement.
-$(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
+$(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
 	extra=""; \

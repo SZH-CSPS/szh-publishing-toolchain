@@ -779,7 +779,12 @@ function Set-SzhAusgabeCle([string]$Dossier, [string]$Cle, [string]$Valeur, [boo
     if ($lignes[$i] -match ('^' + [regex]::Escape($Cle) + ':')) { $lignes[$i] = $ligne; $trouvee = $true; break }
   }
   if (-not $trouvee) { $lignes += $ligne }
-  Set-Content -Path $fichier -Value $lignes -Encoding UTF8
+  # Sans BOM et par remplacement atomique. Set-Content -Encoding UTF8 poserait un BOM
+  # sous PowerShell 5.1, que les lecteurs ancrés en début de ligne (le sed du Makefile,
+  # le ^title: de szh-maquette.lua) ne savent pas ignorer.
+  $tmp = Join-Path $Dossier '~$ausgabe.yaml'
+  [System.IO.File]::WriteAllLines($tmp, $lignes, (New-Object System.Text.UTF8Encoding($false)))
+  Move-Item -LiteralPath $tmp -Destination $fichier -Force
   return $true
 }
 
