@@ -50,10 +50,12 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
   que le jeton `revue:` écrit correspond au produit, et que la barre du cockpit affiche tout de
   suite l'année et le numéro déduits du nom du dossier.
 - [ ] Menu Démarrer. Les deux raccourcis apparaissent après une mise à jour et n'ouvrent aucune
-  console. Ils se distinguent d'un coup d'œil : même tuile bleu nuit, barre rouge pour la Revue,
-  moutarde pour la Zeitschrift, et la fenêtre ouverte porte la même icône dans la barre des
-  tâches. Un raccourci déjà épinglé garde son ancienne icône, Windows en ayant fait une copie :
-  dépingler puis ré-épingler une fois, pour savoir quoi répondre à qui le signalera.
+  console. Ils se distinguent d'un coup d'œil : même étagère de trois dos sur la tuile bleu nuit,
+  tablette capucine pour la Revue, moutarde pour la Zeitschrift, et la fenêtre ouverte porte la
+  même icône dans la barre des tâches. À 16 px, sur un écran sans mise à l'échelle, les deux
+  intervalles entre les dos doivent rester visibles. Un raccourci déjà épinglé garde son ancienne
+  icône, Windows en ayant fait une copie : dépingler puis ré-épingler une fois, pour savoir quoi
+  répondre à qui le signalera.
 - [ ] Sélecteur de version. « Logiciel v. … » s'affiche dans les deux lanceurs et le bouton
   « Version du logiciel… » ouvre le sélecteur, la version installée marquée et les versions déjà
   téléchargées annotées. Le même sélecteur doit s'ouvrir depuis l'avertissement de divergence du
@@ -303,7 +305,8 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
 - [ ] Ouverture d'un `.md` depuis l'Explorateur. Clic droit, Ouvrir avec, « Revue SZH », cocher
   « Toujours » : le numéro s'ouvre complet et l'aperçu apparaît seul. L'entrée doit s'appeler
   « Revue SZH », avec l'icône SZH, reconnaissable face à l'entrée « VSCodium » juste à côté, et la
-  colonne Type doit dire « Article de revue SZH ». Deux points à regarder : le libellé affiché
+  colonne Type doit dire « Article de revue SZH ». Le dessin de l'icône change avec cette version :
+  si l'Explorateur montre encore l'ancienne, c'est son cache d'icônes, pas l'association. Deux points à regarder : le libellé affiché
   dans la boîte « Ouvrir avec », non vérifiable sans écrire dans le registre réel, et le
   comportement quand un autre numéro est déjà ouvert (nouvelle fenêtre ou réutilisation).
 
