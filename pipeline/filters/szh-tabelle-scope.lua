@@ -8,7 +8,6 @@
 --     (row_head_columns, tableaux grid ; les tableaux pipe n'en ont pas).
 -- Les tableaux de l'éditeur maison (.szh-tableau, D47/D68) n'entrent PAS ici :
 -- réinjectés en RawBlock html, ils portent déjà leur scope, posé par l'éditeur.
--- Writer pptx : attributs ignorés — le filtre y serait inerte, il n'y est pas branché.
 
 local function poser(cell, seul, groupe)
   cell.attr.attributes['scope'] =

@@ -49,6 +49,7 @@ szh-publishing-toolchain/
 │   ├── archive-revue.ps1     # déplace une revue « en cours » <-> archives (D116) ; seul détenteur des chemins
 │   ├── szh-common.ps1        # socle commun (manifest, téléchargement, UI, e-mail support)
 │   ├── hidden.vbs            # lance une commande sans fenêtre
+│   ├── icone.py              # fabrique les deux .ico livrés à côté (D131) — stdlib seule
 │   └── vsix.lock             # extensions épinglées (id + version + sha256)
 ├── vscodium-user/            # → %APPDATA%\VSCodium\User\  (seedé par update.ps1)
 │   ├── settings.json · keybindings.json · tasks.json
@@ -151,15 +152,26 @@ Le menu Démarrer porte deux entrées : **« Revues SZH »** (`-Produit revue`) 
 **« Zeitschriften SZH »** (`-Produit zeitschrift`) — le même script, filtré sur le jeton `revue:`
 d'`ausgabe.yaml` (D126).
 
+**Une icône par produit (D131)** : même tuile bleu nuit, barre **rouge** pour la Revue
+(`szh-revue.ico`) et **moutarde** pour la Zeitschrift (`szh-zeitschrift.ico`), toutes deux
+fabriquées par `python3 windows/icone.py` (stdlib seule, 7 tailles de 16 à 256 px). Les deux
+raccourcis, *et* la fenêtre du lanceur, portent celle de leur produit — sans quoi la barre des
+tâches affiche l'icône de `wscript.exe`, et deux raccourcis épinglés deviennent
+indiscernables. ⚠ Un raccourci **déjà épinglé** garde sa copie : il faut le dépingler et le
+ré-épingler pour voir la nouvelle icône.
+
 Le **brouillon d'e-mail** est fabriqué par `windows/mail-traduction.ps1` (D127), pas par un
 `mailto:` : seul un corps HTML (objet mail Outlook) donne un vrai hyperlien sur un schéma
 `szh://`. Le script déduit du produit la **langue de l'e-mail** et le **destinataire** — une
 Zeitschrift part en français à `redaction@csps.ch`, une Revue en allemand à `redaktion@szh.ch`
 (surchargeable par `config.json`, clé `mailsTraduction`).
 
-⚠ **COM = Outlook CLASSIQUE uniquement** (D130). Le nouvel Outlook (`olk.exe`) n'expose aucune
-automatisation. `"mailTraduction": "mailto"` dans `config.json` bascule sur le client par défaut —
-au prix d'un lien en texte brut, donc inerte. Repli automatique sur `mailto:` si COM échoue.
+**Défaut : `mailto:`** (D132) — le brouillon s'ouvre dans le client habituel (le nouvel Outlook
+quand il l'est) et le lien y arrive en texte brut, le corps disant de le copier dans *Exécuter*
+(Windows + R). `"mailTraduction": "outlook"` dans `config.json` rétablit le brouillon **HTML à
+hyperlien**, mais par automatisation COM, donc via l'**Outlook classique uniquement** : le nouvel
+Outlook (`olk.exe`) n'expose aucune automatisation (D130). Repli automatique sur `mailto:` si COM
+échoue.
 
 ### C ter. Réinstaller une version précédente (D120)
 `update.ps1 -Version X` fait déjà tout (l'archive N‑1 est en staging). Le geste est atteignable
@@ -269,7 +281,10 @@ pipeline. Voir [`userdoc.md`](userdoc.md).
 - **`<revue>/.vscode/settings.json`** est la SEULE entorse à D8, et seulement sur un numéro
   verrouillé : c'est ce qui fait voyager la lecture seule avec le dossier et survivre à
   `update.ps1` (qui réécrit `settings.json` au niveau utilisateur). Masqué par `files.exclude`,
-  supprimé au déverrouillage.
+  supprimé au déverrouillage. **Écrit par `fs`, jamais par l'API de configuration**
+  (`lib/verrou.js`) : le verrou couvrant son propre fichier, l'API se voyait refuser l'écriture au
+  déverrouillage et la clé survivait (D131). Un réglage qui interdit d'écrire ne doit jamais
+  gouverner le fichier qui le porte.
 - **L'avertissement de version s'accroche à `onDidStartTask`**, pas aux fonctions du cockpit : le
   chemin de compilation le plus fréquent (`Ctrl+S` → `triggerTaskOnSave`, extension tierce) ne
   passe pas par nous.

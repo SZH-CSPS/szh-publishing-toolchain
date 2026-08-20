@@ -823,21 +823,24 @@ $script:SzhMailsTraduction = @{
 }
 
 # Comment prépare-t-on le brouillon ? (D130)
-#   'outlook' (défaut) : objet mail COM -> corps HTML, donc un VRAI hyperlien. Mais COM
+#   'mailto' (défaut)  : ouvre le client mail PAR DÉFAUT — donc le nouvel Outlook quand
+#                        il l'est. Le corps est du TEXTE BRUT : le lien szh:// y arrive
+#                        inerte (aucun client ne rend cliquable un schéma qu'il ne
+#                        connaît pas), et le corps dit donc de le copier-coller.
+#   'outlook'          : objet mail COM -> corps HTML, donc un VRAI hyperlien. Mais COM
 #                        n'existe QUE pour l'Outlook classique : le nouvel Outlook
 #                        (olk.exe) n'expose aucune automatisation, Microsoft ayant
 #                        remplacé les compléments COM par des add-ins web.
-#   'mailto'           : ouvre le client mail PAR DÉFAUT (donc le nouvel Outlook s'il
-#                        l'est), au prix d'un corps en texte brut — le lien szh:// y
-#                        arrive inerte, aucun client ne linkifiant un schéma inconnu.
 # Il n'y a pas de troisième voie : c'est l'un ou l'autre, et c'est un choix de poste.
+# Défaut 'mailto' (D132) : le client habituel de la rédaction pèse plus lourd qu'un lien
+# cliquable, le copier-coller du lien étant un geste acceptable.
 function Get-SzhModeMailTraduction {
   $cfg = Get-SzhConfig
   if ($cfg -and $cfg.mailTraduction) {
     $m = ([string]$cfg.mailTraduction).ToLower()
-    if ($m -eq 'mailto') { return 'mailto' }
+    if ($m -eq 'outlook') { return 'outlook' }
   }
-  return 'outlook'
+  return 'mailto'
 }
 
 function Get-SzhLangueTraduction([string]$Produit) {
@@ -875,10 +878,12 @@ Bonjour,
 Le numéro {0} de la Schweizerische Zeitschrift für Heilpädagogik est prêt pour la
 traduction de l'allemand vers le français.
 
-Ce lien ouvre directement le suivi de traduction sur un poste de rédaction SZH :
+Pour l'ouvrir directement au bon endroit : COPIEZ le lien ci-dessous, puis collez-le
+dans la fenêtre « Exécuter » de Windows (touche Windows + R) et validez.
+
 {1}
 
-Si le lien ne s'ouvre pas : menu Démarrer -> « Zeitschriften SZH », puis choisir le numéro.
+Autre chemin, sans le lien : menu Démarrer -> « Zeitschriften SZH », puis choisir le numéro.
 '@
     }
   }
@@ -896,10 +901,12 @@ Guten Tag
 Die Ausgabe {0} der Revue suisse de pédagogie spécialisée ist bereit für die
 Übersetzung vom Französischen ins Deutsche.
 
-Dieser Link öffnet den Übersetzungsstand direkt auf einem SZH-Redaktionscomputer:
+So öffnen Sie sie direkt an der richtigen Stelle: KOPIEREN Sie den Link unten, fügen
+Sie ihn im Windows-Fenster « Ausführen » ein (Windows-Taste + R) und bestätigen Sie.
+
 {1}
 
-Falls der Link sich nicht öffnet: Startmenü -> « Revues SZH », dann die Ausgabe wählen.
+Ohne den Link: Startmenü -> « Revues SZH », dann die Ausgabe wählen.
 '@
   }
 }

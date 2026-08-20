@@ -10,6 +10,7 @@ Makefile text eol=lf
 *.zip  binary
 *.vsix binary
 *.png  binary
+*.ico  binary
 *.jpg  binary
 *.woff2 binary
 *.ttf  binary

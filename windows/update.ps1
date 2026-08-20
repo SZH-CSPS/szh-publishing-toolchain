@@ -321,14 +321,23 @@ try {
   $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
   New-Item -ItemType Directory -Force -Path $menu | Out-Null
   $shell = New-Object -ComObject WScript.Shell
+  $codium = Get-VSCodiumExe
+  # D131 : chaque raccourci porte l'icône de SON produit (windows/icone.py), la même
+  # tuile à la barre de couleur près. Deux entrées voisines dans le menu Démarrer, et
+  # surtout épinglables à la barre des tâches, où le libellé disparaît : avec une seule
+  # icône, il ne reste plus rien pour les distinguer. Repli sur celle de VSCodium si le
+  # toolkit ne livre pas la nôtre — sans IconLocation, le shell affiche celle de
+  # wscript.exe, l'hôte de scripts, qui ne dit rien à personne (même raison qu'en D18).
+  $icoRevue = Join-Path $SzhToolkit 'windows\szh-revue.ico'
+  $icoZs = Join-Path $SzhToolkit 'windows\szh-zeitschrift.ico'
   $lnk = $shell.CreateShortcut((Join-Path $menu 'Revues SZH.lnk'))
   $lnk.TargetPath = "$env:WINDIR\System32\wscript.exe"
   # D126 : chaque raccourci pointe sur SON produit — la Revue ici, la Zeitschrift plus
   # bas. Explicite des deux côtés, pour qu'un raccourci ancien ne montre pas les deux.
   $lnk.Arguments = ('//B "{0}" "{1}" "-Produit" "revue"' -f (Join-Path $SzhToolkit 'windows\hidden.vbs'), (Join-Path $SzhToolkit 'windows\open-revue.ps1'))
   $lnk.Description = 'Ouvrir une revue SZH'
-  $codium = Get-VSCodiumExe
-  if ($codium) { $lnk.IconLocation = $codium }
+  if (Test-Path $icoRevue) { $lnk.IconLocation = ('{0},0' -f $icoRevue) }
+  elseif ($codium) { $lnk.IconLocation = $codium }
   $lnk.Save()
 
   # Second raccourci « Zeitschriften SZH » (D124) : le MÊME lanceur, filtré sur la
@@ -337,7 +346,8 @@ try {
   $lnkZs.TargetPath = "$env:WINDIR\System32\wscript.exe"
   $lnkZs.Arguments = ('//B "{0}" "{1}" "-Produit" "zeitschrift"' -f (Join-Path $SzhToolkit 'windows\hidden.vbs'), (Join-Path $SzhToolkit 'windows\open-revue.ps1'))
   $lnkZs.Description = 'Eine SZH-Zeitschrift öffnen'
-  if ($codium) { $lnkZs.IconLocation = $codium }
+  if (Test-Path $icoZs) { $lnkZs.IconLocation = ('{0},0' -f $icoZs) }
+  elseif ($codium) { $lnkZs.IconLocation = $codium }
   $lnkZs.Save()
 
   # Association « Ouvrir avec » → « Revue SZH » pour les .md (T6.3, D18). Jamais

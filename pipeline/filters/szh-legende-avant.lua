@@ -28,9 +28,9 @@
 -- les Figure existent encore. Après ce filtre-ci, il n'y a plus de Figure.
 --
 -- FORMATS. Réservé aux sorties HTML (PDF via WeasyPrint, HTML autonome, aperçu).
--- Le writer pptx (profil `presentation`, D20) IGNORE les RawBlock html : sans ce
--- garde-fou, brancher ce filtre sur cette chaîne ferait disparaître les images des
--- diapositives. Le Makefile ne l'y branche pas — la garde le dit quand même.
+-- Un writer non-HTML JETTE les RawBlock html : brancher ce filtre sur une telle
+-- chaîne y ferait disparaître les images. Le Makefile ne l'y branche pas — la
+-- garde ci-dessous le dit quand même.
 
 if not FORMAT:match('^html') then return {} end
 

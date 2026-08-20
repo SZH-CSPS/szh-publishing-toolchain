@@ -153,6 +153,8 @@ const {
   enregistrerCommandesMiseEnForme
 } = require('./lib/formatting');
 // ---- Liens profonds « szh:// » (D123) -> lib/liens.js ----------------------------
+// ---- Lecture seule du dossier (D116, corrigé D131) -> lib/verrou.js -------------
+const { appliquerVerrou } = require('./lib/verrou');
 const { construireLienTraduction, consommerIntention } = require('./lib/liens');
 const { enregistrerPanneaux } = require('./lib/panneaux');
 const { genererExportOjs } = require('./lib/export-ojs');
@@ -199,14 +201,16 @@ function trouverRacineRevue() {
 //   3. les gardes de commandes : tout geste d'ÉCRITURE est refusé sur un numéro
 //      verrouillé, et la compilation AUTOMATIQUE est coupée sur un numéro gelé.
 //
-// Lecture seule de l'ÉDITEUR : `files.readonlyInclude` posé au niveau WORKSPACE, donc
-// dans <revue>/.vscode/settings.json. C'est le seul fichier technique qu'on accepte
-// dans un dossier de revue (D8), et le compromis est payant : le verrou VOYAGE avec
-// le dossier (un numéro archivé s'ouvre en lecture seule sur n'importe quel poste),
-// il ne fuit pas sur les autres fenêtres (un réglage utilisateur, lui, verrouillerait
-// aussi la revue en cours ouverte à côté), et il survit à update.ps1, qui réécrit
-// settings.json au niveau utilisateur. Le fichier est SUPPRIMÉ au déverrouillage, et
-// masqué de l'explorateur par files.exclude (vscodium-user/settings.json).
+// Lecture seule de l'ÉDITEUR : `files.readonlyInclude` dans
+// <revue>/.vscode/settings.json — écrit et retiré par NOUS (fs), pas par l'API de
+// configuration : voir appliquerVerrou, le verrou verrouillait sinon son propre
+// interrupteur. C'est le seul fichier technique qu'on accepte dans un dossier de revue
+// (D8), et le compromis est payant : le verrou VOYAGE avec le dossier (un numéro
+// archivé s'ouvre en lecture seule sur n'importe quel poste), il ne fuit pas sur les
+// autres fenêtres (un réglage utilisateur, lui, verrouillerait aussi la revue en cours
+// ouverte à côté), et il survit à update.ps1, qui réécrit settings.json au niveau
+// utilisateur. Le fichier est SUPPRIMÉ au déverrouillage, et masqué de l'explorateur
+// par files.exclude (vscodium-user/settings.json).
 let etatNumero = { verrouillee: false, archivee: false, versionToolkit: '' };
 // Dernier état de verrou réellement APPLIQUÉ au dossier (null = jamais vu). Évite de
 // réécrire .vscode/settings.json à chaque rafraîchissement de l'arbre.
@@ -252,52 +256,6 @@ function ecrireClesAusgabe(racine, modifies) {
   } catch (e) { return String((e && e.message) || e); }
 }
 
-// Applique (ou retire) la lecture seule de l'ÉDITEUR pour le dossier de revue.
-// `files.readonlyInclude` au scope Workspace = <revue>/.vscode/settings.json ; le
-// motif « ** » couvre tout le dossier, y compris out/ (un PDF affiché n'a de toute
-// façon rien à se faire éditer). On y coupe aussi `triggerTaskOnSave.tasks` : sans
-// ça, un numéro gelé mais dont un fichier serait tout de même enregistré (par une
-// extension tierce, un formatage) relancerait `make all`.
-// Ne rejette jamais : l'échec est signalé, il ne doit pas laisser l'archivage à
-// moitié fait.
-async function appliquerVerrou(racine, verrouillee) {
-  if (!racine) { return null; }
-  try {
-    const cfgFichiers = vscode.workspace.getConfiguration('files', vscode.Uri.file(racine));
-    const cfgTaches = vscode.workspace.getConfiguration('triggerTaskOnSave', vscode.Uri.file(racine));
-    const cible = vscode.ConfigurationTarget.Workspace;
-    if (verrouillee) {
-      await cfgFichiers.update('readonlyInclude', { '**': true }, cible);
-      await cfgTaches.update('tasks', {}, cible);
-    } else {
-      // Rien à retirer si le fichier n'existe pas : sans ce test, OUVRIR une revue
-      // ordinaire créerait un .vscode/settings.json vide dans CHAQUE dossier de revue
-      // (update(…, undefined) matérialise le fichier) — l'inverse de D8.
-      if (!fs.existsSync(path.join(racine, '.vscode', 'settings.json'))) { return null; }
-      await cfgFichiers.update('readonlyInclude', undefined, cible);
-      await cfgTaches.update('tasks', undefined, cible);
-      // Fichier redevenu vide (« {} ») : on l'efface, le dossier de revue retrouve
-      // son état épuré (D8). Un settings.json qui contient autre chose est laissé.
-      nettoyerReglagesWorkspace(racine);
-    }
-    return null;
-  } catch (e) { return String((e && e.message) || e); }
-}
-
-// Supprime <revue>/.vscode/settings.json s'il ne reste plus aucune clé (et le
-// dossier .vscode s'il devient vide). Silencieux : c'est du rangement.
-function nettoyerReglagesWorkspace(racine) {
-  const dossier = path.join(racine, '.vscode');
-  const fichier = path.join(dossier, 'settings.json');
-  try {
-    const brut = fs.readFileSync(fichier, 'utf8');
-    const valeurs = JSON.parse(brut);
-    if (valeurs && typeof valeurs === 'object' && Object.keys(valeurs).length > 0) { return; }
-    fs.unlinkSync(fichier);
-  } catch (e) { return; }                          // absent, ou JSON avec commentaires : on n'y touche pas
-  try { fs.rmdirSync(dossier); } catch (e) { /* pas vide : très bien */ }
-}
-
 // Relit l'état du numéro et le projette partout (contextes, barre d'état, verrou du
 // dossier). Appelée à chaque rafraîchissement : ausgabe.yaml est déjà surveillé.
 function majEtatNumero(fournisseur, barreEtat) {
@@ -312,9 +270,8 @@ function majEtatNumero(fournisseur, barreEtat) {
   if (racine && (racineVerrou !== racine || verrouApplique !== etatNumero.verrouillee)) {
     racineVerrou = racine;
     verrouApplique = etatNumero.verrouillee;
-    appliquerVerrou(racine, etatNumero.verrouillee).then((erreur) => {
-      if (erreur) { vscode.window.showWarningMessage(T('err.verrou.reglages', [erreur])); }
-    });
+    const erreurVerrou = appliquerVerrou(racine, etatNumero.verrouillee);
+    if (erreurVerrou) { vscode.window.showWarningMessage(T('err.verrou.reglages', [erreurVerrou])); }
   }
 }
 
@@ -970,7 +927,7 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
   }
 
   // 4. la lecture seule, écrite DANS le dossier : elle part avec lui.
-  const erreurVerrou = await appliquerVerrou(racine, true);
+  const erreurVerrou = appliquerVerrou(racine, true);
   if (erreurVerrou) { vscode.window.showWarningMessage(T('err.verrou.reglages', [erreurVerrou])); }
   verrouApplique = true;
   racineVerrou = racine;
@@ -1038,7 +995,7 @@ async function deverrouiller(fournisseur, rafraichirTout) {
   if (choix !== bouton) { return; }
   const erreur = ecrireClesAusgabe(racine, { locked: 'false' });
   if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [erreur])); return; }
-  const erreurVerrou = await appliquerVerrou(racine, false);
+  const erreurVerrou = appliquerVerrou(racine, false);
   if (erreurVerrou) { vscode.window.showWarningMessage(T('err.verrou.reglages', [erreurVerrou])); }
   verrouApplique = false;
   racineVerrou = racine;
@@ -1098,10 +1055,9 @@ function lireProfil(racine) {
 }
 
 function modeApercu() {
-  // Un dossier qui ne produit pas de PDF (profil « presentation », D20) n'a rien à
-  // montrer en mode pdf : la colonne 2 dirait « PDF introuvable » alors que la
-  // compilation a parfaitement réussi. On force donc l'aperçu HTML — que la route
-  // `presentation` du Makefile régénère exprès pour cette raison.
+  // Un dossier dont le profil ne produit pas de PDF (D20) n'a rien à montrer en
+  // mode pdf : la colonne 2 dirait « PDF introuvable » sans que rien soit cassé.
+  // On force donc l'aperçu HTML.
   // Effet de bord assumé : sur un tel dossier, la bascule de la barre d'état écrit
   // bien le réglage mais l'aperçu reste HTML. Masquer la bascule demanderait un
   // nouveau texte traduit ; à faire au prochain lot de traduction.

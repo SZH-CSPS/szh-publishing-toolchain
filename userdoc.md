@@ -308,10 +308,10 @@ rédaction — vous n'avez rien à choisir :
 
 Le brouillon s'ouvre dans Outlook : relisez-le, ajoutez un mot si vous voulez, puis envoyez.
 
-> **Pourquoi l'ancien Outlook et pas le nouveau ?** Parce que c'est le seul qui accepte qu'un
-> programme lui prépare un message **mis en forme**, donc avec un lien cliquable. Le nouvel Outlook
-> ne le permet pas encore. Si vous préférez tout de même travailler dans le nouveau, c'est possible
-> (demandez-le au support) — mais le lien arrivera alors en texte simple, à copier-coller.
+Le lien arrive **en texte simple** dans le message : pour l'ouvrir, la personne qui traduit le
+**copie**, puis le colle dans la fenêtre *Exécuter* de Windows (**touche Windows + R**) et valide.
+Le corps de l'e-mail le rappelle. (Un lien directement cliquable est possible, mais seulement dans
+l'ancien Outlook — demandez-le au support si vous le préférez.)
 
 La personne qui reçoit l'e-mail **clique le lien** : sur un poste de rédaction SZH, le bon numéro
 s'ouvre et le suivi de traduction s'affiche directement — pas besoin de chercher le dossier.
@@ -336,7 +336,7 @@ Ce qui se passe, dans cet ordre, après une confirmation qui **chiffre la place 
 1. le numéro passe en **lecture seule** : le texte ne se laisse plus taper, et tous les
    gestes de la barre « Revue SZH » (import, métadonnées, suppression, traductions,
    mise en forme…) répondent « Numéro verrouillé » avec un bouton pour le déverrouiller ;
-2. les **documents produits** (dossier `out` : PDF, HTML, Word, diaporamas) sont
+2. les **documents produits** (dossier `out` : PDF, HTML, Word) sont
    **supprimés**. Vos **sources** — textes, images, tableaux, métadonnées, traductions —
    sont intégralement conservées : c'est ce qui permet de tout régénérer plus tard ;
 3. le **dossier de la revue est déplacé** dans l'arborescence d'archives

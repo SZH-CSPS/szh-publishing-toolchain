@@ -65,6 +65,32 @@ if ($produitFiltre -ne 'zeitschrift') { $produitFiltre = 'revue' }
 $titreFenetre = (T 'lanceur.titre')
 if ($produitFiltre -eq 'zeitschrift') { $titreFenetre = (T 'lanceur.titre.zs') }
 
+# ---- Icône des fenêtres (D131) ---------------------------------------------------
+#
+# Toute fenêtre du lanceur porte l'icône de SON produit — celle-là même que le raccourci
+# du menu Démarrer (windows/icone.py, posée par update.ps1). FormBorderStyle
+# 'FixedDialog' masque l'icône du bandeau de titre, mais la BARRE DES TÂCHES et Alt+Tab
+# la montrent : sans elle, le lanceur s'y annonce avec l'icône de wscript.exe, l'hôte de
+# scripts, et deux lanceurs ouverts côte à côte sont indiscernables — la confusion même
+# que les deux icônes viennent de dissiper au menu Démarrer.
+$fichierIcone = Join-Path $PSScriptRoot 'szh-revue.ico'
+if ($produitFiltre -eq 'zeitschrift') { $fichierIcone = Join-Path $PSScriptRoot 'szh-zeitschrift.ico' }
+
+# Lecture en TABLEAU D'OCTETS et non par nom de fichier : Icon(String) garderait le .ico
+# du toolkit ouvert tant que la fenêtre vit, et une mise à jour concurrente échouerait à
+# le remplacer. Ne lève jamais : une icône est un confort, pas une condition d'ouverture
+# (même posture que le raccourci de dossier, D14).
+function Set-SzhIconeFenetre($Fenetre) {
+  if (-not (Test-Path $fichierIcone)) { return }
+  try {
+    # La virgule force le byte[] à passer comme UN seul argument de constructeur.
+    $flux = New-Object System.IO.MemoryStream (,[System.IO.File]::ReadAllBytes($fichierIcone))
+    $Fenetre.Icon = New-Object System.Drawing.Icon $flux
+  } catch {
+    Write-SzhLog ('open-revue : icone non chargee (' + $_.Exception.Message + ')')
+  }
+}
+
 # ---- Sélecteur de version du logiciel (D120) -------------------------------------
 #
 # Recompiler un ancien numéro « à l'identique » suppose de pouvoir réinstaller la
@@ -88,6 +114,9 @@ function Show-SzhVersions($Parent) {
   $boite.FormBorderStyle = 'FixedDialog'
   $boite.MaximizeBox = $false
   $boite.MinimizeBox = $false
+  # Atteignable sans la fenêtre principale (`-Versions`, bouton du cockpit) : cette boîte
+  # a donc son propre bouton de barre des tâches, et son propre besoin d'icône (D131).
+  Set-SzhIconeFenetre $boite
 
   $intro = New-Object System.Windows.Forms.Label
   $etiqInstallee = $installee
@@ -364,6 +393,7 @@ $form.ClientSize = New-Object System.Drawing.Size(520, ($yBoutons + 44))
 $form.FormBorderStyle = 'FixedDialog'
 $form.MaximizeBox = $false
 $form.MinimizeBox = $false
+Set-SzhIconeFenetre $form
 
 $intro = New-Object System.Windows.Forms.Label
 $cleChoisir = 'lanceur.choisir'

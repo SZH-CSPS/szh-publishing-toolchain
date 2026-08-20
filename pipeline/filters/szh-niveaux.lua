@@ -12,8 +12,6 @@
 --   * borne à 6 : HTML s'arrête à <h6> et pandoc dégraderait un niveau 7 en
 --     <p class="heading"> (sémantique de titre PERDUE pour les lecteurs d'écran).
 --
--- N'est PAS branché sur le profil pptx : le writer pptx découpe les diapositives
--- d'après les niveaux d'origine, et un .pptx n'a pas de « h1 de couverture ».
 -- ⚠ print.css (§6) numérote/style h2–h6 en miroir de ce filtre : toute modification
 -- ici doit y être répercutée.
 

@@ -42,6 +42,31 @@ et un retrait défensif du BOM à la lecture côté JavaScript.
   confirmer que le message « trop de demandes vers GitHub depuis ce réseau » est compréhensible.
   Si le cas devient fréquent, il faudra mettre la liste des versions en cache elle aussi.
 
+## Corrigé — « Déverrouiller » ne déverrouillait pas les articles (D131) + mailto par défaut (D132)
+
+**Le verrou verrouillait son propre interrupteur.** `files.readonlyInclude: {"**": true}` couvre
+aussi `<revue>/.vscode/settings.json`, et l'API de configuration de VS Code écrit à travers le
+service de fichiers de l'éditeur — qui refuse une ressource en lecture seule. Au déverrouillage la
+clé survivait donc, alors que `locked: false` basculait bien dans `ausgabe.yaml` (lui écrit par
+`fs`) : la moitié visible du geste marchait, l'autre non. **Reproduit** sur `2027-01`, dont le
+`.vscode/settings.json` portait encore `readonlyInclude` avec `locked: false`.
+
+Corrigé : `files.readonlyExclude` sur `.vscode/**`, et l'écriture passe par `fs` dans un module
+dédié `lib/verrou.js` — sans dépendance à `vscode`, donc **éprouvé headless : 20 assertions sur
+7 scénarios** (pose, retrait, dossier ordinaire non pollué, réglages tiers préservés, idempotence,
+JSON avec commentaires jamais écrasé, et **réparation** d'un verrou laissé par l'ancienne version).
+Le verrou périmé de `2027-01` a été retiré : les articles y sont redevenus modifiables.
+
+**mailto par défaut** (D132), à ta demande : le brouillon s'ouvre dans ton client habituel, le lien
+arrive en texte brut, et le corps dit maintenant de le copier dans *Exécuter* (Windows + R).
+`"mailTraduction": "outlook"` dans `config.json` rétablit l'hyperlien via l'Outlook classique.
+
+- [ ] **Refaire le cycle complet dans VSCodium** : verrouiller → les articles se grisent →
+  déverrouiller → ils redeviennent modifiables **sans recharger la fenêtre**.
+- [ ] Vérifier qu'aucune revue ordinaire ne se retrouve avec un `.vscode` (le piège n° 2).
+- [ ] Vérifier le nouveau corps d'e-mail en français ET en allemand, et que le copier-coller du
+  lien dans Windows + R ouvre bien le numéro.
+
 ## Répondu — l'e-mail ouvre l'ancien Outlook (D130)
 
 **Oui, c'est normal.** Le brouillon est fabriqué par automatisation COM
@@ -269,6 +294,13 @@ positionnel requoté) ; l'extension charge, i18n 487 = 487 (fr/de), tous les `%m
   les listes (D125) mais est comptée dans « N revue(s) hors arborescence ».
 - [ ] Le bouton « Version du logiciel… » et l'affichage « Logiciel v. … » marchent dans les deux
   lanceurs.
+- [ ] **Icônes par produit (D131)** : les deux entrées du menu Démarrer se distinguent d'un coup
+  d'œil — même tuile bleu nuit, barre **rouge** pour « Revues SZH », **moutarde** pour
+  « Zeitschriften SZH » — et la fenêtre ouverte porte la même dans la barre des tâches (plus
+  celle de `wscript.exe`).
+- [ ] Un raccourci **déjà épinglé** (barre des tâches ou menu Démarrer) garde son ancienne icône :
+  Windows en a fait une copie. Dépingler / ré-épingler après la mise à jour — à vérifier une fois,
+  pour savoir quoi répondre à qui le signalera.
 - [x] ~~Faut-il filtrer « Revues SZH » sur la Revue ?~~ Oui — fait en D126.
 - [ ] **Décision** : le lanceur Zeitschrift doit-il forcer l'interface en allemand ? Aujourd'hui
   non — la langue suit celle de Windows, comme partout.
@@ -795,9 +827,6 @@ VSCodium** (la case à cocher) ni sur un vrai numéro.
   numéro **coloré** : les fonds « couleur » et « négatif » de l'éditeur doivent être
   **identiques** à ceux du PDF. C'est le seul moyen de confirmer que la dérive WCAG/APCA est
   bien éteinte. Repli documenté : un numéro jamais compilé montre les gris neutres.
-- [ ] **Rendu du `.pptx`** (`profil: presentation`) : validé structurellement (OOXML, texte
-  complet), jamais ouvert dans PowerPoint. À voir à l'œil sur un article réel. ⚠ Limite
-  mesurée : les tableaux de D47 (HTML réinjecté) **disparaissent** du diaporama.
 - [ ] **Libellés DE/IT des 6 types d'article** (D71) : à confronter aux **noms de rubriques
   réellement imprimés**. Cas à regarder : `tribune-libre` → « Freie Tribüne » / « Tribuna
   libera », et les deux en-têtes de groupe. ⚠ **Deux** tables à modifier ensemble :
@@ -815,17 +844,13 @@ VSCodium** (la case à cocher) ni sur un vrai numéro.
   — pile sur le plancher. Les filets de tableau, eux, sont passés au jeton `--c-annual-ui`
   (Lc 45). Si tu veux de la marge partout, c'est le même changement à faire sur ces trois
   règles ; c'est un choix esthétique, je ne l'ai pas pris.
-- [ ] **Masquer la bascule d'aperçu** sur un dossier `profil: presentation` : le mode HTML est
-  forcé (il n'y a pas de PDF), mais le bouton reste cliquable et semble ne rien faire.
+- [ ] **Masquer la bascule d'aperçu** sur un dossier dont le profil ne produit pas de PDF :
+  le mode HTML est forcé, mais le bouton reste cliquable et semble ne rien faire.
   Repoussé volontairement : cela demande un nouveau texte traduit, à joindre au prochain lot.
-- [ ] **Commande « Ouvrir le diaporama »** : rien n'ouvre un `.pptx` depuis le cockpit.
 - [ ] **`profil:` dans le formulaire du numéro** : aujourd'hui à écrire à la main dans
   `ausgabe.yaml` (une ligne posée à la main survit au formulaire, c'est vérifié). Piège si un
   sélecteur est ajouté : le sérialiseur saute les valeurs vides, donc le choix « aucun
   document » (clé présente et vide) n'est pas exprimable en l'état.
-- [ ] **`--slide-level`** : au défaut de pandoc, un article réel donne 5 diapositives ; en
-  `--slide-level=2`, 16, sans perte de texte. Le levier est commenté à l'endroit exact du
-  Makefile. Arbitrage d'usage à prendre.
 - [ ] **Option XML DISM** au bootstrap (associations des nouveaux profils, D18) : non faite.
 - [ ] **Extension résiduelle** : `csholmq.excel-to-markdown-table@1.4.0` est encore installée
   sur ce poste, plus sur les nouveaux. `codium --uninstall-extension csholmq.excel-to-markdown-table`.
