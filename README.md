@@ -98,8 +98,9 @@ VSCodium/SumatraPDF reste manuel — voir V2 dans `PLANIFICATION.md`.)
 ```powershell
 powershell -ExecutionPolicy Bypass -File "C:\ProgramData\SZH\toolkit\windows\new-revue.ps1" -Dossier "$env:OneDrive\Revues\2026-01"
 ```
-→ copie le template, **estampille `version-toolkit`** (D120), crée « Ouvrir la revue.lnk » dans le
-dossier, enregistre la revue pour le lanceur « Revues SZH » du menu Démarrer. Puis, dans OneDrive :
+→ copie le template, écrit le jeton `revue:` du produit (D126), **déduit `date` et `numero` du nom
+du dossier** et vide le titre d'exemple (D129), **estampille `version-toolkit`** (D120), crée
+« Ouvrir la revue.lnk » dans le dossier. Puis, dans OneDrive :
 clic droit sur le dossier → **« Toujours conserver sur cet appareil »**.
 
 **Un lanceur par produit (D126)** : « Revues SZH » (`-Produit revue`) et « Zeitschriften SZH »

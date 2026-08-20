@@ -415,6 +415,14 @@ donner un nom (p. ex. `2026-02`) — la boîte rappelle où le numéro sera cré
 choisir — et le numéro s'ouvre tout prêt : dossiers `articles-word` et `articles`, raccourci
 « Ouvrir la revue », et la bonne revue déjà renseignée dans ses métadonnées.
 
+Le **nom du dossier fait l'identité** : `2027-05` donne l'année 2027 et le numéro 05, que la barre
+« Revue SZH » affiche aussitôt (`R2027-05`). Le titre du dossier thématique, lui, reste **vide** :
+c'est à vous de le remplir dans **Méta-données du numéro**.
+
+> Si un ancien numéro s'annonce « R2026-2 | Dossier — numéro d'exemple » dans la barre, c'est qu'il
+> a été créé avant cette version et porte encore les valeurs du gabarit : ouvrez **Méta-données du
+> numéro** et corrigez l'année, le numéro et le titre. Le nom du dossier, lui, est déjà le bon.
+
 Le lanceur cherche les revues aux emplacements officiels :
 
 | | Revue (FR) | Zeitschrift (DE) |

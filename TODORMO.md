@@ -42,6 +42,24 @@ et un retrait défensif du BOM à la lecture côté JavaScript.
   confirmer que le message « trop de demandes vers GitHub depuis ce réseau » est compréhensible.
   Si le cas devient fréquent, il faudra mettre la liste des versions en cache elle aussi.
 
+## Corrigé — un numéro neuf s'annonçait avec les valeurs du gabarit (D129)
+
+Symptôme : le lien vers `2027-05` ouvrait bien `2027-05` (barre de titre de VSCodium correcte), mais
+la barre « Revue SZH » affichait `R2026-2 | DOSSIER — NUMÉRO D'EXEMPLE`. **Ce n'était pas le lien** :
+la barre reflète `ausgabe.yaml` (D43), et le fichier portait encore `numero: "2"`, `date: "2026"` et
+le titre d'exemple du gabarit — rien ne les remplaçait à la création.
+
+`new-revue.ps1` déduit maintenant `date` et `numero` du **nom du dossier** et vide le titre
+d'exemple. Vérifié : `2099-05` → barre `R2099-05`, `2098-11` → `Z2098-11`, nom hors convention →
+la barre retombe sur le nom du dossier.
+
+- [ ] **`2027-05` (et tout numéro créé avant v2026.08.26)** porte encore les valeurs du gabarit :
+  ouvrir « Méta-données du numéro » et corriger année, numéro et titre. Je ne l'ai pas fait moi-même
+  — le formulaire était ouvert chez toi, une écriture concurrente aurait pu se perdre.
+- [ ] Créer un numéro neuf et vérifier que la barre affiche `R<année>-<numéro>` tout de suite.
+- [ ] Confirmer que **vider le titre** est le bon choix (l'alternative serait de le laisser à
+  « Dossier — numéro d'exemple » jusqu'à ce qu'on le remplisse).
+
 ## Corrigé — VSCodium ne s'ouvrait jamais depuis nos scripts, et l'aperçu suivait le thème (D128)
 
 **1. `ELECTRON_RUN_AS_NODE=1`.** L'hôte d'extensions de VSCodium tourne avec cette variable, et

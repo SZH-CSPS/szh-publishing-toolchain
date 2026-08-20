@@ -42,10 +42,34 @@ $chemin = (Resolve-Path $Dossier).Path
 if (-not $existait) {
   $jeton = Get-SzhJetonRevue $Produit
   if ($jeton) {
-    if (Set-SzhAusgabeCle $chemin 'revue' $jeton $false) {
+    if (Set-SzhAusgabeCle $chemin 'revue' $jeton $false $false) {
       Write-SzhInfo ('Numéro marqué « revue: {0} ».' -f $jeton)
     }
   }
+}
+
+# Identité du numéro déduite du NOM DU DOSSIER (D129).
+#
+# Le gabarit porte des valeurs d'exemple (`numero: "2"`, `date: "2026"`, un titre de
+# démonstration) et rien ne les remplaçait : un numéro neuf s'annonçait donc
+# « R2026-2 | Dossier — numéro d'exemple » dans la barre du cockpit, quel que soit son
+# dossier — en contradiction avec le nom que voient le lanceur, les liens et les
+# archives. Or ce nom suit une convention (« 2027-05 ») : on en tire l'année et le
+# numéro, et on VIDE le titre de démonstration, qui n'appartient qu'au rédacteur.
+# Un nom hors convention vide aussi année et numéro : la barre retombe alors sur le nom
+# du dossier, ce qui est honnête — jamais une valeur d'exemple prise pour vraie.
+if (-not $existait) {
+  $leaf = Split-Path $chemin -Leaf
+  if ($leaf -match '^(\d{4})-(\d{1,3})$') {
+    [void](Set-SzhAusgabeCle $chemin 'date' $Matches[1] $true $false)
+    [void](Set-SzhAusgabeCle $chemin 'numero' $Matches[2] $true $false)
+    Write-SzhInfo ('Numéro identifié d''après le dossier : {0}, n° {1}.' -f $Matches[1], $Matches[2])
+  } else {
+    [void](Set-SzhAusgabeCle $chemin 'date' '' $true $true)
+    [void](Set-SzhAusgabeCle $chemin 'numero' '' $true $true)
+    Write-SzhInfo 'Nom de dossier hors convention (AAAA-NN) : année et numéro laissés à remplir.'
+  }
+  [void](Set-SzhAusgabeCle $chemin 'title' '' $true $true)
 }
 
 # Version du logiciel qui crée ce numéro (D120) : c'est elle qui permettra, plus tard,

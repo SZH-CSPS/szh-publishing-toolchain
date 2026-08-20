@@ -786,8 +786,11 @@ function Test-SzhSha256 {
 # `$Cite` suit la règle de formaterValeurYaml : les scalaires du formulaire sont cités,
 # mais `revue` et `lang` sont des jetons NUS (le Makefile les lit au sed, qui ne comprend
 # pas les guillemets).
-function Set-SzhAusgabeCle([string]$Dossier, [string]$Cle, [string]$Valeur, [bool]$Cite) {
-  if (-not $Valeur) { return $false }
+# `$Vide` autorise l'écriture d'une valeur VIDE (`title: ""`). Sans ce garde-fou
+# explicite, un appel qui perd sa valeur en route effacerait une clé sans le vouloir ;
+# avec lui, vider est un geste demandé.
+function Set-SzhAusgabeCle([string]$Dossier, [string]$Cle, [string]$Valeur, [bool]$Cite, [bool]$Vide) {
+  if ((-not $Valeur) -and (-not $Vide)) { return $false }
   $fichier = Join-Path $Dossier 'ausgabe.yaml'
   if (-not (Test-Path $fichier)) { return $false }
   $lignes = @(Get-Content $fichier -Encoding UTF8)
@@ -803,7 +806,7 @@ function Set-SzhAusgabeCle([string]$Dossier, [string]$Cle, [string]$Valeur, [boo
 }
 
 function Set-SzhAusgabeVersion([string]$Dossier, [string]$Version) {
-  return (Set-SzhAusgabeCle $Dossier 'version-toolkit' $Version $true)
+  return (Set-SzhAusgabeCle $Dossier 'version-toolkit' $Version $true $false)
 }
 
 # ---------- Envoi pour traduction (D127) ----------
