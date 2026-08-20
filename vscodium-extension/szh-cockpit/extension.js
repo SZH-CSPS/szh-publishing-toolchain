@@ -38,6 +38,20 @@
 //   par les fonctions pures de lib/references.js, via WorkspaceEdit + doc.save().
 //   L'aperçu natif de VSCodium reste accessible (bouton « Ouvrir l'image »).
 //
+// Traductions (D113) : troisième section de la barre, « Traductions ». Un article
+//   par ligne, DÉPLIABLE sur ses champs bilingues (titre / sous-titre / résumé /
+//   mots-clés × langue cible) : le coup d'œil « traduit / à traduire », plus l'état
+//   d'atelier de chacun (pas prêt → prêt pour traduction → prêt pour relecture →
+//   traduction finalisée). Le bouton de la section lance la campagne (tous les
+//   champs encore « pas prêt » passent à « prêt pour traduction » — jamais de
+//   recul). Le CLIC ouvre le panneau szhTraduction : formulaire en colonne 1
+//   (source en lecture seule + traduction à saisir + état, un bouton par état pour
+//   tout l'article, zone « question / commentaire »), aperçu de l'article en
+//   colonne 2. Deux fichiers, deux rôles : les TEXTES traduits vont dans
+//   <slug>.meta.yaml (publiés, exportés vers OJS), l'ÉTAT dans le sidecar
+//   <slug>.traduction.yaml (jamais publié, invisible du Makefile) — cf. l'en-tête
+//   de lib/traduction.js.
+//
 // Écritures autorisées : la COPIE des .docx choisis vers articles-word/ (S3 ;
 // mêmes règles pour les .docx DÉPOSÉS sur la vue, F2), ausgabe.yaml (G1), la
 // SUPPRESSION confirmée d'un article (G3), l'ÉCRASEMENT confirmé d'une image
@@ -50,8 +64,11 @@
 // extension sont retirés — plus les versions .avec-fond.png/.sans-fond.png écrites
 // par le pipeline WSL), et la RÉÉCRITURE de la référence d'une image dans
 // articles/<slug>/<slug>.md par la fiche image (légende + attributs alt/copyright/
-// source ; WorkspaceEdit, donc annulable par Ctrl+Z). Tout le reste est en lecture
-// seule (ouverture/lancement de tâche uniquement).
+// source ; WorkspaceEdit, donc annulable par Ctrl+Z), et le SUIVI DE TRADUCTION
+// articles/<slug>/<slug>.traduction.yaml (D113 : statuts + commentaire ; fichier
+// form-owned, régénéré à chaque enregistrement et SUPPRIMÉ quand il ne reste plus
+// rien à retenir). Tout le reste est en lecture seule (ouverture/lancement de
+// tâche uniquement).
 // Posture szh-apercu : JavaScript pur, zéro dépendance, API VS Code ^1.75.
 //
 // STRUCTURE (refactor R1–R6, SANS build — CommonJS require résolu à l'exécution +
@@ -64,9 +81,10 @@
 //                           lib/formatting.js mise en forme
 //   lib/portraits.js        appel WSL du pipeline de portraits (F3, D91)
 //   lib/panneaux.js         les trois panneaux QuickPick de la barre (Commande/Édition/Export, F1)
+//   lib/traduction.js       modèle PUR du suivi de traduction (sidecar + lignes à traduire, D113)
 //   lib/webviews/util.js    construireHtml/lireMedia : inline media/ + nonce + CSP stricte
 //   media/*.{html,css,js}   webviews (table-editor, metadata-issue/articles, settings,
-//                           apercu, import-verif)
+//                           apercu, import-verif, traduction)
 // Les webviews n'injectent AUCUNE donnée dans le HTML (elles arrivent par postMessage) ;
 // les libellés i18n sont des marqueurs %%SZH:cle%% résolus par T() à l'assemblage.
 // lib/ et media/ DOIVENT être empaquetés (voir .vscodeignore). _pur = contrat immuable
@@ -121,6 +139,12 @@ const { enregistrerPanneaux } = require('./lib/panneaux');
 const { genererExportOjs } = require('./lib/export-ojs');
 const { retirerImage, retirerTable, lireAttributsImage, ecrireAttributsImage } = require('./lib/references');
 const { traiterPortraits } = require('./lib/portraits');
+// ---- Suivi de traduction (D113) -> lib/traduction.js -----------------------------
+const {
+  CHAMPS_TRADUISIBLES, STATUTS, STATUT_DEFAUT,
+  cleChamp, statutValide, analyserTraduction, serialiserTraduction,
+  texteChamp, valeurChamp, lignesTraduction, resumeTraduction
+} = require('./lib/traduction');
 
 // Éditeur PDF (extension tomoki1207.pdf), comme szh-apercu.
 const VUE_PDF = 'pdf.preview';
@@ -182,19 +206,28 @@ class FournisseurRevue {
       // Compte des Word en attente dans la DESCRIPTION de la section (S4) : le badge
       // de conteneur n'est plus visible depuis que la vue est dans l'Explorateur (S2.1).
       const n = this.compterWord();
+      // D113 : la section « Traductions » arrive REPLIÉE — elle double la liste des
+      // articles, et on ne l'ouvre que quand on vient y travailler.
+      const t = this.compterTraductions();
       return [
         this._section('articles', T('arbre.articles'), 'book', undefined),
-        this._section('word', T('arbre.word'), 'inbox', n > 0 ? '(' + n + ')' : undefined)
+        this._section('word', T('arbre.word'), 'inbox', n > 0 ? '(' + n + ')' : undefined),
+        this._section('traductions', T('arbre.traductions'), 'globe',
+          t.total > 0 ? '(' + t.finalises + '/' + t.total + ')' : undefined, true)
       ];
     }
     if (element.categorie === 'articles') { return this._itemsArticles(); }
     if (element.categorie === 'word') { return this._itemsWord(); }
+    if (element.categorie === 'traductions') { return this._itemsTraductions(); }
     if (element.contextValue === 'article') { return this._itemsAssets(element.slug); }
+    if (element.contextValue === 'traduction-article') { return this._itemsChampsTraduction(element.slug); }
     return [];
   }
 
-  _section(categorie, libelle, icone, description) {
-    const it = new vscode.TreeItem(libelle, vscode.TreeItemCollapsibleState.Expanded);
+  _section(categorie, libelle, icone, description, replie) {
+    const it = new vscode.TreeItem(libelle, replie
+      ? vscode.TreeItemCollapsibleState.Collapsed
+      : vscode.TreeItemCollapsibleState.Expanded);
     it.categorie = categorie;
     it.iconPath = new vscode.ThemeIcon(icone);
     it.contextValue = 'section-' + categorie;   // 'section-articles' / 'section-word'
@@ -341,6 +374,61 @@ class FournisseurRevue {
     });
   }
 
+  // ---- Section « Traductions » (D113) ---------------------------------------------
+  //
+  // Un article par ligne, DÉPLIABLE sur ses champs bilingues : le coup d'œil
+  // demandé — combien de champs sont traduits, et où en est le plus en retard.
+  // « 💬 » signale une question posée à l'équipe de traduction : la laisser
+  // invisible dans l'arbre reviendrait à ne jamais y répondre.
+  _itemsTraductions() {
+    const slugs = this._sousDossiersAvecMd(path.join(this.racine, 'articles'));
+    if (slugs.length === 0) { return [this._vide(T('arbre.vide.traductions'))]; }
+    const source = langueRevue(this.racine);
+    return slugs.map((slug) => {
+      const etat = etatTraduction(this.racine, slug, source);
+      const rien = etat.lignes.length === 0;
+      const it = new vscode.TreeItem(slug, rien
+        ? vscode.TreeItemCollapsibleState.None
+        : vscode.TreeItemCollapsibleState.Collapsed);
+      it.slug = slug;
+      it.contextValue = 'traduction-article';
+      it.iconPath = rien ? new vscode.ThemeIcon('dash') : iconeStatut(etat.resume.statut);
+      const morceaux = rien
+        ? [T('trad.rien.court')]
+        : [T('trad.avancement', [etat.resume.remplis, etat.resume.total]),
+           etat.resume.melange ? T('trad.statut.melange') : T('trad.statut.' + etat.resume.statut)];
+      if (etat.suivi.commentaire !== '') { morceaux.push('💬'); }
+      it.description = morceaux.join(' · ');
+      it.tooltip = T('trad.article.tooltip', [slug]);
+      it.command = { command: 'szh.traduction', title: 'Suivi de traduction', arguments: [{ slug: slug }] };
+      return it;
+    });
+  }
+
+  // Enfants d'un article de la section « Traductions » : une ligne par champ
+  // bilingue (« Titre (DE) »), état de remplissage ET statut d'atelier.
+  _itemsChampsTraduction(slug) {
+    const etat = etatTraduction(this.racine, slug);
+    return etat.lignes.map((ligne) => {
+      const nom = T('trad.champ.libelle', [T('trad.champ.' + ligne.champ), ligne.langue.toUpperCase()]);
+      const rempli = ligne.rempli ? T('trad.traduit') : T('trad.atraduire');
+      const statut = T('trad.statut.' + ligne.statut);
+      const it = new vscode.TreeItem(nom, vscode.TreeItemCollapsibleState.None);
+      it.slug = slug;
+      it.cleTraduction = ligne.cle;
+      it.contextValue = 'traduction-champ';
+      it.iconPath = iconeStatut(ligne.statut);
+      it.description = rempli + ' · ' + statut;
+      it.tooltip = T('trad.champ.tooltip', [nom, rempli, statut]);
+      // Le clic ouvre le panneau de l'article ET y met le focus sur CE champ.
+      it.command = {
+        command: 'szh.traduction', title: 'Suivi de traduction',
+        arguments: [{ slug: slug, cle: ligne.cle }]
+      };
+      return it;
+    });
+  }
+
   // Élément gris « rien pour l'instant » (une section vide reste visible et lisible).
   _vide(texte) {
     const it = new vscode.TreeItem(texte, vscode.TreeItemCollapsibleState.None);
@@ -352,6 +440,20 @@ class FournisseurRevue {
   compterWord() {
     if (!this.racine) { return 0; }
     return this._docxEnAttente(path.join(this.racine, 'articles-word')).length;
+  }
+
+  // Avancement global affiché dans la description de la section (D113) :
+  // champs finalisés / champs bilingues de toute la revue.
+  compterTraductions() {
+    if (!this.racine) { return { total: 0, finalises: 0 }; }
+    const source = langueRevue(this.racine);
+    let total = 0, finalises = 0;
+    for (const slug of this._sousDossiersAvecMd(path.join(this.racine, 'articles'))) {
+      const r = etatTraduction(this.racine, slug, source).resume;
+      total += r.total;
+      finalises += r.finalises;
+    }
+    return { total: total, finalises: finalises };
   }
 
   // Liste des slugs d'articles (dossier + .md homonyme). Sert aussi au diff d'import.
@@ -902,7 +1004,9 @@ async function ouvrirArticleActifAuDemarrage(fournisseur) {
 // colonne 2.
 // En cas d'échec de build : le .md reste ouvert, erreur sobre, PAS d'aperçu
 // obsolète trompeur.
-async function ouvrirArticle(fournisseur, slug) {
+// `opts.sansTexte` (D113) : ne pas ouvrir le .md en colonne 1 — le panneau de
+// traduction l'occupe, seul l'aperçu de la colonne 2 est demandé.
+async function ouvrirArticle(fournisseur, slug, opts) {
   const racine = fournisseur.racine;
   if (!racine || typeof slug !== 'string' || slug === '') { return; }
   // D96 : les assets de CET article se déplient, ceux des autres se replient. Fait
@@ -920,7 +1024,9 @@ async function ouvrirArticle(fournisseur, slug) {
     ? path.join(racine, 'out', slug, slug + '.apercu.html')
     : pdf.fsPath;
 
-  await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(md), { viewColumn: vscode.ViewColumn.One });
+  if (!(opts && opts.sansTexte)) {
+    await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(md), { viewColumn: vscode.ViewColumn.One });
+  }
 
   // Obsolète = aperçu plus ancien que la source la plus récente (.md, un tableau
   // extrait OU la fiche .meta.yaml — même graphe de dépendances que la règle
@@ -1775,6 +1881,311 @@ function nettoyerCarte(brut) {
     }
   }
   return carte;
+}
+
+// ---- Suivi de traduction (D113) ----------------------------------------------------
+//
+// Section « Traductions » de l'arbre + panneau szhTraduction (colonne 1, aperçu de
+// l'article en colonne 2). Deux fichiers, deux rôles — voir l'en-tête de
+// lib/traduction.js : les TEXTES traduits vont dans <slug>.meta.yaml (publiés,
+// exportés vers OJS), l'ÉTAT D'ATELIER dans <slug>.traduction.yaml (jamais publié).
+// Protocole :
+//   webview -> hôte : pret | modifie {modifie} | copier {texte}
+//                     enregistrer {slug, champs:[{champ,langue,texte,statut}], commentaire}
+//                     rechargement {…}  (réponse à « demande-rechargement »)
+//   hôte -> webview : valeurs {slug, langueSource, lignes, commentaire, statuts, focus}
+//                     enregistre | copie | erreur {message} | demande-rechargement
+
+const ICONES_STATUT = {
+  'pas-pret': 'circle-large-outline',
+  'pret-traduction': 'arrow-right',
+  'pret-relecture': 'eye',
+  'finalise': 'pass-filled'
+};
+const COULEURS_STATUT = {
+  'pret-traduction': 'charts.blue',
+  'pret-relecture': 'charts.orange',
+  'finalise': 'charts.green'
+};
+
+function iconeStatut(statut) {
+  const couleur = COULEURS_STATUT[statut];
+  return new vscode.ThemeIcon(ICONES_STATUT[statut] || ICONES_STATUT[STATUT_DEFAUT],
+    couleur ? new vscode.ThemeColor(couleur) : undefined);
+}
+
+function cheminTraduction(racine, slug) {
+  return path.join(racine, 'articles', slug, slug + '.traduction.yaml');
+}
+
+function lireMetaArticle(racine, slug) {
+  try { return analyserMeta(fs.readFileSync(cheminMeta(racine, slug), 'utf8')); }
+  catch (e) { return analyserMeta(''); }           // pas encore de fiche : tout vide
+}
+
+function lireSuiviTraduction(racine, slug) {
+  try { return analyserTraduction(fs.readFileSync(cheminTraduction(racine, slug), 'utf8')); }
+  catch (e) { return analyserTraduction(''); }
+}
+
+// État complet d'un article pour l'arbre ET le panneau. `source` (langue du numéro)
+// est passée par les boucles pour ne pas relire ausgabe.yaml à chaque article.
+function etatTraduction(racine, slug, source) {
+  const langue = source || langueRevue(racine);
+  const meta = lireMetaArticle(racine, slug);
+  const suivi = lireSuiviTraduction(racine, slug);
+  const lignes = lignesTraduction(meta, suivi.statuts, langue);
+  return { meta: meta, suivi: suivi, lignes: lignes, source: langue, resume: resumeTraduction(lignes) };
+}
+
+// Écrit le sidecar — ou le SUPPRIME s'il ne reste rien à retenir (aucun statut hors
+// défaut, aucun commentaire) : pas de fichier vide dans le dossier de l'article, et
+// « tout remettre à zéro » efface vraiment. Fichier form-owned : ce panneau est le
+// seul à l'écrire, la suppression ne peut donc rien perdre d'autre.
+function ecrireSuiviTraduction(racine, slug, suivi) {
+  const chemin = cheminTraduction(racine, slug);
+  const contenu = serialiserTraduction(suivi);
+  if (contenu === '') {
+    try { if (fs.existsSync(chemin)) { fs.unlinkSync(chemin); } } catch (e) { /* déjà parti */ }
+    return;
+  }
+  ecrireAusgabeAtomique(chemin, contenu);
+}
+
+// Bouton de la section « Traductions » : lance la campagne. N'avance QUE les champs
+// encore « pas prêt » — un champ déjà en relecture ou finalisé ne recule jamais,
+// sinon le bouton détruirait le travail qu'il est censé organiser.
+function marquerToutPretTraduction(fournisseur, rafraichirTout) {
+  if (!fournisseur.racine) { return; }
+  const racine = fournisseur.racine;
+  const source = langueRevue(racine);
+  const erreurs = [];
+  let n = 0;
+  for (const slug of fournisseur.listerArticles()) {
+    const etat = etatTraduction(racine, slug, source);
+    const statuts = Object.assign({}, etat.suivi.statuts);
+    let change = false;
+    for (const ligne of etat.lignes) {
+      if (ligne.statut !== STATUT_DEFAUT) { continue; }
+      statuts[ligne.cle] = 'pret-traduction';
+      change = true;
+      n++;
+    }
+    if (!change) { continue; }
+    try {
+      ecrireSuiviTraduction(racine, slug, {
+        statuts: statuts, commentaire: etat.suivi.commentaire, _inconnues: etat.suivi._inconnues
+      });
+    } catch (e) { erreurs.push(slug + ' (' + e.message + ')'); }
+  }
+  if (erreurs.length > 0) { vscode.window.showErrorMessage(T('err.ecriture', [erreurs.join(', ')])); }
+  vscode.window.setStatusBarMessage(n > 0 ? T('trad.toutpret.fait', [n]) : T('trad.toutpret.rien'), 5000);
+  if (rafraichirTout) { rafraichirTout(); }
+  rafraichirPanneauTraduction(fournisseur);        // le panneau ouvert suit le bouton
+}
+
+function textesTraduction() {
+  return {
+    source: T('trad.source'), sourceVide: T('trad.source.vide'), cible: T('trad.cible'),
+    copier: T('trad.copier'), copie: T('trad.copie'), statut: T('trad.statut'),
+    traduit: T('trad.traduit'), atraduire: T('trad.atraduire'),
+    tout: T('trad.tout'), toutAide: T('trad.tout.aide'),
+    rien: T('trad.rien'), aucuneModif: T('form.rien'), enregistre: T('trad.enregistre')
+  };
+}
+
+function htmlTraduction(nonce) {
+  return construireHtml('traduction', nonce, {
+    titre: T('trad.titre'),
+    remplacements: { '__TXT__': JSON.stringify(textesTraduction()) }
+  });
+}
+
+let panneauTraduction = null;
+let slugTraduction = null;
+let traductionModifiee = false;
+let rechargementTraduction = null;
+
+// Les lignes telles que la webview les attend (libellés résolus côté hôte : le
+// webview ne connaît ni LIBELLES ni langue d'interface).
+function lignesPourWebview(etat) {
+  return etat.lignes.map((ligne) => Object.assign({}, ligne, {
+    libelle: T('trad.champ.libelle', [T('trad.champ.' + ligne.champ), ligne.langue.toUpperCase()]),
+    langueSource: etat.source,
+    aide: ligne.champ === 'keywords' ? T('trad.aide.keywords') : ''
+  }));
+}
+
+function envoyerValeursTraduction(panneau, fournisseur, slug, focus) {
+  const etat = etatTraduction(fournisseur.racine, slug);
+  repondrePanneau(panneau, {
+    type: 'valeurs',
+    slug: slug,
+    langueSource: etat.source,
+    lignes: lignesPourWebview(etat),
+    commentaire: etat.suivi.commentaire,
+    statuts: STATUTS.map((s) => ({ valeur: s, libelle: T('trad.statut.' + s) })),
+    focus: focus || null
+  });
+  traductionModifiee = false;                      // les cartes viennent d'être reconstruites
+}
+
+// Recharge le panneau ouvert (après le bouton « tout marquer », ou un enregistrement).
+function rafraichirPanneauTraduction(fournisseur) {
+  if (!panneauTraduction || !slugTraduction || !fournisseur.racine) { return; }
+  if (fournisseur.listerArticles().indexOf(slugTraduction) === -1) { return; }
+  envoyerValeursTraduction(panneauTraduction, fournisseur, slugTraduction, null);
+}
+
+// Enregistre ce que renvoie le panneau. Les TEXTES passent par le chemin d'écriture
+// des fiches (ecrireCartesArticles -> nettoyerCarte -> serialiserMeta -> écriture
+// atomique) : mêmes bornes, mêmes clés inconnues restituées (D49), et la fiche est
+// RELUE à l'instant — une modification faite entre-temps dans « Métadonnées des
+// articles » (et déjà enregistrée) n'est pas écrasée. Retourne
+// { ok, message, metaChangee } ; metaChangee pilote la recompilation de l'aperçu.
+function enregistrerTraduction(fournisseur, msg) {
+  const racine = fournisseur.racine;
+  const slug = String((msg && msg.slug) || '');
+  if (!racine || fournisseur.listerArticles().indexOf(slug) === -1) {
+    return { ok: false, message: T('err.ecriture', [slug]) };
+  }
+  const source = langueRevue(racine);
+  const meta = lireMetaArticle(racine, slug);
+  delete meta._inconnues;                          // ecrireCartesArticles les relit du disque
+  const suivi = lireSuiviTraduction(racine, slug);
+  const statuts = Object.assign({}, suivi.statuts);
+  let metaChangee = false;
+  for (const brut of (Array.isArray(msg.champs) ? msg.champs : [])) {
+    const champ = String((brut && brut.champ) || '');
+    const langue = String((brut && brut.langue) || '');
+    if (CHAMPS_TRADUISIBLES.indexOf(champ) === -1) { continue; }
+    // Jamais la langue du numéro : ce panneau ne touche pas au texte source.
+    if (LANGUES_META.indexOf(langue) === -1 || langue === source) { continue; }
+    const avant = texteChamp(meta, champ, langue);
+    meta[champ] = meta[champ] || {};
+    meta[champ][langue] = valeurChamp(champ, brut.texte);
+    if (texteChamp(meta, champ, langue) !== avant) { metaChangee = true; }
+    const s = statutValide(brut.statut);
+    if (s) { statuts[cleChamp(champ, langue)] = s; }
+  }
+  const res = ecrireCartesArticles(fournisseur, { [slug]: meta }, [slug]);
+  if (res.erreurs.length > 0) { return { ok: false, message: T('err.ecriture', [res.erreurs.join(', ')]) }; }
+  const commentaire = String(msg.commentaire === undefined || msg.commentaire === null ? '' : msg.commentaire)
+    .replace(/\r\n?/g, '\n').slice(0, 4000);
+  try {
+    ecrireSuiviTraduction(racine, slug, {
+      statuts: statuts, commentaire: commentaire, _inconnues: suivi._inconnues
+    });
+  } catch (e) { return { ok: false, message: T('err.ecriture', [e.message]) }; }
+  return { ok: true, metaChangee: metaChangee };
+}
+
+// Résout l'article visé : argument de l'arbre ({slug[, cle]} ou slug), sinon le .md
+// actif, sinon celui affiché en aperçu — même cascade que « Métadonnées de l'article
+// courant » (D97).
+function cibleTraduction(fournisseur, cible) {
+  if (typeof cible === 'string' && cible !== '') { return { slug: cible, cle: null }; }
+  if (cible && cible.slug) { return { slug: String(cible.slug), cle: cible.cle ? String(cible.cle) : null }; }
+  const ed = vscode.window.activeTextEditor;
+  const actif = ed ? slugDepuisChemin(fournisseur.racine, ed.document.uri.fsPath) : null;
+  return { slug: actif || apercuCourantSlug || null, cle: null };
+}
+
+// Panneau « Traduction » : formulaire en colonne 1, aperçu de l'article en colonne 2
+// (ouvrirArticle sans ouvrir le .md — F5 fermerait justement l'aperçu, ici on le veut).
+async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
+  if (!fournisseur.racine) { return; }
+  const vise = cibleTraduction(fournisseur, cible);
+  if (!vise.slug || fournisseur.listerArticles().indexOf(vise.slug) === -1) {
+    vscode.window.setStatusBarMessage(T('trad.horsarticle'), 4000);
+    return;
+  }
+  const montrerApercu = (slug) => {
+    // L'aperçu suit l'article affiché ; une erreur de compilation est déjà signalée
+    // par ouvrirArticle et ne doit pas remonter en rejet non capturé.
+    ouvrirArticle(fournisseur, slug, { sansTexte: true }).catch(() => { /* signalé côté build */ });
+  };
+  if (panneauTraduction) {
+    panneauTraduction.reveal(vscode.ViewColumn.One);
+    if (vise.slug === slugTraduction) {
+      if (vise.cle) { repondrePanneau(panneauTraduction, { type: 'focus', cle: vise.cle }); }
+      montrerApercu(vise.slug);
+      return;
+    }
+    if (traductionModifiee) {
+      // Le panneau porte un ● : on demande à la webview ce qu'elle contient, la
+      // garde (et le changement d'article) se joue à sa réponse.
+      rechargementTraduction = vise;
+      repondrePanneau(panneauTraduction, { type: 'demande-rechargement' });
+      return;
+    }
+    slugTraduction = vise.slug;
+    panneauTraduction.title = T('trad.titre.un', [vise.slug]);
+    envoyerValeursTraduction(panneauTraduction, fournisseur, vise.slug, vise.cle);
+    montrerApercu(vise.slug);
+    return;
+  }
+  slugTraduction = vise.slug;
+  traductionModifiee = false;
+  rechargementTraduction = null;
+  const panneau = vscode.window.createWebviewPanel(
+    'szhTraduction', T('trad.titre.un', [vise.slug]), vscode.ViewColumn.One,
+    { enableScripts: true, localResourceRoots: [] }
+  );
+  panneauTraduction = panneau;
+  let focusInitial = vise.cle;
+  panneau.onDidDispose(() => {
+    if (panneauTraduction === panneau) {
+      panneauTraduction = null; slugTraduction = null;
+      traductionModifiee = false; rechargementTraduction = null;
+    }
+  });
+  panneau.webview.html = htmlTraduction(crypto.randomBytes(16).toString('hex'));
+  panneau.webview.onDidReceiveMessage(async (msg) => {
+    if (!msg) { return; }
+    if (msg.type === 'pret') {
+      envoyerValeursTraduction(panneau, fournisseur, slugTraduction, focusInitial);
+      focusInitial = null;
+      return;
+    }
+    if (msg.type === 'modifie') { traductionModifiee = !!msg.modifie; return; }
+    if (msg.type === 'copier') {
+      await vscode.env.clipboard.writeText(String(msg.texte || ''));
+      repondrePanneau(panneau, { type: 'copie' });
+      return;
+    }
+    if (msg.type === 'rechargement') {
+      const attente = rechargementTraduction;
+      rechargementTraduction = null;
+      if (!attente) { return; }                    // réponse tardive : changement abandonné
+      const choix = await vscode.window.showWarningMessage(
+        T('trad.recharger.question'), { modal: true, detail: T('table.quitter.detail') },
+        T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
+      if (choix === undefined) { return; }         // Annuler : on reste sur l'article en cours
+      if (choix === T('form.enregistrer')) {
+        const res = enregistrerTraduction(fournisseur, msg);
+        if (!res.ok) { repondrePanneau(panneau, { type: 'erreur', message: res.message }); return; }
+        vscode.window.setStatusBarMessage(T('statut.traduction', [msg.slug]), 3000);
+        if (rafraichirTout) { rafraichirTout(); }
+      }
+      slugTraduction = attente.slug;
+      panneau.title = T('trad.titre.un', [attente.slug]);
+      envoyerValeursTraduction(panneau, fournisseur, attente.slug, attente.cle);
+      montrerApercu(attente.slug);
+      return;
+    }
+    if (msg.type !== 'enregistrer') { return; }
+    const res = enregistrerTraduction(fournisseur, msg);
+    if (!res.ok) { repondrePanneau(panneau, { type: 'erreur', message: res.message }); return; }
+    repondrePanneau(panneau, { type: 'enregistre' });
+    vscode.window.setStatusBarMessage(T('statut.traduction', [slugTraduction]), 3000);
+    if (rafraichirTout) { rafraichirTout(); }
+    envoyerValeursTraduction(panneau, fournisseur, slugTraduction, null);
+    // La fiche est une dépendance de build (M1) : un titre traduit change le rendu.
+    // On ne recompile que si un TEXTE a bougé — pas pour un simple changement d'état.
+    if (res.metaChangee) { montrerApercu(slugTraduction); }
+  });
+  montrerApercu(vise.slug);
 }
 
 // ---- Photos d'auteur·e·s (F3, D91/D92) ---------------------------------------------
@@ -2980,6 +3391,10 @@ function activate(context) {
     // D97 : le MÊME formulaire, filtré sur un article (icône ✎ de l'arbre, ou entrée
     // « Métadonnées de l'article courant » du panneau d'édition, sans argument).
     vscode.commands.registerCommand('szh.metadonneesArticle', (item) => ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item)),
+    // D113 : section « Traductions » — clic sur un article (ou sur un de ses champs)
+    // et bouton « tout marquer prêt pour traduction » de la barre de section.
+    vscode.commands.registerCommand('szh.traduction', (item) => ouvrirTraduction(fournisseur, rafraichirTout, item)),
+    vscode.commands.registerCommand('szh.traductionsToutPret', () => marquerToutPretTraduction(fournisseur, rafraichirTout)),
     vscode.commands.registerCommand('szh.reglages', () => ouvrirReglages(rafraichirTout)),
     vscode.commands.registerCommand('szh.basculerApercu', () => basculerApercu(fournisseur, majBarreApercu)),
     vscode.commands.registerCommand('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
@@ -3065,6 +3480,8 @@ module.exports = {
     analyserMeta, serialiserMeta, lignePos, plagePos, positionMot, jetonSource,
     analyserAusgabe, serialiserAusgabe,
     nettoyerCarte, assainirCheminPhoto, decomposerPhoto, relatifImageValide,
+    analyserTraduction, serialiserTraduction, lignesTraduction, resumeTraduction,
+    texteChamp, valeurChamp,
     retirerImage, retirerTable, lireAttributsImage, ecrireAttributsImage,
     basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
     enroberBloc, squeletteTableau, tableauVierge, blocReferenceTable, nomTableLibre,

@@ -1,4 +1,34 @@
-# Todo Robin (mis à jour le 2026-08-19, après la vague 1 des features F1–F8)
+# Todo Robin (mis à jour le 2026-08-20, après le suivi de traduction D113)
+
+## Validations qui demandent un humain — suivi de traduction (D113)
+
+Éprouvé headless (arbre, écritures croisées fiche/sidecar, effacement, slug hors liste) ;
+**rien n'a encore tourné dans VSCodium**. À voir sur un vrai numéro :
+
+- [ ] **Le panneau à l'écran** : clic sur un article de la section « Traductions » → formulaire
+  en colonne 1, aperçu de l'article en colonne 2. Vérifier que l'aperçu se compile bien
+  (il passe par `ouvrirArticle` en mode `sansTexte`) et que la bascule `Ctrl+Alt+P`
+  HTML ⇄ PDF fonctionne depuis ce panneau.
+- [ ] **Changer d'article avec des modifications non enregistrées** : la modale
+  « Enregistrer / Quitter sans enregistrer / Annuler » doit apparaître et chaque branche
+  faire ce qu'elle annonce (c'est le seul chemin non couvert par le harnais).
+- [ ] **Lisibilité de la carte de champ** : le texte source en bloc pointillé, la barre de
+  couleur d'état à gauche, le badge « traduit / à traduire ». Le panneau est en colonne 1
+  (moitié d'écran) — vérifier qu'un résumé long reste confortable à saisir.
+- [ ] **Le bouton ✓✓ de la section** sur un vrai numéro : compter les champs annoncés dans la
+  barre d'état, et confirmer qu'aucun champ déjà en relecture ou finalisé n'a reculé.
+- [ ] **Arbitrer le périmètre** : seuls titre / sous-titre / résumé / mots-clés sont suivis.
+  Faut-il une ligne « Texte de l'article » (statut + commentaire, sans texte cible) pour
+  suivre la traduction intégrale, qui vit dans l'autre revue ?
+- [ ] **Relire les libellés DE** du panneau et de l'arbre (premier jet, comme le reste).
+
+## Validations qui demandent un humain — hiérarchie de titres et tableaux (D110–D112)
+
+- [ ] **Rejouer un numéro complet** après la release : un seul `<h1>`, corps à partir de `<h2>`,
+  numérotation 1 / 1.1 / 1.1.1 inchangée à l'œil, et le galley Word toujours Title puis
+  Heading2+.
+- [ ] **Lecteur d'écran sur un tableau markdown** (pipe ou grid) : les `scope` posés par
+  `szh-tabelle-scope.lua` doivent faire annoncer l'en-tête de colonne à chaque cellule.
 
 ## Validations qui demandent un humain — accessibilité figures/tableaux (D108–D109)
 

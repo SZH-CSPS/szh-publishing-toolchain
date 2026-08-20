@@ -1,0 +1,66 @@
+body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground); background: var(--vscode-editor-background);
+  padding: 1rem 1.2rem; max-width: 56rem; }
+h1 { font-size: 1.15em; font-weight: 600; margin: 0 0 .25rem; }
+h2#article { font-size: 1em; font-weight: 600; margin: .2rem 0 .6rem;
+  font-family: var(--vscode-editor-font-family, monospace); }
+p.note { color: var(--vscode-descriptionForeground); margin: 0 0 1rem; font-size: .88em; }
+p.aide { color: var(--vscode-descriptionForeground); margin: .1rem 0 .4rem; font-size: .85em; }
+label { display: block; margin: .6rem 0 .2rem; font-weight: 600; font-size: .9em; }
+input, select, textarea { width: 100%; box-sizing: border-box; padding: .3em .5em; font: inherit;
+  color: var(--vscode-input-foreground); background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; }
+textarea { resize: vertical; min-height: 3.4em; font-family: inherit; }
+input:focus, select:focus, textarea:focus { outline: 1px solid var(--vscode-focusBorder); }
+button { padding: .35em .9em; border: none; border-radius: 2px; font: inherit; cursor: pointer;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
+  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background)); }
+button.principal { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+button.principal:hover { background: var(--vscode-button-hoverBackground); }
+button:disabled { opacity: .5; cursor: default; }
+.barre { position: sticky; top: 0; background: var(--vscode-editor-background);
+  padding: .4rem 0 .6rem; margin-bottom: .2rem; z-index: 1; }
+#etat { margin-left: .8rem; font-size: .92em; color: var(--vscode-descriptionForeground); }
+
+/* Rangée « Tout l'article : » — un bouton par état, un clic suffit (et enregistre). */
+.tout { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; margin: 0 0 1rem;
+  padding: .5em .7em; border-radius: 3px; font-size: .9em;
+  background: var(--vscode-textBlockQuote-background, rgba(128,128,128,.12));
+  border-left: 3px solid var(--vscode-textBlockQuote-border, rgba(128,128,128,.5)); }
+.tout[hidden] { display: none; }
+.tout .intitule { font-weight: 600; margin-right: .2rem; }
+.tout .aide { flex-basis: 100%; margin: .2rem 0 0; font-size: .85em;
+  color: var(--vscode-descriptionForeground); }
+
+/* Une carte par champ à traduire ; la barre de gauche porte l'état. */
+.carte { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));
+  border-left-width: 3px; border-left-color: var(--vscode-panel-border, rgba(128,128,128,.35));
+  border-radius: 4px; padding: .7rem 1rem .9rem; margin: 0 0 .9rem; }
+.carte.statut-pret-traduction { border-left-color: var(--vscode-charts-blue, #3794ff); }
+.carte.statut-pret-relecture { border-left-color: var(--vscode-charts-orange, #d18616); }
+.carte.statut-finalise { border-left-color: var(--vscode-charts-green, #2ea043); }
+.carte h3 { font-size: .98em; font-weight: 600; margin: 0 0 .1rem;
+  display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.badge { font-size: .78em; font-weight: normal; border-radius: 2px; padding: .1em .45em;
+  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.5));
+  color: var(--vscode-descriptionForeground); }
+.badge.traduit { color: var(--vscode-charts-green, #2ea043);
+  border-color: var(--vscode-charts-green, #2ea043); }
+
+/* Texte source : lisible et copiable, jamais éditable (il vit dans la fiche,
+   sous la langue du numéro — on ne le retouche pas depuis ce panneau). */
+.source { white-space: pre-wrap; padding: .4em .6em; border-radius: 2px;
+  background: var(--vscode-textCodeBlock-background, rgba(128,128,128,.1));
+  border: 1px dashed var(--vscode-panel-border, rgba(128,128,128,.4));
+  color: var(--vscode-foreground); }
+.source.vide { color: var(--vscode-descriptionForeground); font-style: italic;
+  border-style: dotted; }
+.entete-source { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; }
+.entete-source button { padding: .15em .5em; font-size: .85em; }
+.ligne-statut { display: flex; align-items: center; gap: .6rem; margin-top: .6rem; }
+.ligne-statut label { margin: 0; flex: 0 0 auto; }
+.ligne-statut select { flex: 1 1 auto; }
+.carte.modifie h3::after { content: " ●"; color: var(--vscode-charts-orange, orange); }
+
+/* Rien à traduire : un message, pas une page vide. */
+.rien { color: var(--vscode-descriptionForeground); margin: 1rem 0; }

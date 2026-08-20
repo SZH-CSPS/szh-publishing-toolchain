@@ -48,9 +48,9 @@ Les deux autres entrées restent disponibles et font exactement la même chose :
 gauche (l'Explorateur). Elle regroupe tout le travail courant, sans toucher aux
 fichiers ni au terminal.
 
-[capture : la barre « Revue SZH » avec ses deux sections]
+[capture : la barre « Revue SZH » avec ses trois sections]
 
-Elle a **deux sections** :
+Elle a **trois sections** :
 
 - **Articles** — un article par ligne. **Un clic fait tout** : le texte s'ouvre à
   gauche, l'article est recompilé **si besoin** (texte ou tableau plus récent que le
@@ -170,6 +170,50 @@ Et sur la section « Word en attente », un bouton :
 - **▶▶ Convertir les Word en attente** — convertit **d'un clic** tous les Word déjà
   déposés dans le dossier (le cas le plus courant : on glisse les Word dans la revue via
   OneDrive, puis on clique ici).
+
+### La section « Traductions »
+
+Certains champs d'un article existent **dans les deux langues** : le titre, le
+sous-titre, le résumé et les mots-clés. La troisième section les rassemble pour qu'on
+voie **d'un coup d'œil** ce qui est fait et ce qui reste.
+
+Un article par ligne, avec son avancement (p. ex. « 2/4 traduits · Prêt pour
+traduction »). La petite flèche **déplie** ses champs : chacun dit s'il est
+**traduit** ou **à traduire**, et à quel stade il en est —
+
+| État | Ce que ça veut dire |
+|---|---|
+| **Pas prêt** | le texte source n'est pas stabilisé, ne pas traduire encore |
+| **Prêt pour traduction** | la traduction peut commencer |
+| **Prêt pour relecture** | la traduction est faite, elle attend un regard |
+| **Traduction finalisée** | plus rien à faire sur ce champ |
+
+Sur la section, un bouton :
+
+- **✓✓ Tout marquer prêt pour traduction** — d'un clic, tous les champs encore
+  « pas prêt » de **toute la revue** passent à « prêt pour traduction ». Les champs
+  déjà plus avancés ne bougent pas : le bouton lance la campagne, il ne l'efface pas.
+
+**Un clic sur un article** (ou sur l'un de ses champs) ouvre le **panneau de
+traduction**, avec l'aperçu de l'article à droite. Pour chaque champ :
+
+- le **texte source** en haut, en lecture seule, avec un bouton **Copier** ;
+- la **traduction** à saisir juste en dessous (pour les mots-clés : séparés par des
+  virgules) ;
+- son **état**, dans un menu déroulant.
+
+En tête, une rangée **« Tout l'article : »** avec un bouton par état — un clic pose
+l'état sur **tous** les champs et enregistre. En bas, une zone
+**« Question / commentaire »** : c'est là qu'on écrit ce qu'on veut dire à l'équipe de
+traduction (terminologie, passage à vérifier, contexte). Un article qui porte un
+commentaire est signalé par **💬** dans la liste.
+
+**Enregistrer** écrit les traductions dans la fiche de l'article — ce sont elles qui
+partiront dans l'export OJS. Les états et le commentaire, eux, restent internes à la
+revue : ils ne sont **jamais publiés**.
+
+[capture : la section « Traductions » dépliée sur un article]
+[capture : le panneau de traduction, aperçu à droite]
 
 [capture : la barre avec son titre « R2026-2 | … » et les trois boutons]
 [capture : le panneau « Commande » ouvert (menu déroulant)]

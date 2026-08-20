@@ -18,6 +18,7 @@ const PANNEAU_COMMANDE = [
   ['panneau.convertirEnAttente', 'szh.convertirEnAttente', '', '$(run-all)'],
   ['meta.titre', 'szh.metadonnees', '', '$(gear)'],
   ['fiches.titre', 'szh.apercuMetadonnees', '', '$(list-flat)'],
+  ['trad.titre', 'szh.traduction', '', '$(globe)'],
   ['regl.titre', 'szh.reglages', '', '$(settings-gear)']
 ];
 
@@ -49,7 +50,7 @@ function ouvrirPanneauCommande() {
 // d'aperçu, qui doit marcher depuis n'importe où dans la revue, et — depuis D97 — les
 // métadonnées de l'article courant, qui savent aussi retrouver l'article affiché en
 // aperçu et disent elles-mêmes ce qui manque le cas échéant.
-const HORS_GARDE_MD = ['szh.basculerApercu', 'szh.metadonneesArticle'];
+const HORS_GARDE_MD = ['szh.basculerApercu', 'szh.metadonneesArticle', 'szh.traduction'];
 
 async function ouvrirPanneauEdition() {
   const ed = vscode.window.activeTextEditor;
@@ -58,7 +59,8 @@ async function ouvrirPanneauEdition() {
     ['--', 'panneau.g.apercu'],
     ['panneau.basculerApercu', 'szh.basculerApercu', 'Ctrl+Alt+P', '$(preview)'],
     ['--', 'panneau.g.article'],
-    ['panneau.metaArticle', 'szh.metadonneesArticle', '', '$(list-flat)']
+    ['panneau.metaArticle', 'szh.metadonneesArticle', '', '$(list-flat)'],
+    ['panneau.traduction', 'szh.traduction', '', '$(globe)']
   ].concat(PALETTE_MEF);
   const choix = await vscode.window.showQuickPick(itemsDepuisEntrees(entrees), {
     placeHolder: T('panneau.edition.placeholder')

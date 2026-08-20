@@ -53,7 +53,8 @@ szh-publishing-toolchain/
 │   └── snippets/markdown.json # blocs de style :::
 ├── vscodium-extension/       # extensions maison — VSIX packagés par la CI, sha256 -> manifest.json
 │   ├── szh-apercu/           #   (D24) aperçu PDF auto en vue scindée après compilation
-│   └── szh-cockpit/          #   (D36) barre latérale « Revue SZH » (articles, Word, PDF, méta-données, images)
+│   └── szh-cockpit/          #   (D36) barre latérale « Revue SZH » (articles, Word, PDF, méta-données,
+│                             #         images, suivi des traductions D113)
 └── revue-template/           # copié dans le dossier OneDrive de CHAQUE revue (contenu seul)
     ├── BIENVENUE.md · ausgabe.yaml
     ├── articles/             # les .md de la revue
@@ -114,12 +115,13 @@ Bumper la version → pousser le tag → la CI republie la Release. Les postes d
 
 La barre latérale **« Revue SZH »** (extension `szh-cockpit`, titre = numéro en cours, D43)
 rassemble ces gestes sans explorateur : **un clic sur un article** ouvre le texte, compile
-si besoin et affiche l'aperçu (D46) ; sections *Articles* / *Word en attente (n)* ; en barre
+si besoin et affiche l'aperçu (D46) ; sections *Articles* / *Word en attente (n)* /
+*Traductions (finalisés/total)* ; en barre
 de titre, **trois boutons = trois panneaux** (QuickPick) : **🚀 Commande** (`Ctrl+Alt+A` —
 ➕ Importer des Word, ▶▶ Convertir les Word en attente, ⚙ Méta-données du numéro : formulaire
 → `ausgabe.yaml`, ☰ Métadonnées des articles : fiche cachée `<slug>.meta.yaml`, D49/D51 —
 type traduit, titre/sous-titre/mots-clés FR/DE + IT à la demande, auteurs structurés, DOI —
-et ⚙ Réglages SZH : thème, zoom, police, **aperçu par défaut HTML/PDF**, langue),
+🌐 Traductions, D113, et ⚙ Réglages SZH : thème, zoom, police, **aperçu par défaut HTML/PDF**, langue),
 **✏ Édition** (`Ctrl+Alt+S` — bascule d'aperçu `Ctrl+Alt+P` + palette de mise en forme) et
 **⬆ Export** (`Ctrl+Alt+D` — rebuild forcé, D44 ; **export XML natif OJS**, D93 : un seul
 fichier avec galleys PDF+HTML+DOCX en base64, prêt pour l'import OJS). Le
@@ -138,7 +140,19 @@ colspan/rowspan préservées**, D50 — et ré-injectés à la compilation, D47)
 est **supprimé** d'`articles-word/` (D39) ; un « déjà converti » y reste (⚠). Les médias
 vivent à un seul niveau `media/` (D45). La VM WSL est maintenue prête tant qu'une revue est
 ouverte (D42). « **Nouvelle revue…** » se crée depuis le lanceur **Revues SZH** du menu
-Démarrer (D38). Voir [`userdoc.md`](userdoc.md).
+Démarrer (D38).
+
+La section **Traductions** (D113) donne le coup d'œil : un article par ligne, dépliable sur ses
+**champs bilingues** (titre, sous-titre, résumé, mots-clés × langue cible), chacun annoncé
+*traduit / à traduire* et porteur d'un état — **pas prêt → prêt pour traduction → prêt pour
+relecture → traduction finalisée**. Le bouton ✓✓ de la section lance la campagne sur toute la
+revue (sans jamais faire reculer un champ déjà avancé). Un clic ouvre le **panneau de
+traduction** : texte source à gauche en lecture seule (bouton *Copier*), traduction à saisir,
+état, un bouton par état pour **tout l'article en un clic**, et une zone **« Question /
+commentaire »** (💬 dans l'arbre) — avec l'aperçu de l'article en colonne 2. Les traductions
+sont enregistrées dans `<slug>.meta.yaml` et partent telles quelles vers OJS ; les états et le
+commentaire vivent dans un sidecar `<slug>.traduction.yaml`, **jamais publié**, invisible du
+pipeline. Voir [`userdoc.md`](userdoc.md).
 
 ### Raccourcis clavier (déployés par `vscodium-user/keybindings.json` + extensions épinglées)
 

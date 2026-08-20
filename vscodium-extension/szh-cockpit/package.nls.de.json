@@ -13,6 +13,8 @@
   "cmd.editerTable": "Tabelle bearbeiten",
   "cmd.apercuMetadonnees": "Metadaten der Artikel",
   "cmd.metadonneesArticle": "Metadaten dieses Artikels bearbeiten",
+  "cmd.traduction": "Übersetzungsstand dieses Artikels",
+  "cmd.traductionsToutPret": "Alles als bereit zur Übersetzung markieren",
   "cmd.reglages": "SZH-Einstellungen",
   "cmd.basculerApercu": "Vorschau HTML ⇄ PDF umschalten",
   "cmd.panneauCommande": "Steuerungs-Panel",
