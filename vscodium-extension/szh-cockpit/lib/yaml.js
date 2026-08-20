@@ -14,7 +14,28 @@ const path = require('path');
 // toute autre ligne (commentaires, subtitle:, clés futures) est préservée
 // byte pour byte, fins de ligne (LF/CRLF) et BOM compris.
 
-const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 'couleur'];
+const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 'couleur',
+  'entete-condensee', 'locked', 'archived', 'version-toolkit'];
+
+// Cycle de vie du numéro (D116) : deux drapeaux INDÉPENDANTS, écrits en booléens
+// YAML nus comme `entete-condensee`.
+//   locked   -> le numéro est GELÉ : éditeur en lecture seule, gestes d'écriture du
+//               cockpit refusés. Se lève par « Déverrouiller la revue ».
+//   archived -> le numéro vit dans l'arborescence d'ARCHIVES : plus aucune
+//               compilation automatique, export à la demande seulement.
+// Les deux se combinent librement (désarchiver ne déverrouille pas, et l'inverse).
+const CLES_BOOLEENNES = ['entete-condensee', 'locked', 'archived'];
+
+// « Condenser l'en-tête » (D114) : réglage du NUMÉRO, écrit en booléen YAML NU
+// (`entete-condensee: true`). Valeurs vraies TOLÉRÉES à la lecture, un ausgabe.yaml
+// pouvant avoir été écrit à la main : miroir exact de la table VRAIS de
+// pipeline/filters/szh-maquette.lua, qui décide au rendu. Tout le reste = non condensé.
+const VRAIS_YAML = ['true', '1', 'oui', 'ja', 'yes', 'si'];
+function estVraiYaml(valeur) {
+  if (valeur === true) { return true; }
+  const v = String(valeur === undefined || valeur === null ? '' : valeur).trim().toLowerCase();
+  return VRAIS_YAML.indexOf(v) !== -1;
+}
 
 // Couleur annuelle du numéro (M7, D56) : palette figée, stockée en hex dans
 // ausgabe.yaml (clé plate `couleur`, citée). Libellés traduits via T().
@@ -563,12 +584,39 @@ function titreNumero(racine) {
   return morceaux.join(' | ');
 }
 
+// ---- Cycle de vie du numéro (D116/D117, version D120) ------------------------------
+//
+// Source de vérité UNIQUE de l'état d'un numéro : ausgabe.yaml. Rien n'est mémorisé
+// côté éditeur ni côté poste — un numéro archivé sur OneDrive est archivé pour tout
+// le monde, et le dossier reste lisible sans le toolkit.
+//   verrouillee    : `locked: true`   -> gelé (lecture seule, écritures refusées)
+//   archivee       : `archived: true`  -> dans les archives, aucune compilation auto
+//   versionToolkit : `version-toolkit` -> version du logiciel qui a créé le numéro
+//                    ('' si le numéro est antérieur à D120 : on ne l'invente pas,
+//                    et aucun avertissement de divergence n'est alors affiché)
+// Fichier illisible ou absent -> état neutre (un dossier quelconque n'est pas gelé).
+function etatRevue(racine) {
+  let valeurs = {};
+  try { valeurs = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')); }
+  catch (e) { /* illisible : état neutre ci-dessous */ }
+  return {
+    verrouillee: estVraiYaml(valeurs.locked),
+    archivee: estVraiYaml(valeurs.archived),
+    versionToolkit: String(valeurs['version-toolkit'] || '').trim()
+  };
+}
+
 // Représentation YAML d'une valeur du formulaire. Tout est cité « "…" » (sûr pour
 // deux-points, dièses, guillemets, accents), SAUF `lang` : le Makefile lit cette
 // clé avec un sed qui ne comprend pas les guillemets (LANG_LUE) → jeton nu,
 // restreint à [a-zA-Z-] (le formulaire ne propose que fr/de/en/it).
 function formaterValeurYaml(cle, valeur) {
   if (cle === 'lang') { return String(valeur).replace(/[^a-zA-Z-]/g, '') || 'fr'; }
+  // Drapeaux booléens (entete-condensee D114, locked/archived D116) : booléen YAML
+  // NU, jamais cité. Une chaîne « "false" » serait VRAIE pour le `$if()$` du gabarit
+  // pandoc — szh-maquette.lua sait la normaliser, mais le fichier que NOUS écrivons
+  // doit être juste sans ce filet.
+  if (CLES_BOOLEENNES.indexOf(cle) !== -1) { return estVraiYaml(valeur) ? 'true' : 'false'; }
   return '"' + String(valeur).replace(/([\\"])/g, '\\$1') + '"';
 }
 
@@ -613,7 +661,8 @@ function ecrireAusgabeAtomique(chemin, contenu) {
 }
 
 module.exports = {
-  CLES_METADONNEES, COULEURS_NUMERO, HEX_COULEURS, CLES_FRONTMATTER,
+  CLES_METADONNEES, CLES_BOOLEENNES, COULEURS_NUMERO, HEX_COULEURS, CLES_FRONTMATTER, estVraiYaml,
+  etatRevue,
   REVUES, normaliserRevue,
   TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
   decouperValeurYaml, decouperFlowYaml, analyserAusgabe,

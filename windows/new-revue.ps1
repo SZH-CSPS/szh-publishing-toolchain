@@ -32,16 +32,20 @@ if ($existait) {
 }
 $chemin = (Resolve-Path $Dossier).Path
 
-# Raccourci dans le dossier (voyage avec la revue sur OneDrive)
-$codium = Get-VSCodiumExe
-if (-not $codium) { throw 'VSCodium introuvable — lancer d''abord bootstrap.ps1.' }
-$shell = New-Object -ComObject WScript.Shell
-$lnk = $shell.CreateShortcut((Join-Path $chemin 'Ouvrir la revue.lnk'))
-$lnk.TargetPath = $codium
-$lnk.Arguments = ('"{0}"' -f $chemin)
-$lnk.IconLocation = $codium
-$lnk.Description = 'Ouvrir cette revue dans l''éditeur'
-$lnk.Save()
+# Version du logiciel qui crée ce numéro (D120) : c'est elle qui permettra, plus tard,
+# de le recompiler dans les mêmes conditions — et c'est elle que le cockpit compare à
+# la version installée pour avertir d'une divergence. Posée UNIQUEMENT à la création :
+# une revue existante garde son estampille d'origine.
+if (-not $existait) {
+  $version = Get-SzhVersionInstallee
+  if (Set-SzhAusgabeVersion $chemin $version) {
+    Write-SzhInfo ('Numéro estampillé « version-toolkit: {0} ».' -f $version)
+  }
+}
+
+# Raccourci dans le dossier (voyage avec la revue sur OneDrive, D14)
+if (-not (Get-VSCodiumExe)) { throw 'VSCodium introuvable — lancer d''abord bootstrap.ps1.' }
+Set-SzhRaccourciRevue $chemin | Out-Null
 
 # Enregistrer la racine (parent) pour le lanceur « Revues SZH »
 $parent = Split-Path $chemin -Parent

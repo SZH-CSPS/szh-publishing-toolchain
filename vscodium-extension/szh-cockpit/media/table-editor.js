@@ -263,7 +263,7 @@ function construireBarre(){barre.textContent='';
   ga2.appendChild(bouton(TXT.apercuCacher,function(){api.postMessage({type:'apercu-fermer'});},'',TXT['tip.apercuCacher']));
   barre.appendChild(ga2);
   var ret=bouton(TXT.retour,retourArticle,'',TXT['tip.retour']);barre.appendChild(ret);
-  var enr=bouton(TXT.enregistrer,enregistrerTable,'principal',TXT['tip.enregistrer']);barre.appendChild(enr);
+  var enr=bouton(TXT.enregistrer,function(){autoEnr.annuler();enregistrerTable(false);},'principal',TXT['tip.enregistrer']);barre.appendChild(enr);
   var e=document.createElement('span');e.id='etat';e.setAttribute('role','status');barre.appendChild(e);
   var ind=document.createElement('span');ind.id='indic';ind.setAttribute('aria-live','polite');barre.appendChild(ind);
   construireChamps();construirePanneau();}
@@ -427,7 +427,11 @@ function retablirAction(){commitTexte();if(!retablir.length){return;}annuler.pus
 function estModifie(){if(!modele||!modeleEnregistre)return false;recolter();return JSON.stringify(modele)!==JSON.stringify(modeleEnregistre);}
 function majModifie(){var m=estModifie();var ind=document.getElementById('indic');if(ind){ind.textContent=m?' ●':'';ind.title=m?(TXT.nonEnregistre||''):'';}
   if(m!==dernierModifie){dernierModifie=m;api.postMessage({type:'modifie',modifie:m});}}
-function enregistrerTable(){recolter();enrEnCours=clone(modele);api.postMessage({type:'enregistrer',modele:modele});}
+function enregistrerTable(auto){recolter();enrEnCours=clone(modele);
+  api.postMessage({type:'enregistrer',auto:!!auto,modele:modele});}
+// D121 : enregistrement automatique. Sûr ici — l'écriture ne touche que
+// articles/<slug>/tables/<n>.html, elle ne déclenche aucune recompilation.
+var autoEnr=SZH.autoEnregistrement({estModifie:estModifie,enregistrer:enregistrerTable});
 function retourArticle(){recolter();api.postMessage({type:'retourArticle',modifie:estModifie(),modele:modele});}
 
 // ---- Collage d'un tableau (Ctrl+V) : HTML -> table (fusions préservées), sinon TSV ----
@@ -445,7 +449,7 @@ document.addEventListener('keydown',function(ev){if(!(ev.ctrlKey||ev.metaKey))re
   else if(k==='i'){ev.preventDefault();try{document.execCommand('italic');}catch(e){}majModifie();}
   else if(k==='z'&&!ev.shiftKey){ev.preventDefault();annulerAction();}
   else if(k==='y'||(k==='z'&&ev.shiftKey)){ev.preventDefault();retablirAction();}
-  else if(k==='s'){ev.preventDefault();enregistrerTable();}});
+  else if(k==='s'){ev.preventDefault();autoEnr.annuler();enregistrerTable(false);}});
 
 window.addEventListener('message',function(ev){var msg=ev.data||{};
   if(msg.type==='charger'){
@@ -457,7 +461,8 @@ window.addEventListener('message',function(ev){var msg=ev.data||{};
     // rétablissement. On NE réinitialise PLUS l'historique ici (c'était la cause de
     // « Annuler ne fait rien ») : les piles vivent uniquement dans op / commitTexte.
     selection=clampSel(selection);ancre=null;rendre();majPanneau();majChamps();etat('');majModifie();}
-  else if(msg.type==='enregistre'){modeleEnregistre=enrEnCours||clone(modele);etat(TXT.enregistre||'');majModifie();}
-  else if(msg.type==='erreur'){etat('⚠ '+msg.message);}});
+  else if(msg.type==='enregistre'){autoEnr.confirme();modeleEnregistre=enrEnCours||clone(modele);
+    etat(msg.auto?'':(TXT.enregistre||''));majModifie();}
+  else if(msg.type==='erreur'){autoEnr.confirme();etat('⚠ '+msg.message);}});
 api.postMessage({type:'pret'});
 })();

@@ -8,6 +8,23 @@
 #             « zeitschrift » = Schweizerische Zeitschrift für Heilpädagogik (ISSN 2813-4907, de)
 #   couleur : couleur annuelle (hex de la palette figée), repeint tous les accents.
 #   profil  : produit du dossier (D20) — absent ou « article » = PDF + HTML (défaut) ; « presentation » = un .pptx par article ; « book » = différé ; clé présente et vide = aucun document.
+#   entete-condensee : allure de la couverture (D114) — absente ou « false » = en-tête à
+#             hauteur fixe, bloc auteurs ancré en bas (défaut) ; « true » = en-tête à la
+#             hauteur de son contenu, espaces minimum (pas de blanc sous un titre court).
+#
+# Cycle de vie du numéro (D116-D117 et D120) — piloté par le panneau d'export du cockpit
+# (Ctrl+Alt+D), jamais à modifier à la main en temps normal :
+#   locked   : « true » = numéro GELÉ. L'éditeur passe en lecture seule et tous les
+#              gestes d'écriture de la barre « Revue SZH » sont refusés, jusqu'à
+#              « Déverrouiller la revue ». Se combine librement avec archived.
+#   archived : « true » = le dossier vit dans l'arborescence d'ARCHIVES. Plus aucune
+#              compilation automatique : l'export se demande article par article
+#              (« Exporter cet article ») ou en bloc (« Recompiler toute la revue »).
+#   version-toolkit : version du logiciel qui a créé ce numéro, posée à la création
+#              par new-revue.ps1. Sert à recompiler dans les mêmes conditions des
+#              années plus tard ; le cockpit avertit quand la version installée
+#              diverge. Absente = numéro antérieur à cette fonction (aucun
+#              avertissement, le champ est complété au premier archivage).
 title: "Dossier — numéro d'exemple"
 revue: revue
 volume: "44"
@@ -15,3 +32,5 @@ numero: "2"
 date: "2026"
 lang: fr
 couleur: "#5F9FBC"
+locked: false
+archived: false

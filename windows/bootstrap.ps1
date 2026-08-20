@@ -44,8 +44,20 @@ if (-not (Test-Path $SzhConfigFile)) {
   $cfg = [ordered]@{
     repo        = $Repo
     revuesRoots = @('%OneDrive%\Revues')    # étendu à l'exécution (chaque utilisateur a son OneDrive)
+    # D119 — mode développeur : VRAI tant que la chaîne n'est pas passée en production.
+    # Les revues sont alors cherchées, créées et archivées sous basesRevues.dev.
+    # Bascule depuis « Réglages SZH » du cockpit, ou en éditant cette clé.
+    devMode     = $true
+    # D116 — emplacements « en cours » / archives. Seule la BASE change entre test et
+    # production : les sous-dossiers (52_Revue\RV02_Redaction…) sont figés dans
+    # szh-common.ps1. À corriger ici si la bibliothèque SharePoint est synchronisée
+    # sous un autre nom sur les postes.
+    basesRevues = [ordered]@{
+      prod = '%USERPROFILE%\SZH CSPS\Daten_Allgemein - General\2_Produkte'
+      dev  = '%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING'
+    }
   }
-  $cfg | ConvertTo-Json | Set-Content -Path $SzhConfigFile -Encoding UTF8
+  $cfg | ConvertTo-Json -Depth 5 | Set-Content -Path $SzhConfigFile -Encoding UTF8
 }
 
 # ---- 2. Moteur WSL --------------------------------------------------------------

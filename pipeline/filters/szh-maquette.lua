@@ -117,6 +117,22 @@ local LICENCES = {
   it = 'Questo articolo è pubblicato sotto licenza Creative Commons CC-BY 4.0',
 }
 
+-- D114 : « condenser l'en-tête » — réglage du numéro (ausgabe.yaml). Normalisé ICI,
+-- et pas laissé à `$if(entete-condensee)$` : pour pandoc, TOUTE chaîne non vide est
+-- vraie, donc un `entete-condensee: "false"` (le sérialiseur du cockpit cite ses
+-- valeurs) ou un « non » écrit à la main activeraient l'option. On ne reconnaît donc
+-- qu'une liste fermée de valeurs vraies (les trois langues de la revue + le booléen
+-- YAML), tout le reste vaut « pas condensé ».
+local VRAIS = { ['true'] = true, ['1'] = true, ['oui'] = true, ['ja'] = true,
+                ['yes'] = true, ['si'] = true }
+local function est_vrai(v)
+  if v == nil then return false end
+  -- `entete-condensee: true` (booléen YAML) arrive en booléen Lua NU : le tester en
+  -- premier, l'indexer (v.t) lèverait une erreur.
+  if type(v) == 'boolean' then return v end
+  return VRAIS[S(v):lower()] == true
+end
+
 -- Choisit map[lang] sinon la première langue non vide (ordre : lang, de, fr, it).
 local function choisir(map, lang)
   if map == nil then return '' end
@@ -199,6 +215,10 @@ function Meta(meta)
   meta['sous-titre-affiche'] = pandoc.MetaString(choisir(meta.subtitle, lang))
   meta['resumes']          = pandoc.MetaList(resumes)
   meta['licence-texte']    = pandoc.MetaString(LICENCES[lang] or LICENCES.fr)
+  -- D114 : la clé est REMISE À NIL quand elle est fausse — le template teste
+  -- `$if(entete-condensee)$`, et une valeur présente mais fausse doit être
+  -- indistinguable d'une clé absente.
+  meta['entete-condensee'] = est_vrai(meta['entete-condensee']) or nil
 
   -- Métadonnées de document tirées du meta.yaml de l'article : <title> + <meta>
   -- HTML ET /Title, /Author, /Lang du PDF (requis pour PDF/UA). `pagetitle` évite

@@ -22,7 +22,12 @@ const { tableauDepuisHtmlBureautique, tableauDepuisTsv, serialiserTable,
 let revue = {
   racine: () => null,
   slugDepuisChemin: () => null,
-  rafraichirTout: () => {}
+  rafraichirTout: () => {},
+  // D116 : numéro gelé -> toutes les actions de mise en forme sont refusées (l'éditeur
+  // est en lecture seule, un WorkspaceEdit y échouerait sans rien dire de pourquoi).
+  verrouillee: () => false,
+  // Refus visible : injecté par extension.js (message + bouton « Déverrouiller »).
+  refuser: () => { vscode.window.setStatusBarMessage(T('verrou.refuse'), 4000); }
 };
 
 // ---- Mise en forme au clic droit + raccourcis (M6, D55) ----------------------------
@@ -484,7 +489,13 @@ async function ouvrirMiseEnForme() {
 // comportent comme hors revue.
 function enregistrerCommandesMiseEnForme(context, hote) {
   if (hote) { revue = Object.assign({}, revue, hote); }
-  const c = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
+  // Garde de verrou POSÉE À L'ENREGISTREMENT (D116) : chaque commande de mise en forme
+  // écrit dans le texte de l'article, donc aucune n'a de sens sur un numéro gelé. Le
+  // refus est bavard (message + bouton de déverrouillage), jamais un silence.
+  const c = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, () => {
+    if (revue.verrouillee()) { return revue.refuser(); }
+    return fn();
+  }));
   c('szh.fmt.gras', () => appliquerSelection((t) => basculerEnrobage(t, '**'), { milieu: 2 }));
   c('szh.fmt.italique', () => appliquerSelection((t) => basculerEnrobage(t, '*'), { milieu: 1 }));
   c('szh.fmt.souligne', () => appliquerSelection((t) => basculerSouligne(t), { milieu: 1 }));

@@ -85,6 +85,35 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.nom'      = 'Nom du dossier de la nouvelle revue (p. ex. 2026-02) :'
     'lanceur.nouvelle.invalide' = 'Le nom contient des caractères interdits ( < > : " / \ | ? * ).'
     'lanceur.nouvelle.erreur'   = "La création de la revue a échoué :`n{0}"
+    # Cycle de vie du numéro (D116-D119) : deux listes dans le lanceur, version du
+    # logiciel affichée et changeable, mode test signalé.
+    'lanceur.encours'           = 'En cours :'
+    'lanceur.archives'          = 'Archivées :'
+    'lanceur.vide.archives'     = 'Aucune revue archivée.'
+    'lanceur.version'           = 'Logiciel v. {0}'
+    'lanceur.version.inconnue'  = 'Logiciel : version inconnue'
+    'lanceur.test'              = 'Mode test : {0}'
+    'lanceur.versions.bouton'   = 'Version du logiciel…'
+    'lanceur.versions.titre'    = 'Version du logiciel'
+    'lanceur.versions.intro'    = 'Version installée : {0}. Choisissez la version à installer :'
+    'lanceur.versions.installee' = '{0}    (installée)'
+    'lanceur.versions.locale'   = '{0}    (déjà téléchargée sur ce poste)'
+    'lanceur.versions.installer' = 'Installer'
+    'lanceur.versions.horsligne' = "Impossible de lister les versions publiées (pas de connexion ?).`nSeules les versions déjà téléchargées sur ce poste sont proposées."
+    'lanceur.versions.vide'     = 'Aucune version disponible sur ce poste.'
+    'lanceur.versions.avert'    = "Changer de version remplace la maquette, l'environnement de fabrication du PDF et les extensions de l'éditeur.`n`nFermez les fenêtres de rédaction avant de continuer, puis redémarrez l'éditeur à la fin.`n`nInstaller la version {0} ?"
+    # Archivage / désarchivage d'une revue (archive-revue.ps1, D116)
+    'arch.titre'                = 'Archivage de la revue'
+    'arch.titre.des'            = 'Désarchivage de la revue'
+    'arch.attente'              = 'Attente de la fermeture de l''éditeur…'
+    'arch.deplacement'          = 'Déplacement vers {0}…'
+    'arch.ok'                   = 'Revue déplacée : {0}'
+    'arch.rouvre'              = 'Réouverture de la revue…'
+    'arch.err.introuvable'      = 'Dossier de revue introuvable : {0}'
+    'arch.err.existe'           = 'Un dossier « {0} » existe déjà à destination — rien n''a été déplacé.'
+    'arch.err.verrou'           = "Le dossier est encore utilisé par une autre application après {0} s — rien n'a été déplacé. Fermez l'éditeur et l'aperçu PDF, puis réessayez."
+    'arch.err.emplacement'      = 'Aucun emplacement connu pour la revue « {0} » — vérifiez basesRevues dans config.json.'
+    'arch.err.suite'            = 'Rien n''a été déplacé : la revue est restée où elle était. En cas de doute : {0}'
     # Double-clic sur un .md (open-md.ps1, T6.2) : messages des cas ANORMAUX seulement.
     'openmd.vide'         = "Aucun fichier à ouvrir.`n`nCe raccourci s'utilise en double-cliquant un fichier .md."
     'openmd.introuvable'  = "Ce fichier est introuvable.`n`nIl a peut-être été déplacé ou renommé, ou OneDrive ne l'a pas encore synchronisé."
@@ -148,6 +177,34 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.nom'      = 'Ordnername der neuen Zeitschrift (z. B. 2026-02):'
     'lanceur.nouvelle.invalide' = 'Der Name enthält unzulässige Zeichen ( < > : " / \ | ? * ).'
     'lanceur.nouvelle.erreur'   = "Die Zeitschrift konnte nicht erstellt werden:`n{0}"
+    # Lebenszyklus der Ausgabe (D116-D119)
+    'lanceur.encours'           = 'In Arbeit:'
+    'lanceur.archives'          = 'Archiviert:'
+    'lanceur.vide.archives'     = 'Keine archivierte Zeitschrift.'
+    'lanceur.version'           = 'Software v. {0}'
+    'lanceur.version.inconnue'  = 'Software: Version unbekannt'
+    'lanceur.test'              = 'Testmodus: {0}'
+    'lanceur.versions.bouton'   = 'Software-Version…'
+    'lanceur.versions.titre'    = 'Software-Version'
+    'lanceur.versions.intro'    = 'Installierte Version: {0}. Wählen Sie die zu installierende Version:'
+    'lanceur.versions.installee' = '{0}    (installiert)'
+    'lanceur.versions.locale'   = '{0}    (auf diesem Computer bereits heruntergeladen)'
+    'lanceur.versions.installer' = 'Installieren'
+    'lanceur.versions.horsligne' = "Die veröffentlichten Versionen konnten nicht abgerufen werden (keine Verbindung?).`nEs werden nur die bereits heruntergeladenen Versionen angeboten."
+    'lanceur.versions.vide'     = 'Keine Version auf diesem Computer verfügbar.'
+    'lanceur.versions.avert'    = "Ein Versionswechsel ersetzt das Layout, die PDF-Erzeugungsumgebung und die Editor-Erweiterungen.`n`nSchliessen Sie zuerst die Redaktionsfenster und starten Sie den Editor am Ende neu.`n`nVersion {0} installieren?"
+    # Archivieren / Dearchivieren (archive-revue.ps1, D116)
+    'arch.titre'                = 'Archivierung der Zeitschrift'
+    'arch.titre.des'            = 'Dearchivierung der Zeitschrift'
+    'arch.attente'              = 'Warten auf das Schliessen des Editors…'
+    'arch.deplacement'          = 'Verschieben nach {0}…'
+    'arch.ok'                   = 'Zeitschrift verschoben: {0}'
+    'arch.rouvre'              = 'Zeitschrift wird wieder geöffnet…'
+    'arch.err.introuvable'      = 'Ordner der Zeitschrift nicht gefunden: {0}'
+    'arch.err.existe'           = 'Am Ziel existiert bereits ein Ordner « {0} » — es wurde nichts verschoben.'
+    'arch.err.verrou'           = "Der Ordner wird nach {0} s noch von einer anderen Anwendung verwendet — es wurde nichts verschoben. Schliessen Sie den Editor und die PDF-Vorschau und versuchen Sie es erneut."
+    'arch.err.emplacement'      = 'Kein bekannter Ort für die Zeitschrift « {0} » — prüfen Sie basesRevues in config.json.'
+    'arch.err.suite'            = 'Es wurde nichts verschoben: die Zeitschrift ist an ihrem Platz geblieben. Bei Zweifeln: {0}'
     # Doppelklick auf eine .md-Datei (open-md.ps1, T6.2) : nur die ANORMALEN Fälle.
     'openmd.vide'         = "Keine Datei zum Öffnen.`n`nDieser Befehl wird per Doppelklick auf eine .md-Datei verwendet."
     'openmd.introuvable'  = "Diese Datei wurde nicht gefunden.`n`nSie wurde vielleicht verschoben oder umbenannt, oder OneDrive hat sie noch nicht synchronisiert."
@@ -211,6 +268,34 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.nom'      = 'Folder name for the new journal (e.g. 2026-02):'
     'lanceur.nouvelle.invalide' = 'The name contains forbidden characters ( < > : " / \ | ? * ).'
     'lanceur.nouvelle.erreur'   = "Creating the journal failed:`n{0}"
+    # Issue life cycle (D116-D119)
+    'lanceur.encours'           = 'In progress:'
+    'lanceur.archives'          = 'Archived:'
+    'lanceur.vide.archives'     = 'No archived journal.'
+    'lanceur.version'           = 'Software v. {0}'
+    'lanceur.version.inconnue'  = 'Software: unknown version'
+    'lanceur.test'              = 'Test mode: {0}'
+    'lanceur.versions.bouton'   = 'Software version…'
+    'lanceur.versions.titre'    = 'Software version'
+    'lanceur.versions.intro'    = 'Installed version: {0}. Choose the version to install:'
+    'lanceur.versions.installee' = '{0}    (installed)'
+    'lanceur.versions.locale'   = '{0}    (already downloaded on this computer)'
+    'lanceur.versions.installer' = 'Install'
+    'lanceur.versions.horsligne' = "Could not list the published versions (no connection?).`nOnly versions already downloaded on this computer are offered."
+    'lanceur.versions.vide'     = 'No version available on this computer.'
+    'lanceur.versions.avert'    = "Switching version replaces the layout, the PDF build environment and the editor extensions.`n`nClose the writing windows first, then restart the editor when it is done.`n`nInstall version {0}?"
+    # Archiving / unarchiving a journal (archive-revue.ps1, D116)
+    'arch.titre'                = 'Archiving the journal'
+    'arch.titre.des'            = 'Unarchiving the journal'
+    'arch.attente'              = 'Waiting for the editor to close…'
+    'arch.deplacement'          = 'Moving to {0}…'
+    'arch.ok'                   = 'Journal moved: {0}'
+    'arch.rouvre'              = 'Reopening the journal…'
+    'arch.err.introuvable'      = 'Journal folder not found: {0}'
+    'arch.err.existe'           = 'A folder named “{0}” already exists at the destination — nothing was moved.'
+    'arch.err.verrou'           = "The folder is still in use by another application after {0} s — nothing was moved. Close the editor and the PDF preview, then try again."
+    'arch.err.emplacement'      = 'No known location for journal “{0}” — check basesRevues in config.json.'
+    'arch.err.suite'            = 'Nothing was moved: the journal stayed where it was. If in doubt: {0}'
     # Double-click on a .md file (open-md.ps1, T6.2): abnormal cases only.
     'openmd.vide'         = "No file to open.`n`nThis shortcut is meant to be used by double-clicking a .md file."
     'openmd.introuvable'  = "This file cannot be found.`n`nIt may have been moved or renamed, or OneDrive has not synced it yet."
@@ -251,6 +336,204 @@ function Get-SzhState {
 
 function Save-SzhState($Etat) {
   $Etat | ConvertTo-Json -Depth 5 | Set-Content -Path $SzhStateFile -Encoding UTF8
+}
+
+# ---------- Version du logiciel installée (D120) ----------
+# Source primaire : le fichier VERSION du toolkit (écrit par la CI dans toolkit-X.zip).
+# Repli : state.json (écrit par update.ps1). Chaîne vide si rien n'est lisible.
+function Get-SzhVersionInstallee {
+  $fichier = Join-Path $SzhToolkit 'VERSION'
+  if (Test-Path $fichier) {
+    $v = (Get-Content $fichier -Raw).Trim()
+    if ($v) { return $v }
+  }
+  $etat = Get-SzhState
+  if ($etat -and $etat.version) { return [string]$etat.version }
+  return ''
+}
+
+# Versions publiées (Releases GitHub), les plus récentes d'abord. Tableau VIDE si le
+# réseau est absent — l'appelant retombe alors sur les versions déjà téléchargées.
+function Get-SzhVersionsPubliees {
+  try {
+    $url = ('https://api.github.com/repos/{0}/releases?per_page=30' -f (Get-SzhRepo))
+    $entetes = @{ 'User-Agent' = 'SZH-Publishing'; 'Accept' = 'application/vnd.github+json' }
+    $releases = Invoke-RestMethod -Uri $url -Headers $entetes -UseBasicParsing -TimeoutSec 20
+    $versions = @()
+    foreach ($r in $releases) {
+      if ($r.draft) { continue }
+      $tag = [string]$r.tag_name
+      if (-not $tag) { continue }
+      $versions += ($tag -replace '^v', '')
+    }
+    return @($versions)
+  } catch {
+    return @()
+  }
+}
+
+# Versions déjà téléchargées sur ce poste (archives conservées en staging, D10) :
+# elles s'installent sans réseau. « toolkit-2026.08.0.zip » -> « 2026.08.0 ».
+function Get-SzhVersionsLocales {
+  $versions = @()
+  Get-ChildItem (Join-Path $SzhStaging 'toolkit-*.zip') -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending | ForEach-Object {
+      if ($_.Name -match '^toolkit-(.+)\.zip$') { $versions += $Matches[1] }
+    }
+  return @($versions)
+}
+
+# ---------- Mode développeur & emplacements des revues (D119) ----------
+#
+# UN SEUL endroit décide où vivent les revues — ici. Le cockpit (extension VSCodium)
+# ne calcule aucun chemin SharePoint : il délègue l'archivage à archive-revue.ps1, qui
+# appelle Get-SzhEmplacements. Les sous-dossiers sont IDENTIQUES en test et en
+# production : seule la base change, donc un essai en mode test exerce exactement le
+# même code que la production.
+$script:SzhSousDossiers = @{
+  revue       = @{ encours = '52_Revue\RV02_Redaction';        archive = '52_Revue\RV99_Archives' }
+  zeitschrift = @{ encours = '53_Zeitschrift\ZS02_Redaktion';  archive = '53_Zeitschrift\ZS99_Archives' }
+}
+# Bases par défaut, surchargeables par config.json (clé « basesRevues ») — c'est la
+# seule chaîne à corriger si la bibliothèque SharePoint est synchronisée ailleurs.
+$script:SzhBasesDefaut = @{
+  prod = '%USERPROFILE%\SZH CSPS\Daten_Allgemein - General\2_Produkte'
+  dev  = '%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING'
+}
+
+# Mode développeur : VRAI par défaut (clé absente de config.json) tant que la chaîne
+# n'est pas passée en production — mieux vaut un essai qui déplace un dossier de test.
+function Get-SzhDevMode {
+  $cfg = Get-SzhConfig
+  if (-not $cfg) { return $true }
+  if ($null -eq $cfg.PSObject.Properties['devMode']) { return $true }
+  return ([bool]$cfg.devMode)
+}
+
+function Set-SzhDevMode([bool]$Actif) {
+  $cfg = Get-SzhConfig
+  if (-not $cfg) { $cfg = [pscustomobject]@{ repo = (Get-SzhRepo); revuesRoots = @() } }
+  if ($null -eq $cfg.PSObject.Properties['devMode']) {
+    $cfg | Add-Member -MemberType NoteProperty -Name 'devMode' -Value $Actif
+  } else {
+    $cfg.devMode = $Actif
+  }
+  $cfg | ConvertTo-Json -Depth 5 | Set-Content -Path $SzhConfigFile -Encoding UTF8
+}
+
+function Get-SzhBaseRevues {
+  $cfg = Get-SzhConfig
+  $cle = 'prod'
+  if (Get-SzhDevMode) { $cle = 'dev' }
+  $base = $SzhBasesDefaut[$cle]
+  if ($cfg -and $cfg.basesRevues -and $cfg.basesRevues.$cle) { $base = [string]$cfg.basesRevues.$cle }
+  return [Environment]::ExpandEnvironmentVariables($base)
+}
+
+# Les quatre emplacements du poste : « en cours » et « archives » pour chacune des deux
+# revues. Renvoie aussi les listes à plat, que le lanceur balaie pour ses deux listes.
+function Get-SzhEmplacements {
+  $base = Get-SzhBaseRevues
+  $revue = @{
+    encours = (Join-Path $base $SzhSousDossiers.revue.encours)
+    archive = (Join-Path $base $SzhSousDossiers.revue.archive)
+  }
+  $zeitschrift = @{
+    encours = (Join-Path $base $SzhSousDossiers.zeitschrift.encours)
+    archive = (Join-Path $base $SzhSousDossiers.zeitschrift.archive)
+  }
+  return [pscustomobject]@{
+    devMode     = (Get-SzhDevMode)
+    base        = $base
+    revue       = $revue
+    zeitschrift = $zeitschrift
+    encours     = @($revue.encours, $zeitschrift.encours)
+    archives    = @($revue.archive, $zeitschrift.archive)
+  }
+}
+
+# Mode test : on CRÉE les quatre dossiers s'ils manquent (D119). Sans ça, le mode test
+# ne serait utilisable qu'après avoir créé quatre dossiers à la main, et « Nouvelle
+# revue… » ne saurait pas où se placer. En production, jamais : cette arborescence est
+# celle de SharePoint, elle existe déjà et n'a pas à être inventée par un poste.
+function Initialize-SzhEmplacementsTest {
+  $emp = Get-SzhEmplacements
+  if (-not $emp.devMode) { return $false }
+  foreach ($d in ($emp.encours + $emp.archives)) {
+    if (-not (Test-Path $d)) {
+      try { New-Item -ItemType Directory -Force -Path $d | Out-Null } catch { }
+    }
+  }
+  return $true
+}
+
+# Emplacement visé pour une revue : $Jeton = 'revue' | 'zeitschrift',
+# $Etat = 'encours' | 'archive'. Chaîne vide si le jeton est inconnu (l'appelant le dit).
+function Get-SzhEmplacementRevue([string]$Jeton, [string]$Etat) {
+  $emp = Get-SzhEmplacements
+  if ($Jeton -eq 'zeitschrift') { return [string]$emp.zeitschrift.$Etat }
+  if ($Jeton -eq 'revue') { return [string]$emp.revue.$Etat }
+  return ''
+}
+
+# ---------- Lecture d'ausgabe.yaml (D116) ----------
+#
+# YAML PLAT, comme le lit déjà le Makefile (sed) : une clé par ligne. Pas de module
+# YAML (aucune dépendance ajoutée sur le poste). Guillemets et commentaire de fin de
+# ligne retirés ; première occurrence gagnante, comme analyserAusgabe côté cockpit.
+function Get-SzhAusgabe([string]$Fichier) {
+  $valeurs = @{}
+  if (-not (Test-Path $Fichier)) { return $valeurs }
+  foreach ($ligne in (Get-Content $Fichier -Encoding UTF8)) {
+    if ($ligne -notmatch '^([A-Za-z0-9_-]+):\s*(.*)$') { continue }
+    $cle = $Matches[1]
+    if ($valeurs.ContainsKey($cle)) { continue }
+    $brut = $Matches[2].Trim()
+    if ($brut -match '^"(.*)"\s*(#.*)?$') { $brut = $Matches[1] }
+    elseif ($brut -match "^'(.*)'\s*(#.*)?$") { $brut = $Matches[1] }
+    elseif ($brut -match '^([^#]*?)\s*#.*$') { $brut = $Matches[1] }
+    $valeurs[$cle] = $brut.Trim()
+  }
+  return $valeurs
+}
+
+# Valeurs « vraies » tolérées — miroir de VRAIS_YAML (lib/yaml.js) et de la table du
+# filtre szh-maquette.lua : un ausgabe.yaml peut avoir été écrit à la main.
+function Test-SzhVraiYaml($Valeur) {
+  if ($null -eq $Valeur) { return $false }
+  return (@('true', '1', 'oui', 'ja', 'yes', 'si') -contains ([string]$Valeur).Trim().ToLower())
+}
+
+# Jeton canonique de revue : accepte le jeton ET l'ancien nom complet (rétrocompat),
+# « zeitschrift » testé avant « revue » — même ordre que normaliserRevue / le Lua.
+function Get-SzhJetonRevue($Valeur) {
+  $v = ([string]$Valeur).ToLower()
+  if ($v -like '*zeitschrift*') { return 'zeitschrift' }
+  if ($v -like '*revue*') { return 'revue' }
+  return ''
+}
+
+# État complet d'un dossier de revue, pour le lanceur et pour l'archivage.
+function Get-SzhRevueEtat([string]$Dossier) {
+  $valeurs = Get-SzhAusgabe (Join-Path $Dossier 'ausgabe.yaml')
+  $titre = ''
+  if ($valeurs.ContainsKey('title')) { $titre = $valeurs['title'] }
+  $version = ''
+  if ($valeurs.ContainsKey('version-toolkit')) { $version = $valeurs['version-toolkit'] }
+  $jeton = ''
+  if ($valeurs.ContainsKey('revue')) { $jeton = Get-SzhJetonRevue $valeurs['revue'] }
+  $verrou = $false
+  if ($valeurs.ContainsKey('locked')) { $verrou = Test-SzhVraiYaml $valeurs['locked'] }
+  $archive = $false
+  if ($valeurs.ContainsKey('archived')) { $archive = Test-SzhVraiYaml $valeurs['archived'] }
+  return [pscustomobject]@{
+    dossier     = $Dossier
+    titre       = $titre
+    jeton       = $jeton
+    version     = $version
+    verrouillee = $verrou
+    archivee    = $archive
+  }
 }
 
 # ---------- Manifest (Release GitHub) ----------
@@ -330,6 +613,50 @@ function Test-SzhSha256 {
   if (-not (Test-Path $Fichier)) { return $false }
   $h = (Get-FileHash -Path $Fichier -Algorithm SHA256).Hash.ToLower()
   return ($h -eq $Attendu.ToLower())
+}
+
+# ---------- Estampille de version dans ausgabe.yaml (D120) ----------
+#
+# `version-toolkit` dit avec QUELLE version du logiciel le numéro a été fabriqué : c'est
+# ce qui permet, des années plus tard, de le recompiler dans les mêmes conditions. Posée
+# à la CRÉATION de la revue, elle n'est jamais réécrite ensuite (le cockpit ne la complète
+# que si elle manque, au moment d'archiver). Écriture minimale : ligne existante
+# remplacée, sinon ajoutée en fin de fichier — tout le reste est préservé, comme le fait
+# serialiserAusgabe côté cockpit. Valeur citée, même forme que les autres scalaires.
+function Set-SzhAusgabeVersion([string]$Dossier, [string]$Version) {
+  if (-not $Version) { return $false }
+  $fichier = Join-Path $Dossier 'ausgabe.yaml'
+  if (-not (Test-Path $fichier)) { return $false }
+  $lignes = @(Get-Content $fichier -Encoding UTF8)
+  $ligne = ('version-toolkit: "{0}"' -f $Version)
+  $trouvee = $false
+  for ($i = 0; $i -lt $lignes.Count; $i++) {
+    if ($lignes[$i] -match '^version-toolkit:') { $lignes[$i] = $ligne; $trouvee = $true; break }
+  }
+  if (-not $trouvee) { $lignes += $ligne }
+  Set-Content -Path $fichier -Value $lignes -Encoding UTF8
+  return $true
+}
+
+# ---------- Raccourci « Ouvrir la revue » (D14) ----------
+#
+# Le raccourci vit DANS le dossier de revue et porte son chemin ABSOLU en argument :
+# il doit donc être réécrit à chaque déplacement du dossier (archivage, D116), sinon il
+# rouvre un chemin qui n'existe plus. Une seule implémentation, partagée par
+# new-revue.ps1 et archive-revue.ps1. Ne lève pas si VSCodium est introuvable : le
+# raccourci est un confort, pas la condition du déplacement.
+function Set-SzhRaccourciRevue([string]$Dossier) {
+  $codium = Get-VSCodiumExe
+  if (-not $codium) { return $false }
+  $chemin = (Resolve-Path $Dossier).Path
+  $shell = New-Object -ComObject WScript.Shell
+  $lnk = $shell.CreateShortcut((Join-Path $chemin 'Ouvrir la revue.lnk'))
+  $lnk.TargetPath = $codium
+  $lnk.Arguments = ('"{0}"' -f $chemin)
+  $lnk.IconLocation = $codium
+  $lnk.Description = 'Ouvrir cette revue dans l''éditeur'
+  $lnk.Save()
+  return $true
 }
 
 # ---------- Résolution d'exécutables ----------

@@ -43,8 +43,9 @@ szh-publishing-toolchain/
 │   ├── bootstrap.ps1         # ADMIN, 1× par poste (WSL, winget, ACL, tâches planifiées)
 │   ├── update-launcher.ps1   # check silencieux (tâche planifiée) — s'auto‑met à jour
 │   ├── update.ps1            # mise à jour visible et rassurante, sans admin
-│   ├── new-revue.ps1         # crée une revue + raccourci « Ouvrir la revue »
-│   ├── open-revue.ps1        # lanceur « Revues SZH » (menu Démarrer)
+│   ├── new-revue.ps1         # crée une revue + raccourci « Ouvrir la revue » + estampille de version
+│   ├── open-revue.ps1        # lanceur « Revues SZH » (menu Démarrer) — 2 listes, version du logiciel
+│   ├── archive-revue.ps1     # déplace une revue « en cours » <-> archives (D116) ; seul détenteur des chemins
 │   ├── szh-common.ps1        # socle commun (manifest, téléchargement, UI, e-mail support)
 │   ├── hidden.vbs            # lance une commande sans fenêtre
 │   └── vsix.lock             # extensions épinglées (id + version + sha256)
@@ -96,9 +97,41 @@ VSCodium/SumatraPDF reste manuel — voir V2 dans `PLANIFICATION.md`.)
 ```powershell
 powershell -ExecutionPolicy Bypass -File "C:\ProgramData\SZH\toolkit\windows\new-revue.ps1" -Dossier "$env:OneDrive\Revues\2026-01"
 ```
-→ copie le template, crée « Ouvrir la revue.lnk » dans le dossier, enregistre la revue pour le lanceur
-« Revues SZH » du menu Démarrer. Puis, dans OneDrive : clic droit sur le dossier →
-**« Toujours conserver sur cet appareil »**.
+→ copie le template, **estampille `version-toolkit`** (D120), crée « Ouvrir la revue.lnk » dans le
+dossier, enregistre la revue pour le lanceur « Revues SZH » du menu Démarrer. Puis, dans OneDrive :
+clic droit sur le dossier → **« Toujours conserver sur cet appareil »**.
+
+**Emplacements des revues (D116/D119)** — connus d'un seul endroit, `Get-SzhEmplacements`
+(`windows/szh-common.ps1`) ; l'extension n'en calcule aucun (elle délègue à `archive-revue.ps1`).
+Base de production `%USERPROFILE%\SZH CSPS\Daten_Allgemein - General\2_Produkte`, base de test
+`%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING` (les deux surchargeables par `config.json`,
+clé `basesRevues`) ; **mêmes sous-dossiers** dans les deux cas :
+
+| | Revue (fr) | Zeitschrift (de) |
+|---|---|---|
+| en cours | `52_Revue\RV02_Redaction` | `53_Zeitschrift\ZS02_Redaktion` |
+| archives | `52_Revue\RV99_Archives` | `53_Zeitschrift\ZS99_Archives` |
+
+Le **mode développeur** (`devMode` dans `config.json`, **vrai par défaut**, bascule dans
+« Réglages SZH ») choisit la base ; l'arborescence de test est créée à la demande par le lanceur,
+celle de production jamais (elle vient de SharePoint).
+
+### C bis. Cycle de vie d'un numéro (D116/D117)
+`locked` et `archived` dans `ausgabe.yaml` sont la **source de vérité** ; tout le reste en découle.
+Le panneau d'export (`Ctrl+Alt+D`) porte les trois gestes — *Archiver et verrouiller*,
+*Déverrouiller*, *Désarchiver*. Verrouillé : `files.readonlyInclude` au scope workspace
+(`<revue>/.vscode/settings.json`, supprimé au déverrouillage) + toutes les commandes d'écriture
+refusées. Archivé (ou verrouillé) : **plus aucune compilation automatique**, l'export se demande
+(*Exporter cet article*, *Recompiler toute la revue*). L'archivage supprime `out/` (gain chiffré
+dans la confirmation) puis `archive-revue.ps1` déplace le dossier, réécrit le `.lnk` et rouvre
+l'éditeur.
+
+### C ter. Réinstaller une version précédente (D120)
+`update.ps1 -Version X` fait déjà tout (l'archive N‑1 est en staging). Le geste est atteignable
+sans ligne de commande : lanceur **« Revues SZH » → « Version du logiciel… »**, ou le bouton
+**« Changer de version… »** de l'avertissement de divergence du cockpit — les deux ouvrent le même
+sélecteur (`open-revue.ps1 -Versions`). Volontairement **manuel et visible** : l'opération remplace
+le rootfs WSL et les extensions, et demande un redémarrage de l'éditeur.
 
 ### D. Mises à jour de la toolchain
 Bumper la version → pousser le tag → la CI republie la Release. Les postes détectent le nouveau
@@ -124,7 +157,9 @@ type traduit, titre/sous-titre/mots-clés FR/DE + IT à la demande, auteurs stru
 🌐 Traductions, D113, et ⚙ Réglages SZH : thème, zoom, police, **aperçu par défaut HTML/PDF**, langue),
 **✏ Édition** (`Ctrl+Alt+S` — bascule d'aperçu `Ctrl+Alt+P` + palette de mise en forme) et
 **⬆ Export** (`Ctrl+Alt+D` — rebuild forcé, D44 ; **export XML natif OJS**, D93 : un seul
-fichier avec galleys PDF+HTML+DOCX en base64, prêt pour l'import OJS). Le
+fichier avec galleys PDF+HTML+DOCX en base64, prêt pour l'import OJS ; **cycle de vie du
+numéro**, D116/D117 : *Archiver et verrouiller* / *Déverrouiller* / *Désarchiver*, et
+*Exporter cet article* quand le numéro est gelé). Le
 bouton ⟳ Rafraîchir a quitté la barre (la vue se rafraîchit seule ; la commande reste via
 Ctrl+Maj+P). Les `.docx` peuvent être **glissés-déposés directement sur la vue** (D94) ;
 après conversion, le panneau **« Vérification de l'import »** s'ouvre : métadonnées
@@ -170,7 +205,7 @@ pipeline. Voir [`userdoc.md`](userdoc.md).
 | `Ctrl+Alt+Entrée` | Insérer un saut de page (**PDF seulement**) | szh-cockpit (D86) |
 | `Ctrl+Alt+A` | Panneau de **commande** (import, conversion, métadonnées, réglages) | szh-cockpit |
 | `Ctrl+Alt+S` | Panneau d'**édition** (bascule d'aperçu + toute la mise en forme) | szh-cockpit |
-| `Ctrl+Alt+D` | Panneau d'**export** (rebuild complet ; export XML natif OJS) | szh-cockpit |
+| `Ctrl+Alt+D` | Panneau d'**export** (rebuild complet ; export XML natif OJS ; archiver / verrouiller / désarchiver ; exporter un article) | szh-cockpit |
 | `Ctrl+Alt+P` | Basculer l'aperçu HTML ⇄ PDF | szh-cockpit |
 | `Ctrl+Espace` | Suggestions (snippets `:::`) | VS Code (réactivé scope markdown) |
 | `Ctrl+Alt+I` | Importer les Word à la demande (`make import`) | keybindings + tâche user |
@@ -192,6 +227,17 @@ pipeline. Voir [`userdoc.md`](userdoc.md).
   l'ouverture d'une revue n'a pas besoin de `runOn:folderOpen`. Si un poste montrait un souci de tâche
   utilisateur, repli documenté : un mini `.vscode/tasks.json` dans le template, masqué via `files.exclude`.
 - **`deploy.ps1` supprimé** : remplacé par `bootstrap.ps1` / `update.ps1` / `new-revue.ps1`.
+- **Un dossier de revue ne peut pas se déplacer lui-même** : Windows refuse de renommer un dossier
+  qu'une application tient ouvert. L'archivage passe donc par `archive-revue.ps1`, lancé **détaché**
+  juste avant que la fenêtre ne se ferme (retentatives 120 s), qui réécrit ensuite
+  « Ouvrir la revue.lnk » — il porte le chemin **absolu**.
+- **`<revue>/.vscode/settings.json`** est la SEULE entorse à D8, et seulement sur un numéro
+  verrouillé : c'est ce qui fait voyager la lecture seule avec le dossier et survivre à
+  `update.ps1` (qui réécrit `settings.json` au niveau utilisateur). Masqué par `files.exclude`,
+  supprimé au déverrouillage.
+- **L'avertissement de version s'accroche à `onDidStartTask`**, pas aux fonctions du cockpit : le
+  chemin de compilation le plus fréquent (`Ctrl+S` → `triggerTaskOnSave`, extension tierce) ne
+  passe pas par nous.
 - **`inotify` ne traverse pas `/mnt/c`** : ne jamais bâtir une amélioration sur `pandoc --watch` lisant `/mnt/c`.
 - **Scripts `.ps1` compatibles Windows PowerShell 5.1** : proscrire `?.`, `??`, `?:`, `&&`/`||`.
 - **Polices** : `fonts-noto` est le plus gros poste du rootfs ; cible = embarquer Open Sans (D7, `PLANIFICATION.md` §6).

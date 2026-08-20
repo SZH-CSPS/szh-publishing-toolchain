@@ -73,19 +73,50 @@ async function ouvrirPanneauEdition() {
   await vscode.commands.executeCommand(choix.commande);
 }
 
-// Panneau « Export » : rebuild complet, et — si le lot XML est déployé — l'export
-// OJS. Test DYNAMIQUE (getCommands) : le panneau marche avant comme après l'arrivée
-// de szh.exporterXml, sans dépendre de l'ordre de livraison des lots.
+// Panneau « Export » : les documents produits, puis le CYCLE DE VIE du numéro
+// (D116/D117). Test DYNAMIQUE (getCommands) : le panneau marche avant comme après
+// l'arrivée de szh.exporterXml, sans dépendre de l'ordre de livraison des lots.
+//
+// Les entrées de cycle de vie sont celles que l'état du numéro rend possibles —
+// jamais un bouton qui ne ferait rien : « Archiver et verrouiller » disparaît dès
+// que le numéro est archivé, « Déverrouiller »/« Désarchiver » n'existent que
+// verrou posé / dossier archivé. « Exporter cet article » n'apparaît que quand la
+// compilation automatique est coupée (numéro gelé) : ailleurs, Ctrl+S suffit.
 async function ouvrirPanneauExport() {
-  const entrees = [['panneau.toutExporter', 'szh.toutExporter', '', '$(export)']];
+  const etat = hote.etat();
+  const entrees = [['--', 'panneau.g.export']];
+  if (etat.archivee || etat.verrouillee) {
+    entrees.push(['panneau.exporterArticle', 'szh.exporterArticle', '', '$(file-pdf)']);
+  }
+  entrees.push(['panneau.toutExporter', 'szh.toutExporter', '', '$(export)']);
   const commandes = await vscode.commands.getCommands(true);
   if (commandes.indexOf('szh.exporterXml') !== -1) {
     entrees.push(['panneau.exporterXml', 'szh.exporterXml', '', '$(file-code)']);
   }
+  entrees.push(['--', 'panneau.g.cycle']);
+  if (!etat.archivee) {
+    entrees.push(['panneau.archiver', 'szh.archiverVerrouiller', '', '$(archive)']);
+  } else if (!etat.verrouillee) {
+    // Numéro archivé puis déverrouillé pour une correction : le geste qui reste est
+    // de le REVERROUILLER (le dossier, lui, est déjà à sa place). Même commande —
+    // elle voit qu'il n'y a plus rien à déplacer.
+    entrees.push(['panneau.verrouiller', 'szh.archiverVerrouiller', '', '$(lock)']);
+  }
+  if (etat.verrouillee) {
+    entrees.push(['panneau.deverrouiller', 'szh.deverrouiller', '', '$(unlock)']);
+  }
+  if (etat.archivee) {
+    entrees.push(['panneau.desarchiver', 'szh.desarchiver', '', '$(folder-opened)']);
+  }
   await choisirEtExecuter(entrees, 'panneau.export.placeholder');
 }
 
-function enregistrerPanneaux(context) {
+// État du numéro injecté par extension.js (source de vérité : ausgabe.yaml). Repli
+// neutre : sans hôte, les panneaux se comportent comme avant le cycle de vie.
+let hote = { etat: () => ({ verrouillee: false, archivee: false }) };
+
+function enregistrerPanneaux(context, injecte) {
+  if (injecte) { hote = Object.assign({}, hote, injecte); }
   const c = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   c('szh.panneauCommande', () => ouvrirPanneauCommande());
   c('szh.panneauEdition', () => ouvrirPanneauEdition());

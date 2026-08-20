@@ -81,7 +81,7 @@ function construireBarre(){barre.textContent='';
   barre.appendChild(bouton(TXT.ouvrir,function(){api.postMessage({type:'ouvrirImage'});},'',TXT.ouvrirTip));
   barre.appendChild(bouton(TXT.retour,function(){
     api.postMessage({type:'retourArticle',modifie:estModifie(),valeurs:valeurs()});},'',TXT.retourTip));
-  ctl.enregistrer=bouton(TXT.enregistrer,enregistrer,'principal',TXT.enregistrerTip);
+  ctl.enregistrer=bouton(TXT.enregistrer,function(){enregistrer(false);},'principal',TXT.enregistrerTip);
   barre.appendChild(ctl.enregistrer);
   var e=document.createElement('span');e.id='etat';e.setAttribute('role','status');barre.appendChild(e);ctl.etat=e;
   var ind=document.createElement('span');ind.id='indic';ind.setAttribute('aria-live','polite');barre.appendChild(ind);ctl.indic=ind;}
@@ -119,11 +119,18 @@ function majAvis(){avis.className='avis';avis.textContent='';
   if(ctl.enregistrer)ctl.enregistrer.disabled=verrou;
   if(!verrou)majRole();}
 
-function enregistrer(){if(occurrences===0){etat(TXT.occZero||'');return;}
-  api.postMessage({type:'enregistrer',valeurs:valeurs()});}
+function enregistrer(auto){if(occurrences===0){if(!auto)etat(TXT.occZero||'');return;}
+  api.postMessage({type:'enregistrer',auto:!!auto,valeurs:valeurs()});}
+// D121 : ici PAS de minuteur de 3 s ni d'enregistrement au changement de champ.
+// L'écriture de cette fiche passe par WorkspaceEdit + doc.save() sur le .md, ce qui
+// déclenche la recompilation de l'article (triggertaskonsave) et empile une entrée
+// d'annulation : un build toutes les 3 secondes pendant qu'on tape un texte
+// alternatif serait intenable. Il reste le filet le plus important — la webview
+// perd le focus ou passe en arrière-plan -> on écrit.
+var autoEnr=SZH.autoEnregistrement({delai:0,estModifie:estModifie,enregistrer:enregistrer});
 
 document.addEventListener('keydown',function(ev){if(!(ev.ctrlKey||ev.metaKey))return;
-  if((ev.key||'').toLowerCase()==='s'){ev.preventDefault();enregistrer();}});
+  if((ev.key||'').toLowerCase()==='s'){ev.preventDefault();enregistrer(false);}});
 
 window.addEventListener('message',function(ev){var msg=ev.data||{};
   if(msg.type==='charger'){
@@ -135,7 +142,8 @@ window.addEventListener('message',function(ev){var msg=ev.data||{};
     majAvis();
     enregistrees=valeurs();dernierModifie=false;
     etat('');majModifie();return;}
-  if(msg.type==='enregistre'){enregistrees=valeurs();etat(TXT.enregistre||'');majModifie();return;}
-  if(msg.type==='erreur'){etat('⚠ '+msg.message);return;}});
+  if(msg.type==='enregistre'){autoEnr.confirme();enregistrees=valeurs();
+    etat(msg.auto?'':(TXT.enregistre||''));majModifie();return;}
+  if(msg.type==='erreur'){autoEnr.confirme();etat('⚠ '+msg.message);return;}});
 api.postMessage({type:'pret'});
 })();

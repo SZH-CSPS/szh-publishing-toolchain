@@ -97,23 +97,39 @@ const path = require('path');
 const crypto = require('crypto');
 
 const CLE_CONTEXTE = 'szh.estRevue';
+// D116 : l'état du numéro en clés de contexte — c'est ce que lisent les `when` de
+// package.json (bouton « Exporter cet article » de l'arbre).
+const CLE_VERROUILLEE = 'szh.verrouillee';
+const CLE_ARCHIVEE = 'szh.archivee';
 const ID_VUE = 'szhCockpitVue';
 // ⚠ Doivent correspondre EXACTEMENT aux labels de vscodium-user/tasks.json.
 const NOM_TACHE_IMPORT = 'Importer les articles Word';
 const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
 const NOM_TACHE_EXPORT = 'Tout exporter';
 const NOM_TACHE_DOCX = 'Galleys DOCX (OJS)';
+// « Exporter cet article » (D117) : la seule tâche que le cockpit construit LUI-MÊME
+// (les autres sont des tâches utilisateur retrouvées par leur label). Raison : sa
+// cible dépend du slug cliqué, or une tâche de tasks.json a des arguments figés.
+// ⚠ Distro et chemin du Makefile identiques à vscodium-user/tasks.json, lib/wsl.js
+// et lib/portraits.js — quatre endroits, une seule valeur.
+const DISTRO_WSL = 'SZH-Publishing';
+const MAKEFILE_WSL = '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile';
 
 // ---- i18n du cockpit (M4, D52) -> lib/i18n.js ------------------------------------
 const { TEXTES_COCKPIT, T, langueCockpit } = require('./lib/i18n');
 // ---- Sérialiseurs YAML -> lib/yaml.js --------------------------------------------
 const {
-  CLES_METADONNEES, COULEURS_NUMERO, HEX_COULEURS, normaliserRevue,
+  CLES_METADONNEES, COULEURS_NUMERO, HEX_COULEURS, normaliserRevue, estVraiYaml,
   TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
   analyserAusgabe, serialiserAusgabe, ecrireAusgabeAtomique,
   separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
-  analyserMeta, serialiserMeta, langueRevue, titreNumero
+  analyserMeta, serialiserMeta, langueRevue, titreNumero, etatRevue
 } = require('./lib/yaml');
+// ---- Cycle de vie du numéro (D116-D117 et D120) -> lib/archivage.js -----------------------
+const {
+  versionInstallee, versionsDivergent, tailleDossier, supprimerDossier,
+  lancerArchivage, lancerChoixVersion, lireModeDeveloppeur, ecrireModeDeveloppeur
+} = require('./lib/archivage');
 // ---- Modèle de tableau -> lib/table-model.js -------------------------------------
 const {
   analyserTable, serialiserTable, disposition, matriceOccupation,
@@ -143,7 +159,8 @@ const { traiterPortraits } = require('./lib/portraits');
 const {
   CHAMPS_TRADUISIBLES, STATUTS, STATUT_DEFAUT,
   cleChamp, statutValide, analyserTraduction, serialiserTraduction,
-  texteChamp, valeurChamp, lignesTraduction, resumeTraduction
+  texteChamp, listeChamp, valeurChamp, alignerMotsCles, estATraduire, MARQUE_A_TRADUIRE,
+  lignesTraduction, groupesTraduction, resumeTraduction
 } = require('./lib/traduction');
 
 // Éditeur PDF (extension tomoki1207.pdf), comme szh-apercu.
@@ -165,6 +182,181 @@ function trouverRacineRevue() {
     } catch (e) { /* dossier illisible : on continue */ }
   }
   return null;
+}
+
+// ---- Cycle de vie du numéro : verrou, archive, version du logiciel (D116-D117 et D120) ----
+//
+// La SOURCE DE VÉRITÉ est ausgabe.yaml (lib/yaml.js : etatRevue) — rien n'est
+// mémorisé côté poste, un numéro archivé sur OneDrive l'est pour toute l'équipe.
+// L'état est relu à chaque rafraîchissement (ausgabe.yaml est déjà surveillé pour le
+// titre de la vue, N2) et projeté en TROIS endroits :
+//   1. deux clés de contexte (szh.verrouillee / szh.archivee) qui pilotent les
+//      boutons de package.json — le bouton « Exporter cet article » de l'arbre ;
+//   2. la barre d'état (clic = déverrouiller / désarchiver) et le titre de la vue ;
+//   3. les gardes de commandes : tout geste d'ÉCRITURE est refusé sur un numéro
+//      verrouillé, et la compilation AUTOMATIQUE est coupée sur un numéro gelé.
+//
+// Lecture seule de l'ÉDITEUR : `files.readonlyInclude` posé au niveau WORKSPACE, donc
+// dans <revue>/.vscode/settings.json. C'est le seul fichier technique qu'on accepte
+// dans un dossier de revue (D8), et le compromis est payant : le verrou VOYAGE avec
+// le dossier (un numéro archivé s'ouvre en lecture seule sur n'importe quel poste),
+// il ne fuit pas sur les autres fenêtres (un réglage utilisateur, lui, verrouillerait
+// aussi la revue en cours ouverte à côté), et il survit à update.ps1, qui réécrit
+// settings.json au niveau utilisateur. Le fichier est SUPPRIMÉ au déverrouillage, et
+// masqué de l'explorateur par files.exclude (vscodium-user/settings.json).
+let etatNumero = { verrouillee: false, archivee: false, versionToolkit: '' };
+// Dernier état de verrou réellement APPLIQUÉ au dossier (null = jamais vu). Évite de
+// réécrire .vscode/settings.json à chaque rafraîchissement de l'arbre.
+let verrouApplique = null;
+let racineVerrou = null;
+// L'avertissement de divergence de version ne se dit qu'UNE FOIS par fenêtre : il
+// accompagne une compilation, et une compilation part à chaque Ctrl+S.
+let divergenceSignalee = false;
+
+function etatCourant() { return etatNumero; }
+
+// Numéro « gelé » : plus aucune compilation AUTOMATIQUE (clic sur un article, aperçu
+// obsolète). Vrai pour un numéro archivé — la demande explicite (D117) — et aussi
+// pour un numéro simplement verrouillé : ses sources ne peuvent plus changer, le
+// recompiler tout seul ne ferait que réécrire out/ sans raison. L'export à la
+// demande, lui, reste toujours possible (« Exporter cet article », « Recompiler
+// toute la revue ») : c'est la contrepartie de la suppression de out/ à l'archivage.
+function compilationAutoCoupee() {
+  return etatNumero.archivee || etatNumero.verrouillee;
+}
+
+// Garde d'écriture. Retourne true si l'action est REFUSÉE (l'appelant sort aussitôt).
+// Jamais un silence : message + bouton qui mène au déverrouillage.
+function refuserSiVerrouille() {
+  if (!etatNumero.verrouillee) { return false; }
+  const bouton = T('verrou.refuse.bouton');
+  vscode.window.showWarningMessage(T('verrou.refuse'), bouton).then((choix) => {
+    if (choix === bouton) { vscode.commands.executeCommand('szh.deverrouiller'); }
+  });
+  return true;
+}
+
+// Écrit des clés d'ausgabe.yaml (mêmes sérialiseur et écriture atomique que le
+// formulaire de métadonnées : lignes non gérées préservées, commentaires compris).
+// Retourne null si tout est écrit, sinon le message d'erreur.
+function ecrireClesAusgabe(racine, modifies) {
+  const chemin = path.join(racine, 'ausgabe.yaml');
+  try {
+    let contenu = '';
+    try { contenu = fs.readFileSync(chemin, 'utf8'); } catch (e) { /* absent : recréé plat */ }
+    ecrireAusgabeAtomique(chemin, serialiserAusgabe(contenu, modifies));
+    return null;
+  } catch (e) { return String((e && e.message) || e); }
+}
+
+// Applique (ou retire) la lecture seule de l'ÉDITEUR pour le dossier de revue.
+// `files.readonlyInclude` au scope Workspace = <revue>/.vscode/settings.json ; le
+// motif « ** » couvre tout le dossier, y compris out/ (un PDF affiché n'a de toute
+// façon rien à se faire éditer). On y coupe aussi `triggerTaskOnSave.tasks` : sans
+// ça, un numéro gelé mais dont un fichier serait tout de même enregistré (par une
+// extension tierce, un formatage) relancerait `make all`.
+// Ne rejette jamais : l'échec est signalé, il ne doit pas laisser l'archivage à
+// moitié fait.
+async function appliquerVerrou(racine, verrouillee) {
+  if (!racine) { return null; }
+  try {
+    const cfgFichiers = vscode.workspace.getConfiguration('files', vscode.Uri.file(racine));
+    const cfgTaches = vscode.workspace.getConfiguration('triggerTaskOnSave', vscode.Uri.file(racine));
+    const cible = vscode.ConfigurationTarget.Workspace;
+    if (verrouillee) {
+      await cfgFichiers.update('readonlyInclude', { '**': true }, cible);
+      await cfgTaches.update('tasks', {}, cible);
+    } else {
+      // Rien à retirer si le fichier n'existe pas : sans ce test, OUVRIR une revue
+      // ordinaire créerait un .vscode/settings.json vide dans CHAQUE dossier de revue
+      // (update(…, undefined) matérialise le fichier) — l'inverse de D8.
+      if (!fs.existsSync(path.join(racine, '.vscode', 'settings.json'))) { return null; }
+      await cfgFichiers.update('readonlyInclude', undefined, cible);
+      await cfgTaches.update('tasks', undefined, cible);
+      // Fichier redevenu vide (« {} ») : on l'efface, le dossier de revue retrouve
+      // son état épuré (D8). Un settings.json qui contient autre chose est laissé.
+      nettoyerReglagesWorkspace(racine);
+    }
+    return null;
+  } catch (e) { return String((e && e.message) || e); }
+}
+
+// Supprime <revue>/.vscode/settings.json s'il ne reste plus aucune clé (et le
+// dossier .vscode s'il devient vide). Silencieux : c'est du rangement.
+function nettoyerReglagesWorkspace(racine) {
+  const dossier = path.join(racine, '.vscode');
+  const fichier = path.join(dossier, 'settings.json');
+  try {
+    const brut = fs.readFileSync(fichier, 'utf8');
+    const valeurs = JSON.parse(brut);
+    if (valeurs && typeof valeurs === 'object' && Object.keys(valeurs).length > 0) { return; }
+    fs.unlinkSync(fichier);
+  } catch (e) { return; }                          // absent, ou JSON avec commentaires : on n'y touche pas
+  try { fs.rmdirSync(dossier); } catch (e) { /* pas vide : très bien */ }
+}
+
+// Relit l'état du numéro et le projette partout (contextes, barre d'état, verrou du
+// dossier). Appelée à chaque rafraîchissement : ausgabe.yaml est déjà surveillé.
+function majEtatNumero(fournisseur, barreEtat) {
+  const racine = fournisseur.racine;
+  etatNumero = racine ? etatRevue(racine)
+                      : { verrouillee: false, archivee: false, versionToolkit: '' };
+  vscode.commands.executeCommand('setContext', CLE_VERROUILLEE, etatNumero.verrouillee);
+  vscode.commands.executeCommand('setContext', CLE_ARCHIVEE, etatNumero.archivee);
+  if (barreEtat) { majBarreEtatNumero(barreEtat); }
+  // Le verrou du dossier suit l'état du fichier — y compris quand ausgabe.yaml a été
+  // édité à la main ou synchronisé par OneDrive depuis un autre poste.
+  if (racine && (racineVerrou !== racine || verrouApplique !== etatNumero.verrouillee)) {
+    racineVerrou = racine;
+    verrouApplique = etatNumero.verrouillee;
+    appliquerVerrou(racine, etatNumero.verrouillee).then((erreur) => {
+      if (erreur) { vscode.window.showWarningMessage(T('err.verrou.reglages', [erreur])); }
+    });
+  }
+}
+
+// Barre d'état du cycle de vie : visible seulement si le numéro est gelé, et le clic
+// mène au geste inverse (déverrouiller, ou désarchiver s'il n'est que archivé).
+function majBarreEtatNumero(barre) {
+  if (!etatNumero.verrouillee && !etatNumero.archivee) { barre.hide(); return; }
+  if (etatNumero.verrouillee && etatNumero.archivee) { barre.text = T('etat.barre.lesdeux'); }
+  else if (etatNumero.verrouillee) { barre.text = T('etat.barre.verrouillee'); }
+  else { barre.text = T('etat.barre.archivee'); }
+  barre.command = etatNumero.verrouillee ? 'szh.deverrouiller' : 'szh.desarchiver';
+  const morceaux = [T(etatNumero.verrouillee ? 'etat.barre.tooltip.verrou' : 'etat.barre.tooltip.archive')];
+  if (etatNumero.versionToolkit !== '') {
+    morceaux.push(T('etat.barre.tooltip.version',
+      [etatNumero.versionToolkit, versionInstallee() || '?']));
+  }
+  barre.tooltip = morceaux.join('\n');
+  barre.show();
+}
+
+// Titre de la vue : le numéro, suffixé des pictogrammes de son état (D116).
+function titreVue(racine) {
+  const base = titreNumero(racine);
+  if (etatNumero.verrouillee && etatNumero.archivee) { return T('arbre.titre.archiveeVerrouillee', [base]); }
+  if (etatNumero.verrouillee) { return T('arbre.titre.verrouillee', [base]); }
+  if (etatNumero.archivee) { return T('arbre.titre.archivee', [base]); }
+  return base;
+}
+
+// Avertissement de divergence de version (D120), au moment de compiler : le rédacteur
+// doit savoir que le numéro a été fabriqué par un autre logiciel que celui qui tourne
+// — c'est là, et seulement là, que le résultat peut changer. Une fois par fenêtre.
+function avertirVersionSiDivergente() {
+  if (divergenceSignalee) { return; }
+  const poste = versionInstallee();
+  if (!versionsDivergent(etatNumero.versionToolkit, poste)) { return; }
+  divergenceSignalee = true;
+  const bouton = T('version.divergence.bouton');
+  vscode.window.showWarningMessage(
+    T('version.divergence', [poste, etatNumero.versionToolkit]), bouton
+  ).then((choix) => {
+    if (choix !== bouton) { return; }
+    const erreur = lancerChoixVersion();
+    if (erreur) { vscode.window.showErrorMessage(T('err.version.lancement', [erreur])); }
+  });
 }
 
 // Réglage szh.replierAssetsAutres (D96) : au clic sur un article, ses images et
@@ -409,21 +601,21 @@ class FournisseurRevue {
   // bilingue (« Titre (DE) »), état de remplissage ET statut d'atelier.
   _itemsChampsTraduction(slug) {
     const etat = etatTraduction(this.racine, slug);
-    return etat.lignes.map((ligne) => {
-      const nom = T('trad.champ.libelle', [T('trad.champ.' + ligne.champ), ligne.langue.toUpperCase()]);
-      const rempli = ligne.rempli ? T('trad.traduit') : T('trad.atraduire');
-      const statut = T('trad.statut.' + ligne.statut);
+    return etat.groupes.map((groupe) => {
+      const nom = libelleGroupe(groupe);
+      const rempli = etatRemplissageGroupe(groupe);
+      const statut = T('trad.statut.' + groupe.statut);
       const it = new vscode.TreeItem(nom, vscode.TreeItemCollapsibleState.None);
       it.slug = slug;
-      it.cleTraduction = ligne.cle;
+      it.cleTraduction = groupe.cle;
       it.contextValue = 'traduction-champ';
-      it.iconPath = iconeStatut(ligne.statut);
+      it.iconPath = iconeStatut(groupe.statut);
       it.description = rempli + ' · ' + statut;
       it.tooltip = T('trad.champ.tooltip', [nom, rempli, statut]);
-      // Le clic ouvre le panneau de l'article ET y met le focus sur CE champ.
+      // Le clic ouvre le panneau de l'article ET y met le focus sur CE bloc.
       it.command = {
         command: 'szh.traduction', title: 'Suivi de traduction',
-        arguments: [{ slug: slug, cle: ligne.cle }]
+        arguments: [{ slug: slug, cle: groupe.cle }]
       };
       return it;
     });
@@ -619,6 +811,236 @@ async function exporterXml(fournisseur, rafraichirTout) {
     statut.dispose();
     buildEnCours = false;
   }
+}
+
+// ---- Export d'UN article (D117) -----------------------------------------------------
+//
+// Sur un numéro gelé, la compilation automatique est coupée : il faut un geste
+// explicite pour régénérer un document. C'est la seule tâche que le cockpit CONSTRUIT
+// (sa cible dépend du slug ; une tâche de tasks.json a des arguments figés). Cibles
+// visées : le PDF et l'aperçu HTML de l'article — exactement ce que produit `make
+// pdf` pour un article, sans la passe d'import (un numéro gelé ne doit plus rien
+// avaler d'articles-word/, l'import supprimant le .docx source, D39) et sans clean.
+function tacheMakeArticle(racine, slug) {
+  const cibles = ['out/' + slug + '/' + slug + '.pdf', 'out/' + slug + '/' + slug + '.apercu.html'];
+  const execution = new vscode.ProcessExecution('wsl.exe',
+    ['-d', DISTRO_WSL, '--cd', racine, '--', 'make', '-f', MAKEFILE_WSL].concat(cibles));
+  const tache = new vscode.Task(
+    { type: 'szh', cible: 'article', slug: slug }, vscode.TaskScope.Workspace,
+    T('tache.exportArticle') + ' — ' + slug, 'SZH', execution, []);
+  tache.presentationOptions = {
+    reveal: vscode.TaskRevealKind.Silent, showReuseMessage: false,
+    clear: true, panel: vscode.TaskPanelKind.Shared
+  };
+  return tache;
+}
+
+// Exécute une tâche DÉJÀ construite et résout avec son code de sortie (pendant de
+// lancerTache, qui va chercher une tâche utilisateur par son label).
+async function lancerTacheObjet(tache) {
+  const execution = await vscode.tasks.executeTask(tache);
+  return await new Promise((resolve) => {
+    const abo = vscode.tasks.onDidEndTaskProcess((e) => {
+      if (e.execution === execution) { abo.dispose(); resolve(e.exitCode); }
+    });
+  });
+}
+
+// « Exporter cet article » : bouton en survol de l'article (numéro gelé seulement) et
+// entrée du panneau d'export. Sans argument, l'article visé est celui du .md actif, à
+// défaut celui affiché en aperçu — même cascade que « Métadonnées de l'article
+// courant » (D97). L'aperçu est rafraîchi à l'arrivée : c'est le résultat qu'on vient
+// voir.
+async function exporterArticle(fournisseur, rafraichirTout, cible) {
+  const racine = fournisseur.racine;
+  if (!racine) { return; }
+  const slug = cibleTraduction(fournisseur, cible).slug;
+  if (!slug || fournisseur.listerArticles().indexOf(slug) === -1) {
+    vscode.window.showInformationMessage(T('err.article.introuvable'));
+    return;
+  }
+  if (buildEnCours || importEnCours) {
+    vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
+    return;
+  }
+  buildEnCours = true;
+  const statut = vscode.window.setStatusBarMessage(T('statut.exportArticle', [slug]));
+  try {
+    const code = await lancerTacheObjet(tacheMakeArticle(racine, slug));
+    rafraichirTout();
+    if (code !== 0) {
+      vscode.window.showErrorMessage(T('err.exportArticle', [slug]));
+      return;
+    }
+    vscode.window.setStatusBarMessage(T('info.exportArticle', [slug]), 4000);
+  } finally {
+    statut.dispose();
+    buildEnCours = false;
+  }
+  // Le document vient d'être régénéré : on le montre. `ouvrirArticle` ne recompilera
+  // pas (numéro gelé) — il se contente d'afficher ce qui est là.
+  await ouvrirArticle(fournisseur, slug);
+}
+
+// ---- Archiver / verrouiller / désarchiver (D116) -------------------------------------
+//
+// Trois gestes, une seule règle : ausgabe.yaml est écrit d'abord (source de vérité),
+// le reste en découle. Le DÉPLACEMENT du dossier est délégué à
+// windows/archive-revue.ps1 : lui seul connaît l'arborescence « en cours »/archives
+// (mode développeur compris, D119), et lui seul peut déplacer un dossier que VSCodium
+// tient ouvert — il attend la fermeture de cette fenêtre, puis rouvre l'éditeur sur
+// la nouvelle place. D'où l'ordre : écrire, nettoyer, lancer le script, fermer.
+
+// Poids lisible d'un dossier out/ pour la confirmation (« 148 Mo ») — la promesse
+// « vous pourrez toujours réexporter » ne vaut que si le gain est chiffré.
+function poidsLisible(octets) {
+  if (octets <= 0) { return T('modale.archiver.rien'); }
+  if (octets < 1024 * 1024) { return Math.max(1, Math.round(octets / 1024)) + ' Ko'; }
+  const mo = octets / (1024 * 1024);
+  return (mo < 10 ? mo.toFixed(1).replace('.', ',') : String(Math.round(mo))) + ' Mo';
+}
+
+// Verrouillage SEUL : le dossier ne bouge pas, out/ est conservé. C'est le geste qui
+// reste sur un numéro déjà archivé qu'on avait déverrouillé pour une correction.
+async function verrouillerSeulement(fournisseur, rafraichirTout) {
+  const racine = fournisseur.racine;
+  const choix = await vscode.window.showWarningMessage(
+    T('modale.verrouiller.question', [titreNumero(racine)]),
+    { modal: true, detail: T('modale.verrouiller.detail') },
+    T('modale.verrouiller.bouton'));
+  if (choix !== T('modale.verrouiller.bouton')) { return; }
+  const erreur = ecrireClesAusgabe(racine, { locked: 'true' });
+  if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [erreur])); return; }
+  rafraichirTout();
+  vscode.window.setStatusBarMessage(T('statut.verrouille'), 4000);
+}
+
+// « Archiver et verrouiller » — le geste complet.
+async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
+  const racine = fournisseur.racine;
+  if (!racine) { return; }
+  if (buildEnCours || importEnCours) {
+    vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
+    return;
+  }
+  // Déjà archivé : il ne reste qu'à reposer le verrou (rien à déplacer, rien à jeter).
+  if (etatNumero.archivee) {
+    if (etatNumero.verrouillee) { vscode.window.showInformationMessage(T('info.deja.archivee')); return; }
+    await verrouillerSeulement(fournisseur, rafraichirTout);
+    return;
+  }
+  const dossierOut = path.join(racine, 'out');
+  const bouton = T('modale.archiver.bouton');
+  const choix = await vscode.window.showWarningMessage(
+    T('modale.archiver.question', [titreNumero(racine)]),
+    { modal: true, detail: T('modale.archiver.detail', [poidsLisible(tailleDossier(dossierOut))]) },
+    bouton);
+  if (choix !== bouton) { return; }
+
+  // 1. ausgabe.yaml : les deux drapeaux. Rien d'autre pour l'instant — l'étape 2 peut
+  //    encore échouer, et on veut pouvoir revenir exactement à l'état de départ.
+  const erreurYaml = ecrireClesAusgabe(racine, { locked: 'true', archived: 'true' });
+  if (erreurYaml) { vscode.window.showErrorMessage(T('err.ecriture', [erreurYaml])); return; }
+
+  // 2. les documents produits : onglets fermés (un PDF affiché est verrouillé côté
+  //    Windows, R6) puis out/ supprimé. Échec -> on s'arrête AVANT tout déplacement,
+  //    et on relève les drapeaux : mieux vaut un numéro inchangé qu'à moitié archivé.
+  await fermerTousLesApercus();
+  await fermerOngletsSous(dossierOut);
+  apercuCourantUri = null;
+  apercuCourantSlug = null;
+  const erreurOut = supprimerDossier(dossierOut);
+  if (erreurOut) {
+    ecrireClesAusgabe(racine, { locked: 'false', archived: 'false' });
+    rafraichirTout();
+    vscode.window.showErrorMessage(T('err.out.suppression', [erreurOut]));
+    return;
+  }
+
+  // 3. la version du logiciel, si le numéro n'en portait pas encore : un numéro archivé
+  //    doit toujours dire avec quoi il a été fabriqué (D120). Écrite APRÈS le point de
+  //    non-retour, pour qu'un archivage annulé ne laisse pas d'estampille inventée. Un
+  //    numéro qui porte déjà une version n'est jamais réécrit.
+  const poste = versionInstallee();
+  if (etatNumero.versionToolkit === '' && poste !== '') {
+    ecrireClesAusgabe(racine, { 'version-toolkit': poste });
+  }
+
+  // 4. la lecture seule, écrite DANS le dossier : elle part avec lui.
+  const erreurVerrou = await appliquerVerrou(racine, true);
+  if (erreurVerrou) { vscode.window.showWarningMessage(T('err.verrou.reglages', [erreurVerrou])); }
+  verrouApplique = true;
+  racineVerrou = racine;
+  rafraichirTout();
+
+  // 5. le déplacement, puis la fermeture de cette fenêtre (condition du déplacement).
+  const erreurScript = lancerArchivage('archiver', racine);
+  if (erreurScript) {
+    vscode.window.showErrorMessage(T('err.archivage', [erreurScript]));
+    return;                                        // le numéro reste gelé, à sa place
+  }
+  vscode.window.setStatusBarMessage(T('statut.archivage'), 10000);
+  await fermerFenetreApresArchivage();
+}
+
+// « Désarchiver » : retour dans l'arborescence « en cours ». Le verrou n'est PAS levé
+// (deux gestes distincts, demandés séparément) : le numéro rouvert reste en lecture
+// seule jusqu'à « Déverrouiller la revue ».
+async function desarchiver(fournisseur, rafraichirTout) {
+  const racine = fournisseur.racine;
+  if (!racine) { return; }
+  if (!etatNumero.archivee) { vscode.window.showInformationMessage(T('info.deja.encours')); return; }
+  if (buildEnCours || importEnCours) {
+    vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
+    return;
+  }
+  const bouton = T('modale.desarchiver.bouton');
+  const choix = await vscode.window.showWarningMessage(
+    T('modale.desarchiver.question', [titreNumero(racine)]),
+    { modal: true, detail: T('modale.desarchiver.detail') }, bouton);
+  if (choix !== bouton) { return; }
+  const erreurYaml = ecrireClesAusgabe(racine, { archived: 'false' });
+  if (erreurYaml) { vscode.window.showErrorMessage(T('err.ecriture', [erreurYaml])); return; }
+  await fermerTousLesApercus();
+  apercuCourantUri = null;
+  apercuCourantSlug = null;
+  rafraichirTout();
+  const erreurScript = lancerArchivage('desarchiver', racine);
+  if (erreurScript) { vscode.window.showErrorMessage(T('err.desarchivage', [erreurScript])); return; }
+  vscode.window.setStatusBarMessage(T('statut.desarchivage'), 10000);
+  await fermerFenetreApresArchivage();
+}
+
+// Laisse au script détaché le temps de démarrer, puis ferme la fenêtre : tant qu'elle
+// est ouverte, Windows refuse de déplacer le dossier. Le script, lui, retente jusqu'à
+// ce que la main soit rendue, puis rouvre l'éditeur au bon endroit.
+async function fermerFenetreApresArchivage() {
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+  await vscode.commands.executeCommand('workbench.action.closeWindow');
+}
+
+// « Déverrouiller la revue » : le seul geste qui rend un numéro modifiable. Rien ne
+// bouge sur le disque à part le drapeau et le .vscode/settings.json de lecture seule.
+async function deverrouiller(fournisseur, rafraichirTout) {
+  const racine = fournisseur.racine;
+  if (!racine) { return; }
+  if (!etatNumero.verrouillee) {
+    vscode.window.showInformationMessage(T('info.deja.deverrouillee'));
+    return;
+  }
+  const bouton = T('modale.deverrouiller.bouton');
+  const choix = await vscode.window.showWarningMessage(
+    T('modale.deverrouiller.question', [titreNumero(racine)]),
+    { modal: true, detail: T('modale.deverrouiller.detail') }, bouton);
+  if (choix !== bouton) { return; }
+  const erreur = ecrireClesAusgabe(racine, { locked: 'false' });
+  if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [erreur])); return; }
+  const erreurVerrou = await appliquerVerrou(racine, false);
+  if (erreurVerrou) { vscode.window.showWarningMessage(T('err.verrou.reglages', [erreurVerrou])); }
+  verrouApplique = false;
+  racineVerrou = racine;
+  rafraichirTout();
+  vscode.window.setStatusBarMessage(T('statut.deverrouille'), 5000);
 }
 
 // ---- Clic = aperçu direct (N5, D46) -----------------------------------------------
@@ -903,6 +1325,8 @@ function ouvrirApercuHtml(fournisseur, slug, enAttente) {
     // des traductions, pas du HTML.
     const lignes = [echapperTexte(T('apercu.indisponible'))];
     if (enAttente) { lignes.push(echapperTexte(T('apercu.encours'))); }
+    // D117 : numéro gelé — rien ne se compilera tout seul, on dit par quel geste.
+    else if (compilationAutoCoupee()) { lignes.push(echapperTexte(T('apercu.gele'))); }
     contenu = '<!DOCTYPE html><html lang="fr"><head></head><body><p>'
             + lignes.join('</p><p>') + '</p></body></html>';
   }
@@ -1047,6 +1471,12 @@ async function ouvrirArticle(fournisseur, slug, opts) {
     obsolete = fs.statSync(apercuAttendu).mtimeMs < mSource;
   } catch (e) { obsolete = true; }                 // aperçu (ou .md) illisible -> on compile
 
+  // D117 : numéro gelé -> on n'enclenche JAMAIS de compilation en cliquant un
+  // article. On montre ce qui existe (les documents d'un numéro archivé ont été
+  // supprimés : le volet affiche alors son message, qui renvoie vers « Exporter cet
+  // article »). Le geste explicite reste toujours disponible.
+  if (compilationAutoCoupee()) { obsolete = false; }
+
   if (obsolete && buildEnCours) {
     // C2 : une compilation tourne déjà (import, Ctrl+S, autre article). Ne plus
     // abandonner en silence : on affiche l'aperçu avec le message d'attente, que
@@ -1077,15 +1507,19 @@ async function ouvrirArticle(fournisseur, slug, opts) {
   if (modeCourant === 'html') {
     if (apercuCourantUri) { await fermerApercuCourant(null); }  // onglet PDF d'une bascule passée
     const pret = fs.existsSync(apercuAttendu);
-    ouvrirApercuHtml(fournisseur, slug, !pret);    // manquant -> message + attente
-    if (!pret) { relancerCompilation(fournisseur, slug); }      // C2 : et on (re)compile
+    ouvrirApercuHtml(fournisseur, slug, !pret && !compilationAutoCoupee());
+    if (!pret && !compilationAutoCoupee()) { relancerCompilation(fournisseur, slug); }   // C2
     return;
   }
   fermerApercuHtml();                              // webview HTML d'une bascule passée
   if (!fs.existsSync(pdf.fsPath)) {
-    vscode.window.showErrorMessage(T('err.pdf.introuvable', [slug]) + ' ' + T('apercu.encours'));
+    // D117 : sur un numéro gelé, on ne promet pas une compilation qui ne viendra
+    // pas — le message dit quoi faire (« Exporter cet article »).
+    const gele = compilationAutoCoupee();
+    vscode.window.showErrorMessage(T('err.pdf.introuvable', [slug]) + ' '
+      + T(gele ? 'apercu.gele' : 'apercu.encours'));
     apercuCourantSlug = slug;                      // l'article visé en colonne 2
-    relancerCompilation(fournisseur, slug);        // C2 : relance, puis affiche
+    if (!gele) { relancerCompilation(fournisseur, slug); }       // C2 : relance, puis affiche
     return;
   }
   await fermerApercuCourant(pdf);                  // l'aperçu du précédent article
@@ -1108,6 +1542,8 @@ function relancerCompilation(fournisseur, slug) {
 // le même article.
 async function compilerPuisAfficher(fournisseur, slug) {
   if (buildEnCours || importEnCours) { return; }
+  if (compilationAutoCoupee()) { return; }         // D117 : jamais de build implicite
+
   buildEnCours = true;
   const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
   let code = null;
@@ -1276,6 +1712,7 @@ function controleurDepotVue(fournisseur, rafraichirTout) {
     dropMimeTypes: ['text/uri-list'],
     dragMimeTypes: [],
     handleDrop: async (cible, dataTransfer) => {
+      if (refuserSiVerrouille()) { return; }       // D116 : le dépôt écrit, comme le bouton
       const item = dataTransfer.get('text/uri-list');
       if (!item) { return; }
       const brut = await item.asString();
@@ -1621,6 +2058,9 @@ function envoyerValeursMetadonnees(panneau, chemin) {
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(chemin, 'utf8')); }
   catch (e) { /* fichier illisible : formulaire vide */ }
+  // entete-condensee (D114) : la case à cocher reçoit un booléen DÉJÀ tranché, pour
+  // que la liste des valeurs vraies tolérées ne vive qu'à un seul endroit (lib/yaml.js).
+  valeurs['entete-condensee'] = estVraiYaml(valeurs['entete-condensee']) ? 'true' : 'false';
   panneau.webview.postMessage({ type: 'valeurs', valeurs: valeurs });
 }
 
@@ -1671,6 +2111,13 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
       const r = normaliserRevue(modifies.revue);
       if (r === '') { delete modifies.revue; } else { modifies.revue = r; }
     }
+    // entete-condensee (D114) : la case à cocher n'envoie que « true » ou « false » ;
+    // toute autre valeur est ignorée (jamais écrite dans ausgabe.yaml).
+    if ('entete-condensee' in modifies) {
+      const e = modifies['entete-condensee'].toLowerCase();
+      if (e !== 'true' && e !== 'false') { delete modifies['entete-condensee']; }
+      else { modifies['entete-condensee'] = e; }
+    }
     if (Object.keys(modifies).length === 0) { return; }
     try {
       let contenu = '';
@@ -1705,6 +2152,9 @@ function textesCarteArticle() {
     aFonction: T('fiches.auteur.fonction'), aAffiliation: T('fiches.auteur.affiliation'),
     aOrcid: T('fiches.auteur.orcid'), aEmail: T('fiches.auteur.email'),
     motsCles: T('fiches.motscles'), italien: T('fiches.italien'),
+    // Grille de mots-clés appariés (D122) — fragment partagé SZH.motsCles.
+    motsClesTitre: T('fiches.motscles.titre'), motsClesAide: T('fiches.motscles.aide'),
+    motCleAjouter: T('fiches.motcle.ajouter'), motCleRetirer: T('fiches.motcle.retirer'),
     rien: T('form.rien'), enregistre: T('fiches.enregistre'),
     // Photo d'auteur·e (F3, D92) : bouton par rangée + modale de dépôt/choix.
     photoBouton: T('photo.bouton'), photoPresente: T('photo.bouton.presente'),
@@ -1860,14 +2310,21 @@ function nettoyerCarte(brut) {
       if (t !== '') { carte[cle][l] = t; }
     }
   }
+  // Mots-clés (D122) : les listes de langues sont APPARIÉES PAR POSITION — c'est le
+  // seul lien entre « diagnostic » et « Diagnose ». On borne d'abord (50 mots, 100
+  // caractères) sans retirer les vides, puis alignerMotsCles tient chaque case vide
+  // avec la marque TO BE TRANSLATED : retirer un vide au milieu ferait remonter tous
+  // les mots-clés suivants d'un cran, et la paire deviendrait fausse en silence.
   const km = (brut && brut.keywords) || {};
+  const brutes = {};
+  let nMax = 0;
   for (const l of LANGUES_META) {
     if (!Array.isArray(km[l])) { continue; }
-    const liste = [];
-    for (const k of km[l].slice(0, 50)) {
-      const v = texteCourt(k, 100);
-      if (v !== '') { liste.push(v); }
-    }
+    brutes[l] = km[l].slice(0, 50).map((k) => texteCourt(k, 100));
+    if (brutes[l].length > nMax) { nMax = brutes[l].length; }
+  }
+  for (const l of Object.keys(brutes)) {
+    const liste = alignerMotsCles(brutes[l], nMax);
     if (liste.length > 0) { carte.keywords[l] = liste; }
   }
   if (brut && Array.isArray(brut.author)) {
@@ -1935,7 +2392,35 @@ function etatTraduction(racine, slug, source) {
   const meta = lireMetaArticle(racine, slug);
   const suivi = lireSuiviTraduction(racine, slug);
   const lignes = lignesTraduction(meta, suivi.statuts, langue);
-  return { meta: meta, suivi: suivi, lignes: lignes, source: langue, resume: resumeTraduction(lignes) };
+  const groupes = groupesTraduction(lignes);
+  return {
+    meta: meta, suivi: suivi, lignes: lignes, groupes: groupes,
+    source: langue, resume: resumeTraduction(groupes)
+  };
+}
+
+// Libellé d'un groupe dans l'arbre et sur la carte : « Titre et sous-titre (DE) »
+// quand les deux existent, « Titre (DE) » quand l'article n'a pas de sous-titre.
+function libelleGroupe(groupe) {
+  let nom;
+  if (groupe.groupe === 'titre') {
+    nom = groupe.champs.length > 1
+      ? T('trad.champ.titre.duo')
+      : T('trad.champ.' + groupe.champs[0]);
+  } else {
+    nom = T('trad.champ.' + groupe.champs[0]);
+  }
+  return T('trad.champ.libelle', [nom, groupe.langue.toUpperCase()]);
+}
+
+// « traduit » / « à traduire », sauf pour les mots-clés où le compte des PAIRES dit
+// bien plus : « 2/4 traduits » se lit d'un coup d'œil.
+function etatRemplissageGroupe(groupe) {
+  if (groupe.groupe === 'motscles') {
+    const l = groupe.lignes[0];
+    return T('trad.avancement', [l.remplies, l.total]);
+  }
+  return groupe.rempli ? T('trad.traduit') : T('trad.atraduire');
 }
 
 // Écrit le sidecar — ou le SUPPRIME s'il ne reste rien à retenir (aucun statut hors
@@ -1990,7 +2475,11 @@ function textesTraduction() {
     copier: T('trad.copier'), copie: T('trad.copie'), statut: T('trad.statut'),
     traduit: T('trad.traduit'), atraduire: T('trad.atraduire'),
     tout: T('trad.tout'), toutAide: T('trad.tout.aide'),
-    rien: T('trad.rien'), aucuneModif: T('form.rien'), enregistre: T('trad.enregistre')
+    rien: T('trad.rien'), aucuneModif: T('form.rien'), enregistre: T('trad.enregistre'),
+    commentaire: T('trad.commentaire'), commentaireAide: T('trad.commentaire.aide'),
+    deepl: T('trad.deepl'), deeplTip: T('trad.deepl.tooltip'),
+    motCle: T('trad.motcle'), motCleSansEquiv: T('trad.motcle.sansequivalent'),
+    motsClesAide: T('trad.motscles.aide')
   };
 }
 
@@ -2006,13 +2495,24 @@ let slugTraduction = null;
 let traductionModifiee = false;
 let rechargementTraduction = null;
 
-// Les lignes telles que la webview les attend (libellés résolus côté hôte : le
+// Les groupes tels que la webview les attend (libellés résolus côté hôte : le
 // webview ne connaît ni LIBELLES ni langue d'interface).
-function lignesPourWebview(etat) {
-  return etat.lignes.map((ligne) => Object.assign({}, ligne, {
-    libelle: T('trad.champ.libelle', [T('trad.champ.' + ligne.champ), ligne.langue.toUpperCase()]),
+function groupesPourWebview(etat) {
+  return etat.groupes.map((groupe) => ({
+    cle: groupe.cle, groupe: groupe.groupe, langue: groupe.langue,
     langueSource: etat.source,
-    aide: ligne.champ === 'keywords' ? T('trad.aide.keywords') : ''
+    libelle: libelleGroupe(groupe),
+    remplissage: etatRemplissageGroupe(groupe),
+    rempli: groupe.rempli,
+    statut: groupe.statut,
+    champs: groupe.lignes.map((ligne) => ({
+      champ: ligne.champ,
+      libelle: T('trad.champ.' + ligne.champ),
+      source: ligne.source,
+      cible: ligne.cible,
+      paires: ligne.paires || null,
+      multiligne: ligne.champ === 'resume'
+    }))
   }));
 }
 
@@ -2022,7 +2522,7 @@ function envoyerValeursTraduction(panneau, fournisseur, slug, focus) {
     type: 'valeurs',
     slug: slug,
     langueSource: etat.source,
-    lignes: lignesPourWebview(etat),
+    groupes: groupesPourWebview(etat),
     commentaire: etat.suivi.commentaire,
     statuts: STATUTS.map((s) => ({ valeur: s, libelle: T('trad.statut.' + s) })),
     focus: focus || null
@@ -2055,18 +2555,32 @@ function enregistrerTraduction(fournisseur, msg) {
   const suivi = lireSuiviTraduction(racine, slug);
   const statuts = Object.assign({}, suivi.statuts);
   let metaChangee = false;
-  for (const brut of (Array.isArray(msg.champs) ? msg.champs : [])) {
-    const champ = String((brut && brut.champ) || '');
-    const langue = String((brut && brut.langue) || '');
-    if (CHAMPS_TRADUISIBLES.indexOf(champ) === -1) { continue; }
+  for (const groupe of (Array.isArray(msg.groupes) ? msg.groupes : [])) {
+    const langue = String((groupe && groupe.langue) || '');
     // Jamais la langue du numéro : ce panneau ne touche pas au texte source.
     if (LANGUES_META.indexOf(langue) === -1 || langue === source) { continue; }
-    const avant = texteChamp(meta, champ, langue);
-    meta[champ] = meta[champ] || {};
-    meta[champ][langue] = valeurChamp(champ, brut.texte);
-    if (texteChamp(meta, champ, langue) !== avant) { metaChangee = true; }
-    const s = statutValide(brut.statut);
-    if (s) { statuts[cleChamp(champ, langue)] = s; }
+    const s = statutValide(groupe.statut);
+    for (const brut of (Array.isArray(groupe.champs) ? groupe.champs : [])) {
+      const champ = String((brut && brut.champ) || '');
+      if (CHAMPS_TRADUISIBLES.indexOf(champ) === -1) { continue; }
+      // L'état est celui du GROUPE : il est posé sur chacune de ses clés, pour que
+      // le sidecar reste lisible par une version qui ne connaît pas les groupes.
+      if (s) { statuts[cleChamp(champ, langue)] = s; }
+      const avant = texteChamp(meta, champ, langue);
+      let valeur;
+      if (champ === 'keywords') {
+        // Appariement par position : une case vide AU MILIEU ferait remonter tous les
+        // mots-clés suivants d'un cran. alignerMotsCles tient la place avec la marque
+        // TO BE TRANSLATED. Le webview l'a déjà fait — on le refait ici, parce que ce
+        // qui protège le fichier doit être du côté qui l'écrit.
+        valeur = alignerMotsCles(brut.paires, listeChamp(meta, 'keywords', source).length);
+      } else {
+        valeur = valeurChamp(champ, brut.texte);
+      }
+      meta[champ] = meta[champ] || {};
+      meta[champ][langue] = valeur;
+      if (texteChamp(meta, champ, langue) !== avant) { metaChangee = true; }
+    }
   }
   const res = ecrireCartesArticles(fournisseur, { [slug]: meta }, [slug]);
   if (res.erreurs.length > 0) { return { ok: false, message: T('err.ecriture', [res.erreurs.join(', ')]) }; }
@@ -2078,6 +2592,26 @@ function enregistrerTraduction(fournisseur, msg) {
     });
   } catch (e) { return { ok: false, message: T('err.ecriture', [e.message]) }; }
   return { ok: true, metaChangee: metaChangee };
+}
+
+// « Envoyer dans DeepL » : le traducteur web accepte le texte dans le FRAGMENT de
+// l'URL — https://www.deepl.com/translator#<source>/<cible>/<texte>. Rien n'est
+// envoyé par l'extension : c'est le navigateur qui ouvre la page (le texte reste
+// donc dans l'URL, jamais dans une requête faite par le cockpit). Le retour se fait
+// au copier-coller : sans clé d'API, DeepL ne peut pas nous rendre la traduction.
+const LONGUEUR_MAX_DEEPL = 4000;                   // au-delà, les navigateurs tronquent
+
+function ouvrirDeepl(panneau, msg) {
+  const texte = String((msg && msg.texte) || '').trim();
+  const de = LANGUES_META.indexOf(String(msg.source || '')) !== -1 ? msg.source : 'fr';
+  const vers = LANGUES_META.indexOf(String(msg.cible || '')) !== -1 ? msg.cible : 'de';
+  if (texte === '') { return; }
+  if (texte.length > LONGUEUR_MAX_DEEPL) {
+    repondrePanneau(panneau, { type: 'erreur', message: T('trad.deepl.troplong') });
+    return;
+  }
+  const url = 'https://www.deepl.com/translator#' + de + '/' + vers + '/' + encodeURIComponent(texte);
+  vscode.env.openExternal(vscode.Uri.parse(url));
 }
 
 // Résout l'article visé : argument de l'arbre ({slug[, cle]} ou slug), sinon le .md
@@ -2154,6 +2688,7 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
       repondrePanneau(panneau, { type: 'copie' });
       return;
     }
+    if (msg.type === 'deepl') { ouvrirDeepl(panneau, msg); return; }
     if (msg.type === 'rechargement') {
       const attente = rechargementTraduction;
       rechargementTraduction = null;
@@ -2177,13 +2712,18 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
     if (msg.type !== 'enregistrer') { return; }
     const res = enregistrerTraduction(fournisseur, msg);
     if (!res.ok) { repondrePanneau(panneau, { type: 'erreur', message: res.message }); return; }
-    repondrePanneau(panneau, { type: 'enregistre' });
-    vscode.window.setStatusBarMessage(T('statut.traduction', [slugTraduction]), 3000);
+    repondrePanneau(panneau, { type: 'enregistre', auto: !!msg.auto });
+    traductionModifiee = false;
+    if (!msg.auto) { vscode.window.setStatusBarMessage(T('statut.traduction', [slugTraduction]), 3000); }
     if (rafraichirTout) { rafraichirTout(); }
-    envoyerValeursTraduction(panneau, fournisseur, slugTraduction, null);
+    // D121 : un enregistrement AUTOMATIQUE ne renvoie jamais les valeurs — le
+    // re-rendu reconstruirait le DOM sous les doigts (curseur et sélection perdus).
+    // Le webview est déjà à jour : c'est lui qui vient d'envoyer ce qu'il affiche.
+    if (!msg.auto) { envoyerValeursTraduction(panneau, fournisseur, slugTraduction, null); }
     // La fiche est une dépendance de build (M1) : un titre traduit change le rendu.
-    // On ne recompile que si un TEXTE a bougé — pas pour un simple changement d'état.
-    if (res.metaChangee) { montrerApercu(slugTraduction); }
+    // On ne recompile que si un TEXTE a bougé — pas pour un simple changement d'état —
+    // et jamais sur un enregistrement automatique, qui tomberait en pleine frappe.
+    if (res.metaChangee && !msg.auto) { montrerApercu(slugTraduction); }
   });
   montrerApercu(vise.slug);
 }
@@ -2499,11 +3039,14 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
     if (res.erreurs.length > 0) {
       panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [res.erreurs.join(', ')]) });
     } else {
-      panneau.webview.postMessage({ type: 'enregistre', n: res.n });
-      vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000);
+      panneau.webview.postMessage({ type: 'enregistre', n: res.n, auto: !!msg.auto });
+      if (!msg.auto) { vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000); }
     }
     if (rafraichirTout) { rafraichirTout(); }
-    envoyerValeurs(panneau);                       // resynchronise les cartes (dirty remis à zéro)
+    // D121 : un enregistrement AUTOMATIQUE ne renvoie jamais les cartes — les
+    // reconstruire sous les doigts ferait sauter le curseur toutes les 3 secondes.
+    // La webview est déjà à jour : c'est elle qui vient d'envoyer ce qu'elle affiche.
+    if (!msg.auto) { envoyerValeurs(panneau); }     // resynchronise (dirty remis à zéro)
   });
 }
 
@@ -2734,11 +3277,12 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
     if (res.erreurs.length > 0) {
       repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [res.erreurs.join(', ')]) });
     } else {
-      repondrePanneau(panneau, { type: 'enregistre', n: res.n });
-      vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000);
+      repondrePanneau(panneau, { type: 'enregistre', n: res.n, auto: !!msg.auto });
+      if (!msg.auto) { vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000); }
     }
     if (rafraichirTout) { rafraichirTout(); }
-    envoyerValeursImportVerif(panneau, fournisseur);   // resynchronise (dirty + badges depuis le disque)
+    // D121 : pas de re-rendu sur un enregistrement automatique (curseur préservé).
+    if (!msg.auto) { envoyerValeursImportVerif(panneau, fournisseur); }
   });
 }
 
@@ -2761,7 +3305,8 @@ const REGL_TEXTES = () => JSON.stringify({
   apercuHtml: T('regl.apercu.html'), apercuPdf: T('regl.apercu.pdf'), apercuNote: T('regl.apercu.note'),
   assets: T('regl.assets'),
   assetsOui: T('regl.assets.oui'), assetsNon: T('regl.assets.non'), assetsNote: T('regl.assets.note'),
-  langue: T('regl.langue'), langueNote: T('regl.langue.note')
+  langue: T('regl.langue'), langueNote: T('regl.langue.note'),
+  dev: T('regl.dev'), devOui: T('regl.dev.oui'), devNon: T('regl.dev.non'), devNote: T('regl.dev.note')
 });
 
 function htmlReglages(nonce) {
@@ -2817,7 +3362,11 @@ function lireReglagesActuels() {
   return {
     theme: etatTheme, zoom: String(zoom), policeMd: String(policeMd), apercu: apercu,
     assets: replierAssetsAutres() ? 'oui' : 'non',   // D96
-    langue: langueCockpit()
+    langue: langueCockpit(),
+    // D119 : le mode développeur ne vit PAS dans les réglages de l'éditeur mais dans
+    // C:\ProgramData\SZH\config.json — les scripts PowerShell (lanceur, création,
+    // archivage) sont les vrais consommateurs, et ils ne lisent pas settings.json.
+    dev: lireModeDeveloppeur() ? 'oui' : 'non'
   };
 }
 
@@ -2875,6 +3424,11 @@ function ouvrirReglages(rafraichirTout) {
         await vscode.workspace.getConfiguration('szh')
           .update('replierAssetsAutres', msg.valeur !== 'non', vscode.ConfigurationTarget.Global);
         if (rafraichirTout) { rafraichirTout(); }
+      } else if (msg.cle === 'dev') {
+        // D119 : écrit dans config.json du poste (droit d'écriture donné au groupe
+        // Utilisateurs par bootstrap.ps1 — c'est ce qui permet les MAJ sans admin).
+        const erreur = ecrireModeDeveloppeur(msg.valeur !== 'non');
+        if (erreur) { vscode.window.showErrorMessage(T('err.dev.ecriture', [erreur])); }
       } else if (msg.cle === 'langue') {
         const langue = msg.valeur === 'de' ? 'de' : 'fr';
         await vscode.workspace.getConfiguration('szh').update('langue', langue, Global);
@@ -3050,9 +3604,11 @@ async function ouvrirEditeurTable(fournisseur, item) {
       accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine),
       presets: PRESETS_ORDRE });
   };
-  const enregistrer = (modele) => {
+  const enregistrer = (modele, auto) => {
     ecrireAusgabeAtomique(chemin, serialiserTable(normaliserModele(modele)));
-    vscode.window.setStatusBarMessage(T('statut.table.enregistree', [nom]), 5000);
+    // D121 : l'enregistrement automatique reste silencieux — un message toutes les
+    // trois secondes dans la barre d'état ne dit plus rien à personne.
+    if (!auto) { vscode.window.setStatusBarMessage(T('statut.table.enregistree', [nom]), 5000); }
   };
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
@@ -3115,8 +3671,8 @@ async function ouvrirEditeurTable(fournisseur, item) {
     }
     if (msg.type === 'enregistrer') {
       try {
-        enregistrer(msg.modele);
-        panneau.webview.postMessage({ type: 'enregistre' });
+        enregistrer(msg.modele, !!msg.auto);
+        panneau.webview.postMessage({ type: 'enregistre', auto: !!msg.auto });
       } catch (e) {
         panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [e.message]) });
       }
@@ -3286,10 +3842,11 @@ async function ouvrirFicheImage(fournisseur, item) {
     }
     if (msg.type === 'enregistrer') {
       const n = await enregistrer(msg.valeurs);
-      if (n > 0) {
-        repondrePanneau(panneau, { type: 'enregistre' });
-        vscode.window.setStatusBarMessage(T('img.statut.enregistree', [nom, n]), 5000);
-      }
+      // L'accusé part TOUJOURS (même à 0 insertion réécrite) : sans lui, le verrou
+      // « une écriture en vol » de l'auto-enregistrement ne serait jamais levé et
+      // plus rien ne serait sauvegardé ensuite.
+      repondrePanneau(panneau, { type: 'enregistre', auto: !!msg.auto });
+      if (n > 0 && !msg.auto) { vscode.window.setStatusBarMessage(T('img.statut.enregistree', [nom, n]), 5000); }
       return;
     }
     if (msg.type === 'retourArticle') {
@@ -3334,6 +3891,13 @@ function activate(context) {
   const barreApercu = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   barreApercu.command = 'szh.basculerApercu';
   context.subscriptions.push(barreApercu);
+
+  // Barre d'état du cycle de vie (D116) : n'apparaît que sur un numéro gelé, et le
+  // clic mène au geste inverse (déverrouiller, ou désarchiver s'il n'est qu'archivé).
+  // Priorité plus haute que l'aperçu : c'est l'information qui explique pourquoi
+  // l'éditeur ne répond plus aux frappes.
+  const barreEtat = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 60);
+  context.subscriptions.push(barreEtat);
   const majBarreApercu = () => {
     barreApercu.text = T(modeApercu() === 'html' ? 'apercu.barre.html' : 'apercu.barre.pdf');
     barreApercu.tooltip = T('apercu.barre.tooltip');
@@ -3344,8 +3908,11 @@ function activate(context) {
   // section) ; le TITRE de la vue reflète le numéro (N2, D43) à chaque
   // rafraîchissement ; l'aperçu HTML est rechargé si sa sortie a été régénérée (M5).
   const rafraichirTout = () => {
+    // D116 : l'état du numéro AVANT tout le reste — le titre de la vue et les boutons
+    // de l'arbre en dépendent (et ausgabe.yaml est déjà surveillé, N2).
+    majEtatNumero(fournisseur, barreEtat);
     fournisseur.rafraichir();
-    vue.title = fournisseur.racine ? titreNumero(fournisseur.racine) : T('arbre.titre.defaut');
+    vue.title = fournisseur.racine ? titreVue(fournisseur.racine) : T('arbre.titre.defaut');
     majBarreApercu();
     rechargerApercuHtmlSiChange(fournisseur);
   };
@@ -3377,6 +3944,7 @@ function activate(context) {
   const majContexte = () => {
     const racine = trouverRacineRevue();
     fournisseur.definirRacine(racine);
+    divergenceSignalee = false;                    // D120 : un avertissement par revue ouverte
     profilRevue = lireProfil(racine);            // T6.4 : pilote le mode d'aperçu
     vscode.commands.executeCommand('setContext', CLE_CONTEXTE, !!racine);
     reinstallerWatchers(racine);
@@ -3384,32 +3952,64 @@ function activate(context) {
     rafraichirTout();
   };
 
+  // D116 — deux fabriques de commandes : `cmd` pour ce qui LIT (ouvrir un article,
+  // basculer l'aperçu, exporter) et `cmdEcriture` pour ce qui MODIFIE le numéro,
+  // refusé net sur un numéro verrouillé. La liste ci-dessous montre donc d'un coup
+  // d'œil ce que le verrou protège, au lieu d'un `if` répété dans chaque fonction.
+  const cmd = (id, fn) => vscode.commands.registerCommand(id, fn);
+  const cmdEcriture = (id, fn) => vscode.commands.registerCommand(id, function () {
+    if (refuserSiVerrouille()) { return undefined; }
+    return fn.apply(null, arguments);
+  });
+
   context.subscriptions.push(
-    vscode.commands.registerCommand('szh.cockpit.rafraichir', majContexte),
-    vscode.commands.registerCommand('szh.metadonnees', () => ouvrirMetadonnees(fournisseur, rafraichirTout)),
-    vscode.commands.registerCommand('szh.apercuMetadonnees', () => ouvrirApercuMetadonnees(fournisseur, rafraichirTout, null)),
+    cmd('szh.cockpit.rafraichir', majContexte),
+    cmdEcriture('szh.metadonnees', () => ouvrirMetadonnees(fournisseur, rafraichirTout)),
+    cmdEcriture('szh.apercuMetadonnees', () => ouvrirApercuMetadonnees(fournisseur, rafraichirTout, null)),
     // D97 : le MÊME formulaire, filtré sur un article (icône ✎ de l'arbre, ou entrée
     // « Métadonnées de l'article courant » du panneau d'édition, sans argument).
-    vscode.commands.registerCommand('szh.metadonneesArticle', (item) => ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item)),
+    cmdEcriture('szh.metadonneesArticle', (item) => ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item)),
     // D113 : section « Traductions » — clic sur un article (ou sur un de ses champs)
     // et bouton « tout marquer prêt pour traduction » de la barre de section.
-    vscode.commands.registerCommand('szh.traduction', (item) => ouvrirTraduction(fournisseur, rafraichirTout, item)),
-    vscode.commands.registerCommand('szh.traductionsToutPret', () => marquerToutPretTraduction(fournisseur, rafraichirTout)),
-    vscode.commands.registerCommand('szh.reglages', () => ouvrirReglages(rafraichirTout)),
-    vscode.commands.registerCommand('szh.basculerApercu', () => basculerApercu(fournisseur, majBarreApercu)),
-    vscode.commands.registerCommand('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
-    vscode.commands.registerCommand('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),
-    vscode.commands.registerCommand('szh.toutExporter', () => toutExporter(fournisseur, rafraichirTout)),
-    vscode.commands.registerCommand('szh.exporterXml', () => exporterXml(fournisseur, rafraichirTout)),
-    vscode.commands.registerCommand('szh.ouvrirArticle', (slug) => ouvrirArticle(fournisseur, slug)),
-    vscode.commands.registerCommand('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
-    vscode.commands.registerCommand('szh.remplacerAsset', (item) => remplacerAsset(fournisseur, rafraichirTout, item)),
-    vscode.commands.registerCommand('szh.remplacerTable', (item) => remplacerTable(fournisseur, rafraichirTout, item)),
-    vscode.commands.registerCommand('szh.supprimerAsset', (item) => supprimerAsset(fournisseur, rafraichirTout, item, false)),
-    vscode.commands.registerCommand('szh.supprimerTable', (item) => supprimerAsset(fournisseur, rafraichirTout, item, true)),
-    vscode.commands.registerCommand('szh.editerTable', (item) => ouvrirEditeurTable(fournisseur, item)),
-    vscode.commands.registerCommand('szh.ficheImage', (item) => ouvrirFicheImage(fournisseur, item)),
+    cmdEcriture('szh.traduction', (item) => ouvrirTraduction(fournisseur, rafraichirTout, item)),
+    cmdEcriture('szh.traductionsToutPret', () => marquerToutPretTraduction(fournisseur, rafraichirTout)),
+    cmd('szh.reglages', () => ouvrirReglages(rafraichirTout)),
+    cmd('szh.basculerApercu', () => basculerApercu(fournisseur, majBarreApercu)),
+    cmdEcriture('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
+    cmdEcriture('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),
+    // Les exports RESTENT ouverts sur un numéro gelé : c'est la contrepartie de la
+    // suppression des documents à l'archivage (« vous pourrez toujours réexporter »).
+    cmd('szh.toutExporter', () => toutExporter(fournisseur, rafraichirTout)),
+    cmd('szh.exporterXml', () => exporterXml(fournisseur, rafraichirTout)),
+    cmd('szh.exporterArticle', (item) => exporterArticle(fournisseur, rafraichirTout, item)),
+    // D116 : le cycle de vie du numéro. « Archiver et verrouiller » n'est pas une
+    // écriture ordinaire — c'est LUI qui pose le verrou ; « Déverrouiller » est le
+    // seul geste qui doit rester possible quand tout le reste est refusé.
+    cmd('szh.archiverVerrouiller', () => archiverEtVerrouiller(fournisseur, rafraichirTout)),
+    cmd('szh.deverrouiller', () => deverrouiller(fournisseur, rafraichirTout)),
+    cmd('szh.desarchiver', () => desarchiver(fournisseur, rafraichirTout)),
+    cmd('szh.ouvrirArticle', (slug) => ouvrirArticle(fournisseur, slug)),
+    cmdEcriture('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
+    cmdEcriture('szh.remplacerAsset', (item) => remplacerAsset(fournisseur, rafraichirTout, item)),
+    cmdEcriture('szh.remplacerTable', (item) => remplacerTable(fournisseur, rafraichirTout, item)),
+    cmdEcriture('szh.supprimerAsset', (item) => supprimerAsset(fournisseur, rafraichirTout, item, false)),
+    cmdEcriture('szh.supprimerTable', (item) => supprimerAsset(fournisseur, rafraichirTout, item, true)),
+    cmdEcriture('szh.editerTable', (item) => ouvrirEditeurTable(fournisseur, item)),
+    cmdEcriture('szh.ficheImage', (item) => ouvrirFicheImage(fournisseur, item)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte),
+    // D120 — l'avertissement de divergence de version se déclenche au DÉMARRAGE d'une
+    // tâche de compilation, pas dans les fonctions du cockpit : le chemin le plus
+    // fréquent (Ctrl+S -> triggerTaskOnSave -> tâche utilisateur) ne passe pas par
+    // nous. Un seul point d'accroche pour tous les chemins, et une seule fois par
+    // fenêtre (garde dans avertirVersionSiDivergente).
+    vscode.tasks.onDidStartTask((e) => {
+      if (!fournisseur.racine || !e || !e.execution || !e.execution.task) { return; }
+      const tache = e.execution.task;
+      const nomsSuivis = [NOM_TACHE_BUILD, NOM_TACHE_EXPORT, NOM_TACHE_IMPORT, NOM_TACHE_DOCX];
+      const estNotre = (tache.definition && tache.definition.type === 'szh');
+      if (nomsSuivis.indexOf(tache.name) === -1 && !estNotre) { return; }
+      avertirVersionSiDivergente();
+    }),
     // A1 — défilement synchronisé éditeur -> aperçu : la 1re ligne visible du .md de
     // l'article courant est poussée à la webview. Ignoré si l'aperçu HTML n'est pas
     // à l'écran, ou si c'est notre propre révélation (aperçu -> éditeur) qui l'a déclenché.
@@ -3436,13 +4036,18 @@ function activate(context) {
   enregistrerCommandesMiseEnForme(context, {
     racine: () => fournisseur.racine,
     slugDepuisChemin: slugDepuisChemin,
-    rafraichirTout: rafraichirTout
+    rafraichirTout: rafraichirTout,
+    // D116 : toute la mise en forme écrit dans le texte -> refusée sur un numéro gelé.
+    verrouillee: () => etatCourant().verrouillee,
+    refuser: () => { refuserSiVerrouille(); }
   });
 
   // F1 — les trois panneaux de la barre (Commande / Édition / Export) : la barre de
   // titre de la vue ne porte plus que ces trois boutons, le reste passe par eux
   // (les commandes individuelles restent enregistrées — filet Ctrl+Maj+P).
-  enregistrerPanneaux(context);
+  // D116 : le panneau d'export n'affiche que les gestes de cycle de vie que l'état
+  // du numéro rend possibles — d'où l'injection de l'état.
+  enregistrerPanneaux(context, { etat: etatCourant });
 
   // F7 : au démarrage, si une revue est ouverte, l'init lente (réveil de la VM WSL —
   // le vrai coût, puis chargement de l'arbre) se fait derrière un indicateur de
@@ -3481,6 +4086,7 @@ module.exports = {
     analyserAusgabe, serialiserAusgabe,
     nettoyerCarte, assainirCheminPhoto, decomposerPhoto, relatifImageValide,
     analyserTraduction, serialiserTraduction, lignesTraduction, resumeTraduction,
+    versionsDivergent, poidsLisible,
     texteChamp, valeurChamp,
     retirerImage, retirerTable, lireAttributsImage, ecrireAttributsImage,
     basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,

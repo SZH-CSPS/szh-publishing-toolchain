@@ -13,6 +13,9 @@
   const etat = document.getElementById('etat');
   const conteneur = document.getElementById('cartes');
   const modifies = new Set();
+  // Fragment mots-clés (SZH.motsCles) de chaque carte : c'est LUI qui porte les
+  // listes, y compris celles des langues masquées, et qui les rend déjà alignées.
+  const motsClesParCarte = new WeakMap();
   let TYPES = [];
   let LANGUE_DEFAUT = 'fr';   // langue par défaut du numéro (E3, dérivée du revue)
   // Gardes photo (F3) — mêmes bornes que l'hôte (défense en profondeur).
@@ -558,9 +561,35 @@
       notePhotos.textContent = TXT.photosNote;
       carte.appendChild(notePhotos);
       champTexte(carte, carte, article.slug, 'doi', null, 'DOI', v.doi);
+      // Mots-clés : fragment PARTAGÉ SZH.motsCles (media/_commun.js) — même grille
+      // appariée que dans « Métadonnées des articles » et dans le panneau de
+      // traduction. Un badge par langue reste posé sur l'intitulé (détecté / à
+      // compléter), comme pour les autres champs de ce dialogue.
+      const lMots = document.createElement('label');
+      lMots.textContent = TXT.motsClesTitre || '';
       for (const lg of langues) {
-        champTexte(carte, carte, article.slug, 'keywords', lg, TXT.motsCles.split('{0}').join(nomsLangues[lg]), ((v.keywords || {})[lg] || []).join(', '));
+        const b = creerBadge('keywords.' + lg);
+        b.classList.add('champ-' + lg);
+        lMots.appendChild(document.createTextNode(' ' + nomsLangues[lg] + ' '));
+        lMots.appendChild(b);
       }
+      carte.appendChild(lMots);
+      const coloMotsCles = function (avec) {
+        return langues.filter(function (l) { return l !== 'it' || avec; })
+          .map(function (l) { return { code: l, libelle: nomsLangues[l] }; });
+      };
+      const editeurMots = SZH.motsCles({
+        langues: coloMotsCles(avecIt),
+        listes: v.keywords || {},
+        edition: true,
+        textes: {
+          motCle: TXT.motsCles, ajouter: TXT.motCleAjouter,
+          retirer: TXT.motCleRetirer, aide: TXT.motsClesAide
+        },
+        onChange: function () { marquer(carte, article.slug); majBadges(carte); }
+      });
+      motsClesParCarte.set(carte, editeurMots);
+      carte.appendChild(editeurMots.element);
       const caseIt = document.createElement('label');
       caseIt.className = 'case-it';
       const coche = document.createElement('input');
@@ -570,6 +599,7 @@
       caseIt.appendChild(document.createTextNode(TXT.italien));
       coche.addEventListener('change', function () {
         carte.classList.toggle('avec-it', coche.checked);
+        editeurMots.reconstruire(coloMotsCles(coche.checked));
         majBadges(carte);                          // les champs IT (dé)comptent
       });
       carte.appendChild(caseIt);
@@ -588,9 +618,7 @@
       const langue = i.dataset.langue;
       if (cle === 'doi') { resultat.doi = i.value; }
       else if (cle === 'title' || cle === 'subtitle' || cle === 'resume') { resultat[cle][langue] = i.value; }
-      else if (cle === 'keywords') {
-        resultat.keywords[langue] = i.value.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s !== ''; });
-      }
+      // 'keywords' ne passe plus par un <input> de la carte : il vient du fragment.
     }
     for (const rangee of carte.querySelectorAll('.auteur')) {
       const a = {};
@@ -598,6 +626,8 @@
       a.photo = rangee.dataset.photo || '';         // posé par la modale (D92)
       resultat.author.push(a);
     }
+    const editeurMots = motsClesParCarte.get(carte);
+    if (editeurMots) { resultat.keywords = editeurMots.collecter(); }
     return resultat;
   }
   function cartesModifiees() {
@@ -607,9 +637,18 @@
     }
     return envoi;
   }
+  // D121 : enregistrement automatique, comme dans « Métadonnées des articles ».
+  function envoyer(auto) {
+    if (modifies.size === 0) { if (!auto) { etat.textContent = TXT.rien; } return; }
+    vscodeApi.postMessage({ type: 'enregistrer', auto: !!auto, articles: cartesModifiees() });
+  }
+  const autoEnr = SZH.autoEnregistrement({
+    estModifie: function () { return modifies.size > 0; },
+    enregistrer: envoyer
+  });
   document.getElementById('enregistrer').addEventListener('click', function () {
-    if (modifies.size === 0) { etat.textContent = TXT.rien; return; }
-    vscodeApi.postMessage({ type: 'enregistrer', articles: cartesModifiees() });
+    autoEnr.annuler();
+    envoyer(false);
   });
   // « Fermer » : l'hôte décide (modale « modifications non enregistrées » si
   // besoin, patron retourArticle) — on lui passe l'état dirty ET les cartes
@@ -620,8 +659,17 @@
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
     if (msg.type === 'valeurs') { TYPES = msg.types || []; LANGUE_DEFAUT = msg.langue || 'fr'; rendre(msg.articles || []); }
-    if (msg.type === 'enregistre') { etat.textContent = TXT.enregistre.split('{0}').join(msg.n); }
-    if (msg.type === 'erreur') { etat.textContent = '⚠ ' + msg.message; }
+    if (msg.type === 'enregistre') {
+      autoEnr.confirme();
+      // Ce dialogue n'a pas d'état « modifié » côté hôte : c'est « Fermer » qui le
+      // lui envoie (msg.fermer). On se contente donc de retirer les ●.
+      if (msg.auto) {
+        modifies.clear();
+        for (const c of conteneur.querySelectorAll('.carte.modifie')) { c.classList.remove('modifie'); }
+      }
+      etat.textContent = TXT.enregistre.split('{0}').join(msg.n);
+    }
+    if (msg.type === 'erreur') { autoEnr.confirme(); etat.textContent = '⚠ ' + msg.message; }
     // Réponses de la modale photo : recontrôlées contre le contexte courant —
     // une réponse tardive (modale refermée, autre rangée) est simplement ignorée.
     if (msg.type === 'photo-versions') {

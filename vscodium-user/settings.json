@@ -64,6 +64,10 @@
   // à cacher au rédacteur (le fichier reste sur le disque, il est juste masqué).
   "files.exclude": {
     "**/.DS_Store": true,
+    // D116 : posé par le cockpit au verrouillage d'un numéro (files.readonlyInclude au
+    // scope workspace = <revue>/.vscode/settings.json) et supprimé au déverrouillage.
+    // Seul fichier technique toléré dans un dossier de revue — donc masqué (D8).
+    "**/.vscode": true,
     "**/Thumbs.db": true,
     "**/~$*": true,
     "**/*.lnk": true,

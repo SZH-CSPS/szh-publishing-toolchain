@@ -6,6 +6,9 @@
   const conteneur = document.getElementById('cartes');
   const bandeauFiltre = document.getElementById('filtre');
   const modifies = new Set();
+  // Fragment mots-clés (SZH.motsCles) de chaque carte : c'est LUI qui porte les
+  // listes, y compris celles des langues masquées, et qui les rend déjà alignées.
+  const motsClesParCarte = new WeakMap();
   let TYPES = [];
   let dernierModifie = false;
   let LANGUE_DEFAUT = 'fr';   // langue par défaut du numéro (E3, dérivée du revue)
@@ -385,9 +388,29 @@
       ajouter.addEventListener('click', function () { ligneAuteur(carte, article.slug, zone, null); marquer(carte, article.slug); });
       carte.appendChild(ajouter);
       champTexte(carte, carte, article.slug, 'doi', null, 'DOI', v.doi);
-      for (const lg of langues) {
-        champTexte(carte, carte, article.slug, 'keywords', lg, TXT.motsCles.split('{0}').join(nomsLangues[lg]), ((v.keywords || {})[lg] || []).join(', '));
-      }
+      // Mots-clés : fragment PARTAGÉ SZH.motsCles (media/_commun.js), le même que dans
+      // le panneau de traduction — une rangée par mot-clé, toutes langues côte à côte.
+      // On ajoute et on retire une RANGÉE, jamais un mot dans une seule langue : c'est
+      // la position qui apparie « diagnostic » et « Diagnose », rien d'autre.
+      const lMots = document.createElement('label');
+      lMots.textContent = TXT.motsClesTitre || '';
+      carte.appendChild(lMots);
+      const coloMotsCles = function (avec) {
+        return langues.filter(function (l) { return l !== 'it' || avec; })
+          .map(function (l) { return { code: l, libelle: nomsLangues[l] }; });
+      };
+      const editeurMots = SZH.motsCles({
+        langues: coloMotsCles(avecIt),
+        listes: v.keywords || {},
+        edition: true,
+        textes: {
+          motCle: TXT.motsCles, ajouter: TXT.motCleAjouter,
+          retirer: TXT.motCleRetirer, aide: TXT.motsClesAide
+        },
+        onChange: function () { marquer(carte, article.slug); }
+      });
+      motsClesParCarte.set(carte, editeurMots);
+      carte.appendChild(editeurMots.element);
       const caseIt = document.createElement('label');
       caseIt.className = 'case-it';
       const coche = document.createElement('input');
@@ -397,6 +420,9 @@
       caseIt.appendChild(document.createTextNode(TXT.italien));
       coche.addEventListener('change', function () {
         carte.classList.toggle('avec-it', coche.checked);
+        // La colonne IT apparaît ou disparaît ; le fragment garde ses valeurs (elles
+        // vivent dans son modèle, pas dans le DOM).
+        editeurMots.reconstruire(coloMotsCles(coche.checked));
       });
       carte.appendChild(caseIt);
       conteneur.appendChild(carte);
@@ -411,9 +437,7 @@
       const langue = i.dataset.langue;
       if (cle === 'doi') { resultat.doi = i.value; }
       else if (cle === 'title' || cle === 'subtitle' || cle === 'resume') { resultat[cle][langue] = i.value; }
-      else if (cle === 'keywords') {
-        resultat.keywords[langue] = i.value.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s !== ''; });
-      }
+      // 'keywords' ne passe plus par un <input> de la carte : il vient du fragment.
     }
     for (const rangee of carte.querySelectorAll('.auteur')) {
       const a = {};
@@ -421,6 +445,8 @@
       a.photo = rangee.dataset.photo || '';         // posé par la modale (D92)
       resultat.author.push(a);
     }
+    const editeurMots = motsClesParCarte.get(carte);
+    if (editeurMots) { resultat.keywords = editeurMots.collecter(); }
     return resultat;
   }
   // Cartes MODIFIÉES seules (les autres ne sont jamais réécrites) — partagé par le
@@ -432,9 +458,20 @@
     }
     return envoi;
   }
+  // D121 : enregistrement automatique (3 s après la dernière frappe, à la perte de
+  // focus d'un champ, et quand le panneau passe en arrière-plan). L'hôte répond sans
+  // renvoyer les valeurs quand `auto` est vrai : pas de re-rendu sous les doigts.
+  function envoyer(auto) {
+    if (modifies.size === 0) { if (!auto) { etat.textContent = TXT.rien; } return; }
+    vscodeApi.postMessage({ type: 'enregistrer', auto: !!auto, articles: cartesModifiees() });
+  }
+  const autoEnr = SZH.autoEnregistrement({
+    estModifie: function () { return modifies.size > 0; },
+    enregistrer: envoyer
+  });
   document.getElementById('enregistrer').addEventListener('click', function () {
-    if (modifies.size === 0) { etat.textContent = TXT.rien; return; }
-    vscodeApi.postMessage({ type: 'enregistrer', articles: cartesModifiees() });
+    autoEnr.annuler();
+    envoyer(false);
   });
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
@@ -448,8 +485,18 @@
     if (msg.type === 'demande-rechargement') {
       vscodeApi.postMessage({ type: 'rechargement', articles: cartesModifiees() });
     }
-    if (msg.type === 'enregistre') { etat.textContent = TXT.enregistre.split('{0}').join(msg.n); }
-    if (msg.type === 'erreur') { etat.textContent = '⚠ ' + msg.message; }
+    if (msg.type === 'enregistre') {
+      autoEnr.confirme();
+      // Enregistrement automatique : l'hôte ne renvoie pas les cartes, c'est donc ici
+      // qu'on retire les ● (le disque est à jour, la webview aussi).
+      if (msg.auto) {
+        modifies.clear();
+        signalerModifie();
+        for (const c of conteneur.querySelectorAll('.carte.modifie')) { c.classList.remove('modifie'); }
+      }
+      etat.textContent = TXT.enregistre.split('{0}').join(msg.n);
+    }
+    if (msg.type === 'erreur') { autoEnr.confirme(); etat.textContent = '⚠ ' + msg.message; }
     // Réponses de la modale photo : recontrôlées contre le contexte courant —
     // une réponse tardive (modale refermée, autre rangée) est simplement ignorée.
     if (msg.type === 'photo-versions') {

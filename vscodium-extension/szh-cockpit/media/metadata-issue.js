@@ -10,6 +10,14 @@
   // écrit dans ausgabe.yaml ; l'ISSN et la langue par défaut en sont DÉRIVÉS.
   let revueChoisie = '';
   const RADIOS_REVUE = document.querySelectorAll('input[name="revue"]');
+  // entete-condensee (D114) : case à cocher. La valeur arrive DÉJÀ tranchée en
+  // « true »/« false » par l'extension (estVraiYaml de lib/yaml.js) — aucune règle de
+  // vérité n'est dupliquée ici.
+  const CASE_CONDENSE = document.getElementById('entete-condensee');
+  CASE_CONDENSE.addEventListener('change', function () {
+    modifies.add('entete-condensee');
+    etat.textContent = '';
+  });
   // Miroir de normaliserRevue() (lib/yaml.js) + derive_revue() (Lua) : accepte le
   // jeton ET l'ancien nom complet (rétrocompat), teste « zeitschrift » avant « revue ».
   function normaliserRevue(v) {
@@ -78,6 +86,7 @@
     majRevue();
     couleurChoisie = valeurs.couleur === undefined ? '' : String(valeurs.couleur);
     majPastilles();
+    CASE_CONDENSE.checked = String(valeurs['entete-condensee']) === 'true';
     modifies.clear();
     etat.textContent = '';
   }
@@ -92,6 +101,7 @@
     for (const cle of modifies) {
       if (cle === 'couleur') { envoi[cle] = couleurChoisie; }
       else if (cle === 'revue') { envoi[cle] = revueChoisie; }
+      else if (cle === 'entete-condensee') { envoi[cle] = CASE_CONDENSE.checked ? 'true' : 'false'; }
       else { envoi[cle] = document.getElementById(cle).value; }
     }
     vscodeApi.postMessage({ type: 'enregistrer', modifies: envoi });

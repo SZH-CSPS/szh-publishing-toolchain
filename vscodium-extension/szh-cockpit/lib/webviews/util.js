@@ -23,7 +23,11 @@ function construireHtml(base, nonce, opts) {
   opts = opts || {};
   let corps = fs.readFileSync(path.join(MEDIA, base + '.html'), 'utf8');
   const css = fs.readFileSync(path.join(MEDIA, base + '.css'), 'utf8');
-  let js = fs.readFileSync(path.join(MEDIA, base + '.js'), 'utf8');
+  // Socle commun (D114 : enregistrement automatique) préfixé au script de la page —
+  // un seul <script>, donc un seul nonce, et `SZH` est défini avant la première ligne
+  // du webview. Un webview qui ne s'en sert pas n'en paie que la taille (~2 Ko).
+  const commun = fs.readFileSync(path.join(MEDIA, '_commun.js'), 'utf8');
+  let js = commun.replace(/\n+$/, '') + '\n\n' + fs.readFileSync(path.join(MEDIA, base + '.js'), 'utf8');
 
   corps = corps.replace(RE_I18N, function (_, cle) { return T(cle); });
   js = js.replace(RE_I18N, function (_, cle) { return T(cle); });

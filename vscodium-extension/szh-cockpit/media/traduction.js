@@ -1,6 +1,8 @@
-// Panneau « Traduction » (D113) — une carte par champ bilingue : texte source en
-// lecture seule, traduction à saisir, état d'avancement. DOM construit sans
-// injection HTML ; les valeurs arrivent par postMessage (jamais dans le gabarit).
+// Panneau « Traduction » (D113, remanié D122) — une carte par BLOC à traduire :
+// titre + sous-titre ensemble, résumé, mots-clés appariés un à un. Texte source en
+// lecture seule, traduction à saisir, un état par bloc. DOM construit sans injection
+// HTML ; les valeurs arrivent par postMessage (jamais dans le gabarit).
+// Enregistrement automatique via SZH.autoEnregistrement (media/_commun.js).
 (function () {
   'use strict';
   const TXT = __TXT__;
@@ -13,13 +15,14 @@
   const commentaire = document.getElementById('commentaire');
 
   let SLUG = null;
+  let LANGUE_SOURCE = 'fr';
   let STATUTS = [];          // [{ valeur, libelle }] — envoyés par l'hôte (i18n)
   let modifie = false;
   let dernierModifie = false;
 
   // L'hôte doit savoir si le panneau porte des modifications : c'est lui qui pose
-  // la garde « non enregistré » avant de CHANGER d'article (clic sur un autre
-  // article de la section « Traductions »).
+  // la garde avant de CHANGER d'article. (Avec l'enregistrement automatique, ce
+  // drapeau retombe presque toujours à faux avant qu'on y arrive.)
   function signalerModifie() {
     if (modifie === dernierModifie) { return; }
     dernierModifie = modifie;
@@ -32,87 +35,162 @@
     signalerModifie();
   }
 
-  function majBadge(carte) {
-    const zone = carte.querySelector('textarea.cible');
-    const badge = carte.querySelector('.badge');
-    const rempli = zone.value.trim() !== '';
-    badge.textContent = rempli ? TXT.traduit : TXT.atraduire;
-    badge.classList.toggle('traduit', rempli);
-  }
-
   function majStatut(carte) {
     const select = carte.querySelector('select.statut');
     for (const s of STATUTS) { carte.classList.remove('statut-' + s.valeur); }
     carte.classList.add('statut-' + select.value);
   }
 
-  function carteChamp(ligne) {
+  // Badge « traduit / à traduire », ou « 2/4 » pour les mots-clés — recalculé à
+  // chaque frappe, c'est le retour immédiat qui dit où on en est.
+  function majBadge(carte) {
+    const badge = carte.querySelector('.badge');
+    const editeur = editeursMotsCles[carte.dataset.cle];
+    const zones = editeur
+      ? Array.prototype.slice.call(editeur.element.querySelectorAll('input'))
+      : Array.prototype.slice.call(carte.querySelectorAll('textarea.cible'));
+    let remplies = 0;
+    for (const z of zones) { if (z.value.trim() !== '') { remplies++; } }
+    const total = zones.length;
+    badge.textContent = carte.dataset.groupe === 'motscles'
+      ? remplies + '/' + total
+      : (remplies === total && total > 0 ? TXT.traduit : TXT.atraduire);
+    badge.classList.toggle('traduit', total > 0 && remplies === total);
+  }
+
+  // ---- Boutons d'un texte source : Copier (presse-papiers de l'hôte) et DeepL
+  // (ouvre le traducteur web avec le texte, la langue source et la langue cible).
+  function boutonsSource(texte, langue) {
+    const zone = document.createElement('span');
+    zone.className = 'actions-source';
+    if (texte === '') { return zone; }
+    const copier = document.createElement('button');
+    copier.type = 'button';
+    copier.textContent = TXT.copier;
+    copier.addEventListener('click', function () {
+      vscodeApi.postMessage({ type: 'copier', texte: texte });
+    });
+    zone.appendChild(copier);
+    const deepl = document.createElement('button');
+    deepl.type = 'button';
+    deepl.className = 'deepl';
+    deepl.textContent = TXT.deepl;
+    deepl.title = TXT.deeplTip
+      .split('{0}').join(LANGUE_SOURCE.toUpperCase())
+      .split('{1}').join(langue.toUpperCase());
+    deepl.addEventListener('click', function () {
+      vscodeApi.postMessage({ type: 'deepl', texte: texte, source: LANGUE_SOURCE, cible: langue });
+    });
+    zone.appendChild(deepl);
+    return zone;
+  }
+
+  function blocSource(libelle, texte, langue) {
+    const entete = document.createElement('div');
+    entete.className = 'entete-source';
+    const l = document.createElement('label');
+    l.textContent = libelle;
+    entete.appendChild(l);
+    entete.appendChild(boutonsSource(texte, langue));
+    const bloc = document.createElement('div');
+    bloc.className = 'source' + (texte === '' ? ' vide' : '');
+    bloc.textContent = texte !== '' ? texte : TXT.sourceVide;
+    return [entete, bloc];
+  }
+
+  // ---- Un champ texte du bloc (titre, sous-titre, résumé).
+  function champTexte(carte, groupe, champ) {
+    const nomSource = TXT.source.split('{0}').join(groupe.langueSource.toUpperCase());
+    for (const el of blocSource(champ.libelle + ' — ' + nomSource, champ.source, groupe.langue)) {
+      carte.appendChild(el);
+    }
+    const lCible = document.createElement('label');
+    lCible.textContent = champ.libelle + ' — ' + TXT.cible.split('{0}').join(groupe.langue.toUpperCase());
+    lCible.htmlFor = 'cible-' + groupe.cle + '-' + champ.champ;
+    carte.appendChild(lCible);
+    const zone = document.createElement('textarea');
+    zone.className = 'cible';
+    zone.dataset.champ = champ.champ;
+    zone.id = lCible.htmlFor;
+    zone.rows = champ.multiligne ? 7 : 2;
+    zone.value = champ.cible || '';
+    zone.addEventListener('input', function () { majBadge(carte); marquer(carte); });
+    carte.appendChild(zone);
+  }
+
+  // ---- Les mots-clés : le fragment partagé SZH.motsCles (media/_commun.js), le même
+  // que dans « Métadonnées des articles » et dans la vérification de l'import. Ici la
+  // colonne source est en lecture seule et la structure est figée : on traduit des
+  // mots-clés, on n'en invente pas (c'est le formulaire de métadonnées qui en ajoute).
+  const editeursMotsCles = {};        // cle de carte -> fragment
+
+  function champMotsCles(carte, groupe, champ) {
+    const entete = document.createElement('div');
+    entete.className = 'entete-source';
+    const l = document.createElement('label');
+    l.textContent = champ.libelle;
+    entete.appendChild(l);
+    const source = (champ.paires || []).map(function (p) { return p.source; })
+      .filter(function (t) { return t !== ''; }).join(', ');
+    entete.appendChild(boutonsSource(source, groupe.langue));
+    carte.appendChild(entete);
+
+    const listes = {};
+    listes[groupe.langueSource] = (champ.paires || []).map(function (p) { return p.source; });
+    listes[groupe.langue] = (champ.paires || []).map(function (p) { return p.cible; });
+    const editeur = SZH.motsCles({
+      langues: [
+        { code: groupe.langueSource, libelle: groupe.langueSource.toUpperCase(), lecture: true },
+        { code: groupe.langue, libelle: groupe.langue.toUpperCase() }
+      ],
+      listes: listes,
+      edition: false,
+      textes: {
+        motCle: TXT.motCle, sansEquivalent: TXT.motCleSansEquiv, aide: TXT.motsClesAide
+      },
+      onChange: function () { majBadge(carte); marquer(carte); }
+    });
+    editeur.langueCible = groupe.langue;
+    editeursMotsCles[groupe.cle] = editeur;
+    carte.appendChild(editeur.element);
+  }
+
+  function carteGroupe(groupe) {
     const carte = document.createElement('div');
     carte.className = 'carte';
-    carte.dataset.champ = ligne.champ;
-    carte.dataset.langue = ligne.langue;
-    carte.dataset.cle = ligne.cle;
+    carte.dataset.cle = groupe.cle;
+    carte.dataset.groupe = groupe.groupe;
+    carte.dataset.langue = groupe.langue;
+    carte.id = 'bloc-' + groupe.cle;
 
     const h3 = document.createElement('h3');
-    h3.textContent = ligne.libelle;
+    h3.textContent = groupe.libelle;
     const badge = document.createElement('span');
     badge.className = 'badge';
     h3.appendChild(badge);
     carte.appendChild(h3);
 
-    // ---- Texte source : en lecture seule, avec un bouton « Copier » (l'hôte
-    // écrit dans le presse-papiers ; aucune permission de webview en jeu).
-    const entete = document.createElement('div');
-    entete.className = 'entete-source';
-    const lSource = document.createElement('label');
-    lSource.textContent = TXT.source.split('{0}').join(ligne.langueSource.toUpperCase());
-    entete.appendChild(lSource);
-    if (ligne.source !== '') {
-      const copier = document.createElement('button');
-      copier.type = 'button';
-      copier.textContent = TXT.copier;
-      copier.addEventListener('click', function () {
-        vscodeApi.postMessage({ type: 'copier', texte: ligne.source });
-      });
-      entete.appendChild(copier);
+    for (const champ of groupe.champs) {
+      if (champ.champ === 'keywords') { champMotsCles(carte, groupe, champ); }
+      else { champTexte(carte, groupe, champ); }
     }
-    carte.appendChild(entete);
-    const source = document.createElement('div');
-    source.className = 'source' + (ligne.source === '' ? ' vide' : '');
-    source.textContent = ligne.source !== '' ? ligne.source : TXT.sourceVide;
-    carte.appendChild(source);
 
-    // ---- Traduction (le seul champ éditable de la carte).
-    const lCible = document.createElement('label');
-    lCible.textContent = TXT.cible.split('{0}').join(ligne.langue.toUpperCase());
-    lCible.htmlFor = 'cible-' + ligne.cle;
-    carte.appendChild(lCible);
-    const zone = document.createElement('textarea');
-    zone.className = 'cible';
-    zone.id = 'cible-' + ligne.cle;
-    zone.rows = ligne.champ === 'resume' ? 7 : 2;
-    zone.value = ligne.cible || '';
-    if (ligne.aide) { zone.placeholder = ligne.aide; }
-    zone.addEventListener('input', function () { majBadge(carte); marquer(carte); });
-    carte.appendChild(zone);
-
-    // ---- État d'avancement.
     const rangee = document.createElement('div');
     rangee.className = 'ligne-statut';
     const lStatut = document.createElement('label');
     lStatut.textContent = TXT.statut;
-    lStatut.htmlFor = 'statut-' + ligne.cle;
+    lStatut.htmlFor = 'statut-' + groupe.cle;
     rangee.appendChild(lStatut);
     const select = document.createElement('select');
     select.className = 'statut';
-    select.id = 'statut-' + ligne.cle;
+    select.id = lStatut.htmlFor;
     for (const s of STATUTS) {
       const opt = document.createElement('option');
       opt.value = s.valeur;
       opt.textContent = s.libelle;
       select.appendChild(opt);
     }
-    select.value = ligne.statut;
+    select.value = groupe.statut;
     select.addEventListener('input', function () { majStatut(carte); marquer(carte); });
     rangee.appendChild(select);
     carte.appendChild(rangee);
@@ -122,12 +200,12 @@
     return carte;
   }
 
-  // « Tout l'article » : un bouton par état. Un clic pose l'état sur TOUS les
-  // champs puis enregistre — c'est le geste demandé « en un clic », et il n'y a
-  // rien à perdre : l'enregistrement emporte aussi les textes en cours de saisie.
-  function rendreTout(nombreChamps) {
+  // « Tout l'article » : un bouton par état. Un clic pose l'état sur TOUS les blocs
+  // puis enregistre — le geste demandé « en un clic », et rien ne se perd :
+  // l'enregistrement emporte aussi les textes en cours de saisie.
+  function rendreTout(nombreBlocs) {
     barreTout.textContent = '';
-    if (nombreChamps === 0) { barreTout.hidden = true; return; }
+    if (nombreBlocs === 0) { barreTout.hidden = true; return; }
     const intitule = document.createElement('span');
     intitule.className = 'intitule';
     intitule.textContent = TXT.tout;
@@ -144,13 +222,13 @@
         }
         modifie = true;
         signalerModifie();
-        enregistrer();
+        enregistrer(false);
       });
       barreTout.appendChild(bouton);
     }
     const aide = document.createElement('p');
     aide.className = 'aide';
-    aide.textContent = TXT.toutAide.split('{0}').join(String(nombreChamps));
+    aide.textContent = TXT.toutAide.split('{0}').join(String(nombreBlocs));
     barreTout.appendChild(aide);
     barreTout.hidden = false;
   }
@@ -158,48 +236,74 @@
   function rendre(msg) {
     SLUG = msg.slug || null;
     STATUTS = msg.statuts || [];
+    LANGUE_SOURCE = msg.langueSource || 'fr';
     titreArticle.textContent = SLUG || '';
     conteneur.textContent = '';
-    const lignes = msg.lignes || [];
-    for (const ligne of lignes) { conteneur.appendChild(carteChamp(ligne)); }
-    if (lignes.length === 0) {
+    for (const cle of Object.keys(editeursMotsCles)) { delete editeursMotsCles[cle]; }
+    const groupes = msg.groupes || [];
+    for (const groupe of groupes) { conteneur.appendChild(carteGroupe(groupe)); }
+    if (groupes.length === 0) {
       const rien = document.createElement('p');
       rien.className = 'rien';
       rien.textContent = TXT.rien;
       conteneur.appendChild(rien);
     }
-    rendreTout(lignes.length);
+    rendreTout(groupes.length);
     commentaire.value = msg.commentaire || '';
     zoneCommentaire.hidden = false;
     modifie = false;
     signalerModifie();
-    if (msg.focus) {
-      const cible = document.getElementById('cible-' + msg.focus);
-      if (cible) { cible.focus(); cible.scrollIntoView({ block: 'center' }); }
-    }
+    if (msg.focus) { viser(msg.focus); }
   }
 
-  function collecter() {
-    const champs = [];
+  function viser(cle) {
+    const bloc = document.getElementById('bloc-' + cle);
+    if (!bloc) { return; }
+    const premier = bloc.querySelector('textarea.cible, .mc input');
+    if (premier) { premier.focus(); }
+    bloc.scrollIntoView({ block: 'center' });
+  }
+
+  function collecter(auto) {
+    const groupes = [];
     for (const carte of conteneur.querySelectorAll('.carte')) {
-      champs.push({
-        champ: carte.dataset.champ,
+      const champs = [];
+      for (const zone of carte.querySelectorAll('textarea.cible')) {
+        champs.push({ champ: zone.dataset.champ, texte: zone.value });
+      }
+      const editeur = editeursMotsCles[carte.dataset.cle];
+      if (editeur) {
+        champs.push({ champ: 'keywords', paires: editeur.collecter()[editeur.langueCible] || [] });
+      }
+      groupes.push({
+        cle: carte.dataset.cle,
         langue: carte.dataset.langue,
-        texte: carte.querySelector('textarea.cible').value,
-        statut: carte.querySelector('select.statut').value
+        statut: carte.querySelector('select.statut').value,
+        champs: champs
       });
     }
-    return { type: 'enregistrer', slug: SLUG, champs: champs, commentaire: commentaire.value };
+    return {
+      type: 'enregistrer', auto: !!auto, slug: SLUG,
+      groupes: groupes, commentaire: commentaire.value
+    };
   }
 
-  function enregistrer() {
+  function enregistrer(auto) {
     if (!SLUG) { return; }
-    if (!modifie) { etat.textContent = TXT.aucuneModif; return; }
-    vscodeApi.postMessage(collecter());
+    if (!modifie) { if (!auto) { etat.textContent = TXT.aucuneModif; } return; }
+    vscodeApi.postMessage(collecter(auto));
   }
+
+  const auto = SZH.autoEnregistrement({
+    estModifie: function () { return modifie && !!SLUG; },
+    enregistrer: enregistrer
+  });
 
   commentaire.addEventListener('input', function () { marquer(null); });
-  document.getElementById('enregistrer').addEventListener('click', enregistrer);
+  document.getElementById('enregistrer').addEventListener('click', function () {
+    auto.annuler();
+    enregistrer(false);
+  });
 
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
@@ -207,25 +311,22 @@
     // L'hôte veut changer d'article alors que le panneau porte un ● : il lui faut
     // ce que la webview contient pour pouvoir l'enregistrer avant de recharger.
     if (msg.type === 'demande-rechargement') {
-      vscodeApi.postMessage(Object.assign(collecter(), { type: 'rechargement' }));
+      vscodeApi.postMessage(Object.assign(collecter(false), { type: 'rechargement' }));
       return;
     }
     if (msg.type === 'enregistre') {
+      auto.confirme();
       modifie = false;
       signalerModifie();
       for (const carte of conteneur.querySelectorAll('.carte.modifie')) { carte.classList.remove('modifie'); }
       etat.textContent = TXT.enregistre;
       return;
     }
-    // Clic sur UN champ dans l'arbre alors que le panneau montre déjà cet article :
+    // Clic sur UN bloc dans l'arbre alors que le panneau montre déjà cet article :
     // pas de re-rendu (une saisie en cours serait perdue), juste le focus.
-    if (msg.type === 'focus') {
-      const cible = document.getElementById('cible-' + msg.cle);
-      if (cible) { cible.focus(); cible.scrollIntoView({ block: 'center' }); }
-      return;
-    }
+    if (msg.type === 'focus') { viser(msg.cle); return; }
     if (msg.type === 'copie') { etat.textContent = TXT.copie; return; }
-    if (msg.type === 'erreur') { etat.textContent = '⚠ ' + msg.message; }
+    if (msg.type === 'erreur') { auto.confirme(); etat.textContent = '⚠ ' + msg.message; }
   });
 
   // Un dépôt HORS zone prévue ne doit jamais « naviguer » la webview.

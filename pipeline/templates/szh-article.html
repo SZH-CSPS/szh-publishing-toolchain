@@ -27,7 +27,12 @@ $if(math)$
   $math$
 $endif$
 </head>
-<body>
+<!-- D114 : « condenser l'en-tête » est un réglage du NUMÉRO (ausgabe.yaml
+     `entete-condensee`), normalisé en booléen par szh-maquette.lua. La classe
+     est portée par <body> : print.css §5 y remplace la hauteur fixe du hero et
+     l'ancrage bas du bloc auteurs/DOI par des espaces minimum. Option absente
+     -> aucune classe -> maquette par défaut, inchangée. -->
+<body$if(entete-condensee)$ class="szh-entete-condensee"$endif$>
 $for(include-before)$
 $include-before$
 $endfor$
@@ -72,9 +77,9 @@ $if(author)$
       <ul class="szh-authors">$for(author)$<li>$author.nom$$if(author.prenom)$, $author.prenom$$endif$</li>$endfor$</ul>
 $endif$
 $if(doi)$
-      <a class="szh-doi" href="https://doi.org/$doi$"><span>DOI: $doi$</span><svg class="szh-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 L17 7"/><path d="M8 7 H17 V16"/></svg></a>
+      <a class="szh-doi" href="https://doi.org/$doi$"><span>DOI: $doi$</span><svg class="szh-arrow" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 L17 7"/><path d="M8 7 H17 V16"/></svg></a>
 $endif$
-      <a class="szh-licence" href="https://creativecommons.org/licenses/by/4.0/"><span>$licence-texte$</span><svg class="szh-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 L17 7"/><path d="M8 7 H17 V16"/></svg></a>
+      <a class="szh-licence" href="https://creativecommons.org/licenses/by/4.0/"><span>$licence-texte$</span><svg class="szh-arrow" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 L17 7"/><path d="M8 7 H17 V16"/></svg></a>
     </div>
   </header>
   <div class="szh-filet"></div>

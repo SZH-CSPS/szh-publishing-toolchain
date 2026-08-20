@@ -147,7 +147,14 @@ a[href]::after {
 .szh-hero a[href] { color: #E2E4EC; }
 .szh-hero a[href]:hover { color: #E2E4EC; }
 .szh-hero a[href]::after { content: none; }         /* flèche inline déjà présente */
-.szh-hero .szh-arrow { color: #ffffff; stroke: #ffffff; opacity: 1; }   /* flèche du hero -> blanc franc */
+/* Flèche du hero -> blanc franc. ⚠ Cette règle ne vaut QUE pour le HTML (navigateur,
+   aperçu) : WeasyPrint rend un <svg> inline comme une IMAGE et ne fait PAS descendre
+   la cascade CSS du document dans son arbre — ni `stroke`, ni le `color` dont
+   `currentColor` dépend. La flèche sortait donc NOIRE dans le PDF. Le blanc qui compte
+   est l'attribut de présentation `stroke="#ffffff"` posé sur les deux <svg> du hero
+   dans templates/szh-article.html ; on garde la règle ici pour que les deux médias
+   disent la même chose (en HTML, le CSS l'emporte sur l'attribut, même valeur). */
+.szh-hero .szh-arrow { color: #ffffff; stroke: #ffffff; opacity: 1; }
 /* Notes de bas de page : pas de flèche « lien » automatique (l'appel de note et le
    renvoi ↩ tiennent déjà lieu de repère). */
 .footnotes a::after, a.footnote-ref::after, a.footnote-back::after { content: none; }
@@ -222,8 +229,14 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
   font-variant-numeric: tabular-nums; }
 
 /* Largeur limitée (dégage le filigrane « livre ») ; hauteur bornée pour que le titre
-   ne chevauche jamais le bloc auteurs/DOI (un titre vraiment trop long est rogné). */
-.szh-hero-main { max-width: 67%; max-height: 168px; overflow: hidden; }
+   ne chevauche jamais le bloc auteurs/DOI (un titre vraiment trop long est rogné).
+   `padding-bottom` = LOGEMENT DES JAMBAGES, pas une marge décorative. Le titre est
+   composé en interlignage serré (1.12), plus serré que la hauteur naturelle de la
+   police (~1,36 em) : le bas des « g », « q », « p » de la DERNIÈRE ligne dépasse
+   donc de la boîte de contenu, que `overflow: hidden` coupe net. Les 4 px sont
+   retirés de `max-height` (164 + 4 = 168) pour que la boîte totale, et donc la
+   géométrie du hero à hauteur fixe, reste EXACTEMENT la même qu'avant. */
+.szh-hero-main { max-width: 67%; max-height: 164px; padding-bottom: 4px; overflow: hidden; }
 .szh-title {
   font-family: var(--title-family); font-weight: 600; font-size: 28px; line-height: 1.12;
   letter-spacing: -0.005em; color: #fff; margin: 20px 0 0; text-align: left; hyphens: manual;
@@ -256,6 +269,51 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
 .szh-arrow { width: 11px; height: 11px; opacity: 0.9; flex-shrink: 0; display: block; }
 .szh-book { position: absolute; right: -30px; bottom: -56px; width: 300px; height: 300px;
   opacity: 0.07; }
+
+/* ── Option « condenser l'en-tête » (D114) ─────────────────────────────────────
+   Réglage du NUMÉRO (`entete-condensee` dans ausgabe.yaml) : la classe est posée sur
+   <body> par le template, la maquette par défaut n'est donc PAS touchée quand
+   l'option est absente.
+   Ce que l'option change, et pourquoi : par défaut le hero a une hauteur FIXE
+   (380 px) et le bloc auteurs/DOI/licence est ANCRÉ en bas — deux repères stables,
+   au prix d'un vide au milieu de la couverture dès que le titre est court, que le
+   sous-titre manque ou que les auteur·e·s tiennent sur une ligne. Condensé, le hero
+   fait la hauteur de son contenu et les éléments sont séparés par les espaces
+   MINIMUM ci-dessous : plus de vide, et la hauteur suit le contenu (titre long,
+   sous-titre absent, deux lignes d'auteur·e·s) au lieu de le comprimer.
+   Les espaces sont des variables pour être lisibles d'un coup d'œil et ajustables
+   en un seul endroit ; elles ne servent QUE dans ce mode. */
+.szh-entete-condensee {
+  --hero-espace-titre:     20px;   /* bloc revue/dossier -> titre */
+  --hero-espace-soustitre: 12px;   /* titre -> sous-titre */
+  --hero-espace-meta:      22px;   /* titre (ou sous-titre) -> auteur·e·s */
+}
+/* Hauteur libre. `min-height` garde une bannière de couverture crédible dans le cas
+   le plus dépouillé (titre d'une ligne, un auteur, pas de sous-titre). */
+.szh-entete-condensee .szh-hero { height: auto; min-height: 220px; }
+/* Plus de hauteur bornée : un titre long allonge le hero au lieu d'être rogné —
+   donc plus de découpe des jambages non plus (voir le padding ci-dessus). */
+.szh-entete-condensee .szh-hero-main {
+  max-height: none; padding-bottom: 0; overflow: visible;
+}
+.szh-entete-condensee .szh-title { margin-top: var(--hero-espace-titre); }
+.szh-entete-condensee .szh-subtitle { margin-top: var(--hero-espace-soustitre); }
+/* Le bloc auteurs/DOI/licence revient dans le FLUX (il n'est plus ancré en bas) :
+   c'est ce qui supprime le vide. Effet de bord favorable — un enfant en flux normal
+   est peint dans l'ordre du DOM, donc l'ordre de lecture du PDF (extraction, « Read
+   Out Loud ») n'a plus besoin du rattrapage documenté plus bas pour ce bloc. */
+.szh-entete-condensee .szh-hero-meta {
+  position: static; left: auto; bottom: auto;
+  margin-top: var(--hero-espace-meta);
+  /* `max-width: 76%` doit tomber : un pourcentage ne mesure PAS la même chose selon
+     le mode. En absolu il se rapporte à la boîte de PADDING du hero (bords compris,
+     ~603 px) ; rentré dans le flux, à la boîte de CONTENU (~650 px), soit 494 px —
+     le bloc se serait donc RÉTRÉCI, et une longue liste d'auteur·e·s aurait gagné
+     une ligne au moment même où l'on cherche à condenser. Pleine largeur de colonne :
+     le filigrane « livre » qu'il borde est décoratif (opacité 0,07) et la liste
+     d'auteur·e·s le chevauchait déjà. */
+  max-width: none;
+}
 
 /* Filet 6 px couleur annuelle sous le hero (pleine largeur, D70). */
 .szh-filet { height: 6px; background: var(--c-annual); margin: 0 -72px; }   /* C2 : pleine largeur */
@@ -341,10 +399,16 @@ h2::before, h3::before, h4::before {
 ul, ol { margin: 0.7em 0; padding: 0; list-style: none; }
 li { position: relative; padding-left: 1.5em; margin: 0.3em 0;
   text-align: justify; hyphens: auto; overflow-wrap: break-word; }
+/* Le marqueur est une boîte POSITIONNÉE : sa ligne de base ne se cale sur celle du
+   texte que si sa ligne a la MÊME HAUTEUR. `line-height: 1` (l'ancien réglage) faisait
+   une ligne de 1,05 em pour un texte à 1,55 : le triangle se retrouvait ~3,5 px trop
+   haut, visiblement décroché de son texte. `line-height: inherit` reprend l'interligne
+   du corps, comme le fait déjà — sans le dire — le marqueur des listes numérotées
+   ci-dessous, qui lui est bien aligné. `top: 0` : plus rien à rattraper. */
 ul > li::before {
   content: "\25B8";                       /* ▸ triangle noir (BLACK RIGHT-POINTING SMALL TRIANGLE) */
-  position: absolute; left: 0; top: -0.02em;   /* aligné sur la marge du texte (comme les numéros) */
-  color: var(--c-bullet-marker); font-weight: 700; font-size: 1.05em; line-height: 1;
+  position: absolute; left: 0; top: 0;    /* aligné sur la marge du texte (comme les numéros) */
+  color: var(--c-bullet-marker); font-weight: 700; font-size: 1.05em; line-height: inherit;
 }
 ol { counter-reset: liste-ol; }
 ol > li { padding-left: 1.7em; }
@@ -446,7 +510,10 @@ table > caption .szh-credit { font-size: 0.85em; color: #444; }
 
 figure { break-inside: avoid; margin: 1.4em 0; text-align: center; }
 figure img { max-width: 100%; }
-figure > figcaption { font-size: 0.85rem; color: #444; margin-top: 0.5em; text-align: left; }
+/* La légende est AU-DESSUS de l'image (D115, szh-legende-avant.lua la place avant
+   dans le document) : l'espace se met donc dessous, comme pour la légende d'un
+   tableau (`table > caption`, même valeur d'espace). */
+figure > figcaption { font-size: 0.85rem; color: #444; margin-bottom: 0.5em; text-align: left; }
 
 /* Tableaux importés bruts (<table> nu, non .szh-tableau) : style générique sobre. */
 table { border-collapse: collapse; font-size: 0.85rem; margin: 1.4em 0; width: 100%; }

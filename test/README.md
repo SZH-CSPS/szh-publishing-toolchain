@@ -12,6 +12,14 @@ destinée à la publication** — c'est un banc d'essai réutilisable.
   difficiles (veuves/orphelines) et stresser l'auto-dimensionnement des tableaux.
 - `articles/couverture-stress/` — couverture sous contrainte : **12 auteurs**,
   10 mots-clés, titre/sous-titre longs (hauteur de hero fixe, méta ancrée en bas).
+
+> **En-tête condensé (D114)** — le banc compose la couverture par DÉFAUT (hauteur fixe).
+> Pour éprouver l'autre allure, ajouter une ligne `entete-condensee: true` à
+> `test/ausgabe.yaml`, rebâtir, comparer les PNG, puis **retirer la ligne** (le banc doit
+> rester sur le défaut). Le cas le plus parlant n'est pas ici : c'est une couverture
+> **courte** (titre de deux lignes, un seul auteur, pas de sous-titre), celle où le mode
+> par défaut laisse un grand blanc. Les figures ne sont pas couvertes par le banc (aucune
+> image dans le corpus) : l'ordre légende/image (D115) se vérifie sur un article réel.
 - `apca-check.py` — vérificateur de **contraste APCA** de la palette : lit les hex de
   `pipeline/styles/couleurs.css` et les jetons émis par `pipeline/accent-css.py`, mesure
   toutes les paires texte/fond réellement utilisées et sort en erreur si l'une échoue.

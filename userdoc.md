@@ -120,6 +120,15 @@ depuis n'importe où dans la revue) :
   - **Méta-données du numéro** — un petit formulaire (titre du dossier, nom de la revue,
     volume, numéro, date, langue, couleur) ; **Enregistrer** met à jour la revue sans rien
     toucher d'autre. Aucun fichier technique à ouvrir.
+    Une case à cocher y règle aussi l'allure de la couverture, **pour tout le numéro** :
+    **« Condenser l'en-tête de couverture »**. Par défaut, l'en-tête bleu nuit a une
+    **hauteur fixe** : le titre commence toujours à la même place et le bloc auteur·e·s /
+    DOI / licence est collé en bas — d'où un **blanc au milieu** quand le titre est court,
+    qu'il n'y a pas de sous-titre ou qu'un seul auteur signe. Cochée, l'option **supprime
+    ce blanc** : les éléments se suivent à un espacement minimum et l'en-tête fait
+    exactement la hauteur de son contenu (il grandit donc avec un titre long, un
+    sous-titre ou deux lignes d'auteur·e·s). À décider une fois par numéro : tous les
+    articles suivent.
   - **Métadonnées des articles** — un formulaire qui liste **tous les articles** :
     **type d'article** (menu déroulant, libellés dans la langue de la revue), titre,
     sous-titre, **résumé** et mots-clés **en français et en allemand** (case « + Italien »
@@ -143,7 +152,8 @@ depuis n'importe où dans la revue) :
 - **✏ Édition** (`Ctrl+Alt+S`) — la **bascule d'aperçu HTML ⇄ PDF** (`Ctrl+Alt+P`) et
   toutes les actions de **mise en forme** (gras, titres, blocs, figure, tableau…) — les
   mêmes que le clic droit → « Mise en forme », chaque raccourci rappelé à droite.
-- **⬆ Export** (`Ctrl+Alt+D`) — deux actions :
+- **⬆ Export** (`Ctrl+Alt+D`) — les **documents produits**, puis le **cycle de vie du
+  numéro** :
   - **Recompiler toute la revue** : régénère **tous** les PDF, même ceux à jour (utile
     avant une livraison : tout est reconstruit proprement d'un coup) ;
   - **Exporter la revue en XML (OJS)** : fabrique **un seul fichier** `native-….xml` à la
@@ -152,6 +162,10 @@ depuis n'importe où dans la revue) :
     s'importe tel quel dans OJS (« Importation XML des articles et numéros »). La revue
     est recompilée au passage ; les informations manquantes (résumé, DOI, e-mail…) sont
     listées en avertissements, sans bloquer.
+  - **Archiver et verrouiller la revue** — voir « Terminer un numéro » ci-dessous ;
+  - **Déverrouiller la revue** / **Désarchiver la revue** — présentes seulement quand le
+    numéro est verrouillé / archivé ;
+  - **Exporter cet article** — présente seulement sur un numéro gelé (voir ci-dessous).
 
 L'**aperçu par défaut** (dans **Réglages SZH**) choisit ce qui s'affiche à droite au clic
 sur un article : l'aperçu **HTML** (cliquable — un clic dans l'aperçu amène au passage
@@ -197,10 +211,27 @@ Sur la section, un bouton :
 **Un clic sur un article** (ou sur l'un de ses champs) ouvre le **panneau de
 traduction**, avec l'aperçu de l'article à droite. Pour chaque champ :
 
-- le **texte source** en haut, en lecture seule, avec un bouton **Copier** ;
-- la **traduction** à saisir juste en dessous (pour les mots-clés : séparés par des
-  virgules) ;
+- le **texte source** en haut, en lecture seule, avec un bouton **Copier** et un
+  bouton **DeepL** — celui-ci ouvre le traducteur dans le navigateur, avec le texte
+  et les deux langues déjà remplis ; la traduction revient par copier-coller ;
+- la **traduction** à saisir juste en dessous ;
 - son **état**, dans un menu déroulant.
+
+Le **titre et le sous-titre** partagent un même cadre et un même état : on ne traduit
+pas l'un sans l'autre. Les **mots-clés**, eux, se présentent en tableau — un par
+ligne, les langues côte à côte :
+
+| n° | FR | DE |
+|---|---|---|
+| 1 | diagnostic | Diagnose |
+| 2 | trouble du spectre de l'autisme | Autismus-Spektrum-Störung |
+| 3 | intelligence artificielle | *(vide)* |
+
+C'est la **position** qui fait la paire, et rien d'autre : l'ordre n'est donc pas
+modifiable, et on ajoute ou retire une **ligne entière** — jamais un mot dans une
+seule langue. Une case laissée vide s'enregistre avec la mention **`TO BE
+TRANSLATED`** : la place reste tenue, le mot manquant se voit dans le fichier, et
+l'export OJS prévient s'il en reste au moment de publier.
 
 En tête, une rangée **« Tout l'article : »** avec un bouton par état — un clic pose
 l'état sur **tous** les champs et enregistre. En bas, une zone
@@ -208,9 +239,16 @@ l'état sur **tous** les champs et enregistre. En bas, une zone
 traduction (terminologie, passage à vérifier, contexte). Un article qui porte un
 commentaire est signalé par **💬** dans la liste.
 
-**Enregistrer** écrit les traductions dans la fiche de l'article — ce sont elles qui
-partiront dans l'export OJS. Les états et le commentaire, eux, restent internes à la
-revue : ils ne sont **jamais publiés**.
+**Il n'y a plus à penser à enregistrer** : tous les formulaires du cockpit se
+sauvegardent seuls — trois secondes après la dernière frappe, dès qu'on quitte un
+champ, et quand on change d'onglet. Le bouton **Enregistrer** reste là pour qui
+préfère le geste. Les traductions vont dans la fiche de l'article (ce sont elles qui
+partiront dans l'export OJS) ; les états et le commentaire restent internes à la
+revue et ne sont **jamais publiés**.
+
+La même grille de mots-clés sert dans **« Métadonnées des articles »** et dans la
+**vérification de l'import** : le comportement y est identique, avec en plus les
+boutons pour ajouter et retirer une ligne.
 
 [capture : la section « Traductions » dépliée sur un article]
 [capture : le panneau de traduction, aperçu à droite]
@@ -250,6 +288,59 @@ C'est aussi là qu'on finit l'article proprement :
 **Enregistrer** écrit les fiches ; **Fermer** prévient si des modifications ne sont pas
 enregistrées. Les articles restent modifiables plus tard par **☰ Métadonnées des articles**.
 
+## Terminer un numéro : archiver et verrouiller
+
+Quand un numéro est publié, il n'a plus à changer — et ses PDF, HTML et Word occupent
+souvent plusieurs centaines de mégaoctets sur OneDrive pour rien. Le panneau d'export
+(`Ctrl+Alt+D`) propose donc **« Archiver et verrouiller la revue »**.
+
+Ce qui se passe, dans cet ordre, après une confirmation qui **chiffre la place libérée** :
+
+1. le numéro passe en **lecture seule** : le texte ne se laisse plus taper, et tous les
+   gestes de la barre « Revue SZH » (import, métadonnées, suppression, traductions,
+   mise en forme…) répondent « Numéro verrouillé » avec un bouton pour le déverrouiller ;
+2. les **documents produits** (dossier `out` : PDF, HTML, Word, diaporamas) sont
+   **supprimés**. Vos **sources** — textes, images, tableaux, métadonnées, traductions —
+   sont intégralement conservées : c'est ce qui permet de tout régénérer plus tard ;
+3. le **dossier de la revue est déplacé** dans l'arborescence d'archives
+   (`RV99_Archives` pour la Revue, `ZS99_Archives` pour la Zeitschrift) ;
+4. la fenêtre se ferme, puis **la revue se rouvre** depuis les archives, verrouillée.
+
+Une fois le numéro archivé, **la compilation automatique s'arrête** : enregistrer ne
+relance plus rien, et cliquer un article ne le recompile plus. Pour revoir un PDF, deux
+gestes explicites :
+
+- le bouton **« Exporter cet article »** qui apparaît au survol de l'article dans la
+  barre (et dans le panneau d'export) — il régénère **ce** PDF et son aperçu ;
+- **« Recompiler toute la revue »**, comme avant, pour tout refaire d'un coup.
+
+Deux boutons pour revenir en arrière, indépendants l'un de l'autre :
+
+- **« Déverrouiller la revue »** rend le numéro modifiable (le dossier ne bouge pas) ;
+- **« Désarchiver la revue »** le ramène dans l'arborescence « en cours » (le verrou,
+  lui, reste posé : à déverrouiller séparément si vous voulez corriger quelque chose).
+
+Dans le lanceur **« Revues SZH »**, les numéros archivés apparaissent dans une **liste
+séparée**, et un **🔒** signale ceux qui sont verrouillés.
+
+## La version du logiciel
+
+Le lanceur **« Revues SZH »** affiche en bas **« Logiciel v. … »** : la version installée
+sur ce poste. Chaque numéro, lui, retient la version avec laquelle il a été **créé**.
+
+Si vous ouvrez un ancien numéro et que les deux ne correspondent pas, un message
+apparaît à la première compilation : *« Vous utilisez la version X ; ce numéro a été créé
+avec la version Y. Vérifiez les documents produits. »* Ce n'est pas une erreur — la
+maquette a simplement pu évoluer entre-temps. Regardez le PDF : si tout va bien, il n'y a
+rien à faire.
+
+S'il faut vraiment retrouver le rendu d'origine, le bouton **« Changer de version… »** du
+message (ou du lanceur) liste les versions publiées et installe celle que vous choisissez.
+À savoir avant de cliquer : l'opération remplace l'environnement de fabrication du PDF et
+les extensions de l'éditeur, prend quelques minutes, et demande de **fermer les fenêtres
+de rédaction** puis de redémarrer l'éditeur. Elle se refait dans l'autre sens de la même
+façon (choisir la version la plus récente).
+
 ## Mettre en forme le texte
 
 Pas besoin de connaître le Markdown : **sélectionne du texte, puis clic droit →
@@ -262,7 +353,9 @@ plus la bascule d'aperçu). Le sous-menu propose (chaque raccourci y est rappel�
   (`Ctrl+Alt+W / H / Q`) et **Citation** (`Ctrl+Alt+C`). Le bloc « Important »
   demande un **titre** (Information, Attention, Note… ou un titre libre) ;
 - **Insérer une figure** (`Ctrl+Alt+F`) : choisis une image ; elle est copiée dans
-  l'article et il ne reste qu'à écrire la légende ;
+  l'article et il ne reste qu'à écrire la légende. À la composition, la légende
+  (« Figure 1 — … », numérotée toute seule) est placée **au-dessus** de l'image, comme
+  celle d'un tableau — quel que soit l'endroit où elle est écrite dans le texte ;
 - **Insérer un saut de page** (`Ctrl+Alt+Entrée`) : ce qui suit repart en haut d'une
   nouvelle page **dans le PDF**. Rien ne change dans l'aperçu ni dans la version HTML :
   une page web n'a pas de pages, le saut n'y a donc aucun sens et n'y apparaît pas.
@@ -281,7 +374,19 @@ mise en forme (bascule).
 ## Créer une nouvelle revue
 
 Menu Démarrer → **« Revues SZH »** → bouton **« Nouvelle revue… »** (en bas à gauche) :
-choisir l'emplacement (le dossier `OneDrive\Revues` est proposé), donner un nom (p. ex.
-`2026-02`), et la revue s'ouvre toute prête — dossiers `articles-word` et `articles`,
-raccourci « Ouvrir la revue » inclus. Elle apparaîtra ensuite dans la liste du lanceur
-comme les autres.
+choisir l'emplacement (le dossier de rédaction en cours est proposé), donner un nom
+(p. ex. `2026-02`), et la revue s'ouvre toute prête — dossiers `articles-word` et
+`articles`, raccourci « Ouvrir la revue » inclus. Elle apparaîtra ensuite dans la liste
+du lanceur comme les autres.
+
+Le lanceur cherche les revues aux emplacements officiels :
+
+| | Revue (FR) | Zeitschrift (DE) |
+|---|---|---|
+| En cours | `52_Revue\RV02_Redaction` | `53_Zeitschrift\ZS02_Redaktion` |
+| Archivées | `52_Revue\RV99_Archives` | `53_Zeitschrift\ZS99_Archives` |
+
+**Mode test.** Tant que la chaîne est en rodage, le poste travaille dans un dossier
+d'essai : `OneDrive - SZH CSPS\Revues-TESTING`, avec exactement la même arborescence.
+Le lanceur l'annonce (« Mode test : … ») et la bascule se fait dans **Réglages SZH →
+Mode développeur**. Désactivé, tout se passe dans les dossiers de production.

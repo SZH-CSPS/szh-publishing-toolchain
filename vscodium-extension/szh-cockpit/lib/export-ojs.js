@@ -10,6 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const { analyserAusgabe, analyserMeta, langueDefaut } = require('./yaml');
+const { estATraduire, MARQUE_A_TRADUIRE } = require('./traduction');
 
 // ---- Constantes OJS — à ajuster selon la config OJS cible ---------------------------
 //
@@ -168,6 +169,16 @@ function collecter(racine, avertissements) {
       if (localesNonVides(meta.resume).length === 0) { avertissements.push(prefixe + 'résumé absent.'); }
       if (Object.keys(meta.keywords || {}).every((l) => !(meta.keywords[l] || []).length)) {
         avertissements.push(prefixe + 'mots-clés absents.');
+      }
+      // D122 : un mot-clé pas encore traduit tient sa place avec « TO BE TRANSLATED »
+      // (sinon les paires de langues se décaleraient). Utile en atelier, catastrophique
+      // publié : on le dit ici, au dernier moment où il est encore temps.
+      for (const l of Object.keys(meta.keywords || {})) {
+        const n = (meta.keywords[l] || []).filter((m) => estATraduire(m)).length;
+        if (n > 0) {
+          avertissements.push(prefixe + n + ' mot(s)-clé(s) ' + l.toUpperCase() +
+            ' non traduits (marqués « ' + MARQUE_A_TRADUIRE + " ») — ils partiraient tels quels dans OJS.");
+        }
       }
       if (!String(meta.doi || '').trim()) { avertissements.push(prefixe + 'DOI absent.'); }
       const sansEmail = article.auteurs.filter((a) => !String(a.email || '').trim()).length;

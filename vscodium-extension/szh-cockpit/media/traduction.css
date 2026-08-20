@@ -64,3 +64,19 @@ button:disabled { opacity: .5; cursor: default; }
 
 /* Rien à traduire : un message, pas une page vide. */
 .rien { color: var(--vscode-descriptionForeground); margin: 1rem 0; }
+
+/* ---- Bloc « Question / commentaire », en tête du formulaire (D115) : c'est la
+   premiere chose qu'on lit et qu'on ecrit quand on ouvre l'article. */
+.carte.commentaire { border-left-color: var(--vscode-charts-purple, #b180d7); }
+.carte.commentaire[hidden] { display: none; }
+.carte.commentaire label { margin-top: 0; }
+
+/* ---- Actions d'un texte source : Copier + DeepL. */
+.actions-source { display: inline-flex; gap: .35rem; flex: 0 0 auto; }
+.actions-source button { padding: .15em .5em; font-size: .85em; }
+.actions-source button.deepl { color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background); }
+.actions-source button.deepl:hover { background: var(--vscode-button-hoverBackground); }
+
+/* Les mots-cles apparies sont rendus par le fragment partage SZH.motsCles
+   (media/_commun.js), qui pose lui-meme son style : rien a styler ici. */

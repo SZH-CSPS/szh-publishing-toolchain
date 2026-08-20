@@ -213,7 +213,8 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
-	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" $$extra \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" $$extra \
 	  --output="$(abspath $@)"
 
 # .md -> HTML d'APERÇU (D53) : mêmes filtres/CSS/métadonnées que la sortie PDF,
@@ -236,7 +237,8 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
-	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" $$extra \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" $$extra \
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
 
@@ -257,6 +259,10 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 #     « Figure N — » écrit DANS la légende) : une diapositive porte donc le même
 #     numéro de figure que le PDF et le HTML. Sa branche « tableaux » est inerte
 #     ici (szh-tabelle-inclure est écarté -> aucun RawBlock html à numéroter).
+#   * szh-legende-avant.lua : ÉCARTÉ. Il remplace les Figure par des balises
+#     <figure>/<figcaption> en RawBlock('html') (légende AVANT l'image, D115),
+#     que le writer pptx jette — les images disparaîtraient des diapositives.
+#     Le filtre porte lui-même une garde sur FORMAT ; il n'est pas branché ici.
 #   * szh-maquette.lua : ÉCARTÉ. Il ne calcule QUE des variables de gabarit
 #     (couverture, en-tête courant, ISSN, résumés) consommées par
 #     templates/szh-article.html — sans template HTML, sa sortie est inerte.
@@ -351,6 +357,17 @@ docx: verifie-dossier $(DOCXS)
 #    donne un slug complété à deux chiffres (« 04-titre ») ; à partir de 10 le nombre
 #    est laissé tel quel. Le tri alphabétique des slugs devient l'ordre du numéro
 #    (SLUGS := $(sort …), listerArticles côté cockpit, seq de l'export OJS D93).
+#  - LONGUEUR BORNÉE À 39 CARACTÈRES : le slug nomme le dossier ET son .md homonyme,
+#    il est donc compté DEUX FOIS dans chaque chemin — et deux fois de plus sous out/.
+#    Mesuré sur la bibliothèque SharePoint de rédaction : sans borne, un titre d'article
+#    réel (98 caractères) produit des chemins de 340 à 350 caractères, au-delà de la
+#    limite Windows de 260 — la compilation passe (WSL s'en moque) mais la synchronisation
+#    et l'Explorateur trébuchent. La coupe se fait au DERNIER MOT ENTIER (dernier « - »
+#    avant la borne) : « …-technologies-peu » passerait pour un bug, « …-technologies » se
+#    lit. Les fragments d'élision d'une seule lettre laissés en fin de coupe (« -d »,
+#    « -l ») sont retirés à leur tour : ce ne sont pas des mots. Repli sur la coupe
+#    sèche si les 39 premiers caractères n'ont aucun tiret.
+#    Appliquée APRÈS le complément à deux chiffres, pour garantir un résultat ≤ 39.
 #    ⚠ MIROIR OBLIGATOIRE : slugifierArticle() de vscodium-extension/szh-cockpit/
 #    lib/slug.js applique la MÊME règle — le cockpit devine le slug d'un .docx en
 #    attente pour dire « déjà converti » ; les deux doivent rester bijectifs.
@@ -389,6 +406,7 @@ import:
 	  slug=$$(printf '%s' "$$slug" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$$//'); \
 	  [ -n "$$slug" ] || slug=article; \
 	  slug=$$(printf '%s' "$$slug" | sed -E 's/^([0-9])($$|[^0-9])/0\1\2/'); \
+	  if [ $${#slug} -gt 39 ]; then scourt="$${slug:0:39}"; scourt="$${scourt%-*}"; sorph=$$(printf '%s' "$$scourt" | sed -E 's/(-[a-z0-9])+$$//'); case "$$sorph" in *-*) scourt="$$sorph";; esac; slug="$${scourt:-$${slug:0:39}}"; fi; \
 	  cible="articles/$$slug/$$slug.md"; \
 	  if [ -e "$$cible" ]; then \
 	    echo "[import] déjà converti (ignoré) : $$nom -> $$cible existe"; deja=$$((deja+1)); continue; \

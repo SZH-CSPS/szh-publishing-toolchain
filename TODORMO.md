@@ -1,4 +1,211 @@
-# Todo Robin (mis à jour le 2026-08-20, après le suivi de traduction D113)
+# Todo Robin (mis à jour le 2026-08-20, après le cycle de vie des numéros)
+
+## À vérifier — cycle de vie des numéros : archivage, verrou, export, version, mode test (D116, D117, D119, D120)
+
+**Ce qui est déjà éprouvé sur ce poste**, à ne pas refaire : sérialisation d'`ausgabe.yaml`
+(booléens nus `locked: true`, estampille citée, 27 commentaires préservés, clés ajoutées
+proprement sur un fichier ancien) · déplacement **aller-retour** réel d'une revue de test dans
+`Revues-TESTING` (`out/` supprimé, `.lnk` réécrit sur les deux chemins, verrou conservé au
+désarchivage, classement du lanceur) · chemin d'erreur d'`archive-revue.ps1` (journal + écran
+d'erreur dédié) · les deux fenêtres WinForms se construisent sans exception (lanceur et sélecteur
+de version) · la liste des releases GitHub remonte (26 versions, l'installée marquée) · tous les
+`.js` compilent et se chargent, i18n 475 = 475 (fr/de), `package.json`/nls valides, les 8 `.ps1`
+parsent, `files.readonlyInclude` existe bien dans le VSCodium installé (1.109, scope resource).
+
+**Ce qui n'a PAS tourné** : tout ce qui passe par VSCodium (l'extension n'a jamais été chargée),
+et la réouverture de l'éditeur par `archive-revue.ps1` (`Start-Process`, non exécutée pour ne pas
+ouvrir de fenêtre — même ligne que dans `open-revue.ps1` / `new-revue.ps1`).
+
+### 0. Préparer le terrain
+
+- [ ] Publier une release depuis cette branche (ou installer le toolkit à la main) : **rien de ce
+  qui suit n'est testable sans le VSIX `szh-cockpit` 0.11.0 ET le toolkit déployé** —
+  `archive-revue.ps1` est appelé par son chemin dans `C:\ProgramData\SZH\toolkit\windows\`.
+- [ ] Vérifier que `devMode` est bien à `true` (« Réglages SZH » ou `config.json`) **avant** le
+  premier essai : sinon le premier clic déplace un vrai numéro.
+- [ ] Créer **deux revues de test** dans `Revues-TESTING\52_Revue\RV02_Redaction` — une avec
+  `revue: revue`, une avec `revue: zeitschrift` (les deux arborescences sont distinctes) — avec
+  chacune 2–3 articles compilés, des images, un tableau, des traductions renseignées.
+
+### 1. Verrouiller / déverrouiller (D116)
+
+- [ ] `Ctrl+Alt+D` sur une revue neuve : le panneau montre **Archiver et verrouiller**, et **pas**
+  Déverrouiller / Désarchiver / Exporter cet article.
+- [ ] Après verrouillage : **taper dans un article** — rien ne doit s'écrire, l'éditeur est grisé.
+- [ ] Chaque geste d'écriture doit répondre « Numéro verrouillé » + bouton **Déverrouiller** :
+  ➕ Importer des Word · ▶▶ Convertir les Word en attente · ⚙ Méta-données du numéro ·
+  ☰ Métadonnées des articles · ✎ d'un article · 🌐 Traductions (article et champ) · ✓✓ de la
+  section Traductions · 🗑 Supprimer l'article · clic sur une **image** (fiche) · clic sur un
+  **tableau** (éditeur) · Remplacer/Supprimer image · Remplacer/Supprimer tableau ·
+  `Ctrl+B` / `Ctrl+Alt+1` / `Ctrl+Alt+F` / `Ctrl+Alt+V` (mise en forme) · **glisser un `.docx`
+  sur la vue**.
+- [ ] Les boutons de survol **disparaissent** quand le numéro est verrouillé (✎, 🗑, ▶▶, ✓✓,
+  Remplacer…) — c'est le `when` de `package.json`, à confirmer à l'œil.
+- [ ] Le clic sur le bouton **Déverrouiller** de ce message ouvre bien la confirmation.
+- [ ] Le titre de la barre porte le picto (🔒 / 📦 / 📦 🔒) et la **barre d'état** affiche
+  « Verrouillée » ; son infobulle nomme la version de création et celle du poste ; le **clic**
+  déverrouille (ou désarchive si le numéro n'est qu'archivé).
+- [ ] `Ctrl+S` ne relance **plus** de compilation sur un numéro verrouillé.
+- [ ] `<revue>\.vscode\settings.json` : **présent** et **invisible** dans l'explorateur de
+  VSCodium quand le numéro est verrouillé ; **supprimé** (avec le dossier `.vscode`) au
+  déverrouillage ; **jamais créé** sur une revue ordinaire — ouvrir 2–3 revues « en cours » et
+  vérifier qu'aucun `.vscode` n'apparaît (c'était le piège : `update(…, undefined)` matérialise
+  le fichier).
+- [ ] Déverrouiller : l'éditeur redevient éditable **sans redémarrer** VSCodium, tous les boutons
+  reviennent, `Ctrl+S` recompile.
+
+### 2. Archiver / désarchiver (D116)
+
+- [ ] La confirmation d'archivage annonce une **place** cohérente avec le poids réel de `out/`
+  (comparer dans l'explorateur Windows) ; sur une revue jamais compilée, elle dit « aucun
+  document produit pour l'instant ».
+- [ ] **Annuler** la confirmation ne change rien du tout (drapeaux, `out/`, emplacement).
+- [ ] Geste complet : la fenêtre se ferme → la console PowerShell nomme ses étapes → la revue
+  **se rouvre depuis les archives**, verrouillée, arbre correct.
+- [ ] `out/` a bien disparu, et **rien d'autre** : `articles/`, `articles-word/`, `media/`,
+  `tables/`, `portraits/`, `*.meta.yaml`, `*.traduction.yaml`, `BIENVENUE.md` sont tous là.
+- [ ] `ausgabe.yaml` porte `locked: true`, `archived: true` et une `version-toolkit`.
+- [ ] Le raccourci **« Ouvrir la revue.lnk »** du dossier archivé rouvre le **nouveau** chemin.
+- [ ] La **Zeitschrift** part bien dans `ZS99_Archives` (et pas dans `RV99_Archives`).
+- [ ] **Cas d'échec à provoquer** : ouvrir le PDF dans SumatraPDF (fichier verrouillé côté
+  Windows) puis archiver → message « les documents produits n'ont pas pu être supprimés »,
+  et le numéro doit être **exactement** dans son état de départ (drapeaux relevés, dossier non
+  déplacé, `out/` intact).
+- [ ] **Cas de collision** : mettre un dossier du même nom dans `RV99_Archives` puis archiver →
+  la console doit dire « un dossier existe déjà à destination », **rien** n'est déplacé.
+- [ ] Désarchiver : retour dans `RV02_Redaction`, `.lnk` réécrit, et le verrou **toujours posé**
+  (deux gestes distincts — **confirmer que c'est bien ce que tu veux**, sinon je fusionne).
+- [ ] Sur un numéro archivé **puis déverrouillé**, le panneau propose « Verrouiller la revue »
+  (sans déplacement ni suppression) — vérifier que ça ne rejoue pas un archivage.
+
+### 3. Compilation d'un numéro gelé (D117)
+
+- [ ] Cliquer un article d'un numéro archivé : **aucune compilation** ne démarre, et le volet de
+  droite affiche « Numéro gelé : la compilation automatique est coupée… » (et non un message
+  d'attente qui ne viendrait jamais).
+- [ ] Idem en mode aperçu **PDF** (`Ctrl+Alt+P`) : message, pas de relance.
+- [ ] **Exporter cet article** : bouton au survol de l'article **et** entrée du panneau d'export ;
+  le PDF + l'aperçu reviennent, l'aperçu s'affiche tout seul à la fin.
+- [ ] Sans article sélectionné, l'entrée du panneau doit dire « Aucun article visé… » (et non
+  échouer en silence).
+- [ ] **Recompiler toute la revue** sur un numéro archivé fonctionne aussi.
+- [ ] **Exporter la revue en XML (OJS)** sur un numéro archivé : à confirmer que c'est utile et
+  que ça marche (il recompile tout + les galleys DOCX).
+- [ ] Rouvrir la revue après l'export : les PDF régénérés s'affichent normalement, sans build.
+
+### 4. Version du logiciel (D120)
+
+- [ ] Une **nouvelle** revue (« Nouvelle revue… ») porte `version-toolkit: "<version du poste>"`
+  dès sa création.
+- [ ] Une revue **existante** sans la clé ne déclenche **aucun** avertissement (et n'est pas
+  estampillée en douce) ; elle l'est au premier archivage.
+- [ ] Avertissement de divergence : éditer `version-toolkit` à la main pour créer un écart, puis
+  `Ctrl+S` → le message apparaît **une seule fois par fenêtre** et nomme les deux versions.
+  Vérifier qu'il arrive aussi sur `Ctrl+E`, « Recompiler toute la revue » et « Exporter cet
+  article », et qu'il **ne revient pas** à chaque enregistrement suivant.
+- [ ] Le bouton **« Changer de version… »** du message ouvre le sélecteur **sans console noire**
+  derrière le dialogue.
+- [ ] Le lanceur affiche « Logiciel v. … » et le bouton « Version du logiciel… » ouvre le même
+  dialogue (l'installée marquée, les téléchargées annotées).
+- [ ] **Aller-retour de version pour de vrai, sur un poste de test** : fermer toutes les revues,
+  installer une version antérieure, vérifier que le PDF d'un ancien numéro redevient conforme,
+  puis réinstaller la dernière. C'est le seul test qui prouve la promesse « recompiler à
+  l'identique ».
+- [ ] Couper le réseau et rouvrir le sélecteur : il doit proposer les versions **déjà
+  téléchargées** avec le message « impossible de lister les versions publiées ».
+
+### 5. Lanceur et emplacements (D116, D119)
+
+- [ ] Deux listes (« En cours » / « Archivées »), **🔒** sur les verrouillées, et la sélection
+  bascule bien d'une liste à l'autre (cliquer dans l'une désélectionne l'autre — sinon
+  « Ouvrir » ne saurait pas quoi ouvrir).
+- [ ] Double-clic dans **chacune** des deux listes ouvre la revue.
+- [ ] Une revue déplacée **à la main** dans `RV99_Archives` (sans le bouton) apparaît quand même
+  dans « Archivées ».
+- [ ] « Nouvelle revue… » propose par défaut le dossier de rédaction **en cours** du mode actif.
+- [ ] Les anciennes revues de `OneDrive\Revues` (et celles de `revuesRoots`) apparaissent encore.
+- [ ] Sur un poste **sans** aucune revue : la fenêtre s'ouvre quand même avec « Nouvelle revue… ».
+
+### 6. Mode développeur (D119)
+
+- [ ] « Réglages SZH » montre le groupe **Mode développeur** avec le bon état, et le changement
+  est écrit dans `C:\ProgramData\SZH\config.json` (`devMode`).
+- [ ] Le désactiver → relancer le lanceur → il lit les dossiers **de production** et **n'y crée
+  rien** ; le remettre → il recrée/relit `Revues-TESTING`.
+- [ ] Archiver en mode production (sur un numéro de test copié dans `RV02_Redaction`) pour
+  confirmer que les vrais chemins fonctionnent aussi.
+- [ ] **Confirmer l'arborescence de production sur un poste de la rédaction** : les quatre chemins
+  ont été vérifiés présents **ici**
+  (`…\SZH CSPS\Daten_Allgemein - General\2_Produkte\52_Revue\RV02_Redaction` et `RV99_Archives`,
+  idem `53_Zeitschrift\ZS02_Redaktion` / `ZS99_Archives`). Si un poste synchronise la
+  bibliothèque sous un autre nom → corriger `basesRevues.prod` dans `config.json`.
+- [ ] Nettoyer les 4 dossiers créés dans ton `OneDrive - SZH CSPS\Revues-TESTING` pendant mes
+  essais s'ils ne te servent pas (ils seront recréés au prochain lancement en mode test).
+
+### 7. Décisions qui te reviennent
+
+- [ ] **Auto-compilation sur un numéro seulement verrouillé** : je l'ai coupée aussi (des sources
+  gelées n'ont rien à recompiler), alors que la demande ne parlait que d'`archived`. Idem pour le
+  bouton « Exporter cet article », affiché dès que `locked || archived`. À confirmer ou à
+  restreindre.
+- [ ] **Désarchiver ne déverrouille pas** (deux boutons indépendants) : confirmer.
+- [ ] **La fenêtre se ferme et se rouvre** à l'archivage : c'est la seule façon de déplacer un
+  dossier que VSCodium tient ouvert. Confirmer que c'est acceptable pour la rédaction (l'autre
+  option serait de ne pas rouvrir du tout).
+- [ ] **Quand `devMode` passe à `false`** par défaut — aujourd'hui vrai partout, y compris sur un
+  poste neuf (`bootstrap.ps1`) et si la clé manque.
+- [ ] **`locked: false` / `archived: false` dans `revue-template/ausgabe.yaml`** : les deux clés
+  arrivent donc aussi dans les métadonnées pandoc (inutilisées, inoffensives). À laisser pour la
+  lisibilité du fichier, ou à retirer du template si tu préfères des clés absentes par défaut.
+- [ ] **Relire les libellés DE** de tout le lot (panneau d'export, modales de confirmation, barre
+  d'état, écran d'archivage, sélecteur de version, mode développeur) — premier jet, comme le
+  reste de l'i18n.
+- [ ] **Nommage** : la clé s'appelle `version-toolkit` (et non « version compilateur ») pour
+  coller au vocabulaire du dépôt (`toolkit/VERSION`, `toolkit-X.zip`). À valider.
+
+## Validations qui demandent un humain — en-tête condensé, légendes, corrections (D114, D115, D118)
+
+Éprouvé en PNG page à page sur `test/` et sur un corpus de contrôle (couverture courte,
+couverture chargée, figure + deux tableaux + listes) : le rendu par défaut ne change QUE
+sur les deux flèches du hero et sur la position des puces ▸. **Rien n'a encore tourné dans
+VSCodium** (la case à cocher) ni sur un vrai numéro.
+
+- [ ] **Trancher l'allure par défaut** : l'option est **décochée** par défaut, donc les numéros
+  existants ne bougent pas. Après l'avoir vue sur un vrai dossier, dire si le condensé doit
+  devenir la norme (il suffirait d'inverser le défaut dans `revue-template/ausgabe.yaml`).
+- [ ] **Juger les trois espaces minimum** de l'en-tête condensé (`--hero-espace-titre` 20 px,
+  `-soustitre` 12 px, `-meta` 22 px, `print.css` §5) et le plancher `min-height: 220px` sur
+  une couverture vraiment dépouillée (titre d'une ligne, un auteur, pas de sous-titre).
+- [ ] **La case à cocher dans VSCodium** : formulaire « Méta-données du numéro » → cocher,
+  **Enregistrer**, vérifier `entete-condensee: true` dans `ausgabe.yaml` (booléen nu, non
+  cité), la recompilation, puis décocher et vérifier `false`.
+- [ ] **Relire le libellé DE** de la case et son aide (premier jet, comme le reste de l'i18n).
+- [ ] **Légende de figure au-dessus** sur un article réel : l'ordre visuel et l'ordre de lecture
+  concordent (copier-coller de la page, panneau « Ordre » d'Acrobat). Le **galley Word**, lui,
+  garde la légende SOUS l'image — le writer docx de pandoc ne se règle pas : confirmer que
+  c'est acceptable pour OJS.
+- [ ] **Puces ▸ à l'œil** dans un article dense (listes imbriquées, item d'une seule ligne,
+  item qui passe à la ligne) : le triangle doit rester posé sur la ligne de base du texte.
+
+## Validations qui demandent un humain — enregistrement auto et mots-clés (D121–D122)
+
+- [ ] **L'enregistrement automatique ne fait pas sauter le curseur** : taper longuement
+  dans un résumé, vérifier qu'au bout de 3 s le fichier est écrit (horodatage) SANS que
+  la frappe, la sélection ou la position du curseur ne bougent. À faire dans les quatre
+  formulaires : traduction, métadonnées des articles, vérification de l'import, éditeur
+  de tableau.
+- [ ] **Fiche image** : confirmer qu'elle ne déclenche PAS de compilation pendant la
+  saisie (pas de minuteur), et qu'elle enregistre bien quand on quitte le panneau.
+- [ ] **Grille de mots-clés** : ajouter et retirer une ligne, cocher puis décocher
+  « + Italien » avec des mots-clés IT présents — ils ne doivent jamais disparaître.
+  Vérifier dans le `.meta.yaml` que les listes restent alignées.
+- [ ] **`TO BE TRANSLATED`** : laisser un mot-clé du milieu non traduit, enregistrer,
+  rouvrir — la case doit réapparaître vide et les paires rester en face. Puis lancer
+  l'export OJS et vérifier l'avertissement.
+- [ ] **Bouton DeepL** : sur un résumé long (proche de 4000 caractères) et sur un titre
+  avec apostrophes typographiques et caractères accentués.
+- [ ] **Arbitrer** : faut-il une clé d'API DeepL (réglage + appel côté hôte) pour que la
+  traduction revienne toute seule dans le champ, au lieu du copier-coller ?
 
 ## Validations qui demandent un humain — suivi de traduction (D113)
 

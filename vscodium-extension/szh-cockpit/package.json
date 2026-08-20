@@ -2,7 +2,7 @@
   "name": "szh-cockpit",
   "displayName": "SZH — Revue (cockpit)",
   "description": "Barre latérale « Revue SZH » : articles, métadonnées du numéro, import des Word, suivi des traductions, aperçu et réglages.",
-  "version": "0.10.0",
+  "version": "0.12.0",
   "publisher": "szh-csps",
   "license": "MIT",
   "engines": { "vscode": "^1.75.0" },
@@ -89,6 +89,30 @@
         "title": "%cmd.exporterXml%",
         "category": "Revue SZH",
         "icon": "$(file-code)"
+      },
+      {
+        "command": "szh.exporterArticle",
+        "title": "%cmd.exporterArticle%",
+        "category": "Revue SZH",
+        "icon": "$(file-pdf)"
+      },
+      {
+        "command": "szh.archiverVerrouiller",
+        "title": "%cmd.archiverVerrouiller%",
+        "category": "Revue SZH",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "szh.deverrouiller",
+        "title": "%cmd.deverrouiller%",
+        "category": "Revue SZH",
+        "icon": "$(unlock)"
+      },
+      {
+        "command": "szh.desarchiver",
+        "title": "%cmd.desarchiver%",
+        "category": "Revue SZH",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "szh.remplacerTable",
@@ -215,43 +239,48 @@
       ],
       "view/item/context": [
         {
+          "command": "szh.exporterArticle",
+          "when": "view == szhCockpitVue && viewItem == article && (szh.archivee || szh.verrouillee)",
+          "group": "inline@0"
+        },
+        {
           "command": "szh.metadonneesArticle",
-          "when": "view == szhCockpitVue && viewItem == article",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
           "group": "inline@1"
         },
         {
           "command": "szh.supprimerArticle",
-          "when": "view == szhCockpitVue && viewItem == article",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
           "group": "inline@2"
         },
         {
           "command": "szh.convertirEnAttente",
-          "when": "view == szhCockpitVue && viewItem == section-word",
+          "when": "view == szhCockpitVue && viewItem == section-word && !szh.verrouillee",
           "group": "inline"
         },
         {
           "command": "szh.traductionsToutPret",
-          "when": "view == szhCockpitVue && viewItem == section-traductions",
+          "when": "view == szhCockpitVue && viewItem == section-traductions && !szh.verrouillee",
           "group": "inline"
         },
         {
           "command": "szh.remplacerAsset",
-          "when": "view == szhCockpitVue && viewItem == asset",
+          "when": "view == szhCockpitVue && viewItem == asset && !szh.verrouillee",
           "group": "inline@1"
         },
         {
           "command": "szh.supprimerAsset",
-          "when": "view == szhCockpitVue && viewItem == asset",
+          "when": "view == szhCockpitVue && viewItem == asset && !szh.verrouillee",
           "group": "inline@2"
         },
         {
           "command": "szh.remplacerTable",
-          "when": "view == szhCockpitVue && viewItem == table",
+          "when": "view == szhCockpitVue && viewItem == table && !szh.verrouillee",
           "group": "inline@1"
         },
         {
           "command": "szh.supprimerTable",
-          "when": "view == szhCockpitVue && viewItem == table",
+          "when": "view == szhCockpitVue && viewItem == table && !szh.verrouillee",
           "group": "inline@2"
         }
       ]
