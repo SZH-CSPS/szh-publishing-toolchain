@@ -1,28 +1,23 @@
 ﻿<#
 .SYNOPSIS
-  Déplace un dossier de revue entre l'arborescence « en cours » et l'arborescence
-  d'archives (D116). Appelé par le cockpit (« Archiver et verrouiller » /
-  « Désarchiver »), utilisable aussi à la main :
+  Déplace un dossier de revue entre l'arborescence « en cours » et celle des archives.
+  Appelé par le cockpit (« Archiver et verrouiller », « Désarchiver »), utilisable aussi
+  à la main :
 
     powershell -ExecutionPolicy Bypass -File archive-revue.ps1 -Dossier "<revue>"
     powershell -ExecutionPolicy Bypass -File archive-revue.ps1 -Dossier "<revue>" -Desarchiver
 
 .DESCRIPTION
-  POURQUOI un script Windows et pas l'extension : Windows refuse de renommer un dossier
-  qu'une application tient ouvert. L'extension ne peut donc pas déplacer SON PROPRE
-  dossier de travail. Ce script, lancé détaché juste avant que la fenêtre de VSCodium
-  ne se ferme, attend que la main soit rendue (retentatives), déplace, puis rouvre
-  l'éditeur au bon endroit.
+  Un script plutôt que l'extension, parce que Windows refuse de renommer un dossier qu'une
+  application tient ouvert : l'extension ne peut pas déplacer son propre dossier de
+  travail. Lancé détaché juste avant la fermeture de VSCodium, il attend que la main soit
+  rendue, déplace, puis rouvre l'éditeur au bon endroit. Il est aussi le seul à connaître
+  les emplacements (Get-SzhEmplacements), si bien que l'extension n'a aucun chemin
+  SharePoint à calculer ; les drapeaux locked et archived sont écrits par le cockpit avant
+  l'appel, un seul écrivain par fichier.
 
-  Il est aussi le SEUL endroit qui connaisse les emplacements (Get-SzhEmplacements,
-  szh-common.ps1) : le mode développeur (D119) s'applique donc sans que l'extension
-  n'ait à calculer un chemin SharePoint.
-
-  Les DRAPEAUX (locked / archived) sont écrits par le cockpit AVANT l'appel : ce script
-  ne touche pas ausgabe.yaml. Un seul écrivain par fichier.
-
-  Fenêtre VISIBLE et rassurante (D5) : déplacer plusieurs centaines de Mo en silence
-  passerait pour un plantage. Compatibilité : Windows PowerShell 5.1.
+  Fenêtre visible : déplacer plusieurs centaines de Mo en silence passerait pour un
+  plantage. Compatibilité : Windows PowerShell 5.1.
 #>
 [CmdletBinding()]
 param(
@@ -33,15 +28,10 @@ param(
 
 . "$PSScriptRoot\szh-common.ps1"
 
-# Écran d'erreur PROPRE à l'archivage, en BOÎTE DE DIALOGUE.
-#
-# Pas la console : ce script est lancé par le cockpit via hidden.vbs, donc sa console est
-# cachée (D126 — c'est la seule façon fiable de survivre à la fermeture de la fenêtre de
-# VSCodium). Un message écrit dans une console invisible, c'est exactement le symptôme
-# « j'ai cliqué et rien ne s'est passé ».
-# Et pas Show-SzhErreur : ses textes sont ceux de la mise à jour (« la mise à jour
-# réessaiera toute seule »), or ici rien ne réessaiera. Le message dit deux choses, et
-# seulement elles : ce qui a empêché le déplacement, et que la revue est intacte.
+# En boîte de dialogue, pas en console : lancé par le cockpit via hidden.vbs, ce script a
+# une console cachée, seule façon fiable de survivre à la fermeture de VSCodium. Pas
+# Show-SzhErreur non plus, dont les textes annoncent un nouvel essai automatique, alors
+# qu'ici rien ne réessaiera.
 function Show-SzhErreurArchivage([string]$Etape, [string]$Message) {
   $texte = $Etape + "`n`n" + $Message + "`n`n" + (T 'err.rassure') + "`n" + (T 'arch.err.suite' @($SzhSupport))
   Write-Host ''
@@ -63,7 +53,7 @@ $etape = $titreFenetre
 try {
   Write-SzhBanniere $titreFenetre
 
-  # ---- 1. La revue -----------------------------------------------------------------
+  # ---- La revue ----
   if (-not (Test-Path (Join-Path $Dossier 'ausgabe.yaml'))) {
     throw (T 'arch.err.introuvable' @($Dossier))
   }
@@ -72,7 +62,7 @@ try {
   $etatRevue = Get-SzhRevueEtat $source
   if (-not $etatRevue.jeton) { throw (T 'arch.err.emplacement' @($nom)) }
 
-  # ---- 2. La destination ------------------------------------------------------------
+  # ---- La destination ----
   $racineCible = Get-SzhEmplacementRevue $etatRevue.jeton $etatCible
   if (-not $racineCible) { throw (T 'arch.err.emplacement' @($nom)) }
   $cible = Join-Path $racineCible $nom
@@ -80,18 +70,16 @@ try {
     throw (T 'arch.err.existe' @($nom))
   }
   if ($cible.ToLower() -eq $source.ToLower()) {
-    # Déjà à sa place (dossier déplacé à la main, script relancé) : rien à faire, mais
+    # Déjà à sa place (dossier déplacé à la main, script relancé) : rien à déplacer, mais
     # le raccourci et la réouverture restent utiles.
     Write-SzhOk (T 'arch.ok' @($cible))
     $deplace = $false
   } else {
     New-Item -ItemType Directory -Force -Path $racineCible | Out-Null
 
-    # ---- 3. Les documents produits (archivage seulement) --------------------------
-    # Le cockpit a déjà supprimé out/ (il prévient l'utilisateur AVANT et chiffre le
-    # gain). Filet ici pour le cas où un fichier était encore verrouillé à ce
-    # moment-là : c'est le gros du volume, autant ne pas le déplacer pour rien.
-    # Le DÉSARCHIVAGE, lui, ne supprime rien : le dossier repart tel quel.
+    # ---- Les documents produits, à l'archivage seulement ----
+    # Le cockpit a déjà supprimé out/ ; filet pour le cas où un fichier y était verrouillé,
+    # car c'est le gros du volume. Le désarchivage ne supprime rien.
     if (-not $Desarchiver) {
       $out = Join-Path $source 'out'
       if (Test-Path $out) {
@@ -99,10 +87,9 @@ try {
       }
     }
 
-    # ---- 4. Le déplacement, quand la main est rendue -------------------------------
+    # ---- Le déplacement, quand la main est rendue ----
     # Tant que la fenêtre de VSCodium n'est pas fermée, le renommage échoue. On retente
-    # jusqu'à $AttenteSecondes, puis on abandonne SANS rien avoir déplacé (message
-    # explicite : fermer l'éditeur et réessayer).
+    # jusqu'à $AttenteSecondes puis on abandonne sans rien avoir déplacé.
     $etape = (T 'arch.deplacement' @($racineCible))
     Write-SzhEtape (T 'arch.attente')
     $limite = (Get-Date).AddSeconds($AttenteSecondes)
@@ -125,14 +112,14 @@ try {
     Write-SzhOk (T 'arch.ok' @($cible))
   }
 
-  # ---- 5. Le raccourci du dossier voyage avec lui (D14) ----------------------------
-  # « Ouvrir la revue.lnk » porte le chemin ABSOLU : sans réécriture, il rouvrirait
+  # ---- Le raccourci du dossier voyage avec lui ----
+  # « Ouvrir la revue.lnk » porte un chemin absolu : sans réécriture, il rouvrirait
   # l'ancien emplacement. Jamais bloquant.
   try { Set-SzhRaccourciRevue $cible | Out-Null } catch { }
 
-  # ---- 6. Réouverture de la revue à sa nouvelle place -------------------------------
-  # C'est ce qui rend le geste lisible : la revue revient sous les yeux, verrouillée
-  # (ou libérée), à son nouvel emplacement.
+  # ---- Réouverture de la revue à sa nouvelle place ----
+  # C'est ce qui rend le geste lisible : la revue revient sous les yeux, à son nouvel
+  # emplacement.
   Write-SzhEtape (T 'arch.rouvre')
   [void](Start-SzhCodium $cible)
   Write-SzhLog ('archive-revue OK : ' + $source + ' -> ' + $cible)

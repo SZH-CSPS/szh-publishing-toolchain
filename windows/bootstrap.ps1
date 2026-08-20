@@ -1,20 +1,13 @@
 ﻿<#
 .SYNOPSIS
-  Préparation d'un poste — à lancer UNE seule fois, EN ADMINISTRATEUR :
+  Préparation d'un poste, à lancer une fois en administrateur :
     powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
 
-  Fait uniquement ce qui exige l'admin (D3) :
-    1. dossiers C:\ProgramData\SZH + droits d'écriture pour les Utilisateurs
-       (=> toutes les mises à jour suivantes tournent SANS admin, en silence) ;
-    2. moteur WSL (sans distribution) ;
-    3. VSCodium + SumatraPDF (winget, machine) ;
-    4. toolkit initial (Release GitHub ; repli : copie du dépôt cloné) ;
-    5. tâches planifiées « SZH - Mise a jour » (connexion + 11h00, silencieuse)
-       et « SZH - Prechauffage WSL » (connexion) — pour TOUT utilisateur du poste ;
-    6. première mise à jour visible (update.ps1).
-
-  Ensuite : plus jamais besoin d'un admin sur ce poste (sauf bump VSCodium/SumatraPDF,
-  volontairement manuel — voir V2 dans PLANIFICATION.md).
+  Ne fait que ce qui exige l'administrateur : dossiers C:\ProgramData\SZH ouverts en
+  écriture aux Utilisateurs, moteur WSL sans distribution, VSCodium et SumatraPDF par
+  winget, toolkit initial, tâches planifiées de mise à jour et de préchauffage WSL, puis
+  une première mise à jour visible. Ensuite le poste n'a plus besoin d'administrateur,
+  sauf pour monter VSCodium ou SumatraPDF de version, geste volontairement manuel.
 
   Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
 #>
@@ -28,13 +21,13 @@ param(
 function Info([string]$m) { Write-Host ('[bootstrap] ' + $m) -ForegroundColor Cyan }
 function Attention([string]$m) { Write-Host ('[bootstrap] ' + $m) -ForegroundColor Yellow }
 
-# ---- 0. Admin requis ---------------------------------------------------------
+# ---- Administrateur requis ----
 $estAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
             ).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
 if (-not $estAdmin) { throw 'Lancer ce script en tant qu''administrateur.' }
 Write-SzhBanniere 'Installation du poste (administrateur)'
 
-# ---- 1. Dossiers + droits ------------------------------------------------------
+# ---- Dossiers et droits ----
 Info 'Dossiers C:\ProgramData\SZH + droits Utilisateurs (mises à jour sans admin)'
 New-Item -ItemType Directory -Force -Path $SzhBase, $SzhStaging, $SzhLogs, $SzhToolkit | Out-Null
 # S-1-5-32-545 = groupe Utilisateurs (indépendant de la langue de Windows)
@@ -43,19 +36,16 @@ New-Item -ItemType Directory -Force -Path $SzhBase, $SzhStaging, $SzhLogs, $SzhT
 if (-not (Test-Path $SzhConfigFile)) {
   $cfg = [ordered]@{
     repo        = $Repo
-    # D125 — les revues vivent dans l'arborescence officielle (basesRevues ci-dessous),
-    # et c'est la SEULE chose que le lanceur liste. Cette clé ne sert plus qu'à
-    # signaler des revues restées ailleurs : vide sur un poste neuf, à ne remplir à la
-    # main que pour surveiller un dossier historique.
+    # Le lanceur ne liste que l'arborescence officielle (basesRevues ci-dessous). Cette
+    # clé ne sert plus qu'à signaler des revues restées ailleurs : vide sur un poste
+    # neuf, à remplir à la main pour surveiller un dossier historique.
     revuesRoots = @()
-    # D119 — mode développeur : VRAI tant que la chaîne n'est pas passée en production.
-    # Les revues sont alors cherchées, créées et archivées sous basesRevues.dev.
-    # Bascule depuis « Réglages SZH » du cockpit, ou en éditant cette clé.
+    # Mode développeur : les revues sont cherchées, créées et archivées sous
+    # basesRevues.dev. Bascule depuis « Réglages SZH » du cockpit, ou ici.
     devMode     = $true
-    # D116 — emplacements « en cours » / archives. Seule la BASE change entre test et
-    # production : les sous-dossiers (52_Revue\RV02_Redaction…) sont figés dans
-    # szh-common.ps1. À corriger ici si la bibliothèque SharePoint est synchronisée
-    # sous un autre nom sur les postes.
+    # Emplacements « en cours » et archives. Seule la base change entre test et
+    # production, les sous-dossiers étant figés dans szh-common.ps1. À corriger ici si
+    # la bibliothèque SharePoint est synchronisée sous un autre nom.
     basesRevues = [ordered]@{
       prod = '%USERPROFILE%\SZH CSPS\Daten_Allgemein - General\2_Produkte'
       dev  = '%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING'
@@ -64,7 +54,7 @@ if (-not (Test-Path $SzhConfigFile)) {
   Set-SzhJson $SzhConfigFile $cfg
 }
 
-# ---- 2. Moteur WSL --------------------------------------------------------------
+# ---- Moteur WSL ----
 Info 'Vérification du moteur WSL'
 $wsl = Get-WslExe
 Invoke-SzhNatif { $null = & $wsl --status 2>&1 }
@@ -75,7 +65,7 @@ if ($LASTEXITCODE -ne 0) {
   return
 }
 
-# ---- 3. Applications (winget, machine) ------------------------------------------
+# ---- Applications (winget, niveau machine) ----
 Info 'Vérification de VSCodium'
 if (-not (Get-VSCodiumExe)) {
   Info 'Installation de VSCodium (winget)'
@@ -93,7 +83,7 @@ if (-not $sumatra) {
   winget install --id SumatraPDF.SumatraPDF -e --accept-source-agreements --accept-package-agreements
 }
 
-# ---- 4. Toolkit initial -----------------------------------------------------------
+# ---- Toolkit initial ----
 Info 'Toolkit initial'
 $toolkitOk = $false
 try {
@@ -109,7 +99,7 @@ try {
   Attention ('Release inaccessible ({0}).' -f $_.Exception.Message)
 }
 if (-not $toolkitOk) {
-  # Repli : le script tourne depuis un clone du dépôt -> copie locale (pré-release / hors ligne)
+  # Repli hors ligne : le script tourne depuis un clone du dépôt, on copie sur place.
   $racineDepot = Split-Path $PSScriptRoot -Parent
   if (Test-Path (Join-Path $racineDepot 'pipeline\Makefile')) {
     Attention 'Repli : copie du toolkit depuis le dépôt cloné (version locale).'
@@ -122,10 +112,10 @@ if (-not $toolkitOk) {
 }
 if (-not $toolkitOk) { throw 'Impossible d''obtenir le toolkit (ni Release, ni dépôt local).' }
 
-# ---- 5. Tâches planifiées ----------------------------------------------------------
+# ---- Tâches planifiées ----
 Info 'Tâches planifiées (pour tout utilisateur connecté, sans admin)'
 $vbs = Join-Path $SzhToolkit 'windows\hidden.vbs'
-# Groupe Utilisateurs : la tâche tourne dans la session de l'utilisateur connecté
+# Groupe Utilisateurs : la tâche tourne dans la session de l'utilisateur connecté.
 $principal = New-ScheduledTaskPrincipal -GroupId 'S-1-5-32-545' -RunLevel Limited
 $reglages = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries `
               -ExecutionTimeLimit (New-TimeSpan -Hours 2) -MultipleInstances IgnoreNew
@@ -144,7 +134,7 @@ $actionChauffe = New-ScheduledTaskAction -Execute "$env:WINDIR\System32\wscript.
 Register-ScheduledTask -TaskName 'SZH - Prechauffage WSL' -Action $actionChauffe `
   -Principal $principal -Trigger (New-ScheduledTaskTrigger -AtLogOn) -Settings $reglages -Force | Out-Null
 
-# ---- 6. Première mise à jour (visible) -----------------------------------------------
+# ---- Première mise à jour, en fenêtre visible ----
 Info 'Lancement de la première mise à jour (fenêtre visible)…'
 Start-Process -FilePath "$PSHOME\powershell.exe" -ArgumentList @(
   '-NoProfile', '-ExecutionPolicy', 'Bypass',

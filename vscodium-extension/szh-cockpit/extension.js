@@ -1,94 +1,12 @@
-// SZH — Revue (cockpit), tranches S2 + S3 + S4 (D36).
-// Barre latérale « Revue SZH » (dans l'Explorateur, cf. S2.1) : deux sections —
-// « Articles » (articles/<slug>/<slug>.md, clic = ouvrir ; actions inline
-// « Ouvrir le PDF » et « Compiler ») et « Word en attente » (articles-word/*.docx
-// hors _convertis/ ; compte affiché dans la description de la section ; tooltip
-// « déjà converti » si le .md cible existe). La vue n'apparaît que si ausgabe.yaml
-// existe à la racine (contexte szh.estRevue).
+// Extension « Revue SZH » : la barre latérale du cockpit dans l'Explorateur de VSCodium
+// (articles, Word en attente, traductions) et les commandes associées. La vue n'apparaît
+// que si ausgabe.yaml existe à la racine (clé de contexte szh.estRevue).
 //
-// S3 : commande « Importer des Word » (szh.importerWord).
-// S4 puis N5 (D46) : le CLIC sur un article fait tout — ouvre le .md (colonne 1),
-//   compile si le PDF est obsolète (mtime) ou absent, ferme l'aperçu de l'article
-//   précédent et affiche le sien (colonne 2, pdf.preview, preserveFocus). Les
-//   boutons « Ouvrir le PDF » / « Compiler » de S4 sont supprimés. Jamais de vol
-//   de focus. szh-apercu reste en place (rafraîchissement après Ctrl+S).
-// G1 (D37) : formulaire « Méta-données du numéro » (webview szh.metadonnees) qui
-//   réécrit ausgabe.yaml — sérialiseur maison, lignes non gérées préservées,
-//   écriture atomique.
-// G3 (D40) : « Supprimer l'article » (szh.supprimerArticle) — confirmation MODALE
-//   obligatoire, puis rm de articles/<slug>/ ET out/<slug>/ (onglets fermés avant).
-// G5 (D41) : article dépliable -> ses images (articles/<slug>/media/, récursif)
-//   avec dimensions + poids ; clic = aperçu natif ; « Remplacer » (szh.remplacerAsset)
-//   écrase l'image EN GARDANT son nom (le lien du .md reste valide).
-// N1 (D42) : dormant WSL (sleep infinity dans SZH-Publishing) tant qu'une revue est
-//   ouverte — pas de démarrage à froid à la première compilation.
-//
-// F6 (dialogue d'import) : à la fin d'une conversion qui produit AU MOINS UN
-//   nouvel article, le webview « Vérification de l'import » (szhImportVerif,
-//   singleton) remplace la notification « N importés » — cartes de métadonnées
-//   pré-remplies par le <slug>.meta.yaml du pipeline avec badges détecté /
-//   à compléter, photos d'auteur·e·s (modale F3 réutilisée) et remplacement des
-//   images de media/ par leurs originaux (dépôt base64 ≤ 50 Mo, nom conservé).
-//
-// Fiche image : le CLIC sur une image de l'arbre ouvre une fiche (webview
-//   szhFicheImage, une par image) où se saisissent la LÉGENDE, le TEXTE ALTERNATIF
-//   (avec un choix explicite « image décorative » qui écrit alt="") et les CRÉDITS
-//   (copyright / source). Ces données vivent dans le TEXTE de l'article —
-//   ![Légende](media/x.png){alt="…" copyright="…" source="…"} — et sont lues/écrites
-//   par les fonctions pures de lib/references.js, via WorkspaceEdit + doc.save().
-//   L'aperçu natif de VSCodium reste accessible (bouton « Ouvrir l'image »).
-//
-// Traductions (D113) : troisième section de la barre, « Traductions ». Un article
-//   par ligne, DÉPLIABLE sur ses champs bilingues (titre / sous-titre / résumé /
-//   mots-clés × langue cible) : le coup d'œil « traduit / à traduire », plus l'état
-//   d'atelier de chacun (pas prêt → prêt pour traduction → prêt pour relecture →
-//   traduction finalisée). Le bouton de la section lance la campagne (tous les
-//   champs encore « pas prêt » passent à « prêt pour traduction » — jamais de
-//   recul). Le CLIC ouvre le panneau szhTraduction : formulaire en colonne 1
-//   (source en lecture seule + traduction à saisir + état, un bouton par état pour
-//   tout l'article, zone « question / commentaire »), aperçu de l'article en
-//   colonne 2. Deux fichiers, deux rôles : les TEXTES traduits vont dans
-//   <slug>.meta.yaml (publiés, exportés vers OJS), l'ÉTAT dans le sidecar
-//   <slug>.traduction.yaml (jamais publié, invisible du Makefile) — cf. l'en-tête
-//   de lib/traduction.js.
-//
-// Écritures autorisées : la COPIE des .docx choisis vers articles-word/ (S3 ;
-// mêmes règles pour les .docx DÉPOSÉS sur la vue, F2), ausgabe.yaml (G1), la
-// SUPPRESSION confirmée d'un article (G3), l'ÉCRASEMENT confirmé d'une image
-// (G5 ; aussi par dépôt depuis le dialogue de vérification d'import, F6),
-// la CRÉATION d'un tableau articles/<slug>/tables/table-NN.html au collage depuis
-// Excel/Word (D81) ET par « Insérer un tableau » (D95, grille vierge puis éditeur de
-// tableau) — lib/formatting.js, jamais d'écrasement : premier numéro libre
-// et les PORTRAITS d'auteur·e·s articles/<slug>/portraits/ (F3, D91/D92 : photo
-// déposée <slug-auteur>.original.<ext> — les anciens .original.* d'une autre
-// extension sont retirés — plus les versions .avec-fond.png/.sans-fond.png écrites
-// par le pipeline WSL), et la RÉÉCRITURE de la référence d'une image dans
-// articles/<slug>/<slug>.md par la fiche image (légende + attributs alt/copyright/
-// source ; WorkspaceEdit, donc annulable par Ctrl+Z), et le SUIVI DE TRADUCTION
-// articles/<slug>/<slug>.traduction.yaml (D113 : statuts + commentaire ; fichier
-// form-owned, régénéré à chaque enregistrement et SUPPRIMÉ quand il ne reste plus
-// rien à retenir). Tout le reste est en lecture seule (ouverture/lancement de
-// tâche uniquement).
-// Posture szh-apercu : JavaScript pur, zéro dépendance, API VS Code ^1.75.
-//
-// STRUCTURE (refactor R1–R6, SANS build — CommonJS require résolu à l'exécution +
-// fichiers statiques ; empaqueté tel quel par vsce, cf. .vscodeignore) :
-//   extension.js            activate/deactivate + câblage des commandes + _pur ré-agrégé
-//   lib/i18n.js             TEXTES_COCKPIT, T, langueCockpit
-//   lib/yaml.js             sérialiseurs ausgabe/frontmatter/meta, titreNumero, écriture atomique
-//   lib/table-model.js      parseur/sérialiseur/opérations PURS du tableau
-//   lib/slug.js             slugifier + slugifierArticle ; lib/wsl.js dormeur WSL ;
-//                           lib/formatting.js mise en forme
-//   lib/portraits.js        appel WSL du pipeline de portraits (F3, D91)
-//   lib/panneaux.js         les trois panneaux QuickPick de la barre (Commande/Édition/Export, F1)
-//   lib/traduction.js       modèle PUR du suivi de traduction (sidecar + lignes à traduire, D113)
-//   lib/webviews/util.js    construireHtml/lireMedia : inline media/ + nonce + CSP stricte
-//   media/*.{html,css,js}   webviews (table-editor, metadata-issue/articles, settings,
-//                           apercu, import-verif, traduction)
-// Les webviews n'injectent AUCUNE donnée dans le HTML (elles arrivent par postMessage) ;
-// les libellés i18n sont des marqueurs %%SZH:cle%% résolus par T() à l'assemblage.
-// lib/ et media/ DOIVENT être empaquetés (voir .vscodeignore). _pur = contrat immuable
-// des fonctions pures pour les harnais headless.
+// Sans build : les require sont résolus à l'exécution, donc lib/ et media/ doivent
+// rester empaquetés (voir .vscodeignore). Ici, activate/deactivate, le câblage des
+// commandes et l'agrégat _pur exposé aux tests. Une webview ne reçoit aucune donnée dans
+// son HTML : tout arrive par postMessage, et les libellés y sont des marqueurs
+// %%SZH:cle%% résolus par T().
 'use strict';
 
 const vscode = require('vscode');
@@ -97,25 +15,20 @@ const path = require('path');
 const crypto = require('crypto');
 
 const CLE_CONTEXTE = 'szh.estRevue';
-// D116 : l'état du numéro en clés de contexte — c'est ce que lisent les `when` de
-// package.json (bouton « Exporter cet article » de l'arbre).
+// L'état du numéro en clés de contexte : c'est ce que lisent les `when` de package.json.
 const CLE_VERROUILLEE = 'szh.verrouillee';
 const CLE_ARCHIVEE = 'szh.archivee';
 const ID_VUE = 'szhCockpitVue';
-// ⚠ Doivent correspondre EXACTEMENT aux labels de vscodium-user/tasks.json.
+// À garder identiques aux labels de vscodium-user/tasks.json, qui les nomme.
 const NOM_TACHE_IMPORT = 'Importer les articles Word';
 const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
 const NOM_TACHE_EXPORT = 'Tout exporter';
 const NOM_TACHE_DOCX = 'Galleys DOCX (OJS)';
-// « Exporter cet article » (D117) : la seule tâche que le cockpit construit LUI-MÊME
-// (les autres sont des tâches utilisateur retrouvées par leur label). Raison : sa
-// cible dépend du slug cliqué, or une tâche de tasks.json a des arguments figés.
-// ⚠ Distro et chemin du Makefile identiques à vscodium-user/tasks.json, lib/wsl.js
-// et lib/portraits.js — quatre endroits, une seule valeur.
+// À garder alignés avec vscodium-user/tasks.json, lib/wsl.js et lib/portraits.js.
 const DISTRO_WSL = 'SZH-Publishing';
 const MAKEFILE_WSL = '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile';
 
-// ---- i18n du cockpit (M4, D52) -> lib/i18n.js ------------------------------------
+// ---- i18n du cockpit -> lib/i18n.js ----------------------------------------------
 const { TEXTES_COCKPIT, T, langueCockpit } = require('./lib/i18n');
 // ---- Sérialiseurs YAML -> lib/yaml.js --------------------------------------------
 const {
@@ -125,7 +38,7 @@ const {
   separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
   analyserMeta, serialiserMeta, langueRevue, titreNumero, etatRevue
 } = require('./lib/yaml');
-// ---- Cycle de vie du numéro (D116-D117 et D120) -> lib/archivage.js -----------------------
+// ---- Cycle de vie du numéro -> lib/archivage.js ----------------------------------
 const {
   versionInstallee, versionsDivergent, tailleDossier, supprimerDossier,
   lancerArchivage, lancerChoixVersion, lancerMailTraduction,
@@ -152,15 +65,14 @@ const {
   enroberBloc, squeletteTableau, tableauVierge, blocReferenceTable, nomTableLibre,
   enregistrerCommandesMiseEnForme
 } = require('./lib/formatting');
-// ---- Liens profonds « szh:// » (D123) -> lib/liens.js ----------------------------
-// ---- Lecture seule du dossier (D116, corrigé D131) -> lib/verrou.js -------------
+// ---- Liens profonds « szh:// » -> lib/liens.js ; lecture seule -> lib/verrou.js --
 const { appliquerVerrou } = require('./lib/verrou');
 const { construireLienTraduction, consommerIntention } = require('./lib/liens');
 const { enregistrerPanneaux } = require('./lib/panneaux');
 const { genererExportOjs } = require('./lib/export-ojs');
 const { retirerImage, retirerTable, lireAttributsImage, ecrireAttributsImage } = require('./lib/references');
 const { traiterPortraits } = require('./lib/portraits');
-// ---- Suivi de traduction (D113) -> lib/traduction.js -----------------------------
+// ---- Suivi de traduction -> lib/traduction.js ------------------------------------
 const {
   CHAMPS_TRADUISIBLES, STATUTS, STATUT_DEFAUT,
   cleChamp, statutValide, analyserTraduction, serialiserTraduction,
@@ -168,16 +80,10 @@ const {
   lignesTraduction, groupesTraduction, resumeTraduction
 } = require('./lib/traduction');
 
-// Éditeur PDF (extension tomoki1207.pdf), comme szh-apercu.
 const VUE_PDF = 'pdf.preview';
 const EXT_PDF = 'tomoki1207.pdf';
 
-// slugifier -> lib/slug.js
-
-// Maintien en vie de WSL (N1) -> lib/wsl.js
-
-// Racine de revue = premier dossier du workspace contenant ausgabe.yaml (D22),
-// ou null si aucun (dossier quelconque -> la vue reste masquée).
+// Premier dossier du workspace contenant ausgabe.yaml, ou null : la vue reste masquée.
 function trouverRacineRevue() {
   const dossiers = vscode.workspace.workspaceFolders;
   if (!dossiers) { return null; }
@@ -189,51 +95,28 @@ function trouverRacineRevue() {
   return null;
 }
 
-// ---- Cycle de vie du numéro : verrou, archive, version du logiciel (D116-D117 et D120) ----
-//
-// La SOURCE DE VÉRITÉ est ausgabe.yaml (lib/yaml.js : etatRevue) — rien n'est
-// mémorisé côté poste, un numéro archivé sur OneDrive l'est pour toute l'équipe.
-// L'état est relu à chaque rafraîchissement (ausgabe.yaml est déjà surveillé pour le
-// titre de la vue, N2) et projeté en TROIS endroits :
-//   1. deux clés de contexte (szh.verrouillee / szh.archivee) qui pilotent les
-//      boutons de package.json — le bouton « Exporter cet article » de l'arbre ;
-//   2. la barre d'état (clic = déverrouiller / désarchiver) et le titre de la vue ;
-//   3. les gardes de commandes : tout geste d'ÉCRITURE est refusé sur un numéro
-//      verrouillé, et la compilation AUTOMATIQUE est coupée sur un numéro gelé.
-//
-// Lecture seule de l'ÉDITEUR : `files.readonlyInclude` dans
-// <revue>/.vscode/settings.json — écrit et retiré par NOUS (fs), pas par l'API de
-// configuration : voir appliquerVerrou, le verrou verrouillait sinon son propre
-// interrupteur. C'est le seul fichier technique qu'on accepte dans un dossier de revue
-// (D8), et le compromis est payant : le verrou VOYAGE avec le dossier (un numéro
-// archivé s'ouvre en lecture seule sur n'importe quel poste), il ne fuit pas sur les
-// autres fenêtres (un réglage utilisateur, lui, verrouillerait aussi la revue en cours
-// ouverte à côté), et il survit à update.ps1, qui réécrit settings.json au niveau
-// utilisateur. Le fichier est SUPPRIMÉ au déverrouillage, et masqué de l'explorateur
-// par files.exclude (vscodium-user/settings.json).
+// ---- Cycle de vie du numéro : verrou, archive, version du logiciel ---------------
+// L'état vit dans ausgabe.yaml (lib/yaml.js : etatRevue) et non sur le poste. Relu à
+// chaque rafraîchissement, il alimente les clés de contexte szh.verrouillee /
+// szh.archivee, la barre d'état, le titre de la vue et les gardes de commandes.
+// La lecture seule de l'éditeur passe par `files.readonlyInclude` dans
+// <revue>/.vscode/settings.json, écrit directement par fs et non par l'API de
+// configuration, sinon le verrou verrouille son propre interrupteur. Dans le dossier,
+// ce réglage voyage avec lui sans atteindre les autres fenêtres.
 let etatNumero = { verrouillee: false, archivee: false, versionToolkit: '' };
-// Dernier état de verrou réellement APPLIQUÉ au dossier (null = jamais vu). Évite de
-// réécrire .vscode/settings.json à chaque rafraîchissement de l'arbre.
-let verrouApplique = null;
+let verrouApplique = null;   // évite de réécrire settings.json à chaque rafraîchissement
 let racineVerrou = null;
-// L'avertissement de divergence de version ne se dit qu'UNE FOIS par fenêtre : il
-// accompagne une compilation, et une compilation part à chaque Ctrl+S.
-let divergenceSignalee = false;
+let divergenceSignalee = false;   // une fois par fenêtre : chaque Ctrl+S compile
 
 function etatCourant() { return etatNumero; }
 
-// Numéro « gelé » : plus aucune compilation AUTOMATIQUE (clic sur un article, aperçu
-// obsolète). Vrai pour un numéro archivé — la demande explicite (D117) — et aussi
-// pour un numéro simplement verrouillé : ses sources ne peuvent plus changer, le
-// recompiler tout seul ne ferait que réécrire out/ sans raison. L'export à la
-// demande, lui, reste toujours possible (« Exporter cet article », « Recompiler
-// toute la revue ») : c'est la contrepartie de la suppression de out/ à l'archivage.
+// Numéro « gelé », archivé ou verrouillé : plus de compilation automatique. L'export à
+// la demande reste possible, puisque l'archivage supprime out/.
 function compilationAutoCoupee() {
   return etatNumero.archivee || etatNumero.verrouillee;
 }
 
-// Garde d'écriture. Retourne true si l'action est REFUSÉE (l'appelant sort aussitôt).
-// Jamais un silence : message + bouton qui mène au déverrouillage.
+// Garde d'écriture : true = refusé, l'appelant sort. Le refus est toujours affiché.
 function refuserSiVerrouille() {
   if (!etatNumero.verrouillee) { return false; }
   const bouton = T('verrou.refuse.bouton');
@@ -243,9 +126,7 @@ function refuserSiVerrouille() {
   return true;
 }
 
-// Écrit des clés d'ausgabe.yaml (mêmes sérialiseur et écriture atomique que le
-// formulaire de métadonnées : lignes non gérées préservées, commentaires compris).
-// Retourne null si tout est écrit, sinon le message d'erreur.
+// Le sérialiseur du formulaire préserve les lignes non gérées. null si tout est écrit.
 function ecrireClesAusgabe(racine, modifies) {
   const chemin = path.join(racine, 'ausgabe.yaml');
   try {
@@ -256,8 +137,6 @@ function ecrireClesAusgabe(racine, modifies) {
   } catch (e) { return String((e && e.message) || e); }
 }
 
-// Relit l'état du numéro et le projette partout (contextes, barre d'état, verrou du
-// dossier). Appelée à chaque rafraîchissement : ausgabe.yaml est déjà surveillé.
 function majEtatNumero(fournisseur, barreEtat) {
   const racine = fournisseur.racine;
   etatNumero = racine ? etatRevue(racine)
@@ -265,8 +144,7 @@ function majEtatNumero(fournisseur, barreEtat) {
   vscode.commands.executeCommand('setContext', CLE_VERROUILLEE, etatNumero.verrouillee);
   vscode.commands.executeCommand('setContext', CLE_ARCHIVEE, etatNumero.archivee);
   if (barreEtat) { majBarreEtatNumero(barreEtat); }
-  // Le verrou du dossier suit l'état du fichier — y compris quand ausgabe.yaml a été
-  // édité à la main ou synchronisé par OneDrive depuis un autre poste.
+  // Le verrou suit le fichier, même édité à la main ou synchronisé par OneDrive.
   if (racine && (racineVerrou !== racine || verrouApplique !== etatNumero.verrouillee)) {
     racineVerrou = racine;
     verrouApplique = etatNumero.verrouillee;
@@ -275,8 +153,7 @@ function majEtatNumero(fournisseur, barreEtat) {
   }
 }
 
-// Barre d'état du cycle de vie : visible seulement si le numéro est gelé, et le clic
-// mène au geste inverse (déverrouiller, ou désarchiver s'il n'est que archivé).
+// Visible seulement sur un numéro gelé ; le clic mène au geste inverse.
 function majBarreEtatNumero(barre) {
   if (!etatNumero.verrouillee && !etatNumero.archivee) { barre.hide(); return; }
   if (etatNumero.verrouillee && etatNumero.archivee) { barre.text = T('etat.barre.lesdeux'); }
@@ -292,7 +169,6 @@ function majBarreEtatNumero(barre) {
   barre.show();
 }
 
-// Titre de la vue : le numéro, suffixé des pictogrammes de son état (D116).
 function titreVue(racine) {
   const base = titreNumero(racine);
   if (etatNumero.verrouillee && etatNumero.archivee) { return T('arbre.titre.archiveeVerrouillee', [base]); }
@@ -301,9 +177,6 @@ function titreVue(racine) {
   return base;
 }
 
-// Avertissement de divergence de version (D120), au moment de compiler : le rédacteur
-// doit savoir que le numéro a été fabriqué par un autre logiciel que celui qui tourne
-// — c'est là, et seulement là, que le résultat peut changer. Une fois par fenêtre.
 function avertirVersionSiDivergente() {
   if (divergenceSignalee) { return; }
   const poste = versionInstallee();
@@ -319,21 +192,17 @@ function avertirVersionSiDivergente() {
   });
 }
 
-// Réglage szh.replierAssetsAutres (D96) : au clic sur un article, ses images et
-// tableaux se déplient et ceux des AUTRES articles se replient — une seule liste
-// d'assets ouverte à la fois. À false : l'arbre se comporte comme avant (aucun
-// dépliage ni repliage automatique). Défaut true.
+// szh.replierAssetsAutres (défaut true) : au clic, les assets de l'article se déplient
+// et ceux des autres se replient.
 function replierAssetsAutres() {
   try { return vscode.workspace.getConfiguration('szh').get('replierAssetsAutres', true) !== false; }
-  catch (e) { return true; }                       // configuration indisponible : comportement par défaut
+  catch (e) { return true; }                       // configuration indisponible
 }
 
 class FournisseurRevue {
   constructor() {
     this.racine = null;
-    // D96 : slug dont les assets sont DÉPLOYÉS (tous les autres sont repliés). null =
-    // aucun (état de départ, ou réglage désactivé).
-    this.slugDeploye = null;
+    this.slugDeploye = null;   // article dont les assets sont dépliés
     this._changement = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._changement.event;
   }
@@ -341,8 +210,7 @@ class FournisseurRevue {
   definirRacine(racine) { this.racine = racine; }
   rafraichir() { this._changement.fire(); }
 
-  // Retourne true si l'état a CHANGÉ (l'appelant rafraîchit alors l'arbre) : cliquer
-  // deux fois le même article ne doit pas reconstruire la vue pour rien.
+  // true si l'état a changé : recliquer le même article ne reconstruit pas la vue.
   definirDeploye(slug) {
     const cible = replierAssetsAutres() ? (slug || null) : null;
     if (this.slugDeploye === cible) { return false; }
@@ -355,11 +223,8 @@ class FournisseurRevue {
   getChildren(element) {
     if (!this.racine) { return []; }
     if (!element) {
-      // Compte des Word en attente dans la DESCRIPTION de la section (S4) : le badge
-      // de conteneur n'est plus visible depuis que la vue est dans l'Explorateur (S2.1).
-      const n = this.compterWord();
-      // D113 : la section « Traductions » arrive REPLIÉE — elle double la liste des
-      // articles, et on ne l'ouvre que quand on vient y travailler.
+      const n = this.compterWord();   // le badge de conteneur ne s'affiche pas ici
+      // « Traductions » arrive repliée : elle double la liste des articles.
       const t = this.compterTraductions();
       return [
         this._section('articles', T('arbre.articles'), 'book', undefined),
@@ -382,15 +247,12 @@ class FournisseurRevue {
       : vscode.TreeItemCollapsibleState.Expanded);
     it.categorie = categorie;
     it.iconPath = new vscode.ThemeIcon(icone);
-    it.contextValue = 'section-' + categorie;   // 'section-articles' / 'section-word'
+    it.contextValue = 'section-' + categorie;   // 'section-articles', 'section-word'…
     if (description) { it.description = description; }
     return it;
   }
 
-  // Article = dossier articles/<slug>/ contenant le .md homonyme <slug>.md
-  // (même règle que le Makefile : un dossier sans .md homonyme est ignoré).
-  // G5/N6 : l'article est DÉPLIABLE s'il a des images OU des tableaux (la flèche
-  // montre les assets, le clic sur le libellé ouvre l'article — risque R2).
+  // Article = dossier articles/<slug>/ avec le .md homonyme, comme dans le Makefile.
   _itemsArticles() {
     const base = path.join(this.racine, 'articles');
     const slugs = this._sousDossiersAvecMd(base);
@@ -399,26 +261,20 @@ class FournisseurRevue {
     return slugs.map((slug) => {
       const md = vscode.Uri.file(path.join(base, slug, slug + '.md'));
       const aDesAssets = this._imagesArticle(slug).length > 0 || this._tablesArticle(slug).length > 0;
-      // D96 : un article SANS asset n'a pas de chevron (None). Avec le repli
-      // automatique, l'article visé est Expanded et tous les autres Collapsed.
       const deploye = auto && aDesAssets && slug === this.slugDeploye;
       const it = new vscode.TreeItem(slug, !aDesAssets
         ? vscode.TreeItemCollapsibleState.None
         : (deploye ? vscode.TreeItemCollapsibleState.Expanded
                    : vscode.TreeItemCollapsibleState.Collapsed));
-      // ⚠ VS Code MÉMORISE l'état plié/déplié d'un élément qu'il reconnaît et ignore
-      // alors le collapsibleState renvoyé : sans identité changeante, le repliage
-      // automatique n'aurait aucun effet visible. On fait donc varier l'`id` avec
-      // l'état voulu — l'élément est recréé, l'état est réappliqué. Sans le réglage,
-      // aucun `id` n'est posé : l'arbre retrouve exactement son comportement d'avant
-      // (c'est l'utilisateur qui plie et déplie, VS Code s'en souvient).
+      // VS Code mémorise l'état plié/déplié d'un élément qu'il reconnaît et ignore alors
+      // le collapsibleState renvoyé : l'`id` porte donc l'état voulu, il change,
+      // l'élément est recréé. Sans le réglage, pas d'`id` : l'utilisateur décide.
       if (auto && aDesAssets) { it.id = 'article:' + slug + ':' + (deploye ? 'ouvert' : 'ferme'); }
-      it.slug = slug;                   // utilisé par les actions S4/G3/G5
+      it.slug = slug;                   // lu par les actions de l'arbre
       it.resourceUri = md;              // icône de fichier selon le thème
       it.tooltip = md.fsPath;
       it.contextValue = 'article';      // pilote les boutons inline (menus view/item/context)
-      // N5 (D46) : le clic fait tout — .md en colonne 1, build si obsolète,
-      // aperçu en colonne 2 (l'aperçu du précédent article est fermé).
+      // Le clic fait tout : .md en colonne 1, compilation si besoin, aperçu en colonne 2.
       it.command = {
         command: 'szh.ouvrirArticle', title: 'Ouvrir l’article',
         arguments: [slug]
@@ -427,8 +283,7 @@ class FournisseurRevue {
     });
   }
 
-  // Images d'un article : articles/<slug>/media/, récursif, extensions d'image
-  // seulement. Chemins RELATIFS à media/ (lisibles en libellé), triés.
+  // articles/<slug>/media/, récursif ; chemins relatifs à media/, triés.
   _imagesArticle(slug) {
     const base = path.join(this.racine, 'articles', slug, 'media');
     const resultats = [];
@@ -445,7 +300,6 @@ class FournisseurRevue {
     return resultats.sort((a, b) => a.localeCompare(b, 'fr'));
   }
 
-  // Tableaux extraits d'un article (N6, D47) : tables/*.html, triés.
   _tablesArticle(slug) {
     const base = path.join(this.racine, 'articles', slug, 'tables');
     let entrees;
@@ -457,7 +311,6 @@ class FournisseurRevue {
       .sort((a, b) => a.localeCompare(b, 'fr'));
   }
 
-  // Enfants d'un article : images (G5, « L × H · poids ») puis tableaux (N6).
   _itemsAssets(slug) {
     const base = path.join(this.racine, 'articles', slug, 'media');
     const images = this._imagesArticle(slug).map((relatif) => {
@@ -469,10 +322,8 @@ class FournisseurRevue {
       it.contextValue = 'asset';
       it.description = decrireImage(chemin);
       it.tooltip = T('arbre.image.tooltip', [chemin]);
-      // Le clic ouvre la FICHE de l'image, pas l'aperçu natif : ce qu'on vient faire
-      // sur une image, c'est écrire sa légende, son texte alternatif et ses crédits —
-      // données qui vivent dans le texte de l'article, pas dans le fichier. L'aperçu
-      // natif reste à un clic : le bouton « Ouvrir l'image » de la fiche le rouvre.
+      // La fiche plutôt que l'aperçu natif : on vient y écrire légende, alternative et
+      // crédits. Son bouton « Ouvrir l'image » rouvre l'aperçu natif.
       it.command = {
         command: 'szh.ficheImage', title: 'Ouvrir la fiche de l’image',
         arguments: [it]
@@ -487,14 +338,9 @@ class FournisseurRevue {
       it.cheminAsset = chemin;
       it.iconPath = new vscode.ThemeIcon('table');
       it.contextValue = 'table';
-      it.description = decrireImage(chemin);      // pas une image : poids seul
+      it.description = decrireImage(chemin);      // pas une image : le poids seul
       it.tooltip = T('arbre.table.tooltip', [chemin]);
-      // Le clic ouvre l'ÉDITEUR de tableau, pas le HTML brut : personne dans l'équipe de
-      // rédaction n'a à lire du `<td colspan="2">` pour corriger une cellule. Du coup le
-      // bouton « Éditer » du survol n'a plus de raison d'être et a été retiré du menu
-      // (la commande szh.editerTable reste, c'est elle que ce clic appelle).
-      // Le HTML brut reste accessible à qui le veut : clic droit dans l'Explorateur, ou
-      // « Remplacer » pour échanger le fichier entier.
+      // L'éditeur plutôt que le HTML brut, qui reste accessible depuis l'Explorateur.
       it.command = {
         command: 'szh.editerTable', title: 'Ouvrir l’éditeur de tableau',
         arguments: [it]
@@ -504,17 +350,16 @@ class FournisseurRevue {
     return images.concat(tables);
   }
 
-  // Word en attente = articles-word/*.docx (niveau racine seulement -> _convertis/ exclu).
+  // articles-word/*.docx à la racine du dossier, donc sans _convertis/.
   _itemsWord() {
     const noms = this._docxEnAttente(path.join(this.racine, 'articles-word'));
     if (noms.length === 0) { return [this._vide(T('arbre.vide.word'))]; }
     return noms.map((nom) => {
       const it = new vscode.TreeItem(nom, vscode.TreeItemCollapsibleState.None);
       it.contextValue = 'word';
-      // D93 : le slug d'un article complète le nombre de tête sur deux chiffres
-      // (« 4_Titre.docx » -> 04-titre) — même règle que la cible import du Makefile.
+      // « 4_Titre.docx » -> 04-titre, même règle que la cible d'import du Makefile.
       if (this._articleExiste(slugifierArticle(nom))) {
-        // Le .md cible existe déjà : l'import l'ignorera (D12, non-écrasement).
+        // Le .md cible existe déjà : l'import l'ignorera, il n'écrase rien.
         it.iconPath = new vscode.ThemeIcon('warning');
         it.description = T('arbre.deja.badge');
         it.tooltip = T('arbre.deja.tooltip');
@@ -526,12 +371,8 @@ class FournisseurRevue {
     });
   }
 
-  // ---- Section « Traductions » (D113) ---------------------------------------------
-  //
-  // Un article par ligne, DÉPLIABLE sur ses champs bilingues : le coup d'œil
-  // demandé — combien de champs sont traduits, et où en est le plus en retard.
-  // « 💬 » signale une question posée à l'équipe de traduction : la laisser
-  // invisible dans l'arbre reviendrait à ne jamais y répondre.
+  // Un article par ligne, dépliable sur ses champs bilingues ; « 💬 » signale une
+  // question posée à l'équipe de traduction.
   _itemsTraductions() {
     const slugs = this._sousDossiersAvecMd(path.join(this.racine, 'articles'));
     if (slugs.length === 0) { return [this._vide(T('arbre.vide.traductions'))]; }
@@ -557,8 +398,7 @@ class FournisseurRevue {
     });
   }
 
-  // Enfants d'un article de la section « Traductions » : une ligne par champ
-  // bilingue (« Titre (DE) »), état de remplissage ET statut d'atelier.
+  // Une ligne par champ bilingue : « Titre (DE) », remplissage, statut d'atelier.
   _itemsChampsTraduction(slug) {
     const etat = etatTraduction(this.racine, slug);
     return etat.groupes.map((groupe) => {
@@ -572,7 +412,7 @@ class FournisseurRevue {
       it.iconPath = iconeStatut(groupe.statut);
       it.description = rempli + ' · ' + statut;
       it.tooltip = T('trad.champ.tooltip', [nom, rempli, statut]);
-      // Le clic ouvre le panneau de l'article ET y met le focus sur CE bloc.
+      // Le focus va sur ce bloc du panneau.
       it.command = {
         command: 'szh.traduction', title: 'Suivi de traduction',
         arguments: [{ slug: slug, cle: groupe.cle }]
@@ -581,7 +421,6 @@ class FournisseurRevue {
     });
   }
 
-  // Élément gris « rien pour l'instant » (une section vide reste visible et lisible).
   _vide(texte) {
     const it = new vscode.TreeItem(texte, vscode.TreeItemCollapsibleState.None);
     it.iconPath = new vscode.ThemeIcon('info');
@@ -594,8 +433,6 @@ class FournisseurRevue {
     return this._docxEnAttente(path.join(this.racine, 'articles-word')).length;
   }
 
-  // Avancement global affiché dans la description de la section (D113) :
-  // champs finalisés / champs bilingues de toute la revue.
   compterTraductions() {
     if (!this.racine) { return { total: 0, finalises: 0 }; }
     const source = langueRevue(this.racine);
@@ -608,7 +445,6 @@ class FournisseurRevue {
     return { total: total, finalises: finalises };
   }
 
-  // Liste des slugs d'articles (dossier + .md homonyme). Sert aussi au diff d'import.
   listerArticles() {
     if (!this.racine) { return []; }
     return this._sousDossiersAvecMd(path.join(this.racine, 'articles'));
@@ -644,33 +480,25 @@ class FournisseurRevue {
   }
 }
 
-// ---- PDF (S4) : ouverture calquée sur szh-apercu -------------------------------
+// ---- Ouverture du PDF, calquée sur szh-apercu ------------------------------------
 
-// L'éditeur pdf.preview (tomoki1207.pdf) est MONO-INSTANCE (pas de
-// supportsMultipleEditorsPerDocument) : openWith RÉVÈLE l'onglet existant sans le
-// dupliquer. On appelle donc openWith même si le PDF est déjà ouvert -> « Ouvrir le
-// PDF » ramène l'aperçu au premier plan. preserveFocus:true : on révèle sans voler
-// le focus de l'éditeur. (C'était le rôle du test « déjà ouvert » retiré ici : il
-// empêchait le rappel au premier plan sans rien apporter, l'anti-doublon étant déjà
-// garanti par le mono-instance.)
+// pdf.preview est mono-instance : openWith révèle l'onglet existant au lieu de le
+// dupliquer, et ramène donc devant un PDF déjà ouvert.
 async function ouvrirApercuPdf(uri) {
   if (vscode.extensions.getExtension(EXT_PDF)) {
-    // Colonne 2 (droite) FIXE — pas « Beside » (relatif), qui empilait des colonnes
-    // 3, 4… selon la vue active. Mise en page à deux vues : gauche = .md, droite = PDF.
+    // Colonne 2 fixe : « Beside » est relatif à la vue active et empile des colonnes.
     await vscode.commands.executeCommand('vscode.openWith', uri, VUE_PDF, {
       viewColumn: vscode.ViewColumn.Two,
       preserveFocus: true
     });
   } else {
-    // Repli propre (hôte de dev sans tomoki1207.pdf) : lecteur système.
-    vscode.window.showInformationMessage(T('info.pdf.externe'));
+    vscode.window.showInformationMessage(T('info.pdf.externe'));   // hôte de développement
     await vscode.env.openExternal(uri);
   }
 }
 
-// Ferme tous les onglets dont l'entrée satisfait le prédicat. Les quatre appelants
-// ne diffèrent que par ce prédicat ; l'API des `TabInput` est typée en canard, d'où
-// les gardes sur les champs.
+// Ferme les onglets dont l'entrée satisfait le prédicat ; les `TabInput` sont typés en
+// canard, d'où les gardes chez les appelants.
 async function fermerOnglets(predicat) {
   const aFermer = [];
   for (const groupe of vscode.window.tabGroups.all) {
@@ -682,12 +510,11 @@ async function fermerOnglets(predicat) {
   try { await vscode.window.tabGroups.close(aFermer); } catch (e) { /* déjà fermé */ }
 }
 
-// ---- Tâche de build (S4) : réutilise la tâche user, écoute la fin ---------------
+// ---- Tâche de compilation : réutilise la tâche utilisateur, écoute sa fin --------
 
 let buildEnCours = false;
 
-// Lance une tâche user par son label exact et résout avec son code de sortie
-// (null si la tâche est introuvable). Même mécanique que szh-apercu.
+// Résout avec le code de sortie de la tâche, ou null si son label est introuvable.
 async function lancerTache(nomTache) {
   const taches = await vscode.tasks.fetchTasks();
   const tache = taches.find((t) => t.name === nomTache);
@@ -705,9 +532,8 @@ async function lancerTache(nomTache) {
 
 function lancerBuild() { return lancerTache(NOM_TACHE_BUILD); }
 
-// « Tout exporter » (N3, D44) : rebuild FORCÉ de toute la revue. Ferme d'abord les
-// aperçus ouverts sous out/ — le clean du Makefile supprime out/, et un PDF affiché
-// est verrouillé côté Windows (R6). Notifie le compte d'articles exportés.
+// Recompilation forcée de toute la revue. Les aperçus sous out/ sont fermés d'abord :
+// le clean supprime out/, et un PDF affiché est verrouillé côté Windows.
 async function toutExporter(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
@@ -722,7 +548,7 @@ async function toutExporter(fournisseur, rafraichirTout) {
     apercuCourantUri = null;                       // tous les aperçus viennent d'être fermés
     const code = await lancerTache(NOM_TACHE_EXPORT);
     rafraichirTout();
-    if (code === null) { return; }                 // tâche introuvable (déjà signalé)
+    if (code === null) { return; }                 // tâche introuvable, déjà signalé
     if (code !== 0) {
       vscode.window.showErrorMessage(T('err.export', [NOM_TACHE_EXPORT]));
       return;
@@ -735,9 +561,8 @@ async function toutExporter(fournisseur, rafraichirTout) {
   }
 }
 
-// Export OJS (F7) : rebuild complet (PDF+HTML frais), galleys DOCX, puis XML natif
-// écrit à la racine de la revue. Les manques bloquants (type, titre, auteurs, produits
-// out/) arrivent en une seule erreur listée par lib/export-ojs.js.
+// Recompilation, galleys DOCX, puis XML natif à la racine ; les manques bloquants
+// arrivent en une erreur listée par lib/export-ojs.js.
 async function exporterXml(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
@@ -749,10 +574,10 @@ async function exporterXml(fournisseur, rafraichirTout) {
   const statut = vscode.window.setStatusBarMessage(T('exportOjs.statut'));
   try {
     await fermerOngletsSous(path.join(racine, 'out'));
-    apercuCourantUri = null;                       // « Tout exporter » fait clean
+    apercuCourantUri = null;                       // « Tout exporter » fait un clean
     let code = await lancerTache(NOM_TACHE_EXPORT);
     rafraichirTout();
-    if (code === null) { return; }                 // tâche introuvable (déjà signalé)
+    if (code === null) { return; }                 // tâche introuvable, déjà signalé
     if (code !== 0) {
       vscode.window.showErrorMessage(T('err.export', [NOM_TACHE_EXPORT]));
       return;
@@ -763,7 +588,7 @@ async function exporterXml(fournisseur, rafraichirTout) {
       vscode.window.showErrorMessage(T('exportOjs.erreurDocx'));
       return;
     }
-    const resultat = genererExportOjs(racine);     // synchrone : quelques secondes
+    const resultat = genererExportOjs(racine);     // synchrone, quelques secondes
     const message = T('exportOjs.fini', [path.basename(resultat.chemin)]);
     if (resultat.avertissements.length > 0) {
       const bouton = T('exportOjs.voirAvertissements');
@@ -787,14 +612,9 @@ async function exporterXml(fournisseur, rafraichirTout) {
   }
 }
 
-// ---- Export d'UN article (D117) -----------------------------------------------------
-//
-// Sur un numéro gelé, la compilation automatique est coupée : il faut un geste
-// explicite pour régénérer un document. C'est la seule tâche que le cockpit CONSTRUIT
-// (sa cible dépend du slug ; une tâche de tasks.json a des arguments figés). Cibles
-// visées : le PDF et l'aperçu HTML de l'article — exactement ce que produit `make
-// pdf` pour un article, sans la passe d'import (un numéro gelé ne doit plus rien
-// avaler d'articles-word/, l'import supprimant le .docx source, D39) et sans clean.
+// ---- Export d'un seul article ----------------------------------------------------
+// Sur un numéro gelé, seul ce geste régénère un document. La tâche vise le PDF et
+// l'aperçu HTML, sans clean ni import, qui supprimerait le .docx source.
 function tacheMakeArticle(racine, slug) {
   const cibles = ['out/' + slug + '/' + slug + '.pdf', 'out/' + slug + '/' + slug + '.apercu.html'];
   const execution = new vscode.ProcessExecution('wsl.exe',
@@ -809,8 +629,6 @@ function tacheMakeArticle(racine, slug) {
   return tache;
 }
 
-// Exécute une tâche DÉJÀ construite et résout avec son code de sortie (pendant de
-// lancerTache, qui va chercher une tâche utilisateur par son label).
 async function lancerTacheObjet(tache) {
   const execution = await vscode.tasks.executeTask(tache);
   return await new Promise((resolve) => {
@@ -820,11 +638,7 @@ async function lancerTacheObjet(tache) {
   });
 }
 
-// « Exporter cet article » : bouton en survol de l'article (numéro gelé seulement) et
-// entrée du panneau d'export. Sans argument, l'article visé est celui du .md actif, à
-// défaut celui affiché en aperçu — même cascade que « Métadonnées de l'article
-// courant » (D97). L'aperçu est rafraîchi à l'arrivée : c'est le résultat qu'on vient
-// voir.
+// Sans argument, l'article visé est celui du .md actif, à défaut celui en aperçu.
 async function exporterArticle(fournisseur, rafraichirTout, cible) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
@@ -851,22 +665,14 @@ async function exporterArticle(fournisseur, rafraichirTout, cible) {
     statut.dispose();
     buildEnCours = false;
   }
-  // Le document vient d'être régénéré : on le montre. `ouvrirArticle` ne recompilera
-  // pas (numéro gelé) — il se contente d'afficher ce qui est là.
-  await ouvrirArticle(fournisseur, slug);
+  await ouvrirArticle(fournisseur, slug);   // montre le document régénéré
 }
 
-// ---- Archiver / verrouiller / désarchiver (D116) -------------------------------------
-//
-// Trois gestes, une seule règle : ausgabe.yaml est écrit d'abord (source de vérité),
-// le reste en découle. Le DÉPLACEMENT du dossier est délégué à
-// windows/archive-revue.ps1 : lui seul connaît l'arborescence « en cours »/archives
-// (mode développeur compris, D119), et lui seul peut déplacer un dossier que VSCodium
-// tient ouvert — il attend la fermeture de cette fenêtre, puis rouvre l'éditeur sur
-// la nouvelle place. D'où l'ordre : écrire, nettoyer, lancer le script, fermer.
+// ---- Archiver, verrouiller, désarchiver ------------------------------------------
+// ausgabe.yaml est écrit d'abord. Le déplacement du dossier est délégué à
+// windows/archive-revue.ps1, qui attend la fermeture de la fenêtre : d'où l'ordre
+// écrire, nettoyer, lancer, fermer.
 
-// Poids lisible d'un dossier out/ pour la confirmation (« 148 Mo ») — la promesse
-// « vous pourrez toujours réexporter » ne vaut que si le gain est chiffré.
 function poidsLisible(octets) {
   if (octets <= 0) { return T('modale.archiver.rien'); }
   if (octets < 1024 * 1024) { return Math.max(1, Math.round(octets / 1024)) + ' Ko'; }
@@ -874,8 +680,7 @@ function poidsLisible(octets) {
   return (mo < 10 ? mo.toFixed(1).replace('.', ',') : String(Math.round(mo))) + ' Mo';
 }
 
-// Verrouillage SEUL : le dossier ne bouge pas, out/ est conservé. C'est le geste qui
-// reste sur un numéro déjà archivé qu'on avait déverrouillé pour une correction.
+// Le dossier ne bouge pas, out/ est conservé : le geste d'un numéro déjà archivé.
 async function verrouillerSeulement(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   const choix = await vscode.window.showWarningMessage(
@@ -889,7 +694,6 @@ async function verrouillerSeulement(fournisseur, rafraichirTout) {
   vscode.window.setStatusBarMessage(T('statut.verrouille'), 4000);
 }
 
-// « Archiver et verrouiller » — le geste complet.
 async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
@@ -897,7 +701,7 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
   }
-  // Déjà archivé : il ne reste qu'à reposer le verrou (rien à déplacer, rien à jeter).
+  // Déjà archivé : il ne reste qu'à reposer le verrou.
   if (etatNumero.archivee) {
     if (etatNumero.verrouillee) { vscode.window.showInformationMessage(T('info.deja.archivee')); return; }
     await verrouillerSeulement(fournisseur, rafraichirTout);
@@ -911,14 +715,12 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
     bouton);
   if (choix !== bouton) { return; }
 
-  // 1. ausgabe.yaml : les deux drapeaux. Rien d'autre pour l'instant — l'étape 2 peut
-  //    encore échouer, et on veut pouvoir revenir exactement à l'état de départ.
+  // 1. les deux drapeaux seuls : l'étape 2 peut échouer, il faut pouvoir revenir.
   const erreurYaml = ecrireClesAusgabe(racine, { locked: 'true', archived: 'true' });
   if (erreurYaml) { vscode.window.showErrorMessage(T('err.ecriture', [erreurYaml])); return; }
 
-  // 2. les documents produits : onglets fermés (un PDF affiché est verrouillé côté
-  //    Windows, R6) puis out/ supprimé. Échec -> on s'arrête AVANT tout déplacement,
-  //    et on relève les drapeaux : mieux vaut un numéro inchangé qu'à moitié archivé.
+  // 2. ⚠ fermer les onglets avant de supprimer out/ : un PDF affiché est verrouillé
+  //    côté Windows. En cas d'échec on relève les drapeaux, avant tout déplacement.
   await fermerTousLesApercus();
   await fermerOngletsSous(dossierOut);
   apercuCourantUri = null;
@@ -931,16 +733,14 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
     return;
   }
 
-  // 3. la version du logiciel, si le numéro n'en portait pas encore : un numéro archivé
-  //    doit toujours dire avec quoi il a été fabriqué (D120). Écrite APRÈS le point de
-  //    non-retour, pour qu'un archivage annulé ne laisse pas d'estampille inventée. Un
-  //    numéro qui porte déjà une version n'est jamais réécrit.
+  // 3. la version du logiciel, si le numéro n'en portait pas ; après le point de
+  //    non-retour, pour qu'un archivage annulé ne laisse pas d'estampille.
   const poste = versionInstallee();
   if (etatNumero.versionToolkit === '' && poste !== '') {
     ecrireClesAusgabe(racine, { 'version-toolkit': poste });
   }
 
-  // 4. la lecture seule, écrite DANS le dossier : elle part avec lui.
+  // 4. la lecture seule, écrite dans le dossier : elle part avec lui.
   const erreurVerrou = appliquerVerrou(racine, true);
   if (erreurVerrou) { vscode.window.showWarningMessage(T('err.verrou.reglages', [erreurVerrou])); }
   verrouApplique = true;
@@ -957,9 +757,7 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
   await fermerFenetreApresArchivage();
 }
 
-// « Désarchiver » : retour dans l'arborescence « en cours ». Le verrou n'est PAS levé
-// (deux gestes distincts, demandés séparément) : le numéro rouvert reste en lecture
-// seule jusqu'à « Déverrouiller la revue ».
+// Retour dans l'arborescence « en cours ». Le verrou n'est pas levé pour autant.
 async function desarchiver(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
@@ -985,16 +783,13 @@ async function desarchiver(fournisseur, rafraichirTout) {
   await fermerFenetreApresArchivage();
 }
 
-// Laisse au script détaché le temps de démarrer, puis ferme la fenêtre : tant qu'elle
-// est ouverte, Windows refuse de déplacer le dossier. Le script, lui, retente jusqu'à
-// ce que la main soit rendue, puis rouvre l'éditeur au bon endroit.
+// La fenêtre se ferme après le démarrage du script : tant qu'elle est ouverte, Windows
+// refuse de déplacer le dossier.
 async function fermerFenetreApresArchivage() {
   await new Promise((resolve) => setTimeout(resolve, 1200));
   await vscode.commands.executeCommand('workbench.action.closeWindow');
 }
 
-// « Déverrouiller la revue » : le seul geste qui rend un numéro modifiable. Rien ne
-// bouge sur le disque à part le drapeau et le .vscode/settings.json de lecture seule.
 async function deverrouiller(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
@@ -1017,12 +812,9 @@ async function deverrouiller(fournisseur, rafraichirTout) {
   vscode.window.setStatusBarMessage(T('statut.deverrouille'), 5000);
 }
 
-// ---- Clic = aperçu direct (N5, D46) -----------------------------------------------
+// ---- Clic sur un article = aperçu direct -----------------------------------------
 
-// URI du PDF actuellement affiché PAR LE COCKPIT (l'aperçu du précédent article est
-// fermé avant d'ouvrir le suivant — deux colonnes stables, pas d'onglets qui
-// s'empilent). szh-apercu, lui, ne fait que rafraîchir/ouvrir l'article ACTIF.
-let apercuCourantUri = null;
+let apercuCourantUri = null;   // celui de l'article précédent est fermé avant
 
 async function fermerApercuCourant(saufUri) {
   const courant = apercuCourantUri;
@@ -1033,18 +825,14 @@ async function fermerApercuCourant(saufUri) {
   await fermerOnglets((e) => e && e.uri && e.uri.fsPath && e.uri.fsPath.toLowerCase() === cible);
 }
 
-// ---- Aperçu commutable HTML <-> PDF (M5, D53/D54) -----------------------------------
-//
-// Mode global persistant szh.apercuMode (défaut : html). En mode HTML, la
-// colonne 2 est une webview maison qui charge out/<slug>/<slug>.apercu.html
-// (rendu sourcepos) : survol = contour, clic = aller à la ligne source du .md.
-// En mode PDF, comportement historique (tomoki1207.pdf). Un SEUL propriétaire
-// de la colonne 2 à la fois : szh-apercu ne s'active qu'en mode pdf (D54).
+// ---- Aperçu commutable HTML / PDF ------------------------------------------------
+// Mode global szh.apercuMode (défaut html). En HTML, la colonne 2 est une webview qui
+// charge out/<slug>/<slug>.apercu.html, rendu avec sourcepos : survol = contour, clic =
+// ligne source du .md. En PDF, c'est tomoki1207.pdf, et szh-apercu ne s'active que dans
+// ce mode : la colonne 2 n'a qu'un propriétaire à la fois.
 
-// Profil de compilation du DOSSIER (D20/T6.4), relu par majContexte(). Miroir exact
-// de la lecture du Makefile (sed sur ausgabe.yaml) : clé absente = « article ».
-// Une clé PRÉSENTE mais VIDE est un choix (« ce dossier ne produit aucun document ») :
-// on la distingue, comme le Makefile, sous le jeton 'rien'.
+// Profil du dossier, lu comme le fait le Makefile : clé absente = « article », clé
+// présente mais vide = 'rien', soit aucun document produit.
 let profilRevue = 'article';
 
 function lireProfil(racine) {
@@ -1054,16 +842,11 @@ function lireProfil(racine) {
       .match(/^profil:[ \t]*["']?([a-zA-Z-]*)/m);
     if (!m) { return 'article'; }
     return m[1] === '' ? 'rien' : m[1];
-  } catch (e) { return 'article'; }        // ausgabe.yaml illisible : comportement historique
+  } catch (e) { return 'article'; }        // ausgabe.yaml illisible : profil par défaut
 }
 
 function modeApercu() {
-  // Un dossier dont le profil ne produit pas de PDF (D20) n'a rien à montrer en
-  // mode pdf : la colonne 2 dirait « PDF introuvable » sans que rien soit cassé.
-  // On force donc l'aperçu HTML.
-  // Effet de bord assumé : sur un tel dossier, la bascule de la barre d'état écrit
-  // bien le réglage mais l'aperçu reste HTML. Masquer la bascule demanderait un
-  // nouveau texte traduit ; à faire au prochain lot de traduction.
+  // Un profil sans PDF n'a rien à montrer en mode pdf : aperçu HTML forcé.
   if (profilRevue !== 'article') { return 'html'; }
   try {
     return String(vscode.workspace.getConfiguration('szh').get('apercuMode', 'html') || 'html') === 'pdf' ? 'pdf' : 'html';
@@ -1074,9 +857,8 @@ let panneauApercuHtml = null;
 let apercuCourantSlug = null;
 let apercuHtmlMtime = 0;
 
-// A1 — défilement synchronisé (.md <-> aperçu). Garde anti-boucle côté hôte : quand
-// c'est NOUS qui révélons une ligne dans l'éditeur (suite à un scroll de l'aperçu),
-// on ignore l'événement onDidChangeTextEditorVisibleRanges qui en découle.
+// Garde anti-boucle du défilement synchronisé : quand l'extension révèle elle-même une
+// ligne, l'événement de visibilité qui en découle est ignoré.
 let defilementProgrammatiqueHote = false;
 let minuteurHoteVersApercu = null;
 let minuteurHoteRelache = null;
@@ -1089,8 +871,7 @@ function lignePos(pos) {
   return m ? parseInt(m[1], 10) : null;
 }
 
-// A2 — plage source complète d'un data-pos : « …@L:C-L:C » -> {l1,c1,l2,c2} (1-based)
-// ou null. Pur (testé headless via _pur).
+// Plage d'un data-pos : « …@L:C-L:C » -> {l1,c1,l2,c2}, 1-based, ou null. Pure.
 function plagePos(pos) {
   const texte = String(pos || '');
   const droite = texte.indexOf('@') !== -1 ? texte.slice(texte.indexOf('@') + 1) : texte;
@@ -1099,11 +880,9 @@ function plagePos(pos) {
   return { l1: parseInt(m[1], 10), c1: parseInt(m[2], 10), l2: parseInt(m[3], 10), c2: parseInt(m[4], 10) };
 }
 
-// A2 — 1re occurrence de `mot` dans la plage source [l1:c1 .. l2] d'un bloc.
-// `lignes` : tableau des lignes du .md. Renvoie {ligne, colonne, longueur} (0-based
-// ligne/colonne, pour l'API VS Code) ou null. Précision « au mieux » : le mot vient
-// du texte RENDU, on le cherche tel quel dans la source (repli bloc si introuvable —
-// mot dans du balisage éclaté, entité HTML, etc.). Pur (testé headless via _pur).
+// Première occurrence de `mot` dans la plage [l1:c1 .. l2] des `lignes` du .md ->
+// {ligne, colonne, longueur} 0-based, ou null : venant du texte rendu, le mot n'est pas
+// toujours dans la source, et l'appelant se rabat alors sur le bloc entier. Pure.
 function positionMot(lignes, l1, c1, l2, mot) {
   const m = String(mot == null ? '' : mot);
   if (!m || !Array.isArray(lignes)) { return null; }
@@ -1119,10 +898,7 @@ function positionMot(lignes, l1, c1, l2, mot) {
   return null;
 }
 
-// G3 — jeton (mot) sous le curseur dans une LIGNE source, colonne 0-based. Mêmes
-// délimiteurs que motAuPoint (apercu.js) pour que le jeton corresponde au texte
-// rendu côté aperçu. Chaîne vide si le curseur est sur un délimiteur / hors mot.
-// Pur (testé headless via _pur).
+// Mot sous le curseur ; mêmes délimiteurs que motAuPoint (media/apercu.js). Pure.
 function jetonSource(texte, colonne) {
   const s = String(texte == null ? '' : texte);
   const i = Math.max(0, Math.min(colonne | 0, s.length));
@@ -1133,8 +909,6 @@ function jetonSource(texte, colonne) {
   return s.slice(deb, fin);
 }
 
-// Éditeur visible du .md de l'article actuellement affiché en aperçu (colonne 1),
-// ou null. Sert au défilement synchronisé (A1) : révéler une ligne SANS voler le focus.
 function editeurArticleCourant(fournisseur) {
   if (!apercuCourantSlug || !fournisseur.racine) { return null; }
   const cible = path.join(fournisseur.racine, 'articles', apercuCourantSlug, apercuCourantSlug + '.md').toLowerCase();
@@ -1144,8 +918,7 @@ function editeurArticleCourant(fournisseur) {
   return null;
 }
 
-// Aperçu -> éditeur : révèle `ligne` (1-based) au sommet, sans focus. Pose la garde
-// anti-boucle le temps que l'événement de visibilité qui en résulte soit ignoré.
+// Aperçu -> éditeur : révèle `ligne` (1-based) au sommet, sans focus, garde posée.
 function revelerLigneSource(fournisseur, ligne) {
   const ed = editeurArticleCourant(fournisseur);
   if (!ed) { return; }
@@ -1156,7 +929,6 @@ function revelerLigneSource(fournisseur, ligne) {
   minuteurHoteRelache = setTimeout(() => { defilementProgrammatiqueHote = false; }, 200);
 }
 
-// Éditeur -> aperçu : première ligne visible (1-based) postée à la webview (débounce).
 function pousserDefilementVersApercu(ligne0Based) {
   if (minuteurHoteVersApercu) { clearTimeout(minuteurHoteVersApercu); }
   minuteurHoteVersApercu = setTimeout(() => {
@@ -1166,10 +938,7 @@ function pousserDefilementVersApercu(ligne0Based) {
   }, 35);
 }
 
-// G3 — curseur/clic dans le .md -> surlignage côté aperçu. Poste la ligne (1-based)
-// et le mot sous le curseur ; la webview surligne le bloc (et le mot) correspondant
-// et l'amène en vue seulement s'il est hors écran. Débounce léger. Complément de
-// l'A2 (aperçu -> source) ; aucune boucle : la webview ne renvoie rien au survol.
+// Curseur dans le .md -> surlignage dans l'aperçu, amené en vue s'il est hors écran.
 let minuteurHoteSurlignage = null;
 function pousserSurlignageVersApercu(fournisseur) {
   if (minuteurHoteSurlignage) { clearTimeout(minuteurHoteSurlignage); }
@@ -1186,8 +955,7 @@ function pousserSurlignageVersApercu(fournisseur) {
   }, 60);
 }
 
-// Injecte dans le HTML autonome de pandoc : CSP stricte, bandeau, styles de
-// survol et script (nonce). Les valeurs n'entrent jamais en HTML non échappé.
+// Injecte dans le HTML de pandoc la CSP, le bandeau, les styles de survol et le script.
 function injecterApercu(contenu, nonce) {
   const csp = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'; script-src \'nonce-' + nonce + '\'">';
   const ajout =
@@ -1201,10 +969,8 @@ function injecterApercu(contenu, nonce) {
   return html;
 }
 
-// Clic dans l'aperçu -> texte source (N5 + A2). Vise le MOT cliqué s'il est fourni
-// et retrouvé dans la plage source du bloc ; sinon repli sur le début du bloc
-// (comportement historique, jamais régressé). Ouvre le .md en colonne 1 et y place
-// le curseur (focus donné : c'est un clic explicite pour éditer).
+// Clic dans l'aperçu -> texte source : le mot cliqué s'il est retrouvé, sinon le début
+// du bloc ; le .md s'ouvre en colonne 1, curseur et focus posés.
 async function revelerPos(fournisseur, slug, pos, mot) {
   const pl = plagePos(pos);
   const ligneDebut = pl ? pl.l1 : lignePos(pos);
@@ -1237,10 +1003,8 @@ function fermerApercuHtml() {
   try { p.dispose(); } catch (e) { /* déjà fermé */ }
 }
 
-// F5 — édition pleine page : ferme TOUT ce qui occupe la colonne 2 avant d'ouvrir
-// un formulaire ou l'éditeur de tableau. La webview HTML et l'onglet PDF suivi ne
-// suffisent pas : szh-apercu ouvre des onglets pdf.preview que le cockpit ne suit
-// pas (apercuCourantUri) — on balaie donc tabGroups sur le viewType.
+// Ferme la colonne 2. szh-apercu ouvre des onglets pdf.preview dont le cockpit ne garde
+// pas trace : d'où le balayage de tabGroups.
 async function fermerTousLesApercus() {
   fermerApercuHtml();
   await fermerApercuCourant(null);
@@ -1248,18 +1012,13 @@ async function fermerTousLesApercus() {
   apercuCourantUri = null;
 }
 
-// Les seuls textes que le cockpit pose lui-même dans le HTML de l'aperçu sont des
-// libellés traduits (jamais de donnée de revue) — on les échappe quand même :
-// une apostrophe typographique ou un « & » dans une traduction ne doit pas
-// pouvoir casser la page.
+// Seuls des libellés traduits sont posés dans ce HTML ; ils sont échappés quand même.
 function echapperTexte(valeur) {
   return String(valeur === undefined || valeur === null ? '' : valeur)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Ouvre (ou recharge) l'aperçu HTML de l'article en colonne 2 (webview réutilisée).
-// Repli si le toolkit n'est pas resynchronisé : le .html du PDF (sans clic),
-// sinon un message « pas encore compilé ».
+// Aperçu HTML en colonne 2 ; si le fichier manque, replie sur le .html du PDF.
 function ouvrirApercuHtml(fournisseur, slug, enAttente) {
   const dossier = path.join(fournisseur.racine, 'out', slug);
   let fichier = path.join(dossier, slug + '.apercu.html');
@@ -1270,15 +1029,11 @@ function ouvrirApercuHtml(fournisseur, slug, enAttente) {
     try { contenu = fs.readFileSync(fichier, 'utf8'); } catch (e2) { contenu = null; }
   }
   let mtime = 0;
-  try { mtime = fs.statSync(fichier).mtimeMs; } catch (e) { /* placeholder */ }
+  try { mtime = fs.statSync(fichier).mtimeMs; } catch (e) { /* page de remplacement */ }
   if (contenu === null) {
-    // C2 : au message « pas encore compilé » s'ajoute l'attente quand une
-    // compilation vient d'être lancée (ou tourne déjà) — sinon l'utilisateur ne
-    // sait pas qu'il suffit de patienter. Les libellés sont échappés : ce sont
-    // des traductions, pas du HTML.
     const lignes = [echapperTexte(T('apercu.indisponible'))];
     if (enAttente) { lignes.push(echapperTexte(T('apercu.encours'))); }
-    // D117 : numéro gelé — rien ne se compilera tout seul, on dit par quel geste.
+    // Numéro gelé : rien ne se compilera tout seul, on dit par quel geste le faire.
     else if (compilationAutoCoupee()) { lignes.push(echapperTexte(T('apercu.gele'))); }
     contenu = '<!DOCTYPE html><html lang="fr"><head></head><body><p>'
             + lignes.join('</p><p>') + '</p></body></html>';
@@ -1296,7 +1051,7 @@ function ouvrirApercuHtml(fournisseur, slug, enAttente) {
       if (!msg) { return; }
       if (msg.type === 'basculer') { vscode.commands.executeCommand('szh.basculerApercu'); }
       if (msg.type === 'revele' && apercuCourantSlug) { revelerPos(fournisseur, apercuCourantSlug, msg.pos, msg.mot); }
-      if (msg.type === 'scrollSource') { revelerLigneSource(fournisseur, msg.ligne); }   // A1
+      if (msg.type === 'scrollSource') { revelerLigneSource(fournisseur, msg.ligne); }
     });
   }
   panneauApercuHtml.title = slug;
@@ -1305,8 +1060,6 @@ function ouvrirApercuHtml(fournisseur, slug, enAttente) {
   apercuHtmlMtime = mtime;
 }
 
-// Recharge l'aperçu HTML si le fichier régénéré a changé (appelé au refresh —
-// la perte du défilement n'arrive donc qu'à une vraie recompilation).
 function rechargerApercuHtmlSiChange(fournisseur) {
   if (!panneauApercuHtml || !apercuCourantSlug || !fournisseur.racine || modeApercu() !== 'html') { return; }
   const slug = apercuCourantSlug;
@@ -1316,8 +1069,7 @@ function rechargerApercuHtmlSiChange(fournisseur) {
   if (mtime > apercuHtmlMtime) { ouvrirApercuHtml(fournisseur, slug); }
 }
 
-// Bascule globale HTML <-> PDF : persiste szh.apercuMode et échange l'aperçu
-// de l'article courant (jamais deux aperçus concurrents en colonne 2).
+// Persiste szh.apercuMode ; jamais deux aperçus en colonne 2.
 async function basculerApercu(fournisseur, majBarreApercu) {
   const nouveau = modeApercu() === 'html' ? 'pdf' : 'html';
   try {
@@ -1342,12 +1094,8 @@ async function basculerApercu(fournisseur, majBarreApercu) {
   }
 }
 
-// Le geste unique du rédacteur : cliquer un article = voir son texte ET son PDF.
-// Slug de l'article correspondant à un chemin, ou null. Un article est un
-// <racine>/articles/<slug>/<slug>.md (structure D26, .md HOMONYME de son dossier) :
-// BIENVENUE.md, un .md à la racine ou un fichier d'un autre dossier ne sont PAS des
-// articles. Même test que szh-apercu (une seule définition de « article » dans la
-// chaîne). Pur : chemins -> slug.
+// Slug de l'article d'un chemin, ou null : un article est un
+// <racine>/articles/<slug>/<slug>.md. Même test que szh-apercu.
 function slugDepuisChemin(racine, chemin) {
   if (!racine || !chemin) { return null; }
   const parties = path.relative(racine, chemin).split(path.sep);
@@ -1355,48 +1103,31 @@ function slugDepuisChemin(racine, chemin) {
   return parties[2] === parties[1] + '.md' ? parties[1] : null;
 }
 
-// T6.2 — au démarrage, si l'éditeur actif EST déjà un article (cas du double-clic sur
-// un .md depuis l'Explorateur : le lanceur open-md.ps1 ouvre le DOSSIER + le FICHIER),
-// enchaîner exactement ce que fait un clic dans la barre latérale : compiler si
-// nécessaire puis afficher l'aperçu en colonne 2.
-//
-// POURQUOI ici et pas dans le lanceur PowerShell : le lanceur reste « bête » (D20).
-// Compiler depuis Windows lancerait un make concurrent de celui que déclenchent
-// `triggerTaskOnSave` et la tâche `folderOpen` — or le Makefile n'a aucun verrou et
-// deux make écriraient le même out/<slug>/. Et ouvrir le PDF hors de l'éditeur le
-// verrouillerait, faisant échouer le remplacement atomique du Makefile. Ici, tout
-// passe par le chemin unique de D46, avec ses garde-fous (buildEnCours, propriété de
-// la colonne 2 — D54).
+// Au démarrage, si l'éditeur actif est déjà un article, enchaîner ce que fait un clic
+// dans la barre latérale. Ici et non dans le lanceur PowerShell : un make lancé depuis
+// Windows concurrencerait `triggerTaskOnSave`, et le Makefile n'a pas de verrou.
 async function ouvrirArticleActifAuDemarrage(fournisseur) {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
   const slug = slugDepuisChemin(fournisseur.racine, editeur.document.uri.fsPath);
   if (!slug) { return; }                            // pas un article : ne rien forcer
   try { await ouvrirArticle(fournisseur, slug); }
-  catch (e) { /* démarrage : ne jamais bloquer l'ouverture de la revue */ }
+  catch (e) { /* au démarrage, ne pas bloquer l'ouverture de la revue */ }
 }
 
-// 1. .md en colonne 1 ; 2. build si l'aperçu du mode courant est absent/obsolète
-// (mtime), incrémental ; 3. fermer l'aperçu de l'article précédent ; 4. aperçu en
-// colonne 2.
-// En cas d'échec de build : le .md reste ouvert, erreur sobre, PAS d'aperçu
-// obsolète trompeur.
-// `opts.sansTexte` (D113) : ne pas ouvrir le .md en colonne 1 — le panneau de
-// traduction l'occupe, seul l'aperçu de la colonne 2 est demandé.
+// .md en colonne 1 ; compilation incrémentale si l'aperçu du mode courant est absent ou
+// plus vieux que ses sources ; aperçu en colonne 2, à la place du précédent. Une
+// compilation en échec ne montre pas d'aperçu périmé, et `opts.sansTexte` laisse la
+// colonne 1 au panneau qui l'occupe.
 async function ouvrirArticle(fournisseur, slug, opts) {
   const racine = fournisseur.racine;
   if (!racine || typeof slug !== 'string' || slug === '') { return; }
-  // D96 : les assets de CET article se déplient, ceux des autres se replient. Fait
-  // AVANT le reste (ouverture du .md, compilation) : l'arbre suit le clic tout de
-  // suite, sans attendre la fin d'un build.
+  // Avant l'ouverture du .md et la compilation, pour que l'arbre suive le clic.
   if (fournisseur.definirDeploye(slug)) { fournisseur.rafraichir(); }
   const md = path.join(racine, 'articles', slug, slug + '.md');
   const pdf = vscode.Uri.file(path.join(racine, 'out', slug, slug + '.pdf'));
   const modeCourant = modeApercu();
-  // C2 : la fraîcheur se juge sur l'aperçu DU MODE COURANT. Un PDF à jour ne dit
-  // rien de l'existence du HTML d'aperçu (out/ partiellement effacé, article
-  // compilé par un toolkit plus ancien) — on compilait alors sans jamais montrer
-  // autre chose que « pas encore compilé ».
+  // Un PDF à jour ne dit rien du HTML d'aperçu : on juge celui du mode courant.
   const apercuAttendu = modeCourant === 'html'
     ? path.join(racine, 'out', slug, slug + '.apercu.html')
     : pdf.fsPath;
@@ -1405,9 +1136,8 @@ async function ouvrirArticle(fournisseur, slug, opts) {
     await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(md), { viewColumn: vscode.ViewColumn.One });
   }
 
-  // Obsolète = aperçu plus ancien que la source la plus récente (.md, un tableau
-  // extrait OU la fiche .meta.yaml — même graphe de dépendances que la règle
-  // HTML du Makefile, N6 + M1).
+  // Obsolète = plus ancien que le .md, un tableau extrait ou la fiche .meta.yaml ; même
+  // graphe de dépendances que la règle HTML du Makefile.
   let obsolete = true;
   try {
     let mSource = fs.statSync(md).mtimeMs;
@@ -1422,18 +1152,14 @@ async function ouvrirArticle(fournisseur, slug, opts) {
     try { mSource = Math.max(mSource, fs.statSync(cheminMeta(racine, slug)).mtimeMs); }
     catch (e) { /* pas de fiche */ }
     obsolete = fs.statSync(apercuAttendu).mtimeMs < mSource;
-  } catch (e) { obsolete = true; }                 // aperçu (ou .md) illisible -> on compile
+  } catch (e) { obsolete = true; }                 // aperçu ou .md illisible : on compile
 
-  // D117 : numéro gelé -> on n'enclenche JAMAIS de compilation en cliquant un
-  // article. On montre ce qui existe (les documents d'un numéro archivé ont été
-  // supprimés : le volet affiche alors son message, qui renvoie vers « Exporter cet
-  // article »). Le geste explicite reste toujours disponible.
+  // Sur un numéro gelé, cliquer un article ne compile pas : on montre ce qui existe.
   if (compilationAutoCoupee()) { obsolete = false; }
 
   if (obsolete && buildEnCours) {
-    // C2 : une compilation tourne déjà (import, Ctrl+S, autre article). Ne plus
-    // abandonner en silence : on affiche l'aperçu avec le message d'attente, que
-    // le rafraîchissement de out/** remplacera par le rendu dès la fin.
+    // Une compilation tourne déjà : le rafraîchissement de out/** remplacera le message
+    // d'attente par le rendu.
     vscode.window.setStatusBarMessage(T('statut.build.encours') + ' ' + T('apercu.encours'), 5000);
     if (modeCourant === 'html') {
       if (apercuCourantUri) { await fermerApercuCourant(null); }
@@ -1446,7 +1172,7 @@ async function ouvrirArticle(fournisseur, slug, opts) {
     const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
     try {
       const code = await lancerBuild();
-      if (code === null) { return; }               // tâche introuvable (déjà signalé)
+      if (code === null) { return; }               // tâche introuvable, déjà signalé
       if (code !== 0) {
         vscode.window.showErrorMessage(T('err.build', [NOM_TACHE_BUILD]));
         return;
@@ -1456,46 +1182,37 @@ async function ouvrirArticle(fournisseur, slug, opts) {
       buildEnCours = false;
     }
   }
-  // M5 : la colonne 2 affiche l'aperçu DU MODE COURANT (html par défaut).
   if (modeCourant === 'html') {
     if (apercuCourantUri) { await fermerApercuCourant(null); }  // onglet PDF d'une bascule passée
     const pret = fs.existsSync(apercuAttendu);
     ouvrirApercuHtml(fournisseur, slug, !pret && !compilationAutoCoupee());
-    if (!pret && !compilationAutoCoupee()) { relancerCompilation(fournisseur, slug); }   // C2
+    if (!pret && !compilationAutoCoupee()) { relancerCompilation(fournisseur, slug); }
     return;
   }
   fermerApercuHtml();                              // webview HTML d'une bascule passée
   if (!fs.existsSync(pdf.fsPath)) {
-    // D117 : sur un numéro gelé, on ne promet pas une compilation qui ne viendra
-    // pas — le message dit quoi faire (« Exporter cet article »).
-    const gele = compilationAutoCoupee();
+    const gele = compilationAutoCoupee();   // le message renvoie alors à l'export
     vscode.window.showErrorMessage(T('err.pdf.introuvable', [slug]) + ' '
       + T(gele ? 'apercu.gele' : 'apercu.encours'));
     apercuCourantSlug = slug;                      // l'article visé en colonne 2
-    if (!gele) { relancerCompilation(fournisseur, slug); }       // C2 : relance, puis affiche
+    if (!gele) { relancerCompilation(fournisseur, slug); }       // relance, puis affiche
     return;
   }
-  await fermerApercuCourant(pdf);                  // l'aperçu du précédent article
+  await fermerApercuCourant(pdf);                  // l'aperçu de l'article précédent
   await ouvrirApercuPdf(pdf);                      // mono-instance : révèle si déjà là
   apercuCourantUri = pdf;
   apercuCourantSlug = slug;
 }
 
-// Lance compilerPuisAfficher SANS attendre (le clic sur l'article a déjà rendu la
-// main : le texte est ouvert, le message d'attente est affiché). Une erreur
-// inattendue ne doit pas remonter en rejet non capturé de l'hôte d'extensions.
+// Lance compilerPuisAfficher sans l'attendre ; le catch évite un rejet non capturé.
 function relancerCompilation(fournisseur, slug) {
   compilerPuisAfficher(fournisseur, slug).catch(() => { /* signalé côté build */ });
 }
 
-// C2 : l'aperçu manque encore (article jamais compilé, out/ effacé, compilation
-// précédente en échec). On relance UNE passe en tâche de fond — jamais de boucle
-// si la compilation ne produit toujours rien — et on remplace le message d'attente
-// par le rendu dès qu'elle aboutit, à condition que l'utilisateur soit resté sur
-// le même article.
+// L'aperçu manque encore : une seule passe est relancée en tâche de fond, sans boucler.
 async function compilerPuisAfficher(fournisseur, slug) {
   if (buildEnCours || importEnCours) { return; }
-  if (compilationAutoCoupee()) { return; }         // D117 : jamais de build implicite
+  if (compilationAutoCoupee()) { return; }         // pas de compilation implicite
 
   buildEnCours = true;
   const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
@@ -1506,7 +1223,7 @@ async function compilerPuisAfficher(fournisseur, slug) {
     statut.dispose();
     buildEnCours = false;
   }
-  if (code === null) { return; }                   // tâche introuvable (déjà signalé)
+  if (code === null) { return; }                   // tâche introuvable, déjà signalé
   if (code !== 0) { vscode.window.showErrorMessage(T('err.build', [NOM_TACHE_BUILD])); return; }
   if (apercuCourantSlug !== slug || !fournisseur.racine) { return; }   // article changé entre-temps
   if (modeApercu() === 'html') {
@@ -1520,14 +1237,12 @@ async function compilerPuisAfficher(fournisseur, slug) {
   apercuCourantUri = pdf;
 }
 
-// ---- Import guidé (S3) ---------------------------------------------------------
+// ---- Import guidé ----------------------------------------------------------------
 
 let importEnCours = false;
 
-// C1 : compilation qui suit immédiatement une conversion réussie. Appelée DEPUIS
-// lancerConversion, donc pendant que importEnCours est posé — d'où le drapeau de
-// build géré ici et non la garde de compilerPuisAfficher. Un échec est signalé
-// mais n'annule pas l'import : les articles sont là, seul l'aperçu manquera.
+// Appelée pendant que importEnCours est posé, d'où le drapeau de compilation géré ici.
+// Un échec n'annule pas l'import.
 async function compilerApresImport() {
   if (buildEnCours) { return; }
   buildEnCours = true;
@@ -1541,9 +1256,8 @@ async function compilerApresImport() {
   }
 }
 
-// Convertit les Word présents dans articles-word/ (déposés à la main OU copiés par
-// « Importer des Word »). Compte les NOUVEAUX articles par diff avant/après (jamais
-// par parsing de la sortie). Garde anti-double (clics rapprochés).
+// Convertit les Word de articles-word/ ; les nouveaux articles sont comptés en comparant
+// la liste avant et après, pas en lisant la sortie de la tâche.
 async function lancerConversion(fournisseur, rafraichirTout) {
   if (importEnCours) { vscode.window.setStatusBarMessage(T('statut.import.encours'), 3000); return; }
   importEnCours = true;
@@ -1552,7 +1266,7 @@ async function lancerConversion(fournisseur, rafraichirTout) {
     const avant = new Set(fournisseur.listerArticles());
     const code = await lancerTache(NOM_TACHE_IMPORT);
     rafraichirTout();
-    if (code === null) { return; }               // tâche introuvable (déjà signalé)
+    if (code === null) { return; }               // tâche introuvable, déjà signalé
     if (code !== 0) {
       vscode.window.showErrorMessage(T('err.import', [NOM_TACHE_IMPORT]));
       return;
@@ -1560,16 +1274,9 @@ async function lancerConversion(fournisseur, rafraichirTout) {
     const nouveaux = [];
     for (const slug of fournisseur.listerArticles()) { if (!avant.has(slug)) { nouveaux.push(slug); } }
     if (nouveaux.length > 0) {
-      // C1 : compiler TOUT DE SUITE (PDF + HTML + aperçu HTML) pour que le premier
-      // clic sur un article importé montre son aperçu sans attente. Avant le
-      // dialogue, pas pendant : « Remplacer » y refuse d'agir tant qu'un build
-      // tourne (garde statut.occupe), et deux écritures concurrentes dans out/
-      // n'auraient rien à s'apporter.
+      // Avant le dialogue, où « Remplacer » refuserait d'agir pendant une compilation.
       await compilerApresImport();
       rafraichirTout();
-      // F6 : le dialogue « Vérification de l'import » remplace la notification
-      // « N importés » — c'est lui qui montre ce que la conversion a détecté
-      // (fiche .meta.yaml pré-remplie) et ce qui reste à compléter.
       await ouvrirImportVerif(fournisseur, rafraichirTout, nouveaux);
     } else {
       vscode.window.showInformationMessage(T('info.importes.aucun'));
@@ -1580,9 +1287,8 @@ async function lancerConversion(fournisseur, rafraichirTout) {
   }
 }
 
-// Tronc commun du bouton « Importer des Word » et du glisser-déposer sur la vue
-// (F2) : copie des .docx (`uris`, tableau de vscode.Uri déjà filtré) vers
-// articles-word/, conflits demandés en modale, puis conversion.
+// Commun au bouton « Importer des Word » et au glisser-déposer : copie vers
+// articles-word/, conflits en modale, puis conversion.
 async function importerFichiersWord(fournisseur, rafraichirTout, uris) {
   const racine = fournisseur.racine;
   if (!racine || !Array.isArray(uris) || uris.length === 0) { return; }
@@ -1591,10 +1297,7 @@ async function importerFichiersWord(fournisseur, rafraichirTout, uris) {
   const dossierWord = path.join(racine, 'articles-word');
   try { fs.mkdirSync(dossierWord, { recursive: true }); } catch (e) { /* existe déjà */ }
 
-  // Jamais d'écrasement silencieux : si des .docx du même nom sont déjà en
-  // attente, on demande explicitement (modale). On choisit « Remplacer / Ignorer »
-  // plutôt qu'un renommage auto, qui créerait en douce un article dupliqué au
-  // slug suffixé — déroutant pour un rédacteur.
+  // Plutôt qu'un renommage automatique, qui créerait un article dupliqué au slug suffixé.
   const conflits = choix.filter((u) => fs.existsSync(path.join(dossierWord, path.basename(u.fsPath))));
   let remplacer = true;
   if (conflits.length > 0) {
@@ -1617,8 +1320,6 @@ async function importerFichiersWord(fournisseur, rafraichirTout, uris) {
   }
   if (copies === 0) { rafraichirTout(); return; }
 
-  // Conversion + notification (compte par diff) — mutualisée avec « Convertir les
-  // Word en attente ».
   await lancerConversion(fournisseur, rafraichirTout);
 }
 
@@ -1636,19 +1337,14 @@ async function importerWord(fournisseur, rafraichirTout) {
   await importerFichiersWord(fournisseur, rafraichirTout, choix);
 }
 
-// F2 — dépôt de fichiers sur la vue « Revue SZH » : accepte les .docx de
-// l'Explorateur Windows (ou de l'arborescence de l'éditeur) déposés N'IMPORTE OÙ
-// dans la vue, et les passe au même circuit que le bouton « Importer des Word »
-// (conflits en modale + conversion). `text/uri-list` : une URI par ligne (CRLF),
-// lignes vides et commentaires « # » ignorés (RFC 2483). Pas de handleDrag : on
-// ne tire rien HORS de la vue. Des fichiers déposés mais aucun .docx -> message
-// d'information (jamais silencieux) ; dépôt sans fichier (texte…) -> ignoré.
+// Les .docx déposés sur la vue passent par le circuit d'« Importer des Word ». Le format
+// `text/uri-list` donne une URI par ligne, lignes vides et « # » ignorés (RFC 2483).
 function controleurDepotVue(fournisseur, rafraichirTout) {
   return {
     dropMimeTypes: ['text/uri-list'],
     dragMimeTypes: [],
     handleDrop: async (cible, dataTransfer) => {
-      if (refuserSiVerrouille()) { return; }       // D116 : le dépôt écrit, comme le bouton
+      if (refuserSiVerrouille()) { return; }       // le dépôt écrit, comme le bouton
       const item = dataTransfer.get('text/uri-list');
       if (!item) { return; }
       const brut = await item.asString();
@@ -1669,11 +1365,10 @@ function controleurDepotVue(fournisseur, rafraichirTout) {
   };
 }
 
-// ---- Assets (G5, D41) : dimensions sans dépendance + « Remplacer » ----------------
+// ---- Assets : dimensions sans dépendance, et « Remplacer » -----------------------
 
-// Dimensions lues des en-têtes de fichier — PNG/GIF/SVG sûrs, JPEG au mieux
-// (parcours des marqueurs jusqu'au SOF). null si indéterminable : la description
-// retombe alors sur le poids seul. Seuls les premiers Ko sont lus.
+// Lues dans les en-têtes : sûres pour PNG, GIF et SVG, au mieux pour JPEG ; null si
+// indéterminable, la description retombant sur le poids seul.
 function lireDimensionsImage(chemin) {
   let fd = null;
   try {
@@ -1694,7 +1389,7 @@ function lireDimensionsImage(chemin) {
         const marqueur = b[i + 1];
         if (marqueur === 0xff) { i++; continue; }                 // bourrage FF
         if (marqueur === 0xd8 || (marqueur >= 0xd0 && marqueur <= 0xd7) || marqueur === 0x01) { i += 2; continue; }
-        if (marqueur === 0xda) { break; }                         // début des données : SOF manqué
+        if (marqueur === 0xda) { break; }                         // données : SOF manqué
         const longueur = b.readUInt16BE(i + 2);
         if (marqueur >= 0xc0 && marqueur <= 0xcf && marqueur !== 0xc4 && marqueur !== 0xc8 && marqueur !== 0xcc) {
           return { largeur: b.readUInt16BE(i + 7), hauteur: b.readUInt16BE(i + 5) };
@@ -1723,7 +1418,7 @@ function lireDimensionsImage(chemin) {
   }
 }
 
-// « 1 234 × 567 · 245 Ko » — poids en o/Ko/Mo (virgule française pour les Mo).
+// « 1 234 × 567 · 245 Ko » ; virgule française pour les Mo.
 function decrireImage(chemin) {
   let octets = 0;
   try { octets = fs.statSync(chemin).size; } catch (e) { return ''; }
@@ -1741,9 +1436,7 @@ function formatImage(nom) {
   return ext === 'jpeg' ? 'jpg' : ext;
 }
 
-// « Remplacer » (D41) : écrase l'image cible EN GARDANT son nom — le lien du .md
-// reste valide. Jamais silencieux : confirmation modale, renforcée si le format
-// du fichier choisi diffère de la cible (risque R4 : contenu ≠ extension).
+// Écrase l'image en gardant son nom, pour que le lien du .md reste valide.
 async function remplacerAsset(fournisseur, rafraichirTout, item) {
   if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
   if (buildEnCours || importEnCours) {
@@ -1782,9 +1475,7 @@ async function remplacerAsset(fournisseur, rafraichirTout, item) {
   rafraichirTout();
 }
 
-// « Remplacer » un tableau (N6, D47) : écrase tables/table-NN.html par un fichier
-// .html choisi, EN GARDANT le nom (la référence du .md reste valide). Jamais
-// silencieux : confirmation modale. L'édition fine se fait au clic (fichier HTML).
+// Écrase tables/table-NN.html en gardant le nom, pour que la référence reste valide.
 async function remplacerTable(fournisseur, rafraichirTout, item) {
   if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
   if (buildEnCours || importEnCours) {
@@ -1818,12 +1509,8 @@ async function remplacerTable(fournisseur, rafraichirTout, item) {
   rafraichirTout();
 }
 
-// C3 — Supprimer une image ou un tableau, RÉFÉRENCE COMPRISE. Effacer le seul
-// fichier laisserait un lien mort dans le .md : image cassée au rendu, ou bloc
-// d'avertissement pour un tableau (szh-tabelle-inclure.lua). Le texte est modifié
-// par un WorkspaceEdit (et non par un fs.writeFileSync) : l'article est souvent
-// ouvert à l'écran, l'édition doit passer par le tampon de l'éditeur pour rester
-// annulable (Ctrl+Z) et ne pas écraser des frappes non enregistrées.
+// Supprime une image ou un tableau, référence comprise : effacer le seul fichier
+// laisserait un lien mort. Le texte passe par un WorkspaceEdit, donc annulable.
 async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
   const racine = fournisseur.racine;
   if (!racine || !item || !item.cheminAsset || !item.slug) { return; }
@@ -1835,8 +1522,7 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
   const slug = item.slug;
   const cible = item.cheminAsset;
   const nom = path.basename(cible);
-  // Nom relatif à media/ pour une image (l'arbre affiche « sous/img.png »),
-  // nom simple pour un tableau.
+  // Relatif à media/ pour une image, nom simple pour un tableau.
   const relatif = estTable
     ? nom
     : path.relative(path.join(racine, 'articles', slug, 'media'), cible).replace(/\\/g, '/');
@@ -1848,12 +1534,8 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
   );
   if (reponse !== T('modale.supprimer.bouton')) { return; }   // annulé : rien n'est touché
 
-  // Ordre voulu : 1) retirer la référence DANS LE TAMPON (rien sur le disque),
-  // 2) effacer le fichier, 3) enregistrer le .md. L'enregistrement déclenche la
-  // compilation à la sauvegarde : il doit arriver EN DERNIER, quand le fichier a
-  // disparu et que le texte ne le cite plus — sinon pandoc lit un média qu'on est
-  // en train de supprimer. Si une étape échoue avant l'enregistrement, rien n'est
-  // écrit et le tampon reste annulable (Ctrl+Z).
+  // L'ordre compte : référence retirée du tampon, fichier effacé, puis .md enregistré —
+  // l'enregistrement compile, et pandoc lirait sinon un média en cours de suppression.
   let retirees = 0;
   let doc = null;
   const md = path.join(racine, 'articles', slug, slug + '.md');
@@ -1874,8 +1556,7 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
   }
 
   try {
-    // L'éditeur (tableau) ou la fiche (image) ouvert sur ce fichier n'a plus d'objet :
-    // le laisser à l'écran ferait réécrire un asset qui vient d'être supprimé.
+    // Le laisser à l'écran ferait réécrire un asset qui vient d'être supprimé.
     const ouvert = estTable ? panneauxTable.get(cible) : panneauxFicheImage.get(cible);
     if (ouvert) { try { ouvert.dispose(); } catch (e) { /* déjà fermé */ } }
     await fermerOngletDuFichier(cible);
@@ -1886,7 +1567,7 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
     return;                                        // .md non enregistré : état cohérent
   }
   if (retirees > 0 && doc) {
-    try { await doc.save(); }                      // déclenche la recompilation (Ctrl+S)
+    try { await doc.save(); }                      // déclenche la recompilation
     catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [e.message])); }
   }
   vscode.window.setStatusBarMessage(
@@ -1898,32 +1579,26 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
   rafraichirTout();
 }
 
-// ---- Suppression d'article (G3, D40) ---------------------------------------------
+// ---- Suppression d'un article ----------------------------------------------------
 
-// Ferme les onglets dont le fichier vit sous `dossier` (comparaison insensible à la
-// casse — système de fichiers Windows) : un onglet ouvert sur un fichier supprimé
-// resterait sinon en « fantôme » avec une erreur à la première interaction.
+// Casse ignorée comme sous Windows ; un onglet sur un fichier supprimé ferait fantôme.
 async function fermerOngletsSous(dossier) {
   const prefixe = (dossier + path.sep).toLowerCase();
   await fermerOnglets((e) => e && e.uri && e.uri.fsPath &&
     e.uri.fsPath.toLowerCase().indexOf(prefixe) === 0);
 }
 
-// Même chose pour UN fichier (C3) : l'aperçu d'image ouvert en colonne 1 doit
-// disparaître avec le fichier, sinon l'onglet reste en « fantôme ».
 async function fermerOngletDuFichier(chemin) {
   const vise = String(chemin).toLowerCase();
   await fermerOnglets((e) => e && e.uri && e.uri.fsPath && e.uri.fsPath.toLowerCase() === vise);
 }
 
-// Première action DESTRUCTIVE du cockpit : confirmation modale obligatoire, nommant
-// l'article (D40, risque R6) — jamais de suppression silencieuse.
+// Confirmation modale nommant l'article, jamais de suppression silencieuse.
 async function supprimerArticle(fournisseur, rafraichirTout, item) {
   const racine = fournisseur.racine;
   if (!racine || !item || !item.slug) { return; }
   const slug = item.slug;
-  // Pas de suppression pendant un build/import : make pourrait recréer out/<slug>
-  // ou lire un dossier à moitié effacé.
+  // Sinon make recréerait out/<slug>, ou lirait un dossier à moitié effacé.
   if (buildEnCours || importEnCours) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
@@ -1949,12 +1624,9 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
   rafraichirTout();
 }
 
-// ---- Sérialiseurs YAML (ausgabe/frontmatter/meta) -> lib/yaml.js -----------------
-// (déplacés en tête de fichier via require ; voir lib/yaml.js)
+// ---- Formulaire « Métadonnées du numéro » ----------------------------------------
 
-// Formulaire (webview) — CSP stricte : aucun réseau, styles inline, script à nonce.
-// Les valeurs ne sont PAS injectées dans le HTML : elles arrivent par postMessage
-// (le webview envoie « pret » au chargement), donc zéro échappement HTML à gérer.
+// CSP stricte. Les valeurs arrivent par postMessage, d'où aucun échappement à gérer.
 function htmlMetadonnees(nonce) {
   const txt = JSON.stringify({
     indiceDate: T('meta.date.indice'),
@@ -1972,17 +1644,13 @@ function envoyerValeursMetadonnees(panneau, chemin) {
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(chemin, 'utf8')); }
   catch (e) { /* fichier illisible : formulaire vide */ }
-  // entete-condensee (D114) : la case à cocher reçoit un booléen DÉJÀ tranché, pour
-  // que la liste des valeurs vraies tolérées ne vive qu'à un seul endroit (lib/yaml.js).
+  // Booléen déjà tranché : la liste des valeurs vraies tolérées vit dans lib/yaml.js.
   valeurs['entete-condensee'] = estVraiYaml(valeurs['entete-condensee']) ? 'true' : 'false';
   panneau.webview.postMessage({ type: 'valeurs', valeurs: valeurs });
 }
 
-// Panneau singleton : rouvrir la commande RÉVÈLE le formulaire existant (valeurs
-// relues du disque) au lieu d'en empiler un deuxième. Colonne 1 = côté texte.
-// `rafraichirTout` (N2) : le titre de la vue suit immédiatement l'enregistrement.
-// F5 — pleine page : les aperçus sont fermés AVANT d'afficher (reveal compris),
-// le formulaire n'a pas de colonne 2 qui lui réponde.
+// Panneau singleton : rouvrir la commande révèle le formulaire existant, valeurs relues
+// du disque. Pleine page, donc les aperçus sont fermés avant.
 async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
@@ -2004,29 +1672,26 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
     if (!msg) { return; }
     if (msg.type === 'pret') { envoyerValeursMetadonnees(panneau, chemin); return; }
     if (msg.type !== 'enregistrer') { return; }
-    // Seuls les champs MODIFIÉS arrivent : un champ que le formulaire n'a pas su
-    // afficher (ex. date « 2026 » dans un type=date) n'est jamais écrasé en douce.
+    // Seuls les champs modifiés arrivent : une valeur que le formulaire n'a pas su
+    // afficher, comme « 2026 » dans un type=date, n'est pas écrasée.
     const modifies = {};
     for (const cle of CLES_METADONNEES) {
       if (msg.modifies && typeof msg.modifies[cle] === 'string') {
         modifies[cle] = msg.modifies[cle].replace(/[\r\n]+/g, ' ').slice(0, 500).trim();
       }
     }
-    // couleur (M7, D56) : soit vide (« aucune »), soit un hex de la palette —
-    // toute autre valeur est ignorée (jamais écrite dans ausgabe.yaml).
+    // Vide (« aucune ») ou un hex de la palette ; toute autre valeur est ignorée.
     if ('couleur' in modifies) {
       const c = modifies.couleur.toUpperCase();
       if (c !== '' && HEX_COULEURS.indexOf(c) === -1) { delete modifies.couleur; }
       else { modifies.couleur = c; }
     }
-    // revue (D74) : uniquement le jeton canonique zeitschrift/revue (dérivé du
-    // radio, ou d'un ancien nom complet). Toute autre valeur est ignorée.
+    // Seul le jeton canonique zeitschrift/revue est accepté.
     if ('revue' in modifies) {
       const r = normaliserRevue(modifies.revue);
       if (r === '') { delete modifies.revue; } else { modifies.revue = r; }
     }
-    // entete-condensee (D114) : la case à cocher n'envoie que « true » ou « false » ;
-    // toute autre valeur est ignorée (jamais écrite dans ausgabe.yaml).
+    // La case à cocher n'envoie que « true » ou « false » ; le reste est ignoré.
     if ('entete-condensee' in modifies) {
       const e = modifies['entete-condensee'].toLowerCase();
       if (e !== 'true' && e !== 'false') { delete modifies['entete-condensee']; }
@@ -2039,22 +1704,17 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
       ecrireAtomique(chemin, serialiserAusgabe(contenu, modifies));
       panneau.webview.postMessage({ type: 'enregistre' });
       vscode.window.setStatusBarMessage(T('statut.ausgabe'), 3000);
-      if (rafraichirTout) { rafraichirTout(); }    // titre de la vue à jour (N2)
+      if (rafraichirTout) { rafraichirTout(); }    // met le titre de la vue à jour
     } catch (e) {
       panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [e.message]) });
     }
   });
 }
 
-// ---- Éditeur des métadonnées de TOUS les articles (N7 refondu par M1, D49/D51) -----
+// ---- Éditeur des métadonnées de tous les articles --------------------------------
 
-// Webview « Métadonnées des articles » : une carte par article — type (menu
-// déroulant traduit), doi, title/subtitle/keywords TRADUCTIBLES (FR/DE toujours,
-// IT révélé par la case « + Italien »), auteurs répétables à 5 champs. DOM
-// construit sans injection HTML, valeurs par postMessage, dirty PAR ARTICLE.
-// Libellés communs au gabarit de carte d'article (type, champs par langue,
-// auteurs, modale photo F3) — partagés entre « Métadonnées des articles » et le
-// dialogue « Vérification de l'import » (F6), qui reprend le même gabarit.
+// Une carte par article : type, doi, title/subtitle/keywords traduisibles, auteurs.
+// Gabarit partagé avec le dialogue d'import.
 function textesCarteArticle() {
   return {
     type: T('fiches.type'), typeAucun: T('fiches.type.aucun'),
@@ -2066,11 +1726,10 @@ function textesCarteArticle() {
     aFonction: T('fiches.auteur.fonction'), aAffiliation: T('fiches.auteur.affiliation'),
     aOrcid: T('fiches.auteur.orcid'), aEmail: T('fiches.auteur.email'),
     motsCles: T('fiches.motscles'), italien: T('fiches.italien'),
-    // Grille de mots-clés appariés (D122) — fragment partagé SZH.motsCles.
+    // Grille de mots-clés appariés : fragment partagé SZH.motsCles.
     motsClesTitre: T('fiches.motscles.titre'), motsClesAide: T('fiches.motscles.aide'),
     motCleAjouter: T('fiches.motcle.ajouter'), motCleRetirer: T('fiches.motcle.retirer'),
     rien: T('form.rien'), enregistre: T('fiches.enregistre'),
-    // Photo d'auteur·e (F3, D92) : bouton par rangée + modale de dépôt/choix.
     photoBouton: T('photo.bouton'), photoPresente: T('photo.bouton.presente'),
     photoNomRequis: T('photo.nomrequis'), photoTitre: T('photo.titre'),
     photoDeposer: T('photo.deposer'), photoOu: T('photo.ou'),
@@ -2084,9 +1743,7 @@ function textesCarteArticle() {
   };
 }
 
-// Options traduites du menu « Type d'article » (E2, D71) : 6 types en 2 groupes,
-// libellés + en-têtes de groupe dans la langue par défaut du numéro. Partagé
-// par les deux panneaux de fiches (métadonnées des articles, vérification F6).
+// Deux groupes, dans la langue par défaut du numéro.
 function typesTraduits(langue) {
   const options = (liste, groupe) => liste.map((t) => ({
     valeur: t, libelle: (LIBELLES_TYPES[t] || {})[langue] || t,
@@ -2095,21 +1752,19 @@ function typesTraduits(langue) {
   return options(TYPES_DOSSIER, 'dossier').concat(options(TYPES_HORS, 'hors'));
 }
 
-// Écrit les cartes reçues d'un webview de fiches : nettoyage (types/bornes, 20
-// auteurs max), clés inconnues de la fiche existante restituées (D49), écriture
-// atomique. `slugsAutorises` (F6) restreint en plus à la liste du panneau ;
-// dans tous les cas un slug hors de listerArticles() est ignoré (sécurité).
+// Écrit les cartes reçues d'une webview de fiches : nettoyage, restitution des clés
+// inconnues, écriture atomique. Un slug absent de listerArticles() est ignoré, et
+// `slugsAutorises` restreint en plus à la liste du panneau.
 function ecrireCartesArticles(fournisseur, cartes, slugsAutorises) {
   const connus = new Set(fournisseur.listerArticles());
   let n = 0;
   const erreurs = [];
   for (const slug of Object.keys(cartes || {})) {
-    if (!connus.has(slug)) { continue; }           // slug inconnu : ignoré (sécurité)
+    if (!connus.has(slug)) { continue; }           // slug inconnu : ignoré
     if (slugsAutorises && slugsAutorises.indexOf(slug) === -1) { continue; }
     const fichierMeta = cheminMeta(fournisseur.racine, slug);
     try {
-      // Fichier « form-owned » : régénéré — mais les clés inconnues de haut
-      // niveau de la fiche existante sont restituées par prudence (D49).
+      // Fichier régénéré ; les clés de haut niveau inconnues sont restituées.
       const carte = nettoyerCarte(cartes[slug]);
       try { carte._inconnues = analyserMeta(fs.readFileSync(fichierMeta, 'utf8'))._inconnues; }
       catch (e) { /* pas de fiche existante */ }
@@ -2123,17 +1778,13 @@ function ecrireCartesArticles(fournisseur, cartes, slugsAutorises) {
 }
 
 function htmlApercuMetadonnees(nonce) {
-  // + le bandeau de la vue filtrée (D97), propre à ce formulaire (le dialogue
-  // d'import, lui, a toujours sa propre liste d'articles).
   const txt = JSON.stringify(Object.assign(textesCarteArticle(), {
     filtreNote: T('fiches.filtre.note'), tous: T('fiches.tous')
   }));
   return construireHtml('metadata-articles', nonce, {
     titre: T('fiches.titre'),
     remplacements: { '__TXT__': txt },
-    // Seule dérogation du cockpit à la CSP par défaut : les aperçus de la modale
-    // photo sont des <img> à data: URI poussées par postMessage (aucun réseau,
-    // localResourceRoots reste []).
+    // Seule dérogation à la CSP : les aperçus de la modale photo, en data: URI.
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
   });
 }
@@ -2144,11 +1795,8 @@ function cheminMeta(racine, slug) {
   return path.join(racine, 'articles', slug, slug + '.meta.yaml');
 }
 
-// Migration défensive (M1, idempotente) : un <slug>.md qui porte encore un
-// frontmatter N7 (lot non déployé) est déplacé vers <slug>.meta.yaml — scalaires
-// rangés sous la langue de la revue, name -> nom — puis le frontmatter est retiré
-// du .md (le bloc disparaît s'il ne contenait que des clés gérées). Sans objet
-// (no-op) si le .meta.yaml existe déjà ou si le .md n'a pas de frontmatter géré.
+// Migration idempotente : les métadonnées encore en frontmatter partent vers
+// <slug>.meta.yaml, sous la langue de la revue.
 function migrerFrontmatterVersMeta(racine, slug) {
   const fichierMeta = cheminMeta(racine, slug);
   if (fs.existsSync(fichierMeta)) { return; }
@@ -2172,11 +1820,10 @@ function migrerFrontmatterVersMeta(racine, slug) {
   try {
     ecrireAtomique(fichierMeta, serialiserMeta(valeurs));
     ecrireAtomique(fichierMd, serialiserFrontmatter(texte, { title: '', subtitle: '', doi: '', author: [], keywords: [] }));
-  } catch (e) { /* migration best effort : la carte restera vide */ }
+  } catch (e) { /* migration au mieux : la carte restera vide */ }
 }
 
-// `filtre` (D97) : tableau de slugs à afficher, ou null pour tous. L'ordre reste
-// celui de l'arbre (listerArticles) — jamais celui du filtre.
+// `filtre` : slugs à afficher, ou null pour tous. L'ordre reste celui de l'arbre.
 function lireMetadonneesArticles(fournisseur, filtre) {
   const articles = [];
   for (const slug of fournisseur.listerArticles()) {
@@ -2186,22 +1833,18 @@ function lireMetadonneesArticles(fournisseur, filtre) {
     try {
       valeurs = analyserMeta(fs.readFileSync(cheminMeta(fournisseur.racine, slug), 'utf8'));
     } catch (e) { /* pas encore de fiche : carte vide */ }
-    delete valeurs._inconnues;                     // le webview n'a pas à les voir
+    delete valeurs._inconnues;                     // la webview n'a pas à les voir
     articles.push({ slug: slug, valeurs: valeurs });
   }
   return articles;
 }
 
-// Assainit le champ `photo` d'un auteur (D92) : il n'est JAMAIS saisi au clavier
-// (posé par la modale photo uniquement), donc on n'accepte qu'un chemin RELATIF
-// à l'article, sous portraits/, sans remontée « .. » ni antislash ni jeton vide —
-// toute autre valeur VIDE le champ (il disparaît de la fiche à la sérialisation).
+// Le champ `photo` est posé par la modale, jamais saisi : seul un chemin relatif sous
+// portraits/, sans remontée ni segment vide, est accepté.
 function assainirCheminPhoto(valeur) {
   const c = String(valeur === undefined || valeur === null ? '' : valeur).trim();
   if (c === '' || c.length > 300) { return ''; }
   if (c.indexOf('\\') !== -1 || /[\r\n:]/.test(c)) { return ''; }
-  // Exactement DEUX segments (les trois formes D92 sont « portraits/<fichier> ») :
-  // ni remontée, ni sous-dossier, ni segment vide.
   const morceaux = c.split('/');
   if (morceaux.length !== 2 || morceaux[0] !== 'portraits') { return ''; }
   const nom = morceaux[1];
@@ -2209,8 +1852,6 @@ function assainirCheminPhoto(valeur) {
   return c;
 }
 
-// Nettoie une carte reçue du webview (types + bornes ; le slug est validé contre
-// la liste réelle des articles — jamais de chemin construit sur une entrée libre).
 function nettoyerCarte(brut) {
   const texteCourt = (v, max) => String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' ').slice(0, max).trim();
   const carte = { type: '', doi: texteCourt(brut && brut.doi, 200), title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
@@ -2218,17 +1859,15 @@ function nettoyerCarte(brut) {
   if (TYPES_ARTICLE.indexOf(type) !== -1) { carte.type = type; }
   for (const cle of ['title', 'subtitle', 'resume']) {
     const map = (brut && brut[cle]) || {};
-    const max = cle === 'resume' ? 2000 : 500;   // le résumé est un abrégé, plus long
+    const max = cle === 'resume' ? 2000 : 500;   // le résumé est plus long
     for (const l of LANGUES_META) {
       const t = texteCourt(map[l], max);
       if (t !== '') { carte[cle][l] = t; }
     }
   }
-  // Mots-clés (D122) : les listes de langues sont APPARIÉES PAR POSITION — c'est le
-  // seul lien entre « diagnostic » et « Diagnose ». On borne d'abord (50 mots, 100
-  // caractères) sans retirer les vides, puis alignerMotsCles tient chaque case vide
-  // avec la marque TO BE TRANSLATED : retirer un vide au milieu ferait remonter tous
-  // les mots-clés suivants d'un cran, et la paire deviendrait fausse en silence.
+  // Les listes de mots-clés des langues sont appariées par position : c'est le seul lien
+  // entre « diagnostic » et « Diagnose ». Retirer un vide au milieu décalerait tous les
+  // suivants ; alignerMotsCles les remplit donc par une marque.
   const km = (brut && brut.keywords) || {};
   const brutes = {};
   let nMax = 0;
@@ -2244,8 +1883,7 @@ function nettoyerCarte(brut) {
   if (brut && Array.isArray(brut.author)) {
     for (const a of brut.author.slice(0, 20)) {
       const propre = {};
-      // Bornes par champ (D91/D92) : email 200, le reste 300 ; photo assainie
-      // en plus (chemin relatif portraits/… uniquement, sinon vidée).
+      // 200 caractères pour l'email, 300 pour le reste ; la photo est assainie en plus.
       for (const c of CHAMPS_AUTEUR) { propre[c] = texteCourt(a && a[c], c === 'email' ? 200 : 300); }
       propre.photo = assainirCheminPhoto(propre.photo);
       carte.author.push(propre);
@@ -2254,18 +1892,10 @@ function nettoyerCarte(brut) {
   return carte;
 }
 
-// ---- Suivi de traduction (D113) ----------------------------------------------------
-//
-// Section « Traductions » de l'arbre + panneau szhTraduction (colonne 1, aperçu de
-// l'article en colonne 2). Deux fichiers, deux rôles — voir l'en-tête de
-// lib/traduction.js : les TEXTES traduits vont dans <slug>.meta.yaml (publiés,
-// exportés vers OJS), l'ÉTAT D'ATELIER dans <slug>.traduction.yaml (jamais publié).
-// Protocole :
-//   webview -> hôte : pret | modifie {modifie} | copier {texte}
-//                     enregistrer {slug, champs:[{champ,langue,texte,statut}], commentaire}
-//                     rechargement {…}  (réponse à « demande-rechargement »)
-//   hôte -> webview : valeurs {slug, langueSource, lignes, commentaire, statuts, focus}
-//                     enregistre | copie | erreur {message} | demande-rechargement
+// ---- Suivi de traduction ---------------------------------------------------------
+// Panneau szhTraduction en colonne 1, aperçu en colonne 2. Deux fichiers, deux rôles,
+// détaillés dans l'en-tête de lib/traduction.js : les textes traduits vont dans
+// <slug>.meta.yaml, publié, l'état d'atelier dans <slug>.traduction.yaml, qui ne l'est pas.
 
 const ICONES_STATUT = {
   'pas-pret': 'circle-large-outline',
@@ -2299,8 +1929,7 @@ function lireSuiviTraduction(racine, slug) {
   catch (e) { return analyserTraduction(''); }
 }
 
-// État complet d'un article pour l'arbre ET le panneau. `source` (langue du numéro)
-// est passée par les boucles pour ne pas relire ausgabe.yaml à chaque article.
+// `source` est passée par les boucles pour ne pas relire ausgabe.yaml à chaque article.
 function etatTraduction(racine, slug, source) {
   const langue = source || langueRevue(racine);
   const meta = lireMetaArticle(racine, slug);
@@ -2313,8 +1942,7 @@ function etatTraduction(racine, slug, source) {
   };
 }
 
-// Libellé d'un groupe dans l'arbre et sur la carte : « Titre et sous-titre (DE) »
-// quand les deux existent, « Titre (DE) » quand l'article n'a pas de sous-titre.
+// « Titre et sous-titre (DE) » quand les deux existent, sinon « Titre (DE) ».
 function libelleGroupe(groupe) {
   let nom;
   if (groupe.groupe === 'titre') {
@@ -2327,8 +1955,7 @@ function libelleGroupe(groupe) {
   return T('trad.champ.libelle', [nom, groupe.langue.toUpperCase()]);
 }
 
-// « traduit » / « à traduire », sauf pour les mots-clés où le compte des PAIRES dit
-// bien plus : « 2/4 traduits » se lit d'un coup d'œil.
+// « traduit » ou « à traduire », sauf pour les mots-clés : « 2/4 traduits ».
 function etatRemplissageGroupe(groupe) {
   if (groupe.groupe === 'motscles') {
     const l = groupe.lignes[0];
@@ -2337,10 +1964,8 @@ function etatRemplissageGroupe(groupe) {
   return groupe.rempli ? T('trad.traduit') : T('trad.atraduire');
 }
 
-// Écrit le sidecar — ou le SUPPRIME s'il ne reste rien à retenir (aucun statut hors
-// défaut, aucun commentaire) : pas de fichier vide dans le dossier de l'article, et
-// « tout remettre à zéro » efface vraiment. Fichier form-owned : ce panneau est le
-// seul à l'écrire, la suppression ne peut donc rien perdre d'autre.
+// Écrit le sidecar, ou le supprime s'il ne reste rien à retenir : ce panneau est le seul
+// à l'écrire.
 function ecrireSuiviTraduction(racine, slug, suivi) {
   const chemin = cheminTraduction(racine, slug);
   const contenu = serialiserTraduction(suivi);
@@ -2351,9 +1976,8 @@ function ecrireSuiviTraduction(racine, slug, suivi) {
   ecrireAtomique(chemin, contenu);
 }
 
-// Bouton de la section « Traductions » : lance la campagne. N'avance QUE les champs
-// encore « pas prêt » — un champ déjà en relecture ou finalisé ne recule jamais,
-// sinon le bouton détruirait le travail qu'il est censé organiser.
+// Lance la campagne : n'avance que les champs « pas prêt », pour ne pas faire reculer un
+// champ déjà en relecture ou finalisé.
 function marquerToutPretTraduction(fournisseur, rafraichirTout) {
   if (!fournisseur.racine) { return; }
   const racine = fournisseur.racine;
@@ -2410,8 +2034,7 @@ let slugTraduction = null;
 let traductionModifiee = false;
 let rechargementTraduction = null;
 
-// Les groupes tels que la webview les attend (libellés résolus côté hôte : le
-// webview ne connaît ni LIBELLES ni langue d'interface).
+// Libellés résolus côté hôte : la webview ne connaît pas la langue d'interface.
 function groupesPourWebview(etat) {
   return etat.groupes.map((groupe) => ({
     cle: groupe.cle, groupe: groupe.groupe, langue: groupe.langue,
@@ -2445,19 +2068,15 @@ function envoyerValeursTraduction(panneau, fournisseur, slug, focus) {
   traductionModifiee = false;                      // les cartes viennent d'être reconstruites
 }
 
-// Recharge le panneau ouvert (après le bouton « tout marquer », ou un enregistrement).
 function rafraichirPanneauTraduction(fournisseur) {
   if (!panneauTraduction || !slugTraduction || !fournisseur.racine) { return; }
   if (fournisseur.listerArticles().indexOf(slugTraduction) === -1) { return; }
   envoyerValeursTraduction(panneauTraduction, fournisseur, slugTraduction, null);
 }
 
-// Enregistre ce que renvoie le panneau. Les TEXTES passent par le chemin d'écriture
-// des fiches (ecrireCartesArticles -> nettoyerCarte -> serialiserMeta -> écriture
-// atomique) : mêmes bornes, mêmes clés inconnues restituées (D49), et la fiche est
-// RELUE à l'instant — une modification faite entre-temps dans « Métadonnées des
-// articles » (et déjà enregistrée) n'est pas écrasée. Retourne
-// { ok, message, metaChangee } ; metaChangee pilote la recompilation de l'aperçu.
+// Enregistre ce que renvoie le panneau ; les textes passent par ecrireCartesArticles,
+// qui relit la fiche et n'écrase donc pas une modification enregistrée ailleurs.
+// metaChangee, dans le retour, pilote la recompilation de l'aperçu.
 function enregistrerTraduction(fournisseur, msg) {
   const racine = fournisseur.racine;
   const slug = String((msg && msg.slug) || '');
@@ -2472,22 +2091,18 @@ function enregistrerTraduction(fournisseur, msg) {
   let metaChangee = false;
   for (const groupe of (Array.isArray(msg.groupes) ? msg.groupes : [])) {
     const langue = String((groupe && groupe.langue) || '');
-    // Jamais la langue du numéro : ce panneau ne touche pas au texte source.
+    // Pas la langue du numéro : ce panneau ne touche pas au texte source.
     if (LANGUES_META.indexOf(langue) === -1 || langue === source) { continue; }
     const s = statutValide(groupe.statut);
     for (const brut of (Array.isArray(groupe.champs) ? groupe.champs : [])) {
       const champ = String((brut && brut.champ) || '');
       if (CHAMPS_TRADUISIBLES.indexOf(champ) === -1) { continue; }
-      // L'état est celui du GROUPE : il est posé sur chacune de ses clés, pour que
-      // le sidecar reste lisible par une version qui ne connaît pas les groupes.
+      // Sur chaque clé du groupe : le sidecar reste lisible sans notion de groupe.
       if (s) { statuts[cleChamp(champ, langue)] = s; }
       const avant = texteChamp(meta, champ, langue);
       let valeur;
       if (champ === 'keywords') {
-        // Appariement par position : une case vide AU MILIEU ferait remonter tous les
-        // mots-clés suivants d'un cran. alignerMotsCles tient la place avec la marque
-        // TO BE TRANSLATED. Le webview l'a déjà fait — on le refait ici, parce que ce
-        // qui protège le fichier doit être du côté qui l'écrit.
+        // alignerMotsCles tient la place des cases vides, ici du côté qui écrit.
         valeur = alignerMotsCles(brut.paires, listeChamp(meta, 'keywords', source).length);
       } else {
         valeur = valeurChamp(champ, brut.texte);
@@ -2509,11 +2124,9 @@ function enregistrerTraduction(fournisseur, msg) {
   return { ok: true, metaChangee: metaChangee };
 }
 
-// « Envoyer dans DeepL » : le traducteur web accepte le texte dans le FRAGMENT de
-// l'URL — https://www.deepl.com/translator#<source>/<cible>/<texte>. Rien n'est
-// envoyé par l'extension : c'est le navigateur qui ouvre la page (le texte reste
-// donc dans l'URL, jamais dans une requête faite par le cockpit). Le retour se fait
-// au copier-coller : sans clé d'API, DeepL ne peut pas nous rendre la traduction.
+// Le traducteur web accepte le texte dans le fragment de l'URL,
+// https://www.deepl.com/translator#<source>/<cible>/<texte>, ouverte par le navigateur.
+// Sans clé d'API, le retour se fait au copier-coller.
 const LONGUEUR_MAX_DEEPL = 4000;                   // au-delà, les navigateurs tronquent
 
 function ouvrirDeepl(panneau, msg) {
@@ -2529,9 +2142,7 @@ function ouvrirDeepl(panneau, msg) {
   vscode.env.openExternal(vscode.Uri.parse(url));
 }
 
-// Résout l'article visé : argument de l'arbre ({slug[, cle]} ou slug), sinon le .md
-// actif, sinon celui affiché en aperçu — même cascade que « Métadonnées de l'article
-// courant » (D97).
+// L'argument de l'arbre ({slug[, cle]} ou slug), sinon le .md actif, sinon l'aperçu.
 function cibleTraduction(fournisseur, cible) {
   if (typeof cible === 'string' && cible !== '') { return { slug: cible, cle: null }; }
   if (cible && cible.slug) { return { slug: String(cible.slug), cle: cible.cle ? String(cible.cle) : null }; }
@@ -2540,22 +2151,13 @@ function cibleTraduction(fournisseur, cible) {
   return { slug: actif || apercuCourantSlug || null, cle: null };
 }
 
-// ---- « Envoyer pour traduction » : lien szh:// + e-mail (D123) -----------------------
-//
-// Ce qu'on veut éviter au traducteur : « ouvre Revues SZH, cherche 2026-01, clique
-// l'article, ouvre l'onglet Traductions ». Le bouton fabrique donc un lien
-// szh://traduction/<produit>/<numero>[/<article>] (lib/liens.js) qui, cliqué sur un
-// poste de rédaction, ouvre le bon numéro ET l'amène sur le suivi de traduction.
-// Le lien part dans le presse-papiers ET dans un brouillon d'e-mail : le presse-papiers
-// est le filet si le client de messagerie ne s'ouvre pas.
-//
-// Le lien ne porte AUCUN chemin — c'est le lanceur qui retrouve le dossier dans les
-// emplacements du poste. Un numéro dont le dossier a un nom exotique, ou dont la revue
-// n'est pas déclarée, ne peut pas produire de lien : on le dit, on n'invente rien.
+// ---- « Envoyer pour traduction » : lien szh:// et e-mail -------------------------
+// Le bouton fabrique un lien szh://traduction/<produit>/<numero>[/<article>]
+// (lib/liens.js) qui ouvre le bon numéro sur le suivi de traduction, et le met dans le
+// presse-papiers comme dans un brouillon d'e-mail. Le lien ne porte pas de chemin :
+// c'est le lanceur qui retrouve le dossier sur le poste.
 
-// Repli si le toolkit n'a pas encore mail-traduction.ps1 : un mailto en texte brut.
-// Le lien y est inerte (aucun client ne rend cliquable un schéma inconnu) — c'est
-// justement ce que D127 corrige, mais mieux vaut un e-mail imparfait que rien.
+// Repli sans mail-traduction.ps1 : un mailto en texte brut, où le lien reste inerte.
 function ouvrirBrouillonMail(sujet, corps) {
   const cible = 'mailto:?subject=' + encodeURIComponent(sujet) + '&body=' + encodeURIComponent(corps);
   return vscode.env.openExternal(vscode.Uri.parse(cible));
@@ -2564,9 +2166,7 @@ function ouvrirBrouillonMail(sujet, corps) {
 async function envoyerPourTraduction(fournisseur, cible) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
-  // Article visé s'il y en a un (bouton d'une ligne de l'arbre, ou panneau ouvert) ;
-  // sinon le lien vise tout le numéro — les deux sont utiles.
-  const vise = cibleTraduction(fournisseur, cible);
+  const vise = cibleTraduction(fournisseur, cible);   // sinon le lien vise le numéro
   const slug = (vise.slug && fournisseur.listerArticles().indexOf(vise.slug) !== -1) ? vise.slug : '';
   let produit = '';
   try {
@@ -2579,18 +2179,14 @@ async function envoyerPourTraduction(fournisseur, cible) {
   }
   try { await vscode.env.clipboard.writeText(lien); } catch (e) { /* presse-papiers refusé */ }
 
-  // D127 : le brouillon est préparé par windows/mail-traduction.ps1 — lui seul peut
-  // produire un corps HTML, donc un VRAI hyperlien, et lui seul décide la langue de
-  // l'e-mail et le destinataire (déduits du produit : une Zeitschrift part à traduire
-  // vers le français, une Revue vers l'allemand). Rien de tout cela ne dépend de la
-  // langue d'interface de l'expéditeur, donc rien de tout cela n'est ici.
+  // windows/mail-traduction.ps1 produit le corps HTML, donc un hyperlien cliquable, et
+  // décide langue et destinataire d'après le produit.
   const erreur = lancerMailTraduction(lien);
   if (erreur === null) {
     vscode.window.setStatusBarMessage(T('trad.lien.copie', [lien]), 8000);
     return;
   }
-  // Toolkit trop ancien ou lancement refusé : repli mailto, en disant que le lien est
-  // de toute façon dans le presse-papiers.
+  // Toolkit trop ancien ou lancement refusé : repli sur mailto.
   const quoi = slug === '' ? titreNumero(racine) : titreNumero(racine) + ' — ' + slug;
   const sujet = T('trad.lien.sujet', [quoi]);
   const corps = T('trad.lien.corps', [quoi, lien]);
@@ -2604,11 +2200,9 @@ async function envoyerPourTraduction(fournisseur, cible) {
   }
 }
 
-// Atterrissage d'un lien reçu (D123) : le lanceur a déposé une intention à usage
-// unique, on la consomme ICI, une fois la revue ouverte et l'arbre prêt. Une intention
-// qui vise une AUTRE revue est laissée en place (une autre fenêtre la prendra) ; une
-// intention périmée est effacée. Ne lève jamais : un lien ne doit pas pouvoir empêcher
-// une revue de s'ouvrir.
+// Atterrissage d'un lien reçu : le lanceur a déposé une intention à usage unique,
+// consommée ici une fois l'arbre prêt ; celle qui vise une autre revue est laissée à une
+// autre fenêtre. Ne lève pas : un lien ne doit pas bloquer l'ouverture.
 async function honorerIntention(fournisseur, rafraichirTout) {
   try {
     const racine = fournisseur.racine;
@@ -2622,8 +2216,7 @@ async function honorerIntention(fournisseur, rafraichirTout) {
   } catch (e) { /* jamais bloquant */ }
 }
 
-// Panneau « Traduction » : formulaire en colonne 1, aperçu de l'article en colonne 2
-// (ouvrirArticle sans ouvrir le .md — F5 fermerait justement l'aperçu, ici on le veut).
+// Formulaire en colonne 1, aperçu de l'article en colonne 2, ouvert sans le .md.
 async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
   if (!fournisseur.racine) { return; }
   const vise = cibleTraduction(fournisseur, cible);
@@ -2632,9 +2225,8 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
     return;
   }
   const montrerApercu = (slug) => {
-    // L'aperçu suit l'article affiché ; une erreur de compilation est déjà signalée
-    // par ouvrirArticle et ne doit pas remonter en rejet non capturé.
-    ouvrirArticle(fournisseur, slug, { sansTexte: true }).catch(() => { /* signalé côté build */ });
+    // Une erreur de compilation est déjà signalée par ouvrirArticle.
+    ouvrirArticle(fournisseur, slug, { sansTexte: true }).catch(() => { /* déjà signalé */ });
   };
   if (panneauTraduction) {
     panneauTraduction.reveal(vscode.ViewColumn.One);
@@ -2644,8 +2236,7 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
       return;
     }
     if (traductionModifiee) {
-      // Le panneau porte un ● : on demande à la webview ce qu'elle contient, la
-      // garde (et le changement d'article) se joue à sa réponse.
+      // Le panneau porte un ● : le changement d'article se joue à la réponse.
       rechargementTraduction = vise;
       repondrePanneau(panneauTraduction, { type: 'demande-rechargement' });
       return;
@@ -2686,16 +2277,15 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
       return;
     }
     if (msg.type === 'deepl') { ouvrirDeepl(panneau, msg); return; }
-    // D123 : le bouton « Envoyer pour traduction » du panneau vise l'article ouvert.
     if (msg.type === 'lien') { envoyerPourTraduction(fournisseur, { slug: slugTraduction }); return; }
     if (msg.type === 'rechargement') {
       const attente = rechargementTraduction;
       rechargementTraduction = null;
-      if (!attente) { return; }                    // réponse tardive : changement abandonné
+      if (!attente) { return; }                    // réponse tardive : abandonné
       const choix = await vscode.window.showWarningMessage(
         T('trad.recharger.question'), { modal: true, detail: T('table.quitter.detail') },
         T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
-      if (choix === undefined) { return; }         // Annuler : on reste sur l'article en cours
+      if (choix === undefined) { return; }         // Annuler : on reste sur l'article
       if (choix === T('form.enregistrer')) {
         const res = enregistrerTraduction(fournisseur, msg);
         if (!res.ok) { repondrePanneau(panneau, { type: 'erreur', message: res.message }); return; }
@@ -2715,49 +2305,33 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
     traductionModifiee = false;
     if (!msg.auto) { vscode.window.setStatusBarMessage(T('statut.traduction', [slugTraduction]), 3000); }
     if (rafraichirTout) { rafraichirTout(); }
-    // D121 : un enregistrement AUTOMATIQUE ne renvoie jamais les valeurs — le
-    // re-rendu reconstruirait le DOM sous les doigts (curseur et sélection perdus).
-    // Le webview est déjà à jour : c'est lui qui vient d'envoyer ce qu'il affiche.
+    // Un enregistrement automatique ne renvoie rien : le re-rendu perdrait le curseur.
     if (!msg.auto) { envoyerValeursTraduction(panneau, fournisseur, slugTraduction, null); }
-    // La fiche est une dépendance de build (M1) : un titre traduit change le rendu.
-    // On ne recompile que si un TEXTE a bougé — pas pour un simple changement d'état —
-    // et jamais sur un enregistrement automatique, qui tomberait en pleine frappe.
+    // La fiche est une dépendance de compilation ; jamais en pleine frappe.
     if (res.metaChangee && !msg.auto) { montrerApercu(slugTraduction); }
   });
   montrerApercu(vise.slug);
 }
 
-// ---- Photos d'auteur·e·s (F3, D91/D92) ---------------------------------------------
-//
-// Flux : la modale du webview dépose une image (base64) -> l'hôte écrit
-// articles/<slug>/portraits/<slug-auteur>.original.<ext> puis appelle le pipeline
-// WSL (lib/portraits.js) qui produit .avec-fond.png / .sans-fond.png -> l'hôte
-// renvoie les TROIS versions en data: URIs (aperçu) -> « Valider » fige le champ
-// `photo` (chemin relatif) que la fiche emporte à l'enregistrement. Protocole :
-//   webview -> hôte : photo-ouvrir   { slug, index, photo }            (photo déjà posée)
-//                     photo-deposer  { slug, index, prenom, nom, nomFichier, donneesBase64 }
-//                     photo-choisir  { slug, index, base, version }
-//   hôte -> webview : photo-versions { slug, index, base, versions:{original,
-//                        avecFond, sansFond}, infos:{visage,padding}|null, actuelle|null }
-//                     photo-valeur   { slug, index, photo }
-//                     photo-erreur   { slug, index, message }
-// `base` (= <slug-auteur>) est TOUJOURS généré par l'hôte (slugifier ou champ
-// photo existant décomposé) ; quand la webview le renvoie, il est revalidé
-// (segment unique, alphabet sûr) avant toute construction de chemin.
+// ---- Photos d'auteur·e·s ---------------------------------------------------------
+// La modale dépose une image en base64 ; l'hôte écrit
+// articles/<slug>/portraits/<slug-auteur>.original.<ext> puis appelle le pipeline WSL
+// (lib/portraits.js), qui produit .avec-fond.png et .sans-fond.png ; les trois versions
+// repartent en data: URIs, et « Valider » fige le champ `photo` de la fiche. `base`, le
+// <slug-auteur>, est généré par l'hôte et revalidé quand la webview le renvoie.
 
 const EXTENSIONS_PHOTO = ['png', 'jpg', 'jpeg', 'webp'];
 const MIMES_PHOTO = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' };
-const TAILLE_MAX_PHOTO = 20 * 1024 * 1024;     // ~20 Mo — garde côté webview ET hôte
+const TAILLE_MAX_PHOTO = 20 * 1024 * 1024;     // 20 Mo, vérifiés webview et hôte
 const VERSIONS_PHOTO = ['original', 'avec-fond', 'sans-fond'];
 
-let photoEnCours = false;                       // garde anti-double (le pipeline est long)
+let photoEnCours = false;                       // le pipeline est long : pas de doublon
 
 function dossierPortraitsArticle(racine, slug) {
   return path.join(racine, 'articles', slug, 'portraits');
 }
 
-// data: URI d'une image du disque (null si illisible) — aperçus de la modale
-// (CSP img-src data:, localResourceRoots reste []).
+// Aperçus de la modale ; null si l'image est illisible.
 function dataUriImage(chemin) {
   try {
     const ext = (chemin.match(/\.([a-z0-9]+)$/i) || ['', ''])[1].toLowerCase();
@@ -2766,8 +2340,7 @@ function dataUriImage(chemin) {
   } catch (e) { return null; }
 }
 
-// Nom de fichier du <base>.original.<ext> présent dans `dossier` (null si aucun) —
-// l'extension de l'original n'est pas connue de la webview, on la retrouve ici.
+// <base>.original.<ext> présent dans `dossier`, dont la webview ignore l'extension.
 function trouverOriginal(dossier, base) {
   let noms = [];
   try { noms = fs.readdirSync(dossier); } catch (e) { return null; }
@@ -2777,7 +2350,6 @@ function trouverOriginal(dossier, base) {
   return null;
 }
 
-// Les trois versions d'un portrait en data: URIs (null pour chaque fichier absent).
 function versionsPhoto(dossier, base) {
   const original = trouverOriginal(dossier, base);
   return {
@@ -2787,8 +2359,7 @@ function versionsPhoto(dossier, base) {
   };
 }
 
-// Décompose un champ `photo` DÉJÀ assaini en { base, version } (null si la forme
-// n'est aucune des trois de D92) : même base, trois suffixes.
+// Champ `photo` déjà assaini -> { base, version } : une base, trois suffixes.
 function decomposerPhoto(photo) {
   const nom = String(photo || '').replace(/^portraits\//, '');
   let m = nom.match(/^(.+)\.original\.[a-z0-9]+$/i);
@@ -2800,8 +2371,7 @@ function decomposerPhoto(photo) {
   return null;
 }
 
-// `base` renvoyé par la webview : un SEUL segment de chemin, alphabet sûr (pas de
-// séparateur, donc pas de remontée possible sous portraits/).
+// Un seul segment de chemin, alphabet sûr : pas de remontée hors de portraits/.
 function baseAuteurValide(base) {
   return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(String(base || ''));
 }
@@ -2811,16 +2381,14 @@ function repondrePanneau(panneau, message) {
   try { panneau.webview.postMessage(message); } catch (e) { /* panneau fermé */ }
 }
 
-// photo-ouvrir : l'auteur a DÉJÀ une photo -> renvoyer les data: URIs des versions
-// existantes (déduites du champ), radio préselectionnée sur la version actuelle.
+// photo-ouvrir : renvoie les versions déjà présentes sur le disque.
 function ouvrirVersionsPhoto(fournisseur, panneau, msg) {
   const slug = String(msg.slug || '');
   if (!new Set(fournisseur.listerArticles()).has(slug)) { return; }   // slug inconnu : ignoré
   const photo = assainirCheminPhoto(msg.photo);
   const d = photo === '' ? null : decomposerPhoto(photo);
   if (!d) {
-    // Valeur hors des trois formes D92 (fiche retouchée à la main ?) : la modale
-    // ne doit pas rester sur « Chargement… » — on invite à redéposer.
+    // Forme inattendue : plutôt que de laisser « Chargement… », on invite à redéposer.
     repondrePanneau(panneau, { type: 'photo-erreur', slug: slug, index: msg.index, message: T('photo.err.introuvable') });
     return;
   }
@@ -2831,9 +2399,7 @@ function ouvrirVersionsPhoto(fournisseur, panneau, msg) {
   });
 }
 
-// photo-deposer : écrit l'original (écriture « ~$ » + rename, comme ausgabe.yaml),
-// purge les anciens .original.* d'une autre extension, lance le pipeline WSL puis
-// renvoie les trois versions. Avertissement (hôte) si aucun visage détecté.
+// Écrit l'original par fichier « ~$ » puis rename, purge les anciens, lance le pipeline.
 async function deposerPhotoAuteur(fournisseur, panneau, msg) {
   const slug = String(msg.slug || '');
   const index = msg.index;
@@ -2842,7 +2408,7 @@ async function deposerPhotoAuteur(fournisseur, panneau, msg) {
   if (photoEnCours) { erreur(T('photo.encours')); return; }
   const prenom = String(msg.prenom || '').trim();
   const nom = String(msg.nom || '').trim();
-  if (prenom === '' && nom === '') { return; }    // la webview garde déjà (nom requis)
+  if (prenom === '' && nom === '') { return; }    // la webview exige déjà un nom
   const slugAuteur = slugifier(prenom + '-' + nom);
   const ext = (String(msg.nomFichier || '').match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
   if (EXTENSIONS_PHOTO.indexOf(ext) === -1) { erreur(T('photo.err.format')); return; }
@@ -2857,8 +2423,7 @@ async function deposerPhotoAuteur(fournisseur, panneau, msg) {
     const chemin = path.join(dossier, nomOriginal);
     try {
       fs.mkdirSync(dossier, { recursive: true });
-      // Un seul .original.* par auteur : sans cette purge, trouverOriginal
-      // deviendrait ambigu après un dépôt .jpg puis un dépôt .png.
+      // Un seul .original.* par auteur, sinon trouverOriginal devient ambigu.
       for (const n of (fs.readdirSync(dossier) || [])) {
         if (n.indexOf(slugAuteur + '.original.') === 0 && n !== nomOriginal) {
           try { fs.unlinkSync(path.join(dossier, n)); } catch (e) { /* verrouillé : sans gravité */ }
@@ -2899,8 +2464,7 @@ async function deposerPhotoAuteur(fournisseur, panneau, msg) {
   }
 }
 
-// photo-choisir : « Valider » de la modale -> chemin relatif de la version choisie,
-// vérifié SUR LE DISQUE avant d'être renvoyé (jamais de valeur photo aveugle).
+// photo-choisir : chemin relatif de la version choisie, vérifié sur le disque.
 function choisirPhotoAuteur(fournisseur, panneau, msg) {
   const slug = String(msg.slug || '');
   if (!new Set(fournisseur.listerArticles()).has(slug)) { return; }   // slug inconnu : ignoré
@@ -2922,27 +2486,17 @@ function choisirPhotoAuteur(fournisseur, panneau, msg) {
   repondrePanneau(panneau, { type: 'photo-valeur', slug: slug, index: msg.index, photo: 'portraits/' + nom });
 }
 
-// ---- Formulaire de fiches : liste complète ou UN article (D97) ----------------------
-//
-// Le formulaire liste par défaut TOUS les articles. L'icône ✎ de l'arbre (et l'entrée
-// « Métadonnées de l'article courant » du panneau d'édition) l'ouvre FILTRÉ sur un seul
-// article : même webview, même gabarit de carte, même circuit d'écriture
-// (ecrireCartesArticles) — seule la liste envoyée change, plus un bouton « Voir tous
-// les articles » pour revenir. Un seul gabarit, un seul chemin d'écriture.
-//
-// Le panneau est un SINGLETON : passer de « tous » à « un » (et l'inverse) RECHARGE le
-// panneau existant au lieu d'en ouvrir un second. Comme un rechargement reconstruit les
-// cartes, les modifications non enregistrées seraient perdues : la webview annonce son
-// état par le message « modifie », et tout rechargement passe alors par la garde
-// (Enregistrer / Quitter sans enregistrer / Annuler), sur le patron du dialogue
-// d'import. Les cartes à écrire, elles, ne peuvent venir que de la webview : l'hôte les
-// lui demande (« demande-rechargement ») et la garde se joue à sa réponse.
+// ---- Formulaire de fiches : tous les articles, ou un seul ------------------------
+// Le formulaire liste tous les articles ; l'icône ✎ de l'arbre l'ouvre filtré sur un
+// seul, avec la même webview et le même circuit d'écriture. Le panneau étant un
+// singleton, changer de filtre le recharge et reconstruit les cartes : la webview annonce
+// son état par « modifie », et l'hôte lui demande ses cartes pour jouer la garde.
 let filtreArticles = null;           // tableau de slugs affichés, ou null = tous
-let fichesModifie = false;           // ● côté webview (cartes modifiées non enregistrées)
+let fichesModifie = false;           // ● côté webview : cartes modifiées non enregistrées
 let rechargementEnAttente = null;    // { filtre } pendant l'aller-retour de la garde
 
-// Filtre demandé -> liste de slugs RÉELS, ou null (tous). Un slug inconnu (article
-// supprimé entre-temps) ne doit pas donner un formulaire vide : on retombe sur tous.
+// Filtre demandé -> slugs réels, ou null pour tous. Un slug inconnu ne doit pas donner
+// un formulaire vide : on retombe sur la liste complète.
 function filtreValide(fournisseur, slugs) {
   if (!Array.isArray(slugs) || slugs.length === 0) { return null; }
   const connus = new Set(fournisseur.listerArticles());
@@ -2954,16 +2508,13 @@ function titreFiches(filtre) {
   return (filtre && filtre.length === 1) ? T('fiches.titre.un', [filtre[0]]) : T('fiches.titre');
 }
 
-// F5 — pleine page : mêmes règles que « Méta-données du numéro » (fermer les
-// aperçus avant d'afficher, y compris quand le panneau existe déjà et est révélé).
+// Pleine page : les aperçus sont fermés avant, même pour un simple reveal.
 async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
   if (!fournisseur.racine) { return; }
   const filtre = filtreValide(fournisseur, slugs);
   await fermerTousLesApercus();
   const envoyerValeurs = (panneau) => {
     const langue = langueRevue(fournisseur.racine);
-    // Le champ `groupe` des types pilote la construction des <optgroup> côté webview ;
-    // `filtre` y montre (ou non) le bandeau « Voir tous les articles ».
     panneau.webview.postMessage({
       type: 'valeurs',
       articles: lireMetadonneesArticles(fournisseur, filtreArticles),
@@ -2981,8 +2532,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
   if (panneauArticles) {
     panneauArticles.reveal(vscode.ViewColumn.One);
     if (fichesModifie) {
-      // Des cartes portent un ● : on demande à la webview de rendre ce qu'elle a, la
-      // garde (et le rechargement) se joue à sa réponse.
+      // Des cartes portent un ● : le rechargement se joue à la réponse de la webview.
       rechargementEnAttente = { filtre: filtre };
       repondrePanneau(panneauArticles, { type: 'demande-rechargement' });
       return;
@@ -3005,17 +2555,15 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
     if (!msg) { return; }
     if (msg.type === 'pret') { envoyerValeurs(panneau); return; }
     if (msg.type === 'modifie') { fichesModifie = !!msg.modifie; return; }
-    // « Voir tous les articles » : même chemin que l'ouverture, garde comprise.
     if (msg.type === 'tous') { await ouvrirApercuMetadonnees(fournisseur, rafraichirTout, null); return; }
-    // Réponse à « demande-rechargement » : garde « non enregistré » puis rechargement.
     if (msg.type === 'rechargement') {
       const attente = rechargementEnAttente;
       rechargementEnAttente = null;
-      if (!attente) { return; }                    // réponse tardive : le rechargement a été abandonné
+      if (!attente) { return; }                    // réponse tardive : abandonné
       const choix = await vscode.window.showWarningMessage(
         T('fiches.recharger.question'), { modal: true, detail: T('table.quitter.detail') },
         T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
-      if (choix === undefined) { return; }         // Annuler : on reste sur les cartes en cours
+      if (choix === undefined) { return; }         // Annuler : on reste sur les cartes
       if (choix === T('form.enregistrer')) {
         const res = ecrireCartesArticles(fournisseur, msg.articles, filtreArticles);
         if (res.erreurs.length > 0) {
@@ -3028,8 +2576,6 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
       appliquerFiltre(panneau, attente.filtre);
       return;
     }
-    // Modale photo (F3) : dépôt -> pipeline WSL ; ouverture sur photo existante ;
-    // « Valider » -> chemin relatif de la version choisie.
     if (msg.type === 'photo-deposer') { await deposerPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type === 'photo-ouvrir') { ouvrirVersionsPhoto(fournisseur, panneau, msg); return; }
     if (msg.type === 'photo-choisir') { choisirPhotoAuteur(fournisseur, panneau, msg); return; }
@@ -3042,16 +2588,12 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
       if (!msg.auto) { vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000); }
     }
     if (rafraichirTout) { rafraichirTout(); }
-    // D121 : un enregistrement AUTOMATIQUE ne renvoie jamais les cartes — les
-    // reconstruire sous les doigts ferait sauter le curseur toutes les 3 secondes.
-    // La webview est déjà à jour : c'est elle qui vient d'envoyer ce qu'elle affiche.
-    if (!msg.auto) { envoyerValeurs(panneau); }     // resynchronise (dirty remis à zéro)
+    // Un enregistrement automatique ne renvoie pas les cartes : le curseur sauterait.
+    if (!msg.auto) { envoyerValeurs(panneau); }     // resynchronise et remet le ● à zéro
   });
 }
 
-// Icône ✎ de l'arbre (item d'article) et entrée « Métadonnées de l'article courant »
-// du panneau d'édition. Sans item, l'article courant est celui du .md ACTIF ; à défaut
-// celui affiché en aperçu (on vient peut-être de cliquer dans la colonne 2).
+// Sans item, l'article visé est celui du .md actif, à défaut celui en aperçu.
 async function ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item) {
   if (!fournisseur.racine) { return; }
   let slug = (item && item.slug) ? String(item.slug) : null;
@@ -3067,42 +2609,17 @@ async function ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item) {
   await ouvrirApercuMetadonnees(fournisseur, rafraichirTout, [slug]);
 }
 
-// ---- Dialogue « Vérification de l'import » (F6) -------------------------------------
-//
-// Ouvert automatiquement à la fin de lancerConversion dès qu'AU MOINS UN nouvel
-// article est apparu (diff avant/après de listerArticles — jamais de parsing de
-// sortie). Panneau singleton szhImportVerif, colonne 1, aperçus fermés d'abord
-// (F5) ; une nouvelle conversion le RÉVÈLE et recharge la liste de slugs (les
-// sections affichées sont celles de la DERNIÈRE vague). Une section par article :
-//   1. la carte de métadonnées du formulaire M1 (même gabarit, même écriture :
-//      nettoyerCarte + serialiserMeta + écriture atomique via ecrireCartesArticles),
-//      plus des badges par champ — rempli = « détecté » (pré-rempli par le
-//      pipeline dans <slug>.meta.yaml), vide = « à compléter » — et le compte de
-//      champs vides en tête de carte. Le dialogue ne lit QUE le .meta.yaml.
-//   2. les photos d'auteur·e·s : mêmes boutons 📷 / même modale que M1 — les
-//      handlers photo-* de F3 sont génériques (slug + index) et réutilisés tels quels.
-//   3. les originaux des images : articles/<slug>/media/ (nom + « L × H · poids »
-//      de decrireImage), chaque image avec une zone de dépôt / un bouton fichier
-//      pour la REMPLACER par l'original haute qualité EN GARDANT LE NOM — mêmes
-//      confirmation et renfort de format que szh.remplacerAsset (G5), contenu
-//      passé en base64 par postMessage (≤ 50 Mo), écriture « ~$ » + rename.
-// Protocole (en plus de photo-* de F3) :
-//   webview -> hôte : pret ; enregistrer { articles } ; fermer { modifie, articles } ;
-//                     remplacer-image { slug, relatif, nomFichier, donneesBase64 }
-//   hôte -> webview : valeurs { articles:[{slug, valeurs, images:[{relatif,
-//                     description}]}], langue, types } ; enregistre { n } ;
-//                     erreur { message } ; image-remplacee { slug, relatif,
-//                     description } ; image-erreur { slug, relatif, message } ;
-//                     image-annulee { slug, relatif }
+// ---- Dialogue « Vérification de l'import » ---------------------------------------
+// Ouvert à la fin de lancerConversion dès qu'un nouvel article est apparu. Une section
+// par article : la carte de métadonnées du formulaire des fiches, avec des badges
+// « détecté » ou « à compléter » ; les photos d'auteur·e·s ; et les images de
+// articles/<slug>/media/, à remplacer par leur original en gardant leur nom.
 
-const TAILLE_MAX_IMAGE_IMPORT = 50 * 1024 * 1024;  // ~50 Mo — garde côté webview ET hôte
+const TAILLE_MAX_IMAGE_IMPORT = 50 * 1024 * 1024;  // 50 Mo, vérifiés webview et hôte
 const EXTENSIONS_IMAGE_IMPORT = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
 
-// Chemin relatif d'image reçu de la webview d'import : relatif à
-// articles/<slug>/media/, séparateur « / » (forme produite par _imagesArticle).
-// Jamais utilisé pour construire un chemin sans repasser ici — segments sûrs
-// uniquement (pas de remontée « .. », d'antislash, de deux-points, de segment
-// vide ni de temporaire « ~$ ») et extension d'image attendue. Pur (via _pur).
+// Chemin d'image reçu de la webview d'import : relatif à articles/<slug>/media/,
+// segments sûrs, extension d'image. Aucun chemin n'est construit sans passer ici. Pure.
 function relatifImageValide(relatif) {
   const c = String(relatif === undefined || relatif === null ? '' : relatif);
   if (c === '' || c.length > 300 || /[\\:\r\n]/.test(c)) { return false; }
@@ -3130,13 +2647,11 @@ function htmlImportVerif(nonce) {
   return construireHtml('import-verif', nonce, {
     titre: T('importv.titre'),
     remplacements: { '__TXT__': txt },
-    // Comme metadata-articles (F3) : aperçus de la modale photo en data: URIs.
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
   });
 }
 
-// Fiches + images des articles de la dernière conversion (slugs revalidés contre
-// la liste réelle : un article supprimé entre-temps disparaît du dialogue).
+// Articles de la dernière conversion, slugs revalidés.
 function lireArticlesImport(fournisseur) {
   const connus = new Set(fournisseur.listerArticles());
   const articles = [];
@@ -3146,12 +2661,12 @@ function lireArticlesImport(fournisseur) {
     let valeurs = { type: '', doi: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
     try {
       valeurs = analyserMeta(fs.readFileSync(cheminMeta(fournisseur.racine, slug), 'utf8'));
-    } catch (e) { /* pas (encore) de fiche : carte vide, tout « à compléter » */ }
-    delete valeurs._inconnues;                     // le webview n'a pas à les voir
+    } catch (e) { /* pas encore de fiche : carte vide, tout « à compléter » */ }
+    delete valeurs._inconnues;                     // la webview n'a pas à les voir
     const base = path.join(fournisseur.racine, 'articles', slug, 'media');
     const images = fournisseur._imagesArticle(slug).map((relatif) => ({
       relatif: relatif,
-      description: decrireImage(path.join(base, relatif))   // « L × H · poids », comme l'arbre (G5)
+      description: decrireImage(path.join(base, relatif))   // « L × H · poids », comme l'arbre
     }));
     articles.push({ slug: slug, valeurs: valeurs, images: images });
   }
@@ -3168,17 +2683,14 @@ function envoyerValeursImportVerif(panneau, fournisseur) {
   });
 }
 
-// remplacer-image : écrase articles/<slug>/media/<relatif> par le contenu déposé
-// dans la webview, EN GARDANT LE NOM (le lien du .md reste valide) — mêmes
-// gardes et mêmes textes de confirmation que szh.remplacerAsset (G5), écriture
-// « ~$ » + rename comme les portraits. L'annulation est signalée à la webview
-// (image-annulee) pour réactiver la zone de dépôt.
+// Écrase l'image en gardant son nom, pour que le lien du .md reste valide. Une
+// annulation est signalée à la webview, qui réactive sa zone de dépôt.
 async function remplacerImageImport(fournisseur, rafraichirTout, panneau, msg) {
   const slug = String(msg.slug || '');
   const relatif = String(msg.relatif || '');
   const erreur = (texte) => repondrePanneau(panneau, { type: 'image-erreur', slug: slug, relatif: relatif, message: texte });
   if (!new Set(fournisseur.listerArticles()).has(slug)) { return; }   // slug inconnu : ignoré
-  if (!relatifImageValide(relatif)) { return; }                       // chemin hors contrat : ignoré
+  if (!relatifImageValide(relatif)) { return; }                       // chemin refusé : ignoré
   if (buildEnCours || importEnCours) { erreur(T('statut.occupe')); return; }
   const cible = path.join(fournisseur.racine, 'articles', slug, 'media', relatif);
   let existe = false;
@@ -3191,8 +2703,7 @@ async function remplacerImageImport(fournisseur, rafraichirTout, panneau, msg) {
   const donnees = Buffer.from(String(msg.donneesBase64 || ''), 'base64');
   if (donnees.length === 0) { erreur(T('importv.err.format')); return; }
   if (donnees.length > TAILLE_MAX_IMAGE_IMPORT) { erreur(T('importv.err.tropvolumineux')); return; }
-  // Jamais d'écrasement silencieux : confirmation modale, renforcée si le format
-  // du fichier déposé diffère de la cible (risque R4) — comme remplacerAsset.
+  // Confirmation modale, renforcée si le format du fichier déposé diffère.
   let detail = T('modale.remplacer.detail.image', [nomCible]);
   if (formatImage(nomSource) !== formatImage(nomCible)) {
     detail = T('modale.remplacer.detail.format', [formatImage(nomSource), formatImage(nomCible)]) + detail;
@@ -3219,11 +2730,9 @@ async function remplacerImageImport(fournisseur, rafraichirTout, panneau, msg) {
   } catch (e) {
     erreur(T('err.remplacement', [e.message]));
   }
-  if (rafraichirTout) { rafraichirTout(); }        // « L × H · poids » de l'arbre à jour
+  if (rafraichirTout) { rafraichirTout(); }        // met « L × H · poids » à jour
 }
 
-// Ouvre (ou révèle + recharge) le dialogue pour les articles `slugs`. Pleine
-// page comme les autres formulaires (F5) : aperçus fermés d'abord.
 async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
   if (!fournisseur.racine || !Array.isArray(slugs) || slugs.length === 0) { return; }
   slugsImportVerif = slugs.slice();
@@ -3243,16 +2752,12 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
     if (msg.type === 'pret') { envoyerValeursImportVerif(panneau, fournisseur); return; }
-    // Modale photo (F3) : handlers génériques slug + index, réutilisés tels quels.
     if (msg.type === 'photo-deposer') { await deposerPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type === 'photo-ouvrir') { ouvrirVersionsPhoto(fournisseur, panneau, msg); return; }
     if (msg.type === 'photo-choisir') { choisirPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type === 'remplacer-image') { await remplacerImageImport(fournisseur, rafraichirTout, panneau, msg); return; }
     if (msg.type === 'fermer') {
-      // Garde « non-enregistré » sur le chemin de fermeture que l'on contrôle
-      // (patron retourArticle de l'éditeur de tableau, D1) : Enregistrer /
-      // Quitter sans enregistrer / Esc = rester. La croix de l'onglet, elle,
-      // ne peut pas être interceptée (limite de l'API webview).
+      // Seul chemin de fermeture contrôlable : la croix de l'onglet est hors de portée.
       if (msg.modifie) {
         const choix = await vscode.window.showWarningMessage(
           T('importv.quitter.question'), { modal: true, detail: T('table.quitter.detail') },
@@ -3280,19 +2785,15 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
       if (!msg.auto) { vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000); }
     }
     if (rafraichirTout) { rafraichirTout(); }
-    // D121 : pas de re-rendu sur un enregistrement automatique (curseur préservé).
+    // Pas de re-rendu sur un enregistrement automatique : le curseur serait perdu.
     if (!msg.auto) { envoyerValeursImportVerif(panneau, fournisseur); }
   });
 }
 
-// ---- Réglages « SZH » (M4, D52) -----------------------------------------------------
-//
-// Formulaire webview qui écrit les réglages AU NIVEAU UTILISATEUR via l'API
-// getConfiguration().update(…, Global) — jamais d'édition manuelle de
-// settings.json. Chaque changement s'applique immédiatement. Thèmes : uniquement
-// Default Light/Dark Modern (intégrés). La langue FR/DE pilote les chaînes du
-// cockpit (szh.langue) ET la locale native (argv.json, redémarrage requis —
-// menus natifs DE seulement si le pack de langue est déployé, cf. vsix.lock).
+// ---- Réglages « SZH » ------------------------------------------------------------
+// Formulaire webview qui écrit au niveau utilisateur par getConfiguration().update(…,
+// Global). Le choix français/allemand pilote les chaînes du cockpit (szh.langue) et la
+// locale native (argv.json, effective au redémarrage, et qui suppose le pack de langue).
 
 const REGL_TEXTES = () => JSON.stringify({
   theme: T('regl.theme'),
@@ -3312,9 +2813,8 @@ function htmlReglages(nonce) {
   return construireHtml('settings', nonce, { titre: T('regl.titre'), remplacements: { '__TXT__': REGL_TEXTES() } });
 }
 
-// Écrit/Met à jour "locale" dans %APPDATA%\VSCodium\argv.json — édition ciblée
-// par regex (le fichier accepte des commentaires : pas de JSON.parse/stringify
-// qui les perdrait). Retourne false en cas d'échec (signalé sobrement).
+// Par expression régulière : argv.json accepte des commentaires, qu'un JSON.parse
+// perdrait.
 function ecrireLocaleArgv(langue) {
   try {
     const dossier = path.join(process.env.APPDATA || '', 'VSCodium');
@@ -3351,20 +2851,17 @@ function lireReglagesActuels() {
   let policeMd = 16;
   try {
     policeMd = Number(vscode.workspace.getConfiguration('editor', { languageId: 'markdown' }).get('fontSize', 16)) || 16;
-  } catch (e) { /* repli 16 */ }
-  // F8 : la valeur ÉCRITE de szh.apercuMode, pas modeApercu() — qui force « html »
-  // sur un profil sans PDF et masquerait le choix réel enregistré.
+  } catch (e) { /* valeur par défaut : 16 */ }
+  // La valeur écrite, et non modeApercu(), qui force « html » sur un profil sans PDF.
   let apercu = 'html';
   try {
     apercu = String(vscode.workspace.getConfiguration('szh').get('apercuMode', 'html') || 'html') === 'pdf' ? 'pdf' : 'html';
-  } catch (e) { /* repli html */ }
+  } catch (e) { /* valeur par défaut : html */ }
   return {
     theme: etatTheme, zoom: String(zoom), policeMd: String(policeMd), apercu: apercu,
-    assets: replierAssetsAutres() ? 'oui' : 'non',   // D96
+    assets: replierAssetsAutres() ? 'oui' : 'non',
     langue: langueCockpit(),
-    // D119 : le mode développeur ne vit PAS dans les réglages de l'éditeur mais dans
-    // C:\ProgramData\SZH\config.json — les scripts PowerShell (lanceur, création,
-    // archivage) sont les vrais consommateurs, et ils ne lisent pas settings.json.
+    // Dans config.json : ses consommateurs sont les scripts PowerShell.
     dev: lireModeDeveloppeur() ? 'oui' : 'non'
   };
 }
@@ -3407,25 +2904,21 @@ function ouvrirReglages(rafraichirTout) {
       } else if (msg.cle === 'zoom') {
         await cfg.update('window.zoomLevel', Number(msg.valeur) || 0, Global);
       } else if (msg.cle === 'policeMd') {
-        // Scopé [markdown] : la taille du CONTENU affiché, pas le contenu lui-même.
+        // Limité à [markdown] : la taille d'affichage, pas le contenu.
         await vscode.workspace.getConfiguration('editor', { languageId: 'markdown' })
           .update('fontSize', Number(msg.valeur) || 16, Global, true);
       } else if (msg.cle === 'apercu') {
-        // F8 : l'aperçu par défaut au clic sur un article — même réglage que la
-        // bascule Ctrl+Alt+P / barre d'état (szh.apercuMode, lu par modeApercu()).
+        // Même réglage szh.apercuMode que la bascule Ctrl+Alt+P et la barre d'état.
         await vscode.workspace.getConfiguration('szh')
           .update('apercuMode', msg.valeur === 'pdf' ? 'pdf' : 'html', Global);
         if (rafraichirTout) { rafraichirTout(); } // la barre d'état « Aperçu : … » suit
       } else if (msg.cle === 'assets') {
-        // D96 : repli automatique des assets des autres articles. Le rafraîchissement
-        // fait suivre l'arbre tout de suite (les identités d'article changent avec le
-        // réglage : sans lui, l'arbre garderait l'état plié/déplié précédent).
+        // Les identités d'article changent avec le réglage : l'arbre doit suivre.
         await vscode.workspace.getConfiguration('szh')
           .update('replierAssetsAutres', msg.valeur !== 'non', vscode.ConfigurationTarget.Global);
         if (rafraichirTout) { rafraichirTout(); }
       } else if (msg.cle === 'dev') {
-        // D119 : écrit dans config.json du poste (droit d'écriture donné au groupe
-        // Utilisateurs par bootstrap.ps1 — c'est ce qui permet les MAJ sans admin).
+        // bootstrap.ps1 donne au groupe Utilisateurs le droit d'écrire ce fichier.
         const erreur = ecrireModeDeveloppeur(msg.valeur !== 'non');
         if (erreur) { vscode.window.showErrorMessage(T('err.dev.ecriture', [erreur])); }
       } else if (msg.cle === 'langue') {
@@ -3433,7 +2926,7 @@ function ouvrirReglages(rafraichirTout) {
         await vscode.workspace.getConfiguration('szh').update('langue', langue, Global);
         ecrireLocaleArgv(langue);                  // langue native : au prochain démarrage
         vscode.window.showInformationMessage(T('info.redemarrer'));
-        if (rafraichirTout) { rafraichirTout(); }  // libellés de l'arbre à jour tout de suite
+        if (rafraichirTout) { rafraichirTout(); }  // libellés de l'arbre tout de suite
       }
     } catch (e) {
       vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
@@ -3441,34 +2934,13 @@ function ouvrirReglages(rafraichirTout) {
   });
 }
 
-// ---- Mise en forme (M6, D55) -> lib/formatting.js ------------------------------
+// ---- Éditeur de tableau (webview) ------------------------------------------------
+// Un tableau est un <table class="szh-tableau"> autonome dans
+// articles/<slug>/tables/table-NN.html : style porté par des attributs data-* sur <table>
+// et <tr>, en-têtes par <th scope>, inline simple dans les cellules. Parseur et
+// sérialiseur, purs, dans lib/table-model.js.
 
-// ---- Éditeur de tableau maison (webview) — D57, T1 -------------------------------
-//
-// L'asset tableau (viewItem == table) reste un <table> autonome dans
-// articles/<slug>/tables/table-NN.html. « Éditer » (szh.editerTable) ouvre une
-// webview (grille éditable) qui charge le fichier, l'édite (texte + fusions +
-// ajout/suppression de lignes/colonnes) et le réécrit (écriture atomique).
-//
-// PARSEUR / SÉRIALISEUR PURS (exportés via _pur, testés headless) :
-//   analyserTable(html)  -> modèle { attrs, lignes:[{ total, teinte, gras,
-//                            cellules:[{ contenu, colspan, rowspan, th, scope }] }] }
-//   serialiserTable(mod) -> <table>…</table> propre et STABLE.
-// Contrat GATE : analyser -> serialiser -> analyser identique (table nue M2 comprise).
-//
-// MODÈLE (encodage HTML) : le fichier est un <table
-// class="szh-tableau"> ; le style est porté par des attributs data-* sur <table>
-// et <tr> ; les en-têtes par <th scope>. Le contenu de cellule est de l'inline
-// simple : texte échappé, <strong>, <em>, <br> (canonisé, jamais d'injection).
-//
-// Robustesse : un <table> nu (import M2, docx-tables.py) s'ouvre en mode neutre —
-// les <th> d'en-tête sont préservés (comptes data-entete-* déduits à la volée).
-
-// ---- Modèle de tableau (parseur/sérialiseur/opérations purs) -> lib/table-model.js
-// (déplacé en tête de fichier via require ; voir lib/table-model.js)
-
-// Couleur annuelle (hex) d'ausgabe.yaml (M7) pour l'APERÇU webview — repli '' si
-// aucune couleur (l'aperçu « couleur » retombe alors sur le gris, comme le PDF).
+// Couleur annuelle d'ausgabe.yaml pour l'aperçu ; '' fait retomber sur le gris.
 function lireCouleurAccent(racine) {
   try {
     const c = String(analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')).couleur || '').toUpperCase();
@@ -3476,13 +2948,8 @@ function lireCouleurAccent(racine) {
   } catch (e) { return ''; }
 }
 
-// Teintes RÉELLES de l'aperçu de l'éditeur de tableau (D76). On ne les RECALCULE pas :
-// l'éditeur est un WYSIWYG, il doit montrer les hex que WeasyPrint appliquera. Or ces
-// valeurs sont déjà écrites par le pipeline dans out/.szh-accent.css à chaque build
-// (accent-css.py) : on les y LIT. Une formule réimplémentée en JS a déjà divergé une
-// fois — c'est exactement ce qui a rendu l'aperçu plus pâle que le PDF au passage à APCA.
-// Repli : null -> la webview retombe sur les gris neutres de print.css, comme le PDF
-// d'un numéro sans couleur. Volontairement AUCUN calcul de secours.
+// Teintes lues dans out/.szh-accent.css, écrit par accent-css.py, et jamais recalculées :
+// l'éditeur doit montrer les hex que WeasyPrint appliquera.
 function lireTeintesAccent(racine) {
   const jetons = { clair: null, fonce: null, filet: null };
   try {
@@ -3498,7 +2965,6 @@ function lireTeintesAccent(racine) {
   return jetons;
 }
 
-// Libellés localisés transmis à la webview de l'éditeur de tableau.
 function textesTable() {
   const cles = [
     'table.enregistrer', 'table.fusionner', 'table.scinder',
@@ -3519,7 +2985,6 @@ function textesTable() {
     'table.legende', 'table.legende.indice',
     'table.alt', 'table.alt.indice', 'table.alt.aide',
     'table.copyright', 'table.copyright.indice', 'table.source', 'table.source.indice',
-    // Panneau de mise en forme (T2) : 3 zones.
     'table.zone.styles', 'table.zone.preset',
     'table.zone.entetes', 'table.entetesLignes', 'table.entetesColonnes', 'table.entetes.aucun',
     'table.total', 'table.gras',
@@ -3542,30 +3007,21 @@ function textesTable() {
   return o;
 }
 
-// Webview de l'éditeur — CSP stricte : aucun réseau, styles inline, script à nonce.
-// Le contenu du tableau n'est JAMAIS injecté dans le HTML : le modèle arrive par
-// postMessage et la grille est construite en DOM (createElement/textContent). Le
-// contenu inline (déjà canonisé côté hôte : texte échappé + <strong>/<em>/<br>) est
-// posé en nœuds DOM, pas via innerHTML.
+// Le contenu du tableau n'est pas injecté dans le HTML : le modèle arrive par
+// postMessage et la grille est construite en DOM, sans innerHTML.
 function htmlEditeurTable(nonce) {
-  // media/table-editor.{html,css,js} (script inline à nonce). i18n par postMessage.
+  // media/table-editor.{html,css,js} ; les libellés arrivent par postMessage.
   return construireHtml('table-editor', nonce, { titre: T('table.titre', ['']) });
 }
 
 let panneauxTable = new Map();   // fsPath -> WebviewPanel (un éditeur par fichier)
 
-// Ouvre l'éditeur de tableau pour l'asset (viewItem == table) : lit table-NN.html,
-// l'analyse, et alimente la webview. Écrit atomiquement à l'enregistrement.
 async function ouvrirEditeurTable(fournisseur, item) {
   if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
   const chemin = item.cheminAsset;
   const nom = path.basename(chemin);
   const slugArticle = item.slug || apercuCourantSlug;
-  // L'éditeur de tableau a besoin de largeur : la grille, plus deux colonnes de réglages.
-  // On ferme donc TOUS les aperçus le temps de l'édition (F5 — y compris l'onglet PDF,
-  // qui restait ouvert quand le mode d'aperçu était pdf) — les deux boutons « Voir dans
-  // l'aperçu » / « Cacher l'aperçu » de la barre rouvrent et referment l'aperçu HTML à
-  // la demande. L'aperçu du tableau lui-même, c'est la grille : elle est là.
+  // L'éditeur a besoin de largeur ; « Voir dans l'aperçu » le rouvre à la demande.
   await fermerTousLesApercus();
   const existant = panneauxTable.get(chemin);
   if (existant) { existant.reveal(vscode.ViewColumn.One); return; }
@@ -3587,10 +3043,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
       i18n: textesTable()
     });
   };
-  // Applique une opération : le modèle reste la source de vérité — tout passe par
-  // appliquerOperationTable (round-trip préservé), l'hôte renvoie la disposition.
-  // Confirmation MODALE préalable si demandée (V2d : suppression d'une ligne/colonne
-  // contenant du texte ; la webview ne pose le drapeau que dans ce cas).
+  // La webview ne demande confirmation que pour supprimer une ligne ou colonne non vide.
   const appliquer = async (msg) => {
     if (msg.confirmer) {
       const choix = await vscode.window.showWarningMessage(
@@ -3605,8 +3058,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
   };
   const enregistrer = (modele, auto) => {
     ecrireAtomique(chemin, serialiserTable(normaliserModele(modele)));
-    // D121 : l'enregistrement automatique reste silencieux — un message toutes les
-    // trois secondes dans la barre d'état ne dit plus rien à personne.
+    // L'enregistrement automatique reste silencieux.
     if (!auto) { vscode.window.setStatusBarMessage(T('statut.table.enregistree', [nom]), 5000); }
   };
   panneau.webview.onDidReceiveMessage(async (msg) => {
@@ -3614,8 +3066,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
     if (msg.type === 'pret') { charger(); return; }
     if (msg.type === 'operation') { await appliquer(msg); return; }
     if (msg.type === 'restaurer') {
-      // Annuler/rétablir (D60) : la pile d'états vit dans la webview ; l'hôte n'est
-      // qu'un calculateur pur de disposition (pas de duplication du modèle côté webview).
+      // La pile d'annulation vit dans la webview ; l'hôte calcule la disposition.
       const m = normaliserModele(msg.modele);
       panneau.webview.postMessage({ type: 'charger', modele: m, disposition: disposition(m),
         accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine),
@@ -3623,11 +3074,9 @@ async function ouvrirEditeurTable(fournisseur, item) {
       return;
     }
     if (msg.type === 'apercu-ouvrir') {
-      // Rouvre l'aperçu de l'article qui contient ce tableau, et tente d'y amener la vue :
-      // on cherche la LIGNE de la référence ::: {.szh-tabelle src="…"} dans le .md et on
-      // pousse le surlignage habituel (G3). Le tableau inclus est un bloc HTML brut, donc
-      // sans position source : si la webview ne trouve rien à surligner, elle ne fait rien
-      // — l'aperçu est rouvert, ce qui est l'essentiel.
+      // Cherche dans le .md la ligne de la référence ::: {.szh-tabelle src="…"}. Le
+      // tableau inclus étant un bloc HTML brut, sans position source, la webview peut
+      // n'avoir rien à surligner.
       if (!slugArticle) { return; }
       ouvrirApercuHtml(fournisseur, slugArticle);
       const md = path.join(fournisseur.racine, 'articles', slugArticle, slugArticle + '.md');
@@ -3637,10 +3086,9 @@ async function ouvrirEditeurTable(fournisseur, item) {
         for (let i = 0; i < lignes.length; i++) {
           if (lignes[i].indexOf(nom) !== -1 && lignes[i].indexOf('szh-tabelle') !== -1) { ligne = i + 1; break; }
         }
-      } catch (e) { /* .md illisible : on se contente d'avoir rouvert l'aperçu */ }
+      } catch (e) { /* .md illisible : l'aperçu est rouvert, cela suffit */ }
       if (ligne > 0) {
-        // La webview vient d'être créée : son script n'écoute pas encore. Un seul report
-        // suffit (le HTML est déjà en mémoire, il n'y a pas de réseau).
+        // La webview vient d'être créée, son script n'écoute pas encore.
         setTimeout(() => {
           if (!panneauApercuHtml) { return; }
           try { panneauApercuHtml.webview.postMessage({ type: 'surligner', ligne: ligne, mot: '' }); }
@@ -3651,12 +3099,11 @@ async function ouvrirEditeurTable(fournisseur, item) {
     }
     if (msg.type === 'apercu-fermer') { fermerApercuHtml(); return; }
     if (msg.type === 'modifie') {
-      // Indicateur ● « non enregistré » sur l'onglet (D1 : confirmation, pas d'auto-save).
       panneau.title = (msg.modifie ? '● ' : '') + T('table.titre', [nom]);
       return;
     }
     if (msg.type === 'retourArticle') {
-      // Garde « non-enregistré » (D1) sur un chemin de fermeture QUE l'on contrôle.
+      // Garde « non enregistré » sur un chemin de fermeture que l'on contrôle.
       if (msg.modifie) {
         const choix = await vscode.window.showWarningMessage(
           T('table.quitter.question', [nom]), { modal: true, detail: T('table.quitter.detail') },
@@ -3679,35 +3126,18 @@ async function ouvrirEditeurTable(fournisseur, item) {
   });
 }
 
-// ---- Fiche image (clic sur une image de la barre « Revue SZH ») ---------------------
-//
-// Le clic sur une image ouvrait l'aperçu natif de VSCodium. Or ce qu'on vient faire sur
-// une image d'article, c'est écrire sa LÉGENDE, son TEXTE ALTERNATIF et ses CRÉDITS —
-// et ces données ne vivent pas dans le fichier image mais dans le TEXTE de l'article :
-//     ![Légende](media/x.png){alt="…" copyright="…" source="…"}
-// La fiche lit et réécrit donc cette référence, par les fonctions PURES de
-// lib/references.js. L'aperçu natif reste à un clic (bouton « Ouvrir l'image »).
-//
-// Écriture : WorkspaceEdit + doc.save(), exactement comme supprimerAsset (C3) — le .md
-// est souvent ouvert à l'écran, l'édition doit passer par le TAMPON pour rester
-// annulable (Ctrl+Z) et ne pas écraser une frappe non enregistrée.
-//
-// Protocole (miroir de media/image-fiche.js) :
-//   webview -> hôte : pret ; modifie { modifie } ; ouvrirImage ;
-//                     enregistrer { valeurs } ; retourArticle { modifie, valeurs }
-//   hôte -> webview : charger { nom, description, apercu, occurrences, valeurs, i18n } ;
-//                     enregistre ; erreur { message }
-//   valeurs = { legende, alt, altDefini, copyright, source }
+// ---- Fiche image (clic sur une image de la barre « Revue SZH ») ------------------
+// La légende, le texte alternatif et les crédits d'une image vivent dans le texte de
+// l'article : ![Légende](media/x.png){alt="…" copyright="…" source="…"}. La fiche lit et
+// réécrit cette référence par les fonctions pures de lib/references.js, en passant par
+// WorkspaceEdit puis doc.save() pour rester annulable.
 
-// Formats affichables en data: URI dans la webview. Le SVG y est sûr : dans un <img>,
-// il ne peut ni exécuter de script ni charger de ressource externe (et la CSP de la
-// page reste default-src 'none' avec le seul img-src data:).
+// Dans un <img>, un SVG ne peut ni exécuter de script ni charger de ressource externe.
 const MIMES_FICHE_IMAGE = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
   svg: 'image/svg+xml', webp: 'image/webp'
 };
-// Au-delà, pas d'aperçu : une image de 30 Mo deviendrait 40 Mo de base64 dans un
-// postMessage, pour un vignettage que personne ne réclame. La fiche le dit.
+// Au-delà, pas d'aperçu : le base64 d'une grosse image gonflerait le postMessage.
 const TAILLE_MAX_APERCU_FICHE = 12 * 1024 * 1024;
 
 function apercuFicheImage(chemin) {
@@ -3741,7 +3171,6 @@ function textesFicheImage() {
 function htmlFicheImage(nonce) {
   return construireHtml('image-fiche', nonce, {
     titre: T('img.titre', ['']),
-    // Comme la modale photo (F3) : l'aperçu est une data: URI, localResourceRoots [].
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
   });
 }
@@ -3753,14 +3182,12 @@ async function ouvrirFicheImage(fournisseur, item) {
   const racine = fournisseur.racine;
   const chemin = item.cheminAsset;
   const nom = path.basename(chemin);
-  // L'item d'arbre porte toujours son slug ; le repli sert aux appels programmés
-  // (insertion d'une figure) faits depuis l'article courant.
+  // L'item d'arbre porte son slug ; le repli sert aux appels programmés.
   const slug = item.slug || apercuCourantSlug;
   if (!slug) { return; }
   const relatif = path.relative(path.join(racine, 'articles', slug, 'media'), chemin).replace(/\\/g, '/');
   const md = path.join(racine, 'articles', slug, slug + '.md');
-  // Même posture que l'éditeur de tableau (F5/D89) : la fiche prend toute la place, on
-  // ferme les aperçus d'abord — sinon la webview s'ouvre derrière un PDF.
+  // La fiche prend toute la place ; sans cela la webview s'ouvre derrière un PDF.
   await fermerTousLesApercus();
   const existant = panneauxFicheImage.get(chemin);
   if (existant) { existant.reveal(vscode.ViewColumn.One); return; }
@@ -3772,9 +3199,7 @@ async function ouvrirFicheImage(fournisseur, item) {
   panneau.onDidDispose(() => { if (panneauxFicheImage.get(chemin) === panneau) { panneauxFicheImage.delete(chemin); } });
   panneau.webview.html = htmlFicheImage(crypto.randomBytes(16).toString('hex'));
 
-  // Le texte est lu par openTextDocument (le TAMPON, pas le disque) : une frappe non
-  // enregistrée dans le .md est donc déjà visible ici, et l'écriture repartira du même
-  // état — jamais d'écrasement d'une saisie en cours.
+  // openTextDocument lit le tampon : l'écriture repart d'une frappe non enregistrée.
   const lire = async () => {
     try {
       const doc = await vscode.workspace.openTextDocument(md);
@@ -3792,21 +3217,20 @@ async function ouvrirFicheImage(fournisseur, item) {
       i18n: textesFicheImage()
     });
   };
-  // Écrit les valeurs dans TOUTES les insertions de l'image (une image n'a qu'un jeu de
-  // crédits ; deux insertions divergentes donneraient deux légendes pour une figure).
-  // Rend le nombre d'insertions écrites, ou -1 en cas d'échec (message déjà posé).
+  // Toutes les insertions de l'image, qui n'a qu'un jeu de crédits. Rend leur nombre,
+  // ou -1 en cas d'échec déjà signalé.
   const enregistrer = async (valeurs) => {
     let doc;
     try { doc = await vscode.workspace.openTextDocument(md); }
     catch (e) { repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) }); return -1; }
     const res = ecrireAttributsImage(doc.getText(), relatif, valeurs || {});
     if (res.n === 0) {
-      // Le .md a changé depuis l'ouverture (image retirée entre-temps) : rien à écrire.
+      // L'image a été retirée du .md depuis l'ouverture : rien à écrire.
       vscode.window.setStatusBarMessage(T('img.statut.sansref', [nom]), 5000);
-      await charger();                               // la fiche se met en état « 0 insertion »
+      await charger();                               // la fiche passe à « 0 insertion »
       return 0;
     }
-    if (res.texte === doc.getText()) { return res.n; }   // rien n'a changé : pas d'édition inutile
+    if (res.texte === doc.getText()) { return res.n; }   // rien n'a changé : pas d'édition
     try {
       const edition = new vscode.WorkspaceEdit();
       const fin = doc.lineAt(doc.lineCount - 1).range.end;
@@ -3815,7 +3239,7 @@ async function ouvrirFicheImage(fournisseur, item) {
         repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [md]) });
         return -1;
       }
-      await doc.save();                              // déclenche la recompilation (comme Ctrl+S)
+      await doc.save();                              // déclenche la recompilation
     } catch (e) {
       repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) });
       return -1;
@@ -3831,8 +3255,7 @@ async function ouvrirFicheImage(fournisseur, item) {
       return;
     }
     if (msg.type === 'ouvrirImage') {
-      // L'ancien comportement du clic dans l'arbre, gardé accessible : la visionneuse
-      // native, en colonne 2 pour ne pas recouvrir la fiche.
+      // La visionneuse native, en colonne 2 pour ne pas recouvrir la fiche.
       try {
         await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(chemin),
           { viewColumn: vscode.ViewColumn.Two, preserveFocus: true });
@@ -3841,15 +3264,13 @@ async function ouvrirFicheImage(fournisseur, item) {
     }
     if (msg.type === 'enregistrer') {
       const n = await enregistrer(msg.valeurs);
-      // L'accusé part TOUJOURS (même à 0 insertion réécrite) : sans lui, le verrou
-      // « une écriture en vol » de l'auto-enregistrement ne serait jamais levé et
-      // plus rien ne serait sauvegardé ensuite.
+      // Même sans insertion réécrite : sinon le verrou « écriture en vol » reste posé.
       repondrePanneau(panneau, { type: 'enregistre', auto: !!msg.auto });
       if (n > 0 && !msg.auto) { vscode.window.setStatusBarMessage(T('img.statut.enregistree', [nom, n]), 5000); }
       return;
     }
     if (msg.type === 'retourArticle') {
-      // Garde « non enregistré » (patron retourArticle de l'éditeur de tableau, D1).
+      // Garde « non enregistré », comme dans l'éditeur de tableau.
       if (msg.modifie) {
         const choix = await vscode.window.showWarningMessage(
           T('img.quitter.question', [nom]), { modal: true, detail: T('table.quitter.detail') },
@@ -3873,28 +3294,21 @@ function activate(context) {
   const vue = vscode.window.createTreeView(ID_VUE, {
     treeDataProvider: fournisseur,
     showCollapseAll: false,
-    // F2 : déposer des .docx depuis l'Explorateur = « Importer des Word ».
-    // rafraichirTout est défini plus bas -> indirection (jamais appelé avant
-    // la fin de l'activation : un drop est forcément postérieur).
+    // rafraichirTout est défini plus bas, d'où l'indirection.
     dragAndDropController: controleurDepotVue(fournisseur, () => rafraichirTout())
   });
   context.subscriptions.push(vue);
 
   let watchers = [];
-  // Un SEUL nettoyage enregistré (les watchers ne sont plus poussés dans
-  // context.subscriptions à chaque réinstallation — correctif du nit S2).
   context.subscriptions.push({ dispose: () => { for (const w of watchers) { w.dispose(); } } });
-  context.subscriptions.push({ dispose: arreterDormeurWsl });   // N1 : pas de dormant orphelin
+  context.subscriptions.push({ dispose: arreterDormeurWsl });   // pas de dormeur orphelin
 
-  // Barre d'état « Aperçu : HTML / PDF » (M5, D53) — clic = basculer.
   const barreApercu = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   barreApercu.command = 'szh.basculerApercu';
   context.subscriptions.push(barreApercu);
 
-  // Barre d'état du cycle de vie (D116) : n'apparaît que sur un numéro gelé, et le
-  // clic mène au geste inverse (déverrouiller, ou désarchiver s'il n'est qu'archivé).
-  // Priorité plus haute que l'aperçu : c'est l'information qui explique pourquoi
-  // l'éditeur ne répond plus aux frappes.
+  // N'apparaît que sur un numéro gelé, et passe avant l'aperçu : c'est ce qui explique
+  // pourquoi l'éditeur ne répond plus aux frappes.
   const barreEtat = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 60);
   context.subscriptions.push(barreEtat);
   const majBarreApercu = () => {
@@ -3903,12 +3317,10 @@ function activate(context) {
     if (fournisseur.racine) { barreApercu.show(); } else { barreApercu.hide(); }
   };
 
-  // Le compte « Word en attente » est recalculé par getChildren (description de
-  // section) ; le TITRE de la vue reflète le numéro (N2, D43) à chaque
-  // rafraîchissement ; l'aperçu HTML est rechargé si sa sortie a été régénérée (M5).
+  // getChildren recalcule le compte des Word, le titre suit le numéro, et l'aperçu HTML
+  // est rechargé si sa sortie a été régénérée.
   const rafraichirTout = () => {
-    // D116 : l'état du numéro AVANT tout le reste — le titre de la vue et les boutons
-    // de l'arbre en dépendent (et ausgabe.yaml est déjà surveillé, N2).
+    // Avant tout le reste : le titre de la vue et les boutons de l'arbre en dépendent.
     majEtatNumero(fournisseur, barreEtat);
     fournisseur.rafraichir();
     vue.title = fournisseur.racine ? titreVue(fournisseur.racine) : T('arbre.titre.defaut');
@@ -3916,7 +3328,7 @@ function activate(context) {
     rechargerApercuHtmlSiChange(fournisseur);
   };
 
-  // Regroupe les rafales d'événements FS (OneDrive peut en émettre plusieurs).
+  // Regroupe les rafales du système de fichiers : OneDrive en émet plusieurs.
   let minuteur = null;
   const rafraichirBientot = () => {
     if (minuteur) { clearTimeout(minuteur); }
@@ -3927,8 +3339,7 @@ function activate(context) {
     for (const w of watchers) { w.dispose(); }
     watchers = [];
     if (!racine) { return; }
-    // Articles, Word déposés, sorties (le PDF apparaît/disparaît après build) ET
-    // ausgabe.yaml (le titre de la vue suit les métadonnées — N2).
+    // Articles, Word déposés, sorties, et ausgabe.yaml dont dépend le titre de la vue.
     for (const motif of ['articles/**', 'articles-word/*', 'out/**', 'ausgabe.yaml']) {
       const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(racine, motif));
       w.onDidCreate(rafraichirBientot);
@@ -3938,23 +3349,19 @@ function activate(context) {
     }
   };
 
-  // Recalcule racine + contexte (montre/masque la vue) + watchers + dormant WSL,
-  // puis rafraîchit.
   const majContexte = () => {
     const racine = trouverRacineRevue();
     fournisseur.definirRacine(racine);
-    divergenceSignalee = false;                    // D120 : un avertissement par revue ouverte
-    profilRevue = lireProfil(racine);            // T6.4 : pilote le mode d'aperçu
+    divergenceSignalee = false;                    // un avertissement par revue ouverte
+    profilRevue = lireProfil(racine);            // pilote le mode d'aperçu
     vscode.commands.executeCommand('setContext', CLE_CONTEXTE, !!racine);
     reinstallerWatchers(racine);
-    if (racine) { demarrerDormeurWsl(); } else { arreterDormeurWsl(); }   // N1 (D42)
+    if (racine) { demarrerDormeurWsl(); } else { arreterDormeurWsl(); }
     rafraichirTout();
   };
 
-  // D116 — deux fabriques de commandes : `cmd` pour ce qui LIT (ouvrir un article,
-  // basculer l'aperçu, exporter) et `cmdEcriture` pour ce qui MODIFIE le numéro,
-  // refusé net sur un numéro verrouillé. La liste ci-dessous montre donc d'un coup
-  // d'œil ce que le verrou protège, au lieu d'un `if` répété dans chaque fonction.
+  // `cmd` pour ce qui lit, `cmdEcriture` pour ce qui modifie le numéro et se voit refusé
+  // quand il est verrouillé : la liste montre ce que le verrou protège.
   const cmd = (id, fn) => vscode.commands.registerCommand(id, fn);
   const cmdEcriture = (id, fn) => vscode.commands.registerCommand(id, function () {
     if (refuserSiVerrouille()) { return undefined; }
@@ -3965,28 +3372,21 @@ function activate(context) {
     cmd('szh.cockpit.rafraichir', majContexte),
     cmdEcriture('szh.metadonnees', () => ouvrirMetadonnees(fournisseur, rafraichirTout)),
     cmdEcriture('szh.apercuMetadonnees', () => ouvrirApercuMetadonnees(fournisseur, rafraichirTout, null)),
-    // D97 : le MÊME formulaire, filtré sur un article (icône ✎ de l'arbre, ou entrée
-    // « Métadonnées de l'article courant » du panneau d'édition, sans argument).
+    // Le même formulaire, filtré sur un article.
     cmdEcriture('szh.metadonneesArticle', (item) => ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item)),
-    // D113 : section « Traductions » — clic sur un article (ou sur un de ses champs)
-    // et bouton « tout marquer prêt pour traduction » de la barre de section.
     cmdEcriture('szh.traduction', (item) => ouvrirTraduction(fournisseur, rafraichirTout, item)),
     cmdEcriture('szh.traductionsToutPret', () => marquerToutPretTraduction(fournisseur, rafraichirTout)),
-    // D123 : « Envoyer pour traduction » ne modifie RIEN (il fabrique un lien) — il
-    // reste donc disponible sur un numéro verrouillé, où il est même le plus utile.
+    // Fabriquer un lien ne modifie rien : disponible même sur un numéro verrouillé.
     cmd('szh.envoyerTraduction', (item) => envoyerPourTraduction(fournisseur, item)),
     cmd('szh.reglages', () => ouvrirReglages(rafraichirTout)),
     cmd('szh.basculerApercu', () => basculerApercu(fournisseur, majBarreApercu)),
     cmdEcriture('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
     cmdEcriture('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),
-    // Les exports RESTENT ouverts sur un numéro gelé : c'est la contrepartie de la
-    // suppression des documents à l'archivage (« vous pourrez toujours réexporter »).
+    // Les exports restent ouverts sur un numéro gelé, dont l'archivage a supprimé out/.
     cmd('szh.toutExporter', () => toutExporter(fournisseur, rafraichirTout)),
     cmd('szh.exporterXml', () => exporterXml(fournisseur, rafraichirTout)),
     cmd('szh.exporterArticle', (item) => exporterArticle(fournisseur, rafraichirTout, item)),
-    // D116 : le cycle de vie du numéro. « Archiver et verrouiller » n'est pas une
-    // écriture ordinaire — c'est LUI qui pose le verrou ; « Déverrouiller » est le
-    // seul geste qui doit rester possible quand tout le reste est refusé.
+    // Ces gestes posent et lèvent le verrou : ils restent hors de cmdEcriture.
     cmd('szh.archiverVerrouiller', () => archiverEtVerrouiller(fournisseur, rafraichirTout)),
     cmd('szh.deverrouiller', () => deverrouiller(fournisseur, rafraichirTout)),
     cmd('szh.desarchiver', () => desarchiver(fournisseur, rafraichirTout)),
@@ -3999,11 +3399,8 @@ function activate(context) {
     cmdEcriture('szh.editerTable', (item) => ouvrirEditeurTable(fournisseur, item)),
     cmdEcriture('szh.ficheImage', (item) => ouvrirFicheImage(fournisseur, item)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte),
-    // D120 — l'avertissement de divergence de version se déclenche au DÉMARRAGE d'une
-    // tâche de compilation, pas dans les fonctions du cockpit : le chemin le plus
-    // fréquent (Ctrl+S -> triggerTaskOnSave -> tâche utilisateur) ne passe pas par
-    // nous. Un seul point d'accroche pour tous les chemins, et une seule fois par
-    // fenêtre (garde dans avertirVersionSiDivergente).
+    // L'avertissement part au démarrage d'une tâche : Ctrl+S, le chemin le plus fréquent,
+    // ne passe pas par les fonctions du cockpit.
     vscode.tasks.onDidStartTask((e) => {
       if (!fournisseur.racine || !e || !e.execution || !e.execution.task) { return; }
       const tache = e.execution.task;
@@ -4012,9 +3409,7 @@ function activate(context) {
       if (nomsSuivis.indexOf(tache.name) === -1 && !estNotre) { return; }
       avertirVersionSiDivergente();
     }),
-    // A1 — défilement synchronisé éditeur -> aperçu : la 1re ligne visible du .md de
-    // l'article courant est poussée à la webview. Ignoré si l'aperçu HTML n'est pas
-    // à l'écran, ou si c'est notre propre révélation (aperçu -> éditeur) qui l'a déclenché.
+    // Éditeur -> aperçu ; ignoré si l'événement vient de notre révélation de ligne.
     vscode.window.onDidChangeTextEditorVisibleRanges((e) => {
       if (!panneauApercuHtml || modeApercu() !== 'html' || defilementProgrammatiqueHote) { return; }
       if (!e.visibleRanges || !e.visibleRanges.length) { return; }
@@ -4022,8 +3417,7 @@ function activate(context) {
       if (!ed || e.textEditor !== ed) { return; }
       pousserDefilementVersApercu(e.visibleRanges[0].start.line);
     }),
-    // G3 — sens inverse : le curseur (ou un clic) dans le .md de l'article courant
-    // surligne le bloc/mot correspondant dans l'aperçu HTML.
+    // Sens inverse : le curseur dans le .md surligne le bloc et le mot dans l'aperçu.
     vscode.window.onDidChangeTextEditorSelection((e) => {
       if (!panneauApercuHtml || modeApercu() !== 'html') { return; }
       const ed = editeurArticleCourant(fournisseur);
@@ -4032,29 +3426,22 @@ function activate(context) {
     })
   );
 
-  // M6, D55 — le contexte de revue est INJECTÉ : le collage de tableau (Ctrl+Alt+V)
-  // doit savoir s'il est dans un article (slugDepuisChemin, définition unique) et
-  // rafraîchir l'arbre pour y faire apparaître le tableau créé.
+  // Contexte injecté dans lib/formatting.js : le collage de tableau (Ctrl+Alt+V) doit
+  // savoir s'il est dans un article, et rafraîchir l'arbre.
   enregistrerCommandesMiseEnForme(context, {
     racine: () => fournisseur.racine,
     slugDepuisChemin: slugDepuisChemin,
     rafraichirTout: rafraichirTout,
-    // D116 : toute la mise en forme écrit dans le texte -> refusée sur un numéro gelé.
+    // Toute la mise en forme écrit dans le texte : refusée sur un numéro gelé.
     verrouillee: () => etatCourant().verrouillee,
     refuser: () => { refuserSiVerrouille(); }
   });
 
-  // F1 — les trois panneaux de la barre (Commande / Édition / Export) : la barre de
-  // titre de la vue ne porte plus que ces trois boutons, le reste passe par eux
-  // (les commandes individuelles restent enregistrées — filet Ctrl+Maj+P).
-  // D116 : le panneau d'export n'affiche que les gestes de cycle de vie que l'état
-  // du numéro rend possibles — d'où l'injection de l'état.
+  // Les trois panneaux de la barre ; celui d'export s'adapte à l'état du numéro.
   enregistrerPanneaux(context, { etat: etatCourant });
 
-  // F7 : au démarrage, si une revue est ouverte, l'init lente (réveil de la VM WSL —
-  // le vrai coût, puis chargement de l'arbre) se fait derrière un indicateur de
-  // progression + un item de barre d'état animé, pour ne pas laisser l'utilisatrice
-  // devant une fenêtre « vide » qui semble figée. Sans revue : init normale, silencieuse.
+  // Réveil de la machine WSL puis chargement de l'arbre, derrière un indicateur de
+  // progression pour ne pas laisser une fenêtre qui semble figée.
   const demarrageInitial = async () => {
     if (!trouverRacineRevue()) { majContexte(); return; }
     const barre = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
@@ -4066,11 +3453,11 @@ function activate(context) {
         { location: vscode.ProgressLocation.Notification, title: T('demarrage.titre'), cancellable: false },
         async (progress) => {
           progress.report({ message: T('demarrage.env') });
-          await reveillerWsl();                    // réveil WSL (démarrage à froid de la VM)
+          await reveillerWsl();                    // démarrage à froid de la machine
           progress.report({ message: T('demarrage.revue') });
-          majContexte();                           // racine + contexte + watchers + dormant + arbre
-          await ouvrirArticleActifAuDemarrage(fournisseur);   // T6.2
-          await honorerIntention(fournisseur, rafraichirTout); // D123 : lien szh:// reçu
+          majContexte();                           // racine, contexte, watchers, dormeur, arbre
+          await ouvrirArticleActifAuDemarrage(fournisseur);
+          await honorerIntention(fournisseur, rafraichirTout); // un lien szh:// reçu
         });
     } finally { barre.dispose(); }
   };
@@ -4079,7 +3466,7 @@ function activate(context) {
 
 function deactivate() { arreterDormeurWsl(); }
 
-// `_pur` : fonctions pures exposées pour les harnais headless (VS Code les ignore).
+// `_pur` : les fonctions pures, exposées aux harnais de test.
 module.exports = {
   activate, deactivate,
   _pur: {

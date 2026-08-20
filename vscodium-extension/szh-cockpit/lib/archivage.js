@@ -1,34 +1,23 @@
-﻿// SZH cockpit — cycle de vie du numéro : verrouillage, archivage, version du
-// logiciel (D116–D117 et D120).
+﻿// Cycle de vie d'un numéro : archivage, version du logiciel installée, mode développeur.
 //
-// Ce module ne connaît RIEN de l'arborescence SharePoint. Le DÉPLACEMENT d'un
-// dossier de revue est délégué à windows/archive-revue.ps1 : lui seul calcule les
-// emplacements (« en cours » / « archives », mode développeur compris — D119), et
-// lui seul peut déplacer un dossier que VSCodium tient encore ouvert (il attend la
-// fermeture de la fenêtre, retente, puis rouvre l'éditeur sur la nouvelle place).
-// Une seule source de vérité pour les chemins, côté PowerShell, partagée avec le
-// lanceur « Revues SZH ».
-//
-// Ce module ne dépend ni de vscode ni de i18n : les fonctions pures
-// (versionsDivergent, tailleDossier) sont testables headless via _pur.
+// Ce module ignore tout de l'arborescence SharePoint : le déplacement d'un dossier de
+// revue est délégué à windows/archive-revue.ps1, seul à calculer les emplacements et seul
+// capable de déplacer un dossier que VSCodium tient ouvert. Les chemins n'ont ainsi
+// qu'une source, côté PowerShell, partagée avec le lanceur « Revues SZH ».
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 
-// ⚠ Mêmes chemins que szh-common.ps1 ($SzhBase / $SzhToolkit) et que
-// lib/portraits.js (qui vise le même toolkit depuis WSL).
+// Mêmes chemins que szh-common.ps1 ($SzhBase et $SzhToolkit) et que lib/portraits.js,
+// qui vise le même toolkit depuis WSL.
 const BASE_SZH = 'C:\\ProgramData\\SZH';
 const TOOLKIT = path.join(BASE_SZH, 'toolkit');
 const SCRIPT_ARCHIVAGE = path.join(TOOLKIT, 'windows', 'archive-revue.ps1');
 const SCRIPT_LANCEUR = path.join(TOOLKIT, 'windows', 'open-revue.ps1');
 const SCRIPT_MAIL = path.join(TOOLKIT, 'windows', 'mail-traduction.ps1');
 
-// Version du logiciel INSTALLÉE sur ce poste. Source primaire : le fichier VERSION
-// du toolkit (écrit par la CI dans toolkit-X.zip) ; repli : state.json, écrit par
-// update.ps1. '' si rien n'est lisible (poste non déployé, dépôt de dev) — aucun
-// avertissement de divergence n'est alors affiché : on ne compare pas à l'inconnu.
 function versionInstallee() {
   try {
     const v = String(fs.readFileSync(path.join(TOOLKIT, 'VERSION'), 'utf8')).trim();
@@ -40,10 +29,8 @@ function versionInstallee() {
   } catch (e) { return ''; }
 }
 
-// Deux versions divergent-elles ? FAUX dès qu'une des deux est inconnue (numéro
-// antérieur à D120, poste non déployé) : mieux vaut ne rien dire que crier au loup.
-// Comparaison textuelle après normalisation (« v2026.08.0 » == « 2026.08.0 ») — les
-// tags de release sont des chaînes, jamais des nombres à ordonner.
+// Faux dès qu'une des deux versions est inconnue. Comparaison textuelle après
+// normalisation, les tags de release étant des chaînes et non des nombres à ordonner.
 function versionsDivergent(versionNumero, versionPoste) {
   const a = String(versionNumero || '').trim().replace(/^v/i, '');
   const b = String(versionPoste || '').trim().replace(/^v/i, '');
@@ -51,9 +38,6 @@ function versionsDivergent(versionNumero, versionPoste) {
   return a !== b;
 }
 
-// Poids total d'un dossier, en octets (récursif, liens ignorés). Sert à DIRE au
-// rédacteur ce que l'archivage libère avant de supprimer quoi que ce soit — la
-// promesse « on peut toujours réexporter » n'a de valeur que chiffrée. 0 si absent.
 function tailleDossier(chemin) {
   let total = 0;
   let entrees;
@@ -68,8 +52,6 @@ function tailleDossier(chemin) {
   return total;
 }
 
-// Suppression récursive d'un dossier. Retourne null si tout est parti, sinon le
-// message d'erreur (un PDF encore verrouillé par un lecteur, typiquement).
 function supprimerDossier(chemin) {
   try {
     if (!fs.existsSync(chemin)) { return null; }
@@ -78,27 +60,16 @@ function supprimerDossier(chemin) {
   } catch (e) { return String((e && e.message) || e); }
 }
 
-// Lance un script PowerShell du toolkit de façon à ce qu'il SURVIVE à cette fenêtre :
-// l'archivage ferme VSCodium (condition pour déplacer un dossier ouvert), et le
-// sélecteur de version doit rester là si l'utilisateur quitte l'éditeur.
+// Lance un script PowerShell du toolkit de façon qu'il survive à cette fenêtre :
+// l'archivage ferme VSCodium, condition pour déplacer un dossier ouvert.
 //
-// ⚠ NE JAMAIS UTILISER `detached: true` ICI. C'était le cas, et c'est ce qui rendait
-// l'archivage totalement inopérant : sur Windows, libuv traduit `detached` par
-// DETACHED_PROCESS, donc `powershell.exe` démarre SANS AUCUNE CONSOLE et ressort
-// immédiatement avec le code 0 — sans exécuter une seule ligne du script, sans un mot,
-// sans une ligne de journal. Mesuré : detached + stdio ignoré ou capturé = zéro sortie ;
-// non détaché = le script fait son travail.
-//
-// La voie qui marche est celle que le toolkit emploie déjà partout ailleurs (raccourcis
-// du menu Démarrer, tâches planifiées, protocole szh:) : `wscript.exe //B hidden.vbs`.
-// WScript.Shell.Run crée un vrai processus AVEC sa console (cachée) et rend la main
-// aussitôt — wscript sort en quelques millisecondes, le PowerShell continue seul. Il
-// n'y a donc plus rien à détacher : la durée de vie de l'appelant n'entre plus en jeu.
-// hidden.vbs requote chacun de ses arguments (vérifié : paramètre nommé, commutateur et
-// positionnel se lient correctement).
-//
-// Conséquence assumée : plus de console visible. Les scripts lancés d'ici rapportent donc
-// leurs erreurs par une boîte de dialogue et par le journal, jamais par la console.
+// ⚠ Pas de `detached: true` ici : sur Windows, libuv le traduit par DETACHED_PROCESS,
+// donc powershell.exe démarre sans console, ressort aussitôt avec le code 0 et n'exécute
+// pas une ligne du script, sans le moindre message. La voie qui marche est celle que le
+// toolkit emploie partout ailleurs, `wscript.exe //B hidden.vbs`, qui crée un vrai
+// processus à console cachée et rend la main aussitôt — il n'y a donc plus rien à
+// détacher. En contrepartie les scripts lancés d'ici signalent leurs erreurs par une
+// boîte de dialogue et par le journal, non par la console.
 function lancerScriptPowerShell(script, args) {
   if (!fs.existsSync(script)) { return 'script introuvable : ' + script; }
   const vbs = path.join(TOOLKIT, 'windows', 'hidden.vbs');
@@ -106,58 +77,43 @@ function lancerScriptPowerShell(script, args) {
   try {
     const proc = spawn('wscript.exe', ['//B', vbs, script].concat(args || []),
       { stdio: 'ignore', windowsHide: true });
-    // wscript sort tout de suite ; on ne veut ni attendre son code, ni qu'une erreur
-    // d'écoute remonte en rejet non capturé de l'hôte d'extensions.
+    // wscript sort tout de suite : ni attendre son code, ni laisser une erreur remonter
+    // en rejet non capturé de l'hôte d'extensions.
     proc.on('error', () => { /* signalé par l'absence d'effet, et par le journal */ });
     return null;
   } catch (e) { return String((e && e.message) || e); }
 }
 
-// « Archiver et verrouiller » / « Désarchiver » : le déplacement du dossier.
-// `action` = 'archiver' | 'desarchiver'.
 function lancerArchivage(action, racine) {
   const args = ['-Dossier', racine];
   if (action === 'desarchiver') { args.push('-Desarchiver'); }
   return lancerScriptPowerShell(SCRIPT_ARCHIVAGE, args);
 }
 
-// « Changer de version du logiciel… » : ouvre le sélecteur de versions du lanceur
-// « Revues SZH » (D120) — une seule implémentation du choix de version, atteignable
-// depuis le lanceur comme depuis l'avertissement de divergence.
-//
-// ⚠ Rien ne remonte de ce lancement (`stdio: 'ignore'`, et wscript rend la main
-// tout de suite). Le lanceur journalise donc son entrée dans le chemin -Versions
-// (C:\ProgramData\SZH\logs) — c'est la seule trace exploitable si l'utilisateur dit
-// « je clique et rien ne se passe ».
+// Ouvre le sélecteur de versions du lanceur « Revues SZH », seule implémentation du choix
+// de version. Rien ne remonte de ce lancement : le lanceur journalise son entrée dans
+// C:\ProgramData\SZH\logs, unique trace si l'utilisateur dit que rien ne se passe.
 function lancerChoixVersion() {
   return lancerScriptPowerShell(SCRIPT_LANCEUR, ['-Versions']);
 }
 
-// « Envoyer pour traduction » (D127) : le brouillon d'e-mail. Confié à PowerShell parce
-// qu'un corps `mailto:` est du TEXTE BRUT — aucun client ne rend cliquable un schéma
-// qu'il ne connaît pas, et le lien szh:// arrivait donc inerte. Seul l'objet mail
-// d'Outlook accepte un corps HTML, donc un vrai <a href>. Le script décide aussi la
-// LANGUE de l'e-mail et le destinataire, tous deux déduits du produit : ni l'un ni
-// l'autre ne dépend de la langue d'interface de l'expéditeur.
+// Brouillon d'e-mail « Envoyer pour traduction ». Confié à PowerShell parce qu'un corps
+// `mailto:` est du texte brut, où le lien szh:// arriverait inerte : seul l'objet mail
+// d'Outlook accepte un corps HTML, donc un vrai <a href>. Le script déduit aussi du
+// produit la langue de l'e-mail et le destinataire.
 function lancerMailTraduction(lien) {
   return lancerScriptPowerShell(SCRIPT_MAIL, ['-Lien', lien]);
 }
 
-// ---- Mode développeur (D119) --------------------------------------------------------
-//
-// Un seul interrupteur, dans C:\ProgramData\SZH\config.json (partagé avec TOUS les
-// scripts PowerShell : lanceur, création de revue, archivage). Activé, les revues sont
-// cherchées, créées et archivées dans l'arborescence de TEST plutôt que dans celle de
-// production — voir Get-SzhEmplacements dans windows/szh-common.ps1, seule à connaître
-// les chemins. Le cockpit ne fait que lire et écrire ce booléen.
-// Défaut VRAI tant que la chaîne n'est pas passée en production : mieux vaut un essai
-// qui touche le dossier de test qu'un essai qui déplace un vrai numéro.
+// Mode développeur : un seul interrupteur, dans C:\ProgramData\SZH\config.json, partagé
+// avec tous les scripts PowerShell. Activé, les revues sont cherchées, créées et
+// archivées dans l'arborescence de test (voir Get-SzhEmplacements dans
+// windows/szh-common.ps1, seule à connaître les chemins). Vrai par défaut : mieux vaut un
+// essai dans le dossier de test qu'un essai qui déplace un vrai numéro.
 const CONFIG = path.join(BASE_SZH, 'config.json');
 
-// ⚠ Le BOM est RETIRÉ avant l'analyse : les config.json écrits par les versions
-// antérieures de bootstrap.ps1 en portent un (Set-Content -Encoding UTF8), et
-// JSON.parse le refuse. Sans ce filet, devMode retombait silencieusement sur son
-// défaut. Les nouvelles écritures passent par Set-SzhJson, sans BOM.
+// BOM retiré avant l'analyse : d'anciens config.json en portent un et JSON.parse le
+// refuse, ce qui ferait retomber devMode sur son défaut sans rien dire.
 function lireConfigPoste() {
   try { return JSON.parse(String(fs.readFileSync(CONFIG, 'utf8')).replace(/^﻿/, '')); }
   catch (e) { return null; }
@@ -169,8 +125,6 @@ function lireModeDeveloppeur() {
   return cfg.devMode === true;
 }
 
-// Écrit devMode en préservant le reste du fichier (repo, revuesRoots, basesRevues…).
-// Retourne null si écrit, sinon le message d'erreur.
 function ecrireModeDeveloppeur(actif) {
   try {
     const cfg = lireConfigPoste() || {};

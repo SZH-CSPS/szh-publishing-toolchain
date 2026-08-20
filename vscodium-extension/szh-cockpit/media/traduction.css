@@ -22,7 +22,7 @@ button:disabled { opacity: .5; cursor: default; }
   padding: .4rem 0 .6rem; margin-bottom: .2rem; z-index: 1; }
 #etat { margin-left: .8rem; font-size: .92em; color: var(--vscode-descriptionForeground); }
 
-/* Rangée « Tout l'article : » — un bouton par état, un clic suffit (et enregistre). */
+/* Rangée « Tout l'article » : un bouton par état, un clic suffit et enregistre. */
 .tout { display: flex; align-items: center; flex-wrap: wrap; gap: .4rem; margin: 0 0 1rem;
   padding: .5em .7em; border-radius: 3px; font-size: .9em;
   background: var(--vscode-textBlockQuote-background, rgba(128,128,128,.12));
@@ -47,8 +47,7 @@ button:disabled { opacity: .5; cursor: default; }
 .badge.traduit { color: var(--vscode-charts-green, #2ea043);
   border-color: var(--vscode-charts-green, #2ea043); }
 
-/* Texte source : lisible et copiable, jamais éditable (il vit dans la fiche,
-   sous la langue du numéro — on ne le retouche pas depuis ce panneau). */
+/* Texte source : lisible et copiable, jamais éditable — il vit dans la fiche. */
 .source { white-space: pre-wrap; padding: .4em .6em; border-radius: 2px;
   background: var(--vscode-textCodeBlock-background, rgba(128,128,128,.1));
   border: 1px dashed var(--vscode-panel-border, rgba(128,128,128,.4));
@@ -65,8 +64,7 @@ button:disabled { opacity: .5; cursor: default; }
 /* Rien à traduire : un message, pas une page vide. */
 .rien { color: var(--vscode-descriptionForeground); margin: 1rem 0; }
 
-/* ---- Bloc « Question / commentaire », en tête du formulaire (D115) : c'est la
-   premiere chose qu'on lit et qu'on ecrit quand on ouvre l'article. */
+/* ---- Bloc « Question / commentaire », en tête du formulaire. */
 .carte.commentaire { border-left-color: var(--vscode-charts-purple, #b180d7); }
 .carte.commentaire[hidden] { display: none; }
 .carte.commentaire label { margin-top: 0; }
@@ -78,5 +76,5 @@ button:disabled { opacity: .5; cursor: default; }
   background: var(--vscode-button-background); }
 .actions-source button.deepl:hover { background: var(--vscode-button-hoverBackground); }
 
-/* Les mots-cles apparies sont rendus par le fragment partage SZH.motsCles
-   (media/_commun.js), qui pose lui-meme son style : rien a styler ici. */
+/* Les mots-clés appariés viennent du fragment SZH.motsCles (media/_commun.js), qui pose
+   lui-même son style. */

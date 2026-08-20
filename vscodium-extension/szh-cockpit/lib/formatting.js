@@ -1,7 +1,7 @@
-// SZH cockpit — mise en forme (M6, D55). Extrait de extension.js (R6). Toggles PURS
-// (basculer*/enrober/squelette, testés via _pur) + commandes szh.fmt.* et palette.
-// Contient aussi le seul accès IMPÉRATIF au presse-papiers HTML (PowerShell) — la
-// transformation, elle, est pure et vit dans lib/table-model.js.
+// Mise en forme : les bascules pures (basculer*, enrober, squelette), les commandes
+// szh.fmt.* et la palette qui les rassemble. Contient aussi le seul accès au
+// presse-papiers HTML, par PowerShell ; la transformation, elle, est pure et vit dans
+// lib/table-model.js.
 'use strict';
 
 const vscode = require('vscode');
@@ -13,59 +13,48 @@ const { tableauDepuisHtmlBureautique, tableauDepuisTsv, serialiserTable,
   finaliserModele, PRESETS_TABLE } = require('./table-model');
 const { ecrireAtomique } = require('./yaml');
 
-// Contexte de la revue, INJECTÉ par extension.js à l'enregistrement des commandes :
-//   racine()                       -> racine de la revue (ou null)
-//   slugDepuisChemin(racine, chem) -> slug si le chemin EST un article (D26), sinon null
-//   rafraichirTout()               -> rafraîchit l'arbre du cockpit (et le reste)
-// POURQUOI une injection et pas un require : extension.js require CE module — l'inverse
-// serait un cycle. On réutilise ainsi la SEULE définition de « est-ce un article » et le
-// SEUL rafraîchissement, sans les redéfinir ici.
+// Contexte de la revue, injecté par extension.js à l'enregistrement des commandes plutôt
+// que requis, extension.js requérant déjà ce module. On réutilise ainsi sa définition
+// d'« est-ce un article » et son rafraîchissement.
 let revue = {
   racine: () => null,
   slugDepuisChemin: () => null,
   rafraichirTout: () => {},
-  // D116 : numéro gelé -> toutes les actions de mise en forme sont refusées (l'éditeur
-  // est en lecture seule, un WorkspaceEdit y échouerait sans rien dire de pourquoi).
+  // Sur un numéro gelé, toute mise en forme est refusée : l'éditeur est en lecture seule
+  // et un WorkspaceEdit y échouerait sans dire pourquoi.
   verrouillee: () => false,
-  // Refus visible : injecté par extension.js (message + bouton « Déverrouiller »).
+  // Refus visible, injecté par extension.js : message et bouton « Déverrouiller ».
   refuser: () => { vscode.window.setStatusBarMessage(T('verrou.refuse'), 4000); }
 };
 
-// ---- Mise en forme au clic droit + raccourcis (M6, D55) ----------------------------
+// ---- Mise en forme au clic droit et aux raccourcis ----
 //
-// Sous-menu « Mise en forme » (editor/context, markdown) + raccourcis clavier
-// (keybindings.json). Chaque action transforme la SÉLECTION via editor.edit.
-// Les transformations sont des fonctions PURES (testées headless via _pur) ;
-// les enrobages inline sont des TOGGLES (ré-appliquer retire le marquage).
-// Blocs = classes canoniques .important / .highlight / .question ; citation =
-// blockquote natif « > » ; le bloc « important » porte un titre paramétrable
-// (::: {.important data-titre="…"}), rendu par print.css.
+// Chaque action transforme la sélection via editor.edit à partir d'une fonction pure ;
+// les enrobages en ligne sont des bascules. Les blocs sont les classes .important,
+// .highlight et .question, la citation un blockquote « > », et le bloc « important »
+// porte un titre paramétrable que rend print.css.
 
 function estEnrobe(t, marqueur) {
   if (t.length < marqueur.length * 2) { return false; }
   if (!t.startsWith(marqueur) || !t.endsWith(marqueur)) { return false; }
-  // Italique (*) : ne pas confondre avec gras (**) — sinon « **x** » se dé-graisserait
-  // en « *x* » au lieu d'ajouter l'italique.
+  // Ne pas confondre italique (*) et gras (**) : sinon « **x** » se dégraisserait en
+  // « *x* » au lieu de recevoir l'italique.
   if (marqueur === '*' && (t.startsWith('**') || t.endsWith('**'))) { return false; }
   return true;
 }
 
-// Toggle **…** (gras) ou *…* (italique) sur la sélection.
 function basculerEnrobage(texte, marqueur) {
   const t = String(texte);
   if (estEnrobe(t, marqueur)) { return t.slice(marqueur.length, t.length - marqueur.length); }
   return marqueur + t + marqueur;
 }
 
-// Toggle [texte]{.underline} (souligné — attribut natif Pandoc).
 function basculerSouligne(texte) {
   const t = String(texte);
   const m = t.match(/^\[([\s\S]*)\]\{\.underline\}$/);
   return m ? m[1] : '[' + t + ']{.underline}';
 }
 
-// Toggle de titre : préfixe #/##/### selon `niveau`. Même niveau -> retire ;
-// niveau différent -> remplace ; aucun -> ajoute.
 function basculerTitre(texte, niveau) {
   const t = String(texte);
   const m = t.match(/^(#{1,6})\s+/);
@@ -73,8 +62,6 @@ function basculerTitre(texte, niveau) {
   return '#'.repeat(niveau) + ' ' + t.replace(/^#{1,6}\s+/, '');
 }
 
-// Toggle de citation : « > » par ligne (blockquote natif). Retire si toutes les
-// lignes non vides sont déjà citées.
 function basculerCitation(texte) {
   const lignes = String(texte).split('\n');
   const nonVides = lignes.filter((l) => l !== '');
@@ -83,8 +70,6 @@ function basculerCitation(texte) {
   return lignes.map((l) => '> ' + l).join('\n');
 }
 
-// Enrobe la sélection dans un bloc « fenced div » Pandoc. `titre` (bloc important
-// seulement) devient data-titre, rendu par CSS ; les guillemets en sont retirés.
 function enroberBloc(texte, classe, titre) {
   const t = String(texte);
   const titrePropre = String(titre || '').replace(/"/g, '').trim();
@@ -92,10 +77,6 @@ function enroberBloc(texte, classe, titre) {
   return '::: ' + attr + '\n' + t + '\n:::';
 }
 
-// Squelette de tableau Markdown (3 colonnes, 2 lignes) — repli HORS article seulement
-// depuis D95 (dans un article, « Insérer un tableau » crée un fichier tables/table-NN.html
-// et ouvre l'éditeur de tableau, cf. fmtTableau). Un tableau VENU d'Excel/Word ne passe
-// pas non plus par le pipe (Ctrl+Alt+V, cf. fmtCollerTableau).
 function squeletteTableau(colonne) {
   const c = String(colonne || 'Colonne');
   return [
@@ -106,10 +87,6 @@ function squeletteTableau(colonne) {
   ].join('\n');
 }
 
-// Applique `transformer` (fonction pure texte->texte) à la sélection courante.
-// opt.parLigne : étend la sélection aux lignes entières (titres, citation).
-// opt.milieu : après une insertion sur sélection vide, place le curseur à N
-// caractères du début (entre les marqueurs).
 async function appliquerSelection(transformer, opt) {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
@@ -128,8 +105,6 @@ async function appliquerSelection(transformer, opt) {
   }
 }
 
-// QuickPick de titres pour le bloc « important » (localisés + saisie libre).
-// Retourne undefined si l'utilisateur annule (rien n'est inséré).
 async function choisirTitreImportant() {
   const presets = [
     T('fmt.titre.information'), T('fmt.titre.important'),
@@ -151,7 +126,6 @@ async function fmtImportant() {
   await appliquerSelection((t) => enroberBloc(t, 'important', titre));
 }
 
-// Nom de fichier libre dans `dossier` (jamais d'écrasement d'un média existant).
 function nomMediaUnique(dossier, nom) {
   const ext = path.extname(nom);
   const base = path.basename(nom, ext);
@@ -161,13 +135,9 @@ function nomMediaUnique(dossier, nom) {
   return candidat;
 }
 
-// Insérer une figure : choisir une image, la copier dans articles/<slug>/media/
-// (nom rendu unique), insérer ![Légende](media/nom.ext) à la sélection — puis, dans un
-// article, ouvrir la FICHE de l'image pour que légende, texte alternatif et crédits se
-// remplissent tout de suite (même esprit que « Insérer un tableau », qui enchaîne sur
-// l'éditeur de tableau, D95/D102). Une figure sans texte alternatif ni crédits est un
-// défaut que personne ne va rattraper trois semaines plus tard : le moment de les
-// écrire, c'est celui où l'on choisit l'image.
+// Copie l'image choisie sous articles/<slug>/media/, insère ![Légende](media/nom.ext) à
+// la sélection, puis ouvre la fiche de l'image : le moment d'écrire texte alternatif et
+// crédits est celui où l'on choisit l'image.
 async function fmtFigure() {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
@@ -195,30 +165,22 @@ async function fmtFigure() {
   await editeur.edit((b) => { b.replace(editeur.selection, md); });
   vscode.window.setStatusBarMessage(T('fmt.figure.copiee', [nom]), 4000);
   if (!slug) { return; }                             // hors article : pas de fiche à ouvrir
-  // On ENREGISTRE avant de partir vers la fiche (même raison que fmtTableau) : sinon
-  // la référence reste dans le tampon, l'article se recompile sans elle, et « Retour à
-  // l'article » montrerait un aperçu sans la figure qu'on vient d'insérer.
+  // Enregistrer avant de partir vers la fiche : sinon la référence reste dans le tampon
+  // et l'aperçu se recompile sans la figure.
   try { await doc.save(); } catch (e) { /* fichier verrouillé : la référence reste au tampon */ }
   revue.rafraichirTout();                            // l'image apparaît sous l'article
-  // Mêmes champs que l'item d'arbre attendu par ouvrirFicheImage (slug + cheminAsset).
   await vscode.commands.executeCommand('szh.ficheImage',
     { slug: slug, cheminAsset: path.join(mediaDir, nom) });
 }
 
-// ---- Insérer un tableau (Ctrl+Alt+T, D95) ------------------------------------------
+// ---- Insérer un tableau ----
 //
-// Le tableau inséré est un VRAI tableau de la revue — un fichier
-// articles/<slug>/tables/table-NN.html + la référence ::: {.szh-tabelle src="…"} au
-// curseur — puis l'éditeur de tableau s'ouvre dessus. Exactement la mécanique du
-// collage (D81), avec pour seule différence la SOURCE du modèle : ici, une grille
-// vierge. Le pipe Markdown ne survivait de toute façon pas à la mise en forme du PDF
-// (ni fusions, ni en-têtes, ni styles) et l'équipe de rédaction n'a pas à écrire des
-// « |---|---| » à la main.
+// Le tableau inséré est un vrai tableau de la revue : un fichier
+// articles/<slug>/tables/table-NN.html et la référence ::: {.szh-tabelle src="…"} au
+// curseur, sur lequel s'ouvre l'éditeur de tableau. Même mécanique que le collage, la
+// source du modèle près : ici, une grille vierge. Le pipe Markdown, lui, ne survit pas à
+// la mise en forme du PDF.
 
-// Grille vierge 3 × 3 dont la première rangée est un en-tête (les colonnes sont
-// nommées « Colonne 1/2/3 » pour que la rangée d'en-tête ne soit pas vide à l'écran).
-// L'habillage est celui du préréglage « académique » — SOURCE UNIQUE : PRESETS_TABLE,
-// jamais recopié ici. finaliserModele pose th/scope depuis le compte d'en-tête.
 function tableauVierge(colonne) {
   const c = String(colonne || 'Colonne');
   const cellule = (contenu) => ({ contenu: contenu, colspan: 1, rowspan: 1, th: false, scope: '', align: 'left' });
@@ -237,10 +199,8 @@ async function fmtTableau() {
   const racine = revue.racine();
   const slug = racine ? revue.slugDepuisChemin(racine, doc.uri.fsPath) : null;
   if (!slug) {
-    // Hors article (BIENVENUE.md, .md d'un autre dossier, fichier hors revue) : il n'y
-    // a pas de articles/<slug>/tables/ où écrire, et pas d'article à recompiler. On
-    // garde donc le squelette Markdown historique — la commande reste utile partout —
-    // en le disant, pour que personne ne s'étonne d'obtenir deux choses différentes.
+    // Hors article, il n'y a pas de dossier tables/ où écrire : on insère le squelette
+    // Markdown, en le disant, pour que le résultat différent ne surprenne pas.
     const sq = squeletteTableau(T('fmt.tableau.colonne'));
     await editeur.edit((b) => { b.replace(editeur.selection, sq); });
     vscode.window.setStatusBarMessage(T('fmt.tableau.markdown'), 5000);
@@ -259,34 +219,24 @@ async function fmtTableau() {
   const avant = doc.lineAt(sel.start.line).text.slice(0, sel.start.character);
   const apres = doc.lineAt(sel.end.line).text.slice(sel.end.character);
   await editeur.edit((b) => { b.replace(sel, blocReferenceTable(nom, avant, apres)); });
-  // On ENREGISTRE l'article avant de partir vers l'éditeur de tableau : sinon la
-  // référence reste dans le tampon, l'article se recompile sans elle et « Retour à
-  // l'article » montrerait un aperçu sans le tableau qu'on vient de créer. (Le collage
-  // Ctrl+Alt+V, lui, laisse la main dans le texte : rien ne part, l'utilisateur
-  // enregistre quand il veut.)
+  // Enregistrer avant de partir vers l'éditeur de tableau : sinon la référence reste dans
+  // le tampon et l'aperçu se recompile sans le tableau. Le collage, lui, laisse la main
+  // dans le texte et n'a pas besoin d'enregistrer.
   try { await doc.save(); } catch (e) { /* fichier verrouillé : la référence reste au tampon */ }
   vscode.window.setStatusBarMessage(T('fmt.tableau.creee', [nom]), 5000);
   revue.rafraichirTout();                            // le tableau apparaît sous l'article
-  // On enchaîne sur l'éditeur de tableau : c'est là que la grille se remplit. Mêmes
-  // champs que l'item d'arbre attendu par ouvrirEditeurTable (slug + cheminAsset).
   await vscode.commands.executeCommand('szh.editerTable', { slug: slug, cheminAsset: path.join(dossier, nom) });
 }
 
-// ---- Coller un tableau depuis Excel/Word (Ctrl+Alt+V, D81) -------------------------
+// ---- Coller un tableau depuis Excel ou Word ----
 //
-// Le collage d'origine (D75) lisait le presse-papiers en TEXTE et écrivait un pipe :
-// les cellules FUSIONNÉES étaient perdues, sans recours (le TSV ne les porte pas). Le
-// collage écrit désormais un FICHIER de tableau HTML — exactement le mécanisme D47 des
-// tableaux importés de Word : articles/<slug>/tables/table-NN.html, plus une référence
-// ::: {.szh-tabelle src="…"} dans le .md, résolue à la compilation par
-// pipeline/filters/szh-tabelle-inclure.lua. Le fichier est écrit par serialiserTable
-// (format canonique) : l'éditeur de tableau du cockpit sait le rouvrir et le réécrire.
+// Le collage écrit lui aussi un articles/<slug>/tables/table-NN.html et une référence
+// ::: {.szh-tabelle src="…"} dans le .md, que résout à la compilation
+// pipeline/filters/szh-tabelle-inclure.lua.
 //
-// La source des fusions est la variante HTML du presse-papiers Windows, que l'API VS
-// Code ne sait pas lire (readText -> TSV seulement) mais que PowerShell, lui, atteint.
+// Les cellules fusionnées ne survivent que par la variante HTML du presse-papiers
+// Windows, que l'API de VS Code ne sait pas lire mais que PowerShell atteint.
 
-// powershell.exe : System32 en priorité (chemin sûr), PATH en repli — même posture que
-// cheminWsl() dans lib/wsl.js.
 function cheminPowerShell() {
   const systeme = path.join(process.env.WINDIR || 'C:\\Windows',
     'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
@@ -296,21 +246,15 @@ function cheminPowerShell() {
 
 // Script de lecture du presse-papiers HTML.
 //
-// PIÈGE D'ENCODAGE, vérifié sur ce poste : les octets CF_HTML déposés par Excel/Word
-// sont de l'UTF-8, mais .NET Framework les rend DÉJÀ décodés — et décodés dans la page
-// de codes ANSI. « Élèves — Zürich » revient en « Ã‰lÃ¨ves â€” ZÃ¼rich », que ce soit
-// par « Get-Clipboard -TextFormatType Html » ou par GetData('HTML Format', $false)
-// (qui rend un System.String, PAS un flux d'octets, contrairement à ce qu'on lit
-// souvent). On répare donc en RE-ENCODANT la chaîne dans cette même page ANSI pour
-// retrouver les octets d'origine, puis en les décodant en UTF-8 — avec un décodeur
-// STRICT (throwOnInvalidBytes) : si la suite n'est pas de l'UTF-8 valide, c'est que la
-// chaîne n'avait pas été mal décodée et on la garde telle quelle. Un producteur qui
-// déposerait un vrai flux (autre application, autre version de .NET) passe par la
-// branche Stream, lue en UTF-8 directement.
+// ⚠ Piège d'encodage vérifié : les octets CF_HTML déposés par Excel et Word sont de
+// l'UTF-8, mais .NET Framework les rend déjà décodés dans la page de codes ANSI, et
+// « Élèves — Zürich » revient en « Ã‰lÃ¨ves â€” ZÃ¼rich ». On ré-encode donc la chaîne
+// dans cette page pour retrouver les octets d'origine, puis on les décode en UTF-8 avec
+// un décodeur strict : si l'échec survient, c'est que la chaîne n'avait pas été mal
+// décodée et on la garde telle quelle. Un vrai flux d'octets passe par la branche Stream.
 //
-// [Console]::Out.Write plutôt que Write-Output : le formateur de PowerShell insère des
-// retours à la ligne dans les chaînes longues quand la sortie est redirigée (largeur de
-// console supposée), ce qui couperait le HTML.
+// [Console]::Out.Write plutôt que Write-Output : sur une sortie redirigée, le formateur
+// de PowerShell couperait les chaînes longues et casserait le HTML.
 const PS_LIRE_HTML_PRESSE = [
   '$ErrorActionPreference = "SilentlyContinue"',
   '[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false',
@@ -333,10 +277,9 @@ const PS_LIRE_HTML_PRESSE = [
   '[Console]::Out.Write($t)'
 ].join('\n');
 
-// Variante HTML du presse-papiers (CF_HTML brut, en-tête comprise) ou '' si absente.
-// Ne rejette JAMAIS : PowerShell introuvable, presse-papiers verrouillé par une autre
-// application ou trop lent -> chaîne vide, et l'appelant se replie sur le TSV.
-// -EncodedCommand (UTF-16LE/base64) : aucun échappement de guillemets à négocier.
+// Variante HTML du presse-papiers, en-tête CF_HTML comprise, ou chaîne vide. Ne rejette
+// pas : tout échec rend une chaîne vide et l'appelant se replie sur le TSV.
+// -EncodedCommand, en UTF-16LE base64, évite tout échappement de guillemets.
 function lireHtmlPressePapiers(timeoutMs) {
   return new Promise((resolve) => {
     const args = ['-NoProfile', '-NonInteractive', '-Sta', '-EncodedCommand',
@@ -355,10 +298,9 @@ function lireHtmlPressePapiers(timeoutMs) {
   });
 }
 
-// Premier nom de tableau LIBRE dans `dossier` : table-NN.html, NN sur deux chiffres
-// comme pipeline/docx-tables.py. « Premier libre » et non « dernier + 1 » : on ne
-// réécrit jamais un tableau importé, même après suppression d'un intermédiaire.
-// Au-delà de 99 (jamais vu), on continue sans zéro de tête plutôt que d'échouer.
+// Premier nom libre : table-NN.html, NN sur deux chiffres comme dans
+// pipeline/docx-tables.py. Le premier libre et non le dernier plus un, pour ne pas
+// réécrire un tableau importé après la suppression d'un intermédiaire.
 function nomTableLibre(dossier) {
   for (let n = 1; n < 1000; n++) {
     const nom = 'table-' + (n < 10 ? '0' + n : String(n)) + '.html';
@@ -369,31 +311,26 @@ function nomTableLibre(dossier) {
   return 'table-999.html';
 }
 
-// Bloc de référence D47 à insérer dans le .md — À LA LETTRE ce que pose
-// szh-tabelle-reference.lua à l'import et ce que résout szh-tabelle-inclure.lua.
-// `avant`/`apres` = le texte de la ligne courante de part et d'autre du curseur : un
-// « fenced div » Pandoc doit commencer en début de ligne et être séparé du paragraphe
-// voisin, on n'ajoute donc les lignes vides que si le curseur n'est pas déjà au calme.
-// Pure (testée via _pur).
+// Bloc de référence à insérer dans le .md, à la lettre de ce que pose
+// szh-tabelle-reference.lua à l'import et de ce que résout szh-tabelle-inclure.lua. Un
+// « fenced div » pandoc doit commencer en début de ligne et être séparé du paragraphe
+// voisin, d'où les lignes vides ajoutées d'après `avant` et `apres`.
 function blocReferenceTable(nom, avant, apres) {
   const bloc = '::: {.szh-tabelle src="tables/' + nom + '"}\n:::';
   return (String(avant || '').trim() === '' ? '' : '\n\n') + bloc
        + (String(apres || '').trim() === '' ? '' : '\n\n');
 }
 
-// Marqueur de SAUT DE PAGE (D86), même forme que la référence de tableau ci-dessus : un
-// bloc « fenced div » vide. Ce n'est PAS une balise spéciale de pandoc — il n'en existe
-// pas d'universelle : `\newpage` ne vaut que pour LaTeX, et notre PDF sort de WeasyPrint.
-// C'est print.css qui donne son sens au marqueur (`break-after: page`), et c'est ce qui le
-// rend INERTE en HTML : un média qui défile n'a pas de page suivante. Pure (via _pur).
+// Marqueur de saut de page : un « fenced div » vide, pandoc n'offrant pas de balise
+// universelle et `\newpage` ne valant que pour LaTeX, alors que le PDF sort de
+// WeasyPrint. C'est print.css qui lui donne son sens, par `break-after: page`, ce qui le
+// rend inerte en HTML.
 function blocSautPage(avant, apres) {
   const bloc = '::: {.szh-saut}\n:::';
   return (String(avant || '').trim() === '' ? '' : '\n\n') + bloc
        + (String(apres || '').trim() === '' ? '' : '\n\n');
 }
 
-// Insère un saut de page au curseur. Un bloc a besoin d'être isolé par des lignes vides,
-// sinon pandoc l'avale dans le paragraphe courant et le div n'existe jamais.
 async function fmtSautPage() {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
@@ -407,16 +344,12 @@ async function fmtCollerTableau() {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
   const doc = editeur.document;
-  // Un tableau de la revue vit dans articles/<slug>/tables/ : hors d'un article, il n'y
-  // a aucun endroit légitime où l'écrire (même test d'« article » que partout, D26).
   const racine = revue.racine();
   const slug = racine ? revue.slugDepuisChemin(racine, doc.uri.fsPath) : null;
   if (!slug) {
     vscode.window.showInformationMessage(T('fmt.coller.horsarticle'));
     return;
   }
-  // 1. La variante HTML (fusions préservées) ; 2. à défaut, le TSV (fusions absentes,
-  //    mais mieux que rien : Bloc-notes, éditeur de texte, colonne unique).
   const brut = await lireHtmlPressePapiers();
   let modele = brut ? tableauDepuisHtmlBureautique(brut) : null;
   if (!modele) {
@@ -444,11 +377,9 @@ async function fmtCollerTableau() {
   revue.rafraichirTout();                            // le tableau apparaît sous l'article
 }
 
-// Palette « Mise en forme » (clic droit → « Mise en forme ») : menu SZH-only,
-// localisé, raccourci affiché à droite. Réutilise les commandes szh.fmt.*.
-// Format : ['--', cléGroupe] = séparateur ; sinon [cléLibellé, commande, raccourci, icône].
-// Exportée : le panneau d'édition (lib/panneaux.js, F1) reprend ces entrées EN BLOC —
-// une seule source pour la liste des actions de mise en forme.
+// Palette du menu contextuel, bâtie sur les commandes szh.fmt.*. Format d'une entrée :
+// ['--', cléGroupe] pour un séparateur, sinon [cléLibellé, commande, raccourci, icône].
+// Exportée parce que le panneau d'édition de lib/panneaux.js en reprend le contenu.
 const PALETTE_MEF = [
   ['--', 'palette.g.style'],
   ['palette.gras', 'szh.fmt.gras', 'Ctrl+B', '$(bold)'],
@@ -470,8 +401,6 @@ const PALETTE_MEF = [
   ['palette.sautPage', 'szh.fmt.sautPage', 'Ctrl+Alt+Entrée', '']
 ];
 
-// Ouvre la palette (QuickPick) et applique la commande choisie à la sélection
-// courante (l'éditeur .md reste l'éditeur actif pendant la QuickPick).
 async function ouvrirMiseEnForme() {
   const ed = vscode.window.activeTextEditor;
   if (!ed || ed.document.languageId !== 'markdown') {
@@ -485,14 +414,10 @@ async function ouvrirMiseEnForme() {
   if (choix && choix.commande) { await vscode.commands.executeCommand(choix.commande); }
 }
 
-// `hote` (facultatif) : contexte de revue injecté par extension.js — cf. `revue`
-// en tête de fichier. Absent (harnais de test), les commandes qui en dépendent se
-// comportent comme hors revue.
 function enregistrerCommandesMiseEnForme(context, hote) {
   if (hote) { revue = Object.assign({}, revue, hote); }
-  // Garde de verrou POSÉE À L'ENREGISTREMENT (D116) : chaque commande de mise en forme
-  // écrit dans le texte de l'article, donc aucune n'a de sens sur un numéro gelé. Le
-  // refus est bavard (message + bouton de déverrouillage), jamais un silence.
+  // Garde de verrou posée à l'enregistrement : chaque commande écrit dans le texte de
+  // l'article et n'a donc pas de sens sur un numéro gelé.
   const c = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, () => {
     if (revue.verrouillee()) { return revue.refuser(); }
     return fn();

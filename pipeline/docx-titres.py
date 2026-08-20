@@ -1,39 +1,30 @@
 #!/usr/bin/env python3
-# docx-titres.py — pré-pass d'import (AX4/D63, garde-fou raffiné F6/WS-D) : déduction
-# CONSERVATRICE des titres d'un .docx qui n'utilise PAS (ou pas partout) les styles
-# de titre de Word.
+# docx-titres.py — pré-pass d'import : déduction conservatrice des titres d'un .docx qui
+# n'utilise pas, ou pas partout, les styles de titre de Word.
 #
 #   python3 docx-titres.py <fichier.docx> <fichier-sortie>
 #
-# pandoc perd la TAILLE de police (w:sz) : ce pré-pass lit word/document.xml (comme
-# docx-tables.py, stdlib seule) et écrit dans <fichier-sortie> une ligne « N<TAB>texte »
-# par titre déduit (N = niveau 1/2). Le filtre Lua szh-titres.lua consomme ce fichier
-# et promeut les paragraphes de PREMIER NIVEAU correspondants en Header(N).
+# pandoc perd la taille de police (w:sz) : ce pré-pass lit word/document.xml (stdlib
+# seule) et écrit dans <fichier-sortie> une ligne « N<TAB>texte » par titre déduit
+# (N = 1 ou 2). szh-titres.lua consomme ce fichier et promeut en Header(N) les
+# paragraphes de premier niveau correspondants.
 #
-# GARDE-FOU (raffiné F6) — l'ancien tout-ou-rien (« UN paragraphe stylé Heading
-# désactive tout ») avait deux défauts, mesurés sur le corpus tmp/docx-dev :
-#   1. le style « Titre » (= Title, titre du DOCUMENT) passait pour un titre de
-#      SECTION et coupait la déduction de documents sans aucune Überschrift ;
-#   2. un document « à moitié stylé » (2-3 vraies Überschrift puis du gras manuel)
-#      perdait toute sa seconde moitié.
-# Nouveau comportement :
-#   - seuls les styles de SECTION comptent (heading N/Überschrift N/Titre N,
-#     outlineLvl) — Title/Subtitle/Author/Abstract sont des métadonnées (docx-meta.py) ;
-#   - styles de section ABSENTS -> déduction complète (comportement historique) ;
-#   - styles de section PRÉSENTS -> pandoc les garde ; on ne déduit EN PLUS que si le
-#     document est nettement « à moitié stylé » : au plus MAX_STYLES_MIXTE titres
-#     stylés ET au moins MIN_CANDIDATS_MIXTE candidats heuristiques nets — dans le
-#     doute, rien (un faux titre est pire qu'un titre manqué). Les titres déduits en
-#     mode mixte sont tous en niveau 2 (la hiérarchie appartient aux styles).
+# Garde-fou : seuls les styles de section comptent (heading N, Überschrift N, Titre N,
+# outlineLvl) — Title, Subtitle, Author et Abstract sont des métadonnées, prises par
+# docx-meta.py. Styles de section absents -> déduction complète. Styles présents ->
+# pandoc les garde, et on ne déduit en plus que si le document est nettement « à moitié
+# stylé » : au plus MAX_STYLES_MIXTE titres stylés et au moins MIN_CANDIDATS_MIXTE
+# candidats heuristiques nets. Dans le doute, rien — un faux titre est pire qu'un titre
+# manqué. Les titres déduits en mode mixte sont tous de niveau 2, la hiérarchie
+# appartenant aux styles.
 #
-# Un paragraphe (direct de w:body, hors tableau) est un titre PRÉSUMÉ si TOUT est vrai :
-#   - texte non vide, court (<= MAX_MOTS mots), pas de puce en tête ;
-#   - ne se termine pas par une ponctuation de phrase (. ; : ! ? …) ;
-#   - pas dans une liste (w:numPr), pas stylé section/méta/légende/bibliographie ;
-#   - pas déjà consommé par docx-meta.py (lignes P/B/F de $SZH_META) ;
-#   - ET (tous ses runs de texte en gras w:b) OU (police nettement plus grande que le
-#     corps : >= SEUIL_TAILLE x la taille dominante du corps).
-# Niveau : plus grande taille de titre -> 1 (#), le reste -> 2 (##).
+# Un paragraphe (enfant direct de w:body, hors tableau) est un titre présumé si tout est
+# vrai : texte non vide et court (MAX_MOTS mots au plus), pas de puce en tête, pas de
+# ponctuation de phrase à la fin, pas dans une liste (w:numPr), pas stylé
+# section/méta/légende/bibliographie, pas déjà consommé par docx-meta.py (lignes P/B/F de
+# $SZH_META), et (tous ses runs de texte en gras w:b) ou (police >= SEUIL_TAILLE x la
+# taille dominante du corps).
+# Niveau : la plus grande taille de titre -> 1 (#), le reste -> 2 (##).
 
 import os
 import re
@@ -43,15 +34,15 @@ import xml.etree.ElementTree as ET
 
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 
-MAX_MOTS = 12          # au-delà, ce n'est pas un titre (à valider par Robin)
-SEUIL_TAILLE = 1.2     # « nettement plus grand » = +20 % (à valider par Robin)
+MAX_MOTS = 12          # au-delà, ce n'est pas un titre
+SEUIL_TAILLE = 1.2     # « nettement plus grand » = +20 %
 MAX_STYLES_MIXTE = 2   # « à moitié stylé » : au plus 2 titres stylés…
-MIN_CANDIDATS_MIXTE = 3  # … et au moins 3 candidats heuristiques nets (corpus F6)
+MIN_CANDIDATS_MIXTE = 3  # … et au moins 3 candidats heuristiques nets
 PONCT_PHRASE = '.;:!?…'
 PUCES = '•▪◦-–—'
 
-# Une légende (« Figure 1 : … », « Tableau 2 — … ») n'est PAS un titre : elle est
-# traitée par szh-legendes.lua (AX5). L'exclure évite de la promouvoir par erreur.
+# Une légende (« Figure 1 : … », « Tableau 2 — … ») n'est pas un titre : elle est traitée
+# par szh-legendes.lua. L'exclure évite de la promouvoir par erreur.
 RE_LEGENDE = re.compile(
     r'^(?:figure|fig\.?|abbildung|abb\.?|illustration|grafik|tableau|tabelle|table)\s+\d+',
     re.I)
@@ -64,8 +55,9 @@ def actif(prop):
 
 
 def normaliser(t):
-    """Espaces spéciaux -> espace, tirets spéciaux -> '-', espaces compactés, rogné.
-    DOIT rester identique à la normalisation Lua (szh-titres.lua) pour l'appariement."""
+    """Espaces spéciaux -> espace, tirets spéciaux -> '-', espaces compactés, rogné. À
+    garder identique à la normalisation Lua de szh-titres.lua, sinon l'appariement
+    échoue."""
     for a, b in ((' ', ' '), (' ', ' '), (' ', ' '),
                  ('–', '-'), ('—', '-'), ('‑', '-')):
         t = t.replace(a, b)
@@ -73,8 +65,8 @@ def normaliser(t):
 
 
 def runs_texte(p):
-    """Runs (w:r) porteurs de texte d'un paragraphe (paragraphe direct, jamais un
-    tableau imbriqué — un w:p n'en contient pas)."""
+    """Runs (w:r) porteurs de texte d'un paragraphe direct ; un w:p ne contient jamais de
+    tableau imbriqué."""
     for r in p.iter(W + 'r'):
         if any(e.tag == W + 't' and (e.text or '') for e in r):
             yield r
@@ -130,10 +122,10 @@ def charger_styles(z):
 
 
 def familles_styles(styles):
-    """(ids_section, ids_exclus) : styles de SECTION (heading N / Überschrift N /
-    Titre N) d'un côté ; de l'autre les styles à ne JAMAIS promouvoir — métadonnées
-    (Title/Subtitle/Author/Abstract, mangées par docx-meta.py/pandoc), légendes
-    (Beschriftung/Caption), bibliographie, sommaire (toc)."""
+    """(ids_section, ids_exclus) : d'un côté les styles de section (heading N,
+    Überschrift N, Titre N) ; de l'autre ceux à ne jamais promouvoir — métadonnées
+    (Title/Subtitle/Author/Abstract, prises par docx-meta.py et pandoc), légendes
+    (Beschriftung/Caption), bibliographie, sommaire."""
     sections, exclus = set(), set()
     for sid, nom in styles.items():
         i = sid.lower()
@@ -167,8 +159,8 @@ def a_outline(p):
 
 
 def textes_consommes_par_meta():
-    """Textes (normalisés) que docx-meta.py retire du corps (lignes P/B/F de
-    $SZH_META) : jamais candidats — un bloc consommé ne peut pas devenir un titre."""
+    """Textes normalisés que docx-meta.py retire du corps (lignes P/B/F de $SZH_META) :
+    jamais candidats, un bloc consommé ne pouvant pas devenir un titre."""
     chemin = os.getenv('SZH_META')
     if not chemin:
         return set()
@@ -236,7 +228,7 @@ def principal(argv):
         if len(txt) < 2 or txt[0] in PUCES:
             continue
         if RE_LEGENDE.match(txt):
-            continue                          # légende (AX5), pas un titre
+            continue                          # légende, pas un titre
         if txt in consommes:
             continue                          # bloc consommé par docx-meta.py
         if len(txt.split()) > MAX_MOTS:
@@ -272,9 +264,9 @@ def principal(argv):
                   % (n_styles, len(candidats)))
         return 0
 
-    # Niveaux par PALIERS de taille effective : la plus GRANDE -> 1 (#), le reste -> 2
-    # (##). S'il n'existe qu'UNE taille de titre (aucune hiérarchie décelable), tout en
-    # ## : un faux # est pire qu'un titre correctement rétrogradé.
+    # Niveaux par paliers de taille effective : la plus grande -> 1 (#), le reste -> 2
+    # (##). S'il n'existe qu'une taille de titre, aucune hiérarchie n'est décelable et
+    # tout part en ## : un faux # est pire qu'un titre correctement rétrogradé.
     tailles = sorted({e for _, e in candidats if e is not None}, reverse=True)
     taille_h1 = tailles[0] if tailles else None
     h1_distinct = len(tailles) >= 2

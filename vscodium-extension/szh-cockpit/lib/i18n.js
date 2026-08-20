@@ -1,16 +1,13 @@
-// SZH cockpit — i18n (M4, D52). Extrait de extension.js (R1, refactor sans build,
-// comportement identique). TEXTES_COCKPIT + T(clé[,args]) + langueCockpit().
+// Libellés du cockpit : le dictionnaire TEXTES_COCKPIT, la fonction de traduction
+// T(clé[, args]) et le choix de la langue.
 'use strict';
 
 const vscode = require('vscode');
 
-// ---- i18n du cockpit (M4, D52) ------------------------------------------------------
-//
-// Toutes les chaînes VISIBLES passent par T(clé[, args]). Langue : réglage
-// szh.langue (fr/de) s'il est défini, sinon la langue de VSCodium (de -> de,
-// tout le reste -> fr). Les traductions DE sont un premier jet à valider.
-// Les titres de commandes de package.json passent par %clé% + package.nls*.json
-// (résolus par VSCodium selon SA langue d'interface, pas szh.langue).
+// Toutes les chaînes visibles passent par T(clé[, args]). La langue vient du réglage
+// szh.langue s'il est défini, sinon de celle de VSCodium (de -> de, tout le reste -> fr).
+// Les titres de commandes de package.json, eux, passent par %clé% et package.nls*.json,
+// que VSCodium résout selon sa propre langue d'interface et non selon szh.langue.
 
 const TEXTES_COCKPIT = {
   fr: {
@@ -1002,8 +999,8 @@ function langueCockpit() {
   return env.indexOf('de') === 0 ? 'de' : 'fr';
 }
 
-// T('clé', [args]) -> texte dans la langue du cockpit, repli fr, sinon la clé.
-// Les {0} {1} … sont substitués par les args.
+// T('clé', [args]) -> texte dans la langue du cockpit, avec repli sur le français puis
+// sur la clé elle-même. Les {0}, {1}… sont remplacés par les args.
 function T(cle, args) {
   const langue = langueCockpit();
   let texte = (TEXTES_COCKPIT[langue] && TEXTES_COCKPIT[langue][cle]);

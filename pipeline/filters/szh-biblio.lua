@@ -1,22 +1,17 @@
--- szh-biblio.lua — import (F6/WS-D, ravive le §5 d'attic/szh-import.lua).
--- Détecte la liste de références en fin de corps, la RETIRE du .md et écrit les
--- entrées brutes dans $SZH_REFS (une par ligne) ; import-docx.sh les donne ensuite
--- à AnyStyle (-> media/<slug>.bib) et, si AnyStyle échoue, RELANCE pandoc sans ce
--- filtre : la liste reste alors dans le .md — jamais de perte.
---
--- Deux voies, PAR STYLE D'ABORD :
---   1. lignes B de $SZH_META (paragraphes stylés Literaturverzeichnis/Bibliography,
---      relevés par docx-meta.py dans le XML — pandoc perd ce style) : retrait exact,
---      file de consommation, continuations recollées à l'entrée précédente ;
---   2. sinon, heuristique CONTENU + POSITION du §5 (est_ref : >= 25 car., année ou
---      « sous presse », motif « Nom, X. » ou URL ; remontée depuis la fin avec
---      continuations, sauts de Table/Figure/image ; seuil >= 3 entrées, moitié basse
---      du document).
--- Le TITRE de section (« Literatur », « Bibliographie »…) est CONSERVÉ : à la
--- compilation, citeproc replace la bibliographie générée en fin de document, juste
--- sous ce titre. Y<TAB>documentation dans $SZH_META -> filtre inactif (la liste de
--- références EST le contenu de ces articles). Sans $SZH_REFS : document inchangé.
--- DOIT tourner APRÈS szh-titres (les titres promus sont des Header) et AVANT
+-- Import : détecte la liste de références en fin de corps, la retire du .md et écrit les
+-- entrées brutes dans SZH_REFS (une par ligne). import-docx.sh les donne à AnyStyle
+-- (-> media/<slug>.bib) et, si AnyStyle échoue, relance pandoc sans ce filtre : la liste
+-- reste alors dans le .md, rien n'est perdu.
+-- Deux voies, par style d'abord :
+--   1. lignes B de SZH_META (paragraphes stylés Literaturverzeichnis/Bibliography, relevés
+--      dans le XML par docx-meta.py, pandoc perdant ce style) : retrait exact, file de
+--      consommation, continuations recollées à l'entrée précédente ;
+--   2. sinon, heuristique contenu + position (voir est_ref, plus bas ; remontée depuis la
+--      fin, seuil de 3 entrées, moitié basse du document).
+-- Le titre de section est conservé : citeproc replace la bibliographie générée juste sous
+-- lui. Y<TAB>documentation dans SZH_META rend le filtre inactif, la liste de références
+-- étant le contenu de ces articles. Sans SZH_REFS, le document est inchangé.
+-- Doit tourner après szh-titres (les titres promus sont des Header) et avant
 -- szh-tabelle-reference (les Table sont encore des Table).
 
 local utils = pandoc.utils
@@ -28,7 +23,7 @@ local function assainir(t)
 end
 local function trim(t) return (t:gsub('^%s+', ''):gsub('%s+$', '')) end
 local function s(x) return assainir(utils.stringify(x)) end
--- normalisation IDENTIQUE à docx-meta.py (appariement des lignes B).
+-- Normalisation à garder identique à docx-meta.py (appariement des lignes B).
 local function normaliser(t)
   return (assainir(t):gsub('%s+', ' '):gsub('^%s+', ''):gsub('%s+$', ''))
 end
@@ -52,7 +47,7 @@ local function charger_meta()
   return type_article, blignes
 end
 
--- ---------- prédicats du §5 (attic/szh-import.lua l.211-221, à l'identique) ------
+-- ---------- prédicats : à quoi reconnaît-on une entrée de référence ? ----------
 local function est_ref(txt)
   if #txt < 25 then return false end
   if txt:match('^https?://') then return true end
@@ -119,7 +114,7 @@ local function retirer_par_style(doc, blignes)
   return doc, #entrees
 end
 
--- ---------- voie 2 : heuristique contenu + position (§5) ----------
+-- ---------- voie 2 : heuristique contenu + position ----------
 local function retirer_par_heuristique(doc)
   local blocs = doc.blocks
   local dernier_ref = nil
@@ -143,7 +138,7 @@ local function retirer_par_heuristique(doc)
       if est_ref(txt) then
         a_retirer[k] = true; suspens = 0
       elseif #txt > 0 and #txt < 280 and suspens < 2 then
-        a_retirer[k] = true; suspens = suspens + 1   -- continuation (« Dentz »)
+        a_retirer[k] = true; suspens = suspens + 1   -- continuation
       else
         break
       end
@@ -156,9 +151,9 @@ local function retirer_par_heuristique(doc)
     end
     k = k - 1
   end
-  -- ⚠ la remontée peut avoir absorbé en « continuations » des paragraphes de PROSE
+  -- ⚠ la remontée peut avoir absorbé en « continuations » des paragraphes de prose
   -- juste au-dessus de la première vraie référence : on rogne les continuations de
-  -- tête (une entrée ne peut pas commencer par une continuation).
+  -- tête, une entrée ne pouvant pas commencer par une continuation.
   local premiers = {}
   for idx = 1, #blocs do
     if a_retirer[idx] then premiers[#premiers + 1] = idx end
@@ -181,7 +176,7 @@ local function retirer_par_heuristique(doc)
     end
     j = j + 1
   end
-  -- regrouper (continuations collées à l'entrée précédente, comme l'attic)
+  -- regrouper : continuations collées à l'entrée précédente
   local entrees = {}
   for idx = 1, #blocs do
     if a_retirer[idx] and blocs[idx].t == 'Para' then
@@ -197,7 +192,7 @@ local function retirer_par_heuristique(doc)
       end
     end
   end
-  if #entrees < 3 then return doc, 0 end  -- seuil du §5 : jamais 1-2 entrées isolées
+  if #entrees < 3 then return doc, 0 end  -- jamais 1-2 entrées isolées
   local garde = pandoc.List()
   for idx, b in ipairs(blocs) do
     if not a_retirer[idx] then garde:insert(b) end

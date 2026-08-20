@@ -1,30 +1,25 @@
-# Métadonnées du numéro / de l'édition (« Ausgabe »), consommées par Pandoc via
-# --metadata-file pour chaque article. Éditées par le formulaire « Métadonnées du
-# numéro » du cockpit (ne pas modifier à la main sauf besoin).
+# Métadonnées du numéro (« Ausgabe »), lues par pandoc en --metadata-file pour chaque
+# article. Le formulaire « Métadonnées du numéro » du cockpit les édite ; il n'y a
+# normalement pas à toucher ce fichier à la main.
 #
-#   title   : titre du DOSSIER thématique (pas le nom de la revue)
-#   revue   : choix fermé (D74) -> nom + ISSN + langue par défaut
+#   title   : titre du dossier thématique, pas le nom de la revue.
+#   revue   : choix fermé, dont découlent le nom, l'ISSN et la langue par défaut.
 #             « revue »       = Revue suisse de pédagogie spécialisée (ISSN 2813-4915, fr)
 #             « zeitschrift » = Schweizerische Zeitschrift für Heilpädagogik (ISSN 2813-4907, de)
-#   couleur : couleur annuelle (hex de la palette figée), repeint tous les accents.
-#   profil  : produit du dossier (D20) — absent ou « article » = PDF + HTML (défaut) ; « book » = différé ; clé présente et vide = aucun document.
-#   entete-condensee : allure de la couverture (D114) — absente ou « false » = en-tête à
-#             hauteur fixe, bloc auteurs ancré en bas (défaut) ; « true » = en-tête à la
-#             hauteur de son contenu, espaces minimum (pas de blanc sous un titre court).
+#   couleur : couleur annuelle, en hexadécimal, qui repeint tous les accents.
+#   profil  : absent ou « article » = PDF et HTML ; « book » = différé ; vide = aucun document.
+#   entete-condensee : « true » = en-tête de couverture à la hauteur de son contenu ;
+#             absente ou « false » = hauteur fixe, bloc auteurs ancré en bas.
 #
-# Cycle de vie du numéro (D116-D117 et D120) — piloté par le panneau d'export du cockpit
-# (Ctrl+Alt+D), jamais à modifier à la main en temps normal :
-#   locked   : « true » = numéro GELÉ. L'éditeur passe en lecture seule et tous les
-#              gestes d'écriture de la barre « Revue SZH » sont refusés, jusqu'à
-#              « Déverrouiller la revue ». Se combine librement avec archived.
-#   archived : « true » = le dossier vit dans l'arborescence d'ARCHIVES. Plus aucune
-#              compilation automatique : l'export se demande article par article
-#              (« Exporter cet article ») ou en bloc (« Recompiler toute la revue »).
-#   version-toolkit : version du logiciel qui a créé ce numéro, posée à la création
-#              par new-revue.ps1. Sert à recompiler dans les mêmes conditions des
-#              années plus tard ; le cockpit avertit quand la version installée
-#              diverge. Absente = numéro antérieur à cette fonction (aucun
-#              avertissement, le champ est complété au premier archivage).
+# Cycle de vie du numéro, piloté par le panneau d'export du cockpit (Ctrl+Alt+D) :
+#   locked   : numéro gelé — éditeur en lecture seule et gestes d'écriture refusés
+#              jusqu'à « Déverrouiller la revue ». Se combine librement avec archived.
+#   archived : le dossier vit dans les archives. Plus de compilation automatique :
+#              l'export se demande article par article ou en bloc.
+#   version-toolkit : version du logiciel qui a créé ce numéro, posée par new-revue.ps1,
+#              de quoi le recomposer des années plus tard ; le cockpit signale une
+#              divergence avec la version installée. Absente sur un numéro plus ancien,
+#              le champ est alors complété au premier archivage.
 title: "Dossier — numéro d'exemple"
 revue: revue
 volume: "44"

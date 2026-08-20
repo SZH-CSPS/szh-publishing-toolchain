@@ -1,15 +1,8 @@
--- szh-figure.lua — compilation COMMUNE aux deux lecteurs (AX5).
--- Objectif : un rendu <figure><figcaption> IDENTIQUE quel que soit le lecteur.
---   * lecteur `markdown` (sortie PDF/HTML) : `![lég](img)` devient DÉJÀ une Figure
---     (extension implicit_figures) -> ce filtre n'y touche pas.
---   * lecteur `commonmark_x` (aperçu) : `![lég](img)` reste un Para{Image} SANS
---     figure -> ce filtre le convertit en Figure identique à celle du lecteur
---     markdown, pour que HTML/aperçu/PDF rendent la même chose.
--- Le <caption> des tableaux est du HTML brut (inclus par szh-tabelle-inclure.lua) :
--- il traverse les deux lecteurs à l'identique, rien à faire ici.
--- La NUMÉROTATION (« Figure N — » dans la légende, l'alt et l'aria-label) est posée
--- ensuite par szh-numerotation.lua, qui a besoin des Figure construites ici.
--- Idempotent : une image sans légende (alt vide) reste une image inline.
+-- Construit les Figure que le lecteur `commonmark_x` de l'aperçu ne fait pas : il rend
+-- `![lég](img)` en Para{Image}, là où le lecteur `markdown` (PDF et HTML) produit déjà
+-- une Figure via l'extension implicit_figures. Les deux chaînes rendent ainsi le même
+-- <figure><figcaption>. Idempotent : une image sans légende reste une image inline.
+-- szh-numerotation.lua, branché après, a besoin des Figure construites ici.
 
 local function image_seule(inls)
   local img = nil

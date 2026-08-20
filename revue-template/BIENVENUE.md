@@ -42,16 +42,21 @@ PDF + version web). Pour tout régénérer d'un coup : **⬆ Tout exporter**.
 
 | Élément | À quoi ça sert |
 |---|---|
-| **Titre de la barre** | Le numéro en cours (repère) |
-| **➕ Importer** | Ajouter un/des Word à convertir |
-| **▶▶ Convertir les Word en attente** | Transformer les Word déposés en articles Markdown |
-| **⚙ Métadonnées du numéro** | Réglages du numéro (revue, volume, couleur, dossier) — 1× |
-| **☰ Métadonnées des articles** | Fiche par article (titre, auteurs, DOI, mots-clés, type) |
-| **⬆ Tout exporter** | Recompiler tous les articles (utile avant l'envoi final) |
-| **🗑 Supprimer l'article** | Retirer un article (avec confirmation) |
-| Section **Articles** | La liste de tes articles — **un clic** ouvre et affiche l'aperçu |
-| Section **Word en attente (n)** | Les Word déposés pas encore convertis |
-| Sous un article (déplié) | Ses **images** (dimensions + poids) et ses **tableaux** — chacun avec **Remplacer** (même nom conservé) |
+| **Titre de la barre** | Le numéro en cours |
+| Section **Articles** | La liste de tes articles — un clic ouvre l'article et affiche l'aperçu |
+| Section **Word en attente** | Les Word déposés qui ne sont pas encore convertis |
+| Section **Traductions** | L'avancement de chaque champ à traduire, article par article |
+| Sous un article déplié | Ses images (dimensions et poids) et ses tableaux, chacun avec « Remplacer » |
+| Au survol d'un article | Supprimer l'article, avec confirmation |
+
+Les trois boutons en haut de la barre ouvrent les panneaux, qui portent tous les autres
+gestes :
+
+| Bouton | Raccourci | Ce qu'on y trouve |
+|---|---|---|
+| **Commande** | `Ctrl + Alt + A` | Importer des Word, les convertir, métadonnées du numéro et des articles, traductions, réglages |
+| **Édition** | `Ctrl + Alt + S` | Basculer l'aperçu, et toute la mise en forme |
+| **Export** | `Ctrl + Alt + D` | Recompiler toute la revue, exporter pour OJS, archiver ou verrouiller le numéro |
 
 ---
 
@@ -62,10 +67,10 @@ PDF + version web). Pour tout régénérer d'un coup : **⬆ Tout exporter**.
 | **Ctrl + S** | Enregistrer — le PDF de l'article se régénère |
 | **Ctrl + B** / **Ctrl + I** | **Gras** / *italique* |
 | **Ctrl + Alt + 1 / 2 / 3** | Titre de niveau 1 / 2 / 3 |
-| **Ctrl + Alt + S** | Palette « Mise en forme SZH » (encadrés, exergue, figure, tableau…) |
+| **Ctrl + Alt + S** | Panneau d’édition : aperçu et mise en forme (encadrés, exergue, figure, tableau…) |
 | **Entrée** (dans une liste) | La liste continue toute seule |
 | **Tab** / **Maj + Tab** (dans un tableau) | Cellule suivante / précédente (mise en forme auto) |
-| **Maj + Alt + V** | Coller un tableau copié depuis **Excel ou Word** |
+| **Ctrl + Alt + V** | Coller un tableau copié depuis **Excel ou Word** |
 | **Ctrl + Espace** | Afficher les suggestions (p. ex. après `:::`) |
 | **Ctrl + Alt + I** | Importer les Word déposés dans `articles-word` |
 | **Ctrl + E** | Relancer la compilation sans rien modifier |

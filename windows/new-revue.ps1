@@ -1,20 +1,19 @@
 ﻿<#
 .SYNOPSIS
-  Crée une nouvelle revue à partir du template du toolkit (sans admin) :
+  Crée une nouvelle revue à partir du gabarit du toolkit, sans administrateur :
     powershell -ExecutionPolicy Bypass -File new-revue.ps1 -Dossier "$env:OneDrive\Revues\2026-01"
 
-  - copie le template (BIENVENUE, ausgabe.yaml, articles/, articles-word/) ;
-  - crée « Ouvrir la revue.lnk » DANS le dossier (D14 — il voyage avec la revue) ;
-  - enregistre l'emplacement pour le lanceur « Revues SZH » du menu Démarrer.
+  Copie le gabarit, pose « Ouvrir la revue.lnk » dans le dossier pour qu'il voyage avec la
+  revue, et enregistre l'emplacement pour le lanceur du menu Démarrer.
 
   Compatibilité : Windows PowerShell 5.1.
 #>
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)][string]$Dossier,
-  # Produit du numéro (D126) : écrit le jeton `revue:` d'ausgabe.yaml, donc le nom de la
-  # revue, son ISSN, sa langue par défaut (D74) ET le lanceur qui le listera. Vide =
-  # on laisse ce que dit le template (rétrocompatibilité des appels en ligne).
+  # Produit du numéro : écrit le jeton `revue:` d'ausgabe.yaml, dont découlent le nom de
+  # la revue, son ISSN, sa langue par défaut et le lanceur qui l'affichera. Vide : on
+  # laisse ce que dit le gabarit.
   [string]$Produit = ''
 )
 
@@ -36,9 +35,9 @@ if ($existait) {
 }
 $chemin = (Resolve-Path $Dossier).Path
 
-# Produit (D126) : c'est CE jeton qui décide dans quel lanceur le numéro apparaîtra.
-# Sans lui, un numéro créé dans le dossier de la Zeitschrift gardait le « revue: revue »
-# du template et se retrouvait listé du mauvais côté — exactement le décalage constaté.
+# Ce jeton décide dans quel lanceur le numéro apparaîtra. Sans lui, un numéro créé dans
+# le dossier de la Zeitschrift garderait le « revue: revue » du gabarit et serait listé
+# du mauvais côté.
 if (-not $existait) {
   $jeton = Get-SzhJetonRevue $Produit
   if ($jeton) {
@@ -48,16 +47,11 @@ if (-not $existait) {
   }
 }
 
-# Identité du numéro déduite du NOM DU DOSSIER (D129).
-#
-# Le gabarit porte des valeurs d'exemple (`numero: "2"`, `date: "2026"`, un titre de
-# démonstration) et rien ne les remplaçait : un numéro neuf s'annonçait donc
-# « R2026-2 | Dossier — numéro d'exemple » dans la barre du cockpit, quel que soit son
-# dossier — en contradiction avec le nom que voient le lanceur, les liens et les
-# archives. Or ce nom suit une convention (« 2027-05 ») : on en tire l'année et le
-# numéro, et on VIDE le titre de démonstration, qui n'appartient qu'au rédacteur.
-# Un nom hors convention vide aussi année et numéro : la barre retombe alors sur le nom
-# du dossier, ce qui est honnête — jamais une valeur d'exemple prise pour vraie.
+# Identité déduite du nom du dossier, qui suit la convention « 2027-05 » : on en tire
+# l'année et le numéro, et on vide le titre de démonstration du gabarit. Sans cela, un
+# numéro neuf porterait les valeurs d'exemple, en contradiction avec le nom que montrent
+# le lanceur, les liens et les archives. Un nom hors convention vide aussi année et
+# numéro : le cockpit retombe sur le nom du dossier plutôt que sur un exemple.
 if (-not $existait) {
   $leaf = Split-Path $chemin -Leaf
   if ($leaf -match '^(\d{4})-(\d{1,3})$') {
@@ -72,10 +66,8 @@ if (-not $existait) {
   [void](Set-SzhAusgabeCle $chemin 'title' '' $true $true)
 }
 
-# Version du logiciel qui crée ce numéro (D120) : c'est elle qui permettra, plus tard,
-# de le recompiler dans les mêmes conditions — et c'est elle que le cockpit compare à
-# la version installée pour avertir d'une divergence. Posée UNIQUEMENT à la création :
-# une revue existante garde son estampille d'origine.
+# Version du logiciel qui crée ce numéro : de quoi le recomposer plus tard à l'identique,
+# et ce que le cockpit compare à la version installée. Posée à la création seulement.
 if (-not $existait) {
   $version = Get-SzhVersionInstallee
   if (Set-SzhAusgabeVersion $chemin $version) {
@@ -83,15 +75,13 @@ if (-not $existait) {
   }
 }
 
-# Raccourci dans le dossier (voyage avec la revue sur OneDrive, D14)
+# Raccourci dans le dossier : il voyage avec la revue sur OneDrive.
 if (-not (Get-VSCodiumExe)) { throw 'VSCodium introuvable — lancer d''abord bootstrap.ps1.' }
 Set-SzhRaccourciRevue $chemin | Out-Null
 
-# Enregistrer la racine (parent) — SEULEMENT si elle est hors de l'arborescence
-# officielle (D125). Le lanceur liste les emplacements de Get-SzhEmplacements ; y
-# ajouter un parent qui en fait déjà partie ne servait à rien, et enregistrer un parent
-# quelconque faisait grossir une liste que le lanceur n'utilise plus pour lister — elle
-# ne sert qu'à SIGNALER une revue restée dehors, ce qui est justement le cas ici.
+# On n'enregistre le dossier parent que s'il est hors de l'arborescence officielle : le
+# lanceur liste les emplacements de Get-SzhEmplacements, et cette clé ne sert plus qu'à
+# signaler une revue restée dehors.
 $parent = Split-Path $chemin -Parent
 $emp = Get-SzhEmplacements
 $officiel = $false

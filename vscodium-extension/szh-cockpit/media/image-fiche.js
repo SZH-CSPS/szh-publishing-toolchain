@@ -1,20 +1,13 @@
 (function(){
 'use strict';
-// Fiche image — mêmes règles que les autres webviews du cockpit : AUCUNE donnée
-// injectée dans le HTML (tout arrive par postMessage), aucun innerHTML, la page est
-// construite en DOM. L'aperçu de l'image est une data: URI fournie par l'hôte
-// (CSP img-src data:, localResourceRoots reste []).
+// Fiche image, aux mêmes règles que les autres webviews : aucune donnée injectée dans le
+// HTML, tout arrive par postMessage, page construite en DOM sans innerHTML. L'aperçu est
+// une data: URI fournie par l'hôte, d'où le img-src data: de la CSP.
 //
-// Protocole
-//   webview -> hôte : pret
-//                     modifie { modifie }
-//                     ouvrirImage
-//                     enregistrer { valeurs }
-//                     retourArticle { modifie, valeurs }
-//   hôte -> webview : charger { nom, description, apercu, occurrences, valeurs, i18n }
-//                     enregistre { occurrences }
-//                     erreur { message }
-// valeurs = { legende, alt, altDefini, copyright, source }
+// Protocole. Vers l'hôte : pret, modifie, ouvrirImage, enregistrer { valeurs },
+// retourArticle { modifie, valeurs }. Depuis l'hôte : charger { nom, description, apercu,
+// occurrences, valeurs, i18n }, enregistre { occurrences }, erreur { message }, où
+// valeurs = { legende, alt, altDefini, copyright, source }.
 var api=acquireVsCodeApi();
 var TXT={}, ctl={}, enregistrees=null, occurrences=0, dernierModifie=false, apercuUrl=null, nomFichier='';
 var barre=document.getElementById('barre'), avis=document.getElementById('avis');
@@ -24,12 +17,11 @@ function bouton(txt,fn,cls,titre){var b=document.createElement('button');b.type=
   if(cls)b.className=cls;if(titre)b.title=titre;b.addEventListener('click',fn);return b;}
 function etat(msg){if(ctl.etat)ctl.etat.textContent=msg||'';}
 
-// ---- Valeurs du formulaire ----------------------------------------------------------
-// Les DEUX états du texte alternatif sont portés par le choix de rôle, jamais déduits
-// d'un champ vide :
-//   « décrit »     -> altDefini = le champ porte un texte (sinon attribut ABSENT, et
-//                     le pipeline retombe sur la légende) ;
-//   « décorative » -> altDefini = true avec une valeur VIDE, ce qui écrit alt="" et
+// ---- Valeurs du formulaire ----
+// Les deux états du texte alternatif viennent du choix de rôle, jamais d'un champ vide :
+//   « décrit »     -> altDefini vaut vrai si le champ porte un texte ; sinon l'attribut
+//                     est absent et le pipeline retombe sur la légende ;
+//   « décorative » -> altDefini vaut vrai avec une valeur vide, ce qui écrit alt="" et
 //                     fait ignorer l'image par les lecteurs d'écran.
 function decorative(){return !!(ctl.roleDeco&&ctl.roleDeco.checked);}
 function valeurs(){
@@ -49,8 +41,6 @@ function poserValeurs(v){
   ctl.copyright.value=String(v.copyright||'');
   ctl.source.value=String(v.source||'');
   majRole();}
-// Champ de texte alternatif désactivé (et vidé à l'écran) quand l'image est déclarée
-// décorative : les deux états restent distincts et lisibles, sans champ ambigu.
 function majRole(){if(!ctl.alt)return;ctl.alt.disabled=decorative();
   if(ctl.aideAlt)ctl.aideAlt.textContent=decorative()?(TXT.altAideDeco||''):(TXT.altAide||'');}
 function estModifie(){if(!enregistrees)return false;return JSON.stringify(valeurs())!==JSON.stringify(enregistrees);}
@@ -58,7 +48,6 @@ function majModifie(){var m=estModifie();
   if(ctl.indic){ctl.indic.textContent=m?' ●':'';ctl.indic.title=m?(TXT.nonEnregistre||''):'';}
   if(m!==dernierModifie){dernierModifie=m;api.postMessage({type:'modifie',modifie:m});}}
 
-// ---- Construction ------------------------------------------------------------------
 function champ(parent,cle,cls){
   var d=document.createElement('div');d.className='champ'+(cls?' '+cls:'');
   var l=document.createElement('label');l.textContent=TXT[cle]||'';l.setAttribute('for','ch-'+cle);
@@ -76,8 +65,6 @@ function radioRole(parent,libelle,sous){
   l.appendChild(i);l.appendChild(t);parent.appendChild(l);return i;}
 
 function construireBarre(){barre.textContent='';
-  // « Ouvrir l'image » = l'ancien comportement du clic dans l'arbre (visionneuse
-  // native de l'éditeur), gardé à portée de main.
   barre.appendChild(bouton(TXT.ouvrir,function(){api.postMessage({type:'ouvrirImage'});},'',TXT.ouvrirTip));
   barre.appendChild(bouton(TXT.retour,function(){
     api.postMessage({type:'retourArticle',modifie:estModifie(),valeurs:valeurs()});},'',TXT.retourTip));
@@ -106,8 +93,8 @@ function construireVisuel(nom,description,apercu){visuel.textContent='';
   var n=document.createElement('p');n.className='nom';n.textContent=nom||'';visuel.appendChild(n);
   if(description){var d=document.createElement('p');d.className='desc';d.textContent=description;visuel.appendChild(d);}}
 
-// Insertions dans le texte de l'article : 0 = rien à écrire (la fiche le dit et se
-// verrouille) ; 1 = rien à signaler ; N = l'enregistrement met à jour LES N insertions.
+// Sans insertion dans le texte de l'article, la fiche le dit et se verrouille, n'ayant
+// rien où écrire ; s'il y en a plusieurs, l'enregistrement les met toutes à jour.
 function majAvis(){avis.className='avis';avis.textContent='';
   if(occurrences===0){avis.textContent=TXT.occZero||'';avis.className='avis visible alerte';}
   else if(occurrences>1){avis.textContent=(TXT.occPlusieurs||'').split('{0}').join(String(occurrences));
@@ -121,12 +108,9 @@ function majAvis(){avis.className='avis';avis.textContent='';
 
 function enregistrer(auto){if(occurrences===0){if(!auto)etat(TXT.occZero||'');return;}
   api.postMessage({type:'enregistrer',auto:!!auto,valeurs:valeurs()});}
-// D121 : ici PAS de minuteur de 3 s ni d'enregistrement au changement de champ.
-// L'écriture de cette fiche passe par WorkspaceEdit + doc.save() sur le .md, ce qui
-// déclenche la recompilation de l'article (triggertaskonsave) et empile une entrée
-// d'annulation : un build toutes les 3 secondes pendant qu'on tape un texte
-// alternatif serait intenable. Il reste le filet le plus important — la webview
-// perd le focus ou passe en arrière-plan -> on écrit.
+// Ni minuteur ni enregistrement au changement de champ ici : l'écriture passe par un
+// WorkspaceEdit et un doc.save() sur le .md, qui recompilent l'article. Reste le filet
+// principal, l'écriture quand la webview perd le focus.
 var autoEnr=SZH.autoEnregistrement({delai:0,estModifie:estModifie,enregistrer:enregistrer});
 
 document.addEventListener('keydown',function(ev){if(!(ev.ctrlKey||ev.metaKey))return;

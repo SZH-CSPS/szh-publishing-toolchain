@@ -2,25 +2,20 @@
   'use strict';
   var vscodeApi = acquireVsCodeApi();
 
-  // --- Bandeau + survol + clic->source (existant) --------------------------------
+  // ---- Bandeau, survol et clic vers la source ----
   var courant = null;
   document.getElementById('szh-basculer').addEventListener('click', function () {
     vscodeApi.postMessage({ type: 'basculer' });
   });
-  // Éléments de BLOC : ce sont les seuls que le survol surligne. Pandoc pose des
-  // positions (sourcepos) aussi sur l'INLINE — un <strong>, un <em>, un lien — donc un
-  // simple closest('[data-pos]') surlignait « Morand » au milieu de « je suis Robin
-  // Morand » au lieu du paragraphe entier. Or ce qu'on désigne ici, c'est un passage à
-  // retrouver dans le texte source : l'unité utile est le bloc.
+  // Le survol ne surligne que des éléments de bloc : pandoc pose aussi des positions sur
+  // l'en-ligne, si bien qu'un simple closest('[data-pos]') surlignerait un mot en gras au
+  // lieu de son paragraphe.
   var BLOCS = {
     P: 1, H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1, LI: 1, DT: 1, DD: 1,
     BLOCKQUOTE: 1, PRE: 1, FIGURE: 1, FIGCAPTION: 1, TABLE: 1, CAPTION: 1,
     UL: 1, OL: 1, DL: 1, DIV: 1, SECTION: 1, HEADER: 1, ASIDE: 1
   };
 
-  // Remonte de `cible` jusqu'au premier élément de BLOC portant une position. On
-  // s'arrête au plus INTERNE (le paragraphe, pas la section qui le contient) : c'est le
-  // plus petit passage qui ait un sens dans la source.
   function blocDe(cible) {
     var el = cible;
     while (el && el.nodeType === 1 && el !== document.body) {
@@ -38,28 +33,21 @@
     if (courant) { courant.classList.add('szh-survol'); }
   });
   document.addEventListener('click', function (e) {
-    // Le bandeau (bouton « Voir en PDF ») a son propre gestionnaire : ne jamais
-    // le traiter comme un clic de navigation.
     if (e.target && e.target.closest && e.target.closest('#szh-bandeau')) { return; }
     var res = resoudreClic(e.target, e.clientX, e.clientY);
     if (!res) { return; }
     e.preventDefault();
-    // A2 : en plus du bloc (data-pos), on transmet le MOT sous le curseur pour viser
-    // le mot exact dans la source (repli bloc côté hôte si vide/introuvable).
+    // En plus du bloc, on transmet le mot sous le curseur pour viser le mot exact dans
+    // la source ; l'hôte se replie sur le bloc s'il est vide ou introuvable.
     vscodeApi.postMessage({ type: 'revele', pos: res.pos, mot: res.mot });
   });
 
-  // G1 — résolution robuste d'un clic en { pos, mot }. Chemin normal : le bloc/mot
-  // sous le curseur (closest data-pos), qui porte aussi le MOT exact pour l'A2.
-  // Repli : un clic tombé dans une zone SANS position — typiquement un tableau
-  // inclus, dont le RawBlock HTML n'a pas de data-pos — vise le bloc positionné le
-  // plus proche dans l'ordre du document (jamais de clic « perdu », y compris pour
-  // les blocs qui suivent un tableau). Pas de mot dans ce cas : le texte cliqué
-  // (une cellule) n'appartient pas à la source .md.
+  // Résout un clic en { pos, mot } : normalement le bloc sous le curseur, comme au survol,
+  // plus le mot pointé pour que l'hôte y place le curseur. Un clic tombé dans une zone
+  // sans position, typiquement un tableau inclus, vise le bloc positionné le plus proche
+  // dans l'ordre du document ; aucun mot n'est transmis alors, le texte d'une cellule
+  // n'appartenant pas à la source .md.
   function resoudreClic(cible, x, y) {
-    // Le BLOC, comme au survol : on ouvre exactement ce qu'on a surligné. Le mot sous
-    // le curseur reste transmis pour que l'hôte y place le curseur (A2) — c'est une
-    // précision de position, pas une réduction de la sélection.
     var c = blocDe(cible);
     if (c) { return { pos: c.getAttribute('data-pos'), mot: motAuPoint(x, y) }; }
     var voisin = blocPositionneLePlusProche(cible);
@@ -67,9 +55,6 @@
     return null;
   }
 
-  // Bloc positionné (data-pos) le plus proche de `cible` dans l'ordre du document :
-  // le dernier qui la précède, sinon le premier qui la suit. Sert au repli de clic
-  // dans une zone non positionnée (tableau inclus).
   function blocPositionneLePlusProche(cible) {
     if (!cible || !cible.compareDocumentPosition) { return null; }
     var els = document.querySelectorAll('[data-pos]');
@@ -82,9 +67,8 @@
     return precedent || suivant;
   }
 
-  // A2 — mot sous le point (x, y) via l'API de caret du moteur (Chromium/Electron).
-  // Étend depuis l'offset du clic jusqu'aux délimiteurs (espaces + ponctuation
-  // courante). Chaîne vide si clic hors texte ou entre deux mots.
+  // Mot sous le point (x, y), via l'API de caret du moteur : on étend depuis l'offset du
+  // clic jusqu'aux délimiteurs. Chaîne vide hors du texte ou entre deux mots.
   function motAuPoint(x, y) {
     var noeud = null, offset = 0;
     if (document.caretRangeFromPoint) {
@@ -104,10 +88,10 @@
     return texte.slice(deb, fin);
   }
 
-  // --- A1 : défilement synchronisé -----------------------------------------------
-  // « fichier@L1:C-L2:C » (ou « L1:C-L2:C ») -> { l1, l2 } (lignes source 1-based).
-  // null si illisible. l2 = ligne de FIN (utile à l'interpolation G2 et au bloc
-  // contenant une ligne, G3).
+  // ---- Défilement synchronisé ----
+
+  // « fichier@L1:C-L2:C », ou « L1:C-L2:C », -> { l1, l2 }, lignes comptées à partir de 1 ;
+  // null si illisible.
   function bornesDe(pos) {
     var t = String(pos || '');
     var d = t.indexOf('@') !== -1 ? t.slice(t.indexOf('@') + 1) : t;
@@ -119,7 +103,6 @@
     return { l1: parseInt(m[1], 10), l2: parseInt(m[2], 10) };
   }
 
-  // Blocs positionnés, triés par ligne source de début (= ordre du document).
   var blocs = [];
   function indexerBlocs() {
     blocs = [];
@@ -145,14 +128,10 @@
     return el.getBoundingClientRect().top + (window.pageYOffset || 0);
   }
 
-  // Éditeur -> aperçu : positionner l'aperçu en face de `ligne` (fractionnaire
-  // possible). G2 — interpolation INTRA-bloc : au lieu de caler au début du bloc
-  // courant (paliers de plusieurs lignes dans un long paragraphe), on interpole
-  // PROPORTIONNELLEMENT entre le sommet du bloc courant (dernière position <=
-  // ligne) et celui du bloc suivant (première position à une ligne strictement
-  // supérieure) -> suivi continu. Les positions inline (un span par mot, sur
-  // chaque ligne rendue) donnent déjà une granularité fine ; l'interpolation
-  // couvre les lignes sans span (lignes vides, ruptures internes).
+  // Éditeur -> aperçu : place l'aperçu en face de `ligne`. Caler au début du bloc courant
+  // donnerait des paliers de plusieurs lignes dans un long paragraphe ; on interpole donc
+  // entre le sommet du bloc courant et celui du bloc suivant, ce qui couvre aussi les
+  // lignes sans span.
   function scrollVersLigne(ligne) {
     if (!blocs.length) { indexerBlocs(); }
     if (!blocs.length) { return; }
@@ -178,8 +157,6 @@
     minuteurProg = setTimeout(function () { defilementProgrammatique = false; }, 150);
   }
 
-  // Aperçu -> éditeur : bloc actuellement au sommet du viewport (celui dont le haut
-  // est le plus bas tout en restant au-dessus du seuil sous le bandeau).
   function blocAuSommet() {
     var seuil = bandeauHauteur() + 6;
     var choix = null, meilleur = -Infinity;
@@ -201,14 +178,13 @@
     }, 35);
   }, { passive: true });
 
-  // --- G3 : curseur/clic dans le .md -> surlignage côté aperçu -------------------
-  var blocActif = null;      // dernier bloc surligné (classe szh-actif)
-  var motActifSpan = null;   // dernier span de mot surligné (szh-mot-actif)
+  // ---- Curseur ou clic dans le .md -> surlignage dans l'aperçu ----
+  var blocActif = null;      // dernier bloc surligné
+  var motActifSpan = null;   // dernier span de mot surligné
 
-  // Bloc positionné dont la PLAGE source [ligne..ligneFin] contient `ligne`. Parmi
-  // les candidats imbriqués (le div du bloc ET ses spans inline la contiennent),
-  // on retient la plage la plus large -> le conteneur de bloc, pas un span de mot.
-  // Repli : le dernier bloc dont la ligne de début <= `ligne`.
+  // Bloc positionné dont la plage source contient `ligne`. Le div du bloc et ses spans la
+  // contiennent tous : on retient la plage la plus large, donc le conteneur. À défaut, le
+  // dernier bloc qui commence avant la ligne.
   function blocContenant(ligne) {
     var choix = null, ampli = -1;
     for (var i = 0; i < blocs.length; i++) {
@@ -224,9 +200,8 @@
     return choix;
   }
 
-  // Enveloppe la 1re occurrence de `mot` (texte rendu du bloc) dans un span
-  // szh-mot-actif — via l'API Range (aucune injection HTML). « Au mieux » : mot
-  // répété -> 1re occurrence ; introuvable -> bloc seul.
+  // Enveloppe la première occurrence de `mot` dans le texte rendu du bloc, par l'API Range
+  // et sans injection HTML. Un mot introuvable laisse le bloc seul surligné.
   function surlignerMot(el, mot) {
     if (!mot) { return; }
     var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
@@ -245,7 +220,6 @@
     }
   }
 
-  // Retire le surlignage précédent (bloc + mot), en restaurant le texte d'origine.
   function nettoyerSurlignage() {
     if (blocActif) { blocActif.classList.remove('szh-actif'); blocActif = null; }
     if (motActifSpan && motActifSpan.parentNode) {
@@ -265,8 +239,8 @@
     cible.el.classList.add('szh-actif');
     blocActif = cible.el;
     surlignerMot(cible.el, mot);
-    // Amener en vue SEULEMENT si hors écran, sous la garde anti-boucle (le scroll
-    // programmatique qui suit ne doit pas repartir en défilement inverse A1).
+    // Amener en vue seulement si le bloc est hors écran, sous la garde anti-boucle : le
+    // défilement programmatique qui suit ne doit pas repartir en sens inverse.
     var r = cible.el.getBoundingClientRect();
     if (r.top < bandeauHauteur() || r.bottom > (window.innerHeight || 0)) {
       defilementProgrammatique = true;

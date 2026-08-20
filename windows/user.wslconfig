@@ -1,4 +1,4 @@
-# SZH — configuration globale WSL2 du poste (D34)
+# SZH — configuration globale WSL2 du poste
 # Seedé par update.ps1 vers %UserProfile%\.wslconfig — ne pas éditer localement.
 # Fichier GLOBAL à toutes les distros WSL du poste (acceptable : postes dédiés).
 

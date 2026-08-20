@@ -46,7 +46,8 @@ important de tout le système.
       Aucun autre flux sortant n'est nécessaire pour compiler (le pipeline est hors-ligne).
 - [ ] **Antivirus / EDR** : poser les **exclusions** WSL (`…\SZH\WSL\*.vhdx`, `…\SZH\staging`,
       processus `vmcompute.exe`/`vmmem.exe`/`wsl.exe`/`wslservice.exe`) **et s'assurer qu'une
-      politique centrale ne les réécrasera pas**.
+      politique centrale ne les réécrasera pas**. ⚠ `bootstrap.ps1` se contente de les afficher :
+      personne ne les pose à votre place.
 - [ ] **Tâches planifiées autorisées** : la MAJ silencieuse (connexion + 11h00) et le préchauffage
       WSL utilisent le Planificateur de tâches — vérifier qu'aucune politique ne les bloque.
 - [ ] **ACL sur `C:\ProgramData\SZH`** : `bootstrap.ps1` donne l'écriture aux Utilisateurs ;
@@ -55,7 +56,7 @@ important de tout le système.
       **« Toujours conserver sur cet appareil »**.
 - [ ] **Espace disque** : prévoir quelques Go par poste (rootfs + croissance du `.vhdx`).
 - [ ] **Coordination des mises à jour** : qui gère Windows/WSL sur le parc ? Prévoir un **test de
-      fumée** après chaque mise à jour majeure de Windows (voir [`MAINTENANCE-WSL.md`](MAINTENANCE-WSL.md)).
+      fumée** après chaque mise à jour majeure de Windows (voir [`MAINTENANCE.md`](MAINTENANCE.md)).
 
 ## Questions concrètes à poser au prestataire
 

@@ -1,15 +1,14 @@
 name: release
 
-# Publie une Release par tag vX (ex. v2026.07.0) — voir PLANIFICATION.md §3.2 :
-#   manifest.json          (toujours)  versions + sha256 de tous les assets
-#   toolkit-X.zip          (toujours)  pipeline/ + vscodium-user/ + revue-template/ + windows/
-#   <id>-<ver>.vsix        (toujours)  extensions épinglées (windows/vsix.lock), empreintes vérifiées
-#   rootfs .tar.gz+.sha256 (seulement si image/ a changé depuis la release précédente, ou force_rootfs)
-#   image OCI -> GHCR      (quand le rootfs est reconstruit) — option macOS-ready (§6)
+# Publie une Release par tag vX (par exemple v2026.07.0) :
+#   manifest.json          toujours    versions et sha256 de tous les assets
+#   toolkit-X.zip          toujours    pipeline/, vscodium-user/, revue-template/, windows/
+#   <id>-<ver>.vsix        toujours    extensions de windows/vsix.lock, empreintes vérifiées
+#   rootfs .tar.gz+.sha256 si image/ a changé depuis la release précédente, ou sur force_rootfs
+#   image OCI sur GHCR     quand le rootfs est reconstruit
 #
-# -> une retouche de styles = release de quelques Ko ; le gros rootfs ne repart
-#    que pour un bump toolchain. update.ps1 lit manifest.json et ne télécharge
-#    que ce qui a changé.
+# update.ps1 lit manifest.json et ne télécharge que ce qui a changé : une retouche de
+# styles ne pèse que quelques Ko.
 
 on:
   push:
@@ -82,9 +81,9 @@ jobs:
           bash ./build-rootfs.sh "${{ steps.ver.outputs.v }}"
           mv szh-publishing-rootfs-*.tar.gz* "$GITHUB_WORKSPACE/"
 
-      - name: Pousser l'image sur GHCR (option macOS, §6)
+      - name: Pousser l'image sur GHCR
         if: steps.need.outputs.rootfs == 'true'
-        continue-on-error: true      # option macOS : ne doit pas faire échouer la release Windows
+        continue-on-error: true      # secondaire : ne doit pas faire échouer la release Windows
         run: |
           V="${{ steps.ver.outputs.v }}"
           IMG="ghcr.io/${GITHUB_REPOSITORY,,}"
@@ -117,8 +116,8 @@ jobs:
 
       - name: Construire les extensions maison
         run: |
-          # vsce est borné à sa version majeure : une majeure suivante peut durcir ses
-          # règles de validation et casser la release sans qu'une ligne du dépôt ait changé.
+          # vsce est borné à sa version majeure : la suivante pourrait durcir ses règles
+          # de validation et casser la release sans qu'une ligne du dépôt ait changé.
           for d in szh-apercu szh-cockpit; do
             ( cd "vscodium-extension/$d" && npx --yes '@vscode/vsce@^3' package --out "$GITHUB_WORKSPACE/vsix-out/" )
           done
@@ -152,10 +151,9 @@ jobs:
           VSIX_JSON="$(jq --arg base "$BASE/v$V" \
             '[.extensions[] | {id, version, file: (.id+"-"+.version+".vsix"), url: ($base+"/"+.id+"-"+.version+".vsix"), sha256}]' \
             windows/vsix.lock)"
-          # + les extensions maison construites ci-dessus (id szh-csps.<nom> ; sha256 calculé
-          #   au build, écrit dans le manifest — non épinglées dans vsix.lock car un VSIX
-          #   reconstruit a un sha différent). update.ps1 vérifie le VSIX téléchargé contre
-          #   ce sha du manifest, produit dans le même run que l'asset -> chaîne cohérente.
+          # Les extensions maison s'ajoutent au manifest avec le sha256 calculé au build :
+          # un VSIX reconstruit n'ayant jamais le même sha, elles ne sont pas épinglées
+          # dans vsix.lock. update.ps1 vérifie le fichier téléchargé contre ce sha.
           for NOM in szh-apercu szh-cockpit; do
             OWN="$(ls vsix-out/$NOM-*.vsix)"
             OWNBASE="$(basename "$OWN")"
@@ -178,7 +176,7 @@ jobs:
           if [ "${{ steps.need.outputs.rootfs }}" = "true" ]; then
             ASSETS+=("szh-publishing-rootfs-$V.tar.gz" "szh-publishing-rootfs-$V.tar.gz.sha256")
           fi
-          # Crée la Release (1re fois) ; si elle existe déjà (re-run), met à jour les assets.
+          # Crée la Release, ou met à jour ses assets si elle existe déjà.
           gh release create "v$V" "${ASSETS[@]}" \
               --repo "$GITHUB_REPOSITORY" \
               --title "Toolchain v$V" \

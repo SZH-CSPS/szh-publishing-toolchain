@@ -1,6 +1,6 @@
-/* Fiche image — même charpente que l'éditeur de tableau : une barre d'outils collante
-   en haut, puis deux colonnes (l'image à gauche, ses champs à droite) qui s'empilent
-   sur une fenêtre étroite. Aucune couleur en dur : uniquement les jetons de thème. */
+/* Même charpente que l'éditeur de tableau : barre d'outils collante, puis deux colonnes
+   qui s'empilent sur une fenêtre étroite. Aucune couleur en dur, rien que les jetons de
+   thème. */
 body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
   color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: .6rem .8rem;
   box-sizing: border-box; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -17,8 +17,7 @@ button:disabled:hover { background: var(--vscode-button-secondaryBackground, rgb
 #etat { font-size: .85em; color: var(--vscode-descriptionForeground); margin-left: .3rem; }
 #indic { font-size: .95em; color: var(--vscode-editorWarning-foreground, #d1901e); margin-left: .1rem; font-weight: 700; }
 
-/* Avis d'insertion : masqué quand l'image est insérée une seule fois (rien à dire),
-   averti quand elle ne l'est pas du tout (rien à écrire) ou plusieurs fois. */
+/* Avis d'insertion : masqué si l'image est insérée une seule fois, averti sinon. */
 .avis { margin: 0 0 .5rem; padding: .4em .6em; border-radius: 4px; font-size: .9em; display: none; }
 .avis.visible { display: block; }
 .avis.alerte { color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
@@ -46,9 +45,10 @@ button:disabled:hover { background: var(--vscode-button-secondaryBackground, rgb
 .champ input:disabled { opacity: .55; }
 .aide { margin: .1rem 0 0; font-size: .78em; font-style: italic; color: var(--vscode-descriptionForeground); }
 
-/* Choix du rôle du texte alternatif : DEUX états explicites, jamais un champ vide
-   ambigu. « Décorative » écrit alt="" (les lecteurs d'écran passent l'image) ; l'autre
-   laisse l'attribut absent quand le champ est vide (la légende sert de description). */
+/* Rôle du texte alternatif : deux états explicites plutôt qu'un champ vide ambigu.
+   « Décorative » écrit alt="", que les lecteurs d'écran lisent comme une image à ignorer ;
+   l'autre laisse l'attribut absent quand le champ est vide, et la légende sert alors de
+   description. */
 .zone { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));
   border-radius: 5px; padding: .1rem .6rem .5rem; margin: 0; }
 .zone legend { font-size: .82em; font-weight: 700; padding: 0 .3em; color: var(--vscode-foreground); }

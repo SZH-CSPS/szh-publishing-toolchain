@@ -1,883 +1,492 @@
-# Todo Robin (mis à jour le 2026-08-20, après le cycle de vie des numéros)
-
-## Corrigé après revue adversariale du lanceur (2026-08-20) — à re-vérifier sur le terrain
-
-Une revue adversariale a été passée sur « Logiciel v. … » + « Version du logiciel… ». Dix
-constats, dix correctifs. Ce qui suit est **déjà corrigé et vérifié** ici ; ce qu'il reste à
-voir sur un vrai poste est marqué en case.
-
-| # | Constat | Correctif |
-|---|---|---|
-| 1 | `Get-SzhVersionInstallee` levait sur un `VERSION` **vide** (`Get-Content -Raw` → `$null`, `.Trim()` → exception) et, avec `Stop`, **tuait le lanceur avant l'affichage, sans un mot** — typiquement pendant une mise à jour. | `try/catch` sur chacune des deux lectures + repli `''` ; `Get-SzhConfig` / `Get-SzhState` blindés pareil. **Prouvé** : `VERSION` vide + `state.json` tronqué → `''`, script survivant. |
-| 2 | Chemin `-Versions` lancé détaché avec `stdio: 'ignore'` : un échec était **100 % muet** des deux côtés. | Le lanceur journalise son entrée dans le chemin (`open-revue : selecteur de versions demande`) et l'installation demandée. **Vérifié dans le journal.** |
-| 3 | L'appel réseau (`Get-SzhVersionsPubliees`) se faisait **avant** l'affichage de la boîte : jusqu'à 20 s de fenêtre figée derrière un pare-feu muet. | Boîte affichée d'abord avec « Recherche des versions publiées… », liste remplie au `Shown` ; timeout 20 s → 8 s. |
-| 4 | « les versions déjà téléchargées s'installent sans réseau » était **faux** : `update.ps1` télécharge le manifest en première action, et une seule archive de toolkit était conservée. | Manifest **mis en cache** (`staging\manifest-<v>.json`) et relu hors ligne ; **deux** archives de toolkit conservées ; `Get-SzhVersionsLocales` n'annonce que ce qui est réellement installable hors ligne ; textes corrigés (dont le faux « pas de connexion ? » sur un 403 de limite de débit). |
-| 5 | L'API GitHub trie par **date**, pas par numéro : `2026.08.10` s'affichait après `2026.08.7`. Un rédacteur cherchant « la précédente » se trompait. | `Sort-SzhVersions` (essai `[version]`, repli alphabétique inverse) ; `per_page` 30 → 100. **Prouvé** : `2026.08.11 > 2026.08.10 > 2026.08.9 > 2026.08.7`. |
-| 6 | Le sélecteur de version était **derrière** le test VSCodium : l'outil de réparation inaccessible quand l'installation est abîmée, et un message « VSCodium introuvable » hors sujet au clic depuis le cockpit. | `if ($Versions)` déplacé **avant** le test VSCodium. |
-| 7 | Fenêtre passée de 380 à 560 px : sur un 1366×768 à 125 %, elle **sortait de l'écran**, sans recours (`FixedDialog`). | Hauteur des deux listes **adaptée** à `WorkingArea.Height` (4 paliers), toutes les positions calculées. |
-| 8 | `$choix` était le seul argument non cité passé à `update.ps1` : `-Version '2026.08.0 -Verbose'` **injectait un paramètre** et n'installait pas la version demandée. | `Test-SzhVersionTag` (alphabet strict) + argument cité. **Prouvé** : l'injection est refusée. |
-| 9 | Rien ne bornait la concurrence : deux `update.ps1` écrivaient la même archive et dépliaient deux `Expand-Archive` sur le même toolkit ; le lanceur restait cliquable pendant le remplacement du rootfs. | Mutex nommé `Local\SZH-Publishing-Update` en tête d'`update.ps1` (sortie propre si occupé) ; le lanceur se **ferme** après avoir lancé une installation. |
-| 10 | `ShowDialog()` sans propriétaire sur le chemin `-Versions` : la boîte pouvait s'ouvrir **derrière** VSCodium (« le bouton ne fait rien »). | `TopMost` quand il n'y a pas de parent. |
-
-**Bonus, trouvé en testant le contrat des liens** : PowerShell 5.1 écrit un **BOM** avec
-`Set-Content -Encoding UTF8`, et `JSON.parse` de Node le refuse. `config.json` (écrit par
-`bootstrap.ps1`) en portait un → le cockpit lisait **toujours** le mode développeur par défaut,
-en silence ; et l'intention d'ouverture d'un lien `szh://` aurait été jugée illisible, donc le
-lien n'aurait **jamais** atterri sur le panneau. Corrigé des deux côtés : un seul écrivain JSON
-sans BOM (`Set-SzhJson`, utilisé par `bootstrap`, `new-revue`, `Set-SzhDevMode`, `Set-SzhIntention`)
-et un retrait défensif du BOM à la lecture côté JavaScript.
-
-- [ ] **Sur un poste réel** : lancer le lanceur pendant une mise à jour en cours (le cas du
-  constat 1) et vérifier qu'il s'ouvre, ou affiche une erreur — mais ne disparaît pas.
-- [ ] **Écran 1366×768** (ou 125/150 % de mise à l'échelle) : les deux listes, les infos et les
-  quatre boutons tiennent dans l'écran (constat 7 — non reproductible sur ce poste).
-- [ ] **Hors ligne** : ouvrir « Version du logiciel… » sans réseau → message correct, et la
-  version N‑1 doit être proposée **après une deuxième mise à jour** (le temps que staging ait
-  deux archives et deux manifests). Avant cela, la liste hors ligne est vide, c'est normal.
-- [ ] **Deux mises à jour concurrentes** : lancer une installation, puis relancer aussitôt le
-  sélecteur et réinstaller → la seconde doit dire « une mise à jour est déjà en cours » et sortir.
-- [ ] **`Get-SzhVersionsPubliees` derrière le proxy SZH** : mesurer le temps réel et vérifier que
-  8 s suffisent (sinon remonter le timeout).
-- [ ] **Limite de débit GitHub** (60 requêtes/h/IP publique, tout un bureau derrière la même) :
-  confirmer que le message « trop de demandes vers GitHub depuis ce réseau » est compréhensible.
-  Si le cas devient fréquent, il faudra mettre la liste des versions en cache elle aussi.
-
-## Corrigé — « Déverrouiller » ne déverrouillait pas les articles (D131) + mailto par défaut (D132)
-
-**Le verrou verrouillait son propre interrupteur.** `files.readonlyInclude: {"**": true}` couvre
-aussi `<revue>/.vscode/settings.json`, et l'API de configuration de VS Code écrit à travers le
-service de fichiers de l'éditeur — qui refuse une ressource en lecture seule. Au déverrouillage la
-clé survivait donc, alors que `locked: false` basculait bien dans `ausgabe.yaml` (lui écrit par
-`fs`) : la moitié visible du geste marchait, l'autre non. **Reproduit** sur `2027-01`, dont le
-`.vscode/settings.json` portait encore `readonlyInclude` avec `locked: false`.
-
-Corrigé : `files.readonlyExclude` sur `.vscode/**`, et l'écriture passe par `fs` dans un module
-dédié `lib/verrou.js` — sans dépendance à `vscode`, donc **éprouvé headless : 20 assertions sur
-7 scénarios** (pose, retrait, dossier ordinaire non pollué, réglages tiers préservés, idempotence,
-JSON avec commentaires jamais écrasé, et **réparation** d'un verrou laissé par l'ancienne version).
-Le verrou périmé de `2027-01` a été retiré : les articles y sont redevenus modifiables.
-
-**mailto par défaut** (D132), à ta demande : le brouillon s'ouvre dans ton client habituel, le lien
-arrive en texte brut, et le corps dit maintenant de le copier dans *Exécuter* (Windows + R).
-`"mailTraduction": "outlook"` dans `config.json` rétablit l'hyperlien via l'Outlook classique.
-
-- [ ] **Refaire le cycle complet dans VSCodium** : verrouiller → les articles se grisent →
-  déverrouiller → ils redeviennent modifiables **sans recharger la fenêtre**.
-- [ ] Vérifier qu'aucune revue ordinaire ne se retrouve avec un `.vscode` (le piège n° 2).
-- [ ] Vérifier le nouveau corps d'e-mail en français ET en allemand, et que le copier-coller du
-  lien dans Windows + R ouvre bien le numéro.
-
-## Répondu — l'e-mail ouvre l'ancien Outlook (D130)
-
-**Oui, c'est normal.** Le brouillon est fabriqué par automatisation COM
-(`Outlook.Application`), qui n'existe **que** pour l'Outlook classique : le nouvel Outlook
-(`olk.exe`, présent sur ce poste et **client mail par défaut**) n'expose aucune automatisation.
-Or COM est la seule voie vers un corps HTML, donc vers un lien **cliquable** — `mailto:`, qui
-ouvrirait le nouvel Outlook, ne transporte que du texte brut.
-
-Nouveau réglage : `"mailTraduction": "mailto"` dans `config.json` bascule sur le client par défaut.
-
-- [ ] **Décider** lequel on garde : l'ancien Outlook avec un lien cliquable (défaut), ou le
-  nouveau avec un lien à copier-coller.
-- [ ] **Vérifier côté DESTINATAIRE** : le protocole de confiance Office (D128) ne gouverne que les
-  applications Office classiques. Si la rédaction d'en face lit ses mails dans le nouvel Outlook,
-  le lien peut ne pas s'ouvrir — c'est le cas d'usage réel, à tester avec un vrai destinataire
-  avant de compter dessus.
-
-## Corrigé — un numéro neuf s'annonçait avec les valeurs du gabarit (D129)
-
-Symptôme : le lien vers `2027-05` ouvrait bien `2027-05` (barre de titre de VSCodium correcte), mais
-la barre « Revue SZH » affichait `R2026-2 | DOSSIER — NUMÉRO D'EXEMPLE`. **Ce n'était pas le lien** :
-la barre reflète `ausgabe.yaml` (D43), et le fichier portait encore `numero: "2"`, `date: "2026"` et
-le titre d'exemple du gabarit — rien ne les remplaçait à la création.
-
-`new-revue.ps1` déduit maintenant `date` et `numero` du **nom du dossier** et vide le titre
-d'exemple. Vérifié : `2099-05` → barre `R2099-05`, `2098-11` → `Z2098-11`, nom hors convention →
-la barre retombe sur le nom du dossier.
-
-- [ ] **`2027-05` (et tout numéro créé avant v2026.08.26)** porte encore les valeurs du gabarit :
-  ouvrir « Méta-données du numéro » et corriger année, numéro et titre. Je ne l'ai pas fait moi-même
-  — le formulaire était ouvert chez toi, une écriture concurrente aurait pu se perdre.
-- [ ] Créer un numéro neuf et vérifier que la barre affiche `R<année>-<numéro>` tout de suite.
-- [ ] Confirmer que **vider le titre** est le bon choix (l'alternative serait de le laisser à
-  « Dossier — numéro d'exemple » jusqu'à ce qu'on le remplisse).
-
-## Corrigé — VSCodium ne s'ouvrait jamais depuis nos scripts, et l'aperçu suivait le thème (D128)
-
-**1. `ELECTRON_RUN_AS_NODE=1`.** L'hôte d'extensions de VSCodium tourne avec cette variable, et
-tout processus qu'il engendre en hérite. Elle dit à Electron « comporte-toi comme Node » :
-`VSCodium.exe "<dossier>"` cherche alors un **script** et meurt sur
-`Error: Cannot find module '<dossier>'`, code 1, sans fenêtre. C'est pourquoi l'archivage
-déplaçait la revue **sans la rouvrir**, et pourquoi un lien `szh://` « ne faisait rien ».
-Trouvé en capturant la sortie de VSCodium — le script, lui, sortait avec 0 sans un mot.
-`szh-common.ps1` purge la variable au dot-source, et `Start-SzhCodium` est le seul point de
-lancement de l'éditeur. **Vérifié dans les conditions réelles** : avec `ELECTRON_RUN_AS_NODE=1`
-posé et la chaîne complète (spawn Node → wscript → hidden.vbs → open-revue.ps1 -Lien), VSCodium
-s'ouvre **et l'intention est consommée** — donc le cockpit atterrit bien sur le panneau de
-traduction.
-
-**2. Protocole de confiance Office.** `szh:` est déclaré dans
-`HKCU\…\Office\Common\Security\Trusted Protocols\All Applications\szh:` — sans quoi Outlook
-affiche « cet emplacement peut ne pas être sûr » puis, selon la configuration, ne lance rien.
-La clé a été **posée sur ce poste** : le lien est retestable tout de suite.
-
-**3. Aperçu toujours clair.** `print.css` ne pose aucun `background` (WeasyPrint imprime sur du
-blanc) : sous un thème sombre, la webview fournissait le sien et l'encre sombre devenait
-illisible. `media/apercu.css` force le fond blanc, réaffirme `var(--c-ink)` et pose
-`color-scheme: light`.
-
-- [ ] **Refaire l'archivage depuis VSCodium** : la revue doit maintenant se rouvrir depuis les
-  archives (c'était la moitié manquante).
-- [ ] **Recliquer le lien dans Outlook** : plus de popup de sécurité, et le bon numéro s'ouvre.
-- [ ] **Thème sombre** (Réglages SZH → Sombre) : l'aperçu HTML reste sur fond blanc avec l'encre
-  sombre, y compris le message « pas encore compilé / numéro gelé ».
-- [ ] Vérifier aussi le double-clic sur un `.md` (`open-md.ps1`) depuis l'explorateur — même
-  garde ajoutée, mais ce chemin n'a pas été rejoué.
-
-## À vérifier — l'e-mail de traduction (D127)
-
-**Éprouvé ici** : les deux gabarits rendent le bon sujet et un vrai `<a href="szh://…">` ; le
-produit décide la langue et le destinataire (`zeitschrift` → français à `redaction@csps.ch`,
-`revue` → allemand à `redaktion@szh.ch`). **Routage des liens vérifié sur le cas dur** : deux
-numéros HOMONYMES, un par produit — le lien Revue tombe sur la Revue, le lien Zeitschrift sur la
-Zeitschrift, un numéro déplacé dans les archives reste atteignable par son lien, et un numéro qui
-n'existe pas du côté demandé est déclaré introuvable au lieu d'ouvrir l'homonyme.
-
-**Pas encore tourné** : la création du brouillon Outlook (COM) — je ne l'ai pas déclenchée pour ne
-pas ouvrir de fenêtre de message sur ton poste.
-
-- [ ] Cliquer « Envoyer pour traduction » sur une **Revue** : brouillon **en allemand**,
-  destinataire `redaktion@szh.ch`, et le lien **cliquable** dans le corps.
-- [ ] Idem sur une **Zeitschrift** : brouillon **en français**, `redaction@csps.ch`.
-- [ ] Changer la langue d'interface (Réglages SZH) et refaire : la langue de l'e-mail ne doit
-  **pas** bouger — elle suit le produit, pas l'interface.
-- [ ] S'envoyer l'e-mail et **cliquer le lien depuis Outlook** : le bon numéro s'ouvre, au bon
-  endroit. Refaire depuis Teams (coller le lien copié).
-- [ ] Fermer Outlook complètement et réessayer : le repli `mailto:` doit s'ouvrir (lien en texte
-  brut, non cliquable — c'est attendu, aucun client ne linkifie un schéma inconnu).
-- [ ] **Décider** si les adresses conviennent, ou les surcharger dans `config.json`
-  (`mailsTraduction`). Et si un « Cc » à l'expéditeur serait utile.
-- [ ] **Relire les deux gabarits** (fr et de) : ce sont des textes qui partent à l'extérieur de
-  l'équipe, ils méritent une relecture attentive.
-
-## Corrigé à l'usage — l'archivage ne déplaçait rien, et les produits se mélangeaient (D126)
-
-Trois pannes trouvées en essayant pour de vrai, toutes corrigées et vérifiées de bout en bout.
-
-**1. L'archivage ne déplaçait pas le dossier** — verrou posé, picto affiché, `out/` supprimé, mais
-le dossier restait sur place, et **aucune trace dans le journal**. Cause : `detached: true` dans
-`lib/archivage.js`. Sur Windows, libuv le traduit par `DETACHED_PROCESS` ; `powershell.exe` démarre
-alors **sans aucune console** et ressort aussitôt avec le code 0, **sans exécuter une seule ligne**.
-Mesuré sur trois variantes : détaché/stdio ignoré → rien ; détaché/stdio capturé → **aucune
-sortie** ; non détaché → bannière, déplacement, réouverture. Le lancement passe maintenant par
-`wscript.exe //B hidden.vbs`, comme les raccourcis et les tâches planifiées : vérifié, le dossier
-est déplacé, le `.lnk` réécrit, le journal écrit. Le même défaut frappait « Changer de version… »
-depuis le cockpit : corrigé du même coup.
-
-**2. Une Zeitschrift apparaissait dans le lanceur de la Revue.** Deux causes cumulées : « Revues
-SZH » passait `-Produit tout`, et surtout le numéro `2027-01`, créé depuis le lanceur Zeitschrift,
-portait `revue: revue` — le jeton du template, jamais réécrit. Désormais `-Produit` ne connaît que
-`revue` et `zeitschrift` (défaut `revue`), les deux raccourcis le passent explicitement, et
-`new-revue.ps1 -Produit` **écrit le jeton** à la création.
-
-**3. Le choix du dossier de création est supprimé.** « Nouvelle revue… » ne demande plus que le
-nom ; la boîte rappelle où le numéro sera créé — le dossier « en cours » du produit du lanceur,
-donc `Revues-TESTING` en mode dev.
-
-Vérifié en une passe : création `-Produit zeitschrift` → `revue: zeitschrift`, création
-`-Produit revue` → `revue: revue` ; le lanceur Revue ne liste que la Revue et celui de la
-Zeitschrift que la Zeitschrift ; archivage → dossier déplacé dans `ZS99_Archives`, `.lnk` réécrit,
-numéro toujours listé par le lanceur Zeitschrift ; les deux lanceurs démarrent.
-
-- [ ] **Refaire l'archivage depuis VSCodium** (c'est le seul chemin non rejoué : le mien passait
-  par le même `wscript.exe //B hidden.vbs`, mais pas depuis l'hôte d'extensions).
-- [ ] Vérifier que la fenêtre se ferme puis que la revue **se rouvre depuis les archives**.
-- [ ] Provoquer une erreur d'archivage (PDF ouvert dans SumatraPDF) et vérifier que la **boîte de
-  dialogue** apparaît — la console étant cachée, c'est le seul canal.
-- [ ] « Changer de version… » depuis le cockpit ouvre bien le sélecteur (même correctif).
-- [ ] Créer un numéro depuis chaque lanceur et vérifier le jeton `revue:` écrit.
-- [ ] **`2027-01`** : créé dans `ZS02_Redaktion` mais déclaré `revue: revue`, puis marqué archivé
-  sans avoir été déplacé. Corriger le jeton puis relancer l'archivage — ou le supprimer si c'était
-  un simple essai.
-
-## À vérifier — le lanceur ne liste que l'arborescence officielle (D125)
-
-Éprouvé ici avec de vraies fixtures : une revue dans `RV02_Redaction` est **listée**, une revue
-dans `OneDrive\Revues` est **signalée et non listée**, les racines héritées sont dédoublonnées et
-celles qui coïncident avec un emplacement officiel écartées (`revuesRoots` en contenait une, posée
-par l'ancien `new-revue.ps1`). Le lanceur reste vivant avec les fixtures en place.
-
-- [ ] Vérifier de visu la ligne « N revue(s) hors arborescence dans … — à déplacer » sous les
-  listes, et qu'elle disparaît une fois le dossier déplacé.
-- [ ] **Les deux dossiers de `OneDrive - SZH CSPS\Revues` de ce poste** (`2026-04`, `test`) n'ont
-  **pas** d'`ausgabe.yaml` : ce ne sont pas des revues (restes d'essais — `articles`, `out`,
-  `articles-word`). Ils n'étaient donc déjà pas listés. À supprimer si tu n'en as plus besoin.
-- [ ] `config.json` de ce poste porte encore `revuesRoots = ["…\Revues-TESTING+_Zeitschrift\ZS02_Redaktion"]`,
-  posé par l'ancien `new-revue.ps1`. Inoffensif (le lanceur écarte les emplacements officiels de la
-  liste héritée), mais tu peux vider la clé.
-- [ ] **Décider** si une revue hors arborescence doit rester non listée. Aujourd'hui : signalée,
-  jamais listée, jamais déplacée d'office.
-
-## Constaté au déploiement de v2026.08.22 — `update.ps1` lancé à la main est en retard d'une passe
-
-`update.ps1` extrait le nouveau toolkit à son étape 1, mais PowerShell a déjà lu tout le fichier :
-la suite tourne avec l'ANCIEN code. Lancé à la main sur ce poste, il a donc bien installé le
-cockpit 0.13.0 mais **n'a créé ni le raccourci « Zeitschriften SZH » ni le protocole `szh:`** — il
-a fallu le relancer. La tâche planifiée n'a pas ce défaut (`update-launcher.ps1` extrait le
-toolkit **avant** de passer la main). Vérifié après relance : les deux raccourcis sont là avec les
-bons arguments, `HKCU\Software\Classes\szh` porte `URL Protocol` et la bonne commande, et la
-chaîne menu Démarrer → `hidden.vbs` → `open-revue.ps1 -Produit zeitschrift` lance bien le lanceur
-filtré.
-
-- [ ] **Décider** s'il faut qu'`update.ps1` se relance tout seul quand il constate que sa propre
-  copie a changé (une passe, un commutateur `-Relance` pour borner la récursion) — aujourd'hui
-  c'est à la main, et seul un lancement manuel est concerné.
-
-## À vérifier — liens de traduction et second lanceur (D123, D124)
-
-**Éprouvé sur ce poste** : la grammaire `szh://` refuse tout ce qu'elle doit refuser (produit
-inconnu, `..`, `C:\Windows`, espace, segment surnuméraire, autre schéma, chaîne vide) des DEUX
-côtés — `lib/liens.js` et le motif PowerShell ; la liaison des arguments `-File` a été mesurée
-pour les quatre formes utilisées (nommé, nommé requoté par `hidden.vbs`, switch requoté,
-positionnel requoté) ; l'extension charge, i18n 487 = 487 (fr/de), tous les `%marqueurs%` traduits.
-
-**Pas encore tourné** : le protocole `szh:` n'est pas enregistré sur ce poste (il l'est par
-`update.ps1`, non exécuté), donc **aucun lien n'a jamais été cliqué**, et l'atterrissage
-(intention → panneau) n'a jamais été joué de bout en bout.
-
-### 8. Envoyer pour traduction (D123)
-
-- [ ] Le bouton **« Envoyer pour traduction »** apparaît dans le panneau de traduction, à côté
-  d'*Enregistrer*, et son infobulle est lisible.
-- [ ] Les boutons ✉ apparaissent dans la barre : sur la section **Traductions** (lien vers tout le
-  numéro) et sur **chaque article** de cette section.
-- [ ] Un clic : le lien est bien dans le presse-papiers (coller quelque part pour vérifier) **et**
-  le brouillon d'e-mail s'ouvre avec le sujet, le corps et le lien.
-- [ ] Vérifier la forme du lien : `szh://traduction/revue/2026-01/03-inklusion` depuis le panneau
-  d'un article, `szh://traduction/revue/2026-01` depuis la section.
-- [ ] Sur une **Zeitschrift**, le lien doit dire `zeitschrift` (et non `revue`).
-- [ ] Cas de refus : un numéro dont `ausgabe.yaml` n'a pas de clé `revue:`, ou dont le dossier
-  s'appelle p. ex. `2026 01` (espace) → message « Lien impossible à construire », **pas** de lien
-  bancal copié.
-- [ ] Le bouton fonctionne aussi sur un numéro **verrouillé** (il ne modifie rien) — c'est même là
-  qu'il sert le plus.
-- [ ] Il ne change **aucun statut** de traduction : vérifier qu'un champ « pas prêt » le reste.
-- [ ] **Le clic sur le lien**, depuis Outlook et depuis Teams : Windows demande l'autorisation la
-  première fois → accepter → la bonne revue s'ouvre et le panneau de traduction s'affiche sur le
-  bon article. À refaire une fois VSCodium **déjà ouvert** sur une autre revue, et une fois
-  VSCodium **fermé**.
-- [ ] Le lien d'un numéro **archivé** ouvre bien la revue depuis les archives.
-- [ ] Cas d'échec à provoquer : lien vers un numéro qui n'existe pas sur le poste → message
-  « introuvable sur ce poste » ; lien tordu à la main (`szh://traduction/revue/../x`) → message
-  « lien non valide », et **rien** ne s'ouvre.
-- [ ] `%LOCALAPPDATA%\SZH\intention.json` : créé au clic, **supprimé** dès que le cockpit l'a
-  consommée. Vérifier qu'il ne traîne pas.
-- [ ] Intention **périmée** : cliquer un lien, fermer la fenêtre avant qu'elle ne s'ouvre, attendre
-  6 minutes, ouvrir la revue à la main → le panneau ne doit **pas** s'ouvrir tout seul, et le
-  fichier doit disparaître.
-- [ ] Intention pour une **autre** revue : cliquer un lien vers 2026-01 puis ouvrir 2026-02 à la
-  main → 2026-02 ne doit rien ouvrir, et 2026-01 doit encore atterrir quand elle s'ouvre.
-- [ ] Sur un poste **sans** la chaîne installée, le lien ne fait rien (ou ouvre le navigateur) :
-  confirmer que le message de l'e-mail explique le repli (« menu Démarrer → Revues SZH »).
-
-### 9. Second lanceur « Zeitschriften SZH » (D124)
-
-- [ ] Le raccourci **« Zeitschriften SZH »** apparaît dans le menu Démarrer après une mise à jour,
-  avec la bonne icône, et n'ouvre **aucune console**.
-- [ ] Il ne liste que les Zeitschriften (les deux listes, en cours et archivées), et « Revues SZH »
-  ne liste que les Revues (D126 : plus de valeur « tout »).
-- [ ] Le titre de la fenêtre et le texte d'introduction sont bien ceux de la Zeitschrift.
-- [ ] « Nouvelle revue… » depuis ce lanceur crée dans `ZS02_Redaktion` sans rien demander (D126).
-- [ ] Un numéro **sans** clé `revue:` n'apparaît dans **aucun** des deux lanceurs filtrés (mais
-  reste visible dans « Revues SZH ») — vérifier que c'est acceptable, sinon il faut le signaler.
-- [ ] Une Zeitschrift rangée dans un dossier **historique** (`OneDrive\Revues`) n'apparaît PAS dans
-  les listes (D125) mais est comptée dans « N revue(s) hors arborescence ».
-- [ ] Le bouton « Version du logiciel… » et l'affichage « Logiciel v. … » marchent dans les deux
-  lanceurs.
-- [ ] **Icônes par produit (D134)** : les deux entrées du menu Démarrer se distinguent d'un coup
-  d'œil — même tuile bleu nuit, barre **rouge** pour « Revues SZH », **moutarde** pour
-  « Zeitschriften SZH » — et la fenêtre ouverte porte la même dans la barre des tâches (plus
-  celle de `wscript.exe`).
-- [ ] Un raccourci **déjà épinglé** (barre des tâches ou menu Démarrer) garde son ancienne icône :
-  Windows en a fait une copie. Dépingler / ré-épingler après la mise à jour — à vérifier une fois,
-  pour savoir quoi répondre à qui le signalera.
-- [x] ~~Faut-il filtrer « Revues SZH » sur la Revue ?~~ Oui — fait en D126.
-- [ ] **Décision** : le lanceur Zeitschrift doit-il forcer l'interface en allemand ? Aujourd'hui
-  non — la langue suit celle de Windows, comme partout.
-- [ ] **Relire les libellés DE/EN** ajoutés (titres des deux lanceurs, messages de lien).
-
-## À vérifier — cycle de vie des numéros : archivage, verrou, export, version, mode test (D116, D117, D119, D120)
-
-**Ce qui est déjà éprouvé sur ce poste**, à ne pas refaire : sérialisation d'`ausgabe.yaml`
-(booléens nus `locked: true`, estampille citée, 27 commentaires préservés, clés ajoutées
-proprement sur un fichier ancien) · déplacement **aller-retour** réel d'une revue de test dans
-`Revues-TESTING` (`out/` supprimé, `.lnk` réécrit sur les deux chemins, verrou conservé au
-désarchivage, classement du lanceur) · chemin d'erreur d'`archive-revue.ps1` (journal + écran
-d'erreur dédié) · les deux fenêtres WinForms se construisent sans exception (lanceur et sélecteur
-de version) · la liste des releases GitHub remonte (26 versions, l'installée marquée) · tous les
-`.js` compilent et se chargent, i18n 475 = 475 (fr/de), `package.json`/nls valides, les 8 `.ps1`
-parsent, `files.readonlyInclude` existe bien dans le VSCodium installé (1.109, scope resource).
-
-**Ce qui n'a PAS tourné** : tout ce qui passe par VSCodium (l'extension n'a jamais été chargée),
-et la réouverture de l'éditeur par `archive-revue.ps1` (`Start-Process`, non exécutée pour ne pas
-ouvrir de fenêtre — même ligne que dans `open-revue.ps1` / `new-revue.ps1`).
-
-### 0. Préparer le terrain
-
-- [ ] Publier une release depuis cette branche (ou installer le toolkit à la main) : **rien de ce
-  qui suit n'est testable sans le VSIX `szh-cockpit` 0.11.0 ET le toolkit déployé** —
-  `archive-revue.ps1` est appelé par son chemin dans `C:\ProgramData\SZH\toolkit\windows\`.
-- [ ] Vérifier que `devMode` est bien à `true` (« Réglages SZH » ou `config.json`) **avant** le
-  premier essai : sinon le premier clic déplace un vrai numéro.
-- [ ] Créer **deux revues de test** dans `Revues-TESTING\52_Revue\RV02_Redaction` — une avec
-  `revue: revue`, une avec `revue: zeitschrift` (les deux arborescences sont distinctes) — avec
-  chacune 2–3 articles compilés, des images, un tableau, des traductions renseignées.
-
-### 1. Verrouiller / déverrouiller (D116)
-
-- [ ] `Ctrl+Alt+D` sur une revue neuve : le panneau montre **Archiver et verrouiller**, et **pas**
-  Déverrouiller / Désarchiver / Exporter cet article.
-- [ ] Après verrouillage : **taper dans un article** — rien ne doit s'écrire, l'éditeur est grisé.
-- [ ] Chaque geste d'écriture doit répondre « Numéro verrouillé » + bouton **Déverrouiller** :
-  ➕ Importer des Word · ▶▶ Convertir les Word en attente · ⚙ Méta-données du numéro ·
-  ☰ Métadonnées des articles · ✎ d'un article · 🌐 Traductions (article et champ) · ✓✓ de la
-  section Traductions · 🗑 Supprimer l'article · clic sur une **image** (fiche) · clic sur un
-  **tableau** (éditeur) · Remplacer/Supprimer image · Remplacer/Supprimer tableau ·
-  `Ctrl+B` / `Ctrl+Alt+1` / `Ctrl+Alt+F` / `Ctrl+Alt+V` (mise en forme) · **glisser un `.docx`
-  sur la vue**.
-- [ ] Les boutons de survol **disparaissent** quand le numéro est verrouillé (✎, 🗑, ▶▶, ✓✓,
-  Remplacer…) — c'est le `when` de `package.json`, à confirmer à l'œil.
-- [ ] Le clic sur le bouton **Déverrouiller** de ce message ouvre bien la confirmation.
-- [ ] Le titre de la barre porte le picto (🔒 / 📦 / 📦 🔒) et la **barre d'état** affiche
-  « Verrouillée » ; son infobulle nomme la version de création et celle du poste ; le **clic**
-  déverrouille (ou désarchive si le numéro n'est qu'archivé).
-- [ ] `Ctrl+S` ne relance **plus** de compilation sur un numéro verrouillé.
-- [ ] `<revue>\.vscode\settings.json` : **présent** et **invisible** dans l'explorateur de
-  VSCodium quand le numéro est verrouillé ; **supprimé** (avec le dossier `.vscode`) au
-  déverrouillage ; **jamais créé** sur une revue ordinaire — ouvrir 2–3 revues « en cours » et
-  vérifier qu'aucun `.vscode` n'apparaît (c'était le piège : `update(…, undefined)` matérialise
-  le fichier).
-- [ ] Déverrouiller : l'éditeur redevient éditable **sans redémarrer** VSCodium, tous les boutons
-  reviennent, `Ctrl+S` recompile.
-
-### 2. Archiver / désarchiver (D116)
-
-- [ ] La confirmation d'archivage annonce une **place** cohérente avec le poids réel de `out/`
-  (comparer dans l'explorateur Windows) ; sur une revue jamais compilée, elle dit « aucun
-  document produit pour l'instant ».
-- [ ] **Annuler** la confirmation ne change rien du tout (drapeaux, `out/`, emplacement).
-- [ ] Geste complet : la fenêtre se ferme → la console PowerShell nomme ses étapes → la revue
-  **se rouvre depuis les archives**, verrouillée, arbre correct.
-- [ ] `out/` a bien disparu, et **rien d'autre** : `articles/`, `articles-word/`, `media/`,
-  `tables/`, `portraits/`, `*.meta.yaml`, `*.traduction.yaml`, `BIENVENUE.md` sont tous là.
-- [ ] `ausgabe.yaml` porte `locked: true`, `archived: true` et une `version-toolkit`.
-- [ ] Le raccourci **« Ouvrir la revue.lnk »** du dossier archivé rouvre le **nouveau** chemin.
-- [ ] La **Zeitschrift** part bien dans `ZS99_Archives` (et pas dans `RV99_Archives`).
-- [ ] **Cas d'échec à provoquer** : ouvrir le PDF dans SumatraPDF (fichier verrouillé côté
-  Windows) puis archiver → message « les documents produits n'ont pas pu être supprimés »,
-  et le numéro doit être **exactement** dans son état de départ (drapeaux relevés, dossier non
-  déplacé, `out/` intact).
-- [ ] **Cas de collision** : mettre un dossier du même nom dans `RV99_Archives` puis archiver →
-  la console doit dire « un dossier existe déjà à destination », **rien** n'est déplacé.
-- [ ] Désarchiver : retour dans `RV02_Redaction`, `.lnk` réécrit, et le verrou **toujours posé**
-  (deux gestes distincts — **confirmer que c'est bien ce que tu veux**, sinon je fusionne).
-- [ ] Sur un numéro archivé **puis déverrouillé**, le panneau propose « Verrouiller la revue »
-  (sans déplacement ni suppression) — vérifier que ça ne rejoue pas un archivage.
-
-### 3. Compilation d'un numéro gelé (D117)
-
-- [ ] Cliquer un article d'un numéro archivé : **aucune compilation** ne démarre, et le volet de
-  droite affiche « Numéro gelé : la compilation automatique est coupée… » (et non un message
-  d'attente qui ne viendrait jamais).
-- [ ] Idem en mode aperçu **PDF** (`Ctrl+Alt+P`) : message, pas de relance.
-- [ ] **Exporter cet article** : bouton au survol de l'article **et** entrée du panneau d'export ;
-  le PDF + l'aperçu reviennent, l'aperçu s'affiche tout seul à la fin.
-- [ ] Sans article sélectionné, l'entrée du panneau doit dire « Aucun article visé… » (et non
-  échouer en silence).
-- [ ] **Recompiler toute la revue** sur un numéro archivé fonctionne aussi.
-- [ ] **Exporter la revue en XML (OJS)** sur un numéro archivé : à confirmer que c'est utile et
-  que ça marche (il recompile tout + les galleys DOCX).
-- [ ] Rouvrir la revue après l'export : les PDF régénérés s'affichent normalement, sans build.
-
-### 4. Version du logiciel (D120)
-
-- [ ] Une **nouvelle** revue (« Nouvelle revue… ») porte `version-toolkit: "<version du poste>"`
-  dès sa création.
-- [ ] Une revue **existante** sans la clé ne déclenche **aucun** avertissement (et n'est pas
-  estampillée en douce) ; elle l'est au premier archivage.
-- [ ] Avertissement de divergence : éditer `version-toolkit` à la main pour créer un écart, puis
-  `Ctrl+S` → le message apparaît **une seule fois par fenêtre** et nomme les deux versions.
-  Vérifier qu'il arrive aussi sur `Ctrl+E`, « Recompiler toute la revue » et « Exporter cet
-  article », et qu'il **ne revient pas** à chaque enregistrement suivant.
-- [ ] Le bouton **« Changer de version… »** du message ouvre le sélecteur **sans console noire**
-  derrière le dialogue.
-- [ ] Le lanceur affiche « Logiciel v. … » et le bouton « Version du logiciel… » ouvre le même
-  dialogue (l'installée marquée, les téléchargées annotées).
-- [ ] **Aller-retour de version pour de vrai, sur un poste de test** : fermer toutes les revues,
-  installer une version antérieure, vérifier que le PDF d'un ancien numéro redevient conforme,
-  puis réinstaller la dernière. C'est le seul test qui prouve la promesse « recompiler à
-  l'identique ».
-- [ ] Couper le réseau et rouvrir le sélecteur : il doit proposer les versions **déjà
-  téléchargées** avec le message « impossible de lister les versions publiées ».
-
-### 5. Lanceur et emplacements (D116, D119)
-
-- [ ] Deux listes (« En cours » / « Archivées »), **🔒** sur les verrouillées, et la sélection
-  bascule bien d'une liste à l'autre (cliquer dans l'une désélectionne l'autre — sinon
-  « Ouvrir » ne saurait pas quoi ouvrir).
-- [ ] Double-clic dans **chacune** des deux listes ouvre la revue.
-- [ ] Une revue déplacée **à la main** dans `RV99_Archives` (sans le bouton) apparaît quand même
-  dans « Archivées ».
-- [ ] « Nouvelle revue… » propose par défaut le dossier de rédaction **en cours** du mode actif.
-- [ ] Les anciennes revues de `OneDrive\Revues` (et de `revuesRoots`) ne sont plus listées mais
-  signalées sous les listes (D125).
-- [ ] Sur un poste **sans** aucune revue : la fenêtre s'ouvre quand même avec « Nouvelle revue… ».
-
-### 6. Mode développeur (D119)
-
-- [ ] « Réglages SZH » montre le groupe **Mode développeur** avec le bon état, et le changement
-  est écrit dans `C:\ProgramData\SZH\config.json` (`devMode`).
-- [ ] Le désactiver → relancer le lanceur → il lit les dossiers **de production** et **n'y crée
-  rien** ; le remettre → il recrée/relit `Revues-TESTING`.
-- [ ] Archiver en mode production (sur un numéro de test copié dans `RV02_Redaction`) pour
-  confirmer que les vrais chemins fonctionnent aussi.
-- [ ] **Confirmer l'arborescence de production sur un poste de la rédaction** : les quatre chemins
-  ont été vérifiés présents **ici**
-  (`…\SZH CSPS\Daten_Allgemein - General\2_Produkte\52_Revue\RV02_Redaction` et `RV99_Archives`,
-  idem `53_Zeitschrift\ZS02_Redaktion` / `ZS99_Archives`). Si un poste synchronise la
-  bibliothèque sous un autre nom → corriger `basesRevues.prod` dans `config.json`.
-- [ ] Nettoyer les 4 dossiers créés dans ton `OneDrive - SZH CSPS\Revues-TESTING` pendant mes
-  essais s'ils ne te servent pas (ils seront recréés au prochain lancement en mode test).
-
-### 7. Décisions qui te reviennent
-
-- [ ] **Auto-compilation sur un numéro seulement verrouillé** : je l'ai coupée aussi (des sources
-  gelées n'ont rien à recompiler), alors que la demande ne parlait que d'`archived`. Idem pour le
-  bouton « Exporter cet article », affiché dès que `locked || archived`. À confirmer ou à
-  restreindre.
-- [ ] **Désarchiver ne déverrouille pas** (deux boutons indépendants) : confirmer.
-- [ ] **La fenêtre se ferme et se rouvre** à l'archivage : c'est la seule façon de déplacer un
-  dossier que VSCodium tient ouvert. Confirmer que c'est acceptable pour la rédaction (l'autre
-  option serait de ne pas rouvrir du tout).
-- [ ] **Quand `devMode` passe à `false`** par défaut — aujourd'hui vrai partout, y compris sur un
-  poste neuf (`bootstrap.ps1`) et si la clé manque.
-- [ ] **`locked: false` / `archived: false` dans `revue-template/ausgabe.yaml`** : les deux clés
-  arrivent donc aussi dans les métadonnées pandoc (inutilisées, inoffensives). À laisser pour la
-  lisibilité du fichier, ou à retirer du template si tu préfères des clés absentes par défaut.
-- [ ] **Relire les libellés DE** de tout le lot (panneau d'export, modales de confirmation, barre
-  d'état, écran d'archivage, sélecteur de version, mode développeur) — premier jet, comme le
-  reste de l'i18n.
-- [ ] **Nommage** : la clé s'appelle `version-toolkit` (et non « version compilateur ») pour
-  coller au vocabulaire du dépôt (`toolkit/VERSION`, `toolkit-X.zip`). À valider.
-
-## Validations qui demandent un humain — en-tête condensé, légendes, corrections (D114, D115, D118)
-
-Éprouvé en PNG page à page sur `test/` et sur un corpus de contrôle (couverture courte,
-couverture chargée, figure + deux tableaux + listes) : le rendu par défaut ne change QUE
-sur les deux flèches du hero et sur la position des puces ▸. **Rien n'a encore tourné dans
-VSCodium** (la case à cocher) ni sur un vrai numéro.
-
-- [ ] **Trancher l'allure par défaut** : l'option est **décochée** par défaut, donc les numéros
-  existants ne bougent pas. Après l'avoir vue sur un vrai dossier, dire si le condensé doit
-  devenir la norme (il suffirait d'inverser le défaut dans `revue-template/ausgabe.yaml`).
-- [ ] **Juger les trois espaces minimum** de l'en-tête condensé (`--hero-espace-titre` 20 px,
-  `-soustitre` 12 px, `-meta` 22 px, `print.css` §5) et le plancher `min-height: 220px` sur
-  une couverture vraiment dépouillée (titre d'une ligne, un auteur, pas de sous-titre).
-- [ ] **La case à cocher dans VSCodium** : formulaire « Méta-données du numéro » → cocher,
-  **Enregistrer**, vérifier `entete-condensee: true` dans `ausgabe.yaml` (booléen nu, non
-  cité), la recompilation, puis décocher et vérifier `false`.
-- [ ] **Relire le libellé DE** de la case et son aide (premier jet, comme le reste de l'i18n).
-- [ ] **Légende de figure au-dessus** sur un article réel : l'ordre visuel et l'ordre de lecture
-  concordent (copier-coller de la page, panneau « Ordre » d'Acrobat). Le **galley Word**, lui,
-  garde la légende SOUS l'image — le writer docx de pandoc ne se règle pas : confirmer que
-  c'est acceptable pour OJS.
-- [ ] **Puces ▸ à l'œil** dans un article dense (listes imbriquées, item d'une seule ligne,
-  item qui passe à la ligne) : le triangle doit rester posé sur la ligne de base du texte.
-
-## Validations qui demandent un humain — enregistrement auto et mots-clés (D121–D122)
-
-- [ ] **L'enregistrement automatique ne fait pas sauter le curseur** : taper longuement
-  dans un résumé, vérifier qu'au bout de 3 s le fichier est écrit (horodatage) SANS que
-  la frappe, la sélection ou la position du curseur ne bougent. À faire dans les quatre
-  formulaires : traduction, métadonnées des articles, vérification de l'import, éditeur
-  de tableau.
-- [ ] **Fiche image** : confirmer qu'elle ne déclenche PAS de compilation pendant la
-  saisie (pas de minuteur), et qu'elle enregistre bien quand on quitte le panneau.
-- [ ] **Grille de mots-clés** : ajouter et retirer une ligne, cocher puis décocher
-  « + Italien » avec des mots-clés IT présents — ils ne doivent jamais disparaître.
-  Vérifier dans le `.meta.yaml` que les listes restent alignées.
-- [ ] **`TO BE TRANSLATED`** : laisser un mot-clé du milieu non traduit, enregistrer,
-  rouvrir — la case doit réapparaître vide et les paires rester en face. Puis lancer
-  l'export OJS et vérifier l'avertissement.
-- [ ] **Bouton DeepL** : sur un résumé long (proche de 4000 caractères) et sur un titre
-  avec apostrophes typographiques et caractères accentués.
-- [ ] **Arbitrer** : faut-il une clé d'API DeepL (réglage + appel côté hôte) pour que la
-  traduction revienne toute seule dans le champ, au lieu du copier-coller ?
-
-## Validations qui demandent un humain — suivi de traduction (D113)
-
-Éprouvé headless (arbre, écritures croisées fiche/sidecar, effacement, slug hors liste) ;
-**rien n'a encore tourné dans VSCodium**. À voir sur un vrai numéro :
-
-- [ ] **Le panneau à l'écran** : clic sur un article de la section « Traductions » → formulaire
-  en colonne 1, aperçu de l'article en colonne 2. Vérifier que l'aperçu se compile bien
-  (il passe par `ouvrirArticle` en mode `sansTexte`) et que la bascule `Ctrl+Alt+P`
-  HTML ⇄ PDF fonctionne depuis ce panneau.
-- [ ] **Changer d'article avec des modifications non enregistrées** : la modale
-  « Enregistrer / Quitter sans enregistrer / Annuler » doit apparaître et chaque branche
-  faire ce qu'elle annonce (c'est le seul chemin non couvert par le harnais).
-- [ ] **Lisibilité de la carte de champ** : le texte source en bloc pointillé, la barre de
-  couleur d'état à gauche, le badge « traduit / à traduire ». Le panneau est en colonne 1
-  (moitié d'écran) — vérifier qu'un résumé long reste confortable à saisir.
-- [ ] **Le bouton ✓✓ de la section** sur un vrai numéro : compter les champs annoncés dans la
-  barre d'état, et confirmer qu'aucun champ déjà en relecture ou finalisé n'a reculé.
-- [ ] **Arbitrer le périmètre** : seuls titre / sous-titre / résumé / mots-clés sont suivis.
-  Faut-il une ligne « Texte de l'article » (statut + commentaire, sans texte cible) pour
-  suivre la traduction intégrale, qui vit dans l'autre revue ?
-- [ ] **Relire les libellés DE** du panneau et de l'arbre (premier jet, comme le reste).
-
-## Validations qui demandent un humain — hiérarchie de titres et tableaux (D110–D112)
-
-- [ ] **Rejouer un numéro complet** après la release : un seul `<h1>`, corps à partir de `<h2>`,
-  numérotation 1 / 1.1 / 1.1.1 inchangée à l'œil, et le galley Word toujours Title puis
-  Heading2+.
-- [ ] **Lecteur d'écran sur un tableau markdown** (pipe ou grid) : les `scope` posés par
-  `szh-tabelle-scope.lua` doivent faire annoncer l'en-tête de colonne à chaque cellule.
-
-## Validations qui demandent un humain — accessibilité figures/tableaux (D108–D109)
-
-- [ ] **Juger le rendu** d'un article réel : la légende porte « Figure N — … » puis les crédits
-  en plus petit sur la même ligne ; vérifier que la taille distingue assez les crédits sans
-  descendre sous le seuil APCA (le gris n'a **pas** été éclairci exprès, cf. D87).
-- [ ] **Écouter avec un lecteur d'écran** (NVDA/Narrateur) une figure avec `alt=` distinct,
-  une figure sans `alt=` (la légende y est annoncée **deux fois** — c'est le prix de la
-  compatibilité, et le signal qu'il faut écrire un vrai texte alternatif), une image
+# Ce qui reste à faire
+
+Ce fichier ne contient que ce qui reste à vérifier ou à trancher : rien de ce qui est déjà fait.
+On coche une case quand le résultat annoncé a été constaté, puis on la supprime.
+
+## Avant de tester
+
+- [ ] Installer le toolkit et l'extension du cockpit depuis une release, ou à la main. Rien de
+  ce qui suit n'est testable sans eux : les scripts d'archivage et de mise à jour sont appelés
+  par leur chemin dans `C:\ProgramData\SZH\toolkit\windows\`. C'est bon quand le lanceur
+  affiche un numéro de version.
+- [ ] Vérifier que le mode développeur est actif (Réglages SZH, ou `devMode` dans `config.json`)
+  avant le premier essai. Sinon le premier clic déplace un vrai numéro.
+- [ ] Créer deux numéros de test dans `Revues-TESTING`, un par produit (`revue: revue` et
+  `revue: zeitschrift`), avec chacun deux ou trois articles compilés, des images, un tableau et
+  des traductions renseignées. Ils servent à tout le reste.
+
+## Ménage sur ce poste
+
+- [ ] Deux numéros sont mal renseignés. `2027-05`, et tout numéro créé avant que la création
+  déduise ses métadonnées du nom du dossier, porte encore l'année, le numéro et le titre du
+  gabarit : les corriger dans « Méta-données du numéro ». `2027-01` vit dans le dossier de la
+  Zeitschrift mais se déclare `revue: revue`, et il est marqué archivé sans avoir été déplacé :
+  corriger le jeton puis relancer l'archivage, ou le supprimer si c'était un essai.
+- [ ] Nettoyer les restes d'essais et les clés héritées : les deux dossiers de
+  `OneDrive - SZH CSPS\Revues` (`2026-04`, `test`) n'ont pas d'`ausgabe.yaml`, ce ne sont pas des
+  numéros ; les dossiers laissés dans `Revues-TESTING` seront recréés au prochain lancement en
+  mode test ; la clé `revuesRoots` de `config.json`, posée par une ancienne version du script de
+  création, est sans effet mais trompeuse.
+- [ ] Désinstaller l'extension résiduelle, absente des nouveaux postes :
+  `codium --uninstall-extension csholmq.excel-to-markdown-table`.
+
+## Lanceur
+
+- [ ] Conditions dégradées. Lancé pendant qu'une mise à jour est en cours, le lanceur doit
+  s'ouvrir ou afficher une erreur, jamais disparaître sans un mot. Sur un écran 1366 × 768, ou à
+  125 et 150 % de mise à l'échelle, les deux listes, le bloc d'informations et les quatre boutons
+  doivent tenir dans l'écran (non reproductible sur le poste de développement).
+- [ ] Les deux listes. « En cours » et « Archivées », cadenas sur les numéros verrouillés,
+  sélection qui bascule de l'une à l'autre, double-clic qui ouvre dans chacune. Un numéro déplacé
+  à la main dans le dossier d'archives doit apparaître quand même. Sur un poste sans aucun numéro,
+  la fenêtre s'ouvre et propose « Nouvelle revue… ». Sous les listes, la ligne
+  « N revue(s) hors arborescence dans … — à déplacer » compte les numéros rangés ailleurs, y
+  compris dans les anciens `OneDrive\Revues`, et disparaît une fois le dossier déplacé.
+- [ ] Filtrage par produit. « Revues SZH » ne liste que la Revue, « Zeitschriften SZH » que la
+  Zeitschrift, dans les deux listes. Titre de fenêtre et texte d'introduction cohérents avec le
+  produit.
+- [ ] Création d'un numéro. « Nouvelle revue… » ne demande que le nom, rappelle où le numéro sera
+  créé et crée dans le dossier de rédaction du produit du lanceur. Vérifier depuis chaque lanceur
+  que le jeton `revue:` écrit correspond au produit, et que la barre du cockpit affiche tout de
+  suite l'année et le numéro déduits du nom du dossier.
+- [ ] Menu Démarrer. Les deux raccourcis apparaissent après une mise à jour et n'ouvrent aucune
+  console. Ils se distinguent d'un coup d'œil : même tuile bleu nuit, barre rouge pour la Revue,
+  moutarde pour la Zeitschrift, et la fenêtre ouverte porte la même icône dans la barre des
+  tâches. Un raccourci déjà épinglé garde son ancienne icône, Windows en ayant fait une copie :
+  dépingler puis ré-épingler une fois, pour savoir quoi répondre à qui le signalera.
+- [ ] Sélecteur de version. « Logiciel v. … » s'affiche dans les deux lanceurs et le bouton
+  « Version du logiciel… » ouvre le sélecteur, la version installée marquée et les versions déjà
+  téléchargées annotées. Le même sélecteur doit s'ouvrir depuis l'avertissement de divergence du
+  cockpit, sans console noire derrière le dialogue.
+- [ ] Réseau contrarié. Hors ligne, le sélecteur annonce qu'il ne peut pas lister les versions
+  publiées et propose celles déjà téléchargées ; la version précédente n'apparaîtra qu'après une
+  deuxième mise à jour, le temps que deux archives soient conservées. Deux installations
+  concurrentes : la seconde doit dire qu'une mise à jour est déjà en cours et sortir. Derrière le
+  proxy SZH, mesurer le temps réel de la recherche des versions et confirmer que 8 s suffisent.
+  Limite de débit de l'API GitHub (60 requêtes par heure et par adresse publique, tout un bureau
+  derrière la même) : confirmer que le message est compréhensible ; si le cas devient fréquent,
+  il faudra mettre la liste des versions en cache.
+- [ ] Aller-retour de version réel, sur un poste de test : fermer tous les numéros, installer une
+  version antérieure, vérifier que le PDF d'un ancien numéro redevient conforme, puis réinstaller
+  la dernière. C'est le seul test qui prouve la promesse de recompiler à l'identique.
+
+## Liens de traduction et e-mails
+
+- [ ] Le bouton et le lien produit. « Envoyer pour traduction » apparaît dans le panneau de
+  traduction à côté d'Enregistrer, avec une infobulle lisible ; les boutons d'envoi apparaissent
+  dans la barre, un sur la section Traductions et un sur chaque article. Un clic dépose le lien
+  dans le presse-papiers (le coller ailleurs pour vérifier) et ouvre le brouillon avec le sujet,
+  le corps et le lien. Forme attendue : `szh://traduction/<produit>/<numéro>/<article>` depuis le
+  panneau d'un article, sans le dernier segment depuis la section, et `<produit>` est celui du
+  numéro. Le bouton doit fonctionner sur un numéro verrouillé — c'est là qu'il sert le plus — et
+  ne changer aucun statut : un champ « pas prêt » le reste.
+- [ ] Refus propres. Un numéro sans clé `revue:`, ou un dossier dont le nom contient un espace,
+  donnent « Lien impossible à construire » et ne copient rien de bancal. Un lien vers un numéro
+  absent du poste donne « introuvable sur ce poste ». Un lien tordu à la main
+  (`szh://traduction/revue/../x`) donne « lien non valide » et rien ne s'ouvre.
+- [ ] Langue et destinataire suivent le produit, pas l'interface : Revue vers `redaktion@szh.ch`
+  en allemand, Zeitschrift vers `redaction@csps.ch` en français. Changer la langue de l'interface
+  ne doit rien y changer.
+- [ ] Clic du lien depuis Outlook, puis depuis Teams. Windows demande l'autorisation la première
+  fois, plus aucune fenêtre « cet emplacement peut ne pas être sûr », et le bon numéro s'ouvre
+  sur le bon article. Refaire avec VSCodium déjà ouvert sur un autre numéro, avec VSCodium fermé,
+  et sur un numéro archivé.
+- [ ] Le lien en texte brut. Vérifier que le copier-coller du lien dans Exécuter (Windows + R)
+  ouvre bien le numéro, puisque c'est ce que le corps de l'e-mail demande de faire.
+- [ ] Ce qui arrive chez le destinataire. Le lien cliquable passe par l'automatisation de
+  l'Outlook classique : si la rédaction d'en face lit ses mails dans le nouvel Outlook, le lien
+  peut ne pas s'ouvrir — à tester avec un vrai destinataire avant de compter dessus. Fermer
+  Outlook complètement doit faire jouer le repli `mailto:`, avec un lien en texte brut non
+  cliquable, ce qui est attendu : aucun client ne transforme en lien un schéma inconnu. Sur un
+  poste sans la chaîne installée, le lien ne fait rien : confirmer que l'e-mail explique le repli
+  par le menu Démarrer.
+- [ ] Le fichier d'intention `%LOCALAPPDATA%\SZH\intention.json` est créé au clic et supprimé dès
+  que le cockpit l'a consommée : vérifier qu'il ne traîne pas. Intention périmée : cliquer un
+  lien, fermer la fenêtre avant qu'elle ne s'ouvre, attendre six minutes, ouvrir le numéro à la
+  main — le panneau ne doit pas s'ouvrir tout seul et le fichier doit disparaître. Intention
+  visant un autre numéro : le numéro ouvert à la main ne doit rien ouvrir, et celui du lien doit
+  encore atterrir sur son panneau quand il s'ouvre.
+
+## Cycle de vie d'un numéro
+
+- [ ] Cycle de verrouillage complet dans VSCodium : sur un numéro neuf, le panneau ne propose
+  qu'« Archiver et verrouiller » — ni Déverrouiller, ni Désarchiver, ni Exporter cet article.
+  Verrouiller grise les articles, déverrouiller les rend modifiables sans recharger la fenêtre,
+  tous les boutons reviennent et Ctrl+S recompile de nouveau.
+- [ ] Tout geste d'écriture est refusé sur un numéro verrouillé, avec le message « Numéro
+  verrouillé » et un bouton Déverrouiller : importer des Word, convertir les Word en attente,
+  méta-données du numéro, métadonnées des articles, édition d'un article, traductions (article et
+  champ), validation de la section Traductions, suppression d'article, fiche d'image, éditeur de
+  tableau, remplacer ou supprimer une image ou un tableau, les raccourcis de mise en forme, et le
+  glissement d'un `.docx` sur la vue. Taper dans un article n'écrit rien, les boutons de survol
+  disparaissent, et Ctrl+S ne relance plus de compilation.
+- [ ] Signalisation de l'état. La barre de titre porte le picto, la barre d'état affiche
+  « Verrouillée », son infobulle nomme la version de création et celle du poste, et le clic
+  déverrouille — ou désarchive si le numéro n'est qu'archivé. Le bouton Déverrouiller du message
+  de refus ouvre bien la confirmation.
+- [ ] Le fichier `<numéro>\.vscode\settings.json` est présent et invisible dans l'explorateur
+  quand le numéro est verrouillé, supprimé avec son dossier au déverrouillage, et jamais créé sur
+  un numéro ordinaire : ouvrir deux ou trois numéros en cours pour le confirmer.
+- [ ] Archivage complet depuis VSCodium. La confirmation annonce une place cohérente avec le
+  poids réel de `out/` (comparer dans l'explorateur Windows), ou dit « aucun document produit
+  pour l'instant » sur un numéro jamais compilé ; Annuler ne change ni les drapeaux, ni `out/`,
+  ni l'emplacement ; le geste complet ferme la fenêtre, annonce ses étapes, et le numéro se
+  rouvre depuis les archives, verrouillé, avec un arbre correct.
+- [ ] Ce qui reste après l'archivage : `out/` a disparu et rien d'autre — `articles/`,
+  `articles-word/`, `media/`, `tables/`, `portraits/`, les `.meta.yaml`, les `.traduction.yaml`
+  et `BIENVENUE.md` sont tous là. `ausgabe.yaml` porte `locked: true`, `archived: true` et une
+  `version-toolkit`. Le raccourci « Ouvrir la revue.lnk » du dossier archivé pointe sur le
+  nouveau chemin. Une Zeitschrift part dans les archives de la Zeitschrift, pas dans celles de la
+  Revue.
+- [ ] Échec et collision à provoquer. Ouvrir le PDF dans SumatraPDF puis archiver : une boîte de
+  dialogue doit annoncer que les documents produits n'ont pas pu être supprimés — la console
+  étant cachée, c'est le seul canal — et le numéro doit rester exactement dans son état de
+  départ. Placer un dossier du même nom à destination puis archiver : le message doit dire qu'un
+  dossier existe déjà, et rien ne doit être déplacé.
+- [ ] Désarchivage. Retour dans le dossier de rédaction, raccourci réécrit, verrou toujours posé.
+  Sur un numéro archivé puis déverrouillé, le panneau propose « Verrouiller la revue » sans
+  déplacement ni suppression : vérifier que ça ne rejoue pas un archivage.
+- [ ] Numéro gelé. Cliquer un article d'un numéro archivé ne démarre aucune compilation et
+  affiche « Numéro gelé : la compilation automatique est coupée… », en aperçu HTML comme en
+  aperçu PDF, plutôt qu'un message d'attente qui ne viendrait jamais. « Exporter cet article »
+  est disponible au survol et dans le panneau d'export ; le PDF et l'aperçu reviennent et
+  l'aperçu s'affiche seul à la fin ; sans article sélectionné, le panneau dit « Aucun article
+  visé… » au lieu d'échouer en silence. « Recompiler toute la revue » fonctionne aussi, et
+  rouvrir le numéro ensuite affiche les PDF sans relancer de build. Confirmer enfin que
+  « Exporter en XML (OJS) » sur un numéro archivé est utile et fonctionne, puisqu'il recompile
+  tout, galleys DOCX compris.
+- [ ] Version enregistrée dans le numéro. Un numéro neuf porte `version-toolkit` avec la version
+  du poste dès sa création. Un numéro ancien sans la clé ne déclenche aucun avertissement et
+  n'est pas estampillé en douce ; il l'est au premier archivage. Créer un écart en modifiant la
+  clé à la main : l'avertissement doit nommer les deux versions, apparaître une seule fois par
+  fenêtre, ne pas revenir aux enregistrements suivants, et se déclencher sur Ctrl+S, Ctrl+E,
+  « Recompiler toute la revue » et « Exporter cet article ».
+- [ ] Mode développeur. Le groupe apparaît dans « Réglages SZH » avec le bon état et écrit
+  `devMode` dans `C:\ProgramData\SZH\config.json`. Désactivé puis lanceur relancé : il lit les
+  dossiers de production et n'y crée rien. Réactivé : il recrée et relit les dossiers de test.
+- [ ] Archiver une fois en mode production, sur un numéro de test copié dans le dossier de
+  rédaction réel, pour confirmer que les vrais chemins fonctionnent. Confirmer aussi
+  l'arborescence de production sur un poste de la rédaction : si un poste synchronise la
+  bibliothèque sous un autre nom, corriger `basesRevues.prod` dans `config.json`.
+
+## Import Word et convertisseur
+
+- [ ] Enchaînement après import. La compilation démarre toute seule avant le dialogue de
+  vérification, si bien que le premier clic sur un article importé montre l'aperçu sans attente.
+  Sur un import de plusieurs fichiers, juger si la durée reste acceptable ; sinon il faudra la
+  passer en tâche de fond. Vérifier au passage l'ordre : `4_Titre.docx` et `10_Titre.docx`
+  donnent les slugs `04-…` et `10-…`, rangés dans l'ordre du numéro, et réimporter le même
+  fichier affiche « déjà converti ». Piège : `4_X.docx` et `04_X.docx` donnent le même slug, le
+  second est ignoré.
+- [ ] Glisser des `.docx` depuis l'Explorateur sur la vue « Revue SZH » : un fichier, plusieurs,
+  un conflit (modale Remplacer ou Ignorer), un mélange avec des non-docx (message « seuls les
+  .docx… »), un glissement de texte (rien). Confirmer que ça marche sur le VSCodium déployé.
+- [ ] Dialogue de vérification d'import. Il s'ouvre seul après un vrai import. Les badges
+  « détecté / à compléter » correspondent au `.meta.yaml`, le compteur se recalcule à la saisie
+  et à l'ajout de l'italien, Enregistrer réécrit la fiche en préservant les clés inconnues. Le
+  remplacement d'image marche par glissement et par bouton : confirmation, nom conservé,
+  description rafraîchie, refus au-delà de 50 Mo, refus pendant un build ou un import. Fermer
+  avec des modifications ouvre la modale. Une deuxième conversion pendant que le panneau est
+  ouvert le recharge, en perdant les saisies non enregistrées. Zéro nouveau fichier donne une
+  simple notification. Piège connu : la croix de l'onglet contourne la garde « non enregistré »,
+  limite de l'API des webviews.
+- [ ] Aperçu pas encore prêt. Cliquer un article dont `out/` a été effacé doit afficher « pas
+  encore compilé » suivi de « Compilation en cours, merci de patienter… », lancer la compilation,
+  puis remplacer le message par le rendu. Rejouer en mode PDF, et pendant qu'une autre
+  compilation tourne déjà : un message d'attente, pas un abandon silencieux.
+- [ ] Relire un échantillon de conversions : un article français, un allemand, un éditorial, une
+  « Actualité et ressources ». Corps sans perte, titres aux bons niveaux, résumés et mots-clés
+  dans la bonne langue, bibliographie rendue sous son titre. Défauts connus, qui se corrigent au
+  formulaire : prénom et nom inversés dans la source, seconds prénoms rangés dans le nom,
+  fonction et affiliation parfois fusionnées. Les entretiens ne sont pas détectables
+  automatiquement : les requalifier à la main. Les graphiques et SmartArt ne sont pas convertis
+  par pandoc et laissent des légendes orphelines : fournir les images par la zone « originaux »
+  du dialogue d'import.
+- [ ] Textes alternatifs venus de Word. Les descriptions générées automatiquement sont jetées,
+  celles écrites à la main doivent être reprises : vérifier sur un numéro réel qu'aucune n'est
+  jetée à tort. Piège : le filtrage repose sur une liste de formulations, une future tournure de
+  Microsoft passerait au travers. Vérifier aussi, éditorialement, que les vignettes placées dans
+  un lien (rubrique Actualités) ne portent aucune information : elles ne sont jamais légendées ni
+  décrites, donc décoratives par défaut.
+
+## Cockpit : panneaux, formulaires, raccourcis
+
+- [ ] La barre et les trois panneaux. La vue « Revue SZH » ne montre que trois boutons, avec des
+  infobulles dans la langue de l'éditeur, et la commande de rafraîchissement reste accessible par
+  la palette. Panneau Commande (Ctrl+Alt+A) : les cinq entrées ouvrent importer, convertir,
+  méta-données du numéro, métadonnées des articles et réglages. Panneau Édition (Ctrl+Alt+S) :
+  depuis un `.md`, chaque action s'applique à la sélection ; depuis un autre fichier, une mise en
+  forme affiche « Ouvrez un article… » mais la bascule d'aperçu fonctionne ; essayer aussi dans
+  un `.md` hors numéro. Le clic droit « Mise en forme » doit rester inchangé. Panneau Export
+  (Ctrl+Alt+D) : « Recompiler toute la revue » lance le rebuild et « Exporter en XML (OJS) » est
+  présente. Confirmer enfin sur clavier suisse français et allemand qu'aucun des raccourcis
+  Ctrl+Alt+A, S, D et P ne collisionne avec AltGr.
+- [ ] Les formulaires pleine page ferment les aperçus ouverts : article avec aperçu PDF à droite
+  puis « Méta-données du numéro », idem en mode HTML, idem sur un aperçu ouvert par Ctrl+S.
+  Rejouer avec « Métadonnées des articles » déjà ouvert en arrière-plan. L'éditeur de tableau
+  ferme tout à l'ouverture, « Voir le tableau dans l'aperçu » rouvre et amène la vue sur le
+  tableau, « Cacher l'aperçu » referme, et les deux colonnes de réglages tiennent sans
+  défilement.
+- [ ] Aperçu par défaut. Le réglage reflète l'état courant, passer sur PDF met à jour la barre
+  d'état tout de suite, le clic d'article suivant ouvre le PDF, Ctrl+Alt+P bascule, et le réglage
+  est resynchronisé à la réouverture des réglages. En thème sombre, l'aperçu HTML reste sur fond
+  blanc avec l'encre sombre, y compris les messages « pas encore compilé » et « numéro gelé ».
+- [ ] Enregistrement automatique. Taper longuement dans un résumé : au bout de trois secondes le
+  fichier est écrit, sans que la frappe, la sélection ou la position du curseur ne bougent. À
+  faire dans les quatre formulaires : traduction, métadonnées des articles, vérification de
+  l'import, éditeur de tableau. La fiche d'image, elle, ne doit pas compiler pendant la saisie et
+  doit enregistrer quand on quitte le panneau.
+- [ ] Fiche d'image. Cliquer une image dans l'arbre ouvre la fiche avec l'aperçu, les dimensions,
+  le poids et les champs pré-remplis depuis le `.md`. Remplir les quatre champs, enregistrer,
+  vérifier le `.md`, et confirmer que Ctrl+Z dans l'éditeur défait l'écriture. Taper dans le `.md`
+  sans enregistrer puis enregistrer depuis la fiche ne doit rien perdre. Modifier puis « Retour à
+  l'article » ouvre la modale, et l'onglet porte l'indicateur de modification. Les trois états
+  d'accessibilité : « décorative » écrit `alt=""` ; repasser à « apporte une information » avec le
+  champ vide fait disparaître l'attribut entièrement ; remplir le champ écrit `alt="…"` — et au
+  rendu, la légende est lue dans les trois cas. Cas particuliers : image jamais insérée (bandeau,
+  champs grisés) ; image insérée deux fois (les deux références mises à jour) ; figure portant
+  déjà `{width=50%}` (l'attribut survit) ; vider les trois champs supprime le bloc d'attributs ;
+  SVG et image de plus de 12 Mo (aperçu indisponible) ; « Ouvrir l'image » lance la visionneuse ;
+  supprimer l'image depuis l'arbre pendant que sa fiche est ouverte.
+- [ ] Insertion. Ctrl+Alt+F dans un article : l'image choisie est copiée, la référence insérée,
+  l'article enregistré et la fiche ouverte dessus ; hors article, insertion seule sans fiche.
+  Ctrl+Alt+T dans un article : un fichier `table-NN.html` est créé, la référence insérée,
+  l'article enregistré, l'éditeur ouvert sur une grille 3 × 3, et « Retour à l'article » montre le
+  tableau dans l'aperçu ; hors article, squelette Markdown et message.
+- [ ] Éditeur de tableau. Les quatre champs, l'annulation et le rétablissement sans re-rendu de la
+  grille, et surtout : rouvrir puis réenregistrer un tableau sans y toucher doit laisser
+  `git diff` vide. Légende : la saisir marque le tableau modifié, Ctrl+S écrit la `<caption>`, la
+  vider la supprime ; un tableau importé dont le Word portait une légende doit la montrer sans que
+  le fichier soit modifié si on n'y touche pas. Cliquer un tableau dans la barre latérale ouvre
+  l'éditeur, pas le fichier HTML, et rouvrir un tableau déjà ouvert le ramène au premier plan.
+- [ ] Collage de tableau (Ctrl+Alt+V). Copier depuis Excel puis depuis Word, coller dans un
+  article : un fichier `tables/table-NN.html` est créé, sa référence insérée au curseur, le
+  tableau visible aussitôt dans la barre, et l'éditeur l'ouvre correctement. Les cellules
+  fusionnées doivent survivre. Depuis Excel, le tableau arrive sans gras ni ligne d'en-tête, Excel
+  mettant ces informations dans des classes CSS : ça se règle d'un clic dans l'éditeur ; depuis
+  Word, gras, italique et en-tête sont conservés. Dire si le délai avant insertion, une
+  demi-seconde à une seconde, gêne. Vérifier qu'aucune extension installée ne prend déjà le
+  raccourci.
+- [ ] Panneau de métadonnées d'un article. Au survol, l'icône d'édition est à gauche de la
+  corbeille ; le clic ouvre le panneau sur une seule carte, avec un bandeau « Voir tous les
+  articles ». Enchaîner tous, puis un, puis un autre, puis tous, avec une carte modifiée à chaque
+  fois : la modale Enregistrer / Quitter sans enregistrer / Annuler doit apparaître, Annuler
+  préserver les saisies, Enregistrer n'écrire que l'article affiché. Puis Ctrl+Alt+S depuis un
+  article, depuis un `.md` hors article, et depuis un onglet qui n'est pas un `.md`.
+- [ ] L'arbre. Cliquer un article ouvre ses assets et referme ceux du précédent ; un article sans
+  asset n'a pas de chevron ; juger si la sélection reste correcte, le nœud étant recréé à chaque
+  bascule. Passer « Cacher automatiquement… » à Non doit supprimer tout pliage automatique. La
+  corbeille d'une image ou d'un tableau demande confirmation, supprime le fichier et retire
+  l'insertion du texte : vérifier le compte annoncé dans la barre d'état, le texte réenregistré et
+  recompilé, l'annulation qui restaure le texte, l'éditeur ou l'onglet d'aperçu qui se ferme, et
+  le cas du fichier orphelin sans insertion.
+- [ ] Mots-clés. Ajouter et retirer une ligne, cocher puis décocher « + Italien » avec des
+  mots-clés italiens présents : ils ne doivent jamais disparaître, et dans le `.meta.yaml` les
+  listes doivent rester alignées. Laisser un mot-clé du milieu non traduit, enregistrer, rouvrir :
+  la case réapparaît vide et les paires restent en face ; l'export OJS doit alors avertir.
+- [ ] Bouton DeepL : sur un résumé proche de 4000 caractères, et sur un titre avec apostrophes
+  typographiques et caractères accentués.
+- [ ] Panneau de suivi de traduction. Cliquer un article de la section Traductions ouvre le
+  formulaire en colonne de gauche et l'aperçu de l'article à droite : vérifier que l'aperçu se
+  compile et que Ctrl+Alt+P bascule HTML et PDF depuis ce panneau. Juger la lisibilité de la carte
+  de champ — texte source en bloc pointillé, barre de couleur d'état à gauche, badge
+  « traduit / à traduire » — sachant que le panneau n'occupe qu'une moitié d'écran : un résumé
+  long doit rester confortable à saisir. Changer d'article avec des modifications non enregistrées
+  doit ouvrir la modale Enregistrer / Quitter sans enregistrer / Annuler, chaque branche faisant
+  ce qu'elle annonce : c'est le seul chemin que le harnais de test ne couvre pas. Enfin, le bouton
+  de validation en masse de la section doit annoncer le bon nombre de champs dans la barre d'état,
+  sans faire reculer un champ déjà en relecture ou finalisé.
+- [ ] Deux gestes à juger sur un article réel. Le saut de page (Ctrl+Alt+Entrée) coupe la page où
+  voulu dans le PDF et laisse l'aperçu HTML inchangé — le rendu est prouvé, le geste et le
+  placement du marqueur ne le sont pas. Dans l'aperçu HTML, survoler un mot au milieu d'une phrase
+  doit surligner tout le paragraphe, pas le mot ni le passage en gras.
+- [ ] Ouverture d'un `.md` depuis l'Explorateur. Clic droit, Ouvrir avec, « Revue SZH », cocher
+  « Toujours » : le numéro s'ouvre complet et l'aperçu apparaît seul. L'entrée doit s'appeler
+  « Revue SZH », avec l'icône SZH, reconnaissable face à l'entrée « VSCodium » juste à côté, et la
+  colonne Type doit dire « Article de revue SZH ». Deux points à regarder : le libellé affiché
+  dans la boîte « Ouvrir avec », non vérifiable sans écrire dans le registre réel, et le
+  comportement quand un autre numéro est déjà ouvert (nouvelle fenêtre ou réutilisation).
+
+## Portraits et export OJS
+
+- [ ] Modale photo de bout en bout, sur un poste à jour. Déposer une photo, obtenir trois
+  versions, valider, enregistrer, voir `photo:` dans le `.meta.yaml` et le bloc « À propos » dans
+  le PDF. Réouverture avec la bonne version présélectionnée ; redépôt d'un `.jpg` après un `.png` ;
+  photo trop serrée (note sur le cadrage) ; image sans visage (note et recadrage centré). Icônes
+  et damier de transparence lisibles en thème clair comme sombre, console de la webview sans
+  erreur. Sans WSL, ou avec la distribution absente, la modale doit afficher une erreur propre,
+  sans blocage ni « Chargement… » figé.
+- [ ] Détourage sur de vraies photos : le test automatique n'a couvert qu'un visage synthétique.
+  Valider sur des visages non frontaux, des lunettes, des groupes, un contre-jour, une photo très
+  serrée et une photo sans visage, et juger le rendu noir et blanc 400 × 400 des deux versions.
+  Juger dans la foulée le bloc auteurs sur un article réel : taille de la pastille ORCID et
+  formulation du titre.
+- [ ] Export OJS. Saisir une adresse d'auteur dans le formulaire, exporter le XML, vérifier la
+  présence de `<email>` dans le bloc auteur. Puis importer le XML dans un OJS de test, ou dans le
+  vrai sur un numéro dépublié : rubriques rattachées, galleys téléchargeables, résumés et
+  mots-clés présents, et voir ce qu'OJS fait sans adresse d'auteur. Piège : le genre, l'uploader
+  et le groupe d'utilisateurs sont rattachés par nom, valables pour le journal français observé ;
+  à vérifier pour la Zeitschrift. Un XML de production fera 30 à 50 Mo, ce qui peut imposer
+  l'import en ligne de commande.
+- [ ] Ouvrir un `out/<slug>/<slug>.docx` dans Word : tableaux fusionnés, images, bibliographie.
+  Les SVG de la maquette sont perdus faute de `rsvg-convert` ; ajouter `librsvg2-bin` au rootfs si
+  ça se voit.
+
+## Maquette et accessibilité
+
+- [ ] En-tête condensé. Cocher la case dans « Méta-données du numéro », enregistrer, vérifier
+  `entete-condensee: true` dans `ausgabe.yaml` en booléen nu, puis la recompilation, puis décocher
+  et vérifier `false`. Juger ensuite les trois espaces minimum (`--hero-espace-titre` 20 px,
+  sous-titre 12 px, méta 22 px) et le plancher `min-height: 220px` sur une couverture vraiment
+  dépouillée : titre d'une ligne, un auteur, pas de sous-titre.
+- [ ] Légendes de figure. Sur un article réel, la légende placée au-dessus doit donner le même
+  ordre visuel et le même ordre de lecture (copier-coller de la page, panneau « Ordre » d'Acrobat).
+  Le galley Word garde la légende sous l'image, le writer docx de pandoc ne se réglant pas :
+  confirmer que c'est acceptable pour OJS. Juger aussi la numérotation : « Figure N — … » puis les
+  crédits en plus petit sur la même ligne, deux suites indépendantes pour les figures et les
+  tableaux, en français et en allemand, dans le PDF comme dans l'aperçu HTML, et une taille de
+  crédits qui les distingue sans passer sous le seuil APCA.
+- [ ] Puces ▸ dans un article dense : listes imbriquées, item d'une seule ligne, item qui passe à
+  la ligne. Le triangle doit rester posé sur la ligne de base du texte.
+- [ ] Hiérarchie de titres sur un numéro complet : un seul `<h1>`, corps à partir de `<h2>`,
+  numérotation 1 / 1.1 / 1.1.1 inchangée à l'œil, galley Word en Title puis Heading2 et suivants.
+- [ ] Écoute au lecteur d'écran (NVDA ou Narrateur). Sur un tableau Markdown, les attributs
+  `scope` doivent faire annoncer l'en-tête de colonne à chaque cellule. Écouter aussi une figure
+  avec un texte alternatif distinct, une figure sans — la légende y est annoncée deux fois, c'est
+  le prix de la compatibilité et le signal qu'il faut écrire un vrai texte alternatif —, une image
   décorative, un tableau avec description longue et un tableau sans.
-- [ ] **Arbitrer un signalement à la compilation** : « N figure(s) utilisent la légende comme
-  texte alternatif ». C'est le seul cas restant de double annonce ; à mettre en balance avec
-  le bruit ajouté au panneau.
-- [ ] **Crédits sur une figure sans légende** : aujourd'hui perdus (il n'y a pas de
-  `<figcaption>` où les mettre), alors que les tableaux se voient fabriquer une `<caption>`
-  crédit-seule. Aligner les figures ou non ?
-- [ ] **Import Word — texte alternatif** : les descriptions automatiques de Word/Copilot sont
-  jetées (majoritaires dans le corpus). Vérifier sur un numéro réel que les descriptions
-  **écrites à la main** par la rédaction sont bien reprises, et qu'aucune ne l'est à tort.
-  ⚠ Le filtrage repose sur une liste de formulations ; une future tournure de Microsoft
-  passerait au travers.
-- [ ] **Vignettes dans un lien** (`[![](img)](url)`, rubrique Actualités) : jamais légendées ni
-  décrites, donc décoratives par défaut — vérifier éditorialement qu'aucune ne porte de
-  l'information.
-- [ ] **Verser le corpus de test d'accessibilité dans `test/articles/`** : `test/` ne contient
-  aujourd'hui ni image ni tableau légendé, la non-régression y est donc peu informative.
+- [ ] Aplats de tableau. Juger à l'œil, sur un tableau réel, les fonds « couleur » et « négatif »,
+  dont les crans ont changé pour tenir le seuil de lisibilité à la taille réelle du texte de
+  tableau (13,6 px) ; sur un numéro rouge, le fond négatif n'est plus le rouge de charte mais
+  `#9F001F`. Dans un numéro coloré, les fonds de l'aperçu de l'éditeur doivent être identiques à
+  ceux du PDF, l'éditeur lisant les teintes que le pipeline écrit dans `out/.szh-accent.css` ; un
+  numéro jamais compilé montre des gris neutres, c'est le repli attendu.
+- [ ] Planche de palette `docs/palette.html`. Juger à l'œil la grille à clarté fixe de onze crans,
+  où un même numéro donne la même clarté pour les six couleurs et où la couleur de charte occupe
+  l'un des crans. Regarder les crans clairs du rouge et de la capucine, qui tirent au rose faute
+  de rouge clair vif en sRGB ; les crans sombres de la moutarde, olive plutôt que jaunes ; et le
+  cran 400, qui ne porte aucun texte parce que ni le noir ni le blanc n'y passent — vérifier que
+  sa présentation ne prête pas à confusion. Si un fond paraît trop franc, faire pointer
+  `--c-<nom>-clair` vers `-100` au lieu de `-200` dans `couleurs.css`, puis relancer
+  `python3 test/apca-check.py` et `python3 test/palette-html.py`.
+- [ ] Verser un corpus d'accessibilité dans `test/articles/` : il n'y a aujourd'hui ni image ni
+  tableau légendé, donc la non-régression y est peu informative.
 
-## Validations qui demandent un humain — fiche image et crédits (D105–D107)
+## Traductions et relecture germanophone
 
-- [ ] **Fiche image (D106)** : cliquer une image dans l'arbre → fiche en colonne 1 (aperçu,
-  « L × H · poids », champs pré-remplis depuis le `.md`). Remplir les quatre champs,
-  Enregistrer, vérifier le `.md` ; **Ctrl+Z dans l'éditeur doit défaire l'écriture**. Taper
-  dans le `.md` sans enregistrer puis enregistrer depuis la fiche : la frappe ne doit pas
-  être perdue. Modifier puis « Retour à l'article » → modale ; indicateur ● sur l'onglet.
-- [ ] **Les trois états d'accessibilité (D105)** : « image décorative » → `alt=""` dans le
-  `.md` ; repasser à « apporte une information » avec le champ vide → l'attribut `alt`
-  **disparaît entièrement** ; remplir le champ → `alt="…"`. Vérifier au rendu que la
-  légende est lue dans les trois cas.
-- [ ] **Cas particuliers de la fiche** : image jamais insérée (bandeau, champs grisés) ;
-  image insérée deux fois (bandeau, les deux références mises à jour) ; figure portant déjà
-  `{width=50%}` (l'attribut doit survivre) ; vider les trois champs → plus aucun bloc `{…}` ;
-  SVG et image > 12 Mo (message d'aperçu indisponible) ; « Ouvrir l'image » → visionneuse
-  native ; supprimer l'image depuis l'arbre pendant que sa fiche est ouverte.
-- [ ] **Ctrl+Alt+F** : choisir une image → copiée, référence insérée, article enregistré,
-  fiche ouverte dessus. Hors article (BIENVENUE.md) : insertion seule, pas de fiche.
-- [ ] **Éditeur de tableau (D107)** : les quatre champs ; Ctrl+Z / Ctrl+Y les couvrent sans
-  re-rendu de la grille ; **rouvrir et réenregistrer un tableau sans y toucher doit laisser
-  `git diff` vide**.
-- [ ] **Tout rejouer en allemand** ; traductions DE de la fiche à relire (premier jet).
-- [ ] **Pistes non faites, à arbitrer** : entrée « Ouvrir l'image » dans le menu contextuel de
-  l'arbre ; report des crédits vers l'export OJS ; alerte de relecture listant les figures
-  sans légende **ni** texte alternatif avant livraison.
+- [ ] Relecture germanophone du classeur `C:\Users\robin\Documents\SZH-traductions-a-relire.xlsx`
+  (230 textes du cockpit, 29 menus, les types d'articles). L'audit mécanique est propre : pas de
+  `ß`, pas de marqueur divergent, parité complète. Le classeur ne couvre pas les textes des
+  scripts PowerShell, qui sont aussi un premier jet.
+- [ ] Relire les libellés allemands de premier jet non couverts par le classeur : titres des deux
+  lanceurs et messages de lien, panneau et arbre de suivi de traduction, panneau d'export, modales
+  de confirmation, barre d'état, écran d'archivage, sélecteur de version, mode développeur, case
+  « en-tête condensé » et son aide, fiche d'image, bandeau de filtre des métadonnées, légende de
+  tableau et messages d'insertion de tableau.
+- [ ] Relire les deux gabarits d'e-mail de traduction, français et allemand : ce sont des textes
+  qui partent hors de l'équipe.
+- [ ] Libellés italiens et anglais des figures et tableaux (`Figura`/`Tabella`, `Figure`/`Table`) :
+  premier jet à valider. Confronter aussi les libellés allemands et italiens des six types
+  d'article aux noms de rubriques réellement imprimés ; cas à regarder, `tribune-libre` →
+  « Freie Tribüne » / « Tribuna libera », et les deux en-têtes de groupe. Deux tables sont à
+  modifier ensemble : celle de l'extension et celle de `pipeline/filters/szh-maquette.lua`.
+- [ ] Rejouer un numéro complet avec l'interface en allemand : import, formulaires, fiche d'image,
+  éditeur et légende de tableau, bandeau de filtre, panneaux, messages. Aucun marqueur non traduit
+  ne doit rester à l'écran.
 
-## Validations qui demandent un humain — numérotation figures/tableaux (D104)
+## Décisions à trancher
 
-- [ ] **Arbitrage du séparateur** : l'`alt` dit « Figure 5 — Légende » (cadratin), là où la
-  demande initiale disait « Figure 5 - Légende » (trait d'union). Le cadratin est gardé
-  parce que l'`alt` doit être *identique au caractère près* au texte de la légende pour que
-  pandoc pose `aria-hidden` dessus — sinon le lecteur d'écran lit deux fois la même phrase.
-  Trancher : garder le cadratin (recommandé) ou changer la constante `CADRATIN` de
-  `pipeline/filters/szh-numerotation.lua` en acceptant la double annonce.
-- [ ] **Image sans légende et PDF/UA-1** : WeasyPrint 69 ne distingue pas `alt=""` d'un `alt`
-  absent et écrit `ERROR: Image … has no required alt description` (le PDF sort quand même,
-  code 0, aucun repli). Décider : exiger une légende à l'import (avertissement du cockpit sur
-  toute image non légendée) ou attendre une version de WeasyPrint qui le distingue.
-- [ ] **Libellés `it`/`en`** de `szh-numerotation.lua` (`Figura`/`Tabella`, `Figure`/`Table`) :
-  premier jet à valider comme le reste du catalogue.
-- [ ] **Revue avec un `styles/print.css` local** : un override antérieur contient encore les
-  compteurs CSS retirés → **double numérotation**. Aucune revue du dépôt n'est concernée ;
-  à vérifier au déploiement sur les revues réelles.
-- [ ] **Juger le rendu** sur un article réel : numéros de figures et de tableaux qui se suivent
-  indépendamment, en FR et en DE, dans le PDF **et** dans l'aperçu HTML.
-
-## Validations qui demandent un humain — lot ordre/métadonnées/assets (D99–D103)
-
-- [ ] **Ordre des articles (D99)** : déposer `4_Titre.docx` et `10_Titre.docx`, importer →
-  slugs `04-…` et `10-…`, articles rangés dans l'ordre du numéro. Réimporter le même
-  fichier → badge « déjà converti » (preuve que cockpit et Makefile calculent le même
-  slug). ⚠ `4_X.docx` et `04_X.docx` donnent le même slug : le second est ignoré.
-- [ ] **Métadonnées d'un article (D100)** : au survol, l'icône ✎ est **à gauche** de la
-  poubelle ; clic → panneau « Métadonnées — <slug> », une seule carte + bandeau « Voir
-  tous les articles ». Enchaîner tous → un → un autre → tous, **avec une carte modifiée
-  (●)** à chaque fois : la modale Enregistrer / Quitter sans enregistrer / Annuler doit
-  apparaître, « Annuler » laisser les saisies, « Enregistrer » n'écrire que l'article
-  affiché. Puis Ctrl+Alt+S → « Métadonnées de l'article courant » depuis un article,
-  depuis un `.md` hors article (message sobre), depuis un onglet non-`.md`.
-- [ ] **Repli des assets (D101)** : cliquer A puis B → les assets de B s'ouvrent, ceux de
-  A se referment ; un article sans asset n'a pas de chevron. **Juger si la sélection dans
-  l'arbre reste correcte** (le nœud est recréé à chaque bascule). Puis Réglages SZH →
-  « Cacher automatiquement… » = Non → plus aucun pliage automatique ; remettre Oui.
-- [ ] **Insérer un tableau (D102)** : Ctrl+Alt+T dans un article → fichier `table-NN.html`
-  créé, référence insérée, article enregistré, éditeur ouvert sur la grille 3 × 3 ;
-  « Retour à l'article » → le tableau est dans l'aperçu. Puis Ctrl+Alt+T dans
-  `BIENVENUE.md` → squelette Markdown + message.
-- [ ] **Légende de tableau (D103)** : saisir une légende → ● → Ctrl+S → `<caption>` dans le
-  fichier ; Ctrl+Z / Ctrl+Y sur la légende ; vider la légende → le `<caption>` disparaît ;
-  ouvrir un tableau importé dont le Word avait une légende → le champ la montre et le
-  fichier n'est **pas** modifié si on n'y touche pas. ⚠ Retoucher une légende importée
-  avec du gras/italique la remet à plat (champ texte simple) — **à arbitrer** : faut-il
-  préserver la mise en forme des légendes Word à l'édition ?
-- [ ] **Tout rejouer en allemand** (`szh.langue = de`) : nouveaux libellés (bandeau de
-  filtre, réglage, légende, messages Ctrl+Alt+T) et titre `%cmd.metadonneesArticle%`.
-
-## Validations qui demandent un humain — correctifs C1–C3 (2026-08-19)
-
-- [ ] **C1 — compilation après import** : importer un ou deux `.docx` → la compilation
-  s'enchaîne toute seule (statut « Compilation des articles importés… ») AVANT le
-  dialogue de vérification ; ensuite, le premier clic sur un article importé montre
-  l'aperçu sans attente. Vérifier sur un import de plusieurs fichiers que la durée
-  reste acceptable (sinon : à passer en tâche de fond).
-- [ ] **C2 — aperçu pas encore prêt** : cliquer un article dont `out/` a été effacé →
-  l'aperçu s'ouvre avec « pas encore compilé » **+ « Compilation en cours, merci de
-  patienter quelques secondes… »**, la compilation part, et le rendu remplace le
-  message tout seul. Rejouer en mode PDF (message d'erreur + même phrase, puis le PDF
-  s'ouvre), et pendant qu'une autre compilation tourne déjà (message d'attente au lieu
-  de l'abandon silencieux d'avant).
-- [ ] **C3 — poubelle images/tableaux** : au survol d'une image et d'un tableau, la 🗑
-  demande confirmation, supprime le fichier **et** retire l'insertion du texte
-  (`![…](media/…)` / bloc `::: {.szh-tabelle …}`). Vérifier : le compte annoncé dans la
-  barre d'état, le texte enregistré et recompilé, Ctrl+Z qui restaure le texte, un
-  tableau ouvert dans l'éditeur qui se ferme, une image ouverte en aperçu dont l'onglet
-  se ferme, et le cas « aucune insertion trouvée » (fichier orphelin) qui supprime quand
-  même sans rien casser.
-
-## Validations qui demandent un humain — lot F1/F5/F8 + portraits + export OJS (D88–D93)
-
-- [ ] **Barre épurée (D88)** : ouvrir une revue → la vue « Revue SZH » ne montre que 3 boutons
-  (🚀 ✏ ⬆), tooltips FR ; en VSCodium DE, tooltips DE. Ctrl+Maj+P → « Rafraîchir la barre
-  Revue » fonctionne toujours (bouton retiré, commande conservée).
-- [ ] **Panneau Commande** (`Ctrl+Alt+A` et clic) : les 5 entrées ouvrent bien importer /
-  convertir / méta-données numéro / métadonnées articles / réglages.
-- [ ] **Panneau Édition** (`Ctrl+Alt+S`) : depuis un `.md`, chaque action s'applique à la
-  sélection ; depuis un non-`.md`, une action de mise en forme → message « Ouvrez un
-  article… », mais « Basculer l'aperçu » fonctionne. Vérifier aussi `Ctrl+Alt+S` dans un
-  `.md` **hors** revue. Le clic droit → « Mise en forme » reste la palette pure, inchangée.
-- [ ] **Panneau Export** (`Ctrl+Alt+D`) : « Recompiler toute la revue » lance le rebuild ;
-  l'entrée « Exporter en XML (OJS) » doit être **présente** (la commande est livrée).
-- [ ] **F5 pleine page (D89)** : article ouvert avec aperçu PDF à droite → « Méta-données du
-  numéro » : l'onglet PDF se ferme. Idem en mode HTML, idem via un aperçu ouvert par
-  szh-apercu (Ctrl+S). Rejouer avec « Métadonnées des articles » déjà ouvert en arrière-plan
-  (le reveal doit fermer les aperçus d'abord). Éditeur de tableau : ouverture = tout se ferme ;
-  « Voir le tableau dans l'aperçu » rouvre et scrolle ; « Cacher l'aperçu » referme.
-- [ ] **F8 (D90)** : Réglages SZH → radio « Aperçu par défaut » reflète l'état courant ;
-  passer sur PDF → barre d'état « Aperçu : PDF » immédiate, prochain clic d'article ouvre le
-  PDF ; `Ctrl+Alt+P` bascule ; radio resynchronisée à la réouverture des réglages.
-- [ ] **Raccourcis `Ctrl+Alt+A/S/D/P`** sur clavier suisse FR et DE (collision AltGr à
-  confirmer physiquement).
-- [ ] **Portraits (D91) — vraies photos** : le test automatique n'a couvert qu'un visage
-  synthétique. À valider sur de vraies photos : visages non frontaux, lunettes, groupes,
-  contre-jour, photo très serrée (padding), photo sans visage (fallback). Vérifier le rendu
-  N&B 400×400 des deux versions.
-- [ ] **Bloc auteurs (D92)** : jugement visuel sur un article réel (taille de la pastille
-  ORCID, wording du titre) ; les libellés DE/IT du bloc sont un PREMIER JET à relire.
-- [ ] **Taille du rootfs (D91)** : venv portraits ≈ 735 Mo + modèle 168 Mo (weasyprint : 80 Mo).
-  Accepter, ou épingler un rembg plus ancien sans scikit-image/numba (re-freeze à faire).
-  Premier build CI du Containerfile = la preuve finale (pas de podman local pour l'essai).
-- [ ] **Export OJS (D93)** : import d'essai du XML généré dans un OJS de test (ou le vrai,
-  numéro dépublié) — rubriques rattachées, galleys téléchargeables, résumés/mots-clés, et ce
-  qu'OJS fait **sans email d'auteur**. ⚠ `genre`/`uploader`/`user_group_ref` sont rattachés
-  par NOM (constantes en tête d'export-ojs.js) : valables pour le journal FR observé, à
-  vérifier pour la Zeitschrift (DE). Un XML de production fera 30-50 Mo : la limite d'upload
-  PHP peut imposer l'import CLI d'OJS.
-- [ ] **DOCX régénérés (D93)** : ouvrir un `out/<slug>/<slug>.docx` dans Word — tableaux
-  fusionnés, images, bibliographie. ⚠ Les SVG de la maquette sont perdus (« rsvg-convert is
-  not in path ») : ajouter `librsvg2-bin` au rootfs si ça se voit.
-- [ ] **Drop de .docx (D94)** : tirer depuis l'Explorateur Windows sur la vue « Revue SZH » —
-  1 fichier, plusieurs, conflit (→ modale Remplacer/Ignorer), mélange avec des non-docx
-  (→ message « seuls les .docx… »), drop de texte (→ rien). Confirmer que le `text/uri-list`
-  externe marche sur le VSCodium déployé (API ≥ 1.66).
-- [ ] **Modale photo (D95) — bout-en-bout sur un poste à jour** (rootfs avec `/opt/portraits`
-  ET toolkit avec `portraits.py`) : dépôt → 3 versions → Valider → Enregistrer → `photo:`
-  dans le meta.yaml → bloc « À propos » visible dans le PDF. Réouverture = radio
-  présélectionnée ; redépôt .jpg après .png ; photo « trop serrée » (note padding) ; image
-  sans visage (note + recadrage centré). Icônes poubelle/photo et damier de transparence
-  lisibles en thème clair ET sombre ; console webview sans erreur CSP.
-- [ ] **Sans WSL / distro absente (D95)** : la modale affiche une erreur propre, pas de
-  blocage ni de « Chargement… » figé.
-- [ ] **E-mail d'auteur → export OJS** : saisir un email dans le formulaire, exporter le XML,
-  vérifier `<email>` dans le bloc auteur.
-- [ ] **Dialogue de vérification d'import (F6)** : importer un vrai .docx → le panneau
-  s'ouvre seul (plus de simple notification) ; badges « détecté / à compléter » conformes au
-  meta.yaml, compteur recalculé à la saisie et au « + Italien » ; Enregistrer → fiche
-  réécrite (clés inconnues préservées) ; modale photo de bout en bout depuis le dialogue ;
-  remplacement d'image par drop ET par bouton (confirmation, nom conservé, description
-  rafraîchie, > 50 Mo refusé, refus pendant build/import) ; Fermer avec modifications →
-  modale ; deuxième conversion panneau ouvert → reveal + recharge (les saisies non
-  enregistrées de la vague précédente sont perdues — même logique que le formulaire) ;
-  0 nouveau → notification classique ; tout rejouer en DE ; console webview sans
-  violation CSP. ⚠ La croix de l'onglet ne passe pas par la garde « non enregistré »
-  (limite API webview, comme l'éditeur de tableau).
-- [ ] **Convertisseur (D96/D97) — relecture humaine d'un échantillon** : compiler et relire
-  1 article FR + 1 DE + 1 éditorial + 1 « Actualité et ressources » convertis depuis
-  tmp/docx-dev (le tableau complet des 64 est dans `tmp/rapport-calibration-f6.md`) :
-  corps sans perte, titres aux bons niveaux, résumés/mots-clés dans la bonne langue,
-  bibliographie rendue par citeproc sous son titre. Points connus à repérer : 2 cas
-  prénom/nom inversés dans la source, seconds prénoms rangés dans `nom`,
-  fonction/affiliation parfois fusionnées — se corrigent au formulaire.
-- [ ] **Citations (D97)** : décider si la liaison des citations (`szh-citations`, 72,6 %
-  auto) devient une action supervisée du cockpit — NE PAS l'activer à l'import.
-- [ ] **Charts/SmartArt Word** : 4 légendes orphelines dans le corpus (pandoc ne convertit
-  pas ces objets) — fournir les images via le dialogue d'import (zone « originaux »).
-- [ ] **Types `interview`** : non détectables automatiquement — requalifier à la main dans
-  le formulaire après import.
-
-## Validations qui demandent un humain (lots précédents)
-
-- [ ] **Scénarios GUI du lot M** : redémarrer VSCodium, puis vérifier l'aperçu HTML cliquable,
-  le formulaire de métadonnées d'article, le menu de réglages, la bascule de langue.
-- [ ] **Double-clic sur un `.md`** (P6) : clic droit → Ouvrir avec → **« Revue SZH »** (pas
-  « VSCodium » !) → cocher « Toujours ». Vérifier que la revue s'ouvre complète et que
-  l'aperçu apparaît tout seul. Deux points à regarder de près :
-  - le **libellé affiché** dans la boîte « Ouvrir avec » (il dépend de `FriendlyAppName` ;
-    non vérifiable sans écrire dans le vrai registre) ;
-  - le comportement quand **une autre revue est déjà ouverte** (nouvelle fenêtre ou réutilisation).
-- [ ] **Collage de tableau** (`Ctrl+Alt+V`, D81 — le raccourci a CHANGÉ) : copier dans
-  Excel **puis** dans Word, coller dans un article. Attendu : un fichier
-  `articles/<slug>/tables/table-NN.html` créé, sa référence insérée au curseur, le tableau
-  visible aussitôt sous l'article dans la barre « Revue SZH », et « Éditer le tableau »
-  l'ouvre correctement. Points à regarder :
-  - **les cellules fusionnées** doivent survivre (c'était le défaut de l'ancienne version) ;
-  - depuis **Excel**, le tableau arrive **sans gras ni ligne d'en-tête** : Excel met ces
-    informations dans des classes CSS, jamais dans des balises. Ça se règle d'un clic dans
-    l'éditeur. Depuis **Word**, gras, italique et en-tête sont conservés ;
-  - le **délai** : la lecture du presse-papiers passe par un `powershell` court, soit
-    environ une demi-seconde à une seconde avant l'insertion. À dire si c'est gênant ;
-  - que `Ctrl+Alt+V` ne soit pas déjà pris par une des extensions installées.
-- [ ] **Entrée « Ouvrir avec »** (D18, corrigé) : elle doit s'appeler **« Revue SZH »** et
-  non plus « Microsoft ® Windows Based Script Host », avec l'icône SZH (tuile bleu nuit
-  barrée de rouge) — reconnaissable au premier coup d'œil face à l'entrée « VSCodium »
-  juste à côté. Et dans l'Explorateur, la colonne Type doit dire « Article de revue SZH ».
-- [ ] **Clic sur un tableau** (D84) : dans la barre latérale, cliquer un tableau doit ouvrir
-  l'**éditeur de tableau** (la grille), pas le fichier HTML. Le bouton « Éditer » du survol a
-  disparu — seul « Remplacer » reste. À vérifier aussi que rouvrir un tableau déjà ouvert le
-  ramène au premier plan au lieu d'en ouvrir un second.
-- [ ] **Aplats de tableau plus pâles et plus sombres** (D87) : les fonds « couleur » et
-  « négatif » des tableaux ont changé pour tenir le seuil de lisibilité à la taille réelle
-  du texte de tableau (13,6 px). À juger à l'œil sur un tableau réel : `-clair` passe du
-  cran 200 au 100, `-fonce` du 700 au 800. Pour un numéro **rouge**, le fond négatif n'est
-  plus le rouge de charte mais `#9F001F`.
-- [ ] **Deux jetons de maquette à arbitrer** (D87, laissés en attente parce qu'ils touchent
-  la couverture) :
-  - `--c-kw-bg` : les puces de mots-clés sont à **10 px**, plus petit que tout ce que les
-    quatre niveaux couvrent. Rouge 82, capucine 90 — sous le seuil. Soit on grossit la puce
-    dans `print.css`, soit on éclaircit le mélange dans `accent-css.py`. Mon avis : à 10 px,
-    éclaircir ne suffira jamais vraiment ; c'est la taille qu'il faut revoir.
-  - `--c-annual-text` : **aucune règle ne le consomme**. Il est déclaré et émis, rien ne
-    l'applique. Soit une règle l'utilise et il faut le porter à 90, soit c'est du code mort
-    à supprimer.
-- [ ] **Saut de page** (`Ctrl+Alt+Entrée`, D86) : vérifier sur un article réel que la page
-  se coupe où voulu dans le PDF, et que l'aperçu HTML reste inchangé. Le comportement est
-  prouvé par un build (1 page → 2 pages), mais le geste et le placement du marqueur dans
-  le texte n'ont pas été essayés en vrai.
-- [ ] **Choisir 4 préréglages de tableau parmi les 8** (D85) : ouvrir un tableau, cliquer
-  chaque préréglage et juger au rendu. Les huit sont des propositions — académique, en-tête
-  foncé, en-tête couleur, en-tête gris, lignes alternées, colonnes alternées, synthèse,
-  matrice. Pour n'en garder que quatre : supprimer les entrées inutiles de `PRESETS_TABLE`
-  et `PRESETS_ORDRE` (`lib/table-model.js`) **et** leurs libellés `table.preset.<clé>` dans
-  `lib/i18n.js` (fr **et** de). Rien d'autre.
-- [ ] **Éditeur de tableau : la place** (D85) : vérifier que l'aperçu de l'article se ferme
-  bien à l'ouverture, que « Voir le tableau dans l'aperçu » le rouvre **et** amène la vue
-  sur le tableau (au pire il rouvre sans scroller : le tableau inclus n'a pas de position
-  source), et que les deux colonnes de réglages tiennent sans défilement.
-- [ ] **Aperçu HTML : le survol prend le bloc** (D82) : survoler un mot au milieu d'une
-  phrase doit surligner **tout le paragraphe**, pas le mot ni le passage en gras.
-- [ ] **Planche de palette** — `docs/palette.html` (ou le lien partagé) : juger **à l'œil**.
-  La palette est une **grille à clarté fixe de 11 crans** (D79) : un même numéro = la même
-  clarté pour les six couleurs. La couleur de charte **occupe** l'un de ces crans (D80) —
-  rouge 700, capucine/poireau/bleu acier/mountbatten 500, moutarde 300 — badgé « charte ».
-  À regarder en particulier :
-  - le **fond « négatif » des tableaux d'un numéro rouge** est désormais *le* rouge de charte
-    `#D31932` au lieu du `#C3112C` assombri : plus vif, texte blanc à Lc 79,7 ;
-  - les crans clairs du **rouge** et de la **capucine** tirent au rose (sRGB n'a pas de rouge
-    clair vif : la chroma y est rabotée jusqu'à −49 %), et les crans sombres de la **moutarde**
-    sont olive plutôt que jaunes — même cause, en sens inverse ;
-  - le **cran 400** ne porte aucun texte : c'est le croisement où ni le noir ni le blanc ne
-    passent. Vérifier que sa présentation ne prête pas à confusion.
-  Si un fond te paraît trop franc, fais pointer l'alias `--c-<nom>-clair` vers `-100` au lieu
-  de `-200` dans `couleurs.css`, puis relance `python3 test/apca-check.py` **et**
-  `python3 test/palette-html.py`.
-- [ ] **Aperçu de l'éditeur de tableau** : il ne recalcule plus les teintes, il lit celles que
-  le pipeline écrit dans `out/.szh-accent.css`. Donc à vérifier sur un tableau réel, dans un
-  numéro **coloré** : les fonds « couleur » et « négatif » de l'éditeur doivent être
-  **identiques** à ceux du PDF. C'est le seul moyen de confirmer que la dérive WCAG/APCA est
-  bien éteinte. Repli documenté : un numéro jamais compilé montre les gris neutres.
-- [ ] **Libellés DE/IT des 6 types d'article** (D71) : à confronter aux **noms de rubriques
-  réellement imprimés**. Cas à regarder : `tribune-libre` → « Freie Tribüne » / « Tribuna
-  libera », et les deux en-têtes de groupe. ⚠ **Deux** tables à modifier ensemble :
-  `LIBELLES_TYPES` (extension) et `LIBELLES` de `pipeline/filters/szh-maquette.lua`.
-- [ ] **Relecture germanophone** — classeur prêt : `C:\Users\robin\Documents\SZH-traductions-a-relire.xlsx`
-  (230 textes du cockpit + 29 menus + les types d'articles). L'audit mécanique est propre :
-  0 `ß`, 0 placeholder divergent, parité FR/DE totale. ⚠ Ce classeur ne couvre **pas** les
-  textes des scripts PowerShell (`szh-common.ps1`, dont les 4 nouveaux `openmd.*`) — ils sont
-  aussi un premier jet.
+- [ ] E-mail de traduction : garder l'Outlook classique, seul à accepter un lien cliquable, ou le
+  client par défaut avec un lien à copier-coller (réglage `mailTraduction` dans `config.json`).
+  Décider aussi si les adresses de destination conviennent ou doivent être surchargées, et si une
+  copie à l'expéditeur serait utile.
+- [ ] Le lanceur de la Zeitschrift doit-il forcer l'interface en allemand ? Aujourd'hui la langue
+  suit celle de Windows, comme partout.
+- [ ] Que faire de ce qui n'est pas listé. Un numéro rangé hors de l'arborescence officielle est
+  signalé sous les listes, jamais listé, jamais déplacé d'office : confirmer. Un numéro sans clé
+  `revue:` n'apparaît dans aucun des deux lanceurs : décider si c'est acceptable ou s'il faut le
+  signaler.
+- [ ] Le script de mise à jour lancé à la main est en retard d'une passe : il extrait le nouveau
+  toolkit puis continue avec l'ancien code, déjà lu par PowerShell. Décider s'il doit se relancer
+  tout seul, avec un commutateur pour borner la récursion. La tâche planifiée n'a pas ce défaut.
+- [ ] Trois détails du format `ausgabe.yaml`. La création vide le titre d'exemple du gabarit :
+  confirmer, ou préférer le laisser jusqu'à ce qu'on le remplisse. `locked: false` et
+  `archived: false` sont présents dans le gabarit et arrivent donc aussi dans les métadonnées
+  pandoc, inutilisées et inoffensives : les garder pour la lisibilité du fichier, ou les retirer.
+  La clé s'appelle `version-toolkit`, pour coller au vocabulaire du dépôt, plutôt que « version
+  compilateur » : valider.
+- [ ] Trois choix du cycle de vie à confirmer. La compilation automatique est coupée dès qu'un
+  numéro est verrouillé, pas seulement archivé, et « Exporter cet article » apparaît dans les deux
+  cas : confirmer ou restreindre à l'archivage. Désarchiver ne déverrouille pas, ce sont deux
+  gestes indépendants : confirmer, sinon les fusionner. L'archivage ferme la fenêtre et la rouvre,
+  seule façon de déplacer un dossier que VSCodium tient ouvert : confirmer que c'est acceptable
+  pour la rédaction, l'autre option étant de ne pas rouvrir du tout.
+- [ ] Quand le mode développeur doit-il passer à `false` par défaut ? Il est actif partout
+  aujourd'hui, y compris sur un poste neuf et quand la clé manque.
+- [ ] En-tête condensé : l'option est décochée par défaut, donc les numéros existants ne bougent
+  pas. Après l'avoir vue sur un vrai numéro, dire si le condensé doit devenir la norme — il suffit
+  d'inverser le défaut dans `revue-template/ausgabe.yaml`.
+- [ ] Périmètre du suivi de traduction : seuls titre, sous-titre, résumé et mots-clés sont suivis.
+  Faut-il une ligne « Texte de l'article », statut et commentaire sans texte cible, pour suivre la
+  traduction intégrale, qui vit dans l'autre revue ?
+- [ ] Clé d'API DeepL : faut-il un réglage et un appel côté hôte pour que la traduction revienne
+  toute seule dans le champ, au lieu du copier-coller ?
+- [ ] Liaison des citations. Le filtre `szh-citations.lua` liait 72,6 % des références
+  automatiquement. Il a été retiré du dépôt et reste récupérable par git. Décider s'il revient
+  comme action supervisée du cockpit ; en aucun cas déclenchée à l'import.
+- [ ] Trois arbitrages sur les figures. Le texte alternatif dit « Figure 5 — Légende » avec un
+  cadratin, là où la demande initiale disait un trait d'union : le cadratin est gardé parce que le
+  texte alternatif doit être identique au caractère près à la légende pour que pandoc pose
+  `aria-hidden` dessus, sans quoi le lecteur d'écran lit deux fois la même phrase — garder le
+  cadratin, ou changer la constante dans `pipeline/filters/szh-numerotation.lua` en acceptant la
+  double annonce. Faut-il un signalement à la compilation du type « N figure(s) utilisent la
+  légende comme texte alternatif », dernier cas de double annonce, à mettre en balance avec le
+  bruit ajouté au panneau ? Et les crédits d'une figure sans légende, aujourd'hui perdus faute de
+  `<figcaption>` où les mettre alors que les tableaux se voient fabriquer une `<caption>` crédit
+  seule : aligner les figures ou non ?
+- [ ] Image sans légende et PDF/UA-1 : WeasyPrint 69 ne distingue pas un `alt` vide d'un `alt`
+  absent et écrit une erreur, le PDF sortant quand même. Exiger une légende à l'import, avec un
+  avertissement du cockpit sur toute image non légendée, ou attendre une version de WeasyPrint qui
+  fasse la distinction.
+- [ ] Retoucher une légende de tableau importée avec du gras ou de l'italique la remet à plat, le
+  champ étant du texte simple. Faut-il préserver la mise en forme des légendes venues de Word ?
+- [ ] Trois pistes non faites : entrée « Ouvrir l'image » dans le menu contextuel de l'arbre,
+  report des crédits vers l'export OJS, et alerte de relecture listant avant livraison les figures
+  sans légende ni texte alternatif.
+- [ ] Deux jetons de maquette et trois bordures. `--c-kw-bg` : les puces de mots-clés sont à 10 px,
+  plus petit que ce que couvrent les quatre niveaux, et le rouge comme la capucine passent sous le
+  seuil ; à cette taille, éclaircir ne suffira pas, c'est la taille qu'il faut revoir.
+  `--c-annual-text` : aucune règle ne le consomme ; soit une règle l'utilise et il faut le porter
+  à 90, soit c'est du code mort à supprimer. Enfin, `--c-abstract-border` (3 px), `.szh-filet`
+  (6 px) et les bords d'encadré gardent la couleur de marque brute, à Lc 30,1, pile sur le
+  plancher, alors que les filets de tableau sont passés au jeton `--c-annual-ui` à Lc 45 : décider
+  si les trois règles suivent. C'est un choix esthétique.
+- [ ] Ne garder que quatre préréglages de tableau sur les huit proposés — académique, en-tête
+  foncé, en-tête couleur, en-tête gris, lignes alternées, colonnes alternées, synthèse, matrice.
+  Ouvrir un tableau, cliquer chacun, juger au rendu. Pour en retirer un : supprimer ses entrées de
+  `PRESETS_TABLE` et `PRESETS_ORDRE` dans `lib/table-model.js`, et son libellé
+  `table.preset.<clé>` dans `lib/i18n.js`, en français et en allemand. Rien d'autre.
 
 ## Reste technique
 
-- [ ] **Bordures épaisses de la maquette en moutarde** : `--c-abstract-border` (3 px),
-  `.szh-filet` (6 px) et les bords d'encadré gardent la couleur de marque brute, à Lc **30,1**
-  — pile sur le plancher. Les filets de tableau, eux, sont passés au jeton `--c-annual-ui`
-  (Lc 45). Si tu veux de la marge partout, c'est le même changement à faire sur ces trois
-  règles ; c'est un choix esthétique, je ne l'ai pas pris.
-- [ ] **Masquer la bascule d'aperçu** sur un dossier dont le profil ne produit pas de PDF :
-  le mode HTML est forcé, mais le bouton reste cliquable et semble ne rien faire.
-  Repoussé volontairement : cela demande un nouveau texte traduit, à joindre au prochain lot.
-- [ ] **`profil:` dans le formulaire du numéro** : aujourd'hui à écrire à la main dans
-  `ausgabe.yaml` (une ligne posée à la main survit au formulaire, c'est vérifié). Piège si un
-  sélecteur est ajouté : le sérialiseur saute les valeurs vides, donc le choix « aucun
-  document » (clé présente et vide) n'est pas exprimable en l'état.
-- [ ] **Option XML DISM** au bootstrap (associations des nouveaux profils, D18) : non faite.
-- [ ] **Extension résiduelle** : `csholmq.excel-to-markdown-table@1.4.0` est encore installée
-  sur ce poste, plus sur les nouveaux. `codium --uninstall-extension csholmq.excel-to-markdown-table`.
-- [ ] **Poste pilote** : checklist V1–V8 du §5 sur une machine vierge (celle-ci ne l'est plus).
-- [ ] **D7** : retirer `fonts-noto` du rootfs. D73 a déjà rendu la maquette indépendante des
-  polices du rootfs ; il ne reste que le gain de taille (plusieurs centaines de Mo).
+- [ ] Masquer la bascule d'aperçu sur un numéro dont le profil ne produit pas de PDF : le mode
+  HTML est forcé, mais le bouton reste cliquable et semble ne rien faire. Demande un nouveau texte
+  traduit.
+- [ ] La clé `profil:` s'écrit encore à la main dans `ausgabe.yaml` ; une ligne posée à la main
+  survit au formulaire. Piège si un sélecteur est ajouté : le sérialiseur saute les valeurs vides,
+  donc le choix « aucun document » — clé présente et vide — n'est pas exprimable en l'état.
+- [ ] Poser les associations de fichiers des profils par le fichier XML de DISM au bootstrap :
+  non fait.
+- [ ] Réduire la taille du rootfs. Le venv des portraits pèse environ 735 Mo et son modèle 168 Mo :
+  soit on l'accepte, soit on épingle un rembg plus ancien, sans scikit-image ni numba, avec un
+  nouveau gel des dépendances. Retirer aussi `fonts-noto`, devenu inutile depuis que la maquette
+  embarque ses polices : plusieurs centaines de mégaoctets.
+- [ ] Un numéro qui porte un `styles/print.css` local hérité peut encore contenir les compteurs
+  CSS retirés, d'où une double numérotation. Aucun numéro du dépôt n'est concerné ; à vérifier au
+  déploiement sur les numéros réels.
+- [ ] Dérouler la procédure d'installation complète sur une machine vierge : celle de
+  développement ne l'est plus.
 
-## Fait le 2026-08-13
-
-- **Release v2026.08.7** : cockpit 0.2.0, pack de langue DE, pipeline complet livré.
-- **Poste installé** par `bootstrap.ps1` (toolkit, tâches planifiées, `.wslconfig`, extensions).
-- **Décisions D37–D74 transcrites** dans `PLANIFICATION.md` (la dette allait plus loin que prévu),
-  **D75** retrait de `csholmq`, **D76** palette APCA, **D77** lanceur bête, **D78** dispatch `profil:`.
-- **Palette APCA** (D76) : module `pipeline/apca.py`, vérificateur `test/apca-check.py`
-  (157 paires, 0 échec), planche générée `docs/palette.html`. Trois vraies fautes corrigées :
-  texte annuel moutarde sous le seuil, son filet fin écrasé en quasi-noir, filet de tableau
-  moutarde invisible sur fond zébré. L'éditeur de tableau ne recalcule plus les teintes.
-- **Grille à clarté fixe de 11 crans** (D79, release v2026.08.9) : dispersion de clarté ramenée
-  de 0,266 à 0,002 par cran. Puis la **charte intégrée dans la grille** (D80, v2026.08.10) :
-  elle occupe le cran le plus proche de son Lc, calculé et non codé en dur.
-- **Planche** enrichie : cran 400 présenté comme les autres, badge « charte » au-dessus de la
-  case, liseré doublé, échantillons « Texte » (14 px) / « Titre » (19 px gras) à la taille que
-  le seuil autorise, et verdict d'usage en **élément d'interface** par cran.
-- **P6** : `open-md.ps1`, association `.md` en HKCU, dispatch `profil:` (6 routes vérifiées en
-  build réel), aperçu ouvert au démarrage par le cockpit, `userdoc.md` réécrit.
-
-# Todo Features
-
-*(le lot palette est fait — voir « Planche de palette » ci-dessus pour la seule chose qui
-reste : la juger à l'œil)*
+La maintenance récurrente — compacter le disque WSL, reconstruire le rootfs, surveiller la fin de
+support de Debian, vérifier les extensions épinglées — est décrite dans `docs/MAINTENANCE.md` et
+n'a pas à être suivie ici.

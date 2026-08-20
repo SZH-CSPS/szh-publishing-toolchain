@@ -1,11 +1,11 @@
-// Contrôles des contrats du cockpit, sans dépendance ni build.
+// Contrôles des contrats de l'extension szh-cockpit, sans dépendance ni build.
 //
 //   node --test test/js
 //
-// Ne couvre que les modules chargeables hors de l'éditeur (ceux qui ne font pas
-// require('vscode')). Deux familles :
-//   - aller-retour : analyser puis sérialiser doit rendre la source intacte ;
-//   - cohérence : les valeurs recopiées d'un fichier à l'autre doivent concorder.
+// Ne couvre que les modules chargeables hors de l'éditeur, ceux qui n'appellent pas
+// require('vscode'). Deux familles de contrôle : l'aller-retour, où analyser puis
+// sérialiser doit rendre la source intacte ; et la cohérence, où une valeur recopiée d'un
+// fichier à l'autre doit concorder avec sa source.
 'use strict';
 
 const test = require('node:test');
@@ -23,13 +23,13 @@ const wsl = require(path.join(COCKPIT, 'lib', 'wsl.js'));
 
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 
-// Un JSON avec commentaires (tasks.json, keybindings.json…).
+// Lit un JSON avec commentaires et virgules traînantes (tasks.json, keybindings.json).
 function jsonc(src) {
   return JSON.parse(src.replace(/"(?:[^"\\]|\\.)*"|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
     (m) => (m[0] === '"' ? m : '')).replace(/,(\s*[}\]])/g, '$1'));
 }
 
-// ---- ausgabe.yaml -----------------------------------------------------------
+// ---- ausgabe.yaml ----
 
 test('ausgabe.yaml : les commentaires et les clés inconnues survivent', () => {
   const src = '# en-tête\ntitle: "Dossier"\nprofil: article\ninconnue: 3\n';
@@ -55,7 +55,7 @@ test('ausgabe.yaml : une valeur relue est la valeur écrite', () => {
   }
 });
 
-// ---- Tableaux ---------------------------------------------------------------
+// ---- Tableaux ----
 
 test('tableau : analyser puis sérialiser puis analyser donne le même modèle', () => {
   const html = lire('test', 'articles', 'contenu-long', 'tables', 'table-01.html');
@@ -71,7 +71,7 @@ test('tableau : le texte à caractères réservés fait l’aller-retour', () =>
   assert.deepStrictEqual(relu, modele);
 });
 
-// ---- Slug : le miroir du Makefile -------------------------------------------
+// ---- Slug : le miroir du Makefile ----
 
 test('slug d’article : mêmes règles que le Makefile', () => {
   assert.strictEqual(slug.slugifierArticle('4_Titre'), '04-titre');
@@ -81,7 +81,7 @@ test('slug d’article : mêmes règles que le Makefile', () => {
     'la borne de 39 caractères du Makefile n’est pas tenue');
 });
 
-// ---- Attributs d’image ------------------------------------------------------
+// ---- Attributs d’image ----
 
 test('attributs d’image : écrire puis relire rend les mêmes valeurs', () => {
   const md = '![Une légende](media/x.png)\n';
@@ -103,7 +103,7 @@ test('attributs d’image : alt vide reste un choix explicite (image décorative
   assert.strictEqual(refs.lireAttributsImage(ecrit.texte, 'x.png').altDefini, true);
 });
 
-// ---- Cohérence entre fichiers -----------------------------------------------
+// ---- Cohérence entre fichiers ----
 
 test('la distro WSL est la même dans le code et dans tasks.json', () => {
   const taches = jsonc(lire('vscodium-user', 'tasks.json')).tasks;

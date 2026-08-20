@@ -1,6 +1,6 @@
-' Lance une commande SANS fenetre de console (0 = cachee).
+' Lance une commande sans fenetre de console (le 0 passe a sh.Run).
 ' Usage : wscript.exe //B hidden.vbs <script.ps1|programme.exe> [arguments...]
-' Sert aux taches planifiees (update-launcher) et au raccourci du menu Demarrer (open-revue).
+' Sert aux taches planifiees et aux raccourcis du menu Demarrer.
 Option Explicit
 Dim sh, cmd, premier, i
 If WScript.Arguments.Count = 0 Then WScript.Quit 1

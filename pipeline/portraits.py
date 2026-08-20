@@ -1,57 +1,42 @@
 #!/usr/bin/env python3
-# portraits.py — traitement des photos d'autrices et d'auteurs (F4).
+# portraits.py — traite les photos d'autrices et d'auteurs.
 #
 #   /opt/portraits/bin/python portraits.py <dossier_sortie> [<slug> <image-source>]...
 #
-# Pour chaque paire <slug> <image-source>, écrit dans <dossier_sortie> :
-#   <slug>.avec-fond.png : 400 x 400, niveaux de gris (mode PIL 'LA'), fond conservé ;
-#   <slug>.sans-fond.png : 400 x 400, 'LA', fond supprimé (transparent).
-# La photo déposée (<slug>.original.<ext>) est écrite par le COCKPIT, pas ici :
-# ce script ne fait que LIRE l'image source qu'on lui passe en argument.
+# Pour chaque paire <slug> <image-source>, écrit dans <dossier_sortie> deux PNG de
+# 400 x 400 en niveaux de gris (mode PIL 'LA') : <slug>.avec-fond.png et
+# <slug>.sans-fond.png, dont le fond est supprimé. La photo déposée est écrite par le
+# cockpit, pas ici : ce script ne fait que lire l'image source qu'on lui passe.
 #
-# Sortie : UNE ligne JSON par image sur stdout —
+# Sortie : une ligne JSON par image sur stdout, dans l'ordre des arguments —
 #   {"slug": ..., "ok": bool, "visage": bool, "padding": bool,
 #    "fichiers": {"avec_fond": ..., "sans_fond": ...} | null, "erreur": null | str}
-# Code retour : 0 si toutes les images passent, 1 si au moins un échec, 2 si
-# l'invocation est malformée. Les messages de progression vont sur stderr
-# (stdout reste du JSON pur, une ligne par image, dans l'ordre des arguments).
+# Code retour : 0 si toutes les images passent, 1 si au moins un échec, 2 si l'invocation
+# est malformée. Les messages de progression vont sur stderr, stdout restant du JSON pur.
 #
-# Chaîne de traitement (remplace l'historique DeleteBackground.py) :
-#   1. Pillow : ouverture + rotation EXIF (ImageOps.exif_transpose) ;
-#   2. détection de visage OpenCV YuNet (remplace autocrop/Haar) ; le plus grand
-#      visage est retenu s'il y en a plusieurs ; l'image est réduite pour la
-#      détection si elle est très grande (perf), coordonnées re-projetées ;
-#   3. cadre de sortie CARRÉ : hauteur du visage ~ FACE_PERCENT % du côté,
-#      visage centré horizontalement, centre du visage un peu au-dessus du
-#      centre vertical (composition portrait, proche de l'ancien autocrop).
-#      Si le cadre déborde de la photo source, l'image est ÉTENDUE par
-#      réplication du bord AVANT le recadrage — c'est LE correctif du défaut
-#      historique : une photo cadrée trop serré ne fait plus jamais échouer le
-#      recadrage (le bord répliqué reste dans la version avec fond ; dans la
-#      version sans fond il disparaît avec le fond) ;
-#   4. rembg (modèle u2net_human_seg, session UNIQUE réutilisée pour toutes les
-#      images de l'invocation) -> version détourée ;
-#   5. redimensionnement LANCZOS 400 x 400 + convert('LA'), écriture atomique
-#      (fichier temporaire dans le dossier cible puis os.replace).
-# Sans visage détecté : crop carré centré (côté = min(l, h)), même chaîne,
-# "visage": false dans le JSON — jamais d'échec pour cette seule raison.
+# Chaîne de traitement : Pillow (ouverture et rotation EXIF), détection de visage OpenCV
+# YuNet, cadre de sortie carré (hauteur du visage ~ FACE_PERCENT % du côté, visage centré
+# horizontalement et un peu au-dessus du centre vertical), rembg (u2net_human_seg, session
+# unique), puis LANCZOS 400 x 400, convert('LA') et écriture atomique.
+# Si le cadre déborde de la photo source, l'image est étendue par réplication du bord avant
+# le recadrage : une photo cadrée trop serré ne fait donc jamais échouer le recadrage. Sans
+# visage détecté : crop carré centré et "visage": false, mais jamais d'échec.
 #
-# Modèles (embarqués dans le rootfs par image/Containerfile — AUCUN
-# téléchargement au runtime) :
+# Modèles embarqués dans le rootfs par image/Containerfile, aucun téléchargement au
+# runtime :
 #   /opt/portraits/models/face_detection_yunet_2023mar.onnx   (surcharge : SZH_YUNET)
 #   /opt/portraits/models/u2net_human_seg.onnx                (surcharge : U2NET_HOME)
 #
-# Dépendances : venv /opt/portraits (rembg, onnxruntime, opencv-python-headless,
-# pillow, numpy — pins dans image/requirements-portraits.txt). Pas de PyYAML.
+# Dépendances : venv /opt/portraits (rembg, onnxruntime, opencv-python-headless, pillow,
+# numpy — pins dans image/requirements-portraits.txt).
 
 import json
 import os
 import sys
 import time
 
-# U2NET_HOME doit être posé AVANT l'import de rembg (c'est là qu'il cherche ses
-# modèles) ; on ne l'écrase pas s'il est déjà dans l'environnement (tests hors
-# rootfs).
+# U2NET_HOME doit être posé avant l'import de rembg, c'est là qu'il cherche ses modèles ;
+# on ne l'écrase pas s'il est déjà dans l'environnement (tests hors rootfs).
 os.environ.setdefault("U2NET_HOME", "/opt/portraits/models")
 
 import cv2                      # noqa: E402 (l'env doit précéder les imports)
@@ -60,8 +45,8 @@ from PIL import Image, ImageOps # noqa: E402
 from rembg import new_session, remove  # noqa: E402
 
 # --- Constantes de cadrage ---------------------------------------------------
-TAILLE_SORTIE   = 400    # côté des PNG produits (comme l'ancien script)
-FACE_PERCENT    = 40     # hauteur du visage ~ 40 % du côté du cadre (historique)
+TAILLE_SORTIE   = 400    # côté des PNG produits
+FACE_PERCENT    = 40     # hauteur du visage ~ 40 % du côté du cadre
 CENTRE_VERTICAL = 0.45   # centre du visage à 45 % de la hauteur du cadre depuis
                          # le haut (légèrement au-dessus du centre : portrait)
 DETECTION_MAX   = 1024   # côté max de l'image passée au détecteur (perf)
@@ -123,10 +108,10 @@ def _detecter(img, detecteur):
 
 
 def detecter_visage(img, detecteur):
-    """Détection en deux passes. La 2e passe sert les photos cadrées TRÈS serré
-    (visage plein cadre), que YuNet rate en l'état : on réplique une marge tout
-    autour, on redétecte, puis on re-projette dans l'image d'origine — la boîte
-    peut alors déborder de l'image, le cadrage la rattrape par padding."""
+    """Détection en deux passes. La seconde sert les photos cadrées très serré (visage
+    plein cadre), que YuNet rate en l'état : on réplique une marge tout autour, on
+    redétecte, puis on re-projette dans l'image d'origine. La boîte peut alors déborder de
+    l'image, le cadrage la rattrape par padding."""
     boite = _detecter(img, detecteur)
     if boite is not None:
         return boite
@@ -207,7 +192,7 @@ def ecrire_atomique(img, chemin):
 
 
 def traiter(slug, source, dossier, detecteur, session):
-    """Toute la chaîne pour UNE image ; ne lève jamais (résultat JSON-isable)."""
+    """Toute la chaîne pour une image ; ne lève jamais (résultat JSON-isable)."""
     resultat = {
         "slug": slug,
         "ok": False,
@@ -260,12 +245,12 @@ def principal(argv):
     try:
         os.makedirs(dossier, exist_ok=True)
         detecteur = creer_detecteur()
-        # Session rembg UNIQUE pour toute l'invocation (chargement du modèle
-        # u2net_human_seg une seule fois — c'est le poste le plus coûteux).
+        # Une seule session rembg pour toute l'invocation : le chargement du modèle
+        # u2net_human_seg est le poste le plus coûteux.
         session = new_session("u2net_human_seg")
     except Exception as exc:
-        # Environnement inutilisable (modèle absent…) : une ligne JSON par slug
-        # demandé, pour que l'appelant sache quoi rattacher à quoi.
+        # Environnement inutilisable (modèle absent…) : une ligne JSON par slug demandé,
+        # pour que l'appelant sache quoi rattacher à quoi.
         erreur = f"{type(exc).__name__}: {exc}"
         progression(f"[portraits] initialisation impossible — {erreur}")
         for slug, _ in paires:

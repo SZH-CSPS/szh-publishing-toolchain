@@ -1,15 +1,13 @@
 {
-  // Tâches au niveau UTILISATEUR (déployées dans %APPDATA%\VSCodium\User\ par update.ps1).
-  // Le dossier de revue ne contient donc plus aucun fichier technique (D8).
-  // Le Makefile est central (toolkit, D1/D2).
+  // Tâches au niveau utilisateur, déployées dans %APPDATA%\VSCodium\User\ par update.ps1 :
+  // un dossier de revue ne contient ainsi aucun fichier technique.
   "version": "2.0.0",
   "tasks": [
     {
-      // Build par défaut (Ctrl+S via triggerTaskOnSave, Ctrl+Maj+B, Ctrl+E).
-      // `make all` = importe d'abord les Word éventuellement déposés, PUIS régénère
-      // out/<article>/ -> déposer un Word + Ctrl+S suffit, sans dépendre de folderOpen.
+      // Build par défaut (Ctrl+S, Ctrl+Maj+B, Ctrl+E). `make all` importe d'abord les Word
+      // déposés puis régénère out/<article>/ : déposer un Word et sauvegarder suffit.
       "label": "Aperçu / Export PDF",
-      "type": "process",                 // pas de shell Windows -> aucun souci de guillemets
+      "type": "process",                 // pas de shell Windows, donc pas de souci de guillemets
       "command": "wsl.exe",
       "args": [
         "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
@@ -25,8 +23,7 @@
       "problemMatcher": []
     },
     {
-      // Export COMPLET (D44) : rebuild forcé de tous les articles (clean puis all),
-      // lancé par le bouton « Tout exporter » de la barre « Revue SZH ».
+      // Reconstruction forcée de tous les articles, derrière le bouton « Tout exporter ».
       "label": "Tout exporter",
       "type": "process",
       "command": "wsl.exe",
@@ -43,9 +40,8 @@
       "problemMatcher": []
     },
     {
-      // Galleys DOCX pour l'export OJS (F7) : régénère out/<slug>/<slug>.docx depuis
-      // le HTML autonome (cible `docx`, hors `all`). Lancée par « Exporter la revue
-      // en XML (OJS) » après « Tout exporter ».
+      // Galleys DOCX de l'export OJS, depuis le HTML autonome : cible `docx`, hors `all`,
+      // lancée après « Tout exporter ».
       "label": "Galleys DOCX (OJS)",
       "type": "process",
       "command": "wsl.exe",
@@ -62,10 +58,9 @@
       "problemMatcher": []
     },
     {
-      // Import des Word/LibreOffice à la demande (Ctrl+Alt+I). L'import est aussi
-      // fait par le build ci-dessus ; cette tâche sert de secours explicite (D12).
-      // runOn:folderOpen est un bonus « best-effort » (peut ne pas se déclencher
-      // pour les tâches utilisateur — le build au 1er Ctrl+S prend alors le relais).
+      // Import à la demande (Ctrl+Alt+I) ; le build ci-dessus le fait aussi, c'est un
+      // secours explicite. runOn:folderOpen ne se déclenche pas toujours pour une tâche
+      // utilisateur, la première sauvegarde prend alors le relais.
       "label": "Importer les articles Word",
       "type": "process",
       "command": "wsl.exe",

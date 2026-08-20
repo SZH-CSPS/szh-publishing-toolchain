@@ -1,14 +1,13 @@
--- szh-titres.lua — import (AX4/D63). Consomme le fichier produit par docx-titres.py
--- (chemin dans SZH_TITRES) : une ligne « niveau<TAB>texte » par titre déduit. Promeut
--- les paragraphes de PREMIER NIVEAU (enfants directs du document) dont le texte
--- normalisé correspond en Header(niveau). N'agit QUE sur les blocs de tête (jamais
--- dans une liste ou un tableau : Pandoc(doc) n'itère que doc.blocks). Idempotent :
--- sans fichier SZH_TITRES ou sans correspondance, le document est renvoyé tel quel.
+-- Import : promeut en Header les paragraphes de premier niveau dont le texte normalisé
+-- correspond à une ligne « niveau<TAB>texte » du fichier désigné par SZH_TITRES, écrit
+-- par docx-titres.py. N'agit que sur les enfants directs du document — Pandoc(doc)
+-- n'itère que doc.blocks, jamais l'intérieur d'une liste ou d'un tableau. Sans fichier
+-- ou sans correspondance, le document est renvoyé tel quel.
 
 local utils = pandoc.utils
 
--- Normalisation IDENTIQUE à docx-titres.py (sinon l'appariement échoue) :
--- espaces spéciaux -> espace, tirets spéciaux -> '-', espaces compactés, rogné.
+-- Espaces et tirets spéciaux normalisés, espaces compactés. À garder identique à la
+-- normalisation de docx-titres.py, sinon l'appariement échoue.
 local function normaliser(t)
   t = t:gsub('\194\160', ' '):gsub('\226\128\175', ' '):gsub('\226\128\137', ' ')
   t = t:gsub('\226\128\147', '-'):gsub('\226\128\148', '-'):gsub('\226\128\145', '-')

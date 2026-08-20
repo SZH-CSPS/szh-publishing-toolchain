@@ -1,24 +1,18 @@
-// SZH cockpit — références d'un asset dans le texte d'un article : RETRAIT (C3) et,
-// pour une image, LECTURE/ÉCRITURE de ses attributs de figure (légende, texte
-// alternatif, copyright, source — voir la seconde moitié du fichier).
+// Références d'un asset dans le texte d'un article : retrait d'une image ou d'un tableau,
+// et attributs de figure d'une image (seconde moitié du fichier). Tout est pur, sans
+// disque ni vscode ; les retraits rendent { texte, n }, n comptant les références ôtées.
 //
-// Supprimer une image ou un tableau depuis la barre latérale ne doit pas laisser
-// un lien mort dans le .md : le rendu afficherait une image cassée (ou un bloc
-// d'avertissement pour un tableau, cf. szh-tabelle-inclure.lua). Ces deux
-// fonctions retirent la RÉFÉRENCE du texte, à la lettre des formes que le
-// pipeline écrit :
-//   image   ![légende](media/<relatif>)      — pandoc, --extract-media (D45)
-//   tableau ::: {.szh-tabelle src="tables/table-NN.html"}\n:::   (D47)
-//
-// PURES (aucun accès disque, aucun vscode) : testables en headless via _pur.
-// Elles rendent { texte, n } — n = nombre de références retirées, 0 si aucune
-// (l'appelant prévient alors que le texte n'a pas été touché).
+// Supprimer un asset ne doit pas laisser un lien mort dans le .md : le rendu afficherait
+// une image cassée, ou le bloc d'avertissement de
+// pipeline/filters/szh-tabelle-inclure.lua pour un tableau. Le retrait suit donc à la
+// lettre les formes que le pipeline écrit :
+//   image   ![légende](media/<relatif>)
+//   tableau ::: {.szh-tabelle src="tables/table-NN.html"}\n:::
 'use strict';
 
-// Une image posée seule sur sa ligne EST un paragraphe (implicit_figures) : la
-// ligne vidée doit disparaître, sinon il reste un paragraphe vide et deux lignes
-// blanches consécutives. On ne recolle que les blancs devenus adjacents — jamais
-// de normalisation globale du fichier, qui toucherait du texte non concerné.
+// Une image seule sur sa ligne est un paragraphe (implicit_figures) : la ligne vidée doit
+// disparaître, sinon il reste un paragraphe vide. On ne recolle que les blancs devenus
+// adjacents, jamais tout le fichier.
 function retirerLignesVidees(lignes, videes) {
   const resultat = [];
   for (let i = 0; i < lignes.length; i++) {
@@ -30,8 +24,6 @@ function retirerLignesVidees(lignes, videes) {
       apres = lignes[j];
       break;
     }
-    // Blanc de part et d'autre : en retirer un (celui d'avant), l'autre sépare
-    // les deux paragraphes voisins.
     if (avant !== null && avant.trim() === '' && apres !== null && apres.trim() === '') {
       resultat.pop();
     }
@@ -39,9 +31,6 @@ function retirerLignesVidees(lignes, videes) {
   return resultat;
 }
 
-// Cible d'un lien markdown -> chemin comparable : chevrons retirés, %20 et
-// consorts décodés, antislash normalisé. Pandoc encode les espaces à l'écriture,
-// l'arbre affiche le nom réel : sans décodage, « mon image.png » ne matcherait pas.
 function cibleNormalisee(cible) {
   let c = String(cible || '').trim();
   if (c.length > 1 && c.charAt(0) === '<' && c.charAt(c.length - 1) === '>') { c = c.slice(1, -1); }
@@ -49,14 +38,11 @@ function cibleNormalisee(cible) {
   return c.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
 }
 
-// Retire toutes les occurrences de l'image `relatif` (chemin relatif à media/,
-// séparateurs quelconques). Une image au fil du texte laisse la phrase intacte ;
-// une image seule sur sa ligne emporte la ligne.
 function retirerImage(texte, relatif) {
   const attendu = ('media/' + String(relatif || '').replace(/\\/g, '/')).toLowerCase();
   if (attendu === 'media/') { return { texte: texte, n: 0 }; }
-  // ![alt](cible "titre"){attributs} — l'alt peut contenir des crochets échappés,
-  // la cible ne contient ni espace ni parenthèse (forme écrite par pandoc).
+  // ![alt](cible "titre"){attributs}, forme écrite par pandoc : la cible ne contient
+  // ni espace ni parenthèse.
   const motif = /!\[[^\]]*\]\(\s*(<[^>]*>|[^()\s]+)(?:\s+"[^"]*")?\s*\)(?:\{[^}]*\})?/g;
   const lignes = String(texte).split('\n');
   const videes = new Set();
@@ -77,9 +63,6 @@ function retirerImage(texte, relatif) {
   return { texte: retirerLignesVidees(lignes, videes).join('\n'), n: n };
 }
 
-// Retire le bloc de référence du tableau `nom` (« table-01.html ») : de la ligne
-// d'ouverture `::: {.szh-tabelle src="tables/…"}` jusqu'à sa fermeture `:::`.
-// Un bloc sans fermeture (fichier malmené à la main) n'emporte que sa ligne.
 function retirerTable(texte, nom) {
   const attendu = ('tables/' + String(nom || '').replace(/\\/g, '/')).toLowerCase();
   if (attendu === 'tables/') { return { texte: texte, n: 0 }; }
@@ -92,8 +75,8 @@ function retirerTable(texte, nom) {
     const src = /src\s*=\s*"([^"]*)"|src\s*=\s*'([^']*)'|src\s*=\s*([^\s}]+)/.exec(ouverture[1]);
     const cible = src ? (src[1] || src[2] || src[3]) : '';
     if (cibleNormalisee(cible) !== attendu) { continue; }
-    // Chercher la fermeture AVANT d'effacer quoi que ce soit : un bloc laissé
-    // ouvert à la main ne doit pas emporter la fin de l'article.
+    // Chercher la fermeture avant d'effacer quoi que ce soit : un bloc laissé ouvert
+    // à la main ne doit pas emporter la fin de l'article.
     let fin = -1;
     for (let j = i + 1; j < lignes.length; j++) {
       if (/^\s*:::+\s*\{/.test(lignes[j])) { break; }            // bloc suivant : pas de fermeture
@@ -110,40 +93,27 @@ function retirerTable(texte, nom) {
   return { texte: retirerLignesVidees(lignes, videes).join('\n'), n: n };
 }
 
-// ---- Attributs d'une FIGURE (légende, texte alternatif, crédits) -------------------
+// ---- Attributs d'une figure (légende, texte alternatif, crédits) ----
 //
-// CONTRAT DE FORMAT (arrêté avec le pipeline — ne pas l'inventer ailleurs) :
+// Format arrêté avec le pipeline, à ne pas réinventer ailleurs :
 //   ![Légende visible](media/x.png){alt="description" copyright="© J. Dupont" source="ESA"}
-//   - le texte entre CROCHETS est LA LÉGENDE (visible dans le rendu) ;
-//   - alt= est le texte alternatif. Attribut ABSENT -> le pipeline retombe sur la
-//     légende ; attribut PRÉSENT ET VIDE (alt="") -> image DÉCORATIVE, ignorée des
-//     lecteurs d'écran. C'est la seule valeur vide qui s'écrit.
-//   - copyright= / source= sont facultatifs et OMIS quand vides.
-//   - aucun attribut à écrire -> aucun bloc {…} du tout.
-//   - échappement : " -> \" dans les valeurs ; sauts de ligne interdits (remplacés
-//     par des espaces) ; valeurs trimées.
-//
-// POURQUOI ces données vivent dans le .md et pas dans un fichier annexe : la légende
-// EST déjà le texte du lien markdown, et une figure sans son texte est un lien mort.
-// Un fichier parallèle se désynchroniserait au premier copier-coller de paragraphe.
-//
-// PURES (aucun accès disque, aucun vscode) : testables en headless via _pur.
+//   - le texte entre crochets est la légende, visible dans le rendu ;
+//   - alt absent : le pipeline retombe sur la légende. alt="" : image décorative,
+//     ignorée des lecteurs d'écran, et seule valeur vide qui s'écrive ;
+//   - copyright et source sont omis quand vides, et sans attribut il n'y a pas de bloc ;
+//   - échappement : " -> \" dans les valeurs, pas de saut de ligne, valeurs trimées.
 
-// Motif d'une image markdown, à la lettre de ce que pandoc écrit (même forme que
-// retirerImage, mêmes limites assumées : la cible ne contient ni espace ni
-// parenthèse hors chevrons, le bloc d'attributs ne contient pas d'accolade).
-// Groupes : 1 = légende, 2 = cible, 3 = titre éventuel, 4 = bloc {…} éventuel.
-// Fabriqué à CHAQUE appel : un littéral /g partagé garderait son lastIndex.
+// Motif d'une image markdown, à la lettre de ce que pandoc écrit. Groupes : 1 = légende,
+// 2 = cible, 3 = titre, 4 = bloc {…}. Fabriqué à chaque appel, un littéral /g partagé
+// garderait son lastIndex.
 function reImage() {
   return /!\[([^\]]*)\]\(\s*(<[^>]*>|[^()\s]+)((?:\s+"[^"]*")?)\s*\)(\{[^}]*\})?/g;
 }
 
-// Contenu d'un bloc d'attributs pandoc -> jetons, DANS L'ORDRE et avec leur texte
-// BRUT. On préserve ainsi tout ce qui ne nous regarde pas (#id, .classe,
-// width=50%, une clé inconnue) en le réécrivant tel quel : la fiche image ne doit
-// jamais faire disparaître un attribut posé par le pipeline ou à la main.
-// Scanner caractère par caractère plutôt qu'une regex : les valeurs entre
-// guillemets peuvent contenir des espaces, un « = », et des \" échappés.
+// Contenu d'un bloc d'attributs pandoc -> jetons, dans l'ordre et avec leur texte brut,
+// pour réécrire tel quel ce qui ne nous regarde pas : la fiche image ne doit pas faire
+// disparaître un attribut posé par le pipeline ou à la main. Scan caractère par caractère
+// plutôt que regex, les valeurs citées pouvant contenir espaces, « = » et \" échappés.
 function scannerAttributs(source) {
   const s = String(source === undefined || source === null ? '' : source);
   const jetons = [];
@@ -182,40 +152,26 @@ function scannerAttributs(source) {
   return jetons;
 }
 
-// Valeur -> attribut cité. L'antislash est échappé AVANT le guillemet : sans cela,
-// une valeur finissant par « \ » avalerait le guillemet fermant et casserait le
-// bloc entier. Le contrat n'exige que \" — \\ est un sur-ensemble sûr, et notre
-// propre lecteur (scannerAttributs) le défait à l'identique.
+// Valeur -> attribut cité. L'antislash est échappé avant le guillemet, sinon une valeur
+// finissant par « \ » avalerait le guillemet fermant.
 function citerValeur(v) {
   return '"' + String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
 }
 
-// Valeur d'attribut assainie : une seule ligne, trimée, SANS accolade. Aucune
-// confiance accordée à la webview — c'est ici, passage obligé de l'écriture, que la
-// règle s'applique.
-// POURQUOI les accolades partent : le bloc d'attributs est délimité par { }, et tous
-// les lecteurs de la chaîne (le nôtre comme retirerImage) s'arrêtent à la première
-// accolade fermante. Une accolade dans un copyright casserait donc silencieusement la
-// référence entière. Elles sont assez rares dans un crédit pour que le retrait soit
-// préférable à une figure perdue ; le cas est vérifié par le harnais.
+// Valeur assainie ici, passage obligé de l'écriture : une seule ligne, trimée, sans
+// accolade — le bloc étant délimité par { }, une accolade dans un copyright casserait
+// silencieusement la référence entière. Les crochets, eux, partent de la légende, qu'ils
+// délimitent dans un lien markdown.
 function normaliserValeurFigure(v) {
   return String(v === undefined || v === null ? '' : v)
     .replace(/[\r\n\t]+/g, ' ').replace(/[{}]/g, '').trim();
 }
 
-// Légende assainie : une seule ligne, trimée, et SANS crochets — le texte d'un lien
-// markdown est délimité par eux, et les échapper (\]) casserait le motif utilisé
-// partout ailleurs (retirerImage). Un crochet dans une légende est assez rare pour
-// que le retrait soit préférable à une référence illisible.
 function normaliserLegendeFigure(v) {
   return String(v === undefined || v === null ? '' : v)
     .replace(/[\r\n\t]+/g, ' ').replace(/[[\]]/g, '').trim();
 }
 
-// Bloc {…} reconstruit : nos trois clés mises à jour SUR PLACE (ordre du fichier
-// préservé), les autres jetons rendus tels quels, les nouvelles ajoutées à la fin.
-// `cibles[cle] === null` = attribut à ne pas écrire (donc à retirer s'il existait).
-// Aucun jeton à écrire -> chaîne vide, donc aucun bloc dans le texte.
 function reconstruireBloc(blocOriginal, cibles) {
   const contenu = blocOriginal ? String(blocOriginal).slice(1, -1) : '';
   const sortie = [];
@@ -238,9 +194,8 @@ function reconstruireBloc(blocOriginal, cibles) {
 }
 
 // lireAttributsImage(texte, relatif) -> { legende, alt, altDefini, copyright, source, n }
-// n = nombre d'insertions de cette image dans le texte (0 = fichier jamais inséré ;
-// la fiche le dit et refuse d'enregistrer). Les VALEURS viennent de la PREMIÈRE
-// insertion : c'est celle qu'on montre, et l'écriture les reporte sur toutes.
+// n compte les insertions de l'image ; à zéro, la fiche refuse d'enregistrer. Les valeurs
+// viennent de la première insertion, et l'écriture les reporte sur toutes.
 function lireAttributsImage(texte, relatif) {
   const attendu = ('media/' + String(relatif || '').replace(/\\/g, '/')).toLowerCase();
   const res = { legende: '', alt: '', altDefini: false, copyright: '', source: '', n: 0 };
@@ -264,11 +219,8 @@ function lireAttributsImage(texte, relatif) {
   return res;
 }
 
-// ecrireAttributsImage(texte, relatif, valeurs) -> { texte, n }
-// Réécrit TOUTES les insertions de l'image (une image n'a qu'un jeu de crédits ;
-// laisser deux insertions diverger produirait deux légendes pour une seule figure).
-// n = 0 -> texte rendu à l'identique (rien à écrire, l'appelant le signale).
-// Idempotent : réécrire deux fois les mêmes valeurs rend le même texte.
+// Réécrit toutes les insertions de l'image, qui n'a qu'un jeu de crédits : les laisser
+// diverger donnerait deux légendes pour une seule figure. Idempotent.
 function ecrireAttributsImage(texte, relatif, valeurs) {
   const attendu = ('media/' + String(relatif || '').replace(/\\/g, '/')).toLowerCase();
   if (attendu === 'media/') { return { texte: texte, n: 0 }; }
@@ -278,7 +230,6 @@ function ecrireAttributsImage(texte, relatif, valeurs) {
   const copyright = normaliserValeurFigure(v.copyright);
   const source = normaliserValeurFigure(v.source);
   const cibles = {
-    // alt="" est un CHOIX (image décorative) : c'est la seule valeur vide écrite.
     alt: v.altDefini ? alt : null,
     copyright: copyright === '' ? null : copyright,
     source: source === '' ? null : source

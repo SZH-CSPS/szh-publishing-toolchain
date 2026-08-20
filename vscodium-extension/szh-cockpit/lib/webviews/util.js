@@ -1,9 +1,7 @@
-// SZH cockpit — assemblage des webviews (R4/R5, refactor sans build). Lit les fichiers
-// statiques media/<base>.{html,css,js}, y résout les libellés i18n (%%SZH:cle%% -> T(cle))
-// et d'éventuels remplacements de GABARIT explicites (jamais de données utilisateur :
-// celles-ci arrivent par postMessage, comme avant), puis assemble un document autonome à
-// CSP stricte (styles inline, script à nonce, zéro requête réseau). Rendu identique à
-// l'assemblage précédent (construit par concaténation dans extension.js).
+// Assemble les webviews à partir des fichiers statiques media/<base>.{html,css,js} :
+// libellés i18n (%%SZH:cle%% -> T(cle)), remplacements de gabarit, puis sortie en un
+// document autonome à CSP stricte. Les données utilisateur passent par postMessage et
+// n'entrent jamais dans le gabarit.
 'use strict';
 
 const fs = require('fs');
@@ -13,19 +11,15 @@ const { T } = require('../i18n');
 const MEDIA = path.join(__dirname, '..', '..', 'media');
 const RE_I18N = /%%SZH:([A-Za-z0-9_.]+)%%/g;
 
-// construireHtml(base, nonce, opts?) :
-//   opts.titre        -> contenu de <title> (invisible dans un panneau webview ; conservé
-//                        à l'identique de l'ancien code pour un rendu strictement égal).
-//   opts.remplacements -> map { marqueur: valeur } appliquée AU HTML ET AU JS (ex.
-//                        { '__TXT__': jsonLibelles }). split/join (pas de piège $ de replace).
-//   opts.csp          -> Content-Security-Policy (défaut : formulaires, sans img-src).
+// Options : `titre` pour le <title>, `csp` pour la Content-Security-Policy, et
+// `remplacements`, une map { marqueur: valeur } appliquée au HTML et au JS par split/join
+// — String.replace interpréterait les séquences « $& » d'une valeur.
 function construireHtml(base, nonce, opts) {
   opts = opts || {};
   let corps = fs.readFileSync(path.join(MEDIA, base + '.html'), 'utf8');
   const css = fs.readFileSync(path.join(MEDIA, base + '.css'), 'utf8');
-  // Socle commun (D114 : enregistrement automatique) préfixé au script de la page —
-  // un seul <script>, donc un seul nonce, et `SZH` est défini avant la première ligne
-  // du webview. Un webview qui ne s'en sert pas n'en paie que la taille (~2 Ko).
+  // Socle commun préfixé au script de la page : un seul <script>, donc un seul nonce,
+  // et `SZH` est défini avant la première ligne du webview.
   const commun = fs.readFileSync(path.join(MEDIA, '_commun.js'), 'utf8');
   let js = commun.replace(/\n+$/, '') + '\n\n' + fs.readFileSync(path.join(MEDIA, base + '.js'), 'utf8');
 
@@ -49,8 +43,7 @@ function construireHtml(base, nonce, opts) {
     '<script nonce="' + nonce + '">\n' + js + '\n</script>\n</body>\n</html>\n';
 }
 
-// Lit un fichier media/ (fragment inline : CSS/JS d'aperçu HTML injecté dans le
-// document pandoc par preview). Chemin via __dirname -> jamais de requête externe.
+// Lit un fichier de media/ à injecter tel quel, comme le CSS et le JS de l'aperçu HTML.
 function lireMedia(nom) {
   return fs.readFileSync(path.join(MEDIA, nom), 'utf8');
 }

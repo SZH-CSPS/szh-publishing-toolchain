@@ -1,18 +1,13 @@
-// SZH cockpit — les trois panneaux de la barre (F1). La barre de titre de la vue ne
-// porte plus que trois boutons — Commande / Édition / Export — chacun ouvrant un
-// QuickPick localisé, même mécanique que la palette « Mise en forme » (formatting.js).
-// Les entrées RÉUTILISENT les commandes déjà enregistrées (aucune logique métier ici) ;
-// la liste des actions de mise en forme vient de PALETTE_MEF — source unique, jamais
-// dupliquée. Format des entrées : ['--', cléGroupe] = séparateur ; sinon
-// [cléLibellé, commande, raccourci, icône].
+// Les trois boutons de la barre de titre — Commande, Édition, Export — ouvrent chacun un
+// QuickPick qui ne fait qu'appeler des commandes enregistrées ailleurs. Les actions de
+// mise en forme viennent de PALETTE_MEF (formatting.js). Format d'une entrée :
+// ['--', cléGroupe] pour un séparateur, sinon [cléLibellé, commande, raccourci, icône].
 'use strict';
 
 const vscode = require('vscode');
 const { T } = require('./i18n');
 const { PALETTE_MEF } = require('./formatting');
 
-// Panneau « Commande » : les gestes de gestion de la revue (import, métadonnées,
-// réglages). Libellés : ceux des webviews quand ils existent (meta/fiches/regl.titre).
 const PANNEAU_COMMANDE = [
   ['panneau.importerWord', 'szh.importerWord', '', '$(add)'],
   ['panneau.convertirEnAttente', 'szh.convertirEnAttente', '', '$(run-all)'],
@@ -43,13 +38,9 @@ function ouvrirPanneauCommande() {
   return choisirEtExecuter(PANNEAU_COMMANDE, 'panneau.commande.placeholder');
 }
 
-// Panneau « Édition » : la bascule d'aperçu, puis TOUTE la palette de mise en forme.
-// Les commandes szh.fmt.* n'ont PAS de garde markdown (elles transforment l'éditeur
-// actif, quel qu'il soit) : la garde d'ouvrirMiseEnForme est reprise ici, mais
-// seulement pour les entrées de mise en forme. Deux entrées y échappent : la bascule
-// d'aperçu, qui doit marcher depuis n'importe où dans la revue, et — depuis D97 — les
-// métadonnées de l'article courant, qui savent aussi retrouver l'article affiché en
-// aperçu et disent elles-mêmes ce qui manque le cas échéant.
+// Les commandes szh.fmt.* transforment l'éditeur actif quel qu'il soit et n'ont pas de
+// garde markdown : le panneau « Édition » la pose pour elles. Y échappent les entrées qui
+// doivent marcher depuis n'importe où, ou qui retrouvent seules leur article.
 const HORS_GARDE_MD = ['szh.basculerApercu', 'szh.metadonneesArticle', 'szh.traduction'];
 
 async function ouvrirPanneauEdition() {
@@ -73,15 +64,10 @@ async function ouvrirPanneauEdition() {
   await vscode.commands.executeCommand(choix.commande);
 }
 
-// Panneau « Export » : les documents produits, puis le CYCLE DE VIE du numéro
-// (D116/D117). Test DYNAMIQUE (getCommands) : le panneau marche avant comme après
-// l'arrivée de szh.exporterXml, sans dépendre de l'ordre de livraison des lots.
-//
-// Les entrées de cycle de vie sont celles que l'état du numéro rend possibles —
-// jamais un bouton qui ne ferait rien : « Archiver et verrouiller » disparaît dès
-// que le numéro est archivé, « Déverrouiller »/« Désarchiver » n'existent que
-// verrou posé / dossier archivé. « Exporter cet article » n'apparaît que quand la
-// compilation automatique est coupée (numéro gelé) : ailleurs, Ctrl+S suffit.
+// Les documents produits, puis le cycle de vie du numéro. Ne figurent que les entrées que
+// l'état du numéro rend possibles : « Exporter cet article » n'apparaît que sur un numéro
+// gelé, où la compilation automatique est coupée. szh.exporterXml étant facultative, sa
+// présence est testée par getCommands.
 async function ouvrirPanneauExport() {
   const etat = hote.etat();
   const entrees = [['--', 'panneau.g.export']];
@@ -97,9 +83,8 @@ async function ouvrirPanneauExport() {
   if (!etat.archivee) {
     entrees.push(['panneau.archiver', 'szh.archiverVerrouiller', '', '$(archive)']);
   } else if (!etat.verrouillee) {
-    // Numéro archivé puis déverrouillé pour une correction : le geste qui reste est
-    // de le REVERROUILLER (le dossier, lui, est déjà à sa place). Même commande —
-    // elle voit qu'il n'y a plus rien à déplacer.
+    // Numéro archivé puis déverrouillé pour une correction : reste à le reverrouiller.
+    // Même commande, qui constate d'elle-même qu'il n'y a plus de dossier à déplacer.
     entrees.push(['panneau.verrouiller', 'szh.archiverVerrouiller', '', '$(lock)']);
   }
   if (etat.verrouillee) {
@@ -111,8 +96,8 @@ async function ouvrirPanneauExport() {
   await choisirEtExecuter(entrees, 'panneau.export.placeholder');
 }
 
-// État du numéro injecté par extension.js (source de vérité : ausgabe.yaml). Repli
-// neutre : sans hôte, les panneaux se comportent comme avant le cycle de vie.
+// État du numéro injecté par extension.js, qui le tient d'ausgabe.yaml. Sans hôte, le
+// repli neutre laisse les panneaux fonctionner sans cycle de vie.
 let hote = { etat: () => ({ verrouillee: false, archivee: false }) };
 
 function enregistrerPanneaux(context, injecte) {

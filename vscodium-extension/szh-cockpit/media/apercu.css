@@ -1,11 +1,8 @@
-/* L'aperçu montre du PAPIER, quel que soit le thème de l'éditeur (D128).
-   print.css ne pose AUCUN background sur body — et c'est correct : WeasyPrint imprime
-   sur du blanc. Mais dans une webview, l'absence de background laisse celui de
-   l'éditeur : sous un thème sombre, l'encre sombre de print.css devenait illisible.
-   On force donc le fond blanc et on RÉAFFIRME l'encre de print.css (var(--c-ink), avec
-   un repli sombre si un toolkit plus ancien ne la définit pas) — jamais une couleur
-   inventée : l'aperçu doit rester ce que montrera le PDF. `color-scheme: light` évite
-   au passage que l'éditeur assombrisse les ascenseurs et les contrôles. */
+/* L'aperçu montre du papier, quel que soit le thème de l'éditeur. print.css ne pose pas de
+   background sur body, ce qui convient à WeasyPrint ; dans une webview, l'encre sombre de
+   print.css deviendrait illisible sur le fond de l'éditeur. On force donc le blanc et on
+   réaffirme l'encre de print.css, sans inventer de couleur : l'aperçu doit montrer ce que
+   montrera le PDF. `color-scheme: light` empêche l'éditeur d'assombrir les contrôles. */
 html, body { background: #ffffff !important; color-scheme: light; }
 body { color: var(--c-ink, #16161f) !important; }
 body{margin-top:2.4rem;}#szh-bandeau{position:fixed;top:0;left:0;right:0;z-index:9999;font:13px sans-serif;padding:.35rem .8rem;background:#1f6feb;color:#fff;display:flex;justify-content:space-between;align-items:center;}#szh-bandeau button{font:inherit;border:none;border-radius:3px;padding:.15rem .6rem;cursor:pointer;background:#fff;color:#1f6feb;}.szh-survol{outline:2px solid #1f6feb;outline-offset:2px;}.szh-actif{background:rgba(31,111,235,.08);box-shadow:-3px 0 0 #1f6feb;border-radius:2px;}.szh-mot-actif{background:rgba(31,111,235,.24);border-radius:2px;}

@@ -1,20 +1,10 @@
--- szh-maquette.lua — dérive les métadonnées de la maquette (couverture + en-tête
--- courant) à partir des clés EXISTANTES des sérialiseurs de l'extension
--- (ausgabe.yaml + <slug>.meta.yaml). Aucune clé inventée côté fichiers ; ce filtre
--- ne fait que CALCULER des variables de template (pas de JS au rendu).
---
--- Décisions couvertes :
---   D71 — étiquette de dossier selon le type d'article.
---   D74 — `revue` (choix fermé) -> nom + ISSN + langue par défaut.
---   F4  — bloc « À propos des auteur·e·s » : par auteur, `orcid-url` (ORCID
---         normalisé en URL cliquable) et `photo-alt` (texte alternatif du
---         portrait, PDF/UA-1 D62) ; plus `auteurs-titre` (titre localisé,
---         accordé en nombre).
---
--- Le titre du DOSSIER (ausgabe.yaml `title`) est écrasé dans Meta par le `title`
--- (map de/fr/it) de l'article : Pandoc, à clé égale, garde le dernier fichier.
--- On le relit donc dans ausgabe.yaml via la variable d'environnement SZH_AUSGABE
--- (posée par le Makefile) — la seule clé en collision.
+-- Calcule les variables de template de la maquette (couverture et en-tête courant) à
+-- partir des clés d'ausgabe.yaml et de <slug>.meta.yaml : étiquette de dossier, nom et
+-- ISSN de la revue, ligne « Vol. X · N/année », résumés, licence, titre du bloc auteurs,
+-- et par auteur `orcid-url` et `photo-alt`. Aucune clé n'est inventée côté fichiers.
+-- Le titre du DOSSIER (ausgabe.yaml `title`) est écrasé dans Meta par le `title` de
+-- l'article, pandoc gardant le dernier fichier à clé égale : il est donc relu dans
+-- ausgabe.yaml via la variable d'environnement SZH_AUSGABE, posée par le Makefile.
 
 local utils = pandoc.utils
 
@@ -62,8 +52,8 @@ local function lire_titre_dossier()
   return titre
 end
 
--- D74 : revue -> { nom, issn, lang }. Accepte le jeton canonique (zeitschrift/revue)
--- ET le nom complet (rétrocompat de l'ancien ausgabe.yaml). Inconnu -> champ libre.
+-- revue -> { nom, issn, lang }. Accepte le jeton canonique (zeitschrift/revue) et le
+-- nom complet de l'ancien ausgabe.yaml. Valeur inconnue -> champ libre.
 local function derive_revue(revue_val, meta_lang)
   local v = revue_val:lower()
   if v:find('zeitschrift') then
@@ -75,8 +65,7 @@ local function derive_revue(revue_val, meta_lang)
   return revue_val, '', lang
 end
 
--- D71 : libellés localisés des types HORS dossier (repris de LIBELLES_TYPES de
--- l'extension ; de/it PREMIER JET à valider par Robin).
+-- Libellés localisés des types hors dossier, repris de LIBELLES_TYPES de l'extension.
 local LIBELLES = {
   ['varia']         = { fr = 'Varia',         de = 'Varia',         it = 'Varia' },
   ['documentation'] = { fr = 'Documentation', de = 'Dokumentation', it = 'Documentazione' },
@@ -87,9 +76,8 @@ local TYPES_DOSSIER = { article = true, editorial = true, interview = true }
 local LABELS_RESUME = { de = 'Zusammenfassung', fr = 'Résumé', it = 'Riassunto' }
 local ORDRE_LANGUES = { 'de', 'fr', 'it' }
 
--- F4 : bloc « À propos des auteur·e·s » — titre localisé, accordé en nombre
--- (de/it PREMIER JET à valider par Robin), et préfixe du texte alternatif du
--- portrait (PDF/UA-1, D62 : l'alt est obligatoire sur toute image).
+-- Bloc « À propos des auteur·e·s » : titre localisé accordé en nombre, et préfixe du
+-- texte alternatif du portrait (PDF/UA-1 exige un alt sur toute image).
 local TITRES_AUTEURS = {
   un   = { fr = "À propos de l'auteur·e",  de = 'Zur Autorin / zum Autor',
            it = "Sull'autrice / sull'autore" },
@@ -98,9 +86,9 @@ local TITRES_AUTEURS = {
 }
 local ALT_PORTRAIT = { fr = 'Portrait de ', de = 'Porträt von ', it = 'Ritratto di ' }
 
--- Élision française : « Portrait d'Alice », pas « Portrait de Alice ». Voyelles
--- ASCII + Y, et voyelles majuscules accentuées (comparaison sur les 2 octets
--- UTF-8). H volontairement exclu (les prénoms germaniques à h aspiré dominent).
+-- Élision française : « Portrait d'Alice », pas « Portrait de Alice ». Voyelles ASCII
+-- + Y, et voyelles majuscules accentuées (comparaison sur les 2 octets UTF-8). H exclu
+-- volontairement : les prénoms germaniques à h aspiré dominent.
 local VOYELLES_ACCENTUEES = {
   ['À']=true, ['Â']=true, ['Ä']=true, ['É']=true, ['È']=true, ['Ê']=true,
   ['Ë']=true, ['Î']=true, ['Ï']=true, ['Ô']=true, ['Ö']=true, ['Û']=true, ['Ü']=true,
@@ -117,18 +105,17 @@ local LICENCES = {
   it = 'Questo articolo è pubblicato sotto licenza Creative Commons CC-BY 4.0',
 }
 
--- D114 : « condenser l'en-tête » — réglage du numéro (ausgabe.yaml). Normalisé ICI,
--- et pas laissé à `$if(entete-condensee)$` : pour pandoc, TOUTE chaîne non vide est
--- vraie, donc un `entete-condensee: "false"` (le sérialiseur du cockpit cite ses
--- valeurs) ou un « non » écrit à la main activeraient l'option. On ne reconnaît donc
--- qu'une liste fermée de valeurs vraies (les trois langues de la revue + le booléen
--- YAML), tout le reste vaut « pas condensé ».
+-- Réglage « condenser l'en-tête » (ausgabe.yaml), normalisé ici et non laissé à
+-- `$if(entete-condensee)$` : pour pandoc, toute chaîne non vide est vraie, donc un
+-- `entete-condensee: "false"` — le sérialiseur du cockpit cite ses valeurs — activerait
+-- l'option. Seule une liste fermée de valeurs vraies est reconnue, tout le reste vaut
+-- « pas condensé ».
 local VRAIS = { ['true'] = true, ['1'] = true, ['oui'] = true, ['ja'] = true,
                 ['yes'] = true, ['si'] = true }
 local function est_vrai(v)
   if v == nil then return false end
-  -- `entete-condensee: true` (booléen YAML) arrive en booléen Lua NU : le tester en
-  -- premier, l'indexer (v.t) lèverait une erreur.
+  -- Un booléen YAML arrive en booléen Lua nu : le tester en premier, l'indexer (v.t)
+  -- lèverait une erreur.
   if type(v) == 'boolean' then return v end
   return VRAIS[S(v):lower()] == true
 end
@@ -151,13 +138,13 @@ function Meta(meta)
   local revue_val = S(meta.revue)
   local meta_lang = S(meta.lang)
   local nom, issn, revue_lang = derive_revue(revue_val, meta_lang)
-  -- Langue de composition : la revue (D74) prime, sinon la langue du numéro.
+  -- Langue de composition : la revue prime, sinon la langue du numéro.
   local lang = revue_lang ~= '' and revue_lang or (meta_lang ~= '' and meta_lang or 'fr')
 
   local type_art = S(meta.type)
   local dossier = lire_titre_dossier()
 
-  -- Étiquette de dossier (D71).
+  -- Étiquette de dossier.
   local etiquette
   if TYPES_DOSSIER[type_art] then
     etiquette = dossier
@@ -214,14 +201,13 @@ function Meta(meta)
   meta['sous-titre-affiche'] = pandoc.MetaString(choisir(meta.subtitle, lang))
   meta['resumes']          = pandoc.MetaList(resumes)
   meta['licence-texte']    = pandoc.MetaString(LICENCES[lang] or LICENCES.fr)
-  -- D114 : la clé est REMISE À NIL quand elle est fausse — le template teste
-  -- `$if(entete-condensee)$`, et une valeur présente mais fausse doit être
-  -- indistinguable d'une clé absente.
+  -- Clé remise à nil quand elle est fausse : le template teste `$if(entete-condensee)$`,
+  -- et une valeur présente mais fausse doit être indistinguable d'une clé absente.
   meta['entete-condensee'] = est_vrai(meta['entete-condensee']) or nil
 
-  -- Métadonnées de document tirées du meta.yaml de l'article : <title> + <meta>
-  -- HTML ET /Title, /Author, /Lang du PDF (requis pour PDF/UA). `pagetitle` évite
-  -- l'avertissement pandoc « nonempty <title> » + le repli sur le slug.
+  -- Métadonnées de document tirées du meta.yaml : <title> et <meta> HTML, /Title,
+  -- /Author et /Lang du PDF (requis par PDF/UA). `pagetitle` évite l'avertissement
+  -- pandoc « nonempty <title> » et le repli sur le slug.
   local titre = choisir(meta.title, lang)
   meta['pagetitle'] = pandoc.MetaString(titre)
   meta['lang'] = pandoc.MetaString(lang)
@@ -237,15 +223,14 @@ function Meta(meta)
         nm = n
         if p ~= '' then nm = (n ~= '' and (n .. ', ' .. p) or p) end
 
-        -- F4 : variables dérivées PAR AUTEUR pour le bloc « À propos » (les
-        -- templates pandoc ne savent pas manipuler les chaînes ; on mute la
-        -- MetaMap de l'auteur, relue par le template via $author.…$).
+        -- Variables dérivées par auteur pour le bloc « À propos » : les templates
+        -- pandoc ne manipulent pas les chaînes, on mute donc la MetaMap de l'auteur,
+        -- relue par le template via $author.…$.
         local complet = p
         if n ~= '' then complet = (p ~= '' and (p .. ' ') or '') .. n end
-        -- ORCID : le champ saisi peut être l'identifiant nu (0000-0002-…) ou
-        -- une URL complète -> URL canonique https://orcid.org/<ID> (X final en
-        -- majuscule). URL sans identifiant reconnaissable : reprise telle
-        -- quelle ; autre valeur : pas de lien (jamais de lien cassé).
+        -- ORCID : identifiant nu (0000-0002-…) ou URL complète -> URL canonique
+        -- https://orcid.org/<ID>, X final en majuscule. URL sans identifiant
+        -- reconnaissable : reprise telle quelle ; autre valeur : pas de lien.
         local orcid = S(a.orcid)
         if orcid ~= '' then
           local id = orcid:match('(%d%d%d%d%-%d%d%d%d%-%d%d%d%d%-%d%d%d[%dxX])')
@@ -255,7 +240,7 @@ function Meta(meta)
             a['orcid-url'] = pandoc.MetaString(orcid)
           end
         end
-        -- Texte alternatif du portrait (PDF/UA-1, D62), avec élision en français.
+        -- Texte alternatif du portrait (requis par PDF/UA-1), élision en français.
         if S(a.photo) ~= '' then
           local prefixe = ALT_PORTRAIT[lang] or ALT_PORTRAIT.fr
           if prefixe == ALT_PORTRAIT.fr and elision_fr(complet) then
@@ -270,7 +255,7 @@ function Meta(meta)
     end
   end
   meta['auteurs-noms'] = pandoc.MetaList(noms)
-  -- F4 : titre du bloc auteurs, localisé et accordé en nombre.
+  -- Titre du bloc auteurs, localisé et accordé en nombre.
   if #noms > 0 then
     local forme = (#noms == 1) and TITRES_AUTEURS.un or TITRES_AUTEURS.plus
     meta['auteurs-titre'] = pandoc.MetaString(forme[lang] or forme.fr)

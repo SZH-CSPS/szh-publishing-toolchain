@@ -1,10 +1,10 @@
 # Session locale Claude Code
 .claude/
 
-# Bytecode Python (py_compile de docx-tables.py)
+# Bytecode Python
 __pycache__/
 
-# Artefacts de build locaux (la CI publie les siens en Release)
+# Artefacts de build locaux : la CI publie les siens en Release
 out/
 *.tar.gz
 *.tar.gz.sha256
@@ -14,6 +14,5 @@ manifest.json
 vsix-out/
 *.vsix
 
-tmp/
-
+# Bac à sable : corpus de mise au point, diagnostics, rendus jetables
 tmp/

@@ -1,8 +1,8 @@
 {
-  // Blocs de style de la revue (D15, refondus M6/D55). Tape ::: puis le début du nom
-  // -> la liste s'affiche (ou clic droit → « Mise en forme »).
-  // Rendus en « fenced divs » Pandoc : ::: {.classe} ... :::  et stylés par pipeline/styles/print.css.
-  // ⚠ Garder cette liste synchronisée avec les classes définies dans print.css.
+  // Blocs de style de la revue : taper ::: puis le début du nom affiche la liste (le
+  // clic droit → « Mise en forme » aussi). Rendus en fenced divs pandoc,
+  // ::: {.classe} … :::, et mis en forme par pipeline/styles/print.css.
+  // ⚠ À garder aligné avec les classes définies dans print.css.
   "Important (avec titre)": {
     "prefix": [":::important", "important", "wichtig"],
     "body": ["::: {.important data-titre=\"${1:Important}\"}", "$0", ":::", ""],

@@ -1,23 +1,19 @@
 ﻿<#
 .SYNOPSIS
-  Prépare l'e-mail « Envoyer pour traduction » (D127) : brouillon Outlook avec le lien
-  szh:// en VRAI HYPERLIEN, rédigé DANS LA LANGUE de la personne qui va traduire, et
-  adressé à la rédaction concernée.
+  Prépare l'e-mail « Envoyer pour traduction » : brouillon Outlook portant le lien szh://
+  en hyperlien, rédigé dans la langue de la personne qui traduira et adressé à la
+  rédaction concernée.
 
     powershell -ExecutionPolicy Bypass -File mail-traduction.ps1 -Lien "szh://traduction/revue/2026-01"
 
 .DESCRIPTION
-  POURQUOI un script et pas un `mailto:` depuis l'extension : un corps `mailto:` est du
-  TEXTE BRUT, et aucun client ne rend cliquable un schéma qu'il ne connaît pas — le lien
-  szh:// arrivait donc inerte. Seul un corps HTML donne un vrai <a href>, et cela passe
-  par l'objet mail d'Outlook. Repli `mailto:` si Outlook est absent : le lien y est alors
-  sur sa propre ligne, à copier-coller.
+  Un script plutôt qu'un `mailto:`, parce qu'un corps `mailto:` est du texte brut et
+  qu'aucun client ne rend cliquable un schéma inconnu : seul un corps HTML donne un vrai
+  <a href>, ce qui passe par l'objet mail d'Outlook, d'où le repli `mailto:` sans lui.
 
-  LA LANGUE DE L'E-MAIL EST CELLE DE LA CIBLE, pas celle de l'expéditeur ni de son
-  interface : une Zeitschrift (allemand) part à traduire vers le français, donc l'e-mail
-  est en français ; une Revue (français) part vers l'allemand, donc l'e-mail est en
-  allemand. Les gabarits vivent ici, pas dans l'i18n du cockpit, précisément pour cette
-  raison — ils ne doivent PAS suivre la langue de l'interface.
+  La langue de l'e-mail est celle de la cible, pas celle de l'expéditeur : une Zeitschrift
+  part vers le français, une Revue vers l'allemand. Les gabarits vivent donc ici et non
+  dans la traduction du cockpit, qui suit l'interface.
 
   Compatibilité : Windows PowerShell 5.1.
 #>
@@ -28,8 +24,8 @@ param(
 
 . "$PSScriptRoot\szh-common.ps1"
 
-# Échappe ce qui part dans le corps HTML. Les valeurs viennent du lien (alphabets
-# stricts) mais on n'injecte jamais sans échapper : la règle vaut aussi ici.
+# Échappe ce qui part dans le corps HTML : les valeurs viennent du lien, dont les
+# alphabets sont stricts, mais on n'injecte pas sans échapper.
 function Protect-SzhHtml([string]$Texte) {
   return ([string]$Texte).Replace('&', '&amp;').Replace('<', '&lt;').Replace('>', '&gt;').Replace('"', '&quot;')
 }
@@ -50,10 +46,9 @@ try {
   $corpsHtml = ($g.html -f (Protect-SzhHtml $quoi), $lienHtml)
   $corpsTexte = ($g.texte -f $quoi, $Lien)
 
-  # ---- Brouillon Outlook (le seul chemin qui donne un hyperlien) -------------------
-  # Sauf si le poste a demandé le contraire (D130) : « "mailTraduction": "mailto" » dans
-  # config.json ouvre le client par défaut — le nouvel Outlook, typiquement — en
-  # acceptant un lien inerte.
+  # ---- Brouillon Outlook, le seul chemin qui donne un hyperlien ----
+  # Sauf si le poste a demandé le contraire : « "mailTraduction": "mailto" » dans
+  # config.json ouvre le client par défaut, au prix d'un lien inerte.
   $fait = $false
   if ((Get-SzhModeMailTraduction) -eq 'mailto') {
     Write-SzhLog 'mail-traduction : mode mailto demande par config.json'
@@ -64,7 +59,7 @@ try {
       $mail.To = $destinataire
       $mail.Subject = $sujet
       $mail.HTMLBody = $corpsHtml
-      $mail.Display($false)                                 # AFFICHE le brouillon, n'envoie rien
+      $mail.Display($false)                                 # affiche le brouillon, n'envoie rien
       $fait = $true
       Write-SzhLog ('mail-traduction : brouillon Outlook prepare (' + $langue + ' -> ' + $destinataire + ')')
     } catch {
@@ -72,7 +67,7 @@ try {
     }
   }
 
-  # ---- Repli : mailto (texte brut, lien sur sa propre ligne) ----------------------
+  # ---- Repli : mailto, texte brut, lien sur sa propre ligne ----
   if (-not $fait) {
     $uri = ('mailto:{0}?subject={1}&body={2}' -f $destinataire,
       [Uri]::EscapeDataString($sujet), [Uri]::EscapeDataString($corpsTexte))

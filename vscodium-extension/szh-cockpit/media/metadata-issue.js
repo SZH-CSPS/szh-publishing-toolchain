@@ -6,20 +6,19 @@
   const modifies = new Set();
   const etat = document.getElementById('etat');
   let couleurChoisie = '';
-  // revue (D74) : choix fermé (radio). Le jeton canonique zeitschrift/revue est
-  // écrit dans ausgabe.yaml ; l'ISSN et la langue par défaut en sont DÉRIVÉS.
+  // La revue est un choix fermé : c'est le jeton canonique zeitschrift ou revue qui est
+  // écrit dans ausgabe.yaml, l'ISSN et la langue par défaut en étant dérivés.
   let revueChoisie = '';
   const RADIOS_REVUE = document.querySelectorAll('input[name="revue"]');
-  // entete-condensee (D114) : case à cocher. La valeur arrive DÉJÀ tranchée en
-  // « true »/« false » par l'extension (estVraiYaml de lib/yaml.js) — aucune règle de
-  // vérité n'est dupliquée ici.
+  // La valeur de la case arrive déjà tranchée en « true » ou « false » par estVraiYaml
+  // (lib/yaml.js) : aucune règle de vérité n'est dupliquée ici.
   const CASE_CONDENSE = document.getElementById('entete-condensee');
   CASE_CONDENSE.addEventListener('change', function () {
     modifies.add('entete-condensee');
     etat.textContent = '';
   });
-  // Miroir de normaliserRevue() (lib/yaml.js) + derive_revue() (Lua) : accepte le
-  // jeton ET l'ancien nom complet (rétrocompat), teste « zeitschrift » avant « revue ».
+  // Miroir de normaliserRevue() (lib/yaml.js) et de derive_revue() côté Lua : accepte le
+  // jeton comme l'ancien nom complet, et teste « zeitschrift » avant « revue ».
   function normaliserRevue(v) {
     const s = String(v === undefined || v === null ? '' : v).toLowerCase();
     if (s.indexOf('zeitschrift') !== -1) { return 'zeitschrift'; }

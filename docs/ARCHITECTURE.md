@@ -1,105 +1,103 @@
-# Architecture — vision globale
-
-> Vue d'ensemble du fonctionnement et du déploiement de la chaîne de publication
-> SZH/CSPS. La documentation détaillée des **styles/compilateur** et de **VSCodium**
-> viendra dans un second temps. Décisions d'architecture : [`PLANIFICATION.md`](../PLANIFICATION.md).
+# Architecture
 
 ## En une phrase
 
-Les rédacteurs écrivent en **Markdown** dans **VSCodium** ; à chaque sauvegarde, une
-chaîne **Pandoc → WeasyPrint** isolée dans **WSL** produit le **PDF** mis en page. Tout
-l'outillage est **construit par GitHub Actions** et **déployé silencieusement** sur les
-postes ; les revues, elles, vivent sur **OneDrive**.
+Les rédacteurs écrivent en Markdown dans VSCodium ; à chaque enregistrement, une chaîne
+Pandoc → WeasyPrint isolée dans WSL produit le PDF mis en page. Tout l'outillage est construit
+par GitHub Actions et déployé silencieusement sur les postes ; les revues, elles, vivent sur
+OneDrive.
 
 ## Les trois mondes
 
 | Monde | Où | Contenu | Qui le gère |
 |---|---|---|---|
-| **Dépôt outillage** (ce repo) | GitHub | pipeline, styles, extensions, scripts de déploiement, image WSL | Robin (mainteneur) |
-| **Poste rédacteur** (×10) | Windows | VSCodium + WSL `SZH-Publishing` + toolkit dans `C:\ProgramData\SZH` | auto (mise à jour silencieuse) |
-| **Revues** | OneDrive/SharePoint | uniquement le contenu (articles, métadonnées, PDF) | rédacteurs |
+| Dépôt outillage | GitHub | pipeline, maquette, extensions, scripts de déploiement, image WSL | le mainteneur |
+| Poste rédacteur (×10) | Windows | VSCodium + distro `SZH-Publishing` + toolkit dans `C:\ProgramData\SZH` | mise à jour automatique |
+| Revues | OneDrive / SharePoint | uniquement le contenu : articles, métadonnées, PDF | les rédacteurs |
 
-**Principe central : une seule source de vérité, zéro copie par revue.** Le pipeline et
-la config vivent dans le *toolkit* du poste, pas dans chaque dossier de revue. Corriger un
-style ou un bug = **une release**, pas N dossiers à retoucher.
+Le principe central est qu'il n'y a **qu'une source de vérité, et aucune copie par revue**. Le
+pipeline et la configuration vivent dans le toolkit du poste. Corriger un style ou un bug, c'est
+une release, pas N dossiers à retoucher.
 
-## Schéma général
+## Schéma
 
 ```mermaid
 flowchart TB
-    subgraph DEV["🛠️ Dépôt outillage (GitHub)"]
-        SRC["pipeline / styles / extensions<br/>windows/*.ps1 / image (rootfs WSL)"]
+    subgraph DEV["Dépôt outillage (GitHub)"]
+        SRC["pipeline · maquette · extensions<br/>windows/*.ps1 · image (rootfs WSL)"]
         TAG["git tag vX.Y.Z"]
         CI["GitHub Actions — release.yml"]
-        REL["Release GitHub<br/>manifest.json (~1 Ko)<br/>toolkit.zip · VSIX (épinglés+sha256)<br/>rootfs.tar.gz (si image/ a changé)"]
+        REL["Release<br/>manifest.json (~1 Ko)<br/>toolkit.zip · VSIX épinglés<br/>rootfs.tar.gz si image/ a changé"]
         SRC --> TAG --> CI --> REL
     end
 
-    subgraph POSTE["💻 Poste rédacteur (×10, Windows)"]
-        TASK["Tâche planifiée<br/>(connexion + 11h00)"]
+    subgraph POSTE["Poste rédacteur (Windows)"]
+        TASK["Tâche planifiée<br/>(connexion + 11 h)"]
         TOOLKIT["C:\\ProgramData\\SZH\\toolkit<br/>pipeline · windows · vscodium-user"]
-        WSL["WSL « SZH-Publishing »<br/>Debian + Pandoc + WeasyPrint (venv figé)"]
-        VSC["VSCodium + extensions maison<br/>(szh-cockpit, szh-apercu)"]
+        WSL["WSL « SZH-Publishing »<br/>Debian + Pandoc + WeasyPrint"]
+        VSC["VSCodium + szh-cockpit + szh-apercu"]
         TASK -->|"lit manifest.json,<br/>télécharge ce qui a changé"| TOOLKIT
         TASK -->|"importe le rootfs si nouveau"| WSL
         TOOLKIT --> VSC
     end
 
-    subgraph REVUE["📄 Revue (OneDrive)"]
+    subgraph REVUE["Revue (OneDrive)"]
         MD["articles/*.md + métadonnées"]
-        PDF["out/<article>/*.pdf + .html"]
+        PDF["out/&lt;article&gt;/*.pdf + .html"]
     end
 
     REL -.->|"HTTPS, sha256 vérifié"| TASK
     VSC -->|"ouvre la revue"| MD
-    MD -->|"Ctrl+S → make (dans WSL)"| WSL
+    MD -->|"Ctrl+S → make dans WSL"| WSL
     WSL -->|"Pandoc → WeasyPrint"| PDF
-    PDF -->|"aperçu auto (szh-apercu)"| VSC
+    PDF -->|"aperçu automatique"| VSC
 ```
 
-## Ce qui est « géré » (et donc mis à jour d'un coup)
+## La chaîne de compilation
 
-- **Le pipeline** (`pipeline/Makefile`, `docx-tables.py`, filtres Lua, `accent-css.py`) —
-  la logique de conversion et d'assemblage.
-- **La maquette** (`pipeline/styles/print.css`, `couleurs.css`, `templates/`, polices) —
-  l'identité visuelle (couverture, coupures, styles de blocs, tableaux).
-- **Les extensions VSCodium maison** (`szh-cockpit` : la barre « Revue SZH » ; `szh-apercu` :
-  l'aperçu PDF auto) — l'expérience « 0 technique ».
-- **La config éditeur** (`vscodium-user/` : réglages, raccourcis, snippets).
-- **Les scripts de déploiement** (`windows/`) et **l'image WSL** (`image/`).
+Un dossier de revue tient dans `ausgabe.yaml` (métadonnées du numéro) et
+`articles/<slug>/<slug>.md`. Le champ `profil:` d'`ausgabe.yaml` décide de ce que produit le
+dossier : absent ou `article`, un PDF et un HTML par article ; `book`, différé ; clé présente et
+vide, aucun document — un choix explicite, pas une panne.
 
-Le **contenu des revues n'est jamais géré ici** : il reste sur OneDrive, épuré (le rédacteur
-ne voit que ses articles, ses métadonnées et ses PDF).
+À l'import d'un Word, trois scripts Python le lisent séparément : `docx-meta.py` en tire les
+métadonnées et les blocs à consommer, `docx-tables.py` extrait les tableaux en HTML autonome,
+`docx-titres.py` reconstruit la hiérarchie des titres. Pandoc convertit ensuite le document, une
+suite de filtres Lua y réinjecte ce que les scripts ont préparé, et AnyStyle découpe la
+bibliographie.
+
+À la compilation, Pandoc produit un HTML autonome — images et feuilles de style embarquées en
+base64, donc aucun fichier lié — que WeasyPrint transforme en PDF balisé PDF/UA. La même source
+donne aussi un aperçu HTML cliquable pour la colonne de droite de l'éditeur, et, à la demande,
+un galley DOCX pour l'export OJS.
+
+## Ce qui est géré, donc mis à jour d'un coup
+
+- Le **pipeline** : `Makefile`, filtres Lua, scripts Python d'import, génération de la couleur
+  annuelle.
+- La **maquette** : `print.css`, `couleurs.css`, gabarit de couverture, polices.
+- Les **extensions** : `szh-cockpit` (la barre « Revue SZH ») et `szh-apercu`.
+- La **configuration de l'éditeur** : réglages, raccourcis, tâches, snippets.
+- Les **scripts de déploiement** et l'**image WSL**.
+
+Le contenu des revues n'est jamais géré ici.
 
 ## Comment ça se déploie
 
-1. **Fabrication (CI).** Un `git tag vX` déclenche `release.yml` : construction des VSIX
-   (épinglés + empreintes sha256), assemblage du `toolkit.zip`, publication d'un `manifest.json`.
-   Le **rootfs WSL** (lourd) n'est reconstruit **que si `image/` a changé** — une retouche de
-   style = une release de quelques Ko.
-2. **Préparation d'un poste (1× en admin).** `windows/bootstrap.ps1` active WSL, installe
-   VSCodium + SumatraPDF (winget), donne aux Utilisateurs le droit d'écrire dans
-   `C:\ProgramData\SZH` (pour les MAJ sans admin), crée les tâches planifiées.
-3. **Vie courante (sans admin).** Une tâche planifiée lit chaque jour le `manifest.json`
-   (~1 Ko) et n'applique que les différences, en silence. Retour arrière possible
-   (`update.ps1 -Version <X>`, l'archive N-1 est conservée).
+1. Un tag déclenche la CI : contrôle des contrats, construction des VSIX, assemblage du toolkit,
+   publication d'un `manifest.json`. Le rootfs n'est reconstruit que si `image/` a changé.
+2. La préparation d'un poste se fait une fois, en administrateur (`bootstrap.ps1`).
+3. Ensuite, une tâche planifiée lit chaque jour le manifest et n'applique que les différences, en
+   silence. Le retour en arrière est possible : l'archive précédente est conservée.
 
-## Le flux rédacteur (rappel)
+## Choix structurants
 
-Déposer les Word finalisés dans `articles-word` → ouvrir la revue → les Word sont convertis
-en Markdown dans `articles` → écrire → **Ctrl+S** régénère le PDF. Tout passe par la barre
-latérale **« Revue SZH »** (aucun explorateur de fichiers). Détail : [`../userdoc.md`](../userdoc.md)
-et le **BIENVENUE.md** de chaque revue.
+- **Reproductible et épinglé** : rootfs vérifié par sha256, dépendances Python figées, extensions
+  tierces épinglées avec leurs empreintes.
+- **Sans administrateur après l'installation** : seul `bootstrap.ps1` en demande.
+- **Portable à 80 %** : l'image OCI, le pipeline et la configuration ne dépendent pas de Windows ;
+  un passage à macOS ou à un poste Linux ne remplacerait que la couche WSL et les scripts
+  PowerShell.
 
-## Choix structurants à connaître
-
-- **Reproductible et épinglé** : rootfs vérifié par sha256, dépendances Python figées,
-  extensions VSCodium épinglées + empreintes vérifiées (anti-supply-chain).
-- **Sans admin après l'installation** : seul `bootstrap.ps1` requiert l'administrateur.
-- **Portabilité** : ~80 % est agnostique (image OCI, pipeline, config) ; un futur passage à
-  macOS ou à un OS natif (Silverblue) ne toucherait ni le Makefile, ni la config, ni le
-  `Containerfile` — on remplacerait seulement la couche WSL.
-
-Pour la maintenance de la couche WSL au long cours, voir
-[`MAINTENANCE-WSL.md`](MAINTENANCE-WSL.md). Pour la sécurité et le déploiement flotte, voir
-[`SECURITE.md`](SECURITE.md).
+Pour ce qu'il faut surveiller au long cours, voir [`MAINTENANCE.md`](MAINTENANCE.md). Pour le
+déploiement de la flotte, [`SECURITE.md`](SECURITE.md).

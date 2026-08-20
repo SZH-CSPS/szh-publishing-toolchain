@@ -1,16 +1,9 @@
--- szh-galley-docx.lua — nettoyage du galley Word (F7), HTML autonome -> .docx.
---
--- Le .docx d'export OJS est régénéré depuis le HTML final, pas depuis le .md : le
--- lecteur html de pandoc voit le balisage, jamais le CSS. Tout ce que print.css
--- masque à l'écran ou à l'impression réapparaît donc EN CLAIR dans le Word.
---
--- Un seul cas aujourd'hui : .szh-description, la description longue d'un tableau
--- (D104). Elle n'existe que pour être la cible d'un aria-describedby ; en Word, où
--- aucun mécanisme équivalent n'existe, elle ne serait qu'un paragraphe de prose
--- surnuméraire collé sous le tableau. On la retire.
---
--- ⚠ Rien d'autre n'est retiré : le galley doit rester le texte COMPLET de l'article.
--- N'ajouter une classe ici que si elle est, comme celle-ci, purement technique.
+-- Nettoie le galley Word de l'export OJS (HTML autonome -> .docx) : le lecteur html de
+-- pandoc voit le balisage, jamais le CSS, donc tout ce que print.css masque
+-- réapparaîtrait en clair dans le Word. Un seul cas aujourd'hui, .szh-description : la
+-- description longue d'un tableau, qui n'existe que pour être la cible d'un
+-- aria-describedby et n'aurait aucun équivalent en Word.
+-- Rien d'autre n'est retiré : le galley doit rester le texte complet de l'article.
 
 local A_RETIRER = { ['szh-description'] = true }
 

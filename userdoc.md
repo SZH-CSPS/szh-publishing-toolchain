@@ -10,7 +10,7 @@ ouvre **toute la revue** — le texte à gauche, l'aperçu à droite — et non 
 
 Windows protège le choix de l'application par défaut : il doit être **confirmé une fois
 par l'utilisateur**. Aucun script ne peut le faire proprement à sa place ; c'est un
-mécanisme de sécurité voulu par Microsoft (décision D18, `PLANIFICATION.md`).
+mécanisme de sécurité voulu par Microsoft.
 
 1. **Clic droit** sur n'importe quel fichier `.md` → **Ouvrir avec** → **Choisir une autre application**.
 2. Sélectionner **« Revue SZH »** (si absent : « Plus d'applications ↓ » et chercher dans la liste).

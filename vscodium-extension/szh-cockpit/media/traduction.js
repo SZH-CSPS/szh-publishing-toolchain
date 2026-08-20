@@ -1,8 +1,7 @@
-// Panneau « Traduction » (D113, remanié D122) — une carte par BLOC à traduire :
-// titre + sous-titre ensemble, résumé, mots-clés appariés un à un. Texte source en
-// lecture seule, traduction à saisir, un état par bloc. DOM construit sans injection
-// HTML ; les valeurs arrivent par postMessage (jamais dans le gabarit).
-// Enregistrement automatique via SZH.autoEnregistrement (media/_commun.js).
+// Panneau « Traduction » : une carte par bloc à traduire — titre et sous-titre ensemble,
+// résumé, mots-clés appariés — avec le texte source en lecture seule, la traduction à
+// saisir et un état par bloc. DOM construit sans injection HTML, valeurs reçues par
+// postMessage, enregistrement automatique par SZH.autoEnregistrement (media/_commun.js).
 (function () {
   'use strict';
   const TXT = __TXT__;
@@ -16,13 +15,12 @@
 
   let SLUG = null;
   let LANGUE_SOURCE = 'fr';
-  let STATUTS = [];          // [{ valeur, libelle }] — envoyés par l'hôte (i18n)
+  let STATUTS = [];          // [{ valeur, libelle }], envoyés par l'hôte
   let modifie = false;
   let dernierModifie = false;
 
-  // L'hôte doit savoir si le panneau porte des modifications : c'est lui qui pose
-  // la garde avant de CHANGER d'article. (Avec l'enregistrement automatique, ce
-  // drapeau retombe presque toujours à faux avant qu'on y arrive.)
+  // L'hôte doit savoir si le panneau porte des modifications : c'est lui qui pose la
+  // garde avant de changer d'article.
   function signalerModifie() {
     if (modifie === dernierModifie) { return; }
     dernierModifie = modifie;
@@ -41,8 +39,6 @@
     carte.classList.add('statut-' + select.value);
   }
 
-  // Badge « traduit / à traduire », ou « 2/4 » pour les mots-clés — recalculé à
-  // chaque frappe, c'est le retour immédiat qui dit où on en est.
   function majBadge(carte) {
     const badge = carte.querySelector('.badge');
     const editeur = editeursMotsCles[carte.dataset.cle];
@@ -58,8 +54,6 @@
     badge.classList.toggle('traduit', total > 0 && remplies === total);
   }
 
-  // ---- Boutons d'un texte source : Copier (presse-papiers de l'hôte) et DeepL
-  // (ouvre le traducteur web avec le texte, la langue source et la langue cible).
   function boutonsSource(texte, langue) {
     const zone = document.createElement('span');
     zone.className = 'actions-source';
@@ -98,7 +92,6 @@
     return [entete, bloc];
   }
 
-  // ---- Un champ texte du bloc (titre, sous-titre, résumé).
   function champTexte(carte, groupe, champ) {
     const nomSource = TXT.source.split('{0}').join(groupe.langueSource.toUpperCase());
     for (const el of blocSource(champ.libelle + ' — ' + nomSource, champ.source, groupe.langue)) {
@@ -118,11 +111,10 @@
     carte.appendChild(zone);
   }
 
-  // ---- Les mots-clés : le fragment partagé SZH.motsCles (media/_commun.js), le même
-  // que dans « Métadonnées des articles » et dans la vérification de l'import. Ici la
-  // colonne source est en lecture seule et la structure est figée : on traduit des
-  // mots-clés, on n'en invente pas (c'est le formulaire de métadonnées qui en ajoute).
-  const editeursMotsCles = {};        // cle de carte -> fragment
+  // ---- Les mots-clés : le fragment partagé SZH.motsCles (media/_commun.js). Ici la
+  // colonne source est en lecture seule et la structure figée : on traduit des mots-clés
+  // sans en inventer, le formulaire de métadonnées étant là pour en ajouter.
+  const editeursMotsCles = {};        // clé de carte -> fragment
 
   function champMotsCles(carte, groupe, champ) {
     const entete = document.createElement('div');
@@ -200,9 +192,8 @@
     return carte;
   }
 
-  // « Tout l'article » : un bouton par état. Un clic pose l'état sur TOUS les blocs
-  // puis enregistre — le geste demandé « en un clic », et rien ne se perd :
-  // l'enregistrement emporte aussi les textes en cours de saisie.
+  // « Tout l'article » : un bouton par état. Un clic pose l'état sur tous les blocs puis
+  // enregistre, ce qui emporte aussi les textes en cours de saisie.
   function rendreTout(nombreBlocs) {
     barreTout.textContent = '';
     if (nombreBlocs === 0) { barreTout.hidden = true; return; }
@@ -233,10 +224,8 @@
     barreTout.hidden = false;
   }
 
-  // « Envoyer pour traduction » (D123) : l'hôte fabrique le lien szh:// et ouvre le
-  // brouillon d'e-mail. Le bouton vit dans la barre du haut, à côté d'« Enregistrer » —
-  // c'est le geste qui CLÔT le travail sur cet article. Il ne touche à rien : pas de
-  // garde « modifié », pas d'enregistrement forcé.
+  // « Envoyer pour traduction » : l'hôte fabrique le lien szh:// et ouvre le brouillon
+  // d'e-mail. Ni garde de modification, ni enregistrement forcé.
   function poserBoutonEnvoyer() {
     if (!TXT.envoyer || document.getElementById('envoyer')) { return; }
     const bouton = document.createElement('button');
@@ -325,8 +314,8 @@
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
     if (msg.type === 'valeurs') { rendre(msg); return; }
-    // L'hôte veut changer d'article alors que le panneau porte un ● : il lui faut
-    // ce que la webview contient pour pouvoir l'enregistrer avant de recharger.
+    // L'hôte veut changer d'article alors que le panneau est modifié : il lui faut ce que
+    // la webview contient pour l'enregistrer avant de recharger.
     if (msg.type === 'demande-rechargement') {
       vscodeApi.postMessage(Object.assign(collecter(false), { type: 'rechargement' }));
       return;
@@ -339,14 +328,14 @@
       etat.textContent = TXT.enregistre;
       return;
     }
-    // Clic sur UN bloc dans l'arbre alors que le panneau montre déjà cet article :
-    // pas de re-rendu (une saisie en cours serait perdue), juste le focus.
+    // Clic sur un bloc de l'arbre alors que le panneau montre déjà cet article : pas de
+    // re-rendu, qui perdrait une saisie en cours, juste le focus.
     if (msg.type === 'focus') { viser(msg.cle); return; }
     if (msg.type === 'copie') { etat.textContent = TXT.copie; return; }
     if (msg.type === 'erreur') { auto.confirme(); etat.textContent = '⚠ ' + msg.message; }
   });
 
-  // Un dépôt HORS zone prévue ne doit jamais « naviguer » la webview.
+  // Un dépôt hors d'une zone prévue ne doit jamais faire naviguer la webview.
   document.addEventListener('dragover', function (e) { e.preventDefault(); });
   document.addEventListener('drop', function (e) { e.preventDefault(); });
   vscodeApi.postMessage({ type: 'pret' });

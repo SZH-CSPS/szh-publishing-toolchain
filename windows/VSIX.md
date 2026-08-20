@@ -1,12 +1,11 @@
 # Extensions VSCodium épinglées (`vsix.lock`)
 
-On ne tire **jamais** « latest » au runtime (auto-update désactivé sur les postes) —
-mitigation directe des campagnes type GlassWorm sur Open VSX (D11, PLANIFICATION.md).
+On ne tire jamais « latest » à l'exécution, et la mise à jour automatique est désactivée
+sur les postes : c'est la parade aux campagnes de type GlassWorm sur Open VSX.
 
-Le fichier [`vsix.lock`](vsix.lock) est la source de vérité : pour chaque extension,
-`id` + `version` + `sha256` + `source` (URL Open VSX). La CI (`release.yml`) télécharge
-chaque VSIX, **vérifie l'empreinte**, et le publie en asset de release ; `update.ps1`
-l'installe ensuite sur les postes via `codium --install-extension`.
+[`vsix.lock`](vsix.lock) est la source de vérité : `id`, `version`, `sha256` et `source`
+(URL Open VSX) par extension. La CI télécharge chaque VSIX, vérifie son empreinte et le
+publie en asset de release ; `update.ps1` l'installe par `codium --install-extension`.
 
 ## Extensions retenues
 
@@ -17,24 +16,24 @@ l'installe ensuite sur les postes via `codium --install-extension`.
 | Correcteur orthographique | `streetsidesoftware.code-spell-checker` | base cSpell |
 | Dictionnaire FR | `streetsidesoftware.code-spell-checker-french` | |
 | Dictionnaire DE (Suisse) | `streetsidesoftware.code-spell-checker-swiss-german` | |
-| Tableaux markdown | `TakumiI.markdowntable` | navigation Tab, lignes/colonnes (D32) |
-| Gestes Word | `yzhang.markdown-all-in-one` | Ctrl+B/I, continuation des listes (D32) |
-| Interface DE | `MS-CEINTL.vscode-language-pack-de` | menus natifs en allemand (M4) |
+| Tableaux markdown | `TakumiI.markdowntable` | navigation Tab, lignes et colonnes |
+| Gestes Word | `yzhang.markdown-all-in-one` | Ctrl+B, Ctrl+I, continuation des listes |
+| Interface DE | `MS-CEINTL.vscode-language-pack-de` | menus natifs en allemand |
 
-Les deux extensions maison (`szh-csps.szh-apercu`, `szh-csps.szh-cockpit`) ne figurent
-**pas** ici : la CI les construit depuis `vscodium-extension/` et les ajoute au manifest.
+Les deux extensions maison (`szh-csps.szh-apercu`, `szh-csps.szh-cockpit`) ne figurent pas
+ici : la CI les construit depuis `vscodium-extension/` et les ajoute au manifest.
 
-Optionnel (langue d'interface FR figée — voir README) : `MS-CEINTL.vscode-language-pack-fr`.
+Facultatif, pour une interface en français : `MS-CEINTL.vscode-language-pack-fr`.
 
 ### Packs de langue : la version se choisit *sous* celle de l'éditeur
 
-Un pack déclare `engines.vscode: ^1.<minor>.0` et n'est installable qu'à partir de cette
-version. Le pack DE est donc pinné en **1.108.0** (compatible VSCodium 1.109 du poste de
-référence *et* toutes les versions suivantes) et non en « dernière version » (1.131.0
-serait refusée). Installer le pack ne suffit pas : `update.ps1` écrit aussi `"locale"`
-dans `%APPDATA%\VSCodium\argv.json` quand la langue d'affichage de Windows est l'allemand.
+Un pack déclare `engines.vscode: ^1.<minor>.0` et ne s'installe qu'à partir de cette
+version. Le pack allemand est donc épinglé en 1.108.0, compatible avec le VSCodium 1.109
+du poste de référence et les suivants, et non en dernière version, qui serait refusée.
+Installer le pack ne suffit pas : `update.ps1` écrit aussi `"locale"` dans
+`%APPDATA%\VSCodium\argv.json` quand Windows s'affiche en allemand.
 
-## Bumper une extension (décision explicite, jamais automatique)
+## Monter une extension de version (décision explicite, jamais automatique)
 
 1. Vérifier la page Open VSX (éditeur, âge de la version, absence de typosquat).
 2. Calculer la nouvelle empreinte :

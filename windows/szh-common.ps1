@@ -4,17 +4,11 @@
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-# ---------- Environnement hérité : ELECTRON_RUN_AS_NODE (D128) ----------
-#
-# ⚠ SANS CECI, AUCUN DE NOS SCRIPTS NE PEUT OUVRIR VSCODIUM quand il est lancé par le
-# cockpit. L'hôte d'extensions de VSCodium tourne avec ELECTRON_RUN_AS_NODE=1, et tout
-# processus qu'il engendre en hérite. Or cette variable dit à Electron « comporte-toi
-# comme Node » : `VSCodium.exe "<dossier>"` ne lit alors plus un dossier à ouvrir mais un
-# SCRIPT à exécuter, et meurt sur « Error: Cannot find module '<dossier>' », code 1, sans
-# fenêtre. Symptôme vu : l'archivage déplaçait la revue mais ne la rouvrait jamais, et un
-# lien szh:// « ne faisait rien ».
-# On nettoie donc l'environnement à l'entrée de CHAQUE script (le dot-source est le seul
-# passage obligé), avant que quoi que ce soit ne lance un exécutable.
+# ---- Environnement hérité : ELECTRON_RUN_AS_NODE ----
+# ⚠ Tout processus lancé par l'hôte d'extensions de VSCodium hérite de
+# ELECTRON_RUN_AS_NODE=1 : Electron se prend alors pour Node et `VSCodium.exe "<dossier>"`
+# cherche un script au lieu d'ouvrir le dossier, puis meurt sans fenêtre. D'où ce
+# nettoyage à l'entrée de chaque script, le dot-source étant le seul passage obligé.
 foreach ($nuisible in 'ELECTRON_RUN_AS_NODE', 'ELECTRON_NO_ATTACH_CONSOLE') {
   if (Test-Path ('Env:' + $nuisible)) {
     Remove-Item ('Env:' + $nuisible) -ErrorAction SilentlyContinue
@@ -28,13 +22,12 @@ $script:SzhLogs       = Join-Path $SzhBase 'logs'
 $script:SzhStateFile  = Join-Path $SzhBase 'state.json'
 $script:SzhConfigFile = Join-Path $SzhBase 'config.json'
 $script:SzhDistro     = 'SZH-Publishing'
-$script:SzhSupport    = 'robin.morand@szh.ch'          # contact affiché en cas de problème (D17)
+$script:SzhSupport    = 'robin.morand@szh.ch'          # contact affiché en cas de problème
 
-# ---------- Langue de l'interface (D25) ----------
-# Basée sur la langue d'AFFICHAGE de Windows (Get-UICulture). Le code à deux lettres
-# couvre toutes les variantes régionales : fr-CH/fr-FR -> fr, de-CH/de-DE -> de.
-# Tout le reste -> anglais (fallback). Forçable pour test/support : $env:SZH_LANGUE.
-# Allemand en orthographe SUISSE (ss, pas de ß).
+# ---- Langue de l'interface ----
+# Langue d'affichage de Windows réduite à deux lettres, ce qui couvre les variantes
+# régionales ; anglais pour tout le reste, $env:SZH_LANGUE force la valeur pour un test.
+# Textes allemands en orthographe suisse (ss, pas de ß).
 $script:SzhLangue = 'en'
 try {
   $langueUi = (Get-UICulture).TwoLetterISOLanguageName.ToLower()
@@ -102,8 +95,7 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.existe'   = 'Un dossier « {0} » existe déjà à cet emplacement.'
     'lanceur.nouvelle.invalide' = 'Le nom contient des caractères interdits ( < > : " / \ | ? * ).'
     'lanceur.nouvelle.erreur'   = "La création de la revue a échoué :`n{0}"
-    # Cycle de vie du numéro (D116-D119) : deux listes dans le lanceur, version du
-    # logiciel affichée et changeable, mode test signalé.
+    # Cycle de vie du numéro : listes du lanceur, version du logiciel, mode test.
     'maj.concurrente'           = 'Une mise à jour est déjà en cours dans une autre fenêtre — celle-ci se ferme.'
     'lanceur.versions.chargement' = 'Recherche des versions publiées…'
     'lanceur.versions.horsligne.deja' = "Aucune version n'est installable hors ligne sur ce poste : seule la version déjà installée est proposée."
@@ -130,7 +122,7 @@ $script:SzhTextes = @{
     'lanceur.versions.horsligne' = "Impossible de lister les versions publiées : pas de connexion, ou trop de demandes vers GitHub depuis ce réseau.`nSeules les versions installables hors ligne sont proposées."
     'lanceur.versions.vide'     = 'Aucune version disponible sur ce poste.'
     'lanceur.versions.avert'    = "Changer de version remplace la maquette, l'environnement de fabrication du PDF et les extensions de l'éditeur.`n`nFermez les fenêtres de rédaction avant de continuer, puis redémarrez l'éditeur à la fin.`n`nInstaller la version {0} ?"
-    # Archivage / désarchivage d'une revue (archive-revue.ps1, D116)
+    # Archivage / désarchivage d'une revue (archive-revue.ps1)
     'arch.titre'                = 'Archivage de la revue'
     'arch.titre.des'            = 'Désarchivage de la revue'
     'arch.attente'              = 'Attente de la fermeture de l''éditeur…'
@@ -142,7 +134,7 @@ $script:SzhTextes = @{
     'arch.err.verrou'           = "Le dossier est encore utilisé par une autre application après {0} s — rien n'a été déplacé. Fermez l'éditeur et l'aperçu PDF, puis réessayez."
     'arch.err.emplacement'      = 'Aucun emplacement connu pour la revue « {0} » — vérifiez basesRevues dans config.json.'
     'arch.err.suite'            = 'Rien n''a été déplacé : la revue est restée où elle était. En cas de doute : {0}'
-    # Double-clic sur un .md (open-md.ps1, T6.2) : messages des cas ANORMAUX seulement.
+    # Double-clic sur un .md (open-md.ps1) : messages des cas anormaux seulement.
     'openmd.vide'         = "Aucun fichier à ouvrir.`n`nCe raccourci s'utilise en double-cliquant un fichier .md."
     'openmd.introuvable'  = "Ce fichier est introuvable.`n`nIl a peut-être été déplacé ou renommé, ou OneDrive ne l'a pas encore synchronisé."
     'openmd.horsrevue'    = "Ce fichier ne fait pas partie d'une revue : l'aperçu et la régénération ne seront pas actifs.`n`nIl s'ouvre quand même, pour le lire ou le corriger."
@@ -205,7 +197,7 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.existe'   = 'Ein Ordner « {0} » existiert an diesem Ort bereits.'
     'lanceur.nouvelle.invalide' = 'Der Name enthält unzulässige Zeichen ( < > : " / \ | ? * ).'
     'lanceur.nouvelle.erreur'   = "Die Zeitschrift konnte nicht erstellt werden:`n{0}"
-    # Lebenszyklus der Ausgabe (D116-D119)
+    # Lebenszyklus der Ausgabe
     'maj.concurrente'           = 'In einem anderen Fenster läuft bereits eine Aktualisierung — dieses schliesst sich.'
     'lanceur.versions.chargement' = 'Suche nach veröffentlichten Versionen…'
     'lanceur.versions.horsligne.deja' = "Auf diesem Computer ist keine Version offline installierbar: es wird nur die bereits installierte Version angeboten."
@@ -232,7 +224,7 @@ $script:SzhTextes = @{
     'lanceur.versions.horsligne' = "Die veröffentlichten Versionen konnten nicht abgerufen werden: keine Verbindung, oder zu viele Anfragen an GitHub aus diesem Netz.`nEs werden nur die offline installierbaren Versionen angeboten."
     'lanceur.versions.vide'     = 'Keine Version auf diesem Computer verfügbar.'
     'lanceur.versions.avert'    = "Ein Versionswechsel ersetzt das Layout, die PDF-Erzeugungsumgebung und die Editor-Erweiterungen.`n`nSchliessen Sie zuerst die Redaktionsfenster und starten Sie den Editor am Ende neu.`n`nVersion {0} installieren?"
-    # Archivieren / Dearchivieren (archive-revue.ps1, D116)
+    # Archivieren / Dearchivieren (archive-revue.ps1)
     'arch.titre'                = 'Archivierung der Zeitschrift'
     'arch.titre.des'            = 'Dearchivierung der Zeitschrift'
     'arch.attente'              = 'Warten auf das Schliessen des Editors…'
@@ -244,7 +236,7 @@ $script:SzhTextes = @{
     'arch.err.verrou'           = "Der Ordner wird nach {0} s noch von einer anderen Anwendung verwendet — es wurde nichts verschoben. Schliessen Sie den Editor und die PDF-Vorschau und versuchen Sie es erneut."
     'arch.err.emplacement'      = 'Kein bekannter Ort für die Zeitschrift « {0} » — prüfen Sie basesRevues in config.json.'
     'arch.err.suite'            = 'Es wurde nichts verschoben: die Zeitschrift ist an ihrem Platz geblieben. Bei Zweifeln: {0}'
-    # Doppelklick auf eine .md-Datei (open-md.ps1, T6.2) : nur die ANORMALEN Fälle.
+    # Doppelklick auf eine .md-Datei (open-md.ps1): nur die anormalen Fälle.
     'openmd.vide'         = "Keine Datei zum Öffnen.`n`nDieser Befehl wird per Doppelklick auf eine .md-Datei verwendet."
     'openmd.introuvable'  = "Diese Datei wurde nicht gefunden.`n`nSie wurde vielleicht verschoben oder umbenannt, oder OneDrive hat sie noch nicht synchronisiert."
     'openmd.horsrevue'    = "Diese Datei gehört zu keiner Zeitschrift: Vorschau und Neuerzeugung sind nicht aktiv.`n`nSie wird trotzdem geöffnet, zum Lesen oder Korrigieren."
@@ -307,7 +299,7 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.existe'   = 'A folder named {0} already exists at this location.'
     'lanceur.nouvelle.invalide' = 'The name contains forbidden characters ( < > : " / \ | ? * ).'
     'lanceur.nouvelle.erreur'   = "Creating the journal failed:`n{0}"
-    # Issue life cycle (D116-D119)
+    # Issue life cycle
     'maj.concurrente'           = 'An update is already running in another window — this one is closing.'
     'lanceur.versions.chargement' = 'Looking for published versions…'
     'lanceur.versions.horsligne.deja' = "No version can be installed offline on this computer: only the version already installed is offered."
@@ -334,7 +326,7 @@ $script:SzhTextes = @{
     'lanceur.versions.horsligne' = "Could not list the published versions: no connection, or too many requests to GitHub from this network.`nOnly versions installable offline are offered."
     'lanceur.versions.vide'     = 'No version available on this computer.'
     'lanceur.versions.avert'    = "Switching version replaces the layout, the PDF build environment and the editor extensions.`n`nClose the writing windows first, then restart the editor when it is done.`n`nInstall version {0}?"
-    # Archiving / unarchiving a journal (archive-revue.ps1, D116)
+    # Archiving / unarchiving a journal (archive-revue.ps1)
     'arch.titre'                = 'Archiving the journal'
     'arch.titre.des'            = 'Unarchiving the journal'
     'arch.attente'              = 'Waiting for the editor to close…'
@@ -346,7 +338,7 @@ $script:SzhTextes = @{
     'arch.err.verrou'           = "The folder is still in use by another application after {0} s — nothing was moved. Close the editor and the PDF preview, then try again."
     'arch.err.emplacement'      = 'No known location for journal “{0}” — check basesRevues in config.json.'
     'arch.err.suite'            = 'Nothing was moved: the journal stayed where it was. If in doubt: {0}'
-    # Double-click on a .md file (open-md.ps1, T6.2): abnormal cases only.
+    # Double-click on a .md file (open-md.ps1): abnormal cases only.
     'openmd.vide'         = "No file to open.`n`nThis shortcut is meant to be used by double-clicking a .md file."
     'openmd.introuvable'  = "This file cannot be found.`n`nIt may have been moved or renamed, or OneDrive has not synced it yet."
     'openmd.horsrevue'    = "This file is not part of a journal: the preview and automatic rebuild will not be active.`n`nIt opens anyway, so you can read or fix it."
@@ -366,26 +358,18 @@ function T {
   return $texte
 }
 
-# ---------- Config / état ----------
+# ---- Config / état ----
 
-# Écrit du JSON en UTF-8 SANS BOM.
-#
-# POURQUOI ce détour : `Set-Content -Encoding UTF8` (PowerShell 5.1) écrit un BOM, et
-# JSON.parse() de Node le refuse — « Unexpected token  in JSON ». Or config.json et
-# l'intention d'ouverture (D123) sont écrits ICI et relus par le COCKPIT (lib/archivage.js,
-# lib/liens.js). Le BOM y rendait la lecture silencieusement vide : le mode développeur
-# retombait toujours sur son défaut, et un lien szh:// ouvrait la revue sans jamais
-# atteindre le panneau. ConvertFrom-Json, lui, tolère les deux — on peut donc écrire sans
-# BOM sans rien casser côté PowerShell.
-# (state.json reste écrit par Save-SzhState : il n'est lu que par PowerShell.)
+# JSON en UTF-8 sans BOM : `Set-Content -Encoding UTF8` en poserait un sous PowerShell 5.1,
+# que JSON.parse() de Node refuse, et le cockpit relit config.json et l'intention
+# d'ouverture. state.json, lu par PowerShell seul, passe par Save-SzhState.
 function Set-SzhJson([string]$Chemin, $Objet) {
   $json = ($Objet | ConvertTo-Json -Depth 5)
   [System.IO.File]::WriteAllText($Chemin, $json, (New-Object System.Text.UTF8Encoding($false)))
 }
 
-# Lectures TOLÉRANTES : un fichier tronqué (mise à jour interrompue) ou en cours
-# d'écriture ne doit pas faire échouer un script qui n'a rien à voir — le lanceur en
-# particulier, qui n'a pas de console pour dire ce qui s'est passé.
+# Lectures tolérantes : un fichier tronqué ou en cours d'écriture ne doit pas faire
+# échouer un script qui n'a rien à voir, le lanceur d'abord, qui n'a pas de console.
 function Get-SzhConfig {
   try {
     if (Test-Path $SzhConfigFile) { return (Get-Content $SzhConfigFile -Raw -Encoding UTF8 | ConvertFrom-Json) }
@@ -410,20 +394,11 @@ function Save-SzhState($Etat) {
   $Etat | ConvertTo-Json -Depth 5 | Set-Content -Path $SzhStateFile -Encoding UTF8
 }
 
-# ---------- Version du logiciel installée (D120) ----------
-#
-# Source primaire : le fichier VERSION du toolkit (écrit par la CI dans toolkit-X.zip).
-# Repli : state.json (écrit par update.ps1). Chaîne vide si rien n'est lisible.
-#
-# ⚠ CETTE FONCTION NE DOIT JAMAIS LEVER. Elle est appelée sur le chemin d'AFFICHAGE du
-# lanceur, qui tourne sans console (hidden.vbs) et sans try/catch autrefois : avec
-# $ErrorActionPreference = 'Stop', une exception ici ne donnait pas un message laid,
-# elle donnait un lanceur qui ne s'ouvre pas du tout, sans trace. Deux pièges réels,
-# tous deux pendant une mise à jour :
-#   - VERSION vide ou en cours de réécriture par Expand-Archive -> Get-Content -Raw
-#     renvoie $null et .Trim() lève InvokeMethodOnNull ;
-#   - state.json tronqué -> ConvertFrom-Json lève.
-# D'où le try/catch autour de chacune des deux lectures, et le repli sur ''.
+# ---- Version du logiciel installée ----
+# Le fichier VERSION du toolkit d'abord, state.json en repli, chaîne vide sinon. Ne doit
+# jamais lever : le lanceur l'appelle sans console, et une exception l'empêcherait de
+# s'ouvrir sans laisser de trace. Pendant une mise à jour, VERSION peut être vide et
+# state.json tronqué, d'où un try/catch par lecture.
 function Get-SzhVersionInstallee {
   try {
     $fichier = Join-Path $SzhToolkit 'VERSION'
@@ -442,14 +417,9 @@ function Get-SzhVersionInstallee {
   return ''
 }
 
-# Trie des versions de la PLUS RÉCENTE à la plus ancienne, par NUMÉRO.
-#
-# L'API GitHub, elle, trie par date de publication : « 2026.08.10 » y arrive après
-# « 2026.08.7 » (republication, release éditée…). Or c'est dans cette liste qu'on
-# cherche « la précédente » — un ordre faux fait installer la mauvaise version. On
-# trie donc soi-même : [version] quand les tags s'y prêtent (2026.08.10 > 2026.08.7,
-# ce qu'une comparaison de chaînes rate), repli sur l'ordre alphabétique inverse pour
-# un tag exotique (jamais d'exception).
+# Trie par numéro, la plus récente d'abord : l'API GitHub trie par date de publication,
+# et c'est dans cette liste qu'on cherche « la précédente ». [version] quand le tag s'y
+# prête (2026.08.10 > 2026.08.7), ordre alphabétique inverse sinon.
 function Sort-SzhVersions($Versions) {
   $paires = @()
   foreach ($v in $Versions) {
@@ -462,10 +432,9 @@ function Sort-SzhVersions($Versions) {
   return @(($avec + $sans) | ForEach-Object { $_.texte })
 }
 
-# Versions publiées (Releases GitHub), les plus récentes d'abord. Tableau VIDE si le
-# réseau est absent ou refuse (403 de limite de débit) — l'appelant le dit à l'écran.
-# `per_page=100` : il y a déjà des dizaines de releases, et une page manquée ferait
-# disparaître les anciennes en silence, c'est-à-dire exactement celles qu'on cherche.
+# Releases GitHub, les plus récentes d'abord ; tableau vide si le réseau manque ou refuse
+# (403 de limite de débit). `per_page=100` : une page manquée ferait disparaître en
+# silence les anciennes versions, celles-là mêmes qu'on cherche.
 function Get-SzhVersionsPubliees {
   try {
     $url = ('https://api.github.com/repos/{0}/releases?per_page=100' -f (Get-SzhRepo))
@@ -484,10 +453,8 @@ function Get-SzhVersionsPubliees {
   }
 }
 
-# Versions réellement INSTALLABLES HORS LIGNE : il faut à la fois l'archive du toolkit
-# ET le manifest de cette version en staging (update.ps1 les conserve tous deux, D10).
-# Sans le manifest, update.ps1 s'arrête à sa première action (« lecture de la version
-# disponible ») : annoncer une telle version comme disponible serait un mensonge.
+# Versions installables hors ligne : l'archive du toolkit et le manifest doivent être
+# tous deux en staging, update.ps1 s'arrêtant dès sa première étape sans le manifest.
 function Get-SzhVersionsLocales {
   $versions = @()
   Get-ChildItem (Join-Path $SzhStaging 'toolkit-*.zip') -ErrorAction SilentlyContinue |
@@ -500,34 +467,29 @@ function Get-SzhVersionsLocales {
   return (Sort-SzhVersions $versions)
 }
 
-# Une version est-elle un tag PLAUSIBLE ? Garde-fou de quoting : la valeur peut venir
-# d'un nom de fichier de staging (dossier inscriptible sans privilège), et elle part en
-# ARGUMENT de update.ps1 — un « 2026.08.0 -Verbose » y injecterait un paramètre.
+# Garde-fou de quoting : la valeur peut venir d'un nom de fichier de staging et part en
+# argument de update.ps1, où « 2026.08.0 -Verbose » injecterait un paramètre.
 function Test-SzhVersionTag([string]$Version) {
   if (-not $Version) { return $false }
   return ($Version -match '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$')
 }
 
-# ---------- Mode développeur & emplacements des revues (D119) ----------
-#
-# UN SEUL endroit décide où vivent les revues — ici. Le cockpit (extension VSCodium)
-# ne calcule aucun chemin SharePoint : il délègue l'archivage à archive-revue.ps1, qui
-# appelle Get-SzhEmplacements. Les sous-dossiers sont IDENTIQUES en test et en
-# production : seule la base change, donc un essai en mode test exerce exactement le
-# même code que la production.
+# ---- Mode développeur & emplacements des revues ----
+# Seul endroit qui décide où vivent les revues : le cockpit ne calcule aucun chemin
+# SharePoint, il délègue l'archivage à archive-revue.ps1. Sous-dossiers identiques en test
+# et en production, seule la base change, si bien qu'un essai exerce le code réel.
 $script:SzhSousDossiers = @{
   revue       = @{ encours = '52_Revue\RV02_Redaction';        archive = '52_Revue\RV99_Archives' }
   zeitschrift = @{ encours = '53_Zeitschrift\ZS02_Redaktion';  archive = '53_Zeitschrift\ZS99_Archives' }
 }
-# Bases par défaut, surchargeables par config.json (clé « basesRevues ») — c'est la
-# seule chaîne à corriger si la bibliothèque SharePoint est synchronisée ailleurs.
+# Bases par défaut, surchargeables par config.json (« basesRevues ») : seule chaîne à
+# corriger si la bibliothèque SharePoint est synchronisée ailleurs.
 $script:SzhBasesDefaut = @{
   prod = '%USERPROFILE%\SZH CSPS\Daten_Allgemein - General\2_Produkte'
   dev  = '%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING'
 }
 
-# Mode développeur : VRAI par défaut (clé absente de config.json) tant que la chaîne
-# n'est pas passée en production — mieux vaut un essai qui déplace un dossier de test.
+# Vrai par défaut, clé absente comprise : mieux vaut un essai en dossier de test.
 function Get-SzhDevMode {
   $cfg = Get-SzhConfig
   if (-not $cfg) { return $true }
@@ -545,8 +507,7 @@ function Get-SzhBaseRevues {
   return [Environment]::ExpandEnvironmentVariables($base)
 }
 
-# Les quatre emplacements du poste : « en cours » et « archives » pour chacune des deux
-# revues. Renvoie aussi les listes à plat, que le lanceur balaie pour ses deux listes.
+# Les quatre emplacements du poste ; les listes à plat sont celles que balaie le lanceur.
 function Get-SzhEmplacements {
   $base = Get-SzhBaseRevues
   $revue = @{
@@ -567,10 +528,8 @@ function Get-SzhEmplacements {
   }
 }
 
-# Mode test : on CRÉE les quatre dossiers s'ils manquent (D119). Sans ça, le mode test
-# ne serait utilisable qu'après avoir créé quatre dossiers à la main, et « Nouvelle
-# revue… » ne saurait pas où se placer. En production, jamais : cette arborescence est
-# celle de SharePoint, elle existe déjà et n'a pas à être inventée par un poste.
+# En mode test seulement, crée les quatre dossiers manquants. En production, jamais :
+# l'arborescence est celle de SharePoint, un poste n'a pas à l'inventer.
 function Initialize-SzhEmplacementsTest {
   $emp = Get-SzhEmplacements
   if (-not $emp.devMode) { return $false }
@@ -582,8 +541,7 @@ function Initialize-SzhEmplacementsTest {
   return $true
 }
 
-# Emplacement visé pour une revue : $Jeton = 'revue' | 'zeitschrift',
-# $Etat = 'encours' | 'archive'. Chaîne vide si le jeton est inconnu (l'appelant le dit).
+# $Jeton = 'revue' | 'zeitschrift', $Etat = 'encours' | 'archive' ; '' si jeton inconnu.
 function Get-SzhEmplacementRevue([string]$Jeton, [string]$Etat) {
   $emp = Get-SzhEmplacements
   if ($Jeton -eq 'zeitschrift') { return [string]$emp.zeitschrift.$Etat }
@@ -591,11 +549,10 @@ function Get-SzhEmplacementRevue([string]$Jeton, [string]$Etat) {
   return ''
 }
 
-# ---------- Lecture d'ausgabe.yaml (D116) ----------
-#
-# YAML PLAT, comme le lit déjà le Makefile (sed) : une clé par ligne. Pas de module
-# YAML (aucune dépendance ajoutée sur le poste). Guillemets et commentaire de fin de
-# ligne retirés ; première occurrence gagnante, comme analyserAusgabe côté cockpit.
+# ---- Lecture d'ausgabe.yaml ----
+# YAML plat, une clé par ligne, comme le sed du Makefile : pas de module YAML à installer
+# sur le poste. Guillemets et commentaire de fin de ligne retirés, première occurrence
+# gagnante, comme analyserAusgabe côté cockpit.
 function Get-SzhAusgabe([string]$Fichier) {
   $valeurs = @{}
   if (-not (Test-Path $Fichier)) { return $valeurs }
@@ -612,15 +569,15 @@ function Get-SzhAusgabe([string]$Fichier) {
   return $valeurs
 }
 
-# Valeurs « vraies » tolérées — miroir de VRAIS_YAML (lib/yaml.js) et de la table du
-# filtre szh-maquette.lua : un ausgabe.yaml peut avoir été écrit à la main.
+# Valeurs « vraies » tolérées, à garder alignées avec VRAIS_YAML (lib/yaml.js) et
+# szh-maquette.lua : un ausgabe.yaml peut avoir été écrit à la main.
 function Test-SzhVraiYaml($Valeur) {
   if ($null -eq $Valeur) { return $false }
   return (@('true', '1', 'oui', 'ja', 'yes', 'si') -contains ([string]$Valeur).Trim().ToLower())
 }
 
-# Jeton canonique de revue : accepte le jeton ET l'ancien nom complet (rétrocompat),
-# « zeitschrift » testé avant « revue » — même ordre que normaliserRevue / le Lua.
+# Accepte aussi l'ancien nom complet ; « zeitschrift » testé avant « revue », même ordre
+# que normaliserRevue côté cockpit.
 function Get-SzhJetonRevue($Valeur) {
   $v = ([string]$Valeur).ToLower()
   if ($v -like '*zeitschrift*') { return 'zeitschrift' }
@@ -648,7 +605,7 @@ function Get-SzhRevueEtat([string]$Dossier) {
   }
 }
 
-# ---------- Manifest (Release GitHub) ----------
+# ---- Manifest (Release GitHub) ----
 
 function Get-SzhManifestUrl([string]$Version) {
   $repo = Get-SzhRepo
@@ -656,19 +613,14 @@ function Get-SzhManifestUrl([string]$Version) {
   return "https://github.com/$repo/releases/latest/download/manifest.json"
 }
 
-# Chemin du manifest MIS EN CACHE pour une version donnée (staging).
+# Chemin du manifest mis en cache pour une version donnée (staging).
 function Get-SzhManifestCache([string]$Version) {
   return (Join-Path $SzhStaging ('manifest-{0}.json' -f $Version))
 }
 
-# Manifest d'une version : le réseau d'abord, le cache de staging ensuite.
-#
-# POURQUOI le cache : réinstaller une ancienne version (D120) doit rester possible sans
-# réseau, or c'était faux — update.ps1 commence par télécharger le manifest, donc un
-# poste hors ligne échouait à la première étape même quand l'archive du toolkit était
-# encore là. Le cache est écrit par update.ps1 à chaque passage réussi.
-# Le cache n'est consulté que pour une version EXPLICITE : « latest » n'a de sens qu'en
-# ligne, et servir un vieux « latest » de cache serait pire que d'échouer franchement.
+# Le réseau d'abord, le cache de staging ensuite, pour qu'une réinstallation reste
+# possible hors ligne. Le cache est écrit par update.ps1 à chaque passage réussi, et n'est
+# consulté que pour une version explicite : « latest » n'a de sens qu'en ligne.
 function Get-SzhManifest([string]$Version) {
   try {
     # L'asset est servi en octet-stream : Invoke-RestMethod peut rendre une chaîne brute.
@@ -688,7 +640,7 @@ function Get-SzhManifest([string]$Version) {
   }
 }
 
-# ---------- Journal ----------
+# ---- Journal ----
 
 function Write-SzhLog([string]$Message) {
   New-Item -ItemType Directory -Force -Path $SzhLogs | Out-Null
@@ -696,7 +648,7 @@ function Write-SzhLog([string]$Message) {
   Add-Content -Path (Join-Path $SzhLogs ('szh-{0}.log' -f (Get-Date -Format 'yyyy-MM'))) -Value $ligne -Encoding UTF8
 }
 
-# ---------- Téléchargement (barre de progression sobre) ----------
+# ---- Téléchargement (barre de progression) ----
 
 function Get-SzhFichier {
   param(
@@ -751,22 +703,11 @@ function Test-SzhSha256 {
   return ($h -eq $Attendu.ToLower())
 }
 
-# ---------- Estampille de version dans ausgabe.yaml (D120) ----------
-#
-# `version-toolkit` dit avec QUELLE version du logiciel le numéro a été fabriqué : c'est
-# ce qui permet, des années plus tard, de le recompiler dans les mêmes conditions. Posée
-# à la CRÉATION de la revue, elle n'est jamais réécrite ensuite (le cockpit ne la complète
-# que si elle manque, au moment d'archiver). Écriture minimale : ligne existante
-# remplacée, sinon ajoutée en fin de fichier — tout le reste est préservé, comme le fait
-# serialiserAusgabe côté cockpit. Valeur citée, même forme que les autres scalaires.
-# Écriture MINIMALE d'une clé plate : ligne existante remplacée, sinon ajoutée en fin de
-# fichier — tout le reste est préservé, comme le fait serialiserAusgabe côté cockpit.
-# `$Cite` suit la règle de formaterValeurYaml : les scalaires du formulaire sont cités,
-# mais `revue` et `lang` sont des jetons NUS (le Makefile les lit au sed, qui ne comprend
-# pas les guillemets).
-# `$Vide` autorise l'écriture d'une valeur VIDE (`title: ""`). Sans ce garde-fou
-# explicite, un appel qui perd sa valeur en route effacerait une clé sans le vouloir ;
-# avec lui, vider est un geste demandé.
+# ---- Écriture d'une clé plate dans ausgabe.yaml ----
+# Ligne existante remplacée, sinon ajoutée en fin de fichier : le reste est préservé,
+# comme serialiserAusgabe côté cockpit. `$Cite` suit formaterValeurYaml ; `revue` et
+# `lang` restent des jetons nus, le sed du Makefile ne comprenant pas les guillemets.
+# `$Vide` autorise une valeur vide, pour qu'un appel sans valeur n'efface pas une clé.
 function Set-SzhAusgabeCle([string]$Dossier, [string]$Cle, [string]$Valeur, [bool]$Cite, [bool]$Vide) {
   if ((-not $Valeur) -and (-not $Vide)) { return $false }
   $fichier = Join-Path $Dossier 'ausgabe.yaml'
@@ -779,44 +720,34 @@ function Set-SzhAusgabeCle([string]$Dossier, [string]$Cle, [string]$Valeur, [boo
     if ($lignes[$i] -match ('^' + [regex]::Escape($Cle) + ':')) { $lignes[$i] = $ligne; $trouvee = $true; break }
   }
   if (-not $trouvee) { $lignes += $ligne }
-  # Sans BOM et par remplacement atomique. Set-Content -Encoding UTF8 poserait un BOM
-  # sous PowerShell 5.1, que les lecteurs ancrés en début de ligne (le sed du Makefile,
-  # le ^title: de szh-maquette.lua) ne savent pas ignorer.
+  # Sans BOM et par remplacement atomique : les lecteurs ancrés en début de ligne (sed du
+  # Makefile, ^title: de szh-maquette.lua) ne savent pas ignorer un BOM.
   $tmp = Join-Path $Dossier '~$ausgabe.yaml'
   [System.IO.File]::WriteAllLines($tmp, $lignes, (New-Object System.Text.UTF8Encoding($false)))
   Move-Item -LiteralPath $tmp -Destination $fichier -Force
   return $true
 }
 
+# `version-toolkit` dit avec quelle version le numéro a été fabriqué, de quoi le
+# recomposer plus tard à l'identique. Posée à la création, jamais réécrite ensuite.
 function Set-SzhAusgabeVersion([string]$Dossier, [string]$Version) {
   return (Set-SzhAusgabeCle $Dossier 'version-toolkit' $Version $true $false)
 }
 
-# ---------- Envoi pour traduction (D127) ----------
-#
-# Le SENS de la traduction découle du produit, et tout le reste en découle :
-#   zeitschrift (allemand) -> à traduire vers le FRANÇAIS -> rédaction francophone
-#   revue       (français) -> à traduire vers l'ALLEMAND  -> rédaction germanophone
-# La langue de l'E-MAIL est celle de la personne qui va traduire — pas celle de
-# l'interface de l'expéditeur. C'est pourquoi ces gabarits vivent ici et non dans
-# $SzhTextes, qui suit la langue d'affichage de Windows.
+# ---- Envoi pour traduction ----
+# Le sens de la traduction découle du produit : zeitschrift part vers la rédaction
+# francophone, revue vers la germanophone. L'e-mail est rédigé dans la langue de qui
+# traduira, d'où des gabarits ici plutôt que dans $SzhTextes, qui suit Windows.
 $script:SzhMailsTraduction = @{
   zeitschrift = 'redaction@csps.ch'      # allemand -> français
   revue       = 'redaktion@szh.ch'       # français -> allemand
 }
 
-# Comment prépare-t-on le brouillon ? (D130)
-#   'mailto' (défaut)  : ouvre le client mail PAR DÉFAUT — donc le nouvel Outlook quand
-#                        il l'est. Le corps est du TEXTE BRUT : le lien szh:// y arrive
-#                        inerte (aucun client ne rend cliquable un schéma qu'il ne
-#                        connaît pas), et le corps dit donc de le copier-coller.
-#   'outlook'          : objet mail COM -> corps HTML, donc un VRAI hyperlien. Mais COM
-#                        n'existe QUE pour l'Outlook classique : le nouvel Outlook
-#                        (olk.exe) n'expose aucune automatisation, Microsoft ayant
-#                        remplacé les compléments COM par des add-ins web.
-# Il n'y a pas de troisième voie : c'est l'un ou l'autre, et c'est un choix de poste.
-# Défaut 'mailto' (D132) : le client habituel de la rédaction pèse plus lourd qu'un lien
-# cliquable, le copier-coller du lien étant un geste acceptable.
+# Deux façons de préparer le brouillon, et pas de troisième ; c'est un choix de poste.
+#   'mailto' (défaut) : client mail par défaut, corps en texte brut ; le lien szh:// y est
+#                       inerte, aucun client ne rendant cliquable un schéma inconnu.
+#   'outlook'         : objet COM, corps HTML, vrai hyperlien — mais COM n'existe que pour
+#                       l'Outlook classique, le nouvel Outlook n'expose rien.
 function Get-SzhModeMailTraduction {
   $cfg = Get-SzhConfig
   if ($cfg -and $cfg.mailTraduction) {
@@ -831,8 +762,8 @@ function Get-SzhLangueTraduction([string]$Produit) {
   return 'de'
 }
 
-# Adresse de destination, surchargeable par config.json (clé « mailsTraduction ») :
-# une adresse de rédaction peut changer sans qu'on republie le toolkit.
+# Surchargeable par config.json (« mailsTraduction ») : une adresse de rédaction peut
+# changer sans qu'on republie le toolkit.
 function Get-SzhMailTraduction([string]$Produit) {
   $cfg = Get-SzhConfig
   if ($cfg -and $cfg.mailsTraduction -and $cfg.mailsTraduction.$Produit) {
@@ -842,9 +773,8 @@ function Get-SzhMailTraduction([string]$Produit) {
   return $SzhSupport
 }
 
-# Gabarits d'e-mail par langue CIBLE. {0} = le numéro (et l'article s'il y en a un),
-# {1} = le lien szh://. Le corps HTML porte le VRAI hyperlien ; le texte brut est le
-# repli quand Outlook manque (lien sur sa propre ligne, à copier-coller).
+# Gabarits par langue cible ; {0} = le numéro (et l'article s'il y en a un), {1} = le
+# lien. Le corps HTML porte l'hyperlien, le texte brut est le repli sans Outlook.
 function Get-SzhGabaritTraduction([string]$Langue) {
   if ($Langue -eq 'fr') {
     return @{
@@ -894,18 +824,14 @@ Ohne den Link: Startmenü -> « Revues SZH », dann die Ausgabe wählen.
   }
 }
 
-# ---------- Liens profonds « szh:// » (D123) ----------
-#
-# GRAMMAIRE — miroir EXACT de vscodium-extension/szh-cockpit/lib/liens.js, qui les
-# FABRIQUE. Deux langages, une seule grammaire : à maintenir ensemble.
-#     szh://traduction/<produit>/<numero>[/<article>]
-# Un lien arrive d'un e-mail : c'est une donnée NON FIABLE. Elle ne porte donc aucun
-# chemin — seulement un produit (choix fermé), un nom de dossier et un slug, aux
-# alphabets stricts — et le dossier est cherché UNIQUEMENT dans les emplacements
-# connus du poste. Aucun chemin n'est jamais construit sur l'entrée brute.
+# ---- Liens profonds « szh:// » ----
+# Grammaire szh://traduction/<produit>/<numero>[/<article>], à garder alignée avec
+# lib/liens.js, qui fabrique les liens. Un lien vient d'un e-mail, donc d'une source non
+# fiable : il ne porte aucun chemin, et le dossier est cherché dans les seuls emplacements
+# connus du poste.
 $script:SzhLienMotif = '^szh://traduction/(revue|zeitschrift)/([A-Za-z0-9][A-Za-z0-9._-]{0,63})(?:/([a-z0-9][a-z0-9-]{0,63}))?/?$'
 
-# Analyse un lien -> { vue, produit, numero, article } ou $null si la grammaire n'est
+# Analyse un lien -> { vue, produit, numero, article }, ou $null si la grammaire n'est
 # pas respectée. Le protocole Windows peut ajouter un « / » final ou un caractère nul.
 function Get-SzhLien([string]$Lien) {
   if (-not $Lien) { return $null }
@@ -923,9 +849,8 @@ function Get-SzhLien([string]$Lien) {
   }
 }
 
-# Retrouve le DOSSIER d'un numéro : « en cours » d'abord, puis les archives, et
-# seulement là. Le nom vient du lien, mais la racine vient toujours du poste, et le
-# dossier doit vraiment être une revue (ausgabe.yaml). '' si introuvable.
+# « En cours » d'abord, puis les archives, et nulle part ailleurs : le nom vient du lien,
+# la racine du poste, et le dossier doit porter un ausgabe.yaml. '' si introuvable.
 function Find-SzhRevue([string]$Produit, [string]$Numero) {
   foreach ($etat in @('encours', 'archive')) {
     $racine = Get-SzhEmplacementRevue $Produit $etat
@@ -936,14 +861,11 @@ function Find-SzhRevue([string]$Produit, [string]$Numero) {
   return ''
 }
 
-# ---------- Intention d'ouverture, à usage unique (D123) ----------
-#
-# Le lanceur ne peut pas dire à VSCodium « ouvre tel panneau ». Il dépose donc une
-# intention que le cockpit lit à l'activation, vérifie (elle doit viser LA revue qui
-# s'ouvre), consomme et supprime — cf. consommerIntention() dans lib/liens.js.
-# ⚠ Mêmes chemin, clés et unité de temps que lib/liens.js : `pose` est en
-# MILLISECONDES depuis l'époque Unix (Date.now() côté JavaScript), péremption 5 min.
-# Hors du dossier de revue exprès : rien de technique n'entre dans une revue (D8).
+# ---- Intention d'ouverture, à usage unique ----
+# Le lanceur ne peut pas dire à VSCodium quel panneau ouvrir : il dépose une intention que
+# le cockpit lit, vérifie, consomme et supprime. Chemin, clés et unité à garder alignés
+# avec lib/liens.js : `pose` en millisecondes Unix, péremption 5 min. Posée hors du
+# dossier de revue, où rien de technique n'entre.
 $script:SzhIntentionFile = Join-Path $env:LOCALAPPDATA 'SZH\intention.json'
 
 function Set-SzhIntention([string]$Revue, [string]$Vue, [string]$Article) {
@@ -958,13 +880,10 @@ function Set-SzhIntention([string]$Revue, [string]$Vue, [string]$Article) {
   Set-SzhJson $SzhIntentionFile $intention
 }
 
-# ---------- Ouverture d'un dossier dans VSCodium (D128) ----------
-#
-# UN SEUL endroit lance l'éditeur. Deux raisons : l'environnement doit être assaini
-# (ELECTRON_RUN_AS_NODE, ci-dessus — la garde est répétée ici, un script pouvant régler
-# ses variables après le dot-source), et un échec de lancement doit se voir dans le
-# journal plutôt que de laisser croire que « rien ne se passe ».
-# Retourne $true si l'éditeur a été lancé.
+# ---- Ouverture d'un dossier dans VSCodium ----
+# Un seul endroit lance l'éditeur : l'environnement doit être assaini
+# (ELECTRON_RUN_AS_NODE ci-dessus ; la garde est répétée, un script pouvant régler ses
+# variables après le dot-source) et un échec doit se voir dans le journal.
 function Start-SzhCodium([string]$Dossier) {
   $codium = Get-VSCodiumExe
   if (-not $codium) {
@@ -981,13 +900,10 @@ function Start-SzhCodium([string]$Dossier) {
   }
 }
 
-# ---------- Raccourci « Ouvrir la revue » (D14) ----------
-#
-# Le raccourci vit DANS le dossier de revue et porte son chemin ABSOLU en argument :
-# il doit donc être réécrit à chaque déplacement du dossier (archivage, D116), sinon il
-# rouvre un chemin qui n'existe plus. Une seule implémentation, partagée par
-# new-revue.ps1 et archive-revue.ps1. Ne lève pas si VSCodium est introuvable : le
-# raccourci est un confort, pas la condition du déplacement.
+# ---- Raccourci « Ouvrir la revue » ----
+# Le raccourci vit dans le dossier de revue et porte son chemin absolu : à réécrire à
+# chaque déplacement, sinon il rouvre un chemin disparu. Ne lève pas si VSCodium manque,
+# c'est un confort et non la condition du déplacement.
 function Set-SzhRaccourciRevue([string]$Dossier) {
   $codium = Get-VSCodiumExe
   if (-not $codium) { return $false }
@@ -1002,7 +918,7 @@ function Set-SzhRaccourciRevue([string]$Dossier) {
   return $true
 }
 
-# ---------- Résolution d'exécutables ----------
+# ---- Résolution d'exécutables ----
 
 function Get-WslExe {
   $c = Get-Command wsl.exe -ErrorAction SilentlyContinue
@@ -1029,15 +945,15 @@ function Get-VSCodiumCli {
   return $null
 }
 
-# Exécute un binaire natif avec stderr redirigé SANS que ErrorActionPreference=Stop
-# ne transforme les lignes stderr en erreurs fatales (piège connu de PS 5.1).
+# Exécute un natif sans que ErrorActionPreference = 'Stop' ne fasse d'une ligne de stderr
+# une erreur fatale : piège de PowerShell 5.1.
 function Invoke-SzhNatif([scriptblock]$Bloc) {
   $ancien = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
   try { & $Bloc } finally { $ErrorActionPreference = $ancien }
 }
 
-# ---------- Petite UI terminal (sobre et rassurante) ----------
+# ---- Petite interface de terminal ----
 
 function Write-SzhTitre([string]$Texte) {
   Write-Host ''
@@ -1045,7 +961,7 @@ function Write-SzhTitre([string]$Texte) {
   Write-Host ('  ' + ('─' * $Texte.Length)) -ForegroundColor DarkCyan
 }
 
-# Bannière encadrée pour l'installateur et l'updater (titre traduit, D25).
+# Bannière encadrée de l'installation et de la mise à jour.
 function Write-SzhBanniere([string]$SousTitre) {
   $titre = (T 'app.titre')
   $larg = [Math]::Max($titre.Length, $SousTitre.Length) + 4
@@ -1085,7 +1001,7 @@ function Show-SzhErreur {
   if ($car -eq 'e' -or $car -eq 'E') {
     $sujet = (T 'mail.sujet' @($env:COMPUTERNAME))
     $corps = (T 'mail.corps' @($env:COMPUTERNAME, $Etape, $Message, $Journal))
-    if ($corps.Length -gt 1500) { $corps = $corps.Substring(0, 1500) }   # limite mailto (V5)
+    if ($corps.Length -gt 1500) { $corps = $corps.Substring(0, 1500) }   # limite de longueur d'un mailto
     $uri = ('mailto:{0}?subject={1}&body={2}' -f $SzhSupport, [Uri]::EscapeDataString($sujet), [Uri]::EscapeDataString($corps))
     Start-Process $uri
     if ($Journal -and (Test-Path $Journal)) { Start-Process explorer.exe ('/select,"' + $Journal + '"') }

@@ -1,27 +1,21 @@
--- szh-meta.lua — import (F6/WS-D). Consomme les instructions écrites par
--- docx-meta.py (chemin dans SZH_META, format « LETTRE<TAB>valeur ») et retire du
--- corps les blocs déjà partis dans <slug>.meta.yaml :
---   P<TAB>texte  paragraphe à retirer (texte normalisé, file de consommation :
---                chaque ligne ne retire QU'UNE occurrence, la première rencontrée —
---                lignes de tête « Keywords: … », « DOI: … », ligne de revue) ;
---   G<TAB>n      n paragraphes-image de TÊTE (logo licence CC) — retirés seulement
---                tant qu'on est encore dans la zone de tête (adjacents aux P retirés),
---                jamais une figure du corps ;
---   T<TAB>k      k-ième tableau de PREMIER niveau = tableau des auteurs, retiré ici.
---                docx-tables.py lit la MÊME liste et saute les mêmes indices : les
---                tableaux restants gardent une numérotation alignée (RM2) sans que
---                szh-tabelle-reference.lua ait besoin de changer — il ne voit
---                tout simplement plus les tableaux consommés.
--- DOIT tourner AVANT szh-legendes/szh-titres (un bloc consommé ne doit être ni
--- légendé ni promu). Idempotent : sans SZH_META ou fichier vide, document inchangé.
--- ⚠ Les paragraphes stylés Title/Subtitle/Author/Abstract n'ont PAS de ligne P :
--- pandoc les mappe lui-même en métadonnées (jetées au writer, D49) — ils ne sont
--- jamais des blocs du corps.
+-- Import : retire du corps les blocs déjà partis dans <slug>.meta.yaml, d'après les
+-- instructions « LETTRE<TAB>valeur » écrites par docx-meta.py dans SZH_META :
+--   P<TAB>texte  paragraphe à retirer (file de consommation : une ligne ne retire
+--                qu'une occurrence, la première rencontrée) ;
+--   G<TAB>n      n paragraphes-image de tête (logo licence CC), retirés seulement
+--                tant qu'on est dans la zone de tête, jamais une figure du corps ;
+--   T<TAB>k      k-ième tableau de premier niveau = tableau des auteurs. docx-tables.py
+--                lit la même liste et saute les mêmes indices, ce qui garde les deux
+--                numérotations alignées sans toucher à szh-tabelle-reference.lua.
+-- Doit tourner avant szh-legendes et szh-titres : un bloc consommé ne doit être ni
+-- légendé ni promu. Sans SZH_META, ou fichier vide, le document est inchangé.
+-- Les paragraphes stylés Title/Subtitle/Author/Abstract n'ont pas de ligne P : pandoc
+-- les mappe lui-même en métadonnées, ils ne sont jamais des blocs du corps.
 
 local utils = pandoc.utils
 
--- Normalisation IDENTIQUE à docx-meta.py / docx-titres.py / szh-titres.lua :
--- espaces spéciaux -> espace, tirets spéciaux -> '-', espaces compactés, rogné.
+-- Espaces et tirets spéciaux normalisés, espaces compactés. À garder identique à
+-- docx-meta.py, docx-titres.py et szh-titres.lua.
 local function normaliser(t)
   t = t:gsub('\194\160', ' '):gsub('\226\128\175', ' '):gsub('\226\128\137', ' ')
   t = t:gsub('\226\128\147', '-'):gsub('\226\128\148', '-'):gsub('\226\128\145', '-')
@@ -95,7 +89,7 @@ function Pandoc(doc)
         tete = false                      -- le vrai corps a commencé
       end
     elseif b.t == 'Header' then
-      -- l'en-tête de section du tableau des auteurs (« Autrices et auteurs ») est
+      -- L'en-tête de section du tableau des auteurs (« Autrices et auteurs ») est
       -- consigné en ligne P par docx-meta.py : apparié ici aussi sur les Header.
       local clef = normaliser(utils.stringify(b))
       if clef ~= '' and instr.p[clef] and instr.p[clef] > 0 then
@@ -110,8 +104,8 @@ function Pandoc(doc)
     if garder then sortie:insert(b) end
   end
   doc.blocks = sortie
-  -- Une ligne P sans correspondance n'est PAS une erreur (ex. ligne Keywords stylée
-  -- Abstract, déjà mappée en métadonnées par pandoc) — on le signale, sans échouer.
+  -- Une ligne P sans correspondance n'est pas une erreur (ligne Keywords stylée
+  -- Abstract, déjà mappée en métadonnées par pandoc) : on le signale sans échouer.
   local restants = 0
   for _, n in pairs(instr.p) do restants = restants + n end
   io.stderr:write(string.format(

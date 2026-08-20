@@ -1,11 +1,7 @@
-// SZH cockpit — webview « Vérification de l'import » (F6). Copie adaptée du
-// formulaire « Métadonnées des articles » (metadata-articles.js) : même gabarit
-// de carte, même modale photo, mêmes messages photo-*. En plus : badges d'état
-// par champ (« détecté » = rempli / « à compléter » = vide), compte des champs
-// vides en tête de carte, bouton « Fermer » gardé (l'hôte confirme si des
-// modifications ne sont pas enregistrées) et section « Originaux des images »
-// (dépôt drag & drop / bouton fichier -> remplacement par l'hôte, nom conservé).
-// Données par postMessage uniquement (CSP stricte, img-src data:).
+// Webview « Vérification de l'import », adaptée du formulaire « Métadonnées des
+// articles » : même gabarit de carte et même modale photo, plus un badge d'état par
+// champ, le compte des champs vides en tête de carte et une section « Originaux des
+// images » où un dépôt fait remplacer l'image par l'hôte, à nom conservé.
 (function () {
   'use strict';
   const TXT = __TXT__;
@@ -13,15 +9,11 @@
   const etat = document.getElementById('etat');
   const conteneur = document.getElementById('cartes');
   const modifies = new Set();
-  // Fragment mots-clés (SZH.motsCles) de chaque carte : c'est LUI qui porte les
-  // listes, y compris celles des langues masquées, et qui les rend déjà alignées.
   const motsClesParCarte = new WeakMap();
   let TYPES = [];
-  let LANGUE_DEFAUT = 'fr';   // langue par défaut du numéro (E3, dérivée du revue)
-  // Gardes photo (F3) — mêmes bornes que l'hôte (défense en profondeur).
+  let LANGUE_DEFAUT = 'fr';   // langue par défaut du numéro, dérivée de la revue
   const TAILLE_MAX_PHOTO = 20 * 1024 * 1024;
   const EXTENSIONS_PHOTO = ['png', 'jpg', 'jpeg', 'webp'];
-  // Gardes images (F6) — mêmes bornes que l'hôte (remplacer-image).
   const TAILLE_MAX_IMAGE = 50 * 1024 * 1024;
   const EXTENSIONS_IMAGE = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
   function marquer(carte, slug) {
@@ -31,11 +23,8 @@
     majBadges(carte);
   }
 
-  // >>> pur : listeChampsVides — sélection des champs suivis par les badges.
-  // Entrée : l'objet valeurs d'une carte (forme de collecter()/analyserMeta) et
-  // l'état de la case « + Italien ». Sortie : identifiants des champs vides
-  // (type, title.<lg>, subtitle.<lg>, resume.<lg>, doi, keywords.<lg>, auteurs).
-  // Sans DOM — extraite telle quelle par le harnais headless.
+  // Identifiants des champs vides d'une carte, d'après ses valeurs et l'état de la case
+  // « + Italien ». Fonction pure, sans DOM.
   function listeChampsVides(valeurs, avecIt) {
     const v = valeurs || {};
     const langues = avecIt ? ['fr', 'de', 'it'] : ['fr', 'de'];
@@ -60,10 +49,7 @@
     if (!unAuteur) { vides.push('auteurs'); }
     return vides;
   }
-  // <<< pur
 
-  // Badge d'état d'un champ, ancré DANS son <label> (il suit la visibilité des
-  // champs IT). Texte et classe posés par majBadges.
   function creerBadge(champId) {
     const b = document.createElement('span');
     b.className = 'badge';
@@ -71,9 +57,6 @@
     return b;
   }
 
-  // Recalcule tous les badges + le compteur de la carte à partir des VALEURS
-  // COURANTES (mêmes objets que l'enregistrement : collecter()) — l'état suit
-  // la saisie en direct, pas seulement le contenu initial du .meta.yaml.
   function majBadges(carte) {
     const vides = new Set(listeChampsVides(collecter(carte), carte.classList.contains('avec-it')));
     for (const b of carte.querySelectorAll('.badge')) {
@@ -88,8 +71,6 @@
     }
   }
 
-  // Icônes SVG inline (currentColor, ~14 px) — chemins CONSTANTS posés en DOM
-  // (createElementNS, jamais d'innerHTML), cohérents poubelle/appareil photo.
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const CHEMIN_POUBELLE = 'M10 3h3v1h-1v9l-1 1H4l-1-1V4H2V3h3V2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1zM9 2H6v1h3V2zM4 13h7V4H4v9zm2-8H5v7h1V5zm1 0h1v7H7V5zm2 0h1v7H9V5z';
   const CHEMIN_CAMERA = 'M6.2 2a1 1 0 0 0-.9.55L4.6 4H2.5A1.5 1.5 0 0 0 1 5.5v7A1.5 1.5 0 0 0 2.5 14h11a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 13.5 4h-2.1l-.7-1.45a1 1 0 0 0-.9-.55H6.2zM8 6a3.25 3.25 0 1 0 0 6.5 3.25 3.25 0 0 0 0-6.5zm0 1.5a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5z';
@@ -122,8 +103,6 @@
     parent.appendChild(i);
   }
 
-  // Bouton 📷 : l'état « photo présente » vient du dataset de la rangée (posé par
-  // la modale, jamais saisi au clavier) ; le title nomme la version choisie.
   function majBoutonPhoto(rangee, bouton) {
     const b = bouton || rangee.querySelector('button.photo');
     if (!b) { return; }
@@ -132,8 +111,6 @@
     b.title = photo !== '' ? TXT.photoPresente.split('{0}').join(photo) : TXT.photoBouton;
   }
 
-  // Message inline sous une rangée d'auteur (ex. « prénom et nom d'abord ») —
-  // éphémère, jamais de modale pour une simple garde de saisie.
   function noteRangee(rangee, texte) {
     let note = rangee.nextElementSibling;
     if (!note || !note.classList || !note.classList.contains('note-auteur')) {
@@ -149,8 +126,6 @@
   function ligneAuteur(carte, slug, zone, auteur) {
     const rangee = document.createElement('div');
     rangee.className = 'auteur';
-    // `photo` (D92) : porté par la rangée (dataset), posé/retiré par la modale
-    // photo uniquement — il part avec collecter() comme les autres champs.
     rangee.dataset.photo = (auteur && auteur.photo) || '';
     for (const [cle, indice] of [['prenom', TXT.aPrenom], ['nom', TXT.aNom], ['fonction', TXT.aFonction], ['affiliation', TXT.aAffiliation], ['orcid', TXT.aOrcid], ['email', TXT.aEmail]]) {
       const i = document.createElement('input');
@@ -179,8 +154,8 @@
     zone.appendChild(rangee);
   }
 
-  // ---- Modale photo (F3) — overlay HTML/CSS dans la webview, données par
-  // postMessage uniquement (aperçus = data: URIs renvoyées par l'hôte).
+  // ---- Modale photo : un voile HTML dans la webview, alimenté par postMessage, les
+  // aperçus étant des data: URI renvoyées par l'hôte.
   const VERSIONS = ['sans-fond', 'avec-fond', 'original'];   // ordre de repli
   let modale = null;   // éléments du DOM (construits une fois)
   let ctx = null;      // { carte, slug, rangee, index, base, versions, occupe }
@@ -223,7 +198,6 @@
     boite.className = 'modale';
     const titre = document.createElement('h3');
     boite.appendChild(titre);
-    // Zone de dépôt (drag & drop HTML5) + <input type=file> en secours.
     const zone = document.createElement('div');
     zone.className = 'zone-depot';
     const consigne = document.createElement('div');
@@ -256,7 +230,6 @@
       if (f) { deposerFichier(f); }
     });
     boite.appendChild(zone);
-    // Radio 3 versions — défaut : Sans fond (D92).
     const radios = document.createElement('div');
     radios.className = 'radios';
     for (const [valeur, libelle] of [['original', TXT.vOriginal], ['avec-fond', TXT.vAvecFond], ['sans-fond', TXT.vSansFond]]) {
@@ -308,8 +281,6 @@
   function ouvrirModale(carte, slug, rangee) {
     const prenom = (rangee.querySelector('input[data-cle=prenom]') || { value: '' }).value.trim();
     const nom = (rangee.querySelector('input[data-cle=nom]') || { value: '' }).value.trim();
-    // Le prénom et le nom NOMMENT le fichier (slug-auteur, D92) : sans eux, pas
-    // de modale — message inline, pas de dialogue.
     if (prenom === '' && nom === '') { noteRangee(rangee, TXT.photoNomRequis); return; }
     if (!modale) { construireModale(); }
     const index = Array.prototype.indexOf.call(carte.querySelectorAll('.auteur'), rangee);
@@ -321,8 +292,6 @@
     majApercu();
     const photo = rangee.dataset.photo || '';
     if (photo !== '') {
-      // Photo déjà posée : l'hôte renvoie les versions existantes (photo-versions,
-      // radio préselectionnée sur la version actuelle via `actuelle`).
       poserNote(TXT.chargement);
       vscodeApi.postMessage({ type: 'photo-ouvrir', slug: slug, index: index, photo: photo });
     }
@@ -359,10 +328,9 @@
     lecteur.readAsDataURL(f);
   }
 
-  // ---- Originaux des images (F6) — une rangée par image de media/, avec zone de
-  // dépôt + bouton fichier. Le REMPLACEMENT est fait par l'hôte (confirmation
-  // modale côté éditeur, nom conservé) ; ici on ne fait que lire le fichier
-  // déposé (base64) et refléter l'état de la rangée (occupée / remplacée / erreur).
+  // ---- Originaux des images : une rangée par image de media/. Le remplacement est fait
+  // par l'hôte, qui demande confirmation et conserve le nom ; ici on lit le fichier
+  // déposé et on reflète l'état de la rangée.
   function poserEtatImage(ligne, texte, estErreur) {
     const e = ligne.querySelector('.image-etat');
     if (!e) { return; }
@@ -464,8 +432,8 @@
     for (const image of images) { ligneImage(slug, zone, image); }
   }
 
-  // Rangée d'image visée par une réponse de l'hôte (slug + relatif recontrôlés —
-  // jamais de sélecteur construit sur une valeur libre).
+  // Rangée d'image visée par une réponse de l'hôte, slug et chemin relatif recontrôlés :
+  // jamais de sélecteur construit sur une valeur libre.
   function trouverLigneImage(slug, relatif) {
     for (const ligne of conteneur.querySelectorAll('.image-ligne')) {
       const carte = ligne.closest('.carte');
@@ -505,8 +473,6 @@
       optVide.value = '';
       optVide.textContent = TXT.typeAucun;
       selection.appendChild(optVide);
-      // Groupes (E2) : chaque option porte un `groupe` ; on ouvre un <optgroup>
-      // quand il change (option sans groupe -> directement dans le select).
       let cible = selection, groupeCourant = null;
       for (const t of TYPES) {
         if (t.groupe) {
@@ -526,9 +492,8 @@
       if (selection.value !== (v.type || '')) { selection.value = ''; }
       selection.addEventListener('input', function () { marquer(carte, article.slug); });
       carte.appendChild(selection);
-      // E3 : langue par défaut du numéro EN PREMIER (« Titre (DE) » pour la
-      // Zeitschrift, « Titre (FR) » pour la Revue), les autres en dessous.
-      // IT toujours construit, révélé par CSS.
+      // La langue par défaut du numéro vient en premier, les autres en dessous. L'italien
+      // est toujours construit, et révélé par le CSS.
       const ordre = ['fr', 'de', 'it'];
       const defaut = ordre.indexOf(LANGUE_DEFAUT) !== -1 ? LANGUE_DEFAUT : 'fr';
       const langues = [defaut].concat(ordre.filter(function (l) { return l !== defaut; }));
@@ -555,16 +520,14 @@
       ajouter.textContent = TXT.ajouterAuteur;
       ajouter.addEventListener('click', function () { ligneAuteur(carte, article.slug, zone, null); marquer(carte, article.slug); });
       carte.appendChild(ajouter);
-      // Section 2 (photos) : les boutons 📷 des rangées d'auteur — un rappel suffit.
       const notePhotos = document.createElement('p');
       notePhotos.className = 'photos-note';
       notePhotos.textContent = TXT.photosNote;
       carte.appendChild(notePhotos);
       champTexte(carte, carte, article.slug, 'doi', null, 'DOI', v.doi);
-      // Mots-clés : fragment PARTAGÉ SZH.motsCles (media/_commun.js) — même grille
-      // appariée que dans « Métadonnées des articles » et dans le panneau de
-      // traduction. Un badge par langue reste posé sur l'intitulé (détecté / à
-      // compléter), comme pour les autres champs de ce dialogue.
+      // Mots-clés : le fragment partagé SZH.motsCles (media/_commun.js), la même grille
+      // appariée que dans « Métadonnées des articles » et dans le panneau de traduction.
+      // Un badge par langue reste posé sur l'intitulé, comme pour les autres champs.
       const lMots = document.createElement('label');
       lMots.textContent = TXT.motsClesTitre || '';
       for (const lg of langues) {
@@ -603,7 +566,6 @@
         majBadges(carte);                          // les champs IT (dé)comptent
       });
       carte.appendChild(caseIt);
-      // Section 3 : originaux des images de articles/<slug>/media/.
       sectionImages(carte, article.slug, article.images || []);
       conteneur.appendChild(carte);
       majBadges(carte);                            // état initial : détecté / à compléter
@@ -618,12 +580,11 @@
       const langue = i.dataset.langue;
       if (cle === 'doi') { resultat.doi = i.value; }
       else if (cle === 'title' || cle === 'subtitle' || cle === 'resume') { resultat[cle][langue] = i.value; }
-      // 'keywords' ne passe plus par un <input> de la carte : il vient du fragment.
     }
     for (const rangee of carte.querySelectorAll('.auteur')) {
       const a = {};
       for (const i of rangee.querySelectorAll('input')) { a[i.dataset.cle] = i.value; }
-      a.photo = rangee.dataset.photo || '';         // posé par la modale (D92)
+      a.photo = rangee.dataset.photo || '';         // posé par la modale
       resultat.author.push(a);
     }
     const editeurMots = motsClesParCarte.get(carte);
@@ -637,7 +598,6 @@
     }
     return envoi;
   }
-  // D121 : enregistrement automatique, comme dans « Métadonnées des articles ».
   function envoyer(auto) {
     if (modifies.size === 0) { if (!auto) { etat.textContent = TXT.rien; } return; }
     vscodeApi.postMessage({ type: 'enregistrer', auto: !!auto, articles: cartesModifiees() });
@@ -650,9 +610,9 @@
     autoEnr.annuler();
     envoyer(false);
   });
-  // « Fermer » : l'hôte décide (modale « modifications non enregistrées » si
-  // besoin, patron retourArticle) — on lui passe l'état dirty ET les cartes
-  // modifiées pour qu'« Enregistrer » depuis la modale soit possible.
+  // « Fermer » : l'hôte décide, et demande confirmation si des modifications ne sont pas
+  // enregistrées. On lui passe l'état modifié et les cartes concernées, pour qu'il puisse
+  // enregistrer depuis sa propre boîte de dialogue.
   document.getElementById('fermer').addEventListener('click', function () {
     vscodeApi.postMessage({ type: 'fermer', modifie: modifies.size > 0, articles: cartesModifiees() });
   });
@@ -661,8 +621,8 @@
     if (msg.type === 'valeurs') { TYPES = msg.types || []; LANGUE_DEFAUT = msg.langue || 'fr'; rendre(msg.articles || []); }
     if (msg.type === 'enregistre') {
       autoEnr.confirme();
-      // Ce dialogue n'a pas d'état « modifié » côté hôte : c'est « Fermer » qui le
-      // lui envoie (msg.fermer). On se contente donc de retirer les ●.
+      // L'hôte ne suit pas l'état « modifié » de ce dialogue, c'est « Fermer » qui le lui
+      // envoie : on se contente ici de retirer les marques.
       if (msg.auto) {
         modifies.clear();
         for (const c of conteneur.querySelectorAll('.carte.modifie')) { c.classList.remove('modifie'); }
@@ -670,8 +630,6 @@
       etat.textContent = TXT.enregistre.split('{0}').join(msg.n);
     }
     if (msg.type === 'erreur') { autoEnr.confirme(); etat.textContent = '⚠ ' + msg.message; }
-    // Réponses de la modale photo : recontrôlées contre le contexte courant —
-    // une réponse tardive (modale refermée, autre rangée) est simplement ignorée.
     if (msg.type === 'photo-versions') {
       if (!ctx || msg.slug !== ctx.slug || msg.index !== ctx.index) { return; }
       ctx.occupe = false;
@@ -701,8 +659,8 @@
       poserNote(msg.message || '?', true);
       majApercu();
     }
-    // Réponses du remplacement d'image : la rangée est retrouvée par slug +
-    // chemin relatif (une réponse pour une rangée disparue est ignorée).
+    // La rangée visée est retrouvée par slug et chemin relatif ; une réponse pour une
+    // rangée disparue est ignorée.
     if (msg.type === 'image-remplacee' || msg.type === 'image-erreur' || msg.type === 'image-annulee') {
       const ligne = trouverLigneImage(String(msg.slug || ''), String(msg.relatif || ''));
       if (!ligne) { return; }
@@ -718,7 +676,6 @@
       }
     }
   });
-  // Un dépôt HORS d'une zone prévue ne doit jamais « naviguer » la webview.
   document.addEventListener('dragover', function (e) { e.preventDefault(); });
   document.addEventListener('drop', function (e) { e.preventDefault(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && ctx) { fermerModale(); } });

@@ -1,47 +1,31 @@
 #!/usr/bin/env python3
-# docx-meta.py — pré-pass d'import (F6/WS-D) : extraction des MÉTADONNÉES d'un .docx
-# AVANT pandoc, calibrée sur le corpus réel des deux revues (tmp/docx-dev, 64 fichiers).
+# docx-meta.py — pré-pass d'import : extrait les métadonnées d'un .docx avant pandoc.
 #
 #   python3 docx-meta.py <fichier.docx> <slug> <dossier-article>
 #
-# Produit :
-#   (a) <dossier-article>/<slug>.meta.yaml — SEULEMENT s'il n'existe pas déjà
-#       (fichier « form-owned » par le cockpit, D49/D51/D92 : on ne l'écrase jamais) ;
-#   (b) $SZH_META (si posé) — fichier d'instructions pour les AUTRES maillons de la
-#       chaîne d'import, format « LETTRE<TAB>valeur », une instruction par ligne :
-#         Y<TAB>jeton   type d'article détecté (article|editorial|documentation)
-#         L<TAB>fr|de   langue du document
-#         P<TAB>texte   paragraphe CONSOMMÉ à retirer du corps (texte normalisé) —
-#                       uniquement les paragraphes que pandoc NE mange pas déjà :
-#                       les styles Title/Subtitle/Author/Abstract partent d'eux-mêmes
-#                       dans les métadonnées pandoc (jetées, .md sans frontmatter D49)
-#         G<TAB>n       n paragraphes-image de TÊTE à retirer (logo licence CC)
-#         T<TAB>k       k-ième tableau de PREMIER niveau consommé (tableau des
-#                       auteurs) — lu par docx-tables.py (saut + renumérotation) ET
-#                       par szh-meta.lua (retrait du bloc Table) : la symétrie RM2
-#                       tient parce que les DEUX côtés lisent la MÊME liste
-#         B<TAB>texte   entrée de bibliographie (style Literaturverzeichnis) à
-#                       retirer par szh-biblio.lua, qui les écrit dans $SZH_REFS
-#         F<TAB>texte   légende de FIGURE détectée par STYLE (Abbildung Beschriftung…)
-#                       voisine d'une image — candidate pour szh-legendes.lua
-#   (c) une ligne JSON de stats sur stdout (champs détectés, sources, avertissements)
-#       que import-docx.sh loggue.
+# Produit <dossier-article>/<slug>.meta.yaml — seulement s'il n'existe pas déjà, ce fichier
+# appartenant au formulaire du cockpit — une ligne JSON de stats sur stdout, et, si la
+# variable $SZH_META est posée, un fichier d'instructions pour les autres maillons de la
+# chaîne d'import, une par ligne, « LETTRE<TAB>valeur » :
+#   Y  type d'article détecté (article|editorial|documentation)
+#   L  langue du document
+#   P  paragraphe consommé à retirer du corps, et seulement ceux que pandoc ne mange pas
+#      déjà (les styles Title/Subtitle/Author/Abstract partent d'eux-mêmes)
+#   G  nombre de paragraphes-image de tête à retirer (logo licence CC)
+#   T  k-ième tableau de premier niveau consommé (tableau des auteurs), lu par
+#      docx-tables.py et par szh-meta.lua : lisant la même liste, ils restent alignés
+#   B  entrée de bibliographie à retirer par szh-biblio.lua, qui l'écrit dans $SZH_REFS
+#   F  légende de figure détectée par style et voisine d'une image, pour szh-legendes.lua
 #
-# Détection PAR STYLE D'ABORD (w:styleId + nom localisé de styles.xml : Titel/Titre/
-# Title, Untertitel/Sous-titre/Subtitle, Author, Abstract, Literaturverzeichnis/
-# Bibliography…), repli heuristique sinon (gras/taille pour le titre, motif « liste de
-# noms » pour les auteurs). Patron de tête observé sur les 64 docx du corpus :
-#   Titel [Untertitel] Author Abstract(Résumé) Abstract(Zusammenfassung)
-#   « Keywords: … » « DOI: … » « Revue Suisse …/Schweizerische Zeitschrift … » [logo CC]
-# puis le corps. Tableau des auteurs en FIN de document (photo + nom/fonction/e-mail).
+# Détection par style d'abord (w:styleId et nom localisé de styles.xml), repli heuristique
+# sinon : gras et taille pour le titre, motif « liste de noms » pour les auteurs. Patron de
+# tête des deux revues : Titel [Untertitel] Author Abstract(Résumé)
+# Abstract(Zusammenfassung) « Keywords: … » « DOI: … » ligne de revue [logo CC], puis le
+# corps ; tableau des auteurs en fin de document.
 #
-# Règles d'or : NE JAMAIS PERDRE DE TEXTE (un bloc incertain reste dans le corps ;
-# on ne consomme que l'identifié sûr) ; meta.yaml existant -> pas d'écriture, mais les
-# instructions de retrait sont émises quand même (cas du réimport forcé) ; YAML écrit
-# dans l'ordre canonique du cockpit (type, doi, title, subtitle, resume, keywords,
-# author) avec les guillemets doubles échappés comme lib/yaml.js (citerFrontmatter).
-#
-# stdlib UNIQUEMENT (zipfile, xml.etree, re, json) — pas de PyYAML dans la WSL.
+# Règle d'or : ne jamais perdre de texte — un bloc incertain reste dans le corps. Le YAML
+# suit l'ordre canonique du cockpit, guillemets échappés comme dans lib/yaml.js.
+# stdlib uniquement : pas de PyYAML dans la WSL.
 
 import json
 import os
@@ -53,15 +37,15 @@ import xml.etree.ElementTree as ET
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
 
-# Jetons de type reconnus par le cockpit (lib/yaml.js TYPES_ARTICLE, D51).
+# Jetons de type reconnus par le cockpit (TYPES_ARTICLE de lib/yaml.js).
 TYPES_VALIDES = ('article', 'editorial', 'interview', 'varia', 'tribune-libre',
                  'documentation')
 LANGUES_META = ('fr', 'de', 'it')          # ordre d'écriture du YAML (cockpit)
 CHAMPS_AUTEUR = ('prenom', 'nom', 'fonction', 'affiliation', 'orcid', 'email', 'photo')
 
 # ---------------------------------------------------------------------------------
-# Texte et normalisation — le duo normaliser() Python/Lua DOIT rester identique à
-# docx-titres.py / szh-titres.lua (appariement des paragraphes dans les filtres).
+# Texte et normalisation. normaliser() doit rester identique à celle de docx-titres.py et
+# de szh-titres.lua : c'est elle qui apparie les paragraphes dans les filtres.
 
 
 def normaliser(t):
@@ -73,8 +57,8 @@ def normaliser(t):
 
 
 def texte_paragraphe(p):
-    """Texte plat d'un w:p : t -> texte, tab -> espace, br/cr -> espace (pandoc
-    stringify rend LineBreak par un espace : l'appariement Lua en dépend)."""
+    """Texte plat d'un w:p : t -> texte, tab -> espace, br et cr -> espace. Le stringify
+    de pandoc rend LineBreak par un espace, et l'appariement Lua en dépend."""
     morceaux = []
     for r in p.iter(W + 'r'):
         for e in r:
@@ -126,9 +110,9 @@ def taille_max(p):
 
 
 # ---------------------------------------------------------------------------------
-# Styles : classification par styleId ET nom localisé (styles.xml). pandoc mappe en
-# métadonnées les paragraphes dont le NOM de style est Title/Subtitle/Author/Abstract/
-# Date : ces blocs disparaissent du corps sans notre aide (aucune ligne P à émettre).
+# Styles : classification par styleId et par nom localisé (styles.xml). pandoc mappe en
+# métadonnées les paragraphes dont le nom de style est Title, Subtitle, Author, Abstract
+# ou Date : ces blocs disparaissent du corps sans notre aide, aucune ligne P à émettre.
 
 NOMS_PANDOC_META = {'title', 'subtitle', 'author', 'abstract', 'date'}
 
@@ -148,10 +132,10 @@ def charger_styles(z):
 
 
 class Classeur:
-    """Classe un styleId en famille : title, subtitle, author, abstract, biblio,
-    caption, heading, autre. id ET nom localisé sont testés (corpus : Titel|Title,
-    Titre|Title, Untertitel|Subtitle, Sous-titre|Subtitle, Literaturverzeichnis|
-    Bibliography, AbbildungBeschriftung, TabelleBeschriftung…)."""
+    """Classe un styleId en famille : title, subtitle, author, abstract, biblio, caption,
+    heading, ou rien. L'id et le nom localisé sont tous deux testés (Titel|Title,
+    Titre|Title, Untertitel|Subtitle, Literaturverzeichnis|Bibliography,
+    AbbildungBeschriftung, TabelleBeschriftung…)."""
 
     def __init__(self, styles):
         self.styles = styles
@@ -198,9 +182,9 @@ def pstyle(p):
 
 
 # ---------------------------------------------------------------------------------
-# Déclencheurs multilingues (tête de paragraphe) — la LANGUE d'un résumé vient de son
-# déclencheur ; celle des keywords vient de la langue du DOCUMENT (les deux revues
-# écrivent « Keywords: » quel que soit l'idiome).
+# Déclencheurs multilingues en tête de paragraphe. La langue d'un résumé vient de son
+# déclencheur ; celle des mots-clés vient de la langue du document, les deux revues
+# écrivant « Keywords: » quel que soit l'idiome.
 
 RE_RESUME = re.compile(
     r'^\s*(r[ée]sum[ée]|zusammenfassung|riassunto|abstract)\b\s*[:.]?\s*', re.I)
@@ -237,9 +221,9 @@ def langue_du_doi(doi):
 
 def decouper_keywords(texte, langue_doc):
     """Ligne de mots-clés -> map langue -> [mots]. Cas bilingue des deux revues :
-    « kw fr, kw fr / kw de, kw de » (UN slash espacé, virgules des deux côtés) ->
-    moitié gauche = langue du document, moitié droite = l'autre langue. Sinon tout
-    dans la langue du document, découpé sur , ; · et « / » espacé."""
+    « kw fr, kw fr / kw de, kw de » — un slash espacé, des virgules des deux côtés — donne
+    la moitié gauche à la langue du document et la droite à l'autre. Sinon tout va dans la
+    langue du document, découpé sur , ; · et « / » espacé."""
     langue_doc = langue_doc if langue_doc in LANGUES_META else 'fr'
     moities = re.split(r'\s+/\s+', texte)
     if len(moities) == 2 and ',' in moities[0] and ',' in moities[1] \
@@ -278,8 +262,8 @@ RE_ORCID = re.compile(r'\b(\d{4}-\d{4}-\d{4}-\d{3}[\dxX])\b')
 
 
 def _sans_titres_academiques(t):
-    """Retire les titres académiques en tête (« Dr. phil. Romain Lanners ») et après
-    la première virgule s'ils n'y a QUE des titres (« L. Tönnissen, lic. phil. »)."""
+    """Retire les titres académiques en tête (« Dr. phil. Romain Lanners »), et après la
+    première virgule s'il n'y a que des titres (« L. Tönnissen, lic. phil. »)."""
     t = t.replace('†', ' ').strip().strip(',;').strip()
     morceaux = t.split(',', 1)
     if len(morceaux) == 2:
@@ -294,9 +278,9 @@ def _sans_titres_academiques(t):
     return ' '.join(jetons).strip().strip(',;').strip()
 
 
-# Lignes-préfixes de RÔLE dans les cellules du tableau des auteurs (« Article rédigé
-# par », « En collaboration avec », « Entretien réalisé par »…) : elles précèdent le
-# nom sur leur propre ligne — on les saute (le schéma D51/D92 n'a pas de champ rôle).
+# Lignes-préfixes de rôle dans les cellules du tableau des auteurs (« Article rédigé
+# par », « En collaboration avec », « Entretien réalisé par »…) : elles précèdent le nom
+# sur leur propre ligne et sont sautées, le schéma d'auteur n'ayant pas de champ rôle.
 RE_ROLE = re.compile(
     r'^(article\s+r[ée]dig[ée]\s+par|en\s+collaboration\s+avec|'
     r'entretien\s+(r[ée]alis[ée]|men[ée])\s+par|propos\s+recueillis\s+par|'
@@ -306,10 +290,10 @@ RE_ROLE = re.compile(
 
 
 def _decouper_ligne_nom(t):
-    """(nom_nettoye, reste_fonction) : si la partie avant la première virgule est un
-    nom plausible, la queue (débarrassée des titres académiques de tête) amorce la
-    fonction — « Sabrina Eigenmann, MA Studienleitung MAS IF » -> (« Sabrina
-    Eigenmann », « Studienleitung MAS IF »)."""
+    """(nom_nettoye, reste_fonction) : si la partie avant la première virgule est un nom
+    plausible, la queue, débarrassée des titres académiques de tête, amorce la fonction —
+    « Sabrina Eigenmann, MA Studienleitung MAS IF » donne (« Sabrina Eigenmann »,
+    « Studienleitung MAS IF »)."""
     nettoye = _sans_titres_academiques(t)
     if nom_plausible(nettoye):
         return nettoye, ''
@@ -345,8 +329,8 @@ def nom_plausible(t):
 
 
 def decouper_prenom_nom(t):
-    """Découpe prudente : premier jeton = prénom, le reste = nom (« Anne-Françoise
-    de Chambrier », « Rachel Sermier Dessemontet »). Un seul jeton : tout dans nom."""
+    """Découpe prudente : premier jeton = prénom, le reste = nom (« Anne-Françoise de
+    Chambrier », « Rachel Sermier Dessemontet »). Un seul jeton : tout dans nom."""
     jetons = t.split()
     if len(jetons) >= 2:
         return jetons[0], ' '.join(jetons[1:])
@@ -374,9 +358,9 @@ def auteurs_depuis_byline(txt):
 # --- cellules du tableau des auteurs -----------------------------------------------
 
 def lignes_cellule(tc):
-    """Lignes de texte d'une cellule : chaque w:p ET chaque w:br découpe. Retourne
-    [(texte, sep)] où sep = 'p' (nouveau paragraphe) ou 'br' (saut de ligne interne),
-    pour joindre l'affiliation multi-lignes sans fausse virgule."""
+    """Lignes de texte d'une cellule : chaque w:p et chaque w:br découpe. Retourne
+    [(texte, sep)] où sep vaut 'p' (nouveau paragraphe) ou 'br' (saut de ligne interne),
+    pour joindre une affiliation multi-lignes sans fausse virgule."""
     lignes = []
     for enfant in tc:
         if enfant.tag != W + 'p':
@@ -402,9 +386,9 @@ def lignes_cellule(tc):
 
 
 def cellule_auteur(tc):
-    """Cellule « auteur » : [lignes de rôle sautées] puis 1ʳᵉ ligne = nom plausible
-    (titres académiques tolérés, queue « , MA Fonction » acceptée) ET (e-mail présent
-    OU >= 2 lignes). Retourne le dict auteur, ou None."""
+    """Cellule « auteur » : lignes de rôle sautées, puis 1ʳᵉ ligne = nom plausible (titres
+    académiques tolérés, queue « , MA Fonction » acceptée) et (e-mail présent ou au moins
+    2 lignes). Retourne le dict auteur, ou None."""
     lignes = lignes_cellule(tc)
     while lignes and RE_ROLE.match(lignes[0][0]):
         lignes.pop(0)                     # « Article rédigé par », « En collab. avec »…
@@ -422,8 +406,8 @@ def cellule_auteur(tc):
         m = RE_EMAIL.search(txt)
         if m and not email:
             email = m.group(1)
-            # e-mail collé en fin de ligne (« PH Luzern bruno.zobrist@phlu.ch ») :
-            # le reste de la ligne est une info à part entière.
+            # e-mail collé en fin de ligne (« PH Luzern bruno.zobrist@phlu.ch ») : le
+            # reste de la ligne est une info à part entière.
             reste = normaliser(txt.replace(m.group(1), ' '))
             if reste:
                 infos.append((reste, sep))
@@ -436,9 +420,9 @@ def cellule_auteur(tc):
     if not email and not infos:
         return None
     prenom, nom = decouper_prenom_nom(premier)
-    # fonction = 1ʳᵉ ligne d'info ; complétée par la suivante si elle reste en
-    # suspens (& / et / und / virgule) ou si la suivante commence en minuscule
-    # (« Parent d'un adolescent » + « polyhandicapé »).
+    # fonction = 1ʳᵉ ligne d'info, complétée par la suivante si elle reste en suspens
+    # (& / et / und / virgule) ou si la suivante commence en minuscule (« Parent d'un
+    # adolescent » + « polyhandicapé »).
     fonction = ''
     i = 0
     if infos:
@@ -449,7 +433,7 @@ def cellule_auteur(tc):
                 or infos[i][0][:1].islower()):
             fonction = fonction + ' ' + infos[i][0]
             i += 1
-    # affiliation = le reste, joint par ', ' entre paragraphes et ' ' après un simple
+    # affiliation = le reste, joint par ', ' entre paragraphes et par ' ' après un simple
     # saut de ligne (« Interkantonale Hochschule für / Heilpädagogik » reste entier).
     affiliation = ''
     for txt, sep in infos[i:]:
@@ -462,9 +446,9 @@ def cellule_auteur(tc):
 
 
 def analyser_table_auteurs(tbl):
-    """(est_tableau_auteurs, [auteurs], nb_photos). STRICT : toute cellule non vide
-    doit être soit une image seule (photo), soit une cellule auteur — une seule
-    cellule de prose libre (bio, contenu) et le tableau reste dans le corps."""
+    """(est_tableau_auteurs, [auteurs], nb_photos). Strict : toute cellule non vide doit
+    être soit une image seule (photo), soit une cellule auteur — une seule cellule de
+    prose libre suffit à laisser le tableau dans le corps."""
     auteurs = []
     photos = 0
     for tr in (x for x in tbl if x.tag == W + 'tr'):
@@ -505,8 +489,8 @@ def detecter_type(nom_fichier, titre, doi):
 
 
 # ---------------------------------------------------------------------------------
-# Sérialisation YAML — ordre et guillemets ALIGNÉS sur lib/yaml.js (serialiserMeta /
-# citerFrontmatter) : tout est cité "…", \ et " échappés, LF, clés vides omises.
+# Sérialisation YAML, à garder alignée sur lib/yaml.js (serialiserMeta, citerFrontmatter) :
+# tout est cité "…", \ et " échappés, fins de ligne LF, clés vides omises.
 
 def citer(v):
     return '"' + re.sub(r'([\\"])', r'\\\1', str(v)) + '"'
@@ -612,7 +596,7 @@ def principal(argv):
                 consommes_p.append(txt)
 
         if not txt:
-            # Paragraphe sans texte : logo licence CC (image seule) dans la tête.
+            # Paragraphe sans texte : logo de licence CC (image seule) dans la tête.
             if a_image(e) and (titre_parts or byline or doi):
                 logos += 1
             i += 1
@@ -664,7 +648,7 @@ def principal(argv):
         i += 1
     fin_tete = i
 
-    # ---- 1bis) Repli heuristique du titre (aucun style Title/Subtitle trouvé) ----
+    # ---- 1bis) Repli heuristique du titre, si aucun style Title/Subtitle n'est trouvé --
     if not titre_parts:
         # taille dominante du corps pour situer « nettement plus grand »
         freq = {}
@@ -700,7 +684,7 @@ def principal(argv):
                             consommes_p.append(txt2)
             break
 
-    # ---- 1ter) Repli heuristique de la byline (pas de style Author) --------------
+    # ---- 1ter) Repli heuristique de la byline, si aucun style Author --------------
     if not byline and titre_source == 'heuristique':
         for e in blocs[1:5]:
             if e.tag != W + 'p':
@@ -728,8 +712,8 @@ def principal(argv):
                 langue_source = 'premier-resume'
                 break
     if not langue:
-        # Dernier recours (docs « documentation » sans revue/DOI/résumé) : sondage
-        # de mots-outils sur les premiers paragraphes — fiable entre fr et de.
+        # Dernier recours, pour les documents sans revue, DOI ni résumé : sondage de
+        # mots-outils sur les premiers paragraphes, fiable entre fr et de.
         de_mots = (' der ', ' die ', ' das ', ' und ', ' für ', ' mit ', ' im ',
                    ' ein ', ' eine ', ' zum ', ' von ')
         fr_mots = (' le ', ' la ', ' les ', ' et ', ' pour ', ' dans ', ' des ',
@@ -774,9 +758,9 @@ def principal(argv):
         premier_tbl_consomme = idx_bloc
 
     # L'en-tête de section au-dessus du tableau consommé (« Autrices et auteurs »,
-    # « Auteur », « Zur Person »… — patron FR du corpus) partirait orphelin : on le
-    # consomme aussi. UNIQUEMENT un titre stylé, court, au lexique auteurs, collé au
-    # tableau (paragraphes vides enjambés) — szh-meta.lua apparie aussi les Header.
+    # « Zur Person »…) partirait orphelin : on le consomme aussi. Uniquement un titre
+    # stylé, court, au lexique auteurs et collé au tableau, paragraphes vides enjambés —
+    # szh-meta.lua apparie aussi les Header.
     if premier_tbl_consomme is not None:
         j = premier_tbl_consomme - 1
         while j >= 0 and blocs[j].tag == W + 'p' \
@@ -836,7 +820,7 @@ def principal(argv):
                 lignes_f.append(txt)
                 break
 
-    # ---- 7) meta.yaml (jamais d'écrasement) + $SZH_META + stats ------------------
+    # ---- 7) meta.yaml (jamais écrasé), $SZH_META et stats ------------------------
     meta = {
         'type': type_article,
         'doi': doi,
@@ -849,8 +833,8 @@ def principal(argv):
     chemin_meta_yaml = os.path.join(dossier, slug + '.meta.yaml')
     meta_ecrit = False
     if os.path.exists(chemin_meta_yaml):
-        # Réimport forcé : le formulaire du cockpit possède ce fichier (D49), on ne le
-        # réécrit pas — mais les instructions de retrait restent émises (corps propre).
+        # Réimport forcé : ce fichier appartient au formulaire du cockpit, on ne le
+        # réécrit pas ; les instructions de retrait restent émises, pour un corps propre.
         stats['avertissements'].append('meta-existant-conserve')
     else:
         contenu = serialiser_meta(meta)

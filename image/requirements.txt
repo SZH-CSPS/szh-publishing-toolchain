@@ -1,9 +1,8 @@
-# Épinglage COMPLET (transitif) de l'environnement WeasyPrint — rendu reproductible
-# sur toute la flotte (D9, PLANIFICATION.md).
-# Généré depuis l'environnement réellement déployé (2026-07-03) :
+# Épinglage transitif complet de l'environnement WeasyPrint : même rendu sur toute la
+# flotte. Régénération :
 #   wsl -d SZH-Publishing -- /opt/weasyprint/bin/pip freeze
-# Après un bump de WeasyPrint : installer la nouvelle version dans un venv propre,
-# vérifier le rendu, puis refaire un freeze ici. Tout bump est une décision explicite.
+# Monter WeasyPrint de version est une décision explicite : l'installer dans un venv
+# propre, vérifier le rendu, refaire le freeze ici.
 
 brotli==1.2.0
 cffi==2.0.0

@@ -1,33 +1,24 @@
-// SZH cockpit — socle commun des webviews (D121/D122), injecté par construireHtml
-// AVANT le script de la page. Zéro dépendance, zéro accès réseau : que du DOM.
+// Socle commun des webviews, injecté par construireHtml avant le script de la page.
+// Sans dépendance ni accès réseau : rien que du DOM.
 //
 //   SZH.autoEnregistrement(opts)  enregistrement automatique, sans voler le curseur
-//   SZH.motsCles(opts)            éditeur de mots-clés APPARIÉS, partagé par les
-//                                 trois formulaires qui touchent aux mots-clés
-//                                 (traduction, métadonnées des articles,
-//                                 vérification de l'import)
+//   SZH.motsCles(opts)            éditeur de mots-clés appariés, partagé par les trois
+//                                 formulaires qui touchent aux mots-clés
 var SZH = (function () {
   'use strict';
 
-  // ---- Enregistrement automatique (D121) --------------------------------------------
+  // ---- Enregistrement automatique ----
   //
-  // Trois déclencheurs, complémentaires :
-  //   • 3 s après la DERNIÈRE frappe (et non toutes les 3 s : on n'enregistre pas au
-  //     milieu d'un mot) ;
-  //   • dès qu'un champ perd le focus (`focusout`) ou change (`change` : menus, cases) —
-  //     c'est le « l'utilisateur clique ailleurs » ;
-  //   • quand la webview entière perd le focus ou passe en arrière-plan — dernier
-  //     rempart avant que VS Code ne détruise le DOM (ces panneaux n'ont pas
-  //     `retainContextWhenHidden`).
-  // L'hôte répond « enregistre » SANS renvoyer les valeurs quand la demande est
-  // automatique (`auto: true`) : pas de re-rendu, donc ni curseur ni sélection perdus.
+  // Trois déclencheurs : un délai après la dernière frappe, et non un enregistrement
+  // périodique, pour ne pas écrire au milieu d'un mot ; la perte de focus ou le changement
+  // d'un champ ; et la perte de focus de la webview entière ou son passage en
+  // arrière-plan, dernier rempart avant que VS Code ne détruise le DOM, ces panneaux
+  // n'ayant pas `retainContextWhenHidden`. L'hôte répond sans renvoyer les valeurs quand
+  // la demande est automatique, ce qui évite un re-rendu sous les doigts.
   //
-  // opts.estModifie()        -> booléen : y a-t-il quelque chose à écrire ?
-  // opts.enregistrer(auto)   -> poste la demande à l'hôte (auto = true ici)
-  // opts.delai               -> ms avant l'enregistrement différé (défaut 3000 ;
-  //                             0 = pas de minuteur ni de déclencheur au champ, il ne
-  //                             reste que la perte de focus de la webview — pour la
-  //                             fiche image, dont l'écriture recompile l'article)
+  // `opts.delai` à 0 supprime le minuteur et le déclencheur au champ, ne laissant que la
+  // perte de focus de la webview : c'est ce qu'il faut à la fiche image, dont l'écriture
+  // recompile l'article.
   function autoEnregistrement(opts) {
     var delai = opts.delai === undefined ? 3000 : opts.delai;
     var surChamp = delai > 0;
@@ -50,8 +41,6 @@ var SZH = (function () {
       annuler();
       minuteur = setTimeout(ecrire, delai);
     }
-    // À appeler à la réception de « enregistre » ou « erreur » : libère le verrou et
-    // rejoue la demande si l'utilisateur a continué à taper pendant l'écriture.
     function confirme() {
       enVol = false;
       if (redemander) { redemander = false; ecrire(); }
@@ -70,31 +59,24 @@ var SZH = (function () {
     return { ecrire: ecrire, programmer: programmer, confirme: confirme, annuler: annuler };
   }
 
-  // ---- Mots-clés appariés (D122) ------------------------------------------------------
+  // ---- Mots-clés appariés ----
   //
-  // « diagnostic » ↔ « Diagnose » : le lien est la POSITION dans la liste — le YAML
-  // n'a rien d'autre pour le dire. D'où cette grille : une RANGÉE par mot-clé, une
-  // colonne par langue, et l'ordre n'est pas modifiable à la souris. On n'ajoute ni
-  // ne retire un mot-clé dans une seule langue : on ajoute ou on retire une RANGÉE,
-  // donc la paire entière — l'appariement est juste par construction.
-  //
-  // Une case laissée vide s'écrit « TO BE TRANSLATED » (MARQUE) et non rien : une
-  // valeur vide disparaîtrait à la sérialisation et tout ce qui suit remonterait d'un
-  // cran. La marque tient la place, et le manque se voit dans le fichier. À l'écran
-  // elle est rendue comme du vide (placeholder) : on tape par-dessus.
+  // « diagnostic » ↔ « Diagnose » : le seul lien entre les listes est la position. D'où
+  // cette grille, une rangée par mot-clé et une colonne par langue, dont l'ordre n'est pas
+  // modifiable à la souris ; on ajoute ou on retire une rangée entière, jamais un mot dans
+  // une seule langue, et l'appariement reste juste par construction. Une case laissée vide
+  // s'écrit avec la marque plutôt que vide, sans quoi la valeur disparaîtrait à la
+  // sérialisation et tout ce qui suit remonterait d'un cran.
   //
   // opts.langues  [{ code, libelle, lecture }]  lecture:true = colonne non éditable
   // opts.listes   { fr:[…], de:[…] }            valeurs de départ
   // opts.textes   { motCle, sansEquivalent, ajouter, retirer, aide }
-  // opts.edition  true = rangées ajoutables/retirables (formulaires de métadonnées) ;
-  //               false = structure figée (panneau de traduction : on traduit, on
-  //               n'invente pas de mots-clés)
-  // opts.onChange appelé à chaque frappe et à chaque ajout/retrait de rangée
+  // opts.edition  rangées ajoutables et retirables, ou structure figée pour le panneau de
+  //               traduction, où l'on traduit sans inventer de mots-clés
+  // opts.onChange appelé à chaque frappe et à chaque ajout ou retrait de rangée
   //
-  // -> { element, collecter(), reconstruire(langues) }
-  //    collecter() renvoie { fr:[…], de:[…] } DÉJÀ ALIGNÉ : chaque langue non vide
-  //    est complétée par la marque jusqu'au nombre de rangées ; une langue dont
-  //    aucune case n'est remplie renvoie [] (rien à écrire dans la fiche).
+  // collecter() rend les listes déjà alignées : chaque langue entamée est complétée par
+  // la marque, et une langue dont aucune case n'est remplie rend une liste vide.
   var MARQUE = 'TO BE TRANSLATED';
   var styleMotsClesPose = false;
 
@@ -138,11 +120,9 @@ var SZH = (function () {
     var element = document.createElement('div');
     var langues = opts.langues || [];
     var corps = null;
-    // MODÈLE interne : { code: [mots] } pour TOUTES les langues rencontrées, y
-    // compris celles qui ne sont pas affichées (l'italien tant que « + Italien » est
-    // décoché). Sans lui, retirer une rangée décalerait la langue masquée — et le
-    // formulaire de métadonnées perdrait purement et simplement les mots-clés IT
-    // d'un article dès qu'on toucherait aux mots-clés FR/DE.
+    // Modèle interne pour toutes les langues rencontrées, y compris celles qui ne sont pas
+    // affichées : sans lui, retirer une rangée décalerait la langue masquée et le
+    // formulaire perdrait ses mots-clés italiens dès qu'on toucherait aux autres.
     var modele = {};
     (function () {
       var listes = opts.listes || {};
@@ -160,8 +140,6 @@ var SZH = (function () {
       for (var code in modele) { if (modele[code].length > n) { n = modele[code].length; } }
       return n;
     }
-    // Recopie ce qui est à l'écran dans le modèle (les langues masquées gardent leur
-    // valeur), puis égalise toutes les listes sur le nombre de rangées.
     function absorber() {
       if (corps) {
         var rangees = corps.querySelectorAll('.mc-rangee:not(.mc-entete)');
@@ -181,7 +159,6 @@ var SZH = (function () {
     }
 
     function colonnes() {
-      // n° + une colonne par langue (+ la poubelle en édition)
       var cols = ['1.6em'];
       for (var i = 0; i < langues.length; i++) { cols.push('minmax(5em, 1fr)'); }
       if (opts.edition) { cols.push('1.8em'); }
@@ -230,9 +207,8 @@ var SZH = (function () {
         retirer.textContent = '×';
         retirer.title = textes.retirer || '';
         retirer.addEventListener('click', function () {
-          // On retire la RANGÉE, donc le mot-clé dans TOUTES les langues, masquées
-          // comprises : retirer « diagnostic » sans retirer « Diagnose » décalerait
-          // tout le reste.
+          // On retire la rangée, donc le mot-clé dans toutes les langues, masquées
+          // comprises : retirer « diagnostic » sans « Diagnose » décalerait tout le reste.
           absorber();
           var i = Number(rangee.dataset.index);
           for (var code in modele) { modele[code].splice(i, 1); }
@@ -244,7 +220,6 @@ var SZH = (function () {
       corps.appendChild(rangee);
     }
 
-    // Valeurs telles quelles (vides comprises), sans alignement — toutes langues.
     function collecterBrut() {
       absorber();
       var res = {};
@@ -252,8 +227,6 @@ var SZH = (function () {
       return res;
     }
 
-    // Valeurs à ÉCRIRE : chaque langue entamée est complétée par la marque jusqu'au
-    // nombre de rangées ; une langue vierge ne produit rien.
     function collecter() {
       var brut = collecterBrut();
       var res = {};
@@ -267,10 +240,9 @@ var SZH = (function () {
       return res;
     }
 
-    // rendre() reconstruit le DOM DEPUIS le modèle, sans jamais le relire — c'est
-    // essentiel après un ajout ou un retrait de rangée : absorber() y remettrait
-    // l'ANCIEN DOM (encore à l'écran) par-dessus la modification qu'on vient de
-    // faire, et le retrait n'aurait tout simplement aucun effet.
+    // ⚠ Reconstruit le DOM depuis le modèle, sans jamais le relire : après un ajout ou un
+    // retrait de rangée, absorber() y remettrait l'ancien DOM, encore à l'écran, et le
+    // retrait resterait sans effet.
     function rendre() {
       element.textContent = '';
       if (textes.aide) {
@@ -326,8 +298,8 @@ var SZH = (function () {
       }
     }
 
-    // Changement des colonnes affichées (case « + Italien ») : là, au contraire, il
-    // FAUT relire l'écran d'abord — une frappe en cours ne doit pas être perdue.
+    // Changement des colonnes affichées : là, au contraire, il faut relire l'écran
+    // d'abord, pour ne pas perdre une frappe en cours.
     function reconstruire(nouvellesLangues) {
       absorber();
       if (nouvellesLangues) {
@@ -343,7 +315,6 @@ var SZH = (function () {
       element: element,
       collecter: collecter,
       collecterBrut: collecterBrut,
-      // Changer les colonnes affichées (case « + Italien ») sans rien perdre.
       reconstruire: function (l) { reconstruire(l); }
     };
   }

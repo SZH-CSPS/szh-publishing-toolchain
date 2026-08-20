@@ -1,10 +1,8 @@
 ﻿<#
 .SYNOPSIS
-  Lanceur « Revues SZH » (raccourci du menu Démarrer, via hidden.vbs -> pas de console).
-  Liste les revues trouvées sous les emplacements connus et ouvre la sélection dans
-  VSCodium (D14). Depuis D116, DEUX listes : « En cours » et « Archivées » (les revues
-  verrouillées portent un cadenas). Affiche la version du logiciel installée et permet
-  d'en changer (D120) ; signale le mode test (D119).
+  Lanceur du menu Démarrer (« Revues SZH », « Zeitschriften SZH »), appelé par hidden.vbs,
+  donc sans console. Liste les numéros en cours et archivés du produit, ouvre celui qu'on
+  choisit dans VSCodium, affiche et permet de changer la version installée.
 
     powershell -ExecutionPolicy Bypass -File open-revue.ps1
     powershell -ExecutionPolicy Bypass -File open-revue.ps1 -Versions   # sélecteur de version seul
@@ -13,38 +11,30 @@
 #>
 [CmdletBinding()]
 param(
-  # Lien « szh://… » (D123), passé par le gestionnaire de protocole Windows en PREMIER
-  # argument POSITIONNEL : ouvre le numéro visé et amène l'utilisateur au bon endroit,
-  # sans passer par la liste. Positionnel parce que hidden.vbs requote chacun de ses
-  # arguments, et qu'un « %1 » requoté se lie à un paramètre positionnel (mesuré).
+  # Lien « szh://… » passé par le gestionnaire de protocole Windows : ouvre directement le
+  # numéro visé. Positionnel, parce que hidden.vbs requote chacun de ses arguments et
+  # qu'un « %1 » requoté se lie à un paramètre positionnel.
   [Parameter(Position = 0)][string]$Lien,
-  # Quel produit : « revue » (défaut) ou « zeitschrift » (D124/D126). C'est ce qui
-  # distingue les deux raccourcis du menu Démarrer — « Revues SZH » et
-  # « Zeitschriften SZH ». Il n'y a plus de valeur « tout » : un lanceur qui montrait
-  # les deux produits mélangés faisait apparaître une Zeitschrift dans la liste de la
-  # Revue, et « Nouvelle revue… » n'aurait pas su quel produit créer.
+  # « revue » (défaut) ou « zeitschrift » : ce qui distingue les deux raccourcis du menu
+  # Démarrer. Pas de valeur « tout » : une liste mélangée montrerait une Zeitschrift parmi
+  # les revues, et « Nouvelle revue… » ne saurait pas quel produit créer.
   [string]$Produit = 'revue',
-  # Ouvre directement le sélecteur de version du logiciel — c'est ce que lance
-  # l'avertissement de divergence du cockpit (« Changer de version… », D120) : une
-  # seule implémentation du choix de version, atteignable des deux côtés.
+  # Ouvre directement le sélecteur de version, comme le bouton « Changer de version… » du
+  # cockpit : une seule implémentation, atteignable des deux côtés.
   [switch]$Versions
 )
 
 . "$PSScriptRoot\szh-common.ps1"
 
-# ⚠ FILET DE DERNIER RECOURS (voir le `trap` juste après). Ce script tourne sous
-# hidden.vbs : sans console, une exception terminante ($ErrorActionPreference = 'Stop')
-# ne donnait pas un message d'erreur, elle donnait un lanceur qui ne s'ouvre pas — rien
-# à l'écran, rien dans un journal.
+# ⚠ Ce script tourne sans console : une exception terminante n'y donne aucun message,
+# seulement un lanceur qui ne s'ouvre pas. D'où le filet posé juste après.
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-# Le filet, posé ici parce qu'il a besoin de System.Windows.Forms pour parler. `trap`
-# plutôt qu'un try/catch enveloppant tout le script : il attrape les erreurs
-# terminantes de la portée entière sans réindenter une ligne, donc sans risquer d'en
-# casser une. Le titre est écrit en dur — à ce stade, $titreFenetre n'existe pas encore
-# et l'i18n pourrait justement être la chose qui a échoué.
+# Posé ici parce qu'il lui faut System.Windows.Forms pour parler. `trap` plutôt qu'un
+# try/catch enveloppant : il couvre toute la portée sans réindenter une ligne. Titre en
+# dur, $titreFenetre n'existant pas encore et la traduction pouvant avoir échoué.
 trap {
   $souci = $_.Exception.Message
   try { Write-SzhLog ('open-revue ERREUR : ' + $souci) } catch { }
@@ -56,34 +46,27 @@ trap {
   exit 1
 }
 
-# Normalisation MANUELLE plutôt que [ValidateSet] (D124) : une valeur inattendue ne
-# doit pas lever d'exception terminante ($ErrorActionPreference = 'Stop' dans le
-# socle) — sans console, le lanceur mourrait sans le moindre message. Toute valeur
-# inconnue retombe sur « revue ».
+# Normalisation à la main plutôt que [ValidateSet] : une valeur inattendue ne doit pas
+# lever, le lanceur mourrait sans message. Tout sauf « zeitschrift » vaut « revue ».
 $produitFiltre = ([string]$Produit).ToLower()
 if ($produitFiltre -ne 'zeitschrift') { $produitFiltre = 'revue' }
 $titreFenetre = (T 'lanceur.titre')
 if ($produitFiltre -eq 'zeitschrift') { $titreFenetre = (T 'lanceur.titre.zs') }
 
-# ---- Icône des fenêtres (D134) ---------------------------------------------------
-#
-# Toute fenêtre du lanceur porte l'icône de SON produit — celle-là même que le raccourci
-# du menu Démarrer (windows/icone.py, posée par update.ps1). FormBorderStyle
-# 'FixedDialog' masque l'icône du bandeau de titre, mais la BARRE DES TÂCHES et Alt+Tab
-# la montrent : sans elle, le lanceur s'y annonce avec l'icône de wscript.exe, l'hôte de
-# scripts, et deux lanceurs ouverts côte à côte sont indiscernables — la confusion même
-# que les deux icônes viennent de dissiper au menu Démarrer.
+# ---- Icône des fenêtres ----
+# Chaque fenêtre porte l'icône de son produit (windows/icone.py). 'FixedDialog' masque
+# celle du bandeau de titre, mais la barre des tâches et Alt+Tab la montrent : sans elle,
+# le lanceur s'y annonce avec l'icône de wscript.exe et deux lanceurs sont indiscernables.
 $fichierIcone = Join-Path $PSScriptRoot 'szh-revue.ico'
 if ($produitFiltre -eq 'zeitschrift') { $fichierIcone = Join-Path $PSScriptRoot 'szh-zeitschrift.ico' }
 
-# Lecture en TABLEAU D'OCTETS et non par nom de fichier : Icon(String) garderait le .ico
-# du toolkit ouvert tant que la fenêtre vit, et une mise à jour concurrente échouerait à
-# le remplacer. Ne lève jamais : une icône est un confort, pas une condition d'ouverture
-# (même posture que le raccourci de dossier, D14).
+# Lecture en tableau d'octets et non par nom de fichier : Icon(String) garderait le .ico
+# ouvert tant que la fenêtre vit, et une mise à jour concurrente ne pourrait pas le
+# remplacer. Ne lève jamais, une icône n'étant pas une condition d'ouverture.
 function Set-SzhIconeFenetre($Fenetre) {
   if (-not (Test-Path $fichierIcone)) { return }
   try {
-    # La virgule force le byte[] à passer comme UN seul argument de constructeur.
+    # La virgule force le byte[] à passer comme un seul argument de constructeur.
     $flux = New-Object System.IO.MemoryStream (,[System.IO.File]::ReadAllBytes($fichierIcone))
     $Fenetre.Icon = New-Object System.Drawing.Icon $flux
   } catch {
@@ -91,19 +74,15 @@ function Set-SzhIconeFenetre($Fenetre) {
   }
 }
 
-# ---- Sélecteur de version du logiciel (D120) -------------------------------------
-#
-# Recompiler un ancien numéro « à l'identique » suppose de pouvoir réinstaller la
-# version qui l'a fabriqué. Le mécanisme existe déjà (update.ps1 -Version X, qui
-# reprend l'archive de staging quand elle est là, D10) : ce dialogue ne fait que le
-# rendre atteignable. Volontairement EXPLICITE et non silencieux — un changement de
-# version remplace le rootfs WSL et les extensions, et demande un redémarrage de
-# l'éditeur : le faire en tâche de fond passerait pour une panne.
+# ---- Sélecteur de version du logiciel ----
+# Recomposer un ancien numéro à l'identique suppose de réinstaller la version qui l'a
+# fabriqué ; `update.ps1 -Version X` sait le faire, ce dialogue le rend atteignable, et
+# explicitement : le changement remplace le rootfs WSL et les extensions, et demande un
+# redémarrage de l'éditeur.
 function Show-SzhVersions($Parent) {
   $installee = Get-SzhVersionInstallee
-  # ⚠ AUCUN appel réseau ici : la liste est remplie au Shown (voir plus bas). Le faire
-  # avant d'afficher gelait la fenêtre du lanceur jusqu'au bout du timeout — et, sur le
-  # chemin « -Versions », ne montrait rien du tout pendant ce temps (constat 3).
+  # Aucun appel réseau ici : la liste est remplie au Shown, plus bas ; le faire avant
+  # l'affichage fige la fenêtre jusqu'au bout du timeout.
   $locales = @(Get-SzhVersionsLocales)
   $disponibles = New-Object System.Collections.ArrayList
 
@@ -114,8 +93,8 @@ function Show-SzhVersions($Parent) {
   $boite.FormBorderStyle = 'FixedDialog'
   $boite.MaximizeBox = $false
   $boite.MinimizeBox = $false
-  # Atteignable sans la fenêtre principale (`-Versions`, bouton du cockpit) : cette boîte
-  # a donc son propre bouton de barre des tâches, et son propre besoin d'icône (D134).
+  # Atteignable sans la fenêtre principale : elle a son propre bouton de barre des tâches,
+  # donc son propre besoin d'icône.
   Set-SzhIconeFenetre $boite
 
   $intro = New-Object System.Windows.Forms.Label
@@ -154,9 +133,8 @@ function Show-SzhVersions($Parent) {
   $boite.Controls.Add($bFermer)
   $boite.CancelButton = $bFermer
 
-  # La liste se remplit APRÈS l'affichage : la fenêtre est là tout de suite, avec
-  # « Recherche des versions publiées… », et l'attente réseau (8 s au pire) se voit au
-  # lieu de figer l'interface.
+  # La liste se remplit après l'affichage : la fenêtre est là tout de suite, et l'attente
+  # réseau se voit au lieu de figer l'interface.
   $boite.Add_Shown({
     $boite.Refresh()
     $publiees = @(Get-SzhVersionsPubliees)
@@ -169,9 +147,8 @@ function Show-SzhVersions($Parent) {
       else { [void]$liVersions.Items.Add($v) }
     }
     if ($liVersions.Items.Count -gt 0) { $liVersions.SelectedIndex = 0 }
-    # Trois états à distinguer, et à NOMMER : liste complète, hors ligne avec un repli
-    # réel, hors ligne sans repli (seule la version installée est là — donc rien à
-    # installer). Promettre un repli inexistant était le constat 4 de la revue.
+    # Trois états à nommer : liste complète, hors ligne avec un repli réel, hors ligne
+    # sans repli (seule la version installée, donc rien à installer).
     if ($publiees.Count -gt 0) { $note.Text = '' }
     elseif ($locales.Count -gt 0) { $note.Text = (T 'lanceur.versions.horsligne') }
     else { $note.Text = (T 'lanceur.versions.horsligne.deja') }
@@ -182,9 +159,8 @@ function Show-SzhVersions($Parent) {
   $bInstaller.Add_Click({
     if ($liVersions.SelectedIndex -lt 0) { return }
     $choix = [string]$disponibles[$liVersions.SelectedIndex]
-    # Garde-fou de quoting : la valeur peut venir d'un nom de fichier de staging, et
-    # elle part en ARGUMENT de update.ps1 — « 2026.08.0 -Verbose » y injecterait un
-    # paramètre, et ce n'est pas la version demandée qui s'installerait (constat 8).
+    # Garde-fou de quoting : la valeur peut venir d'un nom de fichier de staging et part
+    # en argument de update.ps1, où « 2026.08.0 -Verbose » injecterait un paramètre.
     if (-not (Test-SzhVersionTag $choix)) {
       [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.versions.vide'), (T 'lanceur.versions.titre'))
       return
@@ -194,9 +170,8 @@ function Show-SzhVersions($Parent) {
       [System.Windows.Forms.MessageBoxButtons]::OKCancel,
       [System.Windows.Forms.MessageBoxIcon]::Warning)
     if ($reponse -ne [System.Windows.Forms.DialogResult]::OK) { return }
-    # update.ps1 sait déjà tout faire (et ne demande jamais l'administrateur, D3) :
-    # fenêtre visible, étapes nommées, manifest et archive repris de staging quand ils
-    # y sont. Chaque argument est cité — le chemin du toolkit contient des espaces.
+    # update.ps1 fait le reste, sans demander l'administrateur. Chaque argument est cité,
+    # le chemin du toolkit contenant des espaces.
     Write-SzhLog ('open-revue : installation de la version ' + $choix + ' demandee')
     Start-Process -FilePath 'powershell.exe' -ArgumentList @(
       '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
@@ -205,9 +180,8 @@ function Show-SzhVersions($Parent) {
     $boite.Close()
   })
 
-  # Sans parent (chemin « -Versions », process détaché fraîchement lancé), rien ne
-  # garantit le premier plan : une boîte qui s'ouvre DERRIÈRE VSCodium se lit comme
-  # « le bouton ne fait rien » (constat 10).
+  # Sans parent (processus détaché), rien ne garantit le premier plan, et une boîte qui
+  # s'ouvre derrière VSCodium se lit comme un bouton inerte.
   $resultat = [System.Windows.Forms.DialogResult]::Cancel
   if ($Parent) { $resultat = $boite.ShowDialog($Parent) }
   else {
@@ -218,12 +192,9 @@ function Show-SzhVersions($Parent) {
   return ($resultat -eq [System.Windows.Forms.DialogResult]::OK)
 }
 
-# Chemin « -Versions » : AVANT le test VSCodium, exprès. C'est l'outil de réparation
-# quand l'installation est abîmée — le mettre derrière la chose à réparer le rendrait
-# inatteignable, et le bouton « Changer de version… » du cockpit répondrait
-# « VSCodium introuvable » alors que l'éditeur tourne (constat 6 de la revue).
-# Journalisé à l'entrée : lancé détaché par l'extension (stdio ignoré), c'est la SEULE
-# trace qui dise que le chemin a bien été pris (constat 2).
+# Avant le test VSCodium, exprès : c'est l'outil de réparation d'une installation abîmée,
+# le mettre derrière la chose à réparer le rendrait inatteignable. Journalisé à l'entrée :
+# lancé détaché par l'extension, c'est la seule trace de son passage.
 if ($Versions) {
   Write-SzhLog 'open-revue : selecteur de versions demande'
   Show-SzhVersions $null
@@ -236,12 +207,10 @@ if (-not $codium) {
   exit 1
 }
 
-# ---- Lien « szh:// » reçu (D123) : on ouvre, on ne liste pas ----------------------
-#
-# Le lien ne désigne qu'un produit, un nom de dossier et un slug : le dossier est
-# cherché dans les emplacements du poste (Find-SzhRevue), jamais construit sur
-# l'entrée brute. Trois issues, toutes bavardes — un lien qui ne marche pas doit dire
-# pourquoi, sinon l'utilisateur croit que son poste est cassé.
+# ---- Lien « szh:// » reçu : on ouvre, on ne liste pas ----
+# Le dossier est cherché dans les emplacements du poste (Find-SzhRevue), jamais construit
+# sur l'entrée brute. Les trois issues sont bavardes : un lien qui ne marche pas doit dire
+# pourquoi.
 if ($Lien) {
   $cible = Get-SzhLien $Lien
   if (-not $cible) {
@@ -254,28 +223,21 @@ if ($Lien) {
       (T 'lien.introuvable' @($cible.numero, $cible.produit)), $titreFenetre)
     exit 1
   }
-  # L'intention dit au cockpit où atterrir ; à usage unique, périmée au bout de
-  # 5 minutes (lib/liens.js). Jamais bloquante : si elle ne peut pas s'écrire, la revue
-  # s'ouvre quand même, simplement sans aller droit au panneau.
+  # L'intention dit au cockpit où atterrir ; à usage unique, périmée au bout de 5 minutes.
+  # Jamais bloquante : sans elle, la revue s'ouvre sans aller droit au panneau.
   try { Set-SzhIntention $dossierLien $cible.vue $cible.article } catch { }
   [void](Start-SzhCodium $dossierLien)
   exit 0
 }
 
-# ---- Racines à scanner ---------------------------------------------------------
-#
-# UNE SEULE source de vérité pour ce que le lanceur LISTE : les quatre emplacements
-# « en cours »/archives (D116, mode test compris D119). Les racines historiques
-# (config.json `revuesRoots`, OneDrive\Revues) ne sont plus balayées pour la liste —
-# elles ne servent qu'à SIGNALER ce qui est resté dehors (D125). Sans ça, le lanceur
-# mélangeait l'arborescence officielle et les dossiers d'essai d'avant.
+# ---- Racines à balayer ----
+# Le lanceur ne liste que les emplacements « en cours » et « archives » ; les racines
+# héritées (config.json `revuesRoots`, OneDrive\Revues) ne servent qu'à signaler ce qui est
+# resté dehors.
 $emplacements = Get-SzhEmplacements
-# Mode test (D119) : les quatre dossiers de test sont créés s'ils manquent — sinon le
-# mode ne serait utilisable qu'après un montage manuel. En production, rien n'est créé.
+# Les quatre dossiers de test sont créés s'ils manquent ; en production, rien n'est créé.
 [void](Initialize-SzhEmplacementsTest)
-# D126 : les deux emplacements DU PRODUIT de ce lanceur, et eux seuls. Le lanceur de la
-# Revue pointe sur les dossiers Revue, celui de la Zeitschrift sur ceux de la
-# Zeitschrift — plus de mélange.
+# Les deux emplacements du produit de ce lanceur, et eux seuls.
 $encoursProduit = Get-SzhEmplacementRevue $produitFiltre 'encours'
 $archiveProduit = Get-SzhEmplacementRevue $produitFiltre 'archive'
 $racines = New-Object System.Collections.ArrayList
@@ -284,8 +246,8 @@ $racines = New-Object System.Collections.ArrayList
 $racinesArchives = @{}
 $racinesArchives[$archiveProduit.ToLower()] = $true
 
-# Racines HÉRITÉES, dédoublonnées : `revuesRoots` contient d'ordinaire déjà
-# « %OneDrive%\Revues », et le balayer deux fois n'apportait rien.
+# Racines héritées, dédoublonnées : `revuesRoots` contient d'ordinaire déjà
+# « %OneDrive%\Revues ».
 $racinesHeritees = New-Object System.Collections.ArrayList
 $vuesHeritees = @{}
 $ajouterHeritee = {
@@ -297,8 +259,8 @@ $ajouterHeritee = {
   foreach ($officielle in ($emplacements.encours + $emplacements.archives)) {
     if ($officielle.ToLower() -eq $cle) { return }
   }
-  # Un dossier hérité qui EST l'emplacement de l'autre produit n'est pas « hors
-  # arborescence » : il est juste ailleurs. On ne le compte pas.
+  # Un dossier hérité qui est l'emplacement de l'autre produit n'est pas « hors
+  # arborescence » : on ne le compte pas.
   $vuesHeritees[$cle] = $true
   [void]$racinesHeritees.Add([string]$chemin)
 }
@@ -310,9 +272,8 @@ if ($cfg -and $cfg.revuesRoots) {
 }
 if ($env:OneDrive) { & $ajouterHeritee (Join-Path $env:OneDrive 'Revues') }
 
-# Combien de revues sont restées dehors ? On les COMPTE (une vraie revue = un
-# ausgabe.yaml), on ne les liste pas : le lanceur le dit sous les listes, et le geste
-# reste à l'utilisateur — déplacer un dossier de revue derrière son dos serait pire.
+# Les revues restées dehors sont comptées (une vraie revue porte un ausgabe.yaml) et
+# signalées sous les listes ; le déplacement reste à l'utilisateur.
 $horsArborescence = 0
 $dossierHors = ''
 foreach ($racine in $racinesHeritees) {
@@ -325,11 +286,9 @@ foreach ($racine in $racinesHeritees) {
   }
 }
 
-# ---- Découverte des revues (dossier contenant ausgabe.yaml) ---------------------
-#
-# Une revue est ARCHIVÉE si son ausgabe.yaml le dit (`archived: true`, source de
-# vérité — D116) OU si elle se trouve sous une racine d'archives : un dossier déplacé
-# à la main reste classé où il est réellement.
+# ---- Découverte des revues (dossier contenant ausgabe.yaml) ----
+# Une revue est archivée si son ausgabe.yaml le dit (`archived: true`) ou si elle est sous
+# une racine d'archives : un dossier déplacé à la main reste classé là où il est.
 $revuesEnCours = New-Object System.Collections.ArrayList
 $revuesArchivees = New-Object System.Collections.ArrayList
 $vus = @{}
@@ -344,10 +303,9 @@ foreach ($racine in $racines) {
       if (-not $vus.ContainsKey($cle)) {
         $vus[$cle] = $true
         $etat = Get-SzhRevueEtat $d.FullName
-        # D124/D126 : le produit est décidé par le jeton d'ausgabe.yaml, PAS par
-        # l'emplacement. Un numéro rangé dans le dossier Zeitschrift mais qui déclare
-        # « revue: revue » n'apparaît donc pas ici — c'est voulu : c'est le fichier qui
-        # dit ce qu'est un numéro, et un décalage doit se voir plutôt que se deviner.
+        # Le produit vient du jeton d'ausgabe.yaml, pas de l'emplacement : un numéro rangé
+        # côté Zeitschrift mais déclarant « revue: revue » n'apparaît pas ici, et le
+        # décalage se voit au lieu de se deviner.
         if ($etat.jeton -ne $produitFiltre) { return }
         $entree = [pscustomobject]@{
           nom         = $d.Name
@@ -365,17 +323,16 @@ foreach ($racine in $racines) {
 $revuesEnCours = @($revuesEnCours | Sort-Object modifie -Descending)
 $revuesArchivees = @($revuesArchivees | Sort-Object nom -Descending)
 
-# G2 (D38) : plus de sortie anticipée quand aucune revue n'existe — la fenêtre
-# s'ouvre quand même pour offrir « Nouvelle revue… » (poste vierge / pilote).
+# Pas de sortie anticipée quand il n'y a aucune revue : la fenêtre s'ouvre quand même,
+# pour offrir « Nouvelle revue… » sur un poste vierge.
 
-# ---- Fenêtre de sélection --------------------------------------------------------
+# ---- Fenêtre de sélection ----
 $form = New-Object System.Windows.Forms.Form
 $form.Text = $titreFenetre
 $form.StartPosition = 'CenterScreen'
-# Hauteur ADAPTÉE à l'écran (constat 7). Le process est DPI-unaware : sur un 1366×768
-# à 125 %, il « voit » 614 px de hauteur utile, et une fenêtre de 560 px sortirait de
-# l'écran — sans recours, FixedDialog interdisant de la déplacer ou de la redimensionner.
-# On rétrécit donc les deux listes plutôt que de perdre les boutons.
+# Hauteur adaptée à l'écran. Le processus ignore le DPI : sur un 1366×768 à 125 %, il ne
+# « voit » que 614 px utiles, et FixedDialog interdit de déplacer une fenêtre trop haute.
+# On rétrécit donc les listes, pas les boutons.
 $hauteurUtile = 900
 try { $hauteurUtile = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea.Height } catch { }
 $hListe = 208
@@ -383,7 +340,7 @@ $hArchives = 130
 if ($hauteurUtile -lt 560) { $hListe = 96; $hArchives = 60 }
 elseif ($hauteurUtile -lt 660) { $hListe = 136; $hArchives = 84 }
 elseif ($hauteurUtile -lt 780) { $hListe = 170; $hArchives = 106 }
-# Positions calculées, plus aucune constante magique : label 22 px, marges 10/16 px.
+# Positions calculées plutôt que constantes : label 22 px, marges 10 et 16 px.
 $yListe = 66
 $yEtiqArchives = $yListe + $hListe + 10
 $yArchives = $yEtiqArchives + 22
@@ -405,11 +362,11 @@ $intro.Location = New-Object System.Drawing.Point(16, 14)
 $intro.AutoSize = $true
 $form.Controls.Add($intro)
 
-# Libellé d'une revue : cadenas si elle est verrouillée (D116) — le picto est la seule
-# indication possible dans une ListBox WinForms, et « Segoe UI » le rend.
+# Cadenas si la revue est verrouillée : le picto est la seule marque possible dans une
+# ListBox WinForms, et « Segoe UI » le rend.
 function Format-SzhRevue($Entree) {
   $texte = (T 'lanceur.modifie' @($Entree.nom, $Entree.modifie.ToString('dd.MM.yyyy')))
-  # U+1F512 CADENAS FERME : ConvertFromUtf32 plutot que deux demi-paires additionnees.
+  # U+1F512 cadenas ferme : ConvertFromUtf32 plutot que deux demi-paires additionnees.
   if ($Entree.verrouillee) { return ([System.Char]::ConvertFromUtf32(0x1F512) + ' ' + $texte) }
   return $texte
 }
@@ -447,15 +404,15 @@ $form.Controls.Add($listeArchives)
 $liste.Add_Click({ $listeArchives.ClearSelected() })
 $listeArchives.Add_Click({ $liste.ClearSelected() })
 
-# Version du logiciel installée + mode test (D120/D119) : deux informations qu'on veut
-# lire AVANT d'ouvrir une revue, pas après avoir constaté un rendu bizarre.
+# Version installée et mode test : à lire avant d'ouvrir une revue, pas après un rendu
+# inattendu.
 $infos = New-Object System.Windows.Forms.Label
 $vInstallee = Get-SzhVersionInstallee
 $lignesInfo = @()
 if ($vInstallee) { $lignesInfo += (T 'lanceur.version' @($vInstallee)) }
 else { $lignesInfo += (T 'lanceur.version.inconnue') }
 if ($emplacements.devMode) { $lignesInfo += (T 'lanceur.test' @($emplacements.base)) }
-# D125 : ce qui est resté hors de l'arborescence est dit, pas caché.
+# Ce qui est resté hors de l'arborescence est dit, pas caché.
 if ($horsArborescence -gt 0) { $lignesInfo += (T 'lanceur.hors' @($horsArborescence, $dossierHors)) }
 $infos.Text = ($lignesInfo -join "`n")
 $infos.Location = New-Object System.Drawing.Point(16, $yInfos)
@@ -485,8 +442,8 @@ $boutonVersions.Text = (T 'lanceur.versions.bouton')
 $boutonVersions.Location = New-Object System.Drawing.Point(152, $yBoutons)
 $boutonVersions.Size = New-Object System.Drawing.Size(160, 32)
 $form.Controls.Add($boutonVersions)
-# Une mise à jour lancée, le lanceur se retire : il afficherait une version périmée, et
-# ses listes resteraient cliquables pendant que le rootfs WSL est remplacé (constat 9).
+# Une mise à jour lancée, le lanceur se retire : il afficherait une version périmée et ses
+# listes resteraient cliquables pendant le remplacement du rootfs WSL.
 $boutonVersions.Add_Click({
   if ((Show-SzhVersions $form) -eq $true) {
     $form.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
@@ -494,10 +451,9 @@ $boutonVersions.Add_Click({
   }
 })
 
-# ---- « Nouvelle revue… » (G2, D38) : scaffold via new-revue.ps1 puis ouverture ----
+# ---- « Nouvelle revue… » : new-revue.ps1 puis ouverture ----
 
-# Petite boîte : demande le nom du dossier de la nouvelle revue, et RAPPELLE où elle
-# sera créée — il n'y a plus rien à choisir (D126). $null si annulé.
+# Demande le nom du dossier et rappelle où la revue sera créée. $null si annulé.
 function Read-SzhNomRevue {
   $boite = New-Object System.Windows.Forms.Form
   $boite.Text = (T 'lanceur.nouvelle') -replace '…', ''
@@ -558,10 +514,9 @@ $boutonNouvelle.Location = New-Object System.Drawing.Point(16, $yBoutons)
 $boutonNouvelle.Size = New-Object System.Drawing.Size(130, 32)
 $form.Controls.Add($boutonNouvelle)
 $boutonNouvelle.Add_Click({
-  # D126 : plus de choix d'emplacement. Un numéro se crée dans le dossier « en cours »
-  # DU PRODUIT de ce lanceur — celui de production ou celui de test selon le mode
-  # (D119). Il n'y a qu'une bonne réponse : la laisser choisir ne servait qu'à se
-  # tromper, et c'est comme ça qu'une Zeitschrift a fini rangée avec un « revue: revue ».
+  # Pas de choix d'emplacement : un numéro se crée dans le dossier « en cours » du produit
+  # de ce lanceur. Il n'y a qu'une bonne réponse, et laisser choisir ne servait qu'à se
+  # tromper de produit.
   $nom = Read-SzhNomRevue
   if (-not $nom) { return }
   $cible = Join-Path $encoursProduit $nom
@@ -570,8 +525,8 @@ $boutonNouvelle.Add_Click({
     return
   }
   try {
-    # new-revue.ps1 : scaffold depuis le template, jeton `revue:` du produit (D126),
-    # estampille de version (D120) et « Ouvrir la revue.lnk » (D14).
+    # new-revue.ps1 copie le gabarit, pose le jeton `revue:`, l'estampille de version et
+    # « Ouvrir la revue.lnk ».
     & (Join-Path $PSScriptRoot 'new-revue.ps1') -Dossier $cible -Produit $produitFiltre | Out-Null
   } catch {
     [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.nouvelle.erreur' @($_.Exception.Message)), $titreFenetre)
@@ -582,7 +537,7 @@ $boutonNouvelle.Add_Click({
   $form.Close()
 })
 
-# Double-clic = ouvrir (dans l'une comme dans l'autre liste)
+# Double-clic = ouvrir, dans l'une comme dans l'autre liste.
 $liste.Add_DoubleClick({ $form.DialogResult = [System.Windows.Forms.DialogResult]::OK; $form.Close() })
 $listeArchives.Add_DoubleClick({ $form.DialogResult = [System.Windows.Forms.DialogResult]::OK; $form.Close() })
 

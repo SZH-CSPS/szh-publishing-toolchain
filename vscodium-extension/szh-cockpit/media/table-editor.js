@@ -3,12 +3,13 @@
 var api=acquireVsCodeApi();
 var modele=null, dispo=null, occ2=null, TXT={}, accent='', teintes={}, PRESETS=[];
 var selection=null, ancre=null, cellActive=null, ctl={};
-// Historique (D60, F1) : deux piles d'états du MODÈLE, dans la webview. Chaque
-// opération de structure empile l'état PRÉ-op (voir op) ; les éditions de texte sont
-// empilées au blur d'une cellule (avantEdition = instantané pris au focus).
-// modeleEnregistre = état écrit sur disque (garde non-enregistré).
+// Historique : deux piles d'états du modèle. Une opération de structure y empile l'état
+// d'avant, une édition de texte est empilée à la perte de focus de la cellule,
+// `avantEdition` étant l'instantané pris à la prise de focus. `modeleEnregistre` est
+// l'état écrit sur le disque.
 var annuler=[], retablir=[], avantEdition=null, modeleEnregistre=null, enrEnCours=null, dernierModifie=false;
-var glisse=null;   // sélection par glisser : { ancre:cellule, actif:bool }
+// sélection par glisser : { ancre:cellule, actif:bool }
+var glisse=null;
 var barre=document.getElementById('barre'), zone=document.getElementById('zone'), panneau=document.getElementById('panneau');
 var boiteChamps=document.getElementById('champs'), champs={};
 function clone(o){return JSON.parse(JSON.stringify(o));}
@@ -36,41 +37,30 @@ function union(a,b){return {rMin:Math.min(a.rMin,b.rMin),cMin:Math.min(a.cMin,b.
 function chevauche(a,b){return !(a.rMax<b.rMin||a.rMin>b.rMax||a.cMax<b.cMin||a.cMin>b.cMax);}
 function etendre(rect){var change=true;while(change){change=false;dispo.lignes.forEach(function(lg){lg.cellules.forEach(function(c){
   var cr=rectCell(c);if(chevauche(cr,rect)){var nr=union(rect,cr);if(nr.rMin!==rect.rMin||nr.cMin!==rect.cMin||nr.rMax!==rect.rMax||nr.cMax!==rect.cMax){rect=nr;change=true;}}});});}return rect;}
-// F2 : « plage » = plus d'UNE cellule DISTINCTE sélectionnée (comptée via occ2). Une
-// cellule fusionnée seule couvre plusieurs cases visuelles mais reste UNE cellule ->
-// pas une plage -> éditable (majEditable).
 function plage(){if(!selection||!occ2)return false;var vu={},n=0;
   for(var r=selection.rMin;r<=selection.rMax;r++){for(var c=selection.cMin;c<=selection.cMax;c++){
     var ce=occ2[r]&&occ2[r][c];if(!ce)continue;var k=ce.li+'/'+ce.ci;if(vu[k])continue;vu[k]=1;if(++n>1)return true;}}
   return false;}
 function clampSel(s){if(!s||!dispo)return null;var rMax=Math.min(s.rMax,dispo.nbLignes-1),cMax=Math.min(s.cMax,dispo.nbColonnes-1);if(s.rMin>rMax||s.cMin>cMax||s.rMin<0||s.cMin<0)return null;return etendre({rMin:s.rMin,cMin:s.cMin,rMax:rMax,cMax:cMax});}
 
-// ---- Teintes de l'aperçu (mêmes valeurs que print.css / couleurs.css) ----
-// Couleur annuelle brute (repli gris si non définie -> l'aperçu retombe sur les valeurs
-// par défaut de print.css, comme le PDF d'un numéro sans couleur).
+// ---- Teintes de l'aperçu, aux mêmes valeurs que print.css et couleurs.css ----
+
 function accBrut(){return accent||null;}
-// Teintes de l'aperçu : LUES, jamais recalculées (D76). L'hôte les transmet dans
-// `teintes` — il les a prises dans out/.szh-accent.css, le fichier que le pipeline
-// écrit et que WeasyPrint applique. Un aperçu WYSIWYG ne doit pas réimplémenter une
-// formule de contraste : la version WCAG qui vivait ici a divergé du PDF au passage
-// à APCA (fonds trop pâles). Sans valeur reçue (numéro jamais compilé), on retombe
-// sur les gris neutres de print.css — comme le PDF d'un numéro sans couleur.
+// Les teintes sont lues, jamais recalculées : l'hôte les prend dans out/.szh-accent.css,
+// le fichier que le pipeline écrit et que WeasyPrint applique. Réimplémenter ici une
+// formule de contraste ferait diverger l'aperçu du PDF. Sans valeur reçue, faute de
+// compilation, on retombe sur les gris neutres de print.css.
 function clairAccent(){return teintes.clair||null;}
 function fonceAccent(){return teintes.fonce||null;}
-// Repli neutre (= --szh-gris-clair / --szh-zebre / --szh-accent de couleurs.css/print.css).
 var GRIS_CLAIR='#e6e6e6', TEINTE_ZEBRE='#f2f2f2', ACCENT_GRIS='#9a9a9a';
-// fond (D67) -> { bg, fg } ou null : negatif = accent foncé + blanc ; couleur = accent
-// clair + noir ; gris = gris clair neutre + noir ; aucun = pas de remplissage.
 function fondDe(v){
   if(v==='negatif'){return {bg:fonceAccent()||'#4a4a4a',fg:'#ffffff'};}
   if(v==='couleur'){return {bg:clairAccent()||'#ededed',fg:'#000000'};}
   if(v==='gris'){return {bg:GRIS_CLAIR,fg:'#000000'};}
   return null;}
-// Aperçu fidèle des styles au NIVEAU tableau (D64/D67, miroir de print.css) : zébrage
-// colonnes/lignes, fonds des en-têtes (el=th[scope=row], ec=th[scope=col]), ligne de
-// total (dernière rangée du <tbody>), bordures haute/basse. Appliqué en style INLINE sur
-// les .cell (le round-trip reste piloté par le modèle, jamais par ces styles). L'ordre
-// suit print.css : zébrage, puis en-têtes, puis total, puis bordures (le dernier gagne).
+// Aperçu des styles de niveau tableau, en miroir de print.css et posé en style en ligne
+// sur les .cell ; le fichier écrit, lui, reste piloté par le modèle. L'ordre suit
+// print.css — zébrage, en-têtes, total, bordures — le dernier l'emportant.
 function stylerApercu(){if(!dispo||!modele)return;var a=modele.attrs;
   var eL=a.enteteLignes,N=dispo.nbLignes;
   var accLigne=teintes.filet||accBrut()||ACCENT_GRIS;
@@ -79,24 +69,19 @@ function stylerApercu(){if(!dispo||!modele)return;var a=modele.attrs;
     var r=+el.dataset.r0,li=+el.dataset.li,ci=+el.dataset.ci;
     var cell=dispo.lignes[li]&&dispo.lignes[li].cellules[ci];if(!cell)return;
     var thead=r<eL;
-    // Zébrage des lignes : rangées de données (tbody) ; « en-têtes » l'étend au thead.
     if(a.zebreLig!=='aucun'){
       if(thead){if(a.zebreLigEntetes&&((a.zebreLig==='paires')===((r+1)%2===0)))el.style.background=TEINTE_ZEBRE;}
       else if((a.zebreLig==='paires')===(((r-eL)+1)%2===0))el.style.background=TEINTE_ZEBRE;
     }
-    // Zébrage des colonnes (miroir de nth-child : ordinal = rang de la cellule dans sa
-    // rangée). Sans « en-têtes » : uniquement les cellules de données (td) du tbody.
+    // En miroir de nth-child : l'ordinal est le rang de la cellule dans sa rangée.
     if(a.zebreCol!=='aucun'){
       var par=(a.zebreCol==='paires')===((ci+1)%2===0);
       if(a.zebreColEntetes){if(par)el.style.background=TEINTE_ZEBRE;}
       else if(!thead&&!cell.th&&par)el.style.background=TEINTE_ZEBRE;
     }
-    // Fonds des en-têtes (el = scope row / colonnes de gauche ; ec = scope col / rangées du haut).
     if(cell.th&&cell.scope==='row'){var fe=fondDe(a.elFond);if(fe){el.style.background=fe.bg;el.style.color=fe.fg;}if(a.elGras)el.style.fontWeight='700';}
     else if(cell.th&&cell.scope==='col'){var fc=fondDe(a.ecFond);if(fc){el.style.background=fc.bg;el.style.color=fc.fg;}if(a.ecGras)el.style.fontWeight='700';}
-    // Ligne de total = dernière rangée du tbody (D65) : toutes ses cellules.
     if(!thead&&r===N-1){var ft=fondDe(a.totalFond);if(ft){el.style.background=ft.bg;el.style.color=ft.fg;}if(a.totalGras)el.style.fontWeight='700';}
-    // Bordures : haute sous la zone d'en-tête (ou en tête du tableau si aucun en-tête) ; basse en pied.
     if(a.bordureHaute){if(eL>0){if(r===eL-1)el.style.borderBottom='2px solid '+accLigne;}else if(r===0)el.style.borderTop='2px solid '+accLigne;}
     if(a.bordureBasse&&!thead&&r===N-1)el.style.borderBottom='2px solid '+accLigne;
   });}
@@ -206,8 +191,6 @@ function surMenuMousedown(ev){if(menu&&menu.contains(ev.target))return;fermerMen
 function surMenuKey(ev){if(ev.key==='Escape'){ev.preventDefault();fermerMenu();}}
 function itemMenu(txt,fn){var d=document.createElement('div');d.className='ctxitem';d.setAttribute('role','menuitem');d.textContent=txt;d.addEventListener('click',function(){fermerMenu();fn();});return d;}
 function sepMenu(m){var d=document.createElement('div');d.className='ctxsep';m.appendChild(d);}
-// Vrai si une cellule de la plage visuelle contient du texte (V2d : confirmation de
-// suppression). <br> ignoré (une cellule « vide » avec sauts reste vide).
 function texteDansPlage(rMin,cMin,rMax,cMax){recolter();if(!occ2)return false;var vu={};
   for(var r=rMin;r<=rMax;r++){for(var c=cMin;c<=cMax;c++){var ce=occ2[r]&&occ2[r][c];if(!ce)continue;var k=ce.li+'/'+ce.ci;if(vu[k])continue;vu[k]=1;
     var cell=modele.lignes[ce.li]&&modele.lignes[ce.li].cellules[ce.ci];if(cell&&String(cell.contenu).replace(/<br>/g,'').trim()!=='')return true;}}return false;}
@@ -223,9 +206,7 @@ function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.crea
     m.appendChild(itemMenu(TXT['ctx.colSuppr'],function(){supprimer('supprimerColonne',{cMin:ctx.cMin,cMax:ctx.cMax},0,ctx.cMin,dispo.nbLignes-1,ctx.cMax);}));}
   if(plage()){sepMenu(m);m.appendChild(itemMenu(TXT.fusionner,function(){op('fusionner',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax});}));}
   if(ctx.fusionnee){if(!plage())sepMenu(m);m.appendChild(itemMenu(TXT.scinder,function(){op('scinder',{rMin:ctx.rMin,cMin:ctx.cMin,rMax:ctx.rMax,cMax:ctx.cMax});}));}
-  // En-têtes (F3, déplacés de la barre en menu contextuel) : le SENS est déduit de la
-  // sélection (rangée du haut -> lignes ; colonne de gauche -> colonnes). « Retirer »
-  // n'apparaît que si l'en-tête correspondant existe.
+  // « Retirer » n'apparaît que si l'en-tête correspondant existe.
   var sens=sensEntete(selection);
   if(sens){sepMenu(m);m.appendChild(itemMenu(TXT.entete,onDefinirEntete));
     var aRetirer=sens==='lignes'?(modele.attrs.enteteLignes>0):(modele.attrs.enteteColonnes>0);
@@ -239,8 +220,6 @@ function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.crea
 // ---- Barre d'outils ----
 function bouton(txt,fn,cls,titre){var b=document.createElement('button');b.type='button';b.textContent=txt;if(cls)b.className=cls;if(titre)b.title=titre;b.addEventListener('click',fn);return b;}
 function groupe(label){var g=document.createElement('span');g.className='grp';if(label){var l=document.createElement('span');l.className='lbl';l.textContent=label;g.appendChild(l);}return g;}
-// F1 : valide une éventuelle saisie de texte en cours, empile l'état PRÉ-op sur la
-// pile d'annulation et vide la pile de rétablissement AVANT d'envoyer l'opération.
 function op(nom,args,extra){if(modele){commitTexte();annuler.push(clone(modele));if(annuler.length>100)annuler.shift();retablir.length=0;}
   var msg={type:'operation',nom:nom,args:args,modele:modele};if(extra){for(var k in extra){msg[k]=extra[k];}}api.postMessage(msg);}
 function construireBarre(){barre.textContent='';
@@ -255,9 +234,8 @@ function construireBarre(){barre.textContent='';
   ga.appendChild(bouton(TXT.alignCentre,function(){aligner('center');},'',TXT['tip.alignCentre']));
   ga.appendChild(bouton(TXT.alignDroite,function(){aligner('right');},'',TXT['tip.alignDroite']));
   barre.appendChild(ga);
-  // Aperçu de l'ARTICLE (colonne 2) : fermé à l'ouverture de l'éditeur pour libérer la
-  // largeur, il se rouvre et se referme ici à la demande. « Voir dans l'aperçu » tente en
-  // plus d'amener la vue sur le tableau (l'hôte cherche la ligne de la référence).
+  // L'aperçu de l'article est fermé à l'ouverture de l'éditeur pour libérer de la largeur
+  // et se rouvre ici à la demande.
   var ga2=groupe(TXT.grpApercu);
   ga2.appendChild(bouton(TXT.apercuVoir,function(){api.postMessage({type:'apercu-ouvrir'});},'',TXT['tip.apercuVoir']));
   ga2.appendChild(bouton(TXT.apercuCacher,function(){api.postMessage({type:'apercu-fermer'});},'',TXT['tip.apercuCacher']));
@@ -267,19 +245,15 @@ function construireBarre(){barre.textContent='';
   var e=document.createElement('span');e.id='etat';e.setAttribute('role','status');barre.appendChild(e);
   var ind=document.createElement('span');ind.id='indic';ind.setAttribute('aria-live','polite');barre.appendChild(ind);
   construireChamps();construirePanneau();}
-// ---- Légende (D94), texte alternatif et crédits du tableau ----
-// Quatre champs texte au-dessus de la grille :
-//   legende   -> <caption> du fichier (numéroté et affiché sous le tableau) ;
-//   alt       -> data-alt   (texte alternatif, pour un tableau à structure complexe) ;
-//   copyright -> data-copyright ; source -> data-source.
-// Tous sont traités EXACTEMENT comme le texte d'une cellule : récoltés dans le modèle
-// par recolter(), instantané pris au focus (avantEdition) et empilés au blur par
-// commitTexte() -> ils participent à annuler/rétablir comme toute autre saisie, sans
-// re-rendu de la grille à chaque frappe. L'hôte, lui, les réassainit à chaque passage
-// dans normaliserModele (aucune confiance accordée à la webview).
-// La LÉGENDE seule est de l'inline dans le modèle : le champ montre du TEXTE, la mise
-// en forme d'une légende importée de Word (<strong>/<em>) y apparaît à plat, et
-// retoucher le champ la remet à plat. Les trois autres sont du texte pur des deux côtés.
+// ---- Légende, texte alternatif et crédits du tableau ----
+//
+// Quatre champs au-dessus de la grille : `legende` devient le <caption> du fichier, `alt`
+// son data-alt, puis data-copyright et data-source. Tous sont traités comme le texte d'une
+// cellule — récoltés dans le modèle, photographiés à la prise de focus, empilés à la perte
+// de focus — et participent donc à annuler et rétablir sans re-rendu de la grille.
+//
+// La légende seule est de l'en-ligne dans le modèle : le champ en montre le texte à plat,
+// et le retoucher remet la légende à plat.
 function texteDeInline(s){return dechap(String(s||'').replace(/<br>/g,' ').replace(/<\/?(?:strong|em)>/g,''));}
 function champTexte(cle,large){
   var d=document.createElement('div');d.className='ch'+(large?' large':'');
@@ -294,55 +268,47 @@ function aide(texte){var p=document.createElement('p');p.className='aide';p.text
 function construireChamps(){if(!boiteChamps)return;boiteChamps.textContent='';champs={};
   champTexte('legende',true);
   champTexte('alt',true);
-  // Le cas COURANT est le champ vide : un tableau bien fait se lit tout seul, ses
-  // en-têtes disent déjà ce qu'il contient. On le dit, pour que personne ne croie
-  // devoir remplir un champ de plus.
+  // Le cas courant est le champ vide : un tableau bien fait se lit seul. On le dit, pour
+  // que personne ne croie devoir remplir un champ de plus.
   aide(TXT['alt.aide']||'');
   champTexte('copyright',false);
   champTexte('source',false);}
-// Champs -> modèle (appelée par recolter). Un champ vidé retire la valeur — donc
-// l'attribut (ou le <caption>) à l'écriture : rien d'attribut vide n'est jamais écrit.
-// Pour la légende, la comparaison se fait sur la PROJECTION À PLAT : tant que le champ
-// n'a pas été retouché, le modèle garde sa légende inline telle quelle.
+// Champs -> modèle. Un champ vidé retire la valeur, donc l'attribut ou le <caption>. Pour
+// la légende, la comparaison porte sur la projection à plat, si bien que le modèle garde
+// sa légende en ligne tant que le champ n'est pas retouché.
 function recolterChamps(){if(!modele)return;
   if(champs.legende){var saisi=String(champs.legende.value||'').replace(/[\r\n]+/g,' ').trim();
     if(saisi!==texteDeInline(modele.attrs.legende||'').trim())modele.attrs.legende=echap(saisi);}
   ['alt','copyright','source'].forEach(function(cle){if(!champs[cle])return;
     var v=String(champs[cle].value||'').replace(/[\r\n]+/g,' ').trim();
     if(v!==String(modele.attrs[cle]||''))modele.attrs[cle]=v;});}
-// Modèle -> champs (après un chargement, une annulation, un rétablissement).
 function majChamps(){if(!modele)return;
   if(champs.legende){var v=texteDeInline(modele.attrs.legende||'');if(champs.legende.value!==v)champs.legende.value=v;}
   ['alt','copyright','source'].forEach(function(cle){if(!champs[cle])return;
     var x=String(modele.attrs[cle]||'');if(champs[cle].value!==x)champs[cle].value=x;});}
-// « Sens » d'en-tête déduit de la sélection (F3) : rangée du haut pleine largeur ->
-// 'lignes' (fixe enteteLignes) ; colonne de gauche pleine hauteur -> 'colonnes' (fixe
-// enteteColonnes) ; sinon selon le bord touché ; null si la sélection ne touche ni le
-// haut ni la gauche. Partagé par le menu contextuel et onDefinir/onRetirerEntete.
+// Sens d'en-tête déduit de la sélection : une rangée du haut sur toute la largeur donne
+// 'lignes', une colonne de gauche sur toute la hauteur donne 'colonnes', sinon le bord
+// touché décide ; null si la sélection ne touche ni le haut ni la gauche.
 function sensEntete(s){if(!s||!dispo)return null;var nbC=dispo.nbColonnes,nbL=dispo.nbLignes;
   var pleineLargeur=(s.cMin===0&&s.cMax===nbC-1),pleineHauteur=(s.rMin===0&&s.rMax===nbL-1);
-  // Bande de rangées touchant le haut (ligne entière) -> en-têtes de colonnes (haut).
   if(s.rMin===0&&pleineLargeur&&!(pleineHauteur&&nbC===1))return 'lignes';
-  // Bande de colonnes touchant la gauche (colonne entière) -> en-têtes de lignes (gauche).
   if(s.cMin===0&&pleineHauteur)return 'colonnes';
-  // Cellule/plage touchant le bord haut -> lignes ; touchant SEULEMENT le bord gauche -> colonnes.
   if(s.rMin===0&&!pleineLargeur)return 'lignes';
   if(s.cMin===0&&!pleineLargeur&&s.rMin!==0)return 'colonnes';
   return null;}
 function onDefinirEntete(){var sens=sensEntete(selection);if(!sens){etat(TXT.rien);return;}var s=selection;
   if(sens==='lignes'){op('entete',{sens:'lignes',n:Math.min(2,s.rMax+1)});}
   else{op('entete',{sens:'colonnes',n:Math.min(2,s.cMax+1)});}}
-// F3 : « Retirer l'en-tête » déduit le SENS de la sélection (même logique) et ne retire
-// QUE cet en-tête (lignes OU colonnes, pas les deux).
+// Ne retire que l'en-tête du sens déduit, lignes ou colonnes, jamais les deux.
 function onRetirerEntete(){var sens=sensEntete(selection);if(!sens){etat(TXT.rien);return;}op('enteteRetirer',{sens:sens});}
 function viderSel(mode){if(!selection){etat(TXT.rien);return;}op('vider',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax,mode:mode});}
 function aligner(v){if(!selection){etat(TXT.rien);return;}op('aligner',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax,valeur:v});}
 
-// ---- Panneau de mise en forme : 3 zones (Preset désactivé / En-têtes / Tableau) ----
-// Les contrôles LISENT le modèle (majPanneau) et POSTENT au changement les opérations
-// styleEntete/reglage (mêmes qu'appliquerOperationTable côté hôte) -> l'hôte met à jour
-// les attrs -> renvoie « charger » -> aperçu live. Annuler/rétablir : via op() (empile
-// l'état pré-op comme toute autre opération). Aucune injection HTML : DOM uniquement.
+// ---- Panneau de mise en forme : préréglages, en-têtes, tableau ----
+//
+// Les contrôles lisent le modèle et postent au changement les opérations styleEntete et
+// reglage : l'hôte met à jour les attributs et renvoie « charger », d'où un aperçu qui
+// suit. L'annulation passe par op(), comme pour toute autre opération.
 function fmt(s,v){return String(s||'').split('{0}').join(v);}
 function fieldsetZone(legende){var fs=document.createElement('fieldset');fs.className='zone';var lg=document.createElement('legend');lg.textContent=legende;fs.appendChild(lg);return fs;}
 function caseACocher(label,onCh){var l=document.createElement('label');l.className='opt';var i=document.createElement('input');i.type='checkbox';i.addEventListener('change',onCh);l.appendChild(i);l.appendChild(document.createTextNode(label));return {label:l,input:i};}
@@ -368,28 +334,24 @@ function sousBlocZebre(parent,titre,champ,champEnt){var bloc=document.createElem
   var ent=caseACocher(TXT['zebre.entetes'],function(){op('reglage',{champ:champEnt,valeur:ent.input.checked});});bloc.appendChild(ent.label);o.entetes=ent.input;
   parent.appendChild(bloc);return o;}
 function construirePanneau(){panneau.textContent='';panneau.setAttribute('aria-label',TXT['zone.styles']||'');
-  // DEUX COLONNES : les styles d'en-tête à DROITE (trois sous-blocs, c'est le plus haut),
-  // tout le reste à GAUCHE. Empilés en une seule colonne, l'ensemble dépassait la hauteur
-  // de la fenêtre et obligeait à défiler pour atteindre le zébrage.
+  // Deux colonnes : les styles d'en-tête à droite, le reste à gauche. Sur une seule
+  // colonne, l'ensemble dépasse la hauteur de la fenêtre.
   var colG=document.createElement('div');colG.className='colonne';
   var colD=document.createElement('div');colD.className='colonne';
   panneau.appendChild(colG);panneau.appendChild(colD);
-  // Zone 1 : PRÉRÉGLAGES. La liste et l'ordre viennent de l'hôte (PRESETS_ORDRE du
-  // modèle) : la webview n'a pas sa propre idée des préréglages existants, donc en
-  // retirer un côté modèle le fait disparaître ici sans autre retouche.
+  // La liste et l'ordre des préréglages viennent de l'hôte, via PRESETS_ORDRE : en retirer
+  // un côté modèle le fait disparaître ici sans autre retouche.
   var z1=fieldsetZone(TXT['zone.preset']);
   var opts=(PRESETS||[]).map(function(cle){return [cle,TXT['preset.'+cle]||cle];});
   ctl.preset=groupeRadios('preset',opts,function(v){op('preset',{nom:v});});
   z1.appendChild(ctl.preset.wrap);
   var note=document.createElement('p');note.className='note';note.textContent=TXT['preset.note']||'';z1.appendChild(note);
   colG.appendChild(z1);
-  // Zone 2 : Styles des en-têtes (en-têtes de lignes / colonnes / ligne de total).
   var z2=fieldsetZone(TXT['zone.entetes']);
   ctl.el=sousBlocEntete(z2,TXT.entetesLignes,'lignes');
   ctl.ec=sousBlocEntete(z2,TXT.entetesColonnes,'colonnes');
   ctl.tot=sousBlocEntete(z2,TXT.total,'total');
   colD.appendChild(z2);
-  // Zone 3 : Styles du tableau (bordures + zébrage colonnes/lignes).
   var z3=fieldsetZone(TXT['zone.tableau']);
   var cbh=caseACocher(TXT.bordureHaute,function(){op('reglage',{champ:'bordureHaute',valeur:cbh.input.checked});});z3.appendChild(cbh.label);ctl.bordureHaute=cbh.input;
   var cbb=caseACocher(TXT.bordureBasse,function(){op('reglage',{champ:'bordureBasse',valeur:cbb.input.checked});});z3.appendChild(cbb.label);ctl.bordureBasse=cbb.input;
@@ -397,8 +359,7 @@ function construirePanneau(){panneau.textContent='';panneau.setAttribute('aria-l
   ctl.zebreLig=sousBlocZebre(z3,TXT.zebreLig,'zebreLig','zebreLigEntetes');
   colG.appendChild(z3);}
 function cocherRadio(rd,val){for(var k in rd.inputs){rd.inputs[k].checked=(k===val);}}
-// Un sous-bloc d'en-tête n'agit que si l'en-tête correspondant existe (el = colonnes de
-// gauche -> enteteColonnes ; ec = rangées du haut -> enteteLignes) : sinon grisé + indice.
+// Un sous-bloc d'en-tête n'agit que si l'en-tête correspondant existe ; sinon il est grisé.
 function majEntete(o,gras,fond,actif){o.gras.checked=!!gras;cocherRadio(o.radios,fond);
   o.gras.disabled=!actif;for(var k in o.radios.inputs){o.radios.inputs[k].disabled=!actif;}
   o.bloc.classList.toggle('inactif',!actif);if(o.hint)o.hint.style.display=actif?'none':'';}
@@ -412,16 +373,14 @@ function majPanneau(){if(!modele||!ctl.el)return;var a=modele.attrs;
   majZebre(ctl.zebreLig,a.zebreLig,a.zebreLigEntetes);}
 function etat(msg){var e=document.getElementById('etat');if(e)e.textContent=msg;}
 
-// ---- Historique, garde non-enregistré, enregistrement, retour ----
-// F1 : au blur d'une cellule, valide (empile) l'édition de texte. avantEdition = état
-// pris au focus ; on n'empile QUE si le texte a réellement changé, puis on l'oublie.
+// ---- Historique, garde de non-enregistré, enregistrement, retour ----
+
 function commitTexte(){if(!modele)return;recolter();
   if(avantEdition&&JSON.stringify(modele)!==JSON.stringify(avantEdition)){annuler.push(clone(avantEdition));if(annuler.length>100)annuler.shift();retablir.length=0;}
   avantEdition=null;majModifie();}
 function restaurer(m){api.postMessage({type:'restaurer',modele:m});}
-// Annuler / rétablir : « courant » = clone(modele) (après recolte + validation d'une
-// saisie en cours par commitTexte) est poussé sur l'autre pile, puis on restaure l'état
-// dépilé (l'hôte renvoie la disposition via un message « charger » sans i18n).
+// Annuler et rétablir : l'état courant est poussé sur l'autre pile, puis on restaure
+// l'état dépilé ; l'hôte renvoie la disposition par un « charger » sans i18n.
 function annulerAction(){commitTexte();if(!annuler.length){return;}retablir.push(clone(modele));restaurer(annuler.pop());}
 function retablirAction(){commitTexte();if(!retablir.length){return;}annuler.push(clone(modele));restaurer(retablir.pop());}
 function estModifie(){if(!modele||!modeleEnregistre)return false;recolter();return JSON.stringify(modele)!==JSON.stringify(modeleEnregistre);}
@@ -429,15 +388,15 @@ function majModifie(){var m=estModifie();var ind=document.getElementById('indic'
   if(m!==dernierModifie){dernierModifie=m;api.postMessage({type:'modifie',modifie:m});}}
 function enregistrerTable(auto){recolter();enrEnCours=clone(modele);
   api.postMessage({type:'enregistrer',auto:!!auto,modele:modele});}
-// D121 : enregistrement automatique. Sûr ici — l'écriture ne touche que
-// articles/<slug>/tables/<n>.html, elle ne déclenche aucune recompilation.
+// Enregistrement automatique, sans risque ici : l'écriture ne touche que
+// articles/<slug>/tables/<n>.html et ne déclenche aucune recompilation.
 var autoEnr=SZH.autoEnregistrement({estModifie:estModifie,enregistrer:enregistrerTable});
 function retourArticle(){recolter();api.postMessage({type:'retourArticle',modifie:estModifie(),modele:modele});}
 
-// ---- Collage d'un tableau (Ctrl+V) : HTML -> table (fusions préservées), sinon TSV ----
+// ---- Collage d'un tableau : le HTML d'abord, qui préserve les fusions, sinon le TSV ----
 function collerDepuisPresse(ev){var cd=ev.clipboardData||window.clipboardData;if(!cd)return;
   var html=cd.getData?cd.getData('text/html'):'';var texte=cd.getData?cd.getData('text/plain'):'';
-  if(!/<table/i.test(html)&&!/[\t\n]/.test(texte))return;   // texte simple d'une cellule -> collage natif
+  if(!/<table/i.test(html)&&!/[\t\n]/.test(texte))return;   // texte d'une cellule : collage natif
   ev.preventDefault();var aR=selection?selection.rMin:0,aC=selection?selection.cMin:0;
   op('coller',{ancreR:aR,ancreC:aC,html:html,texte:texte});}
 zone.addEventListener('paste',collerDepuisPresse);
@@ -457,9 +416,9 @@ window.addEventListener('message',function(ev){var msg=ev.data||{};
     if(msg.i18n){TXT=msg.i18n;
       modeleEnregistre=clone(modele);annuler=[];retablir=[];avantEdition=null;dernierModifie=false;
       construireBarre();}
-    // F1 : un « charger » sans i18n = résultat d'une opération / d'une annulation-
-    // rétablissement. On NE réinitialise PLUS l'historique ici (c'était la cause de
-    // « Annuler ne fait rien ») : les piles vivent uniquement dans op / commitTexte.
+    // Un « charger » sans i18n est le résultat d'une opération ou d'une annulation :
+    // ⚠ ne pas réinitialiser l'historique ici, sans quoi « Annuler » reste sans effet.
+    // Les piles ne sont touchées que par op et commitTexte.
     selection=clampSel(selection);ancre=null;rendre();majPanneau();majChamps();etat('');majModifie();}
   else if(msg.type==='enregistre'){autoEnr.confirme();modeleEnregistre=enrEnCours||clone(modele);
     etat(msg.auto?'':(TXT.enregistre||''));majModifie();}

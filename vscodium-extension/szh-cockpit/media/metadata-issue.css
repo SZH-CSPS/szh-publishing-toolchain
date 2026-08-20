@@ -14,8 +14,8 @@ input:focus, select:focus { outline: 1px solid var(--vscode-focusBorder); }
   cursor: pointer; width: auto; }
 .radio input { width: auto; flex: 0 0 auto; margin: .15em 0 0; }
 .radio span { line-height: 1.35; }
-/* Case à cocher (D114) : même géométrie qu'un radio, mais elle est seule — donc sa
-   marge haute est celle d'un `label` de champ, pas celle d'un item de groupe. */
+/* Même géométrie qu'un bouton radio, mais seule : sa marge haute est celle d'un `label`
+   de champ, non celle d'un élément de groupe. */
 .case { display: flex; align-items: flex-start; gap: .5em; margin: .9rem 0 .25rem;
   font-weight: normal; cursor: pointer; width: auto; }
 .case input { width: auto; flex: 0 0 auto; margin: .15em 0 0; }

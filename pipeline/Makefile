@@ -1,35 +1,40 @@
-# Pipeline central SZH/CSPS — .md -> Pandoc (citeproc) -> WeasyPrint -> PDF (+ HTML) par article.
-# Vit dans le toolkit (C:\ProgramData\SZH\toolkit\pipeline), PAS dans les dossiers de revue.
-# S'invoque DEPUIS le dossier de revue (cwd), le Makefile étant passé par -f :
-#   wsl.exe -d SZH-Publishing --cd <dossier revue> -- make -f /mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile all
+# Pipeline central SZH/CSPS : .md -> pandoc (citeproc) -> WeasyPrint -> PDF et HTML,
+# un jeu de sorties par article. Vit dans le toolkit, s'invoque depuis le dossier de
+# revue (cwd), ce Makefile étant passé par -f :
+#   wsl.exe -d SZH-Publishing --cd <dossier revue> -- make -f <toolkit>/pipeline/Makefile all
 #
-# Structure de travail (D26) :  articles/<article>/<article>.md  + articles/<article>/media/
-# Sorties (D21)              :  out/<article>/<article>.pdf + <article>.html (autonome, images base64)
-# Import Word (D35, F6)      :  import-docx.sh = docx-meta.py (métadonnées ->
-#                               <slug>.meta.yaml + blocs consommés) puis docx-tables.py
-#                               (tables/*.html, D50) puis pandoc + filtres szh-meta ->
-#                               szh-legendes -> szh-titres -> szh-biblio -> szh-tabelle-
-#                               reference, et AnyStyle -> media/<slug>.bib (repli sans
-#                               perte : liste conservée dans le .md si AnyStyle échoue).
+# Entrées : articles/<slug>/<slug>.md + media/ ; sorties : out/<slug>/<slug>.pdf et .html.
+# Import Word : articles-word/*.docx, converti par import-docx.sh (sa chaîne y est décrite).
 #
-# ⚠ Aucun chemin /mnt/c codé en dur ici (portabilité macOS, PLANIFICATION.md §6).
-# ⚠ Conserver l'indentation par TABULATIONS et les fins de ligne LF.
+# Ordre des --lua-filter à la compilation, et ce qui casse si on permute :
+#   szh-maquette -> szh-niveaux -> szh-tabelle-inclure -> szh-tabelle-scope ->
+#   szh-figure -> szh-numerotation -> szh-legende-avant
+#   * szh-numerotation après szh-tabelle-inclure : il numérote des tableaux qui
+#     n'existent qu'une fois le HTML réinjecté ;
+#   * szh-numerotation après szh-figure : sous le lecteur commonmark_x de l'aperçu,
+#     les Figure ne sont construites que par szh-figure ;
+#   * szh-legende-avant en dernier : il dissout les Figure en HTML brut, rien en amont
+#     ne peut plus les lire.
+# La chaîne d'aperçu reprend la même suite, sans szh-maquette.
+#
+# Aucun chemin /mnt/c codé en dur ici (portabilité macOS). Conserver l'indentation
+# par tabulations et les fins de ligne LF.
 
 SHELL      := /bin/bash
 PANDOC     ?= pandoc
 WEASYPRINT ?= weasyprint
 
-# Chemin absolu de CE Makefile (pour la récursion de la cible `all`).
+# Chemin absolu de ce Makefile : la cible `all` se relance par -f $(THIS).
 THIS         := $(abspath $(lastword $(MAKEFILE_LIST)))
 PIPELINE_DIR := $(patsubst %/,%,$(dir $(THIS)))
 
-# Style : override local si la revue fournit styles/print.css, sinon style central.
+# Style de la revue s'il existe (styles/print.css), sinon style central du toolkit.
 STYLE      := $(firstword $(wildcard styles/print.css) $(PIPELINE_DIR)/styles/print.css)
 STYLE_ABS  := $(abspath $(STYLE))
 CSL        := $(PIPELINE_DIR)/csl/apa.csl
 
-# Maquette définitive (D69–D74) : template pandoc de la couverture + filtre Lua qui
-# dérive les métadonnées de couverture/en-tête (étiquette de dossier D71, revue D74).
+# Template pandoc de la couverture + filtre Lua qui dérive les métadonnées de
+# couverture et d'en-tête (étiquette de dossier, nom et ISSN de la revue).
 TEMPLATE     := $(PIPELINE_DIR)/templates/szh-article.html
 TEMPLATE_ABS := $(abspath $(TEMPLATE))
 MAQUETTE_LUA := $(PIPELINE_DIR)/filters/szh-maquette.lua
@@ -37,34 +42,24 @@ MAQUETTE_LUA := $(PIPELINE_DIR)/filters/szh-maquette.lua
 FILTRES      := $(wildcard $(PIPELINE_DIR)/filters/*.lua)
 
 # ---------------------------------------------------------------------------
-# Profil de compilation du DOSSIER (D20, T6.4) — « un dossier = un produit = un
-# moteur ». Lu dans ausgabe.yaml avec le MÊME mécanisme que lang: ci-dessus
-# (sed + head), sans dépendance ajoutée : l'image WSL n'embarque pas PyYAML.
-#
-# ⚠ Piège central : `sed` renvoie une chaîne vide dans DEUX cas très différents —
-#   (a) la clé `profil:` est absente du fichier (dossier « historique » : il doit
-#       continuer à se compiler exactement comme avant, sans rien changer) ;
-#   (b) la clé est là mais sans valeur (`profil:`), ce qui est un CHOIX explicite
-#       du rédacteur : « ce dossier ne produit aucun document ».
-#   Les deux se lisent « vide » : on détecte donc la PRÉSENCE de la clé à part,
-#   par un compte de lignes (`grep -c '^profil:'`). L'ancrage `^` est ce qui rend
-#   ce compte fiable : une ligne d'aide commentée (`# profil: …`, comme dans
-#   revue-template/ausgabe.yaml) ou une clé imbriquée (indentée) ne comptent pas.
-#   Fichier absent -> grep n'écrit rien -> chaîne vide -> traitée comme 0.
+# Profil de compilation du dossier, lu dans ausgabe.yaml par sed + head : l'image WSL
+# n'embarque pas PyYAML.
+# ⚠ `sed` renvoie une chaîne vide dans deux cas opposés : clé `profil:` absente (dossier
+#   historique, à compiler comme avant) ou clé présente sans valeur (choix du rédacteur :
+#   aucun document). La présence se compte donc à part, avec `grep -c '^profil:'` ;
+#   l'ancrage `^` écarte les lignes d'aide commentées et les clés indentées.
 PROFIL_PRESENT := $(shell grep -c "^profil:" ausgabe.yaml 2>/dev/null | head -1)
-# La valeur elle-même : on tolère les guillemets que pourrait écrire un
-# sérialiseur (`profil: "article"`) et on s'arrête au premier caractère hors
-# [a-zA-Z-] (espace, commentaire de fin de ligne, CR des fins de ligne Windows).
-# Conséquence assumée : une valeur exotique/accentuée est tronquée -> elle tombe
-# dans la branche « profil inconnu », qui échoue AVEC un message clair. Jamais
-# de repli silencieux sur un autre profil.
+# La valeur : guillemets d'un sérialiseur tolérés, arrêt au premier caractère hors
+# [a-zA-Z-] (espace, commentaire de fin de ligne, CR de Windows). Une valeur exotique
+# est donc tronquée et tombe dans la branche « profil inconnu », qui échoue avec un
+# message clair : pas de repli silencieux sur un autre profil.
 PROFIL_LU      := $(shell sed -n "s/^profil:[[:space:]]*[\"']*\([a-zA-Z-]*\).*/\1/p" ausgabe.yaml 2>/dev/null | head -1)
 PROFIL         := $(strip $(PROFIL_LU))
 # Vide si la clé est absente (ou 0 occurrence) ; non vide sinon.
 PROFIL_DECLARE := $(filter-out 0,$(PROFIL_PRESENT))
 
-# Table de routage de la cible `all` (D20). Résolue à la LECTURE du Makefile :
-# `make -n all` montre donc directement la route prise, sans exécuter pandoc.
+# Routage de la cible `all`, résolu à la lecture du Makefile : `make -n all` montre
+# la route prise sans exécuter pandoc.
 ifeq ($(PROFIL_DECLARE),)
 PROFIL_ROUTE := article
 else ifeq ($(PROFIL),)
@@ -74,47 +69,43 @@ PROFIL_ROUTE := $(PROFIL)
 endif
 # ---------------------------------------------------------------------------
 
-# Articles : un dossier par article, articles/<slug>/<slug>.md (D26).
+# Articles : un dossier par article, articles/<slug>/<slug>.md.
 SLUGS      := $(sort $(foreach d,$(wildcard articles/*),$(if $(wildcard $(d)/$(notdir $(d)).md),$(notdir $(d)))))
 OUT        := out
 PDFS       := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).pdf)
 HTMLS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).html)
-# Aperçu HTML cliquable (D53/M5) : rendu SÉPARÉ en commonmark_x+sourcepos (le
-# spike M5 montre que ce reader ajoute des divs « wrapper » -> il ne doit PAS
-# nourrir WeasyPrint ; le PDF reste sur -f markdown, inchangé par construction).
+# Aperçu HTML cliquable : rendu séparé en commonmark_x+sourcepos. Ce reader ajoute
+# des divs « wrapper » : il ne doit pas nourrir WeasyPrint, le PDF reste sur
+# -f markdown.
 APERCUS    := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).apercu.html)
-# Galleys DOCX pour l'export OJS (F7) : régénérés depuis le HTML autonome, à la
-# demande seulement (cible `docx`) — ni `all` ni `tout-exporter` ne les produisent.
+# Galleys DOCX de l'export OJS : régénérés depuis le HTML autonome, à la demande
+# seulement (cible `docx`) — ni `all` ni `tout-exporter` ne les produisent.
 DOCXS      := $(foreach a,$(SLUGS),$(OUT)/$(a)/$(a).docx)
 
-# Accent des tableaux (.szh-tableau, D57) : accent-css.py lit la couleur annuelle
-# d'ausgabe.yaml et écrit un :root qui SURCHARGE les gris de repli de print.css.
-# Aucune couleur -> fichier « commentaire seul » -> gris de repli -> PDF inchangé.
-# Prérequis des HTML : le changer (via les métadonnées) recompile les articles.
+# Accent des tableaux (.szh-tableau) : accent-css.py lit la couleur annuelle
+# d'ausgabe.yaml et écrit un :root qui surcharge les gris de repli de print.css.
+# Aucune couleur -> fichier « commentaire seul » -> gris de repli, PDF inchangé.
+# Prérequis des HTML : le changer recompile les articles.
 ACCENT_CSS := $(OUT)/.szh-accent.css
 ACCENT_ABS := $(abspath $(ACCENT_CSS))
 
-# Sans ceci, make considérerait les .html comme intermédiaires et les SUPPRIMERAIT.
+# Sans ceci, make considérerait les .html comme intermédiaires et les supprimerait.
 .SECONDARY: $(HTMLS) $(APERCUS)
 
-# Import Word (D35) — le .docx source est SUPPRIMÉ après conversion réussie (D39).
+# Import Word : le .docx source est supprimé après une conversion réussie.
 WORD_DIR   := articles-word
 
 .PHONY: all pdf docx import clean verifie-dossier tout-exporter \
         profil-rien profil-differe profil-inconnu
 .SECONDEXPANSION:
 
-# Cible du build (Ctrl+S, Ctrl+E) : importe les Word déposés PUIS régénère les sorties.
-# Deux sous-make pour que les articles fraîchement convertis soient vus par la passe pdf.
-#
-# Dispatch du profil (D20) : les `ifeq` ci-dessous sont résolus à la lecture du
-# Makefile, donc UNE SEULE des recettes existe pour un dossier donné. Le code de
-# sortie compte autant que la route : dans l'éditeur, tout code non nul remonte en
-# erreur rouge à chaque Ctrl+S. On n'échoue donc QUE si la configuration ne peut
-# pas être honorée (`book` différé, valeur inconnue) — jamais pour un choix
-# délibéré du rédacteur (profil vide).
+# Cible du build (Ctrl+S, Ctrl+E) : importe les Word déposés puis régénère les sorties, en
+# deux sous-make pour que les articles fraîchement convertis soient vus par la passe pdf.
+# Les `ifeq` sont résolus à la lecture, donc une seule recette `all` existe. Le code de
+# sortie compte autant que la route : dans l'éditeur, tout code non nul s'affiche en erreur
+# rouge — on n'échoue donc que si la configuration ne peut pas être honorée.
 ifeq ($(PROFIL_ROUTE),article)
-# Clé `profil:` absente OU `profil: article` : comportement historique, à l'octet.
+# Clé `profil:` absente ou `profil: article` : comportement historique, inchangé.
 all:
 	-@$(MAKE) --no-print-directory -f $(THIS) import
 	@$(MAKE) --no-print-directory -f $(THIS) pdf
@@ -126,29 +117,28 @@ else
 all: profil-inconnu
 endif
 
-# `profil:` présent et vide (D20) : choix explicite, PAS une panne -> sortie 0,
-# message doux. Aucune erreur rouge dans l'éditeur, aucun dossier out/ créé.
+# `profil:` présent et vide : choix explicite, pas une panne -> sortie 0 et message
+# doux. Aucune erreur rouge dans l'éditeur, aucun dossier out/ créé.
 profil-rien:
-	@echo "[pipeline] profil vide dans ausgabe.yaml : ce dossier ne produit volontairement aucun document (D20). Rien à compiler."
+	@echo "[pipeline] profil vide dans ausgabe.yaml : ce dossier ne produit volontairement aucun document. Rien à compiler."
 
-# `profil: book` (D20) : moteur livre différé. Configuration légitime mais non
-# honorable en l'état -> code non nul (le rédacteur doit savoir que son réglage
-# reste sans effet, et non croire à une compilation silencieuse).
+# `profil: book` : moteur livre différé. Configuration légitime mais non honorable
+# en l'état -> code non nul, pour que le rédacteur sache que son réglage reste sans
+# effet au lieu de croire à une compilation silencieuse.
 profil-differe:
-	@echo "[pipeline] profil « book » : profil différé, non encore implémenté (D20)."
+	@echo "[pipeline] profil « book » : profil différé, non encore implémenté."
 	@echo "[pipeline] En attendant : « article » (PDF + HTML par article)."
 	@exit 1
 
-# Valeur non reconnue : on nomme la valeur reçue ET les valeurs acceptées, la
-# faute de frappe étant le cas de très loin le plus probable. Code non nul.
+# Valeur non reconnue : on nomme la valeur reçue et les valeurs acceptées, la faute
+# de frappe étant de loin le cas le plus probable. Code non nul.
 profil-inconnu:
 	@echo "[pipeline] profil inconnu dans ausgabe.yaml : « $(PROFIL) »"
-	@echo "[pipeline] Valeurs acceptées (D20) : article (défaut) | book (différé) | vide (aucun document)."
+	@echo "[pipeline] Valeurs acceptées : article (défaut) | book (différé) | vide (aucun document)."
 	@exit 1
 
-# Rebuild FORCÉ de toute la revue (D44) : clean puis all — ignore les dates de
-# fichiers. Distinct du build incrémental de Ctrl+S. Le « - » sur clean : un PDF
-# verrouillé côté Windows ne doit pas empêcher la régénération (elle écrasera).
+# Rebuild forcé de toute la revue : clean puis all, sans regarder les dates. Le « - »
+# sur clean : un PDF verrouillé côté Windows ne doit pas empêcher la régénération.
 tout-exporter:
 	-@$(MAKE) --no-print-directory -f $(THIS) clean
 	@$(MAKE) --no-print-directory -f $(THIS) all
@@ -162,19 +152,17 @@ verifie-dossier:
 	  echo "[pipeline] ⚠ Un dossier de articles/ contient des espaces — renommez-le sans espaces."; exit 1; \
 	fi
 
-# Accent des tableaux (D57) : (re)génère out/.szh-accent.css depuis la couleur
-# annuelle d'ausgabe.yaml (repli commentaire seul si aucune couleur -> gris de
-# print.css). stdlib python3 (comme docx-tables.py), aucun /mnt/c en dur.
+# (Re)génère out/.szh-accent.css depuis la couleur annuelle d'ausgabe.yaml ; sans
+# couleur, un fichier « commentaire seul » laisse jouer les gris de print.css.
 $(ACCENT_CSS): ausgabe.yaml $(PIPELINE_DIR)/styles/couleurs.css \
               $(PIPELINE_DIR)/accent-css.py $(PIPELINE_DIR)/apca.py
 	@mkdir -p "$(OUT)"
 	@python3 "$(PIPELINE_DIR)/accent-css.py" ausgabe.yaml > "$@"
 
-# .md -> HTML autonome (--embed-resources : images/CSS en base64, zéro dépendance).
-# Exécuté DANS le dossier de l'article (chemins media/ et tables/ relatifs au .md).
-# citeproc + CSL APA seulement si l'article a une bibliographie (media/<slug>.bib).
-# Les tableaux extraits (tables/*.html, D47) sont des PRÉREQUIS : en éditer un
-# déclenche la recompilation de l'article (SECONDEXPANSION déjà active).
+# .md -> HTML autonome (--embed-resources : images et CSS en base64). Exécuté dans le
+# dossier de l'article, pour que media/ et tables/ soient relatifs au .md. citeproc +
+# CSL APA seulement si l'article a une bibliographie (media/<slug>.bib). Les tableaux
+# extraits (tables/*.html) sont des prérequis : en éditer un recompile l'article.
 $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
@@ -198,9 +186,9 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" $$extra \
 	  --output="$(abspath $@)"
 
-# .md -> HTML d'APERÇU (D53) : mêmes filtres/CSS/métadonnées que la sortie PDF,
-# mais reader commonmark_x+sourcepos -> chaque bloc porte data-pos (position
-# source pour le clic->texte de la webview). Consommé par le cockpit uniquement.
+# .md -> HTML d'aperçu : mêmes filtres, CSS et métadonnées que la sortie PDF, mais
+# reader commonmark_x+sourcepos -> chaque bloc porte data-pos, ce qui permet le clic
+# vers le texte source dans la webview. Consommé par le cockpit seulement.
 $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
@@ -223,13 +211,12 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
 
-# HTML -> PDF (CSS Paged Media), BALISÉ PDF/UA-1 (AX3/D62 : PDF accessible — arbre
-# de structure + langue). WeasyPrint 69 : --pdf-variant pdf/ua-1 pose /StructTreeRoot,
-# /MarkInfo /Marked true, /Lang et les StructElem (H, P, Table, Figure…). Repli
-# AUTOMATIQUE si la variante stricte échoue : tagged-PDF simple (--pdf-tags), puis
-# PDF nu — le balisage ne doit JAMAIS faire échouer le build.
-# Temporaire « ~$… » dans le MÊME dossier : rename local + ignoré par la synchro
-# OneDrive -> jamais de PDF partiel. ⚠ Quotes SIMPLES ($0/$notdir non substitués).
+# HTML -> PDF (CSS Paged Media), balisé PDF/UA-1. WeasyPrint 69 : --pdf-variant
+# pdf/ua-1 pose /StructTreeRoot, /MarkInfo /Marked true, /Lang et les StructElem.
+# Repli automatique si la variante stricte échoue (--pdf-tags, puis PDF nu) : le
+# balisage ne doit pas faire échouer le build. Temporaire « ~$… » dans le même
+# dossier : rename local, ignoré par la synchro OneDrive, donc pas de PDF partiel.
+# Quotes simples : $0 et $notdir ne doivent pas être substitués par make.
 $(OUT)/%.pdf: $(OUT)/%.html
 	@tmp='$(dir $@)~$$$(notdir $@)'; \
 	if $(WEASYPRINT) --pdf-variant pdf/ua-1 $< "$$tmp" 2>/dev/null; then :; \
@@ -241,16 +228,13 @@ $(OUT)/%.pdf: $(OUT)/%.html
 	fi; \
 	mv -f "$$tmp" $@
 
-# HTML autonome -> DOCX (F7) : galley Word de l'export OJS, RÉGÉNÉRÉ depuis le HTML
-# final (--embed-resources) et non depuis le .md — le reader html de pandoc comprend
-# les tableaux D47 réinjectés en HTML brut (colspan/rowspan) et les images data:,
-# que le writer docx nourri au .md perdrait. Produit à la demande (cible `docx`),
-# volontairement hors de `all` et de `tout-exporter`.
-# szh-galley-docx.lua : le reader html voit le BALISAGE, jamais le CSS — ce que
-# print.css masque réapparaîtrait en clair dans le Word. Ce filtre retire les blocs
-# purement techniques (aujourd'hui .szh-description, cible des aria-describedby des
-# tableaux, D104). Sans lui, chaque tableau décrit traînerait sa description longue
-# en paragraphe visible sous lui dans le galley OJS.
+# HTML autonome -> DOCX : galley Word de l'export OJS, régénéré depuis le HTML final
+# et non depuis le .md — le reader html de pandoc comprend les tableaux réinjectés en
+# HTML brut (colspan/rowspan) et les images data:, que le writer docx nourri au .md
+# perdrait. Produit à la demande, hors de `all` et de `tout-exporter`.
+# szh-galley-docx.lua retire les blocs purement techniques (.szh-description, cible
+# des aria-describedby) : le reader html ne voit pas le CSS, et ce que print.css
+# masque réapparaîtrait en clair sous chaque tableau du galley.
 $(OUT)/%.docx: $(OUT)/%.html $(PIPELINE_DIR)/filters/szh-galley-docx.lua
 	@echo "pandoc $< -> $@ (docx)"
 	@$(PANDOC) "$<" --from=html --to=docx \
@@ -258,34 +242,19 @@ $(OUT)/%.docx: $(OUT)/%.html $(PIPELINE_DIR)/filters/szh-galley-docx.lua
 
 docx: verifie-dossier $(DOCXS)
 
-# Conversion des Word déposés dans articles-word/ (D12, D26, D35, D39, F6) :
-#  - migre au passage les anciens articles « à plat » vers articles/<slug>/ ;
-#  - jamais d'écrasement d'un article existant (D12) ;
-#  - converti avec succès -> le .docx source est SUPPRIMÉ (D39, plus de _convertis/) ;
-#    « déjà converti (ignoré) » ou échec -> le .docx RESTE dans articles-word/ ;
-#  - import-docx.sh branche docx-meta.py (F6) : métadonnées -> <slug>.meta.yaml
-#    (jamais écrasé), tableau des auteurs et lignes de tête consommés, bibliographie
-#    -> media/<slug>.bib via AnyStyle ; l'échec d'UN article déclenche le rollback
-#    rm -rf articles/<slug> ci-dessous, meta.yaml compris ;
-#  - .docx uniquement (D35 : un seul chemin d'import) ;
-#  - NUMÉRO D'ORDRE : un nom de fichier qui commence par UN chiffre seul (« 4_Titre »)
-#    donne un slug complété à deux chiffres (« 04-titre ») ; à partir de 10 le nombre
-#    est laissé tel quel. Le tri alphabétique des slugs devient l'ordre du numéro
-#    (SLUGS := $(sort …), listerArticles côté cockpit, seq de l'export OJS D93).
-#  - LONGUEUR BORNÉE À 39 CARACTÈRES : le slug nomme le dossier ET son .md homonyme,
-#    il est donc compté DEUX FOIS dans chaque chemin — et deux fois de plus sous out/.
-#    Mesuré sur la bibliothèque SharePoint de rédaction : sans borne, un titre d'article
-#    réel (98 caractères) produit des chemins de 340 à 350 caractères, au-delà de la
-#    limite Windows de 260 — la compilation passe (WSL s'en moque) mais la synchronisation
-#    et l'Explorateur trébuchent. La coupe se fait au DERNIER MOT ENTIER (dernier « - »
-#    avant la borne) : « …-technologies-peu » passerait pour un bug, « …-technologies » se
-#    lit. Les fragments d'élision d'une seule lettre laissés en fin de coupe (« -d »,
-#    « -l ») sont retirés à leur tour : ce ne sont pas des mots. Repli sur la coupe
-#    sèche si les 39 premiers caractères n'ont aucun tiret.
-#    Appliquée APRÈS le complément à deux chiffres, pour garantir un résultat ≤ 39.
-#    ⚠ MIROIR OBLIGATOIRE : slugifierArticle() de vscodium-extension/szh-cockpit/
-#    lib/slug.js applique la MÊME règle — le cockpit devine le slug d'un .docx en
-#    attente pour dire « déjà converti » ; les deux doivent rester bijectifs.
+# Conversion des .docx déposés dans articles-word/. Les anciens articles « à plat » sont
+# migrés au passage vers articles/<slug>/ ; un article existant n'est jamais écrasé ; une
+# conversion réussie supprime le .docx source, un échec ou un « déjà converti » le laisse
+# en place et déclenche le rollback rm -rf articles/<slug> ci-dessous.
+# Slug : un nom commençant par un chiffre seul (« 4_Titre ») est complété à deux chiffres
+# (« 04-titre »), de sorte que le tri alphabétique donne l'ordre du numéro. Longueur bornée
+# à 39 caractères, parce que le slug nomme le dossier et son .md homonyme et compte donc
+# quatre fois dans un chemin de sortie : sans borne, un titre réel dépasse la limite
+# Windows de 260 caractères et la synchronisation SharePoint trébuche. La coupe tombe sur
+# le dernier mot entier, les fragments d'élision d'une lettre (« -d », « -l ») sont retirés
+# à leur tour, et la coupe sèche sert de repli sans tiret.
+# À garder aligné avec slugifierArticle() de vscodium-extension/szh-cockpit/lib/slug.js :
+# le cockpit devine le slug d'un .docx en attente pour dire « déjà converti ».
 import:
 	@set -u; \
 	shopt -s nullglob; \
@@ -305,7 +274,7 @@ import:
 	  if [ -d "$$d/media/media" ]; then \
 	    cp -r "$$d/media/media/." "$$d/media/" && rm -rf "$$d/media/media"; \
 	    if [ -f "$$d/$$slug.md" ]; then sed -i 's|media/media/|media/|g' "$$d/$$slug.md"; fi; \
-	    echo "[import] media aplati (D45) : $${d}media/media -> $${d}media"; \
+	    echo "[import] media aplati : $${d}media/media -> $${d}media"; \
 	  fi; \
 	done; \
 	[ -d "$(WORD_DIR)" ] || exit 0; \

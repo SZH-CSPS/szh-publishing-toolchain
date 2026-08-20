@@ -1,5 +1,5 @@
 [
-  // Exporter / régénérer l'aperçu PDF (= la tâche de build par défaut : make all)
+  // Exporter et régénérer l'aperçu PDF : la tâche de build par défaut.
   { "key": "ctrl+e", "command": "workbench.action.tasks.build" },
 
   // Importer à la demande les Word/LibreOffice déposés dans articles-word/
@@ -9,11 +9,9 @@
     "args": "Importer les articles Word"
   },
 
-  // ── Les trois panneaux du cockpit (F1) : Commande / Édition / Export — les mêmes
-  //    menus que les trois boutons de la barre « Revue SZH ». Ctrl+Alt+S ouvrait la
-  //    palette « Mise en forme » seule ; il ouvre désormais le panneau d'édition, qui
-  //    la contient en entier (la palette pure reste au clic droit → « Mise en forme »).
-  //    Ctrl+Alt+P bascule l'aperçu HTML ⇄ PDF sans passer par un panneau (F8).
+  // Les trois panneaux du cockpit — Commande, Édition, Export — soit les mêmes menus que
+  // les trois boutons de la barre « Revue SZH ». Le panneau d'édition contient toute la
+  // palette « Mise en forme », qui reste aussi au clic droit.
   { "key": "ctrl+alt+a", "command": "szh.panneauCommande", "when": "szh.estRevue" },
   {
     "key": "ctrl+alt+s",
@@ -23,8 +21,8 @@
   { "key": "ctrl+alt+d", "command": "szh.panneauExport", "when": "szh.estRevue" },
   { "key": "ctrl+alt+p", "command": "szh.basculerApercu", "when": "szh.estRevue" },
 
-  // ── Mise en forme SZH (M6, D55) — niveau utilisateur : prime sur Markdown All in One.
-  //    Ces raccourcis sont AUSSI affichés dans le sous-menu « Mise en forme » (clic droit).
+  // Mise en forme SZH, au niveau utilisateur, donc prioritaire sur Markdown All in One ;
+  // ces raccourcis figurent aussi dans le sous-menu « Mise en forme » du clic droit.
   { "key": "ctrl+b",     "command": "szh.fmt.gras",     "when": "editorTextFocus && editorLangId == markdown" },
   { "key": "ctrl+i",     "command": "szh.fmt.italique", "when": "editorTextFocus && editorLangId == markdown" },
   { "key": "ctrl+u",     "command": "szh.fmt.souligne", "when": "editorTextFocus && editorLangId == markdown" },
@@ -36,34 +34,30 @@
   { "key": "ctrl+alt+q", "command": "szh.fmt.question",  "when": "editorTextFocus && editorLangId == markdown" },
   { "key": "ctrl+alt+c", "command": "szh.fmt.citation",  "when": "editorTextFocus && editorLangId == markdown" },
   { "key": "ctrl+alt+f", "command": "szh.fmt.figure",    "when": "editorTextFocus && editorLangId == markdown" },
-  // Ctrl+Alt+T « Insérer un tableau » (D95) : dans un article, crée un vrai tableau
-  // articles/<slug>/tables/table-NN.html (grille vierge 3 × 3, en-tête compris), insère
-  // sa référence ::: {.szh-tabelle src="…"} au curseur et ouvre l'éditeur de tableau.
-  // Hors article, repli sur le squelette Markdown d'avant.
+  // « Insérer un tableau » : dans un article, crée articles/<slug>/tables/table-NN.html,
+  // insère sa référence ::: {.szh-tabelle src="…"} au curseur et ouvre l'éditeur de
+  // tableau. Hors article, repli sur un squelette Markdown.
   { "key": "ctrl+alt+t", "command": "szh.fmt.tableau",   "when": "editorTextFocus && editorLangId == markdown" },
 
-  // Coller un tableau copié depuis Excel/Word (une seule frappe). csholmq.excel-to-
-  // markdown-table a été RETIRÉ d'Open VSX : la fonction est reprise par le cockpit.
-  // Le collage lit la variante HTML du presse-papiers (la seule qui porte les cellules
-  // FUSIONNÉES), écrit articles/<slug>/tables/table-NN.html et insère la référence
-  // ::: {.szh-tabelle src="…"} au curseur — mécanisme D47 des tableaux importés (D81).
+  // Coller un tableau copié depuis Excel ou Word : le cockpit lit la variante HTML du
+  // presse-papiers, la seule qui porte les cellules fusionnées, écrit
+  // articles/<slug>/tables/table-NN.html et insère sa référence au curseur.
   {
     "key": "ctrl+alt+v",
     "command": "szh.fmt.collerTableau",
     "when": "editorTextFocus && editorLangId == markdown"
   },
 
-  // Saut de page (D86) : ce qui suit repart en haut d'une page dans le PDF. Aucun effet
-  // en HTML, où il n'y a pas de page suivante — le marqueur y est simplement inerte.
+  // Saut de page : ce qui suit repart en haut d'une page dans le PDF. Sans effet en
+  // HTML, où le marqueur est inerte.
   {
     "key": "ctrl+alt+enter",
     "command": "szh.fmt.sautPage",
     "when": "editorTextFocus && editorLangId == markdown"
   },
 
-  // Secours si l'aperçu PDF ne se rafraîchit pas tout seul : recharge la fenêtre
+  // Secours si l'aperçu PDF ne se rafraîchit pas tout seul : recharge la fenêtre.
   { "key": "ctrl+alt+r", "command": "workbench.action.reloadWindow" }
 
-  // NB : on NE désactive PAS Ctrl+Maj+P (palette) : c'est le filet de secours assumé.
-  //      La palette ne peut pas être « réduite » proprement sans forker VSCodium.
+  // Ctrl+Maj+P (palette de commandes) reste actif : c'est le filet de secours.
 ]

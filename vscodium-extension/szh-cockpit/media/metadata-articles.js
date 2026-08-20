@@ -6,19 +6,14 @@
   const conteneur = document.getElementById('cartes');
   const bandeauFiltre = document.getElementById('filtre');
   const modifies = new Set();
-  // Fragment mots-clés (SZH.motsCles) de chaque carte : c'est LUI qui porte les
-  // listes, y compris celles des langues masquées, et qui les rend déjà alignées.
   const motsClesParCarte = new WeakMap();
   let TYPES = [];
   let dernierModifie = false;
-  let LANGUE_DEFAUT = 'fr';   // langue par défaut du numéro (E3, dérivée du revue)
-  // Gardes photo (F3) — mêmes bornes que l'hôte (défense en profondeur).
+  let LANGUE_DEFAUT = 'fr';   // langue par défaut du numéro, dérivée de la revue
   const TAILLE_MAX_PHOTO = 20 * 1024 * 1024;
   const EXTENSIONS_PHOTO = ['png', 'jpg', 'jpeg', 'webp'];
-  // L'hôte doit savoir si des cartes portent un ● : c'est lui qui pose la garde
-  // « non enregistré » avant de RECHARGER le formulaire (passage à la vue filtrée
-  // d'un article, ou retour à la liste complète — D97). On ne poste qu'aux
-  // changements d'état, pas à chaque frappe.
+  // L'hôte doit savoir si des cartes sont modifiées : c'est lui qui garde le formulaire
+  // contre un rechargement. On ne poste qu'aux changements d'état, pas à chaque frappe.
   function signalerModifie() {
     const m = modifies.size > 0;
     if (m === dernierModifie) { return; }
@@ -27,8 +22,6 @@
   }
   function marquer(carte, slug) { modifies.add(slug); carte.classList.add('modifie'); etat.textContent = ''; signalerModifie(); }
 
-  // Icônes SVG inline (currentColor, ~14 px) — chemins CONSTANTS posés en DOM
-  // (createElementNS, jamais d'innerHTML), cohérents poubelle/appareil photo.
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const CHEMIN_POUBELLE = 'M10 3h3v1h-1v9l-1 1H4l-1-1V4H2V3h3V2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1zM9 2H6v1h3V2zM4 13h7V4H4v9zm2-8H5v7h1V5zm1 0h1v7H7V5zm2 0h1v7H9V5z';
   const CHEMIN_CAMERA = 'M6.2 2a1 1 0 0 0-.9.55L4.6 4H2.5A1.5 1.5 0 0 0 1 5.5v7A1.5 1.5 0 0 0 2.5 14h11a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 13.5 4h-2.1l-.7-1.45a1 1 0 0 0-.9-.55H6.2zM8 6a3.25 3.25 0 1 0 0 6.5 3.25 3.25 0 0 0 0-6.5zm0 1.5a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5z';
@@ -60,8 +53,6 @@
     parent.appendChild(i);
   }
 
-  // Bouton 📷 : l'état « photo présente » vient du dataset de la rangée (posé par
-  // la modale, jamais saisi au clavier) ; le title nomme la version choisie.
   function majBoutonPhoto(rangee, bouton) {
     const b = bouton || rangee.querySelector('button.photo');
     if (!b) { return; }
@@ -70,8 +61,6 @@
     b.title = photo !== '' ? TXT.photoPresente.split('{0}').join(photo) : TXT.photoBouton;
   }
 
-  // Message inline sous une rangée d'auteur (ex. « prénom et nom d'abord ») —
-  // éphémère, jamais de modale pour une simple garde de saisie.
   function noteRangee(rangee, texte) {
     let note = rangee.nextElementSibling;
     if (!note || !note.classList || !note.classList.contains('note-auteur')) {
@@ -87,8 +76,6 @@
   function ligneAuteur(carte, slug, zone, auteur) {
     const rangee = document.createElement('div');
     rangee.className = 'auteur';
-    // `photo` (D92) : porté par la rangée (dataset), posé/retiré par la modale
-    // photo uniquement — il part avec collecter() comme les autres champs.
     rangee.dataset.photo = (auteur && auteur.photo) || '';
     for (const [cle, indice] of [['prenom', TXT.aPrenom], ['nom', TXT.aNom], ['fonction', TXT.aFonction], ['affiliation', TXT.aAffiliation], ['orcid', TXT.aOrcid], ['email', TXT.aEmail]]) {
       const i = document.createElement('input');
@@ -117,8 +104,8 @@
     zone.appendChild(rangee);
   }
 
-  // ---- Modale photo (F3) — overlay HTML/CSS dans la webview, données par
-  // postMessage uniquement (aperçus = data: URIs renvoyées par l'hôte).
+  // ---- Modale photo : un voile HTML dans la webview, alimenté par postMessage, les
+  // aperçus étant des data: URI renvoyées par l'hôte.
   const VERSIONS = ['sans-fond', 'avec-fond', 'original'];   // ordre de repli
   let modale = null;   // éléments du DOM (construits une fois)
   let ctx = null;      // { carte, slug, rangee, index, base, versions, occupe }
@@ -161,7 +148,6 @@
     boite.className = 'modale';
     const titre = document.createElement('h3');
     boite.appendChild(titre);
-    // Zone de dépôt (drag & drop HTML5) + <input type=file> en secours.
     const zone = document.createElement('div');
     zone.className = 'zone-depot';
     const consigne = document.createElement('div');
@@ -194,7 +180,6 @@
       if (f) { deposerFichier(f); }
     });
     boite.appendChild(zone);
-    // Radio 3 versions — défaut : Sans fond (D92).
     const radios = document.createElement('div');
     radios.className = 'radios';
     for (const [valeur, libelle] of [['original', TXT.vOriginal], ['avec-fond', TXT.vAvecFond], ['sans-fond', TXT.vSansFond]]) {
@@ -246,8 +231,6 @@
   function ouvrirModale(carte, slug, rangee) {
     const prenom = (rangee.querySelector('input[data-cle=prenom]') || { value: '' }).value.trim();
     const nom = (rangee.querySelector('input[data-cle=nom]') || { value: '' }).value.trim();
-    // Le prénom et le nom NOMMENT le fichier (slug-auteur, D92) : sans eux, pas
-    // de modale — message inline, pas de dialogue.
     if (prenom === '' && nom === '') { noteRangee(rangee, TXT.photoNomRequis); return; }
     if (!modale) { construireModale(); }
     const index = Array.prototype.indexOf.call(carte.querySelectorAll('.auteur'), rangee);
@@ -259,8 +242,6 @@
     majApercu();
     const photo = rangee.dataset.photo || '';
     if (photo !== '') {
-      // Photo déjà posée : l'hôte renvoie les versions existantes (photo-versions,
-      // radio préselectionnée sur la version actuelle via `actuelle`).
       poserNote(TXT.chargement);
       vscodeApi.postMessage({ type: 'photo-ouvrir', slug: slug, index: index, photo: photo });
     }
@@ -297,8 +278,6 @@
     lecteur.readAsDataURL(f);
   }
 
-  // Bandeau de la vue filtrée (D97) : rappelle qu'un seul article est affiché et
-  // ramène à la liste complète. Absent en vue complète.
   function rendreFiltre(filtre) {
     bandeauFiltre.textContent = '';
     if (!filtre || !filtre.length) { bandeauFiltre.hidden = true; return; }
@@ -338,8 +317,6 @@
       optVide.value = '';
       optVide.textContent = TXT.typeAucun;
       selection.appendChild(optVide);
-      // Groupes (E2) : chaque option porte un `groupe` ; on ouvre un <optgroup>
-      // quand il change (option sans groupe -> directement dans le select).
       let cible = selection, groupeCourant = null;
       for (const t of TYPES) {
         if (t.groupe) {
@@ -359,9 +336,8 @@
       if (selection.value !== (v.type || '')) { selection.value = ''; }
       selection.addEventListener('input', function () { marquer(carte, article.slug); });
       carte.appendChild(selection);
-      // E3 : langue par défaut du numéro EN PREMIER (« Titre (DE) » pour la
-      // Zeitschrift, « Titre (FR) » pour la Revue), les autres en dessous.
-      // IT toujours construit, révélé par CSS.
+      // La langue par défaut du numéro vient en premier, les autres en dessous. L'italien
+      // est toujours construit, et révélé par le CSS.
       const ordre = ['fr', 'de', 'it'];
       const defaut = ordre.indexOf(LANGUE_DEFAUT) !== -1 ? LANGUE_DEFAUT : 'fr';
       const langues = [defaut].concat(ordre.filter(function (l) { return l !== defaut; }));
@@ -388,10 +364,9 @@
       ajouter.addEventListener('click', function () { ligneAuteur(carte, article.slug, zone, null); marquer(carte, article.slug); });
       carte.appendChild(ajouter);
       champTexte(carte, carte, article.slug, 'doi', null, 'DOI', v.doi);
-      // Mots-clés : fragment PARTAGÉ SZH.motsCles (media/_commun.js), le même que dans
-      // le panneau de traduction — une rangée par mot-clé, toutes langues côte à côte.
-      // On ajoute et on retire une RANGÉE, jamais un mot dans une seule langue : c'est
-      // la position qui apparie « diagnostic » et « Diagnose », rien d'autre.
+      // Mots-clés : le fragment partagé SZH.motsCles (media/_commun.js). On ajoute et on
+      // retire une rangée entière, jamais un mot dans une seule langue, la position seule
+      // appariant « diagnostic » et « Diagnose ».
       const lMots = document.createElement('label');
       lMots.textContent = TXT.motsClesTitre || '';
       carte.appendChild(lMots);
@@ -420,8 +395,8 @@
       caseIt.appendChild(document.createTextNode(TXT.italien));
       coche.addEventListener('change', function () {
         carte.classList.toggle('avec-it', coche.checked);
-        // La colonne IT apparaît ou disparaît ; le fragment garde ses valeurs (elles
-        // vivent dans son modèle, pas dans le DOM).
+        // La colonne italienne apparaît ou disparaît ; le fragment garde ses valeurs, qui
+        // vivent dans son modèle, pas dans le DOM.
         editeurMots.reconstruire(coloMotsCles(coche.checked));
       });
       carte.appendChild(caseIt);
@@ -437,20 +412,17 @@
       const langue = i.dataset.langue;
       if (cle === 'doi') { resultat.doi = i.value; }
       else if (cle === 'title' || cle === 'subtitle' || cle === 'resume') { resultat[cle][langue] = i.value; }
-      // 'keywords' ne passe plus par un <input> de la carte : il vient du fragment.
     }
     for (const rangee of carte.querySelectorAll('.auteur')) {
       const a = {};
       for (const i of rangee.querySelectorAll('input')) { a[i.dataset.cle] = i.value; }
-      a.photo = rangee.dataset.photo || '';         // posé par la modale (D92)
+      a.photo = rangee.dataset.photo || '';         // posé par la modale
       resultat.author.push(a);
     }
     const editeurMots = motsClesParCarte.get(carte);
     if (editeurMots) { resultat.keywords = editeurMots.collecter(); }
     return resultat;
   }
-  // Cartes MODIFIÉES seules (les autres ne sont jamais réécrites) — partagé par le
-  // bouton « Enregistrer » et la réponse à « demande-rechargement ».
   function cartesModifiees() {
     const envoi = {};
     for (const carte of conteneur.querySelectorAll('.carte')) {
@@ -458,9 +430,8 @@
     }
     return envoi;
   }
-  // D121 : enregistrement automatique (3 s après la dernière frappe, à la perte de
-  // focus d'un champ, et quand le panneau passe en arrière-plan). L'hôte répond sans
-  // renvoyer les valeurs quand `auto` est vrai : pas de re-rendu sous les doigts.
+  // Enregistrement automatique : l'hôte répond sans renvoyer les valeurs quand la demande
+  // est automatique, pour ne pas re-rendre la page sous les doigts.
   function envoyer(auto) {
     if (modifies.size === 0) { if (!auto) { etat.textContent = TXT.rien; } return; }
     vscodeApi.postMessage({ type: 'enregistrer', auto: !!auto, articles: cartesModifiees() });
@@ -480,15 +451,13 @@
       rendre(msg.articles || []);
       rendreFiltre(msg.filtre || null);
     }
-    // L'hôte veut recharger le formulaire (changement de filtre) alors que des cartes
-    // portent un ● : il lui faut ce qu'elles contiennent pour pouvoir l'enregistrer.
+    // L'hôte veut recharger le formulaire alors que des cartes sont modifiées : il lui
+    // faut ce qu'elles contiennent pour pouvoir les enregistrer.
     if (msg.type === 'demande-rechargement') {
       vscodeApi.postMessage({ type: 'rechargement', articles: cartesModifiees() });
     }
     if (msg.type === 'enregistre') {
       autoEnr.confirme();
-      // Enregistrement automatique : l'hôte ne renvoie pas les cartes, c'est donc ici
-      // qu'on retire les ● (le disque est à jour, la webview aussi).
       if (msg.auto) {
         modifies.clear();
         signalerModifie();
@@ -497,8 +466,6 @@
       etat.textContent = TXT.enregistre.split('{0}').join(msg.n);
     }
     if (msg.type === 'erreur') { autoEnr.confirme(); etat.textContent = '⚠ ' + msg.message; }
-    // Réponses de la modale photo : recontrôlées contre le contexte courant —
-    // une réponse tardive (modale refermée, autre rangée) est simplement ignorée.
     if (msg.type === 'photo-versions') {
       if (!ctx || msg.slug !== ctx.slug || msg.index !== ctx.index) { return; }
       ctx.occupe = false;
@@ -529,7 +496,6 @@
       majApercu();
     }
   });
-  // Un dépôt HORS de la zone prévue ne doit jamais « naviguer » la webview.
   document.addEventListener('dragover', function (e) { e.preventDefault(); });
   document.addEventListener('drop', function (e) { e.preventDefault(); });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && ctx) { fermerModale(); } });

@@ -16,11 +16,9 @@ select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground
   background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; }
 #etat { font-size: .85em; color: var(--vscode-descriptionForeground); margin-left: .3rem; }
 #indic { font-size: .95em; color: var(--vscode-editorWarning-foreground, #d1901e); margin-left: .1rem; font-weight: 700; }
-/* Champs texte du tableau, AU-DESSUS de la grille : la légende (D94 — le <caption>
-   du fichier, que le pipeline numérote et affiche sous le tableau) puis le texte
-   alternatif et les crédits (data-alt / data-copyright / data-source). Grille à deux
-   colonnes : les champs longs (légende, texte alternatif) prennent toute la largeur,
-   copyright et source se partagent la dernière rangée. */
+/* Champs texte au-dessus de la grille : la légende, qui devient le <caption> du fichier,
+   puis le texte alternatif et les crédits. Grille à deux colonnes, où les champs longs
+   prennent toute la largeur. */
 .champs { display: grid; grid-template-columns: 1fr 1fr; gap: .15rem .8rem; padding: 0 0 .5rem; }
 .champs .ch { display: flex; align-items: center; gap: .5rem; min-width: 0; }
 .champs .ch.large { grid-column: 1 / -1; }
@@ -33,15 +31,14 @@ select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground
 /* Aide sous un champ : alignée sur le champ, pas sur son étiquette. */
 .champs .aide { grid-column: 1 / -1; margin: 0 0 .25rem; font-size: .78em; font-style: italic;
   color: var(--vscode-descriptionForeground); }
-/* Corps = grille (à gauche) + panneau de mise en forme (à droite) ; empile sur écran
-   étroit (flex-wrap). Chacun défile indépendamment. */
+/* Corps : la grille à gauche, le panneau de mise en forme à droite, empilés sur un écran
+   étroit. Chacun défile indépendamment. */
 .corps { display: flex; flex: 1 1 auto; gap: .8rem; min-height: 0; align-items: flex-start; flex-wrap: wrap; }
 #zone { overflow: auto; flex: 1 1 22rem; min-width: 0; align-self: stretch; }
 
-/* ── Panneau des 3 zones de style (Preset / En-têtes / Tableau) ─────────────── */
-/* Le panneau tient DEUX colonnes (styles d'en-tête à droite, le reste à gauche) : empilé,
-   l'ensemble dépassait la hauteur utile et le zébrage se trouvait hors écran. Il se replie
-   en une seule colonne sous 34rem de large disponible. */
+/* ---- Panneau de style ----
+   Deux colonnes, styles d'en-tête à droite : empilé, l'ensemble dépasse la hauteur utile
+   et le zébrage se retrouve hors écran. Il se replie en une colonne sous 34rem. */
 .panneau { flex: 0 0 34rem; max-width: 40rem; overflow: auto; align-self: stretch;
   display: flex; flex-direction: row; flex-wrap: wrap; gap: .6rem; align-items: flex-start; }
 .panneau .colonne { flex: 1 1 15rem; min-width: 14rem;
@@ -59,22 +56,21 @@ select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground
   padding: .08rem 0; cursor: pointer; }
 .panneau label.opt input { margin: 0; cursor: pointer; }
 .panneau .note { font-size: .78em; color: var(--vscode-descriptionForeground); margin: .25rem 0 0; font-style: italic; }
-/* Sous-bloc désactivé (aucun en-tête correspondant) : grisé + indice affiché. */
+/* Sous-bloc désactivé, faute d'en-tête correspondant : grisé, avec une explication. */
 .panneau .sousbloc.inactif { opacity: .5; }
 .panneau label.opt input:disabled { cursor: default; }
 table.grille { border-collapse: collapse; }
 table.grille th, table.grille td { border: 1px solid var(--vscode-panel-border, #888);
   padding: .3em .5em; min-width: 3em; height: 1.9em; vertical-align: top; text-align: left; }
-/* En-tête figé (D V2d) : rangée A/B/C collée en haut, colonne 1/2/3 collée à gauche. */
+/* En-têtes figés : la rangée de poignées reste collée en haut, la colonne à gauche. */
 table.grille tr:first-child .poignee { position: sticky; top: 0; z-index: 3; }
 table.grille .poignee.pnum { position: sticky; left: 0; z-index: 2; }
 table.grille .coin { position: sticky; top: 0; left: 0; z-index: 4; }
 table.grille td.cell, table.grille th.cell { background: var(--vscode-editor-background); cursor: text; }
-/* F4 : une cellule d'en-tête est un <th> -> gras PAR DÉFAUT du navigateur, trompeur
-   (laisse croire au style « gras »). On annule ce gras : le style d'en-tête réel est
-   piloté par styleEnt (gras/négatif/fond en style inline, qui l'emporte). Un repère
-   discret ★ marque la cellule d'en-tête, quel que soit son style. Le pseudo-élément
-   n'est ni éditable ni récolté (round-trip intact). */
+/* Une cellule d'en-tête est un <th>, que le navigateur met en gras par défaut, ce qui
+   laisse croire que le style « gras » est actif : on annule ce gras, le style réel étant
+   posé en ligne par l'aperçu. Le repère qui marque l'en-tête est un pseudo-élément, ni
+   éditable ni récolté. */
 table.grille th.cell { font-weight: 400; }
 table.grille th.cell::before { content: "\2605"; margin-right: .35em; font-size: .8em;
   font-weight: 400; opacity: .5; vertical-align: .06em; }

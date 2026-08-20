@@ -1,11 +1,9 @@
-# .vscodeignore — empaquetage vsce (release.yml exécute « vsce package » dans ce dossier).
+# Empaquetage vsce, lancé par la CI dans ce dossier.
 #
-# INVARIANT CRITIQUE (RR4) : NE JAMAIS exclure lib/ ni media/.
-#   lib/**     modules CommonJS chargés par require() à l'exécution
-#   media/**   webviews (html/css/js) lues par fs.readFileSync à l'exécution
-# Le refactor R1–R6 a éclaté extension.js en ces fichiers ; sans eux le VSIX se charge
-# mais casse au premier usage. vsce empaquette TOUT le dossier sauf ce qui est listé ici :
-# on n'exclut donc QUE des fichiers non exécutés (aucun n'existe à ce jour — garde-fou).
+# Ne jamais exclure lib/ ni media/ : lib/ est chargé par require() à l'exécution et
+# media/ est lu par fs.readFileSync. Sans eux le VSIX se charge, puis casse au premier
+# usage. vsce empaquette tout le dossier sauf ce qui est listé ici, donc on n'y met que
+# des fichiers qui ne sont jamais exécutés — aucun n'existe à ce jour, c'est un garde-fou.
 **/*.map
 **/*.vsix
 **/.DS_Store

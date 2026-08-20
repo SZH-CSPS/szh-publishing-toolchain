@@ -1,32 +1,21 @@
-// SZH cockpit — appel du pipeline de portraits dans la WSL (F3, D91/D92).
-// `pipeline/portraits.py` tourne dans le venv /opt/portraits du rootfs
-// SZH-Publishing : recadrage visage (YuNet) + détourage (rembg), il écrit
-// <slug>.avec-fond.png et <slug>.sans-fond.png (400 × 400, N&B) dans le dossier
-// de sortie et répond UNE ligne JSON par image sur stdout —
+// Invoque `pipeline/portraits.py` dans la WSL (spawn de wsl.exe, sans shell) et lit sa
+// sortie. Le script recadre le visage (YuNet), détoure (rembg), écrit
+// <slug>.avec-fond.png et <slug>.sans-fond.png dans le dossier de sortie, et répond une
+// ligne JSON par image sur stdout :
 //   {"slug":…, "ok":bool, "visage":bool, "padding":bool,
 //    "fichiers":{"avec_fond":…, "sans_fond":…}|null, "erreur":null|str}
-// Ce module ne fait qu'invoquer le script (spawn wsl.exe, jamais de shell) et
-// parser ces lignes ; l'écriture de l'original et les chemins relatifs du champ
-// `photo` restent la responsabilité de l'appelant (extension.js).
-// Aucune dépendance à vscode ni à i18n (testable headless).
+// L'écriture de l'original et les chemins relatifs du champ `photo` restent à l'appelant.
 'use strict';
 
 const { spawn } = require('child_process');
 const { reveillerWsl, DISTRO, cheminWsl } = require('./wsl');
 
-// Défauts du poste déployé (D91) : venv du rootfs + script du toolkit installé.
-// Surchargeables par les options — c'est ce qu'utilisent les tests headless
-// (venv de test + script du dépôt via /mnt/c/…).
 const INTERPRETE_DEFAUT = '/opt/portraits/bin/python';
 const SCRIPT_DEFAUT = '/mnt/c/ProgramData/SZH/toolkit/pipeline/portraits.py';
-// 180 s : le PREMIER appel paie le réveil de la VM + le chargement du modèle
-// u2net_human_seg ; les suivants sont à ~1 s/image (session amortie côté script).
+// Large, car le premier appel paie le réveil de la VM et le chargement du modèle
+// u2net_human_seg ; les images suivantes de la même session sont bien plus rapides.
 const TIMEOUT_DEFAUT = 180000;
 
-// Chemin Windows -> chemin WSL : « C:\Users\x » -> « /mnt/c/Users/x ». Les
-// espaces ne se négocient pas ici : chaque chemin part comme UN argument de
-// spawn (pas de shell, donc pas de quoting). Un chemin déjà POSIX (tests) est
-// rendu tel quel, antislashs normalisés.
 function cheminVersWsl(chemin) {
   const c = String(chemin || '');
   const m = c.match(/^([A-Za-z]):[\\/](.*)$/);
@@ -34,16 +23,11 @@ function cheminVersWsl(chemin) {
   return '/mnt/' + m[1].toLowerCase() + '/' + m[2].replace(/\\/g, '/');
 }
 
-// traiterPortraits({ dossierPortraits, entrees:[{slug, cheminSource}],
-//                    interprete?, script?, timeoutMs? })
-//   -> Promise<[{slug, ok, visage, padding, fichiers, erreur}]>
-// Une invocation = UNE session du script pour N images (le modèle rembg n'est
-// chargé qu'une fois). Réveille la VM d'abord (reveillerWsl ne rejette jamais).
-// Rejette : wsl.exe introuvable (erreur marquée .wsl = true), délai dépassé, ou
-// aucune ligne JSON exploitable (rootfs sans /opt/portraits, script absent…).
-// Les lignes parasites de stdout sont ignorées ; stderr n'est pas lu (les traces
-// de progression du script y vivent). Un code retour non nul avec des lignes
-// JSON valides RÉSOUT quand même : l'échec est porté par entrée (ok:false).
+// -> Promise<[{slug, ok, visage, padding, fichiers, erreur}]>. Une invocation traite
+// toutes les images en une session, le modèle rembg n'étant chargé qu'une fois. Rejette
+// si wsl.exe est introuvable (erreur marquée .wsl), si le délai est dépassé, ou si stdout
+// ne porte aucune ligne JSON exploitable ; un code retour non nul accompagné de lignes
+// valides résout quand même, l'échec étant alors porté par entrée.
 function traiterPortraits(options) {
   const o = options || {};
   const entrees = (Array.isArray(o.entrees) ? o.entrees : [])

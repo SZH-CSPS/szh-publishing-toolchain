@@ -1,24 +1,17 @@
 #!/usr/bin/env python3
-# apca.py — contraste APCA + gradations de couleur en OKLab. Module PARTAGÉ de la
-# chaîne (importé par accent-css.py et par test/apca-check.py). stdlib uniquement :
-# le pipeline tourne dans une image WSL minimale (pas de numpy, pas de pip).
+# apca.py — contraste APCA et gradations de couleur en OKLab. Module partagé de la chaîne,
+# importé par accent-css.py et par test/apca-check.py. stdlib uniquement : le pipeline
+# tourne dans une image WSL minimale, sans numpy ni pip.
 #
-# POURQUOI APCA et pas WCAG 2 ?
-#   Le ratio WCAG 2 (L1+0.05)/(L2+0.05) se trompe lourdement sur les teintes vives et
-#   sur les fonds sombres : il déclare « conformes » des textes gris sur noir illisibles
-#   et « non conformes » des jaunes parfaitement lisibles. APCA (Accessible Perceptual
-#   Contrast Algorithm, brouillon WCAG 3) modélise la perception réelle : une seule
-#   valeur Lc (« lightness contrast ») de 0 à ±108, SIGNÉE selon la polarité
-#   (positive = texte sombre sur fond clair, négative = texte clair sur fond sombre).
+# APCA (Accessible Perceptual Contrast Algorithm, brouillon WCAG 3) donne une valeur Lc de
+# 0 à ±108, signée selon la polarité (positive = texte sombre sur fond clair), et modélise
+# la perception réelle là où le ratio WCAG 2 se trompe sur les teintes vives et les fonds
+# sombres. OKLab sert aux gradations : espace perceptuellement uniforme, on y bouge la
+# clarté à teinte constante, ce qu'un éclaircissement en sRGB ne sait pas faire sans
+# délaver ni dévier la teinte.
 #
-# POURQUOI OKLab pour les gradations ?
-#   Éclaircir/assombrir en sRGB (mélange avec du blanc, multiplication par un facteur)
-#   délave ou dévie la teinte : le rouge tire vers le rose froid, le jaune vers le kaki.
-#   OKLab est un espace perceptuellement uniforme : on y bouge la CLARTÉ (L) en gardant
-#   la TEINTE (h) constante, ce qui donne une famille de nuances reconnaissable.
-#
-# Version de référence : APCA-W3 0.1.9 (constantes ci-dessous, ne pas « moderniser »
-# sans revalider tout le fichier styles/couleurs.css).
+# Version de référence : APCA-W3 0.1.9 (constantes ci-dessous). Ne pas les « moderniser »
+# sans revalider tout styles/couleurs.css.
 
 import math
 
@@ -33,53 +26,35 @@ _I_FOND, _I_TEXTE, _I_ECHELLE, _I_CLIP, _I_OFFSET = 0.65, 0.62, 1.14, -0.1, 0.02
 
 NOIR, BLANC = '#000000', '#FFFFFF'
 
-# ─── Les quatre niveaux d'APCA, et la TAILLE qui va avec chacun ───────────────────
-#
-# POURQUOI un seuil ne peut PAS être une constante du projet.
-#   Ce fichier a longtemps posé « LC_TEXTE = 75 = texte courant », et c'était FAUX. Un
-#   seuil APCA n'a aucun sens tout seul : il ne vaut que pour un couple (taille, graisse).
-#   Le même Lc 75 est confortable sur un intertitre de 18 px et nettement insuffisant sur
-#   une cellule de tableau de 13,6 px. Poser 75 comme « le » seuil du texte courant, c'est
-#   donc valider en bloc tout ce qui est plus petit que 18 px — c'est-à-dire, dans cette
-#   maquette, le corps ET les tableaux.
-#   Les seuils ci-dessous portent donc la taille DANS leur nom, et le code ne compare
-#   jamais une mesure à un seuil sans être passé par `seuil_pour()`.
-#
-# POURQUOI ces niveaux-là (critères officiels d'APCA, et non un choix maison) :
-LC_TEXTE_14 = 90.0      # niveau PRÉFÉRÉ du texte courant, dès 14 px / graisse 400
-LC_TEXTE_18 = 75.0      # niveau MINIMUM du texte courant, et seulement dès 18 px / 400
+# ─── Les quatre niveaux d'APCA, et la taille qui va avec chacun ───────────────────
+# Un seuil APCA ne vaut que pour un couple (taille, graisse) : le même Lc 75 est
+# confortable sur un intertitre de 18 px et insuffisant sur une cellule de tableau de
+# 13,6 px. Les seuils portent donc la taille dans leur nom, et le code ne compare jamais
+# une mesure à un seuil sans passer par `seuil_pour()`. Ce sont les niveaux officiels
+# d'APCA, pas un choix maison.
+LC_TEXTE_14 = 90.0      # niveau préféré du texte courant, dès 14 px / graisse 400
+LC_TEXTE_18 = 75.0      # niveau minimum du texte courant, et seulement dès 18 px / 400
 LC_GROS_TITRE = 60.0    # gros texte : >= 24 px, ou >= 19 px en gras
 LC_NON_TEXTUEL = 30.0   # plancher non textuel : filets, bordures, séparateurs
 #
-# POURQUOI 90 est le seuil réel de CETTE maquette, et non 75.
-#   Le corps est à 14 px (print.css, --body-size: 0.875rem) et le texte des TABLEAUX à
-#   0,85rem, soit 13,6 px. Les deux tombent sous les 18 px qu'exige le niveau 75 : le
-#   seuil applicable est donc 90 partout où il y a du texte de lecture, aplats de tableau
-#   compris. C'est tout l'objet de cette correction.
-#   La revue est principalement NUMÉRIQUE : APCA, conçu pour les écrans auto-lumineux,
-#   est pleinement dans son domaine ici.
+# Le seuil réel de cette maquette est donc 90 : le corps est à 14 px et le texte des
+# tableaux à 13,6 px, tous deux sous les 18 px qu'exige le niveau 75.
 
-# Tolérance appliquée à TOUTE comparaison d'une mesure à un seuil. Les hex sont arrondis
-# à l'octet : un Lc ne retombe jamais au centième sur une valeur ronde, et refuser 89,7
-# au motif qu'il n'est pas 90 serait une rigueur de façade — l'écart est très en dessous
-# du seuil de perception. 0,5 laisse passer l'arrondi et rien d'autre ; c'est aussi, et
-# ce n'est pas un hasard, la moitié de l'unité d'affichage (voir `lc_affiche`) : une
-# valeur qui S'AFFICHE « 90 » SATISFAIT le seuil de 90.
+# Tolérance appliquée à toute comparaison d'une mesure à un seuil. Les hex sont arrondis à
+# l'octet : un Lc ne retombe jamais au centième sur une valeur ronde, et refuser 89,7 au
+# motif qu'il n'est pas 90 serait une rigueur de façade. 0,5 laisse passer l'arrondi et
+# rien d'autre ; c'est aussi la moitié de l'unité d'affichage (voir `lc_affiche`), de sorte
+# qu'une valeur qui s'affiche « 90 » satisfait le seuil de 90.
 TOLERANCE_SEUIL = 0.5
 
 
 def seuil_pour(taille_px, gras=False):
     """Le |Lc| qu'exige APCA pour du texte de `taille_px` (graisse 400, ou 700 si `gras`).
 
-    L'ordre des tests va du plus permissif au plus strict, parce que c'est la TAILLE qui
-    achète le droit à un seuil bas : plus le texte est gros, moins il demande de
-    contraste. Le gras ne vaut que 5 px environ, d'où le 19 px du second test.
-
-    Sous 14 px, le modèle à quatre niveaux ne dit plus rien : APCA ne documente AUCUN
-    niveau permissif en dessous — un texte plus petit que 14 px demande davantage que 90,
-    pas moins. On renvoie donc le plus exigeant des quatre niveaux, faute de mieux, et
-    c'est le cas du texte de TABLEAU à 13,6 px. Le seuil rendu ici est donc un PLANCHER
-    pour ces tailles-là, jamais une autorisation."""
+    Les tests vont du plus permissif au plus strict : c'est la taille qui achète le droit à
+    un seuil bas, et le gras ne vaut qu'environ 5 px. Sous 14 px, APCA ne documente aucun
+    niveau — un texte plus petit demande davantage que 90, pas moins — donc on renvoie le
+    plus exigeant des quatre, comme plancher et non comme autorisation."""
     if taille_px >= 24.0 or (gras and taille_px >= 19.0):
         return LC_GROS_TITRE
     if taille_px >= 18.0:
@@ -88,37 +63,28 @@ def seuil_pour(taille_px, gras=False):
 
 
 def tient(mesure, seuil):
-    """La mesure satisfait-elle le seuil, TOLERANCE_SEUIL comprise ?
-
-    Point de passage OBLIGÉ de toute comparaison mesure/seuil dans la chaîne : c'est ce
-    qui garantit que le vérificateur, le CSS et la planche disent la même chose d'une même
-    couleur. `mesure` peut être signée (la polarité n'entre pas dans le jugement)."""
+    """La mesure satisfait-elle le seuil, TOLERANCE_SEUIL comprise ? Passage obligé de
+    toute comparaison mesure/seuil : c'est ce qui garantit que le vérificateur, le CSS et
+    la planche disent la même chose d'une même couleur. `mesure` peut être signée, la
+    polarité n'entrant pas dans le jugement."""
     return abs(mesure) >= seuil - TOLERANCE_SEUIL
 
 
 def lc_affiche(valeur, signe=False):
-    """Le Lc tel qu'il doit S'ÉCRIRE partout : ARRONDI À L'ENTIER, SANS DÉCIMALE.
-
-    POURQUOI pas de décimale. Un dixième de Lc n'est pas perceptible et ne se reproduit
-    pas d'un arrondi hexadécimal à l'autre : l'afficher donnait une fausse précision et,
-    pire, invitait à lire « 79,7 » comme « en dessous de 80 » alors que la différence est
-    invisible. Un entier dit exactement ce que la mesure sait.
-    `signe=True` conserve la polarité, avec le signe moins TYPOGRAPHIQUE (−, U+2212) et
-    non le trait d'union : c'est le style de toute la chaîne.
+    """Le Lc tel qu'il s'écrit partout : arrondi à l'entier, sans décimale — un dixième de
+    Lc n'est pas perceptible et ne se reproduit pas d'un arrondi hexadécimal à l'autre.
+    `signe=True` conserve la polarité, avec le signe moins typographique (−, U+2212).
     Arrondi au demi supérieur explicite (floor(x+0,5)) et non `round()`, qui en Python 3
-    arrondit 89,5 à 90 mais 90,5 à 90 lui aussi (arrondi bancaire) — un affichage doit
-    être prévisible."""
+    arrondit 89,5 à 90 mais 90,5 à 90 lui aussi."""
     entier = int(math.floor(abs(valeur) + 0.5))
     if not signe:
         return '%d' % entier
     return '%s%d' % ('+' if valeur >= 0 else '−', entier)
 
 
-# Libellés d'usage des crans. Ils ne sont pas décoratifs : chacun est une CLÉ de
-# SEUIL_USAGE, donc dire l'usage d'un cran suffit à en déduire le seuil à tenir. Écrire
-# la taille dans le libellé est délibéré — un cran ne « porte pas du texte courant », il
-# porte du texte courant À PARTIR D'UNE CERTAINE TAILLE, et c'est cette nuance que la
-# version précédente perdait.
+# Libellés d'usage des crans : chacun est une clé de SEUIL_USAGE, donc dire l'usage d'un
+# cran suffit à en déduire le seuil. La taille est dans le libellé, un cran ne portant pas
+# « du texte courant » mais du texte courant à partir d'une certaine taille.
 USAGE_TEXTE_14 = 'texte courant dès 14 px'
 USAGE_TEXTE_18 = 'texte courant à partir de 18 px'
 USAGE_GROS_TITRE = 'gros titre seulement'
@@ -150,9 +116,8 @@ def vers_hex(rgb):
 # ═══ 2. Luminance et contraste APCA ═══════════════════════════════════════════════
 
 def luminance(rgb):
-    """Ys APCA d'un triplet 0-255. Attention : ce n'est PAS la luminance WCAG
-    (APCA applique une puissance 2,4 simple, sans le segment linéaire près du noir,
-    puis « adoucit » les quasi-noirs — un écran réel ne rend jamais un noir parfait)."""
+    """Ys APCA d'un triplet 0-255. Ce n'est pas la luminance WCAG : puissance 2,4 simple,
+    sans le segment linéaire près du noir, puis adoucissement des quasi-noirs."""
     y = sum(k * (c / 255.0) ** _EXP_CANAL for k, c in zip(_COEFF, rgb))
     if y < _SEUIL_NOIR:
         y = y + (_SEUIL_NOIR - y) ** _EXP_NOIR
@@ -160,12 +125,9 @@ def luminance(rgb):
 
 
 def lc(texte, fond):
-    """Contraste APCA SIGNÉ entre une couleur de texte et une couleur de fond (hex).
-
-    Positif  : texte sombre sur fond clair  (polarité « normale »).
-    Négatif  : texte clair sur fond sombre  (polarité « inverse »).
-    0        : sous le plancher de bruit d'APCA (couleurs quasi identiques).
-    La polarité n'est pas un paramètre : elle découle de qui est le plus clair."""
+    """Contraste APCA signé entre une couleur de texte et une couleur de fond (hex) :
+    positif pour du texte sombre sur fond clair, négatif pour l'inverse, 0 sous le
+    plancher de bruit d'APCA. La polarité découle de qui est le plus clair."""
     y_texte = luminance(vers_rgb(texte))
     y_fond = luminance(vers_rgb(fond))
     if y_fond > y_texte:
@@ -176,20 +138,19 @@ def lc(texte, fond):
 
 
 def meilleure_polarite(fond):
-    """Sur un aplat donné, renvoie (couleur_de_texte, Lc) de la polarité la plus
-    lisible : noir ou blanc, celui qui maximise |Lc|. Remplace le vieux test WCAG
-    « luminance > 0,5 », qui se trompait sur les teintes saturées."""
+    """Sur un aplat donné, renvoie (couleur_de_texte, Lc) de la polarité la plus lisible :
+    noir ou blanc, celui qui maximise |Lc|."""
     lc_noir, lc_blanc = lc(NOIR, fond), lc(BLANC, fond)
     return (NOIR, lc_noir) if abs(lc_noir) >= abs(lc_blanc) else (BLANC, lc_blanc)
 
 
 # ═══ 3. sRGB <-> OKLab (Björn Ottosson, 2020) ═════════════════════════════════════
-# Chaîne : sRGB 8 bits -> sRGB linéaire -> LMS -> racine cubique -> OKLab. On garde
-# les matrices telles que publiées (elles supposent le blanc D65 de sRGB).
+# sRGB 8 bits -> sRGB linéaire -> LMS -> racine cubique -> OKLab. Matrices telles que
+# publiées ; elles supposent le blanc D65 de sRGB.
 
 def _vers_lineaire(c):
-    """Décodage gamma sRGB (0-1 -> 0-1). Ici on utilise la VRAIE courbe sRGB, avec
-    son segment linéaire : c'est celle qu'exige OKLab (≠ gamma simple d'APCA)."""
+    """Décodage gamma sRGB (0-1 -> 0-1), vraie courbe avec son segment linéaire : c'est
+    celle qu'exige OKLab, différente du gamma simple d'APCA."""
     return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
 
 
@@ -213,8 +174,8 @@ def srgb_vers_oklab(rgb):
 
 
 def _oklab_vers_lineaire(lab):
-    """OKLab -> sRGB LINÉAIRE non borné. Des canaux hors [0, 1] signalent une
-    couleur hors gamut sRGB (c'est ce test qui sert à brider la chroma)."""
+    """OKLab -> sRGB linéaire non borné : des canaux hors [0, 1] signalent une couleur
+    hors gamut, et c'est ce test qui bride la chroma."""
     L, a, b = lab
     l_ = L + 0.3963377774 * a + 0.2158037573 * b
     m_ = L - 0.1055613458 * a - 0.0638541728 * b
@@ -228,8 +189,7 @@ def _oklab_vers_lineaire(lab):
 
 
 def oklab_vers_srgb(lab):
-    """OKLab -> (0-255)^3, borné au gamut sRGB (bornage fait en linéaire, donc sans
-    dévier la teinte plus que nécessaire)."""
+    """OKLab -> (0-255)^3, borné au gamut sRGB en linéaire, sans dévier la teinte."""
     lin = _oklab_vers_lineaire(lab)
     return tuple(255.0 * _depuis_lineaire(min(1.0, max(0.0, c))) for c in lin)
 
@@ -251,18 +211,16 @@ def depuis_oklch(lch):
     return (L, c * math.cos(h), c * math.sin(h))
 
 
-# ═══ 4. Gradations : la couleur la plus VIVE qui reste lisible ════════════════════
+# ═══ 4. Gradations : la couleur la plus vive qui reste lisible ════════════════════
 
 _EXP_AMORTI = 0.75   # < 1 : garde plus de couleur qu'un fondu linéaire vers blanc/noir
 
 
 def _chroma_amortie(clarte, clarte_ref, chroma_ref):
-    """Chroma visée à une clarté donnée, en partant de la couleur de marque.
-
-    On ne garde PAS la chroma constante : à clarté extrême, une chroma maximale
-    donne des tons criards (jaune fluo, bordeaux électrique) et surtout sort du
-    gamut sRGB. On la fait donc décroître vers le blanc et vers le noir, mais avec
-    un exposant < 1 pour rester nettement plus coloré qu'un simple fondu."""
+    """Chroma visée à une clarté donnée, en partant de la couleur de marque. Elle n'est
+    pas constante : à clarté extrême, une chroma maximale donne des tons criards et sort du
+    gamut sRGB. Elle décroît donc vers le blanc et vers le noir, avec un exposant < 1 pour
+    rester plus coloré qu'un simple fondu."""
     if clarte >= clarte_ref:
         t = (1.0 - clarte) / (1.0 - clarte_ref) if clarte_ref < 1.0 else 0.0
     else:
@@ -286,7 +244,7 @@ def _chroma_gamut(clarte, chroma, teinte):
 
 
 def variante(hexa, clarte):
-    """Couleur de MÊME TEINTE que `hexa`, à la clarté OKLab demandée, avec la chroma
+    """Couleur de même teinte que `hexa`, à la clarté OKLab demandée, avec la chroma
     la plus élevée qui reste raisonnable et représentable en sRGB."""
     clarte_ref, chroma_ref, teinte = vers_oklch(srgb_vers_oklab(vers_rgb(hexa)))
     chroma = _chroma_gamut(clarte, _chroma_amortie(clarte, clarte_ref, chroma_ref), teinte)
@@ -294,12 +252,9 @@ def variante(hexa, clarte):
 
 
 def _dichotomie(satisfait, clarte_ok, clarte_ko, iterations=40):
-    """Cherche la clarté la plus PROCHE de `clarte_ko` (donc la plus colorée, la plus
-    proche de la couleur de marque) qui satisfait encore `satisfait`.
-
-    `clarte_ok` est une clarté extrême connue pour satisfaire le critère (blanc ou
-    noir), `clarte_ko` la clarté de la couleur de marque, a priori trop peu
-    contrastée. Si la marque satisfait déjà le critère, on la garde telle quelle."""
+    """Cherche la clarté la plus proche de `clarte_ko`, donc la plus colorée, qui satisfait
+    encore `satisfait`. `clarte_ok` est une clarté extrême (blanc ou noir) connue pour
+    satisfaire le critère. Si la marque satisfait déjà, on la garde."""
     if satisfait(clarte_ko):
         return clarte_ko
     for _ in range(iterations):
@@ -316,9 +271,8 @@ def _clarte(hexa):
 
 
 def _resoudre(hexa, convient, clarte_extreme):
-    """Renvoie `hexa` INCHANGÉ s'il convient déjà (l'aller-retour OKLab peut décaler
-    un canal de 1/255 : hors de question de « bouger » une couleur de marque pour
-    rien), sinon la variante la plus colorée qui convient. `convient` juge un hex."""
+    """Renvoie `hexa` inchangé s'il convient déjà — l'aller-retour OKLab peut décaler un
+    canal de 1/255 — sinon la variante la plus colorée qui convient."""
     depart = vers_hex(vers_rgb(hexa))
     if convient(depart):
         return depart
@@ -327,102 +281,48 @@ def _resoudre(hexa, convient, clarte_extreme):
 
 
 def couleur_sur(hexa, fond, cible):
-    """Variante de `hexa` utilisable EN AVANT-PLAN (texte, filet, bordure) sur `fond`
-    avec |Lc| >= cible. On assombrit le moins possible pour garder la couleur vive.
-    N.B. : sur fond blanc, une couleur vive ne dépassera jamais ~85-95 de Lc — le
-    noir pur plafonne déjà à 106."""
+    """Variante de `hexa` utilisable en avant-plan (texte, filet, bordure) sur `fond` avec
+    |Lc| >= cible ; on assombrit le moins possible. Sur fond blanc, une couleur vive ne
+    dépasse jamais ~85-95 de Lc, le noir pur plafonnant à 106."""
     return _resoudre(hexa, lambda h: abs(lc(h, fond)) >= cible, 0.0)
 
 
-# ═══ 5. L'échelle : 11 crans à CLARTÉ FIXE, dont UN est la couleur de charte ══════
-#
-# POURQUOI une grille à clarté fixe, et non des crans ancrés sur des cibles de contraste ?
-#   L'échelle précédente définissait chaque cran par un objectif de Lc (« le plus coloré
-#   qui tienne encore Lc 82 »). Conséquence : un même numéro donnait une clarté DIFFÉRENTE
-#   selon la teinte, parce qu'atteindre Lc 82 demande d'assombrir beaucoup un bleu et très
-#   peu un jaune. Le « 500 » de la moutarde était donc bien plus clair que celui du rouge,
-#   et deux couleurs annuelles au même cran ne se ressemblaient pas.
-#   Ici on inverse la logique, comme le font tous les générateurs OKLCH (Tailwind, Radix,
-#   Open Props) : le cran FIXE LA CLARTÉ, identique pour les six teintes. Un même numéro
-#   = une même clarté = des crans comparables d'une couleur à l'autre. Le contraste n'est
-#   plus une cible mais une CONSÉQUENCE, qu'on mesure et qu'on garantit (voir CONTRAT).
-#
-# POURQUOI la couleur de CHARTE remplace un cran au lieu de vivre à côté ?
-#   Une charte est une contrainte EXTERNE : son hex est donné, sa clarté tombe où elle
-#   tombe, et elle ne coïncide donc avec aucune clarté de la grille. L'étape précédente en
-#   tirait la conclusion la plus rigoureuse : la sortir de la numérotation et lui donner un
-#   jeton à part ('marque'). Rigoureux, mais coûteux à l'usage — chaque teinte portait DEUX
-#   hex quasi identiques (mountbatten #A98899 la charte, #A88798 le cran 500 calculé, un
-#   demi-point de Lc d'écart), et il fallait choisir entre les deux à chaque emploi. Un
-#   lecteur de la maquette ne peut pas deviner que « le rouge SZH » n'est aucun des crans
-#   nommés rouge.
-#   On tranche donc dans l'autre sens : la charte REMPLACE le cran dont elle est la plus
-#   proche. Un seul hex par teinte et par cran, et le hex de charte est atteignable par un
-#   numéro de la grille. Le prix est explicite et mesuré : sur ce cran-là, les six teintes
-#   n'ont plus EXACTEMENT la même clarté. L'écart reste sous 0,015 pour cinq des six
-#   remplacements ; il monte à 0,035 pour le rouge, dont la charte tombe pile entre les
-#   crans 600 et 700 (0,555 pour 0,59 et 0,52 visés — le même 0,035 quel que soit celui
-#   des deux qu'on retienne : c'est la charte qui est entre deux crans, pas le code qui
-#   choisit mal). Ces écarts sont ANNONCÉS cran par cran dans styles/couleurs.css et
-#   vérifiés par test/apca-check.py, jamais dissimulés.
-#
-# POURQUOI le cran est CALCULÉ et non codé en dur ?
-#   Pour qu'un changement de charte (nouvelle couleur annuelle, retouche d'un hex par le
-#   graphiste) déplace tout seul le remplacement sur le bon cran. Coder « rouge -> 700 »
-#   en dur, c'est garantir qu'un futur rouge légèrement plus clair restera collé au 700
-#   alors que sa vraie place serait le 600, sans que rien ne proteste.
+# ═══ 5. L'échelle : 11 crans à clarté fixe, dont un est la couleur de charte ══════
+# Le cran fixe la clarté, identique pour les six teintes, comme le font les générateurs
+# OKLCH : un même numéro donne des crans comparables d'une couleur à l'autre, et le
+# contraste devient une conséquence qu'on mesure (voir CONTRAT).
+# La couleur de charte remplace le cran dont elle est la plus proche plutôt que de vivre à
+# côté : un seul hex par teinte et par cran. Le prix est mesuré — sur ce cran-là, les six
+# teintes n'ont plus exactement la même clarté (écart sous 0,015, sauf 0,035 pour le
+# rouge), et l'écart est annoncé cran par cran dans styles/couleurs.css. Le cran remplacé
+# est calculé et non codé en dur, pour qu'une retouche de charte le déplace toute seule.
 
 CLARTES = (
     ('50', 0.97), ('100', 0.93), ('200', 0.87), ('300', 0.81), ('400', 0.74),
     ('500', 0.66), ('600', 0.59), ('700', 0.52),
-    # 0,444 et NON 0,45 — ne pas « rétablir » 0,45 en croyant corriger une coquille.
-    # POURQUOI ce cran seul déroge à la progression régulière : à 0,45 le |Lc| garanti du
-    # cran (le pire des six teintes, le poireau) valait 89,51. Il ne franchissait donc le
-    # seuil de 90 que par la tolérance, avec 0,009 de marge — neuf MILLIÈMES, c'est-à-dire
-    # qu'un simple redécoupage d'un canal au 1/255 aurait fait basculer le cran hors
-    # contrat. Or ce cran-là est l'aplat le plus utilisé des tableaux (alias -fonce) et il
-    # porte du texte de 13,6 px : sa garantie ne peut pas tenir à un cheveu.
-    # Assombrir la cible de 0,006 porte la garantie à 90,19, soit 0,7 de marge SANS
-    # recourir à la tolérance. Le déplacement est invisible à l'œil (un à deux niveaux par
-    # canal : #A20020 -> #9F001F, #27633C -> #26613B, #575A00 -> #555900).
-    # Le prix, assumé : les écarts de clarté voisins passent de 0,07 à 0,076 (700 -> 800)
-    # et de 0,07 à 0,064 (800 -> 900). La progression régulière est une COMMODITÉ DE
-    # LECTURE de l'échelle ; le seuil de 90 sur un fond de tableau est une PROMESSE
-    # d'accessibilité. On sacrifie la première à la seconde.
+    # 0,444 et non 0,45 : ne pas « rétablir » 0,45 en croyant corriger une coquille. À
+    # 0,45, le |Lc| garanti du cran valait 89,51 et ne franchissait 90 que par la
+    # tolérance, à neuf millièmes près — or ce cran est l'aplat le plus utilisé des
+    # tableaux (alias -fonce) et il porte du texte de 13,6 px. Assombrir la cible de 0,006
+    # porte la garantie à 90,19 pour un déplacement invisible.
     ('800', 0.444),
     ('900', 0.38), ('950', 0.31),
 )
 
-# Cran DÉCORATIF : le point de croisement où NI le noir NI le blanc n'atteint le seuil
-# du gros titre (60). Ce n'est pas un défaut à corriger — toute échelle de couleur
-# saturée en possède un : en descendant, le noir perd du contraste plus vite que le
-# blanc n'en gagne, et les deux courbes se croisent sous le seuil. On le nomme, on
-# l'annote, et on interdit d'y mettre du texte.
+# Le cran 400 est décoratif : point de croisement où ni le noir ni le blanc n'atteint le
+# seuil du gros titre. Toute échelle saturée en possède un ; on l'annote et on interdit
+# d'y mettre du texte.
 
-# Contrat de chaque cran : {cran: (couleur de texte admise, |Lc| garanti, usage)}.
-# Le |Lc| est le PIRE des six teintes, MESURÉ (test/apca-check.py le revérifie cran par
-# cran et teinte par teinte : si une valeur d'ici est fausse, le test échoue).
-#
-# L'USAGE PORTE UNE TAILLE, et c'est la correction de fond de ce lot. Un cran ne « porte
-# pas du texte courant » : il en porte à partir d'une certaine taille, parce que c'est la
-# taille qui fixe le seuil (voir seuil_pour). Ce que la lecture du contrat donne :
-#   dès 14 px      -> |Lc| >= 90 : le corps de la maquette ET les tableaux (13,6 px).
-#   à partir de 18 px -> |Lc| >= 75 : intertitres et libellés, PAS le corps ni les tableaux.
-#   gros titre     -> |Lc| >= 60 : >= 24 px, ou >= 19 px en gras.
-#   aucun texte    -> cran décoratif, vérifié au seul seuil non textuel (30).
-# Trois crans ont ainsi CHANGÉ D'USAGE sans changer de couleur, parce que le seuil qui les
-# jugeait était faux : 200 et 700 (79,6 et 79,7) passaient pour du « texte courant » alors
-# qu'ils ne tiennent 90 dans aucune teinte — ils sont bons dès 18 px, pas à 13,6 px ; et
-# 300 (68,3) reste au gros titre. Aucun hex n'a bougé pour eux : c'est l'étiquette qui
-# était fausse, pas la couleur.
-#
-# Deux garanties sont fixées par un hex de CHARTE et non par un cran calculé — conséquence
-# directe du remplacement, et elle est à la baisse :
-#   500 : 61,1 -> 60,9 (charte bleu acier #5F9FBC). Le seuil gros titre (60) tient encore.
-#   700 : 81,3 -> 79,7 (charte rouge #D31932). Le niveau des 18 px (75) tient encore.
-# Une troisième vient d'un déplacement de clarté assumé, et elle est à la HAUSSE :
-#   800 : 89,5 -> 90,2 (cible de clarté 0,45 -> 0,444, voir CLARTES). C'est ce qui rend le
-#         cran 800 utilisable à 14 px sans dépendre de la tolérance.
+# Contrat de chaque cran : {cran: (couleur de texte admise, |Lc| garanti, usage)}. Le |Lc|
+# est le pire des six teintes, mesuré ; test/apca-check.py le revérifie teinte par teinte
+# et échoue si une valeur d'ici est fausse. L'usage porte une taille, puisque c'est elle
+# qui fixe le seuil (voir seuil_pour) :
+#   dès 14 px         -> |Lc| >= 90 : le corps de la maquette et les tableaux (13,6 px) ;
+#   à partir de 18 px -> |Lc| >= 75 : intertitres et libellés, ni corps ni tableaux ;
+#   gros titre        -> |Lc| >= 60 : >= 24 px, ou >= 19 px en gras ;
+#   aucun texte       -> cran décoratif, vérifié au seul seuil non textuel (30).
+# Trois garanties ne viennent pas d'un cran calculé : le 500 (60,9) et le 700 (79,7) sont
+# fixés par les chartes bleu acier et rouge, le 800 (90,2) par le déplacement de clarté.
 CONTRAT = {
     '50':  (NOIR,  99.8, USAGE_TEXTE_14),
     '100': (NOIR,  91.4, USAGE_TEXTE_14),
@@ -437,70 +337,46 @@ CONTRAT = {
     '950': (BLANC, 102.0, USAGE_TEXTE_14),
 }
 
-# Dispersion de clarté TOLÉRÉE à l'intérieur d'un cran (max - min des six teintes).
-# Sans remplacement elle vaut 0,001 à 0,003 : le seul écart est l'arrondi à l'octet.
-# 0,02 laisse passer cet arrondi et les remplacements « serrés » (300 : 0,012 avec la
-# moutarde ; 500 : 0,014 avec le bleu acier) et rien d'autre.
+# Dispersion de clarté tolérée à l'intérieur d'un cran (max - min des six teintes). Sans
+# remplacement elle vaut 0,001 à 0,003, l'écart n'étant que l'arrondi à l'octet ; 0,02
+# laisse passer cet arrondi et les remplacements serrés (300 avec la moutarde, 500 avec le
+# bleu acier), rien d'autre.
 DISPERSION_CLARTE = 0.02
-# L'exception documentée : la charte rouge tombe à mi-chemin entre les crans 600 et 700,
-# donc le cran 700 porte 0,035 de dispersion, inévitablement (0,036 si l'on retenait le
-# 600 à la place). On la nomme ici plutôt que d'élargir la tolérance générale, pour qu'une
-# dérive sur les DIX autres crans reste détectée.
+# Exception documentée : la charte rouge tombe à mi-chemin entre les crans 600 et 700,
+# donc le cran 700 porte inévitablement 0,035 de dispersion. On la nomme ici plutôt que
+# d'élargir la tolérance générale, pour qu'une dérive sur les dix autres crans reste
+# détectée.
 DISPERSION_CLARTE_EXCEPTION = {'700': 0.04}
 
-# Alias historiques lus par accent-css.py (regex) et par les tableaux .szh-tableau.
-# Les NOMS sont figés (accent-css.py et print.css les cherchent tels quels) ; seules
-# leurs cibles suivent la grille :
-#   normal -> 'marque', c'est-à-dire le CRAN de charte (accents « couleur », filets,
-#             aplats de couverture) — le hex n'a pas changé, seul son statut a changé :
-#             ce n'est plus un jeton hors grille mais un cran nommé ;
+# Alias lus par accent-css.py (par expression régulière) et par les tableaux
+# .szh-tableau. Les noms sont figés, seules leurs cibles suivent la grille :
+#   normal -> 'marque', le cran de charte (accents, filets, aplats de couverture) ;
 #   clair  -> 100 (fond à texte noir,  |Lc| garanti 91 : conforme dès 14 px) ;
 #   fonce  -> 800 (fond à texte blanc, |Lc| garanti 90 : conforme dès 14 px).
-#
-# POURQUOI -clair et -fonce ont QUITTÉ les crans 200 et 700. Ces deux alias sont les fonds
-# des TABLEAUX, et le texte d'un tableau est à 13,6 px (print.css, table { font-size:
-# 0.85rem }). Le seuil applicable est donc 90. Or 200 et 700 plafonnent à 80 : ils étaient
-# choisis du temps où le projet croyait que « texte courant = 75 », c'est-à-dire pour une
-# taille que la maquette n'utilise nulle part. On monte donc d'un cran de chaque côté.
-#
-# ⚠ CONSÉQUENCE À CONNAÎTRE : le rouge de charte QUITTE le rôle de fond « négatif » des
-# tableaux. C'est D80 qui l'y avait amené, en faisant occuper au #D31932 le cran 700, alors
-# la cible de -fonce. Mais #D31932 plafonne à 80 avec du texte blanc — suffisant à 18 px,
-# insuffisant à 13,6 px. Le fond négatif d'un tableau rouge devient donc le cran 800
-# (#9F001F), plus sombre que la charte. La charte rouge reste évidemment partout ailleurs :
-# -normal, -marque, --c-annual, filets et aplats de couverture. Elle perd un rôle, pas sa
-# place. Aucune autre teinte n'est concernée (leur charte est au 500 ou au 300).
+# -clair et -fonce sont les fonds des tableaux, dont le texte est à 13,6 px : le seuil
+# applicable est 90, or les crans 200 et 700 plafonnent à 80.
+# ⚠ Conséquence : le rouge de charte quitte le rôle de fond « négatif » des tableaux, qui
+# revient au cran 800 (#9F001F) ; il reste la couleur de la revue partout ailleurs.
 ALIAS = (('normal', 'marque'), ('clair', '100'), ('fonce', '800'))
 
-# Marge de QUASI-ÉGALITÉ sur le |Lc|, pour le choix du cran remplacé. En dessous de cet
+# Marge de quasi-égalité sur le |Lc|, pour le choix du cran remplacé. En dessous de cet
 # écart, deux crans candidats sont perceptuellement indiscernables : le flottant ne doit
-# pas décider seul (une refonte de `variante` d'un centième renverrait un autre cran).
+# pas décider seul, une refonte de `variante` d'un centième renverrait un autre cran.
 MARGE_EGALITE_LC = 0.3
 
 
 def cran_de_charte(hexa):
     """Le cran que la couleur de charte REMPLACE dans l'échelle de `hexa`.
 
-    Règle : le cran dont le |Lc| calculé est le plus proche de celui de la charte, PARMI
-    LES CRANS DE MÊME POLARITÉ DE TEXTE. La polarité est la contrainte dure — un cran
-    « fond sombre à texte blanc » ne peut pas être remplacé par une couleur qui se lit au
-    noir, quel que soit son |Lc|. C'est ce qui envoie la moutarde (Lc +73,7, elle se lit
-    au NOIR) sur le 300 et non sur le 600, dont le |Lc| est pourtant plus proche.
-    On compare des |Lc| plutôt que des clartés parce que c'est le contraste, et lui seul,
-    qui décide de ce qu'un cran peut porter : remplacer un cran par une couleur de même
-    clarté mais de contraste différent casserait le CONTRAT ; l'inverse le préserve.
-    Le cran DÉCORATIF (400) n'a pas de polarité de texte (CONTRAT -> None) : il n'est
-    jamais candidat, et c'est heureux — y loger une charte reviendrait à interdire tout
-    texte sur la couleur même de la revue.
+    Règle : le cran dont le |Lc| calculé est le plus proche de celui de la charte, parmi
+    les crans de même polarité de texte. La polarité est la contrainte dure — c'est elle
+    qui envoie la moutarde (Lc +73,7, lue au noir) sur le 300 et non sur le 600, pourtant
+    plus proche. Le cran décoratif (400) n'a pas de polarité (CONTRAT -> None) et n'est
+    donc jamais candidat.
 
     Égalité : si plusieurs crans sont à moins de MARGE_EGALITE_LC du meilleur, on prend le
-    plus SOMBRE. Cas réel, le rouge #D31932 : 700 à 3,9 d'écart et 600 à 4,1, soit 0,2 —
-    sous la marge. Le plus sombre est aussi le meilleur choix éditorial, parce que le |Lc|
-    monte quand on descend l'échelle : à 79,7 la charte rouge hérite du cran 700, donc de
-    l'usage « texte courant à partir de 18 px », alors que sur le cran 600 elle serait
-    limitée au gros titre. En cas de doute, la règle donne donc l'usage le plus large.
-    (Elle ne va pas jusqu'à en faire un fond de TABLEAU : à 13,6 px il faut 90, et le 700
-    n'y arrive pas — voir la conséquence notée sous ALIAS.)"""
+    plus sombre, dont le |Lc| est le plus élevé et l'usage le plus large. Cas réel, le
+    rouge #D31932 : 700 à 3,9 d'écart et 600 à 4,1."""
     charte = vers_hex(vers_rgb(hexa))
     encre, lc_charte = meilleure_polarite(charte)
     cible = abs(lc_charte)
@@ -516,16 +392,10 @@ def cran_de_charte(hexa):
 
 def echelle(hexa):
     """Échelle complète d'une couleur de charte : {cran: hex} pour les 11 crans, plus la
-    clé 'marque'.
-
-    Dix crans sont calculés : même teinte que `hexa`, clarté imposée par CLARTES, chroma
-    la plus vive qui reste dans le gamut sRGB (voir `variante`). Le onzième — celui que
-    désigne `cran_de_charte` — vaut EXACTEMENT le hex d'entrée : la charte n'est pas
-    approchée, elle est posée telle quelle, et c'est le cran qui adopte sa clarté.
-    La clé 'marque' est un simple ALIAS vers ce cran (même hex, aucune nouvelle couleur) :
-    elle survit parce que le nom reste utile — « la couleur de la revue » se dit mieux que
-    « le cran 700 du rouge » — et parce que ALIAS et styles/couleurs.css l'exposent encore.
-    Un seul hex de charte par teinte, atteignable par deux noms."""
+    clé 'marque'. Dix crans sont calculés (même teinte, clarté imposée par CLARTES, chroma
+    la plus vive qui tienne dans le gamut sRGB) ; le onzième, désigné par
+    `cran_de_charte`, vaut exactement le hex d'entrée. 'marque' est un alias vers ce
+    cran."""
     charte = vers_hex(vers_rgb(hexa))
     out = {cran: variante(charte, clarte) for cran, clarte in CLARTES}
     out[cran_de_charte(charte)] = charte
@@ -533,7 +403,7 @@ def echelle(hexa):
     return out
 
 
-# ═══ 6. Auto-vérification (exécutée à l'import : une palette fausse doit CASSER) ═══
+# ═══ 6. Auto-vérification, exécutée à l'import : une palette fausse doit casser ═══
 
 def _autoverification():
     # Les deux valeurs de référence d'APCA-W3 0.1.9. Si elles bougent, l'implémentation
@@ -546,17 +416,17 @@ def _autoverification():
         rgb = vers_rgb(h)
         retour = oklab_vers_srgb(srgb_vers_oklab(rgb))
         assert all(abs(a - b) <= 1.0 for a, b in zip(rgb, retour)), (h, retour)
-    # La RÈGLE D'AFFICHAGE (aucune décimale, signe conservé). Elle est vérifiée ici parce
-    # qu'elle est citée dans couleurs.css, dans la planche et dans le vérificateur : si
-    # elle dérive, trois fichiers se mettent à mentir en même temps.
+    # La règle d'affichage (aucune décimale, signe conservé). Vérifiée ici parce qu'elle
+    # est citée dans couleurs.css, dans la planche et dans le vérificateur : si elle
+    # dérive, trois fichiers se mettent à mentir en même temps.
     assert lc_affiche(79.665) == '80', lc_affiche(79.665)
     assert lc_affiche(101.997) == '102', lc_affiche(101.997)
     assert lc_affiche(90.194) == '90', lc_affiche(90.194)
     assert lc_affiche(91.392, signe=True) == '+91', lc_affiche(91.392, signe=True)
     assert lc_affiche(-90.194, signe=True) == '−90', lc_affiche(-90.194, signe=True)
-    # Arrondi au demi SUPÉRIEUR, y compris sur le demi exact (round() ferait autrement).
+    # Arrondi au demi supérieur, y compris sur le demi exact (round() ferait autrement).
     assert lc_affiche(89.5) == '90' and lc_affiche(90.5) == '91'
-    # La TOLÉRANCE : « ce qui s'affiche 90 satisfait 90 ». C'est l'invariant qui lie la
+    # La tolérance : « ce qui s'affiche 90 satisfait 90 ». C'est l'invariant qui lie la
     # règle d'affichage à la règle de contrôle ; sans lui, la planche pourrait afficher
     # « 90 » sur un cran que le vérificateur refuse.
     assert tient(89.5, LC_TEXTE_14) and not tient(89.49, LC_TEXTE_14)
@@ -571,9 +441,9 @@ def _autoverification():
     # pas juger le cran.
     for _cran, (_encre, _garanti, _usage) in CONTRAT.items():
         assert _usage in SEUIL_USAGE, (_cran, _usage)
-        # Le |Lc| annoncé doit être COHÉRENT avec l'usage annoncé : un cran qui promet
-        # « dès 14 px » avec une garantie de 80 serait un contrat auto-contradictoire, et
-        # c'est exactement l'erreur que ce lot corrige. On l'interdit à l'import.
+        # Le |Lc| annoncé doit être cohérent avec l'usage annoncé : un cran qui promet
+        # « dès 14 px » avec une garantie de 80 serait un contrat auto-contradictoire.
+        # On l'interdit dès l'import.
         if _encre is not None:
             assert tient(_garanti, SEUIL_USAGE[_usage]), (_cran, _garanti, _usage)
 
@@ -585,7 +455,7 @@ if __name__ == '__main__':
     # Générateur pour styles/couleurs.css :
     #     python3 apca.py '#D31932' rouge
     # imprime les 11 crans (Lc annoté, cran de charte signalé) puis l'alias -marque,
-    # prêts à coller / comparer.
+    # prêts à coller ou à comparer.
     import sys
     try:   # signe moins typographique : sortie UTF-8 même en console Windows
         sys.stdout.reconfigure(encoding='utf-8')
@@ -594,14 +464,14 @@ if __name__ == '__main__':
 
     def _fr(x):
         """Le Lc au format de couleurs.css : entier signé, signe moins typographique.
-        Aucune décimale — voir `lc_affiche`, dont c'est le simple relais nommé."""
+        Simple relais nommé de `lc_affiche`."""
         return lc_affiche(x, signe=True)
 
     def _clarte_fr(clarte):
-        """La CLARTÉ, elle, garde ses décimales : ce n'est pas un Lc mais une coordonnée
-        OKLab, et le cran 800 vaut 0,444 — un arrondi à deux décimales l'écrirait 0,44 et
-        ferait croire à une coquille (voir CLARTES). On affiche donc trois décimales quand
-        la troisième porte de l'information, deux sinon."""
+        """La clarté garde ses décimales : ce n'est pas un Lc mais une coordonnée OKLab,
+        et le cran 800 vaut 0,444 — arrondi à deux décimales il s'écrirait 0,44 et ferait
+        croire à une coquille (voir CLARTES). Trois décimales quand la troisième porte de
+        l'information, deux sinon."""
         texte = ('%.3f' % clarte).rstrip('0')
         if len(texte.split('.')[1]) < 2:
             texte = '%.2f' % clarte
@@ -614,7 +484,7 @@ if __name__ == '__main__':
     for cran, clarte in CLARTES:
         couleur = ech[cran]
         texte, garanti, usage = CONTRAT[cran]
-        # Le cran de charte porte la clarté RÉELLE de la charte, pas la clarté visée : on
+        # Le cran de charte porte la clarté réelle de la charte, pas la clarté visée : on
         # imprime donc la mesure et l'écart, seule façon de coller ce cran dans le CSS
         # sans perdre l'information du compromis.
         if cran == charte:
@@ -624,7 +494,7 @@ if __name__ == '__main__':
                        ('%+.3f' % (reelle - clarte)).replace('.', ',').replace('-', '−')))
         else:
             note = ''
-        if texte is None:   # cran décoratif : on annonce la MEILLEURE polarité, qui échoue
+        if texte is None:   # cran décoratif : on annonce la meilleure polarité, qui échoue
             gagnant, valeur = meilleure_polarite(couleur)
             print('  --c-%s-%s: %s;   /* L %s — %s (le mieux : %s à Lc %s)%s */' % (
                 nom, cran, couleur, _clarte_fr(clarte), usage,
@@ -633,6 +503,6 @@ if __name__ == '__main__':
         print('  --c-%s-%s: %s;   /* L %s — texte %s : Lc %s — %s%s */' % (
             nom, cran, couleur, _clarte_fr(clarte),
             'noir ' if texte == NOIR else 'blanc', _fr(lc(texte, couleur)), usage, note))
-    # L'alias : un NOM de plus sur le cran de charte, jamais un hex de plus.
+    # L'alias : un nom de plus sur le cran de charte, jamais un hex de plus.
     print('  --c-%s-marque: var(--c-%s-%s);   /* = le cran de charte ci-dessus */'
           % (nom, nom, charte))
