@@ -51,8 +51,10 @@
   // pour ne pas re-rendre la page sous les doigts.
   cartes.enregistrement(document.getElementById('enregistrer'));
 
+  let recu = false;
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
+    recu = true;
     if (cartes.message(msg)) { return; }
     if (msg.type === 'valeurs') {
       cartes.rendre(msg.articles || [], msg.types || [], msg.langue || 'fr');
@@ -64,5 +66,5 @@
       vscodeApi.postMessage({ type: 'rechargement', articles: cartes.modifiees() });
     }
   });
-  vscodeApi.postMessage({ type: 'pret' });
+  SZH.annoncerPret(vscodeApi, function () { return recu; });
 })();

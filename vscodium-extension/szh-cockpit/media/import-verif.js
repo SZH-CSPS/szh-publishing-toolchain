@@ -231,8 +231,10 @@
     vscodeApi.postMessage({ type: 'fermer', modifie: cartes.estModifie(), articles: cartes.modifiees() });
   });
 
+  let recu = false;
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
+    recu = true;
     if (cartes.message(msg)) { return; }
     if (msg.type === 'valeurs') {
       cartes.rendre(msg.articles || [], msg.types || [], msg.langue || 'fr');
@@ -254,5 +256,5 @@
       }
     }
   });
-  vscodeApi.postMessage({ type: 'pret' });
+  SZH.annoncerPret(vscodeApi, function () { return recu; });
 })();

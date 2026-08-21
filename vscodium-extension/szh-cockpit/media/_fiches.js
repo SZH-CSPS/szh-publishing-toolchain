@@ -525,7 +525,7 @@
         majRadios();
         var notes = [];
         if (msg.infos && !msg.infos.visage) { notes.push(TXT.sansVisage); }
-        else if (msg.infos && msg.infos.padding) { notes.push(TXT.padding); }
+        else if (msg.infos && msg.infos.recadre) { notes.push(TXT.recadre); }
         poserNote(notes.join(' '));
         majApercu();
       } else if (msg.type === 'photo-valeur') {

@@ -1753,7 +1753,6 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
   );
   panneauMetadonnees = panneau;
   panneau.onDidDispose(() => { if (panneauMetadonnees === panneau) { panneauMetadonnees = null; } });
-  panneau.webview.html = htmlMetadonnees(crypto.randomBytes(16).toString('hex'));
   panneau.webview.onDidReceiveMessage((msg) => {
     if (!msg) { return; }
     if (msg.type === 'pret') { envoyerValeursMetadonnees(panneau, chemin); return; }
@@ -1795,6 +1794,7 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
       panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [e.message]) });
     }
   });
+  panneau.webview.html = htmlMetadonnees(crypto.randomBytes(16).toString('hex'));
 }
 
 // ---- Éditeur des métadonnées de tous les articles --------------------------------
@@ -1824,7 +1824,7 @@ function textesCarteArticle() {
     vSansFond: T('photo.version.sansfond'),
     valider: T('photo.valider'), annuler: T('photo.annuler'),
     chargement: T('photo.chargement'), traitement: T('photo.traitement'),
-    sansVisage: T('photo.sansvisage'), padding: T('photo.padding'),
+    sansVisage: T('photo.sansvisage'), recadre: T('photo.recadre'),
     errTropVolumineux: T('photo.err.tropvolumineux'), errFormat: T('photo.err.format')
   };
 }
@@ -2349,7 +2349,6 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
       traductionModifiee = false; rechargementTraduction = null;
     }
   });
-  panneau.webview.html = htmlTraduction(crypto.randomBytes(16).toString('hex'));
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
     if (msg.type === 'pret') {
@@ -2397,6 +2396,7 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
     // La fiche est une dépendance de compilation ; jamais en pleine frappe.
     if (res.metaChangee && !msg.auto) { montrerApercu(slugTraduction); }
   });
+  panneau.webview.html = htmlTraduction(crypto.randomBytes(16).toString('hex'));
   montrerApercu(vise.slug);
 }
 
@@ -2488,7 +2488,7 @@ function ouvrirVersionsPhoto(fournisseur, panneau, msg) {
 
 // Écrit l'original par fichier « ~$ » puis rename, purge les anciens, lance le pipeline.
 // Seul chemin d'écriture d'un portrait : le formulaire des fiches et le gestionnaire des
-// médias y passent tous les deux. Rend { ok, message, visage, padding, dossier } et ne
+// médias y passent tous les deux. Rend { ok, message, visage, recadre, dossier } et ne
 // lève jamais ; l'appelant décide de ce qu'il en dit à sa webview.
 async function ecrirePortraitEtTraiter(fournisseur, slug, slugAuteur, ext, donneesBase64) {
   const echec = (message) => ({ ok: false, message: message });
@@ -2534,7 +2534,7 @@ async function ecrirePortraitEtTraiter(fournisseur, slug, slugAuteur, ext, donne
     }
     const r = resultats.filter((x) => x && x.slug === slugAuteur)[0] || resultats[0] || {};
     if (!r.ok) { return echec(T('photo.err.traitement', [String(r.erreur || '?')])); }
-    return { ok: true, visage: !!r.visage, padding: !!r.padding, dossier: dossier };
+    return { ok: true, visage: !!r.visage, recadre: !!r.recadre, dossier: dossier };
   } finally {
     photoEnCours = false;
   }
@@ -2556,7 +2556,7 @@ async function deposerPhotoAuteur(fournisseur, panneau, msg) {
   repondrePanneau(panneau, {
     type: 'photo-versions', slug: slug, index: index, base: slugAuteur,
     versions: versionsPhoto(r.dossier, slugAuteur),
-    infos: { visage: !!r.visage, padding: !!r.padding },
+    infos: { visage: !!r.visage, recadre: !!r.recadre },
     actuelle: null
   });
 }
@@ -2575,6 +2575,31 @@ function recalerPhotoOriginale(racine, slug, base, extAvant, extApres) {
   const sortie = contenu.split(ancien).join('photo: "portraits/' + base + '.original.' + extApres + '"');
   try { ecrireAtomique(chemin, sortie); } catch (e) { return 0; }
   return 1;
+}
+
+// Version d'un portrait retenue par la fiche : « sans fond » par défaut, mais un fond
+// clair ou une photo que le détourage abîme demandent l'une des deux autres. Le champ est
+// réécrit par le sérialiseur et non par un remplacement littéral : la fiche a pu être
+// retouchée entre-temps, et ses clés inconnues doivent survivre.
+// -> nom du fichier retenu, ou null si rien n'a pu être écrit.
+function choisirVersionPortrait(fournisseur, slug, base, version) {
+  if (!fournisseur.racine || !baseAuteurValide(base)) { return null; }
+  if (VERSIONS_PHOTO.indexOf(version) === -1) { return null; }
+  const dossier = dossierPortraitsArticle(fournisseur.racine, slug);
+  const nom = version === 'original' ? trouverOriginal(dossier, base) : base + '.' + version + '.png';
+  if (!nom) { return null; }
+  try { if (!fs.statSync(path.join(dossier, nom)).isFile()) { return null; } } catch (e) { return null; }
+  const chemin = cheminMeta(fournisseur.racine, slug);
+  let meta;
+  try { meta = analyserMeta(fs.readFileSync(chemin, 'utf8')); } catch (e) { return null; }
+  let touches = 0;
+  for (const a of (meta.author || [])) {
+    const d = decomposerPhoto(assainirCheminPhoto(a.photo));
+    if (d && d.base === base) { a.photo = 'portraits/' + nom; touches++; }
+  }
+  if (touches === 0) { return null; }               // portrait qu'aucune fiche ne désigne
+  try { ecrireAtomique(chemin, serialiserMeta(meta)); } catch (e) { return null; }
+  return nom;
 }
 
 // Remplacement d'un portrait depuis le gestionnaire des médias : la base existe déjà, le
@@ -2688,7 +2713,6 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
   panneau.onDidDispose(() => {
     if (panneauArticles === panneau) { panneauArticles = null; fichesModifie = false; rechargementEnAttente = null; }
   });
-  panneau.webview.html = htmlApercuMetadonnees(crypto.randomBytes(16).toString('hex'));
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
     if (msg.type === 'pret') { envoyerValeurs(panneau); return; }
@@ -2729,6 +2753,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
     // Un enregistrement automatique ne renvoie pas les cartes : le curseur sauterait.
     if (!msg.auto) { envoyerValeurs(panneau); }     // resynchronise et remet le ● à zéro
   });
+  panneau.webview.html = htmlApercuMetadonnees(crypto.randomBytes(16).toString('hex'));
 }
 
 // Sans item, l'article visé est celui du .md actif, à défaut celui en aperçu.
@@ -2858,7 +2883,6 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
   );
   panneauImportVerif = panneau;
   panneau.onDidDispose(() => { if (panneauImportVerif === panneau) { panneauImportVerif = null; } });
-  panneau.webview.html = htmlImportVerif(crypto.randomBytes(16).toString('hex'));
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
     if (msg.type === 'pret') { envoyerValeursImportVerif(panneau, fournisseur); return; }
@@ -2898,6 +2922,7 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
     // Pas de re-rendu sur un enregistrement automatique : le curseur serait perdu.
     if (!msg.auto) { envoyerValeursImportVerif(panneau, fournisseur); }
   });
+  panneau.webview.html = htmlImportVerif(crypto.randomBytes(16).toString('hex'));
 }
 
 // ---- Réglages « SZH » ------------------------------------------------------------
@@ -2993,7 +3018,6 @@ function ouvrirReglages(rafraichirTout) {
   );
   panneauReglages = panneau;
   panneau.onDidDispose(() => { if (panneauReglages === panneau) { panneauReglages = null; } });
-  panneau.webview.html = htmlReglages(crypto.randomBytes(16).toString('hex'));
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
     if (msg.type === 'pret') {
@@ -3048,6 +3072,7 @@ function ouvrirReglages(rafraichirTout) {
       vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
     }
   });
+  panneau.webview.html = htmlReglages(crypto.randomBytes(16).toString('hex'));
 }
 
 // ---- Éditeur de tableau (webview) ------------------------------------------------
@@ -3147,7 +3172,6 @@ async function ouvrirEditeurTable(fournisseur, item) {
   );
   panneauxTable.set(chemin, panneau);
   panneau.onDidDispose(() => { if (panneauxTable.get(chemin) === panneau) { panneauxTable.delete(chemin); } });
-  panneau.webview.html = htmlEditeurTable(crypto.randomBytes(16).toString('hex'));
   const charger = () => {
     let html = '';
     try { html = fs.readFileSync(chemin, 'utf8'); } catch (e) { html = '<table><tr><td></td></tr></table>'; }
@@ -3240,6 +3264,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
       }
     }
   });
+  panneau.webview.html = htmlEditeurTable(crypto.randomBytes(16).toString('hex'));
 }
 
 // ---- Gestionnaire des médias d'un article ----------------------------------------
@@ -3319,7 +3344,10 @@ function textesMedias() {
     enregistrer: T('img.enregistrer'), enregistrerTip: T('medias.tip.enregistrer'),
     enregistre: T('medias.enregistre'), nonEnregistre: T('img.nonEnregistre'),
     occZero: T('img.occ.zero'), occPlusieurs: T('img.occ.plusieurs'),
-    apercuAbsent: T('img.apercu.absent'), portraitOrphelin: T('medias.portrait.orphelin')
+    apercuAbsent: T('img.apercu.absent'), portraitOrphelin: T('medias.portrait.orphelin'),
+    versionTitre: T('medias.portrait.version.titre'),
+    vOriginal: T('photo.version.original'), vAvecFond: T('photo.version.avecfond'),
+    vSansFond: T('photo.version.sansfond'), versionAbsente: T('medias.portrait.version.absente')
   };
 }
 
@@ -3454,10 +3482,20 @@ function listerPortraitsArticle(fournisseur, slug, budget) {
     }
     const original = versions.original || utilisee;
     const cheminOriginal = path.join(dossier, original);
+    const d = decomposerPhoto(utilisee);
     liste.push({
       base: base,
       nom: utilisee,
       auteur: auteur,
+      // Les trois versions existent-elles sur le disque ? Le formulaire n'offre que
+      // celles-là, et seule une fiche rattachée peut changer de version.
+      disponibles: {
+        original: !!versions.original,
+        'avec-fond': !!versions['avec-fond'],
+        'sans-fond': !!versions['sans-fond']
+      },
+      versionActuelle: d ? d.version : null,
+      rattache: auteur !== null,
       version: T('medias.portrait.version', ['portraits/' + utilisee]),
       description: T('medias.portrait.original', [decrireImage(cheminOriginal)]),
       apercu: apercuMedia(path.join(dossier, utilisee), budget),
@@ -3531,7 +3569,6 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
   );
   panneauxMedias.set(slug, panneau);
   panneau.onDidDispose(() => { if (panneauxMedias.get(slug) === panneau) { panneauxMedias.delete(slug); } });
-  panneau.webview.html = htmlMedias(crypto.randomBytes(16).toString('hex'));
 
   // openTextDocument lit le tampon : l'écriture repart d'une frappe non enregistrée.
   async function texteArticle() {
@@ -3670,6 +3707,26 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       if (retire) { repondrePanneau(panneau, { type: 'media-retire', relatif: relatif }); }
       return;
     }
+    if (msg.type === 'portrait-version') {
+      if (refuserSiVerrouille()) { return; }
+      const base = String(msg.base || '');
+      const nom = choisirVersionPortrait(fournisseur, slug, base, String(msg.version || ''));
+      if (!nom) {
+        repondrePanneau(panneau, { type: 'portrait-erreur', base: base, message: T('photo.err.introuvable') });
+        return;
+      }
+      vscode.window.setStatusBarMessage(T('medias.statut.version', [nom]), 5000);
+      if (rafraichirTout) { rafraichirTout(); }     // le PDF dépend de portraits/
+      const p = listerPortraitsArticle(fournisseur, slug).filter((x) => x.base === base)[0] || null;
+      repondrePanneau(panneau, {
+        type: 'portrait-remplace', base: base,
+        nom: p ? p.nom : nom, version: p ? p.version : '',
+        versionActuelle: p ? p.versionActuelle : null,
+        description: p ? p.description : '',
+        apercu: p ? p.apercu : null, qualite: p ? p.qualite : null
+      });
+      return;
+    }
     if (msg.type === 'portrait-remplacer') {
       if (refuserSiVerrouille()) { return; }
       const base = String(msg.base || '');
@@ -3685,6 +3742,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
         type: 'portrait-remplace', base: base,
         nom: portrait ? portrait.nom : base,
         version: portrait ? portrait.version : '',
+        versionActuelle: portrait ? portrait.versionActuelle : null,
         description: portrait ? portrait.description : '',
         apercu: portrait ? portrait.apercu : null,
         qualite: portrait ? portrait.qualite : null
@@ -3710,6 +3768,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       return;
     }
   });
+  panneau.webview.html = htmlMedias(crypto.randomBytes(16).toString('hex'));
 }
 
 function activate(context) {

@@ -9,8 +9,9 @@
 # cockpit, pas ici : ce script ne fait que lire l'image source qu'on lui passe.
 #
 # Sortie : une ligne JSON par image sur stdout, dans l'ordre des arguments —
-#   {"slug": ..., "ok": bool, "visage": bool, "padding": bool,
+#   {"slug": ..., "ok": bool, "visage": bool, "recadre": bool,
 #    "fichiers": {"avec_fond": ..., "sans_fond": ...} | null, "erreur": null | str}
+# "recadre" : le cadre visé ne tenait pas dans la photo et a été réduit.
 # Code retour : 0 si toutes les images passent, 1 si au moins un échec, 2 si l'invocation
 # est malformée. Les messages de progression vont sur stderr, stdout restant du JSON pur.
 #
@@ -18,9 +19,10 @@
 # YuNet, cadre de sortie carré (hauteur du visage ~ FACE_PERCENT % du côté, visage centré
 # horizontalement et un peu au-dessus du centre vertical), rembg (u2net_human_seg, session
 # unique), puis LANCZOS 400 x 400, convert('LA') et écriture atomique.
-# Si le cadre déborde de la photo source, l'image est étendue par réplication du bord avant
-# le recadrage : une photo cadrée trop serré ne fait donc jamais échouer le recadrage. Sans
-# visage détecté : crop carré centré et "visage": false, mais jamais d'échec.
+# Si le cadre déborde de la photo source — un portrait cadré serré n'a pas de place sous le
+# menton — il est ramené dans l'image, et réduit s'il le faut : jamais de bord répliqué, qui
+# se voyait comme une coulure de pixels étirés sous le visage. "recadre": true le signale.
+# Sans visage détecté : crop carré centré et "visage": false, mais jamais d'échec.
 #
 # Modèles embarqués dans le rootfs par image/Containerfile, aucun téléchargement au
 # runtime :
@@ -133,36 +135,35 @@ def cadrer_visage(img, boite):
          côté  = hauteur_visage * 100 / FACE_PERCENT
          x0    = centre_visage_x - côté / 2            (centré horizontalement)
          y0    = centre_visage_y - côté * CENTRE_VERTICAL
-       Si le carré déborde de l'image, celle-ci est étendue par réplication du
-       bord (np.pad mode='edge') du strict nécessaire avant le crop.
-       Retourne (image carrée, padding_appliqué)."""
+
+       Le cadre déborde souvent de la photo — un portrait cadré serré n'a pas de place
+       sous le menton. On ne réplique PLUS le bord dans ce cas : la dernière ligne de
+       pixels étirée sur un dixième de la hauteur se voyait comme une coulure sous chaque
+       visage. On ramène le cadre dans l'image :
+         1. on le translate du strict nécessaire, ce qui décentre un peu le visage ;
+         2. s'il est encore trop grand, on réduit son côté jusqu'à ce qu'il tienne, en
+            gardant le centre du visage aussi près que possible de sa place. Le visage
+            occupe alors une part plus grande du cadre que FACE_PERCENT — un cadrage plus
+            serré, mais fait de vrais pixels.
+       Retourne (image carrée, cadre_reduit)."""
     x, y, l, h = boite
+    largeur, hauteur = img.size
     cote = h * 100.0 / FACE_PERCENT
     centre_x = x + l / 2.0
     centre_y = y + h / 2.0
-    gauche = round(centre_x - cote / 2.0)
-    haut = round(centre_y - cote * CENTRE_VERTICAL)
-    cote = max(1, round(cote))
-    droite, bas = gauche + cote, haut + cote
 
-    largeur, hauteur = img.size
-    marge_g = max(0, -gauche)
-    marge_h = max(0, -haut)
-    marge_d = max(0, droite - largeur)
-    marge_b = max(0, bas - hauteur)
-    padding = any(m > 0 for m in (marge_g, marge_h, marge_d, marge_b))
-    if padding:
-        tableau = np.pad(
-            np.asarray(img),
-            ((marge_h, marge_b), (marge_g, marge_d), (0, 0)),
-            mode="edge",
-        )
-        img = Image.fromarray(tableau)
-        gauche += marge_g
-        haut += marge_h
-        droite += marge_g
-        bas += marge_h
-    return img.crop((gauche, haut, droite, bas)), padding
+    # Un carré ne peut pas dépasser le petit côté de la photo.
+    cote_max = float(min(largeur, hauteur))
+    reduit = cote > cote_max
+    cote = max(1, int(round(min(cote, cote_max))))
+
+    # Position voulue, puis ramenée dans l'image : le visage se décentre plutôt que la
+    # photo ne s'étire.
+    gauche = int(round(centre_x - cote / 2.0))
+    haut = int(round(centre_y - cote * CENTRE_VERTICAL))
+    gauche = max(0, min(gauche, largeur - cote))
+    haut = max(0, min(haut, hauteur - cote))
+    return img.crop((gauche, haut, gauche + cote, haut + cote)), reduit
 
 
 def cadrer_centre(img):
@@ -197,7 +198,7 @@ def traiter(slug, source, dossier, detecteur, session):
         "slug": slug,
         "ok": False,
         "visage": False,
-        "padding": False,
+        "recadre": False,
         "fichiers": None,
         "erreur": None,
     }
@@ -210,8 +211,8 @@ def traiter(slug, source, dossier, detecteur, session):
         boite = detecter_visage(img, detecteur)
         if boite is not None:
             resultat["visage"] = True
-            carre, padding = cadrer_visage(img, boite)
-            resultat["padding"] = padding
+            carre, reduit = cadrer_visage(img, boite)
+            resultat["recadre"] = reduit
         else:
             progression(f"[portraits] {slug} : aucun visage détecté -> carré centré")
             carre = cadrer_centre(img)
@@ -255,7 +256,7 @@ def principal(argv):
         progression(f"[portraits] initialisation impossible — {erreur}")
         for slug, _ in paires:
             print(json.dumps({
-                "slug": slug, "ok": False, "visage": False, "padding": False,
+                "slug": slug, "ok": False, "visage": False, "recadre": False,
                 "fichiers": None, "erreur": erreur,
             }, ensure_ascii=False), flush=True)
         return 1

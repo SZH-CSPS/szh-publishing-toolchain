@@ -15,6 +15,7 @@
   'use strict';
   const TXT = __TXT__;
   const vscodeApi = acquireVsCodeApi();
+  let recu = false;
   const etat = document.getElementById('etat');
   const conteneur = document.getElementById('champs');
   const titreArticle = document.getElementById('article');
@@ -322,6 +323,7 @@
 
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
+    recu = true;
     if (msg.type === 'valeurs') { rendre(msg); return; }
     // L'hôte veut changer d'article alors que le panneau est modifié : il lui faut ce que
     // la webview contient pour l'enregistrer avant de recharger.
@@ -347,5 +349,5 @@
   // Un dépôt hors d'une zone prévue ne doit jamais faire naviguer la webview.
   document.addEventListener('dragover', function (e) { e.preventDefault(); });
   document.addEventListener('drop', function (e) { e.preventDefault(); });
-  vscodeApi.postMessage({ type: 'pret' });
+  SZH.annoncerPret(vscodeApi, function () { return recu; });
 })();

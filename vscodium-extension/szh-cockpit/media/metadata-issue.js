@@ -2,6 +2,7 @@
   'use strict';
   const TXT = __TXT__;
   const vscodeApi = acquireVsCodeApi();
+  let recu = false;
   const CLES = ['title', 'volume', 'numero', 'date', 'lang'];
   const modifies = new Set();
   const etat = document.getElementById('etat');
@@ -107,9 +108,10 @@
   });
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
+    recu = true;
     if (msg.type === 'valeurs') { remplir(msg.valeurs || {}); }
     if (msg.type === 'enregistre') { modifies.clear(); etat.textContent = TXT.enregistre; }
     if (msg.type === 'erreur') { etat.textContent = '⚠ ' + msg.message; }
   });
-  vscodeApi.postMessage({ type: 'pret' });
+  SZH.annoncerPret(vscodeApi, function () { return recu; });
 })();

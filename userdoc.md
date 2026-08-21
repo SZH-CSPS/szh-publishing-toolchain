@@ -105,10 +105,22 @@ Elle a **trois sections** :
   n'y a aucun endroit où écrire sa légende. Insère-la d'abord (`Ctrl+Alt+F`).
 
   En pied de page, les **portraits des autrices et auteurs**. Ce ne sont pas des
-  figures : ni légende, ni numéro. On y voit la version utilisée par la fiche, les
-  dimensions de l'original, le verdict de qualité, et une zone de dépôt qui remplace la
-  photo — le recadrage du visage et le détourage du fond sont rejoués comme au premier
-  dépôt.
+  figures : ni légende, ni numéro. On y voit les dimensions de l'original, le verdict de
+  qualité, et une zone de dépôt qui remplace la photo — le recadrage du visage et le
+  détourage du fond sont rejoués comme au premier dépôt.
+
+  Trois boutons **choisissent la version que la fiche retient**, comme dans le formulaire
+  des auteur·e·s : **sans fond** (le détourage, retenu par défaut), **avec fond** (le
+  recadrage sans détourage) et **originale** (la photo telle qu'elle a été déposée). Le
+  détourage n'est pas toujours le bon choix : un fond clair, une écharpe, des cheveux fins,
+  et il vaut mieux garder le fond. Une version que le pipeline n'a pas encore produite
+  n'est pas proposée, et un portrait qu'aucune fiche ne désigne n'a nulle part où écrire le
+  choix — il est signalé comme tel.
+
+  > **Portraits déjà traités.** Le cadrage a été corrigé : quand le cadre visé dépassait de
+  > la photo, la dernière ligne de pixels était répétée et laissait une coulure sous le
+  > visage. Les portraits produits avant cette correction gardent leur coulure — il faut
+  > redéposer la photo (le dépôt du gestionnaire des médias suffit) pour qu'elle disparaisse.
 
   #### L'encadré « Attention qualité »
 

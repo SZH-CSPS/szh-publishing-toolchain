@@ -4,6 +4,7 @@
 //   SZH.autoEnregistrement(opts)  enregistrement automatique, sans voler le curseur
 //   SZH.motsCles(opts)            éditeur de mots-clés appariés, partagé par les trois
 //                                 formulaires qui touchent aux mots-clés
+//   SZH.annoncerPret(api, recu)   « pret », redemandé tant que l'hôte se tait
 var SZH = (function () {
   'use strict';
 
@@ -320,5 +321,26 @@ var SZH = (function () {
   }
 
 
-  return { autoEnregistrement: autoEnregistrement, motsCles: motsCles, MARQUE_A_TRADUIRE: MARQUE };
+  // ---- Annonce de la page ----
+  //
+  // Poser le HTML d'une webview la charge : un hôte qui branche son écoute après ce
+  // geste peut manquer le « pret » de la page, ne jamais envoyer les valeurs, et laisser
+  // un formulaire vide sans que rien ne le dise. Les hôtes du cockpit écoutent maintenant
+  // avant de poser le HTML ; cette reprise est la seconde ceinture, pour les fois où
+  // l'ordre se reperdrait ou où le message se perd ailleurs. `recu` doit rendre vrai dès
+  // le premier message reçu de l'hôte, quel qu'il soit.
+  function annoncerPret(api, recu) {
+    var essais = 0;
+    api.postMessage({ type: 'pret' });
+    var minuteur = setInterval(function () {
+      essais++;
+      if ((recu && recu()) || essais > 6) { clearInterval(minuteur); return; }
+      api.postMessage({ type: 'pret' });
+    }, 350);
+  }
+
+  return {
+    autoEnregistrement: autoEnregistrement, motsCles: motsCles,
+    annoncerPret: annoncerPret, MARQUE_A_TRADUIRE: MARQUE
+  };
 })();

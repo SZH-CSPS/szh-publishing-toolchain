@@ -2,7 +2,7 @@
 // sortie. Le script recadre le visage (YuNet), détoure (rembg), écrit
 // <slug>.avec-fond.png et <slug>.sans-fond.png dans le dossier de sortie, et répond une
 // ligne JSON par image sur stdout :
-//   {"slug":…, "ok":bool, "visage":bool, "padding":bool,
+//   {"slug":…, "ok":bool, "visage":bool, "recadre":bool,
 //    "fichiers":{"avec_fond":…, "sans_fond":…}|null, "erreur":null|str}
 // L'écriture de l'original et les chemins relatifs du champ `photo` restent à l'appelant.
 'use strict';
@@ -23,7 +23,7 @@ function cheminVersWsl(chemin) {
   return '/mnt/' + m[1].toLowerCase() + '/' + m[2].replace(/\\/g, '/');
 }
 
-// -> Promise<[{slug, ok, visage, padding, fichiers, erreur}]>. Une invocation traite
+// -> Promise<[{slug, ok, visage, recadre, fichiers, erreur}]>. Une invocation traite
 // toutes les images en une session, le modèle rembg n'étant chargé qu'une fois. Rejette
 // si wsl.exe est introuvable (erreur marquée .wsl), si le délai est dépassé, ou si stdout
 // ne porte aucune ligne JSON exploitable ; un code retour non nul accompagné de lignes

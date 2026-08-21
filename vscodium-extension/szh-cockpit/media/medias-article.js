@@ -14,14 +14,15 @@
 //   pret ; modifie { modifie } ; enregistrer { auto, medias } ;
 //   retourArticle { modifie, medias } ; ouvrirMedia { relatif } ;
 //   remplacer { relatif, nomFichier, donneesBase64 } ; retirer { relatif } ;
-//   inserer { relatif, medias } ; portrait-remplacer { base, nomFichier, donneesBase64 }
+//   inserer { relatif, medias } ; portrait-remplacer { base, nomFichier, donneesBase64 } ;
+//   portrait-version { base, version }
 // Depuis l'hôte :
 //   charger { slug, medias, portraits, focus, i18n } ; enregistre { auto } ;
 //   erreur { message } ; focaliser { relatif } ;
 //   media-remplace { relatif, description, apercu, qualite } ;
 //   media-erreur { relatif, message } ; media-annulee { relatif } ;
 //   media-retire { relatif } ;
-//   portrait-remplace { base, nom, version, description, apercu, qualite } ;
+//   portrait-remplace { base, nom, version, versionActuelle, description, apercu, qualite } ;
 //   portrait-erreur { base, message }
 // où un média vaut { relatif, description, apercu, occurrences, qualite, doublons,
 // sansAlternative, valeurs } et valeurs = { legende, alt, altDefini, copyright, source,
@@ -378,10 +379,43 @@ function cartePortrait(portrait, index) {
   c.ctl.version = texte(droite, 'p', 'version', portrait.version || '');
   c.ctl.qualite = texte(droite, 'p', 'qualite');
   poserQualite(c.ctl.qualite, portrait.qualite);
+  choixVersion(droite, c, portrait);
   var actions = texte(droite, 'div', 'actions');
   zoneDepot(actions, c, 'portrait-remplacer', 'base', PORTRAIT);
   c.ctl.etatMedia = texte(actions, 'span', 'media-etat');
   return c;
+}
+
+// Les trois versions du portrait, comme dans le formulaire des auteur·e·s : le détourage
+// n'est pas toujours le bon choix — un fond clair, une écharpe, des cheveux fins, et il vaut
+// mieux garder le fond ou la photo d'origine. Une version absente du disque n'est pas
+// offerte ; un portrait qu'aucune fiche ne désigne n'a nulle part où écrire le choix.
+function choixVersion(parent, c, portrait) {
+  var z = texte(parent, 'fieldset', 'zone');
+  texte(z, 'legend', null, TXT.versionTitre || '');
+  var dispo = portrait.disponibles || {};
+  var libelles = { 'sans-fond': TXT.vSansFond, 'avec-fond': TXT.vAvecFond, original: TXT.vOriginal };
+  c.ctl.versions = {};
+  ['sans-fond', 'avec-fond', 'original'].forEach(function (v) {
+    var l = texte(z, 'label', 'opt');
+    var i = document.createElement('input');
+    i.type = 'radio';
+    i.name = 'version-' + c.index;
+    i.checked = portrait.versionActuelle === v;
+    i.disabled = !dispo[v] || !portrait.rattache;
+    i.addEventListener('change', function () {
+      if (!i.checked) { return; }
+      c.element.classList.add('occupe');
+      poserEtatMedia(c, '…');
+      api.postMessage({ type: 'portrait-version', base: c.base, version: v });
+    });
+    l.appendChild(i);
+    var t = texte(l, 'span', 'txt');
+    texte(t, 'span', null, libelles[v] || v);
+    if (!dispo[v]) { texte(t, 'span', 'sous', TXT.versionAbsente || ''); }
+    c.ctl.versions[v] = i;
+  });
+  if (!portrait.rattache) { texte(z, 'p', 'aide', TXT.portraitOrphelin || ''); }
 }
 
 function construireBarre() {
@@ -466,8 +500,10 @@ document.addEventListener('keydown', function (ev) {
   if ((ev.key || '').toLowerCase() === 's') { ev.preventDefault(); enregistrer(false); }
 });
 
+var recu = false;
 window.addEventListener('message', function (ev) {
   var msg = ev.data || {};
+  recu = true;
   if (msg.type === 'charger') {
     if (msg.i18n) { TXT = msg.i18n; construireBarre(); }
     rendre(msg);
@@ -530,10 +566,16 @@ window.addEventListener('message', function (ev) {
     p.nom = msg.nom || p.nom || p.base;
     poserVisuel(p.ctl.visuel, p.nom, msg.description, msg.apercu);
     if (p.ctl.version) { p.ctl.version.textContent = msg.version || ''; }
+    // La version retenue a pu changer : les radios suivent l'état du disque et de la fiche.
+    if (p.ctl.versions && msg.versionActuelle) {
+      Object.keys(p.ctl.versions).forEach(function (v) {
+        p.ctl.versions[v].checked = (v === msg.versionActuelle);
+      });
+    }
     poserQualite(p.ctl.qualite, msg.qualite);
     poserEtatMedia(p, TXT.remplacee || '', false);
     return;
   }
 });
-api.postMessage({ type: 'pret' });
+SZH.annoncerPret(api, function () { return recu; });
 })();

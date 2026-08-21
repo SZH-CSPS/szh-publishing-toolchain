@@ -2,6 +2,7 @@
   'use strict';
   const TXT = __TXT__;
   const vscodeApi = acquireVsCodeApi();
+  let recu = false;
   const zones = document.getElementById('zones');
   const GROUPES = [
     { cle: 'theme', legende: TXT.theme, options: [['systeme', TXT.themeSysteme], ['clair', TXT.themeClair], ['sombre', TXT.themeSombre]] },
@@ -50,7 +51,8 @@
   rendre();
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
+    recu = true;
     if (msg.type === 'valeurs') { cocher(msg.valeurs || {}); }
   });
-  vscodeApi.postMessage({ type: 'pret' });
+  SZH.annoncerPret(vscodeApi, function () { return recu; });
 })();
