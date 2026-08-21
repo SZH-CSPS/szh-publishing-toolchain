@@ -6,6 +6,9 @@
 -- --embed-resources se comportent comme avant.
 -- Doit tourner après szh-numerotation.lua, qui écrit « Figure N — », les crédits et
 -- l'alt dans la Figure : après ce filtre-ci, il n'y a plus de Figure.
+-- Exception : la <figcaption> d'une figure marquée .szh-credit-seul (szh-numerotation.lua,
+-- images hors numérotation) ne porte pas de légende mais une mention de droits ; elle se
+-- lit donc après l'image, comme dans l'usage imprimé.
 -- Réservé aux sorties HTML : un writer non-HTML jette les RawBlock html et les images
 -- disparaîtraient. La garde ci-dessous le rappelle.
 
@@ -30,16 +33,28 @@ local function balise_ouvrante(fig)
   return table.concat(bouts)
 end
 
+local function credit_seul(fig)
+  for _, c in ipairs(fig.classes or {}) do
+    if c == 'szh-credit-seul' then return true end
+  end
+  return false
+end
+
 function Figure(fig)
   local blocs = pandoc.Blocks({ pandoc.RawBlock('html', balise_ouvrante(fig)) })
+  local apres = credit_seul(fig)
   -- Figure sans légende : pas de <figcaption> vide. Une figure décorative garde son
   -- <figure> et son image, szh-numerotation.lua l'ayant déjà déclarée décorative.
+  local legende = pandoc.Blocks({})
   if #fig.caption.long > 0 then
-    blocs:insert(pandoc.RawBlock('html', '<figcaption>'))
-    blocs:extend(fig.caption.long)
-    blocs:insert(pandoc.RawBlock('html', '</figcaption>'))
+    legende:insert(pandoc.RawBlock('html',
+      apres and '<figcaption class="szh-credit-seul">' or '<figcaption>'))
+    legende:extend(fig.caption.long)
+    legende:insert(pandoc.RawBlock('html', '</figcaption>'))
   end
+  if not apres then blocs:extend(legende) end
   blocs:extend(fig.content)
+  if apres then blocs:extend(legende) end
   blocs:insert(pandoc.RawBlock('html', '</figure>'))
   return blocs
 end

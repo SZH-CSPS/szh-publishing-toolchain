@@ -118,9 +118,10 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
 - [ ] Tout geste d'écriture est refusé sur un numéro verrouillé, avec le message « Numéro
   verrouillé » et un bouton Déverrouiller : importer des Word, convertir les Word en attente,
   méta-données du numéro, métadonnées des articles, édition d'un article, traductions (article et
-  champ), validation de la section Traductions, suppression d'article, fiche d'image, éditeur de
-  tableau, remplacer ou supprimer une image ou un tableau, les raccourcis de mise en forme, et le
-  glissement d'un `.docx` sur la vue. Taper dans un article n'écrit rien, les boutons de survol
+  champ), validation de la section Traductions, suppression d'article, gestion des médias
+  (enregistrement, remplacement par dépôt, retrait, dépôt d'un portrait), éditeur de tableau,
+  remplacer ou supprimer un tableau, les raccourcis de mise en forme, et le glissement d'un
+  `.docx` sur la vue. Un formulaire de médias resté ouvert doit se fermer au verrouillage. Taper dans un article n'écrit rien, les boutons de survol
   disparaissent, et Ctrl+S ne relance plus de compilation.
 - [ ] Signalisation de l'état. La barre de titre porte le picto, la barre d'état affiche
   « Verrouillée », son infobulle nomme la version de création et celle du poste, et le clic
@@ -187,7 +188,9 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
   « détecté / à compléter » correspondent au `.meta.yaml`, le compteur se recalcule à la saisie
   et à l'ajout de l'italien, Enregistrer réécrit la fiche en préservant les clés inconnues. Le
   remplacement d'image marche par glissement et par bouton : confirmation, nom conservé,
-  description rafraîchie, refus au-delà de 50 Mo, refus pendant un build ou un import. Fermer
+  description rafraîchie, refus au-delà de 50 Mo, refus pendant un build ou un import. Les photos
+  du tableau des auteurs sont déjà rattachées, recadrées et détourées, et `media/` ne contient plus
+  que les images que le texte utilise — vérifier sur un Word à logo de licence et à portraits. Fermer
   avec des modifications ouvre la modale. Une deuxième conversion pendant que le panneau est
   ouvert le recharge, en perdant les saisies non enregistrées. Zéro nouveau fichier donne une
   simple notification. Piège connu : la croix de l'onglet contourne la garde « non enregistré »,
@@ -236,20 +239,37 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
 - [ ] Enregistrement automatique. Taper longuement dans un résumé : au bout de trois secondes le
   fichier est écrit, sans que la frappe, la sélection ou la position du curseur ne bougent. À
   faire dans les quatre formulaires : traduction, métadonnées des articles, vérification de
-  l'import, éditeur de tableau. La fiche d'image, elle, ne doit pas compiler pendant la saisie et
-  doit enregistrer quand on quitte le panneau.
-- [ ] Fiche d'image. Cliquer une image dans l'arbre ouvre la fiche avec l'aperçu, les dimensions,
-  le poids et les champs pré-remplis depuis le `.md`. Remplir les quatre champs, enregistrer,
-  vérifier le `.md`, et confirmer que Ctrl+Z dans l'éditeur défait l'écriture. Taper dans le `.md`
-  sans enregistrer puis enregistrer depuis la fiche ne doit rien perdre. Modifier puis « Retour à
-  l'article » ouvre la modale, et l'onglet porte l'indicateur de modification. Les trois états
-  d'accessibilité : « décorative » écrit `alt=""` ; repasser à « apporte une information » avec le
-  champ vide fait disparaître l'attribut entièrement ; remplir le champ écrit `alt="…"` — et au
-  rendu, la légende est lue dans les trois cas. Cas particuliers : image jamais insérée (bandeau,
-  champs grisés) ; image insérée deux fois (les deux références mises à jour) ; figure portant
-  déjà `{width=50%}` (l'attribut survit) ; vider les trois champs supprime le bloc d'attributs ;
-  SVG et image de plus de 12 Mo (aperçu indisponible) ; « Ouvrir l'image » lance la visionneuse ;
-  supprimer l'image depuis l'arbre pendant que sa fiche est ouverte.
+  l'import, éditeur de tableau. Le gestionnaire des médias, lui, ne doit pas compiler pendant la
+  saisie et doit enregistrer quand on quitte le panneau.
+- [ ] Gestion des médias. Le picto 🖼 à côté de celui des métadonnées ouvre le formulaire, une
+  carte par image de `media/`, dans l'ordre du texte, avec aperçu, dimensions, poids et champs
+  pré-remplis depuis le `.md`. Les images n'apparaissent plus sous l'article dans l'arbre, les
+  tableaux si. Remplir les champs d'une carte, enregistrer, vérifier le `.md`, et confirmer que
+  Ctrl+Z dans l'éditeur défait l'écriture. Taper dans le `.md` sans enregistrer puis enregistrer
+  depuis le formulaire ne doit rien perdre. Modifier puis « Retour à l'article » ouvre la modale,
+  et l'onglet porte l'indicateur de modification. Les trois états d'accessibilité : « décorative »
+  écrit `alt=""` ; repasser à « apporte une information » avec le champ vide retire l'attribut ;
+  un texte alternatif s'écrit tel quel. Une image insérée zéro fois verrouille sa carte et le dit ;
+  insérée deux fois, l'enregistrement met les deux à jour.
+- [ ] Case « Image sans légende ni numéro ». Cochée, le champ Légende se verrouille et
+  l'enregistrement écrit `![](media/x.png){.szh-hors-figure …}`. Au rendu : ni « Figure N », ni
+  légende ; le texte alternatif reste ; les crédits s'affichent sous l'image, dans une `<figure>`.
+  La numérotation des autres figures ne saute pas de numéro. Décocher rend la légende éditable et
+  retire la classe. Vérifier qu'une image de 2000 px de large ne déborde pas de la page, avec et
+  sans crédits.
+- [ ] Encadré « Attention qualité ». Une image de moins de 1000 px de large le déclenche, un
+  portrait de moins de 400 px sur son petit côté aussi, un SVG jamais. Le remplacement par un
+  fichier plus grand fait disparaître l'encadré sans recharger la page.
+- [ ] Remplacer un média. Par glissement et par bouton, sur une image comme sur un portrait :
+  confirmation, nom conservé, aperçu et description rafraîchis, refus au-delà de 50 Mo (20 Mo pour
+  un portrait), refus pendant un build ou un import. « Retirer » supprime le fichier et ses
+  insertions, après confirmation, et la carte quitte la page. Déposer une photo sur un portrait
+  rejoue le recadrage et le détourage, et la fiche de l'auteur·e continue de désigner un fichier
+  qui existe.
+- [ ] Ctrl+Alt+F. L'image choisie est copiée dans `media/`, la référence insérée au curseur, et le
+  gestionnaire s'ouvre positionné sur cette carte. Recommencer avec le formulaire déjà ouvert doit
+  amener la nouvelle carte à l'écran sans perdre une saisie en cours.
+
 - [ ] Insertion. Ctrl+Alt+F dans un article : l'image choisie est copiée, la référence insérée,
   l'article enregistré et la fiche ouverte dessus ; hors article, insertion seule sans fiche.
   Ctrl+Alt+T dans un article : un fichier `table-NN.html` est créé, la référence insérée,
@@ -384,8 +404,8 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
 - [ ] Relire les libellés allemands de premier jet non couverts par le classeur : titres des deux
   lanceurs et messages de lien, panneau et arbre de suivi de traduction, panneau d'export, modales
   de confirmation, barre d'état, écran d'archivage, sélecteur de version, mode développeur, case
-  « en-tête condensé » et son aide, fiche d'image, bandeau de filtre des métadonnées, légende de
-  tableau et messages d'insertion de tableau.
+  « en-tête condensé » et son aide, gestion des médias (encadré de qualité compris), bandeau de
+  filtre des métadonnées, légende de tableau et messages d'insertion de tableau.
 - [ ] Relire les deux gabarits d'e-mail de traduction, français et allemand : ce sont des textes
   qui partent hors de l'équipe.
 - [ ] Libellés italiens et anglais des figures et tableaux (`Figura`/`Tabella`, `Figure`/`Table`) :
@@ -393,8 +413,8 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
   d'article aux noms de rubriques réellement imprimés ; cas à regarder, `tribune-libre` →
   « Freie Tribüne » / « Tribuna libera », et les deux en-têtes de groupe. Deux tables sont à
   modifier ensemble : celle de l'extension et celle de `pipeline/filters/szh-maquette.lua`.
-- [ ] Rejouer un numéro complet avec l'interface en allemand : import, formulaires, fiche d'image,
-  éditeur et légende de tableau, bandeau de filtre, panneaux, messages. Aucun marqueur non traduit
+- [ ] Rejouer un numéro complet avec l'interface en allemand : import, formulaires, gestion des
+  médias, éditeur et légende de tableau, bandeau de filtre, panneaux, messages. Aucun marqueur non traduit
   ne doit rester à l'écran.
 
 ## Décisions à trancher

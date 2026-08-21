@@ -20,6 +20,9 @@
 #        szh-tabelle-reference (Table restants -> ::: {.szh-tabelle src=…})
 #   5. AnyStyle sur $SZH_REFS -> media/<slug>.bib ; en cas d'échec, pandoc est relancé
 #      sans szh-biblio et rien n'est perdu.
+#   6. import-medias.py : les photos du tableau des auteurs quittent media/ pour
+#      portraits/ et passent au détourage ; les images que ni le .md ni tables/*.html ne
+#      citent sont supprimées (Word livre aussi les logos et filigranes du document).
 # Suivi de modifications accepté, commentaires Word ignorés.
 set -u
 
@@ -35,6 +38,10 @@ cd "$DIR" || exit 1
 # bloquant : un échec laisse $SZH_META vide et l'import continue sans métadonnées.
 META="$(mktemp)"
 export SZH_META="$META"
+# Appariement photo <-> auteur, écrit par docx-meta.py et consommé par import-medias.py,
+# après pandoc : les images n'existent sous media/ qu'une fois la conversion faite.
+PHOTOS="$(mktemp)"
+export SZH_PHOTOS="$PHOTOS"
 STATS="$(python3 "$PIPE/docx-meta.py" "$DOCX_ABS" "$SLUG" . || true)"
 [ -n "$STATS" ] && echo "[import-meta] $STATS"
 
@@ -45,7 +52,7 @@ STATS="$(python3 "$PIPE/docx-meta.py" "$DOCX_ABS" "$SLUG" . || true)"
 # SZH_LEGENDES_TABLES, pour que szh-legendes.lua retire les paragraphes du .md.
 LEGT="$(mktemp)"
 export SZH_LEGENDES_TABLES="$LEGT"
-python3 "$PIPE/docx-tables.py" "$DOCX_ABS" tables || { rm -f "$LEGT" "$META"; exit 1; }
+python3 "$PIPE/docx-tables.py" "$DOCX_ABS" tables || { rm -f "$LEGT" "$META" "$PHOTOS"; exit 1; }
 
 # Titres déduits : pré-pass Python qui lit les tailles de police de word/document.xml
 # (pandoc les perd) et écrit les titres présumés, consommés par szh-titres.lua. Non
@@ -58,7 +65,10 @@ export SZH_TITRES="$TITRES"
 REFS="$(mktemp)"
 export SZH_REFS="$REFS"
 
+# $PHOTOS survit à nettoyer() : il est consommé après pandoc, une fois les images
+# extraites. nettoyer_tout() sert donc aux sorties en échec.
 nettoyer() { rm -f "$TITRES" "$LEGT" "$META" "$REFS"; }
+nettoyer_tout() { nettoyer; rm -f "$PHOTOS"; }
 
 # --extract-media=. : images extraites sous media/, en chemins relatifs au .md,
 #   corrects parce que le build HTML tourne dans le dossier de l'article. ⚠ écrire
@@ -84,7 +94,7 @@ convertir() {
     -o "$SLUG.md"
 }
 
-convertir avec-biblio || { nettoyer; exit 1; }
+convertir avec-biblio || { nettoyer_tout; exit 1; }
 
 # Bibliographie : AnyStyle transforme les entrées brutes en BibTeX ; le Makefile
 # n'active citeproc que si media/<slug>.bib est non vide. En cas d'échec (AnyStyle
@@ -99,7 +109,7 @@ if [ -s "$REFS" ]; then
   else
     rm -f "$BIB"
     echo "[import] ⚠ AnyStyle indisponible ou en échec : la bibliographie reste dans le texte"
-    convertir sans-biblio || { nettoyer; exit 1; }
+    convertir sans-biblio || { nettoyer_tout; exit 1; }
   fi
 fi
 nettoyer
@@ -114,5 +124,11 @@ if [ -d media/media ]; then
   cp -r media/media/. media/ && rm -rf media/media
   sed -i 's|media/media/|media/|g' "$SLUG.md"
 fi
+
+# Photos d'auteur·e·s rangées et détourées, images inutilisées supprimées. Non bloquant :
+# un échec laisse le dossier tel quel, l'article est déjà converti.
+MEDIAS="$(python3 "$PIPE/import-medias.py" "$SLUG" . "$PHOTOS" || true)"
+[ -n "$MEDIAS" ] && echo "[import-medias] $MEDIAS"
+rm -f "$PHOTOS"
 
 exit 0

@@ -163,7 +163,7 @@ $(ACCENT_CSS): ausgabe.yaml $(PIPELINE_DIR)/styles/couleurs.css \
 # dossier de l'article, pour que media/ et tables/ soient relatifs au .md. citeproc +
 # CSL APA seulement si l'article a une bibliographie (media/<slug>.bib). Les tableaux
 # extraits (tables/*.html) sont des prérequis : en éditer un recompile l'article.
-$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
+$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
 	extra=""; \
@@ -189,7 +189,7 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 # .md -> HTML d'aperçu : mêmes filtres, CSS et métadonnées que la sortie PDF, mais
 # reader commonmark_x+sourcepos -> chaque bloc porte data-pos, ce qui permet le clic
 # vers le texte source dans la webview. Consommé par le cockpit seulement.
-$(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
+$(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
 	extra=""; \

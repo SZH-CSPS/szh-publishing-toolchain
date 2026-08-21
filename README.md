@@ -39,6 +39,8 @@ szh-publishing-toolchain/
 │   ├── Makefile                    source de vérité de la compilation
 │   ├── filters/*.lua               transformations Pandoc (import et rendu)
 │   ├── docx-*.py                   extraction Word : métadonnées, tableaux, titres
+│   ├── import-docx.sh              chaîne d'import d'un Word en article
+│   ├── import-medias.py            fin d'import : photos rangées, images inutilisées ôtées
 │   ├── accent-css.py, apca.py      couleur annuelle et contrôle de contraste
 │   ├── portraits.py                recadrage et détourage des photos d'auteurs
 │   ├── styles/                     print.css (maquette) et couleurs.css (palette)
@@ -161,8 +163,8 @@ le rootfs et les extensions, et demande un redémarrage de l'éditeur.
 4. Écrire, puis **Ctrl+S** : chaque article est régénéré dans `out/<article>/`, en PDF et en HTML.
 
 Tout se fait depuis la barre latérale « Revue SZH », sans explorateur de fichiers : import,
-compilation, aperçu, métadonnées du numéro et des articles, éditeur de tableau, fiches d'image,
-portraits d'auteurs, suivi des traductions, export OJS, cycle de vie du numéro. Le détail des
+compilation, aperçu, métadonnées du numéro et des articles, éditeur de tableau, gestion des
+médias, portraits d'auteurs, suivi des traductions, export OJS, cycle de vie du numéro. Le détail des
 gestes est dans [`userdoc.md`](userdoc.md).
 
 ### Raccourcis

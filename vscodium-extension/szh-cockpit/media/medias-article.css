@@ -1,0 +1,108 @@
+/* Gestionnaire des médias : la charpente de l'ancienne fiche image (barre collante, deux
+   colonnes qui s'empilent), répétée en une carte par média. Aucune couleur en dur, rien
+   que les jetons de thème. */
+body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
+  color: var(--vscode-foreground); background: var(--vscode-editor-background); padding: .6rem .8rem;
+  box-sizing: border-box; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+.barre { position: sticky; top: 0; z-index: 5; background: var(--vscode-editor-background);
+  display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; padding: .3rem 0 .5rem; }
+button { font: inherit; padding: .25em .6em; border: none; border-radius: 3px; cursor: pointer;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
+  background: var(--vscode-button-secondaryBackground, rgba(128,128,128,.18)); }
+button:hover { background: var(--vscode-button-hoverBackground); color: var(--vscode-button-foreground); }
+button.principal { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+button:disabled { opacity: .5; cursor: default; }
+button:disabled:hover { background: var(--vscode-button-secondaryBackground, rgba(128,128,128,.18));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground)); }
+#etat { font-size: .85em; color: var(--vscode-descriptionForeground); margin-left: .3rem; }
+#indic { font-size: .95em; color: var(--vscode-editorWarning-foreground, #d1901e); margin-left: .1rem; font-weight: 700; }
+
+.avis { margin: 0 0 .5rem; padding: .4em .6em; border-radius: 4px; font-size: .9em; display: none; }
+.avis.visible { display: block; }
+.avis.info { color: var(--vscode-descriptionForeground);
+  background: var(--vscode-textBlockQuote-background, rgba(128,128,128,.12));
+  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.3)); }
+
+.corps { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: .8rem; }
+h2 { font-size: 1em; margin: .4rem 0 0; padding-bottom: .2rem;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35)); }
+h2 .compte { font-weight: 400; font-size: .85em; color: var(--vscode-descriptionForeground); margin-left: .4rem; }
+.note, .rien { margin: 0; font-size: .85em; color: var(--vscode-descriptionForeground); }
+
+/* Une carte par média : visuel à gauche, champs à droite, actions en pied. */
+.media { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35)); border-radius: 6px;
+  padding: .6rem .7rem; display: flex; flex-direction: column; gap: .55rem;
+  background: var(--vscode-editorWidget-background, transparent); }
+.media.retiree { display: none; }
+.haut { display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap; }
+.visuel { flex: 0 1 15rem; min-width: 0; display: flex; flex-direction: column; gap: .3rem; }
+.visuel img { max-width: 100%; max-height: 14rem; object-fit: contain; align-self: flex-start;
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35)); border-radius: 4px; padding: .3rem; }
+.visuel .nom { font-weight: 700; word-break: break-all; margin: 0; }
+.visuel .desc, .visuel .absent { font-size: .85em; color: var(--vscode-descriptionForeground); margin: 0; }
+.fiche { flex: 1 1 24rem; min-width: 0; display: flex; flex-direction: column; gap: .5rem; }
+
+.champ { display: flex; flex-direction: column; gap: .15rem; }
+.champ label { font-size: .82em; font-weight: 600; color: var(--vscode-descriptionForeground); }
+.champ input { font: inherit; padding: .3em .45em; color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; }
+.champ input:focus { outline: 1px solid var(--vscode-focusBorder); }
+.champ input:disabled { opacity: .55; }
+.aide { margin: .1rem 0 0; font-size: .78em; font-style: italic; color: var(--vscode-descriptionForeground); }
+
+.zone { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));
+  border-radius: 5px; padding: .1rem .6rem .5rem; margin: 0; }
+.zone legend { font-size: .82em; font-weight: 700; padding: 0 .3em; color: var(--vscode-foreground); }
+.zone label.opt { display: flex; align-items: flex-start; gap: .4em; font-size: .88em;
+  padding: .18rem 0; cursor: pointer; }
+.zone label.opt input { margin: .25em 0 0; cursor: pointer; }
+.zone label.opt .txt { display: flex; flex-direction: column; }
+.zone label.opt .sous { font-size: .88em; color: var(--vscode-descriptionForeground); }
+.deuxcol { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem; }
+@media (max-width: 40rem) { .deuxcol { grid-template-columns: 1fr; } }
+
+/* Avis d'insertion : rien quand l'image est insérée une fois, averti sinon. */
+.occ { margin: 0; padding: .35em .55em; border-radius: 4px; font-size: .85em; display: none; }
+.occ.visible { display: block; }
+.occ.alerte { color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+  background: var(--vscode-inputValidation-warningBackground, rgba(209,144,30,.18));
+  border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(209,144,30,.6)); }
+.occ.info { color: var(--vscode-descriptionForeground);
+  background: var(--vscode-textBlockQuote-background, rgba(128,128,128,.12));
+  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.3)); }
+
+/* Encadré « attention qualité » : orange, à côté du visuel qu'il juge. Deux degrés, un
+   seul habillage — le texte dit lequel. */
+.qualite { display: none; margin: 0; padding: .35em .55em; border-radius: 4px; font-size: .85em;
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+  background: var(--vscode-inputValidation-warningBackground, rgba(209,144,30,.18));
+  border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(209,144,30,.6)); }
+.qualite.visible { display: block; }
+.qualite.insuffisant { border-left: 4px solid var(--vscode-editorWarning-foreground, #d1901e); }
+.qualite .titre { font-weight: 700; }
+
+/* Remplacer un média : dépôt ou sélecteur, comme la vérification de l'import. */
+.actions { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+  border-top: 1px dashed var(--vscode-panel-border, rgba(128,128,128,.3)); padding-top: .5rem; }
+.depot { flex: 1 1 16rem; display: flex; align-items: center; gap: .4rem; flex-wrap: wrap;
+  padding: .35em .55em; border-radius: 4px; font-size: .85em;
+  border: 1px dashed var(--vscode-panel-border, rgba(128,128,128,.5));
+  color: var(--vscode-descriptionForeground); }
+.depot.survol { border-style: solid; border-color: var(--vscode-focusBorder);
+  background: var(--vscode-list-hoverBackground, rgba(128,128,128,.12)); }
+.depot .ou { opacity: .8; }
+.media-etat { font-size: .85em; color: var(--vscode-descriptionForeground); }
+.media-etat.erreur { color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); }
+.media.occupe .depot, .portrait.occupe .depot { opacity: .5; }
+
+/* Portraits : pas de figure, donc pas de champs — le visuel, le verdict, le dépôt. */
+.portrait { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35)); border-radius: 6px;
+  padding: .6rem .7rem; display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap;
+  background: var(--vscode-editorWidget-background, transparent); }
+.portrait .visuel { flex: 0 1 9rem; }
+.portrait .visuel img { max-height: 8rem; }
+.portrait .droite { flex: 1 1 18rem; min-width: 0; display: flex; flex-direction: column; gap: .4rem; }
+.portrait .auteur { margin: 0; font-weight: 700; }
+.portrait .version { margin: 0; font-size: .82em; color: var(--vscode-descriptionForeground); }

@@ -28,6 +28,7 @@ lib/
   liens.js              liens szh:// et intention déposée par le lanceur
   panneaux.js           les trois panneaux QuickPick
   portraits.js          appel du script de détourage des photos, dans WSL
+  qualite-image.js      seuils de résolution des images et verdict de qualité
   references.js         insertions d'images et de tableaux dans le markdown
   slug.js               slug d'article, miroir de celui du Makefile
   table-model.js        analyse, sérialisation et opérations du modèle de tableau
@@ -39,8 +40,8 @@ lib/
 media/
   _commun.js            fragments partagés par les formulaires (mots-clés, auto-enregistrement)
   apercu.{css,js}       fragment injecté dans l'aperçu HTML
-  image-fiche.{html,css,js}       fiche d'une image
   import-verif.{html,css,js}      vérification après import Word
+  medias-article.{html,css,js}    gestionnaire des médias d'un article
   metadata-articles.{html,css,js} métadonnées des articles
   metadata-issue.{html,css,js}    métadonnées du numéro
   settings.{html,css,js}          réglages

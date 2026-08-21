@@ -103,6 +103,14 @@ function retirerTable(texte, nom) {
 //   - copyright et source sont omis quand vides, et sans attribut il n'y a pas de bloc ;
 //   - échappement : " -> \" dans les valeurs, pas de saut de ligne, valeurs trimées.
 
+// Image hors numérotation : la classe .szh-hors-figure et une légende vide.
+//   ![](media/x.png){.szh-hors-figure alt="description" copyright="© J. Dupont"}
+// Aucun lecteur n'en fait de Figure — implicit_figures demande un texte entre crochets —
+// et szh-numerotation.lua ne lui donne donc ni numéro ni légende ; il l'enveloppe dans une
+// <figure> à <figcaption> de crédits seuls quand il y a des crédits à porter. La légende
+// est forcée vide à l'écriture : la case cochée et un texte de légende se contrediraient.
+const CLASSE_HORS_FIGURE = 'szh-hors-figure';
+
 // Motif d'une image markdown, à la lettre de ce que pandoc écrit. Groupes : 1 = légende,
 // 2 = cible, 3 = titre, 4 = bloc {…}. Fabriqué à chaque appel, un littéral /g partagé
 // garderait son lastIndex.
@@ -172,11 +180,14 @@ function normaliserLegendeFigure(v) {
     .replace(/[\r\n\t]+/g, ' ').replace(/[[\]]/g, '').trim();
 }
 
+// La classe .szh-hors-figure est réécrite en tête plutôt qu'à sa place d'origine : une
+// seule position possible, donc un second passage rend le même texte.
 function reconstruireBloc(blocOriginal, cibles) {
   const contenu = blocOriginal ? String(blocOriginal).slice(1, -1) : '';
-  const sortie = [];
+  const sortie = cibles.horsFigure ? ['.' + CLASSE_HORS_FIGURE] : [];
   const traites = {};
   for (const j of scannerAttributs(contenu)) {
+    if (!j.paire && j.brut === '.' + CLASSE_HORS_FIGURE) { continue; }   // reposée ou retirée
     const cle = j.paire ? j.cle.toLowerCase() : '';
     if (cle === 'alt' || cle === 'copyright' || cle === 'source') {
       if (traites[cle]) { continue; }              // doublon dans le fichier : une seule fois
@@ -193,12 +204,32 @@ function reconstruireBloc(blocOriginal, cibles) {
   return sortie.length === 0 ? '' : '{' + sortie.join(' ') + '}';
 }
 
-// lireAttributsImage(texte, relatif) -> { legende, alt, altDefini, copyright, source, n }
-// n compte les insertions de l'image ; à zéro, la fiche refuse d'enregistrer. Les valeurs
-// viennent de la première insertion, et l'écriture les reporte sur toutes.
+// Ordre d'apparition des images de media/ dans le texte : rend une Map
+// « relatif normalisé (minuscules) -> rang », les images jamais insérées n'y figurant pas.
+// C'est ce qui permet au gestionnaire des médias de suivre la lecture de l'article plutôt
+// que l'alphabet.
+function ordreImages(texte) {
+  const ordre = new Map();
+  const re = reImage();
+  const s = String(texte === undefined || texte === null ? '' : texte);
+  let m;
+  let rang = 0;
+  while ((m = re.exec(s)) !== null) {
+    const cible = cibleNormalisee(m[2]);
+    if (cible.indexOf('media/') !== 0) { continue; }
+    const relatif = cible.slice('media/'.length);
+    if (relatif !== '' && !ordre.has(relatif)) { ordre.set(relatif, rang++); }
+  }
+  return ordre;
+}
+
+// lireAttributsImage(texte, relatif)
+//   -> { legende, alt, altDefini, copyright, source, horsFigure, n }
+// n compte les insertions de l'image ; à zéro, le gestionnaire refuse d'enregistrer. Les
+// valeurs viennent de la première insertion, et l'écriture les reporte sur toutes.
 function lireAttributsImage(texte, relatif) {
   const attendu = ('media/' + String(relatif || '').replace(/\\/g, '/')).toLowerCase();
-  const res = { legende: '', alt: '', altDefini: false, copyright: '', source: '', n: 0 };
+  const res = { legende: '', alt: '', altDefini: false, copyright: '', source: '', horsFigure: false, n: 0 };
   if (attendu === 'media/') { return res; }
   const re = reImage();
   const s = String(texte === undefined || texte === null ? '' : texte);
@@ -209,7 +240,10 @@ function lireAttributsImage(texte, relatif) {
     if (res.n > 1) { continue; }
     res.legende = m[1];
     for (const j of scannerAttributs(m[4] ? m[4].slice(1, -1) : '')) {
-      if (!j.paire) { continue; }
+      if (!j.paire) {
+        if (j.brut === '.' + CLASSE_HORS_FIGURE) { res.horsFigure = true; }
+        continue;
+      }
       const cle = j.cle.toLowerCase();
       if (cle === 'alt' && !res.altDefini) { res.alt = j.valeur; res.altDefini = true; }
       else if (cle === 'copyright' && res.copyright === '') { res.copyright = j.valeur; }
@@ -225,14 +259,19 @@ function ecrireAttributsImage(texte, relatif, valeurs) {
   const attendu = ('media/' + String(relatif || '').replace(/\\/g, '/')).toLowerCase();
   if (attendu === 'media/') { return { texte: texte, n: 0 }; }
   const v = valeurs || {};
-  const legende = normaliserLegendeFigure(v.legende);
+  const horsFigure = !!v.horsFigure;
+  // Hors figure, la légende ne va nulle part : le texte entre crochets vide est ce qui
+  // empêche implicit_figures d'en fabriquer une, et la laisser remplie donnerait un
+  // fichier qui affirme deux choses contraires.
+  const legende = horsFigure ? '' : normaliserLegendeFigure(v.legende);
   const alt = normaliserValeurFigure(v.alt);
   const copyright = normaliserValeurFigure(v.copyright);
   const source = normaliserValeurFigure(v.source);
   const cibles = {
     alt: v.altDefini ? alt : null,
     copyright: copyright === '' ? null : copyright,
-    source: source === '' ? null : source
+    source: source === '' ? null : source,
+    horsFigure: horsFigure
   };
   let n = 0;
   const sortie = String(texte === undefined || texte === null ? '' : texte)
@@ -246,7 +285,7 @@ function ecrireAttributsImage(texte, relatif, valeurs) {
 }
 
 module.exports = {
-  retirerImage, retirerTable, cibleNormalisee,
+  retirerImage, retirerTable, cibleNormalisee, CLASSE_HORS_FIGURE, ordreImages,
   lireAttributsImage, ecrireAttributsImage,
   scannerAttributs, normaliserValeurFigure, normaliserLegendeFigure
 };

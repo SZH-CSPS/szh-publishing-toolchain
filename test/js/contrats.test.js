@@ -19,6 +19,7 @@ const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
 const table = require(path.join(COCKPIT, 'lib', 'table-model.js'));
 const slug = require(path.join(COCKPIT, 'lib', 'slug.js'));
 const refs = require(path.join(COCKPIT, 'lib', 'references.js'));
+const qualite = require(path.join(COCKPIT, 'lib', 'qualite-image.js'));
 const wsl = require(path.join(COCKPIT, 'lib', 'wsl.js'));
 
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
@@ -101,6 +102,133 @@ test('attributs d’image : alt vide reste un choix explicite (image décorative
     { alt: '', altDefini: true });
   assert.match(ecrit.texte, /alt=""/);
   assert.strictEqual(refs.lireAttributsImage(ecrit.texte, 'x.png').altDefini, true);
+});
+
+test('attributs d’image : « sans légende ni numéro » écrit la classe et vide la légende', () => {
+  const ecrit = refs.ecrireAttributsImage('![Une légende](media/x.png)\n', 'x.png',
+    { legende: 'Une légende', alt: 'Description', altDefini: true,
+      copyright: '© SZH', source: '', horsFigure: true });
+  assert.strictEqual(ecrit.n, 1);
+  // Légende vide : c'est elle qui empêche implicit_figures de fabriquer une Figure.
+  assert.match(ecrit.texte, /^!\[\]\(media\/x\.png\)\{\.szh-hors-figure /);
+  const relu = refs.lireAttributsImage(ecrit.texte, 'x.png');
+  assert.strictEqual(relu.horsFigure, true);
+  assert.strictEqual(relu.legende, '');
+  assert.strictEqual(relu.alt, 'Description');
+  assert.strictEqual(relu.copyright, '© SZH');
+  // Second passage : le même texte, la classe ne se duplique pas.
+  const encore = refs.ecrireAttributsImage(ecrit.texte, 'x.png', relu);
+  assert.strictEqual(encore.texte, ecrit.texte);
+  // Case décochée : la classe part, la légende revient.
+  const rendu = refs.ecrireAttributsImage(ecrit.texte, 'x.png',
+    Object.assign({}, relu, { horsFigure: false, legende: 'Une légende' }));
+  assert.ok(rendu.texte.indexOf('szh-hors-figure') === -1, 'classe restée : ' + rendu.texte);
+  assert.strictEqual(refs.lireAttributsImage(rendu.texte, 'x.png').legende, 'Une légende');
+});
+
+test('attributs d’image : la classe .szh-hors-figure est celle du filtre du pipeline', () => {
+  const lua = lire('pipeline', 'filters', 'szh-numerotation.lua');
+  assert.ok(lua.includes("'" + refs.CLASSE_HORS_FIGURE + "'"),
+    'szh-numerotation.lua ne connaît pas la classe ' + refs.CLASSE_HORS_FIGURE);
+});
+
+// ---- Qualité des images ----
+
+test('qualité : les seuils rangent une image dans le bon degré', () => {
+  const v = (famille, l, h, nom) => qualite.qualiteImage(famille, { largeur: l, hauteur: h }, nom || 'x.png');
+  assert.strictEqual(v('figure', 800, 600).niveau, 'insuffisant');
+  assert.strictEqual(v('figure', 1500, 600).niveau, 'juste');
+  assert.strictEqual(v('figure', 2400, 600).niveau, 'ok');
+  // Un portrait se juge sur son petit côté, le recadrage y prenant un carré.
+  assert.strictEqual(v('portrait', 2000, 300).niveau, 'insuffisant');
+  assert.strictEqual(v('portrait', 2000, 600).niveau, 'juste');
+  assert.strictEqual(v('portrait', 1200, 1200).niveau, 'ok');
+  // Un vectoriel est net à toute taille ; sans dimensions, pas de verdict.
+  assert.strictEqual(v('figure', 10, 10, 'logo.svg').niveau, 'vectoriel');
+  assert.strictEqual(qualite.qualiteImage('figure', null, 'x.png').niveau, 'inconnu');
+  // Famille inconnue : jugée comme une figure plutôt que laissée sans seuils.
+  assert.strictEqual(v('inventee', 800, 600).famille, 'figure');
+});
+
+test('qualité : le seuil des portraits n’est pas sous la sortie du pipeline', () => {
+  const py = lire('pipeline', 'portraits.py');
+  const m = /TAILLE_SORTIE\s*=\s*(\d+)/.exec(py);
+  assert.ok(m, 'TAILLE_SORTIE introuvable dans portraits.py');
+  assert.strictEqual(qualite.SEUILS.portrait.min, Number(m[1]),
+    'sous ce seuil, portraits.py agrandit l’image au lieu de la réduire');
+});
+
+test('ordre des images : celui du texte, cibles encodées et sous-dossiers comprises', () => {
+  const md = [
+    '![Deux](media/Sous/b.PNG)',
+    '',
+    'texte ![Un](<media/a%20b.png> "titre") au fil du texte',
+    '',
+    '![Encore](media/Sous/b.png)',
+    '![Ailleurs](../autre/c.png)'
+  ].join('\n');
+  const ordre = refs.ordreImages(md);
+  assert.strictEqual(ordre.get('sous/b.png'), 0);
+  assert.strictEqual(ordre.get('a b.png'), 1);       // percent-décodée, casse effacée
+  assert.strictEqual(ordre.size, 2, 'une cible hors media/ ne compte pas');
+});
+
+// ---- Rendu : contraintes que le corpus de test ne couvre pas ----
+
+test('print.css : toute image est contrainte à la colonne, figure ou non', () => {
+  const css = lire('pipeline', 'styles', 'print.css');
+  // Une image « hors numérotation » sans crédits n'est pas dans une <figure> : sans une
+  // règle sur `img`, un fichier de 2000 px — la largeur que lib/qualite-image.js
+  // conseille — déborderait de la page A4.
+  assert.match(css, /^img \{[^}]*max-width:\s*100%/m,
+    'aucune règle max-width sur `img` : une image hors figure déborde');
+});
+
+// ---- Chaîne d'import des médias ----
+
+test('médias : la webview et l’hôte plafonnent les dépôts pareil', () => {
+  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  const webview = lire('vscodium-extension', 'szh-cockpit', 'media', 'medias-article.js');
+  const nombre = (re, texte) => {
+    const m = re.exec(texte);
+    assert.ok(m, 'valeur introuvable : ' + re);
+    // « 50 * 1024 * 1024 » -> octets, sans eval.
+    return m[1].split('*').map((x) => Number(x.trim())).reduce((a, b) => a * b, 1);
+  };
+  assert.strictEqual(nombre(/maxi: ([\d *]+),[^}]*'png', 'jpg', 'jpeg', 'gif'/, webview),
+    nombre(/const TAILLE_MAX_IMAGE_IMPORT = ([\d *]+);/, src),
+    'plafond des images : la webview et l’hôte divergent');
+  assert.strictEqual(nombre(/maxi: ([\d *]+),[^}]*'png', 'jpg', 'jpeg', 'webp'/, webview),
+    nombre(/const TAILLE_MAX_PHOTO = ([\d *]+);/, src),
+    'plafond des portraits : la webview et l’hôte divergent');
+});
+
+test('import : la chaîne appelle le rangement des médias, et docx-meta l’alimente', () => {
+  const sh = lire('pipeline', 'import-docx.sh');
+  assert.match(sh, /export SZH_PHOTOS=/, 'le fichier d’appariement des photos n’est pas exporté');
+  assert.match(sh, /import-medias\.py/, 'import-medias.py n’est jamais appelé');
+  assert.match(lire('pipeline', 'docx-meta.py'), /getenv\('SZH_PHOTOS'\)/,
+    'docx-meta.py n’écrit pas le fichier d’appariement');
+});
+
+test('import : les formats de portrait sont les mêmes dans le pipeline et le cockpit', () => {
+  const cockpit = /const EXTENSIONS_PHOTO = \[([^\]]*)\]/
+    .exec(lire('vscodium-extension', 'szh-cockpit', 'extension.js'));
+  const pipeline = /EXTENSIONS_PORTRAIT = \(([^)]*)\)/.exec(lire('pipeline', 'docx-meta.py'));
+  assert.ok(cockpit && pipeline, 'liste de formats introuvable d’un côté ou de l’autre');
+  const liste = (s) => s.split(',').map((x) => x.trim().replace(/'/g, '')).filter(Boolean).sort();
+  assert.deepStrictEqual(liste(pipeline[1]), liste(cockpit[1]),
+    'docx-meta.py apparierait une photo que le dépôt du cockpit refuse');
+});
+
+test('import : les noms de versions de portrait sont ceux que le cockpit relit', () => {
+  const im = lire('pipeline', 'import-medias.py');
+  const meta = lire('pipeline', 'docx-meta.py');
+  // decomposerPhoto() du cockpit ne reconnaît que ces trois suffixes.
+  assert.match(meta, /\.original\.%s/, 'docx-meta.py ne pointe pas l’original');
+  for (const forme of ['.original.', '.sans-fond.png', 'portraits/']) {
+    assert.ok(im.includes(forme), 'import-medias.py ignore « ' + forme + ' »');
+  }
 });
 
 // ---- Cohérence entre fichiers ----
@@ -190,14 +318,21 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
   };
   const communes = cles('textesCarteArticle');
   const pages = {
-    'metadata-articles': new Set([...communes, ...cles('htmlApercuMetadonnees')]),
-    'import-verif': new Set([...communes, ...cles('htmlImportVerif')])
+    'metadata-articles': {
+      libelles: new Set([...communes, ...cles('htmlApercuMetadonnees')]),
+      fragments: ['_commun.js', '_fiches.js']
+    },
+    'import-verif': {
+      libelles: new Set([...communes, ...cles('htmlImportVerif')]),
+      fragments: ['_commun.js', '_fiches.js']
+    },
+    'medias-article': { libelles: cles('textesMedias'), fragments: ['_commun.js'] }
   };
   for (const page of Object.keys(pages)) {
-    const js = ['_commun.js', '_fiches.js', page + '.js']
+    const js = pages[page].fragments.concat([page + '.js'])
       .map((f) => fs.readFileSync(path.join(COCKPIT, 'media', f), 'utf8')).join('\n');
     for (const m of js.matchAll(/\bTXT\.([A-Za-z0-9_]+)/g)) {
-      assert.ok(pages[page].has(m[1]),
+      assert.ok(pages[page].libelles.has(m[1]),
         'libellé « ' + m[1] +' » utilisé par ' + page + ' mais absent de l’hôte');
     }
   }
@@ -222,7 +357,7 @@ test('les tables de protocole des webviews sont à jour', () => {
     'metadata-articles': ['_fiches.js'],
     'import-verif': ['_fiches.js'],
     'traduction': [],
-    'image-fiche': []
+    'medias-article': []
   };
   for (const page of Object.keys(pages)) {
     const fichiers = [page + '.js'].concat(pages[page]);

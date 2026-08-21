@@ -17,6 +17,10 @@
 --   ![Légende visible](media/x.png){alt="description" copyright="© J. D." source="ESA"}
 --   alt absent -> l'alt reprend la légende ; alt="" -> décorative ; copyright= et
 --   source= facultatifs (pandoc 3.5 les émet en data-copyright / data-source).
+-- Image hors numérotation, dans le .md :
+--   ![](media/x.png){.szh-hors-figure alt="description" copyright="© J. D."}
+--   légende vide et classe .szh-hors-figure : ni numéro, ni légende visible. Voir la
+--   passe dédiée plus bas ; le contrat d'écriture vit dans lib/references.js.
 -- Tableau, dans articles/<slug>/tables/table-NN.html, en attributs sur <table> :
 --   class="szh-tableau" data-entete-lignes data-alt data-copyright data-source, plus
 --   <caption>Légende</caption> ; attributs omis quand vides.
@@ -44,6 +48,19 @@ local LIBELLE_SOURCE  = { fr = 'Source\u{202F}: ', de = 'Quelle: ',
 local CADRATIN = '\u{2014}'
 -- Séparateur entre copyright et source dans un crédit.
 local SEP_CREDIT = ' / '
+
+-- Classe posée par le cockpit sur une image à ne pas numéroter, et classe posée par ce
+-- filtre sur la <figure> qu'il en fait : elle dit à szh-legende-avant.lua que la
+-- <figcaption> ne porte qu'un crédit et se lit donc après l'image.
+local CLASSE_HORS_FIGURE = 'szh-hors-figure'
+local CLASSE_CREDIT_SEUL = 'szh-credit-seul'
+
+local function a_classe(el, nom)
+  for _, c in ipairs(el.classes or {}) do
+    if c == nom then return true end
+  end
+  return false
+end
 
 local function trim(t) return (t:gsub('^%s+', ''):gsub('%s+$', '')) end
 local function vide(t) return t == nil or t:match('^%s*$') ~= nil end
@@ -173,6 +190,51 @@ local function traiter_tableau(html, prefixe, credit, id_desc)
   return html, numerote
 end
 
+-- ─── Images hors numérotation ────────────────────────────────────────────────
+-- La légende est vide dans le .md, donc aucun lecteur n'en fait de Figure et rien n'est
+-- numéroté : il n'y a que le texte alternatif et les crédits à placer. Or un crédit est
+-- une mention de droits, il ne doit pas se perdre — comme pour un tableau sans légende.
+-- L'image est donc enveloppée dans une <figure> dont la <figcaption> ne porte que le
+-- crédit : le lien entre l'image et ses droits reste explicite pour un lecteur d'écran,
+-- sans numéro ni légende. Sans crédit à porter, l'image reste un <img> dans son
+-- paragraphe, une <figure> sans <figcaption> n'apportant rien.
+
+-- L'image seule d'un Para/Plain, si elle porte la classe ; nil sinon.
+local function image_hors_figure(b)
+  if b.t ~= 'Para' and b.t ~= 'Plain' then return nil end
+  local img = nil
+  for _, x in ipairs(b.content) do
+    if x.t == 'Image' then
+      if img then return nil end                  -- deux images : on ne tranche pas
+      img = x
+    elseif x.t ~= 'Space' and x.t ~= 'SoftBreak' then
+      return nil                                  -- image au fil du texte : laissée là
+    end
+  end
+  if not img or not a_classe(img, CLASSE_HORS_FIGURE) then return nil end
+  return img
+end
+
+local function hors_numerotation(b, lang)
+  local img = image_hors_figure(b)
+  if not img then return nil end
+  -- Sans texte alternatif, l'image est décorative : role="presentation" neutralise le
+  -- role="img" que --embed-resources ajoute (même raison que dans la passe principale).
+  -- Avec un alt=, le writer l'émet tel quel, la description de l'Image étant vide.
+  if vide(img.attributes['alt']) then
+    img.attributes['alt'] = ''
+    img.attributes['role'] = 'presentation'
+  end
+  local credit = texte_credit(img.attributes['copyright'], img.attributes['source'], lang)
+  if not credit then return nil end
+  return pandoc.Figure(
+    pandoc.Blocks({ pandoc.Plain({ img }) }),
+    { long = pandoc.Blocks({ pandoc.Plain({
+        pandoc.Span({ pandoc.Str(credit) }, pandoc.Attr('', { 'szh-credit' }, {})) }) }) },
+    pandoc.Attr('', { CLASSE_CREDIT_SEUL }, {})
+  )
+end
+
 -- ─── Passe unique, dans l'ordre du document ──────────────────────────────────
 -- Tout part de Pandoc(doc) : seul point où les métadonnées sont lues avant les blocs
 -- (dans un filtre ordinaire, Meta est appelé après eux).
@@ -181,6 +243,15 @@ function Pandoc(doc)
   local mot_figure  = LIBELLE_FIGURE[lang]  or LIBELLE_FIGURE.fr
   local mot_tableau = LIBELLE_TABLEAU[lang] or LIBELLE_TABLEAU.fr
   local n_figure, n_tableau, n_desc = 0, 0, 0
+
+  -- Les images hors numérotation d'abord, et dans un walk à part : le walk principal
+  -- visite les Inline avant les Block, l'image y serait déjà passée par le filtre Image
+  -- quand son paragraphe arrive. Les Figure produites ici portent CLASSE_CREDIT_SEUL et
+  -- sont écartées du numérotage plus bas.
+  doc.blocks = doc.blocks:walk({
+    Para = function(b) return hors_numerotation(b, lang) end,
+    Plain = function(b) return hors_numerotation(b, lang) end,
+  })
 
   doc.blocks = doc.blocks:walk({
 
@@ -199,6 +270,9 @@ function Pandoc(doc)
     end,
 
     Figure = function(fig)
+      -- Figure fabriquée par la passe hors numérotation : sa légende n'est qu'un crédit,
+      -- déjà posé, et elle ne consomme pas de numéro.
+      if a_classe(fig, CLASSE_CREDIT_SEUL) then return nil end
       local legende = utils.stringify(fig.caption.long)
       if legende:match('^%s*$') then return nil end   -- sans légende : pas de numéro
       n_figure = n_figure + 1

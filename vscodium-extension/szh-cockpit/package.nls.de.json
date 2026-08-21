@@ -4,19 +4,18 @@
   "cmd.convertirEnAttente": "Wartende Word-Dateien konvertieren",
   "cmd.metadonnees": "Metadaten der Ausgabe",
   "cmd.supprimerArticle": "Artikel löschen",
-  "cmd.remplacerAsset": "Bild ersetzen",
   "cmd.toutExporter": "Alles exportieren (vollständiger Rebuild)",
   "cmd.exporterXml": "Zeitschrift als XML exportieren (OJS)",
   "cmd.exporterArticle": "Diesen Artikel exportieren",
   "cmd.archiverVerrouiller": "Ausgabe archivieren und sperren",
   "cmd.deverrouiller": "Ausgabe entsperren",
   "cmd.desarchiver": "Ausgabe dearchivieren",
-  "cmd.supprimerAsset": "Bild löschen (samt Einbindung im Text)",
   "cmd.supprimerTable": "Tabelle löschen (samt Einbindung im Text)",
   "cmd.remplacerTable": "Tabelle ersetzen",
   "cmd.editerTable": "Tabelle bearbeiten",
   "cmd.apercuMetadonnees": "Metadaten der Artikel",
   "cmd.metadonneesArticle": "Metadaten dieses Artikels bearbeiten",
+  "cmd.mediasArticle": "Medien dieses Artikels verwalten",
   "cmd.traduction": "Übersetzungsstand dieses Artikels",
   "cmd.traductionsToutPret": "Alles als bereit zur Übersetzung markieren",
   "cmd.envoyerTraduction": "Zur Übersetzung senden (Link)",
@@ -43,5 +42,5 @@
   "cmd.fmt.sautPage": "Seitenumbruch einfügen",
   "config.langue": "Sprache der Cockpit-Texte (fr/de). Leer = Sprache des Editors.",
   "config.apercuMode": "Vorschaumodus der rechten Spalte: html (klickbar, Standard) oder pdf.",
-  "config.replierAssetsAutres": "Bilder und Tabellen der nicht ausgewählten Artikel automatisch ausblenden."
+  "config.replierAssetsAutres": "Tabellen der nicht ausgewählten Artikel automatisch ausblenden."
 }

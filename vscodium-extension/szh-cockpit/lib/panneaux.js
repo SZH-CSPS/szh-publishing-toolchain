@@ -41,7 +41,8 @@ function ouvrirPanneauCommande() {
 // Les commandes szh.fmt.* transforment l'éditeur actif quel qu'il soit et n'ont pas de
 // garde markdown : le panneau « Édition » la pose pour elles. Y échappent les entrées qui
 // doivent marcher depuis n'importe où, ou qui retrouvent seules leur article.
-const HORS_GARDE_MD = ['szh.basculerApercu', 'szh.metadonneesArticle', 'szh.traduction'];
+const HORS_GARDE_MD = ['szh.basculerApercu', 'szh.metadonneesArticle', 'szh.mediasArticle',
+                       'szh.traduction'];
 
 async function ouvrirPanneauEdition() {
   const ed = vscode.window.activeTextEditor;
@@ -51,6 +52,7 @@ async function ouvrirPanneauEdition() {
     ['panneau.basculerApercu', 'szh.basculerApercu', 'Ctrl+Alt+P', '$(preview)'],
     ['--', 'panneau.g.article'],
     ['panneau.metaArticle', 'szh.metadonneesArticle', '', '$(list-flat)'],
+    ['panneau.mediasArticle', 'szh.mediasArticle', '', '$(file-media)'],
     ['panneau.traduction', 'szh.traduction', '', '$(globe)']
   ].concat(PALETTE_MEF);
   const choix = await vscode.window.showQuickPick(itemsDepuisEntrees(entrees), {

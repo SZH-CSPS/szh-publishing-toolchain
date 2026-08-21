@@ -4,19 +4,18 @@
   "cmd.convertirEnAttente": "Convertir les Word en attente",
   "cmd.metadonnees": "Méta-données du numéro",
   "cmd.supprimerArticle": "Supprimer l’article",
-  "cmd.remplacerAsset": "Remplacer l’image",
   "cmd.toutExporter": "Tout exporter (rebuild complet)",
   "cmd.exporterXml": "Exporter la revue en XML (OJS)",
   "cmd.exporterArticle": "Exporter cet article",
   "cmd.archiverVerrouiller": "Archiver et verrouiller la revue",
   "cmd.deverrouiller": "Déverrouiller la revue",
   "cmd.desarchiver": "Désarchiver la revue",
-  "cmd.supprimerAsset": "Supprimer l’image (et son insertion dans le texte)",
   "cmd.supprimerTable": "Supprimer le tableau (et son insertion dans le texte)",
   "cmd.remplacerTable": "Remplacer le tableau",
   "cmd.editerTable": "Éditer le tableau",
   "cmd.apercuMetadonnees": "Métadonnées des articles",
   "cmd.metadonneesArticle": "Éditer les métadonnées de cet article",
+  "cmd.mediasArticle": "Gérer les médias de cet article",
   "cmd.traduction": "Suivi de traduction de cet article",
   "cmd.traductionsToutPret": "Tout marquer prêt pour traduction",
   "cmd.envoyerTraduction": "Envoyer pour traduction (lien)",
@@ -43,5 +42,5 @@
   "cmd.fmt.sautPage": "Insérer un saut de page",
   "config.langue": "Langue des textes du cockpit (fr/de). Vide = langue de l’éditeur.",
   "config.apercuMode": "Mode d’aperçu de la colonne de droite : html (cliquable, défaut) ou pdf.",
-  "config.replierAssetsAutres": "Cacher automatiquement les images et tableaux des articles non sélectionnés."
+  "config.replierAssetsAutres": "Cacher automatiquement les tableaux des articles non sélectionnés."
 }

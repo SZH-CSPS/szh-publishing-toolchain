@@ -2,7 +2,7 @@
   "name": "szh-cockpit",
   "displayName": "SZH — Revue (cockpit)",
   "description": "Barre latérale « Revue SZH » : articles, métadonnées du numéro, import des Word, suivi des traductions, aperçu et réglages.",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "publisher": "szh-csps",
   "license": "MIT",
   "engines": { "vscode": "^1.75.0" },
@@ -73,12 +73,6 @@
         "icon": "$(trash)"
       },
       {
-        "command": "szh.remplacerAsset",
-        "title": "%cmd.remplacerAsset%",
-        "category": "Revue SZH",
-        "icon": "$(replace)"
-      },
-      {
         "command": "szh.toutExporter",
         "title": "%cmd.toutExporter%",
         "category": "Revue SZH",
@@ -121,12 +115,6 @@
         "icon": "$(replace)"
       },
       {
-        "command": "szh.supprimerAsset",
-        "title": "%cmd.supprimerAsset%",
-        "category": "Revue SZH",
-        "icon": "$(trash)"
-      },
-      {
         "command": "szh.supprimerTable",
         "title": "%cmd.supprimerTable%",
         "category": "Revue SZH",
@@ -149,6 +137,12 @@
         "title": "%cmd.metadonneesArticle%",
         "category": "Revue SZH",
         "icon": "$(list-flat)"
+      },
+      {
+        "command": "szh.mediasArticle",
+        "title": "%cmd.mediasArticle%",
+        "category": "Revue SZH",
+        "icon": "$(file-media)"
       },
       {
         "command": "szh.traduction",
@@ -255,9 +249,14 @@
           "group": "inline@1"
         },
         {
-          "command": "szh.supprimerArticle",
+          "command": "szh.mediasArticle",
           "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
           "group": "inline@2"
+        },
+        {
+          "command": "szh.supprimerArticle",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
+          "group": "inline@3"
         },
         {
           "command": "szh.convertirEnAttente",
@@ -278,16 +277,6 @@
           "command": "szh.envoyerTraduction",
           "when": "view == szhCockpitVue && viewItem == traduction-article",
           "group": "inline@1"
-        },
-        {
-          "command": "szh.remplacerAsset",
-          "when": "view == szhCockpitVue && viewItem == asset && !szh.verrouillee",
-          "group": "inline@1"
-        },
-        {
-          "command": "szh.supprimerAsset",
-          "when": "view == szhCockpitVue && viewItem == asset && !szh.verrouillee",
-          "group": "inline@2"
         },
         {
           "command": "szh.remplacerTable",

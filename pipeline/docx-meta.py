@@ -17,6 +17,15 @@
 #   B  entrée de bibliographie à retirer par szh-biblio.lua, qui l'écrit dans $SZH_REFS
 #   F  légende de figure détectée par style et voisine d'une image, pour szh-legendes.lua
 #
+# Écrit aussi, si $SZH_PHOTOS est posée, ce qu'il a compris des photos du tableau des
+# auteurs, une instruction par ligne, pour import-medias.py :
+#   A  <slug-auteur><TAB><nom dans media/>  photo appariée : à ranger dans portraits/ et à
+#      détourer. Le champ `photo` du meta.yaml, écrit ici, pointe l'original ; c'est
+#      import-medias.py qui le promeut en .sans-fond.png quand le détourage réussit.
+#   G  <nom dans media/>                    image reconnue comme photo d'auteur mais non
+#      appariée : à garder, la purge des images inutilisées ne doit pas l'effacer. Le
+#      tableau des auteurs étant consommé du corps, ces images ne sont citées nulle part.
+#
 # Détection par style d'abord (w:styleId et nom localisé de styles.xml), repli heuristique
 # sinon : gras et taille pour le titre, motif « liste de noms » pour les auteurs. Patron de
 # tête des deux revues : Titel [Untertitel] Author Abstract(Résumé)
@@ -31,17 +40,28 @@ import json
 import os
 import re
 import sys
+import unicodedata
 import zipfile
 import xml.etree.ElementTree as ET
 
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
+R = '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}'
+V = '{urn:schemas-microsoft-com:vml}'
+WP = '{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}'
 
 # Jetons de type reconnus par le cockpit (TYPES_ARTICLE de lib/yaml.js).
 TYPES_VALIDES = ('article', 'editorial', 'interview', 'varia', 'tribune-libre',
                  'documentation')
 LANGUES_META = ('fr', 'de', 'it')          # ordre d'écriture du YAML (cockpit)
 CHAMPS_AUTEUR = ('prenom', 'nom', 'fonction', 'affiliation', 'orcid', 'email', 'photo')
+# Formats qu'accepte le dépôt de photo du cockpit (EXTENSIONS_PHOTO d'extension.js) et donc
+# le pipeline de portraits : une image d'un autre format n'est pas appariée.
+EXTENSIONS_PORTRAIT = ('png', 'jpg', 'jpeg', 'webp')
+
+# rId -> nom du fichier tel que pandoc l'extrait sous media/. Rempli dans principal(), le
+# zip étant refermé ensuite.
+RELS_IMAGES = {}
 
 # ---------------------------------------------------------------------------------
 # Texte et normalisation. normaliser() doit rester identique à celle de docx-titres.py et
@@ -80,6 +100,76 @@ def a_image(el):
     return (next(el.iter(A + 'blip'), None) is not None
             or next(el.iter(W + 'drawing'), None) is not None
             or next(el.iter(W + 'pict'), None) is not None)
+
+
+def charger_rels_images(z):
+    """word/_rels/document.xml.rels : rId -> nom de fichier sous media/. pandoc extrait
+    les médias en gardant leur basename (--extract-media), et docx-tables.py lit la même
+    table pour fabriquer ses <img src="media/…"> : les trois restent alignés."""
+    rels = {}
+    try:
+        racine = ET.fromstring(z.read('word/_rels/document.xml.rels'))
+    except Exception:
+        return rels
+    ns = '{http://schemas.openxmlformats.org/package/2006/relationships}'
+    for rel in racine.iter(ns + 'Relationship'):
+        cible = (rel.get('Target') or '').replace('\\', '/')
+        if 'media/' in cible:
+            rels[rel.get('Id')] = os.path.basename(cible)
+    return rels
+
+
+def images_de(el):
+    """[(nom sous media/, surface déclarée)] des images de `el`, dans l'ordre du document.
+    La surface vient de wp:extent (EMU²) ; elle vaut 0 quand la taille n'est pas déclarée,
+    ce qui est le cas du VML hérité."""
+    trouvees = []
+    for dessin in el.iter(W + 'drawing'):
+        blip = dessin.find('.//' + A + 'blip')
+        if blip is None:
+            continue
+        nom = RELS_IMAGES.get(blip.get(R + 'embed') or '')
+        if not nom:
+            continue
+        surface = 0
+        extent = dessin.find('.//' + WP + 'extent')
+        if extent is not None:
+            try:
+                surface = int(extent.get('cx', '0')) * int(extent.get('cy', '0'))
+            except (TypeError, ValueError):
+                surface = 0
+        trouvees.append((nom, surface))
+    for donnees in el.iter(V + 'imagedata'):
+        nom = RELS_IMAGES.get(donnees.get(R + 'id') or '')
+        if nom:
+            trouvees.append((nom, 0))
+    return trouvees
+
+
+def photo_de(el):
+    """Nom du fichier de la photo d'une cellule : la plus grande image déclarée, et non la
+    première. Une cellule de portrait porte parfois un fragment décoratif en plus du visage
+    (filet, icône, morceau d'image recadré), et prendre la première donnerait la vignette
+    pour le portrait — puis la purge effacerait le portrait, que rien ne citerait plus."""
+    trouvees = images_de(el)
+    if not trouvees:
+        return None
+    return max(trouvees, key=lambda t: t[1])[0]
+
+
+def slugifier_portrait(prenom, nom):
+    """Nom de base d'un fichier de portrait. À garder aligné sur slugifier() de
+    vscodium-extension/szh-cockpit/lib/slug.js : c'est le cockpit qui relit ces noms
+    (decomposerPhoto) et qui les recalcule quand on redépose une photo — une divergence
+    laisserait deux jeux de fichiers pour la même personne. Même ordre qu'en JS :
+    retrait d'une pseudo-extension, ligatures, NFD sans diacritiques, minuscules, puis
+    tout ce qui n'est pas [a-z0-9] en tiret."""
+    s = re.sub(r'\.[^.]*$', '', (prenom + '-' + nom))
+    for a, b in (('œ', 'oe'), ('Œ', 'oe'), ('æ', 'ae'), ('Æ', 'ae'), ('ß', 'ss')):
+        s = s.replace(a, b)
+    s = re.sub(r'[\u0300-\u036f]', '', unicodedata.normalize('NFD', s))
+    s = re.sub(r'[^a-z0-9]+', '-', s.lower()).strip('-')
+    return s or 'article'
 
 
 def paragraphe_tout_gras(p):
@@ -445,29 +535,67 @@ def cellule_auteur(tc):
             'affiliation': affiliation, 'orcid': orcid, 'email': email}
 
 
+def _apparier(sans_photo, libres):
+    """Apparie des cellules-photos à des auteurs sans photo, dans l'ordre, et seulement
+    si les comptes concordent : mieux vaut aucune photo qu'une photo sur la mauvaise
+    personne."""
+    if not libres or len(libres) != len(sans_photo):
+        return
+    for a, nom in zip(sans_photo, libres):
+        a['_image'] = nom
+
+
 def analyser_table_auteurs(tbl):
-    """(est_tableau_auteurs, [auteurs], nb_photos). Strict : toute cellule non vide doit
-    être soit une image seule (photo), soit une cellule auteur — une seule cellule de
-    prose libre suffit à laisser le tableau dans le corps."""
+    """(est_tableau_auteurs, [auteurs], nb_photos, {images des cellules-photos}). Strict :
+    toute cellule non vide doit être soit une image seule (photo), soit une cellule auteur —
+    une seule cellule de prose libre suffit à laisser le tableau dans le corps.
+
+    Chaque auteur reçoit dans '_image' le nom du fichier de sa photo sous media/ quand
+    l'appariement est sûr : l'image de sa propre cellule d'abord, sinon les cellules-photos
+    de la même rangée prises dans l'ordre, sinon celles du tableau entier (patron d'une
+    rangée d'images au-dessus d'une rangée de textes). Rien n'est posé si les comptes ne
+    concordent pas.
+
+    Le quatrième membre porte TOUTES les images des cellules qui tiennent une photo, pas
+    seulement celles retenues : le tableau part du corps, ces fichiers ne sont donc plus
+    cités nulle part, et la purge des images inutilisées ne doit pas pouvoir emporter un
+    portrait sur une erreur d'appariement."""
     auteurs = []
     photos = 0
+    libres_table = []
+    connues = set()
     for tr in (x for x in tbl if x.tag == W + 'tr'):
+        rangee_auteurs = []
+        rangee_libres = []
         for tc in (x for x in tr if x.tag == W + 'tc'):
             if next(tc.iter(W + 'tbl'), None) is not None:
-                return False, [], 0       # tableau imbriqué : pas un bloc auteurs
+                return False, [], 0, set()   # tableau imbriqué : pas un bloc auteurs
             texte = normaliser(' '.join(texte_paragraphe(p)
                                         for p in tc if p.tag == W + 'p'))
             if not texte:
                 if a_image(tc):
                     photos += 1
+                    connues.update(n for n, _ in images_de(tc))
+                    nom = photo_de(tc)
+                    if nom:
+                        rangee_libres.append(nom)
                 continue
             a = cellule_auteur(tc)
             if a is None:
-                return False, [], 0
+                return False, [], 0, set()
             if a_image(tc):
                 photos += 1
-            auteurs.append(a)
-    return (len(auteurs) > 0), auteurs, photos
+                connues.update(n for n, _ in images_de(tc))
+                nom = photo_de(tc)
+                if nom:
+                    a['_image'] = nom
+            rangee_auteurs.append(a)
+        _apparier([a for a in rangee_auteurs if not a.get('_image')], rangee_libres)
+        libres_table.extend(n for n in rangee_libres
+                            if not any(a.get('_image') == n for a in rangee_auteurs))
+        auteurs.extend(rangee_auteurs)
+    _apparier([a for a in auteurs if not a.get('_image')], libres_table)
+    return (len(auteurs) > 0), auteurs, photos, connues
 
 
 # ---------------------------------------------------------------------------------
@@ -556,6 +684,7 @@ def principal(argv):
         with zipfile.ZipFile(chemin_docx) as z:
             racine = ET.fromstring(z.read('word/document.xml'))
             styles = charger_styles(z)
+            RELS_IMAGES.update(charger_rels_images(z))
     except Exception as e:
         # Non bloquant : l'import continue sans métadonnées (comme docx-titres.py).
         print('[docx-meta] lecture impossible de %s : %s' % (chemin_docx, e),
@@ -744,17 +873,19 @@ def principal(argv):
     tables_consommees = []                # ordinaux 1-based (ordre du document)
     auteurs_table = []
     photos = 0
+    photos_connues = set()                # images des cellules-photos, à ne pas purger
     premier_tbl_consomme = None           # indice de bloc du 1er tableau consommé
     for k in range(len(tables) - 1, -1, -1):
         idx_bloc, tbl = tables[k]
         if idx_bloc / nblocs < 0.4:       # jamais un bloc auteurs si tôt (corpus : >= 0.53)
             break
-        ok, auteurs, nb_photos = analyser_table_auteurs(tbl)
+        ok, auteurs, nb_photos, connues = analyser_table_auteurs(tbl)
         if not ok:
             break
         tables_consommees.insert(0, k + 1)
         auteurs_table = auteurs + auteurs_table
         photos += nb_photos
+        photos_connues |= connues
         premier_tbl_consomme = idx_bloc
 
     # L'en-tête de section au-dessus du tableau consommé (« Autrices et auteurs »,
@@ -787,6 +918,38 @@ def principal(argv):
     else:
         author = auteurs_byline
         auteurs_source = 'byline' if auteurs_byline else 'aucun'
+
+    # ---- 4b) Photos des auteur·e·s ------------------------------------------------
+    # Le champ `photo` désigne le fichier tel qu'il sera après le déplacement fait par
+    # import-medias.py, qui lit le fichier d'appariement écrit plus bas. Il pointe
+    # l'original, seul fichier certain d'exister ; le détourage réussi le promeut en
+    # .sans-fond.png, la version que le formulaire du cockpit propose par défaut.
+    photos_appariees = []                 # (slug-auteur, nom du fichier dans media/)
+    bases_vues = set()
+    fichiers_vus = set()
+    for a in author:
+        nom_image = a.pop('_image', None)
+        if not nom_image:
+            continue
+        base = slugifier_portrait(a.get('prenom', ''), a.get('nom', ''))
+        ext = os.path.splitext(nom_image)[1].lstrip('.').lower()
+        if ext not in EXTENSIONS_PORTRAIT:
+            stats['avertissements'].append('photo-format-ignore')
+            continue
+        if base in bases_vues:
+            stats['avertissements'].append('photo-homonyme-ignoree')
+            continue                      # deux fois le même nom : on s'abstient
+        if nom_image in fichiers_vus:
+            # Word réutilise un seul fichier pour deux insertions identiques : le déplacer
+            # deux fois laisserait le second auteur avec un `photo` qui ne désigne rien.
+            stats['avertissements'].append('photo-fichier-partage-ignore')
+            continue
+        bases_vues.add(base)
+        fichiers_vus.add(nom_image)
+        a['photo'] = 'portraits/%s.original.%s' % (base, ext)
+        photos_appariees.append((base, nom_image))
+    for a in auteurs_table:
+        a.pop('_image', None)             # jamais sérialisé, mais rien ne traîne
 
     # ---- 5) Bibliographie stylée (Literaturverzeichnis) --------------------------
     type_article, type_regle = detecter_type(
@@ -843,6 +1006,20 @@ def principal(argv):
                 f.write(contenu)
             meta_ecrit = True
 
+    # Ce que import-medias.py doit savoir des photos, écrit dans tous les cas : sur un
+    # meta.yaml conservé (ré-import), aucun champ `photo` n'a été posé, mais les photos
+    # doivent quand même quitter media/ — sinon la purge les effacerait, et le premier
+    # import les avait déjà rangées sous les mêmes noms. Les lignes G protègent les images
+    # reconnues comme photos sans avoir été appariées.
+    chemin_photos = os.getenv('SZH_PHOTOS')
+    if chemin_photos:
+        appariees = {nom for _, nom in photos_appariees}
+        with open(chemin_photos, 'w', encoding='utf-8', newline='\n') as f:
+            for base, nom_image in photos_appariees:
+                f.write('A\t%s\t%s\n' % (base, nom_image))
+            for nom_image in sorted(photos_connues - appariees):
+                f.write('G\t%s\n' % nom_image)
+
     chemin_instr = os.getenv('SZH_META')
     if chemin_instr:
         with open(chemin_instr, 'w', encoding='utf-8', newline='\n') as f:
@@ -870,7 +1047,9 @@ def principal(argv):
         'auteurs': {'n': len(author), 'source': auteurs_source,
                     'emails': sum(1 for a in author if a.get('email')),
                     'fonctions': sum(1 for a in author if a.get('fonction')),
-                    'photos': photos},
+                    'photos': photos,
+                    'photos_appariees': len(photos_appariees),
+                    'photos_gardees': len(photos_connues) - len(photos_appariees)},
         'tableaux_consommes': tables_consommees,
         'biblio_style': len(lignes_b),
         'legendes_figures_style': len(lignes_f),

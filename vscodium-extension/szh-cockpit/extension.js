@@ -70,8 +70,12 @@ const { appliquerVerrou } = require('./lib/verrou');
 const { construireLienTraduction, consommerIntention } = require('./lib/liens');
 const { enregistrerPanneaux } = require('./lib/panneaux');
 const { genererExportOjs } = require('./lib/export-ojs');
-const { retirerImage, retirerTable, lireAttributsImage, ecrireAttributsImage } = require('./lib/references');
+const {
+  retirerImage, retirerTable, ordreImages, lireAttributsImage, ecrireAttributsImage
+} = require('./lib/references');
 const { traiterPortraits } = require('./lib/portraits');
+// ---- Seuils de qualité des images -> lib/qualite-image.js ------------------------
+const { qualiteImage } = require('./lib/qualite-image');
 // ---- Suivi de traduction -> lib/traduction.js ------------------------------------
 const {
   CHAMPS_TRADUISIBLES, STATUTS, STATUT_DEFAUT,
@@ -236,7 +240,7 @@ class FournisseurRevue {
     if (element.categorie === 'articles') { return this._itemsArticles(); }
     if (element.categorie === 'word') { return this._itemsWord(); }
     if (element.categorie === 'traductions') { return this._itemsTraductions(); }
-    if (element.contextValue === 'article') { return this._itemsAssets(element.slug); }
+    if (element.contextValue === 'article') { return this._itemsTables(element.slug); }
     if (element.contextValue === 'traduction-article') { return this._itemsChampsTraduction(element.slug); }
     return [];
   }
@@ -260,7 +264,10 @@ class FournisseurRevue {
     const auto = replierAssetsAutres();
     return slugs.map((slug) => {
       const md = vscode.Uri.file(path.join(base, slug, slug + '.md'));
-      const aDesAssets = this._imagesArticle(slug).length > 0 || this._tablesArticle(slug).length > 0;
+      // Seuls les tableaux se déplient sous l'article : les images se gèrent dans le
+      // formulaire « Médias de cet article », qui les montre avec leurs légendes, leurs
+      // crédits et leur verdict de qualité.
+      const aDesAssets = this._tablesArticle(slug).length > 0;
       const deploye = auto && aDesAssets && slug === this.slugDeploye;
       const it = new vscode.TreeItem(slug, !aDesAssets
         ? vscode.TreeItemCollapsibleState.None
@@ -311,25 +318,7 @@ class FournisseurRevue {
       .sort((a, b) => a.localeCompare(b, 'fr'));
   }
 
-  _itemsAssets(slug) {
-    const base = path.join(this.racine, 'articles', slug, 'media');
-    const images = this._imagesArticle(slug).map((relatif) => {
-      const chemin = path.join(base, relatif);
-      const it = new vscode.TreeItem(relatif, vscode.TreeItemCollapsibleState.None);
-      it.slug = slug;
-      it.cheminAsset = chemin;
-      it.resourceUri = vscode.Uri.file(chemin);
-      it.contextValue = 'asset';
-      it.description = decrireImage(chemin);
-      it.tooltip = T('arbre.image.tooltip', [chemin]);
-      // La fiche plutôt que l'aperçu natif : on vient y écrire légende, alternative et
-      // crédits. Son bouton « Ouvrir l'image » rouvre l'aperçu natif.
-      it.command = {
-        command: 'szh.ficheImage', title: 'Ouvrir la fiche de l’image',
-        arguments: [it]
-      };
-      return it;
-    });
+  _itemsTables(slug) {
     const baseTables = path.join(this.racine, 'articles', slug, 'tables');
     const tables = this._tablesArticle(slug).map((nom) => {
       const chemin = path.join(baseTables, nom);
@@ -347,7 +336,7 @@ class FournisseurRevue {
       };
       return it;
     });
-    return images.concat(tables);
+    return tables;
   }
 
   // articles-word/*.docx à la racine du dossier, donc sans _convertis/.
@@ -681,6 +670,24 @@ function poidsLisible(octets) {
 }
 
 // Le dossier ne bouge pas, out/ est conservé : le geste d'un numéro déjà archivé.
+// Les formulaires qui écrivent des fichiers sans passer par l'éditeur (gestionnaire des
+// médias, éditeur de tableau) : ni le verrou en lecture seule ni la disparition d'un
+// article ne les atteignent, il faut les fermer.
+function fermerFormulairesEcriture(racine, slug) {
+  const dossier = (racine && slug) ? path.join(racine, 'articles', slug) + path.sep : null;
+  const concerne = (table, cle) => {
+    if (!dossier) { return true; }                 // tout fermer (verrouillage du numéro)
+    return table === panneauxMedias ? cle === slug : String(cle).indexOf(dossier) === 0;
+  };
+  for (const table of [panneauxMedias, panneauxTable]) {
+    for (const [cle, panneau] of Array.from(table.entries())) {
+      if (!concerne(table, cle)) { continue; }
+      try { panneau.dispose(); } catch (e) { /* déjà fermé */ }
+      table.delete(cle);
+    }
+  }
+}
+
 async function verrouillerSeulement(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   const choix = await vscode.window.showWarningMessage(
@@ -690,6 +697,7 @@ async function verrouillerSeulement(fournisseur, rafraichirTout) {
   if (choix !== T('modale.verrouiller.bouton')) { return; }
   const erreur = ecrireClesAusgabe(racine, { locked: 'true' });
   if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [erreur])); return; }
+  fermerFormulairesEcriture(null, null);           // un formulaire ouvert écrit par fs
   rafraichirTout();
   vscode.window.setStatusBarMessage(T('statut.verrouille'), 4000);
 }
@@ -1399,6 +1407,22 @@ function lireDimensionsImage(chemin) {
       }
       return null;
     }
+    // WEBP : conteneur RIFF, trois formes de bloc. Les portraits en acceptent, et sans
+    // dimensions le formulaire des médias n'aurait aucun verdict à rendre.
+    if (lu >= 30 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') {
+      const bloc = b.toString('latin1', 12, 16);
+      if (bloc === 'VP8X') {                                      // étendu : 24 bits - 1
+        return { largeur: (b.readUIntLE(24, 3) & 0xffffff) + 1, hauteur: (b.readUIntLE(27, 3) & 0xffffff) + 1 };
+      }
+      if (bloc === 'VP8 ' && b[23] === 0x9d && b[24] === 0x01 && b[25] === 0x2a) {
+        return { largeur: b.readUInt16LE(26) & 0x3fff, hauteur: b.readUInt16LE(28) & 0x3fff };
+      }
+      if (bloc === 'VP8L') {                                      // 14 bits chacun, - 1
+        const bits = b.readUInt32LE(21);
+        return { largeur: (bits & 0x3fff) + 1, hauteur: ((bits >> 14) & 0x3fff) + 1 };
+      }
+      return null;
+    }
     if (/\.svg$/i.test(chemin)) {                                 // SVG : attributs ou viewBox
       const texte = b.toString('utf8');
       const balise = texte.match(/<svg[^>]*>/i);
@@ -1436,26 +1460,30 @@ function formatImage(nom) {
   return ext === 'jpeg' ? 'jpg' : ext;
 }
 
-// Écrase l'image en gardant son nom, pour que le lien du .md reste valide.
-async function remplacerAsset(fournisseur, rafraichirTout, item) {
-  if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
-  if (buildEnCours || importEnCours) {
-    vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
-    return;
-  }
-  const cible = item.cheminAsset;
+// Écrase une image de media/ en gardant son nom, pour que les liens du .md restent
+// valides. Seul chemin d'écriture d'une image : le gestionnaire des médias et la
+// vérification de l'import y passent tous les deux, avec la même confirmation modale et
+// les mêmes contrôles de format et de poids. Le fichier arrive en base64 depuis une
+// webview, jamais par une boîte de dialogue de l'hôte.
+// -> { etat: 'ok' | 'annule' | 'erreur', message }
+async function remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif, nomFichier, donneesBase64) {
+  const echec = (message) => ({ etat: 'erreur', message: message });
+  if (!fournisseur.racine) { return echec(T('err.remplacement', ['?'])); }
+  if (!new Set(fournisseur.listerArticles()).has(String(slug || ''))) { return { etat: 'annule' }; }
+  if (!relatifImageValide(relatif)) { return { etat: 'annule' }; }
+  if (buildEnCours || importEnCours) { return echec(T('statut.occupe')); }
+  const cible = path.join(fournisseur.racine, 'articles', slug, 'media', relatif);
+  let existe = false;
+  try { existe = fs.statSync(cible).isFile(); } catch (e) { existe = false; }
+  if (!existe) { return echec(T('err.remplacement', [relatif])); }   // disparu entre-temps
   const nomCible = path.basename(cible);
-  const filtresImage = {};
-  filtresImage[T('dial.image.filtre')] = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
-  const choix = await vscode.window.showOpenDialog({
-    canSelectMany: false,
-    filters: filtresImage,
-    openLabel: T('dial.image.bouton'),
-    title: T('dial.image.titre', [nomCible])
-  });
-  if (!choix || choix.length === 0) { return; }    // dialogue annulé
-  const source = choix[0].fsPath;
-  const nomSource = path.basename(source);
+  const nomSource = String(nomFichier || '');
+  const ext = (nomSource.match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
+  if (EXTENSIONS_IMAGE_IMPORT.indexOf(ext) === -1) { return echec(T('importv.err.format')); }
+  const donnees = Buffer.from(String(donneesBase64 || ''), 'base64');
+  if (donnees.length === 0) { return echec(T('importv.err.format')); }
+  if (donnees.length > TAILLE_MAX_IMAGE_IMPORT) { return echec(T('importv.err.tropvolumineux')); }
+  // Confirmation modale, renforcée si le format du fichier déposé diffère.
   let detail = T('modale.remplacer.detail.image', [nomCible]);
   if (formatImage(nomSource) !== formatImage(nomCible)) {
     detail = T('modale.remplacer.detail.format', [formatImage(nomSource), formatImage(nomCible)]) + detail;
@@ -1465,14 +1493,21 @@ async function remplacerAsset(fournisseur, rafraichirTout, item) {
     { modal: true, detail: detail },
     T('modale.remplacer.bouton')
   );
-  if (reponse !== T('modale.remplacer.bouton')) { return; }   // annulé : rien n'est touché
+  if (reponse !== T('modale.remplacer.bouton')) { return { etat: 'annule' }; }
   try {
-    fs.copyFileSync(source, cible);                // même nom : lien du .md intact
-    vscode.window.setStatusBarMessage(T('statut.image.remplacee', [nomCible]), 5000);
+    const tmp = path.join(path.dirname(cible), '~$' + nomCible);
+    try {
+      fs.writeFileSync(tmp, donnees);
+      fs.renameSync(tmp, cible);                   // même nom : liens du .md intacts
+    } finally {
+      try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
+    }
   } catch (e) {
-    vscode.window.showErrorMessage(T('err.remplacement', [e.message]));
+    return echec(T('err.remplacement', [e.message]));
   }
-  rafraichirTout();
+  vscode.window.setStatusBarMessage(T('statut.image.remplacee', [nomCible]), 5000);
+  if (rafraichirTout) { rafraichirTout(); }        // met « L × H · poids » à jour
+  return { etat: 'ok' };
 }
 
 // Écrase tables/table-NN.html en gardant le nom, pour que la référence reste valide.
@@ -1510,14 +1545,16 @@ async function remplacerTable(fournisseur, rafraichirTout, item) {
 }
 
 // Supprime une image ou un tableau, référence comprise : effacer le seul fichier
-// laisserait un lien mort. Le texte passe par un WorkspaceEdit, donc annulable.
+// laisserait un lien mort. Le texte passe par un WorkspaceEdit, donc annulable. Rend vrai
+// quand le fichier est parti, ce que le gestionnaire des médias attend pour retirer sa
+// carte.
 async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
   const racine = fournisseur.racine;
-  if (!racine || !item || !item.cheminAsset || !item.slug) { return; }
+  if (!racine || !item || !item.cheminAsset || !item.slug) { return false; }
   // Comme « Remplacer » : pas de suppression pendant que make lit le dossier.
   if (buildEnCours || importEnCours) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
-    return;
+    return false;
   }
   const slug = item.slug;
   const cible = item.cheminAsset;
@@ -1532,7 +1569,7 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
     { modal: true, detail: T(estTable ? 'modale.supprimerTable.detail' : 'modale.supprimerAsset.detail', [slug]) },
     T('modale.supprimer.bouton')
   );
-  if (reponse !== T('modale.supprimer.bouton')) { return; }   // annulé : rien n'est touché
+  if (reponse !== T('modale.supprimer.bouton')) { return false; }   // annulé : rien n'est touché
 
   // L'ordre compte : référence retirée du tampon, fichier effacé, puis .md enregistré —
   // l'enregistrement compile, et pandoc lirait sinon un média en cours de suppression.
@@ -1552,19 +1589,20 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
     }
   } catch (e) {
     vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
-    return;
+    return false;
   }
 
   try {
-    // Le laisser à l'écran ferait réécrire un asset qui vient d'être supprimé.
-    const ouvert = estTable ? panneauxTable.get(cible) : panneauxFicheImage.get(cible);
+    // Le laisser à l'écran ferait réécrire un tableau qui vient d'être supprimé. Le
+    // gestionnaire des médias, lui, n'est pas lié à un fichier : il retire sa carte.
+    const ouvert = estTable ? panneauxTable.get(cible) : null;
     if (ouvert) { try { ouvert.dispose(); } catch (e) { /* déjà fermé */ } }
     await fermerOngletDuFichier(cible);
     fs.rmSync(cible, { force: true });
   } catch (e) {
     vscode.window.showErrorMessage(T('err.suppression', [nom, e.message]));
     rafraichirTout();
-    return;                                        // .md non enregistré : état cohérent
+    return false;                                  // .md non enregistré : état cohérent
   }
   if (retirees > 0 && doc) {
     try { await doc.save(); }                      // déclenche la recompilation
@@ -1577,6 +1615,7 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
     5000
   );
   rafraichirTout();
+  return true;
 }
 
 // ---- Suppression d'un article ----------------------------------------------------
@@ -1613,6 +1652,7 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
   const dossierSortie = path.join(racine, 'out', slug);
   try {
     if (apercuCourantSlug === slug) { fermerApercuHtml(); apercuCourantSlug = null; }
+    fermerFormulairesEcriture(racine, slug);
     await fermerOngletsSous(dossierArticle);
     await fermerOngletsSous(dossierSortie);
     fs.rmSync(dossierArticle, { recursive: true, force: true });
@@ -2401,21 +2441,18 @@ function ouvrirVersionsPhoto(fournisseur, panneau, msg) {
 }
 
 // Écrit l'original par fichier « ~$ » puis rename, purge les anciens, lance le pipeline.
-async function deposerPhotoAuteur(fournisseur, panneau, msg) {
-  const slug = String(msg.slug || '');
-  const index = msg.index;
-  const erreur = (texte) => repondrePanneau(panneau, { type: 'photo-erreur', slug: slug, index: index, message: texte });
-  if (!new Set(fournisseur.listerArticles()).has(slug)) { return; }   // slug inconnu : ignoré
-  if (photoEnCours) { erreur(T('photo.encours')); return; }
-  const prenom = String(msg.prenom || '').trim();
-  const nom = String(msg.nom || '').trim();
-  if (prenom === '' && nom === '') { return; }    // la webview exige déjà un nom
-  const slugAuteur = slugifier(prenom + '-' + nom);
-  const ext = (String(msg.nomFichier || '').match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
-  if (EXTENSIONS_PHOTO.indexOf(ext) === -1) { erreur(T('photo.err.format')); return; }
-  const donnees = Buffer.from(String(msg.donneesBase64 || ''), 'base64');
-  if (donnees.length === 0) { erreur(T('photo.err.format')); return; }
-  if (donnees.length > TAILLE_MAX_PHOTO) { erreur(T('photo.err.tropvolumineux')); return; }
+// Seul chemin d'écriture d'un portrait : le formulaire des fiches et le gestionnaire des
+// médias y passent tous les deux. Rend { ok, message, visage, padding, dossier } et ne
+// lève jamais ; l'appelant décide de ce qu'il en dit à sa webview.
+async function ecrirePortraitEtTraiter(fournisseur, slug, slugAuteur, ext, donneesBase64) {
+  const echec = (message) => ({ ok: false, message: message });
+  if (!new Set(fournisseur.listerArticles()).has(String(slug || ''))) { return echec(T('photo.err.introuvable')); }
+  if (!baseAuteurValide(slugAuteur)) { return echec(T('photo.err.introuvable')); }
+  if (photoEnCours) { return echec(T('photo.encours')); }
+  if (EXTENSIONS_PHOTO.indexOf(String(ext || '').toLowerCase()) === -1) { return echec(T('photo.err.format')); }
+  const donnees = Buffer.from(String(donneesBase64 || ''), 'base64');
+  if (donnees.length === 0) { return echec(T('photo.err.format')); }
+  if (donnees.length > TAILLE_MAX_PHOTO) { return echec(T('photo.err.tropvolumineux')); }
 
   photoEnCours = true;
   try {
@@ -2438,8 +2475,7 @@ async function deposerPhotoAuteur(fournisseur, panneau, msg) {
         try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
       }
     } catch (e) {
-      erreur(T('err.ecriture', [e.message]));
-      return;
+      return echec(T('err.ecriture', [e.message]));
     }
     let resultats;
     try {
@@ -2448,21 +2484,76 @@ async function deposerPhotoAuteur(fournisseur, panneau, msg) {
         entrees: [{ slug: slugAuteur, cheminSource: chemin }]
       });
     } catch (e) {
-      erreur(T(e && e.wsl ? 'photo.err.wsl' : 'photo.err.traitement', [e.message]));
-      return;
+      return echec(T(e && e.wsl ? 'photo.err.wsl' : 'photo.err.traitement', [e.message]));
     }
     const r = resultats.filter((x) => x && x.slug === slugAuteur)[0] || resultats[0] || {};
-    if (!r.ok) { erreur(T('photo.err.traitement', [String(r.erreur || '?')])); return; }
-    if (!r.visage) { vscode.window.showWarningMessage(T('photo.sansvisage')); }
-    repondrePanneau(panneau, {
-      type: 'photo-versions', slug: slug, index: index, base: slugAuteur,
-      versions: versionsPhoto(dossier, slugAuteur),
-      infos: { visage: !!r.visage, padding: !!r.padding },
-      actuelle: null
-    });
+    if (!r.ok) { return echec(T('photo.err.traitement', [String(r.erreur || '?')])); }
+    return { ok: true, visage: !!r.visage, padding: !!r.padding, dossier: dossier };
   } finally {
     photoEnCours = false;
   }
+}
+
+async function deposerPhotoAuteur(fournisseur, panneau, msg) {
+  const slug = String(msg.slug || '');
+  const index = msg.index;
+  const erreur = (texte) => repondrePanneau(panneau, { type: 'photo-erreur', slug: slug, index: index, message: texte });
+  if (!new Set(fournisseur.listerArticles()).has(slug)) { return; }   // slug inconnu : ignoré
+  const prenom = String(msg.prenom || '').trim();
+  const nom = String(msg.nom || '').trim();
+  if (prenom === '' && nom === '') { return; }    // la webview exige déjà un nom
+  const slugAuteur = slugifier(prenom + '-' + nom);
+  const ext = (String(msg.nomFichier || '').match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
+  const r = await ecrirePortraitEtTraiter(fournisseur, slug, slugAuteur, ext, msg.donneesBase64);
+  if (!r.ok) { erreur(r.message); return; }
+  if (!r.visage) { vscode.window.showWarningMessage(T('photo.sansvisage')); }
+  repondrePanneau(panneau, {
+    type: 'photo-versions', slug: slug, index: index, base: slugAuteur,
+    versions: versionsPhoto(r.dossier, slugAuteur),
+    infos: { visage: !!r.visage, padding: !!r.padding },
+    actuelle: null
+  });
+}
+
+// Le champ `photo` d'une fiche peut désigner l'original, dont l'extension change avec le
+// fichier déposé : sans cette retouche, remplacer un portrait JPEG par un PNG laisserait la
+// fiche pointer un fichier effacé. Remplacement littéral d'un chemin que nous avons écrit,
+// comme la promotion de pipeline/import-medias.py. Rend le nombre de champs corrigés.
+function recalerPhotoOriginale(racine, slug, base, extAvant, extApres) {
+  if (extAvant === extApres) { return 0; }
+  const chemin = cheminMeta(racine, slug);
+  let contenu;
+  try { contenu = fs.readFileSync(chemin, 'utf8'); } catch (e) { return 0; }
+  const ancien = 'photo: "portraits/' + base + '.original.' + extAvant + '"';
+  if (contenu.indexOf(ancien) === -1) { return 0; }
+  const sortie = contenu.split(ancien).join('photo: "portraits/' + base + '.original.' + extApres + '"');
+  try { ecrireAtomique(chemin, sortie); } catch (e) { return 0; }
+  return 1;
+}
+
+// Remplacement d'un portrait depuis le gestionnaire des médias : la base existe déjà, le
+// nom de l'auteur·e n'a donc pas à être redonné. Le fichier déposé écrase l'original —
+// geste irréversible, d'où la confirmation modale, comme pour une image.
+// -> { etat: 'ok' | 'annule' | 'erreur', message, sansVisage }
+async function remplacerFichierPortrait(fournisseur, rafraichirTout, slug, base, nomFichier, donneesBase64) {
+  if (!fournisseur.racine) { return { etat: 'annule' }; }
+  if (!baseAuteurValide(base)) { return { etat: 'annule' }; }
+  if (buildEnCours || importEnCours) { return { etat: 'erreur', message: T('statut.occupe') }; }
+  const nomSource = String(nomFichier || '');
+  const ext = (nomSource.match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
+  const dossier = dossierPortraitsArticle(fournisseur.racine, slug);
+  const avant = trouverOriginal(dossier, base);
+  const reponse = await vscode.window.showWarningMessage(
+    T('modale.remplacer.question', [avant || base, nomSource]),
+    { modal: true, detail: T('modale.remplacer.detail.portrait') },
+    T('modale.remplacer.bouton'));
+  if (reponse !== T('modale.remplacer.bouton')) { return { etat: 'annule' }; }
+  const r = await ecrirePortraitEtTraiter(fournisseur, slug, base, ext, donneesBase64);
+  if (!r.ok) { return { etat: 'erreur', message: r.message }; }
+  const extAvant = avant ? (avant.match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase() : ext;
+  recalerPhotoOriginale(fournisseur.racine, slug, base, extAvant, ext);
+  if (rafraichirTout) { rafraichirTout(); }
+  return { etat: 'ok', sansVisage: !r.visage };
 }
 
 // photo-choisir : chemin relatif de la version choisie, vérifié sur le disque.
@@ -2685,54 +2776,25 @@ function envoyerValeursImportVerif(panneau, fournisseur) {
   });
 }
 
-// Écrase l'image en gardant son nom, pour que le lien du .md reste valide. Une
-// annulation est signalée à la webview, qui réactive sa zone de dépôt.
+// Le remplacement lui-même est celui du gestionnaire des médias ; ici, seul l'aller-retour
+// avec la webview change. Une annulation est signalée, qui réactive la zone de dépôt.
 async function remplacerImageImport(fournisseur, rafraichirTout, panneau, msg) {
   const slug = String(msg.slug || '');
   const relatif = String(msg.relatif || '');
-  const erreur = (texte) => repondrePanneau(panneau, { type: 'image-erreur', slug: slug, relatif: relatif, message: texte });
-  if (!new Set(fournisseur.listerArticles()).has(slug)) { return; }   // slug inconnu : ignoré
-  if (!relatifImageValide(relatif)) { return; }                       // chemin refusé : ignoré
-  if (buildEnCours || importEnCours) { erreur(T('statut.occupe')); return; }
-  const cible = path.join(fournisseur.racine, 'articles', slug, 'media', relatif);
-  let existe = false;
-  try { existe = fs.statSync(cible).isFile(); } catch (e) { existe = false; }
-  if (!existe) { erreur(T('err.remplacement', [relatif])); return; }  // disparu entre-temps
-  const nomCible = path.basename(cible);
-  const nomSource = String(msg.nomFichier || '');
-  const ext = (nomSource.match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
-  if (EXTENSIONS_IMAGE_IMPORT.indexOf(ext) === -1) { erreur(T('importv.err.format')); return; }
-  const donnees = Buffer.from(String(msg.donneesBase64 || ''), 'base64');
-  if (donnees.length === 0) { erreur(T('importv.err.format')); return; }
-  if (donnees.length > TAILLE_MAX_IMAGE_IMPORT) { erreur(T('importv.err.tropvolumineux')); return; }
-  // Confirmation modale, renforcée si le format du fichier déposé diffère.
-  let detail = T('modale.remplacer.detail.image', [nomCible]);
-  if (formatImage(nomSource) !== formatImage(nomCible)) {
-    detail = T('modale.remplacer.detail.format', [formatImage(nomSource), formatImage(nomCible)]) + detail;
-  }
-  const reponse = await vscode.window.showWarningMessage(
-    T('modale.remplacer.question', [nomCible, nomSource]),
-    { modal: true, detail: detail },
-    T('modale.remplacer.bouton')
-  );
-  if (reponse !== T('modale.remplacer.bouton')) {
+  const res = await remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif,
+    msg.nomFichier, msg.donneesBase64);
+  if (res.etat === 'annule') {
     repondrePanneau(panneau, { type: 'image-annulee', slug: slug, relatif: relatif });
     return;
   }
-  try {
-    const tmp = path.join(path.dirname(cible), '~$' + nomCible);
-    try {
-      fs.writeFileSync(tmp, donnees);
-      fs.renameSync(tmp, cible);                   // même nom : lien du .md intact
-    } finally {
-      try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
-    }
-    vscode.window.setStatusBarMessage(T('statut.image.remplacee', [nomCible]), 5000);
-    repondrePanneau(panneau, { type: 'image-remplacee', slug: slug, relatif: relatif, description: decrireImage(cible) });
-  } catch (e) {
-    erreur(T('err.remplacement', [e.message]));
+  if (res.etat === 'erreur') {
+    repondrePanneau(panneau, { type: 'image-erreur', slug: slug, relatif: relatif, message: res.message });
+    return;
   }
-  if (rafraichirTout) { rafraichirTout(); }        // met « L × H · poids » à jour
+  repondrePanneau(panneau, {
+    type: 'image-remplacee', slug: slug, relatif: relatif,
+    description: decrireImage(path.join(fournisseur.racine, 'articles', slug, 'media', relatif))
+  });
 }
 
 async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
@@ -3128,31 +3190,55 @@ async function ouvrirEditeurTable(fournisseur, item) {
   });
 }
 
-// ---- Fiche image (clic sur une image de la barre « Revue SZH ») ------------------
+// ---- Gestionnaire des médias d'un article ----------------------------------------
+// Un formulaire pour tous les médias de l'article, ouvert par l'icône « médias » de
+// l'arbre à côté de celle des métadonnées. Les images ne figurent plus sous l'article
+// dans la barre latérale : elles se gèrent ici, où l'on voit d'un coup ce qui manque.
+//
 // La légende, le texte alternatif et les crédits d'une image vivent dans le texte de
-// l'article : ![Légende](media/x.png){alt="…" copyright="…" source="…"}. La fiche lit et
-// réécrit cette référence par les fonctions pures de lib/references.js, en passant par
-// WorkspaceEdit puis doc.save() pour rester annulable.
+// l'article : ![Légende](media/x.png){alt="…" copyright="…" source="…"}. Le formulaire lit
+// et réécrit ces références par les fonctions pures de lib/references.js, en passant par
+// WorkspaceEdit puis doc.save() pour rester annulable. Le fichier lui-même se remplace par
+// dépôt, à nom conservé, et se retire avec ses insertions.
+//
+// Les portraits des auteur·e·s (articles/<slug>/portraits/) sont listés en pied : ce ne
+// sont pas des figures, on n'y juge que la qualité et on les remplace, le pipeline de
+// détourage étant rejoué au dépôt.
 
 // Dans un <img>, un SVG ne peut ni exécuter de script ni charger de ressource externe.
-const MIMES_FICHE_IMAGE = {
+const MIMES_APERCU_MEDIA = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
   svg: 'image/svg+xml', webp: 'image/webp'
 };
 // Au-delà, pas d'aperçu : le base64 d'une grosse image gonflerait le postMessage.
-const TAILLE_MAX_APERCU_FICHE = 12 * 1024 * 1024;
+const TAILLE_MAX_APERCU_MEDIA = 8 * 1024 * 1024;
+// Et un plafond pour le message entier : le formulaire charge d'un coup les aperçus de
+// toutes les images et de tous les portraits. Quinze photos d'impression suffiraient à
+// envoyer plus de cent mégaoctets de base64 dans un seul postMessage et à figer l'hôte.
+// Passé le budget, les cartes suivantes s'affichent sans aperçu.
+const BUDGET_APERCUS_MEDIA = 24 * 1024 * 1024;
 
-function apercuFicheImage(chemin) {
+// `budget` (facultatif) = { reste: octets } décrémenté au fil des aperçus rendus.
+function apercuMedia(chemin, budget) {
   try {
-    if (fs.statSync(chemin).size > TAILLE_MAX_APERCU_FICHE) { return null; }
+    const octets = fs.statSync(chemin).size;
+    if (octets > TAILLE_MAX_APERCU_MEDIA) { return null; }
+    if (budget) {
+      if (budget.reste < octets) { return null; }
+      budget.reste -= octets;
+    }
     const ext = (chemin.match(/\.([a-z0-9]+)$/i) || ['', ''])[1].toLowerCase();
-    if (!MIMES_FICHE_IMAGE[ext]) { return null; }
-    return 'data:' + MIMES_FICHE_IMAGE[ext] + ';base64,' + fs.readFileSync(chemin).toString('base64');
+    if (!MIMES_APERCU_MEDIA[ext]) { return null; }
+    return 'data:' + MIMES_APERCU_MEDIA[ext] + ';base64,' + fs.readFileSync(chemin).toString('base64');
   } catch (e) { return null; }
 }
 
-function textesFicheImage() {
+function textesMedias() {
   return {
+    sectionImages: T('medias.section.images'), sectionPortraits: T('medias.section.portraits'),
+    imagesNote: T('medias.images.note'), portraitsNote: T('medias.portraits.note'),
+    aucuneImage: T('medias.aucune.image'), aucunPortrait: T('medias.aucun.portrait'),
+    resume: T('medias.resume'), rienAEcrire: T('medias.rienAEcrire'),
     legende: T('img.legende'), legendeIndice: T('img.legende.indice'), legendeAide: T('img.legende.aide'),
     roleTitre: T('img.role.titre'),
     roleDecrit: T('img.role.decrit'), roleDecritSous: T('img.role.decrit.sous'),
@@ -3161,82 +3247,201 @@ function textesFicheImage() {
     altAide: T('img.alt.aide'), altAideDeco: T('img.alt.aide.deco'),
     copyright: T('img.copyright'), copyrightIndice: T('img.copyright.indice'),
     source: T('img.source'), sourceIndice: T('img.source.indice'),
-    ouvrir: T('img.ouvrir'), ouvrirTip: T('img.tip.ouvrir'),
+    horsFigureTitre: T('medias.horsfigure.titre'), horsFigure: T('medias.horsfigure'),
+    horsFigureSous: T('medias.horsfigure.sous'), horsFigureAide: T('medias.horsfigure.aide'),
+    qualiteTitre: T('medias.qualite.titre'), qualiteInsuffisant: T('medias.qualite.insuffisant'),
+    qualiteJuste: T('medias.qualite.juste'),
+    qualitePortraitInsuffisant: T('medias.qualite.portrait.insuffisant'),
+    qualitePortraitJuste: T('medias.qualite.portrait.juste'),
+    deposer: T('medias.deposer'), ou: T('medias.ou'), choisirFichier: T('medias.choisirFichier'),
+    remplacee: T('medias.remplacee'),
+    errFormat: T('medias.err.format'), errTropVolumineuse: T('medias.err.tropvolumineux'),
+    errFormatPortrait: T('medias.err.format.portrait'),
+    errTropVolumineusePortrait: T('medias.err.tropvolumineux.portrait'),
+    ouvrir: T('medias.ouvrir'), ouvrirTip: T('medias.tip.ouvrir'),
+    retirer: T('medias.retirer'), retirerTip: T('medias.tip.retirer'),
     retour: T('img.retour'), retourTip: T('img.tip.retour'),
-    enregistrer: T('img.enregistrer'), enregistrerTip: T('img.tip.enregistrer'),
-    enregistre: T('img.enregistre'), nonEnregistre: T('img.nonEnregistre'),
+    enregistrer: T('img.enregistrer'), enregistrerTip: T('medias.tip.enregistrer'),
+    enregistre: T('medias.enregistre'), nonEnregistre: T('img.nonEnregistre'),
     occZero: T('img.occ.zero'), occPlusieurs: T('img.occ.plusieurs'),
-    apercuAbsent: T('img.apercu.absent')
+    apercuAbsent: T('img.apercu.absent'), portraitOrphelin: T('medias.portrait.orphelin')
   };
 }
 
-function htmlFicheImage(nonce) {
-  return construireHtml('image-fiche', nonce, {
-    titre: T('img.titre', ['']),
+function htmlMedias(nonce) {
+  return construireHtml('medias-article', nonce, {
+    titre: T('medias.titre', ['']),
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
   });
 }
 
-let panneauxFicheImage = new Map();   // fsPath -> WebviewPanel (une fiche par image)
+// Un descripteur par image de media/, dans l'ordre du texte puis, pour celles qui n'y
+// sont pas, dans l'ordre alphabétique de l'arbre.
+function listerMediasArticle(fournisseur, slug, texteMd, budget) {
+  const base = path.join(fournisseur.racine, 'articles', slug, 'media');
+  const ordre = ordreImages(texteMd);
+  const liste = fournisseur._imagesArticle(slug).map((relatif) => {
+    const chemin = path.join(base, relatif);
+    const v = lireAttributsImage(texteMd, relatif);
+    return {
+      relatif: relatif,
+      description: decrireImage(chemin),
+      apercu: apercuMedia(chemin, budget),
+      occurrences: v.n,
+      qualite: qualiteImage('figure', lireDimensionsImage(chemin), relatif),
+      valeurs: {
+        legende: v.legende, alt: v.alt, altDefini: v.altDefini,
+        copyright: v.copyright, source: v.source, horsFigure: v.horsFigure
+      },
+      _rang: ordre.has(relatif.toLowerCase()) ? ordre.get(relatif.toLowerCase()) : Number.MAX_SAFE_INTEGER
+    };
+  });
+  liste.sort((a, b) => (a._rang !== b._rang ? a._rang - b._rang : a.relatif.localeCompare(b.relatif, 'fr')));
+  for (const m of liste) { delete m._rang; }
+  return liste;
+}
 
-async function ouvrirFicheImage(fournisseur, item) {
-  if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
+// Un descripteur par portrait, c'est-à-dire par base : <base>.original.<ext> et ses deux
+// dérivés ne font qu'une photo. Le verdict de qualité porte sur l'original, seul endroit
+// où la qualité se gagne ; l'aperçu montre la version que la fiche utilise.
+function listerPortraitsArticle(fournisseur, slug, budget) {
+  const dossier = dossierPortraitsArticle(fournisseur.racine, slug);
+  let noms = [];
+  try { noms = fs.readdirSync(dossier); } catch (e) { return []; }
+  const bases = new Map();
+  for (const nom of noms) {
+    if (nom.indexOf('~$') === 0) { continue; }
+    const d = decomposerPhoto(nom);
+    if (!d || !baseAuteurValide(d.base)) { continue; }
+    if (!bases.has(d.base)) { bases.set(d.base, {}); }
+    bases.get(d.base)[d.version] = nom;
+  }
+  if (bases.size === 0) { return []; }
+  // Auteur·e rattaché·e, et version retenue par la fiche : le champ `photo` du meta.yaml.
+  const parPhoto = new Map();
+  try {
+    const meta = analyserMeta(fs.readFileSync(cheminMeta(fournisseur.racine, slug), 'utf8'));
+    for (const a of (meta.author || [])) {
+      const photo = assainirCheminPhoto(a.photo);
+      if (photo === '') { continue; }
+      const nom = (String(a.prenom || '').trim() + ' ' + String(a.nom || '').trim()).trim();
+      parPhoto.set(photo.replace(/^portraits\//, ''), nom);
+    }
+  } catch (e) { /* pas de fiche : portraits sans auteur rattaché */ }
+  const liste = [];
+  for (const base of Array.from(bases.keys()).sort((a, b) => a.localeCompare(b, 'fr'))) {
+    const versions = bases.get(base);
+    // Version montrée : celle que la fiche désigne, sinon l'ordre de repli du formulaire.
+    let utilisee = null;
+    let auteur = null;
+    for (const version of ['original', 'avec-fond', 'sans-fond']) {
+      const nom = versions[version];
+      if (nom && parPhoto.has(nom)) { utilisee = nom; auteur = parPhoto.get(nom); break; }
+    }
+    if (!utilisee) {
+      for (const version of ['sans-fond', 'avec-fond', 'original']) {
+        if (versions[version]) { utilisee = versions[version]; break; }
+      }
+    }
+    const original = versions.original || utilisee;
+    const cheminOriginal = path.join(dossier, original);
+    liste.push({
+      base: base,
+      nom: utilisee,
+      auteur: auteur,
+      version: T('medias.portrait.version', ['portraits/' + utilisee]),
+      description: T('medias.portrait.original', [decrireImage(cheminOriginal)]),
+      apercu: apercuMedia(path.join(dossier, utilisee), budget),
+      qualite: qualiteImage('portrait', lireDimensionsImage(cheminOriginal), original)
+    });
+  }
+  return liste;
+}
+
+let panneauxMedias = new Map();   // slug -> WebviewPanel (un gestionnaire par article)
+
+async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
+  if (!fournisseur.racine) { return; }
   const racine = fournisseur.racine;
-  const chemin = item.cheminAsset;
-  const nom = path.basename(chemin);
-  // L'item d'arbre porte son slug ; le repli sert aux appels programmés.
-  const slug = item.slug || apercuCourantSlug;
-  if (!slug) { return; }
-  const relatif = path.relative(path.join(racine, 'articles', slug, 'media'), chemin).replace(/\\/g, '/');
+  // Même cascade que le formulaire des fiches : l'item de l'arbre, l'éditeur actif, puis
+  // l'aperçu courant — et un message quand il n'y a vraiment pas d'article en vue.
+  let slug = (item && item.slug) ? String(item.slug) : null;
+  if (!slug) {
+    const ed = vscode.window.activeTextEditor;
+    slug = ed ? slugDepuisChemin(racine, ed.document.uri.fsPath) : null;
+  }
+  if (!slug) { slug = apercuCourantSlug; }
+  if (!slug || !new Set(fournisseur.listerArticles()).has(slug)) {
+    vscode.window.setStatusBarMessage(T('fiches.horsarticle'), 4000);
+    return;
+  }
+  // Mis à jour à chaque ouverture : le gestionnaire d'un panneau déjà ouvert le lit.
+  let focus = String((item && item.focus) || '');
   const md = path.join(racine, 'articles', slug, slug + '.md');
-  // La fiche prend toute la place ; sans cela la webview s'ouvre derrière un PDF.
+  const existant = panneauxMedias.get(slug);
+  if (existant) {
+    // Pas de rechargement : il écraserait des saisies non encore écrites. Seule la carte
+    // visée est amenée à l'écran.
+    existant.reveal(vscode.ViewColumn.One);
+    if (focus !== '') { repondrePanneau(existant, { type: 'focaliser', relatif: focus }); }
+    return;
+  }
+  // Le formulaire prend toute la place ; sans cela la webview s'ouvre derrière un PDF.
   await fermerTousLesApercus();
-  const existant = panneauxFicheImage.get(chemin);
-  if (existant) { existant.reveal(vscode.ViewColumn.One); return; }
   const panneau = vscode.window.createWebviewPanel(
-    'szhFicheImage', T('img.titre', [nom]), vscode.ViewColumn.One,
+    'szhMedias', T('medias.titre', [slug]), vscode.ViewColumn.One,
     { enableScripts: true, localResourceRoots: [] }
   );
-  panneauxFicheImage.set(chemin, panneau);
-  panneau.onDidDispose(() => { if (panneauxFicheImage.get(chemin) === panneau) { panneauxFicheImage.delete(chemin); } });
-  panneau.webview.html = htmlFicheImage(crypto.randomBytes(16).toString('hex'));
+  panneauxMedias.set(slug, panneau);
+  panneau.onDidDispose(() => { if (panneauxMedias.get(slug) === panneau) { panneauxMedias.delete(slug); } });
+  panneau.webview.html = htmlMedias(crypto.randomBytes(16).toString('hex'));
 
   // openTextDocument lit le tampon : l'écriture repart d'une frappe non enregistrée.
-  const lire = async () => {
+  async function texteArticle() {
     try {
       const doc = await vscode.workspace.openTextDocument(md);
-      return lireAttributsImage(doc.getText(), relatif);
-    } catch (e) {
-      return { legende: '', alt: '', altDefini: false, copyright: '', source: '', n: 0 };
-    }
-  };
-  const charger = async () => {
-    const v = await lire();
-    repondrePanneau(panneau, {
-      type: 'charger', nom: nom, description: decrireImage(chemin),
-      apercu: apercuFicheImage(chemin), occurrences: v.n,
-      valeurs: { legende: v.legende, alt: v.alt, altDefini: v.altDefini, copyright: v.copyright, source: v.source },
-      i18n: textesFicheImage()
+      return doc.getText();
+    } catch (e) { return ''; }
+  }
+  async function charger(cible) {
+    const texteMd = await texteArticle();
+    const budget = { reste: BUDGET_APERCUS_MEDIA };
+    repondrePanneau(cible, {
+      type: 'charger', slug: slug,
+      medias: listerMediasArticle(fournisseur, slug, texteMd, budget),
+      portraits: listerPortraitsArticle(fournisseur, slug, budget),
+      focus: focus, i18n: textesMedias()
     });
-  };
-  // Toutes les insertions de l'image, qui n'a qu'un jeu de crédits. Rend leur nombre,
-  // ou -1 en cas d'échec déjà signalé.
-  const enregistrer = async (valeurs) => {
+  }
+
+  // Toutes les insertions de chaque image, qui n'ont qu'un jeu de légende et de crédits.
+  // Rend le nombre d'insertions réécrites, ou -1 en cas d'échec déjà signalé.
+  const enregistrer = async (liste) => {
     let doc;
     try { doc = await vscode.workspace.openTextDocument(md); }
     catch (e) { repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) }); return -1; }
-    const res = ecrireAttributsImage(doc.getText(), relatif, valeurs || {});
-    if (res.n === 0) {
-      // L'image a été retirée du .md depuis l'ouverture : rien à écrire.
-      vscode.window.setStatusBarMessage(T('img.statut.sansref', [nom]), 5000);
-      await charger();                               // la fiche passe à « 0 insertion »
-      return 0;
+    const source = doc.getText();
+    let texte = source;
+    let total = 0;
+    let disparues = 0;
+    for (const m of (Array.isArray(liste) ? liste : [])) {
+      const relatif = String((m && m.relatif) || '');
+      if (!relatifImageValide(relatif)) { continue; }        // chemin refusé : ignoré
+      const res = ecrireAttributsImage(texte, relatif, (m && m.valeurs) || {});
+      if (res.n === 0) { disparues++; continue; }             // retirée du .md entre-temps
+      texte = res.texte;
+      total += res.n;
     }
-    if (res.texte === doc.getText()) { return res.n; }   // rien n'a changé : pas d'édition
+    if (disparues > 0) {
+      // Retirées du .md depuis le chargement : le dire, sinon leurs cartes se croient
+      // enregistrées.
+      vscode.window.setStatusBarMessage(T('medias.statut.disparues', [disparues]), 5000);
+    }
+    if (texte === source) { return total; }        // déjà à jour : pas d'édition
     try {
       const edition = new vscode.WorkspaceEdit();
       const fin = doc.lineAt(doc.lineCount - 1).range.end;
-      edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), res.texte);
+      edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), texte);
       if (!(await vscode.workspace.applyEdit(edition))) {
         repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [md]) });
         return -1;
@@ -3246,42 +3451,101 @@ async function ouvrirFicheImage(fournisseur, item) {
       repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) });
       return -1;
     }
-    return res.n;
+    return total;
   };
 
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
-    if (msg.type === 'pret') { await charger(); return; }
+    if (msg.type === 'pret') { await charger(panneau); return; }
     if (msg.type === 'modifie') {
-      panneau.title = (msg.modifie ? '● ' : '') + T('img.titre', [nom]);
+      panneau.title = (msg.modifie ? '● ' : '') + T('medias.titre', [slug]);
       return;
     }
-    if (msg.type === 'ouvrirImage') {
-      // La visionneuse native, en colonne 2 pour ne pas recouvrir la fiche.
+    if (msg.type === 'ouvrirMedia') {
+      const relatif = String(msg.relatif || '');
+      if (!relatifImageValide(relatif)) { return; }
+      // La visionneuse native, en colonne 2 pour ne pas recouvrir le formulaire.
       try {
-        await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(chemin),
+        await vscode.commands.executeCommand('vscode.open',
+          vscode.Uri.file(path.join(racine, 'articles', slug, 'media', relatif)),
           { viewColumn: vscode.ViewColumn.Two, preserveFocus: true });
       } catch (e) { /* fichier disparu : rien à montrer */ }
       return;
     }
     if (msg.type === 'enregistrer') {
-      const n = await enregistrer(msg.valeurs);
-      // Même sans insertion réécrite : sinon le verrou « écriture en vol » reste posé.
+      const n = await enregistrer(msg.medias);
+      // En échec, `enregistrer` a déjà posté « erreur », qui lève aussi le verrou
+      // « écriture en vol » : poster « enregistre » par-dessus effacerait l'avertissement
+      // et déclarerait propres des cartes dont rien n'a été écrit.
+      if (n < 0) { return; }
       repondrePanneau(panneau, { type: 'enregistre', auto: !!msg.auto });
-      if (n > 0 && !msg.auto) { vscode.window.setStatusBarMessage(T('img.statut.enregistree', [nom, n]), 5000); }
+      if (n > 0 && !msg.auto) { vscode.window.setStatusBarMessage(T('medias.statut.enregistrees', [n]), 5000); }
+      return;
+    }
+    if (msg.type === 'remplacer') {
+      // La garde de cmdEcriture ne couvre que l'ouverture : ces trois gestes écrivent par
+      // fs, hors du système de fichiers de l'éditeur, et un panneau resté ouvert survit au
+      // verrouillage du numéro.
+      if (refuserSiVerrouille()) { return; }
+      const relatif = String(msg.relatif || '');
+      const res = await remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif,
+        msg.nomFichier, msg.donneesBase64);
+      if (res.etat === 'annule') { repondrePanneau(panneau, { type: 'media-annulee', relatif: relatif }); return; }
+      if (res.etat === 'erreur') {
+        repondrePanneau(panneau, { type: 'media-erreur', relatif: relatif, message: res.message });
+        return;
+      }
+      const chemin = path.join(racine, 'articles', slug, 'media', relatif);
+      repondrePanneau(panneau, {
+        type: 'media-remplace', relatif: relatif, description: decrireImage(chemin),
+        apercu: apercuMedia(chemin, { reste: BUDGET_APERCUS_MEDIA }),
+        qualite: qualiteImage('figure', lireDimensionsImage(chemin), relatif)
+      });
+      return;
+    }
+    if (msg.type === 'retirer') {
+      if (refuserSiVerrouille()) { return; }
+      const relatif = String(msg.relatif || '');
+      if (!relatifImageValide(relatif)) { return; }
+      const cheminAsset = path.join(racine, 'articles', slug, 'media', relatif);
+      const retire = await supprimerAsset(fournisseur, rafraichirTout,
+        { slug: slug, cheminAsset: cheminAsset }, false);
+      if (retire) { repondrePanneau(panneau, { type: 'media-retire', relatif: relatif }); }
+      return;
+    }
+    if (msg.type === 'portrait-remplacer') {
+      if (refuserSiVerrouille()) { return; }
+      const base = String(msg.base || '');
+      const res = await remplacerFichierPortrait(fournisseur, rafraichirTout, slug, base,
+        msg.nomFichier, msg.donneesBase64);
+      if (res.etat !== 'ok') {
+        repondrePanneau(panneau, { type: 'portrait-erreur', base: base, message: res.message || '' });
+        return;
+      }
+      const portrait = listerPortraitsArticle(fournisseur, slug)
+        .filter((p) => p.base === base)[0] || null;
+      repondrePanneau(panneau, {
+        type: 'portrait-remplace', base: base,
+        nom: portrait ? portrait.nom : base,
+        version: portrait ? portrait.version : '',
+        description: portrait ? portrait.description : '',
+        apercu: portrait ? portrait.apercu : null,
+        qualite: portrait ? portrait.qualite : null
+      });
+      if (res.sansVisage) { vscode.window.showWarningMessage(T('photo.sansvisage')); }
       return;
     }
     if (msg.type === 'retourArticle') {
       // Garde « non enregistré », comme dans l'éditeur de tableau.
       if (msg.modifie) {
         const choix = await vscode.window.showWarningMessage(
-          T('img.quitter.question', [nom]), { modal: true, detail: T('table.quitter.detail') },
+          T('medias.quitter.question', [slug]), { modal: true, detail: T('table.quitter.detail') },
           T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
         if (choix === undefined) { return; }          // Annuler : on reste
         if (choix === T('form.enregistrer')) {
-          const n = await enregistrer(msg.valeurs);
+          const n = await enregistrer(msg.medias);
           if (n < 0) { return; }                      // échec d'écriture : on reste
-          if (n > 0) { vscode.window.setStatusBarMessage(T('img.statut.enregistree', [nom, n]), 5000); }
+          if (n > 0) { vscode.window.setStatusBarMessage(T('medias.statut.enregistrees', [n]), 5000); }
         }
       }
       await ouvrirArticle(fournisseur, slug);
@@ -3394,12 +3658,11 @@ function activate(context) {
     cmd('szh.desarchiver', () => desarchiver(fournisseur, rafraichirTout)),
     cmd('szh.ouvrirArticle', (slug) => ouvrirArticle(fournisseur, slug)),
     cmdEcriture('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
-    cmdEcriture('szh.remplacerAsset', (item) => remplacerAsset(fournisseur, rafraichirTout, item)),
     cmdEcriture('szh.remplacerTable', (item) => remplacerTable(fournisseur, rafraichirTout, item)),
-    cmdEcriture('szh.supprimerAsset', (item) => supprimerAsset(fournisseur, rafraichirTout, item, false)),
     cmdEcriture('szh.supprimerTable', (item) => supprimerAsset(fournisseur, rafraichirTout, item, true)),
     cmdEcriture('szh.editerTable', (item) => ouvrirEditeurTable(fournisseur, item)),
-    cmdEcriture('szh.ficheImage', (item) => ouvrirFicheImage(fournisseur, item)),
+    // Le formulaire des médias de l'article : légendes, crédits, qualité, remplacement.
+    cmdEcriture('szh.mediasArticle', (item) => ouvrirGestionMedias(fournisseur, rafraichirTout, item)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte),
     // L'avertissement part au démarrage d'une tâche : Ctrl+S, le chemin le plus fréquent,
     // ne passe pas par les fonctions du cockpit.

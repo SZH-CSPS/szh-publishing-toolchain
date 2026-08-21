@@ -56,27 +56,74 @@ Elle a **trois sections** :
   gauche, l'article est recompilé **si besoin** (texte ou tableau plus récent que le
   PDF), et l'aperçu PDF s'affiche à droite — celui de l'article précédent se ferme
   tout seul (toujours deux volets : texte à gauche, PDF à droite).
-  Au survol d'un article, un bouton :
+  Au survol d'un article, trois boutons :
+  - **☰ Éditer les métadonnées de cet article** — le formulaire des fiches, filtré sur
+    ce seul article ;
+  - **🖼 Gérer les médias de cet article** — le formulaire décrit juste en dessous ;
   - **🗑 Supprimer l'article** — efface l'article **et** son PDF, après une demande de
     confirmation explicite (l'action est irréversible : rien n'est supprimé sans accord).
 
-  Si l'article contient des **images ou des tableaux**, une petite flèche permet de le
-  **déplier** :
-  - chaque **image** apparaît avec ses dimensions et son poids (p. ex.
-    « 1200 × 800 · 245 Ko ») ; **clic** = l'afficher ; **Remplacer** au survol échange le
-    fichier contre une autre image **en gardant le même nom** ;
-  - chaque **tableau** (fichiers `table-01.html`, `table-02.html`…) vient du document
-    Word d'origine, **fidèlement** : les cellules fusionnées, le gras et l'italique
-    sont préservés ; **clic** = ouvrir le tableau dans l'**éditeur de tableau** (une
-    grille, comme dans Word — jamais de code HTML à lire) ;
-    **Remplacer** au survol l'échange contre un autre fichier HTML, même nom conservé.
-    La modification apparaît à la compilation suivante (Ctrl + S ou re-clic).
-
-  Au survol, images et tableaux ont aussi une **🗑 poubelle** : elle supprime le
-  fichier **et retire son insertion du texte de l'article** (l'image ou le tableau
-  ne laisse donc jamais de trou dans le rendu). Une confirmation est demandée ;
+  Si l'article contient des **tableaux**, une petite flèche permet de le **déplier** :
+  chaque **tableau** (fichiers `table-01.html`, `table-02.html`…) vient du document
+  Word d'origine, **fidèlement** : les cellules fusionnées, le gras et l'italique
+  sont préservés ; **clic** = ouvrir le tableau dans l'**éditeur de tableau** (une
+  grille, comme dans Word — jamais de code HTML à lire) ;
+  **Remplacer** au survol l'échange contre un autre fichier HTML, même nom conservé,
+  et la **🗑 poubelle** supprime le fichier **et retire son insertion du texte** (un
+  tableau ne laisse donc jamais de trou dans le rendu). Une confirmation est demandée ;
   la modification du texte reste annulable par **Ctrl + Z** tant que l'article
   est ouvert.
+
+  Les **images**, elles, ne sont plus listées sous l'article : elles se gèrent toutes
+  ensemble dans le gestionnaire des médias.
+
+  ### Le gestionnaire des médias
+
+  Le picto **🖼** à côté de « Éditer les métadonnées de cet article » ouvre un
+  formulaire qui liste **tous les médias de l'article**. Une carte par image, dans
+  l'ordre où elles apparaissent dans le texte, et sur chacune :
+
+  - l'**aperçu**, le nom du fichier, ses dimensions et son poids ;
+  - la **légende** (celle qui s'affiche sous la figure, numérotée toute seule), le
+    **rôle** de l'image pour les lecteurs d'écran, le **texte alternatif**, le
+    **copyright** et la **source** — exactement les champs de l'ancienne fiche d'image,
+    mais sans avoir à ouvrir les images une par une ;
+  - **Image sans légende ni numéro** : à cocher pour une image qui n'est pas une figure
+    de la revue. Elle ne reçoit ni « Figure N », ni légende visible ; son texte
+    alternatif reste, et ses crédits s'affichent discrètement sous l'image, dans une
+    `<figure>` — le lien entre l'image et ses droits ne se perd pas, même sans légende ;
+  - un encadré orange **« Attention qualité »** quand le fichier est trop petit pour
+    l'usage prévu (voir plus bas) ;
+  - une zone de **glisser-déposer** pour **remplacer** le fichier par un autre — le nom
+    est conservé, donc le texte de l'article n'y perd aucun lien ; une confirmation est
+    demandée avant d'écraser ;
+  - **Ouvrir** (l'image dans la visionneuse, à côté du formulaire) et **Retirer** (le
+    fichier **et** ses insertions dans le texte, après confirmation).
+
+  **Ctrl + S** enregistre toutes les cartes d'un coup et relance la compilation.
+  Une image qui n'est **insérée nulle part** dans le texte le dit et se verrouille : il
+  n'y a aucun endroit où écrire sa légende. Insère-la d'abord (`Ctrl+Alt+F`).
+
+  En pied de page, les **portraits des autrices et auteurs**. Ce ne sont pas des
+  figures : ni légende, ni numéro. On y voit la version utilisée par la fiche, les
+  dimensions de l'original, le verdict de qualité, et une zone de dépôt qui remplace la
+  photo — le recadrage du visage et le détourage du fond sont rejoués comme au premier
+  dépôt.
+
+  #### L'encadré « Attention qualité »
+
+  La résolution se gagne à la source : une image trop petite ne se rattrape pas à la
+  composition. Le formulaire compare donc chaque fichier à ce que son usage demande.
+
+  - **Image du texte** : elle peut être affichée en **pleine largeur**, soit environ
+    17 cm dans le PDF A4. Il faut **1000 px de large au minimum**, et **2000 px** pour
+    une impression nette (300 ppp) comme pour un écran haute densité. En dessous de
+    1000, l'encadré est ferme : dépose l'original haute résolution.
+  - **Portrait** : il est réduit à une vignette de 28 mm de côté, dont le pipeline ne
+    garde que la région du visage. Il faut **400 px au minimum sur le petit côté** —
+    en dessous, le recadrage agrandit et la photo sort floue — et **1000 px** pour un
+    résultat net.
+  - Un **SVG** n'a pas de résolution : il est net à toute taille, jamais signalé.
 
   ### L'éditeur de tableau
 
@@ -261,7 +308,7 @@ boutons pour ajouter et retirer une ligne.
 [capture : la section « Word en attente (2) » avec le bouton « Convertir »]
 [capture : le formulaire « Méta-données du numéro »]
 [capture : le formulaire « Métadonnées des articles » (cartes par article)]
-[capture : un article déplié montrant images et tableaux, boutons « Remplacer »]
+[capture : le gestionnaire des médias, une carte par image, un encadré qualité]
 
 ### Le geste type
 
@@ -287,6 +334,19 @@ C'est aussi là qu'on finit l'article proprement :
 - **les originaux des images** : le Word ne contient souvent que des images compressées ;
   chaque image de l'article a sa zone « Remplacer par l'original » (glisser-déposer le
   fichier haute qualité — le nom est conservé, le texte n'a pas à changer).
+
+Deux choses sont déjà faites à l'import, sans rien demander :
+
+- **les photos du tableau des auteur·e·s sont rattachées à la bonne personne** — la
+  photo de sa cellule, ou celle de la même colonne — rangées dans `portraits/`, puis
+  **recadrées sur le visage et détourées**, exactement comme si on les avait déposées
+  dans le formulaire. La version *sans fond* est celle que la fiche retient ; les trois
+  restent accessibles par le bouton photo ;
+- **les images que le texte n'utilise pas sont supprimées**. Word livre tout ce que le
+  document embarque — logo de licence, filigranes, portraits — et le convertisseur
+  extrayait tout. Ce qu'aucune insertion du texte ni aucun tableau ne cite n'a nulle
+  part où être légendé : `media/` ne garde donc que ce qui sert. Le journal d'import
+  liste ce qui est parti.
 
 **Enregistrer** écrit les fiches ; **Fermer** prévient si des modifications ne sont pas
 enregistrées. Les articles restent modifiables plus tard par **☰ Métadonnées des articles**.
@@ -390,9 +450,10 @@ plus la bascule d'aperçu). Le sous-menu propose (chaque raccourci y est rappel�
   (`Ctrl+Alt+W / H / Q`) et **Citation** (`Ctrl+Alt+C`). Le bloc « Important »
   demande un **titre** (Information, Attention, Note… ou un titre libre) ;
 - **Insérer une figure** (`Ctrl+Alt+F`) : choisis une image ; elle est copiée dans
-  l'article et il ne reste qu'à écrire la légende. À la composition, la légende
-  (« Figure 1 — … », numérotée toute seule) est placée **au-dessus** de l'image, comme
-  celle d'un tableau — quel que soit l'endroit où elle est écrite dans le texte ;
+  l'article, et le gestionnaire des médias s'ouvre **sur cette image** pour qu'il ne
+  reste qu'à écrire la légende. À la composition, la légende (« Figure 1 — … »,
+  numérotée toute seule) est placée **au-dessus** de l'image, comme celle d'un
+  tableau — quel que soit l'endroit où elle est écrite dans le texte ;
 - **Insérer un saut de page** (`Ctrl+Alt+Entrée`) : ce qui suit repart en haut d'une
   nouvelle page **dans le PDF**. Rien ne change dans l'aperçu ni dans la version HTML :
   une page web n'a pas de pages, le saut n'y a donc aucun sens et n'y apparaît pas.

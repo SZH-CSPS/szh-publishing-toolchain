@@ -136,8 +136,8 @@ function nomMediaUnique(dossier, nom) {
 }
 
 // Copie l'image choisie sous articles/<slug>/media/, insère ![Légende](media/nom.ext) à
-// la sélection, puis ouvre la fiche de l'image : le moment d'écrire texte alternatif et
-// crédits est celui où l'on choisit l'image.
+// la sélection, puis ouvre le gestionnaire des médias sur cette image : le moment d'écrire
+// texte alternatif et crédits est celui où l'on choisit l'image.
 async function fmtFigure() {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
@@ -164,13 +164,14 @@ async function fmtFigure() {
   const md = '![' + T('fmt.figure.legende') + '](media/' + nom + ')';
   await editeur.edit((b) => { b.replace(editeur.selection, md); });
   vscode.window.setStatusBarMessage(T('fmt.figure.copiee', [nom]), 4000);
-  if (!slug) { return; }                             // hors article : pas de fiche à ouvrir
-  // Enregistrer avant de partir vers la fiche : sinon la référence reste dans le tampon
-  // et l'aperçu se recompile sans la figure.
+  if (!slug) { return; }                             // hors article : pas de formulaire à ouvrir
+  // Enregistrer avant de partir vers le formulaire : sinon la référence reste dans le
+  // tampon et l'aperçu se recompile sans la figure.
   try { await doc.save(); } catch (e) { /* fichier verrouillé : la référence reste au tampon */ }
-  revue.rafraichirTout();                            // l'image apparaît sous l'article
-  await vscode.commands.executeCommand('szh.ficheImage',
-    { slug: slug, cheminAsset: path.join(mediaDir, nom) });
+  revue.rafraichirTout();
+  // Le gestionnaire des médias, positionné sur l'image qui vient d'être insérée : c'est
+  // là que s'écrivent sa légende, son texte alternatif et ses crédits.
+  await vscode.commands.executeCommand('szh.mediasArticle', { slug: slug, focus: nom });
 }
 
 // ---- Insérer un tableau ----

@@ -61,10 +61,13 @@ dossier : absent ou `article`, un PDF et un HTML par article ; `book`, différé
 vide, aucun document — un choix explicite, pas une panne.
 
 À l'import d'un Word, trois scripts Python le lisent séparément : `docx-meta.py` en tire les
-métadonnées et les blocs à consommer, `docx-tables.py` extrait les tableaux en HTML autonome,
-`docx-titres.py` reconstruit la hiérarchie des titres. Pandoc convertit ensuite le document, une
-suite de filtres Lua y réinjecte ce que les scripts ont préparé, et AnyStyle découpe la
-bibliographie.
+métadonnées et les blocs à consommer — y compris l'appariement des photos du tableau des auteurs
+à la bonne personne, `docx-tables.py` extrait les tableaux en HTML autonome, `docx-titres.py`
+reconstruit la hiérarchie des titres. Pandoc convertit ensuite le document, une suite de filtres
+Lua y réinjecte ce que les scripts ont préparé, et AnyStyle découpe la bibliographie. Un dernier
+maillon, `import-medias.py`, range les photos d'auteurs dans `portraits/` et les passe au
+détourage, puis retire de `media/` les images qu'aucune insertion du texte ne cite : Word livre
+tout ce que le document embarque, pandoc extrait tout.
 
 À la compilation, Pandoc produit un HTML autonome — images et feuilles de style embarquées en
 base64, donc aucun fichier lié — que WeasyPrint transforme en PDF balisé PDF/UA. La même source

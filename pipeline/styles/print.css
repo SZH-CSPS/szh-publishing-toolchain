@@ -426,11 +426,17 @@ table > caption .szh-credit { font-size: 0.85em; color: #444; }
 }
 @media print { .szh-description { display: none; } }
 
+/* Toute image reste dans la colonne : une image hors numérotation sans crédits n'est
+   pas dans une <figure>, et sans cette règle un fichier de 2000 px de large — la
+   résolution que le cockpit conseille — déborderait de la page. */
+img { max-width: 100%; height: auto; }
 figure { break-inside: avoid; margin: 1.4em 0; text-align: center; }
-figure img { max-width: 100%; }
 /* La légende est au-dessus de l'image (szh-legende-avant.lua la place avant dans le
    document) : l'espace se met donc dessous, comme pour `table > caption`. */
 figure > figcaption { font-size: 0.85rem; color: #444; margin-bottom: 0.5em; text-align: left; }
+/* Crédit seul (image hors numérotation) : la <figcaption> suit l'image au lieu de la
+   précéder — voir szh-legende-avant.lua — donc la marge change de côté. */
+figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
 
 /* Tableaux importés bruts (<table> nu, non .szh-tableau) : style générique sobre. */
 table { border-collapse: collapse; font-size: 0.85rem; margin: 1.4em 0; width: 100%; }
