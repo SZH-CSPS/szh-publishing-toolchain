@@ -32,14 +32,22 @@ publication.
   difficiles (veuves/orphelines) et stresser l'auto-dimensionnement des tableaux.
 - `articles/couverture-stress/` — couverture sous contrainte : **12 auteurs**,
   10 mots-clés, titre/sous-titre longs (hauteur de hero fixe, méta ancrée en bas).
+- `articles/figures/` — six cas d'images, un par défaut déjà constaté : figure numérotée
+  (légende avant l'image, crédits en queue), **image hors numérotation avec crédits**
+  (`.szh-hors-figure` : ni numéro ni légende, mais une `<figure>` dont la `<figcaption>`
+  ne porte que le crédit, **après** l'image), **image hors numérotation sans crédits**
+  (pas de `<figure>` du tout — le cas qui débordait de la page avant que `print.css` ne
+  contraigne toute image), vectoriel décoratif (`alt=""`), résolution insuffisante
+  (320 px, qui ne doit pas être agrandie), et **deux insertions de la même image** (deux
+  numéros, un seul jeu de crédits). Les images sont des bandes de couleur générées, de
+  quelques kilooctets.
 
 > **En-tête condensé** — le banc compose la couverture par défaut, à hauteur fixe.
 > Pour éprouver l'autre allure, ajouter une ligne `entete-condensee: true` à
 > `test/ausgabe.yaml`, rebâtir, comparer les PNG, puis **retirer la ligne** (le banc doit
 > rester sur le défaut). Le cas le plus parlant n'est pas ici : c'est une couverture
 > **courte** (titre de deux lignes, un seul auteur, pas de sous-titre), celle où le mode
-> par défaut laisse un grand blanc. Les figures ne sont pas couvertes par le banc (aucune
-> image dans le corpus) : l'ordre légende/image se vérifie sur un article réel.
+> par défaut laisse un grand blanc.
 - `apca-check.py` — vérificateur de **contraste APCA** de la palette : lit les hex de
   `pipeline/styles/couleurs.css` et les jetons émis par `pipeline/accent-css.py`, mesure
   toutes les paires texte/fond réellement utilisées et sort en erreur si l'une échoue.

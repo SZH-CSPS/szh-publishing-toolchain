@@ -124,6 +124,15 @@ a[href]::after {
 .szh-hero a[href] { color: #E2E4EC; }
 .szh-hero a[href]:hover { color: #E2E4EC; }
 .szh-hero a[href]::after { content: none; }         /* flèche inline déjà présente */
+/* Appel de citation lié à son entrée de bibliographie (szh-citations.lua). Il reste du
+   texte à l'œil — même couleur, sans soulignement ni flèche : l'appel « (Bovey, 2022) »
+   ne doit pas se lire comme un lien sortant. Il n'en est pas moins cliquable, en HTML
+   comme dans le PDF, où WeasyPrint pose un lien interne. */
+a[href^="#"], a.szh-appel {
+  color: inherit; text-decoration: none;
+}
+a[href^="#"]::after, a.szh-appel::after { content: none; }
+a[href^="#"]:hover { color: #002A56; text-decoration: underline; }
 /* Flèche du hero en blanc franc. Cette règle ne vaut que pour le HTML : WeasyPrint rend
    un <svg> inline comme une image et n'y fait pas descendre la cascade CSS. Au PDF, le
    blanc qui compte est l'attribut stroke="#ffffff" posé sur les <svg> du hero dans
@@ -412,6 +421,14 @@ table > caption .szh-numero { font-weight: 600; }
 figure > figcaption .szh-credit,
 table > caption .szh-credit { font-size: 0.85em; color: #444; }
 
+/* Appels de citation que le liage n'a pas résolus. szh-citations.lua ne pose ces classes
+   que dans l'aperçu du cockpit (SZH_APERCU=1), jamais dans le HTML ni le PDF livrés : le
+   rédacteur voit d'un coup d'œil ce qui reste à lier par « Lier un appel à une référence »
+   (Ctrl+Alt+S), et le document publié n'en porte aucune trace. Soulignement en pointillé
+   plutôt qu'un fond coloré, pour ne pas déplacer une ligne de la maquette. */
+.szh-appel-orphelin { text-decoration: underline dotted #A2322A; text-underline-offset: 0.2em; }
+.szh-appel-ambigu { text-decoration: underline dotted #8A6A12; text-underline-offset: 0.2em; }
+
 /* Description longue d'un tableau (aria-describedby), posée par szh-numerotation.lua.
    Masquée visuellement mais présente dans l'arbre d'accessibilité : display:none la
    retirerait aussi des lecteurs d'écran. Le masquage est un dispositif d'écran, donc écrit
@@ -447,9 +464,18 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
 .szh-tableau th, .szh-tableau td { border: 0; }
 .szh-tableau th { background: transparent; }
 
-/* ── Bibliographie (citeproc) ────────────────────────────────────────────── */
-#refs { font-size: 10pt; }
-#refs .csl-entry { margin-bottom: 0.5em; padding-left: 1.4em; text-indent: -1.4em; }
+/* ── Liste de références ──────────────────────────────────────────────────
+   La liste reste le texte de la rédaction ; szh-citations.lua n'ajoute qu'un
+   identifiant sur chaque entrée (.szh-reference) pour que les appels du corps y
+   pointent. Aucune règle de mise en forme ici, donc aucune pagination changée : si un
+   jour la revue veut le retrait pendant d'usage, c'est ici qu'il se posera —
+   `padding-left: 1.4em; text-indent: -1.4em;`. */
+/* Chaque entrée est désormais un bloc, donc son <p> est un dernier enfant et perdrait sa
+   marge par la règle `p:last-child` : on la rend, sauf à la dernière entrée, pour que la
+   liste garde exactement l'aspect qu'elle avait en paragraphes voisins. */
+.szh-reference:not(:last-child) > p:last-child { margin-bottom: 0.7em; }
+/* Cible d'un appel : ne pas laisser le navigateur coller l'entrée au bord haut. */
+.szh-reference { scroll-margin-top: 1.5em; }
 
 /* ═══ 7. Tableaux stylés de l'éditeur maison (.szh-tableau) ════════════════════
    Style porté par les attributs data-* de l'éditeur du cockpit et par <th scope>. L'accent

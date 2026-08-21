@@ -32,7 +32,14 @@
 #        images ne sont plus citées nulle part ;
 #      - sans texte de référence lisible (pas de .md, ou .md vide), la purge ne fait rien :
 #        « je ne sais pas ce qui sert » ne doit pas valoir « rien ne sert ».
-#    Seuls les fichiers image sont candidats — media/<slug>.bib reste.
+#    Seuls les fichiers image sont candidats : tout autre fichier de media/ reste.
+#
+# 3. Renommage. pandoc nomme les médias comme le fait Word : image1.png, image7.jpeg. Dans
+#    le formulaire des médias comme dans l'archive OJS, ces noms ne disent rien. Ce qui
+#    reste dans media/ après la purge est donc renommé <slug>-fig-NN.<ext>, NN suivant
+#    l'ordre de première citation dans le texte, et les références du .md et des tableaux
+#    sont réécrites du même mouvement. Un fichier qu'aucune citation ne désigne — une photo
+#    d'auteur protégée mais non appariée — garde son nom : il n'a pas de rang.
 #
 # Sortie : une ligne JSON de stats sur stdout, messages sur stderr. Code retour 0 même si
 # le détourage échoue : l'import ne doit pas tomber pour une photo.
@@ -47,6 +54,14 @@ import shutil
 import subprocess
 import sys
 import urllib.parse
+
+# Ce qui peut précéder une cible locale : le début du texte, une espace, une parenthèse, un
+# guillemet ou un chevron — et éventuellement « ./ », que pandoc écrit. Jamais autre chose,
+# sinon l'URL « https://exemple.org/media/image1.png » d'une entrée de bibliographie
+# passerait pour une insertion et son nom de fichier serait renommé dans le texte.
+AVANT_CIBLE = "\\s(\"'<"
+GARDE_CIBLE_LOCALE = '(?<![^' + AVANT_CIBLE + '])'
+PREFIXE_RELATIF = r'(?:\./)?'
 
 # Fichiers candidats à la purge. Tout ce que Word peut embarquer comme image, y compris les
 # métafichiers Windows que pandoc extrait sans savoir les rendre.
@@ -245,9 +260,12 @@ def purger(dossier, texte, protegees):
     supprimees = []
     for racine, _, fichiers in os.walk(media):
         for nom in fichiers:
-            if not nom.lower().endswith(EXTENSIONS_IMAGE):
-                continue                  # <slug>.bib et compagnie : jamais candidats
-            if nom in protegees or est_citee(nom, texte):
+            # Un « ~$… » est un temporaire abandonné par une écriture interrompue : il ne
+            # sert à rien et rien ne peut le citer.
+            temporaire = nom.startswith('~$')
+            if not temporaire and not nom.lower().endswith(EXTENSIONS_IMAGE):
+                continue                  # pas une image : jamais candidate
+            if not temporaire and (nom in protegees or est_citee(nom, texte)):
                 continue
             chemin = os.path.join(racine, nom)
             try:
@@ -257,6 +275,124 @@ def purger(dossier, texte, protegees):
                 continue
             supprimees.append(os.path.relpath(chemin, media).replace('\\', '/'))
     return sorted(supprimees)
+
+
+# ---------------------------------------------------------------------------------
+# Renommage des images en <slug>-fig-NN.<ext>
+
+def premiere_citation(nom, texte):
+    """Position de la première citation « media/<nom> » dans le texte de référence, ou -1.
+    Le préfixe est exigé, contrairement à est_citee : ici la réponse fait DÉPLACER un
+    fichier, et reecrire_references ne réécrit que les cibles préfixées. Une simple mention
+    du nom en prose ne doit donc pas donner un rang de figure — le fichier bougerait sans
+    que rien ne le suive."""
+    positions = []
+    for forme in (nom.lower(), urllib.parse.quote(nom).lower()):
+        trouve = re.search(GARDE_CIBLE_LOCALE + PREFIXE_RELATIF + 'media/' + re.escape(forme), texte)
+        if trouve:
+            positions.append(trouve.start())
+    return min(positions) if positions else -1
+
+
+def reecrire_references(dossier, slug, couples):
+    """Réécrit media/<ancien> en media/<nouveau> dans le .md et les tableaux extraits.
+
+    ⚠ Une seule passe, par une alternation : appliquer les substitutions l'une après l'autre
+    ferait frapper une cible que la précédente vient d'écrire. Avec media/ = {image1.png
+    citée en 1re, art-fig-01.png citée en 2e}, la seconde substitution rattrapait ce que la
+    première avait produit, et les deux références finissaient sur le même fichier.
+    La comparaison est insensible à la casse, la cible écrite par pandoc pouvant différer du
+    nom sur le disque ; l'extension dans le motif évite qu'image1.png attrape image10.png.
+    Les fins de ligne d'origine sont préservées (newline='')."""
+    table = {}
+    for ancien, nouveau in couples:
+        table['media/' + ancien.lower()] = 'media/' + nouveau
+        cite = urllib.parse.quote(ancien)
+        if cite != ancien:
+            table['media/' + cite.lower()] = 'media/' + urllib.parse.quote(nouveau)
+    if not table:
+        return
+    # Les cibles les plus longues d'abord : aucune ne peut alors en masquer une autre. La
+    # garde de cible locale écarte les URL, qui portent aussi des « media/… » ; le « ./ »
+    # éventuel est capturé pour être réécrit tel quel.
+    motif = re.compile(GARDE_CIBLE_LOCALE + '(' + PREFIXE_RELATIF + ')('
+                       + '|'.join(re.escape(k) for k in sorted(table, key=len, reverse=True)) + ')',
+                       re.I)
+    for chemin in [os.path.join(dossier, slug + '.md')] + \
+            sorted(glob.glob(os.path.join(dossier, 'tables', '*.htm*'))):
+        try:
+            with open(chemin, encoding='utf-8', errors='replace', newline='') as f:
+                contenu = f.read()
+        except OSError as exc:
+            progression('[import-medias] %s illisible (%s) : références non réécrites'
+                        % (chemin, exc))
+            continue
+        sortie = motif.sub(lambda m: m.group(1) + table[m.group(2).lower()], contenu)
+        if sortie == contenu:
+            continue
+        try:
+            with open(chemin, 'w', encoding='utf-8', newline='') as f:
+                f.write(sortie)
+        except OSError as exc:
+            progression('[import-medias] %s non réécrit (%s)' % (chemin, exc))
+
+
+def renommer(dossier, slug, texte):
+    """Renomme les images citées en <slug>-fig-NN.<ext>. Retourne [(ancien, nouveau)].
+    Passage par un nom temporaire : le nom visé peut être celui d'un fichier pas encore
+    renommé (ré-import, image déjà nommée par une passe précédente)."""
+    media = os.path.join(dossier, 'media')
+    if texte is None or not os.path.isdir(media):
+        return []
+    candidats = []
+    for nom in sorted(os.listdir(media)):
+        chemin = os.path.join(media, nom)
+        if not os.path.isfile(chemin) or not nom.lower().endswith(EXTENSIONS_IMAGE):
+            continue
+        rang = premiere_citation(nom, texte)
+        if rang < 0:
+            continue                      # non citée : pas un rang de figure
+        candidats.append((rang, nom))
+    if not candidats:
+        return []
+    candidats.sort()
+    largeur = 3 if len(candidats) > 99 else 2
+    couples = []
+    for i, (_, ancien) in enumerate(candidats, start=1):
+        ext = os.path.splitext(ancien)[1].lower()
+        nouveau = '%s-fig-%0*d%s' % (slug, largeur, i, ext)
+        if nouveau != ancien:
+            couples.append((ancien, nouveau))
+    if not couples:
+        return []
+    deplaces = []
+    for ancien, nouveau in couples:
+        tmp = os.path.join(media, '~$' + nouveau)
+        try:
+            os.replace(os.path.join(media, ancien), tmp)
+        except OSError as exc:
+            progression('[import-medias] renommage impossible de %s : %s' % (ancien, exc))
+            continue
+        deplaces.append((ancien, nouveau))
+    faits = []
+    for ancien, nouveau in deplaces:
+        tmp = os.path.join(media, '~$' + nouveau)
+        try:
+            os.replace(tmp, os.path.join(media, nouveau))
+        except OSError as exc:
+            # Seconde phase en échec : remettre le fichier sous son ancien nom, et surtout
+            # ne PAS réécrire sa référence — elle pointerait un fichier absent, et les
+            # octets dormiraient sous un « ~$ » que le cockpit masque et qu'OneDrive ignore.
+            progression('[import-medias] renommage annulé pour %s : %s' % (nouveau, exc))
+            try:
+                os.replace(tmp, os.path.join(media, ancien))
+            except OSError:
+                progression('[import-medias] ⚠ %s est resté sous « ~$ »' % nouveau)
+            continue
+        faits.append((ancien, nouveau))
+    if faits:
+        reecrire_references(dossier, slug, faits)
+    return faits
 
 
 def principal(argv):
@@ -275,6 +411,8 @@ def principal(argv):
     promus, retires = corriger_meta(os.path.join(dossier, slug + '.meta.yaml'),
                                     rangees, reussis, echouees)
     supprimees = purger(dossier, texte, protegees)
+    # Après la purge : seul ce qui reste mérite un rang, et la numérotation ne saute pas.
+    renommees = renommer(dossier, slug, texte)
 
     stats = {
         'slug': slug,
@@ -285,6 +423,7 @@ def principal(argv):
         'champs_photo_retires': retires,
         'images_protegees': sorted(protegees),
         'images_supprimees': supprimees,
+        'images_renommees': ['%s -> %s' % c for c in renommees],
     }
     print(json.dumps(stats, ensure_ascii=False))
     return 0

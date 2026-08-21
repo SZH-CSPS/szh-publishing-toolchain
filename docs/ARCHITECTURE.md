@@ -64,10 +64,15 @@ vide, aucun document — un choix explicite, pas une panne.
 métadonnées et les blocs à consommer — y compris l'appariement des photos du tableau des auteurs
 à la bonne personne, `docx-tables.py` extrait les tableaux en HTML autonome, `docx-titres.py`
 reconstruit la hiérarchie des titres. Pandoc convertit ensuite le document, une suite de filtres
-Lua y réinjecte ce que les scripts ont préparé, et AnyStyle découpe la bibliographie. Un dernier
+Lua y réinjecte ce que les scripts ont préparé. La liste de références, elle, n'est pas touchée :
+elle reste dans le corps telle que la rédaction l'a écrite, et c'est à la compilation que
+`szh-citations.lua` l'ancre et transforme les appels du texte en liens internes. Un dernier
 maillon, `import-medias.py`, range les photos d'auteurs dans `portraits/` et les passe au
-détourage, puis retire de `media/` les images qu'aucune insertion du texte ne cite : Word livre
-tout ce que le document embarque, pandoc extrait tout.
+détourage, retire de `media/` les images qu'aucune insertion du texte ne cite — Word livre tout
+ce que le document embarque, pandoc extrait tout — puis renomme ce qui reste en
+`<slug>-fig-NN.<ext>`, en réécrivant les références du texte et des tableaux. Les JPEG livrés en
+CMJN, que ni les navigateurs ni WeasyPrint n'affichent correctement, sont convertis en RVB par
+`cmyk-rgb.py` ; c'est le cockpit qui l'appelle, à l'import et au dépôt d'une image.
 
 À la compilation, Pandoc produit un HTML autonome — images et feuilles de style embarquées en
 base64, donc aucun fichier lié — que WeasyPrint transforme en PDF balisé PDF/UA. La même source

@@ -19,6 +19,7 @@ const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
 const table = require(path.join(COCKPIT, 'lib', 'table-model.js'));
 const slug = require(path.join(COCKPIT, 'lib', 'slug.js'));
 const refs = require(path.join(COCKPIT, 'lib', 'references.js'));
+const cit = require(path.join(COCKPIT, 'lib', 'citations.js'));
 const qualite = require(path.join(COCKPIT, 'lib', 'qualite-image.js'));
 const wsl = require(path.join(COCKPIT, 'lib', 'wsl.js'));
 
@@ -182,6 +183,129 @@ test('print.css : toute image est contrainte à la colonne, figure ou non', () =
   // conseille — déborderait de la page A4.
   assert.match(css, /^img \{[^}]*max-width:\s*100%/m,
     'aucune règle max-width sur `img` : une image hors figure déborde');
+});
+
+test('le banc de rendu couvre les cas d’image qui ont deja casse', () => {
+  const md = lire('test', 'articles', 'figures', 'figures.md');
+  const cas = [
+    [/!\[[^\]]+\]\(media\/[^)]+\)\{[^}]*copyright=/, 'figure numérotée avec crédits'],
+    [/!\[\]\(media\/[^)]+\)\{\.szh-hors-figure[^}]*copyright=/, 'hors numérotation avec crédits'],
+    [/!\[\]\(media\/[^)]+\)\{\.szh-hors-figure(?![^}]*copyright)[^}]*\}/, 'hors numérotation sans crédits'],
+    [/!\[\]\(media\/[^)]+\.svg\)\{alt=""\}/, 'vectoriel décoratif']
+  ];
+  for (const [motif, nom] of cas) {
+    assert.match(md, motif, 'cas perdu dans le corpus de rendu : ' + nom);
+  }
+  // Les fichiers cités doivent exister, sinon le build passe sans image et sans rien dire.
+  for (const m of md.matchAll(/\(media\/([^)]+)\)/g)) {
+    assert.ok(fs.existsSync(path.join(RACINE, 'test', 'articles', 'figures', 'media', m[1])),
+      'média absent du corpus de rendu : ' + m[1]);
+  }
+});
+
+test('place d’une figure : jamais dans un bloc qui la mangerait', () => {
+  const doc = [
+    'Un paragraphe sur',                                   // 0
+    'deux lignes.',                                        // 1
+    '',                                                    // 2
+    '- item de liste',                                     // 3
+    '',                                                    // 4  (liste aérée)
+    '- autre item',                                        // 5
+    '',                                                    // 6
+    '```',                                                 // 7
+    'du code',                                             // 8
+    '```',                                                 // 9
+    '',                                                    // 10
+    '> citation',                                          // 11
+    '',                                                    // 12
+    '| a | b |',                                           // 13
+    '|---|---|',                                           // 14
+    '',                                                    // 15
+    '::: {.szh-tabelle src="tables/table-01.html"}',        // 16
+    ':::',                                                 // 17
+    '',                                                    // 18
+    '    code indente',                                    // 19
+    '',                                                    // 20
+    'Fin.'                                                 // 21
+  ];
+  // Paragraphe ordinaire : à la fin du paragraphe, jamais en son milieu.
+  assert.deepStrictEqual(refs.placeFigure(doc, 0), { ligne: 1, colonne: 12 });
+  assert.deepStrictEqual(refs.placeFigure(doc, 1), { ligne: 1, colonne: 12 });
+  // Ligne vide qui suit un paragraphe : c'est une place.
+  assert.deepStrictEqual(refs.placeFigure(doc, 2), { ligne: 2, colonne: 0 });
+  assert.deepStrictEqual(refs.placeFigure(doc, 21), { ligne: 21, colonne: 4 });
+  // Partout ailleurs, l'appelant doit retomber sur la fin de l'article.
+  for (const l of [3, 4, 5, 8, 11, 13, 14, 16, 17, 19]) {
+    assert.strictEqual(refs.placeFigure(doc, l), null, 'place acceptée à tort ligne ' + l);
+  }
+});
+
+test('place d’une figure : la référence est isolée dans son paragraphe', () => {
+  const doc = ['Texte.', '', 'Autre texte.'];
+  // Fin d'un paragraphe suivi d'une ligne vide : une seule séparation à ajouter devant.
+  assert.strictEqual(refs.envelopperFigure(doc, 0, 6, 'REF'), '\n\nREF');
+  // Ligne vide entourée de vide : rien à ajouter.
+  assert.strictEqual(refs.envelopperFigure(['', '', ''], 1, 0, 'REF'), 'REF');
+  // Milieu de ligne : séparé des deux côtés.
+  assert.strictEqual(refs.envelopperFigure(doc, 0, 3, 'REF'), '\n\nREF\n\n');
+});
+
+test('CMJN : le nombre de composantes se lit même derrière un gros profil ICC', () => {
+  const cmyk = require(path.join(COCKPIT, 'lib', 'cmyk.js'));
+  // Un JPEG minimal : SOI, un APP2 de la taille voulue, un SOF0 à N composantes, EOI.
+  const jpeg = (composantes, remplissage) => {
+    const morceaux = [Buffer.from([0xff, 0xd8])];
+    // La longueur d'un segment tient sur 16 bits : un profil ICC volumineux est découpé en
+    // plusieurs APP2, exactement comme le fait une chaîne d'imprimerie.
+    let reste = remplissage;
+    while (reste > 0) {
+      const morceau = Math.min(reste, 65000);
+      const entete = Buffer.alloc(4);
+      entete[0] = 0xff; entete[1] = 0xe2;                    // APP2, comme un profil ICC
+      entete.writeUInt16BE(morceau + 2, 2);
+      morceaux.push(entete, Buffer.alloc(morceau));
+      reste -= morceau;
+    }
+    const sof = Buffer.alloc(4 + 6);
+    sof[0] = 0xff; sof[1] = 0xc0;                            // SOF0
+    sof.writeUInt16BE(8, 2);                                 // Lf
+    sof[4] = 8;                                              // P
+    sof.writeUInt16BE(100, 5);                               // Y
+    sof.writeUInt16BE(200, 7);                               // X
+    sof[9] = composantes;                                    // Nf
+    morceaux.push(sof, Buffer.from([0xff, 0xd9]));
+    return Buffer.concat(morceaux);
+  };
+  const dossier = fs.mkdtempSync(path.join(require('os').tmpdir(), 'szh-cmyk-'));
+  try {
+    const cas = [[4, 0, true], [3, 0, false], [1, 0, false],
+                 [4, 200000, true], [3, 200000, false]];
+    for (const [composantes, remplissage, attendu] of cas) {
+      const f = path.join(dossier, 'c' + composantes + '-' + remplissage + '.jpg');
+      fs.writeFileSync(f, jpeg(composantes, remplissage));
+      assert.strictEqual(cmyk.composantesJpeg(f), composantes,
+        composantes + ' composantes non lues (remplissage ' + remplissage + ' o)');
+      assert.strictEqual(cmyk.estJpegCmyk(f), attendu);
+    }
+    // Ni un JPEG, ni un fichier : pas de verdict, pas d'exception.
+    const faux = path.join(dossier, 'faux.jpg');
+    fs.writeFileSync(faux, Buffer.from('pas un jpeg'));
+    assert.strictEqual(cmyk.composantesJpeg(faux), 0);
+    assert.strictEqual(cmyk.estJpegCmyk(path.join(dossier, 'absent.jpg')), false);
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+});
+
+test('CMJN : le convertisseur du pipeline et son appelant se repondent', () => {
+  const js = lire('vscodium-extension', 'szh-cockpit', 'lib', 'cmyk.js');
+  const py = lire('pipeline', 'cmyk-rgb.py');
+  assert.match(js, /cmyk-rgb\.py/, 'lib/cmyk.js ne nomme pas le script du pipeline');
+  // Les champs de la ligne JSON que lib/cmyk.js relit.
+  for (const champ of ['converti', 'erreur', 'ok']) {
+    assert.ok(py.includes("'" + champ + "'"), 'cmyk-rgb.py n’émet pas le champ ' + champ);
+  }
+  assert.match(js, /=== 4/, 'la détection CMJN ne compare plus le nombre de composantes');
 });
 
 // ---- Chaîne d'import des médias ----
@@ -374,4 +498,93 @@ test('les tables de protocole des webviews sont à jour', () => {
       assert.ok(doc.includes(t), 'message « ' + t + ' » absent de la table de protocole de ' + page);
     }
   }
+});
+
+// ---- citations : le liage des appels de citation ----
+
+test('citations : la liste de références est découpée comme le fait le filtre Lua', () => {
+  const md = [
+    'Comme le montrent Ebersold et Detraux (2013), on voit.', '',
+    '# Références', '',
+    'Ebersold, S., & Detraux, J.-J. (2013). Scolarisation. Alter, 7(2), 102-115.', '',
+    'Ricœur, P. (1990). Soi-même comme un autre. Seuil.', '',
+    'https://doi.org/10.1234/suite', '',
+    'van der Aa, H. (2023). Un titre. Revue.', '',
+    'insieme Schweiz (2024). Wahlanleitung. Insieme.', '',
+    'Sen, A. (2001). Éthique. PUF.', '',
+    'Sen, A. (2001). Autre texte, même année. PUF.'
+  ].join('\n');
+  const entrees = cit.referencesDuTexte(md);
+  // Identifiants relevés sur la sortie de pipeline/filters/szh-citations.lua : les deux
+  // implémentations doivent tomber sur les mêmes, sinon un lien posé à la main pointerait
+  // dans le vide.
+  assert.deepStrictEqual(entrees.map((e) => e.id), [
+    'ref-ebersold-2013', 'ref-ricoeur-1990', 'ref-van-2023',
+    'ref-insieme-2024', 'ref-sen-2001', 'ref-sen-2001-b'
+  ]);
+  // La ligne d'URL seule est recollée à l'entrée précédente, pas comptée comme une entrée.
+  assert.match(entrees[1].texte, /Seuil\. https:/);
+});
+
+test('citations : le lexique des titres de bibliographie est le même que celui du filtre', () => {
+  const js = require(path.join(COCKPIT, 'lib', 'citations.js'));
+  const lua = lire('pipeline', 'filters', 'szh-citations.lua');
+  const bloc = lua.match(/local TITRES_BIB = \{([\s\S]*?)\}/);
+  assert.ok(bloc, 'TITRES_BIB introuvable dans szh-citations.lua');
+  const duLua = (bloc[1].match(/'([^']+)'/g) || []).map((s) => s.slice(1, -1)).sort();
+  // Le lexique JS n'est pas exporté : on le relit dans la source, comme pour le Lua.
+  const src = fs.readFileSync(path.join(COCKPIT, 'lib', 'citations.js'), 'utf8');
+  const blocJs = src.match(/const TITRES_BIB = \[([\s\S]*?)\]/);
+  const duJs = (blocJs[1].match(/'([^']+)'/g) || []).map((s) => s.slice(1, -1)).sort();
+  assert.deepStrictEqual(duJs, duLua);
+  assert.ok(js.estTitreBib('Literaturverzeichnis') && js.estTitreBib('Références bibliographiques'));
+});
+
+test('citations : une suite d’entrée se reconnaît à la même règle des deux côtés', () => {
+  // Les trois cas qui faisaient recoller 100 références du corpus à la précédente.
+  assert.strictEqual(cit.estContinuation('https://doi.org/10.1234/x'), true);
+  assert.strictEqual(cit.estContinuation('mit Behinderungen nach Geschlecht, ohne année'), true);
+  assert.strictEqual(cit.estContinuation('van der Aa, H. (2023). Un titre.'), false);
+  assert.strictEqual(cit.estContinuation('Übereinkommen über die Rechte, vom 13. Dezember 2006'), false);
+  assert.strictEqual(cit.estContinuation('*Bathelt, J. (2019). Adaptive behaviour.'), false);
+  const lua = lire('pipeline', 'filters', 'szh-citations.lua');
+  assert.match(lua, /c >= 97 and c <= 122/, 'le filtre doit tester la minuscule ASCII');
+});
+
+test('citations : lier un appel déjà lié le recible au lieu de l’imbriquer', () => {
+  assert.strictEqual(cit.lienVersReference('(Shaw et al., 2023)', 'ref-shaw-2023'),
+    '[(Shaw et al., 2023)](#ref-shaw-2023)');
+  assert.strictEqual(cit.lienVersReference('[(Shaw et al., 2023)](#ref-vieux)', 'ref-shaw-2023'),
+    '[(Shaw et al., 2023)](#ref-shaw-2023)');
+});
+
+test('citations : sans sélection, l’appel autour du curseur est retrouvé', () => {
+  const l = 'On le voit (Shaw et al., 2023) ici.';
+  assert.deepStrictEqual(cit.plageDeLAppel(l, 20), { debut: 11, fin: 30 });
+  const dejaLie = 'On le voit [(Shaw, 2023)](#ref-shaw-2023) ici.';
+  assert.deepStrictEqual(cit.plageDeLAppel(dejaLie, 20), { debut: 11, fin: 41 });
+  assert.strictEqual(cit.plageDeLAppel('Aucune parenthèse ici.', 5), null);
+});
+
+test('la chaîne ne passe plus par AnyStyle ni par citeproc', () => {
+  const mk = lire('pipeline', 'Makefile');
+  const sh = lire('pipeline', 'import-docx.sh');
+  for (const [nom, src] of [['Makefile', mk], ['import-docx.sh', sh]]) {
+    assert.ok(!/citeproc|anystyle|\.bib\b|apa\.csl/i.test(src),
+      nom + ' cite encore la bibliographie BibTeX');
+  }
+  // Le filtre de liage, lui, doit être appelé par les deux rendus.
+  assert.strictEqual((mk.match(/--lua-filter="\$\(PIPELINE_DIR\)\/filters\/szh-citations\.lua"/g) || []).length, 2);
+  assert.ok(!fs.existsSync(path.join(RACINE, 'pipeline', 'filters', 'szh-biblio.lua')));
+  assert.ok(!fs.existsSync(path.join(RACINE, 'pipeline', 'csl')));
+});
+
+test('print.css : un appel de citation ne se lit pas comme un lien sortant', () => {
+  const css = lire('pipeline', 'styles', 'print.css');
+  assert.match(css, /a\[href\^="#"\]::after,\s*a\.szh-appel::after \{ content: none; \}/);
+  assert.match(css, /\.szh-appel-orphelin \{[^}]*dotted/);
+  // La marque des appels non liés ne doit vivre que dans l'aperçu.
+  const lua = lire('pipeline', 'filters', 'szh-citations.lua');
+  assert.match(lua, /SZH_APERCU/);
+  assert.match(lire('pipeline', 'Makefile'), /SZH_APERCU=1 \$\(PANDOC\)/);
 });

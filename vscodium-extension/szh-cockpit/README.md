@@ -22,6 +22,8 @@ Aucune étape de build : du CommonJS chargé tel quel, et des fichiers statiques
 extension.js            activation, câblage des commandes, hôtes de webview
 lib/
   archivage.js          verrouillage, archivage, appels aux scripts PowerShell du poste
+  citations.js          liste de références d'un article et liage manuel d'un appel
+  cmyk.js               detection des JPEG CMJN et appel du convertisseur, dans WSL
   export-ojs.js         génération du XML natif OJS
   formatting.js         mise en forme markdown et commandes szh.fmt.*
   i18n.js               textes fr/de et T(clé[, args])

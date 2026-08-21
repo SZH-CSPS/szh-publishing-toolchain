@@ -196,9 +196,10 @@ depuis n'importe où dans la revue) :
     e-mail).
   - **Réglages SZH** — thème, taille de l'interface et du texte, **aperçu par défaut**
     (voir ci-dessous) et langue de l'interface.
-- **✏ Édition** (`Ctrl+Alt+S`) — la **bascule d'aperçu HTML ⇄ PDF** (`Ctrl+Alt+P`) et
-  toutes les actions de **mise en forme** (gras, titres, blocs, figure, tableau…) — les
-  mêmes que le clic droit → « Mise en forme », chaque raccourci rappelé à droite.
+- **✏ Édition** (`Ctrl+Alt+S`) — la **bascule d'aperçu HTML ⇄ PDF** (`Ctrl+Alt+P`),
+  **Lier un appel à une référence** (voir « Les références » ci-dessous) et toutes les
+  actions de **mise en forme** (gras, titres, blocs, figure, tableau…) — les mêmes que le
+  clic droit → « Mise en forme », chaque raccourci rappelé à droite.
 - **⬆ Export** (`Ctrl+Alt+D`) — les **documents produits**, puis le **cycle de vie du
   numéro** :
   - **Recompiler toute la revue** : régénère **tous** les PDF, même ceux à jour (utile
@@ -437,6 +438,35 @@ message (ou du lanceur) liste les versions publiées et installe celle que vous 
 les extensions de l'éditeur, prend quelques minutes, et demande de **fermer les fenêtres
 de rédaction** puis de redémarrer l'éditeur. Elle se refait dans l'autre sens de la même
 façon (choisir la version la plus récente).
+
+## Les références
+
+La liste de références reste **exactement telle que tu l'as écrite** : rien ne la déplace,
+rien ne la reformate, ni la ponctuation ni l'ordre. La seule condition est que sa section
+porte un titre reconnaissable — « Références », « Bibliographie », « Literatur »,
+« Quellen »…
+
+À la compilation, chaque appel du texte devient un **lien cliquable** vers son entrée, dans
+le HTML comme dans le PDF. Les formes courantes sont reconnues d'elles-mêmes, en français
+comme en allemand :
+
+| dans le texte | ce qui devient cliquable |
+|---|---|
+| `(Bovey, 2022)` `(Boger 2019)` `(vgl. Kunz, 2016)` | la parenthèse entière |
+| `Capurso et al. (2025)` `von Lütolf und Schaub (2021)` | l'année |
+| `(Grimminger et al., 2021 ; Fisseler, 2023)` | chaque citation séparément |
+| `(Pelgrims, 2001, 2006)` | chaque année séparément |
+| `(UNESCO, 2009)` `(OFS, s.d.)` | le sigle, s'il figure entre crochets dans la référence |
+
+**Ce qui n'a pas pu être lié t'est signalé.** Dans l'aperçu, l'appel est souligné en
+pointillé ; le panneau de compilation en donne la liste, avec deux autres avertissements
+utiles : une **référence jamais citée** dans le texte, et un appel **ambigu** entre deux
+références du même auteur et de la même année.
+
+**Pour lier à la main** : place le curseur dans l'appel (ou sélectionne-le), `Ctrl+Alt+S`,
+**« Lier un appel à une référence »**, choisis l'entrée dans la liste. C'est aussi la
+manœuvre pour corriger un lien qui pointe vers la mauvaise entrée. Si tu modifies ensuite le
+texte de la référence, refais l'opération : le lien suit le contenu de l'entrée.
 
 ## Mettre en forme le texte
 

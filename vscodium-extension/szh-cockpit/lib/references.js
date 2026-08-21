@@ -223,6 +223,116 @@ function ordreImages(texte) {
   return ordre;
 }
 
+// ---- Où poser une nouvelle figure ----
+//
+// Le curseur ne suffit pas. Au milieu d'un paragraphe, l'image reste au fil du texte et ne
+// devient pas une figure ; dans un bloc de code elle s'affiche en clair ; dans une liste
+// elle est avalée par l'item ; dans une citation elle emporte la ligne suivante ; dans un
+// tableau elle le tronque ; et dans un bloc « ::: {.szh-tabelle} »,
+// szh-tabelle-inclure.lua remplace tout le bloc et l'image disparaît du rendu sans un mot.
+// On n'accepte donc le curseur que dans un paragraphe ordinaire de premier niveau, et on
+// pose la figure à la fin de ce paragraphe. Ailleurs, l'appelant retombe sur la fin du
+// document, où l'image est visible et déplaçable à la main.
+
+// Une ligne qui ouvre autre chose qu'un paragraphe : liste, citation, titre, tableau, bloc
+// clôturé, bloc pandoc, ou retrait de quatre espaces (bloc de code indenté).
+const RE_LIGNE_STRUCTUREE = /^(\s{4,}|\t|>|#{1,6}\s|[-*+]\s|\d+[.)]\s|\||:::|```|~~~)/;
+
+// placeFigure(lignes, ligneCurseur) -> { ligne, colonne } | null
+function placeFigure(lignes, ligneCurseur) {
+  const tab = Array.isArray(lignes) ? lignes.map((x) => String(x === undefined || x === null ? '' : x)) : [];
+  if (tab.length === 0) { return null; }
+  const l = Math.max(0, Math.min(Number(ligneCurseur) || 0, tab.length - 1));
+  // Contexte ouvert au-dessus du curseur : bloc clôturé ou bloc pandoc en cours.
+  let cloture = null;
+  let divs = 0;
+  for (let i = 0; i <= l; i++) {
+    const t = tab[i].trim();
+    const marque = t.match(/^(```+|~~~+)/);
+    if (marque) {
+      if (cloture === null) { cloture = marque[1].charAt(0); }
+      else if (t.charAt(0) === cloture) { cloture = null; }
+      continue;
+    }
+    if (cloture !== null) { continue; }
+    if (/^:::+\s*\{/.test(t)) { divs++; }
+    else if (/^:::+\s*$/.test(t)) { divs = Math.max(0, divs - 1); }
+  }
+  if (cloture !== null || divs > 0) { return null; }
+  // Curseur sur une ligne vide : c'est déjà une place, à condition de ne pas être au milieu
+  // d'une liste ou d'un tableau aérés, où la ligne vide sépare deux morceaux d'un même bloc.
+  if (tab[l].trim() === '') {
+    let avant = l - 1;
+    while (avant >= 0 && tab[avant].trim() === '') { avant--; }
+    if (avant >= 0 && RE_LIGNE_STRUCTUREE.test(tab[avant])) { return null; }
+    return { ligne: l, colonne: 0 };
+  }
+  // Le paragraphe du curseur, délimité par les lignes vides, doit être ordinaire de bout
+  // en bout : une seule ligne structurée suffit à refuser la place.
+  let debut = l;
+  while (debut > 0 && tab[debut - 1].trim() !== '') { debut--; }
+  let fin = l;
+  while (fin + 1 < tab.length && tab[fin + 1].trim() !== '') { fin++; }
+  for (let i = debut; i <= fin; i++) {
+    if (tab[i].trim() === '') { continue; }
+    if (RE_LIGNE_STRUCTUREE.test(tab[i])) { return null; }
+  }
+  return { ligne: fin, colonne: tab[fin].length };
+}
+
+// Texte à insérer pour que la référence soit seule dans son paragraphe : les lignes vides
+// ne sont ajoutées que si elles manquent.
+function envelopperFigure(lignes, ligne, colonne, reference) {
+  const tab = Array.isArray(lignes) ? lignes.map((x) => String(x === undefined || x === null ? '' : x)) : [];
+  const courante = tab[ligne] === undefined ? '' : tab[ligne];
+  const avant = courante.slice(0, colonne).trim() === ''
+    && (ligne === 0 || (tab[ligne - 1] || '').trim() === '');
+  const apres = courante.slice(colonne).trim() === ''
+    && (ligne + 1 >= tab.length || (tab[ligne + 1] || '').trim() === '');
+  return (avant ? '' : '\n\n') + String(reference) + (apres ? '' : '\n\n');
+}
+
+// Toutes les insertions d'image du texte, dans l'ordre, une entrée par insertion — une
+// même image insérée deux fois compte deux fois. `relatif` est le chemin sous media/,
+// normalisé en minuscules, ou null quand la cible est ailleurs (lien externe, autre
+// dossier). Sert aux contrôles qui portent sur les insertions et non sur les fichiers.
+function listerImages(texte) {
+  const res = [];
+  const re = reImage();
+  const s = String(texte === undefined || texte === null ? '' : texte);
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    const cible = cibleNormalisee(m[2]);
+    const dansMedia = cible.indexOf('media/') === 0;
+    const entree = {
+      cible: cible,
+      relatif: dansMedia ? cible.slice('media/'.length) : null,
+      legende: m[1], alt: '', altDefini: false, copyright: '', source: '', horsFigure: false
+    };
+    for (const j of scannerAttributs(m[4] ? m[4].slice(1, -1) : '')) {
+      if (!j.paire) {
+        if (j.brut === '.' + CLASSE_HORS_FIGURE) { entree.horsFigure = true; }
+        continue;
+      }
+      const cle = j.cle.toLowerCase();
+      if (cle === 'alt' && !entree.altDefini) { entree.alt = j.valeur; entree.altDefini = true; }
+      else if (cle === 'copyright' && entree.copyright === '') { entree.copyright = j.valeur; }
+      else if (cle === 'source' && entree.source === '') { entree.source = j.valeur; }
+    }
+    res.push(entree);
+  }
+  return res;
+}
+
+// Insertions sans nom accessible : pas de texte alternatif, pas de légende sur laquelle
+// retomber, et pas de déclaration « décorative » (alt="" explicite). Le rendu les traite
+// alors en images décoratives — szh-numerotation.lua leur pose alt="" et
+// role="presentation" — ce qui est peut-être un oubli plutôt qu'un choix. C'est cette
+// ambiguïté que l'export signale, au dernier moment où elle est réparable.
+function imagesSansAlternative(texte) {
+  return listerImages(texte).filter((i) => !i.altDefini && i.legende.trim() === '');
+}
+
 // lireAttributsImage(texte, relatif)
 //   -> { legende, alt, altDefini, copyright, source, horsFigure, n }
 // n compte les insertions de l'image ; à zéro, le gestionnaire refuse d'enregistrer. Les
@@ -286,6 +396,7 @@ function ecrireAttributsImage(texte, relatif, valeurs) {
 
 module.exports = {
   retirerImage, retirerTable, cibleNormalisee, CLASSE_HORS_FIGURE, ordreImages,
+  listerImages, imagesSansAlternative, placeFigure, envelopperFigure,
   lireAttributsImage, ecrireAttributsImage,
   scannerAttributs, normaliserValeurFigure, normaliserLegendeFigure
 };

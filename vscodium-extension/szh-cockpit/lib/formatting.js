@@ -11,6 +11,7 @@ const { spawn } = require('child_process');
 const { T } = require('./i18n');
 const { tableauDepuisHtmlBureautique, tableauDepuisTsv, serialiserTable,
   finaliserModele, PRESETS_TABLE } = require('./table-model');
+const citations = require('./citations');
 const { ecrireAtomique } = require('./yaml');
 
 // Contexte de la revue, injecté par extension.js à l'enregistrement des commandes plutôt
@@ -24,7 +25,9 @@ let revue = {
   // et un WorkspaceEdit y échouerait sans dire pourquoi.
   verrouillee: () => false,
   // Refus visible, injecté par extension.js : message et bouton « Déverrouiller ».
-  refuser: () => { vscode.window.setStatusBarMessage(T('verrou.refuse'), 4000); }
+  refuser: () => { vscode.window.setStatusBarMessage(T('verrou.refuse'), 4000); },
+  // Conversion des JPEG CMJN, injectée : elle passe par la WSL, que ce module ignore.
+  convertirCmyk: () => Promise.resolve(0)
 };
 
 // ---- Mise en forme au clic droit et aux raccourcis ----
@@ -161,6 +164,8 @@ async function fmtFigure() {
   const nom = nomMediaUnique(mediaDir, path.basename(source));
   try { fs.copyFileSync(source, path.join(mediaDir, nom)); }
   catch (e) { vscode.window.showErrorMessage(T('err.copie', [path.basename(source), e.message])); return; }
+  // Avant l'insertion : la conversion réécrit le fichier sous le même nom.
+  try { await revue.convertirCmyk([path.join(mediaDir, nom)]); } catch (e) { /* signalé côté hôte */ }
   const md = '![' + T('fmt.figure.legende') + '](media/' + nom + ')';
   await editeur.edit((b) => { b.replace(editeur.selection, md); });
   vscode.window.setStatusBarMessage(T('fmt.figure.copiee', [nom]), 4000);
@@ -378,6 +383,55 @@ async function fmtCollerTableau() {
   revue.rafraichirTout();                            // le tableau apparaît sous l'article
 }
 
+// ---- Lier un appel de citation à une référence ----
+//
+// Le liage se fait tout seul à la compilation (pipeline/filters/szh-citations.lua). Cette
+// action ne sert qu'aux appels que le filtre laisse de côté : nom mal orthographié dans le
+// texte, parenthèse déséquilibrée, ou ambiguïté entre deux références de même auteur et de
+// même année. Le rédacteur place le curseur dans l'appel — ou le sélectionne — choisit la
+// référence, et l'appel devient un lien markdown que pandoc rend nativement.
+async function fmtLierReference() {
+  const editeur = vscode.window.activeTextEditor;
+  if (!editeur) { return; }
+  const doc = editeur.document;
+  const racine = revue.racine();
+  if (!racine || !revue.slugDepuisChemin(racine, doc.uri.fsPath)) {
+    vscode.window.showInformationMessage(T('cit.horsarticle'));
+    return;
+  }
+  const entrees = citations.referencesDuTexte(doc.getText());
+  if (entrees.length === 0) {
+    vscode.window.showInformationMessage(T('cit.aucuneref'));
+    return;
+  }
+  // Sélection vide : on prend l'appel autour du curseur, parenthèse ou lien déjà posé.
+  let plage = editeur.selection;
+  if (plage.isEmpty) {
+    const ligne = doc.lineAt(plage.active.line);
+    const bornes = citations.plageDeLAppel(ligne.text, plage.active.character);
+    if (!bornes) {
+      vscode.window.showInformationMessage(T('cit.selection'));
+      return;
+    }
+    plage = new vscode.Range(plage.active.line, bornes.debut, plage.active.line, bornes.fin);
+  }
+  const appel = doc.getText(plage);
+  const choix = await vscode.window.showQuickPick(
+    entrees.map((e, i) => ({
+      label: String(i + 1).padStart(2, '0') + '. ' + e.texte.slice(0, 96),
+      description: e.id,
+      detail: e.texte.length > 96 ? e.texte.slice(96, 220) : undefined,
+      id: e.id
+    })),
+    { placeHolder: T('cit.placeholder', [appel.trim()]), matchOnDescription: true,
+      matchOnDetail: true });
+  if (!choix) { return; }
+  await editeur.edit((b) => {
+    b.replace(plage, citations.lienVersReference(appel, choix.id));
+  });
+  vscode.window.setStatusBarMessage(T('cit.fait', [choix.id]), 5000);
+}
+
 // Palette du menu contextuel, bâtie sur les commandes szh.fmt.*. Format d'une entrée :
 // ['--', cléGroupe] pour un séparateur, sinon [cléLibellé, commande, raccourci, icône].
 // Exportée parce que le panneau d'édition de lib/panneaux.js en reprend le contenu.
@@ -437,6 +491,7 @@ function enregistrerCommandesMiseEnForme(context, hote) {
   c('szh.fmt.tableau', () => fmtTableau());
   c('szh.fmt.collerTableau', () => fmtCollerTableau());
   c('szh.fmt.sautPage', () => fmtSautPage());
+  c('szh.lierReference', () => fmtLierReference());
   c('szh.miseEnForme', () => ouvrirMiseEnForme());
 }
 

@@ -31,17 +31,6 @@ RUN python3 -m venv /opt/weasyprint \
     && ln -s /opt/weasyprint/bin/weasyprint /usr/local/bin/weasyprint \
     && rm /tmp/requirements.txt
 
-# ---- AnyStyle : structuration des listes de références en BibTeX ----
-# ruby-dev et build-essential ne servent qu'à compiler l'extension native (wapiti) et sont
-# purgés ensuite.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        ruby ruby-dev build-essential \
-    && gem install anystyle-cli --no-document \
-    && apt-get purge -y ruby-dev build-essential \
-    && apt-get autoremove -y --purge \
-    && rm -rf /var/lib/apt/lists/* \
-    && anystyle --version
-
 # ---- pandoc : binaire statique, version épinglée ----
 RUN curl -fsSL "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-1-amd64.deb" \
         -o /tmp/pandoc.deb \

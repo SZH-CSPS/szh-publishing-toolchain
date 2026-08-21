@@ -1,0 +1,27 @@
+type: article
+doi: "10.57262/szh/2026-99-997"
+title:
+  fr: "Six cas d'images, pour que le rendu ne mente pas"
+  de: "Sechs Bildfälle, damit die Ausgabe nicht lügt"
+subtitle:
+  fr: "Figure numérotée, image hors numérotation, vectoriel décoratif, résolution insuffisante"
+  de: "Numerierte Abbildung, Bild ohne Nummer, dekoratives Vektorbild, zu geringe Auflösung"
+resume:
+  fr: "Article de banc d'essai : il ne sert qu'à éprouver le rendu des images — ordre légende / image, numérotation qui ne saute pas, crédit conservé sans légende, largeur de colonne tenue par une image hors figure."
+  de: "Prüfartikel: er dient allein der Ausgabe von Bildern — Reihenfolge Bildunterschrift / Bild, lückenlose Numerierung, erhaltene Angaben ohne Bildunterschrift, Spaltenbreite bei einem Bild ohne Abbildung."
+keywords:
+  fr:
+  - "figure"
+  - "texte alternatif"
+  - "crédits"
+  - "résolution"
+  de:
+  - "Abbildung"
+  - "Alternativtext"
+  - "Angaben"
+  - "Auflösung"
+author:
+- prenom: "Banc"
+  nom: "d'essai"
+  fonction: "Article de contrôle du rendu"
+  affiliation: "SZH / CSPS"

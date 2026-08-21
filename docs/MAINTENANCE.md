@@ -120,13 +120,12 @@ Versions actuellement épinglées, à lire dans les fichiers :
 | Base Debian | `image/Containerfile` (`DEBIAN_TAG`) | `13-slim` |
 | Pandoc | `image/Containerfile` (`PANDOC_VERSION`) | 3.5 |
 | WeasyPrint et ses dépendances | `image/requirements.txt` | weasyprint 69.0, 12 pins transitifs |
-| AnyStyle | `image/Containerfile` | `gem install anystyle-cli`, **non épinglé** |
 | Modèles de détourage des portraits | `image/Containerfile` | deux `.onnx` vérifiés par sha256 |
 
-**AnyStyle n'est pas épinglé** : c'est le seul composant du rootfs qui peut changer
-d'une reconstruction à l'autre sans qu'on l'ait décidé. Si la bibliographie d'un
-article se met à être découpée autrement après un bump, c'est la première piste — et
-le moment d'ajouter `-v <version>` à la commande `gem install`.
+**Tout est épinglé.** Le rootfs n'a plus de composant libre : AnyStyle, seul élément
+non épinglé, a quitté l'image avec la bibliographie BibTeX — les références ne sont plus
+converties, elles restent le texte de la rédaction et un filtre Lua les relie aux appels.
+Deux reconstructions du rootfs à partir du même dépôt donnent donc le même rendu.
 
 **Symptôme d'un bump raté.** Le PDF change d'aspect sans qu'aucun contenu ait bougé :
 césures différentes (Pyphen), rendu de tableau modifié (WeasyPrint), titres numérotés
@@ -375,13 +374,25 @@ aucun nom reconnu.
 styles attendus. Le corpus de mise au point est dans `tmp/docx-dev/` (hors dépôt) :
 c'est là qu'on rejoue un cas qui échoue.
 
-### La bibliographie est mal découpée
+### Un appel de citation n'est pas lié à sa référence
 
-**Cause.** AnyStyle, qui n'est pas épinglé. Le repli est sans perte : si AnyStyle
-échoue, la liste reste dans le `.md` telle quelle.
+**Symptôme.** Le journal de compilation porte une ligne
+`[citations] ⚠ appel sans référence : (Shaw et al., 2023)`, ou
+`⚠ appel ambigu, à lier à la main`. Dans l'aperçu du cockpit, l'appel est souligné en
+pointillé.
 
-**À observer.** Sur un article à bibliographie longue, après toute reconstruction du
-rootfs.
+**Causes.** Le nom de l'appel ne correspond à aucune entrée de la liste — coquille dans le
+texte, référence absente de la liste, parenthèse déséquilibrée dans le Word — ou deux
+références partagent le même premier auteur et la même année, et l'appel ne dit pas
+laquelle.
+
+**Manœuvre.** Curseur dans l'appel, `Ctrl+Alt+S`, « Lier un appel à une référence », choisir
+l'entrée. Le `.md` reçoit un lien markdown que la compilation respecte ensuite. Une ligne
+`⚠ référence jamais appelée` signale l'inverse : une entrée que le texte ne cite pas, à
+vérifier côté rédaction.
+
+**Symptôme voisin.** `⚠ lien manuel vers un ancrage inconnu` : le texte de la référence a
+changé depuis la pose du lien, donc son identifiant aussi. Refaire l'opération.
 
 ### Le PDF n'est plus balisé PDF/UA
 

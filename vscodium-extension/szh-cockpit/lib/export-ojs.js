@@ -8,6 +8,8 @@ const fs = require('fs');
 const path = require('path');
 const { analyserAusgabe, analyserMeta, langueDefaut } = require('./yaml');
 const { estATraduire, MARQUE_A_TRADUIRE } = require('./traduction');
+const { imagesSansAlternative, listerImages } = require('./references');
+const { TEXTES_COCKPIT } = require('./i18n');
 
 // ---- Constantes OJS, à ajuster selon la configuration de l'OJS cible ----
 //
@@ -36,6 +38,11 @@ const FORMATS_GALLEY = [
   { etiquette: 'DOCX', ext: 'docx' }
 ];
 const NOMS_COUVERTURE = ['couverture.jpg', 'couverture.jpeg', 'couverture.png'];
+// Légende que Ctrl+Alt+F et « Insérer dans le texte » posent en attendant la vraie, dans
+// les deux langues du cockpit : la reconnaître, c'est pouvoir dire qu'elle a été oubliée.
+const LEGENDES_PAR_DEFAUT = new Set(Object.keys(TEXTES_COCKPIT)
+  .map((l) => String(TEXTES_COCKPIT[l]['fmt.figure.legende'] || '').trim().toLowerCase())
+  .filter((v) => v !== ''));
 
 // Tic d'OJS : chaque conteneur redéclare l'espace de noms xsi et le schéma.
 const XSI = ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"';
@@ -69,6 +76,18 @@ function localesNonVides(map) {
   return Object.keys(map || {})
     .filter((l) => String(map[l] || '').trim() !== '')
     .sort();
+}
+
+// Langues à écrire pour une rubrique. À l'import, OJS apparie chaque rubrique aux
+// rubriques existantes titre par titre et langue par langue : un titre dans une langue que
+// la revue cible n'emploie pas ne correspond à rien et provoque « … est identique à une
+// rubrique existante dans la revue, mais un autre titre de cette rubrique ne correspond à
+// aucun autre titre de rubrique existante ». On n'écrit donc que la langue du numéro ; les
+// autres restent dans SECTIONS_OJS pour l'autre revue. Repli sur tout ce qui existe si la
+// langue du numéro manque à la table, `abbrev` et `title` étant requis par le schéma.
+function localesRubrique(map, locale) {
+  const toutes = localesNonVides(map);
+  return toutes.indexOf(locale) !== -1 ? [locale] : toutes;
 }
 
 function morceauNomFichier(valeur) {
@@ -167,6 +186,30 @@ function collecter(racine, avertissements) {
       }
     }
 
+    // Accessibilité des images, dernier moment où elle se répare : une image sans texte
+    // alternatif ET sans légende part en image décorative, ce que personne n'a forcément
+    // décidé. Le formulaire des médias a une case pour le dire explicitement.
+    try {
+      const texteMd = fs.readFileSync(path.join(racine, 'articles', slug, slug + '.md'), 'utf8');
+      const manquantes = imagesSansAlternative(texteMd);
+      if (manquantes.length > 0) {
+        const noms = manquantes.map((i) => i.relatif || i.cible || '?').join(', ');
+        avertissements.push(prefixe + manquantes.length + ' image(s) sans texte alternatif ni légende, ' +
+          'et non déclarées décoratives : ' + noms +
+          ' — elles partiraient en images décoratives. À reprendre dans le formulaire des médias.');
+      }
+      // « Légende » est le texte que Ctrl+Alt+F et le bouton « Insérer » posent en attendant
+      // la vraie légende : publié tel quel, il s'imprime sous la figure. Les deux langues
+      // sont comparées, l'article ayant pu être monté sur un poste en allemand.
+      const oubliees = listerImages(texteMd)
+        .filter((i) => LEGENDES_PAR_DEFAUT.has(i.legende.trim().toLowerCase()));
+      if (oubliees.length > 0) {
+        avertissements.push(prefixe + oubliees.length + ' figure(s) portent encore la légende posée par ' +
+          'défaut à l’insertion : ' + oubliees.map((i) => i.relatif || i.cible || '?').join(', ') +
+          ' — elle s’imprimerait telle quelle sous la figure.');
+      }
+    } catch (e) { /* .md illisible : les galleys manquants le diront déjà */ }
+
     for (const format of FORMATS_GALLEY) {
       const chemin = path.join(racine, 'out', slug, slug + '.' + format.ext);
       if (!fs.existsSync(chemin)) {
@@ -260,8 +303,8 @@ function genererExportOjs(racine, options) {
         ' meta_reviewed="0" abstracts_not_required="' + s.sansResume + '" hide_title="0" hide_author="0"' +
         ' abstract_word_count="0">\n');
       ligne(6, 'id', ' type="internal" advice="ignore"', s.idInterne);
-      for (const l of localesNonVides(s.abbrev)) { ligne(6, 'abbrev', ' locale="' + l + '"', s.abbrev[l]); }
-      for (const l of localesNonVides(s.titre)) { ligne(6, 'title', ' locale="' + l + '"', s.titre[l]); }
+      for (const l of localesRubrique(s.abbrev, numero.locale)) { ligne(6, 'abbrev', ' locale="' + l + '"', s.abbrev[l]); }
+      for (const l of localesRubrique(s.titre, numero.locale)) { ligne(6, 'title', ' locale="' + l + '"', s.titre[l]); }
       w('    </section>\n');
     }
     w('  </sections>\n');

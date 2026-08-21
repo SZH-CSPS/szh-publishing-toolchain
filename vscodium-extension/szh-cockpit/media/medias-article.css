@@ -73,6 +73,14 @@ h2 .compte { font-weight: 400; font-size: .85em; color: var(--vscode-description
   background: var(--vscode-textBlockQuote-background, rgba(128,128,128,.12));
   border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.3)); }
 
+/* Alerte d'accessibilité : ni texte alternatif, ni légende, ni « décorative » cochée.
+   Plus ferme que l'encadré de qualité — c'est une image qui deviendra muette. */
+.alerte-a11y { display: none; margin: 0; padding: .35em .55em; border-radius: 4px; font-size: .85em;
+  color: var(--vscode-inputValidation-errorForeground, var(--vscode-foreground));
+  background: var(--vscode-inputValidation-errorBackground, rgba(190,70,70,.18));
+  border: 1px solid var(--vscode-inputValidation-errorBorder, rgba(190,70,70,.6)); }
+.alerte-a11y.visible { display: block; }
+
 /* Encadré « attention qualité » : orange, à côté du visuel qu'il juge. Deux degrés, un
    seul habillage — le texte dit lequel. */
 .qualite { display: none; margin: 0; padding: .35em .55em; border-radius: 4px; font-size: .85em;

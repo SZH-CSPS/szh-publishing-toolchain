@@ -31,7 +31,7 @@ szh-publishing-toolchain/
 ├── .github/workflows/release.yml   CI : toolkit.zip + manifest.json à chaque tag ;
 │                                   rootfs reconstruit seulement si image/ a changé
 ├── image/                          rootfs WSL — change rarement
-│   ├── Containerfile               Debian + Pandoc + WeasyPrint + Ruby/AnyStyle
+│   ├── Containerfile               Debian + Pandoc + WeasyPrint
 │   ├── requirements*.txt           environnements Python figés
 │   ├── wsl.conf                    utilisateur par défaut, montage /mnt/c
 │   └── build-rootfs.sh             construction locale ou CI -> .tar.gz + sha256
@@ -40,7 +40,8 @@ szh-publishing-toolchain/
 │   ├── filters/*.lua               transformations Pandoc (import et rendu)
 │   ├── docx-*.py                   extraction Word : métadonnées, tableaux, titres
 │   ├── import-docx.sh              chaîne d'import d'un Word en article
-│   ├── import-medias.py            fin d'import : photos rangées, images inutilisées ôtées
+│   ├── import-medias.py            fin d'import : photos rangées, images ôtées, médias renommés
+│   ├── cmyk-rgb.py                 JPEG livrés en CMJN -> RVB (Pillow, venv des portraits)
 │   ├── accent-css.py, apca.py      couleur annuelle et contrôle de contraste
 │   ├── portraits.py                recadrage et détourage des photos d'auteurs
 │   ├── styles/                     print.css (maquette) et couleurs.css (palette)

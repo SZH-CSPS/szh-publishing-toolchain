@@ -1,4 +1,4 @@
-# Pipeline central SZH/CSPS : .md -> pandoc (citeproc) -> WeasyPrint -> PDF et HTML,
+# Pipeline central SZH/CSPS : .md -> pandoc -> WeasyPrint -> PDF et HTML,
 # un jeu de sorties par article. Vit dans le toolkit, s'invoque depuis le dossier de
 # revue (cwd), ce Makefile étant passé par -f :
 #   wsl.exe -d SZH-Publishing --cd <dossier revue> -- make -f <toolkit>/pipeline/Makefile all
@@ -31,7 +31,6 @@ PIPELINE_DIR := $(patsubst %/,%,$(dir $(THIS)))
 # Style de la revue s'il existe (styles/print.css), sinon style central du toolkit.
 STYLE      := $(firstword $(wildcard styles/print.css) $(PIPELINE_DIR)/styles/print.css)
 STYLE_ABS  := $(abspath $(STYLE))
-CSL        := $(PIPELINE_DIR)/csl/apa.csl
 
 # Template pandoc de la couverture + filtre Lua qui dérive les métadonnées de
 # couverture et d'en-tête (étiquette de dossier, nom et ISSN de la revue).
@@ -160,17 +159,16 @@ $(ACCENT_CSS): ausgabe.yaml $(PIPELINE_DIR)/styles/couleurs.css \
 	@python3 "$(PIPELINE_DIR)/accent-css.py" ausgabe.yaml > "$@"
 
 # .md -> HTML autonome (--embed-resources : images et CSS en base64). Exécuté dans le
-# dossier de l'article, pour que media/ et tables/ soient relatifs au .md. citeproc +
-# CSL APA seulement si l'article a une bibliographie (media/<slug>.bib). Les tableaux
+# dossier de l'article, pour que media/ et tables/ soient relatifs au .md. Les tableaux
 # extraits (tables/*.html) sont des prérequis : en éditer un recompile l'article.
+# szh-citations.lua ferme la chaîne : il ancre la liste de références et transforme les
+# appels du corps en liens internes. La liste elle-même n'est jamais réécrite.
 $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
-	extra=""; \
-	if [ -s "articles/$$slug/media/$$slug.bib" ]; then extra="--citeproc --csl=$(CSL)"; fi; \
 	meta=""; \
 	if [ -f "articles/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
-	echo "pandoc articles/$$slug/$$slug.md -> $@ $$extra"; \
+	echo "pandoc articles/$$slug/$$slug.md -> $@"; \
 	cd "articles/$$slug" && SZH_AUSGABE="$(abspath ausgabe.yaml)" $(PANDOC) "$$slug.md" \
 	  --from=markdown --to=html5 \
 	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
@@ -183,7 +181,8 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
-	  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" $$extra \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
 	  --output="$(abspath $@)"
 
 # .md -> HTML d'aperçu : mêmes filtres, CSS et métadonnées que la sortie PDF, mais
@@ -192,12 +191,10 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
-	extra=""; \
-	if [ -s "articles/$$slug/media/$$slug.bib" ]; then extra="--citeproc --csl=$(CSL)"; fi; \
 	meta=""; \
 	if [ -f "articles/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
 	echo "pandoc articles/$$slug/$$slug.md -> $@ (aperçu sourcepos)"; \
-	cd "articles/$$slug" && $(PANDOC) "$$slug.md" \
+	cd "articles/$$slug" && SZH_APERCU=1 $(PANDOC) "$$slug.md" \
 	  --from=commonmark_x+sourcepos --to=html5 \
 	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
 	  --standalone --embed-resources \
@@ -207,7 +204,8 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
-	  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" $$extra \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
 

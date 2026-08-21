@@ -14,7 +14,7 @@
 //   pret ; modifie { modifie } ; enregistrer { auto, medias } ;
 //   retourArticle { modifie, medias } ; ouvrirMedia { relatif } ;
 //   remplacer { relatif, nomFichier, donneesBase64 } ; retirer { relatif } ;
-//   portrait-remplacer { base, nomFichier, donneesBase64 }
+//   inserer { relatif, medias } ; portrait-remplacer { base, nomFichier, donneesBase64 }
 // Depuis l'hôte :
 //   charger { slug, medias, portraits, focus, i18n } ; enregistre { auto } ;
 //   erreur { message } ; focaliser { relatif } ;
@@ -23,8 +23,9 @@
 //   media-retire { relatif } ;
 //   portrait-remplace { base, nom, version, description, apercu, qualite } ;
 //   portrait-erreur { base, message }
-// où un média vaut { relatif, description, apercu, occurrences, qualite, valeurs } et
-// valeurs = { legende, alt, altDefini, copyright, source, horsFigure }.
+// où un média vaut { relatif, description, apercu, occurrences, qualite, doublons,
+// sansAlternative, valeurs } et valeurs = { legende, alt, altDefini, copyright, source,
+// horsFigure }.
 var api = acquireVsCodeApi();
 // Mêmes plafonds et mêmes formats que l'hôte, qui recontrôle tout : ici, c'est pour
 // répondre tout de suite plutôt que d'envoyer 50 Mo pour rien.
@@ -100,6 +101,28 @@ function majRole(c) {
   if (c.ctl.aideLegende) {
     c.ctl.aideLegende.textContent = horsFigure(c) ? (TXT.horsFigureAide || '') : (TXT.legendeAide || '');
   }
+  majAlerteAlt(c);
+}
+
+// Ni texte alternatif, ni légende sur laquelle retomber, et pas déclarée décorative : le
+// rendu la traitera en image décorative, ce que personne n'a forcément décidé. Même règle
+// que imagesSansAlternative() de lib/references.js, que l'export OJS applique au moment de
+// publier ; ici elle se voit pendant la saisie.
+function majAlerteAlt(c) {
+  if (!c.ctl.alerteAlt) { return; }
+  // Carte verrouillée (aucune insertion) : les trois remèdes que le message propose sont
+  // hors d'atteinte, et le rendu n'affiche pas l'image. Rien à dire ici.
+  var message = '';
+  if (c.occurrences > 0) {
+    var manque = !decorative(c) && ligne(c.ctl.alt.value) === ''
+      && (horsFigure(c) || ligne(c.ctl.legende.value) === '');
+    // c.sansAlternative vient de l'hôte, qui a lu TOUTES les insertions : il tombe à
+    // l'enregistrement, qui les aligne sur les valeurs de la carte.
+    if (manque) { message = TXT.altManquant || ''; }
+    else if (c.sansAlternative) { message = TXT.altDivergent || ''; }
+  }
+  c.ctl.alerteAlt.textContent = message;
+  c.ctl.alerteAlt.className = 'alerte-a11y' + (message ? ' visible' : '');
 }
 function estModifieCarte(c) {
   if (!c.enregistrees) { return false; }
@@ -137,7 +160,7 @@ function champ(parent, c, cle) {
   var i = document.createElement('input');
   i.type = 'text'; i.id = id; i.maxLength = 500;
   i.placeholder = TXT[cle + 'Indice'] || '';
-  i.addEventListener('input', function () { etat(''); majModifie(); });
+  i.addEventListener('input', function () { etat(''); majAlerteAlt(c); majModifie(); });
   d.appendChild(i);
   c.ctl[cle] = i;
   return d;
@@ -202,7 +225,7 @@ function poserOcc(c) {
   var verrou = c.occurrences === 0;
   ['legende', 'alt', 'copyright', 'source'].forEach(function (k) { if (c.ctl[k]) { c.ctl[k].disabled = verrou; } });
   [c.ctl.roleDecrit, c.ctl.roleDeco, c.ctl.horsFigure].forEach(function (e) { if (e) { e.disabled = verrou; } });
-  if (!verrou) { majRole(c); }
+  if (verrou) { majAlerteAlt(c); } else { majRole(c); }
 }
 
 function poserEtatMedia(c, message, erreur) {
@@ -297,6 +320,14 @@ function carteMedia(media, index) {
   var fiche = texte(haut, 'div', 'fiche');
   c.ctl.occ = texte(fiche, 'p', 'occ');
   c.ctl.occ.setAttribute('role', 'status');
+  // Deux noms pour un seul visuel : l'hôte l'a vu par l'empreinte du contenu.
+  var doublons = Array.isArray(media.doublons) ? media.doublons : [];
+  if (doublons.length > 0) {
+    texte(fiche, 'p', 'occ visible info',
+      (TXT.doublonDe || '').split('{0}').join(doublons.join(', ')));
+  }
+  c.ctl.alerteAlt = texte(fiche, 'p', 'alerte-a11y');
+  c.sansAlternative = !!media.sansAlternative;
   champ(fiche, c, 'legende');
   c.ctl.aideLegende = texte(fiche, 'p', 'aide', TXT.legendeAide || '');
   var z = texte(fiche, 'fieldset', 'zone');
@@ -315,6 +346,12 @@ function carteMedia(media, index) {
   actions.appendChild(bouton(TXT.ouvrir || '', function () {
     api.postMessage({ type: 'ouvrirMedia', relatif: c.relatif });
   }, '', TXT.ouvrirTip));
+  // Insérer : offert seulement quand rien ne l'insère, seul état où la carte est muette.
+  if (c.occurrences === 0) {
+    actions.appendChild(bouton(TXT.inserer || '', function () {
+      api.postMessage({ type: 'inserer', relatif: c.relatif, medias: medias() });
+    }, 'principal', TXT.insererTip));
+  }
   actions.appendChild(bouton(TXT.retirer || '', function () {
     api.postMessage({ type: 'retirer', relatif: c.relatif });
   }, '', TXT.retirerTip));
@@ -438,7 +475,13 @@ window.addEventListener('message', function (ev) {
   }
   if (msg.type === 'enregistre') {
     autoEnr.confirme();
-    for (var i = 0; i < cartes.length; i++) { cartes[i].enregistrees = valeurs(cartes[i]); }
+    for (var i = 0; i < cartes.length; i++) {
+      cartes[i].enregistrees = valeurs(cartes[i]);
+      // L'écriture reporte les valeurs de la carte sur toutes les insertions : plus de
+      // divergence à signaler.
+      cartes[i].sansAlternative = false;
+      majAlerteAlt(cartes[i]);
+    }
     etat(msg.auto ? '' : (TXT.enregistre || ''));
     majModifie();
     return;

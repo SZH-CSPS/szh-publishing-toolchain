@@ -14,7 +14,6 @@
 #   G  nombre de paragraphes-image de tête à retirer (logo licence CC)
 #   T  k-ième tableau de premier niveau consommé (tableau des auteurs), lu par
 #      docx-tables.py et par szh-meta.lua : lisant la même liste, ils restent alignés
-#   B  entrée de bibliographie à retirer par szh-biblio.lua, qui l'écrit dans $SZH_REFS
 #   F  légende de figure détectée par style et voisine d'une image, pour szh-legendes.lua
 #
 # Écrit aussi, si $SZH_PHOTOS est posée, ce qu'il a compris des photos du tableau des
@@ -951,23 +950,11 @@ def principal(argv):
     for a in auteurs_table:
         a.pop('_image', None)             # jamais sérialisé, mais rien ne traîne
 
-    # ---- 5) Bibliographie stylée (Literaturverzeichnis) --------------------------
+    # ---- 5) Type d'article --------------------------------------------------------
+    # La liste de références n'est pas touchée ici : elle reste dans le corps, telle que la
+    # rédaction l'a écrite. C'est szh-citations.lua qui l'ancre à la compilation.
     type_article, type_regle = detecter_type(
         chemin_docx, ' '.join(titre_parts), doi)
-    lignes_b = []
-    if type_article != 'documentation':
-        for idx, e in enumerate(blocs):
-            if e.tag != W + 'p' or classeur.famille(pstyle(e)) != 'biblio':
-                continue
-            if idx / nblocs < 0.3:
-                continue                  # une biblio d'article vit en fin de document
-            txt = normaliser(texte_paragraphe(e))
-            if txt:
-                lignes_b.append(txt)
-        if len(lignes_b) < 2:
-            if lignes_b:
-                stats['avertissements'].append('biblio-style-entree-unique-ignoree')
-            lignes_b = []
 
     # ---- 6) Légendes de figures par STYLE (voisines d'une image) -----------------
     lignes_f = []
@@ -1031,8 +1018,6 @@ def principal(argv):
                 f.write('G\t%d\n' % logos)
             for k in tables_consommees:
                 f.write('T\t%d\n' % k)
-            for t in lignes_b:
-                f.write('B\t%s\n' % t)
             for t in lignes_f:
                 f.write('F\t%s\n' % t)
 
@@ -1051,7 +1036,6 @@ def principal(argv):
                     'photos_appariees': len(photos_appariees),
                     'photos_gardees': len(photos_connues) - len(photos_appariees)},
         'tableaux_consommes': tables_consommees,
-        'biblio_style': len(lignes_b),
         'legendes_figures_style': len(lignes_f),
         'logo': logos,
         'paragraphes_retires': len(consommes_p),

@@ -71,9 +71,12 @@ const { construireLienTraduction, consommerIntention } = require('./lib/liens');
 const { enregistrerPanneaux } = require('./lib/panneaux');
 const { genererExportOjs } = require('./lib/export-ojs');
 const {
-  retirerImage, retirerTable, ordreImages, lireAttributsImage, ecrireAttributsImage
+  retirerImage, retirerTable, ordreImages, lireAttributsImage, ecrireAttributsImage,
+  placeFigure, envelopperFigure, imagesSansAlternative
 } = require('./lib/references');
 const { traiterPortraits } = require('./lib/portraits');
+// ---- JPEG CMJN -> RVB -> lib/cmyk.js ---------------------------------------------
+const { convertirCmykEnRgb, estJpegCmyk } = require('./lib/cmyk');
 // ---- Seuils de qualité des images -> lib/qualite-image.js ------------------------
 const { qualiteImage } = require('./lib/qualite-image');
 // ---- Suivi de traduction -> lib/traduction.js ------------------------------------
@@ -198,6 +201,39 @@ function avertirVersionSiDivergente() {
 
 // szh.replierAssetsAutres (défaut true) : au clic, les assets de l'article se déplient
 // et ceux des autres se replient.
+// Réglage szh.convertirCmyk, coché par défaut : un JPEG CMJN ne s'affiche correctement ni
+// dans un navigateur ni dans WeasyPrint, et le défaut ne se voit qu'au PDF. La conversion
+// reste débranchable, la chaîne de portraits n'étant pas disponible partout.
+function convertirCmykActif() {
+  try { return vscode.workspace.getConfiguration('szh').get('convertirCmyk', true) !== false; }
+  catch (e) { return true; }
+}
+
+// Convertit en RVB les JPEG CMJN de la liste. Silencieux quand il n'y a rien à faire ;
+// un échec est signalé mais ne bloque rien, le fichier restant lisible tel quel.
+// -> Promise<nombre de fichiers convertis>
+async function convertirCmykSiBesoin(chemins) {
+  if (!convertirCmykActif()) { return 0; }
+  const candidats = (Array.isArray(chemins) ? chemins : []).filter((c) => c && estJpegCmyk(c));
+  if (candidats.length === 0) { return 0; }
+  let resultats;
+  try {
+    resultats = await convertirCmykEnRgb({ chemins: candidats });
+  } catch (e) {
+    vscode.window.showWarningMessage(T(e && e.wsl ? 'cmyk.err.wsl' : 'cmyk.err', [e.message]));
+    return 0;
+  }
+  const convertis = resultats.filter((r) => r && r.converti);
+  const rates = resultats.filter((r) => r && !r.ok);
+  if (rates.length > 0) {
+    vscode.window.showWarningMessage(T('cmyk.err', [String(rates[0].erreur || '?')]));
+  }
+  if (convertis.length > 0) {
+    vscode.window.setStatusBarMessage(T('cmyk.statut', [convertis.length]), 5000);
+  }
+  return convertis.length;
+}
+
 function replierAssetsAutres() {
   try { return vscode.workspace.getConfiguration('szh').get('replierAssetsAutres', true) !== false; }
   catch (e) { return true; }                       // configuration indisponible
@@ -300,7 +336,8 @@ class FournisseurRevue {
       catch (e) { return; }
       for (const e of entrees) {
         if (e.isDirectory()) { parcourir(path.join(dossier, e.name), prefixe + e.name + '/'); }
-        else if (e.isFile() && /\.(png|jpe?g|gif|svg)$/i.test(e.name)) { resultats.push(prefixe + e.name); }
+        else if (e.isFile() && e.name.indexOf('~$') !== 0
+                 && /\.(png|jpe?g|gif|svg)$/i.test(e.name)) { resultats.push(prefixe + e.name); }
       }
     };
     parcourir(base, '');
@@ -1282,6 +1319,14 @@ async function lancerConversion(fournisseur, rafraichirTout) {
     const nouveaux = [];
     for (const slug of fournisseur.listerArticles()) { if (!avant.has(slug)) { nouveaux.push(slug); } }
     if (nouveaux.length > 0) {
+      // Avant la compilation : un JPEG d'imprimerie converti après coup laisserait
+      // l'opérateur inspecter un PDF bâti sur les couleurs d'origine.
+      const aConvertir = [];
+      for (const slug of nouveaux) {
+        const base = path.join(fournisseur.racine, 'articles', slug, 'media');
+        for (const relatif of fournisseur._imagesArticle(slug)) { aConvertir.push(path.join(base, relatif)); }
+      }
+      await convertirCmykSiBesoin(aConvertir);
       // Avant le dialogue, où « Remplacer » refuserait d'agir pendant une compilation.
       await compilerApresImport();
       rafraichirTout();
@@ -1505,6 +1550,7 @@ async function remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif,
   } catch (e) {
     return echec(T('err.remplacement', [e.message]));
   }
+  await convertirCmykSiBesoin([cible]);           // un JPEG d'imprimerie ne s'affiche pas
   vscode.window.setStatusBarMessage(T('statut.image.remplacee', [nomCible]), 5000);
   if (rafraichirTout) { rafraichirTout(); }        // met « L × H · poids » à jour
   return { etat: 'ok' };
@@ -2869,6 +2915,8 @@ const REGL_TEXTES = () => JSON.stringify({
   apercuHtml: T('regl.apercu.html'), apercuPdf: T('regl.apercu.pdf'), apercuNote: T('regl.apercu.note'),
   assets: T('regl.assets'),
   assetsOui: T('regl.assets.oui'), assetsNon: T('regl.assets.non'), assetsNote: T('regl.assets.note'),
+  cmyk: T('regl.cmyk'),
+  cmykOui: T('regl.cmyk.oui'), cmykNon: T('regl.cmyk.non'), cmykNote: T('regl.cmyk.note'),
   langue: T('regl.langue'), langueNote: T('regl.langue.note'),
   dev: T('regl.dev'), devOui: T('regl.dev.oui'), devNon: T('regl.dev.non'), devNote: T('regl.dev.note')
 });
@@ -2924,6 +2972,7 @@ function lireReglagesActuels() {
   return {
     theme: etatTheme, zoom: String(zoom), policeMd: String(policeMd), apercu: apercu,
     assets: replierAssetsAutres() ? 'oui' : 'non',
+    cmyk: convertirCmykActif() ? 'oui' : 'non',
     langue: langueCockpit(),
     // Dans config.json : ses consommateurs sont les scripts PowerShell.
     dev: lireModeDeveloppeur() ? 'oui' : 'non'
@@ -2981,6 +3030,9 @@ function ouvrirReglages(rafraichirTout) {
         await vscode.workspace.getConfiguration('szh')
           .update('replierAssetsAutres', msg.valeur !== 'non', vscode.ConfigurationTarget.Global);
         if (rafraichirTout) { rafraichirTout(); }
+      } else if (msg.cle === 'cmyk') {
+        await vscode.workspace.getConfiguration('szh')
+          .update('convertirCmyk', msg.valeur !== 'non', Global);
       } else if (msg.cle === 'dev') {
         // bootstrap.ps1 donne au groupe Utilisateurs le droit d'écrire ce fichier.
         const erreur = ecrireModeDeveloppeur(msg.valeur !== 'non');
@@ -3260,6 +3312,9 @@ function textesMedias() {
     errTropVolumineusePortrait: T('medias.err.tropvolumineux.portrait'),
     ouvrir: T('medias.ouvrir'), ouvrirTip: T('medias.tip.ouvrir'),
     retirer: T('medias.retirer'), retirerTip: T('medias.tip.retirer'),
+    inserer: T('medias.inserer'), insererTip: T('medias.tip.inserer'),
+    altManquant: T('medias.alt.manquant'), altDivergent: T('medias.alt.divergent'),
+    doublonDe: T('medias.doublon'),
     retour: T('img.retour'), retourTip: T('img.tip.retour'),
     enregistrer: T('img.enregistrer'), enregistrerTip: T('medias.tip.enregistrer'),
     enregistre: T('medias.enregistre'), nonEnregistre: T('img.nonEnregistre'),
@@ -3275,12 +3330,53 @@ function htmlMedias(nonce) {
   });
 }
 
+// Fichiers identiques sous deux noms : Word duplique volontiers la même image, et deux
+// cartes pour un seul visuel se remplissent deux fois, avec deux légendes qui divergent.
+// L'empreinte du contenu le dit, là où la taille seule se trompe.
+function empreinteFichier(chemin) {
+  try { return crypto.createHash('sha1').update(fs.readFileSync(chemin)).digest('hex'); }
+  catch (e) { return null; }
+}
+
+function tailleFichier(chemin) {
+  try { return fs.statSync(chemin).size; } catch (e) { return -1; }
+}
+
+// relatif -> empreinte, pour les seuls fichiers dont la taille est partagée : deux contenus
+// identiques ont forcément la même taille, et l'immense majorité des articles n'a aucun
+// doublon. Sans ce tri, chaque chargement relisait tous les fichiers pour rien.
+function empreintesPartagees(base, relatifs) {
+  const parTaille = new Map();
+  for (const relatif of relatifs) {
+    const t = tailleFichier(path.join(base, relatif));
+    if (t <= 0) { continue; }
+    if (!parTaille.has(t)) { parTaille.set(t, []); }
+    parTaille.get(t).push(relatif);
+  }
+  const empreintes = new Map();
+  for (const memeTaille of parTaille.values()) {
+    if (memeTaille.length < 2) { continue; }
+    for (const relatif of memeTaille) {
+      const e = empreinteFichier(path.join(base, relatif));
+      if (e) { empreintes.set(relatif, e); }
+    }
+  }
+  return empreintes;
+}
+
 // Un descripteur par image de media/, dans l'ordre du texte puis, pour celles qui n'y
 // sont pas, dans l'ordre alphabétique de l'arbre.
 function listerMediasArticle(fournisseur, slug, texteMd, budget) {
   const base = path.join(fournisseur.racine, 'articles', slug, 'media');
   const ordre = ordreImages(texteMd);
-  const liste = fournisseur._imagesArticle(slug).map((relatif) => {
+  // Le formulaire ne montre que les valeurs de la PREMIÈRE insertion ; l'export, lui, juge
+  // toutes les insertions. Sans ce report, une image insérée deux fois dont la seconde n'a
+  // ni alternative ni légende passait pour saine au formulaire et rouge à l'export.
+  const sansAlternative = new Set(
+    imagesSansAlternative(texteMd).map((i) => i.relatif).filter(Boolean));
+  const relatifs = fournisseur._imagesArticle(slug);
+  const empreintes = empreintesPartagees(base, relatifs);
+  const liste = relatifs.map((relatif) => {
     const chemin = path.join(base, relatif);
     const v = lireAttributsImage(texteMd, relatif);
     return {
@@ -3288,16 +3384,29 @@ function listerMediasArticle(fournisseur, slug, texteMd, budget) {
       description: decrireImage(chemin),
       apercu: apercuMedia(chemin, budget),
       occurrences: v.n,
+      sansAlternative: sansAlternative.has(relatif.toLowerCase()),
       qualite: qualiteImage('figure', lireDimensionsImage(chemin), relatif),
       valeurs: {
         legende: v.legende, alt: v.alt, altDefini: v.altDefini,
         copyright: v.copyright, source: v.source, horsFigure: v.horsFigure
       },
-      _rang: ordre.has(relatif.toLowerCase()) ? ordre.get(relatif.toLowerCase()) : Number.MAX_SAFE_INTEGER
+      _rang: ordre.has(relatif.toLowerCase()) ? ordre.get(relatif.toLowerCase()) : Number.MAX_SAFE_INTEGER,
+      _empreinte: empreintes.get(relatif) || null
     };
   });
   liste.sort((a, b) => (a._rang !== b._rang ? a._rang - b._rang : a.relatif.localeCompare(b.relatif, 'fr')));
-  for (const m of liste) { delete m._rang; }
+  const parEmpreinte = new Map();
+  for (const m of liste) {
+    if (!m._empreinte) { continue; }
+    if (!parEmpreinte.has(m._empreinte)) { parEmpreinte.set(m._empreinte, []); }
+    parEmpreinte.get(m._empreinte).push(m.relatif);
+  }
+  for (const m of liste) {
+    const memes = m._empreinte ? parEmpreinte.get(m._empreinte) : [m.relatif];
+    m.doublons = memes.filter((r) => r !== m.relatif);
+    delete m._rang;
+    delete m._empreinte;
+  }
   return liste;
 }
 
@@ -3356,6 +3465,34 @@ function listerPortraitsArticle(fournisseur, slug, budget) {
     });
   }
   return liste;
+}
+
+// Une image que le texte n'insère nulle part n'a aucun endroit où porter sa légende et ses
+// crédits : sa carte se verrouille, et le seul geste utile qu'elle peut offrir est de
+// l'insérer. Le choix de la place est dans lib/references.js (placeFigure), avec la liste
+// des endroits où une image insérée ne serait pas une figure — ou disparaîtrait du rendu.
+// -> { ok, auCurseur } ; auCurseur dit à l'appelant ce qu'il doit annoncer.
+async function insererImageDansArticle(md, relatif) {
+  let doc;
+  try { doc = await vscode.workspace.openTextDocument(md); }
+  catch (e) { return { ok: false }; }
+  const lignes = [];
+  for (let i = 0; i < doc.lineCount; i++) { lignes.push(doc.lineAt(i).text); }
+  const editeur = vscode.window.visibleTextEditors
+    .filter((e) => e.document.uri.fsPath === md)[0] || null;
+  const place = editeur ? placeFigure(lignes, editeur.selection.active.line) : null;
+  const auCurseur = place !== null;
+  const ligne = auCurseur ? place.ligne : Math.max(0, lignes.length - 1);
+  const colonne = auCurseur ? place.colonne : (lignes[lignes.length - 1] || '').length;
+  const reference = '![' + T('fmt.figure.legende') + '](media/' + relatif + ')';
+  try {
+    const edition = new vscode.WorkspaceEdit();
+    edition.insert(doc.uri, new vscode.Position(ligne, colonne),
+      envelopperFigure(lignes, ligne, colonne, reference));
+    if (!(await vscode.workspace.applyEdit(edition))) { return { ok: false }; }
+    await doc.save();                              // déclenche la recompilation
+  } catch (e) { return { ok: false }; }
+  return { ok: true, auCurseur: auCurseur };
 }
 
 let panneauxMedias = new Map();   // slug -> WebviewPanel (un gestionnaire par article)
@@ -3501,6 +3638,26 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
         apercu: apercuMedia(chemin, { reste: BUDGET_APERCUS_MEDIA }),
         qualite: qualiteImage('figure', lireDimensionsImage(chemin), relatif)
       });
+      return;
+    }
+    if (msg.type === 'inserer') {
+      if (refuserSiVerrouille()) { return; }
+      const relatif = String(msg.relatif || '');
+      if (!relatifImageValide(relatif)) { return; }
+      // Les saisies en cours d'abord : l'insertion réécrit le .md, et le formulaire est
+      // rechargé juste après pour que la carte se déverrouille.
+      if (Array.isArray(msg.medias) && msg.medias.length > 0 && await enregistrer(msg.medias) < 0) { return; }
+      const pose = await insererImageDansArticle(md, relatif);
+      if (!pose.ok) {
+        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [md]) });
+        return;
+      }
+      // Dire où elle est allée : au curseur, ou en fin d'article quand le curseur était
+      // dans une liste, un tableau, un bloc de code ou un bloc pandoc.
+      vscode.window.setStatusBarMessage(
+        T(pose.auCurseur ? 'medias.statut.inseree' : 'medias.statut.inseree.fin', [relatif]), 6000);
+      if (rafraichirTout) { rafraichirTout(); }
+      await charger(panneau);
       return;
     }
     if (msg.type === 'retirer') {
@@ -3697,6 +3854,8 @@ function activate(context) {
     racine: () => fournisseur.racine,
     slugDepuisChemin: slugDepuisChemin,
     rafraichirTout: rafraichirTout,
+    // Une image choisie à la main peut aussi sortir d'une chaîne d'imprimerie.
+    convertirCmyk: (chemins) => convertirCmykSiBesoin(chemins),
     // Toute la mise en forme écrit dans le texte : refusée sur un numéro gelé.
     verrouillee: () => etatCourant().verrouillee,
     refuser: () => { refuserSiVerrouille(); }

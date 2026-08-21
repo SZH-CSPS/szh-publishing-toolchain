@@ -53,6 +53,7 @@ async function ouvrirPanneauEdition() {
     ['--', 'panneau.g.article'],
     ['panneau.metaArticle', 'szh.metadonneesArticle', '', '$(list-flat)'],
     ['panneau.mediasArticle', 'szh.mediasArticle', '', '$(file-media)'],
+    ['panneau.lierReference', 'szh.lierReference', '', '$(references)'],
     ['panneau.traduction', 'szh.traduction', '', '$(globe)']
   ].concat(PALETTE_MEF);
   const choix = await vscode.window.showQuickPick(itemsDepuisEntrees(entrees), {
