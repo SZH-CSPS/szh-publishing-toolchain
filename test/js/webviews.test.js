@@ -51,6 +51,12 @@ test('métadonnées des articles : une carte remplie par article', () => {
   assert.deepStrictEqual(page.messages.map((m) => m.type), ['pret'], 'la page ne s’annonce pas');
   page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr', filtre: null });
   assert.strictEqual(page.compter('.carte'), articles.length);
+  // Traductions cachées par défaut : les champs des autres langues sont construits et
+  // marqués, et le conteneur porte la classe qui les masque. Le CSS n'est pas évalué ici,
+  // c'est donc le marquage que l'on contrôle — sans lui, le bouton n'a rien à révéler.
+  assert.ok(page.conteneur().classes.has('sans-trad'), 'les traductions ne sont pas cachées au départ');
+  assert.ok(page.compter('.champ-trad') >= articles.length * 4,
+    'champs de traduction non marqués : le bouton ne peut rien afficher');
   // Une carte muette est le symptôme exact du défaut qu'on garde : on exige des champs.
   assert.ok(page.compter('input') > 10, 'cartes sans champ : le rendu s’est arrêté en route');
   // Les valeurs du corpus doivent arriver dans les champs : titre, résumé, mots-clés.
@@ -107,13 +113,22 @@ test('gestionnaire des médias : cartes, encadrés et versions de portrait', () 
         qualite: { famille: 'portrait', niveau: 'ok', mesure: 1200, min: 400, conseille: 1000 } }
     ]
   });
-  assert.strictEqual(page.compter('.media'), 2);
-  assert.strictEqual(page.compter('.portrait'), 1);
-  // L'encadré de qualité ne s'allume que sur l'image insuffisante.
-  assert.strictEqual(page.compter('.qualite.visible'), 1, 'un seul encadré de qualité attendu');
+  assert.strictEqual(page.compter('.carte-media'), 2);
+  assert.strictEqual(page.compter('.carte-portrait'), 1);
+  // L'avis de qualité ne s'allume que sur l'image insuffisante : c'est le seul ton
+  // « attention » de la page.
+  assert.strictEqual(page.compter('.szh-notif--attention'), 1, 'un seul avis de qualité attendu');
+  // Le remplacement est sous chaque visuel, portraits compris ; la corbeille ne concerne
+  // que les images, un portrait se retirant depuis la fiche de son auteur·e.
+  assert.strictEqual(page.compter('.depot'), 3, 'zone de remplacement absente sous un visuel');
+  assert.strictEqual(page.compter('.szh-ico'), 2, 'corbeille absente de la tête des cartes');
+  assert.strictEqual(page.compterPage('.szh-modale'), 1, 'modale d’agrandissement non construite');
   // Trois versions offertes pour le portrait rattaché.
   assert.ok(page.compter('input') >= 3, 'boutons de version du portrait absents');
   const textes = page.textes().join(' | ');
   assert.ok(textes.indexOf('figures-fig-01.png') !== -1, 'nom de fichier absent du rendu');
-  assert.ok(textes.indexOf('Attention qualité') !== -1, 'encadré de qualité muet');
+  assert.ok(textes.indexOf('Attention qualité') !== -1, 'avis de qualité muet');
+  // L'état se lit dans la tête : deux insertions d'un côté, jamais insérée de l'autre.
+  assert.ok(textes.indexOf('2 insertions') !== -1, 'pastille du nombre d’insertions absente');
+  assert.ok(textes.indexOf('jamais insérée') !== -1, 'pastille « jamais insérée » absente');
 });

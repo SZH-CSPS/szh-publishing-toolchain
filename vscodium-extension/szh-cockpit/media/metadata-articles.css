@@ -1,13 +1,12 @@
-/* Propre au formulaire « Metadonnees des articles ». La carte, les auteurs et la
-   modale photo viennent de _fiches.css. */
-.carte h2 { font-size: 1em; font-weight: 600; margin: 0 0 .2rem; font-family: var(--vscode-editor-font-family, monospace); }
-.modale h3 { margin: 0 0 .7rem; font-size: 1.05em; font-weight: 600; }
-#etat { margin-left: .8rem; font-size: .92em; color: var(--vscode-descriptionForeground); }
-.modifie h2::after { content: " ●"; color: var(--vscode-charts-orange, orange); }
-/* Bandeau « un seul article affiché », visible seulement en vue filtrée. */
-.filtre { display: flex; align-items: center; gap: .8rem; margin: 0 0 .8rem;
-  padding: .4em .6em; border-radius: 3px; font-size: .9em;
-  color: var(--vscode-descriptionForeground);
-  background: var(--vscode-textBlockQuote-background, rgba(128,128,128,.12));
-  border-left: 3px solid var(--vscode-textBlockQuote-border, rgba(128,128,128,.5)); }
-.filtre[hidden] { display: none; }
+/* Propre au formulaire « Metadonnees des articles ». La carte, sa tete, les auteurs et la
+   modale photo viennent de _design.css et de _fiches.css. */
+.carte > h2 { font-family: var(--vscode-editor-font-family, monospace); }
+.modale h3 { margin: 0 0 var(--e3); font-size: var(--t-titre); font-weight: 700; }
+.modifie > h2::after { content: " ●"; color: var(--vscode-charts-orange, orange); }
+
+/* Bandeau « un seul article affiche », visible seulement en vue filtree. */
+.filtre { display: flex; align-items: center; gap: var(--e3); margin: 0 0 var(--e4);
+  padding: var(--e2) var(--e3); border-radius: var(--rayon-mini); font-size: var(--t-libelle);
+  color: var(--encre-2);
+  background: var(--surface-tete);
+  border-left: 3px solid var(--accent); }

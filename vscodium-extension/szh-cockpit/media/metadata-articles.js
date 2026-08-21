@@ -5,7 +5,7 @@
 // Protocole avec l'hôte, en plus de photo-* et de l'enregistrement (voir _fiches.js) :
 //   webview -> hôte : pret ; modifie { modifie } ; tous ;
 //                     enregistrer { auto, articles } ; rechargement { articles }
-//   hôte -> webview : valeurs { articles, types, langue, filtre } ;
+//   hôte -> webview : valeurs { articles, types, langue, filtre, accent } ;
 //                     demande-rechargement ; enregistre { auto, n } ; erreur { message }
 (function () {
   'use strict';
@@ -30,7 +30,17 @@
     api: vscodeApi,
     txt: TXT,
     etat: etat,
-    surChangement: signalerModifie
+    surChangement: signalerModifie,
+    surValeurs: function (msg) { rendreFiltre(msg.filtre || null); }
+  });
+
+
+  cartes.traductions(document.getElementById('traductions'));
+
+  // « Changer la langue de l'article » : le bouton existe, la fonction pas encore. Mieux
+  // vaut le dire dans la barre que laisser un bouton mort.
+  document.getElementById('langue').addEventListener('click', function () {
+    etat.textContent = TXT.langueAvenir;
   });
 
   function rendreFiltre(filtre) {
@@ -56,10 +66,6 @@
     const msg = e.data || {};
     recu = true;
     if (cartes.message(msg)) { return; }
-    if (msg.type === 'valeurs') {
-      cartes.rendre(msg.articles || [], msg.types || [], msg.langue || 'fr');
-      rendreFiltre(msg.filtre || null);
-    }
     // L'hôte veut recharger le formulaire alors que des cartes sont modifiées : il lui
     // faut ce qu'elles contiennent pour pouvoir les enregistrer.
     if (msg.type === 'demande-rechargement') {

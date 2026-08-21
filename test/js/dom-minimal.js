@@ -102,7 +102,11 @@ function element(balise) {
 
 // Assemble la page comme l'hôte, exécute son script, et rend de quoi lui parler.
 //   ouvrir({ racine, page, cssPartage, jsPartage, txt })
-//     -> { document, parId, messages, envoyer(msg), compter(selecteur), textes() }
+//     -> { document, parId, messages, envoyer(msg), compter(selecteur), textes(),
+//           compterPage(selecteur), conteneur() }
+// `compter` cherche sous le conteneur de la page ; `compterPage` sous <body>, pour ce
+// qu'une webview y accroche directement — une modale, un voile. `conteneur` rend
+// l'élément lui-même, dont les classes portent parfois un état de la page.
 // `envoyer` laisse remonter toute exception du gestionnaire de messages : c'est ce qu'on
 // veut voir échouer dans un test.
 function ouvrir(opts) {
@@ -154,6 +158,8 @@ function ouvrir(opts) {
       surMessage({ data: msg });
     },
     compter: (selecteur) => chercher(racineDom(), selecteur).length,
+    compterPage: (selecteur) => chercher(document.body, selecteur).length,
+    conteneur: () => racineDom(),
     // Les valeurs des champs : un mot-clé ou un titre vit dans `value`, pas dans le texte.
     valeurs: () => chercher(racineDom(), 'input').map((e) => e.value).filter((v) => v !== ''),
     textes: () => {

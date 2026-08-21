@@ -1,6 +1,7 @@
 <h1>%%SZH:meta.titre%%</h1>
-<p class="note">%%SZH:meta.note%%</p>
+<p class="szh-notif szh-notif--info szh-notif--discret">%%SZH:meta.note%%</p>
 <form id="formulaire">
+<div class="szh-barre"><button class="szh-bouton szh-bouton--principal" type="submit">%%SZH:form.enregistrer%%</button><span class="szh-barre-etat" id="etat" role="status"></span></div>
 <label for="title">%%SZH:meta.title%%</label><input id="title" type="text">
 <label id="revueLabel">%%SZH:meta.revue%%</label>
 <div class="radios" id="revue" role="radiogroup" aria-labelledby="revueLabel">
@@ -17,5 +18,4 @@
 <div class="pastilles" id="couleurs"></div>
 <label class="case" for="entete-condensee"><input id="entete-condensee" type="checkbox"><span>%%SZH:meta.entete.condensee%%</span></label>
 <div class="indice">%%SZH:meta.entete.condensee.aide%%</div>
-<button type="submit">%%SZH:form.enregistrer%%</button><span id="etat" role="status"></span>
 </form>

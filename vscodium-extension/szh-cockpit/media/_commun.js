@@ -5,8 +5,111 @@
 //   SZH.motsCles(opts)            éditeur de mots-clés appariés, partagé par les trois
 //                                 formulaires qui touchent aux mots-clés
 //   SZH.annoncerPret(api, recu)   « pret », redemandé tant que l'hôte se tait
+//   SZH.icone(nom)                une icône de 16 px, dessinée en SVG
+//   SZH.notif(ton, contenu)       une notification : info, ok, attention, danger
+//   SZH.poserAccent(hex)          la couleur annuelle du numéro devient l'accent
 var SZH = (function () {
   'use strict';
+
+  // ---- Icônes ----
+  //
+  // Un jeu minimal, dessiné en SVG plutôt qu'en caractères : une icône doit suivre la
+  // couleur du texte (`currentColor`) et rester nette à toutes les échelles. Chaque dessin
+  // est une liste de primitives [balise, attributs] — des cercles et des rectangles quand
+  // c'est possible, un tracé quand il le faut : une longue donnée de path se relit mal et
+  // se corrige encore plus mal.
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  var TRACE_POUBELLE = 'M10 3h3v1h-1v9l-1 1H4l-1-1V4H2V3h3V2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1zM9 2H6v1h3V2zM4 13h7V4H4v9zm2-8H5v7h1V5zm1 0h1v7H7V5zm2 0h1v7H9V5z';
+  var TRACE_CAMERA = 'M6.2 2a1 1 0 0 0-.9.55L4.6 4H2.5A1.5 1.5 0 0 0 1 5.5v7A1.5 1.5 0 0 0 2.5 14h11a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 13.5 4h-2.1l-.7-1.45a1 1 0 0 0-.9-.55H6.2zM8 6a3.25 3.25 0 1 0 0 6.5 3.25 3.25 0 0 0 0-6.5zm0 1.5a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5z';
+  var CONTOUR = { fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5' };
+
+  var ICONES = {
+    poubelle: [['path', { d: TRACE_POUBELLE, 'fill-rule': 'evenodd', 'clip-rule': 'evenodd' }]],
+    camera: [['path', { d: TRACE_CAMERA, 'fill-rule': 'evenodd', 'clip-rule': 'evenodd' }]],
+    // Quatre équerres : « agrandir », sans loupe, qui se confond avec une recherche.
+    agrandir: [['path', { d: 'M2 2h5v1.5H3.5V7H2V2zm12 0v5h-1.5V3.5H9V2h5zM2 9h1.5v3.5H7V14H2V9zm12 0v5H9v-1.5h3.5V9H14z' }]],
+    info: [
+      ['circle', { cx: '8', cy: '8', r: '6.75', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5' }],
+      ['rect', { x: '7.25', y: '6.9', width: '1.5', height: '5', rx: '.4' }],
+      ['rect', { x: '7.25', y: '3.9', width: '1.5', height: '1.7', rx: '.4' }]
+    ],
+    attention: [
+      ['path', { d: 'M8 1.6 15.1 14H.9L8 1.6z', fill: 'none', stroke: 'currentColor',
+        'stroke-width': '1.5', 'stroke-linejoin': 'round' }],
+      ['rect', { x: '7.25', y: '5.8', width: '1.5', height: '4', rx: '.4' }],
+      ['rect', { x: '7.25', y: '10.7', width: '1.5', height: '1.6', rx: '.4' }]
+    ],
+    danger: [
+      ['circle', { cx: '8', cy: '8', r: '6.75', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5' }],
+      ['path', { d: 'M5.7 5.7l4.6 4.6M10.3 5.7l-4.6 4.6', fill: 'none', stroke: 'currentColor',
+        'stroke-width': '1.5', 'stroke-linecap': 'round' }]
+    ],
+    ok: [['path', { d: 'M6.4 11.9 2.9 8.4 4 7.3l2.4 2.4 5.6-5.6 1.1 1.1z' }]],
+    traduction: [
+      ['path', { d: 'M1.5 2.5h6v1.5h-6zM3.5 4.5h2v1.2c0 2.2-1 3.9-2.6 4.9l-.8-1.3c1.2-.7 2-1.9 2-3.6V4.5z' }],
+      ['path', { d: 'M8.5 13.5h6v-1.5h-6zM10.5 6.5h2v5.2h-2z', opacity: '.55' }],
+      ['path', { d: 'M6.2 8.1 7.3 7l3.4 3.4-1.1 1.1z' }]
+    ],
+    langue: [
+      ['circle', { cx: '8', cy: '8', r: '6.75', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5' }],
+      ['path', { d: 'M1.4 8h13.2M8 1.3c1.9 1.8 2.9 4.1 2.9 6.7S9.9 12.9 8 14.7C6.1 12.9 5.1 10.6 5.1 8S6.1 3.1 8 1.3z',
+        fill: 'none', stroke: 'currentColor', 'stroke-width': '1.3' }]
+    ]
+  };
+
+  function icone(nom) {
+    var dessin = ICONES[nom];
+    var svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('width', '14');
+    svg.setAttribute('height', '14');
+    svg.setAttribute('fill', 'currentColor');
+    svg.setAttribute('aria-hidden', 'true');
+    if (!dessin) { return svg; }                    // nom inconnu : une icône vide, pas d'erreur
+    for (var i = 0; i < dessin.length; i++) {
+      var forme = document.createElementNS(SVG_NS, dessin[i][0]);
+      var attrs = dessin[i][1];
+      for (var cle in attrs) { forme.setAttribute(cle, attrs[cle]); }
+      svg.appendChild(forme);
+    }
+    return svg;
+  }
+
+  // ---- Accent du numéro ----
+  //
+  // La couleur annuelle lue dans ausgabe.yaml, que le socle (_design.css) reprend comme
+  // accent. Validée avant d'entrer dans une propriété CSS : une valeur venue de l'hôte
+  // n'entre jamais telle quelle dans une feuille de style.
+  function poserAccent(hex) {
+    if (!/^#[0-9A-Fa-f]{6}$/.test(String(hex || ''))) { return; }
+    try { document.documentElement.style.setProperty('--szh-accent', hex); }
+    catch (e) { /* pas de racine stylable : le socle garde sa couleur de repli */ }
+  }
+
+  // ---- Notifications ----
+  //
+  // Un seul objet pour tous les messages du cockpit, et le ton dit la nature : `info` pour
+  // ce qui explique, `ok` pour ce qui a réussi, `attention` pour ce qui mérite un regard,
+  // `danger` pour ce qui ne passera pas la publication. Le style vit dans _design.css.
+  // `contenu` est un texte, ou une liste de nœuds quand le message porte de la mise en
+  // forme ; jamais de HTML injecté.
+  function notif(ton, contenu, opts) {
+    var o = opts || {};
+    var p = document.createElement(o.balise || 'p');
+    p.className = 'szh-notif szh-notif--' + ton + (o.discret ? ' szh-notif--discret' : '');
+    // La variante discrète n'a pas de pictogramme : elle sert aussi écrite à la main dans
+    // le HTML d'une page, où il n'y a pas de SVG à poser — les deux doivent se ressembler.
+    if (!o.discret) { p.appendChild(icone(ton === 'ok' ? 'ok' : (ton === 'info' ? 'info' : ton))); }
+    var corps = document.createElement('span');
+    if (Array.isArray(contenu)) {
+      for (var i = 0; i < contenu.length; i++) { corps.appendChild(contenu[i]); }
+    } else {
+      corps.textContent = String(contenu === undefined || contenu === null ? '' : contenu);
+    }
+    p.appendChild(corps);
+    if (o.role) { p.setAttribute('role', o.role); }
+    return p;
+  }
 
   // ---- Enregistrement automatique ----
   //
@@ -341,6 +444,7 @@ var SZH = (function () {
 
   return {
     autoEnregistrement: autoEnregistrement, motsCles: motsCles,
-    annoncerPret: annoncerPret, MARQUE_A_TRADUIRE: MARQUE
+    annoncerPret: annoncerPret, icone: icone, notif: notif, poserAccent: poserAccent,
+    MARQUE_A_TRADUIRE: MARQUE
   };
 })();

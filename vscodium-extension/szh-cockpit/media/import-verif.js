@@ -7,7 +7,7 @@
 //   webview -> hôte : pret ; enregistrer { auto, articles } ;
 //                     fermer { modifie, articles } ;
 //                     remplacer-image { slug, relatif, nomFichier, donneesBase64 }
-//   hôte -> webview : valeurs { articles, types, langue } ; enregistre { auto, n } ;
+//   hôte -> webview : valeurs { articles, types, langue, accent } ; enregistre { auto, n } ;
 //                     erreur { message } ; image-remplacee { slug, relatif, description } ;
 //                     image-erreur { slug, relatif, message } ; image-annulee { slug, relatif }
 (function () {
@@ -231,14 +231,13 @@
     vscodeApi.postMessage({ type: 'fermer', modifie: cartes.estModifie(), articles: cartes.modifiees() });
   });
 
+  cartes.traductions(document.getElementById('traductions'));
+
   let recu = false;
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
     recu = true;
     if (cartes.message(msg)) { return; }
-    if (msg.type === 'valeurs') {
-      cartes.rendre(msg.articles || [], msg.types || [], msg.langue || 'fr');
-    }
     // La rangée visée est retrouvée par slug et chemin relatif ; une réponse pour une
     // rangée disparue est ignorée.
     if (msg.type === 'image-remplacee' || msg.type === 'image-erreur' || msg.type === 'image-annulee') {

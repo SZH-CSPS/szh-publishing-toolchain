@@ -40,7 +40,10 @@ lib/
   yaml.js               (dé)sérialiseurs ausgabe/frontmatter/meta, écriture atomique
   webviews/util.js      assemblage du HTML des webviews (nonce, CSP, fichiers de media/)
 media/
-  _commun.js            fragments partagés par les formulaires (mots-clés, auto-enregistrement)
+  _commun.js            fragments partagés par les formulaires (mots-clés, auto-enregistrement,
+                        icônes, notifications)
+  _design.css           socle visuel commun : jetons, cartes, barre, notifications, modale
+  _fiches.{css,js}      cartes de métadonnées d'article et modale photo, pour deux formulaires
   apercu.{css,js}       fragment injecté dans l'aperçu HTML
   import-verif.{html,css,js}      vérification après import Word
   medias-article.{html,css,js}    gestionnaire des médias d'un article

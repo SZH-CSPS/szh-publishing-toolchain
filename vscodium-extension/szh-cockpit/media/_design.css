@@ -1,0 +1,294 @@
+/* Socle visuel commun aux formulaires du cockpit, posé avant la feuille de la page.
+   Sans lui, chaque vue redéfinissait sa carte, ses champs et ses avis : d'où le patchwork,
+   et l'impression que tout a le même poids.
+
+   Le parti est celui de la revue, avec les couleurs de l'éditeur : la structure, le rythme
+   vertical et l'échelle typographique viennent de pipeline/styles/print.css ; les couleurs
+   restent les jetons --vscode-*, pour que le thème clair ou sombre de l'utilisateur et ses
+   réglages de contraste continuent de s'appliquer sans que nous ayons à les garantir.
+   L'accent est la couleur annuelle du numéro (--szh-accent), posée par l'hôte ; à défaut,
+   c'est la couleur de focus de l'éditeur.
+
+   Plan : 1. jetons · 2. surfaces et séparations · 3. barre d'en-tête · 4. champs et
+   intitulés · 5. notifications · 6. boutons et icônes · 7. pastilles d'état · 8. modale. */
+
+/* Un élément caché le reste, quoi que sa classe pose comme display : plusieurs blocs du
+   socle sont des flex, qui l'emporteraient sur le display:none par défaut de [hidden]. */
+[hidden] { display: none !important; }
+
+/* ═══ 1. Jetons ═══════════════════════════════════════════════════════════════ */
+:root {
+  /* Échelle d'espacement : un pas de 4 px, comme la maquette. Tout écart s'y rapporte,
+     de sorte qu'aucune marge n'est choisie au hasard. */
+  --e1: .25rem;  --e2: .5rem;   --e3: .75rem;  --e4: 1rem;
+  --e5: 1.5rem;  --e6: 2rem;    --e7: 3rem;
+
+  /* Échelle typographique. Le corps est celui de l'éditeur ; les intitulés montent en
+     graisse et en interlettrage plutôt qu'en taille — c'est ce qui les rend lisibles sans
+     les faire crier. */
+  --t-mini: .72rem;
+  --t-libelle: .78rem;
+  --t-corps: 1rem;
+  --t-section: .82rem;
+  --t-titre: 1.05rem;
+  --interligne: 1.5;
+
+  --rayon: 5px;
+  --rayon-mini: 3px;
+
+  /* Accent : la couleur annuelle si l'hôte l'a posée, sinon le focus de l'éditeur. */
+  --accent: var(--szh-accent, var(--vscode-focusBorder, #3794ff));
+
+  /* Surfaces et filets. Le filet fort sert aux séparations qui portent du sens (entre deux
+     articles, entre deux images) ; le filet simple aux découpes internes. */
+  --fond: var(--vscode-editor-background, #1e1e1e);
+  --surface: var(--vscode-editorWidget-background, rgba(128, 128, 128, .06));
+  /* La tête d'une carte doit se distinguer de son corps, or plusieurs thèmes donnent la
+     même couleur au bloc de citation et au panneau : on teinte donc la surface avec un peu
+     d'encre, ce qui fonctionne en clair comme en sombre. Le jeton reste en repli pour les
+     moteurs sans color-mix. */
+  --surface-tete: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, .12));
+  --surface-tete: color-mix(in srgb, var(--encre) 7%, var(--surface));
+  --filet: var(--vscode-panel-border, rgba(128, 128, 128, .35));
+  --filet-fort: var(--vscode-contrastBorder, var(--vscode-panel-border, rgba(128, 128, 128, .6)));
+  --encre: var(--vscode-foreground, #ccc);
+  --encre-2: var(--vscode-descriptionForeground, rgba(204, 204, 204, .75));
+}
+
+/* ═══ 2. Surfaces et séparations ══════════════════════════════════════════════
+   La carte est le bloc de base : une surface franchement détachée du fond, un filet
+   complet, et un liseré d'accent en tête. Entre deux cartes, l'écart fait le reste : c'est
+   la séparation la plus lisible qui existe, et elle ne coûte pas un pixel de bordure. */
+.szh-carte {
+  background: var(--surface);
+  border: 1px solid var(--filet);
+  border-radius: var(--rayon);
+  overflow: hidden;                  /* la tête épouse le rayon */
+  /* Une ombre légère, celle des panneaux de l'éditeur : elle détache la carte du fond
+     mieux qu'un filet plus épais, qui alourdirait une longue liste. */
+  box-shadow: 0 2px 6px var(--vscode-widget-shadow, rgba(0, 0, 0, .18));
+}
+.szh-pile {
+  display: flex; flex-direction: column;
+  gap: var(--e5);                    /* l'écart entre cartes, franc et régulier */
+}
+
+/* Tête de carte : le nom de ce qu'on édite, ses états, et l'action qui le détruit. Fond
+   distinct et liseré d'accent — c'est ce qui donne un début et une fin à chaque bloc. */
+.szh-tete {
+  display: flex; align-items: center; gap: var(--e3);
+  padding: var(--e2) var(--e3);
+  background: var(--surface-tete);
+  border-bottom: 1px solid var(--filet);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.szh-tete-nom {
+  font-weight: 700; font-size: var(--t-titre);
+  overflow-wrap: anywhere; margin: 0;
+}
+.szh-tete-meta {
+  font-size: var(--t-mini); color: var(--encre-2);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.szh-pousse { margin-left: auto; }
+
+.szh-corps { padding: var(--e4); }
+
+/* Découpe interne : un intitulé de section sur un filet. Sert à séparer ce qui se lit
+   ensemble de ce qui se lit ailleurs, sans ajouter une boîte de plus. */
+.szh-section {
+  display: flex; align-items: center; gap: var(--e2);
+  margin: var(--e5) 0 var(--e3);
+  font-size: var(--t-section); font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase;
+  color: var(--encre-2);
+}
+.szh-section::after {
+  content: ''; flex: 1 1 auto; height: 1px; background: var(--filet);
+}
+.szh-section:first-child { margin-top: 0; }
+
+/* ═══ 3. Barre d'en-tête ══════════════════════════════════════════════════════
+   Les boutons qui commandent tout le formulaire, toujours à la même place et toujours
+   visibles : dans un formulaire long, un « Enregistrer » qui défile est un piège. */
+.szh-barre {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
+  padding: var(--e2) 0 var(--e3);
+  background: var(--fond);
+  border-bottom: 1px solid var(--filet);
+  margin-bottom: var(--e4);
+}
+.szh-barre-etat {
+  font-size: var(--t-libelle); color: var(--encre-2);
+  margin-left: var(--e1);
+}
+.szh-barre-indic {
+  font-size: var(--t-corps); font-weight: 700;
+  color: var(--vscode-editorWarning-foreground, #d1901e);
+}
+
+/* ═══ 4. Champs et intitulés ══════════════════════════════════════════════════
+   L'intitulé est ce qui manquait le plus : il était gris, minuscule et sans graisse, donc
+   invisible. Il monte en graisse et prend la couleur du texte, pas celle des notes. */
+.szh-champ { display: flex; flex-direction: column; gap: var(--e1); }
+.szh-champ > label,
+label.szh-libelle {
+  font-size: var(--t-libelle); font-weight: 700;
+  letter-spacing: .02em; color: var(--encre);
+}
+.szh-champ input,
+.szh-champ textarea,
+.szh-champ select {
+  font: inherit; padding: .35em .5em;
+  color: var(--vscode-input-foreground, inherit);
+  background: var(--vscode-input-background, transparent);
+  border: 1px solid var(--vscode-input-border, var(--filet));
+  border-radius: var(--rayon-mini);
+}
+.szh-champ input:focus,
+.szh-champ textarea:focus,
+.szh-champ select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.szh-champ input:disabled,
+.szh-champ textarea:disabled { opacity: .5; }
+.szh-aide {
+  margin: 0; font-size: var(--t-mini); font-style: italic; color: var(--encre-2);
+  line-height: 1.45;
+}
+.szh-grille-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e3); }
+@media (max-width: 42rem) { .szh-grille-2 { grid-template-columns: 1fr; } }
+
+/* Groupe de choix : le cadre reste, mais discret — c'est le contenu qui compte. */
+.szh-groupe {
+  border: 1px solid var(--filet); border-radius: var(--rayon-mini);
+  padding: var(--e1) var(--e3) var(--e2); margin: 0;
+}
+.szh-groupe > legend {
+  font-size: var(--t-libelle); font-weight: 700; padding: 0 var(--e1);
+  color: var(--encre);
+}
+.szh-opt {
+  display: flex; align-items: flex-start; gap: var(--e2);
+  padding: var(--e1) 0; cursor: pointer; font-size: .95em;
+}
+.szh-opt input { margin: .25em 0 0; cursor: pointer; accent-color: var(--accent); }
+.szh-opt .txt { display: flex; flex-direction: column; }
+.szh-opt .sous { font-size: var(--t-mini); color: var(--encre-2); line-height: 1.4; }
+
+/* ═══ 5. Notifications ════════════════════════════════════════════════════════
+   Un seul objet pour tous les messages du cockpit : liseré coloré à gauche, fond teinté,
+   pictogramme, texte. Quatre tons, et le ton dit la nature du message — information,
+   réussite, attention, blocage. Repris tel quel par toutes les vues.
+   Les fonds sont teintés depuis les jetons de l'éditeur : color-mix pour les tons qui n'ont
+   pas de jeton de fond, avec un repli plat pour les moteurs qui l'ignorent. */
+.szh-notif {
+  display: flex; align-items: flex-start; gap: var(--e2);
+  padding: var(--e2) var(--e3);
+  border: 1px solid var(--filet);
+  border-left: 3px solid var(--encre-2);
+  border-radius: var(--rayon-mini);
+  font-size: .93em; line-height: 1.45;
+  background: var(--surface-tete);
+  color: var(--encre);
+}
+.szh-notif svg { flex: 0 0 auto; margin-top: .15em; opacity: .9; }
+.szh-notif b { font-weight: 700; }
+.szh-notif p { margin: 0; }
+
+.szh-notif--info { border-left-color: var(--accent); }
+.szh-notif--ok {
+  border-left-color: var(--vscode-charts-green, #3fb950);
+  color: var(--encre);
+  background: rgba(63, 185, 80, .10);
+  background: color-mix(in srgb, var(--vscode-charts-green, #3fb950) 12%, transparent);
+}
+.szh-notif--attention {
+  border-left-color: var(--vscode-editorWarning-foreground, #d1901e);
+  background: var(--vscode-inputValidation-warningBackground, rgba(209, 144, 30, .14));
+  border-color: var(--vscode-inputValidation-warningBorder, rgba(209, 144, 30, .5));
+  color: var(--vscode-inputValidation-warningForeground, var(--encre));
+}
+.szh-notif--danger {
+  border-left-color: var(--vscode-errorForeground, #f85149);
+  background: var(--vscode-inputValidation-errorBackground, rgba(248, 81, 73, .14));
+  border-color: var(--vscode-inputValidation-errorBorder, rgba(248, 81, 73, .5));
+  color: var(--vscode-inputValidation-errorForeground, var(--encre));
+}
+.szh-notif--discret { border: 0; border-left: 3px solid var(--encre-2); background: transparent; padding-left: var(--e2); }
+
+/* ═══ 6. Boutons et icônes ════════════════════════════════════════════════════ */
+.szh-bouton {
+  font: inherit; padding: .35em .75em;
+  display: inline-flex; align-items: center; gap: var(--e2);
+  border: 1px solid transparent; border-radius: var(--rayon-mini); cursor: pointer;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground, inherit));
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, .18));
+}
+.szh-bouton:hover {
+  background: var(--vscode-button-hoverBackground, rgba(128, 128, 128, .3));
+  color: var(--vscode-button-foreground, inherit);
+}
+.szh-bouton:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.szh-bouton--principal {
+  color: var(--vscode-button-foreground, #fff);
+  background: var(--vscode-button-background, #0e639c);
+}
+.szh-bouton--principal:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+.szh-bouton[aria-pressed="true"] {
+  background: var(--accent); color: var(--vscode-button-foreground, #fff);
+}
+.szh-bouton:disabled { opacity: .45; cursor: default; }
+.szh-bouton:disabled:hover { background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, .18)); }
+
+/* Bouton d'icône seule : la cible reste large, le dessin petit. */
+.szh-ico {
+  font: inherit; display: inline-flex; align-items: center; justify-content: center;
+  width: 1.9rem; height: 1.9rem; padding: 0;
+  border: 1px solid transparent; border-radius: var(--rayon-mini);
+  background: transparent; color: var(--encre-2); cursor: pointer;
+}
+.szh-ico:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, .2)); color: var(--encre); }
+.szh-ico:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.szh-ico--danger:hover { color: var(--vscode-errorForeground, #f85149); }
+
+/* ═══ 7. Pastilles d'état ═════════════════════════════════════════════════════
+   Un état se lit d'un coup d'œil dans la tête de carte, sans lire une phrase. */
+.szh-pastille {
+  display: inline-flex; align-items: center; gap: var(--e1);
+  padding: .1em .45em; border-radius: 999px;
+  font-size: var(--t-mini); font-weight: 700; letter-spacing: .02em;
+  border: 1px solid var(--filet); color: var(--encre-2);
+  white-space: nowrap;
+}
+.szh-pastille--accent { border-color: var(--accent); color: var(--accent); }
+.szh-pastille--attention {
+  border-color: var(--vscode-editorWarning-foreground, #d1901e);
+  color: var(--vscode-editorWarning-foreground, #d1901e);
+}
+.szh-pastille--danger {
+  border-color: var(--vscode-errorForeground, #f85149);
+  color: var(--vscode-errorForeground, #f85149);
+}
+
+/* ═══ 8. Modale ═══════════════════════════════════════════════════════════════
+   Agrandir un aperçu : le fond s'assombrit, l'image occupe la place, tout le reste attend. */
+.szh-modale {
+  position: fixed; inset: 0; z-index: 100;
+  display: none; align-items: center; justify-content: center;
+  padding: var(--e5);
+  background: rgba(0, 0, 0, .72);
+}
+.szh-modale.visible { display: flex; }
+.szh-modale-boite {
+  display: flex; flex-direction: column; gap: var(--e2);
+  max-width: 100%; max-height: 100%;
+}
+.szh-modale-boite img {
+  max-width: 100%; max-height: calc(100vh - 8rem);
+  object-fit: contain; background: #000;
+  border: 1px solid var(--filet-fort); border-radius: var(--rayon);
+}
+.szh-modale-pied {
+  display: flex; align-items: center; gap: var(--e3);
+  color: #eee; font-size: var(--t-libelle);
+}

@@ -1721,7 +1721,9 @@ function htmlMetadonnees(nonce) {
     couleurAucune: T('meta.couleur.aucune'),
     couleurs: COULEURS_NUMERO.map((c) => ({ hex: c.hex, nom: T('meta.couleur.' + c.cle) }))
   });
-  return construireHtml('metadata-issue', nonce, { titre: T('meta.titre'), remplacements: { '__TXT__': txt } });
+  return construireHtml('metadata-issue', nonce, {
+    cssPartage: ['_design.css'], titre: T('meta.titre'), remplacements: { '__TXT__': txt }
+  });
 }
 
 let panneauMetadonnees = null;
@@ -1816,6 +1818,8 @@ function textesCarteArticle() {
     motsClesTitre: T('fiches.motscles.titre'), motsClesAide: T('fiches.motscles.aide'),
     motCleAjouter: T('fiches.motcle.ajouter'), motCleRetirer: T('fiches.motcle.retirer'),
     rien: T('form.rien'), enregistre: T('fiches.enregistre'),
+    tradAfficher: T('fiches.trad.afficher'), tradMasquer: T('fiches.trad.masquer'),
+    langueAvenir: T('fiches.langue.avenir'),
     photoBouton: T('photo.bouton'), photoPresente: T('photo.bouton.presente'),
     photoNomRequis: T('photo.nomrequis'), photoTitre: T('photo.titre'),
     photoDeposer: T('photo.deposer'), photoOu: T('photo.ou'),
@@ -1868,7 +1872,7 @@ function htmlApercuMetadonnees(nonce) {
     filtreNote: T('fiches.filtre.note'), tous: T('fiches.tous')
   }));
   return construireHtml('metadata-articles', nonce, {
-    cssPartage: ['_fiches.css'], jsPartage: ['_fiches.js'],
+    cssPartage: ['_design.css', '_fiches.css'], jsPartage: ['_fiches.js'],
     titre: T('fiches.titre'),
     remplacements: { '__TXT__': txt },
     // Seule dérogation à la CSP : les aperçus de la modale photo, en data: URI.
@@ -2111,6 +2115,7 @@ function textesTraduction() {
 
 function htmlTraduction(nonce) {
   return construireHtml('traduction', nonce, {
+    cssPartage: ['_design.css'],
     titre: T('trad.titre'),
     remplacements: { '__TXT__': JSON.stringify(textesTraduction()) }
   });
@@ -2683,6 +2688,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
       articles: lireMetadonneesArticles(fournisseur, filtreArticles),
       filtre: filtreArticles,
       langue: langue,
+      accent: lireCouleurAccent(fournisseur.racine),
       types: typesTraduits(langue)
     });
     fichesModifie = false;                         // les cartes viennent d'être reconstruites
@@ -2808,7 +2814,7 @@ function htmlImportVerif(nonce) {
     errImageFormat: T('importv.err.format')
   }));
   return construireHtml('import-verif', nonce, {
-    cssPartage: ['_fiches.css'], jsPartage: ['_fiches.js'],
+    cssPartage: ['_design.css', '_fiches.css'], jsPartage: ['_fiches.js'],
     titre: T('importv.titre'),
     remplacements: { '__TXT__': txt },
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
@@ -2843,6 +2849,7 @@ function envoyerValeursImportVerif(panneau, fournisseur) {
     type: 'valeurs',
     articles: lireArticlesImport(fournisseur),
     langue: langue,
+    accent: lireCouleurAccent(fournisseur.racine),
     types: typesTraduits(langue)
   });
 }
@@ -2947,7 +2954,9 @@ const REGL_TEXTES = () => JSON.stringify({
 });
 
 function htmlReglages(nonce) {
-  return construireHtml('settings', nonce, { titre: T('regl.titre'), remplacements: { '__TXT__': REGL_TEXTES() } });
+  return construireHtml('settings', nonce, {
+    cssPartage: ['_design.css'], titre: T('regl.titre'), remplacements: { '__TXT__': REGL_TEXTES() }
+  });
 }
 
 // Par expression régulière : argv.json accepte des commentaires, qu'un JSON.parse
@@ -3152,7 +3161,9 @@ function textesTable() {
 // postMessage et la grille est construite en DOM, sans innerHTML.
 function htmlEditeurTable(nonce) {
   // media/table-editor.{html,css,js} ; les libellés arrivent par postMessage.
-  return construireHtml('table-editor', nonce, { titre: T('table.titre', ['']) });
+  return construireHtml('table-editor', nonce, {
+    cssPartage: ['_design.css'], titre: T('table.titre', [''])
+  });
 }
 
 let panneauxTable = new Map();   // fsPath -> WebviewPanel (un éditeur par fichier)
@@ -3313,7 +3324,7 @@ function apercuMedia(chemin, budget) {
 function textesMedias() {
   return {
     sectionImages: T('medias.section.images'), sectionPortraits: T('medias.section.portraits'),
-    imagesNote: T('medias.images.note'), portraitsNote: T('medias.portraits.note'),
+    portraitsNote: T('medias.portraits.note'),
     aucuneImage: T('medias.aucune.image'), aucunPortrait: T('medias.aucun.portrait'),
     resume: T('medias.resume'), rienAEcrire: T('medias.rienAEcrire'),
     legende: T('img.legende'), legendeIndice: T('img.legende.indice'), legendeAide: T('img.legende.aide'),
@@ -3330,12 +3341,12 @@ function textesMedias() {
     qualiteJuste: T('medias.qualite.juste'),
     qualitePortraitInsuffisant: T('medias.qualite.portrait.insuffisant'),
     qualitePortraitJuste: T('medias.qualite.portrait.juste'),
-    deposer: T('medias.deposer'), ou: T('medias.ou'), choisirFichier: T('medias.choisirFichier'),
+    remplacer: T('medias.remplacer'), choisirFichier: T('medias.choisirFichier'),
+    agrandir: T('medias.agrandir'), fermer: T('medias.fermer'),
     remplacee: T('medias.remplacee'),
     errFormat: T('medias.err.format'), errTropVolumineuse: T('medias.err.tropvolumineux'),
     errFormatPortrait: T('medias.err.format.portrait'),
     errTropVolumineusePortrait: T('medias.err.tropvolumineux.portrait'),
-    ouvrir: T('medias.ouvrir'), ouvrirTip: T('medias.tip.ouvrir'),
     retirer: T('medias.retirer'), retirerTip: T('medias.tip.retirer'),
     inserer: T('medias.inserer'), insererTip: T('medias.tip.inserer'),
     altManquant: T('medias.alt.manquant'), altDivergent: T('medias.alt.divergent'),
@@ -3343,7 +3354,9 @@ function textesMedias() {
     retour: T('img.retour'), retourTip: T('img.tip.retour'),
     enregistrer: T('img.enregistrer'), enregistrerTip: T('medias.tip.enregistrer'),
     enregistre: T('medias.enregistre'), nonEnregistre: T('img.nonEnregistre'),
-    occZero: T('img.occ.zero'), occPlusieurs: T('img.occ.plusieurs'),
+    occZero: T('img.occ.zero'), sectionAccessibilite: T('medias.section.a11y'),
+    etatJamais: T('medias.etat.jamais'), etatInsertions: T('medias.etat.insertions'),
+    etatHorsFigure: T('medias.etat.horsfigure'), etatDoublon: T('medias.etat.doublon'),
     apercuAbsent: T('img.apercu.absent'), portraitOrphelin: T('medias.portrait.orphelin'),
     versionTitre: T('medias.portrait.version.titre'),
     vOriginal: T('photo.version.original'), vAvecFond: T('photo.version.avecfond'),
@@ -3353,6 +3366,7 @@ function textesMedias() {
 
 function htmlMedias(nonce) {
   return construireHtml('medias-article', nonce, {
+    cssPartage: ['_design.css'],
     titre: T('medias.titre', ['']),
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
   });
@@ -3584,7 +3598,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       type: 'charger', slug: slug,
       medias: listerMediasArticle(fournisseur, slug, texteMd, budget),
       portraits: listerPortraitsArticle(fournisseur, slug, budget),
-      focus: focus, i18n: textesMedias()
+      focus: focus, accent: lireCouleurAccent(fournisseur.racine), i18n: textesMedias()
     });
   }
 
@@ -3633,17 +3647,6 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
     if (msg.type === 'pret') { await charger(panneau); return; }
     if (msg.type === 'modifie') {
       panneau.title = (msg.modifie ? '● ' : '') + T('medias.titre', [slug]);
-      return;
-    }
-    if (msg.type === 'ouvrirMedia') {
-      const relatif = String(msg.relatif || '');
-      if (!relatifImageValide(relatif)) { return; }
-      // La visionneuse native, en colonne 2 pour ne pas recouvrir le formulaire.
-      try {
-        await vscode.commands.executeCommand('vscode.open',
-          vscode.Uri.file(path.join(racine, 'articles', slug, 'media', relatif)),
-          { viewColumn: vscode.ViewColumn.Two, preserveFocus: true });
-      } catch (e) { /* fichier disparu : rien à montrer */ }
       return;
     }
     if (msg.type === 'enregistrer') {

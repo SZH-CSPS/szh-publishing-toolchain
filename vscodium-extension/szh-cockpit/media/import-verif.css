@@ -1,9 +1,7 @@
 /* Propre au panneau « Vérification de l'import » : les badges d'état, le compteur de
-   champs vides et les rangées d'images. La carte, les auteurs et la modale photo
-   viennent de _fiches.css. */
-.carte h2 { font-size: 1em; font-weight: 600; margin: 0 0 .2rem;
-  font-family: var(--vscode-editor-font-family, monospace);
-  display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+   champs vides et les rangées d'images. La carte, sa tête, les auteurs et la modale photo
+   viennent de _design.css et de _fiches.css : on ne redonne ici que la police du slug. */
+.carte > h2 { font-family: var(--vscode-editor-font-family, monospace); }
 /* ---- Badges d'état : « détecté » quand le champ est rempli, « à compléter » sinon. */
 .badge { margin-left: .5em; font-weight: normal; font-size: .75em;
   padding: .02em .55em; border-radius: 999px; white-space: nowrap;
@@ -16,8 +14,9 @@
 .compteur.vide { color: var(--vscode-charts-orange, #d18616); }
 .photos-note { color: var(--vscode-descriptionForeground); font-size: .85em; margin: .35rem 0 .1rem; }
 /* ---- Originaux des images : une rangée par image, avec sa zone de dépôt. */
-.carte h3 { font-size: .95em; font-weight: 600; margin: 1.1rem 0 .15rem;
-  padding-top: .6rem; border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,.25)); }
+.carte h3 { font-size: var(--t-section); font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--encre-2); margin: var(--e5) 0 var(--e2);
+  padding-top: var(--e3); border-top: 1px solid var(--filet); }
 .images-note, .images-aucune { color: var(--vscode-descriptionForeground);
   font-size: .85em; margin: .15rem 0 .45rem; }
 .image-ligne { display: flex; gap: .8rem; align-items: center; margin: .4rem 0; }
@@ -31,14 +30,13 @@
   border: 2px dashed var(--vscode-panel-border, rgba(128,128,128,.6));
   border-radius: 4px; padding: .45rem .7rem; font-size: .85em;
   color: var(--vscode-descriptionForeground); }
-.zone-image.survol { border-color: var(--vscode-focusBorder);
+.zone-image.survol { border-color: var(--accent);
   background: var(--vscode-list-hoverBackground, rgba(128,128,128,.12));
   color: var(--vscode-foreground); }
 .zone-image .ou { font-size: .9em; }
 .zone-image.survol > * { pointer-events: none; }  /* pas de dragleave parasite sur les enfants */
 .zone-image button { pointer-events: auto; }
 .image-ligne.occupe .zone-image { opacity: .5; pointer-events: none; }
-.modale h3 { margin: 0 0 .7rem; font-size: 1.05em; font-weight: 600; border: none; padding: 0; }
-#fermer { margin-left: .6rem; }
-#etat { margin-left: .8rem; font-size: .92em; color: var(--vscode-descriptionForeground); }
-.modifie h2 .nom-carte::after { content: " ●"; color: var(--vscode-charts-orange, orange); }
+.modale h3 { margin: 0 0 var(--e3); font-size: var(--t-titre); font-weight: 700;
+  border: none; padding: 0; text-transform: none; letter-spacing: normal; color: var(--encre); }
+.modifie > h2 .nom-carte::after { content: " ●"; color: var(--vscode-charts-orange, orange); }

@@ -1,5 +1,9 @@
 <h1>%%SZH:fiches.titre%%</h1>
-<p class="note">%%SZH:fiches.note%%</p>
-<div class="barre"><button class="principal" id="enregistrer">%%SZH:form.enregistrer%%</button><span id="etat" role="status"></span></div>
+<div class="szh-barre">
+  <button class="szh-bouton szh-bouton--principal" id="enregistrer">%%SZH:form.enregistrer%%</button>
+  <button class="szh-bouton" id="langue">%%SZH:fiches.langue%%</button>
+  <button class="szh-bouton" id="traductions" aria-pressed="false">%%SZH:fiches.trad.afficher%%</button>
+  <span class="szh-barre-etat" id="etat" role="status"></span>
+</div>
 <div class="filtre" id="filtre" hidden></div>
 <div id="cartes"></div>

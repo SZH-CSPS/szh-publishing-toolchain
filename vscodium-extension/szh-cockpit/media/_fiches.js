@@ -3,32 +3,10 @@
 // deux pages : les autres webviews n'en ont pas l'usage.
 //
 //   SZH.cartesArticles(opts)  construit et pilote les cartes d'un conteneur, la modale
-//                             photo et l'enregistrement
-//   SZH.icone(chemin)         une icône SVG de 14 px
+//                             photo, l'enregistrement et l'affichage des traductions
 
 (function () {
   'use strict';
-
-  // ---- Icônes ----
-
-  var SVG_NS = 'http://www.w3.org/2000/svg';
-  var CHEMIN_POUBELLE = 'M10 3h3v1h-1v9l-1 1H4l-1-1V4H2V3h3V2a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1zM9 2H6v1h3V2zM4 13h7V4H4v9zm2-8H5v7h1V5zm1 0h1v7H7V5zm2 0h1v7H9V5z';
-  var CHEMIN_CAMERA = 'M6.2 2a1 1 0 0 0-.9.55L4.6 4H2.5A1.5 1.5 0 0 0 1 5.5v7A1.5 1.5 0 0 0 2.5 14h11a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 13.5 4h-2.1l-.7-1.45a1 1 0 0 0-.9-.55H6.2zM8 6a3.25 3.25 0 1 0 0 6.5 3.25 3.25 0 0 0 0-6.5zm0 1.5a1.75 1.75 0 1 0 0 3.5 1.75 1.75 0 0 0 0-3.5z';
-
-  function icone(chemin) {
-    var svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('viewBox', '0 0 16 16');
-    svg.setAttribute('width', '14');
-    svg.setAttribute('height', '14');
-    svg.setAttribute('fill', 'currentColor');
-    svg.setAttribute('aria-hidden', 'true');
-    var p = document.createElementNS(SVG_NS, 'path');
-    p.setAttribute('fill-rule', 'evenodd');
-    p.setAttribute('clip-rule', 'evenodd');
-    p.setAttribute('d', chemin);
-    svg.appendChild(p);
-    return svg;
-  }
 
   // ---- Cartes de métadonnées d'article ----
   //
@@ -47,13 +25,15 @@
   //   marque(carte, slug)             une carte vient d'être marquée modifiée
   //
   // `surChangement()` est appelé quand l'ensemble des cartes modifiées change, y compris
-  // au re-rendu qui le vide.
+  // au re-rendu qui le vide. `surValeurs(msg)` l'est après le rendu d'un message
+  // « valeurs », pour ce que la page ajoute autour des cartes.
   //
   // Protocole avec l'hôte, pour la partie photo :
   //   webview -> hôte : photo-ouvrir { slug, index, photo } ;
   //                     photo-deposer { slug, index, prenom, nom, nomFichier, donneesBase64 } ;
   //                     photo-choisir { slug, index, base, version }
-  //   hôte -> webview : photo-versions { slug, index, base, versions, actuelle, infos } ;
+  //   hôte -> webview : valeurs { articles, types, langue, accent } ;
+  //                     photo-versions { slug, index, base, versions, actuelle, infos } ;
   //                     photo-valeur { slug, index, photo } ; photo-erreur { slug, index, message }
   function cartesArticles(opts) {
     var conteneur = opts.conteneur;
@@ -62,6 +42,7 @@
     var etat = opts.etat;
     var decor = opts.decor || {};
     var surChangement = opts.surChangement || function () {};
+    var surValeurs = opts.surValeurs || function () {};
     var appeler = function (nom, a, b, c) { if (decor[nom]) { decor[nom](a, b, c); } };
 
     var TAILLE_MAX_PHOTO = 20 * 1024 * 1024;
@@ -81,7 +62,10 @@
       appeler('marque', carte, slug);
     }
 
-    function champTexte(carte, parent, slug, cle, langue, libelle, valeur, multiligne) {
+    // `traduction` marque les champs d'une autre langue que celle du numéro : ils sont
+    // cachés par défaut, et révélés par le bouton de la barre. Une fiche se remplit
+    // d'abord dans sa langue ; tout afficher d'emblée triplait la hauteur de la carte.
+    function champTexte(carte, parent, slug, cle, langue, libelle, valeur, multiligne, traduction) {
       var l = document.createElement('label');
       l.textContent = libelle;
       appeler('champ', l, langue ? cle + '.' + langue : cle);
@@ -90,6 +74,7 @@
       i.value = valeur || '';
       i.dataset.cle = cle;
       if (langue) { i.dataset.langue = langue; l.classList.add('champ-' + langue); i.classList.add('champ-' + langue); }
+      if (traduction) { l.classList.add('champ-trad'); i.classList.add('champ-trad'); }
       i.addEventListener('input', function () { marquer(carte, slug); });
       parent.appendChild(l);
       parent.appendChild(i);
@@ -135,14 +120,14 @@
       var photo = document.createElement('button');
       photo.type = 'button';
       photo.className = 'photo';
-      photo.appendChild(icone(CHEMIN_CAMERA));
+      photo.appendChild(SZH.icone('camera'));
       majBoutonPhoto(rangee, photo);
       photo.addEventListener('click', function () { ouvrirModale(carte, slug, rangee); });
       rangee.appendChild(photo);
       var retirer = document.createElement('button');
       retirer.type = 'button';
       retirer.className = 'retirer';
-      retirer.appendChild(icone(CHEMIN_POUBELLE));
+      retirer.appendChild(SZH.icone('poubelle'));
       retirer.title = TXT.retirerAuteur;
       retirer.addEventListener('click', function () { rangee.remove(); marquer(carte, slug); });
       rangee.appendChild(retirer);
@@ -344,7 +329,7 @@
     function construireCarte(article) {
       var slug = article.slug;
       var carte = document.createElement('div');
-      carte.className = 'carte';
+      carte.className = 'carte szh-carte';
       carte.dataset.slug = slug;
       var titre = document.createElement('h2');
       if (decor.titre) { decor.titre(titre, slug); } else { titre.textContent = slug; }
@@ -397,7 +382,7 @@
         for (var g = 0; g < langues.length; g++) {
           var lg = langues[g];
           champTexte(carte, carte, slug, textes[c][0], lg,
-            textes[c][1].split('{0}').join(noms[lg]), (v[textes[c][0]] || {})[lg], textes[c][2]);
+            textes[c][1].split('{0}').join(noms[lg]), (v[textes[c][0]] || {})[lg], textes[c][2], g > 0);
         }
       }
 
@@ -501,6 +486,12 @@
     // Traite les réponses de l'hôte qui concernent l'enregistrement et la photo. Rend
     // true si le message a été consommé, pour que la page n'ait pas à les connaître.
     function message(msg) {
+      if (msg.type === 'valeurs') {
+        SZH.poserAccent(msg.accent);
+        rendre(msg.articles || [], msg.types || [], msg.langue || 'fr');
+        surValeurs(msg);
+        return true;
+      }
       if (msg.type === 'enregistre') {
         if (minuteurEnr) { minuteurEnr.confirme(); }
         // Les marques ne sont retirées qu'après un enregistrement automatique : après un
@@ -572,8 +563,30 @@
       return minuteurEnr;
     }
 
+    // Traductions : cachées au départ, mots-clés exceptés — une fiche se remplit d'abord
+    // dans la langue du numéro, et trois langues déroulées d'emblée triplaient la hauteur
+    // de chaque carte. L'état vit sur le conteneur, et non carte par carte : il survit
+    // ainsi au re-rendu, qui recrée toutes les cartes. Le libellé du bouton dit l'état.
+    var traductionsVisibles = false;
+    function traductions(bouton) {
+      var poser = function () {
+        conteneur.classList.toggle('sans-trad', !traductionsVisibles);
+        if (!bouton) { return; }
+        bouton.textContent = traductionsVisibles ? TXT.tradMasquer : TXT.tradAfficher;
+        bouton.setAttribute('aria-pressed', traductionsVisibles ? 'true' : 'false');
+      };
+      if (bouton) {
+        bouton.addEventListener('click', function () {
+          traductionsVisibles = !traductionsVisibles;
+          poser();
+        });
+      }
+      poser();
+    }
+
     return {
       rendre: rendre,
+      traductions: traductions,
       collecter: collecter,
       modifiees: modifiees,
       oublier: oublier,
@@ -585,6 +598,5 @@
     };
   }
 
-  SZH.icone = icone;
   SZH.cartesArticles = cartesArticles;
 })();

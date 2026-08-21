@@ -1,10 +1,15 @@
 (function () {
 'use strict';
-// Gestionnaire des médias d'un article : une carte par image de media/, aux mêmes champs
-// que l'ancienne fiche image (légende, rôle du texte alternatif, alternative, crédits),
-// plus la case « sans légende ni numéro », l'encadré « attention qualité » et le
-// remplacement du fichier par dépôt. En pied, les portraits des auteur·e·s, sans champs :
-// ils ne sont pas des figures, on n'y juge que la qualité et on les remplace.
+// Gestionnaire des médias d'un article : une carte par image de media/, avec sa légende,
+// ses crédits, le rôle de son texte alternatif, la case « sans légende ni numéro » et le
+// verdict de qualité. En pied, les portraits des auteur·e·s, qui ne sont pas des figures :
+// on n'y juge que la qualité, on y choisit la version retenue, et on les remplace.
+//
+// Ce que la disposition dit. Chaque média est une carte à tête distincte — nom, poids,
+// état, corbeille — parce que la première question, dans une liste, est « où commence et où
+// finit ce bloc ». À gauche l'image et ce qui la concerne matériellement : son verdict de
+// qualité, et le dépôt qui la remplace. À droite ce qui s'écrira dans le texte de l'article,
+// dans l'ordre où on le remplit : légende, crédits, puis l'accessibilité.
 //
 // Mêmes règles que les autres webviews : aucune donnée dans le HTML, tout arrive par
 // postMessage, page construite en DOM sans innerHTML. Les aperçus sont des data: URI
@@ -12,12 +17,12 @@
 //
 // Protocole. Vers l'hôte :
 //   pret ; modifie { modifie } ; enregistrer { auto, medias } ;
-//   retourArticle { modifie, medias } ; ouvrirMedia { relatif } ;
-//   remplacer { relatif, nomFichier, donneesBase64 } ; retirer { relatif } ;
-//   inserer { relatif, medias } ; portrait-remplacer { base, nomFichier, donneesBase64 } ;
+//   retourArticle { modifie, medias } ; retirer { relatif } ;
+//   remplacer { relatif, nomFichier, donneesBase64 } ; inserer { relatif, medias } ;
+//   portrait-remplacer { base, nomFichier, donneesBase64 } ;
 //   portrait-version { base, version }
 // Depuis l'hôte :
-//   charger { slug, medias, portraits, focus, i18n } ; enregistre { auto } ;
+//   charger { slug, medias, portraits, focus, accent, i18n } ; enregistre { auto } ;
 //   erreur { message } ; focaliser { relatif } ;
 //   media-remplace { relatif, description, apercu, qualite } ;
 //   media-erreur { relatif, message } ; media-annulee { relatif } ;
@@ -41,14 +46,25 @@ var PORTRAIT = {
 
 var TXT = {}, ctl = {}, cartes = [], portraits = [], dernierModifie = false;
 var barre = document.getElementById('barre');
-var avis = document.getElementById('avis');
 var corps = document.getElementById('corps');
+var modale = null;
 
 function bouton(txt, fn, cls, titre) {
   var b = document.createElement('button');
-  b.type = 'button'; b.textContent = txt;
-  if (cls) { b.className = cls; }
+  b.type = 'button';
+  b.textContent = txt;
+  b.className = 'szh-bouton' + (cls ? ' ' + cls : '');
   if (titre) { b.title = titre; }
+  b.addEventListener('click', fn);
+  return b;
+}
+function boutonIcone(nom, titre, fn, cls) {
+  var b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'szh-ico' + (cls ? ' ' + cls : '');
+  b.title = titre || '';
+  b.setAttribute('aria-label', titre || '');
+  b.appendChild(SZH.icone(nom));
   b.addEventListener('click', fn);
   return b;
 }
@@ -61,6 +77,11 @@ function texte(parent, balise, cls, contenu) {
   return e;
 }
 function ligne(v) { return String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' ').trim(); }
+function remplir(cle, valeurs) {
+  var t = String(TXT[cle] || '');
+  for (var i = 0; i < (valeurs || []).length; i++) { t = t.split('{' + i + '}').join(String(valeurs[i])); }
+  return t;
+}
 
 // ---- Valeurs d'une carte ----
 // Les deux états du texte alternatif viennent du choix de rôle, jamais d'un champ vide :
@@ -103,6 +124,7 @@ function majRole(c) {
     c.ctl.aideLegende.textContent = horsFigure(c) ? (TXT.horsFigureAide || '') : (TXT.legendeAide || '');
   }
   majAlerteAlt(c);
+  majPastilles(c);
 }
 
 // Ni texte alternatif, ni légende sur laquelle retomber, et pas déclarée décorative : le
@@ -122,9 +144,32 @@ function majAlerteAlt(c) {
     if (manque) { message = TXT.altManquant || ''; }
     else if (c.sansAlternative) { message = TXT.altDivergent || ''; }
   }
-  c.ctl.alerteAlt.textContent = message;
-  c.ctl.alerteAlt.className = 'alerte-a11y' + (message ? ' visible' : '');
+  c.ctl.alerteAlt.textContent = '';
+  c.ctl.alerteAlt.hidden = message === '';
+  if (message !== '') {
+    c.ctl.alerteAlt.appendChild(SZH.icone('danger'));
+    texte(c.ctl.alerteAlt, 'span', null, message);
+  }
 }
+
+// Pastilles de la tête de carte : l'état se lit d'un coup d'œil, sans lire une phrase.
+function majPastilles(c) {
+  var zone = c.ctl.pastilles;
+  if (!zone) { return; }
+  zone.textContent = '';
+  if (c.occurrences === 0) {
+    texte(zone, 'span', 'szh-pastille szh-pastille--attention', TXT.etatJamais || '');
+  } else if (c.occurrences > 1) {
+    texte(zone, 'span', 'szh-pastille szh-pastille--accent', remplir('etatInsertions', [c.occurrences]));
+  }
+  if (horsFigure(c)) { texte(zone, 'span', 'szh-pastille', TXT.etatHorsFigure || ''); }
+  // Deux noms pour un seul visuel : l'hôte l'a vu par l'empreinte du contenu.
+  if (c.doublons.length > 0) {
+    var p = texte(zone, 'span', 'szh-pastille szh-pastille--attention', TXT.etatDoublon || '');
+    p.title = remplir('doublonDe', [c.doublons.join(', ')]);
+  }
+}
+
 function estModifieCarte(c) {
   if (!c.enregistrees) { return false; }
   return JSON.stringify(valeurs(c)) !== JSON.stringify(c.enregistrees);
@@ -136,7 +181,7 @@ function estModifie() {
 function majModifie() {
   var m = estModifie();
   if (ctl.indic) {
-    ctl.indic.textContent = m ? ' ●' : '';
+    ctl.indic.textContent = m ? '●' : '';
     ctl.indic.title = m ? (TXT.nonEnregistre || '') : '';
   }
   if (m !== dernierModifie) { dernierModifie = m; api.postMessage({ type: 'modifie', modifie: m }); }
@@ -152,9 +197,9 @@ function medias() {
   return res;
 }
 
-// ---- Fabrique d'une carte ----
+// ---- Briques d'une carte ----
 function champ(parent, c, cle) {
-  var d = texte(parent, 'div', 'champ');
+  var d = texte(parent, 'div', 'szh-champ');
   var id = 'ch-' + cle + '-' + c.index;
   var l = texte(d, 'label', null, TXT[cle] || '');
   l.setAttribute('for', id);
@@ -167,7 +212,7 @@ function champ(parent, c, cle) {
   return d;
 }
 function radioRole(parent, c, libelle, sous) {
-  var l = texte(parent, 'label', 'opt');
+  var l = texte(parent, 'label', 'szh-opt');
   var i = document.createElement('input');
   i.type = 'radio'; i.name = 'role-alt-' + c.index;
   i.addEventListener('change', function () {
@@ -180,9 +225,9 @@ function radioRole(parent, c, libelle, sous) {
   return i;
 }
 function caseHorsFigure(parent, c) {
-  var z = texte(parent, 'fieldset', 'zone');
+  var z = texte(parent, 'fieldset', 'szh-groupe');
   texte(z, 'legend', null, TXT.horsFigureTitre || '');
-  var l = texte(z, 'label', 'opt');
+  var l = texte(z, 'label', 'szh-opt');
   var i = document.createElement('input');
   i.type = 'checkbox';
   i.addEventListener('change', function () { etat(''); majRole(c); majModifie(); });
@@ -193,46 +238,34 @@ function caseHorsFigure(parent, c) {
   c.ctl.horsFigure = i;
 }
 
-// Encadré orange, ou rien quand la qualité suffit. Le verdict vient de l'hôte
-// (lib/qualite-image.js), la webview n'en refait pas le calcul.
+// Verdict de qualité, sous l'image qu'il juge : il vient de l'hôte (lib/qualite-image.js),
+// la webview n'en refait pas le calcul.
 function poserQualite(boite, qualite) {
   boite.textContent = '';
-  boite.className = 'qualite';
   var q = qualite || {};
-  if (q.niveau !== 'insuffisant' && q.niveau !== 'juste') { return; }
-  boite.classList.add('visible');
-  if (q.niveau === 'insuffisant') { boite.classList.add('insuffisant'); }
-  texte(boite, 'span', 'titre', TXT.qualiteTitre || '');
+  // Le ton est reposé à chaque verdict : après un remplacement réussi, la classe
+  // « attention » du fichier précédent ne doit pas rester accrochée à la boîte.
+  if (q.niveau !== 'insuffisant' && q.niveau !== 'juste') {
+    boite.className = 'szh-notif';
+    boite.hidden = true;
+    return;
+  }
+  boite.hidden = false;
+  boite.className = 'szh-notif szh-notif--attention';
+  boite.appendChild(SZH.icone('attention'));
+  var dedans = texte(boite, 'span');
+  texte(dedans, 'b', null, TXT.qualiteTitre || '');
   var prefixe = q.famille === 'portrait' ? 'qualitePortrait' : 'qualite';
-  var modele = TXT[prefixe + (q.niveau === 'insuffisant' ? 'Insuffisant' : 'Juste')] || '';
-  texte(boite, 'span', null, ' ' + modele
+  var forme = TXT[prefixe + (q.niveau === 'insuffisant' ? 'Insuffisant' : 'Juste')] || '';
+  texte(dedans, 'span', null, ' ' + forme
     .split('{0}').join(String(q.mesure === null || q.mesure === undefined ? '?' : q.mesure))
     .split('{1}').join(String(q.min)).split('{2}').join(String(q.conseille)));
-}
-
-// Avis d'insertion. Sans insertion, la carte se verrouille : il n'y a nulle part où
-// écrire légende et crédits, et le seul geste utile est d'insérer l'image dans le texte.
-function poserOcc(c) {
-  var b = c.ctl.occ;
-  b.className = 'occ';
-  b.textContent = '';
-  if (c.occurrences === 0) {
-    b.textContent = TXT.occZero || '';
-    b.className = 'occ visible alerte';
-  } else if (c.occurrences > 1) {
-    b.textContent = (TXT.occPlusieurs || '').split('{0}').join(String(c.occurrences));
-    b.className = 'occ visible info';
-  }
-  var verrou = c.occurrences === 0;
-  ['legende', 'alt', 'copyright', 'source'].forEach(function (k) { if (c.ctl[k]) { c.ctl[k].disabled = verrou; } });
-  [c.ctl.roleDecrit, c.ctl.roleDeco, c.ctl.horsFigure].forEach(function (e) { if (e) { e.disabled = verrou; } });
-  if (verrou) { majAlerteAlt(c); } else { majRole(c); }
 }
 
 function poserEtatMedia(c, message, erreur) {
   if (!c.ctl.etatMedia) { return; }
   c.ctl.etatMedia.textContent = message || '';
-  c.ctl.etatMedia.classList.toggle('erreur', !!erreur);
+  c.ctl.etatMedia.className = 'media-etat' + (erreur ? ' erreur' : '');
 }
 
 // Lit le fichier déposé ou choisi et l'envoie à l'hôte, qui demande confirmation, garde
@@ -266,10 +299,13 @@ function envoyerFichier(c, f, typeMessage, cle, genre) {
   lecteur.readAsDataURL(f);
 }
 
+// Le dépôt vient juste sous l'image, après le verdict de qualité : on regarde le fichier,
+// on lit ce qui lui manque, on le remplace. Un intitulé court suffit à cette place.
 function zoneDepot(parent, c, typeMessage, cle, genre) {
   var d = texte(parent, 'div', 'depot');
-  texte(d, 'span', null, TXT.deposer || '');
-  texte(d, 'span', 'ou', TXT.ou || '');
+  var titre = texte(d, 'span', 'depot-titre');
+  titre.appendChild(SZH.icone('camera'));
+  texte(titre, 'span', null, TXT.remplacer || '');
   var choisir = bouton(TXT.choisirFichier || '', function () { fichier.click(); });
   d.appendChild(choisir);
   var fichier = document.createElement('input');
@@ -289,74 +325,119 @@ function zoneDepot(parent, c, typeMessage, cle, genre) {
     var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
     if (f) { envoyerFichier(c, f, typeMessage, cle, genre); }
   });
+  c.ctl.etatMedia = texte(d, 'span', 'media-etat');
   return d;
 }
 
-function poserVisuel(zone, nom, description, apercu) {
+// L'aperçu est un bouton : cliquer agrandit. Sans aperçu — fichier trop lourd ou format
+// non affichable — il n'y a rien à agrandir, et la place le dit.
+function poserVisuel(zone, nom, apercu) {
   zone.textContent = '';
-  if (apercu) {
-    var img = document.createElement('img');
-    img.src = apercu; img.alt = nom || '';
-    zone.appendChild(img);
-  } else {
+  if (!apercu) {
     texte(zone, 'p', 'absent', TXT.apercuAbsent || '');
+    return;
   }
-  texte(zone, 'p', 'nom', nom || '');
-  texte(zone, 'p', 'desc', description || '');
+  var b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'apercu';
+  b.title = TXT.agrandir || '';
+  b.setAttribute('aria-label', TXT.agrandir || '');
+  var img = document.createElement('img');
+  img.src = apercu;
+  img.alt = nom || '';
+  b.appendChild(img);
+  b.addEventListener('click', function () { ouvrirModale(apercu, nom); });
+  zone.appendChild(b);
 }
 
+// ---- Modale d'aperçu ----
+// L'aperçu de la carte est petit par nécessité : c'est là qu'on juge une image, et il faut
+// pouvoir la voir en grand sans quitter le formulaire.
+function ouvrirModale(apercu, nom) {
+  if (!modale) { return; }
+  modale.img.src = apercu;
+  modale.img.alt = nom || '';
+  modale.nom.textContent = nom || '';
+  modale.element.classList.add('visible');
+  try { modale.fermer.focus(); } catch (e) { /* pas focalisable */ }
+}
+function fermerModale() {
+  if (!modale) { return; }
+  modale.element.classList.remove('visible');
+  modale.img.removeAttribute('src');
+}
+function construireModale() {
+  var d = texte(document.body, 'div', 'szh-modale');
+  d.setAttribute('role', 'dialog');
+  d.setAttribute('aria-modal', 'true');
+  var boite = texte(d, 'div', 'szh-modale-boite');
+  var img = document.createElement('img');
+  boite.appendChild(img);
+  var pied = texte(boite, 'div', 'szh-modale-pied');
+  var nom = texte(pied, 'span', 'modale-nom');
+  texte(pied, 'span', 'szh-pousse');
+  var fermer = bouton(TXT.fermer || '', fermerModale, 'szh-bouton--principal');
+  pied.appendChild(fermer);
+  // Cliquer à côté de l'image referme, comme dans toute visionneuse.
+  d.addEventListener('click', function (ev) { if (ev.target === d) { fermerModale(); } });
+  modale = { element: d, img: img, nom: nom, fermer: fermer };
+}
+
+// ---- Cartes ----
 function carteMedia(media, index) {
-  var c = { relatif: String(media.relatif || ''), index: index, ctl: {}, occurrences: Number(media.occurrences) || 0 };
-  var s = texte(corps, 'section', 'media');
+  var c = {
+    relatif: String(media.relatif || ''), index: index, ctl: {},
+    occurrences: Number(media.occurrences) || 0,
+    doublons: Array.isArray(media.doublons) ? media.doublons : [],
+    sansAlternative: !!media.sansAlternative
+  };
+  var s = texte(corps, 'section', 'szh-carte carte-media');
   s.dataset.relatif = c.relatif;
   s.setAttribute('aria-label', c.relatif);        // une carte par image : les distinguer
   c.element = s;
-  var haut = texte(s, 'div', 'haut');
-  var visuel = texte(haut, 'div', 'visuel');
-  c.ctl.visuel = visuel;
-  poserVisuel(visuel, c.relatif, media.description, media.apercu);
-  c.ctl.qualite = texte(visuel, 'p', 'qualite');
-  poserQualite(c.ctl.qualite, media.qualite);
 
-  var fiche = texte(haut, 'div', 'fiche');
-  c.ctl.occ = texte(fiche, 'p', 'occ');
+  var tete = texte(s, 'header', 'szh-tete');
+  texte(tete, 'p', 'szh-tete-nom', c.relatif);
+  c.ctl.meta = texte(tete, 'span', 'szh-tete-meta', media.description || '');
+  c.ctl.pastilles = texte(tete, 'span', 'pastilles');
+  texte(tete, 'span', 'szh-pousse');
+  tete.appendChild(boutonIcone('poubelle', TXT.retirerTip || TXT.retirer || '', function () {
+    api.postMessage({ type: 'retirer', relatif: c.relatif });
+  }, 'szh-ico--danger'));
+
+  var corpsCarte = texte(s, 'div', 'szh-corps carte-corps');
+  // Colonne de gauche : le fichier, son verdict, son remplacement.
+  var gauche = texte(corpsCarte, 'div', 'col-visuel');
+  c.ctl.visuel = texte(gauche, 'div', 'visuel');
+  poserVisuel(c.ctl.visuel, c.relatif, media.apercu);
+  c.ctl.qualite = texte(gauche, 'p', 'szh-notif');
+  poserQualite(c.ctl.qualite, media.qualite);
+  zoneDepot(gauche, c, 'remplacer', 'relatif', IMAGE);
+
+  // Colonne de droite : ce qui s'écrira dans le texte de l'article.
+  var fiche = texte(corpsCarte, 'div', 'col-fiche');
+  c.ctl.occ = texte(fiche, 'p', 'szh-notif');
   c.ctl.occ.setAttribute('role', 'status');
-  // Deux noms pour un seul visuel : l'hôte l'a vu par l'empreinte du contenu.
-  var doublons = Array.isArray(media.doublons) ? media.doublons : [];
-  if (doublons.length > 0) {
-    texte(fiche, 'p', 'occ visible info',
-      (TXT.doublonDe || '').split('{0}').join(doublons.join(', ')));
-  }
-  c.ctl.alerteAlt = texte(fiche, 'p', 'alerte-a11y');
-  c.sansAlternative = !!media.sansAlternative;
+  c.ctl.alerteAlt = texte(fiche, 'p', 'szh-notif szh-notif--danger');
+  c.ctl.alerteAlt.hidden = true;
+
   champ(fiche, c, 'legende');
-  c.ctl.aideLegende = texte(fiche, 'p', 'aide', TXT.legendeAide || '');
-  var z = texte(fiche, 'fieldset', 'zone');
+  c.ctl.aideLegende = texte(fiche, 'p', 'szh-aide', TXT.legendeAide || '');
+  var credits = texte(fiche, 'div', 'szh-grille-2');
+  champ(credits, c, 'copyright');
+  champ(credits, c, 'source');
+  // La case « sans légende ni numéro » suit les crédits : c'est le second réglage qui
+  // change ce que la mise en page fabrique, et elle verrouille le champ légende juste
+  // au-dessus. L'accessibilité vient après, comme un chapitre à part.
+  caseHorsFigure(fiche, c);
+
+  texte(fiche, 'p', 'szh-section', TXT.sectionAccessibilite || '');
+  var z = texte(fiche, 'fieldset', 'szh-groupe');
   texte(z, 'legend', null, TXT.roleTitre || '');
   c.ctl.roleDecrit = radioRole(z, c, TXT.roleDecrit, TXT.roleDecritSous);
   c.ctl.roleDeco = radioRole(z, c, TXT.roleDeco, TXT.roleDecoSous);
   champ(fiche, c, 'alt');
-  c.ctl.aideAlt = texte(fiche, 'p', 'aide', TXT.altAide || '');
-  var deux = texte(fiche, 'div', 'deuxcol');
-  champ(deux, c, 'copyright');
-  champ(deux, c, 'source');
-  caseHorsFigure(fiche, c);
-
-  var actions = texte(s, 'div', 'actions');
-  zoneDepot(actions, c, 'remplacer', 'relatif', IMAGE);
-  actions.appendChild(bouton(TXT.ouvrir || '', function () {
-    api.postMessage({ type: 'ouvrirMedia', relatif: c.relatif });
-  }, '', TXT.ouvrirTip));
-  // Insérer : offert seulement quand rien ne l'insère, seul état où la carte est muette.
-  if (c.occurrences === 0) {
-    actions.appendChild(bouton(TXT.inserer || '', function () {
-      api.postMessage({ type: 'inserer', relatif: c.relatif, medias: medias() });
-    }, 'principal', TXT.insererTip));
-  }
-  actions.appendChild(bouton(TXT.retirer || '', function () {
-    api.postMessage({ type: 'retirer', relatif: c.relatif });
-  }, '', TXT.retirerTip));
-  c.ctl.etatMedia = texte(actions, 'span', 'media-etat');
+  c.ctl.aideAlt = texte(fiche, 'p', 'szh-aide', TXT.altAide || '');
 
   poserValeurs(c, media.valeurs);
   poserOcc(c);
@@ -364,26 +445,26 @@ function carteMedia(media, index) {
   return c;
 }
 
-function cartePortrait(portrait, index) {
-  var c = { base: String(portrait.base || ''), index: index, ctl: {} };
-  var s = texte(corps, 'section', 'portrait');
-  s.dataset.base = c.base;
-  s.setAttribute('aria-label', portrait.auteur || portrait.nom || c.base);
-  c.element = s;
-  var visuel = texte(s, 'div', 'visuel');
-  c.ctl.visuel = visuel;
-  c.nom = portrait.nom || c.base;
-  poserVisuel(visuel, c.nom, portrait.description, portrait.apercu);
-  var droite = texte(s, 'div', 'droite');
-  texte(droite, 'p', 'auteur', portrait.auteur || TXT.portraitOrphelin || '');
-  c.ctl.version = texte(droite, 'p', 'version', portrait.version || '');
-  c.ctl.qualite = texte(droite, 'p', 'qualite');
-  poserQualite(c.ctl.qualite, portrait.qualite);
-  choixVersion(droite, c, portrait);
-  var actions = texte(droite, 'div', 'actions');
-  zoneDepot(actions, c, 'portrait-remplacer', 'base', PORTRAIT);
-  c.ctl.etatMedia = texte(actions, 'span', 'media-etat');
-  return c;
+// Avis d'insertion. Sans insertion, la carte se verrouille : il n'y a nulle part où
+// écrire légende et crédits, et le seul geste utile est d'insérer l'image dans le texte.
+function poserOcc(c) {
+  var b = c.ctl.occ;
+  b.textContent = '';
+  b.hidden = true;
+  if (c.occurrences === 0) {
+    b.hidden = false;
+    b.className = 'szh-notif szh-notif--info';
+    b.appendChild(SZH.icone('info'));
+    var dedans = texte(b, 'span');
+    texte(dedans, 'span', null, (TXT.occZero || '') + ' ');
+    dedans.appendChild(bouton(TXT.inserer || '', function () {
+      api.postMessage({ type: 'inserer', relatif: c.relatif, medias: medias() });
+    }, 'szh-bouton--principal', TXT.insererTip));
+  }
+  var verrou = c.occurrences === 0;
+  ['legende', 'alt', 'copyright', 'source'].forEach(function (k) { if (c.ctl[k]) { c.ctl[k].disabled = verrou; } });
+  [c.ctl.roleDecrit, c.ctl.roleDeco, c.ctl.horsFigure].forEach(function (e) { if (e) { e.disabled = verrou; } });
+  if (verrou) { majAlerteAlt(c); majPastilles(c); } else { majRole(c); }
 }
 
 // Les trois versions du portrait, comme dans le formulaire des auteur·e·s : le détourage
@@ -391,13 +472,13 @@ function cartePortrait(portrait, index) {
 // mieux garder le fond ou la photo d'origine. Une version absente du disque n'est pas
 // offerte ; un portrait qu'aucune fiche ne désigne n'a nulle part où écrire le choix.
 function choixVersion(parent, c, portrait) {
-  var z = texte(parent, 'fieldset', 'zone');
+  var z = texte(parent, 'fieldset', 'szh-groupe');
   texte(z, 'legend', null, TXT.versionTitre || '');
   var dispo = portrait.disponibles || {};
   var libelles = { 'sans-fond': TXT.vSansFond, 'avec-fond': TXT.vAvecFond, original: TXT.vOriginal };
   c.ctl.versions = {};
   ['sans-fond', 'avec-fond', 'original'].forEach(function (v) {
-    var l = texte(z, 'label', 'opt');
+    var l = texte(z, 'label', 'szh-opt');
     var i = document.createElement('input');
     i.type = 'radio';
     i.name = 'version-' + c.index;
@@ -415,22 +496,54 @@ function choixVersion(parent, c, portrait) {
     if (!dispo[v]) { texte(t, 'span', 'sous', TXT.versionAbsente || ''); }
     c.ctl.versions[v] = i;
   });
-  if (!portrait.rattache) { texte(z, 'p', 'aide', TXT.portraitOrphelin || ''); }
+  if (!portrait.rattache) { texte(z, 'p', 'szh-aide', TXT.portraitOrphelin || ''); }
 }
 
+function cartePortrait(portrait, index) {
+  var c = { base: String(portrait.base || ''), index: index, ctl: {} };
+  var s = texte(corps, 'section', 'szh-carte carte-portrait');
+  s.dataset.base = c.base;
+  s.setAttribute('aria-label', portrait.auteur || portrait.nom || c.base);
+  c.element = s;
+
+  var tete = texte(s, 'header', 'szh-tete');
+  texte(tete, 'p', 'szh-tete-nom', portrait.auteur || TXT.portraitOrphelin || '');
+  c.ctl.version = texte(tete, 'span', 'szh-tete-meta', portrait.version || '');
+  texte(tete, 'span', 'szh-pousse');
+
+  var corpsCarte = texte(s, 'div', 'szh-corps carte-corps');
+  var gauche = texte(corpsCarte, 'div', 'col-visuel');
+  c.nom = portrait.nom || c.base;
+  c.ctl.visuel = texte(gauche, 'div', 'visuel visuel--portrait');
+  poserVisuel(c.ctl.visuel, c.nom, portrait.apercu);
+  c.ctl.meta = texte(gauche, 'p', 'meta-fichier', portrait.description || '');
+  c.ctl.qualite = texte(gauche, 'p', 'szh-notif');
+  poserQualite(c.ctl.qualite, portrait.qualite);
+  zoneDepot(gauche, c, 'portrait-remplacer', 'base', PORTRAIT);
+
+  var droite = texte(corpsCarte, 'div', 'col-fiche');
+  choixVersion(droite, c, portrait);
+  return c;
+}
+
+// ---- Barre d'en-tête ----
+// Les commandes du formulaire, toujours à la même place et toujours visibles : dans une
+// liste de médias qui défile, un « Enregistrer » en bas de page ne se retrouve pas.
 function construireBarre() {
   barre.textContent = '';
+  barre.className = 'szh-barre';
+  ctl.enregistrer = bouton(TXT.enregistrer, function () { enregistrer(false); },
+    'szh-bouton--principal', TXT.enregistrerTip);
+  barre.appendChild(ctl.enregistrer);
   barre.appendChild(bouton(TXT.retour, function () {
     api.postMessage({ type: 'retourArticle', modifie: estModifie(), medias: medias() });
   }, '', TXT.retourTip));
-  ctl.enregistrer = bouton(TXT.enregistrer, function () { enregistrer(false); }, 'principal', TXT.enregistrerTip);
-  barre.appendChild(ctl.enregistrer);
-  ctl.etat = texte(barre, 'span', null, '');
-  ctl.etat.id = 'etat';
-  ctl.etat.setAttribute('role', 'status');
-  ctl.indic = texte(barre, 'span', null, '');
-  ctl.indic.id = 'indic';
+  ctl.indic = texte(barre, 'span', 'szh-barre-indic');
   ctl.indic.setAttribute('aria-live', 'polite');
+  ctl.etat = texte(barre, 'span', 'szh-barre-etat');
+  ctl.etat.setAttribute('role', 'status');
+  texte(barre, 'span', 'szh-pousse');
+  ctl.compte = texte(barre, 'span', 'szh-barre-etat');
 }
 
 function rendre(msg) {
@@ -439,25 +552,21 @@ function rendre(msg) {
   portraits = [];
   var listeMedias = Array.isArray(msg.medias) ? msg.medias : [];
   var listePortraits = Array.isArray(msg.portraits) ? msg.portraits : [];
-  var h = texte(corps, 'h2', null, TXT.sectionImages || '');
-  texte(h, 'span', 'compte', '(' + listeMedias.length + ')');
+  if (ctl.compte) { ctl.compte.textContent = remplir('resume', [listeMedias.length, listePortraits.length]); }
+
+  texte(corps, 'h2', 'titre-section', TXT.sectionImages || '');
   if (listeMedias.length === 0) {
-    texte(corps, 'p', 'rien', TXT.aucuneImage || '');
+    corps.appendChild(SZH.notif('info', TXT.aucuneImage || ''));
   } else {
-    texte(corps, 'p', 'note', TXT.imagesNote || '');
     for (var i = 0; i < listeMedias.length; i++) { cartes.push(carteMedia(listeMedias[i], i)); }
   }
-  var h2 = texte(corps, 'h2', null, TXT.sectionPortraits || '');
-  texte(h2, 'span', 'compte', '(' + listePortraits.length + ')');
+  texte(corps, 'h2', 'titre-section', TXT.sectionPortraits || '');
   if (listePortraits.length === 0) {
-    texte(corps, 'p', 'rien', TXT.aucunPortrait || '');
+    corps.appendChild(SZH.notif('info', TXT.aucunPortrait || ''));
   } else {
-    texte(corps, 'p', 'note', TXT.portraitsNote || '');
+    corps.appendChild(SZH.notif('info', TXT.portraitsNote || '', { discret: true }));
     for (var j = 0; j < listePortraits.length; j++) { portraits.push(cartePortrait(listePortraits[j], j)); }
   }
-  avis.textContent = (TXT.resume || '').split('{0}').join(String(listeMedias.length))
-    .split('{1}').join(String(listePortraits.length));
-  avis.className = 'avis visible info';
   dernierModifie = false;
   etat('');
   majModifie();
@@ -496,6 +605,7 @@ function enregistrer(auto) {
 var autoEnr = SZH.autoEnregistrement({ delai: 0, estModifie: estModifie, enregistrer: enregistrer });
 
 document.addEventListener('keydown', function (ev) {
+  if ((ev.key || '') === 'Escape') { fermerModale(); return; }
   if (!(ev.ctrlKey || ev.metaKey)) { return; }
   if ((ev.key || '').toLowerCase() === 's') { ev.preventDefault(); enregistrer(false); }
 });
@@ -505,7 +615,8 @@ window.addEventListener('message', function (ev) {
   var msg = ev.data || {};
   recu = true;
   if (msg.type === 'charger') {
-    if (msg.i18n) { TXT = msg.i18n; construireBarre(); }
+    SZH.poserAccent(msg.accent);
+    if (msg.i18n) { TXT = msg.i18n; construireBarre(); if (!modale) { construireModale(); } }
     rendre(msg);
     return;
   }
@@ -534,8 +645,8 @@ window.addEventListener('message', function (ev) {
     if (!c) { return; }
     c.element.classList.remove('occupe');
     if (msg.type === 'media-remplace') {
-      poserVisuel(c.ctl.visuel, c.relatif, msg.description, msg.apercu);
-      c.ctl.qualite = texte(c.ctl.visuel, 'p', 'qualite');
+      poserVisuel(c.ctl.visuel, c.relatif, msg.apercu);
+      if (c.ctl.meta) { c.ctl.meta.textContent = msg.description || ''; }
       poserQualite(c.ctl.qualite, msg.qualite);
       poserEtatMedia(c, TXT.remplacee || '', false);
     } else if (msg.type === 'media-erreur') {
@@ -549,7 +660,7 @@ window.addEventListener('message', function (ev) {
   if (msg.type === 'media-retire') {
     var r = trouverCarte(msg.relatif);
     if (!r) { return; }
-    r.element.classList.add('retiree');
+    r.element.remove();
     cartes = cartes.filter(function (x) { return x !== r; });
     majModifie();
     return;
@@ -564,7 +675,8 @@ window.addEventListener('message', function (ev) {
       return;
     }
     p.nom = msg.nom || p.nom || p.base;
-    poserVisuel(p.ctl.visuel, p.nom, msg.description, msg.apercu);
+    poserVisuel(p.ctl.visuel, p.nom, msg.apercu);
+    if (p.ctl.meta) { p.ctl.meta.textContent = msg.description || ''; }
     if (p.ctl.version) { p.ctl.version.textContent = msg.version || ''; }
     // La version retenue a pu changer : les radios suivent l'état du disque et de la fiche.
     if (p.ctl.versions && msg.versionActuelle) {
