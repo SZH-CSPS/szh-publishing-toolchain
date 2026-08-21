@@ -3,8 +3,15 @@
 Trois choses vivent ici : une mini-revue qui éprouve le rendu PDF de la maquette, les
 contrôles de contraste de la palette, et les contrats du cockpit.
 
+`test/js/` porte deux familles. `contrats.test.js` contrôle ce qui se recopie d'un fichier
+à l'autre et les aller-retours des sérialiseurs. `webviews.test.js` **exécute** les
+formulaires : `dom-minimal.js` fournit juste assez de DOM pour charger le script assemblé
+d'une webview, lui envoyer le message de l'hôte et compter ce qu'elle a construit. Sans
+cela, une erreur au rendu ne se voyait pas — la page gardait son titre et son bouton, les
+cartes n'arrivaient jamais, et rien ne le disait. C'est arrivé deux fois.
+
 ```sh
-node --test test/js/*.test.js   # contrats du cockpit : aller-retours et valeurs jumelles
+node --test "test/js/*.test.js"  # contrats du cockpit, et rendu réel des webviews
 python3 test/apca-check.py      # contrastes de la palette
 python3 test/palette-html.py    # régénère docs/palette.html
 bash test/build-render.sh       # dans WSL : build PDF + PNG de chaque page

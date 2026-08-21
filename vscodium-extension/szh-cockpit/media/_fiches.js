@@ -429,7 +429,10 @@
         return langues.filter(function (l) { return l !== 'it' || avec; })
           .map(function (l) { return { code: l, libelle: noms[l] }; });
       };
-      var editeurMots = motsCles({
+      // SZH.motsCles : la grille vit dans _commun.js, un autre IIFE. L'appeler sans le
+      // préfixe levait une ReferenceError au premier bloc de mots-clés — donc à chaque
+      // carte, donc sur les deux formulaires, qui s'ouvraient vides sans un mot.
+      var editeurMots = SZH.motsCles({
         langues: colonnes(avecIt),
         listes: v.keywords || {},
         edition: true,
