@@ -148,7 +148,7 @@
       listes: listes,
       edition: false,
       textes: {
-        motCle: TXT.motCle, sansEquivalent: TXT.motCleSansEquiv, aide: TXT.motsClesAide
+        motCle: TXT.motCle, sansEquivalent: TXT.motCleSansEquiv
       },
       onChange: function () { majBadge(carte); marquer(carte); }
     });
@@ -227,10 +227,6 @@
       });
       barreTout.appendChild(bouton);
     }
-    const aide = document.createElement('p');
-    aide.className = 'aide';
-    aide.textContent = TXT.toutAide.split('{0}').join(String(nombreBlocs));
-    barreTout.appendChild(aide);
     barreTout.hidden = false;
   }
 

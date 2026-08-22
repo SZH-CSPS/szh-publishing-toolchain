@@ -4,8 +4,6 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 h2#article { font-size: var(--t-titre); font-weight: 700; margin: var(--e1) 0 var(--e3);
   font-family: var(--vscode-editor-font-family, monospace); }
-p.aide { color: var(--encre-2); margin: var(--e1) 0 var(--e2); font-size: var(--t-mini);
-  line-height: 1.45; }
 label { display: block; margin: var(--e3) 0 var(--e1);
   font-size: var(--t-libelle); font-weight: 700; letter-spacing: .02em; color: var(--encre); }
 input, select, textarea { width: 100%; box-sizing: border-box; padding: .35em .5em; font: inherit;
@@ -27,7 +25,6 @@ button:disabled { opacity: .45; cursor: default; }
   padding: var(--e2) var(--e3); border-radius: var(--rayon-mini); font-size: var(--t-libelle);
   background: var(--surface-tete); border-left: 3px solid var(--accent); }
 .tout .intitule { font-weight: 700; margin-right: var(--e1); }
-.tout .aide { flex-basis: 100%; margin: var(--e1) 0 0; }
 
 /* Une carte par champ à traduire ; le liséré de gauche porte l'état, et c'est la seule
    couleur de la page — d'où un liséré, et non un fond. */

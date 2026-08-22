@@ -11,5 +11,3 @@ legend { font-size: var(--t-libelle); font-weight: 700; letter-spacing: .02em;
 label { display: inline-flex; align-items: center; margin: var(--e1) var(--e4) var(--e1) 0;
   gap: .35em; }
 label input { accent-color: var(--accent); }
-.indice { color: var(--encre-2); font-size: var(--t-mini); margin-top: var(--e1);
-  line-height: 1.45; }

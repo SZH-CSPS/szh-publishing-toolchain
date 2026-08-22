@@ -8,11 +8,11 @@
     { cle: 'theme', legende: TXT.theme, options: [['systeme', TXT.themeSysteme], ['clair', TXT.themeClair], ['sombre', TXT.themeSombre]] },
     { cle: 'zoom', legende: TXT.zoom, options: [['0', TXT.zoomNormal], ['1', TXT.zoomGrand], ['2', TXT.zoomTresGrand]] },
     { cle: 'policeMd', legende: TXT.policeMd, options: [['14', '14 px'], ['16', '16 px'], ['18', '18 px']] },
-    { cle: 'apercu', legende: TXT.apercu, options: [['html', TXT.apercuHtml], ['pdf', TXT.apercuPdf]], indice: TXT.apercuNote },
-    { cle: 'assets', legende: TXT.assets, options: [['oui', TXT.assetsOui], ['non', TXT.assetsNon]], indice: TXT.assetsNote },
-    { cle: 'cmyk', legende: TXT.cmyk, options: [['oui', TXT.cmykOui], ['non', TXT.cmykNon]], indice: TXT.cmykNote },
-    { cle: 'langue', legende: TXT.langue, options: [['fr', 'Français'], ['de', 'Deutsch']], indice: TXT.langueNote },
-    { cle: 'dev', legende: TXT.dev, options: [['oui', TXT.devOui], ['non', TXT.devNon]], indice: TXT.devNote }
+    { cle: 'apercu', legende: TXT.apercu, options: [['html', TXT.apercuHtml], ['pdf', TXT.apercuPdf]] },
+    { cle: 'assets', legende: TXT.assets, options: [['oui', TXT.assetsOui], ['non', TXT.assetsNon]] },
+    { cle: 'cmyk', legende: TXT.cmyk, options: [['oui', TXT.cmykOui], ['non', TXT.cmykNon]] },
+    { cle: 'langue', legende: TXT.langue, options: [['fr', 'Français'], ['de', 'Deutsch']] },
+    { cle: 'dev', legende: TXT.dev, options: [['oui', TXT.devOui], ['non', TXT.devNon]] }
   ];
   function rendre() {
     for (const g of GROUPES) {
@@ -32,12 +32,6 @@
         l.appendChild(radio);
         l.appendChild(document.createTextNode(libelle));
         zone.appendChild(l);
-      }
-      if (g.indice) {
-        const indice = document.createElement('div');
-        indice.className = 'indice';
-        indice.textContent = g.indice;
-        zone.appendChild(indice);
       }
       zones.appendChild(zone);
     }

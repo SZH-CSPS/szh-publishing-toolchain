@@ -26,7 +26,9 @@
   //
   // `surChangement()` est appelé quand l'ensemble des cartes modifiées change, y compris
   // au re-rendu qui le vide. `surValeurs(msg)` l'est après le rendu d'un message
-  // « valeurs », pour ce que la page ajoute autour des cartes.
+  // « valeurs », pour ce que la page ajoute autour des cartes. `traductionsVisibles`
+  // ouvre les langues dès le départ, ce dont la vérification d'import a besoin : ses
+  // badges « à compléter » vivent dans les intitulés, traductions comprises.
   //
   // Protocole avec l'hôte, pour la partie photo :
   //   webview -> hôte : photo-ouvrir { slug, index, photo } ;
@@ -423,7 +425,7 @@
         edition: true,
         textes: {
           motCle: TXT.motsCles, ajouter: TXT.motCleAjouter,
-          retirer: TXT.motCleRetirer, aide: TXT.motsClesAide
+          retirer: TXT.motCleRetirer
         },
         onChange: function () { marquer(carte, slug); }
       });
@@ -567,7 +569,7 @@
     // dans la langue du numéro, et trois langues déroulées d'emblée triplaient la hauteur
     // de chaque carte. L'état vit sur le conteneur, et non carte par carte : il survit
     // ainsi au re-rendu, qui recrée toutes les cartes. Le libellé du bouton dit l'état.
-    var traductionsVisibles = false;
+    var traductionsVisibles = !!opts.traductionsVisibles;
     function traductions(bouton) {
       var poser = function () {
         conteneur.classList.toggle('sans-trad', !traductionsVisibles);

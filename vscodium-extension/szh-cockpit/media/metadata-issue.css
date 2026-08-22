@@ -10,7 +10,6 @@ input, select { width: 100%; box-sizing: border-box; padding: .35em .5em; font: 
   color: var(--vscode-input-foreground); background: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini); }
 input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.indice { color: var(--encre-2); font-size: var(--t-mini); margin-top: var(--e1); line-height: 1.45; }
 .radios { display: flex; flex-direction: column; gap: var(--e2); margin-top: var(--e1); }
 .radio { display: flex; align-items: flex-start; gap: .5em; margin: 0; font-weight: normal;
   cursor: pointer; width: auto; }

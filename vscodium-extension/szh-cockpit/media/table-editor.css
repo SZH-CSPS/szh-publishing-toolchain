@@ -32,9 +32,6 @@ select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground
   color: var(--vscode-input-foreground); background: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; }
 .champs input:focus { outline: 1px solid var(--vscode-focusBorder); }
-/* Aide sous un champ : alignée sur le champ, pas sur son étiquette. */
-.champs .aide { grid-column: 1 / -1; margin: 0 0 .25rem; font-size: .78em; font-style: italic;
-  color: var(--vscode-descriptionForeground); }
 /* Corps : la grille à gauche, le panneau de mise en forme à droite, empilés sur un écran
    étroit. Chacun défile indépendamment. */
 .corps { display: flex; flex: 1 1 auto; gap: .8rem; min-height: 0; align-items: flex-start; flex-wrap: wrap; }

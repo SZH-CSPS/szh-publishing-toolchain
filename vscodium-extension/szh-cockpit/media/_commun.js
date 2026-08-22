@@ -26,8 +26,6 @@ var SZH = (function () {
   var ICONES = {
     poubelle: [['path', { d: TRACE_POUBELLE, 'fill-rule': 'evenodd', 'clip-rule': 'evenodd' }]],
     camera: [['path', { d: TRACE_CAMERA, 'fill-rule': 'evenodd', 'clip-rule': 'evenodd' }]],
-    // Quatre équerres : « agrandir », sans loupe, qui se confond avec une recherche.
-    agrandir: [['path', { d: 'M2 2h5v1.5H3.5V7H2V2zm12 0v5h-1.5V3.5H9V2h5zM2 9h1.5v3.5H7V14H2V9zm12 0v5H9v-1.5h3.5V9H14z' }]],
     info: [
       ['circle', { cx: '8', cy: '8', r: '6.75', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5' }],
       ['rect', { x: '7.25', y: '6.9', width: '1.5', height: '5', rx: '.4' }],
@@ -44,17 +42,7 @@ var SZH = (function () {
       ['path', { d: 'M5.7 5.7l4.6 4.6M10.3 5.7l-4.6 4.6', fill: 'none', stroke: 'currentColor',
         'stroke-width': '1.5', 'stroke-linecap': 'round' }]
     ],
-    ok: [['path', { d: 'M6.4 11.9 2.9 8.4 4 7.3l2.4 2.4 5.6-5.6 1.1 1.1z' }]],
-    traduction: [
-      ['path', { d: 'M1.5 2.5h6v1.5h-6zM3.5 4.5h2v1.2c0 2.2-1 3.9-2.6 4.9l-.8-1.3c1.2-.7 2-1.9 2-3.6V4.5z' }],
-      ['path', { d: 'M8.5 13.5h6v-1.5h-6zM10.5 6.5h2v5.2h-2z', opacity: '.55' }],
-      ['path', { d: 'M6.2 8.1 7.3 7l3.4 3.4-1.1 1.1z' }]
-    ],
-    langue: [
-      ['circle', { cx: '8', cy: '8', r: '6.75', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5' }],
-      ['path', { d: 'M1.4 8h13.2M8 1.3c1.9 1.8 2.9 4.1 2.9 6.7S9.9 12.9 8 14.7C6.1 12.9 5.1 10.6 5.1 8S6.1 3.1 8 1.3z',
-        fill: 'none', stroke: 'currentColor', 'stroke-width': '1.3' }]
-    ]
+    ok: [['path', { d: 'M6.4 11.9 2.9 8.4 4 7.3l2.4 2.4 5.6-5.6 1.1 1.1z' }]]
   };
 
   function icone(nom) {
@@ -81,9 +69,14 @@ var SZH = (function () {
   // accent. Validée avant d'entrer dans une propriété CSS : une valeur venue de l'hôte
   // n'entre jamais telle quelle dans une feuille de style.
   function poserAccent(hex) {
-    if (!/^#[0-9A-Fa-f]{6}$/.test(String(hex || ''))) { return; }
-    try { document.documentElement.style.setProperty('--szh-accent', hex); }
-    catch (e) { /* pas de racine stylable : le socle garde sa couleur de repli */ }
+    var valide = /^#[0-9A-Fa-f]{6}$/.test(String(hex || ''));
+    try {
+      // Retirer la propriété quand l'hôte n'envoie rien : le numéro peut avoir perdu sa
+      // couleur, et le panneau se recharge sans être refermé. Sans cela l'ancienne teinte
+      // resterait accrochée à la racine.
+      if (valide) { document.documentElement.style.setProperty('--szh-accent', hex); }
+      else { document.documentElement.style.removeProperty('--szh-accent'); }
+    } catch (e) { /* pas de racine stylable : le socle garde sa couleur de repli */ }
   }
 
   // ---- Notifications ----
@@ -95,7 +88,7 @@ var SZH = (function () {
   // forme ; jamais de HTML injecté.
   function notif(ton, contenu, opts) {
     var o = opts || {};
-    var p = document.createElement(o.balise || 'p');
+    var p = document.createElement('p');
     p.className = 'szh-notif szh-notif--' + ton + (o.discret ? ' szh-notif--discret' : '');
     // La variante discrète n'a pas de pictogramme : elle sert aussi écrite à la main dans
     // le HTML d'une page, où il n'y a pas de SVG à poser — les deux doivent se ressembler.
@@ -107,7 +100,6 @@ var SZH = (function () {
       corps.textContent = String(contenu === undefined || contenu === null ? '' : contenu);
     }
     p.appendChild(corps);
-    if (o.role) { p.setAttribute('role', o.role); }
     return p;
   }
 
@@ -174,7 +166,7 @@ var SZH = (function () {
   //
   // opts.langues  [{ code, libelle, lecture }]  lecture:true = colonne non éditable
   // opts.listes   { fr:[…], de:[…] }            valeurs de départ
-  // opts.textes   { motCle, sansEquivalent, ajouter, retirer, aide }
+  // opts.textes   { motCle, sansEquivalent, ajouter, retirer }
   // opts.edition  rangées ajoutables et retirables, ou structure figée pour le panneau de
   //               traduction, où l'on traduit sans inventer de mots-clés
   // opts.onChange appelé à chaque frappe et à chaque ajout ou retrait de rangée
@@ -212,8 +204,7 @@ var SZH = (function () {
       '.mc-pied { margin-top: .15rem; }',
       '.mc-pied button { padding: .25em .7em; border: none; border-radius: 2px; cursor: pointer; font: inherit;',
       '  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));',
-      '  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background)); }',
-      '.mc-aide { color: var(--vscode-descriptionForeground); margin: .1rem 0 .3rem; font-size: .85em; }'
+      '  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background)); }'
     ].join('\n');
     document.head.appendChild(style);
   }
@@ -349,12 +340,6 @@ var SZH = (function () {
     // retrait resterait sans effet.
     function rendre() {
       element.textContent = '';
-      if (textes.aide) {
-        var aide = document.createElement('p');
-        aide.className = 'mc-aide';
-        aide.textContent = textes.aide;
-        element.appendChild(aide);
-      }
       corps = document.createElement('div');
       corps.className = 'mc';
       element.appendChild(corps);

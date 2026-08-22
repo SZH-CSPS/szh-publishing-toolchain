@@ -45,9 +45,9 @@
   --surface: var(--vscode-editorWidget-background, rgba(128, 128, 128, .06));
   /* La tête d'une carte doit se distinguer de son corps, or plusieurs thèmes donnent la
      même couleur au bloc de citation et au panneau : on teinte donc la surface avec un peu
-     d'encre, ce qui fonctionne en clair comme en sombre. Le jeton reste en repli pour les
-     moteurs sans color-mix. */
-  --surface-tete: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, .12));
+     d'encre, ce qui fonctionne en clair comme en sombre. Le repli est en @supports plus
+     bas : deux déclarations d'une même propriété personnalisée ne se replient pas l'une
+     sur l'autre, la dernière gagne toujours. */
   --surface-tete: color-mix(in srgb, var(--encre) 7%, var(--surface));
   --filet: var(--vscode-panel-border, rgba(128, 128, 128, .35));
   --filet-fort: var(--vscode-contrastBorder, var(--vscode-panel-border, rgba(128, 128, 128, .6)));
@@ -55,10 +55,18 @@
   --encre-2: var(--vscode-descriptionForeground, rgba(204, 204, 204, .75));
 }
 
+/* Moteur sans color-mix : la teinte revient au jeton de l'éditeur. Sans ce repli la
+   variable serait invalide et les surfaces qui s'en servent deviendraient transparentes. */
+@supports not (color: color-mix(in srgb, white 50%, black)) {
+  :root { --surface-tete: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, .12)); }
+}
+
 /* ═══ 2. Surfaces et séparations ══════════════════════════════════════════════
    La carte est le bloc de base : une surface franchement détachée du fond, un filet
    complet, et un liseré d'accent en tête. Entre deux cartes, l'écart fait le reste : c'est
    la séparation la plus lisible qui existe, et elle ne coûte pas un pixel de bordure. */
+/* Entre deux cartes, l'écart fait la séparation : c'est la plus lisible qui existe, et
+   elle ne coûte pas un pixel de bordure. Chaque page pose cet écart sur son conteneur. */
 .szh-carte {
   background: var(--surface);
   border: 1px solid var(--filet);
@@ -67,10 +75,6 @@
   /* Une ombre légère, celle des panneaux de l'éditeur : elle détache la carte du fond
      mieux qu'un filet plus épais, qui alourdirait une longue liste. */
   box-shadow: 0 2px 6px var(--vscode-widget-shadow, rgba(0, 0, 0, .18));
-}
-.szh-pile {
-  display: flex; flex-direction: column;
-  gap: var(--e5);                    /* l'écart entre cartes, franc et régulier */
 }
 
 /* Tête de carte : le nom de ce qu'on édite, ses états, et l'action qui le détruit. Fond
@@ -151,14 +155,13 @@ label.szh-libelle {
 .szh-champ select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .szh-champ input:disabled,
 .szh-champ textarea:disabled { opacity: .5; }
-.szh-aide {
-  margin: 0; font-size: var(--t-mini); font-style: italic; color: var(--encre-2);
-  line-height: 1.45;
-}
 .szh-grille-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e3); }
+.szh-grille-2 > * { min-width: 0; }
 @media (max-width: 42rem) { .szh-grille-2 { grid-template-columns: 1fr; } }
 
-/* Groupe de choix : le cadre reste, mais discret — c'est le contenu qui compte. */
+/* Groupe de choix : le cadre reste, mais discret — c'est le contenu qui compte.
+   Un libellé d'option se suffit à lui-même : les formulaires ne portent plus de texte
+   d'aide sous les champs, ce qui se raconte ayant sa place dans le guide, pas dans la page. */
 .szh-groupe {
   border: 1px solid var(--filet); border-radius: var(--rayon-mini);
   padding: var(--e1) var(--e3) var(--e2); margin: 0;
@@ -214,7 +217,10 @@ label.szh-libelle {
   border-color: var(--vscode-inputValidation-errorBorder, rgba(248, 81, 73, .5));
   color: var(--vscode-inputValidation-errorForeground, var(--encre));
 }
-.szh-notif--discret { border: 0; border-left: 3px solid var(--encre-2); background: transparent; padding-left: var(--e2); }
+.szh-notif--discret {
+  border-top: 0; border-right: 0; border-bottom: 0;   /* le liseré gauche garde son ton */
+  background: transparent; padding-left: var(--e2);
+}
 
 /* ═══ 6. Boutons et icônes ════════════════════════════════════════════════════ */
 .szh-bouton {
@@ -234,8 +240,13 @@ label.szh-libelle {
   background: var(--vscode-button-background, #0e639c);
 }
 .szh-bouton--principal:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+/* Pressé : les couleurs de bouton de l'éditeur, dont le contraste est garanti, et l'accent
+   en cerne. La couleur annuelle ne sert jamais de fond à du texte — plusieurs teintes de la
+   palette tombent sous 2:1 avec du blanc. */
 .szh-bouton[aria-pressed="true"] {
-  background: var(--accent); color: var(--vscode-button-foreground, #fff);
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #fff);
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 .szh-bouton:disabled { opacity: .45; cursor: default; }
 .szh-bouton:disabled:hover { background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, .18)); }
@@ -260,14 +271,10 @@ label.szh-libelle {
   border: 1px solid var(--filet); color: var(--encre-2);
   white-space: nowrap;
 }
-.szh-pastille--accent { border-color: var(--accent); color: var(--accent); }
+.szh-pastille--accent { border-color: var(--accent); color: var(--encre); }
 .szh-pastille--attention {
   border-color: var(--vscode-editorWarning-foreground, #d1901e);
   color: var(--vscode-editorWarning-foreground, #d1901e);
-}
-.szh-pastille--danger {
-  border-color: var(--vscode-errorForeground, #f85149);
-  color: var(--vscode-errorForeground, #f85149);
 }
 
 /* ═══ 8. Modale ═══════════════════════════════════════════════════════════════

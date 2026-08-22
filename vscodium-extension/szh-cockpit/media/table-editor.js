@@ -264,13 +264,11 @@ function champTexte(cle,large){
   i.addEventListener('input',function(){etat('');majModifie();});
   i.addEventListener('blur',function(){commitTexte();});
   d.appendChild(l);d.appendChild(i);boiteChamps.appendChild(d);champs[cle]=i;}
-function aide(texte){var p=document.createElement('p');p.className='aide';p.textContent=texte||'';boiteChamps.appendChild(p);}
 function construireChamps(){if(!boiteChamps)return;boiteChamps.textContent='';champs={};
   champTexte('legende',true);
   champTexte('alt',true);
   // Le cas courant est le champ vide : un tableau bien fait se lit seul. On le dit, pour
   // que personne ne croie devoir remplir un champ de plus.
-  aide(TXT['alt.aide']||'');
   champTexte('copyright',false);
   champTexte('source',false);}
 // Champs -> modèle. Un champ vidé retire la valeur, donc l'attribut ou le <caption>. Pour
@@ -345,7 +343,6 @@ function construirePanneau(){panneau.textContent='';panneau.setAttribute('aria-l
   var opts=(PRESETS||[]).map(function(cle){return [cle,TXT['preset.'+cle]||cle];});
   ctl.preset=groupeRadios('preset',opts,function(v){op('preset',{nom:v});});
   z1.appendChild(ctl.preset.wrap);
-  var note=document.createElement('p');note.className='note';note.textContent=TXT['preset.note']||'';z1.appendChild(note);
   colG.appendChild(z1);
   var z2=fieldsetZone(TXT['zone.entetes']);
   ctl.el=sousBlocEntete(z2,TXT.entetesLignes,'lignes');
@@ -412,7 +409,7 @@ document.addEventListener('keydown',function(ev){if(!(ev.ctrlKey||ev.metaKey))re
 
 window.addEventListener('message',function(ev){var msg=ev.data||{};
   if(msg.type==='charger'){
-    modele=msg.modele;dispo=msg.disposition;if(msg.accent!==undefined)accent=msg.accent;if(msg.teintes)teintes=msg.teintes;if(msg.presets)PRESETS=msg.presets;
+    modele=msg.modele;dispo=msg.disposition;if(msg.accent!==undefined){accent=msg.accent;SZH.poserAccent(accent);}if(msg.teintes)teintes=msg.teintes;if(msg.presets)PRESETS=msg.presets;
     if(msg.i18n){TXT=msg.i18n;
       modeleEnregistre=clone(modele);annuler=[];retablir=[];avantEdition=null;dernierModifie=false;
       construireBarre();}

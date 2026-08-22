@@ -44,7 +44,7 @@ test('métadonnées des articles : une carte remplie par article', () => {
   assert.ok(articles.length >= 2, 'corpus de fiches trop maigre pour le contrôle');
   const page = ouvrir({
     racine: RACINE, page: 'metadata-articles',
-    cssPartage: ['_fiches.css'], jsPartage: ['_fiches.js'],
+    cssPartage: ['_design.css', '_fiches.css'], jsPartage: ['_fiches.js'],
     txt: libellesHote(RACINE, ['textesCarteArticle', 'htmlApercuMetadonnees'])
   });
   // Les objets viennent d'un autre realm (vm) : on compare les types, pas les prototypes.
@@ -76,7 +76,7 @@ test('vérification de l’import : les mêmes cartes, badges et section des ima
   }));
   const page = ouvrir({
     racine: RACINE, page: 'import-verif',
-    cssPartage: ['_fiches.css'], jsPartage: ['_fiches.js'],
+    cssPartage: ['_design.css', '_fiches.css'], jsPartage: ['_fiches.js'],
     txt: libellesHote(RACINE, ['textesCarteArticle', 'htmlImportVerif'])
   });
   page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr' });
@@ -87,7 +87,7 @@ test('vérification de l’import : les mêmes cartes, badges et section des ima
 
 test('gestionnaire des médias : cartes, encadrés et versions de portrait', () => {
   const page = ouvrir({
-    racine: RACINE, page: 'medias-article',
+    racine: RACINE, page: 'medias-article', cssPartage: ['_design.css'],
     txt: libellesHote(RACINE, ['textesMedias'])
   });
   // Les objets viennent d'un autre realm (vm) : on compare les types, pas les prototypes.
@@ -115,9 +115,10 @@ test('gestionnaire des médias : cartes, encadrés et versions de portrait', () 
   });
   assert.strictEqual(page.compter('.carte-media'), 2);
   assert.strictEqual(page.compter('.carte-portrait'), 1);
-  // L'avis de qualité ne s'allume que sur l'image insuffisante : c'est le seul ton
-  // « attention » de la page.
-  assert.strictEqual(page.compter('.szh-notif--attention'), 1, 'un seul avis de qualité attendu');
+  // Deux avis « attention », et deux seulement : la qualité de l'image insuffisante, et le
+  // doublon de la première. Le jumeau doit être nommé dans la carte, et pas seulement dans
+  // l'infobulle d'une pastille, qu'aucun lecteur d'écran ne lit.
+  assert.strictEqual(page.compter('.szh-notif--attention'), 2, 'avis attendus : qualité et doublon');
   // Le remplacement est sous chaque visuel, portraits compris ; la corbeille ne concerne
   // que les images, un portrait se retirant depuis la fiche de son auteur·e.
   assert.strictEqual(page.compter('.depot'), 3, 'zone de remplacement absente sous un visuel');
@@ -127,7 +128,9 @@ test('gestionnaire des médias : cartes, encadrés et versions de portrait', () 
   assert.ok(page.compter('input') >= 3, 'boutons de version du portrait absents');
   const textes = page.textes().join(' | ');
   assert.ok(textes.indexOf('figures-fig-01.png') !== -1, 'nom de fichier absent du rendu');
-  assert.ok(textes.indexOf('Attention qualité') !== -1, 'avis de qualité muet');
+  assert.ok(textes.indexOf('320 px de large') !== -1, 'avis de qualité muet');
+  assert.ok(textes.indexOf('figures-fig-09.png') !== -1,
+    'le doublon ne nomme pas le fichier jumeau');
   // L'état se lit dans la tête : deux insertions d'un côté, jamais insérée de l'autre.
   assert.ok(textes.indexOf('2 insertions') !== -1, 'pastille du nombre d’insertions absente');
   assert.ok(textes.indexOf('jamais insérée') !== -1, 'pastille « jamais insérée » absente');

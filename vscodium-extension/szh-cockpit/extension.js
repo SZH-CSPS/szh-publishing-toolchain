@@ -1815,7 +1815,7 @@ function textesCarteArticle() {
     aOrcid: T('fiches.auteur.orcid'), aEmail: T('fiches.auteur.email'),
     motsCles: T('fiches.motscles'), italien: T('fiches.italien'),
     // Grille de mots-clés appariés : fragment partagé SZH.motsCles.
-    motsClesTitre: T('fiches.motscles.titre'), motsClesAide: T('fiches.motscles.aide'),
+    motsClesTitre: T('fiches.motscles.titre'),
     motCleAjouter: T('fiches.motcle.ajouter'), motCleRetirer: T('fiches.motcle.retirer'),
     rien: T('form.rien'), enregistre: T('fiches.enregistre'),
     tradAfficher: T('fiches.trad.afficher'), tradMasquer: T('fiches.trad.masquer'),
@@ -2806,8 +2806,7 @@ function htmlImportVerif(nonce) {
   const txt = JSON.stringify(Object.assign(textesCarteArticle(), {
     badgeDetecte: T('importv.badge.detecte'), badgeAcompleter: T('importv.badge.acompleter'),
     vides: T('importv.vides'), videsZero: T('importv.vides.zero'),
-    photosNote: T('importv.photos.note'),
-    sectionImages: T('importv.section.images'), imagesNote: T('importv.images.note'),
+    sectionImages: T('importv.section.images'),
     imagesAucune: T('importv.images.aucune'), imageDeposer: T('importv.image.deposer'),
     imageRemplacee: T('importv.image.remplacee'),
     errImageTropVolumineuse: T('importv.err.tropvolumineux'),
@@ -2944,13 +2943,11 @@ const REGL_TEXTES = () => JSON.stringify({
   zoomNormal: T('regl.zoom.normal'), zoomGrand: T('regl.zoom.grand'), zoomTresGrand: T('regl.zoom.tresgrand'),
   policeMd: T('regl.policemd'),
   apercu: T('regl.apercu'),
-  apercuHtml: T('regl.apercu.html'), apercuPdf: T('regl.apercu.pdf'), apercuNote: T('regl.apercu.note'),
-  assets: T('regl.assets'),
-  assetsOui: T('regl.assets.oui'), assetsNon: T('regl.assets.non'), assetsNote: T('regl.assets.note'),
-  cmyk: T('regl.cmyk'),
-  cmykOui: T('regl.cmyk.oui'), cmykNon: T('regl.cmyk.non'), cmykNote: T('regl.cmyk.note'),
-  langue: T('regl.langue'), langueNote: T('regl.langue.note'),
-  dev: T('regl.dev'), devOui: T('regl.dev.oui'), devNon: T('regl.dev.non'), devNote: T('regl.dev.note')
+  apercuHtml: T('regl.apercu.html'), apercuPdf: T('regl.apercu.pdf'),
+  assets: T('regl.assets'), assetsOui: T('regl.assets.oui'), assetsNon: T('regl.assets.non'),
+  cmyk: T('regl.cmyk'), cmykOui: T('regl.cmyk.oui'), cmykNon: T('regl.cmyk.non'),
+  langue: T('regl.langue'),
+  dev: T('regl.dev'), devOui: T('regl.dev.oui'), devNon: T('regl.dev.non')
 });
 
 function htmlReglages(nonce) {
@@ -3324,30 +3321,27 @@ function apercuMedia(chemin, budget) {
 function textesMedias() {
   return {
     sectionImages: T('medias.section.images'), sectionPortraits: T('medias.section.portraits'),
-    portraitsNote: T('medias.portraits.note'),
     aucuneImage: T('medias.aucune.image'), aucunPortrait: T('medias.aucun.portrait'),
     resume: T('medias.resume'), rienAEcrire: T('medias.rienAEcrire'),
-    legende: T('img.legende'), legendeIndice: T('img.legende.indice'), legendeAide: T('img.legende.aide'),
+    legende: T('img.legende'), legendeIndice: T('img.legende.indice'),
     roleTitre: T('img.role.titre'),
-    roleDecrit: T('img.role.decrit'), roleDecritSous: T('img.role.decrit.sous'),
-    roleDeco: T('img.role.deco'), roleDecoSous: T('img.role.deco.sous'),
+    roleDecrit: T('img.role.decrit'), roleDeco: T('img.role.deco'),
     alt: T('img.alt'), altIndice: T('img.alt.indice'),
-    altAide: T('img.alt.aide'), altAideDeco: T('img.alt.aide.deco'),
     copyright: T('img.copyright'), copyrightIndice: T('img.copyright.indice'),
     source: T('img.source'), sourceIndice: T('img.source.indice'),
     horsFigureTitre: T('medias.horsfigure.titre'), horsFigure: T('medias.horsfigure'),
-    horsFigureSous: T('medias.horsfigure.sous'), horsFigureAide: T('medias.horsfigure.aide'),
-    qualiteTitre: T('medias.qualite.titre'), qualiteInsuffisant: T('medias.qualite.insuffisant'),
+    qualiteInsuffisant: T('medias.qualite.insuffisant'),
     qualiteJuste: T('medias.qualite.juste'),
     qualitePortraitInsuffisant: T('medias.qualite.portrait.insuffisant'),
     qualitePortraitJuste: T('medias.qualite.portrait.juste'),
-    remplacer: T('medias.remplacer'), choisirFichier: T('medias.choisirFichier'),
+    remplacer: T('medias.remplacer'), remplacerPortrait: T('medias.remplacer.portrait'),
+    choisirFichier: T('medias.choisirFichier'),
     agrandir: T('medias.agrandir'), fermer: T('medias.fermer'),
     remplacee: T('medias.remplacee'),
     errFormat: T('medias.err.format'), errTropVolumineuse: T('medias.err.tropvolumineux'),
     errFormatPortrait: T('medias.err.format.portrait'),
     errTropVolumineusePortrait: T('medias.err.tropvolumineux.portrait'),
-    retirer: T('medias.retirer'), retirerTip: T('medias.tip.retirer'),
+    retirerTip: T('medias.tip.retirer'),
     inserer: T('medias.inserer'), insererTip: T('medias.tip.inserer'),
     altManquant: T('medias.alt.manquant'), altDivergent: T('medias.alt.divergent'),
     doublonDe: T('medias.doublon'),
@@ -3357,6 +3351,7 @@ function textesMedias() {
     occZero: T('img.occ.zero'), sectionAccessibilite: T('medias.section.a11y'),
     etatJamais: T('medias.etat.jamais'), etatInsertions: T('medias.etat.insertions'),
     etatHorsFigure: T('medias.etat.horsfigure'), etatDoublon: T('medias.etat.doublon'),
+    etatOrphelin: T('medias.etat.orphelin'),
     apercuAbsent: T('img.apercu.absent'), portraitOrphelin: T('medias.portrait.orphelin'),
     versionTitre: T('medias.portrait.version.titre'),
     vOriginal: T('photo.version.original'), vAvecFond: T('photo.version.avecfond'),
@@ -3663,7 +3658,10 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       // La garde de cmdEcriture ne couvre que l'ouverture : ces trois gestes écrivent par
       // fs, hors du système de fichiers de l'éditeur, et un panneau resté ouvert survit au
       // verrouillage du numéro.
-      if (refuserSiVerrouille()) { return; }
+      if (refuserSiVerrouille()) {
+        repondrePanneau(panneau, { type: 'media-annulee', relatif: String(msg.relatif || '') });
+        return;
+      }
       const relatif = String(msg.relatif || '');
       const res = await remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif,
         msg.nomFichier, msg.donneesBase64);
@@ -3710,8 +3708,25 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       if (retire) { repondrePanneau(panneau, { type: 'media-retire', relatif: relatif }); }
       return;
     }
+    // Réponse commune aux deux gestes qui touchent un portrait. `disponibles` et
+    // `rattache` en font partie : sans eux la webview ne peut pas rouvrir les versions
+    // qu'un dépôt vient de produire, et ses boutons resteraient grisés.
+    const reponsePortrait = (base, nomDefaut) => {
+      const p = listerPortraitsArticle(fournisseur, slug).filter((x) => x.base === base)[0] || null;
+      return {
+        type: 'portrait-remplace', base: base,
+        nom: p ? p.nom : nomDefaut, version: p ? p.version : '',
+        versionActuelle: p ? p.versionActuelle : null,
+        disponibles: p ? p.disponibles : null, rattache: p ? p.rattache : false,
+        description: p ? p.description : '',
+        apercu: p ? p.apercu : null, qualite: p ? p.qualite : null
+      };
+    };
     if (msg.type === 'portrait-version') {
-      if (refuserSiVerrouille()) { return; }
+      if (refuserSiVerrouille()) {
+        repondrePanneau(panneau, { type: 'portrait-erreur', base: String(msg.base || '') });
+        return;
+      }
       const base = String(msg.base || '');
       const nom = choisirVersionPortrait(fournisseur, slug, base, String(msg.version || ''));
       if (!nom) {
@@ -3720,18 +3735,14 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       }
       vscode.window.setStatusBarMessage(T('medias.statut.version', [nom]), 5000);
       if (rafraichirTout) { rafraichirTout(); }     // le PDF dépend de portraits/
-      const p = listerPortraitsArticle(fournisseur, slug).filter((x) => x.base === base)[0] || null;
-      repondrePanneau(panneau, {
-        type: 'portrait-remplace', base: base,
-        nom: p ? p.nom : nom, version: p ? p.version : '',
-        versionActuelle: p ? p.versionActuelle : null,
-        description: p ? p.description : '',
-        apercu: p ? p.apercu : null, qualite: p ? p.qualite : null
-      });
+      repondrePanneau(panneau, reponsePortrait(base, nom));
       return;
     }
     if (msg.type === 'portrait-remplacer') {
-      if (refuserSiVerrouille()) { return; }
+      if (refuserSiVerrouille()) {
+        repondrePanneau(panneau, { type: 'portrait-erreur', base: String(msg.base || '') });
+        return;
+      }
       const base = String(msg.base || '');
       const res = await remplacerFichierPortrait(fournisseur, rafraichirTout, slug, base,
         msg.nomFichier, msg.donneesBase64);
@@ -3739,17 +3750,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
         repondrePanneau(panneau, { type: 'portrait-erreur', base: base, message: res.message || '' });
         return;
       }
-      const portrait = listerPortraitsArticle(fournisseur, slug)
-        .filter((p) => p.base === base)[0] || null;
-      repondrePanneau(panneau, {
-        type: 'portrait-remplace', base: base,
-        nom: portrait ? portrait.nom : base,
-        version: portrait ? portrait.version : '',
-        versionActuelle: portrait ? portrait.versionActuelle : null,
-        description: portrait ? portrait.description : '',
-        apercu: portrait ? portrait.apercu : null,
-        qualite: portrait ? portrait.qualite : null
-      });
+      repondrePanneau(panneau, reponsePortrait(base, base));
       if (res.sansVisage) { vscode.window.showWarningMessage(T('photo.sansvisage')); }
       return;
     }

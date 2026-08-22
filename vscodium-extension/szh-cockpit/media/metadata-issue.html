@@ -1,5 +1,4 @@
 <h1>%%SZH:meta.titre%%</h1>
-<p class="szh-notif szh-notif--info szh-notif--discret">%%SZH:meta.note%%</p>
 <form id="formulaire">
 <div class="szh-barre"><button class="szh-bouton szh-bouton--principal" type="submit">%%SZH:form.enregistrer%%</button><span class="szh-barre-etat" id="etat" role="status"></span></div>
 <label for="title">%%SZH:meta.title%%</label><input id="title" type="text">
@@ -11,11 +10,10 @@
 <label for="volume">%%SZH:meta.volume%%</label><input id="volume" type="text">
 <label for="numero">%%SZH:meta.numero%%</label><input id="numero" type="text">
 <label for="date">%%SZH:meta.date%%</label><input id="date" type="date">
-<div class="indice" id="indiceDate" hidden></div>
+<p class="szh-notif szh-notif--attention" id="indiceDate" hidden></p>
 <label for="lang">%%SZH:meta.langue%%</label>
 <select id="lang"><option value="">%%SZH:meta.langue.aucune%%</option><option value="fr">%%SZH:meta.langue.fr%%</option><option value="de">%%SZH:meta.langue.de%%</option><option value="en">%%SZH:meta.langue.en%%</option><option value="it">%%SZH:meta.langue.it%%</option></select>
 <label>%%SZH:meta.couleur%%</label>
 <div class="pastilles" id="couleurs"></div>
 <label class="case" for="entete-condensee"><input id="entete-condensee" type="checkbox"><span>%%SZH:meta.entete.condensee%%</span></label>
-<div class="indice">%%SZH:meta.entete.condensee.aide%%</div>
 </form>

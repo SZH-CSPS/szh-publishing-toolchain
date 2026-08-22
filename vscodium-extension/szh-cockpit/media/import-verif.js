@@ -72,6 +72,10 @@
     api: vscodeApi,
     txt: TXT,
     etat: etat,
+    // Les badges « à compléter » sont posés dans les intitulés, y compris ceux des
+    // traductions : les cacher au départ masquerait la moitié de ce que ce panneau
+    // annonce dans sa tête de carte.
+    traductionsVisibles: true,
     decor: {
       titre: function (h2, slug) {
         const nom = document.createElement('span');
@@ -90,12 +94,6 @@
           label.appendChild(document.createTextNode(' ' + noms[lg] + ' '));
           label.appendChild(b);
         }
-      },
-      apresAuteurs: function (carte) {
-        const note = document.createElement('p');
-        note.className = 'photos-note';
-        note.textContent = TXT.photosNote;
-        carte.appendChild(note);
       },
       finCarte: function (carte, article) {
         sectionImages(carte, article.slug, article.images || []);
@@ -201,10 +199,6 @@
       carte.appendChild(p);
       return;
     }
-    const note = document.createElement('p');
-    note.className = 'images-note';
-    note.textContent = TXT.imagesNote;
-    carte.appendChild(note);
     const zone = document.createElement('div');
     zone.className = 'images';
     carte.appendChild(zone);

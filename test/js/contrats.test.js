@@ -462,6 +462,26 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
   }
 });
 
+// Le socle visuel est posé page par page par l'hôte. Une page qui l'oublie perd tous ses
+// jetons d'un coup : ses règles se réduisent à des valeurs vides, sans aucune erreur. Et un
+// fragment mal nommé dans cssPartage ou jsPartage ne se voit qu'à l'ouverture du panneau,
+// où le readFileSync de construireHtml lève.
+test('chaque webview reçoit le socle visuel, et ses fragments existent', () => {
+  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  const appels = [...src.matchAll(/construireHtml\('([a-z-]+)', nonce, \{([\s\S]{0,700}?)\}\);/g)];
+  assert.strictEqual(appels.length, 7, 'appels à construireHtml : ' + appels.length);
+  for (const [, page, corps] of appels) {
+    assert.ok(/cssPartage:\s*\[[^\]]*'_design\.css'/.test(corps), 'page sans le socle : ' + page);
+    for (const m of corps.matchAll(/'(_[a-z]+\.(?:css|js))'/g)) {
+      assert.ok(fs.existsSync(path.join(COCKPIT, 'media', m[1])), 'fragment absent : media/' + m[1]);
+    }
+    for (const ext of ['.html', '.css', '.js']) {
+      assert.ok(fs.existsSync(path.join(COCKPIT, 'media', page + ext)),
+        'fichier de page absent : media/' + page + ext);
+    }
+  }
+});
+
 // Les deux formulaires de métadonnées ont longtemps été deux copies. Ce qu'ils partagent
 // vit désormais dans media/_fiches.{js,css} : ce contrôle empêche la copie de revenir.
 test('les deux formulaires de métadonnées ne se recopient pas', () => {

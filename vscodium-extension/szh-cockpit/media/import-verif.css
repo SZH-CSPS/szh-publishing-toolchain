@@ -12,13 +12,11 @@
   border-radius: 999px; font-family: var(--vscode-font-family); white-space: nowrap;
   color: var(--vscode-charts-green, #2ea043); border: 1px solid currentColor; }
 .compteur.vide { color: var(--vscode-charts-orange, #d18616); }
-.photos-note { color: var(--vscode-descriptionForeground); font-size: .85em; margin: .35rem 0 .1rem; }
 /* ---- Originaux des images : une rangée par image, avec sa zone de dépôt. */
 .carte h3 { font-size: var(--t-section); font-weight: 700; letter-spacing: .04em;
   text-transform: uppercase; color: var(--encre-2); margin: var(--e5) 0 var(--e2);
   padding-top: var(--e3); border-top: 1px solid var(--filet); }
-.images-note, .images-aucune { color: var(--vscode-descriptionForeground);
-  font-size: .85em; margin: .15rem 0 .45rem; }
+.images-aucune { color: var(--encre-2); font-size: var(--t-libelle); margin: var(--e1) 0 var(--e2); }
 .image-ligne { display: flex; gap: .8rem; align-items: center; margin: .4rem 0; }
 .image-infos { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: .12rem; }
 .image-nom { font-family: var(--vscode-editor-font-family, monospace); font-size: .9em;

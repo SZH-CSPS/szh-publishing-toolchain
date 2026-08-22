@@ -27,7 +27,8 @@
 //   media-remplace { relatif, description, apercu, qualite } ;
 //   media-erreur { relatif, message } ; media-annulee { relatif } ;
 //   media-retire { relatif } ;
-//   portrait-remplace { base, nom, version, versionActuelle, description, apercu, qualite } ;
+//   portrait-remplace { base, nom, version, versionActuelle, disponibles, rattache,
+//                       description, apercu, qualite } ;
 //   portrait-erreur { base, message }
 // où un média vaut { relatif, description, apercu, occurrences, qualite, doublons,
 // sansAlternative, valeurs } et valeurs = { legende, alt, altDefini, copyright, source,
@@ -119,10 +120,6 @@ function majRole(c) {
   var verrou = c.occurrences === 0;
   c.ctl.alt.disabled = verrou || decorative(c);
   c.ctl.legende.disabled = verrou || horsFigure(c);
-  if (c.ctl.aideAlt) { c.ctl.aideAlt.textContent = decorative(c) ? (TXT.altAideDeco || '') : (TXT.altAide || ''); }
-  if (c.ctl.aideLegende) {
-    c.ctl.aideLegende.textContent = horsFigure(c) ? (TXT.horsFigureAide || '') : (TXT.legendeAide || '');
-  }
   majAlerteAlt(c);
   majPastilles(c);
 }
@@ -163,11 +160,25 @@ function majPastilles(c) {
     texte(zone, 'span', 'szh-pastille szh-pastille--accent', remplir('etatInsertions', [c.occurrences]));
   }
   if (horsFigure(c)) { texte(zone, 'span', 'szh-pastille', TXT.etatHorsFigure || ''); }
-  // Deux noms pour un seul visuel : l'hôte l'a vu par l'empreinte du contenu.
   if (c.doublons.length > 0) {
-    var p = texte(zone, 'span', 'szh-pastille szh-pastille--attention', TXT.etatDoublon || '');
-    p.title = remplir('doublonDe', [c.doublons.join(', ')]);
+    texte(zone, 'span', 'szh-pastille szh-pastille--attention', TXT.etatDoublon || '');
   }
+  majDoublon(c);
+}
+
+// Deux noms pour un seul visuel : l'hôte l'a vu par l'empreinte du contenu. Le nom du
+// jumeau est écrit dans la carte, et non porté par l'infobulle d'une pastille : au clavier
+// comme au lecteur d'écran, un title sur un span n'est jamais lu, et sans le nom on ne
+// peut pas agir.
+function majDoublon(c) {
+  var b = c.ctl.doublon;
+  if (!b) { return; }
+  b.textContent = '';
+  b.hidden = c.doublons.length === 0;
+  if (b.hidden) { return; }
+  b.className = 'szh-notif szh-notif--attention';
+  b.appendChild(SZH.icone('attention'));
+  texte(b, 'span', null, remplir('doublonDe', [c.doublons.join(', ')]));
 }
 
 function estModifieCarte(c) {
@@ -211,7 +222,7 @@ function champ(parent, c, cle) {
   c.ctl[cle] = i;
   return d;
 }
-function radioRole(parent, c, libelle, sous) {
+function radioRole(parent, c, libelle) {
   var l = texte(parent, 'label', 'szh-opt');
   var i = document.createElement('input');
   i.type = 'radio'; i.name = 'role-alt-' + c.index;
@@ -219,9 +230,7 @@ function radioRole(parent, c, libelle, sous) {
     if (i.checked) { etat(''); majRole(c); majModifie(); }
   });
   l.appendChild(i);
-  var t = texte(l, 'span', 'txt');
-  texte(t, 'span', null, libelle);
-  texte(t, 'span', 'sous', sous);
+  texte(l, 'span', 'txt', libelle);
   return i;
 }
 function caseHorsFigure(parent, c) {
@@ -232,9 +241,7 @@ function caseHorsFigure(parent, c) {
   i.type = 'checkbox';
   i.addEventListener('change', function () { etat(''); majRole(c); majModifie(); });
   l.appendChild(i);
-  var t = texte(l, 'span', 'txt');
-  texte(t, 'span', null, TXT.horsFigure || '');
-  texte(t, 'span', 'sous', TXT.horsFigureSous || '');
+  texte(l, 'span', 'txt', TXT.horsFigure || '');
   c.ctl.horsFigure = i;
 }
 
@@ -253,11 +260,9 @@ function poserQualite(boite, qualite) {
   boite.hidden = false;
   boite.className = 'szh-notif szh-notif--attention';
   boite.appendChild(SZH.icone('attention'));
-  var dedans = texte(boite, 'span');
-  texte(dedans, 'b', null, TXT.qualiteTitre || '');
   var prefixe = q.famille === 'portrait' ? 'qualitePortrait' : 'qualite';
   var forme = TXT[prefixe + (q.niveau === 'insuffisant' ? 'Insuffisant' : 'Juste')] || '';
-  texte(dedans, 'span', null, ' ' + forme
+  texte(boite, 'span', null, forme
     .split('{0}').join(String(q.mesure === null || q.mesure === undefined ? '?' : q.mesure))
     .split('{1}').join(String(q.min)).split('{2}').join(String(q.conseille)));
 }
@@ -301,11 +306,11 @@ function envoyerFichier(c, f, typeMessage, cle, genre) {
 
 // Le dépôt vient juste sous l'image, après le verdict de qualité : on regarde le fichier,
 // on lit ce qui lui manque, on le remplace. Un intitulé court suffit à cette place.
-function zoneDepot(parent, c, typeMessage, cle, genre) {
+function zoneDepot(parent, c, typeMessage, cle, genre, libelle) {
   var d = texte(parent, 'div', 'depot');
   var titre = texte(d, 'span', 'depot-titre');
   titre.appendChild(SZH.icone('camera'));
-  texte(titre, 'span', null, TXT.remplacer || '');
+  texte(titre, 'span', null, libelle || TXT.remplacer || '');
   var choisir = bouton(TXT.choisirFichier || '', function () { fichier.click(); });
   d.appendChild(choisir);
   var fichier = document.createElement('input');
@@ -355,6 +360,9 @@ function poserVisuel(zone, nom, apercu) {
 // pouvoir la voir en grand sans quitter le formulaire.
 function ouvrirModale(apercu, nom) {
   if (!modale) { return; }
+  // D'où l'on vient : le bouton d'aperçu disparaît du flux quand la modale se ferme, et
+  // sans cela le clavier repartirait du haut du formulaire.
+  modale.retour = document.activeElement || null;
   modale.img.src = apercu;
   modale.img.alt = nom || '';
   modale.nom.textContent = nom || '';
@@ -365,6 +373,10 @@ function fermerModale() {
   if (!modale) { return; }
   modale.element.classList.remove('visible');
   modale.img.removeAttribute('src');
+  if (modale.retour) {
+    try { modale.retour.focus(); } catch (e) { /* élément disparu entre-temps */ }
+    modale.retour = null;
+  }
 }
 function construireModale() {
   var d = texte(document.body, 'div', 'szh-modale');
@@ -380,7 +392,7 @@ function construireModale() {
   pied.appendChild(fermer);
   // Cliquer à côté de l'image referme, comme dans toute visionneuse.
   d.addEventListener('click', function (ev) { if (ev.target === d) { fermerModale(); } });
-  modale = { element: d, img: img, nom: nom, fermer: fermer };
+  modale = { element: d, img: img, nom: nom, fermer: fermer, retour: null };
 }
 
 // ---- Cartes ----
@@ -401,7 +413,7 @@ function carteMedia(media, index) {
   c.ctl.meta = texte(tete, 'span', 'szh-tete-meta', media.description || '');
   c.ctl.pastilles = texte(tete, 'span', 'pastilles');
   texte(tete, 'span', 'szh-pousse');
-  tete.appendChild(boutonIcone('poubelle', TXT.retirerTip || TXT.retirer || '', function () {
+  tete.appendChild(boutonIcone('poubelle', TXT.retirerTip || '', function () {
     api.postMessage({ type: 'retirer', relatif: c.relatif });
   }, 'szh-ico--danger'));
 
@@ -420,9 +432,10 @@ function carteMedia(media, index) {
   c.ctl.occ.setAttribute('role', 'status');
   c.ctl.alerteAlt = texte(fiche, 'p', 'szh-notif szh-notif--danger');
   c.ctl.alerteAlt.hidden = true;
+  c.ctl.doublon = texte(fiche, 'p', 'szh-notif');
+  c.ctl.doublon.hidden = true;
 
   champ(fiche, c, 'legende');
-  c.ctl.aideLegende = texte(fiche, 'p', 'szh-aide', TXT.legendeAide || '');
   var credits = texte(fiche, 'div', 'szh-grille-2');
   champ(credits, c, 'copyright');
   champ(credits, c, 'source');
@@ -434,10 +447,9 @@ function carteMedia(media, index) {
   texte(fiche, 'p', 'szh-section', TXT.sectionAccessibilite || '');
   var z = texte(fiche, 'fieldset', 'szh-groupe');
   texte(z, 'legend', null, TXT.roleTitre || '');
-  c.ctl.roleDecrit = radioRole(z, c, TXT.roleDecrit, TXT.roleDecritSous);
-  c.ctl.roleDeco = radioRole(z, c, TXT.roleDeco, TXT.roleDecoSous);
+  c.ctl.roleDecrit = radioRole(z, c, TXT.roleDecrit);
+  c.ctl.roleDeco = radioRole(z, c, TXT.roleDeco);
   champ(fiche, c, 'alt');
-  c.ctl.aideAlt = texte(fiche, 'p', 'szh-aide', TXT.altAide || '');
 
   poserValeurs(c, media.valeurs);
   poserOcc(c);
@@ -471,9 +483,21 @@ function poserOcc(c) {
 // n'est pas toujours le bon choix — un fond clair, une écharpe, des cheveux fins, et il vaut
 // mieux garder le fond ou la photo d'origine. Une version absente du disque n'est pas
 // offerte ; un portrait qu'aucune fiche ne désigne n'a nulle part où écrire le choix.
-function choixVersion(parent, c, portrait) {
+function choixVersion(parent, c) {
   var z = texte(parent, 'fieldset', 'szh-groupe');
   texte(z, 'legend', null, TXT.versionTitre || '');
+  c.ctl.groupeVersions = z;
+  poserVersions(c);
+  return z;
+}
+
+// Rejoué à chaque réponse de l'hôte : un dépôt produit les versions manquantes, et les
+// boutons doivent s'ouvrir. Reconstruire est plus sûr que de corriger chaque attribut.
+function poserVersions(c) {
+  var z = c.ctl.groupeVersions;
+  if (!z) { return; }
+  var portrait = c.portrait || {};
+  while (z.lastChild && z.lastChild.tagName !== 'LEGEND') { z.removeChild(z.lastChild); }
   var dispo = portrait.disponibles || {};
   var libelles = { 'sans-fond': TXT.vSansFond, 'avec-fond': TXT.vAvecFond, original: TXT.vOriginal };
   c.ctl.versions = {};
@@ -486,6 +510,9 @@ function choixVersion(parent, c, portrait) {
     i.disabled = !dispo[v] || !portrait.rattache;
     i.addEventListener('change', function () {
       if (!i.checked) { return; }
+      // La version en place est retenue avant d'envoyer : un échec doit remettre le bouton
+      // sur ce que la fiche désigne vraiment, et non sur ce qu'on vient de cliquer.
+      c.versionAvant = (c.portrait || {}).versionActuelle || null;
       c.element.classList.add('occupe');
       poserEtatMedia(c, '…');
       api.postMessage({ type: 'portrait-version', base: c.base, version: v });
@@ -496,19 +523,24 @@ function choixVersion(parent, c, portrait) {
     if (!dispo[v]) { texte(t, 'span', 'sous', TXT.versionAbsente || ''); }
     c.ctl.versions[v] = i;
   });
-  if (!portrait.rattache) { texte(z, 'p', 'szh-aide', TXT.portraitOrphelin || ''); }
 }
 
 function cartePortrait(portrait, index) {
-  var c = { base: String(portrait.base || ''), index: index, ctl: {} };
+  var c = { base: String(portrait.base || ''), index: index, ctl: {}, portrait: portrait };
   var s = texte(corps, 'section', 'szh-carte carte-portrait');
   s.dataset.base = c.base;
   s.setAttribute('aria-label', portrait.auteur || portrait.nom || c.base);
   c.element = s;
 
   var tete = texte(s, 'header', 'szh-tete');
-  texte(tete, 'p', 'szh-tete-nom', portrait.auteur || TXT.portraitOrphelin || '');
+  // Sans fiche d'auteur·e, c'est le nom du fichier qui identifie la carte : le titre ne
+  // peut pas être un message, sinon plus rien ne dit de quel portrait il s'agit.
+  texte(tete, 'p', 'szh-tete-nom', portrait.auteur || portrait.nom || c.base);
   c.ctl.version = texte(tete, 'span', 'szh-tete-meta', portrait.version || '');
+  if (!portrait.rattache) {
+    var orph = texte(tete, 'span', 'szh-pastille szh-pastille--attention', TXT.etatOrphelin || '');
+    orph.title = TXT.portraitOrphelin || '';
+  }
   texte(tete, 'span', 'szh-pousse');
 
   var corpsCarte = texte(s, 'div', 'szh-corps carte-corps');
@@ -519,10 +551,10 @@ function cartePortrait(portrait, index) {
   c.ctl.meta = texte(gauche, 'p', 'meta-fichier', portrait.description || '');
   c.ctl.qualite = texte(gauche, 'p', 'szh-notif');
   poserQualite(c.ctl.qualite, portrait.qualite);
-  zoneDepot(gauche, c, 'portrait-remplacer', 'base', PORTRAIT);
+  zoneDepot(gauche, c, 'portrait-remplacer', 'base', PORTRAIT, TXT.remplacerPortrait);
 
   var droite = texte(corpsCarte, 'div', 'col-fiche');
-  choixVersion(droite, c, portrait);
+  choixVersion(droite, c);
   return c;
 }
 
@@ -550,27 +582,34 @@ function rendre(msg) {
   corps.textContent = '';
   cartes = [];
   portraits = [];
+  fermerModale();                                  // un rechargement reconstruit la liste
   var listeMedias = Array.isArray(msg.medias) ? msg.medias : [];
   var listePortraits = Array.isArray(msg.portraits) ? msg.portraits : [];
-  if (ctl.compte) { ctl.compte.textContent = remplir('resume', [listeMedias.length, listePortraits.length]); }
 
   texte(corps, 'h2', 'titre-section', TXT.sectionImages || '');
-  if (listeMedias.length === 0) {
-    corps.appendChild(SZH.notif('info', TXT.aucuneImage || ''));
-  } else {
-    for (var i = 0; i < listeMedias.length; i++) { cartes.push(carteMedia(listeMedias[i], i)); }
-  }
+  // Toujours construit, montré quand la liste est vide : une image retirée est la seule
+  // chose qui vide la liste sans repasser par ici.
+  ctl.aucuneImage = SZH.notif('info', TXT.aucuneImage || '');
+  corps.appendChild(ctl.aucuneImage);
+  for (var i = 0; i < listeMedias.length; i++) { cartes.push(carteMedia(listeMedias[i], i)); }
   texte(corps, 'h2', 'titre-section', TXT.sectionPortraits || '');
   if (listePortraits.length === 0) {
     corps.appendChild(SZH.notif('info', TXT.aucunPortrait || ''));
   } else {
-    corps.appendChild(SZH.notif('info', TXT.portraitsNote || '', { discret: true }));
     for (var j = 0; j < listePortraits.length; j++) { portraits.push(cartePortrait(listePortraits[j], j)); }
   }
   dernierModifie = false;
   etat('');
+  majResume();
   majModifie();
   focaliser(msg.focus);
+}
+
+// Le compte de la barre et l'avis « aucune image » se déduisent de la liste courante :
+// retirer une image les change sans que la page soit rechargée.
+function majResume() {
+  if (ctl.compte) { ctl.compte.textContent = remplir('resume', [cartes.length, portraits.length]); }
+  if (ctl.aucuneImage) { ctl.aucuneImage.hidden = cartes.length > 0; }
 }
 
 // Ouverture depuis Ctrl+Alt+F : la carte de l'image qui vient d'être insérée passe à
@@ -662,6 +701,16 @@ window.addEventListener('message', function (ev) {
     if (!r) { return; }
     r.element.remove();
     cartes = cartes.filter(function (x) { return x !== r; });
+    // Le jumeau survivant n'est plus un doublon de rien : sans cela il garderait sa
+    // pastille et nommerait le fichier qu'on vient de supprimer.
+    for (var k = 0; k < cartes.length; k++) {
+      var reste = cartes[k].doublons.filter(function (n) { return n !== r.relatif; });
+      if (reste.length !== cartes[k].doublons.length) {
+        cartes[k].doublons = reste;
+        majPastilles(cartes[k]);
+      }
+    }
+    majResume();
     majModifie();
     return;
   }
@@ -670,20 +719,26 @@ window.addEventListener('message', function (ev) {
     if (!p) { return; }
     p.element.classList.remove('occupe');
     if (msg.type === 'portrait-erreur') {
-      // Un remplacement annulé arrive sans message : la zone est simplement réactivée.
+      // Un remplacement annulé, ou refusé parce que le numéro est verrouillé, arrive sans
+      // message : la zone est simplement réactivée.
       poserEtatMedia(p, msg.message ? '⚠ ' + msg.message : '', !!msg.message);
+      // Le choix de version n'a pas abouti : les boutons reviennent sur la version que la
+      // fiche désigne, au lieu de montrer celle qu'on a cliquée en vain.
+      poserVersions(p);
       return;
     }
     p.nom = msg.nom || p.nom || p.base;
+    // Le descripteur suit ce que l'hôte vient de lire sur le disque, puis les boutons de
+    // version sont rejoués : un dépôt a pu produire les dérivés qui manquaient.
+    p.portrait = {
+      versionActuelle: msg.versionActuelle || (p.portrait || {}).versionActuelle || null,
+      disponibles: msg.disponibles || (p.portrait || {}).disponibles || {},
+      rattache: msg.rattache === undefined ? (p.portrait || {}).rattache : !!msg.rattache
+    };
+    poserVersions(p);
     poserVisuel(p.ctl.visuel, p.nom, msg.apercu);
     if (p.ctl.meta) { p.ctl.meta.textContent = msg.description || ''; }
     if (p.ctl.version) { p.ctl.version.textContent = msg.version || ''; }
-    // La version retenue a pu changer : les radios suivent l'état du disque et de la fiche.
-    if (p.ctl.versions && msg.versionActuelle) {
-      Object.keys(p.ctl.versions).forEach(function (v) {
-        p.ctl.versions[v].checked = (v === msg.versionActuelle);
-      });
-    }
     poserQualite(p.ctl.qualite, msg.qualite);
     poserEtatMedia(p, TXT.remplacee || '', false);
     return;
