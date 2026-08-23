@@ -21,6 +21,7 @@ const CLE_ARCHIVEE = 'szh.archivee';
 const ID_VUE = 'szhCockpitVue';
 // À garder identiques aux labels de vscodium-user/tasks.json, qui les nomme.
 const NOM_TACHE_IMPORT = 'Importer les articles Word';
+const CLE_TUTORIEL_VU = 'szh.tutoriel.propose';   // invitation au tutoriel : une seule fois
 const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
 const NOM_TACHE_EXPORT = 'Tout exporter';
 const NOM_TACHE_DOCX = 'Galleys DOCX (OJS)';
@@ -4218,8 +4219,22 @@ function activate(context) {
           await honorerIntention(fournisseur, rafraichirTout); // un lien szh:// reçu
         });
     } finally { barre.dispose(); }
+    proposerTutoriel(context);
   };
   demarrageInitial();
+}
+
+// Une seule fois, et seulement sur un numéro ouvert : la page d'accueil de l'éditeur est
+// désactivée par nos réglages, et la barre d'activités masquée — sans cette invitation,
+// le tutoriel n'existerait que pour qui pense à le chercher.
+async function proposerTutoriel(context) {
+  try {
+    if (context.globalState.get(CLE_TUTORIEL_VU)) { return; }
+    await context.globalState.update(CLE_TUTORIEL_VU, true);
+    const ouvrir = T('tuto.invite.bouton');
+    const choix = await vscode.window.showInformationMessage(T('tuto.invite'), ouvrir);
+    if (choix === ouvrir) { await vscode.commands.executeCommand('szh.tutoriel'); }
+  } catch (e) { /* invitation ratée : la commande et l'icône restent */ }
 }
 
 function deactivate() { arreterDormeurWsl(); }

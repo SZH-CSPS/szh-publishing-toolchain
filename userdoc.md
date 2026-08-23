@@ -3,6 +3,19 @@
 > Réglages et gestes utiles sur un poste **déjà installé**. Public : équipe de rédaction /
 > référent du poste. (L'installation d'un poste est décrite dans le [README](README.md), section Runbook.)
 
+## Le tutoriel intégré
+
+Neuf étapes, dans l'ordre du cycle d'un numéro : ouvrir, déposer les Word, vérifier
+l'import, métadonnées du numéro, images et portraits, tableaux, traductions, relire le PDF,
+exporter et archiver. Chaque étape porte les boutons qui la font, et se coche quand vous
+l'avez faite pour de vrai.
+
+Trois façons de l'ouvrir :
+
+- l'icône **🎓** en haut de la barre latérale « Revue SZH » ;
+- **Panneau de commande** → « Prise en main (tutoriel) » ;
+- à la première ouverture d'un numéro, une invitation le propose une fois.
+
 ## Ouvrir les fichiers `.md` avec « Revue SZH » (une fois par poste)
 
 Objectif : double-cliquer un article (fichier `.md`) dans l'Explorateur ou dans OneDrive

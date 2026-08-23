@@ -27,21 +27,19 @@ select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground
 .champs .szh-champ { min-width: 0; }
 .champs .szh-section:first-child { margin-top: 0; }
 /* Corps : la colonne d'édition à gauche, le panneau de mise en forme à droite, empilés
-   sur un écran étroit — le panneau se retrouvait alors coupé, d'où l'ascenseur du corps. */
+   sur un écran étroit. Un seul ascenseur pour tout l'éditeur — champs, grille et panneau
+   défilent ensemble, seule la barre reste en place. C'est aussi lui qui fige les en-têtes,
+   la position collante se mesurant sur le plus proche ancêtre qui défile. */
 .corps { display: flex; flex: 1 1 auto; gap: var(--e3); min-height: 0;
   align-items: flex-start; flex-wrap: wrap; overflow: auto; }
-/* Un seul ascenseur pour les champs et la grille : les champs se lisaient dans une lucarne
-   à part, ils défilent maintenant avec le tableau. C'est aussi lui qui fige les en-têtes,
-   la position collante se mesurant sur le plus proche ancêtre qui défile. */
-.defile { flex: 1 1 22rem; min-width: 0; align-self: stretch; overflow: auto; }
+/* La colonne d'édition garde sa largeur minimale de contenu : un tableau trop large pousse
+   le panneau dessous, au lieu de déborder par-dessus faute d'ascenseur à lui. */
+.defile { flex: 1 1 22rem; }
 
 /* ---- Panneau de style ----
    Deux colonnes, styles d'en-tête à droite : empilé, l'ensemble dépasse la hauteur utile
    et le zébrage se retrouve hors écran. Il se replie en une colonne sous 34rem. */
-/* Le panneau garde sa propre hauteur utile : empilé sous la grille, il ne doit pas non
-   plus déborder sans ascenseur. */
-.panneau { flex: 0 0 34rem; max-width: 40rem; overflow: auto; align-self: stretch;
-  max-height: 100%;
+.panneau { flex: 0 0 34rem; max-width: 40rem;
   display: flex; flex-direction: row; flex-wrap: wrap; gap: .6rem; align-items: flex-start; }
 .panneau .colonne { flex: 1 1 15rem; min-width: 14rem;
   display: flex; flex-direction: column; gap: .55rem; }
