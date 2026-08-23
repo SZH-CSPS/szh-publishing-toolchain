@@ -2063,16 +2063,16 @@ function ecrireSuiviTraduction(racine, slug, suivi) {
 
 // Lance la campagne : n'avance que les champs « pas prêt », pour ne pas faire reculer un
 // champ déjà en relecture ou finalisé.
-// Poser un état sur tous les blocs de tous les articles du numéro. « Prêt pour traduction »
-// ne touche que ce qui est encore « pas prêt » : on ne redemande pas une traduction déjà
-// faite. Les deux autres écrivent partout — c'est le geste du retour de traduction, et
-// l'appelant le fait confirmer.
+// Poser un état sur tous les blocs de tous les articles du numéro. `seulementPasPret`
+// restreint aux blocs qui n'ont pas commencé — c'est ce que veut la commande de la palette,
+// « rendre prêt tout ce qui ne l'est pas encore », et ce que ne veut pas un bouton de la
+// vue d'ensemble : trois boutons côte à côte doivent se comporter pareil, sinon l'un d'eux
+// semble ne rien faire. L'appelant fait confirmer quand il écrit partout.
 // -> nombre de blocs touchés.
-function marquerToutStatutRevue(fournisseur, rafraichirTout, statut) {
+function marquerToutStatutRevue(fournisseur, rafraichirTout, statut, seulementPasPret) {
   if (!fournisseur.racine) { return 0; }
   const racine = fournisseur.racine;
   const source = langueRevue(racine);
-  const seulementPasPret = statut === 'pret-traduction';
   const erreurs = [];
   let n = 0;
   for (const slug of fournisseur.listerArticles()) {
@@ -2100,8 +2100,9 @@ function marquerToutStatutRevue(fournisseur, rafraichirTout, statut) {
 }
 
 // La commande de la palette : « prêt pour traduction » sur tout ce qui ne l'est pas encore.
+// Elle ne défait donc rien, et n'a pas à être confirmée.
 function marquerToutPretTraduction(fournisseur, rafraichirTout) {
-  const n = marquerToutStatutRevue(fournisseur, rafraichirTout, 'pret-traduction');
+  const n = marquerToutStatutRevue(fournisseur, rafraichirTout, 'pret-traduction', true);
   vscode.window.setStatusBarMessage(n > 0 ? T('trad.toutpret.fait', [n]) : T('trad.toutpret.rien'), 5000);
 }
 
@@ -2163,9 +2164,9 @@ function vueTraductions(fournisseur) {
   return {
     titre: T('trad.titre'),
     boutons: [
-      { id: 'tout-traduction', libelle: T('trad.court.traduction'), icone: 'fleche' },
-      { id: 'tout-relecture', libelle: T('trad.court.relecture'), icone: 'oeil' },
-      { id: 'tout-finalise', libelle: T('trad.court.finalise'), icone: 'ok' },
+      { id: 'tout-traduction', libelle: T('trad.court.traduction'), icone: 'fleche', tip: T('trad.vue.tout.tip') },
+      { id: 'tout-relecture', libelle: T('trad.court.relecture'), icone: 'oeil', tip: T('trad.vue.tout.tip') },
+      { id: 'tout-finalise', libelle: T('trad.court.finalise'), icone: 'ok', tip: T('trad.vue.tout.tip') },
       { id: 'envoyer', libelle: T('trad.envoyer'), icone: 'traduction', tip: T('trad.envoyer.tooltip') }
     ],
     lignes: lignes
@@ -2299,14 +2300,13 @@ async function actionVue(fournisseur, rafraichirTout, type, id) {
     const statut = statuts[id];
     if (!statut) { return null; }
     if (refuserSiVerrouille()) { return null; }
-    if (statut !== 'pret-traduction') {
-      const bouton = T('vue.confirmer');
-      const choix = await vscode.window.showWarningMessage(
-        T('trad.vue.tout.question', [T('trad.statut.' + statut)]),
-        { modal: true, detail: T('trad.vue.tout.detail') }, bouton);
-      if (choix !== bouton) { return null; }
-    }
-    return T('vue.faits', [marquerToutStatutRevue(fournisseur, rafraichirTout, statut)]);
+    // Les trois écrivent partout, y compris à rebours du flux : on confirme les trois.
+    const bouton = T('vue.confirmer');
+    const choix = await vscode.window.showWarningMessage(
+      T('trad.vue.tout.question', [T('trad.statut.' + statut)]),
+      { modal: true, detail: T('trad.vue.tout.detail') }, bouton);
+    if (choix !== bouton) { return null; }
+    return T('vue.faits', [marquerToutStatutRevue(fournisseur, rafraichirTout, statut, false)]);
   }
   if (type === 'word') {
     if (id === 'convertir') { await vscode.commands.executeCommand('szh.convertirEnAttente'); return null; }

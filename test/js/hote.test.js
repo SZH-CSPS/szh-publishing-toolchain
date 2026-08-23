@@ -107,6 +107,31 @@ test('la vue d’ensemble des traductions liste les articles et ses commandes', 
   }
 });
 
+// Les trois boutons d'état sont côte à côte : ils doivent se comporter pareil. « À
+// traduire » se dérobait dès qu'un état était déjà posé — il ne promouvait que ce qui
+// n'avait pas commencé — et semblait donc ne rien faire.
+test('les trois états de masse écrivent, même à rebours du flux', async () => {
+  const suivi = path.join(REVUE, 'articles', '01-essai', '01-essai.traduction.yaml');
+  await HOTE.executer('szh.vueTraductions');
+  const p = HOTE.panneauDeType('szhVueTraductions');
+  const etats = ['tout-finalise', 'tout-traduction', 'tout-relecture'];
+  const attendus = ['finalise', 'pret-traduction', 'pret-relecture'];
+  for (let i = 0; i < etats.length; i++) {
+    HOTE.repondreModale('Appliquer');            // les trois écrivent partout : confirmés
+    await p._recepteur({ type: 'action', id: etats[i] });
+    const texte = fs.readFileSync(suivi, 'utf8');
+    assert.match(texte, new RegExp(attendus[i]),
+      etats[i] + ' n’a pas écrit son état (état précédent : ' + (attendus[i - 1] || 'aucun') + ')');
+    assert.doesNotMatch(texte, new RegExp(attendus[i - 1] || 'zzz'),
+      etats[i] + ' a laissé l’état précédent en place');
+  }
+  // Annuler la modale ne doit rien écrire.
+  HOTE.repondreModale(undefined);
+  await p._recepteur({ type: 'action', id: 'tout-finalise' });
+  assert.match(fs.readFileSync(suivi, 'utf8'), /pret-relecture/,
+    'un refus de confirmation a tout de même écrit');
+});
+
 // Le rapport de la dernière conversion ne vivait que dans le terminal d'une tâche : la vue
 // le relit, et chaque ligne prend le ton de ce qu'elle raconte.
 test('la vue d’ensemble des Word montre le rapport de conversion', async () => {
