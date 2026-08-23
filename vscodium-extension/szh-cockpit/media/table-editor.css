@@ -23,17 +23,17 @@ select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground
 /* Champs au-dessus de la grille, dans l'ordre de la fiche d'une image : la légende, qui
    devient le <caption> du fichier, les crédits, puis l'accessibilité sous son intertitre.
    Les intitulés sont au-dessus des champs, comme partout ailleurs. */
-.champs { display: flex; flex-direction: column; gap: var(--e2); padding: 0 0 var(--e3);
-  max-height: 40vh; overflow: auto; }
+.champs { display: flex; flex-direction: column; gap: var(--e2); padding: 0 0 var(--e3); }
 .champs .szh-champ { min-width: 0; }
 .champs .szh-section:first-child { margin-top: 0; }
-/* Corps : la grille à gauche, le panneau de mise en forme à droite, empilés sur un écran
-   étroit. Chacun défile indépendamment. */
-/* Deux ascenseurs sur le corps : à l'étroit, la grille et le panneau s'empilent, et le
-   panneau de mise en forme se retrouvait coupé sans qu'on puisse l'atteindre. */
+/* Corps : la colonne d'édition à gauche, le panneau de mise en forme à droite, empilés
+   sur un écran étroit — le panneau se retrouvait alors coupé, d'où l'ascenseur du corps. */
 .corps { display: flex; flex: 1 1 auto; gap: var(--e3); min-height: 0;
   align-items: flex-start; flex-wrap: wrap; overflow: auto; }
-#zone { overflow: auto; flex: 1 1 22rem; min-width: 0; align-self: stretch; }
+/* Un seul ascenseur pour les champs et la grille : les champs se lisaient dans une lucarne
+   à part, ils défilent maintenant avec le tableau. C'est aussi lui qui fige les en-têtes,
+   la position collante se mesurant sur le plus proche ancêtre qui défile. */
+.defile { flex: 1 1 22rem; min-width: 0; align-self: stretch; overflow: auto; }
 
 /* ---- Panneau de style ----
    Deux colonnes, styles d'en-tête à droite : empilé, l'ensemble dépasse la hauteur utile

@@ -4124,6 +4124,12 @@ function activate(context) {
     cmdEcriture('szh.metadonneesArticle', (item) => ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item)),
     cmdEcriture('szh.traduction', (item) => ouvrirTraduction(fournisseur, rafraichirTout, item)),
     cmdEcriture('szh.traductionsToutPret', () => marquerToutPretTraduction(fournisseur, rafraichirTout)),
+    // Le tutoriel : neuf étapes dans la page d'accueil de l'éditeur, cochées à mesure que
+    // les commandes correspondantes sont jouées. C'est le seul « calque » qu'une extension
+    // puisse poser par-dessus l'interface — un webview vit dans son cadre et ne peut pas
+    // dessiner sur la barre latérale ni sur les onglets.
+    vscode.commands.registerCommand('szh.tutoriel', () => vscode.commands.executeCommand(
+      'workbench.action.openWalkthrough', 'szh-csps.szh-cockpit#szhDemarrage', false)),
     vscode.commands.registerCommand('szh.vueTraductions',
       () => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'traductions')),
     vscode.commands.registerCommand('szh.vueWord',

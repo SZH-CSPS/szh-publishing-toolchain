@@ -470,6 +470,45 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
   }
 });
 
+// Le tutoriel est déclaratif : ses titres et ses textes vivent dans les deux package.nls,
+// ses dessins sur le disque, et ses liens pointent des commandes. Une clé oubliée
+// s'affiche « %tuto.x% » dans la page d'accueil, un dessin absent laisse un cadre vide, et
+// un lien mort ne fait rien — trois pannes muettes.
+test('le tutoriel a ses libellés, ses dessins et des liens qui mènent quelque part', () => {
+  const manifeste = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
+  const nls = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.nls.json'));
+  const nlsDe = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.nls.de.json'));
+  const tuto = (manifeste.contributes.walkthroughs || [])[0];
+  assert.ok(tuto, 'aucun tutoriel déclaré');
+  assert.ok(tuto.steps.length >= 8, 'tutoriel trop court : ' + tuto.steps.length + ' étapes');
+  const commandes = new Set(manifeste.contributes.commands.map((c) => c.command));
+  const cle = (v) => (typeof v === 'string' && v.startsWith('%') ? v.replace(/%/g, '') : null);
+  const verifier = (valeur, ou) => {
+    const k = cle(valeur);
+    if (!k) { return null; }
+    assert.ok(k in nls, 'libellé français absent : ' + k + ' (' + ou + ')');
+    assert.ok(k in nlsDe, 'libellé allemand absent : ' + k + ' (' + ou + ')');
+    return nls[k];
+  };
+  verifier(tuto.title, 'titre');
+  verifier(tuto.description, 'introduction');
+  for (const etape of tuto.steps) {
+    verifier(etape.title, etape.id);
+    verifier(etape.media.altText, etape.id);
+    const texte = verifier(etape.description, etape.id) || '';
+    for (const m of texte.matchAll(/command:([A-Za-z0-9._]+)/g)) {
+      assert.ok(commandes.has(m[1]), 'lien vers une commande inconnue : ' + m[1] + ' (' + etape.id + ')');
+    }
+    const svg = path.join(COCKPIT, etape.media.svg);
+    assert.ok(fs.existsSync(svg), 'dessin absent : ' + etape.media.svg);
+    assert.match(fs.readFileSync(svg, 'utf8'), /currentColor/,
+      'dessin qui ne suit pas la couleur du thème : ' + etape.media.svg);
+    // Une étape qui ne se coche jamais reste éternellement « à faire ».
+    assert.ok((etape.completionEvents || []).length > 0, 'étape sans condition de complétion : ' + etape.id);
+  }
+  assert.ok(commandes.has('szh.tutoriel'), 'aucune commande n’ouvre le tutoriel');
+});
+
 // Un formulaire qui écrit doit enregistrer tout seul : personne ne pense à cliquer un
 // bouton avant de fermer un panneau, et le travail perdu ne se voit qu'après. Deux
 // exceptions, explicites : les réglages écrivent à chaque changement de choix, et la vue

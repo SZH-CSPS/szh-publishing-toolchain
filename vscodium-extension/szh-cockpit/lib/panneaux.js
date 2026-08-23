@@ -9,6 +9,7 @@ const { T } = require('./i18n');
 const { PALETTE_MEF } = require('./formatting');
 
 const PANNEAU_COMMANDE = [
+  ['panneau.tutoriel', 'szh.tutoriel', '', '$(mortar-board)'],
   ['panneau.importerWord', 'szh.importerWord', '', '$(add)'],
   ['panneau.convertirEnAttente', 'szh.convertirEnAttente', '', '$(run-all)'],
   ['meta.titre', 'szh.metadonnees', '', '$(gear)'],

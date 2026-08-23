@@ -10,6 +10,78 @@
   "activationEvents": ["onStartupFinished"],
   "main": "./extension.js",
   "contributes": {
+    "walkthroughs": [
+      {
+        "id": "szhDemarrage",
+        "title": "%tuto.titre%",
+        "description": "%tuto.intro%",
+        "steps": [
+        {
+          "id": "szh.tuto.ouvrir",
+          "title": "%tuto.ouvrir.titre%",
+          "description": "%tuto.ouvrir.texte%",
+          "media": { "svg": "media/tutoriel/01-ouvrir.svg", "altText": "%tuto.ouvrir.titre%" },
+          "completionEvents": ["onView:szhCockpitVue"]
+        },
+        {
+          "id": "szh.tuto.word",
+          "title": "%tuto.word.titre%",
+          "description": "%tuto.word.texte%",
+          "media": { "svg": "media/tutoriel/02-word.svg", "altText": "%tuto.word.titre%" },
+          "completionEvents": ["onCommand:szh.convertirEnAttente"]
+        },
+        {
+          "id": "szh.tuto.verifier",
+          "title": "%tuto.verifier.titre%",
+          "description": "%tuto.verifier.texte%",
+          "media": { "svg": "media/tutoriel/03-verifier.svg", "altText": "%tuto.verifier.titre%" },
+          "completionEvents": ["onCommand:szh.apercuMetadonnees"]
+        },
+        {
+          "id": "szh.tuto.numero",
+          "title": "%tuto.numero.titre%",
+          "description": "%tuto.numero.texte%",
+          "media": { "svg": "media/tutoriel/04-numero.svg", "altText": "%tuto.numero.titre%" },
+          "completionEvents": ["onCommand:szh.metadonnees"]
+        },
+        {
+          "id": "szh.tuto.medias",
+          "title": "%tuto.medias.titre%",
+          "description": "%tuto.medias.texte%",
+          "media": { "svg": "media/tutoriel/05-medias.svg", "altText": "%tuto.medias.titre%" },
+          "completionEvents": ["onCommand:szh.mediasArticle"]
+        },
+        {
+          "id": "szh.tuto.tableau",
+          "title": "%tuto.tableau.titre%",
+          "description": "%tuto.tableau.texte%",
+          "media": { "svg": "media/tutoriel/06-tableau.svg", "altText": "%tuto.tableau.titre%" },
+          "completionEvents": ["onCommand:szh.editerTable"]
+        },
+        {
+          "id": "szh.tuto.traduction",
+          "title": "%tuto.traduction.titre%",
+          "description": "%tuto.traduction.texte%",
+          "media": { "svg": "media/tutoriel/07-traduction.svg", "altText": "%tuto.traduction.titre%" },
+          "completionEvents": ["onCommand:szh.vueTraductions"]
+        },
+        {
+          "id": "szh.tuto.relire",
+          "title": "%tuto.relire.titre%",
+          "description": "%tuto.relire.texte%",
+          "media": { "svg": "media/tutoriel/08-relire.svg", "altText": "%tuto.relire.titre%" },
+          "completionEvents": ["onCommand:szh.basculerApercu"]
+        },
+        {
+          "id": "szh.tuto.archiver",
+          "title": "%tuto.archiver.titre%",
+          "description": "%tuto.archiver.texte%",
+          "media": { "svg": "media/tutoriel/09-archiver.svg", "altText": "%tuto.archiver.titre%" },
+          "completionEvents": ["onCommand:szh.exporterXml"]
+        }
+        ]
+      }
+    ],
     "configuration": {
       "title": "SZH",
       "properties": {
@@ -150,6 +222,12 @@
         "icon": "$(globe)"
       },
       {
+        "command": "szh.tutoriel",
+        "title": "%cmd.tutoriel%",
+        "category": "Revue SZH",
+        "icon": "$(mortar-board)"
+      },
+      {
         "command": "szh.vueTraductions",
         "title": "%cmd.vueTraductions%",
         "category": "Revue SZH"
@@ -231,6 +309,11 @@
         { "command": "szh.basculerApercu", "group": "navigation", "when": "resourceExtname == .pdf && szh.estRevue || activeCustomEditorId == 'pdf.preview' && szh.estRevue" }
       ],
       "view/title": [
+        {
+          "command": "szh.tutoriel",
+          "when": "view == szhCockpitVue",
+          "group": "navigation@9"
+        },
         {
           "command": "szh.panneauCommande",
           "when": "view == szhCockpitVue",
