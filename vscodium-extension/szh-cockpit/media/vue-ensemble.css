@@ -14,7 +14,14 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 .titre-section:first-child { margin-top: 0; }
 
 .ligne .szh-tete { flex-wrap: wrap; }
-.ligne .szh-corps { padding: var(--e3); }
+.ligne .szh-corps { padding: var(--e3) var(--e3) 0; }
+/* Le pied : « Ouvrir » à gauche, l'état juste à côté. Toujours à la même place, quelle que
+   soit la longueur du titre — c'est ce qui rend une liste lisible d'un coup d'œil. */
+.ligne-pied {
+  display: flex; align-items: center; gap: var(--e2);
+  padding: var(--e3);
+}
+.ligne-pied:empty { display: none; }
 
 /* Un bouton qui détruit se distingue sans crier : le texte prend la couleur d'erreur du
    thème, le fond reste celui des autres. */

@@ -266,6 +266,7 @@ label.szh-libelle {
    Un état se lit d'un coup d'œil dans la tête de carte, sans lire une phrase. */
 .szh-pastille {
   display: inline-flex; align-items: center; gap: var(--e1);
+  /* Le pictogramme prend la couleur du ton, comme le texte. */
   padding: .1em .45em; border-radius: 999px;
   font-size: var(--t-mini); font-weight: 700; letter-spacing: .02em;
   border: 1px solid var(--filet); color: var(--encre-2);
@@ -275,6 +276,12 @@ label.szh-libelle {
 .szh-pastille--attention {
   border-color: var(--vscode-editorWarning-foreground, #d1901e);
   color: var(--vscode-editorWarning-foreground, #d1901e);
+}
+/* Les tons suivent ceux de l'arbre, pour qu'un état se reconnaisse d'un panneau à l'autre :
+   bleu ce qui est lancé, orange ce qui attend un regard, vert ce qui est clos. */
+.szh-pastille--info {
+  border-color: var(--vscode-charts-blue, #3794ff);
+  color: var(--vscode-charts-blue, #3794ff);
 }
 .szh-pastille--ok {
   border-color: var(--vscode-charts-green, #3fb950);

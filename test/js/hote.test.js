@@ -96,6 +96,15 @@ test('la vue d’ensemble des traductions liste les articles et ses commandes', 
     assert.ok(b.libelle && b.libelle.length > 0, 'bouton sans libellé : ' + b.id);
     assert.ok(b.icone, 'bouton sans pictogramme : ' + b.id);
   }
+  // Chaque état porte sa couleur et son pictogramme : une liste se lit d'un coup d'œil,
+  // pas en déchiffrant quatre libellés qui se ressemblent.
+  for (const l of charge.lignes) {
+    for (const past of l.pastilles) {
+      assert.ok(past.icone, 'pastille sans pictogramme : ' + past.texte);
+      assert.ok(['', 'info', 'attention', 'ok', 'danger', 'accent'].indexOf(past.ton) !== -1,
+        'ton de pastille inconnu : ' + past.ton);
+    }
+  }
 });
 
 // Le rapport de la dernière conversion ne vivait que dans le terminal d'une tâche : la vue

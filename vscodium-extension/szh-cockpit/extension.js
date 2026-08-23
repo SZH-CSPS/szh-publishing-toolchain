@@ -2123,6 +2123,15 @@ function textesVueEnsemble() {
   return { ouvrir: T('vue.ouvrir'), rien: T('vue.rien') };
 }
 
+// Ton et pictogramme d'un état d'atelier, les mêmes que dans l'arbre : bleu ce qui est
+// lancé, orange ce qui attend un regard, vert ce qui est clos, rien quand rien n'a commencé.
+const PASTILLE_STATUT = {
+  'pas-pret': { ton: '', icone: 'cercle' },
+  'pret-traduction': { ton: 'info', icone: 'fleche' },
+  'pret-relecture': { ton: 'attention', icone: 'oeil' },
+  finalise: { ton: 'ok', icone: 'ok' }
+};
+
 // Un article par ligne : son avancement, son état, et la question posée s'il y en a une.
 function vueTraductions(fournisseur) {
   const racine = fournisseur.racine;
@@ -2135,11 +2144,17 @@ function vueTraductions(fournisseur) {
       continue;
     }
     const r = etat.resume;
-    const ton = r.statut === 'finalise' ? 'accent' : (r.statut === 'pas-pret' ? 'attention' : '');
+    // Des états mêlés dans un même article : le plus prudent des deux mondes, l'attention.
+    const past = r.melange
+      ? { ton: 'attention', icone: 'attention' }
+      : (PASTILLE_STATUT[r.statut] || { ton: '', icone: 'cercle' });
     lignes.push({
       cle: slug, titre: slug,
       meta: T('trad.avancement', [r.remplis, r.total]),
-      pastilles: [{ texte: r.melange ? T('trad.statut.melange') : T('trad.statut.' + r.statut), ton: ton }],
+      pastilles: [{
+        texte: r.melange ? T('trad.statut.melange') : T('trad.statut.' + r.statut),
+        ton: past.ton, icone: past.icone
+      }],
       notif: etat.suivi.commentaire !== ''
         ? { ton: 'info', texte: etat.suivi.commentaire } : null,
       ouvrir: true
@@ -2165,7 +2180,7 @@ function vueWord(fournisseur) {
   for (const entree of lireRapportImport(racine)) {
     lignes.push({
       cle: '', groupe: T('word.vue.rapport'), titre: entree.nom,
-      pastilles: [{ texte: entree.libelle, ton: entree.ton }],
+      pastilles: [{ texte: entree.libelle, ton: entree.ton, icone: entree.icone }],
       notif: entree.ligne === '' ? null : { ton: entree.ton === '' ? 'info' : entree.ton, texte: entree.ligne },
       ouvrir: false
     });
@@ -2176,7 +2191,9 @@ function vueWord(fournisseur) {
     const deja = fournisseur._articleExiste(slug);
     lignes.push({
       cle: '', groupe: T('word.vue.attente'), titre: nom, meta: slug,
-      pastilles: deja ? [{ texte: T('arbre.deja.badge'), ton: 'attention' }] : [],
+      pastilles: deja
+        ? [{ texte: T('arbre.deja.badge'), ton: 'attention', icone: 'attention' }]
+        : [{ texte: T('word.vue.attente.badge'), ton: 'info', icone: 'fleche' }],
       notif: deja ? { ton: 'attention', texte: T('arbre.deja.tooltip') } : null,
       ouvrir: false
     });
@@ -2203,21 +2220,22 @@ function lireRapportImport(racine) {
     const ligne = brute.replace(/^\[import\]\s*/, '').trim();
     if (ligne === '') { continue; }
     let ton = 'ok';
+    let icone = 'ok';
     let libelle = T('word.rapport.converti');
     // Les motifs tolèrent l'absence d'accent : le rapport vient d'un shell, dont la locale
     // n'est pas garantie.
     // Le bilan d'abord : il compte les échecs, et se ferait classer comme l'un d'eux. Le
     // motif est ancré en début de ligne : un fichier « Dossier terminé 2026.docx » ne doit
     // pas voir son échec se déguiser en bilan.
-    if (/^termin[ée]/i.test(ligne)) { ton = ''; libelle = T('word.rapport.bilan'); }
-    else if (ligne.indexOf('⚠') !== -1 || /[ée]chec/i.test(ligne)) { ton = 'danger'; libelle = T('word.rapport.echec'); }
-    else if (/d[ée]j[àa] converti|ignor/i.test(ligne)) { ton = 'attention'; libelle = T('word.rapport.ignore'); }
+    if (/^termin[ée]/i.test(ligne)) { ton = ''; icone = 'info'; libelle = T('word.rapport.bilan'); }
+    else if (ligne.indexOf('⚠') !== -1 || /[ée]chec/i.test(ligne)) { ton = 'danger'; icone = 'danger'; libelle = T('word.rapport.echec'); }
+    else if (/d[ée]j[àa] converti|ignor/i.test(ligne)) { ton = 'attention'; icone = 'attention'; libelle = T('word.rapport.ignore'); }
     // Le nom du fichier en tête de ligne, la phrase en dessous : c'est par le fichier
     // qu'on cherche, et la phrase est ce qu'il faut lire quand ça a raté.
     // Les .docx livrés portent presque toujours des espaces : on prend tout ce qui suit le
     // deux-points jusqu'à l'extension, sans quoi le titre de la carte serait un fragment.
     const m = ligne.match(/:\s*(.+?\.docx)/i);
-    entrees.push({ nom: m ? m[1] : ligne, ligne: m ? ligne : '', libelle: libelle, ton: ton });
+    entrees.push({ nom: m ? m[1] : ligne, ligne: m ? ligne : '', libelle: libelle, ton: ton, icone: icone });
   }
   return entrees;
 }

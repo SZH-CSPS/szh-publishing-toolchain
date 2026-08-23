@@ -43,6 +43,8 @@ var SZH = (function () {
         'stroke-width': '1.5', 'stroke-linecap': 'round' }]
     ],
     ok: [['path', { d: 'M6.4 11.9 2.9 8.4 4 7.3l2.4 2.4 5.6-5.6 1.1 1.1z' }]],
+    // Rien n'est commencé : le cercle vide de l'arbre.
+    cercle: [['circle', { cx: '8', cy: '8', r: '5.5', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5' }]],
     // Envoyer pour traduction : deux alphabets et une plume.
     traduction: [
       ['path', { d: 'M1.5 2.5h6v1.5h-6zM3.5 4.5h2v1.2c0 2.2-1 3.9-2.6 4.9l-.8-1.3c1.2-.7 2-1.9 2-3.6V4.5z' }],

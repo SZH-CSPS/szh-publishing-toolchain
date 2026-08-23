@@ -11,7 +11,12 @@
 // Depuis l'hôte :
 //   valeurs { titre, boutons, lignes, accent, i18n } ; etat { message }
 // où un bouton vaut { id, libelle, icone, tip, principal, danger, desactive } et une ligne
-// { cle, groupe, titre, meta, pastilles: [{ texte, ton }], notif: { ton, texte }, ouvrir }.
+// { cle, groupe, titre, meta, pastilles: [{ texte, ton, icone }], notif: { ton, texte },
+// ouvrir }.
+//
+// Une carte a trois étages fixes : le titre et sa mesure, ce qu'il y a à lire, puis
+// « Ouvrir » et l'état. Tout dans une seule rangée passait à la ligne au hasard des
+// longueurs, et deux cartes voisines ne se lisaient plus de la même façon.
 (function () {
   'use strict';
   var api = acquireVsCodeApi();
@@ -72,11 +77,13 @@
       var tete = texte(carte, 'header', 'szh-tete');
       texte(tete, 'p', 'szh-tete-nom', l.titre || '');
       if (l.meta) { texte(tete, 'span', 'szh-tete-meta', l.meta); }
-      for (var k = 0; k < (l.pastilles || []).length; k++) {
-        var p = l.pastilles[k];
-        texte(tete, 'span', 'szh-pastille' + (p.ton ? ' szh-pastille--' + p.ton : ''), p.texte || '');
+      // Ce qui demande d'être lu — un commentaire, un message de conversion, une erreur —
+      // vit dans le corps de la carte, pas dans une infobulle.
+      if (l.notif && l.notif.texte) {
+        var corps = texte(carte, 'div', 'szh-corps');
+        corps.appendChild(SZH.notif(l.notif.ton || 'info', l.notif.texte));
       }
-      texte(tete, 'span', 'szh-pousse');
+      var pied = texte(carte, 'footer', 'ligne-pied');
       if (l.ouvrir) {
         var ouvrir = document.createElement('button');
         ouvrir.type = 'button';
@@ -85,13 +92,13 @@
         ouvrir.addEventListener('click', (function (cle) {
           return function () { api.postMessage({ type: 'ouvrir', cle: cle }); };
         }(String(l.cle || ''))));
-        tete.appendChild(ouvrir);
+        pied.appendChild(ouvrir);
       }
-      // Ce qui demande d'être lu — un message de conversion, une erreur — vit dans le corps
-      // de la carte, pas dans une infobulle.
-      if (l.notif && l.notif.texte) {
-        var corps = texte(carte, 'div', 'szh-corps');
-        corps.appendChild(SZH.notif(l.notif.ton || 'info', l.notif.texte));
+      for (var k = 0; k < (l.pastilles || []).length; k++) {
+        var p = l.pastilles[k];
+        var past = texte(pied, 'span', 'szh-pastille' + (p.ton ? ' szh-pastille--' + p.ton : ''));
+        if (p.icone) { past.appendChild(SZH.icone(p.icone)); }
+        texte(past, 'span', null, p.texte || '');
       }
     }
   }
