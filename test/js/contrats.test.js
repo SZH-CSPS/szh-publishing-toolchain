@@ -470,6 +470,23 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
   }
 });
 
+// Un formulaire qui écrit doit enregistrer tout seul : personne ne pense à cliquer un
+// bouton avant de fermer un panneau, et le travail perdu ne se voit qu'après. Deux
+// exceptions, explicites : les réglages écrivent à chaque changement de choix, et la vue
+// d'ensemble n'a rien à saisir.
+test('chaque formulaire qui écrit enregistre automatiquement', () => {
+  const attendus = ['metadata-articles', 'metadata-issue', 'import-verif', 'medias-article',
+    'traduction', 'table-editor'];
+  for (const page of attendus) {
+    const fragments = [page + '.js'];
+    if (page === 'metadata-articles' || page === 'import-verif') { fragments.push('_fiches.js'); }
+    const js = fragments
+      .map((f) => fs.readFileSync(path.join(COCKPIT, 'media', f), 'utf8')).join(' ');
+    assert.match(js, /SZH\.autoEnregistrement\(/,
+      'formulaire sans enregistrement automatique : ' + page);
+  }
+});
+
 // Le socle visuel est posé page par page par l'hôte. Une page qui l'oublie perd tous ses
 // jetons d'un coup : ses règles se réduisent à des valeurs vides, sans aucune erreur. Et un
 // fragment mal nommé dans cssPartage ou jsPartage ne se voit qu'à l'ouverture du panneau,
@@ -477,7 +494,7 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
 test('chaque webview reçoit le socle visuel, et ses fragments existent', () => {
   const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
   const appels = [...src.matchAll(/construireHtml\('([a-z-]+)', nonce, \{([\s\S]{0,700}?)\}\);/g)];
-  assert.strictEqual(appels.length, 7, 'appels à construireHtml : ' + appels.length);
+  assert.strictEqual(appels.length, 8, 'appels à construireHtml : ' + appels.length);
   for (const [, page, corps] of appels) {
     assert.ok(/cssPartage:\s*\[[^\]]*'_design\.css'/.test(corps), 'page sans le socle : ' + page);
     for (const m of corps.matchAll(/'(_[a-z]+\.(?:css|js))'/g)) {
@@ -509,7 +526,8 @@ test('les tables de protocole des webviews sont à jour', () => {
     'metadata-articles': ['_fiches.js'],
     'import-verif': ['_fiches.js'],
     'traduction': [],
-    'medias-article': []
+    'medias-article': [],
+    'vue-ensemble': []
   };
   for (const page of Object.keys(pages)) {
     const fichiers = [page + '.js'].concat(pages[page]);

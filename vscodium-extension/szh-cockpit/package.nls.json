@@ -16,6 +16,8 @@
   "cmd.metadonneesArticle": "Éditer les métadonnées de cet article",
   "cmd.mediasArticle": "Gérer les médias de cet article",
   "cmd.traduction": "Suivi de traduction de cet article",
+  "cmd.vueTraductions": "Suivi des traductions",
+  "cmd.vueWord": "Word en attente",
   "cmd.traductionsToutPret": "Tout marquer prêt pour traduction",
   "cmd.envoyerTraduction": "Envoyer pour traduction (lien)",
   "cmd.reglages": "Réglages SZH",

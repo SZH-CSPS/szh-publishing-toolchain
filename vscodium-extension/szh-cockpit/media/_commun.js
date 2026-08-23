@@ -42,7 +42,19 @@ var SZH = (function () {
       ['path', { d: 'M5.7 5.7l4.6 4.6M10.3 5.7l-4.6 4.6', fill: 'none', stroke: 'currentColor',
         'stroke-width': '1.5', 'stroke-linecap': 'round' }]
     ],
-    ok: [['path', { d: 'M6.4 11.9 2.9 8.4 4 7.3l2.4 2.4 5.6-5.6 1.1 1.1z' }]]
+    ok: [['path', { d: 'M6.4 11.9 2.9 8.4 4 7.3l2.4 2.4 5.6-5.6 1.1 1.1z' }]],
+    // Envoyer pour traduction : deux alphabets et une plume.
+    traduction: [
+      ['path', { d: 'M1.5 2.5h6v1.5h-6zM3.5 4.5h2v1.2c0 2.2-1 3.9-2.6 4.9l-.8-1.3c1.2-.7 2-1.9 2-3.6V4.5z' }],
+      ['path', { d: 'M8.5 13.5h6v-1.5h-6zM10.5 6.5h2v5.2h-2z', opacity: '.55' }],
+      ['path', { d: 'M6.2 8.1 7.3 7l3.4 3.4-1.1 1.1z' }]
+    ],
+    // Les deux étapes du suivi de traduction : passer la main, puis relire.
+    fleche: [['path', { d: 'M8.5 3.5 13 8l-4.5 4.5-1.06-1.06L10.4 8.75H3v-1.5h7.4L7.44 4.56 8.5 3.5z' }]],
+    oeil: [
+      ['path', { d: 'M8 3.25C4.7 3.25 2 5.15 1.15 8 2 10.85 4.7 12.75 8 12.75s6-1.9 6.85-4.75C14 5.15 11.3 3.25 8 3.25zm0 1.5c2.4 0 4.4 1.3 5.25 3.25C12.4 9.95 10.4 11.25 8 11.25S3.6 9.95 2.75 8C3.6 6.05 5.6 4.75 8 4.75z' }],
+      ['circle', { cx: '8', cy: '8', r: '1.9' }]
+    ]
   };
 
   function icone(nom) {

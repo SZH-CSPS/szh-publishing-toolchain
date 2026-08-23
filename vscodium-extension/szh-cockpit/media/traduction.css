@@ -20,12 +20,6 @@ button.principal:hover { background: var(--vscode-button-hoverBackground); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 button:disabled { opacity: .45; cursor: default; }
 
-/* Rangée « Tout l'article » : un bouton par état, un clic suffit et enregistre. */
-.tout { display: flex; align-items: center; flex-wrap: wrap; gap: var(--e2); margin: 0 0 var(--e5);
-  padding: var(--e2) var(--e3); border-radius: var(--rayon-mini); font-size: var(--t-libelle);
-  background: var(--surface-tete); border-left: 3px solid var(--accent); }
-.tout .intitule { font-weight: 700; margin-right: var(--e1); }
-
 /* Une carte par champ à traduire ; le liséré de gauche porte l'état, et c'est la seule
    couleur de la page — d'où un liséré, et non un fond. */
 .carte { background: var(--surface); border: 1px solid var(--filet);

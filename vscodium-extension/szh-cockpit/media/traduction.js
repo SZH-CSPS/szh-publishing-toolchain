@@ -3,6 +3,10 @@
 // saisir et un état par bloc. DOM construit sans injection HTML, valeurs reçues par
 // postMessage, enregistrement automatique par SZH.autoEnregistrement (media/_commun.js).
 //
+// Les états de masse sont dans la barre du haut, avec un texte court et un pictogramme :
+// c'est le geste le plus fréquent du suivi — l'article revient de traduction, on le passe
+// en relecture, puis on le finalise — et il n'a rien à faire au milieu de la page.
+//
 // Protocole avec l'hôte :
 //   webview -> hôte : pret ; modifie { modifie } ; lien ; copier { texte } ;
 //                     deepl { texte, source, cible } ;
@@ -19,7 +23,6 @@
   const etat = document.getElementById('etat');
   const conteneur = document.getElementById('champs');
   const titreArticle = document.getElementById('article');
-  const barreTout = document.getElementById('tout');
   const zoneCommentaire = document.getElementById('zone-commentaire');
   const commentaire = document.getElementById('commentaire');
 
@@ -202,32 +205,52 @@
     return carte;
   }
 
-  // « Tout l'article » : un bouton par état. Un clic pose l'état sur tous les blocs puis
-  // enregistre, ce qui emporte aussi les textes en cours de saisie.
-  function rendreTout(nombreBlocs) {
-    barreTout.textContent = '';
-    if (nombreBlocs === 0) { barreTout.hidden = true; return; }
-    const intitule = document.createElement('span');
-    intitule.className = 'intitule';
-    intitule.textContent = TXT.tout;
-    barreTout.appendChild(intitule);
-    for (const s of STATUTS) {
+  // Les trois pas du flux, posés sur tous les blocs de l'article d'un clic, puis
+  // enregistrés — ce qui emporte aussi les textes en cours de saisie. Revenir en arrière
+  // se fait bloc par bloc, avec le sélecteur de chaque carte : personne ne « dé-finalise »
+  // un article entier d'un geste.
+  const PAS = [
+    { valeur: 'pret-traduction', libelle: 'courtTraduction', icone: 'fleche' },
+    { valeur: 'pret-relecture', libelle: 'courtRelecture', icone: 'oeil' },
+    { valeur: 'finalise', libelle: 'courtFinalise', icone: 'ok' }
+  ];
+  function poserBoutonsEtat() {
+    if (document.getElementById('pas-pret-traduction')) { return; }
+    const ancre = document.getElementById('etat');
+    for (const pas of PAS) {
       const bouton = document.createElement('button');
       bouton.type = 'button';
-      bouton.textContent = s.libelle;
-      bouton.addEventListener('click', function () {
-        for (const carte of conteneur.querySelectorAll('.carte')) {
-          const select = carte.querySelector('select.statut');
-          if (select.value !== s.valeur) { select.value = s.valeur; carte.classList.add('modifie'); }
-          majStatut(carte);
-        }
-        modifie = true;
-        signalerModifie();
-        enregistrer(false);
-      });
-      barreTout.appendChild(bouton);
+      bouton.id = 'pas-' + pas.valeur;
+      bouton.className = 'szh-bouton';
+      bouton.appendChild(SZH.icone(pas.icone));
+      const texte = document.createElement('span');
+      texte.textContent = TXT[pas.libelle] || '';
+      bouton.appendChild(texte);
+      bouton.title = TXT.toutTip || '';
+      bouton.addEventListener('click', function () { poserToutStatut(pas.valeur); });
+      ancre.parentNode.insertBefore(bouton, ancre);
     }
-    barreTout.hidden = false;
+  }
+  function poserToutStatut(valeur) {
+    let cartes = 0;
+    for (const carte of conteneur.querySelectorAll('.carte')) {
+      const select = carte.querySelector('select.statut');
+      if (!select) { continue; }
+      cartes++;
+      if (select.value !== valeur) { select.value = valeur; carte.classList.add('modifie'); }
+      majStatut(carte);
+    }
+    if (cartes === 0) { return; }
+    modifie = true;
+    signalerModifie();
+    enregistrer(false);
+  }
+  // Les boutons n'ont de sens qu'avec des blocs à marquer.
+  function majBoutonsEtat(nombreBlocs) {
+    for (const pas of PAS) {
+      const b = document.getElementById('pas-' + pas.valeur);
+      if (b) { b.disabled = nombreBlocs === 0; }
+    }
   }
 
   // « Envoyer pour traduction » : l'hôte fabrique le lien szh:// et ouvre le brouillon
@@ -237,7 +260,11 @@
     const bouton = document.createElement('button');
     bouton.type = 'button';
     bouton.id = 'envoyer';
-    bouton.textContent = TXT.envoyer;
+    bouton.className = 'szh-bouton';
+    bouton.appendChild(SZH.icone('traduction'));
+    const texte = document.createElement('span');
+    texte.textContent = TXT.envoyer;
+    bouton.appendChild(texte);
     if (TXT.envoyerTip) { bouton.title = TXT.envoyerTip; }
     bouton.addEventListener('click', function () { vscodeApi.postMessage({ type: 'lien' }); });
     const ancre = document.getElementById('enregistrer');
@@ -246,6 +273,7 @@
 
   function rendre(msg) {
     poserBoutonEnvoyer();
+    poserBoutonsEtat();
     SLUG = msg.slug || null;
     STATUTS = msg.statuts || [];
     LANGUE_SOURCE = msg.langueSource || 'fr';
@@ -260,7 +288,7 @@
       rien.textContent = TXT.rien;
       conteneur.appendChild(rien);
     }
-    rendreTout(groupes.length);
+    majBoutonsEtat(groupes.length);
     commentaire.value = msg.commentaire || '';
     zoneCommentaire.hidden = false;
     modifie = false;

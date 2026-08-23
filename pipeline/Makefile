@@ -281,6 +281,9 @@ import:
 	shopt -u nocaseglob; \
 	[ $${#files[@]} -gt 0 ] || exit 0; \
 	mkdir -p articles; \
+	journal="$(WORD_DIR)/.import.log"; \
+	: > "$$journal"; \
+	dire() { echo "$$*"; printf '%s\n' "$$*" >> "$$journal"; }; \
 	ok=0; deja=0; rate=0; \
 	for f in "$${files[@]}"; do \
 	  nom=$$(basename "$$f"); slug="$${nom%.*}"; \
@@ -291,17 +294,17 @@ import:
 	  if [ $${#slug} -gt 39 ]; then scourt="$${slug:0:39}"; scourt="$${scourt%-*}"; sorph=$$(printf '%s' "$$scourt" | sed -E 's/(-[a-z0-9])+$$//'); case "$$sorph" in *-*) scourt="$$sorph";; esac; slug="$${scourt:-$${slug:0:39}}"; fi; \
 	  cible="articles/$$slug/$$slug.md"; \
 	  if [ -e "$$cible" ]; then \
-	    echo "[import] déjà converti (ignoré) : $$nom -> $$cible existe"; deja=$$((deja+1)); continue; \
+	    dire "[import] déjà converti (ignoré) : $$nom -> $$cible existe"; deja=$$((deja+1)); continue; \
 	  fi; \
 	  if bash "$(PIPELINE_DIR)/import-docx.sh" "$$f" "$$slug" "$(PIPELINE_DIR)"; then \
 	    rm -f "$$f"; \
-	    echo "[import] converti : $$nom -> $$cible"; ok=$$((ok+1)); \
+	    dire "[import] converti : $$nom -> $$cible"; ok=$$((ok+1)); \
 	  else \
 	    rm -rf "articles/$$slug"; \
-	    echo "[import] ⚠ échec sur : $$nom (le fichier reste dans $(WORD_DIR)/)"; rate=$$((rate+1)); \
+	    dire "[import] ⚠ échec sur : $$nom (le fichier reste dans $(WORD_DIR)/)"; rate=$$((rate+1)); \
 	  fi; \
 	done; \
-	echo "[import] terminé : $$ok converti(s), $$deja ignoré(s), $$rate échec(s)."; \
+	dire "[import] terminé : $$ok converti(s), $$deja ignoré(s), $$rate échec(s)."; \
 	[ $$rate -eq 0 ]
 
 clean:

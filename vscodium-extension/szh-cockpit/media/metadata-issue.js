@@ -94,9 +94,11 @@
     document.getElementById(cle).addEventListener('input', function () { modifies.add(cle); etat.textContent = ''; });
   }
   rendreCouleurs();
-  document.getElementById('formulaire').addEventListener('submit', function (e) {
-    e.preventDefault();
-    if (modifies.size === 0) { etat.textContent = TXT.rien; return; }
+
+  // Seuls les champs touchés partent : ausgabe.yaml garde tout le reste, commentaires
+  // compris, et deux personnes qui éditent deux clés ne s'écrasent pas.
+  function envoyer(auto) {
+    if (modifies.size === 0) { if (!auto) { etat.textContent = TXT.rien; } return; }
     const envoi = {};
     for (const cle of modifies) {
       if (cle === 'couleur') { envoi[cle] = couleurChoisie; }
@@ -105,13 +107,25 @@
       else { envoi[cle] = document.getElementById(cle).value; }
     }
     vscodeApi.postMessage({ type: 'enregistrer', modifies: envoi });
+  }
+  // Enregistrement automatique, comme le suivi de traduction : trois secondes après la
+  // dernière frappe, au changement d'un choix, et quand le panneau perd le focus. Le
+  // bouton reste, pour qui veut voir « ✓ » tout de suite.
+  const autoEnr = SZH.autoEnregistrement({
+    estModifie: function () { return modifies.size > 0; },
+    enregistrer: envoyer
+  });
+  document.getElementById('formulaire').addEventListener('submit', function (e) {
+    e.preventDefault();
+    autoEnr.annuler();
+    envoyer(false);
   });
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
     recu = true;
     if (msg.type === 'valeurs') { remplir(msg.valeurs || {}); }
-    if (msg.type === 'enregistre') { modifies.clear(); etat.textContent = TXT.enregistre; }
-    if (msg.type === 'erreur') { etat.textContent = '⚠ ' + msg.message; }
+    if (msg.type === 'enregistre') { autoEnr.confirme(); modifies.clear(); etat.textContent = TXT.enregistre; }
+    if (msg.type === 'erreur') { autoEnr.confirme(); etat.textContent = '⚠ ' + msg.message; }
   });
   SZH.annoncerPret(vscodeApi, function () { return recu; });
 })();

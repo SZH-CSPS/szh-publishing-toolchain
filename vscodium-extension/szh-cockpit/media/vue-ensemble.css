@@ -1,0 +1,23 @@
+/* Vue d'ensemble d'une section : la barre de commandes, puis une ligne par élément. Tout
+   vient du socle (_design.css) ; il n'y a ici que la mise en page de la liste. */
+body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
+  line-height: var(--interligne); color: var(--encre); background: var(--fond);
+  padding: var(--e4) var(--e5) var(--e7); max-width: 60rem; }
+h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
+
+/* Un écart franc entre les lignes : ce sont des blocs indépendants, pas un tableau. */
+#lignes { display: flex; flex-direction: column; gap: var(--e3); }
+#lignes > * { flex: 0 0 auto; }
+.titre-section { margin: var(--e5) 0 0; font-size: var(--t-section); font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--encre-2);
+  border-bottom: 2px solid var(--accent); padding-bottom: var(--e1); }
+.titre-section:first-child { margin-top: 0; }
+
+.ligne .szh-tete { flex-wrap: wrap; }
+.ligne .szh-corps { padding: var(--e3); }
+
+/* Un bouton qui détruit se distingue sans crier : le texte prend la couleur d'erreur du
+   thème, le fond reste celui des autres. */
+.bouton-danger { color: var(--vscode-errorForeground, #f85149); }
+.bouton-danger:hover { color: var(--vscode-button-foreground, #fff);
+  background: var(--vscode-errorForeground, #f85149); }

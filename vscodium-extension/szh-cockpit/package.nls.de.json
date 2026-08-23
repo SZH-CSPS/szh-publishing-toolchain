@@ -16,6 +16,8 @@
   "cmd.metadonneesArticle": "Metadaten dieses Artikels bearbeiten",
   "cmd.mediasArticle": "Medien dieses Artikels verwalten",
   "cmd.traduction": "Übersetzungsstand dieses Artikels",
+  "cmd.vueTraductions": "Übersetzungsverlauf",
+  "cmd.vueWord": "Wartende Word-Dateien",
   "cmd.traductionsToutPret": "Alles als bereit zur Übersetzung markieren",
   "cmd.envoyerTraduction": "Zur Übersetzung senden (Link)",
   "cmd.reglages": "SZH-Einstellungen",

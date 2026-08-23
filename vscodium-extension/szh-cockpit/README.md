@@ -53,6 +53,7 @@ media/
   settings.{html,css,js}          réglages
   table-editor.{html,css,js}      éditeur de tableau
   traduction.{html,css,js}        suivi des traductions
+  vue-ensemble.{html,css,js}      vue d'ensemble d'une section (traductions, Word)
 ```
 
 `test/js/contrats.test.js` vérifie que cette liste reste complète, en même temps que les

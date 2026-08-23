@@ -276,6 +276,14 @@ label.szh-libelle {
   border-color: var(--vscode-editorWarning-foreground, #d1901e);
   color: var(--vscode-editorWarning-foreground, #d1901e);
 }
+.szh-pastille--ok {
+  border-color: var(--vscode-charts-green, #3fb950);
+  color: var(--vscode-charts-green, #3fb950);
+}
+.szh-pastille--danger {
+  border-color: var(--vscode-errorForeground, #f85149);
+  color: var(--vscode-errorForeground, #f85149);
+}
 
 /* ═══ 8. Modale ═══════════════════════════════════════════════════════════════
    Agrandir un aperçu : le fond s'assombrit, l'image occupe la place, tout le reste attend. */

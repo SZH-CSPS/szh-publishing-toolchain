@@ -150,6 +150,16 @@
         "icon": "$(globe)"
       },
       {
+        "command": "szh.vueTraductions",
+        "title": "%cmd.vueTraductions%",
+        "category": "Revue SZH"
+      },
+      {
+        "command": "szh.vueWord",
+        "title": "%cmd.vueWord%",
+        "category": "Revue SZH"
+      },
+      {
         "command": "szh.traductionsToutPret",
         "title": "%cmd.traductionsToutPret%",
         "category": "Revue SZH",
@@ -262,21 +272,6 @@
           "command": "szh.convertirEnAttente",
           "when": "view == szhCockpitVue && viewItem == section-word && !szh.verrouillee",
           "group": "inline"
-        },
-        {
-          "command": "szh.traductionsToutPret",
-          "when": "view == szhCockpitVue && viewItem == section-traductions && !szh.verrouillee",
-          "group": "inline@1"
-        },
-        {
-          "command": "szh.envoyerTraduction",
-          "when": "view == szhCockpitVue && viewItem == section-traductions",
-          "group": "inline@2"
-        },
-        {
-          "command": "szh.envoyerTraduction",
-          "when": "view == szhCockpitVue && viewItem == traduction-article",
-          "group": "inline@1"
         },
         {
           "command": "szh.supprimerTable",
