@@ -20,34 +20,36 @@ select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground
   background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; }
 #etat { font-size: var(--t-libelle); color: var(--encre-2); margin-left: var(--e1); }
 #indic { font-size: .95em; color: var(--vscode-editorWarning-foreground, #d1901e); margin-left: .1rem; font-weight: 700; }
-/* Champs texte au-dessus de la grille : la légende, qui devient le <caption> du fichier,
-   puis le texte alternatif et les crédits. Grille à deux colonnes, où les champs longs
-   prennent toute la largeur. */
-.champs { display: grid; grid-template-columns: 1fr 1fr; gap: .15rem .8rem; padding: 0 0 .5rem; }
-.champs .ch { display: flex; align-items: center; gap: .5rem; min-width: 0; }
-.champs .ch.large { grid-column: 1 / -1; }
-.champs label { font-size: var(--t-libelle); font-weight: 700; letter-spacing: .02em;
-  color: var(--encre); white-space: nowrap; }
-.champs input { flex: 1 1 auto; min-width: 0; font: inherit; padding: .25em .45em;
-  color: var(--vscode-input-foreground); background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; }
-.champs input:focus { outline: 1px solid var(--vscode-focusBorder); }
+/* Champs au-dessus de la grille, dans l'ordre de la fiche d'une image : la légende, qui
+   devient le <caption> du fichier, les crédits, puis l'accessibilité sous son intertitre.
+   Les intitulés sont au-dessus des champs, comme partout ailleurs. */
+.champs { display: flex; flex-direction: column; gap: var(--e2); padding: 0 0 var(--e3);
+  max-height: 40vh; overflow: auto; }
+.champs .szh-champ { min-width: 0; }
+.champs .szh-section:first-child { margin-top: 0; }
 /* Corps : la grille à gauche, le panneau de mise en forme à droite, empilés sur un écran
    étroit. Chacun défile indépendamment. */
-.corps { display: flex; flex: 1 1 auto; gap: .8rem; min-height: 0; align-items: flex-start; flex-wrap: wrap; }
+/* Deux ascenseurs sur le corps : à l'étroit, la grille et le panneau s'empilent, et le
+   panneau de mise en forme se retrouvait coupé sans qu'on puisse l'atteindre. */
+.corps { display: flex; flex: 1 1 auto; gap: var(--e3); min-height: 0;
+  align-items: flex-start; flex-wrap: wrap; overflow: auto; }
 #zone { overflow: auto; flex: 1 1 22rem; min-width: 0; align-self: stretch; }
 
 /* ---- Panneau de style ----
    Deux colonnes, styles d'en-tête à droite : empilé, l'ensemble dépasse la hauteur utile
    et le zébrage se retrouve hors écran. Il se replie en une colonne sous 34rem. */
+/* Le panneau garde sa propre hauteur utile : empilé sous la grille, il ne doit pas non
+   plus déborder sans ascenseur. */
 .panneau { flex: 0 0 34rem; max-width: 40rem; overflow: auto; align-self: stretch;
+  max-height: 100%;
   display: flex; flex-direction: row; flex-wrap: wrap; gap: .6rem; align-items: flex-start; }
 .panneau .colonne { flex: 1 1 15rem; min-width: 14rem;
   display: flex; flex-direction: column; gap: .55rem; }
-.panneau .zone { border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));
-  border-radius: 5px; padding: .1rem .6rem .5rem; margin: 0; min-width: 0; }
-.panneau legend { font-size: .82em; font-weight: 700; padding: 0 .3em;
-  color: var(--vscode-foreground); }
+.panneau .zone { border: 1px solid var(--filet); border-radius: var(--rayon-mini);
+  padding: var(--e1) var(--e3) var(--e2); margin: 0; min-width: 0;
+  background: var(--surface); }
+.panneau legend { font-size: var(--t-libelle); font-weight: 700; letter-spacing: .02em;
+  padding: 0 var(--e1); color: var(--encre); }
 .panneau .sousbloc { padding: .25rem 0 .1rem; }
 .panneau .sousbloc + .sousbloc { border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,.2)); margin-top: .2rem; }
 .panneau .sbtitre { font-size: .82em; font-weight: 600; margin: .15rem 0 .2rem;

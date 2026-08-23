@@ -19,6 +19,8 @@ param(
 
 . "$PSScriptRoot\szh-common.ps1"
 
+# Le produit demandé décide aussi de la langue des messages.
+if ($Produit) { Set-SzhLangueProduit $Produit }
 Write-SzhTitre 'Nouvelle revue'
 
 $template = Join-Path $SzhToolkit 'revue-template'

@@ -206,6 +206,13 @@ function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.crea
     m.appendChild(itemMenu(TXT['ctx.colSuppr'],function(){supprimer('supprimerColonne',{cMin:ctx.cMin,cMax:ctx.cMax},0,ctx.cMin,dispo.nbLignes-1,ctx.cMax);}));}
   if(plage()){sepMenu(m);m.appendChild(itemMenu(TXT.fusionner,function(){op('fusionner',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax});}));}
   if(ctx.fusionnee){if(!plage())sepMenu(m);m.appendChild(itemMenu(TXT.scinder,function(){op('scinder',{rMin:ctx.rMin,cMin:ctx.cMin,rMax:ctx.rMax,cMax:ctx.cMax});}));}
+  // L'alignement porte sur la sélection courante : une cellule, une plage, ou la ligne et
+  // la colonne entières qu'une poignée vient de sélectionner. Il vit ici et non dans la
+  // barre — c'est un geste local, qu'on fait sur ce qu'on a sous le curseur.
+  if(selection){sepMenu(m);
+    m.appendChild(itemMenu(TXT['ctx.alignGauche'],function(){aligner('left');}));
+    m.appendChild(itemMenu(TXT['ctx.alignCentre'],function(){aligner('center');}));
+    m.appendChild(itemMenu(TXT['ctx.alignDroite'],function(){aligner('right');}));}
   // « Retirer » n'apparaît que si l'en-tête correspondant existe.
   var sens=sensEntete(selection);
   if(sens){sepMenu(m);m.appendChild(itemMenu(TXT.entete,onDefinirEntete));
@@ -218,22 +225,18 @@ function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.crea
   document.addEventListener('mousedown',surMenuMousedown,true);document.addEventListener('keydown',surMenuKey,true);window.addEventListener('blur',fermerMenu);}
 
 // ---- Barre d'outils ----
-function bouton(txt,fn,cls,titre){var b=document.createElement('button');b.type='button';b.textContent=txt;if(cls)b.className=cls;if(titre)b.title=titre;b.addEventListener('click',fn);return b;}
+function bouton(txt,fn,cls,titre){var b=document.createElement('button');b.type='button';b.textContent=txt;
+  b.className='szh-bouton'+(cls?' '+cls:'');if(titre)b.title=titre;b.addEventListener('click',fn);return b;}
 function groupe(label){var g=document.createElement('span');g.className='grp';if(label){var l=document.createElement('span');l.className='lbl';l.textContent=label;g.appendChild(l);}return g;}
 function op(nom,args,extra){if(modele){commitTexte();annuler.push(clone(modele));if(annuler.length>100)annuler.shift();retablir.length=0;}
   var msg={type:'operation',nom:nom,args:args,modele:modele};if(extra){for(var k in extra){msg[k]=extra[k];}}api.postMessage(msg);}
-function construireBarre(){barre.textContent='';
+function construireBarre(){barre.textContent='';barre.className='szh-barre';
   var ge=groupe(TXT.grpEdition);
   ctl.annuler=bouton(TXT.annuler,annulerAction,'',TXT['tip.annuler']);ge.appendChild(ctl.annuler);
   ctl.retablir=bouton(TXT.retablir,retablirAction,'',TXT['tip.retablir']);ge.appendChild(ctl.retablir);
   ge.appendChild(bouton(TXT.vider,function(){viderSel('contenu');},'',TXT['tip.vider']));
   ge.appendChild(bouton(TXT.effacerForme,function(){viderSel('forme');},'',TXT['tip.effacerForme']));
   barre.appendChild(ge);
-  var ga=groupe(TXT.grpAlign);
-  ga.appendChild(bouton(TXT.alignGauche,function(){aligner('left');},'',TXT['tip.alignGauche']));
-  ga.appendChild(bouton(TXT.alignCentre,function(){aligner('center');},'',TXT['tip.alignCentre']));
-  ga.appendChild(bouton(TXT.alignDroite,function(){aligner('right');},'',TXT['tip.alignDroite']));
-  barre.appendChild(ga);
   // L'aperçu de l'article est fermé à l'ouverture de l'éditeur pour libérer de la largeur
   // et se rouvre ici à la demande.
   var ga2=groupe(TXT.grpApercu);
@@ -241,9 +244,9 @@ function construireBarre(){barre.textContent='';
   ga2.appendChild(bouton(TXT.apercuCacher,function(){api.postMessage({type:'apercu-fermer'});},'',TXT['tip.apercuCacher']));
   barre.appendChild(ga2);
   var ret=bouton(TXT.retour,retourArticle,'',TXT['tip.retour']);barre.appendChild(ret);
-  var enr=bouton(TXT.enregistrer,function(){autoEnr.annuler();enregistrerTable(false);},'principal',TXT['tip.enregistrer']);barre.appendChild(enr);
-  var e=document.createElement('span');e.id='etat';e.setAttribute('role','status');barre.appendChild(e);
-  var ind=document.createElement('span');ind.id='indic';ind.setAttribute('aria-live','polite');barre.appendChild(ind);
+  var enr=bouton(TXT.enregistrer,function(){autoEnr.annuler();enregistrerTable(false);},'szh-bouton--principal',TXT['tip.enregistrer']);barre.appendChild(enr);
+  var ind=document.createElement('span');ind.id='indic';ind.className='szh-barre-indic';ind.setAttribute('aria-live','polite');barre.appendChild(ind);
+  var e=document.createElement('span');e.id='etat';e.className='szh-barre-etat';e.setAttribute('role','status');barre.appendChild(e);
   construireChamps();construirePanneau();}
 // ---- Légende, texte alternatif et crédits du tableau ----
 //
@@ -255,22 +258,27 @@ function construireBarre(){barre.textContent='';
 // La légende seule est de l'en-ligne dans le modèle : le champ en montre le texte à plat,
 // et le retoucher remet la légende à plat.
 function texteDeInline(s){return dechap(String(s||'').replace(/<br>/g,' ').replace(/<\/?(?:strong|em)>/g,''));}
-function champTexte(cle,large){
-  var d=document.createElement('div');d.className='ch'+(large?' large':'');
+function champTexte(cle,large,parent){
+  var d=document.createElement('div');d.className='szh-champ'+(large?' large':'');
   var l=document.createElement('label');l.textContent=TXT[cle]||'';l.setAttribute('for','champ-'+cle);
   var i=document.createElement('input');i.type='text';i.id='champ-'+cle;i.maxLength=500;
   i.placeholder=TXT[cle+'.indice']||'';
   i.addEventListener('focus',function(){if(!avantEdition&&modele)avantEdition=clone(modele);});
   i.addEventListener('input',function(){etat('');majModifie();});
   i.addEventListener('blur',function(){commitTexte();});
-  d.appendChild(l);d.appendChild(i);boiteChamps.appendChild(d);champs[cle]=i;}
+  d.appendChild(l);d.appendChild(i);(parent||boiteChamps).appendChild(d);champs[cle]=i;}
+// Même ordre que la fiche d'une image dans le gestionnaire des médias : ce qui s'affiche
+// d'abord, les crédits ensuite, l'accessibilité en dernier, sous son intertitre.
 function construireChamps(){if(!boiteChamps)return;boiteChamps.textContent='';champs={};
   champTexte('legende',true);
-  champTexte('alt',true);
-  // Le cas courant est le champ vide : un tableau bien fait se lit seul. On le dit, pour
-  // que personne ne croie devoir remplir un champ de plus.
-  champTexte('copyright',false);
-  champTexte('source',false);}
+  var credits=document.createElement('div');credits.className='szh-grille-2';boiteChamps.appendChild(credits);
+  champTexte('copyright',false,credits);
+  champTexte('source',false,credits);
+  var titre=document.createElement('p');titre.className='szh-section';titre.textContent=TXT['section.a11y']||'';
+  boiteChamps.appendChild(titre);
+  // Le cas courant est le champ vide : un tableau bien fait se lit seul, ses en-têtes
+  // suffisent. Le libellé le dit, pour que personne ne croie devoir le remplir.
+  champTexte('alt',true);}
 // Champs -> modèle. Un champ vidé retire la valeur, donc l'attribut ou le <caption>. Pour
 // la légende, la comparaison porte sur la projection à plat, si bien que le modèle garde
 // sa légende en ligne tant que le champ n'est pas retouché.

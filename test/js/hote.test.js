@@ -63,7 +63,11 @@ test('chaque panneau s’ouvre, s’assemble et envoie sa première charge', asy
     ['szh.vueTraductions', undefined, 'valeurs'],
     ['szh.vueWord', undefined, 'valeurs'],
     ['szh.mediasArticle', { slug: '01-essai' }, 'charger'],
-    ['szh.traduction', { slug: '01-essai' }, 'valeurs']
+    ['szh.traduction', { slug: '01-essai' }, 'valeurs'],
+    ['szh.editerTable', {
+      slug: '01-essai',
+      cheminAsset: path.join(REVUE, 'articles', '01-essai', 'tables', 'table-01.html')
+    }, 'charger']
   ];
   for (const [commande, argument, premier] of panneaux) {
     const avant = HOTE.panneaux.length;

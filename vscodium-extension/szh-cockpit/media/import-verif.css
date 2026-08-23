@@ -6,12 +6,12 @@
 .badge { margin-left: .5em; font-weight: normal; font-size: .75em;
   padding: .02em .55em; border-radius: 999px; white-space: nowrap;
   color: var(--vscode-charts-green, #2ea043); border: 1px solid currentColor; }
-.badge.vide { color: var(--vscode-charts-orange, #d18616); }
+.badge.vide { color: var(--vscode-editorWarning-foreground, #bf8803); }
 .badge:empty { display: none; }               /* avant le premier calcul */
 .compteur { font-weight: normal; font-size: .78em; padding: .1em .6em;
   border-radius: 999px; font-family: var(--vscode-font-family); white-space: nowrap;
   color: var(--vscode-charts-green, #2ea043); border: 1px solid currentColor; }
-.compteur.vide { color: var(--vscode-charts-orange, #d18616); }
+.compteur.vide { color: var(--vscode-editorWarning-foreground, #bf8803); }
 /* ---- Originaux des images : une rangée par image, avec sa zone de dépôt. */
 .carte h3 { font-size: var(--t-section); font-weight: 700; letter-spacing: .04em;
   text-transform: uppercase; color: var(--encre-2); margin: var(--e5) 0 var(--e2);
@@ -37,4 +37,4 @@
 .image-ligne.occupe .zone-image { opacity: .5; pointer-events: none; }
 .modale h3 { margin: 0 0 var(--e3); font-size: var(--t-titre); font-weight: 700;
   border: none; padding: 0; text-transform: none; letter-spacing: normal; color: var(--encre); }
-.modifie > h2 .nom-carte::after { content: " ●"; color: var(--vscode-charts-orange, orange); }
+.modifie > h2 .nom-carte::after { content: " ●"; color: var(--vscode-editorWarning-foreground, #bf8803); }

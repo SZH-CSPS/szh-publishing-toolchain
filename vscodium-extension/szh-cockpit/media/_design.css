@@ -278,7 +278,9 @@ label.szh-libelle {
   color: var(--vscode-editorWarning-foreground, #d1901e);
 }
 /* Les tons suivent ceux de l'arbre, pour qu'un état se reconnaisse d'un panneau à l'autre :
-   bleu ce qui est lancé, orange ce qui attend un regard, vert ce qui est clos. */
+   bleu ce qui est lancé, ambre ce qui attend un regard, vert ce qui est clos. L'ambre est
+   celui des avertissements de l'éditeur, lisible sur fond clair comme sombre — « charts »
+   ne l'est pas. */
 .szh-pastille--info {
   border-color: var(--vscode-charts-blue, #3794ff);
   color: var(--vscode-charts-blue, #3794ff);

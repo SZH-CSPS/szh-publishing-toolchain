@@ -1988,9 +1988,11 @@ const ICONES_STATUT = {
   'pret-relecture': 'eye',
   'finalise': 'pass-filled'
 };
+// « charts.orange » est trop clair sur fond blanc : l'ambre d'avertissement de l'éditeur
+// est fait pour se voir sur les deux fonds, et c'est déjà celui des encadrés de qualité.
 const COULEURS_STATUT = {
   'pret-traduction': 'charts.blue',
-  'pret-relecture': 'charts.orange',
+  'pret-relecture': 'editorWarning.foreground',
   'finalise': 'charts.green'
 };
 
@@ -3428,8 +3430,8 @@ function textesTable() {
     'table.retour', 'table.nonEnregistre',
     'table.tip.annuler', 'table.tip.retablir', 'table.tip.vider', 'table.tip.effacerForme',
     'table.tip.retour', 'table.tip.enregistrer',
-    'table.grpAlign', 'table.alignGauche', 'table.alignCentre', 'table.alignDroite',
-    'table.tip.alignGauche', 'table.tip.alignCentre', 'table.tip.alignDroite', 'table.coller',
+    'table.section.a11y', 'table.coller',
+    'table.ctx.alignGauche', 'table.ctx.alignCentre', 'table.ctx.alignDroite',
     'table.plusLigne', 'table.plusColonne', 'table.tirerReordonner', 'table.deplacementImpossible',
     'table.suppr.question', 'table.suppr.detail', 'table.suppr.bouton',
     'table.tip.entete', 'table.tip.enteteRetirer'

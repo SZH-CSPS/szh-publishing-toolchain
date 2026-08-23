@@ -27,7 +27,7 @@ button:disabled { opacity: .45; cursor: default; }
   border-radius: var(--rayon); padding: var(--e3) var(--e4) var(--e4); margin: 0 0 var(--e5);
   box-shadow: 0 2px 6px var(--vscode-widget-shadow, rgba(0, 0, 0, .18)); }
 .carte.statut-pret-traduction { border-left-color: var(--vscode-charts-blue, #3794ff); }
-.carte.statut-pret-relecture { border-left-color: var(--vscode-charts-orange, #d18616); }
+.carte.statut-pret-relecture { border-left-color: var(--vscode-editorWarning-foreground, #bf8803); }
 .carte.statut-finalise { border-left-color: var(--vscode-charts-green, #2ea043); }
 .carte h3 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2);
   padding-bottom: var(--e1); border-bottom: 1px solid var(--filet);
@@ -47,7 +47,7 @@ button:disabled { opacity: .45; cursor: default; }
 .ligne-statut { display: flex; align-items: center; gap: var(--e3); margin-top: var(--e3); }
 .ligne-statut label { margin: 0; flex: 0 0 auto; }
 .ligne-statut select { flex: 1 1 auto; }
-.carte.modifie h3::after { content: " ●"; color: var(--vscode-charts-orange, orange); }
+.carte.modifie h3::after { content: " ●"; color: var(--vscode-editorWarning-foreground, #bf8803); }
 
 /* Rien à traduire : un message, pas une page vide. */
 .rien { color: var(--encre-2); margin: var(--e4) 0; }

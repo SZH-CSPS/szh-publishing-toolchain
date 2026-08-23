@@ -43,6 +43,12 @@ function revueDEssai() {
     fs.writeFileSync(path.join(portraits, n), Buffer.alloc(128));
   }
 
+  const tables = path.join(dossier, 'tables');
+  fs.mkdirSync(tables, { recursive: true });
+  fs.copyFileSync(
+    path.join(__dirname, '..', 'articles', 'contenu-long', 'tables', 'table-01.html'),
+    path.join(tables, 'table-01.html'));
+
   const autre = path.join(revue, 'articles', '02-sans-fiche');
   fs.mkdirSync(autre, { recursive: true });
   fs.writeFileSync(path.join(autre, '02-sans-fiche.md'), 'Texte.' + LF);

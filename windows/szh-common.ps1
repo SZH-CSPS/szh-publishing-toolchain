@@ -25,13 +25,24 @@ $script:SzhDistro     = 'SZH-Publishing'
 $script:SzhSupport    = 'robin.morand@szh.ch'          # contact affiché en cas de problème
 
 # ---- Langue de l'interface ----
-# Langue d'affichage de Windows réduite à deux lettres, ce qui couvre les variantes
-# régionales ; anglais pour tout le reste, $env:SZH_LANGUE force la valeur pour un test.
+# Trois sources, par ordre de priorité : la variable d'environnement (pour un essai), la
+# préférence enregistrée par le dernier lanceur ouvert, puis la langue d'affichage de
+# Windows. Anglais en dernier recours seulement : les postes d'ici affichent Windows en
+# anglais, et le lanceur parlait donc anglais à des équipes francophone et germanophone.
 # Textes allemands en orthographe suisse (ss, pas de ß).
 $script:SzhLangue = 'en'
 try {
   $langueUi = (Get-UICulture).TwoLetterISOLanguageName.ToLower()
   if ($langueUi -eq 'fr' -or $langueUi -eq 'de') { $script:SzhLangue = $langueUi }
+} catch { }
+# Lecture directe, sans Get-SzhState : la table des textes est utilisée dès le début du
+# script, avant que les fonctions de plus bas soient définies pour tout le monde.
+try {
+  if (Test-Path $SzhStateFile) {
+    $etatLangue = (Get-Content $SzhStateFile -Raw -Encoding UTF8 | ConvertFrom-Json)
+    $memo = [string]$etatLangue.langue
+    if (@('fr', 'de') -contains $memo) { $script:SzhLangue = $memo }
+  }
 } catch { }
 if ($env:SZH_LANGUE -and (@('fr', 'de', 'en') -contains $env:SZH_LANGUE.ToLower())) {
   $script:SzhLangue = $env:SZH_LANGUE.ToLower()
@@ -344,6 +355,23 @@ $script:SzhTextes = @{
     'openmd.horsrevue'    = "This file is not part of a journal: the preview and automatic rebuild will not be active.`n`nIt opens anyway, so you can read or fix it."
     'openmd.reseau'       = "This file sits on a network folder. It opens, but PDF building and the preview do not work from a network path.`n`nTo work on it, copy the journal to OneDrive or to this computer's disk."
   }
+}
+
+# « Revues SZH » parle français, « Zeitschriften SZH » allemand : chaque lanceur s'adresse
+# à son équipe, et non à la langue d'affichage de Windows. Le choix est retenu pour les
+# scripts qui n'ont pas de produit — la mise à jour, surtout, qui s'ouvre seule.
+# $env:SZH_LANGUE garde le dernier mot, pour un essai.
+function Set-SzhLangueProduit([string]$Produit) {
+  $voulue = if (([string]$Produit).ToLower() -eq 'zeitschrift') { 'de' } else { 'fr' }
+  if ($env:SZH_LANGUE -and (@('fr', 'de', 'en') -contains $env:SZH_LANGUE.ToLower())) { return }
+  $script:SzhLangue = $voulue
+  try {
+    $etat = Get-SzhState
+    if (-not $etat) { $etat = New-Object psobject }
+    if ($etat.PSObject.Properties['langue']) { $etat.langue = $voulue }
+    else { $etat | Add-Member -MemberType NoteProperty -Name 'langue' -Value $voulue }
+    Save-SzhState $etat
+  } catch { }        # préférence non écrite : la session courante reste dans la bonne langue
 }
 
 # T 'clé' @(args…) -> texte dans la langue courante, fallback anglais, sinon la clé.

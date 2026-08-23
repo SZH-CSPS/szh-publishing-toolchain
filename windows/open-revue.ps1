@@ -50,6 +50,8 @@ trap {
 # lever, le lanceur mourrait sans message. Tout sauf « zeitschrift » vaut « revue ».
 $produitFiltre = ([string]$Produit).ToLower()
 if ($produitFiltre -ne 'zeitschrift') { $produitFiltre = 'revue' }
+# Avant le premier texte affiché : ce lanceur parle la langue de son produit.
+Set-SzhLangueProduit $produitFiltre
 $titreFenetre = (T 'lanceur.titre')
 if ($produitFiltre -eq 'zeitschrift') { $titreFenetre = (T 'lanceur.titre.zs') }
 
