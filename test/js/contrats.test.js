@@ -313,6 +313,8 @@ test('CMJN : le convertisseur du pipeline et son appelant se repondent', () => {
 test('médias : la webview et l’hôte plafonnent les dépôts pareil', () => {
   const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
   const webview = lire('vscodium-extension', 'szh-cockpit', 'media', 'medias-article.js');
+  // Le plafond des photos vit avec la modale d'auteur·e, qui est le seul dépôt de portrait.
+  const auteurs = lire('vscodium-extension', 'szh-cockpit', 'media', '_auteurs.js');
   const nombre = (re, texte) => {
     const m = re.exec(texte);
     assert.ok(m, 'valeur introuvable : ' + re);
@@ -322,7 +324,7 @@ test('médias : la webview et l’hôte plafonnent les dépôts pareil', () => {
   assert.strictEqual(nombre(/maxi: ([\d *]+),[^}]*'png', 'jpg', 'jpeg', 'gif'/, webview),
     nombre(/const TAILLE_MAX_IMAGE_IMPORT = ([\d *]+);/, src),
     'plafond des images : la webview et l’hôte divergent');
-  assert.strictEqual(nombre(/maxi: ([\d *]+),[^}]*'png', 'jpg', 'jpeg', 'webp'/, webview),
+  assert.strictEqual(nombre(/var TAILLE_MAX_PHOTO = ([\d *]+);/, auteurs),
     nombre(/const TAILLE_MAX_PHOTO = ([\d *]+);/, src),
     'plafond des portraits : la webview et l’hôte divergent');
 });
@@ -440,17 +442,23 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
     const bloc = src.slice(i, src.indexOf('\n}', i));
     return new Set([...bloc.matchAll(/([A-Za-z][A-Za-z0-9]*)\s*:\s*T\(/g)].map((m) => m[1]));
   };
-  const communes = cles('textesCarteArticle');
+  // La fiche d'auteur·e est partagée par les trois vues : ses libellés viennent de
+  // textesAuteur(), qu'Object.assign ajoute à chaque table.
+  const auteur = cles('textesAuteur');
+  const communes = new Set([...cles('textesCarteArticle'), ...auteur]);
   const pages = {
     'metadata-articles': {
       libelles: new Set([...communes, ...cles('htmlApercuMetadonnees')]),
-      fragments: ['_commun.js', '_fiches.js']
+      fragments: ['_commun.js', '_auteurs.js', '_fiches.js']
     },
     'import-verif': {
       libelles: new Set([...communes, ...cles('htmlImportVerif')]),
-      fragments: ['_commun.js', '_fiches.js']
+      fragments: ['_commun.js', '_auteurs.js', '_fiches.js']
     },
-    'medias-article': { libelles: cles('textesMedias'), fragments: ['_commun.js'] }
+    'medias-article': {
+      libelles: new Set([...cles('textesMedias'), ...auteur]),
+      fragments: ['_commun.js', '_auteurs.js']
+    }
   };
   for (const page of Object.keys(pages)) {
     const js = pages[page].fragments.concat([page + '.js'])

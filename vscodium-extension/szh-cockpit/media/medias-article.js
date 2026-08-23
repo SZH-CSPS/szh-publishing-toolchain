@@ -15,24 +15,29 @@
 // postMessage, page construite en DOM sans innerHTML. Les aperçus sont des data: URI
 // fournies par l'hôte, d'où le img-src data: de la CSP.
 //
+// Les auteur·e·s sont affichés et édités par SZH.auteurs (media/_auteurs.js), le même
+// composant que le formulaire des métadonnées : la fiche, la modale, le dépôt de photo et
+// le choix de version n'existent qu'une fois. Cette vue n'apporte que l'écriture, immédiate
+// ici puisqu'il n'y a pas de carte d'article à enregistrer.
+//
 // Protocole. Vers l'hôte :
 //   pret ; modifie { modifie } ; enregistrer { auto, medias } ;
 //   retourArticle { modifie, medias } ; retirer { relatif } ;
 //   remplacer { relatif, nomFichier, donneesBase64 } ; inserer { relatif, medias } ;
-//   portrait-remplacer { base, nomFichier, donneesBase64 } ;
-//   portrait-version { base, version }
+//   auteur-enregistrer { slug, index, auteur, photoAttendue }
+//   plus les messages photo-* de _auteurs.js
 // Depuis l'hôte :
 //   charger { slug, medias, portraits, focus, accent, i18n } ; enregistre { auto } ;
 //   erreur { message } ; focaliser { relatif } ;
 //   media-remplace { relatif, description, apercu, qualite } ;
 //   media-erreur { relatif, message } ; media-annulee { relatif } ;
 //   media-retire { relatif } ;
-//   portrait-remplace { base, nom, version, versionActuelle, disponibles, rattache,
-//                       description, apercu, qualite } ;
-//   portrait-erreur { base, message }
+//   auteur-enregistre { slug, index, auteur, portrait } ;
+//   auteur-erreur { slug, index, message }
 // où un média vaut { relatif, description, apercu, occurrences, qualite, doublons,
 // sansAlternative, valeurs } et valeurs = { legende, alt, altDefini, copyright, source,
-// horsFigure }.
+// horsFigure }, et un portrait { base, index, nom, auteur, auteurFiche, version,
+// description, apercu, qualite, rattache }.
 var api = acquireVsCodeApi();
 // Mêmes plafonds et mêmes formats que l'hôte, qui recontrôle tout : ici, c'est pour
 // répondre tout de suite plutôt que d'envoyer 50 Mo pour rien.
@@ -40,11 +45,6 @@ var IMAGE = {
   maxi: 50 * 1024 * 1024, extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg'],
   format: 'errFormat', poids: 'errTropVolumineuse'
 };
-var PORTRAIT = {
-  maxi: 20 * 1024 * 1024, extensions: ['png', 'jpg', 'jpeg', 'webp'],
-  format: 'errFormatPortrait', poids: 'errTropVolumineusePortrait'
-};
-
 var TXT = {}, ctl = {}, cartes = [], portraits = [], dernierModifie = false;
 var barre = document.getElementById('barre');
 var corps = document.getElementById('corps');
@@ -70,6 +70,23 @@ function boutonIcone(nom, titre, fn, cls) {
   return b;
 }
 function etat(msg) { if (ctl.etat) { ctl.etat.textContent = msg || ''; } }
+// Écriture immédiate : cette vue n'a pas de carte d'article à enregistrer, et la fiche
+// d'auteur·e n'a donc nulle part où attendre. L'hôte confirme, ou dit pourquoi il refuse.
+var attenteAuteur = null;
+var ctlAuteurs = null;
+function creerCtlAuteurs() {
+  return SZH.auteurs({
+    api: api, txt: TXT,
+    persister: function (fiche, auteur, fini) {
+      attenteAuteur = { index: fiche.index, fini: fini };
+      api.postMessage({
+        type: 'auteur-enregistrer', slug: fiche.slug, index: fiche.index, auteur: auteur,
+        // Témoin d'identité : l'hôte refuse d'écrire si ce rang ne porte plus cette photo.
+        photoAttendue: (fiche.auteur || {}).photo || ''
+      });
+    }
+  });
+}
 function texte(parent, balise, cls, contenu) {
   var e = document.createElement(balise);
   if (cls) { e.className = cls; }
@@ -479,83 +496,46 @@ function poserOcc(c) {
   if (verrou) { majAlerteAlt(c); majPastilles(c); } else { majRole(c); }
 }
 
-// Les trois versions du portrait, comme dans le formulaire des auteur·e·s : le détourage
-// n'est pas toujours le bon choix — un fond clair, une écharpe, des cheveux fins, et il vaut
-// mieux garder le fond ou la photo d'origine. Une version absente du disque n'est pas
-// offerte ; un portrait qu'aucune fiche ne désigne n'a nulle part où écrire le choix.
-function choixVersion(parent, c) {
-  var z = texte(parent, 'fieldset', 'szh-groupe');
-  texte(z, 'legend', null, TXT.versionTitre || '');
-  c.ctl.groupeVersions = z;
-  poserVersions(c);
-  return z;
-}
-
-// Rejoué à chaque réponse de l'hôte : un dépôt produit les versions manquantes, et les
-// boutons doivent s'ouvrir. Reconstruire est plus sûr que de corriger chaque attribut.
-function poserVersions(c) {
-  var z = c.ctl.groupeVersions;
-  if (!z) { return; }
-  var portrait = c.portrait || {};
-  while (z.lastChild && z.lastChild.tagName !== 'LEGEND') { z.removeChild(z.lastChild); }
-  var dispo = portrait.disponibles || {};
-  var libelles = { 'sans-fond': TXT.vSansFond, 'avec-fond': TXT.vAvecFond, original: TXT.vOriginal };
-  c.ctl.versions = {};
-  ['sans-fond', 'avec-fond', 'original'].forEach(function (v) {
-    var l = texte(z, 'label', 'szh-opt');
-    var i = document.createElement('input');
-    i.type = 'radio';
-    i.name = 'version-' + c.index;
-    i.checked = portrait.versionActuelle === v;
-    i.disabled = !dispo[v] || !portrait.rattache;
-    i.addEventListener('change', function () {
-      if (!i.checked) { return; }
-      // La version en place est retenue avant d'envoyer : un échec doit remettre le bouton
-      // sur ce que la fiche désigne vraiment, et non sur ce qu'on vient de cliquer.
-      c.versionAvant = (c.portrait || {}).versionActuelle || null;
-      c.element.classList.add('occupe');
-      poserEtatMedia(c, '…');
-      api.postMessage({ type: 'portrait-version', base: c.base, version: v });
-    });
-    l.appendChild(i);
-    var t = texte(l, 'span', 'txt');
-    texte(t, 'span', null, libelles[v] || v);
-    if (!dispo[v]) { texte(t, 'span', 'sous', TXT.versionAbsente || ''); }
-    c.ctl.versions[v] = i;
-  });
-}
-
+// Carte d'un portrait : ce que la vue des médias a de plus à dire sur le fichier — son
+// poids, sa version retenue, son verdict de qualité — autour de la fiche d'auteur·e, qui
+// est celle du formulaire des métadonnées et sert aussi à éditer la personne.
 function cartePortrait(portrait, index) {
   var c = { base: String(portrait.base || ''), index: index, ctl: {}, portrait: portrait };
   var s = texte(corps, 'section', 'szh-carte carte-portrait');
   s.dataset.base = c.base;
-  s.setAttribute('aria-label', portrait.auteur || portrait.nom || c.base);
   c.element = s;
+  rendrePortrait(c);
+  return c;
+}
 
-  var tete = texte(s, 'header', 'szh-tete');
-  // Sans fiche d'auteur·e, c'est le nom du fichier qui identifie la carte : le titre ne
-  // peut pas être un message, sinon plus rien ne dit de quel portrait il s'agit.
-  texte(tete, 'p', 'szh-tete-nom', portrait.auteur || portrait.nom || c.base);
-  c.ctl.version = texte(tete, 'span', 'szh-tete-meta', portrait.version || '');
+function rendrePortrait(c) {
+  var portrait = c.portrait || {};
+  c.element.textContent = '';
+  c.element.setAttribute('aria-label', portrait.auteur || portrait.nom || c.base);
+
+  var tete = texte(c.element, 'header', 'szh-tete');
+  texte(tete, 'p', 'szh-tete-nom', portrait.nom || c.base);
+  c.ctl.meta = texte(tete, 'span', 'szh-tete-meta', portrait.description || '');
   if (!portrait.rattache) {
     var orph = texte(tete, 'span', 'szh-pastille szh-pastille--attention', TXT.etatOrphelin || '');
     orph.title = TXT.portraitOrphelin || '';
   }
   texte(tete, 'span', 'szh-pousse');
 
-  var corpsCarte = texte(s, 'div', 'szh-corps carte-corps');
-  var gauche = texte(corpsCarte, 'div', 'col-visuel');
-  c.nom = portrait.nom || c.base;
-  c.ctl.visuel = texte(gauche, 'div', 'visuel visuel--portrait');
-  poserVisuel(c.ctl.visuel, c.nom, portrait.apercu);
-  c.ctl.meta = texte(gauche, 'p', 'meta-fichier', portrait.description || '');
-  c.ctl.qualite = texte(gauche, 'p', 'szh-notif');
+  var corpsCarte = texte(c.element, 'div', 'szh-corps');
+  // Un portrait qu'aucune fiche ne désigne n'a pas d'auteur·e à éditer : il ne reste que
+  // le fichier, son verdict, et le constat qu'il ne sert à rien.
+  if (portrait.rattache) {
+    ctlAuteurs.apercu(corpsCarte, {
+      slug: portrait.slug, index: portrait.index,
+      auteur: portrait.auteurFiche || {}, apercu: portrait.apercu || null, carte: c
+    });
+  } else {
+    c.ctl.visuel = texte(corpsCarte, 'div', 'visuel visuel--portrait');
+    poserVisuel(c.ctl.visuel, portrait.nom || c.base, portrait.apercu);
+  }
+  c.ctl.qualite = texte(corpsCarte, 'p', 'szh-notif');
   poserQualite(c.ctl.qualite, portrait.qualite);
-  zoneDepot(gauche, c, 'portrait-remplacer', 'base', PORTRAIT, TXT.remplacerPortrait);
-
-  var droite = texte(corpsCarte, 'div', 'col-fiche');
-  choixVersion(droite, c);
-  return c;
 }
 
 // ---- Barre d'en-tête ----
@@ -596,7 +576,10 @@ function rendre(msg) {
   if (listePortraits.length === 0) {
     corps.appendChild(SZH.notif('info', TXT.aucunPortrait || ''));
   } else {
-    for (var j = 0; j < listePortraits.length; j++) { portraits.push(cartePortrait(listePortraits[j], j)); }
+    for (var j = 0; j < listePortraits.length; j++) {
+      listePortraits[j].slug = msg.slug;            // la fiche d'auteur·e en a besoin
+      portraits.push(cartePortrait(listePortraits[j], j));
+    }
   }
   dernierModifie = false;
   etat('');
@@ -627,9 +610,12 @@ function trouverCarte(relatif) {
   for (var i = 0; i < cartes.length; i++) { if (cartes[i].relatif === r) { return cartes[i]; } }
   return null;
 }
-function trouverPortrait(base) {
-  var b = String(base === undefined || base === null ? '' : base);
-  for (var i = 0; i < portraits.length; i++) { if (portraits[i].base === b) { return portraits[i]; } }
+// Retrouvé par le rang de l'auteur·e dans la fiche, seul lien entre une photo et la
+// personne qu'elle montre.
+function trouverPortraitParIndex(index) {
+  for (var i = 0; i < portraits.length; i++) {
+    if ((portraits[i].portrait || {}).index === index) { return portraits[i]; }
+  }
   return null;
 }
 
@@ -655,7 +641,12 @@ window.addEventListener('message', function (ev) {
   recu = true;
   if (msg.type === 'charger') {
     SZH.poserAccent(msg.accent);
-    if (msg.i18n) { TXT = msg.i18n; construireBarre(); if (!modale) { construireModale(); } }
+    if (msg.i18n) {
+      TXT = msg.i18n;
+      construireBarre();
+      if (!modale) { construireModale(); }
+      if (!ctlAuteurs) { ctlAuteurs = creerCtlAuteurs(); }
+    }
     rendre(msg);
     return;
   }
@@ -714,35 +705,27 @@ window.addEventListener('message', function (ev) {
     majModifie();
     return;
   }
-  if (msg.type === 'portrait-remplace' || msg.type === 'portrait-erreur') {
-    var p = trouverPortrait(msg.base);
-    if (!p) { return; }
-    p.element.classList.remove('occupe');
-    if (msg.type === 'portrait-erreur') {
-      // Un remplacement annulé, ou refusé parce que le numéro est verrouillé, arrive sans
-      // message : la zone est simplement réactivée.
-      poserEtatMedia(p, msg.message ? '⚠ ' + msg.message : '', !!msg.message);
-      // Le choix de version n'a pas abouti : les boutons reviennent sur la version que la
-      // fiche désigne, au lieu de montrer celle qu'on a cliquée en vain.
-      poserVersions(p);
+  // La fiche d'auteur·e a été écrite : la modale se referme, et la carte du portrait suit
+  // ce que l'hôte vient de relire sur le disque — la photo a pu changer de version.
+  if (msg.type === 'auteur-enregistre' || msg.type === 'auteur-erreur') {
+    var suite = attenteAuteur;
+    attenteAuteur = null;
+    if (msg.type === 'auteur-erreur') {
+      if (suite) { suite.fini(msg.message || '?'); }
       return;
     }
-    p.nom = msg.nom || p.nom || p.base;
-    // Le descripteur suit ce que l'hôte vient de lire sur le disque, puis les boutons de
-    // version sont rejoués : un dépôt a pu produire les dérivés qui manquaient.
-    p.portrait = {
-      versionActuelle: msg.versionActuelle || (p.portrait || {}).versionActuelle || null,
-      disponibles: msg.disponibles || (p.portrait || {}).disponibles || {},
-      rattache: msg.rattache === undefined ? (p.portrait || {}).rattache : !!msg.rattache
-    };
-    poserVersions(p);
-    poserVisuel(p.ctl.visuel, p.nom, msg.apercu);
-    if (p.ctl.meta) { p.ctl.meta.textContent = msg.description || ''; }
-    if (p.ctl.version) { p.ctl.version.textContent = msg.version || ''; }
-    poserQualite(p.ctl.qualite, msg.qualite);
-    poserEtatMedia(p, TXT.remplacee || '', false);
+    if (suite) { suite.fini(null); }
+    etat(TXT.auteurEnregistre || '');
+    var p = trouverPortraitParIndex(msg.index);
+    if (p) {
+      if (msg.portrait) { p.portrait = msg.portrait; p.portrait.slug = msg.slug; }
+      else { p.portrait.auteurFiche = msg.auteur || {}; }
+      rendrePortrait(p);
+    }
     return;
   }
+  // Le composant partagé consomme les réponses photo-*.
+  if (ctlAuteurs && ctlAuteurs.message(msg)) { return; }
 });
 SZH.annoncerPret(api, function () { return recu; });
 })();

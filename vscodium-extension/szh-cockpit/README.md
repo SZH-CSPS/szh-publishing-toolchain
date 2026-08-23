@@ -43,6 +43,7 @@ media/
   _commun.js            fragments partagés par les formulaires (mots-clés, auto-enregistrement,
                         icônes, notifications)
   _design.css           socle visuel commun : jetons, cartes, barre, notifications, modale
+  _auteurs.{css,js}     fiche d'auteur·e et sa modale d'édition, pour trois vues
   _fiches.{css,js}      cartes de métadonnées d'article et modale photo, pour deux formulaires
   apercu.{css,js}       fragment injecté dans l'aperçu HTML
   import-verif.{html,css,js}      vérification après import Word

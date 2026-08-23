@@ -11,7 +11,6 @@
   "cmd.deverrouiller": "Ausgabe entsperren",
   "cmd.desarchiver": "Ausgabe dearchivieren",
   "cmd.supprimerTable": "Tabelle löschen (samt Einbindung im Text)",
-  "cmd.remplacerTable": "Tabelle ersetzen",
   "cmd.editerTable": "Tabelle bearbeiten",
   "cmd.apercuMetadonnees": "Metadaten der Artikel",
   "cmd.metadonneesArticle": "Metadaten dieses Artikels bearbeiten",

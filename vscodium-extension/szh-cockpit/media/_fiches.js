@@ -2,8 +2,11 @@
 // articles » et « Vérification de l'import ». Posé après _commun.js, et seulement sur ces
 // deux pages : les autres webviews n'en ont pas l'usage.
 //
-//   SZH.cartesArticles(opts)  construit et pilote les cartes d'un conteneur, la modale
-//                             photo, l'enregistrement et l'affichage des traductions
+//   SZH.cartesArticles(opts)  construit et pilote les cartes d'un conteneur,
+//                             l'enregistrement et l'affichage des traductions
+//
+// Les auteur·e·s sont affichés et édités par SZH.auteurs (media/_auteurs.js), partagé avec
+// le gestionnaire des médias : leur fiche et leur modale ne sont décrites qu'une fois.
 
 (function () {
   'use strict';
@@ -19,7 +22,6 @@
   //   titre(h2, slug)                 remplit l'en-tête de la carte
   //   champ(label, champId)           décore l'intitulé d'un champ
   //   motsCles(label, langues, noms)  décore l'intitulé du bloc de mots-clés
-  //   apresAuteurs(carte)             insère quelque chose après la liste d'auteurs
   //   finCarte(carte, article)        carte construite et insérée
   //   carteChangee(carte)             la colonne italienne vient d'être basculée
   //   marque(carte, slug)             une carte vient d'être marquée modifiée
@@ -30,13 +32,9 @@
   // ouvre les langues dès le départ, ce dont la vérification d'import a besoin : ses
   // badges « à compléter » vivent dans les intitulés, traductions comprises.
   //
-  // Protocole avec l'hôte, pour la partie photo :
-  //   webview -> hôte : photo-ouvrir { slug, index, photo } ;
-  //                     photo-deposer { slug, index, prenom, nom, nomFichier, donneesBase64 } ;
-  //                     photo-choisir { slug, index, base, version }
-  //   hôte -> webview : valeurs { articles, types, langue, accent } ;
-  //                     photo-versions { slug, index, base, versions, actuelle, infos } ;
-  //                     photo-valeur { slug, index, photo } ; photo-erreur { slug, index, message }
+  // Protocole avec l'hôte :
+  //   hôte -> webview : valeurs { articles, types, langue, accent }
+  // La partie photo est celle de _auteurs.js, à qui les messages sont passés.
   function cartesArticles(opts) {
     var conteneur = opts.conteneur;
     var api = opts.api;
@@ -47,14 +45,32 @@
     var surValeurs = opts.surValeurs || function () {};
     var appeler = function (nom, a, b, c) { if (decor[nom]) { decor[nom](a, b, c); } };
 
-    var TAILLE_MAX_PHOTO = 20 * 1024 * 1024;
-    var EXTENSIONS_PHOTO = ['png', 'jpg', 'jpeg', 'webp'];
-    var VERSIONS = ['sans-fond', 'avec-fond', 'original'];   // ordre de repli
-
     var modifies = new Set();
     var motsClesParCarte = new WeakMap();
+    // Les auteur·e·s d'une carte ne vivent plus dans le DOM : la fiche affichée est
+    // statique, et c'est ce modèle que la modale édite et que collecter() relit.
+    var auteursParCarte = new WeakMap();
+    var apercusParCarte = new WeakMap();
     var TYPES = [];
     var LANGUE_DEFAUT = 'fr';
+
+    // La modale rend l'auteur·e édité ; il n'est pas écrit sur le disque tout de suite,
+    // la carte gardant la main sur son enregistrement — c'est la seule chose que cette
+    // page apporte au composant partagé.
+    var ctlAuteurs = SZH.auteurs({
+      api: api,
+      txt: TXT,
+      persister: function (fiche, auteur, fini) {
+        var liste = auteursParCarte.get(fiche.carte) || [];
+        if (fiche.index >= liste.length) { liste.push({}); }
+        liste[fiche.index] = auteur;
+        auteursParCarte.set(fiche.carte, liste);
+        if (fiche.apercu !== undefined) { fiche.apercus[fiche.index] = fiche.apercu; }
+        rendreAuteurs(fiche.carte, fiche.slug);
+        marquer(fiche.carte, fiche.slug);
+        fini(null);
+      }
+    });
 
     function marquer(carte, slug) {
       modifies.add(slug);
@@ -82,242 +98,12 @@
       parent.appendChild(i);
     }
 
-    function majBoutonPhoto(rangee, bouton) {
-      var b = bouton || rangee.querySelector('button.photo');
-      if (!b) { return; }
-      var photo = rangee.dataset.photo || '';
-      b.classList.toggle('avec-photo', photo !== '');
-      b.title = photo !== '' ? TXT.photoPresente.split('{0}').join(photo) : TXT.photoBouton;
-    }
-
-    // Note éphémère sous une rangée d'auteur, pour ce qui n'a pas sa place dans la modale.
-    function noteRangee(rangee, texte) {
-      var note = rangee.nextElementSibling;
-      if (!note || !note.classList || !note.classList.contains('note-auteur')) {
-        note = document.createElement('div');
-        note.className = 'note-auteur';
-        rangee.parentNode.insertBefore(note, rangee.nextSibling);
-      }
-      note.textContent = texte;
-      if (note._minuteur) { clearTimeout(note._minuteur); }
-      note._minuteur = setTimeout(function () { note.remove(); }, 5000);
-    }
-
-    function ligneAuteur(carte, slug, zone, auteur) {
-      var rangee = document.createElement('div');
-      rangee.className = 'auteur';
-      rangee.dataset.photo = (auteur && auteur.photo) || '';
-      var champs = [['prenom', TXT.aPrenom], ['nom', TXT.aNom], ['fonction', TXT.aFonction],
-        ['affiliation', TXT.aAffiliation], ['orcid', TXT.aOrcid], ['email', TXT.aEmail]];
-      for (var k = 0; k < champs.length; k++) {
-        var i = document.createElement('input');
-        i.type = 'text';
-        i.placeholder = champs[k][1];
-        i.title = champs[k][1];
-        i.value = (auteur && auteur[champs[k][0]]) || '';
-        i.dataset.cle = champs[k][0];
-        i.addEventListener('input', function () { marquer(carte, slug); });
-        rangee.appendChild(i);
-      }
-      var photo = document.createElement('button');
-      photo.type = 'button';
-      photo.className = 'photo';
-      photo.appendChild(SZH.icone('camera'));
-      majBoutonPhoto(rangee, photo);
-      photo.addEventListener('click', function () { ouvrirModale(carte, slug, rangee); });
-      rangee.appendChild(photo);
-      var retirer = document.createElement('button');
-      retirer.type = 'button';
-      retirer.className = 'retirer';
-      retirer.appendChild(SZH.icone('poubelle'));
-      retirer.title = TXT.retirerAuteur;
-      retirer.addEventListener('click', function () { rangee.remove(); marquer(carte, slug); });
-      rangee.appendChild(retirer);
-      zone.appendChild(rangee);
-    }
-
-    // ---- Modale photo ----
-    //
-    // Un voile dans la webview, alimenté par postMessage : les aperçus sont des data: URI
-    // renvoyées par l'hôte, qui seul touche au disque et à la distro.
-    var modale = null;   // éléments du DOM, construits une fois
-    var ctx = null;      // { carte, slug, rangee, index, base, versions, occupe }
-
-    function uriPour(version) {
-      if (!ctx || !ctx.versions) { return null; }
-      if (version === 'original') { return ctx.versions.original || null; }
-      if (version === 'avec-fond') { return ctx.versions.avecFond || null; }
-      if (version === 'sans-fond') { return ctx.versions.sansFond || null; }
-      return null;
-    }
-    function radioChoisie() {
-      var r = modale.radios.querySelector('input:checked');
-      return r ? r.value : 'sans-fond';
-    }
-    function poserRadio(version) {
-      var rs = modale.radios.querySelectorAll('input');
-      for (var i = 0; i < rs.length; i++) { rs[i].checked = (rs[i].value === version); }
-    }
-    function majRadios() {
-      var rs = modale.radios.querySelectorAll('input');
-      for (var i = 0; i < rs.length; i++) { rs[i].disabled = !ctx || !uriPour(rs[i].value); }
-    }
-    function majApercu() {
-      var uri = uriPour(radioChoisie());
-      if (uri) { modale.img.src = uri; modale.img.hidden = false; }
-      else { modale.img.removeAttribute('src'); modale.img.hidden = true; }
-      modale.valider.disabled = !uri || !ctx || !ctx.base || ctx.occupe;
-    }
-    function poserNote(texte, estErreur) {
-      modale.note.textContent = texte || '';
-      modale.note.classList.toggle('erreur', !!estErreur);
-    }
-
-    function construireModale() {
-      var voile = document.createElement('div');
-      voile.id = 'voile';
-      voile.hidden = true;
-      var boite = document.createElement('div');
-      boite.className = 'modale';
-      var titre = document.createElement('h3');
-      boite.appendChild(titre);
-      var zone = document.createElement('div');
-      zone.className = 'zone-depot';
-      var consigne = document.createElement('div');
-      consigne.textContent = TXT.photoDeposer;
-      zone.appendChild(consigne);
-      var ou = document.createElement('div');
-      ou.className = 'ou';
-      ou.textContent = TXT.photoOu;
-      zone.appendChild(ou);
-      var choisir = document.createElement('button');
-      choisir.type = 'button';
-      choisir.textContent = TXT.photoChoisirFichier;
-      zone.appendChild(choisir);
-      var fichier = document.createElement('input');
-      fichier.type = 'file';
-      fichier.accept = 'image/*';
-      fichier.hidden = true;
-      zone.appendChild(fichier);
-      choisir.addEventListener('click', function () { fichier.click(); });
-      fichier.addEventListener('change', function () {
-        if (fichier.files && fichier.files[0]) { deposerFichier(fichier.files[0]); }
-        fichier.value = '';
-      });
-      zone.addEventListener('dragover', function (e) { e.preventDefault(); zone.classList.add('survol'); });
-      zone.addEventListener('dragleave', function () { zone.classList.remove('survol'); });
-      zone.addEventListener('drop', function (e) {
-        e.preventDefault();
-        zone.classList.remove('survol');
-        var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (f) { deposerFichier(f); }
-      });
-      boite.appendChild(zone);
-      var radios = document.createElement('div');
-      radios.className = 'radios';
-      var versions = [['original', TXT.vOriginal], ['avec-fond', TXT.vAvecFond], ['sans-fond', TXT.vSansFond]];
-      for (var k = 0; k < versions.length; k++) {
-        var l = document.createElement('label');
-        var r = document.createElement('input');
-        r.type = 'radio';
-        r.name = 'version-photo';
-        r.value = versions[k][0];
-        r.addEventListener('change', majApercu);
-        l.appendChild(r);
-        l.appendChild(document.createTextNode(' ' + versions[k][1]));
-        radios.appendChild(l);
-      }
-      boite.appendChild(radios);
-      var apercu = document.createElement('div');
-      apercu.className = 'apercu-photo';
-      var img = document.createElement('img');
-      img.alt = '';
-      img.hidden = true;
-      apercu.appendChild(img);
-      boite.appendChild(apercu);
-      var note = document.createElement('p');
-      note.className = 'note-modale';
-      boite.appendChild(note);
-      var boutons = document.createElement('div');
-      boutons.className = 'boutons-modale';
-      var valider = document.createElement('button');
-      valider.type = 'button';
-      valider.className = 'principal';
-      valider.textContent = TXT.valider;
-      valider.disabled = true;
-      valider.addEventListener('click', function () {
-        if (!ctx || !ctx.base || ctx.occupe) { return; }
-        api.postMessage({ type: 'photo-choisir', slug: ctx.slug, index: ctx.index, base: ctx.base, version: radioChoisie() });
-      });
-      var annuler = document.createElement('button');
-      annuler.type = 'button';
-      annuler.textContent = TXT.annuler;
-      annuler.addEventListener('click', fermerModale);
-      boutons.appendChild(valider);
-      boutons.appendChild(annuler);
-      boite.appendChild(boutons);
-      voile.appendChild(boite);
-      voile.addEventListener('click', function (e) { if (e.target === voile) { fermerModale(); } });
-      document.body.appendChild(voile);
-      modale = { voile: voile, titre: titre, zone: zone, radios: radios, img: img, note: note, valider: valider };
-    }
-
-    function ouvrirModale(carte, slug, rangee) {
-      var prenom = (rangee.querySelector('input[data-cle=prenom]') || { value: '' }).value.trim();
-      var nom = (rangee.querySelector('input[data-cle=nom]') || { value: '' }).value.trim();
-      if (prenom === '' && nom === '') { noteRangee(rangee, TXT.photoNomRequis); return; }
-      if (!modale) { construireModale(); }
-      var index = Array.prototype.indexOf.call(carte.querySelectorAll('.auteur'), rangee);
-      ctx = { carte: carte, slug: slug, rangee: rangee, index: index, base: null, versions: null, occupe: false };
-      modale.titre.textContent = TXT.photoTitre.split('{0}').join((prenom + ' ' + nom).trim());
-      poserRadio('sans-fond');
-      majRadios();
-      poserNote('');
-      majApercu();
-      var photo = rangee.dataset.photo || '';
-      if (photo !== '') {
-        poserNote(TXT.chargement);
-        api.postMessage({ type: 'photo-ouvrir', slug: slug, index: index, photo: photo });
-      }
-      modale.voile.hidden = false;
-    }
-
-    function fermerModale() {
-      if (modale) { modale.voile.hidden = true; }
-      ctx = null;   // une réponse tardive de l'hôte sera ignorée : slug et index recontrôlés
-    }
-
-    function deposerFichier(f) {
-      if (!ctx || ctx.occupe) { return; }
-      var ext = (String(f.name || '').match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
-      if (EXTENSIONS_PHOTO.indexOf(ext) === -1) { poserNote(TXT.errFormat, true); return; }
-      if (f.size > TAILLE_MAX_PHOTO) { poserNote(TXT.errTropVolumineux, true); return; }
-      var prenom = (ctx.rangee.querySelector('input[data-cle=prenom]') || { value: '' }).value.trim();
-      var nom = (ctx.rangee.querySelector('input[data-cle=nom]') || { value: '' }).value.trim();
-      var lecteur = new FileReader();
-      var contexte = ctx;
-      lecteur.onload = function () {
-        if (ctx !== contexte) { return; }            // modale refermée entre-temps
-        var texte = String(lecteur.result || '');
-        var virgule = texte.indexOf(',');
-        if (virgule === -1) { poserNote(TXT.errFormat, true); return; }
-        ctx.occupe = true;
-        poserNote(TXT.traitement);
-        majApercu();
-        api.postMessage({
-          type: 'photo-deposer', slug: ctx.slug, index: ctx.index,
-          prenom: prenom, nom: nom, nomFichier: f.name, donneesBase64: texte.slice(virgule + 1)
-        });
-      };
-      lecteur.readAsDataURL(f);
-    }
-
     // ---- Construction des cartes ----
 
     function rendre(articles, types, langueDefaut) {
       if (types) { TYPES = types; }
       if (langueDefaut) { LANGUE_DEFAUT = langueDefaut; }
-      if (ctx) { fermerModale(); }                   // re-rendu : la rangée visée disparaît
+      ctlAuteurs.fermer();                           // re-rendu : la fiche visée disparaît
       conteneur.textContent = '';
       modifies.clear();
       surChangement();
@@ -395,14 +181,9 @@
       var zone = document.createElement('div');
       zone.className = 'auteurs';
       carte.appendChild(zone);
-      var auteurs = v.author || [];
-      for (var a = 0; a < auteurs.length; a++) { ligneAuteur(carte, slug, zone, auteurs[a]); }
-      var ajouter = document.createElement('button');
-      ajouter.type = 'button';
-      ajouter.textContent = TXT.ajouterAuteur;
-      ajouter.addEventListener('click', function () { ligneAuteur(carte, slug, zone, null); marquer(carte, slug); });
-      carte.appendChild(ajouter);
-      appeler('apresAuteurs', carte);
+      auteursParCarte.set(carte, (v.author || []).map(function (a) { return a; }));
+      apercusParCarte.set(carte, (article.apercusAuteurs || []).slice());
+      rendreAuteurs(carte, slug);
 
       champTexte(carte, carte, slug, 'doi', null, 'DOI', v.doi);
 
@@ -450,6 +231,43 @@
       return carte;
     }
 
+    // Refaite en entier après chaque édition : les rangs se décalent quand on retire
+    // quelqu'un, et une fiche affichée n'a pas d'état à préserver.
+    function rendreAuteurs(carte, slug) {
+      var zone = carte.querySelector('.auteurs');
+      if (!zone) { return; }
+      zone.textContent = '';
+      var liste = auteursParCarte.get(carte) || [];
+      var apercus = apercusParCarte.get(carte) || [];
+      for (var i = 0; i < liste.length; i++) {
+        ctlAuteurs.apercu(zone, {
+          slug: slug, index: i, auteur: liste[i], apercu: apercus[i] || null,
+          carte: carte, apercus: apercus,
+          surRetirer: function (fiche) {
+            var courante = auteursParCarte.get(fiche.carte) || [];
+            courante.splice(fiche.index, 1);
+            (apercusParCarte.get(fiche.carte) || []).splice(fiche.index, 1);
+            auteursParCarte.set(fiche.carte, courante);
+            rendreAuteurs(fiche.carte, fiche.slug);
+            marquer(fiche.carte, fiche.slug);
+          }
+        });
+      }
+      var ajouter = document.createElement('button');
+      ajouter.type = 'button';
+      ajouter.className = 'szh-bouton';
+      ajouter.textContent = TXT.ajouterAuteur;
+      // Une personne s'ajoute par la modale : une fiche vide dans la liste n'apprendrait
+      // rien et se retrouverait enregistrée telle quelle.
+      ajouter.addEventListener('click', function () {
+        ctlAuteurs.ouvrir({
+          slug: slug, index: (auteursParCarte.get(carte) || []).length, auteur: {},
+          carte: carte, apercus: apercusParCarte.get(carte) || []
+        });
+      });
+      zone.appendChild(ajouter);
+    }
+
     function collecter(carte) {
       var resultat = { type: '', doi: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
       var sel = carte.querySelector('select[data-cle=type]');
@@ -460,12 +278,7 @@
         if (cle === 'doi') { resultat.doi = i.value; }
         else if (cle === 'title' || cle === 'subtitle' || cle === 'resume') { resultat[cle][langue] = i.value; }
       }
-      for (var rangee of carte.querySelectorAll('.auteur')) {
-        var auteur = {};
-        for (var champ of rangee.querySelectorAll('input')) { auteur[champ.dataset.cle] = champ.value; }
-        auteur.photo = rangee.dataset.photo || '';    // posé par la modale
-        resultat.author.push(auteur);
-      }
+      resultat.author = (auteursParCarte.get(carte) || []).slice();
       var editeurMots = motsClesParCarte.get(carte);
       if (editeurMots) { resultat.keywords = editeurMots.collecter(); }
       return resultat;
@@ -507,41 +320,12 @@
         if (etat) { etat.textContent = '⚠ ' + msg.message; }
         return true;
       }
-      if (msg.type !== 'photo-versions' && msg.type !== 'photo-valeur' && msg.type !== 'photo-erreur') {
-        return false;
-      }
-      if (!ctx || msg.slug !== ctx.slug || msg.index !== ctx.index) { return true; }
-      if (msg.type === 'photo-versions') {
-        ctx.occupe = false;
-        ctx.base = msg.base || null;
-        ctx.versions = msg.versions || {};
-        var choix = msg.actuelle || 'sans-fond';
-        if (!uriPour(choix)) { choix = VERSIONS.filter(uriPour)[0] || 'sans-fond'; }
-        poserRadio(choix);
-        majRadios();
-        var notes = [];
-        if (msg.infos && !msg.infos.visage) { notes.push(TXT.sansVisage); }
-        else if (msg.infos && msg.infos.recadre) { notes.push(TXT.recadre); }
-        poserNote(notes.join(' '));
-        majApercu();
-      } else if (msg.type === 'photo-valeur') {
-        var rangee = ctx.rangee, carte = ctx.carte, slug = ctx.slug;
-        rangee.dataset.photo = msg.photo || '';
-        majBoutonPhoto(rangee);
-        fermerModale();
-        marquer(carte, slug);
-      } else if (msg.type === 'photo-erreur') {
-        ctx.occupe = false;
-        poserNote(msg.message || '?', true);
-        majApercu();
-      }
-      return true;
+      return ctlAuteurs.message(msg);
     }
 
     // Un fichier lâché à côté d'une zone de dépôt ne doit pas remplacer la page.
     document.addEventListener('dragover', function (e) { e.preventDefault(); });
     document.addEventListener('drop', function (e) { e.preventDefault(); });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && ctx) { fermerModale(); } });
 
     // Branche l'enregistrement : le bouton, le minuteur d'enregistrement automatique et
     // le message envoyé à l'hôte. La page rend la main au minuteur en appelant
@@ -595,7 +379,7 @@
       marquer: marquer,
       message: message,
       enregistrement: enregistrement,
-      fermerModale: fermerModale,
+
       estModifie: function () { return modifies.size > 0; }
     };
   }

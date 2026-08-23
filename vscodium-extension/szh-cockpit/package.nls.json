@@ -11,7 +11,6 @@
   "cmd.deverrouiller": "Déverrouiller la revue",
   "cmd.desarchiver": "Désarchiver la revue",
   "cmd.supprimerTable": "Supprimer le tableau (et son insertion dans le texte)",
-  "cmd.remplacerTable": "Remplacer le tableau",
   "cmd.editerTable": "Éditer le tableau",
   "cmd.apercuMetadonnees": "Métadonnées des articles",
   "cmd.metadonneesArticle": "Éditer les métadonnées de cet article",

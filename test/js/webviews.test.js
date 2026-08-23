@@ -44,8 +44,9 @@ test('métadonnées des articles : une carte remplie par article', () => {
   assert.ok(articles.length >= 2, 'corpus de fiches trop maigre pour le contrôle');
   const page = ouvrir({
     racine: RACINE, page: 'metadata-articles',
-    cssPartage: ['_design.css', '_fiches.css'], jsPartage: ['_fiches.js'],
-    txt: libellesHote(RACINE, ['textesCarteArticle', 'htmlApercuMetadonnees'])
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
   });
   // Les objets viennent d'un autre realm (vm) : on compare les types, pas les prototypes.
   assert.deepStrictEqual(page.messages.map((m) => m.type), ['pret'], 'la page ne s’annonce pas');
@@ -57,6 +58,12 @@ test('métadonnées des articles : une carte remplie par article', () => {
   assert.ok(page.conteneur().classes.has('sans-trad'), 'les traductions ne sont pas cachées au départ');
   assert.ok(page.compter('.champ-trad') >= articles.length * 4,
     'champs de traduction non marqués : le bouton ne peut rien afficher');
+  // Les auteur·e·s ne sont plus six champs par personne mais une fiche affichée, la même
+  // que dans le gestionnaire des médias. Sans elle, la carte perdrait ses auteur·e·s sans
+  // rien dire.
+  assert.ok(page.compter('.auteur-fiche') >= 2, 'fiches d’auteur·e absentes des cartes');
+  assert.ok(page.textes().join(' | ').indexOf('Morand') !== -1,
+    'nom d’auteur·e absent du rendu');
   // Une carte muette est le symptôme exact du défaut qu'on garde : on exige des champs.
   assert.ok(page.compter('input') > 10, 'cartes sans champ : le rendu s’est arrêté en route');
   // Les valeurs du corpus doivent arriver dans les champs : titre, résumé, mots-clés.
@@ -76,8 +83,9 @@ test('vérification de l’import : les mêmes cartes, badges et section des ima
   }));
   const page = ouvrir({
     racine: RACINE, page: 'import-verif',
-    cssPartage: ['_design.css', '_fiches.css'], jsPartage: ['_fiches.js'],
-    txt: libellesHote(RACINE, ['textesCarteArticle', 'htmlImportVerif'])
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlImportVerif'])
   });
   page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr' });
   assert.strictEqual(page.compter('.carte'), articles.length);
@@ -87,14 +95,15 @@ test('vérification de l’import : les mêmes cartes, badges et section des ima
 
 test('gestionnaire des médias : cartes, encadrés et versions de portrait', () => {
   const page = ouvrir({
-    racine: RACINE, page: 'medias-article', cssPartage: ['_design.css'],
-    txt: libellesHote(RACINE, ['textesMedias'])
+    racine: RACINE, page: 'medias-article',
+    cssPartage: ['_design.css', '_auteurs.css'], jsPartage: ['_auteurs.js'],
+    txt: libellesHote(RACINE, ['textesMedias', 'textesAuteur'])
   });
   // Les objets viennent d'un autre realm (vm) : on compare les types, pas les prototypes.
   assert.deepStrictEqual(page.messages.map((m) => m.type), ['pret'], 'la page ne s’annonce pas');
   page.envoyer({
     type: 'charger', slug: 'figures', focus: '',
-    i18n: libellesHote(RACINE, ['textesMedias']),
+    i18n: libellesHote(RACINE, ['textesMedias', 'textesAuteur']),
     medias: [
       { relatif: 'figures-fig-01.png', description: '2000 × 620 · 5 Ko', apercu: null,
         occurrences: 2, doublons: ['figures-fig-09.png'], sansAlternative: false,
@@ -107,8 +116,12 @@ test('gestionnaire des médias : cartes, encadrés et versions de portrait', () 
     ],
     portraits: [
       { base: 'anne-dupont', nom: 'anne-dupont.sans-fond.png', auteur: 'Anne Dupont',
+        index: 0, rattache: true,
+        auteurFiche: { prenom: 'Anne', nom: 'Dupont', fonction: 'Logopédiste',
+          affiliation: 'HEP Vaud', orcid: '', email: 'anne@example.ch',
+          photo: 'portraits/anne-dupont.sans-fond.png' },
         disponibles: { original: true, 'avec-fond': true, 'sans-fond': true },
-        versionActuelle: 'sans-fond', rattache: true, version: 'Version utilisée : …',
+        versionActuelle: 'sans-fond', version: 'Version utilisée : …',
         description: 'Original : 1200 × 1600 · 340 Ko', apercu: null,
         qualite: { famille: 'portrait', niveau: 'ok', mesure: 1200, min: 400, conseille: 1000 } }
     ]
@@ -119,13 +132,14 @@ test('gestionnaire des médias : cartes, encadrés et versions de portrait', () 
   // doublon de la première. Le jumeau doit être nommé dans la carte, et pas seulement dans
   // l'infobulle d'une pastille, qu'aucun lecteur d'écran ne lit.
   assert.strictEqual(page.compter('.szh-notif--attention'), 2, 'avis attendus : qualité et doublon');
-  // Le remplacement est sous chaque visuel, portraits compris ; la corbeille ne concerne
-  // que les images, un portrait se retirant depuis la fiche de son auteur·e.
-  assert.strictEqual(page.compter('.depot'), 3, 'zone de remplacement absente sous un visuel');
+  // Le remplacement est sous chaque image ; une photo se remplace dans la modale de sa
+  // fiche d'auteur·e, et ne porte donc pas de dépôt ici.
+  assert.strictEqual(page.compter('.depot'), 2, 'zone de remplacement absente sous une image');
   assert.strictEqual(page.compter('.szh-ico'), 2, 'corbeille absente de la tête des cartes');
   assert.strictEqual(page.compterPage('.szh-modale'), 1, 'modale d’agrandissement non construite');
-  // Trois versions offertes pour le portrait rattaché.
-  assert.ok(page.compter('input') >= 3, 'boutons de version du portrait absents');
+  // Le portrait montre la fiche d'auteur·e partagée : c'est elle qui porte l'édition, la
+  // photo et le choix de version, ici comme dans le formulaire des métadonnées.
+  assert.strictEqual(page.compter('.auteur-fiche'), 1, 'fiche d’auteur·e absente du portrait');
   const textes = page.textes().join(' | ');
   assert.ok(textes.indexOf('figures-fig-01.png') !== -1, 'nom de fichier absent du rendu');
   assert.ok(textes.indexOf('320 px de large') !== -1, 'avis de qualité muet');
@@ -134,4 +148,7 @@ test('gestionnaire des médias : cartes, encadrés et versions de portrait', () 
   // L'état se lit dans la tête : deux insertions d'un côté, jamais insérée de l'autre.
   assert.ok(textes.indexOf('2 insertions') !== -1, 'pastille du nombre d’insertions absente');
   assert.ok(textes.indexOf('jamais insérée') !== -1, 'pastille « jamais insérée » absente');
+  // Les coordonnées de la fiche, telles que le formulaire des métadonnées les montre.
+  assert.ok(textes.indexOf('Anne Dupont') !== -1, 'nom de l’auteur·e absent de sa fiche');
+  assert.ok(textes.indexOf('anne@example.ch') !== -1, 'coordonnées absentes de la fiche');
 });

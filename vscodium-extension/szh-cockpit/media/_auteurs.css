@@ -1,0 +1,82 @@
+/* Fiche d'auteur·e et sa modale d'édition, posées par media/_auteurs.js. Chargées par les
+   trois vues qui montrent des auteur·e·s, pour qu'un changement d'apparence se fasse ici
+   et nulle part ailleurs. Le socle (_design.css) fournit les jetons et les boutons. */
+
+/* ---- Fiche affichée : la photo, le nom, les coordonnées, et de quoi éditer. */
+.auteur-fiche {
+  display: flex; align-items: center; gap: var(--e3);
+  padding: var(--e2);
+  border: 1px solid var(--filet); border-radius: var(--rayon-mini);
+  background: var(--fond);
+}
+.auteur-portrait {
+  flex: 0 0 auto; width: 3.25rem; height: 3.25rem;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden; border-radius: 50%;
+  border: 1px solid var(--filet);
+  /* damier : la transparence de « Sans fond » se voit dans les deux thèmes */
+  background: repeating-conic-gradient(rgba(128, 128, 128, .16) 0% 25%, transparent 0% 50%) 0 0 / 12px 12px;
+}
+.auteur-portrait img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.auteur-portrait.sans-photo { color: var(--encre-2); background: none; border-style: dashed; }
+
+.auteur-corps { flex: 1 1 auto; min-width: 0; }
+.auteur-nom { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+.auteur-detail {
+  margin: 0; font-size: var(--t-libelle); color: var(--encre-2);
+  overflow-wrap: anywhere; line-height: 1.45;
+}
+.auteur-boutons { flex: 0 0 auto; display: flex; align-items: center; gap: var(--e1); }
+
+/* ---- Modale d'édition : voile plein écran, rien d'actionnable derrière. */
+.voile-auteur {
+  position: fixed; inset: 0; z-index: 110;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .55);
+}
+.modale-auteur {
+  background: var(--vscode-editor-background); color: var(--encre);
+  border: 1px solid var(--filet-fort); border-radius: var(--rayon);
+  padding: var(--e4) var(--e5) var(--e5);
+  width: min(34rem, calc(100vw - 3rem));
+  max-height: calc(100vh - 3rem); overflow-y: auto;
+  box-shadow: 0 8px 28px var(--vscode-widget-shadow, rgba(0, 0, 0, .35));
+}
+.modale-auteur > h3 {
+  margin: 0 0 var(--e4); font-size: var(--t-titre); font-weight: 700;
+}
+/* Trois paires de champs courts : la grille reste pleine, sans cellule vide. */
+.auteur-grille { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e3); }
+.auteur-grille > * { min-width: 0; }
+@media (max-width: 34rem) { .auteur-grille { grid-template-columns: 1fr; } }
+
+.modale-auteur .zone-depot {
+  border: 2px dashed var(--vscode-panel-border, rgba(128, 128, 128, .6));
+  border-radius: var(--rayon-mini); padding: var(--e3); text-align: center;
+  color: var(--encre-2);
+}
+.modale-auteur .zone-depot.survol {
+  border-style: solid; border-color: var(--accent);
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, .12));
+  color: var(--encre);
+}
+.modale-auteur .zone-depot.occupe { opacity: .5; pointer-events: none; }
+.modale-auteur .zone-depot .ou { margin: var(--e1) 0; font-size: var(--t-libelle); }
+.modale-auteur .radios { display: flex; gap: var(--e4); flex-wrap: wrap; margin: var(--e3) 0 var(--e2); }
+.modale-auteur .radios label {
+  display: inline-flex; align-items: center; gap: .3em; margin: 0;
+  font-size: var(--t-libelle); cursor: pointer;
+}
+.modale-auteur .radios input { width: auto; accent-color: var(--accent); }
+.modale-auteur .apercu-photo {
+  display: flex; justify-content: center; min-height: 3rem; margin: var(--e2) 0;
+  background: repeating-conic-gradient(rgba(128, 128, 128, .18) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
+  border: 1px solid var(--filet); border-radius: var(--rayon-mini);
+}
+.modale-auteur .apercu-photo img { max-width: 200px; max-height: 200px; display: block; }
+.note-modale {
+  min-height: 1.2em; margin: var(--e1) 0 var(--e3);
+  font-size: var(--t-libelle); color: var(--encre-2); line-height: 1.45;
+}
+.note-modale.erreur { color: var(--vscode-errorForeground, #f14c4c); }
+.boutons-modale { display: flex; gap: var(--e2); justify-content: flex-end; }

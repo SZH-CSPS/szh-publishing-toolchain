@@ -1557,39 +1557,6 @@ async function remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif,
 }
 
 // Écrase tables/table-NN.html en gardant le nom, pour que la référence reste valide.
-async function remplacerTable(fournisseur, rafraichirTout, item) {
-  if (!fournisseur.racine || !item || !item.cheminAsset) { return; }
-  if (buildEnCours || importEnCours) {
-    vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
-    return;
-  }
-  const cible = item.cheminAsset;
-  const nomCible = path.basename(cible);
-  const filtresTable = {};
-  filtresTable[T('dial.table.filtre')] = ['html', 'htm'];
-  const choix = await vscode.window.showOpenDialog({
-    canSelectMany: false,
-    filters: filtresTable,
-    openLabel: T('dial.table.bouton'),
-    title: T('dial.table.titre', [nomCible])
-  });
-  if (!choix || choix.length === 0) { return; }    // dialogue annulé
-  const source = choix[0].fsPath;
-  const reponse = await vscode.window.showWarningMessage(
-    T('modale.remplacer.question', [nomCible, path.basename(source)]),
-    { modal: true, detail: T('modale.remplacer.detail.table', [nomCible]) },
-    T('modale.remplacer.bouton')
-  );
-  if (reponse !== T('modale.remplacer.bouton')) { return; }   // annulé : rien n'est touché
-  try {
-    fs.copyFileSync(source, cible);
-    vscode.window.setStatusBarMessage(T('statut.table.remplacee', [nomCible]), 5000);
-  } catch (e) {
-    vscode.window.showErrorMessage(T('err.remplacement', [e.message]));
-  }
-  rafraichirTout();
-}
-
 // Supprime une image ou un tableau, référence comprise : effacer le seul fichier
 // laisserait un lien mort. Le texte passe par un WorkspaceEdit, donc annulable. Rend vrai
 // quand le fichier est parti, ce que le gestionnaire des médias attend pour retirer sa
@@ -1804,32 +1771,42 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
 // Une carte par article : type, doi, title/subtitle/keywords traduisibles, auteurs.
 // Gabarit partagé avec le dialogue d'import.
 function textesCarteArticle() {
-  return {
+  return Object.assign({
     type: T('fiches.type'), typeAucun: T('fiches.type.aucun'),
     titreChamp: T('fiches.titre.champ'), sousTitre: T('fiches.soustitre'),
     resume: T('fiches.resume'),
-    auteurs: T('fiches.auteurs'), ajouterAuteur: T('fiches.auteur.ajouter'),
-    retirerAuteur: T('fiches.auteur.retirer'),
-    aPrenom: T('fiches.auteur.prenom'), aNom: T('fiches.auteur.nom'),
-    aFonction: T('fiches.auteur.fonction'), aAffiliation: T('fiches.auteur.affiliation'),
-    aOrcid: T('fiches.auteur.orcid'), aEmail: T('fiches.auteur.email'),
+    auteurs: T('fiches.auteurs'),
     motsCles: T('fiches.motscles'), italien: T('fiches.italien'),
     // Grille de mots-clés appariés : fragment partagé SZH.motsCles.
     motsClesTitre: T('fiches.motscles.titre'),
     motCleAjouter: T('fiches.motcle.ajouter'), motCleRetirer: T('fiches.motcle.retirer'),
     rien: T('form.rien'), enregistre: T('fiches.enregistre'),
     tradAfficher: T('fiches.trad.afficher'), tradMasquer: T('fiches.trad.masquer'),
-    langueAvenir: T('fiches.langue.avenir'),
-    photoBouton: T('photo.bouton'), photoPresente: T('photo.bouton.presente'),
-    photoNomRequis: T('photo.nomrequis'), photoTitre: T('photo.titre'),
+    langueAvenir: T('fiches.langue.avenir')
+  }, textesAuteur());
+}
+
+// La fiche d'auteur·e et sa modale (media/_auteurs.js) servent aux trois vues : leurs
+// libellés vivent donc dans une seule table, ajoutée à chacune. Une clé oubliée d'un côté
+// s'afficherait « undefined » sans rien casser, et personne ne le verrait.
+function textesAuteur() {
+  return {
+    aPrenom: T('fiches.auteur.prenom'), aNom: T('fiches.auteur.nom'),
+    aFonction: T('fiches.auteur.fonction'), aAffiliation: T('fiches.auteur.affiliation'),
+    aOrcid: T('fiches.auteur.orcid'), aEmail: T('fiches.auteur.email'),
+    retirerAuteur: T('fiches.auteur.retirer'), ajouterAuteur: T('fiches.auteur.ajouter'),
+    auteurEditer: T('auteur.editer'), auteurTitre: T('auteur.titre'),
+    auteurSansNom: T('auteur.sansnom'), auteurSansPhoto: T('auteur.sansphoto'),
+    auteurPhoto: T('auteur.photo'), auteurNomRequis: T('auteur.nomrequis'),
+    enregistrerBouton: T('form.enregistrer'), annuler: T('photo.annuler'),
+    photoNomRequis: T('photo.nomrequis'),
     photoDeposer: T('photo.deposer'), photoOu: T('photo.ou'),
     photoChoisirFichier: T('photo.choisirFichier'),
     vOriginal: T('photo.version.original'), vAvecFond: T('photo.version.avecfond'),
     vSansFond: T('photo.version.sansfond'),
-    valider: T('photo.valider'), annuler: T('photo.annuler'),
     chargement: T('photo.chargement'), traitement: T('photo.traitement'),
     sansVisage: T('photo.sansvisage'), recadre: T('photo.recadre'),
-    errTropVolumineux: T('photo.err.tropvolumineux'), errFormat: T('photo.err.format')
+    photoErrTropVolumineux: T('photo.err.tropvolumineux'), photoErrFormat: T('photo.err.format')
   };
 }
 
@@ -1872,7 +1849,8 @@ function htmlApercuMetadonnees(nonce) {
     filtreNote: T('fiches.filtre.note'), tous: T('fiches.tous')
   }));
   return construireHtml('metadata-articles', nonce, {
-    cssPartage: ['_design.css', '_fiches.css'], jsPartage: ['_fiches.js'],
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_auteurs.js', '_fiches.js'],
     titre: T('fiches.titre'),
     remplacements: { '__TXT__': txt },
     // Seule dérogation à la CSP : les aperçus de la modale photo, en data: URI.
@@ -1917,6 +1895,7 @@ function migrerFrontmatterVersMeta(racine, slug) {
 // `filtre` : slugs à afficher, ou null pour tous. L'ordre reste celui de l'arbre.
 function lireMetadonneesArticles(fournisseur, filtre) {
   const articles = [];
+  const budget = { reste: BUDGET_VIGNETTES };
   for (const slug of fournisseur.listerArticles()) {
     if (filtre && filtre.indexOf(slug) === -1) { continue; }
     migrerFrontmatterVersMeta(fournisseur.racine, slug);
@@ -1925,7 +1904,13 @@ function lireMetadonneesArticles(fournisseur, filtre) {
       valeurs = analyserMeta(fs.readFileSync(cheminMeta(fournisseur.racine, slug), 'utf8'));
     } catch (e) { /* pas encore de fiche : carte vide */ }
     delete valeurs._inconnues;                     // la webview n'a pas à les voir
-    articles.push({ slug: slug, valeurs: valeurs });
+    // À côté de la fiche, jamais dedans : ces vignettes ne doivent pas repartir dans le
+    // meta.yaml au prochain enregistrement.
+    articles.push({
+      slug: slug, valeurs: valeurs,
+      apercusAuteurs: (valeurs.author || [])
+        .map((a) => vignetteAuteur(fournisseur.racine, slug, a.photo, budget))
+    });
   }
   return articles;
 }
@@ -2432,6 +2417,25 @@ function dataUriImage(chemin) {
   } catch (e) { return null; }
 }
 
+// Vignette d'un portrait pour la fiche d'auteur·e, sous un budget partagé : une revue
+// entière porte facilement cinquante portraits, et le base64 de tous leurs originaux ferait
+// un postMessage de plusieurs dizaines de mégaoctets. Au-delà, la fiche montre le
+// pictogramme d'absence — la modale, elle, chargera la photo à la demande.
+const TAILLE_MAX_VIGNETTE = 3 * 1024 * 1024;
+const BUDGET_VIGNETTES = 8 * 1024 * 1024;
+
+function vignetteAuteur(racine, slug, photo, budget) {
+  const relatif = assainirCheminPhoto(photo);
+  if (relatif === '') { return null; }
+  const chemin = path.join(dossierPortraitsArticle(racine, slug), relatif.replace(/^portraits\//, ''));
+  try {
+    const taille = fs.statSync(chemin).size;
+    if (taille > TAILLE_MAX_VIGNETTE || taille > budget.reste) { return null; }
+    budget.reste -= taille;
+  } catch (e) { return null; }
+  return dataUriImage(chemin);
+}
+
 // <base>.original.<ext> présent dans `dossier`, dont la webview ignore l'extension.
 function trouverOriginal(dossier, base) {
   let noms = [];
@@ -2587,52 +2591,6 @@ function recalerPhotoOriginale(racine, slug, base, extAvant, extApres) {
 // réécrit par le sérialiseur et non par un remplacement littéral : la fiche a pu être
 // retouchée entre-temps, et ses clés inconnues doivent survivre.
 // -> nom du fichier retenu, ou null si rien n'a pu être écrit.
-function choisirVersionPortrait(fournisseur, slug, base, version) {
-  if (!fournisseur.racine || !baseAuteurValide(base)) { return null; }
-  if (VERSIONS_PHOTO.indexOf(version) === -1) { return null; }
-  const dossier = dossierPortraitsArticle(fournisseur.racine, slug);
-  const nom = version === 'original' ? trouverOriginal(dossier, base) : base + '.' + version + '.png';
-  if (!nom) { return null; }
-  try { if (!fs.statSync(path.join(dossier, nom)).isFile()) { return null; } } catch (e) { return null; }
-  const chemin = cheminMeta(fournisseur.racine, slug);
-  let meta;
-  try { meta = analyserMeta(fs.readFileSync(chemin, 'utf8')); } catch (e) { return null; }
-  let touches = 0;
-  for (const a of (meta.author || [])) {
-    const d = decomposerPhoto(assainirCheminPhoto(a.photo));
-    if (d && d.base === base) { a.photo = 'portraits/' + nom; touches++; }
-  }
-  if (touches === 0) { return null; }               // portrait qu'aucune fiche ne désigne
-  try { ecrireAtomique(chemin, serialiserMeta(meta)); } catch (e) { return null; }
-  return nom;
-}
-
-// Remplacement d'un portrait depuis le gestionnaire des médias : la base existe déjà, le
-// nom de l'auteur·e n'a donc pas à être redonné. Le fichier déposé écrase l'original —
-// geste irréversible, d'où la confirmation modale, comme pour une image.
-// -> { etat: 'ok' | 'annule' | 'erreur', message, sansVisage }
-async function remplacerFichierPortrait(fournisseur, rafraichirTout, slug, base, nomFichier, donneesBase64) {
-  if (!fournisseur.racine) { return { etat: 'annule' }; }
-  if (!baseAuteurValide(base)) { return { etat: 'annule' }; }
-  if (buildEnCours || importEnCours) { return { etat: 'erreur', message: T('statut.occupe') }; }
-  const nomSource = String(nomFichier || '');
-  const ext = (nomSource.match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
-  const dossier = dossierPortraitsArticle(fournisseur.racine, slug);
-  const avant = trouverOriginal(dossier, base);
-  const reponse = await vscode.window.showWarningMessage(
-    T('modale.remplacer.question', [avant || base, nomSource]),
-    { modal: true, detail: T('modale.remplacer.detail.portrait') },
-    T('modale.remplacer.bouton'));
-  if (reponse !== T('modale.remplacer.bouton')) { return { etat: 'annule' }; }
-  const r = await ecrirePortraitEtTraiter(fournisseur, slug, base, ext, donneesBase64);
-  if (!r.ok) { return { etat: 'erreur', message: r.message }; }
-  const extAvant = avant ? (avant.match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase() : ext;
-  recalerPhotoOriginale(fournisseur.racine, slug, base, extAvant, ext);
-  if (rafraichirTout) { rafraichirTout(); }
-  return { etat: 'ok', sansVisage: !r.visage };
-}
-
-// photo-choisir : chemin relatif de la version choisie, vérifié sur le disque.
 function choisirPhotoAuteur(fournisseur, panneau, msg) {
   const slug = String(msg.slug || '');
   if (!new Set(fournisseur.listerArticles()).has(slug)) { return; }   // slug inconnu : ignoré
@@ -2670,6 +2628,38 @@ function filtreValide(fournisseur, slugs) {
   const connus = new Set(fournisseur.listerArticles());
   const retenus = slugs.map(String).filter((s) => connus.has(s));
   return retenus.length > 0 ? retenus : null;
+}
+
+// Écrit un·e seul·e auteur·e dans <slug>.meta.yaml, à son rang, sans toucher au reste :
+// c'est ce que la modale partagée demande depuis le gestionnaire des médias, où il n'y a
+// pas de carte d'article à enregistrer. Relecture du fichier avant écriture — le formulaire
+// des métadonnées peut être ouvert à côté.
+// `photoAttendue` est le chemin que l'appelant croyait à ce rang : le rang seul ne désigne
+// personne de façon sûre — le formulaire des métadonnées, ouvert à côté, peut avoir retiré
+// quelqu'un entre-temps et décalé tous les suivants. Sans ce témoin, on écrirait sur la
+// mauvaise personne.
+// -> l'auteur·e écrit·e, ou null si la fiche est illisible, le rang inconnu, ou la photo
+//    de ce rang n'est plus celle qu'on attendait.
+function ecrireAuteur(fournisseur, slug, index, brut, photoAttendue) {
+  if (!fournisseur.racine || !new Set(fournisseur.listerArticles()).has(slug)) { return null; }
+  const chemin = cheminMeta(fournisseur.racine, slug);
+  let meta;
+  try { meta = analyserMeta(fs.readFileSync(chemin, 'utf8')); } catch (e) { return null; }
+  if (!Array.isArray(meta.author)) { meta.author = []; }
+  const rang = Number(index);
+  if (!Number.isInteger(rang) || rang < 0 || rang > meta.author.length || rang >= 20) { return null; }
+  // Le nettoyage de carte borne les longueurs et assainit le chemin de la photo : un seul
+  // endroit décide de ce qui entre dans une fiche.
+  const attendue = assainirCheminPhoto(photoAttendue);
+  if (attendue !== '') {
+    const surPlace = assainirCheminPhoto((meta.author[rang] || {}).photo);
+    if (surPlace !== attendue) { return null; }    // la fiche a bougé sous nos pieds
+  }
+  const propre = nettoyerCarte({ author: [brut] }).author[0];
+  if (!propre || (propre.prenom === '' && propre.nom === '')) { return null; }
+  meta.author[rang] = propre;
+  try { ecrireAtomique(chemin, serialiserMeta(meta)); } catch (e) { return null; }
+  return propre;
 }
 
 function titreFiches(filtre) {
@@ -2813,7 +2803,8 @@ function htmlImportVerif(nonce) {
     errImageFormat: T('importv.err.format')
   }));
   return construireHtml('import-verif', nonce, {
-    cssPartage: ['_design.css', '_fiches.css'], jsPartage: ['_fiches.js'],
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_auteurs.js', '_fiches.js'],
     titre: T('importv.titre'),
     remplacements: { '__TXT__': txt },
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
@@ -2822,6 +2813,7 @@ function htmlImportVerif(nonce) {
 
 // Articles de la dernière conversion, slugs revalidés.
 function lireArticlesImport(fournisseur) {
+  const budgetVignettes = { reste: BUDGET_VIGNETTES };
   const connus = new Set(fournisseur.listerArticles());
   const articles = [];
   for (const slug of slugsImportVerif) {
@@ -2837,7 +2829,11 @@ function lireArticlesImport(fournisseur) {
       relatif: relatif,
       description: decrireImage(path.join(base, relatif))   // « L × H · poids », comme l'arbre
     }));
-    articles.push({ slug: slug, valeurs: valeurs, images: images });
+    articles.push({
+      slug: slug, valeurs: valeurs, images: images,
+      apercusAuteurs: (valeurs.author || [])
+        .map((a) => vignetteAuteur(fournisseur.racine, slug, a.photo, budgetVignettes))
+    });
   }
   return articles;
 }
@@ -3319,7 +3315,7 @@ function apercuMedia(chemin, budget) {
 }
 
 function textesMedias() {
-  return {
+  return Object.assign({
     sectionImages: T('medias.section.images'), sectionPortraits: T('medias.section.portraits'),
     aucuneImage: T('medias.aucune.image'), aucunPortrait: T('medias.aucun.portrait'),
     resume: T('medias.resume'), rienAEcrire: T('medias.rienAEcrire'),
@@ -3334,13 +3330,10 @@ function textesMedias() {
     qualiteJuste: T('medias.qualite.juste'),
     qualitePortraitInsuffisant: T('medias.qualite.portrait.insuffisant'),
     qualitePortraitJuste: T('medias.qualite.portrait.juste'),
-    remplacer: T('medias.remplacer'), remplacerPortrait: T('medias.remplacer.portrait'),
-    choisirFichier: T('medias.choisirFichier'),
+    remplacer: T('medias.remplacer'), choisirFichier: T('medias.choisirFichier'),
     agrandir: T('medias.agrandir'), fermer: T('medias.fermer'),
     remplacee: T('medias.remplacee'),
     errFormat: T('medias.err.format'), errTropVolumineuse: T('medias.err.tropvolumineux'),
-    errFormatPortrait: T('medias.err.format.portrait'),
-    errTropVolumineusePortrait: T('medias.err.tropvolumineux.portrait'),
     retirerTip: T('medias.tip.retirer'),
     inserer: T('medias.inserer'), insererTip: T('medias.tip.inserer'),
     altManquant: T('medias.alt.manquant'), altDivergent: T('medias.alt.divergent'),
@@ -3353,15 +3346,13 @@ function textesMedias() {
     etatHorsFigure: T('medias.etat.horsfigure'), etatDoublon: T('medias.etat.doublon'),
     etatOrphelin: T('medias.etat.orphelin'),
     apercuAbsent: T('img.apercu.absent'), portraitOrphelin: T('medias.portrait.orphelin'),
-    versionTitre: T('medias.portrait.version.titre'),
-    vOriginal: T('photo.version.original'), vAvecFond: T('photo.version.avecfond'),
-    vSansFond: T('photo.version.sansfond'), versionAbsente: T('medias.portrait.version.absente')
-  };
+    auteurEnregistre: T('medias.auteur.enregistre')
+  }, textesAuteur());
 }
 
 function htmlMedias(nonce) {
   return construireHtml('medias-article', nonce, {
-    cssPartage: ['_design.css'],
+    cssPartage: ['_design.css', '_auteurs.css'], jsPartage: ['_auteurs.js'],
     titre: T('medias.titre', ['']),
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
   });
@@ -3464,15 +3455,17 @@ function listerPortraitsArticle(fournisseur, slug, budget) {
   }
   if (bases.size === 0) { return []; }
   // Auteur·e rattaché·e, et version retenue par la fiche : le champ `photo` du meta.yaml.
+  // Le rang dans meta.author accompagne le nom : c'est par lui que la fiche d'auteur·e
+  // s'édite, la modale et l'écriture ne connaissant que { slug, index }.
   const parPhoto = new Map();
   try {
     const meta = analyserMeta(fs.readFileSync(cheminMeta(fournisseur.racine, slug), 'utf8'));
-    for (const a of (meta.author || [])) {
+    (meta.author || []).forEach((a, index) => {
       const photo = assainirCheminPhoto(a.photo);
-      if (photo === '') { continue; }
+      if (photo === '') { return; }
       const nom = (String(a.prenom || '').trim() + ' ' + String(a.nom || '').trim()).trim();
-      parPhoto.set(photo.replace(/^portraits\//, ''), nom);
-    }
+      parPhoto.set(photo.replace(/^portraits\//, ''), { nom: nom, index: index, fiche: a });
+    });
   } catch (e) { /* pas de fiche : portraits sans auteur rattaché */ }
   const liste = [];
   for (const base of Array.from(bases.keys()).sort((a, b) => a.localeCompare(b, 'fr'))) {
@@ -3491,19 +3484,15 @@ function listerPortraitsArticle(fournisseur, slug, budget) {
     }
     const original = versions.original || utilisee;
     const cheminOriginal = path.join(dossier, original);
-    const d = decomposerPhoto(utilisee);
     liste.push({
       base: base,
       nom: utilisee,
-      auteur: auteur,
-      // Les trois versions existent-elles sur le disque ? Le formulaire n'offre que
-      // celles-là, et seule une fiche rattachée peut changer de version.
-      disponibles: {
-        original: !!versions.original,
-        'avec-fond': !!versions['avec-fond'],
-        'sans-fond': !!versions['sans-fond']
-      },
-      versionActuelle: d ? d.version : null,
+      auteur: auteur ? auteur.nom : null,
+      index: auteur ? auteur.index : -1,
+      auteurFiche: auteur ? auteur.fiche : null,
+      // Quelles versions existent, et laquelle sert : c'est la modale de la fiche
+      // d'auteur·e qui le demande par photo-ouvrir, au moment où elle s'ouvre. La carte
+      // n'en a pas besoin, et ces champs n'ont donc plus à voyager avec elle.
       rattache: auteur !== null,
       version: T('medias.portrait.version', ['portraits/' + utilisee]),
       description: T('medias.portrait.original', [decrireImage(cheminOriginal)]),
@@ -3708,52 +3697,33 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       if (retire) { repondrePanneau(panneau, { type: 'media-retire', relatif: relatif }); }
       return;
     }
-    // Réponse commune aux deux gestes qui touchent un portrait. `disponibles` et
-    // `rattache` en font partie : sans eux la webview ne peut pas rouvrir les versions
-    // qu'un dépôt vient de produire, et ses boutons resteraient grisés.
-    const reponsePortrait = (base, nomDefaut) => {
-      const p = listerPortraitsArticle(fournisseur, slug).filter((x) => x.base === base)[0] || null;
-      return {
-        type: 'portrait-remplace', base: base,
-        nom: p ? p.nom : nomDefaut, version: p ? p.version : '',
-        versionActuelle: p ? p.versionActuelle : null,
-        disponibles: p ? p.disponibles : null, rattache: p ? p.rattache : false,
-        description: p ? p.description : '',
-        apercu: p ? p.apercu : null, qualite: p ? p.qualite : null
-      };
-    };
-    if (msg.type === 'portrait-version') {
+    // La fiche d'auteur·e, éditée dans la modale partagée : écrite tout de suite, puis
+    // l'état du portrait est relu sur le disque — la photo a pu changer de version.
+    if (msg.type === 'auteur-enregistrer') {
+      const index = Number(msg.index);
       if (refuserSiVerrouille()) {
-        repondrePanneau(panneau, { type: 'portrait-erreur', base: String(msg.base || '') });
+        repondrePanneau(panneau, { type: 'auteur-erreur', slug: slug, index: index, message: T('verrou.refuse') });
         return;
       }
-      const base = String(msg.base || '');
-      const nom = choisirVersionPortrait(fournisseur, slug, base, String(msg.version || ''));
-      if (!nom) {
-        repondrePanneau(panneau, { type: 'portrait-erreur', base: base, message: T('photo.err.introuvable') });
+      const propre = ecrireAuteur(fournisseur, slug, index, msg.auteur, msg.photoAttendue);
+      if (!propre) {
+        repondrePanneau(panneau, { type: 'auteur-erreur', slug: slug, index: index, message: T('auteur.err.decale') });
         return;
       }
-      vscode.window.setStatusBarMessage(T('medias.statut.version', [nom]), 5000);
-      if (rafraichirTout) { rafraichirTout(); }     // le PDF dépend de portraits/
-      repondrePanneau(panneau, reponsePortrait(base, nom));
+      if (rafraichirTout) { rafraichirTout(); }     // le PDF porte le nom et la photo
+      const budget = { reste: BUDGET_APERCUS_MEDIA };
+      const portrait = listerPortraitsArticle(fournisseur, slug, budget)
+        .filter((x) => x.index === index)[0] || null;
+      repondrePanneau(panneau, {
+        type: 'auteur-enregistre', slug: slug, index: index, auteur: propre, portrait: portrait
+      });
       return;
     }
-    if (msg.type === 'portrait-remplacer') {
-      if (refuserSiVerrouille()) {
-        repondrePanneau(panneau, { type: 'portrait-erreur', base: String(msg.base || '') });
-        return;
-      }
-      const base = String(msg.base || '');
-      const res = await remplacerFichierPortrait(fournisseur, rafraichirTout, slug, base,
-        msg.nomFichier, msg.donneesBase64);
-      if (res.etat !== 'ok') {
-        repondrePanneau(panneau, { type: 'portrait-erreur', base: base, message: res.message || '' });
-        return;
-      }
-      repondrePanneau(panneau, reponsePortrait(base, base));
-      if (res.sansVisage) { vscode.window.showWarningMessage(T('photo.sansvisage')); }
-      return;
-    }
+    // Photo : les trois messages du composant partagé, comme dans les deux formulaires de
+    // métadonnées.
+    if (msg.type === 'photo-deposer') { await deposerPhotoAuteur(fournisseur, panneau, msg); return; }
+    if (msg.type === 'photo-ouvrir') { ouvrirVersionsPhoto(fournisseur, panneau, msg); return; }
+    if (msg.type === 'photo-choisir') { choisirPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type === 'retourArticle') {
       // Garde « non enregistré », comme dans l'éditeur de tableau.
       if (msg.modifie) {
@@ -3878,7 +3848,6 @@ function activate(context) {
     cmd('szh.desarchiver', () => desarchiver(fournisseur, rafraichirTout)),
     cmd('szh.ouvrirArticle', (slug) => ouvrirArticle(fournisseur, slug)),
     cmdEcriture('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
-    cmdEcriture('szh.remplacerTable', (item) => remplacerTable(fournisseur, rafraichirTout, item)),
     cmdEcriture('szh.supprimerTable', (item) => supprimerAsset(fournisseur, rafraichirTout, item, true)),
     cmdEcriture('szh.editerTable', (item) => ouvrirEditeurTable(fournisseur, item)),
     // Le formulaire des médias de l'article : légendes, crédits, qualité, remplacement.
