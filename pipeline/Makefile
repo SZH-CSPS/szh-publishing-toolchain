@@ -276,14 +276,14 @@ import:
 	  fi; \
 	done; \
 	[ -d "$(WORD_DIR)" ] || exit 0; \
+	journal="$(WORD_DIR)/.import.log"; \
+	: > "$$journal"; \
+	dire() { echo "$$*"; printf '%s\n' "$$*" >> "$$journal"; }; \
 	shopt -s nocaseglob; \
 	files=("$(WORD_DIR)"/*.docx); \
 	shopt -u nocaseglob; \
 	[ $${#files[@]} -gt 0 ] || exit 0; \
 	mkdir -p articles; \
-	journal="$(WORD_DIR)/.import.log"; \
-	: > "$$journal"; \
-	dire() { echo "$$*"; printf '%s\n' "$$*" >> "$$journal"; }; \
 	ok=0; deja=0; rate=0; \
 	for f in "$${files[@]}"; do \
 	  nom=$$(basename "$$f"); slug="$${nom%.*}"; \

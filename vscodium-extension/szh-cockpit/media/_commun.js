@@ -156,7 +156,10 @@ var SZH = (function () {
 
     if (surChamp) {
       document.addEventListener('input', programmer, true);
-      document.addEventListener('change', ecrire, true);
+      // « change » en phase de remontée, et non en capture : le gestionnaire de la cible
+      // doit avoir marqué sa modification avant qu'on décide d'écrire, sans quoi le
+      // changement d'un choix ne déclenche rien.
+      document.addEventListener('change', ecrire, false);
       document.addEventListener('focusout', ecrire, true);
     }
     window.addEventListener('blur', ecrire);

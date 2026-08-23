@@ -294,10 +294,10 @@ class FournisseurRevue {
     it.iconPath = new vscode.ThemeIcon(icone);
     it.contextValue = 'section-' + categorie;   // 'section-articles', 'section-word'…
     if (description) { it.description = description; }
-    return it;
     if (COMMANDES_SECTION[categorie]) {
       it.command = { command: COMMANDES_SECTION[categorie], title: libelle, arguments: [] };
     }
+    return it;
   }
 
   // Article = dossier articles/<slug>/ avec le .md homonyme, comme dans le Makefile.
@@ -2206,13 +2206,17 @@ function lireRapportImport(racine) {
     let libelle = T('word.rapport.converti');
     // Les motifs tolèrent l'absence d'accent : le rapport vient d'un shell, dont la locale
     // n'est pas garantie.
-    // Le bilan d'abord : il compte les échecs, et se ferait classer comme l'un d'eux.
-    if (/termin[ée]/i.test(ligne)) { ton = ''; libelle = T('word.rapport.bilan'); }
+    // Le bilan d'abord : il compte les échecs, et se ferait classer comme l'un d'eux. Le
+    // motif est ancré en début de ligne : un fichier « Dossier terminé 2026.docx » ne doit
+    // pas voir son échec se déguiser en bilan.
+    if (/^termin[ée]/i.test(ligne)) { ton = ''; libelle = T('word.rapport.bilan'); }
     else if (ligne.indexOf('⚠') !== -1 || /[ée]chec/i.test(ligne)) { ton = 'danger'; libelle = T('word.rapport.echec'); }
     else if (/d[ée]j[àa] converti|ignor/i.test(ligne)) { ton = 'attention'; libelle = T('word.rapport.ignore'); }
     // Le nom du fichier en tête de ligne, la phrase en dessous : c'est par le fichier
     // qu'on cherche, et la phrase est ce qu'il faut lire quand ça a raté.
-    const m = ligne.match(/([^\s:]+\.docx)/i);
+    // Les .docx livrés portent presque toujours des espaces : on prend tout ce qui suit le
+    // deux-points jusqu'à l'extension, sans quoi le titre de la carte serait un fragment.
+    const m = ligne.match(/:\s*(.+?\.docx)/i);
     entrees.push({ nom: m ? m[1] : ligne, ligne: m ? ligne : '', libelle: libelle, ton: ton });
   }
   return entrees;
@@ -2246,47 +2250,60 @@ async function ouvrirVueEnsemble(fournisseur, rafraichirTout, type) {
     if (!msg) { return; }
     if (msg.type === 'pret') { envoyer(panneau); return; }
     if (msg.type === 'ouvrir') {
-      if (type === 'traductions') { await ouvrirTraduction(fournisseur, rafraichirTout, { slug: String(msg.cle || '') }); }
+      // Par la commande, et non par la fonction : c'est cmdEcriture qui porte la garde du
+      // verrou. Ouvrir en direct laissait écrire un numéro verrouillé, l'enregistrement
+      // automatique du panneau de traduction s'en chargeant trois secondes plus tard.
+      if (type === 'traductions') {
+        await vscode.commands.executeCommand('szh.traduction', { slug: String(msg.cle || '') });
+      }
       return;
     }
     if (msg.type !== 'action') { return; }
-    await actionVue(fournisseur, rafraichirTout, type, String(msg.id || ''), panneau);
-    if (panneauxVue.get(type) === panneau) { envoyer(panneau); }
+    // L'état part APRÈS le re-rendu : « valeurs » reconstruit la barre, et donc efface la
+    // zone d'état. Une commande déléguée qui lève ne doit pas laisser la vue périmée.
+    let dit = null;
+    try { dit = await actionVue(fournisseur, rafraichirTout, type, String(msg.id || '')); }
+    catch (e) { dit = T('err.commande', [e && e.message ? e.message : String(e)]); }
+    if (panneauxVue.get(type) !== panneau) { return; }
+    envoyer(panneau);
+    if (dit) { repondrePanneau(panneau, { type: 'etat', message: dit }); }
   });
   panneau.webview.html = htmlVueEnsemble(crypto.randomBytes(16).toString('hex'), charge.titre);
 }
 
 // Les commandes globales d'une section. Celles qui écrivent partout sont confirmées : un
 // clic ne doit pas repasser tout un numéro en relecture par surprise.
-async function actionVue(fournisseur, rafraichirTout, type, id, panneau) {
+// -> le message à afficher dans la barre, ou null.
+async function actionVue(fournisseur, rafraichirTout, type, id) {
   if (type === 'traductions') {
-    if (id === 'envoyer') { await vscode.commands.executeCommand('szh.envoyerTraduction'); return; }
+    if (id === 'envoyer') { await vscode.commands.executeCommand('szh.envoyerTraduction'); return null; }
     const statuts = { 'tout-traduction': 'pret-traduction', 'tout-relecture': 'pret-relecture', 'tout-finalise': 'finalise' };
     const statut = statuts[id];
-    if (!statut) { return; }
-    if (refuserSiVerrouille()) { return; }
+    if (!statut) { return null; }
+    if (refuserSiVerrouille()) { return null; }
     if (statut !== 'pret-traduction') {
       const bouton = T('vue.confirmer');
       const choix = await vscode.window.showWarningMessage(
         T('trad.vue.tout.question', [T('trad.statut.' + statut)]),
         { modal: true, detail: T('trad.vue.tout.detail') }, bouton);
-      if (choix !== bouton) { return; }
+      if (choix !== bouton) { return null; }
     }
-    const n = marquerToutStatutRevue(fournisseur, rafraichirTout, statut);
-    repondrePanneau(panneau, { type: 'etat', message: T('vue.faits', [n]) });
-    return;
+    return T('vue.faits', [marquerToutStatutRevue(fournisseur, rafraichirTout, statut)]);
   }
   if (type === 'word') {
-    if (id === 'convertir') { await vscode.commands.executeCommand('szh.convertirEnAttente'); return; }
-    if (id !== 'vider') { return; }
-    if (refuserSiVerrouille()) { return; }
+    if (id === 'convertir') { await vscode.commands.executeCommand('szh.convertirEnAttente'); return null; }
+    if (id !== 'vider') { return null; }
+    if (refuserSiVerrouille()) { return null; }
+    // Une conversion en cours parcourt ce dossier : lui retirer ses fichiers sous les pieds
+    // fait échouer l'import et efface l'article a moitié écrit.
+    if (buildEnCours || importEnCours) { return T('statut.occupe'); }
     const noms = fournisseur._docxEnAttente(path.join(fournisseur.racine, 'articles-word'));
-    if (noms.length === 0) { return; }
+    if (noms.length === 0) { return null; }
     const bouton = T('word.vue.vider.bouton');
     const choix = await vscode.window.showWarningMessage(
       T('word.vue.vider.question', [noms.length]),
       { modal: true, detail: T('word.vue.vider.detail') }, bouton);
-    if (choix !== bouton) { return; }
+    if (choix !== bouton) { return null; }
     const erreurs = [];
     for (const nom of noms) {
       try { fs.unlinkSync(path.join(fournisseur.racine, 'articles-word', nom)); }
@@ -2294,8 +2311,9 @@ async function actionVue(fournisseur, rafraichirTout, type, id, panneau) {
     }
     if (erreurs.length > 0) { vscode.window.showErrorMessage(T('word.vue.vider.erreur', [erreurs.join(', ')])); }
     if (rafraichirTout) { rafraichirTout(); }
-    repondrePanneau(panneau, { type: 'etat', message: T('word.vue.vide', [noms.length - erreurs.length]) });
+    return T('word.vue.vide', [noms.length - erreurs.length]);
   }
+  return null;
 }
 
 function textesTraduction() {
@@ -2361,9 +2379,13 @@ function envoyerValeursTraduction(panneau, fournisseur, slug, focus) {
   traductionModifiee = false;                      // les cartes viennent d'être reconstruites
 }
 
+// Le panneau suit ce qui vient d'être écrit ailleurs — sauf s'il porte une saisie non
+// enregistrée : le re-rendu la jetterait sans un mot, et remettrait son témoin de
+// modification à zéro. On le dit alors, et l'utilisateur tranche.
 function rafraichirPanneauTraduction(fournisseur) {
   if (!panneauTraduction || !slugTraduction || !fournisseur.racine) { return; }
   if (fournisseur.listerArticles().indexOf(slugTraduction) === -1) { return; }
+  if (traductionModifiee) { vscode.window.showWarningMessage(T('trad.perimee')); return; }
   envoyerValeursTraduction(panneauTraduction, fournisseur, slugTraduction, null);
 }
 

@@ -57,8 +57,11 @@ media/
 ```
 
 `test/js/contrats.test.js` vérifie que cette liste reste complète, en même temps que les
-autres valeurs recopiées d'un fichier à l'autre. `node --test "test/js/*.test.js"` depuis
-la racine du dépôt.
+autres valeurs recopiées d'un fichier à l'autre. `test/js/webviews.test.js` rend les pages
+dans un DOM minimal, et `test/js/hote.test.js` active l'extension avec un faux `vscode`
+puis ouvre chaque panneau : c'est ce dernier qui attrape ce que la lecture de la source ne
+montre pas — une fonction supprimée avec ses voisines, une commande posée après un
+`return`. `node --test "test/js/*.test.js"` depuis la racine du dépôt.
 
 ## Empaquetage
 

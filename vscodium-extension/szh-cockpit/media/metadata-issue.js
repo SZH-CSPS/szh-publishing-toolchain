@@ -64,6 +64,9 @@
         majPastilles();
         modifies.add('couleur');
         etat.textContent = '';
+        // Un bouton n'émet ni « input » ni « change » : sans cet appel, la couleur
+        // n'attendrait que la perte de focus pour être écrite.
+        autoEnr.programmer();
       });
       conteneur.appendChild(b);
     }

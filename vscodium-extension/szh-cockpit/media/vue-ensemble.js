@@ -10,7 +10,7 @@
 //   pret ; action { id } ; ouvrir { cle }
 // Depuis l'hôte :
 //   valeurs { titre, boutons, lignes, accent, i18n } ; etat { message }
-// où un bouton vaut { id, libelle, icone, principal, danger, desactive } et une ligne
+// où un bouton vaut { id, libelle, icone, tip, principal, danger, desactive } et une ligne
 // { cle, groupe, titre, meta, pastilles: [{ texte, ton }], notif: { ton, texte }, ouvrir }.
 (function () {
   'use strict';
