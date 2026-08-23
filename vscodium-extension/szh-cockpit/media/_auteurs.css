@@ -19,6 +19,14 @@
 }
 .auteur-portrait img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .auteur-portrait.sans-photo { color: var(--encre-2); background: none; border-style: dashed; }
+/* Photo présente mais pas envoyée — budget des vignettes épuisé : le cadre reste plein, pour
+   qu'on ne la croie pas absente. */
+.auteur-portrait.photo-cachee { color: var(--encre-2); }
+.auteur-loupe {
+  width: 100%; height: 100%; padding: 0; border: 0; background: none;
+  cursor: zoom-in; display: block;
+}
+.auteur-loupe:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .auteur-corps { flex: 1 1 auto; min-width: 0; }
 .auteur-nom { margin: 0; font-weight: 700; overflow-wrap: anywhere; }

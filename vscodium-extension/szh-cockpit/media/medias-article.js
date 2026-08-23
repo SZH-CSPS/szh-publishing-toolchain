@@ -77,6 +77,9 @@ var ctlAuteurs = null;
 function creerCtlAuteurs() {
   return SZH.auteurs({
     api: api, txt: TXT,
+    // Ce panneau sait agrandir une image : c'est son métier de la juger, et une pastille
+    // de trois rem ne suffit pas à décider si un portrait tient la page.
+    surApercu: function (uri, nom) { ouvrirModale(uri, nom); },
     persister: function (fiche, auteur, fini) {
       attenteAuteur = { index: fiche.index, fini: fini };
       api.postMessage({
@@ -526,10 +529,11 @@ function rendrePortrait(c) {
   // Un portrait qu'aucune fiche ne désigne n'a pas d'auteur·e à éditer : il ne reste que
   // le fichier, son verdict, et le constat qu'il ne sert à rien.
   if (portrait.rattache) {
-    ctlAuteurs.apercu(corpsCarte, {
+    c.fiche = {
       slug: portrait.slug, index: portrait.index,
       auteur: portrait.auteurFiche || {}, apercu: portrait.apercu || null, carte: c
-    });
+    };
+    ctlAuteurs.apercu(corpsCarte, c.fiche);
   } else {
     c.ctl.visuel = texte(corpsCarte, 'div', 'visuel visuel--portrait');
     poserVisuel(c.ctl.visuel, portrait.nom || c.base, portrait.apercu);
@@ -721,6 +725,11 @@ window.addEventListener('message', function (ev) {
       if (msg.portrait) { p.portrait = msg.portrait; p.portrait.slug = msg.slug; }
       else { p.portrait.auteurFiche = msg.auteur || {}; }
       rendrePortrait(p);
+      // Le bouton d'où l'on venait vient d'être détaché : le focus revient sur celui de la
+      // fiche refaite, sans quoi le clavier repartirait du haut du panneau.
+      if (p.fiche && p.fiche.boutonEditer) {
+        try { p.fiche.boutonEditer.focus(); } catch (e) { /* pas focalisable */ }
+      }
     }
     return;
   }

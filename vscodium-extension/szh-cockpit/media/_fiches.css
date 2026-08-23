@@ -1,6 +1,7 @@
-/* Base commune aux deux formulaires de metadonnees d'article : la carte, les rangees
-   d'auteurs et la modale photo. Posee apres _design.css, qui fournit la carte, la barre,
-   les notifications et les boutons ; on n'ajoute ici que ce qui est propre aux fiches.
+/* Base commune aux deux formulaires de metadonnees d'article : la carte, ses champs et sa
+   zone d'auteurs. Posee apres _design.css, qui fournit la carte, la barre, les
+   notifications et les boutons, et apres _auteurs.css, a qui appartiennent la fiche
+   d'auteur·e et sa modale : rien ici ne doit les redefinir.
    La page peut surcharger : la verification d'import decore .carte h2 de badges. */
 body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
   line-height: var(--interligne); color: var(--encre); background: var(--fond);
@@ -9,6 +10,10 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 
 /* Une pile de cartes, separees par un ecart franc : entre deux articles, c'est le vide
    qui dit la coupure, mieux qu'un filet de plus. */
+/* La zone des auteur·e·s : des fiches empilees, puis le bouton d'ajout. */
+.auteurs { display: flex; flex-direction: column; gap: var(--e2); align-items: flex-start; }
+.auteurs .auteur-fiche { width: 100%; }
+
 #cartes { display: flex; flex-direction: column; gap: var(--e5); }
 #cartes > * { flex: 0 0 auto; }        /* une carte garde sa hauteur, jamais comprimee */
 .carte { padding: 0 var(--e5) var(--e5); margin: 0; }
@@ -29,9 +34,6 @@ input, select, textarea { width: 100%; box-sizing: border-box; padding: .35em .5
   border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini); }
 textarea { resize: vertical; min-height: 3.4em; font-family: inherit; }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.auteur { display: flex; gap: var(--e2); margin: var(--e1) 0; align-items: center; }
-.auteur input { flex: 1 1 0; min-width: 0; }
-
 /* Traductions : construites toujours, cachees par defaut, revelees par la barre. La
    colonne italienne garde sa propre condition — elle n'existe que si le numero la porte.
    Le selecteur d'id l'emporte sur .carte.avec-it, sinon l'italien resterait visible. */
@@ -48,44 +50,4 @@ button { padding: .35em .75em; border: 1px solid transparent; border-radius: var
 button.principal { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
 button.principal:hover { background: var(--vscode-button-hoverBackground); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-button.retirer, button.photo { flex: 0 0 auto; padding: .3em .5em; display: inline-flex;
-  align-items: center; justify-content: center; }
-button.retirer svg, button.photo svg { display: block; }
-button.photo.avec-photo { color: var(--vscode-charts-green, #2ea043);
-  outline: 1px solid var(--vscode-charts-green, #2ea043); }
 button:disabled { opacity: .45; cursor: default; }
-.note-auteur { color: var(--vscode-inputValidation-warningForeground, var(--encre));
-  background: var(--vscode-inputValidation-warningBackground, rgba(204,167,0,.15));
-  border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(204,167,0,.5));
-  border-radius: var(--rayon-mini); padding: .25em .5em; margin: var(--e1) 0;
-  font-size: var(--t-libelle); }
-
-/* ---- Modale photo : voile plein écran, aucune interaction possible derrière. */
-#voile { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 100;
-  display: flex; align-items: center; justify-content: center; }
-.modale { background: var(--vscode-editor-background); color: var(--encre);
-  border: 1px solid var(--filet-fort); border-radius: var(--rayon);
-  padding: var(--e4) var(--e5) var(--e5); width: min(30rem, calc(100vw - 3rem));
-  max-height: calc(100vh - 3rem); overflow-y: auto;
-  box-shadow: 0 8px 28px var(--vscode-widget-shadow, rgba(0,0,0,.35)); }
-.zone-depot { border: 2px dashed var(--vscode-panel-border, rgba(128,128,128,.6));
-  border-radius: var(--rayon-mini); padding: var(--e4); text-align: center;
-  color: var(--encre-2); }
-.zone-depot.survol { border-color: var(--accent);
-  background: var(--vscode-list-hoverBackground, rgba(128,128,128,.12));
-  color: var(--encre); }
-.zone-depot .ou { margin: var(--e2) 0; font-size: var(--t-libelle); }
-.zone-depot button { pointer-events: auto; }
-.zone-depot.survol > * { pointer-events: none; }  /* pas de dragleave parasite sur les enfants */
-.radios { display: flex; gap: var(--e4); flex-wrap: wrap; margin: var(--e3) 0 var(--e2); }
-.radios label { display: inline-flex; align-items: center; gap: .3em; font-weight: normal; margin: 0; }
-.radios input { width: auto; accent-color: var(--accent); }
-.apercu-photo { display: flex; justify-content: center; margin: var(--e2) 0;
-  /* damier : rend la transparence de « Sans fond » lisible, quel que soit le thème */
-  background: repeating-conic-gradient(rgba(128,128,128,.18) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
-  border: 1px solid var(--filet); border-radius: var(--rayon-mini); min-height: 3rem; }
-.apercu-photo img { max-width: 200px; max-height: 200px; display: block; }
-.note-modale { min-height: 1.2em; margin: var(--e1) 0 var(--e3); font-size: var(--t-libelle);
-  color: var(--encre-2); }
-.note-modale.erreur { color: var(--vscode-errorForeground, #f14c4c); }
-.boutons-modale { display: flex; gap: var(--e3); justify-content: flex-end; }

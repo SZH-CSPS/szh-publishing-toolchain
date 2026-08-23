@@ -60,13 +60,17 @@
     var ctlAuteurs = SZH.auteurs({
       api: api,
       txt: TXT,
+      // La première frappe marque la carte : sans cela, un rechargement demandé ailleurs
+      // — l'icône ✎ d'un autre article — jetterait les six champs de la modale sans un mot,
+      // la garde de l'hôte ne connaissant que les cartes marquées.
+      surSaisie: function (fiche) { marquer(fiche.carte, fiche.slug); },
       persister: function (fiche, auteur, fini) {
         var liste = auteursParCarte.get(fiche.carte) || [];
         if (fiche.index >= liste.length) { liste.push({}); }
         liste[fiche.index] = auteur;
         auteursParCarte.set(fiche.carte, liste);
         if (fiche.apercu !== undefined) { fiche.apercus[fiche.index] = fiche.apercu; }
-        rendreAuteurs(fiche.carte, fiche.slug);
+        rendreAuteurs(fiche.carte, fiche.slug, fiche.index);
         marquer(fiche.carte, fiche.slug);
         fini(null);
       }
@@ -233,14 +237,15 @@
 
     // Refaite en entier après chaque édition : les rangs se décalent quand on retire
     // quelqu'un, et une fiche affichée n'a pas d'état à préserver.
-    function rendreAuteurs(carte, slug) {
+    function rendreAuteurs(carte, slug, focus) {
       var zone = carte.querySelector('.auteurs');
       if (!zone) { return; }
       zone.textContent = '';
       var liste = auteursParCarte.get(carte) || [];
       var apercus = apercusParCarte.get(carte) || [];
+      var fiches = [];
       for (var i = 0; i < liste.length; i++) {
-        ctlAuteurs.apercu(zone, {
+        fiches.push({
           slug: slug, index: i, auteur: liste[i], apercu: apercus[i] || null,
           carte: carte, apercus: apercus,
           surRetirer: function (fiche) {
@@ -252,6 +257,7 @@
             marquer(fiche.carte, fiche.slug);
           }
         });
+        ctlAuteurs.apercu(zone, fiches[fiches.length - 1]);
       }
       var ajouter = document.createElement('button');
       ajouter.type = 'button';
@@ -266,6 +272,11 @@
         });
       });
       zone.appendChild(ajouter);
+      // Le focus revient sur la fiche qu'on vient d'éditer : le bouton d'où l'on venait a
+      // été détaché par ce re-rendu, et le clavier repartirait du haut de la page.
+      if (focus !== undefined && fiches[focus] && fiches[focus].boutonEditer) {
+        try { fiches[focus].boutonEditer.focus(); } catch (e) { /* pas focalisable */ }
+      }
     }
 
     function collecter(carte) {

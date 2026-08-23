@@ -1798,6 +1798,7 @@ function textesAuteur() {
     auteurEditer: T('auteur.editer'), auteurTitre: T('auteur.titre'),
     auteurSansNom: T('auteur.sansnom'), auteurSansPhoto: T('auteur.sansphoto'),
     auteurPhoto: T('auteur.photo'), auteurNomRequis: T('auteur.nomrequis'),
+    auteurPhotoCachee: T('auteur.photo.cachee'), auteurAgrandir: T('auteur.agrandir'),
     enregistrerBouton: T('form.enregistrer'), annuler: T('photo.annuler'),
     photoNomRequis: T('photo.nomrequis'),
     photoDeposer: T('photo.deposer'), photoOu: T('photo.ou'),
@@ -2456,6 +2457,9 @@ function versionsPhoto(dossier, base) {
 }
 
 // Champ `photo` déjà assaini -> { base, version } : une base, trois suffixes.
+// La base n'est pas contrôlée ici : baseAuteurValide s'en charge chez les appelants, qui
+// doivent tous répondre quelque chose — une modale qui a désactivé son bouton avant
+// d'envoyer reste figée sur un silence.
 function decomposerPhoto(photo) {
   const nom = String(photo || '').replace(/^portraits\//, '');
   let m = nom.match(/^(.+)\.original\.[a-z0-9]+$/i);
@@ -2483,6 +2487,12 @@ function ouvrirVersionsPhoto(fournisseur, panneau, msg) {
   if (!new Set(fournisseur.listerArticles()).has(slug)) { return; }   // slug inconnu : ignoré
   const photo = assainirCheminPhoto(msg.photo);
   const d = photo === '' ? null : decomposerPhoto(photo);
+  if (d && !baseAuteurValide(d.base)) {
+    // Une base hors alphabet sûr ne pourra jamais être relue ni réécrite : mieux vaut le
+    // dire que d'offrir des versions qu'un enregistrement refusera.
+    repondrePanneau(panneau, { type: 'photo-erreur', slug: slug, index: msg.index, message: T('photo.err.introuvable') });
+    return;
+  }
   if (!d) {
     // Forme inattendue : plutôt que de laisser « Chargement… », on invite à redéposer.
     repondrePanneau(panneau, { type: 'photo-erreur', slug: slug, index: msg.index, message: T('photo.err.introuvable') });
@@ -2554,9 +2564,14 @@ async function deposerPhotoAuteur(fournisseur, panneau, msg) {
   const index = msg.index;
   const erreur = (texte) => repondrePanneau(panneau, { type: 'photo-erreur', slug: slug, index: index, message: texte });
   if (!new Set(fournisseur.listerArticles()).has(slug)) { return; }   // slug inconnu : ignoré
+  // Écrit l'original et rejoue le pipeline : un panneau resté ouvert survit au
+  // verrouillage du numéro, et la garde des commandes ne couvre que l'ouverture.
+  if (refuserSiVerrouille()) { erreur(T('verrou.refuse')); return; }
   const prenom = String(msg.prenom || '').trim();
   const nom = String(msg.nom || '').trim();
-  if (prenom === '' && nom === '') { return; }    // la webview exige déjà un nom
+  // Sans réponse, la modale reste figée sur « Traitement… » : elle a désactivé son bouton
+  // avant d'envoyer, et rien ne la réveillerait.
+  if (prenom === '' && nom === '') { erreur(T('photo.nomrequis')); return; }
   const slugAuteur = slugifier(prenom + '-' + nom);
   const ext = (String(msg.nomFichier || '').match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
   const r = await ecrirePortraitEtTraiter(fournisseur, slug, slugAuteur, ext, msg.donneesBase64);
@@ -2586,17 +2601,20 @@ function recalerPhotoOriginale(racine, slug, base, extAvant, extApres) {
   return 1;
 }
 
-// Version d'un portrait retenue par la fiche : « sans fond » par défaut, mais un fond
-// clair ou une photo que le détourage abîme demandent l'une des deux autres. Le champ est
-// réécrit par le sérialiseur et non par un remplacement littéral : la fiche a pu être
-// retouchée entre-temps, et ses clés inconnues doivent survivre.
-// -> nom du fichier retenu, ou null si rien n'a pu être écrit.
+// photo-choisir : le chemin relatif de la version demandée, vérifié sur le disque. Rien
+// n'est écrit ici — c'est la fiche d'auteur·e qui portera ce chemin dans son champ `photo`,
+// et lui seul dit quelle image le rendu prendra. « Sans fond » par défaut, mais un fond
+// clair ou une photo que le détourage abîme demandent l'une des deux autres.
 function choisirPhotoAuteur(fournisseur, panneau, msg) {
   const slug = String(msg.slug || '');
   if (!new Set(fournisseur.listerArticles()).has(slug)) { return; }   // slug inconnu : ignoré
   const base = String(msg.base || '');
   const version = String(msg.version || '');
-  if (!baseAuteurValide(base) || VERSIONS_PHOTO.indexOf(version) === -1) { return; }
+  const erreur = () => repondrePanneau(panneau,
+    { type: 'photo-erreur', slug: slug, index: msg.index, message: T('photo.err.introuvable') });
+  // Toujours une réponse : la modale attend celle-ci pour enregistrer, et un retour
+  // silencieux lui ferait perdre les six champs qu'elle porte.
+  if (!baseAuteurValide(base) || VERSIONS_PHOTO.indexOf(version) === -1) { erreur(); return; }
   const dossier = dossierPortraitsArticle(fournisseur.racine, slug);
   let nom = null;
   if (version === 'original') {
@@ -2605,10 +2623,7 @@ function choisirPhotoAuteur(fournisseur, panneau, msg) {
     nom = base + '.' + version + '.png';
     try { if (!fs.existsSync(path.join(dossier, nom))) { nom = null; } } catch (e) { nom = null; }
   }
-  if (!nom) {
-    repondrePanneau(panneau, { type: 'photo-erreur', slug: slug, index: msg.index, message: T('photo.err.introuvable') });
-    return;
-  }
+  if (!nom) { erreur(); return; }
   repondrePanneau(panneau, { type: 'photo-valeur', slug: slug, index: msg.index, photo: 'portraits/' + nom });
 }
 
@@ -2618,6 +2633,7 @@ function choisirPhotoAuteur(fournisseur, panneau, msg) {
 // singleton, changer de filtre le recharge et reconstruit les cartes : la webview annonce
 // son état par « modifie », et l'hôte lui demande ses cartes pour jouer la garde.
 let filtreArticles = null;           // tableau de slugs affichés, ou null = tous
+let rafraichirFiches = null;         // renvoie les valeurs au panneau ouvert, s'il existe
 let fichesModifie = false;           // ● côté webview : cartes modifiées non enregistrées
 let rechargementEnAttente = null;    // { filtre } pendant l'aller-retour de la garde
 
@@ -2647,7 +2663,10 @@ function ecrireAuteur(fournisseur, slug, index, brut, photoAttendue) {
   try { meta = analyserMeta(fs.readFileSync(chemin, 'utf8')); } catch (e) { return null; }
   if (!Array.isArray(meta.author)) { meta.author = []; }
   const rang = Number(index);
-  if (!Number.isInteger(rang) || rang < 0 || rang > meta.author.length || rang >= 20) { return null; }
+  // Un rang existant, jamais un ajout : créer quelqu'un passe par la carte de l'article,
+  // qui écrit sa liste entière. Sans cette borne, un appelant sans témoin d'identité
+  // ressusciterait la personne qu'on vient de retirer.
+  if (!Number.isInteger(rang) || rang < 0 || rang >= meta.author.length) { return null; }
   // Le nettoyage de carte borne les longueurs et assainit le chemin de la photo : un seul
   // endroit décide de ce qui entre dans une fiche.
   const attendue = assainirCheminPhoto(photoAttendue);
@@ -2660,6 +2679,17 @@ function ecrireAuteur(fournisseur, slug, index, brut, photoAttendue) {
   meta.author[rang] = propre;
   try { ecrireAtomique(chemin, serialiserMeta(meta)); } catch (e) { return null; }
   return propre;
+}
+
+// Une fiche écrite ailleurs — la modale d'auteur·e du gestionnaire des médias — rend le
+// modèle du formulaire des métadonnées périmé : son enregistrement automatique réécrirait
+// le fichier entier depuis l'ancienne version, et la correction disparaîtrait sans un mot.
+// Panneau propre : on le recharge. Panneau portant des cartes modifiées : on ne jette rien
+// en douce, on le dit et c'est à l'utilisateur de trancher.
+function signalerFichesPerimees() {
+  if (!panneauArticles || !rafraichirFiches) { return; }
+  if (fichesModifie) { vscode.window.showWarningMessage(T('fiches.perimees')); return; }
+  rafraichirFiches();
 }
 
 function titreFiches(filtre) {
@@ -2683,6 +2713,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
     });
     fichesModifie = false;                         // les cartes viennent d'être reconstruites
   };
+  rafraichirFiches = () => { if (panneauArticles) { envoyerValeurs(panneauArticles); } };
   const appliquerFiltre = (panneau, nouveau) => {
     filtreArticles = nouveau;
     panneau.title = titreFiches(filtreArticles);
@@ -2707,7 +2738,10 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
   );
   panneauArticles = panneau;
   panneau.onDidDispose(() => {
-    if (panneauArticles === panneau) { panneauArticles = null; fichesModifie = false; rechargementEnAttente = null; }
+    if (panneauArticles === panneau) {
+      panneauArticles = null; fichesModifie = false; rechargementEnAttente = null;
+      rafraichirFiches = null;
+    }
   });
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
@@ -3711,6 +3745,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
         return;
       }
       if (rafraichirTout) { rafraichirTout(); }     // le PDF porte le nom et la photo
+      signalerFichesPerimees();                     // le formulaire des fiches, s'il est ouvert
       const budget = { reste: BUDGET_APERCUS_MEDIA };
       const portrait = listerPortraitsArticle(fournisseur, slug, budget)
         .filter((x) => x.index === index)[0] || null;

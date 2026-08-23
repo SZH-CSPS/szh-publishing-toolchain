@@ -13,6 +13,9 @@
 //   api          l'objet d'acquireVsCodeApi, pour la partie photo
 //   txt          les libellés de l'hôte
 //   persister    persister(ctx, auteur, fini) : écrit, puis appelle fini(message ou null)
+//   surSaisie    surSaisie(ctx) : la première frappe dans la modale, pour que la page
+//                sache qu'elle porte du non-enregistré
+//   surApercu    surApercu(uri, nom) : agrandir la photo, là où la vue sait le faire
 // }
 //
 // ctx = { slug, index, auteur, apercu, element, surRetirer } — `apercu` est la vignette en
@@ -39,6 +42,8 @@
     var api = opts.api;
     var TXT = opts.txt || {};
     var persister = opts.persister || function (ctx, auteur, fini) { fini(null); };
+    var surSaisie = opts.surSaisie || function () {};
+    var surApercu = opts.surApercu || null;
 
     var modale = null;      // construite une fois, remplie à chaque ouverture
     var ctx = null;         // contexte en cours d'édition
@@ -74,15 +79,33 @@
       var d = texte(parent, 'div', 'auteur-fiche');
       contexte.element = d;
       var portrait = texte(d, 'div', 'auteur-portrait');
+      var chemin = String((contexte.auteur || {}).photo || '');
       if (contexte.apercu) {
         var img = document.createElement('img');
         img.src = contexte.apercu;
         img.alt = nomComplet(contexte.auteur) || (TXT.auteurSansNom || '');
-        portrait.appendChild(img);
+        // Agrandir, là où la vue sait le faire : c'est le panneau des médias qui juge une
+        // image, et une pastille de trois rem n'y suffit pas.
+        if (surApercu) {
+          var loupe = document.createElement('button');
+          loupe.type = 'button';
+          loupe.className = 'auteur-loupe';
+          loupe.title = TXT.auteurAgrandir || '';
+          loupe.setAttribute('aria-label', TXT.auteurAgrandir || '');
+          loupe.appendChild(img);
+          loupe.addEventListener('click', function () {
+            surApercu(contexte.apercu, chemin || nomComplet(contexte.auteur));
+          });
+          portrait.appendChild(loupe);
+        } else {
+          portrait.appendChild(img);
+        }
       } else {
         portrait.appendChild(SZH.icone('camera'));
-        portrait.classList.add('sans-photo');
-        portrait.title = TXT.auteurSansPhoto || '';
+        portrait.classList.add(chemin === '' ? 'sans-photo' : 'photo-cachee');
+        portrait.title = chemin === ''
+          ? (TXT.auteurSansPhoto || '')
+          : (TXT.auteurPhotoCachee || '').split('{0}').join(chemin);
       }
       var corps = texte(d, 'div', 'auteur-corps');
       texte(corps, 'p', 'auteur-nom', nomComplet(contexte.auteur) || (TXT.auteurSansNom || ''));
@@ -98,6 +121,7 @@
       editer.textContent = TXT.auteurEditer || '';
       editer.addEventListener('click', function () { ouvrir(contexte); });
       boutons.appendChild(editer);
+      contexte.boutonEditer = editer;               // là où le focus revient après l'édition
       if (contexte.surRetirer) {
         var retirer = document.createElement('button');
         retirer.type = 'button';
@@ -200,6 +224,9 @@
         champ.type = 'text';
         champ.id = 'auteur-' + cle;
         champ.maxLength = cle === 'email' ? 200 : 300;
+        champ.addEventListener('input', function () {
+          if (ctx && !ctx.saisi) { ctx.saisi = true; surSaisie(ctx.fiche); }
+        });
         bloc.appendChild(champ);
         champs[cle] = champ;
       }
@@ -304,9 +331,13 @@
       modale.voile.hidden = true;
       ctx = null;                                  // une réponse tardive sera ignorée
       attente = null;
-      if (modale.retour) {
-        try { modale.retour.focus(); } catch (e) { /* élément disparu */ }
-        modale.retour = null;
+      // Le bouton mémorisé peut avoir été détaché par le re-rendu que la page vient de
+      // faire : lui redonner le focus ne ferait rien, et le focus tomberait sur <body>. La
+      // page focalise alors elle-même la fiche refaite.
+      var retour = modale.retour;
+      modale.retour = null;
+      if (retour && retour.isConnected !== false) {
+        try { retour.focus(); } catch (e) { /* élément disparu */ }
       }
     }
 
