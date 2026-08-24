@@ -80,9 +80,20 @@ def progression(message):
 # ---------------------------------------------------------------------------------
 # Texte de référence : ce qui décide de ce qui sert
 
+def fichiers_de_texte(dossier, slug):
+    """Les fichiers de l'article où une image peut être citée, le corps en premier : le .md,
+    la bibliographie détachée à l'import, puis les tableaux extraits. Une seule liste, lue
+    par la purge et par la réécriture des noms — un fichier oublié d'un côté ferait
+    supprimer une image citée, ou laisserait une référence pointer dans le vide."""
+    return [os.path.join(dossier, slug + '.md'),
+            os.path.join(dossier, slug + '.biblio.md')] + \
+        sorted(glob.glob(os.path.join(dossier, 'tables', '*.htm*')))
+
+
 def texte_de_reference(dossier, slug):
-    """Le .md et les tableaux extraits, concaténés en minuscules : c'est là que se lit ce
-    qui sert. Les tableaux comptent, docx-tables.py y écrivant des <img src="media/…">.
+    """Le .md, les tableaux extraits et la bibliographie détachée, concaténés en minuscules :
+    c'est là que se lit ce qui sert. Les tableaux comptent, docx-tables.py y écrivant des
+    <img src="media/…">.
     Rend None si le .md manque ou est vide — cas où l'on ne purge rien."""
     md = os.path.join(dossier, slug + '.md')
     try:
@@ -95,7 +106,7 @@ def texte_de_reference(dossier, slug):
         progression('[import-medias] %s vide : aucune purge' % md)
         return None
     morceaux = [corps]
-    for chemin in sorted(glob.glob(os.path.join(dossier, 'tables', '*.htm*'))):
+    for chemin in fichiers_de_texte(dossier, slug)[1:]:
         try:
             with open(chemin, encoding='utf-8', errors='replace') as f:
                 morceaux.append(f.read())
@@ -324,8 +335,7 @@ def reecrire_references(dossier, slug, couples):
     motif = re.compile(GARDE_CIBLE_LOCALE + '(' + PREFIXE_RELATIF + ')('
                        + '|'.join(re.escape(k) for k in sorted(table, key=len, reverse=True)) + ')',
                        re.I)
-    for chemin in [os.path.join(dossier, slug + '.md')] + \
-            sorted(glob.glob(os.path.join(dossier, 'tables', '*.htm*'))):
+    for chemin in fichiers_de_texte(dossier, slug):
         try:
             with open(chemin, encoding='utf-8', errors='replace', newline='') as f:
                 contenu = f.read()

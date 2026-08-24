@@ -14,9 +14,10 @@
 #
 # CE QUE LE WORD POSSÈDE, ET RIEN D'AUTRE
 #
-#   <slug>.md      le corps
-#   media/         les images du corps, nommées d'après leur ordre de citation
-#   tables/        les tableaux — sous conditions, c'est tout le sujet de ce script
+#   <slug>.md         le corps
+#   <slug>.biblio.md  la bibliographie détachée à l'import — mêmes conditions qu'un tableau
+#   media/            les images du corps, nommées d'après leur ordre de citation
+#   tables/           les tableaux — sous conditions, c'est tout le sujet de ce script
 #
 # Tout le reste du dossier de l'article est recopié tel quel : la fiche <slug>.meta.yaml,
 # le suivi de traduction, les tâches, portraits/, et tout fichier qu'une version future y
@@ -45,6 +46,27 @@
 #     l'ancien dossier entier attend dans .szh-avant-reimport/.
 #   * article importé avant les empreintes -> on ne peut pas savoir. Tout tableau qui
 #     diffère est traité comme un conflit, et un message le dit une fois pour l'article.
+#
+# LA BIBLIOGRAPHIE : LE MÊME MODÈLE, SUR UN SEUL FICHIER
+#
+# Depuis que l'import détache la bibliographie dans <slug>.biblio.md, elle vit les deux
+# mêmes vies qu'un tableau : l'auteur corrige ses références dans son Word, et la rédaction
+# peut les corriger ici — l'arborescence du cockpit ouvre ce fichier d'un clic. Les trois
+# états sont donc les mêmes, sur un fichier au lieu d'une série :
+#
+#   * le Word livre les mêmes références qu'à l'import -> la version d'ici est GARDÉE ;
+#   * le Word livre autre chose, personne n'avait touché -> le Word REMPLACE ;
+#   * les deux ont bougé -> le Word gagne (le corps et les références viennent du même
+#     document), et le conflit est NOMMÉ, avec le chemin de l'ancienne version.
+#
+# Et deux cas propres à un fichier unique : le Word qui n'en détache plus (ses références
+# ne portent plus le style ; la liste reste dans son corps, et le fichier d'ici s'en va),
+# et l'article importé quand la chaîne détachait déjà sans noter l'empreinte — on ne peut
+# alors pas savoir, et un message le dit plutôt que d'accuser la rédaction à tort.
+#
+# ⚠ La bibliographie compte AUSSI dans « rien à faire » : sans cela, un Word dont seules
+# les références changent était jugé sans effet, consommé, et la correction de l'auteur
+# était jetée en silence — mesuré. C'est le défaut même que ce script existe pour empêcher.
 #
 # LES IMAGES : ELLES VOYAGENT AVEC LE CORPS
 #
@@ -109,9 +131,15 @@ NOM_JOURNAL = '.import.log'
 PREFIXE_INFO = '[reimport]'
 PREFIXE_AVERT = '[import-avertissement]'
 
+# Le fichier de la bibliographie détachée. Nommé ici une fois pour toutes, comme
+# szh-biblio-detacher.lua le nomme à l'import et lib/citations.js à l'édition.
+def nom_biblio(slug):
+    return slug + '.biblio.md'
+
+
 # Ce que le Word possède dans le dossier de l'article. Tout le reste survit.
 def possede_par_le_word(slug):
-    return {slug + '.md', 'media', 'tables', NOM_EMPREINTES}
+    return {slug + '.md', nom_biblio(slug), 'media', 'tables', NOM_EMPREINTES}
 
 EXTENSIONS_IMAGE = ('.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp',
                     '.tif', '.tiff', '.emf', '.wmf')
@@ -175,8 +203,8 @@ class Voix(object):
 
 ENTETE_EMPREINTES = (
     "# Ce que l'import a produit, et son empreinte. Écrit par la conversion, lu par\n"
-    "# « Réimporter cet article » : c'est ce qui lui permet de distinguer un tableau\n"
-    "# retravaillé par la rédaction d'un tableau tel que le Word l'avait livré. Le\n"
+    "# « Réimporter cet article » : c'est ce qui lui permet de distinguer un tableau ou\n"
+    "# une bibliographie retravaillés par la rédaction de ce que le Word avait livré. Le\n"
     "# modifier ou le supprimer ne casse rien : le réimport devient seulement prudent,\n"
     "# et nomme comme ambigu ce qu'il ne peut plus trancher.\n")
 
@@ -218,13 +246,17 @@ def lister_images(dossier):
     return trouvees
 
 
-def ecrire_empreintes(dossier, slug, nom_word, tableaux=None):
+def ecrire_empreintes(dossier, slug, nom_word, tableaux=None, biblio=None):
     """Note ce que le Word a livré. Rend le nombre de lignes écrites.
 
     `tableaux` ({rang: sha}) sert au réimport : ce qui est INSTALLÉ à un rang peut être la
     version que la rédaction avait retravaillée, mais l'empreinte doit décrire ce que le
     Word livrait. Sans cette distinction, un tableau gardé passerait au réimport suivant
     pour une modification de l'auteur, et chaque réimport rouvrirait le même faux conflit.
+
+    `biblio` dit la même chose de <slug>.biblio.md, et la même subtilité s'y applique :
+    l'empreinte du fichier livré par le Word, '' si ce Word n'en détachait pas, None pour
+    mesurer le fichier installé — c'est le cas de l'import, où il n'y a rien d'autre.
     """
     lignes = []
     if nom_word:
@@ -233,6 +265,11 @@ def ecrire_empreintes(dossier, slug, nom_word, tableaux=None):
     corps = os.path.join(dossier, slug + '.md')
     if os.path.isfile(corps):
         lignes.append('corps\t%s\t%s' % (sha(corps), slug + '.md'))
+    refs = os.path.join(dossier, nom_biblio(slug))
+    if biblio is None and os.path.isfile(refs):
+        biblio = sha(refs)
+    if biblio:
+        lignes.append('biblio\t%s\t%s' % (biblio, nom_biblio(slug)))
     presentes = lister_tables(dossier)
     for num in sorted(set(presentes) | set(tableaux or {})):
         if tableaux and num in tableaux:
@@ -250,9 +287,10 @@ def ecrire_empreintes(dossier, slug, nom_word, tableaux=None):
 
 
 def lire_empreintes(dossier):
-    """{'tableau': {num: sha}, 'image': {rel: sha}, 'corps': sha|None, 'word': nom|None}.
-    Absent ou illisible -> tout vide, et l'appelant se montre prudent."""
-    vu = {'tableau': {}, 'image': {}, 'corps': None, 'word': None, 'present': False}
+    """{'tableau': {num: sha}, 'image': {rel: sha}, 'corps': sha|None, 'biblio': sha|None,
+    'word': nom|None}. Absent ou illisible -> tout vide, et l'appelant se montre prudent."""
+    vu = {'tableau': {}, 'image': {}, 'corps': None, 'biblio': None, 'word': None,
+          'present': False}
     chemin = os.path.join(dossier, NOM_EMPREINTES)
     try:
         with open(chemin, encoding='utf-8') as f:
@@ -268,6 +306,8 @@ def lire_empreintes(dossier):
             vu['word'] = champs[1]
         elif champs[0] == 'corps' and len(champs) >= 2:
             vu['corps'] = champs[1]
+        elif champs[0] == 'biblio' and len(champs) >= 2:
+            vu['biblio'] = champs[1]
         elif champs[0] == 'tableau' and len(champs) >= 3:
             m = re.search(r'table-(\d+)\.html$', champs[2])
             if m:
@@ -633,6 +673,54 @@ def fusionner_tables(vivant, temp, empreintes, voix, slug):
 
 
 # ---------------------------------------------------------------------------------
+# La bibliographie détachée. Même modèle que les tableaux, sur un fichier unique : voir
+# l'en-tête du fichier pour le raisonnement, il est le même mot pour mot.
+
+def fusionner_biblio(vivant, temp, empreintes, slug):
+    """Décide ce que temp/<slug>.biblio.md doit contenir, et rend (bilan, empreinte de ce
+    que le Word a livré). L'empreinte rendue est celle du WORD, jamais celle de l'installé :
+    une bibliographie gardée passerait sinon au réimport suivant pour une correction de
+    l'auteur, et le même faux conflit se rouvrirait indéfiniment.
+
+    Ne dit rien lui-même : les messages sont posés par l'appelant, après le partage entre
+    « rien à faire » et un vrai remplacement."""
+    bilan = {'gardee': 0, 'remplacee': 0, 'conflit': 0, 'retiree': 0, 'nouvelle': 0,
+             'inconnue': 0}
+    ancien = os.path.join(vivant, nom_biblio(slug))
+    neuf = os.path.join(temp, nom_biblio(slug))
+    sha_ancien = sha(ancien) if os.path.isfile(ancien) else None
+    sha_neuf = sha(neuf) if os.path.isfile(neuf) else None
+    if sha_ancien is None:
+        # Rien à arbitrer : soit le Word en apporte une, soit il n'y en a nulle part.
+        bilan['nouvelle'] = 1 if sha_neuf else 0
+        return bilan, (sha_neuf or '')
+    # L'article a un fichier de bibliographie ; l'empreinte dit-elle d'où il vient ?
+    emp = empreintes['biblio'] if empreintes['present'] else None
+    retravaillee = emp is None or emp != sha_ancien
+    bilan['inconnue'] = 1 if emp is None else 0
+    if sha_neuf is None:
+        # Les références de ce Word ne portent plus le style de bibliographie : sa liste
+        # est restée dans son corps, et le fichier d'ici n'a plus de raison d'être. Il ne
+        # revient donc pas — le corps qui le référençait n'est plus là non plus.
+        bilan['retiree'] = 1
+        bilan['conflit'] = 1 if retravaillee else 0
+        return bilan, ''
+    if sha_neuf == sha_ancien:
+        return bilan, sha_neuf            # les deux disent la même chose : rien à décider
+    if emp == sha_neuf:
+        # Le Word livre ce qu'il livrait à l'import : l'auteur n'a pas touché ses
+        # références, et c'est la version d'ici qui est gardée, quel qu'ait été son travail.
+        shutil.copyfile(ancien, neuf)
+        bilan['gardee'] = 1
+        return bilan, sha_neuf
+    if retravaillee:
+        bilan['conflit'] = 1
+    else:
+        bilan['remplacee'] = 1
+    return bilan, sha_neuf
+
+
+# ---------------------------------------------------------------------------------
 
 def copier_preserves(vivant, temp, slug):
     """Recopie dans le chantier tout ce que le Word ne possède pas. Rend la liste des
@@ -662,9 +750,17 @@ def memes_octets(a, b):
 
 
 def rien_a_faire(vivant, temp, slug):
-    """Vrai si le corps, les tableaux et les images sortiraient identiques."""
+    """Vrai si le corps, la bibliographie, les tableaux et les images sortiraient
+    identiques.
+
+    ⚠ La bibliographie en fait partie, et ce n'est pas un détail : mesuré, un Word dont
+    SEULES les références changeaient était jugé « rien à faire », son fichier consommé, et
+    la correction de l'auteur jetée sans un mot. C'est le remplacement qui la rapporte."""
     if not memes_octets(os.path.join(vivant, slug + '.md'),
                         os.path.join(temp, slug + '.md')):
+        return False
+    if not memes_octets(os.path.join(vivant, nom_biblio(slug)),
+                        os.path.join(temp, nom_biblio(slug))):
         return False
     tv, tn = lister_tables(vivant), lister_tables(temp)
     if sorted(tv) != sorted(tn):
@@ -763,9 +859,12 @@ def reimporter(revue, slug, chemin_docx, pipeline, voix, resultat):
     else:
         shutil.rmtree(portraits_word, ignore_errors=True)
 
-    # 3. Les tableaux.
+    # 3. Les tableaux, puis la bibliographie : deux fichiers du Word que la rédaction
+    # retravaille aussi, donc deux décisions à trois états.
     bilan, empreintes_du_word = fusionner_tables(vivant, temp, empreintes, voix, slug)
     resultat['tableaux'] = bilan
+    bilan_biblio, biblio_du_word = fusionner_biblio(vivant, temp, empreintes, slug)
+    resultat['biblio'] = bilan_biblio
 
     # 4. Les images. media/ voyage avec le corps ; ce qui n'y revient pas est nommé.
     images_avant = lister_images(vivant)
@@ -781,12 +880,12 @@ def reimporter(revue, slug, chemin_docx, pipeline, voix, resultat):
         shutil.rmtree(temp, ignore_errors=True)
         shutil.move(chemin_docx, os.path.join(rebut, nom_word))
         voix.dire(
-            'article « %s » : le Word « %s » ne change ni le texte, ni les tableaux, ni '
-            'les images. Rien n\'a été remplacé, et ce fichier ne sera plus signalé comme '
-            'en attente.' % (slug, nom_word),
-            'Artikel « %s »: die Word-Datei « %s » ändert weder Text noch Tabellen noch '
-            'Bilder. Es wurde nichts ersetzt, und diese Datei wird nicht mehr als '
-            'wartend gemeldet.' % (slug, nom_word))
+            'article « %s » : le Word « %s » ne change ni le texte, ni la bibliographie, '
+            'ni les tableaux, ni les images. Rien n\'a été remplacé, et ce fichier ne sera '
+            'plus signalé comme en attente.' % (slug, nom_word),
+            'Artikel « %s »: die Word-Datei « %s » ändert weder Text noch '
+            'Literaturverzeichnis noch Tabellen noch Bilder. Es wurde nichts ersetzt, und '
+            'diese Datei wird nicht mehr als wartend gemeldet.' % (slug, nom_word))
         return 3
 
     gardes = bilan['gardes'] + bilan['deplaces']
@@ -853,9 +952,80 @@ def reimporter(revue, slug, chemin_docx, pipeline, voix, resultat):
             'Artikel « %s »: %d Tabelle(n) weniger — die korrigierte Word-Datei enthält '
             'sie nicht mehr.' % (slug, bilan['retires']))
 
+    # La bibliographie, dans le même ordre que les tableaux : d'abord ce qu'on ne peut pas
+    # savoir, ensuite ce qui a été décidé.
+    biblio_avant = resultat['rebut'] + '/article-avant/' + nom_biblio(slug)
+    if bilan_biblio['conflit'] and bilan_biblio['inconnue']:
+        voix.avertir(
+            'biblio-origine-inconnue', ['article « %s »' % slug],
+            "Cet article a été importé avant que la chaîne ne note l'état de la "
+            "bibliographie à la conversion : impossible de savoir si celle qui est ici a "
+            "été corrigée depuis. Une bibliographie que le Word corrigé livre autrement "
+            "est donc signalée par prudence, et l'ancienne reste accessible dans le "
+            "dossier de sauvegarde.",
+            'Dieser Artikel wurde importiert, bevor die Kette den Zustand des '
+            'Literaturverzeichnisses bei der Konvertierung notierte: es ist nicht '
+            'feststellbar, ob das hier vorliegende seither bearbeitet wurde. Ein '
+            'Literaturverzeichnis, das die korrigierte Word-Datei anders liefert, wird '
+            'daher vorsorglich gemeldet, und das alte bleibt im Sicherungsordner '
+            'zugänglich.')
+    if bilan_biblio['retiree'] and bilan_biblio['conflit']:
+        voix.avertir(
+            'biblio-retiree',
+            ['article « %s »' % slug, 'fichier « %s »' % biblio_avant],
+            "Les références de ce Word ne portent plus le style de bibliographie : sa "
+            "liste est restée dans le texte, et l'article n'a plus de bibliographie à "
+            "part — celle qui était ici, corrigée depuis l'import, s'en va avec. Rien "
+            "n'est perdu : elle est dans le fichier indiqué. Pour retrouver une "
+            "bibliographie à part, celle que l'export vers la plateforme attend, donnez "
+            "aux références le style de bibliographie dans le Word, puis réimportez.",
+            'Die Einträge dieser Word-Datei tragen die Formatvorlage für '
+            'Literaturverzeichnisse nicht mehr: die Liste blieb im Text, und der Artikel '
+            'hat kein eigenes Literaturverzeichnis mehr — das hier vorliegende, seit dem '
+            'Import bearbeitete, geht mit. Nichts ist verloren: es liegt in der genannten '
+            'Datei. Für ein eigenes Literaturverzeichnis, das der Export auf die Plattform '
+            'erwartet, geben Sie den Einträgen im Word die Formatvorlage für '
+            'Literaturverzeichnisse und importieren Sie neu.')
+    elif bilan_biblio['retiree']:
+        voix.dire(
+            'article « %s » : le Word corrigé ne détache plus de bibliographie — ses '
+            'références ne portent plus le style, leur liste reste dans le texte. Le '
+            'fichier de bibliographie de l\'article s\'en va avec.' % slug,
+            'Artikel « %s »: die korrigierte Word-Datei lagert kein Literaturverzeichnis '
+            'mehr aus — die Einträge tragen die Formatvorlage nicht mehr, ihre Liste bleibt '
+            'im Text. Die Literaturverzeichnis-Datei des Artikels geht mit.' % slug)
+    elif bilan_biblio['conflit']:
+        voix.avertir(
+            'biblio-conflit',
+            ['article « %s »' % slug, 'fichier « %s »' % biblio_avant],
+            "La bibliographie de cet article avait été corrigée ici, et le Word corrigé en "
+            "livre une autre version. C'est celle du Word qui est en place, parce que le "
+            "texte corrigé cite ses références. Le travail n'est pas perdu : la version "
+            "d'avant est dans le fichier indiqué. Ouvrez-la à côté de la nouvelle, et "
+            "recopiez ce qui doit revenir.",
+            'Das Literaturverzeichnis dieses Artikels wurde hier bearbeitet, und die '
+            'korrigierte Word-Datei liefert eine andere Fassung. Eingesetzt ist die Fassung '
+            'aus Word, denn der korrigierte Text verweist auf ihre Einträge. Die Arbeit ist '
+            'nicht verloren: die vorherige Fassung liegt in der genannten Datei. Öffnen Sie '
+            'sie neben der neuen und übertragen Sie, was zurück soll.')
+    elif bilan_biblio['gardee']:
+        voix.dire(
+            'article « %s » : la bibliographie est gardée telle qu\'elle est ici — le Word '
+            'corrigé livre les mêmes références qu\'à l\'import.' % slug,
+            'Artikel « %s »: das Literaturverzeichnis bleibt, wie es hier steht — die '
+            'korrigierte Word-Datei liefert dieselben Einträge wie beim Import.' % slug)
+    elif bilan_biblio['nouvelle']:
+        # Ferme la boucle du « réimportez l'article pour la mettre à part » que la
+        # compilation dit d'un article dont la liste est encore dans le texte.
+        voix.dire(
+            'article « %s » : la bibliographie est maintenant un fichier à part, et '
+            'l\'export vers la plateforme la portera.' % slug,
+            'Artikel « %s »: das Literaturverzeichnis ist nun eine eigene Datei, und der '
+            'Export auf die Plattform nimmt es mit.' % slug)
+
     # 6. Tout ce que le Word ne possède pas revient, puis les empreintes du nouvel état.
     resultat['preserves'] = copier_preserves(vivant, temp, slug)
-    ecrire_empreintes(temp, slug, nom_word, empreintes_du_word)
+    ecrire_empreintes(temp, slug, nom_word, empreintes_du_word, biblio_du_word)
 
     # 7. La bascule : deux renommages voisins. Entre les deux, articles/<slug> n'existe
     # pas pendant quelques microsecondes ; interrompu là, le dossier entier est sous
@@ -983,8 +1153,8 @@ def principal(argv):
         journal = candidat if os.path.isdir(os.path.join(revue, DOSSIER_WORD)) else None
     voix = Voix(journal)
     resultat = {'resultat': 'echec', 'article': opts['article'], 'fichier': '',
-                'rebut': '', 'tableaux': {}, 'images': {}, 'fiche_differente': [],
-                'preserves': []}
+                'rebut': '', 'tableaux': {}, 'biblio': {}, 'images': {},
+                'fiche_differente': [], 'preserves': []}
 
     def rendre(code):
         resultat['resultat'] = CODES.get(code, 'echec')

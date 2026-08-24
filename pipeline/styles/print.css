@@ -529,9 +529,12 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
   --szh-zebre: #f2f2f2;           /* teinte neutre du zébrage (une ligne/colonne sur deux) */
 }
 
-/* Tableau référencé mais introuvable (szh-tabelle-inclure.lua) : doit sauter aux yeux
-   à la relecture, pas passer pour une phrase de l'article. */
-.szh-tabelle-manquante {
+/* Fichier référencé mais introuvable : un tableau (szh-tabelle-inclure.lua) ou la
+   bibliographie détachée (szh-citations.lua). Doit sauter aux yeux à la relecture, pas
+   passer pour une phrase de l'article. Deux sélecteurs, une seule règle : chaque marqueur
+   porte le nom de ce qui manque, et l'encadré est le même. */
+.szh-tabelle-manquante,
+.szh-biblio-manquante {
   border-left: 4px solid #b3261e;
   background: #fdecea;
   padding: 8px 12px;
@@ -600,8 +603,9 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
 
 /* ═══ 8. Bloc « À propos des auteur·e·s » ══════════════════════════════════════
    Après le corps de l'article (template szh-article.html) : portrait 400 x 400 en niveaux
-   de gris produit par pipeline/portraits.py, nom, icône-lien ORCID, fonction, affiliation,
-   e-mail. Aucune couleur nouvelle, seulement des encres déjà validées en APCA. */
+   de gris produit par pipeline/portraits.py et rendu en fond CSS, nom, icône-lien ORCID,
+   fonction, affiliation, e-mail. Aucune couleur nouvelle, seulement des encres déjà
+   validées en APCA. */
 .szh-auteurs {
   margin-top: 2.6em;
   padding-top: 1.2em;
@@ -624,9 +628,24 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
   margin: 0 0 1.2em;
 }
 .szh-auteur:last-child { margin-bottom: 0; }
+/* Portrait : un <span> vide à fond CSS, et PAS un <img>. ⚠ Ne pas le rétablir en <img>,
+   c'est déjà arrivé deux fois. Le portrait est une image décorative : il n'a aucun texte
+   alternatif, délibérément. Le nom de la personne est écrit juste à côté, donc un alt le
+   répéterait pour rien ; et un alt fabriqué depuis ce nom affirmerait une identité que le
+   contenu du fichier ne garantit pas — un logo, une photo de groupe, une photo appariée
+   à la mauvaise personne. Or WeasyPrint 69 balise tout <img> en /Figure, même avec
+   role="presentation", même avec aria-hidden="true" (mesuré par cas minimal) : ce serait
+   une /Figure sans /Alt, soit PDF/UA-1 7.3 violée, et `make verifier-ua` la refuserait.
+   Un fond CSS, lui, n'est pas balisé du tout — même mécanisme que l'image décorative
+   d'article, plus bas. L'URL de chaque photo est écrite par un <style> du gabarit
+   (szh-article.html), seul endroit où --embed-resources réécrit url() en data: URI.
+   `cover` + `center` reproduisent exactement l'`object-fit: cover` de l'ancien <img> ;
+   `display: block` parce qu'un <span> hors contexte flex serait de taille nulle. */
 .szh-auteur-photo {
+  display: block;
   width: 28mm; height: 28mm;    /* ~28 mm imprimés ; la source est déjà carrée */
-  object-fit: cover; flex-shrink: 0;
+  flex-shrink: 0;
+  background-size: cover; background-position: center; background-repeat: no-repeat;
 }
 .szh-auteur-texte { min-width: 0; }   /* autorise le repli du texte long */
 .szh-auteur-nom {

@@ -3,6 +3,9 @@
   Crée une nouvelle revue à partir du gabarit du toolkit, sans administrateur :
     powershell -ExecutionPolicy Bypass -File new-revue.ps1 -Dossier "$env:OneDrive\Revues\2026-01"
 
+  Le lanceur passe en plus -Annee, -Numero et -Volume : c'est lui qui les fait saisir, et le
+  nom du dossier en découle. Sans eux, ils se relisent dans le nom du dossier.
+
   Copie le gabarit, pose « Ouvrir la revue.lnk » dans le dossier pour qu'il voyage avec la
   revue, et enregistre l'emplacement pour le lanceur du menu Démarrer.
 
@@ -14,7 +17,14 @@ param(
   # Produit du numéro : écrit le jeton `revue:` d'ausgabe.yaml, dont découlent le nom de
   # la revue, son ISSN, sa langue par défaut et le lanceur qui l'affichera. Vide : on
   # laisse ce que dit le gabarit.
-  [string]$Produit = ''
+  [string]$Produit = '',
+  # Identité du numéro, telle que le lanceur l'a fait saisir : c'est d'elle que vient le nom
+  # du dossier (« AAAA-NN »), et non l'inverse. À 0, elles se relisent dans le nom du
+  # dossier, pour un appel en ligne de commande sur un dossier déjà nommé.
+  [int]$Annee = 0,
+  [int]$Numero = 0,
+  # Volume annuel de la revue. À 0, il se calcule d'après l'année (Get-SzhVolumePour).
+  [int]$Volume = 0
 )
 
 . "$PSScriptRoot\szh-common.ps1"
@@ -49,10 +59,9 @@ if (-not $existait) {
   }
 }
 
-# Identité déduite du nom du dossier, qui suit la convention « 2027-05 » : on en tire le
-# numéro, et on vide le titre de démonstration du gabarit. Sans cela, un numéro neuf
-# porterait les valeurs d'exemple, en contradiction avec le nom que montrent le lanceur,
-# les liens et les archives.
+# Identité du numéro : année, numéro et volume, et le titre de démonstration du gabarit
+# vidé. Sans cela, un numéro neuf porterait les valeurs d'exemple, en contradiction avec le
+# nom que montrent le lanceur, les liens et les archives.
 #
 # `date:` reste vide, et ce n'est pas un oubli : c'est la date de PUBLICATION du numéro,
 # que personne ne connaît le jour où le dossier est créé. Y écrire l'année du dossier
@@ -63,15 +72,37 @@ if (-not $existait) {
 if (-not $existait) {
   $leaf = Split-Path $chemin -Leaf
   [void](Set-SzhAusgabeCle $chemin 'date' '' $true $true)
-  if ($leaf -match '^(\d{4})-(\d{1,3})$') {
-    $annee = $Matches[1]
-    $rang = $Matches[2]
-    [void](Set-SzhAusgabeCle $chemin 'numero' $rang $true $false)
-    Write-SzhInfo ('Numéro identifié d''après le dossier : {0}, n° {1}.' -f $annee, $rang)
+  # Les valeurs passées gagnent ; sans elles, le nom du dossier est relu.
+  $annee = $Annee
+  $rang = $Numero
+  if (($annee -le 0) -or ($rang -le 0)) {
+    if ($leaf -match '^(\d{4})-(\d{1,3})$') {
+      if ($annee -le 0) { $annee = [int]$Matches[1] }
+      if ($rang -le 0) { $rang = [int]$Matches[2] }
+    }
+  }
+  # Le volume s'imprime sur la couverture et part dans OJS en <volume>. Le laisser au
+  # « 44 » du gabarit étiquetait faux tous les numéros neufs, sans qu'aucun message le dise :
+  # il est donc posé ici, calculé si on ne l'a pas dit, et vidé si l'année manque — un champ
+  # vide se voit, un faux volume non.
+  $jetonVolume = Get-SzhJetonRevue $Produit
+  if (-not $jetonVolume) {
+    $deja = Get-SzhAusgabe (Join-Path $chemin 'ausgabe.yaml')
+    if ($deja.ContainsKey('revue')) { $jetonVolume = Get-SzhJetonRevue $deja['revue'] }
+  }
+  $vol = $Volume
+  if (($vol -le 0) -and ($annee -gt 0)) { $vol = Get-SzhVolumePour $jetonVolume $annee }
+  if ($vol -gt 0) { [void](Set-SzhAusgabeCle $chemin 'volume' ([string]$vol) $true $false) }
+  else { [void](Set-SzhAusgabeCle $chemin 'volume' '' $true $true) }
+  # Numéro sur deux chiffres, comme le nom du dossier et comme l'affiche OJS.
+  $rangTexte = ('{0:00}' -f $rang)
+  if ($rang -gt 0) { [void](Set-SzhAusgabeCle $chemin 'numero' $rangTexte $true $false) }
+  else { [void](Set-SzhAusgabeCle $chemin 'numero' '' $true $true) }
+  if (($annee -gt 0) -and ($rang -gt 0)) {
+    Write-SzhInfo ('Numéro {0}, n° {1}, volume {2}.' -f $annee, $rangTexte, $vol)
     Write-SzhInfo 'Date de publication à saisir dans « Métadonnées du numéro » : l''export OJS l''exige.'
   } else {
-    [void](Set-SzhAusgabeCle $chemin 'numero' '' $true $true)
-    Write-SzhInfo 'Nom de dossier hors convention (AAAA-NN) : numéro et date laissés à remplir.'
+    Write-SzhInfo 'Année ou numéro inconnus, et nom de dossier hors convention (AAAA-NN) : volume, numéro et date laissés à remplir.'
   }
   [void](Set-SzhAusgabeCle $chemin 'title' '' $true $true)
 }

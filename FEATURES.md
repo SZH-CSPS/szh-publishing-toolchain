@@ -331,3 +331,133 @@ les numéros.
 Codes de sortie de veraPDF, mesurés : `0` conforme, `1` non conforme, `4` fichier introuvable,
 `7` fichier illisible. Séparer le verdict de la panne, sinon un veraPDF absent se lira comme un
 PDF conforme.
+
+---
+
+## VIII. Demandes du 24 août 2026, en file
+
+Toutes bloquées par un territoire de fichiers, pas par une décision. À lancer dès que
+`extension.js`, `lib/i18n.js`, `pipeline/Makefile` et `pipeline/styles/print.css` se libèrent.
+
+### F6 — La vue « Articles » montre et mène
+
+- [ ] **A. Les métadonnées complètes, en aperçu non éditable**, sur la carte de l'article.
+  « Le plus compact possible mais lisible » : c'est une contrainte de conception, pas une
+  formule. Titre, sous-titre, résumés, mots-clés, DOI, langue, licence, auteur·e·s — sans
+  formulaire, sans champ, sans risque de modifier par inadvertance.
+- [ ] **B. Un bouton « Éditer les métadonnées »** qui ouvre le formulaire correspondant.
+- [ ] **C. Un bouton « Éditer les médias de l'article »**, de même.
+- [ ] **D. Un compteur d'images**, hors photos d'auteur·e·s, et pour chacune :
+  - si la case « l'image apporte une information » est cochée, signaler un **texte
+    alternatif vide** ;
+  - signaler une **légende vide**, dans tous les cas.
+
+### F7 — La légende par défaut disparaît
+
+- [ ] À l'insertion d'une image, la légende est aujourd'hui pré-remplie avec le mot
+  « Légende » (`fmt.figure.legende`), posé par `extension.js:5031` et
+  `lib/formatting.js:170`. Le propriétaire le refuse, avec raison : **un texte par défaut
+  se prend pour un texte rempli**, et l'image part sans légende en ayant l'air d'en avoir une.
+  La légende naît donc **vide**.
+
+  **Attention à un couplage** : `lib/export-ojs.js` construit `LEGENDES_PAR_DEFAUT` depuis
+  cette même clé, précisément pour reconnaître la légende oubliée et le dire. Si la valeur
+  par défaut devient vide, c'est le **vide** qu'il faut désormais détecter — et il faut
+  garder la reconnaissance de l'ancien mot pour les articles déjà écrits, sinon leur
+  légende oubliée redevient invisible.
+
+- [ ] **Ne rien changer aux images importées** : la légende et le texte alternatif venus du
+  Word sont repris comme aujourd'hui. C'est explicitement demandé.
+
+### F8 — L'aperçu HTML montre ce que seul un lecteur d'écran voit
+
+- [ ] Sous chaque image et chaque tableau de l'**aperçu HTML uniquement**, un encadré
+  pointillé portant `ALT=`, `DESCRIPTION=` et ce qui s'applique. Le but : rendre visible à
+  l'œil ce qui n'existe que pour un lecteur d'écran, donc relisable par une rédactrice.
+
+  **Jamais dans le PDF**, qui est le document publié. Le mécanisme existe déjà :
+  `szh-citations.lua` ne pose ses marques d'appel douteux que sous `SZH_APERCU=1`
+  (vers la ligne 655), et c'est exactement le bon patron.
+
+  Point d'attention : l'aperçu partage `pipeline/styles/print.css` avec le PDF. Le style de
+  l'encadré doit donc être portable par le seul chemin de l'aperçu — soit une règle que
+  seul l'aperçu atteint, soit une feuille propre à l'aperçu. À trancher, en disant pourquoi.
+
+### F9 — Les dossiers de revue, paramétrables dans les Réglages
+
+- [ ] Demandé : « rends le dossier de la Revue et de la Zeitschrift paramétrable, avec des
+  gros warning ! Attention ne changez cela que si vous êtes certain de ce que vous faites. »
+
+  Aujourd'hui les deux racines sont **en dur** dans `Get-SzhEmplacements` de
+  `windows/szh-common.ps1`, et seul le choix entre elles est réglable
+  (`emplacementRevues`, voir `docs/EMPLACEMENTS.md`). Les rendre saisissables est un cran
+  au-dessus en danger : une racine fausse ne casse rien, elle **fait disparaître le
+  travail**, et c'est exactement le sinistre que la campagne d'hier a évité de justesse.
+
+  L'avertissement demandé n'est donc pas décoratif. Trois garde-fous à prévoir, au-delà du
+  texte : refuser un chemin qui n'existe pas ; dire **combien de numéros** la nouvelle
+  racine contient avant de valider — une racine vide se voit alors avant, pas après ; et
+  garder la précédente pour pouvoir revenir. `Set-SzhRaccourcisMenu` montre le patron d'une
+  écriture jamais bloquante qui rend un bilan.
+
+  Bloqué par `media/settings.*`, `extension.js` et `lib/i18n.js`.
+
+### F10 — Le DOI, calculé, et l'ordre gelé par l'archivage
+
+- [ ] **Le DOI est un simple calcul**, sans mémoire ni gel. Forme demandée, qui est
+  exactement celle relevée sur `ojs.szh.ch` : `10.57161/z2026-06-00` — `z` Zeitschrift ou
+  `r` Revue, l'année, le numéro sur deux chiffres, l'ordre de l'article sur deux chiffres.
+  Préfixe commun aux deux revues, seule la lettre les distingue.
+
+  J'avais proposé de figer le DOI dans la fiche, par crainte qu'un réordonnancement ne
+  déplace des identifiants déjà déposés. **Le propriétaire a tranché plus simplement, et
+  mieux** : c'est l'*ordre* qu'on gèle, pas le DOI. Toute la mécanique de gel disparaît.
+
+- [ ] **Un numéro archivé ne peut plus être réordonné. Et c'est l'archivage seul qui gèle
+  l'ordre** — pas le verrou.
+
+  Le modèle est plus fin qu'il n'y paraît, et il correspond à un vrai geste éditorial : un
+  numéro `locked` a ses **textes** figés, mais sa **séquence** peut encore se décider. Un
+  numéro `archived` est terminé, plus rien ne bouge.
+
+  État du code : le gestionnaire de réordonnancement (`extension.js`, vers la ligne 3304)
+  appelle `refuserSiVerrouille()`, dont la condition est `archivee || verrouillee`
+  (ligne 148). Il refuse donc aujourd'hui sur **les deux** drapeaux. À changer pour ne
+  lire que `archivee` — `etatRevue()` de `lib/yaml.js` l'expose déjà séparément, et
+  `etatNumero.archivee` est tenu à jour par l'hôte : rien à construire, une condition à
+  écrire.
+
+  Cela crée une **exception explicite au verrou**, et elle doit être commentée sur place :
+  sans la phrase qui dit pourquoi, quelqu'un « réparera » l'incohérence en remettant le
+  garde complet, et l'ordre redeviendra figé trop tôt.
+
+  Noter que désarchiver ne déverrouille pas (`archived: 'false'` seul, ligne 1178) : un
+  numéro sorti des archives redevient donc réordonnable tout en restant verrouillé, ce qui
+  est exactement le comportement voulu.
+
+- [ ] **Aucun test ne couvre ce refus.** La protection tiendra par une seule condition que
+  rien ne garde — précisément le genre de ligne qu'un remaniement retire en croyant
+  simplifier. Un contrôle qui archive un numéro, tente un déplacement et vérifie que
+  l'ordre n'a pas bougé ; un second qui verrouille sans archiver et vérifie que le
+  déplacement **passe**.
+
+- [ ] **Une case « pas de DOI » par article**, et les articles sans DOI sont déplacés
+  **automatiquement en fin de numéro**.
+
+  L'idée est élégante : les articles porteurs de DOI occupent alors les premières positions
+  de façon contiguë, donc le compteur reste `00`, `01`, `02`… quoi qu'on fasse du reste. Et
+  cela colle à l'instance réelle, où la rubrique Documentation n'a pas de DOI et se trouve
+  en fin de sommaire. L'éditorial, lui, porte `00`.
+
+  **Conséquence à ne pas ignorer** : « déplacés automatiquement à la fin » agit sur l'ordre
+  lui-même, donc les boutons monter/descendre doivent respecter la règle. On ne doit pas
+  pouvoir remonter un article sans DOI au-dessus d'un article qui en a un — sinon la règle
+  se contredit d'un clic et le compteur redevient instable. Soit les boutons refusent au
+  bord, comme ils le font déjà en tête et en queue de liste, soit le tri se réapplique après
+  chaque déplacement. À trancher, pas à ignorer.
+
+  L'export refuse déjà un DOI absent : il devra accepter l'absence **voulue**, sans la
+  confondre avec un oubli.
+
+  Bloqué par `extension.js`, `lib/yaml.js`, `lib/articles.js`, `lib/export-ojs.js` et
+  `lib/i18n.js`.

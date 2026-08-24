@@ -19,6 +19,58 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 .bloc > .szh-barre { padding: var(--e3) var(--e3) 0; }
 .bloc > #numero { padding: 0 var(--e3) var(--e4); max-width: 38rem; }
 
+/* ---- L'aperçu des métadonnées sur la carte ----
+   Non éditable, et cela doit se voir : pas de cadre de champ, pas de fond de saisie, rien
+   qui ressemble à un formulaire. Une liste de définitions serrée, en petit corps, et un
+   filet à gauche pour dire que ce bloc appartient à la carte au-dessus.
+
+   « Le plus compact possible mais lisible » : deux colonnes, l'intitulé aligné à droite
+   contre sa valeur, un pas vertical d'un quart de rem. Neuf champs tiennent alors dans la
+   hauteur d'un paragraphe, et l'œil descend la colonne des intitulés sans les relire. */
+.carte-apercu { padding: var(--e3) var(--e3) 0; }
+.carte-apercu .szh-notif { margin: 0 0 var(--e2); }
+
+.apercu-grille { margin: 0; font-size: var(--t-libelle); }
+.apercu-rangee { display: grid; grid-template-columns: 7.5em 1fr; gap: var(--e2);
+  align-items: baseline; padding: .1em 0; }
+.apercu-rangee + .apercu-rangee { border-top: 1px solid var(--filet); }
+.apercu-cle { text-align: right; color: var(--encre-2); font-weight: 700;
+  letter-spacing: .02em; }
+.apercu-val { margin: 0; min-width: 0; }
+.apercu-valeur { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4em;
+  line-height: 1.45; }
+.apercu-texte { overflow-wrap: anywhere; }
+/* Ce qui n'est pas encore là, ou qui ne concorde pas, prend la couleur d'avertissement du
+   thème : un « — » gris se confond avec le reste, et c'est justement ce qu'on cherche. */
+.apercu-valeur--attention .apercu-texte { color: var(--vscode-editorWarning-foreground, #cca700); }
+
+/* Le badge de langue tient la place d'un intitulé répété. Chiffres et capitales alignés,
+   largeur fixe : la colonne des textes commence au même endroit sur toutes les rangées. */
+.apercu-langue { flex: 0 0 auto; min-width: 1.9em; text-align: center;
+  font-size: var(--t-mini); font-weight: 700; letter-spacing: .04em;
+  color: var(--encre-2); border: 1px solid var(--filet); border-radius: var(--rayon-mini);
+  padding: 0 .25em; }
+/* Ce que la fiche porte déjà — ORCID, adresse, photo — en marque discrète : la présence
+   suffit, et une adresse d'auteur·e n'a rien à faire dans un aperçu resté ouvert. */
+.apercu-marque { flex: 0 0 auto; font-size: var(--t-mini); color: var(--encre-2);
+  border: 1px dashed var(--filet); border-radius: var(--rayon-mini); padding: 0 .3em; }
+
+/* La seule chose qui se coche dans ce bloc, et elle ne touche pas la fiche : c'est une
+   décision sur le numéro. Détachée du reste par un écart, jamais collée à une valeur. */
+.apercu-doi { display: flex; align-items: center; gap: .5em; cursor: pointer;
+  margin: var(--e2) 0 0; font-size: var(--t-libelle); color: var(--encre); }
+.apercu-doi input { accent-color: var(--accent); }
+.apercu-doi:hover { color: var(--accent); }
+.apercu-doi input:disabled { cursor: default; }
+.apercu-doi input:disabled + span { color: var(--encre-2); }
+
+/* Étroit — un écran partagé en deux — l'intitulé passe au-dessus de sa valeur : une colonne
+   de 7,5 em couperait chaque titre sur trois lignes. */
+@media (max-width: 44rem) {
+  .apercu-rangee { grid-template-columns: 1fr; gap: 0; padding: var(--e1) 0; }
+  .apercu-cle { text-align: left; }
+}
+
 /* ---- Modale des tâches ----
    Les intitulés décrivent le processus d'une revue : on les règle ici, dans les deux
    langues, et le réglage vaut pour tous les numéros de cette revue. */

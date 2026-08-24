@@ -15,6 +15,11 @@
 #   T  k-ième tableau de premier niveau consommé (tableau des auteurs), lu par
 #      docx-tables.py et par szh-meta.lua : lisant la même liste, ils restent alignés
 #   F  légende de figure détectée par style et voisine d'une image, pour szh-legendes.lua
+#   B  paragraphe de l'étendue de bibliographie, en clé de comparaison, pour
+#      szh-biblio-detacher.lua : le premier et le dernier bornent l'étendue à détacher,
+#      leur NOMBRE dit combien de paragraphes doivent partir
+#   BT titre de la bibliographie, en clé de comparaison : c'est lui qui quitte le corps,
+#      le titre étant reposé à la compilation dans la langue de l'article
 #
 # Écrit aussi, si $SZH_PHOTOS est posée, ce qu'il a compris des photos du tableau des
 # auteurs, une instruction par ligne, pour import-medias.py :
@@ -256,8 +261,12 @@ class Classeur:
             return 'author'
         if nom == 'abstract' or i == 'abstract':
             return 'abstract'
+        # « EndNoteBibliography » est le style que le plugin EndNote pose sur la liste
+        # qu'il génère : 34 paragraphes du corpus des 421 galleys publiés, qu'aucune voie
+        # ne voyait.
         if nom == 'bibliography' or i.startswith('literaturverzeichnis') \
-                or i in ('bibliographie', 'bibliografia', 'bibliography'):
+                or i in ('bibliographie', 'bibliografia', 'bibliography',
+                         'endnotebibliography'):
             return 'biblio'
         if 'beschriftung' in i.lower() or nom == 'caption' \
                 or 'beschriftung' in nom or 'légende' in nom or 'legende' in nom:
@@ -710,6 +719,169 @@ def blocs_du_corps(racine):
     return [e for e in body if e.tag in (W + 'p', W + 'tbl')]
 
 
+# ---------------------------------------------------------------------------------
+# Bibliographie : quelle étendue du corps détacher.
+#
+# Le signal est le STYLE, et lui seul : mesuré sur les 421 galleys publiés, les deux revues
+# marquent leurs références « Literaturverzeichnis », « Bibliographie », « Bibliography »
+# ou « EndNoteBibliography ». Le titre de section, lui, ne sert qu'à trouver le BORD
+# SUPÉRIEUR de la liste — jamais à décider qu'il y a une bibliographie.
+#
+# L'étendue va du titre (exclu) au DERNIER paragraphe stylé. Prendre l'étendue plutôt que
+# les seuls paragraphes stylés répare le défaut mesuré sur le corpus — 121 références
+# restées en arrière parce que leur paragraphe avait perdu le style : elles sont dedans, et
+# partent avec les autres. Sur le corpus : 3823 paragraphes stylés, 3902 emportés, et les
+# 79 de plus sont bien des références.
+#
+# Rien n'est cherché AU-DELÀ du dernier paragraphe stylé : 16 articles du corpus ont du
+# texte après leur liste (notices d'auteur·e·s en paragraphes), et il n'a rien à faire dans
+# la bibliographie.
+
+
+def aplatir(t):
+    """Minuscules, accents repliés, tout ce qui n'est pas [a-z0-9] retiré. Sur les mots du
+    lexique — tous ASCII — donne le même résultat que plat() de szh-citations.lua."""
+    return ''.join(c for c in unicodedata.normalize('NFD', t.lower())
+                   if c.isalnum() and ord(c) < 128)
+
+
+def cle_comparaison(t):
+    """Clé qui apparie un paragraphe du .docx au bloc que pandoc en fera : les quarante
+    premiers caractères [A-Za-z0-9], et rien d'autre.
+
+    Comparer les textes entiers, c'était échouer sur ce que les deux lecteurs ne rendent
+    pas pareil — tiret insécable, caractère en police Symbole, tiret conditionnel,
+    hyperlien sans cible. Tous sont de la ponctuation, ou vivent en fin de référence (DOI,
+    URL) : la clé n'en voit rien. szh-biblio-detacher.lua calcule la même, classe par
+    classe explicite des deux côtés, sans dépendre d'une locale."""
+    return re.sub(r'[^A-Za-z0-9]', '', t)[:40]
+
+
+def lire_titres_bib():
+    """Le lexique des titres de bibliographie, relu dans szh-citations.lua — qui le porte
+    pour toute la chaîne, cockpit compris (voir lib/citations.js). Deux copies, ce seraient
+    deux réponses. Filtre illisible : lexique vide, donc aucun titre reconnu, donc l'étendue
+    commence au premier paragraphe stylé — on détache moins, jamais à côté."""
+    chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          'filters', 'szh-citations.lua')
+    try:
+        with open(chemin, encoding='utf-8') as f:
+            src = f.read()
+    except Exception:
+        return set()
+    i = src.find('local TITRES_BIB = {')
+    j = src.find('\n}', i) if i != -1 else -1
+    if j == -1:
+        return set()
+    return {m for m in re.findall(r"'([a-z]+)'", src[i:j])}
+
+
+def ressemble_a_une_reference(t):
+    """Ce paragraphe se lit-il comme une référence ? Ne décide JAMAIS de ce qui est
+    détaché — le style seul en décide. Ne sert qu'à choisir s'il y a lieu de prévenir le
+    rédacteur qu'une référence est restée dans le texte : sans ce filtre, la note « rédigé
+    avec l'aide d'une IA » et l'annexe qui suivent parfois la liste déclencheraient une
+    alerte pour rien."""
+    if len(t) < 25:
+        return False
+    if t.startswith('http'):
+        return True
+    if not (re.search(r'[(,\s][12][09]\d\d[a-z]?[).,;\s]', t)
+            or any(x in t for x in ('sous presse', 'en préparation', 'in press',
+                                    'im Druck'))):
+        return False
+    return bool(re.search(r'[A-Z]\.', t) or re.match(r"^[^\W\d_][\w'’-]*,", t)
+                or 'http' in t)
+
+
+def references_restees(blocs, fin):
+    """Combien de paragraphes qui se lisent comme des références suivent l'étendue, avant le
+    prochain titre ou tableau. Le corpus en compte : 121 références qu'un paragraphe sans
+    style laissait en arrière, dans 32 articles. On ne les emporte pas — le style n'a pas
+    parlé — mais on ne se tait plus."""
+    n = 0
+    for i in range(fin + 1, len(blocs)):
+        e = blocs[i]
+        if e.tag != W + 'p':
+            break
+        txt = normaliser(texte_paragraphe(e))
+        if not txt:
+            continue
+        if not ressemble_a_une_reference(txt):
+            break
+        n += 1
+    return n
+
+
+def etendue_biblio(blocs, classeur, type_article):
+    """(lignes B, ligne BT, stats) — les clés des paragraphes à détacher, celle du titre à
+    retirer, et de quoi rendre compte.
+
+    Une documentation est laissée entière : sa liste EST son contenu, et le corpus le
+    montre bien — ces articles portent le style de bibliographie sur leur sommaire, en tête,
+    avec cent cinquante paragraphes de texte derrière."""
+    stats = {'voie': 'aucune', 'paragraphes': 0, 'styles': 0, 'titre': False}
+    if type_article == 'documentation':
+        stats['voie'] = 'documentation'
+        return [], '', stats
+    lexique = lire_titres_bib()
+    styles = [i for i, e in enumerate(blocs)
+              if e.tag == W + 'p' and classeur.famille(pstyle(e)) == 'biblio'
+              and normaliser(texte_paragraphe(e))]
+    if not styles:
+        # Aucun style : reste-t-il un titre de bibliographie ? Alors le document en a une
+        # et nous ne savons pas la borner — c'est ce cas-là qu'il faut dire au rédacteur,
+        # et lui seul : un éditorial sans références n'a rien à se faire reprocher. Ce
+        # jugement ne décide de rien d'autre que du message.
+        for e in blocs:
+            if e.tag != W + 'p' or classeur.famille(pstyle(e)) != 'heading':
+                continue
+            if aplatir(normaliser(texte_paragraphe(e))) in lexique:
+                stats['voie'] = 'titre-seul'
+                break
+        return [], '', stats
+
+    # Bord supérieur : le titre de section juste au-dessus. On remonte les paragraphes non
+    # vides, on s'arrête au premier titre rencontré — s'il est du lexique, l'étendue
+    # commence après lui ; sinon, elle commence au premier paragraphe stylé.
+    titre = None
+    vus = 0
+    j = styles[0] - 1
+    while j >= 0 and vus < 15:
+        e = blocs[j]
+        if e.tag != W + 'p':
+            break
+        txt = normaliser(texte_paragraphe(e))
+        if txt:
+            vus += 1
+            if classeur.famille(pstyle(e)) == 'heading':
+                if aplatir(txt) in lexique:
+                    titre = j
+                break
+        j -= 1
+
+    debut = (titre + 1) if titre is not None else styles[0]
+    fin = styles[-1]
+    # Un tableau dans l'étendue : on se replie sur les seuls paragraphes stylés. Le cas est
+    # absent du corpus, mais emporter un tableau serait une perte, pas un déplacement.
+    if any(blocs[i].tag == W + 'tbl' for i in range(debut, fin + 1)):
+        debut, titre = styles[0], None
+
+    lignes = []
+    for i in range(debut, fin + 1):
+        e = blocs[i]
+        if e.tag != W + 'p':
+            continue
+        txt = normaliser(texte_paragraphe(e))
+        if txt:
+            lignes.append(cle_comparaison(txt))
+    stats.update({'voie': 'style', 'paragraphes': len(lignes), 'styles': len(styles),
+                  'titre': titre is not None, 'restees': references_restees(blocs, fin)})
+    bt = cle_comparaison(normaliser(texte_paragraphe(blocs[titre]))) \
+        if titre is not None else ''
+    return lignes, bt, stats
+
+
 def principal(argv):
     if len(argv) != 4:
         print('usage : docx-meta.py <fichier.docx> <slug> <dossier-article>',
@@ -989,12 +1161,13 @@ def principal(argv):
         a.pop('_image', None)             # jamais sérialisé, mais rien ne traîne
 
     # ---- 5) Type d'article --------------------------------------------------------
-    # La liste de références n'est pas touchée ici : elle reste dans le corps, telle que la
-    # rédaction l'a écrite. C'est szh-citations.lua qui l'ancre à la compilation.
     type_article, type_regle = detecter_type(
         chemin_docx, ' '.join(titre_parts), doi)
 
-    # ---- 6) Légendes de figures par STYLE (voisines d'une image) -----------------
+    # ---- 6) Bibliographie : l'étendue à détacher, lue dans les STYLES -------------
+    lignes_b, ligne_bt, biblio = etendue_biblio(blocs, classeur, type_article)
+
+    # ---- 7) Légendes de figures par STYLE (voisines d'une image) -----------------
     lignes_f = []
     for idx, e in enumerate(blocs):
         if e.tag != W + 'p' or classeur.famille(pstyle(e)) != 'caption':
@@ -1008,7 +1181,7 @@ def principal(argv):
                 lignes_f.append(txt)
                 break
 
-    # ---- 7) meta.yaml (jamais écrasé), $SZH_META et stats ------------------------
+    # ---- 8) meta.yaml (jamais écrasé), $SZH_META et stats ------------------------
     meta = {
         'type': type_article,
         'lang': langue if langue in LANGUES_META else '',
@@ -1050,6 +1223,44 @@ def principal(argv):
             'Prüfen Sie sie unter « Metadaten der Artikel » — Layout und '
             'Zusammenfassungen richten sich danach.')
 
+    # Des références qui suivent la liste sans porter son style : elles restent dans le
+    # texte, l'article les imprime, mais elles ne seront ni ancrées ni exportées avec les
+    # autres. C'est une correction à faire dans le Word, et elle se dit.
+    if biblio.get('restees'):
+        avertir(
+            'biblio-references-restees',
+            ['article « %s »' % slug, 'references %d' % biblio['restees']],
+            '%d référence(s) suivent la bibliographie sans porter son style dans le '
+            'document Word : elles restent dans le texte, à part de la liste. Pour les '
+            'rattacher : appliquez-leur le style de bibliographie dans le Word, puis '
+            "réimportez l'article." % biblio['restees'],
+            '%d Einträge folgen dem Literaturverzeichnis, ohne im Word-Dokument dessen '
+            'Formatvorlage zu tragen: sie bleiben im Text, ausserhalb der Liste. So '
+            'hängen Sie sie an: weisen Sie ihnen im Word die Formatvorlage für '
+            'Literaturverzeichnisse zu und importieren Sie den Artikel neu.'
+            % biblio['restees'])
+
+    # Une bibliographie que le document annonce par un titre mais dont aucun paragraphe ne
+    # porte le style : elle reste dans le corps, l'article sort entier, et le rédacteur doit
+    # savoir pourquoi elle n'a pas son fichier — sans quoi il découvrirait plus tard que
+    # l'export OJS part sans références.
+    if biblio['voie'] == 'titre-seul':
+        avertir(
+            'biblio-non-detachee',
+            ['article « %s »' % slug],
+            "La bibliographie de cet article n'a pas pu être mise à part : ses "
+            'références ne portent pas le style de bibliographie dans le document Word. '
+            "Elle reste dans le texte et s'imprimera normalement ; en revanche l'export "
+            "vers la plateforme partira sans liste de références. Pour la corriger : "
+            'appliquez le style de bibliographie aux références dans le Word, puis '
+            "réimportez l'article.",
+            'Das Literaturverzeichnis dieses Artikels konnte nicht ausgelagert werden: '
+            'seine Einträge tragen im Word-Dokument nicht die Formatvorlage für '
+            'Literaturverzeichnisse. Es bleibt im Text und wird normal gedruckt; der '
+            'Export auf die Plattform geht dagegen ohne Literaturliste. So korrigieren '
+            'Sie es: weisen Sie den Einträgen im Word die Formatvorlage für '
+            'Literaturverzeichnisse zu und importieren Sie den Artikel neu.')
+
     # Ce que import-medias.py doit savoir des photos, écrit dans tous les cas : sur un
     # meta.yaml conservé (ré-import), aucun champ `photo` n'a été posé, mais les photos
     # doivent quand même quitter media/ — sinon la purge les effacerait, et le premier
@@ -1077,6 +1288,10 @@ def principal(argv):
                 f.write('T\t%d\n' % k)
             for t in lignes_f:
                 f.write('F\t%s\n' % t)
+            if ligne_bt:
+                f.write('BT\t%s\n' % ligne_bt)
+            for t in lignes_b:
+                f.write('B\t%s\n' % t)
 
     stats.update({
         'type': type_article, 'type_regle': type_regle,
@@ -1094,6 +1309,7 @@ def principal(argv):
                     'photos_gardees': len(photos_connues) - len(photos_appariees)},
         'tableaux_consommes': tables_consommees,
         'legendes_figures_style': len(lignes_f),
+        'biblio': biblio,
         'logo': logos,
         'paragraphes_retires': len(consommes_p),
         'meta_ecrit': meta_ecrit,

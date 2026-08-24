@@ -200,7 +200,9 @@ test('journal : un avertissement d’import garde son code et son ton propre', (
   // Les champs de la ligne se retrouvent dans la phrase de la maison.
   const t = constats[0];
   assert.strictEqual(t.slug, '03-autre');
-  assert.match(journal.phraseConstat(t, 'fr'), /^Le tableau 2 de cet article/);
+  // Ancré sur la substitution, pas sur la formulation : le texte a déjà été réécrit une
+  // fois (il disait de désigner la première rangée, ce qui aurait posé une relation fausse).
+  assert.match(journal.phraseConstat(t, 'fr'), /tableau 2 /);
 });
 
 test('journal : une plainte inconnue passe quand même, plutôt que de se taire', () => {
@@ -389,7 +391,7 @@ test('hôte : un avertissement d’import n’est plus une ligne brute dans « W
   assert.ok(tableau, 'l’avertissement de tableau ne trouve pas son article');
   assert.strictEqual(tableau.pastilles[0].ton, 'attention',
     'un avertissement non bloquant est présenté comme un échec');
-  assert.match(tableau.notif.texte, /rangée d’en-tête/);
+  assert.match(tableau.notif.texte, /en-tête/);
 });
 
 // ---- La relecture des messages, verrouillée ----

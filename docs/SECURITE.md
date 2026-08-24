@@ -48,8 +48,10 @@ important de tout le système.
       processus `vmcompute.exe`/`vmmem.exe`/`wsl.exe`/`wslservice.exe`) **et s'assurer qu'une
       politique centrale ne les réécrasera pas**. ⚠ `bootstrap.ps1` se contente de les afficher :
       personne ne les pose à votre place.
-- [ ] **Tâches planifiées autorisées** : la MAJ silencieuse (connexion + 11h00) et le préchauffage
-      WSL utilisent le Planificateur de tâches — vérifier qu'aucune politique ne les bloque.
+- [ ] **Tâches planifiées autorisées** : la MAJ silencieuse (connexion + mardi 14h00) et le
+      préchauffage WSL utilisent le Planificateur de tâches — vérifier qu'aucune politique ne les
+      bloque. Elles tournent avec le jeton de l'utilisateur connecté (groupe Utilisateurs, niveau
+      limité), jamais en SYSTEM.
 - [ ] **ACL sur `C:\ProgramData\SZH`** : `bootstrap.ps1` donne l'écriture aux Utilisateurs ;
       confirmer que la gestion du parc (Intune/GPO) ne la révoque pas et ne la signale pas.
 - [ ] **OneDrive/SharePoint** : déploiement configuré, et pouvoir mettre les dossiers de revue en

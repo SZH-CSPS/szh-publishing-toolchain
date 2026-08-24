@@ -328,6 +328,40 @@ $revuesArchivees = @($revuesArchivees | Sort-Object nom -Descending)
 # Pas de sortie anticipée quand il n'y a aucune revue : la fenêtre s'ouvre quand même,
 # pour offrir « Nouvelle revue… » sur un poste vierge.
 
+# ---- Le bloc d'informations, calculé avant la mise en page ----
+# Version installée, racine active, numéros restés dehors : à lire avant d'ouvrir un numéro,
+# pas après un rendu inattendu.
+#
+# La racine est dite dans les DEUX racines, et non plus en test seulement : c'est, avec le
+# titre de la fenêtre, le seul endroit qui la rende visible, et un lanceur aux listes vides
+# après une bascule de `emplacementRevues` ne se comprend pas sans elle. Le chemin complet
+# la nomme de lui-même — « …\Revues-TESTING » ou « …\2_Produkte ».
+$lignesInfo = @()
+$vInstallee = Get-SzhVersionInstallee
+if ($vInstallee) { $lignesInfo += (T 'lanceur.version' @($vInstallee)) }
+else { $lignesInfo += (T 'lanceur.version.inconnue') }
+$cleRacine = 'lanceur.test'
+if ($produitFiltre -eq 'zeitschrift') { $cleRacine = 'lanceur.test.zs' }
+$lignesInfo += (T $cleRacine @($emplacements.base))
+# Ce qui est resté hors de l'arborescence est dit, pas caché.
+if ($horsArborescence -gt 0) { $lignesInfo += (T 'lanceur.hors' @($horsArborescence, $dossierHors)) }
+# Hauteur réelle du bloc : un chemin de racine dépasse la largeur du libellé et revient à la
+# ligne. Mesurée plutôt que devinée — sans cela, la ligne qui dit où vivent les numéros
+# passait sous les boutons, et l'information était perdue au lieu d'être lue.
+#
+# C'est le libellé qui se mesure, et non TextRenderer : `WordBreak` ne coupe qu'aux espaces,
+# et un chemin Windows n'en a pas — il rendait une seule ligne de 920 px pour un texte qui
+# en occupe trois.
+$infos = New-Object System.Windows.Forms.Label
+$infos.AutoSize = $false
+$infos.Width = 488
+$infos.Text = ($lignesInfo -join "`n")
+$hInfos = 44
+try {
+  $voulue = $infos.GetPreferredSize((New-Object System.Drawing.Size(488, 0))).Height + 8
+  if ($voulue -gt $hInfos) { $hInfos = $voulue }
+} catch { }
+
 # ---- Fenêtre de sélection ----
 $form = New-Object System.Windows.Forms.Form
 $form.Text = $titreFenetre
@@ -347,7 +381,7 @@ $yListe = 66
 $yEtiqArchives = $yListe + $hListe + 10
 $yArchives = $yEtiqArchives + 22
 $yInfos = $yArchives + $hArchives + 10
-$yBoutons = $yInfos + 46
+$yBoutons = $yInfos + $hInfos + 2
 $form.ClientSize = New-Object System.Drawing.Size(520, ($yBoutons + 44))
 $form.FormBorderStyle = 'FixedDialog'
 $form.MaximizeBox = $false
@@ -406,19 +440,9 @@ $form.Controls.Add($listeArchives)
 $liste.Add_Click({ $listeArchives.ClearSelected() })
 $listeArchives.Add_Click({ $liste.ClearSelected() })
 
-# Version installée et mode test : à lire avant d'ouvrir une revue, pas après un rendu
-# inattendu.
-$infos = New-Object System.Windows.Forms.Label
-$vInstallee = Get-SzhVersionInstallee
-$lignesInfo = @()
-if ($vInstallee) { $lignesInfo += (T 'lanceur.version' @($vInstallee)) }
-else { $lignesInfo += (T 'lanceur.version.inconnue') }
-if ($emplacements.devMode) { $lignesInfo += (T 'lanceur.test' @($emplacements.base)) }
-# Ce qui est resté hors de l'arborescence est dit, pas caché.
-if ($horsArborescence -gt 0) { $lignesInfo += (T 'lanceur.hors' @($horsArborescence, $dossierHors)) }
-$infos.Text = ($lignesInfo -join "`n")
+# Le libellé a été créé plus haut, pour que sa hauteur entre dans la mise en page.
 $infos.Location = New-Object System.Drawing.Point(16, $yInfos)
-$infos.Size = New-Object System.Drawing.Size(488, 44)
+$infos.Size = New-Object System.Drawing.Size(488, $hInfos)
 $infos.ForeColor = [System.Drawing.Color]::DimGray
 $form.Controls.Add($infos)
 
@@ -455,59 +479,210 @@ $boutonVersions.Add_Click({
 
 # ---- « Nouvelle revue… » : new-revue.ps1 puis ouverture ----
 
-# Demande le nom du dossier et rappelle où la revue sera créée. $null si annulé.
-function Read-SzhNomRevue {
+# Demande l'ANNÉE et le NUMÉRO du numéro à créer — et rien d'autre. Le volume s'affiche
+# grisé, calculé d'après l'année (Get-SzhVolumePour), et le nom du dossier n'est qu'un
+# affichage : il se déduit des deux nombres.
+#
+# C'est l'inverse de ce que faisait cette boîte : elle demandait un nom de dossier en texte
+# libre, dont new-revue.ps1 essayait ensuite de deviner l'année et le numéro, et laissait
+# tout à remplir quand le nom sortait de la convention. On demande maintenant le sens, et
+# c'est le nom technique qui s'en déduit.
+#
+# Rend $null si annulé, sinon { annee, numero, volume, nom }.
+function Read-SzhNouveauNumero {
+  $anneeMin = Get-SzhPremiereAnnee $produitFiltre
+  $anneeMax = (Get-Date).Year + 5
+  $anneeDefaut = (Get-Date).Year
+  if ($anneeDefaut -lt $anneeMin) { $anneeDefaut = $anneeMin }
+
   $boite = New-Object System.Windows.Forms.Form
   $boite.Text = (T 'lanceur.nouvelle') -replace '…', ''
   $boite.StartPosition = 'CenterParent'
-  $boite.ClientSize = New-Object System.Drawing.Size(400, 160)
+  $boite.ClientSize = New-Object System.Drawing.Size(430, 296)   # ajustée plus bas
   $boite.FormBorderStyle = 'FixedDialog'
   $boite.MaximizeBox = $false
   $boite.MinimizeBox = $false
 
-  $question = New-Object System.Windows.Forms.Label
-  $question.Text = (T 'lanceur.nouvelle.nom')
-  $question.Location = New-Object System.Drawing.Point(16, 14)
-  $question.AutoSize = $true
-  $boite.Controls.Add($question)
+  $etiqAnnee = New-Object System.Windows.Forms.Label
+  $etiqAnnee.Text = (T 'lanceur.nouvelle.annee')
+  $etiqAnnee.Location = New-Object System.Drawing.Point(16, 21)
+  $etiqAnnee.Size = New-Object System.Drawing.Size(96, 22)
+  $boite.Controls.Add($etiqAnnee)
 
+  # NumericUpDown plutôt que TextBox : une année et un numéro sont des nombres dans des
+  # bornes, le contrôle s'en charge, et il n'y a plus de saisie invalide à refuser par un
+  # message. La borne basse de l'année est celle du premier volume de la revue.
+  $champAnnee = New-Object System.Windows.Forms.NumericUpDown
+  $champAnnee.Location = New-Object System.Drawing.Point(118, 16)
+  $champAnnee.Size = New-Object System.Drawing.Size(96, 28)
+  $champAnnee.Font = New-Object System.Drawing.Font('Segoe UI', 11)
+  $champAnnee.Minimum = $anneeMin
+  $champAnnee.Maximum = $anneeMax
+  $champAnnee.Value = $anneeDefaut
+  $boite.Controls.Add($champAnnee)
+
+  $etiqNumero = New-Object System.Windows.Forms.Label
+  $etiqNumero.Text = (T 'lanceur.nouvelle.numero')
+  $etiqNumero.Location = New-Object System.Drawing.Point(16, 57)
+  $etiqNumero.Size = New-Object System.Drawing.Size(96, 22)
+  $boite.Controls.Add($etiqNumero)
+
+  # 1 à 99 : la convention « AAAA-NN » du nom de dossier tient le numéro sur deux chiffres.
+  $champNumero = New-Object System.Windows.Forms.NumericUpDown
+  $champNumero.Location = New-Object System.Drawing.Point(118, 52)
+  $champNumero.Size = New-Object System.Drawing.Size(96, 28)
+  $champNumero.Font = New-Object System.Drawing.Font('Segoe UI', 11)
+  $champNumero.Minimum = 1
+  $champNumero.Maximum = 99
+  $champNumero.Value = 1
+  $boite.Controls.Add($champNumero)
+
+  $etiqVolume = New-Object System.Windows.Forms.Label
+  $etiqVolume.Text = (T 'lanceur.nouvelle.volume')
+  $etiqVolume.Location = New-Object System.Drawing.Point(16, 93)
+  $etiqVolume.Size = New-Object System.Drawing.Size(96, 22)
+  $boite.Controls.Add($etiqVolume)
+
+  # Désactivé, donc grisé : le volume se lit, il ne se saisit pas. Il suit l'année tant que
+  # le bouton ci-dessous n'a pas été pressé.
+  $champVolume = New-Object System.Windows.Forms.NumericUpDown
+  $champVolume.Location = New-Object System.Drawing.Point(118, 88)
+  $champVolume.Size = New-Object System.Drawing.Size(96, 28)
+  $champVolume.Font = New-Object System.Drawing.Font('Segoe UI', 11)
+  $champVolume.Minimum = 1
+  $champVolume.Maximum = 999
+  $champVolume.Value = 1
+  $champVolume.Enabled = $false
+  $boite.Controls.Add($champVolume)
+
+  # Le volume se déduit d'une droite vérifiée sur neuf millésimes, mais une revue peut
+  # sauter un volume ou en doubler un. Ce bouton est la sortie de secours, et son libellé
+  # dit qu'elle est déconseillée : un volume faux s'imprime sur la couverture et part dans
+  # OJS sans que rien ne le signale.
+  $boutonManuel = New-Object System.Windows.Forms.Button
+  $boutonManuel.Text = (T 'lanceur.nouvelle.volume.manuel')
+  $boutonManuel.Location = New-Object System.Drawing.Point(118, 122)
+  $boutonManuel.Size = New-Object System.Drawing.Size(296, 30)
+  $boite.Controls.Add($boutonManuel)
+
+  # Un libellé, pas un champ : le nom du dossier est montré et ne se change pas.
+  $etiqDossier = New-Object System.Windows.Forms.Label
+  $etiqDossier.Location = New-Object System.Drawing.Point(16, 166)
+  $etiqDossier.Size = New-Object System.Drawing.Size(398, 22)
+  $etiqDossier.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+  $boite.Controls.Add($etiqDossier)
+
+  # Hauteur mesurée et non devinée : selon la racine active, ce chemin tient sur deux lignes
+  # comme sur quatre, et tronqué il ne dirait plus où le numéro va être créé.
   $ou = New-Object System.Windows.Forms.Label
+  $ou.AutoSize = $false
+  $ou.Width = 398
   $ou.Text = (T 'lanceur.nouvelle.ou' @($encoursProduit))
-  $ou.Location = New-Object System.Drawing.Point(16, 74)
-  $ou.Size = New-Object System.Drawing.Size(368, 34)
+  $hOu = 46
+  try {
+    $vouluOu = $ou.GetPreferredSize((New-Object System.Drawing.Size(398, 0))).Height + 8
+    if ($vouluOu -gt $hOu) { $hOu = $vouluOu }
+  } catch { }
+  $ou.Location = New-Object System.Drawing.Point(16, 192)
+  $ou.Size = New-Object System.Drawing.Size(398, $hOu)
   $ou.ForeColor = [System.Drawing.Color]::DimGray
   $boite.Controls.Add($ou)
 
-  $champ = New-Object System.Windows.Forms.TextBox
-  $champ.Location = New-Object System.Drawing.Point(16, 40)
-  $champ.Size = New-Object System.Drawing.Size(368, 24)
-  $champ.Font = New-Object System.Drawing.Font('Segoe UI', 11)
-  $boite.Controls.Add($champ)
+  $yBoutonsBoite = 192 + $hOu + 12
+  $boite.ClientSize = New-Object System.Drawing.Size(430, ($yBoutonsBoite + 46))
 
   $okBouton = New-Object System.Windows.Forms.Button
   $okBouton.Text = 'OK'
-  $okBouton.Location = New-Object System.Drawing.Point(198, 118)
-  $okBouton.Size = New-Object System.Drawing.Size(90, 30)
+  $okBouton.Location = New-Object System.Drawing.Point(232, $yBoutonsBoite)
+  $okBouton.Size = New-Object System.Drawing.Size(90, 32)
   $okBouton.DialogResult = [System.Windows.Forms.DialogResult]::OK
   $boite.Controls.Add($okBouton)
   $boite.AcceptButton = $okBouton
 
   $nonBouton = New-Object System.Windows.Forms.Button
   $nonBouton.Text = (T 'lanceur.annuler')
-  $nonBouton.Location = New-Object System.Drawing.Point(294, 118)
-  $nonBouton.Size = New-Object System.Drawing.Size(90, 30)
+  $nonBouton.Location = New-Object System.Drawing.Point(324, $yBoutonsBoite)
+  $nonBouton.Size = New-Object System.Drawing.Size(90, 32)
   $nonBouton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
   $boite.Controls.Add($nonBouton)
   $boite.CancelButton = $nonBouton
 
-  if ($boite.ShowDialog($form) -ne [System.Windows.Forms.DialogResult]::OK) { return $null }
-  $nom = $champ.Text.Trim()
-  if (-not $nom) { return $null }
-  if ($nom -match '[<>:"/\\|?*]') {
-    [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.nouvelle.invalide'), $titreFenetre)
-    return $null
+  # Table de hachage et non une variable : un gestionnaire d'événement peut modifier un objet,
+  # il ne peut pas réassigner la variable locale d'une fonction.
+  $etat = @{ manuel = $false }
+
+  # Le volume et le nom du dossier suivent les deux nombres, à chaque frappe.
+  $rafraichir = {
+    $anneeVue = [int]$champAnnee.Value
+    $numeroVue = [int]$champNumero.Value
+    if (-not $etat.manuel) {
+      $calcule = Get-SzhVolumePour $produitFiltre $anneeVue
+      if ($calcule -ge $champVolume.Minimum -and $calcule -le $champVolume.Maximum) {
+        $champVolume.Value = $calcule
+      }
+    }
+    $etiqDossier.Text = (T 'lanceur.nouvelle.dossier' @((Get-SzhNomNumero $anneeVue $numeroVue)))
   }
-  return $nom
+  $champAnnee.Add_ValueChanged($rafraichir)
+  $champNumero.Add_ValueChanged($rafraichir)
+
+  # Bascule dans les deux sens : on peut revenir au volume calculé après s'être trompé.
+  $boutonManuel.Add_Click({
+    if ($etat.manuel) {
+      $etat.manuel = $false
+      $champVolume.Enabled = $false
+      $boutonManuel.Text = (T 'lanceur.nouvelle.volume.manuel')
+      & $rafraichir
+    } else {
+      $etat.manuel = $true
+      $champVolume.Enabled = $true
+      $boutonManuel.Text = (T 'lanceur.nouvelle.volume.auto')
+      $champVolume.Focus()
+    }
+  })
+
+  # Les deux refus se font ici, la boîte ouverte : le remède est à un chiffre près, et
+  # refermer le formulaire pour le redire obligerait à tout resaisir.
+  $okBouton.Add_Click({
+    $anneeOk = [int]$champAnnee.Value
+    $numeroOk = [int]$champNumero.Value
+    $volumeOk = [int]$champVolume.Value
+    $nomOk = Get-SzhNomNumero $anneeOk $numeroOk
+    # Le dossier homonyme d'abord : c'est le cas le plus simple, et son message existe.
+    if (Test-Path (Join-Path $encoursProduit $nomOk)) {
+      [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.nouvelle.existe' @($nomOk)), $titreFenetre)
+      $boite.DialogResult = [System.Windows.Forms.DialogResult]::None
+      return
+    }
+    # Puis le couple volume + numéro, en cours ET archives. C'est lui qui identifie un
+    # numéro : deux dossiers de noms différents peuvent le porter, et c'est ce qu'il faut
+    # refuser. Rien n'est supprimé ni déplacé ici — le message dit lequel et où, et la
+    # suppression reste un geste du rédacteur.
+    $deja = Find-SzhNumeroVolume $produitFiltre $volumeOk $numeroOk
+    if ($deja) {
+      $dit = @((T 'lanceur.nouvelle.doublon' @($volumeOk, $numeroOk, $deja.nom, $deja.chemin)))
+      if ($deja.archive) { $dit += (T 'lanceur.nouvelle.doublon.arch') }
+      $dit += (T 'lanceur.nouvelle.doublon.suite')
+      [void][System.Windows.Forms.MessageBox]::Show(($dit -join "`n`n"), $titreFenetre,
+        [System.Windows.Forms.MessageBoxButtons]::OK,
+        [System.Windows.Forms.MessageBoxIcon]::Warning)
+      $boite.DialogResult = [System.Windows.Forms.DialogResult]::None
+      return
+    }
+  })
+
+  # Premier remplissage depuis la fonction elle-même : la boîte s'ouvre déjà renseignée.
+  & $rafraichir
+
+  if ($boite.ShowDialog($form) -ne [System.Windows.Forms.DialogResult]::OK) { return $null }
+  $annee = [int]$champAnnee.Value
+  $numero = [int]$champNumero.Value
+  return [pscustomobject]@{
+    annee  = $annee
+    numero = $numero
+    volume = [int]$champVolume.Value
+    nom    = (Get-SzhNomNumero $annee $numero)
+  }
 }
 
 $boutonNouvelle = New-Object System.Windows.Forms.Button
@@ -519,17 +694,21 @@ $boutonNouvelle.Add_Click({
   # Pas de choix d'emplacement : un numéro se crée dans le dossier « en cours » du produit
   # de ce lanceur. Il n'y a qu'une bonne réponse, et laisser choisir ne servait qu'à se
   # tromper de produit.
-  $nom = Read-SzhNomRevue
-  if (-not $nom) { return }
-  $cible = Join-Path $encoursProduit $nom
-  if (Test-Path $cible) {
-    [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.nouvelle.existe' @($nom)), $titreFenetre)
-    return
-  }
+  # Le formulaire a déjà refusé le dossier homonyme et le doublon de volume + numéro.
+  $neuf = Read-SzhNouveauNumero
+  if (-not $neuf) { return }
+  $cible = Join-Path $encoursProduit $neuf.nom
   try {
-    # new-revue.ps1 copie le gabarit, pose le jeton `revue:`, l'estampille de version et
-    # « Ouvrir la revue.lnk ».
-    & (Join-Path $PSScriptRoot 'new-revue.ps1') -Dossier $cible -Produit $produitFiltre | Out-Null
+    # new-revue.ps1 copie le gabarit, pose le jeton `revue:`, l'année, le numéro, le volume,
+    # l'estampille de version et « Ouvrir la revue.lnk ».
+    $parametres = @{
+      Dossier = $cible
+      Produit = $produitFiltre
+      Annee   = $neuf.annee
+      Numero  = $neuf.numero
+      Volume  = $neuf.volume
+    }
+    & (Join-Path $PSScriptRoot 'new-revue.ps1') @parametres | Out-Null
   } catch {
     [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.nouvelle.erreur' @($_.Exception.Message)), $titreFenetre)
     return

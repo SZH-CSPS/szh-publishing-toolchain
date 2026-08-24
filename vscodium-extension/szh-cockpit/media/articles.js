@@ -9,15 +9,25 @@
 // seconde modification. La modale des tâches est bâtie sur SZH.modale, comme celle de la
 // couverture. Ne reste propre à cette page que ce que la modale des tâches contient.
 //
+// L'aperçu des métadonnées, lui, est propre à cette page — il n'existe nulle part
+// ailleurs : partout ailleurs, les métadonnées d'un article sont un FORMULAIRE. Ici on
+// regarde, on ne saisit pas, et les deux boutons du pied mènent aux formulaires qui, eux,
+// écrivent. La carte reste celle de SZH.listeCartes : cette page n'en refait pas une, elle
+// insère son aperçu dedans.
+//
 // Protocole. Vers l'hôte :
 //   pret ; ouvrir { cle } ; action { cle, id } ; tache { cle, id, cochee } ;
-//   commande { id } ; taches-enregistrer { revue, taches } ;
+//   sansdoi { cle, coche } ; commande { id } ; taches-enregistrer { revue, taches } ;
 //   enregistrer { auto, modifies } ; couverture-deposer { nomFichier, donneesBase64 }
 // Depuis l'hôte :
 //   valeurs { titre, boutons, lignes, accent, valeurs, couverture, taches, revue } ;
 //   etat { message } ; avancement { cle, pastilles } ; enregistre ; erreur { message } ;
 //   couverture { nom, description, apercu } ; taches { taches }
-// où une ligne vaut { cle, titre, meta, notif, pastilles, ouvrir, actions, taches }.
+// où une ligne vaut { cle, titre, meta, notif, pastilles, ouvrir, actions, taches,
+//                     apercu, constats, sansDoi } ,
+//   apercu   = { lignes: [{ libelle, valeurs: [{ marque, texte, marques, ton }] }] }
+//   constats = [{ ton, texte }]
+//   sansDoi  = { coche, verrouille }
 (function () {
   'use strict';
   var api = acquireVsCodeApi();
@@ -38,8 +48,9 @@
   });
   numero.enregistrement(document.getElementById('enregistrer'));
 
+  var cartes = document.getElementById('cartes');
   var liste = SZH.listeCartes({
-    conteneur: document.getElementById('cartes'),
+    conteneur: cartes,
     textes: function () { return TXT; },
     onOuvrir: function (cle) { api.postMessage({ type: 'ouvrir', cle: cle }); },
     onAction: function (cle, id) { api.postMessage({ type: 'action', cle: cle, id: id }); },
@@ -47,6 +58,89 @@
       api.postMessage({ type: 'tache', cle: cle, id: id, cochee: cochee });
     }
   });
+
+  // ---- L'aperçu, posé dans la carte ----
+  //
+  // Les cartes viennent de SZH.listeCartes, le composant des trois vues d'ensemble. Cette
+  // page n'en écrit pas une seconde : elle prend celles qui viennent d'être posées, dans
+  // l'ordre où elles l'ont été — le même que celui des lignes — et glisse son bloc juste
+  // avant les tâches, donc entre l'en-tête et le pied.
+  //
+  // Rien n'y est modifiable, à une exception près et elle est explicite : la case « pas de
+  // DOI », qui n'est pas une métadonnée de l'article mais une décision sur le numéro.
+  function decorer(lignes) {
+    var boites = cartes.querySelectorAll('.szh-carte');
+    for (var i = 0; i < boites.length && i < lignes.length; i++) {
+      var ligne = lignes[i] || {};
+      var bloc = construireBloc(ligne);
+      if (!bloc) { continue; }
+      var cible = boites[i].querySelector('.szh-taches') || boites[i].querySelector('.ligne-pied');
+      if (cible) { boites[i].insertBefore(bloc, cible); } else { boites[i].appendChild(bloc); }
+    }
+  }
+
+  // -> l'élément à insérer, ou null quand la ligne n'apporte ni aperçu, ni constat, ni case.
+  function construireBloc(ligne) {
+    var apercu = ligne.apercu || null;
+    var constats = ligne.constats || [];
+    var sansDoi = ligne.sansDoi || null;
+    if (!apercu && constats.length === 0 && !sansDoi) { return null; }
+    var bloc = document.createElement('div');
+    bloc.className = 'carte-apercu';
+    // Ce qui demande un geste d'abord : c'est l'ordre dans lequel on travaille.
+    for (var i = 0; i < constats.length; i++) {
+      bloc.appendChild(SZH.notif(constats[i].ton || 'attention', constats[i].texte || ''));
+    }
+    if (apercu) { poserGrille(bloc, apercu.lignes || []); }
+    if (sansDoi) { poserCaseDoi(bloc, ligne); }
+    return bloc;
+  }
+
+  // Une rangée par champ : l'intitulé d'un côté, une valeur par langue de l'autre. Une liste
+  // de définitions, et non un tableau : ce sont des couples nom/valeur, et un lecteur
+  // d'écran les annonce alors comme tels.
+  function poserGrille(bloc, lignes) {
+    var dl = poser(bloc, 'dl', 'apercu-grille');
+    for (var i = 0; i < lignes.length; i++) {
+      var rangee = poser(dl, 'div', 'apercu-rangee');
+      poser(rangee, 'dt', 'apercu-cle', lignes[i].libelle || '');
+      var dd = poser(rangee, 'dd', 'apercu-val');
+      var valeurs = lignes[i].valeurs || [];
+      for (var v = 0; v < valeurs.length; v++) { poserValeur(dd, valeurs[v]); }
+    }
+  }
+
+  function poserValeur(dd, valeur) {
+    var ton = valeur.ton ? ' apercu-valeur--' + valeur.ton : '';
+    var el = poser(dd, 'div', 'apercu-valeur' + ton);
+    // Le badge de langue tient la place d'un intitulé répété : « Titre (français) » trois
+    // fois de suite ne se lit pas, « FR » se voit.
+    if (valeur.marque) { poser(el, 'span', 'apercu-langue', valeur.marque); }
+    poser(el, 'span', 'apercu-texte', valeur.texte || '');
+    var marques = valeur.marques || [];
+    for (var m = 0; m < marques.length; m++) {
+      poser(el, 'span', 'apercu-marque', marques[m]);
+    }
+  }
+
+  // La case « pas de DOI ». Verrouillée quand c'est la rubrique qui décide : la case montre
+  // alors l'état sans laisser croire qu'on peut en changer.
+  function poserCaseDoi(bloc, ligne) {
+    var etat = ligne.sansDoi || {};
+    var l = poser(bloc, 'label', 'apercu-doi');
+    var case_ = document.createElement('input');
+    case_.type = 'checkbox';
+    case_.checked = !!etat.coche;
+    case_.disabled = !!etat.verrouille;
+    case_.dataset.sansdoi = String(ligne.cle || '');
+    case_.addEventListener('change', function () {
+      api.postMessage({ type: 'sansdoi', cle: String(ligne.cle || ''), coche: !!case_.checked });
+    });
+    l.appendChild(case_);
+    poser(l, 'span', null, TXT.doiCase || '');
+    l.title = TXT.doiCaseTip || '';
+    return l;
+  }
 
   // ---- Modale des tâches ----
   //
@@ -226,6 +320,7 @@
         api.postMessage({ type: 'commande', id: id });
       });
       liste.rendre(msg.lignes || []);
+      decorer(msg.lignes || []);
       return;
     }
     // Une case cochée ne renvoie que sa pastille : reconstruire la liste ferait perdre au

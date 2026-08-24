@@ -70,7 +70,7 @@ $script:SzhTextes = @{
     'maj.ext.ok'        = 'Extensions à jour.'
     'maj.codium.absent' = 'L''éditeur n''est pas installé sur ce poste : ses extensions ont été laissées de côté, tout le reste est à jour. Faites faire l''installation initiale du poste par le service informatique, puis relancez cette mise à jour.'
     'maj.e4'            = '4/5  Réglages de l''éditeur…'
-    'maj.e4.ok'         = 'Réglages appliqués, raccourci « Revues SZH » à jour.'
+    'maj.e4.ok'         = 'Réglages appliqués, raccourcis du menu Démarrer à jour.'
     'maj.e5'            = '5/5  Nettoyage…'
     'maj.e5.ok'         = 'Terminé.'
     'maj.fini'          = '✓ Tout est à jour (version {0}). Bonne rédaction !'
@@ -101,10 +101,19 @@ $script:SzhTextes = @{
     'lanceur.codium'    = 'L''éditeur VSCodium est introuvable sur ce poste. Contact : {0}'
     'lanceur.vide'      = 'Aucune revue sur ce poste pour l''instant — « Nouvelle revue… » pour commencer.'
     'lanceur.nouvelle'          = 'Nouvelle revue…'
-    'lanceur.nouvelle.nom'      = 'Nom du dossier de la nouvelle revue (p. ex. 2026-02) :'
-    'lanceur.nouvelle.ou'       = "Elle sera créée dans :`n{0}"
+    # Un numéro se décrit par son année et son rang ; le volume et le nom du dossier s'en
+    # déduisent. Plus rien à saisir qui ne soit une donnée du numéro.
+    'lanceur.nouvelle.annee'    = 'Année :'
+    'lanceur.nouvelle.numero'   = 'Numéro :'
+    'lanceur.nouvelle.volume'   = 'Volume :'
+    'lanceur.nouvelle.volume.manuel' = 'Régler le volume manuellement (déconseillé)'
+    'lanceur.nouvelle.volume.auto'   = 'Revenir au volume calculé'
+    'lanceur.nouvelle.dossier'  = 'Dossier : {0}'
+    'lanceur.nouvelle.ou'       = "Il sera créé dans :`n{0}"
     'lanceur.nouvelle.existe'   = 'Un dossier « {0} » existe déjà à cet emplacement.'
-    'lanceur.nouvelle.invalide' = 'Le nom contient des caractères interdits ( < > : " / \ | ? * ).'
+    'lanceur.nouvelle.doublon'  = "Le volume {0}, numéro {1} existe déjà : c'est le numéro « {2} », ici :`n{3}"
+    'lanceur.nouvelle.doublon.arch'  = 'Ce numéro-là est archivé — un numéro archivé reste un numéro publié.'
+    'lanceur.nouvelle.doublon.suite' = 'Deux numéros ne peuvent pas porter le même volume et le même numéro. Supprimez d''abord celui qui existe, puis recréez celui-ci.'
     'lanceur.nouvelle.erreur'   = "La création de la revue a échoué :`n{0}"
     # Cycle de vie du numéro : listes du lanceur, version du logiciel, mode test.
     'maj.concurrente'           = 'Une mise à jour est déjà en cours dans une autre fenêtre — celle-ci se ferme.'
@@ -121,9 +130,13 @@ $script:SzhTextes = @{
     'lanceur.encours'           = 'En cours :'
     'lanceur.archives'          = 'Archivées :'
     'lanceur.vide.archives'     = 'Aucune revue archivée.'
-    'lanceur.version'           = 'Logiciel v. {0}'
-    'lanceur.version.inconnue'  = 'Logiciel : version inconnue'
-    'lanceur.test'              = 'Dossier de test — revues dans {0}'
+    'lanceur.version'           = 'Version : {0}'
+    'lanceur.version.inconnue'  = 'Version : inconnue'
+    # Où vivent les numéros, dit dans les deux racines et non plus en test seulement : avec
+    # le titre de la fenêtre, c'est le seul endroit qui rende la racine active visible, et le
+    # chemin complet suffit à la reconnaître (« Revues-TESTING » ou « 2_Produkte »).
+    'lanceur.test'              = 'Revue dans : {0}'
+    'lanceur.test.zs'           = 'Zeitschrift dans : {0}'
     'racine.test'               = 'dossier de test'
     'racine.prod'               = 'dossier de production'
     'lanceur.versions.bouton'   = 'Version du logiciel…'
@@ -152,6 +165,12 @@ $script:SzhTextes = @{
     'openmd.introuvable'  = "Ce fichier est introuvable.`n`nIl a peut-être été déplacé ou renommé, ou OneDrive ne l'a pas encore synchronisé."
     'openmd.horsrevue'    = "Ce fichier ne fait pas partie d'une revue : l'aperçu et la régénération ne seront pas actifs.`n`nIl s'ouvre quand même, pour le lire ou le corriger."
     'openmd.reseau'       = "Ce fichier est dans un dossier réseau. Il s'ouvre, mais la fabrication du PDF et l'aperçu ne fonctionnent pas depuis un chemin réseau.`n`nPour travailler dessus, copiez la revue dans OneDrive ou sur le disque de ce poste."
+    # Raccourcis du menu Démarrer. Ces deux premiers noms sont ceux des FICHIERS .lnk :
+    # les changer renomme les entrées du menu (l'ancienne est retirée, jamais doublée).
+    'raccourci.maj.nom'   = 'Mise à jour de l''outil Revue'
+    'raccourci.maj.desc'  = 'Installer la dernière version de l''outil Revue SZH. Une fenêtre s''ouvre et montre ce qui se passe.'
+    'raccourci.revue.desc' = 'Ouvrir une revue SZH'
+    'raccourci.zs.desc'   = 'Ouvrir une Zeitschrift SZH'
   }
   de = @{
     'app.titre'         = 'SZH/CSPS — Publikations-Toolchain'
@@ -174,7 +193,7 @@ $script:SzhTextes = @{
     'maj.ext.ok'        = 'Erweiterungen sind aktuell.'
     'maj.codium.absent' = 'Der Editor ist auf diesem Rechner nicht installiert: seine Erweiterungen wurden übersprungen, alles andere ist aktuell. Lassen Sie die Ersteinrichtung des Rechners von der Informatik durchführen und starten Sie diese Aktualisierung danach erneut.'
     'maj.e4'            = '4/5  Editor-Einstellungen…'
-    'maj.e4.ok'         = 'Einstellungen angewendet, Verknüpfung « Revues SZH » aktualisiert.'
+    'maj.e4.ok'         = 'Einstellungen angewendet, Verknüpfungen im Startmenü aktualisiert.'
     'maj.e5'            = '5/5  Aufräumen…'
     'maj.e5.ok'         = 'Fertig.'
     'maj.fini'          = '✓ Alles ist aktuell (Version {0}). Gutes Schreiben!'
@@ -205,10 +224,17 @@ $script:SzhTextes = @{
     'lanceur.codium'    = 'Der Editor VSCodium wurde auf diesem Computer nicht gefunden. Kontakt: {0}'
     'lanceur.vide'      = 'Noch keine Zeitschrift auf diesem Computer — mit « Neue Zeitschrift… » beginnen.'
     'lanceur.nouvelle'          = 'Neue Zeitschrift…'
-    'lanceur.nouvelle.nom'      = 'Ordnername der neuen Zeitschrift (z. B. 2026-02):'
-    'lanceur.nouvelle.ou'       = "Sie wird erstellt in:`n{0}"
+    'lanceur.nouvelle.annee'    = 'Jahr:'
+    'lanceur.nouvelle.numero'   = 'Nummer:'
+    'lanceur.nouvelle.volume'   = 'Band:'
+    'lanceur.nouvelle.volume.manuel' = 'Band manuell einstellen (nicht empfohlen)'
+    'lanceur.nouvelle.volume.auto'   = 'Zurück zum berechneten Band'
+    'lanceur.nouvelle.dossier'  = 'Ordner: {0}'
+    'lanceur.nouvelle.ou'       = "Die Ausgabe wird erstellt in:`n{0}"
     'lanceur.nouvelle.existe'   = 'Ein Ordner « {0} » existiert an diesem Ort bereits.'
-    'lanceur.nouvelle.invalide' = 'Der Name enthält unzulässige Zeichen ( < > : " / \ | ? * ).'
+    'lanceur.nouvelle.doublon'  = "Band {0}, Nummer {1} existiert bereits: es ist die Ausgabe « {2} », hier:`n{3}"
+    'lanceur.nouvelle.doublon.arch'  = 'Jene Ausgabe ist archiviert — eine archivierte Ausgabe bleibt eine veröffentlichte Ausgabe.'
+    'lanceur.nouvelle.doublon.suite' = 'Zwei Ausgaben können nicht denselben Band und dieselbe Nummer tragen. Löschen Sie zuerst die vorhandene Ausgabe und erstellen Sie diese danach neu.'
     'lanceur.nouvelle.erreur'   = "Die Zeitschrift konnte nicht erstellt werden:`n{0}"
     # Lebenszyklus der Ausgabe
     'maj.concurrente'           = 'In einem anderen Fenster läuft bereits eine Aktualisierung — dieses schliesst sich.'
@@ -225,9 +251,10 @@ $script:SzhTextes = @{
     'lanceur.encours'           = 'In Arbeit:'
     'lanceur.archives'          = 'Archiviert:'
     'lanceur.vide.archives'     = 'Keine archivierte Zeitschrift.'
-    'lanceur.version'           = 'Software v. {0}'
-    'lanceur.version.inconnue'  = 'Software: Version unbekannt'
-    'lanceur.test'              = 'Testordner — Zeitschriften in {0}'
+    'lanceur.version'           = 'Version: {0}'
+    'lanceur.version.inconnue'  = 'Version: unbekannt'
+    'lanceur.test'              = 'Revue in: {0}'
+    'lanceur.test.zs'           = 'Zeitschrift in: {0}'
     'racine.test'               = 'Testordner'
     'racine.prod'               = 'Produktionsordner'
     'lanceur.versions.bouton'   = 'Software-Version…'
@@ -256,6 +283,12 @@ $script:SzhTextes = @{
     'openmd.introuvable'  = "Diese Datei wurde nicht gefunden.`n`nSie wurde vielleicht verschoben oder umbenannt, oder OneDrive hat sie noch nicht synchronisiert."
     'openmd.horsrevue'    = "Diese Datei gehört zu keiner Zeitschrift: Vorschau und Neuerzeugung sind nicht aktiv.`n`nSie wird trotzdem geöffnet, zum Lesen oder Korrigieren."
     'openmd.reseau'       = "Diese Datei liegt in einem Netzwerkordner. Sie wird geöffnet, aber die PDF-Erzeugung und die Vorschau funktionieren von einem Netzwerkpfad aus nicht.`n`nKopieren Sie die Zeitschrift zum Arbeiten nach OneDrive oder auf die Festplatte dieses Computers."
+    # Verknüpfungen im Startmenü. Die ersten beiden Namen sind DATEINAMEN (.lnk):
+    # werden sie geändert, wird der Eintrag umbenannt — der alte wird entfernt, nie doppelt.
+    'raccourci.maj.nom'   = 'Aktualisierung des Redaktionstools'
+    'raccourci.maj.desc'  = 'Die neueste Version des SZH-Redaktionstools installieren. Ein Fenster öffnet sich und zeigt, was geschieht.'
+    'raccourci.revue.desc' = 'Eine SZH-Revue öffnen'
+    'raccourci.zs.desc'   = 'Eine SZH-Zeitschrift öffnen'
   }
   en = @{
     'app.titre'         = 'SZH/CSPS — Publishing toolchain'
@@ -278,7 +311,7 @@ $script:SzhTextes = @{
     'maj.ext.ok'        = 'Extensions up to date.'
     'maj.codium.absent' = 'The editor is not installed on this computer: its extensions were skipped, everything else is up to date. Have IT run the initial setup of this computer, then start this update again.'
     'maj.e4'            = '4/5  Editor settings…'
-    'maj.e4.ok'         = 'Settings applied, “Revues SZH” shortcut updated.'
+    'maj.e4.ok'         = 'Settings applied, Start menu shortcuts up to date.'
     'maj.e5'            = '5/5  Cleanup…'
     'maj.e5.ok'         = 'Done.'
     'maj.fini'          = '✓ Everything is up to date (version {0}). Happy writing!'
@@ -309,10 +342,17 @@ $script:SzhTextes = @{
     'lanceur.codium'    = 'The VSCodium editor was not found on this computer. Contact: {0}'
     'lanceur.vide'      = 'No journal on this computer yet — use “New journal…” to get started.'
     'lanceur.nouvelle'          = 'New journal…'
-    'lanceur.nouvelle.nom'      = 'Folder name for the new journal (e.g. 2026-02):'
+    'lanceur.nouvelle.annee'    = 'Year:'
+    'lanceur.nouvelle.numero'   = 'Number:'
+    'lanceur.nouvelle.volume'   = 'Volume:'
+    'lanceur.nouvelle.volume.manuel' = 'Set the volume manually (not recommended)'
+    'lanceur.nouvelle.volume.auto'   = 'Back to the calculated volume'
+    'lanceur.nouvelle.dossier'  = 'Folder: {0}'
     'lanceur.nouvelle.ou'       = "It will be created in:`n{0}"
     'lanceur.nouvelle.existe'   = 'A folder named {0} already exists at this location.'
-    'lanceur.nouvelle.invalide' = 'The name contains forbidden characters ( < > : " / \ | ? * ).'
+    'lanceur.nouvelle.doublon'  = "Volume {0}, number {1} already exists — that is issue {2}, here:`n{3}"
+    'lanceur.nouvelle.doublon.arch'  = 'That issue is archived — an archived issue is still a published issue.'
+    'lanceur.nouvelle.doublon.suite' = 'Two issues cannot carry the same volume and the same number. Delete the existing one first, then create this one again.'
     'lanceur.nouvelle.erreur'   = "Creating the journal failed:`n{0}"
     # Issue life cycle
     'maj.concurrente'           = 'An update is already running in another window — this one is closing.'
@@ -329,9 +369,10 @@ $script:SzhTextes = @{
     'lanceur.encours'           = 'In progress:'
     'lanceur.archives'          = 'Archived:'
     'lanceur.vide.archives'     = 'No archived journal.'
-    'lanceur.version'           = 'Software v. {0}'
-    'lanceur.version.inconnue'  = 'Software: unknown version'
-    'lanceur.test'              = 'Test folder — journals in {0}'
+    'lanceur.version'           = 'Version: {0}'
+    'lanceur.version.inconnue'  = 'Version: unknown'
+    'lanceur.test'              = 'Revue in: {0}'
+    'lanceur.test.zs'           = 'Zeitschrift in: {0}'
     'racine.test'               = 'test folder'
     'racine.prod'               = 'production folder'
     'lanceur.versions.bouton'   = 'Software version…'
@@ -360,6 +401,12 @@ $script:SzhTextes = @{
     'openmd.introuvable'  = "This file cannot be found.`n`nIt may have been moved or renamed, or OneDrive has not synced it yet."
     'openmd.horsrevue'    = "This file is not part of a journal: the preview and automatic rebuild will not be active.`n`nIt opens anyway, so you can read or fix it."
     'openmd.reseau'       = "This file sits on a network folder. It opens, but PDF building and the preview do not work from a network path.`n`nTo work on it, copy the journal to OneDrive or to this computer's disk."
+    # Start menu shortcuts. The first two names are .lnk FILE names: changing them
+    # renames the menu entry — the old one is removed, never left as a duplicate.
+    'raccourci.maj.nom'   = 'Update the journal tool'
+    'raccourci.maj.desc'  = 'Install the latest version of the SZH journal tool. A window opens and shows what is going on.'
+    'raccourci.revue.desc' = 'Open an SZH journal'
+    'raccourci.zs.desc'   = 'Open an SZH Zeitschrift'
   }
 }
 
@@ -796,6 +843,99 @@ function Get-SzhRevueEtat([string]$Dossier) {
   }
 }
 
+# ---- Identité d'un numéro : année, numéro, volume ----
+# Le volume est le millésime de la revue : un par année civile. Il s'imprime sur la
+# couverture (szh-maquette.lua) et part dans OJS en <volume> ; se tromper l'étiquetterait
+# faux partout, sans qu'un message le dise. Il n'a donc pas à être saisi : l'année le donne,
+# chaque revue ayant sa propre année de départ.
+#
+# Relevé sur ojs.szh.ch le 24.08.2026, neuf millésimes de suite pour chacune, sans trou :
+#   Revue        2018 -> Vol. 8  … 2026 -> Vol. 16    soit annee - 2010
+#   Zeitschrift  2018 -> Bd. 24  … 2026 -> Bd. 32     soit annee - 1994
+# Un volume par année, sans exception sur ces neuf-là. Ne pas déduire autre chose du compte
+# de numéros visible dans l'archive : une année en cours en montre moins que les autres, et
+# la numérotation elle-même a changé de forme au fil du temps — ni l'un ni l'autre ne dit
+# quoi que ce soit du volume. Une revue pourrait néanmoins sauter un volume ou en doubler
+# un : le formulaire garde un réglage manuel, et c'est lui qui tranche le jour où le compte
+# se décale.
+$script:SzhVolumeAnneeZero = @{
+  revue       = 2010
+  zeitschrift = 1994
+}
+
+# Volume calculé, ou 0 si le produit est inconnu ou l'année antérieure au premier volume.
+function Get-SzhVolumePour([string]$Produit, [int]$Annee) {
+  $jeton = Get-SzhJetonRevue $Produit
+  if (-not $jeton) { return 0 }
+  if (-not $SzhVolumeAnneeZero.ContainsKey($jeton)) { return 0 }
+  $volume = $Annee - $SzhVolumeAnneeZero[$jeton]
+  if ($volume -lt 1) { return 0 }
+  return $volume
+}
+
+# Première année dont le volume existe : la borne basse du formulaire, pour qu'il ne propose
+# jamais un volume nul ou négatif.
+function Get-SzhPremiereAnnee([string]$Produit) {
+  $jeton = Get-SzhJetonRevue $Produit
+  if ($jeton -and $SzhVolumeAnneeZero.ContainsKey($jeton)) { return ($SzhVolumeAnneeZero[$jeton] + 1) }
+  return 1
+}
+
+# Nom de dossier d'un numéro : la convention « AAAA-NN », numéro sur deux chiffres. Toute la
+# chaîne s'y appuie — szh-maquette.lua y prend l'année quand `date:` est vide, lib/yaml.js le
+# titre de la barre latérale — et c'est pourquoi ce nom se déduit et ne se saisit pas.
+function Get-SzhNomNumero([int]$Annee, [int]$Numero) {
+  return ('{0:0000}-{1:00}' -f $Annee, $Numero)
+}
+
+# Entier d'une valeur d'ausgabe.yaml, 0 si elle n'en est pas une : « 01 » et « 1 » sont le
+# même numéro, et un champ vide ne doit ressembler à aucun.
+function Get-SzhEntierYaml($Valeur) {
+  $texte = ([string]$Valeur).Trim()
+  if ($texte -notmatch '^[0-9]{1,6}$') { return 0 }
+  return [int]$texte
+}
+
+# Un numéro se reconnaît à son couple volume + numéro, jamais à son nom de dossier : deux
+# dossiers différents peuvent porter le même couple, et c'est précisément ce qu'il faut
+# refuser. On cherche donc dans les DEUX emplacements du produit, en cours et archives — un
+# numéro archivé reste un numéro publié, et son volume est pris.
+#
+# Rend $null, ou le premier numéro trouvé : { nom, chemin, dossier, archive }.
+function Find-SzhNumeroVolume([string]$Produit, [int]$Volume, [int]$Numero) {
+  if ($Volume -lt 1) { return $null }
+  if ($Numero -lt 1) { return $null }
+  $jeton = Get-SzhJetonRevue $Produit
+  if (-not $jeton) { return $null }
+  foreach ($etat in @('encours', 'archive')) {
+    $racine = Get-SzhEmplacementRevue $jeton $etat
+    if (-not $racine) { continue }
+    if (-not (Test-Path $racine)) { continue }
+    $dossiers = @()
+    try { $dossiers = @(Get-ChildItem -Path $racine -Directory -ErrorAction SilentlyContinue) } catch { }
+    foreach ($d in $dossiers) {
+      $fichier = Join-Path $d.FullName 'ausgabe.yaml'
+      if (-not (Test-Path $fichier)) { continue }
+      $valeurs = Get-SzhAusgabe $fichier
+      # Le produit vient du jeton du numéro, pas de son emplacement : un dossier rangé du
+      # mauvais côté ne doit pas bloquer la création d'un numéro de l'autre revue.
+      $sien = ''
+      if ($valeurs.ContainsKey('revue')) { $sien = Get-SzhJetonRevue $valeurs['revue'] }
+      if ($sien -ne $jeton) { continue }
+      if ((Get-SzhEntierYaml $valeurs['volume']) -ne $Volume) { continue }
+      if ((Get-SzhEntierYaml $valeurs['numero']) -ne $Numero) { continue }
+      return [pscustomobject]@{
+        nom     = $d.Name
+        chemin  = $d.FullName
+        dossier = $racine
+        archive = ($etat -eq 'archive')
+      }
+    }
+  }
+  return $null
+}
+
+
 # ---- Manifest (Release GitHub) ----
 
 function Get-SzhManifestUrl([string]$Version) {
@@ -999,6 +1139,171 @@ function Start-SzhCodium([string]$Dossier) {
     Write-SzhLog ('codium : lancement impossible (' + $_.Exception.Message + ') pour ' + $Dossier)
     return $false
   }
+}
+
+# ---- Raccourcis du menu Démarrer ----
+# Quatre entrées, au niveau utilisateur : les deux lanceurs de produit et les deux entrées
+# de mise à jour. Posées par update.ps1 (mise à jour), par update-launcher.ps1 (à chaque
+# ouverture de session) et par bootstrap.ps1 (poste neuf), pour qu'un poste déjà à jour
+# comme un poste sortant de sa boîte finisse par les avoir sans que personne n'intervienne,
+# et chacun dans le profil du rédacteur qui ouvre la session.
+#
+# Pourquoi DEUX entrées de mise à jour, une française et une allemande, plutôt qu'une seule
+# renommée selon la langue du poste ? Parce qu'un nom de fichier .lnk est figé alors que la
+# langue de l'interface bouge (variable d'environnement, préférence retenue dans state.json,
+# langue de Windows). Renommer à chaque mise à jour aurait trois défauts : sur un poste neuf
+# la langue résolue est l'anglais — les Windows d'ici sont en anglais et state.json est
+# encore muet —, c'est-à-dire la seule langue qu'aucune des deux équipes n'emploie ; le nom
+# changerait sous les doigts du rédacteur dès qu'un collègue ouvre l'autre lanceur, alors
+# qu'on ne retrouve une entrée du menu Démarrer qu'en tapant son nom ; et un renommage
+# revient à supprimer puis recréer, ce qui casse l'épinglage. Deux noms fixes, chacun
+# portant sa langue à update.ps1 : c'est déjà ce que font « Revues SZH » et
+# « Zeitschriften SZH », qui cohabitent sur tous les postes. Ajouter 'en' ici y ajouterait
+# une troisième entrée.
+$script:SzhLanguesRaccourci = @('fr', 'de')
+
+# Ce que le menu doit porter, une ligne par entrée : le nom du .lnk, sa cible, ses
+# arguments, sa description (l'infobulle), son icône, et le script qu'elle pilote.
+#
+# Les deux lanceurs passent par hidden.vbs, qui lance sans console : une fenêtre noire
+# devant un lanceur graphique n'apprendrait rien à personne. La mise à jour, elle, vise
+# powershell.exe en direct : elle télécharge, elle prend plusieurs minutes, elle peut
+# échouer, et sa fenêtre est la seule chose qui le montre — c'est aussi là que
+# Show-SzhErreur propose le journal et l'e-mail au support.
+#
+# Chaque entrée porte une icône (windows/icone.py) : épinglée à la barre des tâches, elle
+# perd son libellé et l'icône devient le seul repère. Sans IconLocation le shell affiche
+# celle de wscript.exe, qui ne dit rien à personne ; d'où le repli sur celle de VSCodium.
+function Get-SzhRaccourcisMenu {
+  param([string]$Toolkit = $SzhToolkit)
+  $vbs     = Join-Path $Toolkit 'windows\hidden.vbs'
+  $lanceur = Join-Path $Toolkit 'windows\open-revue.ps1'
+  $maj     = Join-Path $Toolkit 'windows\update.ps1'
+  $wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
+  # Windows PowerShell 5.1 explicitement : $PSHOME désignerait pwsh si la mise à jour
+  # avait été lancée depuis PowerShell 7, et pwsh n'a pas de powershell.exe à côté.
+  $ps = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+  if (-not (Test-Path $ps)) { $ps = Join-Path $PSHOME 'powershell.exe' }
+
+  $liste = New-Object System.Collections.ArrayList
+  # « Revues SZH » et « Zeitschriften SZH » sont des noms de produit, pas des phrases à
+  # traduire : ils ne bougent pas, des épinglages les désignent. Le produit est passé
+  # explicitement des deux côtés, pour qu'un raccourci ancien ne montre pas les deux listes
+  # mêlées. Chacun s'adresse à son équipe, donc chacun décrit dans sa langue.
+  [void]$liste.Add([ordered]@{
+    nom    = 'Revues SZH'
+    cible  = $wscript
+    args   = ('//B "{0}" "{1}" "-Produit" "revue"' -f $vbs, $lanceur)
+    desc   = $SzhTextes['fr']['raccourci.revue.desc']
+    icone  = (Join-Path $Toolkit 'windows\szh-revue.ico')
+    pilote = $lanceur
+  })
+  [void]$liste.Add([ordered]@{
+    nom    = 'Zeitschriften SZH'
+    cible  = $wscript
+    args   = ('//B "{0}" "{1}" "-Produit" "zeitschrift"' -f $vbs, $lanceur)
+    desc   = $SzhTextes['de']['raccourci.zs.desc']
+    icone  = (Join-Path $Toolkit 'windows\szh-zeitschrift.ico')
+    pilote = $lanceur
+  })
+  foreach ($langue in $SzhLanguesRaccourci) {
+    [void]$liste.Add([ordered]@{
+      nom    = $SzhTextes[$langue]['raccourci.maj.nom']
+      cible  = $ps
+      args   = ('-NoProfile -ExecutionPolicy Bypass -File "{0}" -Langue {1}' -f $maj, $langue)
+      desc   = $SzhTextes[$langue]['raccourci.maj.desc']
+      icone  = (Join-Path $Toolkit 'windows\szh-maj.ico')
+      pilote = $maj
+    })
+  }
+  return $liste
+}
+
+# Pose les entrées ci-dessus et retire celles d'une version antérieure. Ne lève jamais :
+# un menu Démarrer verrouillé par une stratégie de groupe ne doit pas faire échouer une
+# mise à jour par ailleurs réussie. Rend un bilan — poses, retires, manques — que
+# l'appelant écrit au journal, car un raccourci absent qui ne se dit pas est introuvable.
+# $Menu est paramétrable pour éprouver la fonction hors du vrai menu Démarrer.
+function Set-SzhRaccourcisMenu {
+  param(
+    [string]$Menu    = '',
+    [string]$Toolkit = $SzhToolkit
+  )
+  if (-not $Menu) { $Menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs' }
+  $bilan = [ordered]@{
+    poses   = New-Object System.Collections.ArrayList
+    retires = New-Object System.Collections.ArrayList
+    manques = New-Object System.Collections.ArrayList
+  }
+  $voulus = @(Get-SzhRaccourcisMenu -Toolkit $Toolkit)
+  $canoniques = @{}
+  foreach ($r in $voulus) { $canoniques[($r.nom + '.lnk').ToLower()] = $true }
+
+  $shell = $null
+  try {
+    New-Item -ItemType Directory -Force -Path $Menu | Out-Null
+    $shell = New-Object -ComObject WScript.Shell
+  } catch {
+    # Dossier non inscriptible, ou COM indisponible : rien ne sera posé, et c'est tout ce
+    # qu'on peut en dire. On le dit une fois, pas quatre.
+    [void]$bilan.manques.Add(('menu Démarrer inaccessible ({0}) : {1}' -f $Menu, $_.Exception.Message))
+    return $bilan
+  }
+
+  $codium = Get-VSCodiumExe
+  foreach ($r in $voulus) {
+    try {
+      # Pas de raccourci mort : un .lnk vers un script absent ne ferait que clignoter. Un
+      # raccourci déjà en place est alors laissé tel quel plutôt que remplacé par du vide.
+      if (-not (Test-Path $r.pilote)) {
+        [void]$bilan.manques.Add(('{0} : non posé, {1} manque au toolkit — celui-ci est incomplet, la tâche planifiée le réinstalle à la prochaine ouverture de session.' -f $r.nom, (Split-Path $r.pilote -Leaf)))
+        continue
+      }
+      $lnk = $shell.CreateShortcut((Join-Path $Menu ($r.nom + '.lnk')))
+      $lnk.TargetPath  = $r.cible
+      $lnk.Arguments   = $r.args
+      $lnk.Description = $r.desc
+      $lnk.WindowStyle = 1        # fenêtre normale : la mise à jour doit se voir
+      if (Test-Path $r.icone) { $lnk.IconLocation = ('{0},0' -f $r.icone) }
+      elseif ($codium) { $lnk.IconLocation = $codium }
+      $lnk.Save()
+      [void]$bilan.poses.Add($r.nom)
+    } catch {
+      [void]$bilan.manques.Add(('{0} : {1}' -f $r.nom, $_.Exception.Message))
+    }
+  }
+
+  # Une seule ligne suffit à dire qu'un dossier entier se refuse, et elle doit dire la
+  # suite : rien ne s'arrête pour autant, et la mise à jour garde deux autres portes.
+  if (($bilan.poses.Count -eq 0) -and ($bilan.manques.Count -gt 0)) {
+    [void]$bilan.manques.Add(('aucune entrée n''a pu être écrite dans « {0} » : ce dossier refuse l''écriture, le plus souvent parce qu''une stratégie de groupe tient le menu Démarrer. Rien d''autre n''est affecté, et la mise à jour reste atteignable par le bouton « Changer de version… » du lanceur et par la tâche planifiée qui la déclenche.' -f $Menu))
+  }
+
+  # Un raccourci d'une version antérieure, mal nommé, doublerait l'entrée sans jamais
+  # disparaître : on retire donc tout .lnk qui pilote un de nos scripts sans porter l'un
+  # des noms voulus. Un raccourci bien nommé mais pointant ailleurs a déjà été corrigé
+  # ci-dessus, CreateShortcut réécrivant le fichier existant. Le premier niveau du menu
+  # seulement : le sous-dossier « SZH » appartient à un autre produit, et rien ici ne doit
+  # y toucher.
+  $nos = @('open-revue.ps1', 'update.ps1')
+  try {
+    foreach ($f in @(Get-ChildItem -LiteralPath $Menu -Filter '*.lnk' -File -ErrorAction Stop)) {
+      if ($canoniques.ContainsKey($f.Name.ToLower())) { continue }
+      $vise = $false
+      try {
+        $vieux = $shell.CreateShortcut($f.FullName)
+        $ligne = (([string]$vieux.TargetPath) + ' ' + ([string]$vieux.Arguments)).ToLower()
+        foreach ($n in $nos) { if ($ligne -like ('*' + $n + '*')) { $vise = $true } }
+      } catch { $vise = $false }
+      if ($vise) {
+        Remove-Item -LiteralPath $f.FullName -Force
+        [void]$bilan.retires.Add($f.Name)
+      }
+    }
+  } catch {
+    [void]$bilan.manques.Add(('nettoyage des anciens raccourcis : ' + $_.Exception.Message))
+  }
+  return $bilan
 }
 
 # ---- Raccourci « Ouvrir la revue » ----

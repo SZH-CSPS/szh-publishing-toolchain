@@ -68,11 +68,12 @@ test('empreintes : la conversion les écrit, et le réimport note la version du 
   assert.match(SH, /reimporter\.py" --empreintes --dossier \. --slug "\$SLUG"/,
     'la conversion ne note plus ce qu’elle a livré : le réimport ne pourrait plus '
     + 'distinguer un tableau retravaillé d’un tableau tel que le Word l’avait donné');
-  assert.match(PY, /def ecrire_empreintes\(dossier, slug, nom_word, tableaux=None\)/,
+  assert.match(PY, /def ecrire_empreintes\(dossier, slug, nom_word, tableaux=None, biblio=None\)/,
     'ecrire_empreintes ne prend plus les empreintes du Word en argument');
-  assert.match(PY, /ecrire_empreintes\(temp, slug, nom_word, empreintes_du_word\)/,
-    'le réimport note l’état installé au lieu de celui du Word : un tableau gardé '
-    + 'passerait au réimport suivant pour une modification de l’auteur, à chaque fois');
+  assert.match(PY, /ecrire_empreintes\(temp, slug, nom_word, empreintes_du_word, biblio_du_word\)/,
+    'le réimport note l’état installé au lieu de celui du Word : un tableau ou une '
+    + 'bibliographie gardés passeraient au réimport suivant pour une modification de '
+    + 'l’auteur, à chaque fois');
   // Un seul nom de fichier, des deux côtés de la chaîne.
   assert.match(PY, /NOM_EMPREINTES = '\.szh-import\.empreintes'/,
     'le nom du fichier d’empreintes a changé — les articles déjà importés deviendraient '
@@ -97,11 +98,15 @@ test('empreintes absentes : on se montre prudent, et on le dit', () => {
 
 // ---- Ce que le Word possède, et rien d'autre ----
 
-test('réimport : seuls le corps, media/ et tables/ sont remplacés', () => {
+test('réimport : seuls le corps, la bibliographie, media/ et tables/ sont remplacés', () => {
   const bloc = /def possede_par_le_word\(slug\):\s*\n\s*return \{([^}]*)\}/.exec(PY);
   assert.ok(bloc, 'la liste blanche de ce que le Word possède a disparu');
   const noms = bloc[1].split(',').map((s) => s.trim()).filter(Boolean).sort();
-  assert.deepStrictEqual(noms, ["'media'", "'tables'", 'NOM_EMPREINTES', "slug + '.md'"],
+  // La bibliographie détachée en fait partie : elle est écrite à l'import depuis les styles
+  // du Word, donc elle en vient. L'omettre ferait mentir la liste blanche, et c'est elle
+  // qui décide de ce qui est remplacé.
+  assert.deepStrictEqual(noms,
+    ["'media'", "'tables'", 'NOM_EMPREINTES', 'nom_biblio(slug)', "slug + '.md'"],
     'la liste de ce que le réimport remplace a changé — la fiche, les tâches, le suivi de '
     + 'traduction ou les portraits pourraient partir avec le corps');
   // Le reste est recopié sans énumération : un sidecar inventé demain survivra seul.

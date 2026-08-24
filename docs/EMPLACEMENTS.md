@@ -133,7 +133,10 @@ L'archivage ne sort jamais de la racine active : un numéro archivé passe de
 | `windows\szh-common.ps1` · `Get-SzhEmplacements` | Les quatre dossiers du poste, plus l'emplacement actif. Journalise la racine une fois par lancement. | `open-revue.ps1`, `new-revue.ps1`, `archive-revue.ps1` |
 | `windows\szh-common.ps1` · `Initialize-SzhEmplacementsTest` | Crée les quatre dossiers manquants — **en test seulement**. En production, jamais : l'arborescence est celle de SharePoint. | `open-revue.ps1` |
 | `windows\open-revue.ps1` | Le lanceur : liste les numéros de la racine active, affiche version et racine, ouvre VSCodium. | menu Démarrer, liens `szh://` |
-| `windows\new-revue.ps1` | Crée un numéro dans le dossier « en cours » de la racine active. | bouton « Nouvelle revue… » |
+| `windows\new-revue.ps1` | Crée un numéro dans le dossier « en cours » de la racine active, et écrit son année, son numéro et son volume. | bouton « Nouvelle revue… » |
+| `windows\szh-common.ps1` · `Get-SzhVolumePour` | Le volume d'après l'année : Zeitschrift = année − 1994, Revue = année − 2010. **Seul endroit du dépôt qui porte ces deux années zéro.** | le formulaire « Nouvelle revue… », `new-revue.ps1` |
+| `windows\szh-common.ps1` · `Find-SzhNumeroVolume` | Cherche un numéro déjà posé sur un couple volume + numéro, **en cours et dans les archives** de la racine active. Rend son nom et son chemin ; ne supprime ni ne déplace rien. | le formulaire « Nouvelle revue… » |
+| `test\js\volume-numero.test.js` | Juge la formule du volume contre un relevé de `ojs.szh.ch` (neuf millésimes) et éprouve le refus du doublon sur une arborescence jetable. | `node --test` |
 | `windows\archive-revue.ps1` | Déplace un numéro « en cours » ⇄ « archives », dans la racine active. | panneau d'export du cockpit |
 | `szh-cockpit\lib\archivage.js` · `resoudreEmplacementRevues` | La même règle, côté cockpit. Ne connaît **aucun** chemin de revue : il ne rend que la décision. | réglages du cockpit |
 | `szh-cockpit\lib\archivage.js` · `ecrireEmplacementRevues` | La bascule depuis « Réglages SZH ». Écrit les deux clés à la fois. | `extension.js` |
@@ -165,9 +168,15 @@ L'archivage ne sort jamais de la racine active : un numéro archivé passe de
    - `Revues SZH — dossier de production (2_Produkte)`
    - `Zeitschriften SZH — Testordner (Revues-TESTING)`
    - `Zeitschriften SZH — Produktionsordner (2_Produkte)`
-2. **Le bloc d'informations du lanceur**, sous les deux listes, ajoute le chemin complet
-   quand l'emplacement de test est actif :
-   `Dossier de test — revues dans C:\Users\robin\OneDrive - SZH CSPS\Revues-TESTING`
+2. **Le bloc d'informations du lanceur**, sous les deux listes, donne le chemin complet de
+   la racine active — dans les **deux** racines, et non plus en test seulement. C'était le
+   cas grave qui restait muet : un lanceur basculé sur `production`, listes vides, ne disait
+   pas pourquoi.
+   - `Revue dans : C:\Users\robin\OneDrive - SZH CSPS\Revues-TESTING`
+   - `Revue dans : C:\Users\robin\SZH CSPS\Daten_Allgemein - General\2_Produkte`
+   - `Zeitschrift in: C:\Users\robin\OneDrive - SZH CSPS\Revues-TESTING`
+   Le mot « dossier de test » n'y est plus, mais le chemin le nomme : `Revues-TESTING` d'un
+   côté, `2_Produkte` de l'autre. Et le titre de la fenêtre, lui, garde l'étiquette en clair.
 3. **Le journal** `C:\ProgramData\SZH\logs\szh-<année>-<mois>.log` porte une ligne par
    lancement :
    `revues : emplacement "test" -> C:\Users\robin\OneDrive - SZH CSPS\Revues-TESTING`

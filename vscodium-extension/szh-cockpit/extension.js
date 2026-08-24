@@ -41,9 +41,14 @@ const {
   TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
   analyserAusgabe, serialiserAusgabe, ecrireAtomique,
   separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
-  analyserMeta, serialiserMeta, langueRevue, titreNumero, etatRevue, normaliserLangueArticle,
-  LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence
+  analyserMeta, serialiserMeta, langueRevue, langueDefaut, titreNumero, etatRevue, normaliserLangueArticle,
+  LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, REVUES
 } = require('./lib/yaml');
+// ---- Bibliographie et appels de citation -> lib/citations.js ---------------------
+const {
+  configBiblio, configAvecTitresBiblio, nomFichierBiblio, cheminBiblio,
+  REVUES_BIBLIO, LANGUES_BIBLIO
+} = require('./lib/citations');
 // ---- Cycle de vie du numéro -> lib/archivage.js ----------------------------------
 const {
   versionInstallee, versionsDivergent, tailleDossier, supprimerDossier,
@@ -77,7 +82,8 @@ const { appliquerVerrou } = require('./lib/verrou');
 const { construireLienTraduction, consommerIntention } = require('./lib/liens');
 const { enregistrerPanneaux } = require('./lib/panneaux');
 const {
-  genererExportOjs, configOjs, ecrireConfigOjs, CHAMPS_REVUE, LOCALES_REVUE, RUBRIQUES_DEFAUT
+  genererExportOjs, configOjs, ecrireConfigOjs, doiCalcule, typeSansDoi,
+  CHAMPS_REVUE, LOCALES_REVUE, RUBRIQUES_DEFAUT
 } = require('./lib/export-ojs');
 const {
   retirerImage, retirerTable, ordreImages, lireAttributsImage, ecrireAttributsImage,
@@ -86,7 +92,8 @@ const {
 const { traiterPortraits } = require('./lib/portraits');
 // ---- Journal de compilation -> lib/journal.js ------------------------------------
 const {
-  analyserJournal, phraseConstat, resumeJournal, constatsReimport, tonResultatReimport
+  analyserJournal, phraseConstat, resumeJournal, citationsParArticle,
+  constatsReimport, tonResultatReimport
 } = require('./lib/journal');
 // ---- JPEG CMJN -> RVB -> lib/cmyk.js ---------------------------------------------
 const { convertirCmykEnRgb, estJpegCmyk } = require('./lib/cmyk');
@@ -101,7 +108,9 @@ const {
 } = require('./lib/traduction');
 // ---- Ordre, noms et tâches des articles -> lib/articles.js ---------------------
 const {
-  CLE_ORDRE, ordonnerArticles, deplacerArticle, prefixeOrdre, titreFiche, libelleArticle,
+  CLE_ORDRE, CLE_SANS_DOI, ordonnerArticles, deplacerArticle, prefixeOrdre, titreFiche,
+  libelleArticle, analyserSansDoi, basculerSansDoi, trierParDoi, refusDeplacement,
+  rangDoi, resumeImages,
   REVUES_TACHES, tachesRevue, tachesConfig, configAvecTaches, libelleTache,
   analyserTachesFaites, serialiserTachesFaites, resumeTaches, basculerTache,
   NOMS_COUVERTURE, EXTENSIONS_COUVERTURE, nomCouverture, MAX_COUVERTURE
@@ -141,6 +150,27 @@ function etatCourant() { return etatNumero; }
 // la demande reste possible, puisque l'archivage supprime out/.
 function compilationAutoCoupee() {
   return etatNumero.archivee || etatNumero.verrouillee;
+}
+
+// ⚠ EXCEPTION AU VERROU, et elle est voulue : l'ORDRE des articles n'est gelé que par
+// l'ARCHIVAGE, pas par le verrou. Un numéro verrouillé a ses TEXTES figés — c'est ce que
+// `locked` protège — mais sa SÉQUENCE peut encore se décider : on verrouille la copie,
+// puis on arrête le sommaire. Un numéro archivé, lui, est terminé, et son ordre décide des
+// DOI déjà déposés : plus rien ne bouge.
+//
+// Ne pas « réparer » cette garde en y remettant refuserSiVerrouille() : l'ordre redeviendrait
+// figé trop tôt, et le sommaire ne se déciderait plus. Deux contrôles la tiennent, dont un
+// qui vérifie qu'un numéro verrouillé mais NON archivé accepte encore un déplacement.
+//
+// Noter que désarchiver ne déverrouille pas : un numéro sorti des archives redevient donc
+// réordonnable tout en restant verrouillé, ce qui est exactement le geste attendu.
+function refuserSiArchivee() {
+  if (!etatNumero.archivee) { return false; }
+  const bouton = T('art.ordre.archive.bouton');
+  vscode.window.showWarningMessage(T('art.ordre.archive'), bouton).then((choix) => {
+    if (choix === bouton) { vscode.commands.executeCommand('szh.desarchiver'); }
+  });
+  return true;
 }
 
 // Garde d'écriture : true = refusé, l'appelant sort. Le refus est toujours affiché.
@@ -277,6 +307,41 @@ function valeurOrdreArticles(racine) {
   try {
     return analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8'))[CLE_ORDRE] || '';
   } catch (e) { return ''; }
+}
+
+// Les articles que la rédaction a cochés « pas de DOI ». Ils vivent dans le fichier du
+// numéro, à côté de l'ordre, et c'est cette liste qui les range en fin de numéro : le rang
+// décide du DOI, donc l'un ne peut pas se lire sans l'autre.
+function slugsSansDoiVoulu(racine) {
+  try {
+    return analyserSansDoi(
+      analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8'))[CLE_SANS_DOI] || '');
+  } catch (e) { return []; }
+}
+
+// Le jeu complet de ceux qui ne reçoivent PAS de DOI : la case cochée, et la rubrique qui
+// n'en reçoit jamais — Documentation sur l'instance réelle. Le second se lit dans le type
+// de la fiche, d'où une lecture par article.
+//
+// C'est ce jeu, et lui seul, qui décide du compteur du DOI : le compteur ne compte que les
+// porteurs, si bien qu'il reste contigu — 00, 01, 02… — quoi qu'on fasse des autres.
+//
+// `opts.types`  slug -> type déjà lu, pour ne pas relire les fiches que l'appelant a en main
+// `opts.voulus` la liste des cases cochées à employer, au lieu de celle du fichier : c'est
+//               ce qui permet de calculer le jeu d'APRÈS une bascule, avant de l'écrire.
+function articlesSansDoi(racine, slugs, opts) {
+  const o = opts || {};
+  const jeu = new Set(o.voulus || slugsSansDoiVoulu(racine));
+  if (!slugs || slugs.length === 0) { return jeu; }
+  const cfg = configOjs();
+  for (const slug of (slugs || [])) {
+    if (jeu.has(slug)) { continue; }
+    const type = (o.types && o.types[slug] !== undefined)
+      ? o.types[slug]
+      : lireMetaArticle(racine, slug).type;
+    if (typeSansDoi(cfg, type)) { jeu.add(slug); }
+  }
+  return jeu;
 }
 
 // Jeton de revue du numéro, ou '' : il choisit le jeu de tâches et la langue de l'e-mail.
@@ -588,7 +653,11 @@ class FournisseurRevue {
       // Seuls les tableaux se déplient sous l'article : les images se gèrent dans le
       // formulaire « Médias de cet article », qui les montre avec leurs légendes, leurs
       // crédits et leur verdict de qualité.
-      const aDesAssets = this._tablesArticle(slug).length > 0;
+      // Ce qui rend un article dépliable : ses tableaux, ou sa bibliographie. Compter les
+      // seuls tableaux laissait l'entrée de bibliographie inatteignable sur un article qui
+      // n'a pas de tableau — c'est-à-dire sur la plupart.
+      const aDesAssets = this._tablesArticle(slug).length > 0
+        || fs.existsSync(cheminBiblio(this.racine, slug));
       const deploye = auto && aDesAssets && slug === this.slugDeploye;
       const nom = nomArticle(this.racine, slug, index, langue);
       const it = new vscode.TreeItem(nom, !aDesAssets
@@ -647,6 +716,9 @@ class FournisseurRevue {
       .sort((a, b) => a.localeCompare(b, 'fr'));
   }
 
+  // Ce que l'article porte à part de son texte : ses tableaux, et sa bibliographie. Aucune
+  // description sur ces entrées — ni poids, ni compteur : la colonne reste vide, et ce qui
+  // s'y affichera un jour aura donc du sens.
   _itemsTables(slug) {
     const baseTables = path.join(this.racine, 'articles', slug, 'tables');
     const tables = this._tablesArticle(slug).map((nom) => {
@@ -656,7 +728,6 @@ class FournisseurRevue {
       it.cheminAsset = chemin;
       it.iconPath = new vscode.ThemeIcon('table');
       it.contextValue = 'table';
-      it.description = decrireImage(chemin);      // pas une image : le poids seul
       it.tooltip = T('arbre.table.tooltip', [chemin]);
       // L'éditeur plutôt que le HTML brut, qui reste accessible depuis l'Explorateur.
       it.command = {
@@ -665,7 +736,35 @@ class FournisseurRevue {
       };
       return it;
     });
-    return tables;
+    const biblio = this._itemBiblio(slug);
+    return biblio ? tables.concat([biblio]) : tables;
+  }
+
+  // La bibliographie, éditable comme un tableau — mais en texte : c'est de la prose, une
+  // référence par paragraphe, que le rédacteur colle depuis Zotero ou depuis un autre
+  // article. Un éditeur structuré se battrait contre ce geste-là ; le texte est la bonne
+  // surface, et c'est déjà celle de l'article.
+  //
+  // Colonne 1, comme le .md : « Beside » est relatif à la vue active et empile les colonnes,
+  // et la colonne 2 appartient à l'aperçu. L'onglet s'ouvre donc À CÔTÉ de l'article, pas à
+  // sa place, et sans chasser l'aperçu.
+  //
+  // Pas de fichier : pas d'entrée. Un article sans bibliographie n'a rien à montrer — une
+  // entrée morte ferait croire à une liste vide, ce qui n'est pas la même chose.
+  _itemBiblio(slug) {
+    const chemin = cheminBiblio(this.racine, slug);
+    if (!fs.existsSync(chemin)) { return null; }
+    const it = new vscode.TreeItem(nomFichierBiblio(slug), vscode.TreeItemCollapsibleState.None);
+    it.slug = slug;
+    it.cheminAsset = chemin;
+    it.iconPath = new vscode.ThemeIcon('book');
+    it.contextValue = 'biblio';
+    it.tooltip = T('arbre.biblio.tip');
+    it.command = {
+      command: 'vscode.open', title: T('arbre.biblio'),
+      arguments: [vscode.Uri.file(chemin), { viewColumn: vscode.ViewColumn.One }]
+    };
+    return it;
   }
 
   // articles-word/*.docx à la racine du dossier, donc sans _convertis/.
@@ -773,10 +872,17 @@ class FournisseurRevue {
 
   // L'ordre du numéro, réparé de ce que le disque dit : un article ajouté à la main
   // apparaît à la fin, un article effacé quitte l'ordre, et rien n'est réécrit au passage.
+  //
+  // Puis la règle du DOI par-dessus : les articles qui n'en reçoivent pas passent à la fin,
+  // pour que le numéro d'ordre du DOI suive l'ordre de lecture. Le tri est appliqué ICI,
+  // sur l'unique source d'ordre du cockpit, et non dans la vue : l'arbre, les vues et les
+  // boutons de déplacement doivent tous voir le même sommaire, sans quoi un article
+  // porterait deux rangs selon l'endroit où on le regarde.
   listerArticles() {
     if (!this.racine) { return []; }
     const slugs = this._sousDossiersAvecMd(path.join(this.racine, 'articles'));
-    return ordonnerArticles(valeurOrdreArticles(this.racine), slugs).slugs;
+    return ordonnerArticles(valeurOrdreArticles(this.racine), slugs,
+      articlesSansDoi(this.racine, slugs)).slugs;
   }
 
   _articleExiste(slug) {
@@ -3142,6 +3248,12 @@ function textesArticles() {
     tachesEnregistrer: T('form.enregistrer'),
     tachesEnregistrees: T('art.taches.enregistrees'),
     tachesFermer: T('art.taches.fermer'),
+    // La case « pas de DOI » : le seul texte que la page écrit elle-même. Les intitulés et
+    // les valeurs de l'aperçu, eux, arrivent tout faits dans chaque ligne — c'est l'hôte qui
+    // sait dire une licence ou une rubrique. L'avertissement « aperçu seul » est dans le
+    // gabarit de la page, où il ne s'affiche qu'une fois.
+    doiCase: T('art.doi.case'),
+    doiCaseTip: T('art.doi.case.tip'),
     revues: { revue: T('meta.revue.revue'), zeitschrift: T('meta.revue.zeitschrift') }
   });
 }
@@ -3154,50 +3266,283 @@ function htmlArticles(nonce) {
   });
 }
 
-// L'avancement des tâches en pastille. Bleu ce qui a commencé, vert ce qui est clos, rien
-// quand rien n'est fait : le même code de couleurs que les états d'atelier des traductions.
-// Sorti de chargeArticles() parce que cocher une case ne renvoie que cette pastille, et
+// Les pastilles d'une carte : l'avancement des tâches, puis le compteur d'images.
+//
+// Bleu ce qui a commencé, vert ce qui est clos, rien quand rien n'est fait : le même code
+// de couleurs que les états d'atelier des traductions.
+//
+// Sorti de chargeArticles() parce que cocher une case ne renvoie QUE ces pastilles, et
 // jamais la liste entière : la reconstruire ferait perdre au clavier le focus de la case
-// qu'il vient d'utiliser.
-function pastillesAvancement(avance) {
-  if (avance.total === 0) { return []; }
-  return [{
-    texte: avance.toutes
-      ? T('art.taches.toutes')
-      : T('art.taches.avancement', [avance.faites, avance.total]),
-    ton: avance.toutes ? 'ok' : (avance.faites > 0 ? 'info' : ''),
-    icone: avance.toutes ? 'ok' : (avance.faites > 0 ? 'fleche' : 'cercle')
-  }];
+// qu'il vient d'utiliser. Les deux pastilles partent donc ensemble, sinon cocher une tâche
+// effacerait le compteur d'images.
+function pastillesCarte(avance, images) {
+  const pastilles = [];
+  if (avance.total > 0) {
+    pastilles.push({
+      texte: avance.toutes
+        ? T('art.taches.toutes')
+        : T('art.taches.avancement', [avance.faites, avance.total]),
+      ton: avance.toutes ? 'ok' : (avance.faites > 0 ? 'info' : ''),
+      icone: avance.toutes ? 'ok' : (avance.faites > 0 ? 'fleche' : 'cercle')
+    });
+  }
+  // Un compteur à zéro est du bruit : un article sans image n'a rien à dire là-dessus.
+  if (images && images.total > 0) {
+    const manque = images.sansAlt + images.sansLegende;
+    pastilles.push({
+      texte: T('art.images.compteur', [images.total]),
+      ton: manque > 0 ? 'attention' : '',
+      icone: manque > 0 ? 'attention' : 'camera'
+    });
+  }
+  return pastilles;
 }
 
-// Une carte par article, dans l'ordre du numéro : son nom, son slug, ses tâches cochables
-// et de quoi le déplacer d'un cran. L'avancement se lit sur la carte, sans l'ouvrir.
+// ---- L'aperçu des métadonnées, sur la carte --------------------------------------
+//
+// Non éditable, et c'est tout l'intérêt : on regarde une carte d'article vingt fois pour
+// une fois qu'on la corrige, et un formulaire ouvert est un formulaire où l'on efface par
+// mégarde. Les deux boutons du pied mènent aux formulaires qui, eux, écrivent.
+//
+// « Le plus compact possible mais lisible » : une ligne par champ, un badge de langue au
+// lieu d'un intitulé répété, et les textes longs coupés. Ce qui est coupé est décidé ici et
+// non deviné : le résumé et les mots-clés sont les deux seuls champs dont la longueur n'a
+// pas de limite, et les seuls vraiment tronqués.
+const APERCU_COURT = 90;      // titre, sous-titre : un titre de la revue tient là-dedans
+const APERCU_LONG = 130;      // résumé, mots-clés : de quoi reconnaître, pas de quoi relire
+
+function couperApercu(texte, limite) {
+  const t = String(texte === undefined || texte === null ? '' : texte).replace(/\s+/g, ' ').trim();
+  return t.length <= limite ? t : t.slice(0, limite - 1).replace(/\s+\S*$/, '') + '…';
+}
+
+// Une ligne « un intitulé, une valeur par langue ». Seules les langues où quelque chose est
+// écrit paraissent : un article monolingue ne montre pas deux lignes vides.
+function ligneApercuLangues(libelle, map, limite) {
+  const valeurs = [];
+  for (const l of LANGUES_META) {
+    const t = couperApercu((map || {})[l], limite);
+    if (t !== '') { valeurs.push({ marque: l.toUpperCase(), texte: t }); }
+  }
+  return { libelle: libelle, valeurs: valeurs };
+}
+
+// Les mots-clés : une ligne par langue, la liste mise à plat. Le séparateur est celui des
+// listes du cockpit.
+function ligneApercuMotsCles(meta) {
+  const plat = {};
+  for (const l of LANGUES_META) {
+    const liste = ((meta.keywords || {})[l] || []).map((x) => String(x).trim()).filter((x) => x !== '');
+    if (liste.length > 0) { plat[l] = liste.join(' · '); }
+  }
+  return ligneApercuLangues(T('trad.champ.keywords'), plat, APERCU_LONG);
+}
+
+// Les auteur·e·s : l'identité d'abord, puis ce qui la situe, puis en badges ce que la fiche
+// porte DÉJÀ — l'ORCID, l'adresse, la photo. Les valeurs elles-mêmes ne sont pas affichées :
+// une adresse d'auteur·e n'a rien à faire dans un aperçu qui reste ouvert à l'écran.
+function ligneApercuAuteurs(meta) {
+  const valeurs = [];
+  for (const a of (meta.author || [])) {
+    const identite = [a.prenom, a.nom].map((x) => String(x || '').trim()).filter((x) => x !== '');
+    const situe = [a.fonction, a.affiliation].map((x) => String(x || '').trim()).filter((x) => x !== '');
+    const marques = [];
+    if (String(a.orcid || '').trim() !== '') { marques.push(T('art.apercu.orcid')); }
+    if (String(a.email || '').trim() !== '') { marques.push(T('art.apercu.courriel')); }
+    if (String(a.photo || '').trim() !== '') { marques.push(T('art.apercu.photo')); }
+    valeurs.push({
+      marque: '',
+      // Le prénom et le nom font UN nom, séparés d'une espace ; ce qui situe la personne
+      // vient après, derrière le point médian des listes du cockpit.
+      texte: couperApercu([identite.join(' ')].concat(situe).filter((x) => x !== '').join(' · '),
+        APERCU_LONG),
+      marques: marques
+    });
+  }
+  return { libelle: T('fiches.auteurs'), valeurs: valeurs };
+}
+
+// Le nom court de la licence : « CC-BY 4.0 ». La table de lib/yaml.js le porte déjà, sauf
+// pour « droits réservés », qui n'a pas de nom imprimable — d'où la seule exception.
+function nomCourtLicence(valeur) {
+  const cle = normaliserLicence(valeur) || LICENCE_DEFAUT;
+  if (cle === 'droits-reserves') { return T('art.apercu.licence.reservee'); }
+  for (const l of LICENCES_ARTICLE) { if (l.cle === cle) { return l.nom; } }
+  return '';
+}
+
+// Année du numéro : celle de la date de publication si elle y est, sinon celle du nom du
+// dossier (« 2027-03 »). Même repli que le titre de la vue : la date est vide jusqu'à la
+// parution, et sans ce repli le DOI d'un numéro en préparation serait incalculable tout du
+// long — c'est-à-dire pendant tout le temps où il sert.
+function anneeNumero(racine, valeurs) {
+  const annee = (String((valeurs || {}).date || '').match(/\d{4}/) || [''])[0];
+  if (annee !== '') { return annee; }
+  return (String(path.basename(racine)).match(/^(\d{4})-\d/) || ['', ''])[1];
+}
+
+// La ligne DOI de l'aperçu, et ce qu'il faut dire à côté. -> { ligne, constats }
+//
+// Le DOI est un CALCUL : le rang de l'article parmi ceux qui en portent un, compté à partir
+// de zéro, d'où l'éditorial en « 00 ». Rien ne le stocke. Mais si la fiche en porte un,
+// c'est LUI qui partira vers OJS : une divergence se dit, elle ne se devine pas.
+function apercuDoi(locale, annee, numeroRevue, rang, doiFiche, voulu) {
+  const fiche = String(doiFiche || '').trim();
+  const constats = [];
+  if (rang === -1) {
+    if (fiche !== '') { constats.push({ ton: 'attention', texte: T('art.doi.fiche.autre', [fiche]) }); }
+    return {
+      ligne: { marque: '', texte: T(voulu ? 'art.doi.aucun.voulu' : 'art.doi.aucun.rubrique') },
+      constats: constats
+    };
+  }
+  const calcule = doiCalcule(locale, annee, numeroRevue, rang);
+  if (calcule === '') {
+    return { ligne: { marque: '', texte: T('art.doi.incalculable'), ton: 'attention' },
+             constats: constats };
+  }
+  if (fiche !== '' && fiche !== calcule) {
+    constats.push({ ton: 'attention', texte: T('art.doi.fiche.autre', [fiche]) });
+  }
+  return { ligne: { marque: '', texte: calcule, marques: [T('art.doi.calcule')] },
+           constats: constats };
+}
+
+// Ce que les images de l'article disent sans qu'on ouvre leur gestionnaire. La lecture est
+// la SIENNE — lireAttributsImage, celle de lib/references.js, et la liste de fichiers de
+// media/ — ce qui laisse dehors les photos des autrices et auteurs, rangées dans portraits/.
+function resumeImagesArticle(fournisseur, slug) {
+  const md = path.join(fournisseur.racine, 'articles', slug, slug + '.md');
+  let texte = '';
+  try { texte = fs.readFileSync(md, 'utf8'); } catch (e) { return resumeImages([]); }
+  return resumeImages(fournisseur._imagesArticle(slug).map((relatif) => {
+    const v = lireAttributsImage(texte, relatif);
+    return { relatif: relatif, legende: v.legende, alt: v.alt,
+             altDefini: v.altDefini, horsFigure: v.horsFigure };
+  }));
+}
+
+// Ce que la carte doit signaler, en toutes lettres et dans son corps — jamais dans une
+// infobulle : les images incomplètes, puis l'état des références relevé à la dernière
+// compilation.
+function constatsCarte(images, citations) {
+  const constats = [];
+  if (images.sansAlt > 0) {
+    constats.push({ ton: 'attention', texte: T('art.images.sansalt', [images.sansAlt]) });
+  }
+  if (images.sansLegende > 0) {
+    constats.push({ ton: 'attention', texte: T('art.images.sanslegende', [images.sansLegende]) });
+  }
+  const c = citations || null;
+  if (c) {
+    const dits = [
+      ['appel-sans-reference', 'art.cit.sansref'],
+      ['appel-ambigu', 'art.cit.ambigu'],
+      ['reference-orpheline', 'art.cit.orpheline']
+    ];
+    for (const paire of dits) {
+      if (c[paire[0]] > 0) { constats.push({ ton: 'attention', texte: T(paire[1], [c[paire[0]]]) }); }
+    }
+  }
+  return constats;
+}
+
+// L'aperçu complet d'un article : neuf lignes, dans l'ordre où on les lit — ce que
+// l'article EST, ce qu'il DIT, qui l'a écrit, sous quelles conditions il paraît.
+function apercuArticle(meta, langue, doi) {
+  const type = String(meta.type || '').trim();
+  const langueArticle = normaliserLangueArticle(meta.lang);
+  const vide = T('art.apercu.vide');
+  const seule = (libelle, texte) => ({
+    libelle: libelle,
+    valeurs: [{ marque: '', texte: String(texte || '') !== '' ? String(texte) : vide }]
+  });
+  return {
+    lignes: [
+      seule(T('art.apercu.type'), (LIBELLES_TYPES[type] || {})[langue] || type),
+      seule(T('art.apercu.langue'),
+        langueArticle === '' ? T('art.apercu.langue.numero') : T('meta.langue.' + langueArticle)),
+      ligneApercuLangues(T('trad.champ.title'), meta.title, APERCU_COURT),
+      ligneApercuLangues(T('trad.champ.subtitle'), meta.subtitle, APERCU_COURT),
+      ligneApercuLangues(T('trad.champ.resume'), meta.resume, APERCU_LONG),
+      ligneApercuMotsCles(meta),
+      ligneApercuAuteurs(meta),
+      seule(T('art.apercu.licence'), nomCourtLicence(meta.licence)),
+      { libelle: T('art.apercu.doi'), valeurs: [doi] }
+    ].map((l) => (l.valeurs.length > 0 ? l : { libelle: l.libelle, valeurs: [{ marque: '', texte: vide }] }))
+  };
+}
+
+// Une carte par article, dans l'ordre du numéro : son nom, son slug, l'aperçu complet de
+// ses métadonnées, ses tâches cochables, ce qui lui manque, et de quoi le déplacer d'un
+// cran. Tout se lit sans rien ouvrir ; les deux boutons du pied mènent aux formulaires qui
+// écrivent, et sont les seuls à écrire.
 function chargeArticles(fournisseur) {
   const racine = fournisseur.racine;
   const langue = langueRevue(racine);
   const interface_ = langueCockpit();
   const taches = tachesDuNumero(racine);
   const slugs = fournisseur.listerArticles();
+  let valeurs = {};
+  try { valeurs = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')); }
+  catch (e) { /* illisible : le DOI sera dit incalculable, ce qui est vrai */ }
+  const locale = langueDefaut(valeurs);
+  const annee = anneeNumero(racine, valeurs);
+  const numeroRevue = String(valeurs.numero || '').trim();
+  // Les fiches sont lues UNE fois : elles servent au titre, à l'aperçu, et au verdict
+  // « cette rubrique ne reçoit pas de DOI » qui décide de l'ordre.
+  const metas = {};
+  const types = {};
+  for (const slug of slugs) {
+    metas[slug] = lireMetaArticle(racine, slug);
+    types[slug] = metas[slug].type;
+  }
+  // Deux jeux, et la nuance compte pour la case : `voulus` est ce que la rédaction a
+  // coché, `sansDoi` y ajoute les rubriques qui n'en reçoivent jamais. Une case cochée par
+  // la rubrique se montre verrouillée, puisque la décocher ne changerait rien.
+  const voulus = new Set(slugsSansDoiVoulu(racine));
+  const sansDoi = articlesSansDoi(racine, slugs, { types: types, voulus: [...voulus] });
+  const citations = citationsParArticle(constatsCourants(racine));
   const lignes = slugs.map((slug, index) => {
-    const meta = lireMetaArticle(racine, slug);
+    const meta = metas[slug];
     const titre = titreFiche(meta, langue);
     const faites = lireTachesArticle(racine, slug).faites;
     const avance = resumeTaches(taches, faites);
-    const pastilles = pastillesAvancement(avance);
+    const images = resumeImagesArticle(fournisseur, slug);
+    const doi = apercuDoi(locale, annee, numeroRevue, rangDoi(slugs, slug, sansDoi),
+      meta.doi, voulus.has(slug));
+    const constats = doi.constats.concat(constatsCarte(images, citations.get(slug)));
+    // Un article sans titre reste dans la liste, et la carte dit pourquoi elle montre un
+    // slug : la compilation refusera de partir sur cet article, et il faut le savoir ici.
+    if (titre === '') { constats.unshift({ ton: 'attention', texte: T('art.sansfiche') }); }
     return {
       cle: slug,
       titre: libelleArticle(index, slug, titre),
       meta: slug,
-      // Un article sans titre reste dans la liste, et la carte dit pourquoi elle montre un
-      // slug : le Makefile refuse de compiler cet article, et il faut le savoir ici.
-      notif: titre === '' ? { ton: 'attention', texte: T('art.sansfiche') } : null,
-      pastilles: pastilles,
+      pastilles: pastillesCarte(avance, images),
       ouvrir: true,
+      apercu: apercuArticle(meta, interface_, doi.ligne),
+      constats: constats,
+      // La case « pas de DOI ». Verrouillée quand c'est la RUBRIQUE qui décide : cocher ou
+      // décocher n'y changerait rien, et un interrupteur sans effet est un mensonge.
+      sansDoi: {
+        coche: sansDoi.has(slug),
+        verrouille: !voulus.has(slug) && sansDoi.has(slug)
+      },
       actions: [
+        // Les deux formulaires, ouverts sur CET article. Le pied de carte est le seul
+        // endroit d'où l'on écrit : l'aperçu au-dessus ne se modifie pas.
+        { id: 'metadonnees', libelle: T('art.meta.editer'), icone: 'info',
+          tip: T('art.meta.editer.tip') },
+        { id: 'medias', libelle: T('art.medias.editer'), icone: 'camera',
+          tip: T('art.medias.editer.tip') },
+        // Aux bords de son BLOC, et non de la liste : un article sans DOI ne remonte pas
+        // au-dessus de ceux qui en portent un, sinon la numérotation cesserait de suivre
+        // l'ordre de lecture. Le bouton refuse là où l'hôte refuserait de toute façon.
         { id: 'monter', libelle: T('art.monter'), icone: 'haut', tip: T('art.monter.tip'),
-          desactive: index === 0 },
+          desactive: refusDeplacement(slugs, slug, -1, sansDoi) !== '' },
         { id: 'descendre', libelle: T('art.descendre'), icone: 'bas', tip: T('art.descendre.tip'),
-          desactive: index === slugs.length - 1 },
+          desactive: refusDeplacement(slugs, slug, 1, sansDoi) !== '' },
         { id: 'envoyer', libelle: T('art.envoyer'), icone: 'traduction', tip: T('art.envoyer.tip') }
       ],
       taches: taches.map((t) => ({
@@ -3236,7 +3581,8 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     if (rafraichirTout) { rafraichirTout(); }      // l'arbre porte le même avancement
     const avance = resumeTaches(taches, faites);
     return { dit: T('art.taches.avancement', [avance.faites, avance.total]),
-             avancement: { cle: slug, pastilles: pastillesAvancement(avance) } };
+             avancement: { cle: slug,
+                           pastilles: pastillesCarte(avance, resumeImagesArticle(fournisseur, slug)) } };
   }
   if (msg.type === 'taches-enregistrer') {
     const revue = String(msg.revue || '');
@@ -3255,17 +3601,59 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     if (rafraichirTout) { rafraichirTout(); }
     return T('art.taches.enregistrees');
   }
+  // La case « pas de DOI » d'un article. Elle décide de deux choses d'un seul coup : que
+  // l'article ne reçoit pas de DOI, et qu'il passe en fin de numéro — donc l'ordre est
+  // réécrit avec elle, sinon le fichier dirait une chose et l'écran une autre.
+  //
+  // C'est l'ORDRE du numéro qu'elle touche : elle suit donc la même règle que les boutons
+  // de déplacement, refusée sur un numéro archivé et acceptée sur un numéro verrouillé.
+  if (msg.type === 'sansdoi') {
+    if (refuserSiArchivee()) { return null; }
+    const slug = String(msg.cle || '');
+    const slugs = fournisseur.listerArticles();
+    if (slugs.indexOf(slug) === -1) { return null; }
+    const voulus = basculerSansDoi(slugsSansDoiVoulu(racine), slug, !!msg.coche, slugs);
+    const modifies = {};
+    modifies[CLE_SANS_DOI] = voulus;
+    // L'ordre part avec. listerArticles() applique déjà la règle à la lecture, mais le
+    // fichier doit finir par dire la même chose que l'écran : il se relit à la main, et il
+    // voyage seul sur SharePoint.
+    modifies[CLE_ORDRE] = trierParDoi(slugs, articlesSansDoi(racine, slugs, { voulus: voulus }));
+    const erreur = ecrireClesAusgabe(racine, modifies);
+    if (erreur) { return T('err.ecriture', [erreur]); }
+    if (rafraichirTout) { rafraichirTout(); }
+    return T('art.doi.enregistre', [voulus.length]);
+  }
   if (msg.type !== 'action') { return null; }
   const slug = String(msg.cle || '');
   if (msg.id === 'envoyer') {
     await envoyerAuteur(fournisseur, { slug: slug });
     return null;
   }
+  // Les deux formulaires de l'article, ouverts par leur commande et non par leur fonction :
+  // ce sont celles-là qui savent quel panneau réutiliser, et elles portent déjà le refus du
+  // verrou. Rien n'est réécrit ici.
+  if (msg.id === 'metadonnees') {
+    await vscode.commands.executeCommand('szh.metadonneesArticle', { slug: slug });
+    return null;
+  }
+  if (msg.id === 'medias') {
+    await vscode.commands.executeCommand('szh.mediasArticle', { slug: slug });
+    return null;
+  }
   if (msg.id !== 'monter' && msg.id !== 'descendre') { return null; }
-  if (refuserSiVerrouille()) { return null; }
+  // ⚠ refuserSiArchivee() et non refuserSiVerrouille() : voir la garde elle-même. Un
+  // numéro verrouillé a ses textes figés, mais son sommaire peut encore se décider.
+  if (refuserSiArchivee()) { return null; }
   const slugs = fournisseur.listerArticles();
   if (slugs.indexOf(slug) === -1) { return null; }
-  const nouveau = deplacerArticle(slugs, slug, msg.id === 'monter' ? -1 : 1);
+  const delta = msg.id === 'monter' ? -1 : 1;
+  // La règle du tri passe avant le déplacement : franchir la frontière DOI / sans DOI se
+  // refuse en le disant, être au bout de la liste ne se dit pas — c'est une évidence.
+  const refus = refusDeplacement(slugs, slug, delta, articlesSansDoi(racine, slugs));
+  if (refus === 'frontiere') { return T('art.ordre.frontiere'); }
+  if (refus !== '') { return null; }
+  const nouveau = deplacerArticle(slugs, slug, delta);
   if (nouveau.join(' ') === slugs.join(' ')) { return null; }   // déjà au bord
   // La liste entière part dans ausgabe.yaml : une liste partielle laisserait les autres
   // articles à réparer au prochain rendu.
@@ -4288,7 +4676,7 @@ function lireArticlesImport(fournisseur) {
     const base = path.join(fournisseur.racine, 'articles', slug, 'media');
     const images = fournisseur._imagesArticle(slug).map((relatif) => ({
       relatif: relatif,
-      description: decrireImage(path.join(base, relatif))   // « L × H · poids », comme l'arbre
+      description: decrireImage(path.join(base, relatif))   // « L × H · poids »
     }));
     articles.push({
       slug: slug, valeurs: valeurs, images: images,
@@ -4416,7 +4804,24 @@ function REGL_LIBELLES() {
   ojsColCle: T('ojs.col.cle'), ojsColAbbrev: T('ojs.col.abbrev'), ojsColTitre: T('ojs.col.titre'),
   ojsColResume: T('ojs.col.resume'), ojsColDoi: T('ojs.col.doi'),
   ojsAjouter: T('ojs.ajouter'), ojsCleNouvelle: T('ojs.cle.nouvelle'),
-  ojsTypes: T('ojs.types'), ojsTypesAide: T('ojs.types.aide')
+  ojsTypes: T('ojs.types'), ojsTypesAide: T('ojs.types.aide'),
+  biblioTitre: T('biblio.titre'), biblioColLangue: T('biblio.col.langue'),
+  biblioVide: T('biblio.vide')
+  };
+}
+
+// Ce que le panneau doit connaître du titre de la bibliographie : les intitulés effectifs,
+// les deux revues et les trois langues, avec leur nom lisible. Les listes viennent de
+// lib/citations.js et de lib/yaml.js — le panneau n'en recopie aucune, et les valeurs par
+// défaut vivent dans le filtre de composition, seul endroit où elles existent.
+function donneesBiblio() {
+  return {
+    titres: configBiblio().titres,
+    revues: REVUES_BIBLIO.map((cle) => ({
+      cle: cle,
+      libelle: T('ojs.revue.' + (REVUES.find((r) => r.cle === cle) || {}).langue)
+    })),
+    langues: LANGUES_BIBLIO.map((cle) => ({ cle: cle, libelle: T('meta.langue.' + cle) }))
   };
 }
 
@@ -4510,7 +4915,8 @@ function ouvrirReglages(rafraichirTout) {
   if (panneauReglages) {
     panneauReglages.reveal(vscode.ViewColumn.One);
     panneauReglages.webview.postMessage(
-      { type: 'valeurs', valeurs: lireReglagesActuels(), ojs: donneesOjs() });
+      { type: 'valeurs', valeurs: lireReglagesActuels(), ojs: donneesOjs(),
+        biblio: donneesBiblio() });
     return;
   }
   const panneau = vscode.window.createWebviewPanel(
@@ -4523,7 +4929,8 @@ function ouvrirReglages(rafraichirTout) {
     if (!msg) { return; }
     if (msg.type === 'pret') {
       panneau.webview.postMessage(
-        { type: 'valeurs', valeurs: lireReglagesActuels(), ojs: donneesOjs() });
+        { type: 'valeurs', valeurs: lireReglagesActuels(), ojs: donneesOjs(),
+        biblio: donneesBiblio() });
       return;
     }
     // La configuration de l'export OJS va dans config.json, comme le mode développeur :
@@ -4531,7 +4938,21 @@ function ouvrirReglages(rafraichirTout) {
     if (msg.type === 'reglerOjs') {
       const erreur = ecrireConfigOjs(msg.ojs || {});
       if (erreur) { vscode.window.showErrorMessage(T('ojs.err.ecriture', [erreur])); }
-      else { repondrePanneau(panneau, { type: 'enregistre' }); }
+      else { repondrePanneau(panneau, { type: 'enregistre', bloc: 'ojs' }); }
+      return;
+    }
+    // Le titre de la bibliographie, dans le même config.json et par les mêmes deux
+    // fonctions. Illisible n'est pas absent : on n'écrase pas un fichier qu'on n'a pas su
+    // lire, sans quoi l'emplacement des revues et la configuration OJS partiraient avec.
+    if (msg.type === 'reglerBiblio') {
+      const avant = lireConfigPoste();
+      if (avant === null && fs.existsSync(CONFIG_POSTE)) {
+        vscode.window.showErrorMessage(T('err.ecriture', [CONFIG_POSTE]));
+        return;
+      }
+      const erreur = ecrireConfigPoste(configAvecTitresBiblio(avant, msg.titres || {}));
+      if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [erreur])); }
+      else { repondrePanneau(panneau, { type: 'enregistre', bloc: 'biblio' }); }
       return;
     }
     if (msg.type !== 'regler') { return; }

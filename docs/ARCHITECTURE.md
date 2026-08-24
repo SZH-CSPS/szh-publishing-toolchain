@@ -32,7 +32,7 @@ flowchart TB
     end
 
     subgraph POSTE["Poste rédacteur (Windows)"]
-        TASK["Tâche planifiée<br/>(connexion + 11 h)"]
+        TASK["Tâche planifiée<br/>(connexion + mardi 14 h)"]
         TOOLKIT["C:\\ProgramData\\SZH\\toolkit<br/>pipeline · windows · vscodium-user"]
         WSL["WSL « SZH-Publishing »<br/>Debian + Pandoc + WeasyPrint"]
         VSC["VSCodium + szh-cockpit + szh-apercu"]
@@ -64,9 +64,13 @@ vide, aucun document — un choix explicite, pas une panne.
 métadonnées et les blocs à consommer — y compris l'appariement des photos du tableau des auteurs
 à la bonne personne, `docx-tables.py` extrait les tableaux en HTML autonome, `docx-titres.py`
 reconstruit la hiérarchie des titres. Pandoc convertit ensuite le document, une suite de filtres
-Lua y réinjecte ce que les scripts ont préparé. La liste de références, elle, n'est pas touchée :
-elle reste dans le corps telle que la rédaction l'a écrite, et c'est à la compilation que
-`szh-citations.lua` l'ancre et transforme les appels du texte en liens internes. Un dernier
+Lua y réinjecte ce que les scripts ont préparé. La liste de références est **détachée** dans
+`<slug>.biblio.md`, repérée par les styles de bibliographie du document Word plutôt que par
+son titre — un pari sur le texte du titre avalait parfois la fin de l'article. Le corps ne
+garde qu'un marqueur. À la compilation, `szh-citations.lua` réinsère la liste, pose son
+titre selon la langue de l'article, l'ancre, et transforme les appels du texte en liens
+internes. Un article importé avant ce changement garde sa liste dans le corps : elle est
+encore reconnue, mais par comparaison exacte du titre, et le rédacteur est averti. Un dernier
 maillon, `import-medias.py`, range les photos d'auteurs dans `portraits/` et les passe au
 détourage, retire de `media/` les images qu'aucune insertion du texte ne cite — Word livre tout
 ce que le document embarque, pandoc extrait tout — puis renomme ce qui reste en
@@ -146,8 +150,10 @@ Le contenu des revues n'est jamais géré ici.
 1. Un tag déclenche la CI : contrôle des contrats, construction des VSIX, assemblage du toolkit,
    publication d'un `manifest.json`. Le rootfs n'est reconstruit que si `image/` a changé.
 2. La préparation d'un poste se fait une fois, en administrateur (`bootstrap.ps1`).
-3. Ensuite, une tâche planifiée lit chaque jour le manifest et n'applique que les différences, en
-   silence. Le retour en arrière est possible : l'archive précédente est conservée.
+3. Ensuite, une tâche planifiée lit le manifest une fois par semaine et n'applique que les
+   différences, en silence — en renonçant plutôt que de remplacer l'environnement de
+   fabrication sous une compilation en cours. Le retour en arrière est possible : l'archive
+   précédente est conservée.
 
 ## Choix structurants
 

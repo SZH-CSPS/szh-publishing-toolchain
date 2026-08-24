@@ -22,7 +22,7 @@ Un PDF produit sans erreur, la chaîne est saine. Le contrôle complet, qui vér
 plus les allers-retours du cockpit et les valeurs recopiées d'un fichier à l'autre :
 
 ```powershell
-node --test test/js/*.test.js          # 15 contrôles, aucune dépendance
+node --test "test/js/*.test.js"        # tout le harnais, aucune dépendance
 python3 test/apca-check.py             # contrastes de la palette
 bash test/build-render.sh              # build + capture PNG de chaque page
 ```
@@ -40,6 +40,7 @@ l'aperçu se mettre à jour.
 | **Avant chaque numéro** (≈ 4×/an) | compiler le numéro précédent pour confirmer que rien n'a bougé ; vérifier que les dossiers de revue sont « toujours conservés sur cet appareil » côté OneDrive | 10 min |
 | **Après une mise à jour majeure de Windows** | test de fumée sur un poste ; `wsl --version` et `wsl -l -v` | 15 min |
 | **Après un changement de politique antivirus ou Intune** | re-vérifier les exclusions WSL (elles ne sont pas posées automatiquement, voir § Poste) | 10 min |
+| **Sur un poste installé avant août 2026** | une fois, en administrateur : `Set-SzhTacheMaj` pour passer le déclencheur de « quotidien 11 h » à « mardi 14 h ». Le rythme, lui, est déjà hebdomadaire sans ce geste (voir § Poste) | 2 min |
 | **2×/an** | compacter le `.vhdx` des postes ; reconstruire le rootfs (correctifs Debian, Pandoc, WeasyPrint) et le tester avant release | ½ journée |
 | **1×/an** | vérifier la fin de support de la base Debian ; relire `windows/vsix.lock` et décider des bumps ; vérifier que les huit extensions épinglées sont toujours publiées sur Open VSX | 2 h |
 | **1×/an** | vérifier que la version de VSCodium des postes est toujours compatible avec le pack de langue allemand épinglé | 15 min |
@@ -289,14 +290,138 @@ reste à faire par l'utilisateur, une fois.
 2. Le destinataire est sur le **nouvel** Outlook, qui ne connaît pas ce protocole. Le
    corps de l'e-mail porte pour cette raison une ligne de repli « menu Démarrer → … ».
 
-### La tâche planifiée de mise à jour ne tourne plus
+### La mise à jour automatique : ce qui la déclenche, et ce qui la retient
 
-**Symptôme.** Un poste reste sur une vieille version ; l'écart se voit dans la barre
-d'état du cockpit, qui compare la version du toolkit à celle qui a créé le numéro.
+La tâche planifiée **« SZH - Mise a jour »** porte deux déclencheurs, et les deux comptent :
 
-**À observer.** Le Planificateur de tâches (tâche « SZH - Mise a jour »), et le
-journal de mise à jour sous `C:\ProgramData\SZH`. **Avant chaque numéro**, la barre
-d'état suffit.
+| Déclencheur | Rôle |
+|---|---|
+| **hebdomadaire, mardi 14 h** | le rythme demandé : une mise à jour par semaine |
+| **à l'ouverture de session** | le rattrapage, et le seul bon moment de la journée (voir plus bas) |
+
+La cadence, elle, **n'est pas dans les déclencheurs** : elle est dans
+`windows/szh-taches.ps1`, que `Test-SzhFenetreMaj` applique à chaque passage. La tâche ouvre
+des occasions ; le script décide s'il en profite. Deux raisons à ce partage.
+
+1. Le déclencheur d'ouverture de session revient **chaque matin**. Sans garde, « une fois par
+   semaine » serait un vœu.
+2. `bootstrap.ps1` ne tourne qu'à l'installation, et la tâche vit dans la **racine du
+   planificateur**, que seul un administrateur peut réécrire — or une mise à jour ne demande
+   jamais l'élévation. Mesuré : `Set-ScheduledTask` comme `Register-ScheduledTask` rendent
+   *Access is denied* pour un compte non élevé, y compris membre du groupe Administrateurs
+   mais sans élévation. Un poste installé avant août 2026 garderait donc son déclencheur
+   quotidien de 11 h **pour toujours**. Le script, lui, est remplacé sur chaque poste à la
+   mise à jour suivante, sans intervention : c'est par lui que le rythme change partout.
+
+La conséquence à connaître : sur un poste déjà installé, le déclencheur reste quotidien
+jusqu'à ce qu'un administrateur passe, mais **le rythme effectif est déjà hebdomadaire**. Le
+journal le dit à chaque passage :
+
+```
+check : tâche planifiée refusee — écarts : déclencheur quotidien à retirer ; …
+check : tâche planifiée non corrigée (Access is denied.) — un administrateur doit…
+```
+
+**Manœuvre**, une seule fois par poste, dans un PowerShell **en administrateur** :
+
+```powershell
+. 'C:\ProgramData\SZH\toolkit\windows\szh-common.ps1'
+. 'C:\ProgramData\SZH\toolkit\windows\szh-taches.ps1'
+Set-SzhTacheMaj
+```
+
+Le bilan rendu vaut `conforme` (rien à faire, rien écrit), `corrigee` (elle différait),
+`creee` (elle manquait), `refusee` (pas assez de droits) ou `illisible` (le planificateur n'a
+pas répondu). Une tâche déjà juste **n'est pas recréée** : la réécrire lui remettrait son
+historique à zéro. Relancer `bootstrap.ps1` fait la même chose, en plus du reste.
+
+### Les quatre états du poste : verrouillé, éteint, en veille, personne connecté
+
+La question revient : *si l'ordinateur est éteint, en veille ou verrouillé, il n'y a pas de
+mise à jour ?* Réponse état par état, avec ce sur quoi elle s'appuie.
+
+| État du poste | Ça tourne ? | Ce qui se passe | Appui |
+|---|---|---|---|
+| **Verrouillé** (session ouverte, écran verrouillé) | **Oui** | Verrouiller n'est pas se déconnecter : la session reste ouverte, et c'est tout ce que la tâche exige. | `quser` rend l'état `Active` pour une session de console verrouillée ; et le planificateur traite le verrouillage comme un *changement d'état de session* (`SessionStateChangeTrigger`, états `SessionLock` / `SessionUnlock`), type de déclencheur **distinct** de l'ouverture de session — s'il fallait les confondre, ces deux types n'existeraient pas. |
+| **Éteint** | Non — rien ne tourne sur un poste éteint | Mais la fenêtre manquée est **rattrapée** : `StartWhenAvailable` est posé, la tâche part à la première occasion après le retour, avec un délai par défaut de **10 minutes**. Et l'ouverture de session la rattrape de toute façon, souvent plus tôt. | XML de la tâche (`<StartWhenAvailable>true</StartWhenAvailable>`) et la documentation Microsoft de `TaskSettings.StartWhenAvailable` : « *they are started after a delay. The default delay is 10 minutes* ». |
+| **En veille** | Non, et **volontairement** : la tâche ne réveille pas le poste | Elle part au réveil, par le même rattrapage. Sur le poste de référence, la veille arrive après 4 h d'inactivité sur secteur (10 min sur batterie) : un mardi de travail, le poste est éveillé à 14 h. | XML (`WakeToRun` absent, donc `false`) ; `powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE` mesuré : `0x3840` = 4 h sur secteur, `0x258` = 10 min sur batterie. |
+| **Allumé, personne connecté** | Non | La tâche tourne dans la session d'un utilisateur connecté. Sans session, rien. Ce n'est pas un défaut : la mise à jour installe des extensions et des réglages **dans le profil** de l'utilisateur, et il n'y a pas de profil sans session. | XML : `<GroupId>S-1-5-32-545</GroupId>` (groupe Utilisateurs) sans `<LogonType>Password</LogonType>`, c'est-à-dire « exécuter seulement si l'utilisateur est connecté ». |
+
+**Le cinquième état, celui qu'on n'avait pas vu : sur batterie.**
+`DisallowStartIfOnBatteries` vaut `true` par défaut, et il l'était sur la tâche installée. Un
+portable jamais branché ne se mettait donc **jamais** à jour — ni le mardi, ni à l'ouverture
+de session. Le passage du quotidien à l'hebdomadaire aurait aggravé le cas, de sept occasions
+par semaine à une. `New-SzhTacheMajReglages` pose désormais `-AllowStartIfOnBatteries` ;
+`-DontStopIfGoingOnBatteries` reste, donc une mise à jour commencée sur secteur n'est pas
+coupée par un débranchement.
+
+**Pourquoi pas `-WakeToRun`.** Il existe, il réveillerait le poste à 14 h, et il a été
+écarté :
+
+- il dépend du réglage « autoriser les minuteurs de réveil » du plan d'alimentation, qui
+  n'est pas le même sur secteur et sur batterie — mesuré sur le poste de référence :
+  `Enable` sur secteur, `Disable` sur batterie. Une stratégie centrale peut le désactiver
+  partout, et la tâche paraîtrait alors réglée sans jamais réveiller personne ;
+- il se comporte autrement sur les machines à veille moderne (S0 Low Power Idle) que sur les
+  machines à veille S3 ;
+- réveiller un poste à 14 h pour télécharger **574 Mo** d'image WSL est intrusif, et le
+  rédacteur n'a rien demandé ;
+- surtout il est **inutile** : `StartWhenAvailable` rattrape la fenêtre manquée, et
+  l'ouverture de session la rattrape encore mieux — c'est même le seul moment de la journée
+  où l'éditeur n'est pas ouvert.
+
+Un réveil serait la bonne réponse s'il fallait absolument que la mise à jour tombe à une
+heure précise. Ce n'est pas le cas : ce qui compte est qu'elle tombe une fois par semaine.
+
+### La mise à jour silencieuse renonce, et repasse plus tard
+
+14 h tombe en pleine après-midi de travail, et une mise à jour peut remplacer l'**image WSL**
+— 574 Mo à la dernière release. L'installation doit alors désenregistrer la distribution, ce
+qu'elle ne peut pas faire pendant qu'une compilation s'en sert : c'est exactement ce que dit
+`err.wsl`, qui demande de fermer l'éditeur.
+
+`update-launcher.ps1` mesure donc le moment, mais **seulement quand l'environnement de
+fabrication change** : un toolkit, des extensions et des réglages s'installent très bien sous
+l'éditeur ouvert, et renoncer là retarderait des corrections pour rien.
+
+| Ce qui est mesuré | Comment | Conséquence |
+|---|---|---|
+| Une compilation en vol | un client `wsl.exe` dont la ligne de commande porte le `Makefile` de la chaîne — la forme que prend `Ctrl+S`, voir `vscodium-user/tasks.json` — **et** les processus lus dans `/proc` à l'intérieur de la distro : l'image n'embarque pas `procps`, donc ni `ps` ni `pgrep` | **Renoncement sans appel** : la couper détruit du travail |
+| L'éditeur est ouvert | un processus `VSCodium` | Renoncement, réversible (voir le délai de politesse) |
+| La distribution tourne | `wsl -l --running -q`, qui rend des noms de distributions sans la colonne d'état, laquelle est traduite selon la langue de WSL | Renoncement, réversible |
+
+Un renoncement **ne consomme pas la fenêtre de la semaine** : le prochain déclenchement
+réessaie, et l'ouverture de session du lendemain est justement un bon moment. C'est la raison
+profonde de garder ce déclencheur.
+
+Il laisse une ligne de journal, et jamais rien à l'écran :
+
+```
+check : renoncement, l'éditeur est ouvert (fois 1) -> nouvel essai au prochain déclenchement
+```
+
+plus un état dans `C:\ProgramData\SZH\maj-auto.json` (`derniereVerif`, `bloqueDepuis`,
+`bloqueFois`, `bloqueRaison`, `alerteLe`). Fichier séparé de `state.json`, que `update.ps1`
+réécrit entièrement à chaque succès et qui effacerait la cadence.
+
+**Et si ça dure ?** Un poste qui ne se met plus à jour depuis six semaines ne doit pas
+l'apprendre par un journal que personne ne lit. Au bout de **28 jours** de blocage
+(`$SzhMajPolitesse`) — quatre fenêtres hebdomadaires et une vingtaine d'ouvertures de session
+gâchées : ce n'est plus un mauvais moment, c'est un blocage —, la passe cesse d'être polie :
+
+- les gênes réversibles cèdent : elle installe même sous l'éditeur ouvert, et si cela échoue,
+  la fenêtre visible affiche `err.wsl`, qui dit quoi fermer ;
+- une compilation en vol, elle, ne cède jamais ;
+- si c'est le contrôle lui-même qui échoue (réseau, empreinte), la **fenêtre visible est
+  ouverte quand même**, pour que l'échec se voie : c'est elle qui parlera, avec le journal et
+  l'e-mail au support à portée de clic. La passe silencieuse, elle, reste muette ;
+- une alerte visible par semaine au plus (`alerteLe`), sinon la passe muette deviendrait la
+  plus bavarde de la chaîne.
+
+**À observer.** `C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log` et
+`C:\ProgramData\SZH\maj-auto.json` : un `bloqueFois` à deux chiffres avec un
+`bloqueDepuis` ancien est un poste qui décroche. **Avant chaque numéro**, la barre d'état du
+cockpit, qui compare la version du toolkit à celle qui a créé le numéro, suffit.
 
 ### L'e-mail de traduction ne part pas
 
@@ -324,6 +449,33 @@ le VSIX est bien reconstruit et publié, mais **jamais réinstallé**.
 `szh-apercu/package.json` portent une version supérieure à celle de la release
 précédente. Rien ne le vérifie automatiquement aujourd'hui — c'est le premier contrôle
 à automatiser.
+
+### Un raccourci du menu Démarrer ne se pose pas
+
+**Symptôme.** Une entrée manque au menu Démarrer d'un poste — le plus souvent
+« Mise à jour de l'outil Revue » — alors que la mise à jour s'est terminée sans erreur.
+
+**À observer.** `C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log` : chaque entrée non posée y
+laisse une ligne `raccourci du menu Démarrer non posé -> …`, et une ligne d'ensemble quand
+le dossier entier se refuse. Puis le dossier lui-même,
+`%APPDATA%\Microsoft\Windows\Start Menu\Programs` : est-il inscriptible pour cet
+utilisateur ?
+
+**Pourquoi ce n'est jamais fatal.** Même posture que la ruche de classes : un menu Démarrer
+tenu par une stratégie de groupe ne doit pas faire échouer une mise à jour par ailleurs
+réussie. La mise à jour reste atteignable par le bouton *Changer de version…* du lanceur et
+par la tâche planifiée qui la déclenche.
+
+**Manœuvre.** Rien, d'ordinaire : `update-launcher.ps1` repose les quatre entrées à chaque
+ouverture de session, avant même de regarder s'il y a du neuf. Si la stratégie de groupe est
+définitive, il faut passer par le menu « Tous les utilisateurs »
+(`%ProgramData%\Microsoft\Windows\Start Menu\Programs`) — à faire déployer par
+l'informatique, et **pas** depuis ces scripts : les deux menus se superposent, et l'entrée
+apparaîtrait deux fois sur les postes qui ont déjà la sienne.
+
+**Attention.** Le sous-dossier `SZH\` du menu Démarrer (`SZH Updater`, `SZH AppLauncher`)
+appartient à l'AppLauncher interne, pas à cette chaîne. Le nettoyage des anciens raccourcis
+ne parcourt que le premier niveau du menu, exprès.
 
 ### Un fichier supprimé du dépôt reste sur les postes déjà déployés
 
@@ -435,6 +587,31 @@ aucun nom reconnu.
 styles attendus. Le corpus de mise au point est dans `tmp/docx-dev/` (hors dépôt) :
 c'est là qu'on rejoue un cas qui échoue.
 
+### Le portrait d'un auteur n'a pas de texte alternatif, et n'est pas dans le Word
+
+**Ce n'est pas un défaut, c'est une décision** du 24.08.2026. Le portrait est une image
+décorative : le nom de la personne est écrit juste à côté, dans le bloc « À propos des
+auteur·e·s ». Un texte alternatif qui répète ce nom est du bruit ; un qui se trompe — photo
+appariée à la mauvaise personne, logo, photo de groupe — affirme une identité fausse à un
+lecteur d'écran.
+
+**Pourquoi ce n'est pas un `<img>`.** WeasyPrint 69 balise **tout** `<img>` en `/Figure`,
+même avec `role="presentation"`, même avec `aria-hidden="true"` — mesuré par cas minimal. Et
+une `/Figure` sans `/Alt` viole PDF/UA-1 §7.3, donc la porte `verifier-ua` la refuserait. Le
+portrait est donc un `<span>` vide à fond CSS, dont l'URL passe par un `<style>` du `<head>`
+du gabarit : c'est le seul endroit où `--embed-resources` réécrit les `url()`, et le seul où
+les règles ne réapparaissent pas en texte clair dans le galley DOCX.
+
+Mesuré : les `/Figure` de portrait passent de 4 à 0 sur un article à quatre auteur·e·s, les
+images restent dans le PDF (le compte d'objets image ne bouge pas), et le rendu est
+identique **au pixel** sur quinze pages.
+
+**Conséquence connue.** Le portrait n'existe pas dans le galley DOCX : un fond CSS ne
+traverse pas le writer docx de pandoc, qui lit le HTML sans son CSS. Le galley Word passe de
+724 Ko à 28 Ko sur un article à quatre portraits. Le texte du bloc auteurs est intact. Si
+OJS doit recevoir les portraits en Word, il faudra un second passage qui les réinjecte côté
+docx — le HTML devant rester sans `<img>`.
+
 ### Un appel de citation n'est pas lié à sa référence
 
 **Symptôme.** Le journal de compilation porte une ligne
@@ -479,6 +656,57 @@ couvre tout le latin, diacritiques et lettres barrées comprises ; le grec, le c
 l'arabe, non. Un auteur nommé en cyrillique donne un identifiant vide, d'où un lien qui ne
 tient pas. Manœuvre : lier l'appel à la main, ou translittérer le nom dans la liste de
 références. Une ligne par caractère, pas par occurrence.
+
+### La bibliographie d'un article ne se comporte pas comme prévu
+
+**Le mécanisme, en une phrase.** Depuis le 24.08.2026 la bibliographie est une donnée, comme
+un tableau : `docx-meta.py` lit son étendue dans les **styles** du `.docx`,
+`szh-biblio-detacher.lua` l'écrit dans `articles/<slug>/<slug>.biblio.md` — les références
+seules, sans titre — et laisse une référence `::: {.szh-biblio src=…}` à sa place dans le
+corps. La compilation (`szh-citations.lua`) résout la référence, pose le titre dans la langue
+de l'article et ancre chaque entrée. Trois pannes propres en découlent, et un code stable
+chacune.
+
+**1. La bibliographie n'est pas détectée : la liste reste dans le corps.**
+Codes `biblio-non-detachee` (à l'import) et `biblio-dans-le-corps` (à chaque compilation).
+L'article est **entier** — rien n'est perdu, la liste est simplement dans le texte, et
+l'export vers la plateforme partira sans liste de références. Cause : les références ne
+portent pas le style de bibliographie dans le Word ; le document annonce sa liste par un
+titre seul. Le style est le seul signal fiable, mesuré sur les 421 galleys publiés — un
+découpage deviné dans le corps se trompait sur les entrées à cheval sur deux paragraphes.
+**Manœuvre :** appliquer le style de bibliographie aux références dans le Word, puis
+*Réimporter cet article*.
+
+**2. Un encadré rouge « Bibliographie introuvable » à la place de la liste.**
+Code `biblio-introuvable`. Le corps porte encore sa référence, et le fichier
+`<slug>.biblio.md` a été supprimé ou renommé — l'encadré rouge est le même que celui d'un
+tableau introuvable, règle `.szh-tabelle-manquante, .szh-biblio-manquante` de `print.css`.
+**Manœuvre :** *Réimporter cet article*, ou retirer le bloc `::: {.szh-biblio …}` du texte
+si l'article ne doit plus avoir de liste.
+
+**3. Des références restent hors de la liste.** Codes `biblio-references-restees` (des
+paragraphes suivent la liste sans porter son style) et `biblio-incomplete` (des paragraphes
+de l'étendue n'ont pas suivi). Elles restent dans le texte, juste après la liste : rien n'est
+perdu, mais elles ne seront ni ancrées ni exportées comme des entrées. **Manœuvre :** leur
+donner le style de bibliographie dans le Word, puis réimporter. Sur le corpus des 421
+galleys, un seul article était concerné, et c'était un intertitre promu en titre.
+
+**4. Une référence ajoutée à la main a disparu après un réimport.** L'arborescence du cockpit
+ouvre `<slug>.biblio.md` d'un clic, ce fichier se corrige donc ici aussi — et le réimport
+l'arbitre comme un tableau, sur les empreintes de `.szh-import.empreintes` : le Word livre
+les mêmes références qu'à l'import → la version d'ici est **gardée** ; le Word en livre
+d'autres et personne n'avait touché → il **remplace** ; les deux ont bougé → le Word gagne,
+parce que le texte corrigé cite ses références, et le conflit est **nommé** (`biblio-conflit`)
+avec le chemin de la version d'avant, sous `.szh-avant-reimport/`. Deux voisins : `biblio-retiree`
+(ce Word ne détache plus de bibliographie, le fichier s'en va avec) et `biblio-origine-inconnue`
+(article importé avant que la chaîne ne note cette empreinte — toute différence est alors
+signalée par prudence). **Manœuvre :** ouvrir la version d'avant que le message nomme et
+recopier ce qui doit revenir ; ou *Annuler le réimport*, qui remet l'article entier.
+
+**À observer.** Après un import, les codes `biblio-non-detachee` et `biblio-dans-le-corps` du
+journal : ils disent qu'un article n'a pas de `<slug>.biblio.md` alors qu'il a bien une liste
+de références. Le PDF, lui, ne montre rien — c'est l'export vers la plateforme qui partirait
+sans liste.
 
 ### Le PDF n'est plus balisé PDF/UA
 

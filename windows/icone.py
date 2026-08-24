@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-# icone.py — fabrique les deux icônes du toolkit, à côté de ce script :
+# icone.py — fabrique les trois icônes du toolkit, à côté de ce script :
 #
 #     szh-revue.ico        raccourci « Revues SZH » du menu Démarrer, fenêtres du lanceur,
 #                          entrée « Revue SZH » d'« Ouvrir avec » et type de fichier .md
 #     szh-zeitschrift.ico  raccourci « Zeitschriften SZH » et fenêtres de ce lanceur
+#     szh-maj.ico          les deux raccourcis de mise à jour du menu Démarrer
 #
-#     python3 windows/icone.py        (réécrit les deux .ico à côté)
+#     python3 windows/icone.py        (réécrit les trois .ico à côté)
 #
 # Une icône à nous plutôt que celle de VSCodium : les deux entrées se suivent dans la
 # boîte « Ouvrir avec », et l'utilisateur doit reconnaître d'un coup d'œil celle qu'il
@@ -19,6 +20,13 @@
 # Aucune lettre : à 16 px un glyphe devient une tache. Les deux couleurs de tablette sont
 # séparées de 69 niveaux de gris, donc les icônes se distinguent aussi en niveaux de gris
 # et pour un œil qui confond le rouge et le vert.
+#
+# La mise à jour, elle, garde la tuile et la tablette — la famille — mais remplace les dos
+# par une grosse flèche vers le bas, le signe attendu pour « installer ». Ici la différence
+# est portée par le dessin et non par la couleur : la tablette prend le bleu acier #5F9FBC
+# de la charte, qui dit « l'outil » plutôt que l'un des deux produits, mais il ne s'écarte
+# que de 8 niveaux de gris de la capucine. C'est la flèche, pas la teinte, qui distingue
+# cette icône à 16 px et en niveaux de gris.
 #
 # La géométrie est la transcription du SVG livré (viewBox 0 0 256 256) : les rectangles y
 # gardent leurs coordonnées d'origine, et le rendu ne fait que ramener ces 256 unités à la
@@ -35,24 +43,38 @@ NUIT = (0x25, 0x2B, 0x46)
 PAPIER = (0xF5, 0xF2, 0xEA)
 CAPUCINE = (0xEB, 0x5E, 0x51)
 MOUTARDE = (0xC7, 0xCF, 0x1C)
+BLEUACIER = (0x5F, 0x9F, 0xBC)
 
-# (x, y, largeur, hauteur, rayon) en unités du SVG, dans l'ordre de peinture.
+# Deux sortes de formes, en unités du SVG : un rectangle à coins arrondis
+# (x, y, largeur, hauteur, rayon), cinq nombres, ou un triangle — ses trois sommets.
 UNITE = 256.0
 TUILE = (0, 0, 256, 256, 43.5)
 DOS = ((52, 52, 40, 136, 5), (108, 40, 40, 148, 5), (164, 60, 40, 128, 5))
 TABLETTE = (24, 188, 208, 48, 6)
+# La flèche : sa hampe, puis sa pointe. Elle s'arrête 14 unités au-dessus de la tablette,
+# soit presque un pixel à 16 px : de quoi garder un liseré de tuile entre les deux.
+FLECHE_HAMPE = (104, 36, 48, 86, 6)
+FLECHE_POINTE = ((64, 108), (192, 108), (128, 174))
+
+# Un dessin : les formes à peindre dans l'ordre, chacune avec sa couleur — None voulant
+# dire « la couleur du produit ». La tuile est peinte en dernier, par `couleur`, pour
+# servir de fond à tout le reste. Changer le dessin, c'est changer ces deux lignes.
+ETAGERE = ((TABLETTE, None),) + tuple((d, PAPIER) for d in DOS)
+FLECHE = ((TABLETTE, None), (FLECHE_HAMPE, PAPIER), (FLECHE_POINTE, PAPIER))
 
 # Les tailles que Windows demande : 16 et 20 pour la barre des tâches et les listes, 24 à
 # 48 pour le menu Démarrer et Alt+Tab selon la mise à l'échelle, 64 à 256 pour les grandes
 # tuiles et les propriétés de fichier.
 TAILLES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 ICI = os.path.dirname(os.path.abspath(__file__))
-# Un fichier par produit. Ces noms sont ceux que cherchent update.ps1 et open-revue.ps1 :
+# Un fichier par usage. Ces noms sont ceux que cherchent szh-common.ps1 et open-revue.ps1 :
 # les changer ici sans les changer là-bas fait retomber les raccourcis sur VSCodium.
-VARIANTES = (('szh-revue.ico', CAPUCINE), ('szh-zeitschrift.ico', MOUTARDE))
+VARIANTES = (('szh-revue.ico', CAPUCINE, ETAGERE),
+             ('szh-zeitschrift.ico', MOUTARDE, ETAGERE),
+             ('szh-maj.ico', BLEUACIER, FLECHE))
 
 
-def dans(rect, u, v):
+def dans_rectangle(rect, u, v):
     """Le point (u, v) est-il dans ce rectangle à coins arrondis ? Hors du cadre : non.
     Dans la zone d'un coin : distance au centre de l'arrondi. Ailleurs : oui."""
     x, y, larg, haut, r = rect
@@ -65,19 +87,34 @@ def dans(rect, u, v):
     return (u - cx) ** 2 + (v - cy) ** 2 <= r * r
 
 
-def couleur(u, v, accent):
+def dans_triangle(tri, u, v):
+    """Le point (u, v) est-il dans ce triangle ? Il l'est s'il tombe du même côté des
+    trois arêtes, quel que soit le sens dans lequel les sommets ont été donnés."""
+    (x1, y1), (x2, y2), (x3, y3) = tri
+    d1 = (u - x2) * (y1 - y2) - (x1 - x2) * (v - y2)
+    d2 = (u - x3) * (y2 - y3) - (x2 - x3) * (v - y3)
+    d3 = (u - x1) * (y3 - y1) - (x3 - x1) * (v - y1)
+    return (d1 >= 0 and d2 >= 0 and d3 >= 0) or (d1 <= 0 and d2 <= 0 and d3 <= 0)
+
+
+def dans(forme, u, v):
+    """Trois sommets : un triangle. Cinq nombres : un rectangle à coins arrondis."""
+    if len(forme) == 3:
+        return dans_triangle(forme, u, v)
+    return dans_rectangle(forme, u, v)
+
+
+def couleur(u, v, accent, dessin):
     """Couleur du dessin au point (u, v), en unités du SVG, ou None hors de la tuile."""
-    if dans(TABLETTE, u, v):
-        return accent
-    for d in DOS:
-        if dans(d, u, v):
-            return PAPIER
+    for forme, teinte in dessin:
+        if dans(forme, u, v):
+            return accent if teinte is None else teinte
     if dans(TUILE, u, v):
         return NUIT
     return None
 
 
-def dessiner(n, accent):
+def dessiner(n, accent, dessin):
     """Damier RGBA de n×n pixels, échantillonné puis moyenné — c'est le seul anti-aliasing
     possible sans bibliothèque graphique, et sans lui les arrondis crénellent et les
     intervalles entre les dos disparaissent. L'échantillonnage est plus fin aux petites
@@ -93,7 +130,7 @@ def dessiner(n, accent):
             for dy in range(e):
                 for dx in range(e):
                     c = couleur((x * e + dx + 0.5) * echelle,
-                                (y * e + dy + 0.5) * echelle, accent)
+                                (y * e + dy + 0.5) * echelle, accent, dessin)
                     if c is None:
                         continue
                     r += c[0]
@@ -124,9 +161,10 @@ def png(pixels):
             + bloc(b'IEND', b''))
 
 
-def ecrire(nom, accent):
-    """Assemble le .ico multi-tailles `nom`, dans ce dossier, avec cette tablette."""
-    images = [(t, png(dessiner(t, accent))) for t in TAILLES]
+def ecrire(nom, accent, dessin):
+    """Assemble le .ico multi-tailles `nom`, dans ce dossier, avec ce dessin et cette
+    couleur de tablette."""
+    images = [(t, png(dessiner(t, accent, dessin))) for t in TAILLES]
     entetes = b''
     corps = b''
     decalage = 6 + 16 * len(images)
@@ -144,8 +182,8 @@ def ecrire(nom, accent):
 
 
 def main():
-    for nom, accent in VARIANTES:
-        sortie = ecrire(nom, accent)
+    for nom, accent, dessin in VARIANTES:
+        sortie = ecrire(nom, accent, dessin)
         print('Écrit : %s (%d octets, %d tailles)'
               % (sortie, os.path.getsize(sortie), len(TAILLES)))
     return 0

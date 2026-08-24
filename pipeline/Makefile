@@ -9,19 +9,17 @@
 #
 # Ordre des --lua-filter à la compilation, et ce qui casse si on permute :
 #   szh-maquette -> szh-niveaux -> szh-tabelle-inclure -> szh-tabelle-scope ->
-#   szh-figure -> szh-numerotation -> szh-legende-avant -> szh-citations -> szh-sections
+#   szh-figure -> szh-numerotation -> szh-legende-avant -> szh-sections -> szh-citations
 #   * szh-numerotation après szh-tabelle-inclure : il numérote des tableaux qui
 #     n'existent qu'une fois le HTML réinjecté ;
 #   * szh-numerotation après szh-figure : sous le lecteur commonmark_x de l'aperçu,
 #     les Figure ne sont construites que par szh-figure ;
 #   * szh-legende-avant avant szh-citations : il dissout les Figure en HTML brut, rien
 #     en amont ne peut plus les lire ;
-#   * szh-sections en dernier, après szh-citations : il colle « 2.1 » devant le texte
-#     des titres, et szh-citations reconnaît le titre de la bibliographie sur son texte
-#     (« Références », « Literatur »). Filtres inversés, sur un article à deux références :
-#     0 ancrage et 0 appel lié — mesuré. Au-delà de trois références szh-citations retombe
-#     sur une heuristique de fin de document et s'en sort : l'ordre inversé passerait donc
-#     le banc et casserait sur un article court.
+#   * szh-citations en DERNIER, après szh-sections : c'est lui qui pose le titre de la
+#     bibliographie, et une bibliographie ne porte pas de numéro de section. szh-sections
+#     ayant fini de numéroter, ce titre-là n'en reçoit pas. L'ordre inverse — celui d'avant
+#     que la bibliographie devienne un fichier — imprimait « 6 Références ».
 # La chaîne d'aperçu reprend la même suite, sans szh-maquette.
 #
 # Aucun chemin /mnt/c codé en dur ici (portabilité macOS). Conserver l'indentation
@@ -278,9 +276,11 @@ $(ACCENT_CSS): ausgabe.yaml $(PIPELINE_DIR)/styles/couleurs.css \
 # .md -> HTML autonome (--embed-resources : images et CSS en base64). Exécuté dans le
 # dossier de l'article, pour que media/ et tables/ soient relatifs au .md. Les tableaux
 # extraits (tables/*.html) sont des prérequis : en éditer un recompile l'article.
-# szh-citations.lua ferme la chaîne : il ancre la liste de références et transforme les
-# appels du corps en liens internes. La liste elle-même n'est jamais réécrite.
-$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
+# szh-citations.lua ferme la chaîne : il réinsère la bibliographie détachée à l'import
+# (<slug>.biblio.md, prérequis lui aussi), lui pose son titre, ancre chaque référence et
+# transforme les appels du corps en liens internes. Le texte des références n'est jamais
+# réécrit.
+$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
 	@mkdir -p "$(dir $@)"
 	$(call exiger_titre,$(notdir $*))
 	@slug="$(notdir $*)"; \
@@ -298,8 +298,8 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" \
-	  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-sections.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
 	  --output="$(abspath $@)"
 	$(call reordonner_appels_de_note,$@)
 
@@ -320,7 +320,7 @@ endef
 # .md -> HTML d'aperçu : mêmes filtres, CSS et métadonnées que la sortie PDF, mais
 # reader commonmark_x+sourcepos -> chaque bloc porte data-pos, ce qui permet le clic
 # vers le texte source dans la webview. Consommé par le cockpit seulement.
-$(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
+$(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
 	meta=""; \
@@ -337,8 +337,8 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" \
-	  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-sections.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
 

@@ -6,6 +6,12 @@
 #   revue   : choix fermé, dont découlent le nom, l'ISSN et la langue par défaut.
 #             « revue »       = Revue suisse de pédagogie spécialisée (ISSN 2813-4915, fr)
 #             « zeitschrift » = Schweizerische Zeitschrift für Heilpädagogik (ISSN 2813-4907, de)
+#   volume  : millésime de la revue, un par année civile. Il s'imprime sur la couverture et
+#             part dans OJS. Posé à la création d'après l'année du numéro : Zeitschrift =
+#             année - 1994, Revue = année - 2010 (relevé sur ojs.szh.ch, neuf millésimes de
+#             suite). Le lanceur sait le régler à la main, pour le jour où le compte des
+#             volumes se décale : un volume faux s'imprime sans que rien ne le signale.
+#   numero  : rang du numéro dans son année, sur deux chiffres (« 03 »).
 #   date    : date de PUBLICATION du numéro, complète (AAAA-MM-JJ) ou vide, jamais
 #             tronquée à l'année. Elle se saisit dans « Métadonnées du numéro » le jour
 #             où la parution est décidée : l'export OJS la refuse incomplète, car un

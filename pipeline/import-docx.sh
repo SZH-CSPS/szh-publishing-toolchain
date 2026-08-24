@@ -3,11 +3,16 @@
 #   import-docx.sh <chemin-docx> <slug> <pipeline_dir>
 #
 # Produit dans articles/<slug>/ : <slug>.md, media/, tables/table-NN.html (un fichier par
-# tableau) et <slug>.meta.yaml (jamais écrasé s'il existe).
+# tableau), <slug>.biblio.md (les références seules) et <slug>.meta.yaml (jamais écrasé
+# s'il existe).
 #
-# La liste de références reste dans le corps du .md, telle que la rédaction l'a écrite :
-# rien ne la détache, rien ne la reformate. C'est à la compilation que szh-citations.lua
-# l'ancre et transforme les appels du texte en liens internes.
+# La bibliographie devient une donnée, comme un tableau : docx-meta.py en lit l'étendue dans
+# les STYLES du .docx, szh-biblio-detacher.lua l'écrit dans <slug>.biblio.md — les
+# références seules, sans titre — et laisse à sa place, dans le .md, une référence
+# « ::: {.szh-biblio src=…} ». À la compilation, szh-citations.lua résout la référence, pose
+# le titre dans la langue de l'article et ancre chaque entrée. Un document dont les
+# références ne portent pas le style sort sans ce fichier : sa liste reste dans le corps,
+# l'article est entier, et docx-meta.py le dit au rédacteur.
 #
 # L'ordre de la chaîne est voulu :
 #   1. docx-meta.py   : métadonnées -> meta.yaml et instructions de retrait ($SZH_META).
@@ -19,6 +24,10 @@
 #        szh-meta      (retire les blocs consommés avant tout raisonnement aval)
 #        szh-legendes  (légendes -> alt d'image ; purge des paragraphes bakés)
 #        szh-titres    (promotion des titres déduits, jamais sur un bloc consommé)
+#        szh-biblio-detacher (l'étendue de bibliographie -> <slug>.biblio.md, et une
+#                      référence à sa place ; après szh-titres, qui a fait des Header des
+#                      titres promus, et avant szh-tabelle-reference, les Table étant
+#                      encore des Table)
 #        szh-tabelle-reference (Table restants -> ::: {.szh-tabelle src=…})
 #   5. import-medias.py : les photos du tableau des auteurs quittent media/ pour
 #      portraits/ et passent au détourage ; les images que ni le .md ni tables/*.html ne
@@ -105,6 +114,7 @@ pandoc "$DOCX_ABS" \
   --lua-filter="$PIPE/filters/szh-meta.lua" \
   --lua-filter="$PIPE/filters/szh-legendes.lua" \
   --lua-filter="$PIPE/filters/szh-titres.lua" \
+  --lua-filter="$PIPE/filters/szh-biblio-detacher.lua" \
   --lua-filter="$PIPE/filters/szh-tabelle-reference.lua" \
   --wrap=none \
   -o "$SLUG.md" || { nettoyer_tout; exit 1; }

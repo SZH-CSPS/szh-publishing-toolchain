@@ -13,35 +13,36 @@ label { display: inline-flex; align-items: center; margin: var(--e1) var(--e4) v
   gap: .35em; }
 label input { accent-color: var(--accent); }
 
-/* Export OJS : des tables de correspondance, donc une grille — une colonne par revue pour
-   les valeurs du serveur, une rangée par rubrique pour les intitulés. Le libellé de chaque
-   case est porté par aria-label : l'en-tête de colonne seul ne se lit pas à la voix. */
-.ojs-grille { display: grid; align-items: center; gap: var(--e1) var(--e2);
+/* Les blocs à tables de correspondance — export OJS, titre de la bibliographie — sont des
+   grilles : une colonne par revue, une rangée par champ. Une seule série de classes pour
+   tous, d'où le préfixe « regl- » et non « ojs- ». Le libellé de chaque case est porté par
+   aria-label : l'en-tête de colonne seul ne se lit pas à la voix. */
+.regl-grille { display: grid; align-items: center; gap: var(--e1) var(--e2);
   margin: var(--e2) 0; }
-.ojs-grille > * { min-width: 0; }
-.ojs-entete { font-size: var(--t-mini); font-weight: 700; letter-spacing: .02em;
+.regl-grille > * { min-width: 0; }
+.regl-entete { font-size: var(--t-mini); font-weight: 700; letter-spacing: .02em;
   color: var(--encre-2); align-self: end; overflow-wrap: anywhere; }
-.ojs-libelle { font-size: var(--t-libelle); font-weight: 700; color: var(--encre);
+.regl-libelle { font-size: var(--t-libelle); font-weight: 700; color: var(--encre);
   overflow-wrap: anywhere; }
-.ojs-grille input[type="text"], .ojs-grille select {
+.regl-grille input[type="text"], .regl-grille select {
   font: inherit; width: 100%; box-sizing: border-box; padding: .3em .45em;
   color: var(--vscode-input-foreground, inherit);
   background: var(--vscode-input-background, transparent);
   border: 1px solid var(--vscode-input-border, var(--filet));
   border-radius: var(--rayon-mini);
 }
-.ojs-grille input:focus, .ojs-grille select:focus {
+.regl-grille input:focus, .regl-grille select:focus {
   outline: 2px solid var(--accent); outline-offset: -1px; }
 /* Un champ vide n'est pas une valeur : c'est une valeur qu'il faut aller relever. Le
    pointillé le dit sans couleur, donc aussi en monochrome. */
-.ojs-grille input.vide { border-style: dashed; border-color: var(--filet-fort); }
+.regl-grille input.vide { border-style: dashed; border-color: var(--filet-fort); }
 /* Clé d'une rubrique livrée : lisible, pas modifiable — c'est l'intitulé qui se corrige. */
-.ojs-grille input.fige { background: transparent; border-color: transparent;
+.regl-grille input.fige { background: transparent; border-color: transparent;
   color: var(--encre-2); font-weight: 700; }
-.ojs-grille input[type="checkbox"] { justify-self: center; accent-color: var(--accent); }
-.ojs-note { font-size: var(--t-mini); color: var(--encre-2); margin: var(--e1) 0 0; }
-.ojs-ajouter { margin-top: var(--e2); padding: .3em .8em; font: inherit; cursor: pointer;
+.regl-grille input[type="checkbox"] { justify-self: center; accent-color: var(--accent); }
+.regl-note { font-size: var(--t-mini); color: var(--encre-2); margin: var(--e1) 0 0; }
+.regl-ajouter { margin-top: var(--e2); padding: .3em .8em; font: inherit; cursor: pointer;
   border: 1px solid var(--filet); border-radius: var(--rayon-mini);
   color: var(--vscode-button-secondaryForeground, var(--encre));
   background: var(--vscode-button-secondaryBackground, transparent); }
-.ojs-ajouter:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.regl-ajouter:focus { outline: 2px solid var(--accent); outline-offset: 1px; }

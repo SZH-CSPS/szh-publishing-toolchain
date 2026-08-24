@@ -1,12 +1,17 @@
--- Compilation : ancre chaque référence de la liste finale et transforme les appels du
--- corps en liens internes. La liste de références n'est ni déplacée ni réécrite — c'est
--- tout l'intérêt : le texte publié reste celui de la rédaction, seul un identifiant et des
--- liens s'y ajoutent.
+-- Compilation : réinsère la bibliographie détachée à l'import, lui pose son titre, ancre
+-- chaque référence et transforme les appels du corps en liens internes. Le texte des
+-- références n'est jamais réécrit — seul un identifiant et des liens s'y ajoutent.
 --
 -- Trois temps :
---   1. la liste : dernier titre de bibliographie, puis les paragraphes qui le suivent.
---      Chaque entrée reçoit un Div « szh-reference » portant un id déduit de son contenu
---      (ref-nom-annee), donc stable d'une compilation à l'autre.
+--   1. la liste : la référence « ::: {.szh-biblio src="<slug>.biblio.md"} » que l'import a
+--      laissée dans le .md est résolue — c'est le patron des tableaux — et le titre est
+--      posé au-dessus, dans la langue de l'article et selon le réglage du poste
+--      (TITRES_BIBLIO_DEFAUT, surchargé par config.json). Il n'est plus dans le texte :
+--      c'est ce qui lui évite le numéro de section, et ce qui permet de le corriger sans
+--      republier le logiciel. Chaque entrée reçoit un Div « szh-reference » portant un id
+--      déduit de son contenu (ref-nom-annee), donc stable d'une compilation à l'autre.
+--      Un article importé avant ce changement porte encore sa liste dans le corps : un
+--      repli la retrouve sous son titre, et le dit.
 --   2. les appels : « (Bovey, 2022) », « (vgl. Kunz, 2016) », « Capurso et al. (2025) »,
 --      « (Grimminger et al., 2021; Fisseler, 2023) », « (Pelgrims, 2001, 2006) »… Seule la
 --      parenthèse devient le lien ; la prose autour n'est pas touchée. Un appel narratif
@@ -21,7 +26,10 @@
 -- pose l'action « Lier à une référence » du cockpit) est respecté tel quel ; s'il pointe
 -- vers un ancrage inexistant, un avertissement le dit.
 --
--- Doit tourner en fin de chaîne : les autres filtres ont fini de bouger les blocs.
+-- Doit tourner en DERNIER, après szh-sections.lua : le titre de bibliographie qu'il pose
+-- ne doit pas recevoir de numéro de section, et une bibliographie n'en porte pas. Le repli
+-- des articles anciens, lui, retrouve son titre malgré le numéro déjà collé devant : voir
+-- texte_de_titre().
 
 local utils = pandoc.utils
 
@@ -254,6 +262,25 @@ local TITRES_BIB = {
   'bibliografie', 'bibliografia', 'bibliographie', 'bibliography',
   'reference', 'references', 'referenzen', 'quellen', 'quellenverzeichnis',
   'ouvragescites', 'zitierteliteratur', 'verwendeteliteratur', 'weiterfuhrendeliteratur',
+  'referencesbibliographiques',
+}
+
+-- Le titre que la compilation POSE au-dessus de la bibliographie détachée, par revue et par
+-- langue d'article. Ce sont les valeurs par défaut : le config.json du poste les surcharge
+-- clé par clé, et le bloc « Bibliographie » des Réglages SZH les modifie sans republier
+-- l'extension.
+--
+-- D'où viennent ces valeurs : du corpus des 421 galleys publiés. La Zeitschrift écrit
+-- « Literatur » dans ses 230 articles à bibliographie, sans une exception. La Revue écrit
+-- « Références » 69 fois sur 73, « Références bibliographiques » 3 fois, et « Bibliografia »
+-- une fois — pour son seul article italien. Aucun article n'a jamais porté le titre de
+-- l'autre langue : c'est la langue qui décide, et les deux revues partent donc du même jeu.
+--
+-- ⚠ lib/citations.js du cockpit RELIT cette table ici, comme il relit le lexique et les
+--   tables de repli : deux copies, ce seraient deux titres.
+local TITRES_BIBLIO_DEFAUT = {
+  revue       = { fr = [[Références]], de = [[Literatur]], it = [[Bibliografia]] },
+  zeitschrift = { fr = [[Références]], de = [[Literatur]], it = [[Bibliografia]] },
 }
 
 -- Mots d'amorce devant un appel : « (vgl. Kunz, 2016) », « (z. B. Kunz, 2016) ».
@@ -277,10 +304,20 @@ for m in ('van von de des du della di da dos der den ter te le la zu zur af av e
   PARTICULES[m] = true
 end
 
+-- Titre de bibliographie : comparaison EXACTE sur la forme aplatie, jamais par préfixe.
+-- Le préfixe faisait de « Literaturhinweise für die Praxis » un titre de bibliographie, et
+-- tout ce qui suivait — de la prose — cessait d'être regardé : le défaut était invisible.
+-- Le lexique porte donc les formes complètes que la maison écrit ; les trois relevées sur
+-- le corpus des 421 galleys y sont (« Références » 69 fois, « Références bibliographiques »
+-- 3, « Literatur » 230).
+--
+-- Un titre déjà numéroté par szh-sections.lua porte son numéro dans un Span de tête :
+-- texte_de_titre() l'écarte avant de comparer. Sans cela, « 6 Références » ne serait plus
+-- reconnu, et ce filtre tournant maintenant APRÈS szh-sections, plus rien ne le serait.
 local function est_titre_bib(txt)
   local p = plat(txt)
   for _, t in ipairs(TITRES_BIB) do
-    if p == t or p:sub(1, #t) == t then return true end
+    if p == t then return true end
   end
   return false
 end
@@ -403,6 +440,201 @@ SZH_CITATIONS = {
   replier = replier, plat = plat, nom_pour_id = nom_pour_id,
   est_titre_bib = est_titre_bib, est_continuation = est_continuation,
 }
+
+-- ------------------------------------------------ le titre de la bibliographie, réglable
+-- La bibliographie n'a plus de titre dans le texte : l'import l'a retiré, la compilation le
+-- pose. Il vient du config.json du poste — le même fichier que l'emplacement des revues et
+-- la configuration OJS — et retombe sur TITRES_BIBLIO_DEFAUT clé par clé.
+--
+-- Pourquoi lire le fichier ici plutôt que le recevoir en variable d'environnement : le
+-- cockpit lance la compilation par wsl.exe, qui ne transmet pas l'environnement de Windows
+-- sans WSLENV. Le fichier, lui, est monté et se lit. SZH_CONFIG impose un chemin, ce dont
+-- le banc d'essai se sert pour éprouver le réglage sans écrire dans C:\ProgramData.
+local CONFIG_POSTE = '/mnt/c/ProgramData/SZH/config.json'
+
+-- Lecteur JSON minimal : objets, tableaux, chaînes, nombres, booléens, null. Sur du JSON
+-- mal formé, rend nil — et les valeurs par défaut jouent. Écrit ici parce qu'un filtre
+-- pandoc n'a pas de chemin de recherche de modules (même arbitrage que slug_article).
+local function lire_json(s)
+  local i = 1
+  local valeur                                  -- déclaration avant usage mutuel
+  local function saut()
+    while true do
+      local c = s:sub(i, i)
+      if c == ' ' or c == '\t' or c == '\n' or c == '\r' then i = i + 1 else break end
+    end
+  end
+  local function chaine()
+    i = i + 1                                   -- le guillemet ouvrant
+    local out = {}
+    while i <= #s do
+      local c = s:sub(i, i)
+      if c == '"' then
+        i = i + 1
+        return table.concat(out)
+      elseif c == '\\' then
+        local e = s:sub(i + 1, i + 1)
+        local simples = { n = '\n', t = '\t', r = '\r', b = '\b', f = '\f',
+                          ['"'] = '"', ['\\'] = '\\', ['/'] = '/' }
+        if simples[e] then
+          out[#out + 1] = simples[e]
+          i = i + 2
+        elseif e == 'u' then
+          local hex = s:sub(i + 2, i + 5)
+          out[#out + 1] = utf8.char(tonumber(hex, 16) or 0xFFFD)
+          i = i + 6
+        else
+          return nil
+        end
+      else
+        out[#out + 1] = c
+        i = i + 1
+      end
+    end
+    return nil
+  end
+  valeur = function()
+    saut()
+    local c = s:sub(i, i)
+    if c == '"' then return chaine() end
+    if c == '{' then
+      i = i + 1
+      local t = {}
+      saut()
+      if s:sub(i, i) == '}' then i = i + 1 return t end
+      while true do
+        saut()
+        if s:sub(i, i) ~= '"' then return nil end
+        local clef = chaine()
+        if clef == nil then return nil end
+        saut()
+        if s:sub(i, i) ~= ':' then return nil end
+        i = i + 1
+        local v = valeur()
+        if v == nil then return nil end
+        t[clef] = v
+        saut()
+        local suite = s:sub(i, i)
+        i = i + 1
+        if suite == '}' then return t end
+        if suite ~= ',' then return nil end
+      end
+    end
+    if c == '[' then
+      i = i + 1
+      local t = {}
+      saut()
+      if s:sub(i, i) == ']' then i = i + 1 return t end
+      while true do
+        local v = valeur()
+        if v == nil then return nil end
+        t[#t + 1] = v
+        saut()
+        local suite = s:sub(i, i)
+        i = i + 1
+        if suite == ']' then return t end
+        if suite ~= ',' then return nil end
+      end
+    end
+    if s:sub(i, i + 3) == 'true' then i = i + 4 return true end
+    if s:sub(i, i + 4) == 'false' then i = i + 5 return false end
+    -- null : rendu comme une table vide, pour ne pas se confondre avec un échec
+    if s:sub(i, i + 3) == 'null' then i = i + 4 return {} end
+    local n, j = s:match('^(%-?%d+%.?%d*[eE]?[-+]?%d*)()', i)
+    if n then
+      i = j
+      return tonumber(n) or 0
+    end
+    return nil
+  end
+  local v = valeur()
+  return type(v) == 'table' and v or nil
+end
+
+local function lire_config_poste()
+  local chemin = os.getenv('SZH_CONFIG')
+  if chemin == nil or chemin == '' then chemin = CONFIG_POSTE end
+  local f = io.open(chemin, 'r')
+  if not f then return nil end
+  local brut = f:read('a')
+  f:close()
+  if not brut then return nil end
+  return lire_json((brut:gsub('^\239\187\191', '')))   -- BOM d'anciens config.json
+end
+
+-- Jeton de revue, lu dans les métadonnées : ausgabe.yaml est le seul des deux fichiers de
+-- métadonnées à porter `revue`, la fusion de pandoc ne prête donc pas à confusion.
+local function jeton_revue(meta)
+  local v = utils.stringify(meta and meta.revue or ''):lower()
+  if v:find('zeitschrift') then return 'zeitschrift' end
+  return 'revue'
+end
+
+-- Langue de composition de l'article, dans l'ordre où szh-maquette.lua l'établit : la fiche
+-- d'abord, la revue ensuite. La fiche est relue au lieu d'être prise dans les métadonnées
+-- fusionnées, qui ne disent pas de quel fichier une clé vient — même arbitrage, et même
+-- dette, que szh-maquette.
+local function langue_article(slug, revue)
+  if slug ~= '' then
+    local f = io.open(slug .. '.meta.yaml', 'r')
+    if f then
+      for ligne in f:lines() do
+        local v = ligne:match('^lang:%s*(.*)$')
+        if v then
+          v = trim(v:gsub('^["\']', ''):gsub('["\']%s*$', '')):lower():sub(1, 2)
+          f:close()
+          if v ~= '' then return v end
+          break
+        end
+      end
+      if f then f:close() end
+    end
+  end
+  return (revue == 'zeitschrift') and 'de' or 'fr'
+end
+
+-- « Références bibliographiques » en inlines pandoc : un Str par mot, un Space entre. Un
+-- seul Str contenant une espace se rend juste en HTML mais n'est pas un document pandoc
+-- valide, et les autres écritures — le galley DOCX, par exemple — ne le promettent pas.
+local function inlines_du_titre(titre)
+  local out = pandoc.List()
+  for mot in titre:gmatch('%S+') do
+    if #out > 0 then out:insert(pandoc.Space()) end
+    out:insert(pandoc.Str(mot))
+  end
+  return pandoc.Inlines(out)
+end
+
+local function titre_bibliographie(meta, slug)
+  local revue = jeton_revue(meta)
+  local lang = langue_article(slug, revue)
+  local defauts = TITRES_BIBLIO_DEFAUT[revue] or TITRES_BIBLIO_DEFAUT.revue
+  local titre = defauts[lang] or defauts.fr
+  local cfg = lire_config_poste()
+  local pose = cfg and cfg.biblio and cfg.biblio.titres
+  pose = pose and pose[revue]
+  pose = pose and pose[lang]
+  -- « La clé présente gagne, même vide » : c'est la règle de la configuration OJS, et vider
+  -- le champ dans les Réglages doit avoir un effet — ici, pas de titre du tout.
+  if type(pose) == 'string' then titre = pose end
+  return normaliser(titre)
+end
+
+-- Rang du titre de bibliographie : le premier rang de section, celui que szh-niveaux.lua
+-- vise (MIN_CIBLE), le <h1> étant le titre de l'article sur la couverture.
+local NIVEAU_BIB = 2
+
+-- Texte d'un titre, numéro de section exclu. szh-sections.lua pose le numéro dans un Span
+-- de classe « szh-num-section » en tête du contenu : le lire comme du texte ferait de
+-- « 6 Références » un titre inconnu.
+local function texte_de_titre(h)
+  local dedans = pandoc.List()
+  for k, il in ipairs(h.content) do
+    local numero = (k == 1 and il.t == 'Span' and il.classes:includes('szh-num-section'))
+    if not numero then dedans:insert(il) end
+  end
+  return normaliser(utils.stringify(pandoc.Span(dedans)))
+end
 
 -- ------------------------------------------------------------------ détection des appels
 local function est_annee(jeton)
@@ -651,45 +883,112 @@ local function marque(classe)
   return function(contenu) return pandoc.Span(contenu, pandoc.Attr('', { classe })) end
 end
 
+-- --------------------------------------------- la bibliographie détachée, réinsérée
+-- Même contrat que szh-tabelle-inclure.lua : le cwd est le dossier de l'article, les
+-- chemins relatifs tombent donc juste, et un fichier manquant donne un bloc
+-- d'avertissement VISIBLE dans le rendu — jamais un article amputé en silence.
+-- Deux classes, et la seconde n'est pas un oubli : « szh-tabelle-manquante » est l'encadré
+-- rouge que print.css donne déjà à « fichier référencé introuvable », et c'est exactement
+-- ce cas-ci. Son nom parle de tableau parce qu'il n'y avait alors que des tableaux à
+-- inclure ; « szh-biblio-manquante » est le nom juste, et il attend que print.css — tenu
+-- par un autre chantier — joigne les deux sélecteurs sur la même règle.
+local function bloc_manquant(texte)
+  return pandoc.Div(
+    { pandoc.Para({ pandoc.Strong({ pandoc.Str('⚠ ' .. texte) }) }) },
+    pandoc.Attr('', { 'szh-biblio-manquante', 'szh-tabelle-manquante' }, {})
+  )
+end
+
+-- Rend (blocs, première entrée, dernière entrée) : la référence de bibliographie est
+-- remplacée par le titre — posé ici, dans la langue de l'article — puis par les entrées du
+-- fichier. Sans référence dans le document, les blocs sortent tels quels et la liste est
+-- nil : c'est l'appelant qui décide alors du repli.
+local function resoudre_biblio(doc, slug)
+  local sortie = pandoc.List()
+  local premiere, derniere = nil, nil
+  for _, b in ipairs(doc.blocks) do
+    local est_marqueur = (b.t == 'Div' and b.classes:includes('szh-biblio')
+                          and premiere == nil)
+    if not est_marqueur then
+      sortie:insert(b)
+    else
+      local src = b.attributes['src'] or ''
+      local f = src ~= '' and io.open(src, 'r') or nil
+      local contenu = f and f:read('a') or nil
+      if f then f:close() end
+      if contenu == nil then
+        sortie:insert(bloc_manquant(
+          'Bibliographie introuvable : ' .. (src ~= '' and src or '(aucun fichier indiqué)')
+          .. ' (fichier supprimé ou renommé ?)'))
+        avertir('biblio-introuvable', { 'fichier « ' .. src .. ' »' },
+          'Le fichier de bibliographie de cet article est introuvable : la liste de '
+          .. "références manque au document. Réimportez l'article, ou retirez la référence "
+          .. 'de bibliographie du texte.',
+          'Die Literaturverzeichnis-Datei dieses Artikels fehlt: die Literaturliste fehlt '
+          .. 'im Dokument. Importieren Sie den Artikel neu, oder entfernen Sie den Verweis '
+          .. 'auf das Literaturverzeichnis aus dem Text.')
+      else
+        local entrees = pandoc.read(contenu, 'markdown').blocks
+        if #entrees > 0 then
+          local titre = titre_bibliographie(doc.meta, slug)
+          if titre ~= '' then
+            -- Identifiant fixe et préfixé : le lecteur markdown en pose un sur les titres
+            -- du corps, pas sur celui-ci, qui n'est pas dans le texte. « szh- » le met hors
+            -- de portée d'un titre de section homonyme.
+            sortie:insert(pandoc.Header(NIVEAU_BIB, inlines_du_titre(titre),
+              pandoc.Attr('szh-bibliographie', {}, {})))
+          end
+          premiere = #sortie + 1
+          for _, x in ipairs(entrees) do sortie:insert(x) end
+          derniere = #sortie
+        end
+      end
+    end
+  end
+  return sortie, premiere, derniere
+end
+
 -- ------------------------------------------------------------------------ le filtre
 local APERCU = (os.getenv('SZH_APERCU') or '') ~= ''
 
 function Pandoc(doc)
   -- 1. la liste de références
-  local blocs = doc.blocks
-  local idx_titre = nil
-  for i, b in ipairs(blocs) do
-    if b.t == 'Header' and est_titre_bib(normaliser(utils.stringify(b))) then idx_titre = i end
-  end
-  local premiere = idx_titre and (idx_titre + 1) or nil
+  --
+  -- Voie normale : l'import l'a détachée dans <slug>.biblio.md et a laissé une référence
+  -- « ::: {.szh-biblio src=…} » à sa place. On la résout ici — c'est le patron des
+  -- tableaux — et on pose le titre, que le texte ne porte plus.
+  local slug = slug_article()
+  local blocs, premiere, derniere_liste = resoudre_biblio(doc, slug)
+
+  -- Repli, et nommé comme tel : un article importé avant que la bibliographie devienne un
+  -- fichier porte encore sa liste dans le corps. On la retrouve sous son titre, comparé
+  -- EXACTEMENT au lexique — plus par préfixe, et plus d'heuristique qui balayait la
+  -- seconde moitié du document pour y deviner une liste. Ces deux paris coûtaient cher :
+  -- une section « Literaturhinweise für die Praxis » suivie de prose, et tout ce qui
+  -- suivait cessait d'être regardé pour les appels, sans le moindre signe.
   if not premiere then
-    -- Pas de titre reconnu : on cherche depuis la fin une suite de paragraphes qui se
-    -- lisent tous comme des références. Le pari est sans risque ici — un faux positif ne
-    -- pose qu'un ancrage inutile, il ne déplace rien.
-    local fin, debut = nil, nil
-    for i = #blocs, math.max(1, math.floor(#blocs * 0.5)), -1 do
-      local b = blocs[i]
-      if b.t == 'Para' then
-        local txt = normaliser(utils.stringify(b))
-        local a = annee_de_reference(txt)
-        if a and #txt > 40 then
-          fin = fin or i
-          debut = i
-        elseif fin and not est_continuation(txt) then
-          break
-        end
-      elseif fin then
-        break
-      end
+    local idx_titre = nil
+    for i, b in ipairs(blocs) do
+      if b.t == 'Header' and est_titre_bib(texte_de_titre(b)) then idx_titre = i end
     end
-    if fin and debut and (fin - debut) >= 2 then premiere = debut end
+    if idx_titre then
+      premiere, derniere_liste = idx_titre + 1, #blocs
+      -- constat() nomme déjà l'article : ne pas le répéter dans les champs.
+      avertir('biblio-dans-le-corps', {},
+        "La bibliographie de cet article est encore dans le texte : elle n'a pas de "
+        .. "fichier à part, et l'export vers la plateforme partira sans liste de "
+        .. "références. Réimportez l'article pour la mettre à part.",
+        'Das Literaturverzeichnis dieses Artikels steht noch im Text: es hat keine eigene '
+        .. 'Datei, und der Export auf die Plattform geht ohne Literaturliste. Importieren '
+        .. 'Sie den Artikel neu, um es auszulagern.')
+    end
   end
 
   local fiches, ancrages = {}, {}
   local derniere = nil
   if premiere then
     local i = premiere
-    while i <= #blocs do
+    while i <= math.min(derniere_liste or #blocs, #blocs) do
       local b = blocs[i]
       if b.t == 'Header' then break end
       if b.t == 'Para' or b.t == 'Plain' then
@@ -725,8 +1024,11 @@ function Pandoc(doc)
     ancrages[id] = f
   end
 
-  -- 2. les appels, dans tout ce qui précède la liste
+  -- 2. les appels, dans tout ce qui n'est pas la liste — avant elle, et après elle. La
+  -- liste n'est plus forcément le dernier bloc du document : une référence restée dans le
+  -- texte, une note de fin, une annexe peuvent la suivre, et leurs appels comptent.
   local limite = premiere and (premiere - 1) or #blocs
+  local reprise = (premiere and derniere_liste) and (derniere_liste + 1) or (#blocs + 1)
   local appels, orphelins, ambigus = 0, {}, {}
   local appelees = {}
 
@@ -881,7 +1183,10 @@ function Pandoc(doc)
   local corps = pandoc.List()
   for i = 1, limite do corps:insert(blocs[i]) end
   for _, b in ipairs(traiter_blocs(corps)) do sortie:insert(b) end
-  for i = limite + 1, #blocs do sortie:insert(blocs[i]) end
+  for i = limite + 1, math.min(reprise - 1, #blocs) do sortie:insert(blocs[i]) end
+  local queue = pandoc.List()
+  for i = reprise, #blocs do queue:insert(blocs[i]) end
+  for _, b in ipairs(traiter_blocs(queue)) do sortie:insert(b) end
 
   -- 3. envelopper chaque entrée dans son Div ancré, sans toucher au texte
   if #fiches > 0 then

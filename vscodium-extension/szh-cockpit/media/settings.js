@@ -84,7 +84,7 @@
 
   function grille(colonnes) {
     const g = document.createElement('div');
-    g.className = 'ojs-grille';
+    g.className = 'regl-grille';
     g.style.gridTemplateColumns = colonnes;
     return g;
   }
@@ -92,7 +92,7 @@
   function entete(g, libelles) {
     for (const libelle of libelles) {
       const t = document.createElement('span');
-      t.className = 'ojs-entete';
+      t.className = 'regl-entete';
       t.textContent = libelle;
       g.appendChild(t);
     }
@@ -108,7 +108,7 @@
 
   function note(parent, texte) {
     const p = document.createElement('p');
-    p.className = 'ojs-note';
+    p.className = 'regl-note';
     p.textContent = texte;
     parent.appendChild(p);
     return p;
@@ -122,7 +122,7 @@
     entete(g, [''].concat(ojs.locales.map((l) => ojs.revues[l])));
     for (const champ of ojs.champs) {
       const etiquette = document.createElement('span');
-      etiquette.className = 'ojs-libelle';
+      etiquette.className = 'regl-libelle';
       etiquette.textContent = champ.libelle + (champ.requis ? ' *' : '');
       g.appendChild(etiquette);
       for (const loc of ojs.locales) {
@@ -178,7 +178,7 @@
     f.appendChild(g);
     const plus = document.createElement('button');
     plus.type = 'button';
-    plus.className = 'ojs-ajouter';
+    plus.className = 'regl-ajouter';
     plus.textContent = TXT.ojsAjouter;
     plus.addEventListener('click', function () {
       const vide = {};
@@ -206,7 +206,7 @@
     selectsType.length = 0;
     for (const type of ojs.typesArticle) {
       const etiquette = document.createElement('span');
-      etiquette.className = 'ojs-libelle';
+      etiquette.className = 'regl-libelle';
       etiquette.textContent = type.libelle;
       g.appendChild(etiquette);
       const select = document.createElement('select');
@@ -292,11 +292,76 @@
     }
   });
 
+  // ---- Titre de la bibliographie --------------------------------------------------
+  //
+  // La bibliographie d'un article est un fichier sans titre : c'est la composition qui pose
+  // le titre, dans la langue de l'article. Une rangée par langue, une colonne par revue —
+  // la même grille que l'export OJS, et la même règle : ce qui est affiché est ce qui part,
+  // et un champ vidé vaut « aucun titre », pas « reprends le défaut ».
+  const biblioZone = document.getElementById('biblio');
+  let biblio = null;           // { titres, revues, langues, libelles }
+  let biblioModifie = false;
+
+  function marquerBiblio() { biblioModifie = true; autoBiblio.programmer(); }
+
+  function rendreBiblio() {
+    biblioZone.textContent = '';
+    if (!biblio) { return; }
+    const f = zone(TXT.biblioTitre);
+    const g = grille('minmax(9em, 1.1fr) repeat(' + biblio.revues.length + ', minmax(10em, 1fr))');
+    entete(g, [TXT.biblioColLangue].concat(biblio.revues.map((r) => r.libelle)));
+    for (const langue of biblio.langues) {
+      const etiquette = document.createElement('span');
+      etiquette.className = 'regl-libelle';
+      etiquette.textContent = langue.libelle;
+      g.appendChild(etiquette);
+      for (const r of biblio.revues) {
+        const i = document.createElement('input');
+        i.type = 'text';
+        i.value = String((biblio.titres[r.cle] || {})[langue.cle] || '');
+        i.placeholder = TXT.biblioVide;
+        i.setAttribute('aria-label', TXT.biblioTitre + ' — ' + r.libelle + ' — ' + langue.libelle);
+        i.dataset.biblioRevue = r.cle;
+        i.dataset.biblioLangue = langue.cle;
+        i.classList.toggle('vide', i.value.trim() === '');
+        i.addEventListener('input', function () {
+          i.classList.toggle('vide', i.value.trim() === '');
+          marquerBiblio();
+        });
+        g.appendChild(i);
+      }
+    }
+    f.appendChild(g);
+    biblioZone.appendChild(f);
+  }
+
+  function collecterBiblio() {
+    const titres = {};
+    for (const r of biblio.revues) { titres[r.cle] = {}; }
+    for (const champ of biblioZone.querySelectorAll('[data-biblio-revue]')) {
+      titres[champ.dataset.biblioRevue][champ.dataset.biblioLangue] = champ.value.trim();
+    }
+    return titres;
+  }
+
+  const autoBiblio = SZH.autoEnregistrement({
+    estModifie: function () { return biblioModifie; },
+    enregistrer: function (autoEcriture) {
+      biblioModifie = false;
+      vscodeApi.postMessage({ type: 'reglerBiblio', titres: collecterBiblio(), auto: autoEcriture });
+    }
+  });
+
   rendre();
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
     recu = true;
-    if (msg.type === 'enregistre') { auto.confirme(); return; }
+    // Un accusé nomme son bloc : sans cela, l'accusé de l'un confirmerait l'écriture en vol
+    // de l'autre.
+    if (msg.type === 'enregistre') {
+      if (msg.bloc === 'biblio') { autoBiblio.confirme(); } else { auto.confirme(); }
+      return;
+    }
     if (msg.type !== 'valeurs') { return; }
     cocher(msg.valeurs || {});
     // Une saisie en cours ne se fait pas écraser par un renvoi de valeurs : le panneau
@@ -304,6 +369,10 @@
     if (msg.ojs && !ojsModifie) {
       ojs = msg.ojs;
       rendreOjs();
+    }
+    if (msg.biblio && !biblioModifie) {
+      biblio = msg.biblio;
+      rendreBiblio();
     }
   });
   SZH.annoncerPret(vscodeApi, function () { return recu; });

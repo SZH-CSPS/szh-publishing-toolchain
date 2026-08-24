@@ -1,10 +1,12 @@
 ﻿<#
 .SYNOPSIS
-  Met à jour l'outil Revue SZH dans une fenêtre visible, dans la langue d'affichage de
-  Windows. Lancée d'ordinaire par update-launcher.ps1 :
+  Met à jour l'outil Revue SZH dans une fenêtre visible. Lancée d'ordinaire par
+  update-launcher.ps1, ou par les entrées « Mise à jour » du menu Démarrer, qui lui
+  passent la langue de l'équipe à qui elles s'adressent :
 
     powershell -ExecutionPolicy Bypass -File update.ps1                  # dernière version
     powershell -ExecutionPolicy Bypass -File update.ps1 -Version X.Y.Z  # version précise
+    powershell -ExecutionPolicy Bypass -File update.ps1 -Langue de       # fenêtre en allemand
 
   Ne demande jamais les droits administrateur : import WSL, extensions et réglages de
   l'éditeur sont au niveau utilisateur. Idempotente, composant par composant d'après
@@ -14,10 +16,23 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$Version    # vide = dernière release ; sinon le tag sans son « v »
+  [string]$Version,   # vide = dernière release ; sinon le tag sans son « v »
+  [string]$Langue     # vide = langue du poste ; 'fr', 'de' ou 'en' pour cette fenêtre
 )
 
 . "$PSScriptRoot\szh-common.ps1"
+. "$PSScriptRoot\szh-taches.ps1"
+
+# Langue de l'entrée du menu Démarrer qui a ouvert cette fenêtre : les deux raccourcis
+# « Mise à jour » parlent chacun à son équipe, et la fenêtre doit suivre. Pour cette
+# session seulement — la préférence du poste, écrite par les lanceurs de produit, n'est pas
+# touchée : la mise à jour n'est pas un produit et n'a pas à choisir pour eux. Valeur
+# inconnue : on l'ignore et le poste garde sa langue, plutôt que d'échouer sur un détail
+# d'affichage. $env:SZH_LANGUE garde le dernier mot, comme partout ailleurs.
+$envLangue = ($env:SZH_LANGUE -and (@('fr', 'de', 'en') -contains $env:SZH_LANGUE.ToLower()))
+if ($Langue -and (-not $envLangue) -and (@('fr', 'de', 'en') -contains $Langue.ToLower())) {
+  $script:SzhLangue = $Langue.ToLower()
+}
 
 try { $Host.UI.RawUI.WindowTitle = (T 'maj.fenetre') } catch { }
 
@@ -281,34 +296,50 @@ try {
   $wslCfg = Join-Path $SzhToolkit 'windows\user.wslconfig'
   if (Test-Path $wslCfg) { Copy-Item $wslCfg (Join-Path $env:USERPROFILE '.wslconfig') -Force }
 
-  # Raccourcis du menu Démarrer, au niveau utilisateur.
-  $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
-  New-Item -ItemType Directory -Force -Path $menu | Out-Null
-  $shell = New-Object -ComObject WScript.Shell
-  $codium = Get-VSCodiumExe
-  # Chaque raccourci porte l'icône de son produit (windows/icone.py) : épinglés à la barre
-  # des tâches, les deux perdent leur libellé et l'icône devient le seul repère. Repli sur
-  # celle de VSCodium ; sans IconLocation, le shell affiche celle de wscript.exe.
-  $icoRevue = Join-Path $SzhToolkit 'windows\szh-revue.ico'
-  $icoZs = Join-Path $SzhToolkit 'windows\szh-zeitschrift.ico'
-  $lnk = $shell.CreateShortcut((Join-Path $menu 'Revues SZH.lnk'))
-  $lnk.TargetPath = "$env:WINDIR\System32\wscript.exe"
-  # Produit passé explicitement des deux côtés, pour qu'un raccourci ancien ne montre pas
-  # les deux listes mêlées.
-  $lnk.Arguments = ('//B "{0}" "{1}" "-Produit" "revue"' -f (Join-Path $SzhToolkit 'windows\hidden.vbs'), (Join-Path $SzhToolkit 'windows\open-revue.ps1'))
-  $lnk.Description = 'Ouvrir une revue SZH'
-  if (Test-Path $icoRevue) { $lnk.IconLocation = ('{0},0' -f $icoRevue) }
-  elseif ($codium) { $lnk.IconLocation = $codium }
-  $lnk.Save()
+  # Raccourcis du menu Démarrer, au niveau utilisateur : les deux lanceurs de produit et
+  # les deux entrées de mise à jour. La liste et les libellés sont dans szh-common.ps1,
+  # que bootstrap.ps1 et update-launcher.ps1 appellent aussi — un poste neuf comme un
+  # poste déjà à jour reçoit ainsi les mêmes entrées, sans intervention.
+  #
+  # Jamais bloquant, pour la même raison que la ruche de classes plus bas : un menu
+  # Démarrer verrouillé par une stratégie de groupe ne doit pas faire échouer une mise à
+  # jour par ailleurs réussie. Mais le journal le dit, sinon un raccourci qui manque reste
+  # introuvable.
+  try {
+    $bilanMenu = Set-SzhRaccourcisMenu
+    if ($bilanMenu.poses.Count -gt 0) {
+      Write-SzhLog ('update : raccourcis du menu Démarrer posés : ' + ($bilanMenu.poses -join ', '))
+    }
+    foreach ($retire in $bilanMenu.retires) {
+      Write-SzhLog ('update : ancien raccourci du menu Démarrer retiré : ' + $retire)
+    }
+    foreach ($manque in $bilanMenu.manques) {
+      Write-SzhLog ('update : raccourci du menu Démarrer non posé -> ' + $manque)
+    }
+  } catch {
+    Write-SzhLog ('update : raccourcis du menu Démarrer non posés : ' + $_.Exception.Message)
+  }
 
-  # Second raccourci : le même lanceur, filtré sur la Zeitschrift.
-  $lnkZs = $shell.CreateShortcut((Join-Path $menu 'Zeitschriften SZH.lnk'))
-  $lnkZs.TargetPath = "$env:WINDIR\System32\wscript.exe"
-  $lnkZs.Arguments = ('//B "{0}" "{1}" "-Produit" "zeitschrift"' -f (Join-Path $SzhToolkit 'windows\hidden.vbs'), (Join-Path $SzhToolkit 'windows\open-revue.ps1'))
-  $lnkZs.Description = 'Eine SZH-Zeitschrift öffnen'
-  if (Test-Path $icoZs) { $lnkZs.IconLocation = ('{0},0' -f $icoZs) }
-  elseif ($codium) { $lnkZs.IconLocation = $codium }
-  $lnkZs.Save()
+  # La tâche planifiée qui déclenche les mises à jour, même leçon que les raccourcis :
+  # bootstrap.ps1 ne tourne qu'à l'installation, donc un poste installé avant que le rythme
+  # change garderait son déclencheur quotidien de 11 h pour toujours. Réécrite seulement si
+  # elle diffère, jamais recréée quand elle est déjà juste.
+  #
+  # Jamais bloquant, et le refus est ici le cas courant plutôt que l'exception : la tâche vit
+  # dans la racine du planificateur, qui appartient à l'administrateur, et cette fenêtre ne
+  # demande pas l'élévation. Elle réussit quand bootstrap.ps1 l'a lancée — l'installation —
+  # ou quand un administrateur ouvre le raccourci « Mise à jour » en tant qu'administrateur.
+  try {
+    $bilanTache = Set-SzhTacheMaj
+    if ($bilanTache.etat -ne 'conforme') {
+      Write-SzhLog ('update : tâche planifiée {0} — écarts : {1}' -f $bilanTache.etat, ($bilanTache.ecarts -join ' ; '))
+      if ($bilanTache.etat -eq 'refusee') {
+        Write-SzhLog ('update : tâche planifiée non corrigée (' + $bilanTache.message + ') — un administrateur doit relancer bootstrap.ps1 sur ce poste, ou la commande donnée dans docs/MAINTENANCE.md. La cadence hebdomadaire, elle, est tenue par update-launcher.ps1 sans administrateur.')
+      }
+    }
+  } catch {
+    Write-SzhLog ('update : tâche planifiée non vérifiée : ' + $_.Exception.Message)
+  }
 
   # Jamais bloquante : une ruche de classes verrouillée par une stratégie de groupe ne
   # doit pas faire échouer une mise à jour par ailleurs réussie.

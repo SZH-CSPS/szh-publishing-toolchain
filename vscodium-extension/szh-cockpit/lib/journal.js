@@ -117,6 +117,14 @@ const TONS_IMPORT = {
   'tableaux-origine-inconnue': 'attention',
   'image-non-reimportee': 'attention',
   'corps-retravaille': 'attention',
+  //   La bibliographie détachée, sur le même modèle que les tableaux. Une seule des trois
+  //   demande un geste : le conflit, où deux versions existent et où l'une doit être
+  //   recopiée dans l'autre. Les deux autres constatent — la liste est repartie dans le
+  //   texte, ou l'on ne peut pas savoir d'où venait celle d'ici — et un constat peint en
+  //   orange se prendrait pour un défaut.
+  'biblio-conflit': 'attention',
+  'biblio-retiree': 'info',
+  'biblio-origine-inconnue': 'info',
   //   Une reprise réussie n'a rien à faire faire : elle se dit, et c'est tout.
   'reimport-reprise': 'info',
   //   ... sauf quand le dossier n'a pas pu être remis en place : l'article manque au numéro.
@@ -150,6 +158,9 @@ const CLES_IMPORT = {
   'tableaux-origine-inconnue': 'ctl.reimport.tableaux-inconnus',
   'image-non-reimportee': 'ctl.reimport.image-perdue',
   'corps-retravaille': 'ctl.reimport.corps-retravaille',
+  'biblio-conflit': 'ctl.reimport.biblio-conflit',
+  'biblio-retiree': 'ctl.reimport.biblio-retiree',
+  'biblio-origine-inconnue': 'ctl.reimport.biblio-inconnue',
   'reimport-reprise': 'ctl.reimport.reprise',
   'reimport-reprise-impossible': 'ctl.reimport.reprise-impossible'
 };
@@ -566,6 +577,43 @@ function resumeJournal(constats) {
            total: bloquants + avertissements + infos };
 }
 
+// ---- Les citations, regroupées par article ---------------------------------------
+//
+// La vue « Articles » pose sur chaque carte l'état des références de SON article : un
+// rédacteur doit voir d'un coup d'oeil lequel a un problème, sans lire la liste entière des
+// constats. Ce regroupement vit ici et non dans la vue, parce qu'il n'y a qu'un lecteur de
+// journal et que les codes sont déjà nommés plus haut : un code ajouté à szh-citations
+// arrive ici dès qu'il est inscrit dans CLES_CITATIONS.
+//
+// Trois codes seulement, ceux qui parlent d'un lien manquant ou douteux entre le texte et
+// la bibliographie. « bilan » est un chiffre, pas un défaut ; « ancrage-inconnu » et
+// « caractere-sans-repli » sont d'autres familles, et la vue « Contrôles » les montre
+// toutes. Ce sont des CODES et non des phrases : la prose des filtres n'est plus lue nulle
+// part dans ce module, et ce regroupement ne la relit pas non plus.
+const CODES_CITATIONS_CARTE = ['appel-sans-reference', 'appel-ambigu', 'reference-orpheline'];
+
+// -> Map slug -> { 'appel-sans-reference': n, 'appel-ambigu': n, 'reference-orpheline': n,
+//                  total: n }
+// Un constat sans article — le pipeline n'a pas nommé le fichier — n'est rattaché à aucune
+// carte : le compter sur toutes serait faux.
+function citationsParArticle(constats) {
+  const parSlug = new Map();
+  for (const c of (constats || [])) {
+    if (!c || c.source !== 'citations') { continue; }
+    const slug = String(c.slug || '');
+    if (slug === '' || CODES_CITATIONS_CARTE.indexOf(c.code) === -1) { continue; }
+    if (!parSlug.has(slug)) {
+      const vide = { total: 0 };
+      for (const code of CODES_CITATIONS_CARTE) { vide[code] = 0; }
+      parSlug.set(slug, vide);
+    }
+    const compte = parSlug.get(slug);
+    compte[c.code]++;
+    compte.total++;
+  }
+  return parSlug;
+}
+
 // ---- Le réimport d'un article corrigé, lu dans sa ligne JSON ---------------------
 //
 // Le réimport est le seul maillon que le cockpit lance lui-même et dont il lit la réponse :
@@ -620,5 +668,6 @@ function constatsReimport(resultat, slug) {
 module.exports = {
   TONS_IMPORT, CLES_IMPORT, TONS_RESULTAT_REIMPORT,
   analyserJournal, phraseConstat, resumeJournal,
+  CODES_CITATIONS_CARTE, citationsParArticle,
   constatsReimport, tonResultatReimport
 };

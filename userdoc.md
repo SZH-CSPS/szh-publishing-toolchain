@@ -757,9 +757,47 @@ Deux boutons pour revenir en arrière, indépendants l'un de l'autre :
 Dans le lanceur **« Revues SZH »**, les numéros archivés apparaissent dans une **liste
 séparée**, et un **🔒** signale ceux qui sont verrouillés.
 
+## Mettre l'outil à jour soi-même
+
+L'outil se met à jour tout seul, **une fois par semaine** : le mardi à partir de 14 h, ou à
+l'ouverture de session suivante. Il regarde s'il y a du neuf et, le cas échéant, ouvre une
+fenêtre qui montre ce qu'il fait. Il n'y a normalement rien à lancer.
+
+Trois choses valent la peine d'être sues.
+
+- **Si le poste est éteint, endormi ou verrouillé le mardi à 14 h, rien n'est perdu.** La
+  mise à jour part au retour, ou à l'ouverture de session suivante. Elle ne réveille jamais
+  le poste : personne n'aime un ordinateur qui s'allume tout seul pour télécharger.
+- **Elle ne coupe pas un travail en cours.** Quand la mise à jour doit remplacer
+  l'environnement qui fabrique les PDF — c'est la partie lourde, et elle est rare — et que
+  l'éditeur est ouvert ou qu'une compilation tourne, elle **renonce sans rien dire** et
+  repasse plus tard. C'est d'ordinaire le lendemain matin, avant que l'éditeur soit ouvert.
+- **Si elle n'y arrive pas pendant plusieurs semaines**, elle finit par ouvrir la fenêtre
+  visible, même à un mauvais moment : il vaut mieux un message qu'un poste qui décroche en
+  silence. Si cette fenêtre échoue, elle dit quoi fermer.
+
+Pour le faire à la demande — après un appel au support, ou parce qu'une correction vient
+d'être annoncée — le menu Démarrer porte l'entrée **« Mise à jour de l'outil Revue »**
+(**« Aktualisierung des Redaktionstools »** pour l'équipe de la Zeitschrift : la même mise à
+jour, dans l'autre langue). Une fenêtre s'ouvre et se ferme toute seule à la fin.
+
+Ce qu'il faut savoir avant de cliquer :
+
+- **vos textes et vos revues ne sont pas touchés** — l'outil seul est remplacé ;
+- cela peut prendre **plusieurs minutes** la première fois de la journée, le temps du
+  téléchargement, et la fenêtre le dit ;
+- si quelque chose échoue, la fenêtre **reste ouverte** et propose d'ouvrir le journal ou de
+  préparer un e-mail au support ; rien n'a été installé à moitié ;
+- inutile de la lancer deux fois : la seconde fenêtre annonce qu'une mise à jour est déjà en
+  cours et se ferme.
+
+Si l'entrée n'apparaît pas dans le menu Démarrer, c'est que ce poste n'a pas encore reçu la
+version qui l'ajoute : elle arrivera à la prochaine ouverture de session. En attendant, le
+bouton **« Changer de version… »** du lanceur fait la même chose.
+
 ## La version du logiciel
 
-Le lanceur **« Revues SZH »** affiche en bas **« Logiciel v. … »** : la version installée
+Le lanceur **« Revues SZH »** affiche en bas **« Version : … »** : la version installée
 sur ce poste. Chaque numéro, lui, retient la version avec laquelle il a été **créé**.
 
 Si vous ouvrez un ancien numéro et que les deux ne correspondent pas, un message
@@ -837,25 +875,52 @@ mise en forme (bascule).
 
 ## Créer une nouvelle revue
 
-Le menu Démarrer porte **deux** entrées : **« Revues SZH »** pour la Revue, et
+Le menu Démarrer porte **deux** entrées de lanceur : **« Revues SZH »** pour la Revue, et
 **« Zeitschriften SZH »** pour la Zeitschrift. Chacune ne montre **que son produit** et ne crée
 **que dans son dossier** — c'est ce qui garantit qu'un numéro ne se retrouve pas rangé du mauvais
-côté.
+côté. (Les deux entrées **« Mise à jour »** du même menu, elles, ne créent rien : voir
+« Mettre l'outil à jour soi-même ».)
 
-Menu Démarrer → le lanceur du produit voulu → bouton **« Nouvelle revue… »** (en bas à gauche) :
-donner un nom (p. ex. `2026-02`) — la boîte rappelle où le numéro sera créé, il n'y a rien à
-choisir — et le numéro s'ouvre tout prêt : dossiers `articles-word` et `articles`, raccourci
-« Ouvrir la revue », et la bonne revue déjà renseignée dans ses métadonnées.
+Menu Démarrer → le lanceur du produit voulu → bouton **« Nouvelle revue… »** (en bas à gauche).
+La boîte demande deux choses, et deux seulement :
 
-Le **nom du dossier fait l'identité** : `2027-05` donne l'année 2027 et le numéro 05, que la barre
-« Revue SZH » affiche aussitôt (`R2027-05`), et que la couverture imprime (« 05/2027 »). Le titre
-du dossier thématique, lui, reste **vide** : c'est à vous de le remplir dans **Méta-données du
-numéro**. La **date de publication** aussi reste vide — elle se saisit le jour où la parution est
-décidée (voir « La date de publication du numéro »).
+| | |
+|---|---|
+| **Année** | l'année du numéro. L'année en cours est proposée. |
+| **Numéro** | son rang dans l'année : 1, 2, 3… |
 
-> Si un ancien numéro s'annonce « R2026-2 | Dossier — numéro d'exemple » dans la barre, c'est qu'il
-> a été créé avant cette version et porte encore les valeurs du gabarit : ouvrez **Méta-données du
-> numéro** et corrigez l'année, le numéro et le titre. Le nom du dossier, lui, est déjà le bon.
+Le reste s'affiche tout seul, et ne se saisit pas :
+
+- **Volume** — grisé, calculé d'après l'année. La Zeitschrift 2026 est au **Bd. 32**, la Revue
+  2026 au **Vol. 16** ; chaque année ajoute un volume. C'est ce volume qui s'imprime sur la
+  couverture et qui part dans OJS.
+- **Dossier** — le nom du dossier, `2026-02`, déduit de l'année et du numéro. Il n'y a rien à
+  choisir : c'est ce nom que la barre « Revue SZH » affiche (`R2026-02`) et que la couverture
+  imprime (« 02/2026 »).
+
+Puis **OK**, et le numéro s'ouvre tout prêt : dossiers `articles-word` et `articles`, raccourci
+« Ouvrir la revue », la bonne revue, la bonne année, le bon numéro et le bon volume déjà
+renseignés dans ses métadonnées.
+
+Le titre du dossier thématique, lui, reste **vide** : c'est à vous de le remplir dans
+**Méta-données du numéro**. La **date de publication** aussi reste vide — elle se saisit le jour
+où la parution est décidée (voir « La date de publication du numéro »).
+
+> **« Le volume 16, numéro 4 existe déjà ».** Deux numéros ne peuvent pas porter le même volume
+> et le même numéro : le message vous dit lequel existe et **où il est**, archives comprises — un
+> numéro archivé reste un numéro publié. Rien n'est créé, rien n'est supprimé. Soit vous vous
+> êtes trompé de numéro, soit l'ancien doit disparaître d'abord — et c'est à vous de le
+> supprimer, l'outil ne le fera pas à votre place.
+
+> **« Régler le volume manuellement (déconseillé) ».** Ce bouton déverrouille le volume. Il n'est
+> là que pour le jour où le compte des volumes se décalerait — un volume sauté, un volume double.
+> À utiliser seulement en sachant pourquoi : un volume faux s'imprime sur la couverture et part
+> dans OJS sans qu'aucun message le signale. Un second clic revient au volume calculé.
+
+> Si un ancien numéro s'annonce « R2026-2 | Dossier — numéro d'exemple » dans la barre, ou porte
+> un **Vol. 44**, c'est qu'il a été créé avant cette version et garde les valeurs du gabarit :
+> ouvrez **Méta-données du numéro** et corrigez le volume, le numéro et le titre. Le nom du
+> dossier, lui, est déjà le bon.
 
 Le lanceur cherche les revues aux emplacements officiels :
 
@@ -869,7 +934,15 @@ dossier `OneDrive\Revues`, par exemple), elle n'apparaît pas dans les listes ma
 dit en bas : « N revue(s) hors arborescence dans … — à déplacer ». Déplacez le dossier de la revue
 dans `RV02_Redaction` (ou `ZS02_Redaktion`) et il apparaîtra.
 
-**Mode test.** Tant que la chaîne est en rodage, le poste travaille dans un dossier
-d'essai : `OneDrive - SZH CSPS\Revues-TESTING`, avec exactement la même arborescence.
-Le lanceur l'annonce (« Mode test : … ») et la bascule se fait dans **Réglages SZH →
-Mode développeur**. Désactivé, tout se passe dans les dossiers de production.
+**Où vivent vos numéros.** Tant que la chaîne est en rodage, le poste travaille dans un dossier
+d'essai : `OneDrive - SZH CSPS\Revues-TESTING`, avec exactement la même arborescence que la
+production. Le lanceur le dit **toujours**, à deux endroits :
+
+- le **titre de la fenêtre** — `Revues SZH — dossier de test (Revues-TESTING)` ;
+- la ligne **« Revue dans : … »** (ou « Zeitschrift dans : … ») sous les deux listes, avec le
+  chemin complet.
+
+La bascule se fait dans **Réglages SZH → Mode développeur**. Elle ne déplace **aucun fichier** :
+elle change l'endroit où le lanceur regarde. Si vos numéros disparaissent des listes, lisez ces
+deux lignes avant tout : elles disent laquelle des deux racines est active
+(voir `docs/EMPLACEMENTS.md`).

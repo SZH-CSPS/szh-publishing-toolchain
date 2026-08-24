@@ -150,6 +150,8 @@ function monter(opts) {
     fs.mkdirSync(dossier, { recursive: true });
     fs.writeFileSync(path.join(dossier, a.slug + '.md'), a.texte);
     if (a.fiche !== null) { fs.writeFileSync(path.join(dossier, a.slug + '.meta.yaml'), a.fiche); }
+    // La bibliographie détachée à l'import : c'est elle qui fait foi pour <citations>.
+    if (a.biblio) { fs.writeFileSync(path.join(dossier, a.slug + '.biblio.md'), a.biblio); }
     const sortie = path.join(racine, 'out', a.slug);
     fs.mkdirSync(sortie, { recursive: true });
     // Des galleys minuscules mais réels : leur taille entre dans l'XML, elle doit donc
@@ -633,17 +635,50 @@ test('DOI : une forme inattendue pour la revue est signalée', () => {
     'DOI de la mauvaise revue non signalé : ' + sortie.avertissements.join(' | '));
 });
 
-test('références : les <citations> viennent du .md, une par ligne, en texte brut', () => {
-  const sortie = exporter(monter({ ausgabe: { date: '2026-09-08' } }), configComplete());
+// Le fichier de bibliographie que l'import détache : les références seules, sans titre.
+// C'est la source de <citations> depuis que la chaîne ne devine plus où la liste commence.
+const BIBLIO_DETACHEE = [
+  'Shaw, A., Bertrand, C., & Muller, D. (2023). *Enseigner autrement*. Editions SZH/CSPS.',
+  '',
+  'Zielinski, M. (2021). Adapter le curriculum. *Revue suisse de pédagogie spécialisée*,',
+  '11(2), 14-22. https://doi.org/10.57161/r2021-02-03',
+  ''
+].join(LF);
+
+test('références : les <citations> viennent du fichier de bibliographie', () => {
+  const racine = monter({
+    ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '02-observation', fiche: ficheArticle('fr', '10.57161/r2026-02-01'),
+      // Le corps ne porte plus la liste : il porte la référence que la compilation résout.
+      texte: ['# Titre', '', 'Un appel (Shaw et al., 2023) et un autre (Zielinski, 2021).',
+        '', '::: {.szh-biblio src="02-observation.biblio.md"}', ':::', ''].join(LF),
+      biblio: BIBLIO_DETACHEE }]
+  });
+  const sortie = exporter(racine, configComplete());
   const bloc = sortie.xml.slice(sortie.xml.indexOf('<citations>'), sortie.xml.indexOf('</citations>'));
   const lignes = bloc.split(LF).filter((l) => l.indexOf('<citation>') !== -1);
   assert.strictEqual(lignes.length, 2, 'deux références attendues :\n' + bloc);
-  // Une entrée coupée sur deux lignes dans le .md reste une seule référence.
+  // Une entrée coupée sur deux lignes reste une seule référence.
   assert.ok(lignes[1].indexOf('11(2), 14-22') !== -1, 'suite de référence perdue : ' + lignes[1]);
   // Texte brut : ni italiques ni lien markdown, et l'esperluette est échappée pour le XML.
   assert.strictEqual(bloc.indexOf('*'), -1, 'italiques du markdown laissées dans la référence');
   assert.ok(lignes[0].indexOf('&amp;') !== -1, 'esperluette non échappée');
   assert.ok(lignes[0].indexOf('Enseigner autrement') !== -1);
+  // Le fichier suffit : rien à deviner, donc rien à signaler.
+  assert.ok(!sortie.avertissements.some((a) => a.indexOf('encore dans le texte') !== -1),
+    'un article à bibliographie détachée ne doit rien avoir à signaler : '
+    + sortie.avertissements.join(' | '));
+});
+
+test('références : sans fichier, le corps sert de repli et l’export le dit', () => {
+  // Un article importé avant que la bibliographie devienne un fichier : la liste est encore
+  // dans le .md, sous son titre. On l'envoie quand même — mieux vaut des références devinées
+  // que pas de références — mais le rédacteur doit savoir qu'un réimport les fiabilise.
+  const sortie = exporter(monter({ ausgabe: { date: '2026-09-08' } }), configComplete());
+  const bloc = sortie.xml.slice(sortie.xml.indexOf('<citations>'), sortie.xml.indexOf('</citations>'));
+  assert.strictEqual(bloc.split(LF).filter((l) => l.indexOf('<citation>') !== -1).length, 2);
+  assert.ok(sortie.avertissements.some((a) => a.indexOf('encore dans le texte') !== -1),
+    'le repli sur le corps n’est pas signalé : ' + sortie.avertissements.join(' | '));
 });
 
 test('références : un article sans liste de références n’a pas de <citations> vide', () => {
@@ -654,7 +689,7 @@ test('références : un article sans liste de références n’a pas de <citatio
   });
   const sortie = exporter(racine, configComplete());
   assert.strictEqual(sortie.xml.indexOf('<citations>'), -1);
-  assert.ok(sortie.avertissements.some((a) => a.indexOf('aucune liste de références') !== -1),
+  assert.ok(sortie.avertissements.some((a) => a.indexOf('<citations> omis') !== -1),
     'absence de références non signalée : ' + sortie.avertissements.join(' | '));
 });
 

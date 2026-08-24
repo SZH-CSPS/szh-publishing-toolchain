@@ -43,6 +43,12 @@ function revueDEssai() {
     fs.writeFileSync(path.join(portraits, n), Buffer.alloc(128));
   }
 
+  // La bibliographie détachée à l'import : un fichier voisin du .md, comme la fiche et les
+  // tâches. L'autre article n'en a pas — un article sans bibliographie ne doit rien montrer.
+  fs.writeFileSync(path.join(dossier, slug + '.biblio.md'),
+    ['Dupont, A. (2024). *Un titre*. SZH.', '', 'Muller, B. (2023). Un autre titre. CSPS.',
+     ''].join(LF));
+
   const tables = path.join(dossier, 'tables');
   fs.mkdirSync(tables, { recursive: true });
   fs.copyFileSync(

@@ -35,6 +35,29 @@
 
 local utils = pandoc.utils
 
+-- ─── Aperçu du cockpit seulement ─────────────────────────────────────────────
+-- SZH_APERCU=1 distingue les deux chaînes, comme dans szh-citations.lua : l'aperçu et le
+-- PDF sortent de deux appels à pandoc, et seul l'aperçu porte cette variable.
+-- szh-apercu-lecteur-ecran.lua y pose sous chaque image et chaque tableau un encadré
+-- montrant ce qu'un lecteur d'écran reçoit. Le fichier n'est même pas OUVERT hors aperçu :
+-- rien de ce qu'il contient — balisage, classe, règle CSS — ne peut atteindre le PDF.
+-- Chargé par dofile plutôt que par require : le Makefile ne pose aucun chemin de recherche
+-- Lua aux filtres, et PANDOC_SCRIPT_FILE donne le dossier de celui-ci. Fichier absent ou
+-- fautif -> l'aperçu sort sans encadré, jamais en échec : une aide à la relecture ne doit
+-- pas empêcher de compiler.
+local APERCU = (os.getenv('SZH_APERCU') or '') ~= ''
+local lecteur_ecran = nil
+if APERCU then
+  local dossier = (PANDOC_SCRIPT_FILE or ''):match('^(.*[/\\])') or ''
+  local ok, module = pcall(dofile, dossier .. 'szh-apercu-lecteur-ecran.lua')
+  if ok and type(module) == 'table' then
+    lecteur_ecran = module
+  else
+    io.stderr:write('[numerotation] encadrés « lecteur d\'écran » indisponibles : '
+                    .. tostring(module) .. '\n')
+  end
+end
+
 -- Libellés localisés : les trois langues de la revue, plus l'anglais.
 local LIBELLE_FIGURE  = { fr = 'Figure',  de = 'Abbildung', it = 'Figura',  en = 'Figure' }
 local LIBELLE_TABLEAU = { fr = 'Tableau', de = 'Tabelle',   it = 'Tabella', en = 'Table' }
@@ -340,6 +363,12 @@ function Pandoc(doc)
   local mot_tableau = LIBELLE_TABLEAU[lang] or LIBELLE_TABLEAU.fr
   local n_figure, n_tableau, n_desc = 0, 0, 0
 
+  -- Aperçu : les encadrés « lecteur d'écran » AVANT toute autre passe, sur l'AST encore
+  -- intact. C'est là, et seulement là, que se lit l'intention du rédacteur : un alt=""
+  -- écrit exprès (image décorative) ne se distingue plus d'un alt absent dès que les
+  -- passes ci-dessous ont normalisé, elles posent alt="" dans les deux cas.
+  if lecteur_ecran then doc.blocks = lecteur_ecran.blocs(doc.blocks, lang) end
+
   -- Les images hors numérotation d'abord, et dans un walk à part : le walk principal
   -- visite les Inline avant les Block, l'image y serait déjà passée par le filtre Image
   -- quand son paragraphe arrive. Les Figure produites ici portent CLASSE_CREDIT_SEUL et
@@ -462,6 +491,13 @@ function Pandoc(doc)
   -- seul endroit où `pandoc --embed-resources` sait remplacer un chemin par un data: URI.
   local style = style_decors()
   if style then doc.blocks:insert(style) end
+
+  -- La feuille des encadrés d'aperçu, à côté de la précédente et pour la même raison :
+  -- c'est le seul endroit où elle ne peut pas se retrouver dans la chaîne du PDF.
+  if lecteur_ecran then
+    local style_le = lecteur_ecran.style()
+    if style_le then doc.blocks:insert(style_le) end
+  end
 
   return doc
 end

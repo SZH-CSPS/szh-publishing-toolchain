@@ -20,6 +20,23 @@ $endif$
 $for(css)$
   <link rel="stylesheet" href="$css$" />
 $endfor$
+$if(author)$
+  <!-- Portraits du bloc « À propos des auteur·e·s » : le chemin de chaque photo, posé
+       en fond CSS sur un <span> vide, et pas en <img>. Le pourquoi est dans print.css
+       § 8 — en un mot : le portrait est décoratif, il n'a pas de texte alternatif, et
+       tout <img> serait balisé /Figure par WeasyPrint, donc /Figure sans /Alt, donc
+       PDF/UA-1 7.3 violée. Ne pas remettre d'<img>.
+       Et pourquoi un <style> plutôt qu'un attribut style : --embed-resources ne réécrit
+       url() que dans un <style> (mesuré). Dans un attribut, le chemin relatif resterait
+       tel quel et le HTML autonome partirait avec un lien mort. -->
+  <style>
+$for(author)$
+$if(author.photo)$
+    .szh-auteur-photo-$author.photo-rang$ { background-image: url("$author.photo$"); }
+$endif$
+$endfor$
+  </style>
+$endif$
 $for(header-includes)$
   $header-includes$
 $endfor$
@@ -123,17 +140,17 @@ $body$
 
 <!-- Bloc « À propos des auteur·e·s », après le corps de l'article. Variables dérivées
      par szh-maquette.lua : auteurs-titre (localisé, accordé en nombre),
-     author.orcid-url (ORCID normalisé en URL), author.photo-alt (texte alternatif du
-     portrait, requis par PDF/UA-1). author.photo est un chemin relatif au dossier
-     d'article (portraits/<slug>.sans-fond.png), où pandoc s'exécute grâce au cd du
-     Makefile : --embed-resources l'inline comme les images de media/. -->
+     author.orcid-url (ORCID normalisé en URL), author.photo-rang (rang du portrait, qui
+     nomme sa règle CSS dans le <style> de l'en-tête). author.photo est un chemin relatif
+     au dossier d'article (portraits/<slug>.sans-fond.png), où pandoc s'exécute grâce au
+     cd du Makefile : --embed-resources l'inline comme les images de media/. -->
 $if(author)$
 <section class="szh-auteurs">
   <h2 class="szh-auteurs-titre">$auteurs-titre$</h2>
 $for(author)$
   <div class="szh-auteur">
 $if(author.photo)$
-    <img class="szh-auteur-photo" src="$author.photo$" alt="$author.photo-alt$" />
+    <span class="szh-auteur-photo szh-auteur-photo-$author.photo-rang$" role="presentation"></span>
 $endif$
     <div class="szh-auteur-texte">
       <p class="szh-auteur-nom">$if(author.nom)$$if(author.prenom)$$author.prenom$ $endif$$author.nom$$else$$author$$endif$$if(author.orcid-url)$ <a class="szh-orcid" href="$author.orcid-url$" title="ORCID" aria-label="ORCID"></a>$endif$</p>

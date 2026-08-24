@@ -17,6 +17,7 @@ param(
 )
 
 . "$PSScriptRoot\szh-common.ps1"
+. "$PSScriptRoot\szh-taches.ps1"
 
 function Info([string]$m) { Write-Host ('[bootstrap] ' + $m) -ForegroundColor Cyan }
 function Attention([string]$m) { Write-Host ('[bootstrap] ' + $m) -ForegroundColor Yellow }
@@ -112,6 +113,24 @@ if (-not $toolkitOk) {
 }
 if (-not $toolkitOk) { throw 'Impossible d''obtenir le toolkit (ni Release, ni dépôt local).' }
 
+# ---- Raccourcis du menu Démarrer ----
+# Posés ici, sans attendre la première mise à jour : si la Release est injoignable, celle-ci
+# s'arrête à la lecture du manifest et le poste resterait sans aucune entrée de menu alors
+# que le toolkit, lui, est en place par le repli hors ligne. Ils atterrissent dans le profil
+# du compte qui lance ce script, donc celui de l'administrateur ; chaque rédacteur reçoit
+# les siens à sa première ouverture de session, par la tâche planifiée ci-dessous. Jamais
+# bloquant : un menu Démarrer tenu par une stratégie de groupe n'empêche pas d'installer
+# un poste, mais il faut le lire à l'écran.
+Info 'Raccourcis du menu Démarrer (profil du compte qui installe)'
+try {
+  $bilanMenu = Set-SzhRaccourcisMenu
+  if ($bilanMenu.poses.Count -gt 0) { Info ('Posés : ' + ($bilanMenu.poses -join ', ')) }
+  foreach ($retire in $bilanMenu.retires) { Info ('Ancien raccourci retiré : ' + $retire) }
+  foreach ($manque in $bilanMenu.manques) { Attention ('Raccourci non posé -> ' + $manque) }
+} catch {
+  Attention ('Raccourcis du menu Démarrer non posés : ' + $_.Exception.Message)
+}
+
 # ---- Tâches planifiées ----
 Info 'Tâches planifiées (pour tout utilisateur connecté, sans admin)'
 $vbs = Join-Path $SzhToolkit 'windows\hidden.vbs'
@@ -120,14 +139,15 @@ $principal = New-ScheduledTaskPrincipal -GroupId 'S-1-5-32-545' -RunLevel Limite
 $reglages = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries `
               -ExecutionTimeLimit (New-TimeSpan -Hours 2) -MultipleInstances IgnoreNew
 
-$actionMaj = New-ScheduledTaskAction -Execute "$env:WINDIR\System32\wscript.exe" `
-  -Argument ('//B "{0}" "{1}"' -f $vbs, (Join-Path $SzhToolkit 'windows\update-launcher.ps1'))
-$declencheurs = @(
-  (New-ScheduledTaskTrigger -AtLogOn),
-  (New-ScheduledTaskTrigger -Daily -At '11:00')
-)
-Register-ScheduledTask -TaskName 'SZH - Mise a jour' -Action $actionMaj `
-  -Principal $principal -Trigger $declencheurs -Settings $reglages -Force | Out-Null
+# Mise à jour : déclencheurs, réglages et action viennent de szh-taches.ps1, que la passe de
+# mise à jour relit ensuite à chaque passage. Une seule vérité, sinon un poste installé
+# aujourd'hui et un poste mis à jour demain porteraient deux rythmes différents.
+$bilanTache = Set-SzhTacheMaj
+if ($bilanTache.etat -eq 'refusee') {
+  Attention ('Tâche « SZH - Mise a jour » non écrite : ' + $bilanTache.message)
+} else {
+  Info ('Tâche « SZH - Mise a jour » : ' + $bilanTache.etat + ' (ouverture de session + mardi 14 h)')
+}
 
 $actionChauffe = New-ScheduledTaskAction -Execute "$env:WINDIR\System32\wscript.exe" `
   -Argument ('//B "{0}" "{1}" "-d" "{2}" "--exec" "/bin/true"' -f $vbs, "$env:WINDIR\System32\wsl.exe", $SzhDistro)
@@ -146,3 +166,4 @@ Info 'Terminé.'
 Attention ('Antivirus : exclure {0}\WSL\*.vhdx et {1}\*, + processus vmcompute.exe, vmmem.exe, wsl.exe, wslservice.exe.' -f $SzhBase, $SzhStaging)
 Attention 'Chaque utilisateur du poste recevra réglages + raccourcis à sa prochaine connexion (tâche planifiée).'
 Attention 'Nouvelle revue : menu Démarrer > Revues SZH (ou Zeitschriften SZH) > « Nouvelle revue ».'
+Attention 'Mise à jour à la demande : menu Démarrer > « Mise à jour de l''outil Revue » (ou « Aktualisierung des Redaktionstools »).'

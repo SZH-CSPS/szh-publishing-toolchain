@@ -15,10 +15,10 @@
 const fs = require('fs');
 const path = require('path');
 const { analyserAusgabe, analyserMeta, langueDefaut, normaliserLangueArticle,
-  licenceArticle, normaliserLicence } = require('./yaml');
+  licenceArticle, normaliserLicence, listeYamlEnLigne, CLE_SANS_DOI } = require('./yaml');
 const { estATraduire, MARQUE_A_TRADUIRE } = require('./traduction');
 const { imagesSansAlternative, listerImages } = require('./references');
-const { referencesDuTexte } = require('./citations');
+const { referencesDuTexte, referencesDuFichier } = require('./citations');
 const { CONFIG } = require('./archivage');
 const { T, TEXTES_COCKPIT } = require('./i18n');
 
@@ -106,13 +106,49 @@ const TYPES_DEFAUT = {
   varia: 'VA', 'tribune-libre': 'TL', documentation: 'DC'
 };
 
-// Forme réelle des DOI de la maison : un seul préfixe, la lettre distinguant la revue,
-// AAAA-NN le numéro dans l'année et SS le compteur dans le numéro. Le générateur de DOI
-// est reporté ; ce motif ne sert donc qu'à signaler un DOI saisi de travers — un « r »
-// sur la Zeitschrift, par exemple, qui se publierait sans que rien ne le dise.
+// Forme réelle des DOI de la maison, relevée sur ojs.szh.ch : un seul préfixe pour les deux
+// revues, la lettre les distinguant, AAAA-NN le numéro dans l'année et SS le compteur dans
+// le numéro — « 10.57161/z2026-06-00 ».
+//
+// Le DOI est un CALCUL, sans mémoire : rien ne le stocke, il se redéduit à tout moment de
+// la revue, de l'année, du numéro et du rang de l'article. Le rang est celui de l'article
+// parmi ceux qui reçoivent un DOI, compté à partir de zéro : l'éditorial ouvre le numéro et
+// porte donc « 00 », ce que pipeline/docx-meta.py reconnaît déjà pour deviner un éditorial.
+const PREFIXE_DOI = '10.57161';
+const LETTRE_DOI = { fr: 'r', de: 'z' };
+
+// Deux chiffres, comme l'instance les écrit. Au-delà de 99, le nombre s'écrit tel quel
+// plutôt que de mentir sur deux chiffres — un numéro à trois chiffres n'existe pas, mais un
+// DOI tronqué désignerait un autre article.
+function deuxChiffres(n) {
+  const v = Math.trunc(Number(n));
+  if (!isFinite(v) || v < 0) { return ''; }
+  return v < 10 ? '0' + v : String(v);
+}
+
+// doiCalcule(locale, annee, numero, rang) -> '10.57161/r2026-03-05', ou '' si l'un des
+// morceaux manque : un numéro dont la date n'est pas encore posée n'a pas d'année, et un
+// DOI à trous serait pire que pas de DOI. `rang` à -1 (article qui n'en reçoit pas) rend ''
+// aussi.
+function doiCalcule(locale, annee, numero, rang) {
+  const lettre = LETTRE_DOI[String(locale || '').toLowerCase()];
+  const an = (String(annee === undefined || annee === null ? '' : annee).match(/\d{4}/) || [''])[0];
+  // Les chiffres du numéro, et RIEN quand il n'y en a pas : sans ce test, un numéro sans
+  // nombre passerait pour le numéro zéro et fabriquerait « …-00-01 », un DOI qui a l'air
+  // juste et qui désigne un numéro qui n'existe pas.
+  const chiffres = String(numero === undefined || numero === null ? '' : numero).replace(/\D+/g, '');
+  const num = chiffres === '' ? '' : deuxChiffres(chiffres);
+  const seq = deuxChiffres(rang);
+  if (!lettre || an === '' || num === '' || seq === '') { return ''; }
+  return PREFIXE_DOI + '/' + lettre + an + '-' + num + '-' + seq;
+}
+
+// Le motif ne sert qu'à signaler un DOI saisi de travers — un « r » sur la Zeitschrift, par
+// exemple, qui se publierait sans que rien ne le dise. L'exemple est produit par le
+// générateur lui-même : un exemple recopié à la main finirait par mentir sur la forme.
 const FORME_DOI = {
-  fr: { motif: /^10\.57161\/r\d{4}-\d{2}-\d{2}$/, exemple: '10.57161/r2026-03-05' },
-  de: { motif: /^10\.57161\/z\d{4}-\d{2}-\d{2}$/, exemple: '10.57161/z2026-03-05' }
+  fr: { motif: /^10\.57161\/r\d{4}-\d{2}-\d{2}$/, exemple: doiCalcule('fr', '2026', '3', 5) },
+  de: { motif: /^10\.57161\/z\d{4}-\d{2}-\d{2}$/, exemple: doiCalcule('de', '2026', '3', 5) }
 };
 
 // Crédits de figure qui ne posent aucune question de licence : la maison elle-même.
@@ -309,6 +345,18 @@ function configOjs() {
   return normaliserConfigOjs(lireConfigPoste());
 }
 
+// La rubrique d'un type d'article reçoit-elle un DOI ? C'est la table des rubriques qui le
+// dit — Documentation, podcast, langue facile et annonces n'en reçoivent pas — et non une
+// liste tenue ailleurs : un poste dont la configuration a été corrigée suit la correction.
+// Sert aussi à la vue « Articles », qui affiche le DOI calculé sur chaque carte et doit
+// annoncer la même absence que l'export.
+function typeSansDoi(cfg, type) {
+  const c = cfg || configOjs();
+  const cle = (c.types || {})[texte(type)];
+  for (const r of (c.rubriques || [])) { if (r.cle === cle) { return !!r.sansDoi; } }
+  return false;
+}
+
 // Écrit la configuration venue du panneau sous la clé `ojs` de config.json, sans toucher
 // au reste du fichier (devMode, mailsTraduction…). Rend null, ou le message de l'échec.
 function ecrireConfigOjs(config) {
@@ -330,18 +378,31 @@ function manqueConfig(libelle, locale, ou) {
   return T('ojs.err.config', [libelle, T('ojs.revue.' + locale), ou]);
 }
 
-// Les références d'un article, en texte brut, relues au dernier moment dans son .md.
-// referencesDuTexte() lève quand les tables de repli du filtre de citations sont
-// inaccessibles (toolkit absent ou plus ancien que le cockpit) : ce n'est pas une raison
-// d'arrêter l'export d'un numéro entier, donc on le dit une fois et on continue sans
-// <citations>.
-function lecteurReferences(avertissements) {
+// Les références d'un article, en texte brut, relues au dernier moment.
+//
+// La source, c'est le FICHIER de bibliographie que l'import a détaché : ce sont les
+// références et rien d'autre, sans titre à reconnaître et sans découpage à deviner. Un
+// article importé avant que la bibliographie devienne un fichier n'en a pas ; on retombe
+// alors sur son .md, et on le dit — c'est un réimport qui le corrige.
+//
+// referencesDuFichier() et referencesDuTexte() lèvent quand les tables du filtre de
+// citations sont inaccessibles (toolkit absent ou plus ancien que le cockpit) : ce n'est pas
+// une raison d'arrêter l'export d'un numéro entier, donc on le dit une fois et on continue
+// sans <citations>.
+function lecteurReferences(racine, avertissements) {
   let panne = null;                                // message déjà signalé, ou null
-  return function (md, prefixe, exigees) {
+  return function (slug, md, prefixe, exigees) {
     if (panne !== null) { return []; }
     let entrees = [];
-    try { entrees = referencesDuTexte(md); }
-    catch (e) {
+    try {
+      entrees = referencesDuFichier(racine, slug);
+      if (entrees === null) {
+        entrees = referencesDuTexte(md);
+        if (entrees.length > 0) {
+          avertissements.push(prefixe + T('ojs.avert.citations.corps'));
+        }
+      }
+    } catch (e) {
       panne = T(e && e.messageCle ? e.messageCle : 'cit.toolkit.absent');
       avertissements.push(T('ojs.avert.citations.tables', [panne]));
       return [];
@@ -414,9 +475,15 @@ function collecter(racine, cfg, avertissements) {
     throw new Error(T('ojs.err.aucunArticle', [racine]));
   }
 
+  // Les articles dont la rédaction a décidé qu'ils ne portent pas de DOI, cochés sur leur
+  // carte dans la vue « Articles ». Une absence VOULUE n'est pas un oubli : elle ne doit
+  // pas arrêter l'export, et elle ne doit pas non plus passer sous silence — d'où un
+  // avertissement à elle, distinct de celui des rubriques qui n'en reçoivent jamais.
+  const sansDoiVoulu = new Set(listeYamlEnLigne(valeurs[CLE_SANS_DOI]));
+
   const parCle = {};
   for (const r of cfg.rubriques) { parCle[r.cle] = r; }
-  const lireReferences = lecteurReferences(avertissements);
+  const lireReferences = lecteurReferences(racine, avertissements);
 
   // Une rubrique employée par un article doit avoir son abréviation et son titre dans la
   // langue de la revue : l'abréviation est la seule chose sur laquelle OJS résout
@@ -490,13 +557,18 @@ function collecter(racine, cfg, avertissements) {
             [n, l.toUpperCase(), MARQUE_A_TRADUIRE]));
         }
       }
-      // Le DOI n'est pas généré par la chaîne : il est saisi. Un article qui en manque
-      // partirait sans identifiant pérenne et sans dépôt Crossref, ce qui ne se répare
-      // pas après publication — l'export s'arrête, sauf dans les rubriques qui n'en
-      // reçoivent pas.
+      // Le DOI de la fiche fait foi : c'est lui qui a été déposé chez Crossref, et rien
+      // ne le recalcule ici. La vue « Articles » montre, elle, le DOI que le rang de
+      // l'article donne — l'ordre de l'export est alphabétique et non celui du numéro, il
+      // ne peut donc pas servir de compteur.
+      // Un article qui en manque partirait sans identifiant pérenne et sans dépôt
+      // Crossref, ce qui ne se répare pas après publication — l'export s'arrête. Trois
+      // exceptions : l'absence VOULUE, cochée sur la carte de l'article, et les rubriques
+      // qui n'en reçoivent jamais.
       const doi = texte(meta.doi);
       if (doi === '') {
-        if (rubrique && rubrique.sansDoi) { avertissements.push(prefixe + T('ojs.avert.doi.sans')); }
+        if (sansDoiVoulu.has(slug)) { avertissements.push(prefixe + T('ojs.avert.doi.voulu')); }
+        else if (rubrique && rubrique.sansDoi) { avertissements.push(prefixe + T('ojs.avert.doi.sans')); }
         else { bloquants.push(prefixe + T('ojs.err.doi')); }
       } else if (!FORME_DOI[numero.locale].motif.test(doi)) {
         avertissements.push(prefixe + T('ojs.avert.doi.forme', [doi, FORME_DOI[numero.locale].exemple]));
@@ -559,9 +631,9 @@ function collecter(racine, cfg, avertissements) {
             [licence.nom, tierces.length, noms]));
         }
       }
-      // Les références partent en texte brut, une par ligne, telles que le .md les
-      // porte : la chaîne ne sait pas les structurer et n'essaie pas.
-      article.references = lireReferences(texteMd, prefixe,
+      // Les références partent en texte brut, une par ligne, telles que le fichier de
+      // bibliographie les porte : la chaîne ne sait pas les structurer et n'essaie pas.
+      article.references = lireReferences(slug, texteMd, prefixe,
         !!(article.rubrique && !article.rubrique.sansResume));
     } catch (e) { /* .md illisible : les galleys manquants le diront déjà */ }
 
@@ -827,7 +899,8 @@ function genererExportOjs(racine, options) {
 
 module.exports = {
   genererExportOjs, configOjs, ecrireConfigOjs, normaliserConfigOjs, cheminConfigOjs,
-  orcidCanonique, CHAMPS_REVUE, LOCALES_REVUE, RUBRIQUES_DEFAUT, TYPES_DEFAUT
+  orcidCanonique, doiCalcule, typeSansDoi, FORME_DOI,
+  CHAMPS_REVUE, LOCALES_REVUE, RUBRIQUES_DEFAUT, TYPES_DEFAUT
 };
 
 if (require.main === module) {

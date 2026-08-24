@@ -13,7 +13,14 @@ const path = require('path');
 // préservée telle quelle, fins de ligne et BOM compris.
 
 const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 'couleur',
-  'entete-condensee', 'locked', 'archived', 'version-toolkit', 'ordre-articles'];
+  'entete-condensee', 'locked', 'archived', 'version-toolkit', 'ordre-articles',
+  'articles-sans-doi'];
+
+// Les articles du numéro qui ne reçoivent pas de DOI, décidés à la case sur leur carte.
+// Ils vivent ici, à côté de l'ordre, et non dans la fiche de l'article : c'est cette liste
+// qui les range en fin de numéro, et le rang décide du DOI. Une seule ligne dit donc
+// comment tout le numéro est numéroté, et elle se relit à la main.
+const CLE_SANS_DOI = 'articles-sans-doi';
 
 // Clés qui portent une liste et non un scalaire. `ordre-articles` retient l'ordre des
 // articles dans le numéro : il vit ici, avec le reste de ce qui décrit le numéro, et non
@@ -21,7 +28,26 @@ const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 
 // quoi tout out/ serait à recompiler et les liens du numéro tomberaient. Écrite en
 // séquence en ligne, la clé se relit et se corrige à la main, et elle voyage avec le
 // dossier comme le reste d'ausgabe.yaml. lib/articles.js la lit et la répare.
-const CLES_LISTES = ['ordre-articles'];
+const CLES_LISTES = ['ordre-articles', CLE_SANS_DOI];
+
+// Les jetons d'une séquence en ligne, telle que `ordre-articles` et `articles-sans-doi`
+// l'écrivent : `["a", "b"]` comme le sérialiseur la pose, ou une simple suite séparée par
+// des virgules ou des espaces, ce qu'une correction à la main donne. Doublons et jetons
+// vides partent ; ce qu'est un jeton VALIDE est jugé par l'appelant, seul à savoir ce
+// qu'il attend. Un seul lecteur pour les deux clés : deux se seraient mis à diverger.
+function listeYamlEnLigne(valeur) {
+  const brut = Array.isArray(valeur)
+    ? valeur.join(' ')
+    : String(valeur === undefined || valeur === null ? '' : valeur);
+  const interieur = brut.trim().replace(/^\[/, '').replace(/\]$/, '');
+  const liste = [];
+  for (const morceau of interieur.split(/[,\s]+/)) {
+    const v = decouperValeurYaml(morceau.trim()).valeur.trim();
+    if (v === '' || liste.indexOf(v) !== -1) { continue; }
+    liste.push(v);
+  }
+  return liste;
+}
 
 // Deux drapeaux indépendants, écrits en booléens YAML nus : `locked` gèle le numéro
 // (éditeur en lecture seule, écritures du cockpit refusées) et `archived` le range dans
@@ -707,13 +733,13 @@ function ecrireAtomique(chemin, contenu) {
 }
 
 module.exports = {
-  CLES_METADONNEES, CLES_BOOLEENNES, CLES_LISTES, COULEURS_NUMERO, HEX_COULEURS, CLES_FRONTMATTER, estVraiYaml,
+  CLES_METADONNEES, CLES_BOOLEENNES, CLES_LISTES, CLE_SANS_DOI, COULEURS_NUMERO, HEX_COULEURS, CLES_FRONTMATTER, estVraiYaml,
   etatRevue,
   REVUES, normaliserRevue,
   TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
   LANGUES_ARTICLE, normaliserLangueArticle,
   LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, licenceArticle,
-  decouperValeurYaml, decouperFlowYaml, analyserAusgabe,
+  decouperValeurYaml, decouperFlowYaml, listeYamlEnLigne, analyserAusgabe,
   separerFrontmatter, analyserFrontmatter, citerFrontmatter, lignesCleFrontmatter, serialiserFrontmatter,
   langueDefaut, langueRevue, analyserMeta, serialiserMeta, titreNumero,
   formaterValeurYaml, serialiserAusgabe, ecrireAtomique

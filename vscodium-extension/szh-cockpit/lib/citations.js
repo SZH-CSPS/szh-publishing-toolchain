@@ -15,6 +15,13 @@
 
 const fs = require('fs');
 const path = require('path');
+const { REVUES, LANGUES_META } = require('./yaml');
+const { lireConfigPoste } = require('./archivage');
+
+// Les deux revues et les trois langues du titre de bibliographie, dans l'ordre où le
+// panneau les affiche. Une seule définition des unes et des autres, celle des fiches.
+const REVUES_BIBLIO = REVUES.map((r) => r.cle);
+const LANGUES_BIBLIO = LANGUES_META.slice();
 
 // ---- identifiants : le repli des lettres est lu dans le filtre, pas recopié ici ----
 
@@ -127,7 +134,36 @@ function chargerTables() {
   while ((m = plage.exec(brut)) !== null) {
     ignores.push([parseInt(m[1], 16), parseInt(m[2], 16)]);
   }
-  tables = { chemin: chemin, repli: repli, ignores: ignores };
+  // Le lexique des titres de bibliographie, et les titres que la compilation POSE au-dessus
+  // de la bibliographie détachée : mêmes tables, même fichier, même raison. Un lexique vide
+  // n'est pas un lexique : c'est un filtre d'un autre format.
+  const titres = (blocLua(src, 'TITRES_BIB', chemin).match(/'([a-z]+)'/g) || [])
+    .map((t) => t.slice(1, -1));
+  if (titres.length < 10) {
+    throw erreurRepli('discordant', 'TITRES_BIB de ' + chemin + ' ne porte que '
+      + titres.length + ' titres.');
+  }
+  const defauts = {};
+  const parRevue = /(\w+)\s*=\s*\{([^}]*)\}/g;
+  // L'en-tête « local TITRES_BIBLIO_DEFAUT = { » est retiré : sans cela, la première
+  // capture serait le nom de la table, et la revue « revue » disparaîtrait.
+  const bloc = blocLua(src, 'TITRES_BIBLIO_DEFAUT', chemin);
+  const blocTitres = bloc.slice(bloc.indexOf('{') + 1);
+  while ((m = parRevue.exec(blocTitres)) !== null) {
+    const par = {};
+    const parLangue = /(\w+)\s*=\s*\[\[([\s\S]*?)\]\]/g;
+    let l;
+    while ((l = parLangue.exec(m[2])) !== null) { par[l[1]] = l[2]; }
+    defauts[m[1]] = par;
+  }
+  for (const revue of REVUES_BIBLIO) {
+    if (!defauts[revue]) {
+      throw erreurRepli('discordant', 'TITRES_BIBLIO_DEFAUT de ' + chemin
+        + ' ne dit rien de la revue « ' + revue + ' ».');
+    }
+  }
+  tables = { chemin: chemin, repli: repli, ignores: ignores,
+             titres: titres, titresBiblio: defauts };
   return tables;
 }
 
@@ -196,16 +232,20 @@ function normaliser(t) {
   return assainir(t).replace(/\s+/g, ' ').trim();
 }
 
-const TITRES_BIB = [
-  'literatur', 'literaturverzeichnis', 'literaturangaben', 'literaturhinweise',
-  'bibliografie', 'bibliografia', 'bibliographie', 'bibliography',
-  'reference', 'references', 'referenzen', 'quellen', 'quellenverzeichnis',
-  'ouvragescites', 'zitierteliteratur', 'verwendeteliteratur', 'weiterfuhrendeliteratur'
-];
+// Le lexique n'est plus recopié ici : il est relu dans le filtre, comme les tables de repli
+// juste au-dessus. Deux listes identiques ne disaient rien de deux résultats identiques —
+// c'est précisément par là que l'écart de repli avait pu vivre — et une liste qu'il faut
+// tenir à jour des deux côtés finit par diverger.
+function titresBib() {
+  return chargerTables().titres;
+}
 
+// Comparaison EXACTE, comme est_titre_bib() du filtre. Le préfixe faisait de
+// « Literaturhinweise für die Praxis » un titre de bibliographie, et tout ce qui suivait
+// cessait d'être regardé.
 function estTitreBib(texte) {
   const p = aplatir(texte);
-  return TITRES_BIB.some((t) => p === t || p.startsWith(t));
+  return titresBib().indexOf(p) !== -1;
 }
 
 // Année d'une référence : la première entre parenthèses. '' pour une référence sans date,
@@ -256,9 +296,16 @@ function referencesDuTexte(md) {
     if (m && estTitreBib(normaliser(m[1]))) { coupe = i; }
   });
   if (coupe === -1) { return []; }
+  return entreesDesParagraphes(paras.slice(coupe + 1));
+}
+
+// Des paragraphes de markdown aux entrées identifiées. Sert au fichier de bibliographie
+// comme au repli sur le corps : un seul groupement, un seul calcul d'identifiant.
+function entreesDesParagraphes(paragraphes) {
   const entrees = [];
-  for (let i = coupe + 1; i < paras.length; i++) {
-    const brut = paras[i];
+  for (const p of paragraphes) {
+    const brut = String(p).trim();
+    if (!brut) { continue; }
     if (/^#+\s/.test(brut)) { break; }
     // Le .md porte des échappements et des italiques : on les retire pour lire, jamais
     // pour écrire.
@@ -285,6 +332,88 @@ function referencesDuTexte(md) {
     }
   });
   return entrees;
+}
+
+// ---- la bibliographie détachée ----
+//
+// Depuis que l'import met la bibliographie à part, c'est ce fichier qui fait foi : il ne
+// porte que les références, sans titre, une par paragraphe. Plus de découpage à deviner
+// dans le corps de l'article — juste des paragraphes à grouper en entrées, comme le filtre.
+
+// Le nom du fichier, à un seul endroit. Même règle que <slug>.meta.yaml et
+// <slug>.taches.yaml : un fichier singulier de l'article est son voisin, nommé
+// <slug>.<rôle>.<extension>.
+function nomFichierBiblio(slug) {
+  return String(slug) + '.biblio.md';
+}
+
+function cheminBiblio(racine, slug) {
+  return path.join(racine, 'articles', slug, nomFichierBiblio(slug));
+}
+
+// Les entrées du fichier de bibliographie, ou null si l'article n'en a pas — ce qui n'est
+// pas la même chose qu'une liste vide : sans fichier, la liste est peut-être encore dans le
+// corps, et l'appelant a un repli à tenter.
+function referencesDuFichier(racine, slug) {
+  let brut;
+  try { brut = fs.readFileSync(cheminBiblio(racine, slug), 'utf8'); }
+  catch (e) { return null; }
+  return entreesDesParagraphes(String(brut).split(/\n\s*\n/));
+}
+
+// ---- le titre de la bibliographie : un réglage de poste ----
+//
+// La bibliographie n'a plus de titre dans le texte : la compilation le pose, dans la langue
+// de l'article. Ces intitulés sont donc un réglage, comme la configuration OJS — même
+// fichier (config.json), même règle de fusion clé par clé, et le panneau « Réglages SZH »
+// les corrige sans republier l'extension.
+//
+// Les valeurs par défaut ne sont pas ici : elles sont dans le filtre, seul endroit où elles
+// vivent, et relues avec les autres tables (voir chargerTables).
+function titresBiblioDefaut() {
+  return chargerTables().titresBiblio;
+}
+
+function texteTitre(v) {
+  return String(v === undefined || v === null ? '' : v).replace(/\s+/g, ' ').trim();
+}
+
+// Défauts + surcharge du poste, clé par clé. « La clé présente gagne, même vide » : c'est la
+// règle de la configuration OJS, et vider un champ dans le panneau doit avoir un effet —
+// ici, une bibliographie sans titre du tout.
+function normaliserConfigBiblio(brut) {
+  const defauts = titresBiblioDefaut();
+  const src = (brut && typeof brut.biblio === 'object' && brut.biblio) ? brut.biblio : {};
+  const poses = (src.titres && typeof src.titres === 'object') ? src.titres : {};
+  const titres = {};
+  for (const revue of REVUES_BIBLIO) {
+    const surcharge = (poses[revue] && typeof poses[revue] === 'object') ? poses[revue] : {};
+    const cible = {};
+    for (const langue of LANGUES_BIBLIO) {
+      cible[langue] = langue in surcharge
+        ? texteTitre(surcharge[langue])
+        : texteTitre((defauts[revue] || {})[langue]);
+    }
+    titres[revue] = cible;
+  }
+  return { titres: titres };
+}
+
+// La configuration effective : ce que le panneau affiche, et ce que la compilation emploie.
+function configBiblio() {
+  return normaliserConfigBiblio(lireConfigPoste());
+}
+
+// Pose les intitulés sur une configuration sans toucher au reste du fichier (emplacement
+// des revues, OJS, tâches). Pure, pour être éprouvable sans écrire dans C:\ProgramData ;
+// c'est l'appelant qui appelle ecrireConfigPoste.
+function configAvecTitresBiblio(cfg, titres) {
+  const sortie = Object.assign({}, (cfg && typeof cfg === 'object') ? cfg : {});
+  const biblio = Object.assign({}, (sortie.biblio && typeof sortie.biblio === 'object')
+    ? sortie.biblio : {});
+  biblio.titres = normaliserConfigBiblio({ biblio: { titres: titres } }).titres;
+  sortie.biblio = biblio;
+  return sortie;
 }
 
 // ---- pose du lien ----
@@ -318,6 +447,9 @@ function plageDeLAppel(ligne, colonne) {
 
 module.exports = {
   aplatir, replier, normaliser, estTitreBib, estContinuation, nomPourId, referencesDuTexte,
+  entreesDesParagraphes, referencesDuFichier, nomFichierBiblio, cheminBiblio,
+  titresBiblioDefaut, normaliserConfigBiblio, configBiblio, configAvecTitresBiblio,
+  REVUES_BIBLIO, LANGUES_BIBLIO,
   lienVersReference, plageDeLAppel, caracteresSansRepli, cheminDuFiltre, oublierTables,
   emplacementsDuFiltre
 };

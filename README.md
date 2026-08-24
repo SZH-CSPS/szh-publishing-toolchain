@@ -18,9 +18,11 @@ WSL s'appelle `SZH-Publishing`.
 - **Une source de vérité par élément, zéro copie par revue.** Le pipeline et la configuration de
   l'éditeur vivent dans le toolkit (`C:\ProgramData\SZH\toolkit`), pas dans les dossiers de revue.
   Corriger un style ou un bug, c'est une release, pas N dossiers à retoucher.
-- **Mise à jour silencieuse, sans administrateur.** Une tâche planifiée lit chaque jour un
-  `manifest.json` d'un kilooctet et ne télécharge que ce qui a changé. Le rootfs, lourd, n'est
-  retiré que lors d'un changement de toolchain.
+- **Mise à jour silencieuse, sans administrateur.** Une tâche planifiée lit une fois par
+  semaine — le mardi à 14 h, et à chaque ouverture de session — un `manifest.json` d'un
+  kilooctet, et ne télécharge que ce qui a changé. Le rootfs, lourd, n'est retiré que lors
+  d'un changement de toolchain, et la passe silencieuse **renonce** plutôt que de le remplacer
+  sous une compilation en cours.
 - **Dossier de revue épuré.** Le rédacteur ne voit que son contenu : articles, métadonnées, PDF.
 - **Reproductible et épinglé.** Rootfs vérifié par sha256, dépendances Python figées, extensions
   VSCodium épinglées avec leurs empreintes.
@@ -56,7 +58,8 @@ szh-publishing-toolchain/
 │   ├── open-md.ps1                 ouverture d'un .md par double-clic
 │   ├── archive-revue.ps1           déplacement en cours ⇄ archives
 │   ├── szh-common.ps1              socle commun : manifest, téléchargement, textes
-│   ├── icone.py                    fabrique les deux .ico livrés à côté
+│   ├── szh-taches.ps1              tâche planifiée, cadence hebdomadaire, choix du moment
+│   ├── icone.py                    fabrique les trois .ico livrés à côté
 │   └── vsix.lock                   extensions tierces épinglées (version + sha256)
 ├── vscodium-user/                  → %APPDATA%\VSCodium\User
 ├── vscodium-extension/
@@ -92,9 +95,15 @@ powershell -ExecutionPolicy Bypass -File .\windows\bootstrap.ps1
 ```
 
 Active le moteur WSL, installe VSCodium et SumatraPDF par winget, donne aux Utilisateurs le droit
-d'écrire dans `C:\ProgramData\SZH`, crée les tâches planifiées (mise à jour à la connexion et à
-11 h, préchauffage WSL) et lance la première mise à jour. Si WSL était absent, redémarrer puis
-relancer le script.
+d'écrire dans `C:\ProgramData\SZH`, pose les raccourcis du menu Démarrer, crée les tâches
+planifiées (mise à jour à la connexion et le mardi à 14 h, préchauffage WSL) et lance la
+première mise à jour. Si WSL était absent, redémarrer puis relancer le script.
+
+Le rythme de la mise à jour et les quatre états du poste — verrouillé, éteint, en veille,
+personne connecté — sont traités dans `docs/MAINTENANCE.md`. Un point à connaître : sur un
+poste **déjà installé**, seul un passage en administrateur peut changer le déclencheur de la
+tâche, mais le rythme hebdomadaire s'applique quand même, parce qu'il vit dans
+`szh-taches.ps1` et non dans le déclencheur.
 
 Puis, **à la main** : poser les exclusions antivirus sur `…\SZH\WSL\*.vhdx`, `…\SZH\staging` et
 les processus `vmcompute.exe`, `vmmem.exe`, `wsl.exe`, `wslservice.exe`. Le script les affiche
@@ -159,6 +168,28 @@ hyperlien exigerait l'automatisation COM d'Outlook, qui n'existe pas pour le nou
 cette voie a été retirée le 23.08.2026 plutôt que maintenue pour un seul client. L'adresse de
 destination se surcharge par `"mailsTraduction"` dans `config.json`.
 
+### Les raccourcis du menu Démarrer
+
+Quatre entrées, au niveau utilisateur, posées par `Set-SzhRaccourcisMenu` (`szh-common.ps1`) :
+« Revues SZH » et « Zeitschriften SZH » (un lanceur par produit, sans console, par
+`wscript.exe //B hidden.vbs`), puis « Mise à jour de l'outil Revue » et « Aktualisierung des
+Redaktionstools », qui visent `powershell.exe -File update.ps1 -Langue fr|de` — **fenêtre
+visible**, parce qu'une mise à jour télécharge, prend du temps et peut échouer.
+
+Deux entrées de mise à jour plutôt qu'une renommée : le nom d'un `.lnk` est figé alors que la
+langue de l'interface bouge (env, `state.json`, langue de Windows). Un poste neuf résout
+« en » — la seule langue qu'aucune équipe n'emploie —, la préférence bascule dès qu'un collègue
+ouvre l'autre lanceur, et un renommage casse l'épinglage. `$SzhLanguesRaccourci` décide quelles
+langues reçoivent une entrée.
+
+Les trois chemins les posent, et c'est voulu : `bootstrap.ps1` (poste neuf, y compris quand la
+Release est injoignable), `update.ps1` (étape 4/5) et `update-launcher.ps1` **à chaque ouverture
+de session, avant le test de version** — sans quoi un poste déjà à la dernière version
+n'obtiendrait jamais une entrée ajoutée après coup. Jamais bloquant : un menu tenu par une
+stratégie de groupe est journalisé, pas fatal. Un `.lnk` du premier niveau qui pilote un de nos
+scripts sans porter l'un des noms voulus est retiré — le sous-dossier `SZH\` du menu appartient
+à un autre produit et n'est jamais touché.
+
 ### Revenir à une version précédente
 
 `update.ps1 -Version <X>` : l'archive précédente est conservée en regard de la courante. Sans
@@ -178,6 +209,30 @@ Tout se fait depuis la barre latérale « Revue SZH », sans explorateur de fich
 compilation, aperçu, métadonnées du numéro et des articles, éditeur de tableau, gestion des
 médias, portraits d'auteurs, suivi des traductions, export OJS, cycle de vie du numéro. Le détail des
 gestes est dans [`userdoc.md`](userdoc.md).
+
+### Ce que contient un dossier d'article
+
+Un fichier singulier de l'article est son voisin, nommé `<slug>.<rôle>.<extension>` :
+
+```
+articles/<slug>/
+├── <slug>.md                 le corps
+├── <slug>.meta.yaml          la fiche : titres, résumés, mots-clés, auteur·e·s
+├── <slug>.biblio.md          les références seules, sans titre — détachées à l'import
+│                             depuis les styles du Word, réinsérées à la compilation, qui
+│                             pose le titre dans la langue de l'article et ancre les entrées
+├── <slug>.taches.yaml        l'état coché des tâches de la rédaction
+├── <slug>.traduction.yaml    le suivi de traduction
+├── tables/table-NN.html      un fichier par tableau, édité dans le cockpit
+├── media/<slug>-fig-NN.<ext> les images du corps, numérotées par ordre de citation
+├── portraits/                les photos d'auteur·e·s, recadrées et détourées
+└── .szh-import.empreintes    ce que la conversion a livré, pour le réimport
+```
+
+Le Word ne possède que le corps, la bibliographie, `media/` et `tables/` : ce sont les seuls
+que « Réimporter cet article » remplace, sous les conditions décrites en tête de
+[`pipeline/reimporter.py`](pipeline/reimporter.py). Tout le reste survit à un réimport, y
+compris un sidecar qu'une version future ajouterait.
 
 ### Raccourcis
 

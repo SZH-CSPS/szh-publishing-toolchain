@@ -1,0 +1,29 @@
+type: article
+lang: fr
+doi: "10.57262/szh/2026-99-996"
+title:
+  fr: "Ce qu'un lecteur d'écran reçoit, et que l'œil ne voit pas"
+  de: "Was ein Screenreader erhält und das Auge nicht sieht"
+subtitle:
+  fr: "Texte alternatif présent, repris de la légende, déclaré décoratif, absent ; description longue de tableau"
+  de: "Alternativtext vorhanden, aus der Bildlegende übernommen, als dekorativ deklariert, fehlend; lange Tabellenbeschreibung"
+resume:
+  fr: "Article de banc d'essai : il ne sert qu'à éprouver les encadrés « lecteur d'écran » de l'aperçu HTML — quatre états du texte alternatif, la description longue d'un tableau, un tableau sans en-tête. Aucun de ces encadrés ne doit apparaître dans le PDF."
+  de: "Prüfartikel: er dient allein den « Screenreader »-Kästen der HTML-Vorschau — vier Zustände des Alternativtexts, die lange Beschreibung einer Tabelle, eine Tabelle ohne Kopfzeile. Keiner dieser Kästen darf im PDF erscheinen."
+keywords:
+  fr:
+  - "texte alternatif"
+  - "lecteur d'écran"
+  - "description de tableau"
+  - "aperçu"
+  de:
+  - "Alternativtext"
+  - "Screenreader"
+  - "Tabellenbeschreibung"
+  - "Vorschau"
+author:
+- prenom: "Banc"
+  nom: "d'essai"
+  fonction: "Article de contrôle de l'aperçu"
+  affiliation: "SZH / CSPS"
+  orcid: "0000-0002-1825-0097"

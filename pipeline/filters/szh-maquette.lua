@@ -1,7 +1,7 @@
 -- Calcule les variables de template de la maquette (couverture et en-tête courant) à
 -- partir des clés d'ausgabe.yaml et de <slug>.meta.yaml : étiquette de dossier, nom et
 -- ISSN de la revue, ligne « Vol. X · N/année », résumés, licence, titre du bloc auteurs,
--- et par auteur `orcid-url` et `photo-alt`. Aucune clé n'est inventée côté fichiers.
+-- et par auteur `orcid-url` et `photo-rang`. Aucune clé n'est inventée côté fichiers.
 -- Le titre du DOSSIER (ausgabe.yaml `title`) est écrasé dans Meta par le `title` de
 -- l'article, pandoc gardant le dernier fichier à clé égale : il est donc relu dans
 -- ausgabe.yaml via la variable d'environnement SZH_AUSGABE, posée par le Makefile.
@@ -132,27 +132,13 @@ local TYPES_DOSSIER = { article = true, editorial = true, interview = true }
 local LABELS_RESUME = { de = 'Zusammenfassung', fr = 'Résumé', it = 'Riassunto' }
 local ORDRE_LANGUES = { 'de', 'fr', 'it' }
 
--- Bloc « À propos des auteur·e·s » : titre localisé accordé en nombre, et préfixe du
--- texte alternatif du portrait (PDF/UA-1 exige un alt sur toute image).
+-- Bloc « À propos des auteur·e·s » : titre localisé, accordé en nombre.
 local TITRES_AUTEURS = {
   un   = { fr = "À propos de l'auteur·e",  de = 'Zur Autorin / zum Autor',
            it = "Sull'autrice / sull'autore" },
   plus = { fr = 'À propos des auteur·e·s', de = 'Zu den Autorinnen und Autoren',
            it = 'Sulle autrici e sugli autori' },
 }
-local ALT_PORTRAIT = { fr = 'Portrait de ', de = 'Porträt von ', it = 'Ritratto di ' }
-
--- Élision française : « Portrait d'Alice », pas « Portrait de Alice ». Voyelles ASCII
--- + Y, et voyelles majuscules accentuées (comparaison sur les 2 octets UTF-8). H exclu
--- volontairement : les prénoms germaniques à h aspiré dominent.
-local VOYELLES_ACCENTUEES = {
-  ['À']=true, ['Â']=true, ['Ä']=true, ['É']=true, ['È']=true, ['Ê']=true,
-  ['Ë']=true, ['Î']=true, ['Ï']=true, ['Ô']=true, ['Ö']=true, ['Û']=true, ['Ü']=true,
-}
-local function elision_fr(nom)
-  if nom:match('^[AEIOUYaeiouy]') then return true end
-  return VOYELLES_ACCENTUEES[nom:sub(1, 2)] == true
-end
 
 -- Licences d'article : miroir de LICENCES_ARTICLE de lib/yaml.js, gardé par
 -- test/js/licence.test.js. `nom` est le sigle imprimé, le même dans les trois langues ;
@@ -510,6 +496,7 @@ function Meta(meta)
   meta['description'] = pandoc.MetaString(
     champ_localise(meta.resume, lang, 'resume', false, slug))
   local noms = {}
+  local rang_photo = 0
   local auteurs = meta.author or meta.auteurs
   if auteurs ~= nil then
     for _, a in ipairs(auteurs) do
@@ -523,8 +510,6 @@ function Meta(meta)
         -- Variables dérivées par auteur pour le bloc « À propos » : les templates
         -- pandoc ne manipulent pas les chaînes, on mute donc la MetaMap de l'auteur,
         -- relue par le template via $author.…$.
-        local complet = p
-        if n ~= '' then complet = (p ~= '' and (p .. ' ') or '') .. n end
         -- ORCID : identifiant nu (0000-0002-…) ou URL complète -> URL canonique
         -- https://orcid.org/<ID>, X final en majuscule. URL sans identifiant
         -- reconnaissable : reprise telle quelle ; autre valeur : pas de lien.
@@ -537,13 +522,12 @@ function Meta(meta)
             a['orcid-url'] = pandoc.MetaString(orcid)
           end
         end
-        -- Texte alternatif du portrait (requis par PDF/UA-1), élision en français.
+        -- Rang du portrait : il nomme la règle CSS que le gabarit écrit pour cette
+        -- photo. Aucun texte alternatif n'est fabriqué ici, et le portrait n'est pas
+        -- un <img> — pourquoi, c'est écrit dans print.css § 8.
         if S(a.photo) ~= '' then
-          local prefixe = ALT_PORTRAIT[lang] or ALT_PORTRAIT.fr
-          if prefixe == ALT_PORTRAIT.fr and elision_fr(complet) then
-            prefixe = "Portrait d'"
-          end
-          a['photo-alt'] = pandoc.MetaString(prefixe .. complet)
+          rang_photo = rang_photo + 1
+          a['photo-rang'] = pandoc.MetaString(tostring(rang_photo))
         end
       else
         nm = S(a)

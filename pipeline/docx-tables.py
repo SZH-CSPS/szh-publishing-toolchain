@@ -575,22 +575,26 @@ def principal(argv):
         with open(chemin_leg, 'w', encoding='utf-8', newline='\n') as f:
             for t in legendes:
                 f.write(t + '\n')
-    # Un tableau sans rangée d'en-tête sort sans un seul <th> : aucun /Headers dans le
-    # PDF, donc illisible au lecteur d'écran — et comme il ne contient aucun TH, un
-    # validateur PDF/UA n'a rien à reprocher. Cas banal : une rangée d'en-tête mise en
-    # valeur par un fond coloré plutôt que par du gras. Avertissement, pas blocage : c'est
-    # à la rédaction de trancher, l'import réussit.
+    # Le convertisseur n'a pas su reconnaître d'en-tête : ni `w:tblHeader`, ni première
+    # rangée entièrement en gras. C'est une DEVINETTE qui a échoué, pas un défaut constaté.
+    # Ni le RGAA ni les WCAG n'exigent qu'un tableau ait un en-tête : ils exigent que
+    # l'en-tête qui EXISTE soit déclaré. Un tableau qui n'en a pas est légitime. Le message
+    # pose donc une question au lieu d'accuser — dire « désignez la première rangée »
+    # ferait poser une relation fausse sur un tableau correct. Cas fréquent qui justifie la
+    # question : un en-tête mis en valeur par un fond coloré plutôt que par du gras.
     slug = nom_article()
     for numero, chemin in plats:
         avertir(
             'tableau-sans-entete',
             ['article « %s »' % slug, 'tableau %d' % numero, chemin.replace(os.sep, '/')],
-            "Ce tableau ne semble pas avoir de rangée d'en-tête : désignez-la dans "
-            "l'éditeur de tableaux, sinon un lecteur d'écran ne pourra pas relier une "
-            'cellule à sa colonne.',
-            'Diese Tabelle scheint keine Kopfzeile zu haben: legen Sie sie im '
-            'Tabellen-Editor fest, sonst kann ein Screenreader eine Zelle nicht ihrer '
-            'Spalte zuordnen.')
+            "Aucun en-tête n'a pu être reconnu dans ce tableau. Si sa première rangée "
+            "ou sa première colonne en est un, ouvrez-le dans l'éditeur de tableaux et "
+            "déclarez-le : un lecteur d'écran pourra alors relier chaque cellule à son "
+            "en-tête. Si ce tableau n'a réellement pas d'en-tête, il n'y a rien à faire.",
+            'In dieser Tabelle wurde keine Kopfzeile erkannt. Falls die erste Zeile oder '
+            'die erste Spalte eine ist, öffnen Sie die Tabelle im Tabellen-Editor und '
+            'deklarieren Sie sie: ein Screenreader kann dann jede Zelle ihrer Kopfzeile '
+            'zuordnen. Hat die Tabelle wirklich keine Kopfzeile, ist nichts zu tun.')
 
     nb_sautes = sum(1 for o in sautes if 1 <= o <= len(tableaux))
     print('[docx-tables] %d tableau(x) extrait(s), %d légendé(s)%s%s'

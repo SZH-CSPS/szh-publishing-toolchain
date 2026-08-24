@@ -18,7 +18,8 @@
 // article et part avec lui, comme le suivi de traduction juste à côté.
 'use strict';
 
-const { decouperValeurYaml, LANGUES_META, citerFrontmatter } = require('./yaml');
+const { decouperValeurYaml, LANGUES_META, citerFrontmatter, CLE_SANS_DOI,
+  listeYamlEnLigne } = require('./yaml');
 
 // ---- Ordre des articles ----------------------------------------------------------
 
@@ -28,24 +29,12 @@ const CLE_ORDRE = 'ordre-articles';
 // l'ordre, ce qui met la clé à l'abri d'un chemin ou d'un titre collé à la main.
 const FORME_SLUG = /^[a-z0-9][a-z0-9-]*$/;
 
-// Lit la clé : séquence en ligne `["a", "b"]` telle qu'elle est écrite, ou simple suite de
-// jetons séparés par des virgules ou des espaces, ce qu'une correction à la main donne.
-// Doublons et jetons malformés sont écartés sans bruit — la valeur n'est qu'un ordre, elle
-// ne porte aucune information qu'on perdrait.
+// Lit la clé : la séquence en ligne est découpée par lib/yaml.js, qui la partage avec
+// `articles-sans-doi` ; ne restent ici que les jetons qui ont la forme d'un slug. Les
+// autres sont écartés sans bruit — la valeur n'est qu'un ordre, elle ne porte aucune
+// information qu'on perdrait.
 function analyserOrdre(valeur) {
-  const brut = Array.isArray(valeur)
-    ? valeur.join(' ')
-    : String(valeur === undefined || valeur === null ? '' : valeur);
-  const interieur = brut.trim().replace(/^\[/, '').replace(/\]$/, '');
-  const liste = [];
-  const vus = Object.create(null);
-  for (const morceau of interieur.split(/[,\s]+/)) {
-    const v = decouperValeurYaml(morceau.trim()).valeur.trim();
-    if (v === '' || !FORME_SLUG.test(v) || vus[v]) { continue; }
-    vus[v] = true;
-    liste.push(v);
-  }
-  return liste;
+  return listeYamlEnLigne(valeur).filter((v) => FORME_SLUG.test(v));
 }
 
 // Ordre effectif d'un numéro : ce que la clé retient et qui existe encore, puis ce qui
@@ -55,7 +44,12 @@ function analyserOrdre(valeur) {
 //
 // `change` dit si la clé mérite d'être réécrite ; l'appelant décide, car réécrire à chaque
 // rafraîchissement de l'arbre réveillerait le surveillant de fichiers en boucle.
-function ordonnerArticles(valeurClef, slugsDisque) {
+//
+// `sansDoi` applique par-dessus la règle du DOI : les articles qui n'en reçoivent pas sont
+// ramenés à la fin, sans quoi le numéro d'ordre du DOI ne suivrait plus l'ordre de lecture.
+// Le tri est appliqué à la LECTURE, comme la réparation ci-dessus : rien n'est réécrit tant
+// que l'utilisateur n'a pas fait un geste.
+function ordonnerArticles(valeurClef, slugsDisque, sansDoi) {
   const disque = (slugsDisque || []).map((s) => String(s));
   const presents = Object.create(null);
   for (const s of disque) { presents[s] = true; }
@@ -63,8 +57,86 @@ function ordonnerArticles(valeurClef, slugsDisque) {
   const ordre = [];
   for (const s of stocke) { if (presents[s] && ordre.indexOf(s) === -1) { ordre.push(s); } }
   for (const s of disque) { if (ordre.indexOf(s) === -1) { ordre.push(s); } }
-  const change = stocke.length !== ordre.length || stocke.some((s, i) => s !== ordre[i]);
-  return { slugs: ordre, change: change };
+  const trie = trierParDoi(ordre, sansDoi);
+  const change = stocke.length !== trie.length || stocke.some((s, i) => s !== trie[i]);
+  return { slugs: trie, change: change };
+}
+
+// ---- La règle du DOI sur l'ordre -------------------------------------------------
+//
+// Le DOI d'un article est son rang parmi ceux qui en portent un : l'éditorial ouvre le
+// numéro et prend « 00 », le suivant « 01 ». Ce compteur ne saute jamais, puisqu'il ne
+// compte que les porteurs — mais pour que le DOI 05 désigne bien le sixième article qu'on
+// lit, il faut que les articles sans DOI soient tous après les autres. D'où ce tri, et
+// d'où le refus de déplacement qui le protège : sans lui, un clic sur « Monter » suffirait
+// à faire mentir la numérotation.
+
+// -> Set des slugs sans DOI, quelle que soit la forme reçue (liste, Set, clé YAML brute).
+function jeuSansDoi(sansDoi) {
+  if (sansDoi instanceof Set) { return sansDoi; }
+  if (Array.isArray(sansDoi)) { return new Set(sansDoi.map((s) => String(s))); }
+  return new Set(analyserSansDoi(sansDoi));
+}
+
+function sansDoiIci(jeu, slug) { return jeu.has(String(slug)); }
+
+// Les porteurs de DOI d'abord, dans leur ordre ; les autres ensuite, dans le leur. Tri
+// stable : deux articles du même bloc ne changent jamais de place l'un par rapport à
+// l'autre, et l'ordre saisi à la main est donc conservé partout où la règle ne dit rien.
+function trierParDoi(slugs, sansDoi) {
+  const liste = (slugs || []).map((s) => String(s));
+  const jeu = jeuSansDoi(sansDoi);
+  if (jeu.size === 0) { return liste; }
+  const porteurs = liste.filter((s) => !sansDoiIci(jeu, s));
+  const autres = liste.filter((s) => sansDoiIci(jeu, s));
+  return porteurs.concat(autres);
+}
+
+// La liste des articles sans DOI, lue comme l'ordre : même format, mêmes tolérances.
+function analyserSansDoi(valeur) { return analyserOrdre(valeur); }
+
+// Coche ou décoche un article. Rend toujours la liste entière, dans l'ordre des slugs
+// donnés quand on l'a — le fichier se relit alors comme le numéro s'affiche.
+function basculerSansDoi(liste, slug, coche, ordre) {
+  const cible = String(slug);
+  if (!FORME_SLUG.test(cible)) { return analyserSansDoi(liste); }
+  const jeu = new Set(analyserSansDoi(liste));
+  if (coche) { jeu.add(cible); } else { jeu.delete(cible); }
+  const rang = Array.isArray(ordre) ? ordre.map((s) => String(s)) : [];
+  const dansOrdre = rang.filter((s) => jeu.has(s));
+  const reste = Array.from(jeu).filter((s) => rang.indexOf(s) === -1);
+  return dansOrdre.concat(reste);
+}
+
+// Pourquoi un déplacement est refusé, ou '' quand il se fait.
+//   'bord'      l'article est déjà en tête ou en queue du numéro ;
+//   'frontiere' le cran suivant appartient à l'autre bloc — on ne remonte pas un article
+//               sans DOI au-dessus d'un article qui en porte un, sinon la règle du tri se
+//               contredirait d'un clic et le DOI ne suivrait plus l'ordre de lecture.
+// Les deux se disent différemment à l'écran : le bord est une évidence, la frontière une
+// règle qu'il faut expliquer.
+function refusDeplacement(liste, slug, delta, sansDoi) {
+  const l = (liste || []).map((s) => String(s));
+  const i = l.indexOf(String(slug));
+  if (i === -1) { return 'bord'; }
+  const j = i + Number(delta || 0);
+  if (j < 0 || j >= l.length) { return 'bord'; }
+  const jeu = jeuSansDoi(sansDoi);
+  if (sansDoiIci(jeu, l[i]) !== sansDoiIci(jeu, l[j])) { return 'frontiere'; }
+  return '';
+}
+
+// Le rang du DOI, ou -1 pour un article qui n'en reçoit pas : le compteur ne compte que
+// les porteurs, si bien qu'il reste contigu quoi qu'on fasse des autres.
+function rangDoi(slugs, slug, sansDoi) {
+  const jeu = jeuSansDoi(sansDoi);
+  let n = 0;
+  for (const s of (slugs || []).map((x) => String(x))) {
+    if (sansDoiIci(jeu, s)) { if (s === String(slug)) { return -1; } continue; }
+    if (s === String(slug)) { return n; }
+    n++;
+  }
+  return -1;
 }
 
 // Déplace un article d'un cran. Rend toujours une liste complète : c'est elle qui part dans
@@ -113,6 +185,50 @@ const SEPARATEUR_LIBELLE = ' · ';
 function libelleArticle(index, slug, titre) {
   const t = String(titre === undefined || titre === null ? '' : titre).trim();
   return prefixeOrdre(index) + SEPARATEUR_LIBELLE + (t !== '' ? t : String(slug));
+}
+
+// ---- Les images d'un article -----------------------------------------------------
+//
+// Ce que la carte doit dire sans qu'on ouvre le gestionnaire des médias : combien d'images
+// porte l'article, et lesquelles ne sont pas prêtes. Les descripteurs sont ceux que le
+// gestionnaire lit lui-même — légende, texte alternatif, rôle du texte alternatif, « sans
+// légende ni numéro » — et ce module ne fait que les compter : une seconde lecture des
+// images divergerait de la première au premier changement de format.
+//
+// Les photos des autrices et auteurs n'entrent pas dans ce compte, et pas par un filtre de
+// nom : elles vivent dans portraits/ et non dans media/, dont la liste est la seule source
+// ici. Une photo déposée par la modale ne peut donc pas s'y glisser.
+//
+// Deux absences ne sont pas des défauts, et les annoncer comme tels serait faux :
+//
+//   * une image DÉCORATIVE n'a pas à porter de texte alternatif. Le gestionnaire pose
+//     alt="" exprès pour qu'un lecteur d'écran la saute ; c'est une décision, pas un oubli.
+//     Le descripteur la reconnaît à `altDefini` vrai avec un `alt` vide — exactement comme
+//     la fiche image, qui rallume son bouton « décorative » sur ce même couple.
+//   * une image déclarée « sans légende ni numéro » n'a pas de légende à avoir : le champ
+//     est verrouillé et vidé par le gestionnaire, et la maquette ne fabrique pas de figure.
+//     Compter sa légende vide reviendrait à reprocher à la rédaction ce qu'elle vient de
+//     décider.
+//
+// Tout le reste se signale : une image INFORMATIVE sans texte alternatif, et une légende
+// vide sur une vraie figure.
+function decorativeImage(image) {
+  const i = image || {};
+  return !!i.altDefini && String(i.alt || '').trim() === '';
+}
+
+// -> { total, sansAlt, sansLegende, horsFigure, decoratives }
+function resumeImages(images) {
+  const liste = Array.isArray(images) ? images : [];
+  const r = { total: liste.length, sansAlt: 0, sansLegende: 0, horsFigure: 0, decoratives: 0 };
+  for (const image of liste) {
+    const i = image || {};
+    if (decorativeImage(i)) { r.decoratives++; }
+    else if (String(i.alt || '').trim() === '') { r.sansAlt++; }
+    if (i.horsFigure) { r.horsFigure++; }
+    else if (String(i.legende || '').trim() === '') { r.sansLegende++; }
+  }
+  return r;
 }
 
 // ---- Tâches éditoriales : les définitions ----------------------------------------
@@ -331,7 +447,9 @@ function nomCouverture(nomFichier) {
 const MAX_COUVERTURE = 12 * 1024 * 1024;
 
 module.exports = {
-  CLE_ORDRE, FORME_SLUG, analyserOrdre, ordonnerArticles, deplacerArticle, prefixeOrdre,
+  CLE_ORDRE, CLE_SANS_DOI, FORME_SLUG, analyserOrdre, ordonnerArticles, deplacerArticle, prefixeOrdre,
+  analyserSansDoi, basculerSansDoi, trierParDoi, refusDeplacement, rangDoi,
+  resumeImages, decorativeImage,
   titreFiche, libelleArticle, SEPARATEUR_LIBELLE,
   TACHES_DEFAUT, REVUES_TACHES, CLE_TACHES, MAX_TACHES, LONGUEUR_MAX_TACHE,
   idTache, normaliserTaches, tachesConfig, tachesRevue, configAvecTaches, libelleTache,

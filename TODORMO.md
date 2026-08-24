@@ -424,12 +424,51 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
   titre, une bibliographie à diacritiques polonais / turcs / serbes, un crédit de figure avec sa
   fine insécable, un corps français dans un numéro de la Zeitschrift, et une paire fr/de dont les
   compteurs de figures divergent à dessein. `test/build-render.sh` l'enchaîne au banc.
-- [ ] **veraPDF ne voit pas un tableau sans rangée d'en-tête.** Mesuré sur le corpus ci-dessus :
-  un `<table>` sans `<caption>` et sans un seul `<th scope>` passe la porte `--flavour ua1` en
-  « conforme ». Le RGAA 5.6 n'est donc gardé par rien dans la chaîne, et le formulaire des
-  tableaux du cockpit est le seul endroit où le défaut peut être arrêté. Piste : un contrôle qui
-  refuse un `tables/table-NN.html` sans `<th scope>`, à brancher là où la vérification du numéro
-  se fait déjà.
+- [x] **Le portrait d'auteur·e est une image décorative, sans texte alternatif.** Le filtre en
+  fabriquait un depuis le nom (« Portrait de X », « Porträt von X ») quel qu'en soit le contenu
+  réel du fichier : un logo, une photo de groupe ou une photo appariée à la mauvaise personne
+  affirmaient une identité fausse à un lecteur d'écran. Et le nom est déjà écrit à côté, dans
+  le bloc « À propos des auteur·e·s ». `ALT_PORTRAIT` a donc disparu de `szh-maquette.lua`,
+  avec l'élision française qui ne servait qu'à lui.
+  Le piège, et c'est tout l'enjeu : `role="presentation"` ne suffit pas. WeasyPrint 69 balise
+  tout `<img>` en `/Figure` même avec `role="presentation"`, même avec `aria-hidden="true"`
+  (mesuré par cas minimal) — soit une `/Figure` sans `/Alt`, soit PDF/UA-1 7.3 violée, que
+  `make verifier-ua` refuse. Le portrait est donc un `<span>` vide à fond CSS, comme l'image
+  décorative d'article. L'URL passe par un `<style>` de l'en-tête du gabarit : `--embed-resources`
+  ne réécrit `url()` que là, jamais dans un attribut `style` (mesuré), où le galley serait parti
+  avec un chemin relatif mort.
+  Mesuré sur un numéro à quatre portraits réels et un numéro à un : `/Figure` 4 et 1 → **0**,
+  `/Alt` 4 et 1 → **0**, les images restent dans le PDF (10 et 4 `Image XObject`, inchangés),
+  le rendu PNG est **identique au pixel sur les 15 pages**, et les deux PDF restent conformes
+  PDF/UA-1. Gardé par `test/js/portrait.test.js`.
+- [ ] **Le portrait n'est exercé par aucune des deux portes.** `test/articles/` et
+  `test/accessibilite/` écrivent tous `photo: ""` : les deux `make verifier-ua` rendent 0 sans
+  jamais compiler un portrait. La preuve a dû se faire sur un numéro hors banc. Poser une photo
+  sur un auteur du corpus d'accessibilité fermerait cet angle mort pour de bon.
+- [ ] **Le portrait disparaît du galley DOCX — accepté le 24.08.2026, à reprendre un jour.**
+  Un fond CSS ne traverse pas le writer docx de pandoc, qui lit le HTML sans son CSS. Mesuré :
+  `multi.docx` passe de 723 850 à 28 167 octets, les quatre PNG de portrait quittent
+  `word/media/`, et le nombre de dessins tombe de 7 à 3. Le texte du bloc auteurs — nom,
+  fonction, affiliation, e-mail — est intact, et aucune règle CSS ne réapparaît en clair : le
+  `<style>` vit dans `<head>`, que le reader html ignore.
+  **Décision du propriétaire : on laisse ainsi.** Le portrait est dans le PDF et dans le galley
+  HTML, qui sont les deux formats réellement lus ; le Word sert de version de travail. Ce n'est
+  donc pas un défaut à corriger mais une perte assumée, à rouvrir seulement si OJS ou une
+  relecture externe réclame les portraits en Word.
+  Si le jour vient : un second passage qui les réinjecte côté docx uniquement, le HTML devant
+  rester sans `<img>` — c'est lui qui tient la conformité PDF/UA.
+- [ ] **Un en-tête visuel non déclaré est indétectable automatiquement.** Mesuré : un `<table>`
+  sans `<caption>` et sans un seul `<th scope>` passe la porte `--flavour ua1` en « conforme » —
+  et veraPDF a **raison**. Ni le RGAA ni les WCAG n'exigent qu'un tableau ait un en-tête : ils
+  exigent que l'en-tête **qui existe** soit déclaré (WCAG 1.3.1 ; RGAA 5.6 porte sur « chaque
+  en-tête est-il correctement déclaré »). Un tableau sans en-tête est légitime.
+  Le vrai risque est donc l'inverse de ce qui était écrit ici : un tableau dont la première
+  rangée **est** un en-tête aux yeux d'un lecteur humain — fond coloré, gras, simple sens du
+  texte — sans être déclarée. Savoir si une rangée est un en-tête est un **jugement sémantique**,
+  qu'aucun contrôle ne peut rendre : un `tables/table-NN.html` sans `<th scope>` ne doit donc
+  **pas** être refusé. La seule parade est celle en place : l'import pose la question quand sa
+  devinette échoue, et la rédaction tranche. Corrigé le 24.08.2026, l'ancien message disait de
+  désigner la première rangée, ce qui aurait fait poser des relations fausses.
 - [ ] Caractères encore non couverts par les faces livrées : → U+2192, ↑ U+2191, ▶ U+25B6 et les
   émojis. Aucun corps d'article n'en écrit aujourd'hui (`revue-template/BIENVENUE.md` en contient,
   mais ne passe pas par la chaîne d'impression) ; `test/polices-check.py` nommerait le PDF fautif
