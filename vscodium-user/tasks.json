@@ -1,6 +1,21 @@
 {
   // Tâches au niveau utilisateur, déployées dans %APPDATA%\VSCodium\User\ par update.ps1 :
   // un dossier de revue ne contient ainsi aucun fichier technique.
+  //
+  // Toutes passent par `bash -c` et non par `make` en direct, pour une seule raison : la
+  // sortie de la compilation doit atterrir dans un fichier. La chaîne détecte une dizaine
+  // de choses — appel de citation sans référence, tableau sans en-tête, titre vide dans la
+  // langue de l'article, PDF non conforme, image manquante — et tout cela partait sur la
+  // sortie d'erreur d'un terminal que `reveal: silent` n'ouvre jamais. Le cockpit relit
+  // .szh-journal.log à la fin de chaque tâche (lib/journal.js) et pose ce qu'il y trouve
+  // dans la vue « Contrôles de la compilation ».
+  //
+  // ⚠ `set -o pipefail` n'est pas décoratif : sans lui, le code de sortie serait celui de
+  //   `tee`, donc toujours 0, et une compilation en échec passerait pour réussie.
+  // ⚠ Le journal est à la racine du numéro et non sous out/ : `tout-exporter` commence par
+  //   supprimer out/, et `tee` continuerait d'écrire dans un fichier déjà effacé.
+  // ⚠ `reveal: silent` reste : un terminal brut n'est pas une interface de rédaction. Ce
+  //   qu'il faut lire arrive par l'interface, jamais par le terminal.
   "version": "2.0.0",
   "tasks": [
     {
@@ -11,7 +26,8 @@
       "command": "wsl.exe",
       "args": [
         "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
-        "make", "-f", "/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile", "all"
+        "bash", "-c",
+        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' all 2>&1 | tee .szh-journal.log"
       ],
       "group": { "kind": "build", "isDefault": true },
       "presentation": {
@@ -29,7 +45,8 @@
       "command": "wsl.exe",
       "args": [
         "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
-        "make", "-f", "/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile", "tout-exporter"
+        "bash", "-c",
+        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' tout-exporter 2>&1 | tee .szh-journal.log"
       ],
       "presentation": {
         "reveal": "silent",
@@ -47,7 +64,8 @@
       "command": "wsl.exe",
       "args": [
         "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
-        "make", "-f", "/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile", "docx"
+        "bash", "-c",
+        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' docx 2>&1 | tee .szh-journal.log"
       ],
       "presentation": {
         "reveal": "silent",
@@ -66,7 +84,8 @@
       "command": "wsl.exe",
       "args": [
         "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
-        "make", "-f", "/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile", "import"
+        "bash", "-c",
+        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' import 2>&1 | tee .szh-journal.log"
       ],
       "runOptions": { "runOn": "folderOpen" },
       "presentation": {

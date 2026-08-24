@@ -5,16 +5,23 @@
 #
 # Entrées : articles/<slug>/<slug>.md + media/ ; sorties : out/<slug>/<slug>.pdf et .html.
 # Import Word : articles-word/*.docx, converti par import-docx.sh (sa chaîne y est décrite).
+# Word corrigé d'un article déjà importé : cible `reimporter`, portée par reimporter.py.
 #
 # Ordre des --lua-filter à la compilation, et ce qui casse si on permute :
 #   szh-maquette -> szh-niveaux -> szh-tabelle-inclure -> szh-tabelle-scope ->
-#   szh-figure -> szh-numerotation -> szh-legende-avant
+#   szh-figure -> szh-numerotation -> szh-legende-avant -> szh-citations -> szh-sections
 #   * szh-numerotation après szh-tabelle-inclure : il numérote des tableaux qui
 #     n'existent qu'une fois le HTML réinjecté ;
 #   * szh-numerotation après szh-figure : sous le lecteur commonmark_x de l'aperçu,
 #     les Figure ne sont construites que par szh-figure ;
-#   * szh-legende-avant en dernier : il dissout les Figure en HTML brut, rien en amont
-#     ne peut plus les lire.
+#   * szh-legende-avant avant szh-citations : il dissout les Figure en HTML brut, rien
+#     en amont ne peut plus les lire ;
+#   * szh-sections en dernier, après szh-citations : il colle « 2.1 » devant le texte
+#     des titres, et szh-citations reconnaît le titre de la bibliographie sur son texte
+#     (« Références », « Literatur »). Filtres inversés, sur un article à deux références :
+#     0 ancrage et 0 appel lié — mesuré. Au-delà de trois références szh-citations retombe
+#     sur une heuristique de fin de document et s'en sort : l'ordre inversé passerait donc
+#     le banc et casserait sur un article court.
 # La chaîne d'aperçu reprend la même suite, sans szh-maquette.
 #
 # Aucun chemin /mnt/c codé en dur ici (portabilité macOS). Conserver l'indentation
@@ -23,6 +30,11 @@
 SHELL      := /bin/bash
 PANDOC     ?= pandoc
 WEASYPRINT ?= weasyprint
+# Validateur PDF/UA. veraPDF est un outil Java ; l'image embarque un runtime taillé au
+# jlink dans /opt/jre-min, pas un JRE complet, d'où le JAVA_HOME explicite. Surchargeables
+# depuis l'environnement pour une intégration continue qui les installe ailleurs.
+VERAPDF      ?= /opt/verapdf-cli/verapdf
+VERAPDF_JAVA ?= /opt/jre-min
 
 # Chemin absolu de ce Makefile : la cible `all` se relance par -f $(THIS).
 THIS         := $(abspath $(lastword $(MAKEFILE_LIST)))
@@ -94,8 +106,9 @@ ACCENT_ABS := $(abspath $(ACCENT_CSS))
 # Import Word : le .docx source est supprimé après une conversion réussie.
 WORD_DIR   := articles-word
 
-.PHONY: all pdf docx import clean verifie-dossier tout-exporter \
-        profil-rien profil-differe profil-inconnu
+.PHONY: all pdf docx import reimporter annuler-reimport clean verifie-dossier \
+        tout-exporter verifier-ua verifier-numerotation profil-rien profil-differe \
+        profil-inconnu
 .SECONDEXPANSION:
 
 # Cible du build (Ctrl+S, Ctrl+E) : importe les Word déposés puis régénère les sorties, en
@@ -103,10 +116,12 @@ WORD_DIR   := articles-word
 # Les `ifeq` sont résolus à la lecture, donc une seule recette `all` existe. Le code de
 # sortie compte autant que la route : dans l'éditeur, tout code non nul s'affiche en erreur
 # rouge — on n'échoue donc que si la configuration ne peut pas être honorée.
+# L'appel à `import` n'est plus précédé d'un `-` : un Word resté sur le carreau doit
+# arrêter la compilation, sans quoi le numéro se publie sans lui et sans un mot.
 ifeq ($(PROFIL_ROUTE),article)
 # Clé `profil:` absente ou `profil: article` : comportement historique, inchangé.
 all:
-	-@$(MAKE) --no-print-directory -f $(THIS) import
+	@$(MAKE) --no-print-directory -f $(THIS) import
 	@$(MAKE) --no-print-directory -f $(THIS) pdf
 else ifeq ($(PROFIL_ROUTE),rien)
 all: profil-rien
@@ -138,9 +153,110 @@ profil-inconnu:
 
 # Rebuild forcé de toute la revue : clean puis all, sans regarder les dates. Le « - »
 # sur clean : un PDF verrouillé côté Windows ne doit pas empêcher la régénération.
+# Puis la porte PDF/UA : ce qui sort d'ici part chez l'imprimeur et dans OJS, la
+# conformité y est une promesse publique. `all` et `pdf` restent tolérants.
 tout-exporter:
 	-@$(MAKE) --no-print-directory -f $(THIS) clean
 	@$(MAKE) --no-print-directory -f $(THIS) all
+	@$(MAKE) --no-print-directory -f $(THIS) verifier-ua
+
+# ---------------------------------------------------------------------------
+# Deux langues d'un même article : les figures et les tableaux y portent-ils les mêmes
+# numéros ? szh-numerotation.lua ne consomme un numéro que pour un objet légendé ; si la
+# version traduite ajoute ou retire une légende, « voir Figure 2 » désigne deux objets
+# différents selon la langue. Rien ne le disait.
+# Les deux chemins se donnent à la main : la Revue et la Zeitschrift sont deux numéros
+# distincts, et aucune clé de fiche ne relie un article à sa traduction — c'est la
+# rédaction qui désigne la paire. Hors des cibles d'export : une divergence se corrige
+# à la rédaction, pas au moment d'exporter.
+#   make -f <toolkit>/pipeline/Makefile verifier-numerotation \
+#        A=out/mon-article/mon-article.html \
+#        B="../Zeitschrift 2026-03/out/mein-artikel/mein-artikel.html"
+verifier-numerotation:
+	@test -n "$(A)" && test -n "$(B)" || { \
+	  echo "[numerotation] ✗ Deux HTML attendus : A=<version 1> B=<version 2>."; \
+	  echo "[numerotation] [de] ✗ Zwei HTML erwartet: A=<Fassung 1> B=<Fassung 2>."; \
+	  exit 2; \
+	}
+	@PYTHONIOENCODING=utf-8 python3 "$(PIPELINE_DIR)/verifier-numerotation.py" "$(A)" "$(B)"
+
+# ---------------------------------------------------------------------------
+# Porte PDF/UA-1 : veraPDF valide les PDF du numéro, rapport-ua.py traduit son verdict.
+# Bloquante — et volontairement absente de `pdf` et de `all` : le rédacteur doit pouvoir
+# relire l'épreuve d'un article encore imparfait. Elle garde ce qui s'exporte.
+#
+# ⚠ Le code de sortie de veraPDF dit deux choses différentes : 0 conforme, 1 NON conforme,
+#   mais 4 (fichier introuvable), 7 (fichier illisible) et 127 (veraPDF absent) sont des
+#   pannes d'outillage. Sans le test « > 1 » ci-dessous, un validateur manquant se lirait
+#   comme un PDF conforme — exactement le mensonge qu'on est venu corriger.
+# ⚠ Un cas échappe pourtant à ce test, et c'est le pire : un JAVA_HOME qui ne pointe sur
+#   rien fait sortir le lanceur de veraPDF en code 1 — le code qui veut dire « PDF non
+#   conforme ». La porte accuserait des PDF parfaits. D'où les deux garde-fous : le
+#   runtime est vérifié avant d'être appelé, et un rapport inexploitable (rapport-ua.py
+#   sort 2) fait recracher la sortie d'erreur du validateur, seul endroit où la vraie
+#   cause se lit.
+verifier-ua: $(PDFS)
+	@test -n "$(PDFS)" || { echo "[pipeline] Aucun PDF à valider."; exit 1; }
+	@if [ ! -x "$(VERAPDF)" ]; then \
+	  echo "[pdf-ua] ✗ Validateur PDF/UA introuvable : $(VERAPDF)"; \
+	  echo "[pdf-ua]   À faire : mettre l'image WSL à jour (elle embarque veraPDF), ou poser VERAPDF=<chemin>."; \
+	  echo "[pdf-ua] [de] ✗ PDF/UA-Prüfer nicht gefunden: $(VERAPDF)"; \
+	  echo "[pdf-ua] [de]   Zu tun: WSL-Abbild aktualisieren (es enthält veraPDF), oder VERAPDF=<Pfad> setzen."; \
+	  exit 1; \
+	fi
+	@if [ -n "$(VERAPDF_JAVA)" ] && [ ! -x "$(VERAPDF_JAVA)/bin/java" ]; then \
+	  echo "[pdf-ua] ✗ Le runtime Java du validateur est introuvable : $(VERAPDF_JAVA)/bin/java"; \
+	  echo "[pdf-ua]   Pourquoi on s'arrête ici : sans lui, veraPDF sort en code 1, celui qui veut dire « PDF non conforme ». La porte accuserait des PDF parfaits."; \
+	  echo "[pdf-ua]   À faire : mettre l'image WSL à jour (elle embarque le runtime), ou poser VERAPDF_JAVA=<dossier du JRE> — vide si la commande java est déjà dans le PATH."; \
+	  echo "[pdf-ua] [de] ✗ Die Java-Laufzeit des Prüfers fehlt: $(VERAPDF_JAVA)/bin/java"; \
+	  echo "[pdf-ua] [de]   Warum hier abgebrochen wird: ohne sie endet veraPDF mit Code 1, dem Code für « PDF nicht konform ». Die Kontrolle würde einwandfreie PDF beschuldigen."; \
+	  echo "[pdf-ua] [de]   Zu tun: WSL-Abbild aktualisieren (es enthält die Laufzeit), oder VERAPDF_JAVA=<JRE-Ordner> setzen — leer, wenn java schon im PATH liegt."; \
+	  exit 1; \
+	fi
+	@set +e; \
+	xml="$(OUT)/.szh-pdfua.xml"; err="$(OUT)/.szh-pdfua.err"; \
+	JAVA_HOME="$(VERAPDF_JAVA)" "$(VERAPDF)" --flavour ua1 --format xml $(PDFS) > "$$xml" 2> "$$err"; \
+	code=$$?; \
+	if [ $$code -gt 1 ]; then \
+	  echo "[pdf-ua] ✗ Le validateur PDF/UA n'a pas pu rendre de verdict (code $$code) — ce n'est pas un PDF conforme, c'est une panne d'outillage."; \
+	  echo "[pdf-ua] [de] ✗ Der PDF/UA-Prüfer konnte kein Urteil abgeben (Code $$code) — das ist kein konformes PDF, sondern eine Werkzeugstörung."; \
+	  sed -n '1,10p' "$$err" | sed 's/^/[pdf-ua]   /'; \
+	  exit 1; \
+	fi; \
+	PYTHONIOENCODING=utf-8 python3 "$(PIPELINE_DIR)/rapport-ua.py" "$$xml"; \
+	rc=$$?; \
+	if [ $$rc -gt 1 ]; then \
+	  echo "[pdf-ua]   Sortie d'erreur du validateur, telle quelle :"; \
+	  echo "[pdf-ua] [de]   Fehlerausgabe des Prüfers, unverändert:"; \
+	  sed -n '1,10p' "$$err" | sed 's/^/[pdf-ua]   /'; \
+	fi; \
+	exit $$rc
+
+# Refus de compiler un article dont la fiche <slug>.meta.yaml manque ou n'a pas de titre.
+# Sans titre, szh-maquette.lua pose un `titre-affiche` vide : le gabarit sort un <title>
+# vide et un <h1> vide, et WeasyPrint estampille tout de même le PDF « PDF/UA-1 » — un
+# document sans titre, ce que la norme interdit. Seul témoin auparavant : un avertissement
+# pandoc que rien ne lisait.
+# $(1) = liste de slugs (un seul pour la cible HTML, tous pour verifie-dossier).
+# Le titre est cherché sans PyYAML, absent de l'image WSL : on isole le bloc `title:`
+# jusqu'à la prochaine clé de premier niveau, on garde la valeur des lignes `cle: valeur`,
+# puis on retire guillemets, accolades et espaces. S'il ne reste rien, il n'y a pas de titre.
+define exiger_titre
+@for slug in $(1); do \
+  fiche="articles/$$slug/$$slug.meta.yaml"; \
+  titre=$$(sed '1s/^\xEF\xBB\xBF//' "$$fiche" 2>/dev/null \
+    | sed -n '/^title:/,/^[^[:space:]]/p' \
+    | sed -n -e 's/^title:[[:space:]]*//p' \
+             -e 's/^[[:space:]][[:space:]]*[A-Za-z_-][A-Za-z_-]*:[[:space:]]*//p' \
+    | tr -d "\"'~{}[:space:]"); \
+  [ -n "$$titre" ] && continue; \
+  echo "[pipeline] ⚠ L'article « $$slug » n'a pas de titre : la fiche $$fiche est absente, ou son titre est vide."; \
+  echo "[pipeline] À faire : ouvrez « Métadonnées des articles » dans le cockpit, saisissez le titre de cet article, enregistrez, puis relancez la compilation (Ctrl+S)."; \
+  echo "[pipeline] Pourquoi la compilation s'arrête : sans titre, le PDF sortirait avec un titre de document vide tout en s'annonçant conforme PDF/UA. Un lecteur d'écran n'aurait rien à annoncer."; \
+  echo "[pipeline] [de] Der Artikel « $$slug » hat keinen Titel: $$fiche fehlt, oder der Titel ist leer. Öffnen Sie « Metadaten der Artikel » im Cockpit, geben Sie den Titel ein, speichern Sie und kompilieren Sie erneut (Ctrl+S)."; \
+  exit 1; \
+done
+endef
 
 pdf: verifie-dossier $(PDFS) $(APERCUS)
 
@@ -150,6 +266,7 @@ verifie-dossier:
 	@if ls -d articles/* 2>/dev/null | grep -q ' '; then \
 	  echo "[pipeline] ⚠ Un dossier de articles/ contient des espaces — renommez-le sans espaces."; exit 1; \
 	fi
+	$(call exiger_titre,$(SLUGS))
 
 # (Re)génère out/.szh-accent.css depuis la couleur annuelle d'ausgabe.yaml ; sans
 # couleur, un fichier « commentaire seul » laisse jouer les gris de print.css.
@@ -165,13 +282,12 @@ $(ACCENT_CSS): ausgabe.yaml $(PIPELINE_DIR)/styles/couleurs.css \
 # appels du corps en liens internes. La liste elle-même n'est jamais réécrite.
 $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml)
 	@mkdir -p "$(dir $@)"
+	$(call exiger_titre,$(notdir $*))
 	@slug="$(notdir $*)"; \
-	meta=""; \
-	if [ -f "articles/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
 	echo "pandoc articles/$$slug/$$slug.md -> $@"; \
 	cd "articles/$$slug" && SZH_AUSGABE="$(abspath ausgabe.yaml)" $(PANDOC) "$$slug.md" \
 	  --from=markdown --to=html5 \
-	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
+	  --metadata-file="$(abspath ausgabe.yaml)" --metadata-file="$$slug.meta.yaml" \
 	  --standalone --embed-resources \
 	  --template="$(TEMPLATE_ABS)" \
 	  --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
@@ -183,7 +299,23 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-sections.lua" \
 	  --output="$(abspath $@)"
+	$(call reordonner_appels_de_note,$@)
+
+# Appel de note : pandoc écrit <a class="footnote-ref"><sup>n</sup></a>, et un <a> ne doit
+# contenir aucun élément. WeasyPrint pose une annotation de lien par boîte descendante du
+# <a> (anchors.py : la propriété `link` est héritée), et une seule est rattachée au /Link
+# de l'arbre de structure — les autres pendent sous /NonStruct, ce que PDF/UA-1 interdit
+# (règle 7.18.5). On réordonne en <sup><a>n</a></sup> : rendu identique au pixel (mesuré),
+# un seul lien.
+# Pourquoi ici et pas dans un filtre Lua : ce balisage-là est écrit par le writer HTML,
+# donc après tous les filtres. Dissoudre les notes en amont priverait szh-citations.lua
+# des appels de citation qu'elles contiennent.
+# `@` en séparateur de sed : le motif contient une alternative « ref|back ».
+define reordonner_appels_de_note
+@sed -i -E 's@<a ([^>]*class="footnote-(ref|back)"[^>]*)><sup>([^<]*)</sup></a>@<sup><a \1>\3</a></sup>@g' "$(abspath $(1))"
+endef
 
 # .md -> HTML d'aperçu : mêmes filtres, CSS et métadonnées que la sortie PDF, mais
 # reader commonmark_x+sourcepos -> chaque bloc porte data-pos, ce qui permet le clic
@@ -206,24 +338,37 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-sections.lua" \
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
 
 # HTML -> PDF (CSS Paged Media), balisé PDF/UA-1. WeasyPrint 69 : --pdf-variant
 # pdf/ua-1 pose /StructTreeRoot, /MarkInfo /Marked true, /Lang et les StructElem.
 # Repli automatique si la variante stricte échoue (--pdf-tags, puis PDF nu) : le
-# balisage ne doit pas faire échouer le build. Temporaire « ~$… » dans le même
-# dossier : rename local, ignoré par la synchro OneDrive, donc pas de PDF partiel.
+# balisage ne doit pas faire échouer le build — un rédacteur doit pouvoir sortir
+# l'épreuve d'un article imparfait. La porte dure est ailleurs : `make verifier-ua`,
+# appelée par les cibles d'export.
+# Plus de `2>/dev/null` : la sortie d'erreur de WeasyPrint (image sans description,
+# propriété CSS ignorée, police manquante) est le seul endroit où ces défauts se
+# disent. Les envoyer au néant, c'était les rendre invisibles.
+# Elle passe par un journal puis par sed : --embed-resources ayant remplacé les chemins
+# d'image par des data: URI, WeasyPrint nomme l'image fautive par 10 ko de base64. On en
+# garde 16 caractères — assez pour distinguer deux images, assez peu pour rester lisible.
+# Temporaire « ~$… » dans le même dossier : rename local, ignoré par la synchro
+# OneDrive, donc pas de PDF partiel.
 # Quotes simples : $0 et $notdir ne doivent pas être substitués par make.
 $(OUT)/%.pdf: $(OUT)/%.html
-	@tmp='$(dir $@)~$$$(notdir $@)'; \
-	if $(WEASYPRINT) --pdf-variant pdf/ua-1 $< "$$tmp" 2>/dev/null; then :; \
-	elif $(WEASYPRINT) --pdf-tags $< "$$tmp" 2>/dev/null; then \
+	@tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(dir $@)~weasyprint.err'; \
+	: > "$$jrnl"; \
+	if $(WEASYPRINT) --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
+	elif $(WEASYPRINT) --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
 	  echo "[pipeline] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
 	else \
 	  echo "[pipeline] balisage PDF indisponible -> PDF non balisé : $@"; \
-	  $(WEASYPRINT) $< "$$tmp"; \
+	  $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl"; \
 	fi; \
+	sed -E 's@(data:[a-z/+.-]+;base64,[A-Za-z0-9+/=]{16})[A-Za-z0-9+/=]+@\1… (image incorporée)@g' "$$jrnl" >&2; \
+	rm -f "$$jrnl"; \
 	mv -f "$$tmp" $@
 
 # HTML autonome -> DOCX : galley Word de l'export OJS, régénéré depuis le HTML final
@@ -238,12 +383,17 @@ $(OUT)/%.docx: $(OUT)/%.html $(PIPELINE_DIR)/filters/szh-galley-docx.lua
 	@$(PANDOC) "$<" --from=html --to=docx \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-galley-docx.lua" --output="$@"
 
-docx: verifie-dossier $(DOCXS)
+# Les galleys de l'export OJS : la porte PDF/UA d'abord. Un numéro dont le PDF n'est pas
+# conforme ne doit pas partir dans OJS avec l'étiquette « accessible ».
+docx: verifie-dossier verifier-ua $(DOCXS)
 
 # Conversion des .docx déposés dans articles-word/. Les anciens articles « à plat » sont
 # migrés au passage vers articles/<slug>/ ; un article existant n'est jamais écrasé ; une
-# conversion réussie supprime le .docx source, un échec ou un « déjà converti » le laisse
-# en place et déclenche le rollback rm -rf articles/<slug> ci-dessous.
+# conversion réussie supprime le .docx source, un échec le laisse en place et déclenche le
+# rollback rm -rf articles/<slug> ci-dessous.
+# Un réimport tué en pleine bascule laisse le dossier de l'article sous
+# articles/.szh-bascule-<slug>, donc hors de SLUGS : le numéro se publierait sans lui et
+# sans un mot. `reimporter.py --reprise` le remet d'aplomb, d'abord, à chaque compilation.
 # Slug : un nom commençant par un chiffre seul (« 4_Titre ») est complété à deux chiffres
 # (« 04-titre »), de sorte que le tri alphabétique donne l'ordre du numéro. Longueur bornée
 # à 39 caractères, parce que le slug nomme le dossier et son .md homonyme et compte donc
@@ -251,8 +401,27 @@ docx: verifie-dossier $(DOCXS)
 # Windows de 260 caractères et la synchronisation SharePoint trébuche. La coupe tombe sur
 # le dernier mot entier, les fragments d'élision d'une lettre (« -d », « -l ») sont retirés
 # à leur tour, et la coupe sèche sert de repli sans tiret.
-# À garder aligné avec slugifierArticle() de vscodium-extension/szh-cockpit/lib/slug.js :
-# le cockpit devine le slug d'un .docx en attente pour dire « déjà converti ».
+# Un nom de dossier déjà pris a deux causes opposées, et les confondre coûte cher dans les
+# deux sens. Le champ `source:` de la fiche, écrit à l'import par docx-meta.py, les sépare :
+#   * même fichier Word -> l'auteur a corrigé son article et l'a redéposé. Ce n'est pas un
+#     homonyme : rien n'est créé, le Word reste en attente, et le journal dit que la version
+#     publiée est encore l'ancienne. Créer un « -2 » ici mettrait un doublon dans le
+#     sommaire et dans l'export OJS. Le remplacement du corps est le travail de la cible
+#     `reimporter` ci-dessous, et ce champ est l'ancre par laquelle elle apparie les deux.
+#   * fichier Word différent -> deux articles distincts que la borne à 39 caractères écrase
+#     en un seul slug (« … Teil 1 », « … Teil 2 », « … Teil 3 »). Le second reçoit « -2 »,
+#     le troisième « -3 », jusqu'à 99. La place du suffixe est prise au caractère près sur
+#     la fin du slug : le « -2 » dit déjà que le nom est coupé.
+#   * origine inconnue (fiche antérieure à `source:`, ou article sans fiche) -> on ne
+#     tranche pas et on ne crée rien : un doublon est plus difficile à défaire qu'un Word
+#     resté en attente. Le message dit quoi faire dans les deux cas.
+# Le redépôt a son propre compteur au bilan : caché dans « ignoré », il redeviendrait le
+# silence que cette recette corrige.
+# À garder aligné avec slugifierArticle() et slugifierArticleUnique() de
+# vscodium-extension/szh-cockpit/lib/slug.js : le cockpit devine le slug d'un .docx en
+# attente pour dire « déjà converti ».
+# Code de sortie : tout fichier Word resté sur le carreau fait échouer la recette. Sans
+# cela un article disparaissait du numéro avec une sortie 0, personne n'étant averti.
 import:
 	@set -u; \
 	shopt -s nullglob; \
@@ -275,16 +444,18 @@ import:
 	    echo "[import] media aplati : $${d}media/media -> $${d}media"; \
 	  fi; \
 	done; \
+	PYTHONIOENCODING=utf-8 python3 "$(PIPELINE_DIR)/reimporter.py" --reprise || true; \
 	[ -d "$(WORD_DIR)" ] || exit 0; \
 	journal="$(WORD_DIR)/.import.log"; \
 	: > "$$journal"; \
+	export SZH_IMPORT_LOG="$$PWD/$$journal"; \
 	dire() { echo "$$*"; printf '%s\n' "$$*" >> "$$journal"; }; \
 	shopt -s nocaseglob; \
 	files=("$(WORD_DIR)"/*.docx); \
 	shopt -u nocaseglob; \
 	[ $${#files[@]} -gt 0 ] || exit 0; \
 	mkdir -p articles; \
-	ok=0; deja=0; rate=0; \
+	ok=0; renomme=0; redepot=0; rate=0; \
 	for f in "$${files[@]}"; do \
 	  nom=$$(basename "$$f"); slug="$${nom%.*}"; \
 	  slug=$$(printf '%s' "$$slug" | LC_ALL=C.UTF-8 iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null || printf '%s' "$$slug"); \
@@ -292,20 +463,85 @@ import:
 	  [ -n "$$slug" ] || slug=article; \
 	  slug=$$(printf '%s' "$$slug" | sed -E 's/^([0-9])($$|[^0-9])/0\1\2/'); \
 	  if [ $${#slug} -gt 39 ]; then scourt="$${slug:0:39}"; scourt="$${scourt%-*}"; sorph=$$(printf '%s' "$$scourt" | sed -E 's/(-[a-z0-9])+$$//'); case "$$sorph" in *-*) scourt="$$sorph";; esac; slug="$${scourt:-$${slug:0:39}}"; fi; \
-	  cible="articles/$$slug/$$slug.md"; \
-	  if [ -e "$$cible" ]; then \
-	    dire "[import] déjà converti (ignoré) : $$nom -> $$cible existe"; deja=$$((deja+1)); continue; \
+	  venu_de=""; \
+	  for fiche in articles/*/*.meta.yaml; do \
+	    src=$$(sed -n 's/^source:[[:space:]]*//p' "$$fiche" | head -1 | sed -e 's/^"//' -e 's/"$$//'); \
+	    if [ "$$src" = "$$nom" ]; then venu_de=$$(basename "$$(dirname "$$fiche")"); break; fi; \
+	  done; \
+	  if [ -n "$$venu_de" ]; then \
+	    dire "[import-avertissement] word-redepose | article « $$venu_de » | fichier « $$nom » | Cet article a déjà été importé depuis ce même fichier Word. Rien n'a été créé : la version corrigée reste en attente dans $(WORD_DIR)/, et l'article publié est encore l'ancien. Pour publier la correction sans perdre la fiche, les médias ni les traductions : « Réimporter cet article », sur cet article. | [de] Dieser Artikel wurde schon aus derselben Word-Datei importiert. Es wurde nichts angelegt: die korrigierte Fassung bleibt in $(WORD_DIR)/, veröffentlicht ist noch die alte. Um die Korrektur zu veröffentlichen, ohne Metadaten, Medien und Übersetzungen zu verlieren: « Artikel neu importieren », beim betreffenden Artikel."; \
+	    redepot=$$((redepot+1)); continue; \
 	  fi; \
+	  if [ -e "articles/$$slug/$$slug.md" ] && ! grep -q "^source:" "articles/$$slug/$$slug.meta.yaml" 2>/dev/null; then \
+	    dire "[import-avertissement] origine-inconnue | article « $$slug » | fichier « $$nom » | Un article porte déjà ce nom de dossier, sans qu'on sache de quel Word il vient. Rien n'a été créé, pour ne pas risquer un doublon dans le numéro. S'il s'agit d'un autre article, renommez le fichier Word puis enregistrez (Ctrl+S) ; s'il s'agit du même article corrigé, lancez « Réimporter cet article » et désignez-lui ce fichier Word. | [de] Ein Artikel trägt diesen Ordnernamen bereits, ohne bekannte Word-Herkunft. Es wurde nichts angelegt, um kein Duplikat in der Ausgabe zu erzeugen. Handelt es sich um einen anderen Artikel, benennen Sie die Word-Datei um und speichern Sie (Ctrl+S); ist es derselbe Artikel, korrigiert, starten Sie « Artikel neu importieren » und weisen Sie ihm diese Word-Datei zu."; \
+	    redepot=$$((redepot+1)); continue; \
+	  fi; \
+	  base="$$slug"; n=1; trop=0; \
+	  while [ -e "articles/$$slug/$$slug.md" ]; do \
+	    n=$$((n+1)); \
+	    if [ $$n -gt 99 ]; then trop=1; break; fi; \
+	    suf="-$$n"; tronc="$$base"; \
+	    if [ $$(($${#tronc} + $${#suf})) -gt 39 ]; then \
+	      tronc=$$(printf '%s' "$${base:0:$$((39 - $${#suf}))}" | sed -E 's/-+$$//'); \
+	    fi; \
+	    slug="$$tronc$$suf"; \
+	  done; \
+	  if [ $$trop -eq 1 ]; then \
+	    dire "[import] ⚠ échec sur : $$nom — 99 articles portent déjà ce nom de dossier ; renommez le fichier Word puis enregistrez (Ctrl+S). [de] 99 Artikel tragen diesen Ordnernamen bereits; benennen Sie die Word-Datei um und speichern Sie erneut (Ctrl+S)."; \
+	    rate=$$((rate+1)); continue; \
+	  fi; \
+	  cible="articles/$$slug/$$slug.md"; \
 	  if bash "$(PIPELINE_DIR)/import-docx.sh" "$$f" "$$slug" "$(PIPELINE_DIR)"; then \
 	    rm -f "$$f"; \
-	    dire "[import] converti : $$nom -> $$cible"; ok=$$((ok+1)); \
+	    if [ "$$slug" = "$$base" ]; then \
+	      dire "[import] converti : $$nom -> $$cible"; \
+	    else \
+	      dire "[import] converti : $$nom -> $$cible (le nom de dossier « $$base » était déjà pris ; cet article prend « $$slug »)"; \
+	      renomme=$$((renomme+1)); \
+	    fi; \
+	    ok=$$((ok+1)); \
 	  else \
 	    rm -rf "articles/$$slug"; \
 	    dire "[import] ⚠ échec sur : $$nom (le fichier reste dans $(WORD_DIR)/)"; rate=$$((rate+1)); \
 	  fi; \
 	done; \
-	dire "[import] terminé : $$ok converti(s), $$deja ignoré(s), $$rate échec(s)."; \
-	[ $$rate -eq 0 ]
+	dire "[import] terminé : $$ok converti(s), $$renomme renommé(s), $$redepot redéposé(s), $$rate échec(s)."; \
+	if [ $$redepot -ne 0 ]; then \
+	  dire "[import] $$redepot fichier(s) Word attendent : leur article existe déjà, c'est sa version corrigée qui n'est pas encore publiée. Publiez-la par « Réimporter cet article ». [de] $$redepot Word-Datei(en) warten: ihr Artikel existiert bereits, nur die korrigierte Fassung ist noch nicht veröffentlicht. Veröffentlichen Sie sie über « Artikel neu importieren »."; \
+	fi; \
+	if [ $$rate -ne 0 ]; then \
+	  dire "[import] ⚠ $$rate fichier(s) Word ne sont pas entrés dans le numéro : ils restent dans $(WORD_DIR)/. [de] $$rate Word-Datei(en) sind nicht in die Ausgabe gelangt: sie bleiben in $(WORD_DIR)/."; \
+	  exit 1; \
+	fi
+
+# Word corrigé d'un article déjà importé : le corps est remplacé, la fiche, les tâches, le
+# suivi de traduction et les portraits survivent, et l'état d'avant est gardé de côté.
+# Tout le raisonnement — les tableaux retravaillés, les images, la fiche que le Word aurait
+# écrite, la bascule atomique — est dans reimporter.py, qui l'explique en tête.
+#
+#   make -f … reimporter ARTICLE=<slug>            le Word est celui du champ `source:`
+#   make -f … reimporter WORD="<nom>.docx"         l'article est celui du champ `source:`
+#   make -f … reimporter ARTICLE=<slug> WORD=…     appariement forcé
+#   make -f … annuler-reimport ARTICLE=<slug>      retour à l'état d'avant
+#
+# ⚠ make répond 2 dès qu'une recette sort non nulle : les cinq codes de reimporter.py ne
+# traversent pas cette cible. Le cockpit appelle donc le script directement et lit sa ligne
+# JSON ; cette cible est la porte d'entrée en ligne de commande. Une exception, pour suivre
+# la règle du dossier — n'échouer que si la configuration ne peut pas être honorée : le code
+# 3 (« rien à faire », le Word n'apportait rien) réussit ici. Rien n'est cassé, et une erreur
+# rouge dans l'éditeur mentirait. Les autres codes non nuls ressortent, aplatis en 2.
+# Pas de prérequis verifie-dossier : le script contrôle lui-même qu'il est dans une revue,
+# et un numéro dont un autre article ne compile pas ne doit pas empêcher ce remplacement.
+reimporter:
+	@PYTHONIOENCODING=utf-8 python3 "$(PIPELINE_DIR)/reimporter.py" \
+	  $(if $(ARTICLE),--article "$(ARTICLE)",) $(if $(WORD),--word "$(WORD)",); \
+	c=$$?; \
+	if [ $$c -eq 3 ]; then exit 0; fi; \
+	exit $$c
+
+annuler-reimport:
+	@PYTHONIOENCODING=utf-8 python3 "$(PIPELINE_DIR)/reimporter.py" \
+	  --annuler $(if $(ARTICLE),--article "$(ARTICLE)",)
 
 clean:
 	rm -rf "$(OUT)"

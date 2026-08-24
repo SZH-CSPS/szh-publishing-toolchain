@@ -28,9 +28,20 @@
   --font-mono:  'IBM Plex Mono', ui-monospace, monospace;
   --title-family: var(--font-sans);
 
-  --c-ink:   #16161f;  --c-ink2: #3d3d49;  --c-ink3: #5b5b66;
+  /* Encres sur papier, du plus contrasté au moins : ink Lc +105, ink2 +95, ink3 +91.
+     ink3 sert aux 9 px de l'en-tête courant et du pied, les plus petits textes de la
+     maquette : seuil 90, donc pas plus clair que ceci (#5b5b66 n'en donnait que 83). */
+  --c-ink:   #16161f;  --c-ink2: #3d3d49;  --c-ink3: #484853;
   --c-nuit:  #252B46;                       /* hero bleu nuit */
-  --c-rule:  #d0cdc4;
+  /* Encres claires du hero, miroir de ink2/ink3 en polarité inverse : plus le numéro est
+     haut, moins il y a de contraste. Mesurées sur --c-nuit : hero2 Lc −95 (sous-titre,
+     DOI, licence), hero3 Lc −91 (étiquettes de 9,5 px). Sous #EAEBF1, un texte du hero
+     passe sous le seuil de 90 ; le blanc franc reste réservé au titre, au dossier et aux
+     auteur·e·s, qui restent ainsi le premier plan. */
+  --c-hero2: #F1F2F7;  --c-hero3: #EAEBF1;
+  /* Filet des pages courantes et du bloc auteurs. 1 px sur papier : seuil non textuel de
+     30, que #d0cdc4 manquait (Lc +27). */
+  --c-rule:  #C9C6BE;
 
   --body-size: 0.875rem;   /* corps : rem (accessibilité HTML) ; ~14px/10,5pt à l'export */
   --leading:   1.55;
@@ -121,8 +132,11 @@ a[href]::after {
   content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23002A56' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 17 L17 7'/%3E%3Cpath d='M8 7 H17 V16'/%3E%3C/svg%3E");
   margin-left: 0.15em;
 }
-.szh-hero a[href] { color: #E2E4EC; }
-.szh-hero a[href]:hover { color: #E2E4EC; }
+/* Plus spécifique que `.szh-doi, .szh-licence` du §5 : c'est cette règle-ci qui décide de
+   la couleur du DOI et de la licence, qui sont des liens. Les deux doivent bouger
+   ensemble, et test/apca-check.py mesure les deux. */
+.szh-hero a[href] { color: var(--c-hero2); }
+.szh-hero a[href]:hover { color: var(--c-hero2); }
 .szh-hero a[href]::after { content: none; }         /* flèche inline déjà présente */
 /* Appel de citation lié à son entrée de bibliographie (szh-citations.lua). Il reste du
    texte à l'œil — même couleur, sans soulignement ni flèche : l'appel « (Bovey, 2022) »
@@ -133,11 +147,16 @@ a[href^="#"], a.szh-appel {
 }
 a[href^="#"]::after, a.szh-appel::after { content: none; }
 a[href^="#"]:hover { color: #002A56; text-decoration: underline; }
-/* Flèche du hero en blanc franc. Cette règle ne vaut que pour le HTML : WeasyPrint rend
-   un <svg> inline comme une image et n'y fait pas descendre la cascade CSS. Au PDF, le
-   blanc qui compte est l'attribut stroke="#ffffff" posé sur les <svg> du hero dans
-   templates/szh-article.html. */
-.szh-hero .szh-arrow { color: #ffffff; stroke: #ffffff; opacity: 1; }
+/* Flèche du hero en blanc franc. Le blanc, dans les deux médias, vient de l'attribut
+   stroke="#ffffff" posé sur les <svg> du hero dans templates/szh-article.html : la cascade
+   CSS ne descend pas dans un <svg> inline sous WeasyPrint, et dans un navigateur elle y
+   redirait la même valeur. Un `stroke: #ffffff` a longtemps traîné ici : WeasyPrint le
+   rejetait à chaque article (« Ignored `stroke: #ffffff`, unknown property ») et il ne
+   changeait rien nulle part.
+   ⚠ `opacity: 1`, en revanche, porte : il neutralise le 0.9 de `.szh-arrow` (§5), et une
+   opacité < 1 ferait dessiner la flèche dans un calque de transparence — contenu hors de
+   l'arbre de structure, PDF/UA-1 7.1-3 en échec. Ne pas le retirer. */
+.szh-hero .szh-arrow { color: #ffffff; opacity: 1; }
 /* Notes de bas de page : pas de flèche « lien » automatique, l'appel de note et le
    renvoi ↩ tenant déjà lieu de repère. */
 .footnotes a::after, a.footnote-ref::after, a.footnote-back::after { content: none; }
@@ -195,9 +214,9 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
   margin: 0; text-align: left;
   font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em;
 }
-.szh-hero-eyebrow { color: #C5C8D4; }
+.szh-hero-eyebrow { color: var(--c-hero3); }
 .szh-hero-dossier { margin-top: 8px; min-height: 14px; color: #ffffff; }
-.szh-hero-vol { color: #C5C8D4; white-space: nowrap; text-align: right;
+.szh-hero-vol { color: var(--c-hero3); white-space: nowrap; text-align: right;
   font-variant-numeric: tabular-nums; }
 
 /* Largeur limitée (dégage le filigrane) et hauteur bornée pour que le titre ne chevauche
@@ -210,7 +229,7 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
   letter-spacing: -0.005em; color: #fff; margin: 20px 0 0; text-align: left; hyphens: manual;
 }
 .szh-subtitle { font-family: var(--title-family); font-weight: 400; font-size: 14.5px;
-  line-height: 1.35; color: #E2E4EC; margin: 12px 0 0; text-align: left; }
+  line-height: 1.35; color: var(--c-hero2); margin: 12px 0 0; text-align: left; }
 /* Ancré en bas du hero par position absolue, le flexbox de WeasyPrint ne gérant pas
    margin-top: auto : DOI et licence restent à la même place quel que soit le titre. */
 .szh-hero-meta { position: absolute; left: 72px; bottom: 38px; max-width: 76%; }
@@ -224,18 +243,32 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
 .szh-authors li + li::before {
   content: "\B7";                          /* · point médian */
   position: static; display: inline; left: auto; top: auto;
-  color: #fff; opacity: 0.5; font-weight: 400; font-size: inherit; line-height: inherit;
+  /* ⚠ Couleur PRÉ-MÉLANGÉE, et `opacity` laissée à 1 : ne pas revenir à
+     `#fff` + `opacity: 0.5`. Toute déclaration `opacity` < 1 fait dessiner l'élément par
+     WeasyPrint dans un Form XObject à groupe de transparence, où il ré-émet un /MCID sans
+     référence /Stm : le contenu devient orphelin de l'arbre de structure et le PDF n'est
+     plus conforme PDF/UA-1 (règle 7.1-3). #9295A2 est exactement le blanc à 50 % composé
+     sur le bleu nuit du hero (#252B46), fond que `overflow: hidden` garantit — l'œil ne
+     voit aucune différence, et test/apca-check.py mesure la même couleur qu'avant. */
+  color: #9295A2; opacity: 1; font-weight: 400; font-size: inherit; line-height: inherit;
   margin: 0 6px;
 }
 .szh-doi, .szh-licence {
-  display: inline-flex; align-items: center; gap: 6px; color: #E2E4EC;
+  display: inline-flex; align-items: center; gap: 6px; color: var(--c-hero2);
   font-weight: 400; text-decoration: none;
 }
 .szh-doi { margin-top: 6px; font-size: 12.5px; }
 .szh-licence { margin-top: 15px; font-size: 11.5px; }
 .szh-arrow { width: 11px; height: 11px; opacity: 0.9; flex-shrink: 0; display: block; }
+/* Filigrane de couverture. ⚠ Même règle que le point médian ci-dessus : pas d'`opacity`
+   < 1, sinon WeasyPrint dessine le filigrane dans un calque de transparence et son
+   contenu sort de l'arbre de structure (PDF/UA-1 7.1-3). Les 7 % sont pré-mélangés dans
+   l'attribut fill="#343A53" du <svg class="szh-book"> de templates/szh-article.html :
+   c'est exactement du blanc à 7 % sur le bleu nuit #252B46, et `overflow: hidden` du hero
+   garantit que le filigrane ne déborde jamais sur un autre fond. La cascade CSS ne
+   descend pas dans un <svg> inline sous WeasyPrint, d'où la couleur en attribut. */
 .szh-book { position: absolute; right: -30px; bottom: -56px; width: 300px; height: 300px;
-  opacity: 0.07; }
+  opacity: 1; }
 
 /* ── Option « condenser l'en-tête » ────────────────────────────────────────────
    Réglage du numéro (`entete-condensee` dans ausgabe.yaml), posé en classe sur <body> par
@@ -290,15 +323,14 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
 }
 .szh-abstract:last-child { margin-bottom: 0; }
 /* « Résumé / Zusammenfassung » est un h2, vrai titre navigable au lecteur d'écran, qui
-   garde son rendu d'étiquette : on annule le style et la numérotation des h2 de section
-   du §6, comme .szh-auteurs-titre au §8. */
+   garde son rendu d'étiquette : on annule le style des h2 de section du §6, comme
+   .szh-auteurs-titre au §8. Rien à dé-numéroter : ce titre est écrit par le template, hors
+   document pandoc, donc szh-sections.lua ne le voit pas. */
 .szh-abstract-label {
-  counter-increment: none; counter-reset: none;
   margin: 0 0 8px; line-height: var(--leading);
   font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em;
   font-size: 9.5px; color: #000;
 }
-.szh-abstract-label::before { content: none; }
 .szh-abstract p { margin: 0; color: var(--c-ink); text-align: justify; hyphens: auto; }
 /* Mots-clés = <ul> de <li> (RGAA 9.3) ; le flex fait la mise en ligne, on annule la
    puce ▸ et le retrait du style de liste global du §6. */
@@ -315,27 +347,29 @@ ul.szh-kws { margin: 10px 0 0; padding: 0; list-style: none;
    défaut, sans couverture) rende les mêmes éléments que le PDF. */
 
 /* Titres de corps h2–h6 (RGAA 9.1) : le seul h1 est le titre de l'article, sur la
-   couverture, et szh-niveaux.lua normalise le corps à partir de h2 — ces sélecteurs sont
-   le miroir du filtre, à modifier ensemble. Numérotation hiérarchique par compteurs CSS
-   (1, 1.1, 1.1.1) sur h2–h4, h5 et h6 sans numéro ; le rédacteur ne les écrit pas. */
+   couverture, et szh-niveaux.lua compacte le corps à partir de h2 — ces sélecteurs sont
+   le miroir du filtre, à modifier ensemble. La numérotation hiérarchique (1, 1.1, 1.1.1)
+   n'est plus ici : szh-sections.lua l'écrit dans le texte du titre, seul moyen qu'elle
+   suive l'article jusqu'au galley DOCX de l'export OJS. Il ne reste que la mise en forme
+   du numéro (.szh-num-section). Ne pas réintroduire de compteurs CSS : on numéroterait
+   deux fois. */
 h2, h3, h4, h5, h6 {
   font-family: var(--title-family); font-weight: 700; line-height: 1.22;
   color: var(--c-ink); text-align: left; letter-spacing: -0.005em;
   margin: 1.4em 0 0.4em; break-after: avoid; hyphens: manual;
 }
 h2:first-child, h3:first-child, h4:first-child, h5:first-child, h6:first-child { margin-top: 0; }
-/* Tailles en rem, décroissantes, jamais inférieures au corps (0.875rem). h2–h4 sont
-   numérotés (1 / 1.1 / 1.1.1), h4 est à la taille du corps ; h5 et h6 gardent la taille
-   et la graisse de h4 mais n'ont pas de numéro. Compteurs nommés sec1/sec2/sec3 et non
-   h1/h2/h3 : le nom de balise ne dit plus le rang de section. */
-h2 { font-size: 1.2rem;  counter-increment: sec1; counter-reset: sec2 sec3; }
-h3 { font-size: 1.05rem; counter-increment: sec2; counter-reset: sec3; }
-h4 { font-size: var(--body-size); counter-increment: sec3; }
-h5, h6 { font-size: var(--body-size); }   /* pas de counter-increment ni de ::before -> aucun numéro */
-h2::before { content: counter(sec1) "\A0"; }
-h3::before { content: counter(sec1) "." counter(sec2) "\A0"; }
-h4::before { content: counter(sec1) "." counter(sec2) "." counter(sec3) "\A0"; }
-h2::before, h3::before, h4::before {
+/* Tailles en rem, décroissantes, jamais inférieures au corps (0.875rem). h2–h4 portent
+   un numéro (1 / 1.1 / 1.1.1) écrit par szh-sections.lua, h4 est à la taille du corps ;
+   h5 et h6 gardent la taille et la graisse de h4 mais n'ont pas de numéro — les trois
+   rangs numérotés sont fixés dans le filtre, ces tailles-ci en sont le miroir. */
+h2 { font-size: 1.2rem; }
+h3 { font-size: 1.05rem; }
+h4, h5, h6 { font-size: var(--body-size); }
+/* Numéro de section, posé dans le texte du titre par szh-sections.lua. L'espace
+   insécable qui le sépare du titre est dans le texte, à l'intérieur du span ; il ne reste
+   ici que la respiration visuelle et les chiffres à largeur fixe. */
+.szh-num-section {
   color: #000000; font-variant-numeric: tabular-nums; margin-right: 0.35em;
 }
 
@@ -407,8 +441,8 @@ blockquote p:last-child { margin-bottom: 0; }
    Elle est faite par filters/szh-numerotation.lua, qui écrit « Figure N — » dans le texte
    de la légende : un numéro posé par `content:` n'existe que visuellement. Ne pas
    réintroduire de compteurs CSS ici, on numéroterait deux fois. Il ne reste que la mise
-   en forme du numéro (.szh-numero). */
-body { counter-reset: sec1 sec2 sec3; }
+   en forme du numéro (.szh-numero). Les titres de section suivent la même règle depuis
+   szh-sections.lua : plus aucun compteur CSS dans cette feuille, hors la pagination. */
 
 /* Préfixe « Figure N — » / « Tableau N — » posé par szh-numerotation.lua. */
 figure > figcaption .szh-numero,
@@ -574,15 +608,13 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
   border-top: 1px solid var(--c-rule);
 }
 /* Titre du bloc : style « étiquette », comme l'en-tête courant, et non un titre de
-   section numéroté — on neutralise le compteur et le numéro posés sur h2 au §6 (la
-   classe l'emporte en spécificité). */
+   section numéroté. Rien à dé-numéroter : ce titre est écrit par le template, hors
+   document pandoc, donc szh-sections.lua ne le voit pas. */
 .szh-auteurs-titre {
-  counter-increment: none; counter-reset: none;
   margin: 0 0 1.1em;
   font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.14em; color: var(--c-ink2);
 }
-.szh-auteurs-titre::before { content: none; }
 
 /* Un auteur = une rangée photo/texte, jamais coupée par un saut de page.
    Sans photo, la colonne texte occupe simplement toute la largeur. */
@@ -608,9 +640,30 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
 .szh-auteur-email { margin: 0.25em 0 0; text-align: left; font-size: 0.85rem; }
 .szh-auteur-email a[href] { overflow-wrap: anywhere; }
 
-/* Icône-lien ORCID (SVG inline du template) : ni soulignement ni flèche « lien », l'icône
-   est le repère. Sélecteurs a.szh-orcid pour égaler la spécificité de a[href] et
-   a[href]::after du §4, sinon ils l'emportent. */
-a.szh-orcid { text-decoration: none; }
+/* Icône-lien ORCID : ni soulignement ni flèche « lien », l'icône est le repère.
+   Sélecteurs a.szh-orcid pour égaler la spécificité de a[href] et a[href]::after du §4,
+   sinon ils l'emportent.
+   ⚠ L'icône est un FOND, et le <a> du gabarit est vide : ne pas y remettre le <svg>.
+   Un <a> qui contient un élément fait produire à WeasyPrint une annotation de lien par
+   boîte descendante (anchors.py : la propriété `link` est héritée), et une seule est
+   rattachée au /Link de l'arbre de structure — les autres pendent sous /Span ou
+   /NonStruct, ce que PDF/UA-1 interdit (règle 7.18.5). Le nom accessible du lien vient
+   de son aria-label, pas de son contenu. */
+a.szh-orcid {
+  text-decoration: none;
+  display: inline-block; width: 12px; height: 12px; vertical-align: -1.5px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Ccircle cx='128' cy='128' r='128' fill='%23002A56'/%3E%3Cpath fill='%23ffffff' fill-rule='evenodd' d='M86.3 186.2H70.9V79.1h15.4v107.1zM108.9 79.1h41.6c39.6 0 57 28.3 57 53.6 0 27.5-21.5 53.6-56.8 53.6h-41.8V79.1zm15.4 93.3h24.5c34.9 0 42.9-26.5 42.9-39.7 0-21.5-13.7-39.7-43.7-39.7h-23.7v79.4zM88.7 56.8c0 5.5-4.5 10.1-10.1 10.1s-10.1-4.6-10.1-10.1c0-5.6 4.5-10.1 10.1-10.1s10.1 4.6 10.1 10.1z'/%3E%3C/svg%3E");
+  background-size: 100% 100%; background-repeat: no-repeat;
+}
 a.szh-orcid::after { content: none; }
-a.szh-orcid svg { width: 12px; height: 12px; vertical-align: -1.5px; }
+
+/* ── Image décorative (alt="") ─────────────────────────────────────────────────
+   Rendue en fond CSS et non en <img> : voir szh-numerotation.lua, qui explique pourquoi
+   (WeasyPrint balise tout <img> en /Figure, et une /Figure sans /Alt n'est pas conforme).
+   Ici la seule géométrie ; la largeur naturelle et le rapport hauteur/largeur de chaque
+   image sont écrits par le filtre dans un <style> de fin de corps.
+   `display: inline-block` et non `block` : comme un <img>, l'image décorative reste un
+   élément en ligne dans son paragraphe, sinon la ligne perdrait son interlignage. */
+.szh-decor { display: inline-block; max-width: 100%; }
+.szh-decor > span { display: block; height: 0; background-size: 100% 100%;
+  background-repeat: no-repeat; }

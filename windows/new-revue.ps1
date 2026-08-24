@@ -49,21 +49,29 @@ if (-not $existait) {
   }
 }
 
-# Identité déduite du nom du dossier, qui suit la convention « 2027-05 » : on en tire
-# l'année et le numéro, et on vide le titre de démonstration du gabarit. Sans cela, un
-# numéro neuf porterait les valeurs d'exemple, en contradiction avec le nom que montrent
-# le lanceur, les liens et les archives. Un nom hors convention vide aussi année et
-# numéro : le cockpit retombe sur le nom du dossier plutôt que sur un exemple.
+# Identité déduite du nom du dossier, qui suit la convention « 2027-05 » : on en tire le
+# numéro, et on vide le titre de démonstration du gabarit. Sans cela, un numéro neuf
+# porterait les valeurs d'exemple, en contradiction avec le nom que montrent le lanceur,
+# les liens et les archives.
+#
+# `date:` reste vide, et ce n'est pas un oubli : c'est la date de PUBLICATION du numéro,
+# que personne ne connaît le jour où le dossier est créé. Y écrire l'année du dossier
+# faisait paraître le champ rempli alors qu'il ne l'était pas — l'export OJS refuse une
+# année seule, et le rédacteur ne voyait pas pourquoi. La couverture, elle, n'a pas besoin
+# de cette clé : szh-maquette.lua reprend l'année du nom du dossier quand `date:` est vide.
+# La vraie date se saisit dans « Métadonnées du numéro », qui a un sélecteur pour cela.
 if (-not $existait) {
   $leaf = Split-Path $chemin -Leaf
+  [void](Set-SzhAusgabeCle $chemin 'date' '' $true $true)
   if ($leaf -match '^(\d{4})-(\d{1,3})$') {
-    [void](Set-SzhAusgabeCle $chemin 'date' $Matches[1] $true $false)
-    [void](Set-SzhAusgabeCle $chemin 'numero' $Matches[2] $true $false)
-    Write-SzhInfo ('Numéro identifié d''après le dossier : {0}, n° {1}.' -f $Matches[1], $Matches[2])
+    $annee = $Matches[1]
+    $rang = $Matches[2]
+    [void](Set-SzhAusgabeCle $chemin 'numero' $rang $true $false)
+    Write-SzhInfo ('Numéro identifié d''après le dossier : {0}, n° {1}.' -f $annee, $rang)
+    Write-SzhInfo 'Date de publication à saisir dans « Métadonnées du numéro » : l''export OJS l''exige.'
   } else {
-    [void](Set-SzhAusgabeCle $chemin 'date' '' $true $true)
     [void](Set-SzhAusgabeCle $chemin 'numero' '' $true $true)
-    Write-SzhInfo 'Nom de dossier hors convention (AAAA-NN) : année et numéro laissés à remplir.'
+    Write-SzhInfo 'Nom de dossier hors convention (AAAA-NN) : numéro et date laissés à remplir.'
   }
   [void](Set-SzhAusgabeCle $chemin 'title' '' $true $true)
 }

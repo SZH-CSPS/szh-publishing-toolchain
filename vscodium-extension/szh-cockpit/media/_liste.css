@@ -1,0 +1,38 @@
+/* Liste de cartes d'une vue d'ensemble : la mise en page que SZH.listeCartes construit
+   (media/_commun.js). Partagée par « Traductions », « Word en attente » et « Articles » —
+   trois vues, un seul dessin. Tout le reste vient du socle (_design.css). */
+
+/* Un écart franc entre les lignes : ce sont des blocs indépendants, pas un tableau. */
+.szh-liste { display: flex; flex-direction: column; gap: var(--e3); }
+.szh-liste > * { flex: 0 0 auto; }
+.titre-section { margin: var(--e5) 0 0; font-size: var(--t-section); font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--encre-2);
+  border-bottom: 2px solid var(--accent); padding-bottom: var(--e1); }
+.titre-section:first-child { margin-top: 0; }
+
+.ligne .szh-tete { flex-wrap: wrap; }
+.ligne .szh-corps { padding: var(--e3) var(--e3) 0; }
+/* Le pied : « Ouvrir » à gauche, l'état juste à côté. Toujours à la même place, quelle que
+   soit la longueur du titre — c'est ce qui rend une liste lisible d'un coup d'œil. */
+.ligne-pied {
+  display: flex; align-items: center; gap: var(--e2);
+  padding: var(--e3);
+}
+.ligne-pied:empty { display: none; }
+
+/* Un bouton qui détruit se distingue sans crier : le texte prend la couleur d'erreur du
+   thème, le fond reste celui des autres. */
+.bouton-danger { color: var(--vscode-errorForeground, #f85149); }
+.bouton-danger:hover { color: var(--vscode-button-foreground, #fff);
+  background: var(--vscode-errorForeground, #f85149); }
+
+/* Les tâches de la carte : entre l'encadré et le pied, une case par tâche. En colonne et
+   non en ligne — un intitulé de six mots ne se coupe pas au milieu, et la case reste
+   collée au texte qu'elle coche. */
+.szh-taches { display: flex; flex-direction: column; gap: var(--e1);
+  padding: var(--e3) var(--e3) 0; }
+.szh-tache { display: flex; align-items: flex-start; gap: .5em; cursor: pointer;
+  font-size: var(--t-libelle); color: var(--encre); }
+.szh-tache input { flex: 0 0 auto; margin: .15em 0 0; accent-color: var(--accent); }
+.szh-tache span { line-height: 1.4; }
+.szh-tache:hover { color: var(--accent); }

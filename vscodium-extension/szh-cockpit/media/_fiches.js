@@ -13,8 +13,9 @@
 
   // ---- Cartes de métadonnées d'article ----
   //
-  // La carte (type, titres, sous-titres, résumés, auteurs, DOI, mots-clés) et la modale
-  // photo, partagées par « Métadonnées des articles » et « Vérification de l'import ».
+  // La carte (type, langue, licence, titres, sous-titres, résumés, auteurs, DOI,
+  // mots-clés) et la modale photo, partagées par « Métadonnées des articles » et
+  // « Vérification de l'import ».
   // Les deux pages ne diffèrent que par des décorations : la seconde pose un badge sur
   // chaque intitulé et un compteur de champs vides. D'où `decor`, dont tous les crochets
   // sont facultatifs :
@@ -33,7 +34,7 @@
   // badges « à compléter » vivent dans les intitulés, traductions comprises.
   //
   // Protocole avec l'hôte :
-  //   hôte -> webview : valeurs { articles, types, langue, accent }
+  //   hôte -> webview : valeurs { articles, types, licences, licenceDefaut, langue, accent }
   // La partie photo est celle de _auteurs.js, à qui les messages sont passés.
   function cartesArticles(opts) {
     var conteneur = opts.conteneur;
@@ -53,6 +54,10 @@
     var apercusParCarte = new WeakMap();
     var TYPES = [];
     var LANGUE_DEFAUT = 'fr';
+    // Licences offertes et licence par défaut : listes fermées venues de l'hôte, comme
+    // les types d'article. Le formulaire n'en connaît aucune de son côté.
+    var LICENCES = [];
+    var LICENCE_DEFAUT = '';
 
     // La modale rend l'auteur·e édité ; il n'est pas écrit sur le disque tout de suite,
     // la carte gardant la main sur son enregistrement — c'est la seule chose que cette
@@ -104,9 +109,11 @@
 
     // ---- Construction des cartes ----
 
-    function rendre(articles, types, langueDefaut) {
+    function rendre(articles, types, langueDefaut, licences, licenceDefaut) {
       if (types) { TYPES = types; }
       if (langueDefaut) { LANGUE_DEFAUT = langueDefaut; }
+      if (licences) { LICENCES = licences; }
+      if (licenceDefaut) { LICENCE_DEFAUT = licenceDefaut; }
       ctlAuteurs.fermer();                           // re-rendu : la fiche visée disparaît
       conteneur.textContent = '';
       modifies.clear();
@@ -161,6 +168,29 @@
       if (selection.value !== (v.type || '')) { selection.value = ''; }
       selection.addEventListener('input', function () { marquer(carte, slug); });
       carte.appendChild(selection);
+
+      // Langue de l'article : elle prime au rendu sur celle du numéro. Le <select> vient
+      // de SZH.choixLangue (_commun.js), une seule description pour les deux formulaires.
+      var langue = SZH.choixLangue({
+        valeur: v.lang, defaut: LANGUE_DEFAUT,
+        textes: { libelle: TXT.langueArticle, fr: TXT.langueFr, de: TXT.langueDe, it: TXT.langueIt },
+        onChange: function () { marquer(carte, slug); }
+      });
+      appeler('champ', langue.label, 'lang');
+      carte.appendChild(langue.label);
+      carte.appendChild(langue.select);
+
+      // Licence de l'article : CC-BY 4.0 sauf mention contraire, et c'est ici qu'une
+      // reprise sous droits se déclare. Même composant que la langue, à liste et libellés
+      // près, qui viennent de l'hôte.
+      var licence = SZH.choixFerme({
+        cle: 'licence', libelle: TXT.licence, options: LICENCES,
+        valeur: v.licence, defaut: LICENCE_DEFAUT,
+        onChange: function () { marquer(carte, slug); }
+      });
+      appeler('champ', licence.label, 'licence');
+      carte.appendChild(licence.label);
+      carte.appendChild(licence.select);
 
       // La langue par défaut du numéro vient en premier, les autres en dessous. L'italien
       // est toujours construit, et révélé par le CSS.
@@ -280,9 +310,13 @@
     }
 
     function collecter(carte) {
-      var resultat = { type: '', doi: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
+      var resultat = { type: '', lang: '', licence: '', doi: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
       var sel = carte.querySelector('select[data-cle=type]');
       if (sel) { resultat.type = sel.value; }
+      var selLangue = carte.querySelector('select[data-cle=lang]');
+      if (selLangue) { resultat.lang = selLangue.value; }
+      var selLicence = carte.querySelector('select[data-cle=licence]');
+      if (selLicence) { resultat.licence = selLicence.value; }
       for (var i of carte.querySelectorAll(':scope > input, :scope > textarea')) {
         var cle = i.dataset.cle;
         var langue = i.dataset.langue;
@@ -314,7 +348,8 @@
     function message(msg) {
       if (msg.type === 'valeurs') {
         SZH.poserAccent(msg.accent);
-        rendre(msg.articles || [], msg.types || [], msg.langue || 'fr');
+        rendre(msg.articles || [], msg.types || [], msg.langue || 'fr',
+          msg.licences || null, msg.licenceDefaut || null);
         surValeurs(msg);
         return true;
       }

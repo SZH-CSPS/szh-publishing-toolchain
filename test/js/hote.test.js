@@ -38,6 +38,7 @@ test('les onglets de section portent la commande de leur vue d’ensemble', asyn
   const parContexte = {};
   for (const it of racine) { parContexte[it.contextValue] = it; }
   const attendu = {
+    'section-articles': 'szh.vueArticles',
     'section-traductions': 'szh.vueTraductions',
     'section-word': 'szh.vueWord'
   };
@@ -48,9 +49,6 @@ test('les onglets de section portent la commande de leur vue d’ensemble', asyn
     assert.strictEqual(it.command.command, attendu[contexte],
       'commande inattendue sur ' + contexte);
   }
-  // Les articles n'ont pas de vue d'ensemble : leur onglet ne doit rien déclencher.
-  assert.ok(!parContexte['section-articles'].command,
-    'la section des articles ne devrait pas porter de commande');
 });
 
 // Ouvrir un panneau touche à tout : lecture du disque, assemblage du HTML, première charge
@@ -61,6 +59,7 @@ test('chaque panneau s’ouvre, s’assemble et envoie sa première charge', asy
     ['szh.metadonnees', undefined, 'valeurs'],
     ['szh.reglages', undefined, 'valeurs'],
     ['szh.vueTraductions', undefined, 'valeurs'],
+    ['szh.vueArticles', undefined, 'valeurs'],
     ['szh.vueWord', undefined, 'valeurs'],
     ['szh.mediasArticle', { slug: '01-essai' }, 'charger'],
     ['szh.traduction', { slug: '01-essai' }, 'valeurs'],

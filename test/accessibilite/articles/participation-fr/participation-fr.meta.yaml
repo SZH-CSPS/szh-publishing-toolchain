@@ -1,0 +1,30 @@
+type: article
+# Corps en français dans un numéro de la Zeitschrift (ausgabe.yaml : revue zeitschrift,
+# lang de) : c'est le cas que le banc n'avait pas. La langue de l'article doit l'emporter
+# sur celle du numéro, jusqu'au /Lang du PDF.
+lang: fr
+licence: cc-by-4.0
+title:
+  fr: "La participation sociale en classe régulière"
+  de: "Soziale Teilhabe in der Regelklasse"
+subtitle:
+  fr: "Version d'épreuve du corpus"
+  de: "Prüffassung des Korpus"
+resume:
+  fr: "Version française de la paire de test : sauts de niveau de titre, un tableau sans rangée d'en-tête, une bibliographie à diacritiques et une légende de figure en moins."
+  de: "Französische Fassung des Prüfpaares: Titelstufensprünge, eine Tabelle ohne Kopfzeile, eine Literaturliste mit diakritischen Zeichen und eine Bildlegende weniger."
+keywords:
+  fr:
+  - "participation"
+  - "accessibilité"
+  de:
+  - "Teilhabe"
+  - "Barrierefreiheit"
+author:
+- prenom: "Alice"
+  nom: "Meier"
+  fonction: "Collaboratrice scientifique"
+  affiliation: "SZH/CSPS"
+  orcid: ""
+  email: ""
+  photo: ""

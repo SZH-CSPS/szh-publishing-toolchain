@@ -15,6 +15,7 @@ const PANNEAU_COMMANDE = [
   ['meta.titre', 'szh.metadonnees', '', '$(gear)'],
   ['fiches.titre', 'szh.apercuMetadonnees', '', '$(list-flat)'],
   ['trad.titre', 'szh.traduction', '', '$(globe)'],
+  ['ctl.titre', 'szh.vueControles', '', '$(checklist)'],
   ['regl.titre', 'szh.reglages', '', '$(settings-gear)']
 ];
 

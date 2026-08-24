@@ -65,6 +65,11 @@
     // <revue>/.vscode/settings.json), supprimé au déverrouillage. Seul fichier technique
     // toléré dans un dossier de revue, et donc masqué.
     "**/.vscode": true,
+    // Sortie de la dernière compilation et du dernier import, écrites par les tâches et
+    // relues par le cockpit (lib/journal.js) : ce que la chaîne a relevé se lit dans
+    // « Contrôles de la compilation », pas dans un fichier de log.
+    "**/.szh-journal.log": true,
+    "**/.import.log": true,
     "**/Thumbs.db": true,
     "**/~$*": true,
     "**/*.lnk": true,

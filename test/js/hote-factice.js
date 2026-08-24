@@ -67,6 +67,17 @@ function revueDEssai() {
 function activerHote(revue) {
   const cockpit = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
   const evenement = () => () => ({ dispose() {} });
+  // Un événement dont on garde les abonnés, pour pouvoir le déclencher depuis un test.
+  // `evenement()` jette le gestionnaire : suffisant pour la plupart, pas pour la fin d'une
+  // tâche, qui est le seul endroit où le cockpit apprend ce que la chaîne a relevé.
+  const emetteur = () => {
+    const abonnes = [];
+    const brancher = (f) => { abonnes.push(f); return { dispose() {} }; };
+    brancher.emettre = (e) => { for (const f of abonnes.slice()) { f(e); } };
+    return brancher;
+  };
+  const finTache = emetteur();
+  const barres = [];
   const panneaux = [];
   const avertissements = [];
   const erreurs = [];
@@ -134,7 +145,12 @@ function activerHote(revue) {
         arbre = (opts || {}).treeDataProvider || null;
         return { title: '', dispose() {}, onDidChangeSelection: evenement(), reveal: () => Promise.resolve() };
       },
-      createStatusBarItem: () => ({ show() {}, hide() {}, dispose() {}, text: '', tooltip: '', command: '' }),
+      createStatusBarItem: () => {
+        const b = { visible: false, text: '', tooltip: '', command: '',
+                    show() { b.visible = true; }, hide() { b.visible = false; }, dispose() {} };
+        barres.push(b);
+        return b;
+      },
       createWebviewPanel: (type, titre) => fauxPanneau(type, titre),
       showWarningMessage: (m) => { avertissements.push(m); const r = reponseModale; reponseModale = undefined; return Promise.resolve(r); },
       showInformationMessage: () => Promise.resolve(undefined),
@@ -172,7 +188,7 @@ function activerHote(revue) {
       fs: { stat: () => Promise.resolve({}) }
     },
     tasks: {
-      onDidStartTask: evenement(), onDidEndTaskProcess: evenement(),
+      onDidStartTask: evenement(), onDidEndTaskProcess: finTache,
       fetchTasks: () => Promise.resolve([]), executeTask: () => Promise.resolve({})
     },
     languages: { registerHoverProvider: () => ({ dispose() {} }) }
@@ -211,6 +227,14 @@ function activerHote(revue) {
     panneauDeType: (type) => panneaux.filter((x) => x.type === type).pop() || null,
     avertissements: avertissements,
     erreurs: erreurs,
+    // Les articles de la barre d'état, dans l'ordre de création : un test lit leur texte.
+    barres: barres,
+    barreQuiDit: (fragment) => barres.filter(
+      (b) => b.visible && String(b.text).indexOf(fragment) !== -1).pop() || null,
+    // Simule la fin d'une tâche de la chaîne, comme VS Code la signale.
+    finirTache: (nom, code) => finTache.emettre({
+      exitCode: code, execution: { task: { name: nom, definition: { type: 'process' } } }
+    }),
     repondreModale: (v) => { reponseModale = v; }
   };
 }

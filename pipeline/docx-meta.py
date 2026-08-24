@@ -25,6 +25,19 @@
 #      appariée : à garder, la purge des images inutilisées ne doit pas l'effacer. Le
 #      tableau des auteurs étant consommé du corps, ces images ne sont citées nulle part.
 #
+# Deux champs de la fiche viennent d'ici et de nulle part ailleurs :
+#   lang    langue de l'article, écrite dans tous les cas. Un champ vide laissait
+#           szh-maquette.lua composer dans la langue du numéro, et un article allemand
+#           dans un numéro français n'avait alors aucun titre à afficher : la
+#           compilation s'arrêtait. Un champ rempli, corrigeable dans le formulaire,
+#           vaut mieux qu'un champ vide qui bloque. Quand la langue vient d'une
+#           déduction (langue_source `contenu` ou `defaut`) et non du document, un
+#           avertissement le dit au rédacteur.
+#   source  nom du fichier Word d'origine. C'est lui qui permet à la cible `import` du
+#           Makefile de distinguer deux articles homonymes (suffixe « -2 ») d'un même
+#           article redéposé après correction (rien n'est créé alors). Ce sera aussi
+#           l'ancre de la fonction « Réimporter cet article ».
+#
 # Détection par style d'abord (w:styleId et nom localisé de styles.xml), repli heuristique
 # sinon : gras et taille pour le titre, motif « liste de noms » pour les auteurs. Patron de
 # tête des deux revues : Titel [Untertitel] Author Abstract(Résumé)
@@ -623,10 +636,35 @@ def citer(v):
     return '"' + re.sub(r'([\\"])', r'\\\1', str(v)) + '"'
 
 
+# Avertissement destiné au rédacteur : une ligne, préfixe fixe, deuxième champ = code
+# stable, français puis allemand. Même format que docx-tables.py, pour que l'interface
+# n'ait qu'un seul motif à reconnaître. stderr et articles-word/.import.log.
+PREFIXE_AVERT = '[import-avertissement]'
+
+
+def avertir(code, champs, fr, de):
+    ligne = ' | '.join([PREFIXE_AVERT + ' ' + code] + list(champs) + [fr, '[de] ' + de])
+    print(ligne, file=sys.stderr)
+    journal = os.getenv('SZH_IMPORT_LOG')
+    if not journal:
+        return
+    try:
+        with open(journal, 'a', encoding='utf-8', newline='\n') as f:
+            f.write(ligne + '\n')
+    except OSError:
+        pass                                  # un journal illisible ne casse pas l'import
+
+
 def serialiser_meta(meta):
     lignes = []
     if meta.get('type') in TYPES_VALIDES:
         lignes.append('type: ' + meta['type'])
+    # Jeton nu et non cité, comme serialiserMeta() de lib/yaml.js : szh-maquette.lua
+    # relit cette ligne hors pandoc.
+    if meta.get('lang') in LANGUES_META:
+        lignes.append('lang: ' + meta['lang'])
+    if (meta.get('source') or '').strip():
+        lignes.append('source: ' + citer(meta['source'].strip()))
     if (meta.get('doi') or '').strip():
         lignes.append('doi: ' + citer(meta['doi'].strip()))
     for cle in ('title', 'subtitle', 'resume'):
@@ -973,6 +1011,10 @@ def principal(argv):
     # ---- 7) meta.yaml (jamais écrasé), $SZH_META et stats ------------------------
     meta = {
         'type': type_article,
+        'lang': langue if langue in LANGUES_META else '',
+        # Le .docx vit encore dans articles-word/ à cet instant : son nom de fichier
+        # est l'identité que la cible `import` du Makefile comparera au prochain dépôt.
+        'source': os.path.basename(chemin_docx),
         'doi': doi,
         'title': {langue: ' '.join(titre_parts)} if titre_parts else {},
         'subtitle': {langue: ' '.join(sous_titre_parts)} if sous_titre_parts else {},
@@ -992,6 +1034,21 @@ def principal(argv):
             with open(chemin_meta_yaml, 'w', encoding='utf-8', newline='\n') as f:
                 f.write(contenu)
             meta_ecrit = True
+
+    # Langue devinée et non lue dans le document : le rédacteur doit pouvoir la
+    # démentir. On l'écrit quand même — un champ vide bloquerait la composition — mais
+    # on le dit. Sur une fiche conservée, rien à signaler : le champ du rédacteur fait
+    # foi et nous ne l'avons pas touché.
+    if meta_ecrit and langue_source in ('contenu', 'defaut'):
+        avertir(
+            'langue-deduite',
+            ['article « %s »' % slug, 'langue « %s »' % langue],
+            "La langue de cet article n'était pas indiquée dans le document : elle a "
+            "été devinée. Vérifiez-la dans « Métadonnées des articles » : la maquette "
+            "et les résumés en dépendent.",
+            'Die Sprache dieses Artikels stand nicht im Dokument: sie wurde erraten. '
+            'Prüfen Sie sie unter « Metadaten der Artikel » — Layout und '
+            'Zusammenfassungen richten sich danach.')
 
     # Ce que import-medias.py doit savoir des photos, écrit dans tous les cas : sur un
     # meta.yaml conservé (ré-import), aucun champ `photo` n'a été posé, mais les photos

@@ -69,6 +69,10 @@ Elle a **trois sections** :
   gauche, l'article est recompilé **si besoin** (texte ou tableau plus récent que le
   PDF), et l'aperçu PDF s'affiche à droite — celui de l'article précédent se ferme
   tout seul (toujours deux volets : texte à gauche, PDF à droite).
+  Chaque ligne porte le **titre** de l'article, précédé de son **rang à deux chiffres**
+  dans le numéro, avec le nom de son dossier et son avancement juste à côté. Cliquer
+  l'**onglet** « Articles » lui-même ouvre la **vue « Articles »**, où se règlent
+  l'ordre du numéro, les tâches et la couverture (voir plus bas).
   Au survol d'un article, trois boutons :
   - **☰ Éditer les métadonnées de cet article** — le formulaire des fiches, filtré sur
     ce seul article ;
@@ -233,8 +237,14 @@ depuis n'importe où dans la revue) :
     racine de la revue, avec tout dedans (métadonnées du numéro et des articles, et pour
     chaque article ses trois fichiers PDF, HTML et Word encodés dans le XML). Ce fichier
     s'importe tel quel dans OJS (« Importation XML des articles et numéros »). La revue
-    est recompilée au passage ; les informations manquantes (résumé, DOI, e-mail…) sont
-    listées en avertissements, sans bloquer.
+    est recompilée au passage. Ce qui manque se répartit en deux : les informations
+    **facultatives** (sous-titre, mots-clés, e-mail d'un auteur, couverture…) sont
+    listées en **avertissements** et l'export part quand même ; ce qui rendrait le numéro
+    faux dans OJS **arrête l'export**, avec la liste de ce qu'il faut corriger et où — la
+    **date de publication** du numéro, un **titre** ou un **résumé** manquant dans la
+    langue de l'article, un **DOI** absent, un PDF / HTML / Word pas encore produit, ou
+    un champ vide dans **Réglages SZH → Export OJS** (voir « Régler l'export OJS »
+    ci-dessous). Dans ce cas **rien n'est écrit** : pas de fichier à moitié fait.
   - **Archiver et verrouiller la revue** — voir « Terminer un numéro » ci-dessous ;
   - **Déverrouiller la revue** / **Désarchiver la revue** — présentes seulement quand le
     numéro est verrouillé / archivé ;
@@ -377,6 +387,216 @@ Deux choses sont déjà faites à l'import, sans rien demander :
 **Enregistrer** écrit les fiches ; **Fermer** prévient si des modifications ne sont pas
 enregistrées. Les articles restent modifiables plus tard par **☰ Métadonnées des articles**.
 
+### L'auteur renvoie son Word corrigé
+
+C'est le cas le plus fréquent après un premier envoi, et il a son geste : **« Réimporter cet
+article »**, par un clic droit sur l'article dans la barre « Revue », ou depuis la carte de
+l'article dans **Word en attente**.
+
+Déposez le Word corrigé comme le premier. Il ne créera pas un second article : l'outil
+reconnaît qu'il vient du même document et vous le dit, sans rien toucher. C'est vous qui
+décidez ensuite de publier la correction.
+
+**Ce que le réimport remplace** : le texte de l'article, ses images, ses tableaux — tout ce
+qui vient du Word.
+
+**Ce qu'il garde** : la fiche entière (titre, sous-titre, résumés, mots-clés, DOI, langue,
+licence, auteur·e·s), **les photos des auteur·e·s**, l'état des traductions, et les tâches
+cochées. C'est exactement ce qu'on craint de perdre, et c'est ce qui ne bouge pas.
+
+**Les tableaux méritent un mot**, parce que c'est là qu'on travaille le plus. L'outil sait
+distinguer trois cas :
+
+- l'auteur n'a pas touché ce tableau : **votre mise en forme est gardée**, et elle suit son
+  rang si l'auteur en a inséré un avant ;
+- l'auteur l'a modifié, vous non : la version du Word remplace la vôtre, sans perte ;
+- **vous l'avez retravaillé et l'auteur l'a modifié** : la version du Word est posée, parce
+  qu'elle correspond au texte corrigé, et l'outil **vous le dit** en nommant le tableau.
+  Rouvrez l'éditeur de tableaux pour refaire le préréglage. Votre ancienne version n'est pas
+  perdue — voir ci-dessous.
+
+**On peut revenir en arrière.** Avant de remplacer quoi que ce soit, l'outil met de côté le
+dossier entier de l'article, tel qu'il était. **« Annuler le réimport »** le remet en place —
+et met à son tour de côté ce qu'il remplace, donc annuler l'annulation est possible aussi.
+
+Ces sauvegardes s'accumulent dans le numéro et **ne se suppriment pas toutes seules** : elles
+sont là pour vous rassurer, pas pour être gérées. Quand un numéro est publié et archivé, on
+peut les effacer à la main ; chaque dossier porte un `LISEZ-MOI.txt` qui le dit.
+
+## Les contrôles de la compilation
+
+À chaque compilation — chaque **Ctrl + S**, chaque conversion de Word, chaque
+recompilation complète — la chaîne relit ce qu'elle produit et relève ce qui ne va pas :
+un appel de citation qui ne mène à aucune référence, un tableau sans rangée d'en-tête, une
+image absente du disque, un titre vide dans la langue de l'article, un PDF qui ne tient
+pas la promesse d'accessibilité. Jusqu'ici tout cela s'écrivait dans un terminal que rien
+n'ouvrait.
+
+Désormais, **quand il y a quelque chose à dire, cela se dit** :
+
+- une **notification** apparaît en bas à droite, avec un bouton **« Voir les contrôles »** ;
+- un **compteur reste dans la barre d'état**, en bas à gauche : `⚠ 3 à vérifier` ou
+  `⛔ 1 à corriger`. Il survit à la notification, qui disparaît toute seule ; un clic
+  dessus ouvre la page ;
+- la page **« Contrôles de la compilation »** liste un point par carte. Elle s'ouvre aussi
+  par **🚀 Commande → Contrôles de la compilation**.
+
+[capture : la vue « Contrôles de la compilation », deux sections et une carte par point]
+
+### Deux tons, et ils ne mentent pas
+
+La page range les points en deux sections, dans l'ordre où il faut s'en occuper.
+
+**« Ce qui empêche de publier »** — la compilation s'est arrêtée, ou elle a produit un
+document qu'on ne peut pas publier en l'état : un article sans titre, une figure appelée
+par le texte mais absente du disque, un PDF sorti sans balisage d'accessibilité. Tant
+qu'un point est là, le numéro n'est pas prêt.
+
+**« À regarder avant de publier »** — les documents sont sortis, ils sont publiables, et
+il reste du travail d'édition : un appel de citation à lier, une référence que rien
+n'appelle, un tableau à qui il manque sa rangée d'en-tête. Ce n'est pas un échec, et la
+notification le dit sur le ton d'un avertissement, pas d'une erreur.
+
+Une troisième section, **« Pour information »**, porte les chiffres : « 4 références,
+3 appels, dont 1 lié ».
+
+### Ce qu'une carte contient
+
+Chaque carte nomme **l'article concerné**, la **nature du contrôle** (« Citations et
+références », « Métadonnées et langue », « Accessibilité du PDF »…), et donne la phrase
+entière : **ce qui s'est passé**, **le geste** qui corrige, et, quand cela bloque,
+**pourquoi**. Le bouton **« Ouvrir »** mène droit à l'article en cause.
+
+Les messages sont dans la langue de l'interface, et dans elle seule : le réglage de langue
+(**🚀 Commande → Réglages SZH**) les fait basculer du français à l'allemand.
+
+### Le journal reste sur le disque
+
+La sortie complète de la dernière compilation est écrite dans le dossier du numéro, sous
+`.szh-journal.log`. Le fichier est masqué dans l'explorateur — il n'y a pas à le lire, la
+page dit ce qu'il contient d'utile. Il n'est utile qu'à un signalement : si un point de la
+page paraît faux, joignez ce fichier au message.
+
+## La vue « Articles » : l'ordre du numéro, l'avancement, la couverture
+
+Cliquer l'**onglet « Articles »** de la barre ouvre une page pleine largeur — comme
+« Traductions » et « Word en attente ». C'est là qu'on monte un numéro : l'ordre des
+articles, ce qui reste à faire sur chacun, et les métadonnées du numéro, au même endroit
+parce qu'on les regarde ensemble.
+
+[capture : la vue « Articles », une carte par article avec ses cases à cocher]
+
+### Les articles portent leur nom
+
+Dans la barre comme dans la vue, un article s'appelle désormais **« 03 · Technologies au
+service des apprentissages »** : les **deux chiffres** disent où il se situe dans le
+numéro, et le titre vient de sa fiche. Le **nom du dossier** (`03-technologies-au-…`)
+passe en petit à côté : c'est par lui qu'on retrouve l'article dans l'explorateur, ce
+n'est plus lui qu'on lit.
+
+Un article dont la fiche manque, ou dont le titre est vide, **reste visible** : son nom de
+dossier s'affiche à la place du titre, et sa carte le signale en orange. Ce n'est pas un
+détail de confort : la compilation refuse de partir sur un article sans titre, et il faut
+le voir tout de suite.
+
+### Changer l'ordre du numéro
+
+Chaque carte porte **↑ Monter** et **↓ Descendre**. Un clic déplace l'article d'un cran,
+les deux chiffres se renumérotent, et la barre latérale suit dans la seconde. Les boutons
+s'atteignent au **Tab** et s'activent à l'**Entrée** : l'ordre se change entièrement au
+clavier.
+
+**Aucun dossier n'est renommé.** L'ordre est retenu dans `ausgabe.yaml`, sur une ligne
+`ordre-articles`, à côté du titre et du volume du numéro. C'est ce qui permet de déplacer
+un article sans invalider son PDF déjà compilé ni les liens du numéro — renommer un
+dossier obligeait à tout recompiler.
+
+Cette ligne se relit et se corrige à la main si besoin. Elle **se répare toute seule** :
+un article déposé dans `articles/` hors de l'interface apparaît à la fin de la liste, un
+article supprimé quitte l'ordre, et rien ne disparaît de la vue.
+
+### Les tâches par article
+
+Chaque carte porte une **liste de cases à cocher** — les étapes qui restent à faire sur
+cet article. Le jeu de départ :
+
+- version finale
+- traductions terminées
+- contraste et texte alternatif
+- envoi de la version finale aux autrices et auteurs
+
+Cocher écrit tout de suite, dans le dossier de l'article (`<article>.taches.yaml`). Ce
+fichier n'est **ni publié ni exporté** : il ne décrit que l'avancement de l'atelier, et il
+part avec l'article si on le déplace.
+
+**L'avancement se lit sans ouvrir quoi que ce soit** : une pastille sur la carte
+(« 2/4 tâches », verte quand tout est fait), et la même mesure dans la barre latérale, à
+côté du nom du dossier.
+
+Le bouton **« Tâches »** de la barre de la vue ouvre le réglage des **intitulés**. Deux
+colonnes, français et allemand : un intitulé laissé vide dans une langue reprend l'autre.
+Et **une liste par revue** — la *Revue* et la *Zeitschrift* ne suivent pas le même
+processus, et ajouter une étape à l'une ne l'impose pas à l'autre. Ces intitulés décrivent
+le processus d'une revue et non un numéro : ils valent pour **tous** ses numéros, et vivent
+dans les réglages du poste, pas dans le dossier.
+
+Corriger un intitulé ne décoche rien : c'est l'identifiant interne, et non le texte, qui
+relie une case à son article. Retirer une tâche de la liste la retire de toutes les cartes,
+et l'avancement se recompte sur ce que la revue demande aujourd'hui.
+
+### Les métadonnées du numéro, dans la vue
+
+Le bloc **« Méta-données du numéro »**, en haut de la vue, se déplie sur **exactement le
+même formulaire** que la commande du même nom (**🚀 Commande → Méta-données du numéro**) :
+mêmes champs, même enregistrement automatique, même fichier. Il n'y a qu'un formulaire du
+numéro dans le logiciel ; on l'atteint par deux portes.
+
+### La couverture du numéro
+
+Sous les champs du numéro, une zone **« Couverture du numéro »**. On y **dépose** l'image
+(glisser-déposer, ou *Choisir un fichier*), on la **voit** — cliquer l'aperçu l'agrandit —
+et on la **remplace** en déposant la suivante.
+
+C'est le fichier que l'**export OJS** cherche à la racine du numéro. Sans lui, le numéro
+part sans image de couverture, et rien ne le disait : la zone affiche donc un avis orange
+tant qu'aucune couverture n'est déposée.
+
+**JPEG ou PNG, 12 Mo au maximum.** Le fichier est enregistré sous un nom fixe
+(`couverture.jpg` ou `couverture.png`) : il n'y a jamais deux couvertures dans un numéro,
+et l'export prend toujours celle qu'on vient de déposer.
+
+## Envoyer un article à son auteur
+
+Le bouton **« Envoyer à l'auteur »**, sur la carte de l'article dans la vue « Articles »
+(ou par un clic droit sur l'article dans la barre), fait trois choses d'affilée :
+
+1. il **compile le PDF** de l'article, pour que ce soit bien la version d'aujourd'hui qui
+   partira ;
+2. il **ouvre un brouillon d'e-mail** déjà adressé — les adresses viennent du champ
+   *courriel* des auteur·e·s de la fiche — avec un sujet et un corps rédigés **dans la
+   langue de l'article** ;
+3. il met le **PDF dans le presse-papiers**, comme fichier.
+
+Il ne reste qu'un geste : **Ctrl + V dans le message**, et le PDF s'y attache. Relisez,
+ajoutez un mot, envoyez.
+
+[capture : le brouillon ouvert, le PDF attaché après un Ctrl + V]
+
+Pourquoi ce collage plutôt qu'une pièce jointe déjà en place : un lien `mailto:` — la seule
+façon fiable d'ouvrir un brouillon dans le nouvel Outlook — **ne sait pas porter de pièce
+jointe**. Les autres voies ont été essayées sur un poste de rédaction : le fichier `.eml`
+déposé sur le disque porte bien la pièce jointe, mais Windows demande alors *avec quelle
+application ouvrir ce fichier .eml*, propose les deux Outlook, et l'ancien démarre à froid
+avec ses rappels dans un client qui n'est pas celui où l'on travaille. Un collage explicite
+vaut mieux qu'une automatisation qui réussit un jour sur deux.
+
+Si le presse-papiers est refusé par le poste, la notification le dit et propose
+**« Ouvrir le dossier du PDF »** : il reste alors à glisser le fichier dans le message.
+
+Une fiche sans adresse de courriel n'empêche rien : le brouillon s'ouvre sans
+destinataire, et un avertissement nomme l'article concerné — il n'y a pas d'adresse
+inventée.
+
 ## Envoyer un numéro pour traduction
 
 Dans le panneau de traduction, le bouton **« Envoyer pour traduction »** (à côté d'*Enregistrer*)
@@ -410,6 +630,97 @@ emplacements officiels.
 
 Ce bouton **ne change aucun état** de traduction : pour lancer la campagne, c'est le bouton ✓✓ de
 la section « Traductions » (ou les boutons d'état du panneau).
+
+## Régler l'export OJS (une fois par poste)
+
+**Réglages SZH → « Export OJS »** (en allemand : *SZH-Einstellungen → « OJS-Export »*)
+porte les valeurs qu'OJS attend. Elles ne se devinent pas, et c'est la raison d'être de ce
+bloc : OJS reconnaît un genre de fichier, un groupe d'auteur et une rubrique **à leur
+intitulé exact**. Un intitulé approximatif ne provoque aucune erreur visible — il **crée un
+doublon** dans OJS, ou **range l'article ailleurs**. C'est pourquoi un champ obligatoire
+laissé vide **arrête l'export** au lieu d'envoyer une valeur inventée : le message nomme le
+champ, la revue concernée, et l'endroit d'OJS où aller le lire.
+
+Les valeurs déjà relevées sur l'instance sont en place. Ce qui reste vide porte la mention
+**« à relever dans OJS »** : ouvrez OJS, lisez la valeur, saisissez-la ici, **Enregistrer**.
+C'est un réglage de poste, à faire **une fois** — il ne se refait pas à chaque numéro.
+
+### Les valeurs propres à chaque revue
+
+Ce bloc est **dédoublé** : une colonne pour la **Revue suisse de pédagogie spécialisée**,
+une pour la **Schweizerische Zeitschrift für Heilpädagogik**. Ce sont deux revues distinctes
+dans OJS, avec leurs propres intitulés — ne recopiez pas ceux de l'une dans l'autre.
+
+| Champ | Où le lire dans OJS |
+|---|---|
+| **Genre de fichier** | Paramètres → Flux de travail → **Composants de la soumission** — le nom exact du composant |
+| **Groupe d'auteur** | Paramètres → Utilisateurs et rôles → **Rôles** — le nom exact du rôle des auteurs |
+| **Compte de téléversement** | Utilisateurs et rôles → **Utilisateurs** — le compte au nom duquel les fichiers sont déposés |
+| **Pays des auteurs** | facultatif — voir plus bas |
+
+Les **trois premiers sont obligatoires**. Vide, l'un d'eux arrête l'export avec un message
+qui dit exactement où regarder, par exemple : *« Schweizerische Zeitschrift für
+Heilpädagogik : « Genre de fichier » n'est pas renseigné. À relever dans OJS (OJS →
+Paramètres → Flux de travail → Composants de la soumission : le nom exact du composant),
+puis à saisir dans « Réglages SZH » → « Export OJS ». »*
+
+### La table des rubriques
+
+Une **rangée par rubrique d'OJS**, et la table s'**agrandit** : le bouton **« Ajouter une
+rubrique »** en crée une, pour une rubrique qui n'existait pas encore sur l'instance.
+
+| Colonne | Ce qu'elle veut |
+|---|---|
+| **Clé** | un nom court, **interne** au poste — il ne part **pas** dans l'XML, il sert seulement à relier la rubrique à un type d'article, dans le bloc suivant |
+| **Abréviation** | ce sur quoi **OJS rattache l'article**. Elle doit être **exacte, majuscules comprises**, et elle diffère souvent d'une revue à l'autre (le dossier thématique est `DT` côté Revue et `TS` côté Zeitschrift) |
+| **Titre** | l'intitulé affiché de la rubrique, dans la langue de la revue |
+| **Résumé exigé** | cochée, un article de cette rubrique **doit** avoir un résumé, sinon l'export s'arrête |
+| **DOI exigé** | cochée, un article de cette rubrique **doit** avoir un DOI |
+
+Abréviation et titre se lisent dans **OJS → Paramètres → Revue → Rubriques**. Une rubrique
+dont l'abréviation manque dans la revue visée arrête l'export dès qu'un article y est rangé
+— c'est le cas d'« Annonces / *Inserate* », dont l'abréviation n'a jamais pu être relevée.
+
+### La rubrique de chaque type d'article
+
+Dernier bloc : le **type choisi dans la fiche d'un article** (Éditorial, Article, Varia,
+Tribune libre, Documentation…) décide de sa rubrique OJS. Une rubrique que vous venez
+d'ajouter n'apparaît dans l'export **qu'une fois désignée ici** par au moins un type. Un
+type qui ne mène à aucune rubrique arrête l'export, en le disant.
+
+### Le pays des auteurs : désormais vide, et c'est voulu
+
+Jusqu'ici l'export écrivait **« CH » pour tout le monde**, sans que personne l'ait vérifié :
+il affirmait le pays de chaque auteur·e à sa place. Ce n'est plus le cas. Le champ **« Pays
+des auteurs »** part **vide**, la balise `<country>` est simplement **omise** de l'XML, et
+l'export le mentionne en avertissement — il ne bloque pas : un auteur sans pays est
+parfaitement valide dans OJS.
+
+Si le pays doit repartir dans OJS, c'est un champ à remplir **une fois**, par revue : le
+code **à deux lettres** (`CH`, `DE`, `FR`, `AT`, `IT`…). Une valeur qui n'en est pas un —
+« Suisse », par exemple — est refusée et signalée, parce qu'OJS n'y verrait pas un pays. Ce
+pays s'applique alors à **tous** les auteurs de l'export : il n'y a pas de pays par auteur·e
+dans la fiche d'un article.
+
+## La date de publication du numéro
+
+Dans **Méta-données du numéro**, le champ **date** est la **date de publication** du
+numéro : le jour où il paraît. Un numéro tout neuf l'a donc **vide**, et c'est normal —
+personne ne connaît cette date le jour où le dossier est créé.
+
+Cela ne vous empêche de rien : la couverture prend son **année** dans le **nom du dossier**
+(un numéro rangé dans `2027-03` affiche « 03/2027 » dès le premier PDF), et tout se compile
+comme d'habitude.
+
+En revanche, l'**export OJS s'arrête** tant que la date n'est pas saisie, et le message dit
+où aller : *« Ouvrez « Métadonnées du numéro » et donnez la date de publication. »* La
+raison : le numéro part **publié** dans OJS ; sans date, il s'y publierait sans date de
+publication et il faudrait la ressaisir **article par article** dans l'interface.
+
+Le sélecteur de date du formulaire écrit la date complète. Elle doit être **entière**
+(année, mois, jour) : une année seule est refusée exactement comme un champ vide — un champ
+qui paraît rempli sans l'être est le pire des trois états. Et une fois saisie, c'est **elle**
+qui fait foi partout, y compris pour l'année de la couverture.
 
 ## Terminer un numéro : archiver et verrouiller
 
@@ -537,8 +848,10 @@ choisir — et le numéro s'ouvre tout prêt : dossiers `articles-word` et `arti
 « Ouvrir la revue », et la bonne revue déjà renseignée dans ses métadonnées.
 
 Le **nom du dossier fait l'identité** : `2027-05` donne l'année 2027 et le numéro 05, que la barre
-« Revue SZH » affiche aussitôt (`R2027-05`). Le titre du dossier thématique, lui, reste **vide** :
-c'est à vous de le remplir dans **Méta-données du numéro**.
+« Revue SZH » affiche aussitôt (`R2027-05`), et que la couverture imprime (« 05/2027 »). Le titre
+du dossier thématique, lui, reste **vide** : c'est à vous de le remplir dans **Méta-données du
+numéro**. La **date de publication** aussi reste vide — elle se saisit le jour où la parution est
+décidée (voir « La date de publication du numéro »).
 
 > Si un ancien numéro s'annonce « R2026-2 | Dossier — numéro d'exemple » dans la barre, c'est qu'il
 > a été créé avant cette version et porte encore les valeurs du gabarit : ouvrez **Méta-données du

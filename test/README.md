@@ -12,7 +12,7 @@ cartes n'arrivaient jamais, et rien ne le disait. C'est arrivé deux fois.
 
 ```sh
 node --test "test/js/*.test.js"  # contrats du cockpit, et rendu réel des webviews
-python3 test/apca-check.py      # contrastes de la palette
+python3 test/apca-check.py      # contrastes : palette, couverture, pages courantes
 python3 test/palette-html.py    # régénère docs/palette.html
 bash test/build-render.sh       # dans WSL : build PDF + PNG de chaque page
 python test/render.py <pdf> <png> [page] [échelle]   # côté Windows : une seule page
@@ -55,15 +55,19 @@ publication.
 > rester sur le défaut). Le cas le plus parlant n'est pas ici : c'est une couverture
 > **courte** (titre de deux lignes, un seul auteur, pas de sous-titre), celle où le mode
 > par défaut laisse un grand blanc.
-- `apca-check.py` — vérificateur de **contraste APCA** de la palette : lit les hex de
-  `pipeline/styles/couleurs.css` et les jetons émis par `pipeline/accent-css.py`, mesure
-  toutes les paires texte/fond réellement utilisées et sort en erreur si l'une échoue.
+- `apca-check.py` — vérificateur de **contraste APCA** : lit les hex de
+  `pipeline/styles/couleurs.css`, les jetons émis par `pipeline/accent-css.py` et, depuis
+  le 23.08.2026, les couleurs de `pipeline/styles/print.css` — celles du hero de
+  couverture, de l'en-tête courant et du pied. Il mesure toutes les paires texte/fond
+  réellement utilisées et sort en erreur si l'une échoue. 155 paires aujourd'hui.
   Aucune dépendance, aucun build :
   ```sh
   python3 test/apca-check.py
   ```
-  **À relancer après toute modification de `couleurs.css`** (les niveaux sont calculés au
-  plus juste : marges de contraste serrées).
+  **À relancer après toute modification de `couleurs.css` ou de `print.css`** (les niveaux
+  sont calculés au plus juste : marges de contraste serrées). Les couleurs de `print.css`
+  sont cherchées sélecteur par sélecteur, renvois `var()` suivis : renommer une règle fait
+  échouer le script au lieu de le rendre aveugle.
 - `palette-html.py` — régénère `docs/palette.html`, la planche de la palette : les 11 crans de
   chaque couleur, dont celui qui porte la couleur de charte elle-même. Chaque cran montre son Lc
   et le texte qu'il a le droit de recevoir : corps de texte, gros titre seulement, ou rien.

@@ -1,0 +1,195 @@
+name: ci
+
+# Porte par commit. release.yml ne se déclenche que sur un tag v* : une régression de
+# maquette ou de balisage ne s'y voyait qu'au moment de publier, c'est-à-dire trop tard.
+# Ici, deux choses se vérifient à chaque push :
+#   contrats   node --test test/js/*.test.js — les contrats du cockpit, comme release.yml
+#   pdf-ua     le banc test/ recompilé de zéro (test/out/ n'est pas versionné), puis
+#              `make verifier-ua` : veraPDF rend un verdict PDF/UA-1 sur chaque PDF
+#
+# La toolchain est épinglée comme dans image/Containerfile (pandoc 3.5, WeasyPrint 69 via
+# image/requirements.txt) : sans cela, le verdict de la CI ne serait pas celui de la flotte.
+# Ce workflow ne publie rien.
+
+on:
+  # `branches` sur push évite le doublon push + pull_request pour une branche du dépôt,
+  # et laisse les tags v* à release.yml.
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read          # lecture seule : rien n'est publié ici
+
+concurrency:
+  # Une branche poussée en rafale n'empile pas dix builds : seul le dernier compte.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Rapide et sans outillage : ne doit pas attendre l'installation de la chaîne PDF.
+  contrats:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Vérifier les contrats du cockpit
+        run: node --test test/js/*.test.js
+
+  pdf-ua:
+    # Version du runner épinglée : les noms de paquets apt ci-dessous (libffi8) sont liés
+    # à la version d'Ubuntu. Un « latest » qui glisse casserait l'installation sans
+    # qu'une ligne du dépôt ait changé.
+    runs-on: ubuntu-24.04
+    env:
+      PANDOC_VERSION: "3.5"
+      # Empreinte du .deb, calculée depuis cette même URL. Elle garde le cache honnête :
+      # un fichier restauré tronqué se retélécharge au lieu de casser dpkg.
+      PANDOC_DEB_SHA256: "4f41d817d262ef3d17953a3e6e0fefddb971aa4f2f121544a9a86db449d945e1"
+      VERAPDF_VERSION: "1.30.2"
+      VERAPDF_ZIP_SHA256: "6cc6341cb1af644044054b81f00a6590a7918abb18f762243de115258bcad838"
+    steps:
+      - uses: actions/checkout@v5
+
+      # veraPDF est un outil Java. L'image WSL embarque un runtime taillé au jlink ; ici
+      # on prend un JDK complet : veraPDF a besoin des modules java.desktop et
+      # java.management, qu'un JRE amputé n'aurait pas.
+      - name: Installer le JDK (veraPDF)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Même liste que image/Containerfile : Pango, HarfBuzz et fontconfig pour WeasyPrint.
+      # fonts-noto est volontairement écarté (plusieurs centaines de Mo pour un filet de
+      # caractères rares) : les polices de la maquette voyagent en base64 dans print.css,
+      # et la porte PDF/UA juge le balisage, pas le choix de glyphe. DejaVu reste comme
+      # famille de repli, pour que WeasyPrint ait toujours une police à substituer.
+      - name: Installer les dépendances système
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            make python3 python3-venv \
+            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libffi8 fontconfig \
+            fonts-dejavu-core
+
+      # Les deux archives épinglées sont vérifiées par sha256 après restauration : un cache
+      # douteux se retélécharge, il ne fait pas échouer le build.
+      - name: Cache des archives épinglées
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/szh-ci
+          key: outils-pandoc${{ env.PANDOC_VERSION }}-verapdf${{ env.VERAPDF_VERSION }}
+
+      - name: Installer pandoc ${{ env.PANDOC_VERSION }}
+        run: |
+          # Le pandoc d'apt n'est pas en 3.5 : on prend le .deb des releases GitHub, même
+          # URL que image/Containerfile. Les filtres Lua du pipeline sont écrits pour
+          # cette version.
+          mkdir -p ~/.cache/szh-ci
+          deb="$HOME/.cache/szh-ci/pandoc-$PANDOC_VERSION-1-amd64.deb"
+          if ! echo "$PANDOC_DEB_SHA256  $deb" | sha256sum -c --status 2>/dev/null; then
+            curl -fsSL -o "$deb" \
+              "https://github.com/jgm/pandoc/releases/download/$PANDOC_VERSION/pandoc-$PANDOC_VERSION-1-amd64.deb"
+            echo "$PANDOC_DEB_SHA256  $deb" | sha256sum -c
+          fi
+          sudo dpkg -i "$deb"
+
+      - name: Cache des roues pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('image/requirements.txt') }}
+
+      # venv isolé et requirements.txt figé, comme dans l'image : un `pip install
+      # weasyprint` libre ferait diverger le rendu de la CI de celui de la flotte.
+      # requirements-portraits.txt (rembg, OpenCV) n'est pas installé : la chaîne PDF ne
+      # s'en sert pas.
+      - name: Installer WeasyPrint (image/requirements.txt)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/weasyprint"
+          "$RUNNER_TEMP/weasyprint/bin/pip" install --quiet -r image/requirements.txt
+          # Le Makefile appelle `weasyprint` par son nom : il lui faut le PATH.
+          echo "$RUNNER_TEMP/weasyprint/bin" >> "$GITHUB_PATH"
+
+      - name: Installer veraPDF ${{ env.VERAPDF_VERSION }} (CLI seul)
+        run: |
+          mkdir -p ~/.cache/szh-ci
+          zip="$HOME/.cache/szh-ci/verapdf-$VERAPDF_VERSION-installer.zip"
+          if ! echo "$VERAPDF_ZIP_SHA256  $zip" | sha256sum -c --status 2>/dev/null; then
+            curl -fsSL -o "$zip" \
+              "https://software.verapdf.org/releases/1.30/verapdf-greenfield-$VERAPDF_VERSION-installer.zip"
+            echo "$VERAPDF_ZIP_SHA256  $zip" | sha256sum -c
+          fi
+          unzip -q -o "$zip" -d "$RUNNER_TEMP/verapdf-src"
+          dest="$RUNNER_TEMP/verapdf-cli"
+          # Installeur IzPack, piloté par un XML d'auto-installation. Le pack GUI
+          # désélectionné ramène l'installation de ~48 à 18 Mio ; headless parce que le
+          # runner n'a pas d'écran.
+          cat > "$RUNNER_TEMP/verapdf-auto.xml" <<XML
+          <?xml version="1.0" encoding="UTF-8" standalone="no"?>
+          <AutomatedInstallation langpack="eng">
+            <com.izforge.izpack.panels.htmlhello.HTMLHelloPanel id="welcome"/>
+            <com.izforge.izpack.panels.target.TargetPanel id="install_dir">
+              <installpath>$dest</installpath>
+            </com.izforge.izpack.panels.target.TargetPanel>
+            <com.izforge.izpack.panels.packs.PacksPanel id="sdk_pack_select">
+              <pack index="0" name="veraPDF GUI" selected="false"/>
+              <pack index="1" name="veraPDF CLI" selected="true"/>
+            </com.izforge.izpack.panels.packs.PacksPanel>
+            <com.izforge.izpack.panels.install.InstallPanel id="install"/>
+            <com.izforge.izpack.panels.finish.SimpleFinishPanel id="finish"/>
+          </AutomatedInstallation>
+          XML
+          java -Djava.awt.headless=true -jar \
+            "$RUNNER_TEMP/verapdf-src/verapdf-greenfield-$VERAPDF_VERSION/verapdf-izpack-installer-$VERAPDF_VERSION.jar" \
+            "$RUNNER_TEMP/verapdf-auto.xml"
+          # Le Makefile cherche le validateur dans /opt/verapdf-cli et son runtime dans
+          # /opt/jre-min — l'image WSL. Ses deux variables sont surchargeables depuis
+          # l'environnement, précisément pour une CI qui les installe ailleurs.
+          echo "VERAPDF=$dest/verapdf" >> "$GITHUB_ENV"
+          echo "VERAPDF_JAVA=$JAVA_HOME" >> "$GITHUB_ENV"
+
+      # Avant de compiler, pas après : un validateur absent ou muet ne doit jamais se lire
+      # comme un PDF conforme. `verifier-ua` sait déjà refuser (test -x, puis codes 4/7/127
+      # traités comme des pannes) — cette étape le constate en une ligne au lieu de le
+      # découvrir à la fin d'un build.
+      - name: Contrôler l'outillage
+        run: |
+          test -x "$VERAPDF" || { echo "::error::veraPDF introuvable : $VERAPDF"; exit 1; }
+          JAVA_HOME="$VERAPDF_JAVA" "$VERAPDF" --version
+          v="$(pandoc --version | head -n1 | cut -d' ' -f2)"
+          test "$v" = "$PANDOC_VERSION" || { echo "::error::pandoc $v au lieu de $PANDOC_VERSION"; exit 1; }
+          echo "pandoc $v"
+          # `--info` ouvre par des lignes de noyau : on ne garde que ce qui nous concerne.
+          weasyprint --info | grep -E "^(WeasyPrint|Pydyf|Pango) version"
+          python3 --version
+
+      # Le banc est un dossier de revue (test/ausgabe.yaml + articles/<slug>/) et le
+      # Makefile s'invoque depuis ce dossier. test/out/ n'est pas versionné : tout est
+      # recompilé, rien n'est repris d'un artefact.
+      - name: Compiler le banc de test
+        working-directory: test
+        run: make -f "$GITHUB_WORKSPACE/pipeline/Makefile" pdf
+
+      # La porte. VERAPDF et VERAPDF_JAVA viennent de l'étape d'installation ; s'ils
+      # manquaient, le Makefile retomberait sur les chemins de l'image WSL, absents du
+      # runner, et échouerait — jamais un vert par défaut.
+      - name: Valider les PDF en PDF/UA-1
+        working-directory: test
+        run: make -f "$GITHUB_WORKSPACE/pipeline/Makefile" verifier-ua
+
+      # De quoi comprendre un rouge sans rejouer la CI à l'aveugle : les PDF incriminés et
+      # le rapport XML de veraPDF, que rapport-ua.py a traduit.
+      - name: Récupérer les PDF et le rapport veraPDF
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-ua-diagnostic
+          path: |
+            test/out/**/*.pdf
+            test/out/.szh-pdfua.xml
+            test/out/.szh-pdfua.err
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7

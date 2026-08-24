@@ -6,6 +6,12 @@
 #   revue   : choix fermé, dont découlent le nom, l'ISSN et la langue par défaut.
 #             « revue »       = Revue suisse de pédagogie spécialisée (ISSN 2813-4915, fr)
 #             « zeitschrift » = Schweizerische Zeitschrift für Heilpädagogik (ISSN 2813-4907, de)
+#   date    : date de PUBLICATION du numéro, complète (AAAA-MM-JJ) ou vide, jamais
+#             tronquée à l'année. Elle se saisit dans « Métadonnées du numéro » le jour
+#             où la parution est décidée : l'export OJS la refuse incomplète, car un
+#             numéro parti sans elle se publierait dans OJS sans date de publication.
+#             La couverture n'attend pas : sans cette clé, elle prend l'année du nom du
+#             dossier (« 2027-03 »).
 #   couleur : couleur annuelle, en hexadécimal, qui repeint tous les accents.
 #   profil  : absent ou « article » = PDF et HTML ; « book » = différé ; vide = aucun document.
 #   entete-condensee : « true » = en-tête de couverture à la hauteur de son contenu ;
@@ -24,7 +30,7 @@ title: "Dossier — numéro d'exemple"
 revue: revue
 volume: "44"
 numero: "2"
-date: "2026"
+date: ""
 lang: fr
 couleur: "#5F9FBC"
 locked: false

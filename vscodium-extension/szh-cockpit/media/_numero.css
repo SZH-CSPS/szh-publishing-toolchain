@@ -1,0 +1,55 @@
+/* Formulaire des métadonnées du numéro : le dessin des objets que SZH.formulaireNumero
+   construit (media/_numero.js). Partagé par la page « Méta-données du numéro » et par la
+   vue « Articles » — un seul formulaire, un seul dessin. Le reste vient du socle
+   (_design.css), dont .szh-champ et .szh-modale. */
+
+/* Un intitulé de champ dans ce formulaire est court et se lit en colonne. */
+.szh-champ { margin: var(--e4) 0 0; }
+.szh-champ > label { font-size: var(--t-libelle); font-weight: 700; letter-spacing: .02em; }
+.szh-champ:first-child { margin-top: 0; }
+
+.radios { display: flex; flex-direction: column; gap: var(--e2); margin-top: var(--e1); }
+.radio { display: flex; align-items: flex-start; gap: .5em; margin: 0; font-weight: normal;
+  cursor: pointer; width: auto; }
+.radio input { width: auto; flex: 0 0 auto; margin: .15em 0 0; accent-color: var(--accent); }
+.radio span { line-height: 1.4; }
+
+/* Même géométrie qu'un bouton radio, mais seule : sa marge haute est celle d'un intitulé
+   de champ, non celle d'un élément de groupe. */
+.case { display: flex; align-items: flex-start; gap: .5em; margin: var(--e4) 0 var(--e1);
+  font-weight: normal; cursor: pointer; width: auto;
+  font-size: var(--t-libelle); color: var(--encre); }
+.case input { width: auto; flex: 0 0 auto; margin: .15em 0 0; accent-color: var(--accent); }
+.case span { line-height: 1.4; }
+
+/* Couleur annuelle : une pastille par teinte, la puce montre la couleur elle-même. */
+.pastilles { display: flex; flex-wrap: wrap; gap: var(--e2); margin-top: var(--e1); }
+.pastille { display: inline-flex; align-items: center; gap: .4em; cursor: pointer;
+  padding: .3em .7em .3em .4em; border: 1px solid var(--vscode-input-border, var(--filet));
+  border-radius: 999px; background: var(--vscode-input-background); color: var(--encre);
+  font: inherit; margin: 0; width: auto; box-sizing: border-box; }
+.pastille .puce { width: 1em; height: 1em; border-radius: 50%;
+  border: 1px solid rgba(128, 128, 128, .5); flex: 0 0 auto; }
+.pastille[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 1px; font-weight: 700; }
+
+/* ---- Couverture du numéro ----
+   L'aperçu, son nom, et la zone où l'on dépose le fichier : mêmes objets et mêmes classes
+   que le gestionnaire des médias, pour qu'une image se remplace partout de la même façon. */
+.couverture .visuel { margin: var(--e2) 0; }
+.couverture-nom { margin: 0 0 var(--e2); font-size: var(--t-libelle); color: var(--encre-2);
+  overflow-wrap: anywhere; }
+.apercu { padding: var(--e1); border: 1px solid var(--filet); border-radius: var(--rayon-mini);
+  background: var(--vscode-input-background); cursor: zoom-in; }
+.apercu:hover { border-color: var(--accent); }
+.apercu:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.apercu img { display: block; max-width: 100%; max-height: 16rem; object-fit: contain; }
+.couverture .absent { margin: 0; font-size: var(--t-libelle); color: var(--encre-2); font-style: italic; }
+.depot { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
+  padding: var(--e2) var(--e3); border: 1px dashed var(--filet);
+  border-radius: var(--rayon-mini); }
+.depot.survol { border-style: solid; border-color: var(--accent);
+  background: var(--surface-tete); }
+.depot-titre { display: inline-flex; align-items: center; gap: var(--e1);
+  font-size: var(--t-libelle); color: var(--encre-2); }
+.media-etat { font-size: var(--t-libelle); color: var(--encre-2); }
+.modale-nom { overflow-wrap: anywhere; }

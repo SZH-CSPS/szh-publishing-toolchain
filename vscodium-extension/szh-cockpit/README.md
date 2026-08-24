@@ -21,12 +21,15 @@ Aucune étape de build : du CommonJS chargé tel quel, et des fichiers statiques
 ```
 extension.js            activation, câblage des commandes, hôtes de webview
 lib/
-  archivage.js          verrouillage, archivage, appels aux scripts PowerShell du poste
+  archivage.js          verrouillage, archivage, appels aux scripts PowerShell du poste,
+                        lecture et écriture de config.json
+  articles.js           ordre des articles dans le numéro, nom affiché, tâches par article
   citations.js          liste de références d'un article et liage manuel d'un appel
   cmyk.js               detection des JPEG CMJN et appel du convertisseur, dans WSL
   export-ojs.js         génération du XML natif OJS
   formatting.js         mise en forme markdown et commandes szh.fmt.*
   i18n.js               textes fr/de et T(clé[, args])
+  journal.js            journal de compilation -> constats de la vue « Contrôles »
   liens.js              liens szh:// et intention déposée par le lanceur
   panneaux.js           les trois panneaux QuickPick
   portraits.js          appel du script de détourage des photos, dans WSL
@@ -41,10 +44,12 @@ lib/
   webviews/util.js      assemblage du HTML des webviews (nonce, CSP, fichiers de media/)
 media/
   _commun.js            fragments partagés par les formulaires (mots-clés, auto-enregistrement,
-                        icônes, notifications)
+                        icônes, notifications, barre de commandes, liste de cartes)
   _design.css           socle visuel commun : jetons, cartes, barre, notifications, modale
   _auteurs.{css,js}     fiche d'auteur·e et sa modale d'édition, pour trois vues
   _fiches.{css,js}      cartes de métadonnées d'article et modale photo, pour deux formulaires
+  _liste.css            liste de cartes des vues d'ensemble, pour trois vues
+  _numero.{css,js}      formulaire des métadonnées du numéro et de sa couverture, pour deux vues
   apercu.{css,js}       fragment injecté dans l'aperçu HTML
   import-verif.{html,css,js}      vérification après import Word
   medias-article.{html,css,js}    gestionnaire des médias d'un article
@@ -53,7 +58,8 @@ media/
   settings.{html,css,js}          réglages
   table-editor.{html,css,js}      éditeur de tableau
   traduction.{html,css,js}        suivi des traductions
-  vue-ensemble.{html,css,js}      vue d'ensemble d'une section (traductions, Word)
+  vue-ensemble.{html,css,js}      vue d'ensemble d'une section (traductions, Word, contrôles)
+  articles.{html,css,js}          vue « Articles » : ordre, tâches, métadonnées du numéro
 ```
 
 `test/js/contrats.test.js` vérifie que cette liste reste complète, en même temps que les

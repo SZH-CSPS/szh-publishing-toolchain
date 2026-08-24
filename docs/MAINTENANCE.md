@@ -113,6 +113,19 @@ Le rootfs est figé au moment de sa construction : deux postes produisent exacte
 même PDF. La contrepartie est que les correctifs amont ne s'appliquent pas tant qu'on
 ne reconstruit pas l'image.
 
+⚠ **Cette promesse a une condition, et elle n'est pas dans le rootfs : les polices.**
+WeasyPrint ne trouve dans `pipeline/fonts/` que ce qui y est livré ; tout caractère
+qu'aucune face livrée ne couvre est comblé par **fontconfig**, au moment du rendu, avec
+ce qu'il trouve sur la machine. Le PDF dépend alors de la machine, et non du dépôt. Le
+cas était réel et mesuré : aucune face ne portait U+25B8 (la puce de toutes les listes)
+ni U+2010 (le trait d'union de chaque coupure de mot), et les PDF du banc embarquaient
+DejaVu et Noto. La fine insécable de « Source : », rendue par la police de repli,
+ressortait même en espace ordinaire d'un copier-coller. Les six caractères manquants ont
+été ajoutés aux faces Open Sans (voir `pipeline/fonts/README.md`), et le contrôle qui
+garde la promesse est **`python test/polices-check.py`** : il refuse tout PDF embarquant
+une police absente de `pipeline/fonts/`. `test/build-render.sh` l'appelle. Une police
+ajoutée à la maquette, ou un caractère nouveau écrit par un filtre, se signale là.
+
 Versions actuellement épinglées, à lire dans les fichiers :
 
 | Élément | Où | Valeur |
@@ -121,6 +134,16 @@ Versions actuellement épinglées, à lire dans les fichiers :
 | Pandoc | `image/Containerfile` (`PANDOC_VERSION`) | 3.5 |
 | WeasyPrint et ses dépendances | `image/requirements.txt` | weasyprint 69.0, 12 pins transitifs |
 | Modèles de détourage des portraits | `image/Containerfile` | deux `.onnx` vérifiés par sha256 |
+| veraPDF, le validateur PDF/UA | `image/Containerfile` (`VERAPDF_VERSION`, `VERAPDF_URL`, `VERAPDF_SHA256`) | 1.30.2, installeur vérifié par sha256 |
+
+veraPDF est un outil Java, et l'image n'embarque **pas** de JRE : une étape de build
+jetable taille un runtime au `jlink` (56 Mio, sept modules — `java.desktop` et
+`java.management` sont mesurés indispensables) et le rootfs n'en reçoit que le résultat.
+Le JDK et `binutils` qui servent à le fabriquer, 292 Mio à eux deux, restent dans
+l'étape jetable. Coût total dans le rootfs : **72 Mio**, dont 16 pour le pack CLI.
+L'URL du zip est **versionnée** et non l'alias « dernière version » : le sha256 sans
+l'URL versionnée ne suffit pas, l'alias suivrait le prochain amont et ferait mentir
+l'empreinte.
 
 **Tout est épinglé.** Le rootfs n'a plus de composant libre : AnyStyle, seul élément
 non épinglé, a quitté l'image avec la bibliographie BibTeX — les références ne sont plus
@@ -133,7 +156,11 @@ autrement (Pandoc).
 
 **À observer.** Après toute reconstruction : `bash test/build-render.sh`, puis
 comparer les PNG page à page avec ceux d'avant. C'est le seul contrôle qui voie une
-régression de mise en page.
+régression de mise en page. Le même script enchaîne trois verdicts d'ensemble, et
+chacun doit rester vert : la porte PDF/UA-1 du banc, le contrôle des polices
+(`test/polices-check.py`) et le corpus d'accessibilité (`test/accessibilite/`, un second
+dossier de numéro — sa porte PDF/UA doit rendre 0, et l'écart de numérotation voulu entre
+ses deux versions linguistiques doit rester signalé).
 
 **Quand.** Reconstruire **deux fois par an**, ou tout de suite en cas de faille de
 sécurité Debian, ou quand un correctif amont dont on a besoin est publié.
@@ -273,12 +300,14 @@ d'état suffit.
 
 ### L'e-mail de traduction ne part pas
 
-**Cause.** Le brouillon avec lien cliquable est fabriqué par automatisation COM, qui
-n'existe que pour l'Outlook **classique**. Sur un poste passé au nouvel Outlook, il
-faut basculer le réglage `"mailTraduction": "mailto"` dans
-`C:\ProgramData\SZH\config.json` — le lien y arrive alors en texte brut.
+**Cause.** Le brouillon passe par `mailto:`, donc par le client de messagerie déclaré
+par défaut dans Windows. S'il ne s'ouvre pas, c'est ce réglage-là qu'il faut regarder,
+pas le toolkit. Le lien de traduction est de toute façon copié dans le presse-papiers :
+un collage dans un message écrit à la main donne le même résultat.
 
-**À observer.** Une fois par poste, au moment de son passage au nouvel Outlook.
+**À observer.** Rarement. L'ancienne voie par automatisation COM d'Outlook, qui seule
+donnait un lien cliquable, a été retirée le 23.08.2026 : elle ne fonctionnait pas avec
+le nouveau client Outlook.
 
 ---
 
@@ -309,6 +338,23 @@ l'appelle, trompeur pour qui inspecte un poste.
 
 **Manœuvre.** Les retirer à la main, ou ne rien faire : ils ne coûtent que de la place.
 Le nettoyage complet passe par une réinstallation du toolkit.
+
+### Deux workflows, et ils ne gardent pas la même porte
+
+`release.yml` ne se déclenche que sur un tag `v*` : il **publie**. `ci.yml` se
+déclenche à chaque push sur `main` et à chaque pull request : il **vérifie** — contrats
+du cockpit (`node --test test/js/*.test.js`), banc `test/` recompilé de zéro, puis
+`make verifier-ua`. Une porte qui ne se ferme qu'au moment de publier se ferme trop
+tard, d'où le second.
+
+`ci.yml` installe lui-même pandoc 3.5, WeasyPrint depuis `image/requirements.txt` et
+veraPDF 1.30.2, tous épinglés et vérifiés par sha256 — sans quoi son verdict ne serait
+pas celui de la flotte. Il n'installe pas `requirements-portraits.txt` : la chaîne PDF
+ne s'en sert pas. `test/out/` n'étant pas versionné, tout est recompilé, rien n'est
+repris d'un artefact.
+
+**À observer.** Un rouge de `ci.yml` sur un commit qui ne touche ni le pipeline ni le
+banc : c'est le signe d'un outil tiré du réseau qui a bougé, pas d'une régression.
 
 ### La CI se casse sans qu'une ligne du dépôt ait changé
 
@@ -357,6 +403,21 @@ Rien ne l'empêche. OneDrive crée alors un fichier en conflit
 (`ausgabe-<machine>.yaml`) que la chaîne ignore, et les modifications de l'un écrasent
 celles de l'autre. **La règle de travail reste : un numéro, une personne à la fois.**
 
+### Le lanceur n'affiche plus aucune revue
+
+**Cause la plus probable.** L'interrupteur `emplacementRevues` de
+`C:\ProgramData\SZH\config.json` a changé de côté. Il déplace la racine où le lanceur
+cherche les numéros, sans déplacer un seul fichier : les revues sont toujours là, le
+lanceur regarde ailleurs.
+
+**À observer.** Le **titre de la fenêtre du lanceur** nomme la racine active —
+`Revues SZH — dossier de test (Revues-TESTING)` ou
+`… — dossier de production (2_Produkte)`. Le journal du mois porte la même chose :
+`revues : emplacement "…" -> <chemin>`.
+
+**Manœuvre.** [`docs/EMPLACEMENTS.md`](EMPLACEMENTS.md) §8 — la cartographie complète des
+deux racines, ce que chacune contient, et la reprise pas à pas.
+
 ---
 
 ## 7. Le contenu
@@ -377,9 +438,11 @@ c'est là qu'on rejoue un cas qui échoue.
 ### Un appel de citation n'est pas lié à sa référence
 
 **Symptôme.** Le journal de compilation porte une ligne
-`[citations] ⚠ appel sans référence : (Shaw et al., 2023)`, ou
-`⚠ appel ambigu, à lier à la main`. Dans l'aperçu du cockpit, l'appel est souligné en
-pointillé.
+`[citations-avertissement] appel-sans-reference | article « 01-inclusion » | appel « (Shaw et al., 2023) » | …`,
+ou le même avec le code `appel-ambigu`. Dans l'aperçu du cockpit, l'appel est souligné en
+pointillé. Le deuxième champ est le code stable, et c'est lui qu'on cherche : les phrases
+qui suivent (française, puis allemande après `[de]`) ne sont qu'un repli d'affichage et
+peuvent être reformulées.
 
 **Causes.** Le nom de l'appel ne correspond à aucune entrée de la liste — coquille dans le
 texte, référence absente de la liste, parenthèse déséquilibrée dans le Word — ou deux
@@ -387,12 +450,35 @@ références partagent le même premier auteur et la même année, et l'appel ne
 laquelle.
 
 **Manœuvre.** Curseur dans l'appel, `Ctrl+Alt+S`, « Lier un appel à une référence », choisir
-l'entrée. Le `.md` reçoit un lien markdown que la compilation respecte ensuite. Une ligne
-`⚠ référence jamais appelée` signale l'inverse : une entrée que le texte ne cite pas, à
-vérifier côté rédaction.
+l'entrée. Le `.md` reçoit un lien markdown que la compilation respecte ensuite. Le code
+`reference-orpheline` signale l'inverse : une entrée que le texte ne cite pas, à vérifier
+côté rédaction.
 
-**Symptôme voisin.** `⚠ lien manuel vers un ancrage inconnu` : le texte de la référence a
-changé depuis la pose du lien, donc son identifiant aussi. Refaire l'opération.
+**Symptôme voisin.** Le code `ancrage-inconnu` : le texte de la référence a changé depuis la
+pose du lien, donc son identifiant aussi. Refaire l'opération.
+
+### « Lier un appel à une référence » refuse de s'ouvrir
+
+**Cause.** Depuis le 23.08.2026, le cockpit ne calcule plus lui-même les identifiants
+d'ancrage : il lit la table de repli dans `pipeline/filters/szh-citations.lua` du toolkit
+installé, pour que les deux moitiés ne puissent plus diverger. Si le toolkit et le cockpit
+ne sont pas de la même version, la table n'a pas la forme attendue et la commande refuse
+plutôt que de proposer des ancres que la compilation ne posera pas.
+
+**À observer dans le journal de l'hôte :**
+`[citations] table REPLI_BLOCS absente de <chemin> : format de filtre incompatible avec ce cockpit.`
+`[citations] REPLI_BLOCS de <chemin> ne porte que N jetons sur 656 attendus.`
+
+**Manœuvre.** Lancer la mise à jour du toolkit, ou choisir une version cohérente par le
+bouton que la notification propose. Le rédacteur, lui, ne voit qu'une phrase : les deux
+moitiés du logiciel ne sont pas de la même version, et la mise à jour règle le cas.
+
+**Symptôme voisin.** Le code `caractere-sans-repli` : un nom d'auteur porte une
+lettre dont l'identifiant d'ancrage ne sait rien faire, et qui est donc retirée. Le repli
+couvre tout le latin, diacritiques et lettres barrées comprises ; le grec, le cyrillique et
+l'arabe, non. Un auteur nommé en cyrillique donne un identifiant vide, d'où un lien qui ne
+tient pas. Manœuvre : lier l'appel à la main, ou translittérer le nom dans la liste de
+références. Une ligne par caractère, pas par occurrence.
 
 ### Le PDF n'est plus balisé PDF/UA
 
@@ -405,6 +491,61 @@ reconstruction du rootfs.**
 
 **Manœuvre.** Relancer WeasyPrint à la main sur le HTML produit, sans rediriger la
 sortie d'erreur, pour voir la vraie cause.
+
+### La porte PDF/UA refuse l'export
+
+**Où elle est.** `make verifier-ua`, appelée par `docx` et `tout-exporter`, jamais par
+`all` ni `pdf` : le rédacteur doit pouvoir sortir l'épreuve d'un article encore
+imparfait. Elle garde ce qui part chez l'imprimeur et dans OJS, là où la conformité est
+une promesse publique.
+
+**Comment lire le verdict.** `pipeline/rapport-ua.py` traduit le XML de veraPDF en
+français puis en allemand : une ligne par règle, avec ce qui est en cause et le geste de
+correction. Trois codes de sortie, et ils ne disent pas la même chose : **0** conforme,
+**1** non conforme, **2 panne d'outillage**. Cette troisième valeur est le cœur du
+dispositif : un validateur absent, un runtime Java cassé, un PDF illisible ne doivent
+jamais se lire comme un succès.
+
+**Le piège du runtime, qui a failli passer inaperçu.** Un `JAVA_HOME` qui ne pointe sur
+rien fait sortir le lanceur veraPDF en code **1** — le code réservé au « PDF non
+conforme ». La porte accuserait alors des PDF parfaits, et le message serait
+parfaitement crédible. D'où deux garde-fous : `$VERAPDF_JAVA/bin/java` est vérifié avant
+l'appel, et dès que le rapport est inexploitable la sortie d'erreur du validateur est
+recrachée telle quelle — seul endroit où la vraie cause se lit.
+
+**Chemins.** `VERAPDF` (défaut `/opt/verapdf-cli/verapdf`) et `VERAPDF_JAVA` (défaut
+`/opt/jre-min`), surchargeables depuis l'environnement : c'est ainsi que `ci.yml` les
+fait pointer sur son installation à lui.
+
+**À observer.** Que les cinq cas se comportent encore comme prévu après toute montée de
+veraPDF ou du runtime : témoin conforme, validateur absent, runtime cassé, PDF tronqué,
+PDF non conforme. **À chaque reconstruction du rootfs.**
+
+### Un passage en langue seconde n'est pas annoncé comme tel
+
+**Non-conformité connue, et elle passe la porte.** Un article français porte un
+`Zusammenfassung` allemand ; le gabarit pose bien `<div class="szh-abstract" lang="de">`,
+et le PDF n'en garde rien. Mesuré sur `test/out/figures/figures.pdf` : `/Lang` du
+document = `fr`, et **aucun** élément de l'arbre de structure ne porte de `/Lang`. Un
+lecteur d'écran lira donc le résumé allemand avec une voix française.
+
+**Cause, en amont.** WeasyPrint 69 n'écrit `/Lang` qu'à un seul endroit, le catalogue du
+document (`weasyprint/pdf/__init__.py`) ; `weasyprint/pdf/tags.py`, qui construit les
+éléments de structure, n'en pose aucun. Trois occurrences de `Lang` dans tout le paquet,
+toutes sur le catalogue. **Rien côté HTML ne peut donc corriger ce défaut** : l'attribut
+`lang` est simplement perdu.
+
+**Pourquoi veraPDF passe quand même.** Sa règle de clause 7.2 sur le texte du contenu de
+page se lit `gContainsCatalogLang == true || Lang != null` : un `/Lang` dans le catalogue
+la satisfait, où que la langue change ensuite. Aucune machine ne sait deviner qu'un
+paragraphe est allemand ; le contrôle est dégénéré par construction, et un `PASS ua1` ne
+dit donc rien sur ce point. Le banc **contient** le cas — l'article `figures` est en `fr`
+avec un résumé `de` — et rend `PASS`.
+
+**À observer.** Cette limite à chaque montée de WeasyPrint :
+`grep -rn Lang /opt/weasyprint/lib/python3*/site-packages/weasyprint/pdf/`. Le jour où
+une quatrième occurrence apparaît sur un élément de structure, le défaut devient
+corrigeable. D'ici là, ne pas l'écrire comme réglé.
 
 ### Un tableau disparaît du PDF
 

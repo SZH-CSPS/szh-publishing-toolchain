@@ -52,4 +52,44 @@ function slugifierArticle(nomFichier) {
   return bornerSlug(s.replace(/^([0-9])(?![0-9])/, '0$1'));
 }
 
-module.exports = { slugifier, slugifierArticle };
+// Nombre maximal d'homonymes désambiguïsés pour un même slug. Au-delà, l'appelant doit
+// refuser l'import plutôt que d'inventer un nom : 99 articles au titre identique dans un
+// numéro, c'est une erreur de dépôt, pas un cas à servir.
+const MAX_HOMONYMES = 99;
+
+// Deux Word aux titres proches donnent le même slug une fois borné à 39 caractères :
+// « Inklusive Bildung in der Sekundarstufe I - Teil 1 » et « … Teil 2 » se réduisent tous
+// deux à « inklusive-bildung-in-der-sekundarstufe ». Les articles en plusieurs parties
+// étant courants, le second reçoit ici un suffixe « -2 », le troisième « -3 », etc.
+//
+// La place du suffixe est prise sur la fin du slug au caractère près, et non au mot entier
+// comme bornerSlug : le « -2 » dit déjà que le nom est coupé, et garder
+// « …-sekundarstuf-2 » plutôt que « …-in-der-2 » laisse la famille reconnaissable dans
+// l'explorateur de fichiers.
+//
+// `slugsPris` énumère les slugs déjà occupés (côté Makefile : les articles/<slug>/<slug>.md
+// existants). Rend null si les 99 tentatives sont épuisées.
+//
+// La cible « import » du Makefile applique exactement la même boucle : si les deux
+// divergent, le badge « déjà converti » de la barre latérale désigne un article qui
+// n'existe pas.
+function slugifierArticleUnique(nomFichier, slugsPris) {
+  const pris = new Set(slugsPris || []);
+  const base = slugifierArticle(nomFichier);
+  if (!pris.has(base)) { return base; }
+  for (let n = 2; n <= MAX_HOMONYMES; n++) {
+    const suffixe = '-' + n;
+    let tronc = base;
+    if (tronc.length + suffixe.length > LONGUEUR_MAX_SLUG_ARTICLE) {
+      tronc = tronc.slice(0, LONGUEUR_MAX_SLUG_ARTICLE - suffixe.length).replace(/-+$/, '');
+    }
+    const candidat = tronc + suffixe;
+    if (!pris.has(candidat)) { return candidat; }
+  }
+  return null;
+}
+
+module.exports = {
+  slugifier, slugifierArticle, slugifierArticleUnique,
+  LONGUEUR_MAX_SLUG_ARTICLE, MAX_HOMONYMES
+};

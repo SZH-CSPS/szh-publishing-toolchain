@@ -148,8 +148,10 @@ function ouvrir(opts) {
 
   const racineDom = () => {
     // Le conteneur de la page : « cartes » pour les formulaires de fiches, « corps » pour
-    // le gestionnaire des médias.
-    return parId.cartes || parId.corps || document.body;
+    // le gestionnaire des médias, « lignes » pour les vues d'ensemble. Ces éléments ne sont
+    // pas rattachés à <body> — la page les prend par leur identifiant, comme dans
+    // l'éditeur — d'où cette recherche par nom plutôt qu'un parcours depuis la racine.
+    return parId.cartes || parId.corps || parId.lignes || document.body;
   };
   return {
     document: document, parId: parId, messages: messages,

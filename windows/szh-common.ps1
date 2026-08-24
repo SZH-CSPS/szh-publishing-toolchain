@@ -68,7 +68,7 @@ $script:SzhTextes = @{
     'maj.env.deja'      = 'Déjà à jour ({0}).'
     'maj.e3'            = '3/5  Extensions de l''éditeur…'
     'maj.ext.ok'        = 'Extensions à jour.'
-    'maj.codium.absent' = 'VSCodium introuvable — extensions ignorées (bootstrap.ps1 pas encore passé ?).'
+    'maj.codium.absent' = 'L''éditeur n''est pas installé sur ce poste : ses extensions ont été laissées de côté, tout le reste est à jour. Faites faire l''installation initiale du poste par le service informatique, puis relancez cette mise à jour.'
     'maj.e4'            = '4/5  Réglages de l''éditeur…'
     'maj.e4.ok'         = 'Réglages appliqués, raccourci « Revues SZH » à jour.'
     'maj.e5'            = '5/5  Nettoyage…'
@@ -82,8 +82,8 @@ $script:SzhTextes = @{
     'etape.ext'         = 'mise à jour des extensions de l''éditeur'
     'etape.reglages'    = 'application des réglages de l''éditeur'
     'etape.nettoyage'   = 'nettoyage'
-    'err.empreinte'     = 'Empreinte invalide pour {0}.'
-    'err.wsl'           = 'L''import de l''environnement WSL a échoué.'
+    'err.empreinte'     = 'Le fichier téléchargé « {0} » est arrivé abîmé : sa signature ne correspond pas. Rien n''a été installé — mieux vaut s''arrêter que d''installer un fichier douteux. Relancez la mise à jour : le fichier sera retéléchargé. Si cela se répète, c''est la connexion qui coupe en cours de route.'
+    'err.wsl'           = 'L''environnement qui fabrique les PDF n''a pas pu être installé. Fermez l''éditeur et les revues ouvertes, puis relancez la mise à jour : l''installation ne peut pas remplacer cet environnement pendant qu''une compilation s''en sert. Si cela ne suffit pas, redémarrez le poste. Sans lui, aucun PDF ne peut être produit.'
     'err.titre'         = 'Une erreur est survenue pendant la mise à jour.'
     'err.l.etape'       = 'Étape   : {0}'
     'err.l.detail'      = 'Détail  : {0}'
@@ -111,8 +111,8 @@ $script:SzhTextes = @{
     'lanceur.versions.chargement' = 'Recherche des versions publiées…'
     'lanceur.versions.horsligne.deja' = "Aucune version n'est installable hors ligne sur ce poste : seule la version déjà installée est proposée."
     'lanceur.erreur'            = "Le lanceur n'a pas pu démarrer :`n`n{0}`n`nContact : {1}"
-    'lanceur.titre'             = 'Revues SZH'
-    'lanceur.titre.zs'          = 'Zeitschriften SZH'
+    'lanceur.titre'             = 'Revues SZH — {racine}'
+    'lanceur.titre.zs'          = 'Zeitschriften SZH — {racine}'
     'lanceur.choisir.zs'        = 'Choisissez la Zeitschrift à ouvrir :'
     'lanceur.vide.zs'           = 'Aucune Zeitschrift sur ce poste pour l''instant — « Nouvelle revue… » pour commencer.'
     'lien.invalide'             = "Ce lien n'est pas un lien de revue SZH valide :`n`n{0}"
@@ -123,7 +123,9 @@ $script:SzhTextes = @{
     'lanceur.vide.archives'     = 'Aucune revue archivée.'
     'lanceur.version'           = 'Logiciel v. {0}'
     'lanceur.version.inconnue'  = 'Logiciel : version inconnue'
-    'lanceur.test'              = 'Mode test : {0}'
+    'lanceur.test'              = 'Dossier de test — revues dans {0}'
+    'racine.test'               = 'dossier de test'
+    'racine.prod'               = 'dossier de production'
     'lanceur.versions.bouton'   = 'Version du logiciel…'
     'lanceur.versions.titre'    = 'Version du logiciel'
     'lanceur.versions.intro'    = 'Version installée : {0}. Choisissez la version à installer :'
@@ -143,7 +145,7 @@ $script:SzhTextes = @{
     'arch.err.introuvable'      = 'Dossier de revue introuvable : {0}'
     'arch.err.existe'           = 'Un dossier « {0} » existe déjà à destination — rien n''a été déplacé.'
     'arch.err.verrou'           = "Le dossier est encore utilisé par une autre application après {0} s — rien n'a été déplacé. Fermez l'éditeur et l'aperçu PDF, puis réessayez."
-    'arch.err.emplacement'      = 'Aucun emplacement connu pour la revue « {0} » — vérifiez basesRevues dans config.json.'
+    'arch.err.emplacement'      = 'Le numéro « {0} » ne dit pas de quelle revue il fait partie : on ne sait donc pas dans quel dossier le ranger. Rien n''a été déplacé. Ouvrez ce numéro dans l''éditeur, choisissez la revue dans « Métadonnées du numéro », enregistrez, puis relancez l''archivage.'
     'arch.err.suite'            = 'Rien n''a été déplacé : la revue est restée où elle était. En cas de doute : {0}'
     # Double-clic sur un .md (open-md.ps1) : messages des cas anormaux seulement.
     'openmd.vide'         = "Aucun fichier à ouvrir.`n`nCe raccourci s'utilise en double-cliquant un fichier .md."
@@ -170,7 +172,7 @@ $script:SzhTextes = @{
     'maj.env.deja'      = 'Bereits aktuell ({0}).'
     'maj.e3'            = '3/5  Editor-Erweiterungen…'
     'maj.ext.ok'        = 'Erweiterungen sind aktuell.'
-    'maj.codium.absent' = 'VSCodium nicht gefunden — Erweiterungen übersprungen (bootstrap.ps1 noch nicht ausgeführt?).'
+    'maj.codium.absent' = 'Der Editor ist auf diesem Rechner nicht installiert: seine Erweiterungen wurden übersprungen, alles andere ist aktuell. Lassen Sie die Ersteinrichtung des Rechners von der Informatik durchführen und starten Sie diese Aktualisierung danach erneut.'
     'maj.e4'            = '4/5  Editor-Einstellungen…'
     'maj.e4.ok'         = 'Einstellungen angewendet, Verknüpfung « Revues SZH » aktualisiert.'
     'maj.e5'            = '5/5  Aufräumen…'
@@ -184,8 +186,8 @@ $script:SzhTextes = @{
     'etape.ext'         = 'Aktualisierung der Editor-Erweiterungen'
     'etape.reglages'    = 'Anwenden der Editor-Einstellungen'
     'etape.nettoyage'   = 'Aufräumen'
-    'err.empreinte'     = 'Ungültige Prüfsumme für {0}.'
-    'err.wsl'           = 'Der Import der WSL-Umgebung ist fehlgeschlagen.'
+    'err.empreinte'     = 'Die heruntergeladene Datei « {0} » ist beschädigt angekommen: ihre Signatur stimmt nicht. Es wurde nichts installiert — besser abbrechen als eine zweifelhafte Datei einspielen. Starten Sie die Aktualisierung erneut, die Datei wird neu heruntergeladen. Wiederholt sich das, bricht die Verbindung unterwegs ab.'
+    'err.wsl'           = 'Die Umgebung, die die PDF erzeugt, konnte nicht installiert werden. Schliessen Sie den Editor und die offenen Ausgaben und starten Sie die Aktualisierung erneut: die Installation kann diese Umgebung nicht ersetzen, während eine Kompilierung sie benutzt. Hilft das nicht, starten Sie den Rechner neu. Ohne sie lässt sich kein PDF erzeugen.'
     'err.titre'         = 'Bei der Aktualisierung ist ein Fehler aufgetreten.'
     'err.l.etape'       = 'Schritt   : {0}'
     'err.l.detail'      = 'Detail    : {0}'
@@ -213,8 +215,8 @@ $script:SzhTextes = @{
     'lanceur.versions.chargement' = 'Suche nach veröffentlichten Versionen…'
     'lanceur.versions.horsligne.deja' = "Auf diesem Computer ist keine Version offline installierbar: es wird nur die bereits installierte Version angeboten."
     'lanceur.erreur'            = "Der Starter konnte nicht gestartet werden:`n`n{0}`n`nKontakt: {1}"
-    'lanceur.titre'             = 'Revues SZH'
-    'lanceur.titre.zs'          = 'Zeitschriften SZH'
+    'lanceur.titre'             = 'Revues SZH — {racine}'
+    'lanceur.titre.zs'          = 'Zeitschriften SZH — {racine}'
     'lanceur.choisir.zs'        = 'Wählen Sie die zu öffnende Zeitschrift:'
     'lanceur.vide.zs'           = 'Noch keine Zeitschrift auf diesem Computer — mit « Neue Zeitschrift… » beginnen.'
     'lien.invalide'             = "Dieser Link ist kein gültiger SZH-Zeitschriftenlink:`n`n{0}"
@@ -225,7 +227,9 @@ $script:SzhTextes = @{
     'lanceur.vide.archives'     = 'Keine archivierte Zeitschrift.'
     'lanceur.version'           = 'Software v. {0}'
     'lanceur.version.inconnue'  = 'Software: Version unbekannt'
-    'lanceur.test'              = 'Testmodus: {0}'
+    'lanceur.test'              = 'Testordner — Zeitschriften in {0}'
+    'racine.test'               = 'Testordner'
+    'racine.prod'               = 'Produktionsordner'
     'lanceur.versions.bouton'   = 'Software-Version…'
     'lanceur.versions.titre'    = 'Software-Version'
     'lanceur.versions.intro'    = 'Installierte Version: {0}. Wählen Sie die zu installierende Version:'
@@ -245,7 +249,7 @@ $script:SzhTextes = @{
     'arch.err.introuvable'      = 'Ordner der Zeitschrift nicht gefunden: {0}'
     'arch.err.existe'           = 'Am Ziel existiert bereits ein Ordner « {0} » — es wurde nichts verschoben.'
     'arch.err.verrou'           = "Der Ordner wird nach {0} s noch von einer anderen Anwendung verwendet — es wurde nichts verschoben. Schliessen Sie den Editor und die PDF-Vorschau und versuchen Sie es erneut."
-    'arch.err.emplacement'      = 'Kein bekannter Ort für die Zeitschrift « {0} » — prüfen Sie basesRevues in config.json.'
+    'arch.err.emplacement'      = 'Die Ausgabe « {0} » sagt nicht, zu welcher Zeitschrift sie gehört: darum ist nicht bekannt, in welchen Ordner sie kommt. Es wurde nichts verschoben. Öffnen Sie diese Ausgabe im Editor, wählen Sie die Zeitschrift unter « Metadaten der Ausgabe », speichern Sie und starten Sie die Archivierung erneut.'
     'arch.err.suite'            = 'Es wurde nichts verschoben: die Zeitschrift ist an ihrem Platz geblieben. Bei Zweifeln: {0}'
     # Doppelklick auf eine .md-Datei (open-md.ps1): nur die anormalen Fälle.
     'openmd.vide'         = "Keine Datei zum Öffnen.`n`nDieser Befehl wird per Doppelklick auf eine .md-Datei verwendet."
@@ -272,7 +276,7 @@ $script:SzhTextes = @{
     'maj.env.deja'      = 'Already up to date ({0}).'
     'maj.e3'            = '3/5  Editor extensions…'
     'maj.ext.ok'        = 'Extensions up to date.'
-    'maj.codium.absent' = 'VSCodium not found — extensions skipped (bootstrap.ps1 not run yet?).'
+    'maj.codium.absent' = 'The editor is not installed on this computer: its extensions were skipped, everything else is up to date. Have IT run the initial setup of this computer, then start this update again.'
     'maj.e4'            = '4/5  Editor settings…'
     'maj.e4.ok'         = 'Settings applied, “Revues SZH” shortcut updated.'
     'maj.e5'            = '5/5  Cleanup…'
@@ -286,8 +290,8 @@ $script:SzhTextes = @{
     'etape.ext'         = 'updating editor extensions'
     'etape.reglages'    = 'applying editor settings'
     'etape.nettoyage'   = 'cleanup'
-    'err.empreinte'     = 'Invalid checksum for {0}.'
-    'err.wsl'           = 'Importing the WSL environment failed.'
+    'err.empreinte'     = 'The downloaded file “{0}” arrived damaged: its signature does not match. Nothing was installed — better to stop than to install a doubtful file. Start the update again and the file will be downloaded afresh. If it keeps happening, the connection is dropping midway.'
+    'err.wsl'           = 'The environment that produces the PDFs could not be installed. Close the editor and any open issues, then start the update again: the installer cannot replace that environment while a compilation is using it. If that does not help, restart the computer. Without it, no PDF can be produced.'
     'err.titre'         = 'An error occurred during the update.'
     'err.l.etape'       = 'Step   : {0}'
     'err.l.detail'      = 'Detail : {0}'
@@ -315,8 +319,8 @@ $script:SzhTextes = @{
     'lanceur.versions.chargement' = 'Looking for published versions…'
     'lanceur.versions.horsligne.deja' = "No version can be installed offline on this computer: only the version already installed is offered."
     'lanceur.erreur'            = "The launcher could not start:`n`n{0}`n`nContact: {1}"
-    'lanceur.titre'             = 'Revues SZH'
-    'lanceur.titre.zs'          = 'Zeitschriften SZH'
+    'lanceur.titre'             = 'Revues SZH — {racine}'
+    'lanceur.titre.zs'          = 'Zeitschriften SZH — {racine}'
     'lanceur.choisir.zs'        = 'Choose the Zeitschrift to open:'
     'lanceur.vide.zs'           = 'No Zeitschrift on this computer yet — use "New journal…" to get started.'
     'lien.invalide'             = "This is not a valid SZH journal link:`n`n{0}"
@@ -327,7 +331,9 @@ $script:SzhTextes = @{
     'lanceur.vide.archives'     = 'No archived journal.'
     'lanceur.version'           = 'Software v. {0}'
     'lanceur.version.inconnue'  = 'Software: unknown version'
-    'lanceur.test'              = 'Test mode: {0}'
+    'lanceur.test'              = 'Test folder — journals in {0}'
+    'racine.test'               = 'test folder'
+    'racine.prod'               = 'production folder'
     'lanceur.versions.bouton'   = 'Software version…'
     'lanceur.versions.titre'    = 'Software version'
     'lanceur.versions.intro'    = 'Installed version: {0}. Choose the version to install:'
@@ -347,7 +353,7 @@ $script:SzhTextes = @{
     'arch.err.introuvable'      = 'Journal folder not found: {0}'
     'arch.err.existe'           = 'A folder named “{0}” already exists at the destination — nothing was moved.'
     'arch.err.verrou'           = "The folder is still in use by another application after {0} s — nothing was moved. Close the editor and the PDF preview, then try again."
-    'arch.err.emplacement'      = 'No known location for journal “{0}” — check basesRevues in config.json.'
+    'arch.err.emplacement'      = 'Issue “{0}” does not say which journal it belongs to, so there is no folder to file it in. Nothing has been moved. Open the issue in the editor, pick the journal under “Issue metadata”, save, then run the archiving again.'
     'arch.err.suite'            = 'Nothing was moved: the journal stayed where it was. If in doubt: {0}'
     # Double-click on a .md file (open-md.ps1): abnormal cases only.
     'openmd.vide'         = "No file to open.`n`nThis shortcut is meant to be used by double-clicking a .md file."
@@ -375,6 +381,12 @@ function Set-SzhLangueProduit([string]$Produit) {
 }
 
 # T 'clé' @(args…) -> texte dans la langue courante, fallback anglais, sinon la clé.
+#
+# Le jeton {racine} est remplacé par l'étiquette de la racine active (Get-SzhEtiquetteRacine) :
+# un texte peut ainsi dire où vivent les revues sans que chaque appelant le passe en argument
+# — c'est ce qui met l'emplacement actif dans le titre du lanceur. Substitué avant `-f`, un
+# chemin ne portant pas d'accolade ; les textes 'racine.*' n'ont pas le jeton, donc pas de
+# récursion.
 function T {
   param([Parameter(Mandatory = $true)][string]$Cle, [object[]]$Valeurs)
   $texte = $null
@@ -382,6 +394,7 @@ function T {
   if ($table -and $table.ContainsKey($Cle)) { $texte = $table[$Cle] }
   if (-not $texte) { $texte = $SzhTextes['en'][$Cle] }
   if (-not $texte) { return $Cle }
+  if ($texte -like '*{racine}*') { $texte = $texte.Replace('{racine}', (Get-SzhEtiquetteRacine)) }
   if ($Valeurs -and $Valeurs.Count -gt 0) { return ($texte -f $Valeurs) }
   return $texte
 }
@@ -502,7 +515,7 @@ function Test-SzhVersionTag([string]$Version) {
   return ($Version -match '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$')
 }
 
-# ---- Mode développeur & emplacements des revues ----
+# ---- Emplacement des revues : test ou production ----
 # Seul endroit qui décide où vivent les revues : le cockpit ne calcule aucun chemin
 # SharePoint, il délègue l'archivage à archive-revue.ps1. Sous-dossiers identiques en test
 # et en production, seule la base change, si bien qu'un essai exerce le code réel.
@@ -517,27 +530,176 @@ $script:SzhBasesDefaut = @{
   dev  = '%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING'
 }
 
-# Vrai par défaut, clé absente comprise : mieux vaut un essai en dossier de test.
-function Get-SzhDevMode {
-  $cfg = Get-SzhConfig
-  if (-not $cfg) { return $true }
-  if ($null -eq $cfg.PSObject.Properties['devMode']) { return $true }
-  return ([bool]$cfg.devMode)
+# Les deux valeurs de `emplacementRevues` dans config.json. Cette clé remplace `devMode` :
+# elle dit son effet — l'endroit où sont les revues — là où « mode développeur » ne parlait
+# que du développeur. L'ancienne clé reste lue, des postes la portent déjà.
+$script:SzhEmplacementTest = 'test'
+$script:SzhEmplacementProd = 'production'
+
+# Booléen d'un JSON écrit à la main : $true/$false, "true"/"false", 1/0. Tout le reste rend
+# $null, soit « clé absente ». Sans cette normalisation, `"devMode": "false"` vaut vrai ici
+# ([bool]'false' est $true) et faux côté JavaScript : les deux moitiés liraient deux
+# racines différentes pour la même configuration.
+function Resolve-SzhBooleenConfig($Valeur) {
+  if ($null -eq $Valeur) { return $null }
+  if ($Valeur -is [bool]) { return $Valeur }
+  if ($Valeur -is [int] -or $Valeur -is [long] -or $Valeur -is [double] -or $Valeur -is [decimal]) {
+    if ($Valeur -eq 1) { return $true }
+    if ($Valeur -eq 0) { return $false }
+    return $null
+  }
+  $t = ([string]$Valeur).Trim().ToLower()
+  if ($t -eq 'true') { return $true }
+  if ($t -eq 'false') { return $false }
+  return $null
 }
 
+# Résolution pure : la clé neuve, puis l'ancienne, puis le défaut historique « test ». Rien
+# n'est lu du disque ici — c'est Initialize-SzhEmplacementRevues qui interroge le disque, une
+# fois, pour écrire la valeur en clair. Mêmes règles et même ordre que
+# resoudreEmplacementRevues() de lib/archivage.js ; test/js/emplacements.test.js compare les
+# deux sur les mêmes configurations.
+function Resolve-SzhEmplacementRevues($Config) {
+  if ($Config) {
+    $brut = $null
+    if ($Config.PSObject.Properties['emplacementRevues']) { $brut = $Config.emplacementRevues }
+    $v = ([string]$brut).Trim().ToLower()
+    if ($v -eq $SzhEmplacementProd) { return $SzhEmplacementProd }
+    if ($v -eq $SzhEmplacementTest) { return $SzhEmplacementTest }
+    $ancien = $null
+    if ($Config.PSObject.Properties['devMode']) { $ancien = Resolve-SzhBooleenConfig $Config.devMode }
+    if ($null -ne $ancien) {
+      if ($ancien) { return $SzhEmplacementTest }
+      return $SzhEmplacementProd
+    }
+  }
+  return $SzhEmplacementTest
+}
 
-function Get-SzhBaseRevues {
-  $cfg = Get-SzhConfig
+# Base d'un emplacement donné. Les sous-clés de `basesRevues` gardent leurs noms d'avant
+# (`dev`, `prod`) : des postes les portent déjà.
+function Get-SzhBaseRevuesPour([string]$Emplacement) {
   $cle = 'prod'
-  if (Get-SzhDevMode) { $cle = 'dev' }
+  if ($Emplacement -eq $SzhEmplacementTest) { $cle = 'dev' }
   $base = $SzhBasesDefaut[$cle]
+  $cfg = Get-SzhConfig
   if ($cfg -and $cfg.basesRevues -and $cfg.basesRevues.$cle) { $base = [string]$cfg.basesRevues.$cle }
   return [Environment]::ExpandEnvironmentVariables($base)
 }
 
+# Combien de numéros dorment sous un emplacement : un dossier portant un ausgabe.yaml, dans
+# les quatre dossiers du produit. Ne lève jamais — un OneDrive non synchronisé rend 0.
+function Measure-SzhNumeros([string]$Emplacement) {
+  $base = Get-SzhBaseRevuesPour $Emplacement
+  $total = 0
+  foreach ($produit in @('revue', 'zeitschrift')) {
+    foreach ($etat in @('encours', 'archive')) {
+      $racine = Join-Path $base $SzhSousDossiers[$produit][$etat]
+      if (-not (Test-Path $racine)) { continue }
+      try {
+        $total += @(Get-ChildItem -Path $racine -Directory -ErrorAction SilentlyContinue |
+          Where-Object { Test-Path (Join-Path $_.FullName 'ausgabe.yaml') }).Count
+      } catch { }
+    }
+  }
+  return $total
+}
+
+# Écrit l'emplacement en clair dans config.json quand il n'y est pas : la racine de tout le
+# travail ne doit pas dépendre d'un défaut implicite, qu'une mise à jour pourrait renverser
+# sous les pieds du rédacteur.
+#
+#   * `emplacementRevues` déjà là et valide -> rien ;
+#   * `devMode` seul -> recopié sous le nom neuf, décision inchangée ;
+#   * ni l'un ni l'autre -> le disque tranche, et jamais contre ce qui existe :
+#     « production » seulement si la racine de production porte des numéros et celle de test
+#     aucun. Dans tous les autres cas « test », c'est-à-dire ce que le poste voyait déjà.
+#     Une racine de test vide n'a rien à perdre ; si OneDrive n'avait rien synchronisé
+#     encore, le compte des deux racines part au journal, et une ligne de config.json
+#     suffit à revenir (docs/EMPLACEMENTS.md).
+#
+# N'écrit rien si config.json n'existe pas : bootstrap.ps1 le crée lui-même, et un fichier
+# posé ici l'empêcherait d'y mettre `repo` et `basesRevues`. Au plus une fois par processus.
+$script:SzhEmplacementFige = $false
+function Initialize-SzhEmplacementRevues {
+  if ($SzhEmplacementFige) { return '' }
+  $script:SzhEmplacementFige = $true
+  if (-not (Test-Path $SzhConfigFile)) { return '' }
+  $cfg = Get-SzhConfig
+  if (-not $cfg) { return '' }
+  if ($cfg.PSObject.Properties['emplacementRevues']) {
+    $deja = ([string]$cfg.emplacementRevues).Trim().ToLower()
+    if ($deja -eq $SzhEmplacementProd -or $deja -eq $SzhEmplacementTest) { return '' }
+  }
+  $ancien = $null
+  if ($cfg.PSObject.Properties['devMode']) { $ancien = Resolve-SzhBooleenConfig $cfg.devMode }
+  if ($null -ne $ancien) {
+    $choisi = $SzhEmplacementProd
+    if ($ancien) { $choisi = $SzhEmplacementTest }
+    $motif = 'devMode existant recopie'
+  } else {
+    $nTest = Measure-SzhNumeros $SzhEmplacementTest
+    $nProd = Measure-SzhNumeros $SzhEmplacementProd
+    $choisi = $SzhEmplacementTest
+    if ($nTest -eq 0 -and $nProd -gt 0) { $choisi = $SzhEmplacementProd }
+    $motif = ('numeros trouves : test {0}, production {1}' -f $nTest, $nProd)
+  }
+  try {
+    if ($cfg.PSObject.Properties['emplacementRevues']) { $cfg.emplacementRevues = $choisi }
+    else { $cfg | Add-Member -MemberType NoteProperty -Name 'emplacementRevues' -Value $choisi }
+    Set-SzhJson $SzhConfigFile $cfg
+    Write-SzhLog ('emplacement des revues : "{0}" ecrit dans config.json ({1})' -f $choisi, $motif)
+  } catch {
+    try { Write-SzhLog ('emplacement des revues : ecriture impossible (' + $_.Exception.Message + ')') } catch { }
+  }
+  return $choisi
+}
+
+# Emplacement actif : passage obligé de tout le monde, et il fige la valeur au premier appel,
+# pour que le titre du lanceur et les listes qu'il affiche viennent du même choix.
+function Get-SzhEmplacementRevues {
+  [void](Initialize-SzhEmplacementRevues)
+  return (Resolve-SzhEmplacementRevues (Get-SzhConfig))
+}
+
+# Compatibilité : « mode développeur » n'était que le nom d'alors de l'emplacement de test.
+function Get-SzhDevMode {
+  return ((Get-SzhEmplacementRevues) -eq $SzhEmplacementTest)
+}
+
+function Get-SzhBaseRevues {
+  return (Get-SzhBaseRevuesPour (Get-SzhEmplacementRevues))
+}
+
+# Étiquette courte de la racine active, pour le jeton {racine} des textes : le titre du
+# lanceur dit alors où sont les revues, sans qu'on ouvre config.json. Mémorisée par langue —
+# T est appelé souvent, et Set-SzhLangueProduit peut changer de langue après un premier
+# appel : une mémoire d'une seule case figerait le titre en anglais.
+$script:SzhEtiquetteMemo = @{}
+function Get-SzhEtiquetteRacine {
+  if ($SzhEtiquetteMemo.ContainsKey($SzhLangue)) { return $SzhEtiquetteMemo[$SzhLangue] }
+  $emplacement = Get-SzhEmplacementRevues
+  $mot = (T 'racine.prod')
+  if ($emplacement -eq $SzhEmplacementTest) { $mot = (T 'racine.test') }
+  $feuille = ''
+  try { $feuille = Split-Path (Get-SzhBaseRevuesPour $emplacement) -Leaf } catch { }
+  $etiquette = $mot
+  if ($feuille) { $etiquette = ('{0} ({1})' -f $mot, $feuille) }
+  $SzhEtiquetteMemo[$SzhLangue] = $etiquette
+  return $etiquette
+}
+
 # Les quatre emplacements du poste ; les listes à plat sont celles que balaie le lanceur.
+# La racine active part au journal une fois par processus : après coup, il dit d'où venaient
+# les revues d'un lancement donné.
+$script:SzhRacineJournalisee = $false
 function Get-SzhEmplacements {
-  $base = Get-SzhBaseRevues
+  $emplacement = Get-SzhEmplacementRevues
+  $base = Get-SzhBaseRevuesPour $emplacement
+  if (-not $SzhRacineJournalisee) {
+    $script:SzhRacineJournalisee = $true
+    try { Write-SzhLog ('revues : emplacement "{0}" -> {1}' -f $emplacement, $base) } catch { }
+  }
   $revue = @{
     encours = (Join-Path $base $SzhSousDossiers.revue.encours)
     archive = (Join-Path $base $SzhSousDossiers.revue.archive)
@@ -547,7 +709,8 @@ function Get-SzhEmplacements {
     archive = (Join-Path $base $SzhSousDossiers.zeitschrift.archive)
   }
   return [pscustomobject]@{
-    devMode     = (Get-SzhDevMode)
+    emplacement = $emplacement
+    devMode     = ($emplacement -eq $SzhEmplacementTest)
     base        = $base
     revue       = $revue
     zeitschrift = $zeitschrift
@@ -760,96 +923,6 @@ function Set-SzhAusgabeCle([string]$Dossier, [string]$Cle, [string]$Valeur, [boo
 # recomposer plus tard à l'identique. Posée à la création, jamais réécrite ensuite.
 function Set-SzhAusgabeVersion([string]$Dossier, [string]$Version) {
   return (Set-SzhAusgabeCle $Dossier 'version-toolkit' $Version $true $false)
-}
-
-# ---- Envoi pour traduction ----
-# Le sens de la traduction découle du produit : zeitschrift part vers la rédaction
-# francophone, revue vers la germanophone. L'e-mail est rédigé dans la langue de qui
-# traduira, d'où des gabarits ici plutôt que dans $SzhTextes, qui suit Windows.
-$script:SzhMailsTraduction = @{
-  zeitschrift = 'redaction@csps.ch'      # allemand -> français
-  revue       = 'redaktion@szh.ch'       # français -> allemand
-}
-
-# Deux façons de préparer le brouillon, et pas de troisième ; c'est un choix de poste.
-#   'mailto' (défaut) : client mail par défaut, corps en texte brut ; le lien szh:// y est
-#                       inerte, aucun client ne rendant cliquable un schéma inconnu.
-#   'outlook'         : objet COM, corps HTML, vrai hyperlien — mais COM n'existe que pour
-#                       l'Outlook classique, le nouvel Outlook n'expose rien.
-function Get-SzhModeMailTraduction {
-  $cfg = Get-SzhConfig
-  if ($cfg -and $cfg.mailTraduction) {
-    $m = ([string]$cfg.mailTraduction).ToLower()
-    if ($m -eq 'outlook') { return 'outlook' }
-  }
-  return 'mailto'
-}
-
-function Get-SzhLangueTraduction([string]$Produit) {
-  if ($Produit -eq 'zeitschrift') { return 'fr' }
-  return 'de'
-}
-
-# Surchargeable par config.json (« mailsTraduction ») : une adresse de rédaction peut
-# changer sans qu'on republie le toolkit.
-function Get-SzhMailTraduction([string]$Produit) {
-  $cfg = Get-SzhConfig
-  if ($cfg -and $cfg.mailsTraduction -and $cfg.mailsTraduction.$Produit) {
-    return [string]$cfg.mailsTraduction.$Produit
-  }
-  if ($SzhMailsTraduction.ContainsKey($Produit)) { return $SzhMailsTraduction[$Produit] }
-  return $SzhSupport
-}
-
-# Gabarits par langue cible ; {0} = le numéro (et l'article s'il y en a un), {1} = le
-# lien. Le corps HTML porte l'hyperlien, le texte brut est le repli sans Outlook.
-function Get-SzhGabaritTraduction([string]$Langue) {
-  if ($Langue -eq 'fr') {
-    return @{
-      sujet = 'Traduction allemand vers français — {0}'
-      html  = @'
-<p>Bonjour,</p>
-<p>Le numéro <strong>{0}</strong> de la <em>Schweizerische Zeitschrift für Heilpädagogik</em> est prêt pour la traduction de l&rsquo;<strong>allemand</strong> vers le <strong>français</strong>.</p>
-<p><a href="{1}">Ouvrir le suivi de traduction</a></p>
-<p style="color:#666666;font-size:90%">Ce lien ouvre directement le bon numéro sur un poste de rédaction SZH. S&rsquo;il ne s&rsquo;ouvre pas : menu Démarrer &rarr; &laquo;&nbsp;Zeitschriften SZH&nbsp;&raquo;, puis choisir le numéro.</p>
-'@
-      texte = @'
-Bonjour,
-
-Le numéro {0} de la Schweizerische Zeitschrift für Heilpädagogik est prêt pour la
-traduction de l'allemand vers le français.
-
-Pour l'ouvrir directement au bon endroit : COPIEZ le lien ci-dessous, puis collez-le
-dans la fenêtre « Exécuter » de Windows (touche Windows + R) et validez.
-
-{1}
-
-Autre chemin, sans le lien : menu Démarrer -> « Zeitschriften SZH », puis choisir le numéro.
-'@
-    }
-  }
-  return @{
-    sujet = 'Übersetzung Französisch nach Deutsch — {0}'
-    html  = @'
-<p>Guten Tag</p>
-<p>Die Ausgabe <strong>{0}</strong> der <em>Revue suisse de pédagogie spécialisée</em> ist bereit für die Übersetzung vom <strong>Französischen</strong> ins <strong>Deutsche</strong>.</p>
-<p><a href="{1}">Übersetzungsstand öffnen</a></p>
-<p style="color:#666666;font-size:90%">Dieser Link öffnet die richtige Ausgabe direkt auf einem SZH-Redaktionscomputer. Falls er sich nicht öffnet: Startmenü &rarr; &laquo;&nbsp;Revues SZH&nbsp;&raquo;, dann die Ausgabe wählen.</p>
-'@
-    texte = @'
-Guten Tag
-
-Die Ausgabe {0} der Revue suisse de pédagogie spécialisée ist bereit für die
-Übersetzung vom Französischen ins Deutsche.
-
-So öffnen Sie sie direkt an der richtigen Stelle: KOPIEREN Sie den Link unten, fügen
-Sie ihn im Windows-Fenster « Ausführen » ein (Windows-Taste + R) und bestätigen Sie.
-
-{1}
-
-Ohne den Link: Startmenü -> « Revues SZH », dann die Ausgabe wählen.
-'@
-  }
 }
 
 # ---- Liens profonds « szh:// » ----

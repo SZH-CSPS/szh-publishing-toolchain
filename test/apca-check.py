@@ -3,15 +3,16 @@
 #
 #   python3 test/apca-check.py    -> tableau lisible ; sortie 0 si tout passe, 1 sinon.
 #
-# À relancer après toute retouche de pipeline/styles/couleurs.css ou de
-# pipeline/accent-css.py. Le script ne recalcule pas la palette : il lit les hex
-# réellement écrits dans couleurs.css (renvois var() suivis) et les jetons réellement
-# émis par accent-css.py, puis il mesure.
+# À relancer après toute retouche de pipeline/styles/couleurs.css, de
+# pipeline/styles/print.css ou de pipeline/accent-css.py. Le script ne recalcule rien : il
+# lit les hex réellement écrits dans couleurs.css et dans les règles de print.css (renvois
+# var() suivis) et les jetons réellement émis par accent-css.py, puis il mesure.
 #
 # Un seuil APCA dépend de la taille du texte : 90 dès 14 px, 75 seulement à partir de
-# 18 px, 60 en gros texte (>= 24 px, ou >= 19 px en gras), 30 pour le non textuel. Les
-# deux tailles de la maquette sont sous 18 px — corps à 14 px, texte de tableau à
-# 13,6 px —, donc tout texte de lecture se juge à 90. ⚠ Aucun nombre de seuil n'est écrit
+# 18 px, 60 en gros texte (>= 24 px, ou >= 19 px en gras), 30 pour le non textuel. Presque
+# tout ici est sous 18 px — corps à 14 px, texte de tableau à 13,6 px, étiquettes du hero
+# et de l'en-tête courant à 9 et 9,5 px —, donc tout texte de lecture se juge à 90 ; seul
+# le titre de couverture (28 px) relève du gros titre. ⚠ Aucun nombre de seuil n'est écrit
 # en dur dans ce fichier : chaque paire déclare sa taille et apca.seuil_pour en déduit le
 # niveau (voir TAILLE_* plus bas).
 #
@@ -28,6 +29,7 @@
 
 import importlib.util
 import os
+import re
 import sys
 
 # Sortie en UTF-8 même dans une console Windows : le tableau contient des accents.
@@ -64,6 +66,15 @@ TAILLE_TABLEAU = 13.6   # print.css : table { font-size: 0.85rem } -> 13,6 px
 TAILLE_CORPS = 14.0     # print.css : --body-size: 0.875rem -> 14 px
 TAILLE_KW = 10.0        # print.css : .szh-kw { font-size: 10px } (puces de mots-clés)
 TAILLE_GROS_TITRE = 24.0
+# Hero de couverture et pages courantes (print.css §3 et §5). Aucune de ces tailles ne
+# tombe dans la bande 19-24 px, la seule où la graisse change le niveau APCA : `gras` est
+# donc inutile ici, et il faudra le passer le jour où un texte s'y installera.
+TAILLE_HERO_ETIQUETTE = 9.5    # .szh-hero-eyebrow / -dossier / -vol (700, capitales)
+TAILLE_HERO_TITRE = 28.0       # .szh-title
+TAILLE_HERO_SOUSTITRE = 14.5   # .szh-subtitle
+TAILLE_HERO_META = 12.5        # ul.szh-authors et .szh-doi
+TAILLE_HERO_LICENCE = 11.5     # .szh-licence — le plus petit texte du hero avec l'étiquette
+TAILLE_COURANTE = 9.0          # .szh-entete-courante et .szh-pied-courant
 
 # Seuil de référence du script : les aplats d'accent sont d'abord des fonds de tableau.
 SEUIL_TABLEAU = apca.seuil_pour(TAILLE_TABLEAU)      # 90
@@ -109,6 +120,90 @@ def var(nom):
     if hexa is None:
         manquants.append(nom)
     return hexa
+
+
+# ---- print.css : les couleurs lues là où elles servent ----
+# Le hero de couverture, l'en-tête courant et le pied ne passent pas par la palette
+# annuelle : leurs encres sont écrites dans print.css, tantôt en jeton :root, tantôt en hex
+# dans la règle. On les lit donc dans le fichier, sélecteur par sélecteur, plutôt que de les
+# recopier ici : une règle éclaircie ou supprimée doit faire réagir le test, pas le laisser
+# mesurer une couleur qui n'est plus à l'écran.
+CHEMIN_PRINT = os.path.join(PIPELINE, 'styles', 'print.css')
+try:
+    with open(CHEMIN_PRINT, encoding='utf-8') as f:
+        # Commentaires retirés, comme pour couleurs.css : ceux de print.css citent des hex
+        # et des noms de jetons, qui seraient pris pour des déclarations.
+        PRINT = re.sub(r'/\*.*?\*/', '', f.read(), flags=re.S)
+except OSError:
+    PRINT = ''
+
+# (liste de sélecteurs, corps) pour chaque bloc de règles. Les blocs imbriqués de @page et
+# de @media ressortent en vrac : sans effet ici, on ne cherche que des sélecteurs nommés.
+BLOCS = [(m.group(1), m.group(2)) for m in re.finditer(r'([^{}]+)\{([^{}]*)\}', PRINT)]
+
+regles_absentes = []   # (sélecteur, propriété) que print.css ne déclare pas / plus
+
+
+def _un_seul_espace(texte):
+    return re.sub(r'\s+', ' ', texte).strip()
+
+
+def _declaration(selecteur, propriete):
+    """Valeur brute que print.css donne à `propriete` pour `selecteur`, ou None.
+
+    Le dernier bloc l'emporte, comme la cascade à spécificité égale, et un sélecteur groupé
+    (« a, b { … } ») compte pour chacun de ses membres. Le lookbehind empêche `color` d'être
+    trouvé dans `background-color` et `background` dans `background-image`."""
+    motif = re.compile(r'(?<![-\w])' + re.escape(propriete) + r'\s*:\s*([^;}]+)')
+    cible = _un_seul_espace(selecteur)
+    trouve = None
+    for selecteurs, corps in BLOCS:
+        if not any(_un_seul_espace(s) == cible for s in selecteurs.split(',')):
+            continue
+        for m in motif.finditer(corps):
+            trouve = m.group(1)
+    return trouve
+
+
+def couleur_de(selecteur, propriete='color'):
+    """Hex écrit dans print.css pour `propriete` de `selecteur`, renvois var() résolus
+    d'abord dans print.css, ensuite dans couleurs.css. La recherche du hex n'est pas ancrée
+    en fin de valeur, pour lire aussi un raccourci (`border-top: 1px solid var(--c-rule)`).
+    None si la règle ou la propriété manque : la paire compte alors pour un échec, jamais
+    pour un oubli silencieux."""
+    valeur = _declaration(selecteur, propriete)
+    hexa = None
+    if valeur is not None:
+        renvoi = re.search(r'var\(\s*(--[\w-]+)\s*\)', valeur)
+        if renvoi:
+            hexa = (accent.resoudre_variable(PRINT, renvoi.group(1))
+                    or accent.resoudre_variable(CSS, renvoi.group(1)))
+        else:
+            brut = re.search(r'#(?:[0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})(?![0-9A-Fa-f])', valeur)
+            hexa = brut.group(0) if brut else None
+    if hexa is None:
+        regles_absentes.append((selecteur, propriete))
+    return hexa
+
+
+def opacite(selecteur):
+    """`opacity` déclarée par print.css pour `selecteur`. Elle fait partie de la couleur
+    réellement vue : une marque blanche à 50 % ne contraste pas comme du blanc."""
+    valeur = _declaration(selecteur, 'opacity')
+    try:
+        return float(valeur)
+    except (TypeError, ValueError):
+        regles_absentes.append((selecteur, 'opacity'))
+        return 1.0
+
+
+def melange(avant, fond, alpha):
+    """Couleur effectivement vue d'un avant-plan translucide sur `fond` : interpolation par
+    canal en sRGB, comme la composition d'un moteur de rendu."""
+    if avant is None or fond is None:
+        return None
+    return apca.vers_hex([alpha * a + (1.0 - alpha) * b
+                          for a, b in zip(apca.vers_rgb(avant), apca.vers_rgb(fond))])
 
 
 def mesure(libelle, texte, fond, seuil, hors_perimetre=None):
@@ -312,8 +407,64 @@ for nom, marque in COULEURS:
     mesure('%s --c-abstract-border (bordure/papier)' % nom,
            j['--c-abstract-border'], BLANC, NON_TEXTE)
 
+# ---- 5. Hero de couverture, en-tête courant, pied courant ----
+# Ces encres-là ne viennent pas de la palette annuelle et n'étaient mesurées par personne :
+# elles sont écrites en clair dans print.css. Le fond est lu comme le texte — le hero sur
+# son bleu nuit, l'en-tête et le pied sur le papier, qui n'a aucun fond déclaré et reste
+# donc le blanc de la page.
+# Deux marques du hero portent une `opacity` : elle est lue et composée sur le fond, sinon
+# on mesurerait une couleur que personne ne voit.
+# Exclusion volontaire : le filigrane .szh-book, blanc à 7 % d'opacité. C'est une texture
+# qui ne porte aucune information — la mesurer reviendrait à exiger qu'on la voie.
+titre("Couverture : encres du hero sur le bleu nuit (print.css §5)")
+NUIT = couleur_de('.szh-hero', 'background')
+SEUIL_HERO_ETIQUETTE = apca.seuil_pour(TAILLE_HERO_ETIQUETTE)
+mesure('nom de revue .szh-hero-eyebrow (%s px)' % _nb(TAILLE_HERO_ETIQUETTE),
+       couleur_de('.szh-hero-eyebrow'), NUIT, SEUIL_HERO_ETIQUETTE)
+mesure('étiquette de dossier .szh-hero-dossier (%s px)' % _nb(TAILLE_HERO_ETIQUETTE),
+       couleur_de('.szh-hero-dossier'), NUIT, SEUIL_HERO_ETIQUETTE)
+mesure('ligne « Vol. X · N/année » .szh-hero-vol (%s px)' % _nb(TAILLE_HERO_ETIQUETTE),
+       couleur_de('.szh-hero-vol'), NUIT, SEUIL_HERO_ETIQUETTE)
+mesure('titre .szh-title (%s px : gros titre)' % _nb(TAILLE_HERO_TITRE),
+       couleur_de('.szh-title'), NUIT, apca.seuil_pour(TAILLE_HERO_TITRE))
+mesure('sous-titre .szh-subtitle (%s px)' % _nb(TAILLE_HERO_SOUSTITRE),
+       couleur_de('.szh-subtitle'), NUIT, apca.seuil_pour(TAILLE_HERO_SOUSTITRE))
+mesure('auteur·e·s ul.szh-authors (%s px)' % _nb(TAILLE_HERO_META),
+       couleur_de('ul.szh-authors'), NUIT, apca.seuil_pour(TAILLE_HERO_META))
+mesure('DOI .szh-doi (%s px)' % _nb(TAILLE_HERO_META),
+       couleur_de('.szh-doi'), NUIT, apca.seuil_pour(TAILLE_HERO_META))
+mesure('mention de licence .szh-licence (%s px)' % _nb(TAILLE_HERO_LICENCE),
+       couleur_de('.szh-licence'), NUIT, apca.seuil_pour(TAILLE_HERO_LICENCE))
+# DOI et licence sont des liens : `.szh-hero a[href]` est plus spécifique que
+# `.szh-doi, .szh-licence` et c'est lui qui décide de la couleur à l'écran. Les deux règles
+# sont mesurées, sinon éclaircir l'une des deux seulement passerait inaperçu.
+mesure('lien du hero .szh-hero a[href] (couleur effective du DOI et de la licence)',
+       couleur_de('.szh-hero a[href]'), NUIT, apca.seuil_pour(TAILLE_HERO_LICENCE))
+# Les deux marques décoratives du hero, séparateur et icône : leur `opacity` entre dans la
+# couleur vue, donc dans le libellé — la baisser revient à éclaircir la marque.
+for selecteur, quoi in (('.szh-authors li + li::before', 'point médian entre auteur·e·s'),
+                        ('.szh-hero .szh-arrow', 'flèche « lien » du DOI et de la licence')):
+    alpha = opacite(selecteur)
+    mesure('%s (%s, opacité %d %%)' % (quoi, selecteur, round(100 * alpha)),
+           melange(couleur_de(selecteur), NUIT, alpha), NUIT, NON_TEXTE)
 
-# ---- 5. Sortie ----
+titre("Pages courantes : en-tête et pied sur le papier (print.css §3)")
+SEUIL_COURANTE = apca.seuil_pour(TAILLE_COURANTE)
+mesure('en-tête courant, dossier à gauche « .g » (%s px)' % _nb(TAILLE_COURANTE),
+       couleur_de('.szh-entete-courante .g'), BLANC, SEUIL_COURANTE)
+mesure('en-tête courant, Vol·numéro à droite « .d » (%s px)' % _nb(TAILLE_COURANTE),
+       couleur_de('.szh-entete-courante .d'), BLANC, SEUIL_COURANTE)
+mesure('filet sous l\'en-tête courant (1 px sur papier)',
+       couleur_de('.szh-entete-courante', 'border-bottom'), BLANC, NON_TEXTE)
+mesure('pied courant, ISSN (%s px)' % _nb(TAILLE_COURANTE),
+       couleur_de('.szh-pied-courant'), BLANC, SEUIL_COURANTE)
+mesure('pied courant, folio (%s px)' % _nb(TAILLE_COURANTE),
+       couleur_de('.szh-pied-courant .folio'), BLANC, SEUIL_COURANTE)
+mesure('filet au-dessus du pied courant (1 px sur papier)',
+       couleur_de('.szh-pied-courant', 'border-top'), BLANC, NON_TEXTE)
+
+
+# ---- 6. Sortie ----
 
 def afficher():
     largeur = max(len(l[0]) for l in lignes)
@@ -354,6 +505,9 @@ def afficher():
     print()
     if manquants:
         print('Variables introuvables dans couleurs.css : %s' % ', '.join(sorted(set(manquants))))
+    if regles_absentes:
+        print('Règles introuvables dans print.css : %s'
+              % ', '.join('%s { %s }' % (s, p) for s, p in sorted(set(regles_absentes))))
     print('%d paires vérifiées, %d échec(s).' % (total, len(echecs)))
     for libelle, texte, fond, valeur, seuil, _ in echecs:
         print('  ÉCHEC  %s : %s sur %s -> Lc %+.1f (seuil %d, tolérance %.1f)' % (

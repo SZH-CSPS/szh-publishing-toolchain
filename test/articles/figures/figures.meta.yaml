@@ -1,4 +1,5 @@
 type: article
+lang: fr
 doi: "10.57262/szh/2026-99-997"
 title:
   fr: "Six cas d'images, pour que le rendu ne mente pas"
@@ -25,3 +26,4 @@ author:
   nom: "d'essai"
   fonction: "Article de contrôle du rendu"
   affiliation: "SZH / CSPS"
+  orcid: "0000-0002-1825-0097"

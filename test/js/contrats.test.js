@@ -444,6 +444,12 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
   };
   // La fiche d'auteur·e est partagée par les trois vues : ses libellés viennent de
   // textesAuteur(), qu'Object.assign ajoute à chaque table.
+  // Trois entrees de textesNumero() et textesArticles() ne sont pas des textes mais des
+  // tables : `libelles` porte les intitules des champs indexes par cle i18n, `couleurs` la
+  // palette du numero, `revues` le nom des deux revues. L'extraction ci-dessus ne voit que
+  // les `nom: T(...)`, d'ou cette liste ; leur contenu est controle par
+  // test/js/articles.test.js, qui compare la table de champs du fragment aux cles envoyees.
+  const TABLES = ['libelles', 'couleurs', 'revues', 'couvertureExtensions', 'couvertureMax'];
   const auteur = cles('textesAuteur');
   const communes = new Set([...cles('textesCarteArticle'), ...auteur]);
   const pages = {
@@ -458,6 +464,16 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
     'medias-article': {
       libelles: new Set([...cles('textesMedias'), ...auteur]),
       fragments: ['_commun.js', '_auteurs.js']
+    },
+    // Le formulaire du numero et la vue « Articles » partagent media/_numero.js : ses
+    // libelles viennent de textesNumero(), qu'Object.assign ajoute a la table de la vue.
+    'metadata-issue': {
+      libelles: new Set([...cles('textesNumero'), ...TABLES]),
+      fragments: ['_commun.js', '_numero.js']
+    },
+    'articles': {
+      libelles: new Set([...cles('textesNumero'), ...cles('textesArticles'), ...TABLES]),
+      fragments: ['_commun.js', '_numero.js']
     }
   };
   for (const page of Object.keys(pages)) {
@@ -515,10 +531,13 @@ test('le tutoriel a ses libellés, ses dessins et des liens qui mènent quelque 
 // d'ensemble n'a rien à saisir.
 test('chaque formulaire qui écrit enregistre automatiquement', () => {
   const attendus = ['metadata-articles', 'metadata-issue', 'import-verif', 'medias-article',
-    'traduction', 'table-editor'];
+    'traduction', 'table-editor', 'articles'];
+  const partages = {
+    'metadata-articles': ['_fiches.js'], 'import-verif': ['_fiches.js'],
+    'metadata-issue': ['_numero.js'], 'articles': ['_numero.js']
+  };
   for (const page of attendus) {
-    const fragments = [page + '.js'];
-    if (page === 'metadata-articles' || page === 'import-verif') { fragments.push('_fiches.js'); }
+    const fragments = [page + '.js'].concat(partages[page] || []);
     const js = fragments
       .map((f) => fs.readFileSync(path.join(COCKPIT, 'media', f), 'utf8')).join(' ');
     assert.match(js, /SZH\.autoEnregistrement\(/,
@@ -533,7 +552,7 @@ test('chaque formulaire qui écrit enregistre automatiquement', () => {
 test('chaque webview reçoit le socle visuel, et ses fragments existent', () => {
   const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
   const appels = [...src.matchAll(/construireHtml\('([a-z-]+)', nonce, \{([\s\S]{0,700}?)\}\);/g)];
-  assert.strictEqual(appels.length, 8, 'appels à construireHtml : ' + appels.length);
+  assert.strictEqual(appels.length, 9, 'appels à construireHtml : ' + appels.length);
   for (const [, page, corps] of appels) {
     assert.ok(/cssPartage:\s*\[[^\]]*'_design\.css'/.test(corps), 'page sans le socle : ' + page);
     for (const m of corps.matchAll(/'(_[a-z]+\.(?:css|js))'/g)) {
@@ -566,7 +585,9 @@ test('les tables de protocole des webviews sont à jour', () => {
     'import-verif': ['_fiches.js'],
     'traduction': [],
     'medias-article': [],
-    'vue-ensemble': []
+    'vue-ensemble': [],
+    'metadata-issue': ['_numero.js'],
+    'articles': ['_numero.js']
   };
   for (const page of Object.keys(pages)) {
     const fichiers = [page + '.js'].concat(pages[page]);
@@ -611,29 +632,20 @@ test('citations : la liste de références est découpée comme le fait le filtr
   assert.match(entrees[1].texte, /Seuil\. https:/);
 });
 
-test('citations : le lexique des titres de bibliographie est le même que celui du filtre', () => {
-  const js = require(path.join(COCKPIT, 'lib', 'citations.js'));
-  const lua = lire('pipeline', 'filters', 'szh-citations.lua');
-  const bloc = lua.match(/local TITRES_BIB = \{([\s\S]*?)\}/);
-  assert.ok(bloc, 'TITRES_BIB introuvable dans szh-citations.lua');
-  const duLua = (bloc[1].match(/'([^']+)'/g) || []).map((s) => s.slice(1, -1)).sort();
-  // Le lexique JS n'est pas exporté : on le relit dans la source, comme pour le Lua.
-  const src = fs.readFileSync(path.join(COCKPIT, 'lib', 'citations.js'), 'utf8');
-  const blocJs = src.match(/const TITRES_BIB = \[([\s\S]*?)\]/);
-  const duJs = (blocJs[1].match(/'([^']+)'/g) || []).map((s) => s.slice(1, -1)).sort();
-  assert.deepStrictEqual(duJs, duLua);
-  assert.ok(js.estTitreBib('Literaturverzeichnis') && js.estTitreBib('Références bibliographiques'));
-});
+// Les deux lexiques de titres de bibliographie étaient comparés ici, expression régulière
+// contre expression régulière sur les deux textes source. Deux listes identiques ne disent
+// rien de deux résultats identiques : le repli des accents divergeait juste à côté, sans
+// qu'aucun contrôle bronche. La comparaison se fait désormais en exécutant les deux
+// implémentations, dans test/js/ancrages.test.js.
 
-test('citations : une suite d’entrée se reconnaît à la même règle des deux côtés', () => {
-  // Les trois cas qui faisaient recoller 100 références du corpus à la précédente.
+test('citations : une suite d’entrée se reconnaît aux cas qui ont déjà cassé', () => {
+  // Les cas qui faisaient recoller 100 références du corpus à la précédente. Le filtre Lua
+  // répond-il pareil ? test/js/ancrages.test.js le lui demande, il ne le lit pas.
   assert.strictEqual(cit.estContinuation('https://doi.org/10.1234/x'), true);
   assert.strictEqual(cit.estContinuation('mit Behinderungen nach Geschlecht, ohne année'), true);
   assert.strictEqual(cit.estContinuation('van der Aa, H. (2023). Un titre.'), false);
   assert.strictEqual(cit.estContinuation('Übereinkommen über die Rechte, vom 13. Dezember 2006'), false);
   assert.strictEqual(cit.estContinuation('*Bathelt, J. (2019). Adaptive behaviour.'), false);
-  const lua = lire('pipeline', 'filters', 'szh-citations.lua');
-  assert.match(lua, /c >= 97 and c <= 122/, 'le filtre doit tester la minuscule ASCII');
 });
 
 test('citations : lier un appel déjà lié le recible au lieu de l’imbriquer', () => {

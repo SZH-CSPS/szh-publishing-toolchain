@@ -2,40 +2,131 @@
 // rubriques, couverture, articles et galleys encodés en base64 — importable par
 // Outils > Importer/Exporter > Native XML. La structure, l'ordre des éléments et les
 // tics de sérialisation sont calqués sur un export natif réel de l'OJS cible.
+//
+// Deux revues, une seule instance : la « Revue suisse de pédagogie spécialisée » (locale
+// fr) et la « Schweizerische Zeitschrift für Heilpädagogik » (locale de) sont deux revues
+// OJS distinctes, avec leurs propres rubriques, leur propre groupe d'auteur et leur propre
+// compte de téléversement. OJS apparie tout cela PAR NOM à l'import : un intitulé
+// approximatif ne provoque pas d'erreur, il crée un doublon ou range l'article ailleurs.
+// D'où la règle de ce module : ce qui n'a pas été relevé sur l'instance reste vide, et un
+// champ vide obligatoire arrête l'export au lieu d'envoyer une valeur inventée.
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
-const { analyserAusgabe, analyserMeta, langueDefaut } = require('./yaml');
+const { analyserAusgabe, analyserMeta, langueDefaut, normaliserLangueArticle,
+  licenceArticle, normaliserLicence } = require('./yaml');
 const { estATraduire, MARQUE_A_TRADUIRE } = require('./traduction');
 const { imagesSansAlternative, listerImages } = require('./references');
-const { TEXTES_COCKPIT } = require('./i18n');
+const { referencesDuTexte } = require('./citations');
+const { CONFIG } = require('./archivage');
+const { T, TEXTES_COCKPIT } = require('./i18n');
 
-// ---- Constantes OJS, à ajuster selon la configuration de l'OJS cible ----
+// ---- Configuration de l'OJS cible ---------------------------------------------------
 //
-// À l'import, OJS rattache chaque article à sa rubrique par la `ref` ; les libellés et
-// seq ne servent que si la rubrique doit être créée, et les id internes portent
-// advice="ignore", OJS les remplaçant toujours.
-const SECTIONS_OJS = {
-  ED: { seq: 1, idInterne: 16, sansResume: 1, abbrev: { de: 'ED', fr: 'ED' }, titre: { de: 'Editorial', fr: 'Éditorial' } },
-  DT: { seq: 3, idInterne: 5, sansResume: 0, abbrev: { de: 'DT', fr: 'DT' }, titre: { de: 'Schwerpunkt', fr: 'Dossier thématique' } },
-  VA: { seq: 4, idInterne: 8, sansResume: 0, abbrev: { de: 'VA', fr: 'VA' }, titre: { de: 'Varia', fr: 'Varia' } },
-  TL: { seq: 5, idInterne: 15, sansResume: 1, abbrev: { de: 'TL', fr: 'TL' }, titre: { de: 'Freie Tribüne', fr: 'Tribune libre' } },
-  DC: { seq: 6, idInterne: 14, sansResume: 1, abbrev: { de: 'DK', fr: 'DC' }, titre: { de: 'Dokumentation', fr: 'Documentation' } }
+// Les valeurs ci-dessous sont celles relevées sur ojs.szh.ch (OJS 3.5.0.4) : elles
+// servent de défauts, et le config.json du poste les surcharge, champ par champ (voir
+// configOjs()). Ce qui n'a pas pu être relevé reste '' : le panneau « Réglages SZH » le
+// montre vide, avec l'endroit où aller le chercher, et l'export refuse de partir plutôt
+// que de deviner.
+//
+// Les deux locales sont celles des deux revues, et non celles d'un article : une revue
+// OJS n'a qu'une locale d'interface.
+const LOCALES_REVUE = ['fr', 'de'];
+
+// Un champ par revue. `libelle` et `ou` sont des clés i18n : le même couple sert au
+// libellé du panneau et au message qui bloque l'export, il n'y a donc qu'un endroit à
+// corriger. `requis` : vide, l'export s'arrête.
+const CHAMPS_REVUE = [
+  { cle: 'genreFichier', requis: true,  libelle: 'ojs.libelle.genre',       ou: 'ojs.ou.genre' },
+  { cle: 'groupeAuteur', requis: true,  libelle: 'ojs.libelle.groupe',      ou: 'ojs.ou.groupe' },
+  { cle: 'televerseur',  requis: true,  libelle: 'ojs.libelle.televerseur', ou: 'ojs.ou.televerseur' },
+  { cle: 'paysAuteur',   requis: false, libelle: 'ojs.libelle.pays',        ou: 'ojs.ou.pays' }
+];
+
+// Côté français : valeurs éprouvées par un import réel. Côté allemand : rien n'a été
+// relevé — ni le nom du composant de soumission, ni celui du groupe d'auteur, ni le
+// compte de téléversement. Le pays n'a été relevé dans aucune des deux revues ; il était
+// écrit « CH » en dur jusqu'ici, ce qui affirmait la nationalité de chaque auteur sans
+// l'avoir vérifiée. Il part donc vide, et <country> est simplement omis.
+const DEFAUTS_REVUE = {
+  fr: { genreFichier: "Texte de l'article", groupeAuteur: 'Auteur', televerseur: 'redaction', paysAuteur: '' },
+  de: { genreFichier: '', groupeAuteur: '', televerseur: '', paysAuteur: '' }
 };
-const SECTION_PAR_TYPE = {
+
+// Rubriques réelles des deux revues, dans l'ordre de la base OJS. À l'import, OJS
+// apparie chaque rubrique aux rubriques existantes titre par titre et abréviation par
+// abréviation ; `section_ref` d'un article, lui, est résolu sur la seule ABRÉVIATION
+// (filterByAbbrevs). D'où deux conséquences :
+//   — `cle` n'est qu'un identifiant interne au cockpit, celui que la table des types
+//     désigne ; il ne part jamais dans le XML ;
+//   — `ref` et `section_ref` portent l'abréviation de la revue visée, pas la clé. C'est
+//     ce qui fait qu'un article de Documentation atterrit dans « DK » sur la Zeitschrift
+//     et dans « DC » sur la Revue.
+//
+// Pièges relevés sur l'instance, à ne pas « corriger » : « Ed » en allemand mais « ED »
+// en français ; « Tribune Libre » avec une majuscule côté français et « Tribune libre »
+// sans côté allemand, le libellé de cette rubrique étant français dans la revue
+// allemande. « ART » est du rétro-catalogue de migration, non une rubrique d'usage
+// courant, mais elle existe et occupe le seq 2.
+//
+// `sansResume` : la rubrique n'exige pas de résumé (abstracts_not_required d'OJS).
+// `sansDoi`   : la rubrique n'exige pas de DOI. Vérifié pour Documentation ; posé aussi
+//               pour le podcast, la langue facile et les annonces, qui ne portent pas
+//               d'article scientifique — un DOI y reste accepté s'il y en a un.
+// `idInterne` : id de la base OJS, écrit avec advice="ignore" et donc toujours réattribué
+//               à l'import. Aucune importance ; il suit la référence pour rester lisible.
+// Abréviation et titre vides = jamais relevés : la rubrique « Annonces / Inserate » est
+// absente de ListSets bien qu'elle paraisse dans tous les sommaires.
+const RUBRIQUES_DEFAUT = [
+  { cle: 'ED',      seq: 1, sansResume: 1, sansDoi: 0, idInterne: 16,
+    abbrev: { fr: 'ED',  de: 'Ed' },          titre: { fr: 'Éditorial',          de: 'Editorial' } },
+  { cle: 'ART',     seq: 2, sansResume: 0, sansDoi: 0, idInterne: 17,
+    abbrev: { fr: 'ART', de: 'ART' },         titre: { fr: 'Articles',           de: 'Artikel' } },
+  { cle: 'DT',      seq: 3, sansResume: 0, sansDoi: 0, idInterne: 5,
+    abbrev: { fr: 'DT',  de: 'TS' },          titre: { fr: 'Dossier thématique', de: 'Themenschwerpunkt' } },
+  { cle: 'VA',      seq: 4, sansResume: 0, sansDoi: 0, idInterne: 8,
+    abbrev: { fr: 'VA',  de: 'FB' },          titre: { fr: 'Varia',              de: 'Freie Beiträge' } },
+  { cle: 'TL',      seq: 5, sansResume: 1, sansDoi: 0, idInterne: 15,
+    abbrev: { fr: 'TL',  de: 'TL' },          titre: { fr: 'Tribune Libre',      de: 'Tribune libre' } },
+  { cle: 'DC',      seq: 6, sansResume: 1, sansDoi: 1, idInterne: 14,
+    abbrev: { fr: 'DC',  de: 'DK' },          titre: { fr: 'Documentation',      de: 'Dokumentation' } },
+  { cle: 'PODCAST', seq: 7, sansResume: 1, sansDoi: 1, idInterne: 0,
+    abbrev: { fr: '',    de: 'SZH-Podcast' }, titre: { fr: '',                   de: 'SZH-Podcast' } },
+  { cle: 'LS',      seq: 8, sansResume: 1, sansDoi: 1, idInterne: 0,
+    abbrev: { fr: '',    de: 'LS' },          titre: { fr: '',                   de: 'Leichte Sprache' } },
+  { cle: 'AN',      seq: 9, sansResume: 1, sansDoi: 1, idInterne: 0,
+    abbrev: { fr: '',    de: '' },            titre: { fr: 'Annonces',           de: 'Inserate' } }
+];
+
+// Type d'article (fiche <slug>.meta.yaml) -> clé de rubrique. Il n'existe sur l'instance
+// ni « Entretien » ni « Interview » : une interview part dans le dossier thématique.
+const TYPES_DEFAUT = {
   editorial: 'ED', article: 'DT', interview: 'DT',
   varia: 'VA', 'tribune-libre': 'TL', documentation: 'DC'
 };
-const GENRE_FICHIER = "Texte de l'article";
-const TELEVERSEUR = 'redaction';
-const GROUPE_AUTEUR = 'Auteur';
-const URL_LICENCE = 'https://creativecommons.org/licenses/by/4.0';
-const PAYS_AUTEUR = 'CH';
+
+// Forme réelle des DOI de la maison : un seul préfixe, la lettre distinguant la revue,
+// AAAA-NN le numéro dans l'année et SS le compteur dans le numéro. Le générateur de DOI
+// est reporté ; ce motif ne sert donc qu'à signaler un DOI saisi de travers — un « r »
+// sur la Zeitschrift, par exemple, qui se publierait sans que rien ne le dise.
+const FORME_DOI = {
+  fr: { motif: /^10\.57161\/r\d{4}-\d{2}-\d{2}$/, exemple: '10.57161/r2026-03-05' },
+  de: { motif: /^10\.57161\/z\d{4}-\d{2}-\d{2}$/, exemple: '10.57161/z2026-03-05' }
+};
+
+// Crédits de figure qui ne posent aucune question de licence : la maison elle-même.
+// Comparés sur leurs lettres seules, si bien que « © SZH », « (c) csps » et « © SZH/CSPS »
+// sont le même crédit. Le nom d'un·e auteur·e de l'article compte aussi pour sien : c'est
+// lui ou elle qui a confié l'image à la revue.
+const CREDITS_MAISON = ['szh', 'csps'];
+
+// Les galleys sont émis dans cet ordre, et OJS respecte l'ordre d'import : DOCX, HTML,
+// PDF, comme le site les affiche.
 const FORMATS_GALLEY = [
-  { etiquette: 'PDF', ext: 'pdf' },
+  { etiquette: 'DOCX', ext: 'docx' },
   { etiquette: 'HTML', ext: 'html' },
-  { etiquette: 'DOCX', ext: 'docx' }
+  { etiquette: 'PDF', ext: 'pdf' }
 ];
 const NOMS_COUVERTURE = ['couverture.jpg', 'couverture.jpeg', 'couverture.png'];
 // Légende que Ctrl+Alt+F et « Insérer dans le texte » posent en attendant la vraie, dans
@@ -61,6 +152,10 @@ function echapperHtml(valeur) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function texte(valeur) {
+  return String(valeur === undefined || valeur === null ? '' : valeur).trim();
+}
+
 function formaterDateIso(d) {
   const p2 = (n) => String(n).padStart(2, '0');
   return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
@@ -72,22 +167,27 @@ function formaterHorodatage(d) {
     '-' + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
 }
 
+// Lettres et chiffres d'une chaîne, sans accents ni ponctuation : de quoi comparer deux
+// crédits écrits à la main. Rien d'autre n'en dépend, et la comparaison reste large
+// exprès — c'est un avertissement qu'elle sert, pas un blocage.
+function cleCredit(valeur) {
+  return String(valeur === undefined || valeur === null ? '' : valeur)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+// L'URL de licence telle que l'export de référence de la maison l'écrit : sans barre
+// finale. La forme canonique de Creative Commons la porte, et c'est elle que lib/yaml.js
+// garde et que le gabarit HTML imprime ; l'XML déjà importé dans OJS ne bouge pas pour si
+// peu, donc la barre est retirée ici, au seul endroit qui la refuse.
+function urlOjs(url) {
+  return String(url || '').replace(/\/+$/, '');
+}
+
 function localesNonVides(map) {
   return Object.keys(map || {})
     .filter((l) => String(map[l] || '').trim() !== '')
     .sort();
-}
-
-// Langues à écrire pour une rubrique. À l'import, OJS apparie chaque rubrique aux
-// rubriques existantes titre par titre et langue par langue : un titre dans une langue que
-// la revue cible n'emploie pas ne correspond à rien et provoque « … est identique à une
-// rubrique existante dans la revue, mais un autre titre de cette rubrique ne correspond à
-// aucun autre titre de rubrique existante ». On n'écrit donc que la langue du numéro ; les
-// autres restent dans SECTIONS_OJS pour l'autre revue. Repli sur tout ce qui existe si la
-// langue du numéro manque à la table, `abbrev` et `title` étant requis par le schéma.
-function localesRubrique(map, locale) {
-  const toutes = localesNonVides(map);
-  return toutes.indexOf(locale) !== -1 ? [locale] : toutes;
 }
 
 function morceauNomFichier(valeur) {
@@ -108,66 +208,277 @@ function listerSlugs(racine) {
     .sort();
 }
 
+// ---- Lecture et écriture de la configuration -----------------------------------------
+//
+// Support retenu : le config.json du poste, celui que lit lib/archivage.js et que
+// partagent les scripts PowerShell. Pourquoi celui-là et non un fichier par numéro : ces
+// valeurs décrivent l'INSTANCE OJS (noms de composants, de rôles, de comptes,
+// abréviations de rubriques), pas le numéro. Rangées dans le dossier d'un numéro, elles
+// partiraient à l'archivage et un numéro rouvert trois ans plus tard réimporterait avec
+// les intitulés de 2026 ; rangées dans le poste, elles suivent l'instance, se corrigent
+// une fois pour les deux revues, et bootstrap.ps1 a déjà donné au groupe Utilisateurs le
+// droit d'y écrire.
+//
+// SZH_CONFIG_OJS impose un autre fichier : le harnais s'en sert, et une vérification en
+// ligne de commande aussi, sans toucher à C:\ProgramData.
+function cheminConfigOjs() {
+  return texte(process.env.SZH_CONFIG_OJS) || CONFIG;
+}
+
+// BOM retiré avant l'analyse, comme dans lib/archivage.js : d'anciens config.json en
+// portent un, et JSON.parse le refuse.
+function lireConfigPoste() {
+  try { return JSON.parse(String(fs.readFileSync(cheminConfigOjs(), 'utf8')).replace(/^\uFEFF/, '')); }
+  catch (e) { return null; }
+}
+
+function cloner(v) { return JSON.parse(JSON.stringify(v)); }
+
+// Clé de rubrique : identifiant interne, jamais écrit dans le XML. Conservateur, parce
+// qu'il sert d'index partout.
+function normaliserCleRubrique(valeur) {
+  return texte(valeur).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32);
+}
+
+// Défauts + surcharge du poste, champ par champ. La règle est « la clé présente gagne,
+// même vide » : ce que le panneau montre est ce que l'export emploie, et vider un champ
+// dans l'interface doit avoir un effet, sinon le défaut reviendrait en douce.
+//
+// Les rubriques sont fusionnées PAR CLÉ, et une clé inconnue est ajoutée à la suite :
+// une configuration qui ne corrige qu'un titre allemand ne perd pas le reste de la
+// table, et une rubrique ajoutée dans l'interface survit à une mise à jour du logiciel.
+function normaliserConfigOjs(brut) {
+  const src = (brut && typeof brut.ojs === 'object' && brut.ojs) ? brut.ojs : {};
+
+  const revues = {};
+  const parRevue = (src.revues && typeof src.revues === 'object') ? src.revues : {};
+  for (const loc of LOCALES_REVUE) {
+    const surcharge = (parRevue[loc] && typeof parRevue[loc] === 'object') ? parRevue[loc] : {};
+    const cible = {};
+    for (const champ of CHAMPS_REVUE) {
+      cible[champ.cle] = champ.cle in surcharge
+        ? texte(surcharge[champ.cle])
+        : DEFAUTS_REVUE[loc][champ.cle];
+    }
+    revues[loc] = cible;
+  }
+
+  const rubriques = cloner(RUBRIQUES_DEFAUT);
+  const rang = {};
+  rubriques.forEach((r, i) => { rang[r.cle] = i; });
+  let seqMax = rubriques.reduce((m, r) => Math.max(m, r.seq), 0);
+  for (const brute of (Array.isArray(src.rubriques) ? src.rubriques : [])) {
+    const cle = normaliserCleRubrique(brute && brute.cle);
+    if (cle === '') { continue; }
+    if (rang[cle] === undefined) {
+      seqMax += 1;
+      rubriques.push({
+        cle: cle, seq: seqMax, sansResume: 1, sansDoi: 1, idInterne: 0,
+        abbrev: { fr: '', de: '' }, titre: { fr: '', de: '' }
+      });
+      rang[cle] = rubriques.length - 1;
+    }
+    const cible = rubriques[rang[cle]];
+    for (const clef of ['abbrev', 'titre']) {
+      const map = (brute && typeof brute[clef] === 'object' && brute[clef]) || {};
+      for (const loc of LOCALES_REVUE) {
+        if (loc in map) { cible[clef][loc] = texte(map[loc]); }
+      }
+    }
+    for (const drapeau of ['sansResume', 'sansDoi']) {
+      if (brute && drapeau in brute) { cible[drapeau] = brute[drapeau] ? 1 : 0; }
+    }
+    if (brute && 'seq' in brute) {
+      const n = Number(brute.seq);
+      if (Number.isFinite(n) && n > 0) { cible.seq = Math.floor(n); }
+    }
+  }
+
+  const types = Object.assign({}, TYPES_DEFAUT);
+  const surchargeTypes = (src.types && typeof src.types === 'object') ? src.types : {};
+  for (const type of Object.keys(surchargeTypes)) {
+    const cle = normaliserCleRubrique(surchargeTypes[type]);
+    if (cle !== '' && rang[cle] !== undefined) { types[type] = cle; }
+  }
+
+  return { revues: revues, rubriques: rubriques, types: types };
+}
+
+// La configuration effective : ce que le panneau affiche et ce que l'export emploie.
+function configOjs() {
+  return normaliserConfigOjs(lireConfigPoste());
+}
+
+// Écrit la configuration venue du panneau sous la clé `ojs` de config.json, sans toucher
+// au reste du fichier (devMode, mailsTraduction…). Rend null, ou le message de l'échec.
+function ecrireConfigOjs(config) {
+  try {
+    const fichier = lireConfigPoste() || {};
+    // Normalisée avant d'être écrite : le fichier porte toujours la table complète, et
+    // une valeur venue du panneau ne s'y écrit pas telle quelle.
+    fichier.ojs = normaliserConfigOjs({ ojs: config });
+    fs.writeFileSync(cheminConfigOjs(), JSON.stringify(fichier, null, 2) + '\n', 'utf8');
+    return null;
+  } catch (e) { return String((e && e.message) || e); }
+}
+
 // ---- Collecte et garde-fous ----------------------------------------------------------
 
-function collecter(racine, avertissements) {
+// Un manque de configuration ne se corrige pas dans le numéro mais dans les réglages :
+// le message nomme le champ, la revue, et l'écran d'OJS où relever la valeur.
+function manqueConfig(libelle, locale, ou) {
+  return T('ojs.err.config', [libelle, T('ojs.revue.' + locale), ou]);
+}
+
+// Les références d'un article, en texte brut, relues au dernier moment dans son .md.
+// referencesDuTexte() lève quand les tables de repli du filtre de citations sont
+// inaccessibles (toolkit absent ou plus ancien que le cockpit) : ce n'est pas une raison
+// d'arrêter l'export d'un numéro entier, donc on le dit une fois et on continue sans
+// <citations>.
+function lecteurReferences(avertissements) {
+  let panne = null;                                // message déjà signalé, ou null
+  return function (md, prefixe, exigees) {
+    if (panne !== null) { return []; }
+    let entrees = [];
+    try { entrees = referencesDuTexte(md); }
+    catch (e) {
+      panne = T(e && e.messageCle ? e.messageCle : 'cit.toolkit.absent');
+      avertissements.push(T('ojs.avert.citations.tables', [panne]));
+      return [];
+    }
+    const liste = entrees.map((e) => texte(e.texte)).filter((t) => t !== '');
+    if (liste.length === 0 && exigees) { avertissements.push(prefixe + T('ojs.avert.citations.aucune')); }
+    return liste;
+  };
+}
+
+function collecter(racine, cfg, avertissements) {
   let brut;
   try { brut = fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8'); }
-  catch (e) { throw new Error('ausgabe.yaml introuvable — « ' + racine + ' » n\'est pas un dossier de revue.'); }
+  catch (e) { throw new Error(T('ojs.err.ausgabe', [racine])); }
   const valeurs = analyserAusgabe(brut);
 
   const numero = {
     locale: langueDefaut(valeurs),                 // jeton de revue, puis lang:, puis fr
-    titre: String(valeurs.title || '').trim(),
-    volume: String(valeurs.volume || '').trim(),
-    numero: String(valeurs.numero || '').trim(),
+    titre: texte(valeurs.title),
+    volume: texte(valeurs.volume),
+    numero: texte(valeurs.numero),
     annee: (String(valeurs.date || '').match(/\d{4}/) || [''])[0],
-    datePublication: (String(valeurs.date || '').trim().match(/^(\d{4}-\d{2}-\d{2})$/) || [])[1] || '',
+    datePublication: (texte(valeurs.date).match(/^(\d{4}-\d{2}-\d{2})$/) || [])[1] || '',
     couverture: null
   };
-  if (!numero.volume) { avertissements.push('ausgabe.yaml : volume absent.'); }
-  if (!numero.numero) { avertissements.push('ausgabe.yaml : numero absent.'); }
-  if (!numero.annee) { avertissements.push('ausgabe.yaml : aucune année (4 chiffres) dans date.'); }
+
+  const bloquants = [];
+  const bloquantsConfig = [];      // ce qui se corrige dans les réglages, pas dans le numéro
+
+  // La configuration de la revue visée : sans elle, rien de ce qui suit n'a de sens.
+  // Une locale hors des deux revues (un numéro marqué `lang: it`, par exemple) n'a pas
+  // de configuration du tout et s'arrête ici.
+  const revue = cfg.revues[numero.locale] || null;
+  if (!revue) {
+    throw new Error(T('ojs.err.locale', [numero.locale, LOCALES_REVUE.join(', ')]));
+  }
+  for (const champ of CHAMPS_REVUE) {
+    const valeur = texte(revue[champ.cle]);
+    if (valeur === '' && champ.requis) {
+      bloquantsConfig.push(manqueConfig(T(champ.libelle), numero.locale, T(champ.ou)));
+    }
+  }
+  // Le pays n'est pas obligatoire, mais un « Suisse » saisi à la place de « CH » ne
+  // serait pas un pays pour OJS : mieux vaut l'omettre en le disant.
+  const pays = texte(revue.paysAuteur);
+  if (pays === '') { avertissements.push(T('ojs.avert.pays')); }
+  else if (!/^[A-Za-z]{2}$/.test(pays)) {
+    avertissements.push(T('ojs.avert.pays.forme', [pays]));
+    revue.paysAuteur = '';
+  }
+
+  if (!numero.volume) { avertissements.push(T('ojs.avert.volume')); }
+  if (!numero.numero) { avertissements.push(T('ojs.avert.numero')); }
+  if (!numero.annee) { avertissements.push(T('ojs.avert.annee')); }
+  // Un numéro part avec published="1" : sans date de publication, OJS le publie sans
+  // date et il faut la ressaisir article par article dans l'interface. Le gabarit livre
+  // désormais une date complète ; ce qui manque encore, c'est la vraie.
   if (!numero.datePublication) {
-    avertissements.push('ausgabe.yaml : date n\'est pas une date complète AAAA-MM-JJ — date_published omise (à saisir dans OJS).');
+    bloquants.push(T('ojs.err.date', [texte(valeurs.date) || '—']));
   }
   for (const nom of NOMS_COUVERTURE) {
     if (fs.existsSync(path.join(racine, nom))) { numero.couverture = nom; break; }
   }
   if (!numero.couverture) {
-    avertissements.push('Aucune couverture (' + NOMS_COUVERTURE.join(', ') + ') à la racine — <covers> omis.');
+    avertissements.push(T('ojs.avert.couverture', [NOMS_COUVERTURE.join(', ')]));
   }
 
   const slugs = listerSlugs(racine);
   if (slugs.length === 0) {
-    throw new Error('Aucun article (articles/<slug>/<slug>.md) dans ' + racine + '.');
+    throw new Error(T('ojs.err.aucunArticle', [racine]));
   }
 
-  const bloquants = [];
+  const parCle = {};
+  for (const r of cfg.rubriques) { parCle[r.cle] = r; }
+  const lireReferences = lecteurReferences(avertissements);
+
+  // Une rubrique employée par un article doit avoir son abréviation et son titre dans la
+  // langue de la revue : l'abréviation est la seule chose sur laquelle OJS résout
+  // `section_ref`, et le titre est requis par le schéma. C'est le cas de « Annonces /
+  // Inserate », dont l'abréviation n'a jamais pu être relevée.
+  const rubriquesVues = {};
+  const verifierRubrique = (r) => {
+    if (rubriquesVues[r.cle]) { return; }
+    rubriquesVues[r.cle] = true;
+    const nom = texte(r.titre[numero.locale]) || texte(r.titre[LOCALES_REVUE[0]]) || r.cle;
+    if (texte(r.abbrev[numero.locale]) === '') {
+      bloquantsConfig.push(manqueConfig(T('ojs.libelle.abbrevDe', [nom]), numero.locale, T('ojs.ou.rubriques')));
+    }
+    if (texte(r.titre[numero.locale]) === '') {
+      bloquantsConfig.push(manqueConfig(T('ojs.libelle.titreDe', [r.cle]), numero.locale, T('ojs.ou.rubriques')));
+    }
+  };
   const articles = [];
   for (const slug of slugs) {
     const prefixe = 'articles/' + slug + ' : ';
     const cheminMeta = path.join(racine, 'articles', slug, slug + '.meta.yaml');
     let meta = null;
     try { meta = analyserMeta(fs.readFileSync(cheminMeta, 'utf8')); }
-    catch (e) { bloquants.push(prefixe + slug + '.meta.yaml introuvable (formulaire « Métadonnées » jamais enregistré ?).'); }
+    catch (e) { bloquants.push(prefixe + T('ojs.err.fiche', [slug + '.meta.yaml'])); }
 
-    const article = { slug: slug, meta: meta, section: '', fichiers: [] };
+    const article = { slug: slug, meta: meta, rubrique: null, fichiers: [], references: [] };
     if (meta) {
-      const ref = SECTION_PAR_TYPE[String(meta.type || '').trim()];
-      if (!ref) {
-        bloquants.push(prefixe + (meta.type ? 'type « ' + meta.type + ' » sans rubrique OJS.' : 'type d\'article absent.'));
+      const rubrique = parCle[cfg.types[texte(meta.type)]] || null;
+      if (!rubrique) {
+        bloquants.push(prefixe + (meta.type
+          ? T('ojs.err.type.inconnu', [texte(meta.type)])
+          : T('ojs.err.type.absent')));
       }
-      article.section = ref || '';
-      if (localesNonVides(meta.title).length === 0) { bloquants.push(prefixe + 'aucun titre (title) dans aucune langue.'); }
+      article.rubrique = rubrique;
+      if (rubrique) { verifierRubrique(rubrique); }
+
+      // La langue de l'article prime sur celle du numéro : c'est elle qui décide de la
+      // maquette, et c'est donc dans elle que le titre et le résumé doivent exister.
+      // Le locale de la soumission reste celui de la revue — une revue OJS n'a qu'une
+      // locale, et une soumission déclarée dans une autre serait refusée à l'import.
+      const langue = normaliserLangueArticle(meta.lang) || numero.locale;
+      if (langue !== numero.locale) {
+        avertissements.push(prefixe + T('ojs.avert.langue', [langue.toUpperCase(), numero.locale.toUpperCase()]));
+      }
+      if (localesNonVides(meta.title).length === 0) { bloquants.push(prefixe + T('ojs.err.titre.aucun')); }
+      else if (texte((meta.title || {})[langue]) === '') {
+        bloquants.push(prefixe + T('ojs.err.titre.langue', [langue.toUpperCase()]));
+      }
       // Auteurs exploitables : au moins un prénom ou un nom. Une simple affiliation ne
       // fait pas un auteur OJS, givenname étant requis par le schéma.
       article.auteurs = (meta.author || []).filter((a) => (a.prenom || '').trim() !== '' || (a.nom || '').trim() !== '');
-      if (article.auteurs.length === 0) { bloquants.push(prefixe + 'aucun auteur.'); }
-      if (localesNonVides(meta.subtitle).length === 0) { avertissements.push(prefixe + 'sous-titre absent.'); }
-      if (localesNonVides(meta.resume).length === 0) { avertissements.push(prefixe + 'résumé absent.'); }
+      if (article.auteurs.length === 0) { bloquants.push(prefixe + T('ojs.err.auteur.aucun')); }
+      if (localesNonVides(meta.subtitle).length === 0) { avertissements.push(prefixe + T('ojs.avert.soustitre')); }
+      // Le résumé n'est exigé que là où OJS l'exige : un éditorial, une tribune libre ou
+      // une page de documentation part sans, un article du dossier non.
+      const exigeResume = !!(rubrique && !rubrique.sansResume);
+      if (texte((meta.resume || {})[langue]) === '') {
+        if (exigeResume) { bloquants.push(prefixe + T('ojs.err.resume.langue', [langue.toUpperCase()])); }
+        else if (localesNonVides(meta.resume).length === 0) { avertissements.push(prefixe + T('ojs.avert.resume')); }
+      }
       if (Object.keys(meta.keywords || {}).every((l) => !(meta.keywords[l] || []).length)) {
-        avertissements.push(prefixe + 'mots-clés absents.');
+        avertissements.push(prefixe + T('ojs.avert.motscles'));
       }
       // La marque « TO BE TRANSLATED » tient la place d'un mot-clé non traduit : utile en
       // atelier, désastreuse une fois publiée, et c'est ici le dernier moment pour la
@@ -175,14 +486,33 @@ function collecter(racine, avertissements) {
       for (const l of Object.keys(meta.keywords || {})) {
         const n = (meta.keywords[l] || []).filter((m) => estATraduire(m)).length;
         if (n > 0) {
-          avertissements.push(prefixe + n + ' mot(s)-clé(s) ' + l.toUpperCase() +
-            ' non traduits (marqués « ' + MARQUE_A_TRADUIRE + " ») — ils partiraient tels quels dans OJS.");
+          avertissements.push(prefixe + T('ojs.avert.motscles.marque',
+            [n, l.toUpperCase(), MARQUE_A_TRADUIRE]));
         }
       }
-      if (!String(meta.doi || '').trim()) { avertissements.push(prefixe + 'DOI absent.'); }
-      const sansEmail = article.auteurs.filter((a) => !String(a.email || '').trim()).length;
-      if (sansEmail > 0) {
-        avertissements.push(prefixe + sansEmail + ' auteur(s) sans email (contact vide dans OJS).');
+      // Le DOI n'est pas généré par la chaîne : il est saisi. Un article qui en manque
+      // partirait sans identifiant pérenne et sans dépôt Crossref, ce qui ne se répare
+      // pas après publication — l'export s'arrête, sauf dans les rubriques qui n'en
+      // reçoivent pas.
+      const doi = texte(meta.doi);
+      if (doi === '') {
+        if (rubrique && rubrique.sansDoi) { avertissements.push(prefixe + T('ojs.avert.doi.sans')); }
+        else { bloquants.push(prefixe + T('ojs.err.doi')); }
+      } else if (!FORME_DOI[numero.locale].motif.test(doi)) {
+        avertissements.push(prefixe + T('ojs.avert.doi.forme', [doi, FORME_DOI[numero.locale].exemple]));
+      }
+      // Licence de l'article : CC-BY 4.0 quand la fiche ne dit rien, exactement comme
+      // avant que le champ existe. Rien à signaler dans ce cas.
+      if (normaliserLicence(meta.licence) === 'droits-reserves') {
+        avertissements.push(prefixe + T('ojs.avert.licence.reserves'));
+      }
+      const sansEmail = article.auteurs.filter((a) => !texte(a.email)).length;
+      if (sansEmail > 0) { avertissements.push(prefixe + T('ojs.avert.email', [sansEmail])); }
+      const orcidsTordus = article.auteurs
+        .filter((a) => texte(a.orcid) !== '' && orcidCanonique(a.orcid) === '')
+        .map((a) => texte(a.orcid));
+      if (orcidsTordus.length > 0) {
+        avertissements.push(prefixe + T('ojs.avert.orcid', [orcidsTordus.join(', ')]));
       }
     }
 
@@ -194,9 +524,7 @@ function collecter(racine, avertissements) {
       const manquantes = imagesSansAlternative(texteMd);
       if (manquantes.length > 0) {
         const noms = manquantes.map((i) => i.relatif || i.cible || '?').join(', ');
-        avertissements.push(prefixe + manquantes.length + ' image(s) sans texte alternatif ni légende, ' +
-          'et non déclarées décoratives : ' + noms +
-          ' — elles partiraient en images décoratives. À reprendre dans le formulaire des médias.');
+        avertissements.push(prefixe + T('ojs.avert.alt', [manquantes.length, noms]));
       }
       // « Légende » est le texte que Ctrl+Alt+F et le bouton « Insérer » posent en attendant
       // la vraie légende : publié tel quel, il s'imprime sous la figure. Les deux langues
@@ -204,26 +532,70 @@ function collecter(racine, avertissements) {
       const oubliees = listerImages(texteMd)
         .filter((i) => LEGENDES_PAR_DEFAUT.has(i.legende.trim().toLowerCase()));
       if (oubliees.length > 0) {
-        avertissements.push(prefixe + oubliees.length + ' figure(s) portent encore la légende posée par ' +
-          'défaut à l’insertion : ' + oubliees.map((i) => i.relatif || i.cible || '?').join(', ') +
-          ' — elle s’imprimerait telle quelle sous la figure.');
+        avertissements.push(prefixe + T('ojs.avert.legende',
+          [oubliees.length, oubliees.map((i) => i.relatif || i.cible || '?').join(', ')]));
       }
+      // Crédit de figure contre licence de l'article : une figure créditée à un tiers,
+      // sous une licence Creative Commons qui autorise la reprise, est le cas que la
+      // couverture ne sait pas dire — elle annonce CC-BY pour tout l'article, crédit
+      // « © Getty » compris. Avertissement et non blocage : « tiers » est une heuristique
+      // sur du texte libre, elle se trompe dans les deux sens, et arrêter un export sur
+      // elle coûterait plus qu'elle ne rapporte. Le lien entre crédit et licence reste
+      // donc à la charge de la rédaction ; ceci le lui rappelle en nommant la figure.
+      const licence = licenceArticle(meta && meta.licence);
+      if (licence.url !== '') {
+        const siens = (((meta && meta.author) || [])
+          .map((a) => cleCredit(a && a.nom)).filter((c) => c.length >= 3))
+          .concat(CREDITS_MAISON);
+        const tierces = listerImages(texteMd).filter((i) => {
+          const c = cleCredit(i.copyright);
+          return c !== '' && !siens.some((m) => c.indexOf(m) !== -1);
+        });
+        if (tierces.length > 0) {
+          const noms = tierces
+            .map((i) => (i.relatif || i.cible || '?') + ' (' + i.copyright.trim() + ')')
+            .join(', ');
+          avertissements.push(prefixe + T('ojs.avert.licence.figure',
+            [licence.nom, tierces.length, noms]));
+        }
+      }
+      // Les références partent en texte brut, une par ligne, telles que le .md les
+      // porte : la chaîne ne sait pas les structurer et n'essaie pas.
+      article.references = lireReferences(texteMd, prefixe,
+        !!(article.rubrique && !article.rubrique.sansResume));
     } catch (e) { /* .md illisible : les galleys manquants le diront déjà */ }
 
     for (const format of FORMATS_GALLEY) {
       const chemin = path.join(racine, 'out', slug, slug + '.' + format.ext);
       if (!fs.existsSync(chemin)) {
-        bloquants.push(prefixe + 'out/' + slug + '/' + slug + '.' + format.ext + ' manquant — lancer « Tout exporter »' +
-          (format.ext === 'docx' ? ' puis la cible make docx.' : '.'));
+        bloquants.push(prefixe + T(format.ext === 'docx' ? 'ojs.err.galley.docx' : 'ojs.err.galley',
+          ['out/' + slug + '/' + slug + '.' + format.ext]));
       }
       article.fichiers.push({ etiquette: format.etiquette, ext: format.ext, chemin: chemin });
     }
     articles.push(article);
   }
-  if (bloquants.length > 0) {
-    throw new Error('Export OJS impossible :\n- ' + bloquants.join('\n- '));
+  // La configuration d'abord : elle explique souvent le reste, et c'est elle qui décide
+  // du bouton que l'hôte propose.
+  const tous = bloquantsConfig.concat(bloquants);
+  if (tous.length > 0) {
+    const e = new Error(T('ojs.bloquants') + '\n- ' + tous.join('\n- '));
+    e.szhConfigOjs = bloquantsConfig.length > 0;
+    throw e;
   }
-  return { numero: numero, articles: articles };
+  return { numero: numero, articles: articles, revue: revue };
+}
+
+// ORCID canonique, mêmes règles que szh-maquette.lua : identifiant nu ou URL complète ->
+// https://orcid.org/<ID>, X final en majuscule ; une URL sans identifiant reconnaissable
+// est reprise telle quelle ; tout le reste rend '' — pas de balise vide dans le XML, et
+// un avertissement le dit.
+function orcidCanonique(valeur) {
+  const v = texte(valeur);
+  if (v === '') { return ''; }
+  const m = v.match(/\d{4}-\d{4}-\d{4}-\d{3}[\dxX]/);
+  if (m) { return 'https://orcid.org/' + m[0].toUpperCase(); }
+  return /^https?:\/\//i.test(v) ? v : '';
 }
 
 // ---- Génération -----------------------------------------------------------------------
@@ -231,15 +603,18 @@ function collecter(racine, avertissements) {
 // -> { chemin, avertissements: string[] }. Écrit
 // native-<AAAAMMJJ-HHMMSS>-<volume>-<numero>.xml à la racine de la revue, en écriture
 // atomique. Lève une Error listant tous les manques bloquants avant d'écrire quoi que ce
-// soit. options.maintenant fixe l'horodatage, ce dont se servent les tests.
+// soit. options.maintenant fixe l'horodatage et options.config impose une configuration,
+// ce dont se servent les tests.
 function genererExportOjs(racine, options) {
   options = options || {};
   const maintenant = options.maintenant instanceof Date ? options.maintenant : new Date();
   const aujourdHui = formaterDateIso(maintenant);
   const avertissements = [];
-  const collecte = collecter(racine, avertissements);
+  const cfg = options.config ? normaliserConfigOjs({ ojs: options.config }) : configOjs();
+  const collecte = collecter(racine, cfg, avertissements);
   const numero = collecte.numero;
   const articles = collecte.articles;
+  const revue = collecte.revue;
 
   // Un seul compteur global, donc des id uniques dans tout le fichier. OJS les
   // ré-attribue tous à l'import ; seuls comptent les renvois internes, qui pointent vers
@@ -247,16 +622,15 @@ function genererExportOjs(racine, options) {
   let prochainId = 1;
   const allouer = () => prochainId++;
   const idNumero = allouer();
-  const parSection = {};                           // seq de publication PAR rubrique (1, 2, …)
+  const parRubrique = {};                          // seq de publication PAR rubrique (1, 2, …)
   for (const a of articles) {
     a.idArticle = allouer();
     for (const f of a.fichiers) { f.idSubmission = allouer(); f.idFichier = allouer(); }
     a.idPublication = allouer();
     for (const auteur of a.auteurs) { auteur.idAuteur = allouer(); }
-    a.galleys = a.fichiers.slice().sort((x, y) => x.etiquette < y.etiquette ? -1 : 1)
-      .map((f) => ({ id: allouer(), etiquette: f.etiquette, refSubmission: f.idSubmission }));
-    parSection[a.section] = (parSection[a.section] || 0) + 1;
-    a.seq = parSection[a.section];
+    a.galleys = a.fichiers.map((f) => ({ id: allouer(), etiquette: f.etiquette, refSubmission: f.idSubmission }));
+    parRubrique[a.rubrique.cle] = (parRubrique[a.rubrique.cle] || 0) + 1;
+    a.seq = parRubrique[a.rubrique.cle];
   }
 
   // Écriture par morceaux : seuls le plus gros asset encodé en base64 et le tampon
@@ -271,13 +645,13 @@ function genererExportOjs(racine, options) {
   const vider = () => {
     if (tampon.length > 0) { fs.writeSync(fd, tampon.join('')); tampon.length = 0; enAttente = 0; }
   };
-  const w = (texte) => {
-    tampon.push(texte);
-    enAttente += texte.length;
+  const w = (texteAEcrire) => {
+    tampon.push(texteAEcrire);
+    enAttente += texteAEcrire.length;
     if (enAttente >= 1 << 20) { vider(); }
   };
-  const ligne = (retrait, balise, attributs, texte) => {
-    w(' '.repeat(retrait) + '<' + balise + attributs + '>' + echapperXml(texte) + '</' + balise + '>\n');
+  const ligne = (retrait, balise, attributs, contenu) => {
+    w(' '.repeat(retrait) + '<' + balise + attributs + '>' + echapperXml(contenu) + '</' + balise + '>\n');
   };
 
   try {
@@ -292,19 +666,27 @@ function genererExportOjs(racine, options) {
     if (numero.annee) { ligne(4, 'year', '', numero.annee); }
     if (numero.titre) { ligne(4, 'title', ' locale="' + numero.locale + '"', numero.titre); }
     w('  </issue_identification>\n');
-    if (numero.datePublication) { ligne(2, 'date_published', '', numero.datePublication); }
-    ligne(2, 'last_modified', '', numero.datePublication || aujourdHui);
+    ligne(2, 'date_published', '', numero.datePublication);
+    ligne(2, 'last_modified', '', numero.datePublication);
 
-    const refs = Object.keys(parSection).sort((a, b) => SECTIONS_OJS[a].seq - SECTIONS_OJS[b].seq);
+    // Une seule langue par rubrique, celle de la revue : OJS apparie les rubriques titre
+    // par titre ET langue par langue, et un titre dans une langue que la revue cible
+    // n'emploie pas ne correspond à rien — « … est identique à une rubrique existante
+    // dans la revue, mais un autre titre de cette rubrique ne correspond à aucun autre
+    // titre de rubrique existante ». Les intitulés de l'autre revue restent dans la
+    // table, pour l'autre revue.
+    const utilisees = Object.keys(parRubrique)
+      .map((cle) => articles.find((a) => a.rubrique.cle === cle).rubrique)
+      .sort((a, b) => a.seq - b.seq);
     w('  <sections>\n');
-    for (const ref of refs) {
-      const s = SECTIONS_OJS[ref];
-      w('    <section ref="' + ref + '" seq="' + s.seq + '" editor_restricted="0" meta_indexed="1"' +
-        ' meta_reviewed="0" abstracts_not_required="' + s.sansResume + '" hide_title="0" hide_author="0"' +
+    for (const s of utilisees) {
+      w('    <section ref="' + echapperXml(s.abbrev[numero.locale]) + '" seq="' + s.seq +
+        '" editor_restricted="0" meta_indexed="1"' +
+        ' meta_reviewed="0" abstracts_not_required="' + (s.sansResume ? 1 : 0) + '" hide_title="0" hide_author="0"' +
         ' abstract_word_count="0">\n');
-      ligne(6, 'id', ' type="internal" advice="ignore"', s.idInterne);
-      for (const l of localesRubrique(s.abbrev, numero.locale)) { ligne(6, 'abbrev', ' locale="' + l + '"', s.abbrev[l]); }
-      for (const l of localesRubrique(s.titre, numero.locale)) { ligne(6, 'title', ' locale="' + l + '"', s.titre[l]); }
+      if (s.idInterne) { ligne(6, 'id', ' type="internal" advice="ignore"', s.idInterne); }
+      ligne(6, 'abbrev', ' locale="' + numero.locale + '"', s.abbrev[numero.locale]);
+      ligne(6, 'title', ' locale="' + numero.locale + '"', s.titre[numero.locale]);
       w('    </section>\n');
     }
     w('  </sections>\n');
@@ -314,7 +696,7 @@ function genererExportOjs(racine, options) {
       w('  <covers>\n');
       w('    <cover locale="' + numero.locale + '">\n');
       ligne(6, 'cover_image', '', numero.couverture);
-      ligne(6, 'cover_image_alt_text', '', numero.titre || 'Couverture');
+      ligne(6, 'cover_image_alt_text', '', numero.titre || T('ojs.couverture.alt'));
       w('      <embed encoding="base64">');
       w(fs.readFileSync(cheminCouverture).toString('base64'));  // une seule ligne, comme la référence
       w('</embed>\n');
@@ -336,7 +718,7 @@ function genererExportOjs(racine, options) {
         const octets = fs.readFileSync(f.chemin);
         w('      <submission_file' + XSI + ' id="' + f.idSubmission + '" created_at="' + aujourdHui + '"' +
           ' file_id="' + f.idFichier + '" stage="proof" updated_at="' + aujourdHui + '" viewable="false"' +
-          ' genre="' + echapperXml(GENRE_FICHIER) + '" uploader="' + TELEVERSEUR + '"' + SCHEMA + '>\n');
+          ' genre="' + echapperXml(revue.genreFichier) + '" uploader="' + echapperXml(revue.televerseur) + '"' + SCHEMA + '>\n');
         ligne(8, 'name', loc, a.slug + '.' + f.ext);
         w('        <file id="' + f.idFichier + '" filesize="' + octets.length + '" extension="' + f.ext + '">\n');
         w('          <embed encoding="base64">');
@@ -349,10 +731,10 @@ function genererExportOjs(racine, options) {
 
       w('      <publication' + XSI + ' version="1" status="3"' +
         ' primary_contact_id="' + a.auteurs[0].idAuteur + '" url_path="" seq="' + a.seq + '"' +
-        ' access_status="0"' + (numero.datePublication ? ' date_published="' + numero.datePublication + '"' : '') +
-        ' section_ref="' + a.section + '"' + SCHEMA + '>\n');
+        ' access_status="0" date_published="' + numero.datePublication + '"' +
+        ' section_ref="' + echapperXml(a.rubrique.abbrev[numero.locale]) + '"' + SCHEMA + '>\n');
       ligne(8, 'id', ' type="internal" advice="ignore"', a.idPublication);
-      if (String(meta.doi || '').trim()) { ligne(8, 'id', ' type="doi" advice="update"', String(meta.doi).trim()); }
+      if (texte(meta.doi)) { ligne(8, 'id', ' type="doi" advice="update"', texte(meta.doi)); }
       for (const l of localesNonVides(meta.title)) { ligne(8, 'title', ' locale="' + l + '"', meta.title[l].trim()); }
       for (const l of localesNonVides(meta.subtitle)) { ligne(8, 'subtitle', ' locale="' + l + '"', meta.subtitle[l].trim()); }
       // Le résumé est une valeur HTML : texte échappé pour le HTML, puis l'ensemble pour
@@ -360,7 +742,11 @@ function genererExportOjs(racine, options) {
       for (const l of localesNonVides(meta.resume)) {
         ligne(8, 'abstract', ' locale="' + l + '"', '<p>' + echapperHtml(meta.resume[l].trim()) + '</p>');
       }
-      ligne(8, 'licenseUrl', '', URL_LICENCE);
+      // Licence de l'article, CC-BY 4.0 par défaut. « Droits réservés » n'a pas d'adresse
+      // et n'en reçoit pas de fabriquée : l'élément est alors absent, et collecter() l'a
+      // dit dans les avertissements.
+      const licence = licenceArticle(meta.licence);
+      if (licence.url !== '') { ligne(8, 'licenseUrl', '', urlOjs(licence.url)); }
       const nomsAuteurs = a.auteurs
         .map((x) => ((x.prenom || '').trim() + ' ' + (x.nom || '').trim()).trim())
         .join(', ');
@@ -382,8 +768,10 @@ function genererExportOjs(racine, options) {
       a.auteurs.forEach((auteur, i) => {
         const prenom = (auteur.prenom || '').trim();
         const nom = (auteur.nom || '').trim();
-        w('          <author include_in_browse="true" user_group_ref="' + echapperXml(GROUPE_AUTEUR) + '"' +
+        w('          <author include_in_browse="true" user_group_ref="' + echapperXml(revue.groupeAuteur) + '"' +
           ' seq="' + i + '" id="' + auteur.idAuteur + '">\n');
+        // Ordre imposé par le schéma (type `identity`) : givenname, familyname,
+        // affiliation, country, email, url, orcid.
         // givenname est requis par le schéma : un auteur sans prénom y met son nom
         // entier, comme le fait la référence pour « Edition SZH/CSPS ».
         ligne(12, 'givenname', loc, prenom || nom);
@@ -393,8 +781,12 @@ function genererExportOjs(racine, options) {
           ligne(14, 'name', loc, auteur.affiliation.trim());
           w('            </affiliation>\n');
         }
-        ligne(12, 'country', '', PAYS_AUTEUR);
-        if (String(auteur.email || '').trim()) { ligne(12, 'email', '', String(auteur.email).trim()); }
+        if (revue.paysAuteur) { ligne(12, 'country', '', revue.paysAuteur); }
+        if (texte(auteur.email)) { ligne(12, 'email', '', texte(auteur.email)); }
+        // L'ORCID est saisi dans la fiche et imprimé dans le PDF ; il n'allait pas dans
+        // OJS, donc pas non plus dans le dépôt Crossref.
+        const orcid = orcidCanonique(auteur.orcid);
+        if (orcid) { ligne(12, 'orcid', '', orcid); }
         w('          </author>\n');
       });
       w('        </authors>\n');
@@ -407,7 +799,15 @@ function genererExportOjs(racine, options) {
         w('          <submission_file_ref id="' + g.refSubmission + '"/>\n');
         w('        </article_galley>\n');
       }
-      // <citations> et <pages> omis : la chaîne n'en a pas de source fiable.
+      // <citations> vient après les galleys : le schéma en fait le dernier élément d'une
+      // publication. Une référence par <citation>, en texte brut — OJS concatène le
+      // contenu des enfants ligne par ligne dans citationsRaw.
+      if (a.references.length > 0) {
+        w('        <citations>\n');
+        for (const reference of a.references) { ligne(10, 'citation', '', reference); }
+        w('        </citations>\n');
+      }
+      // <pages> omis : aucun article n'est paginé dans la chaîne.
       w('      </publication>\n');
       w('    </article>\n');
     }
@@ -425,7 +825,10 @@ function genererExportOjs(racine, options) {
   return { chemin: chemin, avertissements: avertissements };
 }
 
-module.exports = { genererExportOjs };
+module.exports = {
+  genererExportOjs, configOjs, ecrireConfigOjs, normaliserConfigOjs, cheminConfigOjs,
+  orcidCanonique, CHAMPS_REVUE, LOCALES_REVUE, RUBRIQUES_DEFAUT, TYPES_DEFAUT
+};
 
 if (require.main === module) {
   const racine = process.argv[2];

@@ -12,9 +12,10 @@
 --      parenthèse devient le lien ; la prose autour n'est pas touchée. Un appel narratif
 --      met donc le lien sur l'année, comme le font les revues en ligne.
 --   3. le rapport : chaque appel sans référence et chaque référence jamais appelée part sur
---      stderr, où le journal de compilation le montre au rédacteur. Avec SZH_APERCU=1, les
---      appels non liés reçoivent en plus la classe « szh-appel-orphelin », que print.css
---      souligne en pointillé dans l'aperçu seulement.
+--      stderr, où le journal de compilation le montre au rédacteur — en constats codés, qui
+--      NOMMENT leur article (voir « constats au rédacteur » plus bas). Avec SZH_APERCU=1,
+--      les appels non liés reçoivent en plus la classe « szh-appel-orphelin », que
+--      print.css souligne en pointillé dans l'aperçu seulement.
 --
 -- Un lien écrit à la main dans le .md (« [(Shaw et al., 2023)](#ref-shaw-2023) », ce que
 -- pose l'action « Lier à une référence » du cockpit) est respecté tel quel ; s'il pointe
@@ -34,26 +35,201 @@ end
 local function trim(t) return (t:gsub('^%s+', ''):gsub('%s+$', '')) end
 local function normaliser(t) return trim(assainir(t):gsub('%s+', ' ')) end
 
--- Repli d'accents, octet par octet : les motifs Lua ignorent l'UTF-8, et « É » ou « ü »
--- doivent se comparer à « e » et « u ». Table volontairement courte : les lettres
--- latines des deux revues.
-local REPLI = {
-  ['\195\128']='a',['\195\129']='a',['\195\130']='a',['\195\131']='a',['\195\132']='a',['\195\133']='a',
-  ['\195\134']='ae',['\195\135']='c',['\195\136']='e',['\195\137']='e',['\195\138']='e',['\195\139']='e',
-  ['\195\140']='i',['\195\141']='i',['\195\142']='i',['\195\143']='i',['\195\145']='n',
-  ['\195\146']='o',['\195\147']='o',['\195\148']='o',['\195\149']='o',['\195\150']='o',['\195\152']='o',
-  ['\195\153']='u',['\195\154']='u',['\195\155']='u',['\195\156']='u',['\195\157']='y',
-  ['\195\160']='a',['\195\161']='a',['\195\162']='a',['\195\163']='a',['\195\164']='a',['\195\165']='a',
-  ['\195\166']='ae',['\195\167']='c',['\195\168']='e',['\195\169']='e',['\195\170']='e',['\195\171']='e',
-  ['\195\172']='i',['\195\173']='i',['\195\174']='i',['\195\175']='i',['\195\177']='n',
-  ['\195\178']='o',['\195\179']='o',['\195\180']='o',['\195\181']='o',['\195\182']='o',['\195\184']='o',
-  ['\195\185']='u',['\195\186']='u',['\195\187']='u',['\195\188']='u',['\195\189']='y',['\195\191']='y',
-  ['\197\147']='oe',['\197\146']='oe',['\197\189']='z',['\197\190']='z',['\195\159']='ss',
+-- ---------------------------------------------------------------- constats au rédacteur
+-- Une ligne, le format que le cockpit lit déjà pour l'import :
+--
+--   [citations-<ton>] <code> | article « <slug> » | <champ> | … | <fr> | [de] <de>
+--
+-- Le préfixe porte le TON, le deuxième champ un CODE stable, et l'article est NOMMÉ.
+-- Deux défauts corrigés d'un coup : ces lignes n'étaient qu'en français, et le cockpit
+-- devait reconnaître leurs phrases pour les redire en allemand ; elles ne disaient pas de
+-- quel article elles parlaient, et le cockpit prenait celui de la ligne
+-- « pandoc articles/<slug>/… » qui précédait — sous « make -j », celle d'un autre article.
+-- La prose n'est plus qu'un repli d'affichage : elle se reformule sans rien casser.
+--
+-- slug_article() est le même que celui de szh-maquette.lua, cinq lignes recopiées. Deux
+-- filtres pandoc ne partagent pas de module sans que le Makefile leur pose un chemin de
+-- recherche, et celui-ci est en plus relu comme un fichier de données par lib/citations.js
+-- du cockpit. Même arbitrage que la lecture de `lang:`, déjà notée comme dette.
+local function slug_article()
+  local fichiers = (PANDOC_STATE and PANDOC_STATE.input_files) or {}
+  local chemin = fichiers[1]
+  if type(chemin) ~= 'string' then return '' end
+  return (chemin:gsub('.*[/\\]', ''):gsub('%.md$', ''))
+end
+
+-- « | » sépare les champs : un texte d'article qui en porte un couperait la ligne en deux
+-- et emporterait la moitié allemande. Le seul endroit où cela peut venir du texte, c'est
+-- l'appel et l'entrée de bibliographie recopiés dans un champ.
+local function sans_barre(t) return (tostring(t):gsub('|', '/')) end
+
+local function constat(ton, code, champs, fr, de)
+  local morceaux = { '[citations-' .. ton .. '] ' .. code,
+                     'article « ' .. slug_article() .. ' »' }
+  for _, c in ipairs(champs) do morceaux[#morceaux + 1] = sans_barre(c) end
+  morceaux[#morceaux + 1] = sans_barre(fr)
+  morceaux[#morceaux + 1] = '[de] ' .. sans_barre(de)
+  io.stderr:write(table.concat(morceaux, ' | ') .. '\n')
+end
+
+local function avertir(code, champs, fr, de) constat('avertissement', code, champs, fr, de) end
+
+-- Repli des lettres latines sur leur base ASCII, en un seul endroit pour toute la chaîne :
+-- lib/citations.js du cockpit relit ces tables ici plutôt que d'en tenir une copie. Deux
+-- copies, c'étaient deux résultats — « Zieliński » donnait « zielinski » au cockpit et
+-- « zieliski » à la compilation, et le lien posé à la main mourait dans le PDF.
+--
+-- Un jeton par point de code, dans l'ordre du bloc, séparés par des espaces : la base
+-- ASCII (« ae », « ss », « oe » pour les ligatures) ou « - » pour un caractère qui n'est
+-- pas une lettre. Les quatre blocs couvrent le latin entier, diacritiques polonais,
+-- turcs, roumains, croates et lettons compris.
+--
+-- Les jetons viennent de la décomposition Unicode (NFD), complétée à la main pour les
+-- lettres barrées qu'elle ne décompose pas : Đ, Ł, Ø, Ħ, Ŧ, Ð, Þ, ß, Æ, Œ. Un caractère
+-- absent des blocs n'est pas remplacé par du vide en douce : il part sur stderr.
+--
+-- Refaire ou vérifier un jeton, sans autre outil que Node : la base ASCII d'un point de
+-- code est sa décomposition NFD privée de ses marques combinantes, quand il n'en reste que
+-- de l'ASCII.
+--
+--   node -e "const s=String.fromCodePoint(0x0144).normalize('NFD').replace(/\p{M}/gu,'');
+--            console.log(/^[A-Za-z0-9]+$/.test(s) ? s.toLowerCase() : 'a poser a la main')"
+--
+-- Une quarantaine de lettres ne se décomposent pas et n'ont donc pas de base calculable :
+-- leurs jetons sont posés à la main, une fois. Le contrôle, lui, est automatique :
+-- test/js/ancrages.test.js replie des deux côtés tous les points de code des quatre blocs,
+-- les marques combinantes et un échantillon non latin, puis compare. Un jeton faux ou
+-- décalé s'y voit ; un bloc raccourci aussi, le cockpit refusant une table de moins de
+-- 600 jetons.
+local REPLI_BLOCS = {
+  -- U+00C0..U+00FF  latin-1
+  { 0x00C0, [[
+    a a a a a a ae c e e e e i i i i d n o o o o o -
+    o u u u u y th ss a a a a a a ae c e e e e i i i i
+    d n o o o o o - o u u u u y th y
+  ]] },
+  -- U+0100..U+017F  latin etendu A
+  { 0x0100, [[
+    a a a a a a c c c c c c c c d d d d e e e e e e
+    e e e e g g g g g g g g h h h h i i i i i i i i
+    i i ij ij j j k k k l l l l l l l l l l n n n n n
+    n n n n o o o o o o oe oe r r r r r r s s s s s s
+    s s t t t t t t u u u u u u u u u u u u w w y y
+    y z z z z z z s
+  ]] },
+  -- U+0180..U+024F  latin etendu B
+  { 0x0180, [[
+    b b b b b b o c c d d d d d e e e f f g g hv i i
+    k k l l m n n o o o oi oi p p r s s sh s t t t t u
+    u u v y y z z z z z z 2 5 5 ts w - - - - dz dz dz lj
+    lj lj nj nj nj a a i i o o u u u u u u u u u u e a a
+    a a ae ae g g g g k k o o o o z z j dz dz dz g g hv w
+    n n a a ae ae o o a a a a e e e e i i i i o o o o
+    r r r r u u u u s s t t g g h h n d ou ou z z a a
+    e e o o o o o o o o y y l n t j db qp a c c l t s
+    z - - b u v e e j j q q r r y y
+  ]] },
+  -- U+1E00..U+1EFF  latin etendu additionnel
+  { 0x1E00, [[
+    a a b b b b b b c c d d d d d d d d d d e e e e
+    e e e e e e f f g g h h h h h h h h h h i i i i
+    k k k k k k l l l l l l l l m m m m m m n n n n
+    n n n n o o o o o o o o p p p p r r r r r r r r
+    s s s s s s s s s s t t t t t t t t u u u u u u
+    u u u u v v v v w w w w w w w w w w x x x x y y
+    z z z z z z h t w y a s s s ss d a a a a a a a a
+    a a a a a a a a a a a a a a a a e e e e e e e e
+    e e e e e e e e i i i i o o o o o o o o o o o o
+    o o o o o o o o o o o o u u u u u u u u u u u u
+    u u y y y y y y y y ll ll v v y y
+  ]] },
 }
 
+-- Retirés sans un mot : espaces, ponctuation, marques combinantes, symboles. Aucun d'eux
+-- ne porte d'identifiant, et les signaler noierait le journal de compilation.
+local PLAGES_IGNOREES = {
+  { 0x00A0, 0x00BF }, { 0x02B0, 0x02FF }, { 0x0300, 0x036F }, { 0x1AB0, 0x1AFF },
+  { 0x1DC0, 0x1DFF }, { 0x2000, 0x206F }, { 0x2070, 0x209F }, { 0x20A0, 0x20D0 },
+  { 0x2100, 0x214F }, { 0x2190, 0x2BFF }, { 0xFE00, 0xFE0F }, { 0x1F000, 0x1FAFF },
+}
+
+local REPLI = {}
+for _, bloc in ipairs(REPLI_BLOCS) do
+  local cp = bloc[1]
+  for jeton in bloc[2]:gmatch('%S+') do
+    -- « - » : retiré sans un mot. « ? » : hors table, donc signalé.
+    if jeton ~= '?' then REPLI[cp] = (jeton == '-') and '' or jeton end
+    cp = cp + 1
+  end
+end
+
+local function ignore(cp)
+  for _, p in ipairs(PLAGES_IGNOREES) do
+    if cp >= p[1] and cp <= p[2] then return true end
+  end
+  return false
+end
+
+-- Un caractère hors des tables est retiré — mais jamais en silence. C'est ce silence qui
+-- faisait « Şahin » devenir « ahin » ici et « sahin » au cockpit : l'ancre du PDF et le
+-- lien du .md ne se rencontraient plus, et rien ne le disait.
+local signales = {}
+local function signaler(cp)
+  if signales[cp] then return end
+  signales[cp] = true
+  local car = '?'
+  local ok, c = pcall(utf8.char, cp)
+  if ok then car = c end
+  avertir('caractere-sans-repli',
+    { 'caractere « ' .. car .. ' »', string.format('point U+%04X', cp) },
+    string.format('Caractère sans repli ASCII, retiré des identifiants : « %s » (U+%04X).',
+      car, cp),
+    string.format('Zeichen ohne ASCII-Ersatz, aus den Kennungen entfernt: « %s » (U+%04X).',
+      car, cp))
+end
+
+local function repli(cp)
+  local r = REPLI[cp]
+  if r then return r end
+  if ignore(cp) then return '' end
+  signaler(cp)
+  return ''
+end
+
+-- Replie les lettres accentuées et laisse le reste tel quel : virgules, points et espaces
+-- restent en place, ce dont noms_de() a besoin pour découper une en-tête.
+--
+-- ⚠ Décodage UTF-8 à la main, et non utf8.codes : celui-ci lève sur un octet isolé, et un
+-- .md relu d'un docx en porte parfois un. Ici l'octet fautif est simplement retiré.
+local function replier(t)
+  local out, i, n = {}, 1, #(t or '')
+  while i <= n do
+    local b = t:byte(i)
+    if b < 0x80 then
+      out[#out + 1] = t:sub(i, i)
+      i = i + 1
+    else
+      local cp, long
+      if b >= 0xF0 then cp, long = b - 0xF0, 4
+      elseif b >= 0xE0 then cp, long = b - 0xE0, 3
+      elseif b >= 0xC0 then cp, long = b - 0xC0, 2
+      else cp, long = nil, 1 end                   -- octet de continuation orphelin
+      if cp then
+        for k = 1, long - 1 do
+          local c = t:byte(i + k)
+          if not c or c < 0x80 or c > 0xBF then cp, long = nil, k break end
+          cp = cp * 64 + (c - 0x80)
+        end
+      end
+      i = i + long
+      if cp then out[#out + 1] = repli(cp) end
+    end
+  end
+  return table.concat(out)
+end
+
 local function plat(t)
-  t = assainir(t or ''):gsub('[\194-\244][\128-\191]*', function(c) return REPLI[c] or c end)
-  return (t:lower():gsub('[^a-z0-9]', ''))
+  return (replier(assainir(t or '')):lower():gsub('[^a-z0-9]', ''))
 end
 
 -- Majuscule initiale, accents compris : le premier octet d'une lettre accentuée est
@@ -152,8 +328,7 @@ local function noms_de(entete)
   -- texte d'origine, « Weiß » se coupait en « Wei » puis « ß », et « Schröttle » en
   -- « Schr » puis « öttle » — le nom relevé ne correspondait alors plus à celui de l'appel,
   -- et la référence passait pour introuvable.
-  local f = assainir(entete or ''):gsub('[\194-\244][\128-\191]*',
-                                        function(c) return REPLI[c] or c end)
+  local f = replier(assainir(entete or ''))
   local noms = {}
   -- « Nom, X. », « Nom & Autre » : le nom est ce qui précède la virgule ou l'esperluette.
   -- Pas de test de majuscule ici : le repli des accents rend « Ö » en « o », et une raison
@@ -179,8 +354,7 @@ end
 -- majuscule n'entre ici, ce qui permet à lib/citations.js du cockpit de calculer le même
 -- identifiant en JavaScript — sans quoi le lien posé à la main pointerait dans le vide.
 local function nom_pour_id(entete)
-  local f = assainir(entete or ''):gsub('[\194-\244][\128-\191]*',
-                                        function(c) return REPLI[c] or c end)
+  local f = replier(assainir(entete or ''))
   for jeton in f:lower():gmatch('[a-z0-9]+') do
     if #jeton >= 2 then return jeton end
   end
@@ -220,6 +394,15 @@ local function est_continuation(txt)
   if not (c >= 97 and c <= 122) then return false end
   return txt:sub(1, 130):find('%f[%d](%d%d%d%d)%f[%D]') == nil
 end
+
+-- Point d'entrée de test : test/js/ancrages.test.js charge ce fichier par dofile et
+-- exécute ces fonctions sur les mêmes entrées que lib/citations.js du cockpit, puis compare
+-- les résultats. Comparer les deux sources par expression régulière ne prouvait rien du
+-- résultat : c'est ainsi que l'écart de repli a pu vivre.
+SZH_CITATIONS = {
+  replier = replier, plat = plat, nom_pour_id = nom_pour_id,
+  est_titre_bib = est_titre_bib, est_continuation = est_continuation,
+}
 
 -- ------------------------------------------------------------------ détection des appels
 local function est_annee(jeton)
@@ -658,8 +841,9 @@ function Pandoc(doc)
         if ancrages[id] then
           appelees[id] = true
         else
-          io.stderr:write(string.format(
-            '[citations] ⚠ lien manuel vers un ancrage inconnu : %s\n', il.target))
+          avertir('ancrage-inconnu', { 'ancrage « ' .. il.target .. ' »' },
+            'Lien manuel vers un ancrage inconnu : ' .. il.target .. '.',
+            'Manuelle Verknüpfung auf eine unbekannte Textmarke: ' .. il.target .. '.')
         end
       end
     end
@@ -734,17 +918,30 @@ function Pandoc(doc)
       if not appelees[f.id] then jamais[#jamais + 1] = f.texte:sub(1, 70) end
     end
   end
-  io.stderr:write(string.format(
-    '[citations] %d référence(s), %d appel(s) : %d lié(s), %d ambigu(s), %d sans référence\n',
-    #fiches, appels, appels - #orphelins - #ambigus, #ambigus, #orphelins))
+  -- Le bilan est un chiffre, pas une plainte : ton « info ». Le cockpit ne le montre que
+  -- s'il reste quelque chose à lier.
+  local lies = appels - #orphelins - #ambigus
+  constat('info', 'bilan',
+    { 'references ' .. #fiches, 'appels ' .. appels, 'lies ' .. lies,
+      'ambigus ' .. #ambigus, 'sansref ' .. #orphelins },
+    string.format('%d référence(s), %d appel(s) : %d lié(s), %d ambigu(s), %d sans référence.',
+      #fiches, appels, lies, #ambigus, #orphelins),
+    string.format('%d Eintrag/Einträge, %d Verweis(e): %d verknüpft, %d mehrdeutig, %d ohne Eintrag.',
+      #fiches, appels, lies, #ambigus, #orphelins))
   for _, o in ipairs(orphelins) do
-    io.stderr:write('[citations] ⚠ appel sans référence : ' .. o .. '\n')
+    avertir('appel-sans-reference', { 'appel « ' .. o .. ' »' },
+      'Appel sans référence : ' .. o .. '.',
+      'Zitatverweis ohne Eintrag im Verzeichnis: ' .. o .. '.')
   end
   for _, a in ipairs(ambigus) do
-    io.stderr:write('[citations] ⚠ appel ambigu, à lier à la main : ' .. a .. '\n')
+    avertir('appel-ambigu', { 'appel « ' .. a .. ' »' },
+      'Appel ambigu, à lier à la main : ' .. a .. '.',
+      'Mehrdeutiger Zitatverweis, von Hand zu verknüpfen: ' .. a .. '.')
   end
   for _, j in ipairs(jamais) do
-    io.stderr:write('[citations] ⚠ référence jamais appelée : ' .. j .. '…\n')
+    avertir('reference-orpheline', { 'reference « ' .. j .. '… »' },
+      'Référence jamais appelée : ' .. j .. '…',
+      'Nie zitierter Eintrag: ' .. j .. '…')
   end
   return doc
 end

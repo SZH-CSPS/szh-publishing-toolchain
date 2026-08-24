@@ -8,6 +8,7 @@ Ce dépôt contient l'**outillage**, pas les revues : celles-ci vivent sur OneDr
 WSL s'appelle `SZH-Publishing`.
 
 **Documentation** — [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (vue d'ensemble) ·
+[`docs/EMPLACEMENTS.md`](docs/EMPLACEMENTS.md) (où vivent les revues, poste par poste) ·
 [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) (ce qu'il faut surveiller et quand) ·
 [`docs/SECURITE.md`](docs/SECURITE.md) (déploiement flotte) ·
 [`userdoc.md`](userdoc.md) (côté rédacteur).
@@ -54,7 +55,6 @@ szh-publishing-toolchain/
 │   ├── open-revue.ps1              lanceur du menu Démarrer, un par produit
 │   ├── open-md.ps1                 ouverture d'un .md par double-clic
 │   ├── archive-revue.ps1           déplacement en cours ⇄ archives
-│   ├── mail-traduction.ps1         brouillon d'e-mail de traduction
 │   ├── szh-common.ps1              socle commun : manifest, téléchargement, textes
 │   ├── icone.py                    fabrique les deux .ico livrés à côté
 │   └── vsix.lock                   extensions tierces épinglées (version + sha256)
@@ -113,8 +113,12 @@ Dans OneDrive : clic droit sur le dossier → **Toujours conserver sur cet appar
 
 ### Où vivent les revues
 
-Un seul endroit du code les connaît : `Get-SzhEmplacements`, dans `windows/szh-common.ps1`.
-Base de production `%USERPROFILE%\SZH CSPS\Daten_Allgemein - General\2_Produkte`, base de test
+Cartographie complète, chemins réels et manœuvre de reprise :
+[`docs/EMPLACEMENTS.md`](docs/EMPLACEMENTS.md).
+
+Un seul endroit du code connaît les chemins : `Get-SzhEmplacements`, dans
+`windows/szh-common.ps1`. Base de production
+`%USERPROFILE%\SZH CSPS\Daten_Allgemein - General\2_Produkte`, base de test
 `%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING` — les deux surchargeables par la clé
 `basesRevues` de `C:\ProgramData\SZH\config.json`. Mêmes sous-dossiers dans les deux cas :
 
@@ -123,9 +127,14 @@ Base de production `%USERPROFILE%\SZH CSPS\Daten_Allgemein - General\2_Produkte`
 | en cours | `52_Revue\RV02_Redaction` | `53_Zeitschrift\ZS02_Redaktion` |
 | archives | `52_Revue\RV99_Archives` | `53_Zeitschrift\ZS99_Archives` |
 
-Le mode développeur (`devMode` dans `config.json`, vrai par défaut, bascule dans les réglages du
-cockpit) choisit la base. Le lanceur ne liste que cette arborescence ; les revues restées ailleurs
-sont comptées et signalées, pas listées.
+La clé **`emplacementRevues`** de `config.json` choisit la base : `"test"` ou
+`"production"`. Elle remplace `devMode`, qui reste lu (`true` = test) et que la bascule des
+réglages du cockpit continue d'écrire en parallèle. Un poste qui ne porte ni l'une ni l'autre
+se voit écrire la clé en clair au premier lancement, la valeur suivant le disque : jamais
+`production` si la racine de test porte des numéros. L'emplacement actif est nommé dans le
+titre du lanceur (`Revues SZH — dossier de test (Revues-TESTING)`) et dans le journal. Le
+lanceur ne liste que cette arborescence ; les revues restées ailleurs sont comptées et
+signalées, pas listées.
 
 ### Cycle de vie d'un numéro
 
@@ -144,9 +153,11 @@ ne contient aucun chemin : le lanceur revalide sa grammaire, retrouve le dossier
 emplacements connus du poste, dépose une intention à usage unique périmée en cinq minutes, et
 ouvre la revue ; le cockpit consomme l'intention et ouvre le panneau.
 
-Le brouillon part par `mailto:` — le lien y arrive en texte brut, le corps explique comment le
-coller. `"mailTraduction": "outlook"` dans `config.json` rétablit un brouillon HTML à vrai
-hyperlien, mais par automatisation COM, donc avec l'Outlook classique seulement.
+Le brouillon part par `mailto:`, et seulement par là : le lien y arrive en texte brut, le corps
+explique comment le coller, et le lien est aussi mis dans le presse-papiers. Un brouillon à vrai
+hyperlien exigerait l'automatisation COM d'Outlook, qui n'existe pas pour le nouveau client :
+cette voie a été retirée le 23.08.2026 plutôt que maintenue pour un seul client. L'adresse de
+destination se surcharge par `"mailsTraduction"` dans `config.json`.
 
 ### Revenir à une version précédente
 

@@ -23,26 +23,52 @@
 #   5. import-medias.py : les photos du tableau des auteurs quittent media/ pour
 #      portraits/ et passent au détourage ; les images que ni le .md ni tables/*.html ne
 #      citent sont supprimées (Word livre aussi les logos et filigranes du document).
+#   6. reimporter.py --empreintes : note l'empreinte de ce que cette conversion a livré,
+#      pour que « Réimporter cet article » sache plus tard ce que personne n'a retouché.
 # Suivi de modifications accepté, commentaires Word ignorés.
+# La destination est articles/<slug>, ou $SZH_IMPORT_DIR : c'est ainsi que le réimport
+# convertit dans un chantier voisin et ne remplace l'article qu'une fois tout prêt.
 set -u
 
 F="$1"; SLUG="$2"; PIPE="$3"
-DIR="articles/$SLUG"
+# Destination : articles/<slug>, sauf si $SZH_IMPORT_DIR en désigne une autre. C'est par là
+# que reimporter.py convertit dans un chantier voisin, sans toucher l'article vivant : une
+# seule chaîne d'import, pas deux à garder d'accord.
+DIR="${SZH_IMPORT_DIR:-articles/$SLUG}"
 DOCX_ABS="$(realpath "$F")"
+
+# Le slug, pour que les pré-passes nomment l'article dans leurs messages.
+export SZH_SLUG="$SLUG"
+
+# Un message destiné au rédacteur : sur stderr, et dans articles-word/.import.log quand la
+# cible `import` du Makefile en a passé le chemin absolu. Le journal nourrit la vue
+# « Word » du cockpit ; le chemin est absolu parce qu'on travaille dans articles/<slug>/.
+signaler() {
+  printf '%s\n' "$*" >&2
+  if [ -n "${SZH_IMPORT_LOG:-}" ]; then
+    printf '%s\n' "$*" >> "$SZH_IMPORT_LOG" 2>/dev/null || true
+  fi
+}
 
 mkdir -p "$DIR/media" "$DIR/tables"
 cd "$DIR" || exit 1
 
 # Métadonnées d'abord : docx-meta.py écrit <slug>.meta.yaml (sauf s'il existe), le
-# fichier d'instructions $SZH_META et une ligne JSON de stats, logguée ici. Non
-# bloquant : un échec laisse $SZH_META vide et l'import continue sans métadonnées.
+# fichier d'instructions $SZH_META et une ligne JSON de stats, logguée ici. Bloquant : sans
+# fiche, la compilation refuserait l'article (titre de document vide, exigé par PDF/UA), et
+# l'article aurait disparu du numéro sans un mot. Mieux vaut refuser l'import tout de
+# suite, le Word restant en attente dans articles-word/.
 META="$(mktemp)"
 export SZH_META="$META"
 # Appariement photo <-> auteur, écrit par docx-meta.py et consommé par import-medias.py,
 # après pandoc : les images n'existent sous media/ qu'une fois la conversion faite.
 PHOTOS="$(mktemp)"
 export SZH_PHOTOS="$PHOTOS"
-STATS="$(python3 "$PIPE/docx-meta.py" "$DOCX_ABS" "$SLUG" . || true)"
+if ! STATS="$(python3 "$PIPE/docx-meta.py" "$DOCX_ABS" "$SLUG" .)"; then
+  signaler "[import] ⚠ Les métadonnées de « $SLUG » n'ont pas pu être lues : l'article n'est pas importé et son fichier Word reste en attente. Vérifiez que le document s'ouvre dans Word, puis relancez la conversion. [de] Die Metadaten von « $SLUG » konnten nicht gelesen werden: der Artikel wird nicht importiert, die Word-Datei bleibt in der Warteschlange. Prüfen Sie, ob sich das Dokument in Word öffnet, und starten Sie die Konvertierung erneut."
+  rm -f "$META" "$PHOTOS"
+  exit 1
+fi
 [ -n "$STATS" ] && echo "[import-meta] $STATS"
 
 # Tableaux : docx-tables.py rend chaque tableau en HTML fidèle (fusions colspan et
@@ -100,5 +126,12 @@ fi
 MEDIAS="$(python3 "$PIPE/import-medias.py" "$SLUG" . "$PHOTOS" || true)"
 [ -n "$MEDIAS" ] && echo "[import-medias] $MEDIAS"
 rm -f "$PHOTOS"
+
+# Empreintes de ce que cette conversion a livré : c'est ce qui permettra à « Réimporter cet
+# article » de distinguer un tableau retravaillé dans l'éditeur d'un tableau tel que le Word
+# l'avait donné. Non bloquant : sans ce fichier, le réimport se montre prudent et nomme
+# comme ambigu ce qu'il ne peut plus trancher.
+python3 "$PIPE/reimporter.py" --empreintes --dossier . --slug "$SLUG" \
+  --word "$(basename "$DOCX_ABS")" || true
 
 exit 0

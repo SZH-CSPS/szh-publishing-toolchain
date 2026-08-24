@@ -55,6 +55,69 @@ local SEP_CREDIT = ' / '
 local CLASSE_HORS_FIGURE = 'szh-hors-figure'
 local CLASSE_CREDIT_SEUL = 'szh-credit-seul'
 
+-- ─── Image décorative : un fond CSS, jamais un <img> ─────────────────────────
+-- WeasyPrint 69 balise TOUT <img> en /Figure et n'y pose un /Alt que si l'attribut alt
+-- est non vide. Une image décorative (alt="") sortait donc en /Figure sans /Alt, ce que
+-- PDF/UA-1 interdit (règle 7.3) : mesuré à la loupe, role="presentation" et
+-- aria-hidden="true" n'y changent rien. Le seul moyen de dire « ce dessin ne porte
+-- aucune information » est de ne pas en faire un <img> : un fond CSS n'entre pas dans
+-- l'arbre de structure, donc le décor y est absent — c'est exactement ce qu'on veut dire.
+-- ⚠ Ne pas revenir à un <img> pour une image décorative : le PDF cesserait d'être
+--   conforme, et make verifier-ua le refuserait à l'export.
+--
+-- Géométrie, pour que le rendu ne bouge pas d'un pixel : deux <span> imbriqués.
+-- L'externe porte la largeur naturelle de l'image, bornée à la colonne par le
+-- max-width de print.css ; l'interne porte un padding-top en pourcentage, qui se résout
+-- sur la largeur de l'externe et rend donc la même hauteur qu'un <img> à height:auto.
+-- WeasyPrint 69 ignore `aspect-ratio` (« unknown property »), d'où le padding.
+--
+-- Le url() est écrit dans un <style> ajouté en fin de document, et non dans un
+-- attribut style= : `pandoc --embed-resources` remplace les chemins par des data: URI
+-- dans les <style> et dans src/href, jamais dans un style= (mesuré). Sans ce détour,
+-- le HTML autonome perdrait l'image.
+local CLASSE_DECOR = 'szh-decor'
+local decors = {}          -- une entrée par image décorative rencontrée
+
+-- Largeur et hauteur naturelles d'une image, en pixels CSS ; nil si elle est illisible.
+-- WeasyPrint ignore la résolution déclarée dans le fichier (images.py :
+-- get_intrinsic_size divise par `image-resolution`, à 1 par défaut) : les pixels de
+-- pandoc.image.size sont donc bien des pixels CSS.
+local function mesure_image(src)
+  local ok, _, contenu = pcall(pandoc.mediabag.fetch, src)
+  if not ok or type(contenu) ~= 'string' then return nil end
+  local ok2, taille = pcall(pandoc.image.size, contenu)
+  if not ok2 or type(taille) ~= 'table' then return nil end
+  local l, h = tonumber(taille.width), tonumber(taille.height)
+  if not l or not h or l <= 0 or h <= 0 then return nil end
+  return l, h
+end
+
+-- Remplace une image décorative par les deux <span> qui la rendent en fond CSS.
+-- Renvoie nil si l'image est illisible : l'appelant garde alors son <img>, un rendu ne
+-- doit pas échouer pour un décor. Le PDF sortira non conforme et le dira.
+local function en_decor(img)
+  local largeur, hauteur = mesure_image(img.src)
+  if not largeur then return nil end
+  local classe = CLASSE_DECOR .. '-' .. (#decors + 1)
+  decors[#decors + 1] = { classe = classe, src = img.src,
+                          largeur = largeur, ratio = 100.0 * hauteur / largeur }
+  return pandoc.RawInline('html', '<span class="' .. CLASSE_DECOR .. ' ' .. classe
+    .. '" role="presentation"><span></span></span>')
+end
+
+-- Le <style> des images décoratives, à poser en fin de document. Même spécificité que
+-- print.css mais plus loin dans la cascade : ces règles-ci l'emportent.
+local function style_decors()
+  if #decors == 0 then return nil end
+  local regles = {}
+  for _, d in ipairs(decors) do
+    regles[#regles + 1] = string.format(
+      '.%s{width:%dpx}\n.%s>span{padding-top:%.4f%%;background-image:url("%s")}',
+      d.classe, d.largeur, d.classe, d.ratio, (d.src:gsub('"', '%%22')))
+  end
+  return pandoc.RawBlock('html', '<style>\n' .. table.concat(regles, '\n') .. '\n</style>')
+end
+
 local function a_classe(el, nom)
   for _, c in ipairs(el.classes or {}) do
     if c == nom then return true end
@@ -65,11 +128,38 @@ end
 local function trim(t) return (t:gsub('^%s+', ''):gsub('%s+$', '')) end
 local function vide(t) return t == nil or t:match('^%s*$') ~= nil end
 
--- Langue de composition : la revue prime sur `lang:` du numéro. Même règle que
--- szh-maquette.lua, dupliquée parce que ce filtre tourne aussi dans la chaîne
--- d'aperçu, où szh-maquette n'est pas branché — sans elle, un numéro « zeitschrift »
--- sans clé `lang:` donnerait « Figure » dans l'aperçu et « Abbildung » dans le PDF.
+-- Langue de composition : le `lang:` de l'ARTICLE prime, puis le jeton de revue, puis le
+-- `lang:` du numéro. Même règle que szh-maquette.lua, et le même ordre : « Abbildung »
+-- dans le PDF et « Figure » dans l'aperçu seraient un défaut à eux seuls.
+--
+-- ⚠ Duplication assumée, et à garder alignée avec szh-maquette.lua : ce filtre tourne
+-- aussi dans la chaîne d'aperçu, où szh-maquette n'est pas branché, et où personne
+-- d'autre ne lit la fiche. `meta.lang` ne suffit pas — pandoc y fusionne ausgabe.yaml et
+-- la fiche sans dire de quel fichier la valeur vient, or le jeton de revue doit passer
+-- devant le `lang:` du numéro mais derrière celui de l'article.
+--
+-- Le slug vient du fichier d'entrée : le Makefile compile depuis le dossier de l'article,
+-- la fiche est donc <slug>.meta.yaml dans le répertoire courant.
+local function langue_fiche()
+  local fichiers = (PANDOC_STATE and PANDOC_STATE.input_files) or {}
+  local chemin = fichiers[1]
+  if type(chemin) ~= 'string' then return nil end
+  local slug = chemin:gsub('.*[/\\]', ''):gsub('%.md$', '')
+  if slug == '' then return nil end
+  local fh = io.open(slug .. '.meta.yaml', 'r')
+  if not fh then return nil end
+  local lang = nil
+  for ligne in fh:lines() do
+    local m = ligne:match('^lang:%s*[\'"]?(%a%a)')
+    if m then lang = m:lower(); break end
+  end
+  fh:close()
+  return lang
+end
+
 local function langue_de(meta)
+  local fiche = langue_fiche()
+  if fiche and LIBELLE_FIGURE[fiche] then return fiche end
   local revue = utils.stringify(meta.revue or ''):lower()
   if revue:find('zeitschrift') then return 'de' end
   if revue:find('revue') then return 'fr' end
@@ -221,14 +311,20 @@ local function hors_numerotation(b, lang)
   -- Sans texte alternatif, l'image est décorative : role="presentation" neutralise le
   -- role="img" que --embed-resources ajoute (même raison que dans la passe principale).
   -- Avec un alt=, le writer l'émet tel quel, la description de l'Image étant vide.
+  local credit = texte_credit(img.attributes['copyright'], img.attributes['source'], lang)
+  local contenu = img
   if vide(img.attributes['alt']) then
     img.attributes['alt'] = ''
     img.attributes['role'] = 'presentation'
+    -- Décorative ET créditée : le crédit reste (c'est une mention de droits), mais
+    -- l'image passe en fond CSS, sans quoi la <figure> porterait une /Figure sans /Alt.
+    -- Sans crédit, on laisse la passe principale s'en charger : `en_decor` inscrit une
+    -- règle CSS, l'appeler ici pour rien en laisserait une inutile.
+    if credit then contenu = en_decor(img) or img end
   end
-  local credit = texte_credit(img.attributes['copyright'], img.attributes['source'], lang)
   if not credit then return nil end
   return pandoc.Figure(
-    pandoc.Blocks({ pandoc.Plain({ img }) }),
+    pandoc.Blocks({ pandoc.Plain({ contenu }) }),
     { long = pandoc.Blocks({ pandoc.Plain({
         pandoc.Span({ pandoc.Str(credit) }, pandoc.Attr('', { 'szh-credit' }, {})) }) }) },
     pandoc.Attr('', { CLASSE_CREDIT_SEUL }, {})
@@ -259,12 +355,13 @@ function Pandoc(doc)
     -- le role="img" que --embed-resources ajoute à toute image devenue data: URI, sans
     -- lequel le lecteur d'écran annoncerait « image » sans nom. Un alt= explicite non vide
     -- est respecté tel quel. WeasyPrint 69 ne distingue pas alt="" d'un alt absent : il
-    -- avertit dans les deux cas et produit quand même le PDF/UA-1.
+    -- avertit dans les deux cas et produit quand même le PDF/UA-1 — mais avec une
+    -- /Figure sans /Alt, non conforme. D'où le passage en fond CSS (voir en_decor).
     Image = function(img)
       if #img.caption == 0 and vide(img.attributes['alt']) then
         img.attributes['alt'] = ''
         img.attributes['role'] = 'presentation'
-        return img
+        return en_decor(img) or img
       end
       return nil
     end,
@@ -360,6 +457,11 @@ function Pandoc(doc)
       return pandoc.RawBlock(raw.format, html)
     end,
   })
+
+  -- Les fonds des images décoratives, en un seul <style> de fin de corps : c'est le
+  -- seul endroit où `pandoc --embed-resources` sait remplacer un chemin par un data: URI.
+  local style = style_decors()
+  if style then doc.blocks:insert(style) end
 
   return doc
 end

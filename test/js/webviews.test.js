@@ -20,7 +20,16 @@ const { ouvrir, libellesHote, chargerAvecVscodeFactice } = require('./dom-minima
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
-const { analyserMeta } = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'yaml.js'));
+const {
+  analyserMeta, LICENCES_ARTICLE, LICENCE_DEFAUT
+} = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'yaml.js'));
+const { T } = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'i18n.js'));
+
+// Les licences offertes, exactement comme licencesTraduites() de l'hôte les envoie : la
+// liste vient de lib/yaml.js, les libellés de lib/i18n.js. Sans elle, le sélecteur de
+// licence des cartes se construisait vide dans ce harnais, et le contrôle passait quand
+// même — un harnais doit rendre ce que rend l'hôte, ou il ne prouve rien.
+const LICENCES = LICENCES_ARTICLE.map((l) => ({ valeur: l.cle, libelle: T('licence.' + l.cle) }));
 
 // Les fiches du corpus de rendu : de vraies métadonnées, deux langues, mots-clés, auteurs.
 function articlesDuCorpus() {
@@ -50,8 +59,12 @@ test('métadonnées des articles : une carte remplie par article', () => {
   });
   // Les objets viennent d'un autre realm (vm) : on compare les types, pas les prototypes.
   assert.deepStrictEqual(page.messages.map((m) => m.type), ['pret'], 'la page ne s’annonce pas');
-  page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr', filtre: null });
+  page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr',
+                 licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: null });
   assert.strictEqual(page.compter('.carte'), articles.length);
+  // Le choix de licence doit être peuplé : une carte par article, sept licences chacune.
+  assert.strictEqual(page.compter('[data-cle="licence"] option'),
+    articles.length * LICENCES.length, 'sélecteur de licence rendu vide');
   // Traductions cachées par défaut : les champs des autres langues sont construits et
   // marqués, et le conteneur porte la classe qui les masque. Le CSS n'est pas évalué ici,
   // c'est donc le marquage que l'on contrôle — sans lui, le bouton n'a rien à révéler.
@@ -87,8 +100,11 @@ test('vérification de l’import : les mêmes cartes, badges et section des ima
     jsPartage: ['_auteurs.js', '_fiches.js'],
     txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlImportVerif'])
   });
-  page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr' });
+  page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr',
+                 licences: LICENCES, licenceDefaut: LICENCE_DEFAUT });
   assert.strictEqual(page.compter('.carte'), articles.length);
+  assert.strictEqual(page.compter('[data-cle="licence"] option'),
+    articles.length * LICENCES.length, 'sélecteur de licence rendu vide');
   assert.ok(page.compter('.badge') > 5, 'badges « détecté / à compléter » absents');
   assert.strictEqual(page.compter('.image-ligne'), articles.length, 'section des images absente');
 });

@@ -1,32 +1,7 @@
-/* Métadonnées du numéro : un formulaire court, posé sur le socle (_design.css). Restent
-   ici les objets propres à cette page — les pastilles de couleur annuelle. */
+/* Méta-données du numéro : un formulaire court, posé sur le socle (_design.css) et sur le
+   fragment partagé _numero.css, qui dessine les champs. Il ne reste ici que le cadre de la
+   page. */
 body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
   line-height: var(--interligne); color: var(--encre); background: var(--fond);
   padding: var(--e4) var(--e5) var(--e7); max-width: 38rem; }
 h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
-label { display: block; margin: var(--e4) 0 var(--e1);
-  font-size: var(--t-libelle); font-weight: 700; letter-spacing: .02em; color: var(--encre); }
-input, select { width: 100%; box-sizing: border-box; padding: .35em .5em; font: inherit;
-  color: var(--vscode-input-foreground); background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini); }
-input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.radios { display: flex; flex-direction: column; gap: var(--e2); margin-top: var(--e1); }
-.radio { display: flex; align-items: flex-start; gap: .5em; margin: 0; font-weight: normal;
-  cursor: pointer; width: auto; }
-.radio input { width: auto; flex: 0 0 auto; margin: .15em 0 0; accent-color: var(--accent); }
-.radio span { line-height: 1.4; }
-/* Même géométrie qu'un bouton radio, mais seule : sa marge haute est celle d'un `label`
-   de champ, non celle d'un élément de groupe. */
-.case { display: flex; align-items: flex-start; gap: .5em; margin: var(--e4) 0 var(--e1);
-  font-weight: normal; cursor: pointer; width: auto; }
-.case input { width: auto; flex: 0 0 auto; margin: .15em 0 0; accent-color: var(--accent); }
-.case span { line-height: 1.4; }
-/* Couleur annuelle : une pastille par teinte, la puce montre la couleur elle-même. */
-.pastilles { display: flex; flex-wrap: wrap; gap: var(--e2); margin-top: var(--e1); }
-.pastille { display: inline-flex; align-items: center; gap: .4em; cursor: pointer;
-  padding: .3em .7em .3em .4em; border: 1px solid var(--vscode-input-border, var(--filet));
-  border-radius: 999px; background: var(--vscode-input-background); color: var(--encre);
-  font: inherit; margin: 0; width: auto; box-sizing: border-box; }
-.pastille .puce { width: 1em; height: 1em; border-radius: 50%;
-  border: 1px solid rgba(128, 128, 128, .5); flex: 0 0 auto; }
-.pastille[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 1px; font-weight: 700; }

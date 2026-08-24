@@ -1,0 +1,42 @@
+# Corpus d'accessibilité — numéro de test SÉPARÉ du banc de maquette (test/articles/).
+#
+# Pourquoi un dossier de numéro à part, et non trois articles de plus dans test/articles/ :
+#
+#   * La porte PDF/UA (`make verifier-ua`) est **bloquante** et prend le numéro ENTIER —
+#     `SLUGS` vient de `articles/*` relatif au dossier courant, et `$(PDFS)` liste tous
+#     les articles. Un article de test conçu pour être fautif, déposé dans test/articles/,
+#     ferait donc échouer la porte sur le banc entier : les trois articles de maquette
+#     perdraient leur signal, et l'intégration continue serait rouge en permanence. Une
+#     porte durablement rouge est une porte que plus personne ne lit.
+#   * Un numéro, dans ce logiciel, EST un dossier. Éprouver ce que la chaîne dit d'un
+#     numéro imparfait demande un numéro imparfait, pas un article imparfait glissé dans
+#     un numéro sain. Le corpus a ainsi sa propre porte, avec sa propre attente : le banc
+#     doit rendre 0, celui-ci rend ce qu'il rend, et test/build-render.sh vérifie ce
+#     verdict-là.
+#   * Le jour où l'on voudra un cas volontairement NON conforme PDF/UA — il n'y en a pas
+#     ici, voir plus bas — il se dépose dans ce dossier sans toucher au banc.
+#
+# Ce que le corpus exerce, et qui manquait au banc :
+#   * un tableau sans rangée d'en-tête, et un tableau sans légende (donc sans numéro) ;
+#   * une bibliographie à noms polonais, turcs et serbes (Zieliński, Şahin, Đurić) ;
+#   * des sauts de niveau de titre à l'entrée (## puis ####), que szh-niveaux.lua compacte ;
+#   * un crédit de figure en français avec son espace fine insécable ;
+#   * un corps d'article dans une autre langue que la revue (article fr dans un numéro de
+#     la Zeitschrift) ;
+#   * une paire française / allemande du même article dont les compteurs de figures
+#     DIVERGENT à dessein, pour que `make verifier-numerotation` ait un écart à signaler.
+#
+# Aucun article n'est volontairement NON conforme PDF/UA. Le choix est délibéré : ce qui
+# régresse en silence, c'est la capacité de la chaîne à **remarquer** un défaut, pas la
+# capacité de veraPDF à refuser un PDF cassé. Un article durablement non conforme
+# n'éprouverait que veraPDF, et coûterait une porte rouge à demeure. Les avertissements,
+# eux, sont exactement ce qu'on veut voir survivre aux prochaines reprises.
+title: "Barrierefreiheit — Prüfkorpus"
+revue: zeitschrift
+volume: "44"
+numero: "3"
+date: "2026-09-01"
+lang: de
+couleur: "#5F9FBC"
+locked: false
+archived: false

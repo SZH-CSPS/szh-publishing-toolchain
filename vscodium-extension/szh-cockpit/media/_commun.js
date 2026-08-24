@@ -4,10 +4,16 @@
 //   SZH.autoEnregistrement(opts)  enregistrement automatique, sans voler le curseur
 //   SZH.motsCles(opts)            éditeur de mots-clés appariés, partagé par les trois
 //                                 formulaires qui touchent aux mots-clés
+//   SZH.choixFerme(opts)          un intitulé et un <select> à liste fermée, sur une carte
+//   SZH.choixLangue(opts)         le <select> de la langue d'un article, posé sur sa carte
 //   SZH.annoncerPret(api, recu)   « pret », redemandé tant que l'hôte se tait
 //   SZH.icone(nom)                une icône de 16 px, dessinée en SVG
 //   SZH.notif(ton, contenu)       une notification : info, ok, attention, danger
+//   SZH.poser(parent, balise, …)  créer, classer, remplir, insérer : le geste de base
+//   SZH.modale(opts)              le voile, la boîte, Échap et le retour du focus
 //   SZH.poserAccent(hex)          la couleur annuelle du numéro devient l'accent
+//   SZH.barreBoutons(...)         la barre de commandes d'une vue, et sa zone d'état
+//   SZH.listeCartes(opts)         la liste de cartes des vues d'ensemble
 var SZH = (function () {
   'use strict';
 
@@ -53,6 +59,9 @@ var SZH = (function () {
     ],
     // Les deux étapes du suivi de traduction : passer la main, puis relire.
     fleche: [['path', { d: 'M8.5 3.5 13 8l-4.5 4.5-1.06-1.06L10.4 8.75H3v-1.5h7.4L7.44 4.56 8.5 3.5z' }]],
+    // Déplacer un article dans le numéro : la même flèche, debout.
+    haut: [['path', { d: 'M8 2.5 12.5 7l-1.06 1.06L8.75 5.35V13h-1.5V5.35L4.56 8.06 3.5 7 8 2.5z' }]],
+    bas: [['path', { d: 'M8 13.5 3.5 9l1.06-1.06L7.25 10.65V3h1.5v7.65l2.69-2.71L12.5 9 8 13.5z' }]],
     oeil: [
       ['path', { d: 'M8 3.25C4.7 3.25 2 5.15 1.15 8 2 10.85 4.7 12.75 8 12.75s6-1.9 6.85-4.75C14 5.15 11.3 3.25 8 3.25zm0 1.5c2.4 0 4.4 1.3 5.25 3.25C12.4 9.95 10.4 11.25 8 11.25S3.6 9.95 2.75 8C3.6 6.05 5.6 4.75 8 4.75z' }],
       ['circle', { cx: '8', cy: '8', r: '1.9' }]
@@ -75,6 +84,75 @@ var SZH = (function () {
       svg.appendChild(forme);
     }
     return svg;
+  }
+
+  // ---- Un élément, posé dans son parent ----
+  //
+  // Créer, classer, remplir, insérer : quatre lignes qui revenaient dans chaque page. Une
+  // seule implémentation, sur SZH, à côté d'icone et de notif.
+  function poser(parent, balise, cls, contenu) {
+    var e = document.createElement(balise);
+    if (cls) { e.className = cls; }
+    if (contenu !== undefined && contenu !== null) { e.textContent = contenu; }
+    parent.appendChild(e);
+    return e;
+  }
+
+  // ---- Modale ----
+  //
+  // Le voile, la boîte, la fermeture au clic à côté et à Échap, et le retour du focus là
+  // d'où l'on vient — sans quoi le clavier repartirait du haut de la page. Le style vit
+  // dans _design.css (.szh-modale, .szh-modale-boite, .szh-modale-pied) ; la boîte prend
+  // la classe que l'appelant lui donne.
+  //
+  // opts.classeBoite   classes de la boîte, « szh-modale-boite » par défaut
+  // opts.construire(boite)   remplit la boîte, appelé une seule fois
+  // opts.surOuverture(boite) / opts.surFermeture()
+  // opts.focus()       l'élément à focaliser à l'ouverture
+  function modale(opts) {
+    var o = opts || {};
+    var voile = null;
+    var boite = null;
+    var retour = null;
+
+    function fermer() {
+      if (!voile) { return; }
+      voile.classList.remove('visible');
+      if (o.surFermeture) { o.surFermeture(); }
+      if (retour) {
+        try { retour.focus(); } catch (e) { /* élément disparu entre-temps */ }
+        retour = null;
+      }
+    }
+
+    function construire() {
+      voile = poser(document.body, 'div', 'szh-modale');
+      voile.setAttribute('role', 'dialog');
+      voile.setAttribute('aria-modal', 'true');
+      boite = poser(voile, 'div', o.classeBoite || 'szh-modale-boite');
+      // Cliquer à côté referme, comme dans toute visionneuse ; Échap aussi, comme dans
+      // toute boîte de dialogue — et c'est la seule sortie au clavier.
+      voile.addEventListener('click', function (ev) { if (ev.target === voile) { fermer(); } });
+      document.addEventListener('keydown', function (ev) {
+        if ((ev.key === 'Escape' || ev.key === 'Esc') && voile.classList.contains('visible')) {
+          fermer();
+        }
+      });
+      if (o.construire) { o.construire(boite); }
+    }
+
+    function ouvrir() {
+      if (!voile) { construire(); }
+      retour = document.activeElement || null;
+      if (o.surOuverture) { o.surOuverture(boite); }
+      voile.classList.add('visible');
+      if (o.focus) {
+        var cible = o.focus();
+        if (cible) { try { cible.focus(); } catch (e) { /* pas focalisable */ } }
+      }
+    }
+
+    return { ouvrir: ouvrir, fermer: fermer, boite: function () { return boite; } };
   }
 
   // ---- Accent du numéro ----
@@ -426,6 +504,86 @@ var SZH = (function () {
   }
 
 
+  // ---- Choix fermé posé sur une carte ----
+  //
+  // Un intitulé, un <select>, une liste d'options fermée, et la valeur de la fiche quand
+  // elle en déclare une. Deux champs s'en servent : la langue de l'article et sa licence.
+  // Le `for`/`id` est apparié — sans lui, un lecteur d'écran annonce un choix sans dire
+  // lequel — et la valeur est relue par `select[data-cle=<cle>]`, comme le type d'article.
+  //
+  // opts.cle      nom du champ, qui devient le `data-cle` du <select>
+  // opts.libelle  intitulé affiché
+  // opts.options  [{ valeur, libelle }], dans l'ordre d'affichage
+  // opts.valeur   valeur déclarée par la fiche, ou '' quand elle ne l'est pas
+  // opts.defaut   valeur présélectionnée à défaut ; sinon la première option
+  // opts.onChange appelé au changement
+  //
+  // Rend { label, select } : c'est l'appelant qui les insère où il veut dans sa carte.
+  // Le compteur d'identifiants évite d'en exiger un de l'appelant, qui construit une
+  // carte par article.
+  var nChoixFerme = 0;
+
+  function choixFerme(opts) {
+    var options = opts.options || [];
+    var valeurs = options.map(function (o) { return o.valeur; });
+    var id = 'szh-choix-' + opts.cle + '-' + (++nChoixFerme);
+    var defaut = valeurs.indexOf(opts.defaut) !== -1 ? opts.defaut
+      : (valeurs.length > 0 ? valeurs[0] : '');
+    var valeur = valeurs.indexOf(opts.valeur) !== -1 ? opts.valeur : defaut;
+
+    var label = document.createElement('label');
+    label.textContent = opts.libelle || '';
+    label.setAttribute('for', id);
+    var select = document.createElement('select');
+    select.id = id;
+    select.setAttribute('id', id);
+    select.dataset.cle = opts.cle;
+    for (var i = 0; i < options.length; i++) {
+      var opt = document.createElement('option');
+      opt.value = options[i].valeur;
+      opt.textContent = options[i].libelle || options[i].valeur;
+      select.appendChild(opt);
+    }
+    select.value = valeur;
+    if (opts.onChange) {
+      select.addEventListener('input', function () { opts.onChange(select.value); });
+    }
+    return { label: label, select: select };
+  }
+
+  // ---- Langue d'un article ----
+  //
+  // La langue vit dans la fiche <slug>.meta.yaml et prime, au rendu, sur celle du numéro :
+  // c'est elle qui décide de `<html lang>`, du `/Lang` du PDF, des libellés « Figure /
+  // Abbildung » et de la langue dans laquelle les titres doivent exister. Un choix fermé,
+  // donc, sur les trois langues de la revue — l'anglais n'a pas de maquette.
+  //
+  // Une fiche sans `lang` s'ouvre sur la langue du numéro, exactement le repli que fait
+  // szh-maquette.lua : le formulaire ne doit jamais montrer une autre langue que celle qui
+  // s'imprimera. Le premier enregistrement de la carte la rend explicite, et
+  // l'avertissement de compilation s'éteint.
+  //
+  // opts.valeur   langue déclarée dans la fiche, ou '' si elle ne l'est pas
+  // opts.defaut   langue du numéro, présélectionnée à défaut
+  // opts.textes   { libelle, fr, de, it }
+  // opts.onChange appelé au changement
+  //
+  // Rend { label, select } : c'est choixFerme qui les fabrique, cette fonction ne portant
+  // plus que la liste fermée des langues et leurs noms.
+  var LANGUES_CHOIX = ['fr', 'de', 'it'];
+
+  function choixLangue(opts) {
+    var textes = opts.textes || {};
+    return choixFerme({
+      cle: 'lang', libelle: textes.libelle,
+      options: LANGUES_CHOIX.map(function (code) {
+        return { valeur: code, libelle: textes[code] || code };
+      }),
+      valeur: opts.valeur, defaut: LANGUES_CHOIX.indexOf(opts.defaut) !== -1 ? opts.defaut : 'fr',
+      onChange: opts.onChange
+    });
+  }
+
   // ---- Annonce de la page ----
   //
   // Poser le HTML d'une webview la charge : un hôte qui branche son écoute après ce
@@ -444,9 +602,163 @@ var SZH = (function () {
     }, 350);
   }
 
+  // ---- Barre de commandes ----
+  //
+  // Texte court plus pictogramme : le premier dit ce que fait le bouton, le second le fait
+  // reconnaître d'un coup d'oeil dans une barre qui en porte plusieurs. Un bouton vaut
+  // { id, libelle, icone, tip, principal, danger, desactive } et `onAction(id)` est appelé
+  // au clic. Rend la zone d'état de la barre, où l'appelant écrit ce qu'il vient de faire.
+  function boutonCommande(b, onAction) {
+    var el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'szh-bouton'
+      + (b.principal ? ' szh-bouton--principal' : '')
+      + (b.danger ? ' bouton-danger' : '');
+    if (b.icone) { el.appendChild(icone(b.icone)); }
+    var texte = document.createElement('span');
+    texte.textContent = b.libelle || '';
+    el.appendChild(texte);
+    if (b.tip) { el.title = b.tip; }
+    el.disabled = !!b.desactive;
+    el.dataset.id = String(b.id || '');
+    el.addEventListener('click', function () {
+      if (onAction) { onAction(String(b.id || '')); }
+    });
+    return el;
+  }
+
+  function barreBoutons(conteneur, boutons, onAction) {
+    conteneur.textContent = '';
+    for (var i = 0; i < (boutons || []).length; i++) {
+      conteneur.appendChild(boutonCommande(boutons[i], onAction));
+    }
+    var pousse = document.createElement('span');
+    pousse.className = 'szh-pousse';
+    conteneur.appendChild(pousse);
+    var etat = document.createElement('span');
+    etat.className = 'szh-barre-etat';
+    etat.setAttribute('role', 'status');
+    conteneur.appendChild(etat);
+    return etat;
+  }
+
+  // ---- Liste de cartes ----
+  //
+  // Une carte par élément, trois étages fixes : la tête et sa mesure, ce qu'il y a à lire,
+  // puis les commandes et l'état. Tout dans une seule rangée passait à la ligne au hasard
+  // des longueurs, et deux cartes voisines ne se lisaient plus de la même façon.
+  //
+  // Une seule implémentation pour toutes les vues d'ensemble — « Traductions », « Word en
+  // attente », « Articles » — et pour celles qui viendront. Une ligne vaut :
+  //
+  //   { cle, groupe, titre, meta, notif: { ton, texte },
+  //     pastilles: [{ texte, ton, icone }], ouvrir,
+  //     actions: [{ id, libelle, icone, tip, desactive, danger }],
+  //     taches: [{ id, libelle, faite }] }
+  //
+  // opts.conteneur   élément qui reçoit les cartes
+  // opts.textes()    -> { ouvrir, listeVide }, relu à chaque rendu : la langue peut arriver après
+  // opts.onOuvrir(cle) / opts.onAction(cle, id) / opts.onTache(cle, id, cochee)
+  function listeCartes(opts) {
+    var conteneur = opts.conteneur;
+    var lireTextes = opts.textes || function () { return {}; };
+    // Les pieds de carte, par clé : c'est ce qui permet de rafraîchir une seule pastille
+    // sans reconstruire la liste.
+    var pieds = {};
+
+    // Les tâches de l'article, cochables sur la carte : l'avancement doit se lire et se
+    // changer sans ouvrir quoi que ce soit. Une case par tâche, l'intitulé dans son label,
+    // donc rien à apparier par identifiant.
+    function poserTaches(carte, ligne) {
+      var bloc = poser(carte, 'div', 'szh-taches');
+      for (var i = 0; i < ligne.taches.length; i++) {
+        (function (tache) {
+          var l = poser(bloc, 'label', 'szh-tache');
+          var case_ = document.createElement('input');
+          case_.type = 'checkbox';
+          case_.checked = !!tache.faite;
+          case_.dataset.tache = String(tache.id || '');
+          case_.addEventListener('change', function () {
+            if (opts.onTache) { opts.onTache(String(ligne.cle || ''), String(tache.id || ''), !!case_.checked); }
+          });
+          l.appendChild(case_);
+          poser(l, 'span', null, tache.libelle || '');
+        }(ligne.taches[i]));
+      }
+      return bloc;
+    }
+
+    // Les pastilles d'une carte, reposées seules. Cocher une tâche ne doit pas reconstruire
+    // la liste : le clavier perdrait le focus de la case qu'il vient d'utiliser, et deux
+    // clics rapprochés courraient contre un DOM en train d'être remplacé.
+    function majPastilles(cle, pastilles) {
+      var pied = pieds[String(cle)];
+      if (!pied) { return; }
+      var anciennes = pied.querySelectorAll('.szh-pastille');
+      for (var i = 0; i < anciennes.length; i++) { pied.removeChild(anciennes[i]); }
+      poserPastilles(pied, pastilles);
+    }
+
+    function poserPastilles(pied, pastilles) {
+      for (var k = 0; k < (pastilles || []).length; k++) {
+        var p = pastilles[k];
+        var past = poser(pied, 'span', 'szh-pastille' + (p.ton ? ' szh-pastille--' + p.ton : ''));
+        if (p.icone) { past.appendChild(icone(p.icone)); }
+        poser(past, 'span', null, p.texte || '');
+      }
+    }
+
+    function rendre(liste) {
+      var mots = lireTextes() || {};
+      conteneur.textContent = '';
+      pieds = {};
+      liste = liste || [];
+      if (liste.length === 0) {
+        conteneur.appendChild(notif('info', mots.listeVide || ''));
+        return;
+      }
+      var groupe = null;
+      for (var i = 0; i < liste.length; i++) {
+        var l = liste[i];
+        if (l.groupe && l.groupe !== groupe) {
+          groupe = l.groupe;
+          poser(conteneur, 'h2', 'titre-section', groupe);
+        }
+        var carte = poser(conteneur, 'section', 'szh-carte ligne');
+        var tete = poser(carte, 'header', 'szh-tete');
+        poser(tete, 'p', 'szh-tete-nom', l.titre || '');
+        if (l.meta) { poser(tete, 'span', 'szh-tete-meta', l.meta); }
+        // Ce qui demande d'être lu — un commentaire, un message de conversion, une erreur —
+        // vit dans le corps de la carte, pas dans une infobulle.
+        if (l.notif && l.notif.texte) {
+          var corps = poser(carte, 'div', 'szh-corps');
+          corps.appendChild(notif(l.notif.ton || 'info', l.notif.texte));
+        }
+        if (l.taches && l.taches.length > 0) { poserTaches(carte, l); }
+        var pied = poser(carte, 'footer', 'ligne-pied');
+        pieds[String(l.cle || '')] = pied;
+        if (l.ouvrir) {
+          pied.appendChild(boutonCommande(
+            { id: '', libelle: mots.ouvrir || '' },
+            (function (cle) { return function () { if (opts.onOuvrir) { opts.onOuvrir(cle); } }; }(String(l.cle || '')))));
+        }
+        for (var a = 0; a < (l.actions || []).length; a++) {
+          pied.appendChild(boutonCommande(l.actions[a],
+            (function (cle) { return function (id) { if (opts.onAction) { opts.onAction(cle, id); } }; }(String(l.cle || '')))));
+        }
+        poserPastilles(pied, l.pastilles);
+      }
+    }
+
+    return { rendre: rendre, majPastilles: majPastilles };
+  }
+
   return {
     autoEnregistrement: autoEnregistrement, motsCles: motsCles,
+    choixFerme: choixFerme, choixLangue: choixLangue,
     annoncerPret: annoncerPret, icone: icone, notif: notif, poserAccent: poserAccent,
+    barreBoutons: barreBoutons, boutonCommande: boutonCommande, listeCartes: listeCartes,
+    poser: poser, modale: modale, LANGUES_CHOIX: LANGUES_CHOIX,
     MARQUE_A_TRADUIRE: MARQUE
   };
 })();

@@ -1,4 +1,4 @@
-﻿// Cycle de vie d'un numéro : archivage, version du logiciel installée, mode développeur.
+﻿// Cycle de vie d'un numéro : archivage, version du logiciel installée, emplacement des revues.
 //
 // Ce module ignore tout de l'arborescence SharePoint : le déplacement d'un dossier de
 // revue est délégué à windows/archive-revue.ps1, seul à calculer les emplacements et seul
@@ -9,6 +9,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const { ecrireAtomique } = require('./yaml');
 
 // Mêmes chemins que szh-common.ps1 ($SzhBase et $SzhToolkit) et que lib/portraits.js,
 // qui vise le même toolkit depuis WSL.
@@ -16,7 +17,6 @@ const BASE_SZH = 'C:\\ProgramData\\SZH';
 const TOOLKIT = path.join(BASE_SZH, 'toolkit');
 const SCRIPT_ARCHIVAGE = path.join(TOOLKIT, 'windows', 'archive-revue.ps1');
 const SCRIPT_LANCEUR = path.join(TOOLKIT, 'windows', 'open-revue.ps1');
-const SCRIPT_MAIL = path.join(TOOLKIT, 'windows', 'mail-traduction.ps1');
 
 function versionInstallee() {
   try {
@@ -24,7 +24,9 @@ function versionInstallee() {
     if (v !== '') { return v; }
   } catch (e) { /* repli state.json */ }
   try {
-    const etat = JSON.parse(fs.readFileSync(path.join(BASE_SZH, 'state.json'), 'utf8'));
+    // BOM retiré : Save-SzhState écrit state.json avec un BOM, que JSON.parse refuse.
+    const brut = String(fs.readFileSync(path.join(BASE_SZH, 'state.json'), 'utf8')).replace(/^﻿/, '');
+    const etat = JSON.parse(brut);
     return String((etat && etat.version) || '').trim();
   } catch (e) { return ''; }
 }
@@ -97,19 +99,6 @@ function lancerChoixVersion() {
   return lancerScriptPowerShell(SCRIPT_LANCEUR, ['-Versions']);
 }
 
-// Brouillon d'e-mail « Envoyer pour traduction ». Confié à PowerShell parce qu'un corps
-// `mailto:` est du texte brut, où le lien szh:// arriverait inerte : seul l'objet mail
-// d'Outlook accepte un corps HTML, donc un vrai <a href>. Le script déduit aussi du
-// produit la langue de l'e-mail et le destinataire.
-function lancerMailTraduction(lien) {
-  return lancerScriptPowerShell(SCRIPT_MAIL, ['-Lien', lien]);
-}
-
-// Mode développeur : un seul interrupteur, dans C:\ProgramData\SZH\config.json, partagé
-// avec tous les scripts PowerShell. Activé, les revues sont cherchées, créées et
-// archivées dans l'arborescence de test (voir Get-SzhEmplacements dans
-// windows/szh-common.ps1, seule à connaître les chemins). Vrai par défaut : mieux vaut un
-// essai dans le dossier de test qu'un essai qui déplace un vrai numéro.
 const CONFIG = path.join(BASE_SZH, 'config.json');
 
 // BOM retiré avant l'analyse : d'anciens config.json en portent un et JSON.parse le
@@ -119,25 +108,148 @@ function lireConfigPoste() {
   catch (e) { return null; }
 }
 
-function lireModeDeveloppeur() {
-  const cfg = lireConfigPoste();
-  if (!cfg || typeof cfg !== 'object' || !('devMode' in cfg)) { return true; }
-  return cfg.devMode === true;
+// Écrit config.json tel qu'on le lui donne. Les modules qui y rangent un réglage de revue
+// — l'emplacement des revues, la configuration OJS, les tâches par article — passent par
+// ces deux fonctions : un seul chemin, un seul BOM à retirer, et le fichier garde ce que
+// les autres y ont mis. Rend null, ou le message de l'échec.
+function ecrireConfigPoste(cfg) {
+  try {
+    // Atomique : config.json porte l'emplacement des revues et la configuration OJS, et
+    // un fichier à moitié écrit rendrait le poste illisible pour tous ses lecteurs.
+    ecrireAtomique(CONFIG, JSON.stringify(cfg && typeof cfg === 'object' ? cfg : {}, null, 2) + '\n');
+    return null;
+  } catch (e) { return String((e && e.message) || e); }
 }
 
-function ecrireModeDeveloppeur(actif) {
+// ---- Destinataire de « Envoyer pour traduction » --------------------------------
+//
+// On écrit à l'équipe qui va traduire, donc à l'autre maison : un numéro de la
+// Zeitschrift part vers la rédaction francophone, une Revue vers la rédaction
+// germanophone. Ces deux adresses ne vivent plus qu'ici — le script PowerShell qui les
+// portait est parti avec le composant COM d'Outlook.
+const MAILS_TRADUCTION = {
+  zeitschrift: 'redaction@csps.ch',    // allemand -> français
+  revue: 'redaktion@szh.ch'            // français -> allemand
+};
+// Produit inconnu, config illisible, adresse invalide : le brouillon doit s'ouvrir quand
+// même, quitte à ce que le rédacteur corrige le destinataire lui-même.
+const MAIL_TRADUCTION_DEFAUT = 'robin.morand@szh.ch';
+
+// Adresse conservatrice : seuls ces caractères passent tels quels dans un `mailto:`.
+const FORME_MAIL = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
+
+// Surchargeable par config.json, clé `mailsTraduction` — un objet dont les clés sont les
+// jetons de revue. Nom et forme inchangés : des postes en portent déjà.
+//   { "mailsTraduction": { "revue": "…", "zeitschrift": "…" } }
+// La résolution est pure — la config lui est passée — pour être éprouvable sans écrire
+// dans C:\ProgramData ; adresseMailTraduction n'est que la lecture du fichier.
+function choisirAdresseMail(produit, cfg) {
+  const cle = String(produit === undefined || produit === null ? '' : produit).toLowerCase();
+  const surcharge = (cfg && typeof cfg.mailsTraduction === 'object' && cfg.mailsTraduction) || {};
+  for (const source of [surcharge[cle], MAILS_TRADUCTION[cle]]) {
+    const v = String(source === undefined || source === null ? '' : source).trim();
+    if (FORME_MAIL.test(v)) { return v; }
+  }
+  return MAIL_TRADUCTION_DEFAUT;
+}
+
+function adresseMailTraduction(produit) {
+  return choisirAdresseMail(produit, lireConfigPoste());
+}
+
+// ---- Emplacement des revues : où vivent les numéros -----------------------------
+//
+// Un seul interrupteur, dans C:\ProgramData\SZH\config.json, partagé avec tous les scripts
+// PowerShell. Il déplace la racine de tout le travail, et la clé porte donc le nom de son
+// effet : `emplacementRevues` vaut « test » ou « production ». « devMode » était le nom
+// d'avant ; il est encore lu, des postes le portent, et réécrit en même temps que la clé
+// neuve pour un toolkit plus ancien resté sur le poste.
+//
+// Les chemins des deux racines ne sont pas ici : ils n'ont qu'une source,
+// Get-SzhEmplacements dans windows/szh-common.ps1. Ce module ne rend que la décision, et
+// Resolve-SzhEmplacementRevues y applique exactement les mêmes règles dans le même ordre —
+// test/js/emplacements.test.js soumet les deux aux mêmes configurations.
+const EMPLACEMENT_TEST = 'test';
+const EMPLACEMENT_PRODUCTION = 'production';
+
+// Booléen d'un JSON écrit à la main : true/false, "true"/"false", 1/0. Tout le reste rend
+// null, soit « clé absente ». Sans cette normalisation, `"devMode": "false"` vaut faux ici
+// et vrai côté PowerShell ([bool]'false' y est $true) : les deux moitiés liraient deux
+// racines différentes pour la même configuration.
+function normaliserBooleenConfig(valeur) {
+  if (valeur === true || valeur === false) { return valeur; }
+  if (typeof valeur === 'number') {
+    if (valeur === 1) { return true; }
+    if (valeur === 0) { return false; }
+    return null;
+  }
+  if (typeof valeur === 'string') {
+    const t = valeur.trim().toLowerCase();
+    if (t === 'true') { return true; }
+    if (t === 'false') { return false; }
+  }
+  return null;
+}
+
+// La clé neuve, puis l'ancienne, puis le défaut historique « test ». Résolution pure — la
+// config lui est passée — pour être éprouvable sans écrire dans C:\ProgramData. Le défaut
+// n'est pas un choix : c'est ce que voyaient les postes d'avant, et le seul qui ne fasse
+// disparaître aucune revue. Get-SzhEmplacementRevues, côté PowerShell, l'écrit en clair
+// dans config.json dès qu'il tourne, après avoir regardé le disque.
+function resoudreEmplacementRevues(cfg) {
+  if (cfg && typeof cfg === 'object') {
+    const brut = cfg.emplacementRevues;
+    const v = String(brut === undefined || brut === null ? '' : brut).trim().toLowerCase();
+    if (v === EMPLACEMENT_PRODUCTION) { return EMPLACEMENT_PRODUCTION; }
+    if (v === EMPLACEMENT_TEST) { return EMPLACEMENT_TEST; }
+    if ('devMode' in cfg) {
+      const ancien = normaliserBooleenConfig(cfg.devMode);
+      if (ancien !== null) { return ancien ? EMPLACEMENT_TEST : EMPLACEMENT_PRODUCTION; }
+    }
+  }
+  return EMPLACEMENT_TEST;
+}
+
+function lireEmplacementRevues() {
+  return resoudreEmplacementRevues(lireConfigPoste());
+}
+
+// Les deux clés sont posées ensemble : la neuve fait foi, l'ancienne suit, faute de quoi un
+// toolkit resté en arrière lirait l'inverse de ce que le cockpit affiche. Pure, pour être
+// éprouvable ; ecrireEmplacementRevues n'est que l'écriture du fichier.
+function configAvecEmplacement(cfg, emplacement) {
+  const voulu = emplacement === EMPLACEMENT_PRODUCTION ? EMPLACEMENT_PRODUCTION : EMPLACEMENT_TEST;
+  const sortie = Object.assign({}, (cfg && typeof cfg === 'object') ? cfg : {});
+  sortie.emplacementRevues = voulu;
+  sortie.devMode = (voulu === EMPLACEMENT_TEST);
+  return sortie;
+}
+
+function ecrireEmplacementRevues(emplacement) {
   try {
-    const cfg = lireConfigPoste() || {};
-    cfg.devMode = !!actif;
+    const cfg = configAvecEmplacement(lireConfigPoste(), emplacement);
     fs.writeFileSync(CONFIG, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
     return null;
   } catch (e) { return String((e && e.message) || e); }
 }
 
+// Noms d'avant, gardés pour l'hôte et ses réglages : « mode développeur » n'était que le nom
+// de l'emplacement de test.
+function lireModeDeveloppeur() {
+  return lireEmplacementRevues() === EMPLACEMENT_TEST;
+}
+
+function ecrireModeDeveloppeur(actif) {
+  return ecrireEmplacementRevues(actif ? EMPLACEMENT_TEST : EMPLACEMENT_PRODUCTION);
+}
+
 module.exports = {
-  BASE_SZH, TOOLKIT, CONFIG, SCRIPT_ARCHIVAGE, SCRIPT_LANCEUR, SCRIPT_MAIL,
-  lancerMailTraduction,
-  lireModeDeveloppeur, ecrireModeDeveloppeur,
+  BASE_SZH, TOOLKIT, CONFIG, CONFIG_POSTE: CONFIG, SCRIPT_ARCHIVAGE, SCRIPT_LANCEUR,
+  lireConfigPoste, ecrireConfigPoste, FORME_MAIL,
+  MAILS_TRADUCTION, MAIL_TRADUCTION_DEFAUT, choisirAdresseMail, adresseMailTraduction,
+  EMPLACEMENT_TEST, EMPLACEMENT_PRODUCTION, normaliserBooleenConfig,
+  resoudreEmplacementRevues, lireEmplacementRevues, configAvecEmplacement,
+  ecrireEmplacementRevues, lireModeDeveloppeur, ecrireModeDeveloppeur,
   versionInstallee, versionsDivergent, tailleDossier, supprimerDossier,
   lancerArchivage, lancerChoixVersion
 };

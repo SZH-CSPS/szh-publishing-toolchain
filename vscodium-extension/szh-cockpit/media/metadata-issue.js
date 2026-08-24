@@ -1,134 +1,29 @@
+// Page « Méta-données du numéro » : elle ne fait plus que poser le formulaire partagé
+// SZH.formulaireNumero (media/_numero.js) et lui passer les messages. Le formulaire
+// lui-même — la table des champs, la couverture, l'enregistrement automatique — vit dans
+// ce fragment, que la vue « Articles » monte à l'identique : un champ ajouté là apparaît
+// ici sans seconde modification.
+//
+// Protocole avec l'hôte : celui de _numero.js, plus l'annonce « pret ».
 (function () {
   'use strict';
   const TXT = __TXT__;
   const vscodeApi = acquireVsCodeApi();
   let recu = false;
-  const CLES = ['title', 'volume', 'numero', 'date', 'lang'];
-  const modifies = new Set();
-  const etat = document.getElementById('etat');
-  let couleurChoisie = '';
-  // La revue est un choix fermé : c'est le jeton canonique zeitschrift ou revue qui est
-  // écrit dans ausgabe.yaml, l'ISSN et la langue par défaut en étant dérivés.
-  let revueChoisie = '';
-  const RADIOS_REVUE = document.querySelectorAll('input[name="revue"]');
-  // La valeur de la case arrive déjà tranchée en « true » ou « false » par estVraiYaml
-  // (lib/yaml.js) : aucune règle de vérité n'est dupliquée ici.
-  const CASE_CONDENSE = document.getElementById('entete-condensee');
-  CASE_CONDENSE.addEventListener('change', function () {
-    modifies.add('entete-condensee');
-    etat.textContent = '';
-  });
-  // Miroir de normaliserRevue() (lib/yaml.js) et de derive_revue() côté Lua : accepte le
-  // jeton comme l'ancien nom complet, et teste « zeitschrift » avant « revue ».
-  function normaliserRevue(v) {
-    const s = String(v === undefined || v === null ? '' : v).toLowerCase();
-    if (s.indexOf('zeitschrift') !== -1) { return 'zeitschrift'; }
-    if (s.indexOf('revue') !== -1) { return 'revue'; }
-    return '';
-  }
-  function majRevue() {
-    for (const r of RADIOS_REVUE) { r.checked = (r.value === revueChoisie); }
-  }
-  for (const r of RADIOS_REVUE) {
-    r.addEventListener('change', function () {
-      if (!r.checked) { return; }
-      revueChoisie = r.value;
-      modifies.add('revue');
-      etat.textContent = '';
-    });
-  }
-  function majPastilles() {
-    for (const b of document.querySelectorAll('#couleurs .pastille')) {
-      b.setAttribute('aria-pressed', b.dataset.hex === couleurChoisie ? 'true' : 'false');
-    }
-  }
-  function rendreCouleurs() {
-    const conteneur = document.getElementById('couleurs');
-    conteneur.textContent = '';
-    const items = [{ hex: '', nom: TXT.couleurAucune }].concat(TXT.couleurs);
-    for (const c of items) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'pastille';
-      b.dataset.hex = c.hex;
-      b.setAttribute('aria-pressed', 'false');
-      if (c.hex) {
-        const puce = document.createElement('span');
-        puce.className = 'puce';
-        puce.style.background = c.hex;
-        b.appendChild(puce);
-      }
-      b.appendChild(document.createTextNode(c.nom));
-      b.addEventListener('click', function () {
-        couleurChoisie = c.hex;
-        majPastilles();
-        modifies.add('couleur');
-        etat.textContent = '';
-        // Un bouton n'émet ni « input » ni « change » : sans cet appel, la couleur
-        // n'attendrait que la perte de focus pour être écrite.
-        autoEnr.programmer();
-      });
-      conteneur.appendChild(b);
-    }
-  }
-  function remplir(valeurs) {
-    for (const cle of CLES) {
-      const champ = document.getElementById(cle);
-      const v = valeurs[cle] === undefined ? '' : String(valeurs[cle]);
-      champ.value = v;
-      if (cle === 'date') {
-        const indice = document.getElementById('indiceDate');
-        if (v && champ.value !== v) {
-          indice.textContent = TXT.indiceDate.split('{0}').join(v);
-          indice.hidden = false;
-        } else { indice.hidden = true; }
-      }
-      if (cle === 'lang' && champ.value !== v) { champ.value = ''; }
-    }
-    revueChoisie = normaliserRevue(valeurs.revue);
-    majRevue();
-    couleurChoisie = valeurs.couleur === undefined ? '' : String(valeurs.couleur);
-    majPastilles();
-    CASE_CONDENSE.checked = String(valeurs['entete-condensee']) === 'true';
-    modifies.clear();
-    etat.textContent = '';
-  }
-  for (const cle of CLES) {
-    document.getElementById(cle).addEventListener('input', function () { modifies.add(cle); etat.textContent = ''; });
-  }
-  rendreCouleurs();
 
-  // Seuls les champs touchés partent : ausgabe.yaml garde tout le reste, commentaires
-  // compris, et deux personnes qui éditent deux clés ne s'écrasent pas.
-  function envoyer(auto) {
-    if (modifies.size === 0) { if (!auto) { etat.textContent = TXT.rien; } return; }
-    const envoi = {};
-    for (const cle of modifies) {
-      if (cle === 'couleur') { envoi[cle] = couleurChoisie; }
-      else if (cle === 'revue') { envoi[cle] = revueChoisie; }
-      else if (cle === 'entete-condensee') { envoi[cle] = CASE_CONDENSE.checked ? 'true' : 'false'; }
-      else { envoi[cle] = document.getElementById(cle).value; }
-    }
-    vscodeApi.postMessage({ type: 'enregistrer', modifies: envoi });
-  }
-  // Enregistrement automatique, comme le suivi de traduction : trois secondes après la
-  // dernière frappe, au changement d'un choix, et quand le panneau perd le focus. Le
-  // bouton reste, pour qui veut voir « ✓ » tout de suite.
-  const autoEnr = SZH.autoEnregistrement({
-    estModifie: function () { return modifies.size > 0; },
-    enregistrer: envoyer
+  const numero = SZH.formulaireNumero({
+    conteneur: document.getElementById('numero'),
+    api: vscodeApi,
+    txt: TXT,
+    etat: document.getElementById('etat'),
+    couverture: true
   });
-  document.getElementById('formulaire').addEventListener('submit', function (e) {
-    e.preventDefault();
-    autoEnr.annuler();
-    envoyer(false);
-  });
+  numero.enregistrement(document.getElementById('enregistrer'));
+
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
     recu = true;
-    if (msg.type === 'valeurs') { remplir(msg.valeurs || {}); }
-    if (msg.type === 'enregistre') { autoEnr.confirme(); modifies.clear(); etat.textContent = TXT.enregistre; }
-    if (msg.type === 'erreur') { autoEnr.confirme(); etat.textContent = '⚠ ' + msg.message; }
+    numero.message(msg);
   });
   SZH.annoncerPret(vscodeApi, function () { return recu; });
 })();

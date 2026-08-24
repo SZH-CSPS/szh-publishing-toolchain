@@ -16,6 +16,13 @@
 # fusionné) -> id sur chaque en-tête, scope="col"/"colgroup" et headers="…" sur chaque
 # cellule de données.
 #
+# Un tableau resté plat sort sans un seul <th>, donc sans /Headers dans le PDF : illisible
+# au lecteur d'écran, et invisible pour un validateur PDF/UA, qui n'a aucun TH à reprocher.
+# Cas banal : une rangée d'en-tête mise en valeur par un fond coloré plutôt que par du
+# gras. Chaque tableau plat déclenche donc un avertissement nommant l'article et le
+# tableau, sur stderr et dans articles-word/.import.log ($SZH_IMPORT_LOG) ; l'import
+# réussit quand même, à la rédaction de trancher.
+#
 # Les tableaux consommés par docx-meta.py (lignes « T<TAB>k » de $SZH_META : le tableau des
 # auteurs) sont sautés ici et les autres numérotés séquentiellement. La numérotation doit
 # rester alignée sur szh-tabelle-reference.lua, ce qui tient parce que szh-meta.lua retire
@@ -242,8 +249,37 @@ def paragraphe_tout_gras(p):
     return vu
 
 
-def html_du_tableau(tbl, caption=None):
-    """Rend un w:tbl en <table>, fusions préservées et en-têtes accessibles."""
+# Préfixe unique des avertissements remontés au rédacteur. Une ligne, des champs séparés
+# par « | », le deuxième étant un code stable : l'interface du cockpit peut la reconnaître
+# sans lire le français. Écrite sur stderr ET dans articles-word/.import.log (chemin absolu
+# passé par la cible `import` du Makefile dans $SZH_IMPORT_LOG) — l'import, lui, réussit.
+PREFIXE_AVERT = '[import-avertissement]'
+
+
+def avertir(code, champs, fr, de):
+    ligne = ' | '.join([PREFIXE_AVERT + ' ' + code] + list(champs) + [fr, '[de] ' + de])
+    print(ligne, file=sys.stderr)
+    journal = os.getenv('SZH_IMPORT_LOG')
+    if not journal:
+        return
+    try:
+        with open(journal, 'a', encoding='utf-8', newline='\n') as f:
+            f.write(ligne + '\n')
+    except OSError:
+        pass                                  # un journal illisible ne casse pas l'import
+
+
+def nom_article():
+    """Slug de l'article en cours. import-docx.sh travaille dans articles/<slug>/ ;
+    $SZH_SLUG le dit explicitement, le nom du dossier courant sert de repli."""
+    return os.getenv('SZH_SLUG') or os.path.basename(os.getcwd()) or '?'
+
+
+def html_du_tableau(tbl, caption=None, info=None):
+    """Rend un w:tbl en <table>, fusions préservées et en-têtes accessibles.
+
+    `info`, si fourni, reçoit ce que l'appelant ne peut pas redeviner sans refaire le
+    calcul : `lignes_entete`, le nombre de rangées d'en-tête retenues (0 = tableau plat)."""
     lignes = [tr for tr in tbl if tr.tag == W + 'tr']
     # Pré-analyse : pour chaque ligne, les cellules avec (colonne de départ, colspan,
     # vmerge, élément). Les cellules « continue » occupent leur colonne — elles sont bien
@@ -273,7 +309,7 @@ def html_du_tableau(tbl, caption=None):
         return n
 
     # ---- Rangées d'en-tête : w:tblHeader (rangées de tête contiguës), sinon 1ʳᵉ rangée
-    #      toute en gras. Zéro -> tableau plat, aucun en-tête.
+    #      toute en gras. Zéro -> tableau plat, aucun en-tête, et principal() avertit.
     if any(ligne_a_tblheader(tr) for tr in lignes):
         lignes_entete = 0
         for tr in lignes:
@@ -373,6 +409,9 @@ def html_du_tableau(tbl, caption=None):
             out.append('<%s%s>%s</%s>' % (balise, attributs, html_de_cellule(c['tc']), balise))
         out.append('</tr>')
         return out
+
+    if info is not None:
+        info['lignes_entete'] = lignes_entete
 
     sortie = ['<table>']
     if caption:
@@ -510,6 +549,7 @@ def principal(argv):
     sautes = tables_consommees_par_meta()
     consommes = set()
     legendes = []                             # textes normalisés des légendes prises
+    plats = []                                # tableaux rendus sans aucune rangée d'en-tête
     n = 0
     for ordinal, (tbl, parent) in enumerate(tableaux, start=1):
         if ordinal in sautes:
@@ -521,8 +561,11 @@ def principal(argv):
         else:
             caption = None
         chemin = os.path.join(dossier, 'table-%02d.html' % n)
+        info = {}
         with open(chemin, 'w', encoding='utf-8', newline='\n') as f:
-            f.write(html_du_tableau(tbl, caption) + '\n')
+            f.write(html_du_tableau(tbl, caption, info) + '\n')
+        if not info.get('lignes_entete'):
+            plats.append((n, chemin))
     if n == 0:
         return 0                              # tous consommés : pas de tables/ vide
     # Sidecar : légendes consommées -> szh-legendes.lua retire les paragraphes gras
@@ -532,10 +575,28 @@ def principal(argv):
         with open(chemin_leg, 'w', encoding='utf-8', newline='\n') as f:
             for t in legendes:
                 f.write(t + '\n')
+    # Un tableau sans rangée d'en-tête sort sans un seul <th> : aucun /Headers dans le
+    # PDF, donc illisible au lecteur d'écran — et comme il ne contient aucun TH, un
+    # validateur PDF/UA n'a rien à reprocher. Cas banal : une rangée d'en-tête mise en
+    # valeur par un fond coloré plutôt que par du gras. Avertissement, pas blocage : c'est
+    # à la rédaction de trancher, l'import réussit.
+    slug = nom_article()
+    for numero, chemin in plats:
+        avertir(
+            'tableau-sans-entete',
+            ['article « %s »' % slug, 'tableau %d' % numero, chemin.replace(os.sep, '/')],
+            "Ce tableau ne semble pas avoir de rangée d'en-tête : désignez-la dans "
+            "l'éditeur de tableaux, sinon un lecteur d'écran ne pourra pas relier une "
+            'cellule à sa colonne.',
+            'Diese Tabelle scheint keine Kopfzeile zu haben: legen Sie sie im '
+            'Tabellen-Editor fest, sonst kann ein Screenreader eine Zelle nicht ihrer '
+            'Spalte zuordnen.')
+
     nb_sautes = sum(1 for o in sautes if 1 <= o <= len(tableaux))
-    print('[docx-tables] %d tableau(x) extrait(s), %d légendé(s)%s'
+    print('[docx-tables] %d tableau(x) extrait(s), %d légendé(s)%s%s'
           % (n, len(legendes),
-             ', %d consommé(s) (auteurs)' % nb_sautes if nb_sautes else ''))
+             ', %d consommé(s) (auteurs)' % nb_sautes if nb_sautes else '',
+             ', %d sans en-tête' % len(plats) if plats else ''))
     return 0
 
 

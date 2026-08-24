@@ -1,0 +1,49 @@
+/* Vue « Articles » : la barre de commandes, les métadonnées du numéro repliées, puis une
+   carte par article. Les cartes viennent de _liste.css, le formulaire du numéro de
+   _numero.css, le reste du socle (_design.css). Il ne reste ici que le cadre de la page,
+   le bloc repliable et la modale des tâches. */
+body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
+  line-height: var(--interligne); color: var(--encre); background: var(--fond);
+  padding: var(--e4) var(--e5) var(--e7); max-width: 60rem; }
+h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
+
+/* Les métadonnées du numéro sont là quand on les cherche, et repliées le reste du temps :
+   la page sert d'abord à voir où en sont les articles. */
+.bloc { margin: var(--e4) 0 0; border: 1px solid var(--filet);
+  border-radius: var(--rayon); background: var(--surface); }
+.bloc > summary { cursor: pointer; padding: var(--e3);
+  font-size: var(--t-section); font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--encre-2); }
+.bloc > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.bloc[open] > summary { border-bottom: 1px solid var(--filet); }
+.bloc > .szh-barre { padding: var(--e3) var(--e3) 0; }
+.bloc > #numero { padding: 0 var(--e3) var(--e4); max-width: 38rem; }
+
+/* ---- Modale des tâches ----
+   Les intitulés décrivent le processus d'une revue : on les règle ici, dans les deux
+   langues, et le réglage vaut pour tous les numéros de cette revue. */
+.modale-taches {
+  background: var(--vscode-editor-background); color: var(--encre);
+  border: 1px solid var(--filet-fort); border-radius: var(--rayon);
+  padding: var(--e4) var(--e5) var(--e5);
+  width: min(46rem, calc(100vw - 3rem));
+  max-height: calc(100vh - 3rem); overflow-y: auto;
+  box-shadow: 0 8px 28px var(--vscode-widget-shadow, rgba(0, 0, 0, .35));
+}
+.modale-taches > h3 { margin: 0 0 var(--e3); font-size: var(--t-titre); font-weight: 700; }
+.taches-revues { display: flex; gap: var(--e2); flex-wrap: wrap; margin: 0 0 var(--e4); }
+/* Une rangée par tâche, une colonne par langue : l'appariement se lit et se corrige. */
+.taches-grille { display: flex; flex-direction: column; gap: var(--e2); }
+.taches-rangee { display: grid; grid-template-columns: 1.6em 1fr 1fr 2em;
+  align-items: center; gap: var(--e2); }
+.taches-entete { font-size: var(--t-libelle); font-weight: 700; color: var(--encre-2); }
+.taches-rangee .num { text-align: right; font-size: var(--t-libelle); color: var(--encre-2); }
+.taches-rangee input { width: 100%; box-sizing: border-box; padding: .3em .45em; font: inherit;
+  color: var(--vscode-input-foreground); background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini); }
+.taches-rangee input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.taches-pied { display: flex; align-items: center; gap: var(--e2); margin-top: var(--e4); }
+@media (max-width: 40rem) {
+  .taches-rangee { grid-template-columns: 1.6em 1fr 2em; }
+  .taches-rangee .colonne-de { grid-column: 2 / span 1; }
+}

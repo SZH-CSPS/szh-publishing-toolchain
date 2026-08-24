@@ -2,8 +2,69 @@
 # importé par `wsl --import` ; la même image part aussi sur GHCR. Il ne porte que la
 # toolchain, le pipeline (Makefile, styles) vivant dans le toolkit côté Windows.
 # Construction : build-rootfs.sh, qui passe les --build-arg.
+#
+# Deux étapes : la première taille veraPDF et son runtime Java, la seconde — le rootfs —
+# n'en reçoit que les deux arborescences finies. Ce qui sert à les fabriquer (JDK, binutils)
+# pèse quatre fois ce qu'elles pèsent et n'a rien à faire chez le rédacteur.
 
 ARG DEBIAN_TAG=13-slim
+
+# ===========================================================================
+# Étape jetable : veraPDF, le validateur de la porte PDF/UA (cible verifier-ua du
+# Makefile), et le runtime Java qui le fait tourner.
+# ===========================================================================
+FROM debian:${DEBIAN_TAG} AS verapdf
+
+ARG VERAPDF_VERSION=1.30.2
+# URL versionnée, et non l'alias releases/verapdf-installer.zip : les deux servent
+# aujourd'hui le même octet, mais l'alias suivra le prochain amont et ferait mentir le
+# sha256 — l'un sans l'autre ne suffit pas à rendre le build reproductible.
+ARG VERAPDF_URL=https://software.verapdf.org/releases/1.30/verapdf-greenfield-1.30.2-installer.zip
+ARG VERAPDF_SHA256=6cc6341cb1af644044054b81f00a6590a7918abb18f762243de115258bcad838
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# binutils pour l'objcopy que `jlink --strip-debug` va chercher — sans lui, jlink s'arrête
+# net. python3 sert à dézipper, plutôt qu'un unzip installé pour un seul appel.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates python3 \
+        openjdk-21-jdk-headless binutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Runtime taillé sur mesure : 56 Mio, là où openjdk-21-jre-headless en coûterait ~200.
+# Les sept modules sont un minimum mesuré, pas une liste de confort : sans java.desktop
+# ni java.management, veraPDF casse à l'exécution. Ne pas les retirer.
+RUN jlink --add-modules java.base,java.logging,java.xml,java.desktop,java.naming,java.management,jdk.crypto.ec \
+        --strip-debug --no-header-files --no-man-pages --compress=zip-9 --output /jre-min
+
+# L'installeur est un IzPack : il attend un écran, sauf si on lui passe ce XML
+# d'auto-installation. Le pack GUI désélectionné ramène l'install de ~48 à 16 Mio ; celui
+# de documentation s'installe malgré tout, d'où son retrait avec l'Uninstaller.
+RUN curl -fsSL "${VERAPDF_URL}" -o /tmp/vp.zip \
+    && printf '%s  %s\n' "${VERAPDF_SHA256}" /tmp/vp.zip | sha256sum -c - \
+    && python3 -c "import zipfile; zipfile.ZipFile('/tmp/vp.zip').extractall('/tmp')" \
+    && printf '%s\n' \
+        '<?xml version="1.0" encoding="UTF-8" standalone="no"?>' \
+        '<AutomatedInstallation langpack="eng">' \
+        '  <com.izforge.izpack.panels.htmlhello.HTMLHelloPanel id="welcome"/>' \
+        '  <com.izforge.izpack.panels.target.TargetPanel id="install_dir">' \
+        '    <installpath>/opt/verapdf-cli</installpath>' \
+        '  </com.izforge.izpack.panels.target.TargetPanel>' \
+        '  <com.izforge.izpack.panels.packs.PacksPanel id="sdk_pack_select">' \
+        '    <pack index="0" name="veraPDF GUI" selected="false"/>' \
+        '    <pack index="1" name="veraPDF CLI" selected="true"/>' \
+        '  </com.izforge.izpack.panels.packs.PacksPanel>' \
+        '  <com.izforge.izpack.panels.install.InstallPanel id="install"/>' \
+        '  <com.izforge.izpack.panels.finish.SimpleFinishPanel id="finish"/>' \
+        '</AutomatedInstallation>' \
+       > /tmp/auto.xml \
+    && java -jar "/tmp/verapdf-greenfield-${VERAPDF_VERSION}/verapdf-izpack-installer-${VERAPDF_VERSION}.jar" /tmp/auto.xml \
+    && rm -rf /opt/verapdf-cli/Uninstaller /opt/verapdf-cli/documents \
+        /tmp/vp.zip "/tmp/verapdf-greenfield-${VERAPDF_VERSION}" /tmp/auto.xml
+
+# ===========================================================================
+# Le rootfs
+# ===========================================================================
 FROM debian:${DEBIAN_TAG}
 
 # ---- Paramètres, surchargeables au build ----
@@ -63,6 +124,20 @@ RUN mkdir -p /opt/portraits/models \
         "${YUNET_SHA256}" /opt/portraits/models/face_detection_yunet_2023mar.onnx \
        | sha256sum -c -
 
+# ---- Porte PDF/UA : veraPDF et son runtime, versés depuis l'étape jetable ----
+# Les deux chemins sont ceux que pipeline/Makefile attend (variables VERAPDF et
+# VERAPDF_JAVA) ; les changer ici casse la cible verifier-ua.
+# Le lanceur est relocalisable : il cherche java dans JAVA_HOME, sinon dans le PATH. Le
+# rootfs n'ayant aucun JRE système, sans ce JAVA_HOME un `verapdf` tapé à la main
+# échouerait — et, plus traître, en rendant 1, le code que veraPDF réserve au « PDF non
+# conforme ». Rien d'autre dans l'image ne lit JAVA_HOME.
+# Placé après les venvs, pas avant : un changement de version de veraPDF ne doit pas
+# reconstruire le venv des portraits et ses modèles ONNX.
+COPY --from=verapdf /jre-min /opt/jre-min
+COPY --from=verapdf /opt/verapdf-cli /opt/verapdf-cli
+ENV JAVA_HOME=/opt/jre-min
+RUN ln -s /opt/verapdf-cli/verapdf /usr/local/bin/verapdf
+
 # ---- Utilisateur par défaut : une distro importée lit /etc/wsl.conf [user] default ----
 RUN useradd -m -s /bin/bash "${WSL_USER}"
 
@@ -72,5 +147,9 @@ COPY wsl.conf /etc/wsl.conf
 # Seules les polices d'apt sont indexées ; celles de la maquette voyagent dans le HTML.
 RUN fc-cache -f
 
-# Vérification au build : échoue si la toolchain est cassée.
-RUN pandoc --version | head -n1 && weasyprint --info | head -n1
+# Vérification au build : échoue si la toolchain est cassée. `grep` et non `head` : dans un
+# tube, seul le code du dernier maillon compte, et `head` rend 0 même quand la commande en
+# amont n'existe pas — la vérification donnait donc son quitus à une image cassée.
+RUN pandoc --version | grep -m1 "^pandoc" \
+    && weasyprint --info | grep -m1 -i "weasyprint" \
+    && verapdf --version | grep -m1 "^veraPDF"

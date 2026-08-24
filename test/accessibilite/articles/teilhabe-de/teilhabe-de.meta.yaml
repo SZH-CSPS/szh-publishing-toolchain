@@ -1,0 +1,27 @@
+type: article
+lang: de
+licence: cc-by-4.0
+title:
+  de: "Soziale Teilhabe in der Regelklasse"
+  fr: "La participation sociale en classe régulière"
+subtitle:
+  de: "Prüffassung des Korpus"
+  fr: "Version d'épreuve du corpus"
+resume:
+  de: "Deutsche Fassung des Prüfpaares: Titelstufensprünge, eine Tabelle ohne Kopfzeile und eine Literaturliste mit diakritischen Zeichen."
+  fr: "Version allemande de la paire de test : sauts de niveau de titre, un tableau sans rangée d'en-tête et une bibliographie à diacritiques."
+keywords:
+  de:
+  - "Teilhabe"
+  - "Barrierefreiheit"
+  fr:
+  - "participation"
+  - "accessibilité"
+author:
+- prenom: "Alice"
+  nom: "Meier"
+  fonction: "Wissenschaftliche Mitarbeiterin"
+  affiliation: "SZH/CSPS"
+  orcid: ""
+  email: ""
+  photo: ""

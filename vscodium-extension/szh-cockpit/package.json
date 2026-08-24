@@ -2,7 +2,7 @@
   "name": "szh-cockpit",
   "displayName": "SZH — Revue (cockpit)",
   "description": "Barre latérale « Revue SZH » : articles, métadonnées du numéro, import des Word, suivi des traductions, aperçu et réglages.",
-  "version": "0.22.1",
+  "version": "0.23.0",
   "publisher": "szh-csps",
   "license": "MIT",
   "engines": { "vscode": "^1.75.0" },
@@ -150,6 +150,18 @@
         "icon": "$(trash)"
       },
       {
+        "command": "szh.reimporterArticle",
+        "title": "%cmd.reimporterArticle%",
+        "category": "Revue SZH",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "szh.annulerReimport",
+        "title": "%cmd.annulerReimport%",
+        "category": "Revue SZH",
+        "icon": "$(discard)"
+      },
+      {
         "command": "szh.toutExporter",
         "title": "%cmd.toutExporter%",
         "category": "Revue SZH",
@@ -228,6 +240,17 @@
         "icon": "$(mortar-board)"
       },
       {
+        "command": "szh.vueArticles",
+        "title": "%cmd.vueArticles%",
+        "category": "Revue SZH"
+      },
+      {
+        "command": "szh.envoyerAuteur",
+        "title": "%cmd.envoyerAuteur%",
+        "category": "Revue SZH",
+        "icon": "$(mail)"
+      },
+      {
         "command": "szh.vueTraductions",
         "title": "%cmd.vueTraductions%",
         "category": "Revue SZH"
@@ -235,6 +258,11 @@
       {
         "command": "szh.vueWord",
         "title": "%cmd.vueWord%",
+        "category": "Revue SZH"
+      },
+      {
+        "command": "szh.vueControles",
+        "title": "%cmd.vueControles%",
         "category": "Revue SZH"
       },
       {
@@ -365,6 +393,31 @@
           "command": "szh.vueTraductions",
           "when": "view == szhCockpitVue && viewItem == section-traductions",
           "group": "navigation"
+        },
+        {
+          "command": "szh.vueArticles",
+          "when": "view == szhCockpitVue && viewItem == section-articles",
+          "group": "navigation"
+        },
+        {
+          "command": "szh.envoyerAuteur",
+          "when": "view == szhCockpitVue && viewItem == article",
+          "group": "navigation"
+        },
+        {
+          "command": "szh.reimporterArticle",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
+          "group": "reimport@1"
+        },
+        {
+          "command": "szh.annulerReimport",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
+          "group": "reimport@2"
+        },
+        {
+          "command": "szh.reimporterArticle",
+          "when": "view == szhCockpitVue && viewItem == word-deja && !szh.verrouillee",
+          "group": "reimport@1"
         },
         {
           "command": "szh.supprimerTable",

@@ -13,7 +13,15 @@ const path = require('path');
 // préservée telle quelle, fins de ligne et BOM compris.
 
 const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 'couleur',
-  'entete-condensee', 'locked', 'archived', 'version-toolkit'];
+  'entete-condensee', 'locked', 'archived', 'version-toolkit', 'ordre-articles'];
+
+// Clés qui portent une liste et non un scalaire. `ordre-articles` retient l'ordre des
+// articles dans le numéro : il vit ici, avec le reste de ce qui décrit le numéro, et non
+// dans les noms de dossier — déplacer un article ne doit renommer ni dossier ni .md, sans
+// quoi tout out/ serait à recompiler et les liens du numéro tomberaient. Écrite en
+// séquence en ligne, la clé se relit et se corrige à la main, et elle voyage avec le
+// dossier comme le reste d'ausgabe.yaml. lib/articles.js la lit et la répare.
+const CLES_LISTES = ['ordre-articles'];
 
 // Deux drapeaux indépendants, écrits en booléens YAML nus : `locked` gèle le numéro
 // (éditeur en lecture seule, écritures du cockpit refusées) et `archived` le range dans
@@ -335,11 +343,66 @@ const GROUPES_TYPES = {
   hors:    { fr: 'Hors dossier',               de: 'Ausserhalb des Schwerpunkts',     it: 'Fuori dossier' }
 };
 const LANGUES_META = ['fr', 'de', 'it'];   // fr et de affichées ; it activable par carte
+
+// Langue de l'article : les trois langues de la revue, jamais l'anglais — la maquette
+// (libellés Figure/Tableau, « Résumé », mention de licence) n'existe que dans celles-là.
+// Une fiche sans `lang` retombe sur la langue du numéro, et szh-maquette.lua le dit.
+const LANGUES_ARTICLE = LANGUES_META;
+
+// Jeton de langue d'article accepté : les deux premières lettres, dans la liste. Tout le
+// reste rend '' (langue non déclarée), ce qui vaut « suivre le numéro ».
+function normaliserLangueArticle(valeur) {
+  const v = String(valeur === undefined || valeur === null ? '' : valeur).trim().toLowerCase().slice(0, 2);
+  return LANGUES_ARTICLE.indexOf(v) !== -1 ? v : '';
+}
 // Champs d'un auteur, dans l'ordre de sérialisation : analyserMeta et serialiserMeta
 // parcourent cette constante, l'étendre ici suffit aux deux. `photo` est un chemin
 // relatif vers portraits/<slug-auteur>.{original.<ext>|avec-fond.png|sans-fond.png},
 // posé par la modale photo et jamais saisi au clavier.
 const CHAMPS_AUTEUR = ['prenom', 'nom', 'fonction', 'affiliation', 'orcid', 'email', 'photo'];
+
+// Licence d'un article. La revue publie en CC-BY 4.0 : c'est la valeur par défaut, et une
+// fiche sans clé `licence` sort exactement comme avant que ce champ existe — aucun numéro
+// en cours ne bouge.
+//
+// Le jeu offert est la suite Creative Commons 4.0 au complet, ni plus ni moins : ces six
+// licences sont les seules que Creative Commons publie en 4.0, et un sous-ensemble choisi
+// à la main se rediscuterait à chaque reprise. S'y ajoute « droits réservés », le cas
+// d'un entretien, d'une reprise ou d'une photo d'agence — sans lui, une figure « © Getty »
+// continuerait de sortir sous une couverture CC-BY. Il n'a pas d'URL et on ne lui en
+// fabrique pas : les consommateurs traitent l'absence au lieu de la contourner.
+//
+// `nom` est la mention imprimée sur la couverture, dans la graphie de la maison (trait
+// d'union) ; elle est la même dans les trois langues, seule la phrase qui l'entoure est
+// traduite — voir szh-maquette.lua, dont la table est le miroir de celle-ci. `url` est
+// l'adresse du résumé Creative Commons, forme canonique avec barre finale. Les libellés du
+// formulaire, eux, vivent dans lib/i18n.js sous « licence.<clé> ».
+const LICENCE_DEFAUT = 'cc-by-4.0';
+const LICENCES_ARTICLE = [
+  { cle: 'cc-by-4.0',       nom: 'CC-BY 4.0',       url: 'https://creativecommons.org/licenses/by/4.0/' },
+  { cle: 'cc-by-sa-4.0',    nom: 'CC-BY-SA 4.0',    url: 'https://creativecommons.org/licenses/by-sa/4.0/' },
+  { cle: 'cc-by-nd-4.0',    nom: 'CC-BY-ND 4.0',    url: 'https://creativecommons.org/licenses/by-nd/4.0/' },
+  { cle: 'cc-by-nc-4.0',    nom: 'CC-BY-NC 4.0',    url: 'https://creativecommons.org/licenses/by-nc/4.0/' },
+  { cle: 'cc-by-nc-sa-4.0', nom: 'CC-BY-NC-SA 4.0', url: 'https://creativecommons.org/licenses/by-nc-sa/4.0/' },
+  { cle: 'cc-by-nc-nd-4.0', nom: 'CC-BY-NC-ND 4.0', url: 'https://creativecommons.org/licenses/by-nc-nd/4.0/' },
+  { cle: 'droits-reserves', nom: '',                url: '' }
+];
+
+// Jeton de licence accepté, ou '' hors liste — ce qui vaut « non déclarée », donc la
+// licence par défaut. Une valeur de travers ne doit jamais s'imprimer.
+function normaliserLicence(valeur) {
+  const v = String(valeur === undefined || valeur === null ? '' : valeur).trim().toLowerCase();
+  for (const l of LICENCES_ARTICLE) { if (l.cle === v) { return v; } }
+  return '';
+}
+
+// L'entrée à appliquer : celle de la fiche, ou celle par défaut quand la clé est absente
+// ou illisible. Point de passage unique de tout ce qui, côté cockpit, dit une licence.
+function licenceArticle(valeur) {
+  const cle = normaliserLicence(valeur) || LICENCE_DEFAUT;
+  for (const l of LICENCES_ARTICLE) { if (l.cle === cle) { return l; } }
+  return LICENCES_ARTICLE[0];
+}
 
 // Langue par défaut du numéro, dérivée du choix de revue, avec repli sur la clé `lang`
 // puis sur fr. Détermine la langue affichée en premier dans les formulaires.
@@ -359,11 +422,15 @@ function langueRevue(racine) {
   return langueDefaut(valeurs);
 }
 
-// analyserMeta(texte) -> { type, doi, title:{}, subtitle:{}, resume:{}, keywords:{},
-// author:[], _inconnues:[lignes brutes] }. Accepte les maps par langue et les listes en
-// bloc comme en ligne.
+// analyserMeta(texte) -> { type, lang, source, licence, doi, title:{}, subtitle:{},
+// resume:{}, keywords:{}, author:[], _inconnues:[lignes brutes] }. Accepte les maps par
+// langue et les listes en bloc comme en ligne.
+//
+// `source` (le nom du .docx d'origine, posé par l'import) et `licence` sont des clés de
+// première classe : le formulaire des métadonnées reconstruit sa carte depuis la webview,
+// et c'est ecrireCartesArticles() qui relit du fichier ce que la carte ne porte pas.
 function analyserMeta(texte) {
-  const valeurs = { type: '', doi: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [], _inconnues: [] };
+  const valeurs = { type: '', lang: '', source: '', licence: '', doi: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [], _inconnues: [] };
   if (!texte) { return valeurs; }
   const lignes = String(texte).split(/\r?\n/);
   let i = 0;
@@ -377,6 +444,15 @@ function analyserMeta(texte) {
     const cle = m[1];
     const reste = m[2];
     if (cle === 'type') { valeurs.type = decouperValeurYaml(reste).valeur; i++; continue; }
+    // Langue de l'article, propre à la fiche : elle prime sur la langue du numéro au
+    // rendu. Une valeur hors liste est relue comme non déclarée, jamais imprimée.
+    if (cle === 'lang') { valeurs.lang = normaliserLangueArticle(decouperValeurYaml(reste).valeur); i++; continue; }
+    // Le Word d'origine : c'est lui qui distingue un redépôt du même fichier d'un
+    // homonyme dont le nom se tronque pareil.
+    if (cle === 'source') { valeurs.source = decouperValeurYaml(reste).valeur; i++; continue; }
+    // Licence de l'article. Une valeur hors liste est relue comme absente, donc CC-BY 4.0 :
+    // mieux vaut la licence de la revue qu'un jeton inventé imprimé sur la couverture.
+    if (cle === 'licence') { valeurs.licence = normaliserLicence(decouperValeurYaml(reste).valeur); i++; continue; }
     if (cle === 'doi') { valeurs.doi = decouperValeurYaml(reste).valeur; i++; continue; }
     if (cle === 'title' || cle === 'subtitle' || cle === 'resume') {
       const map = {};
@@ -461,14 +537,28 @@ function analyserMeta(texte) {
   return valeurs;
 }
 
-// serialiserMeta(valeurs) -> YAML régénéré dans l'ordre type, doi, title, subtitle,
-// resume, keywords, author, puis les clés inconnues. Valeurs vides, langues sans contenu
-// et auteurs vides sont omis.
+// serialiserMeta(valeurs) -> YAML régénéré dans l'ordre type, lang, source, licence, doi,
+// title, subtitle, resume, keywords, author, puis les clés inconnues. Valeurs vides, langues sans
+// contenu et auteurs vides sont omis. Le même ordre que serialiser_meta() de
+// pipeline/docx-meta.py, qui écrit la fiche à l'import : une fiche enregistrée par le
+// formulaire ne doit pas différer de celle que l'import vient de poser.
 function serialiserMeta(valeurs) {
   const v = valeurs || {};
   const lignes = [];
   const type = String(v.type || '').trim();
   if (TYPES_ARTICLE.indexOf(type) !== -1) { lignes.push('type: ' + type); }
+  // Jeton nu et non cité : szh-maquette.lua relit cette ligne à part, hors pandoc, pour
+  // savoir si l'article a déclaré sa langue ou s'il suit celle du numéro.
+  const langue = normaliserLangueArticle(v.lang);
+  if (langue !== '') { lignes.push('lang: ' + langue); }
+  // Le Word d'origine, juste après la langue, là où l'import le pose.
+  const source = String(v.source || '').trim();
+  if (source !== '') { lignes.push('source: ' + citerFrontmatter(source)); }
+  // Licence : jeton nu et non cité, comme la langue — szh-maquette.lua relit cette ligne
+  // à part, hors pandoc. Absente, l'article sort sous la licence par défaut de la revue,
+  // et rien ne s'écrit : c'est le cas de toutes les fiches d'avant ce champ.
+  const licence = normaliserLicence(v.licence);
+  if (licence !== '') { lignes.push('licence: ' + licence); }
   const doi = String(v.doi || '').trim();
   if (doi !== '') { lignes.push('doi: ' + citerFrontmatter(doi)); }
   for (const cle of ['title', 'subtitle', 'resume']) {
@@ -514,7 +604,7 @@ function serialiserMeta(valeurs) {
       }
     }
   }
-  for (const brute of (Array.isArray(v._inconnues) ? v._inconnues : [])) { lignes.push(brute); }
+  for (const brute of (Array.isArray(v._inconnues) ? v._inconnues : [])) { lignes.push(String(brute)); }
   return lignes.length > 0 ? lignes.join('\n') + '\n' : '';
 }
 
@@ -526,7 +616,13 @@ function titreNumero(racine) {
   try { valeurs = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')); }
   catch (e) { /* illisible : replis ci-dessous */ }
   const prefixe = langueDefaut(valeurs) === 'de' ? 'Z' : 'R';
-  const annee = (String(valeurs.date || '').match(/\d{4}/) || [''])[0];
+  // Année : celle de `date:` si elle y est, sinon celle du nom du dossier (« 2027-03 »).
+  // `date:` est la date de publication, vide jusqu'à la parution ; sans ce repli, la barre
+  // d'un numéro neuf s'annoncerait « R-03 ». Même règle que szh-maquette.lua.
+  let annee = (String(valeurs.date || '').match(/\d{4}/) || [''])[0];
+  if (annee === '') {
+    annee = (String(path.basename(racine)).match(/^(\d{4})-\d/) || ['', ''])[1];
+  }
   const numero = String(valeurs.numero || '').trim();
   const titre = String(valeurs.title || '').trim();
   const morceaux = [];
@@ -557,6 +653,13 @@ function etatRevue(racine) {
 // un jeton nu restreint à [a-zA-Z-].
 function formaterValeurYaml(cle, valeur) {
   if (cle === 'lang') { return String(valeur).replace(/[^a-zA-Z-]/g, '') || 'fr'; }
+  // Séquence en ligne : une clé par ligne reste la règle du fichier, et la liste se lit
+  // d'un coup d'oeil. Les jetons sont cités, comme partout ailleurs ici.
+  if (CLES_LISTES.indexOf(cle) !== -1) {
+    const liste = (Array.isArray(valeur) ? valeur : String(valeur === undefined || valeur === null ? '' : valeur).split(/[,\s]+/))
+      .map((v) => String(v).trim()).filter((v) => v !== '');
+    return '[' + liste.map((v) => '"' + v.replace(/([\\"])/g, '\\$1') + '"').join(', ') + ']';
+  }
   // Les drapeaux s'écrivent en booléen YAML nu, jamais cité : la chaîne « "false" » serait
   // vraie pour le `$if()$` du gabarit pandoc.
   if (CLES_BOOLEENNES.indexOf(cle) !== -1) { return estVraiYaml(valeur) ? 'true' : 'false'; }
@@ -583,6 +686,8 @@ function serialiserAusgabe(contenu, modifies) {
   });
   for (const cle of CLES_METADONNEES) {
     if (!restantes.has(cle)) { continue; }
+    // Une liste vide vaut « rien à retenir » : String([]) rend '', et la clé n'est pas
+    // ajoutée. Une clé déjà présente, elle, est réécrite plus haut, vide comprise.
     if (String(modifies[cle]) === '') { continue; }
     resultat.push(cle + ': ' + formaterValeurYaml(cle, modifies[cle]));
   }
@@ -602,10 +707,12 @@ function ecrireAtomique(chemin, contenu) {
 }
 
 module.exports = {
-  CLES_METADONNEES, CLES_BOOLEENNES, COULEURS_NUMERO, HEX_COULEURS, CLES_FRONTMATTER, estVraiYaml,
+  CLES_METADONNEES, CLES_BOOLEENNES, CLES_LISTES, COULEURS_NUMERO, HEX_COULEURS, CLES_FRONTMATTER, estVraiYaml,
   etatRevue,
   REVUES, normaliserRevue,
   TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
+  LANGUES_ARTICLE, normaliserLangueArticle,
+  LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, licenceArticle,
   decouperValeurYaml, decouperFlowYaml, analyserAusgabe,
   separerFrontmatter, analyserFrontmatter, citerFrontmatter, lignesCleFrontmatter, serialiserFrontmatter,
   langueDefaut, langueRevue, analyserMeta, serialiserMeta, titreNumero,

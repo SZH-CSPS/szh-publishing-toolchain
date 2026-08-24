@@ -339,6 +339,21 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
   et damier de transparence lisibles en thème clair comme sombre, console de la webview sans
   erreur. Sans WSL, ou avec la distribution absente, la modale doit afficher une erreur propre,
   sans blocage ni « Chargement… » figé.
+- [ ] Valider le DOI. C'est un champ texte libre : ni format, ni préfixe, ni unicité dans le
+  numéro. Un `meta.yaml` recopié d'un article à l'autre suffit à envoyer deux fois le même DOI
+  sans que personne ne le voie. La forme réelle a été relevée le 23.08.2026 sur `ojs.szh.ch` par
+  l'interface OAI, et elle est simple :
+
+      10.57161/r{AAAA}-{NN}-{SS}   revue française
+      10.57161/z{AAAA}-{NN}-{SS}   Zeitschrift
+
+  Un seul préfixe pour les deux revues, la lettre `r` ou `z` les distinguant. `NN` est le numéro
+  dans l'année sur deux chiffres, `SS` un compteur courant dans le numéro, sur deux chiffres, qui
+  traverse les rubriques dans l'ordre du sommaire — l'éditorial portant `00`. La rubrique
+  Documentation ne reçoit pas de DOI. À faire : vérifier ce motif à la saisie, refuser un doublon
+  dans `collecter()`, et corriger le DOI inventé du corpus de test
+  (`test/articles/contenu-long/` porte `10.57262/szh/2026-iter-001`, dont ni le préfixe ni la
+  structure n'existent). Reporté sciemment le 23.08.2026.
 - [ ] Détourage sur de vraies photos : le test automatique n'a couvert qu'un visage synthétique.
   Valider sur des visages non frontaux, des lunettes, des groupes, un contre-jour, une photo très
   serrée et une photo sans visage, et juger le rendu noir et blanc 400 × 400 des deux versions.
@@ -370,9 +385,18 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
   tableaux, en français et en allemand, dans le PDF comme dans l'aperçu HTML, et une taille de
   crédits qui les distingue sans passer sous le seuil APCA.
 - [ ] Puces ▸ dans un article dense : listes imbriquées, item d'une seule ligne, item qui passe à
-  la ligne. Le triangle doit rester posé sur la ligne de base du texte.
+  la ligne. Le triangle doit rester posé sur la ligne de base du texte. Le glyphe n'est plus celui
+  d'une police de repli : il est **dessiné** dans les quatre faces Open Sans livrées (côté
+  0,498 em, centré sur la mi-hauteur d'x). Sur le banc, la comparaison PNG avant / après ne bouge
+  d'aucun pixel visible, mais c'est à juger sur un article réel et dense.
 - [ ] Hiérarchie de titres sur un numéro complet : un seul `<h1>`, corps à partir de `<h2>`,
   numérotation 1 / 1.1 / 1.1.1 inchangée à l'œil, galley Word en Title puis Heading2 et suivants.
+  Deux points nouveaux à juger : `szh-niveaux.lua` **compacte** désormais les niveaux réellement
+  présents (un article stylé Heading 2 puis Heading 4 sort en h2 puis h3, sans trou), et le numéro
+  de section est écrit **dans le texte** du titre par `szh-sections.lua` — il se retrouve donc dans
+  le galley DOCX, ce qui n'était pas le cas. Sur un numéro complet : aucun titre à deux numéros,
+  aucun titre sans numéro qui devrait en porter un, et un journal de compilation sans ligne
+  `[niveaux]` — celle-ci ne paraît qu'au-delà de cinq rangs de titre, où deux niveaux fusionnent.
 - [ ] Écoute au lecteur d'écran (NVDA ou Narrateur). Sur un tableau Markdown, les attributs
   `scope` doivent faire annoncer l'en-tête de colonne à chaque cellule. Écouter aussi une figure
   avec un texte alternatif distinct, une figure sans — la légende y est annoncée deux fois, c'est
@@ -392,8 +416,42 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
   sa présentation ne prête pas à confusion. Si un fond paraît trop franc, faire pointer
   `--c-<nom>-clair` vers `-100` au lieu de `-200` dans `couleurs.css`, puis relancer
   `python3 test/apca-check.py` et `python3 test/palette-html.py`.
-- [ ] Verser un corpus d'accessibilité dans `test/articles/` : il n'y a aujourd'hui ni image ni
-  tableau légendé, donc la non-régression y est peu informative.
+- [x] Corpus d'accessibilité versé — dans `test/accessibilite/`, un **second dossier de numéro**
+  et non trois articles de plus dans `test/articles/` : la porte PDF/UA prend le numéro entier
+  (`SLUGS` vient de `articles/*`), un article volontairement fautif y ferait donc échouer la porte
+  sur le banc entier. La note de tête de `test/accessibilite/ausgabe.yaml` expose le raisonnement.
+  Il exerce un tableau sans rangée d'en-tête, un tableau sans légende, des sauts de niveau de
+  titre, une bibliographie à diacritiques polonais / turcs / serbes, un crédit de figure avec sa
+  fine insécable, un corps français dans un numéro de la Zeitschrift, et une paire fr/de dont les
+  compteurs de figures divergent à dessein. `test/build-render.sh` l'enchaîne au banc.
+- [ ] **veraPDF ne voit pas un tableau sans rangée d'en-tête.** Mesuré sur le corpus ci-dessus :
+  un `<table>` sans `<caption>` et sans un seul `<th scope>` passe la porte `--flavour ua1` en
+  « conforme ». Le RGAA 5.6 n'est donc gardé par rien dans la chaîne, et le formulaire des
+  tableaux du cockpit est le seul endroit où le défaut peut être arrêté. Piste : un contrôle qui
+  refuse un `tables/table-NN.html` sans `<th scope>`, à brancher là où la vérification du numéro
+  se fait déjà.
+- [ ] Caractères encore non couverts par les faces livrées : → U+2192, ↑ U+2191, ▶ U+25B6 et les
+  émojis. Aucun corps d'article n'en écrit aujourd'hui (`revue-template/BIENVENUE.md` en contient,
+  mais ne passe pas par la chaîne d'impression) ; `test/polices-check.py` nommerait le PDF fautif
+  le jour où un article en emploie. À traiter alors dans `pipeline/fonts/glyphes-manquants.py`.
+- [ ] Sept paires de couleurs restent hors de `test/apca-check.py`, toutes conformes aujourd'hui
+  mais que rien ne garde : lien de corps `#002A56` sur papier (+101) et sur fond de résumé (+94) ;
+  corps sur `#f3f3f4` (+98) ; étiquette de résumé (+99) ; crédits de légende `#444` (+93) ; `th`
+  générique noir sur `#eee` (+96) ; appel de citation non résolu sur `#fdecea` (+97). Les ajouter
+  coûte quelques lignes et supprime autant d'angles morts.
+- [ ] Pagination continue. `print.css` fait `content: counter(page)` sans jamais poser de
+  `counter-reset`, et aucun champ de pagination n'existe : chaque article commence donc à la
+  page 1. Une citation « p. 4 » ne désigne rien de stable et l'export OJS n'a pas de `<pages>`
+  à donner. Piste : un champ `page-debut` par article, injecté en `@page { counter-reset: page N }`
+  et repris à l'export. Reporté sciemment le 23.08.2026.
+- [ ] Normalisation typographique. Rien dans la chaîne ne pose d'espace insécable devant `:`
+  `;` `!` `?` `»`, ne choisit les guillemets selon la langue — pandoc `smart` produit les
+  guillemets anglais quelle que soit la valeur de `lang` — ni ne signale un `ß` dans un texte
+  destiné à la Zeitschrift, où l'orthographe de maison est `ss`. Et `lib/table-model.js` remplace
+  toute insécable des cellules collées depuis Word par une espace ordinaire, si bien que
+  « 12 000 » peut se couper en fin de ligne : le commentaire l'admet. Un filtre Lua en fin de
+  chaîne, piloté par la langue de l'article, ferait le travail. Pour le `ß`, un rapport et non une
+  conversion : « Weiß » est un nom propre. Reporté sciemment le 23.08.2026.
 
 ## Traductions et relecture germanophone
 
@@ -419,10 +477,11 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
 
 ## Décisions à trancher
 
-- [ ] E-mail de traduction : garder l'Outlook classique, seul à accepter un lien cliquable, ou le
-  client par défaut avec un lien à copier-coller (réglage `mailTraduction` dans `config.json`).
-  Décider aussi si les adresses de destination conviennent ou doivent être surchargées, et si une
-  copie à l'expéditeur serait utile.
+- [ ] E-mail de traduction : **tranché le 23.08.2026**, le client par défaut avec un lien à
+  copier-coller. L'automatisation COM d'Outlook, seule à donner un lien cliquable, ne fonctionne
+  pas avec le nouveau client : elle a été retirée, `windows/mail-traduction.ps1` avec elle. Restent
+  à décider : si les adresses de destination conviennent, et si une copie à l'expéditeur serait
+  utile.
 - [ ] Le lanceur de la Zeitschrift doit-il forcer l'interface en allemand ? Aujourd'hui la langue
   suit celle de Windows, comme partout.
 - [ ] Que faire de ce qui n'est pas listé. Un numéro rangé hors de l'arborescence officielle est
@@ -492,6 +551,23 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
 
 ## Reste technique
 
+- [ ] **`.szh-arrow { opacity: 0.9 }` est un piège armé** (`pipeline/styles/print.css`). La règle
+  est morte aujourd'hui : toute flèche vit dans le hero, où `opacity: 1` la neutralise. Mais
+  c'est exactement le motif que la feuille interdit deux fois ailleurs, avec un ⚠ : une `opacity`
+  inférieure à 1 fait dessiner l'élément dans un objet séparé où son marquage devient orphelin,
+  et **fait échouer PDF/UA 7.1-3**. Une flèche posée un jour hors du hero casserait la porte de
+  conformité sans que personne comprenne pourquoi. Retirer la déclaration, ou pré-mélanger comme
+  ailleurs. Laissée en place le 23.08.2026 pour ne rien changer au rendu à la veille d'une
+  publication.
+- [ ] **`Ignored \`overflow-x: auto\`` de WeasyPrint, à chaque article.** Diagnostic établi : la
+  déclaration n'est **pas** dans notre feuille. Elle vient du partiel de styles intégré de
+  pandoc, injecté par `$styles.html()$` dans `pipeline/templates/szh-article.html`. La faire
+  taire demande de masquer ce partiel par un `pipeline/templates/styles.html` local — donc de
+  reprendre à notre charge `code{white-space: pre-wrap}`, `span.smallcaps`, les listes de tâches
+  et les maths, que `print.css` ne définit pas. Gain nul côté rédaction : la ligne est déjà jetée
+  avant l'écran, et un test interdit qu'elle y arrive. À ne faire que si le partiel gêne pour une
+  autre raison.
+
 - [ ] Masquer la bascule d'aperçu sur un numéro dont le profil ne produit pas de PDF : le mode
   HTML est forcé, mais le bouton reste cliquable et semble ne rien faire. Demande un nouveau texte
   traduit.
@@ -502,11 +578,22 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
   non fait.
 - [ ] Réduire la taille du rootfs. Le venv des portraits pèse environ 735 Mo et son modèle 168 Mo :
   soit on l'accepte, soit on épingle un rembg plus ancien, sans scikit-image ni numba, avec un
-  nouveau gel des dépendances. Retirer aussi `fonts-noto`, devenu inutile depuis que la maquette
-  embarque ses polices : plusieurs centaines de mégaoctets.
+  nouveau gel des dépendances. `fonts-noto` **peut maintenant partir**, et
+  `fonts-dejavu` avec lui : les six caractères que la maquette écrivait sans les porter ont été
+  ajoutés aux quatre faces Open Sans (U+202F, U+2010, U+2011, U+25B8, U+21A9, U+FE0E — voir
+  `pipeline/fonts/README.md`), et `test/polices-check.py` vérifie qu'aucune police hors de
+  `pipeline/fonts/` n'est plus embarquée. Manœuvre : retirer les paquets de `image/Containerfile`,
+  reconstruire, puis relancer `bash test/build-render.sh` — c'est `polices-check` qui dira si un
+  repli subsistait. Sans lui, un caractère non couvert cesserait simplement d'être dessiné, en
+  silence.
 - [ ] Un numéro qui porte un `styles/print.css` local hérité peut encore contenir les compteurs
   CSS retirés, d'où une double numérotation. Aucun numéro du dépôt n'est concerné ; à vérifier au
-  déploiement sur les numéros réels.
+  déploiement sur les numéros réels. Le risque a **doublé** : aux compteurs de figures et de
+  tableaux s'ajoutent désormais ceux des titres de section (`sec1/sec2/sec3`, `h2::before`), que
+  `szh-sections.lua` écrit maintenant dans le texte. Un print.css local ancien afficherait donc
+  « 2.1 2.1 Introduction ». Ce qu'il faut chercher dans un `styles/print.css` local :
+  `counter-increment: sec`, `counter(sec1` et `body { counter-reset: sec`. Aucun de ces trois
+  motifs ne doit subsister.
 - [ ] Dérouler la procédure d'installation complète sur une machine vierge : celle de
   développement ne l'est plus.
 

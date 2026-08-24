@@ -79,6 +79,57 @@ base64, donc aucun fichier lié — que WeasyPrint transforme en PDF balisé PDF
 donne aussi un aperçu HTML cliquable pour la colonne de droite de l'éditeur, et, à la demande,
 un galley DOCX pour l'export OJS.
 
+### Ce que la chaîne relève, et par où cela remonte
+
+La chaîne ne fait pas que produire : elle relève. Appel de citation sans référence, appel
+ambigu, référence jamais appelée, tableau importé sans rangée d'en-tête, langue d'article
+absente, champ vide dans la langue déclarée, image introuvable, PDF non conforme PDF/UA —
+une dizaine de contrôles, tous écrits sur la sortie d'erreur.
+
+Ce chemin de retour est explicite et tient en trois pièces :
+
+1. Les tâches de `vscodium-user/tasks.json` n'appellent plus `make` en direct mais
+   `bash -c "set -o pipefail; make … 2>&1 | tee .szh-journal.log"`. Le journal vit à la
+   racine du numéro, et non sous `out/`, que `tout-exporter` commence par supprimer.
+   `pipefail` conserve le code de sortie de `make` : sans lui ce serait celui de `tee`,
+   toujours 0.
+2. `lib/journal.js` du cockpit traduit ce fichier en constats — un code, un ton, une clé
+   d'i18n, l'article concerné. L'article est nommé par le message lui-même ; les lignes
+   `pandoc articles/<slug>/…` ne servent plus que de contexte aux outils étrangers (pandoc,
+   WeasyPrint), qui ne connaissent pas nos articles. Une ligne non reconnue est jetée, sauf
+   si elle porte « ⚠ » ou « ✗ » sous un préfixe de la maison : le bruit d'outillage n'arrive
+   jamais à l'écran, un avertissement neuf y arrive quand même.
+3. `extension.js` relit le journal à la fin de chaque tâche suivie (`onDidEndTaskProcess`),
+   pose un compteur dans la barre d'état, dit une fois ce qu'il y a à dire, et remplit la
+   vue « Contrôles de la compilation » — celle des autres sections, `media/vue-ensemble.*`.
+
+Deux formats de message comptent ici, et ils sont contractuels :
+
+- **Le format à codes**, le seul que le pipeline pose exprès pour l'interface :
+
+      [<source>-<ton>] <code> | <champ> | … | <phrase fr> | [de] <phrase de>
+
+  `<source>` est la famille de contrôle telle que la vue la nomme (`import`, `meta`,
+  `citations`…), `<ton>` vaut `blocage` (la compilation s'arrête, code de sortie non nul),
+  `avertissement` ou `info` — trois tons, trois préfixes, une seule grammaire. Le deuxième
+  champ est un **code stable** d'où viennent le ton et la clé d'i18n ; les champs suivants
+  sont **nommés** (`article « <slug> »`, `champ « title »`, `appel « (Sen, 2001) »`) et
+  fournissent les substitutions de la phrase, sans dépendre de leur ordre. La prose n'est
+  qu'un repli d'affichage : elle se reformule sans rien casser. Jamais de « ⚠ » sur ces
+  lignes — `lireRapportImport()` classe « danger » toute ligne qui en porte un, et un
+  avertissement non bloquant s'y déguiserait en import raté.
+  Émetteurs : `docx-meta.py`, `docx-tables.py`, `reimporter.py` et le `Makefile` sous
+  `[import-avertissement]` ; `szh-maquette.lua` sous `[meta-blocage]` / `[meta-avertissement]` ;
+  `szh-citations.lua` sous `[citations-avertissement]` / `[citations-info]`.
+- `[prefixe] …` en français, `[prefixe] [de] …` en allemand, ou les deux moitiés sur une
+  seule ligne séparées par `[de] `. Le pipeline n'a pas de mécanisme de locale, en shell
+  comme en Python : il écrit les deux et l'interface choisit. C'est ce qui reste au
+  `Makefile`, à `rapport-ua.py` et à `szh-niveaux.lua` ; le cockpit y reconnaît quelques
+  phrases, et c'est un **repli** nommé comme tel dans `lib/journal.js`. Reconnaître une
+  phrase, c'est promettre de ne jamais la reformuler : les deux filtres qui en dépendaient
+  sont passés au format à codes, et `test/js/journal-codes.test.js` interdit le retour en
+  arrière.
+
 ## Ce qui est géré, donc mis à jour d'un coup
 
 - Le **pipeline** : `Makefile`, filtres Lua, scripts Python d'import, génération de la couleur

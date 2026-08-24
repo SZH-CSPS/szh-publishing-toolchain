@@ -12,6 +12,7 @@ const { T } = require('./i18n');
 const { tableauDepuisHtmlBureautique, tableauDepuisTsv, serialiserTable,
   finaliserModele, PRESETS_TABLE } = require('./table-model');
 const citations = require('./citations');
+const { lancerChoixVersion } = require('./archivage');
 const { ecrireAtomique } = require('./yaml');
 
 // Contexte de la revue, injecté par extension.js à l'enregistrement des commandes plutôt
@@ -399,7 +400,30 @@ async function fmtLierReference() {
     vscode.window.showInformationMessage(T('cit.horsarticle'));
     return;
   }
-  const entrees = citations.referencesDuTexte(doc.getText());
+  // Les ancres de références sortent des tables de repli du filtre du pipeline. Sans elles
+  // — outil de composition absent, ou plus ancien que le cockpit — on ne pose rien : un lien
+  // vers une ancre que la compilation ne produira pas est pire que pas de lien. Le rédacteur
+  // lit une phrase qu'il peut suivre, le détail technique est déjà dans le journal de l'hôte.
+  let entrees;
+  try {
+    entrees = citations.referencesDuTexte(doc.getText());
+  } catch (e) {
+    if (!e || !e.szhRepli) { throw e; }
+    // Le sélecteur de versions vit dans le toolkit : il n'y a rien à proposer quand c'est le
+    // toolkit entier qui manque. Sur une discordance, il reste juste dans les deux sens —
+    // il sert autant à avancer qu'à reculer.
+    if (e.szhRepli !== 'discordant') {
+      vscode.window.showErrorMessage(T(e.messageCle));
+      return;
+    }
+    const bouton = T('version.divergence.bouton');
+    const choix = await vscode.window.showErrorMessage(T(e.messageCle), bouton);
+    if (choix === bouton) {
+      const echec = lancerChoixVersion();
+      if (echec) { vscode.window.showErrorMessage(T('err.version.lancement', [echec])); }
+    }
+    return;
+  }
   if (entrees.length === 0) {
     vscode.window.showInformationMessage(T('cit.aucuneref'));
     return;

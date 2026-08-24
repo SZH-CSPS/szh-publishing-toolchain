@@ -179,8 +179,14 @@ def ranger_photos(dossier, appariements, texte):
 
 def detourer(dossier, rangees):
     """Appelle portraits.py sur les originaux rangés. Retourne l'ensemble des slugs
-    traités avec succès ; vide si l'interprète manque ou si l'appel échoue."""
+    traités avec succès ; vide si l'interprète manque, si l'appel échoue, ou si l'appelant
+    a dit ne pas en vouloir."""
     if not rangees:
+        return set()
+    if os.environ.get('SZH_SANS_DETOURAGE'):
+        # Réimport : les portraits déjà rangés dans l'article ne sont pas remplacés, et
+        # détourer ceux du Word coûterait des minutes pour un résultat mis au rebut.
+        progression('[import-medias] portraits rangés sans détourage (réimport)')
         return set()
     if not os.path.isfile(INTERPRETE_PORTRAITS):
         progression('[import-medias] interprète de portraits absent (%s) : '
