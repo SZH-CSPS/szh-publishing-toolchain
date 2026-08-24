@@ -478,7 +478,6 @@ function textesNumero() {
     couleurAucune: T('meta.couleur.aucune'),
     couleurs: COULEURS_NUMERO.map((c) => ({ hex: c.hex, nom: T('meta.couleur.' + c.cle) })),
     couverture: T('art.couverture'),
-    couvertureAide: T('art.couverture.aide'),
     couvertureAbsente: T('art.couverture.absente'),
     couvertureDeposer: T('art.couverture.deposer'),
     couvertureChoisir: T('art.couverture.choisir'),

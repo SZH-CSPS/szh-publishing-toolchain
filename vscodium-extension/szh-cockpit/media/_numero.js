@@ -228,7 +228,6 @@
     function blocCouverture() {
       var bloc = poser(conteneur, 'div', 'szh-champ couverture');
       poser(bloc, 'label', null, TXT.couverture || '');
-      poser(bloc, 'p', 'szh-notif szh-notif--info szh-notif--discret', TXT.couvertureAide || '');
       zoneCouverture = { visuel: poser(bloc, 'div', 'visuel'), etat: null, nom: poser(bloc, 'p', 'couverture-nom') };
       var depot = poser(bloc, 'div', 'depot');
       var titre = poser(depot, 'span', 'depot-titre');
