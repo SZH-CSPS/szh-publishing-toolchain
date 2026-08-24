@@ -77,13 +77,17 @@ const TEXTE_ARTICLE = [
 
 function fiche(lignes) { return lignes.concat(['']).join(LF); }
 
-// Un article du dossier : deux auteurs dont un seul porte un ORCID, un DOI, un résumé et
-// des mots-clés dans les deux langues.
+// Un article du dossier : deux auteurs dont un seul porte un ORCID, un résumé et des
+// mots-clés dans les deux langues.
+//
+// `doi` est FACULTATIF, et absent par défaut : le DOI ne se saisit plus dans la fiche, il se
+// calcule d'après la place de l'article dans le numéro. Les contrôles qui en posent un sont
+// ceux de la divergence, et eux seuls.
 function ficheArticle(langue, doi) {
   return fiche([
     'type: article',
-    'lang: ' + langue,
-    'doi: "' + doi + '"',
+    'lang: ' + langue
+  ].concat(doi ? ['doi: "' + doi + '"'] : []).concat([
     'title:',
     '  fr: "Observation et adaptation"',
     '  de: "Beobachtung und Anpassung"',
@@ -107,21 +111,21 @@ function ficheArticle(langue, doi) {
     '- prenom: "Bruno"',
     '  nom: "Meyer"',
     '  affiliation: "SZH/CSPS"'
-  ]);
+  ]));
 }
 
 function ficheEditorial(langue, doi) {
   return fiche([
     'type: editorial',
-    'lang: ' + langue,
-    'doi: "' + doi + '"',
+    'lang: ' + langue
+  ].concat(doi ? ['doi: "' + doi + '"'] : []).concat([
     'title:',
     '  fr: "Éditorial"',
     '  de: "Editorial"',
     'author:',
     '- prenom: "Claire"',
     '  nom: "Rossi"'
-  ]);
+  ]));
 }
 
 // opts.produit  'revue' | 'zeitschrift'
@@ -134,16 +138,17 @@ function monter(opts) {
   opts = opts || {};
   const produit = opts.produit || 'revue';
   const langue = produit === 'zeitschrift' ? 'de' : 'fr';
-  const lettre = produit === 'zeitschrift' ? 'z' : 'r';
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-ojs-'));
   const gabarit = fs.readFileSync(path.join(RACINE, 'revue-template', 'ausgabe.yaml'), 'utf8');
   const valeurs = Object.assign({ revue: produit, lang: langue }, opts.ausgabe || {});
   fs.writeFileSync(path.join(racine, 'ausgabe.yaml'), yaml.serialiserAusgabe(gabarit, valeurs));
   fs.writeFileSync(path.join(racine, 'couverture.jpg'), Buffer.from('JPEG'));
 
+  // Aucun DOI dans les fiches : celui qui part est calculé du rang, et la référence ci-dessous
+  // le prouve — le numéro d'essai est le 2 de 2026, l'éditorial ouvre donc à « 00 ».
   const articles = opts.articles || [
-    { slug: '01-edito', fiche: ficheEditorial(langue, '10.57161/' + lettre + '2026-02-00'), texte: '# Edito' + LF + LF + 'Un mot.' + LF },
-    { slug: '02-observation', fiche: ficheArticle(langue, '10.57161/' + lettre + '2026-02-01'), texte: TEXTE_ARTICLE }
+    { slug: '01-edito', fiche: ficheEditorial(langue), texte: '# Edito' + LF + LF + 'Un mot.' + LF },
+    { slug: '02-observation', fiche: ficheArticle(langue), texte: TEXTE_ARTICLE }
   ];
   for (const a of articles) {
     const dossier = path.join(racine, 'articles', a.slug);
@@ -430,7 +435,17 @@ function RUBRIQUES_RELEVEEES_CLES() { return RUBRIQUES_RELEVEES.map((r) => r.cle
 
 test('export OJS : un numéro de la Revue, caractère par caractère', () => {
   const racine = monter({ produit: 'revue', ausgabe: { date: '2026-09-08' } });
+  // Rien, sur le disque, ne porte les deux DOI de la référence : ni les fiches, ni les
+  // métadonnées du numéro. Les <id type="doi"> qui suivent ne peuvent donc venir que du
+  // calcul, et la référence prouve le calcul au lieu de recopier une saisie.
+  for (const slug of ['01-edito', '02-observation']) {
+    const f = fs.readFileSync(path.join(racine, 'articles', slug, slug + '.meta.yaml'), 'utf8');
+    assert.strictEqual(f.indexOf('10.57161'), -1, 'la fiche de ' + slug + ' porte un DOI');
+  }
+  assert.strictEqual(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8').indexOf('10.57161'), -1);
   const sortie = exporter(racine, configComplete());
+  // Le nom du fichier porte le volume et le nombre du numéro, tels qu'ils sont saisis : le
+  // « 2 » y reste « 2 », alors que le DOI le complète à deux chiffres.
   assert.strictEqual(path.basename(sortie.chemin), 'native-20260821-093000-44-2.xml');
   assert.strictEqual(sortie.xml, REFERENCE_REVUE);
 });
@@ -600,15 +615,20 @@ test('ORCID : une valeur illisible est signalée, pas envoyée', () => {
     'ORCID illisible non signalé : ' + sortie.avertissements.join(' | '));
 });
 
-test('DOI : un article sans DOI est refusé, sauf dans une rubrique qui n’en reçoit pas', () => {
+test('DOI : une fiche sans DOI n’est plus un manque, et la rubrique sans DOI n’en reçoit aucun', () => {
+  // Le DOI ne se saisit plus : il est le rang de l'article dans le numéro. Une fiche vide
+  // n'arrête donc plus rien — c'est devenu le cas normal.
   const sansDoi = ['type: article', 'lang: fr', 'title:', '  fr: "Sans DOI"',
     'resume:', '  fr: "Un résumé."', 'author:', '- nom: "SZH/CSPS"'];
-  const e = refuse(monter({
+  const seul = exporter(monter({
     ausgabe: { date: '2026-09-08' },
     articles: [{ slug: '01-sans-doi', fiche: fiche(sansDoi), texte: 'Texte.' + LF }]
   }), configComplete());
-  assert.match(e.message, /DOI absent/);
-  assert.match(e.message, /Crossref/);
+  assert.ok(seul.xml.indexOf('<id type="doi" advice="update">10.57161/r2026-02-00</id>') !== -1,
+    'le DOI calculé n’est pas parti : ' + seul.xml.slice(seul.xml.indexOf('<publication'), 400));
+  // Et il n'est signalé nulle part : un calcul qui aboutit n'a rien à dire.
+  assert.ok(!seul.avertissements.some((a) => a.indexOf('DOI') !== -1),
+    'un DOI calculé sans divergence ne doit rien signaler : ' + seul.avertissements.join(' | '));
 
   // La Documentation ne reçoit pas de DOI : l'export passe, avec un simple avertissement.
   const doc = ['type: documentation', 'lang: fr', 'title:', '  fr: "Documentation"',
@@ -618,21 +638,104 @@ test('DOI : un article sans DOI est refusé, sauf dans une rubrique qui n’en r
     articles: [{ slug: '01-doc', fiche: fiche(doc), texte: 'Texte.' + LF }]
   }), configComplete());
   assert.ok(sortie.xml.indexOf('section_ref="DC"') !== -1);
-  assert.strictEqual(sortie.xml.indexOf('type="doi"'), -1);
+  assert.strictEqual(sortie.xml.indexOf('type="doi"'), -1, 'un DOI a été inventé');
   assert.ok(sortie.avertissements.some((a) => a.indexOf('normal pour cette rubrique') !== -1));
 });
 
-test('DOI : une forme inattendue pour la revue est signalée', () => {
-  // La lettre distingue les deux revues : un « z » dans la Revue passerait inaperçu.
+test('DOI : un numéro sans nombre ne fabrique aucun DOI, et le refus dit où le saisir', () => {
+  // Un DOI à trous — « …-00-01 » pour un numéro sans nombre — aurait l'air juste et
+  // désignerait un numéro qui n'existe pas. L'export s'arrête donc, comme il s'arrêtait sur
+  // un DOI absent, et le message renvoie au seul endroit où cela se saisit.
+  const racine = monter({ ausgabe: { date: '2026-09-08', numero: '' } });
+  const e = refuse(racine, configComplete());
+  assert.match(e.message, /date de publication et le numéro/);
+  assert.match(e.message, /Métadonnées du numéro/);
+  // Rien n'a été écrit : un export refusé ne laisse pas de fichier à moitié fait.
+  assert.deepStrictEqual(fs.readdirSync(racine).filter((f) => f.indexOf('.xml') !== -1), []);
+
+  // Une date absente arrête déjà l'export ; c'est bien le DOI qui parle du nombre manquant.
+  process.env.SZH_LANGUE = 'de';
+  try {
+    const de = refuse(monter({ ausgabe: { date: '2026-09-08', numero: '' } }), configComplete());
+    assert.match(de.message, /Publikationsdatum und die Nummer/);
+    assert.match(de.message, /Metadaten der Ausgabe/);
+    assert.strictEqual(de.message.indexOf('ß'), -1, 'eszett dans un message allemand');
+  } finally { process.env.SZH_LANGUE = 'fr'; }
+
+  // Un numéro fait de rubriques sans DOI n'a rien à calculer : il part comme avant.
+  const doc = ['type: documentation', 'lang: fr', 'title:', '  fr: "Documentation"',
+    'author:', '- nom: "SZH/CSPS"'];
+  const sortie = exporter(monter({
+    ausgabe: { date: '2026-09-08', numero: '' },
+    articles: [{ slug: '01-doc', fiche: fiche(doc), texte: 'Texte.' + LF }]
+  }), configComplete());
+  assert.strictEqual(sortie.xml.indexOf('type="doi"'), -1);
+});
+
+test('DOI : la fiche qui dit autre chose que le calcul est signalée, dans les deux langues', () => {
+  // Le corpus réel porte des DOI déposés, de la forme de la maison : « 10.57161/r2024-01-01 ».
+  // Le calcul part quand même — c'est lui la source de vérité — mais l'écart se dit, avec les
+  // deux valeurs et les deux causes possibles, car elles n'appellent pas le même geste.
+  const historique = () => monter({
+    produit: 'revue', ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '01-edito', fiche: ficheEditorial('fr', '10.57161/r2024-01-01'),
+      texte: 'Un mot.' + LF }]
+  });
+  const sortie = exporter(historique(), configComplete());
+  assert.ok(sortie.xml.indexOf('<id type="doi" advice="update">10.57161/r2026-02-00</id>') !== -1,
+    'le calcul n’est pas parti');
+  assert.strictEqual(sortie.xml.indexOf('10.57161/r2024-01-01'), -1, 'le DOI de la fiche est parti');
+  const dit = sortie.avertissements.filter((a) => a.indexOf('10.57161/r2024-01-01') !== -1);
+  assert.strictEqual(dit.length, 1, 'divergence non signalée : ' + sortie.avertissements.join(' | '));
+  assert.ok(dit[0].indexOf('01-edito') !== -1, 'l’article n’est pas nommé : ' + dit[0]);
+  assert.ok(dit[0].indexOf('10.57161/r2026-02-00') !== -1, 'le DOI qui part n’est pas dit : ' + dit[0]);
+  assert.match(dit[0], /déjà paru/, 'la cause « DOI déjà déposé » n’est pas dite');
+  assert.match(dit[0], /ordre/, 'la cause « ordre à corriger » n’est pas dite');
+
+  process.env.SZH_LANGUE = 'de';
+  try {
+    const de = exporter(historique(), configComplete()).avertissements
+      .filter((a) => a.indexOf('10.57161/r2024-01-01') !== -1);
+    assert.strictEqual(de.length, 1, 'divergence non signalée en allemand');
+    assert.ok(de[0].indexOf('10.57161/r2026-02-00') !== -1);
+    assert.match(de[0], /erschienen/);
+    assert.match(de[0], /Reihenfolge/);
+    assert.strictEqual(de[0].indexOf('ß'), -1, 'eszett dans un message allemand');
+  } finally { process.env.SZH_LANGUE = 'fr'; }
+});
+
+test('DOI : une forme étrangère à la revue se dit autrement qu’un DOI déjà déposé', () => {
+  // La lettre distingue les deux revues : un « z » dans la Revue n'a jamais pu être déposé
+  // tel quel, ce n'est donc pas un DOI historique mais une saisie de travers. Les deux cas
+  // ne se disent pas de la même façon, parce qu'ils n'appellent pas le même geste.
   const racine = monter({
     produit: 'revue', ausgabe: { date: '2026-09-08' },
     articles: [{ slug: '01-edito', fiche: ficheEditorial('fr', '10.57161/z2026-02-00'),
       texte: 'Un mot.' + LF }]
   });
   const sortie = exporter(racine, configComplete());
-  assert.ok(sortie.avertissements.some((a) => a.indexOf('10.57161/z2026-02-00') !== -1
-    && a.indexOf('10.57161/r2026-03-05') !== -1),
-    'DOI de la mauvaise revue non signalé : ' + sortie.avertissements.join(' | '));
+  assert.ok(sortie.xml.indexOf('<id type="doi" advice="update">10.57161/r2026-02-00</id>') !== -1);
+  const dit = sortie.avertissements.filter((a) => a.indexOf('10.57161/z2026-02-00') !== -1);
+  assert.strictEqual(dit.length, 1, 'DOI de la mauvaise revue non signalé : '
+    + sortie.avertissements.join(' | '));
+  assert.ok(dit[0].indexOf('10.57161/r2026-02-00') !== -1, 'le DOI qui part n’est pas dit');
+  assert.match(dit[0], /lettre de revue/);
+  assert.ok(dit[0].indexOf('déjà paru') === -1, 'un DOI impossible ne se dit pas « déjà paru »');
+});
+
+test('DOI : un article qui n’en reçoit pas, mais dont la fiche en porte un, le dit', () => {
+  // Le cas qui se glisserait sans bruit : la rubrique change, l'article perd son DOI, et
+  // celui de sa fiche reste. Il ne part pas — et cela ne se devine pas.
+  const doc = ['type: documentation', 'lang: fr', 'doi: "10.57161/r2024-01-07"',
+    'title:', '  fr: "Documentation"', 'author:', '- nom: "SZH/CSPS"'];
+  const sortie = exporter(monter({
+    ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '01-doc', fiche: fiche(doc), texte: 'Texte.' + LF }]
+  }), configComplete());
+  assert.strictEqual(sortie.xml.indexOf('type="doi"'), -1, 'un DOI est parti quand même');
+  assert.ok(sortie.avertissements.some((a) => a.indexOf('01-doc') !== -1
+    && a.indexOf('10.57161/r2024-01-07') !== -1),
+    'le DOI resté dans la fiche n’est pas signalé : ' + sortie.avertissements.join(' | '));
 });
 
 // Le fichier de bibliographie que l'import détache : les références seules, sans titre.
@@ -648,7 +751,7 @@ const BIBLIO_DETACHEE = [
 test('références : les <citations> viennent du fichier de bibliographie', () => {
   const racine = monter({
     ausgabe: { date: '2026-09-08' },
-    articles: [{ slug: '02-observation', fiche: ficheArticle('fr', '10.57161/r2026-02-01'),
+    articles: [{ slug: '02-observation', fiche: ficheArticle('fr'),
       // Le corps ne porte plus la liste : il porte la référence que la compilation résout.
       texte: ['# Titre', '', 'Un appel (Shaw et al., 2023) et un autre (Zielinski, 2021).',
         '', '::: {.szh-biblio src="02-observation.biblio.md"}', ':::', ''].join(LF),
@@ -684,7 +787,7 @@ test('références : sans fichier, le corps sert de repli et l’export le dit',
 test('références : un article sans liste de références n’a pas de <citations> vide', () => {
   const racine = monter({
     ausgabe: { date: '2026-09-08' },
-    articles: [{ slug: '01-observation', fiche: ficheArticle('fr', '10.57161/r2026-02-01'),
+    articles: [{ slug: '01-observation', fiche: ficheArticle('fr'),
       texte: '# Titre' + LF + LF + 'Un paragraphe sans bibliographie.' + LF }]
   });
   const sortie = exporter(racine, configComplete());

@@ -561,9 +561,13 @@ test('export : un article coché « pas de DOI » ne bloque plus l’export', ()
     }
   };
 
-  // Sans la case : le DOI manque, et l'export s'arrête — c'est le comportement d'avant.
+  // Sans la case : l'article reçoit le DOI que sa place lui donne, calculé et non saisi.
+  // Il est seul dans le numéro 2 de 2026, il ouvre donc à « 00 ».
   monter(null);
-  assert.throws(() => ojs.genererExportOjs(revue, { config: config }), /DOI absent/);
+  const avec = ojs.genererExportOjs(revue, { config: config });
+  assert.ok(fs.readFileSync(avec.chemin, 'utf8')
+    .indexOf('<id type="doi" advice="update">10.57161/r2026-02-00</id>') !== -1,
+    'le DOI calculé n’est pas parti');
 
   // Avec la case : l'absence est voulue, l'export passe et le DIT.
   monter([slug]);

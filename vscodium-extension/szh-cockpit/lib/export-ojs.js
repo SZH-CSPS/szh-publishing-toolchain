@@ -15,7 +15,13 @@
 const fs = require('fs');
 const path = require('path');
 const { analyserAusgabe, analyserMeta, langueDefaut, normaliserLangueArticle,
-  licenceArticle, normaliserLicence, listeYamlEnLigne, CLE_SANS_DOI } = require('./yaml');
+  licenceArticle, normaliserLicence } = require('./yaml');
+// L'ordre du numéro et le rang qui en découle viennent de lib/articles.js, et de nulle part
+// ailleurs : c'est le même calcul qui nourrit l'arbre, les cartes et ce fichier. Recalculer
+// le rang ici donnerait un DOI affiché différent du DOI publié, et rien ne le dirait avant
+// le dépôt.
+const { CLE_ORDRE, CLE_SANS_DOI, analyserSansDoi, ordonnerArticles,
+  rangDoi } = require('./articles');
 const { estATraduire, MARQUE_A_TRADUIRE } = require('./traduction');
 const { imagesSansAlternative, listerImages } = require('./references');
 const { referencesDuTexte, referencesDuFichier } = require('./citations');
@@ -143,9 +149,12 @@ function doiCalcule(locale, annee, numero, rang) {
   return PREFIXE_DOI + '/' + lettre + an + '-' + num + '-' + seq;
 }
 
-// Le motif ne sert qu'à signaler un DOI saisi de travers — un « r » sur la Zeitschrift, par
-// exemple, qui se publierait sans que rien ne le dise. L'exemple est produit par le
-// générateur lui-même : un exemple recopié à la main finirait par mentir sur la forme.
+// Le motif dit si un DOI saisi à la main a la forme des DOI de la maison pour cette revue.
+// Il ne contrôle pas le DOI qui part — celui-là est calculé, donc juste par construction —
+// mais il départage les deux causes d'une divergence : une forme de la maison a pu être
+// déposée pour de bon, une forme étrangère — un « r » sur la Zeitschrift — ne l'a jamais
+// été. L'exemple est produit par le générateur lui-même : un exemple recopié à la main
+// finirait par mentir sur la forme.
 const FORME_DOI = {
   fr: { motif: /^10\.57161\/r\d{4}-\d{2}-\d{2}$/, exemple: doiCalcule('fr', '2026', '3', 5) },
   de: { motif: /^10\.57161\/z\d{4}-\d{2}-\d{2}$/, exemple: doiCalcule('de', '2026', '3', 5) }
@@ -231,8 +240,16 @@ function morceauNomFichier(valeur) {
     .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || '0';
 }
 
-// Même filtre que la variable SLUGS du Makefile : le tri ASCII des slugs, préfixés 01-,
-// 02-…, donne l'ordre éditorial du numéro.
+// Les articles que le DISQUE porte, même filtre que la variable SLUGS du Makefile : un
+// dossier qui contient le .md du même nom.
+//
+// Ce n'est PAS l'ordre du numéro, et le nom des dossiers ne le donne plus : l'ordre est
+// devenu modifiable et vit dans les métadonnées du numéro, sans renommer quoi que ce soit —
+// un article préfixé « 02- » peut se lire en cinquième. Cette liste n'est donc qu'une
+// entrée pour ordonnerArticles(), qui en fait le sommaire. Le tri sert à une seule chose :
+// donner une place stable aux articles qui ne figurent pas encore dans l'ordre, et il est
+// celui de l'arbre du cockpit — le même comparateur, pour que ces articles-là tombent au
+// même endroit des deux côtés.
 function listerSlugs(racine) {
   const dossier = path.join(racine, 'articles');
   let entrees = [];
@@ -241,7 +258,7 @@ function listerSlugs(racine) {
   return entrees
     .filter((e) => e.isDirectory() && fs.existsSync(path.join(dossier, e.name, e.name + '.md')))
     .map((e) => e.name)
-    .sort();
+    .sort((a, b) => a.localeCompare(b, 'fr'));
 }
 
 // ---- Lecture et écriture de la configuration -----------------------------------------
@@ -470,19 +487,59 @@ function collecter(racine, cfg, avertissements) {
     avertissements.push(T('ojs.avert.couverture', [NOMS_COUVERTURE.join(', ')]));
   }
 
-  const slugs = listerSlugs(racine);
-  if (slugs.length === 0) {
+  const slugsDisque = listerSlugs(racine);
+  if (slugsDisque.length === 0) {
     throw new Error(T('ojs.err.aucunArticle', [racine]));
+  }
+
+  const parCle = {};
+  for (const r of cfg.rubriques) { parCle[r.cle] = r; }
+
+  // Les fiches sont lues avant tout le reste, et une seule fois : le type d'un article
+  // désigne sa rubrique, la rubrique dit si l'article reçoit un DOI, et cela décide de sa
+  // place dans le numéro. Une fiche illisible ne fait pas de trou — elle n'a pas de type,
+  // donc pas de rubrique — et son manque est signalé plus bas, avec les autres manques de
+  // l'article.
+  const fiches = {};
+  for (const slug of slugsDisque) {
+    const cheminMeta = path.join(racine, 'articles', slug, slug + '.meta.yaml');
+    try { fiches[slug] = analyserMeta(fs.readFileSync(cheminMeta, 'utf8')); }
+    catch (e) { fiches[slug] = null; }
   }
 
   // Les articles dont la rédaction a décidé qu'ils ne portent pas de DOI, cochés sur leur
   // carte dans la vue « Articles ». Une absence VOULUE n'est pas un oubli : elle ne doit
   // pas arrêter l'export, et elle ne doit pas non plus passer sous silence — d'où un
   // avertissement à elle, distinct de celui des rubriques qui n'en reçoivent jamais.
-  const sansDoiVoulu = new Set(listeYamlEnLigne(valeurs[CLE_SANS_DOI]));
+  //
+  // `sansDoi` est le jeu complet : la case cochée PLUS la rubrique qui n'en reçoit jamais.
+  // C'est lui, et lui seul, qui décide du compteur, et il est composé exactement comme
+  // celui de la vue « Articles ».
+  const sansDoiVoulu = new Set(analyserSansDoi(valeurs[CLE_SANS_DOI]));
+  const sansDoi = new Set(sansDoiVoulu);
+  for (const slug of slugsDisque) {
+    if (sansDoi.has(slug)) { continue; }
+    if (typeSansDoi(cfg, fiches[slug] && fiches[slug].type)) { sansDoi.add(slug); }
+  }
 
-  const parCle = {};
-  for (const r of cfg.rubriques) { parCle[r.cle] = r; }
+  // L'ORDRE DU NUMÉRO, et non le tri des noms de dossier : c'est lui qui donne le rang de
+  // chaque article, et le rang qui donne le DOI. La fonction employée est celle de l'arbre
+  // et des cartes, avec le même jeu de sans-DOI, pour qu'un article ne puisse pas porter
+  // deux rangs selon l'endroit d'où on le regarde. Elle répare aussi ce que le disque dit :
+  // un article ajouté à la main se range à la fin, un article effacé quitte l'ordre. Rien
+  // n'est réécrit ici — un export ne modifie pas le numéro qu'il exporte.
+  const slugs = ordonnerArticles(valeurs[CLE_ORDRE], slugsDisque, sansDoi).slugs;
+
+  // Le DOI se déduit de l'année et du nombre du numéro : si l'un des deux manque, aucun
+  // article ne peut en recevoir, et publier sans DOI ne se répare pas après coup. Le refus
+  // est donc global — c'est le numéro qu'il faut compléter, pas les articles — et il ne se
+  // déclenche que s'il y a au moins un article qui devait en recevoir un : un numéro qui
+  // n'est fait que de rubriques sans DOI part comme avant.
+  const porteurs = slugs.filter((s) => !sansDoi.has(s));
+  if (porteurs.length > 0 && doiCalcule(numero.locale, numero.annee, numero.numero, 0) === '') {
+    bloquants.push(T('ojs.err.doi.incalculable'));
+  }
+
   const lireReferences = lecteurReferences(racine, avertissements);
 
   // Une rubrique employée par un article doit avoir son abréviation et son titre dans la
@@ -504,12 +561,10 @@ function collecter(racine, cfg, avertissements) {
   const articles = [];
   for (const slug of slugs) {
     const prefixe = 'articles/' + slug + ' : ';
-    const cheminMeta = path.join(racine, 'articles', slug, slug + '.meta.yaml');
-    let meta = null;
-    try { meta = analyserMeta(fs.readFileSync(cheminMeta, 'utf8')); }
-    catch (e) { bloquants.push(prefixe + T('ojs.err.fiche', [slug + '.meta.yaml'])); }
+    const meta = fiches[slug];
+    if (!meta) { bloquants.push(prefixe + T('ojs.err.fiche', [slug + '.meta.yaml'])); }
 
-    const article = { slug: slug, meta: meta, rubrique: null, fichiers: [], references: [] };
+    const article = { slug: slug, meta: meta, rubrique: null, doi: '', fichiers: [], references: [] };
     if (meta) {
       const rubrique = parCle[cfg.types[texte(meta.type)]] || null;
       if (!rubrique) {
@@ -557,21 +612,26 @@ function collecter(racine, cfg, avertissements) {
             [n, l.toUpperCase(), MARQUE_A_TRADUIRE]));
         }
       }
-      // Le DOI de la fiche fait foi : c'est lui qui a été déposé chez Crossref, et rien
-      // ne le recalcule ici. La vue « Articles » montre, elle, le DOI que le rang de
-      // l'article donne — l'ordre de l'export est alphabétique et non celui du numéro, il
-      // ne peut donc pas servir de compteur.
-      // Un article qui en manque partirait sans identifiant pérenne et sans dépôt
-      // Crossref, ce qui ne se répare pas après publication — l'export s'arrête. Trois
-      // exceptions : l'absence VOULUE, cochée sur la carte de l'article, et les rubriques
-      // qui n'en reçoivent jamais.
-      const doi = texte(meta.doi);
-      if (doi === '') {
-        if (sansDoiVoulu.has(slug)) { avertissements.push(prefixe + T('ojs.avert.doi.voulu')); }
-        else if (rubrique && rubrique.sansDoi) { avertissements.push(prefixe + T('ojs.avert.doi.sans')); }
-        else { bloquants.push(prefixe + T('ojs.err.doi')); }
-      } else if (!FORME_DOI[numero.locale].motif.test(doi)) {
-        avertissements.push(prefixe + T('ojs.avert.doi.forme', [doi, FORME_DOI[numero.locale].exemple]));
+      // Le DOI est un CALCUL, et c'est le calcul qui part : le rang de l'article parmi les
+      // porteurs du numéro, celui-là même que sa carte affiche. La fiche ne le décide plus
+      // — elle ne pouvait pas suivre un ordre qui se change d'un clic — mais ce qu'elle
+      // porte encore n'est pas écarté en silence : une divergence se dit, avec les deux
+      // valeurs et ce qu'elle peut vouloir dire. Deux absences, toutes deux voulues : la
+      // case de l'article et la rubrique qui n'en reçoit jamais. Aucune autre : le DOI
+      // n'est jamais fabriqué à trous, et un numéro incomplet est refusé plus haut.
+      const rang = rangDoi(slugs, slug, sansDoi);
+      const doiFiche = texte(meta.doi);
+      article.doi = doiCalcule(numero.locale, numero.annee, numero.numero, rang);
+      if (rang === -1) {
+        avertissements.push(prefixe + T(sansDoiVoulu.has(slug) ? 'ojs.avert.doi.voulu' : 'ojs.avert.doi.sans'));
+        if (doiFiche !== '') { avertissements.push(prefixe + T('ojs.avert.doi.inutile', [doiFiche])); }
+      } else if (article.doi !== '' && doiFiche !== '' && doiFiche !== article.doi) {
+        // Deux diagnostics, qui ne se confondent pas et n'appellent pas le même geste : un
+        // DOI de la forme de la maison a pu être déposé pour de bon, et l'identifiant d'un
+        // article déjà paru ne se change pas ; un DOI qui n'a pas cette forme n'a jamais pu
+        // être déposé ainsi, c'est une saisie de travers.
+        avertissements.push(prefixe + T(FORME_DOI[numero.locale].motif.test(doiFiche)
+          ? 'ojs.avert.doi.divergent' : 'ojs.avert.doi.forme', [doiFiche, article.doi]));
       }
       // Licence de l'article : CC-BY 4.0 quand la fiche ne dit rien, exactement comme
       // avant que le champ existe. Rien à signaler dans ce cas.
@@ -806,7 +866,9 @@ function genererExportOjs(racine, options) {
         ' access_status="0" date_published="' + numero.datePublication + '"' +
         ' section_ref="' + echapperXml(a.rubrique.abbrev[numero.locale]) + '"' + SCHEMA + '>\n');
       ligne(8, 'id', ' type="internal" advice="ignore"', a.idPublication);
-      if (texte(meta.doi)) { ligne(8, 'id', ' type="doi" advice="update"', texte(meta.doi)); }
+      // Le DOI calculé par collecter(), ou aucune balise : un article qui n'en reçoit pas
+      // n'en reçoit pas non plus une vide, qu'OJS prendrait pour un identifiant.
+      if (a.doi) { ligne(8, 'id', ' type="doi" advice="update"', a.doi); }
       for (const l of localesNonVides(meta.title)) { ligne(8, 'title', ' locale="' + l + '"', meta.title[l].trim()); }
       for (const l of localesNonVides(meta.subtitle)) { ligne(8, 'subtitle', ' locale="' + l + '"', meta.subtitle[l].trim()); }
       // Le résumé est une valeur HTML : texte échappé pour le HTML, puis l'ensemble pour
