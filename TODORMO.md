@@ -590,6 +590,52 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
 
 ## Reste technique
 
+- [ ] **Demander une revue de tous les états d'erreur et de tous les plantages muets**, dans le
+  programme comme dans les scripts. Pas une relecture générale : une chasse à une famille précise
+  de défauts, celle où **quelque chose échoue et personne ne l'apprend**.
+
+  La journée du 24.08.2026 en a livré une dizaine, tous trouvés par accident en cherchant autre
+  chose. C'est ce qui justifie une passe dédiée : ils ne se voient pas en lisant le code, ils se
+  voient en l'exécutant et en regardant ce qui aurait dû crier.
+
+  **Les formes qu'ils prennent ici** — de quoi guider la recherche :
+
+  - *le code de retour n'est pas lu.* `& $cli --install-extension … | Out-Null` suivi de
+    l'enregistrement de la version dans `state.json` quoi qu'il arrive : l'échec devenait un
+    succès, et la mise à jour suivante sautait l'extension pour toujours.
+  - *le code est lu par quelqu'un qui le jette.* `-@$(MAKE) … import` ; une recette qui rend
+    non nul mais dont la cible appelante ignore le résultat ; `make reimporter` avalant les codes
+    3 et 4 du script.
+  - *la sortie d'erreur est jetée là où elle sert.* Les deux `2>/dev/null` de la recette PDF,
+    qui envoyaient au néant tout ce que WeasyPrint avait à dire.
+  - *un tube masque l'échec.* Sans `set -o pipefail`, une compilation échouée rendait le code de
+    `tee`, c'est-à-dire zéro. Et `| head -n1` dans le `Containerfile` rendait zéro même quand la
+    commande en amont n'existait pas : la vérification de fin de build donnait son quitus à une
+    image cassée.
+  - *un `|| true` posé pour une bonne raison qui a cessé d'être vraie.* `docx-meta.py` à
+    l'import.
+  - *un contrôle dont le code de sortie ne dépend pas de ce qu'il contrôle.* `test/build-render.sh`
+    cherchait `warning|error` dans le journal sans que le grep décide de rien.
+  - *un mauvais compteur.* Une collision de slug comptée en « déjà converti » plutôt qu'en échec,
+    donc `rate` à zéro, donc sortie zéro, donc deux articles évaporés en silence.
+  - *un test qui valide le nom de la chose au lieu de la chose.* La clé `ojs.avert.doi.voulu`
+    n'existait pas ; l'export affichait son nom brut à l'utilisateur, et le test passait parce que
+    son motif contenait le mot cherché.
+  - *une lecture qui rend « rien » et qu'on prend pour « absent ».* `Get-ScheduledTask` sous
+    charge : la tâche existait, la réponse était vide, et le script s'apprêtait à la recréer en
+    effaçant son historique.
+
+  **Comment chercher** : les motifs `Out-Null`, `2>/dev/null`, `|| true`, `-@`, `| head`,
+  `-ErrorAction SilentlyContinue`, `except:` nu, `catch {}` vide, et tout `$?`/`$LASTEXITCODE`
+  jamais testé après un appel. Puis, pour chacun, la seule question qui compte : **si ceci
+  échoue, qui l'apprend, et quand ?** Un silence délibéré est légitime — il doit alors porter un
+  commentaire qui dit pourquoi, comme le repli du PDF non balisé.
+
+  Le harnais ne voit pas cette famille : un test qui n'exécute rien ne peut pas constater qu'un
+  échec s'est tu. Prévoir des essais qui **provoquent** la panne — fichier verrouillé, réseau
+  coupé, processus tué, droits refusés — et vérifient qu'elle se dit.
+
+
 - [ ] **`.szh-arrow { opacity: 0.9 }` est un piège armé** (`pipeline/styles/print.css`). La règle
   est morte aujourd'hui : toute flèche vit dans le hero, où `opacity: 1` la neutralise. Mais
   c'est exactement le motif que la feuille interdit deux fois ailleurs, avec un ⚠ : une `opacity`
