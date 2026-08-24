@@ -234,6 +234,7 @@ try {
   $cli = Get-VSCodiumCli
   if ($cli) {
     $changement = $false
+    $extRatees = @()
     foreach ($ext in $manifest.vsix) {
       $installee = ''
       if ($etatVsix.ContainsKey($ext.id)) { $installee = $etatVsix[$ext.id] }
@@ -244,12 +245,31 @@ try {
         if (-not (Test-SzhSha256 -Fichier $vf -Attendu $ext.sha256)) {
           throw (T 'err.empreinte' @($ext.file))
         }
-        & $cli --install-extension $vf --force | Out-Null
-        $etatVsix[$ext.id] = $ext.version
-        $changement = $true
+        # Le code de retour est LU, et l'etat n'enregistre la version que si
+        # l'installation a reussi. Sans cela un echec passager -- editeur a redemarrer,
+        # fichier verrouille -- faisait croire l'extension posee, et la mise a jour
+        # suivante la sautait comme « deja a jour » : l'extension ne revenait jamais.
+        $sortie = & $cli --install-extension $vf --force 2>&1
+        if ($LASTEXITCODE -eq 0) {
+          $etatVsix[$ext.id] = $ext.version
+          $changement = $true
+        } else {
+          # Une extension qui echoue n'arrete pas les autres, ni le reste de la mise
+          # a jour : elle se signale, et l'etat la laisse a reprendre.
+          $detail = ($sortie | Where-Object { $_ -match 'Error|Failed' } | Select-Object -First 1)
+          if (-not $detail) { $detail = ($sortie | Select-Object -Last 1) }
+          $extRatees += $ext.id
+          Write-SzhLog ('update : extension ratee ' + $ext.id + ' -> ' + $detail)
+        }
       }
     }
-    if ($changement) { Write-SzhOk (T 'maj.ext.ok') } else { Write-SzhOk (T 'maj.deja') }
+    if ($extRatees.Count -gt 0) {
+      Write-SzhAttention (T 'maj.ext.ratee' @(($extRatees -join ', ')))
+    } elseif ($changement) {
+      Write-SzhOk (T 'maj.ext.ok')
+    } else {
+      Write-SzhOk (T 'maj.deja')
+    }
   } else {
     Write-SzhInfo (T 'maj.codium.absent')
   }

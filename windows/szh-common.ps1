@@ -68,6 +68,7 @@ $script:SzhTextes = @{
     'maj.env.deja'      = 'Déjà à jour ({0}).'
     'maj.e3'            = '3/5  Extensions de l''éditeur…'
     'maj.ext.ok'        = 'Extensions à jour.'
+    'maj.ext.ratee'     = 'Ces extensions n''ont pas pu être posées : {0}. Le reste de la mise à jour a bien eu lieu. Fermez complètement l''éditeur — toutes ses fenêtres — puis relancez cette mise à jour : il refuse de reposer une extension tant qu''il n''a pas redémarré.'
     'maj.codium.absent' = 'L''éditeur n''est pas installé sur ce poste : ses extensions ont été laissées de côté, tout le reste est à jour. Faites faire l''installation initiale du poste par le service informatique, puis relancez cette mise à jour.'
     'maj.e4'            = '4/5  Réglages de l''éditeur…'
     'maj.e4.ok'         = 'Réglages appliqués, raccourcis du menu Démarrer à jour.'
@@ -191,6 +192,7 @@ $script:SzhTextes = @{
     'maj.env.deja'      = 'Bereits aktuell ({0}).'
     'maj.e3'            = '3/5  Editor-Erweiterungen…'
     'maj.ext.ok'        = 'Erweiterungen sind aktuell.'
+    'maj.ext.ratee'     = 'Diese Erweiterungen konnten nicht gesetzt werden: {0}. Der Rest der Aktualisierung ist erfolgt. Schliessen Sie den Editor vollständig — alle Fenster — und starten Sie diese Aktualisierung erneut: er setzt eine Erweiterung erst nach einem Neustart wieder.'
     'maj.codium.absent' = 'Der Editor ist auf diesem Rechner nicht installiert: seine Erweiterungen wurden übersprungen, alles andere ist aktuell. Lassen Sie die Ersteinrichtung des Rechners von der Informatik durchführen und starten Sie diese Aktualisierung danach erneut.'
     'maj.e4'            = '4/5  Editor-Einstellungen…'
     'maj.e4.ok'         = 'Einstellungen angewendet, Verknüpfungen im Startmenü aktualisiert.'
@@ -309,6 +311,7 @@ $script:SzhTextes = @{
     'maj.env.deja'      = 'Already up to date ({0}).'
     'maj.e3'            = '3/5  Editor extensions…'
     'maj.ext.ok'        = 'Extensions up to date.'
+    'maj.ext.ratee'     = 'These extensions could not be installed: {0}. The rest of the update went through. Close the editor completely — every window — then start this update again: it refuses to reinstall an extension until it has restarted.'
     'maj.codium.absent' = 'The editor is not installed on this computer: its extensions were skipped, everything else is up to date. Have IT run the initial setup of this computer, then start this update again.'
     'maj.e4'            = '4/5  Editor settings…'
     'maj.e4.ok'         = 'Settings applied, Start menu shortcuts up to date.'
@@ -1386,6 +1389,8 @@ function Write-SzhBanniere([string]$SousTitre) {
 function Write-SzhEtape([string]$Texte) { Write-Host ('  > ' + $Texte) }
 function Write-SzhOk([string]$Texte)    { Write-Host ('    ✓ ' + $Texte) -ForegroundColor Green }
 function Write-SzhInfo([string]$Texte)  { Write-Host ('    ' + $Texte) -ForegroundColor Gray }
+# Ce qui n'a pas abouti sans faire echouer le reste : visible, mais pas rouge.
+function Write-SzhAttention([string]$Texte) { Write-Host ('    ! ' + $Texte) -ForegroundColor Yellow }
 
 # Écran d'erreur final : message calme, contact, e-mail pré-rempli, accès au journal.
 function Show-SzhErreur {
