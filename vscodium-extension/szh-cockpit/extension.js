@@ -81,6 +81,12 @@ const {
 const { appliquerVerrou } = require('./lib/verrou');
 const { construireLienTraduction, consommerIntention } = require('./lib/liens');
 const { enregistrerPanneaux } = require('./lib/panneaux');
+// ---- Garde d'interaction -> lib/interaction.js ------------------------------------
+// Un QuickPick de VS Code se ferme dès que le focus bouge ; la fin d'une compilation
+// (réassignation du HTML de l'aperçu, notification des contrôles) ne doit pas interrompre
+// le geste en cours. sousGarde enveloppe les choix, differer retient ce qui volerait le
+// focus et le rejoue à la fermeture. Instance partagée avec panneaux.js et formatting.js.
+const { sousGarde, differer } = require('./lib/interaction');
 const {
   genererExportOjs, configOjs, ecrireConfigOjs, doiCalcule, typeSansDoi,
   CHAMPS_REVUE, LOCALES_REVUE, RUBRIQUES_DEFAUT
@@ -1539,12 +1545,19 @@ function ouvrirApercuHtml(fournisseur, slug, enAttente) {
 }
 
 function rechargerApercuHtmlSiChange(fournisseur) {
-  if (!panneauApercuHtml || !apercuCourantSlug || !fournisseur.racine || modeApercu() !== 'html') { return; }
-  const slug = apercuCourantSlug;
-  let mtime = 0;
-  try { mtime = fs.statSync(path.join(fournisseur.racine, 'out', slug, slug + '.apercu.html')).mtimeMs; }
-  catch (e) { return; }
-  if (mtime > apercuHtmlMtime) { ouvrirApercuHtml(fournisseur, slug); }
+  // Réassigner webview.html déplace le focus, et un QuickPick ouvert (Ctrl+Alt+A/S/D,
+  // choix de titre…) se ferme dès que le focus bouge : la fin d'une compilation fermait
+  // le panneau sous les doigts du rédacteur. Tout le corps est donc différé — et
+  // réévalué au rejeu, l'aperçu ayant pu être fermé ou la sortie avoir encore changé
+  // entre-temps. Une seule action pour toutes les compilations survenues pendant le geste.
+  differer('apercu-html', () => {
+    if (!panneauApercuHtml || !apercuCourantSlug || !fournisseur.racine || modeApercu() !== 'html') { return; }
+    const slug = apercuCourantSlug;
+    let mtime = 0;
+    try { mtime = fs.statSync(path.join(fournisseur.racine, 'out', slug, slug + '.apercu.html')).mtimeMs; }
+    catch (e) { return; }
+    if (mtime > apercuHtmlMtime) { ouvrirApercuHtml(fournisseur, slug); }
+  });
 }
 
 // Persiste szh.apercuMode ; jamais deux aperçus en colonne 2.
@@ -1960,10 +1973,10 @@ async function choisirArticleReimport(fournisseur, nom) {
       description: slug, slug: slug
     }));
   if (items.length === 0) { return ''; }
-  const choix = await vscode.window.showQuickPick(items, {
+  const choix = await sousGarde(() => vscode.window.showQuickPick(items, {
     title: T('reimport.choisirArticle.titre', [nom]),
     placeHolder: T('reimport.choisirArticle')
-  });
+  }));
   return choix ? String(choix.slug) : '';
 }
 
@@ -1972,10 +1985,10 @@ async function choisirArticleReimport(fournisseur, nom) {
 async function choisirWordReimport(fournisseur, slug) {
   const noms = fournisseur._docxEnAttente(path.join(fournisseur.racine, 'articles-word'));
   if (noms.length === 0) { return ''; }
-  const choix = await vscode.window.showQuickPick(noms, {
+  const choix = await sousGarde(() => vscode.window.showQuickPick(noms, {
     title: T('reimport.choisirWord.titre', [slug]),
     placeHolder: T('reimport.choisirWord')
-  });
+  }));
   return choix ? String(choix) : '';
 }
 
@@ -3108,19 +3121,28 @@ async function relireJournal(fournisseur, code) {
   if (ouverte) { envoyerVue(ouverte, fournisseur, 'controles'); }
   const r = resumeJournal(constats);
   if (r.bloquants === 0 && r.avertissements === 0) { return; }
-  const bouton = T('ctl.notif.bouton');
-  const ouvrir = () => vscode.commands.executeCommand('szh.vueControles');
-  if (r.bloquants > 0) {
-    const cle = code === 0 ? 'ctl.notif.bloquant' : 'ctl.notif.arret';
-    const choix = await vscode.window.showErrorMessage(T(cle, [r.bloquants]), bouton);
+  const notifier = async () => {
+    const bouton = T('ctl.notif.bouton');
+    const ouvrir = () => vscode.commands.executeCommand('szh.vueControles');
+    if (r.bloquants > 0) {
+      const cle = code === 0 ? 'ctl.notif.bloquant' : 'ctl.notif.arret';
+      const choix = await vscode.window.showErrorMessage(T(cle, [r.bloquants]), bouton);
+      if (choix === bouton) { await ouvrir(); }
+      return;
+    }
+    // Non bloquant : un avertissement, pas un échec. Le ton de la notification le dit, et
+    // c'est tout ce que le rédacteur en verra s'il ne clique pas.
+    const choix = await vscode.window.showWarningMessage(
+      T('ctl.notif.avert', [r.avertissements]), bouton);
     if (choix === bouton) { await ouvrir(); }
-    return;
-  }
-  // Non bloquant : un avertissement, pas un échec. Le ton de la notification le dit, et
-  // c'est tout ce que le rédacteur en verra s'il ne clique pas.
-  const choix = await vscode.window.showWarningMessage(
-    T('ctl.notif.avert', [r.avertissements]), bouton);
-  if (choix === bouton) { await ouvrir(); }
+  };
+  // La notification attend qu'un QuickPick ouvert se ferme : la fin d'une compilation ne
+  // doit pas interrompre le geste en cours. La barre d'état et la vue, inoffensives pour
+  // le focus, ont déjà été mises à jour plus haut. Si plusieurs compilations finissent
+  // pendant le geste, seul le dernier avis part — les précédents sont périmés.
+  differer('notif-journal', () => {
+    notifier().catch(() => { /* un avis raté ne casse pas la compilation */ });
+  });
 }
 
 const VUES = {

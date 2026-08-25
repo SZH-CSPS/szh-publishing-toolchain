@@ -15,6 +15,10 @@ const citations = require('./citations');
 const { RE_DIV_OUVERTURE, RE_DIV_FERMETURE, fermetureDeDiv } = require('./references');
 const { lancerChoixVersion } = require('./archivage');
 const { ecrireAtomique } = require('./yaml');
+// Un QuickPick ou une InputBox se ferme dès que le focus bouge : la garde retient, tant
+// qu'un choix est ouvert, ce qui le lui volerait (rafraîchissement d'aperçu, avis de fin
+// de compilation).
+const { sousGarde } = require('./interaction');
 
 // Contexte de la revue, injecté par extension.js à l'enregistrement des commandes plutôt
 // que requis, extension.js requérant déjà ce module. On réutilise ainsi sa définition
@@ -224,10 +228,6 @@ async function appliquerSelection(transformer, opt) {
   }
 }
 
-async function choisirTitreImportant() {
-  const presets = [
-    T('fmt.titre.information'), T('fmt.titre.important'),
-    T('fmt.titre.attention'), T('fmt.titre.note')
 // Applique poserBloc au document de l'éditeur actif. Contrairement à appliquerSelection,
 // le remplacement porte sur des lignes entières : la place des lignes vides et la
 // détection d'un bloc existant se lisent dans le document, pas dans la seule sélection.
@@ -251,15 +251,23 @@ async function appliquerBlocClasse(classe, titre) {
   editeur.selection = new vscode.Selection(pos, pos);
 }
 
-  ];
-  const autre = T('fmt.titre.autre');
-  const choix = await vscode.window.showQuickPick(presets.concat([autre]), {
-    placeHolder: T('fmt.titre.placeholder')
+async function choisirTitreImportant() {
+  // Une seule garde englobe le QuickPick ET l'InputBox d'« Autre titre… » : entre les
+  // deux, rien ne doit se rejouer qui déplacerait le focus avant la saisie libre.
+  return sousGarde(async () => {
+    const presets = [
+      T('fmt.titre.information'), T('fmt.titre.important'),
+      T('fmt.titre.attention'), T('fmt.titre.note')
+    ];
+    const autre = T('fmt.titre.autre');
+    const choix = await vscode.window.showQuickPick(presets.concat([autre]), {
+      placeHolder: T('fmt.titre.placeholder')
+    });
+    if (choix === undefined) { return undefined; }
+    if (choix !== autre) { return choix; }
+    const libre = await vscode.window.showInputBox({ prompt: T('fmt.titre.libre') });
+    return libre === undefined ? undefined : libre.trim();
   });
-  if (choix === undefined) { return undefined; }
-  if (choix !== autre) { return choix; }
-  const libre = await vscode.window.showInputBox({ prompt: T('fmt.titre.libre') });
-  return libre === undefined ? undefined : libre.trim();
 }
 
 async function fmtImportant() {
@@ -578,7 +586,7 @@ async function fmtLierReference() {
     plage = new vscode.Range(plage.active.line, bornes.debut, plage.active.line, bornes.fin);
   }
   const appel = doc.getText(plage);
-  const choix = await vscode.window.showQuickPick(
+  const choix = await sousGarde(() => vscode.window.showQuickPick(
     entrees.map((e, i) => ({
       label: String(i + 1).padStart(2, '0') + '. ' + e.texte.slice(0, 96),
       description: e.id,
@@ -586,7 +594,7 @@ async function fmtLierReference() {
       id: e.id
     })),
     { placeHolder: T('cit.placeholder', [appel.trim()]), matchOnDescription: true,
-      matchOnDetail: true });
+      matchOnDetail: true }));
   if (!choix) { return; }
   await editeur.edit((b) => {
     b.replace(plage, citations.lienVersReference(appel, choix.id));
@@ -627,7 +635,8 @@ async function ouvrirMiseEnForme() {
   const items = PALETTE_MEF.map((e) => (e[0] === '--'
     ? { label: T(e[1]), kind: vscode.QuickPickItemKind.Separator }
     : { label: (e[3] ? e[3] + ' ' : '') + T(e[0]), description: '[' + e[2] + ']', commande: e[1] }));
-  const choix = await vscode.window.showQuickPick(items, { placeHolder: T('palette.placeholder') });
+  const choix = await sousGarde(() =>
+    vscode.window.showQuickPick(items, { placeHolder: T('palette.placeholder') }));
   if (choix && choix.commande) { await vscode.commands.executeCommand(choix.commande); }
 }
 

@@ -7,6 +7,9 @@
 const vscode = require('vscode');
 const { T } = require('./i18n');
 const { PALETTE_MEF } = require('./formatting');
+// Un QuickPick se ferme dès que le focus bouge : la garde retient, tant qu'un panneau est
+// ouvert, ce qui le lui volerait (rafraîchissement d'aperçu, avis de fin de compilation).
+const { sousGarde } = require('./interaction');
 
 const PANNEAU_COMMANDE = [
   ['panneau.tutoriel', 'szh.tutoriel', '', '$(mortar-board)'],
@@ -30,9 +33,10 @@ function itemsDepuisEntrees(entrees) {
 }
 
 async function choisirEtExecuter(entrees, clePlaceholder) {
-  const choix = await vscode.window.showQuickPick(itemsDepuisEntrees(entrees), {
+  // Seul le choix est sous garde : la commande choisie, elle, peut rafraîchir ce qu'elle veut.
+  const choix = await sousGarde(() => vscode.window.showQuickPick(itemsDepuisEntrees(entrees), {
     placeHolder: T(clePlaceholder)
-  });
+  }));
   if (choix && choix.commande) { await vscode.commands.executeCommand(choix.commande); }
 }
 
@@ -58,9 +62,9 @@ async function ouvrirPanneauEdition() {
     ['panneau.lierReference', 'szh.lierReference', '', '$(references)'],
     ['panneau.traduction', 'szh.traduction', '', '$(globe)']
   ].concat(PALETTE_MEF);
-  const choix = await vscode.window.showQuickPick(itemsDepuisEntrees(entrees), {
+  const choix = await sousGarde(() => vscode.window.showQuickPick(itemsDepuisEntrees(entrees), {
     placeHolder: T('panneau.edition.placeholder')
-  });
+  }));
   if (!choix || !choix.commande) { return; }
   if (HORS_GARDE_MD.indexOf(choix.commande) === -1 && !estMarkdown) {
     vscode.window.setStatusBarMessage(T('palette.horsmd'), 3000);

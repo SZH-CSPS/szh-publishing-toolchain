@@ -29,6 +29,8 @@ lib/
   export-ojs.js         génération du XML natif OJS
   formatting.js         mise en forme markdown et commandes szh.fmt.*
   i18n.js               textes fr/de et T(clé[, args])
+  interaction.js        garde d'interaction : retient ce qui volerait le focus (aperçu,
+                        notifications) tant qu'un QuickPick est ouvert
   journal.js            journal de compilation -> constats de la vue « Contrôles »
   liens.js              liens szh:// et intention déposée par le lanceur
   panneaux.js           les trois panneaux QuickPick
