@@ -687,6 +687,47 @@ test('les tables de protocole des webviews sont à jour', () => {
   }
 });
 
+// Ouvrir un article depuis la vue d'ensemble Articles n'ouvre que le .md — décision du
+// 25.08.2026 : de là, on vient lire ou corriger le texte, pas mettre en page. Trois
+// maillons, vérifiés sur la source faute de pouvoir charger extension.js hors de
+// l'éditeur : la vue passe l'option, l'enregistrement de la commande la transmet, et
+// ouvrirArticle s'arrête au .md quand elle est posée. Les autres appelants (arbre,
+// Contrôles, démarrage) ne la passent pas : comportement historique conservé.
+test('vue Articles : « ouvrir » passe sansApercu, et seul ce chemin la porte', () => {
+  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  const bloc = (nom) => {
+    const i = src.indexOf('function ' + nom + '(');
+    assert.notStrictEqual(i, -1, 'fonction introuvable : ' + nom);
+    return src.slice(i, src.indexOf('\n}', i));
+  };
+  // 1. Le gestionnaire du message « ouvrir » de la vue Articles envoie l'option.
+  assert.match(bloc('ouvrirVueArticles'),
+    /executeCommand\('szh\.ouvrirArticle',[^;]*\{ sansApercu: true \}/,
+    'la vue Articles n’envoie pas sansApercu : l’aperçu s’ouvrirait encore');
+  // 2. L'enregistrement de la commande transmet le second argument, sinon l'option se
+  //    perdrait entre executeCommand et la fonction.
+  assert.match(src,
+    /cmd\('szh\.ouvrirArticle', \(slug, opts\) => ouvrirArticle\(fournisseur, slug, opts\)\)/,
+    'szh.ouvrirArticle ne propage pas les options à ouvrirArticle');
+  // 3. ouvrirArticle honore l'option : après l'ouverture du .md, avant le calcul
+  //    d'obsolescence et la compilation.
+  const fn = bloc('ouvrirArticle');
+  const garde = fn.indexOf('opts.sansApercu');
+  assert.notStrictEqual(garde, -1, 'ouvrirArticle ignore sansApercu');
+  assert.ok(garde > fn.indexOf("executeCommand('vscode.open'"),
+    'la garde sansApercu doit laisser le .md s’ouvrir en colonne 1');
+  assert.ok(garde < fn.indexOf('obsolete') && garde < fn.indexOf('lancerBuild'),
+    'la garde sansApercu doit précéder l’obsolescence et la compilation');
+  // 4. Un seul chemin porte l'option : l'arbre, la vue Contrôles et le démarrage gardent
+  //    le comportement historique (md + compilation + aperçu).
+  assert.strictEqual((src.match(/sansApercu: true/g) || []).length, 1,
+    'sansApercu posé ailleurs que dans la vue Articles');
+  assert.doesNotMatch(bloc('ouvrirVueEnsemble'), /sansApercu/,
+    'la vue Contrôles ne doit pas changer de comportement');
+  assert.doesNotMatch(bloc('ouvrirArticleActifAuDemarrage'), /sansApercu/,
+    'l’ouverture au démarrage ne doit pas changer de comportement');
+});
+
 // ---- citations : le liage des appels de citation ----
 
 test('citations : la liste de références est découpée comme le fait le filtre Lua', () => {

@@ -1595,8 +1595,9 @@ async function ouvrirArticleActifAuDemarrage(fournisseur) {
 
 // .md en colonne 1 ; compilation incrémentale si l'aperçu du mode courant est absent ou
 // plus vieux que ses sources ; aperçu en colonne 2, à la place du précédent. Une
-// compilation en échec ne montre pas d'aperçu périmé, et `opts.sansTexte` laisse la
-// colonne 1 au panneau qui l'occupe.
+// compilation en échec ne montre pas d'aperçu périmé, `opts.sansTexte` laisse la
+// colonne 1 au panneau qui l'occupe, et `opts.sansApercu` s'arrête au .md : ni aperçu,
+// ni compilation (vue d'ensemble Articles — voir le commentaire plus bas).
 async function ouvrirArticle(fournisseur, slug, opts) {
   const racine = fournisseur.racine;
   if (!racine || typeof slug !== 'string' || slug === '') { return; }
@@ -1613,6 +1614,15 @@ async function ouvrirArticle(fournisseur, slug, opts) {
   if (!(opts && opts.sansTexte)) {
     await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(md), { viewColumn: vscode.ViewColumn.One });
   }
+
+  // Décision de Robin (25.08.2026) : depuis la vue d'ensemble Articles, on vient lire ou
+  // corriger le texte, pas mettre en page — le .md suffit, pas d'aperçu en colonne 2.
+  // La compilation d'obsolescence est sautée aussi : compiler pour un aperçu qu'on
+  // n'affiche pas surprendrait (barre d'état « compilation de… », journal relu en fin de
+  // tâche), et rien d'autre n'en dépend ici — l'enregistrement du .md recompile de toute
+  // façon via triggerTaskOnSave. Un panneau d'aperçu déjà ouvert continue, lui, de se
+  // rafraîchir par le watcher out/** (rechargerApercuHtmlSiChange) — comportement voulu.
+  if (opts && opts.sansApercu) { return; }
 
   // Obsolète = plus ancien que le .md, un tableau extrait ou la fiche .meta.yaml ; même
   // graphe de dépendances que la règle HTML du Makefile.
@@ -3701,9 +3711,11 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
     // numéro », et il répond lui-même au panneau.
     if (messageNumero(panneau, racine, msg, rafraichirTout)) { return; }
     if (msg.type === 'ouvrir') {
-      // Par la commande, et non par la fonction : c'est elle qui compile si besoin et
-      // ouvre l'aperçu.
-      await vscode.commands.executeCommand('szh.ouvrirArticle', String(msg.cle || ''));
+      // Par la commande, pour rester sur le point d'entrée unique. sansApercu : décision
+      // de Robin (25.08.2026) — depuis la vue d'ensemble, on vient lire ou corriger le
+      // texte, pas mettre en page ; seul le .md s'ouvre, sans compilation ni aperçu.
+      await vscode.commands.executeCommand('szh.ouvrirArticle', String(msg.cle || ''),
+        { sansApercu: true });
       return;
     }
     // L'état part APRÈS le re-rendu : « valeurs » reconstruit la barre, et donc efface la
@@ -5824,7 +5836,9 @@ function activate(context) {
     cmd('szh.archiverVerrouiller', () => archiverEtVerrouiller(fournisseur, rafraichirTout)),
     cmd('szh.deverrouiller', () => deverrouiller(fournisseur, rafraichirTout)),
     cmd('szh.desarchiver', () => desarchiver(fournisseur, rafraichirTout)),
-    cmd('szh.ouvrirArticle', (slug) => ouvrirArticle(fournisseur, slug)),
+    // Le second argument transmet les options (sansApercu depuis la vue Articles) ; les
+    // appelants historiques (arbre, Contrôles, démarrage) n'en passent pas : rien ne change.
+    cmd('szh.ouvrirArticle', (slug, opts) => ouvrirArticle(fournisseur, slug, opts)),
     cmdEcriture('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
     // Le Word corrigé d'un article déjà publié, et le retour en arrière. Les deux
     // remplacent le texte : refusés sur un numéro verrouillé, comme la suppression.
