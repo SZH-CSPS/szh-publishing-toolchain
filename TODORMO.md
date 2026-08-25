@@ -3,45 +3,8 @@
 Ce fichier ne contient que ce qui reste à vérifier ou à trancher : rien de ce qui est déjà fait.
 On coche une case quand le résultat annoncé a été constaté, puis on la supprime.
 
-## Avant de tester
-
-- [ ] Installer le toolkit et l'extension du cockpit depuis une release, ou à la main. Rien de
-  ce qui suit n'est testable sans eux : les scripts d'archivage et de mise à jour sont appelés
-  par leur chemin dans `C:\ProgramData\SZH\toolkit\windows\`. C'est bon quand le lanceur
-  affiche un numéro de version.
-- [ ] Vérifier que le mode développeur est actif (Réglages SZH, ou `devMode` dans `config.json`)
-  avant le premier essai. Sinon le premier clic déplace un vrai numéro.
-- [ ] Créer deux numéros de test dans `Revues-TESTING`, un par produit (`revue: revue` et
-  `revue: zeitschrift`), avec chacun deux ou trois articles compilés, des images, un tableau et
-  des traductions renseignées. Ils servent à tout le reste.
-
-## Ménage sur ce poste
-
-- [ ] Deux numéros sont mal renseignés. `2027-05`, et tout numéro créé avant que la création
-  déduise ses métadonnées du nom du dossier, porte encore l'année, le numéro et le titre du
-  gabarit : les corriger dans « Méta-données du numéro ». `2027-01` vit dans le dossier de la
-  Zeitschrift mais se déclare `revue: revue`, et il est marqué archivé sans avoir été déplacé :
-  corriger le jeton puis relancer l'archivage, ou le supprimer si c'était un essai.
-- [ ] Nettoyer les restes d'essais et les clés héritées : les deux dossiers de
-  `OneDrive - SZH CSPS\Revues` (`2026-04`, `test`) n'ont pas d'`ausgabe.yaml`, ce ne sont pas des
-  numéros ; les dossiers laissés dans `Revues-TESTING` seront recréés au prochain lancement en
-  mode test ; la clé `revuesRoots` de `config.json`, posée par une ancienne version du script de
-  création, est sans effet mais trompeuse.
-- [ ] Désinstaller l'extension résiduelle, absente des nouveaux postes :
-  `codium --uninstall-extension csholmq.excel-to-markdown-table`.
-
 ## Lanceur
 
-- [ ] Conditions dégradées. Lancé pendant qu'une mise à jour est en cours, le lanceur doit
-  s'ouvrir ou afficher une erreur, jamais disparaître sans un mot. Sur un écran 1366 × 768, ou à
-  125 et 150 % de mise à l'échelle, les deux listes, le bloc d'informations et les quatre boutons
-  doivent tenir dans l'écran (non reproductible sur le poste de développement).
-- [ ] Les deux listes. « En cours » et « Archivées », cadenas sur les numéros verrouillés,
-  sélection qui bascule de l'une à l'autre, double-clic qui ouvre dans chacune. Un numéro déplacé
-  à la main dans le dossier d'archives doit apparaître quand même. Sur un poste sans aucun numéro,
-  la fenêtre s'ouvre et propose « Nouvelle revue… ». Sous les listes, la ligne
-  « N revue(s) hors arborescence dans … — à déplacer » compte les numéros rangés ailleurs, y
-  compris dans les anciens `OneDrive\Revues`, et disparaît une fois le dossier déplacé.
 - [ ] Filtrage par produit. « Revues SZH » ne liste que la Revue, « Zeitschriften SZH » que la
   Zeitschrift, dans les deux listes. Titre de fenêtre et texte d'introduction cohérents avec le
   produit.
@@ -60,14 +23,6 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
   « Version du logiciel… » ouvre le sélecteur, la version installée marquée et les versions déjà
   téléchargées annotées. Le même sélecteur doit s'ouvrir depuis l'avertissement de divergence du
   cockpit, sans console noire derrière le dialogue.
-- [ ] Réseau contrarié. Hors ligne, le sélecteur annonce qu'il ne peut pas lister les versions
-  publiées et propose celles déjà téléchargées ; la version précédente n'apparaîtra qu'après une
-  deuxième mise à jour, le temps que deux archives soient conservées. Deux installations
-  concurrentes : la seconde doit dire qu'une mise à jour est déjà en cours et sortir. Derrière le
-  proxy SZH, mesurer le temps réel de la recherche des versions et confirmer que 8 s suffisent.
-  Limite de débit de l'API GitHub (60 requêtes par heure et par adresse publique, tout un bureau
-  derrière la même) : confirmer que le message est compréhensible ; si le cas devient fréquent,
-  il faudra mettre la liste des versions en cache.
 - [ ] Aller-retour de version réel, sur un poste de test : fermer tous les numéros, installer une
   version antérieure, vérifier que le PDF d'un ancien numéro redevient conforme, puis réinstaller
   la dernière. C'est le seul test qui prouve la promesse de recompiler à l'identique.
