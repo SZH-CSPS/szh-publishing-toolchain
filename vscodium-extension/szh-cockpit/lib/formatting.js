@@ -12,6 +12,7 @@ const { T } = require('./i18n');
 const { tableauDepuisHtmlBureautique, tableauDepuisTsv, serialiserTable,
   finaliserModele, PRESETS_TABLE } = require('./table-model');
 const citations = require('./citations');
+const { RE_DIV_OUVERTURE, RE_DIV_FERMETURE, fermetureDeDiv } = require('./references');
 const { lancerChoixVersion } = require('./archivage');
 const { ecrireAtomique } = require('./yaml');
 
@@ -74,11 +75,125 @@ function basculerCitation(texte) {
   return lignes.map((l) => '> ' + l).join('\n');
 }
 
-function enroberBloc(texte, classe, titre) {
-  const t = String(texte);
+// Attribut d'un bloc de classe : {.classe} ou {.classe data-titre="…"}. Les guillemets
+// sont ôtés du titre, qui vit lui-même entre guillemets dans l'attribut.
+function attrBloc(classe, titre) {
   const titrePropre = String(titre || '').replace(/"/g, '').trim();
-  const attr = titrePropre ? '{.' + classe + ' data-titre="' + titrePropre + '"}' : '{.' + classe + '}';
-  return '::: ' + attr + '\n' + t + '\n:::';
+  return titrePropre ? '{.' + classe + ' data-titre="' + titrePropre + '"}' : '{.' + classe + '}';
+}
+
+function enroberBloc(texte, classe, titre) {
+  return '::: ' + attrBloc(classe, titre) + '\n' + String(texte) + '\n:::';
+}
+
+// ---- Pose d'un bloc ::: de classe (.important, .highlight, .question) ----
+//
+// enroberBloc fabrique le texte du bloc, mais ne suffit pas à le poser : un « fenced
+// div » pandoc doit commencer en colonne 0 et être séparé de ses voisins par une ligne
+// vide — même exigence que blocReferenceTable —, et réappliquer la commande dans un bloc
+// existant doit mettre sa ligne d'ouverture à jour, pas imbriquer un second bloc que
+// pandoc rendrait comme deux cadres l'un dans l'autre.
+
+// Les classes que le panneau d'édition pose, seules que poserBloc a le droit de
+// réécrire. Les autres divs — .szh-tabelle, .szh-saut — portent des données (src=…)
+// qu'une réécriture perdrait : dedans, le nouveau bloc se pose APRÈS, jamais à la place.
+const CLASSES_BLOCS = ['important', 'highlight', 'question'];
+
+// Le fenced div qui contient les lignes [debut, fin] de la sélection, ou null. Remontée
+// depuis la sélection : une fermeture rencontrée au-dessus (hors ligne du curseur, qui
+// peut être la fermeture elle-même) signifie un bloc déjà clos, donc une sélection à
+// l'extérieur. Un bloc jamais refermé ne compte pas : on ne sait pas où il finit.
+function blocAutour(lignes, debut, fin) {
+  let ouverture = -1;
+  for (let i = debut; i >= 0; i--) {
+    if (RE_DIV_OUVERTURE.test(lignes[i])) { ouverture = i; break; }
+    if (i < debut && RE_DIV_FERMETURE.test(lignes[i])) { return null; }
+  }
+  if (ouverture === -1) { return null; }
+  const fermeture = fermetureDeDiv(lignes, ouverture);
+  // Sélection débordant sous la fermeture : pas « dans » le bloc, on n'y touche pas.
+  if (fermeture === -1 || fin > fermeture) { return null; }
+  return { ouverture: ouverture, fermeture: fermeture,
+    attrs: RE_DIV_OUVERTURE.exec(lignes[ouverture])[1] };
+}
+
+// poserBloc(lignes, sel, classe, titre) -> { ligneDebut, ligneFin, texte, curseur }
+//
+// `lignes` : les lignes du document ; `sel` : { debutLigne, debutCol, finLigne, finCol }.
+// Rend la plage de lignes ENTIÈRES à remplacer, son nouveau texte, et où poser le
+// curseur (fin de la dernière ligne de contenu du bloc : c'est là qu'on tape, et c'est
+// ce qui fait qu'une seconde frappe retombe DANS le bloc et le met à jour au lieu d'en
+// empiler un second). Pur — c'est appliquerBlocClasse qui traduit en édition vscode.
+function poserBloc(lignes, sel, classe, titre) {
+  const tab = Array.isArray(lignes) && lignes.length > 0
+    ? lignes.map((x) => String(x === undefined || x === null ? '' : x)) : [''];
+  const borne = (n, max) => Math.max(0, Math.min(Number(n) || 0, max));
+  let dl = borne(sel && sel.debutLigne, tab.length - 1);
+  let fl = borne(sel && sel.finLigne, tab.length - 1);
+  if (fl < dl) { const t = dl; dl = fl; fl = t; }
+  let dc = borne(sel && sel.debutCol, tab[dl].length);
+  let fc = borne(sel && sel.finCol, tab[fl].length);
+  if (dl === fl && fc < dc) { const t = dc; dc = fc; fc = t; }
+
+  const existant = blocAutour(tab, dl, fl);
+  const aNous = existant
+    && CLASSES_BLOCS.some((c) => existant.attrs.split(/\s+/).indexOf('.' + c) !== -1);
+  let morceaux;          // les lignes de remplacement
+  let fermetureIdx;      // la ligne « ::: » du bloc posé, dans morceaux
+  let ligneDebut, ligneFin;
+  let bordHaut = true, bordBas = true;   // le bloc touche-t-il le bord de la plage ?
+
+  if (aNous) {
+    // Dans un bloc du panneau : réécrire la ligne d'ouverture — nouvelle classe, nouveau
+    // titre —, garder le contenu tel quel. C'est la sémantique « à jour », pas « en plus ».
+    morceaux = ['::: ' + attrBloc(classe, titre)]
+      .concat(tab.slice(existant.ouverture + 1, existant.fermeture), [':::']);
+    fermetureIdx = morceaux.length - 1;
+    ligneDebut = existant.ouverture;
+    ligneFin = existant.fermeture;
+  } else if (existant) {
+    // Dans un div étranger : ni imbriquer, ni le réécrire. Le nouveau bloc, vide, se
+    // pose après sa fermeture ; le texte du div n'en sort pas.
+    morceaux = [tab[existant.fermeture], ''].concat(enroberBloc('', classe, titre).split('\n'));
+    fermetureIdx = morceaux.length - 1;
+    ligneDebut = existant.fermeture;
+    ligneFin = existant.fermeture;
+    bordHaut = false;                    // la fermeture du div étranger reste en tête
+  } else {
+    // Insertion : la sélection devient le contenu du bloc. Les restes d'une ligne coupée
+    // sont gardés autour, séparés du bloc par une ligne vide ; un reste fait de blancs
+    // seuls est abandonné, le bloc devant démarrer en colonne 0.
+    const avant = tab[dl].slice(0, dc);
+    const apres = tab[fl].slice(fc);
+    const contenu = dl === fl ? tab[dl].slice(dc, fc)
+      : [tab[dl].slice(dc)].concat(tab.slice(dl + 1, fl), [tab[fl].slice(0, fc)]).join('\n');
+    const pre = avant.trim() === '' ? [] : [avant.replace(/\s+$/, ''), ''];
+    const post = apres.trim() === '' ? [] : ['', apres.replace(/^\s+/, '')];
+    const bloc = enroberBloc(contenu, classe, titre).split('\n');
+    morceaux = pre.concat(bloc, post);
+    fermetureIdx = pre.length + bloc.length - 1;
+    ligneDebut = dl;
+    ligneFin = fl;
+    bordHaut = pre.length === 0;
+    bordBas = post.length === 0;
+  }
+
+  // Lignes vides voisines, quand le bloc touche le bord de la plage : avalées dans la
+  // plage puis réémises — exactement une contre un voisin non vide, aucune contre le
+  // bord du document. C'est ce qui évite autant le bloc collé à un paragraphe que les
+  // deux ou trois lignes vides qu'un aller-retour laisserait s'accumuler.
+  if (bordHaut) {
+    while (ligneDebut > 0 && tab[ligneDebut - 1].trim() === '') { ligneDebut--; }
+    if (ligneDebut > 0) { morceaux.unshift(''); fermetureIdx++; }
+  }
+  if (bordBas) {
+    while (ligneFin + 1 < tab.length && tab[ligneFin + 1].trim() === '') { ligneFin++; }
+    if (ligneFin + 1 < tab.length) { morceaux.push(''); }
+  }
+  return {
+    ligneDebut: ligneDebut, ligneFin: ligneFin, texte: morceaux.join('\n'),
+    curseur: { ligne: ligneDebut + fermetureIdx - 1, colonne: morceaux[fermetureIdx - 1].length }
+  };
 }
 
 function squeletteTableau(colonne) {
@@ -113,6 +228,29 @@ async function choisirTitreImportant() {
   const presets = [
     T('fmt.titre.information'), T('fmt.titre.important'),
     T('fmt.titre.attention'), T('fmt.titre.note')
+// Applique poserBloc au document de l'éditeur actif. Contrairement à appliquerSelection,
+// le remplacement porte sur des lignes entières : la place des lignes vides et la
+// détection d'un bloc existant se lisent dans le document, pas dans la seule sélection.
+async function appliquerBlocClasse(classe, titre) {
+  const editeur = vscode.window.activeTextEditor;
+  if (!editeur) { return; }
+  const doc = editeur.document;
+  const sel = editeur.selection;
+  const lignes = [];
+  for (let i = 0; i < doc.lineCount; i++) { lignes.push(doc.lineAt(i).text); }
+  const r = poserBloc(lignes, {
+    debutLigne: sel.start.line, debutCol: sel.start.character,
+    finLigne: sel.end.line, finCol: sel.end.character
+  }, classe, titre);
+  const plage = new vscode.Range(r.ligneDebut, 0, r.ligneFin, lignes[r.ligneFin].length);
+  const ok = await editeur.edit((b) => { b.replace(plage, r.texte); });
+  if (!ok) { return; }
+  // Curseur dans le bloc, en fin de contenu : on y tape la suite, et y refrapper la
+  // commande met le bloc à jour au lieu d'en insérer un second en dessous.
+  const pos = new vscode.Position(r.curseur.ligne, r.curseur.colonne);
+  editeur.selection = new vscode.Selection(pos, pos);
+}
+
   ];
   const autre = T('fmt.titre.autre');
   const choix = await vscode.window.showQuickPick(presets.concat([autre]), {
@@ -127,7 +265,7 @@ async function choisirTitreImportant() {
 async function fmtImportant() {
   const titre = await choisirTitreImportant();
   if (titre === undefined) { return; }               // annulé : rien n'est inséré
-  await appliquerSelection((t) => enroberBloc(t, 'important', titre));
+  await appliquerBlocClasse('important', titre);
 }
 
 function nomMediaUnique(dossier, nom) {
@@ -508,8 +646,8 @@ function enregistrerCommandesMiseEnForme(context, hote) {
   c('szh.fmt.titre2', () => appliquerSelection((t) => basculerTitre(t, 2), { parLigne: true }));
   c('szh.fmt.titre3', () => appliquerSelection((t) => basculerTitre(t, 3), { parLigne: true }));
   c('szh.fmt.important', () => fmtImportant());
-  c('szh.fmt.highlight', () => appliquerSelection((t) => enroberBloc(t, 'highlight', '')));
-  c('szh.fmt.question', () => appliquerSelection((t) => enroberBloc(t, 'question', '')));
+  c('szh.fmt.highlight', () => appliquerBlocClasse('highlight', ''));
+  c('szh.fmt.question', () => appliquerBlocClasse('question', ''));
   c('szh.fmt.citation', () => appliquerSelection((t) => basculerCitation(t), { parLigne: true }));
   c('szh.fmt.figure', () => fmtFigure());
   c('szh.fmt.tableau', () => fmtTableau());
@@ -521,6 +659,7 @@ function enregistrerCommandesMiseEnForme(context, hote) {
 
 module.exports = {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
-  enroberBloc, squeletteTableau, tableauVierge, blocReferenceTable, blocSautPage, nomTableLibre,
+  enroberBloc, poserBloc, blocAutour, CLASSES_BLOCS,
+  squeletteTableau, tableauVierge, blocReferenceTable, blocSautPage, nomTableLibre,
   lireHtmlPressePapiers, enregistrerCommandesMiseEnForme, PALETTE_MEF
 };

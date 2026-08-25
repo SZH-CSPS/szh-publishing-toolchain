@@ -31,6 +31,25 @@ function retirerLignesVidees(lignes, videes) {
   return resultat;
 }
 
+// Ouverture « ::: {…} » et fermeture « ::: » d'un « fenced div » pandoc, seules formes
+// que le toolkit écrit. Partagées avec lib/formatting.js : une seule définition de ce
+// qu'est un bloc, sinon le retrait d'un tableau et la pose d'un bloc de classe
+// finiraient par voir des lignes différentes.
+const RE_DIV_OUVERTURE = /^\s*:::+\s*\{([^}]*)\}\s*$/;
+const RE_DIV_FERMETURE = /^\s*:::+\s*$/;
+
+// Fermeture du div ouvert à la ligne `ouverture` : l'indice de sa ligne « ::: », ou -1.
+// À chercher avant de toucher quoi que ce soit : un bloc laissé ouvert à la main ne doit
+// pas emporter la suite de l'article. La recherche s'arrête au début du bloc suivant,
+// même mal formé — d'où le préfixe « ::: { » et non RE_DIV_OUVERTURE entière.
+function fermetureDeDiv(lignes, ouverture) {
+  for (let j = ouverture + 1; j < lignes.length; j++) {
+    if (/^\s*:::+\s*\{/.test(lignes[j])) { return -1; }      // bloc suivant : pas de fermeture
+    if (RE_DIV_FERMETURE.test(lignes[j])) { return j; }
+  }
+  return -1;
+}
+
 function cibleNormalisee(cible) {
   let c = String(cible || '').trim();
   if (c.length > 1 && c.charAt(0) === '<' && c.charAt(c.length - 1) === '>') { c = c.slice(1, -1); }
@@ -70,18 +89,12 @@ function retirerTable(texte, nom) {
   const videes = new Set();
   let n = 0;
   for (let i = 0; i < lignes.length; i++) {
-    const ouverture = /^\s*:::+\s*\{([^}]*)\}\s*$/.exec(lignes[i]);
+    const ouverture = RE_DIV_OUVERTURE.exec(lignes[i]);
     if (!ouverture || ouverture[1].indexOf('szh-tabelle') === -1) { continue; }
     const src = /src\s*=\s*"([^"]*)"|src\s*=\s*'([^']*)'|src\s*=\s*([^\s}]+)/.exec(ouverture[1]);
     const cible = src ? (src[1] || src[2] || src[3]) : '';
     if (cibleNormalisee(cible) !== attendu) { continue; }
-    // Chercher la fermeture avant d'effacer quoi que ce soit : un bloc laissé ouvert
-    // à la main ne doit pas emporter la fin de l'article.
-    let fin = -1;
-    for (let j = i + 1; j < lignes.length; j++) {
-      if (/^\s*:::+\s*\{/.test(lignes[j])) { break; }            // bloc suivant : pas de fermeture
-      if (/^\s*:::+\s*$/.test(lignes[j])) { fin = j; break; }
-    }
+    const fin = fermetureDeDiv(lignes, i);
     videes.add(i);
     if (fin !== -1) {
       for (let j = i + 1; j <= fin; j++) { videes.add(j); }
@@ -395,6 +408,7 @@ function ecrireAttributsImage(texte, relatif, valeurs) {
 }
 
 module.exports = {
+  RE_DIV_OUVERTURE, RE_DIV_FERMETURE, fermetureDeDiv,
   retirerImage, retirerTable, cibleNormalisee, CLASSE_HORS_FIGURE, ordreImages,
   listerImages, imagesSansAlternative, placeFigure, envelopperFigure,
   lireAttributsImage, ecrireAttributsImage,
