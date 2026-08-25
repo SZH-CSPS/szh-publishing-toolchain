@@ -151,6 +151,66 @@ test('qualité : les seuils rangent une image dans le bon degré', () => {
   assert.strictEqual(v('inventee', 800, 600).famille, 'figure');
 });
 
+test('qualité : aux seuils exacts, le verdict bascule du bon côté', () => {
+  const v = (famille, l, h) => qualite.qualiteImage(famille, { largeur: l, hauteur: h }, 'x.png');
+  // Portrait, petit côté : 399 en dessous du minimum, 400 dessus ; 999/1000 pour le conseillé.
+  assert.strictEqual(v('portrait', 2000, 399).niveau, 'insuffisant');
+  assert.strictEqual(v('portrait', 2000, 400).niveau, 'juste');
+  assert.strictEqual(v('portrait', 2000, 999).niveau, 'juste');
+  assert.strictEqual(v('portrait', 2000, 1000).niveau, 'ok');
+  // Figure, largeur : 999/1000 pour le minimum, 1999/2000 pour le conseillé.
+  assert.strictEqual(v('figure', 999, 600).niveau, 'insuffisant');
+  assert.strictEqual(v('figure', 1000, 600).niveau, 'juste');
+  assert.strictEqual(v('figure', 1999, 600).niveau, 'juste');
+  assert.strictEqual(v('figure', 2000, 600).niveau, 'ok');
+});
+
+test('qualité : l’option « réduit » tait le conseillé, sans toucher le minimum', () => {
+  const v = (famille, l, h, nom) =>
+    qualite.qualiteImage(famille, { largeur: l, hauteur: h }, nom || 'x.png', { reduit: true });
+  // Le palier « conseillé » (niveau juste) devient ok : plus rien à afficher.
+  assert.strictEqual(v('figure', 1000, 600).niveau, 'ok');
+  assert.strictEqual(v('figure', 1500, 600).niveau, 'ok');
+  assert.strictEqual(v('portrait', 2000, 400).niveau, 'ok');
+  assert.strictEqual(v('portrait', 2000, 600).niveau, 'ok');
+  // Le minimum reste signalé, au pixel près.
+  assert.strictEqual(v('figure', 999, 600).niveau, 'insuffisant');
+  assert.strictEqual(v('portrait', 2000, 399).niveau, 'insuffisant');
+  // Ce qui était déjà ok le reste, vectoriel et inconnu ne bougent pas.
+  assert.strictEqual(v('figure', 2400, 600).niveau, 'ok');
+  assert.strictEqual(v('figure', 10, 10, 'logo.svg').niveau, 'vectoriel');
+  assert.strictEqual(qualite.qualiteImage('figure', null, 'x.png', { reduit: true }).niveau, 'inconnu');
+  // Sans option, ou option éteinte : comportement historique — les appels existants ne
+  // changent pas de verdict.
+  assert.strictEqual(qualite.qualiteImage('figure', { largeur: 1500, hauteur: 600 }, 'x.png').niveau, 'juste');
+  assert.strictEqual(
+    qualite.qualiteImage('portrait', { largeur: 2000, hauteur: 600 }, 'x.png', { reduit: false }).niveau,
+    'juste');
+});
+
+// Le réglage qui porte cette option : déclaré au manifeste (défaut prudent : warnings
+// complets), décrit en français et en allemand, lu et écrit par le panneau des réglages.
+test('le réglage « réduire les warnings d’impression » est déclaré, traduit et branché', () => {
+  const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
+  const prop = pkg.contributes.configuration.properties['szh.reduireWarningsImpression'];
+  assert.ok(prop, 'propriété absente du manifeste : szh.reduireWarningsImpression');
+  assert.strictEqual(prop.default, false, 'le défaut doit laisser les warnings complets');
+  const nls = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.nls.json'));
+  const nlsDe = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.nls.de.json'));
+  assert.ok('config.reduireWarningsImpression' in nls, 'description française absente');
+  assert.ok('config.reduireWarningsImpression' in nlsDe, 'description allemande absente');
+  // Le panneau des réglages lit et écrit ce réglage, et les trois verdicts de l'hôte
+  // portent l'option — sans quoi le réglage existerait sans effet, panne muette.
+  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  assert.ok(src.includes("update('reduireWarningsImpression'"),
+    'aucune branche d’écriture du réglage dans extension.js');
+  assert.strictEqual(
+    (src.match(/reduit: reduireWarningsImpressionActif\(\)/g) || []).length, 3,
+    'les trois appels à qualiteImage doivent porter l’option');
+  const panneau = lire('vscodium-extension', 'szh-cockpit', 'media', 'settings.js');
+  assert.ok(panneau.includes("cle: 'warnings'"), 'groupe absent du panneau des réglages');
+});
+
 test('qualité : le seuil des portraits n’est pas sous la sortie du pipeline', () => {
   const py = lire('pipeline', 'portraits.py');
   const m = /TAILLE_SORTIE\s*=\s*(\d+)/.exec(py);

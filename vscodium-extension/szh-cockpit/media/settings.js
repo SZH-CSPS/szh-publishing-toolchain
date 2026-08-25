@@ -11,6 +11,7 @@
     { cle: 'apercu', legende: TXT.apercu, options: [['html', TXT.apercuHtml], ['pdf', TXT.apercuPdf]] },
     { cle: 'assets', legende: TXT.assets, options: [['oui', TXT.assetsOui], ['non', TXT.assetsNon]] },
     { cle: 'cmyk', legende: TXT.cmyk, options: [['oui', TXT.cmykOui], ['non', TXT.cmykNon]] },
+    { cle: 'warnings', legende: TXT.warnings, options: [['complets', TXT.warningsComplets], ['reduits', TXT.warningsReduits]] },
     { cle: 'langue', legende: TXT.langue, options: [['fr', 'Français'], ['de', 'Deutsch']] },
     { cle: 'dev', legende: TXT.dev, options: [['oui', TXT.devOui], ['non', TXT.devNon]] }
   ];

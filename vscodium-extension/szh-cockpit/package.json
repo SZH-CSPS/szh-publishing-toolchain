@@ -106,6 +106,11 @@
           "type": "boolean",
           "default": true,
           "description": "%config.convertirCmyk%"
+        },
+        "szh.reduireWarningsImpression": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.reduireWarningsImpression%"
         }
       }
     },

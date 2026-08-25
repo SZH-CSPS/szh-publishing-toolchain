@@ -50,6 +50,7 @@
   "config.apercuMode": "Mode d’aperçu de la colonne de droite : html (cliquable, défaut) ou pdf.",
   "config.convertirCmyk": "Convertir automatiquement en RVB les images JPEG livrées en CMJN (couleurs d’imprimerie, que les navigateurs et le PDF ne savent pas afficher).",
   "config.replierAssetsAutres": "Cacher automatiquement les tableaux des articles non sélectionnés.",
+  "config.reduireWarningsImpression": "N’avertir que pour les images vraiment trop petites : le conseil « résolution recommandée » ne s’affiche plus, le minimum reste vérifié.",
   "cmd.lierReference": "Lier un appel à une référence",
   "cmd.tutoriel": "Prise en main (tutoriel)",
   "tuto.titre": "Prendre en main la chaîne SZH",

@@ -259,6 +259,14 @@ function convertirCmykActif() {
   catch (e) { return true; }
 }
 
+// Réglage szh.reduireWarningsImpression, décoché par défaut : activé, le palier
+// « conseillé » des avertissements de résolution se tait — seule une image sous le
+// minimum reste signalée. Le CMJN n'est pas concerné.
+function reduireWarningsImpressionActif() {
+  try { return vscode.workspace.getConfiguration('szh').get('reduireWarningsImpression', false) === true; }
+  catch (e) { return false; }
+}
+
 // Convertit en RVB les JPEG CMJN de la liste. Silencieux quand il n'y a rien à faire ;
 // un échec est signalé mais ne bloque rien, le fichier restant lisible tel quel.
 // -> Promise<nombre de fichiers convertis>
@@ -4796,6 +4804,8 @@ function REGL_LIBELLES() {
   apercuHtml: T('regl.apercu.html'), apercuPdf: T('regl.apercu.pdf'),
   assets: T('regl.assets'), assetsOui: T('regl.assets.oui'), assetsNon: T('regl.assets.non'),
   cmyk: T('regl.cmyk'), cmykOui: T('regl.cmyk.oui'), cmykNon: T('regl.cmyk.non'),
+  warnings: T('regl.warnings'),
+  warningsComplets: T('regl.warnings.complets'), warningsReduits: T('regl.warnings.reduits'),
   langue: T('regl.langue'),
   dev: T('regl.dev'), devOui: T('regl.dev.oui'), devNon: T('regl.dev.non'),
   ojsRevues: T('ojs.revues'), ojsVide: T('ojs.vide'),
@@ -4902,6 +4912,7 @@ function lireReglagesActuels() {
     theme: etatTheme, zoom: String(zoom), policeMd: String(policeMd), apercu: apercu,
     assets: replierAssetsAutres() ? 'oui' : 'non',
     cmyk: convertirCmykActif() ? 'oui' : 'non',
+    warnings: reduireWarningsImpressionActif() ? 'reduits' : 'complets',
     langue: langueCockpit(),
     // Dans config.json : ses consommateurs sont les scripts PowerShell.
     dev: lireModeDeveloppeur() ? 'oui' : 'non'
@@ -4987,6 +4998,10 @@ function ouvrirReglages(rafraichirTout) {
       } else if (msg.cle === 'cmyk') {
         await vscode.workspace.getConfiguration('szh')
           .update('convertirCmyk', msg.valeur !== 'non', Global);
+      } else if (msg.cle === 'warnings') {
+        // Le verdict recalculé arrive au prochain rendu du gestionnaire des médias.
+        await vscode.workspace.getConfiguration('szh')
+          .update('reduireWarningsImpression', msg.valeur === 'reduits', Global);
       } else if (msg.cle === 'dev') {
         // bootstrap.ps1 donne au groupe Utilisateurs le droit d'écrire ce fichier.
         const erreur = ecrireModeDeveloppeur(msg.valeur !== 'non');
@@ -5341,7 +5356,8 @@ function listerMediasArticle(fournisseur, slug, texteMd, budget) {
       apercu: apercuMedia(chemin, budget),
       occurrences: v.n,
       sansAlternative: sansAlternative.has(relatif.toLowerCase()),
-      qualite: qualiteImage('figure', lireDimensionsImage(chemin), relatif),
+      qualite: qualiteImage('figure', lireDimensionsImage(chemin), relatif,
+        { reduit: reduireWarningsImpressionActif() }),
       valeurs: {
         legende: v.legende, alt: v.alt, altDefini: v.altDefini,
         copyright: v.copyright, source: v.source, horsFigure: v.horsFigure
@@ -5425,7 +5441,8 @@ function listerPortraitsArticle(fournisseur, slug, budget) {
       version: T('medias.portrait.version', ['portraits/' + utilisee]),
       description: T('medias.portrait.original', [decrireImage(cheminOriginal)]),
       apercu: apercuMedia(path.join(dossier, utilisee), budget),
-      qualite: qualiteImage('portrait', lireDimensionsImage(cheminOriginal), original)
+      qualite: qualiteImage('portrait', lireDimensionsImage(cheminOriginal), original,
+        { reduit: reduireWarningsImpressionActif() })
     });
   }
   return liste;
@@ -5591,7 +5608,8 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       repondrePanneau(panneau, {
         type: 'media-remplace', relatif: relatif, description: decrireImage(chemin),
         apercu: apercuMedia(chemin, { reste: BUDGET_APERCUS_MEDIA }),
-        qualite: qualiteImage('figure', lireDimensionsImage(chemin), relatif)
+        qualite: qualiteImage('figure', lireDimensionsImage(chemin), relatif,
+          { reduit: reduireWarningsImpressionActif() })
       });
       return;
     }

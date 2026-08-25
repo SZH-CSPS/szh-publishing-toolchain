@@ -41,7 +41,10 @@ function estVectoriel(nom) {
 // vignette de portrait.
 // Une figure se juge sur sa largeur, c'est elle qui remplit la colonne ; un portrait sur
 // son petit côté, le recadrage y prenant un carré.
-function qualiteImage(famille, dimensions, nom) {
+// `options.reduit` (réglage « réduire les warnings d'impression ») : le palier
+// « conseillé » se tait — une image au-dessus du minimum est déclarée « ok », seule une
+// image sous le minimum reste signalée. Sans option, comportement historique.
+function qualiteImage(famille, dimensions, nom, options) {
   const cle = SEUILS[famille] ? famille : 'figure';
   const seuils = SEUILS[cle];
   const res = { famille: cle, niveau: 'inconnu', mesure: null, min: seuils.min, conseille: seuils.conseille };
@@ -50,8 +53,9 @@ function qualiteImage(famille, dimensions, nom) {
   const h = dimensions ? Number(dimensions.hauteur) : 0;
   if (!(l > 0) || !(h > 0)) { return res; }        // en-tête illisible : pas de verdict
   res.mesure = cle === 'portrait' ? Math.min(l, h) : l;
+  const reduit = !!(options && options.reduit);
   if (res.mesure < seuils.min) { res.niveau = 'insuffisant'; }
-  else if (res.mesure < seuils.conseille) { res.niveau = 'juste'; }
+  else if (res.mesure < seuils.conseille) { res.niveau = reduit ? 'ok' : 'juste'; }
   else { res.niveau = 'ok'; }
   return res;
 }
