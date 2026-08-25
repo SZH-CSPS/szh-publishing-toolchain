@@ -8,8 +8,12 @@
 // exception remonte au test.
 //
 // N'implémente que ce que les webviews utilisent : createElement(NS), textContent,
-// appendChild, dataset, classList, value/checked/disabled, et des sélecteurs réduits
-// (« .classe », « balise », « [data-x] », « [data-x="v"] », combinés par un espace).
+// appendChild, dataset, classList, value/checked/disabled, childNodes/nodeType/tagName
+// (l'éditeur de tableau relit ses cellules nœud par nœud), et des sélecteurs réduits
+// (« .classe », « balise », « [data-x] », « [data-x="v"] », « balise[data-x=v] »,
+// combinés par un espace). Les gestionnaires posés par addEventListener sont retenus et
+// dispatchEvent({ type }) les déclenche : de quoi simuler un changement de <select> ou un
+// clic — le formulaire des métadonnées permute ses langues sur ce geste.
 'use strict';
 
 const fs = require('fs');
@@ -66,6 +70,11 @@ function element(balise) {
     hidden: false, value: '', checked: false, disabled: false, type: '', name: '',
     maxLength: 0, placeholder: '', accept: '', files: null, rows: 0,
     _texte: '',
+    // Le strict nécessaire du DOM de nœuds : 3 pour un texte, 1 pour le reste.
+    get childNodes() { return this.enfants; },
+    get nodeType() { return this.balise === '#texte' ? 3 : 1; },
+    get nodeValue() { return this.balise === '#texte' ? this._texte : null; },
+    get tagName() { return this.balise.toUpperCase(); },
     get textContent() { return this._texte; },
     set textContent(v) { this._texte = v === undefined || v === null ? '' : String(v); this.enfants = []; },
     get className() { return Array.from(this.classes).join(' '); },

@@ -5039,7 +5039,7 @@ function lireTeintesAccent(racine) {
 function textesTable() {
   const cles = [
     'table.enregistrer', 'table.fusionner', 'table.scinder',
-    'table.grpApercu', 'table.apercuVoir', 'table.apercuCacher', 'table.preset.note',
+    'table.grpApercu', 'table.apercuVoir', 'table.apercuCacher',
     'table.preset.academique',
     'table.preset.entetenegatif',
     'table.preset.entetecouleur',

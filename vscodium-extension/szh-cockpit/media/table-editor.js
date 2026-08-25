@@ -278,7 +278,14 @@ function construireChamps(){if(!boiteChamps)return;boiteChamps.textContent='';ch
   boiteChamps.appendChild(titre);
   // Le cas courant est le champ vide : un tableau bien fait se lit seul, ses en-têtes
   // suffisent. Le libellé le dit, pour que personne ne croie devoir le remplir.
-  champTexte('alt',true);}
+  champTexte('alt',true);
+  // Mais quand une description s'impose, encore faut-il savoir quoi écrire : ce texte
+  // d'aide explique le rôle du champ, avec un exemple, dans le style discret des autres
+  // aides du cockpit. Relié au champ, pour que la synthèse vocale le lise aussi.
+  var aide=document.createElement('p');aide.id='aide-alt';
+  aide.className='szh-notif szh-notif--info szh-notif--discret';
+  aide.textContent=TXT['alt.aide']||'';boiteChamps.appendChild(aide);
+  if(champs.alt)champs.alt.setAttribute('aria-describedby','aide-alt');}
 // Champs -> modèle. Un champ vidé retire la valeur, donc l'attribut ou le <caption>. Pour
 // la légende, la comparaison porte sur la projection à plat, si bien que le modèle garde
 // sa légende en ligne tant que le champ n'est pas retouché.

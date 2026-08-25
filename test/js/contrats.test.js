@@ -415,6 +415,27 @@ test('les traductions fr et de couvrent les mêmes clés, avec les mêmes repèr
   assert.strictEqual(Object.keys(textes.de).length, Object.keys(textes.fr).length);
 });
 
+// textesTable() (extension.js) traduit une liste de clés, et non des littéraux
+// `nom: T(...)` que le contrôle des webviews sait lire. Une clé absente d'i18n n'échoue
+// pas : T() la rend telle quelle, et l'éditeur de tableau affiche « table.x » — c'est
+// arrivé avec table.alt.aide, demandée pendant des mois sans jamais être traduite.
+test('chaque clé demandée par textesTable existe dans les traductions', () => {
+  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  const i = src.indexOf('function textesTable');
+  assert.notStrictEqual(i, -1, 'fonction introuvable : textesTable');
+  const bloc = src.slice(i, src.indexOf('\n}', i));
+  const cles = [...bloc.matchAll(/'(table\.[A-Za-z0-9_.]+)'/g)].map((m) => m[1]);
+  assert.ok(cles.length > 50, 'liste de clés introuvable dans textesTable');
+  const i18n = lire('vscodium-extension', 'szh-cockpit', 'lib', 'i18n.js');
+  const debut = i18n.indexOf('const TEXTES_COCKPIT = {');
+  const fin = i18n.indexOf('\n};', debut);
+  // eslint-disable-next-line no-eval
+  const textes = eval('(' + i18n.slice(debut + 'const TEXTES_COCKPIT = '.length, fin + 2) + ')');
+  for (const cle of cles) {
+    assert.ok(cle in textes.fr, 'clé demandée par textesTable sans traduction : ' + cle);
+  }
+});
+
 test('le README de l’extension cite tous ses modules', () => {
   const readme = lire('vscodium-extension', 'szh-cockpit', 'README.md');
   for (const f of fs.readdirSync(path.join(COCKPIT, 'lib')).filter((f) => f.endsWith('.js'))) {

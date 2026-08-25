@@ -168,3 +168,44 @@ test('gestionnaire des médias : cartes, encadrés et versions de portrait', () 
   assert.ok(textes.indexOf('Anne Dupont') !== -1, 'nom de l’auteur·e absent de sa fiche');
   assert.ok(textes.indexOf('anne@example.ch') !== -1, 'coordonnées absentes de la fiche');
 });
+
+// L'éditeur de tableau ne reçoit pas ses libellés par gabarit mais dans le message
+// « charger », déjà dépouillés de leur préfixe « table. ». On rejoue ici textesTable()
+// depuis sa liste de clés, relue dans extension.js — comme libellesHote, pour parler
+// exactement la langue de l'hôte sans recopier une liste qui divergerait.
+function libellesTable() {
+  const src = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
+  const i = src.indexOf('function textesTable');
+  assert.notStrictEqual(i, -1, 'fonction de libellés introuvable : textesTable');
+  const bloc = src.slice(i, src.indexOf('\n}', i));
+  const txt = {};
+  for (const m of bloc.matchAll(/'(table\.[A-Za-z0-9_.]+)'/g)) {
+    txt[m[1].slice('table.'.length)] = T(m[1]);
+  }
+  return txt;
+}
+
+test('éditeur de tableau : grille, champs et texte d’aide de la description', () => {
+  const { analyserTable, disposition } =
+    chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'table-model.js'));
+  const page = ouvrir({ racine: RACINE, page: 'table-editor', cssPartage: ['_design.css'] });
+  assert.deepStrictEqual(page.messages.map((m) => m.type), ['pret'], 'la page ne s’annonce pas');
+  const modele = analyserTable(
+    '<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>');
+  page.envoyer({ type: 'charger', modele: modele, disposition: disposition(modele),
+                 accent: '', teintes: {}, presets: [], i18n: libellesTable() });
+  // La page accroche ses morceaux à #champs et #zone, jamais à <body> : on les prend par
+  // leur identifiant, comme la page elle-même.
+  const boite = page.parId.champs;
+  const inputs = boite.querySelectorAll('input');
+  assert.strictEqual(inputs.length, 4, 'champs du tableau absents (légende, crédits, alt)');
+  // Le texte d'aide sous la description : rendu, traduit — pas la clé brute que T() rend
+  // quand la traduction manque — et relié au champ pour les lecteurs d'écran.
+  const aides = boite.querySelectorAll('.szh-notif--discret');
+  assert.strictEqual(aides.length, 1, 'texte d’aide de la description absent');
+  assert.strictEqual(aides[0].textContent, T('table.alt.aide'));
+  assert.ok(aides[0].textContent.indexOf('table.alt.aide') === -1, 'clé i18n rendue brute');
+  assert.ok(inputs.some((e) => e.getAttribute('aria-describedby') === 'aide-alt'),
+    'le champ de description n’est pas relié à son aide');
+  assert.strictEqual(page.parId.zone.querySelectorAll('.cell').length, 4, 'grille non rendue');
+});
