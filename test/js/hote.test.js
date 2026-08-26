@@ -51,6 +51,85 @@ test('les onglets de section portent la commande de leur vue d’ensemble', asyn
   }
 });
 
+const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
+
+// Les trois sections dans l'ordre du travail, et saillantes : le TreeView natif n'offre ni
+// gras ni taille de police, ce sont les majuscules et la couleur de l'icône qui font
+// l'en-tête. « Traductions » monte en deuxième position mais arrive toujours repliée.
+test('l’arbre : sections dans l’ordre Articles / Traductions / Word, en majuscules et en couleur', async () => {
+  const arbre = HOTE.arbre();
+  const racine = await arbre.getChildren();
+  assert.deepStrictEqual(racine.map((it) => it.contextValue),
+    ['section-articles', 'section-traductions', 'section-word'],
+    'l’ordre des sections n’est pas celui du travail');
+  assert.strictEqual(racine[0].collapsibleState, 2, '« Articles » devrait arriver ouverte');
+  assert.strictEqual(racine[1].collapsibleState, 1, '« Traductions » devrait arriver repliée');
+  assert.strictEqual(racine[2].collapsibleState, 2, '« Word » devrait arriver ouverte');
+  // Majuscules dans les deux langues — dans le dictionnaire, pas seulement au rendu.
+  const i18n = require(path.join(COCKPIT, 'lib', 'i18n.js'));
+  for (const cle of ['arbre.articles', 'arbre.traductions', 'arbre.word']) {
+    for (const langue of ['fr', 'de']) {
+      const texte = String(i18n.TEXTES_COCKPIT[langue][cle]);
+      assert.strictEqual(texte, texte.toLocaleUpperCase(langue),
+        'en-tête de section sans majuscules (' + langue + ') : ' + texte);
+    }
+  }
+  assert.strictEqual(racine[0].label, i18n.TEXTES_COCKPIT.fr['arbre.articles'],
+    'le libellé rendu n’est pas celui du dictionnaire');
+  // Une couleur par section, et pas deux fois la même.
+  const couleurs = racine.map((it) => it.iconPath && it.iconPath.color && it.iconPath.color.id);
+  racine.forEach((it, i) => assert.ok(couleurs[i], 'icône sans couleur : ' + it.label));
+  assert.strictEqual(new Set(couleurs).size, racine.length,
+    'deux sections partagent la même couleur : ' + couleurs.join(', '));
+  // Les compteurs restent en description : le Word en attente se compte sans déplier.
+  assert.match(String(racine[2].description), /^\(\d+\)$/,
+    'le compteur des Word en attente a disparu de la description');
+});
+
+// Chaque article se distingue de ses voisins : une icône colorée dit son avancement —
+// cercle vide (rien), disque bleu (en cours), coche verte (tout est fait) — et la
+// description « slug · n/m tâches » reste. Aucun faux item séparateur.
+test('l’arbre : chaque article porte l’icône colorée de son avancement', async () => {
+  const arbre = HOTE.arbre();
+  const racine = await arbre.getChildren();
+  const section = racine.find((it) => it.contextValue === 'section-articles');
+  const articles = (await arbre.getChildren(section))
+    .filter((it) => it.contextValue === 'article');
+  assert.ok(articles.length >= 2, 'les articles d’essai manquent');
+  // Rien de coché : cercle vide, sans couleur — et plus l'icône de fichier du thème.
+  for (const it of articles) {
+    assert.ok(it.iconPath && it.iconPath.id, 'article sans icône : ' + it.label);
+    assert.strictEqual(it.iconPath.id, 'circle-large-outline',
+      'icône inattendue sur un article non commencé : ' + it.iconPath.id);
+    assert.ok(!it.iconPath.color, 'une couleur sur un article non commencé');
+  }
+  // La liste des tâches vient des mêmes modules que l'hôte : le test coche ce que la
+  // configuration du poste — ou le jeu de départ — définit vraiment.
+  const art = require(path.join(COCKPIT, 'lib', 'articles.js'));
+  const archivage = require(path.join(COCKPIT, 'lib', 'archivage.js'));
+  const taches = art.tachesRevue(archivage.lireConfigPoste(), 'revue');
+  assert.ok(taches.length > 0, 'aucune tâche définie, même par défaut');
+  const fichier = path.join(REVUE, 'articles', '01-essai', '01-essai.taches.yaml');
+
+  // Une partie cochée : le disque bleu de l'« en cours ».
+  if (taches.length > 1) {
+    fs.writeFileSync(fichier, art.serialiserTachesFaites({ faites: [taches[0].id] }));
+    const it = (await arbre.getChildren(section)).find((x) => x.slug === '01-essai');
+    assert.strictEqual(it.iconPath.id, 'circle-filled');
+    assert.strictEqual(it.iconPath.color && it.iconPath.color.id, 'charts.blue');
+  }
+
+  // Tout coché : la coche verte, et le compteur toujours dans la description.
+  fs.writeFileSync(fichier,
+    art.serialiserTachesFaites({ faites: taches.map((t) => t.id) }));
+  const fait = (await arbre.getChildren(section)).find((x) => x.slug === '01-essai');
+  assert.strictEqual(fait.iconPath.id, 'pass-filled');
+  assert.strictEqual(fait.iconPath.color && fait.iconPath.color.id, 'charts.green');
+  assert.match(String(fait.description), /^01-essai · /,
+    'la description « slug · n/m tâches » a disparu');
+  fs.unlinkSync(fichier);
+});
+
 // Ouvrir un panneau touche à tout : lecture du disque, assemblage du HTML, première charge
 // utile. Une seule référence manquante et l'utilisateur voit un panneau vide, ou rien.
 test('chaque panneau s’ouvre, s’assemble et envoie sa première charge', async () => {

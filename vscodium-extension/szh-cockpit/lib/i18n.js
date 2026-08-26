@@ -20,9 +20,12 @@ try { vscode = require('vscode'); } catch (e) { /* hors éditeur */ }
 
 const TEXTES_COCKPIT = {
   fr: {
-    'arbre.articles': 'Articles',
-    'arbre.word': 'Word en attente',
-    'arbre.traductions': 'Traductions',
+    // Les trois en-têtes de section de l'arbre, en majuscules : le TreeView natif n'a ni
+    // gras ni taille de police, la casse fait la saillance. Elles sont voulues, pas un
+    // style à normaliser à la relecture.
+    'arbre.articles': 'ARTICLES',
+    'arbre.word': 'WORD EN ATTENTE',
+    'arbre.traductions': 'TRADUCTIONS',
     'arbre.vide.articles': 'Aucun article pour l’instant',
     'arbre.vide.word': 'Aucun Word en attente',
     'arbre.vide.traductions': 'Aucun article à traduire',
@@ -899,9 +902,10 @@ const TEXTES_COCKPIT = {
     'statut.reimport.annule': 'Retour au texte d’avant de « {0} »…',
   },
   de: {
-    'arbre.articles': 'Artikel',
-    'arbre.word': 'Word in Warteschlange',
-    'arbre.traductions': 'Übersetzungen',
+    // Majuscules voulues, comme en français : ce sont les en-têtes de section de l'arbre.
+    'arbre.articles': 'ARTIKEL',
+    'arbre.word': 'WORD IN WARTESCHLANGE',
+    'arbre.traductions': 'ÜBERSETZUNGEN',
     'arbre.vide.articles': 'Noch keine Artikel',
     'arbre.vide.word': 'Kein Word in Warteschlange',
     'arbre.vide.traductions': 'Kein Artikel zu übersetzen',

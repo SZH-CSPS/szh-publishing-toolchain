@@ -308,6 +308,31 @@ const COMMANDES_SECTION = {
   articles: 'szh.vueArticles', traductions: 'szh.vueTraductions', word: 'szh.vueWord'
 };
 
+// Une couleur par en-tête de section : le TreeView natif n'offre ni gras ni taille de
+// police, ce sont donc les majuscules du libellé et la couleur de l'icône qui rendent les
+// trois sections repérables. Bleu et vert sont ceux des états de traduction
+// (COULEURS_STATUT) ; pour « Word en attente », l'ambre d'avertissement de l'éditeur
+// plutôt que « charts.orange », trop clair sur fond blanc — même choix que COULEURS_STATUT.
+const COULEURS_SECTION = {
+  articles: 'charts.blue',
+  traductions: 'charts.green',
+  word: 'editorWarning.foreground'
+};
+
+// L'icône d'un article dans l'arbre : son avancement, en trois états lisibles d'un coup
+// d'œil. Le langage visuel est celui des états de traduction (iconeStatut) : cercle vide =
+// rien de commencé, plein et bleu = en cours, coche verte = tout est fait. Un article sans
+// tâches configurées reste au cercle vide : il n'a rien à raconter.
+function iconeAvancement(avance) {
+  if (avance.total > 0 && avance.faites >= avance.total) {
+    return new vscode.ThemeIcon('pass-filled', new vscode.ThemeColor('charts.green'));
+  }
+  if (avance.total > 0 && avance.faites > 0) {
+    return new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('charts.blue'));
+  }
+  return new vscode.ThemeIcon('circle-large-outline');
+}
+
 // ---- Ordre du numéro, nom des articles, tâches, couverture ----------------------
 //
 // L'ordre des articles vit dans ausgabe.yaml (clé `ordre-articles`, lib/articles.js) et
@@ -619,11 +644,14 @@ class FournisseurRevue {
       const n = this.compterWord();   // le badge de conteneur ne s'affiche pas ici
       // « Traductions » arrive repliée : elle double la liste des articles.
       const t = this.compterTraductions();
+      // L'ordre suit le travail : les articles du numéro, leurs traductions, puis ce qui
+      // attend encore d'y entrer. Les sections n'ont pas d'`id` : VS Code les reconnaît à
+      // leur libellé, l'ordre peut donc changer sans figer l'état plié/déplié mémorisé.
       return [
         this._section('articles', T('arbre.articles'), 'book', undefined),
-        this._section('word', T('arbre.word'), 'inbox', n > 0 ? '(' + n + ')' : undefined),
         this._section('traductions', T('arbre.traductions'), 'globe',
-          t.total > 0 ? '(' + t.finalises + '/' + t.total + ')' : undefined, true)
+          t.total > 0 ? '(' + t.finalises + '/' + t.total + ')' : undefined, true),
+        this._section('word', T('arbre.word'), 'inbox', n > 0 ? '(' + n + ')' : undefined)
       ];
     }
     if (element.categorie === 'articles') { return this._itemsArticles(); }
@@ -641,7 +669,8 @@ class FournisseurRevue {
       ? vscode.TreeItemCollapsibleState.Collapsed
       : vscode.TreeItemCollapsibleState.Expanded);
     it.categorie = categorie;
-    it.iconPath = new vscode.ThemeIcon(icone);
+    it.iconPath = new vscode.ThemeIcon(icone, COULEURS_SECTION[categorie]
+      ? new vscode.ThemeColor(COULEURS_SECTION[categorie]) : undefined);
     it.contextValue = 'section-' + categorie;   // 'section-articles', 'section-word'…
     if (description) { it.description = description; }
     if (COMMANDES_SECTION[categorie]) {
@@ -682,13 +711,16 @@ class FournisseurRevue {
       // l'élément est recréé. Sans le réglage, pas d'`id` : l'utilisateur décide.
       if (auto && aDesAssets) { it.id = 'article:' + slug + ':' + (deploye ? 'ouvert' : 'ferme'); }
       it.slug = slug;                   // lu par les actions de l'arbre
-      it.resourceUri = md;              // icône de fichier selon le thème
+      it.resourceUri = md;              // décorations du thème (git, problèmes)
       // Le slug d'abord : c'est par lui qu'on retrouve le dossier. L'avancement des tâches
       // se lit à côté, sans avoir à ouvrir la vue.
       const avance = avancementTaches(this.racine, slug, taches);
       it.description = avance.total > 0
         ? slug + ' · ' + T('art.taches.avancement', [avance.faites, avance.total])
         : slug;
+      // L'icône redit l'avancement en couleur : elle prime sur l'icône de fichier du
+      // thème, qui était la même pour tous les articles et ne distinguait rien.
+      it.iconPath = iconeAvancement(avance);
       it.tooltip = T('art.arbre.tooltip', [nom, slug, md.fsPath]);
       it.contextValue = 'article';      // pilote les boutons inline (menus view/item/context)
       // Le clic fait tout : .md en colonne 1, compilation si besoin, aperçu en colonne 2.

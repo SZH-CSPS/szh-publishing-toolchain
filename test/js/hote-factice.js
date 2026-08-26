@@ -119,7 +119,7 @@ function activerHote(revue) {
     Selection: class { constructor(a, b) { this.start = a; this.end = b; this.active = b; } },
     WorkspaceEdit: class { replace() {} insert() {} },
     TreeItem: class { constructor(l, c) { this.label = l; this.collapsibleState = c; } },
-    ThemeIcon: class { constructor(i) { this.id = i; } },
+    ThemeIcon: class { constructor(i, couleur) { this.id = i; this.color = couleur; } },
     ThemeColor: class { constructor(i) { this.id = i; } },
     RelativePattern: class { constructor(b, m) { this.base = b; this.pattern = m; } },
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
