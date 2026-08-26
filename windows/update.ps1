@@ -249,7 +249,10 @@ try {
         # l'installation a reussi. Sans cela un echec passager -- editeur a redemarrer,
         # fichier verrouille -- faisait croire l'extension posee, et la mise a jour
         # suivante la sautait comme « deja a jour » : l'extension ne revenait jamais.
-        $sortie = & $cli --install-extension $vf --force 2>&1
+        # Invoke-SzhNatif : le CLI de VSCodium (Node 22) ecrit des DeprecationWarning sur
+        # stderr, et sous ErrorActionPreference = 'Stop' le 2>&1 de PowerShell 5.1 en
+        # faisait une erreur fatale (DEP0169 url.parse, mise a jour 2026.08.47 coupee).
+        $sortie = Invoke-SzhNatif { & $cli --install-extension $vf --force 2>&1 }
         if ($LASTEXITCODE -eq 0) {
           $etatVsix[$ext.id] = $ext.version
           $changement = $true
