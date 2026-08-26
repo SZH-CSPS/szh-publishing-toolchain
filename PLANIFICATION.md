@@ -62,6 +62,10 @@ Demandé par Robin le 26.08.2026, dans la continuité de G2/G bis (TreeView nati
 
 Notes : tests hôte enrichis (accordéon commande + chevron, reveal, décoration) ; hôte factice appris `registerFileDecorationProvider`, événements d'expansion, enregistreur de `reveal`, éditeur actif déclenchable. Suggestion complémentaire hors code (déploiement) : `workbench.colorCustomizations.list.inactiveSelectionBackground` pour une sélection native plus soutenue.
 
+### Retouche lot I (v2026.08.49, cockpit 0.26.1)
+
+Constat de Robin après essai : le clic sur un en-tête dépliait bien (accordéon) mais n'ouvrait plus la vue d'ensemble. Retouche : le clic-titre **et** le dépliage au chevron ouvrent la vue d'ensemble de la section, en plus de l'accordéon. Garde-fou décision B : seuls les changements d'état comptent — le dépliage programmé (clic d'article → reveal) arrive avec `sectionDeployee` déjà posé et n'ouvre rien ; replier n'ouvre rien non plus. Test dédié (compte de messages du panneau Articles inchangé au dépliage du reveal).
+
 ### Incident v2026.08.47 → correctif v2026.08.48 (26.08.2026)
 
 La mise à jour 2026.08.47 s'est coupée à l'étape 3/5 sur les postes : le CLI du nouveau VSCodium (Node 22) écrit un `DeprecationWarning` (DEP0169, `url.parse`) sur stderr, et sous `$ErrorActionPreference = 'Stop'` le `2>&1` de PowerShell 5.1 en fait une erreur fatale. Correctif : l'appel `codium --install-extension` passe par `Invoke-SzhNatif` (update.ps1), la garde maison déjà utilisée pour wsl.exe — reproduit et vérifié dans un vrai PowerShell 5.1. Release **v2026.08.48**. Sur un poste déjà touché : la première mise à jour pose le toolkit corrigé puis échoue encore (le script en cours est l'ancien), la suivante — ou la tâche planifiée — termine (cockpit 0.26.0 compris).

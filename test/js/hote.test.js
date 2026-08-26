@@ -28,10 +28,9 @@ test('l’extension s’active et enregistre ses commandes', () => {
   }
 });
 
-// L'en-tête d'une section doit porter la commande qui la déplie (l'accordéon) — la vue
-// d'ensemble a migré sur le bouton de la ligne et le clic droit. Le contrôle lit la ligne
-// construite, et non la source : une commande avait déjà été posée après un `return`, ce
-// qui se relit sans rien voir.
+// L'en-tête d'une section doit porter la commande qui la déplie (l'accordéon) et rouvre
+// sa vue d'ensemble. Le contrôle lit la ligne construite, et non la source : une commande
+// avait déjà été posée après un `return`, ce qui se relit sans rien voir.
 test('les en-têtes de section basculent leur section (accordéon)', async () => {
   const arbre = HOTE.arbre();
   assert.ok(arbre, 'aucun fournisseur d’arbre enregistré');
@@ -125,9 +124,10 @@ test('l’arbre : chaque article porte l’icône colorée de son avancement', a
   fs.unlinkSync(fichier);
 });
 
-// L'accordéon par la commande du clic : déplier « Traductions » replie « Articles »,
-// recliquer l'en-tête ouvert replie tout. L'id des en-têtes change avec l'état — c'est
-// lui qui force VS Code à suivre, contre sa mémoire de pli par élément.
+// L'accordéon par la commande du clic : déplier « Traductions » replie « Articles » et
+// ouvre la vue d'ensemble des traductions ; recliquer l'en-tête ouvert replie tout.
+// L'id des en-têtes change avec l'état — c'est lui qui force VS Code à suivre, contre sa
+// mémoire de pli par élément.
 test('accordéon : une seule section dépliée, et l’id des en-têtes suit l’état', async () => {
   const arbre = HOTE.arbre();
   await HOTE.executer('szh.basculerSection', 'traductions');
@@ -136,6 +136,8 @@ test('accordéon : une seule section dépliée, et l’id des en-têtes suit l�
     'déplier « Traductions » doit replier les autres');
   assert.strictEqual(racine[1].id, 'section:traductions:ouvert');
   assert.strictEqual(racine[0].id, 'section:articles:ferme');
+  assert.ok(HOTE.panneauDeType('szhVueTraductions'),
+    'le clic sur l’en-tête doit aussi ouvrir la vue d’ensemble');
   // Recliquer l'en-tête ouvert : tout se replie, la colonne tient en trois lignes.
   await HOTE.executer('szh.basculerSection', 'traductions');
   racine = await arbre.getChildren();
@@ -145,9 +147,20 @@ test('accordéon : une seule section dépliée, et l’id des en-têtes suit l�
   await HOTE.executer('szh.basculerSection', 'articles');
   racine = await arbre.getChildren();
   assert.strictEqual(racine[0].collapsibleState, 2);
+  fermerVuesEnsemble();   // les panneaux sont des singletons : le test des panneaux veut les créer
 });
 
-// Le chevron reste un geste valable, et l'accordéon tient aussi par lui.
+// Referme les vues d'ensemble ouvertes par un geste d'accordéon : les panneaux sont des
+// singletons, et le test « chaque panneau s'ouvre » contrôle justement leur création.
+function fermerVuesEnsemble() {
+  for (const type of ['szhVueArticles', 'szhVueTraductions', 'szhVueWord']) {
+    const p = HOTE.panneauDeType(type);   // le dernier du type, panneaux détruits compris
+    if (p && !p._detruit) { p.dispose(); p._detruit = true; }
+  }
+}
+
+// Le chevron reste un geste valable : l'accordéon tient aussi par lui, et il ouvre la
+// même vue d'ensemble que le clic sur le titre.
 test('accordéon : déplier par le chevron replie les autres sections', async () => {
   const arbre = HOTE.arbre();
   const racine = await arbre.getChildren();
@@ -155,12 +168,15 @@ test('accordéon : déplier par le chevron replie les autres sections', async ()
   const apres = await arbre.getChildren();
   assert.deepStrictEqual(apres.map((it) => it.collapsibleState), [1, 1, 2],
     'le chevron n’a pas replié les autres sections');
+  assert.ok(HOTE.panneauDeType('szhVueWord'),
+    'le dépliage au chevron doit aussi ouvrir la vue d’ensemble');
   // Replier par le chevron : l'état suit, sans reconstruction forcée.
   HOTE.replierElement(apres.find((it) => it.contextValue === 'section-word'));
   const fin = await arbre.getChildren();
   assert.deepStrictEqual(fin.map((it) => it.collapsibleState), [1, 1, 1],
     'replier par le chevron doit libérer l’accordéon');
   await HOTE.executer('szh.basculerSection', 'articles');   // état de départ
+  fermerVuesEnsemble();
 });
 
 // Le premier clic tenait la sélection… jusqu'à la reconstruction qui suivait : l'élément
@@ -180,6 +196,15 @@ test('ouvrir un article resélectionne son élément sans voler le focus', async
   const racine = await HOTE.arbre().getChildren();
   assert.strictEqual(racine[0].collapsibleState, 2,
     'la section « Articles » doit suivre le clic');
+  // Décision B : le dépliage que VS Code signale au reveal (sectionDeployee déjà posé)
+  // ne doit PAS rouvrir la vue d'ensemble Articles par-dessus le texte.
+  const vueArt = HOTE.panneauDeType('szhVueArticles');
+  const messagesAvant = vueArt ? vueArt.messages.length : 0;
+  HOTE.deplierElement(racine.find((it) => it.contextValue === 'section-articles'));
+  const vueApres = HOTE.panneauDeType('szhVueArticles');
+  assert.strictEqual(vueApres ? vueApres.messages.length : 0, messagesAvant,
+    'le dépliage venu du reveal a rouvert la vue Articles (décision B)');
+  fermerVuesEnsemble();
 });
 
 // Le point de l'article ouvert : posé sur le .md de l'article auquel appartient le

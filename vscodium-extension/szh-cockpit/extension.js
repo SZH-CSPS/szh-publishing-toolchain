@@ -307,6 +307,13 @@ function replierAssetsAutres() {
   catch (e) { return true; }                       // configuration indisponible
 }
 
+// La vue d'ensemble de chaque section : rouverte par le clic sur l'en-tête (en plus de
+// l'accordéon) et par le dépliage au chevron — mais jamais par les dépliages programmés,
+// un clic d'article ne doit pas ramener la vue Articles par-dessus le texte (décision B).
+const VUE_SECTION = {
+  articles: 'szh.vueArticles', traductions: 'szh.vueTraductions', word: 'szh.vueWord'
+};
+
 // Une couleur par en-tête de section : le TreeView natif n'offre ni gras ni taille de
 // police, ce sont donc les majuscules du libellé et la couleur de l'icône qui rendent les
 // trois sections repérables. Bleu et vert sont ceux des états de traduction
@@ -690,9 +697,9 @@ class FournisseurRevue {
     return this._itemsArticles().find((it) => it.slug === slug) || null;
   }
 
-  // Cliquer l'en-tête déplie sa section — et replie les autres, c'est l'accordéon. La vue
-  // d'ensemble de la section reste à un geste : le bouton au bout de la ligne, ou le
-  // clic droit.
+  // Cliquer l'en-tête déplie sa section — et replie les autres, c'est l'accordéon — et
+  // ouvre sa vue d'ensemble (szh.basculerSection). Le bouton au bout de la ligne et le
+  // clic droit restent d'autres chemins vers la même vue.
   _section(categorie, libelle, icone, description) {
     const ouverte = this.sectionDeployee === categorie;
     const it = new vscode.TreeItem(libelle, ouverte
@@ -6053,13 +6060,20 @@ function activate(context) {
   vueArbre = vue;                                  // reselectionnerArticle passe par elle
 
   // Le chevron reste un geste valable : déplier un en-tête par lui replie les autres —
-  // l'accordéon tient — et le replier libère tout, sans reconstruction (l'écran est déjà
-  // juste). Seuls les en-têtes portent `categorie` : les articles dépliés sur leurs
-  // assets passent ici sans effet.
+  // l'accordéon tient — et ouvre la même vue d'ensemble que le clic sur le titre ; le
+  // replier libère tout, sans reconstruction (l'écran est déjà juste) et sans rien
+  // ouvrir. Seuls les en-têtes portent `categorie` : les articles dépliés sur leurs
+  // assets passent ici sans effet. Le garde-fou est le changement d'état : un dépliage
+  // programmé (clic d'article -> reveal, reconstruction d'un en-tête déjà ouvert) arrive
+  // ici avec sectionDeployee déjà posé et n'ouvre donc rien — décision B préservée.
   context.subscriptions.push(
     vue.onDidExpandElement((e) => {
       if (!e || !e.element || !e.element.categorie) { return; }
-      if (fournisseur.definirSectionDeployee(e.element.categorie)) { fournisseur.rafraichir(); }
+      const categorie = e.element.categorie;
+      if (fournisseur.definirSectionDeployee(categorie)) {
+        fournisseur.rafraichir();
+        if (VUE_SECTION[categorie]) { vscode.commands.executeCommand(VUE_SECTION[categorie]); }
+      }
     }),
     vue.onDidCollapseElement((e) => {
       if (!e || !e.element || !e.element.categorie) { return; }
@@ -6217,10 +6231,12 @@ function activate(context) {
     // Le second argument transmet les options (sansApercu depuis la vue Articles) ; les
     // appelants historiques (arbre, Contrôles, démarrage) n'en passent pas : rien ne change.
     cmd('szh.ouvrirArticle', (slug, opts) => ouvrirArticle(fournisseur, slug, opts)),
-    // Le clic sur un en-tête de section : sa section bascule, les autres se replient.
+    // Le clic sur un en-tête de section : sa section bascule, les autres se replient, et
+    // la vue d'ensemble correspondante s'ouvre — le geste d'avant l'accordéon, conservé.
     cmd('szh.basculerSection', (categorie) => {
       fournisseur.basculerSection(categorie);
       fournisseur.rafraichir();
+      if (VUE_SECTION[categorie]) { vscode.commands.executeCommand(VUE_SECTION[categorie]); }
     }),
     cmdEcriture('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
     // Le Word corrigé d'un article déjà publié, et le retour en arrière. Les deux
