@@ -51,6 +51,17 @@ Aucun commit n'est fait sans accord explicite de Robin ; à la fin, un découpag
 2. **La carte affiche le DOI manuel quand il est défini**, étiqueté « manuel »/« manuell » (symétrique de l'étiquette « calculé ») — implémenté ; sans manuel, calculé inchangé.
 3. **Commits par lot, push, tag et release** — approuvés.
 
+## Lot I — arbre latéral : accordéon, clic-titre, marqueur d'article ouvert (26.08.2026)
+
+Demandé par Robin le 26.08.2026, dans la continuité de G2/G bis (TreeView natif). **Fait, suite 417 tests : 416 verts, 1 skip préexistant, 0 échec.** Pas de commit.
+
+1. **Accordéon des sections** : une seule section dépliée à la fois (« Articles » au départ) ; l'état vit dans le fournisseur (`sectionDeployee`) et l'`id` des en-têtes l'encode (`section:<cat>:ouvert|ferme`) pour passer outre la mémoire de pli de VS Code. Le chevron participe (`onDidExpandElement`/`onDidCollapseElement`).
+2. **Clic sur un en-tête = déplier sa section** (`szh.basculerSection`), recliquer replie tout. Conséquence assumée : la vue d'ensemble n'est plus sur le clic de l'en-tête — elle passe sur un **bouton inline** `$(dashboard)` au bout de la ligne, et reste au clic droit.
+3. **Marqueur « article ouvert »** : `FileDecorationProvider`, point `●` + couleur `list.highlightForeground` sur le .md de l'article auquel appartient le fichier actif (bibliographie et tableaux compris) ; suit `onDidChangeActiveTextEditor`, s'éteint hors des articles, reste quand le focus va à un aperçu/panneau.
+4. **Resélection après reconstruction** (le « premier clic qui ne tient pas », diagnostiqué : l'id flippé recréait l'élément sélectionné) : `getParent()` + `reveal(select, focus:false)` après le rafraîchissement du clic ; id désormais posé sur tous les articles. `sansTexte` (panneau Traductions) ne touche pas à l'arbre.
+
+Notes : tests hôte enrichis (accordéon commande + chevron, reveal, décoration) ; hôte factice appris `registerFileDecorationProvider`, événements d'expansion, enregistreur de `reveal`, éditeur actif déclenchable. Suggestion complémentaire hors code (déploiement) : `workbench.colorCustomizations.list.inactiveSelectionBackground` pour une sélection native plus soutenue.
+
 ### Pistes consignées (hors périmètre, non bloquantes)
 - Sélection à cheval sur un bloc `:::` → markup imbriqué (défaut préexistant au lot 4).
 - Fenêtre de course résiduelle sur gestes enchaînés (rejeu du refresh entre deux QuickPick, lot 5) ; `avertirEchecCompilation` hors garde (toast sans vol de focus).
