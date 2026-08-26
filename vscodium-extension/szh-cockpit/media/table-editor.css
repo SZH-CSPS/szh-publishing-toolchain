@@ -87,8 +87,11 @@ table.grille .sel { outline: 2px solid var(--vscode-focusBorder); outline-offset
 .coin { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15)); }
 .poignee { position: relative; }
 .poignee.drop { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
-.plusins { position: fixed; z-index: 900; width: 18px; height: 18px; padding: 0; line-height: 16px;
-  border-radius: 50%; font-size: 13px; font-weight: 700; text-align: center;
+/* Le « + » est centré par flex : line-height/text-align laissaient le glyphe décalé
+   vers le haut du cercle (métriques de la police système). */
+.plusins { position: fixed; z-index: 900; width: 18px; height: 18px; padding: 0;
+  display: flex; align-items: center; justify-content: center; line-height: 1;
+  border-radius: 50%; font-size: 13px; font-weight: 700;
   color: var(--vscode-button-foreground); background: var(--vscode-button-background);
   border: 1px solid var(--vscode-editor-background); cursor: pointer; }
 .plusins:hover { background: var(--vscode-button-hoverBackground); }

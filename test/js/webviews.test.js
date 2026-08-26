@@ -467,6 +467,66 @@ test('éditeur de tableau : la 2e ligne se définit en en-tête depuis son clic 
     'les deux rangées d’en-tête ne rendent pas leurs <th>');
 });
 
+// Le titre de section se pose et se retire depuis le clic droit d'une rangée du corps ;
+// l'hôte est rejoué entre les deux pour vérifier l'aller complet menu -> modèle -> grille.
+test('éditeur de tableau : le clic droit pose et retire un titre de section', () => {
+  const table = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'table-model.js'));
+  const page = ouvrir({ racine: RACINE, page: 'table-editor', cssPartage: ['_design.css'] });
+  let modele = table.analyserTable('<table><tr><th>P1</th><th>P2</th></tr>'
+    + '<tr><td>a1</td><td>b1</td></tr>'
+    + '<tr><td>Suite 2026</td><td></td></tr>'
+    + '<tr><td>a2</td><td>b2</td></tr></table>');
+  page.envoyer({ type: 'charger', modele: modele, disposition: table.disposition(modele),
+                 accent: '', teintes: {}, presets: [], i18n: libellesTable() });
+  const poignee = (r) => page.parId.zone.querySelectorAll('[data-prow]').find((e) => +e.dataset.prow === r);
+  poignee(2).dispatchEvent({ type: 'contextmenu', clientX: 0, clientY: 0 });
+  let item = page.document.body.querySelectorAll('.ctxitem')
+    .find((e) => e.textContent === T('table.sectionTitre'));
+  assert.ok(item, 'entrée « titre de section » absente du menu de la 3e ligne');
+  item.dispatchEvent({ type: 'click' });
+  const opMsg = page.messages.find((m) => m.type === 'operation' && m.nom === 'section');
+  assert.ok(opMsg, 'aucune opération section postée');
+  assert.strictEqual(opMsg.args.r, 2);
+  assert.strictEqual(opMsg.args.actif, true);
+  modele = table.appliquerOperationTable('section', opMsg.modele, opMsg.args);
+  page.envoyer({ type: 'charger', modele: modele, disposition: table.disposition(modele) });
+  // La rangée fusionnée est rendue en <th> (2 du thead + 1 de section) et le menu
+  // propose désormais le retrait.
+  assert.strictEqual(page.parId.zone.querySelectorAll('th.cell').length, 3,
+    'le titre de section ne rend pas son <th>');
+  poignee(2).dispatchEvent({ type: 'contextmenu', clientX: 0, clientY: 0 });
+  assert.ok(page.document.body.querySelectorAll('.ctxitem')
+    .some((e) => e.textContent === T('table.sectionTitreRetirer')),
+    'le retrait du titre de section n’est pas proposé');
+});
+
+// Ctrl+C sans sélection de texte : la cellule part au presse-papiers (texte plat +
+// balisage en text/html) ; une plage part en TSV + <table> minimal — ce que le collage
+// de l'éditeur et Excel savent relire.
+test('éditeur de tableau : Ctrl+C copie la cellule, ou la plage en TSV', () => {
+  const table = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'table-model.js'));
+  const page = ouvrir({ racine: RACINE, page: 'table-editor', cssPartage: ['_design.css'] });
+  const modele = table.analyserTable('<table><tr><td>Alpha</td><td><strong>Beta</strong></td></tr>'
+    + '<tr><td>Gamma</td><td>Delta</td></tr></table>');
+  page.envoyer({ type: 'charger', modele: modele, disposition: table.disposition(modele),
+                 accent: '', teintes: {}, presets: [], i18n: libellesTable() });
+  const cells = page.parId.zone.querySelectorAll('.cell');
+  const cellA = (r, c) => cells.find((e) => +e.dataset.r0 === r && +e.dataset.c0 === c);
+  cellA(0, 1).dispatchEvent({ type: 'mousedown', button: 0 });
+  const seul = {};
+  page.parId.zone.dispatchEvent({ type: 'copy', clipboardData: { setData: (t, v) => { seul[t] = v; } } });
+  assert.strictEqual(seul['text/plain'], 'Beta', 'le texte plat de la cellule n’est pas copié');
+  assert.strictEqual(seul['text/html'], '<strong>Beta</strong>', 'le balisage de la cellule est perdu');
+  // Plage 2 x 2 par Maj+clic : TSV + <table> minimal.
+  cellA(0, 0).dispatchEvent({ type: 'mousedown', button: 0 });
+  cellA(1, 1).dispatchEvent({ type: 'mousedown', button: 0, shiftKey: true });
+  const plage = {};
+  page.parId.zone.dispatchEvent({ type: 'copy', clipboardData: { setData: (t, v) => { plage[t] = v; } } });
+  assert.strictEqual(plage['text/plain'], 'Alpha\tBeta\nGamma\tDelta');
+  assert.ok(/^<table><tr><td>Alpha<\/td><td><strong>Beta<\/strong><\/td><\/tr>/.test(plage['text/html']),
+    'la plage doit partir en <table> minimal : ' + plage['text/html']);
+});
+
 // ---- Autocomplétion des auteur·e·s publiés (media/_auteurs.js, lot 9) ----
 //
 // L'hôte envoie « auteurs-connus » avec les valeurs ; la modale suggère à la frappe dans

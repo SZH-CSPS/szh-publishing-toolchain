@@ -96,6 +96,50 @@ test('tableau : deux rangées d’en-tête -> id, scope, headers, et aller-retou
   assert.deepStrictEqual(table.analyserTable(table.serialiserTable(relu)), relu);
 });
 
+// Titres de section (en-têtes intermédiaires), règle actée avec Robin (26.08.2026) :
+// une rangée fusionnée pleine largeur marquée « titre de section » donne son en-tête aux
+// rangées qui la suivent, jusqu'au prochain titre ; elle REMPLACE alors le titre de
+// groupe du thead, les en-têtes simples (une cellule par colonne) restant — exprimé en
+// headers= (WCAG H43, RGAA 5.7), seul lien que les lecteurs d'écran suivent exactement.
+test('tableau : un titre de section relaie le titre de groupe pour les rangées qui suivent', () => {
+  let m = table.analyserTable('<table><tr><td colspan="3">Article 2025</td></tr>'
+    + '<tr><td>Titre</td><td>Caractères</td><td>DOI</td></tr>'
+    + '<tr><td>t1</td><td>1</td><td>d1</td></tr>'
+    + '<tr><td>Article 2026</td><td></td><td></td></tr>'
+    + '<tr><td>t2</td><td>2</td><td>d2</td></tr></table>');
+  m = table.appliquerOperationTable('entete', m, { sens: 'lignes', n: 2 });
+  m = table.appliquerOperationTable('section', m, { r: 3, actif: true });
+  const html = table.serialiserTable(m);
+  assert.ok(/<th id="szh-th-r3c0" scope="rowgroup" colspan="3">Article 2026<\/th>/.test(html),
+    'le titre de section doit sortir en th scope="rowgroup" : ' + html);
+  assert.ok(/<td headers="szh-th-r0c0 szh-th-r1c0">t1<\/td>/.test(html),
+    'avant la section : titre de groupe du thead + en-tête de colonne');
+  assert.ok(/<td headers="szh-th-r1c0 szh-th-r3c0">t2<\/td>/.test(html),
+    'après la section : elle remplace le titre de groupe, l’en-tête de colonne reste');
+  const relu = table.analyserTable(html);
+  assert.deepStrictEqual(relu, m, 'aller-retour instable avec un titre de section');
+  // Désactivé : le rôle part, la fusion reste, la rangée redevient des données.
+  const sans = table.appliquerOperationTable('section', relu, { r: 3, actif: false });
+  assert.ok(/<td headers="[^"]*" colspan="3">Article 2026<\/td>/.test(table.serialiserTable(sans)),
+    'sans le rôle, la rangée fusionnée doit redevenir une cellule de données');
+});
+
+// Le sens transposé de la même règle : un en-tête de ligne FUSIONNÉ (rowspan, colonne de
+// gauche) donne son groupe aux rangées qu'il couvre, l'en-tête simple de la 2e colonne
+// donne sa ligne — la géométrie du rowspan fait le « jusqu'où », pas de marqueur à poser.
+test('tableau : en-tête de ligne fusionné = groupe, en-tête simple = sa ligne', () => {
+  let m = table.analyserTable('<table><tr><td rowspan="2">Groupe A</td><td>L1</td><td>1</td></tr>'
+    + '<tr><td>L2</td><td>2</td></tr></table>');
+  m = table.appliquerOperationTable('entete', m, { sens: 'colonnes', n: 2 });
+  const html = table.serialiserTable(m);
+  assert.ok(/<th id="szh-th-r0c0" scope="rowgroup" rowspan="2">Groupe A<\/th>/.test(html),
+    'l’en-tête fusionné doit porter scope="rowgroup" : ' + html);
+  assert.ok(/<th id="szh-th-r0c1" scope="row">L1<\/th>/.test(html));
+  assert.ok(/<td headers="szh-th-r0c0 szh-th-r0c1">1<\/td>/.test(html),
+    'la donnée doit relier le groupe ET sa ligne');
+  assert.ok(/<td headers="szh-th-r0c0 szh-th-r1c1">2<\/td>/.test(html));
+});
+
 // ---- Slug : le miroir du Makefile ----
 
 test('slug d’article : mêmes règles que le Makefile', () => {

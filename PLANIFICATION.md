@@ -135,6 +135,31 @@ rechargée avec ses 4 `<th>`), un test modèle fige le balisage complexe et son 
 Suite **422 tests, 422 verts**. Release **v2026.08.52** (cockpit 0.26.3), demandée par Robin
 pour essayer sur poste.
 
+### Lot L — titres de section, copie de cellules, « + » centré (v2026.08.53, cockpit 0.26.4)
+
+Règle actée avec Robin (26.08.2026, sur capture d'un tableau à sections « Article 2025 /
+Article 2026 ») : **un titre fusionné pleine largeur donne son en-tête aux rangées qui le
+suivent, jusqu'au prochain titre** — il remplace alors le titre de groupe du thead ; les
+en-têtes SIMPLES (une cellule par colonne) s'appliquent toujours ; transposé à gauche,
+l'en-tête de ligne fusionné (rowspan) donne son groupe **par sa géométrie** (déjà couvert
+par le balisage complexe du lot K, verrouillé par test). Réalisé en `headers=` (WCAG H43,
+RGAA 5.7), seul lien exact pour un lecteur d'écran — jamais de `<tbody>` multiples, qui
+casseraient les sélecteurs `tbody tr:last-child`/`nth-child` de print.css (total, zébrage).
+
+Menu contextuel « Définir comme titre de section » sur toute rangée du corps (fusionne la
+rangée au besoin, avec les gardes de `fusionner()`) ; le retrait ôte le rôle, pas la
+fusion. Le drapeau vit dans le fichier comme `scope="rowgroup"` sur la cellule, revalidé
+par `reappliquerEntetes` (une cellule th pleine largeur SOUS le thead — une fusion cassée
+par une insertion de colonne redevient une rangée ordinaire). Les styles du bloc
+« En-têtes de lignes » restent actifs dès qu'un titre de section existe : print.css les
+couvre déjà via `th[scope^="row"]`.
+
+Au passage, deux demandes de la même session : **Ctrl+C** copie la sélection de cellules
+(cellule seule → texte plat + balisage en text/html, ré-insérable au curseur ; plage →
+TSV + `<table>` minimal, relu par le collage de l'éditeur comme par Excel ; une sélection
+de TEXTE garde la copie native) ; le bouton « + » d'insertion est centré dans son cercle
+(flex, les métriques de la police décalaient le glyphe). Suite **426 tests, 426 verts**.
+
 ### Installation d'un poste : une source winget cassée n'arrête plus rien (v2026.08.51)
 
 Constat de Robin sur un poste neuf : `winget install` échouait (index de source jamais

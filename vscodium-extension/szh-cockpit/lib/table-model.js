@@ -55,6 +55,11 @@ function extraireCellules(interieur) {
           rowspan: Math.max(1, parseInt(courant.attrs.rowspan, 10) || 1),
           th: th,
           scope: th ? (sc === 'row' ? 'row' : (sc === 'col' ? 'col' : '')) : '',
+          // Titre de section (rangée fusionnée pleine largeur dans le corps) : le
+          // scope="rowgroup" du fichier est le marqueur. Un th de GAUCHE fusionné le
+          // porte aussi — reappliquerEntetes ne retient le drapeau que sur une rangée
+          // d'une seule cellule pleine largeur, l'autre cas retombe sur enteteColonnes.
+          section: th && String(sc || '').toLowerCase() === 'rowgroup',
           align: enumOu((courant.attrs['data-align'] || '').toLowerCase(), ['left', 'center', 'right'], 'left')
         });
         courant = null;
@@ -163,7 +168,7 @@ function etendreGrille(modele) {
     modele.lignes[r].cellules.forEach((cell, ci) => {
       const pos = occ.positions[r][ci];
       const id = cellules.length;
-      cellules.push({ contenu: cell.contenu, th: !!cell.th, scope: cell.scope || '', align: cell.align || 'left' });
+      cellules.push({ contenu: cell.contenu, th: !!cell.th, scope: cell.scope || '', section: !!cell.section, align: cell.align || 'left' });
       for (let dr = 0; dr < pos.rowspan && r + dr < nbL; dr++) {
         for (let dc = 0; dc < pos.colspan && pos.c0 + dc < nbC; dc++) { grid[r + dr][pos.c0 + dc] = id; }
       }
@@ -199,7 +204,7 @@ function compacterGrille(g) {
       let cs = 0; while (c + cs < nbC && g.grid[r][c + cs] === id) { cs++; }
       let rs = 0; while (r + rs < nbL && g.grid[r + rs][c] === id) { rs++; }
       const cell = g.cellules[id];
-      cellules.push({ contenu: cell.contenu, colspan: cs, rowspan: rs, th: !!cell.th, scope: cell.scope || '', align: cell.align || 'left' });
+      cellules.push({ contenu: cell.contenu, colspan: cs, rowspan: rs, th: !!cell.th, scope: cell.scope || '', section: !!cell.section, align: cell.align || 'left' });
     }
     lignes.push({ cellules: cellules });
   }
@@ -209,6 +214,10 @@ function compacterGrille(g) {
 // Réaligne th et scope sur les comptes data-entete-lignes et data-entete-colonnes, seule
 // source de vérité : en-tête si l'origine est dans les lignes du haut (scope=col) ou les
 // colonnes de gauche (scope=row), le haut l'emportant au coin.
+// S'y ajoutent les TITRES DE SECTION (en-têtes intermédiaires, RGAA/WCAG H43) : le
+// drapeau `section` d'une cellule n'est retenu que si la rangée est UNE cellule pleine
+// largeur SOUS le thead — partout ailleurs il est effacé (une fusion cassée par une
+// insertion de colonne redevient une rangée ordinaire, sans th fantôme).
 function reappliquerEntetes(modele) {
   const occ = matriceOccupation(modele.lignes);
   const eL = modele.attrs.enteteLignes, eC = modele.attrs.enteteColonnes;
@@ -216,7 +225,11 @@ function reappliquerEntetes(modele) {
     lg.cellules.forEach((cell, ci) => {
       const enHaut = r < eL;
       const aGauche = occ.positions[r][ci].c0 < eC;
-      cell.th = enHaut || aGauche;
+      const estSection = !!cell.section && !enHaut && lg.cellules.length === 1
+        && occ.positions[r][ci].c0 === 0
+        && occ.positions[r][ci].colspan >= occ.nbColonnes;
+      cell.section = estSection;
+      cell.th = enHaut || aGauche || estSection;
       cell.scope = enHaut ? 'col' : (aGauche ? 'row' : '');
     });
   });
@@ -277,7 +290,6 @@ function normaliserModele(modele) {
     zebreCol: enumOu(a.zebreCol, ZEBRES, 'aucun'), zebreColEntetes: vrai(a.zebreColEntetes),
     zebreLig: enumOu(a.zebreLig, ZEBRES, 'aucun'), zebreLigEntetes: vrai(a.zebreLigEntetes)
   };
-  if (attrs.enteteColonnes === 0) { attrs.elGras = false; attrs.elFond = 'aucun'; }   // el = colonnes de gauche
   if (attrs.enteteLignes === 0) { attrs.ecGras = false; attrs.ecFond = 'aucun'; }       // ec = rangées du haut
   if (attrs.zebreCol === 'aucun') { attrs.zebreColEntetes = false; }
   if (attrs.zebreLig === 'aucun') { attrs.zebreLigEntetes = false; }
@@ -290,11 +302,18 @@ function normaliserModele(modele) {
         rowspan: Math.max(1, parseInt(c && c.rowspan, 10) || 1),
         th: th,
         scope: th ? ((c && c.scope) === 'row' ? 'row' : ((c && c.scope) === 'col' ? 'col' : '')) : '',
+        section: !!(c && c.section),
         align: enumOu(c && c.align, ['left', 'center', 'right'], 'left')
       };
     })
   }));
-  if (lignes.length === 0) { lignes.push({ cellules: [{ contenu: '', colspan: 1, rowspan: 1, th: false, scope: '', align: 'left' }] }); }
+  if (lignes.length === 0) { lignes.push({ cellules: [{ contenu: '', colspan: 1, rowspan: 1, th: false, scope: '', section: false, align: 'left' }] }); }
+
+  // Les styles d'en-têtes de lignes (el) servent aussi aux TITRES DE SECTION —
+  // print.css les style par th[scope^="row"], qui couvre "rowgroup". On ne les éteint
+  // donc que s'il n'y a NI colonne d'en-tête NI titre de section.
+  const aSection = lignes.some((lg) => lg.cellules.length === 1 && !!lg.cellules[0].section);
+  if (attrs.enteteColonnes === 0 && !aSection) { attrs.elGras = false; attrs.elFond = 'aucun'; }   // el = colonnes de gauche
 
   // ⚠ Aucune fusion de l'en-tête ne doit dépasser dans le corps : les navigateurs bornent
   // un rowspan à sa section, si bien qu'un <thead> qui tronque une fusion décale la
@@ -387,7 +406,13 @@ function analyserTable(html) {
   return finaliserModele({ attrs: attrs, lignes: lignes });
 }
 
-function headersDe(occ, r, c0, colspan, rowspan, eL, eC, idTh) {
+// En-têtes d'une cellule de données (headers=), règle actée avec Robin (26.08.2026) :
+// un TITRE fusionné pleine largeur (du thead ou de section) donne son en-tête aux rangées
+// qui le suivent JUSQU'AU PROCHAIN titre fusionné ; les en-têtes simples (une cellule par
+// colonne) du thead s'appliquent toujours ; les en-têtes de ligne à gauche s'appliquent
+// par leur géométrie (un rowspan couvre exactement ses rangées).
+// `sections` : indexes croissants des rangées-titres de section ; `nbC` : largeur totale.
+function headersDe(occ, r, c0, colspan, rowspan, eL, eC, idTh, sections, nbC) {
   const ids = [], vus = {};
   const ajouter = (li, cc) => {
     const ref = occ.grid[li] && occ.grid[li][cc];
@@ -395,7 +420,20 @@ function headersDe(occ, r, c0, colspan, rowspan, eL, eC, idTh) {
     const id = idTh(ref.li, ref.c0);
     if (!vus[id]) { vus[id] = 1; ids.push(id); }
   };
-  for (let hr = 0; hr < eL; hr++) { for (let cc = c0; cc < c0 + colspan; cc++) { ajouter(hr, cc); } }
+  // Titre de section le plus proche AU-DESSUS de la cellule, s'il existe.
+  let sec = -1;
+  for (const s of sections) { if (s < r) { sec = s; } else { break; } }
+  for (let hr = 0; hr < eL; hr++) {
+    for (let cc = c0; cc < c0 + colspan; cc++) {
+      const ref = occ.grid[hr] && occ.grid[hr][cc];
+      if (!ref) { continue; }
+      // Un titre de groupe du thead (cellule pleine largeur) est REMPLACÉ, après un
+      // titre de section, par ce titre-là ; les en-têtes de colonne restent.
+      if (sec >= 0 && ref.colspan >= nbC) { continue; }
+      ajouter(hr, cc);
+    }
+  }
+  if (sec >= 0) { ajouter(sec, 0); }
   for (let hc = 0; hc < eC; hc++) { for (let rr = r; rr < r + rowspan; rr++) { ajouter(rr, hc); } }
   return ids.join(' ');
 }
@@ -412,6 +450,18 @@ function serialiserTable(modele) {
   const m = normaliserModele(modele);
   const a = m.attrs;
   const eL = a.enteteLignes, eC = a.enteteColonnes;
+  const occ = matriceOccupation(m.lignes);
+  // Rangées-titres de section : le drapeau est posé par reappliquerEntetes, mais on
+  // revérifie la géométrie ici (une cellule th pleine largeur sous le thead) — le
+  // sérialiseur ne reçoit que normaliserModele, jamais la finalisation. Leur seule
+  // présence rend le tableau complexe : le lien « cette rangée de données dépend de
+  // CE titre-là » n'est exprimable que par headers=.
+  const sections = [];
+  m.lignes.forEach((lg, r) => {
+    if (r >= eL && lg.cellules.length === 1 && lg.cellules[0].section && lg.cellules[0].th
+      && occ.positions[r][0] && occ.positions[r][0].c0 === 0
+      && occ.positions[r][0].colspan >= occ.nbColonnes) { sections.push(r); }
+  });
   let ouv = '<table class="' + a.classe + '"';
   if (eL > 0) { ouv += ' data-entete-lignes="' + eL + '"'; }
   if (eC > 0) { ouv += ' data-entete-colonnes="' + eC + '"'; }
@@ -420,8 +470,8 @@ function serialiserTable(modele) {
   if (a.alt !== '') { ouv += ' data-alt="' + echapAttribut(a.alt) + '"'; }
   if (a.copyright !== '') { ouv += ' data-copyright="' + echapAttribut(a.copyright) + '"'; }
   if (a.source !== '') { ouv += ' data-source="' + echapAttribut(a.source) + '"'; }
-  if (eC > 0 && a.elGras) { ouv += ' data-el-gras="1"'; }
-  if (eC > 0 && a.elFond !== 'aucun') { ouv += ' data-el-fond="' + a.elFond + '"'; }
+  if ((eC > 0 || sections.length > 0) && a.elGras) { ouv += ' data-el-gras="1"'; }
+  if ((eC > 0 || sections.length > 0) && a.elFond !== 'aucun') { ouv += ' data-el-fond="' + a.elFond + '"'; }
   if (eL > 0 && a.ecGras) { ouv += ' data-ec-gras="1"'; }
   if (eL > 0 && a.ecFond !== 'aucun') { ouv += ' data-ec-fond="' + a.ecFond + '"'; }
   if (a.totalGras) { ouv += ' data-total-gras="1"'; }
@@ -432,8 +482,7 @@ function serialiserTable(modele) {
   if (a.zebreLig !== 'aucun') { ouv += ' data-zebre-lig="' + a.zebreLig + '"'; if (a.zebreLigEntetes) { ouv += ' data-zebre-lig-entetes="1"'; } }
   ouv += '>';
 
-  const occ = matriceOccupation(m.lignes);
-  let complexe = eL >= 2 || eC >= 2;
+  let complexe = eL >= 2 || eC >= 2 || sections.length > 0;
   if (!complexe) {
     for (const lg of m.lignes) {
       for (const cell of lg.cellules) {
@@ -458,14 +507,17 @@ function serialiserTable(modele) {
         const estColonne = r < eL;   // rangée du haut : en-tête de colonne, scope col
         if (complexe) {
           t += ' id="' + idTh(r, c0) + '"';
-          const sc = estColonne ? (cell.colspan > 1 ? 'colgroup' : 'col')
-                                 : (cell.rowspan > 1 ? 'rowgroup' : 'row');
+          // Titre de section : scope="rowgroup" (il couvre les rangées qui suivent) —
+          // c'est aussi le marqueur que analyserTable relit pour l'aller-retour.
+          const sc = cell.section ? 'rowgroup'
+            : (estColonne ? (cell.colspan > 1 ? 'colgroup' : 'col')
+                          : (cell.rowspan > 1 ? 'rowgroup' : 'row'));
           t += ' scope="' + sc + '"';
         } else if (cell.scope === 'col' || cell.scope === 'row') {
           t += ' scope="' + cell.scope + '"';
         }
       } else if (complexe) {
-        const ids = headersDe(occ, r, c0, cell.colspan, cell.rowspan, eL, eC, idTh);
+        const ids = headersDe(occ, r, c0, cell.colspan, cell.rowspan, eL, eC, idTh, sections, occ.nbColonnes);
         if (ids) { t += ' headers="' + ids + '"'; }
       }
       if (cell.colspan > 1) { t += ' colspan="' + cell.colspan + '"'; }
@@ -498,7 +550,8 @@ function disposition(modele) {
       cellules: lg.cellules.map((cell, ci) => ({
         li: r, ci: ci, r0: r, c0: occ.positions[r][ci].c0,
         colspan: occ.positions[r][ci].colspan, rowspan: occ.positions[r][ci].rowspan,
-        th: cell.th, scope: cell.scope, align: cell.align || 'left', contenu: cell.contenu
+        th: cell.th, scope: cell.scope, section: !!cell.section,
+        align: cell.align || 'left', contenu: cell.contenu
       }))
     }))
   };
@@ -867,7 +920,7 @@ function collerDans(modele, ancreR, ancreC, source) {
     let rs = 0; while (o.r + rs < sL && sg.grid[o.r + rs][o.c] === id) { rs++; }
     const sc = sg.cellules[id];
     const nid = g.cellules.length;
-    g.cellules.push({ contenu: sc.contenu, th: !!sc.th, scope: sc.scope || '', align: sc.align || 'left' });
+    g.cellules.push({ contenu: sc.contenu, th: !!sc.th, scope: sc.scope || '', section: !!sc.section, align: sc.align || 'left' });
     for (let dr = 0; dr < rs; dr++) { for (let dc = 0; dc < cs; dc++) { g.grid[ancreR + o.r + dr][ancreC + o.c + dc] = nid; } }
   });
   return compacterGrille(g);
@@ -927,6 +980,27 @@ function appliquerOperationTable(nom, modeleBrut, args) {
     else if (a.sens === 'colonnes') { modele.attrs.enteteColonnes = 0; }
     else { modele.attrs.enteteLignes = 0; modele.attrs.enteteColonnes = 0; }
     return finaliserModele(modele);
+  }
+  // Titre de section (en-tête intermédiaire) : la rangée r devient UNE cellule pleine
+  // largeur — fusionnée d'abord si besoin, avec les gardes de fusionner() — marquée
+  // section (th scope="rowgroup" au fichier). La désactivation ne retire que le RÔLE :
+  // la fusion reste, c'est un choix de mise en page qui ne nous regarde pas ici.
+  if (nom === 'section') {
+    const r = n(a.r);
+    if (!modele.lignes[r]) { return finaliserModele(modele); }
+    if (!vrai(a.actif)) {
+      modele.lignes[r].cellules.forEach((c) => { c.section = false; });
+      return finaliserModele(modele);
+    }
+    const occ = matriceOccupation(modele.lignes);
+    let m = modele;
+    const pos0 = occ.positions[r][0];
+    if (!(modele.lignes[r].cellules.length === 1 && pos0 && pos0.colspan >= occ.nbColonnes)) {
+      m = fusionner(modele, r, 0, r, occ.nbColonnes - 1);
+      if (m.erreur) { return m; }
+    }
+    if (m.lignes[r] && m.lignes[r].cellules[0]) { m.lignes[r].cellules[0].section = true; }
+    return finaliserModele(m);
   }
   if (nom === 'styleEntete') {
     const fond = enumOu(a.fond, FONDS, 'aucun');

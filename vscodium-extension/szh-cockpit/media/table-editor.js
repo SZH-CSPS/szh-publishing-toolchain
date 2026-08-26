@@ -79,7 +79,8 @@ function stylerApercu(){if(!dispo||!modele)return;var a=modele.attrs;
       if(a.zebreColEntetes){if(par)el.style.background=TEINTE_ZEBRE;}
       else if(!thead&&!cell.th&&par)el.style.background=TEINTE_ZEBRE;
     }
-    if(cell.th&&cell.scope==='row'){var fe=fondDe(a.elFond);if(fe){el.style.background=fe.bg;el.style.color=fe.fg;}if(a.elGras)el.style.fontWeight='700';}
+    /* Titre de section : print.css le style via th[scope^="row"] — même miroir ici. */
+    if(cell.th&&(cell.scope==='row'||cell.section)){var fe=fondDe(a.elFond);if(fe){el.style.background=fe.bg;el.style.color=fe.fg;}if(a.elGras)el.style.fontWeight='700';}
     else if(cell.th&&cell.scope==='col'){var fc=fondDe(a.ecFond);if(fc){el.style.background=fc.bg;el.style.color=fc.fg;}if(a.ecGras)el.style.fontWeight='700';}
     if(!thead&&r===N-1){var ft=fondDe(a.totalFond);if(ft){el.style.background=ft.bg;el.style.color=ft.fg;}if(a.totalGras)el.style.fontWeight='700';}
     if(a.bordureHaute){if(eL>0){if(r===eL-1)el.style.borderBottom='2px solid '+accLigne;}else if(r===0)el.style.borderTop='2px solid '+accLigne;}
@@ -223,6 +224,17 @@ function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.crea
     m.appendChild(itemMenu(lblE,onDefinirEntete));
     var aRetirer=sens==='lignes'?(modele.attrs.enteteLignes>0):(modele.attrs.enteteColonnes>0);
     if(aRetirer){m.appendChild(itemMenu(TXT.enteteRetirer,onRetirerEntete));}}
+  // Titre de section (en-tête intermédiaire) : une seule rangée visée, SOUS le thead.
+  // Actif -> la rangée est fusionnée pleine largeur (si besoin) et devient l'en-tête
+  // des rangées qui suivent, jusqu'au prochain titre ; inactif -> le rôle part, la
+  // fusion reste.
+  if(selection&&selection.rMin===selection.rMax&&modele&&dispo&&dispo.nbLignes>1
+    &&selection.rMin>=modele.attrs.enteteLignes){
+    var rSec=selection.rMin,lgSec=dispo.lignes[rSec];
+    var estSec=!!(lgSec&&lgSec.cellules.length===1&&lgSec.cellules[0].section);
+    if(!sens)sepMenu(m);
+    m.appendChild(itemMenu(estSec?TXT.sectionTitreRetirer:TXT.sectionTitre,
+      function(){op('section',{r:rSec,actif:!estSec});}));}
   document.body.appendChild(m);
   var vw=window.innerWidth||document.documentElement.clientWidth,vh=window.innerHeight||document.documentElement.clientHeight,rc=m.getBoundingClientRect();
   var x=ev.clientX,y=ev.clientY;if(x+rc.width>vw)x=Math.max(2,vw-rc.width-2);if(y+rc.height>vh)y=Math.max(2,vh-rc.height-2);
@@ -389,7 +401,10 @@ function majEntete(o,gras,fond,actif){o.gras.checked=!!gras;cocherRadio(o.radios
   o.bloc.classList.toggle('inactif',!actif);if(o.hint)o.hint.style.display=actif?'none':'';}
 function majZebre(o,val,ent){cocherRadio(o.radios,val);o.entetes.checked=!!ent;o.entetes.disabled=(val==='aucun');}
 function majPanneau(){if(!modele||!ctl.el)return;var a=modele.attrs;
-  majEntete(ctl.el,a.elGras,a.elFond,a.enteteColonnes>0);
+  // Les styles « en-têtes de lignes » couvrent aussi les titres de section
+  // (print.css : th[scope^="row"]) : le bloc reste actif dès qu'il y en a un.
+  var aSection=!!(dispo&&dispo.lignes.some(function(lg){return lg.cellules.length===1&&lg.cellules[0].section;}));
+  majEntete(ctl.el,a.elGras,a.elFond,a.enteteColonnes>0||aSection);
   majEntete(ctl.ec,a.ecGras,a.ecFond,a.enteteLignes>0);
   majEntete(ctl.tot,a.totalGras,a.totalFond,true);
   ctl.bordureHaute.checked=!!a.bordureHaute;ctl.bordureBasse.checked=!!a.bordureBasse;
@@ -424,6 +439,47 @@ function collerDepuisPresse(ev){var cd=ev.clipboardData||window.clipboardData;if
   ev.preventDefault();var aR=selection?selection.rMin:0,aC=selection?selection.cMin:0;
   op('coller',{ancreR:aR,ancreC:aC,html:html,texte:texte});}
 zone.addEventListener('paste',collerDepuisPresse);
+
+// ---- Copie de la sélection (Ctrl+C) ----
+//
+// Une sélection de TEXTE dans la cellule garde la copie native. Sinon, la sélection de
+// CELLULES part au presse-papiers : une cellule seule -> son texte (et son balisage en
+// text/html, que le collage natif ré-insère au curseur, strong/em compris) ; une plage ->
+// TSV + <table> minimal, colspan/rowspan compris — c'est le format que le collage de
+// l'éditeur (op coller) et Excel/Word savent relire. La sélection étant toujours étendue
+// aux fusions entières (etendre), chaque origine de cellule tombe dans le rectangle.
+function copierSelection(ev){
+  var s=window.getSelection?window.getSelection():null;
+  if(s&&String(s).length>0)return;                 // copie native du texte sélectionné
+  if(!selection||!modele||!occ2)return;
+  var cd=ev.clipboardData||window.clipboardData;if(!cd||!cd.setData)return;
+  recolter();
+  var tsv=[],html=[],unSeul=!plage();
+  for(var r=selection.rMin;r<=selection.rMax;r++){
+    var lt=[],lh=[];
+    for(var c=selection.cMin;c<=selection.cMax;c++){
+      var ce=occ2[r]&&occ2[r][c];
+      if(!ce){lt.push('');continue;}
+      if(ce.r0!==r||ce.c0!==c){lt.push('');continue;}   // case couverte par une fusion
+      var cell=modele.lignes[ce.li].cellules[ce.ci];
+      lt.push(texteDeInline(cell.contenu).replace(/\t/g,' '));
+      var attrs=(ce.colspan>1?' colspan="'+ce.colspan+'"':'')+(ce.rowspan>1?' rowspan="'+ce.rowspan+'"':'');
+      var tag=cell.th?'th':'td';
+      lh.push('<'+tag+attrs+'>'+cell.contenu+'</'+tag+'>');
+    }
+    tsv.push(lt.join('\t'));html.push('<tr>'+lh.join('')+'</tr>');
+  }
+  ev.preventDefault();
+  if(unSeul){
+    var ce0=occ2[selection.rMin][selection.cMin];
+    var seul=modele.lignes[ce0.li].cellules[ce0.ci];
+    cd.setData('text/plain',texteDeInline(seul.contenu));
+    cd.setData('text/html',seul.contenu);
+  }else{
+    cd.setData('text/plain',tsv.join('\n'));
+    cd.setData('text/html','<table>'+html.join('')+'</table>');
+  }}
+zone.addEventListener('copy',copierSelection);
 
 // ---- Raccourcis clavier globaux ----
 try{document.execCommand('styleWithCSS',false,false);}catch(e){}
