@@ -5420,7 +5420,7 @@ function textesTable() {
     'table.rien', 'table.fusionImpossible', 'table.enregistre',
     'table.ctx.ligneAvant', 'table.ctx.ligneApres', 'table.ctx.ligneSuppr',
     'table.ctx.colAvant', 'table.ctx.colApres', 'table.ctx.colSuppr',
-    'table.entete', 'table.enteteRetirer',
+    'table.entete', 'table.entete.lignes', 'table.entete.colonnes', 'table.enteteRetirer',
     'table.legende', 'table.legende.indice',
     'table.alt', 'table.alt.indice', 'table.alt.aide',
     'table.copyright', 'table.copyright.indice', 'table.source', 'table.source.indice',

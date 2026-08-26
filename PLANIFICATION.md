@@ -113,6 +113,28 @@ la chasse aux échecs muets : *un repli légitime qui ne dit pas qu'il a eu lieu
 ⚠ Les numéros déjà importés ne profitent pas de la correction : la fiche est écrite à l'import.
 Sur un article dont le bloc auteurs manque, il faut *Réimporter cet article*.
 
+### Lot K — la 2e rangée d'en-tête se définit dans l'éditeur de tableau (v2026.08.52, cockpit 0.26.3)
+
+Constat de Robin (capture d'écran) : la première ligne définie en en-tête, impossible de définir
+la seconde. Le modèle savait pourtant déjà tout faire — `enteteLignes` monte à 2 et
+`serialiserTable` écrit le balisage d'accessibilité complexe : `id` sur chaque en-tête,
+`scope="col|colgroup"` (et `row|rowgroup` pour les colonnes), `headers=` sur chaque cellule de
+données — WCAG H43 / RGAA 5.7, la même forme que `docx-tables.py` à l'import. Le verrou était
+dans la webview : `sensEntete` exigeait une sélection **partant de la ligne 1**, si bien que le
+clic droit sur la poignée de la 2e ligne n'offrait jamais « Définir comme en-tête ».
+
+Désormais toute sélection dont le bord bas tombe dans les `MAX_ENTETES` (= 2, miroir de
+`normaliserModele`) premières lignes — ou le bord droit dans les 2 premières colonnes — propose
+l'action, et le libellé dit **combien** : « Définir les 2 premières lignes comme en-tête »
+(i18n FR/DE, clés `table.entete.lignes`/`table.entete.colonnes`). Un en-tête reste **contigu
+depuis le bord** : c'est la seule forme que `th`/`scope` savent décrire, il n'y a donc pas de
+geste « cette ligne seule au milieu ». Harnais : `dom-minimal` apprend `documentElement` et
+`removeEventListener` (le menu contextuel en a besoin) ; un test rejoue le geste entier
+(clic droit sur la poignée de la 2e ligne → libellé chiffré → opération `entete n=2` → grille
+rechargée avec ses 4 `<th>`), un test modèle fige le balisage complexe et son aller-retour.
+Suite **422 tests, 422 verts**. Release **v2026.08.52** (cockpit 0.26.3), demandée par Robin
+pour essayer sur poste.
+
 ### Installation d'un poste : une source winget cassée n'arrête plus rien (v2026.08.51)
 
 Constat de Robin sur un poste neuf : `winget install` échouait (index de source jamais

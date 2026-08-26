@@ -433,6 +433,40 @@ test('éditeur de tableau : grille, champs et texte d’aide de la description',
   assert.strictEqual(page.parId.zone.querySelectorAll('.cell').length, 4, 'grille non rendue');
 });
 
+// Le clic droit sur la POIGNÉE de la 2e ligne doit offrir « les 2 premières lignes en
+// en-tête » : l'ancien sensEntete exigeait une sélection partant de la ligne 1, et la
+// 2e rangée d'un en-tête à deux niveaux était indéfinissable depuis son propre menu.
+// On rejoue le geste entier : menu, libellé chiffré, opération postée, grille rechargée.
+test('éditeur de tableau : la 2e ligne se définit en en-tête depuis son clic droit', () => {
+  const table = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'table-model.js'));
+  const page = ouvrir({ racine: RACINE, page: 'table-editor', cssPartage: ['_design.css'] });
+  let modele = table.analyserTable('<table><tr><td colspan="3">Identité</td></tr>'
+    + '<tr><td>Nom</td><td>Prénom</td><td>ORCID</td></tr>'
+    + '<tr><td>a</td><td>b</td><td>c</td></tr></table>');
+  page.envoyer({ type: 'charger', modele: modele, disposition: table.disposition(modele),
+                 accent: '', teintes: {}, presets: [], i18n: libellesTable() });
+  // Le DOM factice ne convertit pas dataset en chaînes : on compare en nombre.
+  const poignee = page.parId.zone.querySelectorAll('[data-prow]').find((e) => +e.dataset.prow === 1);
+  assert.ok(poignee, 'poignée de la 2e ligne introuvable');
+  poignee.dispatchEvent({ type: 'contextmenu', clientX: 0, clientY: 0 });
+  const items = page.document.body.querySelectorAll('.ctxitem');
+  const attendu = T('table.entete.lignes').split('{0}').join('2');
+  const item = items.find((e) => e.textContent === attendu);
+  assert.ok(item, 'entrée « ' + attendu + ' » absente du menu : '
+    + items.map((e) => e.textContent).join(' | '));
+  item.dispatchEvent({ type: 'click' });
+  const opMsg = page.messages.find((m) => m.type === 'operation' && m.nom === 'entete');
+  assert.ok(opMsg, 'aucune opération en-tête postée à l’hôte');
+  assert.strictEqual(opMsg.args.sens, 'lignes');
+  assert.strictEqual(opMsg.args.n, 2);
+  // Rejoue l'hôte : opération appliquée puis grille rechargée -> 4 cellules <th>
+  // (la fusion et les trois titres), et le fichier porte le balisage complexe.
+  modele = table.appliquerOperationTable('entete', opMsg.modele, opMsg.args);
+  page.envoyer({ type: 'charger', modele: modele, disposition: table.disposition(modele) });
+  assert.strictEqual(page.parId.zone.querySelectorAll('th.cell').length, 4,
+    'les deux rangées d’en-tête ne rendent pas leurs <th>');
+});
+
 // ---- Autocomplétion des auteur·e·s publiés (media/_auteurs.js, lot 9) ----
 //
 // L'hôte envoie « auteurs-connus » avec les valeurs ; la modale suggère à la frappe dans

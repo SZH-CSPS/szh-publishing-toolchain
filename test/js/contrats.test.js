@@ -73,6 +73,29 @@ test('tableau : le texte à caractères réservés fait l’aller-retour', () =>
   assert.deepStrictEqual(relu, modele);
 });
 
+// Un en-tête sur DEUX rangées (une fusion au-dessus d'une rangée de titres, comme le
+// tableau des auteurs des imports Word) doit sortir en balisage complexe — id sur chaque
+// en-tête, scope col/colgroup, headers sur chaque cellule de données (WCAG H43, RGAA 5.7) —
+// et l'aller-retour doit conserver le compte. C'est le balisage que docx-tables.py écrit
+// à l'import : l'éditeur ne doit pas dire autre chose.
+test('tableau : deux rangées d’en-tête -> id, scope, headers, et aller-retour stable', () => {
+  const base = table.analyserTable('<table><tr><td colspan="3">Identité</td></tr>'
+    + '<tr><td>Nom</td><td>Prénom</td><td>ORCID</td></tr>'
+    + '<tr><td>a</td><td>b</td><td>c</td></tr></table>');
+  const deux = table.appliquerOperationTable('entete', base, { sens: 'lignes', n: 2 });
+  const html = table.serialiserTable(deux);
+  assert.ok(html.indexOf('<thead>') !== -1, '<thead> absent');
+  assert.ok(/<th id="szh-th-r0c0" scope="colgroup" colspan="3">/.test(html),
+    'l’en-tête fusionné doit porter id + scope="colgroup" : ' + html);
+  assert.ok(/<th id="szh-th-r1c1" scope="col">/.test(html),
+    'la 2e rangée d’en-tête doit porter id + scope="col"');
+  assert.ok(/<td headers="szh-th-r0c0 szh-th-r1c2">/.test(html),
+    'les cellules de données doivent relier leurs deux en-têtes par headers=');
+  const relu = table.analyserTable(html);
+  assert.strictEqual(relu.attrs.enteteLignes, 2, 'le compte d’en-têtes ne survit pas');
+  assert.deepStrictEqual(table.analyserTable(table.serialiserTable(relu)), relu);
+});
+
 // ---- Slug : le miroir du Makefile ----
 
 test('slug d’article : mêmes règles que le Makefile', () => {

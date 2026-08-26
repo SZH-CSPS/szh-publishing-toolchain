@@ -213,9 +213,14 @@ function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.crea
     m.appendChild(itemMenu(TXT['ctx.alignGauche'],function(){aligner('left');}));
     m.appendChild(itemMenu(TXT['ctx.alignCentre'],function(){aligner('center');}));
     m.appendChild(itemMenu(TXT['ctx.alignDroite'],function(){aligner('right');}));}
-  // « Retirer » n'apparaît que si l'en-tête correspondant existe.
+  // « Retirer » n'apparaît que si l'en-tête correspondant existe. Au-delà d'une rangée
+  // ou d'une colonne, le libellé dit COMBIEN l'action en définira : le geste part de la
+  // 2e ligne, l'en-tête couvrira les deux premières — rien d'implicite.
   var sens=sensEntete(selection);
-  if(sens){sepMenu(m);m.appendChild(itemMenu(TXT.entete,onDefinirEntete));
+  if(sens){sepMenu(m);
+    var nE=nEntete(sens,selection);
+    var lblE=nE>1?fmt(TXT[sens==='lignes'?'entete.lignes':'entete.colonnes'],nE):TXT.entete;
+    m.appendChild(itemMenu(lblE,onDefinirEntete));
     var aRetirer=sens==='lignes'?(modele.attrs.enteteLignes>0):(modele.attrs.enteteColonnes>0);
     if(aRetirer){m.appendChild(itemMenu(TXT.enteteRetirer,onRetirerEntete));}}
   document.body.appendChild(m);
@@ -301,17 +306,24 @@ function majChamps(){if(!modele)return;
     var x=String(modele.attrs[cle]||'');if(champs[cle].value!==x)champs[cle].value=x;});}
 // Sens d'en-tête déduit de la sélection : une rangée du haut sur toute la largeur donne
 // 'lignes', une colonne de gauche sur toute la hauteur donne 'colonnes', sinon le bord
-// touché décide ; null si la sélection ne touche ni le haut ni la gauche.
+// touché décide. Un en-tête est toujours CONTIGU depuis le bord (c'est ce que th/scope
+// savent décrire) : la sélection n'a donc pas besoin de PARTIR du bord — désigner la
+// 2e ligne suffit à demander « les 2 premières lignes en en-tête », le libellé du menu
+// l'annonce. Au-delà de MAX_ENTETES rangées ou colonnes de profondeur, null.
+var MAX_ENTETES=2;   // miroir de normaliserModele (lib/table-model.js)
 function sensEntete(s){if(!s||!dispo)return null;var nbC=dispo.nbColonnes,nbL=dispo.nbLignes;
   var pleineLargeur=(s.cMin===0&&s.cMax===nbC-1),pleineHauteur=(s.rMin===0&&s.rMax===nbL-1);
-  if(s.rMin===0&&pleineLargeur&&!(pleineHauteur&&nbC===1))return 'lignes';
-  if(s.cMin===0&&pleineHauteur)return 'colonnes';
+  var versHaut=(s.rMin===0||s.rMax<MAX_ENTETES),versGauche=(s.cMin===0||s.cMax<MAX_ENTETES);
+  if(pleineLargeur&&versHaut&&!(pleineHauteur&&nbC===1))return 'lignes';
+  if(pleineHauteur&&versGauche)return 'colonnes';
   if(s.rMin===0&&!pleineLargeur)return 'lignes';
   if(s.cMin===0&&!pleineLargeur&&s.rMin!==0)return 'colonnes';
+  if(s.rMax<MAX_ENTETES)return 'lignes';
+  if(s.cMax<MAX_ENTETES)return 'colonnes';
   return null;}
-function onDefinirEntete(){var sens=sensEntete(selection);if(!sens){etat(TXT.rien);return;}var s=selection;
-  if(sens==='lignes'){op('entete',{sens:'lignes',n:Math.min(2,s.rMax+1)});}
-  else{op('entete',{sens:'colonnes',n:Math.min(2,s.cMax+1)});}}
+function nEntete(sens,s){return Math.min(MAX_ENTETES,(sens==='lignes'?s.rMax:s.cMax)+1);}
+function onDefinirEntete(){var sens=sensEntete(selection);if(!sens){etat(TXT.rien);return;}
+  op('entete',{sens:sens,n:nEntete(sens,selection)});}
 // Ne retire que l'en-tête du sens déduit, lignes ou colonnes, jamais les deux.
 function onRetirerEntete(){var sens=sensEntete(selection);if(!sens){etat(TXT.rien);return;}op('enteteRetirer',{sens:sens});}
 function viderSel(mode){if(!selection){etat(TXT.rien);return;}op('vider',{rMin:selection.rMin,cMin:selection.cMin,rMax:selection.rMax,cMax:selection.cMax,mode:mode});}

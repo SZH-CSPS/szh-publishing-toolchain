@@ -148,18 +148,24 @@ function ouvrir(opts) {
   const messages = [];
   let surMessage = null;
   const document = {
-    head: element('head'), body: element('body'),
+    head: element('head'), body: element('body'), documentElement: element('html'),
     createElement: (b) => element(b),
     createElementNS: (ns, b) => element(b),
     createTextNode: (t) => Object.assign(element('#texte'), { _texte: String(t) }),
     createDocumentFragment: () => element('#fragment'),
     getElementById: (id) => (parId[id] = parId[id] || element('div')),
     querySelector: () => null, querySelectorAll: () => [],
-    addEventListener: () => {}, hidden: false, activeElement: null
+    // Le menu contextuel de l'éditeur de tableau pose et retire des gestionnaires
+    // globaux : les deux doivent exister, en simples réceptacles.
+    addEventListener: () => {}, removeEventListener: () => {},
+    hidden: false, activeElement: null
   };
   const contexte = {
     document: document,
-    window: { addEventListener: (t, f) => { if (t === 'message') { surMessage = f; } } },
+    window: {
+      addEventListener: (t, f) => { if (t === 'message') { surMessage = f; } },
+      removeEventListener: () => {}
+    },
     acquireVsCodeApi: () => ({ postMessage: (m) => messages.push(m), setState: () => {}, getState: () => null }),
     FileReader: function () { this.readAsDataURL = () => {}; },
     setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
