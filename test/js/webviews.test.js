@@ -479,6 +479,11 @@ test('éditeur de tableau : le clic droit pose et retire un titre de section', (
   page.envoyer({ type: 'charger', modele: modele, disposition: table.disposition(modele),
                  accent: '', teintes: {}, presets: [], i18n: libellesTable() });
   const poignee = (r) => page.parId.zone.querySelectorAll('[data-prow]').find((e) => +e.dataset.prow === r);
+  // Les deux premières rangées sont la zone d'en-tête : pas de titre de section là.
+  poignee(1).dispatchEvent({ type: 'contextmenu', clientX: 0, clientY: 0 });
+  assert.ok(!page.document.body.querySelectorAll('.ctxitem')
+    .some((e) => e.textContent === T('table.sectionTitre')),
+    'le titre de section ne doit pas être proposé sur la 2e ligne');
   poignee(2).dispatchEvent({ type: 'contextmenu', clientX: 0, clientY: 0 });
   let item = page.document.body.querySelectorAll('.ctxitem')
     .find((e) => e.textContent === T('table.sectionTitre'));

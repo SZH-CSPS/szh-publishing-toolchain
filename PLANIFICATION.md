@@ -160,6 +160,12 @@ TSV + `<table>` minimal, relu par le collage de l'éditeur comme par Excel ; une
 de TEXTE garde la copie native) ; le bouton « + » d'insertion est centré dans son cercle
 (flex, les métriques de la police décalaient le glyphe). Suite **426 tests, 426 verts**.
 
+Retouche demandée par Robin après essai (v2026.08.54, cockpit 0.26.5) : « Définir comme
+titre de section » n'est offert qu'à **partir de la 3e rangée** — les deux premières
+(`MAX_ENTETES`) sont la zone d'en-tête, où c'est « Définir comme en-tête » qui a sa
+place. « Retirer le titre de section » reste proposé partout où un titre existe, pour
+les fichiers qui en porteraient un plus haut.
+
 ### Installation d'un poste : une source winget cassée n'arrête plus rien (v2026.08.51)
 
 Constat de Robin sur un poste neuf : `winget install` échouait (index de source jamais
