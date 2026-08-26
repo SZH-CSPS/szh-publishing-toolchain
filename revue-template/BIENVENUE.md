@@ -21,9 +21,10 @@ le texte de travail devient l'**unique version**.
 - **⚙ Métadonnées du numéro** : le **nom de la revue**, le **volume/numéro**, la **couleur** de
   l'année, le **titre du dossier thématique**. À faire **une fois** par numéro.
 - **☰ Métadonnées des articles** : pour **chaque** article, le **titre**, le **sous-titre**, les
-  **auteurs**, le **DOI**, les **mots-clés** et le **type** (article, éditorial, varia…), en
-  **français et allemand** (l'italien s'ajoute à la demande). **Rien de tout cela ne s'écrit dans
-  le texte** — le formulaire s'en occupe, et la couverture se remplit automatiquement.
+  **auteurs**, le **DOI**, les **mots-clés** et le **type** (article, éditorial, varia…), dans la
+  **langue de l'article** puis dans celle de la revue (les autres langues s'ajoutent à la
+  demande). **Rien de tout cela ne s'écrit dans le texte** — le formulaire s'en occupe, et la
+  couverture se remplit automatiquement.
 
 ### 3️⃣ Écrire et mettre en forme
 **Clique un article** dans la barre : son texte s'ouvre à gauche, son aperçu PDF à droite.

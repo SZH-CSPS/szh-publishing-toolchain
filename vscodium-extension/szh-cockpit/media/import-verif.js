@@ -20,11 +20,13 @@
   const TAILLE_MAX_IMAGE = 50 * 1024 * 1024;
   const EXTENSIONS_IMAGE = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
 
-  // Identifiants des champs vides d'une carte, d'après ses valeurs et l'état de la case
-  // « + Italien ». Fonction pure, sans DOM.
-  function listeChampsVides(valeurs, avecIt) {
+  // Identifiants des champs vides d'une carte, d'après ses valeurs et les langues que la
+  // carte affiche (langue de l'article, langue de la revue, langues cochées). Fonction
+  // pure, sans DOM.
+  function listeChampsVides(valeurs, languesVisibles) {
     const v = valeurs || {};
-    const langues = avecIt ? ['fr', 'de', 'it'] : ['fr', 'de'];
+    const langues = Array.isArray(languesVisibles) && languesVisibles.length > 0
+      ? languesVisibles : ['fr', 'de'];
     const plein = function (s) { return String(s === undefined || s === null ? '' : s).trim() !== ''; };
     const vides = [];
     if (!plein(v.type)) { vides.push('type'); }
@@ -55,8 +57,14 @@
     return b;
   }
 
+  // Les langues que la carte affiche : la mécanique avec-<lang> de _fiches.js les pose
+  // et les tient à jour, y compris au changement de langue de l'article.
+  function languesCarte(carte) {
+    return ['fr', 'de', 'it'].filter((lg) => carte.classList.contains('avec-' + lg));
+  }
+
   function majBadges(carte) {
-    const vides = new Set(listeChampsVides(cartes.collecter(carte), carte.classList.contains('avec-it')));
+    const vides = new Set(listeChampsVides(cartes.collecter(carte), languesCarte(carte)));
     for (const b of carte.querySelectorAll('.badge')) {
       const vide = vides.has(b.dataset.champ);
       b.textContent = vide ? TXT.badgeAcompleter : TXT.badgeDetecte;
@@ -101,7 +109,7 @@
         sectionImages(carte, article.slug, article.images || []);
         majBadges(carte);                          // état initial : détecté ou à compléter
       },
-      carteChangee: majBadges,                     // les champs italiens (dé)comptent
+      carteChangee: majBadges,                     // les champs des langues cochées (dé)comptent
       marque: majBadges
     }
   });

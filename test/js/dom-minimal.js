@@ -34,10 +34,13 @@ function chargerAvecVscodeFactice(chemin) {
 }
 
 function correspond(e, motif) {
-  const m = motif.match(/^\[data-([a-z-]+)(?:="([^"]*)")?\]$/);
+  // « [data-x] », « [data-x="v"] », « select[data-x=v] » : balise facultative devant,
+  // guillemets facultatifs autour de la valeur — les deux formes existent dans les pages.
+  const m = motif.match(/^([a-z]*)\[data-([a-z-]+)(?:=("?)([^"\]]*)\3)?\]$/);
   if (m) {
-    const cle = m[1].replace(/-([a-z])/g, (x, l) => l.toUpperCase());
-    return m[2] === undefined ? e.dataset[cle] !== undefined : e.dataset[cle] === m[2];
+    if (m[1] !== '' && e.balise !== m[1]) { return false; }
+    const cle = m[2].replace(/-([a-z])/g, (x, l) => l.toUpperCase());
+    return m[4] === undefined ? e.dataset[cle] !== undefined : e.dataset[cle] === m[4];
   }
   // « balise », « .classe », « .a.b », « p.occ.visible » : la balise si elle est nommée,
   // puis toutes les classes demandées.
@@ -95,7 +98,18 @@ function element(balise) {
     setAttribute(k, v) { e.attributs[k] = String(v); },
     getAttribute(k) { return e.attributs[k] === undefined ? null : e.attributs[k]; },
     removeAttribute(k) { delete e.attributs[k]; },
-    addEventListener() {}, removeEventListener() {},
+    _ecouteurs: {},
+    addEventListener(t, f) { (e._ecouteurs[t] = e._ecouteurs[t] || []).push(f); },
+    removeEventListener(t, f) { e._ecouteurs[t] = (e._ecouteurs[t] || []).filter((x) => x !== f); },
+    // Déclenche les gestionnaires posés par addEventListener. L'objet passé tient lieu
+    // d'événement ; toute exception d'un gestionnaire remonte au test, c'est voulu.
+    dispatchEvent(evt) {
+      const ev = evt || {};
+      if (!ev.preventDefault) { ev.preventDefault = () => {}; }
+      if (!ev.target) { ev.target = e; }
+      for (const f of (e._ecouteurs[ev.type] || []).slice()) { f.call(e, ev); }
+      return true;
+    },
     querySelector(s) { return chercher(e, s)[0] || null; },
     querySelectorAll(s) { return chercher(e, s); },
     closest(s) {
@@ -103,7 +117,7 @@ function element(balise) {
       while (n) { if (correspond(n, s)) { return n; } n = n.parent; }
       return null;
     },
-    focus() {}, click() {}, scrollIntoView() {},
+    focus() {}, click() { e.dispatchEvent({ type: 'click' }); }, scrollIntoView() {},
     getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0 }; }
   };
   return e;

@@ -24,7 +24,8 @@
   //   champ(label, champId)           décore l'intitulé d'un champ
   //   motsCles(label, langues, noms)  décore l'intitulé du bloc de mots-clés
   //   finCarte(carte, article)        carte construite et insérée
-  //   carteChangee(carte)             la colonne italienne vient d'être basculée
+  //   carteChangee(carte)             une colonne de langue vient d'être (dé)cochée, ou
+  //                                   la langue de l'article a changé
   //   marque(carte, slug)             une carte vient d'être marquée modifiée
   //
   // `surChangement()` est appelé quand l'ensemble des cartes modifiées change, y compris
@@ -92,7 +93,7 @@
       appeler('marque', carte, slug);
     }
 
-    // `traduction` marque les champs d'une autre langue que celle du numéro : ils sont
+    // `traduction` marque les champs d'une autre langue que celle de l'ARTICLE : ils sont
     // cachés par défaut, et révélés par le bouton de la barre. Une fiche se remplit
     // d'abord dans sa langue ; tout afficher d'emblée triplait la hauteur de la carte.
     function champTexte(carte, parent, slug, cle, langue, libelle, valeur, multiligne, traduction) {
@@ -213,9 +214,49 @@
       if (decor.titre) { decor.titre(titre, slug); } else { titre.textContent = slug; }
       carte.appendChild(titre);
       var v = article.valeurs || {};
-      var avecIt = ['title', 'subtitle', 'resume'].some(function (c) { return v[c] && v[c].it; }) ||
-        (v.keywords && v.keywords.it && v.keywords.it.length > 0);
-      if (avecIt) { carte.classList.add('avec-it'); }
+
+      // ---- Les langues de la carte ----
+      //
+      // L'ordre d'affichage suit l'ARTICLE : sa langue d'abord, puis la langue par défaut
+      // de la revue (FR pour la Revue, DE pour la Zeitschrift) comme langue de
+      // traduction. Les langues restantes de {fr, de, it} sont les « manquantes » : une
+      // case à cocher chacune, cochée d'office quand la fiche porte déjà des contenus
+      // dans cette langue. Tous les champs sont toujours construits, dans cet ordre ; le
+      // CSS ne révèle que les langues dont la carte porte la classe avec-<lang>.
+      // Une fiche sans `lang` s'affiche sous la langue du numéro, exactement le repli du
+      // sélecteur et de szh-maquette.lua.
+      var ORDRE_LANGUES = ['fr', 'de', 'it'];
+      var noms = { fr: 'FR', de: 'DE', it: 'IT' };
+      var langueRevueDefaut = ORDRE_LANGUES.indexOf(LANGUE_DEFAUT) !== -1 ? LANGUE_DEFAUT : 'fr';
+      var langueArticle = ORDRE_LANGUES.indexOf(v.lang) !== -1 ? v.lang : langueRevueDefaut;
+      var champsMultilingues = ['title', 'subtitle', 'resume'];
+
+      function languesBase() {
+        return langueArticle === langueRevueDefaut
+          ? [langueArticle] : [langueArticle, langueRevueDefaut];
+      }
+      function languesManquantes() {
+        var base = languesBase();
+        return ORDRE_LANGUES.filter(function (l) { return base.indexOf(l) === -1; });
+      }
+      function ordreAffichage() { return languesBase().concat(languesManquantes()); }
+      function languesVisibles() {
+        return languesBase().concat(
+          languesManquantes().filter(function (l) { return !!cochees[l]; }));
+      }
+      function poserClasses() {
+        var visibles = languesVisibles();
+        for (var i = 0; i < ORDRE_LANGUES.length; i++) {
+          carte.classList.toggle('avec-' + ORDRE_LANGUES[i],
+            visibles.indexOf(ORDRE_LANGUES[i]) !== -1);
+        }
+      }
+      // L'héritage : une langue manquante qui a déjà des contenus s'affiche d'office.
+      var cochees = {};
+      languesManquantes().forEach(function (lg) {
+        cochees[lg] = champsMultilingues.some(function (c) { return v[c] && v[c][lg]; }) ||
+          !!(v.keywords && v.keywords[lg] && v.keywords[lg].length > 0);
+      });
 
       var lType = document.createElement('label');
       lType.textContent = TXT.type;
@@ -250,10 +291,12 @@
 
       // Langue de l'article : elle prime au rendu sur celle du numéro. Le <select> vient
       // de SZH.choixLangue (_commun.js), une seule description pour les deux formulaires.
+      // La changer PERMUTE les contenus entre l'ancienne et la nouvelle langue — voir
+      // changerLangue() plus bas.
       var langue = SZH.choixLangue({
         valeur: v.lang, defaut: LANGUE_DEFAUT,
         textes: { libelle: TXT.langueArticle, fr: TXT.langueFr, de: TXT.langueDe, it: TXT.langueIt },
-        onChange: function () { marquer(carte, slug); }
+        onChange: function (nouvelle) { changerLangue(nouvelle); }
       });
       appeler('champ', langue.label, 'lang');
       carte.appendChild(langue.label);
@@ -271,21 +314,26 @@
       carte.appendChild(licence.label);
       carte.appendChild(licence.select);
 
-      // La langue par défaut du numéro vient en premier, les autres en dessous. L'italien
-      // est toujours construit, et révélé par le CSS.
-      var ordre = ['fr', 'de', 'it'];
-      var defaut = ordre.indexOf(LANGUE_DEFAUT) !== -1 ? LANGUE_DEFAUT : 'fr';
-      var langues = [defaut].concat(ordre.filter(function (l) { return l !== defaut; }));
-      var noms = { fr: 'FR', de: 'DE', it: 'IT' };
+      // Les champs multilingues vivent dans leur propre zone, reconstruite au changement
+      // de langue : la langue de l'article vient en premier, les autres en dessous.
       var textes = [['title', TXT.titreChamp, false], ['subtitle', TXT.sousTitre, false],
         ['resume', TXT.resume, true]];
-      for (var c = 0; c < textes.length; c++) {
-        for (var g = 0; g < langues.length; g++) {
-          var lg = langues[g];
-          champTexte(carte, carte, slug, textes[c][0], lg,
-            textes[c][1].split('{0}').join(noms[lg]), (v[textes[c][0]] || {})[lg], textes[c][2], g > 0);
+      var zoneTextes = document.createElement('div');
+      zoneTextes.className = 'champs-textes';
+      carte.appendChild(zoneTextes);
+      function rendreChampsTextes(valeurs) {
+        zoneTextes.textContent = '';
+        var langues = ordreAffichage();
+        for (var c = 0; c < textes.length; c++) {
+          for (var g = 0; g < langues.length; g++) {
+            var lg = langues[g];
+            champTexte(carte, zoneTextes, slug, textes[c][0], lg,
+              textes[c][1].split('{0}').join(noms[lg]),
+              (valeurs[textes[c][0]] || {})[lg], textes[c][2], lg !== langueArticle);
+          }
         }
       }
+      rendreChampsTextes(v);
 
       var lAuteurs = document.createElement('label');
       lAuteurs.textContent = TXT.auteurs;
@@ -304,17 +352,16 @@
       // seule langue, la position seule appariant « diagnostic » et « Diagnose ».
       var lMots = document.createElement('label');
       lMots.textContent = TXT.motsClesTitre || '';
-      appeler('motsCles', lMots, langues, noms);
+      appeler('motsCles', lMots, ordreAffichage(), noms);
       carte.appendChild(lMots);
-      var colonnes = function (avec) {
-        return langues.filter(function (l) { return l !== 'it' || avec; })
-          .map(function (l) { return { code: l, libelle: noms[l] }; });
+      var colonnes = function () {
+        return languesVisibles().map(function (l) { return { code: l, libelle: noms[l] }; });
       };
       // SZH.motsCles : la grille vit dans _commun.js, un autre IIFE. L'appeler sans le
       // préfixe levait une ReferenceError au premier bloc de mots-clés — donc à chaque
       // carte, donc sur les deux formulaires, qui s'ouvraient vides sans un mot.
       var editeurMots = SZH.motsCles({
-        langues: colonnes(avecIt),
+        langues: colonnes(),
         listes: v.keywords || {},
         edition: true,
         textes: {
@@ -326,21 +373,84 @@
       motsClesParCarte.set(carte, editeurMots);
       carte.appendChild(editeurMots.element);
 
-      var caseIt = document.createElement('label');
-      caseIt.className = 'case-it';
-      var coche = document.createElement('input');
-      coche.type = 'checkbox';
-      coche.checked = avecIt;
-      caseIt.appendChild(coche);
-      caseIt.appendChild(document.createTextNode(TXT.italien));
-      coche.addEventListener('change', function () {
-        carte.classList.toggle('avec-it', coche.checked);
-        // La colonne italienne apparaît ou disparaît ; le fragment garde ses valeurs, qui
-        // vivent dans son modèle et non dans le DOM.
-        editeurMots.reconstruire(colonnes(coche.checked));
+      // Une case par langue MANQUANTE : « + Allemand (champs DE) » pour un article IT de
+      // la Revue, « + Français » et « + Italien » pour un article DE de la Zeitschrift.
+      // Cocher révèle la colonne ; rien n'est marqué modifié — les valeurs ne bougent pas.
+      var libellesAjout = { fr: TXT.ajoutFr, de: TXT.ajoutDe, it: TXT.ajoutIt };
+      var zoneCases = document.createElement('div');
+      zoneCases.className = 'cases-langues';
+      carte.appendChild(zoneCases);
+      function rendreCases() {
+        zoneCases.textContent = '';
+        languesManquantes().forEach(function (lg) {
+          var caseLangue = document.createElement('label');
+          caseLangue.className = 'case-langue';
+          var coche = document.createElement('input');
+          coche.type = 'checkbox';
+          coche.dataset.langue = lg;
+          coche.checked = !!cochees[lg];
+          caseLangue.appendChild(coche);
+          caseLangue.appendChild(document.createTextNode(libellesAjout[lg] || lg));
+          coche.addEventListener('change', function () {
+            cochees[lg] = coche.checked;
+            poserClasses();
+            // La colonne apparaît ou disparaît ; le fragment garde ses valeurs, qui
+            // vivent dans son modèle et non dans le DOM.
+            editeurMots.reconstruire(colonnes());
+            appeler('carteChangee', carte);
+          });
+          zoneCases.appendChild(caseLangue);
+        });
+      }
+      rendreCases();
+      poserClasses();
+
+      // Changer la langue de l'article PERMUTE les contenus entre l'ancienne et la
+      // nouvelle langue — titres, sous-titres, résumés et mots-clés : rien ne se perd,
+      // les textes de l'ancienne langue passent sous la nouvelle et inversement. Une
+      // fiche sans langue déclarée s'affiche sous la langue du numéro : le premier choix
+      // permute donc DEPUIS elle, puisque c'est là que les contenus étaient montrés.
+      // Rien ne s'écrit ici : l'enregistrement normal de la carte emporte l'état permuté.
+      function changerLangue(nouvelle) {
+        var ancienne = langueArticle;
+        if (ORDRE_LANGUES.indexOf(nouvelle) === -1 || nouvelle === ancienne) {
+          marquer(carte, slug);
+          return;
+        }
+        // Relire l'écran d'abord — une frappe en cours ne doit pas se perdre — puis
+        // échanger les deux langues dans ce modèle.
+        var valeurs = { title: {}, subtitle: {}, resume: {} };
+        for (var champ of zoneTextes.querySelectorAll('input')) {
+          valeurs[champ.dataset.cle][champ.dataset.langue] = champ.value;
+        }
+        for (var zone of zoneTextes.querySelectorAll('textarea')) {
+          valeurs[zone.dataset.cle][zone.dataset.langue] = zone.value;
+        }
+        for (var c = 0; c < champsMultilingues.length; c++) {
+          var map = valeurs[champsMultilingues[c]];
+          var t = map[ancienne] || '';
+          map[ancienne] = map[nouvelle] || '';
+          map[nouvelle] = t;
+        }
+        editeurMots.permuter(ancienne, nouvelle);
+        langueArticle = nouvelle;
+        // Les cases se recalculent : l'ancienne langue devient « manquante », cochée si
+        // elle porte (encore) des contenus ; une case cochée à la main le reste.
+        var anciennes = cochees;
+        cochees = {};
+        var brut = editeurMots.collecterBrut();
+        languesManquantes().forEach(function (lg) {
+          var contenu = champsMultilingues.some(function (cle) { return !!valeurs[cle][lg]; }) ||
+            (brut[lg] || []).some(function (m) { return String(m).trim() !== ''; });
+          cochees[lg] = contenu || !!anciennes[lg];
+        });
+        poserClasses();
+        rendreChampsTextes(valeurs);
+        rendreCases();
+        editeurMots.reconstruire(colonnes());
         appeler('carteChangee', carte);
-      });
-      carte.appendChild(caseIt);
+        marquer(carte, slug);
+      }
       return carte;
     }
 
@@ -396,11 +506,21 @@
       if (selLangue) { resultat.lang = selLangue.value; }
       var selLicence = carte.querySelector('select[data-cle=licence]');
       if (selLicence) { resultat.licence = selLicence.value; }
-      for (var i of carte.querySelectorAll(':scope > input, :scope > textarea')) {
+      // Le doi n'est collecté qu'en mode manuel : case décochée, la fiche repart sans
+      // doi, et le calculé — que le champ affiche — ne s'écrit jamais nulle part.
+      var cocheDoi = carte.querySelector('[data-cle="doi-manuel"]');
+      var doiManuel = !!(cocheDoi && cocheDoi.checked);
+      var entreeDoi = carte.querySelector('input[data-cle=doi]');
+      if (entreeDoi) { resultat.doi = doiManuel ? entreeDoi.value : ''; }
+      // Les champs multilingues, dans les TROIS langues : les colonnes non révélées
+      // partent aussi, rien ne se perd à l'enregistrement.
+      for (var i of carte.querySelectorAll('.champs-textes input')) {
         var cle = i.dataset.cle;
-        var langue = i.dataset.langue;
-        if (cle === 'doi') { resultat.doi = i.value; }
-        else if (cle === 'title' || cle === 'subtitle' || cle === 'resume') { resultat[cle][langue] = i.value; }
+        if (cle === 'title' || cle === 'subtitle' || cle === 'resume') { resultat[cle][i.dataset.langue] = i.value; }
+      }
+      for (var z of carte.querySelectorAll('.champs-textes textarea')) {
+        var cleZone = z.dataset.cle;
+        if (cleZone === 'title' || cleZone === 'subtitle' || cleZone === 'resume') { resultat[cleZone][z.dataset.langue] = z.value; }
       }
       resultat.author = (auteursParCarte.get(carte) || []).slice();
       var editeurMots = motsClesParCarte.get(carte);

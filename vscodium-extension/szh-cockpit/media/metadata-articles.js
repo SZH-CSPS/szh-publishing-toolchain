@@ -2,7 +2,8 @@
 // quand l'hôte n'en envoie qu'une partie. Les cartes et la modale photo viennent de
 // SZH.cartesArticles (media/_fiches.js).
 //
-// Protocole avec l'hôte, en plus de photo-* et de l'enregistrement (voir _fiches.js) :
+// Protocole avec l'hôte, en plus de photo-*, du DOI manuel et de l'enregistrement (voir
+// _fiches.js) :
 //   webview -> hôte : pret ; modifie { modifie } ; tous ;
 //                     enregistrer { auto, articles } ; rechargement { articles }
 //   hôte -> webview : valeurs { articles, types, langue, filtre, accent } ;
@@ -37,8 +38,9 @@
 
   cartes.traductions(document.getElementById('traductions'));
 
-  // « Changer la langue de l'article » : le bouton existe, la fonction pas encore. Mieux
-  // vaut le dire dans la barre que laisser un bouton mort.
+  // « Changer la langue de l'article » : la langue se change sur chaque carte — son
+  // sélecteur permute les contenus entre l'ancienne et la nouvelle langue (_fiches.js).
+  // Le bouton de la barre est un aiguillage : il dit où se fait le geste.
   document.getElementById('langue').addEventListener('click', function () {
     etat.textContent = TXT.langueAvenir;
   });

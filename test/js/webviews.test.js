@@ -143,6 +143,172 @@ test('métadonnées : le DOI est verrouillé sur le calculé, et l’échappatoi
   assert.strictEqual(champ(cartes[2]).readOnly, true);
 });
 
+// ---- La langue de l'article pilote les champs (lot A, 25.08.2026) ----
+//
+// Trois règles, chacune avec son moyen de casser en silence :
+//  1. l'ORDRE des colonnes suit l'article — sa langue d'abord, la langue par défaut de la
+//     revue ensuite — et non plus la langue du numéro pour tout le monde ;
+//  2. les CASES sont dynamiques : une par langue manquante de {fr, de, it}, cochée
+//     d'office quand la fiche porte déjà des contenus dans cette langue ;
+//  3. changer la langue PERMUTE les contenus entre l'ancienne et la nouvelle langue —
+//     mots-clés compris — et la collecte repart fidèle : rien ne se perd.
+
+function pageFiches(articles, langueNumero) {
+  const page = ouvrir({
+    racine: RACINE, page: 'metadata-articles',
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+  });
+  page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: langueNumero,
+                 licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: null });
+  return page;
+}
+
+function ficheDe(texte) {
+  const valeurs = analyserMeta(texte);
+  delete valeurs._inconnues;
+  return valeurs;
+}
+
+// Le texte d'un élément dont les enfants portent les mots : les libellés des cases sont
+// des nœuds texte à côté de la coche, pas un textContent posé d'un bloc.
+function texteProfond(el) {
+  let t = el._texte || '';
+  for (const c of el.enfants || []) { t += texteProfond(c); }
+  return t;
+}
+
+const carteDe = (page, slug) => page.conteneur().querySelectorAll('[data-slug="' + slug + '"]')[0];
+const champsTextes = (carte) => carte.querySelectorAll('.champs-textes input')
+  .concat(carte.querySelectorAll('.champs-textes textarea'));
+const langsTitres = (carte) => champsTextes(carte)
+  .filter((i) => i.dataset.cle === 'title').map((i) => i.dataset.langue);
+const casesDe = (carte) => carte.querySelectorAll('.case-langue');
+const champDe = (carte, cle, lg) => champsTextes(carte)
+  .find((x) => x.dataset.cle === cle && x.dataset.langue === lg);
+
+test('métadonnées : la langue de l’article ouvre la carte, les cases offrent les manquantes', () => {
+  const page = pageFiches([
+    { slug: '01-de', valeurs: ficheDe('lang: de\ntitle:\n  de: "Titel"\n') },
+    { slug: '02-it', valeurs: ficheDe('lang: it\n') },
+    { slug: '03-fr', valeurs: ficheDe('lang: fr\n') },
+    { slug: '04-herite', valeurs: ficheDe('lang: fr\ntitle:\n  it: "Titolo"\n') }
+  ], 'fr');
+
+  // Article DE dans une revue FR : colonnes DE puis FR, champs DE hors traduction, une
+  // seule case — « + Italien ».
+  const de = carteDe(page, '01-de');
+  assert.deepStrictEqual(langsTitres(de), ['de', 'fr', 'it']);
+  assert.ok(de.classes.has('avec-de') && de.classes.has('avec-fr') && !de.classes.has('avec-it'),
+    'les classes avec-<lang> ne suivent pas les langues de la carte');
+  assert.ok(!champDe(de, 'title', 'de').classes.has('champ-trad'),
+    'la langue de l’article est passée en traduction : la carte s’ouvrirait vide');
+  assert.ok(champDe(de, 'title', 'fr').classes.has('champ-trad'));
+  assert.deepStrictEqual(casesDe(de).map((c) => c.querySelector('input').dataset.langue), ['it']);
+  assert.strictEqual(casesDe(de)[0].querySelector('input').checked, false);
+  assert.ok(texteProfond(casesDe(de)[0]).indexOf(T('fiches.ajout.it')) !== -1,
+    'le libellé de la case n’est pas celui de l’hôte');
+
+  // Article IT dans la Revue : IT d'abord, une seule case — « + Allemand (champs DE) ».
+  const it = carteDe(page, '02-it');
+  assert.deepStrictEqual(langsTitres(it), ['it', 'fr', 'de']);
+  assert.deepStrictEqual(casesDe(it).map((c) => c.querySelector('input').dataset.langue), ['de']);
+  assert.ok(texteProfond(casesDe(it)[0]).indexOf(T('fiches.ajout.de')) !== -1);
+
+  // Langue de l'article = langue de la revue : une seule colonne de base, deux cases.
+  const fr = carteDe(page, '03-fr');
+  assert.deepStrictEqual(langsTitres(fr), ['fr', 'de', 'it']);
+  assert.deepStrictEqual(casesDe(fr).map((c) => c.querySelector('input').dataset.langue), ['de', 'it']);
+  assert.ok(fr.classes.has('avec-fr') && !fr.classes.has('avec-de') && !fr.classes.has('avec-it'));
+
+  // Héritage : des contenus IT existants cochent la case d'office et révèlent la colonne.
+  const herite = carteDe(page, '04-herite');
+  const caseIt = casesDe(herite).map((c) => c.querySelector('input'))
+    .find((i) => i.dataset.langue === 'it');
+  assert.strictEqual(caseIt.checked, true, 'les contenus italiens existants ne cochent pas la case');
+  assert.ok(herite.classes.has('avec-it'));
+});
+
+test('métadonnées : dans la Zeitschrift, un article DE offre « + Français » et « + Italien »', () => {
+  const page = pageFiches([{ slug: '01-de', valeurs: ficheDe('lang: de\n') }], 'de');
+  const de = carteDe(page, '01-de');
+  assert.deepStrictEqual(langsTitres(de), ['de', 'fr', 'it']);
+  assert.deepStrictEqual(casesDe(de).map((c) => c.querySelector('input').dataset.langue),
+    ['fr', 'it'], 'les deux langues manquantes doivent avoir chacune leur case');
+});
+
+test('métadonnées : changer la langue permute les contenus, mots-clés compris', () => {
+  const page = pageFiches([{ slug: '01-a', valeurs: ficheDe([
+    'lang: de',
+    'title:', '  de: "Titel"', '  fr: "Titre"',
+    'subtitle:', '  de: "Untertitel"',
+    'resume:', '  de: "Zusammenfassung"', '  fr: "Résumé"',
+    'keywords:', '  de:', '  - "Diagnose"', '  fr:', '  - "diagnostic"', ''
+  ].join('\n')) }], 'fr');
+  const carte = carteDe(page, '01-a');
+  const sel = carte.querySelector('select[data-cle=lang]');
+  assert.strictEqual(sel.value, 'de');
+  assert.deepStrictEqual(langsTitres(carte), ['de', 'fr', 'it']);
+
+  // DE -> IT : les contenus s'échangent, rien ne se perd, les colonnes se réordonnent.
+  sel.value = 'it';
+  sel.dispatchEvent({ type: 'input' });
+  assert.deepStrictEqual(langsTitres(carte), ['it', 'fr', 'de'],
+    'les colonnes ne suivent pas la nouvelle langue de l’article');
+  assert.strictEqual(champDe(carte, 'title', 'it').value, 'Titel');
+  assert.strictEqual(champDe(carte, 'title', 'de').value, '');
+  assert.strictEqual(champDe(carte, 'title', 'fr').value, 'Titre', 'le français n’avait pas à bouger');
+  assert.strictEqual(champDe(carte, 'subtitle', 'it').value, 'Untertitel');
+  assert.strictEqual(champDe(carte, 'resume', 'it').value, 'Zusammenfassung');
+  assert.strictEqual(champDe(carte, 'resume', 'fr').value, 'Résumé');
+  assert.ok(!champDe(carte, 'title', 'it').classes.has('champ-trad'),
+    'la nouvelle langue de l’article reste marquée traduction');
+  assert.ok(champDe(carte, 'title', 'de').classes.has('champ-trad'));
+  assert.ok(carte.classes.has('modifie'), 'la permutation ne marque pas la carte modifiée');
+  // Les cases recalculées : l'allemand est la langue manquante, décochée — il ne reste
+  // rien sous DE après l'échange.
+  assert.deepStrictEqual(casesDe(carte).map((c) => c.querySelector('input').dataset.langue), ['de']);
+  assert.strictEqual(casesDe(carte)[0].querySelector('input').checked, false);
+  assert.ok(!carte.classes.has('avec-de'));
+
+  // La collecte après permutation est fidèle : le bouton envoie l'état permuté, les
+  // trois langues comprises — c'est cet envoi que l'hôte écrit dans le .meta.yaml.
+  page.parId.enregistrer.dispatchEvent({ type: 'click' });
+  const envoi = page.messages.filter((m) => m.type === 'enregistrer').pop();
+  assert.ok(envoi, 'aucun message d’enregistrement');
+  const envoyee = envoi.articles['01-a'];
+  // L'envoi vient d'un autre realm (vm) : on compare les valeurs, pas les prototypes.
+  const plat = (o) => JSON.parse(JSON.stringify(o));
+  assert.strictEqual(envoyee.lang, 'it');
+  assert.deepStrictEqual(plat(envoyee.title), { it: 'Titel', fr: 'Titre', de: '' });
+  assert.deepStrictEqual(plat(envoyee.subtitle), { it: 'Untertitel', fr: '', de: '' });
+  assert.deepStrictEqual(plat(envoyee.resume), { it: 'Zusammenfassung', fr: 'Résumé', de: '' });
+  assert.deepStrictEqual(plat(envoyee.keywords), { it: ['Diagnose'], fr: ['diagnostic'], de: [] });
+
+  // Et le retour IT -> DE rend tout : la permutation est sans perte, dans les deux sens.
+  sel.value = 'de';
+  sel.dispatchEvent({ type: 'input' });
+  assert.strictEqual(champDe(carte, 'title', 'de').value, 'Titel');
+  assert.strictEqual(champDe(carte, 'title', 'it').value, '');
+  assert.deepStrictEqual(langsTitres(carte), ['de', 'fr', 'it']);
+});
+
+test('métadonnées : une fiche sans langue permute depuis la langue du numéro', () => {
+  // Une fiche sans `lang` s'affiche sous la langue du numéro — c'est là que ses contenus
+  // sont montrés. Déclarer une autre langue permute donc depuis elle : le geste cohérent,
+  // le titre suit la langue qu'on vient de déclarer.
+  const page = pageFiches([{ slug: '01-sans', valeurs: ficheDe('title:\n  fr: "Titre"\n') }], 'fr');
+  const carte = carteDe(page, '01-sans');
+  const sel = carte.querySelector('select[data-cle=lang]');
+  assert.strictEqual(sel.value, 'fr', 'une fiche sans langue s’ouvre sur la langue du numéro');
+  sel.value = 'de';
+  sel.dispatchEvent({ type: 'input' });
+  assert.strictEqual(champDe(carte, 'title', 'de').value, 'Titre');
+  assert.strictEqual(champDe(carte, 'title', 'fr').value, '');
+  assert.deepStrictEqual(langsTitres(carte), ['de', 'fr', 'it']);
+});
+
 test('vérification de l’import : les mêmes cartes, badges et section des images', () => {
   const articles = articlesDuCorpus().map((a) => Object.assign({}, a, {
     images: [{ relatif: 'fig-01.png', description: '2000 × 620 · 5 Ko' }]

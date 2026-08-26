@@ -2510,7 +2510,9 @@ function textesCarteArticle() {
     titreChamp: T('fiches.titre.champ'), sousTitre: T('fiches.soustitre'),
     resume: T('fiches.resume'),
     auteurs: T('fiches.auteurs'),
-    motsCles: T('fiches.motscles'), italien: T('fiches.italien'),
+    motsCles: T('fiches.motscles'),
+    // Cases « + <langue> (champs XX) » : une par langue manquante de la carte.
+    ajoutFr: T('fiches.ajout.fr'), ajoutDe: T('fiches.ajout.de'), ajoutIt: T('fiches.ajout.it'),
     // Grille de mots-clés appariés : fragment partagé SZH.motsCles.
     motsClesTitre: T('fiches.motscles.titre'),
     motCleAjouter: T('fiches.motcle.ajouter'), motCleRetirer: T('fiches.motcle.retirer'),
@@ -2570,6 +2572,9 @@ function typesTraduits(langue) {
 // `slugsAutorises` restreint en plus à la liste du panneau.
 function ecrireCartesArticles(fournisseur, cartes, slugsAutorises) {
   const connus = new Set(fournisseur.listerArticles());
+  // Pour la permutation des statuts de traduction : une fiche sans `lang` s'affiche — et
+  // se permute — sous la langue du numéro, l'hôte lit donc le changement avec ce repli.
+  const langueNumero = langueRevue(fournisseur.racine);
   let n = 0;
   const erreurs = [];
   for (const slug of Object.keys(cartes || {})) {
@@ -2582,13 +2587,24 @@ function ecrireCartesArticles(fournisseur, cartes, slugsAutorises) {
       // haut niveau inconnues, et `source` — le nom du Word d'origine, posé par l'import,
       // qu'aucun formulaire n'affiche ni ne renvoie.
       const carte = nettoyerCarte(cartes[slug]);
+      let langAvant = null;
       try {
         const ancien = analyserMeta(fs.readFileSync(fichierMeta, 'utf8'));
         carte._inconnues = ancien._inconnues;
         if (carte.source === '') { carte.source = ancien.source; }
+        langAvant = ancien.lang || langueNumero;
       } catch (e) { /* pas de fiche existante */ }
       ecrireAtomique(fichierMeta, serialiserMeta(carte));
       n++;
+      // La langue de l'article a changé : la webview a permuté les contenus entre les
+      // deux langues, et les statuts du suivi de traduction suivent leurs contenus —
+      // sinon « finalisé » désignerait le mauvais texte. Un échec ici n'annule pas
+      // l'enregistrement — la fiche est déjà écrite — mais il se DIT, sans bloquer :
+      // un suivi resté sur l'ancienne langue se corrige dans le panneau « Traductions ».
+      if (langAvant && carte.lang && carte.lang !== langAvant) {
+        try { permuterStatutsTraduction(fournisseur.racine, slug, langAvant, carte.lang); }
+        catch (e) { vscode.window.showWarningMessage(T('fiches.statuts.echec', [slug])); }
+      }
     } catch (e) {
       erreurs.push(slug + ' (' + e.message + ')');
     }
@@ -2861,8 +2877,35 @@ function etatRemplissageGroupe(groupe) {
   return groupe.rempli ? T('trad.traduit') : T('trad.atraduire');
 }
 
-// Écrit le sidecar, ou le supprime s'il ne reste rien à retenir : ce panneau est le seul
-// à l'écrire.
+// Au changement de langue d'un article, le formulaire (webview) permute les contenus des
+// champs multilingues entre l'ancienne et la nouvelle langue. Les statuts du sidecar
+// <slug>.traduction.yaml sont indexés champ×langue : ils font le même échange, pour
+// continuer à désigner le texte qu'ils qualifiaient. Un statut qui atterrit sur la langue
+// source du suivi devient dormant — et revient tel quel si on re-permute.
+// Limite assumée : plusieurs changements de langue AVANT le même enregistrement ne
+// laissent voir à l'hôte que les deux langues extrêmes ; l'enregistrement automatique
+// (quelques secondes après le geste) rend le cas marginal.
+function permuterStatutsTraduction(racine, slug, avant, apres) {
+  if (!avant || !apres || avant === apres) { return; }
+  const suivi = lireSuiviTraduction(racine, slug);
+  const statuts = suivi.statuts || {};
+  let change = false;
+  for (const champ of CHAMPS_TRADUISIBLES) {
+    const cleAvant = cleChamp(champ, avant);
+    const cleApres = cleChamp(champ, apres);
+    const a = statuts[cleAvant];
+    const b = statuts[cleApres];
+    if (a === b) { continue; }
+    change = true;
+    if (b === undefined) { delete statuts[cleAvant]; } else { statuts[cleAvant] = b; }
+    if (a === undefined) { delete statuts[cleApres]; } else { statuts[cleApres] = a; }
+  }
+  if (!change) { return; }                         // rien à échanger : fichier intact
+  ecrireSuiviTraduction(racine, slug, suivi);
+}
+
+// Écrit le sidecar, ou le supprime s'il ne reste rien à retenir. Écrit par le panneau
+// « Traductions », par les campagnes de statut, et par la permutation ci-dessus.
 function ecrireSuiviTraduction(racine, slug, suivi) {
   const chemin = cheminTraduction(racine, slug);
   const contenu = serialiserTraduction(suivi);
@@ -6123,6 +6166,9 @@ module.exports = {
     deplacerLigne, deplacerColonne,
     tableauDepuisTsv, collerDans, appliquerOperationTable,
     fragmentCfHtml, nettoyerHtmlBureautique, nettoyerContenuCellule, tableauDepuisHtmlBureautique,
+    // Pas pures — elles lisent et écrivent le numéro — mais exposées pour le même
+    // contrôle : le fichier dérivé des DOI doit pouvoir s'éprouver sans hôte complet.
+    doisCalculesArticles, ecrireDoisCalcules, permuterStatutsTraduction,
     TEXTES_COCKPIT
   }
 };

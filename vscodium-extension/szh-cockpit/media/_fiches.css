@@ -34,14 +34,19 @@ input, select, textarea { width: 100%; box-sizing: border-box; padding: .35em .5
   border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini); }
 textarea { resize: vertical; min-height: 3.4em; font-family: inherit; }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-/* Traductions : construites toujours, cachees par defaut, revelees par la barre. La
-   colonne italienne garde sa propre condition — elle n'existe que si le numero la porte.
-   Le selecteur d'id l'emporte sur .carte.avec-it, sinon l'italien resterait visible. */
-.champ-it { display: none; }
-.carte.avec-it .champ-it { display: block; }
-#cartes.sans-trad .champ-trad, #cartes.sans-trad .carte.avec-it .champ-trad { display: none; }
-.case-it { font-weight: 700; margin-top: var(--e5); }
-.case-it input { width: auto; margin-right: .35em; accent-color: var(--accent); }
+/* Traductions : construites toujours, cachees par defaut, revelees par la barre. Chaque
+   langue a sa classe champ-<lang>, et la carte ne montre que celles qu'elle porte via
+   avec-<lang> : la langue de l'article, la langue par defaut de la revue, et chaque
+   langue « manquante » cochee. Cacher par :not() plutot que reveler par display:block :
+   chaque element (intitule, champ, badge du dialogue d'import) garde ainsi son propre
+   affichage. Le selecteur d'id garde le dernier mot, sinon une langue cochee resterait
+   visible sous « masquer les traductions ». */
+.carte:not(.avec-fr) .champ-fr, .carte:not(.avec-de) .champ-de,
+.carte:not(.avec-it) .champ-it { display: none; }
+#cartes.sans-trad .champ-trad { display: none; }
+.case-langue { font-weight: 700; margin-top: var(--e5); }
+.case-langue + .case-langue { margin-top: var(--e2); }
+.case-langue input { width: auto; margin-right: .35em; accent-color: var(--accent); }
 
 /* DOI : calcule par l'hote et montre verrouille ; la case « Definir manuellement le DOI »
    rend le champ editable, apres l'avertissement modal pose par l'hote. */

@@ -268,6 +268,7 @@ var SZH = (function () {
   //
   // collecter() rend les listes déjà alignées : chaque langue entamée est complétée par
   // la marque, et une langue dont aucune case n'est remplie rend une liste vide.
+  // permuter(a, b) échange les listes de deux langues, colonnes masquées comprises.
   var MARQUE = 'TO BE TRANSLATED';
   var styleMotsClesPose = false;
 
@@ -494,12 +495,24 @@ var SZH = (function () {
       rendre();
     }
 
+    // Permutation de deux langues : les listes s'échangent en entier, colonnes masquées
+    // comprises — c'est le geste du changement de langue d'un article, où les mots-clés
+    // suivent les titres. L'écran est relu d'abord, pour la frappe en cours.
+    function permuter(a, b) {
+      absorber();
+      var t = modele[a] || [];
+      modele[a] = modele[b] || [];
+      modele[b] = t;
+      rendre();
+    }
+
     rendre();
     return {
       element: element,
       collecter: collecter,
       collecterBrut: collecterBrut,
-      reconstruire: function (l) { reconstruire(l); }
+      reconstruire: function (l) { reconstruire(l); },
+      permuter: permuter
     };
   }
 

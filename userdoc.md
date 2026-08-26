@@ -207,9 +207,13 @@ depuis n'importe où dans la revue) :
     articles suivent.
   - **Métadonnées des articles** — un formulaire qui liste **tous les articles** :
     **type d'article** (menu déroulant, libellés dans la langue de la revue), titre,
-    sous-titre, **résumé** et mots-clés **en français et en allemand** (case « + Italien »
-    pour ajouter l'italien à un article), auteur(s) (prénom, nom, fonction, affiliation,
-    ORCID, **e-mail**) et DOI. Le **résumé** (abrégé) se saisit ici — jamais dans le texte
+    sous-titre, **résumé** et mots-clés — d'abord dans la **langue de l'article**, puis
+    dans la langue par défaut de la revue ; une case « + Français / + Allemand /
+    + Italien » par langue restante pour l'ajouter à un article —, auteur(s) (prénom,
+    nom, fonction, affiliation, ORCID, **e-mail**) et DOI. **Changer la langue d'un
+    article échange les contenus** entre l'ancienne et la nouvelle langue (titres,
+    sous-titres, résumés, mots-clés) : rien n'est perdu, et l'échange ne s'écrit qu'à
+    l'enregistrement. Le **résumé** (abrégé) se saisit ici — jamais dans le texte
     de l'article. Seuls les articles modifiés (●) sont réécrits à l'enregistrement.
     Ces informations vivent dans une **fiche cachée** à côté de l'article (invisible
     dans l'explorateur) — le texte de l'article n'est jamais touché, et la fiche ne

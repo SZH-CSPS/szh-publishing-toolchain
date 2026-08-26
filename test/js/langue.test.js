@@ -201,6 +201,96 @@ test('métadonnées des articles : le choix suit la langue du numéro', () => {
   assert.strictEqual(selectLangue(page, 'article-sans').value, 'de');
 });
 
+// ---- La cascade de langue à la compilation ----
+
+test('szh-maquette : la langue déclarée prime — un article IT dans une revue FR sort en IT', () => {
+  // La cascade lang_art > lang_num vit dans Meta() : la langue de la fiche est prise
+  // telle quelle dès qu'elle est déclarée — et « une seule liste, trois fichiers »
+  // garantit plus haut que l'italien fait partie des langues acceptées.
+  assert.match(MAQUETTE, /local lang_art = langue_fiche\(slug\)/,
+    'la maquette ne lit plus la langue de la fiche');
+  assert.match(MAQUETTE, /^\s*lang = lang_art$/m,
+    'la langue déclarée ne prime plus sur celle du numéro');
+  // …et c'est ce `lang` que pandoc reçoit et que le gabarit imprime : <html lang="it">
+  // pour un article italien, quelle que soit la revue.
+  assert.match(MAQUETTE, /meta\['lang'\] = pandoc\.MetaString\(lang\)/,
+    'la langue résolue ne repart plus vers le gabarit');
+  assert.match(lire('pipeline', 'templates', 'szh-article.html'), /<html[^>]* lang="\$lang\$"/,
+    'le gabarit n’imprime plus la langue résolue');
+  // Le rendu compilé lui-même (dont un article IT dans la Revue) se prouve par le banc
+  // WSL : test/build-render.sh — hors de portée de cette suite.
+});
+
+// ---- Le changement de langue, côté hôte ----
+//
+// La permutation des CONTENUS est faite par le formulaire (webview), qui renvoie l'état
+// permuté à l'enregistrement — voir webviews.test.js. L'hôte, lui, fait suivre les
+// STATUTS du suivi de traduction (<slug>.traduction.yaml, indexé champ×langue) : sans
+// cet échange, « finalisé » désignerait le mauvais texte.
+
+test('changer la langue d’un article permute aussi les statuts de traduction', async () => {
+  const { revueDEssai, activerHote } = require('./hote-factice');
+  const revue = revueDEssai();                     // Revue FR : la langue du numéro est fr
+  const hote = activerHote(revue);
+  const dossier = path.join(revue, 'articles', '01-essai');
+  fs.writeFileSync(path.join(dossier, '01-essai.meta.yaml'), [
+    'type: article', 'lang: de', 'title:', '  de: "Titel"', '  it: "Titolo"',
+    'author:', '- nom: "SZH"', ''].join('\n'));
+  fs.writeFileSync(path.join(dossier, '01-essai.traduction.yaml'), [
+    'statuts:', '  title.fr: pret-relecture', '  title.it: finalise',
+    'commentaire: |', '  Garder.', ''].join('\n'));
+  await hote.arbre().getChildren();                // donne sa racine au fournisseur
+  await hote.executer('szh.apercuMetadonnees');
+  const p = hote.panneauDeType('szhApercuMetadonnees');
+  assert.ok(p, 'panneau des métadonnées absent');
+  await p._recepteur({ type: 'pret' });
+  // La webview a permuté DE↔IT et renvoie l'état permuté, langue comprise — la forme
+  // exacte de collecter() dans media/_fiches.js.
+  await p._recepteur({ type: 'enregistrer', auto: true, articles: { '01-essai': {
+    type: 'article', lang: 'it', licence: '', doi: '',
+    title: { de: 'Titolo', fr: '', it: 'Titel' }, subtitle: {}, resume: {}, keywords: {},
+    author: [{ nom: 'SZH' }] } } });
+  const meta = fs.readFileSync(path.join(dossier, '01-essai.meta.yaml'), 'utf8');
+  assert.match(meta, /^lang: it$/m, 'la nouvelle langue n’est pas écrite');
+  assert.ok(meta.indexOf('it: "Titel"') !== -1, 'le titre permuté n’est pas écrit');
+  const chemin = path.join(dossier, '01-essai.traduction.yaml');
+  const suivi = fs.readFileSync(chemin, 'utf8');
+  // title.it — qui qualifiait l'ancien texte italien, parti sous DE — suit sous
+  // title.de ; title.fr ne bouge pas ; le commentaire survit.
+  assert.match(suivi, /^ {2}title\.de: finalise$/m, 'le statut n’a pas suivi son texte');
+  assert.ok(!/^ {2}title\.it:/m.test(suivi), 'le statut italien qualifie maintenant l’ancien texte allemand');
+  assert.match(suivi, /^ {2}title\.fr: pret-relecture$/m, 'le statut français n’avait pas à bouger');
+  assert.ok(suivi.indexOf('Garder.') !== -1, 'le commentaire du suivi est perdu');
+
+  // Un enregistrement SANS changement de langue laisse le sidecar intact — SharePoint
+  // répliquerait chaque octet pour rien. La sentinelle est l'heure du fichier.
+  const sentinelle = new Date(2000, 0, 1);
+  fs.utimesSync(chemin, sentinelle, sentinelle);
+  await p._recepteur({ type: 'enregistrer', auto: true, articles: { '01-essai': {
+    type: 'article', lang: 'it', title: { de: 'Titolo', it: 'Titel' }, subtitle: {},
+    resume: {}, keywords: {}, author: [{ nom: 'SZH' }] } } });
+  assert.strictEqual(fs.statSync(chemin).mtime.getFullYear(), 2000,
+    'le sidecar a été réécrit sans changement de langue');
+
+  // Et quand le sidecar ne PEUT PAS s'écrire, l'échec se dit — chasse aux échecs muets.
+  // La panne : un dossier squatte le nom du fichier temporaire de l'écriture atomique
+  // (~$<nom>), et writeFileSync échoue sur toutes les plateformes. La fiche, elle,
+  // s'enregistre quand même, et l'avertissement non bloquant oriente vers le panneau.
+  fs.mkdirSync(path.join(dossier, '~$01-essai.traduction.yaml'));
+  const nAvant = hote.avertissements.length;
+  await p._recepteur({ type: 'enregistrer', auto: true, articles: { '01-essai': {
+    type: 'article', lang: 'de', title: { de: 'Titel', it: 'Titolo' }, subtitle: {},
+    resume: {}, keywords: {}, author: [{ nom: 'SZH' }] } } });
+  assert.match(fs.readFileSync(path.join(dossier, '01-essai.meta.yaml'), 'utf8'), /^lang: de$/m,
+    'la fiche elle-même doit s’enregistrer malgré le sidecar bloqué');
+  const nouveaux = hote.avertissements.slice(nAvant);
+  assert.ok(nouveaux.some((m) => String(m).indexOf('01-essai') !== -1
+    && /suivi de traduction/.test(String(m))),
+    'l’échec de la permutation des statuts est resté muet : ' + JSON.stringify(nouveaux));
+  assert.strictEqual(fs.readFileSync(chemin, 'utf8').indexOf('title.it:'), -1,
+    'le sidecar aurait dû rester tel quel, l’écriture étant bloquée');
+});
+
 test('métadonnées des articles : les langues sont nommées, en français et en allemand', () => {
   const page = ouvrirFiches([{ slug: 'a', valeurs: { lang: 'it' } }], 'fr');
   const noms = selectLangue(page, 'a').enfants.map((o) => o.textContent);
