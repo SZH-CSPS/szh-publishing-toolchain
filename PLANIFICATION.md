@@ -62,6 +62,57 @@ Demandé par Robin le 26.08.2026, dans la continuité de G2/G bis (TreeView nati
 
 Notes : tests hôte enrichis (accordéon commande + chevron, reveal, décoration) ; hôte factice appris `registerFileDecorationProvider`, événements d'expansion, enregistreur de `reveal`, éditeur actif déclenchable. Suggestion complémentaire hors code (déploiement) : `workbench.colorCustomizations.list.inactiveSelectionBackground` pour une sélection native plus soutenue.
 
+### Lot J — le tableau des auteurs ne tombe plus en silence (v2026.08.51)
+
+Parti d'un Word déposé par Robin le 26.08.2026 : à la conversion, les quatre autrices et auteurs
+n'avaient ni fonction, ni e-mail, ni portrait. Cause unique — `TITRES_ACAD` connaissait `em`, la
+forme allemande d'*émérite*, pas `ém`, la française. L'épluchage des titres s'arrête au premier
+jeton inconnu, la cellule `r1c0` devenait illisible, et le jugement tout-ou-rien de
+`analyser_table_auteurs()` emportait les trois cellules parfaitement lisibles avec elle. Le repli
+sur la ligne d'auteurs sous le titre ne portait **aucun avertissement** : c'est ce silence, et non
+la liste de titres, qui est le vrai défaut.
+
+**Passe sur tout le corpus** (486 Word : les 421 galleys d'`tmp/corpus-ojs`, les 64 de
+`tmp/docx-dev`, le fichier déposé), harnais dans `tmp/` — `scan-auteurs.py`, `scan-auteurs2.py`,
+`scan-avertis.py`, `comparer-auteurs.py`. Tableaux lus **404 → 421**, replis byline 35 → 18,
+e-mails 784 → 833, fonctions 794 → 844, portraits appariés 738 → 779, **0 régression** (la
+comparaison est faite fiche par fiche, ligne à ligne, entre les deux versions du parser).
+
+Cinq règles, aucune n'assouplissant le jugement d'une cellule de prose — c'est lui qui protège les
+encadrés de contenu :
+
+1. `_est_titre_academique()` découpe le jeton sur le point et le tiret : `Univ.-Prof.`,
+   `Dipl.-Psych.`, `Dr.in` tiennent sans allonger la liste à chaque graphie. Suffixe féminin
+   autrichien (`SUFFIXES_TITRE`) et liants d'une chaîne d'honneur (`Dr. Dr. et Prof. h. c.`) ont
+   leur règle propre ; `, M. A.`, écrit lettre par lettre, se lit collé.
+2. Une première ligne qui ne porte **que** des titres est sautée, le nom étant à la suivante
+   (`Prof. Dr. phil.` puis `Angelika Schöllhorn`). Uniquement dans ce cas : chercher un nom plus
+   loin dans n'importe quelle cellule ferait passer un encadré pour un bloc auteurs.
+3. La remontée des tableaux de fin fait `continue` et non `break` sur un refus. Un encadré de
+   contenu placé **après** le bloc auteurs le masquait entièrement — 4 articles, dont
+   `1624_Des-temoignages` qui annonçait `"source": "tableau"` avec 2 auteurs sur 5 : il avait
+   l'air d'une réussite. Le garde-fou de position (40 % du document) reste le seul arrêt.
+4. Une cellule-photo tolère son crédit (`© Franca Pedrazetti`, `@ ARC Sieber`). Le schéma d'auteur
+   n'a pas de champ crédit : le texte part avec le tableau, donc `credit-photo-non-repris` le cite
+   mot pour mot.
+5. `tableau-auteurs-non-lu` — le correctif qui compte. Il ne se lève que si un tableau refusé en
+   fin de document porte un **e-mail** : c'est ce signal qui distingue un bloc auteurs illisible
+   d'un encadré qu'on a eu raison de laisser. 9 articles du corpus le déclenchent.
+
+Effet de bord réparé au passage : `Dr.in` pris pour un prénom donnait le slug
+`portraits/dr.original.png` pour *deux* personnes, la seconde perdant sa photo sous un
+`photo-homonyme-ignoree` incompréhensible. Six prénoms remis d'aplomb, huit faux
+`byline-differente-du-tableau` disparus.
+
+Assumé, et c'est le bon comportement : 12 notices biographiques en prose libre restent illisibles
+— le schéma n'a pas de champ biographie, le tableau reste dans le corps et s'imprime. Plus 3 vrais
+encadrés de contenu et 3 Word sans bloc auteurs. Suite **420 tests, 420 verts** (3 neufs).
+`docs/MAINTENANCE.md` gagne « La fiche n'a que les noms », et `TODORMO.md` une forme de plus dans
+la chasse aux échecs muets : *un repli légitime qui ne dit pas qu'il a eu lieu.*
+
+⚠ Les numéros déjà importés ne profitent pas de la correction : la fiche est écrite à l'import.
+Sur un article dont le bloc auteurs manque, il faut *Réimporter cet article*.
+
 ### Retouche lot I bis (v2026.08.50, cockpit 0.26.2)
 
 Constat de Robin : recliquer l'en-tête de la section déjà dépliée la repliait — la section active doit rester ouverte. Le clic-titre ne replie plus jamais : il déplie si besoin (accordéon) et ouvre la vue d'ensemble ; sur une section déjà ouverte, il n'ouvre que la vue. Le repli reste au chevron (seul chemin vers l'état « tout fermé »). La commande est renommée `szh.basculerSection` → `szh.ouvrirSection` (elle ne bascule plus).

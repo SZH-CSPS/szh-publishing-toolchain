@@ -579,6 +579,14 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
   - *une lecture qui rend « rien » et qu'on prend pour « absent ».* `Get-ScheduledTask` sous
     charge : la tâche existait, la réponse était vide, et le script s'apprêtait à la recréer en
     effaçant son historique.
+  - *un repli légitime qui ne dit pas qu'il a eu lieu.* `docx-meta.py` juge le tableau des
+    auteurs tout-ou-rien, à raison — un encadré de contenu ne doit pas se faire prendre pour un
+    bloc auteurs. Mais le repli sur la ligne d'auteurs sous le titre ne portait aucun code : la
+    fiche n'avait plus que des noms, l'export partait sans affiliation ni e-mail, `portraits/`
+    restait vide, et la ligne de statistiques avait l'air normale. Un « ém. » inconnu suffisait.
+    Dix-sept articles du corpus étaient dans ce cas, dont un — cinq auteurs, deux lus — qui se
+    présentait comme une réussite. Corrigé le 26.08.2026 (`tableau-auteurs-non-lu`) ; la forme,
+    elle, est à chercher ailleurs : **tout repli sur une valeur par défaut est un candidat.**
 
   **Comment chercher** : les motifs `Out-Null`, `2>/dev/null`, `|| true`, `-@`, `| head`,
   `-ErrorAction SilentlyContinue`, `except:` nu, `catch {}` vide, et tout `$?`/`$LASTEXITCODE`

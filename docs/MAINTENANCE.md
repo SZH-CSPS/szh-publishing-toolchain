@@ -587,6 +587,46 @@ aucun nom reconnu.
 styles attendus. Le corpus de mise au point est dans `tmp/docx-dev/` (hors dépôt) :
 c'est là qu'on rejoue un cas qui échoue.
 
+### La fiche n'a que les noms : ni fonction, ni e-mail, ni portrait
+
+**Symptôme.** Après l'import, « Métadonnées des articles » montre les autrices et auteurs
+avec leur seul prénom et nom, le tableau du Word s'imprime tel quel en fin d'article au
+lieu d'être composé en bloc auteurs, et `portraits/` est vide. La ligne
+`[import-meta]` du journal le dit en un mot : `"source": "byline"`.
+
+**Le mécanisme.** `docx-meta.py` lit d'abord le tableau de fin du Word — une cellule par
+personne, nom, fonction, affiliation, e-mail, portrait. Le jugement est **strict** : une
+seule cellule qu'il ne sait pas lire et le tableau entier reste dans le corps, la fiche se
+rabattant sur la ligne d'auteurs sous le titre, qui ne porte que des noms. C'est voulu —
+un encadré de contenu en fin d'article ne doit pas se faire prendre pour un bloc auteurs —
+mais le prix d'une cellule illisible est élevé.
+
+**À observer.** Le code `tableau-auteurs-non-lu` du journal d'import. Il ne se lève que
+lorsqu'un tableau refusé en fin de document porte un **e-mail** : c'est ce signal qui
+distingue un bloc auteurs qu'on n'a pas su lire d'un encadré qu'on a eu raison de laisser.
+Sans ce code, le repli était muet — il a laissé passer dix-sept articles du corpus.
+
+**Causes déjà vues, et ce que la chaîne sait désormais lire.** Un titre académique inconnu
+en tête de cellule (« Prof. ém. Dre », « Dr. theol. », « Dipl.-Psych. », « Dr.in »,
+« Univ.-Prof. em. Dr. Dr. et Prof. h. c. ») ; une première ligne qui ne porte que des
+titres, le nom étant à la ligne suivante ; un crédit de photo posé dans la cellule du
+portrait (« © Franca Pedrazetti ») ; un encadré de contenu placé **après** le bloc auteurs,
+qui le masquait entièrement. Ces quatre cas sont lus depuis le 26.08.2026, mesurés sur les
+486 Word du corpus de mise au point : 404 tableaux lus deviennent 421, sans régression.
+
+**Reste illisible, et c'est assumé.** La notice biographique en prose libre
+(« Monica Induni-Pianezzi est autrice et formatrice, ainsi que… »). Le schéma d'auteur n'a
+pas de champ pour une biographie ; le tableau reste donc dans le corps et s'imprime, ce
+qui est le bon comportement. Huit articles du corpus sont dans ce cas.
+
+**Manœuvre.** Compléter la fiche à la main dans « Métadonnées des articles » — c'est le
+plus court quand l'article est déjà importé. Ou remettre chaque personne dans sa propre
+cellule du Word (nom, puis fonction, puis e-mail), puis *Réimporter cet article*.
+
+**Voisin.** Le code `credit-photo-non-repris` : le tableau des auteurs portait un crédit de
+photo, il part avec le tableau et ne s'imprimera plus, le schéma n'ayant pas de champ pour
+lui. Le message cite le crédit mot pour mot, à reporter où il doit paraître.
+
 ### Le portrait d'un auteur n'a pas de texte alternatif, et n'est pas dans le Word
 
 **Ce n'est pas un défaut, c'est une décision** du 24.08.2026. Le portrait est une image

@@ -252,6 +252,83 @@ test('docx-meta.py : une langue devinée est écrite, mais elle est dite', () =>
   assert.match(py, /'\[de\] '/, 'l’avertissement n’existe qu’en français');
 });
 
+// ---- Le tableau des auteurs : ce qui l'a fait tomber en silence ----
+//
+// Un seul « ém. » inconnu coûtait les quatre autrices et auteurs d'un article, sans un
+// mot : la cellule refusée faisait tomber le tableau entier, la fiche se rabattait sur la
+// byline (des noms, rien d'autre), et rien ne le disait. Sur les 486 Word du corpus de
+// mise au point, ces règles font passer les tableaux lus de 404 à 421, sans régression.
+
+test('docx-meta.py : un titre académique composé ne fait plus tomber le tableau', () => {
+  const py = lire('pipeline', 'docx-meta.py');
+  // Le test d'un jeton vit en UN endroit, et il découpe le jeton : « Univ.-Prof. »,
+  // « Dipl.-Psych. », « Dr.in ». Allonger la liste à chaque graphie ne tenait pas.
+  assert.match(py, /def _est_titre_academique\(jeton\):/,
+    'le test d’un titre académique n’est plus centralisé');
+  assert.match(py, /re\.split\(r'\[\.\\-\/\]', jeton/,
+    'un titre composé (« Dipl.-Psych. ») n’est plus découpé en fragments');
+  assert.match(py, /SUFFIXES_TITRE = \{'in', 'innen'\}/,
+    '« Dr.in » redeviendrait un prénom, et deux portraits se battraient pour un slug');
+  // La chaîne d'honneur « Dr. Dr. et Prof. h. c. » : le liant tombe entre deux titres.
+  assert.match(py, /LIANTS_TITRE = /, 'les liants d’une chaîne d’honneur ne tombent plus');
+  // Les deux bouts passent par la même fonction, jamais par un test réécrit sur place.
+  assert.strictEqual((py.match(/_oter_titres\(/g) || []).length, 4,
+    'l’épluchage des titres s’est remis à vivre en plusieurs exemplaires');
+  // Un titre écrit lettre par lettre (« , M. A. ») ne se lit pas jeton par jeton.
+  assert.match(py, /colle = ''\.join\(queue\)\.replace\('\.', ''\)\.lower\(\)/,
+    '« Lisa Neumann, M. A. » garderait son titre dans le nom');
+  // « Prof. Dr. » seul sur sa ligne : le nom est à la suivante. Uniquement dans ce cas —
+  // chercher un nom plus loin dans n'importe quelle cellule ferait passer un encadré de
+  // contenu pour un bloc auteurs.
+  assert.match(py, /if not premier and len\(lignes\) > 1 and not _sans_titres_academiques\(/,
+    'une cellule dont la 1re ligne ne porte que des titres reste illisible');
+});
+
+test('docx-meta.py : un encadré de fin ne masque plus le bloc auteurs', () => {
+  const py = lire('pipeline', 'docx-meta.py');
+  const boucle = py.slice(py.indexOf('for k in range(len(tables) - 1, -1, -1):'),
+    py.indexOf('premier_tbl_consomme = idx_bloc') + 40);
+  assert.ok(boucle, 'la boucle des tableaux de fin a disparu');
+  // Le refus d'un tableau ne clôt plus la recherche : sinon un encadré de contenu placé
+  // après le bloc auteurs le rendait invisible — et l'article partait avec deux auteurs
+  // sur cinq, sans que la ligne de statistiques n'ait l'air anormale.
+  assert.match(boucle, /if not ok:[\s\S]*?continue/,
+    'un tableau refusé arrête à nouveau la remontée : le bloc auteurs derrière est perdu');
+  assert.ok(boucle.indexOf('if not ok:\n            break') === -1,
+    'la boucle s’arrête encore au premier tableau refusé');
+  // Le garde-fou de position reste le seul arrêt : jamais un bloc auteurs si tôt.
+  assert.match(boucle, /if idx_bloc \/ nblocs < 0\.4:[^\n]*\n *break/,
+    'la remontée n’est plus bornée au dernier tiers du document');
+});
+
+test('docx-meta.py : un tableau d’auteurs non lu, et un crédit emporté, se disent', () => {
+  const py = lire('pipeline', 'docx-meta.py');
+  // C'est l'avertissement manquant qui a laissé passer les cas pendant tout un corpus :
+  // la fiche n'avait que des noms, l'export partait sans affiliation ni e-mail, et le
+  // rédacteur n'avait rien à l'écran.
+  assert.ok(py.indexOf("'tableau-auteurs-non-lu'") !== -1,
+    'le repli sur la byline est redevenu muet');
+  assert.match(py, /if refuses_parlants and not auteurs_table:/,
+    'le repli ne se dit plus, ou se dit quand le tableau a été lu');
+  // Un e-mail dans un tableau refusé : c'est ce signal, et lui seul, qui distingue un
+  // bloc auteurs illisible d'un encadré de contenu qu'on a eu raison de laisser.
+  assert.match(py, /RE_EMAIL\.search\(' '\.join\(texte_paragraphe\(p\)/,
+    'le tri entre bloc auteurs illisible et encadré de contenu a disparu');
+  // Le crédit du portrait n'a pas de champ dans le schéma : il part avec le tableau, donc
+  // il se dit. Règle d'or — ne jamais perdre de texte en silence.
+  assert.match(py, /RE_CREDIT_PHOTO = re\.compile\(/,
+    'un crédit sous le portrait fait de nouveau tomber le tableau entier');
+  assert.ok(py.indexOf("'credit-photo-non-repris'") !== -1,
+    'le crédit emporté avec le tableau disparaît sans un mot');
+  // Les deux phrases existent dans les deux langues, comme tout le reste du journal.
+  const bloc = py.slice(py.indexOf("'tableau-auteurs-non-lu'"),
+    py.indexOf("'biblio-references-restees'"));
+  assert.strictEqual((bloc.match(/article « %s »/g) || []).length, 2,
+    'un des deux avertissements ne nomme plus l’article');
+  assert.ok(bloc.indexOf('Autorinnen und Autoren') !== -1,
+    'les nouveaux avertissements n’existent qu’en français');
+});
+
 test('la fiche garde son champ source après un passage par le formulaire', () => {
   // `source:` est une clé de première classe de lib/yaml.js. Ce contrôle vérifie qu'elle
   // survit à un aller-retour du sérialiseur — sinon la détection du redépôt s'éteindrait

@@ -364,12 +364,53 @@ CONNECTEURS = re.compile(
 PARTICULES = {'de', 'von', 'van', 'der', 'den', 'da', 'di', 'du', 'le', 'la', 'a',
               'ten', 'ter', 'te', 'zu', 'zur', 'vom', 'am', 'y', 'e', 'dos', 'del'}
 TITRES_ACAD = {'dr', 'dre', 'drs', 'dott', 'ssa', 'prof', 'pd', 'dres', 'phil', 'lic', 'iur', 'med', 'rer', 'nat',
-               'dipl', 'msc', 'ma', 'ba', 'bsc', 'phd', 'em', 'hab', 'habil', 'des',
+               'dipl', 'msc', 'ma', 'ba', 'bsc', 'phd', 'em', 'ém', 'emer', 'hab',
+               'habil', 'des', 'theol', 'psych',
                'hc', 'mag', 'mlaw', 'blaw', 'msed', 'edd', 'mba', 'ms', 'mph', 'ing',
                'paed', 'päd', 'soz', 'pol', 'oec', 'hsg', 'msw', 'bsw', 'ded', 'sc',
                'h', 'c', 'univ', 'doz', 'priv'}
+# Suffixe féminin autrichien collé au titre (« Dr.in », « Prof.in ») : jamais un titre à
+# lui seul, seulement le fragment d'un jeton qui en contient un.
+SUFFIXES_TITRE = {'in', 'innen'}
+# Liants d'une chaîne d'honneur (« Dr. Dr. et Prof. h. c. ») : sautés seulement entre
+# deux titres, jamais devant un nom.
+LIANTS_TITRE = {'et', 'und', 'and', '&', '/'}
 RE_EMAIL = re.compile(r'\b([\w.+-]+@[\w-]+(?:\.[\w-]+)+)\b')
 RE_ORCID = re.compile(r'\b(\d{4}-\d{4}-\d{4}-\d{3}[\dxX])\b')
+
+
+def _est_titre_academique(jeton):
+    """Un jeton est un titre académique si tous ses fragments en sont, et au moins un
+    vraiment : « Univ.-Prof. », « Dipl.-Psych. », « Dr.in ». Découper sur le point et le
+    tiret évite d'allonger la liste à chaque graphie composée rencontrée."""
+    fragments = [f for f in re.split(r'[.\-/]', jeton.strip('.,;')) if f]
+    if not fragments:
+        return False
+    vrais = 0
+    for f in fragments:
+        f = f.lower()
+        if f in TITRES_ACAD:
+            vrais += 1
+        elif f not in SUFFIXES_TITRE:
+            return False
+    return vrais > 0
+
+
+def _oter_titres(jetons, gauche):
+    """Retire les titres académiques d'un bout de la liste, liants compris dès qu'un titre
+    est déjà tombé de ce côté. Retourne le nombre de jetons retirés."""
+    otes = 0
+    while jetons:
+        j = jetons[0] if gauche else jetons[-1]
+        if _est_titre_academique(j):
+            pass
+        elif otes and j.strip('.,;').lower() in LIANTS_TITRE:
+            pass
+        else:
+            break
+        jetons.pop(0 if gauche else -1)
+        otes += 1
+    return otes
 
 
 def _sans_titres_academiques(t):
@@ -378,14 +419,15 @@ def _sans_titres_academiques(t):
     t = t.replace('†', ' ').strip().strip(',;').strip()
     morceaux = t.split(',', 1)
     if len(morceaux) == 2:
-        queue = [x.strip('. ').lower() for x in morceaux[1].replace('/', ' ').split()]
-        if queue and all(x in TITRES_ACAD for x in queue if x):
+        queue = [x for x in morceaux[1].replace('/', ' ').split() if x]
+        # « , M. A. » : un titre écrit lettre par lettre ne se lit pas jeton par jeton.
+        colle = ''.join(queue).replace('.', '').lower()
+        if queue and (all(_est_titre_academique(x) for x in queue)
+                      or colle in TITRES_ACAD):
             t = morceaux[0]
     jetons = t.split()
-    while jetons and jetons[0].rstrip('.').lower() in TITRES_ACAD:
-        jetons.pop(0)
-    while jetons and jetons[-1].rstrip('.').lower() in TITRES_ACAD:
-        jetons.pop()
+    _oter_titres(jetons, True)
+    _oter_titres(jetons, False)
     return ' '.join(jetons).strip().strip(',;').strip()
 
 
@@ -413,8 +455,7 @@ def _decouper_ligne_nom(t):
         gauche = _sans_titres_academiques(morceaux[0])
         if nom_plausible(gauche):
             jetons = morceaux[1].split()
-            while jetons and jetons[0].rstrip('.').lower() in TITRES_ACAD:
-                jetons.pop(0)
+            _oter_titres(jetons, True)
             return gauche, ' '.join(jetons).strip()
     return '', ''
 
@@ -506,6 +547,13 @@ def cellule_auteur(tc):
     if not lignes:
         return None
     premier, amorce_fonction = _decouper_ligne_nom(lignes[0][0])
+    # Ligne de titres seuls, le nom à la ligne suivante (« Prof. Dr. phil. » puis
+    # « Angelika Schöllhorn ») : la ligne est sautée. Seulement si elle ne contient QUE
+    # des titres — chercher un nom plus loin dans n'importe quelle cellule ferait passer
+    # un encadré de contenu pour un bloc auteurs.
+    if not premier and len(lignes) > 1 and not _sans_titres_academiques(lignes[0][0]):
+        lignes.pop(0)
+        premier, amorce_fonction = _decouper_ligne_nom(lignes[0][0])
     if not premier:
         return None
     email = ''
@@ -556,6 +604,16 @@ def cellule_auteur(tc):
             'affiliation': affiliation, 'orcid': orcid, 'email': email}
 
 
+# Crédit posé sous le portrait, dans la cellule-image (« © Franca Pedrazetti »,
+# « @ ARC Sieber ») : la cellule tient une image et rien d'autre qu'un crédit. C'est une
+# cellule-photo, et elle ne doit pas faire tomber le tableau entier. Le schéma d'auteur
+# n'ayant pas de champ crédit, le texte part avec le tableau : analyser_table_auteurs()
+# le remonte pour que le rédacteur soit prévenu.
+RE_CREDIT_PHOTO = re.compile(
+    r'^(?:[©@]|\(c\)|cr[ée]dits?\b|photos?\s*:'
+    r'|foto(?:grafie)?\s*:|bild(?:quelle)?\s*:)', re.I)
+
+
 def _apparier(sans_photo, libres):
     """Apparie des cellules-photos à des auteurs sans photo, dans l'ordre, et seulement
     si les comptes concordent : mieux vaut aucune photo qu'une photo sur la mauvaise
@@ -567,7 +625,7 @@ def _apparier(sans_photo, libres):
 
 
 def analyser_table_auteurs(tbl):
-    """(est_tableau_auteurs, [auteurs], nb_photos, {images des cellules-photos}). Strict :
+    """(est_tableau_auteurs, [auteurs], nb_photos, {images}, [crédits de photo]). Strict :
     toute cellule non vide doit être soit une image seule (photo), soit une cellule auteur —
     une seule cellule de prose libre suffit à laisser le tableau dans le corps.
 
@@ -585,14 +643,18 @@ def analyser_table_auteurs(tbl):
     photos = 0
     libres_table = []
     connues = set()
+    credits = []
     for tr in (x for x in tbl if x.tag == W + 'tr'):
         rangee_auteurs = []
         rangee_libres = []
         for tc in (x for x in tr if x.tag == W + 'tc'):
             if next(tc.iter(W + 'tbl'), None) is not None:
-                return False, [], 0, set()   # tableau imbriqué : pas un bloc auteurs
+                return False, [], 0, set(), []   # tableau imbriqué : pas un bloc auteurs
             texte = normaliser(' '.join(texte_paragraphe(p)
                                         for p in tc if p.tag == W + 'p'))
+            if texte and len(texte) <= 80 and a_image(tc)                     and RE_CREDIT_PHOTO.match(texte):
+                credits.append(texte)
+                texte = ''                # cellule-photo malgré son crédit
             if not texte:
                 if a_image(tc):
                     photos += 1
@@ -603,7 +665,7 @@ def analyser_table_auteurs(tbl):
                 continue
             a = cellule_auteur(tc)
             if a is None:
-                return False, [], 0, set()
+                return False, [], 0, set(), []
             if a_image(tc):
                 photos += 1
                 connues.update(n for n, _ in images_de(tc))
@@ -616,7 +678,7 @@ def analyser_table_auteurs(tbl):
                             if not any(a.get('_image') == n for a in rangee_auteurs))
         auteurs.extend(rangee_auteurs)
     _apparier([a for a in auteurs if not a.get('_image')], libres_table)
-    return (len(auteurs) > 0), auteurs, photos, connues
+    return (len(auteurs) > 0), auteurs, photos, connues, credits
 
 
 # ---------------------------------------------------------------------------------
@@ -1084,17 +1146,28 @@ def principal(argv):
     photos = 0
     photos_connues = set()                # images des cellules-photos, à ne pas purger
     premier_tbl_consomme = None           # indice de bloc du 1er tableau consommé
+    credits_photo = []                    # crédits partis avec les tableaux consommés
+    refuses_parlants = 0                  # tableaux de fin refusés portant un e-mail
     for k in range(len(tables) - 1, -1, -1):
         idx_bloc, tbl = tables[k]
         if idx_bloc / nblocs < 0.4:       # jamais un bloc auteurs si tôt (corpus : >= 0.53)
             break
-        ok, auteurs, nb_photos, connues = analyser_table_auteurs(tbl)
+        ok, auteurs, nb_photos, connues, credits = analyser_table_auteurs(tbl)
         if not ok:
-            break
+            # On continue vers le haut au lieu de s'arrêter : un encadré de contenu en
+            # fin d'article ne doit pas masquer le bloc auteurs placé juste avant. Le
+            # tableau refusé reste dans le corps, comme toujours. Un e-mail dedans
+            # trahit un bloc auteurs qu'on n'a pas su lire : c'est ce qui se dit au
+            # rédacteur plus bas.
+            if RE_EMAIL.search(' '.join(texte_paragraphe(p)
+                                        for p in tbl.iter(W + 'p'))):
+                refuses_parlants += 1
+            continue
         tables_consommees.insert(0, k + 1)
         auteurs_table = auteurs + auteurs_table
         photos += nb_photos
         photos_connues |= connues
+        credits_photo.extend(credits)
         premier_tbl_consomme = idx_bloc
 
     # L'en-tête de section au-dessus du tableau consommé (« Autrices et auteurs »,
@@ -1228,6 +1301,43 @@ def principal(argv):
             'Prüfen Sie sie unter « Metadaten der Artikel » — Layout und '
             'Zusammenfassungen richten sich danach.')
 
+    # Un tableau de fin porteur d'e-mails que nous n'avons pas su lire, et pas un seul
+    # auteur venu d'un tableau : la fiche n'aura que des noms — ni fonction, ni
+    # affiliation, ni e-mail, ni portrait — et l'export vers la plateforme partira
+    # amputé. Le tableau reste dans le corps, l'article est entier, mais ce repli ne doit
+    # plus être muet : c'est lui qui a fait passer des blocs auteurs inaperçus.
+    if refuses_parlants and not auteurs_table:
+        avertir(
+            'tableau-auteurs-non-lu',
+            ['article « %s »' % slug, 'tableaux %d' % refuses_parlants],
+            "Le tableau des autrices et auteurs de cet article n'a pas pu être lu : la "
+            'fiche ne porte que les noms lus sous le titre, sans fonction, affiliation, '
+            'e-mail ni portrait, et le tableau reste imprimé dans le texte. Vérifiez '
+            '« Métadonnées des articles » et complétez à la main, ou remettez chaque '
+            'personne dans sa propre cellule (nom, fonction, e-mail) dans le Word puis '
+            "réimportez l'article.",
+            'Die Tabelle der Autorinnen und Autoren dieses Artikels konnte nicht '
+            'gelesen werden: die Metadaten enthalten nur die Namen aus der Titelzeile, '
+            'ohne Funktion, Institution, E-Mail und Porträt, und die Tabelle bleibt im '
+            'Text gedruckt. Prüfen Sie « Metadaten der Artikel » und ergänzen Sie von '
+            'Hand, oder setzen Sie im Word jede Person in ihre eigene Zelle (Name, '
+            'Funktion, E-Mail) und importieren Sie den Artikel neu.')
+
+    # Crédit de photo emporté avec le tableau des auteurs : la fiche n'a pas de champ
+    # pour lui, et il ne s'imprimera plus. Mieux vaut le dire que le perdre en silence.
+    if credits_photo:
+        avertir(
+            'credit-photo-non-repris',
+            ['article « %s »' % slug] + ['crédit « %s »' % c for c in credits_photo],
+            'Le tableau des autrices et auteurs portait %d crédit(s) de photo (%s) : la '
+            "fiche n'a pas de champ pour les reprendre et ils ne s'imprimeront plus. "
+            'Reportez-les où ils doivent paraître si le numéro doit les mentionner.'
+            % (len(credits_photo), ' ; '.join(credits_photo)),
+            'Die Tabelle der Autorinnen und Autoren enthielt %d Bildnachweis(e) (%s): '
+            'die Metadaten haben kein Feld dafür, und sie werden nicht mehr gedruckt. '
+            'Übertragen Sie sie dorthin, wo sie erscheinen sollen, falls die Ausgabe '
+            'sie nennen muss.' % (len(credits_photo), ' ; '.join(credits_photo)))
+
     # Des références qui suivent la liste sans porter son style : elles restent dans le
     # texte, l'article les imprime, mais elles ne seront ni ancrées ni exportées avec les
     # autres. C'est une correction à faire dans le Word, et elle se dit.
@@ -1313,6 +1423,8 @@ def principal(argv):
                     'photos_appariees': len(photos_appariees),
                     'photos_gardees': len(photos_connues) - len(photos_appariees)},
         'tableaux_consommes': tables_consommees,
+        'tableaux_refuses_parlants': refuses_parlants,
+        'credits_photo': credits_photo,
         'legendes_figures_style': len(lignes_f),
         'biblio': biblio,
         'logo': logos,
