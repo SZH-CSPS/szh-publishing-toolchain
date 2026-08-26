@@ -100,6 +100,15 @@ function activerHote(revue) {
   const erreurs = [];
   let arbre = null;
   let reponseModale = undefined;   // ce que showWarningMessage rendra au prochain appel
+  // La TreeView : reveal() est enregistré (resélection d'un article), et les événements de
+  // chevron sont déclenchables depuis un test (accordéon des sections).
+  const revelations = [];
+  const expansions = emetteur();
+  const replis = emetteur();
+  // Le décorateur de fichiers (point de l'article ouvert), interrogeable par chemin, et
+  // l'événement d'éditeur actif, déclenchable.
+  let decorateur = null;
+  const editeurActif = emetteur();
 
   function fauxPanneau(type, titre) {
     const p = {
@@ -160,8 +169,18 @@ function activerHote(revue) {
       tabGroups: { all: [], close: () => Promise.resolve(true) },
       createTreeView: (id, opts) => {
         arbre = (opts || {}).treeDataProvider || null;
-        return { title: '', dispose() {}, onDidChangeSelection: evenement(), reveal: () => Promise.resolve() };
+        return {
+          title: '', visible: true, dispose() {},
+          onDidChangeSelection: evenement(),
+          onDidExpandElement: expansions,
+          onDidCollapseElement: replis,
+          reveal: (element, options) => {
+            revelations.push({ element: element, options: options });
+            return Promise.resolve();
+          }
+        };
       },
+      registerFileDecorationProvider: (p) => { decorateur = p; return { dispose() {} }; },
       createStatusBarItem: () => {
         const b = { visible: false, text: '', tooltip: '', command: '',
                     show() { b.visible = true; }, hide() { b.visible = false; }, dispose() {} };
@@ -175,7 +194,7 @@ function activerHote(revue) {
       setStatusBarMessage: () => ({ dispose() {} }),
       showOpenDialog: () => Promise.resolve(undefined),
       withProgress: (o, f) => f({ report() {} }),
-      onDidChangeActiveTextEditor: evenement(),
+      onDidChangeActiveTextEditor: editeurActif,
       onDidChangeTextEditorVisibleRanges: evenement(),
       onDidChangeTextEditorSelection: evenement(),
       showTextDocument: () => Promise.resolve({ document: {}, selection: null, revealRange() {} }),
@@ -252,7 +271,21 @@ function activerHote(revue) {
     finirTache: (nom, code) => finTache.emettre({
       exitCode: code, execution: { task: { name: nom, definition: { type: 'process' } } }
     }),
-    repondreModale: (v) => { reponseModale = v; }
+    repondreModale: (v) => { reponseModale = v; },
+    // Les reveal() de la TreeView, dans l'ordre ; et les gestes de chevron, simulés.
+    revelations: revelations,
+    deplierElement: (element) => expansions.emettre({ element: element }),
+    replierElement: (element) => replis.emettre({ element: element }),
+    // La décoration que porterait ce chemin (point de l'article ouvert), ou undefined.
+    decorationDe: (chemin) => decorateur
+      ? decorateur.provideFileDecoration(stub.Uri.file(chemin)) : undefined,
+    // Change l'éditeur actif comme VS Code le signalerait ; null = plus d'éditeur actif
+    // (le focus est sur un aperçu ou un panneau).
+    activerEditeur: (chemin) => {
+      stub.window.activeTextEditor = chemin
+        ? { document: { uri: stub.Uri.file(chemin) } } : undefined;
+      editeurActif.emettre(stub.window.activeTextEditor);
+    }
   };
 }
 

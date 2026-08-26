@@ -247,7 +247,8 @@
       {
         "command": "szh.vueArticles",
         "title": "%cmd.vueArticles%",
-        "category": "Revue SZH"
+        "category": "Revue SZH",
+        "icon": "$(dashboard)"
       },
       {
         "command": "szh.envoyerAuteur",
@@ -258,12 +259,14 @@
       {
         "command": "szh.vueTraductions",
         "title": "%cmd.vueTraductions%",
-        "category": "Revue SZH"
+        "category": "Revue SZH",
+        "icon": "$(dashboard)"
       },
       {
         "command": "szh.vueWord",
         "title": "%cmd.vueWord%",
-        "category": "Revue SZH"
+        "category": "Revue SZH",
+        "icon": "$(dashboard)"
       },
       {
         "command": "szh.vueControles",
@@ -403,6 +406,21 @@
           "command": "szh.vueArticles",
           "when": "view == szhCockpitVue && viewItem == section-articles",
           "group": "navigation"
+        },
+        {
+          "command": "szh.vueArticles",
+          "when": "view == szhCockpitVue && viewItem == section-articles",
+          "group": "inline@9"
+        },
+        {
+          "command": "szh.vueTraductions",
+          "when": "view == szhCockpitVue && viewItem == section-traductions",
+          "group": "inline@9"
+        },
+        {
+          "command": "szh.vueWord",
+          "when": "view == szhCockpitVue && viewItem == section-word",
+          "group": "inline@9"
         },
         {
           "command": "szh.envoyerAuteur",

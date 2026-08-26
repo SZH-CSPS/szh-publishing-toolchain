@@ -28,26 +28,21 @@ test('l’extension s’active et enregistre ses commandes', () => {
   }
 });
 
-// L'onglet d'une section doit porter la commande qui ouvre sa vue d'ensemble. Le contrôle
-// lit la ligne construite, et non la source : la commande avait été posée après le
-// `return`, ce qui se relit sans rien voir.
-test('les onglets de section portent la commande de leur vue d’ensemble', async () => {
+// L'en-tête d'une section doit porter la commande qui la déplie (l'accordéon) — la vue
+// d'ensemble a migré sur le bouton de la ligne et le clic droit. Le contrôle lit la ligne
+// construite, et non la source : une commande avait déjà été posée après un `return`, ce
+// qui se relit sans rien voir.
+test('les en-têtes de section basculent leur section (accordéon)', async () => {
   const arbre = HOTE.arbre();
   assert.ok(arbre, 'aucun fournisseur d’arbre enregistré');
   const racine = await arbre.getChildren();
-  const parContexte = {};
-  for (const it of racine) { parContexte[it.contextValue] = it; }
-  const attendu = {
-    'section-articles': 'szh.vueArticles',
-    'section-traductions': 'szh.vueTraductions',
-    'section-word': 'szh.vueWord'
-  };
-  for (const contexte of Object.keys(attendu)) {
-    const it = parContexte[contexte];
-    assert.ok(it, 'section absente de l’arbre : ' + contexte);
-    assert.ok(it.command, 'section sans commande : ' + contexte);
-    assert.strictEqual(it.command.command, attendu[contexte],
-      'commande inattendue sur ' + contexte);
+  assert.strictEqual(racine.length, 3, 'trois sections attendues');
+  for (const it of racine) {
+    assert.ok(it.command, 'section sans commande : ' + it.contextValue);
+    assert.strictEqual(it.command.command, 'szh.basculerSection',
+      'commande inattendue sur ' + it.contextValue);
+    assert.deepStrictEqual(it.command.arguments, [it.categorie],
+      'l’en-tête doit viser sa propre section : ' + it.contextValue);
   }
 });
 
@@ -55,7 +50,7 @@ const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cock
 
 // Les trois sections dans l'ordre du travail, et saillantes : le TreeView natif n'offre ni
 // gras ni taille de police, ce sont les majuscules et la couleur de l'icône qui font
-// l'en-tête. « Traductions » monte en deuxième position mais arrive toujours repliée.
+// l'en-tête. L'accordéon n'en déplie qu'une : « Articles » au départ.
 test('l’arbre : sections dans l’ordre Articles / Traductions / Word, en majuscules et en couleur', async () => {
   const arbre = HOTE.arbre();
   const racine = await arbre.getChildren();
@@ -64,7 +59,7 @@ test('l’arbre : sections dans l’ordre Articles / Traductions / Word, en maju
     'l’ordre des sections n’est pas celui du travail');
   assert.strictEqual(racine[0].collapsibleState, 2, '« Articles » devrait arriver ouverte');
   assert.strictEqual(racine[1].collapsibleState, 1, '« Traductions » devrait arriver repliée');
-  assert.strictEqual(racine[2].collapsibleState, 2, '« Word » devrait arriver ouverte');
+  assert.strictEqual(racine[2].collapsibleState, 1, '« Word » devrait arriver repliée (accordéon)');
   // Majuscules dans les deux langues — dans le dictionnaire, pas seulement au rendu.
   const i18n = require(path.join(COCKPIT, 'lib', 'i18n.js'));
   for (const cle of ['arbre.articles', 'arbre.traductions', 'arbre.word']) {
@@ -128,6 +123,92 @@ test('l’arbre : chaque article porte l’icône colorée de son avancement', a
   assert.match(String(fait.description), /^01-essai · /,
     'la description « slug · n/m tâches » a disparu');
   fs.unlinkSync(fichier);
+});
+
+// L'accordéon par la commande du clic : déplier « Traductions » replie « Articles »,
+// recliquer l'en-tête ouvert replie tout. L'id des en-têtes change avec l'état — c'est
+// lui qui force VS Code à suivre, contre sa mémoire de pli par élément.
+test('accordéon : une seule section dépliée, et l’id des en-têtes suit l’état', async () => {
+  const arbre = HOTE.arbre();
+  await HOTE.executer('szh.basculerSection', 'traductions');
+  let racine = await arbre.getChildren();
+  assert.deepStrictEqual(racine.map((it) => it.collapsibleState), [1, 2, 1],
+    'déplier « Traductions » doit replier les autres');
+  assert.strictEqual(racine[1].id, 'section:traductions:ouvert');
+  assert.strictEqual(racine[0].id, 'section:articles:ferme');
+  // Recliquer l'en-tête ouvert : tout se replie, la colonne tient en trois lignes.
+  await HOTE.executer('szh.basculerSection', 'traductions');
+  racine = await arbre.getChildren();
+  assert.deepStrictEqual(racine.map((it) => it.collapsibleState), [1, 1, 1],
+    'recliquer l’en-tête ouvert doit tout replier');
+  // Retour à l'état de départ pour la suite du fichier.
+  await HOTE.executer('szh.basculerSection', 'articles');
+  racine = await arbre.getChildren();
+  assert.strictEqual(racine[0].collapsibleState, 2);
+});
+
+// Le chevron reste un geste valable, et l'accordéon tient aussi par lui.
+test('accordéon : déplier par le chevron replie les autres sections', async () => {
+  const arbre = HOTE.arbre();
+  const racine = await arbre.getChildren();
+  HOTE.deplierElement(racine.find((it) => it.contextValue === 'section-word'));
+  const apres = await arbre.getChildren();
+  assert.deepStrictEqual(apres.map((it) => it.collapsibleState), [1, 1, 2],
+    'le chevron n’a pas replié les autres sections');
+  // Replier par le chevron : l'état suit, sans reconstruction forcée.
+  HOTE.replierElement(apres.find((it) => it.contextValue === 'section-word'));
+  const fin = await arbre.getChildren();
+  assert.deepStrictEqual(fin.map((it) => it.collapsibleState), [1, 1, 1],
+    'replier par le chevron doit libérer l’accordéon');
+  await HOTE.executer('szh.basculerSection', 'articles');   // état de départ
+});
+
+// Le premier clic tenait la sélection… jusqu'à la reconstruction qui suivait : l'élément
+// recréé (id nouveau) n'était plus sélectionné, et le surlignage s'éteignait. Le clic
+// resélectionne désormais l'article — sans voler le focus — et la section « Articles »
+// suit (accordéon), d'où que vienne le geste.
+test('ouvrir un article resélectionne son élément sans voler le focus', async () => {
+  await HOTE.executer('szh.basculerSection', 'traductions');   // partir d'ailleurs
+  await HOTE.executer('szh.ouvrirArticle', '01-essai');
+  const r = HOTE.revelations[HOTE.revelations.length - 1];
+  assert.ok(r, 'aucun reveal() après le clic');
+  assert.strictEqual(r.element && r.element.slug, '01-essai',
+    'le reveal ne vise pas l’article cliqué');
+  assert.strictEqual(r.options && r.options.select, true, 'reveal sans sélection');
+  assert.strictEqual(r.options && r.options.focus, false,
+    'le focus doit rester à l’éditeur');
+  const racine = await HOTE.arbre().getChildren();
+  assert.strictEqual(racine[0].collapsibleState, 2,
+    'la section « Articles » doit suivre le clic');
+});
+
+// Le point de l'article ouvert : posé sur le .md de l'article auquel appartient le
+// fichier actif (bibliographie comprise), éteint hors des articles, gardé quand le focus
+// va à un aperçu ou à un panneau (plus d'éditeur actif).
+test('le marqueur « article ouvert » suit l’éditeur actif', async () => {
+  const md = path.join(REVUE, 'articles', '01-essai', '01-essai.md');
+  const autre = path.join(REVUE, 'articles', '02-sans-fiche', '02-sans-fiche.md');
+  await HOTE.executer('szh.ouvrirArticle', '01-essai');
+  const deco = HOTE.decorationDe(md);
+  assert.ok(deco && deco.badge, 'pas de point sur l’article ouvert');
+  assert.ok(deco.tooltip, 'le point doit s’expliquer (tooltip i18n)');
+  assert.ok(!HOTE.decorationDe(autre), 'le point marque un article fermé');
+  // La bibliographie du même article ne déplace pas le point…
+  HOTE.activerEditeur(path.join(REVUE, 'articles', '01-essai', '01-essai.biblio.md'));
+  assert.ok(HOTE.decorationDe(md), 'la bibliographie a déplacé le point hors du .md');
+  // … un autre article le prend…
+  HOTE.activerEditeur(autre);
+  assert.ok(HOTE.decorationDe(autre), 'le point n’a pas suivi le nouvel article');
+  assert.ok(!HOTE.decorationDe(md), 'le point est resté sur l’ancien article');
+  // … hors des articles il s'éteint…
+  HOTE.activerEditeur(path.join(REVUE, 'ausgabe.yaml'));
+  assert.ok(!HOTE.decorationDe(autre) && !HOTE.decorationDe(md),
+    'le point survit hors des articles');
+  // … et sans éditeur actif (aperçu, panneau), il reste où il était.
+  HOTE.activerEditeur(autre);
+  HOTE.activerEditeur(null);
+  assert.ok(HOTE.decorationDe(autre),
+    'perdre l’éditeur actif (aperçu, panneau) a éteint le point');
 });
 
 // Ouvrir un panneau touche à tout : lecture du disque, assemblage du HTML, première charge

@@ -307,11 +307,6 @@ function replierAssetsAutres() {
   catch (e) { return true; }                       // configuration indisponible
 }
 
-// Sections dont l'onglet ouvre une vue d'ensemble.
-const COMMANDES_SECTION = {
-  articles: 'szh.vueArticles', traductions: 'szh.vueTraductions', word: 'szh.vueWord'
-};
-
 // Une couleur par en-tête de section : le TreeView natif n'offre ni gras ni taille de
 // police, ce sont donc les majuscules du libellé et la couleur de l'icône qui rendent les
 // trois sections repérables. Bleu et vert sont ceux des états de traduction
@@ -624,7 +619,8 @@ function messageNumero(panneau, racine, msg, rafraichirTout) {
 class FournisseurRevue {
   constructor() {
     this.racine = null;
-    this.slugDeploye = null;   // article dont les assets sont dépliés
+    this.slugDeploye = null;       // article dont les assets sont dépliés
+    this.sectionDeployee = 'articles';   // l'accordéon : la seule section ouverte, ou null
     this._changement = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._changement.event;
   }
@@ -640,21 +636,33 @@ class FournisseurRevue {
     return true;
   }
 
+  // L'accordéon des sections : l'en-tête cliqué déplie la sienne — et donc replie les
+  // autres. Recliquer l'en-tête ouvert replie tout : la colonne tient en trois lignes.
+  basculerSection(categorie) {
+    this.sectionDeployee = this.sectionDeployee === categorie ? null : categorie;
+  }
+
+  // true si l'état a changé — même contrat que definirDeploye.
+  definirSectionDeployee(categorie) {
+    if (this.sectionDeployee === categorie) { return false; }
+    this.sectionDeployee = categorie;
+    return true;
+  }
+
   getTreeItem(element) { return element; }
 
   getChildren(element) {
     if (!this.racine) { return []; }
     if (!element) {
       const n = this.compterWord();   // le badge de conteneur ne s'affiche pas ici
-      // « Traductions » arrive repliée : elle double la liste des articles.
       const t = this.compterTraductions();
       // L'ordre suit le travail : les articles du numéro, leurs traductions, puis ce qui
-      // attend encore d'y entrer. Les sections n'ont pas d'`id` : VS Code les reconnaît à
-      // leur libellé, l'ordre peut donc changer sans figer l'état plié/déplié mémorisé.
+      // attend encore d'y entrer. Une seule section dépliée à la fois (sectionDeployee) :
+      // les compteurs en description disent le reste sans déplier.
       return [
         this._section('articles', T('arbre.articles'), 'book', undefined),
         this._section('traductions', T('arbre.traductions'), 'globe',
-          t.total > 0 ? '(' + t.finalises + '/' + t.total + ')' : undefined, true),
+          t.total > 0 ? '(' + t.finalises + '/' + t.total + ')' : undefined),
         this._section('word', T('arbre.word'), 'inbox', n > 0 ? '(' + n + ')' : undefined)
       ];
     }
@@ -666,20 +674,40 @@ class FournisseurRevue {
     return [];
   }
 
-  // Cliquer l'onglet ouvre la vue d'ensemble de la section : ses commandes globales y ont
-  // un bouton avec un texte, au lieu des pictogrammes muets alignés dans cette marge.
-  _section(categorie, libelle, icone, description, replie) {
-    const it = new vscode.TreeItem(libelle, replie
-      ? vscode.TreeItemCollapsibleState.Collapsed
-      : vscode.TreeItemCollapsibleState.Expanded);
+  // reveal() exige de savoir remonter d'un élément vers la racine. Seuls les articles sont
+  // révélés (resélection après reconstruction — voir ouvrirArticle) : leur parent est
+  // l'en-tête « Articles », tout le reste répond racine.
+  getParent(element) {
+    if (!element || element.categorie) { return null; }
+    if (element.contextValue === 'article') {
+      return this._section('articles', T('arbre.articles'), 'book', undefined);
+    }
+    return null;
+  }
+
+  // L'élément d'un article, reconstruit à l'état courant : reveal() le retrouve par son id.
+  elementArticle(slug) {
+    return this._itemsArticles().find((it) => it.slug === slug) || null;
+  }
+
+  // Cliquer l'en-tête déplie sa section — et replie les autres, c'est l'accordéon. La vue
+  // d'ensemble de la section reste à un geste : le bouton au bout de la ligne, ou le
+  // clic droit.
+  _section(categorie, libelle, icone, description) {
+    const ouverte = this.sectionDeployee === categorie;
+    const it = new vscode.TreeItem(libelle, ouverte
+      ? vscode.TreeItemCollapsibleState.Expanded
+      : vscode.TreeItemCollapsibleState.Collapsed);
     it.categorie = categorie;
+    // VS Code mémorise le pli d'un élément qu'il reconnaît et ignore alors le
+    // collapsibleState renvoyé : l'id porte donc l'état voulu — quand il change,
+    // l'élément est recréé et l'état s'applique. Même astuce que les articles dépliés.
+    it.id = 'section:' + categorie + ':' + (ouverte ? 'ouvert' : 'ferme');
     it.iconPath = new vscode.ThemeIcon(icone, COULEURS_SECTION[categorie]
       ? new vscode.ThemeColor(COULEURS_SECTION[categorie]) : undefined);
     it.contextValue = 'section-' + categorie;   // 'section-articles', 'section-word'…
     if (description) { it.description = description; }
-    if (COMMANDES_SECTION[categorie]) {
-      it.command = { command: COMMANDES_SECTION[categorie], title: libelle, arguments: [] };
-    }
+    it.command = { command: 'szh.basculerSection', title: libelle, arguments: [categorie] };
     return it;
   }
 
@@ -711,9 +739,12 @@ class FournisseurRevue {
         : (deploye ? vscode.TreeItemCollapsibleState.Expanded
                    : vscode.TreeItemCollapsibleState.Collapsed));
       // VS Code mémorise l'état plié/déplié d'un élément qu'il reconnaît et ignore alors
-      // le collapsibleState renvoyé : l'`id` porte donc l'état voulu, il change,
-      // l'élément est recréé. Sans le réglage, pas d'`id` : l'utilisateur décide.
-      if (auto && aDesAssets) { it.id = 'article:' + slug + ':' + (deploye ? 'ouvert' : 'ferme'); }
+      // le collapsibleState renvoyé : quand le réglage pilote le dépliage, l'`id` porte
+      // l'état voulu, il change, l'élément est recréé. Sans le réglage, id stable :
+      // l'utilisateur décide. Un id dans tous les cas — reveal() retrouve l'élément par lui.
+      it.id = auto && aDesAssets
+        ? 'article:' + slug + ':' + (deploye ? 'ouvert' : 'ferme')
+        : 'article:' + slug;
       it.slug = slug;                   // lu par les actions de l'arbre
       it.resourceUri = md;              // décorations du thème (git, problèmes)
       // Le slug d'abord : c'est par lui qu'on retrouve le dossier. L'avancement des tâches
@@ -1630,6 +1661,56 @@ function slugDepuisChemin(racine, chemin) {
   return parties[2] === parties[1] + '.md' ? parties[1] : null;
 }
 
+// ---- Le marqueur de l'article ouvert ---------------------------------------------
+//
+// La sélection native de l'arbre pâlit dès que le focus retourne à l'éditeur — donc
+// immédiatement. Le point marque, lui, le .md de l'article auquel appartient le fichier
+// actif (texte, mais aussi bibliographie ou tableau) : il survit aux reconstructions de
+// l'arbre, colore la ligne (resourceUri) et l'onglet. Il s'éteint quand le fichier actif
+// sort des articles ; il reste quand le focus va à un aperçu ou à un panneau (plus
+// d'éditeur actif) : l'article, lui, est toujours là.
+let vueArbre = null;                     // la TreeView, posée par activate()
+let uriArticleOuvert = null;             // le .md marqué, ou null
+const changementDecoration = new vscode.EventEmitter();
+
+// Slug du dossier d'article qui contient `chemin` — plus large que slugDepuisChemin :
+// la bibliographie et les tableaux disent aussi « on travaille sur cet article ».
+function slugArticleContenant(racine, chemin) {
+  if (!racine || !chemin) { return null; }
+  const parties = path.relative(racine, chemin).split(path.sep);
+  if (parties.length < 3 || parties[0] !== 'articles') { return null; }
+  const slug = parties[1];
+  try {
+    return fs.statSync(path.join(racine, 'articles', slug, slug + '.md')).isFile()
+      ? slug : null;
+  } catch (e) { return null; }
+}
+
+function majArticleOuvert(fournisseur, chemin) {
+  const slug = slugArticleContenant(fournisseur.racine, chemin);
+  const uri = slug
+    ? vscode.Uri.file(path.join(fournisseur.racine, 'articles', slug, slug + '.md'))
+    : null;
+  const avant = uriArticleOuvert;
+  if ((avant && avant.fsPath) === (uri && uri.fsPath)) { return; }
+  uriArticleOuvert = uri;
+  // Les deux fichiers changent d'état : l'ancien perd son point, le nouveau le gagne.
+  const touches = [avant, uri].filter(Boolean);
+  if (touches.length > 0) { changementDecoration.fire(touches); }
+}
+
+// La reconstruction de l'arbre remplace l'élément sélectionné (son id encode l'état
+// déplié) et la sélection s'éteignait — le « premier clic qui ne tient pas ». On
+// resélectionne l'élément recréé, sans focus (le rédacteur écrit) et sans rouvrir une
+// barre latérale masquée.
+function reselectionnerArticle(fournisseur, slug) {
+  if (!vueArbre || !vueArbre.visible) { return; }
+  const element = fournisseur.elementArticle(slug);
+  if (!element) { return; }
+  Promise.resolve(vueArbre.reveal(element, { select: true, focus: false }))
+    .catch(() => { /* arbre en pleine reconstruction : la sélection suivra au prochain clic */ });
+}
+
 // Au démarrage, si l'éditeur actif est déjà un article, enchaîner ce que fait un clic
 // dans la barre latérale. Ici et non dans le lanceur PowerShell : un make lancé depuis
 // Windows concurrencerait `triggerTaskOnSave`, et le Makefile n'a pas de verrou.
@@ -1650,9 +1731,18 @@ async function ouvrirArticleActifAuDemarrage(fournisseur) {
 async function ouvrirArticle(fournisseur, slug, opts) {
   const racine = fournisseur.racine;
   if (!racine || typeof slug !== 'string' || slug === '') { return; }
-  // Avant l'ouverture du .md et la compilation, pour que l'arbre suive le clic.
-  if (fournisseur.definirDeploye(slug)) { fournisseur.rafraichir(); }
   const md = path.join(racine, 'articles', slug, slug + '.md');
+  // Avant l'ouverture du .md et la compilation, pour que l'arbre suive le clic : les
+  // assets de l'article se déplient, la section « Articles » s'ouvre (accordéon), et
+  // l'élément — recréé par la reconstruction, son id encode l'état — est resélectionné.
+  // `sansTexte` (suivi de traduction en colonne 1) laisse l'arbre en paix : le rédacteur
+  // travaille dans une autre section. Le point de l'article ouvert suit dans tous les cas.
+  const suivreArbre = !(opts && opts.sansTexte);
+  let arbreChange = fournisseur.definirDeploye(slug);
+  if (suivreArbre) { arbreChange = fournisseur.definirSectionDeployee('articles') || arbreChange; }
+  if (arbreChange) { fournisseur.rafraichir(); }
+  if (suivreArbre) { reselectionnerArticle(fournisseur, slug); }
+  majArticleOuvert(fournisseur, md);
   const pdf = vscode.Uri.file(path.join(racine, 'out', slug, slug + '.pdf'));
   const modeCourant = modeApercu();
   // Un PDF à jour ne dit rien du HTML d'aperçu : on juge celui du mode courant.
@@ -5960,6 +6050,39 @@ function activate(context) {
     dragAndDropController: controleurDepotVue(fournisseur, () => rafraichirTout())
   });
   context.subscriptions.push(vue);
+  vueArbre = vue;                                  // reselectionnerArticle passe par elle
+
+  // Le chevron reste un geste valable : déplier un en-tête par lui replie les autres —
+  // l'accordéon tient — et le replier libère tout, sans reconstruction (l'écran est déjà
+  // juste). Seuls les en-têtes portent `categorie` : les articles dépliés sur leurs
+  // assets passent ici sans effet.
+  context.subscriptions.push(
+    vue.onDidExpandElement((e) => {
+      if (!e || !e.element || !e.element.categorie) { return; }
+      if (fournisseur.definirSectionDeployee(e.element.categorie)) { fournisseur.rafraichir(); }
+    }),
+    vue.onDidCollapseElement((e) => {
+      if (!e || !e.element || !e.element.categorie) { return; }
+      if (fournisseur.sectionDeployee === e.element.categorie) { fournisseur.sectionDeployee = null; }
+    })
+  );
+
+  // Le point de l'article ouvert (majArticleOuvert) : posé sur le .md, il colore sa ligne
+  // de l'arbre (resourceUri) et son onglet. `list.highlightForeground` est la couleur que
+  // le thème réserve à l'élément qui compte dans une liste.
+  context.subscriptions.push(vscode.window.registerFileDecorationProvider({
+    onDidChangeFileDecorations: changementDecoration.event,
+    provideFileDecoration: (uri) =>
+      (uriArticleOuvert && uri && uri.fsPath === uriArticleOuvert.fsPath)
+        ? { badge: '●', color: new vscode.ThemeColor('list.highlightForeground'),
+            tooltip: T('arbre.ouvert.tooltip') }
+        : undefined
+  }));
+  context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor((editeur) => {
+    // Pas d'éditeur actif = focus sur un aperçu ou un panneau : l'article reste ouvert.
+    if (!editeur || !editeur.document) { return; }
+    majArticleOuvert(fournisseur, editeur.document.uri.fsPath);
+  }));
 
   let watchers = [];
   context.subscriptions.push({ dispose: () => { for (const w of watchers) { w.dispose(); } } });
@@ -6023,6 +6146,11 @@ function activate(context) {
   const majContexte = () => {
     const racine = trouverRacineRevue();
     fournisseur.definirRacine(racine);
+    // Le point de l'article ouvert appartient à la revue : recalculé sur la nouvelle
+    // racine, il s'éteint si le fichier actif n'est plus un de ses articles.
+    const editeurActif = vscode.window.activeTextEditor;
+    majArticleOuvert(fournisseur,
+      editeurActif && editeurActif.document ? editeurActif.document.uri.fsPath : null);
     divergenceSignalee = false;                    // un avertissement par revue ouverte
     // Les constats appartiennent au numéro qui les a produits : changer de numéro les
     // périme, sinon le compteur de la barre d'état parlerait du précédent et un échec de
@@ -6089,6 +6217,11 @@ function activate(context) {
     // Le second argument transmet les options (sansApercu depuis la vue Articles) ; les
     // appelants historiques (arbre, Contrôles, démarrage) n'en passent pas : rien ne change.
     cmd('szh.ouvrirArticle', (slug, opts) => ouvrirArticle(fournisseur, slug, opts)),
+    // Le clic sur un en-tête de section : sa section bascule, les autres se replient.
+    cmd('szh.basculerSection', (categorie) => {
+      fournisseur.basculerSection(categorie);
+      fournisseur.rafraichir();
+    }),
     cmdEcriture('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
     // Le Word corrigé d'un article déjà publié, et le retour en arrière. Les deux
     // remplacent le texte : refusés sur un numéro verrouillé, comme la suppression.
