@@ -34,7 +34,9 @@
   // badges « à compléter » vivent dans les intitulés, traductions comprises.
   //
   // Protocole avec l'hôte :
-  //   hôte -> webview : valeurs { articles, types, licences, licenceDefaut, langue, accent }
+  //   hôte -> webview : valeurs { articles, types, licences, licenceDefaut, langue, accent } ;
+  //                     doi-manuel-reponse { slug, sens, ok }
+  //   webview -> hôte : doi-manuel-confirmer { slug, sens }
   // La partie photo est celle de _auteurs.js, à qui les messages sont passés.
   function cartesArticles(opts) {
     var conteneur = opts.conteneur;
@@ -48,6 +50,7 @@
 
     var modifies = new Set();
     var motsClesParCarte = new WeakMap();
+    var doiParCarte = new WeakMap();               // carte -> { poser, calcule } du champ DOI
     // Les auteur·e·s d'une carte ne vivent plus dans le DOM : la fiche affichée est
     // statique, et c'est ce modèle que la modale édite et que collecter() relit.
     var auteursParCarte = new WeakMap();
@@ -105,6 +108,82 @@
       i.addEventListener('input', function () { marquer(carte, slug); });
       parent.appendChild(l);
       parent.appendChild(i);
+    }
+
+    // ---- Le champ DOI : calculé et verrouillé, sauf échappatoire ----
+    //
+    // Le DOI ne se saisit plus : l'hôte envoie le calculé (article.doiCalcule) et le champ
+    // l'affiche en lecture seule — « — » quand il est incalculable ou que l'article n'en
+    // reçoit pas. La case « Définir manuellement le DOI » reste l'échappatoire ; la webview
+    // n'a pas de boîte de dialogue, la confirmation passe donc par l'hôte :
+    //
+    //   webview -> hôte : doi-manuel-confirmer { slug, sens: 'activer' | 'retirer' }
+    //   hôte -> webview : doi-manuel-reponse { slug, sens, ok }
+    //
+    // La case revient en arrière dès le clic et la réponse rejoue le geste : entre les
+    // deux, l'utilisateur lit la question modale de l'hôte. Une fiche qui porte déjà un
+    // doi est en mode manuel d'office — l'héritage d'avant le verrou ne se perd pas.
+    function champDoi(carte, slug, article) {
+      var v = article.valeurs || {};
+      var calcule = String(article.doiCalcule || '').trim();
+      var manuel = String(v.doi || '').trim() !== '';
+      var l = document.createElement('label');
+      l.textContent = 'DOI';
+      var i = document.createElement('input');
+      i.type = 'text';
+      i.dataset.cle = 'doi';
+      i.addEventListener('input', function () { marquer(carte, slug); });
+      var caseDoi = document.createElement('label');
+      caseDoi.className = 'case-doi';
+      var coche = document.createElement('input');
+      coche.type = 'checkbox';
+      coche.dataset.cle = 'doi-manuel';
+      caseDoi.appendChild(coche);
+      caseDoi.appendChild(document.createTextNode(TXT.doiManuel));
+      function poser(actif, valeur) {
+        coche.checked = actif;
+        i.readOnly = !actif;
+        i.classList.toggle('doi-verrouille', !actif);
+        i.title = actif ? '' : TXT.doiVerrouTip;
+        i.value = actif ? valeur : (calcule !== '' ? calcule : '—');
+      }
+      poser(manuel, v.doi || '');
+      coche.addEventListener('change', function () {
+        var veut = coche.checked;
+        // Décocher un champ resté au calculé (ou vide) n'efface rien : pas de question.
+        if (!veut && (i.value.trim() === '' || i.value.trim() === calcule)) {
+          poser(false, '');
+          marquer(carte, slug);
+          return;
+        }
+        coche.checked = !veut;                     // en arrière, jusqu'à la réponse
+        if (carte.dataset.attenteDoi) { return; }  // une question est déjà posée
+        carte.dataset.attenteDoi = '1';
+        api.postMessage({ type: 'doi-manuel-confirmer', slug: slug,
+          sens: veut ? 'activer' : 'retirer' });
+      });
+      doiParCarte.set(carte, { poser: poser, calcule: calcule });
+      carte.appendChild(l);
+      carte.appendChild(i);
+      carte.appendChild(caseDoi);
+    }
+
+    // La réponse de l'hôte à la question modale. Refus (ok: false) : la case est déjà
+    // revenue en arrière, il n'y a rien à faire. Accord : le champ s'ouvre prérempli du
+    // calculé — point de départ raisonnable — ou se referme en effaçant le DOI manuel.
+    function reponseDoi(msg) {
+      var slug = String(msg.slug || '');
+      var carte = null;
+      for (var c of conteneur.querySelectorAll('.carte')) {
+        if (c.dataset.slug === slug) { carte = c; break; }
+      }
+      if (!carte) { return; }
+      delete carte.dataset.attenteDoi;
+      var ctl = doiParCarte.get(carte);
+      if (!ctl || !msg.ok) { return; }
+      if (msg.sens === 'retirer') { ctl.poser(false, ''); }
+      else { ctl.poser(true, ctl.calcule); }
+      marquer(carte, slug);
     }
 
     // ---- Construction des cartes ----
@@ -219,7 +298,7 @@
       apercusParCarte.set(carte, (article.apercusAuteurs || []).slice());
       rendreAuteurs(carte, slug);
 
-      champTexte(carte, carte, slug, 'doi', null, 'DOI', v.doi);
+      champDoi(carte, slug, article);
 
       // Mots-clés : on ajoute et on retire une rangée entière, jamais un mot dans une
       // seule langue, la position seule appariant « diagnostic » et « Diagnose ».
@@ -364,6 +443,10 @@
       if (msg.type === 'erreur') {
         if (minuteurEnr) { minuteurEnr.confirme(); }
         if (etat) { etat.textContent = '⚠ ' + msg.message; }
+        return true;
+      }
+      if (msg.type === 'doi-manuel-reponse') {
+        reponseDoi(msg);
         return true;
       }
       return ctlAuteurs.message(msg);

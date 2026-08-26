@@ -90,6 +90,59 @@ test('métadonnées des articles : une carte remplie par article', () => {
   }
 });
 
+test('métadonnées : le DOI est verrouillé sur le calculé, et l’échappatoire passe par l’hôte', () => {
+  // Trois cartes, trois états : une fiche neuve (verrouillée sur le calculé), un héritage
+  // (doi déjà dans la fiche : mode manuel d'office, rien ne se perd), un article dont le
+  // DOI est incalculable ou refusé (« — »).
+  const articles = [
+    { slug: '01-neuf', valeurs: analyserMeta(''), doiCalcule: '10.57161/r2026-03-01' },
+    { slug: '02-manuel', valeurs: analyserMeta('doi: "10.57161/r2024-01-05"\n'),
+      doiCalcule: '10.57161/r2026-03-02' },
+    { slug: '03-sans', valeurs: analyserMeta(''), doiCalcule: '' }
+  ];
+  const page = ouvrir({
+    racine: RACINE, page: 'metadata-articles',
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+  });
+  page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr',
+                 licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: null });
+  const cartes = page.conteneur().querySelectorAll('.carte');
+  assert.strictEqual(cartes.length, 3);
+  const champ = (c) => c.querySelector('[data-cle="doi"]');
+  const coche = (c) => c.querySelector('[data-cle="doi-manuel"]');
+  // Fiche neuve : champ en lecture seule montrant le DOI calculé, case décochée, et une
+  // infobulle qui explique pourquoi il n'y a rien à saisir.
+  assert.strictEqual(champ(cartes[0]).readOnly, true, 'le champ DOI n’est pas verrouillé');
+  assert.strictEqual(champ(cartes[0]).value, '10.57161/r2026-03-01');
+  assert.strictEqual(coche(cartes[0]).checked, false);
+  assert.ok(String(champ(cartes[0]).title || '').length > 0, 'infobulle du champ verrouillé absente');
+  // Héritage : la fiche portait déjà un doi — case cochée d'office, champ éditable, la
+  // valeur de la fiche intacte.
+  assert.strictEqual(champ(cartes[1]).readOnly, false, 'le doi hérité n’est plus éditable');
+  assert.strictEqual(champ(cartes[1]).value, '10.57161/r2024-01-05', 'le doi hérité est perdu');
+  assert.strictEqual(coche(cartes[1]).checked, true, 'la case ne dit pas le mode manuel hérité');
+  // Incalculable ou sans DOI : le champ le dit par « — », pas par un DOI à trous.
+  assert.strictEqual(champ(cartes[2]).value, '—');
+  assert.strictEqual(champ(cartes[2]).readOnly, true);
+  // L'accord de l'hôte (avertissement modal confirmé) ouvre le champ, prérempli du
+  // calculé : le point de départ raisonnable d'une correction.
+  page.envoyer({ type: 'doi-manuel-reponse', slug: '01-neuf', sens: 'activer', ok: true });
+  assert.strictEqual(coche(cartes[0]).checked, true);
+  assert.strictEqual(champ(cartes[0]).readOnly, false, 'l’accord n’ouvre pas le champ');
+  assert.strictEqual(champ(cartes[0]).value, '10.57161/r2026-03-01', 'le champ ne part pas du calculé');
+  // Le retrait accordé efface le doi manuel : retour au calculé, verrouillé.
+  page.envoyer({ type: 'doi-manuel-reponse', slug: '02-manuel', sens: 'retirer', ok: true });
+  assert.strictEqual(coche(cartes[1]).checked, false);
+  assert.strictEqual(champ(cartes[1]).readOnly, true);
+  assert.strictEqual(champ(cartes[1]).value, '10.57161/r2026-03-02', 'le calculé ne reprend pas sa place');
+  // Un refus ne change rien : la case était déjà revenue en arrière.
+  page.envoyer({ type: 'doi-manuel-reponse', slug: '03-sans', sens: 'activer', ok: false });
+  assert.strictEqual(coche(cartes[2]).checked, false);
+  assert.strictEqual(champ(cartes[2]).readOnly, true);
+});
+
 test('vérification de l’import : les mêmes cartes, badges et section des images', () => {
   const articles = articlesDuCorpus().map((a) => Object.assign({}, a, {
     images: [{ relatif: 'fig-01.png', description: '2000 × 620 · 5 Ko' }]
@@ -107,6 +160,10 @@ test('vérification de l’import : les mêmes cartes, badges et section des ima
     articles.length * LICENCES.length, 'sélecteur de licence rendu vide');
   assert.ok(page.compter('.badge') > 5, 'badges « détecté / à compléter » absents');
   assert.strictEqual(page.compter('.image-ligne'), articles.length, 'section des images absente');
+  // Le DOI ne compte plus dans les champs vides : il est calculé, il n'y a rien à
+  // compléter — donc plus de badge sur son intitulé non plus.
+  assert.strictEqual(page.compter('[data-champ="doi"]'), 0,
+    'un badge « à compléter » subsiste sur le DOI calculé');
 });
 
 test('gestionnaire des médias : cartes, encadrés et versions de portrait', () => {

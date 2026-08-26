@@ -3,7 +3,8 @@
 // d'un compteur de champs vides, plus une section « Originaux des images » où déposer
 // l'original d'une image importée, à nom conservé.
 //
-// Protocole avec l'hôte, en plus de photo-* et de l'enregistrement (voir _fiches.js) :
+// Protocole avec l'hôte, en plus de photo-*, du DOI manuel et de l'enregistrement (voir
+// _fiches.js) :
 //   webview -> hôte : pret ; enregistrer { auto, articles } ;
 //                     fermer { modifie, articles } ;
 //                     remplacer-image { slug, relatif, nomFichier, donneesBase64 }
@@ -32,7 +33,8 @@
         if (!plein((v[cle] || {})[lg])) { vides.push(cle + '.' + lg); }
       }
     }
-    if (!plein(v.doi)) { vides.push('doi'); }
+    // Le doi ne compte pas : il est calculé par l'hôte et affiché verrouillé, il n'y a
+    // rien à compléter — seule l'échappatoire « Définir manuellement le DOI » en pose un.
     for (const lg of langues) {
       const liste = (v.keywords || {})[lg];
       if (!Array.isArray(liste) || !liste.some(plein)) { vides.push('keywords.' + lg); }

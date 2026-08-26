@@ -217,6 +217,24 @@ test('DOI expédié : un article ajouté à la main, hors de l’ordre, ne casse
     /^ordre-articles: \["00-editorial".*"09-tribune"\]$/m);
 });
 
+test('DOI expédié : un DOI manuel sur la fiche part à la place du calculé, et l’écart se dit', () => {
+  // L'échappatoire « Définir manuellement le DOI » : la fiche porte un doi, c'est lui qui
+  // part. Les autres articles gardent leur calcul — le rang ne se décale pas pour autant.
+  const articles = ARTICLES.map((a) => a.slug === '02-chanier'
+    ? Object.assign({}, a, { doi: '10.57161/r2024-01-05' }) : a);
+  const sortie = exporter(monterNumero({ articles: articles }));
+  assert.deepStrictEqual(sortie.dois[2], ['02-chanier', '10.57161/r2024-01-05'],
+    'le DOI manuel n’est pas parti :' + LF + sommaire(sortie.dois));
+  assert.deepStrictEqual(sortie.dois[3], ['03-guilley', '10.57161/r2026-03-03'],
+    'le rang des autres a bougé :' + LF + sommaire(sortie.dois));
+  // Et jamais en silence : la divergence nomme les deux DOI.
+  const dits = sortie.avertissements.filter((a) => a.indexOf('10.57161/r2024-01-05') !== -1);
+  assert.strictEqual(dits.length, 1,
+    'divergence non signalée : ' + sortie.avertissements.join(' | '));
+  assert.ok(dits[0].indexOf('10.57161/r2026-03-02') !== -1,
+    'le DOI calculé n’est pas dit : ' + dits[0]);
+});
+
 // ---- Le contrôle central : le DOI expédié est celui que la carte affiche -------------
 //
 // Un seul activerHote() par processus, et il vient avec sa propre revue : c'est donc CE

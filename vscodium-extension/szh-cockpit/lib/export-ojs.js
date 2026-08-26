@@ -613,25 +613,31 @@ function collecter(racine, cfg, avertissements) {
         }
       }
       // Le DOI est un CALCUL, et c'est le calcul qui part : le rang de l'article parmi les
-      // porteurs du numéro, celui-là même que sa carte affiche. La fiche ne le décide plus
-      // — elle ne pouvait pas suivre un ordre qui se change d'un clic — mais ce qu'elle
-      // porte encore n'est pas écarté en silence : une divergence se dit, avec les deux
-      // valeurs et ce qu'elle peut vouloir dire. Deux absences, toutes deux voulues : la
-      // case de l'article et la rubrique qui n'en reçoit jamais. Aucune autre : le DOI
-      // n'est jamais fabriqué à trous, et un numéro incomplet est refusé plus haut.
+      // porteurs du numéro, celui-là même que sa carte affiche. Une seule échappatoire :
+      // un doi resté sur la fiche y a été DÉFINI À LA MAIN (case « Définir manuellement le
+      // DOI » du formulaire, l'import ne l'écrit plus), et c'est lui qui part à la place du
+      // calculé — jamais en silence : la divergence se dit, avec les deux valeurs et le
+      // geste qui les départage. Deux absences, toutes deux voulues : la case de l'article
+      // et la rubrique qui n'en reçoit jamais. Aucune autre : le DOI n'est jamais fabriqué
+      // à trous, et un numéro incomplet est refusé plus haut.
       const rang = rangDoi(slugs, slug, sansDoi);
       const doiFiche = texte(meta.doi);
-      article.doi = doiCalcule(numero.locale, numero.annee, numero.numero, rang);
+      const doiRang = doiCalcule(numero.locale, numero.annee, numero.numero, rang);
+      article.doi = doiRang;
       if (rang === -1) {
         avertissements.push(prefixe + T(sansDoiVoulu.has(slug) ? 'ojs.avert.doi.voulu' : 'ojs.avert.doi.sans'));
         if (doiFiche !== '') { avertissements.push(prefixe + T('ojs.avert.doi.inutile', [doiFiche])); }
-      } else if (article.doi !== '' && doiFiche !== '' && doiFiche !== article.doi) {
-        // Deux diagnostics, qui ne se confondent pas et n'appellent pas le même geste : un
-        // DOI de la forme de la maison a pu être déposé pour de bon, et l'identifiant d'un
-        // article déjà paru ne se change pas ; un DOI qui n'a pas cette forme n'a jamais pu
-        // être déposé ainsi, c'est une saisie de travers.
-        avertissements.push(prefixe + T(FORME_DOI[numero.locale].motif.test(doiFiche)
-          ? 'ojs.avert.doi.divergent' : 'ojs.avert.doi.forme', [doiFiche, article.doi]));
+      } else if (doiFiche !== '') {
+        article.doi = doiFiche;
+        if (doiRang !== '' && doiFiche !== doiRang) {
+          // Deux diagnostics, qui ne se confondent pas et n'appellent pas le même geste :
+          // un DOI de la forme de la maison a pu être déposé pour de bon — l'identifiant
+          // d'un article déjà paru ne se change pas, et le poser à la main est le bon
+          // geste ; un DOI qui n'a pas cette forme n'a jamais pu être déposé ainsi, c'est
+          // une saisie de travers.
+          avertissements.push(prefixe + T(FORME_DOI[numero.locale].motif.test(doiFiche)
+            ? 'ojs.avert.doi.divergent' : 'ojs.avert.doi.forme', [doiFiche, doiRang]));
+        }
       }
       // Licence de l'article : CC-BY 4.0 quand la fiche ne dit rien, exactement comme
       // avant que le champ existe. Rien à signaler dans ce cas.
@@ -866,8 +872,9 @@ function genererExportOjs(racine, options) {
         ' access_status="0" date_published="' + numero.datePublication + '"' +
         ' section_ref="' + echapperXml(a.rubrique.abbrev[numero.locale]) + '"' + SCHEMA + '>\n');
       ligne(8, 'id', ' type="internal" advice="ignore"', a.idPublication);
-      // Le DOI calculé par collecter(), ou aucune balise : un article qui n'en reçoit pas
-      // n'en reçoit pas non plus une vide, qu'OJS prendrait pour un identifiant.
+      // Le DOI décidé par collecter() — calculé, ou manuel s'il vit sur la fiche — ou
+      // aucune balise : un article qui n'en reçoit pas n'en reçoit pas non plus une vide,
+      // qu'OJS prendrait pour un identifiant.
       if (a.doi) { ligne(8, 'id', ' type="doi" advice="update"', a.doi); }
       for (const l of localesNonVides(meta.title)) { ligne(8, 'title', ' locale="' + l + '"', meta.title[l].trim()); }
       for (const l of localesNonVides(meta.subtitle)) { ligne(8, 'subtitle', ' locale="' + l + '"', meta.subtitle[l].trim()); }

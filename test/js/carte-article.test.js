@@ -394,6 +394,43 @@ test('carte : les deux boutons ouvrent les bons formulaires, sur le bon article'
   assert.ok(HOTE.panneaux.length > avant);
 });
 
+test('fiches : l’hôte envoie le DOI calculé, et la case manuelle passe par sa modale', async () => {
+  await vue();
+  await HOTE.executer('szh.apercuMetadonnees');
+  const fiches = HOTE.panneauDeType('szhApercuMetadonnees');
+  assert.ok(fiches, 'formulaire des métadonnées absent');
+  await fiches._recepteur({ type: 'pret' });
+  const charge = fiches.messages.filter((m) => m.type === 'valeurs').pop();
+  // Le DOI calculé voyage À CÔTÉ de la fiche, jamais dedans : c'est lui que le champ
+  // verrouillé affiche, et il est le même que celui de la carte de la vue « Articles ».
+  const par = {};
+  for (const a of charge.articles) { par[a.slug] = a; }
+  assert.strictEqual(par['00-editorial'].doiCalcule, '10.57161/r2026-03-00');
+  assert.strictEqual(par['01-gremion'].doiCalcule, '10.57161/r2026-03-01');
+  assert.strictEqual(par['10-documentation'].doiCalcule, '',
+    'la rubrique sans DOI a reçu un calcul quand même');
+  assert.strictEqual(par['01-gremion'].valeurs.doi, '', 'un doi s’est glissé dans la fiche');
+
+  // La case « Définir manuellement le DOI » : la webview demande, l'hôte pose la question
+  // en modale et répond. Confirmé -> ok, refusé (Annuler) -> ok: false, et rien d'écrit :
+  // le doi manuel ne naît qu'à l'enregistrement de la carte.
+  const nAvant = HOTE.avertissements.length;
+  HOTE.repondreModale('Définir manuellement');
+  await fiches._recepteur({ type: 'doi-manuel-confirmer', slug: '01-gremion', sens: 'activer' });
+  let rep = fiches.messages.filter((m) => m.type === 'doi-manuel-reponse').pop();
+  assert.deepStrictEqual(rep, { type: 'doi-manuel-reponse', slug: '01-gremion',
+    sens: 'activer', ok: true });
+  assert.ok(HOTE.avertissements.length > nAvant, 'aucune question modale n’a été posée');
+
+  await fiches._recepteur({ type: 'doi-manuel-confirmer', slug: '01-gremion', sens: 'retirer' });
+  rep = fiches.messages.filter((m) => m.type === 'doi-manuel-reponse').pop();
+  assert.deepStrictEqual(rep, { type: 'doi-manuel-reponse', slug: '01-gremion',
+    sens: 'retirer', ok: false }, 'Annuler doit répondre ok: false');
+  assert.strictEqual(fs.readFileSync(
+    path.join(REVUE, 'articles', '01-gremion', '01-gremion.meta.yaml'), 'utf8').indexOf('doi:'), -1,
+    'la question modale a écrit dans la fiche');
+});
+
 test('carte : le compteur d’images exclut les portraits, et ne reproche que ce qui manque', async () => {
   const p = await vue();
   const ligne = derniereCharge(p).lignes.find((l) => l.cle === '01-gremion');
@@ -425,6 +462,66 @@ test('carte : un appel de citation sans référence se dit sur la carte, avec so
   const autre = derniereCharge(p).lignes.find((l) => l.cle === '02-chanier');
   assert.ok(!autre.constats.some((c) => /citation/.test(c.texte)),
     'un constat s’est rattaché au mauvais article');
+});
+
+test('carte : le DOI manuel s’affiche étiqueté, et l’écart avec le calculé se dit', async () => {
+  const p = await vue();
+  const cheminFiche = (slug) => path.join(REVUE, 'articles', slug, slug + '.meta.yaml');
+  const avant05 = fs.readFileSync(cheminFiche('05-pagnamenta'), 'utf8');
+  const avant10 = fs.readFileSync(cheminFiche('10-documentation'), 'utf8');
+  // La valeur DOI complète de la carte : texte affiché et étiquettes (marques).
+  const ligneDoi = (l) => {
+    const lignes = l.apercu.lignes;
+    return lignes[lignes.length - 1].valeurs[0];
+  };
+  try {
+    // Un DOI manuel qui diverge du calculé, et un autre sur un article qui n'en reçoit pas.
+    fs.writeFileSync(cheminFiche('05-pagnamenta'),
+      avant05.replace('title:', 'doi: "10.57161/r2020-09-09"' + LF + 'title:'));
+    fs.writeFileSync(cheminFiche('10-documentation'),
+      avant10.replace('title:', 'doi: "10.57161/r2020-09-10"' + LF + 'title:'));
+    await HOTE.executer('szh.cockpit.rafraichir');
+    await p._recepteur({ type: 'pret' });
+    let charge = derniereCharge(p);
+    // La carte affiche CE QUI PART : le DOI manuel, étiqueté « manuel » — la provenance
+    // doit se voir d'un coup d'œil. Le constat nomme les deux valeurs.
+    const divergent = charge.lignes.find((l) => l.cle === '05-pagnamenta');
+    assert.strictEqual(doiDe(divergent), '10.57161/r2020-09-09',
+      'la carte n’affiche pas le DOI manuel qui part');
+    assert.deepStrictEqual(ligneDoi(divergent).marques, ['manuel'],
+      'l’étiquette « manuel » manque : la provenance ne se voit pas');
+    assert.ok(divergent.constats.some((c) => c.texte.indexOf('10.57161/r2020-09-09') !== -1
+      && c.texte.indexOf('10.57161/r2026-03-05') !== -1
+      && c.texte.indexOf('partira vers OJS') !== -1),
+      'l’écart avec le calculé ne se dit pas : ' + divergent.constats.map((c) => c.texte).join(' | '));
+    // Sans DOI manuel, le calculé s'affiche comme avant, avec sa propre étiquette.
+    const calcule = charge.lignes.find((l) => l.cle === '01-gremion');
+    assert.strictEqual(doiDe(calcule), '10.57161/r2026-03-01');
+    assert.deepStrictEqual(ligneDoi(calcule).marques, ['calculé']);
+    // Article sans DOI : rien ne part, la ligne dit « aucun » et le constat dit la fiche.
+    const sans = charge.lignes.find((l) => l.cle === '10-documentation');
+    assert.match(doiDe(sans), /aucun/, 'un DOI manuel s’affiche sur un article qui n’en reçoit pas');
+    assert.ok(sans.constats.some((c) => c.texte.indexOf('10.57161/r2020-09-10') !== -1
+      && /rien ne partira vers OJS/.test(c.texte)),
+      'le DOI manuel inutile ne se dit pas : ' + sans.constats.map((c) => c.texte).join(' | '));
+
+    // DOI incalculable — plus de date, et le dossier temporaire n'a pas d'année : le
+    // manuel s'affiche quand même, étiqueté, puisqu'il partira dès le numéro complet.
+    await poserEtat({ date: '' });
+    await p._recepteur({ type: 'pret' });
+    charge = derniereCharge(p);
+    const incalc = charge.lignes.find((l) => l.cle === '05-pagnamenta');
+    assert.strictEqual(doiDe(incalc), '10.57161/r2020-09-09',
+      'un DOI manuel disparaît de la carte quand le calcul est impossible');
+    assert.deepStrictEqual(ligneDoi(incalc).marques, ['manuel']);
+    // Et sans manuel, l'incalculable se dit toujours.
+    const nu = charge.lignes.find((l) => l.cle === '01-gremion');
+    assert.match(doiDe(nu), /à calculer/, 'le DOI devrait être incalculable ici');
+  } finally {
+    fs.writeFileSync(cheminFiche('05-pagnamenta'), avant05);
+    fs.writeFileSync(cheminFiche('10-documentation'), avant10);
+    await poserEtat({ date: '2026-09-08' });
+  }
 });
 
 test('déplacement : franchir la frontière du DOI est refusé, et le refus s’explique', async () => {
@@ -576,4 +673,62 @@ test('export : un article coché « pas de DOI » ne bloque plus l’export', ()
     'l’absence voulue n’est pas signalée : ' + r.avertissements.join(' | '));
   const xml = fs.readFileSync(r.chemin, 'utf8');
   assert.strictEqual(xml.indexOf('type="doi"'), -1, 'un DOI a été inventé');
+});
+
+// ---- Le fichier dérivé des DOI calculés ----
+//
+// Le bandeau DOI de la couverture (szh-article.html) doit imprimer le DOI courant alors
+// que plus rien ne le stocke : le cockpit dépose donc dois-calcules.yaml à côté
+// d'ausgabe.yaml, et pipeline/filters/szh-maquette.lua ne fait que le lire. Le calcul,
+// lui, ne vit qu'à un endroit — lib/articles.js — et ce fichier n'est qu'une projection.
+
+test('dois-calcules.yaml : porteurs seuls, write-if-changed, et numéro archivé intact', () => {
+  // extension.js est déjà chargé par activerHote (le crochet vscode reste posé) : on
+  // reprend le module du cache, comme le ferait l'hôte lui-même.
+  const ext = require(path.join(COCKPIT, 'extension.js'));
+  const revue = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-dois-'));
+  const ausgabe = (cles) => fs.writeFileSync(path.join(revue, 'ausgabe.yaml'),
+    ['revue: revue', 'lang: fr', 'volume: "16"', 'numero: "03"', 'date: "2026-09-08"']
+      .concat(cles || []).concat(['']).join(LF));
+  ausgabe();
+  const slugs = ['00-edito', '01-doc', '02-a'];
+  const types = { '00-edito': 'editorial', '01-doc': 'documentation', '02-a': 'article' };
+  for (const slug of slugs) {
+    const d = path.join(revue, 'articles', slug);
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, slug + '.meta.yaml'),
+      ['type: ' + types[slug], 'lang: fr', 'title:', '  fr: "T"', ''].join(LF));
+  }
+  // Le faux fournisseur n'a que ce que doisCalculesArticles lit : la racine et l'ordre.
+  const fournisseur = (ordre) => ({ racine: revue, listerArticles: () => ordre });
+  const chemin = path.join(revue, 'dois-calcules.yaml');
+
+  ext._pur.ecrireDoisCalcules(fournisseur(slugs));
+  const texte = fs.readFileSync(chemin, 'utf8');
+  assert.match(texte, /^00-edito: 10\.57161\/r2026-03-00$/m, 'l’éditorial n’ouvre pas à 00');
+  assert.match(texte, /^02-a: 10\.57161\/r2026-03-01$/m,
+    'le compteur ne se resserre pas autour du sans-DOI');
+  assert.strictEqual(texte.indexOf('01-doc'), -1,
+    'un article sans DOI a reçu une ligne : la maquette lui poserait un bandeau');
+  assert.match(texte, /DÉRIVÉ/, 'l’en-tête ne dit pas que le fichier est dérivé');
+
+  // Write-if-changed : un second appel identique ne réécrit rien — SharePoint
+  // répliquerait chaque octet pour rien. La sentinelle est l'heure du fichier.
+  const sentinelle = new Date(2000, 0, 1);
+  fs.utimesSync(chemin, sentinelle, sentinelle);
+  ext._pur.ecrireDoisCalcules(fournisseur(slugs));
+  assert.strictEqual(fs.statSync(chemin).mtime.getFullYear(), 2000,
+    'le fichier a été réécrit sans changement');
+
+  // Un ordre changé le réécrit, et les rangs suivent — le rang vient de l'ordre.
+  ext._pur.ecrireDoisCalcules(fournisseur(['02-a', '00-edito', '01-doc']));
+  const relu = fs.readFileSync(chemin, 'utf8');
+  assert.match(relu, /^02-a: 10\.57161\/r2026-03-00$/m);
+  assert.match(relu, /^00-edito: 10\.57161\/r2026-03-01$/m);
+
+  // Numéro ARCHIVÉ : plus une écriture, même si le calcul donnerait autre chose.
+  ausgabe(['archived: true']);
+  ext._pur.ecrireDoisCalcules(fournisseur(slugs));
+  assert.strictEqual(fs.readFileSync(chemin, 'utf8'), relu,
+    'le fichier dérivé d’un numéro archivé a été réécrit');
 });

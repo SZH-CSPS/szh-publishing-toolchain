@@ -1188,7 +1188,12 @@ def principal(argv):
         # Le .docx vit encore dans articles-word/ à cet instant : son nom de fichier
         # est l'identité que la cible `import` du Makefile comparera au prochain dépôt.
         'source': os.path.basename(chemin_docx),
-        'doi': doi,
+        # Le DOI du Word n'est PLUS repris dans la fiche : le DOI est un calcul du cockpit
+        # (place de l'article dans le numéro, lib/export-ojs.js), et seul un DOI défini à
+        # la main dans le formulaire vit dans le meta.yaml — serialiser_meta sait toujours
+        # l'écrire, l'import n'en produit simplement plus. Le doi lu plus haut sert encore
+        # à deviner la langue (langue_du_doi) et le type (éditorial en -00), et aux stats.
+        'doi': '',
         'title': {langue: ' '.join(titre_parts)} if titre_parts else {},
         'subtitle': {langue: ' '.join(sous_titre_parts)} if sous_titre_parts else {},
         'resume': {k: v for k, v in resumes.items() if k and v},

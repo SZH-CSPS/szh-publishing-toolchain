@@ -43,6 +43,12 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .case-it { font-weight: 700; margin-top: var(--e5); }
 .case-it input { width: auto; margin-right: .35em; accent-color: var(--accent); }
 
+/* DOI : calcule par l'hote et montre verrouille ; la case « Definir manuellement le DOI »
+   rend le champ editable, apres l'avertissement modal pose par l'hote. */
+input.doi-verrouille { color: var(--encre-2); background: var(--surface); cursor: default; }
+.case-doi { font-weight: 400; font-size: var(--t-libelle); margin-top: var(--e1); }
+.case-doi input { width: auto; margin-right: .35em; accent-color: var(--accent); }
+
 button { padding: .35em .75em; border: 1px solid transparent; border-radius: var(--rayon-mini);
   font: inherit; cursor: pointer;
   color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));

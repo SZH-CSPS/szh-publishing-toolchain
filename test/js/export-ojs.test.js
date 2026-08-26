@@ -81,8 +81,9 @@ function fiche(lignes) { return lignes.concat(['']).join(LF); }
 // mots-clés dans les deux langues.
 //
 // `doi` est FACULTATIF, et absent par défaut : le DOI ne se saisit plus dans la fiche, il se
-// calcule d'après la place de l'article dans le numéro. Les contrôles qui en posent un sont
-// ceux de la divergence, et eux seuls.
+// calcule d'après la place de l'article dans le numéro. Un doi posé dans la fiche est un DOI
+// MANUEL (l'échappatoire du formulaire) : il part à la place du calculé, et la divergence se
+// dit. Les contrôles qui en posent un sont ceux de cette échappatoire, et eux seuls.
 function ficheArticle(langue, doi) {
   return fiche([
     'type: article',
@@ -672,25 +673,28 @@ test('DOI : un numéro sans nombre ne fabrique aucun DOI, et le refus dit où le
   assert.strictEqual(sortie.xml.indexOf('type="doi"'), -1);
 });
 
-test('DOI : la fiche qui dit autre chose que le calcul est signalée, dans les deux langues', () => {
+test('DOI : le DOI manuel de la fiche part à la place du calculé, et l’écart se dit', () => {
   // Le corpus réel porte des DOI déposés, de la forme de la maison : « 10.57161/r2024-01-01 ».
-  // Le calcul part quand même — c'est lui la source de vérité — mais l'écart se dit, avec les
-  // deux valeurs et les deux causes possibles, car elles n'appellent pas le même geste.
+  // Un doi resté dans la fiche est un DOI MANUEL — c'est le sens de l'échappatoire « Définir
+  // manuellement le DOI » — et c'est LUI qui part. Mais jamais en silence : l'écart se dit,
+  // avec les deux valeurs et le geste qui les départage.
   const historique = () => monter({
     produit: 'revue', ausgabe: { date: '2026-09-08' },
     articles: [{ slug: '01-edito', fiche: ficheEditorial('fr', '10.57161/r2024-01-01'),
       texte: 'Un mot.' + LF }]
   });
   const sortie = exporter(historique(), configComplete());
-  assert.ok(sortie.xml.indexOf('<id type="doi" advice="update">10.57161/r2026-02-00</id>') !== -1,
-    'le calcul n’est pas parti');
-  assert.strictEqual(sortie.xml.indexOf('10.57161/r2024-01-01'), -1, 'le DOI de la fiche est parti');
+  assert.ok(sortie.xml.indexOf('<id type="doi" advice="update">10.57161/r2024-01-01</id>') !== -1,
+    'le DOI manuel de la fiche n’est pas parti');
+  assert.strictEqual(sortie.xml.indexOf('10.57161/r2026-02-00'), -1,
+    'le calculé est parti quand même');
   const dit = sortie.avertissements.filter((a) => a.indexOf('10.57161/r2024-01-01') !== -1);
   assert.strictEqual(dit.length, 1, 'divergence non signalée : ' + sortie.avertissements.join(' | '));
   assert.ok(dit[0].indexOf('01-edito') !== -1, 'l’article n’est pas nommé : ' + dit[0]);
-  assert.ok(dit[0].indexOf('10.57161/r2026-02-00') !== -1, 'le DOI qui part n’est pas dit : ' + dit[0]);
+  assert.ok(dit[0].indexOf('10.57161/r2026-02-00') !== -1, 'le DOI calculé n’est pas dit : ' + dit[0]);
+  assert.match(dit[0], /défini à la main/, 'l’origine manuelle n’est pas dite');
   assert.match(dit[0], /déjà paru/, 'la cause « DOI déjà déposé » n’est pas dite');
-  assert.match(dit[0], /ordre/, 'la cause « ordre à corriger » n’est pas dite');
+  assert.match(dit[0], /Définir manuellement le DOI/, 'le geste de retour n’est pas nommé');
 
   process.env.SZH_LANGUE = 'de';
   try {
@@ -699,28 +703,46 @@ test('DOI : la fiche qui dit autre chose que le calcul est signalée, dans les d
     assert.strictEqual(de.length, 1, 'divergence non signalée en allemand');
     assert.ok(de[0].indexOf('10.57161/r2026-02-00') !== -1);
     assert.match(de[0], /erschienen/);
-    assert.match(de[0], /Reihenfolge/);
+    assert.match(de[0], /von Hand/);
     assert.strictEqual(de[0].indexOf('ß'), -1, 'eszett dans un message allemand');
   } finally { process.env.SZH_LANGUE = 'fr'; }
 });
 
-test('DOI : une forme étrangère à la revue se dit autrement qu’un DOI déjà déposé', () => {
+test('DOI : une forme étrangère à la revue part aussi, mais se dit autrement', () => {
   // La lettre distingue les deux revues : un « z » dans la Revue n'a jamais pu être déposé
-  // tel quel, ce n'est donc pas un DOI historique mais une saisie de travers. Les deux cas
-  // ne se disent pas de la même façon, parce qu'ils n'appellent pas le même geste.
+  // tel quel, c'est très probablement une saisie de travers. Le DOI manuel part quand même
+  // — l'échappatoire appartient à qui sait ce qu'il fait — mais le diagnostic n'est pas
+  // celui d'un DOI historique, parce qu'il n'appelle pas le même geste.
   const racine = monter({
     produit: 'revue', ausgabe: { date: '2026-09-08' },
     articles: [{ slug: '01-edito', fiche: ficheEditorial('fr', '10.57161/z2026-02-00'),
       texte: 'Un mot.' + LF }]
   });
   const sortie = exporter(racine, configComplete());
-  assert.ok(sortie.xml.indexOf('<id type="doi" advice="update">10.57161/r2026-02-00</id>') !== -1);
+  assert.ok(sortie.xml.indexOf('<id type="doi" advice="update">10.57161/z2026-02-00</id>') !== -1,
+    'le DOI manuel n’est pas parti');
+  assert.strictEqual(sortie.xml.indexOf('10.57161/r2026-02-00</id>'), -1,
+    'le calculé est parti quand même');
   const dit = sortie.avertissements.filter((a) => a.indexOf('10.57161/z2026-02-00') !== -1);
   assert.strictEqual(dit.length, 1, 'DOI de la mauvaise revue non signalé : '
     + sortie.avertissements.join(' | '));
-  assert.ok(dit[0].indexOf('10.57161/r2026-02-00') !== -1, 'le DOI qui part n’est pas dit');
+  assert.ok(dit[0].indexOf('10.57161/r2026-02-00') !== -1, 'le DOI calculé n’est pas dit');
   assert.match(dit[0], /lettre de revue/);
   assert.ok(dit[0].indexOf('déjà paru') === -1, 'un DOI impossible ne se dit pas « déjà paru »');
+});
+
+test('DOI : un DOI manuel égal au calculé part sans un mot', () => {
+  // La case cochée puis laissée sur son point de départ : rien ne diverge, rien à dire.
+  const racine = monter({
+    produit: 'revue', ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '01-edito', fiche: ficheEditorial('fr', '10.57161/r2026-02-00'),
+      texte: 'Un mot.' + LF }]
+  });
+  const sortie = exporter(racine, configComplete());
+  assert.ok(sortie.xml.indexOf('<id type="doi" advice="update">10.57161/r2026-02-00</id>') !== -1);
+  assert.ok(!sortie.avertissements.some((a) => a.indexOf('DOI') !== -1),
+    'un DOI manuel identique au calculé ne doit rien signaler : '
+    + sortie.avertissements.join(' | '));
 });
 
 test('DOI : un article qui n’en reçoit pas, mais dont la fiche en porte un, le dit', () => {

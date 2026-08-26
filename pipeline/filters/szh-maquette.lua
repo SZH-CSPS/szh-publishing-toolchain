@@ -108,6 +108,33 @@ local function langue_fiche(slug)
   return lire_cle(slug .. '.meta.yaml', 'lang'):lower():sub(1, 2)
 end
 
+-- DOI calculé de l'article, lu dans le fichier DÉRIVÉ dois-calcules.yaml que le cockpit
+-- dépose à côté d'ausgabe.yaml (repéré par SZH_AUSGABE, comme annee_numero). Le CALCUL
+-- lui-même vit dans le cockpit — le rang de l'article parmi les porteurs du numéro,
+-- lib/articles.js, un seul endroit — et le pipeline ne fait que lire la valeur déposée :
+-- un second calcul ici finirait par diverger du premier. Lecture hors pandoc, ligne à
+-- ligne, la clé comparée en TEXTE et non passée à lire_cle : un slug porte des tirets,
+-- qui sont des quantificateurs dans un motif Lua. Fichier absent ou slug absent -> '' —
+-- les dépôts montés à la main et les tests n'ont pas ce fichier, et un article sans DOI
+-- n'y a pas de ligne : la couverture sort alors sans bandeau, comme avant, jamais en
+-- échec.
+local function doi_calcule_du_numero(slug)
+  if slug == '' then return '' end
+  local ausgabe = os.getenv('SZH_AUSGABE') or ''
+  if ausgabe == '' then return '' end
+  local racine = ausgabe:gsub('[/\\][^/\\]*$', '')
+  if racine == ausgabe then return '' end          -- pas de dossier : rien à chercher
+  local fh = io.open(racine .. '/dois-calcules.yaml', 'r')
+  if not fh then return '' end
+  local valeur = ''
+  for ligne in fh:lines() do
+    local cle, reste = ligne:match('^([^#%s][^:]*):%s*(.*)$')
+    if cle == slug then valeur = parse_scalar(reste); break end
+  end
+  fh:close()
+  return valeur
+end
+
 -- revue -> { nom, issn, lang }. Accepte le jeton canonique (zeitschrift/revue) et le
 -- nom complet de l'ancien ausgabe.yaml. Valeur inconnue -> champ libre, sans langue :
 -- c'est l'appelant qui enchaîne les replis, la langue de l'article passant devant tout.
@@ -487,6 +514,16 @@ function Meta(meta)
   -- Clé remise à nil quand elle est fausse : le template teste `$if(entete-condensee)$`,
   -- et une valeur présente mais fausse doit être indistinguable d'une clé absente.
   meta['entete-condensee'] = est_vrai(meta['entete-condensee']) or nil
+
+  -- Bandeau DOI de la couverture ($if(doi)$ du template). Le meta.yaml ne porte plus de
+  -- `doi:` que lorsqu'il a été défini À LA MAIN dans le cockpit (l'échappatoire « Définir
+  -- manuellement le DOI ») : ce doi-là est déjà dans meta et gagne naturellement. Sinon,
+  -- le DOI courant se lit dans le fichier dérivé du cockpit — voir doi_calcule_du_numero.
+  -- Rien de trouvé : pas de bandeau, et jamais un blocage.
+  if S(meta.doi) == '' then
+    local doi_depose = doi_calcule_du_numero(slug)
+    if doi_depose ~= '' then meta['doi'] = pandoc.MetaString(doi_depose) end
+  end
 
   -- Métadonnées de document tirées du meta.yaml : <title> et <meta> HTML, /Title,
   -- /Author et /Lang du PDF (requis par PDF/UA). `pagetitle` évite l'avertissement

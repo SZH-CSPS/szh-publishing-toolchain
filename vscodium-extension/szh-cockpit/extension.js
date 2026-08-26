@@ -2484,7 +2484,10 @@ function textesCarteArticle() {
     motCleAjouter: T('fiches.motcle.ajouter'), motCleRetirer: T('fiches.motcle.retirer'),
     rien: T('form.rien'), enregistre: T('fiches.enregistre'),
     tradAfficher: T('fiches.trad.afficher'), tradMasquer: T('fiches.trad.masquer'),
-    langueAvenir: T('fiches.langue.avenir')
+    langueAvenir: T('fiches.langue.avenir'),
+    // Le champ DOI, verrouillé sur le calculé : l'infobulle du champ et la case de
+    // l'échappatoire. L'avertissement modal, lui, vit chez l'hôte (confirmerDoiManuel).
+    doiVerrouTip: T('fiches.doi.tip'), doiManuel: T('fiches.doi.manuel')
   }, textesAuteur());
 }
 
@@ -2609,10 +2612,67 @@ function migrerFrontmatterVersMeta(racine, slug) {
   } catch (e) { /* migration au mieux : la carte restera vide */ }
 }
 
+// Le DOI calculé de chaque article, pour les formulaires de fiches : la même mécanique que
+// la vue « Articles » (apercuDoi) — locale, année, numéro et rang parmi les porteurs. Rendu
+// slug -> DOI, '' quand il est incalculable ou que l'article n'en reçoit pas : le champ
+// verrouillé affiche alors « — ». Tous les articles sont lus, même sous filtre : le rang se
+// compte sur le numéro entier.
+function doisCalculesArticles(fournisseur) {
+  const racine = fournisseur.racine;
+  const slugs = fournisseur.listerArticles();
+  let valeurs = {};
+  try { valeurs = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')); }
+  catch (e) { /* illisible : DOI incalculable, et le champ le dira par « — » */ }
+  const locale = langueDefaut(valeurs);
+  const annee = anneeNumero(racine, valeurs);
+  const numeroRevue = String(valeurs.numero || '').trim();
+  const sansDoi = articlesSansDoi(racine, slugs);
+  const dois = {};
+  for (const slug of slugs) {
+    dois[slug] = doiCalcule(locale, annee, numeroRevue, rangDoi(slugs, slug, sansDoi));
+  }
+  return dois;
+}
+
+// Le fichier DÉRIVÉ des DOI calculés, écrit à côté d'ausgabe.yaml : la maquette
+// (bandeau DOI de pipeline/templates/szh-article.html, posé par szh-maquette.lua) doit
+// imprimer le DOI courant alors que plus rien ne le stocke — le calcul vit ICI, dans le
+// cockpit (un seul rang : lib/articles.js), et le pipeline ne fait que LIRE cette valeur
+// déposée. Une ligne « slug: doi » par porteur, rien pour les sans-DOI. Écriture atomique
+// et seulement au changement (OneDrive/SharePoint réplique chaque octet écrit) ; un
+// numéro ARCHIVÉ n'est jamais touché. Appelée de rafraichirTout(), le point où tout
+// converge — ordre déplacé, case « pas de DOI », article ajouté ou retiré, année ou
+// numéro changés — et l'appel fréquent est inoffensif grâce à la comparaison.
+const NOM_DOIS_CALCULES = 'dois-calcules.yaml';
+function ecrireDoisCalcules(fournisseur) {
+  const racine = fournisseur.racine;
+  if (!racine) { return; }
+  if (etatRevue(racine).archivee) { return; }      // un numéro archivé ne bouge plus
+  const dois = doisCalculesArticles(fournisseur);
+  const lignes = [
+    '# Fichier DÉRIVÉ, écrit par le cockpit : les DOI calculés d\'après la place de',
+    '# chaque article dans le numéro. Ne pas éditer — il serait réécrit tel quel au',
+    '# prochain rafraîchissement. pipeline/filters/szh-maquette.lua le lit pour poser',
+    '# le bandeau DOI de la couverture quand la fiche ne porte pas de DOI manuel.'
+  ];
+  for (const slug of Object.keys(dois)) {
+    if (dois[slug] !== '') { lignes.push(slug + ': ' + dois[slug]); }
+  }
+  const contenu = lignes.join('\n') + '\n';
+  const chemin = path.join(racine, NOM_DOIS_CALCULES);
+  try {
+    let ancien = null;
+    try { ancien = fs.readFileSync(chemin, 'utf8'); } catch (e) { /* pas encore écrit */ }
+    if (ancien === contenu) { return; }
+    ecrireAtomique(chemin, contenu);
+  } catch (e) { /* au mieux : le bandeau DOI se rattrapera au prochain rafraîchissement */ }
+}
+
 // `filtre` : slugs à afficher, ou null pour tous. L'ordre reste celui de l'arbre.
 function lireMetadonneesArticles(fournisseur, filtre) {
   const articles = [];
   const budget = { reste: BUDGET_VIGNETTES };
+  const dois = doisCalculesArticles(fournisseur);
   for (const slug of fournisseur.listerArticles()) {
     if (filtre && filtre.indexOf(slug) === -1) { continue; }
     migrerFrontmatterVersMeta(fournisseur.racine, slug);
@@ -2622,9 +2682,10 @@ function lireMetadonneesArticles(fournisseur, filtre) {
     } catch (e) { /* pas encore de fiche : carte vide */ }
     delete valeurs._inconnues;                     // la webview n'a pas à les voir
     // À côté de la fiche, jamais dedans : ces vignettes ne doivent pas repartir dans le
-    // meta.yaml au prochain enregistrement.
+    // meta.yaml au prochain enregistrement. Le DOI calculé non plus : la carte l'affiche,
+    // seul un DOI manuel (case cochée) revient dans la fiche.
     articles.push({
-      slug: slug, valeurs: valeurs,
+      slug: slug, valeurs: valeurs, doiCalcule: dois[slug] || '',
       apercusAuteurs: (valeurs.author || [])
         .map((a) => vignetteAuteur(fournisseur.racine, slug, a.photo, budget))
     });
@@ -3423,25 +3484,38 @@ function anneeNumero(racine, valeurs) {
 // La ligne DOI de l'aperçu, et ce qu'il faut dire à côté. -> { ligne, constats }
 //
 // Le DOI est un CALCUL : le rang de l'article parmi ceux qui en portent un, compté à partir
-// de zéro, d'où l'éditorial en « 00 ». Rien ne le stocke. Mais si la fiche en porte un,
-// c'est LUI qui partira vers OJS : une divergence se dit, elle ne se devine pas.
+// de zéro, d'où l'éditorial en « 00 ». Rien ne le stocke — sauf l'échappatoire : un doi
+// resté sur la fiche y a été défini À LA MAIN (case « Définir manuellement le DOI » du
+// formulaire des métadonnées), et c'est LUI qui part vers OJS à la place du calculé.
+// La carte affiche CE QUI PART : le manuel quand il existe, étiqueté « manuel » pour que
+// la provenance se voie d'un coup d'œil, le calculé sinon, étiqueté « calculé » comme
+// avant. La divergence entre les deux reste un constat : elle ne se devine pas.
 function apercuDoi(locale, annee, numeroRevue, rang, doiFiche, voulu) {
   const fiche = String(doiFiche || '').trim();
   const constats = [];
   if (rang === -1) {
-    if (fiche !== '') { constats.push({ ton: 'attention', texte: T('art.doi.fiche.autre', [fiche]) }); }
+    // Un DOI manuel sur un article qui n'en reçoit pas : rien ne part, la ligne dit
+    // « aucun » — c'est ce qui part — et le constat dit le doi resté sur la fiche.
+    if (fiche !== '') { constats.push({ ton: 'attention', texte: T('art.doi.fiche.inutile', [fiche]) }); }
     return {
       ligne: { marque: '', texte: T(voulu ? 'art.doi.aucun.voulu' : 'art.doi.aucun.rubrique') },
       constats: constats
     };
   }
   const calcule = doiCalcule(locale, annee, numeroRevue, rang);
+  if (fiche !== '') {
+    // Le manuel s'affiche tel quel, calculable ou non — incalculable n'étouffe rien, le
+    // manuel partira dès que le numéro sera complet. La divergence ne se dit que quand il
+    // y a deux valeurs à comparer.
+    if (calcule !== '' && fiche !== calcule) {
+      constats.push({ ton: 'attention', texte: T('art.doi.fiche.autre', [fiche, calcule]) });
+    }
+    return { ligne: { marque: '', texte: fiche, marques: [T('art.doi.manuel')] },
+             constats: constats };
+  }
   if (calcule === '') {
     return { ligne: { marque: '', texte: T('art.doi.incalculable'), ton: 'attention' },
              constats: constats };
-  }
-  if (fiche !== '' && fiche !== calcule) {
-    constats.push({ ton: 'attention', texte: T('art.doi.fiche.autre', [fiche]) });
   }
   return { ligne: { marque: '', texte: calcule, marques: [T('art.doi.calcule')] },
            constats: constats };
@@ -4551,6 +4625,23 @@ function titreFiches(filtre) {
   return (filtre && filtre.length === 1) ? T('fiches.titre.un', [filtre[0]]) : T('fiches.titre');
 }
 
+// La case « Définir manuellement le DOI » d'une carte : la webview n'a pas de boîte de
+// dialogue à elle, c'est donc l'hôte qui pose la question — modale, comme les
+// confirmations de fermeture — et qui répond. Cocher demande l'avertissement de
+// l'échappatoire ; décocher un DOI qui diverge du calculé demande confirmation avant de
+// l'effacer. Annuler (choix undefined) laisse la carte telle quelle.
+async function confirmerDoiManuel(panneau, msg) {
+  const retirer = msg.sens === 'retirer';
+  const choix = await vscode.window.showWarningMessage(
+    T(retirer ? 'fiches.doi.retirer.question' : 'fiches.doi.manuel.question'),
+    { modal: true, detail: T(retirer ? 'fiches.doi.retirer.detail' : 'fiches.doi.manuel.detail') },
+    T(retirer ? 'fiches.doi.retirer.oui' : 'fiches.doi.manuel.oui'));
+  repondrePanneau(panneau, {
+    type: 'doi-manuel-reponse', slug: String(msg.slug || ''),
+    sens: retirer ? 'retirer' : 'activer', ok: choix !== undefined
+  });
+}
+
 // Pleine page : les aperçus sont fermés avant, même pour un simple reveal.
 async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
   if (!fournisseur.racine) { return; }
@@ -4627,6 +4718,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
     if (msg.type === 'photo-deposer') { await deposerPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type === 'photo-ouvrir') { ouvrirVersionsPhoto(fournisseur, panneau, msg); return; }
     if (msg.type === 'photo-choisir') { choisirPhotoAuteur(fournisseur, panneau, msg); return; }
+    if (msg.type === 'doi-manuel-confirmer') { await confirmerDoiManuel(panneau, msg); return; }
     if (msg.type !== 'enregistrer' || !msg.articles) { return; }
     const res = ecrireCartesArticles(fournisseur, msg.articles, filtreArticles);
     if (res.erreurs.length > 0) {
@@ -4705,6 +4797,7 @@ function htmlImportVerif(nonce) {
 function lireArticlesImport(fournisseur) {
   const budgetVignettes = { reste: BUDGET_VIGNETTES };
   const connus = new Set(fournisseur.listerArticles());
+  const dois = doisCalculesArticles(fournisseur);
   const articles = [];
   for (const slug of slugsImportVerif) {
     if (!connus.has(slug)) { continue; }
@@ -4720,7 +4813,7 @@ function lireArticlesImport(fournisseur) {
       description: decrireImage(path.join(base, relatif))   // « L × H · poids »
     }));
     articles.push({
-      slug: slug, valeurs: valeurs, images: images,
+      slug: slug, valeurs: valeurs, images: images, doiCalcule: dois[slug] || '',
       apercusAuteurs: (valeurs.author || [])
         .map((a) => vignetteAuteur(fournisseur.racine, slug, a.photo, budgetVignettes))
     });
@@ -4782,6 +4875,7 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
     if (msg.type === 'photo-deposer') { await deposerPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type === 'photo-ouvrir') { ouvrirVersionsPhoto(fournisseur, panneau, msg); return; }
     if (msg.type === 'photo-choisir') { choisirPhotoAuteur(fournisseur, panneau, msg); return; }
+    if (msg.type === 'doi-manuel-confirmer') { await confirmerDoiManuel(panneau, msg); return; }
     if (msg.type === 'remplacer-image') { await remplacerImageImport(fournisseur, rafraichirTout, panneau, msg); return; }
     if (msg.type === 'fermer') {
       // Seul chemin de fermeture contrôlable : la croix de l'onglet est hors de portée.
@@ -5766,6 +5860,9 @@ function activate(context) {
     // Avant tout le reste : le titre de la vue et les boutons de l'arbre en dépendent.
     majEtatNumero(fournisseur, barreEtat);
     fournisseur.rafraichir();
+    // Le fichier dérivé des DOI calculés suit chaque rafraîchissement : tout geste qui
+    // change un rang passe par ici, et l'écriture ne se fait qu'au changement.
+    ecrireDoisCalcules(fournisseur);
     vue.title = fournisseur.racine ? titreVue(fournisseur.racine) : T('arbre.titre.defaut');
     majBarreApercu();
     rechargerApercuHtmlSiChange(fournisseur);

@@ -419,6 +419,25 @@ test('import : les noms de versions de portrait sont ceux que le cockpit relit',
 
 // ---- Cohérence entre fichiers ----
 
+test('bandeau DOI : le cockpit dépose dois-calcules.yaml et la maquette le relit', () => {
+  // Le DOI ne se saisit plus et l'import ne l'écrit plus : sans ce relais, le template
+  // ($if(doi)$) n'imprimerait plus jamais de bandeau sur un nouvel article, pendant que
+  // l'export OJS en déclarerait un. Le calcul vit dans le cockpit (lib/articles.js, un
+  // seul rang) ; le pipeline ne fait que lire le fichier dérivé. Trois maillons, un nom :
+  // s'ils divergent, le bandeau meurt en silence — d'où ce contrat.
+  const ext = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  assert.match(ext, /NOM_DOIS_CALCULES = 'dois-calcules\.yaml'/,
+    'le cockpit n’écrit plus le fichier dérivé des DOI');
+  assert.match(ext, /ecrireDoisCalcules\(fournisseur\)/,
+    'ecrireDoisCalcules n’est plus branché sur le rafraîchissement');
+  const lua = lire('pipeline', 'filters', 'szh-maquette.lua');
+  assert.ok(lua.includes("'/dois-calcules.yaml'"),
+    'szh-maquette.lua ne lit plus le fichier dérivé : le bandeau DOI meurt en silence');
+  assert.match(lua, /doi_calcule_du_numero/, 'le repli du bandeau DOI a disparu du filtre');
+  const template = lire('pipeline', 'templates', 'szh-article.html');
+  assert.ok(template.includes('$if(doi)$'), 'le template n’imprime plus le bandeau DOI');
+});
+
 test('la distro WSL est la même dans le code et dans tasks.json', () => {
   const taches = jsonc(lire('vscodium-user', 'tasks.json')).tasks;
   for (const t of taches) {
