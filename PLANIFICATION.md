@@ -113,6 +113,25 @@ la chasse aux échecs muets : *un repli légitime qui ne dit pas qu'il a eu lieu
 ⚠ Les numéros déjà importés ne profitent pas de la correction : la fiche est écrite à l'import.
 Sur un article dont le bloc auteurs manque, il faut *Réimporter cet article*.
 
+### Installation d'un poste : une source winget cassée n'arrête plus rien (v2026.08.51)
+
+Constat de Robin sur un poste neuf : `winget install` échouait (index de source jamais
+synchronisé — « 0x8a15000f : données manquantes »), et `bootstrap.ps1` s'arrêtait sur
+« VSCodium introuvable après installation ». `bootstrap.ps1` répare désormais la source
+(`source reset` + `source update --name winget`, **une seule fois par exécution**) et, si winget
+reste hors service, prend l'installeur sur la Release VSCodium — `VSCodiumSetup-x64` et non
+`UserSetup` : la variante utilisateur ne servirait qu'au compte administrateur qui installe, et
+aucun rédacteur n'aurait d'éditeur. Un VSCodium trouvé sous `%LOCALAPPDATA%` est d'ailleurs
+signalé pour la même raison. `--source winget` est imposé (msstore n'héberge aucun de nos paquets
+et c'est elle qui réclame une région), et l'appel passe par `Invoke-SzhNatif`, la garde déjà posée
+pour le CLI VSCodium à l'incident 2026.08.47. SumatraPDF reste non bloquant — la chaîne compile
+sans lecteur PDF — mais son absence se dit, sinon le rédacteur découvrirait seul qu'un PDF ouvert
+dans Acrobat bloque la compilation suivante.
+
+Un second fichier à double-cliquer, `windows\Installer le poste SZH (winget casse).cmd`, fait la
+réparation à l'écran avant l'installation, pour un poste dont la source est déjà hors service.
+`api.github.com` rejoint la liste des flux sortants à autoriser (`docs/SECURITE.md`).
+
 ### Retouche lot I bis (v2026.08.50, cockpit 0.26.2)
 
 Constat de Robin : recliquer l'en-tête de la section déjà dépliée la repliait — la section active doit rester ouverte. Le clic-titre ne replie plus jamais : il déplie si besoin (accordéon) et ouvre la vue d'ensemble ; sur une section déjà ouverte, il n'ouvre que la vue. Le repli reste au chevron (seul chemin vers l'état « tout fermé »). La commande est renommée `szh.basculerSection` → `szh.ouvrirSection` (elle ne bascule plus).

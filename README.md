@@ -94,10 +94,16 @@ réinstallé sur les postes.
 powershell -ExecutionPolicy Bypass -File .\windows\bootstrap.ps1
 ```
 
-Active le moteur WSL, installe VSCodium et SumatraPDF par winget, donne aux Utilisateurs le droit
+Active le moteur WSL, installe VSCodium et SumatraPDF par winget (source winget en panne : le
+script la répare, puis prend VSCodium sur sa Release GitHub), donne aux Utilisateurs le droit
 d'écrire dans `C:\ProgramData\SZH`, pose les raccourcis du menu Démarrer, crée les tâches
 planifiées (mise à jour à la connexion et le mardi à 14 h, préchauffage WSL) et lance la
 première mise à jour. Si WSL était absent, redémarrer puis relancer le script.
+
+Deux fichiers à double-cliquer font la même chose sans passer par PowerShell :
+`windows\Installer le poste SZH.cmd`, et `windows\Installer le poste SZH (winget casse).cmd`
+pour un poste dont la source winget est déjà hors service — celui-là remet la source d'aplomb
+et pose VSCodium et SumatraPDF à l'écran avant de lancer l'installation.
 
 Le rythme de la mise à jour et les quatre états du poste — verrouillé, éteint, en veille,
 personne connecté — sont traités dans `docs/MAINTENANCE.md`. Un point à connaître : sur un

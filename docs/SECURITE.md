@@ -40,9 +40,13 @@ important de tout le système.
       « Plateforme de machine virtuelle » + « WSL » ; pas de conflit avec un autre hyperviseur
       ou une politique VBS/Device Guard qui bloquerait WSL2.
 - [ ] **Édition de Windows** compatible WSL2 (Pro/Enterprise recommandé ; Home accepté).
-- [ ] **winget disponible** (installe VSCodium + SumatraPDF) — sinon fournir les installeurs.
+- [ ] **winget disponible** (installe VSCodium + SumatraPDF). Une source winget cassée n'arrête
+      plus l'installation : `bootstrap.ps1` tente `source reset` + `source update`, puis prend
+      VSCodium sur sa Release GitHub. SumatraPDF, lui, reste à poser à la main dans ce cas — le
+      script le dit à l'écran.
 - [ ] **Réseau / pare-feu / proxy** : autoriser en sortie **`github.com`** et
-      **`objects.githubusercontent.com`** (téléchargement des releases) + les sources **winget**.
+      **`objects.githubusercontent.com`** (téléchargement des releases), **`api.github.com`**
+      (liste des versions et repli VSCodium) + les sources **winget**.
       Aucun autre flux sortant n'est nécessaire pour compiler (le pipeline est hors-ligne).
 - [ ] **Antivirus / EDR** : poser les **exclusions** WSL (`…\SZH\WSL\*.vhdx`, `…\SZH\staging`,
       processus `vmcompute.exe`/`vmmem.exe`/`wsl.exe`/`wslservice.exe`) **et s'assurer qu'une

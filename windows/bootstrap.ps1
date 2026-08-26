@@ -5,7 +5,8 @@
 
   Ne fait que ce qui exige l'administrateur : dossiers C:\ProgramData\SZH ouverts en
   écriture aux Utilisateurs, moteur WSL sans distribution, VSCodium et SumatraPDF par
-  winget, toolkit initial, tâches planifiées de mise à jour et de préchauffage WSL, puis
+  winget (source cassée : réparation, puis VSCodium pris sur sa Release GitHub),
+  toolkit initial, tâches planifiées de mise à jour et de préchauffage WSL, puis
   une première mise à jour visible. Ensuite le poste n'a plus besoin d'administrateur,
   sauf pour monter VSCodium ou SumatraPDF de version, geste volontairement manuel.
 
@@ -67,21 +68,99 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # ---- Applications (winget, niveau machine) ----
+# winget est le chemin normal, mais il tombe en panne sur un poste neuf plus souvent qu'on ne
+# le croit : index de source jamais synchronisé (« 0x8a15000f : données manquantes »), source
+# msstore qui réclame une région à deux lettres, proxy qui coupe cdn.winget.microsoft.com.
+# Aucune de ces pannes ne mérite d'arrêter l'installation d'un poste : on répare la source,
+# puis on retombe sur le téléchargement direct de l'installeur.
+
+# Une seule réparation par exécution, sinon chaque paquet la refait pour rien.
+$script:sourceReparee = $false
+function Repair-SzhWingetSource {
+  if ($script:sourceReparee) { return }
+  $script:sourceReparee = $true
+  Attention 'Source winget en panne -> reset puis resynchronisation de l''index.'
+  Invoke-SzhNatif {
+    & winget source reset --force 2>&1 | Out-Null
+    & winget source update --name winget 2>&1 | Out-Null
+  }
+}
+
+# --source winget : msstore n'héberge aucun de nos paquets, et c'est elle qui exige un accord
+# et une région. L'écarter supprime la moitié des messages d'erreur à l'écran.
+function Install-SzhAppWinget([string]$Id) {
+  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+    Attention 'winget absent de ce poste (App Installer non provisionné).'
+    return $false
+  }
+  foreach ($essai in 1, 2) {
+    # Out-Host : la sortie d'un natif appelé dans une fonction part sinon dans la valeur de
+    # retour, et winget s'installerait sans qu'une ligne s'affiche.
+    Invoke-SzhNatif {
+      & winget install --id $Id -e --source winget --disable-interactivity `
+          --accept-source-agreements --accept-package-agreements | Out-Host
+    }
+    if ($LASTEXITCODE -eq 0) { return $true }
+    Attention ('winget install {0} : code de sortie {1}.' -f $Id, $LASTEXITCODE)
+    if ($essai -eq 1) { Repair-SzhWingetSource }
+  }
+  return $false
+}
+
+# Repli sans winget : l'installeur publié par VSCodium sur GitHub. « Setup » et non
+# « UserSetup » : il pose l'éditeur dans Program Files, donc pour tous les comptes du poste,
+# là où la variante utilisateur ne servirait qu'au compte administrateur qui installe.
+function Install-SzhVSCodiumDirect {
+  $entetes = @{ 'User-Agent' = 'SZH-Publishing'; 'Accept' = 'application/vnd.github+json' }
+  $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/VSCodium/vscodium/releases/latest' `
+               -Headers $entetes -UseBasicParsing -TimeoutSec 30
+  $asset = $release.assets | Where-Object { $_.name -match '^VSCodiumSetup-x64-.+\.exe$' } | Select-Object -First 1
+  if (-not $asset) { throw 'Aucun installeur VSCodiumSetup-x64 dans la dernière Release VSCodium.' }
+  $exe = Join-Path $SzhStaging $asset.name
+  Info ('Téléchargement de ' + $asset.name)
+  Get-SzhFichier -Url $asset.browser_download_url -Destination $exe
+  # Inno Setup : silencieux, sans redémarrage, sans ouvrir l'éditeur à la fin.
+  $p = Start-Process -FilePath $exe -Wait -PassThru `
+         -ArgumentList '/VERYSILENT', '/NORESTART', '/MERGETASKS=!runcode'
+  if ($p.ExitCode -ne 0) { throw ('Installeur VSCodium sorti en code {0}.' -f $p.ExitCode) }
+}
+
+function Test-SzhSumatra {
+  foreach ($p in "$env:ProgramFiles\SumatraPDF\SumatraPDF.exe", "$env:LOCALAPPDATA\SumatraPDF\SumatraPDF.exe") {
+    if (Test-Path $p) { return $true }
+  }
+  return $false
+}
+
 Info 'Vérification de VSCodium'
 if (-not (Get-VSCodiumExe)) {
   Info 'Installation de VSCodium (winget)'
-  winget install --id VSCodium.VSCodium -e --accept-source-agreements --accept-package-agreements
+  if (-not (Install-SzhAppWinget 'VSCodium.VSCodium')) {
+    Attention 'winget hors service -> installeur pris directement sur la Release VSCodium.'
+    Install-SzhVSCodiumDirect
+  }
 }
-if (-not (Get-VSCodiumExe)) { throw 'VSCodium introuvable après installation.' }
+$codium = Get-VSCodiumExe
+if (-not $codium) {
+  throw ('VSCodium introuvable après installation. Poser l''éditeur à la main depuis ' +
+         'https://github.com/VSCodium/vscodium/releases (VSCodiumSetup-x64), puis relancer ce script.')
+}
+# Un éditeur posé dans le profil de l'administrateur n'existe pour aucun rédacteur : le poste
+# passerait l'installation pour se bloquer à la première ouverture de session.
+if ($codium -like ($env:LOCALAPPDATA + '*')) {
+  Attention ('VSCodium n''est installé que pour ce compte (' + $codium + ') : le désinstaller ' +
+             'puis reprendre avec l''installeur système, sinon les rédacteurs n''auront pas d''éditeur.')
+}
 
 Info 'Vérification de SumatraPDF (lecteur PDF : ne verrouille pas le fichier, recharge auto)'
-$sumatra = $false
-foreach ($p in "$env:ProgramFiles\SumatraPDF\SumatraPDF.exe", "$env:LOCALAPPDATA\SumatraPDF\SumatraPDF.exe") {
-  if (Test-Path $p) { $sumatra = $true }
-}
-if (-not $sumatra) {
+if (-not (Test-SzhSumatra)) {
   Info 'Installation de SumatraPDF (winget)'
-  winget install --id SumatraPDF.SumatraPDF -e --accept-source-agreements --accept-package-agreements
+  $null = Install-SzhAppWinget 'SumatraPDF.SumatraPDF'
+}
+# Pas bloquant : la chaîne compile sans lecteur PDF. Mais il faut le dire ici, sinon le
+# rédacteur découvrira tout seul qu'un PDF ouvert dans Acrobat bloque la compilation suivante.
+if (-not (Test-SzhSumatra)) {
+  Attention 'SumatraPDF non installé -> à poser à la main (https://www.sumatrapdfreader.org).'
 }
 
 # ---- Toolkit initial ----
