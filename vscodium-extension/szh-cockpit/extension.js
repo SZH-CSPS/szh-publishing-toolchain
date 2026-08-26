@@ -3863,6 +3863,11 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
 async function ouvrirVueArticles(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
+  // Décision de Robin (26.08.2026) : ouvrir la vue d'ensemble ferme l'aperçu de la
+  // colonne 2 (HTML ou PDF) — on vient embrasser le numéro, l'article quitté n'a plus
+  // à occuper l'écran. Même geste que la vue Métadonnées. Les rafraîchissements en
+  // tâche de fond passent par envoyerVue, pas par ici : ils ne ferment rien.
+  await fermerTousLesApercus();
   const envoyer = (panneau, avecCouverture) => {
     const charge = chargeArticles(fournisseur);
     repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, charge,

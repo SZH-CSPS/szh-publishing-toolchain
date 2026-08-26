@@ -747,6 +747,28 @@ test('vue Articles : « ouvrir » passe sansApercu, et seul ce chemin la porte',
     'l’ouverture au démarrage ne doit pas changer de comportement');
 });
 
+test('vue Articles : son ouverture ferme l’aperçu de la colonne 2', () => {
+  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  const bloc = (nom) => {
+    const i = src.indexOf('function ' + nom + '(');
+    assert.notStrictEqual(i, -1, 'fonction introuvable : ' + nom);
+    return src.slice(i, src.indexOf('\n}', i));
+  };
+  // Décision de Robin (26.08.2026) : embrasser le numéro ferme l'article quitté. La
+  // fermeture doit précéder le reveal ET la création du panneau — les deux chemins —
+  // sinon la vue déjà ouverte garderait l'aperçu à côté.
+  const fn = bloc('ouvrirVueArticles');
+  const fermeture = fn.indexOf('fermerTousLesApercus()');
+  assert.notStrictEqual(fermeture, -1,
+    'ouvrirVueArticles ne ferme pas les aperçus : la colonne 2 resterait occupée');
+  assert.ok(fermeture < fn.indexOf('.reveal(') && fermeture < fn.indexOf('createWebviewPanel'),
+    'la fermeture doit précéder le reveal et la création du panneau');
+  // Les rafraîchissements en tâche de fond (fin de compilation) passent par envoyerVue,
+  // qui ne doit jamais fermer quoi que ce soit sous les yeux du rédacteur.
+  assert.doesNotMatch(bloc('envoyerVue'), /fermerTousLesApercus/,
+    'un rafraîchissement en tâche de fond ne doit pas fermer l’aperçu');
+});
+
 // ---- citations : le liage des appels de citation ----
 
 test('citations : la liste de références est découpée comme le fait le filtre Lua', () => {
