@@ -72,6 +72,17 @@ function revueDEssai() {
 
 function activerHote(revue) {
   const cockpit = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
+  // Un cache d'auteur·e·s FRAIS avant l'activation : l'extension rafraîchit la liste
+  // OAI-PMH en tâche de fond quand dateFetch a plus de sept jours, et aucun test ne doit
+  // faire de réseau. Le fichier sert aussi de corpus au message auteurs-connus.
+  process.env.SZH_AUTEURS_CACHE = path.join(revue, 'auteurs.json');
+  fs.writeFileSync(process.env.SZH_AUTEURS_CACHE, JSON.stringify({
+    version: 1, dateFetch: new Date().toISOString(),
+    auteurs: [
+      { prenom: 'Robin', nom: 'Morand', datePublication: '2026-01-01T00:00:00Z' },
+      { prenom: 'Anne', nom: 'Dupont', datePublication: '2025-06-01T00:00:00Z' }
+    ]
+  }, null, 2) + LF);
   const evenement = () => () => ({ dispose() {} });
   // Un événement dont on garde les abonnés, pour pouvoir le déclencher depuis un test.
   // `evenement()` jette le gestionnaire : suffisant pour la plupart, pas pour la fin d'une

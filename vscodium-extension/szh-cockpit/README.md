@@ -24,6 +24,8 @@ lib/
   archivage.js          verrouillage, archivage, appels aux scripts PowerShell du poste,
                         lecture et écriture de config.json
   articles.js           ordre des articles dans le numéro, nom affiché, tâches par article
+  auteurs-ojs.js        liste des auteur·e·s publiés, moissonnée en OAI-PMH public sur
+                        ojs.szh.ch et cachée dans auteurs.json (autocomplétion de la modale)
   citations.js          liste de références d'un article et liage manuel d'un appel
   cmyk.js               detection des JPEG CMJN et appel du convertisseur, dans WSL
   export-ojs.js         génération du XML natif OJS

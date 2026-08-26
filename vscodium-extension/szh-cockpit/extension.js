@@ -56,6 +56,10 @@ const {
   lireModeDeveloppeur, ecrireModeDeveloppeur, lireConfigPoste, ecrireConfigPoste,
   CONFIG_POSTE, FORME_MAIL
 } = require('./lib/archivage');
+// ---- Auteur·e·s publiés (OAI-PMH) -> lib/auteurs-ojs.js ---------------------------
+const {
+  lireCache: lireCacheAuteursPublies, rafraichir: rafraichirCacheAuteursPublies
+} = require('./lib/auteurs-ojs');
 // ---- Modèle de tableau -> lib/table-model.js -------------------------------------
 const {
   analyserTable, serialiserTable, disposition, matriceOccupation,
@@ -2535,6 +2539,7 @@ function textesAuteur() {
     aOrcid: T('fiches.auteur.orcid'), aEmail: T('fiches.auteur.email'),
     retirerAuteur: T('fiches.auteur.retirer'), ajouterAuteur: T('fiches.auteur.ajouter'),
     auteurEditer: T('auteur.editer'), auteurTitre: T('auteur.titre'),
+    auteurSuggestions: T('auteur.suggestions'),
     auteurSansNom: T('auteur.sansnom'), auteurSansPhoto: T('auteur.sansphoto'),
     auteurPhoto: T('auteur.photo'), auteurNomRequis: T('auteur.nomrequis'),
     auteurPhotoCachee: T('auteur.photo.cachee'), auteurAgrandir: T('auteur.agrandir'),
@@ -4485,6 +4490,38 @@ function repondrePanneau(panneau, message) {
   try { panneau.webview.postMessage(message); } catch (e) { /* panneau fermé */ }
 }
 
+// ---- Auteur·e·s publiés : la liste pour l'autocomplétion --------------------------
+//
+// Le cache (C:\ProgramData\SZH\auteurs.json, lib/auteurs-ojs.js) part vers chaque vue qui
+// porte la modale d'auteur·e — métadonnées, vérification d'import, médias — en même temps
+// que ses valeurs. Seuls prénom et nom voyagent : la date de publication ne sert qu'à la
+// fusion côté cache. Liste vide : rien n'est envoyé, la modale ne montre alors aucune UI.
+function envoyerAuteursConnus(panneau) {
+  let auteurs;
+  try { auteurs = lireCacheAuteursPublies().auteurs; } catch (e) { return; }
+  if (!Array.isArray(auteurs) || auteurs.length === 0) { return; }
+  repondrePanneau(panneau, {
+    type: 'auteurs-connus',
+    auteurs: auteurs.map((a) => ({ prenom: a.prenom, nom: a.nom }))
+  });
+}
+
+// Le rafraîchissement hebdomadaire, lancé à l'activation SANS l'attendre : hors ligne est
+// un état normal du poste, rien n'est montré au rédacteur — seule une trace console reste
+// pour le diagnostic (échec muet interdit, décision du dépôt).
+function rafraichirAuteursPubliesEnFond() {
+  rafraichirCacheAuteursPublies().then((res) => {
+    if (!res.fait) { return; }                     // cache de moins de sept jours
+    if (res.complet) {
+      console.log('[auteurs-ojs] liste des auteur·e·s publiés rafraîchie : ' + res.nombre + ' nom(s)');
+    } else {
+      console.log('[auteurs-ojs] rafraîchissement incomplet (hors ligne ?) : ' + (res.erreur || '?'));
+    }
+  }).catch((e) => {
+    console.log('[auteurs-ojs] rafraîchissement raté : ' + String((e && e.message) || e));
+  });
+}
+
 // photo-ouvrir : renvoie les versions déjà présentes sur le disque.
 function ouvrirVersionsPhoto(fournisseur, panneau, msg) {
   const slug = String(msg.slug || '');
@@ -4733,6 +4770,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
       types: typesTraduits(langue),
       licences: licencesTraduites(), licenceDefaut: LICENCE_DEFAUT
     });
+    envoyerAuteursConnus(panneau);
     fichesModifie = false;                         // les cartes viennent d'être reconstruites
   };
   rafraichirFiches = () => { if (panneauArticles) { envoyerValeurs(panneauArticles); } };
@@ -4906,6 +4944,7 @@ function envoyerValeursImportVerif(panneau, fournisseur) {
     types: typesTraduits(langue),
     licences: licencesTraduites(), licenceDefaut: LICENCE_DEFAUT
   });
+  envoyerAuteursConnus(panneau);
 }
 
 // Le remplacement lui-même est celui du gestionnaire des médias ; ici, seul l'aller-retour
@@ -5011,6 +5050,7 @@ function REGL_LIBELLES() {
   warningsComplets: T('regl.warnings.complets'), warningsReduits: T('regl.warnings.reduits'),
   langue: T('regl.langue'),
   dev: T('regl.dev'), devOui: T('regl.dev.oui'), devNon: T('regl.dev.non'),
+  auteursMaj: T('regl.auteurs.maj'), auteursJamais: T('regl.auteurs.jamais'),
   ojsRevues: T('ojs.revues'), ojsVide: T('ojs.vide'),
   ojsRubriques: T('ojs.rubriques'), ojsRubriquesAide: T('ojs.rubriques.aide'),
   ojsColCle: T('ojs.col.cle'), ojsColAbbrev: T('ojs.col.abbrev'), ojsColTitre: T('ojs.col.titre'),
@@ -5035,6 +5075,16 @@ function donneesBiblio() {
     })),
     langues: LANGUES_BIBLIO.map((cle) => ({ cle: cle, libelle: T('meta.langue.' + cle) }))
   };
+}
+
+// L'état de la liste des auteur·e·s publiés, pour le groupe informatif des réglages :
+// quand elle a été mise à jour, combien de noms elle porte. Rien ne se règle là — le
+// rafraîchissement se fait seul, à l'activation (rafraichirAuteursPubliesEnFond).
+function resumeAuteursPublies() {
+  try {
+    const cache = lireCacheAuteursPublies();
+    return { dateFetch: cache.dateFetch, nombre: cache.auteurs.length };
+  } catch (e) { return { dateFetch: null, nombre: 0 }; }
 }
 
 // Ce que le panneau doit connaître de l'export OJS : la configuration effective, la liste
@@ -5129,7 +5179,7 @@ function ouvrirReglages(rafraichirTout) {
     panneauReglages.reveal(vscode.ViewColumn.One);
     panneauReglages.webview.postMessage(
       { type: 'valeurs', valeurs: lireReglagesActuels(), ojs: donneesOjs(),
-        biblio: donneesBiblio() });
+        biblio: donneesBiblio(), auteursOjs: resumeAuteursPublies() });
     return;
   }
   const panneau = vscode.window.createWebviewPanel(
@@ -5143,7 +5193,7 @@ function ouvrirReglages(rafraichirTout) {
     if (msg.type === 'pret') {
       panneau.webview.postMessage(
         { type: 'valeurs', valeurs: lireReglagesActuels(), ojs: donneesOjs(),
-        biblio: donneesBiblio() });
+        biblio: donneesBiblio(), auteursOjs: resumeAuteursPublies() });
       return;
     }
     // La configuration de l'export OJS va dans config.json, comme le mode développeur :
@@ -5732,6 +5782,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       portraits: listerPortraitsArticle(fournisseur, slug, budget),
       focus: focus, accent: lireCouleurAccent(fournisseur.racine), i18n: textesMedias()
     });
+    envoyerAuteursConnus(cible);
   }
 
   // Toutes les insertions de chaque image, qui n'ont qu'un jeu de légende et de crédits.
@@ -6120,6 +6171,10 @@ function activate(context) {
     } finally { barre.dispose(); }
     proposerTutoriel(context);
   };
+  // La liste des auteur·e·s publiés (OAI-PMH public d'ojs.szh.ch) se rafraîchit en tâche
+  // de fond, au plus une fois par semaine — sans bloquer l'activation, et sans un mot en
+  // cas d'échec réseau : hors ligne est un état normal du poste.
+  rafraichirAuteursPubliesEnFond();
   demarrageInitial();
 }
 

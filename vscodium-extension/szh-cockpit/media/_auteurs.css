@@ -88,3 +88,27 @@
 }
 .note-modale.erreur { color: var(--vscode-errorForeground, #f14c4c); }
 .boutons-modale { display: flex; gap: var(--e2); justify-content: flex-end; }
+
+/* ---- Autocomplétion prénom/nom : les auteur·e·s déjà publiés (OAI, lib/auteurs-ojs.js).
+   La boîte se rattache au bloc du champ où l'on tape ; elle n'existe pas tant que l'hôte
+   n'a pas envoyé de liste, et disparaît dès qu'aucun nom ne correspond. */
+.auteur-grille .szh-champ { position: relative; }
+.auteur-suggestions {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 10;
+  margin-top: 2px; padding: var(--e1) 0;
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--filet-fort); border-radius: var(--rayon-mini);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .25);
+  max-height: 12rem; overflow-y: auto;
+}
+.auteur-sugg {
+  display: block; width: 100%; text-align: left;
+  padding: var(--e1) var(--e2); border: 0; background: none;
+  color: var(--encre); font: inherit; cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.auteur-sugg:hover,
+.auteur-sugg.actif {
+  background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground, rgba(128, 128, 128, .2)));
+  color: var(--vscode-list-activeSelectionForeground, var(--encre));
+}

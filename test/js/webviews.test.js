@@ -432,3 +432,110 @@ test('éditeur de tableau : grille, champs et texte d’aide de la description',
     'le champ de description n’est pas relié à son aide');
   assert.strictEqual(page.parId.zone.querySelectorAll('.cell').length, 4, 'grille non rendue');
 });
+
+// ---- Autocomplétion des auteur·e·s publiés (media/_auteurs.js, lot 9) ----
+//
+// L'hôte envoie « auteurs-connus » avec les valeurs ; la modale suggère à la frappe dans
+// prénom ou nom, insensible à la casse et aux accents, pilotable au clavier comme au clic,
+// et ne remplit QUE prénom et nom. Sans liste reçue : aucune UI.
+
+function pageAvecModaleAuteur() {
+  const page = ouvrir({
+    racine: RACINE, page: 'metadata-articles',
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+  });
+  page.envoyer({ type: 'valeurs', articles: [{ slug: '01-essai', valeurs: analyserMeta('') }],
+                 types: TYPES, langue: 'fr', licences: LICENCES,
+                 licenceDefaut: LICENCE_DEFAUT, filtre: null });
+  return page;
+}
+
+// La modale s'ouvre par le bouton « Ajouter » de la zone des auteur·e·s (fiche vide, un
+// seul bouton), et ses champs se prennent dans l'ordre de construction : prénom, nom, …
+function ouvrirModaleAuteur(page) {
+  page.conteneur().querySelector('.auteurs button').click();
+  const champs = page.document.body.querySelectorAll('.auteur-grille input');
+  assert.ok(champs.length >= 2, 'champs de la modale introuvables');
+  return { prenom: champs[0], nom: champs[1] };
+}
+
+function taper(champ, texte) {
+  champ.value = texte;
+  champ.dispatchEvent({ type: 'input' });
+}
+
+test('modale auteur : suggestions à la frappe, clavier et clic, prénom + nom seulement', () => {
+  const page = pageAvecModaleAuteur();
+  page.envoyer({ type: 'auteurs-connus', auteurs: [
+    { prenom: 'Robin', nom: 'Morand' },
+    { prenom: 'Hilary', nom: 'Wood de Wilde' },
+    { prenom: 'María', nom: 'Núñez' }
+  ] });
+  const champs = ouvrirModaleAuteur(page);
+
+  // Moins de deux caractères : rien. Deux : la liste, filtrée sans casse ni accents.
+  taper(champs.prenom, 'm');
+  assert.strictEqual(page.compterPage('.auteur-sugg'), 0, 'suggestion sur un seul caractère');
+  taper(champs.prenom, 'mor');
+  assert.strictEqual(page.compterPage('.auteur-sugg'), 1);
+  assert.strictEqual(page.document.body.querySelector('.auteur-sugg').textContent, 'Robin Morand');
+  // « nunez » sans accents trouve « Núñez » ; l'ordre « prénom nom » aussi.
+  taper(champs.prenom, 'nunez');
+  assert.strictEqual(page.compterPage('.auteur-sugg'), 1);
+  taper(champs.prenom, 'hilary wood');
+  assert.strictEqual(page.compterPage('.auteur-sugg'), 1, 'l’ordre « prénom nom » ne trouve pas');
+  // Aucune correspondance : la boîte disparaît, pas d'UI parasite.
+  taper(champs.prenom, 'zzzz');
+  assert.strictEqual(page.compterPage('.auteur-sugg'), 0);
+  assert.strictEqual(page.compterPage('.auteur-suggestions'), 0, 'boîte vide restée accrochée');
+
+  // Clavier : flèche pour armer, Entrée pour choisir — prénom ET nom remplis, rien d'autre.
+  taper(champs.prenom, 'mor');
+  champs.prenom.dispatchEvent({ type: 'keydown', key: 'ArrowDown' });
+  assert.strictEqual(page.compterPage('.auteur-sugg.actif'), 1, 'la flèche n’arme aucune ligne');
+  champs.prenom.dispatchEvent({ type: 'keydown', key: 'Enter' });
+  assert.strictEqual(champs.prenom.value, 'Robin');
+  assert.strictEqual(champs.nom.value, 'Morand');
+  assert.strictEqual(page.compterPage('.auteur-sugg'), 0, 'liste restée ouverte après le choix');
+
+  // Clic : la frappe dans NOM suggère aussi, et le clic remplit les deux champs.
+  taper(champs.nom, 'wood');
+  assert.strictEqual(page.compterPage('.auteur-sugg'), 1);
+  page.document.body.querySelector('.auteur-sugg').click();
+  assert.strictEqual(champs.prenom.value, 'Hilary');
+  assert.strictEqual(champs.nom.value, 'Wood de Wilde');
+
+  // Échap ferme la LISTE et coupe la propagation : la modale, elle, reste ouverte.
+  taper(champs.nom, 'mor');
+  assert.strictEqual(page.compterPage('.auteur-sugg'), 1);
+  let propagationCoupee = false;
+  champs.nom.dispatchEvent({ type: 'keydown', key: 'Escape',
+    stopPropagation: () => { propagationCoupee = true; } });
+  assert.strictEqual(page.compterPage('.auteur-sugg'), 0, 'Échap n’a pas fermé la liste');
+  assert.ok(propagationCoupee, 'Échap fermerait la modale entière avec la liste');
+  assert.strictEqual(page.compterPage('.voile-auteur')
+    - page.document.body.querySelectorAll('.voile-auteur').filter((v) => v.hidden).length,
+    1, 'la modale ne devrait pas se fermer avec la liste');
+});
+
+test('modale auteur : sans liste reçue, aucune UI — et une liste difforme ne casse rien', () => {
+  const page = pageAvecModaleAuteur();
+  const champs = ouvrirModaleAuteur(page);
+  taper(champs.prenom, 'morand');
+  assert.strictEqual(page.compterPage('.auteur-suggestions'), 0, 'UI parasite sans liste');
+  // Une liste hostile — entrées vides, types faux — est filtrée sans exception.
+  page.envoyer({ type: 'auteurs-connus', auteurs: [
+    null, {}, { prenom: '', nom: '' }, { prenom: 42, nom: ['x'] }, { prenom: ' Anne ', nom: ' Dupont ' }
+  ] });
+  taper(champs.prenom, 'dupo');
+  assert.strictEqual(page.compterPage('.auteur-sugg'), 1, 'l’entrée valide devrait survivre au tri');
+  assert.strictEqual(page.document.body.querySelector('.auteur-sugg').textContent, 'Anne Dupont');
+  // Huit suggestions au plus : une liste de trente homonymes ne fait pas un menu d'un mètre.
+  const beaucoup = [];
+  for (let i = 0; i < 30; i++) { beaucoup.push({ prenom: 'P' + i, nom: 'Morand' }); }
+  page.envoyer({ type: 'auteurs-connus', auteurs: beaucoup });
+  taper(champs.prenom, 'morand');
+  assert.strictEqual(page.compterPage('.auteur-sugg'), 8, 'plafond de suggestions absent');
+});

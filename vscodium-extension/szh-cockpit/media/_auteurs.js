@@ -28,6 +28,14 @@
 //                     photo-choisir { slug, index, base, version }
 //   hôte -> webview : photo-versions { slug, index, base, versions, actuelle, infos } ;
 //                     photo-valeur { slug, index, photo } ; photo-erreur { slug, index, message }
+//
+// Autocomplétion, commune aux trois vues aussi :
+//   hôte -> webview : auteurs-connus { auteurs: [{ prenom, nom }] } — la liste des
+//                     auteur·e·s déjà publiés (cache OAI, lib/auteurs-ojs.js). À la frappe
+//                     dans prénom ou nom (deux caractères et plus), la modale propose des
+//                     suggestions filtrées sans tenir compte de la casse ni des accents ;
+//                     flèches + Entrée ou clic remplissent prénom et nom, RIEN d'autre —
+//                     OAI-PMH n'expose que les noms. Sans liste reçue, rien ne s'affiche.
 
 (function () {
   'use strict';
@@ -48,6 +56,26 @@
     var modale = null;      // construite une fois, remplie à chaque ouverture
     var ctx = null;         // contexte en cours d'édition
     var attente = null;     // fonction qui reprend la sauvegarde après photo-valeur
+    var connus = [];        // auteur·e·s publiés (message auteurs-connus), pour suggérer
+
+    // Casse et accents pliés, comme la déduplication côté hôte : « mor » trouve « Möri ».
+    function plier(t) {
+      var s = String(t === undefined || t === null ? '' : t).toLowerCase().replace(/\s+/g, ' ');
+      try { s = s.normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+      catch (e) { /* moteur sans normalize : filtrage sensible aux accents, sans casser */ }
+      return s;
+    }
+    function poserConnus(liste) {
+      connus = [];
+      for (var i = 0; i < (liste || []).length; i++) {
+        var a = liste[i] || {};
+        var prenom = String(a.prenom || '').replace(/\s+/g, ' ').trim();
+        var nom = String(a.nom || '').replace(/\s+/g, ' ').trim();
+        if (prenom === '' && nom === '') { continue; }
+        // Les deux ordres dans le texte cherché : « robin morand » et « morand robin ».
+        connus.push({ prenom: prenom, nom: nom, cherche: plier(prenom + ' ' + nom + ' ' + nom + ' ' + prenom) });
+      }
+    }
 
     function texte(parent, balise, cls, contenu) {
       var e = document.createElement(balise);
@@ -215,6 +243,7 @@
 
       var grille = texte(boite, 'div', 'auteur-grille');
       var champs = {};
+      var blocs = {};
       for (var i = 0; i < CHAMPS.length; i++) {
         var cle = CHAMPS[i][0];
         var bloc = texte(grille, 'div', 'szh-champ');
@@ -229,6 +258,98 @@
         });
         bloc.appendChild(champ);
         champs[cle] = champ;
+        blocs[cle] = bloc;
+      }
+
+      // ---- Autocomplétion prénom/nom, depuis la liste des auteur·e·s publiés ----
+      //
+      // Une seule boîte de suggestions, rattachée au bloc du champ où l'on tape. Elle ne
+      // remplit QUE prénom et nom — OAI-PMH n'expose rien d'autre — et ne s'affiche que si
+      // l'hôte a envoyé une liste : sans elle, aucune UI parasite.
+      var boiteSugg = document.createElement('div');
+      boiteSugg.className = 'auteur-suggestions';
+      boiteSugg.hidden = true;
+      boiteSugg.setAttribute('role', 'listbox');
+      boiteSugg.setAttribute('aria-label', TXT.auteurSuggestions || '');
+      var suggEtat = { champ: null, items: [], actif: -1 };
+
+      function fermerSuggestions() {
+        boiteSugg.hidden = true;
+        boiteSugg.textContent = '';
+        boiteSugg.remove();
+        suggEtat = { champ: null, items: [], actif: -1 };
+      }
+      function choisirSuggestion(a) {
+        champs.prenom.value = a.prenom;
+        champs.nom.value = a.nom;
+        fermerSuggestions();
+        // Une sélection est une saisie : la page doit savoir qu'elle porte du non-enregistré.
+        if (ctx && !ctx.saisi) { ctx.saisi = true; surSaisie(ctx.fiche); }
+      }
+      function poserActifSuggestion(n) {
+        var total = suggEtat.items.length;
+        if (total === 0) { return; }
+        var idx = ((n % total) + total) % total;   // les flèches bouclent aux extrémités
+        for (var k = 0; k < total; k++) {
+          suggEtat.items[k].element.classList.toggle('actif', k === idx);
+          suggEtat.items[k].element.setAttribute('aria-selected', k === idx ? 'true' : 'false');
+        }
+        suggEtat.actif = idx;
+      }
+      function majSuggestions(champ, cle) {
+        var saisie = plier(champ.value).trim();
+        if (!ctx || connus.length === 0 || saisie.length < 2) { fermerSuggestions(); return; }
+        var trouves = [];
+        for (var k = 0; k < connus.length && trouves.length < 8; k++) {
+          if (connus[k].cherche.indexOf(saisie) !== -1) { trouves.push(connus[k]); }
+        }
+        if (trouves.length === 0) { fermerSuggestions(); return; }
+        fermerSuggestions();
+        suggEtat = { champ: champ, items: [], actif: -1 };
+        for (var m = 0; m < trouves.length; m++) {
+          (function (a) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'auteur-sugg';
+            b.setAttribute('role', 'option');
+            b.setAttribute('aria-selected', 'false');
+            b.textContent = (a.prenom + ' ' + a.nom).trim();
+            // mousedown neutralisé : le clic ne doit pas d'abord voler le focus du champ.
+            b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            b.addEventListener('click', function () { choisirSuggestion(a); });
+            boiteSugg.appendChild(b);
+            suggEtat.items.push({ element: b, auteur: a });
+          })(trouves[m]);
+        }
+        blocs[cle].appendChild(boiteSugg);
+        boiteSugg.hidden = false;
+      }
+      function clavierSuggestions(e, champ) {
+        if (boiteSugg.hidden || suggEtat.champ !== champ) { return; }
+        if (e.key === 'ArrowDown') { e.preventDefault(); poserActifSuggestion(suggEtat.actif + 1); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); poserActifSuggestion(suggEtat.actif - 1); return; }
+        if (e.key === 'Enter') {
+          if (suggEtat.actif >= 0 && suggEtat.items[suggEtat.actif]) {
+            e.preventDefault();
+            choisirSuggestion(suggEtat.items[suggEtat.actif].auteur);
+          }
+          return;
+        }
+        if (e.key === 'Escape') {
+          // Seule la liste se ferme — la propagation est coupée, sinon le gestionnaire de
+          // la page fermerait la modale entière du même geste.
+          e.preventDefault();
+          if (e.stopPropagation) { e.stopPropagation(); }
+          fermerSuggestions();
+        }
+      }
+      for (var s = 0; s < 2; s++) {
+        (function (cleSugg) {
+          var champSugg = champs[cleSugg];
+          champSugg.addEventListener('input', function () { majSuggestions(champSugg, cleSugg); });
+          champSugg.addEventListener('keydown', function (e) { clavierSuggestions(e, champSugg); });
+          champSugg.addEventListener('blur', function () { fermerSuggestions(); });
+        })(['prenom', 'nom'][s]);
       }
 
       texte(boite, 'p', 'szh-section', TXT.auteurPhoto || '');
@@ -295,7 +416,8 @@
       voile.addEventListener('click', function (e) { if (e.target === voile) { fermer(); } });
       modale = {
         voile: voile, titre: titre, champs: champs, zone: zone, radios: radios,
-        cadre: cadre, img: img, note: note, enregistrer: enregistrer, retour: null
+        cadre: cadre, img: img, note: note, enregistrer: enregistrer, retour: null,
+        fermerSuggestions: fermerSuggestions
       };
     }
 
@@ -316,6 +438,7 @@
       majVersions();
       majApercuPhoto();
       poserNote('');
+      modale.fermerSuggestions();                  // pas de liste héritée de l'édition d'avant
       occuper(false);
       modale.voile.hidden = false;
       // La photo déjà retenue : l'hôte dit quelles versions existent, et laquelle sert.
@@ -328,6 +451,7 @@
 
     function fermer() {
       if (!modale) { return; }
+      modale.fermerSuggestions();
       modale.voile.hidden = true;
       ctx = null;                                  // une réponse tardive sera ignorée
       attente = null;
@@ -381,6 +505,12 @@
 
     // ---- Réponses de l'hôte ----
     function message(msg) {
+      // La liste des auteur·e·s publiés : gardée pour l'autocomplétion, même reçue avant
+      // la construction de la modale ou pendant une édition.
+      if (msg.type === 'auteurs-connus') {
+        poserConnus(msg.auteurs);
+        return true;
+      }
       if (msg.type !== 'photo-versions' && msg.type !== 'photo-valeur' && msg.type !== 'photo-erreur') {
         return false;
       }

@@ -105,6 +105,7 @@ Rien de cette liste ne dépend de `emplacementRevues`.
 |---|---|
 | Configuration partagée PowerShell ↔ cockpit | `C:\ProgramData\SZH\config.json` |
 | État du poste (version installée, langue) | `C:\ProgramData\SZH\state.json` |
+| Auteur·e·s publiés (autocomplétion, cache OAI-PMH) | `C:\ProgramData\SZH\auteurs.json` |
 | Journal (une ligne par geste, un fichier par mois) | `C:\ProgramData\SZH\logs\szh-2026-08.log` |
 | Journaux détaillés d'une mise à jour | `C:\ProgramData\SZH\logs\update-<horodatage>.log` |
 | Téléchargements et versions installables hors ligne | `C:\ProgramData\SZH\staging\` (`toolkit-<v>.zip`, `manifest-<v>.json`, `szh-publishing-rootfs-<v>.tar.gz`) |

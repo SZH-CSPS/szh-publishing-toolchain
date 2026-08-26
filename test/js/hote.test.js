@@ -288,3 +288,22 @@ test('la fiche d’auteur·e écrit son rang, et refuse un rang décalé', async
   assert.doesNotMatch(texte, /Pirate/, 'un rang décalé a été écrit');
   assert.ok(p.messages.some((m) => m.type === 'auteur-erreur'), 'aucun refus signalé');
 });
+
+// La liste des auteur·e·s publiés (cache OAI, lib/auteurs-ojs.js) part avec la charge de
+// chaque vue qui porte la modale d'auteur·e. Le harnais a posé un cache FRAIS avant
+// l'activation (hote-factice.js) : c'est aussi ce qui garantit qu'aucun test ne déclenche
+// le moissonnage réseau du rafraîchissement d'activation.
+test('la liste des auteur·e·s publiés part vers le panneau des médias', async () => {
+  await HOTE.executer('szh.mediasArticle', { slug: '01-essai' });
+  const p = HOTE.panneauDeType('szhMedias');
+  assert.ok(p, 'panneau des médias absent');
+  await p._recepteur({ type: 'pret' });
+  const msg = p.messages.filter((m) => m.type === 'auteurs-connus').pop();
+  assert.ok(msg, 'aucun message auteurs-connus après la charge');
+  assert.deepStrictEqual(msg.auteurs.map((a) => a.nom).sort(), ['Dupont', 'Morand']);
+  // Seuls prénom et nom voyagent : OAI-PMH n'offre rien d'autre, et la webview ne doit
+  // pas croire le contraire (ni recevoir les dates, qui ne servent qu'à la fusion).
+  for (const a of msg.auteurs) {
+    assert.deepStrictEqual(Object.keys(a).sort(), ['nom', 'prenom']);
+  }
+});

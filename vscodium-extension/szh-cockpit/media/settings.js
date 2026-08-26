@@ -44,6 +44,25 @@
     }
   }
 
+  // ---- Auteur·e·s publiés (autocomplétion) ------------------------------------------
+  //
+  // Purement informatif : la liste se rafraîchit seule (lib/auteurs-ojs.js), le panneau ne
+  // fait que dire quand, et combien de noms elle porte.
+  const auteursOjsZone = document.getElementById('auteursojs');
+  function rendreAuteursOjs(infos) {
+    if (!auteursOjsZone) { return; }
+    if (infos.dateFetch) {
+      let date = String(infos.dateFetch);
+      try { date = new Date(infos.dateFetch).toLocaleDateString(); }
+      catch (e) { /* date brute : lisible quand même */ }
+      auteursOjsZone.textContent = String(TXT.auteursMaj || '')
+        .split('{0}').join(date).split('{1}').join(String(infos.nombre || 0));
+    } else {
+      auteursOjsZone.textContent = TXT.auteursJamais || '';
+    }
+    auteursOjsZone.hidden = false;
+  }
+
   // ---- Export OJS -----------------------------------------------------------------
   //
   // OJS apparie le genre de fichier, le groupe d'auteur et les rubriques PAR NOM à
@@ -365,6 +384,7 @@
     }
     if (msg.type !== 'valeurs') { return; }
     cocher(msg.valeurs || {});
+    if (msg.auteursOjs) { rendreAuteursOjs(msg.auteursOjs); }
     // Une saisie en cours ne se fait pas écraser par un renvoi de valeurs : le panneau
     // reste tel quel, l'enregistrement automatique s'en occupe.
     if (msg.ojs && !ojsModifie) {
