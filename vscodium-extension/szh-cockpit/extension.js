@@ -643,13 +643,10 @@ class FournisseurRevue {
     return true;
   }
 
-  // L'accordéon des sections : l'en-tête cliqué déplie la sienne — et donc replie les
-  // autres. Recliquer l'en-tête ouvert replie tout : la colonne tient en trois lignes.
-  basculerSection(categorie) {
-    this.sectionDeployee = this.sectionDeployee === categorie ? null : categorie;
-  }
-
-  // true si l'état a changé — même contrat que definirDeploye.
+  // L'accordéon des sections : une seule dépliée à la fois. La section active ne se
+  // replie jamais par le clic sur son titre — seul le chevron replie (l'état null,
+  // tout fermé, n'existe que par lui). true si l'état a changé — même contrat que
+  // definirDeploye.
   definirSectionDeployee(categorie) {
     if (this.sectionDeployee === categorie) { return false; }
     this.sectionDeployee = categorie;
@@ -698,8 +695,9 @@ class FournisseurRevue {
   }
 
   // Cliquer l'en-tête déplie sa section — et replie les autres, c'est l'accordéon — et
-  // ouvre sa vue d'ensemble (szh.basculerSection). Le bouton au bout de la ligne et le
-  // clic droit restent d'autres chemins vers la même vue.
+  // ouvre sa vue d'ensemble (szh.ouvrirSection). L'en-tête déjà déplié ne se replie pas :
+  // le clic n'ouvre alors que la vue, le repli passe par le chevron. Le bouton au bout de
+  // la ligne et le clic droit restent d'autres chemins vers la même vue.
   _section(categorie, libelle, icone, description) {
     const ouverte = this.sectionDeployee === categorie;
     const it = new vscode.TreeItem(libelle, ouverte
@@ -714,7 +712,7 @@ class FournisseurRevue {
       ? new vscode.ThemeColor(COULEURS_SECTION[categorie]) : undefined);
     it.contextValue = 'section-' + categorie;   // 'section-articles', 'section-word'…
     if (description) { it.description = description; }
-    it.command = { command: 'szh.basculerSection', title: libelle, arguments: [categorie] };
+    it.command = { command: 'szh.ouvrirSection', title: libelle, arguments: [categorie] };
     return it;
   }
 
@@ -6231,11 +6229,11 @@ function activate(context) {
     // Le second argument transmet les options (sansApercu depuis la vue Articles) ; les
     // appelants historiques (arbre, Contrôles, démarrage) n'en passent pas : rien ne change.
     cmd('szh.ouvrirArticle', (slug, opts) => ouvrirArticle(fournisseur, slug, opts)),
-    // Le clic sur un en-tête de section : sa section bascule, les autres se replient, et
-    // la vue d'ensemble correspondante s'ouvre — le geste d'avant l'accordéon, conservé.
-    cmd('szh.basculerSection', (categorie) => {
-      fournisseur.basculerSection(categorie);
-      fournisseur.rafraichir();
+    // Le clic sur un en-tête de section : sa section se déplie, les autres se replient,
+    // et la vue d'ensemble correspondante s'ouvre — le geste d'avant l'accordéon,
+    // conservé. Un en-tête déjà déplié reste déplié : le clic n'ouvre alors que la vue.
+    cmd('szh.ouvrirSection', (categorie) => {
+      if (fournisseur.definirSectionDeployee(categorie)) { fournisseur.rafraichir(); }
       if (VUE_SECTION[categorie]) { vscode.commands.executeCommand(VUE_SECTION[categorie]); }
     }),
     cmdEcriture('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),

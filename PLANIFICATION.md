@@ -62,6 +62,10 @@ Demandé par Robin le 26.08.2026, dans la continuité de G2/G bis (TreeView nati
 
 Notes : tests hôte enrichis (accordéon commande + chevron, reveal, décoration) ; hôte factice appris `registerFileDecorationProvider`, événements d'expansion, enregistreur de `reveal`, éditeur actif déclenchable. Suggestion complémentaire hors code (déploiement) : `workbench.colorCustomizations.list.inactiveSelectionBackground` pour une sélection native plus soutenue.
 
+### Retouche lot I bis (v2026.08.50, cockpit 0.26.2)
+
+Constat de Robin : recliquer l'en-tête de la section déjà dépliée la repliait — la section active doit rester ouverte. Le clic-titre ne replie plus jamais : il déplie si besoin (accordéon) et ouvre la vue d'ensemble ; sur une section déjà ouverte, il n'ouvre que la vue. Le repli reste au chevron (seul chemin vers l'état « tout fermé »). La commande est renommée `szh.basculerSection` → `szh.ouvrirSection` (elle ne bascule plus).
+
 ### Retouche lot I (v2026.08.49, cockpit 0.26.1)
 
 Constat de Robin après essai : le clic sur un en-tête dépliait bien (accordéon) mais n'ouvrait plus la vue d'ensemble. Retouche : le clic-titre **et** le dépliage au chevron ouvrent la vue d'ensemble de la section, en plus de l'accordéon. Garde-fou décision B : seuls les changements d'état comptent — le dépliage programmé (clic d'article → reveal) arrive avec `sectionDeployee` déjà posé et n'ouvre rien ; replier n'ouvre rien non plus. Test dédié (compte de messages du panneau Articles inchangé au dépliage du reveal).
