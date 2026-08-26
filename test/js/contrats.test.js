@@ -124,6 +124,31 @@ test('tableau : un titre de section relaie le titre de groupe pour les rangées 
     'sans le rôle, la rangée fusionnée doit redevenir une cellule de données');
 });
 
+// Titre de section PARTIEL (précision de Robin, 26.08.2026, sur capture) : une fusion de
+// 2 colonnes sur 3 marquée titre ne couvre QUE ses colonnes — la cellule restante de sa
+// rangée reste une donnée, et la colonne non couverte garde le titre de groupe du thead.
+// La fusion existante n'est PAS étendue à toute la rangée par l'opération.
+test('tableau : un titre de section partiel ne couvre que les colonnes de sa fusion', () => {
+  let m = table.analyserTable('<table><tr><td colspan="3">Article 2025</td></tr>'
+    + '<tr><td>Titre</td><td>Caractères</td><td>DOI</td></tr>'
+    + '<tr><td>t1</td><td>1</td><td>d1</td></tr>'
+    + '<tr><td colspan="2">Article 2026</td><td>reste</td></tr>'
+    + '<tr><td>t2</td><td>2</td><td>d2</td></tr></table>');
+  m = table.appliquerOperationTable('entete', m, { sens: 'lignes', n: 2 });
+  m = table.appliquerOperationTable('section', m, { r: 3, cMin: 0, cMax: 1, actif: true });
+  const html = table.serialiserTable(m);
+  assert.ok(/<th id="szh-th-r3c0" scope="rowgroup" colspan="2">Article 2026<\/th>/.test(html),
+    'le titre partiel doit garder sa fusion de 2 colonnes : ' + html);
+  assert.ok(/<td headers="szh-th-r0c0 szh-th-r1c2">reste<\/td>/.test(html),
+    'la cellule restante de la rangée-titre reste une donnée');
+  assert.ok(/<td headers="szh-th-r1c0 szh-th-r3c0">t2<\/td>/.test(html),
+    'colonne couverte : le titre partiel remplace le titre de groupe du thead');
+  assert.ok(/<td headers="szh-th-r0c0 szh-th-r1c2">d2<\/td>/.test(html),
+    'colonne non couverte : le titre de groupe du thead reste');
+  const relu = table.analyserTable(html);
+  assert.deepStrictEqual(relu, m, 'aller-retour instable avec un titre partiel');
+});
+
 // Le sens transposé de la même règle : un en-tête de ligne FUSIONNÉ (rowspan, colonne de
 // gauche) donne son groupe aux rangées qu'il couvre, l'en-tête simple de la 2e colonne
 // donne sa ligne — la géométrie du rowspan fait le « jusqu'où », pas de marqueur à poser.

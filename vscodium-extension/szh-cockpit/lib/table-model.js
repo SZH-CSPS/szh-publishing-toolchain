@@ -225,9 +225,10 @@ function reappliquerEntetes(modele) {
     lg.cellules.forEach((cell, ci) => {
       const enHaut = r < eL;
       const aGauche = occ.positions[r][ci].c0 < eC;
-      const estSection = !!cell.section && !enHaut && lg.cellules.length === 1
-        && occ.positions[r][ci].c0 === 0
-        && occ.positions[r][ci].colspan >= occ.nbColonnes;
+      // Un titre de section peut être PARTIEL (fusion de quelques colonnes, voire une
+      // seule cellule) : il couvre les colonnes de sa fusion, pour les rangées qui
+      // suivent. Seuls le thead et les colonnes d'en-tête de gauche l'excluent.
+      const estSection = !!cell.section && !enHaut && !aGauche;
       cell.section = estSection;
       cell.th = enHaut || aGauche || estSection;
       cell.scope = enHaut ? 'col' : (aGauche ? 'row' : '');
@@ -312,7 +313,7 @@ function normaliserModele(modele) {
   // Les styles d'en-têtes de lignes (el) servent aussi aux TITRES DE SECTION —
   // print.css les style par th[scope^="row"], qui couvre "rowgroup". On ne les éteint
   // donc que s'il n'y a NI colonne d'en-tête NI titre de section.
-  const aSection = lignes.some((lg) => lg.cellules.length === 1 && !!lg.cellules[0].section);
+  const aSection = lignes.some((lg) => lg.cellules.some((c) => !!c.section));
   if (attrs.enteteColonnes === 0 && !aSection) { attrs.elGras = false; attrs.elFond = 'aucun'; }   // el = colonnes de gauche
 
   // ⚠ Aucune fusion de l'en-tête ne doit dépasser dans le corps : les navigateurs bornent
@@ -406,34 +407,44 @@ function analyserTable(html) {
   return finaliserModele({ attrs: attrs, lignes: lignes });
 }
 
-// En-têtes d'une cellule de données (headers=), règle actée avec Robin (26.08.2026) :
-// un TITRE fusionné pleine largeur (du thead ou de section) donne son en-tête aux rangées
-// qui le suivent JUSQU'AU PROCHAIN titre fusionné ; les en-têtes simples (une cellule par
-// colonne) du thead s'appliquent toujours ; les en-têtes de ligne à gauche s'appliquent
-// par leur géométrie (un rowspan couvre exactement ses rangées).
-// `sections` : indexes croissants des rangées-titres de section ; `nbC` : largeur totale.
-function headersDe(occ, r, c0, colspan, rowspan, eL, eC, idTh, sections, nbC) {
+// En-têtes d'une cellule de données (headers=), règle actée avec Robin (26.08.2026,
+// précisée le même jour pour les titres PARTIELS) :
+//   * un TITRE DE SECTION couvre les COLONNES de sa fusion (voire sa seule colonne),
+//     pour les rangées qui le suivent, JUSQU'AU PROCHAIN titre couvrant la colonne —
+//     la résolution est par colonne, le plus proche au-dessus gagne ;
+//   * il REMPLACE, pour ses colonnes, un titre de groupe FUSIONNÉ du thead ; les
+//     en-têtes simples (une cellule = une colonne) du thead s'appliquent toujours ;
+//   * les en-têtes de ligne à gauche s'appliquent par leur géométrie (un rowspan
+//     couvre exactement ses rangées).
+// `sections` : [{ r, c0, fin, id }] triés par r croissant (fin = dernière colonne).
+function headersDe(occ, r, c0, colspan, rowspan, eL, eC, idTh, sections) {
   const ids = [], vus = {};
+  const ajouterId = (id) => { if (!vus[id]) { vus[id] = 1; ids.push(id); } };
   const ajouter = (li, cc) => {
     const ref = occ.grid[li] && occ.grid[li][cc];
-    if (!ref) { return; }
-    const id = idTh(ref.li, ref.c0);
-    if (!vus[id]) { vus[id] = 1; ids.push(id); }
+    if (ref) { ajouterId(idTh(ref.li, ref.c0)); }
   };
-  // Titre de section le plus proche AU-DESSUS de la cellule, s'il existe.
-  let sec = -1;
-  for (const s of sections) { if (s < r) { sec = s; } else { break; } }
+  // Titre de section le plus proche AU-DESSUS couvrant la colonne cc, s'il existe.
+  const secDe = (cc) => {
+    let trouve = null;
+    for (const s of sections) {
+      if (s.r >= r) { break; }
+      if (cc >= s.c0 && cc <= s.fin) { trouve = s; }
+    }
+    return trouve;
+  };
   for (let hr = 0; hr < eL; hr++) {
     for (let cc = c0; cc < c0 + colspan; cc++) {
       const ref = occ.grid[hr] && occ.grid[hr][cc];
       if (!ref) { continue; }
-      // Un titre de groupe du thead (cellule pleine largeur) est REMPLACÉ, après un
-      // titre de section, par ce titre-là ; les en-têtes de colonne restent.
-      if (sec >= 0 && ref.colspan >= nbC) { continue; }
+      if (ref.colspan > 1 && secDe(cc)) { continue; }   // titre de groupe remplacé
       ajouter(hr, cc);
     }
   }
-  if (sec >= 0) { ajouter(sec, 0); }
+  for (let cc = c0; cc < c0 + colspan; cc++) {
+    const s = secDe(cc);
+    if (s) { ajouterId(s.id); }
+  }
   for (let hc = 0; hc < eC; hc++) { for (let rr = r; rr < r + rowspan; rr++) { ajouter(rr, hc); } }
   return ids.join(' ');
 }
@@ -451,16 +462,23 @@ function serialiserTable(modele) {
   const a = m.attrs;
   const eL = a.enteteLignes, eC = a.enteteColonnes;
   const occ = matriceOccupation(m.lignes);
-  // Rangées-titres de section : le drapeau est posé par reappliquerEntetes, mais on
-  // revérifie la géométrie ici (une cellule th pleine largeur sous le thead) — le
-  // sérialiseur ne reçoit que normaliserModele, jamais la finalisation. Leur seule
-  // présence rend le tableau complexe : le lien « cette rangée de données dépend de
-  // CE titre-là » n'est exprimable que par headers=.
+  // Forme à garder identique à celle de pipeline/docx-tables.py, qui écrit le même
+  // balisage à l'import.
+  const idTh = (li, c0) => 'szh-th-r' + li + 'c' + c0;
+  // Titres de section, PARTIELS admis : chaque cellule marquée (hors thead, hors
+  // colonnes d'en-tête de gauche — revérifié ici, le sérialiseur ne reçoit que
+  // normaliserModele) couvre les colonnes de sa fusion. Leur seule présence rend le
+  // tableau complexe : le lien « cette cellule dépend de CE titre-là » n'est
+  // exprimable que par headers=.
   const sections = [];
   m.lignes.forEach((lg, r) => {
-    if (r >= eL && lg.cellules.length === 1 && lg.cellules[0].section && lg.cellules[0].th
-      && occ.positions[r][0] && occ.positions[r][0].c0 === 0
-      && occ.positions[r][0].colspan >= occ.nbColonnes) { sections.push(r); }
+    if (r < eL) { return; }
+    lg.cellules.forEach((cell, ci) => {
+      const p = occ.positions[r][ci];
+      if (cell.section && cell.th && p && p.c0 >= eC) {
+        sections.push({ r: r, c0: p.c0, fin: p.c0 + p.colspan - 1, id: idTh(r, p.c0) });
+      }
+    });
   });
   let ouv = '<table class="' + a.classe + '"';
   if (eL > 0) { ouv += ' data-entete-lignes="' + eL + '"'; }
@@ -491,10 +509,6 @@ function serialiserTable(modele) {
       if (complexe) { break; }
     }
   }
-  // Forme à garder identique à celle de pipeline/docx-tables.py, qui écrit le même
-  // balisage à l'import.
-  const idTh = (li, c0) => 'szh-th-r' + li + 'c' + c0;
-
   const out = [ouv];
   if (a.legende !== '') { out.push('<caption>' + a.legende + '</caption>'); }
   const emettreRangee = (lg, r) => {
@@ -517,7 +531,7 @@ function serialiserTable(modele) {
           t += ' scope="' + cell.scope + '"';
         }
       } else if (complexe) {
-        const ids = headersDe(occ, r, c0, cell.colspan, cell.rowspan, eL, eC, idTh, sections, occ.nbColonnes);
+        const ids = headersDe(occ, r, c0, cell.colspan, cell.rowspan, eL, eC, idTh, sections);
         if (ids) { t += ' headers="' + ids + '"'; }
       }
       if (cell.colspan > 1) { t += ' colspan="' + cell.colspan + '"'; }
@@ -981,25 +995,33 @@ function appliquerOperationTable(nom, modeleBrut, args) {
     else { modele.attrs.enteteLignes = 0; modele.attrs.enteteColonnes = 0; }
     return finaliserModele(modele);
   }
-  // Titre de section (en-tête intermédiaire) : la rangée r devient UNE cellule pleine
-  // largeur — fusionnée d'abord si besoin, avec les gardes de fusionner() — marquée
-  // section (th scope="rowgroup" au fichier). La désactivation ne retire que le RÔLE :
-  // la fusion reste, c'est un choix de mise en page qui ne nous regarde pas ici.
+  // Titre de section (en-tête intermédiaire), PARTIEL admis : la plage visée
+  // [cMin..cMax] de la rangée r devient UNE cellule — fusionnée d'abord si besoin,
+  // avec les gardes de fusionner() ; une cellule déjà fusionnée (ou seule) n'est PAS
+  // étendue — marquée section (th scope="rowgroup" au fichier). Elle couvre les
+  // colonnes de sa fusion, pour les rangées qui suivent. cMin/cMax absents : toute la
+  // rangée (rétrocompat). La désactivation ne retire que le RÔLE des cellules
+  // touchées : la fusion reste, c'est un choix de mise en page.
   if (nom === 'section') {
     const r = n(a.r);
     if (!modele.lignes[r]) { return finaliserModele(modele); }
+    const occ = matriceOccupation(modele.lignes);
+    const cMin = Math.max(0, a.cMin === undefined ? 0 : n(a.cMin));
+    const cMax = Math.min(occ.nbColonnes - 1, a.cMax === undefined ? occ.nbColonnes - 1 : n(a.cMax));
     if (!vrai(a.actif)) {
-      modele.lignes[r].cellules.forEach((c) => { c.section = false; });
+      modele.lignes[r].cellules.forEach((c, ci) => {
+        const p = occ.positions[r][ci];
+        if (p && p.c0 <= cMax && p.c0 + p.colspan - 1 >= cMin) { c.section = false; }
+      });
       return finaliserModele(modele);
     }
-    const occ = matriceOccupation(modele.lignes);
-    let m = modele;
-    const pos0 = occ.positions[r][0];
-    if (!(modele.lignes[r].cellules.length === 1 && pos0 && pos0.colspan >= occ.nbColonnes)) {
-      m = fusionner(modele, r, 0, r, occ.nbColonnes - 1);
-      if (m.erreur) { return m; }
-    }
-    if (m.lignes[r] && m.lignes[r].cellules[0]) { m.lignes[r].cellules[0].section = true; }
+    // fusionner() sur une plage égale à une cellule existante est un no-op ; sur une
+    // plage qui chevauche une fusion voisine, il refuse — mêmes gardes qu'au menu.
+    const m = fusionner(modele, r, cMin, r, cMax);
+    if (m.erreur) { return m; }
+    const occ2 = matriceOccupation(m.lignes);
+    const ref = occ2.grid[r] && occ2.grid[r][cMin];
+    if (ref) { m.lignes[ref.li].cellules[ref.ci].section = true; }
     return finaliserModele(m);
   }
   if (nom === 'styleEntete') {

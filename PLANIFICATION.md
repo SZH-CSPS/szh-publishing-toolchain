@@ -166,6 +166,17 @@ titre de section » n'est offert qu'à **partir de la 3e rangée** — les deux 
 place. « Retirer le titre de section » reste proposé partout où un titre existe, pour
 les fichiers qui en porteraient un plus haut.
 
+Seconde retouche après essai (v2026.08.55, cockpit 0.26.6) : le titre de section peut
+être **PARTIEL**. L'opération porte sur la **plage sélectionnée** — une cellule déjà
+fusionnée (« Article 2026 » sur A–B) n'est plus étendue à toute la rangée — et le titre
+ne couvre que **les colonnes de sa fusion** (voire sa seule colonne), pour les rangées
+qui suivent, jusqu'au prochain titre couvrant la colonne. La résolution de `headers=`
+devient **par colonne** : un titre de groupe *fusionné* du thead est remplacé colonne
+par colonne (les colonnes non couvertes le gardent), les en-têtes simples restent —
+c'est la généralisation exacte de la règle actée, « fusion X colonnes = header pour ces
+X colonnes à partir d'ici ». Le reste de la rangée-titre reste des données. Poignée de
+rangée = plage pleine largeur : le geste d'avant est inchangé.
+
 ### Installation d'un poste : une source winget cassée n'arrête plus rien (v2026.08.51)
 
 Constat de Robin sur un poste neuf : `winget install` échouait (index de source jamais

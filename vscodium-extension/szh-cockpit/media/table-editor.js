@@ -228,16 +228,18 @@ function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.crea
   // premières rangées (MAX_ENTETES) appartiennent à la ZONE D'EN-TÊTE — « Définir
   // comme en-tête » y a sa place, pas un titre de section : « définir » n'est offert
   // qu'à partir de la 3e rangée. « Retirer » reste toujours possible, pour un fichier
-  // qui porterait déjà un titre plus haut. Actif -> la rangée est fusionnée pleine
-  // largeur (si besoin) et devient l'en-tête des rangées qui suivent, jusqu'au
-  // prochain titre ; inactif -> le rôle part, la fusion reste.
+  // qui porterait déjà un titre plus haut. Le titre peut être PARTIEL : il porte sur
+  // la PLAGE sélectionnée (fusionnée en une cellule si besoin — une cellule déjà
+  // fusionnée n'est pas étendue) et couvre les colonnes de sa fusion pour les rangées
+  // qui suivent, jusqu'au prochain titre. Inactif -> le rôle part, la fusion reste.
   if(selection&&selection.rMin===selection.rMax&&modele&&dispo&&dispo.nbLignes>1){
     var rSec=selection.rMin,lgSec=dispo.lignes[rSec];
-    var estSec=!!(lgSec&&lgSec.cellules.length===1&&lgSec.cellules[0].section);
+    var estSec=!!(lgSec&&lgSec.cellules.some(function(c){
+      return c.section&&c.c0<=selection.cMax&&c.c0+c.colspan-1>=selection.cMin;}));
     if(estSec||rSec>=MAX_ENTETES){
       if(!sens)sepMenu(m);
       m.appendChild(itemMenu(estSec?TXT.sectionTitreRetirer:TXT.sectionTitre,
-        function(){op('section',{r:rSec,actif:!estSec});}));}}
+        function(){op('section',{r:rSec,cMin:selection.cMin,cMax:selection.cMax,actif:!estSec});}));}}
   document.body.appendChild(m);
   var vw=window.innerWidth||document.documentElement.clientWidth,vh=window.innerHeight||document.documentElement.clientHeight,rc=m.getBoundingClientRect();
   var x=ev.clientX,y=ev.clientY;if(x+rc.width>vw)x=Math.max(2,vw-rc.width-2);if(y+rc.height>vh)y=Math.max(2,vh-rc.height-2);
