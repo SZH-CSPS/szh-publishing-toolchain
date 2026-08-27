@@ -4,11 +4,17 @@
     powershell -ExecutionPolicy Bypass -File .\bootstrap.ps1
 
   Ne fait que ce qui exige l'administrateur : dossiers C:\ProgramData\SZH ouverts en
-  écriture aux Utilisateurs, moteur WSL sans distribution, VSCodium et SumatraPDF par
-  winget (source cassée : réparation, puis VSCodium pris sur sa Release GitHub),
+  écriture aux Utilisateurs, moteur WSL sans distribution, VSCodium et SumatraPDF au
+  niveau machine dans les versions figées par windows/apps.lock (téléchargement direct,
+  sha256 et signature vérifiés — winget n'est plus dans la chaîne, voir APPS.md),
   toolkit initial, tâches planifiées de mise à jour et de préchauffage WSL, puis
   une première mise à jour visible. Ensuite le poste n'a plus besoin d'administrateur,
   sauf pour monter VSCodium ou SumatraPDF de version, geste volontairement manuel.
+
+  Ce script pose aussi, POUR LE COMPTE QUI L'EXÉCUTE, ce qui est par utilisateur
+  (raccourcis, réglages, extensions, environnement WSL). Élevé avec un compte de support
+  depuis la session d'un rédacteur, il ne peut donc pas servir ce rédacteur : il le dit,
+  s'en abstient, et laisse la tâche planifiée le faire à sa prochaine ouverture de session.
 
   Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
 #>
@@ -28,6 +34,40 @@ $estAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIde
             ).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
 if (-not $estAdmin) { throw 'Lancer ce script en tant qu''administrateur.' }
 Write-SzhBanniere 'Installation du poste (administrateur)'
+
+# ---- Journal ----
+# Sans transcription, l'installation d'un poste ne laissait AUCUNE trace : seule la mise à
+# jour en écrivait, et le diagnostic du 26 août 2026 s'est fait sur quatre journaux qui ne
+# parlaient que d'elle. Le journal mensuel reçoit en plus les deux comptes en jeu.
+New-Item -ItemType Directory -Force -Path $SzhLogs | Out-Null
+$journalInstall = Join-Path $SzhLogs ('bootstrap-{0}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+try { Start-Transcript -Path $journalInstall | Out-Null } catch { }
+
+# ---- Qui installe, et pour qui ----
+#
+# Le piège de cette installation, et la cause de toute la panne du 26 août 2026 : élevée
+# depuis la session d'une rédactrice avec le compte du support, elle tourne SOUS le compte
+# du support. HKCU, %APPDATA%, %LOCALAPPDATA% et l'enregistrement des distributions WSL
+# sont ceux du support. Tout ce qui est par utilisateur — distribution WSL, extensions,
+# réglages, raccourcis, associations — atterrit donc dans le mauvais profil, et la
+# rédactrice ouvre sa session sans rien. Rien ne le disait : les lignes de journal ne
+# nommaient pas le compte.
+#
+# On ne peut pas y remédier ici — un processus ne peut pas écrire dans le profil d'un autre
+# compte —, mais on peut le NOMMER, et ne pas gaspiller 3 Go d'environnement pour un compte
+# de support qui ne rédigera jamais.
+$moi = Get-SzhIdentite
+$sessionUtilisateur = Get-SzhSessionUtilisateur
+$memeCompte = ((-not $sessionUtilisateur) -or ($sessionUtilisateur -eq $moi.nom))
+Info ('Compte qui installe : ' + $moi.nom)
+Write-SzhLog ('bootstrap : compte {0}, session ouverte pour « {1} »' -f $moi.nom, $sessionUtilisateur)
+if (-not $memeCompte) {
+  Attention ('Session ouverte pour ' + $sessionUtilisateur + ', installation élevée sous ' + $moi.nom + '.')
+  Attention 'Ce qui est par utilisateur (extensions, réglages, raccourcis, environnement WSL) NE PEUT PAS'
+  Attention ('être posé dans le profil de ' + $sessionUtilisateur + " depuis ici : c'est fait à sa prochaine")
+  Attention 'ouverture de session, par la tâche planifiée. Rien à faire de plus, sinon vérifier ensuite'
+  Attention 'avec windows\diagnostic.ps1, lancé DANS SA session et sans élévation.'
+}
 
 # ---- Dossiers et droits ----
 Info 'Dossiers C:\ProgramData\SZH + droits Utilisateurs (mises à jour sans admin)'
@@ -67,79 +107,144 @@ if ($LASTEXITCODE -ne 0) {
   return
 }
 
-# ---- Applications (winget, niveau machine) ----
-# winget est le chemin normal, mais il tombe en panne sur un poste neuf plus souvent qu'on ne
-# le croit : index de source jamais synchronisé (« 0x8a15000f : données manquantes »), source
-# msstore qui réclame une région à deux lettres, proxy qui coupe cdn.winget.microsoft.com.
-# Aucune de ces pannes ne mérite d'arrêter l'installation d'un poste : on répare la source,
-# puis on retombe sur le téléchargement direct de l'installeur.
-
-# Une seule réparation par exécution, sinon chaque paquet la refait pour rien.
-$script:sourceReparee = $false
-function Repair-SzhWingetSource {
-  if ($script:sourceReparee) { return }
-  $script:sourceReparee = $true
-  Attention 'Source winget en panne -> reset puis resynchronisation de l''index.'
-  Invoke-SzhNatif {
-    & winget source reset --force 2>&1 | Out-Null
-    & winget source update --name winget 2>&1 | Out-Null
-  }
+# ---- Applications du poste (versions figées, niveau machine) ----
+#
+# winget n'est plus dans la chaîne, et ce n'est pas un caprice. Sur un poste neuf il tombe en
+# panne plus souvent qu'on ne le croit — index de source jamais synchronisé
+# (« 0x8a15000f : données manquantes »), source msstore qui réclame une région à deux
+# lettres, proxy d'entreprise qui coupe cdn.winget.microsoft.com — et, sous une élévation
+# faite avec un compte de support, son App Installer n'est même pas provisionné pour ce
+# compte : winget n'existe simplement pas. Le 26 août 2026, les deux applications ont fini
+# par être posées à la main.
+#
+# À la place, le patron de vsix.lock : version et empreinte figées dans windows/apps.lock,
+# téléchargement direct, sha256 vérifié, signature de l'éditeur lue, installation
+# silencieuse, puis contrôle par le disque. Détails et procédure de montée : APPS.md.
+function Get-SzhApplicationsEpinglees {
+  param([string]$Fichier = '')
+  if (-not $Fichier) { $Fichier = Join-Path $PSScriptRoot 'apps.lock' }
+  if (-not (Test-Path $Fichier)) { throw ('apps.lock introuvable : ' + $Fichier) }
+  return (Get-Content $Fichier -Raw -Encoding UTF8 | ConvertFrom-Json).applications
 }
 
-# --source winget : msstore n'héberge aucun de nos paquets, et c'est elle qui exige un accord
-# et une région. L'écarter supprime la moitié des messages d'erreur à l'écran.
-function Install-SzhAppWinget([string]$Id) {
-  if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-    Attention 'winget absent de ce poste (App Installer non provisionné).'
-    return $false
+# Le chemin de l'application si elle est posée, sinon ''. Les sondes viennent du verrou, dans
+# leur ordre : le paquet système d'abord, le paquet par utilisateur ensuite.
+#
+# $SystemeSeulement : quand l'installation est élevée avec un autre compte, le paquet « par
+# utilisateur » qu'on trouverait serait celui du SUPPORT, et le rédacteur ouvrirait sa
+# session sans éditeur. On l'ignore alors, et on pose le paquet système.
+function Get-SzhAppChemin($App, [switch]$SystemeSeulement) {
+  foreach ($s in @($App.sondes)) {
+    $brut = [string]$s
+    if ($SystemeSeulement -and ($brut -like '*LOCALAPPDATA*')) { continue }
+    $p = [Environment]::ExpandEnvironmentVariables($brut)
+    if (Test-Path $p) { return $p }
   }
-  foreach ($essai in 1, 2) {
-    # Out-Host : la sortie d'un natif appelé dans une fonction part sinon dans la valeur de
-    # retour, et winget s'installerait sans qu'une ligne s'affiche.
-    Invoke-SzhNatif {
-      & winget install --id $Id -e --source winget --disable-interactivity `
-          --accept-source-agreements --accept-package-agreements | Out-Host
+  return ''
+}
+
+function Get-SzhAppVersion([string]$Chemin) {
+  try { return ([string](Get-Item $Chemin).VersionInfo.ProductVersion).Trim() } catch { return '' }
+}
+
+function Install-SzhAppEpinglee($App, [switch]$SystemeSeulement) {
+  $exe = Join-Path $SzhStaging ([string]$App.fichier)
+  if (Test-SzhSha256 -Fichier $exe -Attendu $App.sha256) {
+    Info ('Installeur déjà en cache : ' + $App.fichier)
+  } else {
+    Info ('Téléchargement de ' + $App.fichier)
+    Get-SzhFichier -Url $App.source -Destination $exe
+    if (-not (Test-SzhSha256 -Fichier $exe -Attendu $App.sha256)) {
+      throw ('Empreinte inattendue pour {0} : ce n''est pas le fichier épinglé dans apps.lock. Rien n''a été installé.' -f $App.fichier)
     }
-    if ($LASTEXITCODE -eq 0) { return $true }
-    Attention ('winget install {0} : code de sortie {1}.' -f $Id, $LASTEXITCODE)
-    if ($essai -eq 1) { Repair-SzhWingetSource }
   }
-  return $false
+
+  # Un proxy qui répond par une page d'erreur rend un fichier de la bonne taille et du
+  # mauvais genre. L'empreinte l'attrape aussi, mais deux octets nomment la cause.
+  $entete = [System.IO.File]::ReadAllBytes($exe)[0..1]
+  if (($entete[0] -ne 0x4D) -or ($entete[1] -ne 0x5A)) {
+    throw ('{0} n''est pas un exécutable Windows — réponse d''un proxy ?' -f $App.fichier)
+  }
+
+  # La signature ne remplace pas l'empreinte, elle la double : l'empreinte fige des octets,
+  # la signature dit qui les a produits. Un défaut de chaîne ou de révocation sur un poste
+  # hors ligne ne doit pas arrêter une installation — d'où l'avertissement plutôt que
+  # l'arrêt, sauf pour « pas signé » et « empreinte de signature fausse », qui n'arrivent
+  # pas par accident.
+  $sig = $null
+  try { $sig = Get-AuthenticodeSignature $exe } catch { $sig = $null }
+  if ($sig) {
+    $etatSig = [string]$sig.Status
+    if (($etatSig -eq 'HashMismatch') -or ($etatSig -eq 'NotSigned')) {
+      throw ('Signature de {0} : {1}. Rien n''a été installé.' -f $App.fichier, $etatSig)
+    }
+    $sujet = ''
+    try { $sujet = [string]$sig.SignerCertificate.Subject } catch { $sujet = '' }
+    if ($App.signataire -and $sujet -and ($sujet -notlike ('*' + $App.signataire + '*'))) {
+      Attention ('Signataire inattendu pour {0} : {1} (attendu : {2}).' -f $App.fichier, $sujet, $App.signataire)
+    }
+    if ($etatSig -ne 'Valid') {
+      Attention ('Signature de {0} non validée sur ce poste ({1}) — l''empreinte, elle, correspond.' -f $App.fichier, $etatSig)
+    }
+  }
+
+  # Un jeu d'arguments, et son repli si le verrou en déclare un : un drapeau qui disparaît
+  # d'une version amont ne doit pas laisser un poste sans lecteur PDF.
+  $jeux = New-Object System.Collections.ArrayList
+  [void]$jeux.Add(@($App.installation))
+  if ($App.installationRepli) { [void]$jeux.Add(@($App.installationRepli)) }
+  foreach ($jeu in $jeux) {
+    Info ('Installation silencieuse : {0} {1}' -f $App.fichier, ($jeu -join ' '))
+    $p = Start-Process -FilePath $exe -Wait -PassThru -ArgumentList $jeu
+    # C'est le disque qui décide, pas le code de retour : un installeur peut sortir en 0
+    # sans rien poser là où on l'attend, et l'inverse arrive aussi.
+    $chemin = Get-SzhAppChemin $App -SystemeSeulement:$SystemeSeulement
+    if ($chemin) { return $chemin }
+    Attention ('{0} : code de sortie {1}, et rien de posé.' -f $App.fichier, $p.ExitCode)
+  }
+  return ''
 }
 
-# Repli sans winget : l'installeur publié par VSCodium sur GitHub. « Setup » et non
-# « UserSetup » : il pose l'éditeur dans Program Files, donc pour tous les comptes du poste,
-# là où la variante utilisateur ne servirait qu'au compte administrateur qui installe.
-function Install-SzhVSCodiumDirect {
-  $entetes = @{ 'User-Agent' = 'SZH-Publishing'; 'Accept' = 'application/vnd.github+json' }
-  $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/VSCodium/vscodium/releases/latest' `
-               -Headers $entetes -UseBasicParsing -TimeoutSec 30
-  $asset = $release.assets | Where-Object { $_.name -match '^VSCodiumSetup-x64-.+\.exe$' } | Select-Object -First 1
-  if (-not $asset) { throw 'Aucun installeur VSCodiumSetup-x64 dans la dernière Release VSCodium.' }
-  $exe = Join-Path $SzhStaging $asset.name
-  Info ('Téléchargement de ' + $asset.name)
-  Get-SzhFichier -Url $asset.browser_download_url -Destination $exe
-  # Inno Setup : silencieux, sans redémarrage, sans ouvrir l'éditeur à la fin.
-  $p = Start-Process -FilePath $exe -Wait -PassThru `
-         -ArgumentList '/VERYSILENT', '/NORESTART', '/MERGETASKS=!runcode'
-  if ($p.ExitCode -ne 0) { throw ('Installeur VSCodium sorti en code {0}.' -f $p.ExitCode) }
+Info 'Applications du poste (versions figées dans apps.lock)'
+foreach ($app in @(Get-SzhApplicationsEpinglees)) {
+  $chemin = Get-SzhAppChemin $app -SystemeSeulement:(-not $memeCompte)
+  $version = ''
+  if ($chemin) { $version = Get-SzhAppVersion $chemin }
+
+  if ($chemin -and ($version -eq [string]$app.version)) {
+    Info ('{0} {1} déjà en place : {2}' -f $app.nom, $version, $chemin)
+    Write-SzhLog ('bootstrap : {0} {1} déjà en place' -f $app.nom, $version)
+    continue
+  }
+  if ($chemin) {
+    # Présent dans une autre version : on ne remplace pas. Une montée est un geste
+    # volontaire (APPS.md), et remplacer l'éditeur pendant l'installation d'un poste n'est
+    # pas une surprise à faire à quelqu'un. L'écart se lit dans diagnostic.ps1.
+    Attention ('{0} est en {1}, la version épinglée est {2}. Laissé tel quel : une montée de version est un geste volontaire (windows/APPS.md).' -f $app.nom, $version, $app.version)
+    Write-SzhLog ('bootstrap : {0} en écart — posé {1}, épinglé {2}' -f $app.nom, $version, $app.version)
+    continue
+  }
+
+  try {
+    $pose = Install-SzhAppEpinglee $app -SystemeSeulement:(-not $memeCompte)
+    if ($pose) {
+      Info ('{0} {1} posé : {2}' -f $app.nom, $app.version, $pose)
+      Write-SzhLog ('bootstrap : {0} {1} installé' -f $app.nom, $app.version)
+    } elseif ($app.requis) {
+      throw ('{0} introuvable après installation. Le poser à la main depuis {1}, puis relancer ce script.' -f $app.nom, $app.source)
+    } else {
+      Attention ('{0} non installé — à poser à la main depuis {1}.' -f $app.nom, $app.source)
+    }
+  } catch {
+    # Requis : on s'arrête, un poste sans éditeur n'est pas un poste. Facultatif : on le dit
+    # et on continue — la chaîne compile sans lecteur PDF, mais le rédacteur doit savoir
+    # qu'un PDF ouvert dans Acrobat bloque la compilation suivante.
+    if ($app.requis) { throw }
+    Attention ('{0} non installé : {1}' -f $app.nom, $_.Exception.Message)
+    Write-SzhLog ('bootstrap : {0} non installé -> {1}' -f $app.nom, $_.Exception.Message)
+  }
 }
 
-function Test-SzhSumatra {
-  foreach ($p in "$env:ProgramFiles\SumatraPDF\SumatraPDF.exe", "$env:LOCALAPPDATA\SumatraPDF\SumatraPDF.exe") {
-    if (Test-Path $p) { return $true }
-  }
-  return $false
-}
-
-Info 'Vérification de VSCodium'
-if (-not (Get-VSCodiumExe)) {
-  Info 'Installation de VSCodium (winget)'
-  if (-not (Install-SzhAppWinget 'VSCodium.VSCodium')) {
-    Attention 'winget hors service -> installeur pris directement sur la Release VSCodium.'
-    Install-SzhVSCodiumDirect
-  }
-}
 $codium = Get-VSCodiumExe
 if (-not $codium) {
   throw ('VSCodium introuvable après installation. Poser l''éditeur à la main depuis ' +
@@ -150,17 +255,6 @@ if (-not $codium) {
 if ($codium -like ($env:LOCALAPPDATA + '*')) {
   Attention ('VSCodium n''est installé que pour ce compte (' + $codium + ') : le désinstaller ' +
              'puis reprendre avec l''installeur système, sinon les rédacteurs n''auront pas d''éditeur.')
-}
-
-Info 'Vérification de SumatraPDF (lecteur PDF : ne verrouille pas le fichier, recharge auto)'
-if (-not (Test-SzhSumatra)) {
-  Info 'Installation de SumatraPDF (winget)'
-  $null = Install-SzhAppWinget 'SumatraPDF.SumatraPDF'
-}
-# Pas bloquant : la chaîne compile sans lecteur PDF. Mais il faut le dire ici, sinon le
-# rédacteur découvrira tout seul qu'un PDF ouvert dans Acrobat bloque la compilation suivante.
-if (-not (Test-SzhSumatra)) {
-  Attention 'SumatraPDF non installé -> à poser à la main (https://www.sumatrapdfreader.org).'
 }
 
 # ---- Toolkit initial ----
@@ -234,15 +328,48 @@ Register-ScheduledTask -TaskName 'SZH - Prechauffage WSL' -Action $actionChauffe
   -Principal $principal -Trigger (New-ScheduledTaskTrigger -AtLogOn) -Settings $reglages -Force | Out-Null
 
 # ---- Première mise à jour, en fenêtre visible ----
-Info 'Lancement de la première mise à jour (fenêtre visible)…'
-Start-Process -FilePath "$PSHOME\powershell.exe" -ArgumentList @(
-  '-NoProfile', '-ExecutionPolicy', 'Bypass',
-  '-File', (Join-Path $SzhToolkit 'windows\update.ps1')
-)
+#
+# Seulement si l'installation tourne sous le compte de la session : sinon elle poserait
+# 3 Go d'environnement de fabrication, dix extensions et tous les réglages dans le profil
+# du compte de support, qui ne rédigera jamais — et c'est exactement ce dossier
+# d'environnement, posé par un compte pour un autre, qui a bloqué le poste du 26 août 2026.
+#
+# -Wait : sans lui, bootstrap annonçait « Terminé » et ses consignes d'antivirus pendant que
+# 574 Mo se téléchargeaient encore, et une session fermée trop tôt laissait un import à
+# moitié fait.
+if ($memeCompte) {
+  Info 'Lancement de la première mise à jour (fenêtre visible)…'
+  Start-Process -Wait -FilePath "$PSHOME\powershell.exe" -ArgumentList @(
+    '-NoProfile', '-ExecutionPolicy', 'Bypass',
+    '-File', (Join-Path $SzhToolkit 'windows\update.ps1')
+  )
+} else {
+  Info 'Première mise à jour laissée à la session du rédacteur (tâche planifiée à l''ouverture).'
+  Write-SzhLog ('bootstrap : première mise à jour non lancée ici, elle appartient à ' + $sessionUtilisateur)
+}
 
 Write-Host ''
 Info 'Terminé.'
-Attention ('Antivirus : exclure {0}\WSL\*.vhdx et {1}\*, + processus vmcompute.exe, vmmem.exe, wsl.exe, wslservice.exe.' -f $SzhBase, $SzhStaging)
+# Le disque de la distribution est rangé par SID depuis que son dossier commun bloquait le
+# deuxième compte du poste : l'exclusion doit donc couvrir les sous-dossiers.
+Attention ('Antivirus : exclure {0}\WSL\ (tous sous-dossiers, *.vhdx) et {1}\*, + processus vmcompute.exe, vmmem.exe, wsl.exe, wslservice.exe.' -f $SzhBase, $SzhStaging)
 Attention 'Chaque utilisateur du poste recevra réglages + raccourcis à sa prochaine connexion (tâche planifiée).'
 Attention 'Nouvelle revue : menu Démarrer > Revues SZH (ou Zeitschriften SZH) > « Nouvelle revue ».'
 Attention 'Mise à jour à la demande : menu Démarrer > « Mise à jour de l''outil Revue » (ou « Aktualisierung des Redaktionstools »).'
+Attention ('Contrôle : powershell -ExecutionPolicy Bypass -File "{0}", dans la session du rédacteur.' -f (Join-Path $SzhToolkit 'windows\diagnostic.ps1'))
+
+# Le bilan, tout de suite et à l'écran : une installation qui s'annonce terminée sans dire
+# ce qui manque est ce qui a laissé partir un poste sans éditeur utilisable. Ce qu'il dit ne
+# vaut que pour le compte qui installe — le diagnostic le dit lui-même quand ils diffèrent.
+# Dans un processus à lui : le diagnostic sort en code 1 quand il manque quelque chose, et
+# un `exit` dot-sourcé emporterait bootstrap avec lui, transcription comprise.
+Write-Host ''
+try {
+  Invoke-SzhNatif {
+    & "$PSHOME\powershell.exe" -NoProfile -ExecutionPolicy Bypass `
+      -File (Join-Path $SzhToolkit 'windows\diagnostic.ps1') | Out-Host
+  }
+} catch {
+  Attention ('Diagnostic non exécuté : ' + $_.Exception.Message)
+}
+try { Stop-Transcript | Out-Null } catch { }

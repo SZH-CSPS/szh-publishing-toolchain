@@ -115,22 +115,44 @@ function Start-SzhFenetreVisible {
 try {
   $manifest = Get-SzhManifest
   $etat = Get-SzhState
+  $etatUtil = Get-SzhEtatUtilisateur
   $actuel = ''
   if ($etat -and $etat.version) { $actuel = $etat.version }
 
-  if ($actuel -eq $manifest.version) {
+  # Deux questions, et non une. « Le poste est-il à la bonne version ? » ne dit rien de CE
+  # compte : le toolkit est commun au poste, mais la distribution WSL, les extensions et les
+  # réglages sont par utilisateur. Le premier compte connecté mettait le poste à jour, et
+  # tous les autres lisaient « à jour » puis ressortaient sans rien avoir reçu — c'est le
+  # poste du 26 août 2026, où la rédactrice n'avait ni environnement, ni extensions, ni
+  # raccourcis sur un poste que le journal disait à jour.
+  $rootfsActuel = Get-SzhEtatUtilisateurChamp $etatUtil 'rootfs'
+  # Même reprise que dans update.ps1 pour les postes d'avant l'état par utilisateur : la
+  # version n'y était retenue que dans l'état commun, et sans cette lecture le premier
+  # passage après cette mise à jour ouvrirait une fenêtre visible sur un poste qui n'a rien
+  # à installer. Comme là-bas, la confiance ne vaut que si la distribution est bien
+  # enregistrée pour CE compte — et la question n'est posée à wsl.exe qu'en dernier, une
+  # seule fois dans la vie du poste.
+  if ((-not $rootfsActuel) -and $etat -and $etat.rootfs -and
+      ((Get-SzhDistrosEnregistrees) -contains $SzhDistro)) {
+    $rootfsActuel = [string]$etat.rootfs
+  }
+  $moiPose = (($rootfsActuel -eq $manifest.rootfs.version) -and (Test-SzhExtensionsAJour $manifest))
+
+  if (($actuel -eq $manifest.version) -and $moiPose) {
     Write-SzhLog ('check : à jour ({0})' -f $actuel)
     Save-SzhVerifFaite
     exit 0
   }
 
-  Write-SzhLog ('check : mise à jour {0} -> {1}' -f $actuel, $manifest.version)
+  if ($actuel -eq $manifest.version) {
+    Write-SzhLog ('check : poste à jour ({0}) mais ce compte n''a pas tout reçu -> fenêtre visible' -f $actuel)
+  } else {
+    Write-SzhLog ('check : mise à jour {0} -> {1}' -f $actuel, $manifest.version)
+  }
 
   # Le moment ne compte que si l'environnement de fabrication change : un toolkit, des
   # extensions et des réglages s'installent sous l'éditeur ouvert, alors que remplacer la
   # distro exige de la désenregistrer, ce qui échoue tant qu'une compilation s'en sert.
-  $rootfsActuel = ''
-  if ($etat -and $etat.rootfs) { $rootfsActuel = $etat.rootfs }
   $remplace = ($rootfsActuel -ne $manifest.rootfs.version)
 
   $moment = Test-SzhMomentMaj -RemplaceEnvironnement:$remplace -Presse:$presse
@@ -147,16 +169,21 @@ try {
   }
   if ($moment.raison) { Write-SzhLog ('check : ' + $moment.raison) }
 
-  # Mettre le toolkit à niveau pour disposer du dernier update.ps1.
-  New-Item -ItemType Directory -Force -Path $SzhStaging, $SzhToolkit | Out-Null
-  $zip = Join-Path $SzhStaging $manifest.toolkit.file
-  if (-not (Test-SzhSha256 -Fichier $zip -Attendu $manifest.toolkit.sha256)) {
-    Get-SzhFichier -Url $manifest.toolkit.url -Destination $zip -Silencieux
+  # Mettre le toolkit à niveau pour disposer du dernier update.ps1. Sauté quand le poste
+  # porte déjà la bonne version : c'est le cas du compte qui n'a pas encore reçu SA part
+  # d'un poste par ailleurs à jour, et retélécharger l'archive pour la redéplier à
+  # l'identique ne lui apporterait rien.
+  if ($actuel -ne $manifest.version) {
+    New-Item -ItemType Directory -Force -Path $SzhStaging, $SzhToolkit | Out-Null
+    $zip = Join-Path $SzhStaging $manifest.toolkit.file
     if (-not (Test-SzhSha256 -Fichier $zip -Attendu $manifest.toolkit.sha256)) {
-      throw ('empreinte invalide pour {0}' -f $manifest.toolkit.file)
+      Get-SzhFichier -Url $manifest.toolkit.url -Destination $zip -Silencieux
+      if (-not (Test-SzhSha256 -Fichier $zip -Attendu $manifest.toolkit.sha256)) {
+        throw ('empreinte invalide pour {0}' -f $manifest.toolkit.file)
+      }
     }
+    Expand-Archive -Path $zip -DestinationPath $SzhToolkit -Force
   }
-  Expand-Archive -Path $zip -DestinationPath $SzhToolkit -Force
 
   Start-SzhFenetreVisible
   Save-SzhVerifFaite

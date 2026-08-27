@@ -157,9 +157,24 @@ test('le menu et la tâche sont réparés à chaque passage, la version une fois
   assert.ok(garde.indexOf('Write-SzhLog') === -1, 'la fenêtre fermée ne doit rien dire');
 });
 
-test('la cadence vit dans son propre fichier, pas dans state.json', () => {
-  // update.ps1 réécrit state.json de zéro à chaque succès : la cadence y serait effacée.
-  assert.match(TACHES, /\$script:SzhMajSuiviFile = Join-Path \$SzhBase 'maj-auto\.json'/);
+test('la cadence vit dans son propre fichier, par utilisateur', () => {
+  // Dans son propre fichier, parce que update.ps1 réécrivait state.json de zéro à chaque
+  // succès : la cadence y aurait été effacée.
+  //
+  // Et PAR UTILISATEUR, parce que la cadence gouverne un travail par utilisateur —
+  // distribution WSL, extensions, réglages, raccourcis. Sous C:\ProgramData\SZH, le premier
+  // compte connecté consommait la fenêtre de la semaine pour tout le monde : le deuxième
+  // ressortait muet sans jamais rien recevoir. Le défaut mesuré le 26 août 2026.
+  assert.match(TACHES, /\$script:SzhMajSuiviFile = Join-Path \$SzhBaseUtilisateur 'maj-auto\.json'/);
+  assert.match(TACHES, /New-Item -ItemType Directory -Force -Path \$SzhBaseUtilisateur/);
+  // Et la réécriture complète de state.json a disparu avec : elle emportait aussi la langue
+  // choisie par le dernier lanceur ouvert, sur des postes dont Windows est en anglais.
+  assert.ok(UPDATE.indexOf('Set-SzhStateCles') !== -1,
+    'update.ps1 doit écrire state.json clé par clé, pas le réécrire en entier');
+  // L'appel, pas la mention : la ligne de commentaire au-dessus de Set-SzhStateCles nomme
+  // Save-SzhState pour dire pourquoi il a disparu.
+  assert.ok(!/\r?\n\s*Save-SzhState /.test(UPDATE),
+    'update.ps1 réécrit encore state.json de zéro : la langue du poste y serait effacée');
   assert.ok(LANCEUR.indexOf('Save-SzhState') === -1,
     'la passe silencieuse ne doit pas toucher state.json');
   assert.ok(LANCEUR.indexOf('Set-SzhJson $SzhConfigFile') === -1);

@@ -30,6 +30,7 @@ important de tout le système.
 |---|---|---|
 | **Workspace Trust désactivé** | machine dédiée, pour permettre le build auto sans pop-up | n'ouvrir que des **revues de confiance** (OneDrive interne) ; postes dédiés à cet usage |
 | **Utilisateurs autorisés à écrire dans `C:\ProgramData\SZH`** | nécessaire pour les MAJ sans admin | un logiciel malveillant tournant sous le compte utilisateur pourrait altérer le toolkit local (ré-exécuté au build). Compenser par **antivirus/EDR** actif + comptes **utilisateurs standard** + surveillance endpoint |
+| **Sur un poste partagé, cette écriture traverse les comptes** | le toolkit est commun, et la tâche planifiée l'exécute à l'ouverture de session de **chaque** utilisateur | un compte standard qui remplacerait `toolkit\windows\*.ps1` ferait exécuter son code dans la session des autres comptes du poste — pas une élévation vers l'administrateur, mais un passage latéral. Assumé pour une flotte interne de postes à un rédacteur ; sur un poste réellement partagé, retirer l'écriture aux Utilisateurs sur `toolkit\` et confier la pose du toolkit à une tâche SYSTEM (au prix d'un téléchargement distant exécuté en SYSTEM, ce qui déplace le risque plutôt que de le supprimer) |
 | **Le toolkit local n'est pas re-vérifié à chaque exécution** | seuls les **téléchargements** sont contrôlés (sha256) | idem ci-dessus : la protection repose sur l'intégrité du poste (EDR, MAJ Windows) |
 
 ## À vérifier avec le prestataire — checklist déploiement (×10)
@@ -40,15 +41,20 @@ important de tout le système.
       « Plateforme de machine virtuelle » + « WSL » ; pas de conflit avec un autre hyperviseur
       ou une politique VBS/Device Guard qui bloquerait WSL2.
 - [ ] **Édition de Windows** compatible WSL2 (Pro/Enterprise recommandé ; Home accepté).
-- [ ] **winget disponible** (installe VSCodium + SumatraPDF). Une source winget cassée n'arrête
-      plus l'installation : `bootstrap.ps1` tente `source reset` + `source update`, puis prend
-      VSCodium sur sa Release GitHub. SumatraPDF, lui, reste à poser à la main dans ce cas — le
-      script le dit à l'écran.
+- [ ] **Applications figées, sans winget.** VSCodium et SumatraPDF sont épinglés dans
+      `windows/apps.lock` (version, `sha256`, signataire attendu) et posés au **niveau
+      machine** par téléchargement direct. winget n'est plus dans la chaîne : il n'existe pas
+      pour un compte de support non provisionné, et sa source tombe en panne sur un poste
+      neuf. Rien ne monte de version tout seul (voir `windows/APPS.md`).
 - [ ] **Réseau / pare-feu / proxy** : autoriser en sortie **`github.com`** et
-      **`objects.githubusercontent.com`** (téléchargement des releases), **`api.github.com`**
-      (liste des versions et repli VSCodium) + les sources **winget**.
+      **`objects.githubusercontent.com`** (releases du toolkit, installeur VSCodium),
+      **`www.sumatrapdfreader.org`** (installeur SumatraPDF — les Releases GitHub du projet
+      ne portent aucun asset) et **`api.github.com`** (liste des versions installables du
+      sélecteur). Un proxy qui **demande une authentification** est géré : les scripts
+      présentent les identifiants de la session, sans saisie.
       Aucun autre flux sortant n'est nécessaire pour compiler (le pipeline est hors-ligne).
-- [ ] **Antivirus / EDR** : poser les **exclusions** WSL (`…\SZH\WSL\*.vhdx`, `…\SZH\staging`,
+- [ ] **Antivirus / EDR** : poser les **exclusions** WSL (`…\SZH\WSL\` et ses sous-dossiers —
+      un par SID de compte —, `…\SZH\staging`,
       processus `vmcompute.exe`/`vmmem.exe`/`wsl.exe`/`wslservice.exe`) **et s'assurer qu'une
       politique centrale ne les réécrasera pas**. ⚠ `bootstrap.ps1` se contente de les afficher :
       personne ne les pose à votre place.
@@ -68,8 +74,9 @@ important de tout le système.
 
 1. Pouvez-vous exécuter un script PowerShell d'installation **en administrateur, une fois par
    poste** (ou nous ouvrir un accès admin temporaire) ?
-2. Quelles sont vos **règles pare-feu/proxy** en sortie ? Peut-on autoriser GitHub (releases) et
-   winget ?
+2. Quelles sont vos **règles pare-feu/proxy** en sortie ? Peut-on autoriser GitHub (releases)
+   et `www.sumatrapdfreader.org` (installeur du lecteur PDF) ? Votre proxy demande-t-il une
+   **authentification** ?
 3. Votre **antivirus/EDR** accepte-t-il des **exclusions persistantes** pour WSL, et qui les gère ?
 4. Votre gestion de parc (Intune/GPO) **tolère-t-elle** des tâches planifiées locales et une ACL
    personnalisée sous `C:\ProgramData` ?

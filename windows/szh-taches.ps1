@@ -17,10 +17,13 @@ $script:SzhMajJourNum  = 2            # [int][DayOfWeek]::Tuesday
 $script:SzhMajHeure    = 14
 
 # Suivi de la passe silencieuse. Fichier à part, et non state.json : celui-ci est réécrit
-# entièrement par update.ps1 à chaque succès, ce qui effacerait la cadence. Sous
-# C:\ProgramData\SZH, donc partagé par les comptes du poste — c'est voulu, le toolkit
-# l'est aussi.
-$script:SzhMajSuiviFile = Join-Path $SzhBase 'maj-auto.json'
+# entièrement par update.ps1 à chaque succès, ce qui effacerait la cadence.
+#
+# PAR UTILISATEUR, et non plus sous C:\ProgramData\SZH : la cadence gouverne un travail qui
+# est par utilisateur — distribution WSL, extensions, réglages, raccourcis —, et un fichier
+# commun laissait le premier compte connecté consommer la fenêtre de la semaine pour tout le
+# monde. Le deuxième compte ressortait muet, sans rien avoir reçu, jusqu'au mardi suivant.
+$script:SzhMajSuiviFile = Join-Path $SzhBaseUtilisateur 'maj-auto.json'
 
 # Au bout de combien de jours de renoncements une mise à jour cesse d'être polie. Quatre
 # semaines : quatre fenêtres hebdomadaires et une vingtaine d'ouvertures de session ont
@@ -328,7 +331,7 @@ function Get-SzhSuiviChamp($Suivi, [string]$Nom) {
 # n'a pas pu s'écrire.
 function Save-SzhSuiviMaj($Suivi) {
   try {
-    New-Item -ItemType Directory -Force -Path $SzhBase | Out-Null
+    New-Item -ItemType Directory -Force -Path $SzhBaseUtilisateur | Out-Null
     Set-SzhJson $SzhMajSuiviFile $Suivi
     return $true
   } catch { return $false }

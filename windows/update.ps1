@@ -133,11 +133,12 @@ function Set-SzhProtocoleSzh {
   }
 }
 
-# ---- Une seule mise à jour à la fois (mutex nommé, portée session) ----
+# ---- Une seule mise à jour à la fois (mutex nommé, portée poste) ----
 # Deux update.ps1 concurrents écrivent la même archive de staging et détendent deux
 # Expand-Archive sur le même toolkit, qui finit à moitié écrit. On sort proprement :
-# l'autre passe finira le travail.
-$script:SzhMutex = New-Object System.Threading.Mutex($false, 'Local\SZH-Publishing-Update')
+# l'autre passe finira le travail. Portée poste et non session : deux comptes connectés en
+# même temps sur le même poste écrivent le même C:\ProgramData\SZH\toolkit.
+$script:SzhMutex = New-SzhMutexPoste
 $aLaMain = $false
 try { $aLaMain = $SzhMutex.WaitOne(0) } catch { $aLaMain = $false }
 if (-not $aLaMain) {
@@ -159,11 +160,25 @@ try {
   Write-SzhInfo (T 'maj.intro2')
   Write-Host ''
 
+  # Le compte qui exécute, dans le journal, avant tout le reste. Une mise à jour pose
+  # l'essentiel PAR UTILISATEUR — distribution WSL, extensions, réglages, raccourcis,
+  # associations de fichiers — et les lignes de journal ne disaient pas pour qui. Sur le
+  # poste du 26 août 2026, elles annonçaient « raccourcis posés » pour un compte de support
+  # élevé depuis la session de la rédactrice, qui n'a donc rien reçu.
+  $moi = Get-SzhIdentite
+  Write-SzhLog ('update : compte {0} (admin : {1})' -f $moi.nom, $moi.admin)
+
+  # Ce qui a échoué sans emporter le reste. Une étape qui tombe ne doit plus priver le
+  # rédacteur des quatre autres : l'ennui est retenu ici, la passe continue, et l'écran de
+  # fin le dit.
+  $ennuis = New-Object System.Collections.ArrayList
+
   # ---- Quoi de neuf ? ----
   $etape = (T 'etape.manifest')
   Write-SzhEtape (T 'maj.verif')
   $manifest = Get-SzhManifest $Version
   $etat = Get-SzhState
+  $etatUtil = Get-SzhEtatUtilisateur
   Write-SzhOk (T 'maj.cible' @($manifest.version))
   # Manifest mis en cache : c'est ce qui rend une réinstallation hors ligne possible.
   # Jamais bloquant.
@@ -190,48 +205,114 @@ try {
   }
 
   # ---- 2/5 Environnement de fabrication (distro WSL) ----
+  #
+  # Jamais fatale. C'est l'étape la plus lourde — 574 Mo, un import, des verrous de
+  # fichiers — et son échec emportait les étapes 3, 4 et 5 : la rédactrice du poste du
+  # 26 août 2026 s'est retrouvée sans raccourcis, sans extensions et sans réglages pour une
+  # panne qui ne concernait qu'elle. L'ennui est retenu, la passe continue, l'écran de fin
+  # le dit.
+  #
+  # La version posée se lit dans l'état PAR UTILISATEUR : l'enregistrement d'une
+  # distribution WSL est par compte, et l'état commun du poste affirmait « installé » à un
+  # compte qui n'avait rien.
   $etape = (T 'etape.env')
   Write-SzhEtape (T 'maj.e2')
-  $rootfsActuel = ''
-  if ($etat -and $etat.rootfs) { $rootfsActuel = $etat.rootfs }
-  $wsl = Get-WslExe
-  $distros = (& $wsl -l -q) -replace "`0", '' | ForEach-Object { $_.Trim() }
-  $distroPresente = ($distros -contains $SzhDistro)
+  $rootfsPose = Get-SzhEtatUtilisateurChamp $etatUtil 'rootfs'
+  $distroPresente = ((Get-SzhDistrosEnregistrees) -contains $SzhDistro)
+  # Reprise des postes d'avant l'état par utilisateur : la version n'y était retenue que
+  # dans l'état commun. On l'accepte une fois, et seulement si la distribution est bien
+  # enregistrée pour CE compte — sinon les postes déjà installés réimporteraient 3 Go pour
+  # rien. Un compte qui n'a rien enregistré, lui, ne reçoit pas cette confiance : c'est
+  # précisément le mensonge qu'on retire.
+  if ((-not $rootfsPose) -and $distroPresente -and $etat -and $etat.rootfs) {
+    $rootfsPose = [string]$etat.rootfs
+  }
+  # Version retenue mais aucune distribution enregistrée pour ce compte : c'est la
+  # distribution qui dit vrai, pas le fichier.
+  if (-not $distroPresente) { $rootfsPose = '' }
 
-  if (($rootfsActuel -ne $manifest.rootfs.version) -or (-not $distroPresente)) {
-    $tar = Join-Path $SzhStaging $manifest.rootfs.file
-    if (Test-SzhSha256 -Fichier $tar -Attendu $manifest.rootfs.sha256) {
-      Write-SzhInfo (T 'maj.dl.cache')
-    } else {
-      Write-SzhInfo (T 'maj.dl.gros')
-      Get-SzhFichier -Url $manifest.rootfs.url -Destination $tar
-      if (-not (Test-SzhSha256 -Fichier $tar -Attendu $manifest.rootfs.sha256)) {
-        throw (T 'err.empreinte' @($manifest.rootfs.file))
+  try {
+    if ($rootfsPose -ne $manifest.rootfs.version) {
+      $wsl = Get-WslExe
+      $tar = Join-Path $SzhStaging $manifest.rootfs.file
+      if (Test-SzhSha256 -Fichier $tar -Attendu $manifest.rootfs.sha256) {
+        Write-SzhInfo (T 'maj.dl.cache')
+      } else {
+        Write-SzhInfo (T 'maj.dl.gros')
+        Get-SzhFichier -Url $manifest.rootfs.url -Destination $tar
+        if (-not (Test-SzhSha256 -Fichier $tar -Attendu $manifest.rootfs.sha256)) {
+          throw (T 'err.empreinte' @($manifest.rootfs.file))
+        }
       }
+
+      # La place se vérifie AVANT de désenregistrer quoi que ce soit : un import à moitié
+      # fait laisse un dossier pris et aucune distribution, et c'est cet état-là qui bloque
+      # ensuite toutes les mises à jour. 5 Go : l'archive (0,6) et le disque qu'elle déplie
+      # (≈ 2,4), avec la marge de l'ancien environnement pas encore effacé.
+      $libre = Get-SzhEspaceLibreGo
+      if (($libre -ge 0) -and ($libre -lt 5)) { throw (T 'err.espace' @($libre, 5)) }
+
+      Write-SzhInfo (T 'maj.install')
+      if ($distroPresente) {
+        Invoke-SzhNatif { & $wsl --terminate $SzhDistro 2>$null | Out-Null }
+        Invoke-SzhNatif { & $wsl --unregister $SzhDistro 2>$null | Out-Null }
+      }
+      $dirDistro = Get-SzhDossierDistro
+      # Un reste : installation interrompue, disque plein, ou dossier commun d'avant cette
+      # version. `wsl --import` refuse d'écrire dans un dossier déjà pris, et rien ne le
+      # nettoyait jamais : le poste répétait le même message à chaque essai, pour toujours.
+      try {
+        if (Clear-SzhDossierDistro -Dossier $dirDistro) { Write-SzhInfo (T 'maj.env.repare') }
+      } catch {
+        throw (T 'err.wsl.dossier')
+      }
+      New-Item -ItemType Directory -Force -Path $dirDistro | Out-Null
+      & $wsl --import $SzhDistro $dirDistro $tar --version 2
+      if ($LASTEXITCODE -ne 0) {
+        # Deux pannes derrière un même code de retour, et deux gestes opposés : un dossier
+        # déjà pris ne se règle pas en fermant l'éditeur.
+        if (Test-Path (Join-Path $dirDistro 'ext4.vhdx')) { throw (T 'err.wsl.dossier') }
+        throw (T 'err.wsl')
+      }
+      Invoke-SzhNatif { & $wsl --terminate $SzhDistro 2>$null | Out-Null }   # force la relecture de /etc/wsl.conf
+
+      # Un import réussi ne prouve pas qu'une distribution démarre : sans virtualisation,
+      # l'import passe et le premier `--exec` échoue. Sans ce contrôle, la panne
+      # n'apparaissait qu'à la première tentative de PDF, loin de sa cause.
+      Write-SzhInfo (T 'maj.env.essai')
+      if (-not (Test-SzhDistroRepond)) { throw (T 'err.wsl.moteur') }
+
+      $rootfsPose = $manifest.rootfs.version
+      Write-SzhOk (T 'maj.env.ok' @($manifest.rootfs.version))
+    } else {
+      Write-SzhOk (T 'maj.env.deja' @($manifest.rootfs.version))
     }
-    Write-SzhInfo (T 'maj.install')
-    if ($distroPresente) {
-      Invoke-SzhNatif { & $wsl --terminate $SzhDistro 2>$null | Out-Null }
-      Invoke-SzhNatif { & $wsl --unregister $SzhDistro 2>$null | Out-Null }
-    }
-    $dirDistro = Join-Path $SzhBase 'WSL\SZH-Publishing'
-    New-Item -ItemType Directory -Force -Path $dirDistro | Out-Null
-    & $wsl --import $SzhDistro $dirDistro $tar --version 2
-    if ($LASTEXITCODE -ne 0) { throw (T 'err.wsl') }
-    Invoke-SzhNatif { & $wsl --terminate $SzhDistro 2>$null | Out-Null }   # force la relecture de /etc/wsl.conf
-    Write-SzhOk (T 'maj.env.ok' @($manifest.rootfs.version))
-  } else {
-    Write-SzhOk (T 'maj.env.deja' @($manifest.rootfs.version))
+  } catch {
+    $messageEnv = $_.Exception.Message
+    $rootfsPose = ''      # rien n'est retenu de ce qui n'est pas installé
+    [void]$ennuis.Add([ordered]@{ etape = $etape; message = $messageEnv })
+    Write-SzhLog ('update : environnement de fabrication non installé ({0}) -> {1}' -f $moi.nom, $messageEnv)
+    Write-SzhAttention $messageEnv
   }
 
   # ---- 3/5 Extensions de l'éditeur ----
   $etape = (T 'etape.ext')
   Write-SzhEtape (T 'maj.e3')
+  # Ce qui est réellement posé POUR CE COMPTE : l'éditeur en est la seule preuve. L'état
+  # retenu ne sert que si son CLI ne répond pas. Un état commun au poste affirmait « dix
+  # extensions posées » à un compte qui n'en avait aucune, et la mise à jour les sautait
+  # comme « déjà à jour » : le rédacteur se retrouvait sans cockpit, sans rien qui échoue.
+  # L'état commun est lu en dernier recours, pour les postes d'avant l'état par utilisateur.
   $etatVsix = @{}
-  if ($etat -and $etat.vsix) {
-    foreach ($p in $etat.vsix.PSObject.Properties) { $etatVsix[$p.Name] = [string]$p.Value }
+  $vsixRetenu = $null
+  if ($etatUtil -and $etatUtil.vsix) { $vsixRetenu = $etatUtil.vsix }
+  elseif ($etat -and $etat.vsix) { $vsixRetenu = $etat.vsix }
+  if ($vsixRetenu) {
+    foreach ($p in $vsixRetenu.PSObject.Properties) { $etatVsix[$p.Name] = [string]$p.Value }
   }
   $cli = Get-VSCodiumCli
+  $reelles = Get-SzhExtensionsInstallees -Cli $cli
+  if ($null -ne $reelles) { $etatVsix = $reelles }
   if ($cli) {
     $changement = $false
     $extRatees = @()
@@ -331,7 +412,7 @@ try {
   try {
     $bilanMenu = Set-SzhRaccourcisMenu
     if ($bilanMenu.poses.Count -gt 0) {
-      Write-SzhLog ('update : raccourcis du menu Démarrer posés : ' + ($bilanMenu.poses -join ', '))
+      Write-SzhLog ('update : raccourcis du menu Démarrer posés pour {0} : {1}' -f $moi.nom, ($bilanMenu.poses -join ', '))
     }
     foreach ($retire in $bilanMenu.retires) {
       Write-SzhLog ('update : ancien raccourci du menu Démarrer retiré : ' + $retire)
@@ -368,7 +449,7 @@ try {
   # doit pas faire échouer une mise à jour par ailleurs réussie.
   try {
     Set-SzhProgIdMarkdown
-    Write-SzhLog 'update : ProgId SZH.Markdown posé (HKCU, Ouvrir avec)'
+    Write-SzhLog ('update : ProgId SZH.Markdown posé pour {0} (HKCU, Ouvrir avec)' -f $moi.nom)
   } catch {
     Write-SzhLog ('update : ProgId SZH.Markdown non posé : ' + $_.Exception.Message)
   }
@@ -376,7 +457,7 @@ try {
   # Protocole des liens « Envoyer pour traduction ». Même posture : jamais bloquant.
   try {
     Set-SzhProtocoleSzh
-    Write-SzhLog 'update : protocole szh: posé (HKCU)'
+    Write-SzhLog ('update : protocole szh: posé pour {0} (HKCU)' -f $moi.nom)
   } catch {
     Write-SzhLog ('update : protocole szh: non posé : ' + $_.Exception.Message)
   }
@@ -397,17 +478,50 @@ try {
   $manifests = @(Get-ChildItem (Join-Path $SzhStaging 'manifest-*.json') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
   if ($manifests.Count -gt 5) { $manifests | Select-Object -Skip 5 | Remove-Item -Force }
   Get-ChildItem (Join-Path $SzhStaging '*.vsix') -ErrorAction SilentlyContinue | Remove-Item -Force
+  # La cadence de la passe silencieuse a déménagé chez l'utilisateur. Le fichier commun
+  # d'avant ne dit plus rien de personne, et le laisser ferait mal lire un poste au
+  # prochain diagnostic.
+  $ancienneCadence = Join-Path $SzhBase 'maj-auto.json'
+  if (Test-Path $ancienneCadence) {
+    Remove-Item -LiteralPath $ancienneCadence -Force -ErrorAction SilentlyContinue
+  }
   Write-SzhOk (T 'maj.e5.ok')
 
   # ---- État final ----
-  $nouvelEtat = [ordered]@{
+  # Deux états, parce qu'il y a deux vérités. Le poste : la version du toolkit, commune à
+  # tous les comptes. Le compte : l'environnement de fabrication et les extensions, qui sont
+  # les siens et ceux de personne d'autre. Les confondre faisait croire à un compte neuf que
+  # tout était déjà posé, et la mise à jour ne lui posait rien.
+  #
+  # Set-SzhStateCles et non Save-SzhState : state.json porte aussi la langue choisie par le
+  # dernier lanceur ouvert, qu'une réécriture complète effaçait à chaque mise à jour.
+  Set-SzhStateCles ([ordered]@{
     version    = $manifest.version
     toolkit    = $manifest.version
-    rootfs     = $manifest.rootfs.version
+    misAJourLe = (Get-Date -Format 's')
+  }) -Retirer @('rootfs', 'vsix') | Out-Null
+  Save-SzhEtatUtilisateur ([ordered]@{
+    compte     = $moi.nom
+    rootfs     = $rootfsPose
     vsix       = $etatVsix
     misAJourLe = (Get-Date -Format 's')
+  }) | Out-Null
+
+  # Un ennui retenu : tout le reste est en place, et c'est ce que l'écran doit dire — ni
+  # « terminé », qui serait faux, ni un écran d'erreur nu qui laisserait croire que rien
+  # n'a été fait. Le code de sortie reste 1, pour que la passe silencieuse compte un
+  # blocage et finisse par rouvrir cette fenêtre si la panne dure.
+  if ($ennuis.Count -gt 0) {
+    $premier = $ennuis[0]
+    Write-SzhLog ('update PARTIEL -> {0} ; reste en panne : {1}' -f $manifest.version, $premier.etape)
+    Write-Host ''
+    Write-Host ('  ' + (T 'maj.partiel' @($manifest.version, $premier.etape))) -ForegroundColor Yellow
+    try { Stop-Transcript | Out-Null } catch { }
+    try { $SzhMutex.ReleaseMutex() } catch { }
+    Show-SzhErreur -Etape $premier.etape -Message $premier.message -Journal $journal
+    exit 1
   }
-  Save-SzhState $nouvelEtat
+
   Write-SzhLog ('update OK -> {0}' -f $manifest.version)
 
   Write-Host ''

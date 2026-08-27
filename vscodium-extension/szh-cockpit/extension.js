@@ -696,8 +696,8 @@ class FournisseurRevue {
 
   // Cliquer l'en-tête déplie sa section — et replie les autres, c'est l'accordéon — et
   // ouvre sa vue d'ensemble (szh.ouvrirSection). L'en-tête déjà déplié ne se replie pas :
-  // le clic n'ouvre alors que la vue, le repli passe par le chevron. Le bouton au bout de
-  // la ligne et le clic droit restent d'autres chemins vers la même vue.
+  // le clic n'ouvre alors que la vue, le repli passe par le chevron. Le clic droit est
+  // l'autre chemin vers la même vue ; l'en-tête ne porte pas de bouton pour ça.
   _section(categorie, libelle, icone, description) {
     const ouverte = this.sectionDeployee === categorie;
     const it = new vscode.TreeItem(libelle, ouverte

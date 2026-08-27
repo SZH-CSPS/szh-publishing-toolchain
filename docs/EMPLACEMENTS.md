@@ -104,14 +104,17 @@ Rien de cette liste ne dépend de `emplacementRevues`.
 | Quoi | Chemin sur ce poste |
 |---|---|
 | Configuration partagée PowerShell ↔ cockpit | `C:\ProgramData\SZH\config.json` |
-| État du poste (version installée, langue) | `C:\ProgramData\SZH\state.json` |
+| État du **poste** (version du toolkit, langue) | `C:\ProgramData\SZH\state.json` |
+| État de **ce compte** (environnement WSL, extensions posées) | `C:\Users\robin\AppData\Local\SZH\etat-utilisateur.json` |
+| Cadence de la vérification hebdomadaire, par compte | `C:\Users\robin\AppData\Local\SZH\maj-auto.json` |
 | Auteur·e·s publiés (autocomplétion, cache OAI-PMH) | `C:\ProgramData\SZH\auteurs.json` |
 | Journal (une ligne par geste, un fichier par mois) | `C:\ProgramData\SZH\logs\szh-2026-08.log` |
 | Journaux détaillés d'une mise à jour | `C:\ProgramData\SZH\logs\update-<horodatage>.log` |
 | Téléchargements et versions installables hors ligne | `C:\ProgramData\SZH\staging\` (`toolkit-<v>.zip`, `manifest-<v>.json`, `szh-publishing-rootfs-<v>.tar.gz`) |
 | Toolkit déployé (maquette, scripts, gabarit) | `C:\ProgramData\SZH\toolkit\` — `VERSION`, `pipeline\`, `windows\`, `revue-template\`, `vscodium-user\` |
 | Version du toolkit installée | `C:\ProgramData\SZH\toolkit\VERSION` → `2026.08.41` |
-| Disque de la distro WSL | `C:\ProgramData\SZH\WSL\SZH-Publishing\ext4.vhdx` (2,4 Go) |
+| Disque de la distro WSL, **un par compte** | `C:\ProgramData\SZH\WSL\<SID>\SZH-Publishing\ext4.vhdx` (2,4 Go) |
+| Journaux détaillés d'une installation | `C:\ProgramData\SZH\logs\bootstrap-<horodatage>.log` |
 | Extensions VSCodium installées | `C:\Users\robin\.vscode-oss\extensions\` — dont `szh-csps.szh-cockpit-0.22.1` et `szh-csps.szh-apercu-0.1.2` |
 | Réglages de l'éditeur | `C:\Users\robin\AppData\Roaming\VSCodium\User\settings.json` |
 | Intention d'ouverture (lien `szh://`, usage unique) | `C:\Users\robin\AppData\Local\SZH\intention.json` |

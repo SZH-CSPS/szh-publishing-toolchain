@@ -32,6 +32,44 @@ l'aperçu se mettre à jour.
 
 ---
 
+## Le diagnostic d'un poste, et le piège de l'élévation
+
+**Une commande, dans la session de la personne concernée, sans élévation :**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\ProgramData\SZH\toolkit\windows\diagnostic.ps1
+```
+
+Elle ne modifie rien. Elle sépare ce qui appartient au **poste** (toolkit, éditeur, place
+libre, tâche planifiée) de ce qui appartient au **compte** (environnement WSL, extensions,
+réglages, raccourcis, associations `.md` et `szh://`), et nomme le geste qui répare. Code de
+sortie 0 si tout est en place pour ce compte, 1 sinon.
+
+**Le piège, qui a coûté une matinée le 26 août 2026.** L'installation d'un poste se lance en
+administrateur. Quand l'élévation se fait avec un **compte de support** depuis la session
+d'un **rédacteur**, tout le script tourne sous le compte de support : `HKCU`, `%APPDATA%`,
+`%LOCALAPPDATA%` et l'enregistrement des distributions WSL sont ceux du support. Or
+l'essentiel de l'outil s'installe **par utilisateur**. Le rédacteur ouvre donc sa session
+sans extensions, sans réglages, sans raccourcis et sans environnement de fabrication — sur
+un poste dont le journal dit « tout est à jour ».
+
+Ce qui est fait de cela, depuis 2026-08 :
+
+- `bootstrap.ps1` compare le compte qui installe à celui de la session ouverte, l'écrit au
+  journal, et **ne lance pas** la première mise à jour quand ils diffèrent : elle poserait
+  3 Go d'environnement dans un profil de support qui ne rédigera jamais ;
+- chaque ligne de journal qui pose quelque chose par utilisateur **nomme le compte** ;
+- la passe silencieuse ne demande plus seulement « le poste est-il à jour ? » mais aussi
+  « **et ce compte, a-t-il tout reçu ?** » — c'est ce qui répare le poste tout seul à la
+  première ouverture de session du rédacteur ;
+- une étape en panne n'emporte plus les suivantes : un environnement WSL qui refuse de
+  s'installer ne prive plus personne de ses raccourcis ni de ses extensions.
+
+**Rien de tout cela n'exige d'attendre.** Dans la session du rédacteur, sans élévation :
+« Mise à jour de l'outil Revue » depuis le menu Démarrer suffit à tout poser.
+
+---
+
 ## Calendrier
 
 | Quand | Geste | Durée |
@@ -93,9 +131,27 @@ relancer `windows/bootstrap.ps1` en administrateur.
 une coupure brutale ou un disque plein.
 
 **Manœuvre.** `wsl --unregister SZH-Publishing` puis réimporter le rootfs — le
-mécanisme de mise à jour le refait tout seul, ou à la main :
-`wsl --import SZH-Publishing C:\ProgramData\SZH\WSL <rootfs.tar.gz>`. Aucune donnée
-de revue n'est dans la distro : il n'y a rien à sauver avant.
+mécanisme de mise à jour le refait tout seul, ou à la main, **dans la session du compte
+concerné** :
+
+```powershell
+$tar = (Get-ChildItem 'C:\ProgramData\SZH\staging\szh-publishing-rootfs-*.tar.gz' | Sort-Object Name -Descending)[0].FullName
+$sid = ([Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
+wsl --import SZH-Publishing "C:\ProgramData\SZH\WSL\$sid\SZH-Publishing" $tar --version 2
+wsl --terminate SZH-Publishing
+wsl -d SZH-Publishing --exec /bin/true      # doit finir sans rien afficher
+```
+
+Aucune donnée de revue n'est dans la distro : il n'y a rien à sauver avant.
+
+**Un dossier par SID, et pourquoi.** L'enregistrement d'une distribution WSL est **par
+utilisateur** (`HKCU\...\Lxss`), alors que son dossier était commun au poste. Le deuxième
+compte d'un poste n'avait donc aucune distribution enregistrée mais trouvait le dossier
+déjà pris, et `wsl --import` refusait :
+`Wsl/Service/RegisterDistro/ERROR_FILE_EXISTS` — sans issue, puisque rien ne nettoyait
+jamais ce reste. Pire, le `wsl --unregister` du premier compte aurait effacé le disque du
+second. Depuis 2026-08, chaque compte a le sien, et `update.ps1` écarte de lui-même un
+reste d'installation trouvé à sa place.
 
 ### Contraintes à ne pas oublier
 
@@ -265,7 +321,8 @@ processus de la VM à chaque compilation.
 **Symptôme.** Les builds prennent plusieurs dizaines de secondes au lieu de quelques
 secondes ; parfois un fichier reste verrouillé.
 
-**À observer.** Que les exclusions existent bien : `C:\ProgramData\SZH\WSL\*.vhdx`,
+**À observer.** Que les exclusions existent bien : `C:\ProgramData\SZH\WSL\` (tous
+sous-dossiers, un par SID de compte, `*.vhdx`),
 `C:\ProgramData\SZH\staging\*`, et les processus `vmcompute.exe`, `vmmem.exe`,
 `wsl.exe`, `wslservice.exe`. **Après tout changement de politique de sécurité
 centrale**, une politique Intune pouvant les réécraser.

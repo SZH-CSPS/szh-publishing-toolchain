@@ -111,6 +111,30 @@ jobs:
             echo "OK $id $ver"
           done
 
+      # Les installeurs de VSCodium et SumatraPDF ne sont pas réhébergés en assets — 164 Mo
+      # par release pour des fichiers qui ne changent qu'à un bump délibéré. La contrepartie
+      # est vérifiée ici, à chaque release : l'URL amont répond, et les octets sont toujours
+      # ceux qui sont épinglés. Une disparition ou une substitution amont casse donc la
+      # release, pas un poste.
+      - name: Vérifier les installeurs épinglés (apps.lock)
+        run: |
+          mkdir -p apps-out
+          jq -c '.applications[]' windows/apps.lock | while read -r a; do
+            id="$(echo "$a"   | jq -r .id)"
+            ver="$(echo "$a"  | jq -r .version)"
+            url="$(echo "$a"  | jq -r .source)"
+            want="$(echo "$a" | jq -r .sha256)"
+            f="apps-out/$(echo "$a" | jq -r .fichier)"
+            curl -fsSL "$url" -o "$f"
+            got="$(sha256sum "$f" | cut -d' ' -f1)"
+            if [ "$got" != "$want" ]; then
+              echo "::error::Empreinte inattendue pour $id $ver (obtenu $got, attendu $want)"
+              exit 1
+            fi
+            echo "OK $id $ver ($(du -h "$f" | cut -f1))"
+          done
+          rm -rf apps-out
+
       - name: Vérifier les contrats du cockpit
         run: node --test test/js/*.test.js
 

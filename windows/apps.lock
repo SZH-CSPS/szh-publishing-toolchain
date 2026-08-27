@@ -1,0 +1,32 @@
+{
+  "_doc": "Applications du poste, version et empreinte figées — même patron que vsix.lock. bootstrap.ps1 télécharge `source`, vérifie `sha256` (arrêt si écart), lit la signature de l'éditeur, installe en silence avec `installation`, puis conclut par les `sondes` : c'est la présence de l'exécutable qui décide, pas le code de retour de l'installeur. winget n'est plus dans la chaîne. Tout bump est une décision explicite : mettre à jour version + fichier + source + sha256 (procédure dans APPS.md). Les installeurs ne sont PAS réhébergés en assets de release (164 Mo par release) : la CI vérifie à chaque release que l'URL amont répond et que les octets sont toujours les mêmes.",
+  "applications": [
+    {
+      "id": "VSCodium",
+      "nom": "VSCodium",
+      "version": "1.126.04524",
+      "fichier": "VSCodiumSetup-x64-1.126.04524.exe",
+      "source": "https://github.com/VSCodium/vscodium/releases/download/1.126.04524/VSCodiumSetup-x64-1.126.04524.exe",
+      "sha256": "7b378893e2b3b9a2504eae848f19a6544e475519fd791c32459a42bb0601f5fe",
+      "signataire": "SignPath Foundation",
+      "_installeur": "Inno Setup. « Setup » et non « UserSetup » : pose l'éditeur dans Program Files, donc pour tous les comptes du poste. La variante par utilisateur ne servirait qu'au compte qui installe — et quand l'élévation se fait avec un compte de support, ce n'est jamais celui du rédacteur.",
+      "installation": ["/VERYSILENT", "/NORESTART", "/MERGETASKS=!runcode"],
+      "sondes": ["%ProgramFiles%\\VSCodium\\VSCodium.exe", "%LOCALAPPDATA%\\Programs\\VSCodium\\VSCodium.exe"],
+      "requis": true
+    },
+    {
+      "id": "SumatraPDF",
+      "nom": "SumatraPDF",
+      "version": "3.6.1",
+      "fichier": "SumatraPDF-3.6.1-64-install.exe",
+      "source": "https://www.sumatrapdfreader.org/dl/rel/3.6.1/SumatraPDF-3.6.1-64-install.exe",
+      "sha256": "1eee71cccd2ea6e94d5bcea54ee2f759844da3e1a0ee2f6045035b1d17b94381",
+      "signataire": "Krzysztof Kowalczyk",
+      "_installeur": "Les Releases GitHub de SumatraPDF ne portent aucun asset : le site de l'éditeur est la seule source. `-all-users` demande l'administrateur et pose dans Program Files ; `installationRepli` couvre le cas où ce drapeau disparaîtrait d'une version future — la sonde tranche.",
+      "installation": ["-install", "-s", "-all-users"],
+      "installationRepli": ["-install", "-s"],
+      "sondes": ["%ProgramFiles%\\SumatraPDF\\SumatraPDF.exe", "%LOCALAPPDATA%\\SumatraPDF\\SumatraPDF.exe"],
+      "requis": false
+    }
+  ]
+}

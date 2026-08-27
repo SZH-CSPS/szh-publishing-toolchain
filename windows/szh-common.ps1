@@ -4,6 +4,16 @@
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
+# Proxy d'entreprise : sans ces deux lignes, un proxy qui demande une authentification rend
+# 407 à chaque téléchargement, et l'installation d'un poste devient impossible sans qu'un
+# message le dise. Les identifiants de la session suffisent (Kerberos ou NTLM), aucune
+# saisie n'est demandée ; sans proxy, la valeur est inoffensive.
+try {
+  $proxySysteme = [Net.WebRequest]::GetSystemWebProxy()
+  $proxySysteme.Credentials = [Net.CredentialCache]::DefaultNetworkCredentials
+  [Net.WebRequest]::DefaultWebProxy = $proxySysteme
+} catch { }
+
 # ---- Environnement hérité : ELECTRON_RUN_AS_NODE ----
 # ⚠ Tout processus lancé par l'hôte d'extensions de VSCodium hérite de
 # ELECTRON_RUN_AS_NODE=1 : Electron se prend alors pour Node et `VSCodium.exe "<dossier>"`
@@ -85,6 +95,16 @@ $script:SzhTextes = @{
     'etape.nettoyage'   = 'nettoyage'
     'err.empreinte'     = 'Le fichier téléchargé « {0} » est arrivé abîmé : sa signature ne correspond pas. Rien n''a été installé — mieux vaut s''arrêter que d''installer un fichier douteux. Relancez la mise à jour : le fichier sera retéléchargé. Si cela se répète, c''est la connexion qui coupe en cours de route.'
     'err.wsl'           = 'L''environnement qui fabrique les PDF n''a pas pu être installé. Fermez l''éditeur et les revues ouvertes, puis relancez la mise à jour : l''installation ne peut pas remplacer cet environnement pendant qu''une compilation s''en sert. Si cela ne suffit pas, redémarrez le poste. Sans lui, aucun PDF ne peut être produit.'
+    # Trois causes, trois gestes : « occupé » ci-dessus se ferme en fermant l'éditeur, mais
+    # un dossier déjà pris ne se ferme pas et la virtualisation ne s'active pas sans le
+    # service informatique. Un seul message pour les trois envoyait le support fermer un
+    # éditeur qui n'avait rien à voir — c'est arrivé.
+    'err.wsl.dossier'   = 'L''environnement qui fabrique les PDF n''a pas pu être installé : son dossier est déjà pris sur ce poste, sans appartenir à votre compte. Relancez la mise à jour — elle sait écarter ce reste d''une installation précédente. Si le message revient, redémarrez le poste puis relancez-la : un environnement en marche tient encore ses fichiers.'
+    'err.wsl.moteur'    = 'L''environnement qui fabrique les PDF s''est installé mais refuse de démarrer. C''est presque toujours la virtualisation, désactivée dans le firmware du poste ou par une stratégie : le service informatique doit l''activer (VT-x / AMD-V, et la plateforme d''hyperviseur Windows). Sans elle, aucun PDF ne peut être produit sur ce poste.'
+    'err.espace'        = 'Il ne reste que {0} Go libres sur le disque C:, et il en faut {1} pour installer l''environnement qui fabrique les PDF. Rien n''a été installé. Faites de la place, puis relancez la mise à jour.'
+    'maj.env.repare'    = 'Reste d''une installation interrompue écarté.'
+    'maj.env.essai'     = 'Vérification de l''environnement…'
+    'maj.partiel'       = '⚠ Presque tout est à jour (version {0}). Ce point est resté en panne : {1}'
     'err.titre'         = 'Une erreur est survenue pendant la mise à jour.'
     'err.l.etape'       = 'Étape   : {0}'
     'err.l.detail'      = 'Détail  : {0}'
@@ -209,6 +229,12 @@ $script:SzhTextes = @{
     'etape.nettoyage'   = 'Aufräumen'
     'err.empreinte'     = 'Die heruntergeladene Datei « {0} » ist beschädigt angekommen: ihre Signatur stimmt nicht. Es wurde nichts installiert — besser abbrechen als eine zweifelhafte Datei einspielen. Starten Sie die Aktualisierung erneut, die Datei wird neu heruntergeladen. Wiederholt sich das, bricht die Verbindung unterwegs ab.'
     'err.wsl'           = 'Die Umgebung, die die PDF erzeugt, konnte nicht installiert werden. Schliessen Sie den Editor und die offenen Ausgaben und starten Sie die Aktualisierung erneut: die Installation kann diese Umgebung nicht ersetzen, während eine Kompilierung sie benutzt. Hilft das nicht, starten Sie den Rechner neu. Ohne sie lässt sich kein PDF erzeugen.'
+    'err.wsl.dossier'   = 'Die Umgebung, die die PDF erzeugt, konnte nicht installiert werden: ihr Ordner ist auf diesem Rechner schon belegt und gehört nicht Ihrem Konto. Starten Sie die Aktualisierung erneut — sie kann diesen Rest einer früheren Installation beiseiteschieben. Kommt die Meldung wieder, starten Sie den Rechner neu und dann die Aktualisierung: eine laufende Umgebung hält ihre Dateien noch fest.'
+    'err.wsl.moteur'    = 'Die Umgebung, die die PDF erzeugt, wurde installiert, startet aber nicht. Fast immer ist es die Virtualisierung, die in der Firmware des Rechners oder durch eine Richtlinie abgeschaltet ist: die Informatik muss sie einschalten (VT-x / AMD-V und die Windows-Hypervisor-Plattform). Ohne sie lässt sich auf diesem Rechner kein PDF erzeugen.'
+    'err.espace'        = 'Auf Laufwerk C: sind nur noch {0} GB frei, gebraucht werden {1} GB für die Umgebung, die die PDF erzeugt. Es wurde nichts installiert. Schaffen Sie Platz und starten Sie die Aktualisierung erneut.'
+    'maj.env.repare'    = 'Rest einer abgebrochenen Installation beiseitegeschoben.'
+    'maj.env.essai'     = 'Prüfung der Umgebung…'
+    'maj.partiel'       = '⚠ Fast alles ist aktuell (Version {0}). Dieser Punkt bleibt gestört: {1}'
     'err.titre'         = 'Bei der Aktualisierung ist ein Fehler aufgetreten.'
     'err.l.etape'       = 'Schritt   : {0}'
     'err.l.detail'      = 'Detail    : {0}'
@@ -328,6 +354,12 @@ $script:SzhTextes = @{
     'etape.nettoyage'   = 'cleanup'
     'err.empreinte'     = 'The downloaded file “{0}” arrived damaged: its signature does not match. Nothing was installed — better to stop than to install a doubtful file. Start the update again and the file will be downloaded afresh. If it keeps happening, the connection is dropping midway.'
     'err.wsl'           = 'The environment that produces the PDFs could not be installed. Close the editor and any open issues, then start the update again: the installer cannot replace that environment while a compilation is using it. If that does not help, restart the computer. Without it, no PDF can be produced.'
+    'err.wsl.dossier'   = 'The environment that produces the PDFs could not be installed: its folder is already taken on this computer and does not belong to your account. Start the update again — it knows how to set that leftover from an earlier installation aside. If the message comes back, restart the computer and start the update again: a running environment still holds its files.'
+    'err.wsl.moteur'    = 'The environment that produces the PDFs was installed but refuses to start. This is almost always virtualisation, switched off in the computer''s firmware or by a policy: IT must enable it (VT-x / AMD-V, and the Windows Hypervisor Platform). Without it, no PDF can be produced on this computer.'
+    'err.espace'        = 'Only {0} GB are free on drive C:, and {1} GB are needed to install the environment that produces the PDFs. Nothing was installed. Free up some space, then start the update again.'
+    'maj.env.repare'    = 'Leftover from an interrupted installation set aside.'
+    'maj.env.essai'     = 'Checking the environment…'
+    'maj.partiel'       = '⚠ Almost everything is up to date (version {0}). This one point is still broken: {1}'
     'err.titre'         = 'An error occurred during the update.'
     'err.l.etape'       = 'Step   : {0}'
     'err.l.detail'      = 'Detail : {0}'
@@ -483,6 +515,109 @@ function Get-SzhState {
 
 function Save-SzhState($Etat) {
   $Etat | ConvertTo-Json -Depth 5 | Set-Content -Path $SzhStateFile -Encoding UTF8
+}
+
+# Écrit les clés données SANS effacer le reste du fichier. state.json porte aussi la langue
+# choisie par le dernier lanceur ouvert (Set-SzhLangueProduit), et une réécriture complète
+# l'effaçait à chaque mise à jour : sur ces postes, dont Windows est en anglais, le lanceur
+# reparlait anglais à une équipe francophone jusqu'au prochain clic sur « Revues SZH ».
+# $Retirer : les clés d'une version antérieure qui ne veulent plus rien dire là où elles
+# sont. `rootfs` et `vsix` ont déménagé dans l'état par utilisateur, et les laisser ici
+# donnerait deux vérités pour une même question — celle qui a fait croire à un compte neuf
+# que tout était déjà installé.
+function Set-SzhStateCles($Cles, [string[]]$Retirer = @()) {
+  $etat = Get-SzhState
+  if (-not $etat) { $etat = New-Object psobject }
+  foreach ($c in @($Cles.Keys)) {
+    if ($etat.PSObject.Properties[$c]) { $etat.$c = $Cles[$c] }
+    else { $etat | Add-Member -MemberType NoteProperty -Name $c -Value $Cles[$c] -Force }
+  }
+  foreach ($c in @($Retirer)) {
+    if ($etat.PSObject.Properties[$c]) { $etat.PSObject.Properties.Remove($c) }
+  }
+  Save-SzhState $etat
+  return $etat
+}
+
+# ---- Qui exécute, et pour qui ----
+#
+# Une installation lancée depuis la session du rédacteur mais élevée avec le compte du
+# support tourne SOUS le compte du support : HKCU, %APPDATA%, %LOCALAPPDATA% et
+# l'enregistrement des distributions WSL sont ceux du support. Tout ce qui est « par
+# utilisateur » atterrit alors dans le mauvais profil, et le rédacteur ouvre sa session
+# sans raccourcis, sans extensions, sans réglages et sans environnement de fabrication.
+# C'est le poste du 26 août 2026, et rien dans les journaux ne le disait : les lignes
+# « raccourcis posés » ne nommaient pas le compte. D'où ces deux mesures, et le nom du
+# compte dans chaque ligne qui pose quelque chose par utilisateur.
+function Get-SzhIdentite {
+  $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+  $admin = $false
+  try {
+    $admin = ([Security.Principal.WindowsPrincipal]$id).IsInRole(
+               [Security.Principal.WindowsBuiltinRole]::Administrator)
+  } catch { }
+  return [ordered]@{ nom = [string]$id.Name; sid = [string]$id.User.Value; admin = $admin }
+}
+
+# Le compte dont la session graphique est ouverte : le propriétaire d'explorer.exe. C'est
+# lui le rédacteur, même quand le script tourne sous un autre compte. Vide si personne
+# n'est connecté ou si la mesure échoue — un doute ne doit pas arrêter une installation,
+# il doit se lire dans le journal. Plusieurs sessions ouvertes : le premier propriétaire
+# lisible, ce qui suffit au seul usage qu'on en fait, dire « ce n'est pas moi ».
+function Get-SzhSessionUtilisateur {
+  try {
+    foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='explorer.exe'" -ErrorAction Stop)) {
+      $rep = $null
+      try { $rep = Invoke-CimMethod -InputObject $p -MethodName GetOwner -ErrorAction Stop } catch { $rep = $null }
+      if ($rep -and $rep.User) {
+        if ([string]$rep.Domain) { return (([string]$rep.Domain) + '\' + ([string]$rep.User)) }
+        return [string]$rep.User
+      }
+    }
+  } catch { }
+  return ''
+}
+
+# ---- État par utilisateur ----
+#
+# state.json vit dans C:\ProgramData\SZH : il est donc commun à tous les comptes du poste.
+# Or l'enregistrement de la distribution WSL et les extensions de l'éditeur sont, eux, PAR
+# UTILISATEUR. Un état commun affirmait « environnement 2026.08.42 installé, dix extensions
+# posées » à un compte qui n'avait ni l'un ni les autres, et la mise à jour les sautait
+# comme « déjà à jour » : le rédacteur se retrouvait sans cockpit, sans que rien n'échoue.
+# Ce qui est par utilisateur se retient donc chez lui.
+$script:SzhBaseUtilisateur = ''
+if ([string]$env:LOCALAPPDATA) {
+  $script:SzhBaseUtilisateur = Join-Path $env:LOCALAPPDATA 'SZH'
+} else {
+  # Contexte sans profil (SYSTEM, session détachée) : le SID sépare, faute de %LOCALAPPDATA%.
+  $script:SzhBaseUtilisateur = Join-Path $SzhBase ('comptes\' + (Get-SzhIdentite).sid)
+}
+$script:SzhEtatUtilisateurFile = Join-Path $SzhBaseUtilisateur 'etat-utilisateur.json'
+
+function Get-SzhEtatUtilisateur {
+  try {
+    if (Test-Path $SzhEtatUtilisateurFile) {
+      return (Get-Content $SzhEtatUtilisateurFile -Raw -Encoding UTF8 | ConvertFrom-Json)
+    }
+  } catch { }
+  return $null
+}
+
+# Jamais bloquant : un état non écrit fait refaire un travail idempotent au prochain
+# passage, alors qu'une exception ici arrêterait une mise à jour par ailleurs réussie.
+function Save-SzhEtatUtilisateur($Etat) {
+  try {
+    New-Item -ItemType Directory -Force -Path $SzhBaseUtilisateur | Out-Null
+    Set-SzhJson $SzhEtatUtilisateurFile $Etat
+    return $true
+  } catch { return $false }
+}
+
+function Get-SzhEtatUtilisateurChamp($Etat, [string]$Nom) {
+  if (-not $Etat) { return '' }
+  try { if ($null -ne $Etat.$Nom) { return [string]$Etat.$Nom } } catch { }
+  return ''
 }
 
 # ---- Version du logiciel installée ----
@@ -988,6 +1123,37 @@ function Get-SzhFichier {
   param(
     [Parameter(Mandatory = $true)][string]$Url,
     [Parameter(Mandatory = $true)][string]$Destination,
+    [switch]$Silencieux,
+    [int]$Essais = 3
+  )
+  # Trois tentatives, et un fichier temporaire tant que le téléchargement n'est pas
+  # complet. Deux pannes réelles derrière ces deux mesures : 574 Mo sur un wifi d'hôtel
+  # coupent une fois sur trois, et une coupure ne lève pas — le flux rend simplement 0,
+  # donc le fichier tronqué portait le bon nom et n'était rejeté qu'à l'empreinte, une
+  # minute plus tard, en faisant échouer toute la mise à jour au lieu de réessayer.
+  $partiel = $Destination + '.part'
+  $derniere = $null
+  for ($essai = 1; $essai -le [Math]::Max(1, $Essais); $essai++) {
+    try {
+      Get-SzhFichierUneFois -Url $Url -Destination $partiel -Silencieux:$Silencieux
+      Move-Item -LiteralPath $partiel -Destination $Destination -Force
+      return
+    } catch {
+      $derniere = $_
+      try { if (Test-Path $partiel) { Remove-Item -LiteralPath $partiel -Force } } catch { }
+      if ($essai -lt $Essais) {
+        Write-SzhLog ('téléchargement : essai {0} échoué ({1}) -> nouvel essai' -f $essai, $_.Exception.Message)
+        Start-Sleep -Seconds (2 * $essai)
+      }
+    }
+  }
+  throw $derniere
+}
+
+function Get-SzhFichierUneFois {
+  param(
+    [Parameter(Mandatory = $true)][string]$Url,
+    [Parameter(Mandatory = $true)][string]$Destination,
     [switch]$Silencieux
   )
   $req = [System.Net.HttpWebRequest]::Create($Url)
@@ -1027,6 +1193,48 @@ function Get-SzhFichier {
     }
   } finally {
     $resp.Close()
+  }
+  # Une coupure de connexion ne lève pas : le flux rend 0 comme à la fin normale. Sans
+  # cette comparaison, un fichier tronqué passe pour complet.
+  if (($total -gt 0) -and ($fait -lt $total)) {
+    throw ('téléchargement incomplet : {0} octets sur {1}' -f $fait, $total)
+  }
+}
+
+# ---- Place libre ----
+# L'environnement de fabrication demande l'archive (0,6 Go) puis le disque virtuel qu'elle
+# déplie (≈ 2,4 Go). Un disque plein laissait un import à moitié fait : dossier pris,
+# distribution absente — exactement l'état qui bloque toutes les mises à jour suivantes.
+# Mesure impossible : on rend -1, et l'appelant n'empêche rien sur un doute.
+function Get-SzhEspaceLibreGo {
+  param([string]$Chemin = '')
+  if (-not $Chemin) { $Chemin = $SzhBase }
+  try {
+    $d = New-Object System.IO.DriveInfo([System.IO.Path]::GetPathRoot($Chemin))
+    return [Math]::Round($d.AvailableFreeSpace / 1GB, 1)
+  } catch { return -1 }
+}
+
+# ---- Une seule mise à jour à la fois sur le POSTE ----
+# « Local\ » borne le mutex à la session : deux comptes connectés en même temps détendaient
+# donc deux Expand-Archive sur le même C:\ProgramData\SZH\toolkit, qui finit à moitié
+# écrit. « Global\ » le rend visible à tout le poste, et son ACL doit nommer les
+# Utilisateurs : sans elle, le deuxième compte se voit refuser l'ouverture et croit qu'une
+# mise à jour est en cours alors qu'il n'y en a aucune.
+function New-SzhMutexPoste {
+  param([string]$Nom = 'SZH-Publishing-Update')
+  try {
+    $droits = New-Object System.Security.AccessControl.MutexSecurity
+    $droits.AddAccessRule((New-Object System.Security.AccessControl.MutexAccessRule(
+      (New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-545')),
+      [System.Security.AccessControl.MutexRights]::FullControl,
+      [System.Security.AccessControl.AccessControlType]::Allow)))
+    $cree = $false
+    return (New-Object System.Threading.Mutex($false, ('Global\' + $Nom), [ref]$cree, $droits))
+  } catch {
+    # Poste où « Global\ » est refusé (SeCreateGlobalPrivilege retiré par stratégie) : un
+    # verrou de session vaut mieux que pas de verrou.
+    return (New-Object System.Threading.Mutex($false, ('Local\' + $Nom)))
   }
 }
 
@@ -1352,6 +1560,102 @@ function Get-VSCodiumCli {
   $c = Get-Command codium -ErrorAction SilentlyContinue
   if ($c) { return $c.Source }
   return $null
+}
+
+# Les extensions posées, telles que l'éditeur les liste POUR CE COMPTE. La source de vérité
+# est l'éditeur, pas state.json : celui-ci est commun au poste alors qu'une extension
+# s'installe par utilisateur, et il affirmait « posée » à un compte qui n'avait rien.
+# Table id -> version, et $null — pas une table vide — quand le CLI ne répond pas : un
+# profil neuf n'a AUCUNE extension, et confondre les deux ferait sauter l'installation
+# exactement là où elle est nécessaire. Les tables PowerShell ignorent la casse, ce qu'il
+# faut ici : l'éditeur écrit « MS-CEINTL.vscode-language-pack-de ».
+function Get-SzhExtensionsInstallees {
+  param([string]$Cli = '')
+  if (-not $Cli) { $Cli = Get-VSCodiumCli }
+  if (-not $Cli) { return $null }
+  $table = @{}
+  try {
+    $lignes = Invoke-SzhNatif { & $Cli --list-extensions --show-versions 2>$null }
+    if ($LASTEXITCODE -ne 0) { return $null }
+    foreach ($l in @($lignes)) {
+      $t = ([string]$l).Trim()
+      $i = $t.LastIndexOf('@')
+      if ($i -gt 0) { $table[$t.Substring(0, $i)] = $t.Substring($i + 1) }
+    }
+  } catch { return $null }
+  return $table
+}
+
+# Toutes les extensions du manifest sont-elles posées, dans leur version, pour ce compte ?
+# $true quand le CLI ne répond pas ou que l'éditeur manque : on ne déclenche pas une mise à
+# jour sur une mesure qu'on n'a pas pu faire.
+function Test-SzhExtensionsAJour($Manifest) {
+  if (-not $Manifest) { return $true }
+  $reelles = Get-SzhExtensionsInstallees
+  if ($null -eq $reelles) { return $true }
+  foreach ($ext in @($Manifest.vsix)) {
+    $id = [string]$ext.id
+    if (-not $reelles.ContainsKey($id)) { return $false }
+    if ($reelles[$id] -ne [string]$ext.version) { return $false }
+  }
+  return $true
+}
+
+# ---- Le disque de la distribution, par utilisateur ----
+#
+# L'enregistrement d'une distribution WSL est par utilisateur (HKCU\...\Lxss) alors que ce
+# dossier était commun au poste. Le deuxième compte n'avait donc aucune distribution
+# enregistrée mais trouvait le dossier déjà pris, et `wsl --import` refusait :
+# Wsl/Service/RegisterDistro/ERROR_FILE_EXISTS, sans aucune issue puisque rien ne nettoyait
+# jamais ce dossier. Pire : `wsl --unregister` du premier compte efface le disque, donc
+# celui du second. Un dossier par SID supprime les deux. Le SID plutôt que le nom de
+# compte : deux domaines peuvent porter le même nom, et un compte renommé garde son SID.
+function Get-SzhDossierDistro {
+  param([string]$Sid = '')
+  if (-not $Sid) { $Sid = (Get-SzhIdentite).sid }
+  return (Join-Path $SzhBase ('WSL\' + $Sid + '\' + $SzhDistro))
+}
+
+# Les distributions enregistrées pour ce compte. `-l -q` ne rend que des noms, sans
+# en-tête ni colonne d'état traduite ; les octets nuls viennent de l'UTF-16 de wsl.exe.
+function Get-SzhDistrosEnregistrees {
+  $noms = New-Object System.Collections.ArrayList
+  try {
+    $wsl = Get-WslExe
+    foreach ($l in @(Invoke-SzhNatif { & $wsl -l -q 2>$null })) {
+      $n = (([string]$l) -replace "`0", '').Trim()
+      if ($n) { [void]$noms.Add($n) }
+    }
+  } catch { }
+  return $noms
+}
+
+# Un dossier de distribution présent alors que la distribution n'est PAS enregistrée pour
+# ce compte est un reste : installation interrompue, disque plein, ou un autre compte qui
+# l'avait posé là du temps du dossier commun. On l'écarte — l'environnement est jetable, il
+# ne contient aucune donnée — et seulement si le dossier porte bien notre nom, jamais un
+# chemin venu d'ailleurs. Échoue si une machine WSL en marche tient encore le .vhdx :
+# l'appelant en fait alors le message « redémarrez le poste ».
+function Clear-SzhDossierDistro {
+  param([Parameter(Mandatory = $true)][string]$Dossier)
+  if (-not (Test-Path $Dossier)) { return $false }
+  if ((Split-Path $Dossier -Leaf) -ne $SzhDistro) {
+    throw ('Dossier de distribution inattendu, rien n''a été supprimé : ' + $Dossier)
+  }
+  Remove-Item -LiteralPath $Dossier -Recurse -Force
+  return $true
+}
+
+# L'environnement répond-il ? Un import réussi ne prouve pas qu'une distribution démarre :
+# sans virtualisation (désactivée dans le firmware ou par une stratégie), l'import passe et
+# le premier `--exec` échoue. Sans ce contrôle, la panne n'apparaît qu'à la première
+# tentative de PDF du rédacteur, loin de l'installation qui l'a causée.
+function Test-SzhDistroRepond {
+  try {
+    $wsl = Get-WslExe
+    Invoke-SzhNatif { & $wsl -d $SzhDistro --exec /bin/true 2>$null | Out-Null }
+    return ($LASTEXITCODE -eq 0)
+  } catch { return $false }
 }
 
 # Exécute un natif sans que ErrorActionPreference = 'Stop' ne fasse d'une ligne de stderr
