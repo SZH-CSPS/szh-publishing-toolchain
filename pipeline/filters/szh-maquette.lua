@@ -159,13 +159,11 @@ local TYPES_DOSSIER = { article = true, editorial = true, interview = true }
 local LABELS_RESUME = { de = 'Zusammenfassung', fr = 'Résumé', it = 'Riassunto' }
 local ORDRE_LANGUES = { 'de', 'fr', 'it' }
 
--- Bloc « À propos des auteur·e·s » : titre localisé, accordé en nombre.
-local TITRES_AUTEURS = {
-  un   = { fr = "À propos de l'auteur·e",  de = 'Zur Autorin / zum Autor',
-           it = "Sull'autrice / sull'autore" },
-  plus = { fr = 'À propos des auteur·e·s', de = 'Zu den Autorinnen und Autoren',
-           it = 'Sulle autrici e sugli autori' },
-}
+-- Bloc des auteur·e·s : titre localisé. Un seul libellé, quel que soit le nombre de
+-- personnes — l'accord en nombre d'avant obligeait à deux formules par langue pour un
+-- titre que personne ne lit comme une phrase.
+local TITRES_AUTEURS = { fr = 'Autrices et auteurs', de = 'Autor:innen',
+                         it = 'Autrici e autori' }
 
 -- Licences d'article : miroir de LICENCES_ARTICLE de lib/yaml.js, gardé par
 -- test/js/licence.test.js. `nom` est le sigle imprimé, le même dans les trois langues ;
@@ -573,10 +571,9 @@ function Meta(meta)
     end
   end
   meta['auteurs-noms'] = pandoc.MetaList(noms)
-  -- Titre du bloc auteurs, localisé et accordé en nombre.
+  -- Titre du bloc auteurs, localisé.
   if #noms > 0 then
-    local forme = (#noms == 1) and TITRES_AUTEURS.un or TITRES_AUTEURS.plus
-    meta['auteurs-titre'] = pandoc.MetaString(forme[lang] or forme.fr)
+    meta['auteurs-titre'] = pandoc.MetaString(TITRES_AUTEURS[lang] or TITRES_AUTEURS.fr)
   end
   return meta
 end

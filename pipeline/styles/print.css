@@ -73,6 +73,15 @@
      elle, la boîte se réduit au contenu et « space-between » n'a aucun effet. */
   @top-center    { content: element(enteteCourante); vertical-align: bottom; width: 100%; }
   @bottom-center { content: element(piedCourant);    vertical-align: top;    width: 100%; }
+
+  /* Zone des notes de bas de page (CSS GCPM, WeasyPrint 69). Elle s'insère entre le
+     contenu et le pied courant, et n'apparaît que sur les pages qui portent une note.
+     Le filet la sépare du texte ; celui du pied, lui, reste dessous. */
+  @footnote {
+    margin-top: 14px;
+    padding-top: 6px;
+    border-top: 1px solid var(--c-rule);
+  }
 }
 
 /* Couverture = première page. Les marges sont héritées de @page (le corps coule avec
@@ -161,6 +170,35 @@ a[href^="#"]:hover { color: #002A56; text-decoration: underline; }
    renvoi ↩ tenant déjà lieu de repère. */
 .footnotes a::after, a.footnote-ref::after, a.footnote-back::after { content: none; }
 a.footnote-ref, a.footnote-back { text-decoration: none; }
+
+/* Notes de bas de page imprimées SOUS LEUR PAGE, et non rejetées en fin d'article.
+   szh-notes.lua remplace chaque Note pandoc par un <span class="szh-note"> posé à
+   l'endroit de l'appel ; `float: footnote` l'envoie dans la zone @footnote de la page
+   courante, et le compteur `footnote` numérote appel et marque tout seul — il ne faut
+   donc surtout PAS ajouter de numérotation ici, elle ferait double emploi.
+   Les styles .footnotes ci-dessus restent : l'aperçu du cockpit, lui, garde des notes
+   de fin (le filtre ne s'y applique pas). */
+.szh-note {
+  float: footnote;
+  font-size: 8.5px; line-height: 1.35; text-align: left; hyphens: auto;
+  color: var(--c-ink2);
+}
+.szh-note p { margin: 0; }
+::footnote-call   { font-size: 70%; vertical-align: super; line-height: 0; font-weight: 700; }
+::footnote-marker { font-weight: 700; padding-right: 5px; color: var(--c-ink2); }
+
+/* Repli écran : `float: footnote` n'existe dans aucun navigateur, la note s'imprimerait
+   donc au fil du texte. Elle est ici détachée sous son paragraphe, en plus petit et
+   retirée du bord — lisible comme une note, sans prétendre être en bas d'une page qui
+   n'existe pas. WeasyPrint n'applique pas @media screen : le PDF n'en voit rien. */
+@media screen {
+  .szh-note {
+    float: none; display: block;
+    margin: 0.4em 0 0.8em 1.5em;
+    padding-left: 0.8em;
+    border-left: 2px solid var(--c-rule);
+  }
+}
 
 /* ── Veuves, orphelines, coupures propres ──────────────────────────────────
    Pas de ligne seule en bas ni en haut d'une page ; les titres restent avec le texte
@@ -306,7 +344,9 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
 .szh-filet { height: 6px; background: var(--c-annual); margin: 0 -72px; }   /* pleine largeur */
 
 /* Résumés (Zusammenfassung / Résumé) + mots-clés. */
-.szh-cover-body { padding: 24px 0 40px; }   /* marges gérées par @page */
+/* 30 px entre le filet annuel et le premier résumé, comme entre les deux résumés
+   (.szh-abstract) : une seule respiration pour toute la zone de couverture. */
+.szh-cover-body { padding: 30px 0 40px; }   /* marges gérées par @page */
 
 /* Ordre de peinture du PDF — ne pas retirer : aucun effet visuel, mais essentiel. Le hero
    est positionné, or CSS peint les éléments positionnés après le contenu en flux normal
@@ -318,7 +358,7 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
 .szh-cover-body,
 .szh-cover ~ * { position: relative; }
 .szh-abstract {
-  background: #f3f3f4; padding: 16px 20px; margin-bottom: 14px;
+  background: #f3f3f4; padding: 16px 20px; margin-bottom: 30px;
   border-left: 3px solid var(--c-abstract-border);
 }
 .szh-abstract:last-child { margin-bottom: 0; }
@@ -606,18 +646,18 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
    de gris produit par pipeline/portraits.py et rendu en fond CSS, nom, icône-lien ORCID,
    fonction, affiliation, e-mail. Aucune couleur nouvelle, seulement des encres déjà
    validées en APCA. */
+/* Aucun filet au-dessus : le titre du bloc est un h2 comme les autres, et un h2 de
+   corps n'est jamais souligné ni surligné. La séparation se fait par l'espace seul. */
 .szh-auteurs {
   margin-top: 2.6em;
-  padding-top: 1.2em;
-  border-top: 1px solid var(--c-rule);
 }
-/* Titre du bloc : style « étiquette », comme l'en-tête courant, et non un titre de
-   section numéroté. Rien à dé-numéroter : ce titre est écrit par le template, hors
-   document pandoc, donc szh-sections.lua ne le voit pas. */
+/* Titre du bloc : un h2 de corps ordinaire, au même rang que « Références ». Il ne
+   porte donc AUCUNE surcharge de taille, de graisse ou de casse — c'est le §6 qui le
+   style, et le seul écart est la marge basse, le bloc qui suit n'étant pas du texte
+   courant. Rien à dé-numéroter : ce titre est écrit par le template, hors document
+   pandoc, donc szh-sections.lua ne le voit pas. */
 .szh-auteurs-titre {
   margin: 0 0 1.1em;
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.14em; color: var(--c-ink2);
 }
 
 /* Un auteur = une rangée photo/texte, jamais coupée par un saut de page.

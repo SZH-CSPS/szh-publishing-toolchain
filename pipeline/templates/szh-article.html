@@ -21,7 +21,7 @@ $for(css)$
   <link rel="stylesheet" href="$css$" />
 $endfor$
 $if(author)$
-  <!-- Portraits du bloc « À propos des auteur·e·s » : le chemin de chaque photo, posé
+  <!-- Portraits du bloc des auteur·e·s : le chemin de chaque photo, posé
        en fond CSS sur un <span> vide, et pas en <img>. Le pourquoi est dans print.css
        § 8 — en un mot : le portrait est décoratif, il n'a pas de texte alternatif, et
        tout <img> serait balisé /Figure par WeasyPrint, donc /Figure sans /Alt, donc
@@ -138,36 +138,12 @@ $endif$
 
 $body$
 
-<!-- Bloc « À propos des auteur·e·s », après le corps de l'article. Variables dérivées
-     par szh-maquette.lua : auteurs-titre (localisé, accordé en nombre),
-     author.orcid-url (ORCID normalisé en URL), author.photo-rang (rang du portrait, qui
-     nomme sa règle CSS dans le <style> de l'en-tête). author.photo est un chemin relatif
-     au dossier d'article (portraits/<slug>.sans-fond.png), où pandoc s'exécute grâce au
-     cd du Makefile : --embed-resources l'inline comme les images de media/. -->
-$if(author)$
-<section class="szh-auteurs">
-  <h2 class="szh-auteurs-titre">$auteurs-titre$</h2>
-$for(author)$
-  <div class="szh-auteur">
-$if(author.photo)$
-    <span class="szh-auteur-photo szh-auteur-photo-$author.photo-rang$" role="presentation"></span>
-$endif$
-    <div class="szh-auteur-texte">
-      <p class="szh-auteur-nom">$if(author.nom)$$if(author.prenom)$$author.prenom$ $endif$$author.nom$$else$$author$$endif$$if(author.orcid-url)$ <a class="szh-orcid" href="$author.orcid-url$" title="ORCID" aria-label="ORCID"></a>$endif$</p>
-$if(author.fonction)$
-      <p class="szh-auteur-fonction">$author.fonction$</p>
-$endif$
-$if(author.affiliation)$
-      <p class="szh-auteur-affiliation">$author.affiliation$</p>
-$endif$
-$if(author.email)$
-      <p class="szh-auteur-email"><a href="mailto:$author.email$">$author.email$</a></p>
-$endif$
-    </div>
-  </div>
-$endfor$
-</section>
-$endif$
+<!-- Le bloc des auteur·e·s ne s'écrit plus ici : il est posé DANS le document par
+     filters/szh-auteurs.lua, qui l'insère devant la bibliographie. Un gabarit ne sait
+     rien intercaler, tout ce qu'il écrit vient après le corps — et le bloc se retrouvait
+     toujours APRÈS les références, alors qu'elles doivent fermer l'article. Ne pas le
+     rétablir ici : l'ordre repartirait à l'envers. Le <style> des portraits, lui, reste
+     dans l'en-tête ci-dessus, --embed-resources ne réécrivant url() que dans un <style>. -->
 
 $for(include-after)$
 $include-after$

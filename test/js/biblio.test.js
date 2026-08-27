@@ -277,10 +277,16 @@ test('la chaîne connaît le fichier de bibliographie de bout en bout', () => {
   const mk = lire('pipeline', 'Makefile');
   assert.strictEqual((mk.match(/\.biblio\.md\)/g) || []).length, 2,
     'le fichier de bibliographie n’est pas prérequis des deux rendus');
-  // …et szh-citations le résout en dernier, après la numérotation des sections : le titre
-  // d'une bibliographie ne porte pas de numéro.
-  const ordre = mk.indexOf('szh-sections.lua" \\\n\t  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua"');
-  assert.ok(ordre !== -1, 'szh-citations ne ferme plus la chaîne après szh-sections');
+  // …et szh-citations le résout APRÈS la numérotation des sections : le titre d'une
+  // bibliographie ne porte pas de numéro. Entre les deux passe szh-auteurs, qui a besoin
+  // du marqueur .szh-biblio encore intact pour glisser le bloc auteurs juste devant —
+  // c'est l'ordre des trois qui compte, pas leur contiguïté.
+  const rang = (f) => mk.indexOf('filters/' + f + '.lua"');
+  assert.ok(rang('szh-sections') > 0, 'szh-sections a quitté la chaîne');
+  assert.ok(rang('szh-auteurs') > rang('szh-sections'),
+    'szh-auteurs passe avant szh-sections : le titre du bloc auteurs recevrait un numéro de section');
+  assert.ok(rang('szh-citations') > rang('szh-auteurs'),
+    'szh-citations ne vient plus après szh-auteurs : le marqueur .szh-biblio serait déjà dissous, et le bloc auteurs repasserait après les références');
 });
 
 // ---- la bibliographie dans l'arbre ---------------------------------------------------

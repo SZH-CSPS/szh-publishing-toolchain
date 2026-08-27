@@ -9,14 +9,22 @@
 #
 # Ordre des --lua-filter à la compilation, et ce qui casse si on permute :
 #   szh-maquette -> szh-niveaux -> szh-tabelle-inclure -> szh-tabelle-scope ->
-#   szh-figure -> szh-numerotation -> szh-legende-avant -> szh-sections -> szh-citations
+#   szh-figure -> szh-numerotation -> szh-legende-avant -> szh-sections -> szh-auteurs ->
+#   szh-citations -> szh-notes
 #   * szh-numerotation après szh-tabelle-inclure : il numérote des tableaux qui
 #     n'existent qu'une fois le HTML réinjecté ;
 #   * szh-numerotation après szh-figure : sous le lecteur commonmark_x de l'aperçu,
 #     les Figure ne sont construites que par szh-figure ;
 #   * szh-legende-avant avant szh-citations : il dissout les Figure en HTML brut, rien
 #     en amont ne peut plus les lire ;
-#   * szh-citations en DERNIER, après szh-sections : c'est lui qui pose le titre de la
+#   * szh-auteurs entre les deux derniers : après szh-sections, sinon le titre du bloc
+#     auteurs recevrait un numéro de section ; avant szh-citations, qui dissout le
+#     marqueur .szh-biblio devant lequel le bloc doit s'insérer — les références ferment
+#     l'article, rien ne les suit ;
+#   * szh-notes tout à la fin : les Note traversent la chaîne inchangées et ne
+#     deviennent des Spans « szh-note » qu'à la sortie, si bien qu'aucun filtre en
+#     amont ne change de comportement ;
+#   * szh-citations après szh-sections : c'est lui qui pose le titre de la
 #     bibliographie, et une bibliographie ne porte pas de numéro de section. szh-sections
 #     ayant fini de numéroter, ce titre-là n'en reçoit pas. L'ordre inverse — celui d'avant
 #     que la bibliographie devienne un fichier — imprimait « 6 Références ».
@@ -299,7 +307,9 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-sections.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-auteurs.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua" \
 	  --output="$(abspath $@)"
 	$(call reordonner_appels_de_note,$@)
 
@@ -338,7 +348,9 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-sections.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-auteurs.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua" \
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"
 
