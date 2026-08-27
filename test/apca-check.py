@@ -122,20 +122,27 @@ def var(nom):
     return hexa
 
 
-# ---- print.css : les couleurs lues là où elles servent ----
+# ---- socle.css + print.css : les couleurs lues là où elles servent ----
 # Le hero de couverture, l'en-tête courant et le pied ne passent pas par la palette
-# annuelle : leurs encres sont écrites dans print.css, tantôt en jeton :root, tantôt en hex
-# dans la règle. On les lit donc dans le fichier, sélecteur par sélecteur, plutôt que de les
-# recopier ici : une règle éclaircie ou supprimée doit faire réagir le test, pas le laisser
-# mesurer une couleur qui n'est plus à l'écran.
-CHEMIN_PRINT = os.path.join(PIPELINE, 'styles', 'print.css')
-try:
-    with open(CHEMIN_PRINT, encoding='utf-8') as f:
-        # Commentaires retirés, comme pour couleurs.css : ceux de print.css citent des hex
-        # et des noms de jetons, qui seraient pris pour des déclarations.
-        PRINT = re.sub(r'/\*.*?\*/', '', f.read(), flags=re.S)
-except OSError:
-    PRINT = ''
+# annuelle : leurs encres sont écrites en jeton :root dans socle.css, ou en hex dans la
+# règle qui les utilise, dans print.css. On les lit donc dans les fichiers, sélecteur par
+# sélecteur, plutôt que de les recopier ici : une règle éclaircie ou supprimée doit faire
+# réagir le test, pas le laisser mesurer une couleur qui n'est plus à l'écran.
+#
+# Les deux feuilles sont lues COMME UNE SEULE, dans l'ordre où le Makefile les empile : la
+# résolution d'un var() traverse la frontière — une règle de print.css renvoie à un jeton du
+# socle — et rien ici n'a besoin de savoir de quel fichier vient quoi.
+CHEMINS_CSS = [os.path.join(PIPELINE, 'styles', n) for n in ('socle.css', 'print.css')]
+morceaux = []
+for chemin in CHEMINS_CSS:
+    try:
+        with open(chemin, encoding='utf-8') as f:
+            # Commentaires retirés, comme pour couleurs.css : ceux de ces feuilles citent
+            # des hex et des noms de jetons, qui seraient pris pour des déclarations.
+            morceaux.append(re.sub(r'/\*.*?\*/', '', f.read(), flags=re.S))
+    except OSError:
+        pass
+PRINT = '\n'.join(morceaux)
 
 # (liste de sélecteurs, corps) pour chaque bloc de règles. Les blocs imbriqués de @page et
 # de @media ressortent en vrac : sans effet ici, on ne cherche que des sélecteurs nommés.

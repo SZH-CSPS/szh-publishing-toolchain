@@ -46,6 +46,12 @@ VERAPDF_JAVA ?= /opt/jre-min
 THIS         := $(abspath $(lastword $(MAKEFILE_LIST)))
 PIPELINE_DIR := $(patsubst %/,%,$(dir $(THIS)))
 
+# Socle partagé : polices et jetons :root, lus par toutes les sorties. TOUJOURS celui du
+# toolkit, même quand la revue porte son propre styles/print.css — une feuille locale hérite
+# ainsi des jetons sans les redéclarer, et ne peut pas dériver. Empilé EN PREMIER.
+SOCLE      := $(PIPELINE_DIR)/styles/socle.css
+SOCLE_ABS  := $(abspath $(SOCLE))
+
 # Style de la revue s'il existe (styles/print.css), sinon style central du toolkit.
 STYLE      := $(firstword $(wildcard styles/print.css) $(PIPELINE_DIR)/styles/print.css)
 STYLE_ABS  := $(abspath $(STYLE))
@@ -288,7 +294,7 @@ $(ACCENT_CSS): ausgabe.yaml $(PIPELINE_DIR)/styles/couleurs.css \
 # (<slug>.biblio.md, prérequis lui aussi), lui pose son titre, ancre chaque référence et
 # transforme les appels du corps en liens internes. Le texte des références n'est jamais
 # réécrit.
-$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
+$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $(STYLE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
 	@mkdir -p "$(dir $@)"
 	$(call exiger_titre,$(notdir $*))
 	@slug="$(notdir $*)"; \
@@ -298,7 +304,7 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $
 	  --metadata-file="$(abspath ausgabe.yaml)" --metadata-file="$$slug.meta.yaml" \
 	  --standalone --embed-resources \
 	  --template="$(TEMPLATE_ABS)" \
-	  --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
+	  --css="$(SOCLE_ABS)" --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
 	  --lua-filter="$(MAQUETTE_LUA)" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
@@ -330,7 +336,7 @@ endef
 # .md -> HTML d'aperçu : mêmes filtres, CSS et métadonnées que la sortie PDF, mais
 # reader commonmark_x+sourcepos -> chaque bloc porte data-pos, ce qui permet le clic
 # vers le texte source dans la webview. Consommé par le cockpit seulement.
-$(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(STYLE) $(ACCENT_CSS) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
+$(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $(STYLE) $(ACCENT_CSS) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
 	meta=""; \
@@ -340,7 +346,7 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --from=commonmark_x+sourcepos --to=html5 \
 	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
 	  --standalone --embed-resources \
-	  --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
+	  --css="$(SOCLE_ABS)" --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \

@@ -1,0 +1,91 @@
+/* Socle de la maquette SZH/CSPS : les polices et les jetons, et rien d'autre.
+   Lu par TOUTES les sorties — le PDF, et la maquette web à venir — et empilé avant elles
+   par le Makefile (--css=socle.css --css=print.css --css=out/.szh-accent.css, dans cet
+   ordre). Une variable se déclare ici, une fois ; les feuilles de sortie ne font que la
+   consommer.
+
+   Ce qui a sa place ici : une famille, une taille, une interligne, une encre, un filet —
+   tout ce qui se nomme et se réutilise. Ce qui n'y a pas sa place : une règle qui met en
+   page. Une boîte, une marge, un @page, une grille appartiennent à la feuille de leur
+   média, parce que le papier et l'écran n'en veulent pas la même chose.
+
+   ⚠ Deux pièges connus :
+   * Le socle vient TOUJOURS du toolkit, même quand un dossier de revue porte son propre
+     styles/print.css (le Makefile préfère alors celui-là). Une feuille locale hérite donc
+     de ces jetons sans les redéclarer — c'est voulu, et c'est le seul moyen qu'elle ne
+     dérive pas.
+   * L'accent annuel doit rester APRÈS : out/.szh-accent.css surcharge les replis gris du
+     §2 ci-dessous. Empilé avant, il n'aurait aucun effet et le PDF sortirait en gris.
+
+   Les couleurs annuelles elles-mêmes vivent dans couleurs.css, échelle APCA à clarté fixe,
+   et sont vérifiées par test/apca-check.py. */
+
+/* ═══ 1. Polices empaquetées (OFL, voir ../fonts/README.md) ═══════════════════
+   Open Sans est instanciée à largeur 87,5 %, une face par poids : WeasyPrint 69 refuse
+   les intervalles de poids en @font-face et son rendu des axes variables est partiel. */
+@font-face { font-family: 'Open Sans'; font-weight: 400; font-style: normal;
+  src: url("../fonts/OpenSans-SemiCondensed-Regular.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans'; font-weight: 600; font-style: normal;
+  src: url("../fonts/OpenSans-SemiCondensed-SemiBold.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans'; font-weight: 700; font-style: normal;
+  src: url("../fonts/OpenSans-SemiCondensed-Bold.ttf") format('truetype'); }
+@font-face { font-family: 'Open Sans'; font-weight: 400; font-style: italic;
+  src: url("../fonts/OpenSans-SemiCondensed-Italic.ttf") format('truetype'); }
+@font-face { font-family: 'IBM Plex Mono'; font-weight: 400; font-style: normal;
+  src: url("../fonts/IBMPlexMono-Regular.ttf") format('truetype'); }
+@font-face { font-family: 'IBM Plex Mono'; font-weight: 500; font-style: normal;
+  src: url("../fonts/IBMPlexMono-Medium.ttf") format('truetype'); }
+
+/* ═══ 2. Jetons :root ═════════════════════════════════════════════════════════ */
+:root {
+  --font-sans:  'Open Sans', system-ui, sans-serif;
+  --font-mono:  'IBM Plex Mono', ui-monospace, monospace;
+  --title-family: var(--font-sans);
+
+  /* Encres sur papier, du plus contrasté au moins : ink Lc +105, ink2 +95, ink3 +91.
+     ink3 sert aux 9 px de l'en-tête courant et du pied, les plus petits textes de la
+     maquette : seuil 90, donc pas plus clair que ceci (#5b5b66 n'en donnait que 83). */
+  --c-ink:   #16161f;  --c-ink2: #3d3d49;  --c-ink3: #484853;
+  --c-nuit:  #252B46;                       /* hero bleu nuit */
+  /* Encres claires du hero, miroir de ink2/ink3 en polarité inverse : plus le numéro est
+     haut, moins il y a de contraste. Mesurées sur --c-nuit : hero2 Lc −95 (sous-titre,
+     DOI, licence), hero3 Lc −91 (étiquettes de 9,5 px). Sous #EAEBF1, un texte du hero
+     passe sous le seuil de 90 ; le blanc franc reste réservé au titre, au dossier et aux
+     auteur·e·s, qui restent ainsi le premier plan. */
+  --c-hero2: #F1F2F7;  --c-hero3: #EAEBF1;
+  /* Filet des pages courantes et du bloc auteurs. 1 px sur papier : seuil non textuel de
+     30, que #d0cdc4 manquait (Lc +27). */
+  --c-rule:  #C9C6BE;
+
+  --body-size: 0.875rem;   /* corps : rem (accessibilité HTML) ; ~14px/10,5pt à l'export */
+  --leading:   1.55;
+
+  /* Couleur annuelle — repli gris neutre. accent-css.py surcharge ces jetons quand
+     ausgabe.yaml définit `couleur:`. Le hero, lui, reste nuit. */
+  --c-annual:        #8f8f95;
+  --c-annual-ui:     #8f8f95;   /* filets / barres */
+  --c-abstract-border: var(--c-annual);
+  --c-kw-bg:         #ececec;   /* fond des mots-clés */
+  --c-kw-border:     transparent;
+  --annual-soft:     #f2f2f2;   /* fond d'encadré « wichtig » */
+  --annual-tint:     #f0f0f0;   /* bande teintée */
+
+  /* Marqueurs de liste et numéros de titre : noirs, fidèles à la maquette. */
+  --c-bullet-marker: #000000;
+  --c-num-marker:    #000000;
+}
+
+/* Accents des tableaux stylés de l'éditeur maison (.szh-tableau). Mêmes règles du jeu que
+   la couleur annuelle ci-dessus : ce sont des replis neutres, qu'accent-css.py surcharge à
+   la compilation depuis couleurs.css — WeasyPrint 69 n'implémentant pas color-mix(), tout
+   dérivé de couleur est précalculé. Contrastes garantis en APCA à 13,6 px, la taille du
+   texte de tableau : seuil 90, vérifié paire par paire par test/apca-check.py.
+   La mise en forme qui les consomme est au §7 de print.css. */
+:root {
+  --szh-accent-clair: #ededed;    /* fond « couleur annuelle » (texte noir : Lc +95) : en-têtes/total */
+  --szh-accent-fonce: #4a4a4a;    /* fond « negatif » (texte blanc : Lc −95) : en-têtes/total */
+  /* Repli si out/.szh-accent.css est absent : accent-css.py réémet ces deux variables
+     depuis styles/couleurs.css, que la revue peut éditer. */
+  --szh-gris-clair: #e6e6e6;      /* fond « gris » des en-têtes/total (texte noir : Lc +91) */
+  --szh-zebre: #f2f2f2;           /* teinte neutre du zébrage (une ligne/colonne sur deux) */
+}

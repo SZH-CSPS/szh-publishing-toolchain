@@ -33,7 +33,12 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const FILTRES = path.join(RACINE, 'pipeline', 'filters');
 const MODULE = path.join(FILTRES, 'szh-apercu-lecteur-ecran.lua');
 const NUMEROTATION = path.join(FILTRES, 'szh-numerotation.lua');
-const PRINT_CSS = path.join(RACINE, 'pipeline', 'styles', 'print.css');
+// La feuille du PDF est en deux fichiers : socle.css porte les polices et les jetons,
+// print.css la mise en page. Les contrôles ci-dessous les lisent COMME UNE SEULE, dans
+// l'ordre où le Makefile les empile — une règle de print.css renvoie à un jeton du socle,
+// et savoir de quel fichier vient quoi n'apprendrait rien de plus ici.
+const FEUILLES_PDF = ['socle.css', 'print.css']
+  .map((n) => path.join(RACINE, 'pipeline', 'styles', n));
 
 const lire = (p) => fs.readFileSync(p, 'utf8');
 
@@ -47,7 +52,7 @@ const sansCommentaires = (lua) => lua.split('\n')
 
 const source = sansCommentaires(lire(MODULE));
 const numerotation = sansCommentaires(lire(NUMEROTATION));
-const printCss = lire(PRINT_CSS);
+const printCss = FEUILLES_PDF.map(lire).join('\n');
 
 // Les marques que ces encadrés posent dans le HTML. Aucune ne doit exister ailleurs.
 const CLASSES = ['szh-lecteur-ecran', 'szh-le-entete', 'szh-le-ligne', 'szh-le-tag',
@@ -111,22 +116,23 @@ test('aucune balise du module ne commence par « <table »', () => {
 
 // ---- Aucune couleur nouvelle ----
 
-test('les couleurs de l’encadré sont toutes déjà déclarées dans print.css', () => {
-  // print.css est lu par test/apca-check.py ; une feuille écrite dans un filtre ne l’est
-  // pas. On n’emploie donc ici que des hex qui existent déjà là-bas, avec leur mesure.
+test('les couleurs de l’encadré sont toutes déjà déclarées dans la feuille du PDF', () => {
+  // socle.css et print.css sont lus par test/apca-check.py ; une feuille écrite dans un
+  // filtre ne l’est pas. On n’emploie donc ici que des hex qui existent déjà là-bas, avec
+  // leur mesure.
   const hex = [...new Set((source.match(/#[0-9A-Fa-f]{3,6}/g) || [])
     .map((h) => h.toLowerCase()))];
   assert.ok(hex.length > 0, 'aucune couleur trouvée : le test ne contrôle plus rien');
   const cssMinuscule = printCss.toLowerCase();
   for (const h of hex) {
     assert.ok(cssMinuscule.includes(h),
-      h + ' n’existe pas dans print.css : une couleur qu’aucune mesure APCA ne couvre. '
+      h + ' n’existe ni dans socle.css ni dans print.css : une couleur qu’aucune mesure APCA ne couvre. '
       + 'Reprendre un hex déjà argumenté là-bas, ou faire mesurer celui-ci.');
   }
   // Les variables de palette employées doivent exister aussi.
   for (const v of new Set(source.match(/var\((--[\w-]+)/g) || [])) {
     const nom = v.slice(4);
-    assert.ok(printCss.includes(nom + ':'), nom + ' n’est pas un jeton de print.css');
+    assert.ok(printCss.includes(nom + ':'), nom + ' n’est un jeton ni du socle ni de print.css');
   }
 });
 

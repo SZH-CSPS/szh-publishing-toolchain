@@ -8,6 +8,7 @@ Ce dépôt contient l'**outillage**, pas les revues : celles-ci vivent sur OneDr
 WSL s'appelle `SZH-Publishing`.
 
 **Documentation** — [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (vue d'ensemble) ·
+[`docs/SORTIES.md`](docs/SORTIES.md) (ce que produit une compilation, et le contrat de balisage) ·
 [`docs/EMPLACEMENTS.md`](docs/EMPLACEMENTS.md) (où vivent les revues, poste par poste) ·
 [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) (ce qu'il faut surveiller et quand) ·
 [`docs/SECURITE.md`](docs/SECURITE.md) (déploiement flotte) ·
@@ -47,7 +48,8 @@ szh-publishing-toolchain/
 │   ├── cmyk-rgb.py                 JPEG livrés en CMJN -> RVB (Pillow, venv des portraits)
 │   ├── accent-css.py, apca.py      couleur annuelle et contrôle de contraste
 │   ├── portraits.py                recadrage et détourage des photos d'auteurs
-│   ├── styles/                     print.css (maquette) et couleurs.css (palette)
+│   ├── styles/                     socle.css (polices et jetons, partagé), print.css
+│   │                               (mise en page du PDF), couleurs.css (palette APCA)
 │   └── templates/                  gabarit HTML de la couverture
 ├── windows/                        → C:\ProgramData\SZH\toolkit\windows
 │   ├── bootstrap.ps1               administrateur, une fois par poste

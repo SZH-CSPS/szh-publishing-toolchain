@@ -81,7 +81,9 @@ CMJN, que ni les navigateurs ni WeasyPrint n'affichent correctement, sont conver
 À la compilation, Pandoc produit un HTML autonome — images et feuilles de style embarquées en
 base64, donc aucun fichier lié — que WeasyPrint transforme en PDF balisé PDF/UA. La même source
 donne aussi un aperçu HTML cliquable pour la colonne de droite de l'éditeur, et, à la demande,
-un galley DOCX pour l'export OJS.
+un galley DOCX pour l'export OJS. Le détail — quelle sortie vient de quel lecteur pandoc, ce
+que le site fait du HTML qu'il reçoit, et l'organisation des feuilles de style — est dans
+[`SORTIES.md`](SORTIES.md).
 
 ### Ce que la chaîne relève, et par où cela remonte
 

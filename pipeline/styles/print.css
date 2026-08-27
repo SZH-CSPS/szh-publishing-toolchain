@@ -1,65 +1,16 @@
 /* Feuille de style d'impression de la maquette SZH/CSPS (CSS Paged Media, rendue par
    WeasyPrint 69). Pas de JavaScript au rendu : CSS statique, compteurs et jetons
-   précalculés. La couleur annuelle du §2 (repli gris) est surchargée à la compilation
-   par accent-css.py, qui écrit out/.szh-accent.css — voir couleurs.css.
+   précalculés. La couleur annuelle (repli gris déclaré au socle) est surchargée à la
+   compilation par accent-css.py, qui écrit out/.szh-accent.css — voir couleurs.css.
 
-   Plan : 1. polices · 2. jetons :root · 3. géométrie de page · 4. typographie de base ·
-   5. couverture · 6. éléments de corps · 7. tableaux .szh-tableau · 8. bloc auteurs. */
+   Les polices et les jetons :root ne sont PAS ici : ils vivent dans socle.css, que le
+   Makefile empile avant cette feuille, et que la maquette web lira aussi. Une variable ne
+   se déclare qu'à un seul endroit. Ici : de la mise en page, et elle seule.
 
-/* ═══ 1. Polices empaquetées (OFL, voir ../fonts/README.md) ═══════════════════
-   Open Sans est instanciée à largeur 87,5 %, une face par poids : WeasyPrint 69 refuse
-   les intervalles de poids en @font-face et son rendu des axes variables est partiel. */
-@font-face { font-family: 'Open Sans'; font-weight: 400; font-style: normal;
-  src: url("../fonts/OpenSans-SemiCondensed-Regular.ttf") format('truetype'); }
-@font-face { font-family: 'Open Sans'; font-weight: 600; font-style: normal;
-  src: url("../fonts/OpenSans-SemiCondensed-SemiBold.ttf") format('truetype'); }
-@font-face { font-family: 'Open Sans'; font-weight: 700; font-style: normal;
-  src: url("../fonts/OpenSans-SemiCondensed-Bold.ttf") format('truetype'); }
-@font-face { font-family: 'Open Sans'; font-weight: 400; font-style: italic;
-  src: url("../fonts/OpenSans-SemiCondensed-Italic.ttf") format('truetype'); }
-@font-face { font-family: 'IBM Plex Mono'; font-weight: 400; font-style: normal;
-  src: url("../fonts/IBMPlexMono-Regular.ttf") format('truetype'); }
-@font-face { font-family: 'IBM Plex Mono'; font-weight: 500; font-style: normal;
-  src: url("../fonts/IBMPlexMono-Medium.ttf") format('truetype'); }
-
-/* ═══ 2. Jetons :root ═════════════════════════════════════════════════════════ */
-:root {
-  --font-sans:  'Open Sans', system-ui, sans-serif;
-  --font-mono:  'IBM Plex Mono', ui-monospace, monospace;
-  --title-family: var(--font-sans);
-
-  /* Encres sur papier, du plus contrasté au moins : ink Lc +105, ink2 +95, ink3 +91.
-     ink3 sert aux 9 px de l'en-tête courant et du pied, les plus petits textes de la
-     maquette : seuil 90, donc pas plus clair que ceci (#5b5b66 n'en donnait que 83). */
-  --c-ink:   #16161f;  --c-ink2: #3d3d49;  --c-ink3: #484853;
-  --c-nuit:  #252B46;                       /* hero bleu nuit */
-  /* Encres claires du hero, miroir de ink2/ink3 en polarité inverse : plus le numéro est
-     haut, moins il y a de contraste. Mesurées sur --c-nuit : hero2 Lc −95 (sous-titre,
-     DOI, licence), hero3 Lc −91 (étiquettes de 9,5 px). Sous #EAEBF1, un texte du hero
-     passe sous le seuil de 90 ; le blanc franc reste réservé au titre, au dossier et aux
-     auteur·e·s, qui restent ainsi le premier plan. */
-  --c-hero2: #F1F2F7;  --c-hero3: #EAEBF1;
-  /* Filet des pages courantes et du bloc auteurs. 1 px sur papier : seuil non textuel de
-     30, que #d0cdc4 manquait (Lc +27). */
-  --c-rule:  #C9C6BE;
-
-  --body-size: 0.875rem;   /* corps : rem (accessibilité HTML) ; ~14px/10,5pt à l'export */
-  --leading:   1.55;
-
-  /* Couleur annuelle — repli gris neutre. accent-css.py surcharge ces jetons quand
-     ausgabe.yaml définit `couleur:`. Le hero, lui, reste nuit. */
-  --c-annual:        #8f8f95;
-  --c-annual-ui:     #8f8f95;   /* filets / barres */
-  --c-abstract-border: var(--c-annual);
-  --c-kw-bg:         #ececec;   /* fond des mots-clés */
-  --c-kw-border:     transparent;
-  --annual-soft:     #f2f2f2;   /* fond d'encadré « wichtig » */
-  --annual-tint:     #f0f0f0;   /* bande teintée */
-
-  /* Marqueurs de liste et numéros de titre : noirs, fidèles à la maquette. */
-  --c-bullet-marker: #000000;
-  --c-num-marker:    #000000;
-}
+   Plan : 3. géométrie de page · 4. typographie de base · 5. couverture ·
+   6. éléments de corps · 7. tableaux .szh-tableau · 8. bloc auteurs. Les numéros
+   commencent à 3 : les §1 et §2 sont partis au socle et gardent leur rang, pour que les
+   renvois « print.css §5 » semés dans les filtres et les tests restent justes. */
 
 /* ═══ 3. Géométrie de page ════════════════════════════════════════════════════
    A4. Les marges des pages courantes réservent l'en-tête et le pied, éléments « running »
@@ -555,19 +506,12 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
    Style porté par les attributs data-* de l'éditeur du cockpit et par <th scope>. L'accent
    est « gris » (repli neutre ci-dessous) ou la couleur annuelle : accent-css.py surcharge
    alors ces variables à la compilation, WeasyPrint 69 n'implémentant pas color-mix().
+   Les quatre jetons eux-mêmes sont déclarés au socle, avec tous les autres.
    Contrastes garantis en APCA. Le texte d'un tableau est à 13,6 px, donc le seuil appliqué
    est 90 : le fond clair porte du texte noir à Lc ≥ 91, le fond foncé du texte blanc à
    |Lc| ≥ 90 ; `python3 test/apca-check.py` vérifie toutes les paires.
    Les tableaux importés bruts (<table> nu) gardent le style générique ci-dessus. */
 
-:root {
-  --szh-accent-clair: #ededed;    /* fond « couleur annuelle » (texte noir : Lc +95) : en-têtes/total */
-  --szh-accent-fonce: #4a4a4a;    /* fond « negatif » (texte blanc : Lc −95) : en-têtes/total */
-  /* Repli si out/.szh-accent.css est absent : accent-css.py réémet ces deux variables
-     depuis styles/couleurs.css, que la revue peut éditer. */
-  --szh-gris-clair: #e6e6e6;      /* fond « gris » des en-têtes/total (texte noir : Lc +91) */
-  --szh-zebre: #f2f2f2;           /* teinte neutre du zébrage (une ligne/colonne sur deux) */
-}
 
 /* Fichier référencé mais introuvable : un tableau (szh-tabelle-inclure.lua) ou la
    bibliographie détachée (szh-citations.lua). Doit sauter aux yeux à la relecture, pas
