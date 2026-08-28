@@ -176,11 +176,22 @@ else { Dire 'manque' 'Réglages de l''éditeur' ('manquent : ' + ($manquants -jo
 # Raccourcis du menu Démarrer, dans le profil de ce compte.
 $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
 $absents = New-Object System.Collections.ArrayList
+# L'identité de barre des tâches se contrôle à part : un raccourci qui l'a perdue est
+# bien là et s'ouvre, mais son bouton reprend l'icône de PowerShell — un symptôme qu'on
+# ne rattache à rien sans ce diagnostic. C'est le cas de tout raccourci posé avant que
+# ces identités existent, et une seule mise à jour le répare.
+$sansId = New-Object System.Collections.ArrayList
 foreach ($r in @(Get-SzhRaccourcisMenu)) {
-  if (-not (Test-Path (Join-Path $menu ($r.nom + '.lnk')))) { [void]$absents.Add($r.nom) }
+  $chemin = Join-Path $menu ($r.nom + '.lnk')
+  if (-not (Test-Path $chemin)) { [void]$absents.Add($r.nom); continue }
+  if ($r.appid -and ((Get-SzhLnkAppId $chemin) -ne $r.appid)) { [void]$sansId.Add($r.nom) }
 }
 if ($absents.Count -eq 0) { Dire 'ok' 'Raccourcis du menu Démarrer' '4 entrées en place' }
 else { Dire 'manque' 'Raccourcis du menu Démarrer' ('absents : ' + ($absents -join ', ')) }
+if ($absents.Count -eq 0) {
+  if ($sansId.Count -eq 0) { Dire 'ok' 'Icône dans la barre des tâches' 'les 4 entrées portent leur identité' }
+  else { Dire 'manque' 'Icône dans la barre des tâches' (($sansId -join ', ') + ' : sans identité, le bouton reprend l''icône de PowerShell — une mise à jour la repose') }
+}
 
 if (Test-Path 'HKCU:\Software\Classes\SZH.Markdown\shell\open\command') {
   Dire 'ok' 'Ouvrir un .md avec Revue SZH' 'enregistré (HKCU)'

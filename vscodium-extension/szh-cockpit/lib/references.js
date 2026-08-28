@@ -376,6 +376,399 @@ function lireAttributsImage(texte, relatif) {
   return res;
 }
 
+// ---- Grilles d'images ----
+//
+// Plusieurs images qui se lisent ensemble — une série, un avant/après, quatre vignettes —
+// forment UNE figure : un numéro, une légende, un bloc qui ne se coupe pas. Le contrat,
+// arrêté avec pipeline/filters/szh-grille.lua :
+//
+//   ::: {.szh-grille disposition="2-2"}
+//   ![Légende de la figure](media/a.png){alt="…" copyright="© A"}
+//   ![](media/b.png){alt="…"}
+//   ![](media/c.png){alt="…"}
+//   ![](media/d.png){alt="…"}
+//   :::
+//
+//   - une image par ligne, sans ligne vide entre elles : aucun lecteur n'en fait alors de
+//     figure individuelle, et la grille reste un seul objet ;
+//   - la légende et le numéro sont ceux de la PREMIÈRE image, qui est la figure entière ;
+//     les suivantes s'écrivent toujours avec un texte de légende vide (voir
+//     offsetsSuiveuses, appliqué par ecrireAttributsImage) ;
+//   - le texte alternatif et les crédits, eux, restent propres à chaque image : deux
+//     photos d'une même planche n'ont ni le même photographe ni le même sujet ;
+//   - `disposition` vaut « auto » ou une suite de rangées, « 2-2 » = deux rangées de deux.
+//     Absente ou incohérente avec le nombre d'images -> le rendu retombe sur « auto ».
+const CLASSE_GRILLE = 'szh-grille';
+const GRILLE_AUTO = 'auto';
+
+// Six images au plus. Au-delà, la colonne n'a plus assez de largeur pour que chacune se
+// lise : le geste juste est de scinder en deux figures, qui porteront deux numéros.
+const GRILLE_MAX = 6;
+
+// Les dispositions offertes, par nombre d'images ; la PREMIÈRE de chaque liste sert de
+// repli quand « auto » ne peut pas mesurer les fichiers.
+// ⚠ Table recopiée dans pipeline/filters/szh-grille.lua, qui compose. Les deux doivent
+//   rester identiques — test/js/contrats.test.js le contrôle.
+const DISPOSITIONS = {
+  2: ['2', '1-1'],
+  3: ['3', '2-1', '1-2', '1-1-1'],
+  4: ['2-2', '4', '3-1', '1-3'],
+  5: ['3-2', '2-3', '5'],
+  6: ['3-3', '2-2-2', '6']
+};
+
+// Hauteur visée du bloc d'images, en fraction de la largeur de la colonne. C'est le seul
+// réglage du mode automatique : chaque disposition possible est mesurée, et celle dont la
+// hauteur en approche le plus l'emporte. 0,62 remplit la colonne sans manger la page.
+// ⚠ Recopiée elle aussi dans szh-grille.lua.
+const GRILLE_CIBLE = 0.62;
+
+function dispositionsPossibles(n) {
+  return (DISPOSITIONS[Number(n)] || []).slice();
+}
+function dispositionParDefaut(n) {
+  const l = DISPOSITIONS[Number(n)];
+  return l ? l[0] : null;
+}
+// « 2-2 » -> [2, 2] ; rien d'autre n'est accepté, pas même « 2 - 2 ».
+function rangeesDeDisposition(code) {
+  const s = String(code === undefined || code === null ? '' : code);
+  if (!/^[1-9](-[1-9])*$/.test(s)) { return null; }
+  return s.split('-').map((x) => Number(x));
+}
+function dispositionValide(code, n) {
+  return dispositionsPossibles(n).indexOf(String(code)) !== -1;
+}
+
+// Mode automatique : la disposition dont le bloc rendu s'approche le plus de GRILLE_CIBLE.
+// `ratios` donne largeur/hauteur de chaque image, dans l'ordre ; une valeur absente ou
+// aberrante vaut 1 (carrée). Une rangée justifiée sur la largeur de la colonne a pour
+// hauteur 1 / Σ(ratios de la rangée) — c'est la somme de ces hauteurs que l'on compare.
+//
+// Ce que la règle produit, et pourquoi elle tombe juste : deux panoramas côte à côte
+// donneraient un bandeau de 0,17 de haut, illisible ; l'un sur l'autre, 0,67 — c'est ce
+// qu'elle choisit. Deux portraits, à l'inverse, partent côte à côte.
+function dispositionAutomatique(n, ratios) {
+  const codes = dispositionsPossibles(n);
+  if (codes.length === 0) { return null; }
+  // Une seule image illisible — un SVG sans dimensions, un fichier disparu — et la mesure
+  // ne veut plus rien dire : on rend le repli plutôt qu'un calcul fait sur des carrés
+  // imaginaires, qui alignerait volontiers quatre images en un bandeau.
+  const r = [];
+  for (let i = 0; i < n; i++) {
+    const v = Number((ratios || [])[i]);
+    if (!isFinite(v) || v <= 0) { return codes[0]; }
+    r.push(v);
+  }
+  let meilleur = codes[0];
+  let ecartMin = Infinity;
+  for (const code of codes) {
+    let hauteur = 0;
+    let k = 0;
+    for (const largeurRangee of rangeesDeDisposition(code)) {
+      let somme = 0;
+      for (let j = 0; j < largeurRangee; j++) { somme += r[k++]; }
+      hauteur += 1 / somme;
+    }
+    const ecart = Math.abs(hauteur - GRILLE_CIBLE);
+    if (ecart < ecartMin - 1e-9) { ecartMin = ecart; meilleur = code; }
+  }
+  return meilleur;
+}
+
+// Une ligne qui ne porte qu'une seule image : sa cible normalisée, ou null. C'est la seule
+// forme qu'une grille contient, et la seule qu'on sache envelopper.
+function ligneImageSeule(ligne) {
+  const t = String(ligne === undefined || ligne === null ? '' : ligne).trim();
+  if (t === '') { return null; }
+  const re = reImage();
+  const m = re.exec(t);
+  if (!m || m.index !== 0 || re.lastIndex !== t.length) { return null; }
+  return cibleNormalisee(m[2]);
+}
+
+// Le jeton `.szh-grille` dans les attributs d'un « ::: {…} ».
+function estOuvertureGrille(attrs) {
+  for (const j of scannerAttributs(attrs)) {
+    if (!j.paire && j.brut === '.' + CLASSE_GRILLE) { return true; }
+  }
+  return false;
+}
+
+// lireGrilles(texte) -> [ { ouverture, fermeture, disposition, membres } ]
+// où membres = [ { cible, relatif, ligne } ], `relatif` étant le chemin sous media/ en
+// minuscules (comme ordreImages) ou null quand la cible est ailleurs. Une ligne qui ne
+// porte pas exactement une image est ignorée : elle ne fait pas partie de la grille.
+function lireGrilles(texte) {
+  const lignes = String(texte === undefined || texte === null ? '' : texte).split('\n');
+  const res = [];
+  for (let i = 0; i < lignes.length; i++) {
+    const ouverture = RE_DIV_OUVERTURE.exec(lignes[i]);
+    if (!ouverture || !estOuvertureGrille(ouverture[1])) { continue; }
+    const fin = fermetureDeDiv(lignes, i);
+    if (fin === -1) { continue; }                  // bloc laissé ouvert : on n'y touche pas
+    const membres = [];
+    for (let j = i + 1; j < fin; j++) {
+      const cible = ligneImageSeule(lignes[j]);
+      if (cible === null) { continue; }
+      membres.push({
+        cible: cible,
+        relatif: cible.indexOf('media/') === 0 ? cible.slice('media/'.length) : null,
+        ligne: j
+      });
+    }
+    let disposition = GRILLE_AUTO;
+    for (const j of scannerAttributs(ouverture[1])) {
+      if (j.paire && j.cle.toLowerCase() === 'disposition') { disposition = j.valeur; break; }
+    }
+    res.push({ ouverture: i, fermeture: fin, disposition: disposition, membres: membres });
+    i = fin;
+  }
+  return res;
+}
+
+// La grille qui contient cette image, et le rang qu'elle y tient ; null si l'image n'est
+// dans aucune grille.
+function grilleDeImage(texte, relatif) {
+  const attendu = String(relatif || '').replace(/\\/g, '/').toLowerCase();
+  if (attendu === '') { return null; }
+  for (const g of lireGrilles(texte)) {
+    for (let k = 0; k < g.membres.length; k++) {
+      if (g.membres[k].relatif === attendu) { return { grille: g, rang: k }; }
+    }
+  }
+  return null;
+}
+
+// Décalages, dans le texte, des insertions qui SUIVENT la première d'une grille. La grille
+// est une figure, elle n'a qu'une légende : celle de sa première image. Les suivantes
+// s'écrivent donc toujours entre crochets vides, faute de quoi implicit_figures en ferait
+// des figures individuelles et le bloc se disloquerait.
+function offsetsSuiveuses(texte) {
+  const s = String(texte === undefined || texte === null ? '' : texte);
+  const lignes = s.split('\n');
+  const debuts = [];
+  let pos = 0;
+  for (const l of lignes) { debuts.push(pos); pos += l.length + 1; }
+  const res = new Set();
+  for (const g of lireGrilles(s)) {
+    for (let k = 1; k < g.membres.length; k++) {
+      const colonne = lignes[g.membres[k].ligne].indexOf('![');
+      if (colonne !== -1) { res.add(debuts[g.membres[k].ligne] + colonne); }
+    }
+  }
+  return res;
+}
+
+// La ligne « ::: {…} » d'une grille, sa disposition remplacée. Les autres attributs — un
+// identifiant posé à la main, par exemple — sont réécrits tels quels et à leur place.
+function ligneOuvertureGrille(attrsOriginaux, disposition) {
+  const sortie = ['.' + CLASSE_GRILLE];
+  let pose = false;
+  for (const j of scannerAttributs(attrsOriginaux || '')) {
+    if (!j.paire && j.brut === '.' + CLASSE_GRILLE) { continue; }
+    if (j.paire && j.cle.toLowerCase() === 'disposition') {
+      if (pose) { continue; }
+      pose = true;
+      sortie.push('disposition=' + citerValeur(disposition));
+      continue;
+    }
+    sortie.push(j.brut);
+  }
+  if (!pose) { sortie.push('disposition=' + citerValeur(disposition)); }
+  return '::: {' + sortie.join(' ') + '}';
+}
+
+// La référence markdown d'une image, telle que le pipeline la lit. Sert à réécrire une
+// insertion qui change de place : la porter d'un endroit à l'autre à la main lui ferait
+// perdre ses crédits et son texte alternatif.
+function referenceImage(relatif, valeurs) {
+  const v = valeurs || {};
+  const horsFigure = !!v.horsFigure;
+  const alt = normaliserValeurFigure(v.alt);
+  const copyright = normaliserValeurFigure(v.copyright);
+  const source = normaliserValeurFigure(v.source);
+  const cibles = {
+    alt: v.altDefini ? alt : null,
+    copyright: copyright === '' ? null : copyright,
+    source: source === '' ? null : source,
+    horsFigure: horsFigure
+  };
+  const legende = horsFigure ? '' : normaliserLegendeFigure(v.legende);
+  return '![' + legende + '](media/' + String(relatif).replace(/\\/g, '/') + ')'
+    + reconstruireBloc(null, cibles);
+}
+
+// Disposition à écrire quand le nombre d'images change : « auto » le reste, un choix
+// explicite devenu impossible retombe sur le défaut du nouveau compte.
+function dispositionApresChangement(ancienne, n) {
+  if (String(ancienne) === GRILLE_AUTO) { return GRILLE_AUTO; }
+  return dispositionValide(ancienne, n) ? String(ancienne) : (dispositionParDefaut(n) || GRILLE_AUTO);
+}
+
+// Insère des lignes à l'indice donné, isolées par une ligne vide de chaque côté — une image
+// collée au paragraphe voisin n'est plus une figure, elle est au fil du texte. Aucune ligne
+// vide n'est ajoutée là où il y en a déjà une.
+function insererIsole(lignes, ou, bloc) {
+  const avant = (ou > 0 && lignes[ou - 1].trim() !== '') ? [''] : [];
+  const apres = (ou < lignes.length && lignes[ou].trim() !== '') ? [''] : [];
+  lignes.splice(ou, 0, ...avant, ...bloc, ...apres);
+}
+
+// poserDansGrille(texte, ancre, ajout) -> { texte, ok, motif, legendePerdue }
+//
+// Met `ajout` à côté de `ancre`. Si `ancre` est déjà dans une grille, l'image s'ajoute en
+// queue ; sinon la grille se crée autour de son insertion. `ajout` qui n'est inséré nulle
+// part est simplement posé ; inséré une seule fois ailleurs, il est DÉPLACÉ — c'est le
+// geste attendu quand on range deux images déjà écrites. Inséré plusieurs fois, on refuse :
+// rien ne dit laquelle des insertions il faudrait déplacer.
+// `motif` nomme le refus : 'ancre' (introuvable, ou pas seule sur sa ligne), 'ajout'
+// (plusieurs insertions), 'pleine' (six images), 'meme' (l'image et elle-même).
+function poserDansGrille(texte, ancre, ajout) {
+  const src = String(texte === undefined || texte === null ? '' : texte);
+  const cibleAncre = String(ancre || '').replace(/\\/g, '/').toLowerCase();
+  const cibleAjout = String(ajout || '').replace(/\\/g, '/').toLowerCase();
+  const refus = (motif) => ({ texte: src, ok: false, motif: motif, legendePerdue: false });
+  if (cibleAncre === '' || cibleAjout === '') { return refus('ancre'); }
+  if (cibleAncre === cibleAjout) { return refus('meme'); }
+
+  const dansGrille = grilleDeImage(src, cibleAncre);
+  if ((dansGrille ? dansGrille.grille.membres.length : 1) >= GRILLE_MAX) { return refus('pleine'); }
+
+  // Les valeurs de l'image qui rejoint la grille, prises AVANT de la retirer : son texte
+  // alternatif et ses crédits la suivent, sa légende propre ne peut pas — une grille n'en
+  // porte qu'une, celle de la figure.
+  const valeursAjout = lireAttributsImage(src, cibleAjout);
+  if (valeursAjout.n > 1) { return refus('ajout'); }
+  const legendePerdue = valeursAjout.n === 1 && valeursAjout.legende.trim() !== '';
+
+  // Le retrait d'abord : il déplace des lignes, et tout ce qui suit se recalcule dessus.
+  let travail = src;
+  if (valeursAjout.n === 1) {
+    const ote = retirerImage(travail, cibleAjout);
+    if (ote.n > 0) { travail = ote.texte; }
+  }
+
+  const lignes = travail.split('\n');
+  // Légende forcée vide : la figure n'en porte qu'une, celle de son ancre. `legendePerdue`
+  // dit à l'appelant qu'il y avait quelque chose à perdre, pour qu'il le signale.
+  const nouvelle = '  ' + referenceImage(cibleAjout,
+    Object.assign({}, valeursAjout, { legende: '' }));
+  const apres = grilleDeImage(travail, cibleAncre);
+  if (apres) {
+    // Grille existante : l'image s'ajoute en queue, juste avant le « ::: » de fermeture.
+    const g = apres.grille;
+    lignes.splice(g.fermeture, 0, nouvelle);
+    lignes[g.ouverture] = ligneOuvertureGrille(RE_DIV_OUVERTURE.exec(lignes[g.ouverture])[1],
+      dispositionApresChangement(g.disposition, g.membres.length + 1));
+    return { texte: lignes.join('\n'), ok: true, motif: null, legendePerdue: legendePerdue };
+  }
+
+  // Pas de grille : il en faut une autour de l'insertion de l'ancre, qui doit être seule
+  // sur sa ligne — au fil d'un paragraphe, l'envelopper couperait la phrase en deux.
+  let ligneAncre = -1;
+  for (let i = 0; i < lignes.length; i++) {
+    if (ligneImageSeule(lignes[i]) === 'media/' + cibleAncre) { ligneAncre = i; break; }
+  }
+  if (ligneAncre === -1) { return refus('ancre'); }
+  lignes.splice(ligneAncre, 1,
+    ligneOuvertureGrille('', dispositionApresChangement(GRILLE_AUTO, 2)),
+    '  ' + lignes[ligneAncre].trim(),
+    nouvelle,
+    ':::');
+  return { texte: lignes.join('\n'), ok: true, motif: null, legendePerdue: legendePerdue };
+}
+
+// retirerDeGrille(texte, relatif) -> { texte, ok }
+// L'image sort de la grille mais reste dans l'article : elle repart en figure ordinaire,
+// juste après le bloc. Quand il n'en reste qu'une, la grille se dissout — un bloc d'une
+// seule image n'est plus une grille, c'est une figure.
+function retirerDeGrille(texte, relatif) {
+  const src = String(texte === undefined || texte === null ? '' : texte);
+  const trouve = grilleDeImage(src, relatif);
+  if (!trouve) { return { texte: src, ok: false }; }
+  const g = trouve.grille;
+  const lignes = src.split('\n');
+  const sortante = lignes[g.membres[trouve.rang].ligne].trim();
+  const restants = g.membres.filter((m, k) => k !== trouve.rang);
+
+  if (restants.length <= 1) {
+    // Dissolution : les deux « ::: » disparaissent, les images reprennent leur place de
+    // figure ordinaire — chacune seule dans son paragraphe — dans l'ordre où la grille
+    // les tenait, la sortante en dernier.
+    const bloc = [];
+    for (const m of restants) { bloc.push(lignes[m.ligne].trim(), ''); }
+    bloc.push(sortante);
+    lignes.splice(g.ouverture, g.fermeture - g.ouverture + 1);
+    insererIsole(lignes, g.ouverture, bloc);
+    return { texte: lignes.join('\n'), ok: true };
+  }
+  const disposition = dispositionApresChangement(g.disposition, restants.length);
+  // La ligne ôtée est toujours entre les deux « ::: » : l'ouverture ne bouge pas, la
+  // fermeture recule d'un cran, et c'est juste après elle que l'image sortante se repose.
+  lignes.splice(g.membres[trouve.rang].ligne, 1);
+  insererIsole(lignes, g.fermeture, [sortante]);
+  lignes[g.ouverture] = ligneOuvertureGrille(RE_DIV_OUVERTURE.exec(lignes[g.ouverture])[1],
+    disposition);
+  return { texte: lignes.join('\n'), ok: true };
+}
+
+// normaliserGrilles(texte) -> { texte, n }
+// Remet les grilles d'aplomb après une opération qui a ôté une image sans passer par
+// retirerDeGrille — la suppression d'un fichier, ou une main dans le .md. Une grille
+// tombée à une image ou moins se dissout, ce qui reste redevient une figure ordinaire ;
+// les autres voient leur disposition ramenée à une valeur possible pour le nombre d'images
+// qui restent. `n` compte les grilles touchées. Idempotent.
+//
+// Une seule correction par tour, puis relecture : chaque écriture déplace des lignes, et
+// les indices d'une grille lue avant ne valent plus après.
+function normaliserGrilles(texte) {
+  let travail = String(texte === undefined || texte === null ? '' : texte);
+  let n = 0;
+  for (let garde = 0; garde < 500; garde++) {
+    let change = false;
+    for (const g of lireGrilles(travail)) {
+      const lignes = travail.split('\n');
+      if (g.membres.length <= 1) {
+        const bloc = g.membres.map((m) => lignes[m.ligne].trim());
+        lignes.splice(g.ouverture, g.fermeture - g.ouverture + 1);
+        if (bloc.length > 0) { insererIsole(lignes, g.ouverture, bloc); }
+        travail = lignes.join('\n');
+        change = true;
+        break;
+      }
+      const voulue = dispositionApresChangement(g.disposition, g.membres.length);
+      if (voulue !== g.disposition) {
+        lignes[g.ouverture] = ligneOuvertureGrille(
+          RE_DIV_OUVERTURE.exec(lignes[g.ouverture])[1], voulue);
+        travail = lignes.join('\n');
+        change = true;
+        break;
+      }
+    }
+    if (!change) { break; }
+    n++;
+  }
+  return { texte: travail, n: n };
+}
+
+// ecrireDispositionGrille(texte, relatif, disposition) -> { texte, ok }
+// Une disposition qui ne correspond pas au nombre d'images de la grille est refusée : le
+// rendu retomberait sur « auto » et le menu mentirait.
+function ecrireDispositionGrille(texte, relatif, disposition) {
+  const src = String(texte === undefined || texte === null ? '' : texte);
+  const trouve = grilleDeImage(src, relatif);
+  if (!trouve) { return { texte: src, ok: false }; }
+  const code = String(disposition);
+  const g = trouve.grille;
+  if (code !== GRILLE_AUTO && !dispositionValide(code, g.membres.length)) {
+    return { texte: src, ok: false };
+  }
+  const lignes = src.split('\n');
+  lignes[g.ouverture] = ligneOuvertureGrille(RE_DIV_OUVERTURE.exec(lignes[g.ouverture])[1], code);
+  return { texte: lignes.join('\n'), ok: true };
+}
+
 // Réécrit toutes les insertions de l'image, qui n'a qu'un jeu de crédits : les laisser
 // diverger donnerait deux légendes pour une seule figure. Idempotent.
 function ecrireAttributsImage(texte, relatif, valeurs) {
@@ -396,13 +789,18 @@ function ecrireAttributsImage(texte, relatif, valeurs) {
     source: source === '' ? null : source,
     horsFigure: horsFigure
   };
+  const entree = String(texte === undefined || texte === null ? '' : texte);
+  // Dans une grille, seule la première image porte la légende de la figure : les suivantes
+  // s'écrivent entre crochets vides, quoi que la carte affiche.
+  const suiveuses = offsetsSuiveuses(entree);
   let n = 0;
-  const sortie = String(texte === undefined || texte === null ? '' : texte)
-    .replace(reImage(), (tout, leg, cible, titre, bloc) => {
-      if (cibleNormalisee(cible) !== attendu) { return tout; }
-      n++;
-      return '![' + legende + '](' + cible + (titre || '') + ')' + reconstruireBloc(bloc, cibles);
-    });
+  const sortie = entree.replace(reImage(), function (tout, leg, cible, titre, bloc) {
+    if (cibleNormalisee(cible) !== attendu) { return tout; }
+    n++;
+    const decalage = arguments[arguments.length - 2];
+    const texteLegende = suiveuses.has(decalage) ? '' : legende;
+    return '![' + texteLegende + '](' + cible + (titre || '') + ')' + reconstruireBloc(bloc, cibles);
+  });
   if (n === 0) { return { texte: texte, n: 0 }; }
   return { texte: sortie, n: n };
 }
@@ -411,6 +809,10 @@ module.exports = {
   RE_DIV_OUVERTURE, RE_DIV_FERMETURE, fermetureDeDiv,
   retirerImage, retirerTable, cibleNormalisee, CLASSE_HORS_FIGURE, ordreImages,
   listerImages, imagesSansAlternative, placeFigure, envelopperFigure,
-  lireAttributsImage, ecrireAttributsImage,
-  scannerAttributs, normaliserValeurFigure, normaliserLegendeFigure
+  lireAttributsImage, ecrireAttributsImage, referenceImage,
+  scannerAttributs, normaliserValeurFigure, normaliserLegendeFigure,
+  CLASSE_GRILLE, GRILLE_AUTO, GRILLE_MAX, DISPOSITIONS, GRILLE_CIBLE,
+  dispositionsPossibles, dispositionParDefaut, dispositionValide, rangeesDeDisposition,
+  dispositionAutomatique, lireGrilles, grilleDeImage, offsetsSuiveuses,
+  poserDansGrille, retirerDeGrille, ecrireDispositionGrille, normaliserGrilles
 };

@@ -55,12 +55,21 @@ Set-SzhLangueProduit $produitFiltre
 $titreFenetre = (T 'lanceur.titre')
 if ($produitFiltre -eq 'zeitschrift') { $titreFenetre = (T 'lanceur.titre.zs') }
 
-# ---- Icône des fenêtres ----
+# ---- Icône des fenêtres, et identité de barre des tâches ----
 # Chaque fenêtre porte l'icône de son produit (windows/icone.py). 'FixedDialog' masque
-# celle du bandeau de titre, mais la barre des tâches et Alt+Tab la montrent : sans elle,
-# le lanceur s'y annonce avec l'icône de wscript.exe et deux lanceurs sont indiscernables.
+# celle du bandeau de titre, mais Alt+Tab la montre : sans elle, le lanceur s'y annonce
+# avec l'icône de wscript.exe et deux lanceurs sont indiscernables.
 $fichierIcone = Join-Path $PSScriptRoot 'szh-revue.ico'
 if ($produitFiltre -eq 'zeitschrift') { $fichierIcone = Join-Path $PSScriptRoot 'szh-zeitschrift.ico' }
+
+# La barre des tâches, elle, ne regarde pas l'icône de la fenêtre : elle range le bouton
+# sous l'AppUserModelID du processus et prend l'image de ce côté-là. Sans identité à nous,
+# elle en déduit une de powershell.exe — l'hôte lancé par hidden.vbs — et affiche l'icône
+# de PowerShell. La déclaration est ici, donc avant la première fenêtre : Windows lit
+# l'identité au moment où la fenêtre s'inscrit à la barre, et ne la relit jamais ensuite.
+# Le raccourci du menu Démarrer porte la même chaîne, et c'est ce qui fait que le bouton
+# reprend son icône. Voir « Identité de barre des tâches » dans szh-common.ps1.
+[void](Set-SzhAppUserModelId (Get-SzhAppId $produitFiltre))
 
 # Lecture en tableau d'octets et non par nom de fichier : Icon(String) garderait le .ico
 # ouvert tant que la fenêtre vit, et une mise à jour concurrente ne pourrait pas le

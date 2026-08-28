@@ -45,9 +45,11 @@ publication.
   ne porte que le crédit, **après** l'image), **image hors numérotation sans crédits**
   (pas de `<figure>` du tout — le cas qui débordait de la page avant que `print.css` ne
   contraigne toute image), vectoriel décoratif (`alt=""`), résolution insuffisante
-  (320 px, qui ne doit pas être agrandie), et **deux insertions de la même image** (deux
-  numéros, un seul jeu de crédits). Les images sont des bandes de couleur générées, de
-  quelques kilooctets.
+  (320 px, qui ne doit pas être agrandie), **deux insertions de la même image** (deux
+  numéros, un seul jeu de crédits), et **deux grilles d'images** — quatre images en 2 × 2
+  avec les crédits des quatre rassemblés dans une seule légende, puis deux bandeaux sans
+  attribut `disposition`, que le mode automatique doit empiler plutôt que mettre côte à
+  côte. Les images sont des bandes de couleur générées, de quelques kilooctets.
 
 > **En-tête condensé** — le banc compose la couverture par défaut, à hauteur fixe.
 > Pour éprouver l'autre allure, ajouter une ligne `entete-condensee: true` à

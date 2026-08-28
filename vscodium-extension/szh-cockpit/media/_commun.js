@@ -49,6 +49,8 @@ var SZH = (function () {
         'stroke-width': '1.5', 'stroke-linecap': 'round' }]
     ],
     ok: [['path', { d: 'M6.4 11.9 2.9 8.4 4 7.3l2.4 2.4 5.6-5.6 1.1 1.1z' }]],
+    // Ajouter : deux barres, rien de plus. Le libellé du bouton dit quoi.
+    plus: [['path', { d: 'M7.25 3h1.5v4.25H13v1.5H8.75V13h-1.5V8.75H3v-1.5h4.25V3z' }]],
     // Rien n'est commencé : le cercle vide de l'arbre.
     cercle: [['circle', { cx: '8', cy: '8', r: '5.5', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5' }]],
     // Envoyer pour traduction : deux alphabets et une plume.

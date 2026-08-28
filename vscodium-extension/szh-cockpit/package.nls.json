@@ -51,6 +51,7 @@
   "config.convertirCmyk": "Convertir automatiquement en RVB les images JPEG livrées en CMJN (couleurs d’imprimerie, que les navigateurs et le PDF ne savent pas afficher).",
   "config.replierAssetsAutres": "Cacher automatiquement les tableaux des articles non sélectionnés.",
   "config.reduireWarningsImpression": "N’avertir que pour les images vraiment trop petites : le conseil « résolution recommandée » ne s’affiche plus, le minimum reste vérifié.",
+  "config.nomUtilisateur": "Nom affiché aux autres postes quand vous modifiez un fichier du numéro. Vide = le nom de session Windows.",
   "cmd.lierReference": "Lier un appel à une référence",
   "cmd.tutoriel": "Prise en main (tutoriel)",
   "tuto.titre": "Prendre en main la chaîne SZH",
@@ -72,5 +73,9 @@
   "tuto.relire.titre": "Relire le PDF",
   "tuto.relire.texte": "Chaque enregistrement recompile l’article. L’aperçu bascule entre le rendu **HTML**, rapide, et le **PDF** définitif — celui qui part à l’impression, balisé pour les lecteurs d’écran.\n\nCliquez un mot de l’aperçu HTML pour sauter à sa place dans le texte.\n\n[Basculer l’aperçu HTML ⇄ PDF](command:szh.basculerApercu)",
   "tuto.archiver.titre": "Exporter, puis archiver",
-  "tuto.archiver.texte": "L’export produit le XML d’import pour OJS, avec les galées PDF de chaque article.\n\nQuand le numéro est publié, **archivez-le** : il passe en lecture seule, son dossier `out/` est libéré, et la version de l’outil qui l’a produit est estampillée dedans.\n\n[Exporter la revue en XML (OJS)](command:szh.exporterXml) · [Archiver et verrouiller](command:szh.archiverVerrouiller)"
+  "tuto.archiver.texte": "L’export produit le XML d’import pour OJS, avec les galées PDF de chaque article.\n\nQuand le numéro est publié, **archivez-le** : il passe en lecture seule, son dossier `out/` est libéré, et la version de l’outil qui l’a produit est estampillée dedans.\n\n[Exporter la revue en XML (OJS)](command:szh.exporterXml) · [Archiver et verrouiller](command:szh.archiverVerrouiller)",
+  "cmd.conflit.comparer": "Comparer avec la copie en conflit",
+  "cmd.conflit.prendre": "Prendre cette version",
+  "cmd.conflit.garder": "Garder la mienne",
+  "cmd.conflit.supprimerCopie": "Supprimer la copie en conflit"
 }

@@ -1352,6 +1352,229 @@ function Start-SzhCodium([string]$Dossier) {
   }
 }
 
+# ---- Identité de barre des tâches (AppUserModelID) ----
+# La barre des tâches ne prend pas l'icône de la fenêtre : elle groupe les boutons par
+# AppUserModelID et va chercher l'image de ce côté-là. Un processus qui n'en déclare aucun
+# s'en voit attribuer un, déduit de son exécutable hôte — powershell.exe pour nos lanceurs,
+# ouverts par hidden.vbs —, et le bouton porte alors l'icône de PowerShell. L'icône posée
+# sur la fenêtre (Set-SzhIconeFenetre, dans open-revue.ps1) ne se voit plus alors que dans
+# le bandeau de titre et dans Alt+Tab, jamais dans la barre.
+#
+# Il faut les deux moitiés :
+#   * le processus déclare son identité AVANT sa première fenêtre — Windows lit
+#     l'AppUserModelID quand la fenêtre s'inscrit à la barre, et ne le relit pas ensuite ;
+#   * le .lnk du menu Démarrer porte la même chaîne. C'est elle qui fait que le bouton et
+#     le raccourci ne font qu'un : le bouton reprend l'icône du raccourci — donc la même
+#     image qu'au menu Démarrer — et « Épingler à la barre des tâches » épingle le lanceur
+#     au lieu d'épingler powershell.exe.
+#
+# Une identité par programme : les deux lanceurs de produit ont chacun la leur, sans quoi
+# ils ne feraient qu'un seul bouton et l'icône ne distinguerait plus la Revue de la
+# Zeitschrift. Les deux entrées de mise à jour partagent la leur : c'est le même
+# update.ps1, la même icône, et seule la langue de la fenêtre les sépare — les voir
+# groupées sous un bouton est ce qu'on veut.
+#
+# ⚠ Un raccourci déjà épinglé est une copie, faite avant que ces identités existent : elle
+# ne les porte pas. Il faut dépingler puis réépingler une fois, geste laissé au rédacteur —
+# le dossier des épinglages est tenu par le shell, et y écrire reste sans effet jusqu'au
+# redémarrage d'explorer.exe.
+$script:SzhAppIds = @{
+  'revue'       = 'SZH.Publishing.Revue'
+  'zeitschrift' = 'SZH.Publishing.Zeitschrift'
+  'maj'         = 'SZH.Publishing.MiseAJour'
+}
+
+# Rend '' pour une clé inconnue plutôt que de lever : sans identité on retombe sur le
+# comportement d'avant, une icône de PowerShell, et non sur un lanceur qui ne s'ouvre pas.
+function Get-SzhAppId([string]$Cle) {
+  if ($SzhAppIds.ContainsKey($Cle)) { return $SzhAppIds[$Cle] }
+  return ''
+}
+
+# Le pont vers le shell, en C# : ni WScript.Shell ni aucune applet PowerShell ne sait
+# écrire une propriété de raccourci — il y faut IPropertyStore, que seul COM expose.
+# Compilé à la première demande et non au dot-source : szh-common.ps1 est chargé par tous
+# les scripts, y compris ceux qui n'ouvrent aucune fenêtre, et une compilation C# leur
+# coûterait une demi-seconde pour rien.
+$script:SzhPontBarre = $null
+$script:SzhSourcePontBarre = @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace Szh {
+
+  // PROPERTYKEY : le GUID d'un jeu de propriétés, et le numéro de l'une d'elles.
+  [StructLayout(LayoutKind.Sequential, Pack = 4)]
+  public struct CleProp {
+    public Guid fmtid;
+    public uint pid;
+  }
+
+  // PROPVARIANT ne sert ici que de tampon : propsys le remplit, ole32 le vide, et rien
+  // ci-dessous ne lit ses champs. Ces six-là en couvrent la taille en 32 comme en 64 bits.
+  [StructLayout(LayoutKind.Sequential)]
+  public struct VarProp {
+    public ushort vt;
+    public ushort r1;
+    public ushort r2;
+    public ushort r3;
+    public IntPtr p1;
+    public IntPtr p2;
+  }
+
+  [ComImport, Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99"),
+   InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IPropertyStore {
+    void GetCount(out uint nb);
+    void GetAt(uint rang, out CleProp cle);
+    void GetValue(ref CleProp cle, out VarProp valeur);
+    void SetValue(ref CleProp cle, ref VarProp valeur);
+    void Commit();
+  }
+
+  [ComImport, Guid("0000010b-0000-0000-C000-000000000046"),
+   InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IPersistFile {
+    void GetClassID(out Guid classe);
+    [PreserveSig] int IsDirty();
+    void Load([MarshalAs(UnmanagedType.LPWStr)] string fichier, uint mode);
+    void Save([MarshalAs(UnmanagedType.LPWStr)] string fichier,
+              [MarshalAs(UnmanagedType.Bool)] bool memoriser);
+    void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string fichier);
+    void GetCurFile([MarshalAs(UnmanagedType.LPWStr)] out string fichier);
+  }
+
+  [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
+  public class LienShell { }
+
+  public static class BarreDesTaches {
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+    private static extern void SetCurrentProcessExplicitAppUserModelID(string id);
+
+    [DllImport("ole32.dll", PreserveSig = false)]
+    private static extern void PropVariantClear(ref VarProp valeur);
+
+    private const ushort VT_EMPTY = 0;
+    private const ushort VT_BSTR = 8;
+    private const ushort VT_LPWSTR = 31;
+
+    // PKEY_AppUserModel_ID : {9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}, propriété 5.
+    private static CleProp Cle() {
+      CleProp c = new CleProp();
+      c.fmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3");
+      c.pid = 5;
+      return c;
+    }
+
+    public static void Declarer(string id) {
+      SetCurrentProcessExplicitAppUserModelID(id);
+    }
+
+    // Charger, écrire, valider, enregistrer : c'est l'ordre qu'impose le shell. Commit()
+    // seul ne touche que la copie en mémoire ; sans le Save() final, le .lnk sur le disque
+    // reste tel qu'il était.
+    public static void Poser(string lnk, string id) {
+      object lien = new LienShell();
+      try {
+        ((IPersistFile)lien).Load(lnk, 2);          // STGM_READWRITE
+        CleProp cle = Cle();
+        // Le PROPVARIANT monté à la main : propsys.dll n'exporte pas de fabrique pour
+        // les chaînes (InitPropVariantFromString est une inline de l'en-tête, pas un
+        // symbole). StringToCoTaskMemUni alloue par CoTaskMemAlloc, c'est-à-dire dans
+        // l'allocateur que PropVariantClear rendra.
+        VarProp valeur = new VarProp();
+        valeur.vt = VT_LPWSTR;
+        valeur.p1 = Marshal.StringToCoTaskMemUni(id);
+        try {
+          IPropertyStore magasin = (IPropertyStore)lien;
+          magasin.SetValue(ref cle, ref valeur);
+          magasin.Commit();
+        } finally {
+          PropVariantClear(ref valeur);
+        }
+        ((IPersistFile)lien).Save(lnk, true);
+      } finally {
+        Marshal.ReleaseComObject(lien);
+      }
+    }
+
+    // Rend "" quand le raccourci ne porte aucune identité : c'est le cas de tous ceux
+    // posés par les versions antérieures, et ce n'est pas une erreur.
+    public static string Lire(string lnk) {
+      object lien = new LienShell();
+      try {
+        ((IPersistFile)lien).Load(lnk, 0);          // STGM_READ
+        CleProp cle = Cle();
+        VarProp valeur;
+        ((IPropertyStore)lien).GetValue(ref cle, out valeur);
+        try {
+          if (valeur.vt == VT_LPWSTR) { return Marshal.PtrToStringUni(valeur.p1); }
+          if (valeur.vt == VT_BSTR) { return Marshal.PtrToStringBSTR(valeur.p1); }
+          return "";                                // VT_EMPTY, ou un type inattendu
+        } finally {
+          PropVariantClear(ref valeur);
+        }
+      } finally {
+        Marshal.ReleaseComObject(lien);
+      }
+    }
+  }
+}
+'@
+
+# Ne lève jamais et ne se plaint qu'une fois : une identité de barre des tâches est un
+# confort d'affichage, pas une condition d'ouverture d'un lanceur.
+function Initialize-SzhPontBarre {
+  if ($null -ne $script:SzhPontBarre) { return $script:SzhPontBarre }
+  $script:SzhPontBarre = $false
+  try {
+    if (-not ('Szh.BarreDesTaches' -as [type])) {
+      Add-Type -TypeDefinition $script:SzhSourcePontBarre -ErrorAction Stop
+    }
+    $script:SzhPontBarre = $true
+  } catch {
+    Write-SzhLog ('AppUserModelID : pont COM indisponible (' + $_.Exception.Message + ')')
+  }
+  return $script:SzhPontBarre
+}
+
+# À appeler avant la première fenêtre du processus. Voir le commentaire d'en-tête : passé
+# ce moment, Windows a déjà rangé le bouton sous l'identité déduite de powershell.exe.
+function Set-SzhAppUserModelId([string]$Id) {
+  if (-not $Id) { return $false }
+  if (-not (Initialize-SzhPontBarre)) { return $false }
+  try {
+    [Szh.BarreDesTaches]::Declarer($Id)
+    return $true
+  } catch {
+    Write-SzhLog ('AppUserModelID « ' + $Id + ' » non déclaré : ' + $_.Exception.Message)
+    return $false
+  }
+}
+
+function Set-SzhLnkAppId([string]$Lnk, [string]$Id) {
+  if ((-not $Id) -or (-not (Test-Path -LiteralPath $Lnk))) { return $false }
+  if (-not (Initialize-SzhPontBarre)) { return $false }
+  try {
+    [Szh.BarreDesTaches]::Poser((Resolve-Path -LiteralPath $Lnk).Path, $Id)
+    return $true
+  } catch {
+    Write-SzhLog ('AppUserModelID non posé sur ' + $Lnk + ' : ' + $_.Exception.Message)
+    return $false
+  }
+}
+
+function Get-SzhLnkAppId([string]$Lnk) {
+  if (-not (Test-Path -LiteralPath $Lnk)) { return '' }
+  if (-not (Initialize-SzhPontBarre)) { return '' }
+  try {
+    return [Szh.BarreDesTaches]::Lire((Resolve-Path -LiteralPath $Lnk).Path)
+  } catch {
+    return ''
+  }
+}
+
 # ---- Raccourcis du menu Démarrer ----
 # Quatre entrées, au niveau utilisateur : les deux lanceurs de produit et les deux entrées
 # de mise à jour. Posées par update.ps1 (mise à jour), par update-launcher.ps1 (à chaque
@@ -1385,6 +1608,9 @@ $script:SzhLanguesRaccourci = @('fr', 'de')
 # Chaque entrée porte une icône (windows/icone.py) : épinglée à la barre des tâches, elle
 # perd son libellé et l'icône devient le seul repère. Sans IconLocation le shell affiche
 # celle de wscript.exe, qui ne dit rien à personne ; d'où le repli sur celle de VSCodium.
+# Elle porte aussi son AppUserModelID : l'icône du raccourci ne vaut que pour le menu, et
+# c'est cette identité-là qui la fait suivre jusqu'au bouton de la barre des tâches.
+# Voir « Identité de barre des tâches » ci-dessus.
 function Get-SzhRaccourcisMenu {
   param([string]$Toolkit = $SzhToolkit)
   $vbs     = Join-Path $Toolkit 'windows\hidden.vbs'
@@ -1407,6 +1633,7 @@ function Get-SzhRaccourcisMenu {
     args   = ('//B "{0}" "{1}" "-Produit" "revue"' -f $vbs, $lanceur)
     desc   = $SzhTextes['fr']['raccourci.revue.desc']
     icone  = (Join-Path $Toolkit 'windows\szh-revue.ico')
+    appid  = (Get-SzhAppId 'revue')
     pilote = $lanceur
   })
   [void]$liste.Add([ordered]@{
@@ -1415,6 +1642,7 @@ function Get-SzhRaccourcisMenu {
     args   = ('//B "{0}" "{1}" "-Produit" "zeitschrift"' -f $vbs, $lanceur)
     desc   = $SzhTextes['de']['raccourci.zs.desc']
     icone  = (Join-Path $Toolkit 'windows\szh-zeitschrift.ico')
+    appid  = (Get-SzhAppId 'zeitschrift')
     pilote = $lanceur
   })
   foreach ($langue in $SzhLanguesRaccourci) {
@@ -1424,6 +1652,7 @@ function Get-SzhRaccourcisMenu {
       args   = ('-NoProfile -ExecutionPolicy Bypass -File "{0}" -Langue {1}' -f $maj, $langue)
       desc   = $SzhTextes[$langue]['raccourci.maj.desc']
       icone  = (Join-Path $Toolkit 'windows\szh-maj.ico')
+      appid  = (Get-SzhAppId 'maj')
       pilote = $maj
     })
   }
@@ -1478,6 +1707,12 @@ function Set-SzhRaccourcisMenu {
       if (Test-Path $r.icone) { $lnk.IconLocation = ('{0},0' -f $r.icone) }
       elseif ($codium) { $lnk.IconLocation = $codium }
       $lnk.Save()
+      # L'identité vient après Save() : WScript.Shell réécrit le fichier entier et
+      # effacerait une propriété posée avant lui. Un échec ici ne retire pas l'entrée du
+      # menu — elle s'ouvre, elle n'a que la mauvaise icône dans la barre des tâches.
+      if ($r.appid -and (-not (Set-SzhLnkAppId (Join-Path $Menu ($r.nom + '.lnk')) $r.appid))) {
+        [void]$bilan.manques.Add(('{0} : identité de barre des tâches non posée, le bouton de la barre gardera l''icône de PowerShell.' -f $r.nom))
+      }
       [void]$bilan.poses.Add($r.nom)
     } catch {
       [void]$bilan.manques.Add(('{0} : {1}' -f $r.nom, $_.Exception.Message))

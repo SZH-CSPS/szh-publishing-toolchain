@@ -225,6 +225,183 @@ test('attributs d’image : la classe .szh-hors-figure est celle du filtre du pi
     'szh-numerotation.lua ne connaît pas la classe ' + refs.CLASSE_HORS_FIGURE);
 });
 
+// ---- Grilles d’images ----
+//
+// Une grille est une figure faite de plusieurs images. Trois choses peuvent casser sans
+// bruit, et ce sont celles-ci qu'on éprouve : le bloc écrit dans le .md, qui doit rester
+// relisible par le filtre ; la légende, qui n'appartient qu'à la première image ; et la
+// table des dispositions, recopiée dans le filtre Lua parce que Lua et JS ne partagent
+// rien — une divergence donnerait un menu qui propose ce que le rendu ne sait pas faire.
+
+const MD_DEUX = [
+  'Un paragraphe.',
+  '',
+  '![Une légende](media/a.png){alt="desc A" copyright="© A"}',
+  '',
+  'Encore du texte.',
+  '',
+  '![Légende de B](media/b.png){alt="desc B"}',
+  '',
+  'Fin.',
+  ''
+].join('\n');
+
+test('grille : deux images côte à côte, et l’une déménage', () => {
+  const pose = refs.poserDansGrille(MD_DEUX, 'a.png', 'b.png');
+  assert.strictEqual(pose.ok, true, 'grille refusée : ' + pose.motif);
+  // b.png était insérée ailleurs : elle est DÉPLACÉE, pas dupliquée.
+  assert.strictEqual(refs.lireAttributsImage(pose.texte, 'b.png').n, 1);
+  const grilles = refs.lireGrilles(pose.texte);
+  assert.strictEqual(grilles.length, 1);
+  assert.deepStrictEqual(grilles[0].membres.map((m) => m.relatif), ['a.png', 'b.png']);
+  // Elle emporte son texte alternatif et ses crédits, jamais sa légende : la figure n'en
+  // porte qu'une, celle de son ancre.
+  assert.strictEqual(pose.legendePerdue, true);
+  assert.strictEqual(refs.lireAttributsImage(pose.texte, 'b.png').alt, 'desc B');
+  assert.strictEqual(refs.lireAttributsImage(pose.texte, 'b.png').legende, '');
+  assert.strictEqual(refs.lireAttributsImage(pose.texte, 'a.png').legende, 'Une légende');
+});
+
+test('grille : la légende d’une image suivante ne s’écrit jamais', () => {
+  const pose = refs.poserDansGrille(MD_DEUX, 'a.png', 'b.png');
+  // Le formulaire peut envoyer n'importe quoi — une saisie faite avant que la carte ne
+  // soit verrouillée, par exemple : c'est l'écriture qui tranche.
+  const ecrit = refs.ecrireAttributsImage(pose.texte, 'b.png',
+    { legende: 'NE DOIT PAS SORTIR', alt: 'desc B', altDefini: true });
+  assert.strictEqual(ecrit.texte.indexOf('NE DOIT PAS SORTIR'), -1,
+    'la légende d’une suivante a été écrite : ' + ecrit.texte);
+  // La première, elle, garde la sienne.
+  const tete = refs.ecrireAttributsImage(pose.texte, 'a.png',
+    { legende: 'Nouvelle légende', alt: 'desc A', altDefini: true });
+  assert.strictEqual(refs.lireAttributsImage(tete.texte, 'a.png').legende, 'Nouvelle légende');
+});
+
+test('grille : en sortir rend une figure, la dernière dissout le bloc', () => {
+  let md = refs.poserDansGrille(MD_DEUX, 'a.png', 'b.png').texte;
+  md = md.replace('Fin.', '![](media/c.png){alt="desc C"}\n\nFin.');
+  md = refs.poserDansGrille(md, 'a.png', 'c.png').texte;
+  assert.strictEqual(refs.lireGrilles(md)[0].membres.length, 3);
+
+  const sortie = refs.retirerDeGrille(md, 'b.png');
+  assert.strictEqual(sortie.ok, true);
+  assert.strictEqual(refs.lireGrilles(sortie.texte)[0].membres.length, 2);
+  // Sortie de la grille, mais pas de l'article : elle reste insérée, seule sur sa ligne.
+  assert.strictEqual(refs.lireAttributsImage(sortie.texte, 'b.png').n, 1);
+  assert.strictEqual(refs.grilleDeImage(sortie.texte, 'b.png'), null);
+
+  const derniere = refs.retirerDeGrille(sortie.texte, 'c.png');
+  assert.strictEqual(refs.lireGrilles(derniere.texte).length, 0, 'le bloc devait se dissoudre');
+  for (const nom of ['a.png', 'b.png', 'c.png']) {
+    assert.strictEqual(refs.lireAttributsImage(derniere.texte, nom).n, 1,
+      nom + ' a disparu de l’article');
+  }
+});
+
+test('grille : la disposition suit le nombre d’images, et « auto » le reste', () => {
+  let md = refs.poserDansGrille(MD_DEUX, 'a.png', 'b.png').texte;
+  assert.strictEqual(refs.lireGrilles(md)[0].disposition, refs.GRILLE_AUTO);
+  md = refs.ecrireDispositionGrille(md, 'a.png', '1-1').texte;
+  assert.strictEqual(refs.lireGrilles(md)[0].disposition, '1-1');
+  // Une disposition impossible pour ce nombre d'images est refusée net.
+  assert.strictEqual(refs.ecrireDispositionGrille(md, 'a.png', '2-2').ok, false);
+  // Une image de plus : « 1-1 » ne vaut plus, la grille retombe sur le défaut de trois.
+  md = md.replace('Fin.', '![](media/c.png){alt="desc C"}\n\nFin.');
+  md = refs.poserDansGrille(md, 'a.png', 'c.png').texte;
+  assert.strictEqual(refs.lireGrilles(md)[0].disposition, refs.dispositionParDefaut(3));
+});
+
+test('grille : normaliser remet d’aplomb ce qu’une suppression a laissé', () => {
+  const md = refs.poserDansGrille(MD_DEUX, 'a.png', 'b.png').texte;
+  // Ce que fait supprimerAsset : l'insertion part, le bloc reste avec une seule image.
+  const ote = refs.retirerImage(md, 'b.png');
+  assert.strictEqual(refs.lireGrilles(ote.texte).length, 1, 'le bloc devait survivre au retrait');
+  const propre = refs.normaliserGrilles(ote.texte);
+  assert.strictEqual(refs.lireGrilles(propre.texte).length, 0, 'grille d’une image non dissoute');
+  assert.strictEqual(refs.lireAttributsImage(propre.texte, 'a.png').n, 1);
+  // Deuxième passage : rien à faire, et rien de changé.
+  assert.strictEqual(refs.normaliserGrilles(propre.texte).texte, propre.texte);
+});
+
+test('grille : le mode automatique suit le format des images', () => {
+  // Deux panoramas l'un sur l'autre — côte à côte ils feraient un bandeau ; deux portraits
+  // côte à côte. C'est la seule règle du mode, et c'est celle qu'on éprouve.
+  assert.strictEqual(refs.dispositionAutomatique(2, [3, 3]), '1-1');
+  assert.strictEqual(refs.dispositionAutomatique(2, [0.75, 0.75]), '2');
+  assert.strictEqual(refs.dispositionAutomatique(4, [1.5, 1.5, 1.5, 1.5]), '2-2');
+  assert.strictEqual(refs.dispositionAutomatique(5, [1.5, 1.5, 1.5, 1.5, 1.5]), '3-2');
+  assert.strictEqual(refs.dispositionAutomatique(6, [1.5, 1.5, 1.5, 1.5, 1.5, 1.5]), '3-3');
+  // Une seule mesure manquante et le calcul ne veut plus rien dire : on rend le repli.
+  assert.strictEqual(refs.dispositionAutomatique(4, [1.5, null, 1.5, 1.5]),
+    refs.dispositionParDefaut(4));
+  // Hors de la table : rien à proposer, le formulaire n'offre pas de menu.
+  assert.strictEqual(refs.dispositionAutomatique(7, [1, 1, 1, 1, 1, 1, 1]), null);
+});
+
+test('grille : chaque disposition offerte totalise bien son nombre d’images', () => {
+  for (let n = 2; n <= refs.GRILLE_MAX; n++) {
+    const codes = refs.dispositionsPossibles(n);
+    assert.ok(codes.length > 0, 'aucune disposition pour ' + n + ' images');
+    for (const code of codes) {
+      const rangees = refs.rangeesDeDisposition(code);
+      assert.ok(rangees, 'disposition illisible : ' + code);
+      assert.strictEqual(rangees.reduce((a, b) => a + b, 0), n,
+        'la disposition « ' + code + ' » ne totalise pas ' + n + ' images');
+    }
+  }
+});
+
+test('grille : la table des dispositions est la même dans le cockpit et dans le filtre', () => {
+  // Lua et JS ne partagent rien : la table est recopiée dans szh-grille.lua. Une
+  // divergence donnerait un menu proposant ce que le rendu ne sait pas composer — et
+  // personne ne le verrait avant l'impression.
+  const lua = lire('pipeline', 'filters', 'szh-grille.lua');
+  for (let n = 2; n <= refs.GRILLE_MAX; n++) {
+    const attendu = '[' + n + '] = { '
+      + refs.dispositionsPossibles(n).map((c) => "'" + c + "'").join(', ') + ' },';
+    assert.ok(lua.includes(attendu),
+      'szh-grille.lua ne porte pas la même ligne pour ' + n + ' images : ' + attendu);
+  }
+  assert.ok(lua.includes('local CIBLE = ' + refs.GRILLE_CIBLE),
+    'la hauteur visée du mode automatique diffère entre le cockpit et le filtre');
+  assert.ok(lua.includes('local MAX = ' + refs.GRILLE_MAX),
+    'le plafond d’images par grille diffère entre le cockpit et le filtre');
+  assert.ok(lua.includes("local CLASSE = '" + refs.CLASSE_GRILLE + "'"),
+    'szh-grille.lua ne connaît pas la classe ' + refs.CLASSE_GRILLE);
+  assert.ok(lua.includes("local AUTO = '" + refs.GRILLE_AUTO + "'"),
+    'le mot du mode automatique diffère entre le cockpit et le filtre');
+});
+
+test('grille : le filtre est branché dans les deux chaînes, avant szh-figure', () => {
+  const makefile = lire('pipeline', 'Makefile');
+  const lignes = makefile.split('\n');
+  const rang = (nom) => lignes.reduce((acc, l, i) => (l.includes('filters/' + nom) ? acc.concat(i) : acc), []);
+  const grille = rang('szh-grille.lua');
+  const figure = rang('szh-figure.lua');
+  assert.strictEqual(grille.length, 2, 'szh-grille n’est pas branché dans les deux chaînes');
+  assert.strictEqual(figure.length, 2);
+  for (let i = 0; i < 2; i++) {
+    assert.ok(grille[i] < figure[i],
+      'szh-grille doit précéder szh-figure : une grille tombée à une image se dissout en paragraphe');
+  }
+});
+
+test('grille : print.css met en page les rangées que le filtre écrit', () => {
+  const css = lire('pipeline', 'styles', 'print.css');
+  for (const regle of ['.szh-grille-rangee', '.szh-grille-case']) {
+    assert.ok(css.includes(regle), 'règle absente de print.css : ' + regle);
+  }
+  // La base nulle est ce qui fait la mise en page justifiée : sans elle, le flex-grow
+  // écrit par le filtre ne donne plus des hauteurs égales, mais des largeurs au hasard.
+  assert.match(css, /\.szh-grille-case\s*\{[^}]*flex-basis:\s*0/,
+    'la case de grille n’a plus sa base nulle : la mise en page justifiée tombe');
+  // Écran étroit : la rangée se défait. La requête est imbriquée dans un « @media screen »
+  // nu — WeasyPrint 69 ne connaît pas les caractéristiques de média et hurlerait à chaque
+  // article si elle était écrite à plat. Le contrôle porte sur cette forme-là, la remettre
+  // à plat étant la correction « évidente » que quelqu'un fera un jour.
+  assert.match(css, /@media screen\s*\{\s*\n\s*@media \(max-width: [^)]+\)\s*\{\s*\n\s*\.szh-grille-rangee\s*\{\s*display:\s*block/,
+    'la grille ne se replie pas sur écran étroit, ou sa requête n’est plus imbriquée');
+});
+
 // ---- Qualité des images ----
 
 test('qualité : les seuils rangent une image dans le bon degré', () => {

@@ -54,14 +54,6 @@ function tailleDossier(chemin) {
   return total;
 }
 
-function supprimerDossier(chemin) {
-  try {
-    if (!fs.existsSync(chemin)) { return null; }
-    fs.rmSync(chemin, { recursive: true, force: true });
-    return null;
-  } catch (e) { return String((e && e.message) || e); }
-}
-
 // Lance un script PowerShell du toolkit de façon qu'il survive à cette fenêtre :
 // l'archivage ferme VSCodium, condition pour déplacer un dossier ouvert.
 //
@@ -250,6 +242,6 @@ module.exports = {
   EMPLACEMENT_TEST, EMPLACEMENT_PRODUCTION, normaliserBooleenConfig,
   resoudreEmplacementRevues, lireEmplacementRevues, configAvecEmplacement,
   ecrireEmplacementRevues, lireModeDeveloppeur, ecrireModeDeveloppeur,
-  versionInstallee, versionsDivergent, tailleDossier, supprimerDossier,
+  versionInstallee, versionsDivergent, tailleDossier,
   lancerArchivage, lancerChoixVersion
 };

@@ -177,6 +177,88 @@ c'est la généralisation exacte de la règle actée, « fusion X colonnes = hea
 X colonnes à partir d'ici ». Le reste de la rangée-titre reste des données. Poignée de
 rangée = plage pleine largeur : le geste d'avant est inchangé.
 
+### Plusieurs images côte à côte : les grilles (v2026.08.58, cockpit 0.26.7)
+
+Demande de Robin : pouvoir mettre plusieurs images côte à côte, en grille, avec un menu
+de disposition et un mode automatique qui décide d'après le format des fichiers.
+
+Une grille est **une figure** : un numéro, une légende, un bloc qui ne se coupe pas. Le
+contrat écrit dans le `.md` est un bloc pandoc, relu par les deux bouts de la chaîne :
+
+```
+::: {.szh-grille disposition="2-2"}
+  ![Légende de la figure](media/a.png){alt="…" copyright="© A"}
+  ![](media/b.png){alt="…"}
+:::
+```
+
+Une image par ligne, sans ligne vide : aucun lecteur n'en fait alors de figures
+individuelles. La légende n'appartient qu'à la **première** image — `offsetsSuiveuses`
+(lib/references.js) force les crochets des suivantes à rester vides quoi que la carte
+affiche. Le texte alternatif et les crédits, eux, restent propres à chaque image : deux
+photos d'une même planche n'ont ni le même photographe ni le même sujet, et
+`szh-numerotation.lua` rassemble désormais les crédits de **toutes** les images d'une
+figure dans sa `<figcaption>`, dédoublonnés. Sur une figure à une image, le résultat est
+octet pour octet l'ancien.
+
+Dispositions offertes, de deux à six images ; au-delà, le cockpit refuse et renvoie à deux
+figures. `2` · `1-1` — `3` · `2-1` · `1-2` · `1-1-1` — `2-2` · `4` · `3-1` · `1-3` —
+`3-2` · `2-3` · `5` — `3-3` · `2-2-2` · `6`. La table vit à deux endroits (JS et Lua, qui
+ne partagent rien) et `contrats.test.js` refuse qu'elles divergent.
+
+**Mode automatique**, le défaut : une rangée justifiée a pour hauteur `1 / Σ(ratios)`, on
+mesure chaque disposition possible et on garde celle qui approche le plus 0,62 fois la
+largeur de colonne. Deux panoramas partent donc l'un sur l'autre, deux portraits côte à
+côte. Le menu **nomme ce qu'il choisirait** — un mode dont on ne voit pas le résultat ne
+se choisit pas de confiance.
+
+Mise en page : chaque case porte un `flex-grow` égal au rapport largeur/hauteur de son
+image, donc **même hauteur** pour toutes les images d'une rangée et rangée pleine largeur,
+sans recadrage. Quand les images partagent un format — le cas d'une série — cela revient à
+des colonnes égales ; quand les formats divergent franchement, les gouttières de deux
+rangées ne s'alignent plus, et c'est le prix assumé du justifié (noté dans `TODORMO.md`,
+à juger sur une vraie série).
+
+Deux pièges trouvés en route, tous deux muets. Sous le lecteur `markdown`,
+`implicit_figures` a déjà déplacé le `alt=` dans la description et posé la légende sur la
+`Figure` : prendre la description dans les deux cas donnait la légende de l'une et le
+texte alternatif de l'autre — les deux lecteurs rendent maintenant un HTML **identique au
+octet**. Et normaliser l'`alt` dans `szh-grille.lua` rendait aveugle l'encadré « ce qu'un
+lecteur d'écran reçoit » de l'aperçu, qui lit cet attribut-là pour distinguer un `alt=`
+saisi, un `alt=""` voulu et un oubli : l'attribut est laissé en place, la normalisation
+revient à `szh-numerotation.lua`, après lecture.
+
+Détail de maquette qui n'en est pas un : `@media screen and (max-width: …)` arrachait deux
+avertissements WeasyPrint **à chaque article compilé** — il ne connaît que les types de
+média. La requête est imbriquée dans un `@media screen` nu, sautée en silence par lui et
+lue normalement par les navigateurs. Mesuré, et gardé par un test.
+
+Le banc porte deux grilles de plus (`test/articles/figures/`), les quatre PDF restent
+**conformes PDF/UA-1** sous veraPDF, et la suite compte 12 contrôles de plus.
+
+### Supprimer un article : OneDrive tenait encore le dossier (v2026.08.58, cockpit 0.26.7)
+
+Constat de Robin sur un numéro d'essai : « 10-actualite-et-ressources n'a pas pu être
+entièrement supprimé (EPERM) ». Le cockpit avait bien fermé l'aperçu, les formulaires et
+les onglets : c'est OneDrive qui tenait encore les portraits, restés en fichiers à la
+demande (attribut ReparsePoint). Ce verrou tombe seul — quelques minutes plus tard, le
+même effacement passait sans que rien n'ait changé.
+
+Deux dégâts, tous deux muets. La première tentative était la seule ; et l'exception
+sautait l'effacement de `out/<slug>`, soit 42 Mo de PDF et de HTML restés là pour dix
+articles. Un article à moitié effacé n'ayant plus de `.md`, il n'a plus de ligne dans
+l'arbre : aucun geste ne permettait d'y revenir.
+
+`supprimerAvecReprises` (extension.js) retente sur EPERM/EACCES/EBUSY/ENOTEMPTY — 200 ms,
+500, 1 s, puis 2 s, une dizaine de secondes en tout, la barre d'état le disant — et rend
+le message du dernier échec au lieu de lever. Les deux dossiers de l'article sont
+désormais effacés indépendamment, et ce qui a résisté est repris une dernière fois, sans
+un mot, une minute plus tard. Un autre code d'erreur (chemin introuvable, disque plein)
+ressort tout de suite : il ne s'arrangera pas avec le temps. L'archivage (`out/` du
+numéro) et la suppression d'une image ou d'un tableau passent par la même fonction ;
+`supprimerDossier` (lib/archivage.js) disparaît. Suite **464 tests, 464 verts**, dont les
+trois de `test/js/suppression.test.js`, qui simulent le verrou en détournant `fs.rmSync`.
+
 ### Installation d'un poste : une source winget cassée n'arrête plus rien (v2026.08.51)
 
 Constat de Robin sur un poste neuf : `winget install` échouait (index de source jamais

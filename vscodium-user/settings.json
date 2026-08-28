@@ -70,6 +70,9 @@
     // « Contrôles de la compilation », pas dans un fichier de log.
     "**/.szh-journal.log": true,
     "**/.import.log": true,
+    // Les baux de co-édition posés par le cockpit pendant qu'un formulaire modifie un
+    // fichier (lib/coedition.js) : ils s'effacent seuls, personne n'a à les voir.
+    "**/.szh-edition": true,
     "**/Thumbs.db": true,
     "**/~$*": true,
     "**/*.lnk": true,

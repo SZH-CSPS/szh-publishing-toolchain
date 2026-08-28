@@ -51,6 +51,7 @@
   "config.convertirCmyk": "JPEG-Bilder in CMYK (Druckfarben, die Browser und PDF nicht korrekt anzeigen) automatisch nach RGB konvertieren.",
   "config.replierAssetsAutres": "Tabellen der nicht ausgewählten Artikel automatisch ausblenden.",
   "config.reduireWarningsImpression": "Nur bei wirklich zu kleinen Bildern warnen: der Hinweis « empfohlene Auflösung » erscheint nicht mehr, das Minimum wird weiterhin geprüft.",
+  "config.nomUtilisateur": "Name, der anderen Computern angezeigt wird, wenn Sie eine Datei der Ausgabe bearbeiten. Leer = der Windows-Anmeldename.",
   "cmd.lierReference": "Verweis mit einer Referenz verknüpfen",
   "cmd.tutoriel": "Einstieg (Tutorial)",
   "tuto.titre": "Die SZH-Publikationskette kennenlernen",
@@ -72,5 +73,9 @@
   "tuto.relire.titre": "Das PDF gegenlesen",
   "tuto.relire.texte": "Jedes Speichern kompiliert den Artikel neu. Die Vorschau wechselt zwischen der schnellen **HTML**-Ansicht und dem endgültigen **PDF** — jenem, das in den Druck geht, getaggt für Screenreader.\n\nEin Klick auf ein Wort in der HTML-Vorschau springt an die entsprechende Stelle im Text.\n\n[Vorschau HTML ⇄ PDF umschalten](command:szh.basculerApercu)",
   "tuto.archiver.titre": "Exportieren, dann archivieren",
-  "tuto.archiver.texte": "Der Export erzeugt das Import-XML für OJS, mit den PDF-Fahnen jedes Artikels.\n\nIst die Ausgabe erschienen, **archivieren** Sie sie: sie wird schreibgeschützt, ihr Ordner `out/` wird freigegeben, und die Version des Werkzeugs, das sie erzeugt hat, wird darin festgehalten.\n\n[Zeitschrift als XML exportieren (OJS)](command:szh.exporterXml) · [Archivieren und sperren](command:szh.archiverVerrouiller)"
+  "tuto.archiver.texte": "Der Export erzeugt das Import-XML für OJS, mit den PDF-Fahnen jedes Artikels.\n\nIst die Ausgabe erschienen, **archivieren** Sie sie: sie wird schreibgeschützt, ihr Ordner `out/` wird freigegeben, und die Version des Werkzeugs, das sie erzeugt hat, wird darin festgehalten.\n\n[Zeitschrift als XML exportieren (OJS)](command:szh.exporterXml) · [Archivieren und sperren](command:szh.archiverVerrouiller)",
+  "cmd.conflit.comparer": "Mit der Konfliktkopie vergleichen",
+  "cmd.conflit.prendre": "Diese Fassung übernehmen",
+  "cmd.conflit.garder": "Meine behalten",
+  "cmd.conflit.supprimerCopie": "Konfliktkopie löschen"
 }

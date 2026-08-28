@@ -405,7 +405,11 @@ function Pandoc(doc)
       local prefixe = mot_figure .. ' ' .. n_figure .. ' ' .. CADRATIN
       fig.caption.long = prefixer(fig.caption.long, prefixe)
 
-      local credit = nil
+      -- Une figure peut porter plusieurs images : c'est ce qu'est une grille
+      -- (szh-grille.lua). Chacune a ses droits, et une mention de droits ne se perd pas.
+      -- Les crédits identiques — le cas courant d'une série d'un même photographe — ne se
+      -- répètent pas. Sur une figure à une image, le résultat est exactement l'ancien.
+      local credits, vus = {}, {}
       fig.content = fig.content:walk({
         Image = function(img)
           -- L'alt se lit à deux endroits selon le lecteur (voir l'en-tête) : attribut
@@ -430,12 +434,18 @@ function Pandoc(doc)
           -- déjà mis le bon texte dans la description ; le réécrire en pandoc.Str
           -- aplatirait la mise en forme de la légende. Le numéro n'est jamais ajouté à
           -- l'alt, la légende n'étant pas masquée.
-          credit = credit or texte_credit(img.attributes['copyright'],
-                                          img.attributes['source'], lang)
+          local c = texte_credit(img.attributes['copyright'],
+                                 img.attributes['source'], lang)
+          if c and not vus[c] then
+            vus[c] = true
+            credits[#credits + 1] = c
+          end
           return img
         end,
       })
-      if credit then fig.caption.long = crediter(fig.caption.long, credit) end
+      if #credits > 0 then
+        fig.caption.long = crediter(fig.caption.long, table.concat(credits, SEP_CREDIT))
+      end
       return fig
     end,
 

@@ -28,6 +28,12 @@ lib/
                         ojs.szh.ch et cachée dans auteurs.json (autocomplétion de la modale)
   citations.js          liste de références d'un article et liage manuel d'un appel
   cmyk.js               detection des JPEG CMJN et appel du convertisseur, dans WSL
+  coedition.js          bail de deux minutes posé sur un fichier pendant qu'un formulaire le
+                        modifie : deux postes sur le même numéro n'écrivent pas ensemble
+                        (à ne pas confondre avec verrou.js, qui gèle le numéro entier)
+  copies-conflit.js     détection des copies en conflit déposées par OneDrive/SharePoint, et
+                        application bloc par bloc des divergences que l'éditeur calcule
+                        (« Prendre cette version » / « Garder la mienne »)
   export-ojs.js         génération du XML natif OJS
   formatting.js         mise en forme markdown et commandes szh.fmt.*
   i18n.js               textes fr/de et T(clé[, args])
@@ -38,7 +44,8 @@ lib/
   panneaux.js           les trois panneaux QuickPick
   portraits.js          appel du script de détourage des photos, dans WSL
   qualite-image.js      seuils de résolution des images et verdict de qualité
-  references.js         insertions d'images et de tableaux dans le markdown
+  references.js         insertions d'images et de tableaux dans le markdown, et les
+                        grilles d'images (plusieurs images pour une seule figure)
   slug.js               slug d'article, miroir de celui du Makefile
   table-model.js        analyse, sérialisation et opérations du modèle de tableau
   traduction.js         sidecar <slug>.traduction.yaml et suivi des traductions

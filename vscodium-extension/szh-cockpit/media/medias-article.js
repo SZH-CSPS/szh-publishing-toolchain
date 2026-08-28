@@ -20,14 +20,22 @@
 // le choix de version n'existent qu'une fois. Cette vue n'apporte que l'écriture, immédiate
 // ici puisqu'il n'y a pas de carte d'article à enregistrer.
 //
+// Une grille est une figure faite de plusieurs images : un numéro, une légende, un bloc.
+// Le formulaire la montre sur toutes les cartes qui la composent — le menu de disposition,
+// la liste des voisines, la sortie — pour qu'on agisse d'où l'on est. La légende, elle,
+// n'appartient qu'à la première : sur les suivantes le champ se verrouille et le dit.
+//
 // Protocole. Vers l'hôte :
 //   pret ; modifie { modifie } ; enregistrer { auto, medias } ;
 //   retourArticle { modifie, medias } ; retirer { relatif } ;
 //   remplacer { relatif, nomFichier, donneesBase64 } ; inserer { relatif, medias } ;
+//   grille-ajouter { relatif, ajout, medias } ; grille-retirer { relatif, medias } ;
+//   grille-disposition { relatif, disposition, medias } ;
 //   auteur-enregistrer { slug, index, auteur, photoAttendue }
 //   plus les messages photo-* de _auteurs.js
 // Depuis l'hôte :
-//   charger { slug, medias, portraits, focus, accent, i18n } ; enregistre { auto } ;
+//   charger { slug, medias, grilles, grilleMax, grilleAuto, dispositions, portraits,
+//             focus, accent, i18n } ; enregistre { auto } ;
 //   erreur { message } ; focaliser { relatif } ;
 //   media-remplace { relatif, description, apercu, qualite } ;
 //   media-erreur { relatif, message } ; media-annulee { relatif } ;
@@ -35,9 +43,10 @@
 //   auteur-enregistre { slug, index, auteur, portrait } ;
 //   auteur-erreur { slug, index, message }
 // où un média vaut { relatif, description, apercu, occurrences, qualite, doublons,
-// sansAlternative, valeurs } et valeurs = { legende, alt, altDefini, copyright, source,
-// horsFigure }, et un portrait { base, index, nom, auteur, auteurFiche, version,
-// description, apercu, qualite, rattache }.
+// sansAlternative, largeur, hauteur, grille, rangGrille, valeurs } et valeurs =
+// { legende, alt, altDefini, copyright, source, horsFigure } ; une grille
+// { disposition, auto, membres } ; et un portrait { base, index, nom, auteur, auteurFiche,
+// version, description, apercu, qualite, rattache }.
 var api = acquireVsCodeApi();
 // Mêmes plafonds et mêmes formats que l'hôte, qui recontrôle tout : ici, c'est pour
 // répondre tout de suite plutôt que d'envoyer 50 Mo pour rien.
@@ -46,6 +55,11 @@ var IMAGE = {
   format: 'errFormat', poids: 'errTropVolumineuse'
 };
 var TXT = {}, ctl = {}, cartes = [], portraits = [], dernierModifie = false;
+// Les grilles de l'article, telles que l'hôte les a lues dans le .md, et ce qu'il permet
+// d'en faire. Rien n'est recalculé ici : les cartes portent l'indice de leur grille, la
+// disposition automatique est celle que le rendu choisira, et le formulaire ne fait que
+// les montrer.
+var grilles = [], DISPOSITIONS = {}, GRILLE_MAX = 6, AUTO = 'auto';
 var barre = document.getElementById('barre');
 var corps = document.getElementById('corps');
 var modale = null;
@@ -133,13 +147,18 @@ function poserValeurs(c, v) {
   c.ctl.alt.value = deco ? '' : String(v.alt || '');
   c.ctl.copyright.value = String(v.copyright || '');
   c.ctl.source.value = String(v.source || '');
-  c.ctl.horsFigure.checked = !!v.horsFigure;
+  // « Sans légende ni numéro » n'a pas de sens dans une grille : c'est la figure entière
+  // qui porte le numéro, et l'image n'a pas de légende propre à supprimer. La case est
+  // décochée d'office, et le prochain enregistrement ôtera la classe du .md.
+  c.ctl.horsFigure.checked = !!v.horsFigure && c.grille === null;
 }
 function majRole(c) {
   if (!c.ctl.alt) { return; }
   var verrou = c.occurrences === 0;
   c.ctl.alt.disabled = verrou || decorative(c);
-  c.ctl.legende.disabled = verrou || horsFigure(c);
+  // Dans une grille, la légende est celle de la première image : sur les suivantes, il n'y
+  // a rien à écrire, et l'enregistrement l'écrirait vide de toute façon.
+  c.ctl.legende.disabled = verrou || horsFigure(c) || c.rangGrille > 0;
   majAlerteAlt(c);
   majPastilles(c);
 }
@@ -180,6 +199,7 @@ function majPastilles(c) {
     texte(zone, 'span', 'szh-pastille szh-pastille--accent', remplir('etatInsertions', [c.occurrences]));
   }
   if (horsFigure(c)) { texte(zone, 'span', 'szh-pastille', TXT.etatHorsFigure || ''); }
+  if (c.grille !== null) { texte(zone, 'span', 'szh-pastille', TXT.grillePastille || ''); }
   if (c.doublons.length > 0) {
     texte(zone, 'span', 'szh-pastille szh-pastille--attention', TXT.etatDoublon || '');
   }
@@ -229,10 +249,12 @@ function medias() {
 }
 
 // ---- Briques d'une carte ----
-function champ(parent, c, cle) {
+// `libelle` remplace l'intitulé par défaut : la légende d'une grille est celle de la
+// figure entière, et l'intitulé doit le dire là où le champ ne le dirait pas.
+function champ(parent, c, cle, libelle) {
   var d = texte(parent, 'div', 'szh-champ');
   var id = 'ch-' + cle + '-' + c.index;
-  var l = texte(d, 'label', null, TXT[cle] || '');
+  var l = texte(d, 'label', null, libelle || TXT[cle] || '');
   l.setAttribute('for', id);
   var i = document.createElement('input');
   i.type = 'text'; i.id = id; i.maxLength = 500;
@@ -415,13 +437,157 @@ function construireModale() {
   modale = { element: d, img: img, nom: nom, fermer: fermer, retour: null };
 }
 
+// ---- Grilles ----
+// Une disposition est une suite de rangées : « 2-2 » = deux rangées de deux. Le libellé se
+// déduit de la forme plutôt que d'une clé par cas — seize dispositions feraient seize
+// libellés à traduire, et le jour où la table en gagne une, sa ligne manquerait.
+function libelleDisposition(code) {
+  var r = String(code).split('-').map(Number);
+  if (r.length === 1) { return remplir('dispositionLigne', [r[0]]); }
+  var premier = r[0];
+  var tousUn = true, tousEgaux = true;
+  for (var i = 0; i < r.length; i++) {
+    if (r[i] !== 1) { tousUn = false; }
+    if (r[i] !== premier) { tousEgaux = false; }
+  }
+  if (tousUn) { return remplir('dispositionPile', [r.length]); }
+  if (tousEgaux) { return remplir('dispositionTableau', [r.length, premier]); }
+  return remplir('dispositionRangees', [r.join(' + ')]);
+}
+function option(sel, valeur, libelle) {
+  var o = document.createElement('option');
+  o.value = valeur;
+  o.textContent = libelle;
+  sel.appendChild(o);
+  return o;
+}
+function grilleDe(c) {
+  return (c.grille === null || c.grille === undefined) ? null : (grilles[c.grille] || null);
+}
+
+// Les images qu'on peut mettre à côté de celle-ci : celles qui ne sont pas déjà dans une
+// grille et qui ne sont pas insérées plusieurs fois. Une image insérée deux fois n'est pas
+// candidate parce que rien ne dirait laquelle de ses insertions doit être déplacée.
+function candidates(c) {
+  var res = [];
+  for (var i = 0; i < cartes.length; i++) {
+    var a = cartes[i];
+    if (a === c || grilleDe(a) || a.occurrences > 1) { continue; }
+    res.push(a);
+  }
+  return res;
+}
+
+// Le bouton « ajouter une image à côté », contre l'aperçu : c'est là qu'on regarde
+// l'image, et c'est là qu'on décide qu'une autre doit l'accompagner. Le choix se déplie
+// sous le bouton — une modale de plus, pour choisir dans une liste de cinq noms, coûterait
+// plus qu'elle ne rapporte.
+function blocAjoutGrille(parent, c) {
+  var z = texte(parent, 'div', 'grille-ajout');
+  var b = bouton(TXT.grilleAjouter || '', function () { ouvrirChoixGrille(c); },
+    'grille-plus', TXT.grilleAjouterTip);
+  b.insertBefore(SZH.icone('plus'), b.firstChild);
+  z.appendChild(b);
+  var choix = texte(z, 'div', 'grille-choix');
+  choix.hidden = true;
+  var id = 'grille-ajout-' + c.index;
+  var l = texte(choix, 'label', null, TXT.grilleChoisir || '');
+  l.setAttribute('for', id);
+  var sel = document.createElement('select');
+  sel.id = id;
+  choix.appendChild(sel);
+  var actions = texte(choix, 'div', 'grille-choix-actions');
+  actions.appendChild(bouton(TXT.grilleValider || '', function () {
+    if (sel.value === '') { return; }
+    api.postMessage({ type: 'grille-ajouter', relatif: c.relatif, ajout: sel.value,
+                      medias: medias() });
+  }, 'szh-bouton--principal'));
+  actions.appendChild(bouton(TXT.grilleAnnuler || '', function () {
+    choix.hidden = true;
+    try { b.focus(); } catch (e) { /* pas focalisable */ }
+  }));
+  c.ctl.grillePlus = b;
+  c.ctl.grilleChoix = choix;
+  c.ctl.grilleSelect = sel;
+}
+function ouvrirChoixGrille(c) {
+  var sel = c.ctl.grilleSelect;
+  sel.textContent = '';
+  var liste = candidates(c);
+  for (var i = 0; i < liste.length; i++) {
+    option(sel, liste[i].relatif, remplir(
+      liste[i].occurrences === 0 ? 'grilleCandidateJamais' : 'grilleCandidateDeplacee',
+      [liste[i].relatif]));
+  }
+  c.ctl.grilleChoix.hidden = false;
+  try { sel.focus(); } catch (e) { /* pas focalisable */ }
+}
+
+// Ce qui empêche d'ajouter une voisine se dit sur le bouton lui-même : sans cela il ne
+// ferait rien, et rien n'expliquerait pourquoi.
+function majAjoutGrille(c) {
+  var b = c.ctl.grillePlus;
+  if (!b) { return; }
+  var g = grilleDe(c);
+  var empeche = '';
+  if (c.occurrences === 0) { empeche = TXT.grilleHorsTexte || ''; }
+  else if (g && g.membres.length >= GRILLE_MAX) { empeche = TXT.grillePleine || ''; }
+  else if (candidates(c).length === 0) { empeche = TXT.grilleAucune || ''; }
+  b.disabled = empeche !== '';
+  b.title = empeche || (TXT.grilleAjouterTip || '');
+}
+
+// La grille dont cette image fait partie. Le même bloc sur toutes ses cartes : la
+// disposition vaut pour la figure entière, et la changer d'ici ou de là revient au même.
+function blocGrille(parent, c) {
+  var g = grilleDe(c);
+  if (!g) { return; }
+  var z = texte(parent, 'fieldset', 'szh-groupe grille');
+  texte(z, 'legend', null, TXT.grilleSection || '');
+  texte(z, 'p', 'grille-membres',
+    remplir('grilleMembres', [g.membres.length, g.membres.join(' · ')]));
+
+  var d = texte(z, 'div', 'szh-champ');
+  var id = 'grille-disp-' + c.index;
+  var l = texte(d, 'label', null, TXT.grilleDisposition || '');
+  l.setAttribute('for', id);
+  var sel = document.createElement('select');
+  sel.id = id;
+  sel.title = TXT.grilleDispositionTip || '';
+  // « Automatique » nomme ce qu'il choisirait : un mode dont on ne voit pas le résultat
+  // ne se choisit pas de confiance. La valeur vient de l'hôte, qui a mesuré les fichiers.
+  option(sel, AUTO, g.auto ? remplir('dispositionAuto', [libelleDisposition(g.auto)])
+                           : (TXT.dispositionAutoSimple || ''));
+  var codes = DISPOSITIONS[g.membres.length] || [];
+  for (var i = 0; i < codes.length; i++) { option(sel, codes[i], libelleDisposition(codes[i])); }
+  sel.value = String(g.disposition);
+  if (sel.value !== String(g.disposition)) { sel.value = AUTO; }   // valeur inconnue
+  sel.addEventListener('change', function () {
+    api.postMessage({ type: 'grille-disposition', relatif: c.relatif,
+                      disposition: sel.value, medias: medias() });
+  });
+  d.appendChild(sel);
+
+  z.appendChild(bouton(TXT.grilleRetirer || '', function () {
+    api.postMessage({ type: 'grille-retirer', relatif: c.relatif, medias: medias() });
+  }, '', TXT.grilleRetirerTip));
+
+  // Image suivante d'une grille : sa légende est celle de la figure, portée par la
+  // première. Le champ est verrouillé plus bas ; ici on dit pourquoi, et par qui.
+  if (c.rangGrille > 0) {
+    z.appendChild(SZH.notif('info', remplir('grilleSuiveuse', [g.membres[0]])));
+  }
+}
+
 // ---- Cartes ----
 function carteMedia(media, index) {
   var c = {
     relatif: String(media.relatif || ''), index: index, ctl: {},
     occurrences: Number(media.occurrences) || 0,
     doublons: Array.isArray(media.doublons) ? media.doublons : [],
-    sansAlternative: !!media.sansAlternative
+    sansAlternative: !!media.sansAlternative,
+    grille: (media.grille === null || media.grille === undefined) ? null : Number(media.grille),
+    rangGrille: Number(media.rangGrille) >= 0 ? Number(media.rangGrille) : -1
   };
   var s = texte(corps, 'section', 'szh-carte carte-media');
   s.dataset.relatif = c.relatif;
@@ -440,8 +606,10 @@ function carteMedia(media, index) {
   var corpsCarte = texte(s, 'div', 'szh-corps carte-corps');
   // Colonne de gauche : le fichier, son verdict, son remplacement.
   var gauche = texte(corpsCarte, 'div', 'col-visuel');
-  c.ctl.visuel = texte(gauche, 'div', 'visuel');
+  var rangeeVisuel = texte(gauche, 'div', 'visuel-rangee');
+  c.ctl.visuel = texte(rangeeVisuel, 'div', 'visuel');
   poserVisuel(c.ctl.visuel, c.relatif, media.apercu);
+  blocAjoutGrille(rangeeVisuel, c);
   c.ctl.qualite = texte(gauche, 'p', 'szh-notif');
   poserQualite(c.ctl.qualite, media.qualite);
   zoneDepot(gauche, c, 'remplacer', 'relatif', IMAGE);
@@ -455,7 +623,11 @@ function carteMedia(media, index) {
   c.ctl.doublon = texte(fiche, 'p', 'szh-notif');
   c.ctl.doublon.hidden = true;
 
-  champ(fiche, c, 'legende');
+  // La grille avant la légende : elle décide de ce que la légende désigne — cette image
+  // seule, ou la figure entière.
+  blocGrille(fiche, c);
+
+  champ(fiche, c, 'legende', c.rangGrille === 0 ? TXT.grilleLegende : null);
   var credits = texte(fiche, 'div', 'szh-grille-2');
   champ(credits, c, 'copyright');
   champ(credits, c, 'source');
@@ -495,7 +667,8 @@ function poserOcc(c) {
   }
   var verrou = c.occurrences === 0;
   ['legende', 'alt', 'copyright', 'source'].forEach(function (k) { if (c.ctl[k]) { c.ctl[k].disabled = verrou; } });
-  [c.ctl.roleDecrit, c.ctl.roleDeco, c.ctl.horsFigure].forEach(function (e) { if (e) { e.disabled = verrou; } });
+  [c.ctl.roleDecrit, c.ctl.roleDeco].forEach(function (e) { if (e) { e.disabled = verrou; } });
+  if (c.ctl.horsFigure) { c.ctl.horsFigure.disabled = verrou || c.grille !== null; }
   if (verrou) { majAlerteAlt(c); majPastilles(c); } else { majRole(c); }
 }
 
@@ -569,6 +742,10 @@ function rendre(msg) {
   fermerModale();                                  // un rechargement reconstruit la liste
   var listeMedias = Array.isArray(msg.medias) ? msg.medias : [];
   var listePortraits = Array.isArray(msg.portraits) ? msg.portraits : [];
+  grilles = Array.isArray(msg.grilles) ? msg.grilles : [];
+  DISPOSITIONS = msg.dispositions || {};
+  if (Number(msg.grilleMax) > 0) { GRILLE_MAX = Number(msg.grilleMax); }
+  if (msg.grilleAuto) { AUTO = String(msg.grilleAuto); }
 
   texte(corps, 'h2', 'titre-section', TXT.sectionImages || '');
   // Toujours construit, montré quand la liste est vide : une image retirée est la seule
@@ -585,6 +762,9 @@ function rendre(msg) {
       portraits.push(cartePortrait(listePortraits[j], j));
     }
   }
+  // Après coup seulement : ce qu'un bouton « à côté » peut offrir se lit dans les AUTRES
+  // cartes, qui n'existaient pas encore quand la sienne s'est construite.
+  for (var k = 0; k < cartes.length; k++) { majAjoutGrille(cartes[k]); }
   dernierModifie = false;
   etat('');
   majResume();
@@ -705,6 +885,9 @@ window.addEventListener('message', function (ev) {
         majPastilles(cartes[k]);
       }
     }
+    // Une carte de moins, c'est une voisine possible de moins : les boutons « à côté » des
+    // autres cartes ne proposent plus la même chose.
+    for (var m = 0; m < cartes.length; m++) { majAjoutGrille(cartes[m]); }
     majResume();
     majModifie();
     return;

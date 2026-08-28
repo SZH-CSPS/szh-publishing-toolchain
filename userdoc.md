@@ -117,6 +117,37 @@ Elle a **trois sections** :
   - **Ouvrir** (l'image dans la visionneuse, à côté du formulaire) et **Retirer** (le
     fichier **et** ses insertions dans le texte, après confirmation).
 
+  #### Plusieurs images côte à côte
+
+  Un bouton **« + Ajouter une image à côté »** se tient contre l'aperçu. Il place une
+  autre image du dossier à côté de celle-ci : les deux ne font plus qu'**une seule
+  figure**, avec **un numéro et une légende** pour l'ensemble. On peut en mettre
+  **jusqu'à six** ; au-delà, il faut scinder en deux figures — six vignettes dans la
+  largeur d'une colonne, c'est déjà six petites images.
+
+  L'image qu'on ajoute peut être une image jamais insérée, ou une image déjà dans le
+  texte : elle est alors **déplacée** ici, avec son texte alternatif et ses crédits.
+  Seule sa légende propre disparaît — la figure n'en porte qu'une.
+
+  Dès qu'il y a deux images, un menu **« Disposition »** apparaît sur chacune des cartes
+  de la grille :
+
+  - **Automatique** (le réglage par défaut) mesure les fichiers et choisit. Deux
+    panoramas se placent l'un sur l'autre, deux portraits côte à côte : c'est ce que
+    ferait un maquettiste. Le menu **nomme ce qu'il choisirait**, pour qu'on n'ait pas à
+    compiler pour le savoir ;
+  - ou un rangement au choix : *2 côte à côte*, *l'une sous l'autre*, *2 × 2*, *lignes de
+    3 + 2*… la liste dépend du nombre d'images.
+
+  Dans tous les cas, les images d'une même ligne sortent **à la même hauteur** et la
+  ligne remplit la colonne : aucune n'est recadrée ni déformée. **Sur écran étroit** —
+  la version HTML lue sur un téléphone — les lignes se défont et les images s'empilent.
+
+  Sur les images **suivantes** de la grille, le champ Légende est verrouillé et dit à
+  quelle figure il appartient : le texte alternatif et les crédits, eux, restent propres
+  à chacune. **Sortir de la grille** rend à une image sa place de figure indépendante,
+  juste après le bloc ; quand il n'en reste qu'une, la grille se défait toute seule.
+
   **Ctrl + S** enregistre toutes les cartes d'un coup et relance la compilation.
   Une image qui n'est **insérée nulle part** dans le texte le dit et se verrouille : il
   n'y a aucun endroit où écrire sa légende. Insère-la d'abord (`Ctrl+Alt+F`).
@@ -725,6 +756,73 @@ Le sélecteur de date du formulaire écrit la date complète. Elle doit être **
 (année, mois, jour) : une année seule est refusée exactement comme un champ vide — un champ
 qui paraît rempli sans l'être est le pire des trois états. Et une fois saisie, c'est **elle**
 qui fait foi partout, y compris pour l'année de la couverture.
+
+## Travailler à plusieurs sur le même numéro
+
+Le dossier d'un numéro est synchronisé par OneDrive : plusieurs personnes peuvent l'ouvrir en
+même temps, depuis des postes différents.
+
+Dès que vous modifiez quelque chose dans un formulaire du cockpit (métadonnées du numéro,
+fiches d'article, éditeur de tableau, panneau de traduction), le fichier concerné est « tenu »
+par vous pendant deux minutes. Chaque geste relance ces deux minutes.
+
+Si quelqu'un d'autre tient le fichier, vous voyez en bas du formulaire : « Ce fichier est en
+cours de modification par … ». L'enregistrement ne passe pas — mais rien n'est perdu : votre
+saisie reste à l'écran et repart toute seule dès que la main est libre.
+
+Personne n'a à rendre la main : deux minutes sans le moindre geste et le fichier est libre.
+Fermer le formulaire le libère tout de suite. Un poste éteint, un éditeur fermé brutalement ne
+bloquent donc jamais l'équipe.
+
+Un cas particulier à connaître : si vous laissez un formulaire ouvert plus de cinq minutes sans
+y toucher ET que quelqu'un a modifié le fichier pendant ce temps, le formulaire se recharge sur
+les valeurs du fichier et vous demande de refaire votre modification. C'est ce qui empêche
+d'écraser sans le voir le travail de quelqu'un d'autre. Si personne n'y a touché,
+l'enregistrement passe normalement.
+
+Le nom que les autres voient est votre nom de session Windows. Pour afficher un nom lisible à
+la place, renseignez le réglage « SZH : Nom d'utilisateur » dans les paramètres de l'éditeur.
+
+Les gestes qui ne passent pas par un formulaire suivent la même règle : déplacer un article,
+cocher « pas de DOI » ne se font pas si quelqu'un modifie en ce moment le fichier du numéro, et
+« Archiver et verrouiller » attend que plus personne ne travaille dans le numéro.
+
+⚠ À ne pas confondre avec le verrou du numéro, expliqué dans la section suivante : celui-là
+gèle le numéro ENTIER, une fois pour toutes, quand le numéro est terminé. Ici il ne s'agit que
+de quelques minutes, sur un seul fichier, le temps d'une saisie.
+
+### Quand OneDrive a dédoublé un fichier
+
+La main posée sur un fichier voyage par OneDrive, ce qui prend quelques secondes. Deux
+personnes qui commencent au même instant exactement peuvent donc encore se croiser. Dans ce cas
+OneDrive ne fusionne rien : il garde une version dans le numéro et dépose l'autre à côté, sous
+un nom qui contient « copie en conflit ».
+
+Le cockpit le remarque et l'annonce : « OneDrive a dédoublé un fichier de ce numéro… ». C'est
+important, parce qu'une version du travail n'est alors PAS dans le numéro.
+
+Le bouton « Comparer les deux versions » ouvre les deux fichiers côte à côte, les différences
+surlignées.
+
+Vous n'avez rien à recopier à la main. Tant qu'une copie en conflit existe à côté d'un fichier,
+ce fichier porte un repère dans sa marge de gauche à chaque endroit où les deux versions
+divergent. Cliquez le repère : la divergence s'ouvre, et deux boutons apparaissent.
+
+- **« Prendre cette version »** : le passage de la copie remplace le vôtre.
+- **« Garder la mienne »** : c'est la copie qui reçoit votre passage.
+
+Dans les deux cas la divergence disparaît, et vous passez à la suivante. Chaque endroit se
+tranche séparément : vous pouvez reprendre un paragraphe de la copie et garder le vôtre juste
+au-dessus.
+
+Quand il ne reste plus une seule divergence, les deux fichiers disent la même chose : l'outil
+vous le signale et propose de supprimer la copie. Le conflit est alors clos, sans qu'une seule
+ligne ait disparu sans que vous l'ayez vue.
+
+Tant qu'il reste une copie en conflit dans le numéro, elle est aussi listée dans le panneau
+« Contrôle de source » de la barre latérale, sous « Copies en conflit » : c'est là qu'on les
+retrouve quand l'avertissement a été fermé d'un revers. L'avertissement, lui, ne revient pas en
+boucle : il est donné une fois par fichier et par session de travail.
 
 ## Terminer un numéro : archiver et verrouiller
 

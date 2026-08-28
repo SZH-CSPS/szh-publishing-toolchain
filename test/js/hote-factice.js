@@ -131,7 +131,17 @@ function activerHote(revue) {
   const stub = {
     EventEmitter: class { constructor() { this.event = () => ({ dispose() {} }); } fire() {} },
     Uri: {
-      file: (p) => ({ fsPath: p, scheme: 'file', path: p, toString: () => 'file://' + p }),
+      // `with` comme dans l'API : le cockpit s'en sert pour rhabiller le chemin d'une copie
+      // en conflit sous son propre schéma (szh-conflit), ce qui en fait l'« original » du
+      // fichier du numéro aux yeux du diff rapide.
+      file: (p) => {
+        const faire = (schema) => ({
+          fsPath: p, scheme: schema, path: p,
+          with: (parties) => faire((parties && parties.scheme) || schema),
+          toString: () => schema + '://' + p
+        });
+        return faire('file');
+      },
       parse: (s) => ({ fsPath: s, scheme: 'file' })
     },
     Position: class { constructor(l, c) { this.line = l; this.character = c; } },
@@ -208,6 +218,7 @@ function activerHote(revue) {
         onDidCreate: evenement(), onDidChange: evenement(), onDidDelete: evenement(), dispose() {}
       }),
       onDidChangeWorkspaceFolders: evenement(),
+      onDidChangeConfiguration: evenement(),
       onDidSaveTextDocument: evenement(),
       openTextDocument: (p) => {
         const chemin = typeof p === 'string' ? p : p.fsPath;
@@ -221,7 +232,34 @@ function activerHote(revue) {
         });
       },
       applyEdit: () => Promise.resolve(true),
-      fs: { stat: () => Promise.resolve({}) }
+      fs: { stat: () => Promise.resolve({}) },
+      // Le contenu servi sous un schéma à nous : celui des copies en conflit, que le
+      // fournisseur de diff rapide donne pour « original » du fichier du numéro.
+      _contenus: {},
+      registerTextDocumentContentProvider: (schema, fournisseur) => {
+        stub.workspace._contenus[schema] = fournisseur;
+        return { dispose() {} };
+      }
+    },
+    // Le contrôle de source. Le cockpit n'en crée un que s'il existe une copie en conflit, et
+    // le détruit dès qu'il n'en reste plus : un test lit donc `vivant` autant que le contenu
+    // du groupe.
+    scm: {
+      _controles: [],
+      createSourceControl(id, label, rootUri) {
+        const sc = {
+          id: id, label: label, rootUri: rootUri, count: 0,
+          quickDiffProvider: null, groupes: [], vivant: true,
+          createResourceGroup(idGroupe, libelle) {
+            const groupe = { id: idGroupe, label: libelle, resourceStates: [], dispose() {} };
+            sc.groupes.push(groupe);
+            return groupe;
+          },
+          dispose() { sc.vivant = false; }
+        };
+        stub.scm._controles.push(sc);
+        return sc;
+      }
     },
     tasks: {
       onDidStartTask: evenement(), onDidEndTaskProcess: finTache,
@@ -263,6 +301,10 @@ function activerHote(revue) {
     panneauDeType: (type) => panneaux.filter((x) => x.type === type).pop() || null,
     avertissements: avertissements,
     erreurs: erreurs,
+    // Les contrôles de source encore en vie, et le fournisseur de contenu d'un schéma :
+    // de quoi éprouver la résolution des copies en conflit.
+    sourceControls: () => stub.scm._controles.filter((c) => c.vivant),
+    fournisseurContenu: (schema) => stub.workspace._contenus[schema],
     // Les articles de la barre d'état, dans l'ordre de création : un test lit leur texte.
     barres: barres,
     barreQuiDit: (fragment) => barres.filter(

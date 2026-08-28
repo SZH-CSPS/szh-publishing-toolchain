@@ -50,5 +50,31 @@ légende et de crédits — c'est le formulaire des médias qui les tient à l'i
 
 ![Bandes horizontales de la charte, du bleu au sable](media/figures-fig-01.png){alt="Quatre bandes horizontales : bleu foncé, bleu ciel, sable, blanc cassé" copyright="© SZH" source="Banc d'essai"}
 
+## Grille de quatre images
+
+Quatre images qui ne font qu'une figure : un numéro, une légende, et un bloc qui ne se
+coupe pas. Attendu — deux `<div class="szh-grille-rangee">` de deux cases, chaque case
+portant un `flex-grow` égal au rapport largeur/hauteur de son image, si bien que les deux
+images d'une rangée sortent à la même hauteur et remplissent la colonne. Les crédits des
+quatre sont rassemblés dans la seule `<figcaption>`, sans répéter deux fois le même.
+
+::: {.szh-grille disposition="2-2"}
+  ![Quatre bandes de la charte, deux par deux](media/figures-fig-01.png){alt="Quatre bandes horizontales : bleu foncé, bleu ciel, sable, blanc cassé" copyright="© SZH"}
+  ![](media/figures-fig-02.png){alt="Trois bandes horizontales : sable, bleu foncé, blanc cassé" copyright="© SZH"}
+  ![](media/figures-fig-03.png){alt="Trois bandes horizontales : bleu ciel, blanc cassé, bleu foncé" copyright="© Banc d'essai"}
+  ![](media/figures-fig-05.png){alt="Deux bandes horizontales, bleu foncé et sable"}
+:::
+
+## Grille de deux images, disposition automatique
+
+Sans attribut `disposition`, le filtre mesure les fichiers et choisit. Les deux images
+ci-dessous sont des bandeaux très larges : côte à côte elles feraient un filet illisible,
+et le mode automatique doit donc les empiler — une rangée d'une image chacune.
+
+::: {.szh-grille}
+  ![Deux bandeaux, rangés par la mesure des fichiers](media/figures-fig-01.png){alt="Quatre bandes horizontales" copyright="© SZH"}
+  ![](media/figures-fig-05.png){alt="Deux bandes horizontales"}
+:::
+
 Texte de queue, pour que la dernière figure ne soit pas seule en fin de page et que la
 coupure se voie.

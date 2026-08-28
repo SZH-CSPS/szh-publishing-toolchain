@@ -16,3 +16,9 @@ vsix-out/
 
 # Bac à sable : corpus de mise au point, diagnostics, rendus jetables
 tmp/
+
+# Baux de co-édition posés par le cockpit pendant qu'un formulaire modifie un fichier
+# (vscodium-extension/szh-cockpit/lib/coedition.js). Ils s'effacent seuls, et les revues
+# d'essai du dépôt — test/, revue-template/ — en reçoivent dès qu'on ouvre le cockpit
+# dessus : ils n'ont rien à faire dans un commit.
+.szh-edition/

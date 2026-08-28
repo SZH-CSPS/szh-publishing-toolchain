@@ -339,6 +339,19 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
   crédits en plus petit sur la même ligne, deux suites indépendantes pour les figures et les
   tableaux, en français et en allemand, dans le PDF comme dans l'aperçu HTML, et une taille de
   crédits qui les distingue sans passer sous le seuil APCA.
+- [ ] Grilles d'images, sur une vraie série de photos. Le banc (`test/articles/figures/`) est un
+  cas extrême exprès — quatre bandeaux de rapports 3,2 / 4,0 / 2,0 / 1,6 — et il montre le prix de
+  la mise en page justifiée : les images d'une rangée sortent bien à la même hauteur, mais les
+  gouttières de deux rangées ne s'alignent pas quand les formats diffèrent à ce point. Sur une
+  série de photos de formats voisins, elles doivent tomber l'une sous l'autre. Juger là-dessus, et
+  si le résultat ne convient pas, trancher entre les deux seules options : garder le justifié
+  (jamais de trou, jamais de recadrage) ou passer à des colonnes égales pour les dispositions
+  rectangulaires (gouttières alignées, mais bas de rangée en dents de scie). C'est un choix de
+  maquette, pas un défaut.
+- [ ] Grilles d'images, coupure de page. `figure` porte déjà `break-inside: avoid`, et chaque
+  rangée aussi : une grille de six qui ne tient pas dans la fin d'une page doit passer entière à
+  la suivante, sans laisser sa légende seule en bas. À éprouver sur un article réel, une grille
+  posée juste avant un bas de page.
 - [ ] Puces ▸ dans un article dense : listes imbriquées, item d'une seule ligne, item qui passe à
   la ligne. Le triangle doit rester posé sur la ligne de base du texte. Le glyphe n'est plus celui
   d'une police de repli : il est **dessiné** dans les quatre faces Open Sans livrées (côté

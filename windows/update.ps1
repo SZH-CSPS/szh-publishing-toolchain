@@ -34,6 +34,12 @@ if ($Langue -and (-not $envLangue) -and (@('fr', 'de', 'en') -contains $Langue.T
   $script:SzhLangue = $Langue.ToLower()
 }
 
+# Cette fenêtre se présente sous sa propre identité : sans elle, la barre des tâches range
+# son bouton avec les autres consoles PowerShell du poste et en prend l'icône. Sans effet
+# quand la console est hébergée par Windows Terminal, dont la fenêtre ne nous appartient
+# pas ; l'entrée du menu Démarrer, elle, garde son icône dans tous les cas.
+[void](Set-SzhAppUserModelId (Get-SzhAppId 'maj'))
+
 try { $Host.UI.RawUI.WindowTitle = (T 'maj.fenetre') } catch { }
 
 # ---- Association « Ouvrir avec » des .md ----

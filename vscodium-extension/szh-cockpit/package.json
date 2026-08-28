@@ -2,7 +2,7 @@
   "name": "szh-cockpit",
   "displayName": "SZH — Revue (cockpit)",
   "description": "Barre latérale « Revue SZH » : articles, métadonnées du numéro, import des Word, suivi des traductions, aperçu et réglages.",
-  "version": "0.26.6",
+  "version": "0.26.7",
   "publisher": "szh-csps",
   "license": "MIT",
   "engines": { "vscode": "^1.75.0" },
@@ -111,6 +111,11 @@
           "type": "boolean",
           "default": false,
           "description": "%config.reduireWarningsImpression%"
+        },
+        "szh.nomUtilisateur": {
+          "type": "string",
+          "default": "",
+          "description": "%config.nomUtilisateur%"
         }
       }
     },
@@ -335,9 +340,25 @@
       { "command": "szh.fmt.tableau", "title": "%cmd.fmt.tableau%", "category": "Revue SZH" },
       { "command": "szh.fmt.collerTableau", "title": "%cmd.fmt.collerTableau%", "category": "Revue SZH" },
       { "command": "szh.fmt.sautPage", "title": "%cmd.fmt.sautPage%", "category": "Revue SZH" },
-      { "command": "szh.lierReference", "title": "%cmd.lierReference%", "category": "Revue SZH", "icon": "$(references)" }
+      { "command": "szh.lierReference", "title": "%cmd.lierReference%", "category": "Revue SZH", "icon": "$(references)" },
+      { "command": "szh.conflit.comparer", "title": "%cmd.conflit.comparer%", "category": "Revue SZH", "icon": "$(diff)" },
+      { "command": "szh.conflit.prendre", "title": "%cmd.conflit.prendre%", "category": "Revue SZH" },
+      { "command": "szh.conflit.garder", "title": "%cmd.conflit.garder%", "category": "Revue SZH" },
+      { "command": "szh.conflit.supprimerCopie", "title": "%cmd.conflit.supprimerCopie%", "category": "Revue SZH", "icon": "$(trash)" }
     ],
     "menus": {
+      "scm/change/title": [
+        { "command": "szh.conflit.prendre", "when": "originalResourceScheme == szh-conflit", "group": "1_modification@1" },
+        { "command": "szh.conflit.garder", "when": "originalResourceScheme == szh-conflit", "group": "1_modification@2" }
+      ],
+      "commandPalette": [
+        { "command": "szh.conflit.prendre", "when": "false" },
+        { "command": "szh.conflit.garder", "when": "false" }
+      ],
+      "scm/resourceState/context": [
+        { "command": "szh.conflit.comparer", "when": "scmProvider == szh.conflits", "group": "inline@1" },
+        { "command": "szh.conflit.supprimerCopie", "when": "scmProvider == szh.conflits", "group": "inline@2" }
+      ],
       "editor/context": [
         { "command": "szh.miseEnForme", "group": "navigation@1", "when": "editorLangId == markdown && editorTextFocus" }
       ],

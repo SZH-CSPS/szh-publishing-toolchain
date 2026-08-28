@@ -34,6 +34,7 @@ const COMMUN = lire('windows', 'szh-common.ps1');
 const UPDATE = lire('windows', 'update.ps1');
 const LANCEUR_MAJ = lire('windows', 'update-launcher.ps1');
 const BOOTSTRAP = lire('windows', 'bootstrap.ps1');
+const OUVRIR = lire('windows', 'open-revue.ps1');
 const ICONE_PY = lire('windows', 'icone.py');
 
 // Les quatre entrées voulues, telles que le rédacteur les lit dans son menu.
@@ -120,6 +121,41 @@ test('un raccourci de mise à jour porte sa propre icône, fabriquée par icone.
   // Le repli quand l'icône manque reste celle de l'éditeur, jamais rien : sans
   // IconLocation le shell montre celle de wscript.exe, qui ne dit rien à personne.
   assert.ok(COMMUN.indexOf('elseif ($codium) { $lnk.IconLocation = $codium }') !== -1);
+});
+
+test('la barre des tâches reçoit une identité, des deux côtés', () => {
+  // Le défaut gardé ici : le bouton de la barre des tâches portait l'icône de PowerShell,
+  // alors que le raccourci du menu Démarrer et la fenêtre elle-même portaient la bonne.
+  // La barre ne regarde pas l'icône de la fenêtre : elle groupe les boutons par
+  // AppUserModelID et prend l'image de ce côté-là. Sans identité déclarée, Windows en
+  // déduit une de l'exécutable hôte — powershell.exe, lancé par hidden.vbs — et affiche
+  // son icône. Il faut les deux moitiés, et ce sont elles que ce contrôle garde.
+  assert.match(COMMUN, /\$script:SzhAppIds = @\{/);
+  for (const id of ['SZH.Publishing.Revue', 'SZH.Publishing.Zeitschrift',
+    'SZH.Publishing.MiseAJour']) {
+    assert.ok(COMMUN.indexOf("'" + id + "'") !== -1, 'identité disparue : ' + id);
+  }
+  // Première moitié : le .lnk porte l'identité — c'est elle qui fait retrouver au bouton
+  // l'icône du raccourci, et qui fait qu'« Épingler » épingle le lanceur et non
+  // powershell.exe. Posée APRÈS $lnk.Save() : WScript.Shell réécrit le fichier entier et
+  // effacerait une propriété posée avant lui.
+  const save = COMMUN.indexOf('$lnk.Save()');
+  const pose = COMMUN.indexOf('Set-SzhLnkAppId', save);
+  assert.ok(save !== -1 && pose !== -1, 'l’identité n’est plus posée sur les raccourcis');
+  assert.ok(pose > save, 'posée avant $lnk.Save(), elle serait effacée par la sauvegarde');
+  // Seconde moitié : le processus se déclare AVANT sa première fenêtre. Windows lit
+  // l'identité quand la fenêtre s'inscrit à la barre et ne la relit jamais ensuite ;
+  // déclarée après, elle n'a plus aucun effet.
+  const decl = OUVRIR.indexOf('Set-SzhAppUserModelId');
+  const fenetre = OUVRIR.indexOf('New-Object System.Windows.Forms.Form');
+  assert.ok(decl !== -1, 'open-revue.ps1 ne déclare plus son identité');
+  assert.ok(decl < fenetre, 'identité déclarée après la première fenêtre : trop tard');
+  // Et chaque produit la sienne, sinon les deux lanceurs ne font qu'un seul bouton.
+  assert.ok(OUVRIR.indexOf('Get-SzhAppId $produitFiltre') !== -1,
+    'les deux lanceurs partageraient une identité, donc un bouton');
+  // La fenêtre de mise à jour n'est pas un lanceur, mais elle a son bouton elle aussi.
+  assert.ok(UPDATE.indexOf("Set-SzhAppUserModelId (Get-SzhAppId 'maj')") !== -1,
+    'update.ps1 ne déclare plus son identité');
 });
 
 // ---- Les textes ----
@@ -251,7 +287,8 @@ const PILOTE = [
   '$r.poses = @($p1.poses); $r.retires = @($p1.retires); $r.manques = @($p1.manques)',
   '$r.lnk = @(Get-ChildItem -LiteralPath $menu -Filter \'*.lnk\' | Sort-Object Name | ForEach-Object {',
   '  $l = $sh.CreateShortcut($_.FullName)',
-  '  [ordered]@{ nom = $_.Name; cible = $l.TargetPath; args = $l.Arguments; desc = $l.Description; icone = $l.IconLocation; fenetre = [int]$l.WindowStyle } })',
+  '  [ordered]@{ nom = $_.Name; cible = $l.TargetPath; args = $l.Arguments; desc = $l.Description; icone = $l.IconLocation',
+  '    fenetre = [int]$l.WindowStyle; appid = [string](Get-SzhLnkAppId $_.FullName) } })',
   "$r.sousDossier = @(Get-ChildItem -LiteralPath (Join-Path $menu 'SZH') -Filter '*.lnk' | ForEach-Object { $_.Name })",
   // 2. deux fois de suite ne doit rien doubler
   '$p2 = Set-SzhRaccourcisMenu -Menu $menu -Toolkit $toolkit',
@@ -302,8 +339,9 @@ test('le menu reçoit les quatre entrées, résolues comme le shell les lit', { 
   const par = {};
   for (const l of r.lnk) { par[l.nom] = l; }
   // Les deux lanceurs : cachés, filtrés sur leur produit, chacun son icône.
-  for (const [nom, produit, ico] of [['Revues SZH.lnk', 'revue', 'szh-revue.ico'],
-    ['Zeitschriften SZH.lnk', 'zeitschrift', 'szh-zeitschrift.ico']]) {
+  for (const [nom, produit, ico, appid] of [
+    ['Revues SZH.lnk', 'revue', 'szh-revue.ico', 'SZH.Publishing.Revue'],
+    ['Zeitschriften SZH.lnk', 'zeitschrift', 'szh-zeitschrift.ico', 'SZH.Publishing.Zeitschrift']]) {
     const l = par[nom];
     assert.ok(l, nom + ' manque au menu');
     assert.match(l.cible, /wscript\.exe$/i);
@@ -311,6 +349,9 @@ test('le menu reçoit les quatre entrées, résolues comme le shell les lit', { 
     assert.ok(l.args.indexOf('"-Produit" "' + produit + '"') !== -1);
     assert.ok(l.icone.indexOf(ico) !== -1, nom + ' : icône ' + l.icone);
     assert.ok(l.desc.length > 8, nom + ' : description vide');
+    // L'icône du .lnk ne vaut que pour le menu ; c'est l'identité qui la fait suivre
+    // jusqu'au bouton de la barre des tâches, et qui distingue les deux produits.
+    assert.strictEqual(l.appid, appid, nom + ' : identité de barre des tâches');
   }
   // Les deux mises à jour : powershell.exe en direct, fenêtre normale, langue portée.
   for (const [nom, langue] of [["Mise à jour de l'outil Revue.lnk", 'fr'],
@@ -322,6 +363,9 @@ test('le menu reçoit les quatre entrées, résolues comme le shell les lit', { 
     assert.ok(l.args.indexOf('update.ps1" -Langue ' + langue) !== -1, nom + ' : ' + l.args);
     assert.strictEqual(l.fenetre, 1, nom + ' : la fenêtre doit être normale');
     assert.ok(l.icone.indexOf('szh-maj.ico') !== -1, nom + ' : icône ' + l.icone);
+    // Les deux entrées de mise à jour partagent leur identité : même update.ps1, même
+    // icône, seule la langue de la fenêtre les sépare.
+    assert.strictEqual(l.appid, 'SZH.Publishing.MiseAJour', nom + ' : identité');
   }
   // Chaque description dans la langue de son entrée, et deux descriptions distinctes.
   assert.match(par["Mise à jour de l'outil Revue.lnk"].desc, /^Installer la dernière version/);

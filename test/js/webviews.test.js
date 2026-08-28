@@ -390,6 +390,67 @@ test('gestionnaire des médias : cartes, encadrés et versions de portrait', () 
   // Les coordonnées de la fiche, telles que le formulaire des métadonnées les montre.
   assert.ok(textes.indexOf('Anne Dupont') !== -1, 'nom de l’auteur·e absent de sa fiche');
   assert.ok(textes.indexOf('anne@example.ch') !== -1, 'coordonnées absentes de la fiche');
+  // Le bouton « à côté » est sur chaque carte d'image ; sans grille, aucun bloc de grille.
+  assert.strictEqual(page.compter('.grille-plus'), 2, 'bouton « ajouter une image à côté » absent');
+  assert.strictEqual(page.compter('.grille'), 0, 'bloc de grille rendu sans grille');
+});
+
+// Les grilles d'images : trois images qui ne font qu'une figure. Ce que la page doit
+// montrer, et qui se casse en silence — la webview garderait ses cartes et son bouton :
+// le menu de disposition peuplé, la liste des voisines, et le verrouillage de la légende
+// sur les images qui ne portent pas celle de la figure.
+test('gestionnaire des médias : une grille, son menu de disposition et ses verrous', () => {
+  const txt = libellesHote(RACINE, ['textesMedias', 'textesAuteur']);
+  const page = ouvrir({
+    racine: RACINE, page: 'medias-article',
+    cssPartage: ['_design.css', '_auteurs.css'], jsPartage: ['_auteurs.js'], txt: txt
+  });
+  const media = (relatif, occurrences, grille, rang, valeurs) => ({
+    relatif: relatif, description: '2000 × 620 · 5 Ko', apercu: null,
+    occurrences: occurrences, doublons: [], sansAlternative: false,
+    largeur: 2000, hauteur: 620, grille: grille, rangGrille: rang,
+    qualite: { famille: 'figure', niveau: 'ok', mesure: 2000, min: 1000, conseille: 2000 },
+    valeurs: Object.assign({ legende: '', alt: 'desc', altDefini: true,
+      copyright: '', source: '', horsFigure: false }, valeurs || {})
+  });
+  page.envoyer({
+    type: 'charger', slug: 'figures', focus: '', i18n: txt,
+    grilleMax: 6, grilleAuto: 'auto',
+    dispositions: { 2: ['2', '1-1'], 3: ['3', '2-1', '1-2', '1-1-1'] },
+    grilles: [{ disposition: '2-1', auto: '3',
+                membres: ['fig-01.png', 'fig-02.png', 'fig-03.png'] }],
+    medias: [
+      media('fig-01.png', 1, 0, 0, { legende: 'Trois vues du dispositif' }),
+      media('fig-02.png', 1, 0, 1),
+      media('fig-03.png', 1, 0, 2),
+      media('fig-04.png', 1, null, -1)
+    ],
+    portraits: []
+  });
+  assert.strictEqual(page.compter('.carte-media'), 4);
+  // Le bloc de grille est sur les trois cartes de la grille, sur aucune autre : on agit
+  // d'où l'on est, sans avoir à retrouver la première image.
+  assert.strictEqual(page.compter('.grille'), 3, 'bloc de grille absent d’une carte');
+  // Le menu : « Automatique » plus les quatre dispositions de trois images, trois fois.
+  assert.strictEqual(page.compter('.grille select option'), 3 * 5,
+    'le menu de disposition n’est pas peuplé');
+  const textes = page.textes().join(' | ');
+  assert.ok(textes.indexOf('fig-01.png · fig-02.png · fig-03.png') !== -1,
+    'les voisines ne sont pas nommées');
+  // « Automatique » dit ce qu'il choisirait : un mode dont on ne voit pas le résultat ne
+  // se choisit pas de confiance. Ici trois images de même format, donc « 3 sur une ligne ».
+  assert.ok(textes.indexOf('3 sur une ligne') !== -1,
+    'le mode automatique ne nomme pas la disposition qu’il choisirait');
+  assert.ok(textes.indexOf('2 + 1') !== -1, 'la disposition « 2-1 » n’est pas libellée');
+  // La légende n'appartient qu'à la première : sur les suivantes, le champ est verrouillé
+  // et la carte dit par qui il est porté.
+  const legende = (rang) => page.conteneur().querySelectorAll('input')
+    .filter((e) => e.id === 'ch-legende-' + rang)[0];
+  assert.deepStrictEqual([0, 1, 2, 3].map((r) => legende(r).disabled),
+    [false, true, true, false],
+    'le verrouillage des légendes ne suit pas le rang dans la grille');
+  assert.ok(textes.indexOf('fig-01.png »') !== -1,
+    'la carte ne dit pas de quelle grille elle fait partie');
 });
 
 // L'éditeur de tableau ne reçoit pas ses libellés par gabarit mais dans le message

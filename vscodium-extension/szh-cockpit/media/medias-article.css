@@ -57,3 +57,25 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 /* La notification d'insertion porte un bouton : il ne doit pas s'écraser sur le texte. */
 .szh-notif .szh-bouton { margin-left: var(--e2); }
 .modale-nom { overflow-wrap: anywhere; }
+
+/* ── Grilles d'images ─────────────────────────────────────────────────────────
+   « Ajouter une image à côté » se tient contre l'aperçu, aligné sur son bord haut : c'est
+   en regardant l'image qu'on décide qu'une autre doit l'accompagner. Le choix se déplie
+   dessous plutôt que dans une modale — cinq noms de fichiers ne valent pas un écran. */
+.visuel-rangee { display: flex; align-items: flex-start; gap: var(--e2); flex-wrap: wrap; }
+.visuel-rangee .visuel { flex: 0 1 auto; min-width: 0; }
+.grille-ajout { flex: 1 1 10rem; min-width: 0;
+  display: flex; flex-direction: column; gap: var(--e2); align-items: flex-start; }
+.grille-plus { display: inline-flex; align-items: center; gap: var(--e1);
+  text-align: left; }
+.grille-choix { display: flex; flex-direction: column; gap: var(--e1);
+  width: 100%; min-width: 0; }
+.grille-choix select { max-width: 100%; }
+.grille-choix-actions { display: flex; gap: var(--e1); flex-wrap: wrap; }
+
+/* Le bloc de grille est un fieldset comme « Traitement dans la mise en page » : il change
+   ce que la légende juste dessous désigne, et se lit donc avant elle. */
+.grille { display: flex; flex-direction: column; gap: var(--e2); align-items: flex-start; }
+.grille .szh-champ, .grille .szh-notif { width: 100%; }
+.grille-membres { margin: 0; font-size: var(--t-mini); color: var(--encre-2);
+  overflow-wrap: anywhere; }

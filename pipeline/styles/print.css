@@ -480,6 +480,52 @@ figure > figcaption { font-size: 0.85rem; color: #444; margin-bottom: 0.5em; tex
    précéder — voir szh-legende-avant.lua — donc la marge change de côté. */
 figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
 
+/* ── Grille d'images ──────────────────────────────────────────────────────────
+   Une figure, plusieurs images : filters/szh-grille.lua compose le bloc en rangées et
+   écrit sur chaque case un `flex-grow` égal au rapport largeur/hauteur de son image.
+
+   Ce que fait ce réglage, et pourquoi il est le bon : dans une rangée dont les cases ont
+   une base nulle, une croissance proportionnelle au rapport donne à toutes les images de
+   la rangée LA MÊME HAUTEUR, et la rangée remplit exactement la colonne — la mise en page
+   justifiée des planches imprimées. Quand les images partagent un format, ce qui est le
+   cas ordinaire d'une série, cela revient à des colonnes égales. Aucune image n'est
+   recadrée, aucune n'est déformée.
+
+   La croissance déclarée ici (1) sert de repli : une image que le filtre n'a pas su
+   mesurer — SVG sans dimensions, fichier illisible — partage alors la rangée à parts
+   égales. Le style en ligne du filtre l'emporte quand la mesure existe.
+
+   L'écart entre les images est le seul chiffre en dur de ce bloc : 6 px à la largeur de
+   la colonne, assez pour séparer deux visuels sans creuser une gouttière. */
+.szh-grille-rangee { display: flex; align-items: flex-start; gap: 6px;
+  margin-bottom: 6px; break-inside: avoid; }
+.szh-grille-rangee:last-child { margin-bottom: 0; }
+.szh-grille-case { display: block; flex-grow: 1; flex-shrink: 1; flex-basis: 0%;
+  min-width: 0; }
+.szh-grille-case > img { display: block; width: 100%; height: auto; }
+/* Image décorative dans une grille : szh-numerotation.lua l'a sortie en fond CSS, avec sa
+   largeur naturelle en pixels. Dans une case, c'est la case qui donne la largeur — la
+   spécificité de ce sélecteur passe devant le <style> de fin de corps. */
+.szh-grille-case > .szh-decor { width: 100%; }
+
+/* Écran étroit : la rangée se défait et les images s'empilent. Une case de la largeur d'un
+   pouce ne montre plus rien, et une grille de quatre en vaudrait quatre.
+
+   ⚠ La requête est IMBRIQUÉE dans un « @media screen » nu, et ce n'est pas un ornement :
+   WeasyPrint 69 ne connaît que les types de média, pas leurs caractéristiques. Écrite à
+   plat, « @media screen and (max-width: 34rem) » lui arrache deux avertissements à chaque
+   article compilé — « Expected a media type » puis « the whole @media rule was ignored » —
+   et le journal de compilation, que le cockpit montre au rédacteur, se met à crier pour
+   une règle qui ne concerne pas le papier. Imbriquée, elle est sautée en silence avec le
+   bloc qui la porte, et les navigateurs, eux, la lisent comme avant. Mesuré. */
+@media screen {
+  @media (max-width: 34rem) {
+    .szh-grille-rangee { display: block; }
+    .szh-grille-case { margin-bottom: 6px; }
+    .szh-grille-case:last-child { margin-bottom: 0; }
+  }
+}
+
 /* Tableaux importés bruts (<table> nu, non .szh-tableau) : style générique sobre. */
 table { border-collapse: collapse; font-size: 0.85rem; margin: 1.4em 0; width: 100%; }
 th, td { border: 1px solid #999; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }

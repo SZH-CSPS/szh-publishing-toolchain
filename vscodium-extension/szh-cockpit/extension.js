@@ -51,7 +51,7 @@ const {
 } = require('./lib/citations');
 // ---- Cycle de vie du numéro -> lib/archivage.js ----------------------------------
 const {
-  versionInstallee, versionsDivergent, tailleDossier, supprimerDossier,
+  versionInstallee, versionsDivergent, tailleDossier,
   lancerArchivage, lancerChoixVersion, adresseMailTraduction,
   lireModeDeveloppeur, ecrireModeDeveloppeur, lireConfigPoste, ecrireConfigPoste,
   CONFIG_POSTE, FORME_MAIL
@@ -85,6 +85,15 @@ const {
 const { appliquerVerrou } = require('./lib/verrou');
 const { construireLienTraduction, consommerIntention } = require('./lib/liens');
 const { enregistrerPanneaux } = require('./lib/panneaux');
+// ---- Co-édition d'un même numéro -> lib/coedition.js, lib/copies-conflit.js -------
+// ⚠ Rien à voir avec le verrou de lib/verrou.js juste au-dessus, qui GÈLE un numéro entier
+// en lecture seule. Ici : un bail de deux minutes posé sur UN fichier pendant qu'un
+// formulaire le modifie, et l'avertissement quand le synchroniseur a déjà dédoublé un
+// fichier du numéro.
+const coedition = require('./lib/coedition');
+const {
+  chercherCopies, copieConflitPour, inverserBloc, appliquerBlocs
+} = require('./lib/copies-conflit');
 // ---- Garde d'interaction -> lib/interaction.js ------------------------------------
 // Un QuickPick de VS Code se ferme dès que le focus bouge ; la fin d'une compilation
 // (réassignation du HTML de l'aperçu, notification des contrôles) ne doit pas interrompre
@@ -97,7 +106,9 @@ const {
 } = require('./lib/export-ojs');
 const {
   retirerImage, retirerTable, ordreImages, lireAttributsImage, ecrireAttributsImage,
-  placeFigure, envelopperFigure, imagesSansAlternative
+  placeFigure, envelopperFigure, imagesSansAlternative,
+  GRILLE_AUTO, GRILLE_MAX, lireGrilles, dispositionsPossibles, dispositionAutomatique,
+  poserDansGrille, retirerDeGrille, ecrireDispositionGrille, normaliserGrilles
 } = require('./lib/references');
 const { traiterPortraits } = require('./lib/portraits');
 // ---- Journal de compilation -> lib/journal.js ------------------------------------
@@ -200,6 +211,11 @@ function ecrireClesAusgabe(racine, modifies) {
     let contenu = '';
     try { contenu = fs.readFileSync(chemin, 'utf8'); } catch (e) { /* absent : recréé plat */ }
     ecrireAtomique(chemin, serialiserAusgabe(contenu, modifies));
+    // Point de passage unique d'ausgabe.yaml : c'est ici que les formulaires ouverts
+    // apprennent que le fichier a bougé de NOTRE fait — un bouton de l'arbre, une commande
+    // — et non de celui d'un autre poste. Sans ça, le prochain enregistrement d'un
+    // formulaire endormi crierait au conflit sans raison. Voir « Co-édition ».
+    rafraichirEmpreinteCoedition(racine, chemin);
     return null;
   } catch (e) { return String((e && e.message) || e); }
 }
@@ -337,6 +353,471 @@ function iconeAvancement(avance) {
     return new vscode.ThemeIcon('circle-filled', new vscode.ThemeColor('charts.blue'));
   }
   return new vscode.ThemeIcon('circle-large-outline');
+}
+
+// ---- Co-édition : deux postes sur le même numéro ---------------------------------
+//
+// lib/coedition.js pose le bail et sait le lire ; ici vit ce qu'il ne peut pas savoir :
+// quel panneau tient quel fichier, ce que ce fichier valait quand le formulaire l'a
+// chargé, et comment le refus s'affiche.
+//
+// ⚠ L'ordre des gardes ne change jamais : le verrou du NUMÉRO d'abord — refuserSiVerrouille
+// ou etatNumero.verrouillee, qui parlent d'un numéro GELÉ —, le bail de co-édition ensuite.
+// Un numéro gelé refuse déjà tout, il n'a aucune co-édition à raconter.
+//
+// Le refus part dans la zone d'état du formulaire, jamais en fenêtre : l'enregistrement est
+// automatique toutes les trois secondes, et une fenêtre à cette cadence serait pire que le
+// refus lui-même. Même choix, et même raison, que le refus du numéro verrouillé.
+
+let identiteCoedition = null;
+
+// Qui nous sommes pour les autres postes : le réglage szh.nomUtilisateur, sinon le nom de
+// session Windows. Relu au changement de réglage (oublierIdentiteCoedition).
+function moiCoedition() {
+  if (identiteCoedition) { return identiteCoedition; }
+  let nom = '';
+  try { nom = String(vscode.workspace.getConfiguration('szh').get('nomUtilisateur', '') || ''); }
+  catch (e) { /* configuration indisponible */ }
+  identiteCoedition = coedition.identite(nom);
+  return identiteCoedition;
+}
+
+function oublierIdentiteCoedition() { identiteCoedition = null; }
+
+// panneau -> Map(clé du fichier -> { racine, chemin, activite, empreinte }).
+//
+// Une Map et non une WeakMap : après une écriture, l'empreinte doit être remise à jour dans
+// TOUS les panneaux qui suivent le fichier, ce qui demande de pouvoir les parcourir. D'où
+// libererCoedition(), appelé par le onDidDispose de chaque panneau concerné — sans lui, un
+// panneau fermé resterait retenu ici.
+const suivisCoedition = new Map();
+
+function suiviCoedition(panneau) {
+  if (!panneau) { return null; }
+  let suivi = suivisCoedition.get(panneau);
+  if (!suivi) { suivi = new Map(); suivisCoedition.set(panneau, suivi); }
+  return suivi;
+}
+
+// Le formulaire vient de lire le fichier : ce qu'il montre est ce que le disque dit, et le
+// compteur d'inactivité repart. À appeler à chaque fois qu'un panneau charge des valeurs.
+// `quand` : l'instant de la lecture, pour qu'un test puisse antidater une saisie sans
+// attendre cinq minutes ; l'hôte ne le passe jamais.
+function noterLectureCoedition(panneau, racine, chemin, quand) {
+  const suivi = suiviCoedition(panneau);
+  const clef = racine && chemin ? coedition.clefFichier(racine, chemin) : null;
+  if (!suivi || !clef) { return; }
+  suivi.set(clef, {
+    racine: racine, chemin: chemin,
+    activite: quand === undefined ? Date.now() : quand,
+    empreinte: coedition.empreinte(chemin)
+  });
+}
+
+// Après une écriture réussie : tous les suivis de ce fichier repartent de l'empreinte du
+// disque. C'est ce qui évite de crier au conflit quand c'est NOUS qui avons écrit — un
+// « Monter » dans l'arbre, une commande, un autre panneau du même poste : tous touchent
+// ausgabe.yaml sans passer par le formulaire qui l'affiche.
+function rafraichirEmpreinteCoedition(racine, chemin) {
+  const clef = racine && chemin ? coedition.clefFichier(racine, chemin) : null;
+  if (!clef) { return; }
+  const fraiche = coedition.empreinte(chemin);
+  for (const suivi of suivisCoedition.values()) {
+    const etat = suivi.get(clef);
+    if (etat) { etat.empreinte = fraiche; }
+  }
+}
+
+// Demande la main sur un fichier pour ce panneau, et la garde le temps du bail.
+//
+// -> null quand la main est à nous, sinon { code, message } :
+//    'pris'   un autre poste modifie le fichier ; rien ne doit être écrit
+//    'perime' notre saisie a dormi plus de cinq minutes ET le fichier a changé entre-temps.
+//             Le formulaire montre donc autre chose que le disque : il faut le recharger et
+//             refaire la saisie. Si le fichier n'a PAS changé, la main est simplement
+//             reprise et l'écriture passe — faire refaire une saisie que personne n'a
+//             contredite serait une punition sans objet.
+//
+// `opts.ecriture` : une écriture suit. C'est le seul cas où l'inactivité est vérifiée ;
+// à l'ouverture d'un formulaire, il n'y a encore rien à écraser.
+function mainCoedition(panneau, racine, chemin, opts) {
+  const o = opts || {};
+  const clef = racine && chemin ? coedition.clefFichier(racine, chemin) : null;
+  if (!clef) { return null; }                      // hors numéro : rien à protéger
+  const maintenant = Date.now();
+  const suivi = suiviCoedition(panneau);
+  const etat = suivi ? suivi.get(clef) : null;
+  const pose = coedition.poser(racine, chemin, moiCoedition(), maintenant);
+  if (!pose.ok) {
+    return { code: 'pris', titulaire: pose.titulaire.utilisateur,
+             message: T('coedition.pris', [pose.titulaire.utilisateur]) };
+  }
+  if (o.ecriture && etat && maintenant - etat.activite > coedition.INACTIVITE_MS
+      && coedition.empreinte(chemin) !== etat.empreinte) {
+    return { code: 'perime', titulaire: '', message: T('coedition.perime') };
+  }
+  if (suivi) {
+    suivi.set(clef, {
+      racine: racine, chemin: chemin, activite: maintenant,
+      empreinte: etat ? etat.empreinte : coedition.empreinte(chemin)
+    });
+  }
+  return null;
+}
+
+// Le geste complet d'un formulaire : la main, l'écriture, puis l'empreinte remise à jour.
+// `ecrire` rend null en cas de succès, sinon son message d'échec brut.
+// -> null, ou { code, message } prêt à partir dans la zone d'état ; `code` vaut 'echec'
+//    quand c'est l'écriture elle-même qui a échoué, et 'perime' quand le formulaire doit
+//    être rechargé.
+function ecrireSousMain(panneau, racine, chemin, ecrire) {
+  const refus = mainCoedition(panneau, racine, chemin, { ecriture: true });
+  if (refus) { return refus; }
+  const erreur = ecrire();
+  if (erreur) { return { code: 'echec', message: T('err.ecriture', [erreur]) }; }
+  rafraichirEmpreinteCoedition(racine, chemin);
+  return null;
+}
+
+// Bail posé à l'OUVERTURE d'un formulaire dédié à un fichier : l'ouvrir, c'est venir le
+// modifier. Le refus s'affiche sans empêcher l'ouverture — on voit les valeurs, on est
+// seulement prévenu que l'enregistrement ne passera pas. Rien n'est posé sur les vues
+// multi-articles : y ouvrir une vue d'ensemble prendrait la main sur tout le numéro, et une
+// consultation gèlerait le travail des autres. Là, le bail se prend fiche par fiche, à la
+// première écriture.
+function annoncerMain(panneau, racine, chemin) {
+  const refus = mainCoedition(panneau, racine, chemin, {});
+  if (refus) { repondrePanneau(panneau, { type: 'erreur', message: refus.message }); }
+  return refus;
+}
+
+// Les gestes SANS session de saisie — déplacer un article, cocher « pas de DOI », geler le
+// numéro : ils regardent le bail, ils n'en posent pas. Un clic isolé n'a pas de main à
+// garder, et prendre un bail pour trois millisecondes ne protégerait personne.
+// -> null quand la voie est libre, sinon le message à afficher.
+function refusCoedition(racine, chemin) {
+  if (!racine || !chemin) { return null; }
+  const titulaire = coedition.titulaireAutre(racine, chemin, moiCoedition());
+  return titulaire ? T('coedition.geste.pris', [titulaire.utilisateur]) : null;
+}
+
+// Même garde, pour un geste qui touche TOUT le numéro (archiver, verrouiller) : personne ne
+// doit être en train d'y écrire.
+function refusCoeditionNumero(racine) {
+  if (!racine) { return null; }
+  const titulaires = coedition.titulairesDuNumero(racine, moiCoedition());
+  return titulaires.length > 0 ? T('coedition.geste.pris', [titulaires[0].utilisateur]) : null;
+}
+
+// Panneau fermé : les baux sont rendus tout de suite, sans attendre les deux minutes. Un
+// fichier qu'un AUTRE panneau du même poste suit encore n'est pas rendu : deux fenêtres de
+// la même personne partagent un seul fichier de bail.
+function libererCoedition(panneau) {
+  const suivi = suivisCoedition.get(panneau);
+  if (!suivi) { return; }
+  suivisCoedition.delete(panneau);
+  for (const [clef, etat] of suivi) {
+    let ailleurs = false;
+    for (const autre of suivisCoedition.values()) {
+      if (autre.has(clef)) { ailleurs = true; break; }
+    }
+    if (!ailleurs) { coedition.rendre(etat.racine, etat.chemin, moiCoedition()); }
+  }
+}
+
+// ---- Copies en conflit déjà déposées par le synchroniseur ------------------------
+//
+// Le bail réduit la fenêtre de collision, il ne la ferme pas — il voyage par OneDrive, qui
+// met de quelques secondes à quelques minutes. Quand une copie en conflit est quand même
+// apparue, elle ne doit pas rester invisible : une version du travail n'est plus dans le
+// numéro, et personne ne s'en aperçoit avant de relire le PDF.
+//
+// Un avertissement par fichier et par session : le rafraîchissement passe ici souvent, et
+// répéter la même fenêtre serait vite ignoré. Le bouton ouvre le comparateur natif de
+// l'éditeur (vscode.diff) — la copie à gauche, la version du numéro à droite.
+let copiesSignalees = new Set();
+let dernierBalayageCopies = 0;
+
+// Le délai entre deux balayages du dossier. rafraichirTout passe ici à chaque geste et à
+// chaque rafale du système de fichiers ; parcourir tout le numéro à cette cadence coûterait
+// plus cher que le service rendu. Une copie en conflit n'est pas une urgence à la seconde.
+const DELAI_BALAYAGE_COPIES = 15000;
+
+function oublierCopiesSignalees() { copiesSignalees = new Set(); dernierBalayageCopies = 0; }
+
+function avertirCopiesConflit(racine) {
+  if (!racine) { majConflitsScm(null, []); return; }
+  const maintenant = Date.now();
+  if (maintenant - dernierBalayageCopies < DELAI_BALAYAGE_COPIES) { return; }
+  dernierBalayageCopies = maintenant;
+  let copies = [];
+  try { copies = chercherCopies(racine); } catch (e) { return; }   // jamais bloquant
+  // La barre du contrôle de source suit à chaque balayage, avertissement ou pas : c'est elle
+  // qui garde la liste sous la main quand la fenêtre a été fermée d'un revers.
+  majConflitsScm(racine, copies);
+  const nouvelles = copies.filter((c) => !copiesSignalees.has(c.chemin));
+  if (nouvelles.length === 0) { return; }
+  for (const c of nouvelles) { copiesSignalees.add(c.chemin); }
+  const premiere = nouvelles[0];
+  const bouton = T('conflit.copie.comparer');
+  const message = nouvelles.length === 1
+    ? T('conflit.copie', [premiere.nom])
+    : T('conflit.copie.plusieurs', [nouvelles.length, premiere.nom]);
+  vscode.window.showWarningMessage(message, bouton).then((choix) => {
+    if (choix !== bouton) { return; }
+    comparerConflit(premiere.cheminOriginal, premiere.chemin);
+  });
+}
+
+// La copie à gauche, la version du numéro à droite. Le fichier d'origine peut manquer — le
+// synchroniseur a pu renommer les DEUX versions : on ouvre alors la copie seule, plutôt que
+// d'échouer sur un comparateur vide.
+function comparerConflit(cheminFichier, cheminCopie) {
+  const copie = cheminCopie || (cheminFichier ? copieConflitPour(cheminFichier) : null);
+  if (!copie) {
+    // Rien à comparer. Le fichier visé est peut-être la copie elle-même — le synchroniseur
+    // a pu renommer les deux versions : on l'ouvre, plutôt que de se taire.
+    if (cheminFichier && fs.existsSync(cheminFichier)) {
+      vscode.window.showTextDocument(vscode.Uri.file(cheminFichier));
+      return;
+    }
+    vscode.window.showWarningMessage(T('conflit.copie.absente'));
+    return;
+  }
+  const gauche = vscode.Uri.file(copie);
+  if (!cheminFichier || !fs.existsSync(cheminFichier)) {
+    vscode.window.showTextDocument(gauche);
+    return;
+  }
+  vscode.commands.executeCommand('vscode.diff', gauche, vscode.Uri.file(cheminFichier),
+    T('conflit.copie.titre', [path.basename(copie)]));
+}
+
+// ---- Résoudre une copie en conflit au clic, bloc par bloc -------------------------
+//
+// Comparer deux versions ne suffit pas : il faut pouvoir trancher chaque divergence sans
+// recopier à la main. L'éditeur sait déjà le faire, à une condition — qu'on lui dise ce qui
+// tient lieu d'ORIGINAL pour un fichier donné. C'est le rôle du « diff rapide »
+// (QuickDiffProvider) : dès qu'on déclare la copie en conflit comme original du fichier du
+// numéro, chaque divergence reçoit sa marque dans la gouttière, et le clic sur la marque
+// ouvre le diff en ligne, dont la barre de titre porte NOS deux commandes.
+//
+// Les deux sens, et ils sont symétriques :
+//   « Prendre cette version » écrit le bloc de la copie dans le fichier du numéro ;
+//   « Garder la mienne »      écrit le bloc du fichier du numéro dans la copie.
+// Dans les deux cas la divergence disparaît. Quand il n'en reste plus une seule, la copie ne
+// contient plus rien que le numéro n'ait pas : sa suppression est alors proposée, et le
+// conflit est clos sans qu'un octet ait été perdu de vue.
+//
+// ⚠ Rien de tout cela ne calcule un diff : les blocs arrivent de l'éditeur, en argument des
+// commandes (uri du document, tableau des blocs, index du bloc affiché). Le contrat est celui
+// du menu « scm/change/title », le même que celui dont Git se sert pour « Stage Change ».
+//
+// ⚠ Le fournisseur de diff rapide est une propriété d'un SourceControl, seule voie stable de
+// l'API. On ne le crée donc QUE s'il existe une copie en conflit dans le numéro, et on le
+// détruit dès qu'il n'en reste plus : sans cette précaution, un poste sans conflit porterait
+// à vie une entrée vide dans la barre du contrôle de source.
+const SCHEME_CONFLIT = 'szh-conflit';
+
+let scmConflits = null;
+let groupeConflits = null;
+const changementConflit = new vscode.EventEmitter();
+
+// Le chemin caché dans une URI « szh-conflit ». uri.fsPath serait plus court, mais son
+// traitement des lettres de lecteur Windows dépend du schéma « file » : ici on lit le chemin
+// tel que Uri.file l'a écrit — « /c:/… » — et on retire la barre de tête. Pas de
+// décodage : `path` est déjà la forme décodée, et un « % » de nom de fichier ferait lever
+// decodeURIComponent.
+function cheminDepuisUriConflit(uri) {
+  const brut = String((uri && uri.path) || '');
+  return path.normalize(/^\/[A-Za-z]:/.test(brut) ? brut.slice(1) : brut);
+}
+
+// Le contenu de la copie, servi en lecture seule : c'est ce que l'éditeur prend pour
+// l'original du fichier du numéro, et c'est de lui que naissent les marques de divergence.
+const fournisseurContenuConflit = {
+  onDidChange: changementConflit.event,
+  provideTextDocumentContent(uri) {
+    try { return fs.readFileSync(cheminDepuisUriConflit(uri), 'utf8'); }
+    catch (e) { return ''; }                       // copie disparue : plus de divergence
+  }
+};
+
+// Appelé par l'éditeur pour CHAQUE document ouvert : rendre une URI ici, c'est demander les
+// marques de gouttière ; ne rien rendre, c'est ne rien décorer.
+//
+// D'où la garde sur la racine : sans elle, ouvrir un fichier quelconque du disque ferait lire
+// son dossier à chaque fois. Un fichier hors du numéro ne nous concerne pas.
+let racineConflits = null;
+
+function sousLaRacineConflits(chemin) {
+  if (!racineConflits || !chemin) { return false; }
+  const rel = path.relative(racineConflits, chemin);
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+const fournisseurDiffConflit = {
+  provideOriginalResource(uri) {
+    if (!uri || uri.scheme !== 'file' || !sousLaRacineConflits(uri.fsPath)) { return undefined; }
+    const copie = copieConflitPour(uri.fsPath);
+    if (!copie) { return undefined; }
+    return vscode.Uri.file(copie).with({ scheme: SCHEME_CONFLIT });
+  }
+};
+
+// L'état de la barre du contrôle de source suit ce que le balayage a trouvé. Aucune copie :
+// tout est démonté, l'entrée disparaît.
+function majConflitsScm(racine, copies) {
+  // Posée à chaque balayage, même sans copie : elle ne sert qu'à borner le fournisseur de
+  // diff rapide au numéro ouvert. Hors revue, elle est nulle et rien n'est décoré.
+  racineConflits = racine || null;
+  if (!copies || copies.length === 0) {
+    if (scmConflits) { scmConflits.dispose(); scmConflits = null; groupeConflits = null; }
+    return;
+  }
+  if (!scmConflits) {
+    scmConflits = vscode.scm.createSourceControl(
+      'szh.conflits', T('conflit.scm.titre'), vscode.Uri.file(racine));
+    scmConflits.quickDiffProvider = fournisseurDiffConflit;
+    groupeConflits = scmConflits.createResourceGroup('conflits', T('conflit.scm.groupe'));
+  }
+  scmConflits.count = copies.length;
+  groupeConflits.resourceStates = copies.map((c) => {
+    // Le fichier du numéro, ou la copie elle-même quand l'original manque : une entrée qui
+    // pointe un fichier absent ne s'ouvrirait pas.
+    const cible = fs.existsSync(c.cheminOriginal) ? c.cheminOriginal : c.chemin;
+    return {
+      resourceUri: vscode.Uri.file(cible),
+      decorations: { tooltip: T('conflit.scm.tooltip', [c.nom]) },
+      command: {
+        command: 'szh.conflit.comparer', title: T('conflit.copie.comparer'),
+        arguments: [vscode.Uri.file(cible)]
+      }
+    };
+  });
+}
+
+// Le bloc affiché, ou null : le menu passe le tableau entier et l'index de celui qu'on
+// regarde, et un clic tardif sur un diff recalculé entre-temps peut sortir du tableau.
+function blocVise(blocs, index) {
+  if (!Array.isArray(blocs)) { return null; }
+  const i = typeof index === 'number' ? index : 0;
+  return blocs[i] || null;
+}
+
+// Le fichier visé par une commande du menu : celui du document affiché, ou à défaut celui de
+// l'éditeur actif — la palette de commandes ne passe aucun argument.
+function fichierConflitVise(uri) {
+  if (uri && uri.scheme === 'file') { return uri.fsPath; }
+  if (uri && uri.scheme === SCHEME_CONFLIT) { return cheminDepuisUriConflit(uri); }
+  const actif = vscode.window.activeTextEditor;
+  return actif && actif.document && actif.document.uri.scheme === 'file'
+    ? actif.document.uri.fsPath : null;
+}
+
+// `prendre` : le bloc de la copie entre dans le fichier du numéro. Sinon c'est l'inverse, et
+// c'est la copie qui reçoit le bloc du numéro.
+async function resoudreBlocConflit(uri, blocs, index, prendre) {
+  const chemin = fichierConflitVise(uri);
+  const copie = chemin ? copieConflitPour(chemin) : null;
+  if (!chemin || !copie) { vscode.window.showWarningMessage(T('conflit.copie.absente')); return; }
+  const bloc = blocVise(blocs, index);
+  if (!bloc) { return; }
+  let doc;
+  try { doc = await vscode.workspace.openTextDocument(vscode.Uri.file(chemin)); }
+  catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [chemin])); return; }
+  const mien = doc.getText();                      // le tampon, pas le disque : une frappe non
+  let sien = '';                                   // enregistrée compte comme « ma version »
+  try { sien = fs.readFileSync(copie, 'utf8'); }
+  catch (e) { vscode.window.showWarningMessage(T('conflit.copie.absente')); return; }
+
+  if (prendre) {
+    // Le fichier du numéro change : le verrou du numéro d'abord, le bail de co-édition
+    // ensuite — un clic isolé ne garde pas la main, il se contente de vérifier.
+    if (refuserSiVerrouille()) { return; }
+    const racine = trouverRacineRevue();
+    const refus = refusCoedition(racine, chemin);
+    if (refus) { vscode.window.showWarningMessage(refus); return; }
+    const texte = appliquerBlocs(mien, sien, [inverserBloc(bloc)]);
+    if (texte === mien) { return; }                // rien à faire, bloc déjà résolu
+    // Par l'éditeur et non par fs : le document est ouvert, et le geste doit rester
+    // annulable au Ctrl+Z comme n'importe quelle édition.
+    try {
+      const edition = new vscode.WorkspaceEdit();
+      const fin = doc.lineAt(doc.lineCount - 1).range.end;
+      edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), texte);
+      if (!(await vscode.workspace.applyEdit(edition))) {
+        vscode.window.showErrorMessage(T('err.ecriture', [chemin]));
+        return;
+      }
+      await doc.save();
+    } catch (e) {
+      vscode.window.showErrorMessage(T('err.ecriture', [String((e && e.message) || e)]));
+      return;
+    }
+    // L'écriture n'est pas passée par le point d'écriture du fichier du numéro : les
+    // formulaires ouverts doivent quand même savoir que le disque a bougé de notre fait.
+    rafraichirEmpreinteCoedition(racine, chemin);
+    if (texte === sien) { proposerSuppressionCopie(copie); }
+    return;
+  }
+
+  // L'autre sens. La copie n'est pas un fichier du numéro : aucun bail ne la protège, et
+  // elle est de toute façon destinée à disparaître — écriture atomique directe.
+  const texte = appliquerBlocs(sien, mien, [bloc]);
+  if (texte === sien) { return; }
+  try { ecrireAtomique(copie, texte); }
+  catch (e) {
+    vscode.window.showErrorMessage(T('err.ecriture', [String((e && e.message) || e)]));
+    return;
+  }
+  // Le contenu « original » a changé : sans cet avis, la gouttière garderait ses marques.
+  changementConflit.fire(vscode.Uri.file(copie).with({ scheme: SCHEME_CONFLIT }));
+  if (texte === mien) { proposerSuppressionCopie(copie); }
+}
+
+// Les deux fichiers disent maintenant la même chose : la copie ne retient plus rien. On le
+// dit et on propose de la retirer — jamais sans le demander, effacer un fichier reste un
+// geste de l'utilisateur.
+function proposerSuppressionCopie(copie) {
+  const bouton = T('conflit.copie.supprimer');
+  vscode.window.showInformationMessage(T('conflit.copie.identiques', [path.basename(copie)]), bouton)
+    .then((choix) => { if (choix === bouton) { supprimerCopieConflit(copie, false); } });
+}
+
+// `demander` : la commande explicite passe par une confirmation modale, parce qu'elle peut
+// être lancée sur une copie qui contient encore du travail. La suppression proposée après
+// convergence, elle, a déjà eu son bouton.
+async function supprimerCopieConflit(copie, demander) {
+  if (!copie || !fs.existsSync(copie)) { return; }
+  if (demander) {
+    const bouton = T('conflit.copie.supprimer');
+    const choix = await vscode.window.showWarningMessage(
+      T('conflit.copie.supprimer.question', [path.basename(copie)]),
+      { modal: true, detail: T('conflit.copie.supprimer.detail') }, bouton);
+    if (choix !== bouton) { return; }
+  }
+  try { fs.unlinkSync(copie); }
+  catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [String((e && e.message) || e)])); return; }
+  // Retirée du jeu des fichiers déjà signalés : si le synchroniseur en dépose une autre plus
+  // tard, elle sera annoncée comme une nouvelle.
+  copiesSignalees.delete(copie);
+  // La copie a disparu : le fournisseur de contenu doit le savoir, sinon la gouttière
+  // continuerait de comparer avec ce qui n'existe plus.
+  changementConflit.fire(vscode.Uri.file(copie).with({ scheme: SCHEME_CONFLIT }));
+  rafraichirConflitsScm();
+  vscode.window.setStatusBarMessage(T('conflit.copie.supprimee', [path.basename(copie)]), 4000);
+}
+
+// L'état de la barre du contrôle de source, hors balayage : après une suppression, dont
+// aucun surveillant de fichiers ne nous avertit — les motifs surveillés ne couvrent pas les
+// noms déposés par le synchroniseur. Ne réveille aucun avertissement au passage.
+function rafraichirConflitsScm() {
+  const racine = trouverRacineRevue();
+  if (!racine) { majConflitsScm(null, []); return; }
+  let copies = [];
+  try { copies = chercherCopies(racine); } catch (e) { copies = []; }
+  majConflitsScm(racine, copies);
 }
 
 // ---- Ordre du numéro, nom des articles, tâches, couverture ----------------------
@@ -588,7 +1069,10 @@ function ecrireChampsNumero(racine, brut) {
 
 // Les messages du formulaire du numéro, traités à l'identique dans les deux panneaux qui le
 // portent. -> true quand le message a été traité.
-function messageNumero(panneau, racine, msg, rafraichirTout) {
+//
+// `recharger` remet le formulaire à ce que le disque dit ; il ne sert qu'au refus « périmé »
+// de la co-édition, seul cas où ce que l'écran montre n'est plus ce que le fichier contient.
+function messageNumero(panneau, racine, msg, rafraichirTout, recharger) {
   if (msg.type === 'enregistrer') {
     // Le verrou du numéro couvre aussi ce formulaire. Le refus part dans la zone d'état du
     // formulaire, et non en fenêtre : l'enregistrement est automatique, et une fenêtre
@@ -599,9 +1083,17 @@ function messageNumero(panneau, racine, msg, rafraichirTout) {
       repondrePanneau(panneau, { type: 'erreur', message: T('verrou.refuse') });
       return true;
     }
-    const erreur = ecrireChampsNumero(racine, msg.modifies);
-    if (erreur) {
-      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [erreur]) });
+    // Le verrou du numéro d'abord (juste au-dessus), le bail de co-édition ensuite :
+    // ausgabe.yaml est le fichier le plus disputé du numéro — ce formulaire, les deux vues
+    // qui le portent, et les boutons de l'arbre y écrivent tous.
+    const refus = ecrireSousMain(panneau, racine, path.join(racine, 'ausgabe.yaml'),
+      () => ecrireChampsNumero(racine, msg.modifies));
+    if (refus) {
+      repondrePanneau(panneau, { type: 'erreur', message: refus.message });
+      // Périmé : l'écran ne montre plus ce que le fichier contient, il repart du disque.
+      // Le formulaire garde sa saisie en attente (media/_commun.js ne la vide que sur
+      // « enregistre »), la personne la refait sur des valeurs à jour.
+      if (refus.code === 'perime' && recharger) { recharger(); }
       return true;
     }
     repondrePanneau(panneau, { type: 'enregistre' });
@@ -1030,6 +1522,62 @@ async function fermerOnglets(predicat) {
   try { await vscode.window.tabGroups.close(aFermer); } catch (e) { /* déjà fermé */ }
 }
 
+// ---- Effacer un dossier que Windows tient encore ---------------------------------
+//
+// Fermer l'aperçu, les formulaires et les onglets ne suffit pas toujours : OneDrive en
+// pleine synchronisation, l'indexeur ou le lecteur de PDF gardent la poignée quelques
+// secondes de plus, et l'effacement échoue sur un EPERM alors que plus rien ne s'y
+// oppose vraiment. On insiste donc, comme archive-revue.ps1 le fait pour le déplacement
+// du numéro, plutôt que de renvoyer à un geste qui passerait tout seul dix secondes
+// plus tard. Les autres codes (chemin introuvable, disque plein) ne s'arrangeront pas
+// avec le temps : ils ressortent tout de suite.
+const VERROUS_PASSAGERS = new Set(['EPERM', 'EACCES', 'EBUSY', 'ENOTEMPTY']);
+const REPRISES_SUPPRESSION = [200, 500, 1000, 2000, 2000, 2000, 2000];   // ~10 s en tout
+
+function attendre(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+// -> null quand le chemin est parti (ou n'existait déjà plus), sinon le message du
+// dernier échec, prêt à être montré.
+async function supprimerAvecReprises(chemin) {
+  for (let essai = 0; ; essai++) {
+    try {
+      fs.rmSync(chemin, { recursive: true, force: true });
+      return null;
+    } catch (e) {
+      if (essai >= REPRISES_SUPPRESSION.length || !VERROUS_PASSAGERS.has(e.code)) {
+        return String((e && e.message) || e);
+      }
+      // Dix secondes d'attente muette passeraient pour un blocage.
+      vscode.window.setStatusBarMessage(
+        T('statut.suppression.reprise', [path.basename(chemin)]), 3000);
+      await attendre(REPRISES_SUPPRESSION[essai]);
+    }
+  }
+}
+
+// Dernier filet, silencieux : le verrou d'un synchroniseur tombe parfois bien après le
+// geste. On revient une minute plus tard sur ce qui a résisté, sans un mot — le message
+// d'erreur est déjà parti, et il n'y a rien à faire de cette seconde chance. Sans elle,
+// un article à moitié effacé n'a plus d'entrée dans l'arbre (il n'a plus de .md) : ni
+// son dossier ni ses documents produits ne sont plus atteignables par aucun geste.
+const DELAI_DERNIERE_CHANCE = 60000;
+
+function reprendrePlusTard(chemins, rafraichirTout) {
+  const restants = chemins.filter((c) => c);
+  if (restants.length === 0) { return; }
+  const minuteur = setTimeout(() => {
+    let efface = false;
+    for (const chemin of restants) {
+      if (!fs.existsSync(chemin)) { continue; }
+      try { fs.rmSync(chemin, { recursive: true, force: true }); efface = true; }
+      catch (e) { /* toujours tenu : on n'insiste plus */ }
+    }
+    if (efface && rafraichirTout) { rafraichirTout(); }
+  }, DELAI_DERNIERE_CHANCE);
+  // Un minuteur en attente retiendrait l'hôte d'extensions à la fermeture.
+  if (minuteur.unref) { minuteur.unref(); }
+}
+
 // ---- Tâche de compilation : réutilise la tâche utilisateur, écoute sa fin --------
 
 let buildEnCours = false;
@@ -1074,6 +1622,10 @@ async function toutExporter(fournisseur, rafraichirTout) {
   try {
     await fermerOngletsSous(path.join(racine, 'out'));
     apercuCourantUri = null;                       // tous les aperçus viennent d'être fermés
+    // La maquette lit dois-calcules.yaml pendant la compilation, et il n'est plus réécrit à
+    // chaque rafraîchissement : recompiler tout est le bon moment pour s'assurer qu'il est
+    // là et à jour. L'écriture ne se fait qu'au changement.
+    ecrireDoisCalcules(fournisseur);
     const code = await lancerTache(NOM_TACHE_EXPORT);
     rafraichirTout();
     if (code === null) { return; }                 // tâche introuvable, déjà signalé
@@ -1238,6 +1790,10 @@ function fermerFormulairesEcriture(racine, slug) {
 
 async function verrouillerSeulement(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
+  // Geler le numéro pendant que quelqu'un y écrit, c'est couper une saisie en cours sur un
+  // autre poste. La question porte sur TOUT le numéro, pas sur un fichier.
+  const refusBail = refusCoeditionNumero(racine);
+  if (refusBail) { vscode.window.showWarningMessage(refusBail); return; }
   const choix = await vscode.window.showWarningMessage(
     T('modale.verrouiller.question', [titreNumero(racine)]),
     { modal: true, detail: T('modale.verrouiller.detail') },
@@ -1257,6 +1813,9 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
     vscode.window.setStatusBarMessage(T('statut.occupe'), 3000);
     return;
   }
+  // Le dossier va être DÉPLACÉ : personne ne doit être en train d'écrire dedans.
+  const refusBail = refusCoeditionNumero(racine);
+  if (refusBail) { vscode.window.showWarningMessage(refusBail); return; }
   // Déjà archivé : il ne reste qu'à reposer le verrou.
   if (etatNumero.archivee) {
     if (etatNumero.verrouillee) { vscode.window.showInformationMessage(T('info.deja.archivee')); return; }
@@ -1281,7 +1840,7 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
   await fermerOngletsSous(dossierOut);
   apercuCourantUri = null;
   apercuCourantSlug = null;
-  const erreurOut = supprimerDossier(dossierOut);
+  const erreurOut = await supprimerAvecReprises(dossierOut);
   if (erreurOut) {
     ecrireClesAusgabe(racine, { locked: 'false', archived: 'false' });
     rafraichirTout();
@@ -1342,7 +1901,7 @@ async function desarchiver(fournisseur, rafraichirTout) {
 // La fenêtre se ferme après le démarrage du script : tant qu'elle est ouverte, Windows
 // refuse de déplacer le dossier.
 async function fermerFenetreApresArchivage() {
-  await new Promise((resolve) => setTimeout(resolve, 1200));
+  await attendre(1200);
   await vscode.commands.executeCommand('workbench.action.closeWindow');
 }
 
@@ -2466,9 +3025,13 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
       ? retirerTable(doc.getText(), relatif)
       : retirerImage(doc.getText(), relatif);
     if (resultat.n > 0) {
+      // L'image supprimée pouvait être dans une grille : le bloc reste, avec une image de
+      // moins et une disposition qui ne lui correspond plus. On le remet d'aplomb ici, seul
+      // point par lequel toutes les suppressions passent — l'arbre comme le formulaire.
+      const propre = estTable ? resultat : normaliserGrilles(resultat.texte);
       const edition = new vscode.WorkspaceEdit();
       const fin = doc.lineAt(doc.lineCount - 1).range.end;
-      edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), resultat.texte);
+      edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), propre.texte);
       if (await vscode.workspace.applyEdit(edition)) { retirees = resultat.n; }
     }
   } catch (e) {
@@ -2476,15 +3039,14 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
     return false;
   }
 
-  try {
-    // Le laisser à l'écran ferait réécrire un tableau qui vient d'être supprimé. Le
-    // gestionnaire des médias, lui, n'est pas lié à un fichier : il retire sa carte.
-    const ouvert = estTable ? panneauxTable.get(cible) : null;
-    if (ouvert) { try { ouvert.dispose(); } catch (e) { /* déjà fermé */ } }
-    await fermerOngletDuFichier(cible);
-    fs.rmSync(cible, { force: true });
-  } catch (e) {
-    vscode.window.showErrorMessage(T('err.suppression', [nom, e.message]));
+  // Le laisser à l'écran ferait réécrire un tableau qui vient d'être supprimé. Le
+  // gestionnaire des médias, lui, n'est pas lié à un fichier : il retire sa carte.
+  const ouvert = estTable ? panneauxTable.get(cible) : null;
+  if (ouvert) { try { ouvert.dispose(); } catch (e) { /* déjà fermé */ } }
+  await fermerOngletDuFichier(cible);
+  const echec = await supprimerAvecReprises(cible);
+  if (echec) {
+    vscode.window.showErrorMessage(T('err.suppression', [nom, echec]));
     rafraichirTout();
     return false;                                  // .md non enregistré : état cohérent
   }
@@ -2534,18 +3096,25 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
   if (reponse !== T('modale.supprimer.bouton')) { return; }   // annulé : rien n'est touché
   const dossierArticle = path.join(racine, 'articles', slug);
   const dossierSortie = path.join(racine, 'out', slug);
-  try {
-    if (apercuCourantSlug === slug) { fermerApercuHtml(); apercuCourantSlug = null; }
-    fermerFormulairesEcriture(racine, slug);
-    await fermerOngletsSous(dossierArticle);
-    await fermerOngletsSous(dossierSortie);
-    fs.rmSync(dossierArticle, { recursive: true, force: true });
-    fs.rmSync(dossierSortie, { recursive: true, force: true });
-    vscode.window.setStatusBarMessage(T('statut.supprime', [slug]), 3000);
-  } catch (e) {
-    vscode.window.showErrorMessage(T('err.suppression', [slug, e.message]));
-  }
+  // Tout ce qui tient un fichier de l'article est fermé d'abord ; ces fermetures avalent
+  // leurs propres échecs, seul l'effacement dira si elles ont suffi.
+  if (apercuCourantSlug === slug) { fermerApercuHtml(); apercuCourantSlug = null; }
+  fermerFormulairesEcriture(racine, slug);
+  await fermerOngletsSous(dossierArticle);
+  await fermerOngletsSous(dossierSortie);
+  // Les deux dossiers sont effacés indépendamment : un article encore tenu ne doit pas
+  // laisser derrière lui les documents produits, qui pèsent le plus lourd.
+  const echecArticle = await supprimerAvecReprises(dossierArticle);
+  const echecSortie = await supprimerAvecReprises(dossierSortie);
   rafraichirTout();
+  const echec = echecArticle || echecSortie;
+  if (echec) {
+    reprendrePlusTard([echecArticle ? dossierArticle : null, echecSortie ? dossierSortie : null],
+      rafraichirTout);
+    vscode.window.showErrorMessage(T('err.suppression.article', [slug, echec]));
+    return;
+  }
+  vscode.window.setStatusBarMessage(T('statut.supprime', [slug]), 3000);
 }
 
 // ---- Formulaire « Métadonnées du numéro » ----------------------------------------
@@ -2565,6 +3134,9 @@ let panneauMetadonnees = null;
 
 function envoyerValeursMetadonnees(panneau, racine) {
   repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, chargeNumero(racine, true)));
+  // Ce que le formulaire montre est ce que le disque disait à cet instant : c'est cette
+  // empreinte que la co-édition comparera si la saisie reste en plan.
+  noterLectureCoedition(panneau, racine, path.join(racine, 'ausgabe.yaml'));
 }
 
 // Panneau singleton : rouvrir la commande révèle le formulaire existant, valeurs relues
@@ -2576,6 +3148,7 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
   if (panneauMetadonnees) {
     panneauMetadonnees.reveal(vscode.ViewColumn.One);
     envoyerValeursMetadonnees(panneauMetadonnees, racine);
+    annoncerMain(panneauMetadonnees, racine, path.join(racine, 'ausgabe.yaml'));
     return;
   }
   const panneau = vscode.window.createWebviewPanel(
@@ -2583,11 +3156,19 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
     { enableScripts: true, localResourceRoots: [] }
   );
   panneauMetadonnees = panneau;
-  panneau.onDidDispose(() => { if (panneauMetadonnees === panneau) { panneauMetadonnees = null; } });
+  panneau.onDidDispose(() => {
+    libererCoedition(panneau);                     // le bail est rendu, sans attendre l'expiration
+    if (panneauMetadonnees === panneau) { panneauMetadonnees = null; }
+  });
   panneau.webview.onDidReceiveMessage((msg) => {
     if (!msg) { return; }
-    if (msg.type === 'pret') { envoyerValeursMetadonnees(panneau, racine); return; }
-    messageNumero(panneau, racine, msg, rafraichirTout);
+    if (msg.type === 'pret') {
+      envoyerValeursMetadonnees(panneau, racine);
+      annoncerMain(panneau, racine, path.join(racine, 'ausgabe.yaml'));
+      return;
+    }
+    messageNumero(panneau, racine, msg, rafraichirTout,
+      () => envoyerValeursMetadonnees(panneau, racine));
   });
   panneau.webview.html = htmlMetadonnees(crypto.randomBytes(16).toString('hex'));
 }
@@ -2670,17 +3251,34 @@ function typesTraduits(langue) {
 // Écrit les cartes reçues d'une webview de fiches : nettoyage, restitution des clés
 // inconnues, écriture atomique. Un slug absent de listerArticles() est ignoré, et
 // `slugsAutorises` restreint en plus à la liste du panneau.
-function ecrireCartesArticles(fournisseur, cartes, slugsAutorises) {
+// `panneau` sert au bail de co-édition : il se prend fiche par fiche, et seulement sur
+// celles qui changent. Le formulaire des fiches montre tout le numéro d'un coup — prendre
+// la main sur tous les meta.yaml à son ouverture bloquerait la rédaction entière. Sans
+// panneau (écriture venue d'ailleurs), le bail est quand même consulté et posé, mais rien
+// ne suit l'inactivité : il n'y a pas de saisie à l'écran à protéger.
+function ecrireCartesArticles(fournisseur, cartes, slugsAutorises, panneau) {
   const connus = new Set(fournisseur.listerArticles());
   // Pour la permutation des statuts de traduction : une fiche sans `lang` s'affiche — et
   // se permute — sous la langue du numéro, l'hôte lit donc le changement avec ce repli.
   const langueNumero = langueRevue(fournisseur.racine);
   let n = 0;
   const erreurs = [];
+  const refus = [];
+  let recharger = false;
   for (const slug of Object.keys(cartes || {})) {
     if (!connus.has(slug)) { continue; }           // slug inconnu : ignoré
     if (slugsAutorises && slugsAutorises.indexOf(slug) === -1) { continue; }
     const fichierMeta = cheminMeta(fournisseur.racine, slug);
+    const barre = mainCoedition(panneau, fournisseur.racine, fichierMeta, { ecriture: true });
+    if (barre) {
+      // Une fiche refusée n'arrête pas les autres : chaque article a son fichier, et une
+      // seule main prise ailleurs ne doit pas perdre tout l'enregistrement.
+      refus.push(barre.code === 'pris'
+        ? T('coedition.fiche.prise', [slug, barre.titulaire])
+        : barre.message);
+      if (barre.code === 'perime') { recharger = true; }
+      continue;
+    }
     try {
       // Fichier régénéré depuis la carte de la webview : ce que la carte ne porte pas est
       // relu du fichier, sans quoi il serait perdu à chaque enregistrement. Les clés de
@@ -2695,6 +3293,7 @@ function ecrireCartesArticles(fournisseur, cartes, slugsAutorises) {
         langAvant = ancien.lang || langueNumero;
       } catch (e) { /* pas de fiche existante */ }
       ecrireAtomique(fichierMeta, serialiserMeta(carte));
+      rafraichirEmpreinteCoedition(fournisseur.racine, fichierMeta);
       n++;
       // La langue de l'article a changé : la webview a permuté les contenus entre les
       // deux langues, et les statuts du suivi de traduction suivent leurs contenus —
@@ -2709,7 +3308,16 @@ function ecrireCartesArticles(fournisseur, cartes, slugsAutorises) {
       erreurs.push(slug + ' (' + e.message + ')');
     }
   }
-  return { n: n, erreurs: erreurs };
+  return { n: n, erreurs: erreurs, refus: refus, recharger: recharger };
+}
+
+// Le message à afficher après ecrireCartesArticles, ou null quand tout est passé. Les
+// fiches refusées d'abord — elles nomment qui tient la main — puis l'échec d'écriture, qui
+// est d'une autre nature.
+function messageCartes(res) {
+  const morceaux = (res.refus || []).slice();
+  if (res.erreurs.length > 0) { morceaux.push(T('err.ecriture', [res.erreurs.join(', ')])); }
+  return morceaux.length > 0 ? morceaux.join(' ') : null;
 }
 
 function htmlApercuMetadonnees(nonce) {
@@ -2790,7 +3398,16 @@ function doisCalculesArticles(fournisseur) {
 // et seulement au changement (OneDrive/SharePoint réplique chaque octet écrit) ; un
 // numéro ARCHIVÉ n'est jamais touché. Appelée de rafraichirTout(), le point où tout
 // converge — ordre déplacé, case « pas de DOI », article ajouté ou retiré, année ou
-// numéro changés — et l'appel fréquent est inoffensif grâce à la comparaison.
+// numéro changés.
+//
+// ⚠ Mais PAS quand rafraichirTout vient du surveillant de fichiers (rafraichirTout
+// { derive: false }). Un changement livré par le système de fichiers est le geste d'un
+// AUTRE poste, et c'est ce poste-là qui a déjà écrit ce fichier ; y réagir en le réécrivant
+// mettait les deux à écrire le même fichier dans la même fenêtre de synchronisation, et
+// c'est précisément ce qui fabriquait des « copies en conflit » de dois-calcules.yaml —
+// sans qu'aucun humain n'ait rien ouvert. Chaque changement de rang est donc écrit une
+// fois, par le poste qui l'a fait, plus une relance avant compilation complète au cas où le
+// fichier manquerait encore.
 const NOM_DOIS_CALCULES = 'dois-calcules.yaml';
 function ecrireDoisCalcules(fournisseur) {
   const racine = fournisseur.racine;
@@ -3907,6 +4524,10 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     // fichier doit finir par dire la même chose que l'écran : il se relit à la main, et il
     // voyage seul sur SharePoint.
     modifies[CLE_ORDRE] = trierParDoi(slugs, articlesSansDoi(racine, slugs, { voulus: voulus }));
+    // Un clic isolé ne garde pas de main : il regarde le bail de co-édition et s'abstient
+    // si quelqu'un modifie ausgabe.yaml en ce moment.
+    const refusBail = refusCoedition(racine, path.join(racine, 'ausgabe.yaml'));
+    if (refusBail) { return refusBail; }
     const erreur = ecrireClesAusgabe(racine, modifies);
     if (erreur) { return T('err.ecriture', [erreur]); }
     if (rafraichirTout) { rafraichirTout(); }
@@ -3947,6 +4568,8 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
   // articles à réparer au prochain rendu.
   const modifies = {};
   modifies[CLE_ORDRE] = nouveau;
+  const refusBail = refusCoedition(racine, path.join(racine, 'ausgabe.yaml'));
+  if (refusBail) { return refusBail; }             // quelqu'un modifie le fichier du numéro
   const erreur = ecrireClesAusgabe(racine, modifies);
   if (erreur) { return T('err.ecriture', [erreur]); }
   if (rafraichirTout) { rafraichirTout(); }
@@ -3968,6 +4591,7 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
     repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, charge,
       chargeNumero(racine, avecCouverture), { accent: lireCouleurAccent(racine) }));
     panneau.title = charge.titre;
+    noterLectureCoedition(panneau, racine, path.join(racine, 'ausgabe.yaml'));
   };
   if (panneauVueArticles) {
     panneauVueArticles.reveal(vscode.ViewColumn.One);
@@ -3979,13 +4603,19 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
     { enableScripts: true, localResourceRoots: [] }
   );
   panneauVueArticles = panneau;
-  panneau.onDidDispose(() => { if (panneauVueArticles === panneau) { panneauVueArticles = null; } });
+  panneau.onDidDispose(() => {
+    libererCoedition(panneau);
+    if (panneauVueArticles === panneau) { panneauVueArticles = null; }
+  });
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
     if (msg.type === 'pret') { envoyer(panneau, true); return; }
     // Le formulaire du numéro d'abord : c'est le même code que la page « Méta-données du
-    // numéro », et il répond lui-même au panneau.
-    if (messageNumero(panneau, racine, msg, rafraichirTout)) { return; }
+    // numéro », et il répond lui-même au panneau. Aucun bail n'est posé à l'ouverture de
+    // cette vue — elle se consulte, et geler ausgabe.yaml pour une consultation bloquerait
+    // les autres ; il se prend à la première écriture, dans messageNumero.
+    if (messageNumero(panneau, racine, msg, rafraichirTout,
+      () => envoyer(panneau, false))) { return; }
     if (msg.type === 'ouvrir') {
       // Par la commande, pour rester sur le point d'entrée unique. sansApercu : décision
       // de Robin (25.08.2026) — depuis la vue d'ensemble, on vient lire ou corriger le
@@ -4223,6 +4853,9 @@ function envoyerValeursTraduction(panneau, fournisseur, slug, focus) {
     focus: focus || null
   });
   traductionModifiee = false;                      // les cartes viennent d'être reconstruites
+  // Les deux fichiers que ce panneau écrit, et ce qu'ils valaient à cet instant.
+  noterLectureCoedition(panneau, fournisseur.racine, cheminMeta(fournisseur.racine, slug));
+  noterLectureCoedition(panneau, fournisseur.racine, cheminTraduction(fournisseur.racine, slug));
 }
 
 // Le panneau suit ce qui vient d'être écrit ailleurs — sauf s'il porte une saisie non
@@ -4238,7 +4871,9 @@ function rafraichirPanneauTraduction(fournisseur) {
 // Enregistre ce que renvoie le panneau ; les textes passent par ecrireCartesArticles,
 // qui relit la fiche et n'écrase donc pas une modification enregistrée ailleurs.
 // metaChangee, dans le retour, pilote la recompilation de l'aperçu.
-function enregistrerTraduction(fournisseur, msg) {
+// `panneau` : le bail de co-édition sur les DEUX fichiers écrits ici — la fiche et le
+// sidecar du suivi.
+function enregistrerTraduction(fournisseur, msg, panneau) {
   const racine = fournisseur.racine;
   const slug = String((msg && msg.slug) || '');
   if (!racine || fournisseur.listerArticles().indexOf(slug) === -1) {
@@ -4273,15 +4908,25 @@ function enregistrerTraduction(fournisseur, msg) {
       if (texteChamp(meta, champ, langue) !== avant) { metaChangee = true; }
     }
   }
-  const res = ecrireCartesArticles(fournisseur, { [slug]: meta }, [slug]);
-  if (res.erreurs.length > 0) { return { ok: false, message: T('err.ecriture', [res.erreurs.join(', ')]) }; }
+  const res = ecrireCartesArticles(fournisseur, { [slug]: meta }, [slug], panneau);
+  const refusCartes = messageCartes(res);
+  if (refusCartes) { return { ok: false, message: refusCartes, recharger: res.recharger }; }
   const commentaire = String(msg.commentaire === undefined || msg.commentaire === null ? '' : msg.commentaire)
     .replace(/\r\n?/g, '\n').slice(0, 4000);
-  try {
-    ecrireSuiviTraduction(racine, slug, {
-      statuts: statuts, commentaire: commentaire, _inconnues: suivi._inconnues
-    });
-  } catch (e) { return { ok: false, message: T('err.ecriture', [e.message]) }; }
+  // Le sidecar du suivi a son propre bail : c'est un autre fichier, et la fiche vient
+  // d'être écrite — s'arrêter ici laisserait les deux désaccordés, mais écrire par-dessus
+  // la saisie de quelqu'un d'autre serait pire, et le message dit lequel des deux manque.
+  const refusSuivi = ecrireSousMain(panneau, racine, cheminTraduction(racine, slug), () => {
+    try {
+      ecrireSuiviTraduction(racine, slug, {
+        statuts: statuts, commentaire: commentaire, _inconnues: suivi._inconnues
+      });
+      return null;
+    } catch (e) { return String((e && e.message) || e); }
+  });
+  if (refusSuivi) {
+    return { ok: false, message: refusSuivi.message, recharger: refusSuivi.code === 'perime' };
+  }
   return { ok: true, metaChangee: metaChangee };
 }
 
@@ -4444,6 +5089,7 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
   panneauTraduction = panneau;
   let focusInitial = vise.cle;
   panneau.onDidDispose(() => {
+    libererCoedition(panneau);
     if (panneauTraduction === panneau) {
       panneauTraduction = null; slugTraduction = null;
       traductionModifiee = false; rechargementTraduction = null;
@@ -4473,7 +5119,7 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
         T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
       if (choix === undefined) { return; }         // Annuler : on reste sur l'article
       if (choix === T('form.enregistrer')) {
-        const res = enregistrerTraduction(fournisseur, msg);
+        const res = enregistrerTraduction(fournisseur, msg, panneau);
         if (!res.ok) { repondrePanneau(panneau, { type: 'erreur', message: res.message }); return; }
         vscode.window.setStatusBarMessage(T('statut.traduction', [msg.slug]), 3000);
         if (rafraichirTout) { rafraichirTout(); }
@@ -4485,8 +5131,13 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
       return;
     }
     if (msg.type !== 'enregistrer') { return; }
-    const res = enregistrerTraduction(fournisseur, msg);
-    if (!res.ok) { repondrePanneau(panneau, { type: 'erreur', message: res.message }); return; }
+    const res = enregistrerTraduction(fournisseur, msg, panneau);
+    if (!res.ok) {
+      repondrePanneau(panneau, { type: 'erreur', message: res.message });
+      // Périmé : ce que le panneau montre n'est plus ce que les fichiers contiennent.
+      if (res.recharger) { envoyerValeursTraduction(panneau, fournisseur, slugTraduction, null); }
+      return;
+    }
     repondrePanneau(panneau, { type: 'enregistre', auto: !!msg.auto });
     traductionModifiee = false;
     if (!msg.auto) { vscode.window.setStatusBarMessage(T('statut.traduction', [slugTraduction]), 3000); }
@@ -4898,6 +5549,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
   );
   panneauArticles = panneau;
   panneau.onDidDispose(() => {
+    libererCoedition(panneau);
     if (panneauArticles === panneau) {
       panneauArticles = null; fichesModifie = false; rechargementEnAttente = null;
       rafraichirFiches = null;
@@ -4917,10 +5569,11 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
         T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
       if (choix === undefined) { return; }         // Annuler : on reste sur les cartes
       if (choix === T('form.enregistrer')) {
-        const res = ecrireCartesArticles(fournisseur, msg.articles, filtreArticles);
-        if (res.erreurs.length > 0) {
-          repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [res.erreurs.join(', ')]) });
-          return;                                  // échec : rien n'est rechargé
+        const res = ecrireCartesArticles(fournisseur, msg.articles, filtreArticles, panneau);
+        const refusCartes = messageCartes(res);
+        if (refusCartes) {
+          repondrePanneau(panneau, { type: 'erreur', message: refusCartes });
+          return;                                  // échec ou main prise : rien n'est rechargé
         }
         vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000);
         if (rafraichirTout) { rafraichirTout(); }
@@ -4933,16 +5586,19 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
     if (msg.type === 'photo-choisir') { choisirPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type === 'doi-manuel-confirmer') { await confirmerDoiManuel(panneau, msg); return; }
     if (msg.type !== 'enregistrer' || !msg.articles) { return; }
-    const res = ecrireCartesArticles(fournisseur, msg.articles, filtreArticles);
-    if (res.erreurs.length > 0) {
-      panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [res.erreurs.join(', ')]) });
+    const res = ecrireCartesArticles(fournisseur, msg.articles, filtreArticles, panneau);
+    const refusCartes = messageCartes(res);
+    if (refusCartes) {
+      panneau.webview.postMessage({ type: 'erreur', message: refusCartes });
     } else {
       panneau.webview.postMessage({ type: 'enregistre', n: res.n, auto: !!msg.auto });
       if (!msg.auto) { vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000); }
     }
     if (rafraichirTout) { rafraichirTout(); }
-    // Un enregistrement automatique ne renvoie pas les cartes : le curseur sauterait.
-    if (!msg.auto) { envoyerValeurs(panneau); }     // resynchronise et remet le ● à zéro
+    // Un enregistrement automatique ne renvoie pas les cartes : le curseur sauterait. Une
+    // fiche périmée, elle, l'exige — l'écran ne montre plus ce que le fichier contient, et
+    // la saisie doit être refaite sur des valeurs à jour.
+    if (!msg.auto || res.recharger) { envoyerValeurs(panneau); }   // remet aussi le ● à zéro
   });
   panneau.webview.html = htmlApercuMetadonnees(crypto.randomBytes(16).toString('hex'));
 }
@@ -5082,7 +5738,10 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
     { enableScripts: true, localResourceRoots: [] }
   );
   panneauImportVerif = panneau;
-  panneau.onDidDispose(() => { if (panneauImportVerif === panneau) { panneauImportVerif = null; } });
+  panneau.onDidDispose(() => {
+    libererCoedition(panneau);
+    if (panneauImportVerif === panneau) { panneauImportVerif = null; }
+  });
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
     if (msg.type === 'pret') { envoyerValeursImportVerif(panneau, fournisseur); return; }
@@ -5099,9 +5758,10 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
           T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
         if (choix === undefined) { return; }                       // Annuler : on reste
         if (choix === T('form.enregistrer')) {
-          const res = ecrireCartesArticles(fournisseur, msg.articles, slugsImportVerif);
-          if (res.erreurs.length > 0) {
-            repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [res.erreurs.join(', ')]) });
+          const res = ecrireCartesArticles(fournisseur, msg.articles, slugsImportVerif, panneau);
+          const refusCartes = messageCartes(res);
+          if (refusCartes) {
+            repondrePanneau(panneau, { type: 'erreur', message: refusCartes });
             return;                                                // échec : on reste
           }
           vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000);
@@ -5112,16 +5772,18 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
       return;
     }
     if (msg.type !== 'enregistrer' || !msg.articles) { return; }
-    const res = ecrireCartesArticles(fournisseur, msg.articles, slugsImportVerif);
-    if (res.erreurs.length > 0) {
-      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [res.erreurs.join(', ')]) });
+    const res = ecrireCartesArticles(fournisseur, msg.articles, slugsImportVerif, panneau);
+    const refusCartes = messageCartes(res);
+    if (refusCartes) {
+      repondrePanneau(panneau, { type: 'erreur', message: refusCartes });
     } else {
       repondrePanneau(panneau, { type: 'enregistre', n: res.n, auto: !!msg.auto });
       if (!msg.auto) { vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000); }
     }
     if (rafraichirTout) { rafraichirTout(); }
-    // Pas de re-rendu sur un enregistrement automatique : le curseur serait perdu.
-    if (!msg.auto) { envoyerValeursImportVerif(panneau, fournisseur); }
+    // Pas de re-rendu sur un enregistrement automatique : le curseur serait perdu. Une
+    // fiche périmée l'exige quand même — voir le formulaire des fiches.
+    if (!msg.auto || res.recharger) { envoyerValeursImportVerif(panneau, fournisseur); }
   });
   panneau.webview.html = htmlImportVerif(crypto.randomBytes(16).toString('hex'));
 }
@@ -5466,16 +6128,24 @@ async function ouvrirEditeurTable(fournisseur, item) {
   // L'éditeur a besoin de largeur ; « Voir dans l'aperçu » le rouvre à la demande.
   await fermerTousLesApercus();
   const existant = panneauxTable.get(chemin);
-  if (existant) { existant.reveal(vscode.ViewColumn.One); return; }
+  if (existant) {
+    existant.reveal(vscode.ViewColumn.One);
+    annoncerMain(existant, fournisseur.racine, chemin);
+    return;
+  }
   const panneau = vscode.window.createWebviewPanel(
     'szhEditeurTable', T('table.titre', [nom]), vscode.ViewColumn.One,
     { enableScripts: true, localResourceRoots: [] }
   );
   panneauxTable.set(chemin, panneau);
-  panneau.onDidDispose(() => { if (panneauxTable.get(chemin) === panneau) { panneauxTable.delete(chemin); } });
+  panneau.onDidDispose(() => {
+    libererCoedition(panneau);
+    if (panneauxTable.get(chemin) === panneau) { panneauxTable.delete(chemin); }
+  });
   const charger = () => {
     let html = '';
     try { html = fs.readFileSync(chemin, 'utf8'); } catch (e) { html = '<table><tr><td></td></tr></table>'; }
+    noterLectureCoedition(panneau, fournisseur.racine, chemin);
     const modele = analyserTable(html);
     panneau.webview.postMessage({
       type: 'charger', modele: modele, disposition: disposition(modele),
@@ -5497,14 +6167,26 @@ async function ouvrirEditeurTable(fournisseur, item) {
       accent: lireCouleurAccent(fournisseur.racine), teintes: lireTeintesAccent(fournisseur.racine),
       presets: PRESETS_ORDRE });
   };
+  // -> null quand le tableau est écrit, sinon { code, message } : le bail de co-édition
+  //    tenu par un autre poste, une saisie périmée, ou l'échec de l'écriture elle-même.
   const enregistrer = (modele, auto) => {
-    ecrireAtomique(chemin, serialiserTable(normaliserModele(modele)));
+    const refus = ecrireSousMain(panneau, fournisseur.racine, chemin, () => {
+      try { ecrireAtomique(chemin, serialiserTable(normaliserModele(modele))); return null; }
+      catch (e) { return String((e && e.message) || e); }
+    });
+    if (refus) { return refus; }
     // L'enregistrement automatique reste silencieux.
     if (!auto) { vscode.window.setStatusBarMessage(T('statut.table.enregistree', [nom]), 5000); }
+    return null;
   };
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
-    if (msg.type === 'pret') { charger(); return; }
+    if (msg.type === 'pret') {
+      charger();
+      // Un éditeur de tableau ne s'ouvre pas pour lire : le bail se prend tout de suite.
+      annoncerMain(panneau, fournisseur.racine, chemin);
+      return;
+    }
     if (msg.type === 'operation') { await appliquer(msg); return; }
     if (msg.type === 'restaurer') {
       // La pile d'annulation vit dans la webview ; l'hôte calcule la disposition.
@@ -5550,19 +6232,24 @@ async function ouvrirEditeurTable(fournisseur, item) {
           T('table.quitter.question', [nom]), { modal: true, detail: T('table.quitter.detail') },
           T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
         if (choix === undefined) { return; }                       // Annuler : on reste
-        if (choix === T('form.enregistrer')) { try { enregistrer(msg.modele); } catch (e) { panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [e.message]) }); return; } }
+        if (choix === T('form.enregistrer')) {
+          const refus = enregistrer(msg.modele);
+          if (refus) { panneau.webview.postMessage({ type: 'erreur', message: refus.message }); return; }
+        }
       }
       if (item.slug) { await ouvrirArticle(fournisseur, item.slug); }
       panneau.dispose();
       return;
     }
     if (msg.type === 'enregistrer') {
-      try {
-        enregistrer(msg.modele, !!msg.auto);
-        panneau.webview.postMessage({ type: 'enregistre', auto: !!msg.auto });
-      } catch (e) {
-        panneau.webview.postMessage({ type: 'erreur', message: T('err.ecriture', [e.message]) });
+      const refus = enregistrer(msg.modele, !!msg.auto);
+      if (refus) {
+        panneau.webview.postMessage({ type: 'erreur', message: refus.message });
+        // Périmé : la grille à l'écran n'est plus celle du fichier, elle repart du disque.
+        if (refus.code === 'perime') { charger(); }
+        return;
       }
+      panneau.webview.postMessage({ type: 'enregistre', auto: !!msg.auto });
     }
   });
   panneau.webview.html = htmlEditeurTable(crypto.randomBytes(16).toString('hex'));
@@ -5643,7 +6330,28 @@ function textesMedias() {
     etatHorsFigure: T('medias.etat.horsfigure'), etatDoublon: T('medias.etat.doublon'),
     etatOrphelin: T('medias.etat.orphelin'),
     apercuAbsent: T('img.apercu.absent'), portraitOrphelin: T('medias.portrait.orphelin'),
-    auteurEnregistre: T('medias.auteur.enregistre')
+    auteurEnregistre: T('medias.auteur.enregistre'),
+    grilleSection: T('medias.grille.section'), grilleAjouter: T('medias.grille.ajouter'),
+    grilleAjouterTip: T('medias.grille.ajouter.tip'),
+    grilleHorsTexte: T('medias.grille.ajouter.horstexte'),
+    grillePleine: T('medias.grille.ajouter.pleine'),
+    grilleAucune: T('medias.grille.ajouter.aucune'),
+    grilleChoisir: T('medias.grille.choisir'), grilleValider: T('medias.grille.valider'),
+    grilleAnnuler: T('medias.grille.annuler'),
+    grilleCandidateJamais: T('medias.grille.candidate.jamais'),
+    grilleCandidateDeplacee: T('medias.grille.candidate.deplacee'),
+    grilleDisposition: T('medias.grille.disposition'),
+    grilleDispositionTip: T('medias.grille.disposition.tip'),
+    grilleMembres: T('medias.grille.membres'), grilleRetirer: T('medias.grille.retirer'),
+    grilleRetirerTip: T('medias.grille.retirer.tip'),
+    grilleSuiveuse: T('medias.grille.suiveuse'), grillePastille: T('medias.grille.pastille'),
+    grilleLegende: T('medias.grille.legende'),
+    dispositionAuto: T('medias.disposition.auto'),
+    dispositionAutoSimple: T('medias.disposition.auto.simple'),
+    dispositionLigne: T('medias.disposition.ligne'),
+    dispositionPile: T('medias.disposition.pile'),
+    dispositionTableau: T('medias.disposition.tableau'),
+    dispositionRangees: T('medias.disposition.rangees')
   }, textesAuteur());
 }
 
@@ -5699,18 +6407,37 @@ function listerMediasArticle(fournisseur, slug, texteMd, budget) {
   // ni alternative ni légende passait pour saine au formulaire et rouge à l'export.
   const sansAlternative = new Set(
     imagesSansAlternative(texteMd).map((i) => i.relatif).filter(Boolean));
+  // Les grilles du texte, une entrée par bloc « ::: {.szh-grille} », numérotées dans
+  // l'ordre du document : la carte de chaque image y lit celle à laquelle elle appartient,
+  // le rang qu'elle y tient, et de qui elle est voisine.
+  const grilles = lireGrilles(texteMd);
+  const parImage = new Map();
+  grilles.forEach((g, index) => {
+    g.membres.forEach((m, rang) => {
+      if (m.relatif) { parImage.set(m.relatif, { grille: index, rang: rang }); }
+    });
+  });
   const relatifs = fournisseur._imagesArticle(slug);
   const empreintes = empreintesPartagees(base, relatifs);
   const liste = relatifs.map((relatif) => {
     const chemin = path.join(base, relatif);
     const v = lireAttributsImage(texteMd, relatif);
+    const dims = lireDimensionsImage(chemin);
+    const place = parImage.get(relatif.toLowerCase()) || null;
     return {
       relatif: relatif,
       description: decrireImage(chemin),
       apercu: apercuMedia(chemin, budget),
       occurrences: v.n,
       sansAlternative: sansAlternative.has(relatif.toLowerCase()),
-      qualite: qualiteImage('figure', lireDimensionsImage(chemin), relatif,
+      // Le rapport largeur/hauteur sert au menu de disposition, qui montre ce que le mode
+      // automatique choisirait. Le rendu, lui, remesure les fichiers (szh-grille.lua) :
+      // ceci n'est qu'un aperçu, jamais la source de la mise en page.
+      largeur: dims ? dims.largeur : null,
+      hauteur: dims ? dims.hauteur : null,
+      grille: place ? place.grille : null,
+      rangGrille: place ? place.rang : -1,
+      qualite: qualiteImage('figure', dims, relatif,
         { reduit: reduireWarningsImpressionActif() }),
       valeurs: {
         legende: v.legende, alt: v.alt, altDefini: v.altDefini,
@@ -5734,6 +6461,39 @@ function listerMediasArticle(fournisseur, slug, texteMd, budget) {
     delete m._empreinte;
   }
   return liste;
+}
+
+// Les dispositions offertes, par nombre d'images. La table vit dans lib/references.js,
+// avec le mode automatique et l'écriture ; le formulaire n'en garde que le menu.
+function dispositionsParCompte() {
+  const res = {};
+  for (let n = 2; n <= GRILLE_MAX; n++) { res[n] = dispositionsPossibles(n); }
+  return res;
+}
+
+// Les grilles du texte, dans l'ordre du document — le même que celui dont
+// listerMediasArticle tire l'indice porté par chaque carte. Les noms de fichiers sont
+// rendus dans la casse du disque : le .md est lu en minuscules, les cartes ne le sont pas,
+// et le formulaire retrouve ses voisines par ce nom-là.
+function listerGrillesArticle(fournisseur, slug, texteMd) {
+  const base = path.join(fournisseur.racine, 'articles', slug, 'media');
+  const parMinuscule = new Map();
+  for (const r of fournisseur._imagesArticle(slug)) { parMinuscule.set(r.toLowerCase(), r); }
+  return lireGrilles(texteMd).map((g) => {
+    const membres = g.membres.map((m) => (m.relatif && parMinuscule.get(m.relatif)) || m.cible);
+    // Ce que « Automatique » choisirait, pour que le menu le nomme : un mode dont on ne
+    // voit pas le résultat ne se choisit pas de confiance. Le rendu remesure les fichiers
+    // (szh-grille.lua) et retombe sur la même valeur, la règle étant la même.
+    const ratios = membres.map((nom) => {
+      const dims = lireDimensionsImage(path.join(base, nom));
+      return dims && dims.hauteur > 0 ? dims.largeur / dims.hauteur : null;
+    });
+    return {
+      disposition: g.disposition,
+      auto: dispositionAutomatique(membres.length, ratios),
+      membres: membres
+    };
+  });
 }
 
 // Un descripteur par portrait, c'est-à-dire par base : <base>.original.<ext> et ses deux
@@ -5880,6 +6640,9 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
     repondrePanneau(cible, {
       type: 'charger', slug: slug,
       medias: listerMediasArticle(fournisseur, slug, texteMd, budget),
+      grilles: listerGrillesArticle(fournisseur, slug, texteMd),
+      grilleMax: GRILLE_MAX, grilleAuto: GRILLE_AUTO,
+      dispositions: dispositionsParCompte(),
       portraits: listerPortraitsArticle(fournisseur, slug, budget),
       focus: focus, accent: lireCouleurAccent(fournisseur.racine), i18n: textesMedias()
     });
@@ -5985,6 +6748,70 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       vscode.window.setStatusBarMessage(
         T(pose.auCurseur ? 'medias.statut.inseree' : 'medias.statut.inseree.fin', [relatif]), 6000);
       if (rafraichirTout) { rafraichirTout(); }
+      await charger(panneau);
+      return;
+    }
+    // Les trois gestes de grille. Chacun réécrit le .md par une fonction pure de
+    // lib/references.js, puis recharge le formulaire : les grilles changent l'ordre et le
+    // verrouillage des cartes, et rejouer le calcul dans la webview le referait mal.
+    // Les saisies en cours partent d'abord, comme pour « insérer » : la réécriture les
+    // écraserait sans cela.
+    if (msg.type === 'grille-ajouter' || msg.type === 'grille-retirer'
+        || msg.type === 'grille-disposition') {
+      if (refuserSiVerrouille()) { return; }
+      const relatif = String(msg.relatif || '');
+      if (!relatifImageValide(relatif)) { return; }
+      if (Array.isArray(msg.medias) && msg.medias.length > 0 && await enregistrer(msg.medias) < 0) { return; }
+      let doc;
+      try { doc = await vscode.workspace.openTextDocument(md); }
+      catch (e) { repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) }); return; }
+      const source = doc.getText();
+      let resultat = null;
+      let annonce = null;
+      if (msg.type === 'grille-ajouter') {
+        const ajout = String(msg.ajout || '');
+        if (!relatifImageValide(ajout)) { return; }
+        resultat = poserDansGrille(source, relatif, ajout);
+        if (!resultat.ok) {
+          // Chaque refus a sa cause, et chacune se répare autrement : la nommer, sinon le
+          // bouton semble ne rien faire.
+          const messages = {
+            ancre: T('medias.err.grille.ancre', [relatif]),
+            ajout: T('medias.err.grille.ajout', [ajout]),
+            pleine: T('medias.grille.ajouter.pleine')
+          };
+          const dit = messages[resultat.motif];
+          if (dit) { repondrePanneau(panneau, { type: 'erreur', message: dit }); }
+          return;
+        }
+        annonce = resultat.legendePerdue
+          ? T('medias.statut.grille.legende', [ajout])
+          : T('medias.statut.grille.ajoutee', [ajout, relatif]);
+      } else if (msg.type === 'grille-retirer') {
+        resultat = retirerDeGrille(source, relatif);
+        annonce = T('medias.statut.grille.retiree', [relatif]);
+      } else {
+        resultat = ecrireDispositionGrille(source, relatif, String(msg.disposition || ''));
+      }
+      if (!resultat.ok) { return; }                 // grille disparue entre-temps : silence
+      if (resultat.texte !== source) {
+        try {
+          const edition = new vscode.WorkspaceEdit();
+          const fin = doc.lineAt(doc.lineCount - 1).range.end;
+          edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), resultat.texte);
+          if (!(await vscode.workspace.applyEdit(edition))) {
+            repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [md]) });
+            return;
+          }
+          await doc.save();                          // déclenche la recompilation
+        } catch (e) {
+          repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) });
+          return;
+        }
+      }
+      if (annonce) { vscode.window.setStatusBarMessage(annonce, 6000); }
+      if (rafraichirTout) { rafraichirTout(); }
+      focus = relatif;                               // la carte d'où le geste est parti
       await charger(panneau);
       return;
     }
@@ -6123,23 +6950,31 @@ function activate(context) {
 
   // getChildren recalcule le compte des Word, le titre suit le numéro, et l'aperçu HTML
   // est rechargé si sa sortie a été régénérée.
-  const rafraichirTout = () => {
+  // `opts.derive: false` : ce rafraîchissement ne vient PAS d'un geste fait sur ce poste.
+  // C'est le surveillant de fichiers qui l'a déclenché, donc la livraison par OneDrive du
+  // travail d'un autre poste — et dans ce cas le fichier dérivé des DOI n'est pas réécrit.
+  // Sans cette distinction, chaque poste réécrivait dois-calcules.yaml en réaction au
+  // changement de l'autre, les deux dans la même fenêtre de synchronisation : c'est
+  // exactement ce qui fabriquait des copies en conflit sur ce fichier.
+  const rafraichirTout = (opts) => {
     // Avant tout le reste : le titre de la vue et les boutons de l'arbre en dépendent.
     majEtatNumero(fournisseur, barreEtat);
     fournisseur.rafraichir();
-    // Le fichier dérivé des DOI calculés suit chaque rafraîchissement : tout geste qui
-    // change un rang passe par ici, et l'écriture ne se fait qu'au changement.
-    ecrireDoisCalcules(fournisseur);
+    if (!opts || opts.derive !== false) { ecrireDoisCalcules(fournisseur); }
     vue.title = fournisseur.racine ? titreVue(fournisseur.racine) : T('arbre.titre.defaut');
     majBarreApercu();
     rechargerApercuHtmlSiChange(fournisseur);
+    // Une copie en conflit déjà déposée par le synchroniseur ne doit pas rester muette.
+    avertirCopiesConflit(fournisseur.racine);
   };
 
   // Regroupe les rafales du système de fichiers : OneDrive en émet plusieurs.
   let minuteur = null;
   const rafraichirBientot = () => {
     if (minuteur) { clearTimeout(minuteur); }
-    minuteur = setTimeout(() => { minuteur = null; rafraichirTout(); }, 300);
+    // derive: false — voir rafraichirTout. Un changement arrivé par le système de fichiers
+    // n'est pas un geste de ce poste : on relit, on n'écrit rien de dérivé.
+    minuteur = setTimeout(() => { minuteur = null; rafraichirTout({ derive: false }); }, 300);
   };
 
   const reinstallerWatchers = (racine) => {
@@ -6180,6 +7015,11 @@ function activate(context) {
     vscode.commands.executeCommand('setContext', CLE_CONTEXTE, !!racine);
     reinstallerWatchers(racine);
     if (racine) { demarrerDormeurWsl(); } else { arreterDormeurWsl(); }
+    // Les copies en conflit du numéro précédent ne sont plus les nôtres, et les baux
+    // laissés par une session tuée finissent par partir : un ménage par revue ouverte, pas
+    // un de plus — le dossier .szh-edition ne contient qu'un fichier par (fichier, personne).
+    oublierCopiesSignalees();
+    if (racine) { try { coedition.purger(racine); } catch (e) { /* jamais bloquant */ } }
     rafraichirTout();
   };
 
@@ -6193,6 +7033,31 @@ function activate(context) {
 
   context.subscriptions.push(
     cmd('szh.cockpit.rafraichir', majContexte),
+    // Le nom montré aux autres postes est retenu une fois : le changer doit valoir tout de
+    // suite, sans redémarrer l'éditeur.
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('szh.nomUtilisateur')) { oublierIdentiteCoedition(); }
+    }),
+    // ---- Copies en conflit : comparer, trancher bloc par bloc, refermer ----
+    // Le contenu de la copie servi sous « szh-conflit », et les deux commandes que
+    // l'éditeur pose dans la barre du diff en ligne (menu scm/change/title de package.json).
+    vscode.workspace.registerTextDocumentContentProvider(SCHEME_CONFLIT, fournisseurContenuConflit),
+    cmd('szh.conflit.comparer', (uri) => comparerConflit(fichierConflitVise(uri))),
+    // « Prendre cette version » écrit dans le fichier du numéro : garde du numéro gelé.
+    cmdEcriture('szh.conflit.prendre',
+      (uri, blocs, index) => resoudreBlocConflit(uri, blocs, index, true)),
+    // « Garder la mienne » n'écrit que dans la copie, un fichier que personne ne lit et qui
+    // est destiné à disparaître : elle reste donc offerte même sur un numéro gelé, comme la
+    // suppression de la copie — retirer ce qu'un synchroniseur a laissé n'est pas modifier
+    // le numéro.
+    cmd('szh.conflit.garder',
+      (uri, blocs, index) => resoudreBlocConflit(uri, blocs, index, false)),
+    cmd('szh.conflit.supprimerCopie', (uri) => {
+      const chemin = fichierConflitVise(uri);
+      return supprimerCopieConflit(chemin ? copieConflitPour(chemin) : null, true);
+    }),
+    // Le SourceControl est créé à la demande : il faut quand même le défaire à l'extinction.
+    { dispose: () => { if (scmConflits) { scmConflits.dispose(); scmConflits = null; } } },
     cmdEcriture('szh.metadonnees', () => ouvrirMetadonnees(fournisseur, rafraichirTout)),
     cmdEcriture('szh.apercuMetadonnees', () => ouvrirApercuMetadonnees(fournisseur, rafraichirTout, null)),
     // Le même formulaire, filtré sur un article.
@@ -6377,6 +7242,17 @@ module.exports = {
     // Pas pures — elles lisent et écrivent le numéro — mais exposées pour le même
     // contrôle : le fichier dérivé des DOI doit pouvoir s'éprouver sans hôte complet.
     doisCalculesArticles, ecrireDoisCalcules, permuterStatutsTraduction,
+    // La co-édition : le bail vit dans lib/coedition.js, mais c'est ici que se décide ce
+    // qu'un formulaire a le droit d'écrire. Un « panneau » n'est pour elles qu'une clé,
+    // n'importe quel objet fait l'affaire dans un test.
+    mainCoedition, ecrireSousMain, refusCoedition, refusCoeditionNumero,
+    noterLectureCoedition, rafraichirEmpreinteCoedition, libererCoedition,
+    ecrireCartesArticles, messageCartes, moiCoedition,
+    avertirCopiesConflit, oublierCopiesSignalees, ecrireClesAusgabe,
+    // La résolution d'une copie en conflit : le fournisseur de diff rapide qui la donne pour
+    // « original », et les deux sens de résolution.
+    SCHEME_CONFLIT, fournisseurDiffConflit, cheminDepuisUriConflit,
+    resoudreBlocConflit, comparerConflit, supprimerCopieConflit, rafraichirConflitsScm,
     TEXTES_COCKPIT
   }
 };
