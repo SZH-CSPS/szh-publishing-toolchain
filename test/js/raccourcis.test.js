@@ -132,7 +132,7 @@ test('la barre des tâches reçoit une identité, des deux côtés', () => {
   // son icône. Il faut les deux moitiés, et ce sont elles que ce contrôle garde.
   assert.match(COMMUN, /\$script:SzhAppIds = @\{/);
   for (const id of ['SZH.Publishing.Revue', 'SZH.Publishing.Zeitschrift',
-    'SZH.Publishing.MiseAJour']) {
+    'SZH.Publishing.MiseAJour.fr', 'SZH.Publishing.MiseAJour.de']) {
     assert.ok(COMMUN.indexOf("'" + id + "'") !== -1, 'identité disparue : ' + id);
   }
   // Première moitié : le .lnk porte l'identité — c'est elle qui fait retrouver au bouton
@@ -154,7 +154,9 @@ test('la barre des tâches reçoit une identité, des deux côtés', () => {
   assert.ok(OUVRIR.indexOf('Get-SzhAppId $produitFiltre') !== -1,
     'les deux lanceurs partageraient une identité, donc un bouton');
   // La fenêtre de mise à jour n'est pas un lanceur, mais elle a son bouton elle aussi.
-  assert.ok(UPDATE.indexOf("Set-SzhAppUserModelId (Get-SzhAppId 'maj')") !== -1,
+  assert.ok(UPDATE.indexOf("Get-SzhAppId ('maj.' + $SzhLangue)") !== -1,
+    'update.ps1 ne déclare plus l’identité de sa langue');
+  assert.ok(UPDATE.indexOf('Set-SzhAppUserModelId $idMaj') !== -1,
     'update.ps1 ne déclare plus son identité');
 });
 
@@ -363,10 +365,18 @@ test('le menu reçoit les quatre entrées, résolues comme le shell les lit', { 
     assert.ok(l.args.indexOf('update.ps1" -Langue ' + langue) !== -1, nom + ' : ' + l.args);
     assert.strictEqual(l.fenetre, 1, nom + ' : la fenêtre doit être normale');
     assert.ok(l.icone.indexOf('szh-maj.ico') !== -1, nom + ' : icône ' + l.icone);
-    // Les deux entrées de mise à jour partagent leur identité : même update.ps1, même
-    // icône, seule la langue de la fenêtre les sépare.
-    assert.strictEqual(l.appid, 'SZH.Publishing.MiseAJour', nom + ' : identité');
+    // À chaque entrée la sienne : Windows ne garde qu'une entrée par AppUserModelID, et
+    // les deux mises à jour n'en montraient donc qu'une seule dans le menu Démarrer.
+    assert.strictEqual(l.appid, 'SZH.Publishing.MiseAJour.' + langue, nom + ' : identité');
   }
+  // Le défaut qui a coûté une entrée de menu : Windows tient l'AppUserModelID pour
+  // l'identité de l'application et n'affiche qu'une entrée par identité. Deux raccourcis
+  // qui la partagent, c'est un raccourci que le rédacteur ne trouve plus — le .lnk est
+  // bien sur le disque, mais Get-StartApps ne le liste pas.
+  const identites = r.lnk.map((l) => l.appid);
+  assert.strictEqual(new Set(identites).size, identites.length,
+    'deux entrées du menu partagent une identité : ' + identites.join(', '));
+
   // Chaque description dans la langue de son entrée, et deux descriptions distinctes.
   assert.match(par["Mise à jour de l'outil Revue.lnk"].desc, /^Installer la dernière version/);
   assert.match(par['Aktualisierung des Redaktionstools.lnk'].desc, /^Die neueste Version/);

@@ -236,6 +236,23 @@ lue normalement par les navigateurs. Mesuré, et gardé par un test.
 Le banc porte deux grilles de plus (`test/articles/figures/`), les quatre PDF restent
 **conformes PDF/UA-1** sous veraPDF, et la suite compte 12 contrôles de plus.
 
+### Une des deux mises à jour manquait au menu Démarrer (v2026.08.59)
+
+Constat de Robin après la v2026.08.58 : « l'updater n'est plus dans mon menu Démarrer ».
+Les quatre `.lnk` étaient pourtant bien sur le disque, cibles et icônes justes. C'est
+l'identité de barre des tâches posée au même lot qui les effaçait : les deux entrées de
+mise à jour, française et allemande, partageaient `SZH.Publishing.MiseAJour`, et Windows
+tient l'AppUserModelID pour l'identité de l'application — une entrée par identité. Sur ce
+poste francophone, seule l'allemande restait. `Get-StartApps` le dit sans ambiguïté : le
+`.lnk` français existe, le menu ne le liste pas.
+
+Une identité par ENTRÉE, donc, et non par script : `SZH.Publishing.MiseAJour.fr` et
+`.de`, `update.ps1` prenant celle de sa langue (repli sur le nom sans langue pour une
+fenêtre ouverte autrement que par le menu). Le banc, qui gardait le partage comme une
+décision, garde désormais l'inverse, plus la règle générale : quatre entrées, quatre
+identités distinctes. Vérifié sur le vrai menu — les quatre reviennent dans
+`Get-StartApps`.
+
 ### Supprimer un article : OneDrive tenait encore le dossier (v2026.08.58, cockpit 0.26.7)
 
 Constat de Robin sur un numéro d'essai : « 10-actualite-et-ressources n'a pas pu être

@@ -1378,10 +1378,18 @@ function Start-SzhCodium([string]$Dossier) {
 # ne les porte pas. Il faut dépingler puis réépingler une fois, geste laissé au rédacteur —
 # le dossier des épinglages est tenu par le shell, et y écrire reste sans effet jusqu'au
 # redémarrage d'explorer.exe.
+# Une identité par ENTRÉE de menu, et non par script. Windows tient l'AppUserModelID pour
+# l'identité de l'application et ne garde qu'une entrée par identité : les deux mises à
+# jour, qui partageaient « SZH.Publishing.MiseAJour », ne s'affichaient qu'une fois dans le
+# menu Démarrer — l'allemande sur un poste francophone, le .lnk français présent sur le
+# disque mais absent de Get-StartApps. Le nom sans langue reste le repli des fenêtres
+# lancées autrement que par le menu.
 $script:SzhAppIds = @{
   'revue'       = 'SZH.Publishing.Revue'
   'zeitschrift' = 'SZH.Publishing.Zeitschrift'
   'maj'         = 'SZH.Publishing.MiseAJour'
+  'maj.fr'      = 'SZH.Publishing.MiseAJour.fr'
+  'maj.de'      = 'SZH.Publishing.MiseAJour.de'
 }
 
 # Rend '' pour une clé inconnue plutôt que de lever : sans identité on retombe sur le
@@ -1652,7 +1660,7 @@ function Get-SzhRaccourcisMenu {
       args   = ('-NoProfile -ExecutionPolicy Bypass -File "{0}" -Langue {1}' -f $maj, $langue)
       desc   = $SzhTextes[$langue]['raccourci.maj.desc']
       icone  = (Join-Path $Toolkit 'windows\szh-maj.ico')
-      appid  = (Get-SzhAppId 'maj')
+      appid  = (Get-SzhAppId ('maj.' + $langue))
       pilote = $maj
     })
   }

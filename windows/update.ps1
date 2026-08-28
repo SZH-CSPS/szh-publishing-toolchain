@@ -38,7 +38,9 @@ if ($Langue -and (-not $envLangue) -and (@('fr', 'de', 'en') -contains $Langue.T
 # son bouton avec les autres consoles PowerShell du poste et en prend l'icône. Sans effet
 # quand la console est hébergée par Windows Terminal, dont la fenêtre ne nous appartient
 # pas ; l'entrée du menu Démarrer, elle, garde son icône dans tous les cas.
-[void](Set-SzhAppUserModelId (Get-SzhAppId 'maj'))
+$idMaj = Get-SzhAppId ('maj.' + $SzhLangue)
+if (-not $idMaj) { $idMaj = Get-SzhAppId 'maj' }
+[void](Set-SzhAppUserModelId $idMaj)
 
 try { $Host.UI.RawUI.WindowTitle = (T 'maj.fenetre') } catch { }
 
