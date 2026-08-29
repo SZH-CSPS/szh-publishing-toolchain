@@ -23,7 +23,7 @@ function Div(div)
   end
   local f = io.open(src, 'r')
   if not f then
-    return avertissement('Tableau introuvable : ' .. src .. ' (fichier supprimé ou renommé ?)')
+    return avertissement('Tableau introuvable : ' .. src .. ' (fichier supprimé ou renommé ?)')
   end
   local contenu = f:read('a')
   f:close()

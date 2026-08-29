@@ -9,7 +9,7 @@
 // lanceur — atteignable seulement par qui savait déjà où chercher. Quatre dangers, tous
 // gardés ici :
 //   * le libellé d'un .lnk est un nom de fichier, donc figé : un poste germanophone ne
-//     doit pas lire « Mise à jour de l'outil Revue », d'où deux entrées à noms fixes,
+//     doit pas lire « Mise à jour de l’outil Revue », d'où deux entrées à noms fixes,
 //     chacune portant sa langue à update.ps1 plutôt qu'une entrée renommée à chaque passe ;
 //   * une mise à jour doit se VOIR — elle télécharge, elle peut échouer, son journal est
 //     la seule trace : son raccourci ne passe donc pas par hidden.vbs, contrairement aux
@@ -39,7 +39,7 @@ const ICONE_PY = lire('windows', 'icone.py');
 
 // Les quatre entrées voulues, telles que le rédacteur les lit dans son menu.
 const NOMS = ['Revues SZH', 'Zeitschriften SZH',
-  'Mise à jour de l’outil Revue'.replace('’', "'"), 'Aktualisierung des Redaktionstools'];
+  'Mise à jour de l’outil Revue', 'Aktualisierung des Redaktionstools'];
 
 // ---- Ce que szh-common.ps1 déclare ----
 
@@ -176,11 +176,15 @@ test('les libellés des raccourcis existent dans les trois langues, en « ss »'
   // Les deux noms de .lnk sont des noms de fichiers : aucun caractère interdit par Windows.
   for (const nom of NOMS) {
     assert.ok(!/[<>:"/\\|?*]/.test(nom), 'nom de fichier impossible : ' + nom);
-    assert.ok(COMMUN.indexOf(nom) !== -1 || nom.indexOf("'") !== -1,
+    // PowerShell traite l’apostrophe courbe comme un délimiteur de chaîne, au même titre
+    // que la droite : dans le source elle est DOUBLÉE. On compare donc les deux formes —
+    // sans quoi ce contrôle échouerait sur une chaîne pourtant correcte.
+    const doublee = nom.split('’').join('’’');
+    assert.ok(COMMUN.indexOf(nom) !== -1 || COMMUN.indexOf(doublee) !== -1,
       'szh-common.ps1 ne porte plus le libellé : ' + nom);
   }
   // Le libellé français, avec son apostrophe doublée comme PowerShell l'exige.
-  assert.ok(COMMUN.indexOf("'Mise à jour de l''outil Revue'") !== -1);
+  assert.ok(COMMUN.indexOf("'Mise à jour de l’’outil Revue'") !== -1);
   assert.ok(COMMUN.indexOf("'Aktualisierung des Redaktionstools'") !== -1);
 });
 
@@ -356,7 +360,7 @@ test('le menu reçoit les quatre entrées, résolues comme le shell les lit', { 
     assert.strictEqual(l.appid, appid, nom + ' : identité de barre des tâches');
   }
   // Les deux mises à jour : powershell.exe en direct, fenêtre normale, langue portée.
-  for (const [nom, langue] of [["Mise à jour de l'outil Revue.lnk", 'fr'],
+  for (const [nom, langue] of [['Mise à jour de l’outil Revue.lnk', 'fr'],
     ['Aktualisierung des Redaktionstools.lnk', 'de']]) {
     const l = par[nom];
     assert.ok(l, nom + ' manque au menu');
@@ -378,7 +382,7 @@ test('le menu reçoit les quatre entrées, résolues comme le shell les lit', { 
     'deux entrées du menu partagent une identité : ' + identites.join(', '));
 
   // Chaque description dans la langue de son entrée, et deux descriptions distinctes.
-  assert.match(par["Mise à jour de l'outil Revue.lnk"].desc, /^Installer la dernière version/);
+  assert.match(par['Mise à jour de l’outil Revue.lnk'].desc, /^Installer la dernière version/);
   assert.match(par['Aktualisierung des Redaktionstools.lnk'].desc, /^Die neueste Version/);
   assert.notStrictEqual(par['Revues SZH.lnk'].desc, par['Zeitschriften SZH.lnk'].desc);
 });

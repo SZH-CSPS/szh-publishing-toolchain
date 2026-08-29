@@ -18,11 +18,23 @@ const path = require('path');
 const auteursOjs = require(path.join(__dirname, '..', '..',
   'vscodium-extension', 'szh-cockpit', 'lib', 'auteurs-ojs.js'));
 const {
-  ENDPOINTS_OAI_DEFAUT, OCTETS_MAX_REPONSE, extraireRecords, extraireResumptionToken,
+  ENDPOINTS_OAI_DEFAUT, OCTETS_MAX_REPONSE, JOURS_FRAICHEUR,
+  extraireRecords, extraireRecordsMarc, extraireResumptionToken,
   erreurOai, normaliserCreator, cleAuteur, recordsEnAuteurs, fusionnerAuteurs,
+  rorCanonique, idRor, resoudreRor,
   lireCache, ecrireCache, cacheFrais, endpointsOai,
   resoudreRedirection, recupererHttps, moissonner, rafraichir
 } = auteursOjs;
+
+// La forme d'une entrée d'auteur·e après fusion : neuf clés, toutes présentes. Écrire
+// l'attendu à la main dans chaque test ferait dériver les tests du module à la première
+// clé ajoutée ; ici, une seule ligne suit.
+function entree(champs) {
+  return Object.assign({
+    prenom: '', nom: '', affiliation: '', ror: '',
+    fonction: '', email: '', orcid: '', datePublication: '', source: 'oai'
+  }, champs);
+}
 
 // ---- Fixtures : ce qu'OJS 3.5 répond réellement (relevé le 25.08.2026) ------------
 
@@ -46,6 +58,43 @@ function record(datestamp, creators, options) {
     '\t\t\t\t<identifier>oai:ojs_szh.ojs.szh.ch:article/35</identifier>\n' +
     '\t\t\t\t<datestamp>' + datestamp + '</datestamp>\n' +
     '\t\t\t\t<setSpec>revue:ART</setSpec>\n\t\t\t</header>' + corps + '\n\t\t</record>';
+}
+
+// Le même record, mais en marcxml — le format que le moissonnage lit désormais, parce que
+// lui seul porte l'affiliation ($u). `auteurs` = [[nomComplet, ...affiliations]].
+// L'indentation erratique et le <record> MARC imbriqué dans le <record> OAI sont ceux de
+// l'instance : c'est exactement ce que le parseur doit encaisser.
+function recordMarc(datestamp, auteurs, options) {
+  const o = options || {};
+  const statut = o.deleted ? ' status="deleted"' : '';
+  const champs = (auteurs || []).map((a, i) => {
+    const tag = i === 0 ? '100' : '720';
+    const sous = a.slice(1).map((u) => '\n\t\t\t\t\t\t\t<subfield code="u">' + u + '</subfield>');
+    return '\t\t\t\t<datafield tag="' + tag + '" ind1="1" ind2=" ">\n' +
+      '\t\t\t<subfield code="a">' + a[0] + '</subfield>' +
+      (sous.length > 0 ? sous.join('') : '\n\t\t\t\t\t\t\t<subfield code="u"></subfield>') +
+      '\t\t\t\t\t\t\t\t\t\t\t</datafield>';
+  }).join('\n\t\t\t');
+  const corps = o.deleted ? '' :
+    '\n\t\t\t<metadata>\n<record\n\txmlns="http://www.loc.gov/MARC21/slim">\n' +
+    '\t<leader>     nmb a2200000Iu 4500</leader>\n' + champs + '\n</record>\n\t\t\t</metadata>';
+  return '\t\t<record>\n\t\t\t<header' + statut + '>\n' +
+    '\t\t\t\t<identifier>oai:ojs_szh.ojs.szh.ch:article/35</identifier>\n' +
+    '\t\t\t\t<datestamp>' + datestamp + '</datestamp>\n' +
+    '\t\t\t\t<setSpec>revue:ART</setSpec>\n\t\t\t</header>' + corps + '\n\t\t</record>';
+}
+
+// Une réponse de l'API ROR, telle qu'elle arrive vraiment : `ror_display` y porte
+// « lang: "en" », et non pas une langue absente. C'est ce détail qui décide du repli quand
+// une institution n'a ni libellé français ni libellé allemand.
+function reponseRor() {
+  return JSON.stringify({
+    names: [
+      { lang: null, types: ['acronym'], value: 'UNIGE' },
+      { lang: 'en', types: ['ror_display', 'label'], value: 'University of Geneva' },
+      { lang: 'fr', types: ['label'], value: 'Université de Genève' }
+    ]
+  });
 }
 
 // Le resumptionToken tel qu'OJS l'écrit : attributs sur plusieurs lignes.
@@ -214,9 +263,9 @@ test('fusionnerAuteurs : ajout, mise à jour par datestamp plus récent, jamais 
   ]);
   assert.strictEqual(fusion.length, 3, 'une fusion ne supprime jamais personne');
   assert.deepStrictEqual(fusion[0],
-    { prenom: 'ROBIN', nom: 'MORAND', datePublication: '2026-06-06T00:00:00Z' });
+    entree({ prenom: 'ROBIN', nom: 'MORAND', datePublication: '2026-06-06T00:00:00Z' }));
   assert.deepStrictEqual(fusion[1],
-    { prenom: 'Anne', nom: 'Dupont', datePublication: '2023-05-05T00:00:00Z' });
+    entree({ prenom: 'Anne', nom: 'Dupont', datePublication: '2023-05-05T00:00:00Z' }));
   assert.strictEqual(fusion[2].nom, 'Wood de Wilde');
   // Rejouer le même moissonnage ne change rien : la fusion est idempotente.
   assert.deepStrictEqual(fusionnerAuteurs(fusion, recordsEnAuteurs([])), fusion);
@@ -230,7 +279,7 @@ test('moissonner : suit les resumptionToken, from incrémental, fin sur token vi
   const base = 'https://exemple.test/index.php/revue/fr/oai';
   const urls = [];
   const pages = {};
-  pages[base + '?verb=ListRecords&metadataPrefix=oai_dc&from=2026-08-01'] =
+  pages[base + '?verb=ListRecords&metadataPrefix=oai_dc&from=2026-07-01'] =
     pageListRecords([record('2026-08-10T00:00:00Z', ['Morand, Robin'])], 'jeton-1');
   pages[base + '?verb=ListRecords&resumptionToken=jeton-1'] =
     pageListRecords([record('2026-08-12T00:00:00Z', ['Dupont, Anne'])], 'jeton-2');
@@ -241,7 +290,9 @@ test('moissonner : suit les resumptionToken, from incrémental, fin sur token vi
     if (!(url in pages)) { throw new Error('URL inattendue : ' + url); }
     return pages[url];
   };
-  const records = await moissonner(recuperer, base, '2026-08-01');
+  // Format explicite : ce test garde la PAGINATION, pas le format, et le defaut est
+  // passe a marcxml.
+  const records = await moissonner(recuperer, base, '2026-07-01', 'oai_dc');
   assert.strictEqual(records.length, 3);
   assert.deepStrictEqual(records.map((r) => r.creators[0]),
     ['Morand, Robin', 'Dupont, Anne', 'Nu\u00f1ez, Mar\u00eda']);
@@ -258,7 +309,12 @@ test('moissonner : sans from, la première requête n’en porte pas', async () 
     return pageListRecords([record('2024-01-01T00:00:00Z', ['A, B'])]);
   };
   await moissonner(recuperer, base, null);
-  assert.strictEqual(premiere, base + '?verb=ListRecords&metadataPrefix=oai_dc');
+  // Le défaut est marcxml : c'est le seul format de cette instance qui porte l'affiliation.
+  assert.strictEqual(premiere, base + '?verb=ListRecords&metadataPrefix=marcxml');
+  premiere = null;
+  await moissonner(recuperer, base, null, 'oai_dc');
+  assert.strictEqual(premiere, base + '?verb=ListRecords&metadataPrefix=oai_dc',
+    'le format doit rester imposable, l’ancien reste lisible');
 });
 
 test('moissonner : garde anti-boucle sur un resumptionToken répété', async () => {
@@ -283,16 +339,18 @@ test('moissonner : une autre erreur OAI lève, avec son code', async () => {
 
 // ---- Cache ---------------------------------------------------------------------------
 
+const CACHE_VIDE = { version: 2, dateFetch: null, dateCorpus: null, ror: {}, vus: {}, auteurs: [] };
+
 test('cache : absent, corrompu ou difforme -> cache vide, sans exception', () => {
   avecCache('lecture', (chemin) => {
-    assert.deepStrictEqual(lireCache(), { version: 1, dateFetch: null, auteurs: [] });
+    assert.deepStrictEqual(lireCache(), CACHE_VIDE);
     fs.writeFileSync(chemin, '{ pas du json', 'utf8');
-    assert.deepStrictEqual(lireCache(), { version: 1, dateFetch: null, auteurs: [] });
-    fs.writeFileSync(chemin, JSON.stringify({ version: 1, dateFetch: 'x', auteurs: 'pas une liste' }), 'utf8');
+    assert.deepStrictEqual(lireCache(), CACHE_VIDE);
+    fs.writeFileSync(chemin, JSON.stringify({ version: 2, dateFetch: 'x', auteurs: 'pas une liste' }), 'utf8');
     assert.deepStrictEqual(lireCache().auteurs, []);
     // Un BOM en tête — Save-SzhState en écrit — ne rend pas le fichier illisible.
-    fs.writeFileSync(chemin, '\uFEFF' + JSON.stringify({
-      version: 1, dateFetch: '2026-08-20T00:00:00Z',
+    fs.writeFileSync(chemin, '﻿' + JSON.stringify({
+      version: 2, dateFetch: '2026-08-20T00:00:00Z',
       auteurs: [{ prenom: 'Robin', nom: 'Morand', datePublication: '2026-01-01T00:00:00Z' }]
     }), 'utf8');
     const cache = lireCache();
@@ -301,11 +359,37 @@ test('cache : absent, corrompu ou difforme -> cache vide, sans exception', () =>
   });
 });
 
+// Le piège le plus coûteux du lot. Un cache d'avant marcxml ne porte que des noms : s'il
+// gardait sa dateFetch, le moissonnage repartirait en incrémental depuis cette date et
+// n'irait chercher que les articles publiés DEPUIS. Les affiliations des mille et quelques
+// auteur·e·s déjà en cache ne seraient jamais récupérées — jamais, et sans un mot.
+test('cache : un fichier v1 garde ses auteurs mais REPART de zéro (dateFetch à null)', () => {
+  avecCache('migration', (chemin) => {
+    fs.writeFileSync(chemin, JSON.stringify({
+      version: 1, dateFetch: '2026-08-20T00:00:00Z',
+      auteurs: [
+        { prenom: 'Robin', nom: 'Morand', datePublication: '2026-01-01T00:00:00Z' },
+        { prenom: 'Anne', nom: 'Dupont', datePublication: '2025-01-01T00:00:00Z' }
+      ]
+    }), 'utf8');
+    const cache = lireCache();
+    assert.strictEqual(cache.version, 2);
+    assert.strictEqual(cache.dateFetch, null,
+      'un cache v1 doit forcer un moissonnage COMPLET, sinon les affiliations manquent a jamais');
+    assert.strictEqual(cache.auteurs.length, 2, 'les noms deja connus ne se reperdent pas');
+    assert.deepStrictEqual(cache.ror, {});
+    assert.deepStrictEqual(cache.vus, {});
+    assert.strictEqual(cache.dateCorpus, null);
+  });
+});
+
 test('cache : écriture atomique puis relecture, sans temporaire résiduel', () => {
   avecCache('ecriture', (chemin) => {
     const donnees = {
-      version: 1, dateFetch: '2026-08-25T12:00:00.000Z',
-      auteurs: [{ prenom: 'Mar\u00eda', nom: 'Nu\u00f1ez', datePublication: '2026-08-14T00:00:00Z' }]
+      version: 2, dateFetch: '2026-08-25T12:00:00.000Z', dateCorpus: null,
+      ror: { '01swzsf04': { fr: 'Université de Genève', de: '', en: 'University of Geneva' } },
+      vus: {},
+      auteurs: [entree({ prenom: 'María', nom: 'Nuñez', datePublication: '2026-08-14T00:00:00Z' })]
     };
     assert.strictEqual(ecrireCache(donnees), null);
     assert.deepStrictEqual(lireCache(), donnees);
@@ -314,13 +398,17 @@ test('cache : écriture atomique puis relecture, sans temporaire résiduel', () 
   });
 });
 
-test('cacheFrais : moins de sept jours, bornes et horloge repassée en arrière', () => {
+// Les bornes se calculent sur la constante : le jour où la cadence rebouge, ce test suit
+// tout seul plutôt que de mentir sur ce qu'il garde.
+test('cacheFrais : la fenêtre de fraîcheur, ses bornes et l’horloge repassée en arrière', () => {
   const maintenant = Date.parse('2026-08-25T12:00:00Z');
   const jour = 24 * 3600 * 1000;
-  const cache = (date) => ({ version: 1, dateFetch: date, auteurs: [] });
+  const cache = (date) => ({ version: 2, dateFetch: date, auteurs: [] });
+  const ilYA = (n) => cache(new Date(maintenant - n * jour).toISOString());
+  assert.strictEqual(JOURS_FRAICHEUR, 30, 'la cadence retenue est mensuelle');
   assert.strictEqual(cacheFrais(cache('2026-08-25T11:00:00Z'), maintenant), true);
-  assert.strictEqual(cacheFrais(cache(new Date(maintenant - 6 * jour).toISOString()), maintenant), true);
-  assert.strictEqual(cacheFrais(cache(new Date(maintenant - 8 * jour).toISOString()), maintenant), false);
+  assert.strictEqual(cacheFrais(ilYA(JOURS_FRAICHEUR - 1), maintenant), true, 'la veille de la borne');
+  assert.strictEqual(cacheFrais(ilYA(JOURS_FRAICHEUR + 1), maintenant), false, 'le lendemain de la borne');
   // Une dateFetch dans le futur compte comme périmée : le cache se répare tout seul.
   assert.strictEqual(cacheFrais(cache(new Date(maintenant + jour).toISOString()), maintenant), false);
   assert.strictEqual(cacheFrais(cache(null), maintenant), false);
@@ -348,7 +436,7 @@ test('endpointsOai : défauts relevés sur l’instance, surcharge par config.js
 
 // ---- Rafraîchissement -----------------------------------------------------------------
 
-test('rafraichir : un cache de moins de sept jours ne déclenche AUCUN appel', async () => {
+test('rafraichir : un cache encore frais ne déclenche AUCUN appel', async () => {
   await avecCacheAsync('frais', async () => {
     ecrireCache({ version: 1, dateFetch: '2026-08-23T00:00:00Z', auteurs: [] });
     const recuperer = async () => { throw new Error('appel réseau interdit : cache frais'); };
@@ -363,17 +451,25 @@ test('rafraichir : un cache de moins de sept jours ne déclenche AUCUN appel', a
 test('rafraichir : moissonnage des deux revues, fusion et dateFetch avancée', async () => {
   await avecCacheAsync('complet', async () => {
     ecrireCache({
-      version: 1, dateFetch: '2026-08-01T00:00:00Z',
-      auteurs: [{ prenom: 'Ancien', nom: 'Connu', datePublication: '2025-01-01T00:00:00Z' }]
+      version: 2, dateFetch: '2026-07-01T00:00:00Z', dateCorpus: null, ror: {}, vus: {},
+      auteurs: [entree({ prenom: 'Ancien', nom: 'Connu', datePublication: '2025-01-01T00:00:00Z' })]
     });
     const urls = [];
     const recuperer = async (url) => {
       urls.push(url);
+      // Le MÊME `recuperer` sert l'OAI et l'API ROR — c'est ainsi en production, où le
+      // transport est unique. Un test qui ne répondrait qu'à l'OAI laisserait la
+      // résolution échouer en silence et ne verrait rien.
+      if (url.indexOf('api.ror.org') !== -1) { return reponseRor(); }
       if (url.indexOf('revue-a') !== -1) {
-        return pageListRecords([record('2026-08-10T00:00:00Z', ['Morand, Robin'])]);
+        return pageListRecords([recordMarc('2026-08-10T00:00:00Z', [['Morand, Robin', 'SZH/CSPS']])]);
       }
       return pageListRecords([
-        record('2026-08-12T00:00:00Z', ['Dupont, Anne', 'Morand, Robin'])   // doublon inter-revues
+        // Doublon inter-revues, et une affiliation donnée en ROR.
+        recordMarc('2026-08-12T00:00:00Z', [
+          ['Dupont, Anne', 'https://ror.org/01swzsf04'],
+          ['Morand, Robin']
+        ])
       ]);
     };
     const maintenant = Date.parse('2026-08-25T12:00:00Z');
@@ -383,10 +479,11 @@ test('rafraichir : moissonnage des deux revues, fusion et dateFetch avancée', a
     });
     assert.strictEqual(res.fait, true);
     assert.strictEqual(res.complet, true);
-    // Incrémental : les deux requêtes portent from=<date du dernier fetch, au jour>.
-    assert.strictEqual(urls.length, 2);
-    for (const url of urls) {
-      assert.ok(url.indexOf('from=2026-08-01') !== -1, 'from absent de ' + url);
+    // Incrémental : les deux requêtes OAI portent from=<date du dernier fetch, au jour>.
+    const oai = urls.filter((u) => u.indexOf('exemple.test') !== -1);
+    assert.strictEqual(oai.length, 2);
+    for (const url of oai) {
+      assert.ok(url.indexOf('from=2026-07-01') !== -1, 'from absent de ' + url);
     }
     const cache = lireCache();
     assert.strictEqual(cache.dateFetch, new Date(maintenant).toISOString());
@@ -395,15 +492,23 @@ test('rafraichir : moissonnage des deux revues, fusion et dateFetch avancée', a
     // Le doublon inter-revues garde la date la plus récente.
     const robin = cache.auteurs.filter((a) => a.nom === 'Morand')[0];
     assert.strictEqual(robin.datePublication, '2026-08-12T00:00:00Z');
+    assert.strictEqual(robin.affiliation, 'SZH/CSPS', 'une affiliation vide n’écrase pas la remplie');
+    // Le ROR rencontré est résolu, et rangé sous son identifiant NU — c’est cette clé que
+    // le cockpit relit pour afficher l’affiliation dans la langue de la revue.
+    const anne = cache.auteurs.filter((a) => a.nom === 'Dupont')[0];
+    assert.strictEqual(anne.ror, 'https://ror.org/01swzsf04');
+    assert.deepStrictEqual(cache.ror['01swzsf04'],
+      { fr: 'Université de Genève', de: '', en: 'University of Geneva' });
+    assert.strictEqual(res.rorRates, 0);
   });
 });
 
 test('rafraichir : une revue muette -> fusion partielle, dateFetch INCHANGÉE, on réessaiera', async () => {
   await avecCacheAsync('partiel', async () => {
-    ecrireCache({ version: 1, dateFetch: '2026-08-01T00:00:00Z', auteurs: [] });
+    ecrireCache({ version: 2, dateFetch: '2026-07-01T00:00:00Z', dateCorpus: null, ror: {}, vus: {}, auteurs: [] });
     const recuperer = async (url) => {
       if (url.indexOf('revue-b') !== -1) { throw new Error('délai dépassé : ' + url); }
-      return pageListRecords([record('2026-08-10T00:00:00Z', ['Morand, Robin'])]);
+      return pageListRecords([recordMarc('2026-08-10T00:00:00Z', [['Morand, Robin']])]);
     };
     const res = await rafraichir({
       maintenant: Date.parse('2026-08-25T12:00:00Z'), recuperer: recuperer,
@@ -411,9 +516,9 @@ test('rafraichir : une revue muette -> fusion partielle, dateFetch INCHANGÉE, o
     });
     assert.strictEqual(res.fait, true);
     assert.strictEqual(res.complet, false);
-    assert.match(String(res.erreur), /d\u00e9lai d\u00e9pass\u00e9/);
+    assert.match(String(res.erreur), /délai dépassé/);
     const cache = lireCache();
-    assert.strictEqual(cache.dateFetch, '2026-08-01T00:00:00Z', 'dateFetch ne doit pas avancer');
+    assert.strictEqual(cache.dateFetch, '2026-07-01T00:00:00Z', 'dateFetch ne doit pas avancer');
     assert.deepStrictEqual(cache.auteurs.map((a) => a.nom), ['Morand'], 'le succès partiel est gardé');
   });
 });
@@ -421,8 +526,8 @@ test('rafraichir : une revue muette -> fusion partielle, dateFetch INCHANGÉE, o
 test('rafraichir : hors ligne complet -> silencieux, rien réécrit', async () => {
   await avecCacheAsync('horsligne', async (chemin) => {
     ecrireCache({
-      version: 1, dateFetch: '2026-08-01T00:00:00Z',
-      auteurs: [{ prenom: 'Robin', nom: 'Morand', datePublication: '2026-01-01T00:00:00Z' }]
+      version: 2, dateFetch: '2026-07-01T00:00:00Z', dateCorpus: null, ror: {}, vus: {},
+      auteurs: [entree({ prenom: 'Robin', nom: 'Morand', datePublication: '2026-01-01T00:00:00Z' })]
     });
     const avant = fs.readFileSync(chemin, 'utf8');
     const recuperer = async () => { throw new Error('ENOTFOUND ojs.szh.ch'); };
@@ -442,7 +547,7 @@ test('rafraichir : premier moissonnage sans cache -> pas de from, cache créé',
     let premiere = null;
     const recuperer = async (url) => {
       premiere = premiere || url;
-      return pageListRecords([record('2022-12-20T16:31:08Z', ['Wood de Wilde, Hilary'])]);
+      return pageListRecords([recordMarc('2022-12-20T16:31:08Z', [['Wood de Wilde, Hilary']])]);
     };
     const res = await rafraichir({
       maintenant: Date.parse('2026-08-25T12:00:00Z'), recuperer: recuperer,
@@ -453,7 +558,7 @@ test('rafraichir : premier moissonnage sans cache -> pas de from, cache créé',
     const cache = lireCache();
     assert.strictEqual(cache.auteurs.length, 1);
     assert.deepStrictEqual(cache.auteurs[0],
-      { prenom: 'Hilary', nom: 'Wood de Wilde', datePublication: '2022-12-20T16:31:08Z' });
+      entree({ prenom: 'Hilary', nom: 'Wood de Wilde', datePublication: '2022-12-20T16:31:08Z' }));
   });
 });
 
@@ -547,4 +652,180 @@ test('recupererHttps : le délai TOTAL coupe un serveur qui ne conclut jamais', 
     /d\u00e9lai total d\u00e9pass\u00e9/);
   assert.ok(Date.now() - debut < 5000, 'le rejet doit venir du minuteur, pas d’un autre délai');
   assert.strictEqual(requete.detruit, true, 'la requête doit être détruite au délai total');
+});
+
+// ---- marcxml, ROR, précédence : ce que le passage à marcxml a introduit ---------------
+
+// Le fragment ci-dessous est copié TEL QUEL de l'instance (revue française, 29.08.2026),
+// verrues comprises : indentation erratique, <subfield code="u"> vide, et un <record>
+// MARC21 imbriqué dans le <record> OAI — deux balises de même nom, dont la première à
+// fermer est l'intérieure. Un parseur écrit sur du XML propre s'y casse.
+const FRAGMENT_REEL = [
+  '<record>',
+  '\t\t\t<header>',
+  '\t\t\t\t<identifier>oai:ojs_szh.ojs.szh.ch:article/35</identifier>',
+  '\t\t\t\t<datestamp>2022-12-20T16:31:08Z</datestamp>',
+  '\t\t\t\t<setSpec>revue:ART</setSpec>',
+  '\t\t\t</header>',
+  '\t\t\t<metadata>',
+  '<record',
+  '\txmlns="http://www.loc.gov/MARC21/slim"',
+  '\txsi:schemaLocation="http://www.loc.gov/MARC21/slim https://www.loc.gov/standards/marcxml/schema/MARC21slim.xsd">',
+  '\t<leader>     nmb a2200000Iu 4500</leader>',
+  '\t\t\t<controlfield tag="008">"%18%01%01 %2018                        eng  "</controlfield>',
+  '\t\t\t\t<datafield tag="720" ind1="1" ind2=" ">',
+  '\t\t\t<subfield code="a">Wood de Wilde, Hilary</subfield>',
+  '\t\t\t\t\t\t\t<subfield code="u"></subfield>\t\t\t\t\t\t\t\t\t\t\t</datafield>',
+  '\t\t\t<datafield tag="100" ind1="1" ind2=" ">',
+  '\t\t\t<subfield code="a">Lanners, Romain</subfield>',
+  '\t\t\t\t\t\t\t<subfield code="u">SZH/CSPS</subfield>\t\t\t\t\t\t\t\t\t\t\t</datafield>',
+  '\t\t\t<datafield tag="700" ind1="1" ind2=" ">',
+  '\t\t\t<subfield code="a">Schaer, Marie</subfield>',
+  '\t\t\t\t\t\t\t<subfield code="u">https://ror.org/01swzsf04</subfield>\t\t\t\t\t\t\t\t\t\t\t</datafield>',
+  '\t\t\t<datafield tag="245" ind1="0" ind2="0">',
+  '\t\t<subfield code="a">Un titre qui ne doit pas passer pour un auteur</subfield>',
+  '\t</datafield>',
+  '</record>',
+  '\t\t\t</metadata>',
+  '\t\t</record>'
+].join('\n');
+
+test('extraireRecordsMarc : le XML réel de l’instance, verrues comprises', () => {
+  const records = extraireRecordsMarc(enveloppe('\t<ListRecords>\n' + FRAGMENT_REEL + '\n\t</ListRecords>'));
+  assert.strictEqual(records.length, 1);
+  assert.strictEqual(records[0].datestamp, '2022-12-20T16:31:08Z');
+  assert.strictEqual(records[0].deleted, false);
+  assert.deepStrictEqual(records[0].auteurs.map((a) => a.nomComplet),
+    ['Wood de Wilde, Hilary', 'Lanners, Romain', 'Schaer, Marie'],
+    'les datafields 720, 100 et 700 comptent tous les trois, dans l’ordre du document');
+  // Le datafield 245 est le TITRE : le relever ferait un auteur nommé comme l’article.
+  assert.strictEqual(records[0].auteurs.length, 3, 'un datafield hors 100/700/720 a été pris');
+  // Un $u vide n’est pas une affiliation vide : il n’est pas une affiliation du tout.
+  assert.deepStrictEqual(records[0].auteurs[0].affiliations, []);
+  assert.deepStrictEqual(records[0].auteurs[1].affiliations, ['SZH/CSPS']);
+  const auteurs = recordsEnAuteurs(records);
+  assert.deepStrictEqual(auteurs.map((a) => a.nom), ['Wood de Wilde', 'Lanners', 'Schaer']);
+  assert.strictEqual(auteurs[1].affiliation, 'SZH/CSPS');
+  assert.strictEqual(auteurs[2].ror, 'https://ror.org/01swzsf04');
+  assert.strictEqual(auteurs[2].affiliation, '', 'un ROR ne se range pas dans l’affiliation en clair');
+});
+
+test('extraireRecordsMarc : XML tronqué au milieu d’un datafield, sans exception', () => {
+  const tronque = enveloppe('\t<ListRecords>\n' + FRAGMENT_REEL.slice(0, 900));
+  const records = extraireRecordsMarc(tronque);
+  assert.ok(Array.isArray(records), 'un XML tronqué doit rendre une liste, jamais lever');
+  // Et les formes franchement hostiles ne lèvent pas non plus.
+  for (const x of ['', null, undefined, '<record><datafield tag="100"', '<<<>>>']) {
+    assert.ok(Array.isArray(extraireRecordsMarc(x)));
+  }
+});
+
+// Cas RÉEL : trois auteur·e·s des deux revues déclarent deux ou trois affiliations. MARC
+// autorise $u répété. Les recoller en une chaîne fabriquait « https://ror.org/A
+// https://ror.org/B » — ni un ROR reconnaissable, ni un nom d’institution lisible :
+// l’affiliation était perdue, en silence.
+test('extraireRecordsMarc : $u répété reste une liste, et la première affiliation est retenue', () => {
+  const xml = pageListRecords([recordMarc('2025-01-01T00:00:00Z', [
+    ['Khemka, Ishita', 'https://ror.org/00wyq5s37', 'https://ror.org/00bgtad15'],
+    ['Schelker, Serafina', 'Université de Genève', 'HETSL | HES-SO']
+  ])]);
+  const records = extraireRecordsMarc(xml);
+  assert.deepStrictEqual(records[0].auteurs[0].affiliations,
+    ['https://ror.org/00wyq5s37', 'https://ror.org/00bgtad15']);
+  const auteurs = recordsEnAuteurs(records);
+  // La fiche ne porte qu’une affiliation : la première, celle que l’auteur a mise en tête.
+  assert.strictEqual(auteurs[0].ror, 'https://ror.org/00wyq5s37');
+  assert.strictEqual(auteurs[0].affiliation, '');
+  assert.strictEqual(auteurs[1].affiliation, 'Université de Genève');
+  assert.strictEqual(auteurs[1].ror, '');
+});
+
+test('rorCanonique et idRor : URL, identifiant nu, et tout ce qui n’en est pas', () => {
+  // Identifiants relevés sur l’instance.
+  for (const id of ['01swzsf04', '00w9q2c06', '04nd0xd48', '027h8t796']) {
+    assert.strictEqual(rorCanonique('https://ror.org/' + id), 'https://ror.org/' + id);
+    assert.strictEqual(rorCanonique(id), 'https://ror.org/' + id, 'l’identifiant nu doit entrer');
+    assert.strictEqual(idRor('https://ror.org/' + id), id);
+    assert.strictEqual(idRor(id), id, 'idRor doit être idempotent : rafraichir le rappelle sur son propre résultat');
+  }
+  assert.strictEqual(rorCanonique('http://ror.org/01swzsf04'), 'https://ror.org/01swzsf04');
+  assert.strictEqual(rorCanonique('  HTTPS://ROR.ORG/01SWZSF04  '), 'https://ror.org/01swzsf04');
+  // Ce qui doit être refusé. Le dernier est le plus important : une valeur qui CONTIENT un
+  // motif de ROR n’est pas un ROR, et l’accepter publierait dans OJS l’identifiant d’une
+  // institution qui n’est pas la bonne — pire qu’un champ vide, et sans avertissement.
+  for (const faux of ['https://ror.org/', '12345', '', null, undefined,
+    'https://orcid.org/0000-0002-1825-0097', '0iiiiii00',
+    'Université de Genève 012345678']) {
+    assert.strictEqual(rorCanonique(faux), '', 'accepté à tort : ' + faux);
+    assert.strictEqual(idRor(faux), '');
+  }
+});
+
+test('resoudreRor : les libellés rangés, les échecs sautés, les connus jamais redemandés', async () => {
+  const noms = await resoudreRor(async () => reponseRor(), ['01swzsf04'], {});
+  assert.deepStrictEqual(noms, {
+    '01swzsf04': { fr: 'Université de Genève', de: '', en: 'University of Geneva' }
+  });
+  // Un id qui échoue est SAUTÉ, pas mis en cache : on le retentera le mois suivant plutôt
+  // que de figer une absence de libellé pour toujours.
+  const partiel = await resoudreRor(async (url) => {
+    if (url.indexOf('01swzsf04') !== -1) { return reponseRor(); }
+    throw new Error('HTTP 404');
+  }, ['01swzsf04', '00w9q2c06'], {});
+  assert.deepStrictEqual(Object.keys(partiel), ['01swzsf04']);
+  // Un JSON illisible ne lève pas davantage.
+  assert.deepStrictEqual(await resoudreRor(async () => 'pas du json', ['01swzsf04'], {}), {});
+  // Déjà connu : aucune requête. Les deux formes de `connus` sont acceptées, parce que les
+  // deux appelants existent — le Set des clés, et la table cache.ror elle-même.
+  const interdit = async () => { throw new Error('requête interdite : id déjà connu'); };
+  assert.deepStrictEqual(await resoudreRor(interdit, ['01swzsf04'], new Set(['01swzsf04'])), {});
+  assert.deepStrictEqual(await resoudreRor(interdit, ['01swzsf04'], { '01swzsf04': { fr: 'x' } }), {});
+});
+
+test('resoudreRor : sans libellé français ni allemand, le repli anglais sauve l’affiliation', async () => {
+  // Cas réel de la HfH : ROR ne lui connaît qu’un libellé allemand et un libellé
+  // d’affichage. Une institution sans ni l’un ni l’autre existe aussi — et sans le repli,
+  // son affiliation sortirait VIDE dans la modale.
+  const seulementAffichage = JSON.stringify({
+    names: [{ lang: 'en', types: ['ror_display', 'label'], value: 'Some Institute' }]
+  });
+  const noms = await resoudreRor(async () => seulementAffichage, ['00w9q2c06'], {});
+  assert.strictEqual(noms['00w9q2c06'].en, 'Some Institute',
+    'ror_display porte lang:"en" sur l’instance — exiger une langue absente le manquerait toujours');
+});
+
+// La règle de précédence entre les deux sources. Le corpus, c’est ce que la rédaction a
+// tapé à la main dans les fiches meta.yaml ; OJS, c’est ce qui a été publié. Sur les
+// champs d’enrichissement, la saisie maison fait foi.
+test('fusionnerAuteurs : le corpus écrase, OJS ne remplit que le vide, le vide n’efface rien', () => {
+  const deOjs = (c) => entree(Object.assign({ source: 'oai' }, c));
+  const duCorpus = (c) => entree(Object.assign({ source: 'corpus' }, c));
+
+  // OJS pose un nom et une affiliation ; le corpus ajoute fonction et e-mail, et corrige
+  // l’affiliation. Tout ce qu’il apporte gagne.
+  let f = fusionnerAuteurs(
+    [deOjs({ prenom: 'Robin', nom: 'Morand', affiliation: 'SZH/CSPS' })],
+    [duCorpus({ prenom: 'Robin', nom: 'Morand', affiliation: 'SZH CSPS',
+      fonction: 'Collaborateur scientifique', email: 'robin.morand@szh.ch' })]);
+  assert.strictEqual(f.length, 1);
+  assert.strictEqual(f[0].affiliation, 'SZH CSPS', 'le corpus doit écraser');
+  assert.strictEqual(f[0].fonction, 'Collaborateur scientifique');
+  assert.strictEqual(f[0].email, 'robin.morand@szh.ch');
+  assert.strictEqual(f[0].source, 'corpus', 'la provenance suit la dernière main qui a écrit');
+
+  // Dans l’autre sens : OJS ne doit pas écraser une valeur venue du corpus.
+  f = fusionnerAuteurs(
+    [duCorpus({ prenom: 'Robin', nom: 'Morand', affiliation: 'SZH CSPS', fonction: 'Collaborateur' })],
+    [deOjs({ prenom: 'Robin', nom: 'Morand', affiliation: 'Autre chose', orcid: 'https://orcid.org/0000-0002-1825-0097' })]);
+  assert.strictEqual(f[0].affiliation, 'SZH CSPS', 'OJS a écrasé une saisie maison');
+  assert.strictEqual(f[0].fonction, 'Collaborateur');
+  assert.strictEqual(f[0].orcid, 'https://orcid.org/0000-0002-1825-0097',
+    'OJS doit quand même remplir ce qui était vide');
+
+  // Une valeur vide n’efface jamais une valeur remplie, quelle que soit la source.
+  f = fusionnerAuteurs(
+    [duCorpus({ prenom: 'Robin', nom: 'Morand', fonction: 'Collaborateur', email: 'r@szh.ch' })],
+    [duCorpus({ prenom: 'Robin', nom: 'Morand', fonction: '', email: '' })]);
+  assert.strictEqual(f[0].fonction, 'Collaborateur');
+  assert.strictEqual(f[0].email, 'r@szh.ch');
 });

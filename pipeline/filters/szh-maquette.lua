@@ -233,7 +233,7 @@ end
 -- phrases françaises et allemandes pour pouvoir les redire dans la sienne. Une
 -- reformulation cassait la remontée, sans un mot.
 local LA_LANGUE = {
-  fr = { fr = 'le français', de = "l'allemand", it = "l'italien" },
+  fr = { fr = 'le français', de = "l’allemand", it = "l’italien" },
   de = { fr = 'Französisch', de = 'Deutsch',    it = 'Italienisch' },
 }
 local EN_LANGUE = {
@@ -249,59 +249,59 @@ local MARQUE = 'TO BE TRANSLATED'
 local MESSAGES = {
   fr = {
     sans_langue = function(slug, lang_num)
-      return 'Article « ' .. slug .. " » : aucune langue déclarée dans " .. slug ..
-        '.meta.yaml — composition ' .. EN_LANGUE.fr[lang_num] ..
-        ", la langue du numéro. Ouvrez « Métadonnées de l'article » et fixez la langue de l'article."
+      return 'Article « ' .. slug .. " » : aucune langue déclarée dans " .. slug ..
+        '.meta.yaml – composition ' .. EN_LANGUE.fr[lang_num] ..
+        ", la langue du numéro. Ouvrez « Métadonnées de l’article » et fixez la langue de l’article."
     end,
     langue_inconnue = function(slug, brut)
-      return 'Article « ' .. slug .. ' » : langue « ' .. brut ..
-        " » inconnue dans " .. slug .. '.meta.yaml. Langues de la revue : fr, de, it.' ..
-        " Ouvrez « Métadonnées de l'article » et choisissez-en une."
+      return 'Article « ' .. slug .. ' » : langue « ' .. brut ..
+        " » inconnue dans " .. slug .. '.meta.yaml. Langues de la revue : fr, de, it.' ..
+        " Ouvrez « Métadonnées de l’article » et choisissez-en une."
     end,
     champ_vide = function(slug, lang, cle)
-      return 'Article « ' .. slug .. ' » : la langue déclarée est ' .. LA_LANGUE.fr[lang] ..
-        ', mais ' .. cle .. '.' .. lang .. ' est vide. Ouvrez « Métadonnées de ' ..
-        "l'article » et renseignez " .. NOM_CHAMP.fr[cle] .. ' ' .. EN_LANGUE.fr[lang] ..
-        ", ou changez la langue de l'article."
+      return 'Article « ' .. slug .. ' » : la langue déclarée est ' .. LA_LANGUE.fr[lang] ..
+        ', mais ' .. cle .. '.' .. lang .. ' est vide. Ouvrez « Métadonnées de ' ..
+        "l’article » et renseignez " .. NOM_CHAMP.fr[cle] .. ' ' .. EN_LANGUE.fr[lang] ..
+        ", ou changez la langue de l’article."
     end,
     marque_motcle = function(slug, lang, rang)
-      return 'Article « ' .. slug .. ' » : le mot-clé n° ' .. rang .. ' de keywords.' ..
-        lang .. ' est resté sur la marque « ' .. MARQUE ..
-        " ». Ouvrez « Métadonnées de l'article » et traduisez-le " .. EN_LANGUE.fr[lang] ..
-        ', ou retirez la rangée entière — cette marque s\'imprimerait sur la couverture.'
+      return 'Article « ' .. slug .. ' » : le mot-clé n° ' .. rang .. ' de keywords.' ..
+        lang .. ' est resté sur la marque « ' .. MARQUE ..
+        " ». Ouvrez « Métadonnées de l’article » et traduisez-le " .. EN_LANGUE.fr[lang] ..
+        ', ou retirez la rangée entière – cette marque s’imprimerait sur la couverture.'
     end,
     marque_champ = function(slug, lang, cle)
-      return 'Article « ' .. slug .. ' » : ' .. cle .. '.' .. lang ..
-        ' est resté sur la marque « ' .. MARQUE .. " ». Ouvrez « Métadonnées de l'article » " ..
+      return 'Article « ' .. slug .. ' » : ' .. cle .. '.' .. lang ..
+        ' est resté sur la marque « ' .. MARQUE .. " ». Ouvrez « Métadonnées de l’article » " ..
         'et renseignez ' .. NOM_CHAMP.fr[cle] .. ' ' .. EN_LANGUE.fr[lang] .. '.'
     end,
   },
   de = {
     sans_langue = function(slug, lang_num)
-      return 'Artikel « ' .. slug .. ' »: keine Sprache in ' .. slug ..
-        '.meta.yaml erklärt — Satz ' .. EN_LANGUE.de[lang_num] ..
-        ', der Sprache der Ausgabe. Öffnen Sie « Metadaten der Artikel » und legen Sie die Sprache des Artikels fest.'
+      return 'Artikel «' .. slug .. '»: keine Sprache in ' .. slug ..
+        '.meta.yaml erklärt – Satz ' .. EN_LANGUE.de[lang_num] ..
+        ', der Sprache der Ausgabe. Öffnen Sie «Metadaten der Artikel» und legen Sie die Sprache des Artikels fest.'
     end,
     langue_inconnue = function(slug, brut)
-      return 'Artikel « ' .. slug .. ' »: Sprache « ' .. brut .. ' » in ' .. slug ..
+      return 'Artikel «' .. slug .. '»: Sprache «' .. brut .. '» in ' .. slug ..
         '.meta.yaml unbekannt. Sprachen der Zeitschrift: fr, de, it.' ..
-        ' Öffnen Sie « Metadaten der Artikel » und wählen Sie eine davon.'
+        ' Öffnen Sie «Metadaten der Artikel» und wählen Sie eine davon.'
     end,
     champ_vide = function(slug, lang, cle)
-      return 'Artikel « ' .. slug .. ' »: die erklärte Sprache ist ' .. LA_LANGUE.de[lang] ..
-        ', aber ' .. cle .. '.' .. lang .. ' ist leer. Öffnen Sie « Metadaten der Artikel » ' ..
+      return 'Artikel «' .. slug .. '»: die erklärte Sprache ist ' .. LA_LANGUE.de[lang] ..
+        ', aber ' .. cle .. '.' .. lang .. ' ist leer. Öffnen Sie «Metadaten der Artikel» ' ..
         'und erfassen Sie ' .. NOM_CHAMP.de[cle] .. ' ' .. EN_LANGUE.de[lang] ..
         ', oder ändern Sie die Sprache des Artikels.'
     end,
     marque_motcle = function(slug, lang, rang)
-      return 'Artikel « ' .. slug .. ' »: das Schlagwort Nr. ' .. rang .. ' von keywords.' ..
-        lang .. ' steht noch auf der Marke « ' .. MARQUE ..
-        ' ». Öffnen Sie « Metadaten der Artikel » und erfassen Sie es ' .. EN_LANGUE.de[lang] ..
-        ', oder entfernen Sie die ganze Zeile — diese Marke würde auf der Titelseite erscheinen.'
+      return 'Artikel «' .. slug .. '»: das Schlagwort Nr. ' .. rang .. ' von keywords.' ..
+        lang .. ' steht noch auf der Marke «' .. MARQUE ..
+        '». Öffnen Sie «Metadaten der Artikel» und erfassen Sie es ' .. EN_LANGUE.de[lang] ..
+        ', oder entfernen Sie die ganze Zeile – diese Marke würde auf der Titelseite erscheinen.'
     end,
     marque_champ = function(slug, lang, cle)
-      return 'Artikel « ' .. slug .. ' »: ' .. cle .. '.' .. lang ..
-        ' steht noch auf der Marke « ' .. MARQUE .. ' ». Öffnen Sie « Metadaten der Artikel » ' ..
+      return 'Artikel «' .. slug .. '»: ' .. cle .. '.' .. lang ..
+        ' steht noch auf der Marke «' .. MARQUE .. '». Öffnen Sie «Metadaten der Artikel» ' ..
         'und erfassen Sie ' .. NOM_CHAMP.de[cle] .. ' ' .. EN_LANGUE.de[lang] .. '.'
     end,
   },

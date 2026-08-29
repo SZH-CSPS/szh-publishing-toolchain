@@ -27,9 +27,9 @@ const CHAMPS_TRADUISIBLES = ['title', 'subtitle', 'resume', 'keywords'];
 const STATUTS = ['pas-pret', 'pret-traduction', 'pret-relecture', 'finalise'];
 const STATUT_DEFAUT = 'pas-pret';
 
-const ENTETE = '# Suivi de traduction — état de travail interne au cockpit.\n' +
-  '# Ni publié, ni exporté vers OJS : les traductions elles-mêmes vivent dans\n' +
-  '# le fichier <article>.meta.yaml, à côté. Édité par le panneau « Traductions ».\n';
+const ENTETE = '# Suivi de traduction – état de travail interne au cockpit.\n' +
+  '# Ni publié, ni exporté vers OJS : les traductions elles-mêmes vivent dans\n' +
+  '# le fichier <article>.meta.yaml, à côté. Édité par le panneau « Traductions ».\n';
 
 function cleChamp(champ, langue) { return champ + '.' + langue; }
 

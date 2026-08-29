@@ -560,7 +560,7 @@ test('case « pas de DOI » : elle renumérote le numéro et range l’article �
   const par = {};
   for (const l of charge.lignes) { par[l.cle] = doiDe(l); }
   assert.strictEqual(par['09-tribune'], '10.57161/r2026-03-08');
-  assert.match(par['08-dentz'], /aucun — décidé/);
+  assert.match(par['08-dentz'], /aucun – décidé/);
   // La case est cochée et NON verrouillée : c'est une décision, elle se reprend.
   const varia = charge.lignes.find((l) => l.cle === '08-dentz');
   assert.strictEqual(varia.sansDoi.coche, true);

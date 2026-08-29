@@ -24,8 +24,14 @@ lib/
   archivage.js          verrouillage, archivage, appels aux scripts PowerShell du poste,
                         lecture et écriture de config.json
   articles.js           ordre des articles dans le numéro, nom affiché, tâches par article
-  auteurs-ojs.js        liste des auteur·e·s publiés, moissonnée en OAI-PMH public sur
-                        ojs.szh.ch et cachée dans auteurs.json (autocomplétion de la modale)
+  auteurs-corpus.js     balayage mensuel des fiches meta.yaml des numéros du poste, en
+                        cours et archivés : la fonction et l'e-mail, que l'OJS public
+                        n'expose pas. N'ouvre QUE les meta.yaml, et seulement celles
+                        dont le mtime a bougé — les revues sont sur OneDrive, où lire
+                        un fichier le fait télécharger
+  auteurs-ojs.js        auteur·e·s publiés, moissonnés en OAI-PMH public sur ojs.szh.ch
+                        (marcxml : noms et affiliations, ROR résolus par api.ror.org)
+                        et cachés dans auteurs.json — l'autocomplétion de la modale
   citations.js          liste de références d'un article et liage manuel d'un appel
   cmyk.js               detection des JPEG CMJN et appel du convertisseur, dans WSL
   coedition.js          bail de deux minutes posé sur un fichier pendant qu'un formulaire le

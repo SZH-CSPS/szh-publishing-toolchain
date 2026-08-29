@@ -78,7 +78,14 @@ function element(balise) {
     get nodeType() { return this.balise === '#texte' ? 3 : 1; },
     get nodeValue() { return this.balise === '#texte' ? this._texte : null; },
     get tagName() { return this.balise.toUpperCase(); },
-    get textContent() { return this._texte; },
+    // Comme le vrai DOM : le texte d'un élément est le sien PLUS celui de ses descendants.
+    // Sans cette descente, toute page qui compose un libellé en nœuds — une part de nom
+    // mise en gras, par exemple — se lirait vide dans les tests, et le harnais réclamerait
+    // du innerHTML là où le DOM est justement la bonne réponse.
+    get textContent() {
+      if (this.enfants.length === 0) { return this._texte; }
+      return this._texte + this.enfants.map((c) => c.textContent).join('');
+    },
     set textContent(v) { this._texte = v === undefined || v === null ? '' : String(v); this.enfants = []; },
     get className() { return Array.from(this.classes).join(' '); },
     set className(v) { this.classes = new Set(String(v || '').split(/\s+/).filter(Boolean)); },

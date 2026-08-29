@@ -683,7 +683,17 @@ function poserDansGrille(texte, ancre, ajout) {
 // L'image sort de la grille mais reste dans l'article : elle repart en figure ordinaire,
 // juste après le bloc. Quand il n'en reste qu'une, la grille se dissout — un bloc d'une
 // seule image n'est plus une grille, c'est une figure.
-function retirerDeGrille(texte, relatif) {
+// `options.garderDansTexte` (vrai par défaut) dit ce que devient l'image ôtée :
+//   vrai  — elle reste dans l'article, en figure ordinaire juste après le bloc. C'est
+//           « sortir de la grille » : on défait le voisinage, pas le travail ;
+//   faux  — elle quitte aussi le texte. C'est « retirer de la figure » : le fichier reste
+//           dans media/ et sa carte reste au formulaire, prête à être réinsérée ailleurs.
+//           Rien d'autre n'est touché — ni l'image d'à côté, ni la figure, qui garde son
+//           numéro et sa légende.
+// Dans les deux cas, une grille tombée à une image se dissout : un bloc d'une seule image
+// n'est plus une grille, c'est une figure.
+function retirerDeGrille(texte, relatif, options) {
+  const garder = !options || options.garderDansTexte !== false;
   const src = String(texte === undefined || texte === null ? '' : texte);
   const trouve = grilleDeImage(src, relatif);
   if (!trouve) { return { texte: src, ok: false }; }
@@ -695,19 +705,19 @@ function retirerDeGrille(texte, relatif) {
   if (restants.length <= 1) {
     // Dissolution : les deux « ::: » disparaissent, les images reprennent leur place de
     // figure ordinaire — chacune seule dans son paragraphe — dans l'ordre où la grille
-    // les tenait, la sortante en dernier.
+    // les tenait, la sortante en dernier quand on la garde.
     const bloc = [];
     for (const m of restants) { bloc.push(lignes[m.ligne].trim(), ''); }
-    bloc.push(sortante);
+    if (garder) { bloc.push(sortante); } else if (bloc.length > 0) { bloc.pop(); }
     lignes.splice(g.ouverture, g.fermeture - g.ouverture + 1);
-    insererIsole(lignes, g.ouverture, bloc);
+    if (bloc.length > 0) { insererIsole(lignes, g.ouverture, bloc); }
     return { texte: lignes.join('\n'), ok: true };
   }
   const disposition = dispositionApresChangement(g.disposition, restants.length);
   // La ligne ôtée est toujours entre les deux « ::: » : l'ouverture ne bouge pas, la
   // fermeture recule d'un cran, et c'est juste après elle que l'image sortante se repose.
   lignes.splice(g.membres[trouve.rang].ligne, 1);
-  insererIsole(lignes, g.fermeture, [sortante]);
+  if (garder) { insererIsole(lignes, g.fermeture, [sortante]); }
   lignes[g.ouverture] = ligneOuvertureGrille(RE_DIV_OUVERTURE.exec(lignes[g.ouverture])[1],
     disposition);
   return { texte: lignes.join('\n'), ok: true };

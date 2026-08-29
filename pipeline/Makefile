@@ -9,10 +9,16 @@
 #
 # Ordre des --lua-filter à la compilation, et ce qui casse si on permute :
 #   szh-maquette -> szh-niveaux -> szh-tabelle-inclure -> szh-tabelle-scope ->
-#   szh-grille -> szh-figure -> szh-numerotation -> szh-legende-avant -> szh-sections ->
-#   szh-auteurs -> szh-citations -> szh-notes
+#   szh-typographie -> szh-grille -> szh-figure -> szh-numerotation ->
+#   szh-legende-avant -> szh-sections -> szh-auteurs -> szh-citations -> szh-notes
 #   * szh-numerotation après szh-tabelle-inclure : il numérote des tableaux qui
 #     n'existent qu'une fois le HTML réinjecté ;
+#   * szh-typographie après szh-tabelle-scope et AVANT szh-numerotation : après, parce
+#     que le texte des tableaux n'arrive qu'avec szh-tabelle-inclure, en RawBlock html ;
+#     avant, parce que ce filtre ne normalise que le texte de la RÉDACTION — le
+#     « Figure N — » et le « Source : » que la maquette compose ensuite sont des
+#     décisions de composition, pas des fautes de frappe, et lui passer dessus les
+#     déferait ;
 #   * szh-grille avant szh-figure : une grille tombée à une seule image se dissout en
 #     paragraphe, et c'est szh-figure qui en refait une figure sous le lecteur de
 #     l'aperçu ;
@@ -312,6 +318,7 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-grille.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
@@ -354,6 +361,7 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-grille.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \

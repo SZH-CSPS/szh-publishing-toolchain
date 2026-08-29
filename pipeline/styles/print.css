@@ -470,8 +470,15 @@ table > caption .szh-credit { font-size: 0.85em; color: #444; }
 
 /* Toute image reste dans la colonne : une image hors numérotation sans crédits n'est
    pas dans une <figure>, et sans cette règle un fichier de 2000 px de large — la
-   résolution que le cockpit conseille — déborderait de la page. */
-img { max-width: 100%; height: auto; }
+   résolution que le cockpit conseille — déborderait de la page.
+   `max-height` plafonne aussi la hauteur (--plafond-figure, socle.css) : une image en
+   portrait ramenée à la largeur de la colonne peut dépasser une page, et une <figure>
+   plus haute qu'une page ne tient plus d'un bloc — WeasyPrint abandonne alors son
+   `break-inside: avoid` et coupe au premier point permis, juste sous la légende.
+   ⚠ `break-after: avoid` sur la <figcaption>, pour retenir la légende, est INERTE dans
+   WeasyPrint 69 (mesuré) : ne pas le rajouter en croyant mieux faire, seule la hauteur
+   de l'image referme la page. */
+img { max-width: 100%; height: auto; max-height: var(--plafond-figure); }
 figure { break-inside: avoid; margin: 1.4em 0; text-align: center; }
 /* La légende est au-dessus de l'image (szh-legende-avant.lua la place avant dans le
    document) : l'espace se met donc dessous, comme pour `table > caption`. */
@@ -502,7 +509,18 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
 .szh-grille-rangee:last-child { margin-bottom: 0; }
 .szh-grille-case { display: block; flex-grow: 1; flex-shrink: 1; flex-basis: 0%;
   min-width: 0; }
-.szh-grille-case > img { display: block; width: 100%; height: auto; }
+/* Le plafond de hauteur (--plafond-figure, socle.css) vaut pour LA FIGURE ENTIÈRE, pas
+   pour une image : dans une grille, toutes les images d'une rangée ont la même hauteur
+   et les rangées s'empilent, donc le plafond doit se PARTAGER entre elles — d'où la
+   division par --szh-rangees, posé par szh-grille.lua sur chaque .szh-grille-rangee (pas
+   sur la <figure> : une propriété personnalisée s'hérite depuis n'importe quel ancêtre,
+   et c'est le seul qui survive jusqu'ici, voir le commentaire de rangee() dans le filtre).
+   Repli à 1 hors grille.
+   `- 12px` : les écarts entre rangées (6 px, au plus deux fois).
+   `margin: 0 auto` : quand le plafond mord, l'image devient plus étroite que sa case —
+   la centrer garde la rangée équilibrée. */
+.szh-grille-case > img { display: block; width: 100%; height: auto; margin: 0 auto;
+  max-height: calc((var(--plafond-figure) - 12px) / var(--szh-rangees, 1)); }
 /* Image décorative dans une grille : szh-numerotation.lua l'a sortie en fond CSS, avec sa
    largeur naturelle en pixels. Dans une case, c'est la case qui donne la largeur — la
    spécificité de ce sélecteur passe devant le <style> de fin de corps. */

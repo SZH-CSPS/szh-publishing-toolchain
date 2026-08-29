@@ -918,11 +918,11 @@ local function resoudre_biblio(doc, slug)
       if f then f:close() end
       if contenu == nil then
         sortie:insert(bloc_manquant(
-          'Bibliographie introuvable : ' .. (src ~= '' and src or '(aucun fichier indiqué)')
-          .. ' (fichier supprimé ou renommé ?)'))
+          'Bibliographie introuvable : ' .. (src ~= '' and src or '(aucun fichier indiqué)')
+          .. ' (fichier supprimé ou renommé ?)'))
         avertir('biblio-introuvable', { 'fichier « ' .. src .. ' »' },
-          'Le fichier de bibliographie de cet article est introuvable : la liste de '
-          .. "références manque au document. Réimportez l'article, ou retirez la référence "
+          'Le fichier de bibliographie de cet article est introuvable : la liste de '
+          .. "références manque au document. Réimportez l’article, ou retirez la référence "
           .. 'de bibliographie du texte.',
           'Die Literaturverzeichnis-Datei dieses Artikels fehlt: die Literaturliste fehlt '
           .. 'im Dokument. Importieren Sie den Artikel neu, oder entfernen Sie den Verweis '
@@ -975,9 +975,9 @@ function Pandoc(doc)
       premiere, derniere_liste = idx_titre + 1, #blocs
       -- constat() nomme déjà l'article : ne pas le répéter dans les champs.
       avertir('biblio-dans-le-corps', {},
-        "La bibliographie de cet article est encore dans le texte : elle n'a pas de "
-        .. "fichier à part, et l'export vers la plateforme partira sans liste de "
-        .. "références. Réimportez l'article pour la mettre à part.",
+        "La bibliographie de cet article est encore dans le texte : elle n’a pas de "
+        .. "fichier à part, et l’export vers la plateforme partira sans liste de "
+        .. "références. Réimportez l’article pour la mettre à part.",
         'Das Literaturverzeichnis dieses Artikels steht noch im Text: es hat keine eigene '
         .. 'Datei, und der Export auf die Plattform geht ohne Literaturliste. Importieren '
         .. 'Sie den Artikel neu, um es auszulagern.')
@@ -1234,18 +1234,18 @@ function Pandoc(doc)
     string.format('%d Eintrag/Einträge, %d Verweis(e): %d verknüpft, %d mehrdeutig, %d ohne Eintrag.',
       #fiches, appels, lies, #ambigus, #orphelins))
   for _, o in ipairs(orphelins) do
-    avertir('appel-sans-reference', { 'appel « ' .. o .. ' »' },
-      'Appel sans référence : ' .. o .. '.',
+    avertir('appel-sans-reference', { 'appel « ' .. o .. ' »' },
+      'Appel sans référence : ' .. o .. '.',
       'Zitatverweis ohne Eintrag im Verzeichnis: ' .. o .. '.')
   end
   for _, a in ipairs(ambigus) do
     avertir('appel-ambigu', { 'appel « ' .. a .. ' »' },
-      'Appel ambigu, à lier à la main : ' .. a .. '.',
+      'Appel ambigu, à lier à la main : ' .. a .. '.',
       'Mehrdeutiger Zitatverweis, von Hand zu verknüpfen: ' .. a .. '.')
   end
   for _, j in ipairs(jamais) do
     avertir('reference-orpheline', { 'reference « ' .. j .. '… »' },
-      'Référence jamais appelée : ' .. j .. '…',
+      'Référence jamais appelée : ' .. j .. '…',
       'Nie zitierter Eintrag: ' .. j .. '…')
   end
   return doc

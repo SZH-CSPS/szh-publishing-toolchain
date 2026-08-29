@@ -1,17 +1,14 @@
-/* Gestionnaire des médias : la page ne fait que placer les blocs du socle (_design.css) —
-   la barre en haut, une pile de cartes qui défile, et pour chaque carte deux colonnes.
-   Aucune couleur en dur, rien que les jetons de thème. */
+/* Gestionnaire des médias : une carte par figure, repliée sur ses seuls aperçus. Le clic sur
+   un aperçu déplie, sous la rangée, le formulaire de cette image — jamais un formulaire par
+   image empilé. Aucune couleur en dur, rien que les jetons de thème (_design.css). */
 body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
   line-height: var(--interligne); color: var(--encre); background: var(--fond);
   padding: var(--e2) var(--e4) 0; box-sizing: border-box; height: 100vh;
   display: flex; flex-direction: column; overflow: hidden; }
 
-/* La liste défile seule, sous une barre qui reste. L'écart entre deux cartes est la
-   séparation principale : franc, et le même partout. */
+/* La liste défile seule, sous une barre qui reste. */
 .corps { flex: 1 1 auto; min-height: 0; overflow: auto;
   display: flex; flex-direction: column; gap: var(--e5); padding-bottom: var(--e6); }
-/* Une carte garde sa hauteur : dans une colonne flex de hauteur définie, les enfants se
-   compriment par défaut, et l'overflow:hidden de la carte tronquait alors sa fiche. */
 .corps > * { flex: 0 0 auto; }
 
 /* Titre de section : le nom du groupe, un filet d'accent, et de l'air avant lui. */
@@ -22,13 +19,56 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 
 .pastilles { display: inline-flex; gap: var(--e1); flex-wrap: wrap; }
 
-/* Deux colonnes : le fichier à gauche, ce qui s'écrira dans l'article à droite. Elles
-   s'empilent dès que le panneau est étroit — il l'est souvent, en colonne latérale. */
-.carte-corps { display: flex; gap: var(--e5); align-items: flex-start; flex-wrap: wrap; }
-.col-visuel { flex: 0 1 16rem; min-width: 0; display: flex; flex-direction: column; gap: var(--e2); }
-.col-fiche { flex: 1 1 24rem; min-width: 0; display: flex; flex-direction: column; gap: var(--e3); }
+/* ── Une carte par figure ──────────────────────────────────────────────────────
+   Repliée, elle ne montre que ses aperçus et la zone d'ajout : c'est ce qui la rend
+   courte dans une liste qui peut compter des dizaines d'images. */
+.carte-figure { padding: var(--e3); display: flex; flex-direction: column; gap: var(--e3); }
 
-/* L'aperçu est un bouton : il doit se voir comme cliquable, sans clignoter au survol. */
+.figure-vignettes { display: flex; flex-wrap: wrap; gap: var(--e2); }
+.vignette { display: flex; flex-direction: column; gap: var(--e1); align-items: stretch;
+  max-width: 11rem; padding: var(--e1); cursor: pointer; text-align: left;
+  border: 2px solid var(--filet); border-radius: var(--rayon-mini);
+  background: var(--fond); color: var(--encre); font: inherit; }
+.vignette:hover { border-color: var(--accent); }
+.vignette:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vignette--ouverte { border-color: var(--accent);
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, .12)); }
+.vignette-image { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-height: 0; }
+.vignette img { display: block; max-width: 100%; max-height: 7rem;
+  object-fit: contain; }
+.vignette .absent { margin: 0; font-size: var(--t-mini); font-style: italic; color: var(--encre-2); }
+.vignette-nom-ligne { display: flex; align-items: center; justify-content: space-between; gap: var(--e1); }
+.vignette-nom { font-size: var(--t-mini); overflow-wrap: anywhere; }
+.vignette svg { flex: 0 0 auto; transition: transform .15s ease; }
+.vignette[aria-expanded="true"] svg { transform: rotate(180deg); }
+.vignette-etat { display: flex; flex-wrap: wrap; gap: var(--e1); }
+
+/* ── Accordéon du groupe : les réglages de la grille, et elle seule ──────────── */
+.figure-groupe { border: 1px solid var(--filet); border-radius: var(--rayon-mini); }
+.groupe-tete { display: flex; align-items: center; justify-content: flex-start;
+  gap: var(--e2); width: 100%; padding: var(--e2) var(--e3); border: none;
+  background: transparent; color: var(--encre); font: inherit; font-weight: 700;
+  cursor: pointer; text-align: left; }
+.groupe-tete:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, .15)); }
+.groupe-tete:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.groupe-tete svg { flex: 0 0 auto; transition: transform .15s ease; }
+.groupe-tete[aria-expanded="true"] svg { transform: rotate(180deg); }
+.grille-legende-tete { flex: 1 1 auto; min-width: 0; font-size: var(--t-mini); color: var(--encre-2);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.groupe-corps { padding: 0 var(--e3) var(--e3); display: flex;
+  flex-direction: column; gap: var(--e2); }
+.grille-membres { margin: 0; font-size: var(--t-mini); color: var(--encre-2);
+  overflow-wrap: anywhere; }
+
+/* ── Le formulaire d'une image, déplié sous la rangée ─────────────────────────
+   Le filet d'accent à gauche dit qu'on est entré dans une image précise : un fil visuel
+   entre l'aperçu cliqué et son formulaire. */
+.media-form { display: flex; flex-direction: column; gap: var(--e3);
+  border-left: 3px solid var(--accent); padding: var(--e2) 0 var(--e2) var(--e3); }
+.form-tete { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap; }
+.form-tete .szh-ico:disabled { opacity: .4; cursor: default; }
+
+/* Portraits : inchangés, ils gardent leur aperçu agrandissable au clic. */
 .visuel { display: flex; }
 .apercu { padding: var(--e1); border: 1px solid var(--filet); border-radius: var(--rayon-mini);
   background: var(--fond); cursor: zoom-in; display: block; max-width: 100%; }
@@ -39,8 +79,9 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .visuel .absent { margin: 0; font-size: var(--t-mini); font-style: italic; color: var(--encre-2); }
 .meta-fichier { margin: 0; font-size: var(--t-mini); color: var(--encre-2); }
 
-/* Remplacer : sous l'image et sous son verdict, là où l'on vient de constater le défaut.
-   Un cadre en pointillé dit qu'on peut y déposer un fichier. */
+/* Dépôt de fichier : remplacer une image, ou en ajouter une à côté. Même forme, seul le
+   titre distingue les deux gestes. Un cadre en pointillé dit qu'on peut y déposer un
+   fichier. */
 .depot { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
   padding: var(--e2); border-radius: var(--rayon-mini); font-size: var(--t-libelle);
   border: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, .5));
@@ -51,31 +92,23 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
   font-weight: 700; color: var(--encre); }
 .media-etat { font-size: var(--t-mini); color: var(--encre-2); }
 .media-etat.erreur { color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); }
+/* Un seul geste de fichier à la fois par figure : la classe va sur la carte entière, qui
+   porte les deux zones de dépôt de tous ses membres. */
 .occupe .depot { opacity: .5; }
-.occupe .apercu { opacity: .6; }
+.occupe .vignette img { opacity: .6; }
 
-/* La notification d'insertion porte un bouton : il ne doit pas s'écraser sur le texte. */
 .szh-notif .szh-bouton { margin-left: var(--e2); }
 .modale-nom { overflow-wrap: anywhere; }
 
-/* ── Grilles d'images ─────────────────────────────────────────────────────────
-   « Ajouter une image à côté » se tient contre l'aperçu, aligné sur son bord haut : c'est
-   en regardant l'image qu'on décide qu'une autre doit l'accompagner. Le choix se déplie
-   dessous plutôt que dans une modale — cinq noms de fichiers ne valent pas un écran. */
-.visuel-rangee { display: flex; align-items: flex-start; gap: var(--e2); flex-wrap: wrap; }
-.visuel-rangee .visuel { flex: 0 1 auto; min-width: 0; }
-.grille-ajout { flex: 1 1 10rem; min-width: 0;
-  display: flex; flex-direction: column; gap: var(--e2); align-items: flex-start; }
-.grille-plus { display: inline-flex; align-items: center; gap: var(--e1);
-  text-align: left; }
+/* Zone que son état refuse : le cadre s'efface, le titre reste lisible. On ne masque pas —
+   un dépôt sur une zone absente n'expliquerait rien, alors qu'une zone grisée qui répond
+   « insérez d'abord cette image » se comprend. */
+.depot--refuse { opacity: .55; }
 .grille-choix { display: flex; flex-direction: column; gap: var(--e1);
-  width: 100%; min-width: 0; }
+  width: 100%; min-width: 0; margin-top: var(--e1); }
 .grille-choix select { max-width: 100%; }
 .grille-choix-actions { display: flex; gap: var(--e1); flex-wrap: wrap; }
 
-/* Le bloc de grille est un fieldset comme « Traitement dans la mise en page » : il change
-   ce que la légende juste dessous désigne, et se lit donc avant elle. */
-.grille { display: flex; flex-direction: column; gap: var(--e2); align-items: flex-start; }
-.grille .szh-champ, .grille .szh-notif { width: 100%; }
-.grille-membres { margin: 0; font-size: var(--t-mini); color: var(--encre-2);
-  overflow-wrap: anywhere; }
+/* Les deux sorties côte à côte : elles se choisissent l'une contre l'autre, et les lire
+   sur deux lignes ferait croire à deux gestes de nature différente. */
+.grille-sorties { display: flex; gap: var(--e2); flex-wrap: wrap; }

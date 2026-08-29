@@ -53,9 +53,11 @@
 .modale-auteur > h3 {
   margin: 0 0 var(--e4); font-size: var(--t-titre); font-weight: 700;
 }
-/* Trois paires de champs courts : la grille reste pleine, sans cellule vide. */
+/* Des paires de champs courts : la grille reste pleine, sans cellule vide. Le ROR fait
+   exception et prend la ligne entière — une URL ne tient pas dans une demi-largeur. */
 .auteur-grille { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e3); }
 .auteur-grille > * { min-width: 0; }
+.auteur-grille .szh-champ--large { grid-column: 1 / -1; }
 @media (max-width: 34rem) { .auteur-grille { grid-template-columns: 1fr; } }
 
 .modale-auteur .zone-depot {
@@ -111,4 +113,12 @@
 .auteur-sugg.actif {
   background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground, rgba(128, 128, 128, .2)));
   color: var(--vscode-list-activeSelectionForeground, var(--encre));
+}
+/* La part trouvée. Le gras seul la marque : une couleur d'accent se perdrait sur la ligne
+   survolée, qui prend déjà la couleur de sélection de l'éditeur. */
+.auteur-sugg strong { font-weight: 700; }
+/* Le filet entre les deux groupes : noms de famille au-dessus, prénoms en dessous. */
+.auteur-sugg-filet {
+  height: 1px; margin: var(--e1) var(--e2);
+  background: var(--filet-fort);
 }

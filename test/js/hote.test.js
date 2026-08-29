@@ -407,9 +407,106 @@ test('la liste des auteur·e·s publiés part vers le panneau des médias', asyn
   const msg = p.messages.filter((m) => m.type === 'auteurs-connus').pop();
   assert.ok(msg, 'aucun message auteurs-connus après la charge');
   assert.deepStrictEqual(msg.auteurs.map((a) => a.nom).sort(), ['Dupont', 'Morand']);
-  // Seuls prénom et nom voyagent : OAI-PMH n'offre rien d'autre, et la webview ne doit
-  // pas croire le contraire (ni recevoir les dates, qui ne servent qu'à la fusion).
+  // Les six champs que la modale sait remplir, et EUX SEULS : ni `datePublication` ni
+  // `source`, qui ne servent qu'à la fusion côté cache. Une clé de plus qui partirait vers
+  // la webview y serait du bruit qu'aucun champ ne reçoit.
   for (const a of msg.auteurs) {
-    assert.deepStrictEqual(Object.keys(a).sort(), ['nom', 'prenom']);
+    assert.deepStrictEqual(Object.keys(a).sort(),
+      ['affiliation', 'email', 'fonction', 'nom', 'orcid', 'prenom', 'ror']);
   }
+});
+
+// Le geste le plus destructeur du formulaire, et sa sortie de secours. Un fichier lâché
+// sur « Remplacer » écrase l'image sans retour possible : quand ce n'était pas l'intention,
+// le dialogue doit offrir de la poser À CÔTÉ plutôt que par-dessus. Ce contrôle porte sur
+// les DEUX moitiés de la promesse — le bouton est bien offert, et le choisir ne touche pas
+// à l'octet de l'image existante.
+test('médias : le remplacement offre de poser la nouvelle à côté, et n’écrase alors rien', async () => {
+  // Les libellés des boutons viennent d'où l'hôte les tire : le crochet de Module._load
+  // posé par l'activation est encore en place, donc i18n.js se charge tel quel.
+  const { T } = require(path.join(__dirname, '..', '..',
+    'vscodium-extension', 'szh-cockpit', 'lib', 'i18n.js'));
+  const md = path.join(REVUE, 'articles', '01-essai', '01-essai.md');
+  const image = path.join(REVUE, 'articles', '01-essai', 'media', 'a.png');
+  const avant = fs.readFileSync(image);
+
+  await HOTE.executer('szh.mediasArticle', { slug: '01-essai' });
+  const p = HOTE.panneauDeType('szhMedias');
+  await p._recepteur({ type: 'pret' });
+
+  // Deux dialogues d'affilée : celui du remplacement, puis celui de la pose à côté.
+  HOTE.modales.length = 0;
+  HOTE.repondreModale(T('modale.remplacer.bouton.acote'));
+  HOTE.repondreModale(T('modale.acote.bouton'));
+  await p._recepteur({
+    type: 'remplacer', relatif: 'a.png', nomFichier: 'Photo de l’Atelier (2).PNG',
+    donneesBase64: Buffer.from('nouvelle image').toString('base64'), medias: []
+  });
+
+  // Les deux dialogues, dans l'ordre, chacun offrant l'issue de l'autre — c'est cette
+  // symétrie qui rattrape le fichier lâché sur la mauvaise zone, dans les deux sens.
+  assert.strictEqual(HOTE.modales.length, 2,
+    'deux dialogues attendus, vus : ' + JSON.stringify(HOTE.modales.map((d) => d.boutons)));
+  const [remplacement, aCote] = HOTE.modales;
+  assert.strictEqual(remplacement.options.modal, true, 'le dialogue n’est pas modal');
+  assert.deepStrictEqual(remplacement.boutons,
+    [T('modale.remplacer.bouton'), T('modale.remplacer.bouton.acote')],
+    'le dialogue de remplacement n’offre pas de poser la nouvelle à côté');
+  assert.deepStrictEqual(aCote.boutons,
+    [T('modale.acote.bouton'), T('modale.remplacer.bouton')],
+    'le dialogue « à côté » n’offre pas de remplacer après tout');
+
+  // Rien n'a été écrasé : c'est toute la raison d'être de ce bouton.
+  assert.deepStrictEqual(fs.readFileSync(image), avant, 'l’image existante a été écrasée');
+  // Le fichier déposé est entré sous un nom NEUF et assaini — accents, espaces,
+  // parenthèses et majuscule d'extension ne traversent ni un lien markdown ni WSL.
+  const nouvelles = fs.readdirSync(path.join(REVUE, 'articles', '01-essai', 'media'))
+    .filter((n) => n !== 'a.png');
+  assert.strictEqual(nouvelles.length, 1, 'le fichier déposé n’est pas arrivé : ' + nouvelles);
+  assert.match(nouvelles[0], /^[a-z0-9-]+\.png$/,
+    'le nom du fichier déposé n’a pas été assaini : ' + nouvelles[0]);
+  assert.strictEqual(fs.readFileSync(path.join(REVUE, 'articles', '01-essai', 'media',
+    nouvelles[0]), 'utf8'), 'nouvelle image');
+  // Le geste est allé jusqu'au bout : la barre d'état nomme les deux images. L'écriture du
+  // .md elle-même passe par un WorkspaceEdit, que ce harnais ne rejoue pas — c'est
+  // `poserDansGrille` qui la porte, éprouvée dans contrats.test.js.
+  assert.strictEqual(HOTE.statutsDits(nouvelles[0]).length, 1,
+    'la barre d’état ne dit pas que l’image a été posée à côté : ' + JSON.stringify(HOTE.statuts));
+  assert.ok(fs.existsSync(md), 'le .md de l’article a disparu');
+});
+
+// Le geste qui échoue à mi-chemin. Le fichier est écrit AVANT que la référence puisse
+// l'être — c'est lui qui fixe le nom qu'elle doit citer — et un refus de la pose laissait
+// donc dans media/ une image que rien n'insère : invisible dans le rendu, jamais nommée
+// par une erreur, et retrouvée des mois plus tard. Elle doit être reprise.
+test('médias : « à côté » refusé ne laisse pas d’image orpheline dans le dossier', async () => {
+  const { T } = require(path.join(__dirname, '..', '..',
+    'vscodium-extension', 'szh-cockpit', 'lib', 'i18n.js'));
+  const dossier = path.join(REVUE, 'articles', '01-essai');
+  const md = path.join(dossier, '01-essai.md');
+  const avant = fs.readFileSync(md, 'utf8');
+  // L'insertion n'est plus seule sur sa ligne : l'envelopper couperait la phrase en deux,
+  // et `poserDansGrille` refuse. C'est le refus le plus probable en vrai.
+  fs.writeFileSync(md, avant.replace('![Une legende](media/a.png){alt="desc"}',
+    'Au fil du texte ![Une legende](media/a.png){alt="desc"} et la suite.'));
+  const medias = () => fs.readdirSync(path.join(dossier, 'media')).sort();
+  const dejaLa = medias();
+
+  await HOTE.executer('szh.mediasArticle', { slug: '01-essai' });
+  const p = HOTE.panneauDeType('szhMedias');
+  await p._recepteur({ type: 'pret' });
+  p.messages.length = 0;
+  HOTE.repondreModale(T('modale.acote.bouton'));
+  await p._recepteur({
+    type: 'ajouter-a-cote', relatif: 'a.png', nomFichier: 'orpheline.png',
+    donneesBase64: Buffer.from('rien').toString('base64'), medias: []
+  });
+
+  assert.deepStrictEqual(medias(), dejaLa,
+    'un fichier est resté dans media/ alors que la pose a été refusée');
+  const erreur = p.messages.filter((m) => m.type === 'media-erreur').pop();
+  assert.ok(erreur, 'le refus n’est pas signalé à la carte');
+  assert.ok(String(erreur.message).indexOf('a.png') !== -1,
+    'le refus ne nomme pas l’image en cause : ' + erreur.message);
+  fs.writeFileSync(md, avant);
 });

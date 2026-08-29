@@ -208,7 +208,7 @@ const REFERENCE_REVUE = [
   '    <volume>44</volume>',
   '    <number>2</number>',
   '    <year>2026</year>',
-  '    <title locale="fr">Dossier — numéro d&#39;exemple</title>',
+  '    <title locale="fr">Dossier – numéro d’exemple</title>',
   '  </issue_identification>',
   '  <date_published>2026-09-08</date_published>',
   '  <last_modified>2026-09-08</last_modified>',
@@ -227,7 +227,7 @@ const REFERENCE_REVUE = [
   '  <covers>',
   '    <cover locale="fr">',
   '      <cover_image>couverture.jpg</cover_image>',
-  '      <cover_image_alt_text>Dossier — numéro d&#39;exemple</cover_image_alt_text>',
+  '      <cover_image_alt_text>Dossier – numéro d’exemple</cover_image_alt_text>',
   '      <embed encoding="base64"></embed>',
   '    </cover>',
   '  </covers>',
@@ -537,7 +537,7 @@ test('configuration : une rubrique sans abréviation dans la revue visée arrêt
   });
   const e = refuse(racine, config);
   assert.ok(e.szhConfigOjs === true);
-  assert.match(e.message, /Abréviation de la rubrique « Annonces »/);
+  assert.match(e.message, /Abréviation de la rubrique « Annonces »/);
   assert.match(e.message, /Rubriques/);
 });
 
@@ -614,6 +614,132 @@ test('ORCID : une valeur illisible est signalée, pas envoyée', () => {
   assert.strictEqual(sortie.xml.indexOf('<orcid>'), -1);
   assert.ok(sortie.avertissements.some((a) => a.indexOf('ORCID') !== -1 && a.indexOf('0000-0002') !== -1),
     'ORCID illisible non signalé : ' + sortie.avertissements.join(' | '));
+});
+
+// ---- ROR -------------------------------------------------------------------
+
+test('ROR : canonique reconnaît les identifiants réels et les formes tordues', () => {
+  // Quatre identifiants réels relevés sur ojs.szh.ch, sous différentes formes
+  assert.strictEqual(ojs.rorCanonique('01swzsf04'), 'https://ror.org/01swzsf04');
+  assert.strictEqual(ojs.rorCanonique('https://ror.org/01swzsf04'), 'https://ror.org/01swzsf04');
+  assert.strictEqual(ojs.rorCanonique('http://ror.org/01swzsf04'), 'https://ror.org/01swzsf04');
+  // ror.org/<id> contient un identifiant valide, donc il est reconnu
+  assert.strictEqual(ojs.rorCanonique('ror.org/01swzsf04'), 'https://ror.org/01swzsf04');
+
+  assert.strictEqual(ojs.rorCanonique('00w9q2c06'), 'https://ror.org/00w9q2c06');
+  assert.strictEqual(ojs.rorCanonique('https://ror.org/00w9q2c06'), 'https://ror.org/00w9q2c06');
+
+  assert.strictEqual(ojs.rorCanonique('04nd0xd48'), 'https://ror.org/04nd0xd48');
+  assert.strictEqual(ojs.rorCanonique('027h8t796'), 'https://ror.org/027h8t796');
+
+  // Formes tordues
+  assert.strictEqual(ojs.rorCanonique('https://ror.org/'), '');
+  assert.strictEqual(ojs.rorCanonique('12345'), '');
+  assert.strictEqual(ojs.rorCanonique('https://orcid.org/0000-0002-1825-0097'), '');
+  assert.strictEqual(ojs.rorCanonique(''), '');
+  assert.strictEqual(ojs.rorCanonique(null), '');
+
+  // Les minuscules et majuscules donnent le même résultat
+  assert.strictEqual(ojs.rorCanonique('00W9Q2C06'), 'https://ror.org/00w9q2c06');
+});
+
+
+test('ROR : un auteur avec ror + affiliation émet rorAffiliation bien formé', () => {
+  const racine = monter({
+    ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '01-edito', fiche: fiche(['type: editorial', 'lang: fr',
+      'doi: "10.57161/r2026-02-00"', 'title:', '  fr: "Éditorial"',
+      'author:', '- prenom: "Anne"', '  nom: "Dupont"',
+      '  affiliation: "Université de Genève"', '  ror: "01swzsf04"']),
+      texte: 'Un mot.' + LF }]
+  });
+  const sortie = exporter(racine, configComplete());
+  assert.ok(sortie.xml.indexOf('<rorAffiliation>') !== -1, 'balise rorAffiliation absente');
+  assert.ok(sortie.xml.indexOf('<ror>https://ror.org/01swzsf04</ror>') !== -1, 'ror canonique absent');
+  assert.ok(sortie.xml.indexOf('Université de Genève') !== -1, 'affiliation absente');
+  // Vérifier la position : après familyname, avant email/country
+  const bloc = sortie.xml.slice(
+    sortie.xml.indexOf('<familyname'),
+    sortie.xml.indexOf('</author>')
+  );
+  assert.ok(bloc.indexOf('<familyname') !== -1);
+  assert.ok(bloc.indexOf('<rorAffiliation>') > bloc.indexOf('<familyname'));
+});
+
+test('ROR : un auteur avec affiliation seule émet affiliation inchangé', () => {
+  const racine = monter({
+    ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '01-edito', fiche: fiche(['type: editorial', 'lang: fr',
+      'doi: "10.57161/r2026-02-00"', 'title:', '  fr: "Éditorial"',
+      'author:', '- prenom: "Bruno"', '  nom: "Meyer"',
+      '  affiliation: "SZH/CSPS"']),
+      texte: 'Un mot.' + LF }]
+  });
+  const sortie = exporter(racine, configComplete());
+  assert.ok(sortie.xml.indexOf('<affiliation>') !== -1, 'balise affiliation absente');
+  assert.ok(sortie.xml.indexOf('<rorAffiliation>') === -1, 'rorAffiliation ne doit pas être émis');
+  assert.ok(sortie.xml.indexOf('SZH/CSPS') !== -1, 'affiliation absente');
+});
+
+test("ROR : un ror reconnaissable sans affiliation n'émet rien et signale l'avertissement", () => {
+  const racine = monter({
+    ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '01-edito', fiche: fiche(['type: editorial', 'lang: fr',
+      'doi: "10.57161/r2026-02-00"', 'title:', '  fr: "Éditorial"',
+      'author:', '- prenom: "Claire"', '  nom: "Rossi"', '  ror: "00w9q2c06"']),
+      texte: 'Un mot.' + LF }]
+  });
+  const sortie = exporter(racine, configComplete());
+  assert.strictEqual(sortie.xml.indexOf('<rorAffiliation>'), -1, 'rorAffiliation ne doit pas être émis');
+  assert.strictEqual(sortie.xml.indexOf('<affiliation>'), -1, 'affiliation ne doit pas être émise');
+  assert.ok(sortie.avertissements.some((a) => a.indexOf('01-edito') !== -1 && a.indexOf('ROR renseigné sans affiliation') !== -1),
+    'avertissement ROR sans nom non signalé : ' + sortie.avertissements.join(' | '));
+});
+
+test("ROR : un ror tordu ne part pas et signale l'avertissement", () => {
+  const racine = monter({
+    ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '01-edito', fiche: fiche(['type: editorial', 'lang: fr',
+      'doi: "10.57161/r2026-02-00"', 'title:', '  fr: "Éditorial"',
+      'author:', '- prenom: "Claire"', '  nom: "Rossi"',
+      '  affiliation: "CSPS"', '  ror: "12345"']),
+      texte: 'Un mot.' + LF }]
+  });
+  const sortie = exporter(racine, configComplete());
+  assert.strictEqual(sortie.xml.indexOf('<rorAffiliation>'), -1, 'rorAffiliation ne doit pas être émis');
+  assert.ok(sortie.xml.indexOf('<affiliation>') !== -1, 'affiliation seule attendue');
+  assert.ok(sortie.xml.indexOf('CSPS') !== -1, 'affiliation absente');
+  assert.ok(sortie.avertissements.some((a) => a.indexOf('01-edito') !== -1 && a.indexOf('ROR illisible') !== -1),
+    'avertissement ROR tordu non signalé : ' + sortie.avertissements.join(' | '));
+});
+
+test("ROR : une fiche d'avant (sans ror) se relit, se réécrit et ne perd rien", () => {
+  // Fiche sans clé ror : analyserMeta la crée avec ror: '', et serialiserMeta la réécrit bien
+  const ficheMeta = fiche([
+    'type: article',
+    'lang: fr',
+    'title:',
+    '  fr: "Test"',
+    'author:',
+    '- prenom: "Anne"',
+    '  nom: "Dupont"',
+    '  affiliation: "HEP Vaud"',
+    '  orcid: "0000-0002-1825-0097"'
+  ]);
+
+  const parsee = yaml.analyserMeta(ficheMeta);
+  assert.strictEqual(parsee.author.length, 1, 'auteur non parsé');
+  assert.strictEqual(parsee.author[0].prenom, 'Anne');
+  assert.strictEqual(parsee.author[0].affiliation, 'HEP Vaud');
+  assert.strictEqual(parsee.author[0].ror, '', 'ror pas initialisé');
+  assert.strictEqual(parsee.author[0].orcid, '0000-0002-1825-0097');
+
+  const reecrite = yaml.serialiserMeta(parsee);
+  assert.ok(reecrite.indexOf('Anne') !== -1, 'prénom perdu');
+  assert.ok(reecrite.indexOf('HEP Vaud') !== -1, 'affiliation perdue');
+  assert.ok(reecrite.indexOf('0000-0002-1825-0097') !== -1, 'ORCID perdu');
+  // La clé ror ne s'écrit pas si elle est vide
+  assert.strictEqual(reecrite.indexOf('ror:'), -1, 'ror vide écrit quand même');
 });
 
 test('DOI : une fiche sans DOI n’est plus un manque, et la rubrique sans DOI n’en reçoit aucun', () => {

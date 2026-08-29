@@ -73,7 +73,7 @@ function revueDEssai() {
 function activerHote(revue) {
   const cockpit = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
   // Un cache d'auteur·e·s FRAIS avant l'activation : l'extension rafraîchit la liste
-  // OAI-PMH en tâche de fond quand dateFetch a plus de sept jours, et aucun test ne doit
+  // OAI-PMH en tâche de fond quand dateFetch a plus de trente jours, et aucun test ne doit
   // faire de réseau. Le fichier sert aussi de corpus au message auteurs-connus.
   process.env.SZH_AUTEURS_CACHE = path.join(revue, 'auteurs.json');
   fs.writeFileSync(process.env.SZH_AUTEURS_CACHE, JSON.stringify({
@@ -97,9 +97,17 @@ function activerHote(revue) {
   const barres = [];
   const panneaux = [];
   const avertissements = [];
+  const statuts = [];          // ce que setStatusBarMessage a affiché, dans l'ordre
   const erreurs = [];
   let arbre = null;
-  let reponseModale = undefined;   // ce que showWarningMessage rendra au prochain appel
+  // Ce que showWarningMessage rendra, dans l'ordre des appels : une file, et non une seule
+  // valeur, parce qu'un geste peut désormais en enchaîner deux — le dialogue de
+  // remplacement renvoie vers celui de « poser à côté », et le test doit répondre aux deux.
+  // File vide -> undefined, c'est-à-dire « Annuler », comme avant.
+  const reponsesModales = [];
+  // L'appel entier, pour les contrôles qui portent sur les ISSUES OFFERTES et pas seulement
+  // sur la question posée : un bouton perdu ne change rien à la question.
+  const modales = [];
   // La TreeView : reveal() est enregistré (resélection d'un article), et les événements de
   // chevron sont déclenchables depuis un test (accordéon des sections).
   const revelations = [];
@@ -198,10 +206,21 @@ function activerHote(revue) {
         return b;
       },
       createWebviewPanel: (type, titre) => fauxPanneau(type, titre),
-      showWarningMessage: (m) => { avertissements.push(m); const r = reponseModale; reponseModale = undefined; return Promise.resolve(r); },
+      showWarningMessage: (m, ...reste) => {
+        avertissements.push(m);
+        const options = (reste[0] && typeof reste[0] === 'object') ? reste[0] : null;
+        modales.push({
+          message: m, options: options,
+          boutons: (options ? reste.slice(1) : reste).map(String)
+        });
+        return Promise.resolve(reponsesModales.length > 0 ? reponsesModales.shift() : undefined);
+      },
       showInformationMessage: () => Promise.resolve(undefined),
       showErrorMessage: (m) => { erreurs.push(m); return Promise.resolve(undefined); },
-      setStatusBarMessage: () => ({ dispose() {} }),
+      // Les messages passagers de la barre d'état : c'est souvent le SEUL signe qu'un geste
+      // est allé jusqu'au bout, la plupart écrivant par WorkspaceEdit que ce harnais ne
+      // rejoue pas. Retenus dans l'ordre, lisibles par `statutsDits`.
+      setStatusBarMessage: (m) => { statuts.push(String(m)); return { dispose() {} }; },
       showOpenDialog: () => Promise.resolve(undefined),
       withProgress: (o, f) => f({ report() {} }),
       onDidChangeActiveTextEditor: editeurActif,
@@ -313,7 +332,13 @@ function activerHote(revue) {
     finirTache: (nom, code) => finTache.emettre({
       exitCode: code, execution: { task: { name: nom, definition: { type: 'process' } } }
     }),
-    repondreModale: (v) => { reponseModale = v; },
+    // Une réponse par appel à venir, dans l'ordre : appeler deux fois enfile deux réponses.
+    repondreModale: (v) => { reponsesModales.push(v); },
+    // Les dialogues posés, avec leurs boutons : `modales.pop()` donne le dernier.
+    modales: modales,
+    // Les messages de la barre d'état, dans l'ordre ; `statutsDits(f)` filtre.
+    statuts: statuts,
+    statutsDits: (fragment) => statuts.filter((m) => m.indexOf(fragment) !== -1),
     // Les reveal() de la TreeView, dans l'ordre ; et les gestes de chevron, simulés.
     revelations: revelations,
     deplierElement: (element) => expansions.emettre({ element: element }),

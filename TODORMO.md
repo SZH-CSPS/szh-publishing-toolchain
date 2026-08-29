@@ -197,15 +197,31 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
   l'import, éditeur de tableau. Le gestionnaire des médias, lui, ne doit pas compiler pendant la
   saisie et doit enregistrer quand on quitte le panneau.
 - [ ] Gestion des médias. Le picto 🖼 à côté de celui des métadonnées ouvre le formulaire, une
-  carte par image de `media/`, dans l'ordre du texte, avec aperçu, dimensions, poids et champs
-  pré-remplis depuis le `.md`. Les images n'apparaissent plus sous l'article dans l'arbre, les
-  tableaux si. Remplir les champs d'une carte, enregistrer, vérifier le `.md`, et confirmer que
-  Ctrl+Z dans l'éditeur défait l'écriture. Taper dans le `.md` sans enregistrer puis enregistrer
-  depuis le formulaire ne doit rien perdre. Modifier puis « Retour à l'article » ouvre la modale,
-  et l'onglet porte l'indicateur de modification. Les trois états d'accessibilité : « décorative »
-  écrit `alt=""` ; repasser à « apporte une information » avec le champ vide retire l'attribut ;
-  un texte alternatif s'écrit tel quel. Une image insérée zéro fois verrouille sa carte et le dit ;
-  insérée deux fois, l'enregistrement met les deux à jour.
+  carte par **figure** — une image seule, ou toutes les images d'une même grille — dans l'ordre
+  du texte. Repliée, la carte ne montre que ses aperçus, leur nom, leurs pastilles d'état et la
+  zone « Ajouter une image à côté ». Les images n'apparaissent plus sous l'article dans l'arbre,
+  les tableaux si. Cliquer un aperçu déplie SON formulaire sous la rangée : un seul ouvert à la
+  fois dans une carte, recliquer referme, l'aperçu ouvert est cerné d'un filet d'accent et son
+  chevron pivote. Y remplir les champs, enregistrer, vérifier le `.md`, et confirmer que Ctrl+Z
+  dans l'éditeur défait l'écriture. Un formulaire REPLIÉ garde ses saisies : les remplir,
+  replier, enregistrer, vérifier qu'elles sont écrites. Taper dans le `.md` sans enregistrer
+  puis enregistrer depuis le formulaire ne doit rien perdre. Modifier puis « Retour à l'article »
+  ouvre la modale, et l'onglet porte l'indicateur de modification. Les trois états
+  d'accessibilité : « décorative » écrit `alt=""` ; repasser à « apporte une information » avec
+  le champ vide retire l'attribut ; un texte alternatif s'écrit tel quel. Une image insérée zéro
+  fois verrouille son formulaire et le dit ; insérée deux fois, l'enregistrement met les deux à
+  jour. `Ctrl+Alt+F` doit ouvrir le panneau SUR l'image insérée, formulaire déplié.
+- [ ] Ce qui se lit sans rien déplier. Les pastilles d'un aperçu disent l'essentiel : « 2
+  insertions », « jamais insérée », « doublon », « basse résolution », « image muette ».
+  Corriger le défaut — déposer un fichier plus grand, écrire un texte alternatif — doit faire
+  disparaître la pastille sans recharger la page. La loupe et la corbeille sont dans l'en-tête
+  du formulaire, pas sur l'aperçu : supprimer une image demande donc de la déplier d'abord.
+- [ ] Accordéon « Paramètres du groupe d'images ». N'existe que sur une carte de plusieurs
+  images, et s'ouvre replié. Son en-tête redit la légende de la figure et la suit à la frappe ;
+  une figure sans légende affiche « sans légende ». Dedans : la liste des membres, la
+  disposition, et cette légende — une seule pour toute la grille. Les images d'une grille n'ont
+  PAS de champ légende dans leur formulaire ; les deux sorties (« Sortir de la grille »,
+  « Retirer de la figure ») y sont, elles, puisqu'elles portent sur une image.
 - [ ] Case « Image sans légende ni numéro ». Cochée, le champ Légende se verrouille et
   l'enregistrement écrit `![](media/x.png){.szh-hors-figure …}`. Au rendu : ni « Figure N », ni
   légende ; le texte alternatif reste ; les crédits s'affichent sous l'image, dans une `<figure>`.
@@ -218,8 +234,11 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
 - [ ] Remplacer un média. Par glissement et par bouton, sur une image comme sur un portrait :
   confirmation, nom conservé, aperçu et description rafraîchis, refus au-delà de 50 Mo (20 Mo pour
   un portrait), refus pendant un build ou un import. « Retirer » supprime le fichier et ses
-  insertions, après confirmation, et la carte quitte la page. Déposer une photo sur un portrait
-  rejoue le recadrage et le détourage, et la fiche de l'auteur·e continue de désigner un fichier
+  insertions, après confirmation ; l'aperçu et le formulaire quittent la carte, et une carte
+  vidée de sa dernière image disparaît. Supprimer une image d'une GRILLE recharge le panneau :
+  membres, compte et disposition doivent suivre, et les saisies en cours survivre. Déposer une
+  photo sur un portrait rejoue le recadrage et le détourage, et la fiche de l'auteur·e continue
+  de désigner un fichier
   qui existe.
 - [ ] Ctrl+Alt+F. L'image choisie est copiée dans `media/`, la référence insérée au curseur, et le
   gestionnaire s'ouvre positionné sur cette carte. Recommencer avec le formulaire déjà ouvert doit

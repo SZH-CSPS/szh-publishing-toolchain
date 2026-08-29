@@ -1,38 +1,38 @@
-# Métadonnées du numéro (« Ausgabe »), lues par pandoc en --metadata-file pour chaque
-# article. Le formulaire « Métadonnées du numéro » du cockpit les édite ; il n'y a
+# Métadonnées du numéro (« Ausgabe »), lues par pandoc en --metadata-file pour chaque
+# article. Le formulaire « Métadonnées du numéro » du cockpit les édite ; il n’y a
 # normalement pas à toucher ce fichier à la main.
 #
-#   title   : titre du dossier thématique, pas le nom de la revue.
-#   revue   : choix fermé, dont découlent le nom, l'ISSN et la langue par défaut.
-#             « revue »       = Revue suisse de pédagogie spécialisée (ISSN 2813-4915, fr)
-#             « zeitschrift » = Schweizerische Zeitschrift für Heilpädagogik (ISSN 2813-4907, de)
-#   volume  : millésime de la revue, un par année civile. Il s'imprime sur la couverture et
-#             part dans OJS. Posé à la création d'après l'année du numéro : Zeitschrift =
+#   title   : titre du dossier thématique, pas le nom de la revue.
+#   revue   : choix fermé, dont découlent le nom, l’ISSN et la langue par défaut.
+#             « revue »       = Revue suisse de pédagogie spécialisée (ISSN 2813-4915, fr)
+#             « zeitschrift » = Schweizerische Zeitschrift für Heilpädagogik (ISSN 2813-4907, de)
+#   volume  : millésime de la revue, un par année civile. Il s’imprime sur la couverture et
+#             part dans OJS. Posé à la création d’après l’année du numéro : Zeitschrift =
 #             année - 1994, Revue = année - 2010 (relevé sur ojs.szh.ch, neuf millésimes de
 #             suite). Le lanceur sait le régler à la main, pour le jour où le compte des
-#             volumes se décale : un volume faux s'imprime sans que rien ne le signale.
-#   numero  : rang du numéro dans son année, sur deux chiffres (« 03 »).
-#   date    : date de PUBLICATION du numéro, complète (AAAA-MM-JJ) ou vide, jamais
-#             tronquée à l'année. Elle se saisit dans « Métadonnées du numéro » le jour
-#             où la parution est décidée : l'export OJS la refuse incomplète, car un
+#             volumes se décale : un volume faux s’imprime sans que rien ne le signale.
+#   numero  : rang du numéro dans son année, sur deux chiffres (« 03 »).
+#   date    : date de PUBLICATION du numéro, complète (AAAA-MM-JJ) ou vide, jamais
+#             tronquée à l’année. Elle se saisit dans « Métadonnées du numéro » le jour
+#             où la parution est décidée : l’export OJS la refuse incomplète, car un
 #             numéro parti sans elle se publierait dans OJS sans date de publication.
-#             La couverture n'attend pas : sans cette clé, elle prend l'année du nom du
-#             dossier (« 2027-03 »).
-#   couleur : couleur annuelle, en hexadécimal, qui repeint tous les accents.
-#   profil  : absent ou « article » = PDF et HTML ; « book » = différé ; vide = aucun document.
-#   entete-condensee : « true » = en-tête de couverture à la hauteur de son contenu ;
-#             absente ou « false » = hauteur fixe, bloc auteurs ancré en bas.
+#             La couverture n’attend pas : sans cette clé, elle prend l’année du nom du
+#             dossier (« 2027-03 »).
+#   couleur : couleur annuelle, en hexadécimal, qui repeint tous les accents.
+#   profil  : absent ou « article » = PDF et HTML ; « book » = différé ; vide = aucun document.
+#   entete-condensee : « true » = en-tête de couverture à la hauteur de son contenu ;
+#             absente ou « false » = hauteur fixe, bloc auteurs ancré en bas.
 #
-# Cycle de vie du numéro, piloté par le panneau d'export du cockpit (Ctrl+Alt+D) :
-#   locked   : numéro gelé — éditeur en lecture seule et gestes d'écriture refusés
-#              jusqu'à « Déverrouiller la revue ». Se combine librement avec archived.
-#   archived : le dossier vit dans les archives. Plus de compilation automatique :
-#              l'export se demande article par article ou en bloc.
-#   version-toolkit : version du logiciel qui a créé ce numéro, posée par new-revue.ps1,
-#              de quoi le recomposer des années plus tard ; le cockpit signale une
+# Cycle de vie du numéro, piloté par le panneau d’export du cockpit (Ctrl+Alt+D) :
+#   locked   : numéro gelé – éditeur en lecture seule et gestes d’écriture refusés
+#              jusqu’à « Déverrouiller la revue ». Se combine librement avec archived.
+#   archived : le dossier vit dans les archives. Plus de compilation automatique :
+#              l’export se demande article par article ou en bloc.
+#   version-toolkit : version du logiciel qui a créé ce numéro, posée par new-revue.ps1,
+#              de quoi le recomposer des années plus tard ; le cockpit signale une
 #              divergence avec la version installée. Absente sur un numéro plus ancien,
 #              le champ est alors complété au premier archivage.
-title: "Dossier — numéro d'exemple"
+title: "Dossier – numéro d’exemple"
 revue: revue
 volume: "44"
 numero: "2"

@@ -40,7 +40,7 @@ local function signaler(niveaux_ecrases)
     article, MAX_CIBLE - MIN_CIBLE + 1, liste, MAX_CIBLE))
   io.stderr:write(
     '[niveaux]   Deux sections de profondeurs différentes deviennent indiscernables pour '
-    .. 'un lecteur d\'écran. À faire : remonter les sous-titres les plus profonds d\'un rang.\n')
+    .. 'un lecteur d’écran. À faire : remonter les sous-titres les plus profonds d’un rang.\n')
   io.stderr:write(string.format(
     '[niveaux] [de] %s: mehr als %d Titelstufen — die Stufen %s landen alle in <h%d>.\n',
     article, MAX_CIBLE - MIN_CIBLE + 1, liste, MAX_CIBLE))

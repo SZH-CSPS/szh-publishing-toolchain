@@ -13,8 +13,10 @@ cartes n'arrivaient jamais, et rien ne le disait. C'est arrivé deux fois.
 ```sh
 node --test "test/js/*.test.js"  # contrats du cockpit, et rendu réel des webviews
 python3 test/apca-check.py      # contrastes : palette, couverture, pages courantes
+python3 test/typo-check.py      # typographie des textes visibles, fr et de
+python3 test/typo-articles.py   # typographie du texte des articles, par pandoc
 python3 test/palette-html.py    # régénère docs/palette.html
-bash test/build-render.sh       # dans WSL : build PDF + PNG de chaque page
+bash test/build-render.sh       # dans WSL : build PDF + PNG de chaque page, figures-check.py compris
 python test/render.py <pdf> <png> [page] [échelle]   # côté Windows : une seule page
 ```
 
@@ -70,6 +72,33 @@ publication.
   sont calculés au plus juste : marges de contraste serrées). Les couleurs de `print.css`
   sont cherchées sélecteur par sélecteur, renvois `var()` suivis : renommer une règle fait
   échouer le script au lieu de le rendre aveugle.
+- `typo-articles.py`  – contrôle du **filtre de typographie des articles**,
+  `pipeline/filters/szh-typographie.lua`. Chaque cas est un fragment Markdown, une langue
+  d’article et le texte attendu en sortie ; le rendu passe par un vrai pandoc, en
+  `plain`, pour que l’attendu se lise comme du texte. Les insécables y sont écrites
+  `[nb]` : sans cela un attendu faux serait indiscernable d’un attendu juste.
+  ```sh
+  python3 test/typo-articles.py        # sortie 1 au premier écart
+  python3 test/typo-articles.py -v     # montre aussi les cas qui passent
+  ```
+  Les cas couvrent autant ce qui doit CHANGER que ce qui doit rester **immobile** : une
+  URL, une heure, une date ISO, un DOI, un `COVID-19`, un bloc de code, et la fine
+  insécable que `szh-numerotation.lua` a posée. ⚠ Sans pandoc, le script ne prétend pas
+  passer : il le dit et sort en échec.
+- `typo-check.py`  – contrôle de **typographie** des chaînes visibles, dans les deux
+  langues. Les règles viennent du *Guide du typographe* pour le français et du Duden pour
+  l’allemand suisse, et chacune a été confrontée aux 421 galleys publiées sur ojs.szh.ch
+  (voir `docs/TYPOGRAPHIE.md`). Français et allemand ont des règles **opposées** sur
+  l’espacement : le contrôle est donc par langue, jamais global.
+  ```sh
+  python3 test/typo-check.py              # rapport, sortie 1 au premier écart
+  python3 test/typo-check.py --corriger   # applique les corrections sûres
+  python3 test/typo-check.py --liste      # les règles, sans rien lire
+  ```
+  **À relancer après toute retouche de `lib/i18n.js`, de `package.nls*.json`, de la table
+  `$SzhTextes` ou d’un message de filtre Lua.** Il ne lit que les surfaces listées dans
+  `SURFACES` : les commentaires de code gardent leur convention, et les clés d’OJS ne
+  doivent surtout pas bouger.
 - `palette-html.py` — régénère `docs/palette.html`, la planche de la palette : les 11 crans de
   chaque couleur, dont celui qui porte la couleur de charte elle-même. Chaque cran montre son Lc
   et le texte qu'il a le droit de recevoir : corps de texte, gros titre seulement, ou rien.
@@ -95,3 +124,12 @@ bash test/build-render.sh contenu-long # un seul
 
 Les PDF et les PNG (une image par page) sont écrits dans `test/out/<slug>/`
 (ignoré par git). `SZH_RENDER` permet de pointer un autre interpréteur.
+
+`build-render.sh` branche aussi `figures-check.py` après le rendu PNG de chaque slug :
+aucune légende de figure ne doit rester seule sur sa page, coupée de l'image qu'elle
+légende — un défaut que le PDF ne signale pas et que la porte PDF/UA laisse passer, seul
+l'œil sur un PNG l'attrapait jusqu'ici. Il tient le plafond de hauteur des images
+(`--plafond-figure`, `pipeline/styles/socle.css`) : ce qui le casse, c'est une valeur trop
+généreuse, une marge de figure qui grossit, ou une légende de six lignes de crédits.
+Utilise `/opt/weasyprint/bin/python3` (`$SZH_FONTTOOLS`), seul interpréteur de la distro
+qui importe `weasyprint` ; ignoré s'il est introuvable.

@@ -46,6 +46,11 @@ for d in articles/*/; do
   else
     echo "  (rendu PNG ignoré : renderer introuvable en $RENDER)"
   fi
+  # Aucune légende de figure ne doit rester seule sur sa page : un défaut que le PDF ne
+  # signale pas et que la porte PDF/UA laisse passer.
+  if [ -x "$FONTPY" ] || command -v "$FONTPY" >/dev/null 2>&1; then
+    "$FONTPY" figures-check.py "out/$slug/$slug.html" | sed 's/^/  /' || echec=1
+  fi
 done
 
 # Verdict PDF/UA-1 sur tout le banc, la même porte que `make verifier-ua` — c'est elle qui

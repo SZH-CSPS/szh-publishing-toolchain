@@ -73,6 +73,14 @@
   /* Marqueurs de liste et numéros de titre : noirs, fidèles à la maquette. */
   --c-bullet-marker: #000000;
   --c-num-marker:    #000000;
+
+  /* Plafond de hauteur d'une image de figure. En pagination, 100vh vaut la ZONE DE
+     CONTENU de la page — 958,5 px en A4 avec les marges de print.css, mesuré sur
+     WeasyPrint 69 ; à l'écran, la hauteur de la fenêtre. Les 20vh qui restent paient les
+     marges de la figure et sa légende, soit six lignes de crédits.
+     Sans ce plafond, une image en portrait ramenée à la largeur de la colonne dépasse la
+     page : la figure ne tient plus d'un bloc et sa légende part seule. */
+  --plafond-figure: 80vh;
 }
 
 /* Accents des tableaux stylés de l'éditeur maison (.szh-tableau). Mêmes règles du jeu que

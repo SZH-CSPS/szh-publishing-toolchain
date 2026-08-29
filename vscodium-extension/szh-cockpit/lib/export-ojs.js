@@ -478,7 +478,7 @@ function collecter(racine, cfg, avertissements) {
   // date et il faut la ressaisir article par article dans l'interface. Le gabarit livre
   // désormais une date complète ; ce qui manque encore, c'est la vraie.
   if (!numero.datePublication) {
-    bloquants.push(T('ojs.err.date', [texte(valeurs.date) || '—']));
+    bloquants.push(T('ojs.err.date', [texte(valeurs.date) || '–']));
   }
   for (const nom of NOMS_COUVERTURE) {
     if (fs.existsSync(path.join(racine, nom))) { numero.couverture = nom; break; }
@@ -652,6 +652,18 @@ function collecter(racine, cfg, avertissements) {
       if (orcidsTordus.length > 0) {
         avertissements.push(prefixe + T('ojs.avert.orcid', [orcidsTordus.join(', ')]));
       }
+      const rorsTordus = article.auteurs
+        .filter((a) => texte(a.ror) !== '' && rorCanonique(a.ror) === '')
+        .map((a) => texte(a.ror));
+      if (rorsTordus.length > 0) {
+        avertissements.push(prefixe + T('ojs.avert.ror', [rorsTordus.join(', ')]));
+      }
+      const rorsSansNom = article.auteurs
+        .filter((a) => texte(a.ror) !== '' && rorCanonique(a.ror) !== '' && !texte(a.affiliation))
+        .map((a) => rorCanonique(a.ror));
+      if (rorsSansNom.length > 0) {
+        avertissements.push(prefixe + T('ojs.avert.rorSansNom', [rorsSansNom.join(', ')]));
+      }
     }
 
     // Accessibilité des images, dernier moment où elle se répare : une image sans texte
@@ -734,6 +746,24 @@ function orcidCanonique(valeur) {
   const m = v.match(/\d{4}-\d{4}-\d{4}-\d{3}[\dxX]/);
   if (m) { return 'https://orcid.org/' + m[0].toUpperCase(); }
   return /^https?:\/\//i.test(v) ? v : '';
+}
+
+// ROR canonique : identifiant nu ou URL complète -> https://ror.org/<id> en minuscules ;
+// tout le reste rend '' — pas de balise vide dans le XML, et un avertissement le dit.
+// L'identifiant ROR est 0 suivi de six caractères crockford (0-9, a-h, j-k, m-n, p-t, v-z,
+// ni i, l, o, u) puis deux chiffres.
+//
+// La valeur entière doit être un ROR, et rien d'autre : contrairement à l'ORCID, dont la
+// forme à seize chiffres et trois tirets ne ressemble à rien d'autre, un identifiant ROR
+// est neuf caractères quelconques. Le pêcher au milieu d'une phrase ferait passer
+// « Université de Genève 012345678 » pour un identifiant valide, et publierait dans OJS
+// une institution qui n'est pas la bonne — pire qu'un champ vide, et sans avertissement
+// puisque la valeur aurait été « comprise ».
+function rorCanonique(valeur) {
+  const v = texte(valeur);
+  if (v === '') { return ''; }
+  const m = v.match(/^(?:https?:\/\/)?(?:ror\.org\/)?(0[0-9a-hj-km-np-tv-z]{6}[0-9]{2})$/i);
+  return m ? 'https://ror.org/' + m[1].toLowerCase() : '';
 }
 
 // ---- Génération -----------------------------------------------------------------------
@@ -912,16 +942,26 @@ function genererExportOjs(racine, options) {
         w('          <author include_in_browse="true" user_group_ref="' + echapperXml(revue.groupeAuteur) + '"' +
           ' seq="' + i + '" id="' + auteur.idAuteur + '">\n');
         // Ordre imposé par le schéma (type `identity`) : givenname, familyname,
-        // affiliation, country, email, url, orcid.
+        // affiliation ou rorAffiliation, country, email, url, orcid.
         // givenname est requis par le schéma : un auteur sans prénom y met son nom
         // entier, comme le fait la référence pour « Edition SZH/CSPS ».
         ligne(12, 'givenname', loc, prenom || nom);
         if (prenom && nom) { ligne(12, 'familyname', loc, nom); }
-        if ((auteur.affiliation || '').trim()) {
+        const ror = rorCanonique(auteur.ror);
+        const aff = (auteur.affiliation || '').trim();
+        if (ror && aff) {
+          // ROR reconnaissable + affiliation : rorAffiliation
+          w('            <rorAffiliation>\n');
+          ligne(14, 'ror', '', ror);
+          ligne(14, 'name', loc, aff);
+          w('            </rorAffiliation>\n');
+        } else if (aff) {
+          // Affiliation seule
           w('            <affiliation>\n');
-          ligne(14, 'name', loc, auteur.affiliation.trim());
+          ligne(14, 'name', loc, aff);
           w('            </affiliation>\n');
         }
+        // ROR reconnaissable sans affiliation : rien (et avertissement dans collecter)
         if (revue.paysAuteur) { ligne(12, 'country', '', revue.paysAuteur); }
         if (texte(auteur.email)) { ligne(12, 'email', '', texte(auteur.email)); }
         // L'ORCID est saisi dans la fiche et imprimé dans le PDF ; il n'allait pas dans
@@ -968,7 +1008,7 @@ function genererExportOjs(racine, options) {
 
 module.exports = {
   genererExportOjs, configOjs, ecrireConfigOjs, normaliserConfigOjs, cheminConfigOjs,
-  orcidCanonique, doiCalcule, typeSansDoi, FORME_DOI,
+  orcidCanonique, rorCanonique, doiCalcule, typeSansDoi, FORME_DOI,
   CHAMPS_REVUE, LOCALES_REVUE, RUBRIQUES_DEFAUT, TYPES_DEFAUT
 };
 

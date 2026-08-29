@@ -49,17 +49,29 @@
   // Purement informatif : la liste se rafraîchit seule (lib/auteurs-ojs.js), le panneau ne
   // fait que dire quand, et combien de noms elle porte.
   const auteursOjsZone = document.getElementById('auteursojs');
+  function dateLisible(brute) {
+    try { return new Date(brute).toLocaleDateString(); }
+    catch (e) { return String(brute); }        // date brute : lisible quand même
+  }
+  // Deux sources, deux dates, deux lignes : OJS donne les noms et l'affiliation, le
+  // balayage des numéros du poste donne la fonction et l'e-mail. Les confondre en une
+  // seule ligne laisserait croire qu'un seul rafraîchissement les porte toutes les deux.
   function rendreAuteursOjs(infos) {
     if (!auteursOjsZone) { return; }
-    if (infos.dateFetch) {
-      let date = String(infos.dateFetch);
-      try { date = new Date(infos.dateFetch).toLocaleDateString(); }
-      catch (e) { /* date brute : lisible quand même */ }
-      auteursOjsZone.textContent = String(TXT.auteursMaj || '')
-        .split('{0}').join(date).split('{1}').join(String(infos.nombre || 0));
-    } else {
-      auteursOjsZone.textContent = TXT.auteursJamais || '';
-    }
+    auteursOjsZone.textContent = '';
+    var ojs = document.createElement('p');
+    ojs.textContent = infos.dateFetch
+      ? String(TXT.auteursMaj || '')
+        .split('{0}').join(dateLisible(infos.dateFetch))
+        .split('{1}').join(String(infos.nombre || 0))
+        .split('{2}').join(String(infos.nombreRor || 0))
+      : (TXT.auteursJamais || '');
+    auteursOjsZone.appendChild(ojs);
+    var corpus = document.createElement('p');
+    corpus.textContent = infos.dateCorpus
+      ? String(TXT.auteursCorpus || '').split('{0}').join(dateLisible(infos.dateCorpus))
+      : (TXT.auteursCorpusJamais || '');
+    auteursOjsZone.appendChild(corpus);
     auteursOjsZone.hidden = false;
   }
 

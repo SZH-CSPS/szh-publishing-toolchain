@@ -56,10 +56,14 @@ const {
   lireModeDeveloppeur, ecrireModeDeveloppeur, lireConfigPoste, ecrireConfigPoste,
   CONFIG_POSTE, FORME_MAIL
 } = require('./lib/archivage');
-// ---- Auteur·e·s publiés (OAI-PMH) -> lib/auteurs-ojs.js ---------------------------
+// ---- Auteur·e·s connus : OJS (OAI-PMH) et les numéros du poste --------------------
+// Deux sources, un seul cache. OJS donne les noms et l'affiliation ; la fonction et
+// l'e-mail n'existent nulle part dans son interface publique et ne viennent que des
+// fiches meta.yaml des numéros, où la rédaction les a saisis.
 const {
   lireCache: lireCacheAuteursPublies, rafraichir: rafraichirCacheAuteursPublies
 } = require('./lib/auteurs-ojs');
+const { rafraichirCorpus: rafraichirCorpusAuteurs } = require('./lib/auteurs-corpus');
 // ---- Modèle de tableau -> lib/table-model.js -------------------------------------
 const {
   analyserTable, serialiserTable, disposition, matriceOccupation,
@@ -107,8 +111,9 @@ const {
 const {
   retirerImage, retirerTable, ordreImages, lireAttributsImage, ecrireAttributsImage,
   placeFigure, envelopperFigure, imagesSansAlternative,
-  GRILLE_AUTO, GRILLE_MAX, lireGrilles, dispositionsPossibles, dispositionAutomatique,
-  poserDansGrille, retirerDeGrille, ecrireDispositionGrille, normaliserGrilles
+  GRILLE_AUTO, GRILLE_MAX, lireGrilles, grilleDeImage, dispositionsPossibles,
+  dispositionAutomatique, poserDansGrille, retirerDeGrille, ecrireDispositionGrille,
+  normaliserGrilles
 } = require('./lib/references');
 const { traiterPortraits } = require('./lib/portraits');
 // ---- Journal de compilation -> lib/journal.js ------------------------------------
@@ -2941,7 +2946,13 @@ function formatImage(nom) {
 // les mêmes contrôles de format et de poids. Le fichier arrive en base64 depuis une
 // webview, jamais par une boîte de dialogue de l'hôte.
 // -> { etat: 'ok' | 'annule' | 'erreur', message }
-async function remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif, nomFichier, donneesBase64) {
+// `options.offrirACote` ajoute au dialogue une troisième issue : ne rien écraser et poser
+// la nouvelle image À CÔTÉ de l'ancienne, dans une même figure. C'est la sortie de secours
+// du geste le plus destructeur du formulaire — on dépose un fichier sur la mauvaise carte,
+// et il ne reste rien de l'ancienne. Le gestionnaire des médias la propose ; la
+// vérification d'import, qui n'a pas de figure sous la main, ne la propose pas.
+// -> { etat: 'ok' | 'annule' | 'erreur' | 'a-cote', message }
+async function remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif, nomFichier, donneesBase64, options) {
   const echec = (message) => ({ etat: 'erreur', message: message });
   if (!fournisseur.racine) { return echec(T('err.remplacement', ['?'])); }
   if (!new Set(fournisseur.listerArticles()).has(String(slug || ''))) { return { etat: 'annule' }; }
@@ -2959,15 +2970,22 @@ async function remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif,
   if (donnees.length === 0) { return echec(T('importv.err.format')); }
   if (donnees.length > TAILLE_MAX_IMAGE_IMPORT) { return echec(T('importv.err.tropvolumineux')); }
   // Confirmation modale, renforcée si le format du fichier déposé diffère.
+  const offrirACote = !!(options && options.offrirACote);
   let detail = T('modale.remplacer.detail.image', [nomCible]);
   if (formatImage(nomSource) !== formatImage(nomCible)) {
     detail = T('modale.remplacer.detail.format', [formatImage(nomSource), formatImage(nomCible)]) + detail;
   }
+  if (offrirACote) { detail += T('modale.remplacer.detail.acote'); }
+  // Deux issues offertes, plus l'« Annuler » que la boîte modale pose elle-même : le
+  // rédacteur a donc toujours les trois réponses sous les yeux.
+  const boutons = [T('modale.remplacer.bouton')];
+  if (offrirACote) { boutons.push(T('modale.remplacer.bouton.acote')); }
   const reponse = await vscode.window.showWarningMessage(
     T('modale.remplacer.question', [nomCible, nomSource]),
     { modal: true, detail: detail },
-    T('modale.remplacer.bouton')
+    ...boutons
   );
+  if (offrirACote && reponse === T('modale.remplacer.bouton.acote')) { return { etat: 'a-cote' }; }
   if (reponse !== T('modale.remplacer.bouton')) { return { etat: 'annule' }; }
   try {
     const tmp = path.join(path.dirname(cible), '~$' + nomCible);
@@ -2984,6 +3002,82 @@ async function remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif,
   vscode.window.setStatusBarMessage(T('statut.image.remplacee', [nomCible]), 5000);
   if (rafraichirTout) { rafraichirTout(); }        // met « L × H · poids » à jour
   return { etat: 'ok' };
+}
+
+// Nom de fichier tiré de ce qu'une webview annonce, donc de ce qu'un rédacteur a nommé :
+// accents, espaces, parenthèses, et parfois un chemin entier. On garde le nom d'origine,
+// comme « Insérer une figure » (lib/formatting.js) — il dit quelque chose au rédacteur —
+// mais réduit à ce qui traverse sans dommage un lien markdown, un Makefile et WSL.
+// Le dossier n'est jamais lu depuis l'appelant : seul le dernier segment survit.
+function nomImageAssaini(nomFichier) {
+  const brut = String(nomFichier || '').replace(/\\/g, '/');
+  const base = brut.slice(brut.lastIndexOf('/') + 1);
+  const ext = (base.match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
+  if (EXTENSIONS_IMAGE_IMPORT.indexOf(ext) === -1) { return null; }
+  let corps = slugifier(base.slice(0, base.length - ext.length - 1));
+  if (corps === '') { corps = 'image'; }
+  return corps.slice(0, 60) + '.' + (ext === 'jpeg' ? 'jpg' : ext);
+}
+
+// Nom libre dans media/ : même règle que nomMediaUnique de lib/formatting.js, que ce
+// module ne peut pas appeler (il vit derrière require('vscode')).
+function nomMediaLibre(dossier, nom) {
+  const point = nom.lastIndexOf('.');
+  const base = nom.slice(0, point);
+  const ext = nom.slice(point);
+  let candidat = nom;
+  let i = 1;
+  while (fs.existsSync(path.join(dossier, candidat))) { candidat = base + '-' + i + ext; i++; }
+  return candidat;
+}
+
+// Un fichier déposé sur la zone « ajouter une image à côté » : il entre dans media/ sous
+// un nom neuf — rien n'est écrasé, c'est toute la différence avec « remplacer » — puis il
+// rejoint la figure de `ancre`.
+// La confirmation offre les deux issues opposées : à côté, ou bien écraser après tout.
+// -> { etat: 'ok' | 'annule' | 'erreur' | 'remplacer', message, nom }
+async function ajouterImageACote(fournisseur, slug, ancre, nomFichier, donneesBase64, dejaDansGrille) {
+  const echec = (message) => ({ etat: 'erreur', message: message });
+  if (!fournisseur.racine) { return echec(T('err.copie', ['?', '?'])); }
+  if (!new Set(fournisseur.listerArticles()).has(String(slug || ''))) { return { etat: 'annule' }; }
+  if (!relatifImageValide(ancre)) { return { etat: 'annule' }; }
+  if (buildEnCours || importEnCours) { return echec(T('statut.occupe')); }
+  const nom = nomImageAssaini(nomFichier);
+  if (!nom) { return echec(T('importv.err.format')); }
+  const donnees = Buffer.from(String(donneesBase64 || ''), 'base64');
+  if (donnees.length === 0) { return echec(T('importv.err.format')); }
+  if (donnees.length > TAILLE_MAX_IMAGE_IMPORT) { return echec(T('importv.err.tropvolumineux')); }
+  // Grille pleine : on le dit avant d'écrire le fichier, sinon media/ gagnerait une image
+  // que rien n'insère et que personne n'a demandée.
+  if (Number(dejaDansGrille) >= GRILLE_MAX) {
+    return echec(T('modale.acote.detail.pleine'));
+  }
+  const dossier = path.join(fournisseur.racine, 'articles', slug, 'media');
+  try { fs.mkdirSync(dossier, { recursive: true }); } catch (e) { /* existe déjà */ }
+  const nomLibre = nomMediaLibre(dossier, nom);
+  const reponse = await vscode.window.showWarningMessage(
+    T('modale.acote.question', [path.basename(ancre), nomLibre]),
+    { modal: true, detail: T('modale.acote.detail', [path.basename(ancre), nomLibre]) },
+    T('modale.acote.bouton'), T('modale.remplacer.bouton')
+  );
+  if (reponse === T('modale.remplacer.bouton')) { return { etat: 'remplacer' }; }
+  if (reponse !== T('modale.acote.bouton')) { return { etat: 'annule' }; }
+  const cible = path.join(dossier, nomLibre);
+  try {
+    // Temporaire « ~$… » puis rename, comme le remplacement : une écriture interrompue ne
+    // laisse pas un demi-fichier que la compilation lirait.
+    const tmp = path.join(dossier, '~$' + nomLibre);
+    try {
+      fs.writeFileSync(tmp, donnees);
+      fs.renameSync(tmp, cible);
+    } finally {
+      try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
+    }
+  } catch (e) {
+    return echec(T('err.copie', [nomLibre, e.message]));
+  }
+  await convertirCmykSiBesoin([cible]);           // un JPEG d'imprimerie ne s'affiche pas
+  return { etat: 'ok', nom: nomLibre };
 }
 
 // Écrase tables/table-NN.html en gardant le nom, pour que la référence reste valide.
@@ -3212,6 +3306,7 @@ function textesAuteur() {
   return {
     aPrenom: T('fiches.auteur.prenom'), aNom: T('fiches.auteur.nom'),
     aFonction: T('fiches.auteur.fonction'), aAffiliation: T('fiches.auteur.affiliation'),
+    aRor: T('fiches.auteur.ror'),
     aOrcid: T('fiches.auteur.orcid'), aEmail: T('fiches.auteur.email'),
     retirerAuteur: T('fiches.auteur.retirer'), ajouterAuteur: T('fiches.auteur.ajouter'),
     auteurEditer: T('auteur.editer'), auteurTitre: T('auteur.titre'),
@@ -5247,29 +5342,69 @@ function repondrePanneau(panneau, message) {
 // porte la modale d'auteur·e — métadonnées, vérification d'import, médias — en même temps
 // que ses valeurs. Seuls prénom et nom voyagent : la date de publication ne sert qu'à la
 // fusion côté cache. Liste vide : rien n'est envoyé, la modale ne montre alors aucune UI.
-function envoyerAuteursConnus(panneau) {
-  let auteurs;
-  try { auteurs = lireCacheAuteursPublies().auteurs; } catch (e) { return; }
+function envoyerAuteursConnus(panneau, racine) {
+  let cache;
+  try { cache = lireCacheAuteursPublies(); } catch (e) { return; }
+  const auteurs = cache.auteurs;
   if (!Array.isArray(auteurs) || auteurs.length === 0) { return; }
+  const langue = langueRevue(racine) === 'de' ? 'de' : 'fr';
+  const nomsRor = (cache.ror && typeof cache.ror === 'object') ? cache.ror : {};
   repondrePanneau(panneau, {
     type: 'auteurs-connus',
-    auteurs: auteurs.map((a) => ({ prenom: a.prenom, nom: a.nom }))
+    auteurs: auteurs.map((a) => ({
+      prenom: a.prenom, nom: a.nom,
+      fonction: a.fonction || '',
+      // Affiliation en toutes lettres : le texte quand OJS en a donné un, sinon le libellé
+      // du ROR. Les deux ne coexistent jamais dans le cache — OJS écrit l'un ou l'autre.
+      affiliation: a.affiliation || libelleRor(nomsRor, a.ror, langue),
+      ror: a.ror || '', orcid: a.orcid || '', email: a.email || ''
+    }))
   });
+}
+
+// Le libellé d'un ROR dans la langue de la revue. L'identifiant est neutre, le nom ne l'est
+// pas : « Hochschule Luzern » dans la Zeitschrift, « Haute École de Lucerne » dans la Revue.
+// Le cache garde les deux, plus le libellé d'affichage de ROR — souvent l'anglais, et le
+// seul disponible pour bien des institutions alémaniques, d'où le repli plutôt qu'un vide.
+function libelleRor(nomsRor, ror, langue) {
+  const id = String(ror || '').split('/').pop();
+  const e = id === '' ? null : nomsRor[id];
+  if (!e) { return ''; }
+  return String(e[langue] || e.en || e.fr || e.de || '');
 }
 
 // Le rafraîchissement hebdomadaire, lancé à l'activation SANS l'attendre : hors ligne est
 // un état normal du poste, rien n'est montré au rédacteur — seule une trace console reste
 // pour le diagnostic (échec muet interdit, décision du dépôt).
 function rafraichirAuteursPubliesEnFond() {
+  // Les deux moissonnages s'ENCHAÎNENT, jamais en parallèle : ils lisent et réécrivent le
+  // même auteurs.json, et deux cycles lecture-écriture croisés en perdraient un.
+  //
+  // Le second balaie les numéros du poste, qui vivent sur OneDrive avec Fichiers à la
+  // demande : ouvrir une fiche la fait télécharger. D'où l'arrière-plan, les bornes de
+  // lib/auteurs-corpus.js, et le rythme mensuel — un rédacteur ne doit jamais attendre
+  // après lui, ni voir son disque se remplir sans raison.
   rafraichirCacheAuteursPublies().then((res) => {
-    if (!res.fait) { return; }                     // cache de moins de sept jours
-    if (res.complet) {
-      console.log('[auteurs-ojs] liste des auteur·e·s publiés rafraîchie : ' + res.nombre + ' nom(s)');
-    } else {
+    if (res.fait && res.complet) {
+      console.log('[auteurs-ojs] OJS : ' + res.nombre + ' nom(s), ' +
+        (res.nombreRor || 0) + ' institution(s) ROR' +
+        // Un ROR rencontré que l'API n'a pas rendu laisse une affiliation vide dans la
+        // modale. Sans ce compte, la table vide passerait pour « rien de neuf ».
+        (res.rorRates ? ' (' + res.rorRates + ' ROR non résolu(s), on réessaiera)' : ''));
+    } else if (res.fait) {
       console.log('[auteurs-ojs] rafraîchissement incomplet (hors ligne ?) : ' + (res.erreur || '?'));
     }
+    return rafraichirCorpusAuteurs();
+  }).then((res) => {
+    if (!res || !res.fait) { return; }             // cache de moins de trente jours
+    if (res.complet) {
+      console.log('[auteurs-corpus] corpus balayé : ' + res.fichiers + ' fiche(s) lue(s), ' +
+        res.nombre + ' nom(s) au total');
+    } else {
+      console.log('[auteurs-corpus] balayage incomplet, on reprendra : ' + (res.erreur || 'borne atteinte'));
+    }
   }).catch((e) => {
-    console.log('[auteurs-ojs] rafraîchissement raté : ' + String((e && e.message) || e));
+    console.log('[auteurs] rafraîchissement raté : ' + String((e && e.message) || e));
   });
 }
 
@@ -5521,7 +5656,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
       types: typesTraduits(langue),
       licences: licencesTraduites(), licenceDefaut: LICENCE_DEFAUT
     });
-    envoyerAuteursConnus(panneau);
+    envoyerAuteursConnus(panneau, fournisseur.racine);
     fichesModifie = false;                         // les cartes viennent d'être reconstruites
   };
   rafraichirFiches = () => { if (panneauArticles) { envoyerValeurs(panneauArticles); } };
@@ -5700,7 +5835,7 @@ function envoyerValeursImportVerif(panneau, fournisseur) {
     types: typesTraduits(langue),
     licences: licencesTraduites(), licenceDefaut: LICENCE_DEFAUT
   });
-  envoyerAuteursConnus(panneau);
+  envoyerAuteursConnus(panneau, fournisseur.racine);
 }
 
 // Le remplacement lui-même est celui du gestionnaire des médias ; ici, seul l'aller-retour
@@ -5813,6 +5948,7 @@ function REGL_LIBELLES() {
   langue: T('regl.langue'),
   dev: T('regl.dev'), devOui: T('regl.dev.oui'), devNon: T('regl.dev.non'),
   auteursMaj: T('regl.auteurs.maj'), auteursJamais: T('regl.auteurs.jamais'),
+  auteursCorpus: T('regl.auteurs.corpus'), auteursCorpusJamais: T('regl.auteurs.corpus.jamais'),
   ojsRevues: T('ojs.revues'), ojsVide: T('ojs.vide'),
   ojsRubriques: T('ojs.rubriques'), ojsRubriquesAide: T('ojs.rubriques.aide'),
   ojsColCle: T('ojs.col.cle'), ojsColAbbrev: T('ojs.col.abbrev'), ojsColTitre: T('ojs.col.titre'),
@@ -5845,8 +5981,13 @@ function donneesBiblio() {
 function resumeAuteursPublies() {
   try {
     const cache = lireCacheAuteursPublies();
-    return { dateFetch: cache.dateFetch, nombre: cache.auteurs.length };
-  } catch (e) { return { dateFetch: null, nombre: 0 }; }
+    return {
+      dateFetch: cache.dateFetch,                  // dernier moissonnage OJS
+      dateCorpus: cache.dateCorpus || null,        // dernier balayage des numéros du poste
+      nombre: cache.auteurs.length,
+      nombreRor: Object.keys(cache.ror || {}).length
+    };
+  } catch (e) { return { dateFetch: null, dateCorpus: null, nombre: 0, nombreRor: 0 }; }
 }
 
 // Ce que le panneau doit connaître de l'export OJS : la configuration effective, la liste
@@ -6329,6 +6470,8 @@ function textesMedias() {
     etatJamais: T('medias.etat.jamais'), etatInsertions: T('medias.etat.insertions'),
     etatHorsFigure: T('medias.etat.horsfigure'), etatDoublon: T('medias.etat.doublon'),
     etatOrphelin: T('medias.etat.orphelin'),
+    etatBasse: T('medias.etat.basse'), etatMuette: T('medias.etat.muette'),
+    formOuvrir: T('medias.form.ouvrir'), formFermer: T('medias.form.fermer'),
     apercuAbsent: T('img.apercu.absent'), portraitOrphelin: T('medias.portrait.orphelin'),
     auteurEnregistre: T('medias.auteur.enregistre'),
     grilleSection: T('medias.grille.section'), grilleAjouter: T('medias.grille.ajouter'),
@@ -6344,8 +6487,11 @@ function textesMedias() {
     grilleDispositionTip: T('medias.grille.disposition.tip'),
     grilleMembres: T('medias.grille.membres'), grilleRetirer: T('medias.grille.retirer'),
     grilleRetirerTip: T('medias.grille.retirer.tip'),
-    grilleSuiveuse: T('medias.grille.suiveuse'), grillePastille: T('medias.grille.pastille'),
+    grilleOter: T('medias.grille.oter'), grilleOterTip: T('medias.grille.oter.tip'),
+    grilleDeposer: T('medias.grille.deposer'), grilleDeposerTip: T('medias.grille.deposer.tip'),
+    grilleDeposerArticle: T('medias.grille.deposer.article'),
     grilleLegende: T('medias.grille.legende'),
+    grilleLegendeAbsente: T('medias.grille.legende.absente'),
     dispositionAuto: T('medias.disposition.auto'),
     dispositionAutoSimple: T('medias.disposition.auto.simple'),
     dispositionLigne: T('medias.disposition.ligne'),
@@ -6646,8 +6792,32 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       portraits: listerPortraitsArticle(fournisseur, slug, budget),
       focus: focus, accent: lireCouleurAccent(fournisseur.racine), i18n: textesMedias()
     });
-    envoyerAuteursConnus(cible);
+    envoyerAuteursConnus(cible, fournisseur.racine);
   }
+
+  // Réécrit le .md entier, par WorkspaceEdit puis doc.save() : annulable d'un Ctrl+Z, et
+  // l'enregistrement déclenche la recompilation. Rend faux après avoir posté l'erreur.
+  // Partagé par les gestes de grille, qui remanient tous le texte d'un bloc.
+  const ecrireTexteArticle = async (texte) => {
+    let doc;
+    try { doc = await vscode.workspace.openTextDocument(md); }
+    catch (e) { repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) }); return false; }
+    if (doc.getText() === texte) { return true; }   // déjà à jour : pas d'édition
+    try {
+      const edition = new vscode.WorkspaceEdit();
+      const fin = doc.lineAt(doc.lineCount - 1).range.end;
+      edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), texte);
+      if (!(await vscode.workspace.applyEdit(edition))) {
+        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [md]) });
+        return false;
+      }
+      await doc.save();
+    } catch (e) {
+      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) });
+      return false;
+    }
+    return true;
+  };
 
   // Toutes les insertions de chaque image, qui n'ont qu'un jeu de légende et de crédits.
   // Rend le nombre d'insertions réécrites, ou -1 en cas d'échec déjà signalé.
@@ -6706,29 +6876,97 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       if (n > 0 && !msg.auto) { vscode.window.setStatusBarMessage(T('medias.statut.enregistrees', [n]), 5000); }
       return;
     }
-    if (msg.type === 'remplacer') {
-      // La garde de cmdEcriture ne couvre que l'ouverture : ces trois gestes écrivent par
-      // fs, hors du système de fichiers de l'éditeur, et un panneau resté ouvert survit au
+    // Les deux dépôts de fichier de la carte, et ils se renvoient l'un à l'autre : chaque
+    // dialogue offre l'issue de son voisin, parce que l'erreur qu'on veut rattraper est
+    // toujours la même — le fichier lâché sur la mauvaise des deux zones. « Remplacer »
+    // écrase et ne se défait pas ; « à côté » n'écrase rien. Le passage d'un geste à
+    // l'autre se fait sans redemander le fichier, qui est déjà là.
+    if (msg.type === 'remplacer' || msg.type === 'ajouter-a-cote') {
+      // La garde de cmdEcriture ne couvre que l'ouverture : ces gestes écrivent par fs,
+      // hors du système de fichiers de l'éditeur, et un panneau resté ouvert survit au
       // verrouillage du numéro.
-      if (refuserSiVerrouille()) {
-        repondrePanneau(panneau, { type: 'media-annulee', relatif: String(msg.relatif || '') });
-        return;
-      }
       const relatif = String(msg.relatif || '');
-      const res = await remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif,
-        msg.nomFichier, msg.donneesBase64);
-      if (res.etat === 'annule') { repondrePanneau(panneau, { type: 'media-annulee', relatif: relatif }); return; }
-      if (res.etat === 'erreur') {
-        repondrePanneau(panneau, { type: 'media-erreur', relatif: relatif, message: res.message });
+      if (refuserSiVerrouille()) {
+        repondrePanneau(panneau, { type: 'media-annulee', relatif: relatif });
         return;
       }
-      const chemin = path.join(racine, 'articles', slug, 'media', relatif);
-      repondrePanneau(panneau, {
-        type: 'media-remplace', relatif: relatif, description: decrireImage(chemin),
-        apercu: apercuMedia(chemin, { reste: BUDGET_APERCUS_MEDIA }),
-        qualite: qualiteImage('figure', lireDimensionsImage(chemin), relatif,
-          { reduit: reduireWarningsImpressionActif() })
-      });
+      if (!relatifImageValide(relatif)) {
+        repondrePanneau(panneau, { type: 'media-annulee', relatif: relatif });
+        return;
+      }
+      let source = await texteArticle();
+      // Combien d'images la figure de cette carte porte déjà : le dialogue « à côté » le
+      // demande pour refuser une septième avant d'écrire quoi que ce soit sur le disque.
+      const dansGrille = () => {
+        const g = grilleDeImage(source, relatif);
+        return g ? g.grille.membres.length : 1;
+      };
+      let geste = msg.type;
+      // Deux tours au plus : chaque dialogue peut renvoyer vers l'autre, jamais en boucle.
+      for (let tour = 0; tour < 2; tour++) {
+        if (geste === 'remplacer') {
+          const res = await remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif,
+            msg.nomFichier, msg.donneesBase64, { offrirACote: true });
+          if (res.etat === 'a-cote') { geste = 'ajouter-a-cote'; continue; }
+          if (res.etat === 'annule') { repondrePanneau(panneau, { type: 'media-annulee', relatif: relatif }); return; }
+          if (res.etat === 'erreur') {
+            repondrePanneau(panneau, { type: 'media-erreur', relatif: relatif, message: res.message });
+            return;
+          }
+          const chemin = path.join(racine, 'articles', slug, 'media', relatif);
+          repondrePanneau(panneau, {
+            type: 'media-remplace', relatif: relatif, description: decrireImage(chemin),
+            apercu: apercuMedia(chemin, { reste: BUDGET_APERCUS_MEDIA }),
+            qualite: qualiteImage('figure', lireDimensionsImage(chemin), relatif,
+              { reduit: reduireWarningsImpressionActif() })
+          });
+          return;
+        }
+        // Ajouter à côté : le fichier entre dans media/ sous un nom neuf, puis la figure
+        // se construit autour de l'ancre. Le fichier d'abord, parce que c'est lui qui
+        // fixe le nom que la référence doit citer — mais tout échec après lui le REPREND :
+        // une image dans media/ que rien n'insère est un déchet muet, et le rédacteur
+        // n'aurait aucune raison de la chercher.
+        const res = await ajouterImageACote(fournisseur, slug, relatif,
+          msg.nomFichier, msg.donneesBase64, dansGrille());
+        if (res.etat === 'remplacer') { geste = 'remplacer'; continue; }
+        if (res.etat === 'annule') { repondrePanneau(panneau, { type: 'media-annulee', relatif: relatif }); return; }
+        if (res.etat === 'erreur') {
+          repondrePanneau(panneau, { type: 'media-erreur', relatif: relatif, message: res.message });
+          return;
+        }
+        const reprendreFichier = () => {
+          try { fs.unlinkSync(path.join(racine, 'articles', slug, 'media', res.nom)); }
+          catch (e) { /* déjà parti, ou tenu par un autre programme */ }
+        };
+        // Les saisies en cours d'abord : la pose réécrit le .md, et le formulaire est
+        // rechargé juste après.
+        if (Array.isArray(msg.medias) && msg.medias.length > 0 && await enregistrer(msg.medias) < 0) {
+          reprendreFichier();
+          return;
+        }
+        source = await texteArticle();
+        const pose = poserDansGrille(source, relatif, res.nom);
+        if (!pose.ok) {
+          reprendreFichier();
+          const messages = {
+            ancre: T('medias.err.grille.ancre', [relatif]),
+            pleine: T('medias.grille.ajouter.pleine')
+          };
+          repondrePanneau(panneau, {
+            type: 'media-erreur', relatif: relatif,
+            message: messages[pose.motif] || T('medias.err.grille.ancre', [relatif])
+          });
+          return;
+        }
+        if (!(await ecrireTexteArticle(pose.texte))) { reprendreFichier(); return; }
+        vscode.window.setStatusBarMessage(
+          T('medias.statut.grille.deposee', [res.nom, relatif]), 6000);
+        if (rafraichirTout) { rafraichirTout(); }
+        focus = res.nom;                             // la carte de l'image qui arrive
+        await charger(panneau);
+        return;
+      }
       return;
     }
     if (msg.type === 'inserer') {
@@ -6762,10 +7000,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       const relatif = String(msg.relatif || '');
       if (!relatifImageValide(relatif)) { return; }
       if (Array.isArray(msg.medias) && msg.medias.length > 0 && await enregistrer(msg.medias) < 0) { return; }
-      let doc;
-      try { doc = await vscode.workspace.openTextDocument(md); }
-      catch (e) { repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) }); return; }
-      const source = doc.getText();
+      const source = await texteArticle();
       let resultat = null;
       let annonce = null;
       if (msg.type === 'grille-ajouter') {
@@ -6788,27 +7023,19 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
           ? T('medias.statut.grille.legende', [ajout])
           : T('medias.statut.grille.ajoutee', [ajout, relatif]);
       } else if (msg.type === 'grille-retirer') {
-        resultat = retirerDeGrille(source, relatif);
-        annonce = T('medias.statut.grille.retiree', [relatif]);
+        // Deux sorties, et elles ne disent pas la même chose. « Sortir de la grille » rend
+        // à l'image sa place de figure indépendante ; « Retirer de la figure » l'ôte aussi
+        // du texte, le fichier restant dans l'article. Dans les deux cas, ni l'image
+        // voisine ni la figure ne sont touchées.
+        const garder = msg.garder !== false;
+        resultat = retirerDeGrille(source, relatif, { garderDansTexte: garder });
+        annonce = garder ? T('medias.statut.grille.retiree', [relatif])
+                         : T('medias.statut.grille.otee', [relatif]);
       } else {
         resultat = ecrireDispositionGrille(source, relatif, String(msg.disposition || ''));
       }
       if (!resultat.ok) { return; }                 // grille disparue entre-temps : silence
-      if (resultat.texte !== source) {
-        try {
-          const edition = new vscode.WorkspaceEdit();
-          const fin = doc.lineAt(doc.lineCount - 1).range.end;
-          edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), resultat.texte);
-          if (!(await vscode.workspace.applyEdit(edition))) {
-            repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [md]) });
-            return;
-          }
-          await doc.save();                          // déclenche la recompilation
-        } catch (e) {
-          repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) });
-          return;
-        }
-      }
+      if (!(await ecrireTexteArticle(resultat.texte))) { return; }
       if (annonce) { vscode.window.setStatusBarMessage(annonce, 6000); }
       if (rafraichirTout) { rafraichirTout(); }
       focus = relatif;                               // la carte d'où le geste est parti
@@ -6819,10 +7046,20 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       if (refuserSiVerrouille()) { return; }
       const relatif = String(msg.relatif || '');
       if (!relatifImageValide(relatif)) { return; }
+      // Une image de grille emporte le bloc avec elle : supprimerAsset le normalise
+      // (membres, disposition), et le formulaire ne saurait pas rejouer ce calcul. Il
+      // repart donc du disque — mais les saisies en cours doivent partir avant, comme
+      // pour les autres gestes de grille, sinon le rechargement les écraserait.
+      const source = await texteArticle();
+      const dansGrille = !!grilleDeImage(source, relatif);
+      if (dansGrille && Array.isArray(msg.medias) && msg.medias.length > 0
+          && await enregistrer(msg.medias) < 0) { return; }
       const cheminAsset = path.join(racine, 'articles', slug, 'media', relatif);
       const retire = await supprimerAsset(fournisseur, rafraichirTout,
         { slug: slug, cheminAsset: cheminAsset }, false);
-      if (retire) { repondrePanneau(panneau, { type: 'media-retire', relatif: relatif }); }
+      if (!retire) { return; }
+      if (dansGrille) { focus = ''; await charger(panneau); return; }
+      repondrePanneau(panneau, { type: 'media-retire', relatif: relatif });
       return;
     }
     // La fiche d'auteur·e, éditée dans la modale partagée : écrite tout de suite, puis

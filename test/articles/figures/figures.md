@@ -76,5 +76,28 @@ et le mode automatique doit donc les empiler — une rangée d'une image chacune
   ![](media/figures-fig-05.png){alt="Deux bandes horizontales"}
 :::
 
+## Figure en portrait haut
+
+Le cas qui décrochait la légende. Une image plus haute que large, ramenée à la largeur de
+la colonne, dépasse la hauteur de la page : la `<figure>` ne peut plus tenir d'un bloc,
+WeasyPrint abandonne son `break-inside: avoid` et coupe au premier point permis — juste
+sous la légende. On lisait alors « Figure N — … » seul en haut d'une page presque vide,
+l'image à la suivante. Attendu — légende et image sur la MÊME page, l'image plafonnée en
+hauteur et donc plus étroite que la colonne.
+
+![Portrait haut, à la charte](media/figures-fig-06.png){alt="Trois bandes horizontales dans un cadre vertical : bleu foncé, bleu ciel, sable" copyright="© SZH" source="Banc d'essai"}
+
+## Grille de deux portraits empilés
+
+Le même défaut, en grille. Deux images verticales l'une sous l'autre : chaque rangée fait
+à elle seule plus d'une page, et la légende de la figure se détachait comme ci-dessus.
+Attendu — le plafond de hauteur se PARTAGE entre les rangées, les deux images et la
+légende tiennent sur une page, et la grille ne se coupe pas.
+
+::: {.szh-grille disposition="1-1"}
+  ![Deux portraits l'un sous l'autre](media/figures-fig-06.png){alt="Trois bandes horizontales dans un cadre vertical" copyright="© SZH"}
+  ![](media/figures-fig-07.png){alt="Quatre bandes horizontales dans un cadre vertical" copyright="© Banc d'essai"}
+:::
+
 Texte de queue, pour que la dernière figure ne soit pas seule en fin de page et que la
 coupure se voie.

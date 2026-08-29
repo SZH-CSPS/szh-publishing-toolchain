@@ -297,6 +297,50 @@ test('grille : en sortir rend une figure, la dernière dissout le bloc', () => {
   }
 });
 
+test('grille : retirer de la figure ôte l’image d’à côté et ne touche à rien d’autre', () => {
+  let md = refs.poserDansGrille(MD_DEUX, 'a.png', 'b.png').texte;
+  md = md.replace('Fin.', '![](media/c.png){alt="desc C"}\n\nFin.');
+  md = refs.poserDansGrille(md, 'a.png', 'c.png').texte;
+  const avant = refs.lireGrilles(md)[0];
+  assert.strictEqual(avant.membres.length, 3);
+
+  // « Retirer de la figure » : l'image quitte la grille ET le texte. Le fichier, lui,
+  // reste dans l'article — sa carte doit pouvoir le réinsérer ailleurs.
+  const ote = refs.retirerDeGrille(md, 'b.png', { garderDansTexte: false });
+  assert.strictEqual(ote.ok, true);
+  assert.strictEqual(refs.lireAttributsImage(ote.texte, 'b.png').n, 0,
+    '« retirer de la figure » a laissé une insertion derrière lui');
+  // Ce à quoi il ne doit PAS toucher : l'image d'à côté, la figure, sa légende.
+  const apres = refs.lireGrilles(ote.texte)[0];
+  assert.deepStrictEqual(apres.membres.map((m) => m.relatif), ['a.png', 'c.png']);
+  assert.strictEqual(refs.lireAttributsImage(ote.texte, 'a.png').legende, 'Une légende');
+  assert.strictEqual(refs.lireAttributsImage(ote.texte, 'c.png').n, 1);
+
+  // Une de plus, et la grille se dissout : ce qui reste redevient une figure ordinaire,
+  // toujours dans l'article.
+  const derniere = refs.retirerDeGrille(ote.texte, 'c.png', { garderDansTexte: false });
+  assert.strictEqual(refs.lireGrilles(derniere.texte).length, 0);
+  assert.strictEqual(refs.lireAttributsImage(derniere.texte, 'a.png').n, 1);
+  assert.strictEqual(refs.lireAttributsImage(derniere.texte, 'c.png').n, 0);
+  assert.strictEqual(refs.lireAttributsImage(derniere.texte, 'a.png').legende, 'Une légende');
+});
+
+test('grille : les deux sorties diffèrent par une seule chose, le texte', () => {
+  const md = refs.poserDansGrille(MD_DEUX, 'a.png', 'b.png').texte
+    .replace('Fin.', '![](media/c.png){alt="desc C"}\n\nFin.');
+  const trois = refs.poserDansGrille(md, 'a.png', 'c.png').texte;
+  const gardee = refs.retirerDeGrille(trois, 'b.png', { garderDansTexte: true });
+  const otee = refs.retirerDeGrille(trois, 'b.png', { garderDansTexte: false });
+  // Même grille des deux côtés ; seule l'insertion de la sortante fait la différence.
+  assert.deepStrictEqual(
+    refs.lireGrilles(gardee.texte)[0].membres.map((m) => m.relatif),
+    refs.lireGrilles(otee.texte)[0].membres.map((m) => m.relatif));
+  assert.strictEqual(refs.lireAttributsImage(gardee.texte, 'b.png').n, 1);
+  assert.strictEqual(refs.lireAttributsImage(otee.texte, 'b.png').n, 0);
+  // Le défaut, sans option, est le geste doux : on ne retire rien du texte sans le dire.
+  assert.strictEqual(refs.retirerDeGrille(trois, 'b.png').texte, gardee.texte);
+});
+
 test('grille : la disposition suit le nombre d’images, et « auto » le reste', () => {
   let md = refs.poserDansGrille(MD_DEUX, 'a.png', 'b.png').texte;
   assert.strictEqual(refs.lireGrilles(md)[0].disposition, refs.GRILLE_AUTO);

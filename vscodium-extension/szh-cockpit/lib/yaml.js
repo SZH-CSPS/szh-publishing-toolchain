@@ -385,7 +385,7 @@ function normaliserLangueArticle(valeur) {
 // parcourent cette constante, l'étendre ici suffit aux deux. `photo` est un chemin
 // relatif vers portraits/<slug-auteur>.{original.<ext>|avec-fond.png|sans-fond.png},
 // posé par la modale photo et jamais saisi au clavier.
-const CHAMPS_AUTEUR = ['prenom', 'nom', 'fonction', 'affiliation', 'orcid', 'email', 'photo'];
+const CHAMPS_AUTEUR = ['prenom', 'nom', 'fonction', 'affiliation', 'ror', 'orcid', 'email', 'photo'];
 
 // Licence d'un article. La revue publie en CC-BY 4.0 : c'est la valeur par défaut, et une
 // fiche sans clé `licence` sort exactement comme avant que ce champ existe — aucun numéro

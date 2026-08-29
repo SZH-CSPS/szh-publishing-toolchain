@@ -146,7 +146,7 @@
         i.readOnly = !actif;
         i.classList.toggle('doi-verrouille', !actif);
         i.title = actif ? '' : TXT.doiVerrouTip;
-        i.value = actif ? valeur : (calcule !== '' ? calcule : '—');
+        i.value = actif ? valeur : (calcule !== '' ? calcule : '–');
       }
       poser(manuel, v.doi || '');
       coche.addEventListener('change', function () {

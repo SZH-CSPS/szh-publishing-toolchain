@@ -215,7 +215,17 @@ local function normaliser_alt(img)
 end
 
 -- Une rangée : un Div qui porte le flex, une case par image qui porte sa croissance.
-local function rangee(images, ratios, debut, combien)
+-- `rangees` (nombre total de rangées de la grille) est posé ici en --szh-rangees, sur CE
+-- Div : print.css (.szh-grille-case > img) le lit pour partager entre les rangées le
+-- plafond de hauteur d'une figure (--plafond-figure, socle.css) — sans quoi une grille de
+-- plusieurs rangées hautes ne tient plus sur une page et se coupe entre deux rangées.
+-- ⚠ Posé sur le Div de la rangée, PAS sur la <figure> englobante : szh-legende-avant.lua
+-- réécrit à la main la balise ouvrante de la <figure> et n'y reprend que l'id et les
+-- classes — tout `style` qu'on y poserait s'y perdrait (mesuré). Un Div de rangée, lui,
+-- reste jusqu'au bout un bloc pandoc ordinaire, et son `style=` survit tel quel ; la
+-- propriété personnalisée est héritée par les <img> qu'il contient, comme si elle avait
+-- été posée plus haut.
+local function rangee(images, ratios, debut, combien, rangees)
   local cases = pandoc.Inlines({})
   for k = debut, debut + combien - 1 do
     local r = ratios[k]
@@ -227,7 +237,8 @@ local function rangee(images, ratios, debut, combien)
     end
     cases:insert(pandoc.Span({ images[k] }, pandoc.Attr('', { 'szh-grille-case' }, attrs)))
   end
-  return pandoc.Div({ pandoc.Plain(cases) }, pandoc.Attr('', { 'szh-grille-rangee' }, {}))
+  return pandoc.Div({ pandoc.Plain(cases) },
+    pandoc.Attr('', { 'szh-grille-rangee' }, { style = '--szh-rangees:' .. rangees }))
 end
 
 function Div(div)
@@ -289,7 +300,7 @@ function Div(div)
     end
   else
     io.stderr:write('[grille] ' .. n .. ' images dans une seule grille (' .. MAX
-      .. ' au plus) : composée en rangées de trois. Scindez-la en deux figures.\n')
+      .. ' au plus) : composée en rangées de trois. Scindez-la en deux figures.\n')
     plan = rangees_de_secours(n)
     code = table.concat(plan, '-')
   end
@@ -299,14 +310,18 @@ function Div(div)
   local contenu = pandoc.Blocks({})
   local k = 1
   for _, combien in ipairs(plan) do
-    contenu:insert(rangee(images, ratios, k, combien))
+    contenu:insert(rangee(images, ratios, k, combien, #plan))
     k = k + combien
   end
   contenu:extend(autres)
 
-  -- La classe de disposition accompagne la figure : elle ne sert à aucune règle de
-  -- print.css — la mise en page tient dans les rangées — mais elle rend le HTML lisible
-  -- et donne prise à une feuille de revue qui voudrait traiter un cas à part.
+  -- La classe de disposition rend le HTML lisible et donne prise à une feuille de revue
+  -- qui voudrait traiter un cas à part, mais ce n'est plus elle qui sert print.css : c'est
+  -- --szh-rangees qui sert, posé par la fonction rangee() ci-dessus sur chaque Div de
+  -- rangée (et non ici, sur la <figure> — voir pourquoi dans son commentaire). Une image
+  -- de figure a un plafond de hauteur (--plafond-figure, socle.css), et dans une grille
+  -- les rangées s'empilent : le plafond doit se PARTAGER entre elles, ce que
+  -- .szh-grille-case > img fait en divisant par --szh-rangees.
   return pandoc.Figure(
     contenu,
     { long = legende and pandoc.Blocks({ pandoc.Plain(legende) }) or pandoc.Blocks({}) },

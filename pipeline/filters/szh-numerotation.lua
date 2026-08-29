@@ -53,7 +53,7 @@ if APERCU then
   if ok and type(module) == 'table' then
     lecteur_ecran = module
   else
-    io.stderr:write('[numerotation] encadrés « lecteur d\'écran » indisponibles : '
+    io.stderr:write('[numerotation] encadrés « lecteur d’écran » indisponibles : '
                     .. tostring(module) .. '\n')
   end
 end
@@ -130,13 +130,26 @@ end
 
 -- Le <style> des images décoratives, à poser en fin de document. Même spécificité que
 -- print.css mais plus loin dans la cascade : ces règles-ci l'emportent.
+--
+-- Un décor n'est pas un <img> (voir en_decor ci-dessus) : c'est un fond CSS posé par
+-- `padding-top` en pourcentage, que `max-height` ne borne pas. Dans une grille, le
+-- plafond de hauteur d'une figure (--plafond-figure, socle.css) doit pourtant valoir
+-- pour lui aussi, sans quoi un décor en portrait ferait dépasser la page comme une image
+-- ordinaire non bornée. Seule une max-width le peut, calculée depuis le plafond de
+-- hauteur avec le rapport hauteur/largeur — le diviseur `ratio / 100`, `ratio` étant déjà
+-- 100 * hauteur / largeur. `min(100%, …)` est indispensable : sans lui, cette règle
+-- (spécificité 0,1,0) remplacerait le `max-width: 100%` de `.szh-decor` (print.css) et un
+-- décor large déborderait de la colonne. Une seule formule couvre grille et hors grille :
+-- --szh-rangees retombe sur 1 hors grille (posé par szh-grille.lua).
 local function style_decors()
   if #decors == 0 then return nil end
   local regles = {}
   for _, d in ipairs(decors) do
     regles[#regles + 1] = string.format(
-      '.%s{width:%dpx}\n.%s>span{padding-top:%.4f%%;background-image:url("%s")}',
-      d.classe, d.largeur, d.classe, d.ratio, (d.src:gsub('"', '%%22')))
+      '.%s{width:%dpx;max-width:min(100%%,calc((var(--plafond-figure) - 12px)'
+        .. ' / var(--szh-rangees, 1) / %.4f))}\n'
+        .. '.%s>span{padding-top:%.4f%%;background-image:url("%s")}',
+      d.classe, d.largeur, d.ratio / 100.0, d.classe, d.ratio, (d.src:gsub('"', '%%22')))
   end
   return pandoc.RawBlock('html', '<style>\n' .. table.concat(regles, '\n') .. '\n</style>')
 end

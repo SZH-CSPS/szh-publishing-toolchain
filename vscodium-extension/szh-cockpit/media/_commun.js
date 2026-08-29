@@ -64,9 +64,17 @@ var SZH = (function () {
     // Déplacer un article dans le numéro : la même flèche, debout.
     haut: [['path', { d: 'M8 2.5 12.5 7l-1.06 1.06L8.75 5.35V13h-1.5V5.35L4.56 8.06 3.5 7 8 2.5z' }]],
     bas: [['path', { d: 'M8 13.5 3.5 9l1.06-1.06L7.25 10.65V3h1.5v7.65l2.69-2.71L12.5 9 8 13.5z' }]],
+    // Déplier : un chevron, sans hampe — une flèche se lirait « télécharger ».
+    chevron: [['path', { d: 'M8 10.6 3.3 5.9l1.06-1.06L8 8.48l3.64-3.64L12.7 5.9 8 10.6z' }]],
     oeil: [
       ['path', { d: 'M8 3.25C4.7 3.25 2 5.15 1.15 8 2 10.85 4.7 12.75 8 12.75s6-1.9 6.85-4.75C14 5.15 11.3 3.25 8 3.25zm0 1.5c2.4 0 4.4 1.3 5.25 3.25C12.4 9.95 10.4 11.25 8 11.25S3.6 9.95 2.75 8C3.6 6.05 5.6 4.75 8 4.75z' }],
       ['circle', { cx: '8', cy: '8', r: '1.9' }]
+    ],
+    // Agrandir un aperçu : un cercle en contour et un manche oblique.
+    loupe: [
+      ['circle', { cx: '7', cy: '7', r: '4.25', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5' }],
+      ['path', { d: 'M10.4 10.4 14 14', fill: 'none', stroke: 'currentColor',
+        'stroke-width': '1.5', 'stroke-linecap': 'round' }]
     ]
   };
 
@@ -364,7 +372,7 @@ var SZH = (function () {
       if (langue.lecture) {
         var vue = document.createElement('span');
         vue.className = 'mc-lecture' + (valeur === '' ? ' mc-vide' : '');
-        vue.textContent = valeur !== '' ? valeur : (textes.sansEquivalent || '—');
+        vue.textContent = valeur !== '' ? valeur : (textes.sansEquivalent || '–');
         rangee.appendChild(vue);
         return;
       }

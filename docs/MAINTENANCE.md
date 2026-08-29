@@ -24,6 +24,8 @@ plus les allers-retours du cockpit et les valeurs recopiées d'un fichier à l'a
 ```powershell
 node --test "test/js/*.test.js"        # tout le harnais, aucune dépendance
 python3 test/apca-check.py             # contrastes de la palette
+python3 test/typo-check.py             # typographie des deux langues
+python3 test/typo-articles.py          # typographie des articles, par pandoc
 bash test/build-render.sh              # build + capture PNG de chaque page
 ```
 

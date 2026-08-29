@@ -143,8 +143,8 @@ function Pandoc(doc)
     constat('avertissement', 'biblio-bornes-perdues',
       { 'article « ' .. slug_article() .. ' »', 'references ' .. #bornes },
       'La bibliographie de cet article a été repérée dans le document Word, mais ses '
-      .. 'bornes n\'ont pas été retrouvées après conversion : elle reste dans le texte. '
-      .. "L'article s'imprime normalement ; signalez ce cas, il n'est pas censé arriver.",
+      .. 'bornes n’ont pas été retrouvées après conversion : elle reste dans le texte. '
+      .. "L’article s’imprime normalement ; signalez ce cas, il n’est pas censé arriver.",
       'Das Literaturverzeichnis dieses Artikels wurde im Word-Dokument erkannt, seine '
       .. 'Grenzen liessen sich nach der Konvertierung aber nicht wiederfinden: es bleibt '
       .. 'im Text. Der Artikel wird normal gedruckt; melden Sie diesen Fall, er sollte '
@@ -198,7 +198,7 @@ function Pandoc(doc)
   if not f then
     constat('avertissement', 'biblio-fichier-refuse',
       { 'article « ' .. slug .. ' »', 'fichier « ' .. fichier .. ' »' },
-      'La bibliographie de cet article n\'a pas pu être enregistrée à part : elle reste '
+      'La bibliographie de cet article n’a pas pu être enregistrée à part : elle reste '
       .. 'dans le texte. Vérifiez que le dossier du numéro est accessible en écriture.',
       'Das Literaturverzeichnis dieses Artikels konnte nicht separat gespeichert werden: '
       .. 'es bleibt im Text. Prüfen Sie, ob der Ordner der Ausgabe beschreibbar ist.')
@@ -221,7 +221,7 @@ function Pandoc(doc)
     constat('avertissement', 'biblio-incomplete',
       { 'article « ' .. slug .. ' »', 'paragraphes ' .. manquants },
       string.format('Bibliographie mise à part, sauf %d paragraphe(s) : ils restent dans '
-        .. 'le texte, juste après la liste. Rien n\'est perdu ; si ce sont des références, '
+        .. 'le texte, juste après la liste. Rien n’est perdu ; si ce sont des références, '
         .. 'donnez-leur le style de bibliographie dans le Word et réimportez.', manquants),
       string.format('Literaturverzeichnis ausgelagert, ausser %d Absatz/Absätzen: sie '
         .. 'bleiben im Text, direkt nach der Liste. Es geht nichts verloren; sind es '
