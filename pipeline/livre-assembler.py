@@ -3,7 +3,11 @@
 # sommaire en UN document, celui que WeasyPrint paginera.
 #
 #   python3 livre-assembler.py --meta buch.yaml --gabarit <g.html> --sortie <out.html>
-#                              [--css <feuille>]... <fragment>...
+#                              [--css <feuille>]... [--css-embed <feuille>]... <fragment>...
+#
+# --css lie la feuille (<link>) : la voie du PDF, où un chemin absolu ne pose pas de
+# problème. --css-embed l'incorpore (<style>) : la voie du HTML web, qui doit rester UN
+# SEUL fichier ouvrable par file:// sans rien à côté — voir main() pour le détail.
 #
 # Pourquoi un assembleur, et pas une seule invocation de pandoc sur tous les chapitres.
 # La règle de compilation fait `cd chapitres/<slug>` avant pandoc, pour que `media/` tombe
@@ -246,13 +250,58 @@ def impressum(meta):
 
 
 # --------------------------------------------------------------------------------------
+# Incorporation d'une feuille de style (--css-embed) : voir main() pour le pourquoi.
+# --------------------------------------------------------------------------------------
+
+RE_URL_CSS = re.compile(r'url\(\s*([\'"]?)([^\'")]+)\1\s*\)')
+
+
+def _url_absolues(css_texte, css_chemin):
+    """Réécrit les `url(...)` relatives d'une feuille (@font-face, url() d'image) en
+    chemins absolus file://, résolus depuis le DOSSIER DE LA FEUILLE — pas depuis le
+    document final. Indispensable ici et nulle part ailleurs : une feuille LIÉE (--css)
+    garde ses url() relatives à SA PROPRE position, le navigateur les résout depuis elle ;
+    une feuille INCORPORÉE dans un <style> voit ses url() résolues depuis le document qui
+    la contient — socle.css écrit `url("../fonts/…")`, juste depuis styles/, faux depuis
+    out/ une fois collé dans le HTML web. Une url() déjà absolue (http, https, data, file)
+    traverse sans changement.
+
+    ⚠ Le toolkit compile tantôt sous Windows, tantôt dans l'image WSL (voir Makefile,
+    `wsl.exe -d SZH-Publishing`) : la MÊME feuille, sur le MÊME disque, y a deux visages
+    (`C:\…` et `/mnt/c/…`). Le HTML web, lui, est ouvert depuis Windows (ce sont ses
+    polices que file:// doit retrouver) : un chemin `/mnt/<lettre>/…` — celui que rendrait
+    `os.path.abspath` lancé depuis WSL — est donc reconverti en `<LETTRE>:/…` avant de
+    devenir une URI, sans quoi la police resterait introuvable une fois le HTML ouvert par
+    un navigateur Windows natif (repli silencieux sur la police système : rien de cassé à
+    l'écran, mais plus la police de la maison)."""
+    dossier = os.path.dirname(os.path.abspath(css_chemin))
+    m_wsl = re.match(r'^/mnt/([a-zA-Z])(/.*)$', dossier)
+    if m_wsl:
+        dossier = '%s:%s' % (m_wsl.group(1).upper(), m_wsl.group(2))
+
+    def remplace(m):
+        brut = m.group(2)
+        if re.match(r'^(https?|data|file):', brut):
+            return m.group(0)
+        chemin_absolu = os.path.normpath(os.path.join(dossier, brut))
+        uri = 'file:///' + chemin_absolu.replace('\\', '/').lstrip('/')
+        return 'url("%s")' % uri
+
+    return RE_URL_CSS.sub(remplace, css_texte)
+
 
 def main(argv):
-    """Les feuilles de style sont LIÉES, pas incorporées : le fichier reste lisible pour
-    qui débogue une coupure de page, et WeasyPrint lit un chemin absolu sans difficulté.
-    Les images, elles, sont déjà en data: URI dans chaque fragment."""
+    """Les feuilles de style passées en --css sont LIÉES, pas incorporées : le fichier
+    reste lisible pour qui débogue une coupure de page, et WeasyPrint lit un chemin
+    absolu sans difficulté — c'est la voie du PDF (numérique et imprimeur) et du HTML de
+    compilation. Les images, elles, sont déjà en data: URI dans chaque fragment.
+
+    --css-embed fait l'inverse : la feuille est INCORPORÉE dans un <style>, pas liée. Il
+    n'existe que pour le HTML web (livre-html-web) : « autonome » y est la promesse — un
+    seul fichier qu'on partage ou qu'on ouvre par file:// sans rien à côté — et un <link>
+    vers un chemin absolu du poste de compilation ne survivrait pas au voyage."""
     meta_p = gabarit_p = sortie_p = None
-    feuilles, fragments = [], []
+    feuilles, feuilles_incorporees, fragments = [], [], []
     i = 1
     while i < len(argv):
         a = argv[i]
@@ -268,6 +317,9 @@ def main(argv):
         elif a == '--css' and i + 1 < len(argv):
             feuilles.append(argv[i + 1])
             i += 2
+        elif a == '--css-embed' and i + 1 < len(argv):
+            feuilles_incorporees.append(argv[i + 1])
+            i += 2
         elif a.startswith('--'):
             print('[livre] option inconnue : ' + a, file=sys.stderr)
             return 2
@@ -276,7 +328,8 @@ def main(argv):
             i += 1
     if not (meta_p and gabarit_p and sortie_p):
         print('usage: livre-assembler.py --meta buch.yaml --gabarit g.html '
-              '--sortie out.html [--css f.css]... <fragment>...', file=sys.stderr)
+              '--sortie out.html [--css f.css]... [--css-embed f.css]... '
+              '<fragment>...', file=sys.stderr)
         return 2
 
     meta = lire_yaml(meta_p)
@@ -328,6 +381,20 @@ def main(argv):
 
     liens = '\n'.join('  <link rel="stylesheet" href="%s" />' % html.escape(c, quote=True)
                       for c in feuilles)
+    for c in feuilles_incorporees:
+        try:
+            contenu = open(c, encoding='utf-8').read()
+        except OSError as e:
+            print('[livre] feuille à incorporer illisible : %s (%s)' % (c, e),
+                  file=sys.stderr)
+            return 1
+        contenu = _url_absolues(contenu, c)
+        # </style> dans le contenu couperait la balise court : aucune feuille du toolkit
+        # n'en contient (c'est du CSS), mais une locale future pourrait — le
+        # remplacement est gratuit et évite un HTML cassé en silence.
+        contenu = contenu.replace('</style>', '<\\/style>')
+        liens += ('\n  <style>/* %s */\n%s\n</style>'
+                  % (html.escape(os.path.basename(c)), contenu))
     remplacements = {
         '$lang$':          langue,
         '$titre$':         html.escape(str(meta.get('titre') or '')),

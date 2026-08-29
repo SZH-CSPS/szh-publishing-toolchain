@@ -1,0 +1,225 @@
+/* Charte WEB : la sortie « livre-html-web », un livre lu à l'écran, pas imprimé.
+   Empilée après ../socle.css (polices et jetons de la maison) et avant .szh-accent.css —
+   voir templates/szh-livre.html. À la différence de la voie PDF, elle N'EMPILE PAS
+   livre/base.css ni livre/normal.css / livre/falc.css : ces trois feuilles sont bâties en
+   MILLIMÈTRES pour une page qui existe une fois, imprimée — `@page`, folios, target-
+   counter(), pastille et onglet de tranche n'ont ici ni sens ni le moindre effet (un
+   navigateur ignore silencieusement `@page`, et un `--corps: 10pt` de la charte FALC
+   composerait un livre entier dans un corps de labeur, illisible plein écran). Cette
+   feuille redonne donc sa propre forme, en unités d'écran (rem, ch, %), aux mêmes classes
+   de contenu que la chaîne pose déjà (.falc-resume, .szh-sommaire, figure, table…) — le
+   SENS de ces blocs ne change pas d'une sortie à l'autre, seule leur FORME est refaite ici
+   pour l'écran (docs/SORTIES.md).
+
+   Elle est chargée de deux façons, selon ce que produit le Makefile :
+     * livre-html-web (le HTML autonome, --css-embed) : les jetons ci-dessous ET tout le
+       reste sont INCORPORÉS dans un <style> par livre-assembler.py, avec les url() des
+       polices réécrites en chemins absolus — un seul fichier, ouvrable par file:// sans
+       rien à côté ;
+     * un aperçu futur du cockpit pourrait la LIER (--css) telle quelle, sans changement.
+
+   ⚠ Choix délibéré, à ne pas « corriger » : AUCUNE justification, à aucune largeur d'écran.
+   Le corps d'un chapitre FALC est composé avec des retours à la ligne SIGNIFICATIFS (une
+   phrase, une ligne, un <br> par retour — voir livre/falc.css) : une ligne d'une phrase
+   courte, poussée en justify, s'étire en espaces énormes bien avant d'atteindre 62ch. Cette
+   feuille ne sait pas quelle maquette a produit le HTML qu'elle habille ; plutôt que de le
+   deviner, elle refuse la justification partout, y compris pour la maquette « normal », qui
+   s'en accommode très bien au fer à gauche. */
+
+:root {
+  /* Encres et famille : les MÊMES jetons que le reste (socle.css), pas de nouvelle
+     palette. Le corps de lecture : socle.css le déclare déjà en rem, précisément pour
+     l'écran (« corps : rem (accessibilité HTML) ») — pas de raison d'en inventer un autre. */
+  --web-fond:      #ffffff;
+  --web-ink:       var(--c-ink);
+  --web-ink2:      var(--c-ink2);
+  --web-filet:     var(--c-rule);
+  --web-lien:      var(--c-nuit);
+  --web-fond-encart: var(--annual-soft, #f2f2f2);
+
+  /* Largeur de lecture : une soixantaine de caractères, la mesure classique d'une ligne
+     qui ne fatigue pas l'œil — ni les 35 words/line d'un écran large sans borne, ni les
+     colonnes de journal d'un `ch` trop serré. */
+  --web-colonne: 62ch;
+}
+
+/* Thème sombre : peu coûteux, donc fait. Seuls CES jetons locaux changent — pas les
+   jetons partagés de socle.css, qui restent la vérité du papier. Les couleurs de chapitre
+   (--c-chapitre) sont déjà choisies à Lc −90 ou mieux sur fond blanc (PALETTE_CHAPITRE,
+   livre.mk) : non re-vérifiées ici sur fond sombre, seul écart honnête de cette section. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --web-fond:        #15151b;
+    --web-ink:         #eceef2;
+    --web-ink2:        #c7c9d1;
+    --web-filet:       #3a3a44;
+    --web-lien:        #9db8dd;
+    --web-fond-encart: #20232c;
+  }
+}
+
+/* ═══ 1. Page ══════════════════════════════════════════════════════════════════ */
+html { font-size: 100%; }
+body {
+  background: var(--web-fond);
+  color: var(--web-ink);
+  font-family: var(--font-sans);
+  font-size: var(--body-size);
+  line-height: var(--leading);
+  margin: 0 auto;
+  max-width: var(--web-colonne);
+  padding: 1.5rem 1rem 4rem;
+  /* Ni justify ni hyphens : voir l'avertissement en tête de fichier. */
+  text-align: left;
+  hyphens: none;
+}
+
+/* Images fluides — jamais plus larges que la colonne de lecture, sur aucun écran. */
+img { max-width: 100%; height: auto; }
+
+/* ═══ 2. Titres et paragraphes ════════════════════════════════════════════════
+   Pas d'alinéa de première ligne : c'est une convention du papier relié, qui ne lit rien
+   à l'écran (un paragraphe y est déjà séparé par l'espace vertical ci-dessous). */
+p { margin: 0 0 1em 0; }
+h1, h2, h3, h4 { color: var(--web-ink); font-weight: 700; line-height: 1.25; }
+h2 { font-size: 1.3rem; margin: 2rem 0 0.75rem; }
+h3 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
+h4 { font-size: 1rem; font-style: italic; margin: 1.25rem 0 0.4rem; }
+.szh-num-section { display: inline-block; min-width: 1.5ch; }
+
+/* ═══ 3. Le chapitre ═══════════════════════════════════════════════════════════
+   Un simple filet de couleur en tête, repris de --c-chapitre (posée par livre.mk, la
+   même valeur qui peint la pastille et l'onglet à l'impression) : un repère visuel léger,
+   qui coûte une ligne et ne demande aucun changement au gabarit ni à l'assembleur. Pas de
+   pastille ronde ni d'onglet de tranche ici : l'un compte des pages, l'autre se lit
+   tranche fermée — aucun des deux n'existe dans une page web qui défile. */
+.szh-chapitre {
+  border-top: 3px solid var(--c-chapitre, var(--web-filet));
+  margin-top: 3rem; padding-top: 1.25rem;
+}
+.szh-chapitre:first-of-type { margin-top: 0; }
+.szh-chapitre > h1 { font-size: 1.75rem; margin: 0 0 1rem; }
+.szh-chapitre > .szh-auteurs { color: var(--web-ink2); font-style: italic; margin: 0 0 1.25rem; }
+/* L'onglet de tranche (livre/falc.css) n'a aucun sens ici : promu par `position:
+   running()`, un mécanisme de pagination que la sortie web n'a pas — il resterait un
+   <div> vide sans lui, mais autant le dire explicitement plutôt que compter dessus. */
+.szh-onglet { display: none; }
+
+/* ═══ 4. Liminaires ════════════════════════════════════════════════════════════
+   Demi-titre, page de titre, impressum : plus de mise en page à la main (padding-top en
+   mm, grille de titre) — un livre web n'ouvre pas sur une page blanche à un tiers de la
+   hauteur. Un bloc sobre, centré, qui annonce le livre avant son premier chapitre. */
+.szh-liminaire {
+  text-align: center; margin: 0 0 2.5rem; padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--web-filet);
+}
+.szh-liminaire p { margin: 0 0 0.5em; text-indent: 0; }
+.szh-demi-titre .szh-titre, .szh-page-titre .szh-titre { font-size: 1.6rem; font-weight: 700; }
+.szh-demi-titre .szh-sous-titre, .szh-page-titre .szh-sous-titre {
+  font-size: 1.1rem; font-weight: 400; color: var(--web-ink2);
+}
+.szh-demi-titre .szh-auteurs, .szh-page-titre .szh-auteurs { color: var(--web-ink2); }
+/* L'impressum (ISBN, DOI, licence) : mentions légales, pas le texte du livre — plus petit
+   et discret, comme au dos d'une page de titre imprimée. */
+.szh-impressum { font-size: 0.8rem; color: var(--web-ink2); text-align: left; }
+
+/* ═══ 5. Le sommaire : une vraie navigation ═══════════════════════════════════
+   Un livre en pagination écrit son numéro de page par target-counter() (base.css) — une
+   fonction qui n'existe qu'EN PAGINATION et que cette feuille, volontairement, ne charge
+   jamais : la sortie web n'a donc AUCUN numéro à masquer, elle n'en a simplement jamais
+   reçu. Ce qui reste — un lien par chapitre — devient ici une vraie liste de navigation,
+   grande cible de clic, repère de couleur en regard comme la maquette FALC imprimée. */
+.szh-sommaire { margin: 0 0 2.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--web-filet); }
+.szh-sommaire h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+.szh-sommaire ol { list-style: none; margin: 0; padding: 0; }
+.szh-sommaire li {
+  border-top: 1px solid var(--web-filet);
+  margin: 0;
+}
+.szh-sommaire li:first-child { border-top: 0; }
+.szh-sommaire a {
+  display: block; padding: 0.6em 0 0.6em 0.9em;
+  color: var(--web-ink); text-decoration: none;
+  border-left: 3px solid transparent;
+}
+.szh-sommaire a:hover, .szh-sommaire a:focus-visible {
+  color: var(--web-lien); border-left-color: var(--web-lien);
+}
+.szh-sommaire .niveau-2, .szh-sommaire .niveau-3 { padding-left: 1.5em; font-size: 0.95em; }
+
+/* ═══ 6. Blocs FALC (falc-resume, falc-encadre, falc-cle, falc-etapes, falc-projet) ═══
+   Le SENS de ces blocs — un résumé de tête de chapitre, un encadré, un paragraphe-clé, une
+   liste d'étapes — vaut à l'écran comme sur le papier ; leur mesure en millimètres, non :
+   refaite ici en rem/%, sans quoi elle vaudrait du texte en 13pt fixe plein écran. */
+.falc-resume {
+  background: var(--web-fond-encart);
+  border-radius: 0.25rem;
+  padding: 1rem 1.25rem 0.25rem;
+  margin: 0 0 1.5rem;
+}
+.falc-resume p:last-child { margin-bottom: 0; }
+.falc-encadre {
+  border: 1px solid var(--web-filet);
+  border-radius: 0.25rem;
+  padding: 1rem 1.25rem;
+  margin: 1rem 0;
+}
+.falc-encadre p:last-child { margin-bottom: 0; }
+.falc-cle { font-weight: 700; margin: 1rem 0; }
+.falc-etapes ol { padding-left: 1.5rem; }
+.falc-etapes li { margin-bottom: 0.75em; }
+.falc-projet { font-size: 1.15rem; font-weight: 400; color: var(--web-ink2); margin: 0.25rem 0 1rem; }
+
+/* ═══ 7. Listes, citations ════════════════════════════════════════════════════ */
+ul, ol { margin: 0 0 1em; padding-left: 1.5rem; }
+li { margin-bottom: 0.25em; }
+blockquote { font-style: italic; margin: 1em 0 1em 1rem; padding-left: 1rem;
+             border-left: 3px solid var(--web-filet); }
+
+/* ═══ 8. Figures ═══════════════════════════════════════════════════════════════
+   Aucun plafond de hauteur : c'est une contrainte de PAGE (une image ne doit pas déborder
+   le folio suivant), qui n'existe pas dans une page qui défile — seule la largeur reste
+   bornée, par la colonne de lecture elle-même. */
+figure { margin: 1.5rem 0; }
+figcaption { font-size: 0.85rem; color: var(--web-ink2); line-height: 1.4; margin-top: 0.4em; }
+
+/* ═══ 9. Tableaux ══════════════════════════════════════════════════════════════
+   szh-tableau-boite.lua enveloppe déjà chaque tableau dans un vrai Div (voir ce filtre) :
+   c'est ce Div, pas la <table>, qui porte le défilement horizontal. Sans lui, un tableau
+   large déborderait la colonne — exactement ce que la vérification de cette sortie
+   proscrit (« le texte ne doit jamais déborder horizontalement »). */
+.szh-tableau-boite { overflow-x: auto; margin: 1.5rem 0; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+caption { text-align: left; font-size: 0.85rem; color: var(--web-ink2); margin-bottom: 0.4em; }
+th, td { text-align: left; vertical-align: top; padding: 0.35rem 0.6rem; border-bottom: 1px solid var(--web-filet); }
+/* Accent des tableaux stylés de l'éditeur (.szh-tableau) : mêmes jetons que le PDF
+   (accent-css.py écrit --szh-accent-*/--szh-gris-clair/--szh-zebre depuis buch.yaml). */
+.szh-tableau thead th { background: var(--szh-accent-clair); }
+.szh-tableau tbody tr:nth-child(even) { background: var(--szh-zebre); }
+
+/* ═══ 10. Notes ════════════════════════════════════════════════════════════════
+   `float: footnote` (livre/base.css) n'existe dans aucun navigateur — même repli que le
+   « CSS Paged Media » de l'aperçu du cockpit (print.css) : la note redevient un simple
+   paragraphe en ligne, à sa place dans le texte plutôt qu'au pied d'une page qui n'existe
+   pas ici. */
+.szh-note { display: inline; font-size: 0.85em; color: var(--web-ink2); }
+
+/* ═══ 11. Liens ════════════════════════════════════════════════════════════════
+   Ici, à la différence du PDF imprimeur, un lien EST vivant : on lui laisse son
+   affordance (couleur, soulignement au survol), sauf les ancres internes du sommaire et
+   les appels de note/citation, déjà stylés à leur place ci-dessus et dans leur filtre. */
+a { color: var(--web-lien); }
+a:hover, a:focus-visible { text-decoration-thickness: 0.08em; }
+.szh-sommaire a, a.footnote-ref, a.footnote-back, a[href^="#"].szh-appel {
+  color: inherit; text-decoration: none;
+}
+
+/* ═══ 12. Petits écrans ═══════════════════════════════════════════════════════
+   La colonne de lecture (62ch) dépasse déjà la largeur d'un téléphone : `max-width: 100%`
+   sur <img> et `overflow-x: auto` sur les tableaux suffisent à empêcher tout débordement
+   horizontal — rien de plus à resserrer ici. Seul le respire des bords change, pour ne
+   pas coller le texte à l'écran. */
+@media (max-width: 480px) {
+  body { padding: 1rem 0.9rem 3rem; }
+  .szh-chapitre > h1 { font-size: 1.5rem; }
+}

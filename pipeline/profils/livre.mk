@@ -65,6 +65,15 @@ LIMINAIRES     := $(patsubst $(LIM_DIR)/%.md,$(OUT)/$(LIM_DIR)/%.html,$(wildcard
 NOM_LIVRE  := $(notdir $(patsubst %/,%,$(CURDIR)))
 LIVRE_HTML := $(OUT)/$(NOM_LIVRE).html
 LIVRE_PDF  := $(OUT)/$(NOM_LIVRE).pdf
+# PDF imprimeur : même contenu, assemblé une seconde fois avec imprimeur.css en plus dans
+# la pile de CSS (fond perdu, traits de coupe) — un fichier HTML à part, pour ne pas faire
+# porter le fond perdu au PDF numérique. Suffixe conforme à docs/ARCHITECTURE-LIVRES.md §3.
+LIVRE_IMPRIMEUR_HTML := $(OUT)/$(NOM_LIVRE)-imprimeur.html
+LIVRE_IMPRIMEUR_PDF  := $(OUT)/$(NOM_LIVRE)-imprimeur.pdf
+# HTML web : un troisième assemblage, avec web.css — voir docs/ARCHITECTURE-LIVRES.md §3
+# (dossier out/web/). Un nom distinct de $(LIVRE_HTML), qui reste le HTML DE COMPILATION
+# que WeasyPrint pagine — celui-ci est la sortie lue par un humain, dans un navigateur.
+LIVRE_WEB_HTML := $(OUT)/web/$(NOM_LIVRE).html
 
 # --------------------------------------------------------------------------------------
 # Maquette : deux chartes, une seule feuille de plus. `maquette:` de buch.yaml, lue par sed
@@ -97,8 +106,17 @@ LECTEUR := $(if $(filter falc,$(MAQUETTE)),markdown+hard_line_breaks,markdown)
 #   La recette le remet, entre guillemets.
 PALETTE_CHAPITRE := 9F001F 2E5A6D 555900 26613B 8E2E27 624C58
 
+# Position verticale de l'onglet de tranche (maquette FALC) : six crans, un par couleur de
+# la palette ci-dessus, échelonnés sur la hauteur utile de la page — c'est ce décalage,
+# et lui seul, qui fait l'index à pouce. Posé ICI par rang, EXACTEMENT comme la couleur et
+# pour la même raison : un `:nth-of-type` CSS compte les <section> frères, liminaires
+# comprises, et décale l'onglet d'autant de pièces liminaires que le livre en a.
+ONGLET_HAUT_CHAPITRE := 30mm 58mm 86mm 114mm 142mm 170mm
+
 STYLE_LIVRE_BASE  := $(PIPELINE_DIR)/styles/livre/base.css
 STYLE_LIVRE_CHART := $(PIPELINE_DIR)/styles/livre/$(MAQUETTE).css
+STYLE_LIVRE_IMPR  := $(PIPELINE_DIR)/styles/livre/imprimeur.css
+STYLE_LIVRE_WEB   := $(PIPELINE_DIR)/styles/livre/web.css
 GABARIT_LIVRE     := $(PIPELINE_DIR)/templates/szh-livre.html
 GABARIT_CHAPITRE  := $(PIPELINE_DIR)/templates/szh-livre-chapitre.html
 GABARIT_LIMINAIRE := $(PIPELINE_DIR)/templates/szh-livre-liminaire.html
@@ -108,6 +126,19 @@ ASSEMBLEUR        := $(PIPELINE_DIR)/livre-assembler.py
 # L'accent de l'ouvrage vient en dernier — il surcharge, il ne peut donc pas précéder.
 CSS_LIVRE := --css "$(SOCLE_ABS)" --css "$(abspath $(STYLE_LIVRE_BASE))" \
              --css "$(abspath $(STYLE_LIVRE_CHART))" --css "$(ACCENT_ABS)"
+
+# Même pile, avec imprimeur.css intercalé entre la charte et l'accent — jamais après :
+# l'accent surcharge, un fond perdu qu'il masquerait ne servirait à rien.
+CSS_LIVRE_IMPRIMEUR := --css "$(SOCLE_ABS)" --css "$(abspath $(STYLE_LIVRE_BASE))" \
+             --css "$(abspath $(STYLE_LIVRE_CHART))" --css "$(abspath $(STYLE_LIVRE_IMPR))" \
+             --css "$(ACCENT_ABS)"
+
+# Pile du HTML web : socle (jetons) + web.css SEULEMENT — ni livre/base.css ni la charte
+# (normal/falc), bâties en millimètres pour une page imprimée (voir web.css, en tête).
+# --css-embed, pas --css : « autonome » est la promesse de cette sortie, un seul fichier
+# ouvrable par file:// sans rien à côté (voir livre-assembler.py, main()).
+CSS_LIVRE_WEB := --css-embed "$(SOCLE_ABS)" --css-embed "$(abspath $(STYLE_LIVRE_WEB))" \
+             --css-embed "$(ACCENT_ABS)"
 
 # La suite de filtres d'un chapitre. Même ordre que la revue, aux trois écarts ci-dessus.
 FILTRES_CHAPITRE := \
@@ -124,7 +155,7 @@ FILTRES_CHAPITRE := \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua"
 
-.PHONY: livre livre-pdf livre-html verifie-livre
+.PHONY: livre livre-pdf livre-imprimeur livre-html livre-html-web verifie-livre
 
 livre: livre-pdf
 
@@ -169,6 +200,7 @@ $(OUT)/$(CH_DIR)/%.frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_CHA
 	rang=$$(printf '%s\n' $(CHAPITRES) | grep -n -x "$$slug" | cut -d: -f1); \
 	index=$$(( (rang - 1) % 6 + 1 )); \
 	couleur="#$$(printf '%s\n' $(PALETTE_CHAPITRE) | sed -n "$${index}p")"; \
+	onglet=$$(printf '%s\n' $(ONGLET_HAUT_CHAPITRE) | sed -n "$${index}p"); \
 	meta=""; \
 	if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
 	echo "pandoc $(CH_DIR)/$$slug/$$slug.md -> $@ (chapitre $$rang)"; \
@@ -180,6 +212,7 @@ $(OUT)/$(CH_DIR)/%.frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_CHA
 	  --metadata slug="$$slug" \
 	  --metadata couleur-chapitre="$$couleur" \
 	  --metadata rang-chapitre="$$rang" \
+	  --metadata onglet-haut="$$onglet" \
 	  --standalone --embed-resources \
 	  --template="$(abspath $(GABARIT_CHAPITRE))" \
 	  $(FILTRES_CHAPITRE) \
@@ -230,3 +263,56 @@ $(LIVRE_PDF): $(LIVRE_HTML)
 
 livre-pdf: verifie-livre $(LIVRE_PDF)
 	@echo "[livre] $(LIVRE_PDF)"
+
+# --------------------------------------------------------------------------------------
+# Le PDF IMPRIMEUR : même contenu, une pile de CSS de plus (imprimeur.css : fond perdu,
+# traits de coupe — voir ce fichier pour ce qui s'y ajoute et pourquoi). Un fichier HTML
+# assemblé À PART : le PDF numérique ne doit pas hériter du fond perdu, et réciproquement.
+# ⚠ Toujours en RVB — voir docs/ARCHITECTURE-LIVRES.md §4.3, le CMJN est un chantier
+#   ouvert, non traité ici. N'ajoute ni Ghostscript ni profil ICC.
+# --------------------------------------------------------------------------------------
+$(LIVRE_IMPRIMEUR_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
+               $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(STYLE_LIVRE_IMPR) $(ACCENT_CSS)
+	@mkdir -p "$(OUT)"
+	@python3 "$(ASSEMBLEUR)" \
+	  --meta "$(CONFIG_LIVRE)" \
+	  --gabarit "$(GABARIT_LIVRE)" \
+	  --sortie "$@" \
+	  $(CSS_LIVRE_IMPRIMEUR) \
+	  $(FRAGMENTS)
+
+# Même cascade de repli que le PDF numérique : le balisage PDF/UA ne coûte rien de plus à
+# tenter ici, et un PDF imprimeur non balisé n'a aucune raison de l'être moins que l'autre.
+$(LIVRE_IMPRIMEUR_PDF): $(LIVRE_IMPRIMEUR_HTML)
+	@tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(dir $@)~weasyprint.err'; \
+	: > "$$jrnl"; \
+	if $(WEASYPRINT) --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
+	elif $(WEASYPRINT) --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
+	  echo "[livre] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
+	else \
+	  echo "[livre] balisage PDF indisponible -> PDF non balisé : $@"; \
+	  $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl"; \
+	fi; \
+	sed -n '1,20p' "$$jrnl" | sed 's/^/[weasyprint] /'; \
+	mv -f "$$tmp" "$@"
+
+livre-imprimeur: verifie-livre $(LIVRE_IMPRIMEUR_PDF)
+	@echo "[livre] $(LIVRE_IMPRIMEUR_PDF)"
+
+# --------------------------------------------------------------------------------------
+# Le HTML web : troisième assemblage, avec web.css SEUL (--css-embed, pas --css) — voir
+# CSS_LIVRE_WEB ci-dessus et web.css pour le pourquoi. Un seul fichier, autonome : polices
+# et couleurs incorporées, images déjà en data: URI depuis la compilation des fragments.
+# --------------------------------------------------------------------------------------
+$(LIVRE_WEB_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
+               $(SOCLE) $(STYLE_LIVRE_WEB) $(ACCENT_CSS)
+	@mkdir -p "$(dir $@)"
+	@python3 "$(ASSEMBLEUR)" \
+	  --meta "$(CONFIG_LIVRE)" \
+	  --gabarit "$(GABARIT_LIVRE)" \
+	  --sortie "$@" \
+	  $(CSS_LIVRE_WEB) \
+	  $(FRAGMENTS)
+
+livre-html-web: verifie-livre $(LIVRE_WEB_HTML)
+	@echo "[livre] $(LIVRE_WEB_HTML)"

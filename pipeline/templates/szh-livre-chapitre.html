@@ -15,10 +15,21 @@ $-- Le bloc des auteur·e·s d'un chapitre n'est PAS écrit ici : il doit venir 
 $-- du chapitre, et un gabarit pandoc ne sait rien intercaler — il écrit ce qui suit
 $-- `$body$`. C'est szh-livre-auteurs.lua qui l'insère, exactement comme szh-auteurs.lua le
 $-- fait pour un article. Même raison, même remède.
-$-- La couleur du chapitre est POSÉE ICI, par le Makefile (PALETTE_CHAPITRE), et non
-$-- choisie en CSS avec `:nth-of-type` : ce sélecteur compte les <section> frères,
-$-- LIMINAIRES COMPRISES, et décalait toute la suite d'autant de pièces liminaires que le
-$-- livre en a — le sommaire disait une couleur, le chapitre une autre.
-<section class="szh-chapitre" id="ch-$slug$"$if(couleur-chapitre)$ style="--c-chapitre: $couleur-chapitre$"$endif$ data-rang="$rang-chapitre$">
+$--
+$-- La couleur du chapitre et la hauteur de son onglet sont POSÉES ICI, par le Makefile
+$-- (PALETTE_CHAPITRE, ONGLET_HAUT_CHAPITRE), et non choisies en CSS avec `:nth-of-type` :
+$-- ce sélecteur compte les <section> frères, LIMINAIRES COMPRISES, et décalait toute la
+$-- suite d'autant de pièces liminaires que le livre en a — le sommaire disait une couleur,
+$-- le chapitre une autre.
+$--
+$-- Le <div class="szh-onglet"> : l'onglet de tranche de la charte FALC (un par chapitre,
+$-- voir livre/falc.css). Il DOIT être le tout premier enfant de la section, avant $body$ :
+$-- c'est ce qui l'enregistre comme running element sur la page d'OUVERTURE du chapitre
+$-- elle-même (mesuré : sinon l'onglet n'apparaîtrait qu'à partir de la deuxième page).
+$-- Sans effet en maquette « normal » : falc.css est seul à lui donner une largeur et une
+$-- couleur, l'élément reste un <div> vide de hauteur nulle. `aria-hidden` : décoratif, un
+$-- repère de tranche n'a aucun texte à annoncer.
+<section class="szh-chapitre" id="ch-$slug$"$if(couleur-chapitre)$ style="--c-chapitre: $couleur-chapitre$; --onglet-haut: $onglet-haut$"$endif$ data-rang="$rang-chapitre$">
+<div class="szh-onglet" aria-hidden="true"></div>
 $body$
 </section>

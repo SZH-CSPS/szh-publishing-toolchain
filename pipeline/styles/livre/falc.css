@@ -112,23 +112,57 @@ h4 { font-size: 13pt; font-weight: 600; color: var(--c-falc-titre); margin: 6mm 
 
 /* ═══ L'onglet de couleur ═════════════════════════════════════════════════════
    Un rectangle plein en bord extérieur, un par chapitre, qui descend de chapitre en
-   chapitre : c'est un index à pouce, il se lit tranche fermée. Sa position verticale est
-   posée par le gabarit (--onglet-haut), calculée sur le rang du chapitre.
-   Il déborde volontairement du bord de page : dans le PDF imprimeur il tombe donc dans le
-   fond perdu, ce qui est exactement le but. */
-.szh-chapitre::after {
-  content: ""; position: absolute; right: -15mm;
-  top: var(--onglet-haut, 40mm); width: 15mm; height: 25mm;
+   chapitre : c'est un index à pouce, il se lit tranche fermée.
+
+   ⚠ CE QUI NE MARCHAIT PAS : un `.szh-chapitre::after` en `position: absolute`. Un
+   chapitre est une <section> qui court sur PLUSIEURS PAGES ; la boîte d'un pseudo-élément
+   n'existe qu'une fois, là où le moteur pose le premier fragment de cette section — donc
+   peinte sur la première page du chapitre, nulle part ailleurs. Et sans fond perdu
+   déclaré (le cas de livre-pdf), `right: -15mm` n'avait littéralement aucun canevas où
+   exister au-delà du bord de page : invisible, pas seulement rogné. Mesuré sur banc
+   (WeasyPrint 69) : le journal de compilation portait même
+   `WARNING: Ignored '--onglet-haut:' … no value`, preuve que la métadonnée censée la
+   faire varier n'arrivait jamais jusqu'ici — un défaut qui s'ajoutait au premier.
+
+   CE QUI MARCHE : un running element (CSS GCPM, § https://www.w3.org/TR/css-gcpm-3/).
+   `.szh-onglet` — un <div> vide, premier enfant de la section, voir
+   templates/szh-livre-chapitre.html — est PROMU hors du flux par
+   `position: running(onglet)`, puis rappelé par `content: element(onglet)` dans une
+   boîte de marge du gabarit de PAGE, ci-dessous. Ce rappel « porte » la dernière valeur
+   promue jusqu'à la suivante : déclaré une fois par chapitre, il s'affiche sur CHAQUE
+   page de ce chapitre — y compris sa page d'ouverture — jusqu'à ce que le chapitre
+   suivant promeuve le sien. Vérifié sur banc, trois pages rendues et regardées :
+   ouverture, page courante du même chapitre (même couleur, même position), page d'un
+   autre chapitre (couleur et position différentes).
+
+   Couleur et position verticale restent celles que livre.mk calcule PAR RANG de
+   chapitre (PALETTE_CHAPITRE / ONGLET_HAUT_CHAPITRE) et pose en variables CSS sur la
+   section (--c-chapitre, --onglet-haut), pas ici : un `:nth-of-type` compterait les
+   <section> frères, LIMINAIRES COMPRISES, et décalerait tout d'autant de pièces
+   liminaires que le livre en a — le défaut déjà évité pour la couleur, évité ici aussi. */
+.szh-onglet {
+  position: running(onglet);
+  width: var(--marge-ext); height: 25mm;
+  margin-top: var(--onglet-haut, 30mm);
   background: var(--c-chapitre, var(--c-falc-titre));
 }
-/* L'onglet descend d'un cran par chapitre : c'est ce décalage, et lui seul, qui fait
-   l'index à pouce — six positions échelonnées sur la hauteur utile de la page. */
-.szh-chapitre:nth-of-type(6n+1)::after { --onglet-haut: 30mm; }
-.szh-chapitre:nth-of-type(6n+2)::after { --onglet-haut: 58mm; }
-.szh-chapitre:nth-of-type(6n+3)::after { --onglet-haut: 86mm; }
-.szh-chapitre:nth-of-type(6n+4)::after { --onglet-haut: 114mm; }
-.szh-chapitre:nth-of-type(6n+5)::after { --onglet-haut: 142mm; }
-.szh-chapitre:nth-of-type(6n+6)::after { --onglet-haut: 170mm; }
+/* Pages en vis-à-vis (base.css) : l'onglet doit toujours tomber du côté EXTÉRIEUR — à
+   droite sur une page recto, à gauche sur une verso — jamais du côté de la couture, d'où
+   les deux boîtes de marge. `height` couvre toute la zone de contenu (page moins marge
+   haute et basse) : sans elle, les trois bandes @*-top/-middle/-bottom se partageraient
+   l'espace vertical et `margin-top` ne vaudrait plus une position absolue depuis le haut.
+   Le débordement dans le fond perdu, lui, est l'affaire du seul profil imprimeur — voir
+   livre/imprimeur.css. */
+@page :right { @right-top {
+  content: element(onglet);
+  height: calc(var(--page-h) - var(--marge-haut) - var(--marge-bas));
+  margin: 0; padding: 0;
+} }
+@page :left { @left-top {
+  content: element(onglet);
+  height: calc(var(--page-h) - var(--marge-haut) - var(--marge-bas));
+  margin: 0; padding: 0;
+} }
 
 /* ═══ Blocs FALC ══════════════════════════════════════════════════════════════ */
 

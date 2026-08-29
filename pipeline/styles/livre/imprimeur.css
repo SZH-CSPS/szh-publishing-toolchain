@@ -1,0 +1,55 @@
+/* Profil IMPRIMEUR : fond perdu et traits de coupe. Empilée EN DERNIER, après la charte
+   (normal.css ou falc.css) et avant .szh-accent.css — voir templates/szh-livre.html pour
+   l'ordre complet des feuilles.
+
+   Ce que ce fichier ajoute, et RIEN DE PLUS (voir docs/ARCHITECTURE-LIVRES.md §4.3) :
+     1. `bleed` et `marks: crop cross` sur la page ;
+     2. ce qui doit déborder dans ce fond perdu — ici, l'onglet de tranche FALC ;
+     3. la neutralisation des liens hypertexte, qui n'ont aucun sens sur du papier.
+
+   Ce que ce fichier n'ajoute PAS : le CMJN. **Mesuré, pas supposé** : WeasyPrint 69 honore
+   `bleed` et `marks: crop cross` nativement (un essai sur ce poste sort un MediaBox agrandi
+   du fond perdu, un TrimBox juste, et les traits de coupe dessinés) — les traits de coupe ne
+   demandent donc AUCUN outil supplémentaire, ni Ghostscript, ni rootfs à refaire. Le CMJN, en
+   revanche, est un chantier à part entière, non résolu (texte noir vs plaque noire), documenté
+   au §4.3 : ce PDF imprimeur sort en RVB, ce qui reste préférable à un CMJN faux.
+
+   ⚠ `--fond-perdu` ci-dessous doit rester la MÊME valeur que celle donnée à `bleed` : ce
+   n'est pas un jeton relié à `buch.yaml` (la clé `impression.fond-perdu-mm` du livre n'est
+   PAS lue ici — il n'existe pas, pour cette feuille statique, d'équivalent d'accent-css.py
+   qui l'y ferait passer). Un livre demandant un autre fond perdu que 3 mm devra soit changer
+   les deux valeurs ci-dessous à la main, soit qu'on écrive ce petit générateur — ouvert,
+   non traité par cette tâche. 3 mm est la valeur par défaut déjà documentée dans buch.yaml. */
+:root { --fond-perdu: 3mm; }
+
+@page {
+  bleed: var(--fond-perdu);
+  marks: crop cross;
+}
+
+/* ═══ L'onglet de tranche FALC dans le fond perdu ═════════════════════════════
+   livre/falc.css pose déjà l'onglet flush au bord ROGNÉ (var(--marge-ext), la largeur
+   exacte de la marge extérieure) — vérifié sur banc dans le PDF numérique, sans fond
+   perdu, sur les trois pages qui comptent (ouverture, page courante, autre chapitre).
+
+   Une fois `bleed` déclaré ici, une asymétrie de WeasyPrint 69 apparaît, MESURÉE sur
+   banc (rendu PNG page par page, pymupdf) :
+     * la boîte @right-top touche DÉJÀ le bord du fond perdu sans rien ajouter — le
+       décalage global qu'introduit `bleed` avantage ce côté par construction (son bord
+       nominal coïncide avec le bord rogné, et le décalage global l'amène pile au bord du
+       fond perdu) ;
+     * la boîte @left-top, elle, reste flush au bord ROGNÉ, PAS au fond perdu : il lui
+       manque exactement deux fois le fond perdu, et sans ce correctif une page de gauche
+       laisse un liséré blanc de 3 mm avant le bord — vu au premier rendu.
+   D'où cette seule ligne, qui ne touche que le côté qui en a besoin. */
+@page :left { @left-top { margin-left: calc(-2 * var(--fond-perdu)); } }
+
+/* ═══ Liens hypertexte : décision ═════════════════════════════════════════════
+   Un lien vivant n'a aucun sens sur du papier : personne ne clique une page imprimée.
+   Décision : on ne retire PAS les liens eux-mêmes (ancres internes du sommaire et des
+   appels de citation, ORCID, DOI…) — ils ne coûtent rien et permettent quand même de
+   suivre un renvoi si ce PDF imprimeur est malgré tout ouvert à l'écran. On retire
+   seulement l'AFFORDANCE visuelle héritée du web — la couleur et le soulignement qui
+   annoncent « ceci est cliquable » — pour qu'un renvoi interne ou une URL s'imprime
+   comme le reste du texte de labeur, ainsi qu'il se lit dans un livre relié. */
+a, a:link, a:visited { color: inherit; text-decoration: none; }
