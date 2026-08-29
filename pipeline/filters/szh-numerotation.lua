@@ -58,6 +58,86 @@ if APERCU then
   end
 end
 
+-- ─── Livre : numérotation continue sur tout le volume ───────────────────────
+-- Un LIVRE compile chaque chapitre par une invocation pandoc séparée (voir
+-- pipeline/profils/livre.mk) : les compteurs n_figure/n_tableau ci-dessous, locaux à
+-- cette invocation, repartiraient sinon à zéro à chaque chapitre. Les livres publiés
+-- numérotent en continu (« Abbildung 12 » au chapitre 4, pas « Abbildung 1 »).
+--
+-- Mécanisme : SZH_COMPTEURS donne le chemin où CE chapitre écrit, en fin de passe, ce
+-- qu'il a consommé — deux nombres, figures puis tableaux, un par ligne — et ce chemin
+-- suit la convention « <dossier-partagé>/<rang>.txt » (une entrée par chapitre, même
+-- dossier). Pour trouver son point de départ, ce chapitre additionne ce que les
+-- chapitres 1..SZH_CHAPITRE-1 ont chacun écrit dans LEUR fichier — pas seulement le
+-- précédent, pour rester correct même si l'un d'eux n'a consommé ni figure ni tableau.
+-- SZH_LIVRE absent -> aucun de ces fichiers n'est ni lu ni écrit, comportement identique
+-- à aujourd'hui.
+--
+-- ⚠ make peut recompiler UN SEUL chapitre. Si le report d'un chapitre précédent manque
+-- (dossier de sortie nettoyé entre deux builds, ordre de compilation inhabituel...),
+-- impossible de savoir combien de figures ce chapitre absent a réellement consommées :
+-- mieux vaut le dire et repartir de 0 (numérotation locale à ce chapitre, comme hors
+-- livre) que d'inventer un numéro qui aurait l'air juste sans l'être.
+local LIVRE = (os.getenv('SZH_LIVRE') or '') ~= ''
+local CHAPITRE = LIVRE and tonumber(os.getenv('SZH_CHAPITRE') or '') or nil
+local CHEMIN_COMPTEURS = LIVRE and os.getenv('SZH_COMPTEURS') or nil
+
+-- Dossier contenant CHEMIN_COMPTEURS, sans le séparateur final ; '.' si le chemin ne
+-- porte aucun dossier (n'arrive pas en usage réel, seulement en test isolé).
+local function dossier_compteurs()
+  return (CHEMIN_COMPTEURS:match('^(.*)[/\\][^/\\]*$')) or '.'
+end
+
+-- Chemin du report d'un chapitre de rang `rang`, à côté de celui de ce chapitre-ci.
+local function chemin_report(rang)
+  return dossier_compteurs() .. '/' .. rang .. '.txt'
+end
+
+-- Point de départ des deux compteurs pour ce chapitre : ce que les chapitres 1..CHAPITRE-1
+-- ont consommé, chacun dans son propre report. (0, 0) si le mode livre ne fournit pas de
+-- quoi le calculer, ou dès qu'un report manque — voir l'avertissement en tête de section.
+local function depart_compteurs()
+  if not CHAPITRE or not CHEMIN_COMPTEURS then return 0, 0 end
+  local figures, tableaux = 0, 0
+  for rang = 1, CHAPITRE - 1 do
+    local chemin = chemin_report(rang)
+    local fh = io.open(chemin, 'r')
+    -- Deux lectures séparées : une affectation multiple n'ordonnerait pas forcément ses
+    -- expressions de droite de gauche à droite, or c'est le PREMIER nombre lu qui doit
+    -- être les figures.
+    local f, t = nil, nil
+    if fh then
+      f = fh:read('*n')
+      t = fh:read('*n')
+      fh:close()
+    end
+    if not f or not t then
+      io.stderr:write(string.format(
+        '[numerotation] report introuvable ou illisible pour le chapitre %d (%s) : '
+        .. 'figures et tableaux renumérotés localement à partir de ce chapitre plutôt '
+        .. 'que de risquer un faux numéro.\n', rang, chemin))
+      return 0, 0
+    end
+    figures, tableaux = figures + f, tableaux + t
+  end
+  return figures, tableaux
+end
+
+-- Écrit ce que CE chapitre a consommé (n_figure, n_tableau DÉJÀ diminués du point de
+-- départ), pour que les chapitres suivants le retrouvent. N'écrit rien hors mode livre.
+local function ecrire_compteurs(n_figure, n_tableau)
+  if not CHEMIN_COMPTEURS then return end
+  local dossier = dossier_compteurs()
+  if dossier ~= '.' then pcall(pandoc.system.make_directory, dossier, true) end
+  local fh = io.open(CHEMIN_COMPTEURS, 'w')
+  if not fh then
+    io.stderr:write('[numerotation] impossible d’écrire ' .. CHEMIN_COMPTEURS .. '\n')
+    return
+  end
+  fh:write(tostring(n_figure), '\n', tostring(n_tableau), '\n')
+  fh:close()
+end
+
 -- Libellés localisés : les trois langues de la revue, plus l'anglais.
 local LIBELLE_FIGURE  = { fr = 'Figure',  de = 'Abbildung', it = 'Figura',  en = 'Figure' }
 local LIBELLE_TABLEAU = { fr = 'Tableau', de = 'Tabelle',   it = 'Tabella', en = 'Table' }
@@ -374,7 +454,10 @@ function Pandoc(doc)
   local lang = langue_de(doc.meta)
   local mot_figure  = LIBELLE_FIGURE[lang]  or LIBELLE_FIGURE.fr
   local mot_tableau = LIBELLE_TABLEAU[lang] or LIBELLE_TABLEAU.fr
-  local n_figure, n_tableau, n_desc = 0, 0, 0
+  -- Hors livre, depart_compteurs() rend (0, 0) : n_figure/n_tableau partent d'où ils
+  -- partaient déjà, rien ne change.
+  local depart_figure, depart_tableau = depart_compteurs()
+  local n_figure, n_tableau, n_desc = depart_figure, depart_tableau, 0
 
   -- Aperçu : les encadrés « lecteur d'écran » AVANT toute autre passe, sur l'AST encore
   -- intact. C'est là, et seulement là, que se lit l'intention du rédacteur : un alt=""
@@ -521,6 +604,10 @@ function Pandoc(doc)
     local style_le = lecteur_ecran.style()
     if style_le then doc.blocks:insert(style_le) end
   end
+
+  -- Ce que CE chapitre a consommé (au-delà de son point de départ), pour le chapitre
+  -- suivant. N'écrit rien hors mode livre (voir ecrire_compteurs).
+  ecrire_compteurs(n_figure - depart_figure, n_tableau - depart_tableau)
 
   return doc
 end

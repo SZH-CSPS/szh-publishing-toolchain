@@ -15,6 +15,10 @@ $-- Le bloc des auteur·e·s d'un chapitre n'est PAS écrit ici : il doit venir 
 $-- du chapitre, et un gabarit pandoc ne sait rien intercaler — il écrit ce qui suit
 $-- `$body$`. C'est szh-livre-auteurs.lua qui l'insère, exactement comme szh-auteurs.lua le
 $-- fait pour un article. Même raison, même remède.
-<section class="szh-chapitre" id="ch-$slug$"$if(couleur-chapitre)$ style="--c-chapitre: $couleur-chapitre$; --onglet-haut: $onglet-haut$"$endif$>
+$-- La couleur du chapitre est POSÉE ICI, par le Makefile (PALETTE_CHAPITRE), et non
+$-- choisie en CSS avec `:nth-of-type` : ce sélecteur compte les <section> frères,
+$-- LIMINAIRES COMPRISES, et décalait toute la suite d'autant de pièces liminaires que le
+$-- livre en a — le sommaire disait une couleur, le chapitre une autre.
+<section class="szh-chapitre" id="ch-$slug$"$if(couleur-chapitre)$ style="--c-chapitre: $couleur-chapitre$"$endif$ data-rang="$rang-chapitre$">
 $body$
 </section>

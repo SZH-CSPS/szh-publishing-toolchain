@@ -40,6 +40,16 @@ local CLASSE = 'szh-num-section'
 -- seul en fin de ligne. print.css ajoute la respiration visuelle (margin-right).
 local LIAISON = '\u{00A0}'
 
+-- Livre seulement : un LIVRE compile chaque chapitre par une invocation pandoc séparée
+-- (pipeline/profils/livre.mk), et le <h1> qu'on rejette ci-dessus pour un article — sa
+-- page de garde, hors document pandoc — EST ici le titre du chapitre. Un livre publié le
+-- numérote (« 2 Theoretische Konzepte… ») et les sections s'y accrochent (« 2.1 »,
+-- « 2.1.1 »). SZH_CHAPITRE porte le rang du chapitre ; absent (hors livre, ou pour les
+-- pièces liminaires qui ne le reçoivent pas), RANG_CHAPITRE reste nil et tout ce qui suit
+-- retombe sur le comportement d'un article, à l'identique.
+local LIVRE = (os.getenv('SZH_LIVRE') or '') ~= ''
+local RANG_CHAPITRE = LIVRE and tonumber(os.getenv('SZH_CHAPITRE') or '') or nil
+
 local compteurs = {}
 
 -- Un titre déjà numéroté est laissé tel quel : la chaîne ne passe qu'une fois, mais un
@@ -53,23 +63,36 @@ local function deja_numerote(inlines)
   return false
 end
 
-function Header(h)
-  local rang = h.level - PREMIER_RANG + 1
-  if rang < 1 or rang > RANGS then return nil end
-  if deja_numerote(h.content) then return nil end
-
-  compteurs[rang] = (compteurs[rang] or 0) + 1
-  for plus_profond = rang + 1, RANGS do compteurs[plus_profond] = 0 end
-
-  local morceaux = {}
-  for i = 1, rang do morceaux[i] = tostring(compteurs[i]) end
-  local numero = table.concat(morceaux, '.') .. LIAISON
-
+-- Écrit le numéro (déjà assemblé, points compris) en tête du titre.
+local function poser_numero(h, numero)
   local contenu = pandoc.List({
-    pandoc.Span(pandoc.Inlines({ pandoc.Str(numero) }),
+    pandoc.Span(pandoc.Inlines({ pandoc.Str(numero .. LIAISON) }),
                 pandoc.Attr('', { CLASSE })),
   })
   contenu:extend(h.content)
   h.content = contenu
   return h
+end
+
+function Header(h)
+  if deja_numerote(h.content) then return nil end
+
+  -- Le titre de chapitre, un seul par document livre : il reçoit le rang du chapitre
+  -- lui-même, sans point — c'est le niveau dont les sections suivantes héritent.
+  if RANG_CHAPITRE and h.level == 1 then
+    return poser_numero(h, tostring(RANG_CHAPITRE))
+  end
+
+  local rang = h.level - PREMIER_RANG + 1
+  if rang < 1 or rang > RANGS then return nil end
+
+  compteurs[rang] = (compteurs[rang] or 0) + 1
+  for plus_profond = rang + 1, RANGS do compteurs[plus_profond] = 0 end
+
+  -- Le numéro de chapitre, s'il y en a un, précède toujours les rangs de section : dans le
+  -- chapitre 2, un <h2> donne « 2.1 » et non « 1 ».
+  local morceaux = {}
+  if RANG_CHAPITRE then morceaux[#morceaux + 1] = tostring(RANG_CHAPITRE) end
+  for i = 1, rang do morceaux[#morceaux + 1] = tostring(compteurs[i]) end
+  return poser_numero(h, table.concat(morceaux, '.'))
 end

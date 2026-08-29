@@ -37,6 +37,25 @@ CHAPITRES := $(sort $(foreach d,$(wildcard $(CH_DIR)/*),\
                 $(if $(wildcard $(d)/$(notdir $(d)).md),$(notdir $(d)))))
 FRAGMENTS := $(foreach c,$(CHAPITRES),$(OUT)/$(CH_DIR)/$(c).frag.html)
 
+# ⚠ LES CHAPITRES SE COMPILENT DANS L'ORDRE, ET C'EST UNE OBLIGATION, pas un confort.
+# szh-numerotation.lua numérote les figures et les tableaux EN CONTINU sur tout le volume ;
+# comme chaque chapitre est une invocation pandoc séparée, il ne peut connaître son point
+# de départ qu'en lisant ce que les chapitres précédents ont consommé — un petit report par
+# chapitre, écrit sous $(OUT)/.szh-compteurs/. Un chapitre compilé avant son prédécesseur
+# ne trouverait pas ce report : le filtre le dit et renumérote localement, mais le livre
+# sort alors avec deux « Abbildung 1 ».
+# Les deux lignes ci-dessous rendent l'ordre STRUCTUREL plutôt que probable : chaque
+# fragment dépend du précédent. C'est aussi ce qui rend le moteur sûr sous `make -j`, où
+# rien ne garantirait autrement l'ordre.
+# Le prix est réel — plus de parallélisme entre chapitres — et il est petit : pandoc met
+# moins d'une seconde par chapitre, quand WeasyPrint pagine le volume entier en une passe
+# qui, elle, n'a jamais été parallélisable.
+COMPTEURS_DIR := $(OUT)/.szh-compteurs
+# Chaque fragment reçoit le précédent en prérequis. `PRECEDENT` retient le dernier vu au fil
+# du foreach ; le premier fragment n'en reçoit aucun, et la chaîne se referme d'elle-même.
+PRECEDENT :=
+$(foreach f,$(FRAGMENTS),$(eval $(f): $(PRECEDENT))$(eval PRECEDENT := $(f)))
+
 # Pièces liminaires écrites à la main (préface, avant-propos…). Compilées comme des
 # chapitres, insérées par l'assembleur à la place que buch.yaml leur donne.
 LIMINAIRES     := $(patsubst $(LIM_DIR)/%.md,$(OUT)/$(LIM_DIR)/%.html,$(wildcard $(LIM_DIR)/*.md))
@@ -153,6 +172,7 @@ $(OUT)/$(CH_DIR)/%.frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_CHA
 	if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
 	echo "pandoc $(CH_DIR)/$$slug/$$slug.md -> $@ (chapitre $$rang)"; \
 	cd "$(CH_DIR)/$$slug" && SZH_LIVRE=1 SZH_CHAPITRE="$$rang" \
+	  SZH_COMPTEURS="$(abspath $(COMPTEURS_DIR))/$$rang.txt" \
 	  SZH_AUSGABE="$(abspath $(CONFIG_LIVRE))" $(PANDOC) "$$slug.md" \
 	  --from=$(LECTEUR) --to=html5 \
 	  --metadata-file="$(abspath $(CONFIG_LIVRE))" $$meta \

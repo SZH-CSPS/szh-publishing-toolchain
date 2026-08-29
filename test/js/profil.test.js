@@ -155,3 +155,22 @@ test('profil : les noms de dossier concordent avec le moteur livre', () => {
   assert.equal(profil.PROFILS.livre.config, 'buch.yaml');
   assert.equal(profil.PROFILS.livre.unites.dossier, 'chapitres');
 });
+
+// Ce contrôle-ci garde une DÉCISION, pas une valeur : la numérotation des figures et des
+// tableaux est continue sur tout le volume, et elle ne peut l'être que si les chapitres se
+// compilent dans l'ordre — chacun lit le report du précédent. Les deux lignes qui
+// l'imposent (la chaîne de prérequis et SZH_COMPTEURS) sont faciles à retirer par
+// inadvertance en réorganisant le fichier, et leur absence ne se voit pas : le livre sort,
+// avec deux « Abbildung 1 ».
+test('livre : la chaîne d’ordre des chapitres et le report des compteurs sont posés', () => {
+  const fs = require('fs');
+  const mk = fs.readFileSync(path.join(RACINE, 'pipeline', 'profils', 'livre.mk'), 'utf8');
+  assert.match(mk, /\$\(foreach f,\$\(FRAGMENTS\),\$\(eval \$\(f\): \$\(PRECEDENT\)\)/,
+    'la chaîne de prérequis entre fragments a disparu : l’ordre n’est plus garanti');
+  assert.match(mk, /SZH_COMPTEURS="\$\(abspath \$\(COMPTEURS_DIR\)\)/,
+    'SZH_COMPTEURS n’est plus posé : szh-numerotation.lua renumérotera par chapitre');
+  const filtre = fs.readFileSync(
+    path.join(RACINE, 'pipeline', 'filters', 'szh-numerotation.lua'), 'utf8');
+  assert.ok(filtre.includes('SZH_COMPTEURS'),
+    'szh-numerotation.lua ne lit plus le report des chapitres précédents');
+});
