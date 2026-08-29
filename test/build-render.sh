@@ -18,6 +18,8 @@ set -u
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 RENDER="${SZH_RENDER:-$HOME/pdfvenv/bin/python}"
 FONTPY="${SZH_FONTTOOLS:-/opt/weasyprint/bin/python}"
+VERAPDF="${VERAPDF:-/opt/verapdf-cli/verapdf}"
+VERAPDF_JAVA="${VERAPDF_JAVA:-/opt/jre-min}"
 cd "$REPO/test" || exit 1
 only="${1:-}"
 echec=0
@@ -108,6 +110,56 @@ if [ -z "$only" ]; then
     echec=1
   fi
   cd "$REPO/test" || exit 1
+fi
+
+# Les deux LIVRES du banc : une monographie allemande en maquette « normal », un ouvrage
+# collectif français en maquette FALC. Ils gardent ce que la revue ne peut pas garder — la
+# numérotation qui court d'un chapitre à l'autre, le sommaire dont les numéros de page sont
+# posés à la pagination, l'ouverture de chapitre sur une belle page, la ligne d'auteur·e·s
+# d'un collectif — et surtout la conformité PDF/UA d'un document de plusieurs chapitres,
+# qu'un tableau mal placé suffit à faire tomber SANS ERREUR VISIBLE (voir
+# filters/szh-tableau-boite.lua).
+# Le verdict est bloquant : un livre non conforme part chez l'imprimeur et dans le commerce.
+if [ -z "$only" ]; then
+  echo "=== Livres ==="
+  for livre in livre-normal livre-falc; do
+    echo "--- $livre"
+    ( cd "$REPO/test/$livre" || exit 1
+      rm -rf out
+      journal="$REPO/test/out/.$livre.log"
+      mkdir -p "$REPO/test/out"
+      if make -f "$REPO/pipeline/Makefile" livre > "$journal" 2>&1; then
+        grep -iE "error|traceback|warning|non balis" "$journal" | sed 's/^/    /' || true
+      else
+        echo "    ÉCHEC du build :"
+        sed -n '1,40p' "$journal" | sed 's/^/      /'
+        exit 1
+      fi
+      # La porte PDF/UA, la même que celle de la revue. « balisage PDF indisponible » dans
+      # le journal veut dire que WeasyPrint a lâché son baliseur et que le Makefile a
+      # rattrapé : le PDF existe, il n'est plus conforme, et rien d'autre ne le dirait.
+      if grep -q "non balisé" "$journal"; then
+        echo "    ✗ le PDF est sorti NON BALISÉ — la conformité PDF/UA est perdue :"
+        grep -A 4 "non balisé" "$journal" | sed 's/^/      /'
+        exit 1
+      fi
+      if [ -x "$VERAPDF" ]; then
+        if JAVA_HOME="$VERAPDF_JAVA" "$VERAPDF" --flavour ua1 --format text out/*.pdf              | sed 's/^/    /' | grep -q "^    PASS"; then
+          echo "    PDF/UA-1 : conforme"
+        else
+          echo "    ✗ PDF/UA-1 : NON conforme"
+          exit 1
+        fi
+      else
+        echo "    (PDF/UA ignoré : veraPDF introuvable en $VERAPDF)"
+      fi
+      if [ -x "$RENDER" ] || command -v "$RENDER" >/dev/null 2>&1; then
+        for pdf in out/*.pdf; do
+          "$RENDER" "$REPO/test/render-all.py" "$pdf" "out/page" 1.15 >/dev/null             && echo "    PNG -> $livre/out/page-*.png"
+        done
+      fi
+    ) || echec=1
+  done
 fi
 
 # Reproductibilité des polices : aucun PDF ne doit embarquer une police absente de

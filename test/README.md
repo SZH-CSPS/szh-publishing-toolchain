@@ -53,6 +53,34 @@ publication.
   attribut `disposition`, que le mode automatique doit empiler plutôt que mettre côte à
   côte. Les images sont des bandes de couleur générées, de quelques kilooctets.
 
+## Les deux livres
+
+Le moteur livre a son propre banc, à part de la mini-revue : ce qu'un livre peut casser,
+un article ne le peut pas — la numérotation qui court d'un chapitre à l'autre, un sommaire
+dont les numéros de page sont posés à la pagination, l'ouverture de chapitre sur une belle
+page, et surtout la conformité PDF/UA d'un document de plusieurs chapitres.
+
+- `livre-normal/` — **monographie** allemande, maquette « normal » (155 × 225 mm), trois
+  chapitres. Elle porte les deux figures et le tableau qui éprouvent la numérotation
+  continue (« Abbildung 1 » et « Abbildung 2 » sont toutes deux au chapitre 2, parce que
+  le chapitre 1 n'en a aucune), une note de bas de page, un chapitre plus court qu'une
+  page, et cinq pièces liminaires dont un avant-propos écrit à la main.
+- `livre-falc/` — **ouvrage collectif** français, maquette FALC. Il éprouve ce que la
+  charte FALC a de particulier : une phrase par ligne (donc le lecteur pandoc en
+  `hard_line_breaks`, et un texte au fer à gauche sans césure), la pastille ronde de
+  chapitre à sa couleur, l'encadré gris de résumé, et la ligne d'auteur·e·s propre à
+  chaque chapitre — qu'une monographie ne doit PAS avoir.
+
+```sh
+wsl -d SZH-Publishing -- bash -lc "cd /mnt/c/<chemin>/test/livre-normal && make -f ../../pipeline/Makefile livre"
+```
+
+`build-render.sh` les compile tous les deux et **refuse de rendre 0 si l'un des PDF sort
+non balisé**. Ce contrôle-là n'est pas décoratif : un tableau qui tombe au mauvais endroit
+fait lâcher le baliseur de WeasyPrint, le Makefile rattrape en sortant un PDF sans balises,
+et rien — ni erreur rouge, ni PNG — ne le montre. Le livre part alors chez l'imprimeur en
+ayant perdu son accessibilité. Voir `pipeline/filters/szh-tableau-boite.lua`.
+
 > **En-tête condensé** — le banc compose la couverture par défaut, à hauteur fixe.
 > Pour éprouver l'autre allure, ajouter une ligne `entete-condensee: true` à
 > `test/ausgabe.yaml`, rebâtir, comparer les PNG, puis **retirer la ligne** (le banc doit
