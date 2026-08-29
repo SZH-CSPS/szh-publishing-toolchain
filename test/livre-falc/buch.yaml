@@ -1,0 +1,37 @@
+# Banc d'essai du moteur livre, maquette FALC — un OUVRAGE COLLECTIF.
+# Chaque chapitre porte ses propres auteur·e·s, comme un article de revue.
+#
+# Ce qu'il éprouve :
+#   * la pastille ronde de numéro de chapitre, à sa couleur ;
+#   * l'onglet de couleur en bord extérieur, qui descend de chapitre en chapitre ;
+#   * l'encadré gris de résumé en tête de chapitre ;
+#   * une phrase par ligne — donc au fer à gauche, sans césure, retours significatifs ;
+#   * le sommaire à filets, avec la pastille de chaque chapitre en regard ;
+#   * les deux formats : « standard » (155x225) et « a4 ».
+titre: "La CDPH en Suisse"
+sous-titre: "Qu'est-ce qui fonctionne déjà ? Que faut-il améliorer ?"
+type: collectif
+lang: fr
+maquette: falc
+format: standard
+collection: "Facile à lire et à comprendre"
+tome: "99"
+annee: 2026
+isbn-print: "978-3-905890-10-0"
+isbn-ebook: "978-3-905890-10-1"
+doi: "10.57161/b998"
+licence: cc-by-nc-nd-4.0
+couleur: "#E4404E"
+auteurs: []
+ordre-chapitres: []
+liminaires: [demi-titre, colophon, page-titre, sommaire]
+impression:
+  grammage: 100
+  main: 1.23
+  dos-mm:
+  fond-perdu-mm: 3
+  traits-de-coupe: true
+  profil-cmjn: ""
+locked: false
+archived: false
+version-toolkit: ""

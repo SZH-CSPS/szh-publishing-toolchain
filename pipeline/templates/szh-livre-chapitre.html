@@ -1,0 +1,20 @@
+$-- Gabarit d'un CHAPITRE. Il ne produit pas une page HTML : il produit le FRAGMENT que
+$-- livre-assembler.py collera dans le livre. C'est pourquoi il n'a ni <html>, ni <head>,
+$-- ni <link rel="stylesheet"> — les feuilles sont posées une fois, par le gabarit du
+$-- livre.
+$--
+$-- ⚠ `--standalone` reste indispensable malgré tout : sans lui, pandoc n'applique aucun
+$--    gabarit ET `--embed-resources` refuse de travailler. Un gabarit qui n'écrit que le
+$--    corps est donc la seule façon d'obtenir un fragment dont les images sont déjà en
+$--    data: URI. Mesuré sur le banc : zéro chemin relatif survivant.
+$--
+$-- L'ancre de section vient du slug du dossier, passée en --metadata slug=… : elle est la
+$-- cible des liens du sommaire, et elle doit rester stable d'une compilation à l'autre.
+$--
+$-- Le bloc des auteur·e·s d'un chapitre n'est PAS écrit ici : il doit venir APRÈS le titre
+$-- du chapitre, et un gabarit pandoc ne sait rien intercaler — il écrit ce qui suit
+$-- `$body$`. C'est szh-livre-auteurs.lua qui l'insère, exactement comme szh-auteurs.lua le
+$-- fait pour un article. Même raison, même remède.
+<section class="szh-chapitre" id="ch-$slug$"$if(couleur-chapitre)$ style="--c-chapitre: $couleur-chapitre$; --onglet-haut: $onglet-haut$"$endif$>
+$body$
+</section>

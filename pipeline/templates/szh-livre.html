@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<!-- Gabarit du LIVRE. Il n'est pas rempli par pandoc mais par livre-assembler.py, avec un
+     remplacement de jetons littéraux ($titre$, $corps$…). Pourquoi pas pandoc : à ce
+     stade, les chapitres sont déjà du HTML — les repasser par pandoc les ferait relire en
+     tant que HTML, ce qui dissoudrait le balisage que les filtres ont posé (les Span de
+     note, les data-* de crédits, les scope de tableau).
+
+     ⚠ L'ORDRE DES FEUILLES COMPTE, et il est le même que pour la revue :
+        socle.css        polices et jetons de la maison
+        livre/base.css   géométrie de page, liminaires, sommaire, coupures
+        livre/<charte>   normal.css ou falc.css : ce qui distingue les deux maquettes
+        livre/imprimeur  fond perdu et traits de coupe — seulement pour le PDF imprimeur
+        .szh-accent.css  couleur de l'ouvrage, en dernier, parce qu'elle surcharge
+     Une feuille montée avant sa place n'a aucun effet et le PDF sort en gris. -->
+<html lang="$lang$" class="$classe-format$">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="szh-publishing-toolchain" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>$titre$</title>
+$css$
+</head>
+<body>
+
+<!-- Les liminaires : demi-titre, impressum, page de titre, sommaire, préfaces. Composés
+     par livre-assembler.py à partir de buch.yaml, sauf les pièces écrites à la main, qui
+     sont compilées comme des chapitres et insérées ici. -->
+$liminaires$
+
+<!-- Les chapitres, dans l'ordre. Chacun est un fragment déjà autonome. -->
+$corps$
+
+</body>
+</html>

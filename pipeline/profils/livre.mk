@@ -1,0 +1,211 @@
+# Moteur LIVRE. Inclus par pipeline/Makefile quand le dossier porte un buch.yaml.
+#
+# Le principe, et la seule chose à retenir : UN CHAPITRE SE COMPILE COMME UN ARTICLE.
+# Même `cd` dans son dossier, même suite de filtres, même --embed-resources. Ce n'est pas
+# une commodité, c'est ce qui fait que le gestionnaire de médias, l'éditeur de tableaux,
+# l'import Word et l'aperçu du cockpit fonctionnent sur un livre sans une ligne de plus.
+# La seule différence est le gabarit : un chapitre ne sort pas une page HTML, il sort un
+# FRAGMENT, que livre-assembler.py colle ensuite dans le livre.
+#
+# Pourquoi pas une seule invocation de pandoc sur les douze chapitres : chaque chapitre a
+# son propre media/, et pandoc n'a qu'un dossier courant. Le détail est en tête de
+# livre-assembler.py.
+#
+# ⚠ Trois écarts connus avec la revue, à ne pas découvrir en production :
+#   * szh-niveaux.lua n'est PAS branché. Il réserve <h1> au titre de l'article et compacte
+#     le corps à partir de <h2> ; dans un livre, le « # » d'un chapitre EST le <h1> de ce
+#     chapitre. Le brancher renverrait tous les titres d'un cran vers le bas.
+#   * szh-numerotation.lua et szh-sections.lua comptent PAR DOCUMENT, donc ici par
+#     chapitre : les compteurs repartent à 1 à chaque chapitre. Les livres publiés
+#     numérotent en continu (« Abbildung 12 » au chapitre 4). Le rang du chapitre leur est
+#     passé en SZH_CHAPITRE ; tant qu'ils ne le lisent pas, la numérotation est locale au
+#     chapitre. C'est le premier défaut à corriger.
+#   * la bibliographie est aujourd'hui celle de chaque chapitre. Un ouvrage collectif la
+#     veut ainsi ; une monographie la veut en fin de volume.
+
+# --------------------------------------------------------------------------------------
+# Ce que le dossier contient
+# --------------------------------------------------------------------------------------
+CONFIG_LIVRE := buch.yaml
+CH_DIR       := chapitres
+LIM_DIR      := liminaires
+COUV_DIR     := couverture
+
+# Un chapitre = chapitres/<slug>/<slug>.md, comme un article. L'ordre est celui du tri des
+# noms de dossier : c'est pourquoi ils sont préfixés « 01- », « 02- ».
+CHAPITRES := $(sort $(foreach d,$(wildcard $(CH_DIR)/*),\
+                $(if $(wildcard $(d)/$(notdir $(d)).md),$(notdir $(d)))))
+FRAGMENTS := $(foreach c,$(CHAPITRES),$(OUT)/$(CH_DIR)/$(c).frag.html)
+
+# Pièces liminaires écrites à la main (préface, avant-propos…). Compilées comme des
+# chapitres, insérées par l'assembleur à la place que buch.yaml leur donne.
+LIMINAIRES     := $(patsubst $(LIM_DIR)/%.md,$(OUT)/$(LIM_DIR)/%.html,$(wildcard $(LIM_DIR)/*.md))
+
+# Nom des sorties : celui du dossier du livre, ce qui donne un fichier reconnaissable une
+# fois sorti de son dossier — « 2026-B330-Canonica.pdf » et non « livre.pdf ».
+NOM_LIVRE  := $(notdir $(patsubst %/,%,$(CURDIR)))
+LIVRE_HTML := $(OUT)/$(NOM_LIVRE).html
+LIVRE_PDF  := $(OUT)/$(NOM_LIVRE).pdf
+
+# --------------------------------------------------------------------------------------
+# Maquette : deux chartes, une seule feuille de plus. `maquette:` de buch.yaml, lue par sed
+# comme le fait déjà le Makefile pour `profil:` — l'image WSL n'a pas PyYAML.
+# Une valeur inconnue tombe sur « normal » APRÈS l'avoir dit : un livre composé dans la
+# mauvaise charte sans un mot est pire qu'un livre qui refuse de sortir.
+# --------------------------------------------------------------------------------------
+MAQUETTE_LUE := $(strip $(shell sed -n "s/^maquette:[[:space:]]*[\"']*\([a-zA-Z-]*\).*/\1/p" \
+                          $(CONFIG_LIVRE) 2>/dev/null | head -1))
+MAQUETTE     := $(if $(MAQUETTE_LUE),$(MAQUETTE_LUE),normal)
+
+# ⚠ LE LECTEUR PANDOC DÉPEND DE LA MAQUETTE, et c'est le seul endroit où c'est vrai.
+# En FALC, le retour à la ligne porte du SENS — une phrase, une ligne — et le lecteur
+# markdown ordinaire recolle les lignes d'un paragraphe. Le travail de la rédaction
+# disparaîtrait à la compilation, sans un mot. `+hard_line_breaks` le conserve.
+# La maquette « normal », elle, veut l'inverse : un paragraphe justifié se recompose, et
+# des retours durs y feraient des lignes courtes au hasard des saisies.
+LECTEUR := $(if $(filter falc,$(MAQUETTE)),markdown+hard_line_breaks,markdown)
+
+# Couleur d'un chapitre : elle peint la pastille du numéro, l'onglet de tranche et le
+# repère du sommaire (maquette FALC). Les six sont les couleurs de charte de la maison
+# (styles/couleurs.css) prises au cran 800, le seul qui porte du texte blanc à Lc −90 ou
+# mieux — la pastille en contient.
+# ⚠ Elle est posée ICI, par rang, et non en CSS avec `:nth-of-type`. Le sélecteur compte
+#   les <section> FRÈRES, liminaires comprises : sur un livre à quatre liminaires, le
+#   chapitre 1 recevait la couleur du sixième. Un décalage silencieux, invisible tant
+#   qu'on ne compare pas au sommaire.
+# ⚠ Sans le croisillon : dans une recette, un « # » non protégé ouvre un COMMENTAIRE de
+#   shell, et tout ce qui suit sur la ligne — la parenthèse fermante comprise — disparaît.
+#   La recette le remet, entre guillemets.
+PALETTE_CHAPITRE := 9F001F 2E5A6D 555900 26613B 8E2E27 624C58
+
+STYLE_LIVRE_BASE  := $(PIPELINE_DIR)/styles/livre/base.css
+STYLE_LIVRE_CHART := $(PIPELINE_DIR)/styles/livre/$(MAQUETTE).css
+GABARIT_LIVRE     := $(PIPELINE_DIR)/templates/szh-livre.html
+GABARIT_CHAPITRE  := $(PIPELINE_DIR)/templates/szh-livre-chapitre.html
+GABARIT_LIMINAIRE := $(PIPELINE_DIR)/templates/szh-livre-liminaire.html
+ASSEMBLEUR        := $(PIPELINE_DIR)/livre-assembler.py
+
+# Feuilles empilées, dans l'ordre : socle (polices, jetons), base (géométrie), charte.
+# L'accent de l'ouvrage vient en dernier — il surcharge, il ne peut donc pas précéder.
+CSS_LIVRE := --css "$(SOCLE_ABS)" --css "$(abspath $(STYLE_LIVRE_BASE))" \
+             --css "$(abspath $(STYLE_LIVRE_CHART))" --css "$(ACCENT_ABS)"
+
+# La suite de filtres d'un chapitre. Même ordre que la revue, aux trois écarts ci-dessus.
+FILTRES_CHAPITRE := \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-grille.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-tableau-boite.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-sections.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua"
+
+.PHONY: livre livre-pdf livre-html verifie-livre
+
+livre: livre-pdf
+
+# --------------------------------------------------------------------------------------
+# Garde-fous. Ils disent ce qui manque et ce qu'il faut faire, dans les deux langues du
+# poste — la même convention que les messages de la revue.
+# --------------------------------------------------------------------------------------
+verifie-livre:
+	@test -f $(CONFIG_LIVRE) || { \
+	  echo "[livre] Ce dossier n'est pas un livre ($(CONFIG_LIVRE) introuvable) : $$PWD"; \
+	  echo "[livre] [de] Dieser Ordner ist kein Buch ($(CONFIG_LIVRE) fehlt): $$PWD"; \
+	  exit 1; }
+	@test -n "$(CHAPITRES)" || { \
+	  echo "[livre] Aucun chapitre ($(CH_DIR)/<nom>/<nom>.md) — déposez les Word dans $(CH_DIR)-word/ puis enregistrez (Ctrl+S)."; \
+	  echo "[livre] [de] Kein Kapitel ($(CH_DIR)/<Name>/<Name>.md) — Word-Dateien in $(CH_DIR)-word/ ablegen und speichern (Ctrl+S)."; \
+	  exit 1; }
+	@if ls -d $(CH_DIR)/* 2>/dev/null | grep -q ' '; then \
+	  echo "[livre] ⚠ Un dossier de $(CH_DIR)/ contient des espaces — renommez-le sans espaces."; exit 1; \
+	fi
+	@test -f "$(STYLE_LIVRE_CHART)" || { \
+	  echo "[livre] Maquette inconnue dans $(CONFIG_LIVRE) : « $(MAQUETTE) »"; \
+	  echo "[livre] Valeurs acceptées : normal | falc."; \
+	  echo "[livre] [de] Unbekanntes Layout in $(CONFIG_LIVRE): « $(MAQUETTE) ». Erlaubt: normal | falc."; \
+	  exit 1; }
+
+# --------------------------------------------------------------------------------------
+# Un chapitre -> un fragment HTML autonome (images en data: URI).
+# Le `cd` dans le dossier du chapitre est ce qui rend media/ et tables/ relatifs au .md,
+# exactement comme pour un article. Le rang du chapitre est passé en SZH_CHAPITRE, et sa
+# couleur en métadonnée : la charte FALC en fait la pastille et l'onglet de tranche.
+# --------------------------------------------------------------------------------------
+# ⚠ Une règle à motif n'accepte qu'un seul « % » par prérequis : `chapitres/%/%.md` est
+#   refusé par make. C'est `.SECONDEXPANSION` (posé par le Makefile principal) qui permet
+#   d'écrire `$$*` deux fois — même dispositif que la règle des articles.
+$(OUT)/$(CH_DIR)/%.frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_CHAPITRE) $(FILTRES) \
+                              $$(wildcard $(CH_DIR)/$$*/tables/*.html) \
+                              $$(wildcard $(CH_DIR)/$$*/media/*) \
+                              $$(wildcard $(CH_DIR)/$$*/$$*.meta.yaml) \
+                              $$(wildcard $(CH_DIR)/$$*/$$*.biblio.md)
+	@mkdir -p "$(dir $@)"
+	@slug="$*"; \
+	rang=$$(printf '%s\n' $(CHAPITRES) | grep -n -x "$$slug" | cut -d: -f1); \
+	index=$$(( (rang - 1) % 6 + 1 )); \
+	couleur="#$$(printf '%s\n' $(PALETTE_CHAPITRE) | sed -n "$${index}p")"; \
+	meta=""; \
+	if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
+	echo "pandoc $(CH_DIR)/$$slug/$$slug.md -> $@ (chapitre $$rang)"; \
+	cd "$(CH_DIR)/$$slug" && SZH_LIVRE=1 SZH_CHAPITRE="$$rang" \
+	  SZH_AUSGABE="$(abspath $(CONFIG_LIVRE))" $(PANDOC) "$$slug.md" \
+	  --from=$(LECTEUR) --to=html5 \
+	  --metadata-file="$(abspath $(CONFIG_LIVRE))" $$meta \
+	  --metadata slug="$$slug" \
+	  --metadata couleur-chapitre="$$couleur" \
+	  --metadata rang-chapitre="$$rang" \
+	  --standalone --embed-resources \
+	  --template="$(abspath $(GABARIT_CHAPITRE))" \
+	  $(FILTRES_CHAPITRE) \
+	  --output="$(abspath $@)"
+
+# Une pièce liminaire écrite à la main : même chaîne, sans le gabarit de chapitre — elle
+# n'ouvre pas sur une belle page et ne porte pas de pastille.
+$(OUT)/$(LIM_DIR)/%.html: $(LIM_DIR)/%.md $(CONFIG_LIVRE) $(GABARIT_LIMINAIRE) $(FILTRES)
+	@mkdir -p "$(dir $@)"
+	@echo "pandoc $< -> $@ (liminaire)"
+	@cd "$(LIM_DIR)" && SZH_LIVRE=1 $(PANDOC) "$(notdir $<)" \
+	  --from=$(LECTEUR) --to=html5 \
+	  --metadata-file="$(abspath $(CONFIG_LIVRE))" \
+	  --standalone --embed-resources \
+	  --template="$(abspath $(GABARIT_LIMINAIRE))" \
+	  $(FILTRES_CHAPITRE) \
+	  --output="$(abspath $@)"
+
+# --------------------------------------------------------------------------------------
+# L'assemblage, puis la pagination.
+# --------------------------------------------------------------------------------------
+$(LIVRE_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
+               $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART) $(ACCENT_CSS)
+	@mkdir -p "$(OUT)"
+	@python3 "$(ASSEMBLEUR)" \
+	  --meta "$(CONFIG_LIVRE)" \
+	  --gabarit "$(GABARIT_LIVRE)" \
+	  --sortie "$@" \
+	  $(CSS_LIVRE) \
+	  $(FRAGMENTS)
+
+livre-html: verifie-livre $(LIVRE_HTML)
+
+# Le PDF numérique : balisé PDF/UA-1 quand WeasyPrint y parvient, replis en cascade comme
+# pour la revue. La porte dure reste `verifier-ua`, appelée par l'export.
+$(LIVRE_PDF): $(LIVRE_HTML)
+	@tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(dir $@)~weasyprint.err'; \
+	: > "$$jrnl"; \
+	if $(WEASYPRINT) --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
+	elif $(WEASYPRINT) --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
+	  echo "[livre] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
+	else \
+	  echo "[livre] balisage PDF indisponible -> PDF non balisé : $@"; \
+	  $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl"; \
+	fi; \
+	sed -n '1,20p' "$$jrnl" | sed 's/^/[weasyprint] /'; \
+	mv -f "$$tmp" "$@"
+
+livre-pdf: verifie-livre $(LIVRE_PDF)
+	@echo "[livre] $(LIVRE_PDF)"

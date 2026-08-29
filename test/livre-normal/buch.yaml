@@ -1,0 +1,42 @@
+# Banc d'essai du moteur livre, maquette « normal » — une MONOGRAPHIE.
+# Ce dossier n'est pas destiné à la publication : il existe pour que le rendu d'un livre
+# se compare d'une passe à l'autre, page par page, comme la mini-revue de test/articles/.
+#
+# Ce qu'il éprouve, et qui a déjà cassé ailleurs :
+#   * l'ouverture de chapitre sur belle page, et le folio absent de cette page-là ;
+#   * la numérotation de section qui reprend le numéro du chapitre (2.1, et non 1.1) ;
+#   * une figure dont la légende ne doit pas se détacher de son image ;
+#   * les liminaires (demi-titre, colophon, page de titre, sommaire) dans l'ordre ;
+#   * le dos calculé, et la couverture à plat qui en découle.
+titre: "Berufliche Teilhabe von Erwachsenen"
+sous-titre: "Ein Prüfband für die Buchmaschine"
+type: monographie
+lang: de
+maquette: normal
+format: standard
+collection: "Sonderpädagogische Forschung in der Schweiz"
+tome: "99"
+annee: 2026
+isbn-print: "978-3-905890-00-0"
+isbn-ebook: "978-3-905890-00-1"
+doi: "10.57161/b999"
+licence: cc-by-nc-nd-4.0
+couleur: "#5F9FBC"
+auteurs:
+- prenom: "Banc"
+  nom: "d'essai"
+  fonction: "Prüfband der Buchmaschine"
+  affiliation: "SZH / CSPS"
+  orcid: "0000-0002-1825-0097"
+ordre-chapitres: []
+liminaires: [demi-titre, colophon, page-titre, sommaire, vorwort.md]
+impression:
+  grammage: 90
+  main: 1.22
+  dos-mm:
+  fond-perdu-mm: 3
+  traits-de-coupe: true
+  profil-cmjn: ""
+locked: false
+archived: false
+version-toolkit: ""

@@ -1,0 +1,106 @@
+/* Charte « normal » : la maquette courante des livres SZH/CSPS.
+   Empilée après socle.css et livre/base.css. Elle ne pose que des JETONS et le peu de
+   mise en forme qui lui est propre ; la géométrie, les liminaires et les coupures sont
+   dans base.css.
+
+   TOUTES les valeurs ci-dessous sont MESURÉES sur les livres publiés, pas choisies :
+   * format et marges : trois livres de 2025 (Canonica, Gender Bias, Meier-Popa), bloc de
+     texte identique au dixième de millimètre sur les trois ;
+   * corps, interlignes et tailles de titre : relevés glyphe par glyphe sur les mêmes PDF ;
+   * grille de titres et alinéa : recoupés sur l'IDML `2022-BXXX_ProSpectrum…_IH.idml`,
+     qui donne les mêmes 10 pt / 13,5 pt et le même alinéa de 7 mm.
+   Le relevé complet est dans docs/ARCHITECTURE-LIVRES.md § 5.1.
+
+   ⚠ La charte a bougé entre 2022 et 2025 : les livres composés jusqu'en 2022 étaient en
+   Frutiger + Celeste, ceux de 2025 en Open Sans SemiCondensed — la police de la revue,
+   déjà dans pipeline/fonts/. C'est la seconde qui fait foi ici. Un livre ancien ne se
+   recompose donc pas à l'identique, et ce n'est pas le but.
+
+   ⚠ Ce qui varie d'un livre à l'autre n'est PAS traité : bandeaux de personnages en marge,
+   pages de séparation illustrées, couleurs de collection. Ils reviendront quand les IDML
+   de référence seront là. */
+
+:root {
+  /* ── Page ─────────────────────────────────────────────────────────────────
+     155 × 225 mm. Bloc de texte mesuré : x 20,0 → 135,8 mm (116 mm de justification),
+     première ligne à 16,3 mm du haut, dernière à 206 mm, folio à 212 mm.
+     Quarante lignes par page à 13,5 pt d'interligne. */
+  --page-l: 155mm;   --page-h: 225mm;
+  --marge-haut: 16mm; --marge-bas: 19mm;
+  --marge-int:  20mm; --marge-ext: 20mm;
+
+  /* ── Texte ────────────────────────────────────────────────────────────────
+     10 pt sur 13,5 pt = 1,35. Justifié, césure active : c'est la composition des
+     livres publiés, et sur 116 mm de justification la césure n'est pas une option. */
+  --corps: 10pt;
+  --interligne: 1.35;
+  --alignement: justify;
+  --cesure: auto;
+  --alinea: 7mm;
+
+  /* ── Tailles dérivées ─────────────────────────────────────────────────────
+     Relevées : légende et note 8,5 pt, tableau 8 pt, impressum 7 pt, folio 8 pt gras. */
+  --legende:  8.5pt;
+  --note:     8.5pt;
+  --tableau:  8pt;
+  --impressum: 7pt;
+  --folio-font: 700 8pt var(--font-sans);
+  --folio-fond: 6mm;          /* le folio tombe à 13 mm du bord, dans la marge de 19 mm */
+
+  --esp-figure: 4mm 0;
+
+  /* Plafond de hauteur d'une figure. 100vh vaut ici la zone de contenu du format livre —
+     190 mm — et non celle d'un A4 : le jeton de socle.css serait faux de 40 %. Les 20 %
+     laissés paient la légende et les crédits. Même défaut, même remède que print.css. */
+  --plafond-figure: 80vh;
+}
+
+/* ═══ Titres ══════════════════════════════════════════════════════════════════
+   Quatre niveaux, mesurés : chapitre 16 pt gras sur 23 pt, section 10 pt gras,
+   sous-section 10 pt demi-gras, quatrième niveau 10 pt italique. Rien au-dessus du
+   corps au-delà du titre de chapitre — c'est la sobriété de la collection, pas un oubli. */
+.szh-chapitre > h1 {
+  font-size: 16pt; font-weight: 700; line-height: 1.44;
+  margin: 0 0 12mm 0; text-indent: 0;
+  /* Le titre de chapitre ouvre la page à 16 mm du haut, comme le corps : l'ouverture n'est
+     pas décalée vers le bas dans cette collection. */
+}
+h2 { font-size: 10pt; font-weight: 700; margin: 6mm 0 0 0; text-indent: 0; }
+h3 { font-size: 10pt; font-weight: 600; margin: 5mm 0 0 0; text-indent: 0; }
+h4 { font-size: 10pt; font-weight: 400; font-style: italic; margin: 4mm 0 0 0; text-indent: 0; }
+
+/* Le numéro de section est posé DANS le texte du titre par szh-sections.lua, jamais en
+   CSS : un numéro généré n'existerait pas dans l'EPUB ni dans un galley Word. L'espace qui
+   le sépare du texte est une tabulation de 7 mm, comme dans les livres imprimés. */
+.szh-num-section { display: inline-block; min-width: 7mm; }
+
+/* ═══ Liminaires ══════════════════════════════════════════════════════════════ */
+.szh-demi-titre  { padding-top: 38mm; }
+.szh-demi-titre .szh-auteurs { font-size: 10pt; font-weight: 500; }
+.szh-demi-titre .szh-titre   { font-size: 10pt; font-weight: 700; margin-top: 9mm; }
+.szh-demi-titre .szh-sous-titre { font-size: 10pt; font-weight: 500; margin-top: 9mm; }
+
+.szh-page-titre { padding-top: 25mm; }
+.szh-page-titre .szh-titre      { font-size: 19pt; font-weight: 700; line-height: 1.25; }
+.szh-page-titre .szh-sous-titre { font-size: 12pt; font-weight: 500; margin-top: 8mm; }
+.szh-page-titre .szh-auteurs    { font-size: 10pt; font-weight: 500; margin-bottom: 12mm; }
+
+/* Impressum : 7 pt, un bloc par mention, exactement l'ordre des livres publiés — année et
+   éditeur, les quatre raisons sociales de la fondation, le soutien, les crédits de
+   fabrication, les ISBN, le DOI, la licence, l'imprimeur. */
+.szh-impressum { padding-top: 50mm; line-height: 1.45; }
+.szh-impressum p { text-indent: 0; margin: 0 0 3mm 0; }
+
+/* ═══ Sommaire ════════════════════════════════════════════════════════════════ */
+.szh-sommaire h1 { font-size: 16pt; font-weight: 700; margin: 0 0 6mm 0; }
+.szh-sommaire li { font-size: 10pt; line-height: 1.35; margin-bottom: 2mm; }
+.szh-sommaire .niveau-1 { font-weight: 700; margin-top: 4mm; }
+.szh-sommaire .niveau-2 { font-weight: 300; padding-left: 7mm; }
+.szh-sommaire .niveau-3 { font-weight: 300; padding-left: 14mm; }
+
+/* ═══ Corps ═══════════════════════════════════════════════════════════════════ */
+blockquote {
+  font-style: italic; margin: 3mm 0 3mm 7mm; text-indent: 0;
+}
+ul, ol { margin: 3mm 0; padding-left: 7mm; }
+li { text-indent: 0; }

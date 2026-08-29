@@ -1,0 +1,164 @@
+/* Socle de la maquette LIVRE : ce que « normal » et « falc » ont en commun.
+   Empilé après ../socle.css (polices et jetons) et avant la feuille de charte :
+     --css=socle.css --css=livre/base.css --css=livre/<charte>.css [--css=livre/imprimeur.css]
+
+   Ce qui a sa place ici : la géométrie de page, les liminaires, le sommaire, les folios,
+   la mécanique des coupures. Ce qui n'y a pas sa place : une taille de corps, une encre,
+   une famille — cela appartient à la charte, parce que « normal » et « FALC » ne veulent
+   pas la même page.
+
+   ⚠ Trois pièges déjà payés ailleurs, et qui coûtent plus cher dans un livre :
+   * La feuille est lue par UN SEUL document de deux cents pages, pas par un article. Une
+     règle qui coûte cher au rendu se paie deux cents fois.
+   * `break-before: recto` n'est honoré que si le document a un sens de pages en
+     vis-à-vis. WeasyPrint le tient (mesuré, v69), mais une page nommée sans folio doit
+     annuler les DEUX boîtes de marge, gauche et droite : la page d'ouverture peut tomber
+     à droite comme à gauche selon la parité du chapitre précédent.
+   * Les images arrivent en data: URI (--embed-resources sur chaque chapitre). Un plafond
+     de hauteur reste indispensable — sans lui, une image en portrait déborde la page et
+     WeasyPrint lâche le `break-inside: avoid` de la figure, détachant la légende. C'est
+     le défaut corrigé dans print.css, et il revient à l'identique ici. */
+
+/* ═══ 1. Géométrie de page ════════════════════════════════════════════════════
+   Les dimensions et les marges viennent de la charte, par ces jetons : la charte les
+   pose, cette feuille les consomme. Un format qui n'existe pas ici n'existe nulle part. */
+@page {
+  size: var(--page-l) var(--page-h);
+  margin: var(--marge-haut) var(--marge-ext) var(--marge-bas) var(--marge-int);
+}
+
+/* Pages en vis-à-vis : la marge INTÉRIEURE est à gauche sur une page de droite, à droite
+   sur une page de gauche. Sans cette paire, le blanc de couture est du mauvais côté une
+   page sur deux — invisible à l'écran, évident une fois relié. */
+@page :left  { margin-left: var(--marge-ext); margin-right: var(--marge-int); }
+@page :right { margin-left: var(--marge-int); margin-right: var(--marge-ext); }
+
+/* Folio en pied, du côté extérieur. Un livre se feuillette par la tranche : le numéro doit
+   tomber sous le pouce, jamais vers la couture. */
+@page :left  { @bottom-left  { content: counter(page); font: var(--folio-font);
+                               color: var(--c-ink2); margin-bottom: var(--folio-fond); } }
+@page :right { @bottom-right { content: counter(page); font: var(--folio-font);
+                               color: var(--c-ink2); margin-bottom: var(--folio-fond); } }
+
+/* Les liminaires ne portent pas de folio arabe. Le demi-titre, l'impressum et la page de
+   titre n'en portent aucun ; le sommaire et les préfaces prennent des chiffres romains,
+   selon l'usage. Le compteur repart à 1 au premier chapitre (voir §3). */
+@page liminaire { @bottom-left { content: none } @bottom-right { content: none } }
+/* ⚠ Un seul folio par page : les deux boîtes se déclarent séparément sur :left et :right,
+   jamais toutes les deux sur la même page nommée. Déclarées ensemble, WeasyPrint remplit
+   les deux — le numéro s'imprime alors à gauche ET à droite. Vu au premier rendu. */
+@page romain:left  { @bottom-left  { content: counter(page, lower-roman);
+                       font: var(--folio-font); color: var(--c-ink2);
+                       margin-bottom: var(--folio-fond); } }
+@page romain:right { @bottom-right { content: counter(page, lower-roman);
+                       font: var(--folio-font); color: var(--c-ink2);
+                       margin-bottom: var(--folio-fond); } }
+/* Ouverture de chapitre : pas de folio. Les DEUX boîtes s'annulent — voir le piège en
+   tête de fichier. */
+@page ouverture { @bottom-left { content: none } @bottom-right { content: none } }
+
+/* ═══ 2. Corps ════════════════════════════════════════════════════════════════ */
+html { font-size: 100%; }
+body {
+  font-family: var(--font-sans);
+  font-size: var(--corps);
+  line-height: var(--interligne);
+  color: var(--c-ink);
+  margin: 0;
+  /* La langue du document commande la césure : pyphen n'a pas de dictionnaire « auto ».
+     L'attribut lang est posé par le gabarit depuis la clé `langue` de buch.yaml. */
+  hyphens: var(--cesure);
+  text-align: var(--alignement);
+}
+
+/* Alinéa de première ligne, sauf en tête de section, après une figure, une liste, un
+   encadré. Un alinéa après un titre est une faute de composition ancienne : il n'ouvre
+   rien, le titre l'a déjà fait. */
+p { margin: 0; text-indent: var(--alinea); }
+h1 + p, h2 + p, h3 + p, h4 + p, h5 + p, h6 + p,
+figure + p, ul + p, ol + p, blockquote + p, table + p,
+.szh-liminaire p:first-of-type, .falc-resume + p { text-indent: 0; }
+
+/* ═══ 3. Structure du livre ═══════════════════════════════════════════════════ */
+
+/* Un chapitre = un fragment compilé à part, assemblé ici. Il ouvre sur une belle page
+   (recto), sans folio, et ne se coupe jamais de son titre. */
+.szh-chapitre { break-before: recto; }
+.szh-chapitre > h1 {
+  page: ouverture;
+  break-after: avoid;
+  string-set: chapitre content(text);
+}
+/* Le premier chapitre remet le folio à 1 : les liminaires ont consommé leurs pages en
+   romain, et la page 1 d'un livre est la première page de texte. */
+.szh-chapitre:first-of-type { counter-reset: page 1; }
+
+.szh-liminaire { break-before: page; page: liminaire; }
+.szh-liminaire.szh-romain { page: romain; }
+
+/* Demi-titre, page de titre, impressum : composés par le gabarit, jamais écrits à la
+   main. Leur contenu vient de buch.yaml. */
+.szh-demi-titre, .szh-page-titre { page: liminaire; break-before: recto; }
+.szh-impressum  { page: liminaire; break-before: page; font-size: var(--impressum); }
+
+/* ── Sommaire ──────────────────────────────────────────────────────────────
+   Le numéro de page est posé par target-counter() : le sommaire est écrit avec des liens
+   internes, et c'est WeasyPrint qui résout la page à la pagination. Une table des matières
+   écrite à la main serait fausse au premier ajout de paragraphe. */
+.szh-sommaire { page: romain; break-before: recto; }
+.szh-sommaire ol { list-style: none; margin: 0; padding: 0; }
+.szh-sommaire li { break-inside: avoid; }
+.szh-sommaire a { text-decoration: none; color: inherit; }
+.szh-sommaire a::after {
+  content: target-counter(attr(href), page);
+  float: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ═══ 4. Coupures ═════════════════════════════════════════════════════════════
+   Les valeurs sont celles de print.css : elles ont été réglées sur des articles réels et
+   n'ont aucune raison de changer parce que le document est plus long. */
+h1, h2, h3, h4, h5, h6 { break-after: avoid; break-inside: avoid; }
+p, li { orphans: 2; widows: 2; }
+figure, blockquote { break-inside: avoid; }
+
+/* ⚠ `table` n'est PAS dans la ligne ci-dessus, et ce n'est pas un oubli : posé sur la
+   table, `break-inside: avoid` ne retient pas la BOÎTE ENVELOPPE anonyme que le moteur
+   crée pour porter la <caption> — mesuré, le défaut persiste avec comme sans. C'est
+   szh-tableau-boite.lua qui pose un vrai Div autour, et la règle qui le retient est en
+   fin de fichier. Le pourquoi complet est en tête de ce filtre. */
+
+/* Saut de page volontaire, écrit dans le .md :  ::: {.szh-saut} ::: */
+.szh-saut { break-after: page; }
+
+/* ═══ 5. Figures ══════════════════════════════════════════════════════════════
+   Repris de print.css, à une différence près : dans un livre, --plafond-figure vaut la
+   hauteur de la zone de contenu du format du livre, pas d'un A4. Le jeton est redéfini
+   par la charte. */
+figure { margin: var(--esp-figure) 0; break-inside: avoid; }
+figure img { max-width: 100%; max-height: var(--plafond-figure); height: auto; display: block; }
+figcaption { font-size: var(--legende); line-height: 1.35; color: var(--c-ink2); text-indent: 0; }
+
+/* ═══ 6. Notes ════════════════════════════════════════════════════════════════
+   Comme dans la revue : au bas de LEUR page. szh-notes.lua a déjà transformé les Note en
+   Span porteurs de la classe ; c'est `float: footnote` qui les descend. */
+.szh-note { float: footnote; font-size: var(--note); }
+@page { @footnote { border-top: 0.5pt solid var(--c-rule); padding-top: 2mm; margin-top: 4mm; } }
+
+/* ═══ 7. Tableaux ═════════════════════════════════════════════════════════════ */
+table { border-collapse: collapse; width: 100%; font-size: var(--tableau); }
+caption { text-align: left; font-size: var(--legende); color: var(--c-ink2); }
+th, td { text-align: left; vertical-align: top; padding: 1mm 2mm; }
+
+/* ═══ 8. Écran ════════════════════════════════════════════════════════════════
+   `float: footnote` n'existe dans aucun navigateur : sans ce repli, les notes
+   s'empileraient au fil du texte dans l'aperçu du cockpit. Même règle que print.css. */
+@media screen {
+  .szh-note { float: none; display: block; margin: 0.5em 0 0.5em 2em; }
+}
+
+/* Boîte de tableau posée par szh-tableau-boite.lua. Elle existe pour une seule raison :
+   retenir ensemble la légende et la table, que l'enveloppe anonyme du moteur laisserait
+   se séparer — et cette séparation fait tomber le baliseur PDF/UA de WeasyPrint 69.
+   Le pourquoi complet est en tête du filtre. */
+.szh-tableau-boite { break-inside: avoid; }

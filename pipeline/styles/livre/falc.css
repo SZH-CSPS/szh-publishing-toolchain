@@ -1,0 +1,187 @@
+/* Charte FALC — « Facile à Lire et à Comprendre ».
+   Empilée après socle.css et livre/base.css. Deux formats : `standard` (155 × 225 mm) et
+   `a4` (210 × 297 mm) ; le second se déclenche par la classe `.szh-a4` sur <html>, posée
+   par le gabarit d'après la clé `format` de buch.yaml.
+
+   Valeurs MESURÉES, pas choisies :
+   * mise en page et corps : relevés glyphe par glyphe sur `2025-Prospectrum_FALC_FR_ebook`,
+     le livre FALC composé — bloc de texte x 15,0 → 141,2 mm, première ligne à 16,2 mm,
+     folio à 208,9 mm ;
+   * les deux formats et leurs marges : `<w:pgSz>` et `<w:pgMar>` des .docx de référence
+     (8789 × 12758 twips = 155 × 225 mm, marges 851 twips = 15 mm ; 11906 × 16838 =
+     210 × 297 mm, marges 1418 twips = 25 mm) ;
+   * l'encre des titres, #252B46, est celle des styles Word `Titre1..4`.
+   Le relevé complet est dans docs/ARCHITECTURE-LIVRES.md § 5.2.
+
+   ⚠ LA RÈGLE QUI COMMANDE TOUT : en FALC, le retour à la ligne porte du SENS. Une phrase,
+   une ligne ; une idée, une ligne. Justifier le texte ou le couper en syllabes détruirait
+   ce travail — c'est pourquoi cette charte est au fer à gauche, SANS CÉSURE, et pourquoi
+   les retours du .md sont significatifs (le gabarit compile avec `hard_line_breaks`).
+   Ne pas « améliorer » cela en remettant `text-align: justify`. */
+
+:root {
+  /* ── Page, format standard ────────────────────────────────────────────────── */
+  --page-l: 155mm;   --page-h: 225mm;
+  --marge-haut: 15mm; --marge-bas: 20mm;
+  --marge-int:  15mm; --marge-ext: 15mm;
+
+  /* ── Texte ────────────────────────────────────────────────────────────────
+     13 pt Light sur 21,3 pt (1,64) — l'air entre les lignes est un outil de lecture,
+     pas une coquetterie. Espace de 18 pt entre paragraphes, mesuré. */
+  --corps: 13pt;
+  --interligne: 1.64;
+  --alignement: left;
+  --cesure: none;
+  --alinea: 0;
+  --esp-para: 18pt;
+
+  --legende:  11pt;
+  --note:     11pt;
+  --tableau:  11pt;
+  --impressum: 9pt;
+  --folio-font: 300 11pt var(--font-sans);
+  --folio-fond: 6mm;
+
+  --esp-figure: 6mm 0;
+  --plafond-figure: 70vh;
+
+  /* ── Encres ───────────────────────────────────────────────────────────────
+     Le bleu nuit des titres est celui des modèles Word. Le gris de l'encadré de résumé
+     est celui du style `InfoBox` (DADADA), éclairci d'un cran pour que du texte de 13 pt
+     y garde un contraste APCA au-delà de 90. */
+  --c-falc-titre: #252B46;
+  --c-falc-resume-fond: #E6E6E6;
+  --c-falc-encadre-filet: #9A9AA4;
+}
+
+/* ── Couleurs de chapitre ─────────────────────────────────────────────────────
+   Un chapitre, une couleur : elle peint la pastille du numéro, l'onglet de tranche et le
+   repère du sommaire. La couleur elle-même est POSÉE PAR LE MAKEFILE, en --c-chapitre sur
+   la section du chapitre (profils/livre.mk, PALETTE_CHAPITRE), et non choisie ici.
+   ⚠ Ne pas la rétablir en CSS avec `:nth-of-type` : ce sélecteur compte les <section>
+     frères, LIMINAIRES COMPRISES, et décale toute la suite d'autant de pièces liminaires
+     que le livre en a. Le sommaire disait alors une couleur, le chapitre une autre. */
+
+/* Format A4 : mêmes règles, autre page et un cran de corps en plus — c'est le réglage des
+   modèles Word, pas une extrapolation. */
+.szh-a4 {
+  --page-l: 210mm;   --page-h: 297mm;
+  --marge-haut: 25mm; --marge-bas: 25mm;
+  --marge-int:  25mm; --marge-ext: 25mm;
+  --corps: 14pt;
+  --interligne: 1.77;
+}
+
+/* ═══ Paragraphes ═════════════════════════════════════════════════════════════
+   Pas d'alinéa : c'est l'espace vertical qui sépare, comme dans les documents FALC.
+   `white-space` reste normal — les retours de ligne sont produits par le lecteur pandoc
+   en <br>, pas par du texte préformaté, sans quoi le texte ne se réagencerait pas dans
+   la sortie web ni dans l'EPUB. */
+p { margin-bottom: var(--esp-para); }
+
+/* ═══ Titres ══════════════════════════════════════════════════════════════════
+   Chapitre 18 pt, section 16 pt, sous-section 14 pt — tous en demi-gras, tous bleu nuit.
+   Aucun n'est numéroté dans le texte : en FALC, un « 2.1.3 » est un obstacle. La
+   numérotation vit dans la pastille et dans le sommaire, pas dans le titre. */
+.szh-chapitre > h1 {
+  font-size: 18pt; font-weight: 600; line-height: 1.3; color: var(--c-falc-titre);
+  margin: 0 0 6mm 0;
+}
+h2 { font-size: 16pt; font-weight: 600; color: var(--c-falc-titre); margin: 10mm 0 3mm 0; }
+h3 { font-size: 14pt; font-weight: 600; color: var(--c-falc-titre); margin: 8mm 0 3mm 0; }
+h4 { font-size: 13pt; font-weight: 600; color: var(--c-falc-titre); margin: 6mm 0 2mm 0; }
+.szh-num-section { display: none; }   /* szh-sections.lua numérote ; FALC ne l'affiche pas */
+
+/* Les auteur·e·s d'un chapitre, sous son titre : « De Barbara Fontana-Lana, … ». */
+.szh-chapitre > .szh-auteurs { font-size: 13pt; font-weight: 300; margin-bottom: 10mm; }
+
+/* ═══ La pastille de chapitre ═════════════════════════════════════════════════
+   Un disque à la couleur du chapitre, en haut à l'extérieur de la page d'ouverture, avec
+   le numéro du chapitre en blanc. La couleur vient de --c-chapitre, que le gabarit pose
+   sur la section à partir de la palette (voir couleurs.css).
+   Positionnée dans la marge, donc en `position: absolute` par rapport à la page : une
+   boîte de marge @top-right ne peut pas déborder de sa bande. */
+.szh-chapitre > h1::before {
+  content: counter(chapitre);
+  position: absolute; top: -8mm; right: 0;
+  width: 11mm; height: 11mm; border-radius: 50%;
+  background: var(--c-chapitre, var(--c-falc-titre)); color: #fff;
+  font-size: 13pt; font-weight: 600; line-height: 11mm; text-align: center;
+}
+.szh-chapitre { counter-increment: chapitre; position: relative; }
+
+/* ═══ L'onglet de couleur ═════════════════════════════════════════════════════
+   Un rectangle plein en bord extérieur, un par chapitre, qui descend de chapitre en
+   chapitre : c'est un index à pouce, il se lit tranche fermée. Sa position verticale est
+   posée par le gabarit (--onglet-haut), calculée sur le rang du chapitre.
+   Il déborde volontairement du bord de page : dans le PDF imprimeur il tombe donc dans le
+   fond perdu, ce qui est exactement le but. */
+.szh-chapitre::after {
+  content: ""; position: absolute; right: -15mm;
+  top: var(--onglet-haut, 40mm); width: 15mm; height: 25mm;
+  background: var(--c-chapitre, var(--c-falc-titre));
+}
+/* L'onglet descend d'un cran par chapitre : c'est ce décalage, et lui seul, qui fait
+   l'index à pouce — six positions échelonnées sur la hauteur utile de la page. */
+.szh-chapitre:nth-of-type(6n+1)::after { --onglet-haut: 30mm; }
+.szh-chapitre:nth-of-type(6n+2)::after { --onglet-haut: 58mm; }
+.szh-chapitre:nth-of-type(6n+3)::after { --onglet-haut: 86mm; }
+.szh-chapitre:nth-of-type(6n+4)::after { --onglet-haut: 114mm; }
+.szh-chapitre:nth-of-type(6n+5)::after { --onglet-haut: 142mm; }
+.szh-chapitre:nth-of-type(6n+6)::after { --onglet-haut: 170mm; }
+
+/* ═══ Blocs FALC ══════════════════════════════════════════════════════════════ */
+
+/* Résumé de tête de chapitre — le style Word `InfoBox`. Il dit, avant le texte, de quoi
+   le chapitre parle et qui l'a écrit. Fond gris, léger retrait, jamais coupé. */
+.falc-resume {
+  background: var(--c-falc-resume-fond);
+  padding: 5mm 5mm 1mm 4.5mm;
+  margin: 0 0 10mm 0;
+  break-inside: avoid;
+}
+.falc-resume p { margin-bottom: var(--esp-para); }
+.falc-resume p:last-child { margin-bottom: 0; }
+
+/* Encadré à filet — le style Word `InfoBox2` : une remarque, une exception, un point de
+   droit. Pas de fond, un filet des quatre côtés. */
+.falc-encadre {
+  border: 0.75pt solid var(--c-falc-encadre-filet);
+  padding: 4mm; margin: 6mm 0; break-inside: avoid;
+}
+.falc-encadre p:last-child { margin-bottom: 0; }
+
+/* Paragraphe-clé — le style Word `Mis en évidence` : une phrase qui porte l'essentiel,
+   détachée et en gras. */
+.falc-cle { font-weight: 600; margin: 6mm 0; }
+.falc-cle p { margin-bottom: 0; }
+
+/* Liste d'étapes — le style Word `Liste étapes` : une action par ligne, très aérée. */
+.falc-etapes ol { padding-left: 8mm; }
+.falc-etapes li { margin-bottom: var(--esp-para); }
+
+/* Sous-titre de projet — le style Word `Soustitre Projet`. */
+.falc-projet { font-size: 16pt; font-weight: 300; margin: 3mm 0 12mm 0; }
+
+/* ═══ Listes ══════════════════════════════════════════════════════════════════
+   Puces simples et numéros arabes. Rien de décoratif : un marqueur exotique se lit mal. */
+ul, ol { margin: 0 0 var(--esp-para) 0; padding-left: 8mm; }
+li { margin-bottom: 2mm; }
+
+/* ═══ Sommaire ════════════════════════════════════════════════════════════════
+   Une entrée par chapitre, un filet entre deux entrées, la pastille de couleur du
+   chapitre en regard — la maquette du livre publié. */
+.szh-sommaire h1 { font-size: 18pt; font-weight: 600; color: var(--c-falc-titre); margin-bottom: 6mm; }
+.szh-sommaire li {
+  border-top: 0.75pt solid var(--c-falc-encadre-filet);
+  padding: 4mm 0; position: relative;
+}
+.szh-sommaire li:first-child { border-top: 0; }
+.szh-sommaire li::after {
+  content: ""; position: absolute; right: -15mm; top: 0; bottom: 0; width: 8mm;
+  background: var(--c-chapitre, var(--c-falc-titre));
+}
+.szh-sommaire .niveau-2, .szh-sommaire .niveau-3 { display: none; }  /* un seul niveau */
+
+/* ═══ Figures ═════════════════════════════════════════════════════════════════ */
+figcaption { font-weight: 600; color: var(--c-falc-titre); }

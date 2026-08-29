@@ -90,9 +90,18 @@ PROFIL         := $(strip $(PROFIL_LU))
 # Vide si la clé est absente (ou 0 occurrence) ; non vide sinon.
 PROFIL_DECLARE := $(filter-out 0,$(PROFIL_PRESENT))
 
+# Un dossier qui porte buch.yaml est un LIVRE. La détection se fait sur la PRÉSENCE DU
+# FICHIER, et non sur une clé de configuration : un livre n'a pas d'ausgabe.yaml, donc
+# aucune clé `profil:` à y lire. C'est aussi ce qui garde les règles de la revue
+# intactes — elles ne s'exécutent que dans un dossier de revue, et leur littéral
+# « ausgabe.yaml » n'a pas à devenir une variable.
+LIVRE_CONFIG := $(wildcard buch.yaml)
+
 # Routage de la cible `all`, résolu à la lecture du Makefile : `make -n all` montre
 # la route prise sans exécuter pandoc.
-ifeq ($(PROFIL_DECLARE),)
+ifneq ($(LIVRE_CONFIG),)
+PROFIL_ROUTE := livre
+else ifeq ($(PROFIL_DECLARE),)
 PROFIL_ROUTE := article
 else ifeq ($(PROFIL),)
 PROFIL_ROUTE := rien
@@ -128,7 +137,8 @@ ACCENT_ABS := $(abspath $(ACCENT_CSS))
 WORD_DIR   := articles-word
 
 .PHONY: all pdf docx import reimporter annuler-reimport clean verifie-dossier \
-        tout-exporter verifier-ua verifier-numerotation profil-rien profil-differe \
+        tout-exporter verifier-ua verifier-numerotation profil-rien \
+        profil-book-sans-fichier \
         profil-inconnu
 .SECONDEXPANSION:
 
@@ -146,8 +156,10 @@ all:
 	@$(MAKE) --no-print-directory -f $(THIS) pdf
 else ifeq ($(PROFIL_ROUTE),rien)
 all: profil-rien
+else ifeq ($(PROFIL_ROUTE),livre)
+all: livre
 else ifeq ($(PROFIL_ROUTE),book)
-all: profil-differe
+all: profil-book-sans-fichier
 else
 all: profil-inconnu
 endif
@@ -157,12 +169,14 @@ endif
 profil-rien:
 	@echo "[pipeline] profil vide dans ausgabe.yaml : ce dossier ne produit volontairement aucun document. Rien à compiler."
 
-# `profil: book` : moteur livre différé. Configuration légitime mais non honorable
-# en l'état -> code non nul, pour que le rédacteur sache que son réglage reste sans
-# effet au lieu de croire à une compilation silencieuse.
-profil-differe:
-	@echo "[pipeline] profil « book » : profil différé, non encore implémenté."
-	@echo "[pipeline] En attendant : « article » (PDF + HTML par article)."
+# `profil: book` dans un ausgabe.yaml : le moteur livre existe désormais, mais il se
+# déclenche sur la présence de buch.yaml, pas sur cette clé. Un dossier resté sur
+# l'ancien réglage se voit dire ce qui lui manque — et non « non implémenté », qui
+# n'est plus vrai.
+profil-book-sans-fichier:
+	@echo "[pipeline] Ce dossier déclare « profil: book » mais n'a pas de buch.yaml."
+	@echo "[pipeline] Le moteur livre se reconnaît à ce fichier : créez le livre depuis le lanceur « Books SZH/CSPS », ou déposez un buch.yaml à côté d'ausgabe.yaml."
+	@echo "[pipeline] [de] Dieser Ordner deklariert « profil: book », hat aber keine buch.yaml. Die Buchmaschine erkennt sich an dieser Datei."
 	@exit 1
 
 # Valeur non reconnue : on nomme la valeur reçue et les valeurs acceptées, la faute
@@ -291,10 +305,11 @@ verifie-dossier:
 
 # (Re)génère out/.szh-accent.css depuis la couleur annuelle d'ausgabe.yaml ; sans
 # couleur, un fichier « commentaire seul » laisse jouer les gris de print.css.
-$(ACCENT_CSS): ausgabe.yaml $(PIPELINE_DIR)/styles/couleurs.css \
+CONFIG_COULEUR := $(firstword $(LIVRE_CONFIG) ausgabe.yaml)
+$(ACCENT_CSS): $(CONFIG_COULEUR) $(PIPELINE_DIR)/styles/couleurs.css \
               $(PIPELINE_DIR)/accent-css.py $(PIPELINE_DIR)/apca.py
 	@mkdir -p "$(OUT)"
-	@python3 "$(PIPELINE_DIR)/accent-css.py" ausgabe.yaml > "$@"
+	@python3 "$(PIPELINE_DIR)/accent-css.py" $(CONFIG_COULEUR) > "$@"
 
 # .md -> HTML autonome (--embed-resources : images et CSS en base64). Exécuté dans le
 # dossier de l'article, pour que media/ et tables/ soient relatifs au .md. Les tableaux
@@ -576,3 +591,11 @@ annuler-reimport:
 
 clean:
 	rm -rf "$(OUT)"
+
+# ---------------------------------------------------------------------------
+# Moteur LIVRE. Inclus seulement dans un dossier qui porte buch.yaml : dans une revue,
+# aucune de ses règles n'existe, et rien de ce qui suit ne peut donc peser sur elle.
+# ---------------------------------------------------------------------------
+ifneq ($(LIVRE_CONFIG),)
+include $(PIPELINE_DIR)/profils/livre.mk
+endif
