@@ -507,19 +507,28 @@ se rejoignent au lanceur.
 | **L7b** | CMJN à noir préservé | **fort, non résolu** (§4.3) | à instruire |
 | **L1** | Extraction d'`extension.js` en modules | moyen — voir les deux avertissements du §6 | à faire |
 | **L2** | `lib/profil.js` + routage des chemins par le profil | moyen | **amorcé** : la table et la détection sont là, les chemins pas encore routés |
-| **L8** | Lanceur « Books SZH/CSPS », `new-livre.ps1`, icône, identité, raccourci | moyen | à faire |
+| **L8** | Lanceur « Books SZH-CSPS », `new-livre.ps1`, gabarit, icône, identité, raccourci | moyen | **fait** — racine SharePoint à confirmer |
 | **L9** | Cockpit côté livre : arbre des chapitres, formulaire d'ouvrage, de couverture | moyen | à faire |
 
 ---
 
 ## 9. Ce qui reste à décider avec la rédaction
 
-1. **La racine SharePoint des livres.** Les revues vivent sous
-   `2_Produkte\52_Revue\RV02_Redaction`. Le dossier de référence livré s'appelle
-   `BU01_Auflagen finale` : la convention `BU` existe donc, mais la racine de rédaction
-   n'est pas connue. Elle est **configurable** (`config.json`, `basesRevues`), avec un
-   défaut à confirmer.
-2. **Le profil CMJN** exigé par l'imprimerie (Edubook / Ediprim).
-3. **Le papier de référence** (grammage et main) des collections courantes.
-4. **La collection et la numérotation de tome** : `Sonderpädagogische Forschung in der
+1. **La racine SharePoint des livres.** Posée par HYPOTHÈSE à `54_Buch\BU02_Redaktion`
+   (en cours) et `54_Buch\BU01_Auflagen finale` (archives). Seul le second nom est
+   confirmé — il vient du dossier de référence livré ; les deux autres étendent le patron
+   `52_Revue` / `53_Zeitschrift`. Configurable par `config.json`, clé `sousDossiersLivre`.
+2. **Le nom du produit.** « Books SZH/CSPS » a été demandé, mais un nom de fichier `.lnk`
+   ne peut pas porter de barre oblique — et c'est ce nom qui s'affiche dans le menu
+   Démarrer. L'entrée s'appelle donc « Books SZH-CSPS ». À trancher : garder le trait
+   d'union, ou suivre le patron des deux autres entrées — « Revues SZH » et
+   « Zeitschriften SZH » —, qui ne portent pas de sigle double.
+3. **Le profil CMJN** exigé par l'imprimerie (Edubook / Ediprim). C'est lui qui décidera
+   de la voie à prendre sur le noir (§4.3).
+4. **Le papier de référence** (grammage et main) des collections courantes.
+5. **La collection et la numérotation de tome** : `Sonderpädagogische Forschung in der
    Schweiz` est une collection numérotée ; y en a-t-il d'autres, et qui tient le compte ?
+6. **L'import Word d'un chapitre** n'est pas branché sur la route livre du `Makefile` :
+   `chapitres-word/` existe et est documenté, mais la cible `import` n'est appelée que par
+   la route article. Travail de chaîne, à faire avant que la rédaction ne dépose son
+   premier `.docx` de chapitre.
