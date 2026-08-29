@@ -120,6 +120,7 @@ FILTRES_CHAPITRE := \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-tableau-boite.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-legende-avant.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-sections.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-livre-auteurs.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua"
 

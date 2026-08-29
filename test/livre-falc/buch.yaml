@@ -10,7 +10,7 @@
 #   * les deux formats : « standard » (155x225) et « a4 ».
 titre: "La CDPH en Suisse"
 sous-titre: "Qu'est-ce qui fonctionne déjà ? Que faut-il améliorer ?"
-type: collectif
+ouvrage: collectif
 lang: fr
 maquette: falc
 format: standard

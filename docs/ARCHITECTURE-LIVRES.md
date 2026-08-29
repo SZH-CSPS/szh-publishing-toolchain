@@ -115,8 +115,8 @@ tableaux, l'import Word et les filtres Lua utilisables sans une ligne de changem
 ```yaml
 titre: "Berufliche Teilhabe von Erwachsenen mit dem Asperger-Syndrom"
 sous-titre: "Strategien von Arbeitnehmer:innen und Arbeitgeber:innen"
-type: monographie          # monographie | collectif — décide où vivent les auteurs
-langue: de
+ouvrage: monographie       # monographie | collectif — décide où vivent les auteurs
+lang: de                   # même clé que dans ausgabe.yaml : les filtres la lisent
 maquette: normal           # normal | falc
 format: standard           # standard (155x225) | a4 (210x297, FALC seulement)
 collection: "Sonderpädagogische Forschung in der Schweiz"
@@ -142,7 +142,7 @@ archived: false
 version-toolkit: ""
 ```
 
-**Monographie ou ouvrage collectif.** Une seule clé décide : `type`. En monographie, les
+**Monographie ou ouvrage collectif.** Une seule clé décide : `ouvrage`. Et elle ne s'appelle pas `type`, parce que `type` est déjà la RUBRIQUE d'un article dans les fiches de la revue : pandoc fusionne les fichiers de métadonnées, le dernier gagnant, et le `type: article` d'un chapitre importé de Word aurait effacé le `type: collectif` du livre sans un mot. En monographie, les
 auteur·e·s sont dans `buch.yaml` et s'impriment sur la couverture et la page de titre ; les
 chapitres n'ont pas de bloc auteurs. En ouvrage collectif, chaque `<slug>.meta.yaml` porte
 ses auteur·e·s, imprimés sous le titre du chapitre — c'est exactement le schéma d'auteur à
