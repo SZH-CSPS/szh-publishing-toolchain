@@ -1,0 +1,180 @@
+/* Couverture à plat : 4e de couverture, dos, 1re de couverture, sur UNE page.
+   Empilée après socle.css SEULEMENT (polices et jetons) :
+     --css=socle.css --css=livre/couverture.css
+   PAS base.css, PAS normal.css/falc.css : leur géométrie (pages en vis-à-vis, marges de
+   lecture, folios, sommaire) est celle de l'INTÉRIEUR du livre. Une couverture est une
+   page unique, à plat, et n'en a besoin d'aucune.
+
+   Les dimensions de CE livre (largeur d'un plat, dos, hauteur, couleur) arrivent en
+   propriétés personnalisées posées par couverture.py sur <html style="…"> (voir
+   templates/szh-couverture.html) : rien ici n'est écrit en dur pour un format donné. Le
+   fond perdu, lui, n'est PAS de celles-là — il ne dépend d'aucun livre, voir §1.
+
+   ⚠ Pièges déjà payés, à ne pas repayer :
+   * Le fond doit être PEINT au-delà du rogné, pas seulement jusqu'à lui : un aplat qui
+     s'arrête pile au bord du format laisse un filet blanc après massicotage, au moindre
+     écart de coupe. Mais PEINT AU-DELÀ NE VEUT PAS DIRE jusqu'au bord du papier : la
+     référence FALC elle-même (tmp/book/FALC/…_print_cover.pdf, coin agrandi, comparé ici)
+     arrête son aplat bien avant le bord du MediaBox, laissant les traits de coupe et les
+     mires de repérage sur un fond BLANC, pas sur l'aplat. La raison est mécanique, pas
+     esthétique : WeasyPrint dessine ces traits DANS la même zone que le fond perdu, et un
+     aplat qui la peint EN ENTIER les recouvre — mesuré ici (§1) en poussant le débordement
+     du contenu jusqu'à 8 mm : les traits ont disparu, entièrement repeints. La feuille
+     distingue donc DEUX valeurs (§1) : le fond perdu WeasyPrint (la place que la mise en
+     page réserve à ses traits) et le débordement peint (de combien le contenu déborde
+     RÉELLEMENT au-delà du rogné) — plus petit que le premier, exprès.
+   * Le sens de rotation du dos compte : en Europe, le dos se lit de HAUT EN BAS quand le
+     livre est posé à plat, couverture vers le haut. `writing-mode: vertical-rl` ferait
+     exactement cela, mais WeasyPrint 69 NE LE CONNAÎT PAS (mesuré : « Ignored
+     `writing-mode: vertical-rl`, unknown property » au rendu — `transform`, lui, est bien
+     supporté). Le repli est donc une rotation manuelle, `transform: rotate(90deg)`, et le
+     SIGNE compte tout autant : rotate(-90deg) tournerait le texte dans l'autre sens et
+     inverserait le sens de lecture sans qu'aucun avertissement ne le signale. Voir §5 pour
+     le détail de la pose (une seule ligne non coupée, pas des paragraphes empilés avant
+     rotation — empilés, ils deviendraient des COLONNES côte à côte après rotation, comme
+     en écriture verticale est-asiatique, et non une suite continue le long du dos). */
+
+/* ═══ 1. La page : taille ROGNÉE, WeasyPrint ajoute le fond perdu tout seul ═══════════
+   `size` est la taille de la TrimBox, pas celle du MediaBox final : WeasyPrint 69 agrandit
+   lui-même le MediaBox de la valeur de `bleed` (mesuré — voir docs/ARCHITECTURE-LIVRES.md
+   §4.3). Y mettre la taille déjà agrandie ferait tomber le rognage au mauvais endroit chez
+   l'imprimeur. */
+/* Deux valeurs, volontairement différentes — toutes deux indépendantes de
+   impression.fond-perdu-mm dans buch.yaml, qui règle l'aplomb du texte à l'IMPRESSION DU
+   CORPS, une tout autre affaire :
+   * --szh-couv-bleed (8 mm) : la place que WeasyPrint réserve à SES PROPRES traits de
+     coupe et mires (propriété `bleed` de `@page`). Essayé à 3 mm d'abord (mesuré sur ce
+     poste, rendu de test/livre-normal et test/livre-falc) : traits et croix de repérage
+     collés au bord de la zone, lisibles mais à l'étroit, la mire débordant presque. 8 mm
+     leur donne de l'air sans repousser sensiblement le format papier de l'épreuve : essayé,
+     comparé, retenu — ce que la mission demandait de faire avant de choisir.
+   * --szh-couv-debord (3 mm) : de COMBIEN LE FOND EST RÉELLEMENT PEINT au-delà du rogné
+     (§2). Volontairement plus petit que --szh-couv-bleed : le peindre jusqu'à la même
+     profondeur recouvrirait les traits de coupe eux-mêmes (mesuré : à bleed complet, ils
+     disparaissent sous l'aplat — voir l'avertissement en tête de fichier, comparé à la
+     référence FALC, qui laisse elle aussi ses traits sur un fond blanc). 3 mm est le
+     minimum que demande la mission ; c'est aussi une profondeur de débord courante en
+     façonnage. */
+:root { --szh-couv-bleed: 8mm; --szh-couv-debord: 3mm; }
+
+@page {
+  size: var(--szh-couv-largeur-totale) var(--szh-couv-hauteur);
+  margin: 0;
+  bleed: var(--szh-couv-bleed);
+  marks: crop cross;
+}
+
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font-sans);
+  color: var(--c-ink);
+}
+
+/* ═══ 2. Le débordement peint (PAS le fond perdu WeasyPrint — voir §1) ═══════════════
+   `size` = la TrimBox ; `body` commence donc à (0,0) de CETTE boîte, pas du MediaBox
+   agrandi. Pour que le fond peigne un peu au-delà du rogné, ce bloc est élargi de deux
+   fois --szh-couv-debord (box-sizing: border-box, donc la largeur posée est déjà la
+   largeur AVEC bordure/remplissage) puis ramené en place par une marge négative de la
+   MÊME valeur : son coin (−debord, −debord) tombe à cette profondeur du coin du rogné,
+   PAS à celui du MediaBox (qui est plus loin de --szh-couv-bleed − --szh-couv-debord,
+   5 mm ici — c'est cette bande restante, non peinte, qui garde les traits de coupe
+   lisibles). Le remplissage (`padding`), de la même valeur encore, laisse le CONTENU — les
+   trois zones — occuper très exactement la boîte rognée, comme si le débordement
+   n'existait pas pour lui. */
+.szh-couv-plat {
+  box-sizing: border-box;
+  position: relative;
+  width:  calc(var(--szh-couv-largeur-totale) + 2 * var(--szh-couv-debord));
+  height: calc(var(--szh-couv-hauteur)        + 2 * var(--szh-couv-debord));
+  margin: calc(-1 * var(--szh-couv-debord));
+  padding: var(--szh-couv-debord);
+  background: var(--c-couverture-fond);
+  display: flex;
+}
+
+/* ═══ 3. Les trois zones, largeur exacte ══════════════════════════════════════════════
+   4e à gauche, dos au milieu, 1re à droite : l'ordre de lecture d'un livre posé à plat,
+   couverture vers le haut (voir la mission). `flex: none` : leur largeur est un fait du
+   format, jamais une négociation flexible. */
+.szh-couv-4e, .szh-couv-dos, .szh-couv-1re {
+  flex: none; height: 100%; position: relative; overflow: hidden;
+}
+.szh-couv-4e  { width: var(--szh-couv-largeur); }
+.szh-couv-dos { width: var(--szh-couv-dos); }
+.szh-couv-1re { width: var(--szh-couv-largeur); }
+
+/* ═══ 4. La 4e de couverture ═══════════════════════════════════════════════════════════
+   Texte compilé comme un chapitre (couverture/quatrieme.md) : mêmes filtres, donc la même
+   typographie maison. Puces simples, pas de fioriture. */
+.szh-couv-4e-texte {
+  position: absolute; inset: 0;
+  padding: 20mm 14mm;
+  font-size: 10.5pt; line-height: 1.5;
+}
+.szh-couv-4e-texte p  { margin: 0 0 4mm 0; }
+.szh-couv-4e-texte ul, .szh-couv-4e-texte ol { margin: 0 0 4mm 0; padding-left: 6mm; }
+.szh-couv-4e-texte li { margin-bottom: 1.5mm; }
+
+/* ═══ 5. Le dos ════════════════════════════════════════════════════════════════════════
+   Titre et auteur·e·s dans l'encre de l'ouvrage (--c-couverture), pas dans une bande de
+   couleur : c'est ce que montre la référence FALC — le dos garde le fond clair de la 4e et
+   de la 1re, seul le texte porte la couleur.
+
+   La rotation, faute de `writing-mode` (voir l'avertissement en tête de fichier) : le bloc
+   titre + auteur·e·s est une seule ligne NON COUPÉE (`white-space: nowrap`), centrée par
+   `top/left: 50%` puis ramenée sur son propre centre (`translate(-50%, -50%)`, qui ne
+   suppose rien de sa largeur — variable, elle dépend du titre), et ENFIN tournée de 90°
+   autour de ce même centre. Dans cet ordre : la rotation ne déplace pas un centre qui lui
+   est déjà propre, seule la position d'ensemble reste à poser.
+   Une seule ligne, et pas des paragraphes empilés (`titre` puis `auteurs` l'un sous
+   l'autre) : empiler AVANT rotation revient à écrire deux lignes normales, et deux lignes
+   normales tournées ensemble deviennent deux COLONNES côte à côte une fois tournées — la
+   place manque sur un dos, qui n'a droit qu'à UNE colonne. Titre puis auteur·e·s doivent
+   donc se suivre SUR LA MÊME ligne, avant rotation, pour se suivre le long du même dos
+   après. `overflow: visible` sur .szh-couv-dos (règle plus bas) : sur un livre mince, cette
+   ligne peut dépasser la hauteur du dos plutôt que de se faire couper en silence — un
+   défaut visible se corrige, un défaut invisible ne se corrige jamais. */
+.szh-couv-dos { overflow: visible; }
+.szh-couv-dos-texte {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%) rotate(90deg);
+  white-space: nowrap;
+  color: var(--c-couverture);
+}
+.szh-couv-dos-titre   { font-size: 9pt; font-weight: 700; }
+.szh-couv-dos-auteurs { font-size: 8pt; font-weight: 400; margin-left: 6mm; }
+
+/* ═══ 6. La 1re de couverture ══════════════════════════════════════════════════════════ */
+
+/* Illustration facultative (couverture/illustration.*) : plein cadre, sous le bandeau. */
+.szh-couv-1re-illustration { position: absolute; inset: 0; z-index: 0; }
+.szh-couv-1re-illustration img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+
+/* Bandeau de titre : posé sur l'illustration (ou sur le fond clair si aucune illustration
+   n'est fournie — c'est le cas des deux livres de banc). Couleur de l'ouvrage, texte choisi
+   par contraste APCA (couverture.py, apca.meilleure_polarite) plutôt que codé en dur : la
+   charte varie d'un livre à l'autre. */
+.szh-couv-1re-bandeau {
+  position: absolute; left: 0; right: 0; bottom: 32mm; z-index: 1;
+  background: var(--c-couverture);
+  color: var(--c-couverture-texte);
+  padding: 8mm 10mm;
+}
+.szh-couv-auteurs   { font-size: 10pt; font-weight: 500; margin: 0 0 2mm 0; }
+.szh-couv-titre     { font-size: 16pt; font-weight: 700; line-height: 1.25; margin: 0; }
+.szh-couv-sous-titre{ font-size: 11pt; font-weight: 400; margin: 3mm 0 0 0; }
+
+/* Pied de 1re : collection à gauche, mention d'édition à droite — texte, pas un logo :
+   aucun fichier de logo n'existe dans ce dépôt pour la collection ni pour « EDITION
+   SZH/CSPS » (cherché, absent — voir le rapport de la mission). Écrire une image inventée
+   à leur place afficherait un faux logo comme s'il était réel ; la mention texte reprend
+   d'ailleurs le même intitulé littéral que l'impressum (livre-assembler.py, FONDATION). */
+.szh-couv-1re-pied {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 1;
+  display: flex; justify-content: space-between; align-items: flex-end;
+  padding: 6mm 10mm; font-size: 8.5pt;
+}
+.szh-couv-1re-collection { max-width: 65%; font-weight: 600; }
+.szh-couv-1re-edition    { margin: 0; font-weight: 700; letter-spacing: 0.02em; }

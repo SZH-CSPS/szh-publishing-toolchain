@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<!-- Gabarit de la COUVERTURE À PLAT. Comme szh-livre.html, il n'est pas rempli par pandoc
+     mais par couverture.py, par un simple remplacement de jetons littéraux : à ce stade,
+     le texte de 4e de couverture est déjà du HTML (compilé comme un chapitre), et le
+     repasser par pandoc le ferait relire comme du HTML brut, ce qui le dissoudrait.
+
+     Les dimensions de CE livre (largeur, dos, hauteur, couleur) arrivent en propriétés
+     personnalisées posées ici sur la racine : c'est tout ce que couverture.css lit, rien
+     n'y est écrit en dur pour un format particulier. Le fond perdu, lui, ne dépend d'aucun
+     livre : il est posé une seule fois dans couverture.css (--szh-couv-bleed).
+
+     ⚠ Les feuilles : SEULEMENT socle.css (polices, jetons) puis livre/couverture.css. Ni
+     base.css ni la charte (normal/falc) : leur géométrie de page (vis-à-vis, marges de
+     lecture, folios) n'a rien à faire sur une couverture, qui est une page unique à plat. -->
+<html lang="$lang$" style="--szh-couv-largeur: $largeur-mm$mm; --szh-couv-dos: $dos-mm$mm;
+  --szh-couv-hauteur: $hauteur-mm$mm; --szh-couv-largeur-totale: $largeur-totale-mm$mm;
+  --c-couverture: $couleur$;
+  --c-couverture-fond: $couleur-fond$; --c-couverture-texte: $couleur-texte$;">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="szh-publishing-toolchain" />
+  <title>$titre$ — couverture</title>
+$css$
+</head>
+<body>
+<div class="szh-couv-plat">
+
+  <!-- 4e de couverture : à gauche du dos — c'est la page de GAUCHE quand le livre est posé
+       à plat, couverture (1re) vers le haut. -->
+  <section class="szh-couv-4e">
+    <div class="szh-couv-4e-texte">
+$quatrieme$
+    </div>
+  </section>
+
+  <!-- Le dos : titre et auteur·e·s tournés, lus de HAUT EN BAS quand le livre est posé à
+       plat couverture vers le haut — la convention européenne. UNE SEULE ligne (titre puis
+       auteur·e·s, jamais deux paragraphes empilés) : voir pourquoi dans couverture.css §5,
+       c'est ce qui évite que la rotation ne les pose en deux colonnes côte à côte. -->
+  <section class="szh-couv-dos">
+    <div class="szh-couv-dos-texte"><span class="szh-couv-dos-titre">$titre$</span><span class="szh-couv-dos-auteurs">$auteurs$</span></div>
+  </section>
+
+  <!-- 1re de couverture : illustration (facultative), bandeau de titre, pied de page avec
+       la collection et la mention d'édition. -->
+  <section class="szh-couv-1re">
+    <div class="szh-couv-1re-illustration">$illustration$</div>
+    <div class="szh-couv-1re-bandeau">
+      <p class="szh-couv-auteurs">$auteurs$</p>
+      <p class="szh-couv-titre">$titre$</p>
+      <p class="szh-couv-sous-titre">$sous-titre$</p>
+    </div>
+    <div class="szh-couv-1re-pied">
+      <div class="szh-couv-1re-collection">$collection$</div>
+      <p class="szh-couv-1re-edition">Edition SZH/CSPS</p>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

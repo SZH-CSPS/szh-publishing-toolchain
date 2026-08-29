@@ -155,7 +155,8 @@ FILTRES_CHAPITRE := \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua"
 
-.PHONY: livre livre-pdf livre-imprimeur livre-html livre-html-web verifie-livre
+.PHONY: livre livre-pdf livre-imprimeur livre-couverture livre-html livre-html-web \
+        verifie-livre verifie-couverture
 
 livre: livre-pdf
 
@@ -296,6 +297,72 @@ $(LIVRE_IMPRIMEUR_PDF): $(LIVRE_IMPRIMEUR_HTML)
 	sed -n '1,20p' "$$jrnl" | sed 's/^/[weasyprint] /'; \
 	mv -f "$$tmp" "$@"
 
+# --------------------------------------------------------------------------------------
+# La couverture à plat : 4e de couverture, dos, 1re de couverture, sur UNE page — le
+# second fichier qui part chez l'imprimeur, à côté du PDF intérieur.
+#
+# Le dos ne se DEVINE pas : couverture.py le calcule à partir du nombre de pages LU dans
+# $(LIVRE_PDF), juste avant de composer (sauf si buch.yaml impose impression.dos-mm, qui
+# gagne toujours). C'est pourquoi $(LIVRE_PDF) est un prérequis de la couverture, et non
+# l'inverse : un dos calculé sur un compte de pages périmé est le défaut le plus cher du
+# métier (voir docs/ARCHITECTURE-LIVRES.md §3 et l'en-tête de couverture.py).
+# --------------------------------------------------------------------------------------
+GABARIT_COUVERTURE := $(PIPELINE_DIR)/templates/szh-couverture.html
+STYLE_COUVERTURE   := $(PIPELINE_DIR)/styles/livre/couverture.css
+COUVERTURE_PY      := $(PIPELINE_DIR)/couverture.py
+
+# L'illustration est FACULTATIVE (couverture/illustration.jpg|jpeg|png|svg|webp) : aucun
+# des deux livres de banc n'en porte. `firstword` : une seule image par couverture, celle
+# qui trie en premier si plusieurs extensions coexistent — un cas qui ne s'est pas encore
+# présenté, donc sans règle de priorité éprouvée.
+ILLUSTRATION_COUV := $(firstword $(wildcard $(COUV_DIR)/illustration.*))
+
+COUVERTURE_FRAG := $(OUT)/$(COUV_DIR)/quatrieme.html
+COUVERTURE_HTML := $(OUT)/$(COUV_DIR)/$(NOM_LIVRE)-couverture.html
+COUVERTURE_PDF  := $(OUT)/$(NOM_LIVRE)-couverture.pdf
+
+# Le texte de 4e de couverture : compilé COMME UN CHAPITRE (même chaîne que les
+# liminaires : même lecteur, mêmes filtres, donc la même typographie maison), mais il ne
+# porte ni pastille ni ouverture de belle page — ce n'est pas un chapitre, seulement le
+# même prestataire pandoc.
+$(COUVERTURE_FRAG): $(COUV_DIR)/quatrieme.md $(CONFIG_LIVRE) $(GABARIT_LIMINAIRE) $(FILTRES)
+	@mkdir -p "$(dir $@)"
+	@echo "pandoc $< -> $@ (couverture, 4e)"
+	@cd "$(COUV_DIR)" && SZH_LIVRE=1 $(PANDOC) "quatrieme.md" \
+	  --from=$(LECTEUR) --to=html5 \
+	  --metadata-file="$(abspath $(CONFIG_LIVRE))" \
+	  --standalone --embed-resources \
+	  --template="$(abspath $(GABARIT_LIMINAIRE))" \
+	  $(FILTRES_CHAPITRE) \
+	  --output="$(abspath $@)"
+
+# L'assemblage : buch.yaml + le fragment de 4e + le PDF intérieur (pour son compte de
+# pages) + l'illustration éventuelle -> le HTML que WeasyPrint composera.
+$(COUVERTURE_HTML): $(LIVRE_PDF) $(COUVERTURE_FRAG) $(CONFIG_LIVRE) $(GABARIT_COUVERTURE) \
+                    $(COUVERTURE_PY) $(SOCLE) $(STYLE_COUVERTURE) $(ILLUSTRATION_COUV)
+	@mkdir -p "$(dir $@)"
+	@python3 "$(COUVERTURE_PY)" \
+	  --meta "$(CONFIG_LIVRE)" \
+	  --pdf-interieur "$(LIVRE_PDF)" \
+	  --quatrieme "$(COUVERTURE_FRAG)" \
+	  --illustration "$(ILLUSTRATION_COUV)" \
+	  --gabarit "$(GABARIT_COUVERTURE)" \
+	  --sortie "$@" \
+	  --css "$(SOCLE_ABS)" --css "$(abspath $(STYLE_COUVERTURE))"
+
+# HTML -> PDF : PAS de variante PDF/UA ici. La couverture n'est pas un document de lecture
+# balisé (il n'y a rien à en lire à la synthèse vocale) ; `bleed`/`marks` sont posés par
+# couverture.css, pas par cette recette. Même dispositif de fichier temporaire que les
+# autres sorties WeasyPrint : un rename local, ignoré par la synchro OneDrive.
+$(COUVERTURE_PDF): $(COUVERTURE_HTML)
+	@tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(dir $@)~weasyprint.err'; \
+	: > "$$jrnl"; \
+	if ! $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl"; then \
+	  echo "[livre] échec de la couverture :"; cat "$$jrnl" >&2; exit 1; \
+	fi; \
+	sed -n '1,20p' "$$jrnl" | sed 's/^/[weasyprint] /'; \
+	mv -f "$$tmp" "$@"
+
 livre-imprimeur: verifie-livre $(LIVRE_IMPRIMEUR_PDF)
 	@echo "[livre] $(LIVRE_IMPRIMEUR_PDF)"
 
@@ -316,3 +383,16 @@ $(LIVRE_WEB_HTML): $(FRAGMENTS) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GA
 
 livre-html-web: verifie-livre $(LIVRE_WEB_HTML)
 	@echo "[livre] $(LIVRE_WEB_HTML)"
+# Garde-fou spécifique, à part de verifie-livre : livre-pdf et livre-html n'ont pas besoin
+# d'un texte de 4e de couverture, seule cette cible en dépend. Il doit s'exécuter AVANT la
+# tentative de compilation — d'où sa place, premier prérequis après verifie-livre — sans
+# quoi make échouerait d'abord sur « pas de règle pour fabriquer quatrieme.md », un message
+# qui ne dit pas quoi faire.
+verifie-couverture:
+	@test -f "$(COUV_DIR)/quatrieme.md" || { \
+	  echo "[livre] Pas de texte de 4e de couverture ($(COUV_DIR)/quatrieme.md introuvable)."; \
+	  echo "[livre] [de] Kein Klappentext ($(COUV_DIR)/quatrieme.md fehlt)."; \
+	  exit 1; }
+
+livre-couverture: verifie-livre verifie-couverture $(COUVERTURE_PDF)
+	@echo "[livre] $(COUVERTURE_PDF)"
