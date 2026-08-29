@@ -1,6 +1,7 @@
 // Extension « Revue SZH » : la barre latérale du cockpit dans l'Explorateur de VSCodium
 // (articles, Word en attente, traductions) et les commandes associées. La vue n'apparaît
-// que si ausgabe.yaml existe à la racine (clé de contexte szh.estRevue).
+// que si le dossier ouvert est une publication — un numéro de revue (ausgabe.yaml) ou un
+// livre (buch.yaml) : lib/profil.js dit lequel, et pose la clé de contexte qui va avec.
 //
 // Sans build : les require sont résolus à l'exécution, donc lib/ et media/ doivent
 // rester empaquetés (voir .vscodeignore). Ici, activate/deactivate, le câblage des
@@ -15,7 +16,9 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 
-const CLE_CONTEXTE = 'szh.estRevue';
+// Les clés de contexte du PROFIL — szh.estRevue, szh.estLivre — ne sont plus nommées
+// ici : elles vivent dans la table de lib/profil.js, avec le reste de ce qui
+// distingue un numéro d'un livre, et se posent toutes ensemble (voir majContexte).
 // L'état du numéro en clés de contexte : c'est ce que lisent les `when` de package.json.
 const CLE_VERROUILLEE = 'szh.verrouillee';
 const CLE_ARCHIVEE = 'szh.archivee';
@@ -77,6 +80,9 @@ const {
 } = require('./lib/table-model');
 // ---- Assemblage des webviews -> lib/webviews/util.js -----------------------------
 const { construireHtml, lireMedia } = require('./lib/webviews/util');
+// ---- Ce qu'est le dossier ouvert -> lib/profil.js --------------------------------
+// Numéro de revue ou livre : la table qui le dit, et les chemins qui en découlent.
+const profils = require('./lib/profil');
 // ---- Modules impératifs -> lib/{slug,wsl,formatting}.js --------------------------
 const { slugifier, slugifierArticle } = require('./lib/slug');
 const { demarrerDormeurWsl, arreterDormeurWsl, reveillerWsl, cheminWsl } = require('./lib/wsl');
@@ -145,17 +151,34 @@ const {
 const VUE_PDF = 'pdf.preview';
 const EXT_PDF = 'tomoki1207.pdf';
 
-// Premier dossier du workspace contenant ausgabe.yaml, ou null : la vue reste masquée.
+// Premier dossier du workspace qui est une publication, ou null : la vue reste masquée.
+//
+// La reconnaissance elle-même est dans lib/profil.js, qui sait dire ce que le dossier EST
+// — un numéro de revue (ausgabe.yaml, articles/) ou un livre (buch.yaml, chapitres/) — et
+// où sont ses fichiers. Ici on n'en garde que deux choses : le chemin, que tout le reste du
+// fichier attend sous forme de chaîne, et le profil, mémorisé pour les gestes qui doivent
+// savoir de quoi ils parlent.
+//
+// ⚠ Ne pas confondre avec `profilRevue` / `lireProfil` plus bas : celui-là est la clé
+//   `profil:` d'ausgabe.yaml, qui décide du mode d'aperçu d'un NUMÉRO. Deux notions, deux
+//   noms, et le voisinage est malheureux — mais renommer la seconde toucherait le contrat
+//   exporté que les tests lisent.
+let profilOuvrage = null;
+
 function trouverRacineRevue() {
-  const dossiers = vscode.workspace.workspaceFolders;
-  if (!dossiers) { return null; }
-  for (const d of dossiers) {
-    try {
-      if (fs.existsSync(path.join(d.uri.fsPath, 'ausgabe.yaml'))) { return d.uri.fsPath; }
-    } catch (e) { /* dossier illisible : on continue */ }
-  }
-  return null;
+  const trouve = profilOuvrage_detecter();
+  return trouve ? trouve.racine : null;
 }
+
+function profilOuvrage_detecter() {
+  const trouve = profils.racineDepuis(vscode.workspace.workspaceFolders);
+  profilOuvrage = trouve ? trouve.profil : null;
+  return trouve;
+}
+
+// Le profil du dossier ouvert, ou celui de la revue par défaut : les gestes écrits avant
+// le moteur livre continuent de se comporter comme avant tant qu'aucun livre n'est ouvert.
+function profilCourant() { return profilOuvrage || profils.profilPour('revue'); }
 
 // ---- Cycle de vie du numéro : verrou, archive, version du logiciel ---------------
 // L'état vit dans ausgabe.yaml (lib/yaml.js : etatRevue) et non sur le poste. Relu à
@@ -7249,7 +7272,13 @@ function activate(context) {
     }
     majBarreControles();
     profilRevue = lireProfil(racine);            // pilote le mode d'aperçu
-    vscode.commands.executeCommand('setContext', CLE_CONTEXTE, !!racine);
+    // Les DEUX clés se posent à chaque rafraîchissement, celle du profil actif à vrai et
+    // l'autre à faux. Ne poser que la première laisserait szh.estRevue vrai après le
+    // passage à un livre, et les deux vues latérales s'afficheraient ensemble.
+    const cles = profils.contextes(profilOuvrage);
+    for (const nom of Object.keys(cles)) {
+      vscode.commands.executeCommand('setContext', nom, !!racine && cles[nom]);
+    }
     reinstallerWatchers(racine);
     if (racine) { demarrerDormeurWsl(); } else { arreterDormeurWsl(); }
     // Les copies en conflit du numéro précédent ne sont plus les nôtres, et les baux

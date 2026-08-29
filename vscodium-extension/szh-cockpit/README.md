@@ -49,6 +49,8 @@ lib/
   liens.js              liens szh:// et intention déposée par le lanceur
   panneaux.js           les trois panneaux QuickPick
   portraits.js          appel du script de détourage des photos, dans WSL
+  profil.js             ce qu'est le dossier ouvert — numéro de revue (ausgabe.yaml,
+                        articles/) ou livre (buch.yaml, chapitres/) — et ses chemins
   qualite-image.js      seuils de résolution des images et verdict de qualité
   references.js         insertions d'images et de tableaux dans le markdown, et les
                         grilles d'images (plusieurs images pour une seule figure)
