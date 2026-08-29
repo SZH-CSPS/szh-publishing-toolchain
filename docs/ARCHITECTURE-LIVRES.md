@@ -498,15 +498,15 @@ se rejoignent au lanceur.
 | Lot | Contenu | Risque | État |
 |---|---|---|---|
 | **L3** | `profils/livre.mk`, assembleur, gabarits, `base.css` + `normal.css` — PDF numérique | moyen | **fait**, PDF/UA-1 validé |
-| **L4** | Maquette FALC (pastilles, encadrés, une phrase par ligne) | faible | **fait**, sauf l'onglet de tranche |
-| **L4b** | Numérotation continue : `szh-sections`, `szh-numerotation` et le numéro de chapitre | **fort** — trois filtres partagés avec la revue | à faire |
-| **L5** | Couverture à plat, calcul du dos, pages comptées dans le PDF intérieur | moyen | à faire |
-| **L6** | HTML responsive | faible | à faire |
+| **L4** | Maquette FALC (pastilles, onglet de tranche, encadrés, une phrase par ligne) | faible | **fait** |
+| **L4b** | Numérotation continue et numéro de chapitre | **fort** — filtres partagés avec la revue | **fait**, ordre de compilation garanti |
+| **L5** | Couverture à plat, dos calculé sur les pages lues dans le PDF intérieur | moyen | **fait** |
+| **L6** | HTML responsive | faible | **fait** |
 | **L6b** | EPUB 3 — assembleur propre, préfixe de slug sur les tableaux | **fort** (§4.5) | à faire |
-| **L7** | Fond perdu et traits de coupe | faible — natif WeasyPrint | à faire |
+| **L7** | Fond perdu et traits de coupe | faible — natif WeasyPrint | **fait** |
 | **L7b** | CMJN à noir préservé | **fort, non résolu** (§4.3) | à instruire |
 | **L1** | Extraction d'`extension.js` en modules | moyen — voir les deux avertissements du §6 | à faire |
-| **L2** | `lib/profil.js` + routage des chemins par le profil | moyen | à faire |
+| **L2** | `lib/profil.js` + routage des chemins par le profil | moyen | **amorcé** : la table et la détection sont là, les chemins pas encore routés |
 | **L8** | Lanceur « Books SZH/CSPS », `new-livre.ps1`, icône, identité, raccourci | moyen | à faire |
 | **L9** | Cockpit côté livre : arbre des chapitres, formulaire d'ouvrage, de couverture | moyen | à faire |
 
