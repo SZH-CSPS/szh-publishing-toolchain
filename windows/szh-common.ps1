@@ -192,6 +192,32 @@ $script:SzhTextes = @{
     'raccourci.maj.desc'  = 'Installer la dernière version de l’’outil Revue SZH. Une fenêtre s’’ouvre et montre ce qui se passe.'
     'raccourci.revue.desc' = 'Ouvrir une revue SZH'
     'raccourci.zs.desc'   = 'Ouvrir une Zeitschrift SZH'
+    'raccourci.livre.desc' = 'Ouvrir un livre SZH-CSPS'
+    # Lanceur « Books SZH-CSPS » : un livre n'a ni volume ni numéro, il a un titre, une
+    # année et une référence B — voir open-livre.ps1.
+    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
+    'lanceur.choisir.livre'        = 'Choisissez le livre à ouvrir :'
+    'lanceur.vide.livre'           = 'Aucun livre sur ce poste pour l’’instant – « Nouveau livre… » pour commencer.'
+    'lanceur.nouvelle.livre'       = 'Nouveau livre…'
+    'lanceur.test.livre'           = 'Livre dans : {0}'
+    'lanceur.modifie.livre'        = '{0}    (modifié le {1})'
+    'lanceur.vide.archives.livre'  = 'Aucun livre archivé.'
+    'lanceur.nouvelle.livre.titre'      = 'Titre :'
+    'lanceur.nouvelle.livre.reference'  = 'Référence B :'
+    'lanceur.nouvelle.livre.type'       = 'Type :'
+    'lanceur.nouvelle.livre.type.mono'      = 'Monographie'
+    'lanceur.nouvelle.livre.type.collectif' = 'Ouvrage collectif'
+    'lanceur.nouvelle.livre.maquette'        = 'Maquette :'
+    'lanceur.nouvelle.livre.maquette.normal' = 'Normal'
+    'lanceur.nouvelle.livre.maquette.falc'   = 'FALC'
+    'lanceur.nouvelle.livre.format'          = 'Format :'
+    'lanceur.nouvelle.livre.format.standard' = 'Standard (155 × 225 mm)'
+    'lanceur.nouvelle.livre.format.a4'       = 'A4 (210 × 297 mm)'
+    'lanceur.nouvelle.livre.titre.manque'    = 'Le titre du livre est nécessaire pour créer son dossier.'
+    'lanceur.nouvelle.livre.doublon'         = "La référence B{0} existe déjà : c'est le livre « {1} », ici :`n{2}"
+    'lanceur.nouvelle.livre.doublon.arch'    = 'Ce livre-là est archivé – un livre archivé reste un livre publié.'
+    'lanceur.nouvelle.livre.doublon.suite'   = 'Deux livres ne peuvent pas porter la même référence B. Supprimez d’’abord celui qui existe, puis recréez celui-ci.'
+    'lanceur.nouvelle.livre.erreur'          = "La création du livre a échoué :`n{0}"
   }
   de = @{
     'app.titre'         = 'SZH/CSPS – Publikations-Toolchain'
@@ -317,6 +343,30 @@ $script:SzhTextes = @{
     'raccourci.maj.desc'  = 'Die neueste Version des SZH-Redaktionstools installieren. Ein Fenster öffnet sich und zeigt, was geschieht.'
     'raccourci.revue.desc' = 'Eine SZH-Revue öffnen'
     'raccourci.zs.desc'   = 'Eine SZH-Zeitschrift öffnen'
+    'raccourci.livre.desc' = 'Ein SZH-CSPS-Buch öffnen'
+    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
+    'lanceur.choisir.livre'        = 'Wählen Sie das zu öffnende Buch:'
+    'lanceur.vide.livre'           = 'Noch kein Buch auf diesem Computer – mit «Neues Buch…» beginnen.'
+    'lanceur.nouvelle.livre'       = 'Neues Buch…'
+    'lanceur.test.livre'           = 'Buch in: {0}'
+    'lanceur.modifie.livre'        = '{0}    (geändert am {1})'
+    'lanceur.vide.archives.livre'  = 'Kein archiviertes Buch.'
+    'lanceur.nouvelle.livre.titre'      = 'Titel:'
+    'lanceur.nouvelle.livre.reference'  = 'B-Referenz:'
+    'lanceur.nouvelle.livre.type'       = 'Typ:'
+    'lanceur.nouvelle.livre.type.mono'      = 'Monografie'
+    'lanceur.nouvelle.livre.type.collectif' = 'Sammelband'
+    'lanceur.nouvelle.livre.maquette'        = 'Layout:'
+    'lanceur.nouvelle.livre.maquette.normal' = 'Normal'
+    'lanceur.nouvelle.livre.maquette.falc'   = 'FALC'
+    'lanceur.nouvelle.livre.format'          = 'Format:'
+    'lanceur.nouvelle.livre.format.standard' = 'Standard (155 × 225 mm)'
+    'lanceur.nouvelle.livre.format.a4'       = 'A4 (210 × 297 mm)'
+    'lanceur.nouvelle.livre.titre.manque'    = 'Der Titel des Buchs wird benötigt, um seinen Ordner anzulegen.'
+    'lanceur.nouvelle.livre.doublon'         = "Die B-Referenz {0} existiert bereits: es ist das Buch «{1}», hier:`n{2}"
+    'lanceur.nouvelle.livre.doublon.arch'    = 'Jenes Buch ist archiviert – ein archiviertes Buch bleibt ein veröffentlichtes Buch.'
+    'lanceur.nouvelle.livre.doublon.suite'   = 'Zwei Bücher können nicht dieselbe B-Referenz tragen. Löschen Sie zuerst das vorhandene Buch und erstellen Sie dieses danach neu.'
+    'lanceur.nouvelle.livre.erreur'          = "Das Buch konnte nicht erstellt werden:`n{0}"
   }
   en = @{
     'app.titre'         = 'SZH/CSPS — Publishing toolchain'
@@ -442,6 +492,30 @@ $script:SzhTextes = @{
     'raccourci.maj.desc'  = 'Install the latest version of the SZH journal tool. A window opens and shows what is going on.'
     'raccourci.revue.desc' = 'Open an SZH journal'
     'raccourci.zs.desc'   = 'Open an SZH Zeitschrift'
+    'raccourci.livre.desc' = 'Open an SZH-CSPS book'
+    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
+    'lanceur.choisir.livre'        = 'Choose the book to open:'
+    'lanceur.vide.livre'           = 'No book on this computer yet — use “New book…” to get started.'
+    'lanceur.nouvelle.livre'       = 'New book…'
+    'lanceur.test.livre'           = 'Book in: {0}'
+    'lanceur.modifie.livre'        = '{0}    (modified on {1})'
+    'lanceur.vide.archives.livre'  = 'No archived book.'
+    'lanceur.nouvelle.livre.titre'      = 'Title:'
+    'lanceur.nouvelle.livre.reference'  = 'B reference:'
+    'lanceur.nouvelle.livre.type'       = 'Type:'
+    'lanceur.nouvelle.livre.type.mono'      = 'Monograph'
+    'lanceur.nouvelle.livre.type.collectif' = 'Edited volume'
+    'lanceur.nouvelle.livre.maquette'        = 'Layout:'
+    'lanceur.nouvelle.livre.maquette.normal' = 'Normal'
+    'lanceur.nouvelle.livre.maquette.falc'   = 'FALC'
+    'lanceur.nouvelle.livre.format'          = 'Format:'
+    'lanceur.nouvelle.livre.format.standard' = 'Standard (155 × 225 mm)'
+    'lanceur.nouvelle.livre.format.a4'       = 'A4 (210 × 297 mm)'
+    'lanceur.nouvelle.livre.titre.manque'    = 'The book’’s title is needed to create its folder.'
+    'lanceur.nouvelle.livre.doublon'         = "Reference B{0} already exists — that is the book {1}, here:`n{2}"
+    'lanceur.nouvelle.livre.doublon.arch'    = 'That book is archived — an archived book is still a published book.'
+    'lanceur.nouvelle.livre.doublon.suite'   = 'Two books cannot carry the same B reference. Delete the existing one first, then create this one again.'
+    'lanceur.nouvelle.livre.erreur'          = "Creating the book failed:`n{0}"
   }
 }
 
@@ -449,7 +523,17 @@ $script:SzhTextes = @{
 # à son équipe, et non à la langue d'affichage de Windows. Le choix est retenu pour les
 # scripts qui n'ont pas de produit — la mise à jour, surtout, qui s'ouvre seule.
 # $env:SZH_LANGUE garde le dernier mot, pour un essai.
+#
+# ⚠ Le livre est l'exception : une revue est française, une Zeitschrift allemande, mais un
+#   livre est écrit dans SA langue à lui (`lang:` de buch.yaml, propre à chaque ouvrage) —
+#   il n'a pas de langue de PRODUIT. Forcer 'fr' ici comme pour tout ce qui n'est pas
+#   'zeitschrift' ferait donc parler français un lanceur qu'un poste germanophone vient
+#   d'ouvrir. Le lanceur « Books SZH-CSPS » appelle quand même cette fonction, pour rester
+#   au même endroit que les deux autres produits ; elle ne fait ici que ne rien changer, et
+#   $SzhLangue reste ce que la cascade du haut du fichier a déjà résolu (variable
+#   d'environnement, préférence retenue dans state.json, puis langue de Windows).
 function Set-SzhLangueProduit([string]$Produit) {
+  if (([string]$Produit).ToLower() -eq 'livre') { return }
   $voulue = if (([string]$Produit).ToLower() -eq 'zeitschrift') { 'de' } else { 'fr' }
   if ($env:SZH_LANGUE -and (@('fr', 'de', 'en') -contains $env:SZH_LANGUE.ToLower())) { return }
   $script:SzhLangue = $voulue
@@ -700,19 +784,48 @@ function Test-SzhVersionTag([string]$Version) {
   return ($Version -match '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$')
 }
 
-# ---- Emplacement des revues : test ou production ----
+# ---- Emplacement des revues (et des livres) : test ou production ----
 # Seul endroit qui décide où vivent les revues : le cockpit ne calcule aucun chemin
 # SharePoint, il délègue l'archivage à archive-revue.ps1. Sous-dossiers identiques en test
 # et en production, seule la base change, si bien qu'un essai exerce le code réel.
+#
+# ⚠ HYPOTHÈSE À CONFIRMER AVEC LA RÉDACTION, pour la ligne `livre` seulement — les deux
+#   autres sont vérifiées sur SharePoint. On sait que la convention « BU » existe et que le
+#   dossier d'ARCHIVES livré s'appelle littéralement « BU01_Auflagen finale » (espace
+#   compris, pas de tiret bas avant « finale ») ; on NE SAIT PAS sous quel numéro de dossier
+#   produit il vit (« 52_Revue », « 53_Zeitschrift » suggèrent « 54_Buch », posé ici par
+#   déduction, jamais vérifié), ni comment s'appelle le dossier de RÉDACTION (« RV02 »/« ZS02 »
+#   suggèrent « BU02_Redaktion », posé de même). Configurable par `config.json`
+#   (« sousDossiersLivre ») → Get-SzhSousDossierLivre ci-dessous, précisément parce que
+#   cette ligne-ci n'est qu'un défaut plausible et non une valeur relevée.
 $script:SzhSousDossiers = @{
   revue       = @{ encours = '52_Revue\RV02_Redaction';        archive = '52_Revue\RV99_Archives' }
   zeitschrift = @{ encours = '53_Zeitschrift\ZS02_Redaktion';  archive = '53_Zeitschrift\ZS99_Archives' }
+  livre       = @{ encours = '54_Buch\BU02_Redaktion';         archive = '54_Buch\BU01_Auflagen finale' }
 }
 # Bases par défaut, surchargeables par config.json (« basesRevues ») : seule chaîne à
-# corriger si la bibliothèque SharePoint est synchronisée ailleurs.
+# corriger si la bibliothèque SharePoint est synchronisée ailleurs. Les livres partagent la
+# même base que les revues — c'est la même bibliothèque SharePoint, « 2_Produkte » — seul le
+# sous-dossier change, ci-dessus.
 $script:SzhBasesDefaut = @{
   prod = '%USERPROFILE%\SZH CSPS\Daten_Allgemein - General\2_Produkte'
   dev  = '%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING'
+}
+
+# Sous-dossier de livre effectif : le défaut ci-dessus, ou la valeur de `config.json` quand
+# la rédaction l'a corrigée. Seule la ligne « livre » de $SzhSousDossiers a besoin de ce
+# détour — revue et zeitschrift sont des valeurs relevées, pas des hypothèses.
+#   "sousDossiersLivre": { "encours": "...", "archive": "..." }
+function Get-SzhSousDossierLivre([string]$Etat) {
+  $defaut = $SzhSousDossiers.livre.$Etat
+  $cfg = Get-SzhConfig
+  if ($cfg -and $cfg.PSObject.Properties['sousDossiersLivre']) {
+    $table = $cfg.sousDossiersLivre
+    if ($table -and $table.PSObject.Properties[$Etat] -and [string]$table.$Etat) {
+      return [string]$table.$Etat
+    }
+  }
+  return $defaut
 }
 
 # Les deux valeurs de `emplacementRevues` dans config.json. Cette clé remplace `devMode` :
@@ -874,9 +987,12 @@ function Get-SzhEtiquetteRacine {
   return $etiquette
 }
 
-# Les quatre emplacements du poste ; les listes à plat sont celles que balaie le lanceur.
-# La racine active part au journal une fois par processus : après coup, il dit d'où venaient
-# les revues d'un lancement donné.
+# Les quatre emplacements de revue du poste, plus les deux de livre ; les listes à plat
+# (`encours`/`archives`) restent celles des DEUX PRODUITS DE REVUE — c'est ce que balaie
+# open-revue.ps1, et ce qu'il balayait déjà avant le livre — le livre vit à part, dans sa
+# propre paire `livre.encours`/`livre.archive`, lue par open-livre.ps1 (Get-SzhEmplacementRevue
+# 'livre' …). La racine active part au journal une fois par processus : après coup, il dit
+# d'où venaient les revues d'un lancement donné.
 $script:SzhRacineJournalisee = $false
 function Get-SzhEmplacements {
   $emplacement = Get-SzhEmplacementRevues
@@ -893,23 +1009,29 @@ function Get-SzhEmplacements {
     encours = (Join-Path $base $SzhSousDossiers.zeitschrift.encours)
     archive = (Join-Path $base $SzhSousDossiers.zeitschrift.archive)
   }
+  $livre = @{
+    encours = (Join-Path $base (Get-SzhSousDossierLivre 'encours'))
+    archive = (Join-Path $base (Get-SzhSousDossierLivre 'archive'))
+  }
   return [pscustomobject]@{
     emplacement = $emplacement
     devMode     = ($emplacement -eq $SzhEmplacementTest)
     base        = $base
     revue       = $revue
     zeitschrift = $zeitschrift
+    livre       = $livre
     encours     = @($revue.encours, $zeitschrift.encours)
     archives    = @($revue.archive, $zeitschrift.archive)
   }
 }
 
-# En mode test seulement, crée les quatre dossiers manquants. En production, jamais :
-# l'arborescence est celle de SharePoint, un poste n'a pas à l'inventer.
+# En mode test seulement, crée les dossiers manquants — les quatre de revue, plus les deux
+# de livre. En production, jamais : l'arborescence est celle de SharePoint, un poste n'a pas
+# à l'inventer.
 function Initialize-SzhEmplacementsTest {
   $emp = Get-SzhEmplacements
   if (-not $emp.devMode) { return $false }
-  foreach ($d in ($emp.encours + $emp.archives)) {
+  foreach ($d in ($emp.encours + $emp.archives + @($emp.livre.encours, $emp.livre.archive))) {
     if (-not (Test-Path $d)) {
       try { New-Item -ItemType Directory -Force -Path $d | Out-Null } catch { }
     }
@@ -917,10 +1039,13 @@ function Initialize-SzhEmplacementsTest {
   return $true
 }
 
-# $Jeton = 'revue' | 'zeitschrift', $Etat = 'encours' | 'archive' ; '' si jeton inconnu.
+# $Jeton = 'revue' | 'zeitschrift' | 'livre', $Etat = 'encours' | 'archive' ; '' si jeton
+# inconnu. Le livre n'a pas de « numéro » (volume + numéro) : il partage néanmoins ce point
+# d'entrée, open-livre.ps1 s'en servant exactement comme open-revue.ps1 s'en sert déjà.
 function Get-SzhEmplacementRevue([string]$Jeton, [string]$Etat) {
   $emp = Get-SzhEmplacements
   if ($Jeton -eq 'zeitschrift') { return [string]$emp.zeitschrift.$Etat }
+  if ($Jeton -eq 'livre') { return [string]$emp.livre.$Etat }
   if ($Jeton -eq 'revue') { return [string]$emp.revue.$Etat }
   return ''
 }
@@ -976,6 +1101,38 @@ function Get-SzhRevueEtat([string]$Dossier) {
     dossier     = $Dossier
     titre       = $titre
     jeton       = $jeton
+    verrouillee = $verrou
+    archivee    = $archive
+  }
+}
+
+# État complet d'un dossier de livre, sur le modèle de Get-SzhRevueEtat ci-dessus, pour le
+# lanceur « Books SZH-CSPS ». Réutilise Get-SzhAusgabe (l'analyseur YAML plat), qui ne sait
+# rien du nom du fichier qu'on lui donne — buch.yaml n'est ici qu'un chemin de plus.
+#
+# ⚠ La langue du texte se lit dans `lang:` : c'est la clé que lit réellement la chaîne
+#   (pipeline/livre-assembler.py, `meta.get('lang')`) et celle des deux livres du banc
+#   (test/livre-normal, test/livre-falc). `langue:` — l'orthographe de l'exemple de
+#   docs/ARCHITECTURE-LIVRES.md — reste tolérée pour un buch.yaml qui l'aurait suivi à la
+#   lettre, mais `lang:` l'emporte si les deux sont présentes.
+function Get-SzhLivreEtat([string]$Dossier) {
+  $valeurs = Get-SzhAusgabe (Join-Path $Dossier 'buch.yaml')
+  $titre = ''
+  if ($valeurs.ContainsKey('titre')) { $titre = $valeurs['titre'] }
+  $langue = ''
+  if ($valeurs.ContainsKey('lang')) { $langue = $valeurs['lang'] }
+  elseif ($valeurs.ContainsKey('langue')) { $langue = $valeurs['langue'] }
+  $maquette = 'normal'
+  if ($valeurs.ContainsKey('maquette') -and $valeurs['maquette']) { $maquette = $valeurs['maquette'] }
+  $verrou = $false
+  if ($valeurs.ContainsKey('locked')) { $verrou = Test-SzhVraiYaml $valeurs['locked'] }
+  $archive = $false
+  if ($valeurs.ContainsKey('archived')) { $archive = Test-SzhVraiYaml $valeurs['archived'] }
+  return [pscustomobject]@{
+    dossier     = $Dossier
+    titre       = $titre
+    langue      = $langue
+    maquette    = $maquette
     verrouillee = $verrou
     archivee    = $archive
   }
@@ -1064,6 +1221,68 @@ function Find-SzhNumeroVolume([string]$Produit, [int]$Volume, [int]$Numero) {
       if ((Get-SzhEntierYaml $valeurs['numero']) -ne $Numero) { continue }
       return [pscustomobject]@{
         nom     = $d.Name
+        chemin  = $d.FullName
+        dossier = $racine
+        archive = ($etat -eq 'archive')
+      }
+    }
+  }
+  return $null
+}
+
+# ---- Identité d'un livre : titre, année, référence B ----
+# Un livre n'a pas de « numéro d'une année » : il a un TITRE, une ANNÉE et une RÉFÉRENCE —
+# les dossiers réels s'appellent « Buch_2019-B301-Thaler », « 2025-B328-SZH_ProspectrumFALC_DE ».
+# La convention retenue pour les nouveaux livres, plus régulière : « <année>-B<référence>-<nom> »,
+# le <nom> étant déduit du titre, jamais saisi séparément — même principe que
+# Get-SzhNomNumero ci-dessus.
+#
+# Translittération vers ASCII (accents retirés, tout le reste réduit à des « _ ») : un nom
+# de dossier lisible sans dépendre d'un jeu de caractères, sur le modèle de la
+# translittération de l'import (iconv -t ASCII//TRANSLIT, pipeline/Makefile). Borné à 40
+# caractères : le nom compte plusieurs fois dans un chemin de sortie (out/<nom>.pdf…), et un
+# titre entier dépasserait vite la limite Windows de 260 caractères.
+function Get-SzhSlugLivre([string]$Titre) {
+  $texte = ([string]$Titre).Trim()
+  $decompose = $texte.Normalize([Text.NormalizationForm]::FormD)
+  $sansAccents = -join ($decompose.ToCharArray() | Where-Object {
+    [Globalization.CharUnicodeInfo]::GetUnicodeCategory($_) -ne
+      [Globalization.UnicodeCategory]::NonSpacingMark
+  })
+  $slug = ($sansAccents -replace '[^A-Za-z0-9]+', '_').Trim('_')
+  if ($slug.Length -gt 40) { $slug = $slug.Substring(0, 40).Trim('_') }
+  if (-not $slug) { $slug = 'Livre' }
+  return $slug
+}
+
+# Nom de dossier d'un livre neuf : « <année>-B<référence>-<nom> ». Voir Get-SzhSlugLivre.
+function Get-SzhNomLivre([int]$Annee, [int]$Reference, [string]$Titre) {
+  return ('{0}-B{1}-{2}' -f $Annee, $Reference, (Get-SzhSlugLivre $Titre))
+}
+
+# Un livre se reconnaît à sa RÉFÉRENCE B, jamais à son nom de dossier — même principe que
+# Find-SzhNumeroVolume ci-dessus, adapté : buch.yaml ne porte pas cette référence en clé (elle
+# ne vit que dans le nom du dossier), donc c'est le nom qui est lu, avec le motif que produit
+# Get-SzhNomLivre. On cherche dans les DEUX emplacements — en cours et archives — un livre
+# archivé restant un livre publié.
+#
+# Rend $null, ou le premier livre trouvé : { nom, titre, chemin, dossier, archive }.
+function Find-SzhLivreReference([int]$Reference) {
+  if ($Reference -lt 1) { return $null }
+  foreach ($etat in @('encours', 'archive')) {
+    $racine = Get-SzhEmplacementRevue 'livre' $etat
+    if (-not $racine) { continue }
+    if (-not (Test-Path $racine)) { continue }
+    $dossiers = @()
+    try { $dossiers = @(Get-ChildItem -Path $racine -Directory -ErrorAction SilentlyContinue) } catch { }
+    foreach ($d in $dossiers) {
+      if ($d.Name -notmatch '^\d{4}-B(\d+)-') { continue }
+      if ([int]$Matches[1] -ne $Reference) { continue }
+      if (-not (Test-Path (Join-Path $d.FullName 'buch.yaml'))) { continue }
+      $etatLivre = Get-SzhLivreEtat $d.FullName
+      return [pscustomobject]@{
+        nom     = $d.Name
+        titre   = $etatLivre.titre
         chemin  = $d.FullName
         dossier = $racine
         archive = ($etat -eq 'archive')
@@ -1245,14 +1464,20 @@ function Test-SzhSha256 {
   return ($h -eq $Attendu.ToLower())
 }
 
-# ---- Écriture d'une clé plate dans ausgabe.yaml ----
+# ---- Écriture d'une clé plate dans ausgabe.yaml (ou buch.yaml) ----
 # Ligne existante remplacée, sinon ajoutée en fin de fichier : le reste est préservé,
 # comme serialiserAusgabe côté cockpit. `$Cite` suit formaterValeurYaml ; `revue` et
 # `lang` restent des jetons nus, le sed du Makefile ne comprenant pas les guillemets.
 # `$Vide` autorise une valeur vide, pour qu'un appel sans valeur n'efface pas une clé.
-function Set-SzhAusgabeCle([string]$Dossier, [string]$Cle, [string]$Valeur, [bool]$Cite, [bool]$Vide) {
+#
+# `$NomFichier` : « ausgabe.yaml » par défaut, pour que new-revue.ps1 n'ait rien à changer ;
+# new-livre.ps1 passe « buch.yaml », même mécanique d'écriture, seul le nom change. ⚠ Le
+# paramètre est nommé avec une majuscule pour ne pas être confondu avec la variable locale
+# `$fichier` ci-dessous — PowerShell ignore la casse des noms de variables, et les deux
+# auraient sinon désigné la même case mémoire.
+function Set-SzhAusgabeCle([string]$Dossier, [string]$Cle, [string]$Valeur, [bool]$Cite, [bool]$Vide, [string]$NomFichier = 'ausgabe.yaml') {
   if ((-not $Valeur) -and (-not $Vide)) { return $false }
-  $fichier = Join-Path $Dossier 'ausgabe.yaml'
+  $fichier = Join-Path $Dossier $NomFichier
   if (-not (Test-Path $fichier)) { return $false }
   $lignes = @(Get-Content $fichier -Encoding UTF8)
   $ligne = ('{0}: {1}' -f $Cle, $Valeur)
@@ -1264,16 +1489,16 @@ function Set-SzhAusgabeCle([string]$Dossier, [string]$Cle, [string]$Valeur, [boo
   if (-not $trouvee) { $lignes += $ligne }
   # Sans BOM et par remplacement atomique : les lecteurs ancrés en début de ligne (sed du
   # Makefile, ^title: de szh-maquette.lua) ne savent pas ignorer un BOM.
-  $tmp = Join-Path $Dossier '~$ausgabe.yaml'
+  $tmp = Join-Path $Dossier ('~$' + $NomFichier)
   [System.IO.File]::WriteAllLines($tmp, $lignes, (New-Object System.Text.UTF8Encoding($false)))
   Move-Item -LiteralPath $tmp -Destination $fichier -Force
   return $true
 }
 
-# `version-toolkit` dit avec quelle version le numéro a été fabriqué, de quoi le
-# recomposer plus tard à l'identique. Posée à la création, jamais réécrite ensuite.
-function Set-SzhAusgabeVersion([string]$Dossier, [string]$Version) {
-  return (Set-SzhAusgabeCle $Dossier 'version-toolkit' $Version $true $false)
+# `version-toolkit` dit avec quelle version le numéro (ou le livre) a été fabriqué, de quoi
+# le recomposer plus tard à l'identique. Posée à la création, jamais réécrite ensuite.
+function Set-SzhAusgabeVersion([string]$Dossier, [string]$Version, [string]$NomFichier = 'ausgabe.yaml') {
+  return (Set-SzhAusgabeCle $Dossier 'version-toolkit' $Version $true $false $NomFichier)
 }
 
 # ---- Liens profonds « szh:// » ----
@@ -1384,9 +1609,12 @@ function Start-SzhCodium([string]$Dossier) {
 # menu Démarrer — l'allemande sur un poste francophone, le .lnk français présent sur le
 # disque mais absent de Get-StartApps. Le nom sans langue reste le repli des fenêtres
 # lancées autrement que par le menu.
+# Le livre n'a qu'UNE entrée de menu (contrairement à la mise à jour, qui en a deux) : une
+# seule identité lui suffit, jamais partagée avec aucune des cinq autres.
 $script:SzhAppIds = @{
   'revue'       = 'SZH.Publishing.Revue'
   'zeitschrift' = 'SZH.Publishing.Zeitschrift'
+  'livre'       = 'SZH.Publishing.Livres'
   'maj'         = 'SZH.Publishing.MiseAJour'
   'maj.fr'      = 'SZH.Publishing.MiseAJour.fr'
   'maj.de'      = 'SZH.Publishing.MiseAJour.de'
@@ -1623,6 +1851,7 @@ function Get-SzhRaccourcisMenu {
   param([string]$Toolkit = $SzhToolkit)
   $vbs     = Join-Path $Toolkit 'windows\hidden.vbs'
   $lanceur = Join-Path $Toolkit 'windows\open-revue.ps1'
+  $lanceurLivre = Join-Path $Toolkit 'windows\open-livre.ps1'
   $maj     = Join-Path $Toolkit 'windows\update.ps1'
   $wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
   # Windows PowerShell 5.1 explicitement : $PSHOME désignerait pwsh si la mise à jour
@@ -1652,6 +1881,23 @@ function Get-SzhRaccourcisMenu {
     icone  = (Join-Path $Toolkit 'windows\szh-zeitschrift.ico')
     appid  = (Get-SzhAppId 'zeitschrift')
     pilote = $lanceur
+  })
+  # « Books SZH-CSPS » : un troisième produit, sans langue à lui — un livre s'écrit dans SA
+  # langue (`lang:` de buch.yaml), jamais celle du lanceur qui les liste. La description
+  # suit donc $SzhLangue, la langue déjà résolue en tête de ce fichier (variable
+  # d'environnement, préférence retenue, langue de Windows), au lieu d'un « fr » ou « de »
+  # figé comme pour les deux autres produits. Le caractère « / » n'est pas de mise dans un nom de FICHIER
+  # .lnk (Windows le lit comme un séparateur de chemin) : le nom du raccourci et de la
+  # fenêtre s'écrit donc « Books SZH-CSPS », trait d'union, partout où c'est un nom de
+  # fichier ou une identité, pas seulement ici.
+  [void]$liste.Add([ordered]@{
+    nom    = 'Books SZH-CSPS'
+    cible  = $wscript
+    args   = ('//B "{0}" "{1}"' -f $vbs, $lanceurLivre)
+    desc   = $SzhTextes[$SzhLangue]['raccourci.livre.desc']
+    icone  = (Join-Path $Toolkit 'windows\szh-livre.ico')
+    appid  = (Get-SzhAppId 'livre')
+    pilote = $lanceurLivre
   })
   foreach ($langue in $SzhLanguesRaccourci) {
     [void]$liste.Add([ordered]@{
@@ -1739,7 +1985,7 @@ function Set-SzhRaccourcisMenu {
   # ci-dessus, CreateShortcut réécrivant le fichier existant. Le premier niveau du menu
   # seulement : le sous-dossier « SZH » appartient à un autre produit, et rien ici ne doit
   # y toucher.
-  $nos = @('open-revue.ps1', 'update.ps1')
+  $nos = @('open-revue.ps1', 'open-livre.ps1', 'update.ps1')
   try {
     foreach ($f in @(Get-ChildItem -LiteralPath $Menu -Filter '*.lnk' -File -ErrorAction Stop)) {
       if ($canoniques.ContainsKey($f.Name.ToLower())) { continue }
@@ -1760,20 +2006,22 @@ function Set-SzhRaccourcisMenu {
   return $bilan
 }
 
-# ---- Raccourci « Ouvrir la revue » ----
+# ---- Raccourci « Ouvrir la revue » (ou « Ouvrir le livre ») ----
 # Le raccourci vit dans le dossier de revue et porte son chemin absolu : à réécrire à
 # chaque déplacement, sinon il rouvre un chemin disparu. Ne lève pas si VSCodium manque,
 # c'est un confort et non la condition du déplacement.
-function Set-SzhRaccourciRevue([string]$Dossier) {
+# `$NomLien`/`$Description` par défaut : ceux de la revue, pour que new-revue.ps1 n'ait rien
+# à changer ; new-livre.ps1 passe les siens.
+function Set-SzhRaccourciRevue([string]$Dossier, [string]$NomLien = 'Ouvrir la revue', [string]$Description = 'Ouvrir cette revue dans l''éditeur') {
   $codium = Get-VSCodiumExe
   if (-not $codium) { return $false }
   $chemin = (Resolve-Path $Dossier).Path
   $shell = New-Object -ComObject WScript.Shell
-  $lnk = $shell.CreateShortcut((Join-Path $chemin 'Ouvrir la revue.lnk'))
+  $lnk = $shell.CreateShortcut((Join-Path $chemin ($NomLien + '.lnk')))
   $lnk.TargetPath = $codium
   $lnk.Arguments = ('"{0}"' -f $chemin)
   $lnk.IconLocation = $codium
-  $lnk.Description = 'Ouvrir cette revue dans l''éditeur'
+  $lnk.Description = $Description
   $lnk.Save()
   return $true
 }

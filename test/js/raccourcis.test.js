@@ -35,10 +35,13 @@ const UPDATE = lire('windows', 'update.ps1');
 const LANCEUR_MAJ = lire('windows', 'update-launcher.ps1');
 const BOOTSTRAP = lire('windows', 'bootstrap.ps1');
 const OUVRIR = lire('windows', 'open-revue.ps1');
+const OUVRIR_LIVRE = lire('windows', 'open-livre.ps1');
 const ICONE_PY = lire('windows', 'icone.py');
 
-// Les quatre entrées voulues, telles que le rédacteur les lit dans son menu.
-const NOMS = ['Revues SZH', 'Zeitschriften SZH',
+// Les cinq entrées voulues, telles que le rédacteur les lit dans son menu. « Books
+// SZH-CSPS » : un troisième produit (le livre), qui s'est ajouté aux quatre premières —
+// voir docs/ARCHITECTURE-LIVRES.md.
+const NOMS = ['Revues SZH', 'Zeitschriften SZH', 'Books SZH-CSPS',
   'Mise à jour de l’outil Revue', 'Aktualisierung des Redaktionstools'];
 
 // ---- Ce que szh-common.ps1 déclare ----
@@ -84,9 +87,10 @@ test('deux entrées de mise à jour, une par équipe, à noms fixes', () => {
 test('la mise à jour se voit, les lanceurs non', () => {
   const debut = COMMUN.indexOf('function Get-SzhRaccourcisMenu');
   const corps = COMMUN.slice(debut, COMMUN.indexOf('\r\nfunction ', debut + 10));
-  // Les deux lanceurs : wscript.exe //B hidden.vbs, donc sans console.
+  // Les trois lanceurs (revue, zeitschrift, livre) : wscript.exe //B hidden.vbs, donc sans
+  // console.
   const lignesVbs = corps.split('\r\n').filter((l) => l.indexOf('//B "{0}"') !== -1);
-  assert.strictEqual(lignesVbs.length, 2, 'seuls les deux lanceurs passent par hidden.vbs');
+  assert.strictEqual(lignesVbs.length, 3, 'seuls les trois lanceurs passent par hidden.vbs');
   for (const l of lignesVbs) { assert.ok(l.indexOf('open-revue.ps1') === -1 || true); }
   // La mise à jour : powershell.exe en direct, et rien d'autre. hidden.vbs ici cacherait
   // le téléchargement, l'attente et l'échec.
@@ -103,10 +107,10 @@ test('la mise à jour se voit, les lanceurs non', () => {
 
 test('un raccourci de mise à jour porte sa propre icône, fabriquée par icone.py', () => {
   // Épinglé à la barre des tâches, un raccourci perd son libellé : l'icône devient le seul
-  // repère, et trois entrées ne peuvent pas partager la même image.
+  // repère, et quatre entrées ne peuvent pas partager la même image.
   const debut = COMMUN.indexOf('function Get-SzhRaccourcisMenu');
   const corps = COMMUN.slice(debut, COMMUN.indexOf('\r\nfunction ', debut + 10));
-  const icones = ['szh-revue.ico', 'szh-zeitschrift.ico', 'szh-maj.ico'];
+  const icones = ['szh-revue.ico', 'szh-zeitschrift.ico', 'szh-maj.ico', 'szh-livre.ico'];
   for (const ico of icones) {
     assert.ok(corps.indexOf(ico) !== -1, 'szh-common.ps1 ne cherche plus ' + ico);
     // Le fichier existe, et icone.py sait le refaire : un .ico déposé à la main ne se
@@ -114,10 +118,10 @@ test('un raccourci de mise à jour porte sa propre icône, fabriquée par icone.
     assert.ok(fs.existsSync(path.join(RACINE, 'windows', ico)), ico + ' manque au dépôt');
     assert.ok(ICONE_PY.indexOf("'" + ico + "'") !== -1, 'icone.py ne fabrique plus ' + ico);
   }
-  // Trois images distinctes, sinon l'icône ne distingue rien.
+  // Quatre images distinctes, sinon l'icône ne distingue rien.
   const empreintes = new Set(icones.map((i) =>
     require('crypto').createHash('sha256').update(fs.readFileSync(path.join(RACINE, 'windows', i))).digest('hex')));
-  assert.strictEqual(empreintes.size, 3, 'deux icônes sont identiques');
+  assert.strictEqual(empreintes.size, 4, 'deux icônes sont identiques');
   // Le repli quand l'icône manque reste celle de l'éditeur, jamais rien : sans
   // IconLocation le shell montre celle de wscript.exe, qui ne dit rien à personne.
   assert.ok(COMMUN.indexOf('elseif ($codium) { $lnk.IconLocation = $codium }') !== -1);
@@ -131,7 +135,7 @@ test('la barre des tâches reçoit une identité, des deux côtés', () => {
   // déduit une de l'exécutable hôte — powershell.exe, lancé par hidden.vbs — et affiche
   // son icône. Il faut les deux moitiés, et ce sont elles que ce contrôle garde.
   assert.match(COMMUN, /\$script:SzhAppIds = @\{/);
-  for (const id of ['SZH.Publishing.Revue', 'SZH.Publishing.Zeitschrift',
+  for (const id of ['SZH.Publishing.Revue', 'SZH.Publishing.Zeitschrift', 'SZH.Publishing.Livres',
     'SZH.Publishing.MiseAJour.fr', 'SZH.Publishing.MiseAJour.de']) {
     assert.ok(COMMUN.indexOf("'" + id + "'") !== -1, 'identité disparue : ' + id);
   }
@@ -153,6 +157,14 @@ test('la barre des tâches reçoit une identité, des deux côtés', () => {
   // Et chaque produit la sienne, sinon les deux lanceurs ne font qu'un seul bouton.
   assert.ok(OUVRIR.indexOf('Get-SzhAppId $produitFiltre') !== -1,
     'les deux lanceurs partageraient une identité, donc un bouton');
+  // Le troisième lanceur, celui du livre : même règle, déclarée avant sa première fenêtre,
+  // avec sa propre identité — jamais celle de la revue ou de la Zeitschrift.
+  const declLivre = OUVRIR_LIVRE.indexOf('Set-SzhAppUserModelId');
+  const fenetreLivre = OUVRIR_LIVRE.indexOf('New-Object System.Windows.Forms.Form');
+  assert.ok(declLivre !== -1, 'open-livre.ps1 ne déclare plus son identité');
+  assert.ok(declLivre < fenetreLivre, 'identité déclarée après la première fenêtre : trop tard');
+  assert.ok(OUVRIR_LIVRE.indexOf("Get-SzhAppId 'livre'") !== -1,
+    'open-livre.ps1 ne déclare plus l’identité du livre');
   // La fenêtre de mise à jour n'est pas un lanceur, mais elle a son bouton elle aussi.
   assert.ok(UPDATE.indexOf("Get-SzhAppId ('maj.' + $SzhLangue)") !== -1,
     'update.ps1 ne déclare plus l’identité de sa langue');
@@ -164,7 +176,7 @@ test('la barre des tâches reçoit une identité, des deux côtés', () => {
 
 test('les libellés des raccourcis existent dans les trois langues, en « ss »', () => {
   for (const cle of ['raccourci.maj.nom', 'raccourci.maj.desc',
-    'raccourci.revue.desc', 'raccourci.zs.desc']) {
+    'raccourci.revue.desc', 'raccourci.zs.desc', 'raccourci.livre.desc']) {
     const motif = new RegExp("'" + cle.replace(/\./g, '\\.') + "'\\s*=\\s*(.+)", 'g');
     const lignes = COMMUN.match(motif) || [];
     assert.strictEqual(lignes.length, 3, 'il manque une traduction de ' + cle);
@@ -337,26 +349,29 @@ const bilan = (function () {
 
 const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
 
-test('le menu reçoit les quatre entrées, résolues comme le shell les lit', { skip: sansPowerShell }, () => {
+test('le menu reçoit les cinq entrées, résolues comme le shell les lit', { skip: sansPowerShell }, () => {
   assert.strictEqual(bilan.status, 0, 'le pilote PowerShell a échoué : ' + bilan.stderr);
   const r = bilan.r;
   assert.deepStrictEqual(r.manques, [], 'un raccourci n’a pas pu être posé');
   assert.deepStrictEqual(r.poses.slice().sort(), NOMS.slice().sort());
   const par = {};
   for (const l of r.lnk) { par[l.nom] = l; }
-  // Les deux lanceurs : cachés, filtrés sur leur produit, chacun son icône.
+  // Les trois lanceurs : cachés, chacun son icône. Le livre n'a pas de « -Produit » — il
+  // n'y a qu'un seul jeton de livre, rien à filtrer.
   for (const [nom, produit, ico, appid] of [
     ['Revues SZH.lnk', 'revue', 'szh-revue.ico', 'SZH.Publishing.Revue'],
-    ['Zeitschriften SZH.lnk', 'zeitschrift', 'szh-zeitschrift.ico', 'SZH.Publishing.Zeitschrift']]) {
+    ['Zeitschriften SZH.lnk', 'zeitschrift', 'szh-zeitschrift.ico', 'SZH.Publishing.Zeitschrift'],
+    ['Books SZH-CSPS.lnk', null, 'szh-livre.ico', 'SZH.Publishing.Livres']]) {
     const l = par[nom];
     assert.ok(l, nom + ' manque au menu');
     assert.match(l.cible, /wscript\.exe$/i);
     assert.ok(l.args.indexOf('hidden.vbs') !== -1, nom + ' : le lanceur doit rester sans console');
-    assert.ok(l.args.indexOf('"-Produit" "' + produit + '"') !== -1);
+    if (produit) { assert.ok(l.args.indexOf('"-Produit" "' + produit + '"') !== -1); }
+    else { assert.ok(l.args.indexOf('-Produit') === -1, nom + ' : un livre n’a qu’un jeton'); }
     assert.ok(l.icone.indexOf(ico) !== -1, nom + ' : icône ' + l.icone);
     assert.ok(l.desc.length > 8, nom + ' : description vide');
     // L'icône du .lnk ne vaut que pour le menu ; c'est l'identité qui la fait suivre
-    // jusqu'au bouton de la barre des tâches, et qui distingue les deux produits.
+    // jusqu'au bouton de la barre des tâches, et qui distingue les trois produits.
     assert.strictEqual(l.appid, appid, nom + ' : identité de barre des tâches');
   }
   // Les deux mises à jour : powershell.exe en direct, fenêtre normale, langue portée.
@@ -397,12 +412,12 @@ test('un ancien raccourci mal nommé est retiré, pas doublé', { skip: sansPowe
   assert.ok(noms.indexOf('Bloc-notes.lnk') !== -1, 'un raccourci étranger a été supprimé');
   assert.deepStrictEqual(r.sousDossier, ['SZH Updater.lnk'],
     'le sous-dossier « SZH » d’un autre produit a été touché');
-  assert.strictEqual(r.lnk.length, 5, 'le menu porte les quatre entrées plus l’étranger');
+  assert.strictEqual(r.lnk.length, 6, 'le menu porte les cinq entrées plus l’étranger');
   // Deux passes de suite : rien de doublé, rien de retiré une seconde fois.
-  assert.strictEqual(r.passe2.poses, 4);
+  assert.strictEqual(r.passe2.poses, 5);
   assert.strictEqual(r.passe2.retires, 0);
   assert.strictEqual(r.passe2.manques, 0);
-  assert.strictEqual(r.passe2.fichiers, 5);
+  assert.strictEqual(r.passe2.fichiers, 6);
 });
 
 test('un menu Démarrer non inscriptible n’arrête rien, et le dit', { skip: sansPowerShell }, () => {
@@ -411,7 +426,7 @@ test('un menu Démarrer non inscriptible n’arrête rien, et le dit', { skip: s
   assert.strictEqual(bilan.status, 0);
   assert.strictEqual(v.poses, 0);
   assert.strictEqual(v.fichiers, 0);
-  assert.ok(v.manques.length >= 5, 'chaque entrée manquante doit être nommée');
+  assert.ok(v.manques.length >= 6, 'chaque entrée manquante doit être nommée');
   for (const nom of NOMS) {
     assert.ok(v.manques.some((m) => m.indexOf(nom) === 0), 'rien n’est dit de : ' + nom);
   }
@@ -425,13 +440,15 @@ test('un menu Démarrer non inscriptible n’arrête rien, et le dit', { skip: s
 
 test('un toolkit incomplet ne laisse pas de raccourci mort', { skip: sansPowerShell }, () => {
   // Le raccourci pointe dans le toolkit ; si le script visé n'y est pas, un .lnk ne ferait
-  // que clignoter. On ne le pose pas, on le dit, et le reste est posé quand même.
+  // que clignoter. On ne le pose pas, on le dit, et le reste est posé quand même. Ce
+  // toolkit partiel n'a que open-revue.ps1 et hidden.vbs : ni update.ps1 (deux entrées),
+  // ni open-livre.ps1 (une entrée) n'y sont — trois manques en tout.
   const p = bilan.r.partiel;
   assert.deepStrictEqual(p.poses.slice().sort(), ['Revues SZH', 'Zeitschriften SZH']);
   assert.deepStrictEqual(p.fichiers.slice().sort(), ['Revues SZH.lnk', 'Zeitschriften SZH.lnk']);
-  assert.strictEqual(p.manques.length, 2);
+  assert.strictEqual(p.manques.length, 3);
   for (const m of p.manques) {
-    assert.match(m, /update\.ps1 manque au toolkit/);
+    assert.match(m, /(update\.ps1|open-livre\.ps1) manque au toolkit/);
     // Et la suite : ce qui va le réparer, sans que personne n'ait à s'en occuper.
     assert.match(m, /tâche planifiée/);
   }

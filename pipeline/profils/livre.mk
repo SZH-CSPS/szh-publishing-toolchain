@@ -350,14 +350,22 @@ $(COUVERTURE_HTML): $(LIVRE_PDF) $(COUVERTURE_FRAG) $(CONFIG_LIVRE) $(GABARIT_CO
 	  --sortie "$@" \
 	  --css "$(SOCLE_ABS)" --css "$(abspath $(STYLE_COUVERTURE))"
 
-# HTML -> PDF : PAS de variante PDF/UA ici. La couverture n'est pas un document de lecture
-# balisé (il n'y a rien à en lire à la synthèse vocale) ; `bleed`/`marks` sont posés par
-# couverture.css, pas par cette recette. Même dispositif de fichier temporaire que les
-# autres sorties WeasyPrint : un rename local, ignoré par la synchro OneDrive.
+# HTML -> PDF. Balisé PDF/UA-1 comme les autres sorties, et pas « seulement une image
+# d'imprimerie » : la couverture porte le titre, les auteur·e·s et le texte de 4e, c'est-à-dire
+# précisément ce qu'un lecteur d'écran doit pouvoir annoncer d'un livre. Mesuré : elle passe
+# la porte veraPDF ua1 telle quelle, le balisage ne coûte donc rien à tenter.
+# Même cascade de repli que le PDF intérieur, et pour la même raison : un défaut de balisage
+# ne doit pas empêcher de sortir une épreuve. `bleed`/`marks` sont posés par couverture.css,
+# pas par cette recette. Temporaire puis rename local, ignoré par la synchro OneDrive.
 $(COUVERTURE_PDF): $(COUVERTURE_HTML)
 	@tmp='$(dir $@)~$$$(notdir $@)'; jrnl='$(dir $@)~weasyprint.err'; \
 	: > "$$jrnl"; \
-	if ! $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl"; then \
+	if $(WEASYPRINT) --pdf-variant pdf/ua-1 $< "$$tmp" 2>>"$$jrnl"; then :; \
+	elif $(WEASYPRINT) --pdf-tags $< "$$tmp" 2>>"$$jrnl"; then \
+	  echo "[livre] PDF/UA-1 indisponible -> couverture balisée simple : $@"; \
+	elif $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl"; then \
+	  echo "[livre] balisage PDF indisponible -> couverture non balisée : $@"; \
+	else \
 	  echo "[livre] échec de la couverture :"; cat "$$jrnl" >&2; exit 1; \
 	fi; \
 	sed -n '1,20p' "$$jrnl" | sed 's/^/[weasyprint] /'; \

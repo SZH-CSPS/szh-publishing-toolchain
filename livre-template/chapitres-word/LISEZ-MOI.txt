@@ -1,0 +1,13 @@
+Ce dossier est prévu pour déposer les chapitres Word (.docx) finalisés — sur le modèle du
+dossier « articles-word » d'une revue.
+
+ATTENTION : contrairement à celui d'une revue, ce dépôt n'est aujourd'hui PAS converti
+automatiquement à l'enregistrement. En attendant que ce geste existe pour les livres,
+écrivez directement le texte du chapitre dans un fichier .md sous « chapitres/<nom> »,
+sur le modèle du chapitre d'exemple déjà présent (« chapitres/01-exemple »).
+
+Remarques :
+- l'ordre des chapitres dans le livre suit l'ordre alphabétique des dossiers dans
+  « chapitres » – nommez-les « 01-… », « 02-… » ;
+- un ouvrage collectif porte les auteur·e·s de chaque chapitre dans sa fiche
+  (<nom>.meta.yaml, à côté du .md) ; une monographie les porte dans buch.yaml.

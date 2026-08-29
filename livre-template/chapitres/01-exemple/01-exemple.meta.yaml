@@ -1,0 +1,12 @@
+# Fiche du chapitre. Elle ne sert aujourd'hui qu'en OUVRAGE COLLECTIF (`type: collectif`
+# dans buch.yaml), pour porter les auteur·e·s propres à ce chapitre — une monographie n'a
+# pas besoin de ce fichier, ses auteur·e·s sont dans buch.yaml. Le TITRE qui s'imprime reste
+# celui du titre de niveau 1 (`#`) du fichier .md ; celui-ci n'a qu'à lui correspondre.
+lang: fr
+title:
+  fr: "Chapitre d'exemple"
+author:
+- prenom: "Prénom"
+  nom: "Nom"
+  fonction: "Rédacteur ou rédactrice"
+  affiliation: "SZH/CSPS"

@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-# icone.py — fabrique les trois icônes du toolkit, à côté de ce script :
+# icone.py — fabrique les quatre icônes du toolkit, à côté de ce script :
 #
 #     szh-revue.ico        raccourci « Revues SZH » du menu Démarrer, fenêtres du lanceur,
 #                          entrée « Revue SZH » d'« Ouvrir avec » et type de fichier .md
 #     szh-zeitschrift.ico  raccourci « Zeitschriften SZH » et fenêtres de ce lanceur
 #     szh-maj.ico          les deux raccourcis de mise à jour du menu Démarrer
+#     szh-livre.ico        raccourci « Books SZH-CSPS » et fenêtres de ce lanceur
 #
-#     python3 windows/icone.py        (réécrit les trois .ico à côté)
+#     python3 windows/icone.py        (réécrit les quatre .ico à côté)
 #
-# Une icône à nous plutôt que celle de VSCodium : les deux entrées se suivent dans la
+# Une icône à nous plutôt que celle de VSCodium : les entrées se suivent dans la
 # boîte « Ouvrir avec », et l'utilisateur doit reconnaître d'un coup d'œil celle qu'il
 # coche une fois pour toutes. Sans icône, le shell affiche celle de wscript.exe, qui ne
 # dit rien à personne. Une par produit : épinglés à la barre des tâches, les raccourcis
@@ -16,17 +17,18 @@
 #
 # Le dessin, « l'étagère » : trois dos de fascicule couleur papier, de hauteurs inégales,
 # posés sur une tablette de la couleur du produit — capucine #EB5E51 pour la Revue,
-# moutarde #C7CF1C pour la Zeitschrift — sur la tuile bleu nuit du hero de couverture.
-# Aucune lettre : à 16 px un glyphe devient une tache. Les deux couleurs de tablette sont
-# séparées de 69 niveaux de gris, donc les icônes se distinguent aussi en niveaux de gris
-# et pour un œil qui confond le rouge et le vert.
+# moutarde #C7CF1C pour la Zeitschrift, sarcelle #1B6E6A pour les livres — sur la tuile
+# bleu nuit du hero de couverture. Aucune lettre : à 16 px un glyphe devient une tache. Les
+# trois couleurs de tablette sont séparées d'au moins 48 niveaux de gris deux à deux, donc
+# les icônes se distinguent aussi en niveaux de gris et pour un œil qui confond le rouge et
+# le vert — la sarcelle a été choisie contre les deux autres, pas seulement contre l'une.
 #
 # La mise à jour, elle, garde la tuile et la tablette — la famille — mais remplace les dos
 # par une grosse flèche vers le bas, le signe attendu pour « installer ». Ici la différence
 # est portée par le dessin et non par la couleur : la tablette prend le bleu acier #5F9FBC
-# de la charte, qui dit « l'outil » plutôt que l'un des deux produits, mais il ne s'écarte
-# que de 8 niveaux de gris de la capucine. C'est la flèche, pas la teinte, qui distingue
-# cette icône à 16 px et en niveaux de gris.
+# de la charte, qui dit « l'outil » plutôt que l'un des produits, mais il ne s'écarte que de
+# 8 niveaux de gris de la capucine. C'est la flèche, pas la teinte, qui distingue cette
+# icône à 16 px et en niveaux de gris.
 #
 # La géométrie est la transcription du SVG livré (viewBox 0 0 256 256) : les rectangles y
 # gardent leurs coordonnées d'origine, et le rendu ne fait que ramener ces 256 unités à la
@@ -44,6 +46,7 @@ PAPIER = (0xF5, 0xF2, 0xEA)
 CAPUCINE = (0xEB, 0x5E, 0x51)
 MOUTARDE = (0xC7, 0xCF, 0x1C)
 BLEUACIER = (0x5F, 0x9F, 0xBC)
+SARCELLE = (0x1B, 0x6E, 0x6A)
 
 # Deux sortes de formes, en unités du SVG : un rectangle à coins arrondis
 # (x, y, largeur, hauteur, rayon), cinq nombres, ou un triangle — ses trois sommets.
@@ -67,11 +70,13 @@ FLECHE = ((TABLETTE, None), (FLECHE_HAMPE, PAPIER), (FLECHE_POINTE, PAPIER))
 # tuiles et les propriétés de fichier.
 TAILLES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 ICI = os.path.dirname(os.path.abspath(__file__))
-# Un fichier par usage. Ces noms sont ceux que cherchent szh-common.ps1 et open-revue.ps1 :
-# les changer ici sans les changer là-bas fait retomber les raccourcis sur VSCodium.
+# Un fichier par usage. Ces noms sont ceux que cherchent szh-common.ps1, open-revue.ps1 et
+# open-livre.ps1 : les changer ici sans les changer là-bas fait retomber les raccourcis sur
+# VSCodium.
 VARIANTES = (('szh-revue.ico', CAPUCINE, ETAGERE),
              ('szh-zeitschrift.ico', MOUTARDE, ETAGERE),
-             ('szh-maj.ico', BLEUACIER, FLECHE))
+             ('szh-maj.ico', BLEUACIER, FLECHE),
+             ('szh-livre.ico', SARCELLE, ETAGERE))
 
 
 def dans_rectangle(rect, u, v):

@@ -128,7 +128,10 @@ if [ -z "$only" ]; then
       rm -rf out
       journal="$REPO/test/out/.$livre.log"
       mkdir -p "$REPO/test/out"
-      if make -f "$REPO/pipeline/Makefile" livre > "$journal" 2>&1; then
+      # Les QUATRE sorties, pas seulement le PDF numérique : le PDF imprimeur et la
+      # couverture partent chez l'imprimeur, et la couverture est la seule qui lise le
+      # PDF intérieur — un dos calculé sur un compte de pages périmé ne se voit nulle part.
+      if make -f "$REPO/pipeline/Makefile" livre livre-imprimeur livre-couverture livre-html-web > "$journal" 2>&1; then
         grep -iE "error|traceback|warning|non balis" "$journal" | sed 's/^/    /' || true
       else
         echo "    ÉCHEC du build :"
@@ -143,13 +146,21 @@ if [ -z "$only" ]; then
         grep -A 4 "non balisé" "$journal" | sed 's/^/      /'
         exit 1
       fi
+      # ⚠ Le verdict se lit sur l'ABSENCE de FAIL, jamais sur la présence d'un PASS.
+      # veraPDF rend une ligne par fichier, et un livre en a quatre : chercher « PASS »
+      # trouverait le premier et laisserait passer les trois autres. Un contrôle qui ne
+      # peut plus échouer est un contrôle mort.
+      # Le journal passe par un fichier et non par un tube : dans un tube, seul le code du
+      # dernier maillon compte, et un validateur absent rendrait 0.
       if [ -x "$VERAPDF" ]; then
-        if JAVA_HOME="$VERAPDF_JAVA" "$VERAPDF" --flavour ua1 --format text out/*.pdf              | sed 's/^/    /' | grep -q "^    PASS"; then
-          echo "    PDF/UA-1 : conforme"
-        else
+        ua="$REPO/test/out/.$livre.pdfua"
+        JAVA_HOME="$VERAPDF_JAVA" "$VERAPDF" --flavour ua1 --format text out/*.pdf > "$ua" 2>&1
+        if grep -q "^FAIL" "$ua" || ! grep -q "^PASS" "$ua"; then
           echo "    ✗ PDF/UA-1 : NON conforme"
+          sed 's/^/      /' "$ua"
           exit 1
         fi
+        echo "    PDF/UA-1 : conforme ($(grep -c '^PASS' "$ua") fichier(s))"
       else
         echo "    (PDF/UA ignoré : veraPDF introuvable en $VERAPDF)"
       fi

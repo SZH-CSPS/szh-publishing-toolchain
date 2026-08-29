@@ -1,0 +1,67 @@
+# Métadonnées de l'ouvrage, lues par la chaîne de fabrication à chaque compilation — comme
+# ausgabe.yaml pour un numéro de revue, mais pour un livre. Il n'y a pas encore, dans
+# l'éditeur, de formulaire dédié à ce fichier : les champs qui suivent se corrigent ici, à
+# la main, en attendant.
+#
+#   titre, sous-titre : tels qu'ils s'impriment sur la couverture et la page de titre.
+#   type    : « monographie » ou « collectif ».
+#             Monographie : les auteur·e·s sont ci-dessous (`auteurs:`), et les chapitres
+#             n'ont pas de bloc auteurs à eux.
+#             Collectif : chaque chapitre porte les siens dans sa propre fiche
+#             (<slug>.meta.yaml, à côté de son .md — même schéma qu'un article de revue),
+#             et `auteurs:` reste vide ici.
+#   lang    : langue du TEXTE de ce livre (fr, de, it…) — propre à cet ouvrage, sans rapport
+#             avec la langue de l'interface : un livre n'a pas de langue de produit, à la
+#             différence d'une revue (toujours française) ou d'une Zeitschrift (toujours
+#             allemande).
+#   maquette: « normal » (la charte courante) ou « falc » (facile à lire et à comprendre).
+#   format  : « standard » (155×225 mm) ou « a4 » (210×297 mm, FALC seulement).
+#   collection, tome : la collection numérotée dans laquelle le livre paraît, si c'en est
+#             une ; laissés vides sinon.
+#   isbn-print, isbn-ebook, doi : posés par la rédaction quand ils sont attribués — un
+#             champ vide reste vide sur la page de colophon, jamais une valeur inventée.
+#   couleur : couleur d'accent de l'ouvrage (pastille de chapitre et onglet de tranche en
+#             maquette FALC).
+#   auteurs : monographie seulement — voir `type` ci-dessus.
+#   ordre-chapitres : vide = l'ordre des dossiers de chapitres/ (leurs préfixes 01-, 02-…).
+#   liminaires : les pièces liminaires, dans l'ordre où elles s'impriment. Les mots-clés
+#             « demi-titre », « colophon », « page-titre » et « sommaire » sont composés
+#             automatiquement ; un nom de fichier (« avant-propos.md ») renvoie à une pièce
+#             écrite à la main, dans le dossier liminaires/.
+#   impression : grammage et main du papier, pour calculer l'épaisseur du dos de la
+#             couverture — une valeur de départ, pas une vérité : le papier se choisit livre
+#             par livre, et c'est l'imprimeur qui donne sa main. `dos-mm` force la valeur
+#             quand elle est connue.
+#
+# Cycle de vie de l'ouvrage, comme pour un numéro de revue :
+#   locked   : ouvrage gelé — édition en lecture seule jusqu'au déverrouillage.
+#   archived : le dossier vit dans les archives.
+#   version-toolkit : version du logiciel qui a créé ce livre, posée par new-livre.ps1, de
+#             quoi le recomposer des années plus tard à l'identique.
+titre: ""
+sous-titre: ""
+ouvrage: monographie
+lang: fr
+maquette: normal
+format: standard
+collection: ""
+tome: ""
+annee:
+isbn-print: ""
+isbn-ebook: ""
+doi: ""
+licence: cc-by-nc-nd-4.0
+couleur: "#5F9FBC"
+auteurs: []
+ordre-chapitres: []
+liminaires: [demi-titre, colophon, page-titre, sommaire, avant-propos.md]
+impression:
+  grammage: 90
+  main: 1.22
+  dos-mm:
+  fond-perdu-mm: 3
+  traits-de-coupe: true
+  profil-cmjn: ""
+locked: false
+archived: false
+version-toolkit: ""
