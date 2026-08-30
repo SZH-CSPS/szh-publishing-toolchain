@@ -489,7 +489,12 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
 
 /* ── Grille d'images ──────────────────────────────────────────────────────────
    Une figure, plusieurs images : filters/szh-grille.lua compose le bloc en rangées et
-   écrit sur chaque case un `flex-grow` égal au rapport largeur/hauteur de son image.
+   écrit sur chaque case une propriété personnalisée --szh-case-max (calculée en
+   filtrage, appliquée ici en max-width) : la largeur que prend la case à hauteur
+   plafonnée (plafond × rapport largeur/hauteur). La case elle-même reçoit un flex-grow
+   égal au rapport largeur/hauteur de son image. La propriété personnalisée permet de
+   l'annuler sans !important depuis une requête d'écran (sous 34rem, chaque image reprend
+   le plafond entier quand la rangée se défait).
 
    Ce que fait ce réglage, et pourquoi il est le bon : dans une rangée dont les cases ont
    une base nulle, une croissance proportionnelle au rapport donne à toutes les images de
@@ -498,17 +503,23 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
    cas ordinaire d'une série, cela revient à des colonnes égales. Aucune image n'est
    recadrée, aucune n'est déformée.
 
+   IMPORTANT : le plafond doit se POSER EN max-width SUR LA CASE, pas en max-height sur
+   l'image. WeasyPrint 69 ne rétrécit pas l'image en max-height ; au lieu de cela, il
+   l'écrase : un fichier 900 × 1400 sort en 650 × 377 (rapport 1.721 au lieu de 0.643),
+   déformation visible. La max-width sur la case, combinée avec width: 100% et height: auto
+   sur l'image, garde exactement le rapport.
+
    La croissance déclarée ici (1) sert de repli : une image que le filtre n'a pas su
    mesurer — SVG sans dimensions, fichier illisible — partage alors la rangée à parts
    égales. Le style en ligne du filtre l'emporte quand la mesure existe.
 
    L'écart entre les images est le seul chiffre en dur de ce bloc : 6 px à la largeur de
    la colonne, assez pour séparer deux visuels sans creuser une gouttière. */
-.szh-grille-rangee { display: flex; align-items: flex-start; gap: 6px;
+.szh-grille-rangee { display: flex; align-items: flex-start; justify-content: center; gap: 6px;
   margin-bottom: 6px; break-inside: avoid; }
 .szh-grille-rangee:last-child { margin-bottom: 0; }
 .szh-grille-case { display: block; flex-grow: 1; flex-shrink: 1; flex-basis: 0%;
-  min-width: 0; }
+  min-width: 0; max-width: var(--szh-case-max, none); }
 /* Le plafond de hauteur (--plafond-figure, socle.css) vaut pour LA FIGURE ENTIÈRE, pas
    pour une image : dans une grille, toutes les images d'une rangée ont la même hauteur
    et les rangées s'empilent, donc le plafond doit se PARTAGER entre elles — d'où la
@@ -516,11 +527,14 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
    sur la <figure> : une propriété personnalisée s'hérite depuis n'importe quel ancêtre,
    et c'est le seul qui survive jusqu'ici, voir le commentaire de rangee() dans le filtre).
    Repli à 1 hors grille.
-   `- 12px` : les écarts entre rangées (6 px, au plus deux fois).
-   `margin: 0 auto` : quand le plafond mord, l'image devient plus étroite que sa case —
-   la centrer garde la rangée équilibrée. */
-.szh-grille-case > img { display: block; width: 100%; height: auto; margin: 0 auto;
-  max-height: calc((var(--plafond-figure) - 12px) / var(--szh-rangees, 1)); }
+   `- 12px` : les écarts entre rangées (6 px, au plus deux fois). */
+.szh-grille-case > img { display: block; width: 100%; height: auto; max-height: none; }
+/* Dans une case de grille, c'est la CASE qui plafonne la hauteur (via --szh-case-max),
+   pas l'image. La règle générale `img { max-height: var(--plafond-figure); }` (§6)
+   s'appliquerait aussi ici et la combinerait avec width: 100%, combinaison qui fait
+   écrase l'image en déformant le rapport — voir le commentaire de ce bloc. On la
+   neutralise donc explicitement. */
+
 /* Image décorative dans une grille : szh-numerotation.lua l'a sortie en fond CSS, avec sa
    largeur naturelle en pixels. Dans une case, c'est la case qui donne la largeur — la
    spécificité de ce sélecteur passe devant le <style> de fin de corps. */
@@ -541,6 +555,13 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
     .szh-grille-rangee { display: block; }
     .szh-grille-case { margin-bottom: 6px; }
     .szh-grille-case:last-child { margin-bottom: 0; }
+    /* Rangée défaite : chaque image est seule sur sa ligne et le partage du plafond
+       entre rangées n'a plus d'objet. On rend le plafond entier, en `width: auto` —
+       la seule forme qu'un moteur ne déforme pas. WeasyPrint n'applique pas
+       @media screen : ces deux règles ne concernent que la lecture à l'écran. */
+    .szh-grille-case { max-width: none; }
+    .szh-grille-case > img { width: auto; max-width: 100%; margin: 0 auto;
+      max-height: var(--plafond-figure); }
   }
 }
 

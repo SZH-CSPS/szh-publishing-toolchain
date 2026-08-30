@@ -214,17 +214,22 @@ local function normaliser_alt(img)
   if img.attributes['alt'] ~= nil then img.caption = pandoc.Inlines({}) end
 end
 
--- Une rangée : un Div qui porte le flex, une case par image qui porte sa croissance.
--- `rangees` (nombre total de rangées de la grille) est posé ici en --szh-rangees, sur CE
--- Div : print.css (.szh-grille-case > img) le lit pour partager entre les rangées le
--- plafond de hauteur d'une figure (--plafond-figure, socle.css) — sans quoi une grille de
--- plusieurs rangées hautes ne tient plus sur une page et se coupe entre deux rangées.
+-- Une rangée : un Div qui porte le flex, une case par image qui porte sa croissance et
+-- sa max-width. `rangees` (nombre total de rangées de la grille) est posé ici en
+-- --szh-rangees, sur CE Div : print.css en lit cette variable pour calculer le plafond
+-- de hauteur divisé par le nombre de rangées. La case, elle, reçoit une propriété
+-- personnalisée --szh-case-max (calculée ici, appliquée en print.css) qui donne à
+-- l'image exactement la hauteur plafonnée, sans déformation — WeasyPrint 69 ne
+-- rétrécit pas en max-height sur l'image, il l'écrase. C'est une propriété personnalisée,
+-- pas une max-width directe, pour pouvoir l'annuler sans !important depuis une requête
+-- d'écran (sous 34rem, la rangée se défait et chaque image reprend le plafond entier).
 -- ⚠ Posé sur le Div de la rangée, PAS sur la <figure> englobante : szh-legende-avant.lua
 -- réécrit à la main la balise ouvrante de la <figure> et n'y reprend que l'id et les
 -- classes — tout `style` qu'on y poserait s'y perdrait (mesuré). Un Div de rangée, lui,
 -- reste jusqu'au bout un bloc pandoc ordinaire, et son `style=` survit tel quel ; la
 -- propriété personnalisée est héritée par les <img> qu'il contient, comme si elle avait
--- été posée plus haut.
+-- été posée plus haut. La max-width sur la case est aussi écrite en style=, donc elle
+-- y survit.
 local function rangee(images, ratios, debut, combien, rangees)
   local cases = pandoc.Inlines({})
   for k = debut, debut + combien - 1 do
@@ -233,7 +238,9 @@ local function rangee(images, ratios, debut, combien, rangees)
     -- Sans mesure, la case garde la croissance de la feuille de style (1) : les images de
     -- la rangée se partagent alors la largeur à parts égales.
     if type(r) == 'number' and r > 0 then
-      attrs['style'] = string.format('flex-grow:%.4f', r)
+      attrs['style'] = string.format(
+        'flex-grow:%.4f;--szh-case-max:calc((var(--plafond-figure) - 12px)'
+          .. ' / var(--szh-rangees, 1) * %.4f)', r, r)
     end
     cases:insert(pandoc.Span({ images[k] }, pandoc.Attr('', { 'szh-grille-case' }, attrs)))
   end

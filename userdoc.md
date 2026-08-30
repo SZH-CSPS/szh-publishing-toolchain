@@ -231,6 +231,23 @@ Elle a **trois sections** :
     résultat net.
   - Un **SVG** n’a pas de résolution : il est net à toute taille, jamais signalé.
 
+  #### Les images hautes sont bridées en hauteur
+
+  Une image **plus haute que large**, mise à la largeur de la colonne, dépasserait la
+  hauteur de la page : la figure ne tiendrait plus d’un bloc, et sa légende partirait seule
+  en bas d’une page presque vide. Aucune image ne dépasse donc **80 % de la hauteur utile
+  d’une page** – elle est alors rendue plus étroite que la colonne, et centrée. Le fichier
+  n’est ni recadré ni déformé : c’est un cadrage à l’affichage, rien de plus.
+
+  Dans une **grille**, ce plafond se partage entre les rangées : deux portraits l’un sous
+  l’autre font deux fois plus haut qu’un seul, et la figure entière – légende comprise –
+  doit tenir sur une page. C’est pourquoi une grille de plusieurs rangées montre des
+  images plus petites qu’une figure isolée.
+
+  La même règle vaut **à l’écran**, où le plafond se mesure sur la fenêtre : une image ne
+  fait jamais défiler trois écrans à elle seule. Sur téléphone, les rangées d’une grille se
+  défont et chaque image retrouve toute la largeur disponible.
+
   ### L’éditeur de tableau
 
   Une grille, comme dans un tableur. Les gestes :
