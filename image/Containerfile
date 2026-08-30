@@ -82,8 +82,38 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         make curl ca-certificates \
         python3 python3-venv \
         libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libffi8 fontconfig \
+        ghostscript \
         ${FONTS} \
     && rm -rf /var/lib/apt/lists/*
+
+# ghostscript, ci-dessus : la SECONDE passe du PDF imprimeur d'un livre. WeasyPrint n'écrit
+# qu'en DeviceRGB et n'a pas de mode CMJN ; pipeline/cmjn.py substitue d'abord les couleurs
+# que le graphiste a chiffrées, et ghostscript convertit le reste — les images, les teintes
+# dérivées — par le profil de sortie. Sans lui, il n'y a pas de PDF CMJN : seulement un PDF
+# RVB qu'on croirait tel, et cela ne se voit qu'à la facture de l'imprimeur.
+
+# ---- Profil de sortie CMJN : ISO Coated v2 (FOGRA39) ----
+# C'est le profil que demande l'imprimerie. Celui d'Adobe (CoatedFOGRA39.icc) n'est pas
+# redistribuable ; celui de l'ECI l'est. Épinglé par sha256 comme veraPDF et les modèles
+# ONNX : un profil substitué en amont changerait la couleur de tous les livres sans qu'une
+# ligne du dépôt ait bougé.
+# ⚠ ICC_SHA256 est VIDE tant que l'empreinte du zip ECI n'a pas été relevée à la main. Dans
+#   cet état l'image se construit quand même, sans profil, et pipeline/cmjn.py refuse alors
+#   de produire un PDF « CMJN » — il le dit et s'arrête. Un demi-fichier livré en silence
+#   serait pire.
+ARG ICC_URL=http://www.eci.org/lib/exe/fetch.php?media=downloads:icc_profiles_from_eci:eci_offset_2009.zip
+ARG ICC_SHA256=
+RUN mkdir -p /opt/icc \
+    && if [ -n "${ICC_SHA256}" ]; then \
+         curl -fsSL "${ICC_URL}" -o /tmp/eci.zip \
+         && printf '%s  %s\n' "${ICC_SHA256}" /tmp/eci.zip | sha256sum -c - \
+         && python3 -c "import zipfile,shutil; z=zipfile.ZipFile('/tmp/eci.zip'); \
+              n=[m for m in z.namelist() if m.endswith('ISOcoated_v2_eci.icc')][0]; \
+              shutil.copyfileobj(z.open(n), open('/opt/icc/ISOcoated_v2_eci.icc','wb'))" \
+         && rm /tmp/eci.zip; \
+       else \
+         echo "ICC_SHA256 vide : image construite SANS profil CMJN (voir le commentaire)"; \
+       fi
 
 # ---- WeasyPrint : venv isolé, versions épinglées dans requirements.txt ----
 COPY requirements.txt /tmp/requirements.txt

@@ -395,8 +395,43 @@ $(COUVERTURE_PDF): $(COUVERTURE_HTML)
 	sed -n '1,20p' "$$jrnl" | sed 's/^/[weasyprint] /'; \
 	mv -f "$$tmp" "$@"
 
+# --------------------------------------------------------------------------------------
+# La passe CMJN, facultative et COMMANDÉE : la clé `impression.profil-cmjn` de buch.yaml
+# nomme le profil de sortie. Vide, le PDF imprimeur reste en RVB, comme il l'a toujours
+# été — un livre déjà en production ne doit pas changer de couleurs parce qu'on a mis le
+# toolkit à jour.
+#
+# Deux temps, et le second ne défait pas le premier (mesuré) : cmjn.py substitue d'abord
+# les couleurs que le graphiste a chiffrées — le noir du texte en K SEUL, et les sept
+# teintes de la charte à leurs valeurs officielles — puis Ghostscript convertit le reste
+# par le profil ICC en laissant intact ce qui est déjà en DeviceCMYK.
+#
+# Pourquoi la table du graphiste plutôt que l'ICC : mesuré sur le bleu nuit #252B46, la
+# charte dit 65/45/0/60 et l'ICC en fait 91/82/42/47. Ce n'est pas la même couleur, et
+# c'est le chiffre du graphiste qui fait foi.
+PROFIL_CMJN := $(strip $(shell sed -n "s/^[[:space:]]*profil-cmjn:[[:space:]]*[\"']*\([^\"'#]*\).*/\1/p" \
+                         $(CONFIG_LIVRE) 2>/dev/null | head -1))
+# Le profil vit dans l'image (voir image/Containerfile) ; surchargeable pour une machine
+# qui l'a ailleurs, ou pour éprouver avec le profil d'Adobe.
+ICC_DIR ?= /opt/icc
+CMJN_PY := $(PIPELINE_DIR)/cmjn.py
+
 livre-imprimeur: verifie-livre $(LIVRE_IMPRIMEUR_PDF)
-	@echo "[livre] $(LIVRE_IMPRIMEUR_PDF)"
+ifeq ($(PROFIL_CMJN),)
+	@echo "[livre] $(LIVRE_IMPRIMEUR_PDF) (RVB — aucun profil dans impression.profil-cmjn)"
+else
+	@icc="$(ICC_DIR)/$(PROFIL_CMJN)"; \
+	if [ ! -f "$$icc" ]; then icc="$(PROFIL_CMJN)"; fi; \
+	if [ ! -f "$$icc" ]; then \
+	  echo "[livre] ✗ Profil CMJN introuvable : « $(PROFIL_CMJN) » (cherché dans $(ICC_DIR)/ puis tel quel)."; \
+	  echo "[livre]   Le PDF imprimeur reste en RVB. Rien n'a été livré en CMJN : un PDF RVB qu'on croirait CMJN se paie à l'impression."; \
+	  echo "[livre] [de] ✗ CMYK-Profil nicht gefunden: « $(PROFIL_CMJN) ». Das Druck-PDF bleibt in RGB."; \
+	  exit 1; \
+	fi; \
+	python3 "$(CMJN_PY)" "$(LIVRE_IMPRIMEUR_PDF)" "$(LIVRE_IMPRIMEUR_PDF).cmjn" "$$icc" || exit 1; \
+	mv -f "$(LIVRE_IMPRIMEUR_PDF).cmjn" "$(LIVRE_IMPRIMEUR_PDF)"; \
+	echo "[livre] $(LIVRE_IMPRIMEUR_PDF) (CMJN, $(PROFIL_CMJN))"
+endif
 
 # --------------------------------------------------------------------------------------
 # Le HTML web : troisième assemblage, avec web.css SEUL (--css-embed, pas --css) — voir

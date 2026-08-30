@@ -17,3 +17,9 @@ tinyhtml5==2.1.0
 weasyprint==69.0
 webencodings==0.5.1
 zopfli==0.4.3
+
+# pypdf : lu par pipeline/cmjn.py, qui atteint les flux de contenu du PDF pour y remplacer
+# les operateurs de couleur RVB par leurs equivalents CMJN. Il vit dans CE venv et non dans
+# un troisieme : la chaine y appelle deja WeasyPrint, et cmjn.py travaille sur ce que
+# WeasyPrint vient d'ecrire.
+pypdf==6.15.0
