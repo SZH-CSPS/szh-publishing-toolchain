@@ -341,6 +341,7 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $
 	  --css="$(SOCLE_ABS)" --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
 	  --lua-filter="$(MAQUETTE_LUA)" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-listes-serrees.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
@@ -384,6 +385,7 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --standalone --embed-resources \
 	  --css="$(SOCLE_ABS)" --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-listes-serrees.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \

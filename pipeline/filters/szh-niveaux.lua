@@ -18,6 +18,18 @@
 -- (2.1, 2.1.1) sur les trois premiers rangs seulement, et avec print.css, qui les style
 -- en miroir.
 
+-- Le rang le plus haut du CORPS. Dans un article, le <h1> est le titre de la couverture,
+-- posé par le gabarit et absent du document : le corps commence donc à <h2>. Dans un
+-- LIVRE, le « # » d'un chapitre EST le titre de ce chapitre, donc son <h1> : le corps
+-- commence à <h2> aussi, mais le h1 doit RESTER h1 et ne pas entrer dans le compactage.
+--
+-- ⚠ Ce filtre n'était pas branché du tout côté livre, au motif qu'il aurait décalé les
+--   titres. Le prix s'est vu au premier livre réel : un manuscrit Word qui passe de « # »
+--   à « ### » produit un saut de niveau, et le PDF sort NON CONFORME PDF/UA-1
+--   (ISO 14289-1 7.4.2-1, « un niveau de titre est sauté »). Un lecteur d'écran y perd le
+--   plan du document. Le compactage est donc branché des deux côtés ; seul le h1 du
+--   chapitre est mis à part.
+local LIVRE = (os.getenv('SZH_LIVRE') or '') ~= ''
 local MIN_CIBLE = 2
 local MAX_CIBLE = 6
 
@@ -52,7 +64,11 @@ end
 function Pandoc(doc)
   local presents = {}
   doc:walk({
-    Header = function(h) presents[h.level] = true end,
+    -- En mode livre, le h1 est le titre du chapitre : il garde son rang et ne participe
+    -- pas au calcul, sinon il descendrait en h2 et le chapitre perdrait son titre.
+    Header = function(h)
+      if not (LIVRE and h.level == 1) then presents[h.level] = true end
+    end,
   })
   local rangs = {}
   for niveau in pairs(presents) do rangs[#rangs + 1] = niveau end
@@ -80,6 +96,7 @@ function Pandoc(doc)
 
   return doc:walk({
     Header = function(h)
+      if LIVRE and h.level == 1 then return h end
       h.level = cible[h.level] or h.level
       return h
     end,

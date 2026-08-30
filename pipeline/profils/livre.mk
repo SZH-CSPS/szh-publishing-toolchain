@@ -12,9 +12,10 @@
 # livre-assembler.py.
 #
 # ⚠ Trois écarts connus avec la revue, à ne pas découvrir en production :
-#   * szh-niveaux.lua n'est PAS branché. Il réserve <h1> au titre de l'article et compacte
-#     le corps à partir de <h2> ; dans un livre, le « # » d'un chapitre EST le <h1> de ce
-#     chapitre. Le brancher renverrait tous les titres d'un cran vers le bas.
+#   * szh-niveaux.lua EST branché, en mode livre (SZH_LIVRE) : il laisse le <h1> du
+#     chapitre où il est et ne compacte que le corps, à partir de <h2>. Il ne l'était pas
+#     au début, au motif qu'il décalerait les titres — et le prix s'est vu au premier livre
+#     réel : un manuscrit qui passe de « # » à « ### » sort un PDF NON CONFORME PDF/UA-1.
 #   * szh-numerotation.lua et szh-sections.lua comptent PAR DOCUMENT, donc ici par
 #     chapitre : les compteurs repartent à 1 à chaque chapitre. Les livres publiés
 #     numérotent en continu (« Abbildung 12 » au chapitre 4). Le rang du chapitre leur est
@@ -90,7 +91,16 @@ LIMINAIRES     := $(patsubst $(LIM_DIR)/%.md,$(OUT)/$(LIM_DIR)/%.html,$(wildcard
 
 # Nom des sorties : celui du dossier du livre, ce qui donne un fichier reconnaissable une
 # fois sorti de son dossier — « 2026-B330-Canonica.pdf » et non « livre.pdf ».
-NOM_LIVRE  := $(notdir $(patsubst %/,%,$(CURDIR)))
+# ⚠ `$(notdir …)` est INTERDIT ici, et c'est un défaut qui ne se voit qu'au vrai
+#   emplacement. Les fonctions de chemin de make travaillent sur des MOTS, séparés par des
+#   espaces : sur le dossier réel des livres —
+#     C:\Users\…\OneDrive - SZH CSPS\Revues-TESTING\54_Buch\BU02_Redaktion\<livre>
+#   — `$(notdir $(CURDIR))` rendait « OneDrive - SZH 2027-B329-… », c'est-à-dire trois mots
+#   recollés. Toutes les sorties portaient ce nom, la couverture cherchait un PDF intérieur
+#   qui n'existait pas, et la compilation s'arrêtait. Le banc d'essai du dépôt, lui, n'a pas
+#   d'espace dans son chemin : le défaut y était invisible.
+#   `basename` passe par le shell, qui sait ce qu'est un chemin.
+NOM_LIVRE  := $(shell basename "$(CURDIR)")
 LIVRE_HTML := $(OUT)/$(NOM_LIVRE).html
 LIVRE_PDF  := $(OUT)/$(NOM_LIVRE).pdf
 # PDF imprimeur : même contenu, assemblé une seconde fois avec imprimeur.css en plus dans
@@ -177,6 +187,8 @@ CSS_LIVRE_WEB := --css-embed "$(SOCLE_ABS)" --css-embed "$(abspath $(STYLE_LIVRE
 
 # La suite de filtres d'un chapitre. Même ordre que la revue, aux trois écarts ci-dessus.
 FILTRES_CHAPITRE := \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-listes-serrees.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
@@ -218,6 +230,13 @@ verifie-livre:
 	  echo "[livre] Aucun chapitre ($(CH_DIR)/<nom>/<nom>.md) — déposez les Word dans $(CH_DIR)-word/ puis enregistrez (Ctrl+S)."; \
 	  echo "[livre] [de] Kein Kapitel ($(CH_DIR)/<Name>/<Name>.md) — Word-Dateien in $(CH_DIR)-word/ ablegen und speichern (Ctrl+S)."; \
 	  exit 1; }
+	@case "$(NOM_LIVRE)" in \
+	  *" "*) \
+	    echo "[livre] ⚠ Le dossier du livre contient des espaces : « $(NOM_LIVRE) »."; \
+	    echo "[livre]   Son nom devient celui de TOUS les fichiers produits — PDF, couverture, EPUB — et un espace y traverse mal la chaîne. Renommez-le avec des tirets bas."; \
+	    echo "[livre] [de] ⚠ Der Buchordner enthält Leerzeichen: « $(NOM_LIVRE) ». Sein Name wird zum Namen aller erzeugten Dateien — bitte mit Unterstrichen benennen."; \
+	    exit 1;; \
+	esac
 	@if ls -d $(CH_DIR)/* 2>/dev/null | grep -q ' '; then \
 	  echo "[livre] ⚠ Un dossier de $(CH_DIR)/ contient des espaces — renommez-le sans espaces."; exit 1; \
 	fi

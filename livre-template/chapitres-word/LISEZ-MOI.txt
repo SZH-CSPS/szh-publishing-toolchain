@@ -1,13 +1,32 @@
-Ce dossier est prévu pour déposer les chapitres Word (.docx) finalisés — sur le modèle du
-dossier « articles-word » d'une revue.
+Déposez ici les chapitres Word (.docx) finalisés — un fichier par chapitre.
 
-ATTENTION : contrairement à celui d'une revue, ce dépôt n'est aujourd'hui PAS converti
-automatiquement à l'enregistrement. En attendant que ce geste existe pour les livres,
-écrivez directement le texte du chapitre dans un fichier .md sous « chapitres/<nom> »,
-sur le modèle du chapitre d'exemple déjà présent (« chapitres/01-exemple »).
+À l'enregistrement (Ctrl+S), chaque .docx devient un chapitre dans « chapitres » : le
+texte, sa fiche, ses images et ses tableaux. Le .docx disparaît une fois converti — c'est
+le signe que la conversion a réussi. Un fichier qui reste ici n'est pas passé, et le
+journal de compilation dit pourquoi.
 
-Remarques :
-- l'ordre des chapitres dans le livre suit l'ordre alphabétique des dossiers dans
-  « chapitres » – nommez-les « 01-… », « 02-… » ;
-- un ouvrage collectif porte les auteur·e·s de chaque chapitre dans sa fiche
-  (<nom>.meta.yaml, à côté du .md) ; une monographie les porte dans buch.yaml.
+Un manuscrit en UN SEUL fichier, avec tous ses chapitres, se convertit d'abord en un seul
+chapitre ; il se découpe ensuite, aux titres de niveau 1. Demandez ce geste, il existe.
+
+LE MODÈLE
+Le modèle à donner aux auteur·e·s est « Modele-chapitre-SZH.docx », à la racine du livre —
+un cran au-dessus de ce dossier. Il n'est PAS ici, et ce n'est pas un oubli : tout .docx
+posé dans ce dossier devient un chapitre du livre à la compilation suivante. Le modèle en
+deviendrait un aussi, dans tous les livres.
+
+CE QUI COMPTE DANS LE WORD
+- Les titres se font avec les STYLES de titre de Word (Titre 1, Titre 2, Titre 3), jamais
+  avec du gras. C'est par eux que la chaîne reconnaît la structure.
+- Ne numérotez pas les titres à la main : la numérotation automatique de Word suffit, et
+  c'est la chaîne qui imprime « 1 », « 1.1 », « 1.1.1 » au moment de composer.
+- Une image par paragraphe, avec sa légende dans le paragraphe juste après.
+- Les tableaux avec une vraie ligne d'en-tête.
+
+L'ORDRE DES CHAPITRES
+Il suit la clé « ordre-chapitres » de buch.yaml, et à défaut l'ordre alphabétique des
+dossiers — nommez-les « 01-… », « 02-… ».
+
+LES AUTEUR·E·S
+Un ouvrage collectif porte les auteur·e·s de chaque chapitre dans sa fiche
+(<nom>.meta.yaml, à côté du .md) ; une monographie les porte dans buch.yaml. C'est la clé
+« ouvrage » de buch.yaml qui décide.
