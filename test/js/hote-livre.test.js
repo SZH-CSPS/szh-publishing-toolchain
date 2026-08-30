@@ -86,3 +86,27 @@ test('livre : un chapitre pointe sur chapitres/<slug>/<slug>.md', async () => {
   assert.ok(cible.indexOf(path.sep + 'articles' + path.sep) === -1,
     'le chapitre pointe encore dans articles/ : ' + cible);
 });
+
+// ⚠ Le défaut que ce contrôle prévient est MUET. Le surveillant de fichiers était posé sur
+//   `articles/**`, `articles-word/*` et `ausgabe.yaml` : sur un livre, trois chemins qui
+//   n'existent pas. Aucune erreur, aucun avertissement — simplement un arbre qui ne se
+//   rafraîchit jamais de lui-même. Un chapitre importé n'apparaissait qu'après réouverture
+//   de la fenêtre, ce qui se lit comme « l'import n'a rien fait ».
+// Les surveillants sont posés par majContexte(), APRÈS le réveil de la machine WSL : ils
+// n'existent donc pas encore quand activerHote() rend la main. On attend leur pose plutôt
+// que de sortir sans rien vérifier — un contrôle qui s'abstient tout seul ne protège rien.
+test('livre : le surveillant de fichiers regarde chapitres/ et buch.yaml', async () => {
+  for (let i = 0; i < 60 && !HOTE.motifsSurveilles().length; i++) {
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  const motifs = HOTE.motifsSurveilles();
+  assert.ok(motifs.length, 'aucun surveillant n’a été installé : le contrôle ne prouve rien');
+  assert.ok(motifs.indexOf('chapitres/**') !== -1,
+    'chapitres/ n’est pas surveillé : ' + motifs.join(', '));
+  assert.ok(motifs.indexOf('chapitres-word/*') !== -1,
+    'le dépôt Word du livre n’est pas surveillé : ' + motifs.join(', '));
+  assert.ok(motifs.indexOf('buch.yaml') !== -1,
+    'buch.yaml n’est pas surveillé : ' + motifs.join(', '));
+  assert.ok(motifs.indexOf('articles/**') === -1 && motifs.indexOf('ausgabe.yaml') === -1,
+    'le livre surveille encore des chemins de revue : ' + motifs.join(', '));
+});

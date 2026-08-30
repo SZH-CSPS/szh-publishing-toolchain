@@ -247,9 +247,15 @@ function refuserSiVerrouille() {
   return true;
 }
 
+// Le fichier de configuration du dossier ouvert : ausgabe.yaml pour un numéro, buch.yaml
+// pour un livre. Tout ce qui lit ou écrit la configuration passe par ici — écrire le nom
+// en dur reviendrait, sur un livre, à créer un ausgabe.yaml parasite qui rendrait le
+// dossier ambigu pour le cockpit ET pour le Makefile.
+function cheminConfig(racine) { return path.join(racine, profilCourant().config); }
+
 // Le sérialiseur du formulaire préserve les lignes non gérées. null si tout est écrit.
 function ecrireClesAusgabe(racine, modifies) {
-  const chemin = path.join(racine, 'ausgabe.yaml');
+  const chemin = cheminConfig(racine);
   try {
     let contenu = '';
     try { contenu = fs.readFileSync(chemin, 'utf8'); } catch (e) { /* absent : recréé plat */ }
@@ -875,9 +881,14 @@ function rafraichirConflitsScm() {
 // au passage : réécrire à chaque rafraîchissement de l'arbre réveillerait le surveillant de
 // fichiers en boucle. La clé n'est écrite que par un geste de l'utilisateur.
 
+// ⚠ La CLÉ suit le profil autant que le fichier : `ordre-articles` dans ausgabe.yaml,
+//   `ordre-chapitres` dans buch.yaml. Lire la première sur un livre rendrait toujours la
+//   chaîne vide, et l'arbre retomberait sur l'ordre alphabétique des dossiers — un ordre
+//   plausible, donc un défaut qui ne se voit pas.
 function valeurOrdreArticles(racine) {
   try {
-    return analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8'))[CLE_ORDRE] || '';
+    const cle = profilCourant().unites.ordre;
+    return analyserAusgabe(fs.readFileSync(cheminConfig(racine), 'utf8'))[cle] || '';
   } catch (e) { return ''; }
 }
 
@@ -7298,8 +7309,13 @@ function activate(context) {
     for (const w of watchers) { w.dispose(); }
     watchers = [];
     if (!racine) { return; }
-    // Articles, Word déposés, sorties, et ausgabe.yaml dont dépend le titre de la vue.
-    for (const motif of ['articles/**', 'articles-word/*', 'out/**', 'ausgabe.yaml']) {
+    // Unités de texte, Word déposés, sorties, et le fichier de configuration dont dépend le
+    // titre de la vue. Les motifs suivent le PROFIL : sur un livre, surveiller `articles/**`
+    // et `ausgabe.yaml` revenait à surveiller trois chemins qui n'existent pas — l'arbre ne
+    // se rafraîchissait alors jamais tout seul, et il fallait rouvrir la fenêtre pour voir
+    // un chapitre importé. Le profil est posé juste avant, par trouverRacineRevue().
+    const p = profilCourant();
+    for (const motif of [p.unites.dossier + '/**', p.depot + '/*', p.sortie + '/**', p.config]) {
       const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(racine, motif));
       w.onDidCreate(rafraichirBientot);
       w.onDidChange(rafraichirBientot);

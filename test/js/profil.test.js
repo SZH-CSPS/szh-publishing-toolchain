@@ -174,3 +174,22 @@ test('livre : la chaîne d’ordre des chapitres et le report des compteurs sont
   assert.ok(filtre.includes('SZH_COMPTEURS'),
     'szh-numerotation.lua ne lit plus le report des chapitres précédents');
 });
+
+// ⚠ `analyserAusgabe` FILTRE sur une liste blanche de clés : une clé qui n'y figure pas est
+//   lue comme absente, sans erreur ni avertissement. `ordre-chapitres` en manquait — un
+//   livre pouvait donc porter un ordre parfaitement écrit dans buch.yaml, que le cockpit
+//   lisait vide, et l'arbre retombait sur l'ordre alphabétique des dossiers. Un ordre
+//   plausible : c'est ce qui rend le défaut invisible.
+test('livre : ordre-chapitres traverse le parseur, et comme une liste', () => {
+  const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
+  assert.ok(yaml.CLES_METADONNEES.indexOf('ordre-chapitres') !== -1,
+    'ordre-chapitres est filtré par la liste blanche : il sera lu comme absent');
+  assert.ok(yaml.CLES_LISTES.indexOf('ordre-chapitres') !== -1,
+    'ordre-chapitres n’est pas déclaré porteur de liste : il sera lu comme un scalaire');
+  // La clé que le cockpit ira chercher est bien celle que la table nomme, et celle que le
+  // moteur livre écrit dans buch.yaml.
+  assert.equal(profil.PROFILS.livre.unites.ordre, 'ordre-chapitres');
+  const valeurs = yaml.analyserAusgabe('title: Essai\nordre-chapitres: ["02-b", "01-a"]\n');
+  assert.deepStrictEqual(yaml.listeYamlEnLigne(valeurs['ordre-chapitres']), ['02-b', '01-a'],
+    'l’ordre relu ne rend pas les deux chapitres dans l’ordre écrit');
+});

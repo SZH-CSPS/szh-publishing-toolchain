@@ -11,12 +11,12 @@ Quand une tâche est terminée et constatée, la supprimer d'ici.
 
 ## 1. Où en est le dépôt
 
-- Branche `main`, la branche `livres` y est fusionnée. Dernière étiquette : `v2026.08.61`.
+- Branche `main`, la branche `livres` y est fusionnée. Dernière étiquette : `v2026.08.63`.
 - Les livres sont **visibles pour tout le monde** : aucun drapeau de configuration ne les
   cache. Un dossier est un livre s'il porte `buch.yaml`, un numéro s'il porte
   `ausgabe.yaml` — c'est la seule règle, et elle est tenue des deux côtés
   (`vscodium-extension/szh-cockpit/lib/profil.js` et `pipeline/Makefile`).
-- 605 tests JS au vert : `node --test "test/js/*.test.js"` depuis la racine.
+- 607 tests JS au vert : `node --test "test/js/*.test.js"` depuis la racine.
 - Banc de rendu au vert : `test/build-render.sh` compile les deux livres d'essai
   (`test/livre-normal`, `test/livre-falc`), cinq sorties chacun, et refuse un PDF non
   conforme PDF/UA-1.
@@ -58,26 +58,33 @@ naturel à déléguer.
 explicitement demandé (« possibilité de réordonner les chapitres comme les articles »). Ce
 n'est pas qu'une question d'affichage : la **persistance est écrite en dur pour la revue**.
 
-Le blocage exact, à corriger avant toute interface :
+**Déjà fait** (commit du 30 août, à ne pas refaire) : le socle de persistance est routé.
+`cheminConfig(racine)` rend `ausgabe.yaml` ou `buch.yaml` selon le profil ;
+`ecrireClesAusgabe()` et `valeurOrdreArticles()` passent par lui, cette dernière lisant en
+plus la clé `profil.unites.ordre`. Et `ordre-chapitres` est entrée dans `CLES_METADONNEES`
+et `CLES_LISTES` de `lib/yaml.js` : elle en était absente, donc `analyserAusgabe` la
+laissait tomber **en silence** — un livre pouvait porter un ordre parfaitement écrit dans
+`buch.yaml` que le cockpit lisait vide.
 
-- `ecrireClesAusgabe()`, `extension.js:251`, écrit en dur dans `ausgabe.yaml`
-  (`path.join(racine, 'ausgabe.yaml')`). Sur un livre, elle **créerait un `ausgabe.yaml`
-  parasite**, et le dossier deviendrait ambigu.
-- Il reste **18 littéraux `'ausgabe.yaml'`** dans `extension.js`
-  (`grep -c "'ausgabe.yaml'" extension.js`). Tous doivent passer par
-  `profilCourant().config`, comme les 33 littéraux `'articles'` sont déjà passés par
-  `dossierUnites()`.
-- `CLE_ORDRE` est figé sur `ordre-articles`. La bonne valeur est `profil.unites.ordre`,
-  déjà dans la table (`ordre-chapitres` pour un livre).
+**Ce qui reste sur ce point :**
+
+- Il subsiste **15 littéraux `'ausgabe.yaml'`** dans `extension.js`
+  (`grep -c "'ausgabe.yaml'" extension.js`). La plupart lisent des clés qui n'existent que
+  pour un numéro — `revue`, `couleur`, les DOI — et peuvent légitimement rester. À vérifier
+  une par une plutôt qu'à remplacer en masse.
+- `refusCoedition()` reçoit encore `path.join(racine, 'ausgabe.yaml')` en dur, vers les
+  lignes 4704 et 4746, sur le chemin même du déplacement. **À router avant d'exposer le
+  moindre bouton de réordonnancement**, sans quoi le bail de co-édition sera posé sur un
+  fichier qui n'existe pas.
 - Le déplacement passe par `refusDeplacement()`, `articlesSansDoi()` et `trierParDoi()`,
   aux alentours de `extension.js:4732-4750`. Ce sont des **règles de DOI** : un article
   sans DOI ne peut pas franchir la frontière de ceux qui en ont un. **Un livre n'a pas de
   DOI par chapitre** : cette règle ne doit pas s'appliquer, sans quoi le déplacement sera
   refusé sans raison compréhensible.
-- `refusCoedition()` reçoit lui aussi `path.join(racine, 'ausgabe.yaml')` en dur, vers la
-  ligne 4746.
+- Reste enfin à retirer `szh.apercuMetadonnees` de `REVUE_SEULEMENT` et à lui donner une
+  vue de chapitres — ou une vue propre au livre.
 
-Ordre de travail conseillé : router la persistance **d'abord**, parce que c'est la partie
+Ordre de travail conseillé : finir la persistance **d'abord**, parce que c'est la partie
 partagée et risquée, celle qui touche la revue ; la faire soi-même, avec les tests. Puis
 déléguer les deux formulaires.
 
@@ -138,7 +145,7 @@ sortie imprimeur soit utilisable ailleurs qu'en développement.
 ## 3. Comment vérifier
 
 ```
-node --test "test/js/*.test.js"      # 605 tests, depuis la racine du dépôt
+node --test "test/js/*.test.js"      # 607 tests, depuis la racine du dépôt
 test/build-render.sh                 # banc complet : compile les livres, exige PDF/UA-1
 python3 test/typo-check.py           # typographie des textes visibles
 python3 test/apca-check.py           # contrastes de la palette

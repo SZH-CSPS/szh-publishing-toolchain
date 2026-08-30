@@ -99,6 +99,7 @@ function activerHote(revue) {
   const avertissements = [];
   const statuts = [];          // ce que setStatusBarMessage a affiché, dans l'ordre
   const erreurs = [];
+  const motifsSurveilles = []; // les motifs passés à createFileSystemWatcher, dans l'ordre
   let arbre = null;
   // Ce que showWarningMessage rendra, dans l'ordre des appels : une file, et non une seule
   // valeur, parce qu'un geste peut désormais en enchaîner deux — le dialogue de
@@ -233,9 +234,15 @@ function activerHote(revue) {
     workspace: {
       workspaceFolders: [{ uri: { fsPath: revue }, name: path.basename(revue), index: 0 }],
       getConfiguration: () => ({ get: (c, d) => d, update: () => Promise.resolve() }),
-      createFileSystemWatcher: () => ({
-        onDidCreate: evenement(), onDidChange: evenement(), onDidDelete: evenement(), dispose() {}
-      }),
+      // Les motifs sont RETENUS : surveiller un chemin qui n'existe pas ne lève rien, et un
+      // arbre qui ne se rafraîchit jamais ressemble à un arbre à jour. Seule la liste des
+      // motifs demandés distingue les deux.
+      createFileSystemWatcher: (motif) => {
+        motifsSurveilles.push(motif && motif.pattern !== undefined ? motif.pattern : String(motif));
+        return {
+          onDidCreate: evenement(), onDidChange: evenement(), onDidDelete: evenement(), dispose() {}
+        };
+      },
       onDidChangeWorkspaceFolders: evenement(),
       onDidChangeConfiguration: evenement(),
       onDidSaveTextDocument: evenement(),
@@ -320,6 +327,7 @@ function activerHote(revue) {
     panneauDeType: (type) => panneaux.filter((x) => x.type === type).pop() || null,
     avertissements: avertissements,
     erreurs: erreurs,
+    motifsSurveilles: () => motifsSurveilles.slice(),
     // Les contrôles de source encore en vie, et le fournisseur de contenu d'un schéma :
     // de quoi éprouver la résolution des copies en conflit.
     sourceControls: () => stub.scm._controles.filter((c) => c.vivant),

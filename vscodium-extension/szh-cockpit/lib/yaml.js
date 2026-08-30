@@ -12,9 +12,12 @@ const path = require('path');
 // les lignes des clés connues ; toute autre ligne — commentaire, clé future — est
 // préservée telle quelle, fins de ligne et BOM compris.
 
+// ⚠ Cette liste est un FILTRE : `analyserAusgabe` laisse tomber en silence toute clé qui
+//   n'y figure pas. Une clé oubliée ici ne provoque aucune erreur — elle est simplement
+//   lue comme absente, et le geste qui en dépend ne fait rien sans rien dire.
 const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 'couleur',
   'entete-condensee', 'locked', 'archived', 'version-toolkit', 'ordre-articles',
-  'articles-sans-doi'];
+  'ordre-chapitres', 'articles-sans-doi'];
 
 // Les articles du numéro qui ne reçoivent pas de DOI, décidés à la case sur leur carte.
 // Ils vivent ici, à côté de l'ordre, et non dans la fiche de l'article : c'est cette liste
@@ -28,7 +31,9 @@ const CLE_SANS_DOI = 'articles-sans-doi';
 // quoi tout out/ serait à recompiler et les liens du numéro tomberaient. Écrite en
 // séquence en ligne, la clé se relit et se corrige à la main, et elle voyage avec le
 // dossier comme le reste d'ausgabe.yaml. lib/articles.js la lit et la répare.
-const CLES_LISTES = ['ordre-articles', CLE_SANS_DOI];
+// `ordre-chapitres` est la même clé pour un livre, dans buch.yaml : même forme, même
+// lecteur, même réparation. Les deux profils ne diffèrent que par le nom.
+const CLES_LISTES = ['ordre-articles', 'ordre-chapitres', CLE_SANS_DOI];
 
 // Les jetons d'une séquence en ligne, telle que `ordre-articles` et `articles-sans-doi`
 // l'écrivent : `["a", "b"]` comme le sérialiseur la pose, ou une simple suite séparée par
