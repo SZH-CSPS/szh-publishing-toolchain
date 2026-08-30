@@ -11,7 +11,7 @@ Quand une tâche est terminée et constatée, la supprimer d'ici.
 
 ## 1. Où en est le dépôt
 
-- Branche `main`, la branche `livres` y est fusionnée. Dernière étiquette : `v2026.08.65`.
+- Branche `main`, la branche `livres` y est fusionnée. Dernière étiquette : `v2026.08.66`.
 - Les livres sont **visibles pour tout le monde** : aucun drapeau de configuration ne les
   cache. Un dossier est un livre s'il porte `buch.yaml`, un numéro s'il porte
   `ausgabe.yaml` — c'est la seule règle, et elle est tenue des deux côtés
@@ -92,7 +92,7 @@ Les trois pièces :
 | Rôle | Chemin |
 |---|---|
 | Word source (styles) | `tmp/book/FALC/2025-ProspectrumFalc_FR_VF.docx` |
-| PDF d'origine (référence visuelle) | `tmp/book/FALC/2025-ProspectrumFalc_FR_VF.pdf` |
+| PDF d'origine (référence visuelle) | `tmp/book/FALC/2025-Prospectrum_FALC_FR_ebook (1).pdf` |
 | PDF produit par la chaîne | `…/BU02_Redaktion/2025-B329-CSPS_ProspectrumFALC_FR/out/2025-B329-CSPS_ProspectrumFALC_FR.pdf` |
 
 La feuille à régler est `pipeline/styles/livre/falc.css` (le socle géométrique commun est
@@ -121,13 +121,24 @@ dans `livre/base.css` — n'y toucher que si l'écart vient vraiment de là).
       toutes lettres (`{#… .Titre-2-(small)}`). Voir `szh-sauts-uniques.lua` et
       `szh-attributs-sains.lua`.
       **Résultat : 64 pages → 49**, contre 46 à l'original. veraPDF ua1 : PASS.
-- [ ] **Refermer les 3 pages qui restent** (49 contre 46). Pistes non encore départagées :
-      la marge basse de `falc.css` est de **20 mm** quand le Word dit 15 mm sur les quatre
-      côtés ; le retrait de liste est de **8 mm** contre 6,3 mm au Word ; et il reste à
-      compter combien de pages viennent de la structure (pages de chapitre, passages au
-      recto) plutôt que de la typographie.
-- [ ] **Réglage fin par comparaison visuelle**, avec `tmp/falc-apercu.py`. Juger la couleur
-      du gris typographique et les respirations, pas les décimales.
+- [x] **Quatre écarts de maquette refermés**, chacun sur mesure et non à l'appréciation :
+      marge basse 20 → **15 mm** (le bloc de texte ne faisait que 176 mm contre 198 mm) ;
+      retrait de liste 8 → **6,3 mm** ; interligne de liste 27,0 → **19,2 pt**, sans blanc
+      entre items ; titres **en noir** et non en bleu nuit.
+      Le bleu nuit `#252B46` était présenté en commentaire comme « la couleur des styles
+      Word » : il ne figure **ni** dans le `.docx` — `Titre1..3` ne déclarent aucune
+      couleur — **ni** dans le PDF d'origine, qui les imprime en `#000000`. Il avait été
+      supposé. Il reste comme repli de l'accent d'ouvrage (`--c-falc-accent-defaut`).
+      Enfin, `@page :blank` : une page de passage au recto ne porte plus son folio.
+      **Résultat : 47 pages contre 46 à l'original.** Corps, interlignes, pas des puces et
+      couleur des titres concordent désormais.
+- [ ] **Ce qui reste, si on veut aller plus loin** — aucune de ces pistes n'est chiffrée :
+      les pages produites laissent en moyenne plus de blanc en pied que l'original, ce qui
+      vient probablement des `break-inside: avoid` (figures, encadrés `.falc-*`) qui
+      renvoient un bloc entier à la page suivante. À départager avant de toucher à quoi que
+      ce soit : mesurer le blanc de pied page à page plutôt qu'en moyenne.
+      L'outil de comparaison visuelle est `python3 tmp/falc-apercu.py <page orig> <page
+      produite>`.
 - [x] **Banc revérifié** : `livre-normal` et `livre-falc` recompilés de zéro, 2 PASS et
       0 FAIL chacun. La maquette « normal » n'a pas bougé.
 
