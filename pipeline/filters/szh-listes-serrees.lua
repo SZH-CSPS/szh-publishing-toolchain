@@ -26,20 +26,41 @@
 -- <li> — c'est déjà ce que font print.css et les chartes de livre (`li { margin-bottom }`).
 -- L'écart visuel est nul ; on l'a comparé.
 --
--- ⚠ Un item qui contient PLUSIEURS blocs — deux paragraphes, ou un paragraphe et une
---   sous-liste — n'est pas touché : y retirer le paragraphe collerait les deux morceaux.
---   Ces items-là gardent leur <p> et restent non conformes ; ils sont rares, et les
---   aplatir ferait plus de mal que la règle qu'ils enfreignent. Si le cas se présente, il
---   se verra à la porte PDF/UA, avec son compte.
+-- ⚠ Deux formes d'item à PLUSIEURS blocs, et elles ne se traitent pas pareil — mesuré,
+--   chacune isolée sur trois lignes de HTML :
+--   * « texte + sous-liste » : PASSE la porte telle quelle. WeasyPrint met le texte dans un
+--     LBody et la sous-liste avec. On n'y touche pas.
+--   * « deux paragraphes » : ÉCHOUE. Les deux <p> deviennent deux enfants directs du <LI>.
+--     Ceux-là sont fusionnés en un seul bloc, les paragraphes séparés par un saut de ligne.
+--     C'est un changement de structure, assumé : dans un item de liste, deux paragraphes se
+--     lisent comme deux lignes — et c'est littéralement la règle FALC, une phrase par ligne.
+--     L'alternative serait un livre que la porte PDF/UA refuse d'exporter, pour toujours.
+--   Un item qui mêle les deux formes n'est pas touché : il est rare, et le fusionner
+--   collerait une liste à un paragraphe.
 
--- Un item devient serré si, et seulement si, il tient en UN Para.
+-- Les paragraphes DE TÊTE d'un item, fusionnés en un seul bloc en ligne. Le reste — une
+-- sous-liste, un tableau — est laissé où il est : c'est une forme que WeasyPrint balise
+-- correctement (mesuré), et la fusionner collerait une liste à un paragraphe.
 local function resserrer_items(items)
   local sortie = {}
   for i, blocs in ipairs(items) do
-    if #blocs == 1 and blocs[1].t == 'Para' then
-      sortie[i] = { pandoc.Plain(blocs[1].content) }
-    else
+    -- Combien de Para au début de l'item ?
+    local n = 0
+    while blocs[n + 1] and blocs[n + 1].t == 'Para' do n = n + 1 end
+
+    if n == 0 then
       sortie[i] = blocs
+    else
+      local contenu = pandoc.Inlines({})
+      for j = 1, n do
+        -- Deux paragraphes d'un même item se lisent comme deux lignes — et c'est
+        -- littéralement la règle FALC, une phrase par ligne.
+        if j > 1 then contenu:insert(pandoc.LineBreak()) end
+        contenu:extend(blocs[j].content)
+      end
+      local neufs = { pandoc.Plain(contenu) }
+      for j = n + 1, #blocs do neufs[#neufs + 1] = blocs[j] end
+      sortie[i] = neufs
     end
   end
   return sortie

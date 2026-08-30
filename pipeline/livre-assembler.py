@@ -291,6 +291,46 @@ def _url_absolues(css_texte, css_chemin):
 
 
 # --------------------------------------------------------------------------------------
+# Substitution des jetons du gabarit — EN ÉVITANT SES PROPRES COMMENTAIRES.
+#
+# CAUSE PROUVÉE d'un défaut PDF/UA-1 réel (ISO 14289-1 7.4.2-1, « H1 doit être le premier »)
+# sur 2025-B329-CSPS_ProspectrumFALC_FR : szh-livre.html explique en tête, dans son propre
+# commentaire HTML, ce que fait l'assembleur — « remplacement de jetons littéraux ($titre$,
+# $corps$…) ». Un remplacement fait au ras du texte (`str.replace` sur le gabarit ENTIER)
+# matchait ce rappel documentaire comme s'il s'agissait du VRAI jeton, et injectait le
+# corps entier du livre — les 9 chapitres — À L'INTÉRIEUR DU COMMENTAIRE D'EN-TÊTE, en
+# plus de son unique vraie place plus bas. Sans danger tant que ce commentaire reste bien
+# formé : un contenu qui referme un commentaire HTML par accident change tout. Or pandoc
+# pose lui-même un « <!-- --> » entre deux listes adjacentes de même type (pour qu'un outil
+# qui relit le HTML ne les recolle pas en une seule) — mesuré : le chapitre 06 en contient
+# un. Ce commentaire-jouet, une fois dupliqué dans le commentaire du gabarit, LE REFERMAIT
+# PRÉMATURÉMENT : tout ce qui suivait (jusqu'au <html>, <head>, $corps$ compris) devenait du
+# HTML bien réel, situé AVANT même la balise <html> — de quoi faire reconstruire à tout
+# analyseur HTML5 conforme (WeasyPrint compris) un arbre où le premier titre du livre n'est
+# plus au premier rang. Mesuré sur le PDF produit : aucun H1 dans l'arbre de structure, le
+# titre du premier chapitre tagué H2 — sans qu'un seul niveau de titre n'ait bougé dans le
+# texte source (le HTML assemblé, lu tel quel, montre bien un <h1> à sa place).
+#
+# Le remède ne touche pas au commentaire — le nommer est légitime, c'est de la
+# documentation — il rend le REMPLACEMENT aveugle à ce qu'il y a dans un commentaire.
+_RE_COMMENTAIRE = re.compile(r'(<!--.*?-->)', re.S)
+
+
+def _remplacer_jetons(gabarit, remplacements):
+    """Substitue les jetons du dict PARTOUT SAUF dans un commentaire HTML du gabarit.
+
+    `re.split` avec un groupe CAPTURANT rend une liste où les commentaires eux-mêmes
+    alternent avec le texte qui les sépare : indices pairs = hors commentaire (à
+    substituer), indices impairs = le commentaire tel quel (à laisser intact, jetons
+    littéraux compris)."""
+    morceaux = _RE_COMMENTAIRE.split(gabarit)
+    for i in range(0, len(morceaux), 2):
+        for cle, val in remplacements.items():
+            morceaux[i] = morceaux[i].replace(cle, val)
+    return ''.join(morceaux)
+
+
+# --------------------------------------------------------------------------------------
 # Métadonnées pandoc pour l'EPUB.
 #
 # Pourquoi ici et pas dans le Makefile : les tirer de buch.yaml à coups de `sed` demande une
@@ -468,9 +508,7 @@ def main(argv):
         '$liminaires$':    '\n'.join(tete),
         '$corps$':         '\n'.join(corps),
     }
-    sortie = gabarit
-    for cle, val in remplacements.items():
-        sortie = sortie.replace(cle, val)
+    sortie = _remplacer_jetons(gabarit, remplacements)
 
     dossier = os.path.dirname(os.path.abspath(sortie_p))
     if dossier:
