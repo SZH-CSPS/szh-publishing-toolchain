@@ -535,100 +535,154 @@ se rejoignent au lanceur.
 
 ---
 
-## 10. Le cockpit côté livre — le plan
+## 10. Le cockpit côté livre — le plan, corrigé par sa revue adverse
 
 Le principe qui tient tout : **le cockpit ne devient pas deux logiciels**. Le même arbre, les
 mêmes formulaires, la même mécanique d'écriture — avec un profil qui dit les noms, les
-chemins et les sections. Ce qui suit est le plan ; ce qu'il refuse est aussi important que ce
-qu'il fait.
+chemins et les sections.
+
+⚠ **Ce qui suit est la deuxième rédaction.** La première a été relue de façon adverse, et
+elle s'est trompée sur cinq points vérifiables. Les corrections sont dans le texte, et les
+erreurs sont nommées : un plan qu'on corrige en silence se retrompe de la même façon.
 
 ### 10.1 Le préalable : dégonfler `extension.js`
 
-7 524 lignes. Le fichier porte son propre plan de démontage — 52 bandeaux
-`// ---- Titre -> lib/xxx.js ----`, dont une vingtaine déjà exécutés. On en exécute d'autres,
-par lots, **à comportement constant** et avec les 595 tests en garde-fou.
+7 524 lignes, 52 bandeaux `// ---- Titre -> lib/xxx.js ----`, une vingtaine déjà exécutés.
 
-L'ordre des lots suit la COUVERTURE DE TEST, pas la taille :
+**Correction n° 1 — les lots A et C sont COUPLÉS, et le plan les séparait.**
+`extension.js:1804-1817`, dans `fermerFormulairesEcriture()` — section « Archiver,
+verrouiller, désarchiver », donc lot C — itère directement sur `panneauxMedias`, la Map
+interne du futur `lib/medias.js` (lot A), et en supprime des entrées :
 
-| Lot | Sections | Lignes | Ce qui le garde |
+```js
+for (const table of [panneauxMedias, panneauxTable]) {
+  for (const [cle, panneau] of Array.from(table.entries())) { panneau.dispose(); table.delete(cle); }
+}
+```
+
+Ce n'est pas le risque que le plan anticipait (« `lib/` rappelle `extension.js` ») : c'est
+l'inverse, du code qui reste fouille l'état privé d'un module extrait. **Le remède** : chaque
+module qui tient des panneaux expose `fermerPanneauxDe(dossier)`, et le cycle de vie les
+appelle en boucle. Sans cela, ni A ni C ne s'extrait « à comportement constant ».
+
+Trois autres traversées de frontière, dans le même lot A : `buildEnCours` (l.1611) lu quatre
+fois, `panneauxTable` (l.6285) lu en l.3161, `apercuCourantSlug` (l.2000) lu en l.6774.
+Cette dernière est un état de session partagé par huit sections : ni un rappel ni un
+paramètre ne la capturent. Elle mérite son propre petit module avant qu'on touche au lot A.
+
+**Correction n° 2 — l'ordre par couverture de test ne tient pas pour le lot B.**
+`webviews.test.js` n'exerce réellement que **quatre** des neuf webviews
+(`metadata-articles`, `import-verif`, `table-editor`, `medias-article`) ; `metadata-issue`,
+`vue-ensemble`, `articles`, `traduction` et `settings` n'y apparaissent jamais. Le lot B
+perd donc son rang.
+
+**Correction n° 3 — le lot B ne pesait pas ce que le plan disait.** Les neuf constructeurs
+`html*` font **75 lignes** au total : chacun n'est qu'un appel à `construireHtml()`. Les
+~2 000 lignes annoncées sont en réalité les **gestionnaires de messages** des neuf
+formulaires — le code métier, pas les gabarits. Le lot est donc plus lourd qu'annoncé, pas
+plus léger, et son étiquette mentait sur sa nature.
+
+| Lot | Contenu réel | Ce qui le garde | Rang |
 |---|---|---|---|
-| **A** | Assets + gestionnaire des médias → `lib/medias.js` | ~1 000 | `hote.test.js` active l'extension et exerce le remplacement d'un média |
-| **B** | Les neuf constructeurs `html*` → `lib/vues/*.js` | ~2 000 | `webviews.test.js` exécute réellement chaque formulaire |
-| **C** | Cycle de vie, co-édition, conflits → `lib/cycle-vie.js` | ~670 | `coedition.test.js`, `conflits-*.test.js` |
-| **D** | Aperçu, import guidé, réimport | ~700 | **rien** — les tests sont à écrire AVANT |
+| **A+C** | Médias, assets, cycle de vie, co-édition, conflits — **ensemble**, ils partagent leur état | `hote.test.js`, `coedition.test.js`, `conflits-*.test.js` — mais **`comparerConflit` n'a aucun test**, ni direct ni transitif : à écrire avant | 1 |
+| **B** | Les neuf formulaires : gabarits **et** gestionnaires de messages | 4 webviews sur 9 | 2 |
+| **D** | Aperçu, import guidé, réimport | **rien** — tests à écrire avant | 3 |
 
-Le lot D vient en dernier et ne se déplace pas avant que ses tests existent. C'est le
-constat de la revue adverse, et il est juste : `hote.test.js` ne touche ni l'aperçu
-commutable ni le geste d'import par la commande.
+**Correction n° 4 — `contrats.test.js` ne lit PAS `_pur`.** Il lit `extension.js` comme du
+texte, et le dit lui-même. Les vrais lecteurs sont `articles.test.js`,
+`carte-article.test.js`, `coedition-hote.test.js` et `conflits-hote.test.js`. `_pur` compte
+110 noms, dont 58 ne sont nommés par aucun test — surtout des ré-exports inertes de modules
+déjà extraits, dont la perte serait un silence. La garantie « les tests attraperont un nom
+manquant » n'est donc vraie que pour la moitié.
 
-**La règle qui rend ces lots sûrs :** `lib/` ne rappelle jamais `extension.js`. Un module
-qui a besoin de rafraîchir l'arbre reçoit ses dépendances en paramètre — le patron est déjà
-posé par `lib/formatting.js`, il se copie, il ne s'invente pas. Et `module.exports._pur`
-continue d'exporter les mêmes noms, parce que `contrats.test.js` les lit.
+### 10.2 L'arbre — et les trois quarts du travail qui sont ailleurs
 
-### 10.2 L'arbre
+**Correction n° 5, la plus lourde.** Le plan disait « cinq endroits où `articles/` est codé
+en dur dans `FournisseurRevue`, qui passent par `profils.chemins()` ». Trois choses fausses :
 
-`FournisseurRevue` — dont le nom ment désormais, et qui devient `FournisseurOuvrage` —
-cesse de coder `articles/` en dur (cinq endroits) et passe par `profils.chemins()`. Les
-sections viennent du profil :
+1. Ce sont **onze** occurrences, dans dix méthodes (l.1150, 1187, 1193, 1207, 1244, 1297,
+   1314, 1328, 1470, 1488, 1494).
+2. `extension.js` en compte **43 au total** : les 32 autres sont hors de l'arbre — médias,
+   réimport, marqueur de fichier ouvert, éditeur de tableau, portraits, formulaire de
+   fiches. Corriger la classe rend la NAVIGATION possible, pas les gestes.
+3. **`profils.chemins()` n'a aujourd'hui aucun appelant.** Le module est écrit, il est juste
+   mort. « Passe par `profils.chemins()` » décrivait un branchement qui n'existe nulle part.
 
-| | revue | livre |
-|---|---|---|
-| Sections | Articles · Traductions · Word | Chapitres · Word |
-| Clé i18n | `arbre.articles` | `arbre.chapitres` |
+Et l'arbre a des hypothèses qui ne sont pas des chemins, que `chemins()` ne corrigera donc
+jamais :
 
-**Pas de section Traductions pour un livre**, et ce n'est pas un oubli : une revue paraît
-en deux langues et chaque article a sa version jumelle ; un livre est écrit dans une langue,
-celle de son `lang:`. Une traduction de livre est un AUTRE livre, avec son ISBN.
+* `getParent()` (l.1204-1210) suppose que le parent d'un nœud `article` est la section
+  `'articles'` — c'est ce qui fait marcher `reveal()` ;
+* la section **Traductions** est construite **inconditionnellement** (l.1188). L'affirmation
+  « pas de section Traductions pour un livre » reste juste — une revue paraît en deux
+  langues, un livre est écrit dans une, et sa traduction est un autre livre avec son ISBN —
+  mais elle demande une condition explicite que le plan ne nommait pas comme du travail ;
+* `sectionDeployee` est initialisé à `'articles'` (l.1150) : pour un livre, l'accordéon
+  s'ouvrirait sur une section qui n'existe pas.
 
 ### 10.3 Réordonner les chapitres
 
-Rien à inventer : la revue le fait déjà. `lib/articles.js` porte `ordonnerArticles` et
-`deplacerArticle`, les boutons « monter » / « descendre » vivent sur les cartes du
-formulaire des métadonnées, et l'ordre s'écrit dans la clé `ordre-articles`.
+**Ce qui est fait** : le moteur honore déjà `ordre-chapitres` — `profils/livre.mk` le lit,
+place les slugs nommés en tête, met les autres derrière par tri alphabétique, et signale un
+slug listé dont le dossier a disparu. Le plan le donnait comme travail à venir ; il ne
+l'était plus.
 
-Pour un livre, **la même mécanique avec `ordre-chapitres`** — la clé est déjà nommée dans
-le profil (`unites.ordre`). Une seule différence, mais elle est de fond : dans une revue,
-l'ordre ne change que l'affichage et l'export ; **dans un livre, l'ordre EST le livre**,
-c'est celui des pages imprimées. Le `Makefile` doit donc l'honorer aussi, ce que la
-compilation d'une revue n'a jamais eu à faire.
+**Correction n° 6 — « rien à inventer » ne valait que pour le calcul.** Seule
+`deplacerArticle` — une quinzaine de lignes pures — se réutilise telle quelle. Tout le
+chemin d'écriture est câblé sur la revue :
+
+* `CLE_ORDRE` est le littéral `'ordre-articles'` (`lib/articles.js:26`), sans lien avec
+  `PROFILS.livre.unites.ordre` (`lib/profil.js:43`) — deux constantes qui ne se parlent pas ;
+* `ecrireClesAusgabe()` (l.236-248) code `path.join(racine, 'ausgabe.yaml')`, et le bail de
+  co-édition est posé sur ce même nom (l.4689). **18 occurrences** du littéral dans le
+  fichier.
+
+Il faut donc généraliser l'écriture par le profil **avant** le formulaire de couverture du
+§10.4, qui en dépendra aussi.
 
 ### 10.4 Les deux formulaires nouveaux
 
-* **Métadonnées de l'ouvrage** (`buch.yaml`) — frère de « Métadonnées du numéro ». Titre,
-  sous-titre, `ouvrage` (monographie / collectif), langue, maquette, format, collection,
-  tome, année, les deux ISBN, DOI, licence, couleur. Le bloc auteur·e·s n'apparaît **qu'en
-  monographie** : en collectif, il vit dans la fiche de chaque chapitre, et l'afficher aux
-  deux endroits inviterait à saisir deux fois la même chose pour qu'elles divergent.
-* **Couverture** — grammage, main du papier, fond perdu, profil CMJN, et le **dos affiché
-  en lecture seule**, calculé sous les yeux de la rédaction à partir du dernier PDF
-  compilé, avec la date de ce PDF. Une case permet de le forcer quand l'imprimeur a dicté
-  sa valeur. Le texte de 4e ouvre `couverture/quatrieme.md` dans l'éditeur ; l'illustration
-  se dépose comme un média d'article.
+* **Métadonnées de l'ouvrage** (`buch.yaml`) — frère de « Métadonnées du numéro ». Le bloc
+  auteur·e·s n'apparaît **qu'en monographie** : en collectif il vit dans la fiche de chaque
+  chapitre, et l'offrir aux deux endroits inviterait à saisir deux fois la même chose pour
+  qu'elles divergent.
+* **Couverture** — grammage, main, fond perdu, profil CMJN, et le **dos en lecture seule**,
+  calculé sous les yeux de la rédaction depuis le dernier PDF compilé, avec la date de ce
+  PDF. Une case pour le forcer quand l'imprimeur a dicté sa valeur.
 
-### 10.5 Le `package.json`
+### 10.5 Le `package.json` — le nom n'était pas le vrai problème
 
-Deux frictions que les `when` ne règlent pas, et qu'il faut trancher :
+Le plan traitait la **catégorie** des commandes et passait sous silence leur **visibilité**.
 
-* **La catégorie des commandes.** Les ~60 commandes portent `"category": "Revue SZH"` en
-  dur, et VS Code n'a pas de catégorie conditionnelle : dans un livre, la palette
-  annoncerait « Revue SZH ». La catégorie devient **« SZH/CSPS »**, neutre pour les deux
-  produits. C'est un changement visible pour la rédaction de la revue — il s'assume et se
-  dit, il ne se cache pas.
-* **La vue latérale.** Un seul bloc `views`, un seul id, gardé par `szh.estRevue`. Le livre
-  reçoit le sien, avec son icône et ses entrées de menu contextuel.
+**Correction n° 7.** Les 52 commandes portent `"category": "Revue SZH"`, et aucun test n'en
+dépend : le renommage en « SZH/CSPS » est sûr. Mais `contributes.menus.commandPalette` ne
+contient que **deux** entrées, toutes deux `"when": "false"`, sans rapport avec le profil.
+Les familles `szh.estRevue` / `szh.estLivre` du plan n'existent que sur les menus de l'arbre
+et de la barre de titre — **jamais sur la palette**. Concrètement : sur un livre, `Ctrl+Shift+P`
+offre aujourd'hui les 52 commandes, « Envoyer pour traduction » et l'export OJS compris.
+Aucune ne plante — elles ouvrent un panneau vide — mais aucune ne devrait être là.
 
-Les commandes se rangent alors en trois familles : celles de la revue (`szh.estRevue` —
-OJS, traduction, DOI), celles du livre (`szh.estLivre` — couverture, ordre des chapitres),
-et les communes (`szh.estRevue || szh.estLivre` — mise en forme, médias, tableaux, import).
+C'est donc une cinquantaine d'entrées `commandPalette` à écrire, pas un renommage.
 
-### 10.6 Ce que le plan refuse
+Et la marque vit ailleurs que dans `category` : au moins six messages de `lib/i18n.js`
+nomment « la barre « Revue SZH » » pour dire au rédacteur où cliquer. Donner sa propre vue au
+livre les rendrait faux pour lui.
 
-* **L'export OJS d'un livre.** OJS publie des revues. Un livre se dépose ailleurs, et le
-  jour où ce sera un besoin, ce sera un autre export.
+### 10.6 Ce que le plan refuse, et le trou que ce refus laisse
+
+* **L'export OJS d'un livre.** OJS publie des revues.
 * **Le suivi de traduction.** Voir §10.2.
-* **Le réimport d'un chapitre corrigé.** `reimporter.py` code `articles/` en dur à
-  plusieurs endroits, et le réimport est la mécanique la plus délicate du cockpit — elle
-  bascule un dossier par deux renommages atomiques pour ne perdre ni fiche, ni médias, ni
-  traductions. On ne l'étend pas en passant. L'import simple suffit tant qu'un chapitre se
-  corrige dans le `.md`.
+* **Le réimport d'un chapitre corrigé.** `reimporter.py` code `articles/` en dur à dix
+  endroits et bascule un dossier par deux renommages atomiques, avec réconciliation des
+  tableaux par empreinte. On n'étend pas cette mécanique-là en passant. Le refus tient.
+
+**Correction n° 8 — mais le refus laisse un trou, et il faut le boucher.** L'import simple
+**ignore silencieusement** un `.docx` dont le slug existe déjà. Côté revue, l'interface le
+rattrape : `_itemsWord()` (l.1383-1391) pose un `contextValue = 'word-deja'` et une icône
+d'avertissement, qui mène au réimport. Un livre a un `chapitres-word/` permanent, donc des
+dépôts répétés — et un ouvrage collectif en relecture en aura. Sans réimport **et** sans ce
+badge, un rédacteur qui redépose un chapitre corrigé ne verra rien du tout : le fichier
+reste là, rien ne se passe, rien ne le dit.
+
+**Le badge doit donc être porté au profil livre même sans le réimport** : l'absence de
+mécanisme doit se VOIR, pas se deviner.
