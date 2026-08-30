@@ -99,6 +99,8 @@ LIVRE_CONFIG := $(wildcard buch.yaml)
 
 # Routage de la cible `all`, résolu à la lecture du Makefile : `make -n all` montre
 # la route prise sans exécuter pandoc.
+# Un livre PRIME sur la cle `profil:` d'un ausgabe.yaml qui trainerait dans le meme
+# dossier : buch.yaml present, la route est « livre », point final.
 ifneq ($(LIVRE_CONFIG),)
 PROFIL_ROUTE := livre
 else ifeq ($(PROFIL_DECLARE),)
@@ -133,7 +135,10 @@ ACCENT_ABS := $(abspath $(ACCENT_CSS))
 # Sans ceci, make considérerait les .html comme intermédiaires et les supprimerait.
 .SECONDARY: $(HTMLS) $(APERCUS)
 
-# Import Word : le .docx source est supprimé après une conversion réussie.
+# Dossiers des unités (articles ou chapitres d'un livre) : articles/ par défaut, chapitres/
+# pour un livre. Variables portables à livre.mk, où UNITES_DIR := chapitres.
+# WORD_DIR est spécifique à chaque profil : articles-word (défaut) ou chapitres-word (livre).
+UNITES_DIR := articles
 WORD_DIR   := articles-word
 
 .PHONY: all pdf docx import reimporter annuler-reimport clean verifie-dossier \
@@ -157,7 +162,12 @@ all:
 else ifeq ($(PROFIL_ROUTE),rien)
 all: profil-rien
 else ifeq ($(PROFIL_ROUTE),livre)
-all: livre
+# Comme la route article : les Word deposes entrent d'abord, puis le livre se compose.
+# Sans ce premier appel, un chapitre depose dans chapitres-word/ resterait invisible et
+# le livre sortirait sans lui, sans un mot.
+all:
+	@$(MAKE) --no-print-directory -f $(THIS) import
+	@$(MAKE) --no-print-directory -f $(THIS) livre
 else ifeq ($(PROFIL_ROUTE),book)
 all: profil-book-sans-fichier
 else
@@ -471,18 +481,18 @@ docx: verifie-dossier verifier-ua $(DOCXS)
 import:
 	@set -u; \
 	shopt -s nullglob; \
-	for m in articles/*.md; do \
+	for m in $(UNITES_DIR)/*.md; do \
 	  base=$$(basename "$$m" .md); \
-	  mkdir -p "articles/$$base/media"; \
-	  mv "$$m" "articles/$$base/$$base.md"; \
-	  if [ -d "articles/media/$$base" ]; then \
-	    cp -r "articles/media/$$base/." "articles/$$base/media/" && rm -rf "articles/media/$$base"; \
+	  mkdir -p "$(UNITES_DIR)/$$base/media"; \
+	  mv "$$m" "$(UNITES_DIR)/$$base/$$base.md"; \
+	  if [ -d "$(UNITES_DIR)/media/$$base" ]; then \
+	    cp -r "$(UNITES_DIR)/media/$$base/." "$(UNITES_DIR)/$$base/media/" && rm -rf "$(UNITES_DIR)/media/$$base"; \
 	  fi; \
-	  sed -i "s|articles/media/$$base/|media/|g" "articles/$$base/$$base.md"; \
-	  echo "[import] structure migrée : $$m -> articles/$$base/$$base.md"; \
+	  sed -i "s|$(UNITES_DIR)/media/$$base/|media/|g" "$(UNITES_DIR)/$$base/$$base.md"; \
+	  echo "[import] structure migrée : $$m -> $(UNITES_DIR)/$$base/$$base.md"; \
 	done; \
-	rmdir articles/media 2>/dev/null || true; \
-	for d in articles/*/; do \
+	rmdir $(UNITES_DIR)/media 2>/dev/null || true; \
+	for d in $(UNITES_DIR)/*/; do \
 	  slug=$$(basename "$$d"); \
 	  if [ -d "$$d/media/media" ]; then \
 	    cp -r "$$d/media/media/." "$$d/media/" && rm -rf "$$d/media/media"; \
@@ -500,7 +510,7 @@ import:
 	files=("$(WORD_DIR)"/*.docx); \
 	shopt -u nocaseglob; \
 	[ $${#files[@]} -gt 0 ] || exit 0; \
-	mkdir -p articles; \
+	mkdir -p $(UNITES_DIR); \
 	ok=0; renomme=0; redepot=0; rate=0; \
 	for f in "$${files[@]}"; do \
 	  nom=$$(basename "$$f"); slug="$${nom%.*}"; \
@@ -510,7 +520,7 @@ import:
 	  slug=$$(printf '%s' "$$slug" | sed -E 's/^([0-9])($$|[^0-9])/0\1\2/'); \
 	  if [ $${#slug} -gt 39 ]; then scourt="$${slug:0:39}"; scourt="$${scourt%-*}"; sorph=$$(printf '%s' "$$scourt" | sed -E 's/(-[a-z0-9])+$$//'); case "$$sorph" in *-*) scourt="$$sorph";; esac; slug="$${scourt:-$${slug:0:39}}"; fi; \
 	  venu_de=""; \
-	  for fiche in articles/*/*.meta.yaml; do \
+	  for fiche in /*/*.meta.yaml; do \
 	    src=$$(sed -n 's/^source:[[:space:]]*//p' "$$fiche" | head -1 | sed -e 's/^"//' -e 's/"$$//'); \
 	    if [ "$$src" = "$$nom" ]; then venu_de=$$(basename "$$(dirname "$$fiche")"); break; fi; \
 	  done; \
@@ -518,12 +528,12 @@ import:
 	    dire "[import-avertissement] word-redepose | article « $$venu_de » | fichier « $$nom » | Cet article a déjà été importé depuis ce même fichier Word. Rien n'a été créé : la version corrigée reste en attente dans $(WORD_DIR)/, et l'article publié est encore l'ancien. Pour publier la correction sans perdre la fiche, les médias ni les traductions : « Réimporter cet article », sur cet article. | [de] Dieser Artikel wurde schon aus derselben Word-Datei importiert. Es wurde nichts angelegt: die korrigierte Fassung bleibt in $(WORD_DIR)/, veröffentlicht ist noch die alte. Um die Korrektur zu veröffentlichen, ohne Metadaten, Medien und Übersetzungen zu verlieren: « Artikel neu importieren », beim betreffenden Artikel."; \
 	    redepot=$$((redepot+1)); continue; \
 	  fi; \
-	  if [ -e "articles/$$slug/$$slug.md" ] && ! grep -q "^source:" "articles/$$slug/$$slug.meta.yaml" 2>/dev/null; then \
+	  if [ -e "$(UNITES_DIR)/$$slug/$$slug.md" ] && ! grep -q "^source:" "$(UNITES_DIR)/$$slug/$$slug.meta.yaml" 2>/dev/null; then \
 	    dire "[import-avertissement] origine-inconnue | article « $$slug » | fichier « $$nom » | Un article porte déjà ce nom de dossier, sans qu'on sache de quel Word il vient. Rien n'a été créé, pour ne pas risquer un doublon dans le numéro. S'il s'agit d'un autre article, renommez le fichier Word puis enregistrez (Ctrl+S) ; s'il s'agit du même article corrigé, lancez « Réimporter cet article » et désignez-lui ce fichier Word. | [de] Ein Artikel trägt diesen Ordnernamen bereits, ohne bekannte Word-Herkunft. Es wurde nichts angelegt, um kein Duplikat in der Ausgabe zu erzeugen. Handelt es sich um einen anderen Artikel, benennen Sie die Word-Datei um und speichern Sie (Ctrl+S); ist es derselbe Artikel, korrigiert, starten Sie « Artikel neu importieren » und weisen Sie ihm diese Word-Datei zu."; \
 	    redepot=$$((redepot+1)); continue; \
 	  fi; \
 	  base="$$slug"; n=1; trop=0; \
-	  while [ -e "articles/$$slug/$$slug.md" ]; do \
+	  while [ -e "$(UNITES_DIR)/$$slug/$$slug.md" ]; do \
 	    n=$$((n+1)); \
 	    if [ $$n -gt 99 ]; then trop=1; break; fi; \
 	    suf="-$$n"; tronc="$$base"; \
@@ -536,8 +546,8 @@ import:
 	    dire "[import] ⚠ échec sur : $$nom — 99 articles portent déjà ce nom de dossier ; renommez le fichier Word puis enregistrez (Ctrl+S). [de] 99 Artikel tragen diesen Ordnernamen bereits; benennen Sie die Word-Datei um und speichern Sie erneut (Ctrl+S)."; \
 	    rate=$$((rate+1)); continue; \
 	  fi; \
-	  cible="articles/$$slug/$$slug.md"; \
-	  if bash "$(PIPELINE_DIR)/import-docx.sh" "$$f" "$$slug" "$(PIPELINE_DIR)"; then \
+	  cible="$(UNITES_DIR)/$$slug/$$slug.md"; \
+	  if SZH_IMPORT_DIR="$(abspath $(UNITES_DIR)/$$slug)" bash "$(PIPELINE_DIR)/import-docx.sh" "$$f" "$$slug" "$(PIPELINE_DIR)"; then \
 	    rm -f "$$f"; \
 	    if [ "$$slug" = "$$base" ]; then \
 	      dire "[import] converti : $$nom -> $$cible"; \
@@ -547,7 +557,7 @@ import:
 	    fi; \
 	    ok=$$((ok+1)); \
 	  else \
-	    rm -rf "articles/$$slug"; \
+	    rm -rf "$(UNITES_DIR)/$$slug"; \
 	    dire "[import] ⚠ échec sur : $$nom (le fichier reste dans $(WORD_DIR)/)"; rate=$$((rate+1)); \
 	  fi; \
 	done; \

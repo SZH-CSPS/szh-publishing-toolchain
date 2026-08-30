@@ -30,11 +30,35 @@ CONFIG_LIVRE := buch.yaml
 CH_DIR       := chapitres
 LIM_DIR      := liminaires
 COUV_DIR     := couverture
+UNITES_DIR   := chapitres
+WORD_DIR     := chapitres-word
+
+# Lecture de l'ordre des chapitres depuis buch.yaml : la clé `ordre-chapitres` donne le
+# nouvel ordre si elle porte une liste, sinon l'ordre reste alphabétique par nom de dossier.
+# Le sed lit la ligne qui commence par « ordre-chapitres: » et capture ce qui est entre
+# crochets « [a, b, c] », ce qui couvre la forme écrite par serialiserAusgabe().
+ORDRE_LU := $(shell sed -n "s/^ordre-chapitres:[[:space:]]*\[\([^]]*\)\].*/\1/p" $(CONFIG_LIVRE) 2>/dev/null | head -1)
+# La liste se séparant par les virgules dans « [a, b, c] », avec espaces possibles autour.
+# On retire aussi les guillemets d'un éventuel flux mal parsé.
+ORDRES := $(shell printf '%s\n' '$(ORDRE_LU)' | sed "s/[,[:space:]]\+/ /g; s/^[[:space:]]*//; s/[[:space:]]*\$$//g; s/'//g; s/\"//g")
+
+# Tous les chapitres trouvés sur le disque.
+TOUS_CHAPITRES := $(sort $(foreach d,$(wildcard $(CH_DIR)/*),\
+                $(if $(wildcard $(d)/$(notdir $(d)).md),$(notdir $(d)))))
+
+# Réordonner selon l'ordre donné : les slugs de ORDRES en tête, puis les chapitres manquants
+# par tri alphabétique, de manière à ce qu'un nouveau chapitre ne disparaisse jamais du livre.
+# Diagnostic : si un slug de ORDRES n'existe pas, le signaler comme warning.
+CHAPITRES_ORDONNES :=
+$(foreach s,$(ORDRES),$(if $(wildcard $(CH_DIR)/$(s)/$(s).md),,$(warning [livre] chapitre «$(s)» listé dans ordre-chapitres mais pas trouvé dans $(CH_DIR)/)))
+# Ajouter les slugs qui existent, dans l'ordre donné.
+$(foreach s,$(ORDRES),$(if $(filter $(s),$(TOUS_CHAPITRES)),$(eval CHAPITRES_ORDONNES += $(s))))
+# Puis ajouter les chapitres non listés, par tri alphabétique.
+$(foreach c,$(TOUS_CHAPITRES),$(if $(filter $(c),$(CHAPITRES_ORDONNES)),,$(eval CHAPITRES_ORDONNES += $(c))))
+CHAPITRES := $(CHAPITRES_ORDONNES)
 
 # Un chapitre = chapitres/<slug>/<slug>.md, comme un article. L'ordre est celui du tri des
-# noms de dossier : c'est pourquoi ils sont préfixés « 01- », « 02- ».
-CHAPITRES := $(sort $(foreach d,$(wildcard $(CH_DIR)/*),\
-                $(if $(wildcard $(d)/$(notdir $(d)).md),$(notdir $(d)))))
+# noms de dossier — et du tri alphabétique après ceux ordonnés par « ordre-chapitres ».
 FRAGMENTS := $(foreach c,$(CHAPITRES),$(OUT)/$(CH_DIR)/$(c).frag.html)
 
 # ⚠ LES CHAPITRES SE COMPILENT DANS L'ORDRE, ET C'EST UNE OBLIGATION, pas un confort.

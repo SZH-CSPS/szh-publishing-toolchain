@@ -97,7 +97,11 @@ test('slug d’article : au-delà de 99 homonymes, on refuse plutôt que d’inv
 test('Makefile : la désambiguïsation du shell reprend les constantes de slug.js', () => {
   const mk = lire('pipeline', 'Makefile');
   // La boucle cherche un slug libre au lieu d'abandonner sur « déjà converti ».
-  assert.match(mk, /while \[ -e "articles\/\$\$slug\/\$\$slug\.md" \]; do/,
+  // ⚠ Le dossier des unités est une VARIABLE depuis que l'import sert aussi aux chapitres
+  //   d'un livre ($(UNITES_DIR), qui vaut « articles » par défaut et « chapitres » sous
+  //   livre.mk). Le contrat porte sur la BOUCLE, pas sur le nom du dossier : c'est elle qui
+  //   cherche un slug libre au lieu d'abandonner, et c'est elle qui doit rester.
+  assert.match(mk, /while \[ -e "\$\(UNITES_DIR\)\/\$\$slug\/\$\$slug\.md" \]; do/,
     'la boucle de désambiguïsation a disparu du Makefile');
   assert.ok(mk.indexOf('déjà converti (ignoré)') === -1,
     'la branche d’abandon silencieux est de retour');
@@ -196,7 +200,7 @@ test('Makefile : le même Word redéposé ne fabrique pas un second article', ()
   const mk = lire('pipeline', 'Makefile');
   // La décision se prend sur le champ `source:` des fiches, avant toute désambiguïsation.
   const iSource = mk.indexOf("sed -n 's/^source:[[:space:]]*//p'");
-  const iBoucle = mk.indexOf('while [ -e "articles/$$slug/$$slug.md" ]; do');
+  const iBoucle = mk.indexOf('while [ -e "$(UNITES_DIR)/$$slug/$$slug.md" ]; do');
   assert.ok(iSource !== -1, 'la lecture du champ source: a disparu du Makefile');
   assert.ok(iSource < iBoucle,
     'le redépôt est cherché après le suffixe : un doublon serait déjà créé');

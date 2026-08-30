@@ -246,8 +246,13 @@ test('Makefile : le redépôt d’un Word nomme un geste qui existe', () => {
   assert.match(MK, /^reimporter:$/m, 'la cible reimporter a disparu');
   // La cible `import` ne réimporte jamais d'elle-même : c'est une opération destructive,
   // elle se demande.
-  const bloc = MK.slice(MK.indexOf('venu_de=""'),
-    MK.indexOf('while [ -e "articles/$$slug/$$slug.md" ]; do'));
+  // ⚠ La borne de fin est le nom d'une VARIABLE depuis que l'import sert aussi aux
+  //   chapitres d'un livre. Écrite en dur, `indexOf` rendait -1, `slice` prenait tout le
+  //   fichier, et le contrôle accusait la cible `import` d'un `reimporter.py` qui vit
+  //   ailleurs. Un contrôle qui se trompe de bloc n'est pas plus sûr qu'un contrôle absent.
+  const finBloc = MK.indexOf('while [ -e "$(UNITES_DIR)/$$slug/$$slug.md" ]; do');
+  assert.ok(finBloc !== -1, 'la boucle de désambiguïsation a disparu : le bloc n’a plus de fin');
+  const bloc = MK.slice(MK.indexOf('venu_de=""'), finBloc);
   assert.ok(bloc.indexOf('reimporter.py') === -1,
     'la cible import lance le réimport toute seule : elle remplacerait le travail de la '
     + 'rédaction sans qu’on le lui demande');
