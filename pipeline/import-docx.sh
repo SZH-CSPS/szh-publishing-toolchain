@@ -29,6 +29,11 @@
 #                      titres promus, et avant szh-tabelle-reference, les Table étant
 #                      encore des Table)
 #        szh-tabelle-reference (Table restants -> ::: {.szh-tabelle src=…})
+#        szh-attributs-sains (EN DERNIER : il assainit les classes et identifiants que
+#                      tout ce qui précède a pu poser. Le lecteur docx met le nom du style
+#                      Word en classe — « Titre 2 (small) » — et pandoc ne sait pas relire
+#                      une parenthèse dans un nom de classe : le bloc d'attributs entier
+#                      s'imprimerait alors dans le livre)
 #   5. import-medias.py : les photos du tableau des auteurs quittent media/ pour
 #      portraits/ et passent au détourage ; les images que ni le .md ni tables/*.html ne
 #      citent sont supprimées (Word livre aussi les logos et filigranes du document).
@@ -116,6 +121,7 @@ pandoc "$DOCX_ABS" \
   --lua-filter="$PIPE/filters/szh-titres.lua" \
   --lua-filter="$PIPE/filters/szh-biblio-detacher.lua" \
   --lua-filter="$PIPE/filters/szh-tabelle-reference.lua" \
+  --lua-filter="$PIPE/filters/szh-attributs-sains.lua" \
   --wrap=none \
   -o "$SLUG.md" || { nettoyer_tout; exit 1; }
 nettoyer

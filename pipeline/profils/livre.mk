@@ -187,6 +187,7 @@ CSS_LIVRE_WEB := --css-embed "$(SOCLE_ABS)" --css-embed "$(abspath $(STYLE_LIVRE
 
 # La suite de filtres d'un chapitre. Même ordre que la revue, aux trois écarts ci-dessus.
 FILTRES_CHAPITRE := \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-sauts-uniques.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-listes-serrees.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \

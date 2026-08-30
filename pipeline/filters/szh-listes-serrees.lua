@@ -41,6 +41,19 @@
 -- Les paragraphes DE TÊTE d'un item, fusionnés en un seul bloc en ligne. Le reste — une
 -- sous-liste, un tableau — est laissé où il est : c'est une forme que WeasyPrint balise
 -- correctement (mesuré), et la fusionner collerait une liste à un paragraphe.
+-- Un saut est-il déjà posé en fin de contenu ? Sert à ne pas en ajouter un second.
+local function finit_par_saut(inlines)
+  local dernier = inlines[#inlines]
+  return dernier ~= nil and (dernier.t == 'LineBreak' or dernier.t == 'SoftBreak')
+end
+
+-- Les sauts qui traînent en fin d'item : ils ouvriraient une ligne vide sous le dernier
+-- mot, et la puce suivante s'en trouverait repoussée d'un interligne.
+local function elaguer_sauts_finaux(inlines)
+  while finit_par_saut(inlines) do inlines:remove(#inlines) end
+  return inlines
+end
+
 local function resserrer_items(items)
   local sortie = {}
   for i, blocs in ipairs(items) do
@@ -55,10 +68,16 @@ local function resserrer_items(items)
       for j = 1, n do
         -- Deux paragraphes d'un même item se lisent comme deux lignes — et c'est
         -- littéralement la règle FALC, une phrase par ligne.
-        if j > 1 then contenu:insert(pandoc.LineBreak()) end
+        --
+        -- ⚠ SAUF si le paragraphe précédent finit DÉJÀ par un saut. L'import Word pose un
+        --   `\` en fin de chaque ligne FALC : en ajouter un second doublerait l'interligne
+        --   de l'item, et deux <br> ne se signalent nulle part — HTML valide, PDF conforme,
+        --   seul le nombre de pages trahit. szh-sauts-uniques.lua tient la même règle pour
+        --   le reste du document ; ici, la fusion recrée le cas et doit s'en garder seule.
+        if j > 1 and not finit_par_saut(contenu) then contenu:insert(pandoc.LineBreak()) end
         contenu:extend(blocs[j].content)
       end
-      local neufs = { pandoc.Plain(contenu) }
+      local neufs = { pandoc.Plain(elaguer_sauts_finaux(contenu)) }
       for j = n + 1, #blocs do neufs[#neufs + 1] = blocs[j] end
       sortie[i] = neufs
     end

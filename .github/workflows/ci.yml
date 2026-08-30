@@ -196,6 +196,14 @@ jobs:
       # Les deux LIVRES du banc. Ils gardent ce qu'un article ne peut pas garder : la
       # numérotation qui court d'un chapitre à l'autre, le sommaire dont les numéros de
       # page sont posés à la pagination, et surtout la conformité PDF/UA d'un document de
+      # Ce que les filtres Lua font vraiment, pandoc à l'appui. Ces contrôles vivent hors
+      # du glob `test/js/*.test.js` exprès : le job `contrats` n'a pas la chaîne PDF, et
+      # doit rendre son verdict sans l'attendre. Chacun vérifie d'abord que le défaut se
+      # reproduit SANS le filtre — sans quoi il ne prouverait rien le jour où pandoc
+      # changerait de comportement.
+      - name: Vérifier les filtres qui demandent pandoc
+        run: node --test test/filtres-pandoc.test.js
+
       # plusieurs chapitres — qu'un tableau mal placé ou une liste lâche suffit à faire
       # tomber SANS ERREUR VISIBLE.
       # Le verdict se lit sur l'ABSENCE de FAIL, jamais sur la présence d'un PASS :
