@@ -5,9 +5,15 @@
   "version": "0.27.0",
   "publisher": "szh-csps",
   "license": "MIT",
-  "engines": { "vscode": "^1.75.0" },
-  "categories": ["Other"],
-  "activationEvents": ["onStartupFinished"],
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./extension.js",
   "contributes": {
     "walkthroughs": [
@@ -16,69 +22,114 @@
         "title": "%tuto.titre%",
         "description": "%tuto.intro%",
         "steps": [
-        {
-          "id": "szh.tuto.ouvrir",
-          "title": "%tuto.ouvrir.titre%",
-          "description": "%tuto.ouvrir.texte%",
-          "media": { "svg": "media/tutoriel/01-ouvrir.svg", "altText": "%tuto.ouvrir.titre%" },
-          "completionEvents": ["onView:szhCockpitVue"]
-        },
-        {
-          "id": "szh.tuto.word",
-          "title": "%tuto.word.titre%",
-          "description": "%tuto.word.texte%",
-          "media": { "svg": "media/tutoriel/02-word.svg", "altText": "%tuto.word.titre%" },
-          "completionEvents": ["onCommand:szh.convertirEnAttente"]
-        },
-        {
-          "id": "szh.tuto.verifier",
-          "title": "%tuto.verifier.titre%",
-          "description": "%tuto.verifier.texte%",
-          "media": { "svg": "media/tutoriel/03-verifier.svg", "altText": "%tuto.verifier.titre%" },
-          "completionEvents": ["onCommand:szh.apercuMetadonnees"]
-        },
-        {
-          "id": "szh.tuto.numero",
-          "title": "%tuto.numero.titre%",
-          "description": "%tuto.numero.texte%",
-          "media": { "svg": "media/tutoriel/04-numero.svg", "altText": "%tuto.numero.titre%" },
-          "completionEvents": ["onCommand:szh.metadonnees"]
-        },
-        {
-          "id": "szh.tuto.medias",
-          "title": "%tuto.medias.titre%",
-          "description": "%tuto.medias.texte%",
-          "media": { "svg": "media/tutoriel/05-medias.svg", "altText": "%tuto.medias.titre%" },
-          "completionEvents": ["onCommand:szh.mediasArticle"]
-        },
-        {
-          "id": "szh.tuto.tableau",
-          "title": "%tuto.tableau.titre%",
-          "description": "%tuto.tableau.texte%",
-          "media": { "svg": "media/tutoriel/06-tableau.svg", "altText": "%tuto.tableau.titre%" },
-          "completionEvents": ["onCommand:szh.editerTable"]
-        },
-        {
-          "id": "szh.tuto.traduction",
-          "title": "%tuto.traduction.titre%",
-          "description": "%tuto.traduction.texte%",
-          "media": { "svg": "media/tutoriel/07-traduction.svg", "altText": "%tuto.traduction.titre%" },
-          "completionEvents": ["onCommand:szh.vueTraductions"]
-        },
-        {
-          "id": "szh.tuto.relire",
-          "title": "%tuto.relire.titre%",
-          "description": "%tuto.relire.texte%",
-          "media": { "svg": "media/tutoriel/08-relire.svg", "altText": "%tuto.relire.titre%" },
-          "completionEvents": ["onCommand:szh.basculerApercu"]
-        },
-        {
-          "id": "szh.tuto.archiver",
-          "title": "%tuto.archiver.titre%",
-          "description": "%tuto.archiver.texte%",
-          "media": { "svg": "media/tutoriel/09-archiver.svg", "altText": "%tuto.archiver.titre%" },
-          "completionEvents": ["onCommand:szh.exporterXml"]
-        }
+          {
+            "id": "szh.tuto.ouvrir",
+            "title": "%tuto.ouvrir.titre%",
+            "description": "%tuto.ouvrir.texte%",
+            "media": {
+              "svg": "media/tutoriel/01-ouvrir.svg",
+              "altText": "%tuto.ouvrir.titre%"
+            },
+            "completionEvents": [
+              "onView:szhCockpitVue"
+            ]
+          },
+          {
+            "id": "szh.tuto.word",
+            "title": "%tuto.word.titre%",
+            "description": "%tuto.word.texte%",
+            "media": {
+              "svg": "media/tutoriel/02-word.svg",
+              "altText": "%tuto.word.titre%"
+            },
+            "completionEvents": [
+              "onCommand:szh.convertirEnAttente"
+            ]
+          },
+          {
+            "id": "szh.tuto.verifier",
+            "title": "%tuto.verifier.titre%",
+            "description": "%tuto.verifier.texte%",
+            "media": {
+              "svg": "media/tutoriel/03-verifier.svg",
+              "altText": "%tuto.verifier.titre%"
+            },
+            "completionEvents": [
+              "onCommand:szh.apercuMetadonnees"
+            ]
+          },
+          {
+            "id": "szh.tuto.numero",
+            "title": "%tuto.numero.titre%",
+            "description": "%tuto.numero.texte%",
+            "media": {
+              "svg": "media/tutoriel/04-numero.svg",
+              "altText": "%tuto.numero.titre%"
+            },
+            "completionEvents": [
+              "onCommand:szh.metadonnees"
+            ]
+          },
+          {
+            "id": "szh.tuto.medias",
+            "title": "%tuto.medias.titre%",
+            "description": "%tuto.medias.texte%",
+            "media": {
+              "svg": "media/tutoriel/05-medias.svg",
+              "altText": "%tuto.medias.titre%"
+            },
+            "completionEvents": [
+              "onCommand:szh.mediasArticle"
+            ]
+          },
+          {
+            "id": "szh.tuto.tableau",
+            "title": "%tuto.tableau.titre%",
+            "description": "%tuto.tableau.texte%",
+            "media": {
+              "svg": "media/tutoriel/06-tableau.svg",
+              "altText": "%tuto.tableau.titre%"
+            },
+            "completionEvents": [
+              "onCommand:szh.editerTable"
+            ]
+          },
+          {
+            "id": "szh.tuto.traduction",
+            "title": "%tuto.traduction.titre%",
+            "description": "%tuto.traduction.texte%",
+            "media": {
+              "svg": "media/tutoriel/07-traduction.svg",
+              "altText": "%tuto.traduction.titre%"
+            },
+            "completionEvents": [
+              "onCommand:szh.vueTraductions"
+            ]
+          },
+          {
+            "id": "szh.tuto.relire",
+            "title": "%tuto.relire.titre%",
+            "description": "%tuto.relire.texte%",
+            "media": {
+              "svg": "media/tutoriel/08-relire.svg",
+              "altText": "%tuto.relire.titre%"
+            },
+            "completionEvents": [
+              "onCommand:szh.basculerApercu"
+            ]
+          },
+          {
+            "id": "szh.tuto.archiver",
+            "title": "%tuto.archiver.titre%",
+            "description": "%tuto.archiver.texte%",
+            "media": {
+              "svg": "media/tutoriel/09-archiver.svg",
+              "altText": "%tuto.archiver.titre%"
+            },
+            "completionEvents": [
+              "onCommand:szh.exporterXml"
+            ]
+          }
         ]
       }
     ],
@@ -87,13 +138,20 @@
       "properties": {
         "szh.langue": {
           "type": "string",
-          "enum": ["", "fr", "de"],
+          "enum": [
+            "",
+            "fr",
+            "de"
+          ],
           "default": "",
           "description": "%config.langue%"
         },
         "szh.apercuMode": {
           "type": "string",
-          "enum": ["html", "pdf"],
+          "enum": [
+            "html",
+            "pdf"
+          ],
           "default": "html",
           "description": "%config.apercuMode%"
         },
@@ -132,238 +190,557 @@
       {
         "command": "szh.importerWord",
         "title": "%cmd.importerWord%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(add)"
       },
       {
         "command": "szh.cockpit.rafraichir",
         "title": "%cmd.rafraichir%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(refresh)"
       },
       {
         "command": "szh.convertirEnAttente",
         "title": "%cmd.convertirEnAttente%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(run-all)"
       },
       {
         "command": "szh.metadonnees",
         "title": "%cmd.metadonnees%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(gear)"
       },
       {
         "command": "szh.supprimerArticle",
         "title": "%cmd.supprimerArticle%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(trash)"
       },
       {
         "command": "szh.reimporterArticle",
         "title": "%cmd.reimporterArticle%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(sync)"
       },
       {
         "command": "szh.annulerReimport",
         "title": "%cmd.annulerReimport%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(discard)"
       },
       {
         "command": "szh.toutExporter",
         "title": "%cmd.toutExporter%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(export)"
       },
       {
         "command": "szh.exporterXml",
         "title": "%cmd.exporterXml%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(file-code)"
       },
       {
         "command": "szh.exporterArticle",
         "title": "%cmd.exporterArticle%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(file-pdf)"
       },
       {
         "command": "szh.archiverVerrouiller",
         "title": "%cmd.archiverVerrouiller%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(archive)"
       },
       {
         "command": "szh.deverrouiller",
         "title": "%cmd.deverrouiller%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(unlock)"
       },
       {
         "command": "szh.desarchiver",
         "title": "%cmd.desarchiver%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(folder-opened)"
       },
       {
         "command": "szh.supprimerTable",
         "title": "%cmd.supprimerTable%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(trash)"
       },
       {
         "command": "szh.editerTable",
         "title": "%cmd.editerTable%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(edit)"
       },
       {
         "command": "szh.apercuMetadonnees",
         "title": "%cmd.apercuMetadonnees%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(list-flat)"
       },
       {
         "command": "szh.metadonneesArticle",
         "title": "%cmd.metadonneesArticle%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(list-flat)"
       },
       {
         "command": "szh.mediasArticle",
         "title": "%cmd.mediasArticle%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(file-media)"
       },
       {
         "command": "szh.traduction",
         "title": "%cmd.traduction%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(globe)"
       },
       {
         "command": "szh.tutoriel",
         "title": "%cmd.tutoriel%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(mortar-board)"
       },
       {
         "command": "szh.vueArticles",
         "title": "%cmd.vueArticles%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(dashboard)"
       },
       {
         "command": "szh.envoyerAuteur",
         "title": "%cmd.envoyerAuteur%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(mail)"
       },
       {
         "command": "szh.vueTraductions",
         "title": "%cmd.vueTraductions%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(dashboard)"
       },
       {
         "command": "szh.vueWord",
         "title": "%cmd.vueWord%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(dashboard)"
       },
       {
         "command": "szh.vueControles",
         "title": "%cmd.vueControles%",
-        "category": "Revue SZH"
+        "category": "SZH/CSPS"
       },
       {
         "command": "szh.traductionsToutPret",
         "title": "%cmd.traductionsToutPret%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(check-all)"
       },
       {
         "command": "szh.envoyerTraduction",
         "title": "%cmd.envoyerTraduction%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(mail)"
       },
       {
         "command": "szh.reglages",
         "title": "%cmd.reglages%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(settings-gear)"
       },
       {
         "command": "szh.basculerApercu",
         "title": "%cmd.basculerApercu%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(preview)"
       },
       {
         "command": "szh.panneauCommande",
         "title": "%cmd.panneauCommande%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(rocket)"
       },
       {
         "command": "szh.panneauEdition",
         "title": "%cmd.panneauEdition%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(edit)"
       },
       {
         "command": "szh.panneauExport",
         "title": "%cmd.panneauExport%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(export)"
       },
       {
         "command": "szh.miseEnForme",
         "title": "%cmd.miseEnForme%",
-        "category": "Revue SZH",
+        "category": "SZH/CSPS",
         "icon": "$(list-selection)"
       },
-      { "command": "szh.fmt.gras", "title": "%cmd.fmt.gras%", "category": "Revue SZH" },
-      { "command": "szh.fmt.italique", "title": "%cmd.fmt.italique%", "category": "Revue SZH" },
-      { "command": "szh.fmt.souligne", "title": "%cmd.fmt.souligne%", "category": "Revue SZH" },
-      { "command": "szh.fmt.titre1", "title": "%cmd.fmt.titre1%", "category": "Revue SZH" },
-      { "command": "szh.fmt.titre2", "title": "%cmd.fmt.titre2%", "category": "Revue SZH" },
-      { "command": "szh.fmt.titre3", "title": "%cmd.fmt.titre3%", "category": "Revue SZH" },
-      { "command": "szh.fmt.important", "title": "%cmd.fmt.important%", "category": "Revue SZH" },
-      { "command": "szh.fmt.highlight", "title": "%cmd.fmt.highlight%", "category": "Revue SZH" },
-      { "command": "szh.fmt.question", "title": "%cmd.fmt.question%", "category": "Revue SZH" },
-      { "command": "szh.fmt.citation", "title": "%cmd.fmt.citation%", "category": "Revue SZH" },
-      { "command": "szh.fmt.figure", "title": "%cmd.fmt.figure%", "category": "Revue SZH" },
-      { "command": "szh.fmt.tableau", "title": "%cmd.fmt.tableau%", "category": "Revue SZH" },
-      { "command": "szh.fmt.collerTableau", "title": "%cmd.fmt.collerTableau%", "category": "Revue SZH" },
-      { "command": "szh.fmt.sautPage", "title": "%cmd.fmt.sautPage%", "category": "Revue SZH" },
-      { "command": "szh.lierReference", "title": "%cmd.lierReference%", "category": "Revue SZH", "icon": "$(references)" },
-      { "command": "szh.conflit.comparer", "title": "%cmd.conflit.comparer%", "category": "Revue SZH", "icon": "$(diff)" },
-      { "command": "szh.conflit.prendre", "title": "%cmd.conflit.prendre%", "category": "Revue SZH" },
-      { "command": "szh.conflit.garder", "title": "%cmd.conflit.garder%", "category": "Revue SZH" },
-      { "command": "szh.conflit.supprimerCopie", "title": "%cmd.conflit.supprimerCopie%", "category": "Revue SZH", "icon": "$(trash)" }
+      {
+        "command": "szh.fmt.gras",
+        "title": "%cmd.fmt.gras%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.fmt.italique",
+        "title": "%cmd.fmt.italique%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.fmt.souligne",
+        "title": "%cmd.fmt.souligne%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.fmt.titre1",
+        "title": "%cmd.fmt.titre1%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.fmt.titre2",
+        "title": "%cmd.fmt.titre2%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.fmt.titre3",
+        "title": "%cmd.fmt.titre3%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.fmt.important",
+        "title": "%cmd.fmt.important%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.fmt.highlight",
+        "title": "%cmd.fmt.highlight%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.fmt.question",
+        "title": "%cmd.fmt.question%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.fmt.citation",
+        "title": "%cmd.fmt.citation%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.fmt.figure",
+        "title": "%cmd.fmt.figure%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.fmt.tableau",
+        "title": "%cmd.fmt.tableau%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.fmt.collerTableau",
+        "title": "%cmd.fmt.collerTableau%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.fmt.sautPage",
+        "title": "%cmd.fmt.sautPage%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.lierReference",
+        "title": "%cmd.lierReference%",
+        "category": "SZH/CSPS",
+        "icon": "$(references)"
+      },
+      {
+        "command": "szh.conflit.comparer",
+        "title": "%cmd.conflit.comparer%",
+        "category": "SZH/CSPS",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "szh.conflit.prendre",
+        "title": "%cmd.conflit.prendre%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.conflit.garder",
+        "title": "%cmd.conflit.garder%",
+        "category": "SZH/CSPS"
+      },
+      {
+        "command": "szh.conflit.supprimerCopie",
+        "title": "%cmd.conflit.supprimerCopie%",
+        "category": "SZH/CSPS",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "szh.apercuLivre",
+        "title": "Aperçu du livre entier",
+        "category": "SZH/CSPS",
+        "icon": "$(book)"
+      }
     ],
     "menus": {
       "scm/change/title": [
-        { "command": "szh.conflit.prendre", "when": "originalResourceScheme == szh-conflit", "group": "1_modification@1" },
-        { "command": "szh.conflit.garder", "when": "originalResourceScheme == szh-conflit", "group": "1_modification@2" }
+        {
+          "command": "szh.conflit.prendre",
+          "when": "originalResourceScheme == szh-conflit",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "szh.conflit.garder",
+          "when": "originalResourceScheme == szh-conflit",
+          "group": "1_modification@2"
+        }
       ],
       "commandPalette": [
-        { "command": "szh.conflit.prendre", "when": "false" },
-        { "command": "szh.conflit.garder", "when": "false" }
+        {
+          "command": "szh.conflit.prendre",
+          "when": "false"
+        },
+        {
+          "command": "szh.conflit.garder",
+          "when": "false"
+        },
+        {
+          "command": "szh.importerWord",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.cockpit.rafraichir",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.convertirEnAttente",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.metadonnees",
+          "when": "szh.estRevue"
+        },
+        {
+          "command": "szh.supprimerArticle",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.reimporterArticle",
+          "when": "szh.estRevue"
+        },
+        {
+          "command": "szh.annulerReimport",
+          "when": "szh.estRevue"
+        },
+        {
+          "command": "szh.toutExporter",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.exporterXml",
+          "when": "szh.estRevue"
+        },
+        {
+          "command": "szh.exporterArticle",
+          "when": "szh.estRevue"
+        },
+        {
+          "command": "szh.archiverVerrouiller",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.deverrouiller",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.desarchiver",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.supprimerTable",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.editerTable",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.apercuMetadonnees",
+          "when": "szh.estRevue"
+        },
+        {
+          "command": "szh.metadonneesArticle",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.mediasArticle",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.traduction",
+          "when": "szh.estRevue"
+        },
+        {
+          "command": "szh.tutoriel",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.vueArticles",
+          "when": "szh.estRevue"
+        },
+        {
+          "command": "szh.envoyerAuteur",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.vueTraductions",
+          "when": "szh.estRevue"
+        },
+        {
+          "command": "szh.vueWord",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.vueControles",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.traductionsToutPret",
+          "when": "szh.estRevue"
+        },
+        {
+          "command": "szh.envoyerTraduction",
+          "when": "szh.estRevue"
+        },
+        {
+          "command": "szh.reglages",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.basculerApercu",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.panneauCommande",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.panneauEdition",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.panneauExport",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.miseEnForme",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.gras",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.italique",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.souligne",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.titre1",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.titre2",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.titre3",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.important",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.highlight",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.question",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.citation",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.figure",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.tableau",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.collerTableau",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.sautPage",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.lierReference",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.conflit.comparer",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.conflit.supprimerCopie",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.apercuLivre",
+          "when": "szh.estLivre"
+        }
       ],
       "scm/resourceState/context": [
-        { "command": "szh.conflit.comparer", "when": "scmProvider == szh.conflits", "group": "inline@1" },
-        { "command": "szh.conflit.supprimerCopie", "when": "scmProvider == szh.conflits", "group": "inline@2" }
+        {
+          "command": "szh.conflit.comparer",
+          "when": "scmProvider == szh.conflits",
+          "group": "inline@1"
+        },
+        {
+          "command": "szh.conflit.supprimerCopie",
+          "when": "scmProvider == szh.conflits",
+          "group": "inline@2"
+        }
       ],
       "editor/context": [
-        { "command": "szh.miseEnForme", "group": "navigation@1", "when": "editorLangId == markdown && editorTextFocus" }
+        {
+          "command": "szh.miseEnForme",
+          "group": "navigation@1",
+          "when": "editorLangId == markdown && editorTextFocus"
+        }
       ],
       "editor/title": [
-        { "command": "szh.basculerApercu", "group": "navigation", "when": "resourceExtname == .pdf && szh.estRevue || activeCustomEditorId == 'pdf.preview' && szh.estRevue" }
+        {
+          "command": "szh.basculerApercu",
+          "group": "navigation",
+          "when": "resourceExtname == .pdf && (szh.estRevue || szh.estLivre) || activeCustomEditorId == 'pdf.preview' && (szh.estRevue || szh.estLivre)"
+        }
       ],
       "view/title": [
         {
@@ -385,12 +762,17 @@
           "command": "szh.panneauExport",
           "when": "view == szhCockpitVue",
           "group": "navigation@3"
+        },
+        {
+          "command": "szh.apercuLivre",
+          "when": "view == szhCockpitVue && szh.estLivre",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
         {
           "command": "szh.exporterArticle",
-          "when": "view == szhCockpitVue && viewItem == article && (szh.archivee || szh.verrouillee)",
+          "when": "view == szhCockpitVue && viewItem == article && (szh.archivee || szh.verrouillee) && szh.estRevue",
           "group": "inline@0"
         },
         {
@@ -435,23 +817,28 @@
         },
         {
           "command": "szh.reimporterArticle",
-          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee && szh.estRevue",
           "group": "reimport@1"
         },
         {
           "command": "szh.annulerReimport",
-          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee && szh.estRevue",
           "group": "reimport@2"
         },
         {
           "command": "szh.reimporterArticle",
-          "when": "view == szhCockpitVue && viewItem == word-deja && !szh.verrouillee",
+          "when": "view == szhCockpitVue && viewItem == word-deja && !szh.verrouillee && szh.estRevue",
           "group": "reimport@1"
         },
         {
           "command": "szh.supprimerTable",
           "when": "view == szhCockpitVue && viewItem == table && !szh.verrouillee",
           "group": "inline@1"
+        },
+        {
+          "command": "szh.apercuLivre",
+          "when": "view == szhCockpitVue && viewItem == section-chapitres",
+          "group": "navigation"
         }
       ]
     }

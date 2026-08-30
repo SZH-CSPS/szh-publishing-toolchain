@@ -41,7 +41,7 @@ async function choisirEtExecuter(entrees, clePlaceholder) {
 }
 
 function ouvrirPanneauCommande() {
-  return choisirEtExecuter(PANNEAU_COMMANDE, 'panneau.commande.placeholder');
+  return choisirEtExecuter(pourProfil(PANNEAU_COMMANDE), 'panneau.commande.placeholder');
 }
 
 // Les commandes szh.fmt.* transforment l'éditeur actif quel qu'il soit et n'ont pas de
@@ -53,16 +53,23 @@ const HORS_GARDE_MD = ['szh.basculerApercu', 'szh.metadonneesArticle', 'szh.medi
 async function ouvrirPanneauEdition() {
   const ed = vscode.window.activeTextEditor;
   const estMarkdown = !!(ed && ed.document.languageId === 'markdown');
+  // L'aperçu du LIVRE entier n'existe que pour un livre : un chapitre s'aperçoit comme un
+  // article, mais la pagination, le sommaire et ses numéros de page n'ont de sens
+  // qu'une fois tous les chapitres assemblés.
+  const apercuLivre = hote.profil() === 'livre'
+    ? [['panneau.apercuLivre', 'szh.apercuLivre', '', '$(book)']]
+    : [];
   const entrees = [
     ['--', 'panneau.g.apercu'],
-    ['panneau.basculerApercu', 'szh.basculerApercu', 'Ctrl+Alt+P', '$(preview)'],
+    ['panneau.basculerApercu', 'szh.basculerApercu', 'Ctrl+Alt+P', '$(preview)']
+  ].concat(apercuLivre).concat([
     ['--', 'panneau.g.article'],
     ['panneau.metaArticle', 'szh.metadonneesArticle', '', '$(list-flat)'],
     ['panneau.mediasArticle', 'szh.mediasArticle', '', '$(file-media)'],
     ['panneau.lierReference', 'szh.lierReference', '', '$(references)'],
     ['panneau.traduction', 'szh.traduction', '', '$(globe)']
-  ].concat(PALETTE_MEF);
-  const choix = await sousGarde(() => vscode.window.showQuickPick(itemsDepuisEntrees(entrees), {
+  ]).concat(PALETTE_MEF);
+  const choix = await sousGarde(() => vscode.window.showQuickPick(itemsDepuisEntrees(pourProfil(entrees)), {
     placeHolder: T('panneau.edition.placeholder')
   }));
   if (!choix || !choix.commande) { return; }
@@ -102,12 +109,32 @@ async function ouvrirPanneauExport() {
   if (etat.archivee) {
     entrees.push(['panneau.desarchiver', 'szh.desarchiver', '', '$(folder-opened)']);
   }
-  await choisirEtExecuter(entrees, 'panneau.export.placeholder');
+  await choisirEtExecuter(pourProfil(entrees), 'panneau.export.placeholder');
 }
 
 // État du numéro injecté par extension.js, qui le tient d'ausgabe.yaml. Sans hôte, le
 // repli neutre laisse les panneaux fonctionner sans cycle de vie.
-let hote = { etat: () => ({ verrouillee: false, archivee: false }) };
+let hote = {
+  etat: () => ({ verrouillee: false, archivee: false }),
+  // ⚠ Repli sur « revue » : sans injection, les panneaux se comportent exactement comme
+  //   avant. C'est ce qui rend ce changement sûr pour la revue.
+  profil: () => 'revue'
+};
+
+// Un livre n'a ni OJS, ni suivi de traduction, ni archivage de numéro. Les proposer dans un
+// panneau ouvrirait un formulaire vide, ou pire — une commande qui écrit dans un
+// ausgabe.yaml qui n'existe pas. On les retire, plutôt que de compter sur la personne pour
+// ne pas cliquer.
+const REVUE_SEULEMENT = [
+  'szh.metadonnees', 'szh.apercuMetadonnees', 'szh.traduction',
+  'szh.exporterArticle', 'szh.exporterXml',
+  'szh.archiverVerrouiller', 'szh.deverrouiller', 'szh.desarchiver'
+];
+
+function pourProfil(entrees) {
+  if (hote.profil() !== 'livre') { return entrees; }
+  return entrees.filter((e) => e[0] === '--' || REVUE_SEULEMENT.indexOf(e[1]) === -1);
+}
 
 function enregistrerPanneaux(context, injecte) {
   if (injecte) { hote = Object.assign({}, hote, injecte); }

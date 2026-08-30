@@ -1571,6 +1571,29 @@ async function ouvrirApercuPdf(uri) {
   }
 }
 
+// ---- Aperçu du LIVRE entier -> le PDF composé ------------------------------------
+// Un chapitre s'aperçoit comme un article, dans la colonne de droite. Le livre, lui, n'a de
+// sens qu'entier : la pagination, les ouvertures sur belle page, le sommaire et ses numéros
+// de page n'existent qu'une fois tous les chapitres assemblés. C'est donc le PDF composé
+// qu'on ouvre — le même fichier qui part chez l'imprimeur, pas une approximation.
+//
+// ⚠ Si le PDF n'a jamais été compilé, on le DIT et on propose de compiler, plutôt que
+//   d'ouvrir un onglet vide : « rien ne s'est passé » est le pire des retours.
+async function ouvrirApercuLivre(fournisseur) {
+  const racine = fournisseur && fournisseur.racine;
+  if (!racine) { return; }
+  const nom = path.basename(racine);
+  const pdf = path.join(racine, 'out', nom + '.pdf');
+  if (!fs.existsSync(pdf)) {
+    const compiler = T('livre.apercu.compiler');
+    const choix = await vscode.window.showInformationMessage(
+      T('livre.apercu.absent'), compiler);
+    if (choix === compiler) { await lancerBuild(); }
+    return;
+  }
+  await ouvrirApercuPdf(vscode.Uri.file(pdf));
+}
+
 // Ferme les onglets dont l'entrée satisfait le prédicat ; les `TabInput` sont typés en
 // canard, d'où les gardes chez les appelants.
 async function fermerOnglets(predicat) {
@@ -2152,7 +2175,7 @@ async function revelerPos(fournisseur, slug, pos, mot) {
   const pl = plagePos(pos);
   const ligneDebut = pl ? pl.l1 : lignePos(pos);
   if (!ligneDebut || !fournisseur.racine) { return; }
-  const md = path.join(fournisseur.racine, 'articles', slug, slug + '.md');
+  const md = path.join(fournisseur.racine, dossierUnites(), slug, slug + '.md');
   try {
     const doc = await vscode.workspace.openTextDocument(md);
     const editeur = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One, preserveFocus: false });
@@ -2283,7 +2306,7 @@ async function basculerApercu(fournisseur, majBarreApercu) {
 function slugDepuisChemin(racine, chemin) {
   if (!racine || !chemin) { return null; }
   const parties = path.relative(racine, chemin).split(path.sep);
-  if (parties.length !== 3 || parties[0] !== 'articles') { return null; }
+  if (parties.length !== 3 || parties[0] !== dossierUnites()) { return null; }
   return parties[2] === parties[1] + '.md' ? parties[1] : null;
 }
 
@@ -2304,10 +2327,10 @@ const changementDecoration = new vscode.EventEmitter();
 function slugArticleContenant(racine, chemin) {
   if (!racine || !chemin) { return null; }
   const parties = path.relative(racine, chemin).split(path.sep);
-  if (parties.length < 3 || parties[0] !== 'articles') { return null; }
+  if (parties.length < 3 || parties[0] !== dossierUnites()) { return null; }
   const slug = parties[1];
   try {
-    return fs.statSync(path.join(racine, 'articles', slug, slug + '.md')).isFile()
+    return fs.statSync(path.join(racine, dossierUnites(), slug, slug + '.md')).isFile()
       ? slug : null;
   } catch (e) { return null; }
 }
@@ -2315,7 +2338,7 @@ function slugArticleContenant(racine, chemin) {
 function majArticleOuvert(fournisseur, chemin) {
   const slug = slugArticleContenant(fournisseur.racine, chemin);
   const uri = slug
-    ? vscode.Uri.file(path.join(fournisseur.racine, 'articles', slug, slug + '.md'))
+    ? vscode.Uri.file(path.join(fournisseur.racine, dossierUnites(), slug, slug + '.md'))
     : null;
   const avant = uriArticleOuvert;
   if ((avant && avant.fsPath) === (uri && uri.fsPath)) { return; }
@@ -2357,7 +2380,7 @@ async function ouvrirArticleActifAuDemarrage(fournisseur) {
 async function ouvrirArticle(fournisseur, slug, opts) {
   const racine = fournisseur.racine;
   if (!racine || typeof slug !== 'string' || slug === '') { return; }
-  const md = path.join(racine, 'articles', slug, slug + '.md');
+  const md = path.join(racine, dossierUnites(), slug, slug + '.md');
   // Avant l'ouverture du .md et la compilation, pour que l'arbre suive le clic : les
   // assets de l'article se déplient, la section « Articles » s'ouvre (accordéon), et
   // l'élément — recréé par la reconstruction, son id encode l'état — est resélectionné.
@@ -2365,7 +2388,7 @@ async function ouvrirArticle(fournisseur, slug, opts) {
   // travaille dans une autre section. Le point de l'article ouvert suit dans tous les cas.
   const suivreArbre = !(opts && opts.sansTexte);
   let arbreChange = fournisseur.definirDeploye(slug);
-  if (suivreArbre) { arbreChange = fournisseur.definirSectionDeployee('articles') || arbreChange; }
+  if (suivreArbre) { arbreChange = fournisseur.definirSectionDeployee(categorieUnites()) || arbreChange; }
   if (arbreChange) { fournisseur.rafraichir(); }
   if (suivreArbre) { reselectionnerArticle(fournisseur, slug); }
   majArticleOuvert(fournisseur, md);
@@ -2394,7 +2417,7 @@ async function ouvrirArticle(fournisseur, slug, opts) {
   let obsolete = true;
   try {
     let mSource = fs.statSync(md).mtimeMs;
-    const dossierTables = path.join(racine, 'articles', slug, 'tables');
+    const dossierTables = path.join(racine, dossierUnites(), slug, 'tables');
     let tables = [];
     try { tables = fs.readdirSync(dossierTables); } catch (e) { /* pas de tableaux */ }
     for (const t of tables) {
@@ -2531,7 +2554,7 @@ async function lancerConversion(fournisseur, rafraichirTout) {
       // l'opérateur inspecter un PDF bâti sur les couleurs d'origine.
       const aConvertir = [];
       for (const slug of nouveaux) {
-        const base = path.join(fournisseur.racine, 'articles', slug, 'media');
+        const base = path.join(fournisseur.racine, dossierUnites(), slug, 'media');
         for (const relatif of fournisseur._imagesArticle(slug)) { aConvertir.push(path.join(base, relatif)); }
       }
       await convertirCmykSiBesoin(aConvertir);
@@ -3015,7 +3038,7 @@ async function remplacerFichierImage(fournisseur, rafraichirTout, slug, relatif,
   if (!new Set(fournisseur.listerArticles()).has(String(slug || ''))) { return { etat: 'annule' }; }
   if (!relatifImageValide(relatif)) { return { etat: 'annule' }; }
   if (buildEnCours || importEnCours) { return echec(T('statut.occupe')); }
-  const cible = path.join(fournisseur.racine, 'articles', slug, 'media', relatif);
+  const cible = path.join(fournisseur.racine, dossierUnites(), slug, 'media', relatif);
   let existe = false;
   try { existe = fs.statSync(cible).isFile(); } catch (e) { existe = false; }
   if (!existe) { return echec(T('err.remplacement', [relatif])); }   // disparu entre-temps
@@ -3109,7 +3132,7 @@ async function ajouterImageACote(fournisseur, slug, ancre, nomFichier, donneesBa
   if (Number(dejaDansGrille) >= GRILLE_MAX) {
     return echec(T('modale.acote.detail.pleine'));
   }
-  const dossier = path.join(fournisseur.racine, 'articles', slug, 'media');
+  const dossier = path.join(fournisseur.racine, dossierUnites(), slug, 'media');
   try { fs.mkdirSync(dossier, { recursive: true }); } catch (e) { /* existe déjà */ }
   const nomLibre = nomMediaLibre(dossier, nom);
   const reponse = await vscode.window.showWarningMessage(
@@ -3156,7 +3179,7 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
   // Relatif à media/ pour une image, nom simple pour un tableau.
   const relatif = estTable
     ? nom
-    : path.relative(path.join(racine, 'articles', slug, 'media'), cible).replace(/\\/g, '/');
+    : path.relative(path.join(racine, dossierUnites(), slug, 'media'), cible).replace(/\\/g, '/');
 
   const reponse = await vscode.window.showWarningMessage(
     T(estTable ? 'modale.supprimerTable.question' : 'modale.supprimerAsset.question', [nom]),
@@ -3169,7 +3192,7 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
   // l'enregistrement compile, et pandoc lirait sinon un média en cours de suppression.
   let retirees = 0;
   let doc = null;
-  const md = path.join(racine, 'articles', slug, slug + '.md');
+  const md = path.join(racine, dossierUnites(), slug, slug + '.md');
   try {
     doc = await vscode.workspace.openTextDocument(md);
     const resultat = estTable
@@ -3245,7 +3268,7 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
     T('modale.supprimer.bouton')
   );
   if (reponse !== T('modale.supprimer.bouton')) { return; }   // annulé : rien n'est touché
-  const dossierArticle = path.join(racine, 'articles', slug);
+  const dossierArticle = path.join(racine, dossierUnites(), slug);
   const dossierSortie = path.join(racine, 'out', slug);
   // Tout ce qui tient un fichier de l'article est fermé d'abord ; ces fermetures avalent
   // leurs propres échecs, seul l'effacement dira si elles ont suffi.
@@ -3489,7 +3512,7 @@ function htmlApercuMetadonnees(nonce) {
 let panneauArticles = null;
 
 function cheminMeta(racine, slug) {
-  return path.join(racine, 'articles', slug, slug + '.meta.yaml');
+  return path.join(racine, dossierUnites(), slug, slug + '.meta.yaml');
 }
 
 // Migration idempotente : les métadonnées encore en frontmatter partent vers
@@ -3497,7 +3520,7 @@ function cheminMeta(racine, slug) {
 function migrerFrontmatterVersMeta(racine, slug) {
   const fichierMeta = cheminMeta(racine, slug);
   if (fs.existsSync(fichierMeta)) { return; }
-  const fichierMd = path.join(racine, 'articles', slug, slug + '.md');
+  const fichierMd = path.join(racine, dossierUnites(), slug, slug + '.md');
   let texte;
   try { texte = fs.readFileSync(fichierMd, 'utf8'); } catch (e) { return; }
   const partie = separerFrontmatter(texte);
@@ -3698,7 +3721,7 @@ function iconeStatut(statut) {
 }
 
 function cheminTraduction(racine, slug) {
-  return path.join(racine, 'articles', slug, slug + '.traduction.yaml');
+  return path.join(racine, dossierUnites(), slug, slug + '.traduction.yaml');
 }
 
 function lireMetaArticle(racine, slug) {
@@ -4469,7 +4492,7 @@ function apercuDoi(locale, annee, numeroRevue, rang, doiFiche, voulu) {
 // la SIENNE — lireAttributsImage, celle de lib/references.js, et la liste de fichiers de
 // media/ — ce qui laisse dehors les photos des autrices et auteurs, rangées dans portraits/.
 function resumeImagesArticle(fournisseur, slug) {
-  const md = path.join(fournisseur.racine, 'articles', slug, slug + '.md');
+  const md = path.join(fournisseur.racine, dossierUnites(), slug, slug + '.md');
   let texte = '';
   try { texte = fs.readFileSync(md, 'utf8'); } catch (e) { return resumeImages([]); }
   return resumeImages(fournisseur._imagesArticle(slug).map((relatif) => {
@@ -5318,7 +5341,7 @@ const VERSIONS_PHOTO = ['original', 'avec-fond', 'sans-fond'];
 let photoEnCours = false;                       // le pipeline est long : pas de doublon
 
 function dossierPortraitsArticle(racine, slug) {
-  return path.join(racine, 'articles', slug, 'portraits');
+  return path.join(racine, dossierUnites(), slug, 'portraits');
 }
 
 // Aperçus de la modale ; null si l'image est illisible.
@@ -5868,7 +5891,7 @@ function lireArticlesImport(fournisseur) {
       valeurs = analyserMeta(fs.readFileSync(cheminMeta(fournisseur.racine, slug), 'utf8'));
     } catch (e) { /* pas encore de fiche : carte vide, tout « à compléter » */ }
     delete valeurs._inconnues;                     // la webview n'a pas à les voir
-    const base = path.join(fournisseur.racine, 'articles', slug, 'media');
+    const base = path.join(fournisseur.racine, dossierUnites(), slug, 'media');
     const images = fournisseur._imagesArticle(slug).map((relatif) => ({
       relatif: relatif,
       description: decrireImage(path.join(base, relatif))   // « L × H · poids »
@@ -5912,7 +5935,7 @@ async function remplacerImageImport(fournisseur, rafraichirTout, panneau, msg) {
   }
   repondrePanneau(panneau, {
     type: 'image-remplacee', slug: slug, relatif: relatif,
-    description: decrireImage(path.join(fournisseur.racine, 'articles', slug, 'media', relatif))
+    description: decrireImage(path.join(fournisseur.racine, dossierUnites(), slug, 'media', relatif))
   });
 }
 
@@ -6400,7 +6423,7 @@ async function ouvrirEditeurTable(fournisseur, item) {
       // n'avoir rien à surligner.
       if (!slugArticle) { return; }
       ouvrirApercuHtml(fournisseur, slugArticle);
-      const md = path.join(fournisseur.racine, 'articles', slugArticle, slugArticle + '.md');
+      const md = path.join(fournisseur.racine, dossierUnites(), slugArticle, slugArticle + '.md');
       let ligne = 0;
       try {
         const lignes = fs.readFileSync(md, 'utf8').split(/\r?\n/);
@@ -6603,7 +6626,7 @@ function empreintesPartagees(base, relatifs) {
 // Un descripteur par image de media/, dans l'ordre du texte puis, pour celles qui n'y
 // sont pas, dans l'ordre alphabétique de l'arbre.
 function listerMediasArticle(fournisseur, slug, texteMd, budget) {
-  const base = path.join(fournisseur.racine, 'articles', slug, 'media');
+  const base = path.join(fournisseur.racine, dossierUnites(), slug, 'media');
   const ordre = ordreImages(texteMd);
   // Le formulaire ne montre que les valeurs de la PREMIÈRE insertion ; l'export, lui, juge
   // toutes les insertions. Sans ce report, une image insérée deux fois dont la seconde n'a
@@ -6679,7 +6702,7 @@ function dispositionsParCompte() {
 // rendus dans la casse du disque : le .md est lu en minuscules, les cartes ne le sont pas,
 // et le formulaire retrouve ses voisines par ce nom-là.
 function listerGrillesArticle(fournisseur, slug, texteMd) {
-  const base = path.join(fournisseur.racine, 'articles', slug, 'media');
+  const base = path.join(fournisseur.racine, dossierUnites(), slug, 'media');
   const parMinuscule = new Map();
   for (const r of fournisseur._imagesArticle(slug)) { parMinuscule.set(r.toLowerCase(), r); }
   return lireGrilles(texteMd).map((g) => {
@@ -6812,7 +6835,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
   }
   // Mis à jour à chaque ouverture : le gestionnaire d'un panneau déjà ouvert le lit.
   let focus = String((item && item.focus) || '');
-  const md = path.join(racine, 'articles', slug, slug + '.md');
+  const md = path.join(racine, dossierUnites(), slug, slug + '.md');
   const existant = panneauxMedias.get(slug);
   if (existant) {
     // Pas de rechargement : il écraserait des saisies non encore écrites. Seule la carte
@@ -6970,7 +6993,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
             repondrePanneau(panneau, { type: 'media-erreur', relatif: relatif, message: res.message });
             return;
           }
-          const chemin = path.join(racine, 'articles', slug, 'media', relatif);
+          const chemin = path.join(racine, dossierUnites(), slug, 'media', relatif);
           repondrePanneau(panneau, {
             type: 'media-remplace', relatif: relatif, description: decrireImage(chemin),
             apercu: apercuMedia(chemin, { reste: BUDGET_APERCUS_MEDIA }),
@@ -6993,7 +7016,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
           return;
         }
         const reprendreFichier = () => {
-          try { fs.unlinkSync(path.join(racine, 'articles', slug, 'media', res.nom)); }
+          try { fs.unlinkSync(path.join(racine, dossierUnites(), slug, 'media', res.nom)); }
           catch (e) { /* déjà parti, ou tenu par un autre programme */ }
         };
         // Les saisies en cours d'abord : la pose réécrit le .md, et le formulaire est
@@ -7111,7 +7134,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       const dansGrille = !!grilleDeImage(source, relatif);
       if (dansGrille && Array.isArray(msg.medias) && msg.medias.length > 0
           && await enregistrer(msg.medias) < 0) { return; }
-      const cheminAsset = path.join(racine, 'articles', slug, 'media', relatif);
+      const cheminAsset = path.join(racine, dossierUnites(), slug, 'media', relatif);
       const retire = await supprimerAsset(fournisseur, rafraichirTout,
         { slug: slug, cheminAsset: cheminAsset }, false);
       if (!retire) { return; }
@@ -7382,6 +7405,7 @@ function activate(context) {
     cmd('szh.envoyerTraduction', (item) => envoyerPourTraduction(fournisseur, item)),
     cmd('szh.reglages', () => ouvrirReglages(rafraichirTout)),
     cmd('szh.basculerApercu', () => basculerApercu(fournisseur, majBarreApercu)),
+    cmd('szh.apercuLivre', () => ouvrirApercuLivre(fournisseur)),
     cmdEcriture('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
     cmdEcriture('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),
     // Les exports restent ouverts sur un numéro gelé, dont l'archivage a supprimé out/.
@@ -7465,7 +7489,12 @@ function activate(context) {
   });
 
   // Les trois panneaux de la barre ; celui d'export s'adapte à l'état du numéro.
-  enregistrerPanneaux(context, { etat: etatCourant });
+  // Le profil est injecté avec l'état : les panneaux retirent d'eux-mêmes ce qu'un
+  // livre n'a pas — OJS, suivi de traduction, cycle de vie d'un numéro.
+  enregistrerPanneaux(context, {
+    etat: etatCourant,
+    profil: () => profilCourant().cle
+  });
 
   // Réveil de la machine WSL puis chargement de l'arbre, derrière un indicateur de
   // progression pour ne pas laisser une fenêtre qui semble figée.

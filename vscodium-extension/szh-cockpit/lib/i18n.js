@@ -25,6 +25,9 @@ const TEXTES_COCKPIT = {
     // style à normaliser à la relecture.
     'arbre.articles': 'ARTICLES',
     'arbre.chapitres': 'CHAPITRES',
+    'livre.apercu.absent': 'Le livre n’a pas encore été composé : il n’y a pas de PDF à montrer. Compilez-le, puis rouvrez l’aperçu.',
+    'livre.apercu.compiler': 'Compiler le livre',
+    'panneau.apercuLivre': 'Aperçu du livre entier',
 
     'arbre.word': 'WORD EN ATTENTE',
     'arbre.traductions': 'TRADUCTIONS',
@@ -1004,6 +1007,9 @@ const TEXTES_COCKPIT = {
     // Majuscules voulues, comme en français : ce sont les en-têtes de section de l'arbre.
     'arbre.articles': 'ARTIKEL',
     'arbre.chapitres': 'KAPITEL',
+    'livre.apercu.absent': 'Das Buch wurde noch nicht gesetzt: es gibt kein PDF zu zeigen. Kompilieren Sie es und öffnen Sie die Vorschau erneut.',
+    'livre.apercu.compiler': 'Buch kompilieren',
+    'panneau.apercuLivre': 'Vorschau des ganzen Buches',
     'arbre.word': 'WORD IN WARTESCHLANGE',
     'arbre.traductions': 'ÜBERSETZUNGEN',
     'arbre.vide.articles': 'Noch keine Artikel',
