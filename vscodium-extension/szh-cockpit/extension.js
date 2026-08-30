@@ -140,7 +140,7 @@ const {
 } = require('./lib/traduction');
 // ---- Ordre, noms et tâches des articles -> lib/articles.js ---------------------
 const {
-  CLE_ORDRE, CLE_SANS_DOI, ordonnerArticles, deplacerArticle, prefixeOrdre, titreFiche,
+  CLE_SANS_DOI, ordonnerArticles, deplacerArticle, prefixeOrdre, titreFiche,
   libelleArticle, analyserSansDoi, basculerSansDoi, trierParDoi, refusDeplacement,
   rangDoi, resumeImages,
   REVUES_TACHES, tachesRevue, tachesConfig, configAvecTaches, libelleTache,
@@ -252,6 +252,11 @@ function refuserSiVerrouille() {
 // en dur reviendrait, sur un livre, à créer un ausgabe.yaml parasite qui rendrait le
 // dossier ambigu pour le cockpit ET pour le Makefile.
 function cheminConfig(racine) { return path.join(racine, profilCourant().config); }
+
+// La clé qui porte l'ordre des unités : `ordre-articles` dans ausgabe.yaml,
+// `ordre-chapitres` dans buch.yaml. Même forme, même lecteur, même réparation — seul le
+// nom change, et il vient de la table des profils plutôt que d'un littéral.
+function cleOrdre() { return profilCourant().unites.ordre; }
 
 // Le sérialiseur du formulaire préserve les lignes non gérées. null si tout est écrit.
 function ecrireClesAusgabe(racine, modifies) {
@@ -913,6 +918,12 @@ function slugsSansDoiVoulu(racine) {
 // `opts.voulus` la liste des cases cochées à employer, au lieu de celle du fichier : c'est
 //               ce qui permet de calculer le jeu d'APRÈS une bascule, avant de l'écrire.
 function articlesSansDoi(racine, slugs, opts) {
+  // ⚠ UN LIVRE N'A PAS DE DOI PAR CHAPITRE. Le DOI est une adresse d'article dans un
+  //   numéro : l'ouvrage en reçoit un pour lui seul, pas un par chapitre. Rendre un jeu
+  //   vide n'est donc pas une précaution, c'est la vérité du modèle — et c'est ce qui évite
+  //   que refusDeplacement() invente une « frontière DOI » au milieu d'un sommaire de
+  //   livre, refusant un déplacement avec un message qui ne voudrait rien dire.
+  if (profilCourant().cle === 'livre') { return new Set(); }
   const o = opts || {};
   const jeu = new Set(o.voulus || slugsSansDoiVoulu(racine));
   if (!slugs || slugs.length === 0) { return jeu; }
@@ -1119,7 +1130,7 @@ function ecrireChampsNumero(racine, brut) {
     else { modifies['entete-condensee'] = e; }
   }
   // L'ordre des articles ne se saisit pas au clavier : il ne passe pas par ce formulaire.
-  delete modifies[CLE_ORDRE];
+  delete modifies[cleOrdre()];
   if (Object.keys(modifies).length === 0) { return null; }
   return ecrireClesAusgabe(racine, modifies);
 }
@@ -1143,7 +1154,7 @@ function messageNumero(panneau, racine, msg, rafraichirTout, recharger) {
     // Le verrou du numéro d'abord (juste au-dessus), le bail de co-édition ensuite :
     // ausgabe.yaml est le fichier le plus disputé du numéro — ce formulaire, les deux vues
     // qui le portent, et les boutons de l'arbre y écrivent tous.
-    const refus = ecrireSousMain(panneau, racine, path.join(racine, 'ausgabe.yaml'),
+    const refus = ecrireSousMain(panneau, racine, cheminConfig(racine),
       () => ecrireChampsNumero(racine, msg.modifies));
     if (refus) {
       repondrePanneau(panneau, { type: 'erreur', message: refus.message });
@@ -3321,7 +3332,7 @@ function envoyerValeursMetadonnees(panneau, racine) {
   repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, chargeNumero(racine, true)));
   // Ce que le formulaire montre est ce que le disque disait à cet instant : c'est cette
   // empreinte que la co-édition comparera si la saisie reste en plan.
-  noterLectureCoedition(panneau, racine, path.join(racine, 'ausgabe.yaml'));
+  noterLectureCoedition(panneau, racine, cheminConfig(racine));
 }
 
 // Panneau singleton : rouvrir la commande révèle le formulaire existant, valeurs relues
@@ -3333,7 +3344,7 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
   if (panneauMetadonnees) {
     panneauMetadonnees.reveal(vscode.ViewColumn.One);
     envoyerValeursMetadonnees(panneauMetadonnees, racine);
-    annoncerMain(panneauMetadonnees, racine, path.join(racine, 'ausgabe.yaml'));
+    annoncerMain(panneauMetadonnees, racine, cheminConfig(racine));
     return;
   }
   const panneau = vscode.window.createWebviewPanel(
@@ -3349,7 +3360,7 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
     if (!msg) { return; }
     if (msg.type === 'pret') {
       envoyerValeursMetadonnees(panneau, racine);
-      annoncerMain(panneau, racine, path.join(racine, 'ausgabe.yaml'));
+      annoncerMain(panneau, racine, cheminConfig(racine));
       return;
     }
     messageNumero(panneau, racine, msg, rafraichirTout,
@@ -4709,10 +4720,10 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     // L'ordre part avec. listerArticles() applique déjà la règle à la lecture, mais le
     // fichier doit finir par dire la même chose que l'écran : il se relit à la main, et il
     // voyage seul sur SharePoint.
-    modifies[CLE_ORDRE] = trierParDoi(slugs, articlesSansDoi(racine, slugs, { voulus: voulus }));
+    modifies[cleOrdre()] = trierParDoi(slugs, articlesSansDoi(racine, slugs, { voulus: voulus }));
     // Un clic isolé ne garde pas de main : il regarde le bail de co-édition et s'abstient
     // si quelqu'un modifie ausgabe.yaml en ce moment.
-    const refusBail = refusCoedition(racine, path.join(racine, 'ausgabe.yaml'));
+    const refusBail = refusCoedition(racine, cheminConfig(racine));
     if (refusBail) { return refusBail; }
     const erreur = ecrireClesAusgabe(racine, modifies);
     if (erreur) { return T('err.ecriture', [erreur]); }
@@ -4753,8 +4764,8 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
   // La liste entière part dans ausgabe.yaml : une liste partielle laisserait les autres
   // articles à réparer au prochain rendu.
   const modifies = {};
-  modifies[CLE_ORDRE] = nouveau;
-  const refusBail = refusCoedition(racine, path.join(racine, 'ausgabe.yaml'));
+  modifies[cleOrdre()] = nouveau;
+  const refusBail = refusCoedition(racine, cheminConfig(racine));
   if (refusBail) { return refusBail; }             // quelqu'un modifie le fichier du numéro
   const erreur = ecrireClesAusgabe(racine, modifies);
   if (erreur) { return T('err.ecriture', [erreur]); }
@@ -4777,7 +4788,7 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
     repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, charge,
       chargeNumero(racine, avecCouverture), { accent: lireCouleurAccent(racine) }));
     panneau.title = charge.titre;
-    noterLectureCoedition(panneau, racine, path.join(racine, 'ausgabe.yaml'));
+    noterLectureCoedition(panneau, racine, cheminConfig(racine));
   };
   if (panneauVueArticles) {
     panneauVueArticles.reveal(vscode.ViewColumn.One);
