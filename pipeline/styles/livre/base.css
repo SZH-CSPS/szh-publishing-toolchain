@@ -57,6 +57,14 @@
    tête de fichier. */
 @page ouverture { @bottom-left { content: none } @bottom-right { content: none } }
 
+/* Une page blanche de passage au recto ne porte RIEN, folio compris. C'est l'usage, et
+   c'est aussi ce qui la donne à lire pour ce qu'elle est : une page laissée vide exprès, et
+   non une page dont le contenu se serait perdu. Le PDF sortait avec cinq pages ne portant
+   qu'un numéro — l'édition d'origine, elle, les laisse nues.
+   ⚠ Cette règle doit rester APRÈS les folios de :left et :right. `:blank` l'emporte sur
+     eux par spécificité, mais l'ordre le dit à qui relit sans avoir la table en tête. */
+@page :blank { @bottom-left { content: none } @bottom-right { content: none } }
+
 /* ═══ 2. Corps ════════════════════════════════════════════════════════════════ */
 html { font-size: 100%; }
 body {

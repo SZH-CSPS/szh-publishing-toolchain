@@ -10,7 +10,10 @@
    * les deux formats et leurs marges : `<w:pgSz>` et `<w:pgMar>` des .docx de référence
      (8789 × 12758 twips = 155 × 225 mm, marges 851 twips = 15 mm ; 11906 × 16838 =
      210 × 297 mm, marges 1418 twips = 25 mm) ;
-   * l'encre des titres, #252B46, est celle des styles Word `Titre1..4`.
+   * les titres sont NOIRS, à 18 / 16 / 14 pt : les styles `Titre1..3` du .docx ne
+     déclarent aucune couleur, et le PDF d'origine les relève à #000000 ;
+   * l'interligne des listes, 19,2 pt, et leur retrait, 6,3 mm — plus serrés que le texte
+     courant, mesurés puce à puce.
    Le relevé complet est dans docs/ARCHITECTURE-LIVRES.md § 5.2.
 
    ⚠ LA RÈGLE QUI COMMANDE TOUT : en FALC, le retour à la ligne porte du SENS. Une phrase,
@@ -22,7 +25,11 @@
 :root {
   /* ── Page, format standard ────────────────────────────────────────────────── */
   --page-l: 155mm;   --page-h: 225mm;
-  --marge-haut: 15mm; --marge-bas: 20mm;
+  /* ⚠ 15 mm sur les QUATRE côtés, comme le `<w:pgMar>` du .docx de référence. La marge du
+     bas était à 20 mm : le bloc de texte ne faisait plus que 176 mm de haut contre 198 mm
+     à l'édition d'origine — vingt-deux millimètres perdus à chaque page, soit une page
+     gagnée toutes les neuf. Le folio tient dans 15 mm (11 pt posés à 6 mm du bord). */
+  --marge-haut: 15mm; --marge-bas: 15mm;
   --marge-int:  15mm; --marge-ext: 15mm;
 
   /* ── Texte ────────────────────────────────────────────────────────────────
@@ -46,10 +53,18 @@
   --plafond-figure: 70vh;
 
   /* ── Encres ───────────────────────────────────────────────────────────────
-     Le bleu nuit des titres est celui des modèles Word. Le gris de l'encadré de résumé
-     est celui du style `InfoBox` (DADADA), éclairci d'un cran pour que du texte de 13 pt
-     y garde un contraste APCA au-delà de 90. */
-  --c-falc-titre: #252B46;
+     Les titres sont NOIRS. Vérifié des deux côtés : les styles `Titre1..3` du .docx de
+     référence ne déclarent aucune couleur — ils héritent, donc du noir — et les titres de
+     l'édition d'origine se relèvent à #000000 dans le PDF, à 16 et 18 pt.
+     Ils étaient posés ici en bleu nuit #252B46, présenté comme « la couleur des modèles
+     Word ». Cette couleur ne figure dans aucun des deux : elle avait été supposée.
+
+     Le gris de l'encadré de résumé est celui du style `InfoBox` (DADADA), éclairci d'un
+     cran pour que du texte de 13 pt y garde un contraste APCA au-delà de 90. */
+  --c-falc-titre: #000000;
+  /* Le bleu nuit reste, mais à sa vraie place : le repli de l'accent d'ouvrage, quand
+     buch.yaml n'en fixe aucun. C'est une couleur d'aplat, pas une encre de texte. */
+  --c-falc-accent-defaut: #252B46;
   --c-falc-resume-fond: #E6E6E6;
   --c-falc-encadre-filet: #9A9AA4;
 }
@@ -80,7 +95,8 @@
 p { margin-bottom: var(--esp-para); }
 
 /* ═══ Titres ══════════════════════════════════════════════════════════════════
-   Chapitre 18 pt, section 16 pt, sous-section 14 pt — tous en demi-gras, tous bleu nuit.
+   Chapitre 18 pt, section 16 pt, sous-section 14 pt — tous en demi-gras, tous NOIRS : le
+   .docx ne leur donne aucune couleur, et l’édition d’origine les imprime en noir.
    Aucun n'est numéroté dans le texte : en FALC, un « 2.1.3 » est un obstacle. La
    numérotation vit dans la pastille et dans le sommaire, pas dans le titre. */
 .szh-chapitre > h1 {
@@ -105,7 +121,7 @@ h4 { font-size: 13pt; font-weight: 600; color: var(--c-falc-titre); margin: 6mm 
   content: counter(chapitre);
   position: absolute; top: -8mm; right: 0;
   width: 11mm; height: 11mm; border-radius: 50%;
-  background: var(--c-chapitre, var(--c-falc-titre)); color: #fff;
+  background: var(--c-chapitre, var(--c-falc-accent-defaut)); color: #fff;
   font-size: 13pt; font-weight: 600; line-height: 11mm; text-align: center;
 }
 .szh-chapitre { counter-increment: chapitre; position: relative; }
@@ -144,7 +160,7 @@ h4 { font-size: 13pt; font-weight: 600; color: var(--c-falc-titre); margin: 6mm 
   position: running(onglet);
   width: var(--marge-ext); height: 25mm;
   margin-top: var(--onglet-haut, 30mm);
-  background: var(--c-chapitre, var(--c-falc-titre));
+  background: var(--c-chapitre, var(--c-falc-accent-defaut));
 }
 /* Pages en vis-à-vis (base.css) : l'onglet doit toujours tomber du côté EXTÉRIEUR — à
    droite sur une page recto, à gauche sur une verso — jamais du côté de la couture, d'où
@@ -199,8 +215,16 @@ h4 { font-size: 13pt; font-weight: 600; color: var(--c-falc-titre); margin: 6mm 
 
 /* ═══ Listes ══════════════════════════════════════════════════════════════════
    Puces simples et numéros arabes. Rien de décoratif : un marqueur exotique se lit mal. */
-ul, ol { margin: 0 0 var(--esp-para) 0; padding-left: 8mm; }
-li { margin-bottom: 2mm; }
+/* Retrait de 6,3 mm : celui du `w:ind` des styles de liste du .docx de référence, et non
+   un chiffre rond choisi à l'œil.
+
+   L'interligne d'une liste est PLUS SERRÉ que celui du texte courant : 19,2 pt mesurés
+   entre deux puces sur l'édition d'origine, contre 21,3 pt entre deux lignes de
+   paragraphe. Et aucun blanc entre deux items — une liste est un bloc, pas une suite de
+   paragraphes. Nous en étions à 27,0 pt : l'interligne du texte plus 2 mm de marge, soit
+   deux fois trop d'air, ce qui étirait chaque liste sur une demi-page de plus. */
+ul, ol { margin: 0 0 var(--esp-para) 0; padding-left: 6.3mm; }
+li { margin-bottom: 0; line-height: 1.48; }
 
 /* ═══ Sommaire ════════════════════════════════════════════════════════════════
    Une entrée par chapitre, un filet entre deux entrées, la pastille de couleur du
@@ -213,7 +237,7 @@ li { margin-bottom: 2mm; }
 .szh-sommaire li:first-child { border-top: 0; }
 .szh-sommaire li::after {
   content: ""; position: absolute; right: -15mm; top: 0; bottom: 0; width: 8mm;
-  background: var(--c-chapitre, var(--c-falc-titre));
+  background: var(--c-chapitre, var(--c-falc-accent-defaut));
 }
 .szh-sommaire .niveau-2, .szh-sommaire .niveau-3 { display: none; }  /* un seul niveau */
 
