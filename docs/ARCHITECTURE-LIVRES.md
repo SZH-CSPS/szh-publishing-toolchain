@@ -532,3 +532,103 @@ se rejoignent au lanceur.
    `chapitres-word/` existe et est documenté, mais la cible `import` n'est appelée que par
    la route article. Travail de chaîne, à faire avant que la rédaction ne dépose son
    premier `.docx` de chapitre.
+
+---
+
+## 10. Le cockpit côté livre — le plan
+
+Le principe qui tient tout : **le cockpit ne devient pas deux logiciels**. Le même arbre, les
+mêmes formulaires, la même mécanique d'écriture — avec un profil qui dit les noms, les
+chemins et les sections. Ce qui suit est le plan ; ce qu'il refuse est aussi important que ce
+qu'il fait.
+
+### 10.1 Le préalable : dégonfler `extension.js`
+
+7 524 lignes. Le fichier porte son propre plan de démontage — 52 bandeaux
+`// ---- Titre -> lib/xxx.js ----`, dont une vingtaine déjà exécutés. On en exécute d'autres,
+par lots, **à comportement constant** et avec les 595 tests en garde-fou.
+
+L'ordre des lots suit la COUVERTURE DE TEST, pas la taille :
+
+| Lot | Sections | Lignes | Ce qui le garde |
+|---|---|---|---|
+| **A** | Assets + gestionnaire des médias → `lib/medias.js` | ~1 000 | `hote.test.js` active l'extension et exerce le remplacement d'un média |
+| **B** | Les neuf constructeurs `html*` → `lib/vues/*.js` | ~2 000 | `webviews.test.js` exécute réellement chaque formulaire |
+| **C** | Cycle de vie, co-édition, conflits → `lib/cycle-vie.js` | ~670 | `coedition.test.js`, `conflits-*.test.js` |
+| **D** | Aperçu, import guidé, réimport | ~700 | **rien** — les tests sont à écrire AVANT |
+
+Le lot D vient en dernier et ne se déplace pas avant que ses tests existent. C'est le
+constat de la revue adverse, et il est juste : `hote.test.js` ne touche ni l'aperçu
+commutable ni le geste d'import par la commande.
+
+**La règle qui rend ces lots sûrs :** `lib/` ne rappelle jamais `extension.js`. Un module
+qui a besoin de rafraîchir l'arbre reçoit ses dépendances en paramètre — le patron est déjà
+posé par `lib/formatting.js`, il se copie, il ne s'invente pas. Et `module.exports._pur`
+continue d'exporter les mêmes noms, parce que `contrats.test.js` les lit.
+
+### 10.2 L'arbre
+
+`FournisseurRevue` — dont le nom ment désormais, et qui devient `FournisseurOuvrage` —
+cesse de coder `articles/` en dur (cinq endroits) et passe par `profils.chemins()`. Les
+sections viennent du profil :
+
+| | revue | livre |
+|---|---|---|
+| Sections | Articles · Traductions · Word | Chapitres · Word |
+| Clé i18n | `arbre.articles` | `arbre.chapitres` |
+
+**Pas de section Traductions pour un livre**, et ce n'est pas un oubli : une revue paraît
+en deux langues et chaque article a sa version jumelle ; un livre est écrit dans une langue,
+celle de son `lang:`. Une traduction de livre est un AUTRE livre, avec son ISBN.
+
+### 10.3 Réordonner les chapitres
+
+Rien à inventer : la revue le fait déjà. `lib/articles.js` porte `ordonnerArticles` et
+`deplacerArticle`, les boutons « monter » / « descendre » vivent sur les cartes du
+formulaire des métadonnées, et l'ordre s'écrit dans la clé `ordre-articles`.
+
+Pour un livre, **la même mécanique avec `ordre-chapitres`** — la clé est déjà nommée dans
+le profil (`unites.ordre`). Une seule différence, mais elle est de fond : dans une revue,
+l'ordre ne change que l'affichage et l'export ; **dans un livre, l'ordre EST le livre**,
+c'est celui des pages imprimées. Le `Makefile` doit donc l'honorer aussi, ce que la
+compilation d'une revue n'a jamais eu à faire.
+
+### 10.4 Les deux formulaires nouveaux
+
+* **Métadonnées de l'ouvrage** (`buch.yaml`) — frère de « Métadonnées du numéro ». Titre,
+  sous-titre, `ouvrage` (monographie / collectif), langue, maquette, format, collection,
+  tome, année, les deux ISBN, DOI, licence, couleur. Le bloc auteur·e·s n'apparaît **qu'en
+  monographie** : en collectif, il vit dans la fiche de chaque chapitre, et l'afficher aux
+  deux endroits inviterait à saisir deux fois la même chose pour qu'elles divergent.
+* **Couverture** — grammage, main du papier, fond perdu, profil CMJN, et le **dos affiché
+  en lecture seule**, calculé sous les yeux de la rédaction à partir du dernier PDF
+  compilé, avec la date de ce PDF. Une case permet de le forcer quand l'imprimeur a dicté
+  sa valeur. Le texte de 4e ouvre `couverture/quatrieme.md` dans l'éditeur ; l'illustration
+  se dépose comme un média d'article.
+
+### 10.5 Le `package.json`
+
+Deux frictions que les `when` ne règlent pas, et qu'il faut trancher :
+
+* **La catégorie des commandes.** Les ~60 commandes portent `"category": "Revue SZH"` en
+  dur, et VS Code n'a pas de catégorie conditionnelle : dans un livre, la palette
+  annoncerait « Revue SZH ». La catégorie devient **« SZH/CSPS »**, neutre pour les deux
+  produits. C'est un changement visible pour la rédaction de la revue — il s'assume et se
+  dit, il ne se cache pas.
+* **La vue latérale.** Un seul bloc `views`, un seul id, gardé par `szh.estRevue`. Le livre
+  reçoit le sien, avec son icône et ses entrées de menu contextuel.
+
+Les commandes se rangent alors en trois familles : celles de la revue (`szh.estRevue` —
+OJS, traduction, DOI), celles du livre (`szh.estLivre` — couverture, ordre des chapitres),
+et les communes (`szh.estRevue || szh.estLivre` — mise en forme, médias, tableaux, import).
+
+### 10.6 Ce que le plan refuse
+
+* **L'export OJS d'un livre.** OJS publie des revues. Un livre se dépose ailleurs, et le
+  jour où ce sera un besoin, ce sera un autre export.
+* **Le suivi de traduction.** Voir §10.2.
+* **Le réimport d'un chapitre corrigé.** `reimporter.py` code `articles/` en dur à
+  plusieurs endroits, et le réimport est la mécanique la plus délicate du cockpit — elle
+  bascule un dossier par deux renommages atomiques pour ne perdre ni fiche, ni médias, ni
+  traductions. On ne l'étend pas en passant. L'import simple suffit tant qu'un chapitre se
+  corrige dans le `.md`.
