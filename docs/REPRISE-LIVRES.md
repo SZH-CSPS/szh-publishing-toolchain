@@ -11,12 +11,12 @@ Quand une tâche est terminée et constatée, la supprimer d'ici.
 
 ## 1. Où en est le dépôt
 
-- Branche `main`, la branche `livres` y est fusionnée. Dernière étiquette : `v2026.08.63`.
+- Branche `main`, la branche `livres` y est fusionnée. Dernière étiquette : `v2026.08.64`.
 - Les livres sont **visibles pour tout le monde** : aucun drapeau de configuration ne les
   cache. Un dossier est un livre s'il porte `buch.yaml`, un numéro s'il porte
   `ausgabe.yaml` — c'est la seule règle, et elle est tenue des deux côtés
   (`vscodium-extension/szh-cockpit/lib/profil.js` et `pipeline/Makefile`).
-- 607 tests JS au vert : `node --test "test/js/*.test.js"` depuis la racine.
+- 608 tests JS au vert : `node --test "test/js/*.test.js"` depuis la racine.
 - Banc de rendu au vert : `test/build-render.sh` compile les deux livres d'essai
   (`test/livre-normal`, `test/livre-falc`), cinq sorties chacun, et refuse un PDF non
   conforme PDF/UA-1.
@@ -30,9 +30,9 @@ le même arbre** : `pipeline/filters/szh-grille.lua`, `pipeline/styles/print.css
 `test/figures-check.py`, `userdoc.md`. Ils n'ont volontairement pas été commités. Il faut
 trancher leur sort avant de continuer, sinon ils suivront le premier `git commit -a` venu.
 
-Il traîne aussi cinq arbres de travail d'agents sous `.claude/worktrees/` et leurs branches
-`worktree-agent-*`. Leur contenu est déjà sur `main` (vérifié : `git diff main <branche>`
-est vide). `git worktree prune` puis suppression des branches, quand ce sera commode.
+Les branches, elles, sont toutes fusionnées : `git branch -a --no-merged main` ne rend plus
+rien. Les cinq arbres de travail d'agents et les sept branches obsolètes ont été supprimés.
+Seule `origin/livres` subsiste sur le distant, entièrement fusionnée — inoffensive.
 
 ---
 
@@ -54,52 +54,73 @@ formulaire, sur le modèle de `media/metadata-issue.*` et de `media/_numero.{css
 dernier est déjà partagé entre deux vues, donc conçu pour être réutilisé. C'est le travail
 naturel à déléguer.
 
-**b) `szh.apercuMetadonnees` : on ne peut pas réordonner les chapitres.** Tu l'avais
-explicitement demandé (« possibilité de réordonner les chapitres comme les articles »). Ce
-n'est pas qu'une question d'affichage : la **persistance est écrite en dur pour la revue**.
+**b) Réordonnancement des chapitres — ✅ FAIT le 30 août.** Ne pas refaire.
 
-**Déjà fait** (commit du 30 août, à ne pas refaire) : le socle de persistance est routé.
-`cheminConfig(racine)` rend `ausgabe.yaml` ou `buch.yaml` selon le profil ;
-`ecrireClesAusgabe()` et `valeurOrdreArticles()` passent par lui, cette dernière lisant en
-plus la clé `profil.unites.ordre`. Et `ordre-chapitres` est entrée dans `CLES_METADONNEES`
-et `CLES_LISTES` de `lib/yaml.js` : elle en était absente, donc `analyserAusgabe` la
-laissait tomber **en silence** — un livre pouvait porter un ordre parfaitement écrit dans
-`buch.yaml` que le cockpit lisait vide.
+Le socle de persistance est routé : `cheminConfig(racine)` rend `ausgabe.yaml` ou
+`buch.yaml` selon le profil, `cleOrdre()` rend `ordre-articles` ou `ordre-chapitres`, et
+les six appels de co-édition passent par le premier. `articlesSansDoi()` rend un jeu vide
+sur un livre — un chapitre n'a pas de DOI, donc pas de « frontière DOI » à franchir.
+`ordre-chapitres` est entrée dans `CLES_METADONNEES` et `CLES_LISTES` de `lib/yaml.js` :
+elle en était absente, et `analyserAusgabe` la laissait tomber **en silence**.
 
-**Ce qui reste sur ce point :**
+Le geste existe : **« Monter d'un rang » / « Descendre d'un rang »** au menu contextuel
+d'une unité dans l'arbre, pour les deux profils (`szh.monterUnite`, `szh.descendreUnite`).
+Ils réutilisent `deplacerUnite()`, extraite du gestionnaire de la vue en cartes pour que
+les deux chemins n'écrivent pas deux ordres différents.
 
-- Il subsiste **15 littéraux `'ausgabe.yaml'`** dans `extension.js`
-  (`grep -c "'ausgabe.yaml'" extension.js`). La plupart lisent des clés qui n'existent que
-  pour un numéro — `revue`, `couleur`, les DOI — et peuvent légitimement rester. À vérifier
-  une par une plutôt qu'à remplacer en masse.
-- `refusCoedition()` reçoit encore `path.join(racine, 'ausgabe.yaml')` en dur, vers les
-  lignes 4704 et 4746, sur le chemin même du déplacement. **À router avant d'exposer le
-  moindre bouton de réordonnancement**, sans quoi le bail de co-édition sera posé sur un
-  fichier qui n'existe pas.
-- Le déplacement passe par `refusDeplacement()`, `articlesSansDoi()` et `trierParDoi()`,
-  aux alentours de `extension.js:4732-4750`. Ce sont des **règles de DOI** : un article
-  sans DOI ne peut pas franchir la frontière de ceux qui en ont un. **Un livre n'a pas de
-  DOI par chapitre** : cette règle ne doit pas s'appliquer, sans quoi le déplacement sera
-  refusé sans raison compréhensible.
-- Reste enfin à retirer `szh.apercuMetadonnees` de `REVUE_SEULEMENT` et à lui donner une
-  vue de chapitres — ou une vue propre au livre.
+Il subsiste **8 littéraux `'ausgabe.yaml'`** dans `extension.js` : tous lisent des clés qui
+n'existent que pour un numéro — `revue`, `couleur`, `articles-sans-doi`. Ils sont à leur
+place ; ne pas les remplacer en masse.
 
-Ordre de travail conseillé : finir la persistance **d'abord**, parce que c'est la partie
-partagée et risquée, celle qui touche la revue ; la faire soi-même, avec les tests. Puis
-déléguer les deux formulaires.
+Reste, si on le juge utile : donner à `szh.apercuMetadonnees` une vue de chapitres. Moins
+urgent depuis que l'arbre réordonne.
 
 **c) Écarts mineurs, même famille.** Pas de formulaire de couverture : le dos est bien
 calculé par la chaîne à partir du grammage et du nombre de pages réel, mais rien dans
 l'interface ne saisit ces variables. Pas de pastille `word-deja` sur les chapitres déjà
 importés.
 
-### 2.2 Extraction de `lib/medias.js`
+### 2.2 Maquette FALC — rapprocher le rendu de l'original
+
+Objectif : que le PDF produit par la chaîne ressemble à l'original composé, **sans viser le
+pixel**. La référence des valeurs est le **Word**, pas le PDF : c'est lui qui porte les
+styles nommés avec leurs corps, interlignes et espacements. Le PDF sert ensuite au réglage
+fin, à l'œil.
+
+Les trois pièces :
+
+| Rôle | Chemin |
+|---|---|
+| Word source (styles) | `tmp/book/FALC/2025-ProspectrumFalc_FR_VF.docx` |
+| PDF d'origine (référence visuelle) | `tmp/book/FALC/2025-ProspectrumFalc_FR_VF.pdf` |
+| PDF produit par la chaîne | `…/BU02_Redaktion/2025-B329-CSPS_ProspectrumFALC_FR/out/2025-B329-CSPS_ProspectrumFALC_FR.pdf` |
+
+La feuille à régler est `pipeline/styles/livre/falc.css` (le socle géométrique commun est
+dans `livre/base.css` — n'y toucher que si l'écart vient vraiment de là).
+
+- [ ] **Relever les styles du Word.** `word/styles.xml` du docx : pour chaque style nommé,
+      corps (`w:sz`, en demi-points), interligne (`w:spacing w:line`), espacement avant et
+      après (`w:before` / `w:after`, en vingtièmes de point), retraits, police. Tabuler.
+- [ ] **Mesurer le PDF d'origine.** Format de page et marges réelles, puis corps et
+      interligne constatés sur une page de texte courant, un titre de chapitre, une liste.
+- [ ] **Mesurer le PDF produit**, aux mêmes endroits, pour poser l'écart chiffré.
+- [ ] **Reporter les valeurs du Word dans `falc.css`**, en jetons plutôt qu'en nombres
+      semés. Recompiler, revalider PDF/UA.
+- [ ] **Réglage fin par comparaison visuelle** (rendu PNG page à page, avant/après). Juger
+      la couleur du gris typographique et les respirations, pas les décimales.
+- [ ] **Vérifier que le livre `test/livre-falc` du banc passe toujours**, et que la maquette
+      « normal » n'a pas bougé.
+
+⚠ Ne pas régler la maquette FALC en modifiant `socle.css` ou `livre/base.css` : ces deux
+feuilles servent aussi la maquette « normal » et la revue.
+
+### 2.3 Extraction de `lib/medias.js`
 
 À **refaire à neuf depuis `main`**. Une tentative précédente a produit un `extension.js`
 divergent de 1333 lignes ; ne pas essayer de la réconcilier, elle est abandonnée
 volontairement. Repartir du fichier tel qu'il est aujourd'hui.
 
-### 2.3 Livres à produire
+### 2.4 Livres à produire
 
 - Le **deuxième livre FALC**, l'allemand, dans
   `C:\Users\robin\OneDrive - SZH CSPS\Revues-TESTING\54_Buch\BU02_Redaktion`, par le
@@ -113,7 +134,7 @@ volontairement. Repartir du fichier tel qu'il est aujourd'hui.
 de make découpent sur les blancs. Un garde-fou refuse déjà le cas, mais il faut le savoir
 en nommant.
 
-### 2.4 Défauts connus, non corrigés
+### 2.5 Défauts connus, non corrigés
 
 - **Onglets du sommaire tous bleu nuit.** `PALETTE_CHAPITRE`, dans
   `pipeline/profils/livre.mk`, atteint bien la page de chapitre, mais pas les entrées du
@@ -128,7 +149,7 @@ en nommant.
   Test : importer le modèle comme chapitre, puis vérifier qu'aucun titre du `.md` ne
   commence par un numéro littéral.
 
-### 2.5 CMJN, bloqué sur l'image WSL
+### 2.6 CMJN, bloqué sur l’image WSL
 
 `pipeline/cmjn.py` est écrit et sa recette est mesurée : substitution du noir de texte en
 `0 0 0 1 k` et des sept couleurs de la maison en CMJN officiel, **puis** Ghostscript vers
@@ -145,7 +166,7 @@ sortie imprimeur soit utilisable ailleurs qu'en développement.
 ## 3. Comment vérifier
 
 ```
-node --test "test/js/*.test.js"      # 607 tests, depuis la racine du dépôt
+node --test "test/js/*.test.js"      # 608 tests, depuis la racine du dépôt
 test/build-render.sh                 # banc complet : compile les livres, exige PDF/UA-1
 python3 test/typo-check.py           # typographie des textes visibles
 python3 test/apca-check.py           # contrastes de la palette
