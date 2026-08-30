@@ -290,6 +290,66 @@ def _url_absolues(css_texte, css_chemin):
     return RE_URL_CSS.sub(remplace, css_texte)
 
 
+# --------------------------------------------------------------------------------------
+# Métadonnées pandoc pour l'EPUB.
+#
+# Pourquoi ici et pas dans le Makefile : les tirer de buch.yaml à coups de `sed` demande une
+# expression par clé, et une de plus pour la liste des auteur·e·s — qui est un bloc à tirets,
+# donc hors de portée d'un sed d'une ligne. La première version l'a payé : elle sortait un
+# EPUB sans ISBN, et avec un `dc:creator` codé en dur au nom de la personne qui l'avait
+# écrite. Ce module lit déjà buch.yaml correctement ; il écrit donc le fichier que pandoc
+# attend, et le Makefile ne fait que le lui passer.
+#
+# ⚠ Aucune clé n'est inventée. Un ISBN absent ne produit pas d'identifiant : pandoc en
+#   fabriquera un urn:uuid, ce qui est la bonne réponse pour un fichier qui n'en a pas
+#   encore — un identifiant faux serait pire qu'un identifiant provisoire.
+
+def metadonnees_epub(meta):
+    """Rend le texte d'un fichier de métadonnées YAML pour pandoc (--metadata-file)."""
+    def guillemets(v):
+        return '"' + str(v).replace('\\', '\\\\').replace('"', '\\"') + '"'
+
+    lignes = []
+    if meta.get('titre'):
+        lignes.append('title: ' + guillemets(meta['titre']))
+    if meta.get('sous-titre'):
+        lignes.append('subtitle: ' + guillemets(meta['sous-titre']))
+    lignes.append('lang: ' + guillemets(str(meta.get('lang') or 'fr')))
+
+    # Les auteur·e·s de l'OUVRAGE. En ouvrage collectif la liste est vide, et c'est voulu :
+    # les auteur·e·s y sont ceux des chapitres, et les hisser en dc:creator du volume
+    # attribuerait le livre entier à la première personne de la liste.
+    noms = []
+    for a in (meta.get('auteurs') or []):
+        if isinstance(a, dict):
+            n = ' '.join(x for x in (a.get('prenom'), a.get('nom')) if x)
+            if n:
+                noms.append(n)
+        elif a:
+            noms.append(str(a))
+    if noms:
+        lignes.append('author:')
+        for n in noms:
+            lignes.append('- ' + guillemets(n))
+
+    if meta.get('isbn-ebook'):
+        lignes.append('identifier:')
+        lignes.append('- scheme: ISBN-13')
+        lignes.append('  text: ' + guillemets(meta['isbn-ebook']))
+    if meta.get('annee'):
+        lignes.append('date: ' + guillemets(meta['annee']))
+    lic = LICENCES.get(str(meta.get('licence') or ''))
+    if lic:
+        lignes.append('rights: ' + guillemets(lic))
+    if meta.get('collection'):
+        serie = str(meta['collection'])
+        if meta.get('tome'):
+            serie += ', ' + str(meta['tome'])
+        lignes.append('belongs-to-collection: ' + guillemets(serie))
+    lignes.append('publisher: "Edition SZH/CSPS"')
+    return chr(10).join(lignes) + chr(10)
+
+
 def main(argv):
     """Les feuilles de style passées en --css sont LIÉES, pas incorporées : le fichier
     reste lisible pour qui débogue une coupure de page, et WeasyPrint lit un chemin
@@ -300,7 +360,7 @@ def main(argv):
     n'existe que pour le HTML web (livre-html-web) : « autonome » y est la promesse — un
     seul fichier qu'on partage ou qu'on ouvre par file:// sans rien à côté — et un <link>
     vers un chemin absolu du poste de compilation ne survivrait pas au voyage."""
-    meta_p = gabarit_p = sortie_p = None
+    meta_p = gabarit_p = sortie_p = meta_epub = None
     feuilles, feuilles_incorporees, fragments = [], [], []
     i = 1
     while i < len(argv):
@@ -316,6 +376,9 @@ def main(argv):
             i += 2
         elif a == '--css' and i + 1 < len(argv):
             feuilles.append(argv[i + 1])
+            i += 2
+        elif a == '--metadonnees-epub' and i + 1 < len(argv):
+            meta_epub = argv[i + 1]
             i += 2
         elif a == '--css-embed' and i + 1 < len(argv):
             feuilles_incorporees.append(argv[i + 1])
@@ -414,6 +477,10 @@ def main(argv):
         os.makedirs(dossier, exist_ok=True)
     with open(sortie_p, 'w', encoding='utf-8') as fh:
         fh.write(sortie)
+    if meta_epub:
+        with open(meta_epub, 'w', encoding='utf-8') as fh:
+            fh.write(metadonnees_epub(meta))
+
     print('[livre] %d chapitre(s), %d liminaire(s), %d entree(s) de sommaire'
           % (len(fragments), len(tete), len(entrees)), file=sys.stderr)
     return 0

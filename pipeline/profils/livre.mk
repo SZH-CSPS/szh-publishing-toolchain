@@ -60,6 +60,7 @@ CHAPITRES := $(CHAPITRES_ORDONNES)
 # Un chapitre = chapitres/<slug>/<slug>.md, comme un article. L'ordre est celui du tri des
 # noms de dossier — et du tri alphabétique après ceux ordonnés par « ordre-chapitres ».
 FRAGMENTS := $(foreach c,$(CHAPITRES),$(OUT)/$(CH_DIR)/$(c).frag.html)
+FRAGMENTS_EPUB := $(foreach c,$(CHAPITRES),$(OUT)/$(CH_DIR)/$(c).epub-frag.html)
 
 # ⚠ LES CHAPITRES SE COMPILENT DANS L'ORDRE, ET C'EST UNE OBLIGATION, pas un confort.
 # szh-numerotation.lua numérote les figures et les tableaux EN CONTINU sur tout le volume ;
@@ -79,6 +80,9 @@ COMPTEURS_DIR := $(OUT)/.szh-compteurs
 # du foreach ; le premier fragment n'en reçoit aucun, et la chaîne se referme d'elle-même.
 PRECEDENT :=
 $(foreach f,$(FRAGMENTS),$(eval $(f): $(PRECEDENT))$(eval PRECEDENT := $(f)))
+# Les fragments EPUB portent la meme contrainte, et leurs propres reports.
+PRECEDENT_EPUB :=
+$(foreach f,$(FRAGMENTS_EPUB),$(eval $(f): $(PRECEDENT_EPUB))$(eval PRECEDENT_EPUB := $(f)))
 
 # Pièces liminaires écrites à la main (préface, avant-propos…). Compilées comme des
 # chapitres, insérées par l'assembleur à la place que buch.yaml leur donne.
@@ -98,6 +102,11 @@ LIVRE_IMPRIMEUR_PDF  := $(OUT)/$(NOM_LIVRE)-imprimeur.pdf
 # (dossier out/web/). Un nom distinct de $(LIVRE_HTML), qui reste le HTML DE COMPILATION
 # que WeasyPrint pagine — celui-ci est la sortie lue par un humain, dans un navigateur.
 LIVRE_WEB_HTML := $(OUT)/web/$(NOM_LIVRE).html
+# EPUB 3 : un HTML intermediaire (les <section> de chapitre en moins, voir la cible), le
+# fichier de metadonnees que l assembleur ecrit depuis buch.yaml, et l archive.
+LIVRE_EPUB_HTML := $(OUT)/$(NOM_LIVRE)-epub.html
+LIVRE_EPUB_META := $(OUT)/$(NOM_LIVRE)-epub.yaml
+LIVRE_EPUB      := $(OUT)/$(NOM_LIVRE).epub
 
 # --------------------------------------------------------------------------------------
 # Maquette : deux chartes, une seule feuille de plus. `maquette:` de buch.yaml, lue par sed
@@ -141,6 +150,8 @@ STYLE_LIVRE_BASE  := $(PIPELINE_DIR)/styles/livre/base.css
 STYLE_LIVRE_CHART := $(PIPELINE_DIR)/styles/livre/$(MAQUETTE).css
 STYLE_LIVRE_IMPR  := $(PIPELINE_DIR)/styles/livre/imprimeur.css
 STYLE_LIVRE_WEB   := $(PIPELINE_DIR)/styles/livre/web.css
+STYLE_LIVRE_EPUB  := $(PIPELINE_DIR)/styles/livre/epub.css
+EPUB_PREPARE      := $(PIPELINE_DIR)/livre-epub-prepare.py
 GABARIT_LIVRE     := $(PIPELINE_DIR)/templates/szh-livre.html
 GABARIT_CHAPITRE  := $(PIPELINE_DIR)/templates/szh-livre-chapitre.html
 GABARIT_LIMINAIRE := $(PIPELINE_DIR)/templates/szh-livre-liminaire.html
@@ -179,7 +190,17 @@ FILTRES_CHAPITRE := \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua"
 
+# La MEME suite, moins szh-notes.lua : la variante EPUB.
+# szh-notes transforme les Note en <span class="szh-note"> que print.css descend en pied de
+# page par `float: footnote`. Sur une liseuse, ce mecanisme n existe pas : le texte de la
+# note se lit AU MILIEU DE LA PHRASE. Mesure sur le banc, avant correction :
+#   « …an den Fuss ihrer Seite<span>Diese Fussnote muss…</span>, nicht ans Ende… »
+# Sans ce filtre, les Note traversent intactes et le writer epub3 de pandoc en fait de
+# vraies notes de fin, liees et navigables. C est mieux que tout ce qu on bricolerait.
+FILTRES_CHAPITRE_EPUB := $(filter-out --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua",$(FILTRES_CHAPITRE))
+
 .PHONY: livre livre-pdf livre-imprimeur livre-couverture livre-html livre-html-web \
+        livre-epub \
         verifie-livre verifie-couverture
 
 livre: livre-pdf
@@ -241,6 +262,38 @@ $(OUT)/$(CH_DIR)/%.frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_CHA
 	  --standalone --embed-resources \
 	  --template="$(abspath $(GABARIT_CHAPITRE))" \
 	  $(FILTRES_CHAPITRE) \
+	  --output="$(abspath $@)"
+
+# Le meme chapitre, compile pour l EPUB : suite de filtres sans szh-notes (voir
+# FILTRES_CHAPITRE_EPUB). Les reports de compteurs sont tenus a part — un fragment EPUB
+# et un fragment PDF du meme chapitre consomment les memes numeros, et melanger leurs
+# reports ferait repartir la numerotation de travers a la compilation suivante.
+$(OUT)/$(CH_DIR)/%.epub-frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_CHAPITRE) $(FILTRES) \
+                              $$(wildcard $(CH_DIR)/$$*/tables/*.html) \
+                              $$(wildcard $(CH_DIR)/$$*/media/*) \
+                              $$(wildcard $(CH_DIR)/$$*/$$*.meta.yaml) \
+                              $$(wildcard $(CH_DIR)/$$*/$$*.biblio.md)
+	@mkdir -p "$(dir $@)"
+	@slug="$*"; \
+	rang=$$(printf '%s\n' $(CHAPITRES) | grep -n -x "$$slug" | cut -d: -f1); \
+	index=$$(( (rang - 1) % 6 + 1 )); \
+	couleur="#$$(printf '%s\n' $(PALETTE_CHAPITRE) | sed -n "$${index}p")"; \
+	onglet=$$(printf '%s\n' $(ONGLET_HAUT_CHAPITRE) | sed -n "$${index}p"); \
+	meta=""; \
+	if [ -f "$(CH_DIR)/$$slug/$$slug.meta.yaml" ]; then meta="--metadata-file=$$slug.meta.yaml"; fi; \
+	echo "pandoc $(CH_DIR)/$$slug/$$slug.md -> $@ (chapitre $$rang, variante EPUB)"; \
+	cd "$(CH_DIR)/$$slug" && SZH_LIVRE=1 SZH_CHAPITRE="$$rang" \
+	  SZH_COMPTEURS="$(abspath $(COMPTEURS_DIR))/epub/$$rang.txt" \
+	  SZH_AUSGABE="$(abspath $(CONFIG_LIVRE))" $(PANDOC) "$$slug.md" \
+	  --from=$(LECTEUR) --to=html5 \
+	  --metadata-file="$(abspath $(CONFIG_LIVRE))" $$meta \
+	  --metadata slug="$$slug" \
+	  --metadata couleur-chapitre="$$couleur" \
+	  --metadata rang-chapitre="$$rang" \
+	  --metadata onglet-haut="$$onglet" \
+	  --standalone --embed-resources \
+	  --template="$(abspath $(GABARIT_CHAPITRE))" \
+	  $(FILTRES_CHAPITRE_EPUB) \
 	  --output="$(abspath $@)"
 
 # Une pièce liminaire écrite à la main : même chaîne, sans le gabarit de chapitre — elle
@@ -463,3 +516,46 @@ verifie-couverture:
 
 livre-couverture: verifie-livre verifie-couverture $(COUVERTURE_PDF)
 	@echo "[livre] $(COUVERTURE_PDF)"
+
+# --------------------------------------------------------------------------------------
+# EPUB 3. PAS un nouvel assembleur : pandoc sait fabriquer l archive — catalogue OPF,
+# navigation, et il ressort meme les images des data: URI vers EPUB/media/. Ce qu il faut
+# lui donner, c est un HTML qu il puisse DECOUPER.
+#
+# ⚠ Le decoupage est le seul vrai obstacle, et il est mesure : pandoc ne coupe qu aux titres
+#   de premier niveau NON IMBRIQUES. Nos chapitres sont enveloppes dans une
+#   <section class="szh-chapitre"> — indispensable au PDF, ou elle porte l ouverture sur
+#   belle page, la couleur et l onglet de tranche. Sans la retirer, les douze chapitres
+#   atterrissaient dans UN seul fichier et la navigation n en listait aucun.
+#   livre-epub-prepare.py la retire, pour l EPUB seulement.
+#
+# ⚠ szh-notes.lua ne s applique pas a epub3 : le writer de pandoc fait de vraies notes de
+#   fin, liees et navigables, mieux que nos notes flottantes en CSS qui n ont aucun sens
+#   sur une liseuse. szh-legende-avant.lua, lui, s y applique DESORMAIS — sa garde
+#   `FORMAT:match` ne connaissait que html, et la legende serait repassee sous l image.
+#
+# ⚠ Les metadonnees ne se tirent PAS au sed. La premiere version le faisait et sortait un
+#   EPUB sans ISBN, avec un dc:creator au nom de la personne qui avait ecrit la recette.
+#   L assembleur lit deja buch.yaml correctement : il ecrit le fichier que pandoc attend.
+# --------------------------------------------------------------------------------------
+$(LIVRE_EPUB_HTML): $(FRAGMENTS_EPUB) $(LIMINAIRES) $(CONFIG_LIVRE) $(ASSEMBLEUR) $(GABARIT_LIVRE) \
+               $(EPUB_PREPARE) $(SOCLE) $(STYLE_LIVRE_BASE) $(STYLE_LIVRE_CHART)
+	@mkdir -p "$(OUT)"
+	@python3 "$(ASSEMBLEUR)" \
+	  --meta "$(CONFIG_LIVRE)" \
+	  --gabarit "$(GABARIT_LIVRE)" \
+	  --sortie "$@.avec-sections" \
+	  --metadonnees-epub "$(LIVRE_EPUB_META)" \
+	  $(FRAGMENTS_EPUB)
+	@python3 "$(EPUB_PREPARE)" "$@.avec-sections" "$@"
+	@rm -f "$@.avec-sections"
+
+# ⚠ $(LIVRE_EPUB_META) n'est PAS un prérequis : il est écrit par la MÊME recette que le HTML
+#   ci-dessus, donc make n'a aucune règle pour le fabriquer seul. Le déclarer ici faisait
+#   échouer la cible sur « No rule to make target » — et seulement sur un `out/` propre,
+#   c'est-à-dire chez quelqu'un d'autre.
+$(LIVRE_EPUB): $(LIVRE_EPUB_HTML) $(STYLE_LIVRE_EPUB)
+	@$(PANDOC) "$(LIVRE_EPUB_HTML)" 	  --from=html --to=epub3 	  --split-level=1 	  --metadata-file="$(LIVRE_EPUB_META)" 	  --css="$(abspath $(STYLE_LIVRE_EPUB))" 	  --output="$@"
+
+livre-epub: verifie-livre $(LIVRE_EPUB)
+	@echo "[livre] $(LIVRE_EPUB)"

@@ -131,7 +131,7 @@ if [ -z "$only" ]; then
       # Les QUATRE sorties, pas seulement le PDF numérique : le PDF imprimeur et la
       # couverture partent chez l'imprimeur, et la couverture est la seule qui lise le
       # PDF intérieur — un dos calculé sur un compte de pages périmé ne se voit nulle part.
-      if make -f "$REPO/pipeline/Makefile" livre livre-imprimeur livre-couverture livre-html-web > "$journal" 2>&1; then
+      if make -f "$REPO/pipeline/Makefile" livre livre-imprimeur livre-couverture livre-html-web livre-epub > "$journal" 2>&1; then
         grep -iE "error|traceback|warning|non balis" "$journal" | sed 's/^/    /' || true
       else
         echo "    ÉCHEC du build :"

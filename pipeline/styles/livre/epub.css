@@ -1,0 +1,169 @@
+/* Charte EPUB 3 : une mise en page sobre pour les liseuses électroniques.
+
+   Ce qui n'existe pas en EPUB et qu'on omet donc d'emblée :
+   - @page, @bottom-left, @bottom-right : pagination et folios
+   - float: footnote : les notes deviennent des vraies notes de fin (correctes en EPUB)
+   - `position: running()` : la notion de page n'existe pas
+   - fond perdu, traits de coupe : sans pertinence hors impression
+
+   À la différence de web.css (l'autre sortie sans @page), cette feuille ne réinvente
+   PAS le design : elle ajoute seulement ce qu'il faut pour qu'un EPUB se lise bien sur
+   une liseuse, sans mettre en page en millimètres. Les éléments de livre (chapitre,
+   sommaire, liminaires) sont donc ICI, pas dans l'enveloppe EPUB à l'extérieur.
+*/
+
+/* ═══ 1. Racine et corps ════════════════════════════════════════════════════════ */
+html { font-size: 100%; }
+body {
+  font-family: var(--font-sans);
+  font-size: var(--body-size);
+  line-height: var(--leading);
+  color: var(--c-ink);
+  margin: 0;
+  padding: 1em;
+  /* Pas de justification extrême en EPUB : la mesure varie selon le zoom et la largeur
+     de l'appareil, et forcer justify sur du texte recomposable crée des espacements
+     énormes sur petits écrans. Lisibilité avant forme. */
+  text-align: left;
+  hyphens: auto;
+}
+
+/* ═══ 2. Titres et paragraphes ══════════════════════════════════════════════════ */
+p { margin: 0 0 1em 0; text-indent: 0; }
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 1.5em 0 0.5em 0;
+}
+h1 { font-size: 1.5em; }
+h2 { font-size: 1.3em; }
+h3 { font-size: 1.1em; }
+h4, h5, h6 { font-size: 1em; }
+
+/* ═══ 3. Structure du livre ════════════════════════════════════════════════════ */
+/* Chaque chapitre reçoit une séparation visuelle légère. */
+.szh-chapitre {
+  margin-top: 2em;
+  padding-top: 1em;
+  border-top: 1px solid var(--c-rule);
+}
+.szh-chapitre:first-of-type { margin-top: 0; border-top: none; }
+.szh-chapitre > h1 { margin-top: 0; }
+.szh-chapitre > .szh-auteurs {
+  font-style: italic;
+  color: var(--c-ink2);
+  margin: 0.5em 0 1em 0;
+}
+
+/* L'onglet de tranche n'existe qu'en pagination : caché en EPUB. */
+.szh-onglet { display: none; }
+
+/* ═══ 4. Liminaires ════════════════════════════════════════════════════════════ */
+.szh-liminaire {
+  text-align: center;
+  margin: 2em 0;
+  padding-bottom: 1.5em;
+  border-bottom: 1px solid var(--c-rule);
+}
+.szh-liminaire p { margin: 0 0 0.5em 0; }
+.szh-titre { font-weight: 700; font-size: 1.3em; }
+.szh-sous-titre { font-size: 1em; color: var(--c-ink2); }
+.szh-auteurs { color: var(--c-ink2); font-style: italic; }
+.szh-impressum { font-size: 0.85em; color: var(--c-ink2); text-align: left; }
+
+/* ═══ 5. Sommaire ══════════════════════════════════════════════════════════════ */
+.szh-sommaire {
+  margin: 1.5em 0;
+  padding-bottom: 1em;
+  border-bottom: 1px solid var(--c-rule);
+}
+.szh-sommaire h1 { font-size: 1.2em; margin: 0 0 1em 0; }
+.szh-sommaire ol {
+  list-style: decimal;
+  margin: 0;
+  padding-left: 1.5em;
+}
+.szh-sommaire li { margin-bottom: 0.5em; }
+.szh-sommaire a { color: var(--c-ink); text-decoration: underline; }
+.szh-sommaire .niveau-2, .szh-sommaire .niveau-3 {
+  margin-left: 1em;
+  font-size: 0.95em;
+}
+
+/* ═══ 6. Listes et citations ═══════════════════════════════════════════════════ */
+ul, ol { margin: 1em 0; padding-left: 1.5em; }
+li { margin-bottom: 0.25em; }
+blockquote {
+  font-style: italic;
+  margin: 1em 0 1em 1.5em;
+  padding-left: 1em;
+  border-left: 1px solid var(--c-rule);
+}
+
+/* ═══ 7. Figures ═══════════════════════════════════════════════════════════════ */
+figure { margin: 1.5em 0; }
+figcaption {
+  font-size: 0.9em;
+  color: var(--c-ink2);
+  line-height: 1.4;
+  margin-top: 0.5em;
+}
+img { max-width: 100%; height: auto; }
+
+/* ═══ 8. Tableaux ══════════════════════════════════════════════════════════════ */
+.szh-tableau-boite {
+  margin: 1.5em 0;
+  overflow-x: auto;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9em;
+  margin: 1em 0;
+}
+caption {
+  text-align: left;
+  font-size: 0.85em;
+  color: var(--c-ink2);
+  margin-bottom: 0.5em;
+}
+th, td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.5em;
+  border-bottom: 1px solid var(--c-rule);
+}
+th { font-weight: 700; }
+
+/* ═══ 9. Notes ═════════════════════════════════════════════════════════════════ */
+/* En EPUB, pandoc produit des vraies notes de fin liées, c'est mieux que ce qu'on
+   pourrait faire en CSS. szh-notes.lua ne s'applique donc pas à epub3 : les notes
+   restent des Note pandoc, que le writer epub3 transforme en sections liées. */
+.szh-note {
+  font-size: 0.85em;
+  color: var(--c-ink2);
+}
+
+/* ═══ 10. Blocs FALC ════════════════════════════════════════════════════════════
+   Remis en unités d'écran, sans les pastilles ni les onglets de pagination. */
+.falc-resume {
+  background: var(--c-rule);
+  padding: 1em;
+  margin: 1em 0;
+}
+.falc-resume p:last-child { margin-bottom: 0; }
+.falc-encadre {
+  border: 1px solid var(--c-rule);
+  padding: 1em;
+  margin: 1em 0;
+}
+.falc-encadre p:last-child { margin-bottom: 0; }
+.falc-cle { font-weight: 700; margin: 1em 0; }
+.falc-etapes ol { padding-left: 1.5em; }
+.falc-etapes li { margin-bottom: 0.5em; }
+.falc-projet { font-size: 1.05em; color: var(--c-ink2); margin: 0.5em 0 1em 0; }
+
+/* ═══ 11. Liens ════════════════════════════════════════════════════════════════ */
+a { color: var(--c-nuit); text-decoration: underline; }
+a:visited { color: var(--c-nuit); }
+.szh-sommaire a { color: inherit; text-decoration: none; }

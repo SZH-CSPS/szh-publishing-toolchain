@@ -12,7 +12,7 @@
 -- Réservé aux sorties HTML : un writer non-HTML jette les RawBlock html et les images
 -- disparaîtraient. La garde ci-dessous le rappelle.
 
-if not FORMAT:match('^html') then return {} end
+if not FORMAT:match('^(html|epub)') then return {} end
 
 -- Échappement HTML d'une valeur d'attribut (identifiant/classe d'un `![](){#id}`).
 local function att(v)
