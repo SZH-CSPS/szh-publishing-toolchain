@@ -24,9 +24,13 @@ const TEXTES_COCKPIT = {
     // gras ni taille de police, la casse fait la saillance. Elles sont voulues, pas un
     // style à normaliser à la relecture.
     'arbre.articles': 'ARTICLES',
+    'arbre.chapitres': 'CHAPITRES',
+
     'arbre.word': 'WORD EN ATTENTE',
     'arbre.traductions': 'TRADUCTIONS',
     'arbre.vide.articles': 'Aucun article pour l’instant',
+    'arbre.vide.chapitres': 'Aucun chapitre pour l’instant',
+
     'arbre.vide.word': 'Aucun Word en attente',
     'arbre.vide.traductions': 'Aucun article à traduire',
     'arbre.deja.badge': 'déjà converti',
@@ -999,9 +1003,11 @@ const TEXTES_COCKPIT = {
   de: {
     // Majuscules voulues, comme en français : ce sont les en-têtes de section de l'arbre.
     'arbre.articles': 'ARTIKEL',
+    'arbre.chapitres': 'KAPITEL',
     'arbre.word': 'WORD IN WARTESCHLANGE',
     'arbre.traductions': 'ÜBERSETZUNGEN',
     'arbre.vide.articles': 'Noch keine Artikel',
+    'arbre.vide.chapitres': 'Noch keine Kapitel',
     'arbre.vide.word': 'Kein Word in Warteschlange',
     'arbre.vide.traductions': 'Kein Artikel zu übersetzen',
     'arbre.deja.badge': 'bereits konvertiert',

@@ -356,4 +356,25 @@ function activerHote(revue) {
   };
 }
 
-module.exports = { revueDEssai, activerHote };
+// Un LIVRE minimal, le pendant de revueDEssai() : buch.yaml, deux chapitres, un dépôt Word.
+// Il sert à éprouver que le cockpit reconnaît un livre et lui montre SES sections — pas
+// celles d'un numéro. C'est la seule différence qui compte ici ; tout le reste de la
+// mécanique (médias, tableaux, verrous) est indifférent au profil, et ses tests le disent
+// déjà pour la revue.
+function livreDEssai() {
+  const livre = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-livre-'));
+  fs.writeFileSync(path.join(livre, 'buch.yaml'),
+    ['titre: "Essai de livre"', 'ouvrage: monographie', 'lang: fr', 'maquette: normal',
+     'format: standard', 'annee: 2026', 'ordre-chapitres: []', ''].join(LF));
+
+  for (const slug of ['01-ouverture', '02-suite']) {
+    const dossier = path.join(livre, 'chapitres', slug);
+    fs.mkdirSync(path.join(dossier, 'media'), { recursive: true });
+    fs.writeFileSync(path.join(dossier, slug + '.md'),
+      ['# Un titre de chapitre', '', 'Un paragraphe.', ''].join(LF));
+  }
+  fs.mkdirSync(path.join(livre, 'chapitres-word'), { recursive: true });
+  return livre;
+}
+
+module.exports = { revueDEssai, livreDEssai, activerHote };

@@ -180,6 +180,21 @@ function profilOuvrage_detecter() {
 // le moteur livre continuent de se comporter comme avant tant qu'aucun livre n'est ouvert.
 function profilCourant() { return profilOuvrage || profils.profilPour('revue'); }
 
+// Le dossier des unités de texte du profil actif : « articles » pour un numéro,
+// « chapitres » pour un livre. C'est la seule façon d'écrire ce chemin dans l'arbre.
+// ⚠ Il en reste une trentaine d'autres, hors de l'arbre — médias, réimport, marqueur de
+//   fichier ouvert, éditeur de tableau. Elles passeront par ici à leur tour ; tant qu'elles
+//   n'y sont pas, un livre navigue mais tous ses gestes ne le suivent pas encore.
+function dossierUnites() { return profilCourant().unites.dossier; }
+
+// Le titre de la section, dans la langue de l'interface : « ARTICLES » ou « CHAPITRES ».
+function cleArbreUnites() { return 'arbre.' + profilCourant().unites.dossier; }
+
+// La catégorie de la section des unités : elle sert de clé d'accordéon ET de valeur de
+// contexte pour les menus de package.json. Deux profils, deux catégories, pour qu'un
+// `when` puisse les distinguer.
+function categorieUnites() { return profilCourant().unites.dossier; }
+
 // ---- Cycle de vie du numéro : verrou, archive, version du logiciel ---------------
 // L'état vit dans ausgabe.yaml (lib/yaml.js : etatRevue) et non sur le poste. Relu à
 // chaque rafraîchissement, il alimente les clés de contexte szh.verrouillee /
@@ -365,6 +380,9 @@ const VUE_SECTION = {
 // plutôt que « charts.orange », trop clair sur fond blanc — même choix que COULEURS_STATUT.
 const COULEURS_SECTION = {
   articles: 'charts.blue',
+  // Un livre nomme ses unités « chapitres » : sans cette entrée, la section sortirait sans
+  // couleur, seule de son espèce dans l'arbre.
+  chapitres: 'charts.blue',
   traductions: 'charts.green',
   word: 'editorWarning.foreground'
 };
@@ -916,7 +934,7 @@ function nomArticle(racine, slug, index, langue) {
 // Même partage que le suivi de traduction juste à côté : les intitulés sont un réglage de
 // revue (config.json), l'état coché part avec l'article et n'est ni publié ni exporté.
 function cheminTaches(racine, slug) {
-  return path.join(racine, 'articles', slug, slug + '.taches.yaml');
+  return path.join(racine, dossierUnites(), slug, slug + '.taches.yaml');
 }
 
 function lireTachesArticle(racine, slug) {
@@ -1147,12 +1165,19 @@ class FournisseurRevue {
   constructor() {
     this.racine = null;
     this.slugDeploye = null;       // article dont les assets sont dépliés
-    this.sectionDeployee = 'articles';   // l'accordéon : la seule section ouverte, ou null
+    // ⚠ Posé à null, et non à « articles » : la catégorie dépend du profil, qui n'est
+    //   pas encore connu à la construction. definirRacine() l'ouvre ensuite.
+    this.sectionDeployee = null;   // l'accordéon : la seule section ouverte, ou null
     this._changement = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._changement.event;
   }
 
-  definirRacine(racine) { this.racine = racine; }
+  definirRacine(racine) {
+    this.racine = racine;
+    // La section des unités s'ouvre par défaut — « Articles » ou « Chapitres » selon
+    // le profil, qui est arrêté au moment où la racine est posée.
+    if (this.sectionDeployee === null && racine) { this.sectionDeployee = categorieUnites(); }
+  }
   rafraichir() { this._changement.fire(); }
 
   // true si l'état a changé : recliquer le même article ne reconstruit pas la vue.
@@ -1183,14 +1208,23 @@ class FournisseurRevue {
       // L'ordre suit le travail : les articles du numéro, leurs traductions, puis ce qui
       // attend encore d'y entrer. Une seule section dépliée à la fois (sectionDeployee) :
       // les compteurs en description disent le reste sans déplier.
-      return [
-        this._section('articles', T('arbre.articles'), 'book', undefined),
-        this._section('traductions', T('arbre.traductions'), 'globe',
-          t.total > 0 ? '(' + t.finalises + '/' + t.total + ')' : undefined),
-        this._section('word', T('arbre.word'), 'inbox', n > 0 ? '(' + n + ')' : undefined)
+      // ⚠ PAS de section « Traductions » pour un LIVRE, et ce n'est pas un oubli. Une revue
+      //   paraît en deux langues et chaque article a sa version jumelle ; un livre est écrit
+      //   dans une langue, celle de son `lang:`, et sa traduction est un AUTRE livre, avec
+      //   son ISBN. La section était construite inconditionnellement — c'est cette ligne-là
+      //   qu'il fallait rendre conditionnelle, pas seulement les chemins.
+      const sections = [
+        this._section(categorieUnites(), T(cleArbreUnites()), 'book', undefined)
       ];
+      if (profilCourant().cle === 'revue') {
+        sections.push(this._section('traductions', T('arbre.traductions'), 'globe',
+          t.total > 0 ? '(' + t.finalises + '/' + t.total + ')' : undefined));
+      }
+      sections.push(
+        this._section('word', T('arbre.word'), 'inbox', n > 0 ? '(' + n + ')' : undefined));
+      return sections;
     }
-    if (element.categorie === 'articles') { return this._itemsArticles(); }
+    if (element.categorie === categorieUnites()) { return this._itemsArticles(); }
     if (element.categorie === 'word') { return this._itemsWord(); }
     if (element.categorie === 'traductions') { return this._itemsTraductions(); }
     if (element.contextValue === 'article') { return this._itemsTables(element.slug); }
@@ -1204,7 +1238,7 @@ class FournisseurRevue {
   getParent(element) {
     if (!element || element.categorie) { return null; }
     if (element.contextValue === 'article') {
-      return this._section('articles', T('arbre.articles'), 'book', undefined);
+      return this._section(categorieUnites(), T(cleArbreUnites()), 'book', undefined);
     }
     return null;
   }
@@ -1241,9 +1275,9 @@ class FournisseurRevue {
   // libellé est le titre de la fiche précédé de son rang à deux chiffres, et le slug passe
   // en description — c'est le nom du dossier, ce n'est pas le nom de l'article.
   _itemsArticles() {
-    const base = path.join(this.racine, 'articles');
+    const base = path.join(this.racine, dossierUnites());
     const slugs = this.listerArticles();
-    if (slugs.length === 0) { return [this._vide(T('arbre.vide.articles'))]; }
+    if (slugs.length === 0) { return [this._vide(T('arbre.vide.' + profilCourant().unites.dossier))]; }
     const auto = replierAssetsAutres();
     const langue = langueRevue(this.racine);
     const taches = tachesDuNumero(this.racine);
@@ -1294,7 +1328,7 @@ class FournisseurRevue {
 
   // articles/<slug>/media/, récursif ; chemins relatifs à media/, triés.
   _imagesArticle(slug) {
-    const base = path.join(this.racine, 'articles', slug, 'media');
+    const base = path.join(this.racine, dossierUnites(), slug, 'media');
     const resultats = [];
     const parcourir = (dossier, prefixe) => {
       let entrees;
@@ -1311,7 +1345,7 @@ class FournisseurRevue {
   }
 
   _tablesArticle(slug) {
-    const base = path.join(this.racine, 'articles', slug, 'tables');
+    const base = path.join(this.racine, dossierUnites(), slug, 'tables');
     let entrees;
     try { entrees = fs.readdirSync(base, { withFileTypes: true }); }
     catch (e) { return []; }
@@ -1325,7 +1359,7 @@ class FournisseurRevue {
   // description sur ces entrées — ni poids, ni compteur : la colonne reste vide, et ce qui
   // s'y affichera un jour aura donc du sens.
   _itemsTables(slug) {
-    const baseTables = path.join(this.racine, 'articles', slug, 'tables');
+    const baseTables = path.join(this.racine, dossierUnites(), slug, 'tables');
     const tables = this._tablesArticle(slug).map((nom) => {
       const chemin = path.join(baseTables, nom);
       const it = new vscode.TreeItem(nom, vscode.TreeItemCollapsibleState.None);
@@ -1467,7 +1501,7 @@ class FournisseurRevue {
     if (!this.racine) { return { total: 0, finalises: 0 }; }
     const source = langueRevue(this.racine);
     let total = 0, finalises = 0;
-    for (const slug of this._sousDossiersAvecMd(path.join(this.racine, 'articles'))) {
+    for (const slug of this._sousDossiersAvecMd(path.join(this.racine, dossierUnites()))) {
       const r = etatTraduction(this.racine, slug, source).resume;
       total += r.total;
       finalises += r.finalises;
@@ -1485,13 +1519,13 @@ class FournisseurRevue {
   // porterait deux rangs selon l'endroit où on le regarde.
   listerArticles() {
     if (!this.racine) { return []; }
-    const slugs = this._sousDossiersAvecMd(path.join(this.racine, 'articles'));
+    const slugs = this._sousDossiersAvecMd(path.join(this.racine, dossierUnites()));
     return ordonnerArticles(valeurOrdreArticles(this.racine), slugs,
       articlesSansDoi(this.racine, slugs)).slugs;
   }
 
   _articleExiste(slug) {
-    try { return fs.statSync(path.join(this.racine, 'articles', slug, slug + '.md')).isFile(); }
+    try { return fs.statSync(path.join(this.racine, dossierUnites(), slug, slug + '.md')).isFile(); }
     catch (e) { return false; }
   }
 
@@ -1802,7 +1836,7 @@ function poidsLisible(octets) {
 // médias, éditeur de tableau) : ni le verrou en lecture seule ni la disparition d'un
 // article ne les atteignent, il faut les fermer.
 function fermerFormulairesEcriture(racine, slug) {
-  const dossier = (racine && slug) ? path.join(racine, 'articles', slug) + path.sep : null;
+  const dossier = (racine && slug) ? path.join(racine, dossierUnites(), slug) + path.sep : null;
   const concerne = (table, cle) => {
     if (!dossier) { return true; }                 // tout fermer (verrouillage du numéro)
     return table === panneauxMedias ? cle === slug : String(cle).indexOf(dossier) === 0;
@@ -2054,7 +2088,7 @@ function jetonSource(texte, colonne) {
 
 function editeurArticleCourant(fournisseur) {
   if (!apercuCourantSlug || !fournisseur.racine) { return null; }
-  const cible = path.join(fournisseur.racine, 'articles', apercuCourantSlug, apercuCourantSlug + '.md').toLowerCase();
+  const cible = path.join(fournisseur.racine, dossierUnites(), apercuCourantSlug, apercuCourantSlug + '.md').toLowerCase();
   for (const ed of vscode.window.visibleTextEditors) {
     if (ed.document && ed.document.uri && ed.document.uri.fsPath.toLowerCase() === cible) { return ed; }
   }

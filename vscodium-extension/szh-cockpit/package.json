@@ -123,8 +123,8 @@
       "explorer": [
         {
           "id": "szhCockpitVue",
-          "name": "Revue SZH",
-          "when": "szh.estRevue"
+          "name": "SZH/CSPS",
+          "when": "szh.estRevue || szh.estLivre"
         }
       ]
     },
