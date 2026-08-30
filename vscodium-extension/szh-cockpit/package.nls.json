@@ -20,6 +20,8 @@
   "cmd.traduction": "Suivi de traduction de cet article",
   "cmd.vueArticles": "Articles du numéro",
   "cmd.envoyerAuteur": "Envoyer cet article à l’auteur",
+  "cmd.monterUnite": "Monter d’un rang",
+  "cmd.descendreUnite": "Descendre d’un rang",
   "cmd.vueTraductions": "Suivi des traductions",
   "cmd.vueWord": "Word en attente",
   "cmd.vueControles": "Contrôles de la compilation",

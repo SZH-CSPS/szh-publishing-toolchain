@@ -110,3 +110,27 @@ test('livre : le surveillant de fichiers regarde chapitres/ et buch.yaml', async
   assert.ok(motifs.indexOf('articles/**') === -1 && motifs.indexOf('ausgabe.yaml') === -1,
     'le livre surveille encore des chemins de revue : ' + motifs.join(', '));
 });
+
+// Le déplacement d'un chapitre, de bout en bout : le geste, puis ce que le disque en garde.
+// C'est le contrôle qui prouve toute la chaîne d'un coup — cheminConfig écrit dans
+// buch.yaml et non dans un ausgabe.yaml parasite, cleOrdre() nomme `ordre-chapitres`, et
+// analyserAusgabe ne filtre plus cette clé. Chacune de ces trois pièces manquait, et
+// aucune ne se serait plainte.
+test('livre : descendre un chapitre écrit ordre-chapitres dans buch.yaml', async () => {
+  const fs = require('fs');
+  const avant = fs.readFileSync(path.join(LIVRE, 'buch.yaml'), 'utf8');
+  assert.ok(avant.indexOf('ordre-chapitres') !== -1, 'le livre d’essai n’a pas la clé');
+
+  await HOTE.executer('szh.descendreUnite', { slug: '01-ouverture' });
+
+  const apres = fs.readFileSync(path.join(LIVRE, 'buch.yaml'), 'utf8');
+  const ligne = apres.split(/\r?\n/).find((l) => l.indexOf('ordre-chapitres:') === 0);
+  assert.ok(ligne, 'ordre-chapitres a disparu de buch.yaml');
+  assert.ok(ligne.indexOf('02-suite') < ligne.indexOf('01-ouverture'),
+    'le chapitre n’a pas été descendu : ' + ligne);
+  // ⚠ Le défaut le plus coûteux serait celui-ci : écrire l'ordre à côté, dans un fichier de
+  //   revue que le moteur livre ne lit pas. Le dossier porterait alors les deux
+  //   configurations, et profil.js comme le Makefile le prendraient pour ambigu.
+  assert.ok(!fs.existsSync(path.join(LIVRE, 'ausgabe.yaml')),
+    'un ausgabe.yaml parasite a été créé dans un livre');
+});

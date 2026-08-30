@@ -4748,25 +4748,42 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     return null;
   }
   if (msg.id !== 'monter' && msg.id !== 'descendre') { return null; }
+  return deplacerUnite(fournisseur, slug, msg.id === 'monter' ? -1 : 1, rafraichirTout);
+}
+
+// Ce que deplacerUnite() a répondu, dans la barre d'état. null veut dire « rien à dire » :
+// on ne le transforme pas en message vide, qui clignoterait pour rien.
+function messageDeplacement(message) {
+  if (message) { vscode.window.setStatusBarMessage(message, 4000); }
+}
+
+// Déplacer une unité d'un cran dans le sommaire — un article dans son numéro, un chapitre
+// dans son livre. Partagée par la vue en cartes et par le menu contextuel de l'arbre :
+// deux chemins qui écriraient chacun leur ordre finiraient par ne plus dire la même chose.
+// Rend le message à afficher, ou null quand il n'y a rien à dire — être au bout de la
+// liste ne se signale pas, c'est une évidence à l'écran.
+function deplacerUnite(fournisseur, slug, delta, rafraichirTout) {
+  const racine = fournisseur.racine;
+  if (!racine) { return null; }
   // ⚠ refuserSiArchivee() et non refuserSiVerrouille() : voir la garde elle-même. Un
   // numéro verrouillé a ses textes figés, mais son sommaire peut encore se décider.
   if (refuserSiArchivee()) { return null; }
   const slugs = fournisseur.listerArticles();
   if (slugs.indexOf(slug) === -1) { return null; }
-  const delta = msg.id === 'monter' ? -1 : 1;
   // La règle du tri passe avant le déplacement : franchir la frontière DOI / sans DOI se
-  // refuse en le disant, être au bout de la liste ne se dit pas — c'est une évidence.
+  // refuse en le disant. Sur un livre le jeu est vide — un chapitre n'a pas de DOI — et la
+  // frontière n'existe donc pas.
   const refus = refusDeplacement(slugs, slug, delta, articlesSansDoi(racine, slugs));
   if (refus === 'frontiere') { return T('art.ordre.frontiere'); }
   if (refus !== '') { return null; }
   const nouveau = deplacerArticle(slugs, slug, delta);
   if (nouveau.join(' ') === slugs.join(' ')) { return null; }   // déjà au bord
-  // La liste entière part dans ausgabe.yaml : une liste partielle laisserait les autres
-  // articles à réparer au prochain rendu.
+  // La liste ENTIÈRE part dans le fichier de configuration : une liste partielle laisserait
+  // les autres unités à réparer au prochain rendu.
   const modifies = {};
   modifies[cleOrdre()] = nouveau;
   const refusBail = refusCoedition(racine, cheminConfig(racine));
-  if (refusBail) { return refusBail; }             // quelqu'un modifie le fichier du numéro
+  if (refusBail) { return refusBail; }             // quelqu'un modifie le fichier en ce moment
   const erreur = ecrireClesAusgabe(racine, modifies);
   if (erreur) { return T('err.ecriture', [erreur]); }
   if (rafraichirTout) { rafraichirTout(); }
@@ -7424,6 +7441,15 @@ function activate(context) {
       () => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'traductions')),
     cmd('szh.vueArticles', () => ouvrirVueArticles(fournisseur, rafraichirTout)),
     cmd('szh.envoyerAuteur', (item) => envoyerAuteur(fournisseur, item)),
+    // Monter et descendre depuis l'arbre. ⚠ `cmd` et non `cmdEcriture` : un numéro
+    // verrouillé a ses textes figés mais son sommaire peut encore se décider, et
+    // deplacerUnite() porte déjà le refus qui convient — celui de l'archivage.
+    // Le message part dans la barre d'état : un déplacement d'un cran ne mérite pas une
+    // notification à fermer, et l'arbre montre déjà le résultat.
+    cmd('szh.monterUnite', (item) => messageDeplacement(
+      deplacerUnite(fournisseur, item && item.slug, -1, rafraichirTout))),
+    cmd('szh.descendreUnite', (item) => messageDeplacement(
+      deplacerUnite(fournisseur, item && item.slug, 1, rafraichirTout))),
     vscode.commands.registerCommand('szh.vueWord',
       () => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'word')),
     vscode.commands.registerCommand('szh.vueControles',
