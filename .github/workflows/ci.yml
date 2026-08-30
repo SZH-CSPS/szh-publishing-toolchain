@@ -36,6 +36,20 @@ jobs:
       - name: Vérifier les contrats du cockpit
         run: node --test test/js/*.test.js
 
+      # Les deux contrôles qui ne demandent que la bibliothèque standard. Ils vivaient
+      # hors de la CI, et ne tournaient donc que quand quelqu'un y pensait : le chantier
+      # livre a poussé treize écarts typographiques dans les libellés du lanceur sans que
+      # rien ne le dise. Ce qu'aucune porte ne garde finit toujours par glisser.
+      - name: Vérifier les contrastes de la palette (APCA)
+        run: python3 test/apca-check.py
+
+      # Insécable devant « : ; ! ? », à l'intérieur des « … », demi-cadratin d'incise —
+      # les règles de docs/TYPOGRAPHIE.md, appliquées aux textes VISIBLES du cockpit et
+      # des lanceurs. Un manquement ne casse rien : il laisse une ponctuation orpheline en
+      # début de ligne, et ne se voit qu'imprimé.
+      - name: Vérifier la typographie des textes visibles
+        run: python3 test/typo-check.py
+
   pdf-ua:
     # Version du runner épinglée : les noms de paquets apt ci-dessous (libffi8) sont liés
     # à la version d'Ubuntu. Un « latest » qui glisse casserait l'installation sans
@@ -179,6 +193,28 @@ jobs:
         working-directory: test
         run: make -f "$GITHUB_WORKSPACE/pipeline/Makefile" verifier-ua
 
+      # Les deux LIVRES du banc. Ils gardent ce qu'un article ne peut pas garder : la
+      # numérotation qui court d'un chapitre à l'autre, le sommaire dont les numéros de
+      # page sont posés à la pagination, et surtout la conformité PDF/UA d'un document de
+      # plusieurs chapitres — qu'un tableau mal placé ou une liste lâche suffit à faire
+      # tomber SANS ERREUR VISIBLE.
+      # Le verdict se lit sur l'ABSENCE de FAIL, jamais sur la présence d'un PASS :
+      # veraPDF rend une ligne par fichier, et un livre en a plusieurs.
+      - name: Compiler et valider les livres du banc
+        run: |
+          for livre in livre-normal livre-falc; do
+            echo "::group::$livre"
+            ( cd "test/$livre"               && make -f "$GITHUB_WORKSPACE/pipeline/Makefile" livre livre-couverture livre-epub )
+            ua="$RUNNER_TEMP/$livre.ua"
+            JAVA_HOME="$VERAPDF_JAVA" "$VERAPDF" --flavour ua1 --format text               "test/$livre/out/"*.pdf > "$ua" 2>&1 || true
+            cat "$ua"
+            if grep -q "^FAIL" "$ua" || ! grep -q "^PASS" "$ua"; then
+              echo "::error::$livre : PDF/UA-1 non conforme"
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
+
       # De quoi comprendre un rouge sans rejouer la CI à l'aveugle : les PDF incriminés et
       # le rapport XML de veraPDF, que rapport-ua.py a traduit.
       - name: Récupérer les PDF et le rapport veraPDF
@@ -190,6 +226,8 @@ jobs:
             test/out/**/*.pdf
             test/out/.szh-pdfua.xml
             test/out/.szh-pdfua.err
+            test/livre-*/out/*.pdf
+            test/livre-*/out/*.html
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
