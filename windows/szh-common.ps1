@@ -195,29 +195,29 @@ $script:SzhTextes = @{
     'raccourci.livre.desc' = 'Ouvrir un livre SZH-CSPS'
     # Lanceur « Books SZH-CSPS » : un livre n'a ni volume ni numéro, il a un titre, une
     # année et une référence B — voir open-livre.ps1.
-    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
-    'lanceur.choisir.livre'        = 'Choisissez le livre à ouvrir :'
-    'lanceur.vide.livre'           = 'Aucun livre sur ce poste pour l’’instant – « Nouveau livre… » pour commencer.'
+    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
+    'lanceur.choisir.livre'        = 'Choisissez le livre à ouvrir :'
+    'lanceur.vide.livre'           = 'Aucun livre sur ce poste pour l’’instant – « Nouveau livre… » pour commencer.'
     'lanceur.nouvelle.livre'       = 'Nouveau livre…'
-    'lanceur.test.livre'           = 'Livre dans : {0}'
+    'lanceur.test.livre'           = 'Livre dans : {0}'
     'lanceur.modifie.livre'        = '{0}    (modifié le {1})'
     'lanceur.vide.archives.livre'  = 'Aucun livre archivé.'
-    'lanceur.nouvelle.livre.titre'      = 'Titre :'
-    'lanceur.nouvelle.livre.reference'  = 'Référence B :'
-    'lanceur.nouvelle.livre.type'       = 'Type :'
+    'lanceur.nouvelle.livre.titre'      = 'Titre :'
+    'lanceur.nouvelle.livre.reference'  = 'Référence B :'
+    'lanceur.nouvelle.livre.type'       = 'Type :'
     'lanceur.nouvelle.livre.type.mono'      = 'Monographie'
     'lanceur.nouvelle.livre.type.collectif' = 'Ouvrage collectif'
-    'lanceur.nouvelle.livre.maquette'        = 'Maquette :'
+    'lanceur.nouvelle.livre.maquette'        = 'Maquette :'
     'lanceur.nouvelle.livre.maquette.normal' = 'Normal'
     'lanceur.nouvelle.livre.maquette.falc'   = 'FALC'
-    'lanceur.nouvelle.livre.format'          = 'Format :'
+    'lanceur.nouvelle.livre.format'          = 'Format :'
     'lanceur.nouvelle.livre.format.standard' = 'Standard (155 × 225 mm)'
     'lanceur.nouvelle.livre.format.a4'       = 'A4 (210 × 297 mm)'
     'lanceur.nouvelle.livre.titre.manque'    = 'Le titre du livre est nécessaire pour créer son dossier.'
-    'lanceur.nouvelle.livre.doublon'         = "La référence B{0} existe déjà : c'est le livre « {1} », ici :`n{2}"
-    'lanceur.nouvelle.livre.doublon.arch'    = 'Ce livre-là est archivé – un livre archivé reste un livre publié.'
+    'lanceur.nouvelle.livre.doublon'         = "La référence B{0} existe déjà : c'est le livre « {1} », ici :`n{2}"
+    'lanceur.nouvelle.livre.doublon.arch'    = 'Ce livre-là est archivé – un livre archivé reste un livre publié.'
     'lanceur.nouvelle.livre.doublon.suite'   = 'Deux livres ne peuvent pas porter la même référence B. Supprimez d’’abord celui qui existe, puis recréez celui-ci.'
-    'lanceur.nouvelle.livre.erreur'          = "La création du livre a échoué :`n{0}"
+    'lanceur.nouvelle.livre.erreur'          = "La création du livre a échoué :`n{0}"
   }
   de = @{
     'app.titre'         = 'SZH/CSPS – Publikations-Toolchain'
@@ -344,9 +344,9 @@ $script:SzhTextes = @{
     'raccourci.revue.desc' = 'Eine SZH-Revue öffnen'
     'raccourci.zs.desc'   = 'Eine SZH-Zeitschrift öffnen'
     'raccourci.livre.desc' = 'Ein SZH-CSPS-Buch öffnen'
-    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
+    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
     'lanceur.choisir.livre'        = 'Wählen Sie das zu öffnende Buch:'
-    'lanceur.vide.livre'           = 'Noch kein Buch auf diesem Computer – mit «Neues Buch…» beginnen.'
+    'lanceur.vide.livre'           = 'Noch kein Buch auf diesem Computer – mit «Neues Buch…» beginnen.'
     'lanceur.nouvelle.livre'       = 'Neues Buch…'
     'lanceur.test.livre'           = 'Buch in: {0}'
     'lanceur.modifie.livre'        = '{0}    (geändert am {1})'
@@ -364,7 +364,7 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.livre.format.a4'       = 'A4 (210 × 297 mm)'
     'lanceur.nouvelle.livre.titre.manque'    = 'Der Titel des Buchs wird benötigt, um seinen Ordner anzulegen.'
     'lanceur.nouvelle.livre.doublon'         = "Die B-Referenz {0} existiert bereits: es ist das Buch «{1}», hier:`n{2}"
-    'lanceur.nouvelle.livre.doublon.arch'    = 'Jenes Buch ist archiviert – ein archiviertes Buch bleibt ein veröffentlichtes Buch.'
+    'lanceur.nouvelle.livre.doublon.arch'    = 'Jenes Buch ist archiviert – ein archiviertes Buch bleibt ein veröffentlichtes Buch.'
     'lanceur.nouvelle.livre.doublon.suite'   = 'Zwei Bücher können nicht dieselbe B-Referenz tragen. Löschen Sie zuerst das vorhandene Buch und erstellen Sie dieses danach neu.'
     'lanceur.nouvelle.livre.erreur'          = "Das Buch konnte nicht erstellt werden:`n{0}"
   }
@@ -493,7 +493,7 @@ $script:SzhTextes = @{
     'raccourci.revue.desc' = 'Open an SZH journal'
     'raccourci.zs.desc'   = 'Open an SZH Zeitschrift'
     'raccourci.livre.desc' = 'Open an SZH-CSPS book'
-    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
+    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
     'lanceur.choisir.livre'        = 'Choose the book to open:'
     'lanceur.vide.livre'           = 'No book on this computer yet — use “New book…” to get started.'
     'lanceur.nouvelle.livre'       = 'New book…'
@@ -991,7 +991,7 @@ function Get-SzhEtiquetteRacine {
 # (`encours`/`archives`) restent celles des DEUX PRODUITS DE REVUE — c'est ce que balaie
 # open-revue.ps1, et ce qu'il balayait déjà avant le livre — le livre vit à part, dans sa
 # propre paire `livre.encours`/`livre.archive`, lue par open-livre.ps1 (Get-SzhEmplacementRevue
-# 'livre' …). La racine active part au journal une fois par processus : après coup, il dit
+# 'livre' …). La racine active part au journal une fois par processus : après coup, il dit
 # d'où venaient les revues d'un lancement donné.
 $script:SzhRacineJournalisee = $false
 function Get-SzhEmplacements {
@@ -1039,7 +1039,7 @@ function Initialize-SzhEmplacementsTest {
   return $true
 }
 
-# $Jeton = 'revue' | 'zeitschrift' | 'livre', $Etat = 'encours' | 'archive' ; '' si jeton
+# $Jeton = 'revue' | 'zeitschrift' | 'livre', $Etat = 'encours' | 'archive' ; '' si jeton
 # inconnu. Le livre n'a pas de « numéro » (volume + numéro) : il partage néanmoins ce point
 # d'entrée, open-livre.ps1 s'en servant exactement comme open-revue.ps1 s'en sert déjà.
 function Get-SzhEmplacementRevue([string]$Jeton, [string]$Etat) {

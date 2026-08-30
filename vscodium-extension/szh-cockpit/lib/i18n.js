@@ -25,7 +25,7 @@ const TEXTES_COCKPIT = {
     // style à normaliser à la relecture.
     'arbre.articles': 'ARTICLES',
     'arbre.chapitres': 'CHAPITRES',
-    'livre.apercu.absent': 'Le livre n’a pas encore été composé : il n’y a pas de PDF à montrer. Compilez-le, puis rouvrez l’aperçu.',
+    'livre.apercu.absent': 'Le livre n’a pas encore été composé : il n’y a pas de PDF à montrer. Compilez-le, puis rouvrez l’aperçu.',
     'livre.apercu.compiler': 'Compiler le livre',
     'panneau.apercuLivre': 'Aperçu du livre entier',
 
