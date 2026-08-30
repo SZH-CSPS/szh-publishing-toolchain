@@ -11,12 +11,12 @@ Quand une tâche est terminée et constatée, la supprimer d'ici.
 
 ## 1. Où en est le dépôt
 
-- Branche `main`, la branche `livres` y est fusionnée. Dernière étiquette : `v2026.08.64`.
+- Branche `main`, la branche `livres` y est fusionnée. Dernière étiquette : `v2026.08.65`.
 - Les livres sont **visibles pour tout le monde** : aucun drapeau de configuration ne les
   cache. Un dossier est un livre s'il porte `buch.yaml`, un numéro s'il porte
   `ausgabe.yaml` — c'est la seule règle, et elle est tenue des deux côtés
   (`vscodium-extension/szh-cockpit/lib/profil.js` et `pipeline/Makefile`).
-- 608 tests JS au vert : `node --test "test/js/*.test.js"` depuis la racine.
+- 610 tests JS au vert : `node --test "test/js/*.test.js"` depuis la racine.
 - Banc de rendu au vert : `test/build-render.sh` compile les deux livres d'essai
   (`test/livre-normal`, `test/livre-falc`), cinq sorties chacun, et refuse un PDF non
   conforme PDF/UA-1.
@@ -98,18 +98,44 @@ Les trois pièces :
 La feuille à régler est `pipeline/styles/livre/falc.css` (le socle géométrique commun est
 dans `livre/base.css` — n'y toucher que si l'écart vient vraiment de là).
 
-- [ ] **Relever les styles du Word.** `word/styles.xml` du docx : pour chaque style nommé,
-      corps (`w:sz`, en demi-points), interligne (`w:spacing w:line`), espacement avant et
-      après (`w:before` / `w:after`, en vingtièmes de point), retraits, police. Tabuler.
-- [ ] **Mesurer le PDF d'origine.** Format de page et marges réelles, puis corps et
-      interligne constatés sur une page de texte courant, un titre de chapitre, une liste.
-- [ ] **Mesurer le PDF produit**, aux mêmes endroits, pour poser l'écart chiffré.
-- [ ] **Reporter les valeurs du Word dans `falc.css`**, en jetons plutôt qu'en nombres
-      semés. Recompiler, revalider PDF/UA.
-- [ ] **Réglage fin par comparaison visuelle** (rendu PNG page à page, avant/après). Juger
-      la couleur du gris typographique et les respirations, pas les décimales.
-- [ ] **Vérifier que le livre `test/livre-falc` du banc passe toujours**, et que la maquette
-      « normal » n'a pas bougé.
+- [x] **Relever les styles du Word.** Fait. Relevé complet dans `tmp/falc-styles-word.md`
+      (hors dépôt). Les valeurs qui comptent, vérifiées à la main dans `word/styles.xml` :
+      style `Normal` = 13,0 pt, `w:after=360` → **18,0 pt** entre paragraphes,
+      `w:line=288 lineRule=auto` → 1,2 × l'interligne simple de la police ; titres
+      **18 / 16 / 14 pt** ; retrait de liste **6,3 mm** ; page **155 × 225 mm**, marges
+      **15 mm sur les quatre côtés**.
+- [x] **Mesurer les deux PDF.** Fait.
+      ⚠ Le fichier `2025-ProspectrumFalc_FR_VF.pdf` **n'est pas l'original** : c'est une
+      planche d'imposition unique, 328 × 240 mm avec traits de coupe. La référence est
+      `2025-Prospectrum_FALC_FR_ebook (1).pdf`, 46 pages, 155 × 225 mm.
+      Mesures constatées (PyMuPDF, distance entre lignes de base successives dans un même
+      paragraphe) : **original 21,1 à 21,4 pt pour un corps de 13 pt**, soit un rapport de
+      **1,64**. La valeur `--interligne: 1,64` de `falc.css` est donc **juste** : ne pas la
+      « corriger » d'après le 1,2 du Word, qui compte en multiples de l'interligne simple
+      de la police et non en rapport au corps.
+      Outil de comparaison visuelle prêt : `python3 tmp/falc-apercu.py <page orig> <page
+      produite>` accole les deux pages à la même hauteur.
+- [x] **Deux défauts muets corrigés**, qui expliquent l'essentiel de l'écart :
+      les sauts de ligne étaient **doublés** (`\` de l'import Word **plus**
+      `hard_line_breaks`) — 282 des 570 sauts — et le nom des styles Word s'imprimait en
+      toutes lettres (`{#… .Titre-2-(small)}`). Voir `szh-sauts-uniques.lua` et
+      `szh-attributs-sains.lua`.
+      **Résultat : 64 pages → 49**, contre 46 à l'original. veraPDF ua1 : PASS.
+- [ ] **Refermer les 3 pages qui restent** (49 contre 46). Pistes non encore départagées :
+      la marge basse de `falc.css` est de **20 mm** quand le Word dit 15 mm sur les quatre
+      côtés ; le retrait de liste est de **8 mm** contre 6,3 mm au Word ; et il reste à
+      compter combien de pages viennent de la structure (pages de chapitre, passages au
+      recto) plutôt que de la typographie.
+- [ ] **Réglage fin par comparaison visuelle**, avec `tmp/falc-apercu.py`. Juger la couleur
+      du gris typographique et les respirations, pas les décimales.
+- [x] **Banc revérifié** : `livre-normal` et `livre-falc` recompilés de zéro, 2 PASS et
+      0 FAIL chacun. La maquette « normal » n'a pas bougé.
+
+⚠ Défaut de contenu repéré au passage, **non corrigé** : le dossier `liminaires/media/` du
+livre B329 est VIDE alors que `impressum-du-livre.md` référence sept images
+(`./media/2025-prospectrumfalc-fr-vf-fig-0N.png`). WeasyPrint les signale une à une et la
+page sort sans elles. À trancher : soit les images doivent être copiées là par l'import,
+soit le liminaire ne devrait pas les citer.
 
 ⚠ Ne pas régler la maquette FALC en modifiant `socle.css` ou `livre/base.css` : ces deux
 feuilles servent aussi la maquette « normal » et la revue.
@@ -166,7 +192,7 @@ sortie imprimeur soit utilisable ailleurs qu'en développement.
 ## 3. Comment vérifier
 
 ```
-node --test "test/js/*.test.js"      # 608 tests, depuis la racine du dépôt
+node --test "test/js/*.test.js"      # 610 tests, depuis la racine du dépôt
 test/build-render.sh                 # banc complet : compile les livres, exige PDF/UA-1
 python3 test/typo-check.py           # typographie des textes visibles
 python3 test/apca-check.py           # contrastes de la palette
