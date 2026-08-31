@@ -101,6 +101,45 @@ end
 -- mention de licence, ni titre de bloc auteurs n'existent pour lui.
 local LANGUES = { fr = true, de = true, it = true }
 
+-- ─── Tri alphabétique des mots-clés (A8) ─────────────────────────────────────
+-- table.sort nu trie par OCTET : en UTF-8, une lettre accentuée occupe deux octets dont
+-- le premier (0xC3 ou 0xC5) est plus grand que celui de toute lettre ASCII — « École »
+-- partirait après « Zurich », « Ökonomie » après « Zürich ». Le français et l'allemand
+-- rangent au contraire une lettre accentuée avec sa lettre de base (ordre du
+-- dictionnaire, pas celui de l'annuaire téléphonique allemand qui déplierait ö en oe).
+-- PLIAGE_ACCENTS couvre les diacritiques des deux langues, casse déjà abaissée par string.lower
+-- (qui ne touche que l'ASCII, une majuscule accentuée n'en étant pas un octet) : chaque
+-- séquence UTF-8 à 2 octets (0xC3 ou 0xC5 en tête) est remplacée par sa lettre nue. Pas
+-- de dépendance nouvelle : une table suffit, aucune bibliothèque de collation n'existe
+-- dans ce projet.
+local PLIAGE_ACCENTS = {
+  ['\195\128']='a', ['\195\160']='a', ['\195\130']='a', ['\195\162']='a',
+  ['\195\132']='a', ['\195\164']='a',
+  ['\195\137']='e', ['\195\169']='e', ['\195\136']='e', ['\195\168']='e',
+  ['\195\138']='e', ['\195\170']='e', ['\195\139']='e', ['\195\171']='e',
+  ['\195\142']='i', ['\195\174']='i', ['\195\143']='i', ['\195\175']='i',
+  ['\195\148']='o', ['\195\180']='o', ['\195\150']='o', ['\195\182']='o',
+  ['\195\153']='u', ['\195\185']='u', ['\195\155']='u', ['\195\187']='u',
+  ['\195\156']='u', ['\195\188']='u',
+  ['\195\135']='c', ['\195\167']='c',
+  ['\195\134']='ae', ['\195\166']='ae',
+  ['\197\146']='oe', ['\197\147']='oe',
+  ['\195\159']='ss',
+}
+
+-- Clé de tri d'un mot-clé : casse abaissée puis diacritiques pliés sur leur lettre de
+-- base. Deux mots-clés à clé égale (casse ou accent près) gardent un ordre déterministe
+-- via la chaîne d'origine, sinon table.sort échouerait (« invalid order function »).
+local function cle_tri_motcle(s)
+  return (s:lower():gsub('[\195\197][\128-\191]', PLIAGE_ACCENTS))
+end
+
+local function motcle_avant(a, b)
+  local ca, cb = cle_tri_motcle(a), cle_tri_motcle(b)
+  if ca ~= cb then return ca < cb end
+  return a < b
+end
+
 -- Langue déclarée par la fiche, en jeton court, ou '' si la clé est absente. La valeur
 -- n'est pas validée ici : une langue inconnue doit être nommée dans le message d'erreur.
 local function langue_fiche(slug)
@@ -481,8 +520,16 @@ function Meta(meta)
     local mots = {}
     local km = meta.keywords
     if km ~= nil and km[l] ~= nil then
+      -- A8 : ordre alphabétique, propre à CETTE langue — l'ordre de saisie (souvent celui
+      -- de la langue source de la traduction) ne doit pas se voir à l'impression, et rien
+      -- n'oblige les deux langues à s'aligner entre elles.
+      local textes = {}
       for _, mot in ipairs(km[l]) do
-        table.insert(mots, pandoc.MetaString(S(mot)))
+        table.insert(textes, S(mot))
+      end
+      table.sort(textes, motcle_avant)
+      for _, texte in ipairs(textes) do
+        table.insert(mots, pandoc.MetaString(texte))
       end
     end
     table.insert(resumes, pandoc.MetaMap({
