@@ -881,9 +881,12 @@ local function poser(inlines, depart, s, e, fabriquer)
   return sortie
 end
 
-local function lien(cible)
+-- id_ancre, s'il est fourni, pose un identifiant SUR L'APPEL lui-même : c'est la cible que
+-- la flèche retour de la bibliographie vise. Seule la première occurrence d'une référence
+-- en reçoit un — voir le tri par position dans traiter_inlines() et marquer_liens_manuels().
+local function lien(cible, id_ancre)
   return function(contenu)
-    return pandoc.Link(contenu, cible, '', pandoc.Attr('', { 'szh-appel' }))
+    return pandoc.Link(contenu, cible, '', pandoc.Attr(id_ancre or '', { 'szh-appel' }))
   end
 end
 
@@ -973,6 +976,9 @@ function Pandoc(doc)
   -- « ::: {.szh-biblio src=…} » à sa place. On la résout ici — c'est le patron des
   -- tableaux — et on pose le titre, que le texte ne porte plus.
   local slug = slug_article()
+  -- Langue de la flèche retour (aria-label, FR/DE) : même calcul que le titre de
+  -- bibliographie, dont c'est la seule autre consommatrice — pas de troisième copie.
+  local LANG_RETOUR = langue_article(slug, jeton_revue(doc.meta))
   local blocs, premiere, derniere_liste = resoudre_biblio(doc, slug)
 
   -- Repli, et nommé comme tel : un article importé avant que la bibliographie devienne un
@@ -1046,6 +1052,12 @@ function Pandoc(doc)
   local reprise = (premiere and derniere_liste) and (derniere_liste + 1) or (#blocs + 1)
   local appels, orphelins, ambigus = 0, {}, {}
   local appelees = {}
+  -- Flèche retour : ancre_posee[id] est vrai dès que la PREMIÈRE occurrence de l'appel de
+  -- cette référence a reçu un identifiant (« appel-<id> ») — la bibliographie n'y renvoie
+  -- qu'alors, jamais vers une ancre qui n'existe pas. libelle_par_ref[id] garde le texte
+  -- exact de cette première occurrence (« (Dupont, 2024) »), pour l'aria-label.
+  local ancre_posee = {}
+  local libelle_par_ref = {}
 
   -- Toutes les plages a lier sont relevees d'abord, puis posees de droite a gauche : les
   -- decalages a gauche d'une pose restent valides, ce qui evite de rescanner et permet de
@@ -1099,8 +1111,14 @@ function Pandoc(doc)
               -- L'appariement compte quoi qu'il arrive (bilan, référence jamais appelée) ;
               -- seul le Link disparaît quand le réglage est actif — l'ancre de la référence,
               -- elle, est posée plus bas sans condition.
+              --
+              -- `faire` n'est PAS fabriqué ici : savoir si CETTE occurrence est la première
+              -- de la référence exige de voir tout le paragraphe d'abord (deux motifs,
+              -- parenthèses puis crochets, balayés séparément plus bas — l'ordre de
+              -- découverte n'est pas l'ordre du texte). id_ref voyage donc dans la plage ;
+              -- traiter_inlines() décide et fabrique le lien une fois les deux motifs vus.
               if not LIENS_DESACTIVES then
-                plages[#plages + 1] = { s = ds, e = de, faire = lien('#' .. cands[1].id) }
+                plages[#plages + 1] = { s = ds, e = de, id_ref = cands[1].id, libelle = libelle }
               end
             elseif #cands > 1 then
               for _, c in ipairs(cands) do appelees[c.id] = true end
@@ -1142,6 +1160,25 @@ function Pandoc(doc)
       end
     end
     if #plages == 0 then return inlines end
+    -- Flèche retour : parmi les plages qui portent un id_ref (un appel apparié à une seule
+    -- référence), décider laquelle est la première DANS L'ORDRE DU TEXTE, sur une copie
+    -- triée en position croissante — la seule qu'on puisse construire qu'une fois les deux
+    -- motifs (parenthèses, puis crochets) balayés. ancre_posee est partagé par tout le
+    -- document : la vraie première occurrence, tous paragraphes confondus, l'emporte.
+    local par_position = {}
+    for _, p in ipairs(plages) do
+      if p.id_ref then par_position[#par_position + 1] = p end
+    end
+    table.sort(par_position, function(a, b) return a.s < b.s end)
+    for _, p in ipairs(par_position) do
+      local id_ancre = nil
+      if not ancre_posee[p.id_ref] then
+        id_ancre = 'appel-' .. p.id_ref
+        ancre_posee[p.id_ref] = true
+        libelle_par_ref[p.id_ref] = p.libelle
+      end
+      p.faire = lien('#' .. p.id_ref, id_ancre)
+    end
     table.sort(plages, function(a, b) return a.s > b.s end)
     local courant = inlines
     local borne = nil
@@ -1155,13 +1192,22 @@ function Pandoc(doc)
     return courant
   end
 
-  -- Les liens déjà présents (posés à la main) sont respectés et comptés.
+  -- Les liens déjà présents (posés à la main) sont respectés et comptés. Un lien écrit à la
+  -- main marche « quel que soit le réglage » (voir la note de tête) : le réglage qui coupe
+  -- la pose automatique ne le concerne pas, et la flèche retour n'a donc pas à s'en priver
+  -- non plus — si c'est la première occurrence de cette référence, il reçoit son ancre
+  -- exactement comme un appel posé automatiquement.
   local function marquer_liens_manuels(inlines)
     for _, il in ipairs(inlines) do
       if il.t == 'Link' and il.target:sub(1, 5) == '#ref-' then
         local id = il.target:sub(2)
         if ancrages[id] then
           appelees[id] = true
+          if not ancre_posee[id] then
+            il.identifier = 'appel-' .. id
+            ancre_posee[id] = true
+            libelle_par_ref[id] = normaliser(utils.stringify(il.content))
+          end
         else
           avertir('ancrage-inconnu', { 'ancrage « ' .. il.target .. ' »' },
             'Lien manuel vers un ancrage inconnu : ' .. il.target .. '.',
@@ -1222,6 +1268,36 @@ function Pandoc(doc)
         for _ = 1, #f.suite do
           i = i + 1
           if sortie[i] then dedans:insert(sortie[i]) end
+        end
+        -- Flèche retour : seulement si une occurrence de l'appel a vraiment reçu une ancre
+        -- quelque part dans le corps (ancre_posee, renseigné par traiter_inlines() et
+        -- marquer_liens_manuels() plus haut, jamais autrement) — jamais un lien vers une
+        -- ancre absente. Rien n'est donc posé pour une référence jamais appelée, ni,
+        -- szh.desactiverLiensReferences actif, pour une référence dont le seul appel était
+        -- automatique : aucune ancre n'existe alors pour l'accueillir.
+        if ancre_posee[f.id] then
+          for k = #dedans, 1, -1 do
+            local b = dedans[k]
+            if b.t == 'Plain' or b.t == 'Para' then
+              local libelle = libelle_par_ref[f.id] or ''
+              -- Texte accessible EXPLICITE (pas une flèche nue) : un lecteur d'écran doit
+              -- entendre où ce lien mène, pas deviner une icône. Le contenu du lien reste
+              -- vide et l'icône un fond CSS posé par .szh-retour-appel (print.css) — même
+              -- recette que a.szh-orcid, pour la même raison (un <a> non vide casse le
+              -- lien PDF/UA sous WeasyPrint, anchors.py, règle 7.18.5). La cible commence
+              -- par « # » : la règle a[href^="#"] de print.css lui retire déjà la flèche
+              -- de lien sortant et le soulignement, sans rien à faire ici.
+              local texte_aria = (LANG_RETOUR == 'de')
+                and ('Zurück zum Zitatverweis ' .. libelle)
+                or ('Retour à l’appel de ' .. libelle)
+              local retour = pandoc.Link(pandoc.Inlines({}), '#appel-' .. f.id, '',
+                pandoc.Attr('', { 'szh-retour-appel' }, { { 'aria-label', texte_aria } }))
+              local queue = pandoc.Inlines({ pandoc.Space(), retour })
+              dedans[k] = (b.t == 'Plain') and pandoc.Plain(b.content .. queue)
+                                            or pandoc.Para(b.content .. queue)
+              break
+            end
+          end
         end
         finale:insert(pandoc.Div(dedans, pandoc.Attr(f.id, { 'szh-reference' })))
       else

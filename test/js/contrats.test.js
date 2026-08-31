@@ -594,8 +594,11 @@ test('le réglage « désactiver les liens des références » est déclaré, tr
   // Le filtre lit la même clé, dans le même fichier, et ne coupe que le Link — pas l'ancre.
   const lua = lire('pipeline', 'filters', 'szh-citations.lua');
   assert.match(lua, /cfg\.desactiverLiensReferences/, 'le filtre ne lit pas la clé de config.json');
-  assert.match(lua, /if not LIENS_DESACTIVES then\s*\n\s*plages\[#plages \+ 1\] = \{ s = ds, e = de, faire = lien/,
-    'le filtre ne conditionne pas la pose du Link sur le réglage');
+  // `faire` (qui fabrique le Link) n'est plus posé ici même : depuis la flèche retour, savoir
+  // si CETTE occurrence est la première de sa référence exige de voir tout le paragraphe —
+  // seul id_ref voyage dans la plage, et c'est ce que la garde doit encore conditionner.
+  assert.match(lua, /if not LIENS_DESACTIVES then\s*\n\s*plages\[#plages \+ 1\] = \{ s = ds, e = de, id_ref = cands\[1\]\.id/,
+    'le filtre ne conditionne pas la pose de l’appel sur le réglage');
   // Une seule garde dans tout le fichier : la définition du drapeau, puis ce test — jamais
   // près de la pose du Div ancré (pandoc.Attr(f.id, …)), qui doit rester inconditionnelle.
   assert.strictEqual((lua.match(/LIENS_DESACTIVES/g) || []).length, 2,
@@ -763,8 +766,10 @@ test('CMJN : le convertisseur du pipeline et son appelant se repondent', () => {
 
 test('médias : la webview et l’hôte plafonnent les dépôts pareil', () => {
   const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  // Le plafond des images est extrait dans lib/medias.js ; celui des photos reste dans
+  // extension.js, avec la modale d'auteur·e qui est le seul dépôt de portrait.
+  const medias = lire('vscodium-extension', 'szh-cockpit', 'lib', 'medias.js');
   const webview = lire('vscodium-extension', 'szh-cockpit', 'media', 'medias-article.js');
-  // Le plafond des photos vit avec la modale d'auteur·e, qui est le seul dépôt de portrait.
   const auteurs = lire('vscodium-extension', 'szh-cockpit', 'media', '_auteurs.js');
   const nombre = (re, texte) => {
     const m = re.exec(texte);
@@ -773,7 +778,7 @@ test('médias : la webview et l’hôte plafonnent les dépôts pareil', () => {
     return m[1].split('*').map((x) => Number(x.trim())).reduce((a, b) => a * b, 1);
   };
   assert.strictEqual(nombre(/maxi: ([\d *]+),[^}]*'png', 'jpg', 'jpeg', 'gif'/, webview),
-    nombre(/const TAILLE_MAX_IMAGE_IMPORT = ([\d *]+);/, src),
+    nombre(/const TAILLE_MAX_IMAGE_IMPORT = ([\d *]+);/, medias),
     'plafond des images : la webview et l’hôte divergent');
   assert.strictEqual(nombre(/var TAILLE_MAX_PHOTO = ([\d *]+);/, auteurs),
     nombre(/const TAILLE_MAX_PHOTO = ([\d *]+);/, src),

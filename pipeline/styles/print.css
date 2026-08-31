@@ -634,6 +634,29 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
 /* Cible d'un appel : ne pas laisser le navigateur coller l'entrée au bord haut. */
 .szh-reference { scroll-margin-top: 1.5em; }
 
+/* Flèche retour : posée par szh-citations.lua (fin de Pandoc()) à la suite de la première
+   occurrence appelée de chaque référence — jamais plus d'une par référence, et jamais
+   quand aucune ancre n'existe (référence jamais appelée, ou szh.desactiverLiensReferences
+   actif sans lien manuel). Cible en « #… » : la règle a[href^="#"] du §4 lui a déjà retiré
+   la flèche « lien sortant » et le soulignement, rien à répéter ici.
+   Le <a> est VOLONTAIREMENT VIDE, l'icône un fond CSS et le nom accessible un aria-label
+   explicite (« Retour à l'appel de … » / « Zurück zum Zitatverweis … ») posé par le
+   filtre : même recette qu'a.szh-orcid au §8, pour la même raison — un <a> qui contient un
+   élément casse le lien PDF/UA sous WeasyPrint (anchors.py, règle 7.18.5). Ne pas y remettre
+   un caractère ou un <svg> enfant.
+   Le tracé est un SVG et non un glyphe de police (comme la flèche « lien » du §4 et l'icône
+   ORCID du §8) : aucune dépendance de police, donc aucun risque pour la reproductibilité des
+   PDF que test/polices-check.py contrôle. Même bleu, même trait que la flèche de lien
+   sortant, mais un crochet de retour plutôt qu'une diagonale, pour que l'œil distingue les
+   deux sans avoir à lire. */
+a.szh-retour-appel {
+  display: inline-block;
+  width: 10px; height: 10px;
+  vertical-align: -0.5px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23002A56' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='9 14 4 9 9 4'/%3E%3Cpath d='M20 20v-7a4 4 0 0 0-4-4H4'/%3E%3C/svg%3E");
+  background-size: 100% 100%; background-repeat: no-repeat;
+}
+
 /* ═══ 7. Tableaux stylés de l'éditeur maison (.szh-tableau) ════════════════════
    Style porté par les attributs data-* de l'éditeur du cockpit et par <th scope>. L'accent
    est « gris » (repli neutre ci-dessous) ou la couleur annuelle : accent-css.py surcharge
