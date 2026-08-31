@@ -36,9 +36,151 @@
   //
   // Protocole avec l'hôte :
   //   hôte -> webview : valeurs { articles, types, licences, licenceDefaut, langue, accent } ;
-  //                     doi-manuel-reponse { slug, sens, ok }
+  //                     doi-manuel-reponse { slug, sens, ok } ;
+  //                     mots-cles-connus { motsCles: [{ de, fr }] } (autocomplétion, voir
+  //                     attacherAutocompletionMotsCles plus bas)
   //   webview -> hôte : doi-manuel-confirmer { slug, sens }
   // La partie photo est celle de _auteurs.js, à qui les messages sont passés.
+
+  // ---- Autocomplétion des mots-clés : le vocabulaire edudoc.ch (lib/mots-cles-edudoc.js) --
+  //
+  // Reçu de l'hôte en paires bilingues { de, fr } (message mots-cles-connus). La grille de
+  // mots-clés (SZH.motsCles, _commun.js) apparie déjà « diagnostic » et « Diagnose » PAR
+  // POSITION — une rangée est un mot-clé, une colonne par langue — et c'est cette même
+  // règle qui gouverne l'autocomplétion : on propose dans la langue du champ où l'on
+  // tape (son data-langue), jamais dans une autre. Choisir une suggestion complète en
+  // plus — SEULEMENT si elle est vide — la case de l'AUTRE langue sur la MÊME rangée avec
+  // l'équivalent que le thésaurus bilingue connaît déjà : la paire edudoc.ch (de, fr) est
+  // justement ce qui relie « Sonderpädagogik » à « pédagogie spécialisée », et la grille du
+  // formulaire relie ses colonnes de la même façon, par position. Une correction déjà
+  // tapée n'est jamais effacée (même règle que les champs enrichis des auteur·e·s,
+  // media/_auteurs.js).
+  //
+  // Aucun vocabulaire italien : lib/mots-cles-edudoc.js ne moissonne que DE/FR (les deux
+  // revues n'y publient pas en italien). Le champ `it` de la grille ne déclenche donc
+  // jamais de suggestion, et ne reçoit jamais d'équivalent complété — plutôt que de
+  // proposer du français à qui tape en italien.
+  //
+  // Les paires incomplètes (« manque » côté hôte) ne sont simplement jamais indexées dans
+  // la langue qui leur manque : pDe/pFr valent alors null, et chercherMotsCles les saute.
+  //
+  // Posée en DÉLÉGATION sur le conteneur de la grille (editeurMots.element), qui n'est
+  // jamais remplacé : SZH.motsCles reconstruit tout son DOM interne à chaque ajout, retrait
+  // ou permutation de rangée (voir son commentaire « Reconstruit le DOM depuis le modèle,
+  // sans jamais le relire »), et un écouteur posé sur un <input> précis serait perdu à la
+  // reconstruction suivante.
+
+  // Casse et accents pliés, comme pour les auteur·e·s (media/_auteurs.js) : « special »
+  // trouve « spécialisée ».
+  function plierMc(t) {
+    var s = String(t === undefined || t === null ? '' : t).toLowerCase().replace(/\s+/g, ' ').trim();
+    try { s = s.normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+    catch (e) { /* moteur sans normalize : filtrage sensible aux accents, sans casser */ }
+    return s;
+  }
+
+  // Comme plierAvecIndex de _auteurs.js : la forme pliée ET l'indice, dans l'original, du
+  // caractère dont chaque caractère plié vient — pour mettre en gras la bonne portion du
+  // texte d'origine, quoi qu'invente Unicode sur un caractère replié.
+  function plierAvecIndexMc(brut) {
+    var src = String(brut === undefined || brut === null ? '' : brut);
+    var plie = '';
+    var index = [];
+    for (var i = 0; i < src.length; i++) {
+      var c = src.charAt(i).toLowerCase();
+      try { c = c.normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+      catch (e) { /* moteur sans normalize */ }
+      for (var j = 0; j < c.length; j++) { plie += c.charAt(j); index.push(i); }
+    }
+    return { source: src, plie: plie, index: index };
+  }
+
+  // Ce qui sépare deux mots dans un descripteur — l'espace, le trait d'union, la virgule :
+  // « troubles, difficultés » doit se chercher mot à mot.
+  var SEPARE_MC = /[\s\-'’.,;]/;
+  function debutsDeMotMc(plie) {
+    var debuts = [];
+    for (var i = 0; i < plie.length; i++) {
+      if (SEPARE_MC.test(plie.charAt(i))) { continue; }
+      if (i === 0 || SEPARE_MC.test(plie.charAt(i - 1))) { debuts.push(i); }
+    }
+    return debuts;
+  }
+  // Le premier début de mot à partir duquel `q` se lit tel quel, ou -1.
+  function chercherDebutMc(pli, debuts, q) {
+    for (var i = 0; i < debuts.length; i++) {
+      if (pli.plie.lastIndexOf(q, debuts[i]) === debuts[i]) { return debuts[i]; }
+    }
+    return -1;
+  }
+  // Pose un texte dans `parent`, les parts trouvées en gras. Rien n'est construit en HTML :
+  // un descripteur est une donnée, pas du balisage.
+  function poserAvecGrasMc(parent, pli, zones) {
+    var brut = pli.source;
+    var pose = 0;
+    for (var z = 0; z < zones.length; z++) {
+      var i0 = pli.index[zones[z][0]];
+      var fin = zones[z][0] + zones[z][1];
+      var i1 = (fin < pli.index.length) ? pli.index[fin] : brut.length;
+      if (i0 < pose) { continue; }
+      if (i0 > pose) { parent.appendChild(document.createTextNode(brut.slice(pose, i0))); }
+      var fort = document.createElement('strong');
+      fort.textContent = brut.slice(i0, i1);
+      parent.appendChild(fort);
+      pose = i1;
+    }
+    if (pose < brut.length) { parent.appendChild(document.createTextNode(brut.slice(pose))); }
+  }
+
+  // Les paires reçues de l'hôte, indexées une fois pour la recherche : pDe/pFr valent null
+  // pour le côté manquant d'une paire incomplète, et chercherMotsCles les saute alors.
+  function construireIndexMotsCles(liste) {
+    var connus = [];
+    for (var i = 0; i < (liste || []).length; i++) {
+      var m = liste[i] || {};
+      var de = String(m.de || '').replace(/\s+/g, ' ').trim();
+      var fr = String(m.fr || '').replace(/\s+/g, ' ').trim();
+      if (de === '' && fr === '') { continue; }
+      var e = { de: de, fr: fr, pDe: null, pFr: null };
+      if (de !== '') { e.pDe = plierAvecIndexMc(de); e.pDe.debuts = debutsDeMotMc(e.pDe.plie); }
+      if (fr !== '') { e.pFr = plierAvecIndexMc(fr); e.pFr.debuts = debutsDeMotMc(e.pFr.plie); }
+      connus.push(e);
+    }
+    return connus;
+  }
+
+  var MC_SUGG_MAX = 8;               // au-delà, ce n'est plus un menu mais une liste
+
+  // Les entrées qui correspondent à la saisie, pour un CODE DE LANGUE donné ('fr' ou 'de' —
+  // jamais 'it', voir plus haut). Une saisie de plusieurs mots doit tous les retrouver,
+  // chacun au début d'un mot du descripteur.
+  function chercherMotsCles(connus, langueCode, saisie) {
+    var trouves = [];
+    var mots = saisie.split(' ').filter(function (m) { return m !== ''; });
+    for (var i = 0; i < connus.length; i++) {
+      var e = connus[i];
+      var pli = langueCode === 'fr' ? e.pFr : e.pDe;
+      if (!pli) { continue; }                      // paire incomplète dans cette langue
+      var zones = [];
+      var ok = true;
+      for (var m = 0; m < mots.length; m++) {
+        var d = chercherDebutMc(pli, pli.debuts, mots[m]);
+        if (d === -1) { ok = false; break; }
+        zones.push([d, mots[m].length]);
+      }
+      if (ok) {
+        zones.sort(function (a, b) { return a[0] - b[0]; });
+        trouves.push({ entree: e, pli: pli, zones: zones });
+      }
+    }
+    trouves.sort(function (a, b) {
+      var ta = langueCode === 'fr' ? a.entree.fr : a.entree.de;
+      var tb = langueCode === 'fr' ? b.entree.fr : b.entree.de;
+      return plierMc(ta).localeCompare(plierMc(tb));
+    });
+    return trouves.slice(0, MC_SUGG_MAX);
+  }
+
   function cartesArticles(opts) {
     var conteneur = opts.conteneur;
     var api = opts.api;
@@ -62,6 +204,10 @@
     // les types d'article. Le formulaire n'en connaît aucune de son côté.
     var LICENCES = [];
     var LICENCE_DEFAUT = '';
+    // Le vocabulaire edudoc.ch (message mots-cles-connus), partagé par toutes les cartes
+    // de la page — une seule liste, comme TYPES et LICENCES.
+    var motsClesConnus = [];
+    function poserMotsClesConnus(liste) { motsClesConnus = construireIndexMotsCles(liste); }
 
     // La modale rend l'auteur·e édité ; il n'est pas écrit sur le disque tout de suite,
     // la carte gardant la main sur son enregistrement — c'est la seule chose que cette
@@ -185,6 +331,137 @@
       if (msg.sens === 'retirer') { ctl.poser(false, ''); }
       else { ctl.poser(true, ctl.calcule); }
       marquer(carte, slug);
+    }
+
+    // ---- Autocomplétion des mots-clés : posée une fois par carte, sur le conteneur ----
+    //
+    // En délégation (voir le commentaire de tête du fichier) : un seul écouteur par
+    // événement, qui survit à toutes les reconstructions internes de SZH.motsCles.
+    function attacherAutocompletionMotsCles(editeurMots) {
+      var conteneurMc = editeurMots.element;
+      var boiteSugg = document.createElement('div');
+      boiteSugg.className = 'mc-sugg';
+      boiteSugg.hidden = true;
+      boiteSugg.setAttribute('role', 'listbox');
+      boiteSugg.setAttribute('aria-label', TXT.motsClesSuggestions || '');
+      var suggEtat = { input: null, items: [], actif: -1 };
+      var enSelection = false;               // vrai pendant qu'on écrit nous-mêmes une valeur
+
+      function fermerSuggestions() {
+        boiteSugg.hidden = true;
+        boiteSugg.textContent = '';
+        boiteSugg.remove();
+        suggEtat = { input: null, items: [], actif: -1 };
+      }
+
+      function poserActif(n) {
+        var total = suggEtat.items.length;
+        if (total === 0) { return; }
+        var idx = ((n % total) + total) % total;     // les flèches bouclent aux extrémités
+        for (var k = 0; k < total; k++) {
+          suggEtat.items[k].element.classList.toggle('actif', k === idx);
+          suggEtat.items[k].element.setAttribute('aria-selected', k === idx ? 'true' : 'false');
+        }
+        suggEtat.actif = idx;
+      }
+
+      // Choisir une suggestion écrase toujours le champ où l'on tape, et complète en plus
+      // — SEULEMENT si elle est vide — la case de l'AUTRE langue sur la MÊME rangée : voir
+      // le commentaire de tête du fichier pour la justification de ce choix.
+      function choisir(trouve, langueCode, input) {
+        enSelection = true;
+        var e = trouve.entree;
+        input.value = langueCode === 'fr' ? e.fr : e.de;
+        // Un événement synthétique : c'est lui que SZH.motsCles écoute pour absorber la
+        // valeur dans son modèle et prévenir onChange (qui marque la carte modifiée) — une
+        // affectation directe de .value ne suffirait pas, aucun écouteur natif n'en saurait
+        // rien.
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        var autreCode = langueCode === 'fr' ? 'de' : 'fr';
+        var valeurAutre = langueCode === 'fr' ? e.de : e.fr;
+        var rangee = input.closest('.mc-rangee');
+        var champAutre = (valeurAutre !== '' && rangee)
+          ? rangee.querySelector('input[data-langue="' + autreCode + '"]') : null;
+        if (champAutre && champAutre.value.trim() === '') {
+          champAutre.value = valeurAutre;
+          champAutre.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        enSelection = false;
+        fermerSuggestions();
+      }
+
+      function majSuggestions(input) {
+        if (enSelection) { return; }                 // écriture programmatique : pas de boîte
+        var langueCode = input.dataset.langue;
+        // L'italien n'a pas de vocabulaire edudoc.ch : rien à proposer plutôt que du
+        // français, voir le commentaire de tête du fichier.
+        if (langueCode !== 'fr' && langueCode !== 'de') { fermerSuggestions(); return; }
+        var saisie = plierMc(input.value);
+        if (motsClesConnus.length === 0 || saisie.length < 2) { fermerSuggestions(); return; }
+        var trouves = chercherMotsCles(motsClesConnus, langueCode, saisie);
+        fermerSuggestions();
+        if (trouves.length === 0) { return; }
+        var rangee = input.closest('.mc-rangee');
+        if (!rangee) { return; }
+        suggEtat = { input: input, items: [], actif: -1 };
+        for (var i = 0; i < trouves.length; i++) {
+          (function (t) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'mc-sugg-item';
+            b.setAttribute('role', 'option');
+            b.setAttribute('aria-selected', 'false');
+            poserAvecGrasMc(b, t.pli, t.zones);
+            // mousedown neutralisé : le clic ne doit pas d'abord voler le focus du champ.
+            b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+            b.addEventListener('click', function () { choisir(t, langueCode, input); });
+            boiteSugg.appendChild(b);
+            suggEtat.items.push({ element: b, trouve: t });
+          })(trouves[i]);
+        }
+        // Positionnée sous LA CASE où l'on tape, pas sous la rangée entière qui couvre
+        // plusieurs langues : .mc-rangee est en position relative (_fiches.css), et l'input
+        // en est un enfant direct — son offsetLeft/offsetWidth suffisent.
+        boiteSugg.style.left = input.offsetLeft + 'px';
+        boiteSugg.style.width = input.offsetWidth + 'px';
+        rangee.appendChild(boiteSugg);
+        boiteSugg.hidden = false;
+      }
+
+      function clavierSuggestions(e, input) {
+        if (boiteSugg.hidden || suggEtat.input !== input) { return; }
+        if (e.key === 'ArrowDown') { e.preventDefault(); poserActif(suggEtat.actif + 1); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); poserActif(suggEtat.actif - 1); return; }
+        if (e.key === 'Enter') {
+          if (suggEtat.actif >= 0 && suggEtat.items[suggEtat.actif]) {
+            e.preventDefault();
+            choisir(suggEtat.items[suggEtat.actif].trouve, input.dataset.langue, input);
+          }
+          return;
+        }
+        if (e.key === 'Escape') {
+          // Seule la liste se ferme — la propagation est coupée, par cohérence avec
+          // l'autocomplétion des auteur·e·s (media/_auteurs.js).
+          e.preventDefault();
+          if (e.stopPropagation) { e.stopPropagation(); }
+          fermerSuggestions();
+        }
+      }
+
+      conteneurMc.addEventListener('input', function (e) {
+        var input = e.target;
+        if (!input || input.tagName !== 'INPUT' || !input.dataset.langue) { return; }
+        majSuggestions(input);
+      });
+      conteneurMc.addEventListener('keydown', function (e) {
+        var input = e.target;
+        if (!input || input.tagName !== 'INPUT' || !input.dataset.langue) { return; }
+        clavierSuggestions(e, input);
+      });
+      // focusout (et non blur) : il remonte jusqu'au conteneur, où l'écouteur est posé en
+      // délégation. Le mousedown neutralisé sur chaque suggestion garde le focus sur le
+      // champ le temps du clic, comme pour les auteur·e·s.
+      conteneurMc.addEventListener('focusout', function () { fermerSuggestions(); });
     }
 
     // ---- Construction des cartes ----
@@ -372,6 +649,7 @@
       });
       motsClesParCarte.set(carte, editeurMots);
       carte.appendChild(editeurMots.element);
+      attacherAutocompletionMotsCles(editeurMots);
 
       // Une case par langue MANQUANTE : « + Allemand (champs DE) » pour un article IT de
       // la Revue, « + Français » et « + Italien » pour un article DE de la Zeitschrift.
@@ -567,6 +845,12 @@
       }
       if (msg.type === 'doi-manuel-reponse') {
         reponseDoi(msg);
+        return true;
+      }
+      // Le vocabulaire edudoc.ch pour l'autocomplétion des mots-clés : gardé même reçu
+      // avant que la première carte n'existe, comme auteurs-connus pour ctlAuteurs.
+      if (msg.type === 'mots-cles-connus') {
+        poserMotsClesConnus(msg.motsCles);
         return true;
       }
       return ctlAuteurs.message(msg);

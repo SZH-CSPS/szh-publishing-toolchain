@@ -83,6 +83,18 @@ function activerHote(revue) {
       { prenom: 'Anne', nom: 'Dupont', datePublication: '2025-06-01T00:00:00Z' }
     ]
   }, null, 2) + LF);
+  // Même précaution pour le vocabulaire edudoc.ch (lib/mots-cles-edudoc.js) : un cache
+  // FRAIS avant l'activation, sans quoi rafraichirMotsClesConnusEnFond (extension.js) le
+  // jugerait périmé (plus de sept jours) et ferait un vrai appel réseau. Le fichier sert
+  // aussi de corpus au message mots-cles-connus.
+  process.env.SZH_MOTS_CLES_CACHE = path.join(revue, 'mots-cles.json');
+  fs.writeFileSync(process.env.SZH_MOTS_CLES_CACHE, JSON.stringify({
+    dateFetch: new Date().toISOString(),
+    motsCles: [
+      { de: 'Sonderpädagogik', fr: 'pédagogie spécialisée', manque: null },
+      { de: 'Inklusion', fr: 'inclusion', manque: null }
+    ]
+  }, null, 2) + LF);
   const evenement = () => () => ({ dispose() {} });
   // Un événement dont on garde les abonnés, pour pouvoir le déclencher depuis un test.
   // `evenement()` jette le gestionnaire : suffisant pour la plupart, pas pour la fin d'une

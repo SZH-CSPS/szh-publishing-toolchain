@@ -62,3 +62,30 @@ button.principal { color: var(--vscode-button-foreground); background: var(--vsc
 button.principal:hover { background: var(--vscode-button-hoverBackground); }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 button:disabled { opacity: .45; cursor: default; }
+
+/* ---- Autocomplétion des mots-clés (media/_fiches.js) : le vocabulaire edudoc.ch. La
+   grille elle-même (.mc-*) est injectée par _commun.js ; on ne fait ici qu'ajouter de quoi
+   positionner la boîte de suggestions sous la case où l'on tape, à l'intérieur de sa
+   rangée — jamais sous la grille entière, qui couvre plusieurs langues. */
+.mc-rangee { position: relative; }
+.mc-sugg {
+  position: absolute; top: 100%; z-index: 10;
+  margin-top: 2px; padding: var(--e1) 0;
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--filet-fort); border-radius: var(--rayon-mini);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .25);
+  max-height: 12rem; overflow-y: auto;
+}
+.mc-sugg-item {
+  display: block; width: 100%; text-align: left;
+  padding: var(--e1) var(--e2); border: 0; background: none;
+  color: var(--encre); font: inherit; cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.mc-sugg-item:hover,
+.mc-sugg-item.actif {
+  background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground, rgba(128, 128, 128, .2)));
+  color: var(--vscode-list-activeSelectionForeground, var(--encre));
+}
+/* La part trouvée, comme pour les auteur·e·s : le gras seul la marque. */
+.mc-sugg-item strong { font-weight: 700; }

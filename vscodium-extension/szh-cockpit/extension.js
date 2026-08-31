@@ -67,6 +67,13 @@ const {
   lireCache: lireCacheAuteursPublies, rafraichir: rafraichirCacheAuteursPublies
 } = require('./lib/auteurs-ojs');
 const { rafraichirCorpus: rafraichirCorpusAuteurs } = require('./lib/auteurs-corpus');
+// ---- Mots-clés connus : le vocabulaire edudoc.ch (OAI-PMH) -----------------------
+// Deuxième source moissonnée, séparée des auteur·e·s : cache différent
+// (mots-cles.json), et un rythme d'activation propre à CE cockpit — voir
+// rafraichirMotsClesEnFond — indépendant du repli mensuel interne au module.
+const {
+  lireCacheMotsCles, rafraichirMotsCles
+} = require('./lib/mots-cles-edudoc');
 // ---- Modèle de tableau -> lib/table-model.js -------------------------------------
 const {
   analyserTable, serialiserTable, disposition, matriceOccupation,
@@ -3664,6 +3671,8 @@ function textesCarteArticle() {
     // Grille de mots-clés appariés : fragment partagé SZH.motsCles.
     motsClesTitre: T('fiches.motscles.titre'),
     motCleAjouter: T('fiches.motcle.ajouter'), motCleRetirer: T('fiches.motcle.retirer'),
+    // Autocomplétion des mots-clés (media/_fiches.js), vocabulaire edudoc.ch.
+    motsClesSuggestions: T('fiches.motscles.suggestions'),
     rien: T('form.rien'), enregistre: T('fiches.enregistre'),
     tradAfficher: T('fiches.trad.afficher'), tradMasquer: T('fiches.trad.masquer'),
     langueAvenir: T('fiches.langue.avenir'),
@@ -5796,6 +5805,52 @@ function libelleRor(nomsRor, ror, langue) {
   return String(e[langue] || e.en || e.fr || e.de || '');
 }
 
+// ---- Mots-clés edudoc.ch : la liste pour l'autocomplétion -------------------------
+//
+// Le cache (C:\ProgramData\SZH\mots-cles.json, lib/mots-cles-edudoc.js) part vers les deux
+// vues qui portent la grille de mots-clés — métadonnées, vérification d'import — jamais
+// vers la gestion des médias, qui n'en a pas. Les deux langues voyagent ensemble dans
+// chaque paire : c'est la webview qui choisit, par le champ où l'on tape, laquelle
+// proposer, et complète l'autre au besoin (media/_fiches.js). Liste vide : rien n'est
+// envoyé, comme pour les auteur·e·s.
+function envoyerMotsClesConnus(panneau) {
+  let cache;
+  try { cache = lireCacheMotsCles(); } catch (e) { return; }
+  const motsCles = cache.motsCles;
+  if (!Array.isArray(motsCles) || motsCles.length === 0) { return; }
+  repondrePanneau(panneau, {
+    type: 'mots-cles-connus',
+    motsCles: motsCles.map((m) => ({ de: (m && m.de) || '', fr: (m && m.fr) || '' }))
+  });
+}
+
+// Rythme d'activation propre à ce cockpit : 7 jours, plus serré que le repli mensuel
+// interne au module (JOURS_FRAICHEUR y vaut 30, pensé pour son propre usage). `forcer`
+// passe outre ce repli pour appliquer CETTE politique-ci — le vocabulaire edudoc.ch
+// évolue par petites touches, et une semaine hors ligne ne coûte qu'un essai de plus au
+// prochain démarrage. Échec réseau = silence, comme pour les auteur·e·s : hors ligne est
+// un état normal du poste.
+const JOURS_FRAICHEUR_MOTS_CLES_ACTIVATION = 7;
+
+function rafraichirMotsClesConnusEnFond() {
+  let cache;
+  try { cache = lireCacheMotsCles(); } catch (e) { return; }
+  const t = cache.dateFetch ? Date.parse(cache.dateFetch) : NaN;
+  const perime = !isFinite(t) ||
+    (Date.now() - t) >= JOURS_FRAICHEUR_MOTS_CLES_ACTIVATION * 24 * 3600 * 1000;
+  if (!perime) { return; }
+  rafraichirMotsCles({ forcer: true }).then((res) => {
+    if (res.fait && res.complet) {
+      console.log('[mots-cles-edudoc] edudoc.ch : ' + res.nombre + ' descripteur(s)');
+    } else if (res.fait) {
+      console.log('[mots-cles-edudoc] rafraîchissement incomplet (hors ligne ?) : ' +
+        (res.erreur || '?'));
+    }
+  }).catch((e) => {
+    console.log('[mots-cles-edudoc] rafraîchissement raté : ' + String((e && e.message) || e));
+  });
+}
+
 // Le rafraîchissement hebdomadaire, lancé à l'activation SANS l'attendre : hors ligne est
 // un état normal du poste, rien n'est montré au rédacteur — seule une trace console reste
 // pour le diagnostic (échec muet interdit, décision du dépôt).
@@ -6080,6 +6135,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
       licences: licencesTraduites(), licenceDefaut: LICENCE_DEFAUT
     });
     envoyerAuteursConnus(panneau, fournisseur.racine);
+    envoyerMotsClesConnus(panneau);
     fichesModifie = false;                         // les cartes viennent d'être reconstruites
   };
   rafraichirFiches = () => { if (panneauArticles) { envoyerValeurs(panneauArticles); } };
@@ -6262,6 +6318,7 @@ function envoyerValeursImportVerif(panneau, fournisseur) {
     licences: licencesTraduites(), licenceDefaut: LICENCE_DEFAUT
   });
   envoyerAuteursConnus(panneau, fournisseur.racine);
+  envoyerMotsClesConnus(panneau);
 }
 
 // Le remplacement lui-même est celui du gestionnaire des médias ; ici, seul l'aller-retour
@@ -7903,6 +7960,8 @@ function activate(context) {
   // de fond, au plus une fois par semaine — sans bloquer l'activation, et sans un mot en
   // cas d'échec réseau : hors ligne est un état normal du poste.
   rafraichirAuteursPubliesEnFond();
+  // Même politique de fond, cache distinct : voir rafraichirMotsClesConnusEnFond.
+  rafraichirMotsClesConnusEnFond();
   demarrageInitial();
 }
 
