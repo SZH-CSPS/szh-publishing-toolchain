@@ -53,12 +53,15 @@ test('slug d’article : les trois parties d’un même dossier ne se marchent p
   ]);
 });
 
+// B1 (26.08.2026, demande de Robin) : le numéro de tête du Word ne nomme plus le dossier
+// — voir contrats.test.js pour le contrôle miroir avec le Makefile, et numeroOrdreArticle()
+// pour ce que ce nombre devient (l'ordre initial dans ausgabe.yaml, hors périmètre ici).
 test('slug d’article : un nom libre est rendu tel quel, sans suffixe', () => {
-  assert.strictEqual(slug.slugifierArticleUnique('4_Titre.docx', []), '04-titre');
-  assert.strictEqual(slug.slugifierArticleUnique('4_Titre.docx', ['09-autre']), '04-titre');
+  assert.strictEqual(slug.slugifierArticleUnique('4_Titre.docx', []), 'titre');
+  assert.strictEqual(slug.slugifierArticleUnique('4_Titre.docx', ['autre']), 'titre');
   // Le suffixe ne monte que d'un cran à la fois, et saute les noms déjà pris.
   assert.strictEqual(slug.slugifierArticleUnique('4_Titre.docx',
-    ['04-titre', '04-titre-2']), '04-titre-3');
+    ['titre', 'titre-2']), 'titre-3');
 });
 
 test('slug d’article : la borne de 39 caractères tient, suffixe compris', () => {

@@ -20,8 +20,9 @@ function slugifier(nomFichier) {
 // long donne des chemins de plus de 340 caractères, au delà de la limite Windows de 260 ;
 // la compilation passe, mais la synchronisation OneDrive et l'Explorateur trébuchent.
 //
-// ⚠ Ni cette borne ni le complément à deux chiffres ne doivent entrer dans `slugifier` :
-// il nomme aussi les fichiers de portraits, référencés par le champ `photo` des fiches.
+// ⚠ Ni cette borne ni le retrait du numéro de tête ci-dessous ne doivent entrer dans
+// `slugifier` : il nomme aussi les fichiers de portraits, référencés par le champ `photo`
+// des fiches.
 const LONGUEUR_MAX_SLUG_ARTICLE = 39;
 
 // Coupe au dernier mot entier plutôt qu'au caractère près : « …-technologies-peu »
@@ -39,17 +40,34 @@ function bornerSlug(s) {
   return court;
 }
 
-// Slug d'un article : slugifier, puis complément à deux chiffres du nombre de tête. Les
-// .docx livrés sont nommés « 4_Titre.docx » et ce nombre donne l'ordre dans le numéro ;
-// sans complément, le tri alphabétique placerait « 10- » avant « 4- ».
+// Le numéro de tête du Word, s'il y en a un : « 4_Titre.docx » vaut 4, « 12-Titre.docx »
+// vaut 12. Ce nombre donnait autrefois l'ordre dans le numéro par le tri alphabétique du
+// nom de dossier (d'où le complément à deux chiffres qui vivait ici) ; depuis que ce
+// nommage n'est plus imposé aux nouveaux articles (B1), il migre vers la clé
+// `ordre-articles` de ausgabe.yaml — la même que « Monter »/« Descendre » modifient déjà,
+// et qui ne ment jamais sur l'ordre voulu par le rédacteur. Rend null si le nom ne
+// commence pas par un nombre.
 //
-// La cible « import » du Makefile applique les mêmes règles dans le même ordre,
-// complément puis borne : si les deux slugs divergent, le badge « déjà converti » de la
-// barre latérale désigne un article qui n'existe pas.
+// ⚠ Câblage restant hors de ce périmètre : rien n'appelle encore cette fonction à l'import
+// pour écrire l'ordre initial dans `ordre-articles`. Voir le repère laissé dans
+// extension.js (fonction lancerConversion, bloc `nouveaux`) pour brancher ce nombre au
+// moment où un nouvel article apparaît.
+function numeroOrdreArticle(nomFichier) {
+  const m = slugifier(nomFichier).match(/^([0-9]+)-/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+// Slug d'un article : slugifier, puis retrait du numéro de tête, s'il y en a un. Les .docx
+// livrés sont nommés « 4_Titre.docx », et ce nombre ne nomme plus le dossier (B1, demande
+// de Robin : les numéros de dossier ne survivent pas à un déplacement dans l'ordre) — voir
+// numeroOrdreArticle() ci-dessus pour ce qu'il devient.
+//
+// La cible « import » du Makefile applique les mêmes règles dans le même ordre, retrait
+// puis borne : si les deux slugs divergent, le badge « déjà converti » de la barre
+// latérale désigne un article qui n'existe pas.
 function slugifierArticle(nomFichier) {
   const s = slugifier(nomFichier);
-  // Borne après le complément, qui ajoute un caractère : résultat garanti <= 39.
-  return bornerSlug(s.replace(/^([0-9])(?![0-9])/, '0$1'));
+  return bornerSlug(s.replace(/^[0-9]+-/, ''));
 }
 
 // Nombre maximal d'homonymes désambiguïsés pour un même slug. Au-delà, l'appelant doit
@@ -90,6 +108,6 @@ function slugifierArticleUnique(nomFichier, slugsPris) {
 }
 
 module.exports = {
-  slugifier, slugifierArticle, slugifierArticleUnique,
+  slugifier, slugifierArticle, slugifierArticleUnique, numeroOrdreArticle,
   LONGUEUR_MAX_SLUG_ARTICLE, MAX_HOMONYMES
 };

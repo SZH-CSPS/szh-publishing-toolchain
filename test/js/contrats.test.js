@@ -167,12 +167,55 @@ test('tableau : en-tête de ligne fusionné = groupe, en-tête simple = sa ligne
 
 // ---- Slug : le miroir du Makefile ----
 
+// B1 (26.08.2026, demande de Robin) : le numéro de tête d'un Word ne nomme plus le
+// dossier — il ne survivait pas à un déplacement dans l'ordre. Le slug ne le porte plus
+// du tout ; numeroOrdreArticle() ci-dessous est ce qui le récupère pour ausgabe.yaml.
 test('slug d’article : mêmes règles que le Makefile', () => {
-  assert.strictEqual(slug.slugifierArticle('4_Titre'), '04-titre');
+  assert.strictEqual(slug.slugifierArticle('4_Titre'), 'titre');
   assert.strictEqual(slug.slugifierArticle('10_Actualité et ressources'),
-    '10-actualite-et-ressources');
+    'actualite-et-ressources');
   assert.ok(slug.slugifierArticle('9' + '_' + 'x'.repeat(80)).length <= 39,
     'la borne de 39 caractères du Makefile n’est pas tenue');
+});
+
+test('numéro d’ordre d’un Word : capté avant de disparaître du slug', () => {
+  assert.strictEqual(slug.numeroOrdreArticle('4_Titre'), 4);
+  assert.strictEqual(slug.numeroOrdreArticle('12_Titre'), 12);
+  assert.strictEqual(slug.numeroOrdreArticle('Titre sans numéro'), null,
+    'un titre sans numéro de tête ne doit pas en inventer un');
+});
+
+// Le point de conception de B1 : retirer le préfixe sans rien faire d'autre perdrait en
+// silence l'ordre que le rédacteur a mis dans la numérotation de ses Word. Dix fichiers,
+// numérotés 1 à 10 (donc un au-delà de 9, le cas qui motivait jadis le complément à deux
+// chiffres) et dont les titres, triés alphabétiquement, donneraient un tout autre ordre.
+test('ordre du rédacteur : le numéro du Word migre vers ordre-articles sans se perdre', () => {
+  const mots = [
+    '1_Zebre.docx', '2_Alpha.docx', '3_Yak.docx', '4_Bison.docx', '5_Wapiti.docx',
+    '6_Chevre.docx', '7_Vache.docx', '8_Dromadaire.docx', '9_Uranus.docx', '10_Elan.docx'
+  ];
+  const slugs = mots.map(slug.slugifierArticle);
+  // Le slug ne porte plus aucune trace du numéro : c'est tout le sens de B1.
+  assert.ok(slugs.every((s) => !/^[0-9]/.test(s)),
+    'un slug commence encore par un chiffre : ' + JSON.stringify(slugs));
+
+  // Ce que le cockpit doit écrire dans `ordre-articles` à l'import : le numéro reste
+  // capté par numeroOrdreArticle(), et permet de reconstituer l'ordre voulu.
+  const ordreInitial = mots
+    .map((nom) => ({ slug: slug.slugifierArticle(nom), numero: slug.numeroOrdreArticle(nom) }))
+    .sort((a, b) => a.numero - b.numero)
+    .map((x) => x.slug);
+  assert.deepStrictEqual(ordreInitial,
+    ['zebre', 'alpha', 'yak', 'bison', 'wapiti', 'chevre', 'vache', 'dromadaire', 'uranus', 'elan'],
+    'l’ordre du rédacteur ne survit pas au retrait du préfixe numérique');
+
+  // Le repli qui reste dans extension.js une fois le préfixe retiré — un tri alphabétique
+  // des noms de dossier — donnerait un tout autre ordre : la preuve que cet ordre n'est
+  // plus, par accident, le bon, et que le numéro doit vraiment être écrit dans
+  // ordre-articles avant que ce repli ne s'applique.
+  const parRepliAlphabetique = slugs.slice().sort((a, b) => a.localeCompare(b, 'fr'));
+  assert.notDeepStrictEqual(parRepliAlphabetique, ordreInitial,
+    'ce contrôle ne prouve rien si le repli alphabétique retombe sur le bon ordre par hasard');
 });
 
 // ---- Attributs d’image ----

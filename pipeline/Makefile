@@ -454,13 +454,17 @@ docx: verifie-dossier verifier-ua $(DOCXS)
 # Un réimport tué en pleine bascule laisse le dossier de l'article sous
 # articles/.szh-bascule-<slug>, donc hors de SLUGS : le numéro se publierait sans lui et
 # sans un mot. `reimporter.py --reprise` le remet d'aplomb, d'abord, à chaque compilation.
-# Slug : un nom commençant par un chiffre seul (« 4_Titre ») est complété à deux chiffres
-# (« 04-titre »), de sorte que le tri alphabétique donne l'ordre du numéro. Longueur bornée
-# à 39 caractères, parce que le slug nomme le dossier et son .md homonyme et compte donc
-# quatre fois dans un chemin de sortie : sans borne, un titre réel dépasse la limite
-# Windows de 260 caractères et la synchronisation SharePoint trébuche. La coupe tombe sur
-# le dernier mot entier, les fragments d'élision d'une lettre (« -d », « -l ») sont retirés
-# à leur tour, et la coupe sèche sert de repli sans tiret.
+# Slug : le nombre de tête d'un nom comme « 4_Titre » (l'ordre voulu par le rédacteur au
+# moment de l'import) est retiré du slug plutôt que complété à deux chiffres (B1, demande
+# de Robin : un dossier numéroté ne survit pas à un déplacement dans l'ordre). Ce nombre ne
+# nomme donc plus le dossier ; il doit être capté ailleurs pour peupler `ordre-articles`
+# dans ausgabe.yaml — voir lib/slug.js:numeroOrdreArticle() côté cockpit, et le repère
+# qu'il laisse dans extension.js pour le brancher. Longueur bornée à 39 caractères, parce
+# que le slug nomme le dossier et son .md homonyme et compte donc quatre fois dans un
+# chemin de sortie : sans borne, un titre réel dépasse la limite Windows de 260 caractères
+# et la synchronisation SharePoint trébuche. La coupe tombe sur le dernier mot entier, les
+# fragments d'élision d'une lettre (« -d », « -l ») sont retirés à leur tour, et la coupe
+# sèche sert de repli sans tiret.
 # Un nom de dossier déjà pris a deux causes opposées, et les confondre coûte cher dans les
 # deux sens. Le champ `source:` de la fiche, écrit à l'import par docx-meta.py, les sépare :
 #   * même fichier Word -> l'auteur a corrigé son article et l'a redéposé. Ce n'est pas un
@@ -521,7 +525,7 @@ import:
 	  slug=$$(printf '%s' "$$slug" | LC_ALL=C.UTF-8 iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null || printf '%s' "$$slug"); \
 	  slug=$$(printf '%s' "$$slug" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$$//'); \
 	  [ -n "$$slug" ] || slug=article; \
-	  slug=$$(printf '%s' "$$slug" | sed -E 's/^([0-9])($$|[^0-9])/0\1\2/'); \
+	  slug=$$(printf '%s' "$$slug" | sed -E 's/^[0-9]+-//'); \
 	  if [ $${#slug} -gt 39 ]; then scourt="$${slug:0:39}"; scourt="$${scourt%-*}"; sorph=$$(printf '%s' "$$scourt" | sed -E 's/(-[a-z0-9])+$$//'); case "$$sorph" in *-*) scourt="$$sorph";; esac; slug="$${scourt:-$${slug:0:39}}"; fi; \
 	  venu_de=""; \
 	  for fiche in /*/*.meta.yaml; do \
