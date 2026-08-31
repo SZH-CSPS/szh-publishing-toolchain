@@ -239,6 +239,25 @@ test('titre de la bibliographie : l’écriture ne touche pas au reste de la con
   assert.strictEqual(avant.biblio.titres, undefined);
 });
 
+// Même contrat pour l'interrupteur des liens de citation : seul pont entre le réglage
+// szh.desactiverLiensReferences de VSCodium et pipeline/filters/szh-citations.lua, qui relit
+// la même clé dans le même config.json (lire_config_poste), sans autre mémoire partagée.
+test('liens de références : l’écriture ne touche pas au reste de la configuration, et se lit en booléen strict', () => {
+  const avant = { emplacementRevues: 'test', biblio: { titres: { revue: { fr: 'Sources' } } } };
+  const actif = cit.configAvecLiensDesactives(avant, true);
+  assert.strictEqual(actif.desactiverLiensReferences, true);
+  assert.strictEqual(actif.emplacementRevues, 'test');
+  assert.deepStrictEqual(actif.biblio, avant.biblio);
+  // L'objet d'origine n'est pas modifié : l'appelant relit config.json avant d'écrire.
+  assert.strictEqual(avant.desactiverLiensReferences, undefined);
+  const remis = cit.configAvecLiensDesactives(actif, false);
+  assert.strictEqual(remis.desactiverLiensReferences, false);
+  // Une valeur qui n'est pas littéralement `true` ne doit jamais activer la coupure — la même
+  // règle que normaliserBooleenConfig applique déjà à emplacementRevues/devMode.
+  assert.strictEqual(cit.configAvecLiensDesactives(avant, 'true').desactiverLiensReferences, false);
+  assert.strictEqual(cit.configAvecLiensDesactives(null, true).desactiverLiensReferences, true);
+});
+
 // ---- la devinette est partie ---------------------------------------------------------
 
 test('la bibliographie ne se devine plus : ni préfixe, ni seconde moitié', () => {

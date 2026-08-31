@@ -49,7 +49,7 @@ const {
 } = require('./lib/yaml');
 // ---- Bibliographie et appels de citation -> lib/citations.js ---------------------
 const {
-  configBiblio, configAvecTitresBiblio, nomFichierBiblio, cheminBiblio,
+  configBiblio, configAvecTitresBiblio, configAvecLiensDesactives, nomFichierBiblio, cheminBiblio,
   REVUES_BIBLIO, LANGUES_BIBLIO
 } = require('./lib/citations');
 // ---- Cycle de vie du numéro -> lib/archivage.js ----------------------------------
@@ -344,6 +344,18 @@ function convertirCmykActif() {
 // minimum reste signalée. Le CMJN n'est pas concerné.
 function reduireWarningsImpressionActif() {
   try { return vscode.workspace.getConfiguration('szh').get('reduireWarningsImpression', false) === true; }
+  catch (e) { return false; }
+}
+
+// Réglage szh.desactiverLiensReferences, décoché par défaut : activé, la compilation ne pose
+// plus le lien entre un appel de citation et sa référence — les liens posés à la main restent
+// tels quels, et l'action « Lier un appel à une référence » du cockpit reste disponible. Lu
+// ici pour l'affichage du panneau ; la valeur qui compte pour la compilation est celle
+// répercutée dans config.json (voir la branche « liensReferences » d'ouvrirReglages), seul
+// pont vers pipeline/filters/szh-citations.lua, qui tourne dans WSL sans rien connaître des
+// réglages de VSCodium.
+function desactiverLiensReferencesActif() {
+  try { return vscode.workspace.getConfiguration('szh').get('desactiverLiensReferences', false) === true; }
   catch (e) { return false; }
 }
 
@@ -6123,6 +6135,9 @@ function REGL_LIBELLES() {
   cmyk: T('regl.cmyk'), cmykOui: T('regl.cmyk.oui'), cmykNon: T('regl.cmyk.non'),
   warnings: T('regl.warnings'),
   warningsComplets: T('regl.warnings.complets'), warningsReduits: T('regl.warnings.reduits'),
+  liensReferences: T('regl.liensReferences'),
+  liensReferencesActifs: T('regl.liensReferences.actifs'),
+  liensReferencesDesactives: T('regl.liensReferences.desactives'),
   langue: T('regl.langue'),
   dev: T('regl.dev'), devOui: T('regl.dev.oui'), devNon: T('regl.dev.non'),
   auteursMaj: T('regl.auteurs.maj'), auteursJamais: T('regl.auteurs.jamais'),
@@ -6247,6 +6262,7 @@ function lireReglagesActuels() {
     assets: replierAssetsAutres() ? 'oui' : 'non',
     cmyk: convertirCmykActif() ? 'oui' : 'non',
     warnings: reduireWarningsImpressionActif() ? 'reduits' : 'complets',
+    liensReferences: desactiverLiensReferencesActif() ? 'desactives' : 'actifs',
     langue: langueCockpit(),
     // Dans config.json : ses consommateurs sont les scripts PowerShell.
     dev: lireModeDeveloppeur() ? 'oui' : 'non'
@@ -6336,6 +6352,22 @@ function ouvrirReglages(rafraichirTout) {
         // Le verdict recalculé arrive au prochain rendu du gestionnaire des médias.
         await vscode.workspace.getConfiguration('szh')
           .update('reduireWarningsImpression', msg.valeur === 'reduits', Global);
+      } else if (msg.cle === 'liensReferences') {
+        // Deux écritures : le réglage VSCodium, pour le panneau et la palette de commandes ;
+        // et config.json, seul fichier que pipeline/filters/szh-citations.lua peut lire
+        // depuis WSL — même relais que le titre de la bibliographie, juste en dessous. Une
+        // config illisible n'est pas écrasée : elle emporterait l'emplacement des revues et
+        // la configuration OJS avec elle.
+        const desactiver = msg.valeur === 'desactives';
+        await vscode.workspace.getConfiguration('szh')
+          .update('desactiverLiensReferences', desactiver, Global);
+        const avant = lireConfigPoste();
+        if (avant === null && fs.existsSync(CONFIG_POSTE)) {
+          vscode.window.showErrorMessage(T('err.ecriture', [CONFIG_POSTE]));
+        } else {
+          const erreur = ecrireConfigPoste(configAvecLiensDesactives(avant, desactiver));
+          if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [erreur])); }
+        }
       } else if (msg.cle === 'dev') {
         // bootstrap.ps1 donne au groupe Utilisateurs le droit d'écrire ce fichier.
         const erreur = ecrireModeDeveloppeur(msg.valeur !== 'non');

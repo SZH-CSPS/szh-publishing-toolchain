@@ -867,6 +867,9 @@ const TEXTES_COCKPIT = {
     'regl.warnings': 'Avertissements sur la taille des images',
     'regl.warnings.complets': 'Complets (minimum et conseil)',
     'regl.warnings.reduits': 'Réduits (minimum seulement)',
+    'regl.liensReferences': 'Liens entre les appels de citation et les références',
+    'regl.liensReferences.actifs': 'Actifs',
+    'regl.liensReferences.desactives': 'Désactivés (les liens posés à la main restent actifs)',
     // La liste des auteur·e·s publiés (autocomplétion de la modale d'auteur·e) : un état
     // informatif, rien à régler — elle se rafraîchit seule, au plus une fois par semaine.
     'regl.auteurs.titre': 'Auteur·e·s publié·e·s (autocomplétion)',
@@ -1809,6 +1812,9 @@ const TEXTES_COCKPIT = {
     'regl.warnings': 'Hinweise zur Bildgrösse',
     'regl.warnings.complets': 'Vollständig (Minimum und Empfehlung)',
     'regl.warnings.reduits': 'Reduziert (nur Minimum)',
+    'regl.liensReferences': 'Verknüpfung zwischen Zitatverweisen und Literaturverzeichnis',
+    'regl.liensReferences.actifs': 'Aktiv',
+    'regl.liensReferences.desactives': 'Deaktiviert (von Hand gesetzte Links bleiben aktiv)',
     'regl.auteurs.titre': 'Publizierte Autor·innen (Autovervollständigung)',
     'regl.auteurs.maj': 'OJS abgeerntet am {0} – {1} Name(n), {2} ROR-Institution(en). Höchstens einmal pro Monat, von ojs.szh.ch.',
     'regl.auteurs.jamais': 'OJS noch nicht abgeerntet – die Liste baut sich selbst auf, sobald ojs.szh.ch erreichbar ist.',

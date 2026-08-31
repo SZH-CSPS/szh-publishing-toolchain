@@ -416,6 +416,18 @@ function configAvecTitresBiblio(cfg, titres) {
   return sortie;
 }
 
+// Pose l'interrupteur szh.desactiverLiensReferences sur une configuration sans toucher au
+// reste du fichier (emplacement des revues, OJS, titres de bibliographie). Pure, pour être
+// éprouvable sans écrire dans C:\ProgramData ; c'est l'appelant qui appelle ecrireConfigPoste.
+// C'est le seul pont vers pipeline/filters/szh-citations.lua, qui relit la même clé dans le
+// même fichier (lire_config_poste) : le réglage vit dans VSCodium, la compilation tourne
+// dans WSL, et les deux ne partagent que ce fichier monté.
+function configAvecLiensDesactives(cfg, desactiver) {
+  const sortie = Object.assign({}, (cfg && typeof cfg === 'object') ? cfg : {});
+  sortie.desactiverLiensReferences = desactiver === true;
+  return sortie;
+}
+
 // ---- pose du lien ----
 
 // Le lien markdown à écrire à la place de l'appel. Un appel déjà lié est reciblé plutôt
@@ -449,6 +461,7 @@ module.exports = {
   aplatir, replier, normaliser, estTitreBib, estContinuation, nomPourId, referencesDuTexte,
   entreesDesParagraphes, referencesDuFichier, nomFichierBiblio, cheminBiblio,
   titresBiblioDefaut, normaliserConfigBiblio, configBiblio, configAvecTitresBiblio,
+  configAvecLiensDesactives,
   REVUES_BIBLIO, LANGUES_BIBLIO,
   lienVersReference, plageDeLAppel, caracteresSansRepli, cheminDuFiltre, oublierTables,
   emplacementsDuFiltre

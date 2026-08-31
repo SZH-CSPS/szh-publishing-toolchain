@@ -26,6 +26,14 @@
 -- pose l'action « Lier à une référence » du cockpit) est respecté tel quel ; s'il pointe
 -- vers un ancrage inexistant, un avertissement le dit.
 --
+-- Réglage szh.desactiverLiensReferences (config.json du poste, clé desactiverLiensReferences,
+-- même relais que le titre de la bibliographie — voir CONFIG_POSTE plus bas) : actif, l'étape
+-- 2 ne pose plus le Link autour d'un appel apparié. Seul CE lien disparaît : l'entrée de
+-- référence garde son Div ancré (étape 3, id=ref-nom-annee), donc un lien écrit à la main y
+-- mène toujours ; le bilan, les constats appel-sans-reference/appel-ambigu et la marque
+-- d'aperçu des appels orphelins/ambigus ne changent pas — l'appel reste apparié, il n'est
+-- simplement plus cliquable.
+--
 -- Doit tourner en DERNIER, après szh-sections.lua : le titre de bibliographie qu'il pose
 -- ne doit pas recevoir de numéro de section, et une bibliographie n'en porte pas. Le repli
 -- des articles anciens, lui, retrouve son titre malgré le numéro déjà collé devant : voir
@@ -951,6 +959,13 @@ end
 -- ------------------------------------------------------------------------ le filtre
 local APERCU = (os.getenv('SZH_APERCU') or '') ~= ''
 
+-- Lu une fois pour toute la compilation : lire_config_poste() rouvre le fichier à chaque
+-- appel, et relever() est appelé par parenthèse, pas par appel de citation.
+local LIENS_DESACTIVES = (function()
+  local cfg = lire_config_poste()
+  return cfg ~= nil and cfg.desactiverLiensReferences == true
+end)()
+
 function Pandoc(doc)
   -- 1. la liste de références
   --
@@ -1081,7 +1096,12 @@ function Pandoc(doc)
             end
             if #cands == 1 then
               appelees[cands[1].id] = true
-              plages[#plages + 1] = { s = ds, e = de, faire = lien('#' .. cands[1].id) }
+              -- L'appariement compte quoi qu'il arrive (bilan, référence jamais appelée) ;
+              -- seul le Link disparaît quand le réglage est actif — l'ancre de la référence,
+              -- elle, est posée plus bas sans condition.
+              if not LIENS_DESACTIVES then
+                plages[#plages + 1] = { s = ds, e = de, faire = lien('#' .. cands[1].id) }
+              end
             elseif #cands > 1 then
               for _, c in ipairs(cands) do appelees[c.id] = true end
               ambigus[#ambigus + 1] = libelle

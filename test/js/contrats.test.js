@@ -524,6 +524,41 @@ test('le réglage « réduire les warnings d’impression » est déclaré, trad
   assert.ok(panneau.includes("cle: 'warnings'"), 'groupe absent du panneau des réglages');
 });
 
+// Même contrat que ci-dessus, pour l'option qui coupe le lien entre appel et référence — avec
+// en plus le relais vers le filtre Lua, qui ne partage aucune mémoire avec VSCodium : seul
+// config.json, monté depuis WSL, porte la décision jusqu'à la compilation.
+test('le réglage « désactiver les liens des références » est déclaré, traduit et branché jusqu’au filtre', () => {
+  const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
+  const prop = pkg.contributes.configuration.properties['szh.desactiverLiensReferences'];
+  assert.ok(prop, 'propriété absente du manifeste : szh.desactiverLiensReferences');
+  assert.strictEqual(prop.default, false, 'le défaut doit laisser les liens actifs');
+  const nls = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.nls.json'));
+  const nlsDe = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.nls.de.json'));
+  assert.ok('config.desactiverLiensReferences' in nls, 'description française absente');
+  assert.ok('config.desactiverLiensReferences' in nlsDe, 'description allemande absente');
+  const i18n = lire('vscodium-extension', 'szh-cockpit', 'lib', 'i18n.js');
+  for (const cle of ['regl.liensReferences', 'regl.liensReferences.actifs', 'regl.liensReferences.desactives']) {
+    assert.strictEqual((i18n.match(new RegExp("'" + cle.replace(/\./g, '\\.') + "':", 'g')) || []).length, 2,
+      'clé i18n absente d’une des deux langues : ' + cle);
+  }
+  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  assert.ok(src.includes("update('desactiverLiensReferences'"),
+    'aucune branche d’écriture du réglage VSCodium dans extension.js');
+  assert.ok(src.includes('configAvecLiensDesactives(avant, desactiver)'),
+    'le réglage n’est pas répercuté dans config.json — le filtre Lua ne le verra jamais');
+  const panneau = lire('vscodium-extension', 'szh-cockpit', 'media', 'settings.js');
+  assert.ok(panneau.includes("cle: 'liensReferences'"), 'groupe absent du panneau des réglages');
+  // Le filtre lit la même clé, dans le même fichier, et ne coupe que le Link — pas l'ancre.
+  const lua = lire('pipeline', 'filters', 'szh-citations.lua');
+  assert.match(lua, /cfg\.desactiverLiensReferences/, 'le filtre ne lit pas la clé de config.json');
+  assert.match(lua, /if not LIENS_DESACTIVES then\s*\n\s*plages\[#plages \+ 1\] = \{ s = ds, e = de, faire = lien/,
+    'le filtre ne conditionne pas la pose du Link sur le réglage');
+  // Une seule garde dans tout le fichier : la définition du drapeau, puis ce test — jamais
+  // près de la pose du Div ancré (pandoc.Attr(f.id, …)), qui doit rester inconditionnelle.
+  assert.strictEqual((lua.match(/LIENS_DESACTIVES/g) || []).length, 2,
+    'LIENS_DESACTIVES ne doit conditionner que la pose du Link, pas l’ancre de la référence');
+});
+
 test('qualité : le seuil des portraits n’est pas sous la sortie du pipeline', () => {
   const py = lire('pipeline', 'portraits.py');
   const m = /TAILLE_SORTIE\s*=\s*(\d+)/.exec(py);
