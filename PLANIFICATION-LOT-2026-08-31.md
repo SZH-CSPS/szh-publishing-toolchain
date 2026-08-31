@@ -709,3 +709,163 @@ que le câblage n'existe pas.
 `media/` et `lib/yaml.js` au même moment) :
 `node --test test/js/import.test.js test/js/contrats.test.js test/js/copies-conflit.test.js`
 → **96 tests, 96 pass, 0 fail, 0 skipped**.
+
+---
+
+## 11. G5 — formulaire de métadonnées d'un livre (REPRISE 2.1a comblé)
+
+**Clés relevées de `buch.yaml`** (structure identique dans les trois fixtures) : `titre`,
+`sous-titre`, `ouvrage` (`monographie`|`collectif`), `lang`, `maquette` (`normal`|`falc`),
+`format` (`standard`|`a4`), `collection`, `tome`, `annee`, `isbn-print`, `isbn-ebook`, `doi`,
+`licence` (jeton nu), `couleur` (hex **libre**, et non la palette à six teintes de la revue),
+`auteurs` (liste d'objets), `ordre-chapitres`, `liminaires` (liste), puis `locked`,
+`archived`, `version-toolkit` — et surtout **`impression:`, un bloc imbriqué** portant
+`grammage`, `main`, `dos-mm`, `fond-perdu-mm`, `traits-de-coupe`, `profil-cmjn`.
+
+**Réutilisation, non duplication.** `formulaireNumero(opts)` a été généralisé en un moteur
+commun `construireFormulaire(opts, champsTable)`, avec deux enveloppes minces
+`formulaireNumero`/`formulaireLivre`. ⚠ `var CHAMPS = [...]` a été gardé **verbatim** : son
+texte littéral compte pour des tests existants. `CHAMPS_LIVRE` (19 champs) vit dans le même
+fichier. DOM, `remplir`/`envoyer`, `SZH.autoEnregistrement` et `SZH.annoncerPret` sont
+partagés. `champSelect` accepte désormais des options venues de l'hôte (la licence réutilise
+`LICENCES_ARTICLE`/`licencesTraduites()` — **aucune seconde liste**), et deux genres sont
+ajoutés : `nombre` et `hex` (`<input type=color>`). Nouvelle page
+`media/metadata-book.{html,css,js}`, calquée sur `metadata-issue.*`.
+
+**⚠ Le parseur a appris un niveau d'imbrication.** `analyserAusgabe`/`serialiserAusgabe`
+comprennent maintenant un bloc `parent:` à valeur vide suivi de sous-lignes indentées — cela
+n'existait pas, et sans cela `impression.*` restait **invisible au filtre**, exactement comme
+`ordre-chapitres` l'avait été. Les 19 clés sont entrées dans `CLES_METADONNEES` (11 neuves,
+plus 6 sous-clés en forme `parent.sous-clé`) ; `impression.traits-de-coupe` dans
+`CLES_BOOLEENNES` ; deux tables neuves, `CLES_NOMBRES` (5 clés, écriture nue) et
+`CLES_JETONS_NUS` (`ouvrage`, `maquette`, `format`, `licence`).
+
+**Un bug réel attrapé par le test d'aller-retour exigé au brief** : le code écrivait
+`licence: "cc-by-4.0"` entre guillemets, alors que le fichier réel l'écrit en **jeton nu**.
+C'est précisément la raison d'être de ce test.
+
+**Ce qui a été fait des manques voisins** : `grammage`, `main`, `dos-mm` et `fond-perdu-mm`
+s'écrivent désormais dans `impression.*` — REPRISE 2.1c est comblé, et REPRISE 2.5 (« le
+`--fond-perdu` n'est pas branché ») est **préparé** : le formulaire écrit la valeur, il ne
+reste qu'à la lire dans `imprimeur.css`. Aucun champ « nombre de pages » n'a été inventé : il
+reste calculé par `pipeline/couverture.py`, et un second lieu de vérité aurait été un défaut.
+`auteurs` et `liminaires` restent hors formulaire, comme demandé.
+
+**Et le verrou qui rendait tout inaccessible** : `szh.metadonnees` est sorti de
+`REVUE_SEULEMENT` (`lib/panneaux.js`) et son `when` de `package.json` devient
+`szh.estRevue || szh.estLivre`. Sans cela, le formulaire existait sans être atteignable.
+
+**Suite : 674 tests, 673 pass, 0 fail, 1 skip** (8 tests neufs, 4 contrats mis à jour).
+
+### Vérification d'impact du lot G5 — **livrable en l'état**
+
+Les deux risques prioritaires ont été **éprouvés, non supposés** :
+
+1. **`lib/yaml.js`, aller-retour d'`ausgabe.yaml`** — script indépendant sur les trois
+   fixtures réelles (`revue-template/ausgabe.yaml`, `test/ausgabe.yaml`,
+   `test/accessibilite/ausgabe.yaml`) : `serialiserAusgabe(contenu, {})` rend
+   **l'octet-pour-octet identique** dans les trois cas, **BOM et CRLF synthétiques
+   préservés**. Aucune clé livre ne collisionne avec un champ de numéro. Cas adverse
+   construit à la main : une ligne indentée dont le parent n'est **pas** `impression:`
+   traverse intacte, parce que `restantes.has(cleComplete)` est toujours faux pour une
+   sous-clé jamais demandée — `impression.*` étant la seule famille pointée ainsi. Éprouvé
+   aussi sur les `buch.yaml` réels : modifier `impression.grammage` ne déplace pas d'un
+   caractère le bloc `auteurs:` à tirets. `serialiserMeta`/`analyserMeta` ne sont pas touchés,
+   la mise en garde sur leur alignement avec `docx-meta.py` ne s'applique donc pas à ce lot.
+2. **`media/_numero.js` partagé** — `var CHAMPS` (l. 27-47) est bien resté verbatim et ne
+   porte que `texte/radio/date/select/couleurs/case`, **jamais `nombre` ni `hex`** : les
+   branches neuves ne s'activent donc jamais pour un numéro. Appelants recensés en entier :
+   `media/articles.js:42`, `media/metadata-issue.js:14` (`formulaireNumero`),
+   `media/metadata-book.js:14` (`formulaireLivre`) — aucun oublié.
+
+Conformité : aucune dépendance npm ; aucun `innerHTML` introduit (les deux seules occurrences
+du dépôt préexistent et sont hors diff) ; `when` cohérent avec `lib/profil.js`, dont les
+contextes sont mutuellement exclusifs ; **les 8 littéraux `'ausgabe.yaml'` intacts**, lignes
+918, 956, 1108, 2075, 3782, 4800, 5446, 6554 vérifiées une par une.
+
+⚠ **Un faux gardien trouvé** : `test/js/contrats.test.js:~976`, l'ajout de `'licences'` au Set
+attendu pour `metadata-book` **ne protège rien** — `_numero.js` accède à cette clé par
+`TXT[champ.optionsDe]`, en notation crochet, que la regex du contrat (`\bTXT\.(...)`) ne
+détecte pas. Inerte mais trompeur : à traiter, soit en apprenant la notation crochet au
+contrat (ce qui le rendrait utile pour **toutes** les clés ainsi accédées), soit en retirant
+l'entrée.
+
+---
+
+## 12. B1 — câblage terminé, le lot devient committable
+
+`lancerConversion` (`extension.js`) capte les numéros de tête **avant**
+`lancerTache(NOM_TACHE_IMPORT)` : `numerosOrdreEnAttente(fournisseur)` lit `_docxEnAttente` et
+construit une **Map slug-de-base → file de numéros**, pour survivre à la suppression des
+`.docx` par `make import`. Puis `ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux,
+parBase)` trie les nouveaux par numéro (**tri stable**), les concatène **en queue** de l'ordre
+établi — jamais inséré entre deux articles existants —, applique
+`trierParDoi`/`articlesSansDoi` et écrit par `ecrireClesAusgabe(racine, { [cleOrdre()]: … })`,
+le mécanisme de `deplacerUnite`. `cleOrdre()` étant profil-dépendante, cela vaut pour la revue
+**et** le livre.
+
+**Trois cas limites**, tous testés : un Word sans numéro (`null`) passe en fin de lot ; un
+mélange garde les numérotés d'abord dans l'ordre du Word, les autres ensuite dans leur ordre
+d'apparition ; un second lot s'ajoute sans bousculer le premier. Un homonyme (deux Word au
+même slug tronqué) est résolu en FIFO par la file.
+
+**Le test éprouve le chemin réel** — `.docx` numérotés déposés, `szh.convertirEnAttente` joué
+via l'hôte factice, `ordre-articles` relue **sur le disque** à l'arrivée — et non seulement la
+fonction de capture, comme le faisait le test précédent.
+
+**Le faux gardien est remplacé par un vrai** : plutôt que d'apprendre la notation crochet à la
+regex — inutile ici, la clé n'étant jamais littérale au site d'accès puisqu'elle vit dans
+`CHAMPS_LIVRE` —, un contrôle dédié extrait chaque `optionsDe:` de `CHAMPS_LIVRE` et vérifie
+que `textesLivre()` le fournit.
+
+⚠ **Reste ouvert, constaté et non corrigé** : un import lancé **en CLI pur** (`make import`,
+hors cockpit) n'écrit `ordre-articles` nulle part — vérifié par recherche sur `Makefile` et
+tous les scripts du pipeline ; seul `livre-scinder.py` écrit `ordre-chapitres`, pour un usage
+sans rapport. Un endroit naturel existe (le slug numéroté est encore en variable shell juste
+avant le `sed` qui le retire), mais dupliquer `trierParDoi`, `articlesSansDoi` et la garde de
+co-édition en shell créerait une **seconde implémentation à maintenir en synchronisme
+perpétuel** — le coût de cet alignement est déjà visible sur la seule règle du slug. Décision :
+**l'import CLI est non garant de l'ordre d'un numéro neuf**, à documenter pour le rédacteur.
+⚠ À savoir : un import CLI supprime aussi les `.docx`, donc le cockpit **ne peut plus rattraper
+le numéro après coup**.
+
+---
+
+## 13. Découpage des commits — fait, un par item
+
+Robin a demandé un commit par item avec découpage des hunks et **test isolé de chacun**. Fait.
+
+Les cinq lots qui partageaient `extension.js` (31 hunks), `lib/i18n.js`, `contrats.test.js` et
+`package.json` ont été séparés. Ce qui l'a rendu possible : **les agents avaient signé leurs
+ajouts en commentaire** (« A1/A3 (lot G2) », « A7.2/A7.5 », « B1 : … »), si bien qu'aucun hunk
+n'était réellement ambigu — même les trois hunks mécaniquement communs (deux `require` et le
+bloc `module.exports`) se découpaient ligne par ligne.
+
+**Méthode**, pour qu'elle soit rejouable : sauvegarde intégrale du working tree (35 fichiers)
+dans le scratchpad, remise à zéro des fichiers concernés, puis reconstruction **cumulative**
+lot par lot — patches de hunks générés par `awk` et appliqués par `git apply --recount`, suite
+de tests exécutée, commit. `git add -p` n'est pas utilisable ici, les commandes interactives
+étant bloquées.
+
+⚠ **Un piège rencontré, à ne pas refaire** : un `sed` sur `"when": "szh.estRevue || szh.estLivre"`
+pour défaire le changement du lot livre a frappé **toutes** les occurrences de `package.json`,
+dont plusieurs préexistaient à HEAD — 45 lignes changées au lieu de 5. Corrigé en repassant
+par la méthode des hunks. **Sur un fichier de configuration, un motif textuel ne suffit pas :
+il faut le hunk.**
+
+**Progression des tests, un lot après l'autre, aucun échec :**
+
+| Commit | Suite |
+|---|---|
+| après les 7 commits autonomes | 647 |
+| A7 → A7.5 | **652** |
+| A1 et A3 | **662** |
+| A6 | **664** |
+| formulaire `buch.yaml` | **673** |
+| B1 | **680** (90/90 sur ses fichiers ciblés) |
+
+⚠ Note d'exploitation : la suite complète dépasse désormais **10 minutes** — au-delà du délai
+maximal d'un appel d'outil. La lancer en tâche de fond, ou cibler les fichiers concernés.
+
+**Vérification décisive** : après le dernier lot, chacun des 35 fichiers sauvegardés a été
+comparé à l'arbre reconstruit. **Aucun écart.** Le découpage n'a donc rien perdu ni altéré.
