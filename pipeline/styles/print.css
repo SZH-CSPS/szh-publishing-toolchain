@@ -316,10 +316,12 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
 /* « Résumé / Zusammenfassung » est un h2, vrai titre navigable au lecteur d'écran, qui
    garde son rendu d'étiquette : on annule le style des h2 de section du §6, comme
    .szh-auteurs-titre au §8. Rien à dé-numéroter : ce titre est écrit par le template, hors
-   document pandoc, donc szh-sections.lua ne le voit pas. */
+   document pandoc, donc szh-sections.lua ne le voit pas.
+   Casse : jamais en capitales (A4, 31.08.2026) — « Résumé » et « Zusammenfassung »
+   s'impriment tels quels, la seule mise en avant venant du poids et du crénage. */
 .szh-abstract-label {
   margin: 0 0 8px; line-height: var(--leading);
-  font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em;
+  font-weight: 700; letter-spacing: 0.14em;
   font-size: 9.5px; color: #000;
 }
 .szh-abstract p { margin: 0; color: var(--c-ink); text-align: justify; hyphens: auto; }
