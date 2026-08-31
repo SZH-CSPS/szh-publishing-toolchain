@@ -47,6 +47,9 @@ lib/
                         notifications) tant qu'un QuickPick est ouvert
   journal.js            journal de compilation -> constats de la vue « Contrôles »
   liens.js              liens szh:// et intention déposée par le lanceur
+  medias.js             médias d'un article, sans vscode ni profil actif à connaître :
+                        dimensions d'image lues dans les en-têtes, noms de fichiers sûrs,
+                        versions d'un portrait en data: URI, doublons détectés par empreinte
   mots-cles-edudoc.js   descripteurs bilingues DE/FR des deux revues, moissonnés en OAI-PMH
                         public sur edudoc.ch (marcxml, champ MARC 690) et cachés dans
                         mots-cles.json — pas encore branché sur une autocomplétion
