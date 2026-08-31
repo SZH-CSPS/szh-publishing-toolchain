@@ -132,28 +132,59 @@ RE_TITRE = re.compile(
     re.S | re.I)
 RE_BALISE = re.compile(r'<[^>]+>')
 
+# La couleur d'un chapitre est déjà dans son fragment : livre.mk (PALETTE_CHAPITRE) l'a
+# posée en --c-chapitre sur la <section class="szh-chapitre"> qui l'enveloppe (voir
+# templates/szh-livre-chapitre.html) — c'est ce qui peint la pastille et l'onglet de
+# tranche sur la page d'ouverture. On la LIT ici, on ne la recalcule pas : un chapitre, un
+# seul calcul de sa couleur. Une liminaire ou la 4e de couverture n'a pas cette section et
+# ne matche donc jamais — ses entrées de sommaire, s'il y en avait, resteraient sans
+# couleur, ce qui est la bonne réponse : elles n'appartiennent à aucun chapitre.
+RE_COULEUR_CHAPITRE = re.compile(
+    r'<section\b[^>]*\bclass="[^"]*\bszh-chapitre\b[^"]*"[^>]*\bstyle="[^"]*--c-chapitre:\s*'
+    r'([^;"]+)', re.S | re.I)
+
+
+def couleur_du_fragment(fragment):
+    """Rend la couleur du chapitre (« #RRGGBB ») si le fragment en porte une, sinon None."""
+    m = RE_COULEUR_CHAPITRE.search(fragment)
+    return m.group(1).strip() if m else None
+
 
 def titres_du_fragment(fragment):
-    """Rend [(niveau, ancre, texte)] pour h1..h3. Le texte est dépouillé de ses balises :
-    « <span class="szh-num-section">2</span> Teilhabe » donne « 2 Teilhabe »."""
+    """Rend [(niveau, ancre, texte, couleur)] pour h1..h3. Le texte est dépouillé de ses
+    balises : « <span class="szh-num-section">2</span> Teilhabe » donne « 2 Teilhabe ».
+    `couleur` est celle du CHAPITRE ENTIER (couleur_du_fragment) : un fragment est un seul
+    chapitre, donc tous ses titres — le h1 d'ouverture comme ses h2/h3 internes — en
+    partagent la même, exactement comme l'onglet de tranche les accompagne du premier au
+    dernier paragraphe du chapitre."""
+    couleur = couleur_du_fragment(fragment)
     trouves = []
     for m in RE_TITRE.finditer(fragment):
         txt = RE_BALISE.sub('', m.group('txt'))
         txt = re.sub(r'\s+', ' ', html.unescape(txt).strip())
         if txt:
-            trouves.append((int(m.group('n')), m.group('id'), txt))
+            trouves.append((int(m.group('n')), m.group('id'), txt, couleur))
     return trouves
 
 
 def sommaire_html(entrees, titre):
     """Le sommaire est une <ol> de liens internes. Le numéro de page est posé par
     target-counter() dans base.css : rien ici ne connaît la pagination, et c'est bien —
-    un numéro écrit ici serait faux au premier paragraphe ajouté."""
+    un numéro écrit ici serait faux au premier paragraphe ajouté.
+
+    Chaque entrée reçoit la couleur DE SON CHAPITRE en --c-chapitre, posée en style inline
+    sur le <li> — la même variable, au même format, que celle que livre.mk pose sur la
+    <section> du chapitre. C'est ce qui permet à livre/falc.css de peindre le repère de
+    sommaire avec la règle qu'il porte déjà (`.szh-sommaire li::after { background:
+    var(--c-chapitre, …) }`) : elle attendait cette variable, jamais posée avant ce
+    correctif — d'où des repères tous à la couleur de repli, --c-falc-accent-defaut."""
     lignes = ['<section class="szh-sommaire" id="szh-sommaire">',
               '<h1>' + html.escape(titre) + '</h1>', '<ol>']
-    for niveau, ancre, txt in entrees:
-        lignes.append('<li class="niveau-%d"><a href="#%s">%s</a></li>'
-                      % (niveau, html.escape(ancre, quote=True), html.escape(txt)))
+    for niveau, ancre, txt, couleur in entrees:
+        style = (' style="--c-chapitre: %s"' % html.escape(couleur, quote=True)
+                 if couleur else '')
+        lignes.append('<li class="niveau-%d"%s><a href="#%s">%s</a></li>'
+                      % (niveau, style, html.escape(ancre, quote=True), html.escape(txt)))
     lignes += ['</ol>', '</section>']
     return '\n'.join(lignes)
 
