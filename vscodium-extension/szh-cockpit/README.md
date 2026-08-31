@@ -47,6 +47,9 @@ lib/
                         notifications) tant qu'un QuickPick est ouvert
   journal.js            journal de compilation -> constats de la vue « Contrôles »
   liens.js              liens szh:// et intention déposée par le lanceur
+  mots-cles-edudoc.js   descripteurs bilingues DE/FR des deux revues, moissonnés en OAI-PMH
+                        public sur edudoc.ch (marcxml, champ MARC 690) et cachés dans
+                        mots-cles.json — pas encore branché sur une autocomplétion
   panneaux.js           les trois panneaux QuickPick
   portraits.js          appel du script de détourage des photos, dans WSL
   profil.js             ce qu'est le dossier ouvert — numéro de revue (ausgabe.yaml,
