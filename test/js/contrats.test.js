@@ -922,6 +922,21 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
     'articles': {
       libelles: new Set([...cles('textesNumero'), ...cles('textesArticles'), ...TABLES]),
       fragments: ['_commun.js', '_numero.js']
+    },
+    // Le formulaire du livre réutilise le même fragment que celui du numéro (media/_numero.js,
+    // moteur commun SZH.formulaireLivre/formulaireNumero) : les mêmes propriétés « table »
+    // sont donc référencées sans condition dans son code, même si opts.couverture:false n'en
+    // affiche aucune. textesLivre() les fournit via Object.assign(textesNumero(), …) plutôt
+    // que par des appels T() littéraux, d'où le recours à cles('textesNumero') ici : c'est
+    // exactement ce que la valeur de retour de textesLivre() contient.
+    // ⚠ PAS de 'licences' ici, même si textesLivre() la fournit : le champ licence de
+    // CHAMPS_LIVRE la lit en TXT[champ.optionsDe] (notation crochet, clé calculée), que la
+    // regex ci-dessous (\bTXT\.(...)\b) ne voit jamais. Ajouter 'licences' à la liste ne
+    // protégerait donc rien — un faux gardien est pire qu'aucun ; le test qui suit couvre
+    // réellement ce mécanisme.
+    'metadata-book': {
+      libelles: new Set([...cles('textesNumero'), ...TABLES]),
+      fragments: ['_commun.js', '_numero.js']
     }
   };
   for (const page of Object.keys(pages)) {
@@ -931,6 +946,33 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
       assert.ok(pages[page].libelles.has(m[1]),
         'libellé « ' + m[1] +' » utilisé par ' + page + ' mais absent de l’hôte');
     }
+  }
+});
+
+// Le pendant du contrôle ci-dessus pour la notation crochet : un champ à options
+// dynamiques (`optionsDe`, media/_numero.js) lit TXT[champ.optionsDe] au lieu de TXT.xxx, et
+// la regex du contrôle précédent ne l'y verra jamais. Plutôt que de deviner une clé calculée
+// à l'exécution — ce qu'une regex ne peut pas faire de façon fiable pour TXT[cle] ou
+// TXT[prefixe + '...'], qui apparaissent ailleurs dans les webviews avec une clé qui varie
+// par appel — ce contrôle prend le seul chemin qui reste vrai : chaque `optionsDe` déclaré
+// dans la table doit être une clé que la fonction hôte fournit réellement, sur le même
+// modèle que le contrôle « chaque intitulé de la table est fourni par l’hôte »
+// (test/js/articles.test.js) pour `libelle`.
+test('formulaire du livre : chaque option dynamique (optionsDe) est fournie par l’hôte', () => {
+  const fragment = fs.readFileSync(path.join(COCKPIT, 'media', '_numero.js'), 'utf8');
+  const debut = fragment.indexOf('var CHAMPS_LIVRE = [');
+  assert.notStrictEqual(debut, -1, 'CHAMPS_LIVRE introuvable dans _numero.js');
+  const table = fragment.slice(debut, fragment.indexOf('\n  ];', debut));
+  const optionsDe = [...table.matchAll(/optionsDe: '([^']+)'/g)].map((m) => m[1]);
+  assert.ok(optionsDe.length > 0,
+    'aucun champ à options dynamiques dans CHAMPS_LIVRE : ce contrôle n’a plus de sujet');
+  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  const i = src.indexOf('function textesLivre()');
+  assert.notStrictEqual(i, -1, 'textesLivre() introuvable');
+  const bloc = src.slice(i, src.indexOf('\n}', i));
+  for (const cle of optionsDe) {
+    assert.match(bloc, new RegExp('\\b' + cle + ':'),
+      'optionsDe « ' + cle + ' » n’est fourni nulle part par textesLivre()');
   }
 });
 
@@ -979,10 +1021,11 @@ test('le tutoriel a ses libellés, ses dessins et des liens qui mènent quelque 
 // d'ensemble n'a rien à saisir.
 test('chaque formulaire qui écrit enregistre automatiquement', () => {
   const attendus = ['metadata-articles', 'metadata-issue', 'import-verif', 'medias-article',
-    'traduction', 'table-editor', 'articles'];
+    'traduction', 'table-editor', 'articles', 'metadata-book'];
   const partages = {
     'metadata-articles': ['_fiches.js'], 'import-verif': ['_fiches.js'],
-    'metadata-issue': ['_numero.js'], 'articles': ['_numero.js']
+    'metadata-issue': ['_numero.js'], 'articles': ['_numero.js'],
+    'metadata-book': ['_numero.js']
   };
   for (const page of attendus) {
     const fragments = [page + '.js'].concat(partages[page] || []);
@@ -1000,7 +1043,7 @@ test('chaque formulaire qui écrit enregistre automatiquement', () => {
 test('chaque webview reçoit le socle visuel, et ses fragments existent', () => {
   const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
   const appels = [...src.matchAll(/construireHtml\('([a-z-]+)', nonce, \{([\s\S]{0,700}?)\}\);/g)];
-  assert.strictEqual(appels.length, 9, 'appels à construireHtml : ' + appels.length);
+  assert.strictEqual(appels.length, 10, 'appels à construireHtml : ' + appels.length);
   for (const [, page, corps] of appels) {
     assert.ok(/cssPartage:\s*\[[^\]]*'_design\.css'/.test(corps), 'page sans le socle : ' + page);
     for (const m of corps.matchAll(/'(_[a-z]+\.(?:css|js))'/g)) {
@@ -1035,7 +1078,8 @@ test('les tables de protocole des webviews sont à jour', () => {
     'medias-article': [],
     'vue-ensemble': [],
     'metadata-issue': ['_numero.js'],
-    'articles': ['_numero.js']
+    'articles': ['_numero.js'],
+    'metadata-book': ['_numero.js']
   };
   for (const page of Object.keys(pages)) {
     const fichiers = [page + '.js'].concat(pages[page]);

@@ -3371,20 +3371,171 @@ function envoyerValeursMetadonnees(panneau, racine) {
   noterLectureCoedition(panneau, racine, cheminConfig(racine));
 }
 
+// ---- Formulaire « Métadonnées du livre » -----------------------------------------
+//
+// Le pendant du bloc ci-dessus, pour buch.yaml : le plus gros manque de parité entre les
+// deux profils (docs/REPRISE-LIVRES.md §2.1a). Même schéma — un fragment partagé
+// (SZH.formulaireLivre, media/_numero.js), une charge et une écriture uniques — mais un
+// second jeu de fonctions, et non les mêmes réutilisées telles quelles : la validation d'un
+// livre n'est pas celle d'un numéro (une couleur de livre n'est pas prise dans la palette
+// annuelle des six teintes de la revue, par exemple), et ce formulaire ne porte pas la
+// couverture-image de l'export OJS, qui n'a pas de sens ici.
+//
+// Les six dernières clés sont celles du bloc `impression:` de buch.yaml — grammage, main,
+// dos imposé, fond perdu, traits de coupe, profil CMJN — les variables dont dépend le dos
+// calculé de la couverture à plat (pipeline/couverture.py) et le fond perdu de l'impression
+// du corps (docs/REPRISE-LIVRES.md §2.1c et §2.5). `analyserAusgabe`/`serialiserAusgabe`
+// savent lire et réécrire ce bloc imbriqué (lib/yaml.js) ; ce formulaire est le premier à
+// s'en servir.
+const LIBELLES_LIVRE = ['meta.livre.titre', 'meta.livre.soustitre', 'meta.livre.ouvrage',
+  'meta.livre.ouvrage.monographie', 'meta.livre.ouvrage.collectif', 'meta.livre.langue',
+  'meta.langue.fr', 'meta.langue.de', 'meta.langue.it', 'meta.langue.en',
+  'meta.livre.maquette', 'meta.livre.maquette.normal', 'meta.livre.maquette.falc',
+  'meta.livre.format', 'meta.livre.format.standard', 'meta.livre.format.a4',
+  'meta.livre.collection', 'meta.livre.tome', 'meta.livre.annee',
+  'meta.livre.isbnPrint', 'meta.livre.isbnEbook', 'meta.livre.doi',
+  'meta.livre.licence', 'meta.livre.couleur',
+  'meta.livre.grammage', 'meta.livre.main', 'meta.livre.dosMm', 'meta.livre.fondPerduMm',
+  'meta.livre.traitsDeCoupe', 'meta.livre.profilCmjn'];
+
+// Les jetons fermés du formulaire — refusés ici ET par le <select>/<input radio> côté
+// webview, comme partout ailleurs dans ce fichier (couleur, revue, entête condensée du
+// numéro) : la webview ne peut pas produire autre chose, mais l'hôte ne lui fait jamais
+// confiance.
+const OUVRAGES_VALIDES = ['monographie', 'collectif'];
+const MAQUETTES_LIVRE_VALIDES = ['normal', 'falc'];
+const FORMATS_LIVRE_VALIDES = ['standard', 'a4'];
+
+function textesLivre() {
+  const libelles = {};
+  for (const cle of LIBELLES_LIVRE) { libelles[cle] = T(cle); }
+  // Le reste (rien, enregistre, couleurs, couvertureExtensions/Max, couverture*) vient de
+  // textesNumero() : ce formulaire réutilise le même moteur (_numero.js), dont le code
+  // référence ces clés sans condition même si opts.couverture:false n'en affiche aucune —
+  // les fournir coûte quelques propriétés inertes, jamais un texte « undefined ».
+  return Object.assign({}, textesNumero(), {
+    libelles: libelles,
+    // La licence n'est pas une seconde liste : LICENCES_ARTICLE (lib/yaml.js) et ses
+    // libellés (lib/i18n.js, licencesTraduites()) sont ceux déjà utilisés par la fiche
+    // d'article — un livre n'a pas sa propre échelle de licences.
+    licences: [{ valeur: '', libelle: T('meta.livre.licence.aucune') }].concat(licencesTraduites())
+  });
+}
+
+// CSP par défaut de construireHtml (pas de couverture-image ici, donc pas besoin
+// d'`img-src data:` comme pour le numéro).
+function htmlMetadonneesLivre(nonce) {
+  return construireHtml('metadata-book', nonce, {
+    cssPartage: ['_design.css', '_numero.css'], jsPartage: ['_numero.js'],
+    titre: T('meta.livre.panneau'), remplacements: { '__TXT__': JSON.stringify(textesLivre()) }
+  });
+}
+
+// `avecCouverture` n'existe pas ici : rien à en tirer, buch.yaml n'a pas de couverture-image.
+function chargeLivre(racine) {
+  let valeurs = {};
+  try { valeurs = analyserAusgabe(fs.readFileSync(cheminConfig(racine), 'utf8')); }
+  catch (e) { /* fichier illisible : formulaire vide */ }
+  // Une clé absente du fichier (buch.yaml n'a pas encore de bloc impression:, par exemple —
+  // le cas d'un livre créé avant ce lot) arrive comme `undefined` : le formulaire la
+  // lirait quand même (v[cle] === undefined ? '' : …), mais la charge utile doit rester
+  // prévisible pour qui la lit, ici ou plus tard — jamais un trou selon que la clé existe
+  // ou non dans le fichier.
+  for (const cle of CLES_METADONNEES) { if (valeurs[cle] === undefined) { valeurs[cle] = ''; } }
+  // Booléen déjà tranché, comme entete-condensee pour le numéro.
+  valeurs['impression.traits-de-coupe'] = estVraiYaml(valeurs['impression.traits-de-coupe']) ? 'true' : 'false';
+  return { valeurs: valeurs };
+}
+
+// -> null, ou le message de l'échec ; null aussi quand il n'y avait rien de recevable à
+// écrire. Miroir d'ecrireChampsNumero, avec sa propre validation : une couleur de livre est
+// libre (pas la palette à six teintes de la revue), et `ouvrage`/`maquette`/`format` sont
+// des jetons fermés que ce formulaire est seul à poser.
+function ecrireChampsLivre(racine, brut) {
+  const modifies = {};
+  for (const cle of CLES_METADONNEES) {
+    if (brut && typeof brut[cle] === 'string') {
+      modifies[cle] = brut[cle].replace(/[\r\n]+/g, ' ').slice(0, 500).trim();
+    }
+  }
+  if ('ouvrage' in modifies && OUVRAGES_VALIDES.indexOf(modifies.ouvrage) === -1) { delete modifies.ouvrage; }
+  if ('maquette' in modifies && MAQUETTES_LIVRE_VALIDES.indexOf(modifies.maquette) === -1) { delete modifies.maquette; }
+  if ('format' in modifies && FORMATS_LIVRE_VALIDES.indexOf(modifies.format) === -1) { delete modifies.format; }
+  // Vide (« non définie ») ou l'un des jetons de LICENCES_ARTICLE ; toute autre valeur est
+  // ignorée — jamais un jeton inventé imprimé sur le colophon.
+  if ('licence' in modifies && modifies.licence !== '' && normaliserLicence(modifies.licence) === '') {
+    delete modifies.licence;
+  }
+  // Couleur libre, mais un hex à six chiffres ou rien : jamais une valeur de travers dans
+  // une propriété CSS en aval (accent-css.py, pipeline/profils/livre.mk).
+  if ('couleur' in modifies) {
+    const c = modifies.couleur.toUpperCase();
+    if (c !== '' && !/^#[0-9A-F]{6}$/.test(c)) { delete modifies.couleur; } else { modifies.couleur = c; }
+  }
+  // La case à cocher n'envoie que « true » ou « false » ; le reste est ignoré.
+  if ('impression.traits-de-coupe' in modifies) {
+    const t = modifies['impression.traits-de-coupe'].toLowerCase();
+    if (t !== 'true' && t !== 'false') { delete modifies['impression.traits-de-coupe']; }
+    else { modifies['impression.traits-de-coupe'] = t; }
+  }
+  // Les six clés numériques (annee, grammage, main, dos-mm, fond-perdu-mm) sont assainies à
+  // l'écriture par formaterValeurYaml (lib/yaml.js, CLES_NOMBRES) : une frappe de travers
+  // n'y survit pas, rien à revalider ici.
+  // L'ordre des chapitres ne se saisit pas au clavier, comme pour le numéro — ce formulaire
+  // ne l'envoie jamais, la garde est symétrique.
+  delete modifies[cleOrdre()];
+  if (Object.keys(modifies).length === 0) { return null; }
+  return ecrireClesAusgabe(racine, modifies);
+}
+
+// Miroir de messageNumero, sans la couverture-image : « enregistrer » est le seul message
+// que ce formulaire émet.
+function messageLivre(panneau, racine, msg, rafraichirTout, recharger) {
+  if (msg.type === 'enregistrer') {
+    if (etatNumero.verrouillee) {
+      repondrePanneau(panneau, { type: 'erreur', message: T('verrou.refuse') });
+      return true;
+    }
+    const refus = ecrireSousMain(panneau, racine, cheminConfig(racine),
+      () => ecrireChampsLivre(racine, msg.modifies));
+    if (refus) {
+      repondrePanneau(panneau, { type: 'erreur', message: refus.message });
+      if (refus.code === 'perime' && recharger) { recharger(); }
+      return true;
+    }
+    repondrePanneau(panneau, { type: 'enregistre' });
+    vscode.window.setStatusBarMessage(T('statut.ausgabe'), 3000);
+    if (rafraichirTout) { rafraichirTout(); }
+    return true;
+  }
+  return false;
+}
+
 // Panneau singleton : rouvrir la commande révèle le formulaire existant, valeurs relues
-// du disque. Pleine page, donc les aperçus sont fermés avant.
+// du disque. Pleine page, donc les aperçus sont fermés avant. Un seul panneau pour les deux
+// profils — une fenêtre n'est jamais les deux à la fois (lib/profil.js) — mais deux
+// formulaires bien distincts derrière : le bon est choisi une fois, à l'ouverture.
 async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
   const racine = fournisseur.racine;
   if (!racine) { return; }
   await fermerTousLesApercus();
+  const estLivre = profilCourant().cle === 'livre';
+  const titre = estLivre ? T('meta.livre.panneau') : T('meta.titre');
+  const envoyerValeurs = (panneau) => {
+    if (estLivre) { repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, chargeLivre(racine))); }
+    else { repondrePanneau(panneau, Object.assign({ type: 'valeurs' }, chargeNumero(racine, true))); }
+    // Ce que le formulaire montre est ce que le disque disait à cet instant : c'est cette
+    // empreinte que la co-édition comparera si la saisie reste en plan.
+    noterLectureCoedition(panneau, racine, cheminConfig(racine));
+  };
   if (panneauMetadonnees) {
     panneauMetadonnees.reveal(vscode.ViewColumn.One);
-    envoyerValeursMetadonnees(panneauMetadonnees, racine);
+    envoyerValeurs(panneauMetadonnees);
     annoncerMain(panneauMetadonnees, racine, cheminConfig(racine));
     return;
   }
   const panneau = vscode.window.createWebviewPanel(
-    'szhMetadonnees', T('meta.titre'), vscode.ViewColumn.One,
+    'szhMetadonnees', titre, vscode.ViewColumn.One,
     { enableScripts: true, localResourceRoots: [] }
   );
   panneauMetadonnees = panneau;
@@ -3395,14 +3546,19 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
   panneau.webview.onDidReceiveMessage((msg) => {
     if (!msg) { return; }
     if (msg.type === 'pret') {
-      envoyerValeursMetadonnees(panneau, racine);
+      envoyerValeurs(panneau);
       annoncerMain(panneau, racine, cheminConfig(racine));
       return;
     }
-    messageNumero(panneau, racine, msg, rafraichirTout,
-      () => envoyerValeursMetadonnees(panneau, racine));
+    if (estLivre) { messageLivre(panneau, racine, msg, rafraichirTout, () => envoyerValeurs(panneau)); }
+    else {
+      messageNumero(panneau, racine, msg, rafraichirTout,
+        () => envoyerValeurs(panneau));
+    }
   });
-  panneau.webview.html = htmlMetadonnees(crypto.randomBytes(16).toString('hex'));
+  panneau.webview.html = estLivre
+    ? htmlMetadonneesLivre(crypto.randomBytes(16).toString('hex'))
+    : htmlMetadonnees(crypto.randomBytes(16).toString('hex'));
 }
 
 // ---- Éditeur des métadonnées de tous les articles --------------------------------

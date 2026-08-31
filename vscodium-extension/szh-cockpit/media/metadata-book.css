@@ -1,0 +1,7 @@
+/* Méta-données du livre : le pendant de metadata-issue.css pour buch.yaml — même cadre,
+   posé sur le socle (_design.css) et sur le fragment partagé _numero.css, qui dessine les
+   champs. Il ne reste ici que le cadre de la page. */
+body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
+  line-height: var(--interligne); color: var(--encre); background: var(--fond);
+  padding: var(--e4) var(--e5) var(--e7); max-width: 38rem; }
+h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }

@@ -542,7 +542,7 @@
         },
         {
           "command": "szh.metadonnees",
-          "when": "szh.estRevue"
+          "when": "szh.estRevue || szh.estLivre"
         },
         {
           "command": "szh.supprimerArticle",

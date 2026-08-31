@@ -125,8 +125,11 @@ let hote = {
 // panneau ouvrirait un formulaire vide, ou pire — une commande qui écrit dans un
 // ausgabe.yaml qui n'existe pas. On les retire, plutôt que de compter sur la personne pour
 // ne pas cliquer.
+// szh.metadonnees en est sorti (docs/REPRISE-LIVRES.md §2.1a) : buch.yaml a désormais son
+// propre formulaire (ouvrirMetadonnees le choisit selon le profil), là où il n'existait
+// aucune saisie pour un livre avant ce lot.
 const REVUE_SEULEMENT = [
-  'szh.metadonnees', 'szh.apercuMetadonnees', 'szh.traduction',
+  'szh.apercuMetadonnees', 'szh.traduction',
   'szh.exporterArticle', 'szh.exporterXml',
   'szh.archiverVerrouiller', 'szh.deverrouiller', 'szh.desarchiver'
 ];

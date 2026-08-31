@@ -17,7 +17,19 @@ const path = require('path');
 //   lue comme absente, et le geste qui en dépend ne fait rien sans rien dire.
 const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 'couleur',
   'entete-condensee', 'locked', 'archived', 'version-toolkit', 'ordre-articles',
-  'ordre-chapitres', 'articles-sans-doi'];
+  'ordre-chapitres', 'articles-sans-doi',
+  // ---- buch.yaml : formulaire « Métadonnées du livre » (media/metadata-book.*) ----
+  // `lang` et `couleur`, juste au-dessus, sont déjà communs aux deux profils — un livre les
+  // porte au même niveau qu'un numéro, sous le même nom. Le reste n'existe que dans
+  // buch.yaml. Les six dernières sont des SOUS-CLÉS de `impression:`, un bloc imbriqué :
+  // `analyserAusgabe` et `serialiserAusgabe` savent lire et réécrire un niveau
+  // d'indentation sous un bloc top-level dont la valeur est vide (voir leur en-tête) — sans
+  // quoi ces six clés, indentées de deux espaces dans le fichier, ne matcheraient jamais la
+  // regex de ligne top-level et tomberaient, elles aussi, en silence.
+  'titre', 'sous-titre', 'ouvrage', 'maquette', 'format', 'collection', 'tome', 'annee',
+  'isbn-print', 'isbn-ebook', 'doi', 'licence',
+  'impression.grammage', 'impression.main', 'impression.dos-mm',
+  'impression.fond-perdu-mm', 'impression.traits-de-coupe', 'impression.profil-cmjn'];
 
 // Les articles du numéro qui ne reçoivent pas de DOI, décidés à la case sur leur carte.
 // Ils vivent ici, à côté de l'ordre, et non dans la fiche de l'article : c'est cette liste
@@ -58,7 +70,21 @@ function listeYamlEnLigne(valeur) {
 // (éditeur en lecture seule, écritures du cockpit refusées) et `archived` le range dans
 // l'arborescence d'archives (plus de compilation automatique). Désarchiver ne
 // déverrouille pas, et l'inverse.
-const CLES_BOOLEENNES = ['entete-condensee', 'locked', 'archived'];
+const CLES_BOOLEENNES = ['entete-condensee', 'locked', 'archived', 'impression.traits-de-coupe'];
+
+// Clés numériques : écrites en jeton YAML nu (jamais cité), comme les booléennes — un
+// grammage ou un dos en millimètres cité en chaîne (« "90" ») resterait lisible côté
+// pipeline (Python fait `float("90")` sans broncher) mais s'écarterait sans raison du
+// style que la chaîne écrit elle-même dans buch.yaml. Sanitée à l'écriture (voir
+// formaterValeurYaml) : seuls chiffres, point et signe moins traversent, jamais de guillemet
+// à contourner. Une valeur vide est un jeton nu valide — c'est ainsi que `dos-mm:` dit
+// « pas de valeur imposée » dans buch.yaml, et effacer le champ doit pouvoir la restituer.
+const CLES_NOMBRES = ['annee', 'impression.grammage', 'impression.main',
+  'impression.dos-mm', 'impression.fond-perdu-mm'];
+
+// Clés de buch.yaml qui s'écrivent en jeton nu, comme `lang` : voir l'en-tête de
+// formaterValeurYaml pour le pourquoi (le fichier les écrit toujours ainsi à la main).
+const CLES_JETONS_NUS = ['ouvrage', 'maquette', 'format', 'licence'];
 
 // Valeurs acceptées comme vraies à la lecture, un ausgabe.yaml pouvant avoir été écrit à
 // la main. Miroir de la table VRAIS de pipeline/filters/szh-maquette.lua, qui décide au
@@ -128,12 +154,40 @@ function decouperValeurYaml(reste) {
   return { valeur: reste.slice(0, debutComm).trim(), suite: reste.slice(debutComm).replace(/\s+$/, '') };
 }
 
+// Lit un YAML plat, une clé par ligne — ausgabe.yaml comme buch.yaml — avec UN niveau
+// d'imbrication : un bloc top-level dont la ligne ne porte aucune valeur (« impression: »,
+// rien après) ouvre un bloc, et les lignes indentées qui suivent sont ses sous-clés,
+// exposées sous la forme « parent.sous-clé » — c'est ainsi que `impression.grammage` entre
+// dans CLES_METADONNEES, et non comme une clé `grammage` isolée qui collisionnerait avec
+// n'importe quel autre bloc. Le bloc se referme à la première ligne qui n'est PAS indentée,
+// reconnue comme top-level ou non : ausgabe.yaml n'a aujourd'hui aucun bloc de ce genre, ce
+// qui rend ce comportement neutre pour lui.
 function analyserAusgabe(contenu) {
   const valeurs = {};
+  let parentActuel = null;
   for (const ligne of contenu.split(/\r?\n/)) {
-    const m = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (!m || CLES_METADONNEES.indexOf(m[1]) === -1) { continue; }
-    if (!(m[1] in valeurs)) { valeurs[m[1]] = decouperValeurYaml(m[2]).valeur; }
+    const mTop = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (mTop) {
+      const valeurTop = decouperValeurYaml(mTop[2]).valeur;
+      parentActuel = valeurTop === '' ? mTop[1] : null;
+      if (CLES_METADONNEES.indexOf(mTop[1]) !== -1 && !(mTop[1] in valeurs)) {
+        valeurs[mTop[1]] = valeurTop;
+      }
+      continue;
+    }
+    if (parentActuel) {
+      const mSub = ligne.match(/^\s+([A-Za-z0-9_-]+):\s*(.*)$/);
+      if (mSub) {
+        const cle = parentActuel + '.' + mSub[1];
+        if (CLES_METADONNEES.indexOf(cle) !== -1 && !(cle in valeurs)) {
+          valeurs[cle] = decouperValeurYaml(mSub[2]).valeur;
+        }
+        continue;
+      }
+    }
+    // Ni ligne top-level reconnue, ni sous-clé d'un bloc ouvert : commentaire, item de
+    // séquence (`- prenom: …` d'une liste d'auteurs), ligne inconnue — ignorée ici comme
+    // avant, `serialiserAusgabe` la restitue telle quelle.
   }
   return valeurs;
 }
@@ -684,6 +738,17 @@ function etatRevue(racine) {
 // un jeton nu restreint à [a-zA-Z-].
 function formaterValeurYaml(cle, valeur) {
   if (cle === 'lang') { return String(valeur).replace(/[^a-zA-Z-]/g, '') || 'fr'; }
+  // Jetons nus de buch.yaml, comme `lang` ci-dessus : les trois exemples du dépôt
+  // (test/livre-normal, test/livre-falc, livre-template) les écrivent tous sans guillemets
+  // à la main — `ouvrage: monographie`, `maquette: normal`, `format: standard`,
+  // `licence: cc-by-nc-nd-4.0` — et pipeline/profils/livre.mk lit `maquette` par un sed qui,
+  // lui, tolère les guillemets (`[\"']*`) mais n'a aucune raison d'en recevoir. Ce
+  // formulaire ne doit pas changer le style du fichier au premier champ touché. Alphabet
+  // plus large que celui de `lang` : une licence porte des chiffres et un point
+  // (« cc-by-4.0 »).
+  if (CLES_JETONS_NUS.indexOf(cle) !== -1) {
+    return String(valeur === undefined || valeur === null ? '' : valeur).trim().replace(/[^a-zA-Z0-9.-]/g, '');
+  }
   // Séquence en ligne : une clé par ligne reste la règle du fichier, et la liste se lit
   // d'un coup d'oeil. Les jetons sont cités, comme partout ailleurs ici.
   if (CLES_LISTES.indexOf(cle) !== -1) {
@@ -694,12 +759,26 @@ function formaterValeurYaml(cle, valeur) {
   // Les drapeaux s'écrivent en booléen YAML nu, jamais cité : la chaîne « "false" » serait
   // vraie pour le `$if()$` du gabarit pandoc.
   if (CLES_BOOLEENNES.indexOf(cle) !== -1) { return estVraiYaml(valeur) ? 'true' : 'false'; }
+  // Nombre nu, comme la chaîne l'écrit elle-même (`grammage: 90`, pas `grammage: "90"`).
+  // Assaini ici, jamais fait confiance : seuls chiffres, point et signe moins traversent —
+  // aucun guillemet à échapper, donc aucune valeur ne peut casser la ligne qui la porte.
+  // Vide est un jeton nu valide (`dos-mm:`) : c'est ainsi qu'un champ effacé redevient
+  // « pas de valeur imposée » plutôt que la chaîne littérale de son ancienne valeur.
+  if (CLES_NOMBRES.indexOf(cle) !== -1) {
+    return String(valeur === undefined || valeur === null ? '' : valeur).trim().replace(/[^0-9.-]/g, '');
+  }
   return '"' + String(valeur).replace(/([\\"])/g, '\\$1') + '"';
 }
 
 // Réécrit `contenu` avec les clés de `modifies` : lignes existantes mises à jour en
 // conservant leur commentaire de fin, clés absentes ajoutées à la fin sauf si leur valeur
 // est vide. Aucune autre ligne n'est modifiée.
+//
+// Une clé « parent.sous-clé » (buch.yaml : `impression.grammage`…) suit la même règle, un
+// cran plus bas : sa ligne existante, indentée sous le bloc `parent:`, est réécrite en
+// place ; absente, elle s'insère juste après la dernière ligne connue du bloc — jamais à la
+// toute fin du fichier, où `grammage: 90` perdrait le bloc qui lui donne son sens ; et si le
+// bloc lui-même n'existe pas du tout, il est créé en fin de fichier, avec ses sous-clés.
 function serialiserAusgabe(contenu, modifies) {
   const eol = contenu.indexOf('\r\n') !== -1 ? '\r\n' : '\n';
   const bom = contenu.charAt(0) === '\uFEFF' ? '\uFEFF' : '';
@@ -707,20 +786,68 @@ function serialiserAusgabe(contenu, modifies) {
   const lignes = corps === '' ? [] : corps.split(/\r?\n/);
   if (lignes.length > 0 && lignes[lignes.length - 1] === '') { lignes.pop(); }
   const restantes = new Set(Object.keys(modifies));
-  const resultat = lignes.map((ligne) => {
-    const m = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
-    if (!m || !restantes.has(m[1])) { return ligne; }
-    restantes.delete(m[1]);
-    // `suite` garde ses espaces de tête ; s'il colle à la valeur, on intercale un espace.
-    const suite = decouperValeurYaml(m[2]).suite;
-    return m[1] + ': ' + formaterValeurYaml(m[1], modifies[m[1]]) + (suite ? (/^\s/.test(suite) ? suite : ' ' + suite) : '');
+  let parentActuel = null;
+  // Bloc -> index (dans `resultat`) de sa dernière ligne rencontrée, en-tête comprise :
+  // c'est là qu'une sous-clé absente du bloc doit s'insérer.
+  const finBloc = new Map();
+  const resultat = lignes.map((ligne, index) => {
+    const mTop = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (mTop) {
+      const valeurTop = decouperValeurYaml(mTop[2]).valeur;
+      parentActuel = valeurTop === '' ? mTop[1] : null;
+      if (parentActuel) { finBloc.set(parentActuel, index); }
+      if (!restantes.has(mTop[1])) { return ligne; }
+      restantes.delete(mTop[1]);
+      // `suite` garde ses espaces de tête ; s'il colle à la valeur, on intercale un espace.
+      const suite = decouperValeurYaml(mTop[2]).suite;
+      return mTop[1] + ': ' + formaterValeurYaml(mTop[1], modifies[mTop[1]]) + (suite ? (/^\s/.test(suite) ? suite : ' ' + suite) : '');
+    }
+    if (parentActuel) {
+      const mSub = ligne.match(/^(\s+)([A-Za-z0-9_-]+):\s*(.*)$/);
+      if (mSub) {
+        finBloc.set(parentActuel, index);
+        const cleComplete = parentActuel + '.' + mSub[2];
+        if (!restantes.has(cleComplete)) { return ligne; }
+        restantes.delete(cleComplete);
+        const suite = decouperValeurYaml(mSub[3]).suite;
+        return mSub[1] + mSub[2] + ': ' + formaterValeurYaml(cleComplete, modifies[cleComplete]) + (suite ? (/^\s/.test(suite) ? suite : ' ' + suite) : '');
+      }
+    }
+    return ligne;
   });
+  // Blocs entièrement absents du fichier : construits à part, pour être ajoutés une seule
+  // fois chacun, toutes leurs sous-clés manquantes ensemble.
+  const nouveauxBlocs = [];
+  const indexNouveauBloc = {};
   for (const cle of CLES_METADONNEES) {
     if (!restantes.has(cle)) { continue; }
     // Une liste vide vaut « rien à retenir » : String([]) rend '', et la clé n'est pas
     // ajoutée. Une clé déjà présente, elle, est réécrite plus haut, vide comprise.
     if (String(modifies[cle]) === '') { continue; }
-    resultat.push(cle + ': ' + formaterValeurYaml(cle, modifies[cle]));
+    const point = cle.indexOf('.');
+    if (point === -1) {
+      resultat.push(cle + ': ' + formaterValeurYaml(cle, modifies[cle]));
+      continue;
+    }
+    const parent = cle.slice(0, point);
+    const ligneAj = '  ' + cle.slice(point + 1) + ': ' + formaterValeurYaml(cle, modifies[cle]);
+    if (finBloc.has(parent)) {
+      const pos = finBloc.get(parent) + 1;
+      resultat.splice(pos, 0, ligneAj);
+      // Les positions déjà retenues glissent d'une ligne — la sienne y compris, pour qu'une
+      // seconde sous-clé du même bloc s'empile après celle qu'on vient d'insérer, et non à
+      // sa place.
+      for (const [autre, idx] of finBloc) { if (idx >= pos) { finBloc.set(autre, idx + 1); } }
+    } else if (indexNouveauBloc[parent] !== undefined) {
+      nouveauxBlocs[indexNouveauBloc[parent]][1].push(ligneAj);
+    } else {
+      indexNouveauBloc[parent] = nouveauxBlocs.length;
+      nouveauxBlocs.push([parent, [ligneAj]]);
+    }
+  }
+  for (const [parent, lignesBloc] of nouveauxBlocs) {
+    resultat.push(parent + ':');
+    for (const l of lignesBloc) { resultat.push(l); }
   }
   return bom + resultat.join(eol) + (resultat.length > 0 ? eol : '');
 }
@@ -738,7 +865,7 @@ function ecrireAtomique(chemin, contenu) {
 }
 
 module.exports = {
-  CLES_METADONNEES, CLES_BOOLEENNES, CLES_LISTES, CLE_SANS_DOI, COULEURS_NUMERO, HEX_COULEURS, CLES_FRONTMATTER, estVraiYaml,
+  CLES_METADONNEES, CLES_BOOLEENNES, CLES_LISTES, CLES_NOMBRES, CLES_JETONS_NUS, CLE_SANS_DOI, COULEURS_NUMERO, HEX_COULEURS, CLES_FRONTMATTER, estVraiYaml,
   etatRevue,
   REVUES, normaliserRevue,
   TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,

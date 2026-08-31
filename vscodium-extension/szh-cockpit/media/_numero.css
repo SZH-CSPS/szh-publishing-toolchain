@@ -22,6 +22,14 @@
 .case input { width: auto; flex: 0 0 auto; margin: .15em 0 0; accent-color: var(--accent); }
 .case span { line-height: 1.4; }
 
+/* Couleur d'accent libre du livre : le sélecteur natif, et son hex à côté — le petit carré
+   de <input type=color> ne dit pas la valeur qu'il porte. */
+.hexcouleur { display: flex; align-items: center; gap: var(--e2); margin-top: var(--e1); }
+.hexcouleur input[type="color"] { width: 2.6rem; height: 1.8rem; padding: 0; border: 1px solid
+  var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini); background: none;
+  cursor: pointer; }
+.hexcouleur-valeur { font-variant-numeric: tabular-nums; color: var(--encre-2); }
+
 /* Couleur annuelle : une pastille par teinte, la puce montre la couleur elle-même. */
 .pastilles { display: flex; flex-wrap: wrap; gap: var(--e2); margin-top: var(--e1); }
 .pastille { display: inline-flex; align-items: center; gap: .4em; cursor: pointer;

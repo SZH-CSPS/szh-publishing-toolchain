@@ -46,6 +46,54 @@
     { cle: 'entete-condensee', genre: 'case', libelle: 'meta.entete.condensee' }
   ];
 
+  // La même construction, pour le formulaire « Métadonnées du livre » (media/metadata-book.*
+  // — voir SZH.formulaireLivre plus bas) : `cle` est cette fois une clé de buch.yaml, ou une
+  // clé « parent.sous-clé » pour les six variables du bloc `impression:` (grammage, main,
+  // dos imposé, fond perdu, traits de coupe, profil CMJN) — analyserAusgabe/serialiserAusgabe
+  // (lib/yaml.js) savent lire et réécrire ce niveau d'imbrication. Un seul ouvrage par
+  // fenêtre : ce formulaire n'a, pour l'instant, qu'une vue à porter, mais partage le même
+  // moteur que celui du numéro plutôt que d'en recopier un second.
+  var CHAMPS_LIVRE = [
+    { cle: 'titre', genre: 'texte', libelle: 'meta.livre.titre' },
+    { cle: 'sous-titre', genre: 'texte', libelle: 'meta.livre.soustitre' },
+    { cle: 'ouvrage', genre: 'radio', libelle: 'meta.livre.ouvrage',
+      options: [
+        { valeur: 'monographie', libelle: 'meta.livre.ouvrage.monographie' },
+        { valeur: 'collectif', libelle: 'meta.livre.ouvrage.collectif' }
+      ] },
+    { cle: 'lang', genre: 'select', libelle: 'meta.livre.langue',
+      options: [
+        { valeur: 'fr', libelle: 'meta.langue.fr' },
+        { valeur: 'de', libelle: 'meta.langue.de' },
+        { valeur: 'it', libelle: 'meta.langue.it' },
+        { valeur: 'en', libelle: 'meta.langue.en' }
+      ] },
+    { cle: 'maquette', genre: 'select', libelle: 'meta.livre.maquette',
+      options: [
+        { valeur: 'normal', libelle: 'meta.livre.maquette.normal' },
+        { valeur: 'falc', libelle: 'meta.livre.maquette.falc' }
+      ] },
+    { cle: 'format', genre: 'select', libelle: 'meta.livre.format',
+      options: [
+        { valeur: 'standard', libelle: 'meta.livre.format.standard' },
+        { valeur: 'a4', libelle: 'meta.livre.format.a4' }
+      ] },
+    { cle: 'collection', genre: 'texte', libelle: 'meta.livre.collection' },
+    { cle: 'tome', genre: 'texte', libelle: 'meta.livre.tome' },
+    { cle: 'annee', genre: 'nombre', libelle: 'meta.livre.annee' },
+    { cle: 'isbn-print', genre: 'texte', libelle: 'meta.livre.isbnPrint' },
+    { cle: 'isbn-ebook', genre: 'texte', libelle: 'meta.livre.isbnEbook' },
+    { cle: 'doi', genre: 'texte', libelle: 'meta.livre.doi' },
+    { cle: 'licence', genre: 'select', libelle: 'meta.livre.licence', optionsDe: 'licences' },
+    { cle: 'couleur', genre: 'hex', libelle: 'meta.livre.couleur' },
+    { cle: 'impression.grammage', genre: 'nombre', libelle: 'meta.livre.grammage' },
+    { cle: 'impression.main', genre: 'nombre', libelle: 'meta.livre.main' },
+    { cle: 'impression.dos-mm', genre: 'nombre', libelle: 'meta.livre.dosMm' },
+    { cle: 'impression.fond-perdu-mm', genre: 'nombre', libelle: 'meta.livre.fondPerduMm' },
+    { cle: 'impression.traits-de-coupe', genre: 'case', libelle: 'meta.livre.traitsDeCoupe' },
+    { cle: 'impression.profil-cmjn', genre: 'texte', libelle: 'meta.livre.profilCmjn' }
+  ];
+
   // Miroir de normaliserRevue() (lib/yaml.js) et de derive_revue() côté Lua : accepte le
   // jeton comme l'ancien nom complet, et teste « zeitschrift » avant « revue ».
   function normaliserRevue(v) {
@@ -55,7 +103,10 @@
     return '';
   }
 
-  function formulaireNumero(opts) {
+  // Moteur commun aux deux formulaires : `champsTable` est CHAMPS (numéro) ou CHAMPS_LIVRE
+  // (livre) — voir les deux enveloppes tout en bas du fichier. Tout le reste (construction
+  // des champs, remplissage, collecte, enregistrement automatique, couverture) est unique.
+  function construireFormulaire(opts, champsTable) {
     var conteneur = opts.conteneur;
     var api = opts.api;
     var TXT = opts.txt || {};
@@ -107,6 +158,11 @@
       }
     }
 
+    // `champ.options` est la liste ordinaire : des clés i18n, résolues par lib(). Un champ
+    // qui pointe `champ.optionsDe` (le formulaire du livre, pour la licence) prend à la
+    // place la liste envoyée par l'hôte dans TXT[optionsDe] — déjà traduite, comme
+    // TXT.couleurs plus bas — pour ne pas dupliquer ici la liste des licences, qui vit dans
+    // lib/yaml.js (LICENCES_ARTICLE) et est déjà traduite ailleurs (licencesTraduites()).
     function champSelect(champ) {
       var bloc = poser(conteneur, 'div', 'szh-champ');
       poser(bloc, 'label', null, lib(champ.libelle)).setAttribute('for', 'num-' + champ.cle);
@@ -114,15 +170,39 @@
       s.id = 'num-' + champ.cle;
       s.setAttribute('id', 'num-' + champ.cle);
       s.dataset.cle = champ.cle;
-      for (var i = 0; i < champ.options.length; i++) {
+      var dynamique = !!champ.optionsDe;
+      var options = dynamique ? (TXT[champ.optionsDe] || []) : champ.options;
+      for (var i = 0; i < options.length; i++) {
         var o = document.createElement('option');
-        o.value = champ.options[i].valeur;
-        o.textContent = lib(champ.options[i].libelle);
+        o.value = options[i].valeur;
+        o.textContent = dynamique ? (options[i].libelle || '') : lib(options[i].libelle);
         s.appendChild(o);
       }
       s.addEventListener('input', function () { toucher(champ.cle); });
       bloc.appendChild(s);
       ctl[champ.cle] = s;
+    }
+
+    // Couleur d'accent en clair : contrairement à la couleur annuelle du numéro (pastilles
+    // d'une palette fermée, ci-dessous), celle d'un livre est libre — buch.yaml en porte
+    // une par ouvrage, pas choisie dans les six teintes de la revue. Le <input type=color>
+    // natif rend toujours un hex à six chiffres, jamais vide : aucune valeur hors format ne
+    // peut donc en sortir.
+    function champHexCouleur(champ) {
+      var bloc = poser(conteneur, 'div', 'szh-champ');
+      poser(bloc, 'label', null, lib(champ.libelle)).setAttribute('for', 'num-' + champ.cle);
+      var ligne = poser(bloc, 'div', 'hexcouleur');
+      var i = document.createElement('input');
+      i.type = 'color';
+      i.id = 'num-' + champ.cle;
+      i.setAttribute('id', 'num-' + champ.cle);
+      i.dataset.cle = champ.cle;
+      var texte = poser(ligne, 'span', 'hexcouleur-valeur');
+      function majTexte() { texte.textContent = i.value.toUpperCase(); }
+      i.addEventListener('input', function () { majTexte(); toucher(champ.cle); });
+      ligne.insertBefore(i, texte);
+      majTexte();
+      ctl[champ.cle] = i;
     }
 
     // La revue est un choix fermé : c'est le jeton canonique zeitschrift ou revue qui est
@@ -347,8 +427,8 @@
 
     function remplir(valeurs) {
       var v = valeurs || {};
-      for (var i = 0; i < CHAMPS.length; i++) {
-        var champ = CHAMPS[i];
+      for (var i = 0; i < champsTable.length; i++) {
+        var champ = champsTable[i];
         var brut = v[champ.cle] === undefined ? '' : String(v[champ.cle]);
         if (champ.genre === 'radio') {
           revueChoisie = normaliserRevue(brut);
@@ -365,6 +445,16 @@
           // La valeur arrive déjà tranchée en « true » ou « false » par estVraiYaml
           // (lib/yaml.js) : aucune règle de vérité n'est dupliquée ici.
           ctl[champ.cle].checked = (brut === 'true');
+          continue;
+        }
+        if (champ.genre === 'hex') {
+          // Une valeur absente ou malformée ne doit pas planter <input type=color> — le
+          // navigateur l'ignorerait de toute façon en silence ; on préfère un repli visible
+          // et cohérent avec le petit texte à côté, plutôt que ce que fait chaque moteur.
+          var hexBrut = /^#[0-9A-Fa-f]{6}$/.test(brut) ? brut : '#000000';
+          ctl[champ.cle].value = hexBrut;
+          var spanHex = ctl[champ.cle].nextElementSibling;
+          if (spanHex) { spanHex.textContent = hexBrut.toUpperCase(); }
           continue;
         }
         var e = ctl[champ.cle];
@@ -391,8 +481,8 @@
         return;
       }
       var envoi = {};
-      for (var i = 0; i < CHAMPS.length; i++) {
-        var champ = CHAMPS[i];
+      for (var i = 0; i < champsTable.length; i++) {
+        var champ = champsTable[i];
         if (!modifies[champ.cle]) { continue; }
         if (champ.genre === 'radio') { envoi[champ.cle] = revueChoisie; }
         else if (champ.genre === 'couleurs') { envoi[champ.cle] = couleurChoisie; }
@@ -451,22 +541,31 @@
     }
 
     // ---- Montage ----
-    for (var i = 0; i < CHAMPS.length; i++) {
-      var champ = CHAMPS[i];
+    for (var i = 0; i < champsTable.length; i++) {
+      var champ = champsTable[i];
       if (champ.genre === 'texte') { champTexte(champ, 'text'); }
       else if (champ.genre === 'date') { champTexte(champ, 'date'); }
+      else if (champ.genre === 'nombre') { champTexte(champ, 'number'); }
       else if (champ.genre === 'select') { champSelect(champ); }
       else if (champ.genre === 'radio') { champRadio(champ); }
       else if (champ.genre === 'case') { champCase(champ); }
       else if (champ.genre === 'couleurs') { champCouleurs(champ); }
+      else if (champ.genre === 'hex') { champHexCouleur(champ); }
     }
     if (opts.couverture) { blocCouverture(); }
 
     return {
       remplir: remplir, message: message, enregistrement: enregistrement,
-      estModifie: aDesModifs, champs: CHAMPS
+      estModifie: aDesModifs, champs: champsTable
     };
   }
 
+  // Deux enveloppes minces sur le même moteur : celle du numéro garde exactement son
+  // ancien nom et son ancien contrat (metadata-issue.js, articles.js) ; celle du livre est
+  // neuve, pour media/metadata-book.js.
+  function formulaireNumero(opts) { return construireFormulaire(opts, CHAMPS); }
+  function formulaireLivre(opts) { return construireFormulaire(opts, CHAMPS_LIVRE); }
+
   SZH.formulaireNumero = formulaireNumero;
+  SZH.formulaireLivre = formulaireLivre;
 })();
