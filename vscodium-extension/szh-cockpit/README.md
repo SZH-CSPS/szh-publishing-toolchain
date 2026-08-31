@@ -57,6 +57,9 @@ lib/
   qualite-image.js      seuils de résolution des images et verdict de qualité
   references.js         insertions d'images et de tableaux dans le markdown, et les
                         grilles d'images (plusieurs images pour une seule figure)
+  ressources.js         fiches de « ressources » d'un article (livre, film, …) : un moteur
+                        générique, décliné par une table de champs par type (TYPES,
+                        recopiée dans pipeline/filters/szh-ressource.lua)
   slug.js               slug d'article, miroir de celui du Makefile
   table-model.js        analyse, sérialisation et opérations du modèle de tableau
   traduction.js         sidecar <slug>.traduction.yaml et suivi des traductions
@@ -77,6 +80,8 @@ media/
   medias-article.{html,css,js}    gestionnaire des médias d'un article
   metadata-articles.{html,css,js} métadonnées des articles
   metadata-issue.{html,css,js}    métadonnées du numéro
+  ressources-article.{html,css,js} fiches « ressources » d'un article (livre, film, …) :
+                        une carte par fiche, saisie en série
   settings.{html,css,js}          réglages
   table-editor.{html,css,js}      éditeur de tableau
   traduction.{html,css,js}        suivi des traductions

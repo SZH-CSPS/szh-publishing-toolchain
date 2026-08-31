@@ -301,6 +301,12 @@
         "icon": "$(file-media)"
       },
       {
+        "command": "szh.ressourcesArticle",
+        "title": "%cmd.ressourcesArticle%",
+        "category": "SZH/CSPS",
+        "icon": "$(library)"
+      },
+      {
         "command": "szh.traduction",
         "title": "%cmd.traduction%",
         "category": "SZH/CSPS",
@@ -601,6 +607,10 @@
           "when": "szh.estRevue || szh.estLivre"
         },
         {
+          "command": "szh.ressourcesArticle",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
           "command": "szh.traduction",
           "when": "szh.estRevue"
         },
@@ -811,9 +821,14 @@
           "group": "inline@2"
         },
         {
+          "command": "szh.ressourcesArticle",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
+          "group": "inline@3"
+        },
+        {
           "command": "szh.supprimerArticle",
           "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
-          "group": "inline@3"
+          "group": "inline@4"
         },
         {
           "command": "szh.convertirEnAttente",

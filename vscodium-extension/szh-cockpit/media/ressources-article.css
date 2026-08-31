@@ -1,0 +1,62 @@
+/* Fiches de « ressources » d'un article (livre, film, …) : une carte par fiche, DÉPLIÉE
+   d'emblée (pas d'accordéon comme le gestionnaire des médias) — la demande de Robin est la
+   vitesse de saisie, pas la densité d'une liste qu'on parcourt. Un gros bouton « Ajouter »
+   reste toujours à la portée, juste sous la dernière carte de sa section. Aucune couleur en
+   dur, rien que les jetons de thème (_design.css). */
+body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
+  line-height: var(--interligne); color: var(--encre); background: var(--fond);
+  padding: var(--e2) var(--e4) 0; box-sizing: border-box; height: 100vh;
+  display: flex; flex-direction: column; overflow: hidden; }
+
+.corps { flex: 1 1 auto; min-height: 0; overflow: auto;
+  display: flex; flex-direction: column; gap: var(--e3); padding-bottom: var(--e6); }
+.corps > * { flex: 0 0 auto; }
+
+.titre-section { margin: var(--e4) 0 0; font-size: var(--t-section); font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--encre-2);
+  border-bottom: 2px solid var(--accent); padding-bottom: var(--e1); }
+.titre-section:first-child { margin-top: 0; }
+
+/* Une section par type : ses cartes, puis son bouton d'ajout — toujours à cette place,
+   jamais en bas de toute la page, où il faudrait défiler après chaque type. */
+.ressource-section { display: flex; flex-direction: column; gap: var(--e3); }
+
+.ressource-carte { padding: var(--e3); display: flex; flex-direction: column; gap: var(--e3); }
+.ressource-tete { display: flex; align-items: center; gap: var(--e2); }
+.ressource-tete .szh-pastille { flex: 0 0 auto; }
+
+/* Le titre est le seul champ en pleine largeur ; le reste se lit à côté d'une saisie
+   voisine sans que l'œil retraverse toute la carte. */
+.ressource-corps-champs { display: flex; flex-direction: column; gap: var(--e3); }
+.ressource-biblio { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--e3); }
+.ressource-biblio > * { min-width: 0; }
+
+/* Dépôt de l'image de couverture : même forme que le dépôt du gestionnaire des médias
+   (medias-article.css), en plus compact — une seule zone par fiche, jamais deux gestes à
+   distinguer ici. */
+.ressource-image { display: flex; gap: var(--e3); align-items: flex-start; flex-wrap: wrap; }
+.ressource-vignette { flex: 0 0 auto; width: 5.5rem; height: 5.5rem;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--filet); border-radius: var(--rayon-mini);
+  background: var(--fond); overflow: hidden; }
+.ressource-vignette img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+.ressource-vignette .absent { margin: 0; padding: var(--e1); text-align: center;
+  font-size: var(--t-mini); font-style: italic; color: var(--encre-2); }
+.ressource-depot { flex: 1 1 14rem; min-width: 10rem;
+  display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
+  padding: var(--e2); border-radius: var(--rayon-mini); font-size: var(--t-libelle);
+  border: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, .5));
+  color: var(--encre-2); }
+.ressource-depot.survol { border-style: solid; border-color: var(--accent);
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, .12)); }
+.ressource-depot-etat { font-size: var(--t-mini); }
+.ressource-depot-etat.erreur { color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); }
+
+/* Le bouton d'ajout : plein, en bas de sa section, toujours là où on l'attend après avoir
+   fini une carte — c'est le geste le plus concret demandé pour cette vue. */
+.ressource-ajouter { align-self: flex-start; }
+
+/* Manque une valeur requise : discret tant qu'on saisit, visible si on tente de quitter
+   sans avoir fini — voir estCompleteCarte() dans le script. */
+.ressource-manque { margin: 0; }

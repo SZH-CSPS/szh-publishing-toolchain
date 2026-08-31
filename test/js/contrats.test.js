@@ -956,6 +956,13 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
       libelles: new Set([...cles('textesMedias'), ...auteur]),
       fragments: ['_commun.js', '_auteurs.js']
     },
+    // Les libellés des champs par type (typesConfig) ne passent pas par TXT.xxx — ils
+    // arrivent dans une table à part, comme `libelles` de textesNumero() plus bas — d'où
+    // leur absence de cette liste, qui ne surveille que les TXT.xxx littéraux du script.
+    'ressources-article': {
+      libelles: cles('textesRessources'),
+      fragments: ['_commun.js']
+    },
     // Le formulaire du numero et la vue « Articles » partagent media/_numero.js : ses
     // libelles viennent de textesNumero(), qu'Object.assign ajoute a la table de la vue.
     'metadata-issue': {
@@ -1064,7 +1071,7 @@ test('le tutoriel a ses libellés, ses dessins et des liens qui mènent quelque 
 // d'ensemble n'a rien à saisir.
 test('chaque formulaire qui écrit enregistre automatiquement', () => {
   const attendus = ['metadata-articles', 'metadata-issue', 'import-verif', 'medias-article',
-    'traduction', 'table-editor', 'articles', 'metadata-book'];
+    'traduction', 'table-editor', 'articles', 'metadata-book', 'ressources-article'];
   const partages = {
     'metadata-articles': ['_fiches.js'], 'import-verif': ['_fiches.js'],
     'metadata-issue': ['_numero.js'], 'articles': ['_numero.js'],
@@ -1086,7 +1093,7 @@ test('chaque formulaire qui écrit enregistre automatiquement', () => {
 test('chaque webview reçoit le socle visuel, et ses fragments existent', () => {
   const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
   const appels = [...src.matchAll(/construireHtml\('([a-z-]+)', nonce, \{([\s\S]{0,700}?)\}\);/g)];
-  assert.strictEqual(appels.length, 10, 'appels à construireHtml : ' + appels.length);
+  assert.strictEqual(appels.length, 11, 'appels à construireHtml : ' + appels.length);
   for (const [, page, corps] of appels) {
     assert.ok(/cssPartage:\s*\[[^\]]*'_design\.css'/.test(corps), 'page sans le socle : ' + page);
     for (const m of corps.matchAll(/'(_[a-z]+\.(?:css|js))'/g)) {

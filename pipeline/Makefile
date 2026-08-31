@@ -346,6 +346,7 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-grille.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-ressource.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tableau-boite.lua" \
@@ -391,6 +392,7 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-grille.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-ressource.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tableau-boite.lua" \

@@ -247,6 +247,7 @@ test('chaque panneau s’ouvre, s’assemble et envoie sa première charge', asy
     ['szh.vueArticles', undefined, 'valeurs'],
     ['szh.vueWord', undefined, 'valeurs'],
     ['szh.mediasArticle', { slug: '01-essai' }, 'charger'],
+    ['szh.ressourcesArticle', { slug: '01-essai' }, 'charger'],
     ['szh.traduction', { slug: '01-essai' }, 'valeurs'],
     ['szh.editerTable', {
       slug: '01-essai',

@@ -17,6 +17,7 @@
   "cmd.apercuMetadonnees": "Métadonnées des articles",
   "cmd.metadonneesArticle": "Éditer les métadonnées de cet article",
   "cmd.mediasArticle": "Gérer les médias de cet article",
+  "cmd.ressourcesArticle": "Gérer les ressources de cet article (livres, films, …)",
   "cmd.traduction": "Suivi de traduction de cet article",
   "cmd.vueArticles": "Articles du numéro",
   "cmd.envoyerAuteur": "Envoyer cet article à l’auteur",

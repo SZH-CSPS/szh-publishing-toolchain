@@ -17,6 +17,7 @@
   "cmd.apercuMetadonnees": "Metadaten der Artikel",
   "cmd.metadonneesArticle": "Metadaten dieses Artikels bearbeiten",
   "cmd.mediasArticle": "Medien dieses Artikels verwalten",
+  "cmd.ressourcesArticle": "Ressourcen dieses Artikels verwalten (Bücher, Filme, …)",
   "cmd.traduction": "Übersetzungsstand dieses Artikels",
   "cmd.vueArticles": "Artikel der Ausgabe",
   "cmd.envoyerAuteur": "Diesen Artikel an die Autorin/den Autor senden",

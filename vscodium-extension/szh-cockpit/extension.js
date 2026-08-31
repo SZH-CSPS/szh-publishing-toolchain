@@ -128,6 +128,8 @@ const {
   dispositionAutomatique, poserDansGrille, retirerDeGrille, ecrireDispositionGrille,
   normaliserGrilles
 } = require('./lib/references');
+// ---- Fiches de « ressources » d'un article (livre, film, …) -> lib/ressources.js -------
+const ressourcesLib = require('./lib/ressources');
 const { traiterPortraits } = require('./lib/portraits');
 // ---- Journal de compilation -> lib/journal.js ------------------------------------
 const {
@@ -1904,9 +1906,10 @@ function fermerFormulairesEcriture(racine, slug) {
   const dossier = (racine && slug) ? path.join(racine, dossierUnites(), slug) + path.sep : null;
   const concerne = (table, cle) => {
     if (!dossier) { return true; }                 // tout fermer (verrouillage du numéro)
-    return table === panneauxMedias ? cle === slug : String(cle).indexOf(dossier) === 0;
+    return (table === panneauxMedias || table === panneauxRessources)
+      ? cle === slug : String(cle).indexOf(dossier) === 0;
   };
-  for (const table of [panneauxMedias, panneauxTable]) {
+  for (const table of [panneauxMedias, panneauxRessources, panneauxTable]) {
     for (const [cle, panneau] of Array.from(table.entries())) {
       if (!concerne(table, cle)) { continue; }
       try { panneau.dispose(); } catch (e) { /* déjà fermé */ }
@@ -7615,6 +7618,286 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
   panneau.webview.html = htmlMedias(crypto.randomBytes(16).toString('hex'));
 }
 
+// ---- Fiches de « ressources » d'un article (livre, film, …) ----------------------
+// Le formulaire qui écrit les blocs ::: {.szh-ressource type="…"} …, lus par
+// pipeline/filters/szh-ressource.lua. Un moteur générique — un seul panneau, une section
+// par type de ressourcesLib.typesConnus() — plutôt qu'un formulaire par type : la table de
+// champs vit dans lib/ressources.js, ce fichier ne fait que la lire.
+//
+// Pensé pour la saisie en série (la demande la plus concrète du cahier des charges) : les
+// cartes sont dépliées d'emblée, jamais repliées derrière un clic, et chaque section garde
+// son bouton « Ajouter » juste sous sa dernière carte. Ajouter une fiche, la retirer et
+// taper dans ses champs restent purement côté webview ; seuls trois gestes touchent le
+// disque : enregistrer (par lot, comme le gestionnaire des médias), retirer une fiche déjà
+// écrite, et déposer une image de couverture.
+
+// Les libellés des champs bibliographiques, communs aux types qui les partagent (« annee »
+// sert à livre ET film) : une seule clé i18n par champ, jamais une par type.
+const LIBELLES_CHAMP_RESSOURCE = {
+  auteurs: 'ressource.champ.auteurs', annee: 'ressource.champ.annee',
+  editeur: 'ressource.champ.editeur', realisateur: 'ressource.champ.realisateur',
+  genre: 'ressource.champ.genre', pays: 'ressource.champ.pays'
+};
+
+// La configuration envoyée à la webview : un type par entrée, ses champs bibliographiques
+// DANS L'ORDRE DE lib/ressources.js (source unique — jamais recopiés ici), chacun avec son
+// libellé traduit. C'est ce qui rend le formulaire générique : ajouter un type à
+// ressourcesLib.TYPES lui donne une section sans qu'une ligne de ce fichier ne change,
+// pourvu que LIBELLES_CHAMP_RESSOURCE connaisse ses champs.
+function typesRessourceConfig() {
+  return ressourcesLib.typesConnus().map((type) => ({
+    valeur: type,
+    libelleSection: T('ressource.section.' + type),
+    libelleAjouter: T('ressource.ajouter.' + type),
+    libelleAjouterTip: T('ressource.ajouter.' + type + '.tip'),
+    champs: ressourcesLib.champsBiblio(type).map((cle) => ({
+      cle: cle, libelle: T(LIBELLES_CHAMP_RESSOURCE[cle] || '')
+    }))
+  }));
+}
+
+function textesRessources() {
+  return {
+    champTitre: T('ressource.champ.titre'), champTitreIndice: T('ressource.champ.titre.indice'),
+    champDescriptif: T('ressource.champ.descriptif'),
+    champDescriptifIndice: T('ressource.champ.descriptif.indice'),
+    champLien: T('ressource.champ.lien'), champLienIndice: T('ressource.champ.lien.indice'),
+    champImage: T('ressource.champ.image'),
+    lienNote: T('ressource.lien.note'),
+    imageAbsente: T('ressource.image.absente'), imageDeposee: T('ressource.image.deposee'),
+    choisirFichier: T('medias.choisirFichier'),
+    errFormat: T('medias.err.format'), errTropVolumineuse: T('medias.err.tropvolumineux'),
+    retirerTip: T('ressource.retirer.tip'),
+    manque: T('ressource.manque'),
+    enregistrer: T('img.enregistrer'), enregistrerTip: T('ressource.enregistrer.tip'),
+    enregistre: T('ressource.enregistre'), nonEnregistre: T('img.nonEnregistre'),
+    rienAEcrire: T('ressource.rienAEcrire'),
+    retour: T('img.retour'), retourTip: T('ressource.retour.tip')
+  };
+}
+
+function htmlRessources(nonce) {
+  return construireHtml('ressources-article', nonce, {
+    cssPartage: ['_design.css'],
+    titre: T('ressource.titre', ['']),
+    csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
+  });
+}
+
+// Dépose l'image de couverture d'une fiche : toujours un fichier NEUF dans media/, jamais
+// un remplacement — une fiche n'a rien à écraser, à la différence d'une image déjà
+// insérée dans le texte de l'article. Redéposer une image sur une fiche qui en portait
+// déjà une laisse l'ancien fichier orphelin dans media/, comme « Retirer de la figure »
+// ailleurs dans ce fichier (lib/references.js, retirerDeGrille) : le texte se nettoie, pas
+// le disque, et rien n'empêche de reprendre ce fichier plus tard.
+async function deposerImageRessource(fournisseur, panneau, slug, msg) {
+  const id = String(msg.id || '');
+  const echec = (message) => repondrePanneau(panneau, { type: 'image-erreur', id: id, message: message });
+  if (!fournisseur.racine) { echec(T('err.copie', ['?', '?'])); return; }
+  if (buildEnCours || importEnCours) { echec(T('statut.occupe')); return; }
+  const nom = nomImageAssaini(msg.nomFichier);
+  if (!nom) { echec(T('importv.err.format')); return; }
+  const donnees = Buffer.from(String(msg.donneesBase64 || ''), 'base64');
+  if (donnees.length === 0) { echec(T('importv.err.format')); return; }
+  if (donnees.length > TAILLE_MAX_IMAGE_IMPORT) { echec(T('importv.err.tropvolumineux')); return; }
+  const dossier = path.join(fournisseur.racine, dossierUnites(), slug, 'media');
+  try { fs.mkdirSync(dossier, { recursive: true }); } catch (e) { /* existe déjà */ }
+  const nomLibre = nomMediaLibre(dossier, nom);
+  const cible = path.join(dossier, nomLibre);
+  try {
+    // Temporaire « ~$… » puis rename, comme tout dépôt d'image de ce fichier : une
+    // écriture interrompue ne doit pas laisser un demi-fichier que la compilation lirait.
+    const tmp = path.join(dossier, '~$' + nomLibre);
+    try {
+      fs.writeFileSync(tmp, donnees);
+      fs.renameSync(tmp, cible);
+    } finally {
+      try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
+    }
+  } catch (e) {
+    echec(T('err.copie', [nomLibre, e.message]));
+    return;
+  }
+  await convertirCmykSiBesoin([cible]);           // un JPEG d'imprimerie ne s'affiche pas
+  repondrePanneau(panneau, {
+    type: 'image-deposee', id: id, image: nomLibre,
+    apercu: apercuMedia(cible, { reste: BUDGET_APERCUS_MEDIA })
+  });
+}
+
+let panneauxRessources = new Map();   // slug -> WebviewPanel (un formulaire par article)
+
+async function ouvrirGestionRessources(fournisseur, rafraichirTout, item) {
+  if (!fournisseur.racine) { return; }
+  const racine = fournisseur.racine;
+  // Même cascade que les autres formulaires d'article : l'item de l'arbre, l'éditeur
+  // actif, puis l'aperçu courant.
+  let slug = (item && item.slug) ? String(item.slug) : null;
+  if (!slug) {
+    const ed = vscode.window.activeTextEditor;
+    slug = ed ? slugDepuisChemin(racine, ed.document.uri.fsPath) : null;
+  }
+  if (!slug) { slug = apercuCourantSlug; }
+  if (!slug || !new Set(fournisseur.listerArticles()).has(slug)) {
+    vscode.window.setStatusBarMessage(T('ressource.horsarticle'), 4000);
+    return;
+  }
+  focaliserUnite(fournisseur, slug);
+  const md = path.join(racine, dossierUnites(), slug, slug + '.md');
+  const existant = panneauxRessources.get(slug);
+  if (existant) { existant.reveal(vscode.ViewColumn.One); return; }
+  await fermerTousLesApercus();
+  const panneau = vscode.window.createWebviewPanel(
+    'szhRessources', T('ressource.titre', [slug]), vscode.ViewColumn.One,
+    { enableScripts: true, localResourceRoots: [] }
+  );
+  panneauxRessources.set(slug, panneau);
+  panneau.onDidDispose(() => { if (panneauxRessources.get(slug) === panneau) { panneauxRessources.delete(slug); } });
+
+  async function texteArticle() {
+    try {
+      const doc = await vscode.workspace.openTextDocument(md);
+      return doc.getText();
+    } catch (e) { return ''; }
+  }
+
+  // Un descripteur par fiche d'un type que ce cockpit connaît (ressourcesLib.typesConnus()).
+  // Une fiche d'un type encore inconnu ici (un .md plus récent que l'extension installée,
+  // ou un type ajouté côté rendu avant de l'être côté formulaire) reste dans le texte,
+  // invisible à ce panneau, et n'est JAMAIS réécrite : enregistrer() ne touche que les
+  // identifiants que la webview lui rend, jamais tout le fichier d'un coup.
+  function listerRessources(texteMd, budget) {
+    const connus = new Set(ressourcesLib.typesConnus());
+    const base = path.join(racine, dossierUnites(), slug, 'media');
+    return ressourcesLib.lireRessources(texteMd)
+      .filter((r) => connus.has(r.type))
+      .map((r) => ({
+        id: r.id, type: r.type, valeurs: r.valeurs,
+        apercu: (r.valeurs.image && relatifImageValide(r.valeurs.image))
+          ? apercuMedia(path.join(base, r.valeurs.image), budget) : null
+      }));
+  }
+
+  async function charger(cible) {
+    const texteMd = await texteArticle();
+    const budget = { reste: BUDGET_APERCUS_MEDIA };
+    repondrePanneau(cible, {
+      type: 'charger', slug: slug,
+      ressources: listerRessources(texteMd, budget),
+      typesConfig: typesRessourceConfig(),
+      accent: lireCouleurAccent(racine), i18n: textesRessources()
+    });
+  }
+
+  const ecrireTexteArticle = async (texte) => {
+    let doc;
+    try { doc = await vscode.workspace.openTextDocument(md); }
+    catch (e) { repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) }); return false; }
+    if (doc.getText() === texte) { return true; }   // déjà à jour : pas d'édition
+    try {
+      const edition = new vscode.WorkspaceEdit();
+      const fin = doc.lineAt(doc.lineCount - 1).range.end;
+      edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), texte);
+      if (!(await vscode.workspace.applyEdit(edition))) {
+        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [md]) });
+        return false;
+      }
+      await doc.save();                              // déclenche la recompilation
+    } catch (e) {
+      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) });
+      return false;
+    }
+    return true;
+  };
+
+  // Écrit toutes les fiches complètes de la liste reçue : celle dont l'identifiant existe
+  // déjà dans le .md est réécrite en place, une autre est ajoutée à la suite des fiches
+  // existantes. Une fiche incomplète est silencieusement ignorée — le formulaire ne l'a
+  // pas proposée à l'enregistrement pour cette raison même. Rend le nombre de fiches
+  // écrites, ou -1 en cas d'échec déjà signalé.
+  const enregistrer = async (liste) => {
+    const texte = await texteArticle();
+    let travail = texte;
+    let total = 0;
+    for (const r of (Array.isArray(liste) ? liste : [])) {
+      const id = String((r && r.id) || '');
+      const type = String((r && r.type) || '');
+      if (id === '' || !ressourcesLib.typeValide(type)) { continue; }
+      const valeurs = (r && r.valeurs) || {};
+      // Une image reçue doit rester un chemin sûr sous media/ ; sinon traitée comme
+      // absente plutôt que d'écrire une référence qui casserait le rendu.
+      const propre = Object.assign({}, valeurs, {
+        image: (valeurs.image && relatifImageValide(valeurs.image)) ? valeurs.image : ''
+      });
+      if (!ressourcesLib.ressourceComplete(type, propre)) { continue; }
+      const dejaLa = ressourcesLib.lireRessources(travail).some((x) => x.id === id);
+      const resultat = dejaLa
+        ? ressourcesLib.ecrireRessource(travail, id, type, propre)
+        : { texte: ressourcesLib.ajouterRessource(travail, id, type, propre), ok: true };
+      if (!resultat.ok) { continue; }                // disparue entre-temps : ignorée
+      travail = resultat.texte;
+      total++;
+    }
+    if (travail === texte) { return total; }
+    if (!(await ecrireTexteArticle(travail))) { return -1; }
+    if (rafraichirTout) { rafraichirTout(); }
+    return total;
+  };
+
+  panneau.webview.onDidReceiveMessage(async (msg) => {
+    if (!msg) { return; }
+    if (msg.type === 'pret') { await charger(panneau); return; }
+    if (msg.type === 'modifie') {
+      panneau.title = (msg.modifie ? '● ' : '') + T('ressource.titre', [slug]);
+      return;
+    }
+    if (msg.type === 'enregistrer') {
+      const n = await enregistrer(msg.ressources);
+      if (n < 0) { return; }
+      repondrePanneau(panneau, { type: 'enregistre', auto: !!msg.auto });
+      if (n > 0 && !msg.auto) { vscode.window.setStatusBarMessage(T('ressource.statut.enregistrees', [n]), 5000); }
+      return;
+    }
+    if (msg.type === 'retirer') {
+      if (refuserSiVerrouille()) { return; }
+      const id = String(msg.id || '');
+      if (id === '') { return; }
+      const texte = await texteArticle();
+      const resultat = ressourcesLib.retirerRessource(texte, id);
+      if (!resultat.ok) { return; }                  // déjà partie : rien à faire
+      if (!(await ecrireTexteArticle(resultat.texte))) { return; }
+      if (rafraichirTout) { rafraichirTout(); }
+      return;
+    }
+    if (msg.type === 'deposer-image') {
+      if (refuserSiVerrouille()) {
+        repondrePanneau(panneau, { type: 'image-erreur', id: msg.id, message: T('verrou.refuse') });
+        return;
+      }
+      await deposerImageRessource(fournisseur, panneau, slug, msg);
+      return;
+    }
+    if (msg.type === 'retourArticle') {
+      // Garde « non enregistré », comme dans le gestionnaire des médias.
+      if (msg.modifie) {
+        const choix = await vscode.window.showWarningMessage(
+          T('ressource.quitter.question', [slug]), { modal: true, detail: T('table.quitter.detail') },
+          T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
+        if (choix === undefined) { return; }          // Annuler : on reste
+        if (choix === T('form.enregistrer')) {
+          const n = await enregistrer(msg.ressources);
+          if (n < 0) { return; }                      // échec d'écriture : on reste
+          if (n > 0) { vscode.window.setStatusBarMessage(T('ressource.statut.enregistrees', [n]), 5000); }
+        }
+      }
+      await ouvrirArticle(fournisseur, slug);
+      panneau.dispose();
+      return;
+    }
+  });
+  panneau.webview.html = htmlRessources(crypto.randomBytes(16).toString('hex'));
+}
+
 function activate(context) {
   const fournisseur = new FournisseurRevue();
   const vue = vscode.window.createTreeView(ID_VUE, {
@@ -7873,6 +8156,9 @@ function activate(context) {
     cmdEcriture('szh.editerTable', (item) => ouvrirEditeurTable(fournisseur, item)),
     // Le formulaire des médias de l'article : légendes, crédits, qualité, remplacement.
     cmdEcriture('szh.mediasArticle', (item) => ouvrirGestionMedias(fournisseur, rafraichirTout, item)),
+    // Les fiches de « ressources » de l'article : livres, films, et ce que le moteur
+    // générique de lib/ressources.js portera demain.
+    cmdEcriture('szh.ressourcesArticle', (item) => ouvrirGestionRessources(fournisseur, rafraichirTout, item)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte),
     // L'avertissement part au démarrage d'une tâche : Ctrl+S, le chemin le plus fréquent,
     // ne passe pas par les fonctions du cockpit.

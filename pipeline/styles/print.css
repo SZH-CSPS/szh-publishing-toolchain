@@ -567,6 +567,51 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
   }
 }
 
+/* ── Fiche de ressource (livre, film, …) ───────────────────────────────────────
+   filters/szh-ressource.lua compose le bloc : titre au-dessus, puis une rangée avec le
+   texte à gauche (bibliographie courte, descriptif, lien) et l'image au quart de la
+   largeur, alignée à droite (cahier des charges) — l'ordre du flux suffit à cet alignement,
+   aucun besoin de `float` ni d'`order`.
+   Boîte discrète, sur le modèle de .szh-abstract (§5) : fond neutre, filet gauche, mais
+   sans la couleur annuelle — une fiche n'est pas une mise en avant éditoriale. Chacune
+   reste d'un bloc à la césure des pages, comme une figure. */
+.szh-ressource {
+  background: #f7f7f8; border-left: 3px solid #ccc;
+  padding: 14px 18px; margin: 1.2em 0; break-inside: avoid;
+}
+.szh-ressource-titre p {
+  margin: 0 0 0.5em; font-family: var(--title-family); font-weight: 700;
+  font-size: 1.05rem; line-height: 1.22; color: var(--c-ink);
+}
+.szh-ressource-corps { display: flex; align-items: flex-start; gap: 16px; }
+.szh-ressource-texte { flex: 1 1 auto; min-width: 0; }
+.szh-ressource-texte > *:last-child { margin-bottom: 0; }
+/* Le quart de la largeur du bloc, alignée à droite : une base nulle et une croissance
+   nulle donnent une largeur fixée par flex-basis, jamais grignotée par un texte trop
+   court ni étirée par un texte trop long — même principe qu'une case de grille (§ ci-
+   dessus), au rapport près. */
+.szh-ressource-image { flex: 0 0 25%; max-width: 25%; }
+/* L'image de la fiche est TOUJOURS décorative (cahier des charges) : szh-numerotation.lua
+   l'a donc basculée en fond CSS (.szh-decor, voir plus haut), avec sa largeur naturelle en
+   pixels. Ici c'est la colonne qui donne la largeur, comme dans une case de grille
+   (.szh-grille-case > .szh-decor) — la spécificité de ce sélecteur (deux classes) passe
+   devant le <style> auto-généré en fin de corps (une seule classe), qui l'emporterait
+   sinon par son rang dans la cascade. */
+.szh-ressource-image > .szh-decor { width: 100%; max-width: 100%; }
+.szh-ressource-biblio p {
+  margin: 0 0 0.5em; font-size: 0.85em; color: #444; text-align: left;
+}
+.szh-ressource-lien p { margin: 0.6em 0 0; }
+/* Colonne étroite : le texte passe avant l'image, qui reprend sa largeur naturelle plutôt
+   que de rétrécir jusqu'à l'illisible — même repli que la grille (§ ci-dessus). N'affecte
+   que l'écran ; WeasyPrint n'applique pas @media screen. */
+@media screen {
+  @media (max-width: 30rem) {
+    .szh-ressource-corps { display: block; }
+    .szh-ressource-image { max-width: 40%; margin: 0.6em 0 0; }
+  }
+}
+
 /* Tableaux importés bruts (<table> nu, non .szh-tableau) : style générique sobre. */
 table { border-collapse: collapse; font-size: 0.85rem; margin: 1.4em 0; width: 100%; }
 th, td { border: 1px solid #999; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }
