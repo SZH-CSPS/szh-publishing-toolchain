@@ -18,6 +18,18 @@ const Module = require('module');
 
 const LF = String.fromCharCode(10);
 
+// Garde-fou anti-réseau. Posée dès que ce fichier est chargé — avant tout require de
+// extension.js — pour couvrir le crochet Module._load ci-dessous autant que les caches
+// écrits plus bas. lib/auteurs-ojs.js (recupererHttps) est le SEUL endroit de tout le
+// cockpit qui ouvre une vraie connexion https ; lib/mots-cles-edudoc.js le réutilise tel
+// quel plutôt que d'en écrire un second. Une seule variable, respectée à cet unique
+// endroit, couvre donc les deux moissonneurs — et n'importe quel futur module qui s'y
+// brancherait. Si un test laisse passer un appel réel malgré un cache qu'on croyait frais
+// (nouvelle migration de format, oubli d'un `recuperer` factice…), l'appel échoue tout de
+// suite avec un message clair, au lieu de partir en silence interroger ojs.szh.ch ou
+// edudoc.ch — la panne qui a motivé ce garde-fou (voir plus bas, cache des auteur·e·s).
+process.env.SZH_RESEAU_INTERDIT = '1';
+
 // Une revue minimale mais complète : deux articles dont un sans fiche, un portrait à ses
 // trois versions désigné par la fiche, une image insérée dans le texte, un Word en attente
 // et le rapport de la dernière conversion.
@@ -75,9 +87,14 @@ function activerHote(revue) {
   // Un cache d'auteur·e·s FRAIS avant l'activation : l'extension rafraîchit la liste
   // OAI-PMH en tâche de fond quand dateFetch a plus de trente jours, et aucun test ne doit
   // faire de réseau. Le fichier sert aussi de corpus au message auteurs-connus.
+  //
+  // Écrit directement en FORME v2 (lib/auteurs-ojs.js) : un cache v1 se ferait migrer par
+  // lireCache(), qui remet dateFetch à null — « périmé », donc moissonné pour de vrai. C'est
+  // exactement ce qui s'est produit (25.08.2026 -> 31.08.2026) : les 19 tests qui passent par
+  // cet hôte factice interrogeaient réellement ojs.szh.ch, en silence, à chaque exécution.
   process.env.SZH_AUTEURS_CACHE = path.join(revue, 'auteurs.json');
   fs.writeFileSync(process.env.SZH_AUTEURS_CACHE, JSON.stringify({
-    version: 1, dateFetch: new Date().toISOString(),
+    version: 2, dateFetch: new Date().toISOString(), dateCorpus: null, ror: {}, vus: {},
     auteurs: [
       { prenom: 'Robin', nom: 'Morand', datePublication: '2026-01-01T00:00:00Z' },
       { prenom: 'Anne', nom: 'Dupont', datePublication: '2025-06-01T00:00:00Z' }

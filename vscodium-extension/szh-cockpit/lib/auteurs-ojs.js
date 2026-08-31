@@ -488,8 +488,23 @@ function resoudreRedirection(urlCourante, location) {
 // réponse bornée à OCTETS_MAX_REPONSE, et délai TOTAL par requête en plus du timeout
 // d'inactivité. `options` est réservé aux tests : { transport, delaiTotalMs } — le
 // transport factice y rejoue les trois pannes sans réseau ni attente réelle.
+//
+// Point de passage UNIQUE vers un vrai socket https dans tout le cockpit — lib/mots-cles-
+// edudoc.js réutilise cette même fonction plutôt que d'écrire son propre client. D'où la
+// garde SZH_RESEAU_INTERDIT juste ici plutôt que dans chacun des deux moissonneurs : elle
+// les couvre tous les deux (et tout futur module qui s'y brancherait) d'un seul geste. Elle
+// ne se déclenche que si AUCUN transport factice n'est fourni — un test qui injecte le sien
+// pour éprouver recupererHttps elle-même (redirections, taille, délais) n'est pas concerné,
+// puisqu'il ne touche jamais le réseau. `test/js/hote-factice.js` pose cette variable pour
+// tous les tests qui activent l'extension : un appel réel échoue alors tout de suite, fort
+// et clair, au lieu de partir en silence vers ojs.szh.ch ou edudoc.ch.
 function recupererHttps(url, redirections, options) {
   const o = options || {};
+  if (!o.transport && process.env.SZH_RESEAU_INTERDIT) {
+    return Promise.reject(new Error(
+      'accès réseau réel bloqué en test (SZH_RESEAU_INTERDIT) : ' + url +
+      ' — un `recuperer` ou un `transport` factice doit être injecté'));
+  }
   const transport = o.transport || ((u, opts, cb) => https.get(u, opts, cb));
   const delaiTotal = o.delaiTotalMs === undefined ? DELAI_TOTAL_MS : o.delaiTotalMs;
   return new Promise((resolve, reject) => {
