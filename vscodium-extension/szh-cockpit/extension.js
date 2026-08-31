@@ -2382,6 +2382,19 @@ function reselectionnerArticle(fournisseur, slug) {
     .catch(() => { /* arbre en pleine reconstruction : la sélection suivra au prochain clic */ });
 }
 
+// A1 (lot G2) : le clic sur l'édition des métadonnées ou des médias d'une unité — article
+// ou chapitre — donne le focus à l'arbre, comme le suivi de ouvrirArticle (déplie ses
+// assets, ouvre la section qui la contient, la resélectionne), mais SANS ouvrir son .md ni
+// son aperçu : ces deux formulaires pleine page ferment déjà l'aperçu de leur côté, et
+// ouvrir le texte par-dessus leur webview n'aurait pas de sens. Pas de focus clavier non
+// plus : le formulaire qui vient de s'ouvrir garde la main.
+function focaliserUnite(fournisseur, slug) {
+  let arbreChange = fournisseur.definirDeploye(slug);
+  arbreChange = fournisseur.definirSectionDeployee(categorieUnites()) || arbreChange;
+  if (arbreChange) { fournisseur.rafraichir(); }
+  reselectionnerArticle(fournisseur, slug);
+}
+
 // Au démarrage, si l'éditeur actif est déjà un article, enchaîner ce que fait un clic
 // dans la barre latérale. Ici et non dans le lanceur PowerShell : un make lancé depuis
 // Windows concurrencerait `triggerTaskOnSave`, et le Makefile n'a pas de verrou.
@@ -2503,12 +2516,18 @@ async function ouvrirArticle(fournisseur, slug, opts) {
 }
 
 // Lance compilerPuisAfficher sans l'attendre ; le catch évite un rejet non capturé.
-function relancerCompilation(fournisseur, slug) {
-  compilerPuisAfficher(fournisseur, slug).catch(() => { /* signalé côté build */ });
+// `opts.sansAffichage` (A3, lot G2) : la compilation part, mais son résultat ne rouvre
+// aucun aperçu — pour l'enregistrement des métadonnées, qui doit recompiler en tâche de
+// fond sans jamais rouvrir ce que A1 vient de fermer (aperçu HTML ou PDF).
+function relancerCompilation(fournisseur, slug, opts) {
+  compilerPuisAfficher(fournisseur, slug, opts).catch(() => { /* signalé côté build */ });
 }
 
 // L'aperçu manque encore : une seule passe est relancée en tâche de fond, sans boucler.
-async function compilerPuisAfficher(fournisseur, slug) {
+// Chemin UNIQUE de compilation d'un article : ouvrirArticle (aperçu périmé ou manquant) et
+// l'enregistrement des métadonnées (A3) passent tous deux par ici, sous la même garde
+// `buildEnCours` — jamais deux compilations à la fois, quel que soit le déclencheur.
+async function compilerPuisAfficher(fournisseur, slug, opts) {
   if (buildEnCours || importEnCours) { return; }
   if (compilationAutoCoupee()) { return; }         // pas de compilation implicite
 
@@ -2523,6 +2542,11 @@ async function compilerPuisAfficher(fournisseur, slug) {
   }
   if (code === null) { return; }                   // tâche introuvable, déjà signalé
   if (code !== 0) { avertirEchecCompilation('err.build'); return; }
+  // A3 : rien à afficher, un formulaire pleine page (métadonnées) occupe l'écran et
+  // l'aperçu a été fermé exprès — le rouvrir ici volerait le focus qu'A1 vient de donner
+  // à l'arbre. Ni webview.html réassigné ni panneau PDF rouvert : la garde d'interaction
+  // (differer, lib/interaction.js) n'a donc rien à protéger sur ce chemin.
+  if (opts && opts.sansAffichage) { return; }
   if (apercuCourantSlug !== slug || !fournisseur.racine) { return; }   // article changé entre-temps
   if (modeApercu() === 'html') {
     if (panneauApercuHtml) { ouvrirApercuHtml(fournisseur, slug); }
@@ -3461,6 +3485,7 @@ function ecrireCartesArticles(fournisseur, cartes, slugsAutorises, panneau) {
   let n = 0;
   const erreurs = [];
   const refus = [];
+  const ecrits = [];           // slugs réellement écrits — A3 (lot G2) relance leur compilation
   let recharger = false;
   for (const slug of Object.keys(cartes || {})) {
     if (!connus.has(slug)) { continue; }           // slug inconnu : ignoré
@@ -3492,6 +3517,7 @@ function ecrireCartesArticles(fournisseur, cartes, slugsAutorises, panneau) {
       ecrireAtomique(fichierMeta, serialiserMeta(carte));
       rafraichirEmpreinteCoedition(fournisseur.racine, fichierMeta);
       n++;
+      ecrits.push(slug);
       // La langue de l'article a changé : la webview a permuté les contenus entre les
       // deux langues, et les statuts du suivi de traduction suivent leurs contenus —
       // sinon « finalisé » désignerait le mauvais texte. Un échec ici n'annule pas
@@ -3505,7 +3531,7 @@ function ecrireCartesArticles(fournisseur, cartes, slugsAutorises, panneau) {
       erreurs.push(slug + ' (' + e.message + ')');
     }
   }
-  return { n: n, erreurs: erreurs, refus: refus, recharger: recharger };
+  return { n: n, erreurs: erreurs, refus: refus, recharger: recharger, ecrits: ecrits };
 }
 
 // Le message à afficher après ecrireCartesArticles, ou null quand tout est passé. Les
@@ -3515,6 +3541,17 @@ function messageCartes(res) {
   const morceaux = (res.refus || []).slice();
   if (res.erreurs.length > 0) { morceaux.push(T('err.ecriture', [res.erreurs.join(', ')])); }
   return morceaux.length > 0 ? morceaux.join(' ') : null;
+}
+
+// A3 (lot G2) : l'enregistrement des métadonnées relance la compilation de chaque article
+// écrit, en tâche de fond (opts.sansAffichage — voir compilerPuisAfficher). Chemin UNIQUE :
+// relancerCompilation, sous la garde buildEnCours ; plusieurs slugs dans le même
+// enregistrement n'en ouvrent qu'une — la seconde voit buildEnCours déjà posé et s'abstient
+// (lancerBuild recompile tout l'incrémental du numéro, pas un slug isolé).
+function relancerCompilationCartes(fournisseur, res) {
+  for (const slug of (res && res.ecrits) || []) {
+    relancerCompilation(fournisseur, slug, { sansAffichage: true });
+  }
 }
 
 function htmlApercuMetadonnees(nonce) {
@@ -5850,6 +5887,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
         }
         vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000);
         if (rafraichirTout) { rafraichirTout(); }
+        relancerCompilationCartes(fournisseur, res);        // A3 : en tâche de fond
       }
       appliquerFiltre(panneau, attente.filtre);
       return;
@@ -5868,6 +5906,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
       if (!msg.auto) { vscode.window.setStatusBarMessage(T('statut.fiches', [res.n]), 3000); }
     }
     if (rafraichirTout) { rafraichirTout(); }
+    relancerCompilationCartes(fournisseur, res);      // A3 : en tâche de fond, auto ou non
     // Un enregistrement automatique ne renvoie pas les cartes : le curseur sauterait. Une
     // fiche périmée, elle, l'exige — l'écran ne montre plus ce que le fichier contient, et
     // la saisie doit être refaite sur des valeurs à jour.
@@ -5889,6 +5928,7 @@ async function ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item) {
     vscode.window.setStatusBarMessage(T('fiches.horsarticle'), 4000);
     return;
   }
+  focaliserUnite(fournisseur, slug);          // A1 : le focus suit le clic, aperçu fermé plus bas
   await ouvrirApercuMetadonnees(fournisseur, rafraichirTout, [slug]);
 }
 
@@ -6891,6 +6931,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
     vscode.window.setStatusBarMessage(T('fiches.horsarticle'), 4000);
     return;
   }
+  focaliserUnite(fournisseur, slug);   // A1 : le focus suit le clic, aperçu fermé plus bas
   // Mis à jour à chaque ouverture : le gestionnaire d'un panneau déjà ouvert le lit.
   let focus = String((item && item.focus) || '');
   const md = path.join(racine, dossierUnites(), slug, slug + '.md');
@@ -7649,6 +7690,10 @@ module.exports = {
     mainCoedition, ecrireSousMain, refusCoedition, refusCoeditionNumero,
     noterLectureCoedition, rafraichirEmpreinteCoedition, libererCoedition,
     ecrireCartesArticles, messageCartes, moiCoedition,
+    // A1/A3 (lot G2) : le focus de l'arbre sur une unité, et le chemin unique de
+    // compilation — buildEnCours, apercuCourantSlug et panneauApercuHtml restent des
+    // variables de module, donc lus sur l'hôte réellement activé, pas rejouables à froid.
+    focaliserUnite, relancerCompilation, compilerPuisAfficher, relancerCompilationCartes,
     avertirCopiesConflit, oublierCopiesSignalees, ecrireClesAusgabe,
     // La résolution d'une copie en conflit : le fournisseur de diff rapide qui la donne pour
     // « original », et les deux sens de résolution.

@@ -94,6 +94,14 @@ function activerHote(revue) {
     return brancher;
   };
   const finTache = emetteur();
+  // La dernière TaskExecution rendue par executeTask(), par nom de tâche : lancerTache()
+  // (extension.js) n'accepte la fin de SA tâche que sur `e.execution === execution`, la
+  // même référence que celle rendue par vscode.tasks.executeTask(). Sans elle, finirTache()
+  // ne pouvait faire aboutir que le SUIVEUR global (onDidStartTask/onDidEndTaskProcess,
+  // qui ne compare que le nom) — jamais l'attente propre de lancerTache(), ce qui interdit
+  // de tester une compilation du cockpit qui va à son terme. Vide tant que fetchTasks()
+  // ne rend rien (le défaut) : finirTache() retombe alors sur la forme d'avant.
+  const executionsParTache = {};
   const barres = [];
   const panneaux = [];
   const avertissements = [];
@@ -289,7 +297,12 @@ function activerHote(revue) {
     },
     tasks: {
       onDidStartTask: evenement(), onDidEndTaskProcess: finTache,
-      fetchTasks: () => Promise.resolve([]), executeTask: () => Promise.resolve({})
+      fetchTasks: () => Promise.resolve([]),
+      executeTask: (tache) => {
+        const execution = { task: tache };
+        if (tache && tache.name) { executionsParTache[tache.name] = execution; }
+        return Promise.resolve(execution);
+      }
     },
     languages: { registerHoverProvider: () => ({ dispose() {} }) }
   };
@@ -336,9 +349,15 @@ function activerHote(revue) {
     barres: barres,
     barreQuiDit: (fragment) => barres.filter(
       (b) => b.visible && String(b.text).indexOf(fragment) !== -1).pop() || null,
-    // Simule la fin d'une tâche de la chaîne, comme VS Code la signale.
+    // Simule la fin d'une tâche de la chaîne, comme VS Code la signale. Reprend la
+    // TaskExecution qu'executeTask() a rendue pour ce nom, si le cockpit a bien lancé LUI-
+    // MÊME cette tâche (fetchTasks() la lui aura fait trouver) : c'est cette même référence
+    // que lancerTache() attend pour résoudre. Sinon (le défaut, fetchTasks() vide — Ctrl+S
+    // et triggerTaskOnSave, hors du cockpit), une exécution synthétique, comme avant : le
+    // suiveur global (onDidStartTask/onDidEndTaskProcess) ne regarde que le nom.
     finirTache: (nom, code) => finTache.emettre({
-      exitCode: code, execution: { task: { name: nom, definition: { type: 'process' } } }
+      exitCode: code,
+      execution: executionsParTache[nom] || { task: { name: nom, definition: { type: 'process' } } }
     }),
     // Une réponse par appel à venir, dans l'ordre : appeler deux fois enfile deux réponses.
     repondreModale: (v) => { reponsesModales.push(v); },
