@@ -179,6 +179,61 @@ def copier_ressource(src: Path, dst: Path, nom_ressource: str, contexte: str) ->
     return True
 
 # --------------------------------------------------------------------------------------
+# Constats nommés — même forme que docx-meta.py, docx-tables.py et reimporter.py : un code
+# stable, des champs, une phrase française puis allemande, sur stderr ET dans SZH_IMPORT_LOG
+# si le lanceur en a posé un. C'est l'absence de cette forme qui a rendu l'incident du
+# B329 indiagnosticable le 31.08 : un « ⚠ » perdu dans stderr, jamais bloquant, suivi d'un
+# rmtree — voir docs/REPRISE-LIVRES.md. Le code est ce qu'un outil de surveillance doit
+# chercher ; les phrases ne sont qu'un repli d'affichage.
+# --------------------------------------------------------------------------------------
+PREFIXE_AVERT = '[scission-avertissement]'
+
+def avertir(code: str, champs: list, fr: str, de: str) -> None:
+    ligne = ' | '.join([PREFIXE_AVERT + ' ' + code] + list(champs) + [fr, '[de] ' + de])
+    print(ligne, file=sys.stderr)
+    journal = os.getenv('SZH_IMPORT_LOG')
+    if not journal:
+        return
+    try:
+        with open(journal, 'a', encoding='utf-8', newline='\n') as f:
+            f.write(ligne + '\n')
+    except OSError:
+        pass                                  # un journal illisible ne casse pas la scission
+
+def copier_medias_references(chemin_md: Path, dossier_source_medias: Path) -> tuple:
+    """
+    Complète, à côté d'un fichier markdown écrit à la main (une pièce liminaire, ou le
+    texte de tête recueilli par lire_chapitre() et mis de côté par main()), les images et
+    tableaux qu'il référence mais qui n'y sont pas encore — en les cherchant dans
+    dossier_source_medias, le chapitre en cours de scission : c'est de là que vient le
+    plus souvent ce texte recopié à la main (impressum-du-livre.md du B329 citait sept
+    images sans avoir copié le media/ du manuscrit — voir docs/REPRISE-LIVRES.md, 31.08).
+
+    Symétrique de la copie déjà faite pour les sections d'un chapitre : même forme de
+    chemin relatif (« media/xxx.png »), même copier_ressource().
+
+    Retourne (copiees, manquantes), deux listes de chemins relatifs.
+    """
+    with open(chemin_md, 'r', encoding='utf-8') as f:
+        contenu = f.read()
+
+    refs = extraire_references(contenu)
+    dossier_dest = chemin_md.parent
+    copiees, manquantes = [], []
+
+    for chemin_relatif in sorted(refs['images']) + sorted(refs['tables']):
+        chemin_dst = dossier_dest / chemin_relatif
+        if chemin_dst.exists():
+            continue
+        chemin_src = dossier_source_medias / chemin_relatif
+        if copier_ressource(chemin_src, chemin_dst, chemin_relatif, chemin_md.name):
+            copiees.append(chemin_relatif)
+        else:
+            manquantes.append(chemin_relatif)
+
+    return copiees, manquantes
+
+# --------------------------------------------------------------------------------------
 # Écriture de buch.yaml
 # --------------------------------------------------------------------------------------
 def lire_buch_yaml(chemin_buch: str) -> dict:
@@ -247,6 +302,7 @@ def main():
     dossier_original = chemin_md.parent
     dossier_chapitres = dossier_livre / 'chapitres'
     dossier_buch = dossier_livre / 'buch.yaml'
+    dossier_liminaires = dossier_livre / 'liminaires'
 
     # Lire le chapitre et le découper
     print(f"Lecture de {chemin_md}...", file=sys.stderr)
@@ -283,6 +339,14 @@ def main():
     dossiers_crees = []
     media_utilises = defaultdict(set)  # chaque image -> qui la référence
     tables_utilisees = defaultdict(set)
+    # Toute ressource manquante ici interdit la suppression du chapitre d'origine : c'est
+    # dossier_original qui est censé la fournir (import-medias.py y a renommé les figures),
+    # donc une absence est suspecte et la détruire avant diagnostic est ce qui a rendu le
+    # B329 indiagnosticable. Un manque signalé dans une pièce liminaire déjà existante n'a
+    # pas cette garantie (le liminaire peut citer une image d'un tout autre chapitre, déjà
+    # scindé depuis longtemps) : il se dit, mais ne bloque pas une scission sans rapport.
+    ressources_manquantes = []
+    liminaires_manquantes = []
 
     try:
         for i, (titre, contenu) in enumerate(sections):
@@ -319,8 +383,19 @@ def main():
                 chemin_dst = dossier_nouveau / img_path
 
                 if not copier_ressource(chemin_src, chemin_dst, img_path, slug_numerote):
-                    print(f"  ⚠ Image introuvable : {img_path} (référencée par {slug_numerote})",
-                          file=sys.stderr)
+                    ressources_manquantes.append(('image', img_path, slug_numerote))
+                    avertir(
+                        'image-introuvable',
+                        ['chapitre « %s »' % slug_numerote, 'image « %s »' % img_path],
+                        "L'image « %s », référencée par le nouveau chapitre « %s », est "
+                        "introuvable à l'endroit attendu (%s). Le chapitre ne reçoit que le "
+                        "texte, pas l'image ; le dossier d'origine ne sera PAS supprimé : "
+                        "diagnostiquez d'abord pourquoi elle manque."
+                        % (img_path, slug_numerote, chemin_src),
+                        'Das von Kapitel « %s » referenzierte Bild « %s » wurde an der '
+                        'erwarteten Stelle (%s) nicht gefunden. Das Kapitel erhält nur den '
+                        'Text, nicht das Bild; der Ursprungsordner wird NICHT gelöscht: '
+                        'zuerst klären, warum es fehlt.' % (slug_numerote, img_path, chemin_src))
 
             # Copier les tableaux
             for table_path in refs['tables']:
@@ -330,8 +405,106 @@ def main():
                 chemin_dst = dossier_nouveau / table_path
 
                 if not copier_ressource(chemin_src, chemin_dst, table_path, slug_numerote):
-                    print(f"  ⚠ Tableau introuvable : {table_path} (référencé par {slug_numerote})",
+                    ressources_manquantes.append(('tableau', table_path, slug_numerote))
+                    avertir(
+                        'tableau-introuvable',
+                        ['chapitre « %s »' % slug_numerote, 'tableau « %s »' % table_path],
+                        "Le tableau « %s », référencé par le nouveau chapitre « %s », est "
+                        "introuvable à l'endroit attendu (%s). Le dossier d'origine ne sera "
+                        "PAS supprimé : diagnostiquez d'abord pourquoi il manque."
+                        % (table_path, slug_numerote, chemin_src),
+                        'Die von Kapitel « %s » referenzierte Tabelle « %s » wurde an der '
+                        'erwarteten Stelle (%s) nicht gefunden. Der Ursprungsordner wird '
+                        'NICHT gelöscht: zuerst klären, warum sie fehlt.'
+                        % (slug_numerote, table_path, chemin_src))
+
+        # Le texte de tête (avant le premier titre de niveau 1) n'entre dans AUCUN des
+        # nouveaux chapitres : lire_chapitre() le sépare, mais rien ne l'écrivait plus
+        # loin — jeté en silence par l'ancien main(). C'est ainsi qu'impressum-du-livre.md
+        # a vu le jour : quelqu'un l'a retrouvé en lisant le .md source, recopié à la main
+        # dans liminaires/, syntaxe d'image comprise, sans le media/ qui va avec (voir
+        # docs/REPRISE-LIVRES.md, 31.08). On ne l'écrit PAS nous-même dans liminaires/ :
+        # les pièces liminaires sont éditoriales et écrites à la main (livre.mk:88), et un
+        # fichier posé là sans revue se ferait passer pour l'une d'elles à la prochaine
+        # compilation. On le met de côté, on le dit, et on lui évite de perdre ses images
+        # si jamais quelqu'un le recopie ensuite dans liminaires/ comme pour le B329.
+        if liminaire_texte.strip():
+            chemin_rescape = dossier_chapitres / f'_scission-{slug_original}-liminaire-non-repris.md'
+            with open(chemin_rescape, 'w', encoding='utf-8') as f:
+                f.write(liminaire_texte.strip() + '\n')
+
+            refs_liminaire = extraire_references(liminaire_texte)
+            images_citees = sorted(refs_liminaire['images'])
+            copiees_rescape, manquantes_rescape = copier_medias_references(
+                chemin_rescape, dossier_original)
+            for chemin_relatif in copiees_rescape:
+                media_utilises[chemin_relatif].add('liminaire-non-repris')
+                print(f"  Média mis de côté avec le texte non repris : {chemin_relatif}",
+                      file=sys.stderr)
+
+            avertir(
+                'liminaire-texte-non-repris',
+                ['chapitre « %s »' % slug_original,
+                 'lignes %d' % len(liminaire_texte.splitlines())]
+                + (['images citées %d' % len(images_citees)] if images_citees else []),
+                "Le document portait du texte avant son premier titre de niveau 1 (%d "
+                "ligne(s)) : il n'entre dans aucun des nouveaux chapitres et ne "
+                "s'imprimera nulle part. Il a été mis de côté dans %s%s. Les pièces "
+                "liminaires (préface, impressum…) s'écrivent à la main dans %s : si ce "
+                "texte doit y figurer, recopiez-le vous-même."
+                % (len(liminaire_texte.splitlines()), chemin_rescape,
+                   (" (avec %d image(s) déjà retrouvée(s) à côté)" % len(copiees_rescape))
+                   if copiees_rescape else '', dossier_liminaires),
+                'Das Dokument enthielt Text vor seiner ersten Überschrift 1. Ordnung (%d '
+                'Zeile(n)): er fliesst in keines der neuen Kapitel ein und wird nirgends '
+                'gedruckt. Er wurde in %s abgelegt. Liminarien (Vorwort, Impressum…) '
+                'werden von Hand in %s geschrieben: falls dieser Text dorthin gehört, '
+                'übertragen Sie ihn selbst.'
+                % (len(liminaire_texte.splitlines()), chemin_rescape, dossier_liminaires))
+
+            for chemin_relatif in manquantes_rescape:
+                ressources_manquantes.append(('liminaire-non-repris', chemin_relatif, slug_original))
+                avertir(
+                    'liminaire-texte-media-introuvable',
+                    ['chapitre « %s »' % slug_original, 'média « %s »' % chemin_relatif],
+                    "Le texte de tête mis de côté (%s) cite « %s », introuvable dans le "
+                    "chapitre d'origine. Le dossier d'origine ne sera PAS supprimé : "
+                    "retrouvez ce média avant de le recopier à la main dans une pièce "
+                    "liminaire." % (chemin_rescape, chemin_relatif),
+                    'Der beiseitegelegte Kopftext (%s) nennt « %s », im Ursprungskapitel '
+                    'nicht gefunden. Der Ursprungsordner wird NICHT gelöscht: dieses '
+                    'Medium zuerst wiederfinden.' % (chemin_rescape, chemin_relatif))
+
+        # La chaîne alimente déjà media/ pour les chapitres ; elle ne le faisait pour
+        # aucune pièce liminaire (« grep liminaires/media » sur tout pipeline/ ne rendait
+        # rien avant ce correctif), alors qu'une pièce liminaire suit la même convention de
+        # chemin relatif. On comble donc, depuis le chapitre en cours de scission, ce qui
+        # manque à côté de chaque liminaire déjà écrite à la main — sans jamais créer ou
+        # modifier le texte d'une liminaire, seulement ses médias.
+        if dossier_liminaires.is_dir():
+            for chemin_liminaire in sorted(dossier_liminaires.glob('*.md')):
+                copiees_lim, manquantes_lim = copier_medias_references(
+                    chemin_liminaire, dossier_original)
+                for chemin_relatif in copiees_lim:
+                    media_utilises[chemin_relatif].add('liminaire:' + chemin_liminaire.name)
+                    print(f"  Média copié pour {chemin_liminaire.name} : {chemin_relatif}",
                           file=sys.stderr)
+                for chemin_relatif in manquantes_lim:
+                    liminaires_manquantes.append((chemin_liminaire.name, chemin_relatif))
+                    avertir(
+                        'liminaire-media-introuvable',
+                        ['liminaire « %s »' % chemin_liminaire.name,
+                         'média « %s »' % chemin_relatif],
+                        "La pièce liminaire « %s » cite « %s », introuvable aussi bien à "
+                        "côté d'elle que dans le chapitre « %s » en cours de scission. Les "
+                        "pièces liminaires s'écrivent à la main : déposez ce média "
+                        "vous-même dans %s." % (chemin_liminaire.name, chemin_relatif,
+                                                 slug_original, dossier_liminaires),
+                        'Die Liminarie « %s » nennt « %s », weder neben ihr noch im gerade '
+                        'aufgeteilten Kapitel « %s » gefunden. Liminarien werden von Hand '
+                        'geschrieben: legen Sie dieses Medium selbst in %s ab.'
+                        % (chemin_liminaire.name, chemin_relatif, slug_original,
+                           dossier_liminaires))
 
         # Signaler les ressources orphelines
         if dossier_media_original.exists():
@@ -360,9 +533,33 @@ def main():
         print(f"Écriture de buch.yaml avec ordre-chapitres...", file=sys.stderr)
         ecrire_buch_yaml(str(dossier_buch), buch_data)
 
-        # Supprimer le chapitre d'origine (seulement si on a réussi à ce point)
-        print(f"Suppression de {dossier_original}...", file=sys.stderr)
-        shutil.rmtree(dossier_original)
+        # Supprimer le chapitre d'origine — seulement si TOUT ce qu'il devait fournir a pu
+        # être copié. C'est le correctif du 31.08 : une copie qui échoue interdit désormais
+        # la destruction de la source, quelle que soit la ressource en cause (image ou
+        # tableau d'une section, ou média d'un texte de tête mis de côté ci-dessus). Un
+        # dossier orphelin à nettoyer à la main coûte moins cher qu'un média disparu sans
+        # trace, et c'est la disparition de cette trace qui a rendu le B329 indiagnosticable.
+        if ressources_manquantes:
+            avertir(
+                'source-non-supprimee',
+                ['chapitre « %s »' % slug_original,
+                 'ressources manquantes %d' % len(ressources_manquantes)],
+                "%d ressource(s) sont restées introuvables pendant la scission de « %s » "
+                "(voir les avertissements ci-dessus). Le dossier d'origine « %s » n'a PAS "
+                "été supprimé : il reste sur le disque, EN PLUS des nouveaux chapitres, et "
+                "sera compilé deux fois si vous ne le retirez pas vous-même une fois les "
+                "ressources retrouvées et recopiées à la main."
+                % (len(ressources_manquantes), slug_original, dossier_original),
+                '%d Ressource(n) blieben beim Aufteilen von « %s » unauffindbar (siehe '
+                'Warnungen oben). Der Ursprungsordner « %s » wurde NICHT gelöscht: er '
+                'bleibt ZUSÄTZLICH zu den neuen Kapiteln auf der Platte und wird doppelt '
+                'kompiliert, wenn Sie ihn nicht selbst entfernen, sobald die fehlenden '
+                'Ressourcen wiedergefunden und von Hand übertragen wurden.'
+                % (len(ressources_manquantes), slug_original, dossier_original))
+            print(f"  Scission incomplète : {dossier_original} conservé.", file=sys.stderr)
+        else:
+            print(f"Suppression de {dossier_original}...", file=sys.stderr)
+            shutil.rmtree(dossier_original)
 
         print(f"Succès : {len(sections)} chapitre(s) créé(s)", file=sys.stderr)
         for slug_num, titre in dossiers_crees:
@@ -375,6 +572,18 @@ def main():
         print(f"Les dossiers partiellement créés ne sont PAS supprimés par sécurité", file=sys.stderr)
         import traceback
         traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+    # Échec franc si des ressources manquent, même si la scission elle-même n'a levé
+    # aucune exception. Ce script n'a aucun lanceur connu dans ce dépôt — ni le Makefile
+    # (pipeline/profils/livre.mk), ni le cockpit : il s'invoque à la main (voir l'usage en
+    # tête de fichier). Sortir non nul ici ne peut donc casser aucune automatisation
+    # existante, et c'est ce qui permet de ne pas choisir entre « échouer » et « conserver
+    # la source en le disant » : les deux à la fois. Les chapitres et buch.yaml restent
+    # écrits (rien d'utile n'est perdu), le dossier d'origine reste sur le disque
+    # (ci-dessus), et le code de sortie interdit qu'on lise ce résultat comme un succès —
+    # y compris pour un futur lanceur qui, lui, testerait $?.
+    if ressources_manquantes:
         sys.exit(1)
 
 if __name__ == '__main__':
