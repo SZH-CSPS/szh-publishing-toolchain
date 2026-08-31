@@ -67,8 +67,18 @@ $endfor$
 </div>
 
 <!-- Couverture : hero bleu nuit + filet couleur annuelle + résumés et mots-clés.
-     Pleine-marge sur la 1re page (@page:first marge 0). Le corps de l'article
-     démarre à la page suivante (break-after: page sur .szh-cover). -->
+     Pleine-marge sur la 1re page (@page:first marge 0).
+     ⚠ Ce commentaire a longtemps affirmé que le corps démarrait à la page suivante
+     « par break-after: page sur .szh-cover ». C'est FAUX, et vérifié le 31.08.2026 :
+     cette règle n'existe nulle part, la seule `break-after: page` du projet portant
+     sur .szh-saut, le saut volontaire écrit dans le corps d'un article. Le corps
+     coule donc dans le flux normal, et c'est l'atomicité de chaque .szh-abstract
+     (break-inside: avoid, print.css) qui décide seule de ce qui tient en page 1 :
+     un bloc résumé bascule EN ENTIER, jamais à moitié.
+     Mesuré par compilation de 58 articles d'essai : le résumé passe en page 2
+     au-delà d'environ 830 caractères avec 3 à 5 mots-clés, et 730 avec 6 à 10 — les
+     mots-clés occupant une ligne jusqu'à 5, deux à partir de 6. Passer de 5 à 6
+     mots-clés coûte donc une centaine de caractères de résumé. -->
 <div class="szh-cover">
   <header class="szh-hero">
     <!-- Filigrane de couverture. ⚠ fill est le blanc à 7 % DÉJÀ COMPOSÉ sur le bleu nuit
