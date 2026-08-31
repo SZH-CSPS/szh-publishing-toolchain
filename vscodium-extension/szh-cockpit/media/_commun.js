@@ -686,14 +686,30 @@ var SZH = (function () {
     var conteneur = opts.conteneur;
     var lireTextes = opts.textes || function () { return {}; };
     // Les pieds de carte, par clé : c'est ce qui permet de rafraîchir une seule pastille
-    // sans reconstruire la liste.
+    // sans reconstruire la liste. Les compteurs de tâches suivent le même besoin (A7.5) :
+    // cocher une case ne repose que son entête, jamais la carte entière.
     var pieds = {};
+    var compteurs = {};
+
+    // Le compteur de l'entête « À faire », posé à la construction et reposé seul quand une
+    // case est cochée. `resume` est { texte, toutes } ou null quand la revue ne définit
+    // aucune tâche — un entête sans compteur n'affiche alors que son titre.
+    function poserCompteurTaches(compteur, resume) {
+      compteur.textContent = resume ? (resume.texte || '') : '';
+      compteur.classList.toggle('szh-taches-compteur--ok', !!(resume && resume.toutes));
+    }
 
     // Les tâches de l'article, cochables sur la carte : l'avancement doit se lire et se
     // changer sans ouvrir quoi que ce soit. Une case par tâche, l'intitulé dans son label,
-    // donc rien à apparier par identifiant.
+    // donc rien à apparier par identifiant. Un entête les distingue franchement du reste de
+    // la carte (A7.2) et porte le compteur d'avancement, qui vivait en pastille du pied
+    // avant que A7.5 ne le rapproche des cases qu'il résume.
     function poserTaches(carte, ligne) {
       var bloc = poser(carte, 'div', 'szh-taches');
+      var entete = poser(bloc, 'div', 'szh-taches-entete');
+      poser(entete, 'span', 'szh-taches-titre', (lireTextes() || {}).tachesEntete || '');
+      var compteur = poser(entete, 'span', 'szh-taches-compteur');
+      poserCompteurTaches(compteur, ligne.tachesResume);
       for (var i = 0; i < ligne.taches.length; i++) {
         (function (tache) {
           var l = poser(bloc, 'label', 'szh-tache');
@@ -708,18 +724,24 @@ var SZH = (function () {
           poser(l, 'span', null, tache.libelle || '');
         }(ligne.taches[i]));
       }
-      return bloc;
+      return { bloc: bloc, compteur: compteur };
     }
 
-    // Les pastilles d'une carte, reposées seules. Cocher une tâche ne doit pas reconstruire
-    // la liste : le clavier perdrait le focus de la case qu'il vient d'utiliser, et deux
-    // clics rapprochés courraient contre un DOM en train d'être remplacé.
-    function majPastilles(cle, pastilles) {
+    // Les pastilles d'une carte, reposées seules, et le compteur de son entête « À faire »
+    // avec elles quand l'hôte l'envoie. Cocher une tâche ne doit pas reconstruire la liste :
+    // le clavier perdrait le focus de la case qu'il vient d'utiliser, et deux clics
+    // rapprochés courraient contre un DOM en train d'être remplacé.
+    function majPastilles(cle, pastilles, tachesResume) {
       var pied = pieds[String(cle)];
-      if (!pied) { return; }
-      var anciennes = pied.querySelectorAll('.szh-pastille');
-      for (var i = 0; i < anciennes.length; i++) { pied.removeChild(anciennes[i]); }
-      poserPastilles(pied, pastilles);
+      if (pied) {
+        var anciennes = pied.querySelectorAll('.szh-pastille');
+        for (var i = 0; i < anciennes.length; i++) { pied.removeChild(anciennes[i]); }
+        poserPastilles(pied, pastilles);
+      }
+      if (tachesResume !== undefined) {
+        var compteur = compteurs[String(cle)];
+        if (compteur) { poserCompteurTaches(compteur, tachesResume); }
+      }
     }
 
     function poserPastilles(pied, pastilles) {
@@ -735,6 +757,7 @@ var SZH = (function () {
       var mots = lireTextes() || {};
       conteneur.textContent = '';
       pieds = {};
+      compteurs = {};
       liste = liste || [];
       if (liste.length === 0) {
         conteneur.appendChild(notif('info', mots.listeVide || ''));
@@ -757,7 +780,9 @@ var SZH = (function () {
           var corps = poser(carte, 'div', 'szh-corps');
           corps.appendChild(notif(l.notif.ton || 'info', l.notif.texte));
         }
-        if (l.taches && l.taches.length > 0) { poserTaches(carte, l); }
+        if (l.taches && l.taches.length > 0) {
+          compteurs[String(l.cle || '')] = poserTaches(carte, l).compteur;
+        }
         var pied = poser(carte, 'footer', 'ligne-pied');
         pieds[String(l.cle || '')] = pied;
         if (l.ouvrir) {

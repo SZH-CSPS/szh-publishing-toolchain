@@ -306,6 +306,9 @@ const TEXTES_COCKPIT = {
     'art.taches.enregistrees': '✓ Tâches enregistrées',
     'art.taches.avancement': '{0}/{1} tâches',
     'art.taches.toutes': 'tout est fait',
+    // Titre compact de l'encadré des tâches sur chaque carte d'article (A7.2/A7.5) : le
+    // compteur d'avancement ci-dessus vient s'afficher juste à côté, dans le même entête.
+    'art.taches.entete': 'À faire',
     'art.couverture': 'Couverture du numéro',
     'art.couverture.absente': 'Aucune couverture : l’export OJS partirait sans image de numéro.',
     'art.couverture.deposer': 'Déposer ou remplacer la couverture',
@@ -1267,6 +1270,7 @@ const TEXTES_COCKPIT = {
     'art.taches.enregistrees': '✓ Aufgaben gespeichert',
     'art.taches.avancement': '{0}/{1} Aufgaben',
     'art.taches.toutes': 'alles erledigt',
+    'art.taches.entete': 'Zu erledigen',
     'art.couverture': 'Titelbild der Ausgabe',
     'art.couverture.absente': 'Kein Titelbild: der OJS-Export würde ohne Ausgabenbild weggehen.',
     'art.couverture.deposer': 'Titelbild ablegen oder ersetzen',

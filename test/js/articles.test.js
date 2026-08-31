@@ -268,13 +268,16 @@ test('vue « Articles » : une carte par article, ses tâches et ses commandes',
     boutons: [{ id: 'importer', libelle: 'Convertir', icone: 'fleche' },
               { id: 'taches', libelle: 'Tâches', icone: 'ok' }],
     lignes: [
-      { cle: '01-a', titre: '01 · Premier', meta: '01-a', ouvrir: true,
-        pastilles: [{ texte: '1/4 tâches', ton: 'info', icone: 'fleche' }],
+      // Plus de pastille d'avancement (A7.5) : elle vit dans l'entête « À faire » de la
+      // carte, via `tachesResume` — la pastille reste réservée à d'autres compteurs, comme
+      // celui des images.
+      { cle: '01-a', titre: '01 · Premier', ouvrir: true,
+        pastilles: [], tachesResume: { texte: '1/4 tâches', toutes: false },
         actions: [{ id: 'monter', libelle: 'Monter', icone: 'haut', desactive: true },
                   { id: 'descendre', libelle: 'Descendre', icone: 'bas' },
                   { id: 'envoyer', libelle: 'Envoyer à l’auteur', icone: 'traduction' }],
         taches: taches },
-      { cle: '02-b', titre: '02 · 02-b', meta: '02-b', ouvrir: true,
+      { cle: '02-b', titre: '02 · 02-b', ouvrir: true,
         notif: { ton: 'attention', texte: 'Pas de titre dans la fiche' },
         pastilles: [], actions: [], taches: taches }
     ],
@@ -287,8 +290,10 @@ test('vue « Articles » : une carte par article, ses tâches et ses commandes',
   // Les tâches sont cochables sur la carte : l'avancement se change sans rien ouvrir.
   assert.strictEqual(page.compter('.szh-tache'), 8, 'quatre cases par carte attendues');
   assert.strictEqual(page.compter('[data-tache]'), 8);
-  // Et il se lit sur la carte, en pastille.
+  // Un entête « À faire » par carte à tâches (A7.2), qui porte l'avancement (A7.5).
+  assert.strictEqual(page.compter('.szh-taches-entete'), 2, 'entête « À faire » manquant');
   const textes = page.textes().join(' | ');
+  assert.ok(textes.indexOf('À faire') !== -1, 'le titre compact de l’encadré des tâches a disparu');
   assert.ok(textes.indexOf('1/4 tâches') !== -1, 'avancement absent de la carte');
   assert.ok(textes.indexOf('01 · Premier') !== -1, 'l’article ne porte pas son nom');
   assert.ok(textes.indexOf('Monter') !== -1 && textes.indexOf('Descendre') !== -1,
@@ -394,7 +399,9 @@ test('ordre : un article ajouté à la main apparaît sans casser l’ordre', as
 // Cocher une case ne doit PAS renvoyer « valeurs » : la page reconstruirait sa liste
 // entière, et le focus clavier quitterait la case qu'on vient d'utiliser. La page sait
 // traiter « avancement » depuis longtemps ; c'est l'hôte qui ne l'envoyait pas.
-test('tâches : cocher une case écrit le sidecar, et ne repose que la pastille', async () => {
+// L'avancement lui-même vit dans `tachesResume` (A7.5) et non plus dans `pastilles` :
+// c'est l'entête « À faire » de la carte qu'il faut reposer sans rien reconstruire.
+test('tâches : cocher une case écrit le sidecar, et ne repose que son entête', async () => {
   const sidecar = path.join(REVUE, 'articles', '01-essai', '01-essai.taches.yaml');
   await HOTE.executer('szh.vueArticles');
   const p = HOTE.panneauDeType('szhVueArticles');
@@ -414,8 +421,9 @@ test('tâches : cocher une case écrit le sidecar, et ne repose que la pastille'
   const avancement = p.messages.filter((m) => m.type === 'avancement').pop();
   assert.ok(avancement, 'aucun message « avancement » : la page n’a rien à reposer');
   assert.strictEqual(avancement.cle, '01-essai');
-  assert.strictEqual(avancement.pastilles[0].texte, '1/4 tâches',
+  assert.strictEqual(avancement.tachesResume.texte, '1/4 tâches',
     'l’avancement ne se lit pas sur la carte');
+  assert.strictEqual(avancement.tachesResume.toutes, false);
   // Et l'état coché est bien sur le disque, donc dans le prochain rendu complet.
   await HOTE.executer('szh.vueArticles');
   const relu = p.messages.filter((m) => m.type === 'valeurs').pop()
@@ -425,8 +433,8 @@ test('tâches : cocher une case écrit le sidecar, et ne repose que la pastille'
   // Décocher la dernière case retire le fichier : pas de résidu dans le dossier.
   await p._recepteur({ type: 'tache', cle: '01-essai', id: 'version-finale', cochee: false });
   assert.ok(!fs.existsSync(sidecar), 'sidecar laissé vide sur le disque');
-  assert.strictEqual(p.messages.filter((m) => m.type === 'avancement').pop().pastilles[0].texte,
-    '0/4 tâches', 'la pastille ne redescend pas quand la case est décochée');
+  assert.strictEqual(p.messages.filter((m) => m.type === 'avancement').pop().tachesResume.texte,
+    '0/4 tâches', 'l’avancement ne redescend pas quand la case est décochée');
 });
 
 test('couverture : déposée, elle atterrit là où l’export OJS la cherche', async () => {

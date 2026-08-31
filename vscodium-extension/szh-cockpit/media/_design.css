@@ -223,9 +223,14 @@ label.szh-libelle {
 }
 
 /* ═══ 6. Boutons et icônes ════════════════════════════════════════════════════ */
+/* white-space + flex-shrink: 0 — un bouton compressé par ses voisins pliait son texte sur
+   deux lignes plutôt que de garder sa taille (A7) : deux boutons voisins n'avaient alors
+   plus la même hauteur. Un pied de carte qui manque de place doit passer à la ligne en
+   entier (.ligne-pied, media/_liste.css), jamais rogner un seul bouton. */
 .szh-bouton {
   font: inherit; padding: .35em .75em;
-  display: inline-flex; align-items: center; gap: var(--e2);
+  display: inline-flex; align-items: center; gap: var(--e2); flex-shrink: 0;
+  white-space: nowrap;
   border: 1px solid transparent; border-radius: var(--rayon-mini); cursor: pointer;
   color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground, inherit));
   background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, .18));

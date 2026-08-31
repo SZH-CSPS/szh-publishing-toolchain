@@ -34,7 +34,8 @@
   margin: 0; font-size: var(--t-libelle); color: var(--encre-2);
   overflow-wrap: anywhere; line-height: 1.45;
 }
-.auteur-boutons { flex: 0 0 auto; display: flex; align-items: center; gap: var(--e1); }
+.auteur-boutons { flex: 0 0 auto; display: flex; align-items: center; gap: var(--e1);
+  flex-wrap: wrap; }
 
 /* ---- Modale d'édition : voile plein écran, rien d'actionnable derrière. */
 .voile-auteur {
@@ -89,7 +90,7 @@
   font-size: var(--t-libelle); color: var(--encre-2); line-height: 1.45;
 }
 .note-modale.erreur { color: var(--vscode-errorForeground, #f14c4c); }
-.boutons-modale { display: flex; gap: var(--e2); justify-content: flex-end; }
+.boutons-modale { display: flex; gap: var(--e2); flex-wrap: wrap; justify-content: flex-end; }
 
 /* ---- Autocomplétion prénom/nom : les auteur·e·s déjà publiés (OAI, lib/auteurs-ojs.js).
    La boîte se rattache au bloc du champ où l'on tape ; elle n'existe pas tant que l'hôte

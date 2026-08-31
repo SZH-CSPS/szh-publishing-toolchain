@@ -13,9 +13,11 @@
 .ligne .szh-tete { flex-wrap: wrap; }
 .ligne .szh-corps { padding: var(--e3) var(--e3) 0; }
 /* Le pied : « Ouvrir » à gauche, l'état juste à côté. Toujours à la même place, quelle que
-   soit la longueur du titre — c'est ce qui rend une liste lisible d'un coup d'œil. */
+   soit la longueur du titre — c'est ce qui rend une liste lisible d'un coup d'œil.
+   flex-wrap : quand les boutons et les pastilles ne tiennent plus sur une ligne, le pied
+   entier passe à la ligne suivante (A7) — jamais un seul bouton qui plierait son texte. */
 .ligne-pied {
-  display: flex; align-items: center; gap: var(--e2);
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--e2);
   padding: var(--e3);
 }
 .ligne-pied:empty { display: none; }
@@ -26,11 +28,28 @@
 .bouton-danger:hover { color: var(--vscode-button-foreground, #fff);
   background: var(--vscode-errorForeground, #f85149); }
 
-/* Les tâches de la carte : entre l'encadré et le pied, une case par tâche. En colonne et
-   non en ligne — un intitulé de six mots ne se coupe pas au milieu, et la case reste
-   collée au texte qu'elle coche. */
+/* Les tâches de la carte, dans leur propre encadré (A7.2) : un filet et un fond distincts
+   séparent franchement ce qui reste à faire du reste de la carte, plutôt qu'une case de
+   plus au milieu de l'aperçu. L'entête porte un titre compact et l'avancement — « 2/4
+   tâches », déplacé ici depuis la pastille du pied (A7.5) — puis une case par tâche, en
+   colonne et non en ligne : un intitulé de six mots ne se coupe pas au milieu, et la case
+   reste collée au texte qu'elle coche. */
 .szh-taches { display: flex; flex-direction: column; gap: var(--e1);
-  padding: var(--e3) var(--e3) 0; }
+  margin: var(--e3) var(--e3) 0; padding: var(--e2) var(--e3);
+  border: 1px solid var(--filet); border-radius: var(--rayon-mini);
+  background: var(--surface-tete); }
+.szh-taches-entete {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--e2);
+  margin-bottom: var(--e1);
+}
+.szh-taches-titre {
+  font-size: var(--t-section); font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--encre-2);
+}
+.szh-taches-compteur {
+  font-size: var(--t-libelle); color: var(--encre-2); font-variant-numeric: tabular-nums;
+}
+.szh-taches-compteur--ok { color: var(--vscode-charts-green, #3fb950); font-weight: 700; }
 .szh-tache { display: flex; align-items: flex-start; gap: .5em; cursor: pointer;
   font-size: var(--t-libelle); color: var(--encre); }
 .szh-tache input { flex: 0 0 auto; margin: .15em 0 0; accent-color: var(--accent); }

@@ -352,10 +352,12 @@ test('carte : l’aperçu est complet, et il ne porte aucun champ de saisie', as
   // Neuf champs par carte : rubrique, langue, titre, sous-titre, résumé, mots-clés,
   // auteur·e·s, licence, DOI.
   assert.strictEqual(page.compter('.apercu-rangee'), 9 * 11);
-  // Non éditable : la grille ne porte ni champ de texte ni liste déroulante. La seule case
-  // du bloc est « pas de DOI », qui n'est pas une métadonnée mais une décision de numéro.
-  assert.strictEqual(page.compter('.apercu-grille input'), 0,
-    'un champ de saisie s’est glissé dans l’aperçu : les valeurs se modifieraient à deux endroits');
+  // Non éditable : la grille ne porte ni champ de texte ni liste déroulante. La seule
+  // exception assumée est la case « pas de DOI », qui n'est pas une métadonnée mais une
+  // décision de numéro (A7.1) : elle vit désormais SUR la ligne du DOI qu'elle concerne,
+  // donc dans la grille — les deux comptes suivants doivent donc coïncider.
+  assert.strictEqual(page.compter('.apercu-grille input'), 11,
+    'un champ de saisie autre que la case « pas de DOI » s’est glissé dans l’aperçu');
   assert.strictEqual(page.compter('.apercu-grille select'), 0);
   assert.strictEqual(page.compter('.apercu-grille textarea'), 0);
   assert.strictEqual(page.compter('[data-sansdoi]'), 11, 'une case « pas de DOI » par article');
@@ -374,6 +376,93 @@ test('carte : l’aperçu est complet, et il ne porte aucun champ de saisie', as
   // Un article qui déclare sa langue le dit ; les autres suivent le numéro.
   assert.ok(textes.indexOf('allemand') !== -1, 'la langue déclarée d’un article ne se lit pas');
   assert.ok(textes.indexOf('celle du numéro') !== -1);
+});
+
+// ---- Lot G1 : six retouches de la carte --------------------------------------------
+
+function pageArticlesDe(charge) {
+  const page = ouvrir({
+    racine: RACINE, page: 'articles',
+    cssPartage: ['_design.css', '_liste.css', '_numero.css'], jsPartage: ['_numero.js'],
+    txt: libellesHote(RACINE, ['textesNumero', 'textesArticles'])
+  });
+  page.envoyer(charge);
+  return page;
+}
+
+test('carte : la case « pas de DOI » vit sur la ligne du DOI qu’elle concerne (A7.1)', async () => {
+  const p = await vue();
+  const charge = derniereCharge(p);
+  const page = pageArticlesDe(charge);
+  const cartes = page.conteneur().querySelectorAll('.szh-carte');
+  assert.strictEqual(cartes.length, 11);
+  for (const carte of cartes) {
+    const rangees = carte.querySelectorAll('.apercu-rangee');
+    assert.ok(rangees.length > 0, 'aperçu vide : rien à vérifier ici');
+    // La ligne DOI est toujours la dernière de l'aperçu (apercuArticle, extension.js).
+    const derniere = rangees[rangees.length - 1];
+    assert.strictEqual(derniere.querySelectorAll('[data-sansdoi]').length, 1,
+      'la case « pas de DOI » a quitté la ligne du DOI');
+  }
+});
+
+test('carte : le nom du dossier ne double plus le titre, il reste en infobulle (A7.4)', async () => {
+  const p = await vue();
+  const charge = derniereCharge(p);
+  const page = pageArticlesDe(charge);
+  assert.strictEqual(page.compter('.szh-tete-meta'), 0,
+    'le slug s’affiche encore en toutes lettres à côté du titre, qui porte déjà le rang');
+  const cartes = page.conteneur().querySelectorAll('.szh-carte');
+  for (let i = 0; i < cartes.length; i++) {
+    const nom = cartes[i].querySelectorAll('.szh-tete-nom')[0];
+    assert.strictEqual(nom.title, charge.lignes[i].cle,
+      'le slug a disparu du tout : il devait rester en infobulle du titre, comme identifiant technique');
+  }
+});
+
+test('carte : ses avertissements vivent dans sa barre de titre, plus dans son corps replié (A7.4)', async () => {
+  const p = await vue();
+  const charge = derniereCharge(p);
+  const idx = charge.lignes.findIndex((l) => l.cle === '01-gremion');
+  // Deux avertissements d'images et deux de citations, déjà éprouvés par les contrôles
+  // « compteur d’images » et « appel de citation » plus haut dans ce fichier.
+  assert.strictEqual(charge.lignes[idx].constats.length, 4,
+    'le corpus n’a plus les quatre avertissements connus de 01-gremion');
+  const page = pageArticlesDe(charge);
+  const carte = page.conteneur().querySelectorAll('.szh-carte')[idx];
+  const dansTete = carte.querySelectorAll('.szh-tete .carte-alerte .szh-notif');
+  assert.strictEqual(dansTete.length, 4, 'les avertissements ne sont pas dans la barre de titre');
+  const dansCorps = carte.querySelectorAll('.carte-apercu .szh-notif');
+  assert.strictEqual(dansCorps.length, 0,
+    'les avertissements sont restés (en double) dans le corps replié de l’aperçu');
+  // Un article sans avertissement ne construit aucun encadré parasite dans sa tête.
+  const sans = charge.lignes.findIndex((l) => l.cle === '02-chanier');
+  assert.strictEqual(
+    page.conteneur().querySelectorAll('.szh-carte')[sans].querySelectorAll('.carte-alerte').length, 0,
+    'un encadré d’avertissement vide traîne sur une carte qui n’a rien à signaler');
+});
+
+test('carte : l’avancement des tâches vit dans l’entête « À faire », plus en pastille (A7.5)', async () => {
+  const p = await vue();
+  const charge = derniereCharge(p);
+  assert.ok(!charge.lignes.some((l) => l.pastilles.some((x) => /tâche/.test(x.texte))),
+    'l’hôte envoie encore une pastille d’avancement des tâches, en double avec l’entête');
+  const page = pageArticlesDe(charge);
+  assert.strictEqual(page.compter('.szh-taches-entete'), charge.lignes.length,
+    'l’entête « À faire » manque à une carte');
+  assert.ok(page.textes().join(' | ').indexOf('0/4') !== -1,
+    'l’avancement de départ (0/4 tâches) ne se lit plus nulle part');
+});
+
+test('carte : les boutons du pied suivent l’ordre Ouvrir, Monter, Descendre, puis le reste (A7)', async () => {
+  const p = await vue();
+  const charge = derniereCharge(p);
+  const idx = charge.lignes.findIndex((l) => l.cle === '01-gremion');   // au milieu : rien n’est désactivé
+  const page = pageArticlesDe(charge);
+  const carte = page.conteneur().querySelectorAll('.szh-carte')[idx];
+  const libelles = carte.querySelectorAll('.ligne-pied button').map((b) => b.textContent.trim());
+  assert.deepStrictEqual(libelles.slice(0, 3), ['Ouvrir', 'Monter', 'Descendre'],
+    'Monter et Descendre ne suivent plus directement Ouvrir : ' + libelles.join(' | '));
 });
 
 test('carte : les deux boutons ouvrent les bons formulaires, sur le bon article', async () => {

@@ -72,6 +72,7 @@
     var boites = cartes.querySelectorAll('.szh-carte');
     for (var i = 0; i < boites.length && i < lignes.length; i++) {
       var ligne = lignes[i] || {};
+      decorerTete(boites[i], ligne);
       var bloc = construireBloc(ligne);
       if (!bloc) { continue; }
       var cible = boites[i].querySelector('.szh-taches') || boites[i].querySelector('.ligne-pied');
@@ -79,20 +80,47 @@
     }
   }
 
-  // -> l'élément à insérer, ou null quand la ligne n'apporte ni aperçu, ni constat, ni case.
+  // La tête de la carte (A7.4) : le nom du dossier n'y est plus répété à côté du titre —
+  // « 01 · Construire sa propre rampe » porte déjà le rang, et redire le slug juste après
+  // ne faisait que doubler la même information. Le slug reste l'identifiant technique de
+  // l'article ; il se lit maintenant en infobulle du titre plutôt que sur sa propre ligne.
+  // Les avertissements de la carte montent dans cette même tête, alignés à droite du
+  // titre : c'est là qu'on les voit d'un coup d'œil, avant même d'ouvrir la carte — ils ne
+  // vivent plus, en double, dans le corps replié sous l'aperçu.
+  function decorerTete(carte, ligne) {
+    var tete = carte.querySelector('.szh-tete');
+    if (!tete) { return; }
+    // L'hôte n'envoie plus `meta` pour cette vue (voir extension.js, chargeArticles) ; le
+    // retrait ci-dessous reste une garde, au cas où un ancien message traînerait encore.
+    var meta = tete.querySelector('.szh-tete-meta');
+    if (meta) { meta.remove(); }
+    var nom = tete.querySelector('.szh-tete-nom');
+    if (nom) { nom.title = String(ligne.cle || ''); }
+    var constats = ligne.constats || [];
+    if (constats.length === 0) { return; }
+    var alerte = poser(tete, 'div', 'carte-alerte');
+    for (var i = 0; i < constats.length; i++) {
+      alerte.appendChild(SZH.notif(constats[i].ton || 'attention', constats[i].texte || ''));
+    }
+  }
+
+  // -> l'élément à insérer, ou null quand la ligne n'apporte ni aperçu ni case. Les
+  // avertissements (ligne.constats) sont posés dans la tête de la carte par decorerTete()
+  // ci-dessus (A7.4) : ce bloc ne porte plus que l'aperçu des métadonnées et l'échappatoire.
   function construireBloc(ligne) {
     var apercu = ligne.apercu || null;
-    var constats = ligne.constats || [];
     var sansDoi = ligne.sansDoi || null;
-    if (!apercu && constats.length === 0 && !sansDoi) { return null; }
+    if (!apercu && !sansDoi) { return null; }
     var bloc = document.createElement('div');
     bloc.className = 'carte-apercu';
-    // Ce qui demande un geste d'abord : c'est l'ordre dans lequel on travaille.
-    for (var i = 0; i < constats.length; i++) {
-      bloc.appendChild(SZH.notif(constats[i].ton || 'attention', constats[i].texte || ''));
-    }
     if (apercu) { poserGrille(bloc, apercu.lignes || []); }
-    if (sansDoi) { poserCaseDoi(bloc, ligne); }
+    if (sansDoi) {
+      // Sur la même ligne que le DOI qu'elle concerne (A7.1) : la case rejoint la valeur
+      // de la dernière rangée de la grille — la ligne DOI, toujours en fin d'aperçu — au
+      // lieu de rester un bloc à part sous la grille entière.
+      var valeurs = bloc.querySelectorAll('.apercu-valeur');
+      poserCaseDoi(valeurs.length > 0 ? valeurs[valeurs.length - 1] : bloc, ligne);
+    }
     return bloc;
   }
 
@@ -124,10 +152,11 @@
   }
 
   // La case « pas de DOI ». Verrouillée quand c'est la rubrique qui décide : la case montre
-  // alors l'état sans laisser croire qu'on peut en changer.
-  function poserCaseDoi(bloc, ligne) {
+  // alors l'état sans laisser croire qu'on peut en changer. `parent` est la valeur de la
+  // ligne DOI de l'aperçu (A7.1) — ou, à défaut d'aperçu, le bloc entier.
+  function poserCaseDoi(parent, ligne) {
     var etat = ligne.sansDoi || {};
-    var l = poser(bloc, 'label', 'apercu-doi');
+    var l = poser(parent, 'label', 'apercu-doi');
     var case_ = document.createElement('input');
     case_.type = 'checkbox';
     case_.checked = !!etat.coche;
@@ -326,7 +355,7 @@
     // Une case cochée ne renvoie que sa pastille : reconstruire la liste ferait perdre au
     // clavier le focus de la case qu'il vient d'utiliser.
     if (msg.type === 'avancement') {
-      liste.majPastilles(msg.cle, msg.pastilles || []);
+      liste.majPastilles(msg.cle, msg.pastilles || [], msg.tachesResume);
       return;
     }
     if (msg.type === 'etat') {

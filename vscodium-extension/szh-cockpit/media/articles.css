@@ -28,7 +28,14 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
    contre sa valeur, un pas vertical d'un quart de rem. Neuf champs tiennent alors dans la
    hauteur d'un paragraphe, et l'œil descend la colonne des intitulés sans les relire. */
 .carte-apercu { padding: var(--e3) var(--e3) 0; }
-.carte-apercu .szh-notif { margin: 0 0 var(--e2); }
+
+/* Les avertissements de la carte (A7.4) : posés dans sa tête, à droite du titre — plus
+   dans le corps replié de l'aperçu, où ils étaient les premiers à disparaître avec lui.
+   margin-left: auto les pousse hors du titre, qui reste seul à gauche ; ils passent sous
+   lui si la carte manque de largeur, .szh-tete portant déjà flex-wrap (media/_liste.css). */
+.carte-alerte { display: flex; flex-direction: column; gap: var(--e1);
+  margin-left: auto; min-width: 0; max-width: 26rem; }
+.carte-alerte .szh-notif { font-size: var(--t-mini); padding: var(--e1) var(--e2); }
 
 .apercu-grille { margin: 0; font-size: var(--t-libelle); }
 .apercu-rangee { display: grid; grid-template-columns: 7.5em 1fr; gap: var(--e2);
@@ -56,9 +63,11 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
   border: 1px dashed var(--filet); border-radius: var(--rayon-mini); padding: 0 .3em; }
 
 /* La seule chose qui se coche dans ce bloc, et elle ne touche pas la fiche : c'est une
-   décision sur le numéro. Détachée du reste par un écart, jamais collée à une valeur. */
-.apercu-doi { display: flex; align-items: center; gap: .5em; cursor: pointer;
-  margin: var(--e2) 0 0; font-size: var(--t-libelle); color: var(--encre); }
+   décision sur le numéro. Sur la ligne du DOI qu'elle concerne, et non plus détachée sous
+   la grille entière (A7.1) : un flex-item de plus dans .apercu-valeur, comme le badge de
+   langue ou une marque « manuel » — avec l'écart qui la sépare du texte du DOI. */
+.apercu-doi { display: inline-flex; align-items: center; gap: .35em; cursor: pointer;
+  margin: 0 0 0 .5em; font-size: var(--t-libelle); color: var(--encre); }
 .apercu-doi input { accent-color: var(--accent); }
 .apercu-doi:hover { color: var(--accent); }
 .apercu-doi input:disabled { cursor: default; }
@@ -94,7 +103,8 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
   color: var(--vscode-input-foreground); background: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini); }
 .taches-rangee input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.taches-pied { display: flex; align-items: center; gap: var(--e2); margin-top: var(--e4); }
+.taches-pied { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
+  margin-top: var(--e4); }
 @media (max-width: 40rem) {
   .taches-rangee { grid-template-columns: 1.6em 1fr 2em; }
   .taches-rangee .colonne-de { grid-column: 2 / span 1; }
