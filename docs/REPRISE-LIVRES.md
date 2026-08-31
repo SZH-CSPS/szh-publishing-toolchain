@@ -142,11 +142,45 @@ dans `livre/base.css` — n'y toucher que si l'écart vient vraiment de là).
 - [x] **Banc revérifié** : `livre-normal` et `livre-falc` recompilés de zéro, 2 PASS et
       0 FAIL chacun. La maquette « normal » n'a pas bougé.
 
-⚠ Défaut de contenu repéré au passage, **non corrigé** : le dossier `liminaires/media/` du
-livre B329 est VIDE alors que `impressum-du-livre.md` référence sept images
-(`./media/2025-prospectrumfalc-fr-vf-fig-0N.png`). WeasyPrint les signale une à une et la
-page sort sans elles. À trancher : soit les images doivent être copiées là par l'import,
-soit le liminaire ne devrait pas les citer.
+⚠ **Images manquantes du B329 — diagnostiqué le 31.08. Ce n'était pas un défaut, c'en était
+deux, et la question « l'import ou le liminaire » avait une troisième réponse : les deux.**
+
+Le dossier `liminaires/media/` est vide alors que `impressum-du-livre.md` référence sept
+images (`./media/2025-prospectrumfalc-fr-vf-fig-0N.png`) ; WeasyPrint les signale une à une
+et la page sort sans elles. Ce qui a été établi :
+
+- **Le Word source existe et porte bien ses images.** ⚠ Pas au chemin consigné plus haut —
+  `tmp/` a été vidé. Retrouvé dans
+  `OneDrive - SZH CSPS\60 - RESSOURCES IA\PRO_EditionSZH-CSPS_Workflow\models\FALC\2025-Prospectrum_FALC_FR_ebook.docx`
+  (951 497 octets, 21.01.2026). Son `word/media/` contient **44 fichiers**, png et svg.
+- **L'étape amont a réussi** : `pipeline/import-medias.py::renommer()` (l. 356-411) a renommé
+  et réécrit les figures, et les sept numéros s'enchaînent sans trou.
+- **Défaut 1, le grave — un échec muet suivi d'une destruction irréversible.** Dans
+  `pipeline/livre-scinder.py`, `copier_ressource()` (l. 159-179) échoue avec un
+  `⚠ Image introuvable` **sur stderr, non bloquant**, puis `shutil.rmtree()` (l. 365) supprime
+  le dossier source. Les neuf chapitres sont sortis sans aucun `media/`, personne n'a rien vu,
+  et **la source a été détruite avant tout diagnostic** : on ne sait donc toujours pas
+  pourquoi les fichiers manquaient déjà à la scission. C'est ce défaut qui a rendu l'affaire
+  indiagnosticable, et il frappera le FALC allemand comme le Hagmann-von Arx.
+- **Défaut 2 — le liminaire est capturé puis jeté en silence.** `lire_chapitre()` (l. 82-137)
+  sépare `liminaire_texte` des `sections` ; `main()` **l. 253 l'assigne et ne s'en sert
+  jamais**. `copier_ressource()` n'est appelé que pour les `sections` (boucle l. 288). Un
+  `grep` sur tout `pipeline/` pour `liminaires/media` ne renvoie **rien** : aucun code
+  n'alimente ce dossier.
+- **Le `.svg` est innocent** : Word embarque nativement des icônes vectorielles en SVG
+  (`viewBox 30×30`, avec repli PNG). Aucune conversion de la chaîne n'est en cause.
+- `impressum-du-livre.md` a été **écrit à la main** (mtime antérieur à la scission), conforme
+  à `pipeline/profils/livre.mk:88` (« pièces liminaires écrites à la main ») : quelqu'un a
+  recopié du texte du manuscrit importé, syntaxe d'image comprise, sans copier les fichiers.
+
+**Décidé avec Robin le 31.08** : (1) corriger d'abord l'échec muet et la destruction — une
+copie qui échoue interdit l'effacement de la source, et le constat doit remonter comme les
+autres constats nommés du projet ; (2) la chaîne doit **copier les médias que les liminaires
+citent**, symétriquement aux chapitres, pour qu'un liminaire écrit à la main trouve ses
+images.
+
+⚠ **Reste à faire, indépendant des correctifs** : extraire les sept images du Word retrouvé
+et les déposer dans `liminaires/media/` du B329, pour que ce livre-ci sorte complet.
 
 ⚠ Ne pas régler la maquette FALC en modifiant `socle.css` ou `livre/base.css` : ces deux
 feuilles servent aussi la maquette « normal » et la revue.
@@ -162,6 +196,14 @@ volontairement. Repartir du fichier tel qu'il est aujourd'hui.
 - Le **deuxième livre FALC**, l'allemand, dans
   `C:\Users\robin\OneDrive - SZH CSPS\Revues-TESTING\54_Buch\BU02_Redaktion`, par le
   lanceur et l'interface, pas à la main.
+
+  ⚠ **Cette exigence n'est pas tenable en l'état, constaté le 31.08** :
+  `pipeline/livre-scinder.py` **n'est branché à rien** — ni `pipeline/Makefile`, ni
+  `pipeline/profils/livre.mk`, ni le cockpit (recherche faite sur les trois). Il s'invoque à la
+  main, et c'est ainsi que le B329 a été scindé. Produire un livre « par le lanceur et
+  l'interface » suppose donc d'abord de **brancher la scission**, ce qui est un lot à part
+  entière et n'existe nulle part aujourd'hui. À décider avant de lancer l'allemand : soit on
+  branche la scission, soit on assume l'appel à la main et on retire cette exigence d'ici.
 - **Hagmann-von Arx, « Diagnostische Reisen »**, depuis l'export docx Adobe rangé dans
   `tmp/book/BU01_Auflagen finale/Buecher_2025/2025-B330-Hagmann-von Arx/Ebook`. La
   couverture ne sera pas juste, c'est attendu ; le reste doit l'être, et se vérifie contre
@@ -214,5 +256,48 @@ Deux pièges qui ont déjà coûté du temps :
 - **Le toolkit déployé n'est pas le dépôt.** Il vit dans `C:\ProgramData\SZH\toolkit`. Une
   correction de la chaîne ou d'un filtre n'a aucun effet sur un vrai livre tant qu'elle
   n'est pas redéployée, et un fichier périmé y survit à sa suppression du dépôt.
+
+  ⚠ **Ce piège s'est refermé le 31.08, et il a coûté une fausse alerte.** Le toolkit était
+  resté en `2026.08.63` quand le dépôt était en `v2026.08.66` — dix commits de retard. Il lui
+  manquait `szh-sauts-uniques.lua` et `szh-attributs-sains.lua`, et sa `styles/livre/falc.css`
+  était celle d'avant l'alignement : **tout le travail de maquette FALC du 30.08 n'avait
+  jamais atteint la production**, et le livre B329 se recompilait à 62 pages au lieu de 47.
+  Les tags `.64`, `.65` et `.66` étaient pourtant bien poussés : c'est la mise à jour du poste
+  qui n'avait pas été lancée. Corrigé le 31.08 par
+  `powershell.exe -ExecutionPolicy Bypass -File windows\update.ps1` (PowerShell **5.1**, pour
+  lequel le script est écrit). **Avant de mesurer quoi que ce soit sur un vrai livre, vérifier
+  `cat C:\ProgramData\SZH\toolkit\VERSION` contre `git describe --tags`.**
+
+  ⚠ **Défaut du déploiement, confirmé par l'expérience et non corrigé** : une mise à jour
+  complète n'efface aucun fichier disparu du dépôt. Neuf y survivaient avant la mise à jour
+  en `.66`, et **les neuf y sont encore après** — `filters/szh-import.lua`,
+  `filters/szh-tabelle-extraire.lua`, `filters/szh-tabelle-platzhalter.lua`, `rapport.py`, et
+  cinq dans `attic/`. Ce n'est donc pas un accident de ce poste : **tous les postes de
+  l'équipe accumulent ces fichiers.**
+
+  La cause est précise : `update.ps1:201-209` fait `Expand-Archive -Force`, qui écrase ce que
+  l'archive contient mais ne supprime jamais ce qu'elle ne contient pas ; l'étape 5/5
+  « Nettoyage » (l. 476-495) ne purge que `$SzhStaging`, jamais `$SzhToolkit`. `bootstrap.ps1`
+  a le même manque (l. 74 et 268) : un poste neuf n'est propre que parce qu'il part d'un
+  dossier vide.
+
+  **Vérifié : ces neuf fichiers sont inertes.** Aucune occurrence dans le `Makefile` du
+  toolkit ni dans `profils/livre.mk`. Le seul nom voisin encore invoqué — `szh-citations.lua`,
+  Makefile l. 355 et 400 — désigne le fichier courant de `filters/`, pas la copie périmée
+  d'`attic/`. Octets morts, donc, et non bombe à retardement : la correction n'est pas
+  urgente.
+
+  Correction proposée si on la fait un jour, **dans un lot dédié et pas au milieu d'un
+  autre** : le zip de release (`release.yml:157`) ne contient que `pipeline/`,
+  `vscodium-user/`, `revue-template/`, `livre-template/`, `windows/` et `VERSION` — rien
+  d'autre n'a de raison d'être dans `$SzhToolkit`, une vraie synchronisation est donc sans
+  collatéral. Mais **par bascule atomique** : extraire dans un dossier temporaire de
+  `$SzhStaging`, vérifier, puis renommer (`toolkit`→`toolkit.old`, temp→`toolkit`, purge du
+  `.old`), jamais un `Remove-Item` direct — sinon une extraction interrompue laisse le poste
+  sans pipeline. ⚠ **Ne jamais toucher** ce qui vit hors `$SzhToolkit` : `state.json`,
+  `config.json`, `$SzhStaging`, `$SzhLogs`, `comptes\<sid>\etat-utilisateur.json`.
+  ⚠ Observé sur ce poste : un dossier `pipeline.bak-avant-sync` qu'**aucun script du dépôt ne
+  produit** — geste manuel d'une session antérieure. À élucider avant d'automatiser un sync,
+  il pourrait expliquer comment les deux filtres FALC ont disparu du toolkit.
 - **Lire le verdict veraPDF sur l'ABSENCE de `FAIL`**, jamais sur la présence de `PASS` :
   un PDF sans arbre de structure ne produit ni l'un ni l'autre, et passerait pour conforme.
