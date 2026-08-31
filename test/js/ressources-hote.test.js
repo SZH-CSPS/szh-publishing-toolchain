@@ -25,17 +25,26 @@ async function ouvrir() {
   return p;
 }
 
-test('ouverture : la charge porte livre et film, avec les champs complets voulus', async () => {
+test('ouverture : la charge porte les quatre types, avec les champs complets voulus', async () => {
   const p = await ouvrir();
   const charge = p.messages.filter((m) => m.type === 'charger').pop();
   assert.ok(charge, 'aucune charge « charger »');
   assert.deepStrictEqual(charge.ressources, [], 'l’article ne porte encore aucune fiche');
   const types = {};
   for (const t of charge.typesConfig) { types[t.valeur] = t; }
-  assert.deepStrictEqual(Object.keys(types).sort(), ['film', 'livre']);
+  assert.deepStrictEqual(Object.keys(types).sort(), ['film', 'intervention', 'livre', 'recherche']);
   assert.deepStrictEqual(types.livre.champs.map((c) => c.cle), ['auteurs', 'annee', 'editeur']);
   assert.deepStrictEqual(types.film.champs.map((c) => c.cle),
     ['realisateur', 'annee', 'genre', 'pays']);
+  assert.deepStrictEqual(types.intervention.champs.map((c) => c.cle),
+    ['canton', 'categorie', 'numero', 'date']);
+  assert.deepStrictEqual(types.recherche.champs.map((c) => c.cle), ['institutions', 'debut', 'fin']);
+  // Livre et film portent une image ; intervention et recherche n'en portent jamais — c'est
+  // ce booléen, et lui seul, que la webview lit pour ne pas afficher de zone de dépôt.
+  assert.strictEqual(types.livre.avecImage, true);
+  assert.strictEqual(types.film.avecImage, true);
+  assert.strictEqual(types.intervention.avecImage, false);
+  assert.strictEqual(types.recherche.avecImage, false);
   // Chaque champ a un libellé traduit — jamais une clé i18n crue affichée au rédacteur.
   for (const t of charge.typesConfig) {
     assert.ok(t.libelleSection, 'section sans libellé : ' + t.valeur);
@@ -71,6 +80,23 @@ test('enregistrer : une fiche complète est acceptée et annoncée dans la barre
   assert.ok(p.messages.some((m) => m.type === 'enregistre'), 'aucune confirmation reçue');
   assert.strictEqual(HOTE.statutsDits('enregistrée').length, avant + 1,
     'aucune annonce dans la barre d’état pour une fiche complète');
+});
+
+test('enregistrer : une intervention parlementaire complète, sans image, est acceptée', async () => {
+  const p = await ouvrir();
+  p.messages.length = 0;
+  const avant = HOTE.statutsDits('enregistrée').length;
+  await p._recepteur({
+    type: 'enregistrer', auto: false,
+    ressources: [{ id: 'r-intervention-1', type: 'intervention', valeurs: {
+      titre: 'Renforcer la formation spécialisée', canton: 'Berne', categorie: 'Motion',
+      numero: '26.118', date: '12.03.2026',
+      descriptif: 'Le Conseil fédéral est chargé de…', image: ''
+    } }]
+  });
+  assert.ok(p.messages.some((m) => m.type === 'enregistre'), 'aucune confirmation reçue');
+  assert.strictEqual(HOTE.statutsDits('enregistrée').length, avant + 1,
+    'une intervention sans image, par ailleurs complète, n’a pas été comptée comme enregistrée');
 });
 
 test('enregistrer : une fiche incomplète (sans image) n’est pas comptée, et rien ne l’annonce', async () => {

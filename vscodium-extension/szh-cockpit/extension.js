@@ -7395,20 +7395,27 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
 const LIBELLES_CHAMP_RESSOURCE = {
   auteurs: 'ressource.champ.auteurs', annee: 'ressource.champ.annee',
   editeur: 'ressource.champ.editeur', realisateur: 'ressource.champ.realisateur',
-  genre: 'ressource.champ.genre', pays: 'ressource.champ.pays'
+  genre: 'ressource.champ.genre', pays: 'ressource.champ.pays',
+  canton: 'ressource.champ.canton', categorie: 'ressource.champ.categorie',
+  numero: 'ressource.champ.numero', date: 'ressource.champ.date',
+  institutions: 'ressource.champ.institutions', debut: 'ressource.champ.debut',
+  fin: 'ressource.champ.fin'
 };
 
 // La configuration envoyée à la webview : un type par entrée, ses champs bibliographiques
 // DANS L'ORDRE DE lib/ressources.js (source unique — jamais recopiés ici), chacun avec son
 // libellé traduit. C'est ce qui rend le formulaire générique : ajouter un type à
 // ressourcesLib.TYPES lui donne une section sans qu'une ligne de ce fichier ne change,
-// pourvu que LIBELLES_CHAMP_RESSOURCE connaisse ses champs.
+// pourvu que LIBELLES_CHAMP_RESSOURCE connaisse ses champs. `avecImage` (lib/ressources.js,
+// typeAvecImage()) dit à la webview si ce type affiche une zone de dépôt — intervention et
+// recherche n'en ont pas.
 function typesRessourceConfig() {
   return ressourcesLib.typesConnus().map((type) => ({
     valeur: type,
     libelleSection: T('ressource.section.' + type),
     libelleAjouter: T('ressource.ajouter.' + type),
     libelleAjouterTip: T('ressource.ajouter.' + type + '.tip'),
+    avecImage: ressourcesLib.typeAvecImage(type),
     champs: ressourcesLib.champsBiblio(type).map((cle) => ({
       cle: cle, libelle: T(LIBELLES_CHAMP_RESSOURCE[cle] || '')
     }))

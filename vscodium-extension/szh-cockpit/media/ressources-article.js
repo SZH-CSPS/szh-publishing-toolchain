@@ -28,7 +28,9 @@
 //   charger { slug, ressources, typesConfig, focus, accent, i18n } ; enregistre { auto } ;
 //   erreur { message } ; image-deposee { id, image, apercu } ; image-erreur { id, message }
 // où une ressource reçue vaut { id, type, valeurs, apercu }, et un type de typesConfig
-// { valeur, libelleSection, libelleAjouter, champs: [{ cle, libelle }] }.
+// { valeur, libelleSection, libelleAjouter, champs: [{ cle, libelle }], avecImage }. Un type
+// sans avecImage (intervention, recherche : lib/ressources.js, typeAvecImage()) n'affiche
+// aucune zone de dépôt et n'exige jamais d'image pour être complet — voir construireCarte().
 var api = acquireVsCodeApi();
 // Mêmes plafonds que l'hôte, qui recontrôle tout : répondre tout de suite plutôt que
 // d'envoyer un fichier que l'hôte refusera de toute façon.
@@ -84,13 +86,16 @@ function etat(msg) { if (ctl.etat) { ctl.etat.textContent = msg || ''; } }
 // Champs requis : les mêmes que REQUIS dans lib/ressources.js (titre, descriptif, image).
 // La bibliographie et le lien restent facultatifs à l'écriture. L'hôte revalide de toute
 // façon avant d'écrire quoi que ce soit — cette liste-ci n'est qu'un confort de saisie.
+// `image` n'est exigée que pour un type qui en porte une (c.avecImage, posé par l'hôte à
+// partir de lib/ressources.js typeAvecImage()) : une carte d'intervention ou de recherche
+// n'a tout simplement pas ce champ (voir construireCarte), donc jamais rien à y manquer.
 var REQUIS = ['titre', 'descriptif', 'image'];
 
 function valeurs(c) {
   var v = {
     titre: ligne(c.ctl.titre.value), lien: ligne(c.ctl.lien.value),
     descriptif: String(c.ctl.descriptif.value || '').replace(/\r\n/g, '\n'),
-    image: c.image || ''
+    image: c.avecImage ? (c.image || '') : ''
   };
   for (var i = 0; i < c.champs.length; i++) {
     var cle = c.champs[i].cle;
@@ -101,7 +106,11 @@ function valeurs(c) {
 function champsManquants(c) {
   var v = valeurs(c);
   var manque = [];
-  for (var i = 0; i < REQUIS.length; i++) { if (v[REQUIS[i]] === '') { manque.push(REQUIS[i]); } }
+  for (var i = 0; i < REQUIS.length; i++) {
+    var cle = REQUIS[i];
+    if (cle === 'image' && !c.avecImage) { continue; }
+    if (v[cle] === '') { manque.push(cle); }
+  }
   return manque;
 }
 function estComplete(c) { return champsManquants(c).length === 0; }
@@ -239,7 +248,7 @@ function construireCarte(section, ressource, persistee) {
   var index = cartes.length;
   var c = {
     id: ressource.id, type: section.type, index: index, ctl: {},
-    champs: section.champs, image: (ressource.valeurs || {}).image || '',
+    champs: section.champs, avecImage: section.avecImage, image: (ressource.valeurs || {}).image || '',
     apercu: ressource.apercu || null,
     persistee: !!persistee, touchee: false, enregistree: null
   };
@@ -260,9 +269,15 @@ function construireCarte(section, ressource, persistee) {
 
   champ(s, c, 'descriptif', TXT.champDescriptif, TXT.champDescriptifIndice, true);
 
-  var zoneImage = texte(s, 'div', 'ressource-image');
-  c.ctl.vignette = texte(zoneImage, 'div', 'ressource-vignette');
-  construireDepot(zoneImage, c);
+  // Types sans image (c.avecImage) : aucune zone de dépôt — ni champ vide à ignorer, ni
+  // vignette « Aucune image » qui n'aurait jamais de raison de se remplir. Voir
+  // lib/ressources.js (SANS_IMAGE) et pipeline/filters/szh-ressource.lua pour le pendant
+  // côté rendu, déjà générique sans avoir besoin de connaître cette liste.
+  if (c.avecImage) {
+    var zoneImage = texte(s, 'div', 'ressource-image');
+    c.ctl.vignette = texte(zoneImage, 'div', 'ressource-vignette');
+    construireDepot(zoneImage, c);
+  }
 
   champ(s, c, 'lien', TXT.champLien, TXT.champLienIndice, false);
   texte(s, 'p', 'ressource-note', TXT.lienNote || '');
@@ -275,7 +290,7 @@ function construireCarte(section, ressource, persistee) {
   c.ctl.lien.value = String(v.lien || '');
   c.ctl.descriptif.value = String(v.descriptif || '');
   for (var k = 0; k < c.champs.length; k++) { c.ctl[c.champs[k].cle].value = String(v[c.champs[k].cle] || ''); }
-  poserVignette(c);
+  if (c.avecImage) { poserVignette(c); }
   majEtatCarte(c);
   c.enregistree = c.persistee ? valeurs(c) : null;
 
@@ -292,7 +307,7 @@ function retirerCarte(c) {
 
 // ---- Une section (un type) ----
 function construireSection(type) {
-  var s = { type: type.valeur, champs: type.champs || [] };
+  var s = { type: type.valeur, champs: type.champs || [], avecImage: type.avecImage !== false };
   texte(corps, 'h2', 'titre-section', type.libelleSection || type.valeur);
   var conteneur = texte(corps, 'div', 'ressource-section');
   s.corps = conteneur;
@@ -382,7 +397,7 @@ window.addEventListener('message', function (ev) {
   if (msg.type === 'erreur') { autoEnr.confirme(); etat('⚠ ' + msg.message); return; }
   if (msg.type === 'image-deposee' || msg.type === 'image-erreur') {
     var c = trouverCarte(msg.id);
-    if (!c) { return; }
+    if (!c || !c.avecImage) { return; }              // type sans image : rien à y poser
     if (msg.type === 'image-deposee') {
       c.image = msg.image || '';
       c.apercu = msg.apercu || null;

@@ -1,7 +1,8 @@
 // Fiches de « ressources » d'un article — les blocs qu'on insère dans la Documentation
-// (« Actualité et ressources » / « News & Ressourcen ») : un livre, un film, et demain une
-// intervention parlementaire ou une recherche en cours. Un moteur générique, décliné par une
-// table de champs par type — pas un module par type.
+// (« Actualité et ressources » / « News & Ressourcen ») : un livre, un film, une intervention
+// parlementaire, une recherche en cours. Un moteur générique, décliné par une table de champs
+// par type — pas un module par type. Deux de ces quatre types (intervention, recherche) ne
+// portent pas d'image : voir SANS_IMAGE plus bas, seul endroit où cette différence s'exprime.
 //
 // Le bloc, tel que le formulaire l'écrit et tel que pipeline/filters/szh-ressource.lua le
 // relit :
@@ -58,14 +59,33 @@ const CLASSE = 'szh-ressource';
 // à tous les types et donc absents d'ici : `titre`, `lien` (facultatif), le descriptif et
 // l'image, qui ne sont pas des attributs (voir l'en-tête du fichier).
 // ⚠ Recopiée dans pipeline/filters/szh-ressource.lua (table TYPES).
+// Le champ propre à `intervention` qu'on serait tenté d'appeler « type » (Motion, Postulat,
+// Interpellation…) est nommé `categorie` : `type` est déjà l'attribut qui porte le type DE
+// LA FICHE elle-même (type="intervention") sur le même bloc ; deux attributs `type=` sur un
+// même bloc se recouvriraient silencieusement (le second écrase le premier), et l'un des
+// deux sens serait perdu. Un vrai piège de la table plutôt qu'un choix de confort.
 const TYPES = {
   livre: ['auteurs', 'annee', 'editeur'],
-  film: ['realisateur', 'annee', 'genre', 'pays']
+  film: ['realisateur', 'annee', 'genre', 'pays'],
+  intervention: ['canton', 'categorie', 'numero', 'date'],
+  recherche: ['institutions', 'debut', 'fin']
 };
 
+// Types qui ne portent jamais d'image : le corpus ne leur en connaît pas (intervention
+// parlementaire, recherche en cours — voir l'en-tête du fichier), à la différence de livre
+// et film. Conséquence, et rien de plus : REQUIS n'exige alors pas d'image pour qu'une fiche
+// s'écrive, et le formulaire (media/ressources-article.js) n'affiche pas la zone de dépôt.
+// Le bloc écrit n'a alors jamais de ligne ![…] — blocRessource() ne l'écrit déjà que si elle
+// est non vide, aucun changement à y faire — et pipeline/filters/szh-ressource.lua s'en
+// accommode nativement lui aussi, puisqu'il ne fait que chercher une image dans le contenu
+// du bloc plutôt que de la présumer selon le type.
+const SANS_IMAGE = new Set(['intervention', 'recherche']);
+function typeAvecImage(type) { return typeValide(type) && !SANS_IMAGE.has(type); }
+
 // Champs communs à toute fiche, requis pour qu'elle s'écrive : le cahier des charges veut
-// toujours un titre, un descriptif et une image ; le lien et la bibliographie restent
-// facultatifs à l'écriture, même quand ils sont l'usage normal.
+// toujours un titre et un descriptif, et une image pour les types qui en portent une
+// (typeAvecImage) ; le lien et la bibliographie restent facultatifs à l'écriture, même
+// quand ils sont l'usage normal.
 const REQUIS = ['titre', 'descriptif', 'image'];
 
 function typeValide(type) {
@@ -76,11 +96,13 @@ function champsBiblio(type) { return (TYPES[type] || []).slice(); }
 function tousLesChamps(type) { return ['titre'].concat(champsBiblio(type), ['lien', 'descriptif', 'image']); }
 
 // Les champs manquants d'une fiche, pour ce que REQUIS exige. Un type inconnu manque de
-// tout : mieux vaut le dire que faire semblant qu'il est complet.
+// tout : mieux vaut le dire que faire semblant qu'il est complet. Un type sans image
+// (typeAvecImage) n'a, lui, jamais besoin de la sienne pour être complet.
 function champsManquants(type, valeurs) {
   if (!typeValide(type)) { return REQUIS.slice(); }
+  const requis = typeAvecImage(type) ? REQUIS : REQUIS.filter((c) => c !== 'image');
   const v = valeurs || {};
-  return REQUIS.filter((c) => String(v[c] === undefined || v[c] === null ? '' : v[c]).trim() === '');
+  return requis.filter((c) => String(v[c] === undefined || v[c] === null ? '' : v[c]).trim() === '');
 }
 function ressourceComplete(type, valeurs) { return champsManquants(type, valeurs).length === 0; }
 
@@ -248,7 +270,7 @@ function retirerRessource(texte, id) {
 
 module.exports = {
   CLASSE, TYPES, REQUIS,
-  typeValide, typesConnus, champsBiblio, tousLesChamps,
+  typeValide, typesConnus, champsBiblio, tousLesChamps, typeAvecImage,
   champsManquants, ressourceComplete,
   lireRessources, ajouterRessource, ecrireRessource, retirerRessource,
   blocRessource, ligneOuverture

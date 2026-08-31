@@ -22,9 +22,26 @@ const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 test('types : livre et film portent les champs complets voulus par le cahier des charges', () => {
   assert.deepStrictEqual(res.champsBiblio('livre'), ['auteurs', 'annee', 'editeur']);
   assert.deepStrictEqual(res.champsBiblio('film'), ['realisateur', 'annee', 'genre', 'pays']);
-  assert.deepStrictEqual(res.typesConnus().sort(), ['film', 'livre']);
+  assert.deepStrictEqual(res.typesConnus().sort(), ['film', 'intervention', 'livre', 'recherche']);
   assert.deepStrictEqual(res.tousLesChamps('livre'),
     ['titre', 'auteurs', 'annee', 'editeur', 'lien', 'descriptif', 'image']);
+});
+
+test('types : intervention parlementaire et recherche en cours portent les champs constatés dans le corpus', () => {
+  assert.deepStrictEqual(res.champsBiblio('intervention'), ['canton', 'categorie', 'numero', 'date']);
+  assert.deepStrictEqual(res.champsBiblio('recherche'), ['institutions', 'debut', 'fin']);
+});
+
+// Le champ « type d'intervention » (Motion, Postulat, Interpellation…) ne peut PAS s'appeler
+// `type` : cet attribut est déjà pris par le type DE LA FICHE (type="intervention") sur le
+// même bloc ; deux attributs `type=` sur un seul bloc {…} se recouvriraient silencieusement,
+// et un des deux sens serait perdu à la relecture. C'est le piège que ce lot devait éviter,
+// pas une préférence de nommage — d'où `categorie` à la place. Contrôle générique, pour
+// qu'aucun type futur ne retombe dans le même piège.
+test('types : aucun champ bibliographique d’aucun type ne s’appelle « type » (collision avec l’attribut de type de fiche)', () => {
+  for (const t of res.typesConnus()) {
+    assert.ok(!res.champsBiblio(t).includes('type'), 'le type ' + t + ' porte un champ nommé « type »');
+  }
 });
 
 test('types : un type inconnu ne porte aucun champ bibliographique, et n’est pas valide', () => {
@@ -49,6 +66,28 @@ test('requis : titre, descriptif et image manquent tant qu’ils sont vides', ()
 test('requis : un type inconnu manque toujours de tout, même rempli', () => {
   assert.deepStrictEqual(res.champsManquants('bd', { titre: 'X', descriptif: 'Y', image: 'z.png' }),
     ['titre', 'descriptif', 'image']);
+});
+
+// ---- Types sans image (intervention, recherche) : REQUIS ne leur exige pas d'image ----
+
+test('typeAvecImage : livre et film en portent une, intervention et recherche jamais', () => {
+  assert.strictEqual(res.typeAvecImage('livre'), true);
+  assert.strictEqual(res.typeAvecImage('film'), true);
+  assert.strictEqual(res.typeAvecImage('intervention'), false);
+  assert.strictEqual(res.typeAvecImage('recherche'), false);
+  assert.strictEqual(res.typeAvecImage('inconnu'), false, 'un type invalide n’« a » pas d’image non plus');
+});
+
+test('requis : une intervention complète sans image ne manque de rien', () => {
+  assert.deepStrictEqual(res.champsManquants('intervention', { titre: 'X', descriptif: 'Y' }), []);
+  assert.strictEqual(res.ressourceComplete('intervention', { titre: 'X', descriptif: 'Y' }), true);
+  // Le titre et le descriptif restent, eux, requis même sans image à fournir.
+  assert.deepStrictEqual(res.champsManquants('intervention', {}), ['titre', 'descriptif']);
+});
+
+test('requis : une recherche complète sans image ne manque de rien', () => {
+  assert.deepStrictEqual(res.champsManquants('recherche', { titre: 'X', descriptif: 'Y' }), []);
+  assert.strictEqual(res.ressourceComplete('recherche', { titre: 'X', descriptif: 'Y' }), true);
 });
 
 // ---- Aller-retour bloc ----
@@ -107,6 +146,41 @@ test('bloc : film porte réalisateur, année, genre et pays', () => {
   const relu = res.lireRessources(texte)[0];
   assert.strictEqual(relu.type, 'film');
   assert.deepStrictEqual(relu.valeurs, valeurs);
+});
+
+test('bloc : intervention parlementaire fait l’aller-retour, sans image, et « type » n’est pas écrasé', () => {
+  const valeurs = {
+    titre: 'Renforcer la formation spécialisée', canton: 'Berne', categorie: 'Motion',
+    numero: '26.118', date: '12.03.2026', lien: '',
+    descriptif: 'Le Conseil fédéral est chargé de…', image: ''
+  };
+  const texte = res.ajouterRessource('', 'i1', 'intervention', valeurs);
+  const liste = res.lireRessources(texte);
+  assert.strictEqual(liste.length, 1);
+  assert.strictEqual(liste[0].type, 'intervention',
+    'l’attribut type= de la fiche a été écrasé par le champ categorie');
+  assert.deepStrictEqual(liste[0].valeurs, valeurs);
+  // Le bloc écrit ne porte qu'un seul attribut `type=`, jamais deux (la ligne d'ouverture
+  // est la seule à porter des attributs clé=valeur).
+  const ouverture = texte.split('\n').find((l) => l.trim().startsWith(':::'));
+  assert.strictEqual((ouverture.match(/\btype=/g) || []).length, 1,
+    'plus d’un attribut type= dans la ligne d’ouverture : ' + ouverture);
+  // Sans image : aucune ligne ![…] parasite dans le bloc écrit.
+  assert.doesNotMatch(texte, /!\[/);
+});
+
+test('bloc : recherche en cours fait l’aller-retour, avec institutions et une durée en début/fin', () => {
+  const valeurs = {
+    titre: 'Inclusion scolaire et transitions', institutions: 'Université de Berne, HfH Zürich',
+    debut: '2024', fin: '2027', lien: 'https://exemple.org/recherche',
+    descriptif: 'Étude longitudinale sur…', image: ''
+  };
+  const texte = res.ajouterRessource('', 'c1', 'recherche', valeurs);
+  const liste = res.lireRessources(texte);
+  assert.strictEqual(liste.length, 1);
+  assert.strictEqual(liste[0].type, 'recherche');
+  assert.deepStrictEqual(liste[0].valeurs, valeurs);
+  assert.doesNotMatch(texte, /!\[/, 'aucune image ne doit être écrite pour ce type');
 });
 
 test('bloc : image toujours écrite avec alt="" — décorative par construction', () => {
@@ -245,4 +319,16 @@ test('print.css : les règles de mise en page des fiches sont posées', () => {
   // pas dans socle.css ni livre/base.css (hors périmètre de ce lot).
   assert.match(css, /\.szh-ressource-image\s*>?\s*\.szh-decor/,
     'la largeur du décor n’est pas reprise en main pour le quart de colonne');
+});
+
+test('print.css : une fiche sans image (intervention, recherche) a son rendu compact dédié', () => {
+  const css = lire('pipeline', 'styles', 'print.css');
+  assert.ok(css.includes('.szh-ressource-sans-image'),
+    'règle absente de print.css : .szh-ressource-sans-image');
+});
+
+test('szh-ressource.lua : pose .szh-ressource-sans-image quand le bloc n’a pas d’image, sans nommer de type', () => {
+  const lua = lire('pipeline', 'filters', 'szh-ressource.lua');
+  assert.match(lua, /CLASSE\s*\.\.\s*'-sans-image'/,
+    'la classe compacte doit être dérivée génériquement (absence d’image), pas listée par type');
 });

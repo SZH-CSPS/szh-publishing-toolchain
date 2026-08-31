@@ -1,8 +1,11 @@
--- Fiches de « ressources » d'un article : un livre, un film, et demain une intervention
--- parlementaire ou une recherche en cours — ce qui remplit la Documentation d'un numéro
--- (« Actualité et ressources » / « News & Ressourcen »). Le pendant, côté rendu, de
--- lib/ressources.js côté cockpit : même moteur générique, décliné par une table de champs
--- par type, pas un filtre par type.
+-- Fiches de « ressources » d'un article : un livre, un film, une intervention parlementaire,
+-- une recherche en cours — ce qui remplit la Documentation d'un numéro (« Actualité et
+-- ressources » / « News & Ressourcen »). Le pendant, côté rendu, de lib/ressources.js côté
+-- cockpit : même moteur générique, décliné par une table de champs par type, pas un filtre
+-- par type. Intervention et recherche n'ont pas d'image (voir lib/ressources.js,
+-- SANS_IMAGE) : ce filtre n'a besoin de rien savoir de plus pour s'en accommoder, puisqu'il
+-- ne fait déjà que chercher une image dans le contenu du bloc plutôt que la présumer selon
+-- le type — voir plus bas « Absente du tout si la fiche n'a pas d'image ».
 --
 --   ::: {#r1a2b3c4 .szh-ressource type="livre" titre="Le silence des bêtes"
 --        auteurs="Jean Dupont, Marie Martin" annee="2019" editeur="Éditions XYZ"
@@ -64,6 +67,8 @@ local CLASSE = 'szh-ressource'
 local TYPES = {
   livre = { 'auteurs', 'annee', 'editeur' },
   film = { 'realisateur', 'annee', 'genre', 'pays' },
+  intervention = { 'canton', 'categorie', 'numero', 'date' },
+  recherche = { 'institutions', 'debut', 'fin' },
 }
 
 -- Le texte du lien, par type et par langue ; %s reçoit le titre. Un type absent de la table
@@ -71,6 +76,8 @@ local TYPES = {
 local LIBELLE_LIEN = {
   livre = { fr = 'En savoir plus sur le livre %s', de = 'Mehr zum Buch %s' },
   film = { fr = 'En savoir plus sur le film %s', de = 'Mehr zum Film %s' },
+  intervention = { fr = 'En savoir plus sur l’intervention %s', de = 'Mehr zum Vorstoss %s' },
+  recherche = { fr = 'En savoir plus sur la recherche %s', de = 'Mehr zum Forschungsprojekt %s' },
 }
 local LIBELLE_LIEN_DEFAUT = { fr = 'En savoir plus : %s', de = 'Mehr erfahren: %s' }
 
@@ -191,6 +198,11 @@ function Pandoc(doc)
 
       local classes = { CLASSE }
       if type_sain(type_) then classes[#classes + 1] = CLASSE .. '-' .. type_ end
+      -- Accroche générique pour print.css : pas de nom de type ici, seulement le fait
+      -- constaté qu'il n'y a pas d'image dans CE bloc — ce qui couvre aussi bien
+      -- intervention/recherche (qui n'en portent jamais) qu'un livre saisi à la main sans
+      -- couverture. Une case vide au quart de la largeur serait pire qu'une entrée compacte.
+      if not image then classes[#classes + 1] = CLASSE .. '-sans-image' end
       return pandoc.Div(blocs, pandoc.Attr(div.identifier or '', classes, {}))
     end,
   })
