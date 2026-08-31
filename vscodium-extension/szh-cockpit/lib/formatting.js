@@ -542,7 +542,8 @@ async function fmtLierReference() {
   if (!editeur) { return; }
   const doc = editeur.document;
   const racine = revue.racine();
-  if (!racine || !revue.slugDepuisChemin(racine, doc.uri.fsPath)) {
+  const slug = racine ? revue.slugDepuisChemin(racine, doc.uri.fsPath) : null;
+  if (!slug) {
     vscode.window.showInformationMessage(T('cit.horsarticle'));
     return;
   }
@@ -550,9 +551,15 @@ async function fmtLierReference() {
   // — outil de composition absent, ou plus ancien que le cockpit — on ne pose rien : un lien
   // vers une ancre que la compilation ne produira pas est pire que pas de lien. Le rédacteur
   // lit une phrase qu'il peut suivre, le détail technique est déjà dans le journal de l'hôte.
+  //
+  // La source, c'est d'abord le fichier de bibliographie que l'import détache désormais —
+  // même repli que lecteurReferences() dans lib/export-ojs.js. Le .md de l'article ne porte
+  // plus que le marqueur ::: {.szh-biblio …} ; on ne retombe sur le corps du texte que pour
+  // un article importé avant que la bibliographie devienne un fichier à part.
   let entrees;
   try {
-    entrees = citations.referencesDuTexte(doc.getText());
+    entrees = citations.referencesDuFichier(racine, slug);
+    if (entrees === null) { entrees = citations.referencesDuTexte(doc.getText()); }
   } catch (e) {
     if (!e || !e.szhRepli) { throw e; }
     // Le sélecteur de versions vit dans le toolkit : il n'y a rien à proposer quand c'est le
