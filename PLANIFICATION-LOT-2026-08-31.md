@@ -869,3 +869,310 @@ maximal d'un appel d'outil. La lancer en tâche de fond, ou cibler les fichiers 
 
 **Vérification décisive** : après le dernier lot, chacun des 35 fichiers sauvegardés a été
 comparé à l'arbre reconstruit. **Aucun écart.** Le découpage n'a donc rien perdu ni altéré.
+
+---
+
+## 14. B2 — l'autocomplétion branchée
+
+`envoyerMotsClesConnus(panneau)` lit `mots-cles.json` et poste la liste aux **deux** panneaux
+qui portent la grille de mots clés — métadonnées et vérification d'import — et jamais aux
+médias, qui n'en ont pas. `rafraichirMotsClesConnusEnFond()`, appelée à `activate()` à côté de
+celle des auteur·e·s, moissonne en tâche de fond au-delà de sept jours ; l'échec réseau est
+capté en silence, hors ligne étant un cas normal. L'autocomplétion est posée **en délégation
+sur `editeurMots.element`**, qui n'est jamais remplacé — contrairement au DOM interne de
+`SZH.motsCles`, qui l'est.
+
+**Le point de conception, la langue.** Les mots clés d'un article sont **par langue**, le
+vocabulaire edudoc est une **paire** de/fr. La suggestion suit donc `input.dataset.langue` : le
+champ français propose du français, l'allemand de l'allemand, et **l'italien ne propose rien**
+— il n'existe pas d'italien dans ce vocabulaire, et y proposer du français serait pire que se
+taire. Choisir une suggestion **complète en plus l'équivalent sur la même rangée**, dans
+l'autre langue, **mais seulement si cette case est vide** : jamais en écrasant une correction
+déjà tapée. C'est cohérent avec la grille, qui apparie déjà les deux langues par position, et
+cela épargne une saisie sans rien décider à la place du rédacteur. Les dix paires incomplètes
+ne sont indexées que du côté où elles ont une valeur.
+
+---
+
+## 15. Le défaut le plus rentable de la journée : la suite interrogeait la production
+
+Trouvé en branchant le second moissonneur — donc **par accident**, en cherchant autre chose.
+
+`test/js/hote-factice.js` écrivait un cache d'auteurs avant d'activer l'extension,
+**précisément pour éviter tout appel réseau**. Mais il l'écrivait en `version: 1`, et
+`lireCache()` migre ce format en remettant `dateFetch` à `null` — le cache était donc jugé
+périmé, et le moissonnage partait. Les **19 fichiers de test** qui passent par l'hôte factice
+interrogeaient ainsi réellement `ojs.szh.ch` : `[auteurs-ojs] OJS : 1146 nom(s)` dans les
+journaux.
+
+**Le garde-fou existait donc, et ne gardait rien.** Il avait cessé de fonctionner le jour où
+le format du cache a changé, sans que rien ne le dise — en produisant exactement le
+comportement qu'il devait empêcher. C'est la forme la plus retorse de la famille que ce projet
+traque : non pas un mécanisme inerte, mais **une protection périmée qui a l'air d'en être une**.
+
+Trois dégâts : la règle « aucun accès réseau dans les tests » violée en silence ; une suite non
+déterministe, qui se comportait autrement hors ligne ; et **la CI qui interrogeait le serveur
+de production à chaque push**.
+
+**Le correctif qui compte n'est pas la réparation du cache, c'est la garde.**
+`SZH_RESEAU_INTERDIT`, posée par `hote-factice.js` avant tout `require` d'`extension.js`, est
+refusée dans `recupererHttps()`. Le choix de l'endroit fait tout : une recherche exhaustive du
+dépôt (`https.get/request`, `fetch`, `require` de `https`/`http`/`net`/`tls`) montre que
+`recupererHttps` est le **point de passage unique** vers un vrai socket, et que
+`lib/mots-cles-edudoc.js` réutilise cette même fonction au lieu d'écrire un second client. Une
+seule garde couvre donc les deux moissonneurs **et tout module futur qui s'y brancherait**.
+Elle ne se déclenche pas quand un transport factice est injecté. Le chemin de production est
+inchangé caractère pour caractère.
+
+**Mesuré, et c'est spectaculaire : la suite passe de plus de 600 secondes à 25 secondes.**
+(Points de repère de la journée : 156 s à 615 tests, 203 s à 674 tests, puis au-delà du délai
+maximal de 10 minutes — le saut n'était pas explicable par les tests ajoutés.) Tester
+redevient gratuit, et c'est probablement le gain le plus durable de la session : à dix minutes
+on hésite à lancer la suite, à 25 secondes on la lance à chaque changement.
+
+---
+
+## 16. C1 — ce que l'analyse du corpus réel a changé
+
+Analyse faite sur de la matière réelle, et non sur des suppositions : un article complet de
+393 lignes trouvé sur OneDrive, **692 notices Zeitschrift et 325 Revue** moissonnées par
+OAI-PMH, plus deux galleys PDF lus en texte intégral.
+
+**⚠ Le cahier des charges de Robin était incomplet, et c'est le constat le plus utile.** Il
+décrivait un livre comme portant « un titre, un hyperlien facultatif, un descriptif, une
+image ». Les numéros réels montrent que **auteur(s), année et éditeur y figurent
+systématiquement**, et que le lien est en fait **rare** sur les livres. Un film porte
+**réalisateur, année, genre, pays**, son lien pointant la bande-annonce. Construire le
+formulaire tel que décrit l'aurait rendu insuffisant dès la première saisie.
+
+**Les sections sont plus riches que « livres et films »** (volumes constatés) :
+
+| Type | Volume | Rétroactif estimé |
+|---|---|---|
+| Interventions parlementaires ⚠ Zeitschrift seulement | ~10 par numéro | **> 90 %** — motif rigide (« Motion (26.118) vom 03.06.2026 ») |
+| Livres | 5 à 8 par numéro | 70-80 % |
+| Films | ~4 par numéro | 70-80 % |
+| Recherches en cours ⚠ Zeitschrift seulement | 2 par numéro | **> 90 %** — labels « Laufzeit: », « Forschende Institution: » |
+| Podcasts, documentaires | présents partout | moyen |
+| « D'une revue à l'autre » | 1 par numéro | élevé, déjà quasi bibliographique |
+| Tour d'horizon, Ressources | prose libre | **< 50 %** — à laisser en prose |
+| Agenda, formation continue | liens simples | aucun item unitaire, à ignorer |
+
+Section systématique : **25 numéros** côté Zeitschrift (mensuelle, déc. 2023 – juil. 2026),
+**14** côté Revue (trimestrielle).
+
+⚠ **Interventions parlementaires et recherches en cours n'existent que côté Zeitschrift.** Les
+étendre à la Revue serait une **décision éditoriale nouvelle**, pas une reprise rétroactive.
+⚠ Pour le rétroactif des livres, **repartir des `.docx` sources et non des PDF** : la mise en
+forme (gras, italique) qui délimite titre et auteur est perdue à l'impression.
+
+**Décisions de Robin** : (1) **champs complets**, ceux que les numéros contiennent réellement ;
+(2) **un mécanisme générique de fiches** plutôt qu'un formulaire par type — un seul moteur
+décliné par une table de champs, livre et film d'abord ; (3) **pas de récupération rétroactive
+dans ce lot**, elle fera l'objet d'un chantier dédié.
+
+---
+
+## 17. B3 — les seuils, enfin MESURÉS et non estimés
+
+**Le blocage était faux, et c'est la leçon.** On croyait avoir besoin d'un vrai article de la
+Zeitschrift pour trancher. Or, pour trouver un seuil de **longueur**, du texte factice de la
+bonne longueur suffit : ce qui compte est le nombre de caractères, pas leur sens. La mesure
+était donc possible depuis le début.
+
+**Méthode, rejouable** : 58 articles d'essai bâtis sur le gabarit réel
+`test/accessibilite/articles/participation-fr` (`revue: zeitschrift`), ne variant que par la
+longueur des deux résumés et le nombre de mots clés (vocabulaire edudoc réel). Compilation par
+le pipeline **inchangé**, détection de la page d'atterrissage par PyMuPDF. Scripts et 58 PDF
+conservés dans le scratchpad ; aucun fichier du dépôt touché.
+
+| Mots clés | Bascule en page 2 à partir de |
+|---|---|
+| 3 | 830 – 840 caractères |
+| 5 | 835 – 840 caractères |
+| 6 | 730 – 740 caractères |
+| 8 | 730 – 740 caractères |
+| 10 | 720 – 740 caractères |
+
+**L'estimation initiale disait 600 : la mesure donne 830.** La place est bien plus généreuse
+que le calcul ne le laissait croire — raison de plus pour mesurer plutôt qu'extrapoler.
+
+**Le comportement est par palier**, et c'est l'information utile au quotidien : 3 à 5 mots clés
+tiennent sur **une** ligne, 6 à 10 sur **deux**. **Passer de 5 à 6 mots clés coûte donc une
+centaine de caractères de résumé.**
+
+Vérifié également : un bloc `.szh-abstract` bascule **en entier** (`break-inside: avoid`,
+`print.css` l. 159) — jamais coupé en deux pages.
+
+**Recommandation, marge comprise** (pour absorber l'asymétrie réelle français/allemand et des
+mots moins favorables à la césure que le texte d'essai) : **au plus 700 caractères jusqu'à
+5 mots clés, 600 au-delà**.
+
+Reste vrai malgré tout : **900 à 1200 caractères, longueur d'un résumé académique ordinaire,
+ne tiennent pas.** La tension existe, mais elle est moins forte qu'annoncé.
+
+### Septième mensonge de commentaire, corrigé
+
+`pipeline/templates/szh-article.html` affirmait que le corps démarre en page 2 par un
+`break-after: page` sur `.szh-cover`. **Cette règle n'existe nulle part** : la seule
+`break-after: page` du projet porte sur `.szh-saut`. Le corps coule dans le flux normal, et
+c'est l'atomicité de chaque `.szh-abstract` qui décide seule. Commentaire réécrit, avec les
+mesures ci-dessus.
+
+**Décision qui reste à Robin** : câbler ou non ces seuils dans le formulaire. Un chiffre que le
+rédacteur ne voit pas ne sert à rien. Trois options proposées — ne rien câbler ; un compteur
+qui s'ajuste au nombre de mots clés (recommandé, il informe sans bloquer) ; ou un refus
+d'enregistrer au-delà.
+
+---
+
+## 18. Extraction de `lib/medias.js` (REPRISE 2.3) — faite avec retenue
+
+**Ce qui avait fait échouer la tentative précédente** : une extraction si large qu'elle laissait
+un `extension.js` divergent de **1333 lignes**, donc un diff irrelisible. Consigne donnée cette
+fois : préférer une extraction **franche et modeste** à une extraction large et fragile, et en
+cas de doute rester relisible.
+
+**Résultat : 252 lignes retirées d'`extension.js`, module de 293 lignes**, 17 fonctions et leurs
+constantes — dimensions et description d'image (PNG, GIF, JPEG, WEBP, SVG lus en en-tête), noms
+de fichier sûrs, portraits, aperçu média sous budget, détection de doublons par empreinte.
+**Aucune ne touche `vscode` ni l'état de module** ; le module n'ajoute qu'un `require('./slug')`.
+
+**Ce qui a été volontairement laissé, avec ses raisons** — c'est la partie qui compte :
+`vignetteAuteur` et `dossierPortraitsArticle` dépendent de `dossierUnites()` (profil actif) ;
+`listerMediasArticle`, `insererImageDansArticle`, `ouvrirGestionMedias`, `remplacerFichierImage`
+et consorts lisent `fournisseur`, `vscode.window`, `WorkspaceEdit` ou `buildEnCours` ;
+`pastillesCarte`, `resumeImagesArticle` et `constatsCarte` relèvent du domaine « articles », non
+« médias » ; la couverture du numéro appartient au formulaire de numéro.
+
+**Le bénéfice se voit** : 25 tests unitaires neufs (`test/js/medias.test.js`), rendus possibles
+par l'extraction — c'était tout l'objet de l'opération.
+
+**Défaut repéré et non corrigé, comme demandé** : dans `nomImageAssaini`, le test
+`if (corps === '')` est **mort** — `slugifier` ne rend jamais une chaîne vide, il replie déjà
+sur `article`. Sans effet fonctionnel ; à traiter dans un lot séparé.
+
+Le contrat qui comparait `TAILLE_MAX_IMAGE_IMPORT` entre webview et hôte a suivi la constante
+dans `lib/medias.js`, et le README cite le nouveau module — un contrat du projet l'exige.
+
+---
+
+## 19. Livre B329 — les sept images retrouvées et déposées
+
+**La règle de nommage, établie et non devinée** : `renommer()` (`import-medias.py`, l. 356-411)
+trie les fichiers par la position du **premier** appel dans le texte **concaténé du manuscrit
+entier** (liminaires puis chapitres dans l'ordre) — et non par l'ordre du zip, qui diffère
+presque toujours. L'agent a **rejoué l'extraction** (`pandoc --extract-media`) pour retrouver
+cet ordre, plutôt que de supposer : `image1` donne `fig-01`, `image5.svg` donne `fig-02`,
+`image14` donne `fig-03`, `image15` donne `fig-04`, `image20` donne `fig-05`, `image21` donne
+`fig-06`, `image22` donne `fig-07`. Sur 44 fichiers dans le `.docx`, **7 seulement** sont
+réellement cités.
+
+**Vérification sémantique, et pas seulement mécanique** : les images ont été regardées. Quatre
+QR codes (fig-01, 03, 04, 06) ; le drapeau vert-blanc-rouge de Neuchâtel (fig-05) tombe en face
+de « canton de Neuchâtel » ; le triangle bleu de Zurich (fig-07) en face de « canton de
+Zurich » ; l'icône SVG générique (fig-02) devant chaque bloc « Informations sur les
+autrices/auteurs ». Les dimensions relevées concordent **au caractère près** avec ce qu'écrivent
+les `.md` scindés.
+
+**Déposé** : 15 copies — `liminaires/media/` plus huit dossiers `chapitres/*/media/` qui
+n'existaient nulle part et ont été créés. **Aucun fichier existant touché.**
+
+**Preuve par compilation** : `~weasyprint.err` passe de sept erreurs à **0 octet** ; les 15
+appels d'image apparaissent en `data:` URI, plus aucune référence littérale ; veraPDF `ua1`
+sans aucun `FAIL` ; **47 pages**, la valeur de référence. Le livre est complet pour la première
+fois.
+
+---
+
+## 20. Onglets du sommaire (REPRISE 2.5) — sixième règle qui attendait une donnée fantôme
+
+`pipeline/styles/livre/falc.css` portait **depuis le départ** la règle qui colore les puces du
+sommaire à partir de `--c-chapitre`. Mais le sommaire est reconstruit à part par
+`pipeline/livre-assembler.py`, dont `titres_du_fragment()` relève les titres par regex et
+`sommaire_html()` écrit les entrées **sans jamais lire la couleur**. La variable n'arrivant
+jamais, le repli sur le bleu nuit s'appliquait toujours — en silence, et sans que personne
+puisse deviner que le CSS était prêt.
+
+Correctif : une regex lit la couleur **déjà écrite** sur la section du fragment — aucun
+recalcul, aucun accès à `PALETTE_CHAPITRE` — et `sommaire_html()` la pose sur l'entrée
+correspondante. `falc.css` n'a pas été touché : sa règle fonctionne enfin. Contraste vérifié
+(`apca-check.py`, 155 paires, 0 échec), pagination inchangée (14 et 10 pages).
+
+**Un ajout de l'agent a été retiré par le chef d'orchestre** : il avait posé un repère carré
+coloré dans le sommaire de la maquette « normal », qui n'en portait aucun, pour rendre le
+correctif visible à l'œil. C'est une justification de test, pas une décision de design — et
+modifier la maquette d'un livre publiable sans demande de Robin n'appartient pas à l'agent. Le
+défaut signalé ne portait que sur les onglets existants, côté FALC.
+
+---
+
+## 21. A5 — le constat de départ était faux, et l'ajout demandé est fait
+
+**Temps 1 : les liens de la bibliographie ONT bien la flèche.** Robin affirmait le contraire ;
+la compilation tranche en faveur du code. Article d'essai portant un DOI et une URL en
+bibliographie, compilé par la chaîne réelle : le HTML rend `<a href="…" class="uri">` sans
+aucune classe d'exemption, et le PDF affiche la flèche après les deux liens. veraPDF `ua1`
+PASS, zéro `FAIL`. **Rien n'a été corrigé, puisqu'il n'y avait rien à corriger.**
+
+L'explication la plus probable de ce qui a été observé : les **appels de citation** eux-mêmes
+(`a.szh-appel`) n'ont pas de flèche, et c'est délibéré — ce sont des liens internes, la flèche
+étant réservée à ce qui sort du document. Dans une page composée, un appel « (Dupont, 2024) »
+et une entrée de bibliographie se ressemblent assez pour qu'on prenne l'un pour l'autre.
+
+**Temps 2 : la flèche retour.** La première occurrence de chaque référence reçoit un id
+`appel-ref-nom-année`, posé au moment même où les liens d'appel le sont — `traiter_inlines()`
+pour les liens automatiques, `marquer_liens_manuels()` pour ceux écrits à la main. L'entrée de
+bibliographie reçoit en retour un lien vers cette ancre.
+
+**Trois exigences d'accessibilité tenues**, et aucune n'était dans la demande initiale :
+1. Le lien porte un `aria-label` **explicite** — « Retour à l'appel de (Dupont, 2024) » /
+   « Zurück zum Zitatverweis … », la langue étant déterminée comme pour le titre de
+   bibliographie. Une flèche nue est muette pour un lecteur d'écran.
+2. Le `<a>` est volontairement **vide**, l'icône posée en fond CSS — **même recette que
+   `a.szh-orcid`**, et pour la même raison PDF/UA. Réutilisation, non invention.
+3. La cible étant interne, la règle existante `a[href^="#"]` lui retire déjà la flèche des
+   liens sortants : rien à ajouter.
+
+**Interaction avec le réglage A6, tranchée** : quand `desactiverLiensReferences` est actif,
+aucune ancre n'est posée sur les appels automatiques — **aucune flèche retour n'est donc créée
+pour ces références**. On ne fabrique jamais un lien vers une ancre absente. Un lien écrit à la
+main, lui, garde son ancre et sa flèche quel que soit le réglage.
+
+Vérifié par compilation dans **trois** scénarios — liens actifs, réglage désactivé, lien
+manuel — veraPDF `ua1` PASS et zéro `FAIL` à chaque fois.
+
+---
+
+## 22. Numérotation des titres Word (REPRISE 2.5) — vérifiée, aucun défaut
+
+Le doute était formulé ainsi : « il a été affirmé que pandoc retire cette numérotation à
+l'import, mais **personne ne l'a constaté sur un vrai aller-retour** ». C'est constaté, et
+l'affirmation est **juste**.
+
+**La prémisse a été vérifiée avant la conclusion**, et c'est le point de méthode : le modèle
+numérote-t-il réellement ses titres ? Oui, mesuré dans le zip du `.docx`. `word/styles.xml`
+montre Heading1/2/3 portant chacun `w:numId="1"` ; `word/numbering.xml` formate ce numId en
+« %1. », « %1.%2. », « %1.%2.%3. » ; et `word/document.xml` montre que le **texte** des titres
+est nu. La numérotation est donc portée par le style, jamais par les caractères — d'où sa
+disparition à la conversion.
+
+**Aller-retour joué deux fois** : par `make import` sur une copie de `livre-template/` avec le
+`.docx` déposé dans `chapitres-word/`, et par un appel direct à `import-docx.sh`. Résultat
+identique : aucun titre du `.md` produit ne commence par un numéro littéral.
+
+**Deux tests figent le constat** plutôt que de le laisser au jugement : l'un verrouille la
+prémisse — si le modèle cessait de numéroter, l'aller-retour ne prouverait plus rien — et se
+dégrade en skip explicite si l'outillage manque ; l'autre rejoue l'import et vérifie les titres
+produits. La question ne se reposera plus.
+
+---
+
+## 23. Version : le mois a changé pendant la session
+
+⚠ La convention de numérotation **repart à zéro chaque mois**, et non en continu :
+`v2026.06.1`, puis `v2026.07.0` à `v2026.07.4`, puis `v2026.08.0` à `v2026.08.66`.
+
+La session ayant passé minuit, le prochain tag est donc **`v2026.09.0`** — et non
+`v2026.08.67`, annoncé par erreur au chef d'orchestre avant qu'il ne vérifie l'historique.
+Point à connaître pour toute release faite au tournant d'un mois.

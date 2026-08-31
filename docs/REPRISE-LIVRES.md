@@ -132,13 +132,36 @@ dans `livre/base.css` — n'y toucher que si l'écart vient vraiment de là).
       Enfin, `@page :blank` : une page de passage au recto ne porte plus son folio.
       **Résultat : 47 pages contre 46 à l'original.** Corps, interlignes, pas des puces et
       couleur des titres concordent désormais.
-- [ ] **Ce qui reste, si on veut aller plus loin** — aucune de ces pistes n'est chiffrée :
-      les pages produites laissent en moyenne plus de blanc en pied que l'original, ce qui
-      vient probablement des `break-inside: avoid` (figures, encadrés `.falc-*`) qui
-      renvoient un bloc entier à la page suivante. À départager avant de toucher à quoi que
-      ce soit : mesurer le blanc de pied page à page plutôt qu'en moyenne.
-      L'outil de comparaison visuelle est `python3 tmp/falc-apercu.py <page orig> <page
-      produite>`.
+- [x] **Blanc de pied — MESURÉ le 01.09.2026, et l'hypothèse est INFIRMÉE.** Ne pas toucher
+      aux `break-inside: avoid` : la mesure les innocente.
+
+      Ce paragraphe affirmait que « les pages produites laissent en moyenne plus de blanc en
+      pied que l'original, ce qui vient **probablement** des `break-inside: avoid` (figures,
+      encadrés `.falc-*`) ». Les deux moitiés de la phrase sont fausses.
+
+      Mesure PyMuPDF page par page, blanc de pied = 210 mm (225 − marge basse de 15 mm) moins
+      le bas du dernier bloc de contenu, chrome exclu :
+      **produit** moyenne 37,9 mm, médiane 20,3 mm, 24 pages creuses sur 43 ;
+      **original** moyenne 44,3 mm, médiane 26,9 mm, 34 pages creuses sur 41.
+      **Le produit est donc MOINS creux que l'original**, sur les deux indicateurs.
+
+      Causes réelles des 24 pages creuses, chacune confrontée au premier bloc de la page
+      suivante : **8** liminaires et versos d'encart — blanc voulu ; **5** précèdent une
+      ouverture de chapitre (`break-before: recto`), convention de mise en page ; **7**
+      précèdent un titre, donc l'évitement d'orphelin porté par les **titres** dans
+      `base.css` ; **4** sans cause identifiée, le bloc suivant étant un simple paragraphe.
+      ⚠ **Aucune page creuse n'est suivie d'un encadré FALC**, et une seule d'une image (un
+      pictogramme QR en liminaire) : l'hypothèse des figures et des `.falc-*` ne tient pas.
+
+      **L'écart d'une page (47 contre 46) ne vient pas du blanc** : le produit en cumule
+      moins tout en faisant une page de plus. Il vient du nombre de pages de **contenu**,
+      43 contre 41 — un texte qui occupe deux pages de plus. Cause non établie, à chercher
+      ailleurs si le point mérite un jour d'être repris.
+
+      ⚠ **Le PDF d'origine a été retrouvé** — il n'est plus dans `tmp/`, vidé depuis, mais
+      dans `C:\Users\robin\OneDrive - SZH CSPS\60 - RESSOURCES IA\PRO_EditionSZH-CSPS_Workflow\models\FALC\2025-Prospectrum_FALC_FR_ebook.pdf`
+      (46 pages, 155 × 225 mm). Le Word source est dans le même dossier. `tmp/falc-apercu.py`,
+      lui, reste introuvable.
 - [x] **Banc revérifié** : `livre-normal` et `livre-falc` recompilés de zéro, 2 PASS et
       0 FAIL chacun. La maquette « normal » n'a pas bougé.
 
