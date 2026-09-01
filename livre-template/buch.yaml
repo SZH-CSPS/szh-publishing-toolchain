@@ -61,7 +61,19 @@ impression:
   dos-mm:
   fond-perdu-mm: 3
   traits-de-coupe: true
-  profil-cmjn: ""
+  # Profil de sortie CMJN du PDF imprimeur, cherché dans /opt/icc/ de l'image.
+  # PSO Uncoated v3 (FOGRA52) : papier NON COUCHÉ, standard ISO 12647-2:2013, encrage
+  # maximal 300 %. Le non couché ne renvoie pas de reflets, ce qui compte pour des lecteurs
+  # que la fatigue visuelle atteint vite.
+  # ⚠ Le profil n'existe dans l'image qu'à partir de la version 2026.09.2 : sur un poste
+  #   qui n'a pas été mis à jour, la cible « livre-imprimeur » S'ARRÊTE avec un message
+  #   explicite plutôt que de livrer un PDF RVB qu'on croirait CMJN. C'est voulu — l'erreur
+  #   se paie à l'impression, pas à la compilation. Les autres cibles (livre, couverture,
+  #   epub, web) ne sont pas concernées.
+  # ⚠ À reconfirmer auprès de l'imprimerie : le profil ICC est sa décision, pas celle du
+  #   logiciel. S'il en demande un autre, remplacer ce nom de fichier ici, livre par livre.
+  #   Vider la valeur remet le PDF imprimeur en RVB, avec fond perdu et traits de coupe.
+  profil-cmjn: "PSOuncoated_v3_FOGRA52.icc"
 locked: false
 archived: false
 version-toolkit: ""
