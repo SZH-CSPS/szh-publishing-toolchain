@@ -79,7 +79,7 @@ local LIBELLE_LIEN = {
   intervention = { fr = 'En savoir plus sur l’intervention %s', de = 'Mehr zum Vorstoss %s' },
   recherche = { fr = 'En savoir plus sur la recherche %s', de = 'Mehr zum Forschungsprojekt %s' },
 }
-local LIBELLE_LIEN_DEFAUT = { fr = 'En savoir plus : %s', de = 'Mehr erfahren: %s' }
+local LIBELLE_LIEN_DEFAUT = { fr = 'En savoir plus : %s', de = 'Mehr erfahren: %s' }
 
 -- Langue de composition, simplifiée par rapport à langue_de() de szh-numerotation.lua (qui
 -- lit en plus la fiche <slug>.meta.yaml pour départager, dans les métadonnées fusionnées,

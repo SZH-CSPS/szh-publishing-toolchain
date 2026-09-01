@@ -822,7 +822,7 @@
         },
         {
           "command": "szh.ressourcesArticle",
-          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
           "group": "inline@3"
         },
         {
