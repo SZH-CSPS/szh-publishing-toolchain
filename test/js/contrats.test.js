@@ -18,6 +18,7 @@ const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
 const table = require(path.join(COCKPIT, 'lib', 'table-model.js'));
 const slug = require(path.join(COCKPIT, 'lib', 'slug.js'));
+const profils = require(path.join(COCKPIT, 'lib', 'profil.js'));
 const refs = require(path.join(COCKPIT, 'lib', 'references.js'));
 const cit = require(path.join(COCKPIT, 'lib', 'citations.js'));
 const qualite = require(path.join(COCKPIT, 'lib', 'qualite-image.js'));
@@ -1353,4 +1354,33 @@ test('print.css : un appel de citation ne se lit pas comme un lien sortant', () 
   const lua = lire('pipeline', 'filters', 'szh-citations.lua');
   assert.match(lua, /SZH_APERCU/);
   assert.match(lire('pipeline', 'Makefile'), /SZH_APERCU=1 \$\(PANDOC\)/);
+});
+
+// Le dépôt Word suit le PROFIL, jamais un nom écrit en dur. Défaut trouvé en production le
+// 01.09.2026 : sur un livre, le cockpit déposait et listait dans articles-word/ pendant que
+// la chaîne ne regardait que chapitres-word/ (pipeline/Makefile WORD_DIR, surchargé par
+// pipeline/profils/livre.mk). Le Word s'affichait « en attente » pour toujours, le bouton
+// « Convertir » ne produisait rien, et RIEN ne le disait. lib/profil.js nommait pourtant
+// correctement les deux dépôts depuis le début — il n'était simplement pas branché ici.
+test('le dépôt Word vient du profil, et aucun nom n’est écrit en dur dans extension.js', () => {
+  assert.strictEqual(profils.profilPour('revue').depot, 'articles-word');
+  assert.strictEqual(profils.profilPour('livre').depot, 'chapitres-word');
+
+  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  // Le code seul : un nom de dossier cité dans un commentaire est légitime et documente.
+  const code = src.split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n');
+
+  for (const litteral of ["'articles-word'", '"articles-word"',
+    "'chapitres-word'", '"chapitres-word"']) {
+    assert.ok(!code.includes(litteral),
+      'dépôt Word écrit en dur dans le code d’extension.js : ' + litteral
+      + ' — passer par profilCourant().depot, sinon un livre cherche ses Word au mauvais '
+      + 'endroit et la conversion ne part jamais.');
+  }
+
+  // Et le routage doit être réellement utilisé, pas seulement le littéral retiré.
+  assert.ok(/profilCourant\(\)\.depot/.test(code),
+    'aucun appel à profilCourant().depot : le routage du dépôt Word a disparu.');
 });

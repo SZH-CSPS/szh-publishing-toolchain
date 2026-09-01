@@ -1459,9 +1459,10 @@ class FournisseurRevue {
     return it;
   }
 
-  // articles-word/*.docx à la racine du dossier, donc sans _convertis/.
+  // articles-word/*.docx (chapitres-word/ pour un livre) à la racine du dossier, donc
+  // sans _convertis/ — le nom du dépôt suit le profil actif (lib/profil.js).
   _itemsWord() {
-    const noms = this._docxEnAttente(path.join(this.racine, 'articles-word'));
+    const noms = this._docxEnAttente(path.join(this.racine, profilCourant().depot));
     if (noms.length === 0) { return [this._vide(T('arbre.vide.word'))]; }
     return noms.map((nom) => {
       const it = new vscode.TreeItem(nom, vscode.TreeItemCollapsibleState.None);
@@ -1548,7 +1549,7 @@ class FournisseurRevue {
 
   compterWord() {
     if (!this.racine) { return 0; }
-    return this._docxEnAttente(path.join(this.racine, 'articles-word')).length;
+    return this._docxEnAttente(path.join(this.racine, profilCourant().depot)).length;
   }
 
   compterTraductions() {
@@ -2649,7 +2650,7 @@ async function compilerApresImport() {
 // Makefile — pour que resoudreNumeroOrdre() ci-dessous retrouve le bon numéro même une fois
 // le slug suffixé « -2 ».
 function numerosOrdreEnAttente(fournisseur) {
-  const noms = fournisseur._docxEnAttente(path.join(fournisseur.racine, 'articles-word'));
+  const noms = fournisseur._docxEnAttente(path.join(fournisseur.racine, profilCourant().depot));
   const parBase = new Map();
   for (const nom of noms) {
     const base = slugifierArticle(nom);
@@ -2764,13 +2765,14 @@ async function lancerConversion(fournisseur, rafraichirTout) {
 }
 
 // Commun au bouton « Importer des Word » et au glisser-déposer : copie vers
-// articles-word/, conflits en modale, puis conversion.
+// articles-word/ (chapitres-word/ pour un livre — profilCourant().depot), conflits en
+// modale, puis conversion.
 async function importerFichiersWord(fournisseur, rafraichirTout, uris) {
   const racine = fournisseur.racine;
   if (!racine || !Array.isArray(uris) || uris.length === 0) { return; }
   const choix = uris;
 
-  const dossierWord = path.join(racine, 'articles-word');
+  const dossierWord = path.join(racine, profilCourant().depot);
   try { fs.mkdirSync(dossierWord, { recursive: true }); } catch (e) { /* existe déjà */ }
 
   // Plutôt qu'un renommage automatique, qui créerait un article dupliqué au slug suffixé.
@@ -2950,7 +2952,7 @@ async function choisirArticleReimport(fournisseur, nom) {
 // Le rédacteur désigne le Word. Sortie du refus « la fiche ne dit pas d'où vient cet
 // article » et de « son document n'attend pas sous ce nom ».
 async function choisirWordReimport(fournisseur, slug) {
-  const noms = fournisseur._docxEnAttente(path.join(fournisseur.racine, 'articles-word'));
+  const noms = fournisseur._docxEnAttente(path.join(fournisseur.racine, profilCourant().depot));
   if (noms.length === 0) { return ''; }
   const choix = await sousGarde(() => vscode.window.showQuickPick(noms, {
     title: T('reimport.choisirWord.titre', [slug]),
@@ -4184,7 +4186,7 @@ function vueWord(fournisseur) {
       ouvrir: false
     });
   }
-  const noms = fournisseur._docxEnAttente(path.join(racine, 'articles-word'));
+  const noms = fournisseur._docxEnAttente(path.join(racine, profilCourant().depot));
   for (const nom of noms) {
     const slug = slugifierArticle(nom);
     const deja = fournisseur._articleExiste(slug);
@@ -4225,7 +4227,7 @@ function vueWord(fournisseur) {
 // de carte.
 function lireRapportImport(racine) {
   let texte = '';
-  try { texte = fs.readFileSync(path.join(racine, 'articles-word', '.import.log'), 'utf8'); }
+  try { texte = fs.readFileSync(path.join(racine, profilCourant().depot, '.import.log'), 'utf8'); }
   catch (e) { return []; }
   const langue = langueCockpit();
   const avertissements = new Map();
@@ -4523,7 +4525,8 @@ async function actionVue(fournisseur, rafraichirTout, type, id, cle) {
     // Une conversion en cours parcourt ce dossier : lui retirer ses fichiers sous les pieds
     // fait échouer l'import et efface l'article a moitié écrit.
     if (buildEnCours || importEnCours) { return T('statut.occupe'); }
-    const noms = fournisseur._docxEnAttente(path.join(fournisseur.racine, 'articles-word'));
+    const dossierWord = path.join(fournisseur.racine, profilCourant().depot);
+    const noms = fournisseur._docxEnAttente(dossierWord);
     if (noms.length === 0) { return null; }
     const bouton = T('word.vue.vider.bouton');
     const choix = await vscode.window.showWarningMessage(
@@ -4532,7 +4535,7 @@ async function actionVue(fournisseur, rafraichirTout, type, id, cle) {
     if (choix !== bouton) { return null; }
     const erreurs = [];
     for (const nom of noms) {
-      try { fs.unlinkSync(path.join(fournisseur.racine, 'articles-word', nom)); }
+      try { fs.unlinkSync(path.join(dossierWord, nom)); }
       catch (e) { erreurs.push(nom); }
     }
     if (erreurs.length > 0) { vscode.window.showErrorMessage(T('word.vue.vider.erreur', [erreurs.join(', ')])); }
