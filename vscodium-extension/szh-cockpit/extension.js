@@ -2561,7 +2561,16 @@ function relancerCompilation(fournisseur, slug, opts) {
 // l'enregistrement des métadonnées (A3) passent tous deux par ici, sous la même garde
 // `buildEnCours` — jamais deux compilations à la fois, quel que soit le déclencheur.
 async function compilerPuisAfficher(fournisseur, slug, opts) {
-  if (buildEnCours || importEnCours) { return; }
+  if (buildEnCours || importEnCours) {
+    // Un refus dû à l'import ne doit jamais s'escamoter en silence (enregistrer une fiche
+    // PENDANT un import qui ne ramène finalement rien laisserait l'aperçu et le PDF périmés
+    // sans qu'aucune compilation ne reparte) : on garde de quoi rejouer l'appel tel quel,
+    // rejoué par rejouerCompilationsDifferees() dès qu'importEnCours retombe. Un refus dû à
+    // buildEnCours seul n'est pas concerné : une compilation est déjà en vol pour ce numéro,
+    // celle-ci lui succédera naturellement au prochain déclenchement (ouvrirArticle, A3…).
+    if (importEnCours) { compilationsDifferees.set(slug, { fournisseur: fournisseur, opts: opts }); }
+    return;
+  }
   if (compilationAutoCoupee()) { return; }         // pas de compilation implicite
 
   buildEnCours = true;
@@ -2595,6 +2604,26 @@ async function compilerPuisAfficher(fournisseur, slug, opts) {
 // ---- Import guidé ----------------------------------------------------------------
 
 let importEnCours = false;
+
+// Slugs refusés par compilerPuisAfficher pendant qu'importEnCours était posé (import guidé
+// OU réimport, executerReimport() plus bas — même drapeau, même trou) : une seule entrée par
+// slug, la dernière demande gagne — trois enregistrements pendant l'import ne doivent
+// rejouer qu'UNE compilation par article, comme le fait déjà buildEnCours pour deux fiches
+// enregistrées d'un coup (voir le commentaire de compilerPuisAfficher).
+const compilationsDifferees = new Map();
+
+// Rejoue, en tâche de fond, les compilations que compilerPuisAfficher a dû décliner pendant
+// la fenêtre importEnCours — à appeler juste après avoir reposé ce drapeau à false, quel
+// qu'ait été le résultat de l'import (échec, zéro article ramené, ou succès) : c'est
+// précisément le cas « zéro article » qui ne passe par aucun autre chemin de recompilation
+// (compilerApresImport() n'est appelée que si nouveaux.length > 0, plus bas). Un travail
+// refusé doit être rejoué, jamais juste tu.
+function rejouerCompilationsDifferees() {
+  if (compilationsDifferees.size === 0) { return; }
+  const aRejouer = Array.from(compilationsDifferees.entries());
+  compilationsDifferees.clear();
+  for (const [slug, args] of aRejouer) { relancerCompilation(args.fournisseur, slug, args.opts); }
+}
 
 // Appelée pendant que importEnCours est posé, d'où le drapeau de compilation géré ici.
 // Un échec n'annule pas l'import.
@@ -2726,6 +2755,11 @@ async function lancerConversion(fournisseur, rafraichirTout) {
   } finally {
     statut.dispose();
     importEnCours = false;
+    // Après le dialogue de vérification (branche nouveaux.length > 0) comme après un
+    // échec ou un import qui ne ramène rien (branches ci-dessus, sans compilerApresImport) :
+    // dans tous les cas, ce qu'un enregistrement de fiche a vu refuser pendant cette
+    // fenêtre repart maintenant.
+    rejouerCompilationsDifferees();
   }
 }
 
@@ -3004,7 +3038,9 @@ async function executerReimport(fournisseur, rafraichirTout, slug, args, annulat
     T(annulation ? 'statut.reimport.annule' : 'statut.reimport', [slug]));
   let r;
   try { r = await lancerReimporter(racine, args); }
-  finally { statut.dispose(); importEnCours = false; }
+  // Même drapeau, même trou que lancerConversion() : un enregistrement de fiche pendant un
+  // réimport doit aussi retrouver sa compilation à la sortie.
+  finally { statut.dispose(); importEnCours = false; rejouerCompilationsDifferees(); }
   // Les formulaires de cet article montrent des tableaux et des images qui viennent d'être
   // remplacés : les laisser ouverts, c'est laisser écrire par-dessus.
   const reussi = !!(r.json && r.json.resultat === 'reussi');
@@ -8086,6 +8122,7 @@ module.exports = {
     // compilation — buildEnCours, apercuCourantSlug et panneauApercuHtml restent des
     // variables de module, donc lus sur l'hôte réellement activé, pas rejouables à froid.
     focaliserUnite, relancerCompilation, compilerPuisAfficher, relancerCompilationCartes,
+    rejouerCompilationsDifferees,
     avertirCopiesConflit, oublierCopiesSignalees, ecrireClesAusgabe,
     // B1 : le numéro de tête du Word migré vers ordre-articles/ordre-chapitres à l'import.
     // Pas pures (la dernière lit et écrit le numéro), exposées pour le même contrôle.
