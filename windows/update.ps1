@@ -161,19 +161,76 @@ function Remove-SzhToolkitOrphelins {
   )
   $dossiersGeres = @('pipeline', 'vscodium-user', 'revue-template', 'livre-template', 'windows')
   $retires = New-Object System.Collections.ArrayList
+  $avertissements = New-Object System.Collections.ArrayList
+
+  # ---- Garde globale : l'extraction doit ressembler à un vrai toolkit avant qu'on y touche ----
+  # Constaté en bac à sable : une extraction vide (zip qui réussit sans rien contenir) aurait
+  # vidé les cinq dossiers gérés du toolkit, faute de quoi que ce soit à quoi les comparer. Si
+  # l'extraction ne porte NI le VERSION NI un seul des dossiers gérés, elle ne dit rien de
+  # fiable sur cette version : le nettoyage entier s'abstient plutôt que de juger sur du vide.
+  $versionExtraite = Test-Path -LiteralPath (Join-Path $Extrait 'VERSION') -PathType Leaf
+  $auMoinsUnDossier = $false
+  foreach ($d in $dossiersGeres) {
+    if (Test-Path -LiteralPath (Join-Path $Extrait $d) -PathType Container) { $auMoinsUnDossier = $true; break }
+  }
+  if ((-not $versionExtraite) -or (-not $auMoinsUnDossier)) {
+    [void]$avertissements.Add('nettoyage abandonné en entier : extraction sans VERSION ni aucun des cinq dossiers gérés -- rien n''est fiable à comparer')
+    return [ordered]@{ retires = $retires; avertissements = $avertissements }
+  }
+
+  # Sous ce nombre de fichiers, une proportion élevée d'orphelins reste plausible (un petit
+  # dossier retaillé de moitié) et la garde de vraisemblance ci-dessous ne s'applique pas.
+  $seuilPlancherFichiers = 4
+  # Au-delà de cette part, un nettoyage n'est plus « quelques fichiers retirés du dépôt » mais
+  # la majorité d'un dossier géré : invraisemblable pour une mise à jour normale.
+  $seuilProportionOrpheline = 0.5
+
   foreach ($d in $dossiersGeres) {
     $dansToolkit = Join-Path $Toolkit $d
     if (-not (Test-Path $dansToolkit)) { continue }
     $dansArchive = Join-Path $Extrait $d
-    $fichiers = Get-ChildItem -LiteralPath $dansToolkit -Recurse -File -Force -ErrorAction SilentlyContinue
+
+    # ---- Garde par dossier : le dossier doit exister dans l'archive extraite ----
+    # Le défaut constaté en bac à sable : $Extrait\pipeline absent alors que $Extrait\windows
+    # est présent effaçait TOUT $Toolkit\pipeline, faute de savoir ce que cette version y
+    # garde. En cas de doute, ce dossier-ci n'est pas touché ; les autres, eux, restent jugés
+    # chacun sur sa propre comparaison.
+    if (-not (Test-Path -LiteralPath $dansArchive -PathType Container)) {
+      [void]$avertissements.Add('dossier absent de l''archive extraite, rien retiré -> ' + $d)
+      continue
+    }
+
+    $fichiers = @(Get-ChildItem -LiteralPath $dansToolkit -Recurse -File -Force -ErrorAction SilentlyContinue)
+    if ($fichiers.Count -eq 0) { continue }
+
+    # Candidats orphelins : présents dans le toolkit, absents de l'archive. Calculés d'abord,
+    # sans rien supprimer -- la garde de vraisemblance ci-dessous doit juger sur l'ensemble
+    # avant qu'un seul fichier ne parte.
+    $candidats = New-Object System.Collections.ArrayList
     foreach ($f in $fichiers) {
       $relatif = $f.FullName.Substring($dansToolkit.Length).TrimStart('\')
       $cible = Join-Path $dansArchive $relatif
       if (-not (Test-Path -LiteralPath $cible)) {
-        Remove-Item -LiteralPath $f.FullName -Force
-        [void]$retires.Add((Join-Path $d $relatif))
+        [void]$candidats.Add([ordered]@{ chemin = $f.FullName; relatif = $relatif })
       }
     }
+    if ($candidats.Count -eq 0) { continue }
+
+    # ---- Garde de vraisemblance : proportion invraisemblable ----
+    # Une archive authentique mais incomplète (dossier source vidé par erreur avant le `cp -r`
+    # de release.yml, zip valide, empreinte correcte) passe les deux gardes ci-dessus : le
+    # dossier EXISTE dans l'archive, il est juste creux. Elle ne passe pas celle-ci.
+    if (($fichiers.Count -ge $seuilPlancherFichiers) -and
+        (($candidats.Count / [double]$fichiers.Count) -gt $seuilProportionOrpheline)) {
+      [void]$avertissements.Add(('proportion invraisemblable, rien retiré -> {0} : {1}/{2} fichier(s) auraient été retirés' -f $d, $candidats.Count, $fichiers.Count))
+      continue
+    }
+
+    foreach ($c in $candidats) {
+      Remove-Item -LiteralPath $c.chemin -Force
+      [void]$retires.Add((Join-Path $d $c.relatif))
+    }
+
     # Dossiers restés vides derrière les fichiers retirés, du plus profond au moins profond ;
     # le dossier géré lui-même ($dansToolkit) n'est jamais retiré, même vide.
     Get-ChildItem -LiteralPath $dansToolkit -Recurse -Directory -Force -ErrorAction SilentlyContinue |
@@ -181,7 +238,7 @@ function Remove-SzhToolkitOrphelins {
       Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue) } |
       Remove-Item -Force -ErrorAction SilentlyContinue
   }
-  return $retires
+  return [ordered]@{ retires = $retires; avertissements = $avertissements }
 }
 
 # ---- Une seule mise à jour à la fois (mutex nommé, portée poste) ----
@@ -258,12 +315,15 @@ try {
       $extrait = Join-Path $SzhStaging ('toolkit-extrait-' + $manifest.version)
       if (Test-Path $extrait) { Remove-Item -LiteralPath $extrait -Recurse -Force }
       Expand-Archive -Path $zip -DestinationPath $extrait -Force
-      $orphelins = Remove-SzhToolkitOrphelins -Toolkit $SzhToolkit -Extrait $extrait
-      foreach ($o in $orphelins) {
+      $bilanOrphelins = Remove-SzhToolkitOrphelins -Toolkit $SzhToolkit -Extrait $extrait
+      foreach ($o in $bilanOrphelins.retires) {
         Write-SzhLog ('update : orphelin retiré du toolkit -> ' + $o)
       }
-      if ($orphelins.Count -gt 0) {
-        Write-SzhLog ('update : ' + $orphelins.Count + ' orphelin(s) retiré(s) du toolkit (absents de la version ' + $manifest.version + ')')
+      if ($bilanOrphelins.retires.Count -gt 0) {
+        Write-SzhLog ('update : ' + $bilanOrphelins.retires.Count + ' orphelin(s) retiré(s) du toolkit (absents de la version ' + $manifest.version + ')')
+      }
+      foreach ($a in $bilanOrphelins.avertissements) {
+        Write-SzhLog ('update : nettoyage des orphelins, anomalie -> ' + $a)
       }
     } catch {
       Write-SzhLog ('update : nettoyage des orphelins du toolkit non effectué : ' + $_.Exception.Message)
