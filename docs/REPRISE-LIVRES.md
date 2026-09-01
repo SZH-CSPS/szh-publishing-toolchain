@@ -251,6 +251,40 @@ en nommant.
   Test : importer le modèle comme chapitre, puis vérifier qu'aucun titre du `.md` ne
   commence par un numéro littéral.
 
+### 2.5b Le VN-FALC ne compilait plus — 01.09.2026
+
+**Corrigé** (commit `aac6afc`). Symptôme : `mv: cannot stat out/~026-B399-VN_FALC.pdf`,
+après dix minutes de compilation, sans un mot sur la cause. Cinq défauts, en file.
+
+| | Défaut | Où |
+|---|---|---|
+| 1 | WeasyPrint s’arrête net sur un métafichier Windows (`.emf`/`.wmf`) — Pillow n’a pas de moteur EMF hors de Windows. Word en fabrique dès qu’on y colle un dessin, un graphique Excel ou une capture. | `verifie-dossier` / `verifie-livre` refusent maintenant en 2 s, en nommant le fichier et le geste. Ne bloque que sur une image **citée**. |
+| 2 | La cascade de repli PDF ne testait pas sa **dernière** tentative. Son échec ne se voyait qu’au `mv` suivant. La règle de la couverture, elle, était déjà gardée ainsi. | Les deux règles PDF de `livre.mk` et celle de `Makefile`. |
+| 3 | Le digest du journal WeasyPrint s’arrêtait aux **vingt premières** lignes — ici vingt avertissements anodins, l’exception étant en ligne 800. Une troncature qui ne se dit pas se lit comme un journal complet. | La troncature s’annonce ; l’échec montre la **fin** du journal. |
+| 4 | Un dossier de `chapitres/` préfixé `_` s’imprimait comme un chapitre. `livre-scinder.py` y dépose ce qu’il n’a pas su rattacher : le livre sortait avec la page de titre de son manuscrit en **dernier chapitre**. | Écartés, et l’écartement est **annoncé** à chaque compilation. |
+| 5 | La scission ne suivait pas un tableau jusqu’aux images qu’il cite. `docx-tables.py` écrit des `<img src="media/…">` dans `tables/table-NN.html`, invisibles depuis le `.md`. Le chapitre 09 citait `fig-73` dans son tableau 05 et ne l’a jamais reçue. | `extraire_references()` lit désormais les tableaux — comme `import-medias.py` le faisait déjà (`fichiers_de_texte`). |
+
+**Deux points d’état du dossier**, réparés à la main, hors code :
+
+- `chapitres/creer-ensemble-des-projets-en-langage-2/` était **le manuscrit entier une
+  seconde fois** (3 213 lignes, 108 Mo d’images) : un second import du même Word, jamais
+  scindé, que `ordre-chapitres` rangeait à la suite des 12 chapitres. Le livre se composait
+  deux fois — HTML de 303 Mo, sommaire de 342 entrées, « Anchor defined twice » en pagaille.
+  Déplacé dans `_chapitres-ecartes/` avec un LISEZ-MOI. Après : 142 Mo, 171 entrées.
+- Les deux `.emf` ont été rendus en PNG par **GDI+ côté Windows** (`System.Drawing`, le seul
+  moteur qui sache lire un EMF+), à 2× la taille native, soit ~330 dpi. Originaux conservés
+  dans `.szh-emf-origine/`.
+
+**À retenir pour la suite.** `ordre-chapitres` **ordonne mais n’exclut pas** : tout dossier de
+`chapitres/` portant son `<slug>.md` est imprimé, listé ou non (`livre.mk`, « un nouveau
+chapitre ne disparaît jamais du livre »). Pour écarter un chapitre, il faut le **sortir** de
+`chapitres/` ou le préfixer `_`.
+
+**Piste non prise.** Convertir les `.emf` automatiquement à l’import demanderait un moteur EMF
+dans le rootfs — or aucun paquet Linux ne rend correctement l’EMF+ (GDI+), et seul Windows
+le sait. La conversion resterait donc à faire côté cockpit, en PowerShell. Non fait : cela
+change le geste de compilation pour tout le monde, et c’est un arbitrage à poser à Robin.
+
 ### 2.6 CMJN — le profil est épinglé, reste à publier l'image
 
 **Débloqué le 01.09.2026.** Le profil retenu est **PSO Uncoated v3 (FOGRA52)**, papier **non
