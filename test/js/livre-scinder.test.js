@@ -17,6 +17,19 @@
 //   3. que la chaîne alimente désormais liminaires/media/, symétriquement aux chapitres ;
 //   4. que le texte de tête d'un chapitre (avant son premier titre de niveau 1),
 //      auparavant capturé puis jeté en silence, est maintenant mis de côté et annoncé.
+//
+// Depuis le branchement de la scission dans pipeline/Makefile (cible `import`, appelée
+// automatiquement à l'import d'un manuscrit à plusieurs titres de niveau 1) :
+//   5. ordre-chapitres se FUSIONNE : les chapitres déjà listés (une scission précédente,
+//      un réordonnancement à la main dans le cockpit) ne disparaissent plus derrière les
+//      seuls chapitres de CETTE scission — c'était le cas avant ce correctif ;
+//   6. l'IDEMPOTENCE : relancer la scission sur un manuscrit déjà scindé — ou une simple
+//      coïncidence de nom avec un chapitre existant — s'arrête AVANT de rien créer ni
+//      supprimer, plutôt que d'écraser un chapitre déjà retravaillé par la rédaction ;
+//   7. une image référencée en HTML brut (`<img src="…">`, ce que pandoc écrit pour une
+//      image à légende que le markdown ne peut exprimer) ou par un chemin préfixé « ./ »
+//      — les deux formes mesurées sur un vrai aller-retour pandoc, pas supposées — est
+//      copiée vers le nouveau chapitre comme n'importe quelle image en markdown ordinaire.
 'use strict';
 
 const test = require('node:test');
@@ -157,6 +170,101 @@ test('le texte de tête d’un chapitre n’est plus capturé puis jeté en sile
     assert.ok(fs.existsSync(rescape),
       'le texte de tête jeté n’est plus retrouvable nulle part sur le disque');
     assert.match(fs.readFileSync(rescape, 'utf8'), /Un impressum recopiable/);
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('ordre-chapitres se fusionne : un chapitre déjà listé n’est pas effacé par la scission d’un autre', () => {
+  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+
+  const racine = livreJetable();
+  try {
+    // « 01-avant » existe déjà et figure déjà dans ordre-chapitres — comme un chapitre
+    // écrit à la main, ou issu d’une scission précédente. Rien à voir avec « manuscrit ».
+    ecrire(racine, 'buch.yaml', 'titre: "Essai"\nordre-chapitres: [\'01-avant\']\n');
+    ecrire(racine, 'chapitres', '01-avant', '01-avant.md', '# Avant\n\nDéjà là.\n');
+    ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md',
+      '# Un premier\n\nTexte.\n\n# Un second\n\nTexte.\n');
+
+    const r = lancer(racine, 'manuscrit');
+
+    assert.strictEqual(r.status, 0, r.stderr);
+    const buch = fs.readFileSync(path.join(racine, 'buch.yaml'), 'utf8');
+    const ligne = buch.split('\n').find((l) => l.startsWith('ordre-chapitres:'));
+    assert.match(ligne, /'01-avant'/,
+      'le chapitre déjà listé a disparu d’ordre-chapitres : la scission a écrasé au lieu de fusionner');
+    assert.match(ligne, /'01-un-premier'/);
+    assert.match(ligne, /'02-un-second'/);
+    // Et dans l’ordre : « 01-avant » doit rester en tête, les deux nouveaux à la suite.
+    const avant = ligne.indexOf('01-avant');
+    const premier = ligne.indexOf('01-un-premier');
+    assert.ok(avant !== -1 && premier !== -1 && avant < premier,
+      '« 01-avant » ne précède plus les chapitres de la scission dans ordre-chapitres');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('idempotence : un chapitre déjà présent au nom visé arrête la scission avant tout dégât', () => {
+  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+
+  const racine = livreJetable();
+  try {
+    // « 01-un-premier » existe déjà, retravaillé par la rédaction — c’est justement le nom
+    // que produirait la scission du manuscrit ci-dessous. Relancer l’import ne doit ni le
+    // dupliquer ni l’écraser.
+    const texteEditorial = '# Un premier\n\nVersion corrigée par la rédaction, à ne pas perdre.\n';
+    ecrire(racine, 'buch.yaml', 'titre: "Essai"\nordre-chapitres: []\n');
+    ecrire(racine, 'chapitres', '01-un-premier', '01-un-premier.md', texteEditorial);
+    ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md',
+      '# Un premier\n\nTexte du manuscrit, qui entrerait en collision.\n\n# Un second\n\nTexte.\n');
+
+    const dossierOriginal = path.join(racine, 'chapitres', 'manuscrit');
+    const r = lancer(racine, 'manuscrit');
+
+    assert.strictEqual(r.status, 1,
+      'une collision de nom avec un chapitre existant ne fait plus échouer la scission : ' + r.stderr);
+    assert.match(r.stderr, /\[scission-avertissement\] chapitre-cible-existe/,
+      'la collision n’est plus un constat nommé, visible');
+    assert.strictEqual(
+      fs.readFileSync(path.join(racine, 'chapitres', '01-un-premier', '01-un-premier.md'), 'utf8'),
+      texteEditorial,
+      'le chapitre déjà là a été écrasé par la scission automatique — exactement ce que l’idempotence doit empêcher');
+    assert.ok(fs.existsSync(dossierOriginal),
+      'le dossier du manuscrit a été détruit alors que la scission s’est arrêtée avant toute écriture');
+    assert.ok(!fs.existsSync(path.join(racine, 'chapitres', '02-un-second')),
+      'un second chapitre a été créé alors que la scission doit s’arrêter AVANT de rien créer');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('une image référencée en HTML brut, ou par un chemin préfixé « ./ », est copiée comme les autres', () => {
+  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+
+  const racine = livreJetable();
+  try {
+    // Formes mesurées sur un vrai aller-retour pandoc (md -> docx -> md), pas supposées :
+    // une image sans texte alternatif ressort en markdown ordinaire mais préfixée « ./ » ;
+    // une image AVEC texte alternatif ressort en <figure><img src="./media/…"> parce que
+    // le writer markdown ne peut pas exprimer un Figure à légende autrement qu'en HTML.
+    ecrire(racine, 'buch.yaml', 'titre: "Essai"\nordre-chapitres: []\n');
+    ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md',
+      '# Une section\n\n![](./media/fig-un.png)\n\n# Une autre section\n\n'
+      + '<figure>\n<img src="./media/fig-deux.png" alt="Une figure" />\n'
+      + '<figcaption aria-hidden="true"><p>Une figure</p></figcaption>\n</figure>\n');
+    ecrire(racine, 'chapitres', 'manuscrit', 'media', 'fig-un.png', 'contenu-1');
+    ecrire(racine, 'chapitres', 'manuscrit', 'media', 'fig-deux.png', 'contenu-2');
+
+    const r = lancer(racine, 'manuscrit');
+
+    assert.strictEqual(r.status, 0,
+      'une image présente, sous une forme réellement produite par pandoc, est comptée manquante : ' + r.stderr);
+    assert.ok(fs.existsSync(path.join(racine, 'chapitres', '01-une-section', 'media', 'fig-un.png')),
+      'l’image en markdown préfixée « ./ » n’a pas suivi sa section');
+    assert.ok(fs.existsSync(path.join(racine, 'chapitres', '02-une-autre-section', 'media', 'fig-deux.png')),
+      'l’image en <figure><img src="./…"> n’a pas suivi sa section');
   } finally {
     fs.rmSync(racine, { recursive: true, force: true });
   }

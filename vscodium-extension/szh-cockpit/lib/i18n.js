@@ -1011,6 +1011,9 @@ const TEXTES_COCKPIT = {
     'ctl.source.pdfua': 'Accessibilité du PDF',
     'ctl.source.pipeline': 'Compilation',
     'ctl.source.rendu': 'Mise en page',
+    // Découpage d’un manuscrit de livre en chapitres, à l’import : les constats de
+    // livre-scinder.py remontent au panneau « Contrôles » par ce libellé.
+    'ctl.source.scission': 'Scission du manuscrit',
     // Citations : szh-citations.lua n'écrit qu'en français, ces phrases sont donc la seule
     // version bilingue qui existe.
     'ctl.cit.sansref': 'L’appel {0} ne mène à aucune référence : la liste des références n’a pas d’entrée à ce nom et à cette année. Ajoutez la référence à la fin de l’article, ou corrigez le nom ou l’année dans l’appel. En l’état, le lecteur ne peut pas remonter à la source.',
@@ -2024,6 +2027,7 @@ const TEXTES_COCKPIT = {
     'ctl.source.pdfua': 'Barrierefreiheit des PDF',
     'ctl.source.pipeline': 'Kompilierung',
     'ctl.source.rendu': 'Layout',
+    'ctl.source.scission': 'Aufteilung des Manuskripts',
     'ctl.cit.sansref': 'Der Zitatverweis {0} führt zu keinem Literatureintrag: das Literaturverzeichnis hat keinen Eintrag mit diesem Namen und diesem Jahr. Ergänzen Sie den Eintrag am Ende des Artikels, oder korrigieren Sie Name oder Jahr im Verweis. So wie es ist, kann die Leserin die Quelle nicht finden.',
     'ctl.cit.ambigu': 'Der Zitatverweis {0} kann zwei Einträge derselben Autorin und desselben Jahres meinen: niemand kann das für Sie entscheiden. Setzen Sie den Cursor in den Verweis und wählen Sie «Einen Verweis mit einem Literatureintrag verknüpfen». Ohne diesen Schritt bleibt der Verweis ohne Verknüpfung.',
     'ctl.cit.jamais': 'Der Eintrag «{0}» wird im Artikel nirgends zitiert. Zitieren Sie ihn im Text, oder entfernen Sie ihn aus dem Verzeichnis: ein Eintrag, den nichts aufruft, ist meist der Rest einer Kürzung.',

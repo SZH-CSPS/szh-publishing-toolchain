@@ -5,6 +5,14 @@ Scinde un chapitre importé d'un docx en autant de chapitres qu'il porte de titr
 de niveau 1. Reproduit exactement les règles de slug du reste de la chaîne.
 
 Appel : python3 livre-scinder.py <dossier du livre> <slug du chapitre à scinder>
+
+Lanceur : la cible `import` de pipeline/Makefile appelle ce script automatiquement,
+juste après avoir converti un .docx de chapitres-word/ en chapitre unique — exactement
+comme le ferait quelqu'un à la main. Elle ne le fait que si le .md fraîchement produit
+porte 2 titres de niveau 1 ou plus : un seul (le titre du chapitre lui-même, comme le
+pose le modèle Modele-chapitre-SZH.docx) n'est pas un manuscrit à scinder, c'est déjà un
+chapitre. Voir chapitres-word/LISEZ-MOI.txt (« Un manuscrit en UN SEUL fichier... se
+découpe ensuite, aux titres de niveau 1 ») et le commentaire de la cible `import`.
 """
 
 import sys
@@ -15,11 +23,9 @@ import unicodedata
 from pathlib import Path
 from collections import defaultdict
 
-# Pas d'import yaml - la WSL n'a que la stdlib. Parseur YAML simple pour ce qu'on en a besoin.
-try:
-    import yaml
-except ImportError:
-    yaml = None
+# Pas d'import yaml - la WSL de production n'a que la stdlib (voir lire_ordre_existant() :
+# buch.yaml se lit en texte brut pour cette raison, jamais avec un module absent en
+# production).
 
 # --------------------------------------------------------------------------------------
 # Translittération et normalisation de slug, reproduisant slug.js exactement
@@ -143,11 +149,29 @@ def extraire_references(contenu: str) -> dict:
     """
     Extrait les références aux médias et tableaux du contenu markdown.
     Retourne {'images': [...], 'tables': [...]} avec les chemins.
+
+    Deux formes d'image, pas une seule — mesuré en testant ce script de bout en bout sur
+    un vrai aller-retour pandoc plutôt qu'à la lecture : une image SANS texte alternatif
+    ressort en markdown ordinaire (`![](media/x.png)`), mais dès qu'elle en porte un,
+    pandoc en fait un Figure à légende que le writer markdown ne peut exprimer et rend en
+    HTML brut (`<figure><img src="./media/x.png" …></figure>`) — et c'est justement le cas
+    d'une image que szh-legendes.lua n'a pas su réduire à une légende de paragraphe. Ne
+    reconnaître que la première forme, comme avant ce correctif, faisait passer une telle
+    image pour absente : ni copiée vers le nouveau chapitre, ni comptée dans les orphelines,
+    simplement invisible. Les DEUX formes, en plus, peuvent porter un chemin préfixé
+    « ./ » (observé sur le même aller-retour, y compris en markdown ordinaire) : l'ancien
+    motif exigeait que « media/ » ouvre le chemin pile, et le loupait aussi.
     """
     references = {'images': set(), 'tables': set()}
 
-    # Images : ![...](media/xxx) ou ![...](media/xxx.png)
-    for match in re.finditer(r'!\[.*?\]\((media/[^)]+)\)', contenu):
+    # Images en markdown : ![...](media/xxx) ou ![...](./media/xxx.png)
+    for match in re.finditer(r'!\[.*?\]\((?:\./)?(media/[^)\s]+)', contenu):
+        references['images'].add(match.group(1))
+
+    # Images en HTML brut : <img src="media/xxx"> ou <img src="./media/xxx">, seule ou
+    # dans un <figure>. Pandoc y recourt pour une image que le markdown ne peut pas
+    # exprimer telle quelle (une légende promue en Caption, par exemple).
+    for match in re.finditer(r'<img\s[^>]*?src=["\'](?:\./)?(media/[^"\']+)["\']', contenu):
         references['images'].add(match.group(1))
 
     # Tableaux : ::: {.szh-tabelle src="tables/table-NN.html"}
@@ -236,19 +260,54 @@ def copier_medias_references(chemin_md: Path, dossier_source_medias: Path) -> tu
 # --------------------------------------------------------------------------------------
 # Écriture de buch.yaml
 # --------------------------------------------------------------------------------------
-def lire_buch_yaml(chemin_buch: str) -> dict:
-    """Lit buch.yaml et retourne le dictionnaire (parseur simple)."""
+def lire_ordre_existant(chemin_buch: str) -> list:
+    """
+    Lit la liste actuelle de « ordre-chapitres: » en texte brut — même lecture que le sed
+    de pipeline/profils/livre.mk (ORDRE_LU), volontairement, pour ne jamais dire une chose
+    différente de ce que le moteur de compilation va lire. Ne dépend PAS de PyYAML : sur la
+    WSL de production, `yaml` est absent (voir l'import en tête de ce fichier). L'ancien
+    code lisait buch.yaml avec PyYAML quand il était là et {} sinon, puis écrasait de toute
+    façon ordre-chapitres avec les seuls slugs de CETTE scission — perdant tous les autres
+    chapitres déjà listés (ceux d'une scission précédente, ou saisis à la main dans le
+    cockpit) dès qu'un livre en avait plus d'un. fusionner_ordre() ci-dessous corrige ça ;
+    encore faut-il d'abord lire ce qui existe, texte brut, jamais None ni {}.
+    """
     if not os.path.exists(chemin_buch):
-        return {}
-
-    if yaml:
-        with open(chemin_buch, 'r', encoding='utf-8') as f:
-            return yaml.safe_load(f) or {}
-
-    # Parseur très simple sans dépendance externe
+        return []
+    motif = re.compile(r'^ordre-chapitres:\s*\[([^\]]*)\]')
     with open(chemin_buch, 'r', encoding='utf-8') as f:
-        content = f.read()
-    return {}  # Retourner dict vide - on lira/écrira le fichier tel quel
+        for ligne in f:
+            m = motif.match(ligne)
+            if not m:
+                continue
+            contenu = m.group(1).strip()
+            if not contenu:
+                return []
+            return [s.strip().strip('\'"') for s in contenu.split(',') if s.strip()]
+    return []
+
+def fusionner_ordre(ordre_existant: list, slug_remplace: str, slugs_nouveaux: list) -> list:
+    """
+    Remplace, À SA PLACE, l'entrée `slug_remplace` (le manuscrit tel qu'il apparaissait
+    avant scission, s'il y était) par les chapitres qui en sortent, dans l'ordre où ils
+    sortent. Tout le reste d'ordre-chapitres — les chapitres d'une AUTRE scission, ceux
+    réordonnés à la main dans le cockpit (« Monter d'un rang » / « Descendre d'un rang »,
+    voir docs/REPRISE-LIVRES.md §2.1b) — traverse intact : c'est précisément ce que
+    l'ancien code ne faisait pas, en réécrivant ordre-chapitres avec les seuls slugs de
+    cette scission-ci, quel que soit ce que buch.yaml portait déjà.
+    """
+    if slug_remplace in ordre_existant:
+        resultat = []
+        for s in ordre_existant:
+            if s == slug_remplace:
+                resultat.extend(slugs_nouveaux)
+            else:
+                resultat.append(s)
+        return resultat
+    # Le manuscrit n'était pas encore nommé dans ordre-chapitres (livre qui n'en a pas
+    # encore, ou chapitre resté à l'ordre alphabétique des dossiers) : les nouveaux
+    # chapitres s'ajoutent à la suite de ce qui existe, rien n'est perdu.
+    return ordre_existant + slugs_nouveaux
 
 def ecrire_buch_yaml(chemin_buch: str, data: dict) -> None:
     """Écrit buch.yaml avec les conventions du projet."""
@@ -309,7 +368,17 @@ def main():
     liminaire_texte, sections = lire_chapitre(str(chemin_md))
 
     if not sections:
-        print("Erreur : aucun titre de niveau 1 trouvé dans le chapitre", file=sys.stderr)
+        avertir(
+            'aucun-titre-niveau-1',
+            ['chapitre « %s »' % slug_original],
+            "Aucun titre de niveau 1 (« # ») n'a été trouvé dans « %s » : rien à scinder. "
+            "Si ce fichier est bien un manuscrit à plusieurs chapitres, vérifiez que chaque "
+            "titre de chapitre porte le style Word « Titre 1 » (chapitres-word/LISEZ-MOI.txt)."
+            % chemin_md,
+            'In « %s » wurde keine Überschrift 1. Ordnung (« # ») gefunden: nichts '
+            'aufzuteilen. Handelt es sich tatsächlich um ein mehrkapitliges Manuskript, '
+            'prüfen Sie, ob jeder Kapiteltitel den Word-Formatvorlagenstil « Titre 1 » '
+            'trägt.' % chemin_md)
         sys.exit(1)
 
     print(f"Trouvé {len(sections)} chapitre(s) à créer", file=sys.stderr)
@@ -330,9 +399,32 @@ def main():
         num_chapitre = str(i + 1).zfill(2)
         slug_numerote = f"{num_chapitre}-{slug_final}"
 
+        # Garde-fou d'IDEMPOTENCE : si l'import repasse sur un manuscrit déjà scindé — ou
+        # si un autre chapitre porte déjà, par coïncidence, le nom qu'un des nouveaux
+        # prendrait — on s'arrête ICI, avant de créer ou de supprimer quoi que ce soit.
+        # dossier_original lui-même est exempté (c'est le cas normal d'une scission qui
+        # renomme le dossier qu'elle scinde en son premier chapitre). Sans ce garde-fou,
+        # un second passage sur le même manuscrit écraserait un chapitre déjà retravaillé
+        # par la rédaction, ou un chapitre sans rapport portant le même nom.
         dossier_nouveau = dossier_chapitres / slug_numerote
         if dossier_nouveau.exists() and dossier_nouveau != dossier_original:
-            print(f"Erreur : le dossier {dossier_nouveau} existe déjà", file=sys.stderr)
+            avertir(
+                'chapitre-cible-existe',
+                ['manuscrit « %s »' % slug_original, 'dossier « %s »' % slug_numerote],
+                "Le dossier « %s » existe déjà et n'est pas celui qu'on scinde : la "
+                "scission de « %s » s'arrête ici, AVANT de rien créer ni supprimer. Ce "
+                "manuscrit a-t-il déjà été scindé (relancer l'import ne doit pas dupliquer "
+                "ses chapitres, ni écraser le travail déjà fait dedans) ? Si « %s » n'a "
+                "aucun rapport avec ce manuscrit, c'est une coïncidence de nom : renommez "
+                "l'un des deux."
+                % (dossier_nouveau, slug_original, dossier_nouveau),
+                'Der Ordner « %s » existiert bereits und ist nicht der aufzuteilende: Das '
+                'Aufteilen von « %s » stoppt hier, BEVOR irgendetwas erstellt oder gelöscht '
+                'wird. Wurde dieses Manuskript schon aufgeteilt (ein erneuter Import darf '
+                'seine Kapitel nicht verdoppeln oder bereits geleistete Arbeit darin '
+                'überschreiben)? Hat « %s » nichts mit diesem Manuskript zu tun, ist es ein '
+                'Namenszufall: benennen Sie eines der beiden um.'
+                % (dossier_nouveau, slug_original, dossier_nouveau))
             sys.exit(1)
 
     # Traiter chaque section
@@ -525,13 +617,14 @@ def main():
                 if chemin_relatif_str not in tables_utilisees:
                     print(f"  ⚠ Tableau orphelin : {chemin_relatif_str}", file=sys.stderr)
 
-        # Mettre à jour buch.yaml avec ordre-chapitres
-        buch_data = lire_buch_yaml(str(dossier_buch))
+        # Mettre à jour buch.yaml avec ordre-chapitres — FUSIONNÉ, pas écrasé : voir
+        # fusionner_ordre() ci-dessus pour ce que ça corrige.
         slugs_numerotes = [f"{i+1:02d}-{slugs_nouveaux[i]}" for i in range(len(sections))]
-        buch_data['ordre-chapitres'] = slugs_numerotes
+        ordre_existant = lire_ordre_existant(str(dossier_buch))
+        nouvel_ordre = fusionner_ordre(ordre_existant, slug_original, slugs_numerotes)
 
         print(f"Écriture de buch.yaml avec ordre-chapitres...", file=sys.stderr)
-        ecrire_buch_yaml(str(dossier_buch), buch_data)
+        ecrire_buch_yaml(str(dossier_buch), {'ordre-chapitres': nouvel_ordre})
 
         # Supprimer le chapitre d'origine — seulement si TOUT ce qu'il devait fournir a pu
         # être copié. C'est le correctif du 31.08 : une copie qui échoue interdit désormais
@@ -575,14 +668,15 @@ def main():
         sys.exit(1)
 
     # Échec franc si des ressources manquent, même si la scission elle-même n'a levé
-    # aucune exception. Ce script n'a aucun lanceur connu dans ce dépôt — ni le Makefile
-    # (pipeline/profils/livre.mk), ni le cockpit : il s'invoque à la main (voir l'usage en
-    # tête de fichier). Sortir non nul ici ne peut donc casser aucune automatisation
-    # existante, et c'est ce qui permet de ne pas choisir entre « échouer » et « conserver
-    # la source en le disant » : les deux à la fois. Les chapitres et buch.yaml restent
-    # écrits (rien d'utile n'est perdu), le dossier d'origine reste sur le disque
-    # (ci-dessus), et le code de sortie interdit qu'on lise ce résultat comme un succès —
-    # y compris pour un futur lanceur qui, lui, testerait $?.
+    # aucune exception. La cible `import` de pipeline/Makefile EST désormais ce lanceur
+    # (elle ne l'était pas quand ce paragraphe a été écrit le 31.08 — voir git blame) : elle
+    # teste ce code de sortie et compte le manuscrit comme une scission incomplète, sans
+    # pour autant effacer quoi que ce soit ni faire disparaître les chapitres déjà écrits.
+    # Sortir non nul ici ne casse donc PAS l'automatisation, il la renseigne : c'est ce qui
+    # permet de ne pas choisir entre « échouer » et « conserver la source en le disant » :
+    # les deux à la fois. Les chapitres et buch.yaml restent écrits (rien d'utile n'est
+    # perdu), le dossier d'origine reste sur le disque (ci-dessus), et le code de sortie
+    # interdit qu'on lise ce résultat comme un succès.
     if ressources_manquantes:
         sys.exit(1)
 

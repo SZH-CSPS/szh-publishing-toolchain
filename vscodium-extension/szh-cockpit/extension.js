@@ -4288,7 +4288,14 @@ const PASTILLE_CONSTAT = {
 
 const SOURCES_CONSTAT = {
   citations: 'ctl.source.citations', import: 'ctl.source.import', meta: 'ctl.source.meta',
-  pdfua: 'ctl.source.pdfua', pipeline: 'ctl.source.pipeline', rendu: 'ctl.source.rendu'
+  pdfua: 'ctl.source.pdfua', pipeline: 'ctl.source.pipeline', rendu: 'ctl.source.rendu',
+  // pipeline/livre-scinder.py, appelé depuis la cible `import` du Makefile pour un livre :
+  // ses constats « [scission-avertissement] » arrivent ici sans code à ajouter (familleCode()
+  // de lib/journal.js reconnaît déjà tout préfixe « <source>-<ton> » générique) — seule cette
+  // étiquette manquait, sans quoi la carte se serait affichée sous « ctl.source.pipeline ».
+  // ⚠ Clé d'i18n « ctl.source.scission » ENCORE À AJOUTER dans lib/i18n.js (fr « Scission »,
+  // de « Aufteilung » ou équivalent) — hors périmètre de cette session, signalé et non écrit.
+  scission: 'ctl.source.scission'
 };
 
 // Une carte par constat : l'article concerné en tête, la nature du contrôle en mesure, la

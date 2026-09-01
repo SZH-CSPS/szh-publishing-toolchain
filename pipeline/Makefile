@@ -488,6 +488,23 @@ docx: verifie-dossier verifier-ua $(DOCXS)
 # attente pour dire « déjà converti ».
 # Code de sortie : tout fichier Word resté sur le carreau fait échouer la recette. Sans
 # cela un article disparaissait du numéro avec une sortie 0, personne n'étant averti.
+#
+# ⚠ LIVRE SEULEMENT — scission automatique. Juste après avoir converti un .docx de
+# chapitres-word/ en chapitre unique (ci-dessus), on compte ses titres de niveau 1 : 2 ou
+# plus, et livre-scinder.py le redécoupe aussitôt en autant de chapitres, dans le MÊME
+# geste que la conversion — aucun geste séparé à apprendre. Un seul titre de niveau 1 (le
+# titre du chapitre lui-même, comme le pose Modele-chapitre-SZH.docx) n'est PAS un
+# manuscrit à scinder : c'est déjà un chapitre, on le laisse tel quel. Cette règle vient de
+# chapitres-word/LISEZ-MOI.txt (« Un manuscrit en UN SEUL fichier… se découpe ensuite, aux
+# titres de niveau 1 ») et de lire_chapitre() dans livre-scinder.py, qui ne coupe qu'à ces
+# titres-là. Idempotent par construction : le déclencheur est la conversion du .docx qui
+# vient d'avoir lieu — le .docx est déjà supprimé (rm -f "$$f" ci-dessus) avant qu'on y
+# arrive, donc relancer `import` ne rappelle jamais la scission sur le même manuscrit. Le
+# script porte son propre garde-fou si un rappel devait pourtant survenir : voir le
+# constat « chapitre-cible-existe » dans livre-scinder.py.
+# Une ressource manquante à la scission (image, tableau) n'efface pas le dossier d'origine
+# — voir livre-scinder.py, avertir('source-non-supprimee') — et ne fait pas non plus
+# échouer la CONVERSION déjà réussie : le compteur $$scission_rate le distingue de $$rate.
 import:
 	@set -u; \
 	shopt -s nullglob; \
@@ -521,7 +538,7 @@ import:
 	shopt -u nocaseglob; \
 	[ $${#files[@]} -gt 0 ] || exit 0; \
 	mkdir -p $(UNITES_DIR); \
-	ok=0; renomme=0; redepot=0; rate=0; \
+	ok=0; renomme=0; redepot=0; rate=0; scinde=0; scission_rate=0; \
 	for f in "$${files[@]}"; do \
 	  nom=$$(basename "$$f"); slug="$${nom%.*}"; \
 	  slug=$$(printf '%s' "$$slug" | LC_ALL=C.UTF-8 iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null || printf '%s' "$$slug"); \
@@ -566,17 +583,37 @@ import:
 	      renomme=$$((renomme+1)); \
 	    fi; \
 	    ok=$$((ok+1)); \
+	    if [ -n "$(LIVRE_CONFIG)" ]; then \
+	      titres1=$$(grep -c -E '^#[[:space:]]' "$$cible" 2>/dev/null || true); titres1=$${titres1:-0}; \
+	      if [ "$$titres1" -ge 2 ] 2>/dev/null; then \
+	        if PYTHONIOENCODING=utf-8 python3 "$(PIPELINE_DIR)/livre-scinder.py" "$$PWD" "$$slug"; then \
+	          dire "[import] scindé : $$nom -> $$titres1 chapitre(s) ($$titres1 titres de niveau 1 détectés dans $$cible)"; \
+	          scinde=$$((scinde+1)); \
+	        else \
+	          dire "[import] ⚠ scission incomplète : $$nom — voir les avertissements « scission-avertissement » ci-dessus ; le dossier d'origine du manuscrit a été conservé, PAS supprimé. [de] ⚠ Aufteilung unvollständig: $$nom — Details siehe oben (« scission-avertissement »); der Ursprungsordner des Manuskripts wurde beibehalten, NICHT gelöscht."; \
+	          scission_rate=$$((scission_rate+1)); \
+	        fi; \
+	      fi; \
+	    fi; \
 	  else \
 	    rm -rf "$(UNITES_DIR)/$$slug"; \
 	    dire "[import] ⚠ échec sur : $$nom (le fichier reste dans $(WORD_DIR)/)"; rate=$$((rate+1)); \
 	  fi; \
 	done; \
 	dire "[import] terminé : $$ok converti(s), $$renomme renommé(s), $$redepot redéposé(s), $$rate échec(s)."; \
+	if [ $$scinde -ne 0 ] || [ $$scission_rate -ne 0 ]; then \
+	  dire "[import] scission : $$scinde manuscrit(s) scindé(s) en chapitres, $$scission_rate incomplet(s) (dossier d'origine conservé, voir « scission-avertissement » ci-dessus). [de] Aufteilung: $$scinde Manuskript(e) in Kapitel aufgeteilt, $$scission_rate unvollständig (Ursprungsordner beibehalten, siehe oben « scission-avertissement »)."; \
+	fi; \
 	if [ $$redepot -ne 0 ]; then \
 	  dire "[import] $$redepot fichier(s) Word attendent : leur article existe déjà, c'est sa version corrigée qui n'est pas encore publiée. Publiez-la par « Réimporter cet article ». [de] $$redepot Word-Datei(en) warten: ihr Artikel existiert bereits, nur die korrigierte Fassung ist noch nicht veröffentlicht. Veröffentlichen Sie sie über « Artikel neu importieren »."; \
 	fi; \
 	if [ $$rate -ne 0 ]; then \
 	  dire "[import] ⚠ $$rate fichier(s) Word ne sont pas entrés dans le numéro : ils restent dans $(WORD_DIR)/. [de] $$rate Word-Datei(en) sind nicht in die Ausgabe gelangt: sie bleiben in $(WORD_DIR)/."; \
+	fi; \
+	if [ $$scission_rate -ne 0 ]; then \
+	  dire "[import] ⚠ $$scission_rate manuscrit(s) scindé(s) incomplètement : ressource(s) manquante(s) ; dossier(s) d'origine conservé(s) — voir « scission-avertissement » ci-dessus pour la marche à suivre. [de] ⚠ $$scission_rate Manuskript(e) unvollständig aufgeteilt: fehlende Ressource(n); Ursprungsordner beibehalten — weiteres Vorgehen siehe oben (« scission-avertissement »)."; \
+	fi; \
+	if [ $$rate -ne 0 ] || [ $$scission_rate -ne 0 ]; then \
 	  exit 1; \
 	fi
 
