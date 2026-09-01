@@ -48,6 +48,17 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 .case-langue + .case-langue { margin-top: var(--e2); }
 .case-langue input { width: auto; margin-right: .35em; accent-color: var(--accent); }
 
+/* Compteur de caracteres du resume (media/_fiches.js, seuilResume) : discret par defaut,
+   il ne vire l'ambre puis le rouge qu'a l'approche du seuil ou la mise en page bascule le
+   resume en page 2 -- jamais de bordure ni de fond, la seule couleur du texte porte le
+   signal, et rien n'empeche l'enregistrement. Marge negative en haut : il colle au champ
+   qu'il decrit plutot que de se lire comme un intitule a part. Il porte les memes classes
+   champ-<lang>/champ-trad que le champ qu'il accompagne : il se cache avec lui. */
+.compteur-resume { margin: -.2em 0 var(--e3); font-size: var(--t-mini); color: var(--encre-2);
+  text-align: right; }
+.compteur-resume--proche { color: var(--vscode-editorWarning-foreground, #d1901e); }
+.compteur-resume--depasse { color: var(--vscode-errorForeground, #f85149); }
+
 /* DOI : calcule par l'hote et montre verrouille ; la case « Definir manuellement le DOI »
    rend le champ editable, apres l'avertissement modal pose par l'hote. */
 input.doi-verrouille { color: var(--encre-2); background: var(--surface); cursor: default; }

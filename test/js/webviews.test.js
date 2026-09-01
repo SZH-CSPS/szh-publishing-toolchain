@@ -1069,3 +1069,103 @@ test('modale auteur : sans liste reçue, aucune UI — et une liste difforme ne 
   taper(champs.nom, 'morand');
   assert.strictEqual(page.compterPage('.auteur-sugg'), 10, 'plafond de suggestions absent');
 });
+
+// ---- Le compteur de caractères du résumé (media/_fiches.js, seuilResume) ----
+//
+// La mise en page bascule un résumé en page 2 selon un seuil PAR PALIER : ~830 caractères
+// jusqu'à 5 mots-clés, ~730 dès le sixième — la même langue que le résumé, puisque c'est ce
+// qui s'imprime avec lui. Le compteur affiché reste prudemment en deçà (750, puis 700), et
+// c'est cette seule marche — le passage du 5e au 6e mot-clé — qui peut se tromper en
+// silence : un seuil qui resterait figé à 750 se tromperait de cent caractères sans qu'aucun
+// autre contrôle ne le remarque.
+
+function compteurResume(carte, langue) {
+  return carte.querySelectorAll('.compteur-resume').find((el) => el.dataset.langue === langue);
+}
+
+test('compteur du résumé : le seuil bascule de 750 à 700 au sixième mot-clé, par langue', () => {
+  const resumeFr = 'x'.repeat(720);
+  const resumeDe = 'y'.repeat(720);
+  const articles = [{
+    slug: '01-essai',
+    valeurs: {
+      lang: 'fr',
+      resume: { fr: resumeFr, de: resumeDe },
+      // FR : 5 mots-clés -> seuil 750 au départ. DE : déjà 6 -> seuil 700 dès le rendu,
+      // pour prouver que le calcul est bien PAR LANGUE et non un seuil unique de carte.
+      keywords: {
+        fr: ['un', 'deux', 'trois', 'quatre', 'cinq'],
+        de: ['eins', 'zwei', 'drei', 'vier', 'fuenf', 'sechs']
+      }
+    }
+  }];
+  const page = ouvrir({
+    racine: RACINE, page: 'metadata-articles',
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+  });
+  page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr',
+                 licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: null });
+  const carte = page.conteneur().querySelectorAll('.carte')[0];
+  assert.ok(carte, 'carte absente');
+
+  // Deux résumés (fr, de hérité car ses mots-clés portent déjà du contenu), deux
+  // compteurs indépendants — chacun avec SON seuil, pas celui de l'autre langue.
+  const cFr = compteurResume(carte, 'fr');
+  const cDe = compteurResume(carte, 'de');
+  assert.ok(cFr, 'compteur du résumé français absent');
+  assert.ok(cDe, 'compteur du résumé allemand absent');
+  assert.match(cFr.textContent, /720/, 'le compteur ne compte pas les caractères saisis');
+  assert.match(cFr.textContent, /750/, 'le seuil à 5 mots-clés ou moins doit être 750');
+  assert.ok(cFr.classes.has('compteur-resume--proche'),
+    '720/750 est proche du seuil : le signal progressif est absent');
+  assert.ok(!cFr.classes.has('compteur-resume--depasse'), '720 < 750 : pas encore dépassé');
+  assert.match(cDe.textContent, /700/, 'le compteur allemand ignore ses 6 mots-clés (devrait afficher 700)');
+  assert.ok(cDe.classes.has('compteur-resume--depasse'),
+    '720 caractères avec 6 mots-clés (seuil 700) doivent se lire comme dépassés');
+
+  // Le compteur suit aussi la frappe EN DIRECT dans le résumé lui-même, espaces
+  // comprises, sans toucher aux mots-clés : dix caractères de plus doivent se lire
+  // aussitôt, avant même que quoi que ce soit ne soit enregistré.
+  const champResumeFr = carte.querySelectorAll('.champs-textes textarea')
+    .find((t) => t.dataset.cle === 'resume' && t.dataset.langue === 'fr');
+  assert.ok(champResumeFr, 'champ du résumé français introuvable');
+  champResumeFr.value = resumeFr + '0123456789';
+  champResumeFr.dispatchEvent({ type: 'input' });
+  assert.match(cFr.textContent, /730/, 'le compteur ne suit pas la frappe dans le résumé');
+
+  // Le basculement du seuil au sixième mot-clé lui-même : la grille de mots-clés est
+  // UNE SEULE grille par article, dont l'absorption des cases vers le modèle (_commun.js)
+  // n'est pas rejouable dans ce DOM minimal (son sélecteur « :not() » n'y est pas
+  // implémenté, voir dom-minimal.js) — on rejoue donc l'arrivée d'une fiche à 6 mots-clés
+  // français exactement comme l'hôte la renverrait après un enregistrement, plutôt que de
+  // simuler la frappe case par case. Le calcul exercé (seuilResume, compterMotsClesLangue)
+  // est le même dans les deux cas.
+  const article6 = {
+    slug: '01-essai',
+    valeurs: {
+      lang: 'fr',
+      resume: { fr: resumeFr, de: resumeDe },
+      keywords: {
+        fr: ['un', 'deux', 'trois', 'quatre', 'cinq', 'six'],
+        de: ['eins', 'zwei', 'drei', 'vier', 'fuenf', 'sechs']
+      }
+    }
+  };
+  page.envoyer({ type: 'valeurs', articles: [article6], types: TYPES, langue: 'fr',
+                 licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: null });
+  const carte6 = page.conteneur().querySelectorAll('.carte')[0];
+  const cFr6 = compteurResume(carte6, 'fr');
+  const cDe6 = compteurResume(carte6, 'de');
+  // Le sixième mot-clé français fait basculer SEULEMENT le seuil français à 700 — celui
+  // de l'allemand, déjà à 6 mots-clés avant comme après, ne bouge pas.
+  assert.match(cFr6.textContent, /700/,
+    'le seuil français ne suit pas son sixième mot-clé : ' + cFr6.textContent);
+  assert.ok(cFr6.classes.has('compteur-resume--depasse'),
+    '720 ≥ 700 : le compteur français doit maintenant se lire comme dépassé');
+  assert.ok(!cFr6.classes.has('compteur-resume--proche'),
+    'la classe « proche » aurait dû céder la place à « dépassé »');
+  assert.match(cDe6.textContent, /700/);
+  assert.ok(cDe6.classes.has('compteur-resume--depasse'));
+});

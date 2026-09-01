@@ -181,6 +181,28 @@
     return trouves.slice(0, MC_SUGG_MAX);
   }
 
+  // ---- Compteur de caractères du résumé : le seuil de bascule en page 2 ----
+  //
+  // La maquette imprime toujours les deux résumés d'un article et ses mots-clés sur la
+  // première page ; au-delà d'un certain nombre de caractères, un résumé bascule en page
+  // 2. Une mesure par compilation réelle de 58 articles d'essai a établi que le
+  // basculement est PAR PALIER selon le nombre de mots-clés — DE LA MÊME LANGUE que le
+  // résumé, puisque c'est ce qui s'imprime ensemble sur cette page-là : 3 à 5 mots-clés
+  // tiennent sur une ligne (bascule vers ~830 caractères), 6 à 10 en occupent deux
+  // (bascule vers ~730). Passer de 5 à 6 mots-clés coûte donc une centaine de caractères
+  // de marge.
+  //
+  // La recommandation affichée reste prudemment en deçà de cette bascule réelle — 750
+  // jusqu'à 5 mots-clés, 700 dès le sixième — et n'empêche jamais l'enregistrement : un
+  // compteur informe, il ne bloque pas. `SEUIL_MOTS_CLES_PALIER` est la seule marche de
+  // cet escalier, et la seule façon dont ce calcul peut se tromper en silence.
+  var SEUIL_RESUME_PALIER_1 = 750;    // jusqu'à 5 mots-clés
+  var SEUIL_RESUME_PALIER_2 = 700;    // dès le 6e mot-clé
+  var SEUIL_MOTS_CLES_PALIER = 6;
+  function seuilResume(nMotsCles) {
+    return nMotsCles >= SEUIL_MOTS_CLES_PALIER ? SEUIL_RESUME_PALIER_2 : SEUIL_RESUME_PALIER_1;
+  }
+
   function cartesArticles(opts) {
     var conteneur = opts.conteneur;
     var api = opts.api;
@@ -255,6 +277,7 @@
       i.addEventListener('input', function () { marquer(carte, slug); });
       parent.appendChild(l);
       parent.appendChild(i);
+      return i;                    // le résumé y accroche son compteur de caractères
     }
 
     // ---- Le champ DOI : calculé et verrouillé, sauf échappatoire ----
@@ -598,17 +621,68 @@
       var zoneTextes = document.createElement('div');
       zoneTextes.className = 'champs-textes';
       carte.appendChild(zoneTextes);
+
+      // ---- Le compteur du résumé, un par langue affichée ----
+      //
+      // `editeurMots` (plus bas) n'existe pas encore au tout premier rendu : le seuil
+      // calculé ici avec zéro mot-clé est provisoire, et `majTousCompteursResume()` le
+      // corrige dès que la grille des mots-clés existe — avant que la carte ne quitte
+      // cette fonction et ne soit posée dans la page, donc sans jamais s'afficher faux.
+      var compteursResume = {};        // langue -> { champ: <textarea>, el: <compteur> }
+      function compterMotsClesLangue(lg) {
+        if (!editeurMots) { return 0; }
+        var liste = editeurMots.collecterBrut()[lg] || [];
+        var n = 0;
+        for (var i = 0; i < liste.length; i++) {
+          if (String(liste[i] || '').trim() !== '') { n++; }
+        }
+        return n;
+      }
+      function majCompteurResume(lg) {
+        var c = compteursResume[lg];
+        if (!c) { return; }
+        var n = c.champ.value.length;             // espaces comprises : l'unité de la mesure
+        var seuil = seuilResume(compterMotsClesLangue(lg));
+        c.el.textContent = (TXT.resumeCompteur || '{0} / {1}')
+          .split('{0}').join(String(n)).split('{1}').join(String(seuil));
+        // Progressif et discret : une seule teinte franchie avant le seuil, une autre au
+        // seuil ou au-delà — jamais un blocage, l'enregistrement n'y regarde pas.
+        c.el.classList.toggle('compteur-resume--proche', n >= seuil * 0.9 && n < seuil);
+        c.el.classList.toggle('compteur-resume--depasse', n >= seuil);
+      }
+      function majTousCompteursResume() {
+        for (var lg in compteursResume) {
+          if (Object.prototype.hasOwnProperty.call(compteursResume, lg)) { majCompteurResume(lg); }
+        }
+      }
+      // Capture lg par appel, comme choisir()/attacherAutocompletionMotsCles plus haut :
+      // un écouteur posé dans la boucle ci-dessous verrait sinon toujours la dernière
+      // langue de la boucle, jamais la sienne.
+      function surSaisieResume(lg) { return function () { majCompteurResume(lg); }; }
+
       function rendreChampsTextes(valeurs) {
         zoneTextes.textContent = '';
+        compteursResume = {};
         var langues = ordreAffichage();
         for (var c = 0; c < textes.length; c++) {
           for (var g = 0; g < langues.length; g++) {
             var lg = langues[g];
-            champTexte(carte, zoneTextes, slug, textes[c][0], lg,
+            var traduction = lg !== langueArticle;
+            var champ = champTexte(carte, zoneTextes, slug, textes[c][0], lg,
               textes[c][1].split('{0}').join(noms[lg]),
-              (valeurs[textes[c][0]] || {})[lg], textes[c][2], lg !== langueArticle);
+              (valeurs[textes[c][0]] || {})[lg], textes[c][2], traduction);
+            if (textes[c][0] !== 'resume') { continue; }
+            var compteur = document.createElement('div');
+            compteur.className = 'compteur-resume champ-' + lg + (traduction ? ' champ-trad' : '');
+            compteur.dataset.langue = lg;
+            compteur.id = 'compteur-resume-' + slug + '-' + lg;
+            champ.setAttribute('aria-describedby', compteur.id);
+            zoneTextes.appendChild(compteur);
+            compteursResume[lg] = { champ: champ, el: compteur };
+            champ.addEventListener('input', surSaisieResume(lg));
           }
         }
+        majTousCompteursResume();
       }
       rendreChampsTextes(v);
 
@@ -645,11 +719,18 @@
           motCle: TXT.motsCles, ajouter: TXT.motCleAjouter,
           retirer: TXT.motCleRetirer
         },
-        onChange: function () { marquer(carte, slug); }
+        // Un mot-clé ajouté, retiré ou vidé peut faire changer de palier (voir
+        // seuilResume plus haut) : les compteurs des résumés doivent le suivre en direct,
+        // dans les DEUX sens — un cinquième mot-clé qui disparaît redonne 750.
+        onChange: function () { marquer(carte, slug); majTousCompteursResume(); }
       });
       motsClesParCarte.set(carte, editeurMots);
       carte.appendChild(editeurMots.element);
       attacherAutocompletionMotsCles(editeurMots);
+      // `editeurMots` n'existait pas encore au premier rendreChampsTextes() : ses
+      // compteurs y ont ouvert sur zéro mot-clé. On les corrige ici, avant que la carte ne
+      // quitte construireCarte() — rien de faux ne s'est donc affiché.
+      majTousCompteursResume();
 
       // Une case par langue MANQUANTE : « + Allemand (champs DE) » pour un article IT de
       // la Revue, « + Français » et « + Italien » pour un article DE de la Zeitschrift.

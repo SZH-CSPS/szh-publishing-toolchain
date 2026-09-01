@@ -279,6 +279,11 @@ const TEXTES_COCKPIT = {
     'fiches.titre.champ': 'Titre ({0})',
     'fiches.soustitre': 'Sous-titre ({0})',
     'fiches.resume': 'Résumé ({0})',
+    // Compteur de caractères sous chaque résumé (media/_fiches.js, seuilResume) :
+    // {0} le nombre de caractères saisis, {1} le seuil recommandé (750, ou 700 dès le
+    // sixième mot-clé de la même langue). Un chiffre, une barre, un chiffre : rien à
+    // ponctuer, donc rien à espacer d’insécable ici.
+    'fiches.resume.compteur': '{0} / {1} caractères',
     'fiches.auteurs': 'Auteur·e·s',
     'fiches.auteur.ajouter': '➕ Ajouter un auteur',
     'fiches.auteur.retirer': 'Retirer cet auteur',
@@ -1323,6 +1328,7 @@ const TEXTES_COCKPIT = {
     'fiches.titre.champ': 'Titel ({0})',
     'fiches.soustitre': 'Untertitel ({0})',
     'fiches.resume': 'Zusammenfassung ({0})',
+    'fiches.resume.compteur': '{0} / {1} Zeichen',
     'fiches.auteurs': 'Autor·innen',
     'fiches.auteur.ajouter': '➕ Autor hinzufügen',
     'fiches.auteur.retirer': 'Diesen Autor entfernen',

@@ -3565,6 +3565,12 @@ function textesCarteArticle() {
     licence: T('fiches.licence'),
     titreChamp: T('fiches.titre.champ'), sousTitre: T('fiches.soustitre'),
     resume: T('fiches.resume'),
+    // Le compteur sous chaque résumé. Son seuil n'est pas décoratif : il vient d'une mesure
+    // par compilation (58 articles d'essai), le bloc résumé basculant en page 2 au-delà
+    // d'environ 830 caractères avec 3 à 5 mots clés et 730 avec 6 à 10 — d'où un plafond
+    // conseillé de 750, ramené à 700 dès le sixième mot clé, que la webview calcule par
+    // langue. Il informe, il ne bloque jamais.
+    resumeCompteur: T('fiches.resume.compteur'),
     auteurs: T('fiches.auteurs'),
     motsCles: T('fiches.motscles'),
     // Cases « + <langue> (champs XX) » : une par langue manquante de la carte.
