@@ -251,16 +251,69 @@ en nommant.
   Test : importer le modèle comme chapitre, puis vérifier qu'aucun titre du `.md` ne
   commence par un numéro littéral.
 
-### 2.6 CMJN, bloqué sur l’image WSL
+### 2.6 CMJN — le profil est épinglé, reste à publier l'image
+
+**Débloqué le 01.09.2026.** Le profil retenu est **PSO Uncoated v3 (FOGRA52)**, papier **non
+couché**, décidé avec Robin.
+
+⚠ Deux notions à ne pas confondre, la confusion ayant failli faire choisir le mauvais
+profil : « couché / non couché » décrit le **papier**, « offset » le **procédé**, et les deux
+axes sont indépendants — on imprime en offset sur l'un comme sur l'autre. C'est le **papier**
+qui décide du profil, puisque celui-ci décrit comment ce papier boit l'encre. Un profil
+« couché » appliqué à du non couché donne des images délavées et un noir boueux. Le non
+couché se défend d'ailleurs au-delà du goût : sans couche minérale, il ne renvoie pas de
+reflets — ce qui compte pour des lecteurs que la fatigue visuelle atteint vite, et rend un
+livre FALC sur papier brillant contradictoire avec son objet.
+
+**Ce qui a réellement bloqué, et qui n'était pas le `sha256` vide.** L'URL inscrite dans
+`image/Containerfile` **ne servait plus rien** : toute adresse sous `eci.org` répond 200 avec
+la **même page HTML de 40 858 octets**, après un 301 puis un **302 vers la page d'accueil**.
+Ce n'est pas un filtrage de `curl` — un user-agent de navigateur donne le même résultat : le
+site a été figé en pages statiques. Renseigner l'empreinte sans vérifier aurait donc épinglé
+celle d'une page HTML.
+
+Source retenue : le **registre officiel de l'International Color Consortium**,
+`https://www.color.org/registry/profiles/PSOuncoated_v3_FOGRA52.icc`, qui sert le `.icc`
+directement — plus de zip, donc plus de dézippage dans le Containerfile.
+Empreinte : `7c39f74fbede1e8c85f8fbb9df7d359aea638b9b68dd0854fdd3ba386e3a02c0`, stable sur
+deux téléchargements. Vérifié à réception : signature `acsp`, classe `prtr`, espace `CMYK`,
+et description interne disant exactement « PSO Uncoated v3 (FOGRA52) ».
+
+⚠ **Licence — ne jamais verser ce profil dans le dépôt.** L'ECI l'autorise à être « used,
+embedded and exchanged without restriction », mais il « may not be **distributed**, sold or
+altered without written permission ». Committer le `.icc` serait une distribution, et ce
+dépôt a vocation à devenir public. Le télécharger à la construction est en revanche un usage.
+
+Une garde a été ajoutée au Containerfile en plus du `sha256` : le fichier doit porter la
+signature ICC `acsp` **et** l'espace `CMYK`. Éprouvée sur quatre entrées — elle accepte le
+vrai profil, refuse la page d'accueil d'eci.org, refuse une 404 du registre, et refuse même
+un vrai profil ICC dont l'espace serait RVB.
+
+**Ce qui reste : publier l'image.** `release.yml` reconstruit le rootfs dès que `image/`
+change et le pousse sur GHCR — donc le prochain tag suffit. ⚠ Aucun poste ne bénéficiera du
+CMJN avant cette publication **et** sa mise à jour.
+
+⚠ **À reconfirmer auprès de l'imprimerie**, comme `docs/ARCHITECTURE-LIVRES.md:287` le
+rappelle : « le profil ICC est une décision d'imprimeur, pas de logiciel ». FOGRA52 est le
+standard actuel du non couché (ISO 12647-2:2013, encrage maximal 300 %) ; si l'imprimeur en
+demande un autre, seules les lignes `ARG` du Containerfile changent. Et rien ne presse : le
+PDF imprimeur sort aujourd'hui en RVB avec fond perdu et traits de coupe, ce que beaucoup
+d'imprimeries acceptent — et qui vaut mieux qu'un CMJN faux.
+
+Enfin, `impression.profil-cmjn` de `buch.yaml` reste **vide par défaut** : la passe CMJN est
+facultative et commandée livre par livre. Pour l'activer, y écrire
+`PSOuncoated_v3_FOGRA52.icc`, que `livre.mk` cherchera dans `/opt/icc/`.
+
+#### Note historique (avant le 01.09.2026)
 
 `pipeline/cmjn.py` est écrit et sa recette est mesurée : substitution du noir de texte en
-`0 0 0 1 k` et des sept couleurs de la maison en CMJN officiel, **puis** Ghostscript vers
-ISO Coated v2 (FOGRA39). Dans cet ordre, parce que Ghostscript laisse intact ce qui est
+`0 0 0 1 k` et des sept couleurs de la maison en CMJN officiel, **puis** Ghostscript vers le
+profil de sortie. Dans cet ordre, parce que Ghostscript laisse intact ce qui est
 déjà en DeviceCMYK.
 
 Il ne peut pas tourner sur un poste tant que l'image ne fournit pas Ghostscript, `pypdf` et
-le profil ICC ECI. Dans `image/Containerfile`, le `sha256` du profil ICC est **laissé vide
-volontairement** : il faut le renseigner, reconstruire le rootfs et le publier avant que la
+le profil ICC. Dans `image/Containerfile`, le `sha256` du profil ICC était **laissé vide
+volontairement** : il fallait le renseigner, reconstruire le rootfs et le publier avant que la
 sortie imprimeur soit utilisable ailleurs qu'en développement.
 
 ---

@@ -92,25 +92,55 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # dérivées — par le profil de sortie. Sans lui, il n'y a pas de PDF CMJN : seulement un PDF
 # RVB qu'on croirait tel, et cela ne se voit qu'à la facture de l'imprimeur.
 
-# ---- Profil de sortie CMJN : ISO Coated v2 (FOGRA39) ----
-# C'est le profil que demande l'imprimerie. Celui d'Adobe (CoatedFOGRA39.icc) n'est pas
-# redistribuable ; celui de l'ECI l'est. Épinglé par sha256 comme veraPDF et les modèles
-# ONNX : un profil substitué en amont changerait la couleur de tous les livres sans qu'une
-# ligne du dépôt ait bougé.
-# ⚠ ICC_SHA256 est VIDE tant que l'empreinte du zip ECI n'a pas été relevée à la main. Dans
-#   cet état l'image se construit quand même, sans profil, et pipeline/cmjn.py refuse alors
-#   de produire un PDF « CMJN » — il le dit et s'arrête. Un demi-fichier livré en silence
-#   serait pire.
-ARG ICC_URL=http://www.eci.org/lib/exe/fetch.php?media=downloads:icc_profiles_from_eci:eci_offset_2009.zip
-ARG ICC_SHA256=
+# ---- Profil de sortie CMJN : PSO Uncoated v3 (FOGRA52) ----
+# Papier NON COUCHÉ, décidé avec Robin le 01.09.2026. Le non couché est le choix courant
+# pour nos ouvrages, et il se défend au-delà du goût : un papier sans couche minérale ne
+# renvoie pas de reflets, ce qui compte pour des lecteurs que la fatigue visuelle atteint
+# vite — un livre FALC sur papier brillant serait un contresens. ⚠ « Couché / non couché »
+# décrit le PAPIER, « offset » le PROCÉDÉ : les deux axes sont indépendants, et c'est le
+# papier qui décide du profil, parce que le profil décrit comment ce papier boit l'encre.
+# Un profil « couché » appliqué à du non couché donne des images délavées et un noir boueux.
+#
+# ⚠ À reconfirmer auprès de l'imprimerie : docs/ARCHITECTURE-LIVRES.md:287 rappelle à juste
+#   titre que « le profil ICC est une décision d'imprimeur, pas de logiciel ». FOGRA52 est le
+#   standard actuel du non couché (ISO 12647-2:2013, encrage max 300 %) ; si l'imprimeur en
+#   demande un autre, seules les deux lignes ARG ci-dessous changent.
+#
+# ⚠ LICENCE — ne pas verser ce profil dans le dépôt. L'ECI l'autorise à être « used, embedded
+#   and exchanged without restriction », mais il « may not be distributed, sold or altered
+#   without written permission ». Committer le .icc serait une distribution, et ce dépôt a
+#   vocation à devenir public. Le télécharger à la construction est en revanche un usage.
+#
+# Épinglé par sha256 comme veraPDF et les modèles ONNX : un profil substitué en amont
+# changerait la couleur de tous les livres sans qu'une ligne du dépôt ait bougé.
+# ⚠ Si ICC_SHA256 est vidé, l'image se construit quand même, sans profil, et
+#   pipeline/cmjn.py refuse alors de produire un PDF « CMJN » — il le dit et s'arrête. Un
+#   demi-fichier livré en silence serait pire.
+#
+# ⚠ POURQUOI PAS eci.org, où ce profil est pourtant publié : leur site ne sert plus rien.
+#   Constaté le 01.09.2026 — toute URL sous eci.org répond 200 avec la MÊME page HTML de
+#   40 858 octets, après un 301 vers `eci.org` puis un 302 vers la page d'accueil. Ce n'est
+#   pas un filtrage de curl (un user-agent de navigateur donne le même résultat) : le site a
+#   été figé en pages statiques, ses liens internes étant devenus `doku.php_id=….html`.
+#   L'ancienne URL `lib/exe/fetch.php?media=downloads:icc_profiles_from_eci:eci_offset_2009.zip`
+#   est donc morte. Renseigner son empreinte sans vérifier aurait figé celle d'une page HTML.
+#
+# Source retenue : le registre officiel de l'International Color Consortium, qui sert le
+# .icc directement — pas un zip, d'où l'absence de dézippage ici. Vérifié à réception : la
+# signature ICC `acsp` est présente, la classe est `prtr`, l'espace `CMYK`, et la description
+# interne du profil dit exactement « PSO Uncoated v3 (FOGRA52) ». Deux téléchargements
+# successifs rendent la même empreinte.
+ARG ICC_URL=https://www.color.org/registry/profiles/PSOuncoated_v3_FOGRA52.icc
+ARG ICC_SHA256=7c39f74fbede1e8c85f8fbb9df7d359aea638b9b68dd0854fdd3ba386e3a02c0
+ARG ICC_NOM=PSOuncoated_v3_FOGRA52.icc
 RUN mkdir -p /opt/icc \
     && if [ -n "${ICC_SHA256}" ]; then \
-         curl -fsSL "${ICC_URL}" -o /tmp/eci.zip \
-         && printf '%s  %s\n' "${ICC_SHA256}" /tmp/eci.zip | sha256sum -c - \
-         && python3 -c "import zipfile,shutil; z=zipfile.ZipFile('/tmp/eci.zip'); \
-              n=[m for m in z.namelist() if m.endswith('ISOcoated_v2_eci.icc')][0]; \
-              shutil.copyfileobj(z.open(n), open('/opt/icc/ISOcoated_v2_eci.icc','wb'))" \
-         && rm /tmp/eci.zip; \
+         curl -fsSL "${ICC_URL}" -o "/tmp/${ICC_NOM}" \
+         && printf '%s  %s\n' "${ICC_SHA256}" "/tmp/${ICC_NOM}" | sha256sum -c - \
+         && python3 -c "import sys; d=open(sys.argv[1],'rb').read(); \
+              sys.exit(0) if d[36:40]==b'acsp' and d[16:20]==b'CMYK' else sys.exit('pas un profil ICC CMJN')" \
+              "/tmp/${ICC_NOM}" \
+         && mv "/tmp/${ICC_NOM}" "/opt/icc/${ICC_NOM}"; \
        else \
          echo "ICC_SHA256 vide : image construite SANS profil CMJN (voir le commentaire)"; \
        fi
