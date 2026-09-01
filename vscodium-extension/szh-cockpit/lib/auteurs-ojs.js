@@ -42,7 +42,7 @@ const { BASE_SZH, lireConfigPoste } = require('./archivage');
 const {
   DELAI_TOTAL_MS, OCTETS_MAX_REPONSE,
   decoderTexteXml, extraireResumptionToken, erreurOai, plierNom,
-  resoudreRedirection, recupererHttps
+  resoudreRedirection, recupererHttps, recupererAvecRepli
 } = require('./oai-pmh');
 
 const ENDPOINTS_OAI_DEFAUT = [
@@ -416,13 +416,15 @@ function endpointsOai(cfg) {
   return propres.length > 0 ? propres : ENDPOINTS_OAI_DEFAUT.slice();
 }
 
-// resoudreRedirection et recupererHttps (client https, gardes réseau, garde
-// SZH_RESEAU_INTERDIT) vivent dans lib/oai-pmh.js, importés plus haut.
+// resoudreRedirection, recupererHttps et recupererAvecRepli (client https, gardes réseau,
+// garde SZH_RESEAU_INTERDIT, repli sur un 503 « Retry after ») vivent dans lib/oai-pmh.js,
+// importés plus haut.
 
 // ListRecords sur un endpoint, resumptionToken suivis jusqu'au bout. `recuperer`
-// est injecté — recupererHttps en vrai, une table de fixtures dans les tests. `from` au
-// format YYYY-MM-DD rend le moissonnage incrémental. `prefixe` = format métadonnées
-// (défaut : marcxml pour les affiliations). Deux gardes anti-infini : token déjà vu, plafond de pages.
+// est injecté — recupererAvecRepli en vrai (voir rafraichir() plus bas), une table de
+// fixtures dans les tests. `from` au format YYYY-MM-DD rend le moissonnage incrémental.
+// `prefixe` = format métadonnées (défaut : marcxml pour les affiliations). Deux gardes
+// anti-infini : token déjà vu, plafond de pages.
 async function moissonner(recuperer, base, from, prefixe) {
   const records = [];
   const jonction = base.indexOf('?') === -1 ? '?' : '&';
@@ -466,7 +468,12 @@ async function rafraichir(opts) {
   if (!o.forcer && cacheFrais(cache, maintenant)) {
     return { fait: false, raison: 'frais', dateFetch: cache.dateFetch, nombre: cache.auteurs.length };
   }
-  const recuperer = o.recuperer || recupererHttps;
+  // recupererAvecRepli, pas recupererHttps seul : le repli sur un 503 « Retry after »
+  // (lib/oai-pmh.js) a été extrait dans le module commun pour que les DEUX moissonneurs en
+  // profitent — rafraichirMotsCles() de lib/mots-cles-edudoc.js le câble déjà de même.
+  // ojs.szh.ch ne l'a pas montré en un an d'usage, mais rien ne garantit qu'il ne s'y mette
+  // pas un jour (edudoc.ch l'a fait le 31.08.2026, sans avoir montré ce comportement avant).
+  const recuperer = o.recuperer || recupererAvecRepli;
   const from = cache.dateFetch ? String(cache.dateFetch).slice(0, 10) : null;
   const endpoints = endpointsOai(o.config === undefined ? lireConfigPoste() : o.config);
   let auteurs = cache.auteurs;
@@ -527,5 +534,5 @@ module.exports = {
   decoderTexteXml, extraireRecords, extraireRecordsMarc, extraireResumptionToken, erreurOai,
   normaliserCreator, plierNom, cleAuteur, rorCanonique, idRor, resoudreRor, recordsEnAuteurs, fusionnerAuteurs,
   lireCache, ecrireCache, cacheFrais,
-  endpointsOai, resoudreRedirection, recupererHttps, moissonner, rafraichir
+  endpointsOai, resoudreRedirection, recupererHttps, recupererAvecRepli, moissonner, rafraichir
 };

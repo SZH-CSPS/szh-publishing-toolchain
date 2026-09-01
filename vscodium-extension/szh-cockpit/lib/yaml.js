@@ -155,21 +155,32 @@ function decouperValeurYaml(reste) {
 }
 
 // Lit un YAML plat, une clé par ligne — ausgabe.yaml comme buch.yaml — avec UN niveau
-// d'imbrication : un bloc top-level dont la ligne ne porte aucune valeur (« impression: »,
-// rien après) ouvre un bloc, et les lignes indentées qui suivent sont ses sous-clés,
+// d'imbrication : un bloc top-level ouvre un bloc pour les lignes indentées qui suivent,
 // exposées sous la forme « parent.sous-clé » — c'est ainsi que `impression.grammage` entre
 // dans CLES_METADONNEES, et non comme une clé `grammage` isolée qui collisionnerait avec
-// n'importe quel autre bloc. Le bloc se referme à la première ligne qui n'est PAS indentée,
-// reconnue comme top-level ou non : ausgabe.yaml n'a aujourd'hui aucun bloc de ce genre, ce
-// qui rend ce comportement neutre pour lui.
+// n'importe quel autre bloc. Le bloc s'ouvre que la ligne du parent porte une valeur ou non :
+// un parent à valeur non vide suivi de lignes indentées est un YAML douteux, mais
+// serialiserAusgabe() doit pouvoir retrouver CE bloc pour y insérer une sous-clé plutôt que
+// d'en créer un second en fin de fichier (voir son en-tête) — la lecture et l'écriture
+// partagent donc la même règle d'ouverture. Le bloc se referme à la première ligne qui n'est
+// PAS indentée, reconnue comme top-level ou non : ausgabe.yaml n'a aujourd'hui aucun bloc
+// ambigu de ce genre, ce qui rend ce comportement neutre pour lui.
+//
+// Le BOM éventuel est retiré avant tout découpage en lignes, à l'identique de
+// serialiserAusgabe() (voir plus bas) : un ausgabe.yaml ou buch.yaml enregistré par un
+// éditeur Windows ou par `Out-File` de PowerShell 5.1 le porte, et sans ce retrait la
+// première ligne ne matchait plus la regex de clé (son premier caractère n'étant plus
+// alphanumérique) — la première clé du fichier se lisait alors comme absente, en silence.
 function analyserAusgabe(contenu) {
   const valeurs = {};
   let parentActuel = null;
-  for (const ligne of contenu.split(/\r?\n/)) {
+  const brut = String(contenu);
+  const sansBom = brut.charAt(0) === '\uFEFF' ? brut.slice(1) : brut;
+  for (const ligne of sansBom.split(/\r?\n/)) {
     const mTop = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
     if (mTop) {
       const valeurTop = decouperValeurYaml(mTop[2]).valeur;
-      parentActuel = valeurTop === '' ? mTop[1] : null;
+      parentActuel = mTop[1];
       if (CLES_METADONNEES.indexOf(mTop[1]) !== -1 && !(mTop[1] in valeurs)) {
         valeurs[mTop[1]] = valeurTop;
       }
@@ -779,6 +790,17 @@ function formaterValeurYaml(cle, valeur) {
 // place ; absente, elle s'insère juste après la dernière ligne connue du bloc — jamais à la
 // toute fin du fichier, où `grammage: 90` perdrait le bloc qui lui donne son sens ; et si le
 // bloc lui-même n'existe pas du tout, il est créé en fin de fichier, avec ses sous-clés.
+//
+// ⚠ `finBloc` retient TOUTE ligne top-level rencontrée, valeur vide ou non — pas seulement
+// celles qui ouvrent un bloc au sens strict. Un `parent:` à valeur non vide suivi de lignes
+// indentées est un YAML douteux, mais la clé ne doit JAMAIS être dupliquée pour autant : sans
+// cette entrée, une sous-clé manquante de ce bloc ne trouvait pas `finBloc.has(parent)`,
+// tombait dans la branche « bloc absent » (plus bas) et ouvrait un second `parent:` en fin de
+// fichier — le fichier sortait avec deux clés top-level du même nom, l'ancienne gardant ses
+// données orphelines. Décision retenue : le parent douteux est traité comme un bloc, sa
+// valeur d'origine préservée intacte (sa ligne n'est réécrite que si `parent` lui-même,
+// jamais l'une de ses sous-clés, est dans `modifies`) — jamais refusé en silence, jamais
+// dupliqué. analyserAusgabe() lit avec la même règle, pour l'aller-retour.
 function serialiserAusgabe(contenu, modifies) {
   const eol = contenu.indexOf('\r\n') !== -1 ? '\r\n' : '\n';
   const bom = contenu.charAt(0) === '\uFEFF' ? '\uFEFF' : '';
@@ -793,9 +815,8 @@ function serialiserAusgabe(contenu, modifies) {
   const resultat = lignes.map((ligne, index) => {
     const mTop = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
     if (mTop) {
-      const valeurTop = decouperValeurYaml(mTop[2]).valeur;
-      parentActuel = valeurTop === '' ? mTop[1] : null;
-      if (parentActuel) { finBloc.set(parentActuel, index); }
+      parentActuel = mTop[1];
+      finBloc.set(parentActuel, index);
       if (!restantes.has(mTop[1])) { return ligne; }
       restantes.delete(mTop[1]);
       // `suite` garde ses espaces de tête ; s'il colle à la valeur, on intercale un espace.

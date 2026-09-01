@@ -40,34 +40,55 @@ function bornerSlug(s) {
   return court;
 }
 
+// Un numéro de tête ne se reconnaît qu'à un séparateur EXPLICITE — soulignement ou tiret —
+// collé au nombre : « 4_Titre », « 12-Titre », « 01-… » (chapitres-word/LISEZ-MOI.txt et
+// articles-word/LISEZ-MOI.txt donnent tous deux cette forme comme convention de rangement).
+// Un nombre suivi d'un ESPACE fait partie du titre lui-même : « 2024 en chiffres »,
+// « 20 minutes chrono », « 3 jours plus tard ». Regression corrigée du 31.08.2026 au
+// 01.09.2026 : une regex `^[0-9]+-` appliquée APRÈS slugifier() ne peut plus distinguer les
+// deux cas, l'espace du titre étant déjà devenu un tiret comme le soulignement du
+// séparateur. Il faut donc juger sur le nom BRUT, avant cette perte d'information — d'où
+// `aUnNumeroDeTete` ci-dessous, appliqué au nom sans extension, jamais au slug déjà collapsé.
+function aUnNumeroDeTete(nomFichier) {
+  return /^[0-9]+[_-]/.test(String(nomFichier).replace(/\.[^.]*$/, ''));
+}
+
 // Le numéro de tête du Word, s'il y en a un : « 4_Titre.docx » vaut 4, « 12-Titre.docx »
 // vaut 12. Ce nombre donnait autrefois l'ordre dans le numéro par le tri alphabétique du
 // nom de dossier (d'où le complément à deux chiffres qui vivait ici) ; depuis que ce
 // nommage n'est plus imposé aux nouveaux articles (B1), il migre vers la clé
 // `ordre-articles` de ausgabe.yaml — la même que « Monter »/« Descendre » modifient déjà,
 // et qui ne ment jamais sur l'ordre voulu par le rédacteur. Rend null si le nom ne
-// commence pas par un nombre.
+// commence pas par un nombre suivi d'un séparateur explicite (voir aUnNumeroDeTete
+// ci-dessus) : « 2024 en chiffres.docx » n'a pas de numéro de tête, 2024 fait partie du
+// titre, et le prendre pour un ordre rangerait l'article en 2024ᵉ position.
 //
 // ⚠ Câblage restant hors de ce périmètre : rien n'appelle encore cette fonction à l'import
 // pour écrire l'ordre initial dans `ordre-articles`. Voir le repère laissé dans
 // extension.js (fonction lancerConversion, bloc `nouveaux`) pour brancher ce nombre au
 // moment où un nouvel article apparaît.
 function numeroOrdreArticle(nomFichier) {
+  if (!aUnNumeroDeTete(nomFichier)) { return null; }
   const m = slugifier(nomFichier).match(/^([0-9]+)-/);
   return m ? parseInt(m[1], 10) : null;
 }
 
-// Slug d'un article : slugifier, puis retrait du numéro de tête, s'il y en a un. Les .docx
-// livrés sont nommés « 4_Titre.docx », et ce nombre ne nomme plus le dossier (B1, demande
-// de Robin : les numéros de dossier ne survivent pas à un déplacement dans l'ordre) — voir
-// numeroOrdreArticle() ci-dessus pour ce qu'il devient.
+// Slug d'un article : slugifier, puis retrait du numéro de tête, s'il y en a un — jugé sur
+// le nom BRUT (aUnNumeroDeTete), jamais sur le slug déjà collapsé, où l'espace d'un titre
+// commençant par un nombre et le séparateur d'un vrai numéro de tête sont devenus le même
+// tiret. Les .docx livrés numérotés sont nommés « 4_Titre.docx », et ce nombre ne nomme
+// plus le dossier (B1, demande de Robin : les numéros de dossier ne survivent pas à un
+// déplacement dans l'ordre) — voir numeroOrdreArticle() ci-dessus pour ce qu'il devient.
 //
 // La cible « import » du Makefile applique les mêmes règles dans le même ordre, retrait
 // puis borne : si les deux slugs divergent, le badge « déjà converti » de la barre
-// latérale désigne un article qui n'existe pas.
+// latérale désigne un article qui n'existe pas. ⚠ Au 01.09.2026, le Makefile n'a PAS encore
+// ce garde-fou (sed -E 's/^[0-9]+-//' inconditionnel, pipeline/Makefile:547) : un import en
+// CLI pur ampute donc encore un titre numérique de tête — voir le repère laissé dans le
+// Makefile lui-même (~L486) pour la modification à y reporter.
 function slugifierArticle(nomFichier) {
   const s = slugifier(nomFichier);
-  return bornerSlug(s.replace(/^[0-9]+-/, ''));
+  return bornerSlug(aUnNumeroDeTete(nomFichier) ? s.replace(/^[0-9]+-/, '') : s);
 }
 
 // Nombre maximal d'homonymes désambiguïsés pour un même slug. Au-delà, l'appelant doit

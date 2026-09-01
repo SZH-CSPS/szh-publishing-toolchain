@@ -150,3 +150,56 @@ test('rafraichirMotsCles (edudoc) sans recuperer injecté : la garde coupe, pas 
     }
   });
 });
+
+// ---- LEQUEL des deux repos rafraichir() appelle-t-il vraiment ? ----------------------
+//
+// Les deux tests ci-dessus prouvent que la garde coupe l'appel par défaut — mais
+// recupererAvecRepli délègue à recupererHttps, donc les deux rendent EXACTEMENT le même
+// message SZH_RESEAU_INTERDIT, au même endroit : ce test-là ne peut pas dire LEQUEL des deux
+// a été choisi comme repli. C'est pourtant tout le défaut réel (01.09.2026) :
+// mots-cles-edudoc.js câble `o.recuperer || recupererAvecRepli` (le repli sur un 503
+// « Retry after », commun aux deux moissonneurs depuis l'extraction du 01.09.2026 — voir
+// l'en-tête de ce fichier) ; auteurs-ojs.js câblait encore `o.recuperer || recupererHttps`,
+// sans le repli, contredisant son propre commentaire qui affirme que l'extraction profite
+// aux DEUX moissonneurs.
+//
+// Seul un test qui regarde QUELLE fonction a été appelée peut distinguer les deux : on
+// substitue ici les exports de lib/oai-pmh.js, déjà en cache, par des espions, PUIS on
+// force une relecture à neuf de lib/auteurs-ojs.js — sa déstructuration de tête
+// (`const { …, recupererHttps } = require('./oai-pmh')`) capte alors nos espions, et seul
+// le nom réellement utilisé par rafraichir() est enregistré. Aucun réseau : les deux espions
+// rejettent immédiatement.
+test('rafraichir (auteur·e·s) sans recuperer injecté : appelle recupererAvecRepli, pas recupererHttps seul', async () => {
+  const cheminOai = require.resolve(path.join(RACINE_LIB, 'oai-pmh.js'));
+  const cheminAuteurs = require.resolve(path.join(RACINE_LIB, 'auteurs-ojs.js'));
+  const moduleOai = require.cache[cheminOai];
+  assert.ok(moduleOai, 'lib/oai-pmh.js doit déjà être en cache (requis en tête de ce fichier)');
+  const exportsOriginaux = Object.assign({}, moduleOai.exports);
+  const appels = [];
+  moduleOai.exports.recupererHttps = async () => { appels.push('recupererHttps'); throw new Error('espion recupererHttps appelé'); };
+  moduleOai.exports.recupererAvecRepli = async () => { appels.push('recupererAvecRepli'); throw new Error('espion recupererAvecRepli appelé'); };
+  const auteursAvant = require.cache[cheminAuteurs];
+  delete require.cache[cheminAuteurs];   // force une relecture qui capte les espions ci-dessus
+  try {
+    const auteursOjsFrais = require(cheminAuteurs);
+    const avantCache = process.env.SZH_AUTEURS_CACHE;
+    process.env.SZH_AUTEURS_CACHE = cacheVideTemporaire('szh-oai-pmh-cablage-', 'auteurs.json');
+    try {
+      const res = await auteursOjsFrais.rafraichir({
+        maintenant: Date.parse('2026-09-01T12:00:00Z'),
+        config: { oai: ['https://ojs.szh.ch/index.php/revue/fr/oai'] }
+      });
+      assert.strictEqual(res.fait, true);
+      assert.strictEqual(res.complet, false, 'l’espion doit avoir fait échouer l’unique endpoint');
+    } finally {
+      if (avantCache === undefined) { delete process.env.SZH_AUTEURS_CACHE; }
+      else { process.env.SZH_AUTEURS_CACHE = avantCache; }
+    }
+  } finally {
+    Object.assign(moduleOai.exports, exportsOriginaux);
+    if (auteursAvant) { require.cache[cheminAuteurs] = auteursAvant; } else { delete require.cache[cheminAuteurs]; }
+  }
+  assert.deepStrictEqual(appels, ['recupererAvecRepli'],
+    'rafraichir() doit prendre recupererAvecRepli comme repli par défaut, comme rafraichirMotsCles() : ' +
+    JSON.stringify(appels));
+});

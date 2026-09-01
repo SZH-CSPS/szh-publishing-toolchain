@@ -541,10 +541,12 @@ import:
 	ok=0; renomme=0; redepot=0; rate=0; scinde=0; scission_rate=0; \
 	for f in "$${files[@]}"; do \
 	  nom=$$(basename "$$f"); slug="$${nom%.*}"; \
+	  tete="$${slug%%[!0-9]*}"; reste="$${slug#$$tete}"; a_un_numero=0; \
+	  if [ -n "$$tete" ]; then case "$$reste" in [_-]*) a_un_numero=1;; esac; fi; \
 	  slug=$$(printf '%s' "$$slug" | LC_ALL=C.UTF-8 iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null || printf '%s' "$$slug"); \
 	  slug=$$(printf '%s' "$$slug" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$$//'); \
 	  [ -n "$$slug" ] || slug=article; \
-	  slug=$$(printf '%s' "$$slug" | sed -E 's/^[0-9]+-//'); \
+	  if [ "$$a_un_numero" = 1 ]; then slug=$$(printf '%s' "$$slug" | sed -E 's/^[0-9]+-//'); fi; \
 	  if [ $${#slug} -gt 39 ]; then scourt="$${slug:0:39}"; scourt="$${scourt%-*}"; sorph=$$(printf '%s' "$$scourt" | sed -E 's/(-[a-z0-9])+$$//'); case "$$sorph" in *-*) scourt="$$sorph";; esac; slug="$${scourt:-$${slug:0:39}}"; fi; \
 	  venu_de=""; \
 	  for fiche in /*/*.meta.yaml; do \

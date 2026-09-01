@@ -57,6 +57,35 @@ test('ausgabe.yaml : une valeur relue est la valeur écrite', () => {
   }
 });
 
+// Défaut réel (01.09.2026) : la ligne qui suit immédiatement le BOM ne matchait pas la
+// regex de clé — son premier caractère n'étant plus alphanumérique — et la première clé du
+// fichier se lisait comme absente, en silence. serialiserAusgabe() retire le BOM depuis
+// toujours (test ci-dessus, « le BOM … sont préservés ») ; analyserAusgabe() ne le faisait
+// pas : un ausgabe.yaml ou buch.yaml enregistré par un éditeur Windows ou par `Out-File` de
+// PowerShell 5.1 perdait ainsi sa première clé.
+test('ausgabe.yaml : le BOM ne fait pas perdre la première clé à la lecture', () => {
+  const relu = yaml.analyserAusgabe('﻿' + 'titre: Livre\nannee: 2020\n');
+  assert.strictEqual(relu.titre, 'Livre', 'la première clé après le BOM est tombée en silence');
+  assert.strictEqual(relu.annee, '2020');
+});
+
+// Défaut réel (01.09.2026) : un `impression:` portant une valeur non vide (YAML douteux,
+// mais pas invalide) n'ouvrait pas de bloc côté sérialiseur — les sous-lignes indentées
+// restaient orphelines, et une sous-clé à écrire tombait dans la branche « bloc absent »,
+// qui en créait un SECOND en fin de fichier. Le fichier sortait avec deux clés top-level
+// `impression:`, l'ancienne gardant ses données orphelines : le contrat du sérialiseur est
+// que ce qu'il ne connaît pas traverse intact, jamais dupliqué en silence.
+test('buch.yaml : un « impression: » à valeur non vide n’est jamais dupliqué', () => {
+  const src = 'titre: Livre\nimpression: quelque chose\n  grammage: 90\n  main: 1.2\nlocked: false\n';
+  const sortie = yaml.serialiserAusgabe(src, { 'impression.grammage': '150' });
+  const occurrences = (sortie.match(/^impression:/gm) || []).length;
+  assert.strictEqual(occurrences, 1, 'la clé impression: a été dupliquée : ' + JSON.stringify(sortie));
+  assert.match(sortie, /^impression: quelque chose$/m, 'la valeur douteuse d’origine doit être préservée');
+  assert.match(sortie, /^\s+grammage: 150$/m, 'la sous-clé demandée n’a pas été mise à jour en place');
+  assert.match(sortie, /^\s+main: 1\.2$/m, 'la sous-clé non touchée doit survivre, hors du bloc dupliqué');
+  assert.match(sortie, /^locked: false$/m);
+});
+
 // ---- Tableaux ----
 
 test('tableau : analyser puis sérialiser puis analyser donne le même modèle', () => {
@@ -184,6 +213,36 @@ test('numéro d’ordre d’un Word : capté avant de disparaître du slug', () 
   assert.strictEqual(slug.numeroOrdreArticle('Titre sans numéro'), null,
     'un titre sans numéro de tête ne doit pas en inventer un');
 });
+
+// Régression du 31.08.2026 au 01.09.2026 : `^[0-9]+-` appliqué APRÈS slugifier() ne peut
+// plus distinguer un vrai numéro de tête (séparateur explicite `_` ou `-`, comme
+// « 4_Titre » ou le « 01-… » que chapitres-word/LISEZ-MOI.txt et articles-word/LISEZ-MOI.txt
+// donnent comme convention) d'un nombre qui fait partie du titre lui-même et que slugifier()
+// a fait suivre d'un tiret à la place de son espace d'origine. « 2024 en chiffres » perdait
+// son 2024, ET numeroOrdreArticle() le prenait pour un numéro d'ordre, rangeant l'article en
+// 2024ᵉ position.
+test('slug d’article : un nombre qui fait partie du titre n’est pas amputé', () => {
+  assert.strictEqual(slug.slugifierArticle('2024 en chiffres.docx'), '2024-en-chiffres');
+  assert.strictEqual(slug.numeroOrdreArticle('2024 en chiffres.docx'), null,
+    'aucun séparateur explicite après 2024 : ce n’est pas un numéro d’ordre');
+  assert.strictEqual(slug.slugifierArticle('20 minutes chrono.docx'), '20-minutes-chrono');
+  assert.strictEqual(slug.numeroOrdreArticle('20 minutes chrono.docx'), null);
+  assert.strictEqual(slug.slugifierArticle('3 jours plus tard.docx'), '3-jours-plus-tard');
+  assert.strictEqual(slug.numeroOrdreArticle('3 jours plus tard.docx'), null);
+  // Un vrai numéro de tête, séparateur tiret plutôt que soulignement, continue de sortir.
+  assert.strictEqual(slug.slugifierArticle('12-Titre.docx'), 'titre');
+  assert.strictEqual(slug.numeroOrdreArticle('12-Titre.docx'), 12);
+});
+
+// ⚠ Cette distinction (séparateur explicite `_`/`-` vs espace du titre) n'existe qu'ici :
+// pipeline/Makefile applique encore, sans condition, `sed -E 's/^[0-9]+-//'` (~L547) au slug
+// déjà collapsé — où l'espace de « 2024 en chiffres » est devenu le même tiret que le
+// séparateur de « 4_Titre ». Un import en CLI pur (make import, hors cockpit) ampute donc
+// encore un titre commençant par un nombre légitime ; voir le repère laissé dans le Makefile
+// (~L486, commentaire de synchronisation) pour la correction à y reporter : tester le nom
+// BRUT, avant la translittération/minuscule/collapse-en-tirets (Makefile ~L543-546), avec
+// un motif du type `case "$$slug" in [0-9]*[_-]*) a_un_numero=1;; esac`, et n'appliquer le
+// sed de retrait qu'à cette condition — exactement ce qu'aUnNumeroDeTete() fait côté JS.
 
 // Le point de conception de B1 : retirer le préfixe sans rien faire d'autre perdrait en
 // silence l'ordre que le rédacteur a mis dans la numérotation de ses Word. Dix fichiers,
