@@ -122,8 +122,7 @@ function nomImageAssaini(nomFichier) {
   const base = brut.slice(brut.lastIndexOf('/') + 1);
   const ext = (base.match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
   if (EXTENSIONS_IMAGE_IMPORT.indexOf(ext) === -1) { return null; }
-  let corps = slugifier(base.slice(0, base.length - ext.length - 1));
-  if (corps === '') { corps = 'image'; }
+  const corps = slugifier(base.slice(0, base.length - ext.length - 1));
   return corps.slice(0, 60) + '.' + (ext === 'jpeg' ? 'jpg' : ext);
 }
 

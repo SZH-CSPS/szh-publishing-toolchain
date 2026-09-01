@@ -27,10 +27,10 @@
 // des deux sets — passé une poignée de requêtes rapprochées, l'instance (Apache derrière un
 // pare-feu applicatif, à en juger par la CSP qui cite awswaf.com) répond
 // « 503 Retry after 1 seconds » puis se rétablit d'elle-même à la requête suivante.
-// lib/auteurs-ojs.js n'a pas cette tolérance : l'instance OJS visée ne l'a jamais montrée en
-// un an d'usage. Plutôt que d'alourdir un module hors périmètre pour un besoin qui lui est
-// étranger, le repli est ajouté ICI (recupererAvecRepli). Signalé dans le rapport de lot :
-// un module OAI-PMH commun (client HTTP + parseur + repli 503) serait plus propre à termes.
+// lib/auteurs-ojs.js n'a pas eu besoin de cette tolérance jusqu'ici : l'instance OJS visée ne
+// l'a jamais montrée en un an d'usage — mais rien ne garantit qu'elle ne s'y mette pas un
+// jour. D'où recupererAvecRepli() dans lib/oai-pmh.js plutôt que dans ce seul module (voir
+// plus bas) : signalé indépendamment par deux agents comme le repli le plus propre.
 //
 // Volume réellement moissonné le 31.08.2026 (moissonnage complet, sans from) : 456 notices
 // pour la Revue, 2385 pour la Zeitschrift, soit 2841 notices, 10975 paires 690 brutes,
@@ -51,14 +51,15 @@
 // SZH_AUTEURS_CACHE pour lib/auteurs-ojs.js : aucun test ne touche C:\ProgramData, et aucun
 // ne fait de réseau (le moissonnage prend son `recuperer` en paramètre).
 //
-// Réutilisation délibérée de lib/auteurs-ojs.js : son client HTTP (recupererHttps, avec ses
-// gardes — redirections même-hôte, réponse bornée à 20 Mo, délai total de 60 s) et son
-// parseur générique OAI-PMH (erreurOai, extraireResumptionToken, decoderTexteXml) sont
-// EXPORTÉS et ne sont pas spécifiques aux auteur·e·s : ils sont repris tels quels plutôt que
-// réécrits. plierNom (casse + accents pliés) est repris de même sous l'alias `plierTexte` —
-// son nom trompe, son corps ne fait rien de spécifique à un nom de personne. Seule
-// l'extraction du champ 690, la fusion des descripteurs et la pagination avec `set=` sont
-// propres à ce module.
+// Réutilisation délibérée de lib/oai-pmh.js, module commun avec lib/auteurs-ojs.js (extrait
+// le 01.09.2026) : son client HTTP (recupererHttps, avec ses gardes — redirections
+// même-hôte, réponse bornée à 20 Mo, délai total de 60 s), son repli sur 503
+// (recupererAvecRepli) et son parseur générique OAI-PMH (erreurOai, extraireResumptionToken,
+// decoderTexteXml) ne sont pas spécifiques aux auteur·e·s ni à edudoc : ils sont importés
+// tels quels plutôt que réécrits. plierNom (casse + accents pliés) est importé de même sous
+// l'alias `plierTexte` — son nom trompe, son corps ne fait rien de spécifique à un nom de
+// personne. Seule l'extraction du champ 690, la fusion des descripteurs et la pagination
+// avec `set=` sont propres à ce module.
 'use strict';
 
 const fs = require('fs');
@@ -66,8 +67,9 @@ const path = require('path');
 const { ecrireAtomique } = require('./yaml');
 const { BASE_SZH } = require('./archivage');
 const {
-  decoderTexteXml, erreurOai, extraireResumptionToken, recupererHttps, plierNom: plierTexte
-} = require('./auteurs-ojs');
+  decoderTexteXml, erreurOai, extraireResumptionToken, recupererAvecRepli,
+  plierNom: plierTexte
+} = require('./oai-pmh');
 
 const ENDPOINT_EDUDOC_DEFAUT = 'https://edudoc.ch/oai2d';
 const SETS_EDUDOC_DEFAUT = [
@@ -79,9 +81,6 @@ const JOURS_FRAICHEUR = 30;                // « une fois par mois », comme les
 // La Zeitschrift a demandé 24 pages à 100 notices pour 2385 notices, le 31.08.2026 : la
 // garde anti-boucle laisse une marge d'un ordre de grandeur au-delà de l'observé.
 const PAGES_MAX = 500;
-// Délais de repli sur un 503 « Retry after » (voir l'en-tête) : trois essais, croissants.
-// Overridable par les tests (options.delaisRepliMs) pour ne pas attendre 7 s par test.
-const DELAIS_REPLI_503 = [1000, 2000, 4000];
 
 function cheminCacheMotsCles() {
   const impose = String(process.env.SZH_MOTS_CLES_CACHE || '').trim();
@@ -260,29 +259,8 @@ function configEdudoc(cfg) {
   return { endpoint: endpoint, sets: (sets && sets.length > 0) ? sets : SETS_EDUDOC_DEFAUT.slice() };
 }
 
-// ---- Réseau : repli sur le 503 « Retry after » d'edudoc.ch ---------------------------
-
-function attendre(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
-
-// Voir l'en-tête du fichier : constaté en conditions réelles, pas une précaution théorique.
-// `options` suit recupererHttps (transport, delaiTotalMs) ; `delaisRepliMs` s'y ajoute pour
-// les tests, qui n'ont aucune raison d'attendre 1 à 4 secondes par cas.
-async function recupererAvecRepli(url, options) {
-  const o = options || {};
-  const delais = Array.isArray(o.delaisRepliMs) ? o.delaisRepliMs : DELAIS_REPLI_503;
-  for (let essai = 0; ; essai++) {
-    try {
-      return await recupererHttps(url, 0, o);
-    } catch (e) {
-      const msg = String((e && e.message) || e);
-      if (/^HTTP 503\b/.test(msg) && essai < delais.length) {
-        await attendre(delais[essai]);
-        continue;
-      }
-      throw e;
-    }
-  }
-}
+// recupererAvecRepli (repli sur le 503 « Retry after » d'edudoc.ch) vit dans lib/oai-pmh.js,
+// importé plus haut : voir l'en-tête du fichier.
 
 // ---- Moissonnage ----------------------------------------------------------------------
 

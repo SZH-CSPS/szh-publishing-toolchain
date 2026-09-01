@@ -53,6 +53,10 @@ lib/
   mots-cles-edudoc.js   descripteurs bilingues DE/FR des deux revues, moissonnés en OAI-PMH
                         public sur edudoc.ch (marcxml, champ MARC 690) et cachés dans
                         mots-cles.json — pas encore branché sur une autocomplétion
+  oai-pmh.js            client https et parseur OAI-PMH communs à auteurs-ojs.js et
+                        mots-cles-edudoc.js : redirections même-hôte, réponse bornée,
+                        délai total, resumptionToken, repli sur 503 — SZH_RESEAU_INTERDIT
+                        y bloque tout appel réel en test, pour les deux moissonneurs
   panneaux.js           les trois panneaux QuickPick
   portraits.js          appel du script de détourage des photos, dans WSL
   profil.js             ce qu'est le dossier ouvert — numéro de revue (ausgabe.yaml,
