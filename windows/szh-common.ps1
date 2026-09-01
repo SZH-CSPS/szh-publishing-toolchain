@@ -1558,9 +1558,14 @@ function Set-SzhIntention([string]$Revue, [string]$Vue, [string]$Article) {
 }
 
 # ---- Ouverture d'un dossier dans VSCodium ----
-# Un seul endroit lance l'éditeur : l'environnement doit être assaini
-# (ELECTRON_RUN_AS_NODE ci-dessus ; la garde est répétée, un script pouvant régler ses
-# variables après le dot-source) et un échec doit se voir dans le journal.
+# Ici, l'environnement doit être assaini (ELECTRON_RUN_AS_NODE ci-dessus ; la garde est
+# répétée, un script pouvant régler ses variables après le dot-source) et un échec doit se
+# voir dans le journal. open-md.ps1 a son propre lanceur, Start-SzhCodiumFichier, et ne passe
+# pas par ici : il doit ouvrir DEUX chemins d'un coup (le dossier de revue ET le fichier, pour
+# que l'aperçu comme la régénération s'activent) et porte un mode simulation pour les tests
+# (SZH_OPENMD_SIMULE=1), deux besoins que cette fonction-ci n'a pas. Garder les deux noms
+# distincts et corrects : une redéfinition locale de Start-SzhCodium occulterait celle-ci en
+# silence, comme cela s'est déjà produit une fois.
 function Start-SzhCodium([string]$Dossier) {
   $codium = Get-VSCodiumExe
   if (-not $codium) {

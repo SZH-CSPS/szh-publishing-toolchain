@@ -96,7 +96,10 @@ foreach ($app in $apps) {
   $sujet = $app.nom
   if (-not $chemin) {
     $etat = 'manque'
-    if (-not $app.requis) { $etat = 'manque' }
+    # SumatraPDF porte `"requis": false` dans apps.lock : son absence se lit, mais ne doit
+    # pas compter dans le verdict final (voir plus bas, seul le ton 'manque' y est retenu).
+    # Sans cette ligne, un poste sans SumatraPDF — pourtant conforme — sortait en exit 1.
+    if (-not $app.requis) { $etat = 'note' }
     Dire $etat $sujet ('absent — version épinglée {0}, à poser par un administrateur (bootstrap.ps1)' -f $app.version)
     continue
   }
@@ -181,18 +184,28 @@ $absents = New-Object System.Collections.ArrayList
 # ne rattache à rien sans ce diagnostic. C'est le cas de tout raccourci posé avant que
 # ces identités existent, et une seule mise à jour le répare.
 $sansId = New-Object System.Collections.ArrayList
-foreach ($r in @(Get-SzhRaccourcisMenu)) {
+# Le compte se déduit de la liste elle-même : elle a déjà changé de longueur une fois
+# (l'arrivée de « Books SZH-CSPS »), et un chiffre écrit en dur dans ces deux textes
+# redeviendrait faux à la prochaine entrée sans qu'aucun test ne le voie.
+$raccourcisMenu = @(Get-SzhRaccourcisMenu)
+foreach ($r in $raccourcisMenu) {
   $chemin = Join-Path $menu ($r.nom + '.lnk')
   if (-not (Test-Path $chemin)) { [void]$absents.Add($r.nom); continue }
   if ($r.appid -and ((Get-SzhLnkAppId $chemin) -ne $r.appid)) { [void]$sansId.Add($r.nom) }
 }
-if ($absents.Count -eq 0) { Dire 'ok' 'Raccourcis du menu Démarrer' '4 entrées en place' }
+if ($absents.Count -eq 0) { Dire 'ok' 'Raccourcis du menu Démarrer' ('{0} entrées en place' -f $raccourcisMenu.Count) }
 else { Dire 'manque' 'Raccourcis du menu Démarrer' ('absents : ' + ($absents -join ', ')) }
 if ($absents.Count -eq 0) {
-  if ($sansId.Count -eq 0) { Dire 'ok' 'Icône dans la barre des tâches' 'les 4 entrées portent leur identité' }
+  if ($sansId.Count -eq 0) { Dire 'ok' 'Icône dans la barre des tâches' ('les {0} entrées portent leur identité' -f $raccourcisMenu.Count) }
   else { Dire 'manque' 'Icône dans la barre des tâches' (($sansId -join ', ') + ' : sans identité, le bouton reprend l''icône de PowerShell — une mise à jour la repose') }
 }
 
+# ⚠ Ces deux chemins de registre sont dupliqués en littéral : update.ps1 en est
+# propriétaire et les nomme (Set-SzhProgIdMarkdown, update.ps1:54-107, et
+# Set-SzhProtocoleSzh, update.ps1:115-142). Aucune variable ni fonction de szh-common.ps1
+# ne les expose aujourd'hui — une centralisation reste à faire, pour qu'un renommage du
+# ProgId SZH.Markdown ou du schéma szh se répercute ici automatiquement. En l'état, un tel
+# renommage fait annoncer « non enregistré » par ce diagnostic sur un poste pourtant sain.
 if (Test-Path 'HKCU:\Software\Classes\SZH.Markdown\shell\open\command') {
   Dire 'ok' 'Ouvrir un .md avec Revue SZH' 'enregistré (HKCU)'
 } else {

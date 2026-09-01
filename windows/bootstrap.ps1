@@ -439,9 +439,9 @@ $reglages = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnB
 # aujourd'hui et un poste mis à jour demain porteraient deux rythmes différents.
 $bilanTache = Set-SzhTacheMaj
 if ($bilanTache.etat -eq 'refusee') {
-  Attention ('Tâche « SZH - Mise a jour » non écrite : ' + $bilanTache.message)
+  Attention ('Tâche « ' + $SzhTacheMaj + ' » non écrite : ' + $bilanTache.message)
 } else {
-  Info ('Tâche « SZH - Mise a jour » : ' + $bilanTache.etat + ' (ouverture de session + mardi 14 h)')
+  Info ('Tâche « ' + $SzhTacheMaj + ' » : ' + $bilanTache.etat + ' (ouverture de session + mardi 14 h)')
 }
 
 $actionChauffe = New-ScheduledTaskAction -Execute "$env:WINDIR\System32\wscript.exe" `

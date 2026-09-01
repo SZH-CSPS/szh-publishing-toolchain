@@ -132,8 +132,8 @@ L'archivage ne sort jamais de la racine active : un numéro archivé passe de
 |---|---|---|
 | `windows\szh-common.ps1` · `Resolve-SzhEmplacementRevues` | La règle : clé neuve, puis clé ancienne, puis défaut. Pure, ne lit ni disque ni fichier. | tout le reste de cette liste |
 | `windows\szh-common.ps1` · `Initialize-SzhEmplacementRevues` | Écrit la valeur en clair dans `config.json` si elle manque, après avoir compté les numéros des deux racines. Une fois par poste, journalisée. | `Get-SzhEmplacementRevues` |
-| `windows\szh-common.ps1` · `Get-SzhEmplacementRevues` | Passage obligé : `test` ou `production`. | `Get-SzhBaseRevues`, `Get-SzhEtiquetteRacine`, `Get-SzhDevMode` |
-| `windows\szh-common.ps1` · `Get-SzhBaseRevues` / `Get-SzhBaseRevuesPour` | La racine, `basesRevues` compris. **Seul endroit du dépôt qui connaît ces deux chemins.** | `Get-SzhEmplacements` |
+| `windows\szh-common.ps1` · `Get-SzhEmplacementRevues` | Passage obligé : `test` ou `production`. | `Get-SzhEmplacements`, `Get-SzhEtiquetteRacine` |
+| `windows\szh-common.ps1` · `Get-SzhBaseRevuesPour` | La racine, `basesRevues` compris. **Seul endroit du dépôt qui connaît ces deux chemins.** | `Get-SzhEmplacements`, `Measure-SzhNumeros` |
 | `windows\szh-common.ps1` · `Get-SzhEmplacements` | Les quatre dossiers du poste, plus l'emplacement actif. Journalise la racine une fois par lancement. | `open-revue.ps1`, `new-revue.ps1`, `archive-revue.ps1` |
 | `windows\szh-common.ps1` · `Initialize-SzhEmplacementsTest` | Crée les quatre dossiers manquants — **en test seulement**. En production, jamais : l'arborescence est celle de SharePoint. | `open-revue.ps1` |
 | `windows\open-revue.ps1` | Le lanceur : liste les numéros de la racine active, affiche version et racine, ouvre VSCodium. | menu Démarrer, liens `szh://` |

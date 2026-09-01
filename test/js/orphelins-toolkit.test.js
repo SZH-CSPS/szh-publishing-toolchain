@@ -48,6 +48,7 @@ const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 const UPDATE = lire('windows', 'update.ps1');
 const BOOTSTRAP = lire('windows', 'bootstrap.ps1');
 const LANCEUR = lire('windows', 'update-launcher.ps1');
+const RELEASE = lire('.github', 'workflows', 'release.yml');
 
 // Le corps d'une fonction PowerShell : de sa ligne de déclaration jusqu'à la première ligne
 // qui n'est QUE « } », en colonne 0 — la fermeture du top-level, dans le style constant de ce
@@ -66,6 +67,25 @@ function corpsFonction(source, nom) {
   }
   assert.ok(fin !== -1, 'fin de fonction introuvable : ' + nom);
   return lignes.slice(debut, fin + 1).join('\r\n');
+}
+
+// Le bloc qui suit l'appel à Remove-SzhToolkitOrphelins, jusqu'à la fermeture de SON propre
+// `finally` -- un Remove-Item qui traînerait ailleurs dans le fichier ne prouverait rien, il
+// doit être DANS ce bloc-ci pour compter comme le nettoyage du staging après l'appel. Repéré
+// par indentation (celle qui précède « } finally { » referme le bloc au même niveau, trois
+// lignes plus bas) plutôt que par un compte d'accolades, pour la même raison que
+// corpsFonction évite les accolades des chaînes de formatage.
+function finallyApresAppel(source, nom) {
+  const iAppel = source.indexOf('$bilanOrphelins = Remove-SzhToolkitOrphelins');
+  assert.ok(iAppel !== -1, nom + ' : appel à Remove-SzhToolkitOrphelins introuvable');
+  const iOuvre = source.indexOf('} finally {', iAppel);
+  assert.ok(iOuvre !== -1 && (iOuvre - iAppel) < 800,
+    nom + ' : aucun `finally` immédiatement après l’appel à Remove-SzhToolkitOrphelins');
+  const iDebutLigne = source.lastIndexOf('\r\n', iOuvre) + 2;
+  const indent = source.slice(iDebutLigne, iOuvre);
+  const iFermeture = source.indexOf('\r\n' + indent + '}', iOuvre + '} finally {'.length);
+  assert.ok(iFermeture !== -1, nom + ' : fermeture du `finally` introuvable');
+  return source.slice(iDebutLigne, iFermeture + 2 + indent.length + 1);
 }
 
 // ---- Les trois copies restent identiques ----
@@ -99,6 +119,53 @@ test('les trois appelants relisent .retires et .avertissements, plus un $orpheli
     assert.ok(source.indexOf('$orphelins = Remove-SzhToolkitOrphelins') === -1,
       nom + ' relit encore l’ancienne forme ($orphelins nu)');
   }
+});
+
+test('les trois scripts nettoient leur dossier d’extraction, dans un finally qui suit l’appel', () => {
+  // Le staging ($SzhStaging\toolkit-extrait-<version>) est une extraction À PART, faite
+  // seulement pour comparer -- elle n'a aucune raison de survivre à l'appel. Ce nettoyage vit
+  // dans un `finally` précisément parce que Remove-SzhToolkitOrphelins peut lever (dossier
+  // illisible, chemin trop long...) : sans ce filet, une seule mise à jour malchanceuse
+  // suffirait à laisser le dossier d'extraction derrière elle. Si une copie perdait ce
+  // `finally` -- ou ne nettoyait plus que sur le chemin heureux --, le staging du poste
+  // grossirait d'un toolkit complet à CHAQUE mise à jour qui passe par ce chemin, sans qu'un
+  // seul message ne le signale : Remove-Item y est en -ErrorAction SilentlyContinue, exprès,
+  // pour ne jamais faire échouer une mise à jour par ailleurs réussie sur un souci de ménage.
+  for (const [nom, source] of [['update.ps1', UPDATE], ['bootstrap.ps1', BOOTSTRAP],
+    ['update-launcher.ps1', LANCEUR]]) {
+    const filet = finallyApresAppel(source, nom);
+    assert.match(filet,
+      /if \(\$extrait -and \(Test-Path \$extrait\)\) \{ Remove-Item -LiteralPath \$extrait -Recurse -Force -ErrorAction SilentlyContinue \}/,
+      nom + ' : le finally qui suit l’appel ne nettoie plus $extrait');
+  }
+});
+
+test('$dossiersGeres coïncide, dans les deux sens, avec ce que release.yml copie dans le toolkit', () => {
+  // Piège de maintenance, pas un bug vivant : aujourd'hui les deux listes coïncident, et le
+  // défaut que ce fichier garde par ailleurs (garde 1, plus haut) protège déjà un dossier
+  // absent de l'archive -- une CI qui cesserait d'en livrer un échouerait donc en sécurité,
+  // pas en silence. Mais rien ne LIE ces deux listes entre elles. Si quelqu'un ajoute un
+  // dossier aux trois scripts sans l'ajouter à la ligne `cp -r` de release.yml, le nettoyage
+  // raisonnera sur un dossier que l'archive ne porte jamais (la garde 1 le protégera --
+  // rien de cassé, juste du mort). Mais si quelqu'un ajoute un dossier à `cp -r` sans
+  // l'ajouter aux trois scripts, ce dossier-là s'accumule sur chaque poste sans jamais être
+  // nettoyé -- exactement le défaut que ce fichier garde par ailleurs, réintroduit par un
+  // chemin que ni les trois scripts ni ce fichier ne surveillaient jusqu'ici.
+  const mGeres = UPDATE.match(/\$dossiersGeres = @\(([^)]*)\)/);
+  assert.ok(mGeres, 'update.ps1 : $dossiersGeres a changé de forme, la comparaison ne sait plus le lire');
+  const dossiersGeres = mGeres[1].split(',').map((s) => s.trim().replace(/^'(.*)'$/, '$1'));
+
+  const mCp = RELEASE.match(/cp -r ([^\r\n]+) toolkit\/\r?\n/);
+  assert.ok(mCp, 'release.yml : la ligne `cp -r ... toolkit/` a changé de forme, la comparaison ne sait plus la lire');
+  const dossiersLivres = mCp[1].trim().split(/\s+/);
+
+  const geresNonLivres = dossiersGeres.filter((d) => dossiersLivres.indexOf(d) === -1);
+  const livresNonGeres = dossiersLivres.filter((d) => dossiersGeres.indexOf(d) === -1);
+  assert.deepStrictEqual(geresNonLivres, [],
+    '$dossiersGeres protège un dossier que release.yml ne livre plus : ' + geresNonLivres.join(', '));
+  assert.deepStrictEqual(livresNonGeres, [],
+    'release.yml livre un dossier que $dossiersGeres ne connaît pas -- jamais nettoyé sur aucun poste : '
+    + livresNonGeres.join(', '));
 });
 
 // ---- Le second défaut : update-launcher.ps1 sans mutex ----

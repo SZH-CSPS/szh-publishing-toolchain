@@ -58,6 +58,21 @@ test('la forme de la tâche est déclarée une seule fois, et les trois scripts 
   assert.ok(BOOTSTRAP.indexOf("'SZH - Prechauffage WSL'") !== -1);
 });
 
+test('bootstrap ne fige plus le nom de la tâche dans ses messages affichés', () => {
+  // Le nom vit dans $script:SzhTacheMaj (szh-taches.ps1), que bootstrap dot-source avant de
+  // former ses messages. Un nom recopié en dur mentirait dès que szh-taches.ps1 renomme la
+  // tâche : les deux messages continueraient d'annoncer « SZH - Mise a jour » sans que rien
+  // ne le signale.
+  assert.ok(BOOTSTRAP.indexOf('SZH - Mise a jour') === -1,
+    'bootstrap.ps1 recopie encore en dur le nom de la tâche de mise à jour dans un message');
+  assert.ok(BOOTSTRAP.indexOf('$SzhTacheMaj') !== -1,
+    'bootstrap.ps1 ne se réfère plus à $SzhTacheMaj pour nommer la tâche dans ses messages');
+  // Le préchauffage, lui, n'a ni cadence ni moment et reste délibérément en dur : une
+  // assertion sur le nom de la mise à jour ne doit pas emporter aussi ce littéral-là.
+  assert.ok(BOOTSTRAP.indexOf("'SZH - Prechauffage WSL'") !== -1,
+    'le préchauffage WSL a perdu son nom en dur : ce n’est pas ce défaut-ci qui est gardé');
+});
+
 test('mardi 14 h, une fois par semaine, et le déclencheur d’ouverture de session reste', () => {
   assert.match(TACHES, /\$script:SzhMajJour\s+=\s+'Tuesday'/);
   assert.match(TACHES, /\$script:SzhMajHeure\s+=\s+14/);

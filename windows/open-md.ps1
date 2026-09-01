@@ -34,6 +34,29 @@ function Write-SzhTrace([string]$Message) {
   try { Write-SzhLog ('open-md : ' + $Message) } catch { }
 }
 
+# Lancé par hidden.vbs, sans console, avec $ErrorActionPreference = 'Stop' hérité du socle
+# (szh-common.ps1:4) : une exception non interceptée plus bas tuerait le script sans
+# fenêtre, sans boîte de dialogue et sans ligne de journal — depuis un .md double-cliqué,
+# cela se lit « il ne s'est rien passé ». `trap` plutôt qu'un try/catch enveloppant : il
+# couvre toute la portée sans réindenter tout le fichier, sur le modèle d'open-revue.ps1 et
+# d'open-livre.ps1. Mode simulation respecté : un test ne doit jamais rester bloqué sur une
+# boîte de dialogue, la sortie standard en tient lieu.
+trap {
+  $souci = $_.Exception.Message
+  Write-SzhTrace ('ERREUR : ' + $souci)
+  if ($script:SzhSimule) {
+    Write-Host ('[ERREUR] ' + $souci)
+    exit 1
+  }
+  try {
+    Add-Type -AssemblyName System.Windows.Forms
+    [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.erreur' @($souci, $SzhSupport)), 'Revue SZH')
+  } catch {
+    try { [void][System.Windows.Forms.MessageBox]::Show($souci, 'Revue SZH') } catch { }
+  }
+  exit 1
+}
+
 # Lancé par hidden.vbs, donc sans console : Write-Host ne serait vu de personne et
 # Show-SzhErreur, qui attend une touche, bloquerait un processus invisible. D'où WinForms.
 # Réservé aux cas anormaux, le cas nominal est silencieux.
@@ -69,8 +92,13 @@ function Test-SzhArticle([System.IO.FileInfo]$Md, [string]$Racine) {
 }
 
 # Un seul Start-Process, chaque chemin quoté séparément : VSCodium lit l'argument dossier
-# comme « ouvrir ce dossier » et l'argument fichier comme « ouvrir cet onglet ».
-function Start-SzhCodium([string]$Codium, [string[]]$Chemins) {
+# comme « ouvrir ce dossier » et l'argument fichier comme « ouvrir cet onglet ». Nom propre
+# (Start-SzhCodiumFichier, pas Start-SzhCodium) : le socle (szh-common.ps1) déclare déjà une
+# fonction Start-SzhCodium, avec une autre signature — la collision occultait silencieusement
+# celle du socle. Distincte à dessein, pas fusionnée : ouvrir deux chemins d'un coup et
+# respecter le mode simulation sont les deux besoins d'open-md.ps1, ni l'un ni l'autre
+# n'existant côté socle.
+function Start-SzhCodiumFichier([string]$Codium, [string[]]$Chemins) {
   $arguments = (($Chemins | ForEach-Object { '"{0}"' -f $_ }) -join ' ')
   Write-SzhTrace ('ouverture -> {0} {1}' -f $Codium, $arguments)
   if ($script:SzhSimule) {
@@ -78,8 +106,15 @@ function Start-SzhCodium([string]$Codium, [string[]]$Chemins) {
     return
   }
   # ELECTRON_RUN_AS_NODE hérité ferait exécuter le dossier comme un script Node.
-if (Test-Path 'Env:ELECTRON_RUN_AS_NODE') { Remove-Item 'Env:ELECTRON_RUN_AS_NODE' -ErrorAction SilentlyContinue }
-Start-Process -FilePath $Codium -ArgumentList $arguments
+  if (Test-Path 'Env:ELECTRON_RUN_AS_NODE') { Remove-Item 'Env:ELECTRON_RUN_AS_NODE' -ErrorAction SilentlyContinue }
+  # Le filet que la copie locale avait perdu : comme la version du socle, un Start-Process
+  # qui échoue (VSCodium désinstallé entre la vérification et l'appel, chemin trop long…)
+  # est journalisé plutôt que de tuer silencieusement le script sans qu'aucune trace ne le dise.
+  try {
+    Start-Process -FilePath $Codium -ArgumentList $arguments
+  } catch {
+    Write-SzhTrace ('lancement impossible (' + $_.Exception.Message + ') -> ' + $Codium + ' ' + $arguments)
+  }
 }
 
 # ---- L'argument : présent ? existant ? ----
@@ -124,7 +159,7 @@ if ($null -eq $racine) {
   # Hors de toute revue : on ouvre le fichier seul, ouvrir un dossier arbitraire serait
   # pire, et on annonce la limite.
   Write-SzhTrace ('hors revue : ' + $complet)
-  Start-SzhCodium $codium @($complet)
+  Start-SzhCodiumFichier $codium @($complet)
   if ($estUnc) { Show-SzhMessage (T 'openmd.reseau') } else { Show-SzhMessage (T 'openmd.horsrevue') }
   exit 0
 }
@@ -138,7 +173,7 @@ if ($estArticle) {
   Write-SzhTrace ('fichier {0} (hors articles) de la revue {1}' -f $md.Name, $racine.Name)
 }
 
-Start-SzhCodium $codium @($racine.FullName, $complet)
+Start-SzhCodiumFichier $codium @($racine.FullName, $complet)
 
 if ($estUnc) { Show-SzhMessage (T 'openmd.reseau') }
 exit 0

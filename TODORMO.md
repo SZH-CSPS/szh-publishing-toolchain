@@ -2,6 +2,30 @@
 
 Ce fichier ne contient que ce qui reste à vérifier ou à trancher : rien de ce qui est déjà fait.
 On coche une case quand le résultat annoncé a été constaté, puis on la supprime.
+## A donner à faire 
+Tu es un superviseur et planificateur, tu organises /créé le plan pour implémneter les features demandées, délègue le maximum à des sous-agents Haiku pour coder. En plus des tâches dans "REPRIS LIVRES" voici une série de correctif et autres. Planiifie dans l'ordre que tu le souhaites soit attentif à l'impact que cela peut avoir. Si nécessaire délègue la planifiicaiton à des autres agents Opus pour répartir la charges par domaine / groupes de taches similaires / qui ont le meme impacte. Tu peux réorganiser par rapport à l'ordre que j'ai posé ci-dessous. De ton côté garde l'aspect de supervision général sans surcharger ton contexte. 
+
+Fonctionnalités / Correctifs :
+A1) dans l'interface revues ou livres, un click sur l'édition de métadonnées d'un chaptire ou d'un article ainsi qu'un click sur l'édiiton des medias doit donner le focus à l'article / le chaptire correspondant - tout en gardant l'aperçu (PDF ou HtmL) fermé.
+A2) "Lier un appel à une référence" ne semble pas fonctionner ? Est-ce qu'il devrait permettre de créer un hyperlien entre une référence non liées automatiquement ? Je pose la question car j'ai l'impression que les hyperliens entre appels et références se font par lua automatiquement car je ne vois aucun markup d'hyperlien dans le texte. Qu'en est-il ? Nous allons devoir discuter ce point avant que tu commences à coder ce point spéciifque. 
+A3)  Enregistrement des métadonnées ou des media relance la compilaiton de l'article (preview et pdf)
+A4) Résumé et Zusammenfassung jamais ne majuscule
+A5) dans la liste des références, les hyperliens n'ont pas de flèche commes les autres hyperliens. Par contre rajoute une "flèche retour" qui renvoie vers l'emplacement de l'appel de note de bas de page ou l'appel de citation. Si il y en a plusieurs, renvoie à la première occurance. 
+A6) Ajoute une option globale (au niveau de l'app) "désactiver les liens des référneces" ce paramètre dèsactive intégralement le lien entre appelle et référence pour toutes les compilations futures, les liens inséré à la main ne sont pas concernés. Il risque d'y avoir un conflit avec A2, à discuter.
+A7) Dans le panneau éditions des métadonnnées des articles (vue d'ensemble) les boutons dans chaque carte d'articles ne sont pas toujours de la meme taille parfois le texte de certains boutons passent sur deux lignes (lorsqu'il y a des warning) 7.4 et 7.5 devraient permettre de résoudre ce problème. Change l'ordre des boutons : Ouvrir, Monter, Descendre et ensuite le reste
+A7.1) Déplace la case "pas de DOI" juste après le DOI calculé (sur la mmee ligne)
+A7.2) Créé un séparateur visuel plus franc pour distinguer les tâches à réaliser du reste (encadrés, ligne ou autre) rajoute un titre compact :"TODO" ou autre. 
+A7.3) Ajoute un bouton au niveau global de ce formulaire (édiitons métadonnées des articles) - dans la barre de menu tout en haut du formulaire : "afficher / cacher les traductions"
+A7.4) Déplace les warning dans la barre de titre de la carte des métadonnées de l'article, supprime la redondance du titre "01 · Construire sa propre rampe
+01-construire-sa-propre-rampe" devient juste "01 · Construire sa propre rampe (aligné à gauche) + éventuel warning (aligné à droite)
+A7.5) Déplace 0/X tâches réalisées dans l'entete "TODO (ou titre que tu as choisi)" 
+A8) les mots clés doivent être réordonnés automatiquement lors de la compilation pour qu'ils soient en ordre alphabétique dans chaque langue, il n'est pas important que l'ordre d'apparition des mots clés soit le meme entre les deux langues
+A9) Figure X + Légende, s'affiche en DESSOUS des Figures, je veux qu'il s'affiche et qu'il soit toujours au dessus (égalemnent dans l'ordre du HTML) ce n'est pas juste un déplacement CSS. 
+B1) Est-ce que le nommage avec numéro des dossiers de articles est toujours nécessaire ? Dès qu'on déplace un article dans l'ordre les numéros ne correspondent plus, je préfère retirer les numréos des dossiers d'article je pense, qu'en penses-tu ? 
+B2) Nous utilisons les mots clés / keyword de edudoc.ch, est-ce que tu peux voir si il existe une API ou autre qui permettrait de récupérer la liste de tous les mots clés ? 
+B3) Prend comme base notre Zeitschrfit. Combien de mots clés et caractères espace compris limiter dans le résumé. Je veux que les deux résumés et les mots clés soient toujours sur la première page.
+
+C1) Dans la "Documentation" (article particulier par rapport aux autres), nous insérons des #Livres, chaque livre doit avoir : un titre, hyperlien (factulatif), un descriptif, une image. L'image est toujours décorative. Elle prend un quart de la largeur en format PDF (alignée à droite) le descriptif est à gauche le titre au dessus du tout. Le lien a pour intitul et pour texte "En savoir plus sur le livre {TITRE DU LIVRE}" j'ai besoin d'un formulaire comme l'édiiton de medias (dans le styles) mais le plus rapide possible pour la saisie de pluieurs livres à la chaine. (une carte de saisie, en dessous un gros bouton "ajouter un livre" qui est toujours visible). Idme pour les films (meme formulaire). Dès que cela est fait, parcours "News & Ressourcen" sur la Zietschrift et " Actualité et ressources" pour la Revue et identifie d'autres champs ou d'autre section qui mériterait un comportement similaire, propose moi des features potentielles pour ces sections. Mon but est de pouvoir évenutellement récupérer de manière rétroactive ces données (p.ex pour construire une bibliotheque / liste de livres ,de films et d'interveniton parlementaires)
 
 ## Lanceur
 

@@ -228,6 +228,19 @@ if ($Lien) {
     [void][System.Windows.Forms.MessageBox]::Show((T 'lien.invalide' @($Lien)), $titreFenetre)
     exit 1
   }
+  # Le protocole szh:// est enregistré sans -Produit (update.ps1 : Set-SzhProtocoleSzh) —
+  # $produitFiltre est donc resté au défaut 'revue' plus haut, quel que soit le produit du
+  # lien reçu. Sans ce second appel, un clic sur un lien Zeitschrift depuis Outlook
+  # écrirait quand même 'fr' dans state.json — un réglage de POSTE, partagé par tous les
+  # comptes qui s'y ouvrent — et l'imposerait à une rédactrice germanophone jusqu'au
+  # prochain lanceur ouvert. Le lien connaît son produit ; c'est lui qui doit parler ici,
+  # pas le défaut du paramètre -Produit.
+  Set-SzhLangueProduit $cible.produit
+  # $titreFenetre a été calculé plus haut avec l'ancienne langue : recalculé ici, sinon la
+  # boîte « lien introuvable » ci-dessous s'afficherait avec un titre resté dans l'autre
+  # langue.
+  $titreFenetre = (T 'lanceur.titre')
+  if (([string]$cible.produit).ToLower() -eq 'zeitschrift') { $titreFenetre = (T 'lanceur.titre.zs') }
   $dossierLien = Find-SzhRevue $cible.produit $cible.numero
   if (-not $dossierLien) {
     [void][System.Windows.Forms.MessageBox]::Show(

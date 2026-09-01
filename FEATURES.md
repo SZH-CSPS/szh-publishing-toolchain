@@ -98,7 +98,7 @@ rédactrice, pas par un développeur.
 
 ### Le mode développeur
 
-`lireModeDeveloppeur()` vaut `true` par défaut et `Get-SzhBaseRevues` choisit sur cette base la
+`lireModeDeveloppeur()` vaut `true` par défaut et `Get-SzhBaseRevuesPour` choisit sur cette base la
 **racine** des dossiers de revues. Les revues réelles vivent donc dans la racine `dev`, et
 désactiver le réglage par curiosité pointerait le lanceur sur une racine `prod` probablement vide.
 À corriger, puis à résumer noir sur blanc : quoi vit où.

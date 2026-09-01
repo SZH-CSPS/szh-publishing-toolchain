@@ -61,7 +61,7 @@ szh-publishing-toolchain/
 │   ├── archive-revue.ps1           déplacement en cours ⇄ archives
 │   ├── szh-common.ps1              socle commun : manifest, téléchargement, textes
 │   ├── szh-taches.ps1              tâche planifiée, cadence hebdomadaire, choix du moment
-│   ├── icone.py                    fabrique les trois .ico livrés à côté
+│   ├── icone.py                    fabrique les quatre .ico livrés à côté
 │   └── vsix.lock                   extensions tierces épinglées (version + sha256)
 ├── vscodium-user/                  → %APPDATA%\VSCodium\User
 ├── vscodium-extension/

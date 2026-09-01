@@ -291,9 +291,9 @@ pour le CLI VSCodium à l'incident 2026.08.47. SumatraPDF reste non bloquant —
 sans lecteur PDF — mais son absence se dit, sinon le rédacteur découvrirait seul qu'un PDF ouvert
 dans Acrobat bloque la compilation suivante.
 
-Un second fichier à double-cliquer, `windows\Installer le poste SZH (winget casse).cmd`, fait la
-réparation à l'écran avant l'installation, pour un poste dont la source est déjà hors service.
-`api.github.com` rejoint la liste des flux sortants à autoriser (`docs/SECURITE.md`).
+Le fichier `windows\Installer le poste SZH.cmd` obtient l'élévation administrateur et lance
+`bootstrap.ps1`, qui installe le toolkit et ses dépendances. `api.github.com` rejoint la liste des
+flux sortants à autoriser (`docs/SECURITE.md`).
 
 ### Retouche lot I bis (v2026.08.50, cockpit 0.26.2)
 
