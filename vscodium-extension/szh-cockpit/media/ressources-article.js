@@ -244,6 +244,55 @@ function construireDepot(parent, c) {
 // `persistee` dit si la fiche existe déjà dans le .md (chargée depuis l'hôte) : la
 // retirer doit alors le lui dire. Une fiche neuve (bouton « Ajouter ») n'existe nulle
 // part ailleurs que dans cette page tant qu'elle n'a pas été enregistrée.
+// ---- Accordéon : une seule fiche ouverte à la fois ------------------------------------
+//
+// Demandé par Robin le 01.09.2026, en remplacement des cartes toutes dépliées. Sur un
+// article qui porte huit livres et quatre films, tout déplié ne se lit plus ; et la saisie
+// en série reste rapide, puisqu'ajouter une fiche l'ouvre aussitôt.
+
+// Le libellé de l'en-tête : la position dans sa section, puis le titre. La position est
+// celle du .md — les fiches y sont rangées à l'enregistrement (lib/ressources.js,
+// reordonnerRessources) — de sorte que ce numéro dit vraiment où la fiche s'imprimera.
+function majTitreBascule(c) {
+  if (!c.ctl.bascule) { return; }
+  var t = c.ctl.titre ? ligne(c.ctl.titre.value) : '';
+  if (t === '') { t = TXT.sansTitre || '—'; }
+  c.ctl.bascule.textContent = String(c.position || 1) + ' · ' + t;
+}
+
+// Renumérote toutes les fiches, section par section : une fiche ajoutée ou retirée décale
+// celles qui la suivent, et un numéro périmé serait pire que pas de numéro du tout.
+function majPositions() {
+  var compte = {};
+  for (var i = 0; i < cartes.length; i++) {
+    var c = cartes[i];
+    compte[c.type] = (compte[c.type] || 0) + 1;
+    c.position = compte[c.type];
+    majTitreBascule(c);
+  }
+}
+
+// Ouvre une fiche et ferme toutes les autres. Recliquer sur celle qui est ouverte la ferme :
+// l'état « tout replié » doit rester atteignable, sans quoi on ne peut plus embrasser la
+// liste entière du regard.
+function ouvrirCarte(c, ouvrir) {
+  for (var i = 0; i < cartes.length; i++) {
+    var autre = cartes[i];
+    if (!autre.ctl.corps) { continue; }
+    var vise = (autre === c) && ouvrir;
+    autre.ctl.corps.hidden = !vise;
+    if (autre.ctl.bascule) { autre.ctl.bascule.setAttribute('aria-expanded', vise ? 'true' : 'false'); }
+    if (autre.element) {
+      if (vise) { autre.element.classList.add('ressource-carte--ouverte'); }
+      else { autre.element.classList.remove('ressource-carte--ouverte'); }
+    }
+  }
+}
+
+function basculerCarte(c) {
+  ouvrirCarte(c, !!(c.ctl.corps && c.ctl.corps.hidden));
+}
+
 function construireCarte(section, ressource, persistee) {
   var index = cartes.length;
   var c = {
@@ -256,18 +305,34 @@ function construireCarte(section, ressource, persistee) {
   c.element = s;
 
   var tete = texte(s, 'header', 'ressource-tete');
+
+  // En-tête d'accordéon : un vrai <button>, pas un <div> cliquable — sans quoi la fiche ne
+  // s'ouvrirait ni au clavier ni au lecteur d'écran, ce qui n'a pas sa place dans un outil
+  // de pédagogie spécialisée. aria-expanded dit l'état, le libellé dit la position et le
+  // titre (« 3 · Le handicap en Suisse »).
+  c.ctl.bascule = texte(tete, 'button', 'ressource-bascule');
+  c.ctl.bascule.type = 'button';
+  c.ctl.bascule.setAttribute('aria-expanded', 'false');
+  c.ctl.bascule.addEventListener('click', function () { basculerCarte(c); });
+
   texte(tete, 'span', 'szh-pousse');
   tete.appendChild(boutonIcone('poubelle', TXT.retirerTip || '', function () { retirerCarte(c); }, 'szh-ico--danger'));
 
+  // Le corps se replie d'un bloc. `hidden` plutôt qu'une classe : l'élément sort alors de
+  // l'arbre d'accessibilité, donc un lecteur d'écran ne lit pas le contenu d'une fiche fermée.
+  var corps = texte(s, 'div', 'ressource-corps');
+  corps.hidden = true;
+  c.ctl.corps = corps;
+
   var v = ressource.valeurs || {};
-  champ(s, c, 'titre', TXT.champTitre, TXT.champTitreIndice, false);
+  champ(corps, c, 'titre', TXT.champTitre, TXT.champTitreIndice, false);
 
   if (c.champs.length > 0) {
-    var biblio = texte(s, 'div', 'ressource-biblio');
+    var biblio = texte(corps, 'div', 'ressource-biblio');
     for (var i = 0; i < c.champs.length; i++) { champ(biblio, c, c.champs[i].cle, c.champs[i].libelle, '', false); }
   }
 
-  champ(s, c, 'descriptif', TXT.champDescriptif, TXT.champDescriptifIndice, true);
+  champ(corps, c, 'descriptif', TXT.champDescriptif, TXT.champDescriptifIndice, true);
 
   // Types sans image (c.avecImage) : aucune zone de dépôt — ni champ vide à ignorer, ni
   // vignette « Aucune image » qui n'aurait jamais de raison de se remplir. Voir
@@ -295,6 +360,10 @@ function construireCarte(section, ressource, persistee) {
   c.enregistree = c.persistee ? valeurs(c) : null;
 
   cartes.push(c);
+  // Le libellé de l'accordéon suit le titre à la frappe : sans cela, une fiche qu'on vient
+  // de nommer resterait « (sans titre) » jusqu'au prochain rechargement.
+  if (c.ctl.titre) { c.ctl.titre.addEventListener('input', function () { majTitreBascule(c); }); }
+  majPositions();
   return c;
 }
 
@@ -302,6 +371,7 @@ function retirerCarte(c) {
   c.element.remove();
   cartes = cartes.filter(function (x) { return x !== c; });
   if (c.persistee) { api.postMessage({ type: 'retirer', id: c.id }); }
+  majPositions();          // les fiches suivantes se décalent : leur numéro doit suivre
   majModifie();
 }
 
@@ -314,6 +384,10 @@ function construireSection(type) {
   s.ajouter = bouton(type.libelleAjouter || '', function () {
     var c = construireCarte(s, { id: nouvelId(), type: s.type, valeurs: {}, apercu: null }, false);
     conteneur.insertBefore(c.element, s.ajouter);
+    // Une fiche neuve s'ouvre aussitôt — et referme la précédente, l'accordéon n'en gardant
+    // qu'une. Sans cela, enchaîner dix livres demanderait un clic de plus par livre, ce qui
+    // irait contre la saisie en série voulue.
+    ouvrirCarte(c, true);
     try { c.ctl.titre.focus(); } catch (e) { /* pas focalisable */ }
   }, 'szh-bouton--principal ressource-ajouter', type.libelleAjouterTip || '');
   conteneur.appendChild(s.ajouter);

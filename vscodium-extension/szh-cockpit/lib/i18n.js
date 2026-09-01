@@ -901,6 +901,8 @@ const TEXTES_COCKPIT = {
     'ressource.ajouter.recherche': 'Ajouter une recherche',
     'ressource.ajouter.recherche.tip': 'Ajouter une nouvelle fiche de recherche en cours',
     'ressource.retirer.tip': 'Retirer cette fiche du texte de l’article',
+    // Libellé d'un accordéon dont la fiche n'a pas encore de titre : « 3 · (sans titre) ».
+    'ressource.sansTitre': '(sans titre)',
     'ressource.manque': 'À compléter avant l’enregistrement : {0}.',
     'ressource.champ.titre': 'Titre',
     'ressource.champ.titre.indice': 'Le titre de la fiche',
@@ -1927,6 +1929,7 @@ const TEXTES_COCKPIT = {
     'ressource.ajouter.recherche': 'Forschungsprojekt hinzufügen',
     'ressource.ajouter.recherche.tip': 'Einen neuen Eintrag für ein laufendes Forschungsprojekt hinzufügen',
     'ressource.retirer.tip': 'Diesen Eintrag aus dem Artikeltext entfernen',
+    'ressource.sansTitre': '(ohne Titel)',
     'ressource.manque': 'Vor dem Speichern zu ergänzen: {0}.',
     'ressource.champ.titre': 'Titel',
     'ressource.champ.titre.indice': 'Der Titel des Eintrags',

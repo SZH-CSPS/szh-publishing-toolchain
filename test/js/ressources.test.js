@@ -332,3 +332,82 @@ test('szh-ressource.lua : pose .szh-ressource-sans-image quand le bloc n’a pas
   assert.match(lua, /CLASSE\s*\.\.\s*'-sans-image'/,
     'la classe compacte doit être dérivée génériquement (absence d’image), pas listée par type');
 });
+
+// ---- Tri des fiches : le .md lui-même se range ----------------------------------------
+//
+// Demande de Robin (01.09.2026). Le formulaire affiche la POSITION de chaque fiche dans
+// l'en-tête de son accordéon : le tri doit donc porter sur le document, pas sur le seul
+// affichage. Une position montrée que le .md ne respecterait pas mentirait sur l'ordre du
+// PDF — l'écart silencieux que ce projet traque partout ailleurs.
+
+// Un document d'essai : deux sections, chacune sous son intertitre, fiches en désordre.
+function mdDeuxSections() {
+  return [
+    '## Livres', '',
+    ':::  {#r1 .szh-ressource type="livre" titre="Zebre"}', 'desc Z', ':::', '',
+    '::: {#r2 .szh-ressource type="livre" titre="École"}', 'desc E', ':::', '',
+    '::: {#r3 .szh-ressource type="livre" titre="Alpha"}', 'desc A', ':::', '',
+    '## Films', '',
+    '::: {#r4 .szh-ressource type="film" titre="Zorro"}', 'desc Zo', ':::', '',
+    '::: {#r5 .szh-ressource type="film" titre="Avatar"}', 'desc Av', ':::', ''
+  ].join('\n');
+}
+
+test('tri : les livres se rangent par titre, accents à leur place alphabétique', () => {
+  const out = res.reordonnerRessources(mdDeuxSections(), 'fr');
+  const titres = res.lireRessources(out).filter((f) => f.type === 'livre').map((f) => f.valeurs.titre);
+  assert.deepStrictEqual(titres, ['Alpha', 'École', 'Zebre'],
+    '« École » doit se ranger avec les E — un tri par octets le mettrait après « Zebre »');
+});
+
+test('tri : le bloc entier suit, descriptif compris', () => {
+  const out = res.reordonnerRessources(mdDeuxSections(), 'fr');
+  const paire = res.lireRessources(out).map((f) => f.valeurs.titre + '=' + f.valeurs.descriptif);
+  assert.deepStrictEqual(paire,
+    ['Alpha=desc A', 'École=desc E', 'Zebre=desc Z', 'Avatar=desc Av', 'Zorro=desc Zo'],
+    'un descriptif s’est détaché de sa fiche : ce sont les blocs qui permutent, pas les en-têtes');
+});
+
+test('tri : aucune fiche ne franchit un intertitre ni ne change de section', () => {
+  const out = res.reordonnerRessources(mdDeuxSections(), 'fr');
+  const avantFilms = out.split('## Films')[0];
+  assert.ok(!/type="film"/.test(avantFilms),
+    'un film a migré dans la section des livres : le tri doit s’arrêter aux intertitres');
+  assert.ok(out.includes('## Livres') && out.includes('## Films'),
+    'un intertitre a disparu : seuls les blocs de fiches permutent, jamais le reste');
+});
+
+test('tri : les interventions se rangent par canton, le titre départageant', () => {
+  const md = [
+    '::: {#i1 .szh-ressource type="intervention" titre="Bravo" canton="Zurich"}', 'd', ':::', '',
+    '::: {#i2 .szh-ressource type="intervention" titre="Zoulou" canton="Argovie"}', 'd', ':::', '',
+    '::: {#i3 .szh-ressource type="intervention" titre="Alpha" canton="Zurich"}', 'd', ':::', ''
+  ].join('\n');
+  const rangees = res.lireRessources(res.reordonnerRessources(md, 'de'))
+    .map((f) => f.valeurs.canton + '/' + f.valeurs.titre);
+  assert.deepStrictEqual(rangees, ['Argovie/Zoulou', 'Zurich/Alpha', 'Zurich/Bravo'],
+    'deux fiches d’un même canton doivent être départagées par le titre, sinon leur ordre '
+    + 'dépend de la saisie et change à chaque enregistrement');
+});
+
+test('tri : un texte que rien ne fait bouger revient identique au caractère près', () => {
+  const seule = '::: {#s1 .szh-ressource type="livre" titre="Seul"}\nd\n:::\n';
+  assert.strictEqual(res.reordonnerRessources(seule, 'fr'), seule, 'une fiche unique');
+  assert.strictEqual(res.reordonnerRessources('# Rien\n\ndu texte\n', 'fr'), '# Rien\n\ndu texte\n',
+    'un document sans aucune fiche');
+  const trie = res.reordonnerRessources(mdDeuxSections(), 'fr');
+  assert.strictEqual(res.reordonnerRessources(trie, 'fr'), trie, 'un document déjà rangé');
+});
+
+test('tri : écrire une fiche la remet à sa place, sans langue il ne se passe rien', () => {
+  const md = mdDeuxSections();
+  const avecLangue = res.ecrireRessource(md, 'r1', 'livre', { titre: 'Aaa', descriptif: 'desc Z' }, 'fr');
+  assert.ok(avecLangue.ok);
+  assert.strictEqual(res.lireRessources(avecLangue.texte)[0].valeurs.titre, 'Aaa',
+    'renommée « Aaa », la fiche doit passer en tête de sa section');
+
+  const sansLangue = res.ecrireRessource(md, 'r1', 'livre', { titre: 'Aaa', descriptif: 'desc Z' });
+  assert.strictEqual(res.lireRessources(sansLangue.texte)[0].valeurs.titre, 'Aaa',
+    'sans langue, la fiche est réécrite en place et le document garde son ordre de saisie');
+  assert.strictEqual(res.lireRessources(sansLangue.texte)[1].valeurs.titre, 'École');
+});

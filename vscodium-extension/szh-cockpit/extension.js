@@ -7486,6 +7486,7 @@ function textesRessources() {
     choisirFichier: T('medias.choisirFichier'),
     errFormat: T('medias.err.format'), errTropVolumineuse: T('medias.err.tropvolumineux'),
     retirerTip: T('ressource.retirer.tip'),
+    sansTitre: T('ressource.sansTitre'),
     manque: T('ressource.manque'),
     enregistrer: T('img.enregistrer'), enregistrerTip: T('ressource.enregistrer.tip'),
     enregistre: T('ressource.enregistre'), nonEnregistre: T('img.nonEnregistre'),
@@ -7655,6 +7656,20 @@ async function ouvrirGestionRessources(fournisseur, rafraichirTout, item) {
       if (!resultat.ok) { continue; }                // disparue entre-temps : ignorée
       travail = resultat.texte;
       total++;
+    }
+    // Les fiches se rangent d'elles-mêmes — livres, films et recherches par titre,
+    // interventions par canton (lib/ressources.js). Une seule fois, après la boucle : trier
+    // à chaque écriture permuterait les blocs entre deux fiches d'un même enregistrement,
+    // pour le même résultat. Le tri porte sur le .md et pas sur le seul affichage, parce que
+    // le formulaire montre la POSITION de chaque fiche : une position que le document ne
+    // respecterait pas mentirait sur l'ordre du PDF.
+    // ⚠ La langue vient de cheminConfig(), qui suit le profil — et non de langueRevue(), qui
+    //   lit « ausgabe.yaml » en dur et retomberait donc sur le français pour un livre.
+    if (total > 0) {
+      let langue = 'fr';
+      try { langue = langueDefaut(analyserAusgabe(fs.readFileSync(cheminConfig(racine), 'utf8'))); }
+      catch (e) { /* config illisible : le tri se fait en français, comme le repli maison */ }
+      travail = ressourcesLib.reordonnerRessources(travail, langue);
     }
     if (travail === texte) { return total; }
     if (!(await ecrireTexteArticle(travail))) { return -1; }

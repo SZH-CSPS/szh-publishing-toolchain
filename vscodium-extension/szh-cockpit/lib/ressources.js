@@ -225,7 +225,10 @@ function inserer(lignes, ou, bloc) {
 // Ajoute une fiche neuve, juste après la dernière fiche déjà présente (toute type
 // confondu), ou en fin de document s'il n'y en a aucune : les fiches d'un article restent
 // ainsi groupées, dans l'ordre où elles ont été saisies.
-function ajouterRessource(texte, id, type, valeurs) {
+// `langue` est facultative : fournie, les fiches sont rangées après l'ajout (voir
+// reordonnerRessources). Absente, le texte garde l'ordre de saisie — l'ancien comportement,
+// pour un appelant qui ne sait pas dans quelle langue est l'article.
+function ajouterRessource(texte, id, type, valeurs, langue) {
   const src = String(texte === undefined || texte === null ? '' : texte);
   const lignes = src.split('\n');
   const existantes = lireRessources(src);
@@ -233,20 +236,111 @@ function ajouterRessource(texte, id, type, valeurs) {
     ? existantes[existantes.length - 1].fermeture + 1
     : lignes.length;
   inserer(lignes, ou, blocRessource(id, type, valeurs).split('\n'));
-  return lignes.join('\n');
+  const sortie = lignes.join('\n');
+  return langue ? reordonnerRessources(sortie, langue) : sortie;
 }
 
 // ecrireRessource(texte, id, type, valeurs) -> { texte, ok }
 // Remplace en place la fiche `id`. `ok` est faux si elle a disparu du .md depuis le
 // chargement (bloc supprimé à la main entre-temps) : l'appelant décide alors quoi en dire.
-function ecrireRessource(texte, id, type, valeurs) {
+function ecrireRessource(texte, id, type, valeurs, langue) {
   const src = String(texte === undefined || texte === null ? '' : texte);
   const trouvee = lireRessources(src).find((r) => r.id === String(id));
   if (!trouvee) { return { texte: src, ok: false }; }
   const lignes = src.split('\n');
   lignes.splice(trouvee.ouverture, trouvee.fermeture - trouvee.ouverture + 1,
     ...blocRessource(id, type, valeurs).split('\n'));
-  return { texte: lignes.join('\n'), ok: true };
+  const sortie = lignes.join('\n');
+  // Un titre corrigé change la place de la fiche : c'est le sens du tri, et la position
+  // affichée par le formulaire suit.
+  return { texte: langue ? reordonnerRessources(sortie, langue) : sortie, ok: true };
+}
+
+// ---- Tri des fiches -------------------------------------------------------------------
+//
+// Demande de Robin (01.09.2026) : les fiches se rangent d'elles-mêmes — livres, films et
+// recherches par titre, interventions parlementaires par canton. Le formulaire affiche la
+// POSITION de chaque fiche dans l'en-tête de son accordéon, et c'est ce qui oblige à trier
+// le .md lui-même et non l'affichage seul : une position montrée que le document ne
+// respecterait pas mentirait sur l'ordre du PDF.
+//
+// Le champ qui range, par type. Un type inconnu se range par titre, faute de mieux.
+const CLE_TRI = { intervention: 'canton' };
+
+// Comparaison de deux fiches, dans la langue de l'article : « École » se range avec les E
+// et « Ökonomie » avec les O, ce qu'un tri par octets ne ferait pas. Deux fiches du même
+// canton sont départagées par le titre — sans quoi leur ordre dépendrait de la saisie et
+// changerait à chaque enregistrement.
+function comparerRessources(a, b, langue) {
+  const loc = String(langue || 'fr');
+  const cle = CLE_TRI[a.type] || 'titre';
+  const va = String((a.valeurs || {})[cle] || '');
+  const vb = String((b.valeurs || {})[cle] || '');
+  const d = va.localeCompare(vb, loc, { sensitivity: 'base', numeric: true });
+  if (d !== 0) { return d; }
+  if (cle === 'titre') { return 0; }
+  return String((a.valeurs || {}).titre || '')
+    .localeCompare(String((b.valeurs || {}).titre || ''), loc, { sensitivity: 'base', numeric: true });
+}
+
+// Les fiches qui peuvent permuter entre elles : celles qui se suivent, portent le MÊME type,
+// et qu'aucun titre markdown ne sépare. Ces deux gardes comptent — les fiches d'un article
+// vivent sous des intertitres (« Livres », « Films »), et un tri qui les ignorerait ferait
+// passer un film dans la section des livres, ou une fiche sous le mauvais intertitre.
+function groupesTriables(lignes, fiches) {
+  const groupes = [];
+  let courant = [];
+  for (let i = 0; i < fiches.length; i++) {
+    if (courant.length > 0) {
+      const prec = fiches[i - 1];
+      const memeType = fiches[i].type === prec.type;
+      let titreEntre = false;
+      for (let l = prec.fermeture + 1; l < fiches[i].ouverture; l++) {
+        if (/^\s{0,3}#{1,6}\s/.test(lignes[l] || '')) { titreEntre = true; break; }
+      }
+      if (!memeType || titreEntre) { groupes.push(courant); courant = []; }
+    }
+    courant.push(fiches[i]);
+  }
+  if (courant.length > 0) { groupes.push(courant); }
+  return groupes;
+}
+
+// ordreRessources(lignes, fiches, langue) -> [fiches, dans l'ordre où elles doivent être]
+// Pure : ne touche à rien, dit seulement l'ordre voulu. Le tri est STABLE (Array.sort l'est
+// depuis ES2019), donc deux fiches que rien ne départage gardent leur ordre de saisie.
+function ordreRessources(lignes, fiches, langue) {
+  const voulu = [];
+  for (const groupe of groupesTriables(lignes, fiches)) {
+    voulu.push(...groupe.slice().sort((a, b) => comparerRessources(a, b, langue)));
+  }
+  return voulu;
+}
+
+// reordonnerRessources(texte, langue) -> texte
+// Permute les blocs de fiches dans le .md pour suivre ordreRessources(). Les EMPLACEMENTS ne
+// bougent pas : seuls les contenus permutent, si bien que tout ce qui vit entre deux fiches
+// — intertitres, paragraphes, blancs — reste exactement où il était. Réécrit de la fin vers
+// le début pour que les index relevés restent valides pendant l'opération.
+function reordonnerRessources(texte, langue) {
+  const src = String(texte === undefined || texte === null ? '' : texte);
+  const lignes = src.split('\n');
+  const fiches = lireRessources(src);
+  if (fiches.length < 2) { return src; }
+
+  const voulu = ordreRessources(lignes, fiches, langue);
+  const inchange = voulu.every((f, i) => f.id === fiches[i].id);
+  if (inchange) { return src; }
+
+  const corps = fiches.map((f) => lignes.slice(f.ouverture, f.fermeture + 1));
+  const parId = {};
+  fiches.forEach((f, i) => { parId[f.id] = corps[i]; });
+
+  for (let i = fiches.length - 1; i >= 0; i--) {
+    const place = fiches[i];
+    lignes.splice(place.ouverture, place.fermeture - place.ouverture + 1, ...parId[voulu[i].id]);
+  }
+  return lignes.join('\n');
 }
 
 // retirerRessource(texte, id) -> { texte, ok }
@@ -273,5 +367,6 @@ module.exports = {
   typeValide, typesConnus, champsBiblio, tousLesChamps, typeAvecImage,
   champsManquants, ressourceComplete,
   lireRessources, ajouterRessource, ecrireRessource, retirerRessource,
-  blocRessource, ligneOuverture
+  blocRessource, ligneOuverture,
+  ordreRessources, reordonnerRessources, comparerRessources
 };

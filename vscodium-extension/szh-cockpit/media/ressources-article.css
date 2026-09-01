@@ -1,6 +1,6 @@
-/* Fiches de « ressources » d'un article (livre, film, …) : une carte par fiche, DÉPLIÉE
-   d'emblée (pas d'accordéon comme le gestionnaire des médias) — la demande de Robin est la
-   vitesse de saisie, pas la densité d'une liste qu'on parcourt. Un gros bouton « Ajouter »
+/* Fiches de « ressources » d'un article (livre, film, …) : une carte par fiche, en ACCORDÉON
+   (une seule ouverte à la fois, voir plus bas) — la saisie en série reste rapide,
+   une fiche ajoutée s'ouvrant aussitôt. Un gros bouton « Ajouter »
    reste toujours à la portée, juste sous la dernière carte de sa section. Aucune couleur en
    dur, rien que les jetons de thème (_design.css). */
 body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
@@ -60,3 +60,28 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 /* Manque une valeur requise : discret tant qu'on saisit, visible si on tente de quitter
    sans avoir fini — voir estCompleteCarte() dans le script. */
 .ressource-manque { margin: 0; }
+
+/* ---- Accordéon ------------------------------------------------------------------------
+   Une seule fiche ouverte à la fois (demande de Robin du 01.09.2026, en remplacement des
+   cartes toutes dépliées : sur un article qui porte huit livres et quatre films, tout déplié
+   ne se lit plus). La saisie en série reste rapide, une fiche ajoutée s'ouvrant aussitôt.
+
+   L'en-tête est un <button> pleine largeur : cliquable à la souris, atteignable au clavier,
+   et annoncé avec son état par aria-expanded (voir ressources-article.js). Le corps se
+   replie par l'attribut hidden, ce qui le sort aussi de l'arbre d'accessibilité — une fiche
+   fermée n'est donc pas lue par une synthèse vocale. */
+.ressource-tete { display: flex; align-items: center; gap: var(--e2); }
+
+.ressource-bascule { flex: 1 1 auto; min-width: 0; text-align: left;
+  background: none; border: 0; padding: var(--e1) 0; margin: 0; cursor: pointer;
+  font-family: inherit; font-size: var(--t-corps); font-weight: 600; color: var(--encre);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ressource-bascule:hover { color: var(--accent); }
+.ressource-bascule:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+
+/* Le chevron dit l'état par sa FORME et non par la couleur seule, et pivote à l'ouverture. */
+.ressource-bascule::before { content: '▸'; display: inline-block; margin-right: var(--e2);
+  color: var(--encre-2); transition: transform .12s ease; }
+.ressource-carte--ouverte .ressource-bascule::before { transform: rotate(90deg); }
+
+.ressource-corps { display: flex; flex-direction: column; gap: var(--e2); padding-top: var(--e2); }
