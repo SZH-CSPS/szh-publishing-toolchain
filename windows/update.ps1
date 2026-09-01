@@ -141,6 +141,49 @@ function Set-SzhProtocoleSzh {
   }
 }
 
+# ---- Orphelins du toolkit ----
+# `Expand-Archive -Force` écrase ce que l'archive contient, mais ne supprime jamais ce
+# qu'elle ne contient plus : un fichier retiré du dépôt survivait donc indéfiniment dans le
+# toolkit de chaque poste, mise à jour après mise à jour (constaté : neuf fichiers de
+# pipeline/filters, pipeline/rapport.py et pipeline/attic, encore présents après plusieurs
+# mises à jour qui auraient dû les effacer).
+#
+# $Extrait est une extraction à part de LA MÊME archive, faite avant d'écraser le toolkit :
+# elle dit exactement ce que cette version contient. Uniquement dans les dossiers que
+# l'archive gère (release.yml : pipeline, vscodium-user, revue-template, livre-template,
+# windows) — un dossier qui n'appartient pas à l'archive n'a pas à être jugé par elle, et
+# c'est cette limite qui rend l'opération sûre. Rien HORS $Toolkit n'est même regardé :
+# state.json, config.json, staging, logs et l'état par compte vivent ailleurs.
+function Remove-SzhToolkitOrphelins {
+  param(
+    [Parameter(Mandatory = $true)][string]$Toolkit,
+    [Parameter(Mandatory = $true)][string]$Extrait
+  )
+  $dossiersGeres = @('pipeline', 'vscodium-user', 'revue-template', 'livre-template', 'windows')
+  $retires = New-Object System.Collections.ArrayList
+  foreach ($d in $dossiersGeres) {
+    $dansToolkit = Join-Path $Toolkit $d
+    if (-not (Test-Path $dansToolkit)) { continue }
+    $dansArchive = Join-Path $Extrait $d
+    $fichiers = Get-ChildItem -LiteralPath $dansToolkit -Recurse -File -Force -ErrorAction SilentlyContinue
+    foreach ($f in $fichiers) {
+      $relatif = $f.FullName.Substring($dansToolkit.Length).TrimStart('\')
+      $cible = Join-Path $dansArchive $relatif
+      if (-not (Test-Path -LiteralPath $cible)) {
+        Remove-Item -LiteralPath $f.FullName -Force
+        [void]$retires.Add((Join-Path $d $relatif))
+      }
+    }
+    # Dossiers restés vides derrière les fichiers retirés, du plus profond au moins profond ;
+    # le dossier géré lui-même ($dansToolkit) n'est jamais retiré, même vide.
+    Get-ChildItem -LiteralPath $dansToolkit -Recurse -Directory -Force -ErrorAction SilentlyContinue |
+      Sort-Object { $_.FullName.Length } -Descending |
+      Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue) } |
+      Remove-Item -Force -ErrorAction SilentlyContinue
+  }
+  return $retires
+}
+
 # ---- Une seule mise à jour à la fois (mutex nommé, portée poste) ----
 # Deux update.ps1 concurrents écrivent la même archive de staging et détendent deux
 # Expand-Archive sur le même toolkit, qui finit à moitié écrit. On sort proprement :
@@ -206,6 +249,28 @@ try {
         throw (T 'err.empreinte' @($manifest.toolkit.file))
       }
     }
+    # Écarte les orphelins AVANT d'écraser le toolkit : il faut le contenu exact de cette
+    # version, extrait à part, pour savoir ce qui n'y est plus. Jamais bloquant — un souci
+    # ici ne doit ni interrompre cette étape ni les suivantes ($ennuis n'est pas touché),
+    # l'extraction normale qui suit répare de toute façon ce que l'archive gère.
+    $extrait = ''
+    try {
+      $extrait = Join-Path $SzhStaging ('toolkit-extrait-' + $manifest.version)
+      if (Test-Path $extrait) { Remove-Item -LiteralPath $extrait -Recurse -Force }
+      Expand-Archive -Path $zip -DestinationPath $extrait -Force
+      $orphelins = Remove-SzhToolkitOrphelins -Toolkit $SzhToolkit -Extrait $extrait
+      foreach ($o in $orphelins) {
+        Write-SzhLog ('update : orphelin retiré du toolkit -> ' + $o)
+      }
+      if ($orphelins.Count -gt 0) {
+        Write-SzhLog ('update : ' + $orphelins.Count + ' orphelin(s) retiré(s) du toolkit (absents de la version ' + $manifest.version + ')')
+      }
+    } catch {
+      Write-SzhLog ('update : nettoyage des orphelins du toolkit non effectué : ' + $_.Exception.Message)
+    } finally {
+      if ($extrait -and (Test-Path $extrait)) { Remove-Item -LiteralPath $extrait -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     Expand-Archive -Path $zip -DestinationPath $SzhToolkit -Force
     Write-SzhOk (T 'maj.e1.ok')
   } else {
@@ -486,6 +551,10 @@ try {
   $manifests = @(Get-ChildItem (Join-Path $SzhStaging 'manifest-*.json') -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
   if ($manifests.Count -gt 5) { $manifests | Select-Object -Skip 5 | Remove-Item -Force }
   Get-ChildItem (Join-Path $SzhStaging '*.vsix') -ErrorAction SilentlyContinue | Remove-Item -Force
+  # Reste d'un nettoyage d'orphelins interrompu (coupure de courant, disque plein) : cette
+  # extraction à part n'a plus lieu d'être une fois l'étape 1/5 passée.
+  Get-ChildItem (Join-Path $SzhStaging 'toolkit-extrait-*') -Directory -ErrorAction SilentlyContinue |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
   # La cadence de la passe silencieuse a déménagé chez l'utilisateur. Le fichier commun
   # d'avant ne dit plus rien de personne, et le laisser ferait mal lire un poste au
   # prochain diagnostic.

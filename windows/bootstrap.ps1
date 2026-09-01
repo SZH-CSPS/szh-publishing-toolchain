@@ -257,6 +257,47 @@ if ($codium -like ($env:LOCALAPPDATA + '*')) {
              'puis reprendre avec l''installeur système, sinon les rédacteurs n''auront pas d''éditeur.')
 }
 
+# ---- Orphelins du toolkit ----
+# Même manque que update.ps1, et même correction : `Expand-Archive -Force` écrase ce que
+# l'archive contient mais ne supprime jamais ce qu'elle ne contient plus. Sans effet sur un
+# poste neuf, qui part d'un $SzhToolkit vide — mais bootstrap.ps1 est aussi ce qu'un
+# administrateur relance en réparation sur un poste déjà installé (voir plus bas, tâche
+# planifiée), et cette rejouabilité mérite la même garantie.
+#
+# $Extrait est une extraction à part de LA MÊME archive, faite avant d'écraser le toolkit :
+# elle dit exactement ce que cette version contient. Uniquement dans les dossiers que
+# l'archive gère (release.yml : pipeline, vscodium-user, revue-template, livre-template,
+# windows) — un dossier qui n'appartient pas à l'archive n'a pas à être jugé par elle.
+function Remove-SzhToolkitOrphelins {
+  param(
+    [Parameter(Mandatory = $true)][string]$Toolkit,
+    [Parameter(Mandatory = $true)][string]$Extrait
+  )
+  $dossiersGeres = @('pipeline', 'vscodium-user', 'revue-template', 'livre-template', 'windows')
+  $retires = New-Object System.Collections.ArrayList
+  foreach ($d in $dossiersGeres) {
+    $dansToolkit = Join-Path $Toolkit $d
+    if (-not (Test-Path $dansToolkit)) { continue }
+    $dansArchive = Join-Path $Extrait $d
+    $fichiers = Get-ChildItem -LiteralPath $dansToolkit -Recurse -File -Force -ErrorAction SilentlyContinue
+    foreach ($f in $fichiers) {
+      $relatif = $f.FullName.Substring($dansToolkit.Length).TrimStart('\')
+      $cible = Join-Path $dansArchive $relatif
+      if (-not (Test-Path -LiteralPath $cible)) {
+        Remove-Item -LiteralPath $f.FullName -Force
+        [void]$retires.Add((Join-Path $d $relatif))
+      }
+    }
+    # Dossiers restés vides derrière les fichiers retirés ; le dossier géré lui-même
+    # ($dansToolkit) n'est jamais retiré, même vide.
+    Get-ChildItem -LiteralPath $dansToolkit -Recurse -Directory -Force -ErrorAction SilentlyContinue |
+      Sort-Object { $_.FullName.Length } -Descending |
+      Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue) } |
+      Remove-Item -Force -ErrorAction SilentlyContinue
+  }
+  return $retires
+}
+
 # ---- Toolkit initial ----
 Info 'Toolkit initial'
 $toolkitOk = $false
@@ -265,6 +306,27 @@ try {
   $zip = Join-Path $SzhStaging $manifest.toolkit.file
   Get-SzhFichier -Url $manifest.toolkit.url -Destination $zip -Silencieux
   if (Test-SzhSha256 -Fichier $zip -Attendu $manifest.toolkit.sha256) {
+    # Écarte les orphelins AVANT d'écraser le toolkit. Jamais bloquant : un souci ici ne
+    # doit pas empêcher l'installation du poste, l'extraction normale qui suit répare de
+    # toute façon ce que l'archive gère.
+    $extrait = ''
+    try {
+      $extrait = Join-Path $SzhStaging ('toolkit-extrait-' + $manifest.version)
+      if (Test-Path $extrait) { Remove-Item -LiteralPath $extrait -Recurse -Force }
+      Expand-Archive -Path $zip -DestinationPath $extrait -Force
+      $orphelins = Remove-SzhToolkitOrphelins -Toolkit $SzhToolkit -Extrait $extrait
+      foreach ($o in $orphelins) {
+        Write-SzhLog ('bootstrap : orphelin retiré du toolkit -> ' + $o)
+      }
+      if ($orphelins.Count -gt 0) {
+        Write-SzhLog ('bootstrap : ' + $orphelins.Count + ' orphelin(s) retiré(s) du toolkit (absents de la version ' + $manifest.version + ')')
+      }
+    } catch {
+      Write-SzhLog ('bootstrap : nettoyage des orphelins du toolkit non effectué : ' + $_.Exception.Message)
+    } finally {
+      if ($extrait -and (Test-Path $extrait)) { Remove-Item -LiteralPath $extrait -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     Expand-Archive -Path $zip -DestinationPath $SzhToolkit -Force
     $toolkitOk = $true
     Info ('Toolkit {0} téléchargé depuis la Release.' -f $manifest.version)

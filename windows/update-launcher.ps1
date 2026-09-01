@@ -19,6 +19,51 @@
 . "$PSScriptRoot\szh-common.ps1"
 . "$PSScriptRoot\szh-taches.ps1"
 
+# ---- Orphelins du toolkit ----
+# Même manque, et même correction, que dans update.ps1 et bootstrap.ps1 : ce script
+# rafraîchit $SzhToolkit plus bas (avant d'y lancer update.ps1), avec le même
+# `Expand-Archive -Force` qui écrase ce que l'archive contient mais ne supprime jamais ce
+# qu'elle ne contient plus.
+#
+# Sans la même garde ici, le manque reviendrait par ce chemin même une fois update.ps1 et
+# bootstrap.ps1 corrigés, et de façon plus sournoise qu'ailleurs : ce rafraîchissement écrit
+# déjà VERSION à la version cible, et update.ps1, lancé juste après par
+# Start-SzhFenetreVisible, lit alors le toolkit comme déjà à jour — sa propre étape 1/5 ne
+# s'exécute même pas, donc son propre nettoyage non plus.
+#
+# $Extrait : extraction à part de LA MÊME archive, faite avant d'écraser le toolkit.
+# Uniquement dans les dossiers que l'archive gère (release.yml : pipeline, vscodium-user,
+# revue-template, livre-template, windows).
+function Remove-SzhToolkitOrphelins {
+  param(
+    [Parameter(Mandatory = $true)][string]$Toolkit,
+    [Parameter(Mandatory = $true)][string]$Extrait
+  )
+  $dossiersGeres = @('pipeline', 'vscodium-user', 'revue-template', 'livre-template', 'windows')
+  $retires = New-Object System.Collections.ArrayList
+  foreach ($d in $dossiersGeres) {
+    $dansToolkit = Join-Path $Toolkit $d
+    if (-not (Test-Path $dansToolkit)) { continue }
+    $dansArchive = Join-Path $Extrait $d
+    $fichiers = Get-ChildItem -LiteralPath $dansToolkit -Recurse -File -Force -ErrorAction SilentlyContinue
+    foreach ($f in $fichiers) {
+      $relatif = $f.FullName.Substring($dansToolkit.Length).TrimStart('\')
+      $cible = Join-Path $dansArchive $relatif
+      if (-not (Test-Path -LiteralPath $cible)) {
+        Remove-Item -LiteralPath $f.FullName -Force
+        [void]$retires.Add((Join-Path $d $relatif))
+      }
+    }
+    # Dossiers restés vides derrière les fichiers retirés ; le dossier géré lui-même
+    # ($dansToolkit) n'est jamais retiré, même vide.
+    Get-ChildItem -LiteralPath $dansToolkit -Recurse -Directory -Force -ErrorAction SilentlyContinue |
+      Sort-Object { $_.FullName.Length } -Descending |
+      Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue) } |
+      Remove-Item -Force -ErrorAction SilentlyContinue
+  }
+  return $retires
+}
+
 # Le menu Démarrer est remis d'aplomb à chaque ouverture de session, avant même de regarder
 # s'il y a du neuf, et avant la cadence hebdomadaire ci-dessous. Deux raisons : un poste
 # déjà à la dernière version n'exécute plus update.ps1 et n'obtiendrait jamais une entrée
@@ -182,6 +227,27 @@ try {
         throw ('empreinte invalide pour {0}' -f $manifest.toolkit.file)
       }
     }
+    # Écarte les orphelins AVANT d'écraser le toolkit — comme dans update.ps1 et
+    # bootstrap.ps1. Jamais bloquant : un souci ici ne doit pas empêcher le rafraîchissement
+    # normal qui suit, ni la suite de la passe silencieuse.
+    $extrait = ''
+    try {
+      $extrait = Join-Path $SzhStaging ('toolkit-extrait-' + $manifest.version)
+      if (Test-Path $extrait) { Remove-Item -LiteralPath $extrait -Recurse -Force }
+      Expand-Archive -Path $zip -DestinationPath $extrait -Force
+      $orphelins = Remove-SzhToolkitOrphelins -Toolkit $SzhToolkit -Extrait $extrait
+      foreach ($o in $orphelins) {
+        Write-SzhLog ('check : orphelin retiré du toolkit -> ' + $o)
+      }
+      if ($orphelins.Count -gt 0) {
+        Write-SzhLog ('check : ' + $orphelins.Count + ' orphelin(s) retiré(s) du toolkit (absents de la version ' + $manifest.version + ')')
+      }
+    } catch {
+      Write-SzhLog ('check : nettoyage des orphelins du toolkit non effectué : ' + $_.Exception.Message)
+    } finally {
+      if ($extrait -and (Test-Path $extrait)) { Remove-Item -LiteralPath $extrait -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
     Expand-Archive -Path $zip -DestinationPath $SzhToolkit -Force
   }
 
