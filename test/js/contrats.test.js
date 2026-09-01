@@ -1384,3 +1384,63 @@ test('le dépôt Word vient du profil, et aucun nom n’est écrit en dur dans e
   assert.ok(/profilCourant\(\)\.depot/.test(code),
     'aucun appel à profilCourant().depot : le routage du dépôt Word a disparu.');
 });
+
+// ---- Ce qui a tué le livre 2026-B399-VN_FALC, le 01.09.2026 ----------------------------
+//
+// Une seule image au format métafichier Windows (.emf) suffisait à faire tomber une
+// compilation de dix minutes, et le seul message visible était « mv: cannot stat ». Trois
+// défauts se tenaient l'un derrière l'autre ; les trois sont ici sous contrôle.
+
+test('PDF : l’échec de la dernière tentative WeasyPrint ne passe plus pour un succès', () => {
+  // La cascade de repli tentait pdf/ua-1, puis --pdf-tags, puis un PDF nu — et ce dernier
+  // appel, lui, n'était pas testé. Quand il tombait, la recette continuait jusqu'au `mv`
+  // du fichier temporaire, qui échouait sur un fichier jamais écrit. Le rédacteur lisait
+  // « mv: cannot stat », qui ne nomme ni la cause ni le fichier fautif.
+  for (const [nom, chemins] of [['Makefile', ['pipeline', 'Makefile']],
+                                ['livre.mk', ['pipeline', 'profils', 'livre.mk']]]) {
+    const nus = lire(...chemins).split('\n')
+      .filter((l) => l.includes('$(WEASYPRINT)') && !/\bif |\belif |\|\|/.test(l));
+    assert.deepStrictEqual(nus, [],
+      nom + ' : un appel à WeasyPrint dont personne ne lit le code de sortie. Son échec ne '
+      + 'se verrait qu’au « mv: cannot stat » de la ligne suivante.');
+  }
+});
+
+test('PDF : quand WeasyPrint tombe, la recette dit sa cause au lieu de la taire', () => {
+  const livre = lire('pipeline', 'profils', 'livre.mk');
+  assert.match(livre, /Journal complet : \$\$jrnl/,
+    'l’emplacement du journal WeasyPrint n’est plus indiqué : sans lui, la cause est '
+    + 'introuvable une fois la compilation terminée');
+  // Le digest de succès s'arrête à vingt lignes. Une troncature qui ne se dit pas se lit
+  // comme un journal complet — ici, vingt avertissements anodins masquaient l'exception.
+  assert.match(livre, /ligne\(s\) de plus dans/,
+    'le journal est tronqué à vingt lignes sans le dire');
+});
+
+test('métafichiers Windows : les deux profils refusent avant de compiler, pas après', () => {
+  const mk = lire('pipeline', 'Makefile');
+  assert.match(mk, /^define refuser_metafichiers$/m, 'le garde-fou a disparu');
+  assert.match(mk, /\$\(call refuser_metafichiers,articles,\[pipeline\]\)/,
+    'la revue ne contrôle plus ses métafichiers');
+  assert.match(lire('pipeline', 'profils', 'livre.mk'),
+    /\$\(call refuser_metafichiers,\$\(CH_DIR\),\[livre\]\)/,
+    'le livre ne contrôle plus ses métafichiers');
+  // Ne refuser que sur une image CITÉE : un métafichier qu'aucun texte ne désigne n'est
+  // jamais incorporé et n'atteint jamais WeasyPrint. Bloquer dessus arrêterait une
+  // compilation qui serait passée.
+  assert.match(mk, /grep -qF "\$\$\(basename "\$\$f"\)"/,
+    'le garde-fou ne vérifie plus que l’image est citée : il refuserait à tort');
+});
+
+test('livre : un dossier de chapitre préfixé « _ » n’est pas imprimé, et il est annoncé', () => {
+  const livre = lire('pipeline', 'profils', 'livre.mk');
+  assert.match(livre, /TOUS_CHAPITRES := \$\(filter-out _%,/,
+    'les pièces de travail redeviennent des chapitres : la page de titre du manuscrit '
+    + 'd’origine se réimprimerait en dernier chapitre du livre');
+  assert.match(livre, /\$\(foreach c,\$\(filter _%,\$\(DOSSIERS_CHAPITRES\)\)/,
+    'un dossier écarté doit être ANNONCÉ — un chapitre qui disparaît en silence est pire '
+    + 'qu’un chapitre en trop');
+  // L'exclusion ne vaut que si la scission pose réellement ce préfixe.
+  assert.match(lire('pipeline', 'livre-scinder.py'), /_scission-\{slug_original\}/,
+    'livre-scinder.py ne préfixe plus sa pièce de rebut : l’exclusion ne protège plus rien');
+});

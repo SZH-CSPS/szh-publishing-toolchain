@@ -44,8 +44,20 @@ ORDRE_LU := $(shell sed -n "s/^ordre-chapitres:[[:space:]]*\[\([^]]*\)\].*/\1/p"
 ORDRES := $(shell printf '%s\n' '$(ORDRE_LU)' | sed "s/[,[:space:]]\+/ /g; s/^[[:space:]]*//; s/[[:space:]]*\$$//g; s/'//g; s/\"//g")
 
 # Tous les chapitres trouvés sur le disque.
-TOUS_CHAPITRES := $(sort $(foreach d,$(wildcard $(CH_DIR)/*),\
+#
+# Sauf ceux dont le nom commence par « _ » : c'est une pièce de travail et non un chapitre.
+# livre-scinder.py y dépose ce qu'il n'a pas su rattacher en scindant un manuscrit —
+# « _scission-<slug>-liminaire-non-repris », qui contient la page de titre du Word d'origine
+# — pour que la rédaction le relise et le replace à la main. Sans cette exclusion, le
+# préfixe ne voulait rien dire et la pièce s'imprimait à la suite du livre : le VN-FALC
+# sortait avec sa page de titre en dernier chapitre. Un dossier écarté est ANNONCÉ, jamais
+# passé sous silence : retirer le « _ » suffit à en faire un chapitre.
+DOSSIERS_CHAPITRES := $(sort $(foreach d,$(wildcard $(CH_DIR)/*),\
                 $(if $(wildcard $(d)/$(notdir $(d)).md),$(notdir $(d)))))
+TOUS_CHAPITRES := $(filter-out _%,$(DOSSIERS_CHAPITRES))
+$(foreach c,$(filter _%,$(DOSSIERS_CHAPITRES)),\
+  $(warning [livre] « $(c) » n'est pas imprimé : un dossier préfixé « _ » est une pièce de travail, à relire et à replacer. Retirez le « _ » pour en faire un chapitre.)\
+  $(warning [livre] [de] « $(c) » wird nicht gedruckt: ein Ordner mit Präfix « _ » ist ein Arbeitsstück. Entfernen Sie das « _ », um daraus ein Kapitel zu machen.))
 
 # Réordonner selon l'ordre donné : les slugs de ORDRES en tête, puis les chapitres manquants
 # par tri alphabétique, de manière à ce qu'un nouveau chapitre ne disparaisse jamais du livre.
@@ -246,6 +258,7 @@ verifie-livre:
 	  echo "[livre] Valeurs acceptées : normal | falc."; \
 	  echo "[livre] [de] Unbekanntes Layout in $(CONFIG_LIVRE): « $(MAQUETTE) ». Erlaubt: normal | falc."; \
 	  exit 1; }
+	$(call refuser_metafichiers,$(CH_DIR),[livre])
 
 # --------------------------------------------------------------------------------------
 # Un chapitre -> un fragment HTML autonome (images en data: URI).
@@ -354,9 +367,16 @@ $(LIVRE_PDF): $(LIVRE_HTML)
 	  echo "[livre] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
 	else \
 	  echo "[livre] balisage PDF indisponible -> PDF non balisé : $@"; \
-	  $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl"; \
+	  $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl" || { \
+	    echo "[livre] ✖ WeasyPrint n'a pas pu produire $@. Ce qu'il en dit :"; \
+	    grep -v 'WARNING: Anchor defined twice' "$$jrnl" | tail -12 | sed 's/^/[weasyprint] /'; \
+	    echo "[livre]   Journal complet : $$jrnl"; \
+	    echo "[livre] [de] ✖ WeasyPrint konnte das PDF nicht erzeugen. Vollständiges Protokoll: $$jrnl"; \
+	    exit 1; }; \
 	fi; \
+	reste=$$(($$(wc -l < "$$jrnl") - 20)); \
 	sed -n '1,20p' "$$jrnl" | sed 's/^/[weasyprint] /'; \
+	test "$$reste" -le 0 || echo "[weasyprint] … et $$reste ligne(s) de plus dans $$jrnl"; \
 	mv -f "$$tmp" "$@"
 
 livre-pdf: verifie-livre $(LIVRE_PDF)
@@ -389,9 +409,16 @@ $(LIVRE_IMPRIMEUR_PDF): $(LIVRE_IMPRIMEUR_HTML)
 	  echo "[livre] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
 	else \
 	  echo "[livre] balisage PDF indisponible -> PDF non balisé : $@"; \
-	  $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl"; \
+	  $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl" || { \
+	    echo "[livre] ✖ WeasyPrint n'a pas pu produire $@. Ce qu'il en dit :"; \
+	    grep -v 'WARNING: Anchor defined twice' "$$jrnl" | tail -12 | sed 's/^/[weasyprint] /'; \
+	    echo "[livre]   Journal complet : $$jrnl"; \
+	    echo "[livre] [de] ✖ WeasyPrint konnte das PDF nicht erzeugen. Vollständiges Protokoll: $$jrnl"; \
+	    exit 1; }; \
 	fi; \
+	reste=$$(($$(wc -l < "$$jrnl") - 20)); \
 	sed -n '1,20p' "$$jrnl" | sed 's/^/[weasyprint] /'; \
+	test "$$reste" -le 0 || echo "[weasyprint] … et $$reste ligne(s) de plus dans $$jrnl"; \
 	mv -f "$$tmp" "$@"
 
 # --------------------------------------------------------------------------------------

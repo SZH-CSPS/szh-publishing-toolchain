@@ -145,10 +145,20 @@ def lire_chapitre(chemin_md: str) -> tuple[str, list[tuple[str, str]]]:
 # --------------------------------------------------------------------------------------
 # Gestion des médias et tableaux
 # --------------------------------------------------------------------------------------
-def extraire_references(contenu: str) -> dict:
+def extraire_references(contenu: str, dossier_source: Path = None) -> dict:
     """
     Extrait les références aux médias et tableaux du contenu markdown.
     Retourne {'images': [...], 'tables': [...]} avec les chemins.
+
+    `dossier_source` — le dossier du chapitre d'origine — est ce qui permet de suivre un
+    tableau jusqu'aux images QU'IL cite : docx-tables.py écrit des « <img src="media/…" > »
+    dans tables/table-NN.html, et ces images-là n'apparaissent nulle part dans le .md. Sans
+    cette lecture, la scission copiait le tableau sans son image, et le chapitre partait
+    avec un trou. C'est arrivé au VN-FALC : le chapitre 09 citait fig-73 dans son tableau 05
+    et ne l'a jamais reçue — WeasyPrint le disait à chaque compilation, dans une ligne
+    d'erreur que rien ne remontait. import-medias.py connaît déjà cette règle (voir sa
+    fonction fichiers_de_texte, qui lit les tableaux au même titre que le corps) ; elle
+    manquait ici. Sans `dossier_source`, le comportement reste l'ancien.
 
     Deux formes d'image, pas une seule — mesuré en testant ce script de bout en bout sur
     un vrai aller-retour pandoc plutôt qu'à la lecture : une image SANS texte alternatif
@@ -177,6 +187,20 @@ def extraire_references(contenu: str) -> dict:
     # Tableaux : ::: {.szh-tabelle src="tables/table-NN.html"}
     for match in re.finditer(r'::: \{\.szh-tabelle src="(tables/[^"]+)"\}', contenu):
         references['tables'].add(match.group(1))
+
+    # Puis les images citées DANS ces tableaux (voir la docstring). Un tableau illisible ou
+    # absent n'est pas traité ici : la copie du tableau le signalera d'elle-même.
+    if dossier_source is not None:
+        for chemin_table in sorted(references['tables']):
+            try:
+                with open(Path(dossier_source) / chemin_table, encoding='utf-8',
+                          errors='replace') as f:
+                    corps_table = f.read()
+            except OSError:
+                continue
+            for match in re.finditer(
+                    r'<img\s[^>]*?src=["\'](?:\./)?(media/[^"\']+)["\']', corps_table):
+                references['images'].add(match.group(1))
 
     return references
 
@@ -241,7 +265,7 @@ def copier_medias_references(chemin_md: Path, dossier_source_medias: Path) -> tu
     with open(chemin_md, 'r', encoding='utf-8') as f:
         contenu = f.read()
 
-    refs = extraire_references(contenu)
+    refs = extraire_references(contenu, dossier_source_medias)
     dossier_dest = chemin_md.parent
     copiees, manquantes = [], []
 
@@ -463,8 +487,9 @@ def main():
 
             print(f"  Créé {slug_numerote}/{slug_numerote}.md", file=sys.stderr)
 
-            # Extraire les ressources référencées
-            refs = extraire_references(contenu)
+            # Extraire les ressources référencées — y compris les images que citent les
+            # tableaux du chapitre, d'où le dossier d'origine en second argument.
+            refs = extraire_references(contenu, dossier_original)
 
             # Copier les médias
             dossier_media_original = dossier_original / 'media'
@@ -525,7 +550,7 @@ def main():
             with open(chemin_rescape, 'w', encoding='utf-8') as f:
                 f.write(liminaire_texte.strip() + '\n')
 
-            refs_liminaire = extraire_references(liminaire_texte)
+            refs_liminaire = extraire_references(liminaire_texte, dossier_original)
             images_citees = sorted(refs_liminaire['images'])
             copiees_rescape, manquantes_rescape = copier_medias_references(
                 chemin_rescape, dossier_original)

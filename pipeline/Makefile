@@ -303,6 +303,35 @@ define exiger_titre
 done
 endef
 
+# Les métafichiers Windows (.emf, .wmf) que Word embarque quand on y colle un dessin, un
+# graphique Excel ou une capture d'écran : pandoc les EXTRAIT tels quels, et rien dans la
+# chaîne ne sait les rendre — Pillow n'a pas de moteur EMF hors de Windows, et WeasyPrint
+# s'y arrête net. Jusqu'ici le seul symptôme visible était « mv: cannot stat » à la toute
+# fin, après dix minutes de compilation : un message qui ne dit rien de la cause. Le livre
+# 2026-B399-VN_FALC est mort ainsi le 01.09.2026, sur une seule image.
+# On refuse donc en deux secondes, en nommant le fichier ET le geste qui le répare.
+#
+# Seuls les métafichiers CITÉS arrêtent la compilation : un fichier qu'aucun texte ne
+# désigne n'est jamais incorporé, n'atteint jamais WeasyPrint, et refuser dessus arrêterait
+# une compilation qui serait passée.
+#
+# $(1) = dossier des unités (articles | chapitres), $(2) = préfixe des messages.
+define refuser_metafichiers
+@cites=$$(for f in $(1)/*/media/*.emf $(1)/*/media/*.wmf; do \
+    [ -e "$$f" ] || continue; \
+    unite=$$(dirname "$$(dirname "$$f")"); \
+    grep -qF "$$(basename "$$f")" "$$unite"/*.md 2>/dev/null && echo "$$f"; \
+  done); \
+if [ -n "$$cites" ]; then \
+  echo "$(2) ⚠ Image au format métafichier Windows (.emf / .wmf) : la chaîne ne sait pas la rendre."; \
+  echo "$$cites" | sed 's|^|$(2)   |'; \
+  echo "$(2) À faire : dans le Word, clic droit sur cette image > « Enregistrer en tant qu'image » au format PNG, remettez le PNG à sa place, puis redéposez le document."; \
+  echo "$(2) Pourquoi la compilation s'arrête : Word emballe certains collages — dessin, graphique Excel, capture — dans un métafichier que seul Windows sait dessiner. La chaîne de fabrication, elle, tourne sous Linux. Sans cet arrêt, la compilation irait jusqu'au bout puis échouerait sans dire pourquoi."; \
+  echo "$(2) [de] ⚠ Windows-Metadatei (.emf / .wmf): kann nicht gerendert werden. Im Word als PNG speichern, wieder einfügen und das Dokument erneut ablegen."; \
+  exit 1; \
+fi
+endef
+
 pdf: verifie-dossier $(PDFS) $(APERCUS)
 
 verifie-dossier:
@@ -312,6 +341,7 @@ verifie-dossier:
 	  echo "[pipeline] ⚠ Un dossier de articles/ contient des espaces — renommez-le sans espaces."; exit 1; \
 	fi
 	$(call exiger_titre,$(SLUGS))
+	$(call refuser_metafichiers,articles,[pipeline])
 
 # (Re)génère out/.szh-accent.css depuis la couleur annuelle d'ausgabe.yaml ; sans
 # couleur, un fichier « commentaire seul » laisse jouer les gris de print.css.
@@ -427,7 +457,12 @@ $(OUT)/%.pdf: $(OUT)/%.html
 	  echo "[pipeline] PDF/UA-1 indisponible -> PDF balisé simple : $@"; \
 	else \
 	  echo "[pipeline] balisage PDF indisponible -> PDF non balisé : $@"; \
-	  $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl"; \
+	  $(WEASYPRINT) $< "$$tmp" 2>>"$$jrnl" || { \
+	    echo "[pipeline] ✖ WeasyPrint n'a pas pu produire $@. Ce qu'il en dit :"; \
+	    sed -E 's@(data:[a-z/+.-]+;base64,[A-Za-z0-9+/=]{16})[A-Za-z0-9+/=]+@\1… (image incorporée)@g' "$$jrnl" >&2; \
+	    echo "[pipeline]   Journal conservé : $$jrnl"; \
+	    echo "[pipeline] [de] ✖ WeasyPrint konnte das PDF nicht erzeugen. Protokoll: $$jrnl"; \
+	    exit 1; }; \
 	fi; \
 	sed -E 's@(data:[a-z/+.-]+;base64,[A-Za-z0-9+/=]{16})[A-Za-z0-9+/=]+@\1… (image incorporée)@g' "$$jrnl" >&2; \
 	rm -f "$$jrnl"; \

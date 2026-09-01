@@ -269,3 +269,63 @@ test('une image référencée en HTML brut, ou par un chemin préfixé « ./ »,
     fs.rmSync(racine, { recursive: true, force: true });
   }
 });
+
+test('une image citée par un TABLEAU suit le chapitre, comme celles du corps', () => {
+  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+
+  const racine = livreJetable();
+  try {
+    ecrire(racine, 'buch.yaml', 'titre: "Essai"\nordre-chapitres: []\n');
+    // docx-tables.py sort les tableaux du .md et y laisse une inclusion ; les images du
+    // tableau, elles, restent dans le HTML extrait et n'apparaissent NULLE PART dans le
+    // corps. C'est ce qui est arrivé au VN-FALC le 01.09.2026 : le chapitre 09 citait
+    // fig-73 dans son tableau 05, la scission ne l'a jamais copiée, et le seul signe en
+    // était une ligne d'erreur WeasyPrint que rien ne remontait au rédacteur.
+    ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md',
+      '# Une section\n\nUn tableau suit.\n\n'
+      + '::: {.szh-tabelle src="tables/table-05.html"}\n:::\n');
+    ecrire(racine, 'chapitres', 'manuscrit', 'tables', 'table-05.html',
+      '<table><tr><td><img src="media/fig-73.png" alt="Un schéma" width="266"></td></tr></table>\n');
+    ecrire(racine, 'chapitres', 'manuscrit', 'media', 'fig-73.png', 'contenu-image');
+
+    const r = lancer(racine, 'manuscrit');
+
+    assert.strictEqual(r.status, 0,
+      'rien ne manque ici : ni le tableau, ni son image. La scission ne doit pas échouer. '
+      + r.stderr);
+    assert.ok(fs.existsSync(path.join(racine, 'chapitres', '01-une-section',
+      'tables', 'table-05.html')), 'le tableau lui-même n’a pas suivi');
+    assert.ok(fs.existsSync(path.join(racine, 'chapitres', '01-une-section',
+      'media', 'fig-73.png')),
+      'le tableau est arrivé sans son image : le chapitre part avec un trou, et rien ne '
+      + 'le dit avant la compilation');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('une image citée par un tableau mais ABSENTE est nommée, et la source survit', () => {
+  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+
+  const racine = livreJetable();
+  try {
+    ecrire(racine, 'buch.yaml', 'titre: "Essai"\nordre-chapitres: []\n');
+    ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md',
+      '# Une section\n\nUn tableau suit.\n\n'
+      + '::: {.szh-tabelle src="tables/table-05.html"}\n:::\n');
+    ecrire(racine, 'chapitres', 'manuscrit', 'tables', 'table-05.html',
+      '<table><tr><td><img src="./media/fig-absente.png" alt="Un schéma"></td></tr></table>\n');
+
+    const r = lancer(racine, 'manuscrit');
+
+    assert.strictEqual(r.status, 1,
+      'une image de tableau introuvable doit compter comme une ressource manquante, au '
+      + 'même titre qu’une image du corps : ' + r.stderr);
+    assert.match(r.stderr, /image-introuvable/,
+      'le manque n’est pas nommé : il ne se verrait qu’à la compilation');
+    assert.ok(fs.existsSync(path.join(racine, 'chapitres', 'manuscrit')),
+      'le dossier d’origine a été détruit alors qu’une image manquait');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
