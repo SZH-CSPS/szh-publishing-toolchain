@@ -299,6 +299,18 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
    (.szh-abstract) : une seule respiration pour toute la zone de couverture. */
 .szh-cover-body { padding: 30px 0 40px; }   /* marges gérées par @page */
 
+/* Article sans résumé — l'éditorial, la tribune libre, la Documentation : leur rubrique
+   n'en exige pas (lib/export-ojs.js, `sansResume`) — le gabarit n'écrit alors PAS
+   .szh-cover-body du tout ($if(resumes)$ de templates/szh-article.html). Le filet annuel
+   devient le dernier enfant de .szh-cover, et le premier paragraphe du corps venait se
+   coller dessous : un éditorial ouvre d'ordinaire sans titre, il n'y avait donc même pas
+   la marge d'un h2 pour l'en détacher. Ces 30 px rendent la respiration que le
+   `padding-top` de .szh-cover-body donne aux articles qui ont un résumé, et ne s'y
+   cumulent jamais — `:last-child` ne matche que quand le bloc des résumés est absent.
+   ⚠ Deux classes plus une pseudo-classe : il FAUT cette spécificité pour passer devant le
+   `margin: 0 -72px` de .szh-filet, qui remet la marge basse à zéro. */
+.szh-cover > .szh-filet:last-child { margin-bottom: 30px; }
+
 /* Ordre de peinture du PDF — ne pas retirer : aucun effet visuel, mais essentiel. Le hero
    est positionné, or CSS peint les éléments positionnés après le contenu en flux normal
    (CSS 2.1, annexe E) : sans cette règle, WeasyPrint écrit la couverture dans le flux PDF

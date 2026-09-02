@@ -6,3 +6,17 @@
 html, body { background: #ffffff !important; color-scheme: light; }
 body { color: var(--c-ink, #16161f) !important; }
 body{margin-top:2.4rem;}#szh-bandeau{position:fixed;top:0;left:0;right:0;z-index:9999;font:13px sans-serif;padding:.35rem .8rem;background:#1f6feb;color:#fff;display:flex;justify-content:space-between;align-items:center;}#szh-bandeau button{font:inherit;border:none;border-radius:3px;padding:.15rem .6rem;cursor:pointer;background:#fff;color:#1f6feb;}.szh-survol{outline:2px solid #1f6feb;outline-offset:2px;}.szh-actif{background:rgba(31,111,235,.08);box-shadow:-3px 0 0 #1f6feb;border-radius:2px;}.szh-mot-actif{background:rgba(31,111,235,.24);border-radius:2px;}
+
+/* Marges de lecture de l'aperçu. Le HTML d'aperçu est compilé SANS gabarit (Makefile, cible
+   %.apercu.html : aucun --template, donc ni hero ni couverture) et print.css met `body` à
+   `margin: 0; padding: 0` pour WeasyPrint, où c'est @page qui donne les marges. Dans la
+   webview, il n'y a pas de @page : le texte collait donc aux quatre bords du panneau. On
+   rend ici la respiration que le PDF tient de @page — et ici seulement : cette feuille
+   n'est injectée que par le cockpit (extension.js, injecterApercu()), le HTML livré et le
+   PDF n'en voient rien.
+   La largeur est proportionnelle (`clamp`) parce que l'aperçu se lit aussi bien dans une
+   demi-fenêtre que dans un panneau étroit : 1 rem au plus serré, jamais plus de 3,5 rem.
+   Le bas est plus généreux que le haut, la dernière ligne devant se détacher du bord.
+   ⚠ `padding-top` et non `margin-top` : le `margin-top: 2.4rem` ci-dessus est la place du
+   bandeau fixe #szh-bandeau, et les deux doivent s'ajouter, pas se remplacer. */
+body { padding: 1.25rem clamp(1rem, 4vw, 3.5rem) 3rem; box-sizing: border-box; }
