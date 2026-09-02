@@ -9,8 +9,9 @@
 #
 # Ordre des --lua-filter à la compilation, et ce qui casse si on permute :
 #   szh-maquette -> szh-niveaux -> szh-tabelle-inclure -> szh-tabelle-scope ->
-#   szh-typographie -> szh-grille -> szh-figure -> szh-numerotation ->
-#   szh-legende-avant -> szh-sections -> szh-auteurs -> szh-citations -> szh-notes
+#   szh-typographie -> szh-metafichier -> szh-grille -> szh-figure ->
+#   szh-numerotation -> szh-legende-avant -> szh-sections -> szh-auteurs ->
+#   szh-citations -> szh-notes
 #   * szh-numerotation après szh-tabelle-inclure : il numérote des tableaux qui
 #     n'existent qu'une fois le HTML réinjecté ;
 #   * szh-typographie après szh-tabelle-scope et AVANT szh-numerotation : après, parce
@@ -19,6 +20,13 @@
 #     « Figure N — » et le « Source : » que la maquette compose ensuite sont des
 #     décisions de composition, pas des fautes de frappe, et lui passer dessus les
 #     déferait ;
+#   * szh-metafichier après szh-tabelle-inclure ET après szh-typographie, avant szh-grille :
+#     après tabelle-inclure, parce qu'une image native Word peut n'être citée QUE dans un
+#     tableau extrait, invisible depuis le .md (le chapitre 09 du VN-FALC citait ainsi
+#     fig-73) ; après typographie, parce que le libellé « IMAGE À REMPLACER » qu'il pose est
+#     une décision de composition et non du texte de rédaction ; avant grille et figure,
+#     qui doivent continuer de voir une Image ordinaire — la substitution ne change que la
+#     cible et le texte alternatif, jamais la nature du nœud ;
 #   * szh-grille avant szh-figure : une grille tombée à une seule image se dissout en
 #     paragraphe, et c'est szh-figure qui en refait une figure sous le lecteur de
 #     l'aperçu ;
@@ -240,8 +248,24 @@ verifier-numerotation:
 #   runtime est vérifié avant d'être appelé, et un rapport inexploitable (rapport-ua.py
 #   sort 2) fait recracher la sortie d'erreur du validateur, seul endroit où la vraie
 #   cause se lit.
-verifier-ua: $(PDFS)
-	@test -n "$(PDFS)" || { echo "[pipeline] Aucun PDF à valider."; exit 1; }
+# Ce que la porte PDF/UA valide. Pour une revue, les PDF des articles ; pour un livre, le
+# PDF de l'ouvrage — profils/livre.mk réaffecte cette variable, et c'est le SEUL endroit
+# où le profil décide de la liste.
+#
+# ⚠ `$$(PDFS_UA)` et non `$(PDFS_UA)` : les prérequis d'une règle explicite sont développés
+#   à la LECTURE du Makefile, or livre.mk est inclus tout à la fin. Sans la seconde
+#   expansion (`.SECONDEXPANSION`), la liste serait figée à sa valeur d'ici — celle de la
+#   revue — et un livre validerait une liste vide.
+#
+# Jusqu'au 02.09.2026 la cible lisait $(PDFS) en direct : dans un dossier de livre, où il
+# n'y a pas d'articles/, elle sortait « Aucun PDF à valider » et le PDF de l'ouvrage n'était
+# JAMAIS validé. Le commentaire de livre.mk affirmait pourtant que « la porte dure reste
+# verifier-ua, appelée par l'export ». Pour un livre FALC, dont l'accessibilité est la
+# raison d'être, c'était la porte la plus utile qui manquait.
+PDFS_UA    := $(PDFS)
+
+verifier-ua: $$(PDFS_UA)
+	@test -n "$(PDFS_UA)" || { echo "[pipeline] Aucun PDF à valider."; exit 1; }
 	@if [ ! -x "$(VERAPDF)" ]; then \
 	  echo "[pdf-ua] ✗ Validateur PDF/UA introuvable : $(VERAPDF)"; \
 	  echo "[pdf-ua]   À faire : mettre l'image WSL à jour (elle embarque veraPDF), ou poser VERAPDF=<chemin>."; \
@@ -260,7 +284,7 @@ verifier-ua: $(PDFS)
 	fi
 	@set +e; \
 	xml="$(OUT)/.szh-pdfua.xml"; err="$(OUT)/.szh-pdfua.err"; \
-	JAVA_HOME="$(VERAPDF_JAVA)" "$(VERAPDF)" --flavour ua1 --format xml $(PDFS) > "$$xml" 2> "$$err"; \
+	JAVA_HOME="$(VERAPDF_JAVA)" "$(VERAPDF)" --flavour ua1 --format xml $(PDFS_UA) > "$$xml" 2> "$$err"; \
 	code=$$?; \
 	if [ $$code -gt 1 ]; then \
 	  echo "[pdf-ua] ✗ Le validateur PDF/UA n'a pas pu rendre de verdict (code $$code) — ce n'est pas un PDF conforme, c'est une panne d'outillage."; \
@@ -303,35 +327,6 @@ define exiger_titre
 done
 endef
 
-# Les métafichiers Windows (.emf, .wmf) que Word embarque quand on y colle un dessin, un
-# graphique Excel ou une capture d'écran : pandoc les EXTRAIT tels quels, et rien dans la
-# chaîne ne sait les rendre — Pillow n'a pas de moteur EMF hors de Windows, et WeasyPrint
-# s'y arrête net. Jusqu'ici le seul symptôme visible était « mv: cannot stat » à la toute
-# fin, après dix minutes de compilation : un message qui ne dit rien de la cause. Le livre
-# 2026-B399-VN_FALC est mort ainsi le 01.09.2026, sur une seule image.
-# On refuse donc en deux secondes, en nommant le fichier ET le geste qui le répare.
-#
-# Seuls les métafichiers CITÉS arrêtent la compilation : un fichier qu'aucun texte ne
-# désigne n'est jamais incorporé, n'atteint jamais WeasyPrint, et refuser dessus arrêterait
-# une compilation qui serait passée.
-#
-# $(1) = dossier des unités (articles | chapitres), $(2) = préfixe des messages.
-define refuser_metafichiers
-@cites=$$(for f in $(1)/*/media/*.emf $(1)/*/media/*.wmf; do \
-    [ -e "$$f" ] || continue; \
-    unite=$$(dirname "$$(dirname "$$f")"); \
-    grep -qF "$$(basename "$$f")" "$$unite"/*.md 2>/dev/null && echo "$$f"; \
-  done); \
-if [ -n "$$cites" ]; then \
-  echo "$(2) ⚠ Image au format métafichier Windows (.emf / .wmf) : la chaîne ne sait pas la rendre."; \
-  echo "$$cites" | sed 's|^|$(2)   |'; \
-  echo "$(2) À faire : dans le Word, clic droit sur cette image > « Enregistrer en tant qu'image » au format PNG, remettez le PNG à sa place, puis redéposez le document."; \
-  echo "$(2) Pourquoi la compilation s'arrête : Word emballe certains collages — dessin, graphique Excel, capture — dans un métafichier que seul Windows sait dessiner. La chaîne de fabrication, elle, tourne sous Linux. Sans cet arrêt, la compilation irait jusqu'au bout puis échouerait sans dire pourquoi."; \
-  echo "$(2) [de] ⚠ Windows-Metadatei (.emf / .wmf): kann nicht gerendert werden. Im Word als PNG speichern, wieder einfügen und das Dokument erneut ablegen."; \
-  exit 1; \
-fi
-endef
-
 pdf: verifie-dossier $(PDFS) $(APERCUS)
 
 verifie-dossier:
@@ -341,7 +336,6 @@ verifie-dossier:
 	  echo "[pipeline] ⚠ Un dossier de articles/ contient des espaces — renommez-le sans espaces."; exit 1; \
 	fi
 	$(call exiger_titre,$(SLUGS))
-	$(call refuser_metafichiers,articles,[pipeline])
 
 # (Re)génère out/.szh-accent.css depuis la couleur annuelle d'ausgabe.yaml ; sans
 # couleur, un fichier « commentaire seul » laisse jouer les gris de print.css.
@@ -375,6 +369,7 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-metafichier.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-grille.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-ressource.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
@@ -421,6 +416,7 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-metafichier.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-grille.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-ressource.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \

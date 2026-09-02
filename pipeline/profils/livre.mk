@@ -115,6 +115,14 @@ LIMINAIRES     := $(patsubst $(LIM_DIR)/%.md,$(OUT)/$(LIM_DIR)/%.html,$(wildcard
 NOM_LIVRE  := $(shell basename "$(CURDIR)")
 LIVRE_HTML := $(OUT)/$(NOM_LIVRE).html
 LIVRE_PDF  := $(OUT)/$(NOM_LIVRE).pdf
+
+# Ce que la porte `verifier-ua` valide dans un dossier de livre : le PDF NUMÉRIQUE de
+# l'ouvrage, et lui seul. Pas le PDF imprimeur — il porte fond perdu et traits de coupe,
+# part chez l'imprimeur et non chez un lecteur, et PDF/UA ne le concerne pas. Pas la
+# couverture non plus, pour la même raison.
+# Voir la définition de PDFS_UA dans pipeline/Makefile pour ce que cette réaffectation
+# répare : sans elle, un livre n'était jamais validé.
+PDFS_UA    := $(LIVRE_PDF)
 # PDF imprimeur : même contenu, assemblé une seconde fois avec imprimeur.css en plus dans
 # la pile de CSS (fond perdu, traits de coupe) — un fichier HTML à part, pour ne pas faire
 # porter le fond perdu au PDF numérique. Suffixe conforme à docs/ARCHITECTURE-LIVRES.md §3.
@@ -205,6 +213,7 @@ FILTRES_CHAPITRE := \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
+  --lua-filter="$(PIPELINE_DIR)/filters/szh-metafichier.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-grille.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-figure.lua" \
   --lua-filter="$(PIPELINE_DIR)/filters/szh-numerotation.lua" \
@@ -258,7 +267,6 @@ verifie-livre:
 	  echo "[livre] Valeurs acceptées : normal | falc."; \
 	  echo "[livre] [de] Unbekanntes Layout in $(CONFIG_LIVRE): « $(MAQUETTE) ». Erlaubt: normal | falc."; \
 	  exit 1; }
-	$(call refuser_metafichiers,$(CH_DIR),[livre])
 
 # --------------------------------------------------------------------------------------
 # Un chapitre -> un fragment HTML autonome (images en data: URI).

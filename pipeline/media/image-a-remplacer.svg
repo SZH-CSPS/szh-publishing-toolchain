@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img"
+     aria-label="IMAGE A REMPLACER / BILD ZU ERSETZEN">
+  <!-- Substitut d'une image native Word (.emf / .wmf), posé par filters/szh-metafichier.lua.
+       Bilingue à dessein : le projet n'a pas de langue par défaut, et une épreuve se relit
+       aussi bien à Berne qu'à Lausanne. Voir l'en-tête du filtre pour le pourquoi.
+       Traits et texte en DejaVu Sans, la police que le rootfs installe (fonts-dejavu) :
+       une police absente ferait un placeholder muet. -->
+  <rect x="4" y="4" width="392" height="292" rx="8"
+        fill="#fdf6ec" stroke="#c2410c" stroke-width="4" stroke-dasharray="14 9"/>
+  <rect x="140" y="62" width="120" height="92" rx="5"
+        fill="none" stroke="#c2410c" stroke-width="4"/>
+  <circle cx="169" cy="91" r="11" fill="#c2410c"/>
+  <path d="M147 148 L182 110 L205 137 L221 122 L253 148 Z" fill="#c2410c"/>
+  <text x="200" y="203" text-anchor="middle" fill="#7c2d12"
+        font-family="DejaVu Sans, Arial, sans-serif" font-size="27" font-weight="bold">IMAGE À REMPLACER</text>
+  <text x="200" y="236" text-anchor="middle" fill="#9a3412"
+        font-family="DejaVu Sans, Arial, sans-serif" font-size="23">BILD ZU ERSETZEN</text>
+  <text x="200" y="268" text-anchor="middle" fill="#9a3412"
+        font-family="DejaVu Sans, Arial, sans-serif" font-size="15">.emf / .wmf</text>
+</svg>

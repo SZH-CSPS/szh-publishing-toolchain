@@ -1417,19 +1417,59 @@ test('PDF : quand WeasyPrint tombe, la recette dit sa cause au lieu de la taire'
     'le journal est tronqué à vingt lignes sans le dire');
 });
 
-test('métafichiers Windows : les deux profils refusent avant de compiler, pas après', () => {
+test('métafichiers Windows : le filtre de substitution est dans les trois chaînes', () => {
+  // Décidé avec Robin le 02.09.2026 : substituer, pas refuser. Une compilation qui
+  // s'arrête ne dit pas OÙ est le trou ; un placeholder à la place de l'image le montre,
+  // à sa place, et le document se compose jusqu'au bout.
   const mk = lire('pipeline', 'Makefile');
-  assert.match(mk, /^define refuser_metafichiers$/m, 'le garde-fou a disparu');
-  assert.match(mk, /\$\(call refuser_metafichiers,articles,\[pipeline\]\)/,
-    'la revue ne contrôle plus ses métafichiers');
-  assert.match(lire('pipeline', 'profils', 'livre.mk'),
-    /\$\(call refuser_metafichiers,\$\(CH_DIR\),\[livre\]\)/,
-    'le livre ne contrôle plus ses métafichiers');
-  // Ne refuser que sur une image CITÉE : un métafichier qu'aucun texte ne désigne n'est
-  // jamais incorporé et n'atteint jamais WeasyPrint. Bloquer dessus arrêterait une
-  // compilation qui serait passée.
-  assert.match(mk, /grep -qF "\$\$\(basename "\$\$f"\)"/,
-    'le garde-fou ne vérifie plus que l’image est citée : il refuserait à tort');
+  const livre = lire('pipeline', 'profils', 'livre.mk');
+  const nb = (src) => (src.match(/szh-metafichier\.lua/g) || []).length;
+  assert.strictEqual(nb(mk), 2,
+    'le filtre doit être dans les DEUX chaînes de la revue — le rendu ET l’aperçu : '
+    + 'un aperçu qui tomberait sur une image native Word laisserait le rédacteur sans vue');
+  assert.strictEqual(nb(livre), 1, 'le filtre a quitté la chaîne des chapitres');
+  // La position n'est pas indifférente : voir l'en-tête du filtre. Après tabelle-inclure,
+  // sans quoi les images des tableaux extraits ne sont pas encore là.
+  for (const [nom, src] of [['Makefile', mk], ['livre.mk', livre]]) {
+    assert.ok(src.indexOf('szh-tabelle-inclure.lua') < src.indexOf('szh-metafichier.lua'),
+      nom + ' : szh-metafichier passe AVANT szh-tabelle-inclure, il ne verrait donc pas '
+      + 'une image citée uniquement dans un tableau extrait');
+    assert.ok(src.indexOf('szh-metafichier.lua') < src.indexOf('szh-grille.lua'),
+      nom + ' : szh-metafichier passe après szh-grille, qui ne verrait plus l’image');
+  }
+  assert.ok(fs.existsSync(path.join(RACINE, 'pipeline', 'media', 'image-a-remplacer.svg')),
+    'le placeholder a disparu du toolkit : le filtre se désactive alors de lui-même');
+});
+
+test('métafichiers Windows : les deux extensions se testent SANS alternation Lua', () => {
+  // Le piège maison : les motifs Lua n'ont pas de « | ». '%.(emf|wmf)$' matcherait le
+  // texte littéral « (emf|wmf) » et ne trouverait jamais rien — le filtre se tairait
+  // toujours, comme szh-legende-avant.lua l'a fait pendant des mois (défaut A9).
+  const lua = lire('pipeline', 'filters', 'szh-metafichier.lua');
+  const table = /local EXTENSIONS = \{([^}]*)\}/.exec(lua);
+  assert.ok(table, 'la table des extensions a disparu');
+  assert.deepStrictEqual(
+    table[1].split(',').map((s) => s.trim().replace(/'/g, '')).filter(Boolean).sort(),
+    ['%.emf$', '%.wmf$'],
+    'deux motifs simples et séparés, jamais une alternation');
+  // Et la casse ne doit pas décider : Word écrit parfois .EMF.
+  assert.match(lua, /cible:lower\(\)/,
+    'la comparaison n’est plus insensible à la casse : un « .EMF » passerait au travers');
+});
+
+test('PDF/UA : la porte valide le PDF du LIVRE, pas une liste vide', () => {
+  // Jusqu'au 02.09.2026 `verifier-ua` lisait $(PDFS), c'est-à-dire les PDF des articles :
+  // dans un dossier de livre, où il n'y a pas d'articles/, elle sortait « Aucun PDF à
+  // valider » et l'ouvrage n'était JAMAIS validé. Le commentaire de livre.mk affirmait
+  // pourtant le contraire.
+  const mk = lire('pipeline', 'Makefile');
+  assert.match(mk, /^verifier-ua: \$\$\(PDFS_UA\)$/m,
+    'la porte PDF/UA ne passe plus par PDFS_UA en seconde expansion — sans les deux « $ », '
+    + 'la liste est figée à la valeur de la revue avant l’inclusion de livre.mk');
+  assert.match(mk, /--flavour ua1 --format xml \$\(PDFS_UA\)/,
+    'le validateur reçoit une autre liste que celle des prérequis');
+  assert.match(lire('pipeline', 'profils', 'livre.mk'), /^PDFS_UA {4}:= \$\(LIVRE_PDF\)$/m,
+    'le profil livre ne dit plus quel PDF valider : la porte retomberait sur une liste vide');
 });
 
 test('livre : un dossier de chapitre préfixé « _ » n’est pas imprimé, et il est annoncé', () => {
