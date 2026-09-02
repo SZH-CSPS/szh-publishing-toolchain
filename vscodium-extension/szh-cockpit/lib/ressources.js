@@ -64,22 +64,77 @@ const CLASSE = 'szh-ressource';
 // LA FICHE elle-même (type="intervention") sur le même bloc ; deux attributs `type=` sur un
 // même bloc se recouvriraient silencieusement (le second écrase le premier), et l'un des
 // deux sens serait perdu. Un vrai piège de la table plutôt qu'un choix de confort.
+// `reprise` est la fiche « D'une revue à l'autre » / « Blick in die Revue » : la reprise d'un
+// article paru dans la revue sœur. Son nom tient en UN MOT sans trait d'union, et ce n'est pas
+// une négligence : la table jumelle de szh-ressource.lua est du Lua, où `revue-soeur = {…}`
+// n'est pas une clé valide (il faudrait `['revue-soeur']`), et les deux tests de non-divergence
+// de test/js/ressources.test.js reconstruisent la ligne Lua attendue sous la forme
+// `<type> = { … }`. Tout jeton non conforme à un identifiant Lua casse donc les deux à la fois.
+// C'est aussi ce qui explique que les quatre types plus anciens soient des mots simples.
 const TYPES = {
   livre: ['auteurs', 'annee', 'editeur'],
   film: ['realisateur', 'annee', 'genre', 'pays'],
   intervention: ['canton', 'categorie', 'numero', 'date'],
-  recherche: ['institutions', 'debut', 'fin']
+  recherche: ['institutions', 'debut', 'fin'],
+  reprise: ['auteurs', 'revue', 'reference', 'doi'],
+  agenda: ['evenement', 'debut', 'fin', 'lieu', 'organisateur']
 };
 
+// Les champs qui ne se saisissent pas en ligne de texte libre, par type puis par champ.
+// C'est le seul endroit qui le dit : le formulaire (media/documentation.js) rend un
+// <select> ou un <input type="date"> sur cette foi, sans connaître un seul nom de champ.
+//
+// `date` veut dire une date ISO (2026-01-05) — pas un choix de présentation, une condition
+// de TRI : les fiches d'agenda se rangent par leur date de début (CLE_TRI plus bas), et une
+// date écrite « 05.01.2026 » se rangerait après « 04.07.2028 ». C'est
+// pipeline/filters/szh-ressource.lua qui la remet en forme suisse à l'impression, et lui
+// seul — l'ISO ne sort jamais dans le PDF.
+const SAISIE = {
+  agenda: { debut: 'date', fin: 'date' }
+};
+
+// Les listes fermées, par type puis par champ : la valeur dit QUELLE liste, jamais la liste
+// elle-même. Deux listes aujourd'hui, de deux provenances différentes, et c'est pour cela
+// que ce n'est qu'un nom : `canton` vient de lib/cantons.js (26 cantons + la Confédération),
+// `evenement` de LISTES juste en dessous. L'hôte (extension.js, typesRessourceConfig) fait
+// la jonction.
+const CHOIX = {
+  intervention: { canton: 'canton' },
+  agenda: { evenement: 'evenement' }
+};
+
+// Les valeurs de la liste `evenement` : des JETONS, jamais des libellés — comme les types de
+// rubrique (lib/rubriques.js). Le libellé de saisie vient de lib/i18n.js
+// (ressource.option.evenement.<jeton>) et le libellé IMPRIMÉ de la table jumelle de
+// pipeline/filters/szh-ressource.lua, dans la langue de l'article. Trois endroits, trois
+// métiers : un « Colloque » qui devient « Tagung » côté allemand n'a rien à faire dans un
+// .md, et un jeton corrigé plus tard suit partout sans ressaisie.
+//
+// Le vocabulaire vient du corpus réel (relevé du 02.09.2026 sur les pages « Congrès,
+// colloques » et « Kurse » de szh.ch, celles-là mêmes que la rubrique du numéro donne en
+// lien) : Tagung, Fachtagung, Colloque, Webinaire, Journée d'étude, Kurs. Un jeton absent
+// de la table s'imprime tel quel plutôt que de disparaître.
+const LISTES = {
+  evenement: ['colloque', 'congres', 'journee', 'cours', 'webinaire', 'formation']
+};
+
+function saisieChamp(type, champ) {
+  return (SAISIE[type] && SAISIE[type][champ]) || '';
+}
+function listeChamp(type, champ) {
+  return (CHOIX[type] && CHOIX[type][champ]) || '';
+}
+function valeursListe(nom) { return (LISTES[nom] || []).slice(); }
+
 // Types qui ne portent jamais d'image : le corpus ne leur en connaît pas (intervention
-// parlementaire, recherche en cours — voir l'en-tête du fichier), à la différence de livre
-// et film. Conséquence, et rien de plus : REQUIS n'exige alors pas d'image pour qu'une fiche
+// parlementaire, recherche en cours, reprise d'un article de la revue sœur — voir l'en-tête
+// du fichier), à la différence de livre et film. Conséquence, et rien de plus : REQUIS n'exige alors pas d'image pour qu'une fiche
 // s'écrive, et le formulaire (media/ressources-article.js) n'affiche pas la zone de dépôt.
 // Le bloc écrit n'a alors jamais de ligne ![…] — blocRessource() ne l'écrit déjà que si elle
 // est non vide, aucun changement à y faire — et pipeline/filters/szh-ressource.lua s'en
 // accommode nativement lui aussi, puisqu'il ne fait que chercher une image dans le contenu
 // du bloc plutôt que de la présumer selon le type.
-const SANS_IMAGE = new Set(['intervention', 'recherche']);
+const SANS_IMAGE = new Set(['intervention', 'recherche', 'reprise', 'agenda']);
 function typeAvecImage(type) { return typeValide(type) && !SANS_IMAGE.has(type); }
 
 // Champs communs à toute fiche, requis pour qu'elle s'écrive : le cahier des charges veut
@@ -105,6 +160,25 @@ function champsManquants(type, valeurs) {
   return requis.filter((c) => String(v[c] === undefined || v[c] === null ? '' : v[c]).trim() === '');
 }
 function ressourceComplete(type, valeurs) { return champsManquants(type, valeurs).length === 0; }
+
+// Ce qui suffit pour ECRIRE une fiche, à distinguer de ce qui la rend COMPLÈTE (au-dessus).
+//
+// Demande de Robin du 02.09.2026 : « permet enregistrement, rajoute un badge "non complet"
+// dans le titre de l'accordéon ». Une fiche à moitié saisie était refusée par
+// ressourceComplete() et le rédacteur perdait sa saisie en quittant le formulaire ; elle
+// s'écrit désormais dès qu'UN champ porte quelque chose, et c'est une pastille qui dit ce
+// qui manque encore. La complétude n'a pas disparu pour autant — elle ne commande plus que
+// cette pastille.
+//
+// Le garde-fou qui reste : un type inconnu, et une fiche entièrement vide. Écrire un bloc
+// sans une seule valeur ne donnerait qu'un titre vide dans le PDF, et le formulaire en
+// crée un à chaque clic sur « Ajouter » — ce sont ces cartes-là, jamais remplies, qu'il
+// faut continuer d'ignorer.
+function ressourceEcrivable(type, valeurs) {
+  if (!typeValide(type)) { return false; }
+  const v = valeurs || {};
+  return tousLesChamps(type).some((c) => String(v[c] === undefined || v[c] === null ? '' : v[c]).trim() !== '');
+}
 
 // Valeur -> attribut cité, comme lib/references.js (non exportée là-bas : une simple
 // citation, dupliquée plutôt qu'empruntée à un module qui ne l'expose pas).
@@ -265,7 +339,10 @@ function ecrireRessource(texte, id, type, valeurs, langue) {
 // respecterait pas mentirait sur l'ordre du PDF.
 //
 // Le champ qui range, par type. Un type inconnu se range par titre, faute de mieux.
-const CLE_TRI = { intervention: 'canton' };
+// L'agenda se range par DATE DE DÉBUT, et c'est la raison d'être de la saisie ISO
+// (SAISIE plus haut) : un agenda dans le désordre chronologique ne sert à rien, et une date
+// « 05.01.2026 » se rangerait après « 04.07.2028 ».
+const CLE_TRI = { intervention: 'canton', agenda: 'debut' };
 
 // Comparaison de deux fiches, dans la langue de l'article : « École » se range avec les E
 // et « Ökonomie » avec les O, ce qu'un tri par octets ne ferait pas. Deux fiches du même
@@ -363,9 +440,10 @@ function retirerRessource(texte, id) {
 }
 
 module.exports = {
-  CLASSE, TYPES, REQUIS,
+  CLASSE, TYPES, REQUIS, SAISIE, CHOIX, LISTES,
   typeValide, typesConnus, champsBiblio, tousLesChamps, typeAvecImage,
-  champsManquants, ressourceComplete,
+  saisieChamp, listeChamp, valeursListe,
+  champsManquants, ressourceComplete, ressourceEcrivable,
   lireRessources, ajouterRessource, ecrireRessource, retirerRessource,
   blocRessource, ligneOuverture,
   ordreRessources, reordonnerRessources, comparerRessources

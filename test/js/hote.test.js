@@ -35,7 +35,7 @@ test('les en-têtes de section basculent leur section (accordéon)', async () =>
   const arbre = HOTE.arbre();
   assert.ok(arbre, 'aucun fournisseur d’arbre enregistré');
   const racine = await arbre.getChildren();
-  assert.strictEqual(racine.length, 3, 'trois sections attendues');
+  assert.strictEqual(racine.length, 4, 'quatre sections attendues');
   for (const it of racine) {
     assert.ok(it.command, 'section sans commande : ' + it.contextValue);
     assert.strictEqual(it.command.command, 'szh.ouvrirSection',
@@ -47,21 +47,26 @@ test('les en-têtes de section basculent leur section (accordéon)', async () =>
 
 const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
 
-// Les trois sections dans l'ordre du travail, et saillantes : le TreeView natif n'offre ni
+// Les quatre sections dans l'ordre du travail, et saillantes : le TreeView natif n'offre ni
 // gras ni taille de police, ce sont les majuscules et la couleur de l'icône qui font
 // l'en-tête. L'accordéon n'en déplie qu'une : « Articles » au départ.
-test('l’arbre : sections dans l’ordre Articles / Traductions / Word, en majuscules et en couleur', async () => {
+//
+// « Actualité » vient en deuxième, entre les articles et leurs traductions : c'est la
+// rubrique Documentation du numéro (« Actualité et ressources » / « News & Ressourcen »),
+// dont les articles ont quitté la section ARTICLES — voir TYPE_ACTUALITE dans extension.js.
+test('l’arbre : sections dans l’ordre Articles / Actualité / Traductions / Word, en majuscules et en couleur', async () => {
   const arbre = HOTE.arbre();
   const racine = await arbre.getChildren();
   assert.deepStrictEqual(racine.map((it) => it.contextValue),
-    ['section-articles', 'section-traductions', 'section-word'],
+    ['section-articles', 'section-actualite', 'section-traductions', 'section-word'],
     'l’ordre des sections n’est pas celui du travail');
   assert.strictEqual(racine[0].collapsibleState, 2, '« Articles » devrait arriver ouverte');
-  assert.strictEqual(racine[1].collapsibleState, 1, '« Traductions » devrait arriver repliée');
-  assert.strictEqual(racine[2].collapsibleState, 1, '« Word » devrait arriver repliée (accordéon)');
+  assert.strictEqual(racine[1].collapsibleState, 1, '« Actualité » devrait arriver repliée');
+  assert.strictEqual(racine[2].collapsibleState, 1, '« Traductions » devrait arriver repliée');
+  assert.strictEqual(racine[3].collapsibleState, 1, '« Word » devrait arriver repliée (accordéon)');
   // Majuscules dans les deux langues — dans le dictionnaire, pas seulement au rendu.
   const i18n = require(path.join(COCKPIT, 'lib', 'i18n.js'));
-  for (const cle of ['arbre.articles', 'arbre.traductions', 'arbre.word']) {
+  for (const cle of ['arbre.articles', 'arbre.actualite', 'arbre.traductions', 'arbre.word']) {
     for (const langue of ['fr', 'de']) {
       const texte = String(i18n.TEXTES_COCKPIT[langue][cle]);
       assert.strictEqual(texte, texte.toLocaleUpperCase(langue),
@@ -76,7 +81,7 @@ test('l’arbre : sections dans l’ordre Articles / Traductions / Word, en maju
   assert.strictEqual(new Set(couleurs).size, racine.length,
     'deux sections partagent la même couleur : ' + couleurs.join(', '));
   // Les compteurs restent en description : le Word en attente se compte sans déplier.
-  assert.match(String(racine[2].description), /^\(\d+\)$/,
+  assert.match(String(racine[3].description), /^\(\d+\)$/,
     'le compteur des Word en attente a disparu de la description');
 });
 
@@ -132,16 +137,16 @@ test('accordéon : une seule section dépliée, et l’id des en-têtes suit l�
   const arbre = HOTE.arbre();
   await HOTE.executer('szh.ouvrirSection', 'traductions');
   let racine = await arbre.getChildren();
-  assert.deepStrictEqual(racine.map((it) => it.collapsibleState), [1, 2, 1],
+  assert.deepStrictEqual(racine.map((it) => it.collapsibleState), [1, 1, 2, 1],
     'déplier « Traductions » doit replier les autres');
-  assert.strictEqual(racine[1].id, 'section:traductions:ouvert');
+  assert.strictEqual(racine[2].id, 'section:traductions:ouvert');
   assert.strictEqual(racine[0].id, 'section:articles:ferme');
   assert.ok(HOTE.panneauDeType('szhVueTraductions'),
     'le clic sur l’en-tête doit aussi ouvrir la vue d’ensemble');
   // Recliquer l'en-tête ouvert : la section active reste dépliée, la colonne ne saute pas.
   await HOTE.executer('szh.ouvrirSection', 'traductions');
   racine = await arbre.getChildren();
-  assert.deepStrictEqual(racine.map((it) => it.collapsibleState), [1, 2, 1],
+  assert.deepStrictEqual(racine.map((it) => it.collapsibleState), [1, 1, 2, 1],
     'recliquer l’en-tête ouvert ne doit pas replier la section active');
   // Retour à l'état de départ pour la suite du fichier.
   await HOTE.executer('szh.ouvrirSection', 'articles');
@@ -166,14 +171,14 @@ test('accordéon : déplier par le chevron replie les autres sections', async ()
   const racine = await arbre.getChildren();
   HOTE.deplierElement(racine.find((it) => it.contextValue === 'section-word'));
   const apres = await arbre.getChildren();
-  assert.deepStrictEqual(apres.map((it) => it.collapsibleState), [1, 1, 2],
+  assert.deepStrictEqual(apres.map((it) => it.collapsibleState), [1, 1, 1, 2],
     'le chevron n’a pas replié les autres sections');
   assert.ok(HOTE.panneauDeType('szhVueWord'),
     'le dépliage au chevron doit aussi ouvrir la vue d’ensemble');
   // Replier par le chevron : l'état suit, sans reconstruction forcée.
   HOTE.replierElement(apres.find((it) => it.contextValue === 'section-word'));
   const fin = await arbre.getChildren();
-  assert.deepStrictEqual(fin.map((it) => it.collapsibleState), [1, 1, 1],
+  assert.deepStrictEqual(fin.map((it) => it.collapsibleState), [1, 1, 1, 1],
     'replier par le chevron doit libérer l’accordéon');
   await HOTE.executer('szh.ouvrirSection', 'articles');   // état de départ
   fermerVuesEnsemble();

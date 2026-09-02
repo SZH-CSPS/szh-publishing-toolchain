@@ -1,8 +1,10 @@
 -- Fiches de « ressources » d'un article : un livre, un film, une intervention parlementaire,
--- une recherche en cours — ce qui remplit la Documentation d'un numéro (« Actualité et
--- ressources » / « News & Ressourcen »). Le pendant, côté rendu, de lib/ressources.js côté
--- cockpit : même moteur générique, décliné par une table de champs par type, pas un filtre
--- par type. Intervention et recherche n'ont pas d'image (voir lib/ressources.js,
+-- une recherche en cours, la reprise d'un article de la revue sœur, une manifestation de
+-- l'agenda — ce qui remplit la
+-- Documentation d'un numéro (« Actualité et ressources » / « News & Ressourcen »). Le
+-- pendant, côté rendu, de lib/ressources.js côté cockpit : même moteur générique, décliné
+-- par une table de champs par type, pas un filtre
+-- par type. Intervention, recherche et reprise n'ont pas d'image (voir lib/ressources.js,
 -- SANS_IMAGE) : ce filtre n'a besoin de rien savoir de plus pour s'en accommoder, puisqu'il
 -- ne fait déjà que chercher une image dans le contenu du bloc plutôt que la présumer selon
 -- le type — voir plus bas « Absente du tout si la fiche n'a pas d'image ».
@@ -69,6 +71,8 @@ local TYPES = {
   film = { 'realisateur', 'annee', 'genre', 'pays' },
   intervention = { 'canton', 'categorie', 'numero', 'date' },
   recherche = { 'institutions', 'debut', 'fin' },
+  reprise = { 'auteurs', 'revue', 'reference', 'doi' },
+  agenda = { 'evenement', 'debut', 'fin', 'lieu', 'organisateur' },
 }
 
 -- Le texte du lien, par type et par langue ; %s reçoit le titre. Un type absent de la table
@@ -78,8 +82,70 @@ local LIBELLE_LIEN = {
   film = { fr = 'En savoir plus sur le film %s', de = 'Mehr zum Film %s' },
   intervention = { fr = 'En savoir plus sur l’intervention %s', de = 'Mehr zum Vorstoss %s' },
   recherche = { fr = 'En savoir plus sur la recherche %s', de = 'Mehr zum Forschungsprojekt %s' },
+  reprise = { fr = 'Lire l’article %s', de = 'Zum Artikel %s' },
+  agenda = { fr = 'En savoir plus sur la manifestation %s', de = 'Mehr zur Veranstaltung %s' },
 }
 local LIBELLE_LIEN_DEFAUT = { fr = 'En savoir plus : %s', de = 'Mehr erfahren: %s' }
+
+-- Les libellés IMPRIMÉS de la liste fermée `evenement` d'une fiche d'agenda, par jeton et
+-- par langue. Le .md ne porte que le jeton (agenda type d'événement) : c'est ce qui permet
+-- à un « Colloque » français de sortir « Tagung » côté allemand sans qu'on ait rien à
+-- ressaisir, exactement comme le libellé de lien de LIBELLE_LIEN.
+-- ⚠ Recopiée depuis lib/ressources.js (table LISTES.evenement, qui n'en porte que les
+--   jetons, les libellés de SAISIE vivant eux dans lib/i18n.js) : un test refuse que les
+--   deux divergent. Un jeton absent d'ici s'imprime tel quel plutôt que de disparaître.
+local EVENEMENTS = {
+  colloque  = { fr = 'Colloque',           de = 'Tagung' },
+  congres   = { fr = 'Congrès',            de = 'Kongress' },
+  journee   = { fr = 'Journée d’étude',    de = 'Fachtagung' },
+  cours     = { fr = 'Cours',              de = 'Kurs' },
+  webinaire = { fr = 'Webinaire',          de = 'Webinar' },
+  formation = { fr = 'Formation continue', de = 'Weiterbildung' },
+}
+
+-- Les champs dont la valeur est un jeton à traduire, par type puis par champ.
+local JETONS = { agenda = { evenement = EVENEMENTS } }
+
+-- La paire de dates qui se fond en UNE seule mention à l'impression, par type. « 2026-01-05
+-- · 2026-01-06 » dans la ligne d'une fiche ne se lit pas ; le corpus, lui, écrit
+-- « 05.–06.01.2026 » (relevé du 02.09.2026 sur les pages « Congrès, colloques » et « Kurse »
+-- de szh.ch, celles-là mêmes que la rubrique du numéro donne en lien).
+local PLAGE = { agenda = { debut = 'debut', fin = 'fin' } }
+
+-- Une date ISO (2026-01-05) en date suisse (05.01.2026). L'ISO est la forme STOCKÉE, parce
+-- que c'est la seule qui se trie (lib/ressources.js, SAISIE et CLE_TRI) ; elle ne sort
+-- jamais telle quelle dans le PDF. Toute autre forme — un .md écrit à la main, une valeur
+-- d'avant la saisie ISO — sort inchangée : mieux vaut une date au format d'origine qu'une
+-- date perdue.
+local function jour_mois_an(v)
+  if not v then return nil end
+  local a, m, j = v:match('^(%d%d%d%d)%-(%d%d)%-(%d%d)$')
+  if not a then return nil end
+  return { j = j, m = m, a = a }
+end
+local function date_suisse(v)
+  local d = jour_mois_an(v)
+  if not d then return v end
+  return d.j .. '.' .. d.m .. '.' .. d.a
+end
+
+-- La plage de dates, aussi compacte que le corpus l'écrit :
+--   un seul jour              05.01.2026
+--   même mois                 05.–06.01.2026
+--   même année, deux mois     29.06.–02.07.2026
+--   deux années               10.09.2026–04.07.2028
+-- Une date non ISO d'un côté ou de l'autre fait retomber sur la forme longue, jointe par le
+-- tiret demi-cadratin : rien ne se perd, seule la compacité y passe.
+local function plage_date(v1, v2)
+  local vide1 = (v1 == nil or v1 == '')
+  local vide2 = (v2 == nil or v2 == '')
+  if vide1 then return (not vide2) and date_suisse(v2) or nil end
+  if vide2 or v1 == v2 then return date_suisse(v1) end
+  local d1, d2 = jour_mois_an(v1), jour_mois_an(v2)
+  if not d1 or not d2 or d1.a ~= d2.a then return date_suisse(v1) .. '–' .. date_suisse(v2) end
+  if d1.m ~= d2.m then return d1.j .. '.' .. d1.m .. '.–' .. d2.j .. '.' .. d2.m .. '.' .. d2.a end
+  return d1.j .. '.–' .. d2.j .. '.' .. d2.m .. '.' .. d2.a
+end
 
 -- Langue de composition, simplifiée par rapport à langue_de() de szh-numerotation.lua (qui
 -- lit en plus la fiche <slug>.meta.yaml pour départager, dans les métadonnées fusionnées,
@@ -121,11 +187,22 @@ end
 -- La bibliographie courte, sous le titre : les champs du type qui portent une valeur, dans
 -- l'ordre de TYPES, séparés par un point médian — même séparateur que la légende d'une
 -- grille de plusieurs membres (media/medias-article.js, grilleMembres).
-local function ligne_biblio(div, champs)
+local function ligne_biblio(div, champs, type_, lang)
   local morceaux = {}
+  local plage = PLAGE[type_]
+  local jetons = JETONS[type_] or {}
   for _, cle in ipairs(champs) do
     local v = div.attributes[cle]
-    if v and v:match('%S') then morceaux[#morceaux + 1] = v end
+    if plage and cle == plage.fin then
+      -- déjà imprimée avec la date de début, dans la même mention
+    elseif plage and cle == plage.debut then
+      local p = plage_date(div.attributes[plage.debut], div.attributes[plage.fin])
+      if p and p:match('%S') then morceaux[#morceaux + 1] = p end
+    elseif v and v:match('%S') then
+      local table_jeton = jetons[cle]
+      local libelle = table_jeton and table_jeton[v] and table_jeton[v][lang]
+      morceaux[#morceaux + 1] = libelle or v
+    end
   end
   if #morceaux == 0 then return nil end
   return table.concat(morceaux, ' · ')
@@ -168,7 +245,7 @@ function Pandoc(doc)
       -- Colonne de texte : bibliographie courte, descriptif, lien — dans cet ordre, celui
       -- d'une notule de lecture.
       local texte = pandoc.Blocks({})
-      local biblio = ligne_biblio(div, champs)
+      local biblio = ligne_biblio(div, champs, type_, lang)
       if biblio then texte:insert(bloc_classe('szh-ressource-biblio', { pandoc.Para({ pandoc.Str(biblio) }) })) end
       texte:extend(descriptif)
       local lien = div.attributes['lien']

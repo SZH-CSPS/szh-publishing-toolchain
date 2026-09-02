@@ -1169,3 +1169,252 @@ test('compteur du résumé : le seuil bascule de 750 à 700 au sixième mot-clé
   assert.match(cDe6.textContent, /700/);
   assert.ok(cDe6.classes.has('compteur-resume--depasse'));
 });
+
+// ---- La Documentation : rubriques et fiches dans un seul formulaire (lot du 02.09.2026) --
+//
+// Cette page est la plus grosse du cockpit et la plus récente : la charger pour de vrai est
+// le seul contrôle qui attrape une faute de frappe dans une fonction rarement atteinte —
+// c'est exactement ce que l'en-tête de ce fichier raconte. Ce qui est vérifié ici tient aux
+// quatre demandes du jour : tout est pliable, rien ne dépasse d'une carte repliée, une fiche
+// incomplète s'enregistre quand même, et un sommaire dit la structure.
+const DOC_TXT = () => libellesHote(RACINE, ['textesDocumentation']);
+
+// Les deux configurations que l'hôte envoie, construites comme lui : depuis les modules
+// purs, jamais recopiées ici — une liste recopiée finirait par mentir.
+const { typesConnus: typesFiche, champsBiblio, typeAvecImage, saisieChamp, listeChamp,
+  valeursListe } = require(path.join(COCKPIT, 'lib', 'ressources.js'));
+const { typesConnus: typesRubrique } = require(path.join(COCKPIT, 'lib', 'rubriques.js'));
+const { optionsCanton } = require(path.join(COCKPIT, 'lib', 'cantons.js'));
+
+function configFiches() {
+  return typesFiche().map((type) => ({
+    valeur: type,
+    libelleSection: T('ressource.section.' + type),
+    libelleAjouter: T('ressource.ajouter.' + type),
+    libelleAjouterTip: T('ressource.ajouter.' + type + '.tip'),
+    avecImage: typeAvecImage(type),
+    champs: champsBiblio(type).map((cle) => {
+      const champ = { cle: cle, libelle: cle };
+      if (listeChamp(type, cle) === 'canton') { champ.options = optionsCanton('fr'); }
+      if (listeChamp(type, cle) === 'evenement') {
+        champ.options = valeursListe('evenement')
+          .map((v) => ({ valeur: v, libelle: T('ressource.option.evenement.' + v) }));
+      }
+      if (saisieChamp(type, cle)) { champ.saisie = saisieChamp(type, cle); }
+      return champ;
+    })
+  }));
+}
+function configRubriques() {
+  return typesRubrique().map((t) => ({ valeur: t, libelleSection: T('rubrique.section.' + t) }));
+}
+
+// Une page chargée : une rubrique remplie, une fiche complète, une fiche incomplète, et une
+// intervention dont le canton est déjà choisi.
+function pageDocumentation() {
+  const txt = DOC_TXT();
+  const page = ouvrir({
+    racine: RACINE, page: 'documentation', cssPartage: ['_design.css'], txt: txt
+  });
+  page.envoyer({
+    type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
+    typesConfig: configFiches(), typesRubrique: configRubriques(),
+    rubriques: [{ id: 'b1', type: 'tour-horizon', contenu: 'Une brève **importante**.' }],
+    ressources: [
+      { id: 'r1', type: 'livre', apercu: null,
+        valeurs: { titre: 'Un livre', auteurs: 'A. Dupont', annee: '2024', editeur: 'SZH',
+                   lien: 'https://exemple.org/l', descriptif: 'Un descriptif.', image: 'c.png' } },
+      { id: 'r2', type: 'livre', apercu: null,
+        valeurs: { titre: 'Sans descriptif', auteurs: '', annee: '', editeur: '',
+                   lien: '', descriptif: '', image: '' } },
+      { id: 'r3', type: 'intervention', apercu: null,
+        valeurs: { titre: 'Une motion', canton: 'ZH', categorie: 'Motion', numero: '24.3456',
+                   date: '12.06.2024', lien: '', descriptif: 'Le Conseil fédéral…', image: '' } }
+    ]
+  });
+  return { page: page, txt: txt };
+}
+
+test('documentation : les rubriques d’abord, les catégories de fiches ensuite, tout replié', () => {
+  const { page, txt } = pageDocumentation();
+  // Cinq rubriques : une carte chacune, présente qu'elle soit remplie ou vide — c'est la
+  // règle « toujours un bloc actif, et pas de bouton pour en ajouter un second ».
+  assert.strictEqual(page.compter('.doc-rubrique'), typesRubrique().length);
+  assert.strictEqual(page.compter('.doc-ajouter'), typesFiche().length,
+    'un bouton d’ajout par catégorie de fiches, et AUCUN pour les rubriques');
+  // Une carte par fiche reçue, plus les intertitres de catégorie.
+  assert.strictEqual(page.compter('.doc-fiche'), 3);
+  assert.strictEqual(page.compter('.doc-titre-fiches'), typesFiche().length);
+  // Tout est replié à l'ouverture : c'est ce qui fait qu'on lit la structure d'abord.
+  const corps = page.conteneur().querySelectorAll('.doc-corps');
+  assert.strictEqual(corps.length, typesRubrique().length + 3);
+  assert.ok(corps.every((c) => c.hidden === true), 'une carte ne doit pas s’ouvrir d’elle-même');
+  // Chaque en-tête est un vrai bouton, annoncé avec son état.
+  const bascules = page.conteneur().querySelectorAll('.doc-bascule');
+  assert.strictEqual(bascules.length, corps.length);
+  assert.ok(bascules.every((b) => b.balise === 'button' && b.getAttribute('aria-expanded') === 'false'),
+    'l’en-tête doit être un <button> qui dit son état');
+  // La rubrique porte le titre imprimé, jamais saisi.
+  assert.ok(page.textes().some((t) => t === T('rubrique.section.tour-horizon')),
+    'le titre de la rubrique devrait être son en-tête : ' + page.textes().join(' | '));
+  assert.ok(txt.badgeVide && txt.badgeIncomplet, 'les deux pastilles doivent être fournies');
+});
+
+test('documentation : rien ne dépasse d’une carte repliée — lien et image compris', () => {
+  const { page } = pageDocumentation();
+  // Le défaut signalé le 02.09.2026 : le lien, la zone d'image et l'état de la fiche
+  // vivaient HORS du corps pliable, et restaient donc visibles sous un en-tête replié.
+  const fiche = page.conteneur().querySelectorAll('.doc-fiche')[0];
+  const corps = fiche.querySelectorAll('.doc-corps')[0];
+  assert.ok(corps, 'la carte devrait avoir un corps pliable');
+  for (const classe of ['.doc-image', '.doc-depot', '.szh-champ']) {
+    assert.ok(corps.querySelectorAll(classe).length > 0, classe + ' devrait être DANS le corps');
+    assert.strictEqual(fiche.querySelectorAll(classe).length,
+      corps.querySelectorAll(classe).length,
+      classe + ' se trouve encore hors du corps pliable : il dépasserait d’une carte repliée');
+  }
+  // La note « le texte du lien est composé automatiquement » a été supprimée.
+  assert.ok(!page.textes().some((t) => t.indexOf('composé automatiquement') !== -1),
+    'la note sur la composition du lien devait disparaître');
+});
+
+test('documentation : la pastille « non complet » remplace le pavé « à compléter »', () => {
+  const { page, txt } = pageDocumentation();
+  const badges = page.conteneur().querySelectorAll('.doc-badge');
+  // Un badge par carte, montré ou caché selon l'état.
+  assert.strictEqual(badges.length, typesRubrique().length + 3);
+  const visibles = badges.filter((b) => b.hidden === false);
+  // Quatre rubriques vides (la cinquième est remplie), la fiche sans descriptif, et
+  // l'intervention qui n'a pas d'image… mais qui n'en demande pas : elle est complète.
+  const attendus = (typesRubrique().length - 1) + 1;
+  assert.strictEqual(visibles.length, attendus,
+    'pastilles visibles : ' + visibles.map((b) => b.textContent).join(', '));
+  assert.ok(visibles.some((b) => b.textContent === txt.badgeIncomplet),
+    'la fiche sans descriptif doit porter « non complet »');
+  assert.ok(visibles.some((b) => b.textContent === txt.badgeVide),
+    'une rubrique vide doit porter « vide »');
+  // L'infobulle dit ce qui manque : le détail n'est pas perdu, il est rangé.
+  const incomplet = visibles.filter((b) => b.textContent === txt.badgeIncomplet)[0];
+  assert.match(String(incomplet.title || ''), /Descriptif/,
+    'l’infobulle devrait nommer le champ manquant : ' + incomplet.title);
+});
+
+test('documentation : le canton est une liste déroulante qui garde sa valeur', () => {
+  const { page } = pageDocumentation();
+  const selects = page.conteneur().querySelectorAll('select');
+  // Deux listes fermées dans cette page : le canton de l'intervention, et le type
+  // d'événement — mais l'agenda n'a ici aucune fiche, donc un seul <select> rendu.
+  assert.strictEqual(selects.length, 1, 'un seul <select> : le canton de l’intervention');
+  const canton = selects[0];
+  assert.strictEqual(canton.options.length, optionsCanton('fr').length + 1,
+    'les cantons, plus l’option vide de tête');
+  assert.strictEqual(canton.value, 'ZH', 'la valeur stockée doit être choisie à l’ouverture');
+  assert.ok(canton.options.some((o) => o.textContent.indexOf('(ZH)') !== -1),
+    'le libellé doit porter le nom complet et l’abréviation');
+});
+
+test('documentation : une valeur hors liste n’est pas perdue au chargement', () => {
+  const txt = DOC_TXT();
+  const page = ouvrir({ racine: RACINE, page: 'documentation', cssPartage: ['_design.css'], txt: txt });
+  page.envoyer({
+    type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
+    typesConfig: configFiches(), typesRubrique: [], rubriques: [],
+    // Un bloc écrit à la main, avant la liste fermée : « Berne » n'est pas un code.
+    ressources: [{ id: 'r9', type: 'intervention', apercu: null,
+      valeurs: { titre: 'Ancienne', canton: 'Berne', categorie: '', numero: '', date: '',
+                 lien: '', descriptif: 'd', image: '' } }]
+  });
+  const canton = page.conteneur().querySelectorAll('select')[0];
+  assert.strictEqual(canton.value, 'Berne',
+    'une valeur inconnue de la liste doit être conservée, pas remise à vide');
+  assert.ok(canton.options.some((o) => o.value === 'Berne'),
+    'elle doit être ajoutée à la liste pour rester choisie');
+});
+
+test('documentation : enregistrer envoie les fiches remplies et TOUTES les rubriques', () => {
+  const { page } = pageDocumentation();
+  page.messages.length = 0;
+  // Le raccourci de la barre : le bouton « Enregistrer » est le premier de #barre, hors du
+  // conteneur — on passe donc par le même chemin que Ctrl+S, celui de l'autoenregistrement.
+  const bouton = page.parId.barre.querySelectorAll('button')[0];
+  bouton.dispatchEvent({ type: 'click' });
+  const envoi = page.messages.filter((m) => m.type === 'enregistrer').pop();
+  assert.ok(envoi, 'aucun message d’enregistrement : ' + JSON.stringify(page.messages));
+  // Les trois fiches partent, l'incomplète comprise : c'est l'hôte qui tranche désormais.
+  assert.strictEqual(envoi.ressources.map((r) => r.id).sort().join(','), 'r1,r2,r3');
+  // Les cinq rubriques partent, les vides comprises : c'est ainsi que l'hôte apprend qu'un
+  // bloc doit SORTIR du .md.
+  assert.strictEqual(envoi.rubriques.length, typesRubrique().length);
+  const remplie = envoi.rubriques.filter((r) => r.type === 'tour-horizon')[0];
+  assert.strictEqual(remplie.contenu, 'Une brève **importante**.',
+    'le markdown de la rubrique doit repartir au caractère près');
+});
+
+test('documentation : le sommaire dit la structure, et compte ce qu’il y a', () => {
+  const { page, txt } = pageDocumentation();
+  const sommaire = page.parId.sommaire;
+  const entrees = sommaire.querySelectorAll('.doc-sommaire-lien');
+  assert.strictEqual(entrees.length, typesRubrique().length + typesFiche().length,
+    'une entrée par rubrique et par catégorie de fiches');
+  const groupes = sommaire.querySelectorAll('.doc-sommaire-groupe');
+  assert.strictEqual(groupes.map((g) => g.textContent).join('|'),
+    [txt.groupeRubriques, txt.groupeFiches].join('|'));
+  // Les marques : le nombre de fiches d'une catégorie, « vide » pour une rubrique à écrire.
+  const marques = sommaire.querySelectorAll('.doc-sommaire-marque').map((m) => m.textContent);
+  assert.strictEqual(marques.filter((m) => m === txt.badgeVide).length, typesRubrique().length - 1,
+    'les rubriques vides doivent se voir depuis le sommaire : ' + marques.join(', '));
+  assert.strictEqual(marques.filter((m) => m === '2').length, 1, 'deux livres');
+  assert.strictEqual(marques.filter((m) => m === '1').length, 1, 'une intervention');
+  // Le <nav> tire son nom du titre affiché, sans le répéter dans un aria-label.
+  assert.strictEqual(sommaire.getAttribute('aria-labelledby'), 'doc-sommaire-titre');
+});
+
+test('documentation : ouvrir une carte referme les autres, et une seule reste ouverte', () => {
+  const { page } = pageDocumentation();
+  const bascules = page.conteneur().querySelectorAll('.doc-bascule');
+  bascules[0].dispatchEvent({ type: 'click' });
+  let corps = page.conteneur().querySelectorAll('.doc-corps');
+  assert.strictEqual(corps.filter((c) => c.hidden === false).length, 1);
+  assert.strictEqual(bascules[0].getAttribute('aria-expanded'), 'true');
+  // Une autre : la première se referme.
+  bascules[3].dispatchEvent({ type: 'click' });
+  corps = page.conteneur().querySelectorAll('.doc-corps');
+  assert.strictEqual(corps.filter((c) => c.hidden === false).length, 1,
+    'deux cartes ouvertes en même temps : l’accordéon ne tient plus');
+  assert.strictEqual(bascules[0].getAttribute('aria-expanded'), 'false');
+  // Recliquer sur celle qui est ouverte la referme : l'état « tout replié » doit rester
+  // atteignable, sans quoi on ne peut plus embrasser la liste du regard.
+  bascules[3].dispatchEvent({ type: 'click' });
+  corps = page.conteneur().querySelectorAll('.doc-corps');
+  assert.strictEqual(corps.filter((c) => c.hidden === false).length, 0);
+});
+
+test('documentation : vider une rubrique la retire du magasin sans ôter son bloc de saisie', () => {
+  const { page } = pageDocumentation();
+  page.messages.length = 0;
+  // La corbeille d'une rubrique : le premier bouton-icône de sa carte.
+  const remplie = page.conteneur().querySelectorAll('.doc-rubrique')
+    .filter((c) => c.querySelectorAll('textarea')[0].value !== '')[0];
+  assert.ok(remplie, 'la rubrique remplie devrait être trouvable');
+  remplie.querySelectorAll('.szh-ico')[0].dispatchEvent({ type: 'click' });
+  const retrait = page.messages.filter((m) => m.type === 'retirer').pop();
+  assert.ok(retrait, 'aucun retrait demandé à l’hôte');
+  assert.strictEqual(retrait.famille, 'rubrique', 'l’hôte doit savoir dans quelle famille chercher');
+  assert.strictEqual(retrait.id, 'b1');
+  assert.strictEqual(remplie.querySelectorAll('textarea')[0].value, '', 'le texte doit être vidé');
+  assert.strictEqual(page.compter('.doc-rubrique'), typesRubrique().length,
+    'la carte doit RESTER : une rubrique a toujours son bloc, vide ou non');
+});
+
+test('documentation : une fiche neuve s’ouvre aussitôt, et le sommaire suit', () => {
+  const { page } = pageDocumentation();
+  const avant = page.compter('.doc-fiche');
+  // Le bouton « Ajouter un livre » : le premier des boutons d'ajout.
+  page.conteneur().querySelectorAll('.doc-ajouter')[0].dispatchEvent({ type: 'click' });
+  assert.strictEqual(page.compter('.doc-fiche'), avant + 1);
+  const ouvertes = page.conteneur().querySelectorAll('.doc-corps').filter((c) => c.hidden === false);
+  assert.strictEqual(ouvertes.length, 1, 'la fiche neuve doit s’ouvrir seule, pour la saisie en série');
+  const marques = page.parId.sommaire.querySelectorAll('.doc-sommaire-marque').map((m) => m.textContent);
+  assert.strictEqual(marques.filter((m) => m === '3').length, 1,
+    'le sommaire doit compter la fiche neuve : ' + marques.join(', '));
+});

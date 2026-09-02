@@ -1021,11 +1021,13 @@ test('chaque libellé utilisé par une webview est fourni par l’hôte', () => 
       libelles: new Set([...cles('textesMedias'), ...auteur]),
       fragments: ['_commun.js', '_auteurs.js']
     },
-    // Les libellés des champs par type (typesConfig) ne passent pas par TXT.xxx — ils
-    // arrivent dans une table à part, comme `libelles` de textesNumero() plus bas — d'où
-    // leur absence de cette liste, qui ne surveille que les TXT.xxx littéraux du script.
-    'ressources-article': {
-      libelles: cles('textesRessources'),
+    // Les libellés des champs par type (typesConfig, typesRubrique) ne passent pas par
+    // TXT.xxx — ils arrivent dans une table à part, comme `libelles` de textesNumero() plus
+    // bas — d'où leur absence de cette liste, qui ne surveille que les TXT.xxx littéraux du
+    // script. La page porte les DEUX familles depuis le 02.09.2026 (fiches et rubriques),
+    // donc une seule fonction hôte pour les deux séries de libellés.
+    'documentation': {
+      libelles: cles('textesDocumentation'),
       fragments: ['_commun.js']
     },
     // Le formulaire du numero et la vue « Articles » partagent media/_numero.js : ses
@@ -1136,7 +1138,7 @@ test('le tutoriel a ses libellés, ses dessins et des liens qui mènent quelque 
 // d'ensemble n'a rien à saisir.
 test('chaque formulaire qui écrit enregistre automatiquement', () => {
   const attendus = ['metadata-articles', 'metadata-issue', 'import-verif', 'medias-article',
-    'traduction', 'table-editor', 'articles', 'metadata-book', 'ressources-article'];
+    'traduction', 'table-editor', 'articles', 'metadata-book', 'documentation'];
   const partages = {
     'metadata-articles': ['_fiches.js'], 'import-verif': ['_fiches.js'],
     'metadata-issue': ['_numero.js'], 'articles': ['_numero.js'],
@@ -1191,6 +1193,7 @@ test('les tables de protocole des webviews sont à jour', () => {
     'import-verif': ['_fiches.js'],
     'traduction': [],
     'medias-article': [],
+    'documentation': [],
     'vue-ensemble': [],
     'metadata-issue': ['_numero.js'],
     'articles': ['_numero.js'],

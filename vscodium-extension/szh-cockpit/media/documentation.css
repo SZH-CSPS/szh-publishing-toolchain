@@ -1,0 +1,143 @@
+/* La Documentation d'un numéro : rubriques de texte riche et fiches structurées dans un
+   seul formulaire, tout pliable, avec un sommaire collant à droite (demandes du
+   02.09.2026). Remplace ressources-article.css et rubriques-article.css.
+   Aucune couleur en dur, rien que les jetons de thème (_design.css). */
+body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
+  line-height: var(--interligne); color: var(--encre); background: var(--fond);
+  padding: var(--e2) var(--e4) 0; box-sizing: border-box; height: 100vh;
+  display: flex; flex-direction: column; overflow: hidden; }
+
+/* C'est .corps qui défile — et c'est donc lui qui sert de référence au sommaire collant :
+   `position: sticky` se cale sur le plus proche ancêtre défilant, pas sur la fenêtre. */
+.corps { flex: 1 1 auto; min-height: 0; overflow: auto; padding-bottom: var(--e6); }
+
+/* Deux colonnes : le formulaire, et le sommaire. `align-items: start` est ce qui permet au
+   sommaire de rester collé — étiré sur toute la hauteur (le défaut, `stretch`), il n'aurait
+   jamais de quoi glisser. */
+.doc-colonnes { display: grid; grid-template-columns: minmax(0, 1fr) 15rem;
+  gap: var(--e5); align-items: start; }
+.doc-sections { display: flex; flex-direction: column; gap: var(--e3); min-width: 0; }
+.doc-sections > * { flex: 0 0 auto; }
+
+/* Fenêtre étroite : une seule colonne, et le sommaire repasse en tête — il dit la structure,
+   c'est par lui qu'on commence. Il cesse alors d'être collant : deux zones collantes dans
+   une colonne unique se marcheraient dessus. */
+@media (max-width: 52rem) {
+  .doc-colonnes { grid-template-columns: minmax(0, 1fr); }
+  .doc-sommaire { position: static; order: -1; max-height: none; }
+}
+
+/* ---- Le sommaire ---------------------------------------------------------------------- */
+.doc-sommaire { position: sticky; top: 0; max-height: calc(100vh - 7rem); overflow: auto;
+  padding: var(--e3); box-sizing: border-box;
+  border: 1px solid var(--filet); border-radius: var(--rayon); background: var(--surface); }
+.doc-sommaire-titre { margin: 0 0 var(--e2); font-size: var(--t-section); font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--encre-2); }
+.doc-sommaire-liste { list-style: none; margin: 0; padding: 0; }
+.doc-sommaire-groupe { margin: var(--e3) 0 var(--e1); font-size: var(--t-mini);
+  font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--encre-2); }
+.doc-sommaire-groupe:first-child { margin-top: 0; }
+.doc-sommaire-lien { display: flex; align-items: baseline; gap: var(--e2); width: 100%;
+  background: none; border: 0; padding: .15em 0; margin: 0; cursor: pointer;
+  font-family: inherit; font-size: var(--t-libelle); text-align: left; color: var(--encre); }
+.doc-sommaire-lien:hover { color: var(--accent); }
+.doc-sommaire-lien:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.doc-sommaire-nom { flex: 1 1 auto; min-width: 0; }
+/* La marque dit l'état sans couleur seule : un nombre pour une catégorie de fiches, le mot
+   « vide » pour une rubrique qui ne s'imprimera pas. */
+.doc-sommaire-marque { flex: 0 0 auto; font-size: var(--t-mini); color: var(--encre-2); }
+.doc-sommaire-marque--compte { font-weight: 700; color: var(--encre); }
+.doc-sommaire-marque--vide { font-style: italic; }
+
+/* ---- Intertitre d'une catégorie de fiches -------------------------------------------- */
+.titre-section { margin: var(--e4) 0 0; font-size: var(--t-section); font-weight: 700;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--encre-2);
+  border-bottom: 2px solid var(--accent); padding-bottom: var(--e1); }
+.titre-section:first-child { margin-top: 0; }
+.doc-titre-fiches { display: flex; align-items: baseline; gap: var(--e2); }
+.doc-compte-section { font-weight: 400; letter-spacing: 0; text-transform: none; }
+
+/* Une catégorie : ses cartes, puis son bouton d'ajout — toujours à cette place, jamais en
+   bas de toute la page, où il faudrait défiler après chaque type. */
+.doc-section { display: flex; flex-direction: column; gap: var(--e2); }
+.doc-ajouter { align-self: flex-start; }
+
+/* ---- Accordéon : cartes de fiches et rubriques, même en-tête ------------------------- */
+/* L'en-tête est un <button> pleine largeur : cliquable à la souris, atteignable au clavier,
+   annoncé avec son état par aria-expanded (voir documentation.js). Le corps se replie par
+   l'attribut hidden, ce qui le sort aussi de l'arbre d'accessibilité — une carte fermée
+   n'est donc pas lue par une synthèse vocale. */
+.doc-carte { padding: var(--e2) var(--e3); display: flex; flex-direction: column; gap: var(--e2); }
+.doc-tete { display: flex; align-items: center; gap: var(--e2); }
+
+.doc-bascule { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--e2);
+  background: none; border: 0; padding: var(--e1) 0; margin: 0; cursor: pointer;
+  font-family: inherit; font-size: var(--t-corps); font-weight: 600; color: var(--encre);
+  text-align: left; }
+.doc-bascule:hover { color: var(--accent); }
+.doc-bascule:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.doc-bascule-libelle { flex: 0 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Le chevron dit l'état par sa FORME et non par la couleur seule, et pivote à l'ouverture. */
+.doc-bascule::before { content: '▸'; flex: 0 0 auto;
+  color: var(--encre-2); transition: transform .12s ease; }
+.doc-carte--ouverte .doc-bascule::before { transform: rotate(90deg); }
+
+/* La pastille d'état, dans l'en-tête : « non complet » pour une fiche à laquelle il manque
+   un champ requis, « vide » pour une rubrique qui ne s'imprimera pas. Elle a remplacé le
+   pavé « À compléter avant l'enregistrement », supprimé avec le refus d'écrire. */
+.doc-badge { flex: 0 0 auto; font-weight: 400; }
+
+.doc-corps { display: flex; flex-direction: column; gap: var(--e2); padding-top: var(--e2); }
+
+/* Le titre est le seul champ en pleine largeur ; le reste se lit à côté d'une saisie voisine
+   sans que l'œil retraverse toute la carte. */
+.doc-biblio { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--e3); }
+.doc-biblio > * { min-width: 0; }
+
+/* ---- Dépôt de l'image de couverture -------------------------------------------------- */
+/* Même forme que le dépôt du gestionnaire des médias (medias-article.css), en plus compact :
+   une seule zone par fiche, jamais deux gestes à distinguer ici. */
+.doc-image { display: flex; gap: var(--e3); align-items: flex-start; flex-wrap: wrap; }
+.doc-vignette { flex: 0 0 auto; width: 5.5rem; height: 5.5rem;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--filet); border-radius: var(--rayon-mini);
+  background: var(--fond); overflow: hidden; }
+.doc-vignette img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+.doc-vignette .absent { margin: 0; padding: var(--e1); text-align: center;
+  font-size: var(--t-mini); font-style: italic; color: var(--encre-2); }
+.doc-depot { flex: 1 1 14rem; min-width: 10rem;
+  display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
+  padding: var(--e2); border-radius: var(--rayon-mini); font-size: var(--t-libelle);
+  border: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, .5));
+  color: var(--encre-2); }
+.doc-depot.survol { border-style: solid; border-color: var(--accent);
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, .12)); }
+.doc-depot-etat { font-size: var(--t-mini); }
+.doc-depot-etat.erreur { color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); }
+
+/* ---- Rubriques : barre d'outils et champ de prose ------------------------------------ */
+/* Gras, italique, lien, liste — chacun agit sur la sélection du textarea voisin. Le style
+   visuel (graisse, italique) porte l'affordance ; le texte du bouton reste celui que l'hôte
+   fournit (i18n), rien n'est écrit en dur ici. */
+.doc-outils { display: flex; gap: var(--e1); flex-wrap: wrap; }
+.doc-outil { padding: .2em .6em; font-size: var(--t-libelle); }
+.doc-outil--gras { font-weight: 700; }
+.doc-outil--italique { font-style: italic; }
+
+/* Un textarea qui grandit avec son texte (voir ajusterHauteur() dans le script), jusqu'à un
+   plafond au-delà duquel il défile lui-même plutôt que de pousser la page à l'infini — une
+   bibliographie de trente références ne doit pas se lire dans une fenêtre de trois lignes,
+   mais ne doit pas non plus noyer la carte suivante. */
+.doc-champ textarea {
+  width: 100%; box-sizing: border-box; resize: none;
+  min-height: 6rem; overflow-y: hidden;
+  font-family: inherit; line-height: var(--interligne);
+}
+
+/* Une rubrique n'a qu'un bloc : sa carte porte donc le titre imprimé de la rubrique, et se
+   distingue d'une carte de fiche par ce liseré d'accent — c'est la structure du numéro, pas
+   une entrée parmi d'autres. */
+.doc-rubrique { border-left: 3px solid var(--accent); }

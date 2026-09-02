@@ -130,6 +130,19 @@ const {
 } = require('./lib/references');
 // ---- Fiches de « ressources » d'un article (livre, film, …) -> lib/ressources.js -------
 const ressourcesLib = require('./lib/ressources');
+
+// ---- Réserve de fiches, et échanges entre les deux revues -> lib/reserve.js -----------
+const reserveLib = require('./lib/reserve');
+
+// ---- Rubriques de texte riche d'un article de Documentation -> lib/rubriques.js --------
+// L'autre moitié de la Documentation : là où une « ressource » est une fiche à champs, une
+// « rubrique » est un bloc de prose titré (liste bibliographique, liste de liens, brève).
+// Deux familles de blocs, deux modules — mais UN SEUL formulaire depuis le 02.09.2026
+// (media/documentation.js) : « fais un seul formulaire avec rubriques et les ressources ».
+const rubriquesLib = require('./lib/rubriques');
+
+// ---- Les cantons, liste fermée du champ `canton` d'une intervention -> lib/cantons.js --
+const cantonsLib = require('./lib/cantons');
 const { traiterPortraits } = require('./lib/portraits');
 // ---- Journal de compilation -> lib/journal.js ------------------------------------
 const {
@@ -408,9 +421,26 @@ function replierAssetsAutres() {
   catch (e) { return true; }                       // configuration indisponible
 }
 
+// Le type d'article qui peuple la section « Actualité » plutôt que « Articles ». C'est le
+// MÊME jeton que TYPES_HORS de lib/yaml.js et que la table des rubriques OJS de
+// lib/export-ojs.js (rubrique DC/DK) : la Documentation n'est pas un nouveau modèle de
+// données, c'est le type qui existait déjà, simplement présenté à part. Un article de
+// Documentation reste un `articles/<slug>/` ordinaire, il garde son rang dans le numéro, sa
+// fiche, ses traductions et son export — seule sa place dans l'arbre change.
+const TYPE_ACTUALITE = 'documentation';
+
+// Le nom de dossier de la page de Documentation, quand le cockpit la crée lui-même. Une
+// seule par numéro : la Documentation est UNE page — « Actualité et ressources » /
+// « News & Ressourcen » — et non une famille d'articles. Un numéro qui en porterait déjà
+// une sous un autre nom (page importée d'un Word, dossier créé à la main) garde le sien :
+// c'est le TYPE de la fiche qui la désigne, jamais son nom de dossier.
+const SLUG_DOCUMENTATION = 'documentation';
+
 // La vue d'ensemble de chaque section : rouverte par le clic sur l'en-tête (en plus de
 // l'accordéon) et par le dépliage au chevron — mais jamais par les dépliages programmés,
 // un clic d'article ne doit pas ramener la vue Articles par-dessus le texte (décision B).
+// « Actualité » n'y figure pas, comme « chapitres » : elle n'a pas de vue d'ensemble, le
+// clic sur son en-tête ne fait donc que jouer l'accordéon.
 const VUE_SECTION = {
   articles: 'szh.vueArticles', traductions: 'szh.vueTraductions', word: 'szh.vueWord'
 };
@@ -425,6 +455,10 @@ const COULEURS_SECTION = {
   // Un livre nomme ses unités « chapitres » : sans cette entrée, la section sortirait sans
   // couleur, seule de son espèce dans l'arbre.
   chapitres: 'charts.blue',
+  // ⚠ Une couleur par section, jamais deux fois la même sur un même arbre : test/js/hote.test.js
+  //   le vérifie. Le violet est le seul des `charts.*` encore libre après le bleu des
+  //   articles et le vert des traductions.
+  actualite: 'charts.purple',
   traductions: 'charts.green',
   word: 'editorWarning.foreground'
 };
@@ -1269,6 +1303,17 @@ class FournisseurRevue {
       const sections = [
         this._section(categorieUnites(), T(cleArbreUnites()), 'book', undefined)
       ];
+      // ⚠ PAS de section « Actualité » pour un LIVRE, pour la même raison que les
+      //   traductions : la Documentation est une rubrique de REVUE (« Actualité et
+      //   ressources » / « News & Ressourcen »), elle n'a pas d'équivalent dans un ouvrage.
+      if (profilCourant().cle === 'revue') {
+        // Le badge compte les BLOCS de la page de Documentation — ses fiches et ses
+        // rubriques réunies — et non les articles : il n'y en a qu'un, et il ne se liste
+        // plus dans l'arbre depuis le 02.09.2026.
+        const a = compterBlocsDocumentation(this.racine, this.slugDocumentation());
+        sections.push(this._section('actualite', T('arbre.actualite'), 'megaphone',
+          a > 0 ? '(' + a + ')' : undefined));
+      }
       if (profilCourant().cle === 'revue') {
         sections.push(this._section('traductions', T('arbre.traductions'), 'globe',
           t.total > 0 ? '(' + t.finalises + '/' + t.total + ')' : undefined));
@@ -1278,6 +1323,7 @@ class FournisseurRevue {
       return sections;
     }
     if (element.categorie === categorieUnites()) { return this._itemsArticles(); }
+    if (element.categorie === 'actualite') { return this._itemsActualite(); }
     if (element.categorie === 'word') { return this._itemsWord(); }
     if (element.categorie === 'traductions') { return this._itemsTraductions(); }
     if (element.contextValue === 'article') { return this._itemsTables(element.slug); }
@@ -1287,16 +1333,65 @@ class FournisseurRevue {
 
   // reveal() exige de savoir remonter d'un élément vers la racine. Seuls les articles sont
   // révélés (resélection après reconstruction — voir ouvrirArticle) : leur parent est
-  // l'en-tête « Articles », tout le reste répond racine.
+  // l'en-tête de LEUR section, tout le reste répond racine.
+  //
+  // ⚠ Un article de Documentation porte le même contextValue `article` que les autres — et
+  //   c'est voulu : il garde ainsi, sans une ligne de package.json, tous les menus et tous
+  //   les boutons inline d'un article (métadonnées, médias, ressources, réimport…). Le prix
+  //   à payer est ici : le parent ne peut plus être déduit du seul contextValue, il faut
+  //   relire le type. Sans cela, reveal() déplierait ARTICLES pour un article qui vit dans
+  //   ACTUALITÉ, et l'accordéon refermerait la section sous les yeux du rédacteur.
   getParent(element) {
     if (!element || element.categorie) { return null; }
     if (element.contextValue === 'article') {
-      return this._section(categorieUnites(), T(cleArbreUnites()), 'book', undefined);
+      return this.sectionDeSlug(element.slug);
     }
     return null;
   }
 
+  // L'en-tête de la section où vit ce slug : « Actualité » pour un article de Documentation
+  // d'une revue, la section des unités sinon. Un slug inconnu répond la section des unités,
+  // qui est le cas ordinaire.
+  sectionDeSlug(slug) {
+    if (profilCourant().cle === 'revue' && this.estActualite(slug)) {
+      return this._section('actualite', T('arbre.actualite'), 'megaphone', undefined);
+    }
+    return this._section(categorieUnites(), T(cleArbreUnites()), 'book', undefined);
+  }
+
+  // La catégorie d'accordéon à déplier pour ce slug — pendant de sectionDeSlug(), pour les
+  // appelants qui n'ont besoin que du nom (focaliserUnite).
+  categorieDeSlug(slug) {
+    return (profilCourant().cle === 'revue' && this.estActualite(slug))
+      ? 'actualite' : categorieUnites();
+  }
+
+  estActualite(slug) {
+    if (!this.racine || !slug) { return false; }
+    return lireMetaArticle(this.racine, slug).type === TYPE_ACTUALITE;
+  }
+
+  // Les unités du numéro réparties entre les deux sections, chacune AVEC SON RANG GLOBAL.
+  // Le rang est celui du numéro entier et non celui de la sous-liste : un article de
+  // Documentation reste « 09 · … » dans la section Actualité, comme il l'est au sommaire et
+  // dans le PDF. Filtrer sans garder le rang aurait renuméroté les deux sections à partir
+  // de 01, et deux articles différents auraient porté le même numéro dans l'arbre.
+  _repartirUnites() {
+    if (!this.racine) { return { unites: [], actualite: [] }; }
+    const revue = profilCourant().cle === 'revue';
+    const unites = [], actualite = [];
+    this.listerArticles().forEach((slug, index) => {
+      const entree = { slug: slug, index: index };
+      if (revue && this.estActualite(slug)) { actualite.push(entree); }
+      else { unites.push(entree); }
+    });
+    return { unites: unites, actualite: actualite };
+  }
+
   // L'élément d'un article, reconstruit à l'état courant : reveal() le retrouve par son id.
+  // La page de Documentation n'en a pas — elle ne se liste plus dans l'arbre — et c'est
+  // sans conséquence : reselectionnerArticle() ne fait rien d'un élément absent, et rien ne
+  // reste à sélectionner puisque rien ne s'affiche.
   elementArticle(slug) {
     return this._itemsArticles().find((it) => it.slug === slug) || null;
   }
@@ -1328,13 +1423,53 @@ class FournisseurRevue {
   // libellé est le titre de la fiche précédé de son rang à deux chiffres, et le slug passe
   // en description — c'est le nom du dossier, ce n'est pas le nom de l'article.
   _itemsArticles() {
+    return this._itemsUnites(this._repartirUnites().unites,
+      'arbre.vide.' + profilCourant().unites.dossier);
+  }
+
+  // La section « Actualité » : la réserve, et rien d'autre.
+  //
+  // La page de Documentation ne s'y liste PLUS depuis le 02.09.2026 — « Supprime le fichier
+  // .md de la documentation, il n'est pas nécessaire. Lorsque l'on clique sur "Actualité"
+  // affiche directement la liste des rubriques » : cliquer l'en-tête ouvre le formulaire de
+  // la page, qui se crée au besoin (ouvrirPageDocumentation). Un article de plus dans
+  // l'arbre, dont le .md ne s'ouvre jamais à la main, n'aurait donné qu'un détour.
+  //
+  // La réserve, elle, reste : c'est le magasin de fiches partagé entre les numéros et entre
+  // les deux revues, et il faut pouvoir l'ouvrir avant même que la page qui recevra ses
+  // fiches n'existe.
+  _itemsActualite() {
+    return [this._itemReserve()];
+  }
+
+  // Le slug de la page de Documentation du numéro : la première unité de type
+  // `documentation` dans l'ordre du sommaire, ou null s'il n'y en a pas encore.
+  slugDocumentation() {
+    const entrees = this._repartirUnites().actualite;
+    return entrees.length > 0 ? entrees[0].slug : null;
+  }
+
+  _itemReserve() {
+    const n = compterReserve(this.racine);
+    const it = new vscode.TreeItem(T('arbre.reserve'), vscode.TreeItemCollapsibleState.None);
+    it.id = 'reserve';
+    it.contextValue = 'reserve';
+    it.iconPath = new vscode.ThemeIcon('archive');
+    if (n > 0) { it.description = '(' + n + ')'; }
+    it.tooltip = T('arbre.reserve.tooltip');
+    it.command = { command: 'szh.reserve', title: T('arbre.reserve'), arguments: [] };
+    return it;
+  }
+
+  // `entrees` = [{ slug, index }], le rang étant celui du numéro entier (_repartirUnites).
+  _itemsUnites(entrees, cleVide) {
     const base = path.join(this.racine, dossierUnites());
-    const slugs = this.listerArticles();
-    if (slugs.length === 0) { return [this._vide(T('arbre.vide.' + profilCourant().unites.dossier))]; }
+    if (entrees.length === 0) { return [this._vide(T(cleVide))]; }
     const auto = replierAssetsAutres();
     const langue = langueRevue(this.racine);
     const taches = tachesDuNumero(this.racine);
-    return slugs.map((slug, index) => {
+    return entrees.map((entree) => {
+      const slug = entree.slug, index = entree.index;
       const md = vscode.Uri.file(path.join(base, slug, slug + '.md'));
       // Seuls les tableaux se déplient sous l'article : les images se gèrent dans le
       // formulaire « Médias de cet article », qui les montre avec leurs légendes, leurs
@@ -1917,10 +2052,10 @@ function fermerFormulairesEcriture(racine, slug) {
   const dossier = (racine && slug) ? path.join(racine, dossierUnites(), slug) + path.sep : null;
   const concerne = (table, cle) => {
     if (!dossier) { return true; }                 // tout fermer (verrouillage du numéro)
-    return (table === panneauxMedias || table === panneauxRessources)
+    return (table === panneauxMedias || table === panneauxDocumentation)
       ? cle === slug : String(cle).indexOf(dossier) === 0;
   };
-  for (const table of [panneauxMedias, panneauxRessources, panneauxTable]) {
+  for (const table of [panneauxMedias, panneauxDocumentation, panneauxTable]) {
     for (const [cle, panneau] of Array.from(table.entries())) {
       if (!concerne(table, cle)) { continue; }
       try { panneau.dispose(); } catch (e) { /* déjà fermé */ }
@@ -2424,7 +2559,10 @@ function reselectionnerArticle(fournisseur, slug) {
 // plus : le formulaire qui vient de s'ouvrir garde la main.
 function focaliserUnite(fournisseur, slug) {
   let arbreChange = fournisseur.definirDeploye(slug);
-  arbreChange = fournisseur.definirSectionDeployee(categorieUnites()) || arbreChange;
+  // La section à déplier est celle où l'article vit : ACTUALITÉ pour une page de
+  // Documentation, la section des unités sinon. Déplier ARTICLES aurait refermé ACTUALITÉ
+  // (l'accordéon n'ouvre qu'une section) juste après un clic dedans.
+  arbreChange = fournisseur.definirSectionDeployee(fournisseur.categorieDeSlug(slug)) || arbreChange;
   if (arbreChange) { fournisseur.rafraichir(); }
   reselectionnerArticle(fournisseur, slug);
 }
@@ -5267,7 +5405,9 @@ function textesTraduction() {
     courtTraduction: T('trad.court.traduction'), courtRelecture: T('trad.court.relecture'),
     courtFinalise: T('trad.court.finalise'), toutTip: T('trad.tout.tip'),
     rien: T('trad.rien'), aucuneModif: T('form.rien'), enregistre: T('trad.enregistre'),
-    commentaire: T('trad.commentaire'), commentaireAide: T('trad.commentaire.aide'),
+    // `commentaire` et son aide sont resolus a l'assemblage de la page
+    // (%%SZH:cle%% dans media/traduction.html) : ils ne passent pas par cette table.
+    commentaire: T('trad.commentaire'),
     deepl: T('trad.deepl'), deeplTip: T('trad.deepl.tooltip'),
     envoyer: T('trad.envoyer'), envoyerTip: T('trad.envoyer.tooltip'),
     motCle: T('trad.motcle'), motCleSansEquiv: T('trad.motcle.sansequivalent'),
@@ -7429,18 +7569,29 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
   panneau.webview.html = htmlMedias(crypto.randomBytes(16).toString('hex'));
 }
 
-// ---- Fiches de « ressources » d'un article (livre, film, …) ----------------------
-// Le formulaire qui écrit les blocs ::: {.szh-ressource type="…"} …, lus par
-// pipeline/filters/szh-ressource.lua. Un moteur générique — un seul panneau, une section
-// par type de ressourcesLib.typesConnus() — plutôt qu'un formulaire par type : la table de
-// champs vit dans lib/ressources.js, ce fichier ne fait que la lire.
+// ---- La Documentation d'un numéro : fiches ET rubriques, un seul formulaire -------
+// Le formulaire qui écrit les blocs ::: {.szh-ressource type="…"} … et
+// ::: {.szh-rubrique type="…"} …, lus par pipeline/filters/szh-ressource.lua et
+// szh-rubrique.lua. Un moteur générique — un seul panneau, une section par type de
+// ressourcesLib.typesConnus() et une rubrique par type de rubriquesLib.typesConnus() —
+// plutôt qu'un formulaire par type : les tables de champs vivent dans lib/ressources.js et
+// lib/rubriques.js, ce fichier ne fait que les lire.
 //
-// Pensé pour la saisie en série (la demande la plus concrète du cahier des charges) : les
-// cartes sont dépliées d'emblée, jamais repliées derrière un clic, et chaque section garde
-// son bouton « Ajouter » juste sous sa dernière carte. Ajouter une fiche, la retirer et
-// taper dans ses champs restent purement côté webview ; seuls trois gestes touchent le
-// disque : enregistrer (par lot, comme le gestionnaire des médias), retirer une fiche déjà
-// écrite, et déposer une image de couverture.
+// Les DEUX familles dans le même panneau depuis le 02.09.2026 (« fais un seul formulaire
+// avec rubriques et les ressources »), en remplacement des deux panneaux séparés
+// szhRessources et szhRubriques. Les rubriques ne s'affichent que sur une page de
+// Documentation — un article ordinaire peut porter des fiches, jamais un « Tour d'horizon »
+// — et c'est la seule différence entre les deux usages du panneau.
+//
+// Ce que la webview fait seule : ajouter une fiche, la retirer, taper dans ses champs,
+// plier et déplier. Ce qui touche le disque : enregistrer (par lot, comme le gestionnaire
+// des médias), retirer un bloc déjà écrit, déposer une image de couverture, et les deux
+// gestes de réserve.
+//
+// Une fiche INCOMPLÈTE s'enregistre désormais (lib/ressources.js, ressourceEcrivable) :
+// c'est le formulaire qui signale ce qui manque, par une pastille, et non plus l'hôte qui
+// refuse d'écrire. Une rubrique VIDÉE, en revanche, SORT du .md — un titre de rubrique sans
+// rien dessous ne veut rien dire dans le PDF.
 
 // Les libellés des champs bibliographiques, communs aux types qui les partagent (« annee »
 // sert à livre ET film) : une seule clé i18n par champ, jamais une par type.
@@ -7451,8 +7602,35 @@ const LIBELLES_CHAMP_RESSOURCE = {
   canton: 'ressource.champ.canton', categorie: 'ressource.champ.categorie',
   numero: 'ressource.champ.numero', date: 'ressource.champ.date',
   institutions: 'ressource.champ.institutions', debut: 'ressource.champ.debut',
-  fin: 'ressource.champ.fin'
+  fin: 'ressource.champ.fin',
+  // Champs de la fiche « reprise » (D'une revue à l'autre / Blick in die Revue). `auteurs`
+  // est déjà là, partagé avec le livre : une seule clé par champ, jamais une par type.
+  revue: 'ressource.champ.revue', reference: 'ressource.champ.reference',
+  doi: 'ressource.champ.doi',
+  // Champs de la fiche « agenda » (manifestations et formation continue). `debut` et `fin`
+  // sont déjà là, partagés avec la recherche en cours — « Début » et « Fin » disent la même
+  // chose d'une plage d'années et d'une plage de dates, et la règle du fichier reste une
+  // seule clé par NOM DE CHAMP, jamais une par type.
+  evenement: 'ressource.champ.evenement', lieu: 'ressource.champ.lieu',
+  organisateur: 'ressource.champ.organisateur'
 };
+
+// Les listes fermées offertes à la saisie, par nom. C'est la jonction que lib/ressources.js
+// ne fait pas exprès : sa table CHOIX dit QUELLE liste porte un champ, jamais où cette liste
+// vit. Les deux d'aujourd'hui viennent d'endroits différents — les cantons d'un module à
+// eux (lib/cantons.js, 26 cantons et la Confédération), les types d'événement d'une liste de
+// jetons de lib/ressources.js dont les libellés sont ici traduits — et c'est précisément ce
+// que cette indirection permet.
+const LISTES_RESSOURCE = {
+  canton: () => cantonsLib.optionsCanton(langueCockpit()),
+  evenement: () => ressourcesLib.valeursListe('evenement')
+    .map((v) => ({ valeur: v, libelle: T('ressource.option.evenement.' + v) }))
+};
+function optionsChamp(type, cle) {
+  const nom = ressourcesLib.listeChamp(type, cle);
+  const fabrique = nom ? LISTES_RESSOURCE[nom] : null;
+  return fabrique ? fabrique() : null;
+}
 
 // La configuration envoyée à la webview : un type par entrée, ses champs bibliographiques
 // DANS L'ORDRE DE lib/ressources.js (source unique — jamais recopiés ici), chacun avec son
@@ -7468,37 +7646,80 @@ function typesRessourceConfig() {
     libelleAjouter: T('ressource.ajouter.' + type),
     libelleAjouterTip: T('ressource.ajouter.' + type + '.tip'),
     avecImage: ressourcesLib.typeAvecImage(type),
-    champs: ressourcesLib.champsBiblio(type).map((cle) => ({
-      cle: cle, libelle: T(LIBELLES_CHAMP_RESSOURCE[cle] || '')
-    }))
+    champs: ressourcesLib.champsBiblio(type).map((cle) => {
+      // `options` et `saisie` n'accompagnent le champ que s'il en a : une liste fermée
+      // (canton, type d'événement) ou une date ISO. La webview ne connaît donc aucun nom de
+      // champ pour décider de rendre un <select> ou un <input type="date">.
+      const champ = { cle: cle, libelle: T(LIBELLES_CHAMP_RESSOURCE[cle] || '') };
+      const options = optionsChamp(type, cle);
+      if (options) { champ.options = options; }
+      const saisie = ressourcesLib.saisieChamp(type, cle);
+      if (saisie) { champ.saisie = saisie; }
+      return champ;
+    })
   }));
 }
 
-function textesRessources() {
+// Les rubriques, pour le même formulaire : un type, un titre. Ni bouton d'ajout ni compteur
+// — chaque type a UN bloc, toujours présent (media/documentation.js). Le titre imprimé,
+// lui, ne se saisit jamais : il se déduit du type et de la langue au rendu
+// (pipeline/filters/szh-rubrique.lua), et c'est le même titre qui sert ici d'en-tête.
+function typesRubriqueConfig() {
+  return rubriquesLib.typesConnus().map((type) => ({
+    valeur: type,
+    libelleSection: T('rubrique.section.' + type)
+  }));
+}
+
+// Tous les libellés du formulaire de Documentation, les deux familles ensemble.
+//
+// `revueCible` est le nom affiché de la revue vers laquelle « Envoyer » dépose une copie —
+// la revue SŒUR de celle du numéro ouvert. Il vient de l'appelant, seul à connaître la
+// racine, et il est composé ici plutôt que dans la webview : la page ne connaît ni les
+// jetons de revue ni la table qui les nomme.
+//
+// ⚠ Une clé oubliée ici ne casse rien : la page affiche « undefined » à sa place. C'est
+//   test/js/contrats.test.js qui l'attrape, en relevant tous les TXT.xxx de
+//   media/documentation.js et en exigeant que cette fonction les fournisse.
+function textesDocumentation(revueCible) {
   return {
+    detacherTip: T('ressource.detacher.tip'),
+    envoyerTip: T('ressource.envoyer.tip', [revueCible || '']),
     champTitre: T('ressource.champ.titre'), champTitreIndice: T('ressource.champ.titre.indice'),
     champDescriptif: T('ressource.champ.descriptif'),
     champDescriptifIndice: T('ressource.champ.descriptif.indice'),
     champLien: T('ressource.champ.lien'), champLienIndice: T('ressource.champ.lien.indice'),
     champImage: T('ressource.champ.image'),
-    lienNote: T('ressource.lien.note'),
     imageAbsente: T('ressource.image.absente'), imageDeposee: T('ressource.image.deposee'),
     choisirFichier: T('medias.choisirFichier'),
     errFormat: T('medias.err.format'), errTropVolumineuse: T('medias.err.tropvolumineux'),
     retirerTip: T('ressource.retirer.tip'),
     sansTitre: T('ressource.sansTitre'),
     manque: T('ressource.manque'),
-    enregistrer: T('img.enregistrer'), enregistrerTip: T('ressource.enregistrer.tip'),
-    enregistre: T('ressource.enregistre'), nonEnregistre: T('img.nonEnregistre'),
-    rienAEcrire: T('ressource.rienAEcrire'),
-    retour: T('img.retour'), retourTip: T('ressource.retour.tip')
+    optionVide: T('ressource.option.vide'),
+    // Les deux pastilles d'en-tête, qui ont remplacé le pavé « À compléter avant
+    // l'enregistrement » : une fiche s'écrit incomplète, une rubrique vide ne s'imprime pas.
+    badgeIncomplet: T('doc.badge.incomplet'), badgeVide: T('doc.badge.vide'),
+    sommaire: T('doc.sommaire'),
+    groupeRubriques: T('doc.groupe.rubriques'), groupeFiches: T('doc.groupe.fiches'),
+    viderTip: T('rubrique.vider.tip'),
+    champContenu: T('rubrique.champ.contenu'),
+    champContenuIndice: T('rubrique.champ.contenu.indice'),
+    gras: T('rubrique.gras'), grasTip: T('rubrique.gras.tip'),
+    italique: T('rubrique.italique'), italiqueTip: T('rubrique.italique.tip'),
+    lien: T('rubrique.lien'), lienTip: T('rubrique.lien.tip'),
+    liste: T('rubrique.liste'), listeTip: T('rubrique.liste.tip'),
+    enregistrer: T('img.enregistrer'), enregistrerTip: T('doc.enregistrer.tip'),
+    enregistre: T('doc.enregistre'), nonEnregistre: T('img.nonEnregistre'),
+    rienAEcrire: T('doc.rienAEcrire'),
+    retour: T('img.retour'), retourTip: T('doc.retour.tip')
   };
 }
 
-function htmlRessources(nonce) {
-  return construireHtml('ressources-article', nonce, {
+function htmlDocumentation(nonce) {
+  return construireHtml('documentation', nonce, {
     cssPartage: ['_design.css'],
-    titre: T('ressource.titre', ['']),
+    titre: T('doc.titre', ['']),
     csp: "default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'"
   });
 }
@@ -7544,14 +7765,83 @@ async function deposerImageRessource(fournisseur, panneau, slug, msg) {
   });
 }
 
-let panneauxRessources = new Map();   // slug -> WebviewPanel (un formulaire par article)
+// Le nombre de blocs de la page de Documentation : ses fiches et ses rubriques réunies —
+// ce que le badge de l'en-tête « ACTUALITÉ » annonce. Une lecture de fichier par
+// reconstruction de l'arbre, comme la fiche de métadonnées de chaque article l'est déjà.
+function compterBlocsDocumentation(racine, slug) {
+  if (!racine || !slug) { return 0; }
+  let texte;
+  try { texte = fs.readFileSync(path.join(racine, dossierUnites(), slug, slug + '.md'), 'utf8'); }
+  catch (e) { return 0; }                          // page absente ou illisible : rien à dire
+  return ressourcesLib.lireRessources(texte).length + rubriquesLib.lireRubriques(texte).length;
+}
 
-async function ouvrirGestionRessources(fournisseur, rafraichirTout, item) {
+// Crée la page de Documentation du numéro : son dossier, son .md VIDE et sa fiche de
+// métadonnées de type « documentation ». Rend le slug, ou null si l'écriture a échoué.
+//
+// Le .md naît vide et le reste : ce n'est plus un texte à écrire, seulement le magasin où
+// les blocs de fiches et de rubriques s'accumulent (demande du 02.09.2026, « Supprime le
+// fichier .md de la documentation, il n'est pas nécessaire »). Il faut bien qu'il existe —
+// c'est lui que la chaîne compile, et l'ordre du numéro se lit sur les dossiers d'articles —
+// mais personne n'a plus à l'ouvrir.
+function creerPageDocumentation(fournisseur) {
+  const racine = fournisseur.racine;
+  const base = path.join(racine, dossierUnites());
+  // Un dossier « documentation » déjà pris par autre chose (page importée d'un Word sous ce
+  // nom, essai laissé là) ne doit pas être écrasé : on prend le nom libre suivant.
+  let slug = SLUG_DOCUMENTATION;
+  let n = 2;
+  while (fs.existsSync(path.join(base, slug))) { slug = SLUG_DOCUMENTATION + '-' + n; n++; }
+  const langue = langueRevue(racine);
+  const titre = {};
+  titre[langue] = TL(langue, 'doc.titre.page');
+  try {
+    fs.mkdirSync(path.join(base, slug), { recursive: true });
+    ecrireAtomique(path.join(base, slug, slug + '.md'), '');
+    ecrireAtomique(cheminMeta(racine, slug), serialiserMeta({
+      type: TYPE_ACTUALITE, lang: langue, doi: '',
+      title: titre, subtitle: {}, keywords: {}, author: []
+    }));
+  } catch (e) {
+    vscode.window.showWarningMessage(T('err.ecriture', [e.message]));
+    return null;
+  }
+  vscode.window.setStatusBarMessage(T('doc.creee'), 5000);
+  return slug;
+}
+
+// L'en-tête « ACTUALITÉ » cliqué, ou la commande appelée depuis la palette : le formulaire
+// de la page de Documentation s'ouvre, et la page se crée si le numéro n'en a pas encore.
+//
+// La création seule est refusée sur un numéro verrouillé — la consultation, non : on doit
+// pouvoir relire la Documentation d'un numéro déjà bouclé.
+async function ouvrirPageDocumentation(fournisseur, rafraichirTout) {
+  if (!fournisseur.racine) { return; }
+  // ⚠ Un LIVRE n'a pas de Documentation, comme il n'a pas de traductions : la section
+  //   n'existe pas dans son arbre, et la commande ne doit pas en fabriquer une par la
+  //   palette.
+  if (profilCourant().cle !== 'revue') { return; }
+  let slug = fournisseur.slugDocumentation();
+  if (!slug) {
+    if (refuserSiVerrouille()) { return; }
+    slug = creerPageDocumentation(fournisseur);
+    if (!slug) { return; }
+    if (rafraichirTout) { rafraichirTout(); }
+  }
+  await ouvrirDocumentation(fournisseur, rafraichirTout, slug);
+}
+
+let panneauxDocumentation = new Map();   // slug -> WebviewPanel (un formulaire par unité)
+
+// `cible` est soit un item de l'arbre ({ slug }), soit un slug tout court — c'est par là que
+// l'en-tête « ACTUALITÉ » ouvre la page de Documentation du numéro, sans passer par un item.
+async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
   if (!fournisseur.racine) { return; }
   const racine = fournisseur.racine;
-  // Même cascade que les autres formulaires d'article : l'item de l'arbre, l'éditeur
-  // actif, puis l'aperçu courant.
-  let slug = (item && item.slug) ? String(item.slug) : null;
+  // Même cascade que les autres formulaires d'article : le slug reçu, l'item de l'arbre,
+  // l'éditeur actif, puis l'aperçu courant.
+  let slug = (typeof cible === 'string' && cible) ? cible
+    : ((cible && cible.slug) ? String(cible.slug) : null);
   if (!slug) {
     const ed = vscode.window.activeTextEditor;
     slug = ed ? slugDepuisChemin(racine, ed.document.uri.fsPath) : null;
@@ -7561,17 +7851,22 @@ async function ouvrirGestionRessources(fournisseur, rafraichirTout, item) {
     vscode.window.setStatusBarMessage(T('ressource.horsarticle'), 4000);
     return;
   }
+  // Les rubriques n'ont de sens que sur une page de Documentation : un article ordinaire
+  // peut relever un livre, jamais tenir le « Tour d'horizon » du numéro. C'est aussi ce qui
+  // décide du titre du panneau et de ce que fait le bouton « Retour ».
+  const pageDoc = fournisseur.estActualite(slug);
   focaliserUnite(fournisseur, slug);
   const md = path.join(racine, dossierUnites(), slug, slug + '.md');
-  const existant = panneauxRessources.get(slug);
+  const existant = panneauxDocumentation.get(slug);
   if (existant) { existant.reveal(vscode.ViewColumn.One); return; }
   await fermerTousLesApercus();
+  const titrePanneau = pageDoc ? T('doc.titre.page') : T('doc.titre', [slug]);
   const panneau = vscode.window.createWebviewPanel(
-    'szhRessources', T('ressource.titre', [slug]), vscode.ViewColumn.One,
+    'szhDocumentation', titrePanneau, vscode.ViewColumn.One,
     { enableScripts: true, localResourceRoots: [] }
   );
-  panneauxRessources.set(slug, panneau);
-  panneau.onDidDispose(() => { if (panneauxRessources.get(slug) === panneau) { panneauxRessources.delete(slug); } });
+  panneauxDocumentation.set(slug, panneau);
+  panneau.onDidDispose(() => { if (panneauxDocumentation.get(slug) === panneau) { panneauxDocumentation.delete(slug); } });
 
   async function texteArticle() {
     try {
@@ -7597,14 +7892,28 @@ async function ouvrirGestionRessources(fournisseur, rafraichirTout, item) {
       }));
   }
 
-  async function charger(cible) {
+  // Une rubrique d'un type que ce cockpit ne connaît pas encore (un .md plus récent que
+  // l'extension installée, ou l'ancien bloc `agenda` devenu une fiche le 02.09.2026) reste
+  // dans le texte, invisible à ce panneau, et n'est JAMAIS réécrite : enregistrer() ne
+  // touche que les identifiants que la webview lui rend.
+  function listerRubriques(texteMd) {
+    const connus = new Set(rubriquesLib.typesConnus());
+    return rubriquesLib.lireRubriques(texteMd)
+      .filter((r) => connus.has(r.type))
+      .map((r) => ({ id: r.id, type: r.type, contenu: r.contenu }));
+  }
+
+  async function charger(vers) {
     const texteMd = await texteArticle();
     const budget = { reste: BUDGET_APERCUS_MEDIA };
-    repondrePanneau(cible, {
+    repondrePanneau(vers, {
       type: 'charger', slug: slug,
       ressources: listerRessources(texteMd, budget),
+      rubriques: pageDoc ? listerRubriques(texteMd) : [],
       typesConfig: typesRessourceConfig(),
-      accent: lireCouleurAccent(racine), i18n: textesRessources()
+      typesRubrique: pageDoc ? typesRubriqueConfig() : [],
+      accent: lireCouleurAccent(racine),
+      i18n: textesDocumentation(nomRevueAffiche(reserveLib.autreRevue(revueCourante(racine))))
     });
   }
 
@@ -7629,12 +7938,19 @@ async function ouvrirGestionRessources(fournisseur, rafraichirTout, item) {
     return true;
   };
 
-  // Écrit toutes les fiches complètes de la liste reçue : celle dont l'identifiant existe
-  // déjà dans le .md est réécrite en place, une autre est ajoutée à la suite des fiches
-  // existantes. Une fiche incomplète est silencieusement ignorée — le formulaire ne l'a
-  // pas proposée à l'enregistrement pour cette raison même. Rend le nombre de fiches
-  // écrites, ou -1 en cas d'échec déjà signalé.
-  const enregistrer = async (liste) => {
+  // Écrit ce que la webview envoie : les fiches, puis les rubriques. Un bloc dont
+  // l'identifiant existe déjà dans le .md est réécrit en place, un autre est ajouté à la
+  // suite des blocs de sa famille. Rend le nombre de blocs écrits, ou -1 en cas d'échec
+  // déjà signalé.
+  //
+  // Deux règles distinctes, et la différence est voulue :
+  //   - une FICHE incomplète s'écrit (ressourceEcrivable), c'est la pastille du formulaire
+  //     qui dit ce qui manque. Seule une carte entièrement vide — celle que « Ajouter »
+  //     vient de créer — est ignorée ;
+  //   - une RUBRIQUE vidée SORT du .md. Un titre de rubrique sans rien dessous ne veut rien
+  //     dire dans le PDF, et c'est ainsi que la corbeille du formulaire opère : elle vide le
+  //     texte, elle ne supprime pas un bloc qui doit rester présent à l'écran.
+  const enregistrer = async (liste, listeRubriques) => {
     const texte = await texteArticle();
     let travail = texte;
     let total = 0;
@@ -7648,8 +7964,8 @@ async function ouvrirGestionRessources(fournisseur, rafraichirTout, item) {
       const propre = Object.assign({}, valeurs, {
         image: (valeurs.image && relatifImageValide(valeurs.image)) ? valeurs.image : ''
       });
-      if (!ressourcesLib.ressourceComplete(type, propre)) { continue; }
       const dejaLa = ressourcesLib.lireRessources(travail).some((x) => x.id === id);
+      if (!dejaLa && !ressourcesLib.ressourceEcrivable(type, propre)) { continue; }
       const resultat = dejaLa
         ? ressourcesLib.ecrireRessource(travail, id, type, propre)
         : { texte: ressourcesLib.ajouterRessource(travail, id, type, propre), ok: true };
@@ -7671,6 +7987,29 @@ async function ouvrirGestionRessources(fournisseur, rafraichirTout, item) {
       catch (e) { /* config illisible : le tri se fait en français, comme le repli maison */ }
       travail = ressourcesLib.reordonnerRessources(travail, langue);
     }
+    // Les rubriques ensuite, et sans tri d'aucune sorte : leur ordre est un choix éditorial
+    // (le Tour d'horizon avant les Références, ou l'inverse, selon le numéro) et non un
+    // classement mécanique. Les réordonner dans le dos du rédacteur changerait l'ordre du
+    // PDF sans qu'il l'ait demandé.
+    for (const r of (Array.isArray(listeRubriques) ? listeRubriques : [])) {
+      const id = String((r && r.id) || '');
+      const type = String((r && r.type) || '');
+      if (id === '' || !rubriquesLib.typeValide(type)) { continue; }
+      const contenu = String((r && r.contenu) !== undefined && r.contenu !== null ? r.contenu : '');
+      const dejaLa = rubriquesLib.lireRubriques(travail).some((x) => x.id === id);
+      if (contenu.trim() === '') {
+        if (!dejaLa) { continue; }                   // vide et absente : rien à faire
+        const ote = rubriquesLib.retirerRubrique(travail, id);
+        if (ote.ok) { travail = ote.texte; total++; }
+        continue;
+      }
+      const resultat = dejaLa
+        ? rubriquesLib.ecrireRubrique(travail, id, type, contenu)
+        : { texte: rubriquesLib.ajouterRubrique(travail, id, type, contenu), ok: true };
+      if (!resultat.ok) { continue; }                // disparue entre-temps : ignorée
+      travail = resultat.texte;
+      total++;
+    }
     if (travail === texte) { return total; }
     if (!(await ecrireTexteArticle(travail))) { return -1; }
     if (rafraichirTout) { rafraichirTout(); }
@@ -7681,22 +8020,26 @@ async function ouvrirGestionRessources(fournisseur, rafraichirTout, item) {
     if (!msg) { return; }
     if (msg.type === 'pret') { await charger(panneau); return; }
     if (msg.type === 'modifie') {
-      panneau.title = (msg.modifie ? '● ' : '') + T('ressource.titre', [slug]);
+      panneau.title = (msg.modifie ? '● ' : '') + titrePanneau;
       return;
     }
     if (msg.type === 'enregistrer') {
-      const n = await enregistrer(msg.ressources);
+      const n = await enregistrer(msg.ressources, msg.rubriques);
       if (n < 0) { return; }
       repondrePanneau(panneau, { type: 'enregistre', auto: !!msg.auto });
-      if (n > 0 && !msg.auto) { vscode.window.setStatusBarMessage(T('ressource.statut.enregistrees', [n]), 5000); }
+      if (n > 0 && !msg.auto) { vscode.window.setStatusBarMessage(T('doc.statut.enregistres', [n]), 5000); }
       return;
     }
+    // Une fiche retirée sort du .md ; une rubrique aussi, mais son bloc de saisie reste à
+    // l'écran (voir le formulaire) : c'est bien le même geste côté disque.
     if (msg.type === 'retirer') {
       if (refuserSiVerrouille()) { return; }
       const id = String(msg.id || '');
       if (id === '') { return; }
       const texte = await texteArticle();
-      const resultat = ressourcesLib.retirerRessource(texte, id);
+      const resultat = msg.famille === 'rubrique'
+        ? rubriquesLib.retirerRubrique(texte, id)
+        : ressourcesLib.retirerRessource(texte, id);
       if (!resultat.ok) { return; }                  // déjà partie : rien à faire
       if (!(await ecrireTexteArticle(resultat.texte))) { return; }
       if (rafraichirTout) { rafraichirTout(); }
@@ -7710,25 +8053,238 @@ async function ouvrirGestionRessources(fournisseur, rafraichirTout, item) {
       await deposerImageRessource(fournisseur, panneau, slug, msg);
       return;
     }
+    // « Mettre en réserve » : la fiche SORT de l'article. « Envoyer à l'autre revue » : elle
+    // y RESTE, et c'est une copie qui part. Les deux passent par le même dépôt, la
+    // différence tient aux deux derniers arguments (revue visée, à traduire) et au retrait.
+    if (msg.type === 'detacher' || msg.type === 'envoyer') {
+      if (refuserSiVerrouille()) { return; }
+      const id = String(msg.id || '');
+      if (id === '') { return; }
+      const texte = await texteArticle();
+      const fiche = ressourcesLib.lireRessources(texte).find((f) => f.id === id);
+      if (!fiche) { return; }                        // déjà partie du .md : rien à déposer
+      const versAutre = msg.type === 'envoyer';
+      const vers = versAutre ? reserveLib.autreRevue(revueCourante(racine)) : revueCourante(racine);
+      if (!vers) { return; }
+      if (!deposerFicheEnReserve(racine, slug, fiche, vers, versAutre)) { return; }
+      if (versAutre) {
+        vscode.window.setStatusBarMessage(T('ressource.envoye'), 5000);
+        await charger(panneau);                      // rien n'a bougé dans le .md : on recharge tel quel
+        return;
+      }
+      const resultat = ressourcesLib.retirerRessource(texte, id);
+      if (resultat.ok && !(await ecrireTexteArticle(resultat.texte))) { return; }
+      vscode.window.setStatusBarMessage(T('ressource.detache'), 5000);
+      await charger(panneau);
+      if (rafraichirTout) { rafraichirTout(); }
+      return;
+    }
     if (msg.type === 'retourArticle') {
       // Garde « non enregistré », comme dans le gestionnaire des médias.
       if (msg.modifie) {
         const choix = await vscode.window.showWarningMessage(
-          T('ressource.quitter.question', [slug]), { modal: true, detail: T('table.quitter.detail') },
+          pageDoc ? T('doc.quitter.page') : T('doc.quitter.question', [slug]),
+          { modal: true, detail: T('table.quitter.detail') },
           T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
         if (choix === undefined) { return; }          // Annuler : on reste
         if (choix === T('form.enregistrer')) {
-          const n = await enregistrer(msg.ressources);
+          const n = await enregistrer(msg.ressources, msg.rubriques);
           if (n < 0) { return; }                      // échec d'écriture : on reste
-          if (n > 0) { vscode.window.setStatusBarMessage(T('ressource.statut.enregistrees', [n]), 5000); }
+          if (n > 0) { vscode.window.setStatusBarMessage(T('doc.statut.enregistres', [n]), 5000); }
         }
       }
-      await ouvrirArticle(fournisseur, slug);
+      // Une page de Documentation n'a pas de texte à relire : son .md n'est plus qu'un
+      // magasin de blocs, jamais ouvert à la main (demande du 02.09.2026). Le panneau se
+      // ferme donc sur l'arbre, et non sur un éditeur de markdown.
+      if (!pageDoc) { await ouvrirArticle(fournisseur, slug); }
       panneau.dispose();
+      if (pageDoc && rafraichirTout) { rafraichirTout(); }
       return;
     }
   });
-  panneau.webview.html = htmlRessources(crypto.randomBytes(16).toString('hex'));
+  panneau.webview.html = htmlDocumentation(crypto.randomBytes(16).toString('hex'));
+}
+
+// ---- Réserve de fiches : mettre de côté, et échanger entre les deux revues -------
+//
+// Deux besoins qui n'en font qu'un magasin. « Mettre en réserve » sort une fiche du numéro
+// courant sans la perdre — elle attend un numéro qui aura la place, ou le bon dossier
+// thématique. « Envoyer à l'autre revue » en dépose une COPIE dans la réserve de la revue
+// sœur, marquée à traduire : c'est le canal par lequel un livre relevé côté français arrive
+// côté allemand, et réciproquement.
+//
+// La réserve vit HORS du numéro (lib/reserve.js, cheminReserve) : dans le dossier parent,
+// donc dans OneDrive, donc partagée par l'équipe et survivant au bouclage d'un numéro.
+//
+// Pourquoi une liste à choisir (QuickPick) et pas un formulaire de plus : on ne SAISIT rien
+// dans une réserve, on y prend ou on y jette. Un panneau webview aurait ajouté trois
+// fichiers de media/ pour reproduire une liste que l'éditeur sait déjà afficher, avec sa
+// recherche incrémentale par-dessus le marché.
+
+// Le jeton de revue du numéro ouvert. Repli sur 'revue' plutôt que sur rien : la réserve
+// doit rester utilisable même sur un numéro dont ausgabe.yaml n'a pas encore de `revue:`.
+function revueCourante(racine) {
+  const jeton = revueNumero(racine);
+  return reserveLib.REVUES.indexOf(jeton) !== -1 ? jeton : 'revue';
+}
+
+function nomRevueAffiche(revue) {
+  return T('reserve.nom.' + (reserveLib.REVUES.indexOf(revue) !== -1 ? revue : 'revue'));
+}
+
+// Le compte affiché sur l'entrée « Réserve » de l'arbre : celui de la revue OUVERTE, la
+// seule dans laquelle on puisse insérer. Jamais une exception : une réserve illisible se
+// compte zéro, elle ne doit pas empêcher l'arbre de s'afficher.
+function compterReserve(racine) {
+  if (!racine) { return 0; }
+  try { return reserveLib.lister(racine, revueCourante(racine)).length; }
+  catch (e) { return 0; }
+}
+
+// Le texte exact du bloc d'une fiche, tel qu'il est écrit dans le .md. Régénéré par
+// blocRessource() plutôt que découpé dans le fichier : la fiche part alors dans la réserve
+// sous la forme NORMALISÉE que le formulaire aurait écrite, et non avec les espaces d'une
+// saisie à la main — c'est cette même forme que lireRessources() saura relire à l'insertion.
+function blocDeFiche(fiche) {
+  return ressourcesLib.blocRessource(fiche.id, fiche.type, fiche.valeurs);
+}
+
+// Dépose une fiche de l'article `slug` dans une réserve. `vers` est le jeton de revue visée,
+// `aTraduire` dit si la copie attend une traduction. Rend true si le dépôt a eu lieu.
+function deposerFicheEnReserve(racine, slug, fiche, vers, aTraduire) {
+  const media = path.join(racine, dossierUnites(), slug, 'media');
+  const image = (fiche.valeurs.image && relatifImageValide(fiche.valeurs.image))
+    ? { source: path.join(media, fiche.valeurs.image), nom: path.basename(fiche.valeurs.image) }
+    : null;
+  const charge = {
+    origine: revueCourante(racine),
+    numeroOrigine: titreNumero(racine) || '',
+    aTraduire: !!aTraduire,
+    deposeLe: new Date().toISOString().slice(0, 10),
+    type: fiche.type,
+    titre: fiche.valeurs.titre || '',
+    bloc: blocDeFiche(fiche)
+  };
+  if (image && fs.existsSync(image.source)) { charge.image = image; }
+  try {
+    reserveLib.deposer(racine, vers, charge);
+    return true;
+  } catch (e) {
+    vscode.window.showErrorMessage(T('reserve.err.ecriture', [e.message]));
+    return false;
+  }
+}
+
+// Insère une fiche prise en réserve dans un article ouvert. L'image, si la fiche en porte
+// une, est copiée de la réserve vers articles/<slug>/media/ sous un nom libre, et le chemin
+// est réécrit en conséquence : une fiche insérée doit être une fiche autonome de l'article,
+// pas un renvoi vers un dossier partagé qu'un collègue peut vider.
+async function insererFicheDeReserve(fournisseur, rafraichirTout, entree) {
+  const racine = fournisseur.racine;
+  if (!racine) { return; }
+  const ed = vscode.window.activeTextEditor;
+  let slug = ed ? slugDepuisChemin(racine, ed.document.uri.fsPath) : null;
+  if (!slug) { slug = apercuCourantSlug; }
+  if (!slug || !new Set(fournisseur.listerArticles()).has(slug)) {
+    vscode.window.setStatusBarMessage(T('reserve.inserer.horsarticle'), 5000);
+    return;
+  }
+  const fiches = ressourcesLib.lireRessources(entree.fiche.bloc);
+  if (fiches.length === 0) { return; }              // fichier trafiqué : rien d'exploitable
+  const fiche = fiches[0];
+  const valeurs = Object.assign({}, fiche.valeurs);
+
+  if (valeurs.image) {
+    // La réserve range l'image dans un media/ à côté du .md, comme un article (voir
+    // lib/reserve.js) : c'est ce qui fait que lireRessources() a su la relire ci-dessus.
+    const source = path.join(path.dirname(entree.chemin), 'media', path.basename(valeurs.image));
+    const dossier = path.join(racine, dossierUnites(), slug, 'media');
+    try {
+      fs.mkdirSync(dossier, { recursive: true });
+      const nom = nomMediaLibre(dossier, path.basename(valeurs.image));
+      fs.copyFileSync(source, path.join(dossier, nom));
+      valeurs.image = nom;
+    } catch (e) {
+      // L'image manque ou n'a pas pu être copiée : la fiche s'insère sans elle plutôt que
+      // pas du tout, et le rendu s'en accommode (szh-ressource.lua ne présume aucune image).
+      valeurs.image = '';
+    }
+  }
+
+  const md = path.join(racine, dossierUnites(), slug, slug + '.md');
+  let doc;
+  try { doc = await vscode.workspace.openTextDocument(md); }
+  catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [e.message])); return; }
+  const texte = ressourcesLib.ajouterRessource(doc.getText(), fiche.id, fiche.type, valeurs);
+  try {
+    const edition = new vscode.WorkspaceEdit();
+    const fin = doc.lineAt(doc.lineCount - 1).range.end;
+    edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), texte);
+    if (!(await vscode.workspace.applyEdit(edition))) { return; }
+    await doc.save();
+  } catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [e.message])); return; }
+
+  reserveLib.retirer(entree.chemin);                // prise en réserve = sortie de réserve
+  vscode.window.setStatusBarMessage(T('reserve.insere'), 5000);
+  if (rafraichirTout) { rafraichirTout(); }
+}
+
+// La réserve de la revue ouverte, à choisir puis à traiter. Deux temps, et non des boutons
+// par ligne : le second QuickPick nomme l'action en toutes lettres, ce qui évite de
+// supprimer une fiche d'un clic mal placé.
+async function ouvrirReserve(fournisseur, rafraichirTout) {
+  const racine = fournisseur.racine;
+  if (!racine) { return; }
+  const revue = revueCourante(racine);
+  const entrees = reserveLib.lister(racine, revue);
+  if (entrees.length === 0) {
+    vscode.window.showInformationMessage(T('reserve.vide'));
+    return;
+  }
+  const items = entrees.map((e) => {
+    const f = e.fiche;
+    const fiches = ressourcesLib.lireRessources(f.bloc);
+    const titre = (fiches.length > 0 && fiches[0].valeurs.titre) || e.nom;
+    const detail = [
+      f.aTraduire ? T('reserve.atraduire') : null,
+      f.origine ? T('reserve.origine', [nomRevueAffiche(f.origine), f.numeroOrigine || '?']) : null,
+      f.deposeLe ? T('reserve.depose.le', [f.deposeLe]) : null
+    ].filter(Boolean).join(' · ');
+    return {
+      label: (f.aTraduire ? '$(globe) ' : '$(archive) ') + titre,
+      description: fiches.length > 0 ? fiches[0].type : '',
+      detail: detail,
+      entree: e
+    };
+  });
+  // ⚠ sousGarde, comme TOUT choix de ce fichier : sans elle, la fin d'une compilation
+  //   (l'aperçu qui se recharge, l'avis de journal) referme le QuickPick sous les doigts du
+  //   rédacteur. Contrat vérifié à la lecture de la source par test/js/interaction.test.js.
+  const choix = await sousGarde(() => vscode.window.showQuickPick(items, {
+    title: T('reserve.titre'),
+    placeHolder: T('reserve.compte', [entrees.length]),
+    matchOnDetail: true
+  }));
+  if (!choix) { return; }
+  const ACTION_INSERER = T('reserve.inserer');
+  const ACTION_SUPPRIMER = T('reserve.supprimer');
+  const action = await sousGarde(() => vscode.window.showQuickPick(
+    [{ label: ACTION_INSERER, detail: T('reserve.inserer.tip') },
+     { label: ACTION_SUPPRIMER, detail: T('reserve.supprimer.tip') }],
+    { title: choix.label, placeHolder: T('reserve.titre') }));
+  if (!action) { return; }
+  if (action.label === ACTION_INSERER) {
+    if (refuserSiVerrouille()) { return; }
+    await insererFicheDeReserve(fournisseur, rafraichirTout, choix.entree);
+    return;
+  }
+  const sur = await vscode.window.showWarningMessage(
+    T('reserve.supprimer.question'), { modal: true, detail: choix.label },
+    T('reserve.supprimer'));
+  if (sur !== T('reserve.supprimer')) { return; }
+  reserveLib.retirer(choix.entree.chemin);
+  vscode.window.setStatusBarMessage(T('reserve.supprime'), 5000);
+  if (rafraichirTout) { rafraichirTout(); }
 }
 
 function activate(context) {
@@ -7978,6 +8534,14 @@ function activate(context) {
     // conservé. Un en-tête déjà déplié reste déplié : le clic n'ouvre alors que la vue.
     cmd('szh.ouvrirSection', (categorie) => {
       if (fournisseur.definirSectionDeployee(categorie)) { fournisseur.rafraichir(); }
+      // « ACTUALITÉ » n'a pas de vue d'ensemble : son en-tête ouvre directement le
+      // formulaire de la page de Documentation (demande du 02.09.2026). C'est le seul
+      // en-tête de section qui ouvre un formulaire plutôt qu'une liste, et c'est voulu — il
+      // n'y a qu'une page de Documentation par numéro, une liste d'un seul élément n'aurait
+      // été qu'un détour.
+      // La promesse est RENDUE : sans cela, un appelant qui attend szh.ouvrirSection
+      // reprendrait la main avant que le formulaire ne soit ouvert.
+      if (categorie === 'actualite') { return vscode.commands.executeCommand('szh.documentation'); }
       if (VUE_SECTION[categorie]) { vscode.commands.executeCommand(VUE_SECTION[categorie]); }
     }),
     cmdEcriture('szh.supprimerArticle', (item) => supprimerArticle(fournisseur, rafraichirTout, item)),
@@ -7989,9 +8553,17 @@ function activate(context) {
     cmdEcriture('szh.editerTable', (item) => ouvrirEditeurTable(fournisseur, item)),
     // Le formulaire des médias de l'article : légendes, crédits, qualité, remplacement.
     cmdEcriture('szh.mediasArticle', (item) => ouvrirGestionMedias(fournisseur, rafraichirTout, item)),
-    // Les fiches de « ressources » de l'article : livres, films, et ce que le moteur
-    // générique de lib/ressources.js portera demain.
-    cmdEcriture('szh.ressourcesArticle', (item) => ouvrirGestionRessources(fournisseur, rafraichirTout, item)),
+    // La Documentation : les fiches de l'article (livres, films, interventions, agenda) et,
+    // sur une page de Documentation seulement, ses rubriques de texte riche. Un seul
+    // formulaire depuis le 02.09.2026 — d'où une seule commande, celle qui existait déjà.
+    cmdEcriture('szh.ressourcesArticle', (item) => ouvrirDocumentation(fournisseur, rafraichirTout, item)),
+    // La page de Documentation du numéro, créée au besoin. Volontairement hors cmdEcriture :
+    // la relire sur un numéro verrouillé doit rester possible, seule sa CRÉATION est refusée
+    // (voir ouvrirPageDocumentation).
+    cmd('szh.documentation', () => ouvrirPageDocumentation(fournisseur, rafraichirTout)),
+    // La réserve : le magasin de fiches hors numéro, et le canal d'échange avec la revue
+    // sœur (lib/reserve.js). Commande d'ÉCRITURE : insérer et supprimer y touchent au disque.
+    cmdEcriture('szh.reserve', () => ouvrirReserve(fournisseur, rafraichirTout)),
     vscode.workspace.onDidChangeWorkspaceFolders(majContexte),
     // L'avertissement part au démarrage d'une tâche : Ctrl+S, le chemin le plus fréquent,
     // ne passe pas par les fonctions du cockpit.

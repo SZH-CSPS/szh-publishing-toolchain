@@ -637,6 +637,23 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
 .szh-ressource-sans-image { padding: 8px 16px; margin: 0.5em 0; }
 .szh-ressource-sans-image .szh-ressource-titre p { margin-bottom: 0.25em; }
 
+/* Rubrique de texte riche de la Documentation (liste bibliographique, liste de liens,
+   brève d'actualité) : filters/szh-rubrique.lua pose une <section>, un titre déduit du
+   type et de la langue, puis le contenu inchangé. Un CHAPITRE de la Documentation, pas
+   un encadré comme .szh-ressource ci-dessus : ni fond, ni filet gauche. Le titre reste un
+   h2 de corps ORDINAIRE (§6) — aucune surcharge de couleur : la maquette ne met déjà
+   aucun h2 de corps en couleur annuelle (« À propos des auteur·e·s », §8, même parti
+   pris), une rubrique ne fait pas exception. Seul un filet fin, lui, porte la couleur
+   annuelle : c'est lui qui marque la coupure, --c-annual-ui plutôt que --c-annual brut
+   pour la même raison qu'aux bordures de tableau (§7) — un aplat annuel trop clair
+   resterait sous le plancher APCA du non textuel (30).
+   Espacement au-dessus au même ordre de grandeur que .szh-auteurs (§8) : une rubrique est
+   une coupure de rang comparable. break-inside reste libre PARTOUT ici, à dessein : une
+   liste de trente références doit pouvoir se couper entre deux pages, à la différence
+   d'une fiche de ressource. */
+.szh-rubrique { margin: 2.6em 0 0; }
+.szh-rubrique-titre { padding-top: 10px; border-top: 2px solid var(--c-annual-ui); }
+
 /* Tableaux importés bruts (<table> nu, non .szh-tableau) : style générique sobre. */
 table { border-collapse: collapse; font-size: 0.85rem; margin: 1.4em 0; width: 100%; }
 th, td { border: 1px solid #999; padding: 0.3em 0.5em; text-align: left; vertical-align: top; }

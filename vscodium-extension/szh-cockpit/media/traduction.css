@@ -55,6 +55,11 @@ button:disabled { opacity: .45; cursor: default; }
 /* ---- Bloc « Question / commentaire », en tête du formulaire. */
 .carte.commentaire { border-left-color: var(--vscode-charts-purple, #b180d7); }
 .carte.commentaire label { margin-top: 0; }
+/* La ligne qui dit où va ce commentaire : sur la carte de l'article, sous les yeux de
+   toute l'équipe. Sans elle, ce champ passait pour un pense-bête privé — et son libellé
+   d'aide était réclamé par l'hôte sans exister nulle part, donc jamais affiché. */
+.carte.commentaire .aide { margin: var(--e1) 0 0; font-size: var(--t-mini);
+  color: var(--encre-2); }
 
 /* ---- Actions d'un texte source : Copier + DeepL. */
 .actions-source { display: inline-flex; gap: .35rem; flex: 0 0 auto; }

@@ -61,9 +61,9 @@ Les deux autres entrées restent disponibles et font exactement la même chose 
 gauche (l’Explorateur). Elle regroupe tout le travail courant, sans toucher aux
 fichiers ni au terminal.
 
-[capture : la barre « Revue SZH » avec ses trois sections]
+[capture : la barre « Revue SZH » avec ses quatre sections]
 
-Elle a **trois sections** :
+Elle a **quatre sections** :
 
 - **Articles** – un article par ligne. **Un clic fait tout** : le texte s’ouvre à
   gauche, l’article est recompilé **si besoin** (texte ou tableau plus récent que le
@@ -73,12 +73,18 @@ Elle a **trois sections** :
   dans le numéro, avec le nom de son dossier et son avancement juste à côté. Cliquer
   l'**onglet** « Articles » lui-même ouvre la **vue « Articles »**, où se règlent
   l’ordre du numéro, les tâches et la couverture (voir plus bas).
-  Au survol d’un article, trois boutons :
+  Au survol d’un article, quatre boutons, la poubelle fermant la rangée :
   - **☰ Éditer les métadonnées de cet article** – le formulaire des fiches, filtré sur
     ce seul article ;
   - **🖼 Gérer les médias de cet article** – le formulaire décrit juste en dessous ;
+  - **📚 Gérer la documentation de cet article** – les fiches de livre, de film,
+    d’intervention parlementaire, de recherche en cours, d’agenda et de reprise d’un
+    article de la revue sœur (voir la section « Actualité », plus bas) ;
   - **🗑 Supprimer l’article** – efface l’article **et** son PDF, après une demande de
     confirmation explicite (l’action est irréversible : rien n’est supprimé sans accord).
+
+  Ces deux boutons du milieu servent surtout aux pages de **Documentation**, mais rien
+  n’empêche de s’en servir ailleurs : ils sont proposés sur tous les articles d’une revue.
 
   Si l’article contient des **tableaux**, une petite flèche permet de le **déplier** :
   chaque **tableau** (fichiers `table-01.html`, `table-02.html`…) vient du document
@@ -269,6 +275,11 @@ Elle a **trois sections** :
   L’aperçu de l’article se ferme à l’ouverture de l’éditeur, pour laisser la place à la
   grille. Deux boutons de la barre le rouvrent (**Voir le tableau dans l’aperçu**, qui
   amène la vue sur le tableau) et le referment (**Cacher l’aperçu**).
+- **Actualité** (**News** en allemand) – la page de **Documentation** du numéro. Cliquer
+  l’en-tête ouvre son formulaire, et la crée si le numéro n’en a pas encore ;
+  la section elle-même ne porte que l’entrée **Réserve**. Une
+  revue seulement : un livre n’a pas de Documentation. Tout est décrit dans
+  la section « Actualité », plus bas.
 - **Word en attente (n)** – les fichiers Word déposés mais pas encore convertis ; le
   nombre entre parenthèses est le compte. Un ⚠ « déjà converti » signale un Word dont
   l’article existe déjà (renommer le fichier si c’est une nouvelle version).
@@ -467,6 +478,8 @@ boutons pour ajouter et retirer une ligne.
 
 ### Le geste type
 
+Un article naît toujours d’un `.docx` : c’est l’unique geste qui en crée un dans le cockpit.
+
 1. **Glisser les `.docx` finalisés sur la barre « Revue SZH »** (ou dans le dossier
    **articles-word**, ou via **🚀 Commande → Importer des Word**).
 2. La conversion démarre, puis **les articles sont compilés dans la foulée** (PDF et
@@ -478,10 +491,10 @@ boutons pour ajouter et retirer une ligne.
 
 ### La vérification de l’import
 
-Après chaque conversion, un panneau liste les **articles tout juste importés**, un par
-carte. Le convertisseur a déjà **pré-rempli ce qu’il a reconnu** dans le Word – titre,
-sous-titre, résumés, mots-clés, DOI, auteur(s) – et chaque champ porte un badge :
-**« détecté »** (à relire) ou **« à compléter »** (le compteur en tête de carte suit).
+Après chaque conversion, un panneau liste les **articles tout juste importés**, un par carte. Le convertisseur a déjà **pré-rempli ce qu’il a reconnu** dans le Word – type, titre, sous-titre, résumés, mots-clés, DOI, auteur(s) – et chaque champ porte un badge : **« détecté »** (à relire) ou **« à compléter »** (le compteur en tête de carte suit).
+
+Le **type** se devine à partir du titre et du nom du fichier : « documentation » ou « actualité et ressources » range l’article dans la Documentation, « éditorial » (ou un DOI qui se termine par « -00 ») en fait l’éditorial du numéro ; sans indice, l’article part en **Article**, faute de mieux. Le menu **« Type d’article »** de la carte confirme ce choix, ou le corrige : six valeurs, groupées en **Liés au dossier thématique** (Article, Éditorial, Interview) et **Hors dossier** (Varia, Tribune libre, Documentation). C’est ce choix qui range l’article dans le numéro, décide de sa rubrique à l’export OJS (voir « Régler l’export OJS », plus bas) et, pour Documentation, le sort de la liste des articles – cette page-là s’ouvre depuis l’en-tête « Actualité », et non depuis « Articles » – voir plus loin.
+
 C’est aussi là qu’on finit l’article proprement :
 
 - **les photos des auteur·e·s** : le même bouton photo que dans les métadonnées –
@@ -683,6 +696,134 @@ tant qu’aucune couverture n’est déposée.
 **JPEG ou PNG, 12 Mo au maximum.** Le fichier est enregistré sous un nom fixe
 (`couverture.jpg` ou `couverture.png`) : il n’y a jamais deux couvertures dans un numéro,
 et l’export prend toujours celle qu’on vient de déposer.
+
+## La section « Actualité » : la Documentation du numéro
+
+### Une page, un formulaire, rien à créer
+
+Chaque numéro d’une revue se termine par une rubrique qui ne ressemble à aucune autre : la
+Documentation (« Actualité et ressources » côté Revue, « News & Ressourcen » côté
+Zeitschrift). On y trouve des fiches de lecture (livres, films), des interventions
+parlementaires, des recherches en cours, des reprises d’articles parus dans l’autre revue,
+l’agenda des manifestations, et des rubriques de prose plus libres – bibliographies, listes
+de liens, brèves.
+
+**Cliquez sur l’en-tête Actualité** (**News** en allemand) dans la barre « Revue SZH »  :
+le formulaire de la page s’ouvre. Si le numéro n’avait pas encore de page de Documentation,
+elle est créée à cet instant – son dossier, son titre, sa place à la fin du sommaire. Il n’y a
+donc ni Word à déposer, ni type d’article à régler, ni fichier texte à ouvrir : cette page
+n’a pas de texte suivi, seulement des fiches et des rubriques.
+
+C’est pourquoi la section ne liste qu’une seule entrée, **Réserve** (voir plus bas) : la page
+elle-même n’y apparaît pas. Le nombre entre parenthèses, à côté de **ACTUALITÉ**, compte les
+blocs déjà saisis – fiches et rubriques confondues.
+
+Une revue seulement : un livre n’a pas de Documentation, et n’a donc pas cette section.
+
+[capture : la section « Actualité » dans la barre, avec l’entrée « Réserve »]
+
+### Le formulaire : replié par défaut, avec son sommaire
+
+Le formulaire s’ouvre **tout replié** : on lit d’abord la structure de la page, on déplie
+ensuite ce qu’on veut écrire. Un clic sur un titre ouvre son bloc et referme le précédent –
+il n’y en a jamais deux ouverts à la fois, et l’état « tout replié » reste toujours
+atteignable en recliquant sur le bloc ouvert.
+
+À droite, un **sommaire** suit le défilement et donne la page d’un coup d’œil : les rubriques
+d’abord, les catégories de fiches ensuite, chacune avec le nombre de fiches saisies. Une
+rubrique encore vide y est marquée « vide » : c’est le moyen le plus rapide de voir ce
+qu’il reste à écrire. Cliquer une entrée y mène ; pour une rubrique, l’ouvre au passage.
+
+Rien n’est refusé à l’enregistrement. Une fiche à laquelle il manque encore un champ
+s’enregistre comme les autres, et porte simplement une pastille **non complet** dans son
+titre – son info-bulle dit ce qui manque. Seule une fiche à laquelle personne n’a rien saisi
+n’est pas écrite : un clic sur « Ajouter » suivi de rien ne laisse aucune trace.
+
+Comme tous les formulaires du cockpit, celui-ci **enregistre tout seul** quand la fenêtre
+perd le focus, et `Ctrl+S` enregistre à la demande.
+
+[capture : le formulaire de Documentation, replié, avec son sommaire à droite]
+
+### Les cinq rubriques de texte riche
+
+Une rubrique accueille de la prose ordinaire – une bibliographie, une liste de liens, des
+brèves – là où découper en champs n’apporterait rien : **Références du dossier**, **Sites en
+lien avec le dossier**, **Tour d’horizon**, **Ressources**, **Documentaires et podcasts**.
+
+Chaque rubrique a **un bloc, un seul**, toujours présent et toujours modifiable : il n’y a
+rien à ajouter, et rien qui puisse manquer. Le bloc porte un seul champ, **Texte**, avec sa
+petite barre d’outils : **Gras** (`Ctrl+B`), **Italique** (`Ctrl+I`), **Lien** et **Liste**, à
+appliquer sur le texte sélectionné. Une ligne vide sépare deux paragraphes.
+
+La corbeille d’une rubrique **vide son texte** : la rubrique cesse alors d’être imprimée, mais
+son bloc de saisie reste là, prêt à resservir. La remplir la fait revenir dans le PDF.
+
+Le titre imprimé n’est jamais à saisir : il se compose tout seul, à partir de la rubrique et
+de la langue de l’article – c’est ce titre-là qui sert d’en-tête dans le formulaire.
+
+### Les six fiches
+
+Une fiche, c’est un jeu de champs, comme dans un catalogue. Chaque catégorie a son bouton
+**« Ajouter… »** sous sa dernière fiche, et il n’y a pas de limite de nombre :
+
+| Fiche | Section du formulaire | Champs propres |
+|---|---|---|
+| Livre | **Livres** | Auteur(s), Année, Éditeur |
+| Film | **Films** | Réalisateur·rice, Année, Genre, Pays |
+| Intervention parlementaire | **Interventions parlementaires** | Canton, Type d’intervention, Numéro, Date |
+| Recherche en cours | **Recherches en cours** | Institution(s) de recherche, Début, Fin |
+| D’une revue à l’autre | **D’une revue à l’autre** | Auteur(s), Revue, Référence (volume, numéro, pages), DOI |
+| Manifestation | **Agenda et formation continue** | Type d’événement, Début, Fin, Lieu, Organisateur·rice |
+
+Toutes demandent en plus un **Titre**, un **Descriptif** et un **Lien (facultatif)**. Seuls le
+livre et le film demandent une **Image** ; les quatre autres n’en portent jamais. Le lien
+imprimé se rédige tout seul, dans la langue de l’article : rien à taper au-delà de l’adresse.
+
+Deux champs se choisissent dans une liste, plutôt que de se taper :
+
+- le **Canton** d’une intervention – les 26 cantons et la Confédération, rangés par ordre
+  alphabétique, avec leur abréviation entre parenthèses. C’est **l’abréviation seule** qui
+  s’imprime : « ZH · Motion · 24.3456 » ;
+- le **Type d’événement** d’une manifestation – Colloque, Congrès, Journée d’étude, Cours,
+  Webinaire, Formation continue. Il s’imprime traduit : un « Colloque » saisi côté
+  français ressort « Tagung » si la fiche part dans la Zeitschrift.
+
+Les deux dates d’une manifestation se saisissent dans un sélecteur de date, et s’impriment
+en une seule mention, aussi compacte que dans nos pages : **05.–06.01.2026** pour deux jours
+du même mois, **29.06.–02.07.2026** à cheval sur deux mois, **10.09.2026–04.07.2028** pour une
+formation étalée sur deux ans. Une manifestation d’un seul jour n’affiche qu’une date. Les
+fiches d’agenda se rangent **par date**, donc dans l’ordre où elles auront lieu ; les livres,
+films et recherches par titre, les interventions par canton.
+
+### La réserve
+
+Sur une fiche déjà enregistrée, deux icônes de plus apparaissent, reconnaissables à leur
+info-bulle :
+
+- l’une, **« Retirer cette fiche de l’article et la mettre en réserve »** – la fiche
+  quitte la page et attend, de côté ;
+- l’autre, **« Envoyer une copie de cette fiche à traduire vers Zeitschrift »** (ou
+  **vers Revue**, selon la revue ouverte) – une copie part dans la réserve de l’autre revue,
+  marquée à traduire ; l’original ne bouge pas.
+
+Un message confirme le geste : « ✓ Fiche mise en réserve » ou
+« ✓ Copie envoyée à traduire ». L’image de la fiche, si elle en a une, suit le mouvement.
+
+La réserve vit **à côté des numéros**, pas dans le numéro lui-même : dans OneDrive, donc
+partagée par toute l’équipe, et elle survit à l’archivage d’un numéro.
+
+[capture : une fiche, avec ses deux icônes « mettre en réserve » et « envoyer »]
+
+L’entrée **« Réserve »** de la section « Actualité » l’ouvre – toujours présente,
+même sur un numéro où rien n’a encore été saisi, avec un compte entre parenthèses dès qu’elle
+n’est pas vide. Un premier choix liste ce qui attend : titre, type, et selon le cas si la
+fiche est à traduire, d’où elle vient (l’autre revue et son numéro) et quand elle a été mise
+en réserve. Un second choix propose alors soit **« Insérer dans cet article »** – la
+fiche s’écrit dans la page de Documentation ouverte et quitte la réserve (il faut l’avoir
+ouverte d’abord, sinon un message le rappelle) –, soit **« Supprimer »** – elle
+disparaît définitivement, après une confirmation.
+
+[capture : la réserve ouverte, liste des fiches en attente]
 
 ## Envoyer un article à son auteur
 

@@ -57,6 +57,9 @@ lib/
                         mots-cles-edudoc.js : redirections même-hôte, réponse bornée,
                         délai total, resumptionToken, repli sur 503 — SZH_RESEAU_INTERDIT
                         y bloque tout appel réel en test, pour les deux moissonneurs
+  cantons.js            les 26 cantons et la Confédération : la liste fermée du champ
+                        « canton » d'une fiche d'intervention parlementaire — le CODE est
+                        stocké et imprimé, le nom complet ne sert qu'à la liste déroulante
   panneaux.js           les trois panneaux QuickPick
   portraits.js          appel du script de détourage des photos, dans WSL
   profil.js             ce qu'est le dossier ouvert — numéro de revue (ausgabe.yaml,
@@ -64,9 +67,16 @@ lib/
   qualite-image.js      seuils de résolution des images et verdict de qualité
   references.js         insertions d'images et de tableaux dans le markdown, et les
                         grilles d'images (plusieurs images pour une seule figure)
-  ressources.js         fiches de « ressources » d'un article (livre, film, …) : un moteur
-                        générique, décliné par une table de champs par type (TYPES,
-                        recopiée dans pipeline/filters/szh-ressource.lua)
+  reserve.js            réserve de fiches hors numéro (dossier parent, _reserve/<revue>/) :
+                        mettre de côté, et envoyer une copie à traduire dans la revue sœur
+  ressources.js         fiches de « ressources » d'un article (livre, film, intervention
+                        parlementaire, agenda, …) : un moteur générique, décliné par une
+                        table de champs par type (TYPES, recopiée dans
+                        pipeline/filters/szh-ressource.lua), plus les listes fermées et les
+                        champs de date de chaque type
+  rubriques.js          rubriques de texte riche d'un article de Documentation (références
+                        du dossier, tour d'horizon, podcasts) : un bloc de prose titré, le
+                        titre étant déduit du type par pipeline/filters/szh-rubrique.lua
   slug.js               slug d'article, miroir de celui du Makefile
   table-model.js        analyse, sérialisation et opérations du modèle de tableau
   traduction.js         sidecar <slug>.traduction.yaml et suivi des traductions

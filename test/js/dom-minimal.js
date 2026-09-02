@@ -87,6 +87,10 @@ function element(balise) {
       return this._texte + this.enfants.map((c) => c.textContent).join('');
     },
     set textContent(v) { this._texte = v === undefined || v === null ? '' : String(v); this.enfants = []; },
+    // Un <select> expose ses <option>, comme le vrai DOM : une page qui contrôle qu'une
+    // valeur stockée figure bien dans sa liste (media/documentation.js, poserValeurChoix)
+    // lèverait sans cela sur `sel.options.length`.
+    get options() { return this.enfants.filter((c) => c.balise === 'option'); },
     get className() { return Array.from(this.classes).join(' '); },
     set className(v) { this.classes = new Set(String(v || '').split(/\s+/).filter(Boolean)); },
     classList: {
@@ -183,11 +187,13 @@ function ouvrir(opts) {
   vm.runInContext(script, contexte, { filename: opts.page + '.js' });
 
   const racineDom = () => {
-    // Le conteneur de la page : « cartes » pour les formulaires de fiches, « corps » pour
-    // le gestionnaire des médias, « lignes » pour les vues d'ensemble. Ces éléments ne sont
-    // pas rattachés à <body> — la page les prend par leur identifiant, comme dans
-    // l'éditeur — d'où cette recherche par nom plutôt qu'un parcours depuis la racine.
-    return parId.cartes || parId.corps || parId.lignes || document.body;
+    // Le conteneur de la page : « cartes » pour les formulaires de fiches, « sections » pour
+    // la Documentation (qui garde son sommaire dans un second conteneur, « sommaire », pris
+    // par son nom dans les tests), « corps » pour le gestionnaire des médias, « lignes »
+    // pour les vues d'ensemble. Ces éléments ne sont pas rattachés à <body> — la page les
+    // prend par leur identifiant, comme dans l'éditeur — d'où cette recherche par nom
+    // plutôt qu'un parcours depuis la racine.
+    return parId.cartes || parId.sections || parId.corps || parId.lignes || document.body;
   };
   return {
     document: document, parId: parId, messages: messages,

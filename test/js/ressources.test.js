@@ -8,6 +8,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+// Le saut de ligne, nommé : ces tests construisent du markdown multiligne.
+const NL = String.fromCharCode(10);
 const fs = require('fs');
 const path = require('path');
 
@@ -22,7 +24,8 @@ const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 test('types : livre et film portent les champs complets voulus par le cahier des charges', () => {
   assert.deepStrictEqual(res.champsBiblio('livre'), ['auteurs', 'annee', 'editeur']);
   assert.deepStrictEqual(res.champsBiblio('film'), ['realisateur', 'annee', 'genre', 'pays']);
-  assert.deepStrictEqual(res.typesConnus().sort(), ['film', 'intervention', 'livre', 'recherche']);
+  assert.deepStrictEqual(res.typesConnus().sort(),
+    ['agenda', 'film', 'intervention', 'livre', 'recherche', 'reprise']);
   assert.deepStrictEqual(res.tousLesChamps('livre'),
     ['titre', 'auteurs', 'annee', 'editeur', 'lien', 'descriptif', 'image']);
 });
@@ -30,6 +33,75 @@ test('types : livre et film portent les champs complets voulus par le cahier des
 test('types : intervention parlementaire et recherche en cours portent les champs constatés dans le corpus', () => {
   assert.deepStrictEqual(res.champsBiblio('intervention'), ['canton', 'categorie', 'numero', 'date']);
   assert.deepStrictEqual(res.champsBiblio('recherche'), ['institutions', 'debut', 'fin']);
+});
+
+// « D'une revue à l'autre » / « Blick in die Revue » : la reprise d'un article paru dans la
+// revue sœur, relevée dans les deux revues sur les numéros 2024-2026. Son jeton est un mot
+// simple, sans trait d'union — voir le commentaire de la table TYPES de lib/ressources.js :
+// `revue-soeur = {…}` n'est pas une clé Lua valide, et les deux tests de non-divergence plus
+// bas reconstruisent la ligne Lua attendue sous la forme `<type> = { … }`.
+test('types : la reprise d’un article de la revue sœur porte sa référence bibliographique', () => {
+  assert.deepStrictEqual(res.champsBiblio('reprise'), ['auteurs', 'revue', 'reference', 'doi']);
+  assert.ok(!res.typeAvecImage('reprise'), 'une reprise ne porte pas d’image');
+  assert.deepStrictEqual(res.champsManquants('reprise', { titre: 'X', descriptif: 'Y' }), [],
+    'sans image, une reprise est complète dès qu’elle a titre et descriptif');
+});
+
+// ---- La fiche « agenda » : ce que l'enquête du 02.09.2026 a trouvé --------------------
+//
+// Demande de Robin : « Agenda et formation doit devenir un champ structuré (date / plage de
+// date / type d'événement, etc.) — parcours nos éléments dans cette rubrique et détermine
+// les champs pertinents. » L'enquête a montré que la rubrique IMPRIMÉE des trois derniers
+// numéros contrôlés ne contient qu'un LIEN vers szh.ch / csps.ch, et que les vraies entrées
+// vivent sur le site — dont le formulaire d'annonce (« Annoncer une formation continue ou
+// une manifestation » / « Kurse und Veranstaltungen melden ») donne la structure exacte :
+// titre, début, fin, lieu, adresse de contact, lien, plus un texte libre. Ce sont ces
+// champs-là, et rien de plus : ni prix, ni public cible, ni délai d'inscription, aucun
+// n'existant dans le corpus.
+test('agenda : les champs du formulaire d’annonce de szh.ch, et pas un de plus', () => {
+  assert.deepStrictEqual(res.champsBiblio('agenda'),
+    ['evenement', 'debut', 'fin', 'lieu', 'organisateur']);
+  assert.ok(!res.typeAvecImage('agenda'), 'une manifestation ne porte pas d’image');
+  // Le descriptif tient le rôle du champ « Message » du formulaire de szh.ch : les dates
+  // disjointes d'une formation modulaire y sont précisées en clair, faute d'un champ
+  // répétable — c'est ce que fait le site lui-même.
+  assert.deepStrictEqual(res.tousLesChamps('agenda'),
+    ['titre', 'evenement', 'debut', 'fin', 'lieu', 'organisateur', 'lien', 'descriptif', 'image']);
+});
+
+test('agenda : les deux dates se saisissent en ISO, les années d’une recherche non', () => {
+  assert.strictEqual(res.saisieChamp('agenda', 'debut'), 'date');
+  assert.strictEqual(res.saisieChamp('agenda', 'fin'), 'date');
+  // `debut` et `fin` sont partagés avec la recherche en cours, où ce sont des ANNÉES : le
+  // mode de saisie est déclaré par (type, champ) et non par champ seul, faute de quoi une
+  // recherche « 2024 » se retrouverait avec un sélecteur de jour.
+  assert.strictEqual(res.saisieChamp('recherche', 'debut'), '');
+  assert.strictEqual(res.saisieChamp('recherche', 'fin'), '');
+  assert.strictEqual(res.saisieChamp('livre', 'annee'), '');
+});
+
+test('agenda : le type d’événement est une liste fermée, le canton une autre', () => {
+  assert.strictEqual(res.listeChamp('agenda', 'evenement'), 'evenement');
+  assert.strictEqual(res.listeChamp('intervention', 'canton'), 'canton');
+  assert.strictEqual(res.listeChamp('livre', 'auteurs'), '', 'un auteur ne se choisit pas dans une liste');
+  assert.deepStrictEqual(res.valeursListe('evenement'),
+    ['colloque', 'congres', 'journee', 'cours', 'webinaire', 'formation']);
+  // Des JETONS, jamais des libellés : c'est ce qui permet à « Colloque » de sortir
+  // « Tagung » côté allemand sans qu'on ait rien à ressaisir.
+  for (const v of res.valeursListe('evenement')) {
+    assert.match(v, /^[a-z]+$/, 'jeton non conforme : ' + v);
+  }
+});
+
+test('agenda : les manifestations se rangent par date de début, donc chronologiquement', () => {
+  const md = [
+    '::: {#a1 .szh-ressource type="agenda" titre="B" debut="2026-11-30"}', 'x', ':::', '',
+    '::: {#a2 .szh-ressource type="agenda" titre="A" debut="2026-01-05"}', 'y', ':::'
+  ].join(NL);
+  const range = res.reordonnerRessources(md, 'fr');
+  const ordre = res.lireRessources(range).map((r) => r.valeurs.titre);
+  assert.deepStrictEqual(ordre, ['A', 'B'],
+    'l’agenda doit se ranger par date et non par titre : c’est tout l’intérêt de la date ISO');
 });
 
 // Le champ « type d'intervention » (Motion, Postulat, Interpellation…) ne peut PAS s'appeler
@@ -61,6 +133,24 @@ test('requis : titre, descriptif et image manquent tant qu’ils sont vides', ()
   // La bibliographie et le lien ne bloquent jamais l’écriture : recommandés, pas requis.
   assert.strictEqual(res.ressourceComplete('livre',
     { titre: 'X', descriptif: 'Y', image: 'z.png', auteurs: '', annee: '', editeur: '', lien: '' }), true);
+});
+
+// Demande de Robin du 02.09.2026 : une fiche incomplète doit pouvoir s'enregistrer, une
+// pastille disant ce qui manque. La complétude ne commande donc plus l'écriture — c'est
+// ressourceEcrivable() qui la commande, et il ne refuse que deux choses : un type inconnu,
+// et une carte entièrement vide (celle que « Ajouter » vient de créer).
+test('écrivable : une fiche incomplète s’écrit, une fiche entièrement vide non', () => {
+  assert.strictEqual(res.ressourceEcrivable('livre', { titre: 'Le silence des bêtes' }), true,
+    'un titre seul suffit à écrire la fiche : le reste se complète plus tard');
+  assert.strictEqual(res.ressourceComplete('livre', { titre: 'Le silence des bêtes' }), false,
+    'elle reste incomplète pour autant, et la pastille le dira');
+  assert.strictEqual(res.ressourceEcrivable('livre', { descriptif: 'Rien que ceci.' }), true);
+  assert.strictEqual(res.ressourceEcrivable('livre', {}), false);
+  assert.strictEqual(res.ressourceEcrivable('livre', { titre: '   ', descriptif: NL, lien: '' }), false,
+    'des blancs ne sont pas un contenu');
+  assert.strictEqual(res.ressourceEcrivable('inconnu', { titre: 'X' }), false);
+  // Un champ bibliographique seul suffit aussi : on note parfois la date avant le titre.
+  assert.strictEqual(res.ressourceEcrivable('agenda', { debut: '2026-01-05' }), true);
 });
 
 test('requis : un type inconnu manque toujours de tout, même rempli', () => {
@@ -292,6 +382,22 @@ test('szh-ressource.lua : aucun type de lib/ressources.js n’est absent de la t
   const typesLua = Array.from(bloc.matchAll(/^\s*([a-zA-Z_][\w]*)\s*=/gm)).map((m) => m[1]);
   assert.deepStrictEqual(typesLua.sort(), res.typesConnus().sort(),
     'les types déclarés dans szh-ressource.lua et lib/ressources.js divergent');
+});
+
+// La liste fermée `evenement` vit en trois endroits, chacun avec son métier : les JETONS
+// dans lib/ressources.js, les libellés de SAISIE dans lib/i18n.js, les libellés IMPRIMÉS
+// dans szh-ressource.lua. Un jeton ajouté d'un côté et oublié de l'autre s'imprimerait tel
+// quel dans le PDF — dégradation propre, mais silencieuse : d'où ce contrôle.
+test('szh-ressource.lua : la liste fermée du type d’événement porte les mêmes jetons', () => {
+  const lua = lire('pipeline', 'filters', 'szh-ressource.lua');
+  const bloc = (lua.match(/local EVENEMENTS = \{([\s\S]*?)\n\}/) || [])[1] || '';
+  const jetonsLua = Array.from(bloc.matchAll(/^\s*([a-z]+)\s*=/gm)).map((m) => m[1]);
+  assert.deepStrictEqual(jetonsLua.sort(), res.valeursListe('evenement').sort(),
+    'les jetons de LISTES.evenement et ceux de la table EVENEMENTS du filtre divergent');
+  for (const j of jetonsLua) {
+    assert.match(bloc, new RegExp(j + '\\s*=\\s*\\{ fr = .+ de = .+ \\}'),
+      'le jeton ' + j + ' n’a pas ses deux langues dans szh-ressource.lua');
+  }
 });
 
 test('szh-ressource.lua : branché avant szh-numerotation (l’image doit lui arriver nue)', () => {

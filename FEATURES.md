@@ -461,3 +461,266 @@ Toutes bloquées par un territoire de fichiers, pas par une décision. À lancer
 
   Bloqué par `extension.js`, `lib/yaml.js`, `lib/articles.js`, `lib/export-ojs.js` et
   `lib/i18n.js`.
+
+---
+
+## IX. Lot du 1er septembre 2026 — la Documentation d'une revue, en section à part
+
+> ⚠ **Trois décisions de ce lot ont été révisées le 02.09.2026** — voir la section X :
+> la page de Documentation ne se liste plus dans l'arbre (F11), les deux formulaires
+> n'en font plus qu'un (F12), et l'agenda a quitté les rubriques de prose pour devenir
+> une fiche structurée (F12). Ce qui suit décrit l'état du 01.09.2026, conservé pour la
+> trace du raisonnement.
+
+La rubrique « Documentation » / « Dokumentation » d'un numéro (section OJS `DC` / `DK`)
+mélangeait deux régimes de contenu que rien ne distinguait dans l'arbre : des fiches
+structurées (livre, film, intervention, recherche) et des blocs de prose (bibliographies,
+listes de liens, brèves). Trois chantiers du même lot, parce qu'ils partagent le même
+territoire de fichiers (`extension.js`, `lib/i18n.js`, `lib/ressources.js`,
+`pipeline/filters/szh-ressource.lua`, `pipeline/Makefile`, `package.json`).
+
+### F11 — La section « Actualité », sœur d'Articles et de Traductions
+
+Décision : une section de premier niveau à part dans l'arbre `szhCockpitVue`, « ACTUALITÉ » /
+« NEWS », entre « ARTICLES » et « TRADUCTIONS » — **revue seulement**, un livre n'a pas de
+Documentation. Elle liste les articles dont la fiche porte `type: documentation`
+(`extension.js` : `TYPE_ACTUALITE`, `_itemsActualite`, `estActualite`, `sectionDeSlug`,
+`_repartirUnites`), et ces articles disparaissent de la section Articles.
+
+Aucun nouveau dossier sur le disque, aucun nouveau `FileSystemWatcher` : ce sont les mêmes
+`articles/<slug>/` qu'aujourd'hui, seulement présentées ailleurs. `listerArticles()` continue
+de tout renvoyer — l'ordre du numéro, les DOI, les traductions et l'export OJS ne changent
+pas ; un article de Documentation garde son rang global (celui du numéro entier, pas celui de
+la sous-liste) et se traduit comme les autres. Changer le type dans la fiche suffit à faire
+changer l'article de section, sans déplacement de fichier.
+
+### F12 — Rubriques de texte riche, et la cinquième fiche « D'une revue à l'autre »
+
+Les fiches structurées existantes (`lib/ressources.js` : `livre`, `film`, `intervention`,
+`recherche`) ne couvrent que la moitié du contenu de la Documentation. L'autre moitié —
+bibliographies, listes de liens, brèves — n'a pas de champs isolables ; les forcer dans un
+formulaire n'aurait rien apporté. Décision : un nouveau bloc `.szh-rubrique`
+(`lib/rubriques.js`), un seul champ de texte riche par bloc (markdown ordinaire, déjà parsé
+par pandoc), six types fermés, dans l'ordre d'affichage du formulaire : références du dossier,
+sites en lien avec le dossier, tour d'horizon, ressources, documentaires et podcasts, agenda et
+formation continue. Le titre imprimé n'est jamais écrit dans le `.md` : il se déduit du type
+et de la langue de l'article au rendu, même parti que le libellé de lien d'une fiche de
+ressource.
+
+Formulaire propre (commande `szh.rubriquesArticle`, `lib/rubriques.js`,
+`media/rubriques-article.js`) plutôt qu'une section de plus dans celui des ressources : saisir
+une fiche (champ par champ) et saisir une rubrique (un seul bloc de prose) sont deux gestes
+trop différents pour un même panneau. Barre d'outils Gras / Italique / Lien / Liste, avec
+`Ctrl+B` / `Ctrl+I` au clavier.
+
+Le filtre `pipeline/filters/szh-rubrique.lua` s'insère juste après `szh-citations.lua`, avant
+`szh-notes.lua`, dans les deux règles du `Makefile` (`%.html` et `%.apercu.html`) — ordre non
+négociable, vérifié à la main : `szh-sections.lua`, déjà passé, numérote les `h2` du corps dans
+le texte (un titre de rubrique inséré avant lui sortirait « 1 Références du dossier ») ; et
+`szh-citations.lua` reconnaît le titre de la bibliographie sur son texte (« Références »,
+« Literatur ») — un `h2` de rubrique posé avant son passage aurait pu s'y faire prendre.
+
+Une cinquième fiche de ressource complète la table de `lib/ressources.js` : `reprise`
+(« D'une revue à l'autre » / « Blick in die Revue »), champs `auteurs`, `revue`, `reference`,
+`doi`, sans image (`SANS_IMAGE`). Recopiée à l'identique dans
+`pipeline/filters/szh-ressource.lua` ; gardée par `test/js/ressources.test.js`, qui refuse que
+les deux tables divergent.
+
+### F13 — La réserve : mettre une fiche de côté, l'échanger entre les deux revues
+
+Besoin : détacher une fiche structurée du numéro courant sans la perdre, et en envoyer une
+copie vers l'autre revue pour traduction. `lib/reserve.js` pose le magasin à
+`<parent du numéro>/_reserve/<revue|zeitschrift>/` — hors du numéro (survit à son archivage),
+au niveau où vivent les dossiers de numéro voisins dans l'arborescence OneDrive/SharePoint
+commune aux deux rédactions (donc déjà partagée entre collègues, sans geste de plus). Deux
+gestes sur une seule mécanique d'écriture :
+
+- **Détacher** : le bloc quitte le `.md` de l'article, atterrit dans la réserve de la revue
+  courante, `a-traduire: false`.
+- **Envoyer vers l'autre revue** : une COPIE atterrit dans la réserve de l'AUTRE revue,
+  `a-traduire: true`, `origine` = la revue courante ; le bloc reste dans l'article.
+
+L'image d'une fiche, si elle en a une, est copiée à côté du `.md` dans la réserve, et le
+chemin du bloc est réécrit en conséquence. Deux boutons sur chaque fiche déjà enregistrée du
+formulaire des ressources (`media/ressources-article.js`, visibles seulement une fois la
+fiche persistée, jamais sur une fiche encore en brouillon). L'entrée « Réserve » de la section
+Actualité (toujours présente, même sans article de Documentation dans le numéro) ouvre un
+`QuickPick` en deux temps — la liste des fiches en attente, puis l'action nommée en toutes
+lettres (`szh.reserve`, `ouvrirReserve`) — plutôt qu'un bouton par ligne, pour qu'un clic mal
+placé ne supprime rien.
+
+### Invariants tenus
+
+- i18n : chaque clé ajoutée dans `lib/i18n.js` existe en fr **et** en de, avec les mêmes
+  repères `{0}`, `{1}` — vérifié par `test/js/contrats.test.js`.
+- Tables recopiées : `lib/rubriques.js` <-> `szh-rubrique.lua` (nouveau test de
+  non-divergence, même discipline que `lib/ressources.js` <-> `szh-ressource.lua`).
+- Aucun formulaire sans sauvegarde automatique (rubriques comme ressources).
+- Suite de tests : `node --test "test/js/*.test.js"` depuis la racine du dépôt —
+  `rubriques.test.js`, `reserve.test.js`, `ressources.test.js`, `ressources-hote.test.js` et
+  `actualite.test.js` passent (182 tests, 0 échec, vérifié le 01.09.2026).
+
+## X. Lot du 2 septembre 2026 — la Documentation en une page et un formulaire
+
+Le lot précédent avait posé la Documentation en section d'arbre et en deux formulaires.
+Robin l'a essayée, et six demandes en sont sorties le même jour. Elles portent toutes le
+même reproche : **trop de gestes pour une page qui n'est qu'un magasin de blocs**.
+
+### F14 — Une page, ouverte d'un clic, sans .md à manipuler
+
+Décision : « Supprime le fichier .md de la documentation, il n'est pas nécessaire. Lorsque
+l'on clique sur "Actualité" affiche directement la liste des rubriques. »
+
+Le `.md` ne disparaît pas — c'est lui que la chaîne compile, et l'ordre du numéro se lit sur
+les dossiers d'`articles/`. Ce qui disparaît, c'est son STATUT DE PIÈCE À MONTER : la page de
+Documentation ne se liste plus dans l'arbre, son texte ne s'ouvre plus jamais dans l'éditeur,
+et personne n'a plus à lui régler un type d'article. Cliquer l'en-tête « ACTUALITÉ » ouvre son
+formulaire (`szh.documentation`, `ouvrirPageDocumentation`) et la CRÉE si le numéro n'en a pas
+encore : dossier, `.md` vide, fiche `type: documentation` avec son titre imprimé dans la
+langue du numéro (`creerPageDocumentation`, `SLUG_DOCUMENTATION`).
+
+C'est le seul en-tête de section qui ouvre un formulaire plutôt qu'une vue d'ensemble. Une
+liste d'un seul élément n'aurait été qu'un détour — il n'y a qu'une page de Documentation par
+numéro. La section ne porte donc plus que l'entrée « Réserve », et le badge de l'en-tête
+compte désormais les BLOCS de la page (fiches et rubriques réunies) et non les articles.
+
+La création seule est refusée sur un numéro verrouillé ; la consultation, non — on doit
+pouvoir relire la Documentation d'un numéro bouclé. D'où une commande hors `cmdEcriture`,
+avec le garde-fou posé à l'intérieur.
+
+### F15 — Un seul formulaire pour les deux familles, tout pliable, avec un sommaire
+
+Décision : « fais un seul formulaire avec rubriques et les ressources » ; « rend toutes les
+rubriques et les ressources pliables en accordéon » ; « rajoute une table des matières à
+droite du formulaire (sticky) permettant de visualiser la structure ».
+
+`media/documentation.{html,css,js}` remplace `ressources-article.*` et `rubriques-article.*`,
+tous deux supprimés. Un seul panneau (`szhDocumentation`), une seule commande
+(`szh.ressourcesArticle` conservée pour les articles ordinaires, `szh.documentation` pour la
+page du numéro), une seule table de panneaux — laquelle, au passage, répare un oubli du lot
+précédent : `fermerFormulairesEcriture()` ne connaissait pas `panneauxRubriques`, et un
+verrouillage de numéro laissait donc ce formulaire ouvert.
+
+Trois choix de mise en page :
+
+- **une rubrique EST son accordéon**. Elle n'a qu'un bloc de prose : son titre imprimé sert
+  d'en-tête, il n'y a ni intertitre ni carte à distinguer. Une catégorie de fiches, elle,
+  garde son intertitre et une carte pliable par fiche.
+- **un seul accordéon ouvert dans toute la page**, rubriques comprises. La page fait une
+  douzaine d'entrées ; deux blocs ouverts en même temps rendraient le sommaire inutile.
+  Recliquer sur le bloc ouvert le referme : l'état « tout replié » doit rester atteignable.
+- **le sommaire est collant** (`position: sticky` dans `.corps`, le conteneur défilant), avec
+  le nombre de fiches par catégorie et la mention « vide » sur une rubrique qui ne
+  s'imprimera pas. C'est le seul endroit d'où l'on voit, sans rien déplier, ce qu'il reste à
+  écrire.
+
+Les rubriques n'ont plus de bouton « Ajouter un bloc » : « laisse toujours un bloc actif /
+éditable dans chaque rubrique et ne permet pas d'en ajouter plus ». Chaque type a son bloc
+unique, toujours présent. La corbeille ne retire donc pas la carte — elle vide le texte, ce
+qui ôte le bloc du `.md` et fait disparaître la rubrique du PDF ; la remplir la fait revenir.
+`lib/rubriques.js` n'a pas changé pour autant : un `.md` écrit à la main qui porterait deux
+blocs du même type se lit et se rend encore. C'est une règle de formulaire, pas de format.
+
+### F16 — Une fiche incomplète s'enregistre, et le dit par une pastille
+
+Décision : « À compléter avant l'enregistrement : Descriptif. => supprime ainsi, permet
+enregistrement, rajoute un badge "non complet" dans le titre de l'accordéon. »
+
+Le refus d'écrire une fiche incomplète faisait perdre la saisie à qui quittait le formulaire.
+`ressourceComplete()` ne commande donc plus l'écriture : c'est `ressourceEcrivable()`
+(`lib/ressources.js`) qui la commande, et il ne refuse que deux choses — un type inconnu, et
+une carte à laquelle personne n'a rien saisi (celle qu'un clic sur « Ajouter » vient de
+créer). La complétude ne pilote plus que la pastille « non complet » de l'en-tête, dont
+l'info-bulle nomme ce qui manque.
+
+Une fiche DÉJÀ dans le `.md` est toujours réécrite, même vidée : sans cela, effacer un champ
+ne s'enregistrerait jamais et l'ancienne valeur reviendrait au rechargement. Une rubrique
+vidée, à l'inverse, SORT du `.md` — un titre de rubrique sans rien dessous ne veut rien dire
+dans le PDF.
+
+Deux autres suppressions du même esprit : la note « Le texte du lien est composé
+automatiquement… » et son pendant sur le titre des rubriques. Et une correction de fond du
+même lot : le champ **Lien**, la zone d'image et l'état de la fiche vivaient HORS du corps
+pliable, et restaient donc visibles sous un en-tête replié — l'accordéon ne repliait presque
+rien. Tout est passé dans le corps.
+
+### F17 — Le canton en liste fermée, imprimé en abréviation
+
+Décision : « Canton = liste déroulante, par ordre alphabétique, nom complet + abréviation
+entre parenthèses ; le rendu met juste l'abréviation. »
+
+`lib/cantons.js` porte les 26 cantons et la Confédération (`CH` — la rubrique des
+interventions relève aussi des objets fédéraux). Trois rôles séparés :
+
+| ce qui | où | forme |
+|---|---|---|
+| s'affiche à la saisie | `optionsCanton()` | « Bâle-Campagne (BL) », rangé par nom |
+| s'écrit dans le `.md` | attribut `canton` | `BL` |
+| s'imprime | `szh-ressource.lua`, tel quel | `BL` |
+
+C'est le CODE qui est stocké : deux caractères stables, identiques dans les deux langues, que
+le filtre Lua n'a donc aucune table à traduire. Conséquence assumée sur le tri des
+interventions (`CLE_TRI`) : elles se rangent par code, c'est-à-dire dans l'ordre officiel des
+cantons, celui de tous les documents fédéraux. L'ordre alphabétique demandé ne vaut que pour
+la SAISIE, où l'on cherche « Genève » et non « GE ». Une valeur inconnue de la liste — bloc
+écrit à la main — est ajoutée à la liste plutôt que perdue.
+
+Le formulaire est resté générique : `typesRessourceConfig()` peut joindre à un champ une
+liste fermée (`options`) ou un mode de saisie (`saisie: 'date'`), et `media/documentation.js`
+rend un `<select>` ou un `<input type="date">` sans connaître un seul nom de champ.
+
+### F18 — L'agenda devient une fiche structurée
+
+Décision : « Agenda et formation doit devenir un champ structuré (date / plage de date / type
+d'événement, etc.) — parcours nos éléments dans cette rubrique et détermine les champs
+pertinents. »
+
+**Ce que l'enquête a trouvé** (02.09.2026, trois numéros contrôlés — Revue 16/02-2026,
+Revue 15/02-2025, Zeitschrift 09/2025) : la rubrique IMPRIMÉE ne contient qu'un LIEN vers
+`csps.ch` / `szh.ch`. Aucune entrée détaillée n'est publiée dans la revue. Les vraies entrées
+vivent sur le site, et c'est son formulaire d'annonce — « Annoncer une formation continue ou
+une manifestation » / « Kurse und Veranstaltungen melden », identique pour les cours et les
+manifestations — qui donne la structure de référence : titre, début, fin, lieu, adresse de
+contact, adresse Internet, plus un champ « Message » libre. Relevé sur 22 entrées réelles des
+pages « Congrès, colloques » et « Kurse » : date unique 10 fois, plage contiguë 11 fois, une
+formation modulaire de 22 mois une fois, aucune mention « sur demande ». N'existent nulle
+part et n'ont donc pas de champ : prix, langue, public cible, nombre de places, délai
+d'inscription, intervenant·e distinct de l'organisateur.
+
+D'où `TYPES.agenda = { evenement, debut, fin, lieu, organisateur }`, plus les champs communs
+(titre, descriptif, lien) — le descriptif tenant le rôle du champ « Message », où le site
+lui-même précise en clair les dates disjointes d'une formation modulaire.
+
+Deux mécaniques nouvelles, chacune tirée du corpus :
+
+- **les dates sont stockées en ISO** (`SAISIE`), parce que c'est la seule forme qui se trie :
+  l'agenda se range par date de début (`CLE_TRI`), donc dans l'ordre où les manifestations
+  auront lieu. L'ISO ne sort jamais dans le PDF — `szh-ressource.lua` la remet en forme
+  suisse et fond les deux dates en UNE mention, aussi compacte que le corpus l'écrit :
+  `05.–06.01.2026` (même mois), `29.06.–02.07.2026` (même année), `10.09.2026–04.07.2028`
+  (deux années), `08.09.2026` (un seul jour).
+- **le type d'événement est un jeton**, jamais un libellé : `colloque`, `congres`, `journee`,
+  `cours`, `webinaire`, `formation` (vocabulaire relevé dans le corpus). Le libellé de saisie
+  vient de `lib/i18n.js`, le libellé imprimé de la table `EVENEMENTS` de
+  `szh-ressource.lua` — un « Colloque » saisi côté français ressort « Tagung » côté allemand
+  sans ressaisie, exactement comme le libellé de lien d'une fiche. Un test refuse que les
+  jetons des deux tables divergent.
+
+`agenda` a donc QUITTÉ `TYPES_RUBRIQUE` et la table `TITRES` de `szh-rubrique.lua`. Un ancien
+bloc `::: {.szh-rubrique type="agenda"}` laissé dans un `.md` sort sans titre mais avec son
+contenu intact : la dégradation propre du cas « type inconnu », déjà prévue.
+
+### Invariants tenus
+
+- i18n : chaque clé ajoutée existe en fr **et** en de, avec les mêmes repères `{0}` —
+  `test/js/contrats.test.js` ; aucun eszett dans l'allemand.
+- Typographie française : `python test/typo-check.py` — conforme sur les 42 surfaces.
+- Tables recopiées : `lib/ressources.js` <-> `szh-ressource.lua` pour `TYPES` **et** pour la
+  liste fermée `evenement` ; `lib/rubriques.js` <-> `szh-rubrique.lua`.
+- Le formulaire est RÉELLEMENT EXÉCUTÉ en test (`test/js/webviews.test.js`, onze contrôles) :
+  rendu replié, lien et image dans le corps pliable, pastilles, `<select>` du canton, valeur
+  hors liste conservée, sommaire et ses comptes, accordéon exclusif, vidage d'une rubrique,
+  fiche neuve ouverte d'office.
+- Suite de tests : `node --test "test/js/*.test.js"` — 889 tests, 881 passent, 1 ignoré, et
+  7 échecs PRÉEXISTANTS au lot (`reimport-biblio.test.js` ×6, `reimport.test.js` ×1),
+  vérifiés sur un `git worktree` de HEAD le 01.09.2026.
