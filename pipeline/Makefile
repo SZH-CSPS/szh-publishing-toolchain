@@ -257,20 +257,20 @@ verifier-numerotation:
 	@PYTHONIOENCODING=utf-8 python3 "$(PIPELINE_DIR)/verifier-numerotation.py" "$(A)" "$(B)"
 
 # ---------------------------------------------------------------------------
-# Porte PDF/UA-1 : veraPDF valide les PDF du numéro, rapport-ua.py traduit son verdict.
+# Porte PDF/UA-1 : veraPDF valide les PDF du numéro, verifier-ua.sh (à côté de ce Makefile)
+# porte la logique — garde-fous d'outillage, appel de veraPDF, traduction par rapport-ua.py.
 # Bloquante — et volontairement absente de `pdf` et de `all` : le rédacteur doit pouvoir
 # relire l'épreuve d'un article encore imparfait. Elle garde ce qui s'exporte.
 #
 # ⚠ Le code de sortie de veraPDF dit deux choses différentes : 0 conforme, 1 non conforme,
 #   mais 4 (fichier introuvable), 7 (fichier illisible) et 127 (veraPDF absent) sont des
-#   pannes d'outillage. Sans le test « > 1 » ci-dessous, un validateur manquant se lirait
-#   comme un PDF conforme — exactement le mensonge qu'on est venu corriger.
+#   pannes d'outillage — verifier-ua.sh les distingue (code > 1) et sort alors en 2, pas en
+#   1 : sans quoi un validateur manquant se lirait comme un PDF conforme, et une panne
+#   d'outillage se lirait comme un verdict de non-conformité.
 # ⚠ Un cas échappe pourtant à ce test, et c'est le pire : un JAVA_HOME qui ne pointe sur
 #   rien fait sortir le lanceur de veraPDF en code 1 — le code qui veut dire « PDF non
-#   conforme ». La porte accuserait des PDF parfaits. D'où les deux garde-fous : le
-#   runtime est vérifié avant d'être appelé, et un rapport inexploitable (rapport-ua.py
-#   sort 2) fait recracher la sortie d'erreur du validateur, seul endroit où la vraie
-#   cause se lit.
+#   conforme ». La porte accuserait des PDF parfaits. D'où le garde-fou posé avant l'appel :
+#   le runtime est vérifié avant d'être invoqué, jamais après coup — et sort lui aussi en 2.
 # Ce que la porte PDF/UA valide. Pour une revue, les PDF des articles ; pour un livre, le
 # PDF de l'ouvrage — profils/livre.mk réaffecte cette variable, et c'est le seul endroit
 # où le profil décide de la liste.
@@ -287,40 +287,7 @@ PDFS_UA    := $(PDFS)
 
 verifier-ua: $$(PDFS_UA)
 	@test -n "$(PDFS_UA)" || { echo "[pipeline] Aucun PDF à valider."; exit 1; }
-	@if [ ! -x "$(VERAPDF)" ]; then \
-	  echo "[pdf-ua] ✗ Validateur PDF/UA introuvable : $(VERAPDF)"; \
-	  echo "[pdf-ua]   À faire : mettre l'image WSL à jour (elle embarque veraPDF), ou poser VERAPDF=<chemin>."; \
-	  echo "[pdf-ua] [de] ✗ PDF/UA-Prüfer nicht gefunden: $(VERAPDF)"; \
-	  echo "[pdf-ua] [de]   Zu tun: WSL-Abbild aktualisieren (es enthält veraPDF), oder VERAPDF=<Pfad> setzen."; \
-	  exit 1; \
-	fi
-	@if [ -n "$(VERAPDF_JAVA)" ] && [ ! -x "$(VERAPDF_JAVA)/bin/java" ]; then \
-	  echo "[pdf-ua] ✗ Le runtime Java du validateur est introuvable : $(VERAPDF_JAVA)/bin/java"; \
-	  echo "[pdf-ua]   Pourquoi on s'arrête ici : sans lui, veraPDF sort en code 1, celui qui veut dire « PDF non conforme ». La porte accuserait des PDF parfaits."; \
-	  echo "[pdf-ua]   À faire : mettre l'image WSL à jour (elle embarque le runtime), ou poser VERAPDF_JAVA=<dossier du JRE> — vide si la commande java est déjà dans le PATH."; \
-	  echo "[pdf-ua] [de] ✗ Die Java-Laufzeit des Prüfers fehlt: $(VERAPDF_JAVA)/bin/java"; \
-	  echo "[pdf-ua] [de]   Warum hier abgebrochen wird: ohne sie endet veraPDF mit Code 1, dem Code für « PDF nicht konform ». Die Kontrolle würde einwandfreie PDF beschuldigen."; \
-	  echo "[pdf-ua] [de]   Zu tun: WSL-Abbild aktualisieren (es enthält die Laufzeit), oder VERAPDF_JAVA=<JRE-Ordner> setzen — leer, wenn java schon im PATH liegt."; \
-	  exit 1; \
-	fi
-	@set +e; \
-	xml="$(OUT)/.szh-pdfua.xml"; err="$(OUT)/.szh-pdfua.err"; \
-	JAVA_HOME="$(VERAPDF_JAVA)" "$(VERAPDF)" --flavour ua1 --format xml $(PDFS_UA) > "$$xml" 2> "$$err"; \
-	code=$$?; \
-	if [ $$code -gt 1 ]; then \
-	  echo "[pdf-ua] ✗ Le validateur PDF/UA n'a pas pu rendre de verdict (code $$code) — ce n'est pas un PDF conforme, c'est une panne d'outillage."; \
-	  echo "[pdf-ua] [de] ✗ Der PDF/UA-Prüfer konnte kein Urteil abgeben (Code $$code) — das ist kein konformes PDF, sondern eine Werkzeugstörung."; \
-	  sed -n '1,10p' "$$err" | sed 's/^/[pdf-ua]   /'; \
-	  exit 1; \
-	fi; \
-	PYTHONIOENCODING=utf-8 python3 "$(PIPELINE_DIR)/rapport-ua.py" "$$xml"; \
-	rc=$$?; \
-	if [ $$rc -gt 1 ]; then \
-	  echo "[pdf-ua]   Sortie d'erreur du validateur, telle quelle :"; \
-	  echo "[pdf-ua] [de]   Fehlerausgabe des Prüfers, unverändert:"; \
-	  sed -n '1,10p' "$$err" | sed 's/^/[pdf-ua]   /'; \
-	fi; \
-	exit $$rc
+	@VERAPDF="$(VERAPDF)" VERAPDF_JAVA="$(VERAPDF_JAVA)" PIPELINE_DIR="$(PIPELINE_DIR)" bash "$(PIPELINE_DIR)/verifier-ua.sh" "$(OUT)/.szh-pdfua.xml" $(PDFS_UA)
 
 # Refus de compiler un article dont la fiche <slug>.meta.yaml manque ou n'a pas de titre.
 # Sans titre, szh-maquette.lua pose un `titre-affiche` vide : le gabarit sort un <title>

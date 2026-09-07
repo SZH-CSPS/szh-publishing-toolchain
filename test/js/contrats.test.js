@@ -1509,7 +1509,10 @@ test('PDF/UA : la porte valide le PDF du LIVRE, pas une liste vide', () => {
   assert.match(mk, /^verifier-ua: \$\$\(PDFS_UA\)$/m,
     'la porte PDF/UA ne passe plus par PDFS_UA en seconde expansion — sans les deux « $ », '
     + 'la liste est figée à la valeur de la revue avant l’inclusion de livre.mk');
-  assert.match(mk, /--flavour ua1 --format xml \$\(PDFS_UA\)/,
+  // Depuis que la logique de la porte a déménagé dans verifier-ua.sh, le Makefile ne dit
+  // plus « --flavour ua1 » lui-même : il passe PDFS_UA au script, qui la passe à veraPDF.
+  // Même intention qu'avant : le validateur reçoit la même liste que les prérequis.
+  assert.match(mk, /bash "\$\(PIPELINE_DIR\)\/verifier-ua\.sh" "\$\(OUT\)\/\.szh-pdfua\.xml" \$\(PDFS_UA\)/,
     'le validateur reçoit une autre liste que celle des prérequis');
   assert.match(lire('pipeline', 'profils', 'livre.mk'), /^PDFS_UA {4}:= \$\(LIVRE_PDF\)$/m,
     'le profil livre ne dit plus quel PDF valider : la porte retomberait sur une liste vide');

@@ -293,15 +293,20 @@ function dossierJetable(prefixe) {
 // n'est jamais passé en --metadata-file : seule une lecture directe par le filtre
 // (io.open) le verra, exactement comme dans la chaîne réelle où le Makefile ne le passe
 // pas non plus à cette place (voir szh-numerotation.lua, langue_fiche()).
-function pandocDansDossier(fichiers, principal, filtre) {
+// `opts.from` : le lecteur, « markdown » par défaut (celui du PDF) — passer « commonmark_x »
+// pour rejouer la passe d'aperçu. `opts.env` : variables ajoutées à celles du processus, par
+// exemple SZH_APERCU ou SZH_LIVRE, exactement ce que le Makefile pose autour de pandoc.
+function pandocDansDossier(fichiers, principal, filtre, opts) {
+  const o = opts || {};
   const dossier = dossierJetable('szh-langue-');
   try {
     for (const nom of Object.keys(fichiers)) {
       fs.writeFileSync(path.join(dossier, nom), fichiers[nom], 'utf8');
     }
-    const args = ['--from=markdown', '--to=markdown', '--wrap=none', '--standalone',
+    const args = ['--from=' + (o.from || 'markdown'), '--to=markdown', '--wrap=none', '--standalone',
       '--lua-filter=' + path.join(FILTRES, filtre), principal];
-    const r = spawnSync('pandoc', args, { cwd: dossier, encoding: 'utf8' });
+    const env = Object.assign({}, process.env, o.env || {});
+    const r = spawnSync('pandoc', args, { cwd: dossier, encoding: 'utf8', env: env });
     if (r.error) { throw new Error('pandoc introuvable : ' + r.error.message); }
     // Un pandoc natif Windows imprime du CRLF (traduction de fin de ligne du runtime
     // Haskell, indépendante des filtres) : uniformisé ici, comme trierMotscles() plus
@@ -391,6 +396,44 @@ test('langue : szh-numerotation.lua — rien du tout, repli français', () => {
   const r = pandocDansDossier({ 'essai.md': docNumerotation('') }, 'essai.md', 'szh-numerotation.lua');
   assert.strictEqual(r.status, 0, r.stderr);
   assert.match(r.stdout, /Figure 1/, r.stdout);
+});
+
+// ── szh-numerotation.lua : le constat « figure-sans-alt », UNIQUEMENT sous SZH_APERCU ──
+//
+// Émis sur l'AST intact de la passe d'aperçu (commonmark_x) : c'est le seul moment où
+// alt="" (décoratif, voulu) se distingue encore d'un alt absent. La passe PDF (markdown)
+// ne doit jamais rien dire — SZH_APERCU n'y est pas posée, comme dans la vraie chaîne.
+
+test('figure-sans-alt : ni alt ni légende — un constat, sous SZH_APERCU', () => {
+  const r = pandocDansDossier({ 'essai.md': '![](x.png)\n' }, 'essai.md', 'szh-numerotation.lua',
+    { from: 'commonmark_x', env: { SZH_APERCU: '1' } });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stderr, /^\[numerotation-avertissement\] figure-sans-alt \|/m,
+    'aucun constat codé : ' + r.stderr);
+  assert.match(r.stderr, /article « essai »/);
+  assert.match(r.stderr, /image « x\.png »/);
+  assert.match(r.stderr, /\[de\] Das Bild x\.png/);
+});
+
+test('figure-sans-alt : alt="" explicite (décoratif voulu) — aucun constat', () => {
+  const r = pandocDansDossier({ 'essai.md': '![](x.png){alt=""}\n' }, 'essai.md', 'szh-numerotation.lua',
+    { from: 'commonmark_x', env: { SZH_APERCU: '1' } });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!/figure-sans-alt/.test(r.stderr), 'une image alt="" explicite est signalée : ' + r.stderr);
+});
+
+test('figure-sans-alt : alt absent mais légende présente — aucun constat', () => {
+  const r = pandocDansDossier({ 'essai.md': '![Légende](x.png)\n' }, 'essai.md', 'szh-numerotation.lua',
+    { from: 'commonmark_x', env: { SZH_APERCU: '1' } });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!/figure-sans-alt/.test(r.stderr), 'une image avec légende est signalée : ' + r.stderr);
+});
+
+test('figure-sans-alt : sans SZH_APERCU (passe PDF), jamais de constat', () => {
+  const r = pandocDansDossier({ 'essai.md': '![](x.png)\n' }, 'essai.md', 'szh-numerotation.lua',
+    { from: 'markdown' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!/figure-sans-alt/.test(r.stderr), 'la passe PDF signale une image : ' + r.stderr);
 });
 
 // ── szh-ressource.lua : SA propre langue_de(), plus simple — meta.lang direct (fr/de

@@ -274,6 +274,7 @@ end
 
 local a_classe = commun.a_classe
 local trim = commun.trim
+local slug_article = commun.slug_article
 local function vide(t) return t == nil or t:match('^%s*$') ~= nil end
 
 -- Langue de composition : le `lang:` de l'article prime, puis le jeton de revue, puis le
@@ -466,6 +467,62 @@ local function hors_numerotation(b, lang)
   )
 end
 
+-- ─── Constat au rédacteur : figure sans texte alternatif (aperçu seulement) ─────────────
+-- Une image dont l'attribut alt est ABSENT (pas alt="", qui est une décision assumée) et
+-- dont la légende est vide n'atteint pas un lecteur d'écran : ni la légende (il n'y en a
+-- pas) ni l'alt (il n'y en a pas non plus) ne lui donnent de nom. C'est exactement le seul
+-- cas rouge de encadre_image() (szh-apercu-lecteur-ecran.lua, l. ~140-173) et celui que
+-- imagesSansAlternative() (lib/references.js) refuse à l'export OJS : ce constat le montre
+-- ici, à la relecture, plutôt qu'au tout dernier moment où il est encore réparable.
+--
+-- Une seule vérification par image, qu'elle soit dans une Figure ou hors figure : l'alt se
+-- lit sur l'Image elle-même dans les deux cas, et sous commonmark_x (la lecture de
+-- l'aperçu), la légende d'une image insérée dans une Figure par szh-figure.lua reste sur
+-- l'Image (szh-figure.lua ne la vide jamais) — un seul test suffit donc aux deux formes.
+--
+-- Émis SEULEMENT sous SZH_APERCU, et seulement à cet endroit de Pandoc(doc), juste après
+-- l'appel à lecteur_ecran : c'est le seul moment où alt="" (décoratif, voulu) se distingue
+-- encore d'un alt absent — les passes suivantes de ce filtre posent alt="" partout où
+-- l'alt manque (voir l'avertissement en tête de fichier). Lecture seule : aucune Image
+-- n'est modifiée ici, donc aucun effet sur la sortie HTML.
+--
+-- Un constat par fichier image, jamais par occurrence — même règle que szh-metafichier.lua.
+local FIGURES_SANS_ALT_SIGNALEES = {}
+
+-- « | » sépare les champs du format à codes : un nom de fichier qui en porterait un
+-- couperait la ligne. Même garde que szh-citations.lua (sans_barre()).
+local function sans_barre_figure(t) return (tostring(t):gsub('|', '/')) end
+
+local function constat_figure_sans_alt(src)
+  if FIGURES_SANS_ALT_SIGNALEES[src] then return end
+  FIGURES_SANS_ALT_SIGNALEES[src] = true
+  local nom = src:match('([^/\\]+)$') or src
+  local champ_unite = (LIVRE and 'chapitre « ' or 'article « ') .. slug_article() .. ' »'
+  -- Insécable française devant le deux-points (même caractère que LIBELLE_SOURCE plus
+  -- haut) ; l'allemand suisse colle sa ponctuation haute, donc aucune espace ici.
+  local morceaux = {
+    '[numerotation-avertissement] figure-sans-alt',
+    champ_unite,
+    'image « ' .. sans_barre_figure(src) .. ' »',
+    sans_barre_figure('L’image ' .. nom .. ' n’a ni texte alternatif ni légende\u{202F}: '
+      .. 'un lecteur d’écran n’en dira rien.'),
+    '[de] ' .. sans_barre_figure('Das Bild ' .. nom .. ' hat weder Alternativtext noch '
+      .. 'Legende: ein Screenreader sagt dazu nichts.'),
+  }
+  io.stderr:write(table.concat(morceaux, ' | ') .. '\n')
+end
+
+-- Vrai si `img` n'a ni alt (attribut absent, donc nil — pas alt="") ni légende (caption
+-- vide) : le seul cas qu'on signale. Une image alt="" explicite, une image sans alt mais
+-- avec légende (l'alt reprend la légende), un décor szh-decor ou un portrait ne matchent
+-- jamais ceci — les deux premiers parce que attr n'est pas nil ou que la légende n'est pas
+-- vide, les deux derniers parce qu'ils n'existent pas encore comme Image à cet instant
+-- (szh-auteurs.lua, qui pose les portraits, tourne après ce filtre ; szh-decor est une
+-- sortie de ce filtre-ci, jamais une entrée).
+local function figure_sans_alt(img)
+  return img.attributes['alt'] == nil and #img.caption == 0
+end
+
 -- ─── Passe unique, dans l'ordre du document ──────────────────────────────────
 -- Tout part de Pandoc(doc) : seul point où les métadonnées sont lues avant les blocs
 -- (dans un filtre ordinaire, Meta est appelé après eux).
@@ -483,6 +540,19 @@ function Pandoc(doc)
   -- écrit exprès (image décorative) ne se distingue plus d'un alt absent dès que les
   -- passes ci-dessous ont normalisé, elles posent alt="" dans les deux cas.
   if lecteur_ecran then doc.blocks = lecteur_ecran.blocs(doc.blocks, lang) end
+
+  -- Constat au rédacteur, à la même place et pour la même raison que l'encadré ci-dessus :
+  -- lecture seule, doc.blocks n'est pas réassigné, donc aucun effet sur la sortie. Le
+  -- résultat du walk est délibérément ignoré (l'effet recherché est le io.stderr:write, pas
+  -- une transformation de l'arbre).
+  if APERCU then
+    doc.blocks:walk({
+      Image = function(img)
+        if figure_sans_alt(img) then constat_figure_sans_alt(img.src) end
+        return nil
+      end,
+    })
+  end
 
   -- Les images hors numérotation d'abord, et dans un walk à part : le walk principal
   -- visite les Inline avant les Block, l'image y serait déjà passée par le filtre Image
