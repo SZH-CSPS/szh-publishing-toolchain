@@ -886,6 +886,48 @@ test('DOI : un article qui n’en reçoit pas, mais dont la fiche en porte un, l
     'le DOI resté dans la fiche n’est pas signalé : ' + sortie.avertissements.join(' | '));
 });
 
+test('DOI : deux articles avec le même DOI manuel refusent l’export', () => {
+  // Un DOI recopié d'un article à l'autre — le cas qu'un .meta.yaml dupliqué à la main
+  // laisse passer en silence sans ce contrôle : les deux articles reçoivent le même
+  // identifiant, et OJS ne saurait lequel des deux dépôts garder.
+  const doiCommun = '10.57161/r2024-01-05';
+  const racine = monter({
+    produit: 'revue', ausgabe: { date: '2026-09-08' },
+    articles: [
+      { slug: '01-edito', fiche: ficheEditorial('fr', doiCommun), texte: 'Un mot.' + LF },
+      { slug: '02-observation', fiche: ficheArticle('fr', doiCommun), texte: TEXTE_ARTICLE }
+    ]
+  });
+  const e = refuse(racine, configComplete());
+  assert.match(e.message, /10\.57161\/r2024-01-05/, 'le DOI en cause n’est pas nommé');
+  assert.match(e.message, /01-edito/, 'le premier article n’est pas nommé');
+  assert.match(e.message, /02-observation/, 'le second article n’est pas nommé');
+  // Rien n'a été écrit : un export refusé ne laisse pas de fichier à moitié fait.
+  assert.deepStrictEqual(fs.readdirSync(racine).filter((f) => f.indexOf('.xml') !== -1), []);
+
+  process.env.SZH_LANGUE = 'de';
+  try {
+    const de = refuse(racine, configComplete());
+    assert.match(de.message, /10\.57161\/r2024-01-05/);
+    assert.match(de.message, /01-edito/);
+    assert.match(de.message, /02-observation/);
+    assert.strictEqual(de.message.indexOf('ß'), -1, 'eszett dans un message allemand');
+  } finally { process.env.SZH_LANGUE = 'fr'; }
+});
+
+test('DOI : sans doublon, l’export est inchangé — aucun DOI calculé ne coïncide jamais', () => {
+  // Les DOI calculés sont le rang de chaque article parmi les porteurs : deux rangs
+  // distincts ne peuvent jamais donner la même valeur. Ce contrôle affirme que le nouveau
+  // garde-fou ne se déclenche pas sur le cas ordinaire, déjà prouvé caractère par caractère
+  // par la référence plus haut.
+  const sortie = exporter(monter({ ausgabe: { date: '2026-09-08' } }), configComplete());
+  assert.ok(!sortie.avertissements.some((a) => a.indexOf('même DOI') !== -1),
+    'un avertissement de doublon est apparu sans qu’il y ait de doublon : '
+    + sortie.avertissements.join(' | '));
+  assert.ok(sortie.xml.indexOf('<id type="doi" advice="update">10.57161/r2026-02-00</id>') !== -1);
+  assert.ok(sortie.xml.indexOf('<id type="doi" advice="update">10.57161/r2026-02-01</id>') !== -1);
+});
+
 // Le fichier de bibliographie que l'import détache : les références seules, sans titre.
 // C'est la source de <citations> depuis que la chaîne ne devine plus où la liste commence.
 const BIBLIO_DETACHEE = [

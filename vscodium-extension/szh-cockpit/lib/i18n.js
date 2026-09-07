@@ -150,6 +150,7 @@ const TEXTES_COCKPIT = {
     'ojs.err.resume.langue': 'le résumé manque en {0}, la langue de l’article, et cette rubrique en exige un.',
     'ojs.err.auteur.aucun': 'aucun auteur.',
     'ojs.err.doi.incalculable': 'Le DOI de chaque article se déduit de l’année de publication du numéro et de son nombre, et l’un des deux manque : aucun DOI ne peut partir, et un article publié sans DOI n’a pas d’identifiant pérenne – cela ne se répare pas après coup. Ouvrez « Métadonnées du numéro », donnez la date de publication et le numéro, puis relancez l’export.',
+    'ojs.err.doi.double': 'Deux articles se retrouvent avec le même DOI, « {2} » : « {0} » et « {1} ». Un DOI ne peut désigner qu’un seul article. Corrigez la fiche de l’un des deux dans « Métadonnées des articles », puis relancez l’export.',
     'ojs.err.galley': 'le fichier « {0} » n’a pas encore été produit. Utilisez « Recompiler toute la revue », puis relancez l’export.',
     'ojs.err.galley.docx': 'la version Word de cet article (« {0} ») n’a pas encore été produite. Relancez « Exporter la revue en XML (OJS) » : il la fabrique lui-même avant de composer le dépôt.',
     'ojs.bloquants': 'Ces points doivent être corrigés avant l’export :',
@@ -337,6 +338,8 @@ const TEXTES_COCKPIT = {
     'fiches.doi.retirer.question': 'Revenir au DOI calculé ?',
     'fiches.doi.retirer.detail': 'Le DOI saisi à la main sera effacé de la fiche, et le DOI calculé reprendra sa place.',
     'fiches.doi.retirer.oui': 'Revenir au DOI calculé',
+    'fiches.doi.forme': 'Forme attendue : {0}',
+    'fiches.doi.double': 'Déjà porté par {0}',
     'vue.ouvrir': 'Ouvrir',
     'vue.rien': 'Rien dans cette section pour l’instant.',
     'vue.confirmer': 'Appliquer',
@@ -387,8 +390,6 @@ const TEXTES_COCKPIT = {
     'art.envoi.dossier': 'Ouvrir le dossier du PDF',
     'art.envoi.presse.echec': 'Presse-papiers refusé : ouvrez le dossier du PDF et glissez le fichier dans le message.',
     'art.envoi.mail.echec': 'Aucun client de messagerie n’a répondu. Le PDF reste au presse-papiers : {0}',
-    'art.envoi.sujet': 'Version finale – {0}',
-    'art.envoi.corps': 'Bonjour,\n\nVous trouverez en pièce jointe la version finale de votre article « {0} », telle qu’elle paraîtra dans {1}.\n\nMerci de nous signaler toute correction avant l’impression.\n\nAvec nos remerciements pour votre contribution,\nLa rédaction',
     // L'aperçu des métadonnées sur la carte de l'article. Intitulés courts : la carte en
     // porte neuf d'affilée, et « Langue de l'article » sur la carte d'un article dit deux
     // fois la même chose. Les quatre champs de texte reprennent les intitulés du suivi de
@@ -415,8 +416,10 @@ const TEXTES_COCKPIT = {
     'art.doi.aucun.voulu': 'aucun – décidé pour cet article',
     'art.doi.aucun.rubrique': 'aucun – cette rubrique n’en reçoit pas',
     'art.doi.incalculable': 'à calculer – la date de publication et le numéro manquent dans les méta-données du numéro, juste au-dessus.',
+    'art.doi.forme': 'Le DOI affiché a été défini à la main, mais il n’a pas la forme des DOI de cette revue – une forme correcte ressemble à « {0} ». Vérifiez la lettre de revue, l’année et le numéro dans ses métadonnées, ou décochez « Définir manuellement le DOI » pour revenir au calcul.',
     'art.doi.fiche.autre': 'Le DOI affiché, « {0} », a été défini à la main : c’est lui qui partira vers OJS. Le calcul d’après la place de l’article donnerait « {1} ». Si « {0} » a déjà paru, tout est en ordre ; sinon, décochez « Définir manuellement le DOI » dans ses métadonnées.',
     'art.doi.fiche.inutile': 'La fiche de cet article porte un DOI défini à la main, « {0} », mais l’article ne reçoit pas de DOI : rien ne partira vers OJS. Décochez « Définir manuellement le DOI » dans ses métadonnées si ce n’est pas voulu.',
+    'art.doi.double': 'Ce DOI est aussi celui de « {0} » : deux articles ne peuvent pas partager le même DOI. Corrigez la fiche de l’un des deux.',
     'art.doi.case': 'Pas de DOI',
     'art.doi.case.tip': 'Cet article ne reçoit pas de DOI. Il passe alors en fin de numéro, pour que la numérotation des autres suive l’ordre de lecture.',
     'art.doi.enregistre': 'Enregistré : {0} article(s) sans DOI dans ce numéro.',
@@ -483,13 +486,6 @@ const TEXTES_COCKPIT = {
     'trad.lien.copie': 'Lien de traduction copié – le brouillon d’e-mail s’ouvre. {0}',
     'trad.lien.copie.seul': 'Lien de traduction copié : {0}',
     'trad.lien.mail': 'Écrire l’e-mail',
-    // Sujet et corps de l'e-mail de traduction. Cette version part vers les traducteurs
-    // francophones, donc pour un numéro « zeitschrift » : le nom de la revue et le sens
-    // de la traduction sont en clair, puisque la langue et le produit vont ensemble.
-    // Le lien szh:// reste seul sur sa ligne, sans ponctuation collée : un corps mailto
-    // est du texte brut, le lien n'y est pas cliquable et doit se copier d'un geste.
-    'trad.lien.sujet': 'Traduction allemand vers français – {0}',
-    'trad.lien.corps': 'Bonjour,\n\nLe numéro {0} de la Schweizerische Zeitschrift für Heilpädagogik est prêt pour la traduction de l’allemand vers le français.\n\nPour l’ouvrir directement au bon endroit : COPIEZ le lien ci-dessous, puis collez-le dans la fenêtre « Exécuter » de Windows (touche Windows + R) et validez.\n\n{1}\n\nAutre chemin, sans le lien : menu Démarrer -> « Zeitschriften SZH », puis choisir le numéro.\n',
     'trad.lien.impossible': 'Lien impossible à construire. Vérifiez que le numéro déclare sa revue (Méta-données du numéro) et que son dossier porte un nom simple (lettres, chiffres, tiret, point).',
     'intention.ouverte': 'Suivi de traduction ouvert depuis le lien reçu.',
     'trad.deepl.tooltip': 'Ouvrir DeepL avec ce texte ({0} → {1}). La traduction revient par copier-coller : sans clé d’API, DeepL ne peut pas nous la renvoyer.',
@@ -1142,6 +1138,13 @@ const TEXTES_COCKPIT = {
     // Découpage d’un manuscrit de livre en chapitres, à l’import : les constats de
     // livre-scinder.py remontent au panneau « Contrôles » par ce libellé.
     'ctl.source.scission': 'Scission du manuscrit',
+    // szh-numerotation.lua : la même image sans alt ni légende que l'encadré « lecteur
+    // d'écran » de l'aperçu (szh-apercu-lecteur-ecran.lua) montre déjà à la relecture,
+    // signalée ici pour être retrouvée sans rouvrir l'aperçu de chaque article.
+    'ctl.source.numerotation': 'Figures',
+    'ctl.figure.sansalt': 'L’image {0} n’a ni texte alternatif ni légende : un lecteur d’écran n’en dira rien.',
+    'ctl.action.medias': 'Décrire les images',
+    'ctl.action.medias.tip': 'Ouvrir le formulaire des images de cet article.',
     // Citations : szh-citations.lua n'écrit qu'en français, ces phrases sont donc la seule
     // version bilingue qui existe.
     'ctl.cit.sansref': 'L’appel {0} ne mène à aucune référence : la liste des références n’a pas d’entrée à ce nom et à cette année. Ajoutez la référence à la fin de l’article, ou corrigez le nom ou l’année dans l’appel. En l’état, le lecteur ne peut pas remonter à la source.',
@@ -1168,6 +1171,12 @@ const TEXTES_COCKPIT = {
     'ctl.profil.inconnu': 'Le profil de production « {0} » de ce numéro n’est pas reconnu – une faute de frappe, le plus souvent. Ouvrez « Méta-données du numéro » et remettez-le sur « article ». Rien n’est produit tant qu’il reste ainsi.',
     'ctl.pdfua.nonconforme': 'Le PDF de cet article n’est pas conforme à la norme d’accessibilité : {0} règle(s) ne sont pas respectées. Les points ci-dessous les nomment un par un. L’export est arrêté : ce fichier part chez l’imprimeur et dans la revue en ligne avec une promesse d’accessibilité qu’il ne tient pas.',
     'ctl.pdfua.aucun': 'Il n’y a aucun PDF à contrôler : rien n’a encore été compilé. Enregistrez un article (Ctrl+S), ou utilisez « Tout recompiler ».',
+    'ctl.pdfua.outillage': 'Le validateur PDF/UA n’a pas pu rendre de verdict : voir le journal de compilation.',
+    // Le badge de la barre d'état (lib/pdfua-hote.js), pour l'article ouvert ou le livre.
+    'pdfua.badge.conforme': 'PDF conforme PDF/UA-1, validé le {0}',
+    'pdfua.badge.nonconforme': 'PDF non conforme PDF/UA-1 : {0} règle(s) en échec. Cliquer pour le détail.',
+    'pdfua.badge.encours': 'Validation PDF/UA en cours',
+    'pdfua.badge.outillage': 'Le validateur n’a pas pu rendre de verdict',
     'ctl.niveaux': 'Les titres de cet article descendent plus bas que ce que la mise en page distingue : les niveaux {0} s’affichent tous pareil. Remontez les sous-titres les plus profonds d’un rang. En l’état, deux sections de profondeurs différentes sont indiscernables pour un lecteur d’écran.',
     'ctl.image.manquante': 'L’image « {0} » est appelée par le texte mais introuvable sur le disque : elle a été renommée ou supprimée. Ouvrez « Médias de l’article » pour la redéposer, ou retirez son insertion du texte. Le document est sorti sans elle.',
     'ctl.police.manquante': 'La police « {0} » n’est pas installée : le document est composé avec une police de remplacement, et les longueurs de ligne ne sont plus celles prévues. Signalez-le, c’est l’outil qui est en cause, pas l’article.',
@@ -1231,8 +1240,17 @@ const TEXTES_COCKPIT = {
     'reimport.choisirArticle.titre': 'Quel article « {0} » corrige-t-il ?',
     'statut.reimport': 'Remplacement du texte de « {0} »…',
     'statut.reimport.annule': 'Retour au texte d’avant de « {0} »…',
+    // Le badge « Dossier de test » de la barre d'état : un poste qui pointe sur
+    // l'arborescence de test le dit, en couleur — la décision test/production reste ouverte.
+    'etat.barre.test': 'Dossier de test',
+    'etat.barre.test.tooltip': 'Ce poste travaille dans le dossier de test : les numéros créés ici ne sont pas en production. Cliquer pour changer dans les réglages.',
+    'etat.barre.test.defaut': 'Aucune configuration de poste trouvée : le dossier de test est utilisé par défaut. Cliquer pour changer dans les réglages.',
   },
   de: {
+    // Le badge « Testordner » : voir le commentaire côté français, même contrat.
+    'etat.barre.test': 'Testordner',
+    'etat.barre.test.tooltip': 'Dieser Arbeitsplatz arbeitet im Testordner: hier angelegte Ausgaben sind nicht in der Produktion. Klicken, um es in den Einstellungen zu ändern.',
+    'etat.barre.test.defaut': 'Keine Arbeitsplatz-Konfiguration gefunden: der Testordner wird standardmässig verwendet. Klicken, um es in den Einstellungen zu ändern.',
     // Majuscules voulues, comme en français : ce sont les en-têtes de section de l'arbre.
     'arbre.articles': 'ARTIKEL',
     'arbre.chapitres': 'KAPITEL',
@@ -1351,6 +1369,7 @@ const TEXTES_COCKPIT = {
     'ojs.err.resume.langue': 'das Abstract fehlt auf {0}, der Sprache des Artikels, und diese Rubrik verlangt eines.',
     'ojs.err.auteur.aucun': 'keine Autorin, kein Autor.',
     'ojs.err.doi.incalculable': 'Der DOI jedes Artikels ergibt sich aus dem Publikationsjahr der Ausgabe und ihrer Nummer, und eines von beiden fehlt: es kann kein DOI weggehen, und ein ohne DOI publizierter Artikel hat keinen dauerhaften Identifikator – das lässt sich nachträglich nicht beheben. Öffnen Sie «Metadaten der Ausgabe», erfassen Sie das Publikationsdatum und die Nummer, und starten Sie den Export erneut.',
+    'ojs.err.doi.double': 'Zwei Artikel tragen denselben DOI, «{2}»: «{0}» und «{1}». Ein DOI darf nur einen Artikel bezeichnen. Korrigieren Sie das Datenblatt eines der beiden unter «Metadaten der Artikel», und starten Sie den Export erneut.',
     'ojs.err.galley': 'die Datei «{0}» wurde noch nicht erzeugt. Wählen Sie «Ganze Zeitschrift neu kompilieren» und starten Sie den Export erneut.',
     'ojs.err.galley.docx': 'die Word-Fassung dieses Artikels («{0}») wurde noch nicht erzeugt. Starten Sie «Zeitschrift als XML exportieren (OJS)» erneut: sie wird dort selbst erzeugt, bevor die Ablage zusammengestellt wird.',
     'ojs.bloquants': 'Diese Punkte müssen vor dem Export behoben werden:',
@@ -1517,6 +1536,8 @@ const TEXTES_COCKPIT = {
     'fiches.doi.retirer.question': 'Zum berechneten DOI zurückkehren?',
     'fiches.doi.retirer.detail': 'Der von Hand eingetragene DOI wird aus dem Datenblatt entfernt, und der berechnete DOI nimmt wieder seinen Platz ein.',
     'fiches.doi.retirer.oui': 'Zum berechneten DOI zurück',
+    'fiches.doi.forme': 'Erwartete Form: {0}',
+    'fiches.doi.double': 'Bereits vergeben an {0}',
     'vue.ouvrir': 'Öffnen',
     'vue.rien': 'In diesem Bereich ist derzeit nichts.',
     'vue.confirmer': 'Anwenden',
@@ -1565,8 +1586,6 @@ const TEXTES_COCKPIT = {
     'art.envoi.dossier': 'Ordner des PDF öffnen',
     'art.envoi.presse.echec': 'Zwischenablage abgelehnt: öffnen Sie den Ordner des PDF und ziehen Sie die Datei in die Nachricht.',
     'art.envoi.mail.echec': 'Kein E-Mail-Programm hat geantwortet. Das PDF bleibt in der Zwischenablage: {0}',
-    'art.envoi.sujet': 'Endfassung – {0}',
-    'art.envoi.corps': 'Guten Tag\n\nIm Anhang finden Sie die Endfassung Ihres Artikels «{0}», so wie er in {1} erscheinen wird.\n\nBitte melden Sie uns allfällige Korrekturen vor dem Druck.\n\nMit bestem Dank für Ihren Beitrag\nDie Redaktion',
     'art.apercu.aide': 'Nur Ansicht: diese Werte werden im Metadaten-Formular geändert.',
     'art.apercu.type': 'Rubrik',
     'art.apercu.langue': 'Sprache',
@@ -1587,8 +1606,10 @@ const TEXTES_COCKPIT = {
     'art.doi.aucun.voulu': 'keiner – für diesen Artikel so entschieden',
     'art.doi.aucun.rubrique': 'keiner – diese Rubrik erhält keinen',
     'art.doi.incalculable': 'noch zu berechnen – Erscheinungsdatum und Nummer fehlen in den Metadaten der Ausgabe, gleich darüber.',
+    'art.doi.forme': 'Der angezeigte DOI wurde von Hand festgelegt, entspricht aber nicht der Schreibweise dieser Zeitschrift – eine korrekte Form sieht so aus: «{0}». Passen Sie die Eingabe in seinen Metadaten an, oder deaktivieren Sie «DOI von Hand festlegen», um zur Berechnung zurückzukehren.',
     'art.doi.fiche.autre': 'Der angezeigte DOI, «{0}», wurde von Hand festgelegt: er geht nach OJS. Die Berechnung aus der Position des Artikels ergäbe «{1}». Ist «{0}» bereits erschienen, ist alles in Ordnung; andernfalls deaktivieren Sie «DOI von Hand festlegen» in seinen Metadaten.',
     'art.doi.fiche.inutile': 'Das Datenblatt dieses Artikels trägt einen von Hand festgelegten DOI, «{0}», aber der Artikel erhält keinen DOI: nichts geht nach OJS. Deaktivieren Sie «DOI von Hand festlegen» in seinen Metadaten, falls das nicht gewollt ist.',
+    'art.doi.double': 'Dieser DOI gehört auch zu «{0}»: zwei Artikel können nicht denselben DOI tragen. Korrigieren Sie das Datenblatt eines der beiden.',
     'art.doi.case': 'Kein DOI',
     'art.doi.case.tip': 'Dieser Artikel erhält keinen DOI. Er rückt dann an das Ende der Ausgabe, damit die Nummerierung der anderen der Leseabfolge folgt.',
     'art.doi.enregistre': 'Gespeichert: {0} Artikel ohne DOI in dieser Ausgabe.',
@@ -1650,10 +1671,6 @@ const TEXTES_COCKPIT = {
     'trad.lien.copie': 'Übersetzungslink kopiert – der E-Mail-Entwurf wird geöffnet. {0}',
     'trad.lien.copie.seul': 'Übersetzungslink kopiert: {0}',
     'trad.lien.mail': 'E-Mail schreiben',
-    // Cette version part vers les traducteurs germanophones, donc pour un numéro
-    // « revue » : voir la note de la version française.
-    'trad.lien.sujet': 'Übersetzung Französisch nach Deutsch – {0}',
-    'trad.lien.corps': 'Guten Tag\n\nDie Ausgabe {0} der Revue suisse de pédagogie spécialisée ist bereit für die Übersetzung vom Französischen ins Deutsche.\n\nSo öffnen Sie sie direkt an der richtigen Stelle: KOPIEREN Sie den Link unten, fügen Sie ihn im Windows-Fenster «Ausführen» ein (Windows-Taste + R) und bestätigen Sie.\n\n{1}\n\nOhne den Link: Startmenü -> «Revues SZH», dann die Ausgabe wählen.\n',
     'trad.lien.impossible': 'Der Link konnte nicht erstellt werden. Prüfen Sie, ob die Ausgabe ihre Zeitschrift angibt (Metadaten der Ausgabe) und ihr Ordner einen einfachen Namen hat (Buchstaben, Zahlen, Bindestrich, Punkt).',
     'intention.ouverte': 'Übersetzungsstand über den erhaltenen Link geöffnet.',
     'trad.deepl.tooltip': 'DeepL mit diesem Text öffnen ({0} → {1}). Die Übersetzung kommt per Kopieren/Einfügen zurück: ohne API-Schlüssel kann DeepL sie uns nicht zurückgeben.',
@@ -2279,6 +2296,10 @@ const TEXTES_COCKPIT = {
     'ctl.source.pipeline': 'Kompilierung',
     'ctl.source.rendu': 'Layout',
     'ctl.source.scission': 'Aufteilung des Manuskripts',
+    'ctl.source.numerotation': 'Abbildungen',
+    'ctl.figure.sansalt': 'Das Bild {0} hat weder Alternativtext noch Legende: ein Screenreader sagt dazu nichts.',
+    'ctl.action.medias': 'Bilder beschreiben',
+    'ctl.action.medias.tip': 'Das Bilderformular dieses Artikels öffnen.',
     'ctl.cit.sansref': 'Der Zitatverweis {0} führt zu keinem Literatureintrag: das Literaturverzeichnis hat keinen Eintrag mit diesem Namen und diesem Jahr. Ergänzen Sie den Eintrag am Ende des Artikels, oder korrigieren Sie Name oder Jahr im Verweis. So wie es ist, kann die Leserin die Quelle nicht finden.',
     'ctl.cit.ambigu': 'Der Zitatverweis {0} kann zwei Einträge derselben Autorin und desselben Jahres meinen: niemand kann das für Sie entscheiden. Setzen Sie den Cursor in den Verweis und wählen Sie «Einen Verweis mit einem Literatureintrag verknüpfen». Ohne diesen Schritt bleibt der Verweis ohne Verknüpfung.',
     'ctl.cit.jamais': 'Der Eintrag «{0}» wird im Artikel nirgends zitiert. Zitieren Sie ihn im Text, oder entfernen Sie ihn aus dem Verzeichnis: ein Eintrag, den nichts aufruft, ist meist der Rest einer Kürzung.',
@@ -2301,6 +2322,12 @@ const TEXTES_COCKPIT = {
     'ctl.profil.inconnu': 'Das Produktionsprofil «{0}» dieser Ausgabe ist unbekannt – meist ein Tippfehler. Öffnen Sie «Metadaten der Ausgabe» und setzen Sie es zurück auf «article». Solange es so bleibt, wird nichts erzeugt.',
     'ctl.pdfua.nonconforme': 'Das PDF dieses Artikels erfüllt die Norm für Barrierefreiheit nicht: {0} Regel(n) sind nicht eingehalten. Die Punkte darunter nennen sie einzeln. Der Export wird angehalten: diese Datei geht mit einem Versprechen zur Barrierefreiheit in die Druckerei und in die Online-Zeitschrift, das sie nicht hält.',
     'ctl.pdfua.aucun': 'Es gibt kein PDF zu prüfen: noch wurde nichts kompiliert. Speichern Sie einen Artikel (Ctrl+S), oder wählen Sie «Alles neu kompilieren».',
+    'ctl.pdfua.outillage': 'Der PDF/UA-Prüfer konnte kein Urteil abgeben: siehe das Kompilierprotokoll.',
+    // Das Badge in der Statusleiste (lib/pdfua-hote.js), für den geöffneten Artikel oder das Buch.
+    'pdfua.badge.conforme': 'PDF ist PDF/UA-1-konform, geprüft am {0}',
+    'pdfua.badge.nonconforme': 'PDF ist nicht PDF/UA-1-konform: {0} Regel(n) nicht eingehalten. Klicken für Details.',
+    'pdfua.badge.encours': 'PDF/UA-Prüfung läuft',
+    'pdfua.badge.outillage': 'Der Prüfer konnte kein Urteil abgeben',
     'ctl.niveaux': 'Die Überschriften dieses Artikels reichen tiefer als das Layout unterscheiden kann: die Stufen {0} sehen alle gleich aus. Heben Sie die tiefsten Untertitel um eine Stufe an. So wie es ist, sind zwei Abschnitte unterschiedlicher Tiefe für einen Screenreader nicht zu unterscheiden.',
     'ctl.image.manquante': 'Das Bild «{0}» wird im Text aufgerufen, ist aber auf der Festplatte nicht zu finden: es wurde umbenannt oder gelöscht. Öffnen Sie «Medien des Artikels», um es neu abzulegen, oder entfernen Sie seinen Aufruf aus dem Text. Das Dokument wurde ohne es erzeugt.',
     'ctl.police.manquante': 'Die Schrift «{0}» ist nicht installiert: das Dokument wurde mit einer Ersatzschrift gesetzt, und die Zeilenlängen sind nicht mehr die vorgesehenen. Melden Sie es, die Ursache liegt im Werkzeug, nicht im Artikel.',

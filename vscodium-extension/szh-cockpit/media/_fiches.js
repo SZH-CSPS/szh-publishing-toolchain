@@ -35,7 +35,10 @@
   // badges « à compléter » vivent dans les intitulés, traductions comprises.
   //
   // Protocole avec l'hôte :
-  //   hôte -> webview : valeurs { articles, types, licences, licenceDefaut, langue, accent } ;
+  //   hôte -> webview : valeurs { articles, types, licences, licenceDefaut, langue, accent,
+  //                     formeDoi: { motif, exemple } } ; formeDoi vaut la forme des DOI de
+  //                     la revue du numéro — absente sur la page de vérification d'import,
+  //                     qui ne l'envoie pas (voir champDoi plus bas) ;
   //                     doi-manuel-reponse { slug, sens, ok } ;
   //                     mots-cles-connus { motsCles: [{ de, fr }] } (autocomplétion, voir
   //                     attacherAutocompletionMotsCles plus bas)
@@ -175,6 +178,11 @@
     // les types d'article. Le formulaire n'en connaît aucune de son côté.
     var LICENCES = [];
     var LICENCE_DEFAUT = '';
+    // La forme des DOI de la revue du numéro : { motif, exemple }, envoyée une fois par
+    // l'hôte (message valeurs), pas par carte — voir champDoi() plus bas. Absente sur la
+    // page de vérification d'import, qui ne l'envoie pas : reste null, et la note de forme
+    // ne s'affiche jamais là.
+    var FORME_DOI_ACTUELLE = null;
     // Le vocabulaire edudoc.ch (message mots-cles-connus), partagé par toutes les cartes
     // de la page — une seule liste, comme TYPES et LICENCES.
     var motsClesConnus = [];
@@ -242,6 +250,47 @@
     // La case revient en arrière dès le clic et la réponse rejoue le geste : entre les
     // deux, l'utilisateur lit la question modale de l'hôte. Une fiche qui porte déjà un
     // doi est en mode manuel d'office — l'héritage d'avant le verrou ne se perd pas.
+    //
+    // Deux notes de plus, jamais bloquantes — la maison ne bloque jamais la saisie, seul
+    // l'export refuse (voir le compteur de résumé plus haut, même règle) :
+    //   - la FORME : FORME_DOI_ACTUELLE (motif + exemple de la revue du numéro) contre la
+    //     valeur tapée, revérifiée à chaque frappe et retirée dès que la case se décoche ou
+    //     que la saisie redevient bonne ;
+    //   - l'UNICITÉ : deux cartes ne peuvent pas envoyer le même DOI. verifierDoublonsDoi()
+    //     compare, à chaque frappe, le DOI EFFECTIF de toutes les cartes du conteneur — son
+    //     manuel actif, sinon son calculé — et note celles dont le manuel coïncide avec une
+    //     autre. doiParCarte garde les éléments qu'il lui faut pour cela.
+    function doiEffectifCarte(carte) {
+      var ctl = doiParCarte.get(carte);
+      if (!ctl) { return ''; }
+      if (ctl.coche.checked) { return ctl.entree.value.trim(); }
+      return String(ctl.calcule || '').trim();
+    }
+
+    function verifierDoublonsDoi() {
+      var parDoi = {};
+      for (var c of conteneur.querySelectorAll('.carte')) {
+        var d = doiEffectifCarte(c);
+        if (d === '') { continue; }
+        if (!parDoi[d]) { parDoi[d] = []; }
+        parDoi[d].push(c.dataset.slug);
+      }
+      for (var c2 of conteneur.querySelectorAll('.carte')) {
+        var ctl = doiParCarte.get(c2);
+        if (!ctl) { continue; }
+        var autre = '';
+        if (ctl.coche.checked) {
+          var val = ctl.entree.value.trim();
+          if (val !== '') {
+            var pairs = (parDoi[val] || []).filter(function (s) { return s !== c2.dataset.slug; });
+            if (pairs.length > 0) { autre = pairs[0]; }
+          }
+        }
+        ctl.noteDouble.hidden = autre === '';
+        if (autre !== '') { ctl.noteDouble.textContent = (TXT.doiDouble || '').split('{0}').join(autre); }
+      }
+    }
+
     function champDoi(carte, slug, article) {
       var v = article.valeurs || {};
       var calcule = String(article.doiCalcule || '').trim();
@@ -251,7 +300,6 @@
       var i = document.createElement('input');
       i.type = 'text';
       i.dataset.cle = 'doi';
-      i.addEventListener('input', function () { marquer(carte, slug); });
       var caseDoi = document.createElement('label');
       caseDoi.className = 'case-doi';
       var coche = document.createElement('input');
@@ -259,14 +307,44 @@
       coche.dataset.cle = 'doi-manuel';
       caseDoi.appendChild(coche);
       caseDoi.appendChild(document.createTextNode(TXT.doiManuel));
+
+      var forme = (FORME_DOI_ACTUELLE && FORME_DOI_ACTUELLE.motif)
+        ? { motif: new RegExp(FORME_DOI_ACTUELLE.motif), exemple: FORME_DOI_ACTUELLE.exemple }
+        : null;
+      var noteForme = document.createElement('p');
+      noteForme.className = 'szh-notif szh-notif--attention szh-notif--discret doi-note';
+      noteForme.hidden = true;
+      var noteDouble = document.createElement('p');
+      noteDouble.className = 'szh-notif szh-notif--attention szh-notif--discret doi-note';
+      noteDouble.hidden = true;
+
+      function majForme() {
+        if (!forme || !coche.checked) { noteForme.hidden = true; return; }
+        var val = i.value.trim();
+        if (val === '' || forme.motif.test(val)) { noteForme.hidden = true; return; }
+        noteForme.hidden = false;
+        noteForme.textContent = (TXT.doiForme || '').split('{0}').join(forme.exemple);
+      }
+
       function poser(actif, valeur) {
         coche.checked = actif;
         i.readOnly = !actif;
         i.classList.toggle('doi-verrouille', !actif);
         i.title = actif ? '' : TXT.doiVerrouTip;
         i.value = actif ? valeur : (calcule !== '' ? calcule : '–');
+        majForme();
+        verifierDoublonsDoi();
       }
+      // Posé avant le premier poser() : verifierDoublonsDoi() parcourt toutes les cartes du
+      // conteneur, celle-ci comprise, et la retrouve donc dans doiParCarte dès son premier
+      // appel.
+      doiParCarte.set(carte, { poser: poser, calcule: calcule, entree: i, coche: coche, noteDouble: noteDouble });
       poser(manuel, v.doi || '');
+      i.addEventListener('input', function () {
+        marquer(carte, slug);
+        majForme();
+        verifierDoublonsDoi();
+      });
       coche.addEventListener('change', function () {
         var veut = coche.checked;
         // Décocher un champ resté au calculé (ou vide) n'efface rien : pas de question.
@@ -281,9 +359,10 @@
         api.postMessage({ type: SZH.MSG.DOI_MANUEL_CONFIRMER, slug: slug,
           sens: veut ? 'activer' : 'retirer' });
       });
-      doiParCarte.set(carte, { poser: poser, calcule: calcule });
       carte.appendChild(l);
       carte.appendChild(i);
+      carte.appendChild(noteForme);
+      carte.appendChild(noteDouble);
       carte.appendChild(caseDoi);
     }
 
@@ -438,11 +517,12 @@
 
     // ---- Construction des cartes ----
 
-    function rendre(articles, types, langueDefaut, licences, licenceDefaut) {
+    function rendre(articles, types, langueDefaut, licences, licenceDefaut, formeDoi) {
       if (types) { TYPES = types; }
       if (langueDefaut) { LANGUE_DEFAUT = langueDefaut; }
       if (licences) { LICENCES = licences; }
       if (licenceDefaut) { LICENCE_DEFAUT = licenceDefaut; }
+      FORME_DOI_ACTUELLE = formeDoi || null;
       ctlAuteurs.fermer();                           // re-rendu : la fiche visée disparaît
       conteneur.textContent = '';
       modifies.clear();
@@ -452,6 +532,10 @@
         conteneur.appendChild(carte);
         appeler('finCarte', carte, articles[n]);
       }
+      // Un DOI manuel hérité peut déjà coïncider avec un autre à l'ouverture du formulaire
+      // (une fiche recopiée d'un article à l'autre, par exemple) : la note ne doit pas
+      // attendre la première frappe pour le dire.
+      verifierDoublonsDoi();
     }
 
     function construireCarte(article) {
@@ -866,7 +950,7 @@
         // des originaux d'image : posé avant le rendu, jamais mis en cache localement.
         SZH.appliquerLimites(msg.limites);
         rendre(msg.articles || [], msg.types || [], msg.langue || 'fr',
-          msg.licences || null, msg.licenceDefaut || null);
+          msg.licences || null, msg.licenceDefaut || null, msg.formeDoi || null);
         surValeurs(msg);
         return true;
       }

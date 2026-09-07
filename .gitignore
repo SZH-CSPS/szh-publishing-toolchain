@@ -27,3 +27,4 @@ tmp/
 # livre (import-docx.sh, tasks.json) : les bancs de test en reçoivent à chaque essai.
 .import.log
 .szh-journal.log
+.szh-pdfua.json

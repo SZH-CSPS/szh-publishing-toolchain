@@ -34,7 +34,7 @@ const {
 const {
   NOMS_COUVERTURE, EXTENSIONS_COUVERTURE, nomCouverture, MAX_COUVERTURE, rangDoi
 } = require('./articles');
-const { doiCalcule } = require('./export-ojs');
+const { doiCalcule, FORME_DOI } = require('./export-ojs');
 const {
   EXTENSIONS_IMAGE_IMPORT, TAILLE_MAX_IMAGE_IMPORT,
   assainirCheminPhoto, decomposerPhoto, baseAuteurValide,
@@ -453,7 +453,11 @@ function textesCarteArticle() {
     rien: T('form.rien'), enregistre: T('fiches.enregistre'),
     tradAfficher: T('fiches.trad.afficher'), tradMasquer: T('fiches.trad.masquer'),
     langueAvenir: T('fiches.langue.avenir'),
-    doiVerrouTip: T('fiches.doi.tip'), doiManuel: T('fiches.doi.manuel')
+    doiVerrouTip: T('fiches.doi.tip'), doiManuel: T('fiches.doi.manuel'),
+    // Deux notes discrètes, jamais bloquantes : la forme attendue d'un DOI saisi à la main,
+    // et l'avertissement d'unicité quand deux cartes en portent un identique. Voir
+    // champDoi() et verifierDoublonsDoi() dans media/_fiches.js.
+    doiForme: T('fiches.doi.forme'), doiDouble: T('fiches.doi.double')
   }, textesAuteur());
 }
 
@@ -682,7 +686,12 @@ function lireMetadonneesArticles(fournisseur, filtre) {
 
 function nettoyerCarte(brut) {
   const texteCourt = (v, max) => String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' ').slice(0, max).trim();
-  const carte = { type: '', lang: '', source: '', licence: '', doi: texteCourt(brut && brut.doi, 200), title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
+  // Le DOI est d'abord dépouillé (trim) avant d'être tronqué : un espace collé en bout de
+  // saisie manuelle, une fois tronqué puis seulement alors dépouillé, peut encore laisser
+  // passer une valeur qui a l'air juste et ne l'est pas — la forme attendue est ancrée
+  // (^...$) et un espace de trop la rend fausse.
+  const doiPropre = (v) => String(v === undefined || v === null ? '' : v).trim().replace(/[\r\n]+/g, ' ').slice(0, 200);
+  const carte = { type: '', lang: '', source: '', licence: '', doi: doiPropre(brut && brut.doi), title: {}, subtitle: {}, resume: {}, keywords: {}, author: [] };
   const type = texteCourt(brut && brut.type, 40);
   if (TYPES_ARTICLE.indexOf(type) !== -1) { carte.type = type; }
   carte.lang = normaliserLangueArticle(brut && brut.lang);
@@ -1022,6 +1031,11 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
   await fermerTousLesApercus();
   const envoyerValeurs = (panneau, extra) => {
     const langue = langueRevue(fournisseur.racine);
+    // La forme attendue des DOI de CETTE revue (motif et exemple, FORME_DOI de
+    // lib/export-ojs.js) : une fois par numéro, pas par article — la webview la réutilise
+    // pour chaque carte. `langue` n'est que fr/de ici (langueRevue() le garantit), mais un
+    // repli sur fr protège quand même contre une clé absente.
+    const forme = FORME_DOI[langue] || FORME_DOI.fr;
     panneau.webview.postMessage(Object.assign({
       type: 'valeurs',
       articles: lireMetadonneesArticles(fournisseur, filtreArticles),
@@ -1030,7 +1044,8 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
       accent: ctx.lireCouleurAccent(fournisseur.racine),
       types: typesTraduits(langue),
       licences: licencesTraduites(), licenceDefaut: LICENCE_DEFAUT,
-      limites: limitesMedias()
+      limites: limitesMedias(),
+      formeDoi: { motif: forme.motif.source, exemple: forme.exemple }
     }, extra || {}));
     envoyerAuteursConnus(panneau, fournisseur.racine);
     envoyerMotsClesConnus(panneau);

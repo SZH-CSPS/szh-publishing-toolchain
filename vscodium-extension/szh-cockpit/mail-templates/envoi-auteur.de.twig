@@ -1,0 +1,12 @@
+{# envoi-auteur.de.twig : version finale d'un article, envoyée à ses auteurs #}
+{% block sujet %}Endfassung – {{ titre }}{% endblock %}
+{% block corps %}
+Guten Tag
+
+Im Anhang finden Sie die Endfassung Ihres Artikels «{{ titre }}», so wie er in {{ numero }} erscheinen wird.
+
+Bitte melden Sie uns allfällige Korrekturen vor dem Druck.
+
+Mit bestem Dank für Ihren Beitrag
+Die Redaktion
+{% endblock %}

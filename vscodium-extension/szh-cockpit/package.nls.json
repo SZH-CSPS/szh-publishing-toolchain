@@ -62,6 +62,7 @@
   "config.reduireWarningsImpression": "N’avertir que pour les images vraiment trop petites : le conseil « résolution recommandée » ne s’affiche plus, le minimum reste vérifié.",
   "config.desactiverLiensReferences": "Ne plus lier automatiquement, à la compilation, les appels de citation à leur référence bibliographique. Les liens posés à la main (« Lier un appel à une référence ») ne sont pas concernés.",
   "config.nomUtilisateur": "Nom affiché aux autres postes quand vous modifiez un fichier du numéro. Vide = le nom de session Windows.",
+  "config.controlePdfUa": "Valider l’accessibilité PDF/UA en arrière-plan après chaque compilation.",
   "cmd.lierReference": "Lier un appel à une référence",
   "cmd.tutoriel": "Prise en main (tutoriel)",
   "tuto.titre": "Prendre en main la chaîne SZH",

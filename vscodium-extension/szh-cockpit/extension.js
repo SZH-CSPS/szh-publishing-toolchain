@@ -42,7 +42,7 @@ const MAKEFILE_WSL = '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile';
 const REIMPORTER_WSL = '/mnt/c/ProgramData/SZH/toolkit/pipeline/reimporter.py';
 
 // ---- i18n du cockpit -> lib/i18n.js ----------------------------------------------
-const { TEXTES_COCKPIT, T, TL, langueCockpit } = require('./lib/i18n');
+const { TEXTES_COCKPIT, T, langueCockpit } = require('./lib/i18n');
 // ---- Protocole de messages hôte <-> webviews -> lib/messages.js -----------------
 const { MSG } = require('./lib/messages');
 // ---- Sérialiseurs YAML -> lib/yaml.js --------------------------------------------
@@ -63,9 +63,9 @@ const {
 const {
   // versionsDivergent n'est plus appelée ici (voir lib/cycle-vie.js) mais reste exposée
   // par module.exports._pur, qui la veut en liaison de module — pas seulement ré-exportée.
-  versionsDivergent, adresseMailTraduction,
+  versionsDivergent,
   lireModeDeveloppeur, ecrireModeDeveloppeur, lireConfigPoste, ecrireConfigPoste,
-  CONFIG_POSTE, FORME_MAIL
+  CONFIG_POSTE
 } = require('./lib/archivage');
 // ---- Auteur·e·s connus : OJS (OAI-PMH) et les numéros du poste --------------------
 // Deux sources, un seul cache. OJS donne les noms et l'affiliation ; la fonction et
@@ -257,7 +257,7 @@ const { copieConflitPour } = require('./lib/copies-conflit');
 const { sousGarde, differer } = require('./lib/interaction');
 const {
   genererExportOjs, configOjs, ecrireConfigOjs, doiCalcule, typeSansDoi,
-  CHAMPS_REVUE, LOCALES_REVUE, RUBRIQUES_DEFAUT
+  CHAMPS_REVUE, LOCALES_REVUE, RUBRIQUES_DEFAUT, FORME_DOI
 } = require('./lib/export-ojs');
 const {
   retirerImage, retirerTable, ordreImages, lireAttributsImage, ecrireAttributsImage,
@@ -1693,6 +1693,7 @@ function majArticleOuvert(fournisseur, chemin) {
   // Les deux fichiers changent d'état : l'ancien perd son point, le nouveau le gagne.
   const touches = [avant, uri].filter(Boolean);
   if (touches.length > 0) { changementDecoration.fire(touches); }
+  majBadgePdfUa(fournisseur);
 }
 
 // La reconstruction de l'arbre remplace l'élément sélectionné (son id encode l'état
@@ -2757,6 +2758,11 @@ function lireRapportImport(racine) {
 // Rien de neuf à l'écran : la vue est la vue d'ensemble des autres sections
 // (media/vue-ensemble.*, SZH.listeCartes), l'avis est une notification de l'éditeur, et
 // le compteur est un article de la barre d'état, comme la bascule d'aperçu.
+//
+// La validation PDF/UA en arrière-plan (lib/pdfua-hote.js) vit à part de tout ceci — elle
+// ne passe pas par une tâche — mais son état rejoint les mêmes compteur et vue : voir
+// pdfuaHote.constats() plus bas, et le badge posé par article (majBadgePdfUa).
+const pdfuaHote = require('./lib/pdfua-hote');
 
 const JOURNAL_TACHE = '.szh-journal.log';
 
@@ -2769,10 +2775,14 @@ const JOURNAL_TACHE = '.szh-journal.log';
 // c'est le geste que le rédacteur vient de faire.
 let dernierJournal = { racine: null, constats: [], code: 0, reimport: [] };
 
-// Ce que la vue et la barre d'état ont à montrer, les deux listes réunies.
+// Ce que la vue et la barre d'état ont à montrer, les deux listes réunies. pdfua.constats()
+// s'ajoute toujours : la validation PDF/UA tourne hors tâche, ses verdicts en cache ne
+// vivent pas dans .szh-journal.log (lib/pdfua-hote.js).
 function constatsCourants(racine) {
-  if (dernierJournal.racine !== racine) { return lireJournalTache(racine); }
-  return dernierJournal.reimport.concat(dernierJournal.constats);
+  const base = dernierJournal.racine !== racine
+    ? lireJournalTache(racine)
+    : dernierJournal.reimport.concat(dernierJournal.constats);
+  return base.concat(pdfuaHote.constats(racine));
 }
 
 // Les constats du dernier réimport, posés ou effacés. Un nouveau réimport remplace ceux
@@ -2808,7 +2818,10 @@ const SOURCES_CONSTAT = {
   // ses constats « [scission-avertissement] » arrivent ici sans code à ajouter (familleCode()
   // de lib/journal.js reconnaît déjà tout préfixe « <source>-<ton> » générique) — seule cette
   // étiquette manquait, sans quoi la carte se serait affichée sous « ctl.source.pipeline ».
-  scission: 'ctl.source.scission'
+  scission: 'ctl.source.scission',
+  // szh-numerotation.lua : la seule image sans texte alternatif ni légende (« figure-sans-
+  // alt »), déjà montrée dans l'encadré « lecteur d'écran » de l'aperçu.
+  numerotation: 'ctl.source.numerotation'
 };
 
 // Une carte par constat : l'article concerné en tête, la nature du contrôle en mesure, la
@@ -2827,6 +2840,15 @@ function vueControles(fournisseur) {
       // « Ouvrir » n'a de sens que sur un article qui existe encore : un constat peut
       // nommer un Word qui n'est jamais devenu un article.
       const ouvrable = c.slug !== '' && connus.has(c.slug);
+      // Une image sans texte alternatif ni légende se corrige dans le formulaire des
+      // médias de son article : le bouton y mène directement, plutôt que de laisser
+      // rouvrir l'aperçu pour retrouver laquelle. Même icône que la vue Articles pour ce
+      // même geste (« Éditer les médias »).
+      const estFigureSansAlt = c.source === 'numerotation' && c.code === 'figure-sans-alt';
+      const actions = (estFigureSansAlt && ouvrable)
+        ? [{ id: 'medias', libelle: T('ctl.action.medias'), icone: 'camera',
+             tip: T('ctl.action.medias.tip') }]
+        : [];
       lignes.push({
         cle: ouvrable ? c.slug : '',
         groupe: T(past.groupe),
@@ -2834,7 +2856,8 @@ function vueControles(fournisseur) {
         meta: T(SOURCES_CONSTAT[c.source] || 'ctl.source.pipeline'),
         notif: { ton: ton, texte: phraseConstat(c, langue) },
         pastilles: [{ texte: T(past.badge), ton: ton === 'info' ? '' : ton, icone: past.icone }],
-        ouvrir: ouvrable
+        ouvrir: ouvrable,
+        actions: actions
       });
     }
   }
@@ -2854,12 +2877,68 @@ let barreControles = null;
 
 function majBarreControles() {
   if (!barreControles) { return; }
-  const r = resumeJournal(dernierJournal.reimport.concat(dernierJournal.constats));
+  // pdfuaHote.constats() s'ajoute : un PDF non conforme compte comme un bloquant, ici
+  // comme à l'export — c'est la même règle, elle arrive juste une minute après le Ctrl+S
+  // au lieu du jour de l'export.
+  const constats = dernierJournal.reimport.concat(dernierJournal.constats)
+    .concat(pdfuaHote.constats(dernierJournal.racine));
+  const r = resumeJournal(constats);
   if (r.bloquants > 0) { barreControles.text = T('ctl.barre.bloquant', [r.bloquants]); }
   else if (r.avertissements > 0) { barreControles.text = T('ctl.barre.avert', [r.avertissements]); }
   else { barreControles.hide(); return; }
   barreControles.tooltip = T('ctl.barre.tooltip');
   barreControles.show();
+}
+
+// ---- Le badge PDF/UA de l'article ouvert (ou du livre) ---------------------------
+//
+// Conforme, non conforme, en cours de validation, ou panne d'outillage — jamais montré
+// tant que rien n'est connu (pas d'article ouvert, ou verdict encore « inconnu »). L'état
+// vient de lib/pdfua-hote.js ; ce module ne fait ici que le traduire pour la barre.
+let barrePdfUa = null;
+
+// La clé d'état à demander à pdfuaHote.etat() pour l'article actuellement marqué ouvert :
+// 'livre' en profil livre (le PDF de l'ouvrage, pas d'un chapitre en particulier), sinon le
+// slug de l'article que majArticleOuvert a marqué — ou null si aucun n'est ouvert.
+function cleBadgePdfUa(fournisseur) {
+  if (!fournisseur.racine) { return null; }
+  if (profilCourant().cle === 'livre') { return 'livre'; }
+  return uriArticleOuvert ? slugArticleContenant(fournisseur.racine, uriArticleOuvert.fsPath) : null;
+}
+
+function majBadgePdfUa(fournisseur) {
+  if (!barrePdfUa) { return; }
+  const cle = cleBadgePdfUa(fournisseur);
+  const e = cle ? pdfuaHote.etat(cle) : { verdict: 'inconnu', regles: 0, date: '' };
+  barrePdfUa.backgroundColor = undefined;
+  if (e.verdict === 'conforme') {
+    barrePdfUa.text = '$(verified) PDF/UA';
+    barrePdfUa.tooltip = T('pdfua.badge.conforme', [e.date ? new Date(e.date).toLocaleString() : '']);
+  } else if (e.verdict === 'non-conforme') {
+    barrePdfUa.text = '$(error) PDF/UA';
+    barrePdfUa.tooltip = T('pdfua.badge.nonconforme', [e.regles]);
+    barrePdfUa.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+  } else if (e.verdict === 'en-cours') {
+    barrePdfUa.text = '$(sync~spin) PDF/UA';
+    barrePdfUa.tooltip = T('pdfua.badge.encours');
+  } else if (e.verdict === 'outillage') {
+    barrePdfUa.text = '$(question) PDF/UA';
+    barrePdfUa.tooltip = T('pdfua.badge.outillage');
+  } else {
+    barrePdfUa.hide();
+    return;
+  }
+  barrePdfUa.show();
+}
+
+// Ce qu'un changement d'état côté pdfuaHote (verdict mis en cache, validation démarrée ou
+// terminée, réglage changé) doit rafraîchir : le badge, le compteur, et la vue Contrôles
+// si elle est ouverte — même trio que relireJournal() plus bas.
+function rafraichirPdfUa(fournisseur) {
+  majBadgePdfUa(fournisseur);
+  majBarreControles();
+  const ouverte = panneauxVue.get('controles');
+  if (ouverte) { envoyerVue(ouverte, fournisseur, 'controles'); }
 }
 
 // Fin d'une tâche de la chaîne : on relit le journal, on met le compteur à jour, et on le
@@ -2989,6 +3068,9 @@ async function actionVue(fournisseur, rafraichirTout, type, id, cle) {
     // Recompiler refait tous les contrôles : c'est le seul geste global de cette vue, le
     // reste se corrige article par article.
     if (id === 'recompiler') { await vscode.commands.executeCommand('szh.toutExporter'); }
+    // Le bouton d'une carte « figure-sans-alt » : ouvre le formulaire des médias de
+    // l'article concerné, là où le texte alternatif se corrige.
+    if (id === 'medias' && cle) { await vscode.commands.executeCommand('szh.mediasArticle', { slug: cle }); }
     return null;
   }
   if (type === 'word') {
@@ -3197,6 +3279,9 @@ function anneeNumero(racine, valeurs) {
 // La carte affiche ce qui part : le manuel quand il existe, étiqueté « manuel » pour que
 // la provenance se voie d'un coup d'œil, le calculé sinon, étiqueté « calculé » comme
 // avant. La divergence entre les deux reste un constat : elle ne se devine pas.
+// FORME_DOI (motif + exemple par revue) vient de l'import de tête de lib/export-ojs
+// (doiCalcule et consorts) : pas de second require ici.
+
 function apercuDoi(locale, annee, numeroRevue, rang, doiFiche, voulu) {
   const fiche = String(doiFiche || '').trim();
   const constats = [];
@@ -3213,9 +3298,15 @@ function apercuDoi(locale, annee, numeroRevue, rang, doiFiche, voulu) {
   if (fiche !== '') {
     // Le manuel s'affiche tel quel, calculable ou non — incalculable n'étouffe rien, le
     // manuel partira dès que le numéro sera complet. La divergence ne se dit que quand il
-    // y a deux valeurs à comparer.
+    // y a deux valeurs à comparer — et c'est alors seulement qu'il faut départager les deux
+    // causes, miroir exact de la logique de l'export (voir FORME_DOI, export-ojs.js ~152) :
+    // une forme étrangère à la revue n'a jamais pu être déposée telle quelle, une forme de
+    // la maison a pu l'être pour de bon.
     if (calcule !== '' && fiche !== calcule) {
-      constats.push({ ton: 'attention', texte: T('art.doi.fiche.autre', [fiche, calcule]) });
+      const forme = FORME_DOI[locale];
+      constats.push({ ton: 'attention', texte: (forme && !forme.motif.test(fiche))
+        ? T('art.doi.forme', [forme.exemple])
+        : T('art.doi.fiche.autre', [fiche, calcule]) });
     }
     return { ligne: { marque: '', texte: fiche, marques: [T('art.doi.manuel')] },
              constats: constats };
@@ -3323,6 +3414,24 @@ function chargeArticles(fournisseur) {
   const voulus = new Set(slugsSansDoiVoulu(racine));
   const sansDoi = articlesSansDoi(racine, slugs, { types: types, voulus: [...voulus] });
   const citations = citationsParArticle(constatsCourants(racine));
+  // Le DOI EFFECTIF de chaque article — sa fiche si elle n'est pas vide, sinon le calculé,
+  // exactement ce que collecter() envoie à l'export (lib/export-ojs.js) — calculé pour tous
+  // les articles avant la boucle qui construit les cartes : un doublon se voit des DEUX
+  // côtés, et le second article de la paire n'a pas encore sa carte quand le premier
+  // construit la sienne.
+  const effectifs = {};
+  for (const slug of slugs) {
+    const fiche = String((metas[slug] && metas[slug].doi) || '').trim();
+    effectifs[slug] = fiche !== ''
+      ? fiche : doiCalcule(locale, annee, numeroRevue, rangDoi(slugs, slug, sansDoi));
+  }
+  const parDoiEffectif = {};
+  for (const slug of slugs) {
+    const v = effectifs[slug];
+    if (!v) { continue; }
+    if (!parDoiEffectif[v]) { parDoiEffectif[v] = []; }
+    parDoiEffectif[v].push(slug);
+  }
   const lignes = slugs.map((slug, index) => {
     const meta = metas[slug];
     const titre = titreFiche(meta, langue);
@@ -3332,6 +3441,12 @@ function chargeArticles(fournisseur) {
     const doi = apercuDoi(locale, annee, numeroRevue, rangDoi(slugs, slug, sansDoi),
       meta.doi, voulus.has(slug));
     const constats = doi.constats.concat(constatsCarte(images, citations.get(slug)));
+    // Un DOI qui désigne aussi un autre article : les deux cartes le disent, chacune
+    // nommant l'autre.
+    const autresMemeDoi = (parDoiEffectif[effectifs[slug]] || []).filter((s) => s !== slug);
+    if (autresMemeDoi.length > 0) {
+      constats.push({ ton: 'attention', texte: T('art.doi.double', [autresMemeDoi[0]]) });
+    }
     // Un article sans titre reste dans la liste, et la carte dit pourquoi elle montre un
     // slug : la compilation refusera de partir sur cet article, et il faut le savoir ici.
     if (titre === '') { constats.unshift({ ton: 'attention', texte: T('art.sansfiche') }); }
@@ -3664,29 +3779,12 @@ function copierFichierPressePapiers(chemin) {
   });
 }
 
-// Les destinataires : toutes les adresses de la fiche, dans l'ordre des auteur·e·s. La
-// version finale part à tout le monde, et une fiche sans adresse laisse le champ vide
-// plutôt que d'inventer une adresse.
-function adressesAuteurs(meta) {
-  const vues = [];
-  for (const a of ((meta && meta.author) || [])) {
-    const v = String((a && a.email) || '').trim();
-    // Même forme d'adresse que « Envoyer pour traduction » : une seule règle (archivage.js).
-    if (FORME_MAIL.test(v) && vues.indexOf(v) === -1) { vues.push(v); }
-  }
-  return vues;
-}
-
-// Le brouillon : destinataires, sujet et corps. Séparé de son ouverture pour être
-// éprouvable sans client de messagerie. La langue est celle de l'article — sa fiche le dit,
-// à défaut le numéro — et jamais celle de l'interface : on écrit à un auteur, pas à soi.
-function brouillonAuteur(langue, adresses, titreArticle, titreDuNumero) {
-  return {
-    destinataire: adresses.join(','),
-    sujet: TL(langue, 'art.envoi.sujet', [titreArticle]),
-    corps: TL(langue, 'art.envoi.corps', [titreArticle, titreDuNumero])
-  };
-}
+// Adresses, brouillons et gabarits d'e-mail : lib/courriel.js (mail-templates/*.twig).
+// adressesAuteurs, brouillonAuteur, brouillonTraduction, uriMailto restent des noms de ce
+// module — rien ne change ni pour les appels ci-dessous ni pour _pur.
+const {
+  adressesAuteurs, brouillonAuteur, brouillonTraduction, uriMailto
+} = require('./lib/courriel');
 
 async function envoyerAuteur(fournisseur, cible) {
   const racine = fournisseur.racine;
@@ -3718,7 +3816,10 @@ async function envoyerAuteur(fournisseur, cible) {
   const langueArticle = normaliserLangueArticle(meta.lang) || langueRevue(racine);
   const adresses = adressesAuteurs(meta);
   const titreArticle = titreFiche(meta, langueArticle) || slug;
-  const brouillon = brouillonAuteur(langueArticle, adresses, titreArticle, titreNumero(racine));
+  const nomsAuteurs = (meta.author || [])
+    .map((a) => [a.prenom, a.nom].map((x) => String(x || '').trim()).filter((x) => x !== '').join(' '))
+    .filter((x) => x !== '');
+  const brouillon = brouillonAuteur(langueArticle, adresses, titreArticle, titreNumero(racine), nomsAuteurs);
   if (adresses.length === 0) { vscode.window.showWarningMessage(T('art.envoi.sansmail', [slug])); }
 
   const copie = await copierFichierPressePapiers(pdf);
@@ -3931,30 +4032,9 @@ function cibleTraduction(fournisseur, cible) {
 // le lien est seul sur sa ligne dans le corps, sélectionnable d'un double-clic, et le
 // texte dit au destinataire quoi en faire. L'adresse n'est pas encodée : sa forme est
 // vérifiée par adresseMailTraduction, qui n'en laisse passer aucun caractère réservé.
-// Langue de l'e-mail : celle de l'équipe qui va traduire, jamais celle de l'interface. Un
-// numéro de la Zeitschrift part vers les traducteurs francophones, une Revue vers les
-// germanophones ; les textes de lib/i18n.js nomment la revue et le sens en conséquence.
-const LANGUE_MAIL_TRADUCTION = { zeitschrift: 'fr', revue: 'de' };
-
-// Le brouillon : destinataire, sujet et corps, tous trois déduits du seul jeton de revue.
-// Séparé de son ouverture pour être éprouvable sans client de messagerie.
-function brouillonTraduction(produit, quoi, lien) {
-  const langue = LANGUE_MAIL_TRADUCTION[produit] || 'fr';
-  return {
-    destinataire: adresseMailTraduction(produit),
-    sujet: TL(langue, 'trad.lien.sujet', [quoi]),
-    corps: TL(langue, 'trad.lien.corps', [quoi, lien])
-  };
-}
-
-// L'adresse n'est pas encodée : sa forme est vérifiée par adresseMailTraduction, qui ne
-// laisse passer aucun caractère réservé. Sujet et corps le sont, eux : accents,
-// guillemets et retours à la ligne d'un corps entier n'y survivraient pas autrement.
-function uriMailto(brouillon) {
-  return 'mailto:' + brouillon.destinataire +
-    '?subject=' + encodeURIComponent(brouillon.sujet) +
-    '&body=' + encodeURIComponent(brouillon.corps);
-}
+// brouillonTraduction et uriMailto : lib/courriel.js (require en tête de la section
+// « Envoyer à l'auteur », plus haut dans ce fichier) ; les gabarits de mail-templates/
+// nomment la revue et le sens de la traduction.
 
 function ouvrirBrouillonMail(brouillon) {
   return vscode.env.openExternal(vscode.Uri.parse(uriMailto(brouillon)));
@@ -4562,6 +4642,7 @@ function ouvrirReglages(rafraichirTout) {
         // bootstrap.ps1 donne au groupe Utilisateurs le droit d'écrire ce fichier.
         const erreur = ecrireModeDeveloppeur(msg.valeur !== 'non');
         if (erreur) { vscode.window.showErrorMessage(T('err.dev.ecriture', [erreur])); }
+        vscode.commands.executeCommand('szh.cockpit.rafraichir');   // le badge « test » suit
       } else if (msg.cle === 'langue') {
         const langue = msg.valeur === 'de' ? 'de' : 'fr';
         await vscode.workspace.getConfiguration('szh').update('langue', langue, Global);
@@ -5072,12 +5153,40 @@ function activate(context) {
   barreControles.command = 'szh.vueControles';
   context.subscriptions.push(barreControles);
 
+  // Le badge PDF/UA de l'article ouvert : entre le compteur des contrôles et la bascule
+  // d'aperçu. Masqué tant qu'aucun article n'est ouvert ou que rien n'est connu (majBadgePdfUa).
+  barrePdfUa = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 45);
+  barrePdfUa.command = 'szh.vueControles';
+  context.subscriptions.push(barrePdfUa);
+
   const barreEtat = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 60);
   context.subscriptions.push(barreEtat);
+
+  // Le badge « Dossier de test » : un poste qui pointe sur l'arborescence de test le dit
+  // dans la barre d'état, en couleur — la décision test/production reste ouverte, ce badge
+  // ne fait qu'annoncer. Couleur posée une fois pour toutes : elle ne varie pas, seule la
+  // visibilité change.
+  const barreModeTest = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 70);
+  barreModeTest.command = 'szh.reglages';
+  barreModeTest.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+  context.subscriptions.push(barreModeTest);
+
   const majBarreApercu = () => {
     barreApercu.text = T(modeApercu() === 'html' ? 'apercu.barre.html' : 'apercu.barre.pdf');
     barreApercu.tooltip = T('apercu.barre.tooltip');
     if (fournisseur.racine) { barreApercu.show(); } else { barreApercu.hide(); }
+  };
+
+  // lireModeDeveloppeur() (déjà importé de lib/archivage.js) vaut exactement
+  // lireEmplacementRevues() === EMPLACEMENT_TEST : pas de nouvel import nécessaire ici.
+  const majBarreModeTest = () => {
+    if (fournisseur.racine && lireModeDeveloppeur()) {
+      barreModeTest.text = '$(beaker) ' + T('etat.barre.test');
+      barreModeTest.tooltip = T(lireConfigPoste() ? 'etat.barre.test.tooltip' : 'etat.barre.test.defaut');
+      barreModeTest.show();
+    } else {
+      barreModeTest.hide();
+    }
   };
 
   // getChildren recalcule le compte des Word, le titre suit le numéro, et l'aperçu HTML
@@ -5148,6 +5257,7 @@ function activate(context) {
       dernierJournal = { racine: racine, constats: lireJournalTache(racine), code: 0, reimport: [] };
     }
     majBarreControles();
+    majBarreModeTest();
     session.poserProfilRevue(lireProfil(racine));            // pilote le mode d'aperçu
     // Les deux clés se posent à chaque rafraîchissement, celle du profil actif à vrai et
     // l'autre à faux. Ne poser que la première laisserait szh.estRevue vrai après le
@@ -5303,6 +5413,9 @@ function activate(context) {
       // inopérantes sur ce chemin, pourtant le plus fréquent.
       session.poserTachesSuiviesEnVol(session.tachesSuiviesEnVol() + 1);
       session.poserBuildEnCours(true);
+      // Une compilation démarre : un travail de validation PDF/UA déjà en vol juge peut-être
+      // un PDF sur le point de changer — pdfuaHote jettera son résultat à son retour.
+      pdfuaHote.signalerDebutBuild();
       avertirVersionSiDivergente();
     }),
     // Et à la fin : ce que la chaîne a relevé. Même raison de passer par l'événement
@@ -5318,7 +5431,12 @@ function activate(context) {
         NOM_TACHE_LIVRE_IMPRIMEUR, NOM_TACHE_LIVRE_COUVERTURE, NOM_TACHE_LIVRE_EPUB, NOM_TACHE_LIVRE_WEB];
       const estNotre = (tache.definition && tache.definition.type === 'szh');
       if (nomsSuivis.indexOf(tache.name) === -1 && !estNotre) { return; }
-      relireJournal(fournisseur, e.exitCode === undefined ? 0 : e.exitCode)
+      const code = e.exitCode === undefined ? 0 : e.exitCode;
+      relireJournal(fournisseur, code)
+        // Seulement si la compilation a réussi : un PDF sorti d'une compilation en échec
+        // n'est pas forcément celui qu'on croit — voir pipeline/Makefile, verifier-ua n'est
+        // d'ailleurs jamais appelée par `all`.
+        .then(() => { if (code === 0) { pdfuaHote.planifier(fournisseur.racine); } })
         .catch(() => { /* un avis raté ne casse pas la compilation */ });
     }),
     // Se déclenche pour toute fin de tâche, avec ou sans processus : c'est ici, et
@@ -5401,6 +5519,15 @@ function activate(context) {
   rafraichirAuteursPubliesEnFond();
   // Même politique de fond, cache distinct : voir rafraichirMotsClesConnusEnFond.
   rafraichirMotsClesConnusEnFond();
+  // ---- Validation PDF/UA en arrière-plan -> lib/pdfua-hote.js ----------------------
+  // Avant demarrageInitial() : ouvrirArticleActifAuDemarrage() y marque déjà un article
+  // ouvert (majArticleOuvert), qui demande aussitôt le badge — ctx doit être prêt.
+  pdfuaHote.configurer({
+    listerArticles: () => fournisseur.listerArticles(),
+    profilOuvrage: () => session.profilOuvrage(),
+    racine: () => fournisseur.racine,
+    surChangement: () => rafraichirPdfUa(fournisseur)
+  });
   demarrageInitial();
 }
 

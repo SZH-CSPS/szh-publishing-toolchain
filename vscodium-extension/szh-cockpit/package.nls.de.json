@@ -62,6 +62,7 @@
   "config.reduireWarningsImpression": "Nur bei wirklich zu kleinen Bildern warnen: der Hinweis «empfohlene Auflösung» erscheint nicht mehr, das Minimum wird weiterhin geprüft.",
   "config.desactiverLiensReferences": "Zitatverweise beim Kompilieren nicht mehr automatisch mit ihrem Literaturverzeichniseintrag verknüpfen. Von Hand gesetzte Links («Verweis mit einer Referenz verknüpfen») sind davon nicht betroffen.",
   "config.nomUtilisateur": "Name, der anderen Computern angezeigt wird, wenn Sie eine Datei der Ausgabe bearbeiten. Leer = der Windows-Anmeldename.",
+  "config.controlePdfUa": "PDF/UA-Barrierefreiheit nach jeder Kompilierung im Hintergrund prüfen.",
   "cmd.lierReference": "Verweis mit einer Referenz verknüpfen",
   "cmd.tutoriel": "Einstieg (Tutorial)",
   "tuto.titre": "Die SZH-Publikationskette kennenlernen",

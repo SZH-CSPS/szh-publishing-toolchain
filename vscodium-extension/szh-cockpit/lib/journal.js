@@ -197,7 +197,13 @@ const CLES_LIVRE = {
   'chapitre-introuvable': 'ctl.livre.chapitreintrouvable'
 };
 
-const CLES = { import: CLES_IMPORT, meta: CLES_META, citations: CLES_CITATIONS, livre: CLES_LIVRE };
+// « numerotation » : szh-numerotation.lua, l'unique code émis à ce jour signale une image
+// sans texte alternatif ET sans légende — le seul cas rouge de l'encadré « lecteur d'écran »
+// de l'aperçu (szh-apercu-lecteur-ecran.lua) et de imagesSansAlternative() (lib/references.js).
+const CLES_NUMEROTATION = { 'figure-sans-alt': 'ctl.figure.sansalt' };
+
+const CLES = { import: CLES_IMPORT, meta: CLES_META, citations: CLES_CITATIONS, livre: CLES_LIVRE,
+  numerotation: CLES_NUMEROTATION };
 const TONS = { import: TONS_IMPORT };
 
 // Les substitutions de la phrase de la maison, par « source/code ». Elles se prennent dans
@@ -224,7 +230,10 @@ const ARGS = {
                               ch('ambigus'), ch('sansref')],
   'livre/liminaire-introuvable': (ch) => [ch('pièce')],
   'livre/chapitre-ecarte': (ch) => [ch('chapitre')],
-  'livre/chapitre-introuvable': (ch) => [ch('chapitre')]
+  'livre/chapitre-introuvable': (ch) => [ch('chapitre')],
+  // Substitution PAR NOM de champ (« image « … » »), comme partout ailleurs ici : nomFichier()
+  // retire le chemin, un chemin n'aidant personne à retrouver une image dans un formulaire.
+  'numerotation/figure-sans-alt': (ch) => [nomFichier(ch('image'))]
 };
 
 // Préfixes de la maison qui n'ont pas (encore) de format à codes : le Makefile, les
@@ -458,6 +467,33 @@ function slugDuPdf(nom) {
   return String(nom).replace(/\.pdf$/i, '');
 }
 
+// verdictsPdfUa(texte) -> [{ fichier, verdict: 'conforme'|'non-conforme', regles }], avec
+// une propriété `outillage: true` posée sur le tableau rendu si une ligne « [pdf-ua] ✗ »
+// est présente. Français seulement (la moitié « [de] » double la même information).
+//
+// Indépendant de lirePdfUa/analyserJournal ci-dessus : ceux-là relisent .szh-journal.log
+// après coup et jettent le cas conforme (rien à en dire à l'écran) ; ceci relit la sortie
+// BRUTE de verifier-ua.sh juste après l'avoir lancée (lib/pdfua-hote.js, côté cockpit), où
+// le verdict conforme compte autant que le non-conforme — c'est lui qui dit si un article
+// est bon à publier.
+function verdictsPdfUa(texte) {
+  const verdicts = [];
+  let outillage = false;
+  for (const brute of String(texte === undefined || texte === null ? '' : texte).split(/\r?\n/)) {
+    const ligne = brute.replace(/\s+$/, '');
+    if (ligne === '') { continue; }
+    const coupe = decouper(ligne);
+    if (!coupe || coupe.prefixe !== 'pdf-ua' || coupe.allemand) { continue; }
+    let m = coupe.reste.match(/^PDF\/UA-1\s*:?\s*(\S+)\s+—\s+NON conforme, (\d+)/);
+    if (m) { verdicts.push({ fichier: m[1], verdict: 'non-conforme', regles: Number(m[2]) }); continue; }
+    m = coupe.reste.match(/^PDF\/UA-1\s*:?\s*(\S+)\s+—\s+conforme\.$/);
+    if (m) { verdicts.push({ fichier: m[1], verdict: 'conforme', regles: 0 }); continue; }
+    if (coupe.reste.indexOf('✗') === 0) { outillage = true; }
+  }
+  if (outillage) { verdicts.outillage = true; }
+  return verdicts;
+}
+
 // Certaines lignes portent leurs deux langues d'un seul tenant, l'allemande introduite par
 // « [de] » au milieu de la phrase : c'est le cas des lignes « [import] » du Makefile. On
 // coupe, et on ne garde que la moitié demandée.
@@ -686,5 +722,6 @@ module.exports = {
   TONS_IMPORT, CLES_IMPORT, TONS_RESULTAT_REIMPORT,
   analyserJournal, phraseConstat, resumeJournal,
   CODES_CITATIONS_CARTE, citationsParArticle,
-  constatsReimport, tonResultatReimport
+  constatsReimport, tonResultatReimport,
+  verdictsPdfUa
 };

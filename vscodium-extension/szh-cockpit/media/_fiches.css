@@ -52,6 +52,9 @@
 /* DOI : calcule par l'hote et montre verrouille ; la case « Definir manuellement le DOI »
    rend le champ editable, apres l'avertissement modal pose par l'hote. */
 input.doi-verrouille { color: var(--encre-2); background: var(--surface); cursor: default; }
+/* Notes discretes sous le champ DOI (forme attendue, doublon avec une autre carte) : jamais
+   bloquantes, retirees par simple masquage (voir champDoi, media/_fiches.js). */
+.doi-note { margin: var(--e1) 0 0; }
 .case-doi { font-weight: 400; font-size: var(--t-libelle); margin-top: var(--e1); }
 .case-doi input { width: auto; margin-right: .35em; accent-color: var(--accent); }
 

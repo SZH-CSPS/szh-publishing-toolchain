@@ -1,0 +1,12 @@
+{# envoi-auteur.fr.twig : version finale d'un article, envoyée à ses auteurs #}
+{% block sujet %}Version finale – {{ titre }}{% endblock %}
+{% block corps %}
+Bonjour,
+
+Vous trouverez en pièce jointe la version finale de votre article « {{ titre }} », telle qu’elle paraîtra dans {{ numero }}.
+
+Merci de nous signaler toute correction avant l’impression.
+
+Avec nos remerciements pour votre contribution,
+La rédaction
+{% endblock %}

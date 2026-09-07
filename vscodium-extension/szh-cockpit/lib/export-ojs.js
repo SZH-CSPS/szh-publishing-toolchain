@@ -722,6 +722,18 @@ function collecter(racine, cfg, avertissements) {
     }
     articles.push(article);
   }
+  // Un même DOI ne peut désigner deux articles : OJS ne recevrait qu'un seul des deux
+  // dépôts, l'autre étant écrasé selon l'ordre d'arrivée. Comparé sur ce qui PART
+  // réellement de chaque article — le calculé, ou le manuel qui le remplace — et jamais
+  // sur la fiche brute d'un article qui n'en reçoit pas : celui-là part avec '' (voir plus
+  // haut), et une chaîne vide ne compte jamais comme un doublon.
+  const vuDoi = {};
+  for (const a of articles) {
+    if (!a.doi) { continue; }
+    const autre = vuDoi[a.doi];
+    if (autre) { bloquants.push(T('ojs.err.doi.double', [autre, a.slug, a.doi])); }
+    else { vuDoi[a.doi] = a.slug; }
+  }
   // La configuration d'abord : elle explique souvent le reste, et c'est elle qui décide
   // du bouton que l'hôte propose.
   const tous = bloquantsConfig.concat(bloquants);

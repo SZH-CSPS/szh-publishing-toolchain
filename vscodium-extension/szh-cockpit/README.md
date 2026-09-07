@@ -47,6 +47,8 @@ lib/
   copies-conflit.js     détection des copies en conflit déposées par OneDrive/SharePoint, et
                         application bloc par bloc des divergences que l'éditeur calcule
                         (« Prendre cette version » / « Garder la mienne »)
+  courriel.js           sujet et corps de « Envoyer à l'auteur » et « Envoyer pour
+                        traduction », rendus depuis mail-templates/*.twig par gabarits.js
   cycle-vie.js          verrouillage, archivage, désarchivage, avertissement de version
                         divergente ; et les copies en conflit du synchroniseur jusqu'à leur
                         résolution bloc par bloc (le calcul lui-même reste dans
@@ -59,6 +61,8 @@ lib/
   formatting-pur.js      la part de formatting.js qui ne référence pas vscode (bascules de
                         texte, pose des blocs :::, palette), réutilisable par medias.js et
                         panneaux.js
+  gabarits.js           moteur de gabarits, sous-ensemble de Twig sans vscode ni dépendance :
+                        sert lib/courriel.js
   i18n.js               textes fr/de et T(clé[, args])
   import-hote.js        import guidé : conversion des .docx en attente (bouton ou glisser-
                         déposer), écriture de l'ordre des nouveaux articles (le numéro de
@@ -89,6 +93,10 @@ lib/
                         délai total, resumptionToken, repli sur 503 — SZH_RESEAU_INTERDIT
                         y bloque tout appel réel en test, pour les deux moissonneurs
   panneaux.js           les trois panneaux QuickPick
+  pdfua-hote.js         validation PDF/UA en arrière-plan après une compilation réussie ;
+                        badge par article (conforme/non conforme/en cours/outillage),
+                        cache par empreinte du PDF (.szh-pdfua.json). Rappelle l'hôte par
+                        configurer(), jamais par import
   portraits.js          appel du script de détourage des photos, dans WSL
   profil.js             ce qu'est le dossier ouvert — numéro de revue (ausgabe.yaml,
                         articles/) ou livre (buch.yaml, chapitres/) — et ses chemins
@@ -115,6 +123,8 @@ lib/
   wsl.js                distro, localisation de wsl.exe, maintien en vie de la VM
   yaml.js               (dé)sérialiseurs ausgabe/frontmatter/meta, écriture atomique
   webviews/util.js      assemblage du HTML des webviews (nonce, CSP, fichiers de media/)
+mail-templates/          gabarits Twig des courriels, un fichier par nom et par langue
+                        (envoi-auteur.fr.twig, traduction.de.twig, …) — voir son README.md
 media/
   _commun.js            fragments partagés par les formulaires (mots-clés, auto-enregistrement,
                         icônes, notifications, barre de commandes, liste de cartes)

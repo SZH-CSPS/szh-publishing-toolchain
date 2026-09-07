@@ -44,6 +44,7 @@ const { ouvrir, libellesHote, chargerAvecVscodeFactice } = require('./dom-minima
 const { activerHote } = require('./hote-factice');
 const ojs = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'export-ojs.js'));
 const journal = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'journal.js'));
+const i18n = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'i18n.js'));
 
 const LF = String.fromCharCode(10);
 
@@ -612,6 +613,112 @@ test('carte : le DOI manuel s’affiche étiqueté, et l’écart avec le calcul
     fs.writeFileSync(cheminFiche('05-pagnamenta'), avant05);
     fs.writeFileSync(cheminFiche('10-documentation'), avant10);
     await poserEtat({ date: '2026-09-08' });
+  }
+});
+
+// ---- La forme et l'unicité du DOI manuel, sur la carte ------------------------------
+//
+// Miroir de la logique de l'export (voir la même distinction dans export-ojs.test.js) :
+// une forme étrangère à la revue et un DOI qui désigne aussi un autre article ne sont ni
+// l'un ni l'autre le simple « écart avec le calculé » qu'art.doi.fiche.autre dit déjà.
+
+test('carte : un DOI manuel hors forme montre art.doi.forme, à la place de art.doi.fiche.autre', async () => {
+  const p = await vue();
+  const cheminFiche = (slug) => path.join(REVUE, 'articles', slug, slug + '.meta.yaml');
+  const avant = fs.readFileSync(cheminFiche('05-pagnamenta'), 'utf8');
+  try {
+    // Hors de la forme des DOI de la Revue (fr) : ni le préfixe ni la lettre n'y sont.
+    fs.writeFileSync(cheminFiche('05-pagnamenta'),
+      avant.replace('title:', 'doi: "10.57262/szh/2020-09-09"' + LF + 'title:'));
+    await HOTE.executer('szh.cockpit.rafraichir');
+    await p._recepteur({ type: 'pret' });
+    const ligne = derniereCharge(p).lignes.find((l) => l.cle === '05-pagnamenta');
+    const dits = ligne.constats.map((c) => c.texte);
+    assert.ok(dits.indexOf(i18n.T('art.doi.forme', [ojs.FORME_DOI.fr.exemple])) !== -1,
+      'la forme fautive ne montre pas art.doi.forme : ' + dits.join(' | '));
+    assert.ok(!dits.some((t) => t.indexOf('a été défini à la main : c’est lui qui partira') !== -1),
+      'art.doi.fiche.autre reste affiché malgré une forme fautive : ' + dits.join(' | '));
+  } finally {
+    fs.writeFileSync(cheminFiche('05-pagnamenta'), avant);
+    await HOTE.executer('szh.cockpit.rafraichir');
+    await p._recepteur({ type: 'pret' });
+  }
+});
+
+test('carte : un DOI manuel dans la forme mais différent du calculé montre toujours art.doi.fiche.autre', async () => {
+  const p = await vue();
+  const cheminFiche = (slug) => path.join(REVUE, 'articles', slug, slug + '.meta.yaml');
+  const avant = fs.readFileSync(cheminFiche('05-pagnamenta'), 'utf8');
+  try {
+    // Dans la forme de la Revue (fr), mais un autre article que le calculé désignerait.
+    fs.writeFileSync(cheminFiche('05-pagnamenta'),
+      avant.replace('title:', 'doi: "10.57161/r2020-09-09"' + LF + 'title:'));
+    await HOTE.executer('szh.cockpit.rafraichir');
+    await p._recepteur({ type: 'pret' });
+    const ligne = derniereCharge(p).lignes.find((l) => l.cle === '05-pagnamenta');
+    const dits = ligne.constats.map((c) => c.texte);
+    assert.ok(dits.indexOf(i18n.T('art.doi.fiche.autre', ['10.57161/r2020-09-09', '10.57161/r2026-03-05'])) !== -1,
+      'une forme correcte mais divergente ne montre plus art.doi.fiche.autre : ' + dits.join(' | '));
+    assert.ok(!dits.some((t) => /a pas la forme des DOI/.test(t)),
+      'art.doi.forme s’affiche alors que la saisie est dans la bonne forme : ' + dits.join(' | '));
+  } finally {
+    fs.writeFileSync(cheminFiche('05-pagnamenta'), avant);
+    await HOTE.executer('szh.cockpit.rafraichir');
+    await p._recepteur({ type: 'pret' });
+  }
+});
+
+test('carte : deux fiches au même DOI manuel montrent art.doi.double sur les deux', async () => {
+  const p = await vue();
+  const cheminFiche = (slug) => path.join(REVUE, 'articles', slug, slug + '.meta.yaml');
+  const avant2 = fs.readFileSync(cheminFiche('02-chanier'), 'utf8');
+  const avant3 = fs.readFileSync(cheminFiche('03-guilley'), 'utf8');
+  try {
+    const doiCommun = '10.57161/r2020-01-01';
+    fs.writeFileSync(cheminFiche('02-chanier'),
+      avant2.replace('title:', 'doi: "' + doiCommun + '"' + LF + 'title:'));
+    fs.writeFileSync(cheminFiche('03-guilley'),
+      avant3.replace('title:', 'doi: "' + doiCommun + '"' + LF + 'title:'));
+    await HOTE.executer('szh.cockpit.rafraichir');
+    await p._recepteur({ type: 'pret' });
+    const charge = derniereCharge(p);
+    const l2 = charge.lignes.find((l) => l.cle === '02-chanier');
+    const l3 = charge.lignes.find((l) => l.cle === '03-guilley');
+    assert.ok(l2.constats.some((c) => c.texte === i18n.T('art.doi.double', ['03-guilley'])),
+      'la première carte ne montre pas le doublon : ' + l2.constats.map((c) => c.texte).join(' | '));
+    assert.ok(l3.constats.some((c) => c.texte === i18n.T('art.doi.double', ['02-chanier'])),
+      'la seconde carte ne montre pas le doublon : ' + l3.constats.map((c) => c.texte).join(' | '));
+  } finally {
+    fs.writeFileSync(cheminFiche('02-chanier'), avant2);
+    fs.writeFileSync(cheminFiche('03-guilley'), avant3);
+    await HOTE.executer('szh.cockpit.rafraichir');
+    await p._recepteur({ type: 'pret' });
+  }
+});
+
+test('carte : un DOI manuel égal au calculé d’un voisin montre art.doi.double sur les deux', async () => {
+  const p = await vue();
+  const cheminFiche = (slug) => path.join(REVUE, 'articles', slug, slug + '.meta.yaml');
+  const avant = fs.readFileSync(cheminFiche('06-pirico'), 'utf8');
+  try {
+    // Le calculé de 02-chanier (voir les « attendus » du tout premier contrôle DOI de ce
+    // fichier), sans qu'il ne porte lui-même aucun DOI manuel.
+    const calculeVoisin = '10.57161/r2026-03-02';
+    fs.writeFileSync(cheminFiche('06-pirico'),
+      avant.replace('title:', 'doi: "' + calculeVoisin + '"' + LF + 'title:'));
+    await HOTE.executer('szh.cockpit.rafraichir');
+    await p._recepteur({ type: 'pret' });
+    const charge = derniereCharge(p);
+    const voisin = charge.lignes.find((l) => l.cle === '02-chanier');
+    const manuel = charge.lignes.find((l) => l.cle === '06-pirico');
+    assert.ok(voisin.constats.some((c) => c.texte === i18n.T('art.doi.double', ['06-pirico'])),
+      'le voisin, sans DOI manuel, ne montre pas le doublon : ' + voisin.constats.map((c) => c.texte).join(' | '));
+    assert.ok(manuel.constats.some((c) => c.texte === i18n.T('art.doi.double', ['02-chanier'])),
+      'la fiche manuelle ne montre pas le doublon : ' + manuel.constats.map((c) => c.texte).join(' | '));
+  } finally {
+    fs.writeFileSync(cheminFiche('06-pirico'), avant);
+    await HOTE.executer('szh.cockpit.rafraichir');
+    await p._recepteur({ type: 'pret' });
   }
 });
 

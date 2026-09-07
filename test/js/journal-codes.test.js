@@ -304,6 +304,45 @@ test('codes : les trois lignes réelles du pipeline pour le livre sont reconnues
   for (const c of constats) { assert.notStrictEqual(c.cle, '', c.code + ' sans clé d’i18n'); }
 });
 
+// ---- 2 ter. La numérotation : szh-numerotation.lua, le code « figure-sans-alt » ----
+//
+// La ligne réelle du filtre, recopiée mot pour mot (test/filtres-pandoc.test.js la fait
+// sortir de pandoc, sous SZH_APERCU) : l'espace fine insécable française devant le
+// deux-points (même caractère que LIBELLE_SOURCE de szh-numerotation.lua) côté français,
+// aucune espace côté allemand — la ponctuation haute s'y colle.
+const LIGNE_FIGURE_SANS_ALT =
+  '[numerotation-avertissement] figure-sans-alt | article « essai » | image « x.png » | '
+  + 'L’image x.png n’a ni texte alternatif ni légende : un lecteur '
+  + 'd’écran n’en dira rien. | [de] Das Bild x.png hat weder Alternativtext '
+  + 'noch Legende: ein Screenreader sagt dazu nichts.';
+
+test('codes : la ligne réelle de szh-numerotation.lua (figure-sans-alt) est reconnue', () => {
+  const c = journal.analyserJournal(LIGNE_FIGURE_SANS_ALT, 'fr')[0];
+  assert.strictEqual(c.source, 'numerotation');
+  assert.strictEqual(c.code, 'figure-sans-alt');
+  assert.strictEqual(c.ton, 'attention');
+  assert.strictEqual(c.slug, 'essai');
+  assert.strictEqual(c.cle, 'ctl.figure.sansalt');
+  assert.deepStrictEqual(c.args, ['x.png']);
+  // La phrase à l'écran vient de la maison (ctl.figure.sansalt), jamais de la prose du
+  // pipeline recopiée ci-dessus : un texte plus clair peut la remplacer sans rien casser.
+  assert.match(journal.phraseConstat(c, 'fr'), /^L’image x\.png n’a ni texte alternatif/);
+  const d = journal.analyserJournal(LIGNE_FIGURE_SANS_ALT, 'de')[0];
+  assert.match(journal.phraseConstat(d, 'de'), /^Das Bild x\.png hat weder Alternativtext/);
+});
+
+test('codes : figure-sans-alt en mode livre nomme le chapitre, pas l’article', () => {
+  // Même alias que szh-citations.lua : SZH_LIVRE fait écrire « chapitre « … » » au lieu de
+  // « article « … » », et lireConstatCode() accepte l’un ou l’autre pour le slug.
+  const ligneChapitre = LIGNE_FIGURE_SANS_ALT.replace('article « essai »', 'chapitre « 03-annexes »');
+  const c = journal.analyserJournal(ligneChapitre, 'fr')[0];
+  assert.strictEqual(c.source, 'numerotation');
+  assert.strictEqual(c.code, 'figure-sans-alt');
+  assert.strictEqual(c.slug, '03-annexes');
+  assert.strictEqual(c.cle, 'ctl.figure.sansalt');
+  assert.deepStrictEqual(c.args, ['x.png']);
+});
+
 // ---- 3. Les filtres, pour de vrai : le blocage reste un blocage ----
 
 function wsl(args) {

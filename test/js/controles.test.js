@@ -395,6 +395,44 @@ test('hôte : un avertissement d’import n’est plus une ligne brute dans « W
   assert.match(tableau.notif.texte, /en-tête/);
 });
 
+// La ligne réelle de szh-numerotation.lua (voir test/filtres-pandoc.test.js et
+// test/js/journal-codes.test.js, qui la font sortir de pandoc et la lisent mot pour mot) :
+// une image sans texte alternatif ni légende, sur l'article « 01-essai » de la revue
+// d'essai — le seul dont fournisseur.listerArticles() connaît le slug ici.
+const JOURNAL_FIGURES = [
+  '[numerotation-avertissement] figure-sans-alt | article « 01-essai » | image « fig-1.png » | '
+    + 'L’image fig-1.png n’a ni texte alternatif ni légende : un lecteur d’écran n’en dira rien. | '
+    + '[de] Das Bild fig-1.png hat weder Alternativtext noch Legende: ein Screenreader sagt dazu nichts.'
+].join(LF) + LF;
+
+test('hôte : une image sans texte alternatif ouvre le formulaire des médias de son article', async () => {
+  poserJournal(JOURNAL_FIGURES);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+  await new Promise((r) => setImmediate(r));
+  await HOTE.executer('szh.vueControles');
+  const p = HOTE.panneauDeType('szhVueControles');
+  assert.ok(p, 'la vue des contrôles ne s’ouvre pas');
+  await p._recepteur({ type: 'pret' });
+  const charge = p.messages.filter((m) => m.type === 'valeurs').pop();
+  const carte = charge.lignes.find((l) => l.cle === '01-essai');
+  assert.ok(carte, 'la carte de l’image sans alt n’apparaît pas : '
+    + JSON.stringify(charge.lignes.map((l) => l.titre)));
+  assert.strictEqual(carte.meta, 'Figures', 'la source « numerotation » ne montre pas son libellé');
+  assert.match(carte.notif.texte, /n’a ni texte alternatif ni légende/);
+  assert.ok(carte.actions && carte.actions.some((a) => a.id === 'medias'),
+    'le bouton « Décrire les images » manque sur la carte : ' + JSON.stringify(carte.actions));
+
+  // Le bouton mène au bon formulaire, sur le bon article — même contrôle que pour la vue
+  // Articles (carte-article.test.js), avec le même geste et la même commande.
+  const avant = HOTE.panneaux.length;
+  await p._recepteur({ type: 'action', cle: '01-essai', id: 'medias' });
+  const medias = HOTE.panneauDeType('szhMedias');
+  assert.ok(medias, 'le bouton « Décrire les images » n’ouvre rien');
+  assert.ok(String(medias.title).indexOf('01-essai') !== -1,
+    'le gestionnaire des médias ne s’ouvre pas sur le bon article : ' + medias.title);
+  assert.ok(HOTE.panneaux.length > avant, 'aucun panneau supplémentaire ne s’est ouvert');
+});
+
 // ---- La relecture des messages, verrouillée ----
 
 const i18n = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'i18n.js'));
@@ -425,6 +463,22 @@ test('relecture : aucun message du cockpit ne parle la langue des développeurs'
       for (const [motif, quoi] of interdits) {
         assert.ok(!motif.test(texte),
           'le message « ' + cle + ' » (' + langue + ') nomme ' + quoi + ' : ' + texte);
+      }
+    }
+  }
+  // Les gabarits de courriel (mail-templates/*.twig) : même relecture, hors constructions
+  // Twig — {# commentaire #} n'est pas un message, {{ variable }} et {% tag %} non plus.
+  // Le cockpit et le lanceur Windows portent chacun leur dossier.
+  const dossiersGabarits = [path.join(COCKPIT, 'mail-templates'), path.join(RACINE, 'windows', 'mail-templates')];
+  for (const dossierGabarits of dossiersGabarits) {
+    for (const nom of fs.readdirSync(dossierGabarits)) {
+      if (!nom.endsWith('.twig')) { continue; }
+      const source = fs.readFileSync(path.join(dossierGabarits, nom), 'utf8')
+        .replace(/\{#[\s\S]*?#\}/g, '')
+        .replace(/\{\{[\s\S]*?\}\}/g, '')
+        .replace(/\{%[\s\S]*?%\}/g, '');
+      for (const [motif, quoi] of INTERDITS) {
+        assert.ok(!motif.test(source), 'le gabarit « ' + nom + ' » nomme ' + quoi);
       }
     }
   }

@@ -186,6 +186,86 @@ test('métadonnées : le DOI est verrouillé sur le calculé, et l’échappatoi
   assert.strictEqual(champ(cartes[2]).readOnly, true);
 });
 
+// La forme des DOI de la revue du numéro (message valeurs.formeDoi), et le doublon entre
+// cartes : deux notes discrètes, jamais bloquantes — la maison ne bloque jamais la saisie
+// (voir le compteur de résumé plus haut), seul l'export refuse (export-ojs.test.js).
+const FORME_DOI_FR = {
+  motif: '^10\\.57161\\/r\\d{4}-\\d{2}-\\d{2}$',
+  exemple: '10.57161/r2026-03-05'
+};
+
+test('métadonnées : la note de forme apparaît sur une saisie fausse, disparaît sur une saisie juste', () => {
+  const articles = [
+    { slug: '01-neuf', valeurs: analyserMeta('doi: "10.57161/r2024-01-05"\n'), doiCalcule: '10.57161/r2026-03-01' }
+  ];
+  const page = ouvrir({
+    racine: RACINE, page: 'metadata-articles',
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+  });
+  page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr',
+                 licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: null,
+                 formeDoi: FORME_DOI_FR });
+  const carte = page.conteneur().querySelectorAll('.carte')[0];
+  const champ = carte.querySelector('[data-cle="doi"]');
+  const noteForme = carte.querySelectorAll('.doi-note')[0];
+  // Héritage déjà dans la forme : la note ne s'affiche pas à l'ouverture.
+  assert.strictEqual(noteForme.hidden, true, 'une note de forme apparaît sur une saisie déjà correcte');
+  // Saisie fautive : la note apparaît, avec l'exemple de la forme attendue.
+  champ.value = '10.99999/pas-la-forme';
+  champ.dispatchEvent({ type: 'input' });
+  assert.strictEqual(noteForme.hidden, false, 'la note de forme n’apparaît pas sur une saisie fausse');
+  assert.ok(noteForme.textContent.indexOf(FORME_DOI_FR.exemple) !== -1,
+    'la note de forme ne montre pas l’exemple attendu : ' + noteForme.textContent);
+  // Saisie corrigée : la note disparaît.
+  champ.value = '10.57161/r2026-01-01';
+  champ.dispatchEvent({ type: 'input' });
+  assert.strictEqual(noteForme.hidden, true, 'la note de forme survit à une saisie corrigée');
+  // Jamais bloquant : la carte se marque modifiée comme n’importe quelle saisie, et
+  // l’enregistrement part quand même.
+  assert.ok(carte.classList.contains('modifie'), 'la saisie fautive n’a pas marqué la carte modifiée');
+  page.parId.enregistrer.dispatchEvent({ type: 'click' });
+  assert.ok(page.messages.some((m) => m.type === 'enregistrer'),
+    'la note de forme a empêché l’enregistrement');
+});
+
+test('métadonnées : deux cartes au même DOI manuel se signalent l’une l’autre, et la correction efface la note', () => {
+  const memeDoi = '10.57161/r2020-09-09';
+  const articles = [
+    { slug: '01-a', valeurs: analyserMeta('doi: "' + memeDoi + '"\n'), doiCalcule: '10.57161/r2026-03-01' },
+    { slug: '02-b', valeurs: analyserMeta('doi: "' + memeDoi + '"\n'), doiCalcule: '10.57161/r2026-03-02' }
+  ];
+  const page = ouvrir({
+    racine: RACINE, page: 'metadata-articles',
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+  });
+  page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr',
+                 licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: null,
+                 formeDoi: FORME_DOI_FR });
+  const cartes = page.conteneur().querySelectorAll('.carte');
+  const noteDouble = (c) => c.querySelectorAll('.doi-note')[1];
+  // Le doublon hérité se voit dès l'ouverture du formulaire, sans attendre une frappe.
+  assert.strictEqual(noteDouble(cartes[0]).hidden, false,
+    'le doublon initial ne se voit pas sur la première carte');
+  assert.strictEqual(noteDouble(cartes[1]).hidden, false,
+    'le doublon initial ne se voit pas sur la seconde carte');
+  assert.ok(noteDouble(cartes[0]).textContent.indexOf('02-b') !== -1,
+    'la première carte ne nomme pas l’autre article : ' + noteDouble(cartes[0]).textContent);
+  assert.ok(noteDouble(cartes[1]).textContent.indexOf('01-a') !== -1,
+    'la seconde carte ne nomme pas l’autre article : ' + noteDouble(cartes[1]).textContent);
+  // On corrige le DOI de la seconde carte : le doublon disparaît des deux côtés.
+  const champ2 = cartes[1].querySelector('[data-cle="doi"]');
+  champ2.value = '10.57161/r2020-09-08';
+  champ2.dispatchEvent({ type: 'input' });
+  assert.strictEqual(noteDouble(cartes[0]).hidden, true,
+    'le doublon reste affiché sur la première carte après correction de la seconde');
+  assert.strictEqual(noteDouble(cartes[1]).hidden, true,
+    'le doublon reste affiché sur la seconde carte après sa propre correction');
+});
+
 // ---- La langue de l'article pilote les champs (lot A, 25.08.2026) ----
 //
 // Trois règles, chacune avec son moyen de casser en silence :

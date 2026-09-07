@@ -116,6 +116,10 @@ function chemins(profil, racine, slug) {
                  unites: path.join(racine, p.unites.dossier),
                  depot: path.join(racine, p.depot),
                  sortie: path.join(racine, p.sortie) };
+  // Le PDF que la porte PDF/UA valide : pour un livre, c'est celui de l'ouvrage entier
+  // (aucun chapitre n'a le sien, voir outUnite plus bas) — connu même sans slug, posé ici
+  // et non plus bas pour que chemins('livre', racine) seul le rende déjà.
+  if (p.cle === 'livre') { base.pdf = pdfLivre(racine); }
   if (!slug) { return base; }
   const dossier = path.join(base.unites, slug);
   return Object.assign(base, {
@@ -135,6 +139,9 @@ function chemins(profil, racine, slug) {
     outUnite: p.cle === 'livre'
       ? path.join(base.sortie, p.unites.dossier, slug + '.apercu.html')
       : path.join(base.sortie, slug),
+    // Le PDF d'un article de revue : out/<slug>/<slug>.pdf. Pour un livre, déjà posé sur
+    // `base` ci-dessus (identique quel que soit le chapitre demandé).
+    pdf: p.cle === 'livre' ? base.pdf : path.join(base.sortie, slug, slug + '.pdf'),
   });
 }
 

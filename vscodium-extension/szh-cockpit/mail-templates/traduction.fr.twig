@@ -1,0 +1,15 @@
+{# traduction.fr.twig : lien szh:// vers le suivi de traduction, envoyé à l'équipe de traduction #}
+{% block sujet %}Traduction allemand vers français – {{ quoi }}{% endblock %}
+{% block corps %}
+Bonjour,
+
+Le numéro {{ quoi }} de la Schweizerische Zeitschrift für Heilpädagogik est prêt pour la traduction de l’allemand vers le français.
+
+Pour l’ouvrir directement au bon endroit : COPIEZ le lien ci-dessous, puis collez-le dans la fenêtre « Exécuter » de Windows (touche Windows + R) et validez.
+{#- le lien reste seul sur sa ligne : un corps mailto est du texte brut, non cliquable, et se copie d'un geste #}
+
+{{ lien }}
+
+Autre chemin, sans le lien : menu Démarrer -> « Zeitschriften SZH », puis choisir le numéro.
+
+{% endblock %}
