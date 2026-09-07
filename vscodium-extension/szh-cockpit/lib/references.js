@@ -379,7 +379,7 @@ function lireAttributsImage(texte, relatif) {
 // ---- Grilles d'images ----
 //
 // Plusieurs images qui se lisent ensemble — une série, un avant/après, quatre vignettes —
-// forment UNE figure : un numéro, une légende, un bloc qui ne se coupe pas. Le contrat,
+// forment une figure : un numéro, une légende, un bloc qui ne se coupe pas. Le contrat,
 // arrêté avec pipeline/filters/szh-grille.lua :
 //
 //   ::: {.szh-grille disposition="2-2"}
@@ -391,7 +391,7 @@ function lireAttributsImage(texte, relatif) {
 //
 //   - une image par ligne, sans ligne vide entre elles : aucun lecteur n'en fait alors de
 //     figure individuelle, et la grille reste un seul objet ;
-//   - la légende et le numéro sont ceux de la PREMIÈRE image, qui est la figure entière ;
+//   - la légende et le numéro sont ceux de la première image, qui est la figure entière ;
 //     les suivantes s'écrivent toujours avec un texte de légende vide (voir
 //     offsetsSuiveuses, appliqué par ecrireAttributsImage) ;
 //   - le texte alternatif et les crédits, eux, restent propres à chaque image : deux
@@ -405,7 +405,7 @@ const GRILLE_AUTO = 'auto';
 // lise : le geste juste est de scinder en deux figures, qui porteront deux numéros.
 const GRILLE_MAX = 6;
 
-// Les dispositions offertes, par nombre d'images ; la PREMIÈRE de chaque liste sert de
+// Les dispositions offertes, par nombre d'images ; la première de chaque liste sert de
 // repli quand « auto » ne peut pas mesurer les fichiers.
 // ⚠ Table recopiée dans pipeline/filters/szh-grille.lua, qui compose. Les deux doivent
 //   rester identiques — test/js/contrats.test.js le contrôle.
@@ -540,7 +540,7 @@ function grilleDeImage(texte, relatif) {
   return null;
 }
 
-// Décalages, dans le texte, des insertions qui SUIVENT la première d'une grille. La grille
+// Décalages, dans le texte, des insertions qui suivent la première d'une grille. La grille
 // est une figure, elle n'a qu'une légende : celle de sa première image. Les suivantes
 // s'écrivent donc toujours entre crochets vides, faute de quoi implicit_figures en ferait
 // des figures individuelles et le bloc se disloquerait.
@@ -619,7 +619,7 @@ function insererIsole(lignes, ou, bloc) {
 //
 // Met `ajout` à côté de `ancre`. Si `ancre` est déjà dans une grille, l'image s'ajoute en
 // queue ; sinon la grille se crée autour de son insertion. `ajout` qui n'est inséré nulle
-// part est simplement posé ; inséré une seule fois ailleurs, il est DÉPLACÉ — c'est le
+// part est simplement posé ; inséré une seule fois ailleurs, il est déplacé — c'est le
 // geste attendu quand on range deux images déjà écrites. Inséré plusieurs fois, on refuse :
 // rien ne dit laquelle des insertions il faudrait déplacer.
 // `motif` nomme le refus : 'ancre' (introuvable, ou pas seule sur sa ligne), 'ajout'
@@ -635,7 +635,7 @@ function poserDansGrille(texte, ancre, ajout) {
   const dansGrille = grilleDeImage(src, cibleAncre);
   if ((dansGrille ? dansGrille.grille.membres.length : 1) >= GRILLE_MAX) { return refus('pleine'); }
 
-  // Les valeurs de l'image qui rejoint la grille, prises AVANT de la retirer : son texte
+  // Les valeurs de l'image qui rejoint la grille, prises avant de la retirer : son texte
   // alternatif et ses crédits la suivent, sa légende propre ne peut pas — une grille n'en
   // porte qu'une, celle de la figure.
   const valeursAjout = lireAttributsImage(src, cibleAjout);

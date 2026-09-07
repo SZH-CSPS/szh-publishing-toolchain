@@ -1,15 +1,13 @@
-// Rubriques de texte riche d'un article — les blocs de prose de la Documentation
-// (« Actualité et ressources » / « News & Ressourcen ») que rien ne force à isoler en
-// champs : listes bibliographiques, listes de liens, brèves d'actualité. Là où
-// lib/ressources.js découpe une fiche en champs structurés, une rubrique n'a qu'un seul
-// champ — son contenu — et c'est le sens même de ce module : ne rien lui imposer d'autre.
+// Rubriques de texte riche d'un article — les blocs de prose de la Documentation (listes
+// bibliographiques, listes de liens, brèves d'actualité) que rien ne force à isoler en
+// champs, à la différence de lib/ressources.js : une rubrique n'a qu'un seul champ, son contenu.
 //
-// Une rubrique par type et pas davantage, depuis le 02.09.2026 : le formulaire
-// (media/documentation.js) n'offre plus d'« Ajouter un bloc », il présente le bloc unique de
-// chaque type, toujours éditable, et le vider l'ôte du .md. Rien n'a changé ICI pour autant
-// — ce module lit et écrit un bloc par identifiant, sans jamais compter combien il y en a
-// d'un type donné : un .md écrit à la main qui en porterait deux se lit encore, et ses deux
-// blocs se rendent encore. C'est une règle de formulaire, pas une règle de format.
+// Une rubrique par type et pas davantage : le formulaire (media/documentation.js) n'offre
+// plus d'« Ajouter un bloc », il présente le bloc unique de chaque type, toujours éditable,
+// et le vider l'ôte du .md. Rien n'a changé ici pour autant — ce module lit et écrit un bloc
+// par identifiant, sans jamais compter combien il y en a d'un type donné : un .md écrit à la
+// main qui en porterait deux se lit encore, et ses deux blocs se rendent encore. C'est une
+// règle de formulaire, pas une règle de format.
 //
 // Le bloc, tel que le formulaire l'écrit et tel que pipeline/filters/szh-rubrique.lua le
 // relit :
@@ -21,7 +19,7 @@
 //   Bürli, A. (2024). **Inklusion weltweit**. Edition SZH/CSPS.
 //   :::
 //
-// `type=` est un jeton d'une liste fermée (TYPES_RUBRIQUE) : le titre imprimé n'est JAMAIS
+// `type=` est un jeton d'une liste fermée (TYPES_RUBRIQUE) : le titre imprimé n'est jamais
 // écrit dans le .md, il se déduit du type et de la langue de l'article au rendu — même
 // parti que le libellé de lien d'une fiche de ressource (voir l'en-tête de
 // lib/ressources.js). Un titre corrigé plus tard suit sans ressaisie.
@@ -29,7 +27,7 @@
 // Le contenu est du markdown ordinaire, laissé tel quel : pandoc le parse nativement, donc
 // tous les filtres qui tournent avant (typographie, notes…) le traitent déjà. C'est la
 // différence de fond avec une fiche de ressource, dont le descriptif est un champ de
-// formulaire parmi d'autres : ici, le contenu EST la rubrique, et rien n'y est retouché
+// formulaire parmi d'autres : ici, le contenu est la rubrique, et rien n'y est retouché
 // au-delà des lignes vides de tête et de queue qui l'isolent du bloc — ni les italiques, ni
 // le gras, ni les liens, ni les listes, ni les lignes vides intérieures qui séparent des
 // paragraphes. Un aller-retour lireRubriques() -> blocRubrique() doit rendre le contenu au
@@ -51,7 +49,7 @@
 // n'aura pas de titre à imprimer pour un jeton qu'il ne connaît pas).
 //
 // ⚠ Table recopiée dans pipeline/filters/szh-rubrique.lua (table TITRES) : ce module n'a
-// besoin que des JETONS (TYPES_RUBRIQUE), jamais de leurs titres fr/de, qui vivent dans la
+// besoin que des jetons (TYPES_RUBRIQUE), jamais de leurs titres fr/de, qui vivent dans la
 // table Lua d'un côté et dans lib/i18n.js de l'autre (libellés d'interface, hors périmètre
 // de ce module). Aucun libellé français ou allemand n'a sa place ici.
 'use strict';
@@ -65,11 +63,10 @@ const CLASSE = 'szh-rubrique';
 // deux divergent, comme test/js/ressources.test.js le fait pour lib/ressources.js /
 // szh-ressource.lua.
 //
-// L'agenda a QUITTÉ cette liste le 02.09.2026, sur demande de Robin : « Agenda et formation
-// doit devenir un champ structuré (date / plage de date / type d'événement…) ». C'est
-// désormais un type de FICHE (lib/ressources.js, TYPES.agenda), avec sa date de début, sa
-// date de fin, son lieu et son organisateur — et donc un agenda qui se range tout seul par
-// ordre chronologique, ce qu'un bloc de prose ne pouvait pas faire.
+// L'agenda a quitté cette liste : une manifestation a une date de début, une date de fin,
+// un lieu et un organisateur, et se range donc tout seul par ordre chronologique, ce qu'un
+// bloc de prose ne pouvait pas faire. C'est désormais un type de fiche (lib/ressources.js,
+// TYPES.agenda), un champ structuré plutôt qu'un bloc de texte.
 const TYPES_RUBRIQUE = [
   'dossier-references',
   'dossier-liens',

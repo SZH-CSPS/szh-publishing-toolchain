@@ -77,24 +77,12 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .apercu img { display: block; max-width: 100%; max-height: 14rem; object-fit: contain; }
 .visuel--portrait .apercu img { max-height: 9rem; }
 .visuel .absent { margin: 0; font-size: var(--t-mini); font-style: italic; color: var(--encre-2); }
-.meta-fichier { margin: 0; font-size: var(--t-mini); color: var(--encre-2); }
 
-/* Dépôt de fichier : remplacer une image, ou en ajouter une à côté. Même forme, seul le
-   titre distingue les deux gestes. Un cadre en pointillé dit qu'on peut y déposer un
-   fichier. */
-.depot { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
-  padding: var(--e2); border-radius: var(--rayon-mini); font-size: var(--t-libelle);
-  border: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, .5));
-  color: var(--encre-2); }
-.depot.survol { border-style: solid; border-color: var(--accent);
-  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, .12)); }
-.depot-titre { display: inline-flex; align-items: center; gap: var(--e1);
-  font-weight: 700; color: var(--encre); }
-.media-etat { font-size: var(--t-mini); color: var(--encre-2); }
-.media-etat.erreur { color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground)); }
+/* Dépôt de fichier : remplacer une image, ou en ajouter une à côté. Même forme (.szh-depot,
+   _design.css §11), seul le titre distingue les deux gestes. */
 /* Un seul geste de fichier à la fois par figure : la classe va sur la carte entière, qui
    porte les deux zones de dépôt de tous ses membres. */
-.occupe .depot { opacity: .5; }
+.occupe .szh-depot { opacity: .5; }
 .occupe .vignette img { opacity: .6; }
 
 .szh-notif .szh-bouton { margin-left: var(--e2); }

@@ -1,65 +1,53 @@
 // Le vocabulaire des descripteurs edudoc.ch (thésaurus bilingue DE/FR appliqué à nos deux
-// revues), moissonné sur l'interface OAI-PMH PUBLIQUE d'edudoc.ch et gardé dans
-// C:\ProgramData\SZH\mots-cles.json. Alimentera plus tard l'autocomplétion de mots clés
-// (lot suivant, hors périmètre ici : ce module ne fait QUE moissonner, dédoublonner, garder).
+// revues), moissonné sur l'interface OAI-PMH publique d'edudoc.ch et gardé dans
+// C:\ProgramData\SZH\mots-cles.json. Alimentera plus tard l'autocomplétion de mots clés :
+// ce module ne fait que moissonner, dédoublonner, garder.
 //
-// Endpoint et sets relevés le 31.08.2026 par ListSets sur https://edudoc.ch/oai2d — instance
-// Invenio/TIND, sans authentification :
-//   verb=Identify, verb=ListSets, verb=ListRecords tous vérifiés en direct.
-// Les deux revues y sont des sets dédiés, identifiants EXACTS (avec espaces, à
-// encodeURIComponent) :
+// Endpoint https://edudoc.ch/oai2d, instance Invenio/TIND sans authentification. Les deux
+// revues y sont des sets dédiés, identifiants exacts (avec espaces, à encodeURIComponent) :
 //   "Revue suisse de pédagogie spécialisée"
 //   "Schweizerische Zeitschrift für Heilpädagogik"
 //
-// metadataPrefix=oai_dc ne porte AUCUN champ sujet — vérifié dans l'enquête préalable.
-// Seul metadataPrefix=marcxml expose le champ MARC 690, en paires bilingues répétées :
-// $a = allemand, $b = français. Exemple réel : $a Sonderpädagogik / $b pédagogie spécialisée.
+// metadataPrefix=oai_dc ne porte aucun champ sujet. Seul metadataPrefix=marcxml expose le
+// champ MARC 690, en paires bilingues répétées : $a = allemand, $b = français.
 //
 // Différence structurelle avec lib/auteurs-ojs.js (qui vise OJS, pas edudoc) : le marcxml
-// d'edudoc préfixe TOUT son contenu MARC avec le namespace « marc: » —
+// d'edudoc préfixe tout son contenu MARC avec le namespace « marc: » —
 // <marc:record><marc:datafield tag="690"><marc:subfield code="a">…</marc:subfield></marc:datafield></marc:record>
 // — alors qu'OJS ne préfixe pas. Conséquence heureuse : pas de collision de balise <record>
 // (le <record> OAI est nu, le <marc:record> MARC est préfixé) là où OJS imbriquait deux
-// <record> de même nom. Mais les expressions régulières de ce module DOIVENT tolérer le
+// <record> de même nom. Mais les expressions régulières de ce module doivent tolérer le
 // préfixe, faute de quoi elles ne matcheraient simplement rien sur les vraies réponses.
 //
-// Repli 503 : constaté en conditions réelles le 31.08.2026, au milieu d'un moissonnage complet
-// des deux sets — passé une poignée de requêtes rapprochées, l'instance (Apache derrière un
-// pare-feu applicatif, à en juger par la CSP qui cite awswaf.com) répond
-// « 503 Retry after 1 seconds » puis se rétablit d'elle-même à la requête suivante.
-// lib/auteurs-ojs.js n'a pas eu besoin de cette tolérance jusqu'ici : l'instance OJS visée ne
-// l'a jamais montrée en un an d'usage — mais rien ne garantit qu'elle ne s'y mette pas un
-// jour. D'où recupererAvecRepli() dans lib/oai-pmh.js plutôt que dans ce seul module (voir
-// plus bas) : signalé indépendamment par deux agents comme le repli le plus propre.
+// Repli 503 : passé une poignée de requêtes rapprochées, l'instance peut répondre
+// « 503 Retry after 1 seconds » puis se rétablir d'elle-même à la requête suivante. D'où
+// recupererAvecRepli() dans lib/oai-pmh.js plutôt que dans ce seul module (voir plus bas) —
+// lib/auteurs-ojs.js en profite aussi, même si l'instance OJS visée ne l'a pas montré.
 //
-// Volume réellement moissonné le 31.08.2026 (moissonnage complet, sans from) : 456 notices
-// pour la Revue, 2385 pour la Zeitschrift, soit 2841 notices, 10975 paires 690 brutes,
-// 925 descripteurs distincts après dédoublonnage casse/accents. 10 paires incomplètes
-// rencontrées sur les 10975 (2 sans allemand, 8 sans français) : la tolérance n'est pas
-// théorique.
+// Des paires incomplètes existent en pratique (l'allemand ou le français peut manquer) :
+// la tolérance n'est pas théorique.
 //
-// Cache SÉPARÉ de config.json (qui est réécrit en entier à chaque réglage), forme imposée :
+// Cache séparé de config.json (qui est réécrit en entier à chaque réglage), forme imposée :
 //   { dateFetch: "2026-08-31T12:00:00.000Z" | null, motsCles: [{ de, fr, manque }, …] }
 // où `manque` vaut 'de', 'fr' ou null. Écriture atomique (lib/yaml.js).
 //
 // Rythme : au plus une fois par mois (dateFetch), incrémental (from = date du dernier fetch,
 // au jour). Hors ligne = normal : l'échec est silencieux, comme pour les auteur·e·s.
-// dateFetch n'avance que si les DEUX sets ont répondu ; sinon on réessaie, la fusion étant
+// dateFetch n'avance que si les deux sets ont répondu ; sinon on réessaie, la fusion étant
 // idempotente.
 //
 // SZH_MOTS_CLES_CACHE impose un autre fichier de cache — les tests s'en servent, comme
 // SZH_AUTEURS_CACHE pour lib/auteurs-ojs.js : aucun test ne touche C:\ProgramData, et aucun
 // ne fait de réseau (le moissonnage prend son `recuperer` en paramètre).
 //
-// Réutilisation délibérée de lib/oai-pmh.js, module commun avec lib/auteurs-ojs.js (extrait
-// le 01.09.2026) : son client HTTP (recupererHttps, avec ses gardes — redirections
-// même-hôte, réponse bornée à 20 Mo, délai total de 60 s), son repli sur 503
-// (recupererAvecRepli) et son parseur générique OAI-PMH (erreurOai, extraireResumptionToken,
-// decoderTexteXml) ne sont pas spécifiques aux auteur·e·s ni à edudoc : ils sont importés
-// tels quels plutôt que réécrits. plierNom (casse + accents pliés) est importé de même sous
-// l'alias `plierTexte` — son nom trompe, son corps ne fait rien de spécifique à un nom de
-// personne. Seule l'extraction du champ 690, la fusion des descripteurs et la pagination
-// avec `set=` sont propres à ce module.
+// Réutilisation délibérée de lib/oai-pmh.js, module commun avec lib/auteurs-ojs.js : son
+// client HTTP (recupererHttps, avec ses gardes — redirections même-hôte, réponse bornée à
+// 20 Mo, délai total de 60 s), son repli sur 503 (recupererAvecRepli) et son parseur
+// générique OAI-PMH (erreurOai, extraireResumptionToken, decoderTexteXml) ne sont pas
+// spécifiques aux auteur·e·s ni à edudoc : ils sont importés tels quels plutôt que réécrits.
+// plierNom (casse + accents pliés) est importé de même sous l'alias `plierTexte` — son nom
+// trompe, son corps ne fait rien de spécifique à un nom de personne. Seule l'extraction du
+// champ 690, la fusion des descripteurs et la pagination avec `set=` sont propres à ce module.
 'use strict';
 
 const fs = require('fs');
@@ -78,8 +66,8 @@ const SETS_EDUDOC_DEFAUT = [
 ];
 
 const JOURS_FRAICHEUR = 30;                // « une fois par mois », comme les auteur·e·s.
-// La Zeitschrift a demandé 24 pages à 100 notices pour 2385 notices, le 31.08.2026 : la
-// garde anti-boucle laisse une marge d'un ordre de grandeur au-delà de l'observé.
+// Garde anti-boucle, avec une marge d'un ordre de grandeur au-delà du volume réel d'une revue
+// (une vingtaine de pages à 100 notices).
 const PAGES_MAX = 500;
 
 function cheminCacheMotsCles() {
@@ -149,8 +137,8 @@ function recordsEnMotsCles(records) {
 // l'un ou l'autre suffit à retrouver une entrée déjà connue, ce qui permet à une paire
 // incomplète de compléter plus tard une entrée déjà entrevue (ou l'inverse). Jamais de
 // suppression, jamais d'écrasement d'une valeur remplie par une autre différente : un vrai
-// désaccord entre deux moissons (même allemand, français distinct — RENCONTRÉ RÉELLEMENT :
-// « Lernschwierigkeit » a deux traductions concurrentes sur l'instance) donne une SECONDE
+// désaccord entre deux moissons (même allemand, français distinct — ce n'est pas théorique :
+// « Lernschwierigkeit » a deux traductions concurrentes sur l'instance) donne une seconde
 // entrée plutôt qu'un remplacement muet.
 function fusionnerMotsCles(existants, nouveaux) {
   const sortie = [];
@@ -264,9 +252,9 @@ function configEdudoc(cfg) {
 
 // ---- Moissonnage ----------------------------------------------------------------------
 
-// ListRecords sur UN set, resumptionToken suivis jusqu'au bout. `recuperer` est injecté —
+// ListRecords sur un set, resumptionToken suivis jusqu'au bout. `recuperer` est injecté —
 // recupererAvecRepli en vrai, une table de fixtures dans les tests. `from` (YYYY-MM-DD)
-// rend le moissonnage incrémental. metadataPrefix et set ne sont portés QUE par la première
+// rend le moissonnage incrémental. metadataPrefix et set ne sont portés que par la première
 // requête — OAI-PMH interdit de les répéter avec un resumptionToken.
 async function moissonnerMotsCles(recuperer, endpoint, setSpec, from) {
   const records = [];
@@ -299,7 +287,7 @@ async function moissonnerMotsCles(recuperer, endpoint, setSpec, from) {
 //
 // Même contrat que rafraichir() de lib/auteurs-ojs.js :
 //   { fait: false, raison: 'frais', … }          cache de moins d'un mois, aucun appel
-//   { fait: true, complet: true, … }             les DEUX sets ont répondu, dateFetch avancée
+//   { fait: true, complet: true, … }             les deux sets ont répondu, dateFetch avancée
 //   { fait: true, complet: false, erreur, … }    au moins un set muet : fusionné quand même,
 //                                                dateFetch inchangée, on réessaiera
 // `opts` réservé aux tests : { maintenant, recuperer, forcer, config }.

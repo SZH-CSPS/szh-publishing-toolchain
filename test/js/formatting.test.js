@@ -97,10 +97,13 @@ test('une sélection multiligne devient le contenu du bloc, d’un seul tenant',
     'Avant.\n\n::: {.question}\nDeux lignes\nà encadrer.\n:::\n\nAprès.');
 });
 
-test('le titre du bloc important part dans data-titre, guillemets ôtés', () => {
+// Un guillemet dans le titre n'est plus perdu : il est échappé (antislash avant le
+// guillemet, comme citerValeur() de references.js), pas retiré. Pandoc lit lui-même cette
+// forme d'attribut cité — voir lib/formatting-pur.js#attrBloc.
+test('le titre du bloc important part dans data-titre, guillemets échappés', () => {
   const { texte } = appliquer('cible',
     { debutLigne: 0, debutCol: 0, finLigne: 0, finCol: 5 }, 'important', 'Dire "non"');
-  assert.strictEqual(texte, '::: {.important data-titre="Dire non"}\ncible\n:::');
+  assert.strictEqual(texte, '::: {.important data-titre="Dire \\"non\\""}\ncible\n:::');
 });
 
 // ---- Réapplication : mise à jour du markup, jamais d'imbrication ----

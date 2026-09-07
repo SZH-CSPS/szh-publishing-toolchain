@@ -9,13 +9,13 @@
 // Ce module est la table qui les nomme, et rien de plus. Ce n'est pas un cadre à
 // greffons : deux profils ne justifient pas une architecture d'extension. C'est une
 // table de vérité de six lignes, plus les fonctions qui la lisent, pour que chaque
-// hypothèse « revue » du code devienne NOMMÉE et TESTABLE au lieu d'être littérale.
+// hypothèse « revue » du code devienne nommée et testable au lieu d'être littérale.
 //
-// ⚠ Le module est PUR : aucun `require('vscode')`. Il ne fait que du chemin et du
+// ⚠ Le module est pur : aucun `require('vscode')`. Il ne fait que du chemin et du
 //   `fs.existsSync`, ce qui permet à `node --test` de l'exercer sans hôte. Toute
 //   fonction qui aurait besoin de l'API de l'éditeur n'a pas sa place ici.
 //
-// ⚠ La détection se fait sur la PRÉSENCE DU FICHIER de configuration, jamais sur une
+// ⚠ La détection se fait sur la présence du fichier de configuration, jamais sur une
 //   clé qu'il contiendrait. C'est la même règle que côté chaîne (`pipeline/Makefile`,
 //   `LIVRE_CONFIG := $(wildcard buch.yaml)`), et elle vaut d'être tenue des deux côtés :
 //   un livre n'a pas d'`ausgabe.yaml`, il n'a donc aucune clé `profil:` à lire, et les
@@ -48,9 +48,9 @@ const PROFILS = {
   },
 };
 
-// ⚠ L'ORDRE COMPTE. Un dossier qui porterait les deux fichiers de configuration est un
+// ⚠ L'ordre compte. Un dossier qui porterait les deux fichiers de configuration est un
 //   accident — une revue dans laquelle quelqu'un a déposé un buch.yaml, ou l'inverse. On
-//   tranche pour le LIVRE, parce que c'est le cas le plus récent et le plus probablement
+//   tranche pour le livre, parce que c'est le cas le plus récent et le plus probablement
 //   voulu, et parce que la chaîne tranche déjà dans ce sens (le Makefile teste buch.yaml
 //   avant de lire le profil d'ausgabe.yaml). Les deux côtés doivent dire la même chose,
 //   sans quoi l'éditeur montrerait des chapitres et la compilation produirait des articles.
@@ -127,18 +127,27 @@ function chemins(profil, racine, slug) {
     media:   path.join(dossier, 'media'),
     tables:  path.join(dossier, 'tables'),
     portraits: path.join(dossier, 'portraits'),
-    // ⚠ Les sorties d'un ARTICLE vivent dans out/<slug>/ ; celles d'un LIVRE sont
+    // ⚠ Les sorties d'un article vivent dans out/<slug>/ ; celles d'un livre sont
     //   communes à tout l'ouvrage et portent le nom du dossier, pas celui du chapitre.
-    //   Un chapitre n'a donc pas de PDF à lui — seulement un fragment intermédiaire.
+    //   Un chapitre n'a donc pas de PDF à lui — seulement son aperçu HTML cliquable
+    //   (out/chapitres/<slug>.apercu.html, comme APERCUS_CHAPITRES dans livre.mk) ; le PDF
+    //   du volume entier se demande à pdfLivre(), plus bas.
     outUnite: p.cle === 'livre'
-      ? path.join(base.sortie, p.unites.dossier, slug + '.frag.html')
+      ? path.join(base.sortie, p.unites.dossier, slug + '.apercu.html')
       : path.join(base.sortie, slug),
   });
 }
 
+// Le PDF numérique du livre entier (LIVRE_PDF de livre.mk : out/<NOM_LIVRE>.pdf, le nom du
+// dossier du livre, jamais celui d'un chapitre) — celui que PDF/UA valide, à ne pas
+// confondre avec le PDF imprimeur (fond perdu, traits de coupe, cible make séparée).
+function pdfLivre(racine) {
+  return path.join(racine, 'out', path.basename(racine) + '.pdf');
+}
+
 // Le nom d'une unité au singulier, dans la langue de l'interface. Sert aux messages :
 // « supprimer cet article » / « supprimer ce chapitre ». Les libellés complets restent
-// dans lib/i18n.js ; ce qui est ici, c'est la CLÉ à lui demander.
+// dans lib/i18n.js ; ce qui est ici, c'est la clé à lui demander.
 function cleLibelle(profil, suffixe) {
   const p = typeof profil === 'string' ? profilPour(profil) : profil;
   if (!p) { throw new TypeError('profil inconnu'); }
@@ -159,5 +168,5 @@ function contextes(profil) {
 
 module.exports = {
   PROFILS, ORDRE_DETECTION,
-  profilPour, detecter, racineDepuis, remonterVers, chemins, cleLibelle, contextes,
+  profilPour, detecter, racineDepuis, remonterVers, chemins, pdfLivre, cleLibelle, contextes,
 };

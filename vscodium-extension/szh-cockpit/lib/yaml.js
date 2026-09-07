@@ -5,6 +5,15 @@
 
 const fs = require('fs');
 const path = require('path');
+const profil = require('./profil');
+
+// Le fichier de configuration du dossier, selon son profil : ausgabe.yaml pour une revue,
+// buch.yaml pour un livre — jamais « ausgabe.yaml » en dur, sinon un livre retombe
+// toujours sur le repli (fichier absent) des fonctions qui lisent l'état du dossier.
+function cheminConfigDetecte(racine) {
+  const p = profil.detecter(racine);
+  return path.join(racine, (p && p.config) || 'ausgabe.yaml');
+}
 
 // ---- Métadonnées du numéro ----
 //
@@ -12,7 +21,7 @@ const path = require('path');
 // les lignes des clés connues ; toute autre ligne — commentaire, clé future — est
 // préservée telle quelle, fins de ligne et BOM compris.
 
-// ⚠ Cette liste est un FILTRE : `analyserAusgabe` laisse tomber en silence toute clé qui
+// ⚠ Cette liste est un filtre : `analyserAusgabe` laisse tomber en silence toute clé qui
 //   n'y figure pas. Une clé oubliée ici ne provoque aucune erreur — elle est simplement
 //   lue comme absente, et le geste qui en dépend ne fait rien sans rien dire.
 const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 'couleur',
@@ -21,7 +30,7 @@ const CLES_METADONNEES = ['title', 'revue', 'volume', 'numero', 'date', 'lang', 
   // ---- buch.yaml : formulaire « Métadonnées du livre » (media/metadata-book.*) ----
   // `lang` et `couleur`, juste au-dessus, sont déjà communs aux deux profils — un livre les
   // porte au même niveau qu'un numéro, sous le même nom. Le reste n'existe que dans
-  // buch.yaml. Les six dernières sont des SOUS-CLÉS de `impression:`, un bloc imbriqué :
+  // buch.yaml. Les six dernières sont des sous-clés de `impression:`, un bloc imbriqué :
   // `analyserAusgabe` et `serialiserAusgabe` savent lire et réécrire un niveau
   // d'indentation sous un bloc top-level dont la valeur est vide (voir leur en-tête) — sans
   // quoi ces six clés, indentées de deux espaces dans le fichier, ne matcheraient jamais la
@@ -50,7 +59,7 @@ const CLES_LISTES = ['ordre-articles', 'ordre-chapitres', CLE_SANS_DOI];
 // Les jetons d'une séquence en ligne, telle que `ordre-articles` et `articles-sans-doi`
 // l'écrivent : `["a", "b"]` comme le sérialiseur la pose, ou une simple suite séparée par
 // des virgules ou des espaces, ce qu'une correction à la main donne. Doublons et jetons
-// vides partent ; ce qu'est un jeton VALIDE est jugé par l'appelant, seul à savoir ce
+// vides partent ; ce qu'est un jeton valide est jugé par l'appelant, seul à savoir ce
 // qu'il attend. Un seul lecteur pour les deux clés : deux se seraient mis à diverger.
 function listeYamlEnLigne(valeur) {
   const brut = Array.isArray(valeur)
@@ -58,11 +67,35 @@ function listeYamlEnLigne(valeur) {
     : String(valeur === undefined || valeur === null ? '' : valeur);
   const interieur = brut.trim().replace(/^\[/, '').replace(/\]$/, '');
   const liste = [];
-  for (const morceau of interieur.split(/[,\s]+/)) {
-    const v = decouperValeurYaml(morceau.trim()).valeur.trim();
-    if (v === '' || liste.indexOf(v) !== -1) { continue; }
+  // Un jeton citant un espace (« "a b" ») ne doit pas s'y faire couper : la virgule et
+  // l'espace ne séparent qu'hors guillemets, comme dans decouperFlowYaml.
+  let courant = '';
+  let guillemet = null;
+  const pousser = () => {
+    const v = decouperValeurYaml(courant.trim()).valeur.trim();
+    courant = '';
+    if (v === '' || liste.indexOf(v) !== -1) { return; }
     liste.push(v);
+  };
+  for (let j = 0; j < interieur.length; j++) {
+    const c = interieur.charAt(j);
+    if (guillemet !== null) {
+      courant += c;
+      if (guillemet === '"' && c === '\\') { courant += interieur.charAt(j + 1); j++; continue; }
+      if (c === guillemet) {
+        if (guillemet === "'" && interieur.charAt(j + 1) === "'") { courant += "'"; j++; continue; }
+        guillemet = null;
+      }
+      continue;
+    }
+    if (c === '"' || c === "'") { guillemet = c; courant += c; continue; }
+    if (c === ',' || /\s/.test(c)) {
+      if (courant.trim() !== '') { pousser(); } else { courant = ''; }
+      continue;
+    }
+    courant += c;
   }
+  if (courant.trim() !== '') { pousser(); }
   return liste;
 }
 
@@ -120,6 +153,27 @@ function normaliserRevue(valeur) {
   return '';
 }
 
+// Échappements d'une chaîne citée YAML : décodés à la lecture (decoderEchappementsYaml),
+// ré-encodés à l'écriture (encoderEchappementsYaml) — les deux sens sont symétriques, si
+// bien qu'un aller-retour répété ne double jamais un antislash déjà posé.
+function decoderEchappementsYaml(s) {
+  return s.replace(/\\(u[0-9a-fA-F]{4}|n|t|"|\\)/g, (m, motif) => {
+    if (motif.charAt(0) === 'u') { return String.fromCharCode(parseInt(motif.slice(1), 16)); }
+    if (motif === 'n') { return '\n'; }
+    if (motif === 't') { return '\t'; }
+    return motif;   // '"' ou '\\' : le caractère lui-même, sans son antislash
+  });
+}
+
+function encoderEchappementsYaml(s) {
+  return String(s).replace(/[\\"\n\t]/g, (c) => {
+    if (c === '\\') { return '\\\\'; }
+    if (c === '"') { return '\\"'; }
+    if (c === '\n') { return '\\n'; }
+    return '\\t';
+  });
+}
+
 // Découpe la partie droite d'un « clé: reste » en { valeur, suite }, où `suite` est
 // l'éventuel commentaire de fin de ligne, espaces de tête compris, restitué tel quel à
 // l'écriture. Une partie droite malformée passe pour un scalaire nu.
@@ -134,7 +188,7 @@ function decouperValeurYaml(reste) {
     }
     if (fin !== -1 && /^\s*(#.*)?$/.test(reste.slice(fin + 1))) {
       return {
-        valeur: reste.slice(1, fin).replace(/\\(["\\])/g, '$1'),
+        valeur: decoderEchappementsYaml(reste.slice(1, fin)),
         suite: reste.slice(fin + 1).replace(/\s+$/, '')
       };
     }
@@ -154,16 +208,100 @@ function decouperValeurYaml(reste) {
   return { valeur: reste.slice(0, debutComm).trim(), suite: reste.slice(debutComm).replace(/\s+$/, '') };
 }
 
+// Une chaîne citée qui ne se referme pas sur SA ligne : l'analyseur ligne à ligne ne la
+// voit jamais, et la confond avec un scalaire nu commençant par un guillemet égaré.
+function citationOuverte(reste) {
+  const net = String(reste).trim();
+  if (net.charAt(0) === '"') {
+    let i = 1;
+    while (i < net.length) {
+      if (net[i] === '\\') { i += 2; continue; }
+      if (net[i] === '"') { return !/^\s*(#.*)?$/.test(net.slice(i + 1)); }
+      i++;
+    }
+    return true;   // jamais refermée sur cette ligne
+  }
+  if (net.charAt(0) === "'") { return !/^'(?:[^']|'')*'(\s*(?:#.*)?)?$/.test(net); }
+  return false;
+}
+
+// Raison lisible pour laquelle une valeur ne peut pas être lue fidèlement, ou null si elle
+// est de toute façon lisible ligne à ligne. Deux constructions valides en YAML mais hors de
+// portée d'un analyseur qui ne regarde qu'une ligne à la fois : le scalaire de bloc (`|`/`>`)
+// et la chaîne citée qui déborde sur plusieurs lignes physiques.
+function raisonInfidelite(reste) {
+  const net = String(reste).trim();
+  if (/^[|>][-+]?\d*(\s*#.*)?$/.test(net)) { return 'scalaire de bloc (| ou >)'; }
+  if (citationOuverte(net)) { return 'chaîne citée sur plusieurs lignes physiques'; }
+  return null;
+}
+
+// Détecte, pour un YAML plat à un niveau d'imbrication (ausgabe.yaml, buch.yaml), les
+// clés connues (seules à jamais être réécrites) dont la valeur n'est pas lue fidèlement.
+// `estConnue` juge une clé top-level par son nom, une sous-clé par « parent.sous ».
+function detecterInfidelitesPlat(lignes, estConnue) {
+  const infidelites = [];
+  let parentActuel = null;
+  for (const ligne of lignes) {
+    const mTop = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (mTop) {
+      parentActuel = mTop[1];
+      if (estConnue(mTop[1])) {
+        const raison = raisonInfidelite(mTop[2]);
+        if (raison) { infidelites.push({ cle: mTop[1], raison: raison }); }
+      }
+      continue;
+    }
+    if (parentActuel) {
+      const mSub = ligne.match(/^(\s+)([A-Za-z0-9_-]+):\s*(.*)$/);
+      if (mSub) {
+        const cle = parentActuel + '.' + mSub[2];
+        if (estConnue(cle)) {
+          if (mSub[1].indexOf('\t') !== -1) {
+            infidelites.push({ cle: cle, raison: 'indentation par tabulation' });
+          } else {
+            const raison = raisonInfidelite(mSub[3]);
+            if (raison) { infidelites.push({ cle: cle, raison: raison }); }
+          }
+        }
+      }
+    }
+  }
+  return infidelites;
+}
+
+// Même détection, pour le frontmatter — un seul niveau, et seulement les clés qui passent
+// par decouperValeurYaml (`author`/`keywords` gèrent déjà, chacune, leur propre lecture sur
+// plusieurs lignes : ce n'est pas une infidélité, c'est leur format normal).
+const CLES_FRONTMATTER_SCALAIRES = ['title', 'subtitle', 'doi'];
+function detecterInfidelitesFrontmatter(lignes) {
+  const infidelites = [];
+  for (const ligne of lignes) {
+    const m = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+    if (!m || CLES_FRONTMATTER_SCALAIRES.indexOf(m[1]) === -1) { continue; }
+    const raison = raisonInfidelite(m[2]);
+    if (raison) { infidelites.push({ cle: m[1], raison: raison }); }
+  }
+  return infidelites;
+}
+
+// Message d'erreur uniforme des trois sérialiseurs : nomme la clé et la raison, jamais un
+// refus muet.
+function erreurInfidelite(cle, raison) {
+  return new Error('Écriture refusée : la clé « ' + cle + ' » ne peut pas être réécrite '
+    + 'fidèlement (' + raison + ').');
+}
+
 // Lit un YAML plat, une clé par ligne — ausgabe.yaml comme buch.yaml — avec UN niveau
 // d'imbrication : un bloc top-level ouvre un bloc pour les lignes indentées qui suivent,
 // exposées sous la forme « parent.sous-clé » — c'est ainsi que `impression.grammage` entre
 // dans CLES_METADONNEES, et non comme une clé `grammage` isolée qui collisionnerait avec
 // n'importe quel autre bloc. Le bloc s'ouvre que la ligne du parent porte une valeur ou non :
 // un parent à valeur non vide suivi de lignes indentées est un YAML douteux, mais
-// serialiserAusgabe() doit pouvoir retrouver CE bloc pour y insérer une sous-clé plutôt que
+// serialiserAusgabe() doit pouvoir retrouver ce bloc pour y insérer une sous-clé plutôt que
 // d'en créer un second en fin de fichier (voir son en-tête) — la lecture et l'écriture
 // partagent donc la même règle d'ouverture. Le bloc se referme à la première ligne qui n'est
-// PAS indentée, reconnue comme top-level ou non : ausgabe.yaml n'a aujourd'hui aucun bloc
+// pas indentée, reconnue comme top-level ou non : ausgabe.yaml n'a aujourd'hui aucun bloc
 // ambigu de ce genre, ce qui rend ce comportement neutre pour lui.
 //
 // Le BOM éventuel est retiré avant tout découpage en lignes, à l'identique de
@@ -176,30 +314,56 @@ function analyserAusgabe(contenu) {
   let parentActuel = null;
   const brut = String(contenu);
   const sansBom = brut.charAt(0) === '\uFEFF' ? brut.slice(1) : brut;
-  for (const ligne of sansBom.split(/\r?\n/)) {
+  const lignes = sansBom.split(/\r?\n/);
+  // Une clé infidèle n'est jamais rendue : mieux vaut l'absence, honnête, qu'une valeur
+  // qu'on sait fausse (le | d'un scalaire de bloc, lu comme si c'était le texte entier).
+  const infidele = detecterInfidelitesPlat(lignes, (cle) => CLES_METADONNEES.indexOf(cle) !== -1);
+  const clesInfideles = new Set(infidele.map((x) => x.cle));
+  let i = 0;
+  while (i < lignes.length) {
+    const ligne = lignes[i];
     const mTop = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
     if (mTop) {
-      const valeurTop = decouperValeurYaml(mTop[2]).valeur;
       parentActuel = mTop[1];
-      if (CLES_METADONNEES.indexOf(mTop[1]) !== -1 && !(mTop[1] in valeurs)) {
-        valeurs[mTop[1]] = valeurTop;
+      // Le dernier gagne, comme YAML : aucune garde de « déjà vu », on écrase à chaque
+      // occurrence rencontrée.
+      if (CLES_METADONNEES.indexOf(mTop[1]) !== -1 && !clesInfideles.has(mTop[1])) {
+        if (CLES_LISTES.indexOf(mTop[1]) !== -1 && decouperValeurYaml(mTop[2]).valeur.trim() === '') {
+          // Liste en blocs : chaque « - item » qui suit, tant qu'il y en a.
+          const items = [];
+          let j = i + 1;
+          while (j < lignes.length && /^\s*-\s*(.*)$/.test(lignes[j])) {
+            const m = lignes[j].match(/^\s*-\s*(.*)$/);
+            const v = decouperValeurYaml(m[1]).valeur.trim();
+            if (v !== '') { items.push(v); }
+            j++;
+          }
+          valeurs[mTop[1]] = items;
+          i = j;
+          continue;
+        }
+        valeurs[mTop[1]] = decouperValeurYaml(mTop[2]).valeur;
       }
+      i++;
       continue;
     }
     if (parentActuel) {
       const mSub = ligne.match(/^\s+([A-Za-z0-9_-]+):\s*(.*)$/);
       if (mSub) {
         const cle = parentActuel + '.' + mSub[1];
-        if (CLES_METADONNEES.indexOf(cle) !== -1 && !(cle in valeurs)) {
+        if (CLES_METADONNEES.indexOf(cle) !== -1 && !clesInfideles.has(cle)) {
           valeurs[cle] = decouperValeurYaml(mSub[2]).valeur;
         }
+        i++;
         continue;
       }
     }
     // Ni ligne top-level reconnue, ni sous-clé d'un bloc ouvert : commentaire, item de
     // séquence (`- prenom: …` d'une liste d'auteurs), ligne inconnue — ignorée ici comme
     // avant, `serialiserAusgabe` la restitue telle quelle.
+    i++;
   }
+  if (infidele.length > 0) { valeurs._infidele = infidele; }
   return valeurs;
 }
 
@@ -266,6 +430,8 @@ function analyserFrontmatter(fm) {
   const valeurs = {};
   if (fm === null || fm === undefined) { return valeurs; }
   const lignes = String(fm).split(/\r?\n/);
+  const infidele = detecterInfidelitesFrontmatter(lignes);
+  const clesInfideles = new Set(infidele.map((x) => x.cle));
   let i = 0;
   while (i < lignes.length) {
     const m = lignes[i].match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
@@ -329,16 +495,17 @@ function analyserFrontmatter(fm) {
       valeurs.keywords = mots;
       continue;
     }
-    if (CLES_FRONTMATTER.indexOf(cle) !== -1 && !(cle in valeurs)) {
+    if (CLES_FRONTMATTER.indexOf(cle) !== -1 && !(cle in valeurs) && !clesInfideles.has(cle)) {
       valeurs[cle] = decouperValeurYaml(reste).valeur;
     }
     i++;
   }
+  if (infidele.length > 0) { valeurs._infidele = infidele; }
   return valeurs;
 }
 
 function citerFrontmatter(valeur) {
-  return '"' + String(valeur).replace(/([\\"])/g, '\\$1') + '"';
+  return '"' + encoderEchappementsYaml(String(valeur)) + '"';
 }
 
 function lignesCleFrontmatter(cle, valeur) {
@@ -380,6 +547,11 @@ function lignesCleFrontmatter(cle, valeur) {
 function serialiserFrontmatter(texte, modifies) {
   const partie = separerFrontmatter(texte);
   const fmLignes = (partie.fm === null || partie.fm === '') ? [] : partie.fm.split(/\r?\n/);
+  const infidelites = detecterInfidelitesFrontmatter(fmLignes);
+  for (const cle of Object.keys(modifies)) {
+    const trouve = infidelites.find((inf) => inf.cle === cle);
+    if (trouve) { throw erreurInfidelite(trouve.cle, trouve.raison); }
+  }
   const segments = [];
   for (const ligne of fmLignes) {
     const cle = (ligne.match(/^([A-Za-z0-9_-]+):/) || [])[1];
@@ -513,7 +685,7 @@ function langueDefaut(valeurs) {
 
 function langueRevue(racine) {
   let valeurs = {};
-  try { valeurs = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')); }
+  try { valeurs = analyserAusgabe(fs.readFileSync(cheminConfigDetecte(racine), 'utf8')); }
   catch (e) { /* illisible : repli fr via langueDefaut({}) */ }
   return langueDefaut(valeurs);
 }
@@ -525,10 +697,17 @@ function langueRevue(racine) {
 // `source` (le nom du .docx d'origine, posé par l'import) et `licence` sont des clés de
 // première classe : le formulaire des métadonnées reconstruit sa carte depuis la webview,
 // et c'est ecrireCartesArticles() qui relit du fichier ce que la carte ne porte pas.
+// Les cinq clés scalaires d'une fiche, lues sur une seule ligne physique : les seules que
+// analyserMeta puisse juger infidèles (title/subtitle/resume/keywords/author gèrent déjà
+// leur propre lecture sur plusieurs lignes, ce n'est pas une infidélité).
+const CLES_META_SCALAIRES = ['type', 'lang', 'source', 'licence', 'doi'];
+
 function analyserMeta(texte) {
   const valeurs = { type: '', lang: '', source: '', licence: '', doi: '', title: {}, subtitle: {}, resume: {}, keywords: {}, author: [], _inconnues: [] };
   if (!texte) { return valeurs; }
-  const lignes = String(texte).split(/\r?\n/);
+  const brut = String(texte);
+  const lignes = (brut.charAt(0) === '\uFEFF' ? brut.slice(1) : brut).split(/\r?\n/);
+  const infidele = [];
   let i = 0;
   while (i < lignes.length) {
     const m = lignes[i].match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
@@ -539,6 +718,10 @@ function analyserMeta(texte) {
     }
     const cle = m[1];
     const reste = m[2];
+    if (CLES_META_SCALAIRES.indexOf(cle) !== -1) {
+      const raison = raisonInfidelite(reste);
+      if (raison) { infidele.push({ cle: cle, raison: raison }); i++; continue; }
+    }
     if (cle === 'type') { valeurs.type = decouperValeurYaml(reste).valeur; i++; continue; }
     // Langue de l'article, propre à la fiche : elle prime sur la langue du numéro au
     // rendu. Une valeur hors liste est relue comme non déclarée, jamais imprimée.
@@ -630,6 +813,7 @@ function analyserMeta(texte) {
       i++;
     }
   }
+  if (infidele.length > 0) { valeurs._infidele = infidele; }
   return valeurs;
 }
 
@@ -640,6 +824,13 @@ function analyserMeta(texte) {
 // formulaire ne doit pas différer de celle que l'import vient de poser.
 function serialiserMeta(valeurs) {
   const v = valeurs || {};
+  // serialiserMeta régénère la fiche entière depuis `v` : une clé infidèle (voir
+  // analyserMeta) n'a jamais eu de valeur fiable à régénérer — mieux vaut refuser
+  // d'écrire que de perdre en silence ce que la lecture n'a pas su comprendre.
+  if (Array.isArray(v._infidele) && v._infidele.length > 0) {
+    const premiere = v._infidele[0];
+    throw erreurInfidelite(premiere.cle, premiere.raison);
+  }
   const lignes = [];
   const type = String(v.type || '').trim();
   if (TYPES_ARTICLE.indexOf(type) !== -1) { lignes.push('type: ' + type); }
@@ -709,7 +900,7 @@ function serialiserMeta(valeurs) {
 // nom du dossier sert de titre, qui n'est donc jamais vide.
 function titreNumero(racine) {
   let valeurs = {};
-  try { valeurs = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')); }
+  try { valeurs = analyserAusgabe(fs.readFileSync(cheminConfigDetecte(racine), 'utf8')); }
   catch (e) { /* illisible : replis ci-dessous */ }
   const prefixe = langueDefaut(valeurs) === 'de' ? 'Z' : 'R';
   // Année : celle de `date:` si elle y est, sinon celle du nom du dossier (« 2027-03 »).
@@ -735,7 +926,7 @@ function titreNumero(racine) {
 // Fichier illisible ou absent : état neutre.
 function etatRevue(racine) {
   let valeurs = {};
-  try { valeurs = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')); }
+  try { valeurs = analyserAusgabe(fs.readFileSync(cheminConfigDetecte(racine), 'utf8')); }
   catch (e) { /* illisible : état neutre ci-dessous */ }
   return {
     verrouillee: estVraiYaml(valeurs.locked),
@@ -765,7 +956,7 @@ function formaterValeurYaml(cle, valeur) {
   if (CLES_LISTES.indexOf(cle) !== -1) {
     const liste = (Array.isArray(valeur) ? valeur : String(valeur === undefined || valeur === null ? '' : valeur).split(/[,\s]+/))
       .map((v) => String(v).trim()).filter((v) => v !== '');
-    return '[' + liste.map((v) => '"' + v.replace(/([\\"])/g, '\\$1') + '"').join(', ') + ']';
+    return '[' + liste.map((v) => '"' + encoderEchappementsYaml(v) + '"').join(', ') + ']';
   }
   // Les drapeaux s'écrivent en booléen YAML nu, jamais cité : la chaîne « "false" » serait
   // vraie pour le `$if()$` du gabarit pandoc.
@@ -778,7 +969,7 @@ function formaterValeurYaml(cle, valeur) {
   if (CLES_NOMBRES.indexOf(cle) !== -1) {
     return String(valeur === undefined || valeur === null ? '' : valeur).trim().replace(/[^0-9.-]/g, '');
   }
-  return '"' + String(valeur).replace(/([\\"])/g, '\\$1') + '"';
+  return '"' + encoderEchappementsYaml(String(valeur)) + '"';
 }
 
 // Réécrit `contenu` avec les clés de `modifies` : lignes existantes mises à jour en
@@ -791,9 +982,9 @@ function formaterValeurYaml(cle, valeur) {
 // toute fin du fichier, où `grammage: 90` perdrait le bloc qui lui donne son sens ; et si le
 // bloc lui-même n'existe pas du tout, il est créé en fin de fichier, avec ses sous-clés.
 //
-// ⚠ `finBloc` retient TOUTE ligne top-level rencontrée, valeur vide ou non — pas seulement
+// ⚠ `finBloc` retient toute ligne top-level rencontrée, valeur vide ou non — pas seulement
 // celles qui ouvrent un bloc au sens strict. Un `parent:` à valeur non vide suivi de lignes
-// indentées est un YAML douteux, mais la clé ne doit JAMAIS être dupliquée pour autant : sans
+// indentées est un YAML douteux, mais la clé ne doit jamais être dupliquée pour autant : sans
 // cette entrée, une sous-clé manquante de ce bloc ne trouvait pas `finBloc.has(parent)`,
 // tombait dans la branche « bloc absent » (plus bas) et ouvrait un second `parent:` en fin de
 // fichier — le fichier sortait avec deux clés top-level du même nom, l'ancienne gardant ses
@@ -807,35 +998,100 @@ function serialiserAusgabe(contenu, modifies) {
   const corps = bom ? contenu.slice(1) : contenu;
   const lignes = corps === '' ? [] : corps.split(/\r?\n/);
   if (lignes.length > 0 && lignes[lignes.length - 1] === '') { lignes.pop(); }
+
+  // Une clé que l'analyse ne lit pas fidèlement ne s'écrit pas non plus : mieux vaut un
+  // échec net, qui nomme la clé et la raison, qu'un fichier réécrit à côté de ce qu'il
+  // contenait vraiment (voir analyserAusgabe et son en-tête).
+  const infidelites = detecterInfidelitesPlat(lignes, (cle) => CLES_METADONNEES.indexOf(cle) !== -1);
+  for (const cle of Object.keys(modifies)) {
+    const trouve = infidelites.find((inf) => inf.cle === cle);
+    if (trouve) { throw erreurInfidelite(trouve.cle, trouve.raison); }
+  }
+
   const restantes = new Set(Object.keys(modifies));
+
+  // Dernière occurrence de chaque clé connue : YAML retient la dernière en cas de
+  // doublon, et la réécriture ne doit plus en laisser qu'une — les occurrences plus
+  // anciennes sont retirées telles quelles, jamais réécrites.
+  const dernierIndex = new Map();
+  {
+    let parent = null;
+    for (let k = 0; k < lignes.length; k++) {
+      const mTop = lignes[k].match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+      if (mTop) {
+        parent = mTop[1];
+        if (CLES_METADONNEES.indexOf(mTop[1]) !== -1) { dernierIndex.set(mTop[1], k); }
+        continue;
+      }
+      if (parent) {
+        const mSub = lignes[k].match(/^\s+([A-Za-z0-9_-]+):\s*(.*)$/);
+        if (mSub) {
+          const cle = parent + '.' + mSub[1];
+          if (CLES_METADONNEES.indexOf(cle) !== -1) { dernierIndex.set(cle, k); }
+        }
+      }
+    }
+  }
+
   let parentActuel = null;
   // Bloc -> index (dans `resultat`) de sa dernière ligne rencontrée, en-tête comprise :
   // c'est là qu'une sous-clé absente du bloc doit s'insérer.
   const finBloc = new Map();
-  const resultat = lignes.map((ligne, index) => {
+  const resultat = [];
+  let i = 0;
+  while (i < lignes.length) {
+    const ligne = lignes[i];
     const mTop = ligne.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
     if (mTop) {
       parentActuel = mTop[1];
-      finBloc.set(parentActuel, index);
-      if (!restantes.has(mTop[1])) { return ligne; }
+      const connu = CLES_METADONNEES.indexOf(mTop[1]) !== -1;
+      if (connu && dernierIndex.get(mTop[1]) !== i) {
+        // Occurrence plus ancienne d'une clé dupliquée : retirée, avec ses éventuels
+        // « - item » de liste en blocs.
+        let j = i + 1;
+        if (CLES_LISTES.indexOf(mTop[1]) !== -1 && decouperValeurYaml(mTop[2]).valeur.trim() === '') {
+          while (j < lignes.length && /^\s*-\s*(.*)$/.test(lignes[j])) { j++; }
+        }
+        i = j;
+        continue;
+      }
+      // Liste en blocs : ses « - item » suivent la ligne de clé, valeur propre vide — si
+      // cette clé est réécrite, ils ne survivent pas à la forme en ligne qui les remplace.
+      let finBlocListe = i;
+      if (CLES_LISTES.indexOf(mTop[1]) !== -1 && decouperValeurYaml(mTop[2]).valeur.trim() === '') {
+        let j = i + 1;
+        while (j < lignes.length && /^\s*-\s*(.*)$/.test(lignes[j])) { j++; }
+        finBlocListe = j - 1;
+      }
+      finBloc.set(parentActuel, resultat.length);
+      if (!restantes.has(mTop[1])) { resultat.push(ligne); i++; continue; }
       restantes.delete(mTop[1]);
       // `suite` garde ses espaces de tête ; s'il colle à la valeur, on intercale un espace.
       const suite = decouperValeurYaml(mTop[2]).suite;
-      return mTop[1] + ': ' + formaterValeurYaml(mTop[1], modifies[mTop[1]]) + (suite ? (/^\s/.test(suite) ? suite : ' ' + suite) : '');
+      resultat.push(mTop[1] + ': ' + formaterValeurYaml(mTop[1], modifies[mTop[1]])
+        + (suite ? (/^\s/.test(suite) ? suite : ' ' + suite) : ''));
+      i = finBlocListe + 1;
+      continue;
     }
     if (parentActuel) {
       const mSub = ligne.match(/^(\s+)([A-Za-z0-9_-]+):\s*(.*)$/);
       if (mSub) {
-        finBloc.set(parentActuel, index);
         const cleComplete = parentActuel + '.' + mSub[2];
-        if (!restantes.has(cleComplete)) { return ligne; }
+        const connu = CLES_METADONNEES.indexOf(cleComplete) !== -1;
+        if (connu && dernierIndex.get(cleComplete) !== i) { i++; continue; }
+        finBloc.set(parentActuel, resultat.length);
+        if (!restantes.has(cleComplete)) { resultat.push(ligne); i++; continue; }
         restantes.delete(cleComplete);
         const suite = decouperValeurYaml(mSub[3]).suite;
-        return mSub[1] + mSub[2] + ': ' + formaterValeurYaml(cleComplete, modifies[cleComplete]) + (suite ? (/^\s/.test(suite) ? suite : ' ' + suite) : '');
+        resultat.push(mSub[1] + mSub[2] + ': ' + formaterValeurYaml(cleComplete, modifies[cleComplete])
+          + (suite ? (/^\s/.test(suite) ? suite : ' ' + suite) : ''));
+        i++;
+        continue;
       }
     }
-    return ligne;
-  });
+    resultat.push(ligne);
+    i++;
+  }
   // Blocs entièrement absents du fichier : construits à part, pour être ajoutés une seule
   // fois chacun, toutes leurs sous-clés manquantes ensemble.
   const nouveauxBlocs = [];
@@ -873,10 +1129,14 @@ function serialiserAusgabe(contenu, modifies) {
   return bom + resultat.join(eol) + (resultat.length > 0 ? eol : '');
 }
 
-// Écriture atomique : un temporaire « ~$… » dans le même dossier, préfixe ignoré par la
-// synchro OneDrive, puis rename. Jamais de fichier à moitié écrit.
+// Écriture atomique : un temporaire « ~$…‹pid›.‹aléa› » dans le même dossier, préfixe
+// ignoré par la synchro OneDrive, puis rename. Le nom est unique par appel : deux écritures
+// concurrentes du même fichier (deux processus, ou un temporaire orphelin d'un plantage
+// précédent) ne partagent jamais le même temporaire, et le finally ne supprime donc jamais
+// que le sien. Jamais de fichier à moitié écrit.
 function ecrireAtomique(chemin, contenu) {
-  const tmp = path.join(path.dirname(chemin), '~$' + path.basename(chemin));
+  const jeton = process.pid + '.' + Math.random().toString(36).slice(2, 8);
+  const tmp = path.join(path.dirname(chemin), '~$' + path.basename(chemin) + '.' + jeton);
   try {
     fs.writeFileSync(tmp, contenu, 'utf8');
     fs.renameSync(tmp, chemin);

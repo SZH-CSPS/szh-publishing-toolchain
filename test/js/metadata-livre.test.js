@@ -29,7 +29,7 @@ const path = require('path');
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
-const { livreDEssai, activerHote } = require('./hote-factice');
+const { livreDEssai, activerHote, sourceExtensionEtLib } = require('./hote-factice');
 
 const LF = String.fromCharCode(10);
 
@@ -83,7 +83,8 @@ test('formulaire du livre : les clés du bloc impression: sont aux bonnes listes
 test('formulaire du livre : chaque intitulé de la table existe dans les deux langues', () => {
   const { libelles } = champsLivre();
   assert.ok(libelles.length >= 15, 'table des intitulés trop maigre : ' + libelles.length);
-  const src = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
+  // Concaténé à lib/ : préalable au découpage d'extension.js, voir hote-factice.js.
+  const src = sourceExtensionEtLib(COCKPIT);
   const i = src.indexOf('const LIBELLES_LIVRE = [');
   assert.notStrictEqual(i, -1, 'LIBELLES_LIVRE a disparu de extension.js');
   const bloc = src.slice(i, src.indexOf('];', i));

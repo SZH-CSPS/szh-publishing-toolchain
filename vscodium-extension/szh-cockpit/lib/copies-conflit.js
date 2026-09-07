@@ -1,16 +1,11 @@
 // Détection des copies en conflit créées par OneDrive/SharePoint quand deux postes
-// modifient le même fichier simultanément. Le synchroniseur ne fusionne pas : il
-// place la version perdante à côté de l'original avec un marqueur (« copie en
-// conflit » en français, etc.). Le cockpit doit avertir qu'une version n'a pas été
-// intégrée au numéro.
+// modifient le même fichier : le synchroniseur ne fusionne pas, il place la version
+// perdante à côté de l'original avec un marqueur (« copie en conflit », etc.).
 //
-// Les doublons numérotés (fichier (1).yaml, (2).yaml) sont aussi détectés : pour
-// distinguer une vraie copie en conflit d'un nom intentionnel comme « essai (1).yaml »,
-// on demande à l'appelant de vérifier que l'original existe dans le même dossier.
-//
-// Ni vscode ni configuration : fs et path seulement, donc éprouvable hors de l'éditeur.
-// estCopieConflit() ne juge qu'un NOM et ne touche pas au disque ; c'est chercherCopies()
-// qui parcourt, et lui ne lève jamais — il est appelé depuis un rafraîchissement d'interface.
+// Les doublons numérotés (fichier (1).yaml) sont aussi détectés — on demande donc à
+// l'appelant de vérifier que l'original existe dans le même dossier, pour distinguer une
+// vraie copie en conflit d'un nom intentionnel comme « essai (1).yaml ». Pur (fs et path
+// seulement) : estCopieConflit() ne juge qu'un nom, chercherCopies() parcourt et ne lève jamais.
 'use strict';
 
 const fs = require('fs');
@@ -56,14 +51,14 @@ function estCopieConflit(nom, existe) {
 
   // Cherche les marqueurs textuels (case-insensitive).
   //
-  // ⚠ La CASSE du nom reconstitué est celle du fichier examiné, jamais minusculisée : ce
+  // ⚠ La casse du nom reconstitué est celle du fichier examiné, jamais minusculisée : ce
   // nom sert à ouvrir le fichier d'origine dans le comparateur, et une revue posée sur un
   // système sensible à la casse — la compilation passe par WSL — ne le retrouverait pas.
   const marqueursLc = MARQUEURS.map((m) => m.toLowerCase());
   for (const marqueur of marqueursLc) {
     const idx = nomSansExt.toLowerCase().indexOf(marqueur);
     if (idx !== -1) {
-      // Tronque avant le marqueur et nettoie ; un nom qui COMMENCE par le marqueur ne
+      // Tronque avant le marqueur et nettoie ; un nom qui commence par le marqueur ne
       // laisse rien devant, et « .yaml » n'est pas un fichier d'origine.
       const base = nettoyerNom(nomSansExt.slice(0, idx));
       const original = base + ext;
@@ -75,7 +70,7 @@ function estCopieConflit(nom, existe) {
   }
 
   // Doublon numéroté : un nom qui finit par ' (N)' avant l'extension, N 1-2 chiffres.
-  // Ne compte QUE si l'original existe dans le même dossier.
+  // Ne compte que si l'original existe dans le même dossier.
   const reDoublon = / \((\d{1,2})\)$/;
   const match = nomSansExt.match(reDoublon);
   if (match && existe) {
@@ -147,7 +142,7 @@ function chercherCopies(racine) {
 }
 
 // La copie en conflit d'un fichier donné, ou null. Un seul readdir, sur le dossier du
-// fichier : l'éditeur appelle ceci pour CHAQUE onglet ouvert (fournisseur de diff rapide),
+// fichier : l'éditeur appelle ceci pour chaque onglet ouvert (fournisseur de diff rapide),
 // il n'est pas question de parcourir le numéro à chaque fois.
 //
 // La comparaison des noms ignore la casse : Windows ne la distingue pas, et le
@@ -173,18 +168,18 @@ function copieConflitPour(chemin) {
 
 // ---- Résoudre une copie en conflit, bloc par bloc --------------------------------
 //
-// C'est l'ÉDITEUR qui calcule les blocs de divergence : il les passe aux commandes du menu
+// C'est l'éditeur qui calcule les blocs de divergence : il les passe aux commandes du menu
 // « scm/change/title » sous la forme (uri, blocs, index). Ici on ne fait que les appliquer,
 // donc aucun algorithme de comparaison à écrire ni à maintenir.
 //
-// Un bloc est un LineChange de VS Code : quatre numéros de ligne comptés À PARTIR DE 1, et
+// Un bloc est un LineChange de VS Code : quatre numéros de ligne comptés à partir de 1, et
 // deux conventions à connaître —
-//   originalEndLineNumber === 0  « rien du côté original » : c'est une INSERTION, qui vient
+//   originalEndLineNumber === 0  « rien du côté original » : c'est une insertion, qui vient
 //                                 juste après la ligne originalStartLineNumber ;
-//   modifiedEndLineNumber === 0  « rien du côté modifié » : c'est une SUPPRESSION.
+//   modifiedEndLineNumber === 0  « rien du côté modifié » : c'est une suppression.
 // Tout le reste est un remplacement de originalStart..originalEnd par modifiedStart..End.
 
-// ⚠ Le découpage GARDE la ligne vide finale d'un fichier qui se termine par un saut de
+// ⚠ Le découpage garde la ligne vide finale d'un fichier qui se termine par un saut de
 // ligne : c'est le modèle de document de l'éditeur — lineCount la compte — et les numéros
 // des blocs s'y réfèrent. Retirer cette ligne décalerait le dernier bloc d'un cran.
 // « a\nb\n » donne donc ['a', 'b', ''], et le join() rend le texte à l'octet.

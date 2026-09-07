@@ -12,14 +12,14 @@
   // Les trois panneaux du cockpit — Commande, Édition, Export — soit les mêmes menus que
   // les trois boutons de la barre « Revue SZH ». Le panneau d'édition contient toute la
   // palette « Mise en forme », qui reste aussi au clic droit.
-  { "key": "ctrl+alt+a", "command": "szh.panneauCommande", "when": "szh.estRevue" },
+  { "key": "ctrl+alt+a", "command": "szh.panneauCommande", "when": "szh.estRevue || szh.estLivre" },
   {
     "key": "ctrl+alt+s",
     "command": "szh.panneauEdition",
-    "when": "szh.estRevue || (editorTextFocus && editorLangId == markdown)"
+    "when": "szh.estRevue || szh.estLivre || (editorTextFocus && editorLangId == markdown)"
   },
-  { "key": "ctrl+alt+d", "command": "szh.panneauExport", "when": "szh.estRevue" },
-  { "key": "ctrl+alt+p", "command": "szh.basculerApercu", "when": "szh.estRevue" },
+  { "key": "ctrl+alt+d", "command": "szh.panneauExport", "when": "szh.estRevue || szh.estLivre" },
+  { "key": "ctrl+alt+p", "command": "szh.basculerApercu", "when": "szh.estRevue || szh.estLivre" },
 
   // Mise en forme SZH, au niveau utilisateur, donc prioritaire sur Markdown All in One ;
   // ces raccourcis figurent aussi dans le sous-menu « Mise en forme » du clic droit.

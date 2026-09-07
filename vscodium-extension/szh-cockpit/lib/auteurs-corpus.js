@@ -1,14 +1,7 @@
-// Enrichissement du cache des auteurs avec les données du corpus local.
-//
-// Les auteur·e·s publiés d'OJS n'ont que nom + affiliation. La fonction et l'e-mail
-// existent seulement dans les fiches <slug>.meta.yaml du corpus. Ce module balaie ces
-// fiches pour fusionner les champs manquants.
-//
-// Contrainte déterminante : les revues vivent sur OneDrive avec Fichiers à la demande.
-// Ouvrir un fichier le fait télécharger — donc on ouvre QUE les *.meta.yaml (quelques Ko),
-// jamais un .md, jamais out/, jamais media/, jamais un .docx. Le mtime décide : on relit
-// une fiche seulement si son mtimeMs diffère de celui mémorisé dans cache.vus[chemin].
-// Tout balayage interrompu garde ce qu'il a trouvé.
+// Enrichissement du cache des auteurs avec les données du corpus local : la fonction et
+// l'e-mail n'existent que dans les fiches <slug>.meta.yaml, qu'OJS n'expose pas. Contrainte
+// déterminante (revues sur OneDrive, Fichiers à la demande, qui télécharge à l'ouverture) :
+// on ouvre seulement les *.meta.yaml (quelques Ko), jamais un .md, out/, media/ ou .docx.
 'use strict';
 
 const fs = require('fs');
@@ -73,21 +66,29 @@ function lancerPowerShell(lignes) {
   });
 }
 
-// Balaie le corpus : une racine → readdirSync → dossiers avec ausgabe.yaml →
+// Balaie le corpus : une racine → readdir → dossiers avec ausgabe.yaml →
 // articles/<slug>/<slug>.meta.yaml. Gère mtime pour ne relire que si nécessaire.
 // opts = { racines, vus, maintenant, plafondFichiers, delaiMs, lire, statuer }
 // vus = { chemin: mtimeMs, ... }
-// Rend { auteurs, vus, fichiers, complet, erreur }. N'ouvre QUE les *.meta.yaml.
-function balayerCorpus(opts) {
+// Rend { auteurs, vus, fichiers, complet, erreur }. N'ouvre que les *.meta.yaml.
+//
+// Asynchrone, et chaque entrée passe par `await` : ce balayage traverse potentiellement
+// des milliers de dossiers OneDrive (Fichiers à la demande, chaque readdir/stat pouvant
+// déclencher une hydratation réseau) — une version synchrone gèlerait l'hôte d'extensions
+// tout entier, éditeur compris, pendant toute sa durée. Le budget de temps et de fichiers
+// reste vérifié à chaque entrée, comme avant : un balayage interrompu garde ce qu'il a
+// trouvé, seule la manière d'attendre le disque a changé.
+async function balayerCorpus(opts) {
   const o = opts || {};
   const racines = Array.isArray(o.racines) ? o.racines : [];
   const vus = (o.vus && typeof o.vus === 'object') ? o.vus : {};
   const maintenant = o.maintenant === undefined ? Date.now() : o.maintenant;
   const plafondFichiers = o.plafondFichiers === undefined ? 5000 : o.plafondFichiers;
   const delaiMs = o.delaiMs === undefined ? 600000 : o.delaiMs;
-  const lire = o.lire || ((c) => fs.readFileSync(c, 'utf8'));
-  const statuer = o.statuer || ((c) => fs.statSync(c));
-  // L'horloge du budget est SÉPARÉE de `maintenant`, qui n'est qu'un horodatage : les
+  const lire = o.lire || ((c) => fs.promises.readFile(c, 'utf8'));
+  const statuer = o.statuer || ((c) => fs.promises.stat(c));
+  const lireDossier = o.lireDossier || ((c) => fs.promises.readdir(c, { withFileTypes: true }));
+  // L'horloge du budget est séparée de `maintenant`, qui n'est qu'un horodatage : les
   // comparer reviendrait à mesurer zéro seconde, et la borne de temps — la seule qui
   // protège d'un OneDrive qui s'hydrate au compte-gouttes — ne se déclencherait jamais.
   const horloge = o.horloge || Date.now;
@@ -101,7 +102,7 @@ function balayerCorpus(opts) {
     if (fichiers >= plafondFichiers) { complet = false; break; }
     // Une racine inexistante ou non synchronisée est sautée silencieusement.
     let dossiers;
-    try { dossiers = fs.readdirSync(racine, { withFileTypes: true }); }
+    try { dossiers = await lireDossier(racine); }
     catch (e) { continue; }
     for (const entree of dossiers) {
       if (horloge() - debut > delaiMs) { complet = false; break; }
@@ -109,13 +110,13 @@ function balayerCorpus(opts) {
       if (!entree.isDirectory()) { continue; }
       const ausgabe = path.join(racine, entree.name, 'ausgabe.yaml');
       let statAusgabe;
-      try { statAusgabe = statuer(ausgabe); }
+      try { statAusgabe = await statuer(ausgabe); }
       catch (e) { continue; }
       if (!statAusgabe.isFile()) { continue; }
       // Ce dossier est un numéro. Balaie articles/<slug>/<slug>.meta.yaml.
       const articlesDir = path.join(racine, entree.name, 'articles');
       let slugs;
-      try { slugs = fs.readdirSync(articlesDir, { withFileTypes: true }); }
+      try { slugs = await lireDossier(articlesDir); }
       catch (e) { continue; }
       for (const slug of slugs) {
         if (horloge() - debut > delaiMs) { complet = false; break; }
@@ -123,7 +124,7 @@ function balayerCorpus(opts) {
         if (!slug.isDirectory()) { continue; }
         const metaYaml = path.join(articlesDir, slug.name, slug.name + '.meta.yaml');
         let statMeta;
-        try { statMeta = statuer(metaYaml); }
+        try { statMeta = await statuer(metaYaml); }
         catch (e) { continue; }
         if (!statMeta.isFile()) { continue; }
         fichiers++;
@@ -132,7 +133,7 @@ function balayerCorpus(opts) {
         vus[metaYaml] = statMeta.mtimeMs;
         // On lit la fiche et on en extrait les auteurs.
         let contenu;
-        try { contenu = lire(metaYaml); }
+        try { contenu = await lire(metaYaml); }
         catch (e) {
           derniereErreur = String((e && e.message) || e);
           continue;
@@ -178,7 +179,7 @@ async function rafraichirCorpus(opts) {
   const o = opts || {};
   const maintenant = o.maintenant === undefined ? Date.now() : o.maintenant;
   const cache = lireCache();
-  // dateCorpus et dateCorpus côté OJS sont SÉPARÉS dans le cache — on ne fusionne
+  // dateCorpus et dateCorpus côté OJS sont séparés dans le cache — on ne fusionne
   // que si corpus a avancé.
   const dateCorpus = cache.dateCorpus || null;
   if (!o.forcer && dateCorpus && cacheFrais(dateCorpus, maintenant)) {
@@ -195,7 +196,7 @@ async function rafraichirCorpus(opts) {
     racines = r;
   }
   // On balaie le corpus.
-  const resultCorpus = balayerCorpus({
+  const resultCorpus = await balayerCorpus({
     racines: racines,
     vus: (cache.vus && typeof cache.vus === 'object') ? Object.assign({}, cache.vus) : {},
     maintenant: maintenant,
@@ -221,7 +222,7 @@ async function rafraichirCorpus(opts) {
     auteurs: auteurs,
     ror: cache.ror || {}
   };
-  // `vus` part TOUJOURS, même sur un balayage partiel : le téléchargement déjà payé par
+  // `vus` part toujours, même sur un balayage partiel : le téléchargement déjà payé par
   // OneDrive ne doit pas l'être une seconde fois au mois suivant.
   const erreurEcriture = ecrireCache(neuf);
   return {

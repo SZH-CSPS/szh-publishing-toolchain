@@ -1,19 +1,18 @@
 // La liste des auteur·e·s publiés des deux revues, moissonnée sur l'interface OAI-PMH
-// PUBLIQUE d'ojs.szh.ch et gardée dans C:\ProgramData\SZH\auteurs.json. Elle alimente
+// publique d'ojs.szh.ch et gardée dans C:\ProgramData\SZH\auteurs.json. Elle alimente
 // l'autocomplétion de la modale d'auteur·e (media/_auteurs.js).
 //
-// Formats OAI supportés : oai_dc (avant : noms seulement), marcxml (ajout : affiliations + ROR).
-// Décision du 29.08.2026 : passage à marcxml pour enrichir les affiliations.
+// Formats OAI supportés : oai_dc (noms seulement), marcxml (ajoute affiliations et ROR).
 //
-// Endpoints relevés sur l'instance (OJS 3.5.0.4, verbe Identify, 25.08.2026) — le préfixe
-// de locale est celui de la redirection 302 qu'OJS impose, et le module https natif ne
-// suit pas les redirections tout seul :
+// Endpoints relevés sur l'instance (OJS 3.5.0.4, verbe Identify) — le préfixe de locale est
+// celui de la redirection 302 qu'OJS impose, et le module https natif ne suit pas les
+// redirections tout seul :
 //   https://ojs.szh.ch/index.php/revue/fr/oai        Revue suisse de pédagogie spécialisée
 //   https://ojs.szh.ch/index.php/zeitschrift/de/oai  Schweizerische Zeitschrift für Heilpädagogik
 // Surchargeables par config.json, clé `oai` : soit une liste d'URL, soit
 // { "oai": { "endpoints": ["…", "…"] } }.
 //
-// Le cache est un fichier SÉPARÉ de config.json — modèle state.json — parce que
+// Le cache est un fichier séparé de config.json — modèle state.json — parce que
 // config.json est réécrit en entier à chaque réglage. Forme v2 :
 //   { "version": 2, "dateFetch": "2026-08-25T12:00:00.000Z", "dateCorpus": null,
 //     "ror": { "01swzsf04": { "fr": "…", "de": "…", "en": "…" } },
@@ -21,7 +20,7 @@
 // v1 migre vers v2 en mettant dateFetch à null (moissonnage complet demandé).
 //
 // Rythme : au plus une fois par mois (dateFetch), incrémental (from = date du dernier fetch).
-// Hors ligne = normal : l'échec est silencieux. dateFetch n'avance que si les DEUX revues
+// Hors ligne = normal : l'échec est silencieux. dateFetch n'avance que si les deux revues
 // ont répondu : sinon on réessaie, la fusion étant idempotente. Échec ROR n'empêche pas
 // dateFetch d'avancer — les libellés se rattraperont.
 //
@@ -30,9 +29,8 @@
 // aucun ne fait de réseau (le moissonnage et ROR prennent leur `recuperer` en paramètre).
 //
 // Client https, parseur XML minimal (resumptionToken, <error>, entités) et pliage de
-// chaîne : lib/oai-pmh.js, module commun avec lib/mots-cles-edudoc.js (extrait le
-// 01.09.2026). Réexportés ici sous les mêmes noms qu'avant l'extraction, pour ne rien
-// changer aux appelants ni aux tests de ce module.
+// chaîne : lib/oai-pmh.js, module commun avec lib/mots-cles-edudoc.js. Réexportés ici sous
+// les mêmes noms qu'avant l'extraction, pour ne rien changer aux appelants ni aux tests.
 'use strict';
 
 const fs = require('fs');
@@ -93,7 +91,7 @@ function extraireRecords(xml) {
 // Tolère code="…" ET label="…" sur les sous-champs (incohérence du gabarit OJS).
 // Datafields 100/700/720 dans l'ordre du document.
 //
-// `$u` est RÉPÉTABLE, et l'instance s'en sert : trois auteur·e·s des deux revues portent
+// `$u` est répétable, et l'instance s'en sert : trois auteur·e·s des deux revues portent
 // deux ou trois affiliations. Les recoller en une chaîne fabriquerait des valeurs comme
 // « https://ror.org/A https://ror.org/B », qu'aucun des deux camps ne reconnaîtrait — ni
 // ROR, ni texte lisible — et l'affiliation serait perdue en silence. La liste reste donc
@@ -180,7 +178,7 @@ function recordsEnAuteurs(records) {
           source: 'oai'
         };
         // La fiche ne porte qu’une affiliation : d’un auteur qui en déclare plusieurs,
-        // on garde la PREMIÈRE — l’ordre d’OJS est celui de l’auteur, et c’est une
+        // on garde la première — l’ordre d’OJS est celui de l’auteur, et c’est une
         // suggestion, que le rédacteur corrige d’une frappe.
         for (const brute of (a || {}).affiliations || []) {
           const id = rorCanonique(brute);
@@ -223,14 +221,26 @@ function idRor(valeur) {
   return canon === '' ? '' : canon.slice('https://ror.org/'.length);
 }
 
+// Concurrence et échéance de resoudreRor : au plus 4 requêtes en vol à la fois (l'API ROR
+// n'a pas à voir 45 requêtes d'un coup depuis la même adresse), et 5 minutes au total —
+// un poste hors ligne ne doit pas laisser le rafraîchissement des auteurs tourner sans fin.
+const CONCURRENCE_ROR = 4;
+const DELAI_ROR_MS = 5 * 60 * 1000;
+
 // Résout les IDs ROR inconnus auprès de l'API ROR, range les libellés dans le cache.
 // `recuperer` est injecté (comme dans `moissonner`) pour que les tests ne fassent aucun réseau.
-// Les ids sont ceux du cache.ror (forme canonique). `connus` = Set des ids DÉJÀ en cache.
-// Un id qui échoue (404, réseau, JSON illisible) est SAUTÉ — on ne le met pas en cache,
-// il sera retenté le mois suivant.
+// Les ids sont ceux du cache.ror (forme canonique). `connus` = Set des ids déjà en cache.
+// Un id qui échoue (404, réseau, JSON illisible) est sauté — on ne le met pas en cache,
+// il sera retenté le mois suivant, en silence : c'est individuel, ça arrive tous les mois
+// à quelques institutions. `opts.horloge`/`opts.delaiMs` sont injectables pour les tests,
+// comme balayerCorpus() de lib/auteurs-corpus.js.
 // Rend { <id>: { fr: "…", de: "…", en: "…" }, … } — seuls les succès sont présents.
 // Ne lève jamais.
-async function resoudreRor(recuperer, ids, connus) {
+async function resoudreRor(recuperer, ids, connus, opts) {
+  const o = opts || {};
+  const horloge = o.horloge || Date.now;
+  const delaiMs = o.delaiMs === undefined ? DELAI_ROR_MS : o.delaiMs;
+  const debut = horloge();
   // `connus` est tantôt le Set des ids déjà résolus, tantôt la table cache.ror elle-même :
   // les deux appelants sont légitimes, et se tromper d'un des deux ferait soit une
   // exception, soit 45 requêtes inutiles tous les mois.
@@ -239,19 +249,25 @@ async function resoudreRor(recuperer, ids, connus) {
     if (typeof connus.has === 'function') { return connus.has(id); }
     return Object.prototype.hasOwnProperty.call(connus, id);
   };
-  const resultat = {};
+  const aTraiter = [];
   for (const id of Array.isArray(ids) ? ids : []) {
     // URL ou identifiant nu : les deux entrent, l'identifiant nu seul sort. Passer une URL
     // à l'API donnerait un 404 pour les 45 institutions d'un coup, sans un mot — et la
     // table resterait vide sans que rien ne signale pourquoi.
     const idStr = idRor(id);
-    if (idStr === '' || dejaVu(idStr)) { continue; }
+    if (idStr === '' || dejaVu(idStr) || aTraiter.indexOf(idStr) !== -1) { continue; }
+    aTraiter.push(idStr);
+  }
+  const resultat = {};
+  let echecs = 0;
+  let indexSuivant = 0;
+  async function resoudreUn(idStr) {
     try {
       const url = 'https://api.ror.org/v2/organizations/' + encodeURIComponent(idStr);
       const rep = await recuperer(url);
       const json = JSON.parse(String(rep === undefined || rep === null ? '' : rep));
       if (json && typeof json === 'object' && Array.isArray(json.names)) {
-        // `en` est le libellé d'AFFICHAGE de ROR, quelle que soit sa langue déclarée : il
+        // `en` est le libellé d'affichage de ROR, quelle que soit sa langue déclarée : il
         // porte « lang: "en" » sur l'instance, et exiger lang absent le manquerait à tous
         // les coups. C'est le seul repli quand une institution n'a ni libellé français ni
         // libellé allemand — sans lui, l'affiliation sortirait vide.
@@ -265,8 +281,31 @@ async function resoudreRor(recuperer, ids, connus) {
           else if (n.lang === 'de') { libelles.de = String(n.value); }
         }
         resultat[idStr] = libelles;
+      } else {
+        echecs++;
       }
-    } catch (e) { /* silencieux : on réessaiera le mois prochain */ }
+    } catch (e) { echecs++; }
+  }
+  // `CONCURRENCE_ROR` travailleurs qui piochent dans la même file : chacun s'arrête dès
+  // que l'échéance est dépassée ou qu'il n'y a plus rien à traiter — jamais plus de 4
+  // requêtes en vol, sans jamais laisser une institution attendre son tour derrière 44
+  // autres traitées une par une.
+  async function travailleur() {
+    while (indexSuivant < aTraiter.length) {
+      if (horloge() - debut > delaiMs) { return; }
+      const idStr = aTraiter[indexSuivant++];
+      await resoudreUn(idStr);
+    }
+  }
+  const equipe = [];
+  for (let i = 0; i < Math.min(CONCURRENCE_ROR, aTraiter.length); i++) { equipe.push(travailleur()); }
+  await Promise.all(equipe);
+  // Un id qui échoue seul se retentera le mois prochain, en silence — mais une résolution
+  // qui échoue en entier (poste hors ligne, API ROR indisponible) ne doit plus se taire
+  // complètement : une ligne, pas une par institution qui noierait la console.
+  if (aTraiter.length > 0 && Object.keys(resultat).length === 0) {
+    console.warn('[auteurs-ojs] résolution ROR : ' + aTraiter.length
+      + ' institution(s) demandée(s), aucune résolue (' + echecs + ' échec(s)/reste(nt) hors délai).');
   }
   return resultat;
 }
@@ -469,10 +508,10 @@ async function rafraichir(opts) {
     return { fait: false, raison: 'frais', dateFetch: cache.dateFetch, nombre: cache.auteurs.length };
   }
   // recupererAvecRepli, pas recupererHttps seul : le repli sur un 503 « Retry after »
-  // (lib/oai-pmh.js) a été extrait dans le module commun pour que les DEUX moissonneurs en
+  // (lib/oai-pmh.js) a été extrait dans le module commun pour que les deux moissonneurs en
   // profitent — rafraichirMotsCles() de lib/mots-cles-edudoc.js le câble déjà de même.
-  // ojs.szh.ch ne l'a pas montré en un an d'usage, mais rien ne garantit qu'il ne s'y mette
-  // pas un jour (edudoc.ch l'a fait le 31.08.2026, sans avoir montré ce comportement avant).
+  // ojs.szh.ch ne l'a pas montré en un an d'usage, mais d'autres serveurs OAI-PMH (dont
+  // edudoc.ch) le font, et rien ne garantit qu'il ne s'y mette pas un jour.
   const recuperer = o.recuperer || recupererAvecRepli;
   const from = cache.dateFetch ? String(cache.dateFetch).slice(0, 10) : null;
   const endpoints = endpointsOai(o.config === undefined ? lireConfigPoste() : o.config);

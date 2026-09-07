@@ -281,6 +281,16 @@ test('purger balaie les restes d\'une session tuée, jamais les temporaires', ()
   }
 });
 
+// Écrit puis date le fichier à la main : sur ce disque, deux écritures rapprochées de
+// quelques microsecondes rendent le MÊME mtimeMs (vérifié — NTFS n'a pas la résolution),
+// et empreinte() se fie maintenant à (taille, mtime) pour épargner une lecture. Sans cette
+// date forcée, ce test se romprait pour de mauvaises raisons ; poserA() plus haut date déjà
+// ses baux de la même façon, pour la même raison.
+function ecrireEtDater(chemin, contenu, instant) {
+  fs.writeFileSync(chemin, contenu, 'utf8');
+  fs.utimesSync(chemin, new Date(instant), new Date(instant));
+}
+
 test('empreinte suit le contenu', () => {
   const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-coedition-'));
   try {
@@ -291,20 +301,105 @@ test('empreinte suit le contenu', () => {
     assert.strictEqual(empreinte1, '', 'empreinte d\'un fichier absent doit être vide');
 
     // Écrire un contenu
-    fs.writeFileSync(cheminFichier, 'contenu 1', 'utf8');
+    ecrireEtDater(cheminFichier, 'contenu 1', T0);
     const empreinte2 = empreinte(cheminFichier);
     assert.strictEqual(typeof empreinte2, 'string', 'empreinte doit être une chaîne');
     assert.ok(empreinte2.length === 40, 'empreinte SHA1 en hex doit faire 40 caractères');
 
-    // Deux contenus différents donnent deux empreintes différentes
-    fs.writeFileSync(cheminFichier, 'contenu 2', 'utf8');
+    // Deux contenus différents (et deux mtime différents, comme un vrai écart de temps)
+    // donnent deux empreintes différentes.
+    ecrireEtDater(cheminFichier, 'contenu 2', T0 + 1000);
     const empreinte3 = empreinte(cheminFichier);
     assert.notStrictEqual(empreinte2, empreinte3, 'contenus différents doivent donner des empreintes différentes');
 
-    // Le même contenu réécrit donne la même empreinte
-    fs.writeFileSync(cheminFichier, 'contenu 1', 'utf8');
+    // Le même contenu réécrit (à une date différente) donne la même empreinte.
+    ecrireEtDater(cheminFichier, 'contenu 1', T0 + 2000);
     const empreinte4 = empreinte(cheminFichier);
     assert.strictEqual(empreinte2, empreinte4, 'le même contenu doit donner la même empreinte');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+// Le cache d'empreinte (point 9) : tant que ni la taille ni la mtime n'ont bougé, le
+// fichier n'est pas relu — c'est tout le sens du cache, pour un formulaire dont
+// l'enregistrement automatique consulte empreinte() toutes les trois secondes.
+test('empreinte ne relit le fichier que si sa taille ou sa mtime a changé', () => {
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-coedition-'));
+  try {
+    const cheminFichier = path.join(racine, 'test.yaml');
+    ecrireEtDater(cheminFichier, 'contenu stable', T0);
+    const lectureOriginale = fs.readFileSync;
+    let appels = 0;
+    fs.readFileSync = (...args) => { appels++; return lectureOriginale.apply(fs, args); };
+    try {
+      const e1 = empreinte(cheminFichier);
+      const e2 = empreinte(cheminFichier);
+      const e3 = empreinte(cheminFichier);
+      assert.strictEqual(e1, e2);
+      assert.strictEqual(e2, e3);
+      assert.strictEqual(appels, 1,
+        'le fichier a été relu alors que rien n’avait changé : ' + appels + ' lecture(s)');
+      // Le contenu change réellement (taille ET mtime) : la relecture doit reprendre.
+      ecrireEtDater(cheminFichier, 'contenu bien plus long qu’avant', T0 + 5000);
+      const e4 = empreinte(cheminFichier);
+      assert.notStrictEqual(e4, e1);
+      assert.strictEqual(appels, 2, 'le changement de contenu n’a pas déclenché de relecture');
+    } finally {
+      fs.readFileSync = lectureOriginale;
+    }
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+// Le cache de baux() (point 9) : poser() en appelait deux, coûteux (lister .szh-edition/,
+// lire chaque bail) à chaque frappe de l'enregistrement automatique, toutes les trois
+// secondes et par formulaire ouvert.
+test('baux() met en cache son résultat pendant 2 secondes, par racine', () => {
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-coedition-'));
+  try {
+    const chemin = path.join(racine, 'ausgabe.yaml');
+    const clef = clefFichier(racine, chemin);
+    assert.strictEqual(baux(racine, clef, T0).length, 0, 'le dossier doit être vide au départ');
+    // Un bail apparaît sur le disque SANS passer par ce module — une synchronisation qui
+    // vient d'apporter le bail d'un autre poste, par exemple : le cache de cette
+    // instance-ci n'a aucune raison de le savoir avant l'expiration des 2 secondes.
+    const dossier = path.join(racine, DOSSIER_EDITION);
+    fs.mkdirSync(dossier, { recursive: true });
+    const fichierBail = path.join(dossier, nomBail(clef, ANNE));
+    fs.writeFileSync(fichierBail, JSON.stringify({
+      fichier: clef, utilisateur: ANNE.utilisateur, poste: ANNE.poste, qui: qui(ANNE),
+      pose: new Date(T0).toISOString(), renouvele: new Date(T0).toISOString()
+    }), 'utf8');
+    fs.utimesSync(fichierBail, new Date(T0), new Date(T0));
+    assert.strictEqual(baux(racine, clef, T0 + 500).length, 0,
+      'le cache aurait dû épargner la relecture du dossier, encore dans sa fenêtre de 2 secondes');
+    assert.strictEqual(baux(racine, clef, T0 + 2001).length, 1,
+      'le cache n’a jamais expiré après 2 secondes');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+// Le point délicat du cache : poser() lit baux() une première fois, ÉCRIT le bail, puis
+// relit baux() pour vérifier qu'il a bien gagné (deux postes peuvent avoir trouvé le
+// fichier libre au même instant). Si le cache ne se vidait pas après l'écriture, cette
+// seconde lecture verrait encore le dossier d'AVANT l'écriture — poser() se croirait
+// alors toujours battu par personne, ou pire, ne verrait jamais son propre bail.
+test('poser() voit son propre bail juste posé, malgré le cache de baux()', () => {
+  const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-coedition-'));
+  try {
+    const chemin = path.join(racine, 'ausgabe.yaml');
+    const clef = clefFichier(racine, chemin);
+    // Amorce le cache avec un dossier vide, à la même heure que la pose qui suit : si
+    // l'invalidation après écriture ne marchait pas, la vérification interne de poser()
+    // après son écriture relirait ce même « vide » depuis le cache.
+    baux(racine, clef, T0);
+    const resultat = poserA(racine, chemin, ANNE, T0);
+    assert.strictEqual(resultat.ok, true,
+      'poser() n’a pas vu son propre bail après écriture : ' + JSON.stringify(resultat));
+    assert.strictEqual(baux(racine, clef, T0).length, 1, 'le bail posé doit être visible tout de suite après');
   } finally {
     fs.rmSync(racine, { recursive: true, force: true });
   }

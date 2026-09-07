@@ -1,24 +1,8 @@
-body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
-  line-height: var(--interligne); color: var(--encre); background: var(--fond);
-  padding: var(--e4) var(--e5) var(--e7); max-width: 56rem; }
-h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
+/* Corps de page, champs et boutons nus : le socle de _design.css (body/h1 §0, .carte §9).
+   Seule la largeur diffère du défaut (52rem) : une ligne suffit à la régler. */
+body { --page-max: 56rem; }
 h2#article { font-size: var(--t-titre); font-weight: 700; margin: var(--e1) 0 var(--e3);
   font-family: var(--vscode-editor-font-family, monospace); }
-label { display: block; margin: var(--e3) 0 var(--e1);
-  font-size: var(--t-libelle); font-weight: 700; letter-spacing: .02em; color: var(--encre); }
-input, select, textarea { width: 100%; box-sizing: border-box; padding: .35em .5em; font: inherit;
-  color: var(--vscode-input-foreground); background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini); }
-textarea { resize: vertical; min-height: 3.4em; font-family: inherit; }
-input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-button { padding: .35em .75em; border: 1px solid transparent; border-radius: var(--rayon-mini);
-  font: inherit; cursor: pointer;
-  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
-  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background)); }
-button.principal { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
-button.principal:hover { background: var(--vscode-button-hoverBackground); }
-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-button:disabled { opacity: .45; cursor: default; }
 
 /* Une carte par champ à traduire ; le liséré de gauche porte l'état, et c'est la seule
    couleur de la page — d'où un liséré, et non un fond. */
@@ -27,15 +11,15 @@ button:disabled { opacity: .45; cursor: default; }
   border-radius: var(--rayon); padding: var(--e3) var(--e4) var(--e4); margin: 0 0 var(--e5);
   box-shadow: 0 2px 6px var(--vscode-widget-shadow, rgba(0, 0, 0, .18)); }
 .carte.statut-pret-traduction { border-left-color: var(--vscode-charts-blue, #3794ff); }
-.carte.statut-pret-relecture { border-left-color: var(--vscode-editorWarning-foreground, #bf8803); }
-.carte.statut-finalise { border-left-color: var(--vscode-charts-green, #2ea043); }
+.carte.statut-pret-relecture { border-left-color: var(--avert); }
+.carte.statut-finalise { border-left-color: var(--ok); }
 .carte h3 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2);
   padding-bottom: var(--e1); border-bottom: 1px solid var(--filet);
   display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap; }
 .badge { font-size: var(--t-mini); font-weight: 700; border-radius: 999px; padding: .1em .45em;
   border: 1px solid var(--filet); color: var(--encre-2); }
-.badge.traduit { color: var(--vscode-charts-green, #2ea043);
-  border-color: var(--vscode-charts-green, #2ea043); }
+.badge.traduit { color: var(--ok);
+  border-color: var(--ok); }
 
 /* Texte source : lisible et copiable, jamais éditable — il vit dans la fiche. */
 .source { white-space: pre-wrap; padding: var(--e2) var(--e3); border-radius: var(--rayon-mini);
@@ -47,7 +31,7 @@ button:disabled { opacity: .45; cursor: default; }
 .ligne-statut { display: flex; align-items: center; gap: var(--e3); margin-top: var(--e3); }
 .ligne-statut label { margin: 0; flex: 0 0 auto; }
 .ligne-statut select { flex: 1 1 auto; }
-.carte.modifie h3::after { content: " ●"; color: var(--vscode-editorWarning-foreground, #bf8803); }
+.carte.modifie h3::after { content: " ●"; color: var(--avert); }
 
 /* Rien à traduire : un message, pas une page vide. */
 .rien { color: var(--encre-2); margin: var(--e4) 0; }

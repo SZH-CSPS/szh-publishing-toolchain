@@ -5,25 +5,73 @@
 // donc seule en test — comme lib/qualite-image.js et lib/cmyk.js, dont ce module est le
 // voisin naturel.
 //
-// Ce qui reste dans extension.js, volontairement : le gestionnaire de webview des médias
+// Ce qui vit dans lib/medias-hote.js et non ici : le gestionnaire de webview des médias
 // (ouvrirGestionMedias) et les agrégats qui en dépendent (listerMediasArticle,
-// listerPortraitsArticle, listerGrillesArticle) — ils lisent `fournisseur` et
-// dossierUnites(), donc le profil actif ; le remplacement et l'ajout de fichiers
-// (remplacerFichierImage, ajouterImageACote), qui touchent vscode.window et l'état de
-// build dans le même geste ; et vignetteAuteur/dossierPortraitsArticle, qui dépendent eux
-// aussi du profil actif pour situer le dossier portraits/ d'un article.
+// listerPortraitsArticle, listerGrillesArticle, ajouterImageACote) — ils lisent
+// `fournisseur` et dossierUnites(), donc le profil actif. Restés dans extension.js, pour
+// la même raison de dépendance au profil actif ou à l'état du module hôte :
+// remplacerFichierImage et vignetteAuteur, qui touchent aussi vscode.window et l'état de
+// build dans le même geste.
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { slugifier } = require('./slug');
+const { nomMediaUnique } = require('./formatting-pur');
 
 // ---- Extensions et poids acceptés pour une image déposée par une webview ---------
 const EXTENSIONS_IMAGE_IMPORT = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
 const TAILLE_MAX_IMAGE_IMPORT = 50 * 1024 * 1024;  // 50 Mo, vérifiés webview et hôte
 
 // ---- Dimensions et description d'une image ---------------------------------------
+
+// Segment SOF d'un JPEG -> { composantes, largeur, hauteur }, ou null si indéterminable.
+// lib/cmyk.js#composantesJpeg délègue ici pour le nombre de composantes seul.
+//
+// ⚠ Le fichier est parcouru de segment en segment, et non sur une fenêtre de tête : un
+// JPEG d'imprimerie porte son profil ICC CMJN en segments APP2, et un profil comme ISO
+// Coated v2 pèse près de deux mégaoctets. Le marqueur SOF tombe alors très au-delà des
+// premiers kilooctets — précisément sur les fichiers que cette lecture existe pour
+// attraper. Chaque lecture ne prend que douze octets, à la position calculée.
+function sofJpeg(chemin) {
+  let fd = null;
+  try {
+    const taille = fs.statSync(chemin).size;
+    fd = fs.openSync(chemin, 'r');
+    const seg = Buffer.alloc(12);
+    if (fs.readSync(fd, seg, 0, 2, 0) !== 2 || seg[0] !== 0xff || seg[1] !== 0xd8) { return null; }
+    let pos = 2;
+    // Garde-fou : un fichier tronqué ou brouillé ne doit pas faire tourner la boucle sans
+    // fin. Aucun JPEG réel ne porte des milliers de segments d'en-tête.
+    let segments = 0;
+    while (pos + 4 <= taille && segments++ < 4096) {
+      const lu = fs.readSync(fd, seg, 0, 12, pos);
+      if (lu < 4) { return null; }
+      if (seg[0] !== 0xff) { pos++; continue; }                  // désynchronisé : on se recale
+      const marqueur = seg[1];
+      if (marqueur === 0xff) { pos++; continue; }                // bourrage
+      if (marqueur === 0xd8 || (marqueur >= 0xd0 && marqueur <= 0xd7) || marqueur === 0x01) {
+        pos += 2;                                                // marqueurs sans charge utile
+        continue;
+      }
+      if (marqueur === 0xda || marqueur === 0xd9) { return null; }  // données ou fin : SOF manqué
+      const longueur = seg.readUInt16BE(2);
+      if (longueur < 2) { return null; }                         // en-tête corrompu
+      // SOF0 à SOF15, hors DHT (C4), JPG (C8) et DAC (CC) : Nf suit Lf, P, Y et X.
+      if (marqueur >= 0xc0 && marqueur <= 0xcf && marqueur !== 0xc4 && marqueur !== 0xc8 && marqueur !== 0xcc) {
+        if (lu < 10) { return null; }
+        return { composantes: seg[9], hauteur: seg.readUInt16BE(5), largeur: seg.readUInt16BE(7) };
+      }
+      pos += 2 + longueur;
+    }
+    return null;
+  } catch (e) {
+    return null;
+  } finally {
+    if (fd !== null) { try { fs.closeSync(fd); } catch (e) { /* déjà fermé */ } }
+  }
+}
 
 // Lues dans les en-têtes : sûres pour PNG, GIF et SVG, au mieux pour JPEG ; null si
 // indéterminable, la description retombant sur le poids seul.
@@ -41,21 +89,8 @@ function lireDimensionsImage(chemin) {
       return { largeur: b.readUInt16LE(6), hauteur: b.readUInt16LE(8) };
     }
     if (lu >= 4 && b[0] === 0xff && b[1] === 0xd8) {             // JPEG : marqueurs SOF
-      let i = 2;
-      while (i + 9 < lu) {
-        if (b[i] !== 0xff) { i++; continue; }
-        const marqueur = b[i + 1];
-        if (marqueur === 0xff) { i++; continue; }                 // bourrage FF
-        if (marqueur === 0xd8 || (marqueur >= 0xd0 && marqueur <= 0xd7) || marqueur === 0x01) { i += 2; continue; }
-        if (marqueur === 0xda) { break; }                         // données : SOF manqué
-        const longueur = b.readUInt16BE(i + 2);
-        if (marqueur >= 0xc0 && marqueur <= 0xcf && marqueur !== 0xc4 && marqueur !== 0xc8 && marqueur !== 0xcc) {
-          return { largeur: b.readUInt16BE(i + 7), hauteur: b.readUInt16BE(i + 5) };
-        }
-        if (longueur < 2) { break; }                              // en-tête corrompu
-        i += 2 + longueur;
-      }
-      return null;
+      const sof = sofJpeg(chemin);
+      return sof ? { largeur: sof.largeur, hauteur: sof.hauteur } : null;
     }
     // WEBP : conteneur RIFF, trois formes de bloc. Les portraits en acceptent, et sans
     // dimensions le formulaire des médias n'aurait aucun verdict à rendre.
@@ -126,17 +161,10 @@ function nomImageAssaini(nomFichier) {
   return corps.slice(0, 60) + '.' + (ext === 'jpeg' ? 'jpg' : ext);
 }
 
-// Nom libre dans media/ : même règle que nomMediaUnique de lib/formatting.js, que ce
-// module ne peut pas appeler (il vit derrière require('vscode')).
-function nomMediaLibre(dossier, nom) {
-  const point = nom.lastIndexOf('.');
-  const base = nom.slice(0, point);
-  const ext = nom.slice(point);
-  let candidat = nom;
-  let i = 1;
-  while (fs.existsSync(path.join(dossier, candidat))) { candidat = base + '-' + i + ext; i++; }
-  return candidat;
-}
+// Nom libre dans media/ : nomMediaUnique de lib/formatting-pur.js, qui ne référence pas
+// vscode et se laisse donc importer ici. Le nom `nomMediaLibre` reste, pour ne rien
+// changer aux appelants (extension.js) ni aux tests qui le connaissent sous ce nom.
+const nomMediaLibre = nomMediaUnique;
 
 // Chemin d'image reçu de la webview d'import : relatif à articles/<slug>/media/,
 // segments sûrs, extension d'image. Aucun chemin n'est construit sans passer ici. Pure.
@@ -283,7 +311,7 @@ function empreintesPartagees(base, relatifs) {
 
 module.exports = {
   EXTENSIONS_IMAGE_IMPORT, TAILLE_MAX_IMAGE_IMPORT,
-  lireDimensionsImage, decrireImage, formatImage,
+  lireDimensionsImage, sofJpeg, decrireImage, formatImage,
   nomImageAssaini, nomMediaLibre, relatifImageValide,
   assainirCheminPhoto, decomposerPhoto, baseAuteurValide,
   dataUriImage, trouverOriginal, versionsPhoto,

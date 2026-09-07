@@ -23,7 +23,7 @@
     const m = cartes.estModifie();
     if (m === dernierModifie) { return; }
     dernierModifie = m;
-    vscodeApi.postMessage({ type: 'modifie', modifie: m });
+    vscodeApi.postMessage({ type: SZH.MSG.MODIFIE, modifie: m });
   }
 
   const cartes = SZH.cartesArticles({
@@ -54,7 +54,7 @@
     const bouton = document.createElement('button');
     bouton.type = 'button';
     bouton.textContent = TXT.tous;
-    bouton.addEventListener('click', function () { vscodeApi.postMessage({ type: 'tous' }); });
+    bouton.addEventListener('click', function () { vscodeApi.postMessage({ type: SZH.MSG.TOUS }); });
     bandeauFiltre.appendChild(bouton);
     bandeauFiltre.hidden = false;
   }
@@ -70,9 +70,11 @@
     if (cartes.message(msg)) { return; }
     // L'hôte veut recharger le formulaire alors que des cartes sont modifiées : il lui
     // faut ce qu'elles contiennent pour pouvoir les enregistrer.
-    if (msg.type === 'demande-rechargement') {
-      vscodeApi.postMessage({ type: 'rechargement', articles: cartes.modifiees() });
+    if (msg.type === SZH.MSG.DEMANDE_RECHARGEMENT) {
+      vscodeApi.postMessage({ type: SZH.MSG.RECHARGEMENT, articles: cartes.modifiees() });
+      return;
     }
+    console.warn('métadonnées des articles : type de message inconnu', msg.type);
   });
   SZH.annoncerPret(vscodeApi, function () { return recu; });
 })();

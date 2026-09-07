@@ -1,9 +1,6 @@
 // Libellés du cockpit : le dictionnaire TEXTES_COCKPIT, la fonction de traduction
-// T(clé[, args]) et le choix de la langue.
-//
-// TL(langue, clé[, args]) donne le même texte dans une langue imposée. Un seul usage
-// aujourd'hui, mais il est structurel : l'e-mail « Envoyer pour traduction » s'écrit dans
-// la langue de l'équipe qui va traduire, jamais dans celle de l'interface.
+// T(clé[, args]) et le choix de la langue. TL(langue, clé[, args]) impose une langue —
+// pour l'e-mail « Envoyer pour traduction », écrit dans la langue de l'équipe qui traduit.
 'use strict';
 
 // Hors de l'éditeur — harnais de test, ou un module de lib/ appelé en ligne de commande —
@@ -25,6 +22,11 @@ const TEXTES_COCKPIT = {
     // style à normaliser à la relecture.
     'arbre.articles': 'ARTICLES',
     'arbre.chapitres': 'CHAPITRES',
+    // Le nom d'une unité de texte au singulier, dans la langue de l'interface — la clé
+    // que lib/profil.js#cleLibelle() forme depuis le profil actif (revue -> article,
+    // livre -> chapitre), pour des messages qui ne nomment pas l'un des deux en dur.
+    'unite.article': 'article',
+    'unite.chapitre': 'chapitre',
     'livre.apercu.absent': 'Le livre n’a pas encore été composé : il n’y a pas de PDF à montrer. Compilez-le, puis rouvrez l’aperçu.',
     'livre.apercu.compiler': 'Compiler le livre',
     'panneau.apercuLivre': 'Aperçu du livre entier',
@@ -72,6 +74,19 @@ const TEXTES_COCKPIT = {
     'err.build': 'La compilation n’a pas abouti, et la chaîne n’a rien dit de plus. Enregistrez à nouveau (Ctrl+S) pour réessayer ; si cela se reproduit, signalez-le. Vos textes n’ont pas été touchés.',
     'err.import': 'La conversion des documents Word n’a pas abouti. Les fichiers sont restés dans « articles-word » : rien n’est perdu. Réessayez ; si cela se reproduit, signalez-le avec le document en cause.',
     'err.export': 'La recompilation complète n’a pas abouti, et la chaîne n’a rien dit de plus. Réessayez ; si cela se reproduit, signalez-le. Vos textes, vos images et vos métadonnées n’ont pas été touchés.',
+    // Les quatre sorties du livre, chacune sa propre tâche (statut, réussite, échec).
+    'livre.imprimeur.statut': 'Composition du PDF imprimeur du livre…',
+    'livre.imprimeur.fait': 'Le PDF imprimeur du livre est prêt.',
+    'livre.imprimeur.err': 'Le PDF imprimeur n’a pas abouti, et la chaîne n’a rien dit de plus. Réessayez ; si cela se reproduit, signalez-le.',
+    'livre.couverture.statut': 'Composition de la couverture du livre…',
+    'livre.couverture.fait': 'La couverture du livre est prête.',
+    'livre.couverture.err': 'La couverture n’a pas abouti, et la chaîne n’a rien dit de plus. Réessayez ; si cela se reproduit, signalez-le.',
+    'livre.epub.statut': 'Composition de l’EPUB du livre…',
+    'livre.epub.fait': 'L’EPUB du livre est prêt.',
+    'livre.epub.err': 'L’EPUB n’a pas abouti, et la chaîne n’a rien dit de plus. Réessayez ; si cela se reproduit, signalez-le.',
+    'livre.web.statut': 'Composition du HTML web du livre…',
+    'livre.web.fait': 'Le HTML web du livre est prêt.',
+    'livre.web.err': 'Le HTML web n’a pas abouti, et la chaîne n’a rien dit de plus. Réessayez ; si cela se reproduit, signalez-le.',
     'err.pdf.introuvable': 'Aucun PDF pour « {0} » : il n’a pas encore été produit.',
     'err.suppression': '« {0} » n’a pas pu être entièrement supprimé ({1}). Fermez l’aperçu et les formulaires ouverts sur cet article, puis réessayez.',
     // Un article à moitié effacé n'a plus de ligne dans l'arbre : « réessayez » n'aurait
@@ -301,6 +316,8 @@ const TEXTES_COCKPIT = {
     'fiches.motscles.titre': 'Mots-clés',
     'fiches.motcle.ajouter': '➕ Ajouter un mot-clé',
     'fiches.motcle.retirer': 'Retirer ce mot-clé (dans toutes les langues)',
+    // Placeholder d'un mot-clé vide (TO BE TRANSLATED, la sentinelle écrite dans le YAML) : affiché dans la langue de l'interface, jamais en anglais figé.
+    'mc.aTraduire': 'à traduire',
     'fiches.motscles.suggestions': 'Descripteurs edudoc.ch déjà utilisés dans les deux revues',
     'fiches.ajout.fr': ' + Français (champs FR)',
     'fiches.ajout.de': ' + Allemand (champs DE)',
@@ -348,7 +365,7 @@ const TEXTES_COCKPIT = {
     'art.taches.enregistrees': '✓ Tâches enregistrées',
     'art.taches.avancement': '{0}/{1} tâches',
     'art.taches.toutes': 'tout est fait',
-    // Titre compact de l'encadré des tâches sur chaque carte d'article (A7.2/A7.5) : le
+    // Titre compact de l'encadré des tâches sur chaque carte d'article : le
     // compteur d'avancement ci-dessus vient s'afficher juste à côté, dans le même entête.
     'art.taches.entete': 'À faire',
     'art.couverture': 'Couverture du numéro',
@@ -372,7 +389,7 @@ const TEXTES_COCKPIT = {
     'art.envoi.mail.echec': 'Aucun client de messagerie n’a répondu. Le PDF reste au presse-papiers : {0}',
     'art.envoi.sujet': 'Version finale – {0}',
     'art.envoi.corps': 'Bonjour,\n\nVous trouverez en pièce jointe la version finale de votre article « {0} », telle qu’elle paraîtra dans {1}.\n\nMerci de nous signaler toute correction avant l’impression.\n\nAvec nos remerciements pour votre contribution,\nLa rédaction',
-    // L'aperçu des métadonnées sur la carte de l'article. Intitulés COURTS : la carte en
+    // L'aperçu des métadonnées sur la carte de l'article. Intitulés courts : la carte en
     // porte neuf d'affilée, et « Langue de l'article » sur la carte d'un article dit deux
     // fois la même chose. Les quatre champs de texte reprennent les intitulés du suivi de
     // traduction (trad.champ.*), qui sont déjà ceux-là.
@@ -405,13 +422,16 @@ const TEXTES_COCKPIT = {
     'art.doi.enregistre': 'Enregistré : {0} article(s) sans DOI dans ce numéro.',
     'art.ordre.frontiere': 'Refusé : un article sans DOI reste après ceux qui en portent un. Sinon la numérotation des DOI ne suivrait plus l’ordre de lecture.',
     'art.ordre.archive': 'Ce numéro est archivé : son sommaire est arrêté et son ordre ne change plus, parce que les DOI qui en découlent sont déposés. Sortez-le des archives pour le réordonner.',
+    // Un livre n'a qu'un DOI pour l'ouvrage entier, pas un par chapitre : la même
+    // phrase vaut quand même, le sommaire figé par l'archivage restant la vraie raison.
+    'art.ordre.archive.livre': 'Ce livre est archivé : son sommaire est arrêté et son ordre ne change plus, parce que les DOI qui en découlent sont déposés. Sortez-le des archives pour le réordonner.',
     'art.ordre.archive.bouton': 'Sortir des archives',
     // Le compteur d'images et ce qui manque. Les photos des autrices et auteurs n'y sont
     // pas : elles ne sont pas des figures et ne portent ni légende ni texte alternatif.
     'art.images.compteur': '{0} image(s)',
     'art.images.sansalt': '{0} image(s) apportent une information et n’ont pas de texte alternatif : un lecteur d’écran ne dira rien de ce qu’elles montrent.',
     'art.images.sanslegende': '{0} image(s) sans légende.',
-    // L'état des références de CET article, relevé à la dernière compilation.
+    // L'état des références de cet article, relevé à la dernière compilation.
     'art.cit.sansref': '{0} appel(s) de citation ne mènent à aucune référence.',
     'art.cit.ambigu': '{0} appel(s) de citation désignent plusieurs références à la fois.',
     'art.cit.orpheline': '{0} référence(s) de la bibliographie ne sont jamais appelées dans le texte.',
@@ -464,7 +484,7 @@ const TEXTES_COCKPIT = {
     'trad.lien.copie.seul': 'Lien de traduction copié : {0}',
     'trad.lien.mail': 'Écrire l’e-mail',
     // Sujet et corps de l'e-mail de traduction. Cette version part vers les traducteurs
-    // FRANCOPHONES, donc pour un numéro « zeitschrift » : le nom de la revue et le sens
+    // francophones, donc pour un numéro « zeitschrift » : le nom de la revue et le sens
     // de la traduction sont en clair, puisque la langue et le produit vont ensemble.
     // Le lien szh:// reste seul sur sa ligne, sans ponctuation collée : un corps mailto
     // est du texte brut, le lien n'y est pas cliquable et doit se copier d'un geste.
@@ -606,16 +626,27 @@ const TEXTES_COCKPIT = {
     'panneau.traduction': 'Traduction de l’article courant',
     'panneau.toutExporter': 'Recompiler toute la revue (rebuild complet)',
     'panneau.exporterXml': 'Exporter la revue en XML (OJS)',
+    // Les quatre sorties du livre, offertes dans le panneau Export pour ce profil seul.
+    'panneau.livreImprimeur': 'PDF imprimeur du livre',
+    'panneau.livreCouverture': 'Couverture du livre',
+    'panneau.livreEpub': 'EPUB du livre',
+    'panneau.livreWeb': 'HTML web du livre',
     'panneau.g.cycle': 'Cycle de vie du numéro',
+    'panneau.g.cycle.livre': 'Cycle de vie du livre',
     'panneau.g.export': 'Documents produits',
     'panneau.verrouiller': 'Verrouiller la revue',
+    'panneau.verrouiller.livre': 'Verrouiller le livre',
     'modale.verrouiller.question': 'Verrouiller « {0} » ?',
     'modale.verrouiller.detail': 'Le numéro passe en lecture seule : plus aucune modification possible sans le déverrouiller. Son dossier ne bouge pas et aucun document produit n’est supprimé.',
+    'modale.verrouiller.detail.livre': 'Le livre passe en lecture seule : plus aucune modification possible sans le déverrouiller. Son dossier ne bouge pas et aucun document produit n’est supprimé.',
     'modale.verrouiller.bouton': 'Verrouiller',
     'panneau.exporterArticle': 'Exporter cet article',
     'panneau.archiver': 'Archiver et verrouiller la revue',
+    'panneau.archiver.livre': 'Archiver et verrouiller le livre',
     'panneau.deverrouiller': 'Déverrouiller la revue',
+    'panneau.deverrouiller.livre': 'Déverrouiller le livre',
     'panneau.desarchiver': 'Désarchiver la revue (retour dans « en cours »)',
+    'panneau.desarchiver.livre': 'Désarchiver le livre (retour dans « en cours »)',
     'arbre.titre.verrouillee': '{0} 🔒',
     'arbre.titre.archivee': '{0} 📦',
     'arbre.titre.archiveeVerrouillee': '{0} 📦 🔒',
@@ -623,13 +654,17 @@ const TEXTES_COCKPIT = {
     'etat.barre.archivee': '$(archive) Archivée',
     'etat.barre.lesdeux': '$(lock) Archivée et verrouillée',
     'etat.barre.tooltip.verrou': 'Numéro verrouillé : l’éditeur est en lecture seule. Cliquer pour le déverrouiller.',
+    'etat.barre.tooltip.verrou.livre': 'Livre verrouillé : l’éditeur est en lecture seule. Cliquer pour le déverrouiller.',
     'etat.barre.tooltip.archive': 'Numéro archivé : plus de compilation automatique, export à la demande. Cliquer pour le désarchiver.',
+    'etat.barre.tooltip.archive.livre': 'Livre archivé : plus de compilation automatique, export à la demande. Cliquer pour le désarchiver.',
     'etat.barre.tooltip.version': 'Créé avec la version {0} du logiciel (installée sur ce poste : {1}).',
     'verrou.refuse': 'Numéro verrouillé – cette action le modifierait.',
+    'verrou.refuse.livre': 'Livre verrouillé – cette action le modifierait.',
     'verrou.refuse.bouton': 'Déverrouiller la revue',
+    'verrou.refuse.bouton.livre': 'Déverrouiller le livre',
 
     // ---- Co-édition : deux postes sur le même numéro ----
-    // Rien à voir avec « verrou.refuse » juste au-dessus, qui parle du numéro GELÉ en
+    // Rien à voir avec « verrou.refuse » juste au-dessus, qui parle du numéro gelé en
     // lecture seule. Ici, le fichier est simplement en train d’être modifié ailleurs.
     'coedition.pris': 'Ce fichier est en cours de modification par {0} – rien n’a été enregistré. La main se libère seule deux minutes après son dernier geste : réessayez dans un instant.',
     'coedition.pris.court': 'En cours de modification par {0}',
@@ -651,25 +686,38 @@ const TEXTES_COCKPIT = {
     'conflit.scm.tooltip': 'Copie en conflit : {0}',
     'modale.archiver.question': 'Archiver et verrouiller « {0} » ?',
     'modale.archiver.detail': 'Le numéro passe en LECTURE SEULE (plus aucune modification possible sans le déverrouiller) et son dossier est DÉPLACÉ dans l’arborescence d’archives.\n\nLes documents produits ({0}) sont SUPPRIMÉS pour économiser de la place : PDF, HTML et DOCX du dossier « out ». Les sources de vérité – textes, images, tableaux, métadonnées, traductions – sont intégralement conservées, et « Exporter cet article » (ou « Recompiler toute la revue ») les régénère quand vous en aurez besoin.\n\nCette fenêtre va se fermer, puis la revue se rouvrira depuis les archives.',
+    // Un livre n'a ni « Exporter cet article » ni traduction suivie (panneau.js,
+    // REVUE_SEULEMENT) : compiler le livre régénère tout, il n'y a qu'une option.
+    'modale.archiver.detail.livre': 'Le livre passe en LECTURE SEULE (plus aucune modification possible sans le déverrouiller) et son dossier est DÉPLACÉ dans l’arborescence d’archives.\n\nLes documents produits ({0}) sont SUPPRIMÉS pour économiser de la place : PDF, HTML et DOCX du dossier « out ». Les sources de vérité – textes, images, tableaux, métadonnées – sont intégralement conservées, et « Compiler le livre » les régénère quand vous en aurez besoin.\n\nCette fenêtre va se fermer, puis le livre se rouvrira depuis les archives.',
     'modale.archiver.bouton': 'Archiver et verrouiller',
     'modale.archiver.rien': 'aucun document produit pour l’instant',
     'modale.desarchiver.question': 'Désarchiver « {0} » ?',
     'modale.desarchiver.detail': 'Le dossier repart dans l’arborescence « en cours ». Le verrou, lui, n’est pas levé : utilisez « Déverrouiller la revue » pour pouvoir modifier le numéro.\n\nCette fenêtre va se fermer, puis la revue se rouvrira à sa nouvelle place.',
+    'modale.desarchiver.detail.livre': 'Le dossier repart dans l’arborescence « en cours ». Le verrou, lui, n’est pas levé : utilisez « Déverrouiller le livre » pour pouvoir modifier le livre.\n\nCette fenêtre va se fermer, puis le livre se rouvrira à sa nouvelle place.',
     'modale.desarchiver.bouton': 'Désarchiver',
     'modale.deverrouiller.question': 'Déverrouiller « {0} » ?',
     'modale.deverrouiller.detail': 'Le numéro redevient modifiable : l’éditeur quitte la lecture seule et tous les gestes de la barre « Revue SZH » sont réactivés.\n\nUn numéro déjà publié n’a en principe plus à changer – verrouillez-le de nouveau une fois la correction faite.',
+    // Pas de barre « Revue SZH » sur un livre : le nom générique du cockpit.
+    'modale.deverrouiller.detail.livre': 'Le livre redevient modifiable : l’éditeur quitte la lecture seule et tous les gestes du cockpit sont réactivés.\n\nUn livre déjà publié n’a en principe plus à changer – verrouillez-le de nouveau une fois la correction faite.',
     'modale.deverrouiller.bouton': 'Déverrouiller',
     'statut.archivage': 'Archivage en cours – cette fenêtre va se fermer…',
     'statut.desarchivage': 'Désarchivage en cours – cette fenêtre va se fermer…',
     'statut.verrouille': 'Numéro verrouillé.',
+    'statut.verrouille.livre': 'Livre verrouillé.',
     'statut.deverrouille': 'Numéro déverrouillé – vous pouvez à nouveau le modifier.',
+    'statut.deverrouille.livre': 'Livre déverrouillé – vous pouvez à nouveau le modifier.',
     'statut.exportArticle': 'Export de « {0} »…',
     'info.deja.archivee': 'Ce numéro est déjà archivé.',
+    'info.deja.archivee.livre': 'Ce livre est déjà archivé.',
     'info.deja.encours': 'Ce numéro n’est pas archivé.',
+    'info.deja.encours.livre': 'Ce livre n’est pas archivé.',
     'info.deja.deverrouillee': 'Ce numéro n’est pas verrouillé.',
+    'info.deja.deverrouillee.livre': 'Ce livre n’est pas verrouillé.',
     'info.exportArticle': 'Article « {0} » exporté.',
     'err.archivage': 'L’archivage n’a pas abouti ({0}). Le numéro n’a pas bougé et rien n’a été supprimé. Fermez l’aperçu PDF, puis réessayez.',
+    'err.archivage.livre': 'L’archivage n’a pas abouti ({0}). Le livre n’a pas bougé et rien n’a été supprimé. Fermez l’aperçu PDF, puis réessayez.',
     'err.desarchivage': 'Le désarchivage n’a pas abouti ({0}). Le numéro est resté dans les archives. Fermez l’aperçu PDF, puis réessayez.',
+    'err.desarchivage.livre': 'Le désarchivage n’a pas abouti ({0}). Le livre est resté dans les archives. Fermez l’aperçu PDF, puis réessayez.',
     'err.out.suppression': 'Les documents produits n’ont pas pu être supprimés ({0}) – l’archivage est annulé, rien n’a été déplacé. Fermez l’aperçu PDF puis réessayez.',
     'err.verrou.reglages': 'Le numéro est marqué verrouillé, mais l’éditeur n’a pas pu passer en lecture seule ({0}) : une modification resterait possible par mégarde. Refermez la fenêtre et rouvrez le numéro.',
     'err.exportArticle': 'L’article « {0} » n’a pas pu être produit, et la chaîne n’a rien dit de plus. Réessayez ; si cela se reproduit, signalez-le.',
@@ -929,8 +977,8 @@ const TEXTES_COCKPIT = {
     'ressource.champ.doi': 'DOI',
 
     // ---- La fiche « agenda » : manifestations et formation continue ----
-    // Le champ « type d'événement » porte un JETON dans le .md (lib/ressources.js,
-    // LISTES.evenement) ; ces libellés-ci sont ceux de la SAISIE, ceux de l'impression
+    // Le champ « type d'événement » porte un jeton dans le .md (lib/ressources.js,
+    // LISTES.evenement) ; ces libellés-ci sont ceux de la saisie, ceux de l'impression
     // vivant dans pipeline/filters/szh-ressource.lua.
     'ressource.section.agenda': 'Agenda et formation continue',
     'ressource.ajouter.agenda': 'Ajouter une manifestation',
@@ -1154,6 +1202,11 @@ const TEXTES_COCKPIT = {
     'ctl.reimport.corps-retravaille': 'Le texte de cet article avait été retouché ici depuis son import, dans l’éditeur et hors du Word. Ces retouches ne sont plus dans l’article : c’est le texte du Word corrigé qui est en place. L’ancien texte est dans le dossier de sauvegarde du numéro – comparez-le si des corrections doivent revenir, ou revenez au texte d’avant.',
     'ctl.reimport.reprise': 'Un remplacement de texte s’était interrompu sur cet article : il a été remis d’aplomb tout seul, et rien n’a été perdu. Relancez « Réimporter cet article » si vous le voulez toujours.',
     'ctl.reimport.reprise-impossible': 'Un remplacement de texte s’était interrompu sur cet article, et son dossier n’a pas pu être remis en place : l’article manque au numéro, mais rien n’est perdu – tout est dans le dossier de sauvegarde. Fermez ce qui pourrait tenir ce dossier ouvert (Word, l’explorateur de fichiers, la synchronisation), puis recompilez le numéro.',
+    // Le livre : pipeline/livre-assembler.py (la pièce liminaire) et
+    // pipeline/profils/livre.mk, verifie-livre (le chapitre écarté ou introuvable).
+    'ctl.livre.liminaireintrouvable': 'La pièce liminaire « {0} » est annoncée dans buch.yaml (liminaires:), mais elle n’a pas été compilée : vérifiez qu’elle existe bien dans liminaires/, puis relancez la compilation.',
+    'ctl.livre.chapitreecarte': 'Le chapitre « {0} » n’est pas imprimé : son dossier porte le préfixe « _ », qui marque une pièce de travail. Retirez le « _ » pour en faire un chapitre.',
+    'ctl.livre.chapitreintrouvable': 'Le chapitre « {0} » est listé dans ordre-chapitres, mais son dossier est introuvable : vérifiez le nom du dossier, ou retirez-le de la liste.',
     // La confirmation : ce qui est remplacé, ce qui survit, et le retour en arrière.
     'modale.reimport.question': 'Remplacer le texte de l’article « {0} » par celui du Word corrigé ?',
     'modale.reimport.detail': 'SONT REMPLACÉS : le texte de l’article, ses images et ses tableaux. La version du document Word corrigé prend leur place.\n\nSONT CONSERVÉS : la fiche de l’article (type, titre, sous-titre, résumé, mots-clés, auteur·e·s, DOI), les portraits des auteur·e·s, le suivi de traduction et les tâches de l’article.\n\nL’état d’avant est mis de côté AVANT le remplacement : « Revenir au texte d’avant », sur ce même article, le remet en place. Les tableaux retravaillés ici et les images que le Word ne rapporte pas vous sont signalés un par un, avec l’endroit où les retrouver.',
@@ -1183,6 +1236,8 @@ const TEXTES_COCKPIT = {
     // Majuscules voulues, comme en français : ce sont les en-têtes de section de l'arbre.
     'arbre.articles': 'ARTIKEL',
     'arbre.chapitres': 'KAPITEL',
+    'unite.article': 'Artikel',
+    'unite.chapitre': 'Kapitel',
     'livre.apercu.absent': 'Das Buch wurde noch nicht gesetzt: es gibt kein PDF zu zeigen. Kompilieren Sie es und öffnen Sie die Vorschau erneut.',
     'livre.apercu.compiler': 'Buch kompilieren',
     'panneau.apercuLivre': 'Vorschau des ganzen Buches',
@@ -1222,6 +1277,19 @@ const TEXTES_COCKPIT = {
     'err.build': 'Die Kompilierung ist nicht durchgelaufen, und die Kette hat nichts weiter gemeldet. Speichern Sie erneut (Ctrl+S), um es nochmals zu versuchen; wiederholt sich das, melden Sie es. Ihre Texte sind unberührt.',
     'err.import': 'Die Umwandlung der Word-Dokumente ist nicht durchgelaufen. Die Dateien sind in «articles-word» geblieben: nichts ist verloren. Versuchen Sie es erneut; wiederholt sich das, melden Sie es mit dem betroffenen Dokument.',
     'err.export': 'Die vollständige Neukompilierung ist nicht durchgelaufen, und die Kette hat nichts weiter gemeldet. Versuchen Sie es erneut; wiederholt sich das, melden Sie es. Ihre Texte, Bilder und Metadaten sind unberührt.',
+    // Die vier Buch-Ausgaben, jede mit ihrer eigenen Aufgabe (Status, Erfolg, Fehler).
+    'livre.imprimeur.statut': 'Druck-PDF des Buches wird erstellt…',
+    'livre.imprimeur.fait': 'Das Druck-PDF des Buches ist bereit.',
+    'livre.imprimeur.err': 'Das Druck-PDF wurde nicht fertiggestellt, und die Kette hat nichts weiter gemeldet. Versuchen Sie es erneut; wiederholt sich das, melden Sie es.',
+    'livre.couverture.statut': 'Umschlag des Buches wird erstellt…',
+    'livre.couverture.fait': 'Der Umschlag des Buches ist bereit.',
+    'livre.couverture.err': 'Der Umschlag wurde nicht fertiggestellt, und die Kette hat nichts weiter gemeldet. Versuchen Sie es erneut; wiederholt sich das, melden Sie es.',
+    'livre.epub.statut': 'EPUB des Buches wird erstellt…',
+    'livre.epub.fait': 'Das EPUB des Buches ist bereit.',
+    'livre.epub.err': 'Das EPUB wurde nicht fertiggestellt, und die Kette hat nichts weiter gemeldet. Versuchen Sie es erneut; wiederholt sich das, melden Sie es.',
+    'livre.web.statut': 'HTML-Web-Version des Buches wird erstellt…',
+    'livre.web.fait': 'Die HTML-Web-Version des Buches ist bereit.',
+    'livre.web.err': 'Die HTML-Web-Version wurde nicht fertiggestellt, und die Kette hat nichts weiter gemeldet. Versuchen Sie es erneut; wiederholt sich das, melden Sie es.',
     'err.pdf.introuvable': 'Kein PDF für «{0}»: es wurde noch nicht erzeugt.',
     'err.suppression': '«{0}» konnte nicht vollständig gelöscht werden ({1}). Schliessen Sie die Vorschau und die zu diesem Artikel offenen Formulare, und versuchen Sie es erneut.',
     'err.suppression.article': '«{0}» konnte nicht vollständig gelöscht werden ({1}). Schliessen Sie die Vorschau und die zu diesem Artikel offenen Formulare: ein letzter Versuch erfolgt eine Minute später von selbst, ohne Ihr Zutun.',
@@ -1429,6 +1497,7 @@ const TEXTES_COCKPIT = {
     'fiches.motscles.titre': 'Schlagwörter',
     'fiches.motcle.ajouter': '➕ Schlagwort hinzufügen',
     'fiches.motcle.retirer': 'Dieses Schlagwort entfernen (in allen Sprachen)',
+    'mc.aTraduire': 'zu übersetzen',
     'fiches.motscles.suggestions': 'Bereits in beiden Zeitschriften verwendete edudoc.ch-Schlagwörter',
     'fiches.ajout.fr': ' + Französisch (FR-Felder)',
     'fiches.ajout.de': ' + Deutsch (DE-Felder)',
@@ -1525,6 +1594,7 @@ const TEXTES_COCKPIT = {
     'art.doi.enregistre': 'Gespeichert: {0} Artikel ohne DOI in dieser Ausgabe.',
     'art.ordre.frontiere': 'Abgelehnt: ein Artikel ohne DOI bleibt hinter denjenigen mit DOI. Sonst würde die DOI-Nummerierung der Leseabfolge nicht mehr folgen.',
     'art.ordre.archive': 'Diese Ausgabe ist archiviert: ihr Inhaltsverzeichnis steht fest und ihre Reihenfolge ändert sich nicht mehr, weil die daraus abgeleiteten DOI hinterlegt sind. Holen Sie sie aus dem Archiv, um sie neu zu ordnen.',
+    'art.ordre.archive.livre': 'Dieses Buch ist archiviert: sein Inhaltsverzeichnis steht fest und seine Reihenfolge ändert sich nicht mehr, weil die daraus abgeleiteten DOI hinterlegt sind. Holen Sie es aus dem Archiv, um es neu zu ordnen.',
     'art.ordre.archive.bouton': 'Aus dem Archiv holen',
     'art.images.compteur': '{0} Bild(er)',
     'art.images.sansalt': '{0} Bild(er) vermitteln eine Information und haben keinen Alternativtext: eine Screenreader-Nutzerin erfährt nichts über ihren Inhalt.',
@@ -1580,7 +1650,7 @@ const TEXTES_COCKPIT = {
     'trad.lien.copie': 'Übersetzungslink kopiert – der E-Mail-Entwurf wird geöffnet. {0}',
     'trad.lien.copie.seul': 'Übersetzungslink kopiert: {0}',
     'trad.lien.mail': 'E-Mail schreiben',
-    // Cette version part vers les traducteurs GERMANOPHONES, donc pour un numéro
+    // Cette version part vers les traducteurs germanophones, donc pour un numéro
     // « revue » : voir la note de la version française.
     'trad.lien.sujet': 'Übersetzung Französisch nach Deutsch – {0}',
     'trad.lien.corps': 'Guten Tag\n\nDie Ausgabe {0} der Revue suisse de pédagogie spécialisée ist bereit für die Übersetzung vom Französischen ins Deutsche.\n\nSo öffnen Sie sie direkt an der richtigen Stelle: KOPIEREN Sie den Link unten, fügen Sie ihn im Windows-Fenster «Ausführen» ein (Windows-Taste + R) und bestätigen Sie.\n\n{1}\n\nOhne den Link: Startmenü -> «Revues SZH», dann die Ausgabe wählen.\n',
@@ -1716,16 +1786,27 @@ const TEXTES_COCKPIT = {
     'panneau.traduction': 'Übersetzung des aktuellen Artikels',
     'panneau.toutExporter': 'Ganze Zeitschrift neu kompilieren (vollständiger Rebuild)',
     'panneau.exporterXml': 'Zeitschrift als XML exportieren (OJS)',
+    // Die vier Buch-Ausgaben, nur für dieses Profil im Export-Panel angeboten.
+    'panneau.livreImprimeur': 'Druck-PDF des Buches',
+    'panneau.livreCouverture': 'Umschlag des Buches',
+    'panneau.livreEpub': 'EPUB des Buches',
+    'panneau.livreWeb': 'HTML-Web-Version des Buches',
     'panneau.g.cycle': 'Lebenszyklus der Ausgabe',
+    'panneau.g.cycle.livre': 'Lebenszyklus des Buchs',
     'panneau.g.export': 'Erzeugte Dokumente',
     'panneau.verrouiller': 'Ausgabe sperren',
+    'panneau.verrouiller.livre': 'Buch sperren',
     'modale.verrouiller.question': '«{0}» sperren?',
     'modale.verrouiller.detail': 'Die Ausgabe wird schreibgeschützt: keine Änderung mehr möglich, ohne sie zu entsperren. Ihr Ordner bleibt an seinem Platz und es wird kein erzeugtes Dokument gelöscht.',
+    'modale.verrouiller.detail.livre': 'Das Buch wird schreibgeschützt: keine Änderung mehr möglich, ohne es zu entsperren. Sein Ordner bleibt an seinem Platz und es wird kein erzeugtes Dokument gelöscht.',
     'modale.verrouiller.bouton': 'Sperren',
     'panneau.exporterArticle': 'Diesen Artikel exportieren',
     'panneau.archiver': 'Ausgabe archivieren und sperren',
+    'panneau.archiver.livre': 'Buch archivieren und sperren',
     'panneau.deverrouiller': 'Ausgabe entsperren',
+    'panneau.deverrouiller.livre': 'Buch entsperren',
     'panneau.desarchiver': 'Ausgabe dearchivieren (zurück in «in Arbeit»)',
+    'panneau.desarchiver.livre': 'Buch dearchivieren (zurück in «in Arbeit»)',
     'arbre.titre.verrouillee': '{0} 🔒',
     'arbre.titre.archivee': '{0} 📦',
     'arbre.titre.archiveeVerrouillee': '{0} 📦 🔒',
@@ -1733,10 +1814,14 @@ const TEXTES_COCKPIT = {
     'etat.barre.archivee': '$(archive) Archiviert',
     'etat.barre.lesdeux': '$(lock) Archiviert und gesperrt',
     'etat.barre.tooltip.verrou': 'Ausgabe gesperrt: der Editor ist schreibgeschützt. Klicken, um sie zu entsperren.',
+    'etat.barre.tooltip.verrou.livre': 'Buch gesperrt: der Editor ist schreibgeschützt. Klicken, um es zu entsperren.',
     'etat.barre.tooltip.archive': 'Ausgabe archiviert: keine automatische Kompilierung mehr, Export nur auf Anfrage. Klicken, um sie zu dearchivieren.',
+    'etat.barre.tooltip.archive.livre': 'Buch archiviert: keine automatische Kompilierung mehr, Export nur auf Anfrage. Klicken, um es zu dearchivieren.',
     'etat.barre.tooltip.version': 'Erstellt mit Version {0} der Software (auf diesem Computer installiert: {1}).',
     'verrou.refuse': 'Ausgabe gesperrt – diese Aktion würde sie verändern.',
+    'verrou.refuse.livre': 'Buch gesperrt – diese Aktion würde es verändern.',
     'verrou.refuse.bouton': 'Ausgabe entsperren',
+    'verrou.refuse.bouton.livre': 'Buch entsperren',
 
     // ---- Co-édition : deux postes sur le même numéro ----
     'coedition.pris': 'Diese Datei wird gerade von {0} bearbeitet – es wurde nichts gespeichert. Zwei Minuten nach dem letzten Bearbeitungsschritt wird sie von selbst wieder frei: versuchen Sie es in einem Augenblick erneut.',
@@ -1759,25 +1844,35 @@ const TEXTES_COCKPIT = {
     'conflit.scm.tooltip': 'Konfliktkopie: {0}',
     'modale.archiver.question': '«{0}» archivieren und sperren?',
     'modale.archiver.detail': 'Die Ausgabe wird SCHREIBGESCHÜTZT (keine Änderung mehr möglich, ohne sie zu entsperren) und ihr Ordner wird in die Archivstruktur VERSCHOBEN.\n\nDie erzeugten Dokumente ({0}) werden GELÖSCHT, um Platz zu sparen: PDF, HTML und DOCX im Ordner «out». Die Quellen – Texte, Bilder, Tabellen, Metadaten, Übersetzungen – bleiben vollständig erhalten, und «Diesen Artikel exportieren» (oder «Ganze Zeitschrift neu kompilieren») erzeugt sie bei Bedarf neu.\n\nDieses Fenster wird geschlossen, danach öffnet sich die Ausgabe aus dem Archiv.',
+    'modale.archiver.detail.livre': 'Das Buch wird SCHREIBGESCHÜTZT (keine Änderung mehr möglich, ohne es zu entsperren) und sein Ordner wird in die Archivstruktur VERSCHOBEN.\n\nDie erzeugten Dokumente ({0}) werden GELÖSCHT, um Platz zu sparen: PDF, HTML und DOCX im Ordner «out». Die Quellen – Texte, Bilder, Tabellen, Metadaten – bleiben vollständig erhalten, und «Buch kompilieren» erzeugt sie bei Bedarf neu.\n\nDieses Fenster wird geschlossen, danach öffnet sich das Buch aus dem Archiv.',
     'modale.archiver.bouton': 'Archivieren und sperren',
     'modale.archiver.rien': 'noch keine erzeugten Dokumente',
     'modale.desarchiver.question': '«{0}» dearchivieren?',
     'modale.desarchiver.detail': 'Der Ordner wandert zurück in die Struktur «in Arbeit». Die Sperre wird dabei NICHT aufgehoben: mit «Ausgabe entsperren» machen Sie die Ausgabe wieder änderbar.\n\nDieses Fenster wird geschlossen, danach öffnet sich die Ausgabe an ihrem neuen Ort.',
+    'modale.desarchiver.detail.livre': 'Der Ordner wandert zurück in die Struktur «in Arbeit». Die Sperre wird dabei NICHT aufgehoben: mit «Buch entsperren» machen Sie das Buch wieder änderbar.\n\nDieses Fenster wird geschlossen, danach öffnet sich das Buch an seinem neuen Ort.',
     'modale.desarchiver.bouton': 'Dearchivieren',
     'modale.deverrouiller.question': '«{0}» entsperren?',
     'modale.deverrouiller.detail': 'Die Ausgabe wird wieder änderbar: der Editor verlässt den Schreibschutz und alle Aktionen der Leiste «Zeitschrift SZH» sind wieder aktiv.\n\nEine bereits veröffentlichte Ausgabe sollte sich grundsätzlich nicht mehr ändern – sperren Sie sie nach der Korrektur wieder.',
+    'modale.deverrouiller.detail.livre': 'Das Buch wird wieder änderbar: der Editor verlässt den Schreibschutz und alle Aktionen des Cockpits sind wieder aktiv.\n\nEin bereits veröffentlichtes Buch sollte sich grundsätzlich nicht mehr ändern – sperren Sie es nach der Korrektur wieder.',
     'modale.deverrouiller.bouton': 'Entsperren',
     'statut.archivage': 'Archivierung läuft – dieses Fenster wird geschlossen…',
     'statut.desarchivage': 'Dearchivierung läuft – dieses Fenster wird geschlossen…',
     'statut.verrouille': 'Ausgabe gesperrt.',
+    'statut.verrouille.livre': 'Buch gesperrt.',
     'statut.deverrouille': 'Ausgabe entsperrt – Sie können sie wieder bearbeiten.',
+    'statut.deverrouille.livre': 'Buch entsperrt – Sie können es wieder bearbeiten.',
     'statut.exportArticle': 'Export von «{0}»…',
     'info.deja.archivee': 'Diese Ausgabe ist bereits archiviert.',
+    'info.deja.archivee.livre': 'Dieses Buch ist bereits archiviert.',
     'info.deja.encours': 'Diese Ausgabe ist nicht archiviert.',
+    'info.deja.encours.livre': 'Dieses Buch ist nicht archiviert.',
     'info.deja.deverrouillee': 'Diese Ausgabe ist nicht gesperrt.',
+    'info.deja.deverrouillee.livre': 'Dieses Buch ist nicht gesperrt.',
     'info.exportArticle': 'Artikel «{0}» exportiert.',
     'err.archivage': 'Die Archivierung ist nicht durchgelaufen ({0}). Die Ausgabe wurde nicht verschoben und nichts gelöscht. Schliessen Sie die PDF-Vorschau und versuchen Sie es erneut.',
+    'err.archivage.livre': 'Die Archivierung ist nicht durchgelaufen ({0}). Das Buch wurde nicht verschoben und nichts gelöscht. Schliessen Sie die PDF-Vorschau und versuchen Sie es erneut.',
     'err.desarchivage': 'Die Dearchivierung ist nicht durchgelaufen ({0}). Die Ausgabe ist im Archiv geblieben. Schliessen Sie die PDF-Vorschau und versuchen Sie es erneut.',
+    'err.desarchivage.livre': 'Die Dearchivierung ist nicht durchgelaufen ({0}). Das Buch ist im Archiv geblieben. Schliessen Sie die PDF-Vorschau und versuchen Sie es erneut.',
     'err.out.suppression': 'Die erzeugten Dokumente konnten nicht gelöscht werden ({0}) – die Archivierung wurde abgebrochen, nichts wurde verschoben. Schliessen Sie die PDF-Vorschau und versuchen Sie es erneut.',
     'err.verrou.reglages': 'Die Ausgabe ist als gesperrt markiert, aber der Editor konnte nicht in den Nur-Lesen-Modus wechseln ({0}): eine Änderung bliebe versehentlich möglich. Schliessen Sie das Fenster und öffnen Sie die Ausgabe neu.',
     'err.exportArticle': 'Der Artikel «{0}» konnte nicht erzeugt werden, und die Kette hat nichts weiter gemeldet. Versuchen Sie es erneut; wiederholt sich das, melden Sie es.',
@@ -2234,6 +2329,9 @@ const TEXTES_COCKPIT = {
     'ctl.reimport.corps-retravaille': 'Der Text dieses Artikels war hier seit dem Import bearbeitet worden, im Editor und ausserhalb von Word. Diese Änderungen sind nicht mehr im Artikel: eingesetzt ist der Text der korrigierten Word-Datei. Der alte Text liegt im Sicherungsordner der Ausgabe – vergleichen Sie ihn, wenn Korrekturen zurück sollen, oder kehren Sie zum vorherigen Text zurück.',
     'ctl.reimport.reprise': 'Ein Ersetzen des Textes war bei diesem Artikel unterbrochen worden: es wurde von selbst in Ordnung gebracht, und nichts ist verloren. Starten Sie «Artikel neu importieren» erneut, wenn Sie es noch wollen.',
     'ctl.reimport.reprise-impossible': 'Ein Ersetzen des Textes war bei diesem Artikel unterbrochen worden, und sein Ordner konnte nicht zurückgesetzt werden: der Artikel fehlt in der Ausgabe, doch nichts ist verloren – alles liegt im Sicherungsordner. Schliessen Sie, was diesen Ordner offen halten könnte (Word, Datei-Explorer, Synchronisierung), und kompilieren Sie die Ausgabe erneut.',
+    'ctl.livre.liminaireintrouvable': 'Das Vorsatzstück «{0}» ist in buch.yaml (liminaires:) angekündigt, wurde aber nicht kompiliert: prüfen Sie, ob es in liminaires/ liegt, und kompilieren Sie danach neu.',
+    'ctl.livre.chapitreecarte': 'Das Kapitel «{0}» wird nicht gedruckt: sein Ordner trägt das Präfix «_», das ein Arbeitsstück kennzeichnet. Entfernen Sie das «_», um daraus ein Kapitel zu machen.',
+    'ctl.livre.chapitreintrouvable': 'Das Kapitel «{0}» steht in ordre-chapitres, aber sein Ordner wurde nicht gefunden: prüfen Sie den Ordnernamen, oder entfernen Sie es aus der Liste.',
     'modale.reimport.question': 'Den Text des Artikels «{0}» durch den der korrigierten Word-Datei ersetzen?',
     'modale.reimport.detail': 'ERSETZT WERDEN: der Text des Artikels, seine Bilder und seine Tabellen. Die Fassung der korrigierten Word-Datei tritt an ihre Stelle.\n\nERHALTEN BLEIBEN: die Metadaten des Artikels (Art, Titel, Untertitel, Zusammenfassung, Schlagwörter, Autorinnen und Autoren, DOI), die Porträts, die Übersetzungsverfolgung und die Aufgaben des Artikels.\n\nDer vorherige Zustand wird VOR dem Ersetzen zur Seite gelegt: «Zum vorherigen Text zurück», beim selben Artikel, setzt ihn wieder ein. Hier bearbeitete Tabellen und Bilder, die die Word-Datei nicht mitbringt, werden Ihnen einzeln gemeldet, mit dem Ort, wo sie zu finden sind.',
     'modale.reimport.bouton': 'Text ersetzen',

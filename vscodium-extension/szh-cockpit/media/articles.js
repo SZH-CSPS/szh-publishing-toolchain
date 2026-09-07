@@ -10,7 +10,7 @@
 // couverture. Ne reste propre à cette page que ce que la modale des tâches contient.
 //
 // L'aperçu des métadonnées, lui, est propre à cette page — il n'existe nulle part
-// ailleurs : partout ailleurs, les métadonnées d'un article sont un FORMULAIRE. Ici on
+// ailleurs : partout ailleurs, les métadonnées d'un article sont un formulaire. Ici on
 // regarde, on ne saisit pas, et les deux boutons du pied mènent aux formulaires qui, eux,
 // écrivent. La carte reste celle de SZH.listeCartes : cette page n'en refait pas une, elle
 // insère son aperçu dedans.
@@ -52,10 +52,10 @@
   var liste = SZH.listeCartes({
     conteneur: cartes,
     textes: function () { return TXT; },
-    onOuvrir: function (cle) { api.postMessage({ type: 'ouvrir', cle: cle }); },
-    onAction: function (cle, id) { api.postMessage({ type: 'action', cle: cle, id: id }); },
+    onOuvrir: function (cle) { api.postMessage({ type: SZH.MSG.OUVRIR, cle: cle }); },
+    onAction: function (cle, id) { api.postMessage({ type: SZH.MSG.ACTION, cle: cle, id: id }); },
     onTache: function (cle, id, cochee) {
-      api.postMessage({ type: 'tache', cle: cle, id: id, cochee: cochee });
+      api.postMessage({ type: SZH.MSG.TACHE, cle: cle, id: id, cochee: cochee });
     }
   });
 
@@ -80,7 +80,7 @@
     }
   }
 
-  // La tête de la carte (A7.4) : le nom du dossier n'y est plus répété à côté du titre —
+  // La tête de la carte : le nom du dossier n'y est plus répété à côté du titre —
   // « 01 · Construire sa propre rampe » porte déjà le rang, et redire le slug juste après
   // ne faisait que doubler la même information. Le slug reste l'identifiant technique de
   // l'article ; il se lit maintenant en infobulle du titre plutôt que sur sa propre ligne.
@@ -106,7 +106,7 @@
 
   // -> l'élément à insérer, ou null quand la ligne n'apporte ni aperçu ni case. Les
   // avertissements (ligne.constats) sont posés dans la tête de la carte par decorerTete()
-  // ci-dessus (A7.4) : ce bloc ne porte plus que l'aperçu des métadonnées et l'échappatoire.
+  // ci-dessus : ce bloc ne porte plus que l'aperçu des métadonnées et l'échappatoire.
   function construireBloc(ligne) {
     var apercu = ligne.apercu || null;
     var sansDoi = ligne.sansDoi || null;
@@ -115,7 +115,7 @@
     bloc.className = 'carte-apercu';
     if (apercu) { poserGrille(bloc, apercu.lignes || []); }
     if (sansDoi) {
-      // Sur la même ligne que le DOI qu'elle concerne (A7.1) : la case rejoint la valeur
+      // Sur la même ligne que le DOI qu'elle concerne : la case rejoint la valeur
       // de la dernière rangée de la grille — la ligne DOI, toujours en fin d'aperçu — au
       // lieu de rester un bloc à part sous la grille entière.
       var valeurs = bloc.querySelectorAll('.apercu-valeur');
@@ -153,7 +153,7 @@
 
   // La case « pas de DOI ». Verrouillée quand c'est la rubrique qui décide : la case montre
   // alors l'état sans laisser croire qu'on peut en changer. `parent` est la valeur de la
-  // ligne DOI de l'aperçu (A7.1) — ou, à défaut d'aperçu, le bloc entier.
+  // ligne DOI de l'aperçu — ou, à défaut d'aperçu, le bloc entier.
   function poserCaseDoi(parent, ligne) {
     var etat = ligne.sansDoi || {};
     var l = poser(parent, 'label', 'apercu-doi');
@@ -163,7 +163,7 @@
     case_.disabled = !!etat.verrouille;
     case_.dataset.sansdoi = String(ligne.cle || '');
     case_.addEventListener('change', function () {
-      api.postMessage({ type: 'sansdoi', cle: String(ligne.cle || ''), coche: !!case_.checked });
+      api.postMessage({ type: SZH.MSG.SANSDOI, cle: String(ligne.cle || ''), coche: !!case_.checked });
     });
     l.appendChild(case_);
     poser(l, 'span', null, TXT.doiCase || '');
@@ -177,7 +177,7 @@
   // valent pour tous les numéros de cette revue, et les deux maisons ont chacune leur
   // liste. On règle donc les deux ici, l'une après l'autre, sans quitter la vue.
   //
-  // ⚠ Passer d'une revue à l'autre, ou refermer, ENREGISTRE d'abord ce qui vient d'être
+  // ⚠ Passer d'une revue à l'autre, ou refermer, enregistre d'abord ce qui vient d'être
   // saisi : sans cela, taper trois intitulés français puis cliquer « Zeitschrift » les
   // jetterait sans un mot. C'est l'enregistrement automatique des autres formulaires,
   // appliqué aux deux gestes qui font sortir de la liste courante.
@@ -242,7 +242,7 @@
     if (!vue.modifie && !force) { return false; }
     if (vue.revue === '') { return false; }
     vue.modifie = false;
-    api.postMessage({ type: 'taches-enregistrer', revue: vue.revue, taches: vue.modele });
+    api.postMessage({ type: SZH.MSG.TACHES_ENREGISTRER, revue: vue.revue, taches: vue.modele });
     return true;
   }
 
@@ -338,15 +338,16 @@
     // « couverture » ; la page continue sur ce que la vue ajoute autour. Un re-rendu ne
     // doit pas jeter une saisie en cours : le formulaire n'est rechargé que s'il n'a rien
     // de non enregistré, comme le panneau de traduction s'en garde.
-    if (msg.type !== 'valeurs' || !numero.estModifie()) { numero.message(msg); }
-    if (msg.type === 'valeurs') {
+    var traiteParNumero = false;
+    if (msg.type !== SZH.MSG.VALEURS || !numero.estModifie()) { traiteParNumero = numero.message(msg); }
+    if (msg.type === SZH.MSG.VALEURS) {
       SZH.poserAccent(msg.accent);
       titre.textContent = msg.titre || '';
       definitions = msg.taches || {};
       revueCourante = String(msg.revue || '');
       ctlEtat = SZH.barreBoutons(barre, msg.boutons || [], function (id) {
         if (id === 'taches') { modaleTaches.ouvrir(); return; }
-        api.postMessage({ type: 'commande', id: id });
+        api.postMessage({ type: SZH.MSG.COMMANDE, id: id });
       });
       liste.rendre(msg.lignes || []);
       decorer(msg.lignes || []);
@@ -354,19 +355,20 @@
     }
     // Une case cochée ne renvoie que sa pastille : reconstruire la liste ferait perdre au
     // clavier le focus de la case qu'il vient d'utiliser.
-    if (msg.type === 'avancement') {
+    if (msg.type === SZH.MSG.AVANCEMENT) {
       liste.majPastilles(msg.cle, msg.pastilles || [], msg.tachesResume);
       return;
     }
-    if (msg.type === 'etat') {
+    if (msg.type === SZH.MSG.ETAT) {
       if (ctlEtat) { ctlEtat.textContent = msg.message || ''; }
       return;
     }
-    if (msg.type === 'taches') {
+    if (msg.type === SZH.MSG.TACHES) {
       definitions = msg.taches || definitions;
       if (vue.etat) { vue.etat.textContent = TXT.tachesEnregistrees || ''; }
       return;
     }
+    if (!traiteParNumero) { console.warn('articles : type de message inconnu', msg.type); }
   });
   SZH.annoncerPret(api, function () { return recu; });
 })();

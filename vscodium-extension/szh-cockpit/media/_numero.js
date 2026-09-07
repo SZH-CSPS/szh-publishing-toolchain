@@ -145,7 +145,6 @@
       var i = document.createElement('input');
       i.type = type;
       i.id = 'num-' + champ.cle;
-      i.setAttribute('id', 'num-' + champ.cle);
       i.dataset.cle = champ.cle;
       i.addEventListener('input', function () { toucher(champ.cle); });
       bloc.appendChild(i);
@@ -168,7 +167,6 @@
       poser(bloc, 'label', null, lib(champ.libelle)).setAttribute('for', 'num-' + champ.cle);
       var s = document.createElement('select');
       s.id = 'num-' + champ.cle;
-      s.setAttribute('id', 'num-' + champ.cle);
       s.dataset.cle = champ.cle;
       var dynamique = !!champ.optionsDe;
       var options = dynamique ? (TXT[champ.optionsDe] || []) : champ.options;
@@ -195,7 +193,6 @@
       var i = document.createElement('input');
       i.type = 'color';
       i.id = 'num-' + champ.cle;
-      i.setAttribute('id', 'num-' + champ.cle);
       i.dataset.cle = champ.cle;
       var texte = poser(ligne, 'span', 'hexcouleur-valeur');
       function majTexte() { texte.textContent = i.value.toUpperCase(); }
@@ -309,59 +306,29 @@
       var bloc = poser(conteneur, 'div', 'szh-champ couverture');
       poser(bloc, 'label', null, TXT.couverture || '');
       zoneCouverture = { visuel: poser(bloc, 'div', 'visuel'), etat: null, nom: poser(bloc, 'p', 'couverture-nom') };
-      var depot = poser(bloc, 'div', 'depot');
-      var titre = poser(depot, 'span', 'depot-titre');
-      titre.appendChild(SZH.icone('camera'));
-      poser(titre, 'span', null, TXT.couvertureDeposer || '');
-      var fichier = document.createElement('input');
-      fichier.type = 'file';
-      fichier.accept = EXTENSIONS.map(function (e) { return '.' + e; }).join(',');
-      fichier.hidden = true;
-      var choisir = document.createElement('button');
-      choisir.type = 'button';
-      choisir.className = 'szh-bouton';
-      choisir.textContent = TXT.couvertureChoisir || '';
-      choisir.addEventListener('click', function () { fichier.click(); });
-      depot.appendChild(choisir);
-      depot.appendChild(fichier);
-      fichier.addEventListener('change', function () {
-        if (fichier.files && fichier.files[0]) { envoyerCouverture(fichier.files[0]); }
-        fichier.value = '';
+      var d = SZH.construireDepot({
+        parent: bloc, icone: 'camera', libelle: TXT.couvertureDeposer || '',
+        extensions: EXTENSIONS, texteChoisir: TXT.couvertureChoisir || '',
+        surFichier: function (f) { envoyerCouverture(f); }
       });
-      depot.addEventListener('dragover', function (e) { e.preventDefault(); depot.classList.add('survol'); });
-      depot.addEventListener('dragleave', function () { depot.classList.remove('survol'); });
-      depot.addEventListener('drop', function (e) {
-        e.preventDefault();
-        depot.classList.remove('survol');
-        var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (f) { envoyerCouverture(f); }
-      });
-      zoneCouverture.etat = poser(depot, 'span', 'media-etat');
+      zoneCouverture.etat = d.etat;
       poserCouverture(null);
     }
 
     // Le format et le poids sont refusés ici ET par l'hôte : la webview le dit tout de
-    // suite, l'hôte ne fait jamais confiance à ce qu'elle lui envoie.
+    // suite, l'hôte ne fait jamais confiance à ce qu'elle lui envoie. La lecture et le
+    // découpage base64 viennent de SZH.lireBase64 (_commun.js), communs aux cinq pages qui
+    // déposent un fichier.
     function envoyerCouverture(f) {
-      var ext = (String(f.name || '').match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
-      if (EXTENSIONS.indexOf(ext) === -1) {
-        zoneCouverture.etat.textContent = '⚠ ' + (TXT.couvertureFormat || '');
-        return;
-      }
-      if (MAXI > 0 && f.size > MAXI) {
-        zoneCouverture.etat.textContent = '⚠ ' + (TXT.couverturePoids || '');
-        return;
-      }
-      zoneCouverture.etat.textContent = '…';
-      var lecteur = new FileReader();
-      lecteur.onerror = function () { zoneCouverture.etat.textContent = '⚠ ' + (TXT.couvertureFormat || ''); };
-      lecteur.onload = function () {
-        var t = String(lecteur.result || '');
-        var virgule = t.indexOf(',');
-        if (virgule === -1) { zoneCouverture.etat.textContent = '⚠ ' + (TXT.couvertureFormat || ''); return; }
-        api.postMessage({ type: 'couverture-deposer', nomFichier: f.name, donneesBase64: t.slice(virgule + 1) });
-      };
-      lecteur.readAsDataURL(f);
+      SZH.lireBase64(f, {
+        extensions: EXTENSIONS, maxi: MAXI,
+        msgFormat: '⚠ ' + (TXT.couvertureFormat || ''), msgPoids: '⚠ ' + (TXT.couverturePoids || ''),
+        surLecture: function () { zoneCouverture.etat.textContent = '…'; },
+        surErreur: function (message) { zoneCouverture.etat.textContent = message; },
+        surDonnees: function (fichier, base64) {
+          api.postMessage({ type: SZH.MSG.COUVERTURE_DEPOSER, nomFichier: fichier.name, donneesBase64: base64 });
+        }
+      });
     }
 
     // L'aperçu est un bouton : cliquer agrandit. Sans couverture, la place le dit — c'est
@@ -489,7 +456,7 @@
         else if (champ.genre === 'case') { envoi[champ.cle] = ctl[champ.cle].checked ? 'true' : 'false'; }
         else { envoi[champ.cle] = ctl[champ.cle].value; }
       }
-      api.postMessage({ type: 'enregistrer', auto: !!auto, modifies: envoi });
+      api.postMessage({ type: SZH.MSG.ENREGISTRER, auto: !!auto, modifies: envoi });
     }
 
     // Enregistrement automatique, comme partout ailleurs : trois secondes après la
@@ -502,25 +469,25 @@
     // Les messages que ce fragment connaît ; rend vrai quand il les a traités, pour que la
     // page n'ait rien à réimplémenter.
     function message(msg) {
-      if (msg.type === 'valeurs') {
+      if (msg.type === SZH.MSG.VALEURS) {
         remplir(msg.valeurs);
         // La couverture n'est redessinée que si le message la porte : un re-rendu de la vue
         // ne la renvoie pas, son aperçu pesant plusieurs mégaoctets en base64.
         if (zoneCouverture && msg.couverture !== undefined) { poserCouverture(msg.couverture); }
         return true;
       }
-      if (msg.type === 'enregistre') {
+      if (msg.type === SZH.MSG.ENREGISTRE) {
         autoEnr.confirme();
         modifies = {};
         if (etat) { etat.textContent = TXT.enregistre || ''; }
         return true;
       }
-      if (msg.type === 'erreur') {
+      if (msg.type === SZH.MSG.ERREUR) {
         autoEnr.confirme();
         if (etat) { etat.textContent = '⚠ ' + (msg.message || ''); }
         return true;
       }
-      if (msg.type === 'couverture') {
+      if (msg.type === SZH.MSG.COUVERTURE) {
         if (zoneCouverture) {
           zoneCouverture.etat.textContent = msg.nom ? (TXT.couvertureEnregistree || '') : '';
           poserCouverture(msg);

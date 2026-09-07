@@ -1,23 +1,20 @@
 // Client HTTP et parseur OAI-PMH communs aux deux moissonneurs du cockpit : lib/auteurs-ojs.js
 // (auteur·e·s publiés, ojs.szh.ch) et lib/mots-cles-edudoc.js (descripteurs bilingues,
-// edudoc.ch). Extrait le 01.09.2026 : lib/mots-cles-edudoc.js importait ce qui suit
-// directement depuis lib/auteurs-ojs.js, qui n'a pourtant pas vocation à servir de
-// bibliothèque à son voisin — deux agents l'ont signalé indépendamment. Ce que les deux
-// moissonneurs partagent vraiment vit ici : le client https qui suit les redirections
-// OAI-PMH, le parseur XML minimal (resumptionToken, <error>, entités), le pliage de chaîne
-// pour comparer deux libellés, et le repli sur un 503 « Retry after » — constaté sur
-// edudoc.ch le 31.08.2026, et qu'ojs.szh.ch pourrait très bien montrer un jour lui aussi.
+// edudoc.ch). Ce que les deux moissonneurs partagent vraiment vit ici : le client https qui
+// suit les redirections OAI-PMH, le parseur XML minimal (resumptionToken, <error>,
+// entités), le pliage de chaîne pour comparer deux libellés, et le repli sur un 503
+// « Retry after », qu'edudoc.ch comme ojs.szh.ch peuvent montrer.
 //
-// Ce qui N'EST PAS ici, parce que propre à chaque instance : les endpoints et les sets, le
+// Ce qui n'est pas ici, parce que propre à chaque instance : les endpoints et les sets, le
 // format des enregistrements (dc:creator / marcxml $u côté OJS, champ MARC 690 côté
 // edudoc), la boucle de pagination elle-même (l'URL et l'extracteur de records diffèrent
 // d'un moissonneur à l'autre), la forme du cache et les règles de fusion — tout cela reste
 // dans le moissonneur qui le connaît.
 //
-// Point de passage UNIQUE vers un vrai socket https dans tout le cockpit : recupererHttps.
+// Point de passage unique vers un vrai socket https dans tout le cockpit : recupererHttps.
 // La garde SZH_RESEAU_INTERDIT vit ici, à cet unique endroit, pour couvrir d'un seul geste
 // les deux moissonneurs actuels et tout futur module qui s'y brancherait. Elle ne se
-// déclenche que si AUCUN transport factice n'est fourni — un test qui injecte le sien pour
+// déclenche que si aucun transport factice n'est fourni — un test qui injecte le sien pour
 // éprouver recupererHttps elle-même (redirections, taille, délais) n'est pas concerné,
 // puisqu'il ne touche jamais le réseau. `test/js/hote-factice.js` pose cette variable pour
 // tous les tests qui activent l'extension : un appel réel échoue alors tout de suite, fort
@@ -28,7 +25,7 @@ const https = require('https');
 const { URL } = require('url');
 
 const DELAI_REQUETE_MS = 10000;            // inactivité socket
-// Délai TOTAL par requête, en plus de l'inactivité : un serveur qui égoutte un octet
+// Délai total par requête, en plus de l'inactivité : un serveur qui égoutte un octet
 // toutes les neuf secondes ne déclenche jamais le timeout socket et retiendrait la
 // requête indéfiniment.
 const DELAI_TOTAL_MS = 60000;
@@ -100,7 +97,7 @@ function plierNom(texte) {
 
 // ---- Réseau ------------------------------------------------------------------------
 
-// Une redirection n'est suivie que vers le MÊME hôte, en https : OJS ne redirige que vers
+// Une redirection n'est suivie que vers le même hôte, en https : OJS ne redirige que vers
 // son préfixe de locale (« /revue/oai » -> « /revue/fr/oai »). Une 3xx vers un domaine
 // tiers — proxy captif, détournement DNS — est refusée net : nos requêtes suivantes n'ont
 // rien à aller y porter. Pure, pour être éprouvable sans réseau.
@@ -123,11 +120,11 @@ function resoudreRedirection(urlCourante, location) {
 // GET https natif : User-Agent posé, et les redirections suivies à la main — OJS répond
 // 302 vers l'URL à préfixe de locale, et https.get s'arrêterait là. Trois gardes contre un
 // serveur détourné ou malade : redirections même-hôte seulement (resoudreRedirection),
-// réponse bornée à OCTETS_MAX_REPONSE, et délai TOTAL par requête en plus du timeout
+// réponse bornée à OCTETS_MAX_REPONSE, et délai total par requête en plus du timeout
 // d'inactivité. `options` est réservé aux tests : { transport, delaiTotalMs } — le
 // transport factice y rejoue les trois pannes sans réseau ni attente réelle.
 //
-// Point de passage UNIQUE vers un vrai socket https dans tout le cockpit — voir l'en-tête
+// Point de passage unique vers un vrai socket https dans tout le cockpit — voir l'en-tête
 // du fichier pour la garde SZH_RESEAU_INTERDIT posée juste ici.
 function recupererHttps(url, redirections, options) {
   const o = options || {};
@@ -210,11 +207,10 @@ function recupererHttps(url, redirections, options) {
 
 // ---- Repli sur un 503 « Retry after » -----------------------------------------------
 //
-// Constaté en conditions réelles sur edudoc.ch le 31.08.2026, au milieu d'un moissonnage
-// complet des deux sets — passé une poignée de requêtes rapprochées, l'instance répond
-// « 503 Retry after 1 seconds » puis se rétablit d'elle-même à la requête suivante.
-// ojs.szh.ch n'a pas montré cette tolérance en un an d'usage, mais rien ne garantit qu'elle
-// ne se comporte pas un jour de même : le repli vit ici plutôt que dans un seul des deux
+// Passé une poignée de requêtes rapprochées, une instance OAI-PMH peut répondre
+// « 503 Retry after 1 seconds » puis se rétablir d'elle-même à la requête suivante.
+// ojs.szh.ch ne l'a pas montré en un an d'usage, mais rien ne garantit qu'elle ne se
+// comporte pas un jour de même : le repli vit ici plutôt que dans un seul des deux
 // moissonneurs.
 function attendre(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 

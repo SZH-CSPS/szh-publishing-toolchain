@@ -94,6 +94,79 @@
         "panel": "shared"
       },
       "problemMatcher": []
+    },
+    {
+      // Le PDF imprimeur du livre (fond perdu, traits de coupe) : pipeline/profils/livre.mk,
+      // cible livre-imprimeur. N'existe que sur un dossier de livre (buch.yaml).
+      "label": "Livre : PDF imprimeur",
+      "type": "process",
+      "command": "wsl.exe",
+      "args": [
+        "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
+        "bash", "-c",
+        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' livre-imprimeur 2>&1 | tee .szh-journal.log"
+      ],
+      "presentation": {
+        "reveal": "silent",
+        "showReuseMessage": false,
+        "clear": true,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      // La couverture du livre (livre-couverture, pipeline/profils/livre.mk).
+      "label": "Livre : couverture",
+      "type": "process",
+      "command": "wsl.exe",
+      "args": [
+        "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
+        "bash", "-c",
+        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' livre-couverture 2>&1 | tee .szh-journal.log"
+      ],
+      "presentation": {
+        "reveal": "silent",
+        "showReuseMessage": false,
+        "clear": true,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      // L'EPUB du livre (livre-epub, pipeline/profils/livre.mk).
+      "label": "Livre : EPUB",
+      "type": "process",
+      "command": "wsl.exe",
+      "args": [
+        "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
+        "bash", "-c",
+        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' livre-epub 2>&1 | tee .szh-journal.log"
+      ],
+      "presentation": {
+        "reveal": "silent",
+        "showReuseMessage": false,
+        "clear": true,
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      // Le HTML web du livre (livre-html-web, pipeline/profils/livre.mk).
+      "label": "Livre : HTML web",
+      "type": "process",
+      "command": "wsl.exe",
+      "args": [
+        "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
+        "bash", "-c",
+        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' livre-html-web 2>&1 | tee .szh-journal.log"
+      ],
+      "presentation": {
+        "reveal": "silent",
+        "showReuseMessage": false,
+        "clear": true,
+        "panel": "shared"
+      },
+      "problemMatcher": []
     }
   ]
 }

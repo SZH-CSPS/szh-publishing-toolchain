@@ -45,11 +45,11 @@
   // ---- Autocomplétion des mots-clés : le vocabulaire edudoc.ch (lib/mots-cles-edudoc.js) --
   //
   // Reçu de l'hôte en paires bilingues { de, fr } (message mots-cles-connus). La grille de
-  // mots-clés (SZH.motsCles, _commun.js) apparie déjà « diagnostic » et « Diagnose » PAR
-  // POSITION — une rangée est un mot-clé, une colonne par langue — et c'est cette même
+  // mots-clés (SZH.motsCles, _commun.js) apparie déjà « diagnostic » et « Diagnose » par
+  // position — une rangée est un mot-clé, une colonne par langue — et c'est cette même
   // règle qui gouverne l'autocomplétion : on propose dans la langue du champ où l'on
   // tape (son data-langue), jamais dans une autre. Choisir une suggestion complète en
-  // plus — SEULEMENT si elle est vide — la case de l'AUTRE langue sur la MÊME rangée avec
+  // plus — seulement si elle est vide — la case de l'autre langue sur la même rangée avec
   // l'équivalent que le thésaurus bilingue connaît déjà : la paire edudoc.ch (de, fr) est
   // justement ce qui relie « Sonderpädagogik » à « pédagogie spécialisée », et la grille du
   // formulaire relie ses colonnes de la même façon, par position. Une correction déjà
@@ -64,73 +64,20 @@
   // Les paires incomplètes (« manque » côté hôte) ne sont simplement jamais indexées dans
   // la langue qui leur manque : pDe/pFr valent alors null, et chercherMotsCles les saute.
   //
-  // Posée en DÉLÉGATION sur le conteneur de la grille (editeurMots.element), qui n'est
+  // Posée en délégation sur le conteneur de la grille (editeurMots.element), qui n'est
   // jamais remplacé : SZH.motsCles reconstruit tout son DOM interne à chaque ajout, retrait
   // ou permutation de rangée (voir son commentaire « Reconstruit le DOM depuis le modèle,
   // sans jamais le relire »), et un écouteur posé sur un <input> précis serait perdu à la
   // reconstruction suivante.
 
-  // Casse et accents pliés, comme pour les auteur·e·s (media/_auteurs.js) : « special »
-  // trouve « spécialisée ».
-  function plierMc(t) {
-    var s = String(t === undefined || t === null ? '' : t).toLowerCase().replace(/\s+/g, ' ').trim();
-    try { s = s.normalize('NFD').replace(/[̀-ͯ]/g, ''); }
-    catch (e) { /* moteur sans normalize : filtrage sensible aux accents, sans casser */ }
-    return s;
-  }
-
-  // Comme plierAvecIndex de _auteurs.js : la forme pliée ET l'indice, dans l'original, du
-  // caractère dont chaque caractère plié vient — pour mettre en gras la bonne portion du
-  // texte d'origine, quoi qu'invente Unicode sur un caractère replié.
-  function plierAvecIndexMc(brut) {
-    var src = String(brut === undefined || brut === null ? '' : brut);
-    var plie = '';
-    var index = [];
-    for (var i = 0; i < src.length; i++) {
-      var c = src.charAt(i).toLowerCase();
-      try { c = c.normalize('NFD').replace(/[̀-ͯ]/g, ''); }
-      catch (e) { /* moteur sans normalize */ }
-      for (var j = 0; j < c.length; j++) { plie += c.charAt(j); index.push(i); }
-    }
-    return { source: src, plie: plie, index: index };
-  }
-
-  // Ce qui sépare deux mots dans un descripteur — l'espace, le trait d'union, la virgule :
-  // « troubles, difficultés » doit se chercher mot à mot.
-  var SEPARE_MC = /[\s\-'’.,;]/;
-  function debutsDeMotMc(plie) {
-    var debuts = [];
-    for (var i = 0; i < plie.length; i++) {
-      if (SEPARE_MC.test(plie.charAt(i))) { continue; }
-      if (i === 0 || SEPARE_MC.test(plie.charAt(i - 1))) { debuts.push(i); }
-    }
-    return debuts;
-  }
-  // Le premier début de mot à partir duquel `q` se lit tel quel, ou -1.
-  function chercherDebutMc(pli, debuts, q) {
-    for (var i = 0; i < debuts.length; i++) {
-      if (pli.plie.lastIndexOf(q, debuts[i]) === debuts[i]) { return debuts[i]; }
-    }
-    return -1;
-  }
-  // Pose un texte dans `parent`, les parts trouvées en gras. Rien n'est construit en HTML :
-  // un descripteur est une donnée, pas du balisage.
-  function poserAvecGrasMc(parent, pli, zones) {
-    var brut = pli.source;
-    var pose = 0;
-    for (var z = 0; z < zones.length; z++) {
-      var i0 = pli.index[zones[z][0]];
-      var fin = zones[z][0] + zones[z][1];
-      var i1 = (fin < pli.index.length) ? pli.index[fin] : brut.length;
-      if (i0 < pose) { continue; }
-      if (i0 > pose) { parent.appendChild(document.createTextNode(brut.slice(pose, i0))); }
-      var fort = document.createElement('strong');
-      fort.textContent = brut.slice(i0, i1);
-      parent.appendChild(fort);
-      pose = i1;
-    }
-    if (pose < brut.length) { parent.appendChild(document.createTextNode(brut.slice(pose))); }
-  }
+  // Casse, accents, positions et séparateurs de mot : le même moteur que _auteurs.js pour
+  // les noms d'auteur·e·s, partagé depuis _commun.js — les noms Mc restent, les corps
+  // viennent de SZH.* (voir son commentaire pour les deux divergences tranchées).
+  var plierMc = SZH.plier;
+  var plierAvecIndexMc = SZH.plierAvecIndex;
+  var debutsDeMotMc = SZH.debutsDeMot;
+  var chercherDebutMc = SZH.chercherDebut;
+  var poserAvecGrasMc = SZH.poserAvecGras;
 
   // Les paires reçues de l'hôte, indexées une fois pour la recherche : pDe/pFr valent null
   // pour le côté manquant d'une paire incomplète, et chercherMotsCles les saute alors.
@@ -151,7 +98,7 @@
 
   var MC_SUGG_MAX = 8;               // au-delà, ce n'est plus un menu mais une liste
 
-  // Les entrées qui correspondent à la saisie, pour un CODE DE LANGUE donné ('fr' ou 'de' —
+  // Les entrées qui correspondent à la saisie, pour un code de langue donné ('fr' ou 'de' —
   // jamais 'it', voir plus haut). Une saisie de plusieurs mots doit tous les retrouver,
   // chacun au début d'un mot du descripteur.
   function chercherMotsCles(connus, langueCode, saisie) {
@@ -186,7 +133,7 @@
   // La maquette imprime toujours les deux résumés d'un article et ses mots-clés sur la
   // première page ; au-delà d'un certain nombre de caractères, un résumé bascule en page
   // 2. Une mesure par compilation réelle de 58 articles d'essai a établi que le
-  // basculement est PAR PALIER selon le nombre de mots-clés — DE LA MÊME LANGUE que le
+  // basculement est par palier selon le nombre de mots-clés — de la même langue que le
   // résumé, puisque c'est ce qui s'imprime ensemble sur cette page-là : 3 à 5 mots-clés
   // tiennent sur une ligne (bascule vers ~830 caractères), 6 à 10 en occupent deux
   // (bascule vers ~730). Passer de 5 à 6 mots-clés coûte donc une centaine de caractères
@@ -214,6 +161,8 @@
     var appeler = function (nom, a, b, c) { if (decor[nom]) { decor[nom](a, b, c); } };
 
     var modifies = new Set();
+    // Course pret/valeurs (SZH.jetonDejaTraite, _commun.js) : un jeton par formulaire.
+    var etatJeton = { jeton: null };
     var motsClesParCarte = new WeakMap();
     var doiParCarte = new WeakMap();               // carte -> { poser, calcule } du champ DOI
     // Les auteur·e·s d'une carte ne vivent plus dans le DOM : la fiche affichée est
@@ -261,7 +210,7 @@
       appeler('marque', carte, slug);
     }
 
-    // `traduction` marque les champs d'une autre langue que celle de l'ARTICLE : ils sont
+    // `traduction` marque les champs d'une autre langue que celle de l'article : ils sont
     // cachés par défaut, et révélés par le bouton de la barre. Une fiche se remplit
     // d'abord dans sa langue ; tout afficher d'emblée triplait la hauteur de la carte.
     function champTexte(carte, parent, slug, cle, langue, libelle, valeur, multiligne, traduction) {
@@ -329,7 +278,7 @@
         coche.checked = !veut;                     // en arrière, jusqu'à la réponse
         if (carte.dataset.attenteDoi) { return; }  // une question est déjà posée
         carte.dataset.attenteDoi = '1';
-        api.postMessage({ type: 'doi-manuel-confirmer', slug: slug,
+        api.postMessage({ type: SZH.MSG.DOI_MANUEL_CONFIRMER, slug: slug,
           sens: veut ? 'activer' : 'retirer' });
       });
       doiParCarte.set(carte, { poser: poser, calcule: calcule });
@@ -363,7 +312,7 @@
     function attacherAutocompletionMotsCles(editeurMots) {
       var conteneurMc = editeurMots.element;
       var boiteSugg = document.createElement('div');
-      boiteSugg.className = 'mc-sugg';
+      boiteSugg.className = 'szh-sugg';
       boiteSugg.hidden = true;
       boiteSugg.setAttribute('role', 'listbox');
       boiteSugg.setAttribute('aria-label', TXT.motsClesSuggestions || '');
@@ -389,7 +338,7 @@
       }
 
       // Choisir une suggestion écrase toujours le champ où l'on tape, et complète en plus
-      // — SEULEMENT si elle est vide — la case de l'AUTRE langue sur la MÊME rangée : voir
+      // — seulement si elle est vide — la case de l'autre langue sur la même rangée : voir
       // le commentaire de tête du fichier pour la justification de ce choix.
       function choisir(trouve, langueCode, input) {
         enSelection = true;
@@ -431,7 +380,7 @@
           (function (t) {
             var b = document.createElement('button');
             b.type = 'button';
-            b.className = 'mc-sugg-item';
+            b.className = 'szh-sugg-item';
             b.setAttribute('role', 'option');
             b.setAttribute('aria-selected', 'false');
             poserAvecGrasMc(b, t.pli, t.zones);
@@ -442,7 +391,7 @@
             suggEtat.items.push({ element: b, trouve: t });
           })(trouves[i]);
         }
-        // Positionnée sous LA CASE où l'on tape, pas sous la rangée entière qui couvre
+        // Positionnée sous la case où l'on tape, pas sous la rangée entière qui couvre
         // plusieurs langues : .mc-rangee est en position relative (_fiches.css), et l'input
         // en est un enfant direct — son offsetLeft/offsetWidth suffisent.
         boiteSugg.style.left = input.offsetLeft + 'px';
@@ -517,7 +466,7 @@
 
       // ---- Les langues de la carte ----
       //
-      // L'ordre d'affichage suit l'ARTICLE : sa langue d'abord, puis la langue par défaut
+      // L'ordre d'affichage suit l'article : sa langue d'abord, puis la langue par défaut
       // de la revue (FR pour la Revue, DE pour la Zeitschrift) comme langue de
       // traduction. Les langues restantes de {fr, de, it} sont les « manquantes » : une
       // case à cocher chacune, cochée d'office quand la fiche porte déjà des contenus
@@ -591,7 +540,7 @@
 
       // Langue de l'article : elle prime au rendu sur celle du numéro. Le <select> vient
       // de SZH.choixLangue (_commun.js), une seule description pour les deux formulaires.
-      // La changer PERMUTE les contenus entre l'ancienne et la nouvelle langue — voir
+      // La changer permute les contenus entre l'ancienne et la nouvelle langue — voir
       // changerLangue() plus bas.
       var langue = SZH.choixLangue({
         valeur: v.lang, defaut: LANGUE_DEFAUT,
@@ -708,20 +657,19 @@
       var colonnes = function () {
         return languesVisibles().map(function (l) { return { code: l, libelle: noms[l] }; });
       };
-      // SZH.motsCles : la grille vit dans _commun.js, un autre IIFE. L'appeler sans le
-      // préfixe levait une ReferenceError au premier bloc de mots-clés — donc à chaque
-      // carte, donc sur les deux formulaires, qui s'ouvraient vides sans un mot.
+      // SZH.motsCles : la grille vit dans _commun.js, un autre IIFE — l'appeler sans le
+      // préfixe lève une ReferenceError à chaque carte, sur les deux formulaires.
       var editeurMots = SZH.motsCles({
         langues: colonnes(),
         listes: v.keywords || {},
         edition: true,
         textes: {
           motCle: TXT.motsCles, ajouter: TXT.motCleAjouter,
-          retirer: TXT.motCleRetirer
+          retirer: TXT.motCleRetirer, aTraduire: TXT.motCleATraduire
         },
         // Un mot-clé ajouté, retiré ou vidé peut faire changer de palier (voir
         // seuilResume plus haut) : les compteurs des résumés doivent le suivre en direct,
-        // dans les DEUX sens — un cinquième mot-clé qui disparaît redonne 750.
+        // dans les deux sens — un cinquième mot-clé qui disparaît redonne 750.
         onChange: function () { marquer(carte, slug); majTousCompteursResume(); }
       });
       motsClesParCarte.set(carte, editeurMots);
@@ -732,7 +680,7 @@
       // quitte construireCarte() — rien de faux ne s'est donc affiché.
       majTousCompteursResume();
 
-      // Une case par langue MANQUANTE : « + Allemand (champs DE) » pour un article IT de
+      // Une case par langue manquante : « + Allemand (champs DE) » pour un article IT de
       // la Revue, « + Français » et « + Italien » pour un article DE de la Zeitschrift.
       // Cocher révèle la colonne ; rien n'est marqué modifié — les valeurs ne bougent pas.
       var libellesAjout = { fr: TXT.ajoutFr, de: TXT.ajoutDe, it: TXT.ajoutIt };
@@ -764,11 +712,11 @@
       rendreCases();
       poserClasses();
 
-      // Changer la langue de l'article PERMUTE les contenus entre l'ancienne et la
+      // Changer la langue de l'article permute les contenus entre l'ancienne et la
       // nouvelle langue — titres, sous-titres, résumés et mots-clés : rien ne se perd,
       // les textes de l'ancienne langue passent sous la nouvelle et inversement. Une
       // fiche sans langue déclarée s'affiche sous la langue du numéro : le premier choix
-      // permute donc DEPUIS elle, puisque c'est là que les contenus étaient montrés.
+      // permute donc depuis elle, puisque c'est là que les contenus étaient montrés.
       // Rien ne s'écrit ici : l'enregistrement normal de la carte emporte l'état permuté.
       function changerLangue(nouvelle) {
         var ancienne = langueArticle;
@@ -871,7 +819,7 @@
       var doiManuel = !!(cocheDoi && cocheDoi.checked);
       var entreeDoi = carte.querySelector('input[data-cle=doi]');
       if (entreeDoi) { resultat.doi = doiManuel ? entreeDoi.value : ''; }
-      // Les champs multilingues, dans les TROIS langues : les colonnes non révélées
+      // Les champs multilingues, dans les trois langues : les colonnes non révélées
       // partent aussi, rien ne se perd à l'enregistrement.
       for (var i of carte.querySelectorAll('.champs-textes input')) {
         var cle = i.dataset.cle;
@@ -903,15 +851,26 @@
 
     // Traite les réponses de l'hôte qui concernent l'enregistrement et la photo. Rend
     // true si le message a été consommé, pour que la page n'ait pas à les connaître.
+    // Course pret/valeurs : le « pret » de SZH.annoncerPret est redemandé toutes les
+    // 350 ms tant que la page ne l'a pas confirmé ; sur un aller-retour lent, l'hôte peut
+    // répondre deux fois à « pret » avant que la première réponse n'arrive, et la seconde
+    // « valeurs » atterrirait alors après que le rédacteur a commencé à taper — la
+    // reconstruire écraserait cette saisie. SZH.jetonDejaTraite (_commun.js) la reconnaît
+    // au jeton que l'hôte recopie (msg.requete) et l'ignore, sauf si l'hôte la marque
+    // `rechargement: true` — une fiche périmée doit alors se reconstruire quand même.
     function message(msg) {
-      if (msg.type === 'valeurs') {
+      if (msg.type === SZH.MSG.VALEURS) {
+        if (SZH.jetonDejaTraite(etatJeton, msg)) { return true; }
         SZH.poserAccent(msg.accent);
+        // Le plafond des photos (modale partagée) et, pour la vérification d'import, celui
+        // des originaux d'image : posé avant le rendu, jamais mis en cache localement.
+        SZH.appliquerLimites(msg.limites);
         rendre(msg.articles || [], msg.types || [], msg.langue || 'fr',
           msg.licences || null, msg.licenceDefaut || null);
         surValeurs(msg);
         return true;
       }
-      if (msg.type === 'enregistre') {
+      if (msg.type === SZH.MSG.ENREGISTRE) {
         if (minuteurEnr) { minuteurEnr.confirme(); }
         // Les marques ne sont retirées qu'après un enregistrement automatique : après un
         // enregistrement demandé, l'hôte renvoie les valeurs et la page se re-rend.
@@ -919,18 +878,18 @@
         if (etat) { etat.textContent = TXT.enregistre.split('{0}').join(msg.n); }
         return true;
       }
-      if (msg.type === 'erreur') {
+      if (msg.type === SZH.MSG.ERREUR) {
         if (minuteurEnr) { minuteurEnr.confirme(); }
         if (etat) { etat.textContent = '⚠ ' + msg.message; }
         return true;
       }
-      if (msg.type === 'doi-manuel-reponse') {
+      if (msg.type === SZH.MSG.DOI_MANUEL_REPONSE) {
         reponseDoi(msg);
         return true;
       }
       // Le vocabulaire edudoc.ch pour l'autocomplétion des mots-clés : gardé même reçu
       // avant que la première carte n'existe, comme auteurs-connus pour ctlAuteurs.
-      if (msg.type === 'mots-cles-connus') {
+      if (msg.type === SZH.MSG.MOTS_CLES_CONNUS) {
         poserMotsClesConnus(msg.motsCles);
         return true;
       }
@@ -951,7 +910,7 @@
           if (!auto && etat) { etat.textContent = TXT.rien; }
           return;
         }
-        api.postMessage({ type: 'enregistrer', auto: !!auto, articles: modifiees() });
+        api.postMessage({ type: SZH.MSG.ENREGISTRER, auto: !!auto, articles: modifiees() });
       }
       minuteurEnr = SZH.autoEnregistrement({
         estModifie: function () { return modifies.size > 0; },

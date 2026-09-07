@@ -25,12 +25,23 @@ function cheminsVerrou(racine) {
   return { dossier: dossier, fichier: path.join(dossier, 'settings.json') };
 }
 
-// Réglages du disque, ou null si le fichier n'est pas du JSON exploitable, auquel cas
+// settings.json est du JSONC : VS Code y tolère les commentaires `//` et `/* */`, et une
+// virgule traînante avant `}`/`]`. Retire les uns et les autres hors des chaînes — un
+// commentaire ou une virgule dans une valeur de réglage ne doit pas être touché — pour
+// rendre le texte exploitable par JSON.parse.
+function retirerJsonc(texte) {
+  return String(texte)
+    .replace(/"(?:[^"\\]|\\.)*"|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, (m) => (m.charAt(0) === '"' ? m : ''))
+    .replace(/,(\s*[}\]])/g, '$1');
+}
+
+// Réglages du disque, ou null si le fichier n'est pas du JSON(C) exploitable, auquel cas
 // l'appelant s'arrête sans rien écraser.
 function lireReglages(fichier) {
   if (!fs.existsSync(fichier)) { return {}; }
   try {
-    const lu = JSON.parse(String(fs.readFileSync(fichier, 'utf8')).replace(/^﻿/, ''));
+    const brut = String(fs.readFileSync(fichier, 'utf8')).replace(/^﻿/, '');
+    const lu = JSON.parse(retirerJsonc(brut));
     if (lu && typeof lu === 'object' && !Array.isArray(lu)) { return lu; }
     return null;
   } catch (e) { return null; }
@@ -75,7 +86,11 @@ function appliquerVerrou(racine, verrouillee) {
 
 function verrouPose(racine) {
   const valeurs = lireReglages(cheminsVerrou(racine).fichier);
-  if (!valeurs) { return false; }
+  // Fichier illisible (JSON cassé, synchro interrompue) : `lireReglages` rend null, à
+  // distinguer du fichier absent (`{}`, un numéro qui n'a jamais été verrouillé). Dans le
+  // doute, mieux vaut se supposer verrouillé qu'affirmer à tort le contraire — la lecture
+  // seule protégerait alors moins qu'annoncé, en silence.
+  if (valeurs === null) { return true; }
   const inc = valeurs['files.readonlyInclude'];
   return !!(inc && inc['**'] === true);
 }

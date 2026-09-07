@@ -4,6 +4,18 @@
   const vscodeApi = acquireVsCodeApi();
   let recu = false;
   const zones = document.getElementById('zones');
+
+  // Zone d'état pour les écritures ratées (reglerOjs/reglerBiblio) : sans elle, l'échec ne
+  // se voyait qu'au message d'erreur de VS Code, et le panneau restait verrouillé (enVol)
+  // pour tout enregistrement automatique suivant.
+  const zoneMessage = document.createElement('p');
+  zoneMessage.className = 'szh-notif szh-notif--danger szh-notif--discret';
+  zoneMessage.hidden = true;
+  zones.appendChild(zoneMessage);
+  function afficherErreur(message) {
+    zoneMessage.textContent = String(message || '');
+    zoneMessage.hidden = false;
+  }
   const GROUPES = [
     { cle: 'theme', legende: TXT.theme, options: [['systeme', TXT.themeSysteme], ['clair', TXT.themeClair], ['sombre', TXT.themeSombre]] },
     { cle: 'zoom', legende: TXT.zoom, options: [['0', TXT.zoomNormal], ['1', TXT.zoomGrand], ['2', TXT.zoomTresGrand]] },
@@ -30,7 +42,7 @@
         radio.name = g.cle;
         radio.value = valeur;
         radio.addEventListener('change', function () {
-          vscodeApi.postMessage({ type: 'regler', cle: g.cle, valeur: valeur });
+          vscodeApi.postMessage({ type: SZH.MSG.REGLER, cle: g.cle, valeur: valeur });
         });
         l.appendChild(radio);
         l.appendChild(document.createTextNode(libelle));
@@ -79,7 +91,7 @@
 
   // ---- Export OJS -----------------------------------------------------------------
   //
-  // OJS apparie le genre de fichier, le groupe d'auteur et les rubriques PAR NOM à
+  // OJS apparie le genre de fichier, le groupe d'auteur et les rubriques par nom à
   // l'import : un intitulé approximatif crée un doublon ou range l'article ailleurs. Ce
   // bloc est la seule façon de corriger un intitulé, ou d'ajouter une rubrique, sans
   // republier l'extension. Tout arrive par postMessage — la page ne connaît ni les
@@ -160,7 +172,9 @@
       etiquette.textContent = champ.libelle + (champ.requis ? ' *' : '');
       g.appendChild(etiquette);
       for (const loc of ojs.locales) {
-        g.appendChild(champTexte(ojs.config.revues[loc][champ.cle],
+        // Une revue absente de la configuration reçue (poste pas à jour, champ ajouté
+        // depuis) se lit vide plutôt que de faire lever tout le panneau.
+        g.appendChild(champTexte((ojs.config.revues[loc] || {})[champ.cle],
           champ.libelle + ' — ' + ojs.revues[loc], { revue: loc, champ: champ.cle }));
       }
     }
@@ -302,6 +316,9 @@
     const revues = {};
     for (const loc of ojs.locales) { revues[loc] = {}; }
     for (const champ of ojsZone.querySelectorAll('[data-champ]')) {
+      // Un champ dont le data-revue ne correspond plus à une locale connue (config
+      // rechargée entre-temps) est ignoré plutôt que de faire échouer toute la collecte.
+      if (!revues[champ.dataset.revue]) { continue; }
       revues[champ.dataset.revue][champ.dataset.champ] = champ.value.trim();
     }
     const types = {};
@@ -322,7 +339,7 @@
     estModifie: function () { return ojsModifie; },
     enregistrer: function (autoEcriture) {
       ojsModifie = false;
-      vscodeApi.postMessage({ type: 'reglerOjs', ojs: collecter(), auto: autoEcriture });
+      vscodeApi.postMessage({ type: SZH.MSG.REGLER_OJS, ojs: collecter(), auto: autoEcriture });
     }
   });
 
@@ -373,6 +390,8 @@
     const titres = {};
     for (const r of biblio.revues) { titres[r.cle] = {}; }
     for (const champ of biblioZone.querySelectorAll('[data-biblio-revue]')) {
+      // Même garde que collecter() : une revue disparue entre-temps est ignorée.
+      if (!titres[champ.dataset.biblioRevue]) { continue; }
       titres[champ.dataset.biblioRevue][champ.dataset.biblioLangue] = champ.value.trim();
     }
     return titres;
@@ -382,7 +401,7 @@
     estModifie: function () { return biblioModifie; },
     enregistrer: function (autoEcriture) {
       biblioModifie = false;
-      vscodeApi.postMessage({ type: 'reglerBiblio', titres: collecterBiblio(), auto: autoEcriture });
+      vscodeApi.postMessage({ type: SZH.MSG.REGLER_BIBLIO, titres: collecterBiblio(), auto: autoEcriture });
     }
   });
 
@@ -392,11 +411,18 @@
     recu = true;
     // Un accusé nomme son bloc : sans cela, l'accusé de l'un confirmerait l'écriture en vol
     // de l'autre.
-    if (msg.type === 'enregistre') {
+    if (msg.type === SZH.MSG.ENREGISTRE) {
       if (msg.bloc === 'biblio') { autoBiblio.confirme(); } else { auto.confirme(); }
       return;
     }
-    if (msg.type !== 'valeurs') { return; }
+    // Une écriture ratée doit relâcher le verrou de l'auto-enregistrement (enVol) autant
+    // qu'un succès : sinon plus rien ne s'enregistre jamais après le premier échec.
+    if (msg.type === SZH.MSG.ERREUR) {
+      if (msg.bloc === 'biblio') { autoBiblio.confirme(); } else { auto.confirme(); }
+      afficherErreur(msg.message);
+      return;
+    }
+    if (msg.type !== SZH.MSG.VALEURS) { return; }
     cocher(msg.valeurs || {});
     if (msg.auteursOjs) { rendreAuteursOjs(msg.auteursOjs); }
     // Une saisie en cours ne se fait pas écraser par un renvoi de valeurs : le panneau

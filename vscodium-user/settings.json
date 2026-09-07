@@ -45,7 +45,7 @@
   // ---- Build automatique à la sauvegarde ----
   // Régénère out/<article>/ par la tâche « Aperçu / Export PDF » de tasks.json.
   "triggerTaskOnSave.tasks": {
-    "Aperçu / Export PDF": ["**/*.md", "**/*.css", "**/ausgabe.yaml"]
+    "Aperçu / Export PDF": ["**/*.md", "**/*.css", "**/ausgabe.yaml", "**/buch.yaml"]
   },
   "triggerTaskOnSave.restart": true,           // sauvegardes rapprochées : on relance
   "triggerTaskOnSave.showStatusBarToggle": true,

@@ -1,7 +1,4 @@
 /* Vue d'ensemble d'une section : la barre de commandes, puis une ligne par élément. La
    liste et ses cartes viennent du fragment partagé _liste.css, le reste du socle
-   (_design.css) ; il ne reste ici que le cadre de la page. */
-body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
-  line-height: var(--interligne); color: var(--encre); background: var(--fond);
-  padding: var(--e4) var(--e5) var(--e7); max-width: 60rem; }
-h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
+   (_design.css : body/h1 §0, largeur par défaut 52rem) ; il ne reste ici que la largeur. */
+body { --page-max: 60rem; }

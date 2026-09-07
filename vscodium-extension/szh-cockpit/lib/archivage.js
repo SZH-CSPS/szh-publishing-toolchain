@@ -1,9 +1,6 @@
 ﻿// Cycle de vie d'un numéro : archivage, version du logiciel installée, emplacement des revues.
-//
-// Ce module ignore tout de l'arborescence SharePoint : le déplacement d'un dossier de
-// revue est délégué à windows/archive-revue.ps1, seul à calculer les emplacements et seul
-// capable de déplacer un dossier que VSCodium tient ouvert. Les chemins n'ont ainsi
-// qu'une source, côté PowerShell, partagée avec le lanceur « Revues SZH ».
+// Le déplacement d'un dossier de revue est délégué à windows/archive-revue.ps1, seul à
+// calculer les emplacements et à savoir déplacer un dossier que VSCodium tient ouvert.
 'use strict';
 
 const fs = require('fs');
@@ -93,22 +90,42 @@ function lancerChoixVersion() {
 
 const CONFIG = path.join(BASE_SZH, 'config.json');
 
+// Le fichier réellement lu et écrit : celui du poste, sauf override par SZH_CONFIG_OJS —
+// la seule variable de surcharge de tout le cockpit (déjà celle qu'utilisent les tests :
+// export-ojs.test.js, doi-ojs.test.js, date-numero.test.js, licence.test.js), pour qu'un
+// test ne touche jamais C:\ProgramData\SZH. Une fonction, jamais une constante : elle doit
+// voir un override posé après le chargement du module (`process.env.SZH_CONFIG_OJS = …`
+// puis `require`), comme le fait chaque fichier de test ci-dessus.
+function cheminConfigPoste() {
+  const surcharge = String(process.env.SZH_CONFIG_OJS || '').trim();
+  return surcharge || CONFIG;
+}
+
 // BOM retiré avant l'analyse : d'anciens config.json en portent un et JSON.parse le
 // refuse, ce qui ferait retomber devMode sur son défaut sans rien dire.
 function lireConfigPoste() {
-  try { return JSON.parse(String(fs.readFileSync(CONFIG, 'utf8')).replace(/^﻿/, '')); }
+  try { return JSON.parse(String(fs.readFileSync(cheminConfigPoste(), 'utf8')).replace(/^﻿/, '')); }
   catch (e) { return null; }
 }
 
-// Écrit config.json tel qu'on le lui donne. Les modules qui y rangent un réglage de revue
-// — l'emplacement des revues, la configuration OJS, les tâches par article — passent par
-// ces deux fonctions : un seul chemin, un seul BOM à retirer, et le fichier garde ce que
-// les autres y ont mis. Rend null, ou le message de l'échec.
-function ecrireConfigPoste(cfg) {
+// Lecture-modification-écriture en un seul endroit, atomique — le point de passage unique
+// de tout ce qui écrit dans config.json (l'emplacement des revues, la configuration OJS,
+// les mails de traduction…). `fn` reçoit l'objet lu (jamais null : {} si le fichier est
+// absent ou illisible) et rend l'objet à écrire ; null/undefined annule l'écriture. Deux
+// écritures successives, chacune ne connaissant qu'un bloc, ne s'écrasent donc jamais
+// l'une l'autre — la lecture qui précède l'écriture est toujours fraîche.
+//
+// Forme historique gardée : `fn` peut aussi être l'objet à écrire directement (extension.js
+// l'appelle encore ainsi à trois endroits, la fusion déjà faite par l'appelant).
+function ecrireConfigPoste(fn) {
   try {
+    const avant = lireConfigPoste() || {};
+    const apres = typeof fn === 'function' ? fn(avant) : fn;
+    if (apres === undefined || apres === null) { return null; }
     // Atomique : config.json porte l'emplacement des revues et la configuration OJS, et
     // un fichier à moitié écrit rendrait le poste illisible pour tous ses lecteurs.
-    ecrireAtomique(CONFIG, JSON.stringify(cfg && typeof cfg === 'object' ? cfg : {}, null, 2) + '\n');
+    ecrireAtomique(cheminConfigPoste(),
+      JSON.stringify(typeof apres === 'object' ? apres : {}, null, 2) + '\n');
     return null;
   } catch (e) { return String((e && e.message) || e); }
 }
@@ -218,11 +235,7 @@ function configAvecEmplacement(cfg, emplacement) {
 }
 
 function ecrireEmplacementRevues(emplacement) {
-  try {
-    const cfg = configAvecEmplacement(lireConfigPoste(), emplacement);
-    fs.writeFileSync(CONFIG, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
-    return null;
-  } catch (e) { return String((e && e.message) || e); }
+  return ecrireConfigPoste((avant) => configAvecEmplacement(avant, emplacement));
 }
 
 // Noms d'avant, gardés pour l'hôte et ses réglages : « mode développeur » n'était que le nom
@@ -237,7 +250,7 @@ function ecrireModeDeveloppeur(actif) {
 
 module.exports = {
   BASE_SZH, TOOLKIT, CONFIG, CONFIG_POSTE: CONFIG, SCRIPT_ARCHIVAGE, SCRIPT_LANCEUR,
-  lireConfigPoste, ecrireConfigPoste, FORME_MAIL,
+  cheminConfigPoste, lireConfigPoste, ecrireConfigPoste, FORME_MAIL,
   MAILS_TRADUCTION, MAIL_TRADUCTION_DEFAUT, choisirAdresseMail, adresseMailTraduction,
   EMPLACEMENT_TEST, EMPLACEMENT_PRODUCTION, normaliserBooleenConfig,
   resoudreEmplacementRevues, lireEmplacementRevues, configAvecEmplacement,

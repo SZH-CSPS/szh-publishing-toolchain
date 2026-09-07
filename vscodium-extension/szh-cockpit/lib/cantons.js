@@ -1,23 +1,23 @@
 // Les cantons suisses, et la Confédération — la liste fermée du champ `canton` d'une fiche
 // d'intervention parlementaire (lib/ressources.js, TYPES.intervention).
 //
-// Demande de Robin (02.09.2026) : « Canton = liste déroulante, par ordre alphabétique, nom
-// complet + abréviation entre parenthèses ; le rendu met juste l'abréviation. » D'où le
+// Le formulaire montre une liste déroulante, par ordre alphabétique, nom complet et
+// abréviation entre parenthèses ; le rendu, lui, ne garde que l'abréviation. D'où le
 // partage des rôles :
 //
-//   ce qui s'AFFICHE dans le formulaire  « Bâle-Campagne (BL) »   <- optionsCanton()
-//   ce qui s'ÉCRIT dans le .md           canton="BL"
-//   ce qui s'IMPRIME dans le PDF         BL                       <- szh-ressource.lua, tel quel
+//   ce qui s'affiche dans le formulaire  « Bâle-Campagne (BL) »   <- optionsCanton()
+//   ce qui s'écrit dans le .md           canton="BL"
+//   ce qui s'imprime dans le PDF         BL                       <- szh-ressource.lua, tel quel
 //
-// C'est le CODE qui est stocké, jamais le nom : deux caractères stables, identiques dans
+// C'est le code qui est stocké, jamais le nom : deux caractères stables, identiques dans
 // les deux langues, que le filtre Lua n'a donc aucune table à traduire pour imprimer — il
 // écrit l'attribut tel qu'il le lit, et ce fichier n'a pas de jumeau côté pipeline.
 //
-// Conséquence sur le TRI des fiches d'intervention, qui se rangent par canton
-// (lib/ressources.js, CLE_TRI) : elles se rangent donc par CODE — AG, AI, AR, BE, BL, BS,
+// Conséquence sur le tri des fiches d'intervention, qui se rangent par canton
+// (lib/ressources.js, CLE_TRI) : elles se rangent donc par code — AG, AI, AR, BE, BL, BS,
 // CH, FR, GE… C'est l'ordre officiel des cantons, celui de tous les documents fédéraux, et
 // il ne dépend pas de la langue ; l'ordre alphabétique demandé pour la liste déroulante,
-// lui, ne vaut que pour la SAISIE, où l'on cherche « Genève » et non « GE ».
+// lui, ne vaut que pour la saisie, où l'on cherche « Genève » et non « GE ».
 //
 // La Confédération (code CH) est dans la liste et ce n'est pas une erreur : la rubrique des
 // interventions parlementaires relève aussi bien les motions et postulats fédéraux que les
@@ -75,8 +75,8 @@ function nomCanton(code, langue) {
 }
 
 // La liste déroulante, prête pour le formulaire : [{ valeur, libelle }], rangée par ordre
-// alphabétique du NOM dans la langue de l'interface — « Bâle-Campagne » avant « Berne », ce
-// qu'un tri par octets ne ferait pas. Le libellé porte le nom ET le code, parce que c'est le
+// alphabétique du nom dans la langue de l'interface — « Bâle-Campagne » avant « Berne », ce
+// qu'un tri par octets ne ferait pas. Le libellé porte le nom et le code, parce que c'est le
 // code qui s'imprimera : le rédacteur doit le voir au moment où il choisit.
 function optionsCanton(langue) {
   const l = langueSaine(langue);

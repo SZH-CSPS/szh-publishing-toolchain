@@ -17,6 +17,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { ouvrir, libellesHote, chargerAvecVscodeFactice } = require('./dom-minimal');
+const { sourceExtensionEtLib } = require('./hote-factice');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
@@ -54,7 +55,7 @@ test('métadonnées des articles : une carte remplie par article', () => {
   const page = ouvrir({
     racine: RACINE, page: 'metadata-articles',
     cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
-    jsPartage: ['_auteurs.js', '_fiches.js'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
     txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
   });
   // Les objets viennent d'un autre realm (vm) : on compare les types, pas les prototypes.
@@ -90,6 +91,48 @@ test('métadonnées des articles : une carte remplie par article', () => {
   }
 });
 
+// Point 6 (lot câblage hôte) : SZH.annoncerPret pose un jeton dans « pret », que ce test
+// récupère dans page.messages[0] comme le ferait l'hôte réel ; deux « valeurs » qui le
+// recopient à l'identique (l'aller-retour lent qui fait répondre l'hôte deux fois à
+// « pret ») ne doivent reconstruire la page qu'une fois — sauf `rechargement: true`, qui
+// passe toujours.
+test('métadonnées des articles : deux « valeurs » avec le même jeton ne reconstruisent qu’une fois', () => {
+  const page = ouvrir({
+    racine: RACINE, page: 'metadata-articles',
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+  });
+  const requete = page.messages[0] && page.messages[0].requete;
+  assert.ok(requete, 'SZH.annoncerPret ne pose pas de jeton dans le message « pret »');
+
+  const carte = (titre) => {
+    const valeurs = analyserMeta('');
+    valeurs.title = { fr: titre };
+    return [{ slug: 'a', valeurs: valeurs }];
+  };
+  const envoyerValeurs = (titre, extra) => page.envoyer(Object.assign({
+    type: 'valeurs', requete: requete, articles: carte(titre),
+    types: TYPES, langue: 'fr', licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: null
+  }, extra || {}));
+
+  envoyerValeurs('Premier titre');
+  assert.ok(page.valeurs().indexOf('Premier titre') !== -1, 'le premier rendu n’a pas eu lieu');
+
+  // Doublon de la réponse à « pret », même jeton : ne doit rien reconstruire.
+  envoyerValeurs('Second titre (ne doit jamais s’afficher)');
+  const apresDoublon = page.valeurs();
+  assert.ok(apresDoublon.indexOf('Premier titre') !== -1,
+    'le premier rendu a disparu : un doublon au jeton déjà consommé a reconstruit la page');
+  assert.ok(apresDoublon.indexOf('Second titre (ne doit jamais s’afficher)') === -1,
+    'un « valeurs » au jeton déjà consommé a quand même reconstruit la page');
+
+  // Rechargement forcé (fiche périmée) : passe même sur un jeton déjà vu.
+  envoyerValeurs('Troisième titre, rechargement forcé', { rechargement: true });
+  assert.ok(page.valeurs().indexOf('Troisième titre, rechargement forcé') !== -1,
+    'rechargement: true n’a pas passé outre le jeton déjà consommé');
+});
+
 test('métadonnées : le DOI est verrouillé sur le calculé, et l’échappatoire passe par l’hôte', () => {
   // Trois cartes, trois états : une fiche neuve (verrouillée sur le calculé), un héritage
   // (doi déjà dans la fiche : mode manuel d'office, rien ne se perd), un article dont le
@@ -103,7 +146,7 @@ test('métadonnées : le DOI est verrouillé sur le calculé, et l’échappatoi
   const page = ouvrir({
     racine: RACINE, page: 'metadata-articles',
     cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
-    jsPartage: ['_auteurs.js', '_fiches.js'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
     txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
   });
   page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr',
@@ -157,7 +200,7 @@ function pageFiches(articles, langueNumero) {
   const page = ouvrir({
     racine: RACINE, page: 'metadata-articles',
     cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
-    jsPartage: ['_auteurs.js', '_fiches.js'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
     txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
   });
   page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: langueNumero,
@@ -316,7 +359,7 @@ test('vérification de l’import : les mêmes cartes, badges et section des ima
   const page = ouvrir({
     racine: RACINE, page: 'import-verif',
     cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
-    jsPartage: ['_auteurs.js', '_fiches.js'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
     txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlImportVerif'])
   });
   page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr',
@@ -355,7 +398,7 @@ const MEDIAS_TXT = () => libellesHote(RACINE, ['textesMedias', 'textesAuteur']);
 function pageMedias(txt, focus) {
   const page = ouvrir({
     racine: RACINE, page: 'medias-article',
-    cssPartage: ['_design.css', '_auteurs.css'], jsPartage: ['_auteurs.js'], txt: txt
+    cssPartage: ['_design.css', '_auteurs.css'], jsPartage: ['_messages.js', '_auteurs.js'], txt: txt
   });
   const media = (relatif, o) => Object.assign({
     relatif: relatif, description: '2000 × 620 · 5 Ko', apercu: null,
@@ -426,9 +469,9 @@ test('médias : une carte par figure, tout replié sauf les aperçus et l’ajou
     .every((d) => d.closest('.media-form') === null),
     'la zone d’ajout est enfermée dans un formulaire replié : on ne la verrait jamais');
   // « Remplacer cette image » n'apparaît qu'au dépliement : elle vit DANS le formulaire.
-  assert.strictEqual(page.compter('.media-form .depot'), 5,
+  assert.strictEqual(page.compter('.media-form .szh-depot'), 5,
     '« Remplacer cette image » doit vivre dans le formulaire de chaque image');
-  assert.strictEqual(page.compter('.depot'), 8, 'zones de dépôt attendues : 5 remplacements + 3 ajouts');
+  assert.strictEqual(page.compter('.szh-depot'), 8, 'zones de dépôt attendues : 5 remplacements + 3 ajouts');
   // L'accordéon du groupe n'existe que pour la grille, et il est replié.
   assert.strictEqual(page.compter('.figure-groupe'), 1, 'accordéon de groupe attendu sur la seule grille');
   assert.strictEqual(page.compter('.groupe-corps'), 1);
@@ -742,7 +785,8 @@ test('médias : une image retirée emporte sa vignette, son formulaire et sa car
 // depuis sa liste de clés, relue dans extension.js — comme libellesHote, pour parler
 // exactement la langue de l'hôte sans recopier une liste qui divergerait.
 function libellesTable() {
-  const src = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
+  // Concaténé à lib/ : préalable au découpage d'extension.js, voir hote-factice.js.
+  const src = sourceExtensionEtLib(COCKPIT);
   const i = src.indexOf('function textesTable');
   assert.notStrictEqual(i, -1, 'fonction de libellés introuvable : textesTable');
   const bloc = src.slice(i, src.indexOf('\n}', i));
@@ -756,7 +800,9 @@ function libellesTable() {
 test('éditeur de tableau : grille, champs et texte d’aide de la description', () => {
   const { analyserTable, disposition } =
     chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'table-model.js'));
-  const page = ouvrir({ racine: RACINE, page: 'table-editor', cssPartage: ['_design.css'] });
+  const page = ouvrir({
+    racine: RACINE, page: 'table-editor', cssPartage: ['_design.css'], jsPartage: ['_messages.js']
+  });
   assert.deepStrictEqual(page.messages.map((m) => m.type), ['pret'], 'la page ne s’annonce pas');
   const modele = analyserTable(
     '<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>');
@@ -784,7 +830,9 @@ test('éditeur de tableau : grille, champs et texte d’aide de la description',
 // On rejoue le geste entier : menu, libellé chiffré, opération postée, grille rechargée.
 test('éditeur de tableau : la 2e ligne se définit en en-tête depuis son clic droit', () => {
   const table = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'table-model.js'));
-  const page = ouvrir({ racine: RACINE, page: 'table-editor', cssPartage: ['_design.css'] });
+  const page = ouvrir({
+    racine: RACINE, page: 'table-editor', cssPartage: ['_design.css'], jsPartage: ['_messages.js']
+  });
   let modele = table.analyserTable('<table><tr><td colspan="3">Identité</td></tr>'
     + '<tr><td>Nom</td><td>Prénom</td><td>ORCID</td></tr>'
     + '<tr><td>a</td><td>b</td><td>c</td></tr></table>');
@@ -816,7 +864,9 @@ test('éditeur de tableau : la 2e ligne se définit en en-tête depuis son clic 
 // l'hôte est rejoué entre les deux pour vérifier l'aller complet menu -> modèle -> grille.
 test('éditeur de tableau : le clic droit pose et retire un titre de section', () => {
   const table = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'table-model.js'));
-  const page = ouvrir({ racine: RACINE, page: 'table-editor', cssPartage: ['_design.css'] });
+  const page = ouvrir({
+    racine: RACINE, page: 'table-editor', cssPartage: ['_design.css'], jsPartage: ['_messages.js']
+  });
   let modele = table.analyserTable('<table><tr><th>P1</th><th>P2</th></tr>'
     + '<tr><td>a1</td><td>b1</td></tr>'
     + '<tr><td>Suite 2026</td><td></td></tr>'
@@ -855,7 +905,9 @@ test('éditeur de tableau : le clic droit pose et retire un titre de section', (
 // de l'éditeur et Excel savent relire.
 test('éditeur de tableau : Ctrl+C copie la cellule, ou la plage en TSV', () => {
   const table = chargerAvecVscodeFactice(path.join(COCKPIT, 'lib', 'table-model.js'));
-  const page = ouvrir({ racine: RACINE, page: 'table-editor', cssPartage: ['_design.css'] });
+  const page = ouvrir({
+    racine: RACINE, page: 'table-editor', cssPartage: ['_design.css'], jsPartage: ['_messages.js']
+  });
   const modele = table.analyserTable('<table><tr><td>Alpha</td><td><strong>Beta</strong></td></tr>'
     + '<tr><td>Gamma</td><td>Delta</td></tr></table>');
   page.envoyer({ type: 'charger', modele: modele, disposition: table.disposition(modele),
@@ -887,7 +939,7 @@ function pageAvecModaleAuteur() {
   const page = ouvrir({
     racine: RACINE, page: 'metadata-articles',
     cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
-    jsPartage: ['_auteurs.js', '_fiches.js'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
     txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
   });
   page.envoyer({ type: 'valeurs', articles: [{ slug: '01-essai', valeurs: analyserMeta('') }],
@@ -916,7 +968,7 @@ function taper(champ, texte) {
 
 // Le texte des suggestions, dans l'ordre affiché, et la part mise en gras de chacune.
 function suggestions(page) {
-  return page.document.body.querySelectorAll('.auteur-sugg').map((b) => ({
+  return page.document.body.querySelectorAll('.szh-sugg-item').map((b) => ({
     texte: b.textContent,
     gras: b.enfants.filter((e) => e.balise === 'strong').map((e) => e.textContent).join('|')
   }));
@@ -941,52 +993,52 @@ test('modale auteur : suggestions à la frappe, clavier et clic', () => {
 
   // Moins de deux caractères : rien. Deux : la liste, filtrée sans casse ni accents.
   taper(champs.nom, 'm');
-  assert.strictEqual(page.compterPage('.auteur-sugg'), 0, 'suggestion sur un seul caractère');
+  assert.strictEqual(page.compterPage('.szh-sugg-item'), 0, 'suggestion sur un seul caractère');
   taper(champs.nom, 'mor');
-  assert.strictEqual(page.compterPage('.auteur-sugg'), 1);
+  assert.strictEqual(page.compterPage('.szh-sugg-item'), 1);
   assert.strictEqual(suggestions(page)[0].texte, 'Robin Morand');
   // « nunez » sans accents trouve « Núñez ».
   taper(champs.nom, 'nunez');
-  assert.strictEqual(page.compterPage('.auteur-sugg'), 1);
+  assert.strictEqual(page.compterPage('.szh-sugg-item'), 1);
   // Le début de CHAQUE MOT compte : sans cela « wilde » ne trouverait pas « Wood de Wilde »,
   // et nos particules — « de », « von », « van » — rendraient la moitié des noms
   // introuvables autrement qu'en tapant la particule.
   taper(champs.nom, 'wilde');
-  assert.strictEqual(page.compterPage('.auteur-sugg'), 1, 'le début de mot ne compte pas');
+  assert.strictEqual(page.compterPage('.szh-sugg-item'), 1, 'le début de mot ne compte pas');
   // La saisie de plusieurs mots cherche à travers prénom ET nom.
   taper(champs.nom, 'hilary wood');
-  assert.strictEqual(page.compterPage('.auteur-sugg'), 1, 'l’ordre « prénom nom » ne trouve pas');
+  assert.strictEqual(page.compterPage('.szh-sugg-item'), 1, 'l’ordre « prénom nom » ne trouve pas');
   // Aucune correspondance : la boîte disparaît, pas d'UI parasite.
   taper(champs.nom, 'zzzz');
-  assert.strictEqual(page.compterPage('.auteur-sugg'), 0);
-  assert.strictEqual(page.compterPage('.auteur-suggestions'), 0, 'boîte vide restée accrochée');
+  assert.strictEqual(page.compterPage('.szh-sugg-item'), 0);
+  assert.strictEqual(page.compterPage('.szh-sugg'), 0, 'boîte vide restée accrochée');
 
   // Clavier : flèche pour armer, Entrée pour choisir.
   taper(champs.nom, 'mor');
   champs.nom.dispatchEvent({ type: 'keydown', key: 'ArrowDown' });
-  assert.strictEqual(page.compterPage('.auteur-sugg.actif'), 1, 'la flèche n’arme aucune ligne');
+  assert.strictEqual(page.compterPage('.szh-sugg-item.actif'), 1, 'la flèche n’arme aucune ligne');
   champs.nom.dispatchEvent({ type: 'keydown', key: 'Enter' });
   assert.strictEqual(champs.prenom.value, 'Robin');
   assert.strictEqual(champs.nom.value, 'Morand');
-  assert.strictEqual(page.compterPage('.auteur-sugg'), 0, 'liste restée ouverte après le choix');
+  assert.strictEqual(page.compterPage('.szh-sugg-item'), 0, 'liste restée ouverte après le choix');
 
   // Clic : la frappe dans PRÉNOM suggère aussi, et le clic remplit les deux champs.
   taper(champs.prenom, 'hila');
-  assert.strictEqual(page.compterPage('.auteur-sugg'), 1);
-  page.document.body.querySelector('.auteur-sugg').click();
+  assert.strictEqual(page.compterPage('.szh-sugg-item'), 1);
+  page.document.body.querySelector('.szh-sugg-item').click();
   assert.strictEqual(champs.prenom.value, 'Hilary');
   assert.strictEqual(champs.nom.value, 'Wood de Wilde');
 
   // Échap ferme la LISTE et coupe la propagation : la modale, elle, reste ouverte.
   taper(champs.nom, 'mor');
-  assert.strictEqual(page.compterPage('.auteur-sugg'), 1);
+  assert.strictEqual(page.compterPage('.szh-sugg-item'), 1);
   let propagationCoupee = false;
   champs.nom.dispatchEvent({ type: 'keydown', key: 'Escape',
     stopPropagation: () => { propagationCoupee = true; } });
-  assert.strictEqual(page.compterPage('.auteur-sugg'), 0, 'Échap n’a pas fermé la liste');
+  assert.strictEqual(page.compterPage('.szh-sugg-item'), 0, 'Échap n’a pas fermé la liste');
   assert.ok(propagationCoupee, 'Échap fermerait la modale entière avec la liste');
-  assert.strictEqual(page.compterPage('.voile-auteur')
-    - page.document.body.querySelectorAll('.voile-auteur').filter((v) => v.hidden).length,
+  assert.strictEqual(page.document.body.querySelectorAll('.szh-modale')
+    .filter((v) => v.classes.has('visible')).length,
     1, 'la modale ne devrait pas se fermer avec la liste');
 });
 
@@ -1007,13 +1059,13 @@ test('modale auteur : noms de famille d’abord, filet, puis prénoms — la par
   assert.deepStrictEqual(vues.map((v) => v.texte),
     ['Marc Fabre', 'Chloé Fasel', 'Anne Favre', 'Fabrice Morand', 'Fanny Blanc'],
     'les noms de famille doivent passer devant, chaque groupe dans l’alphabet');
-  assert.strictEqual(page.compterPage('.auteur-sugg-filet'), 1, 'le filet de séparation manque');
+  assert.strictEqual(page.compterPage('.szh-sugg-filet'), 1, 'le filet de séparation manque');
   // Le gras porte sur la part trouvée, et sur elle seule.
   assert.deepStrictEqual(vues.map((v) => v.gras), ['Fa', 'Fa', 'Fa', 'Fa', 'Fa']);
 
   // Un seul groupe : pas de filet orphelin.
   taper(champs.nom, 'blan');
-  assert.strictEqual(page.compterPage('.auteur-sugg-filet'), 0, 'filet posé sans second groupe');
+  assert.strictEqual(page.compterPage('.szh-sugg-filet'), 0, 'filet posé sans second groupe');
 });
 
 // Le gras se calcule sur le texte plié (sans accents) mais s'applique à l'original : les
@@ -1040,7 +1092,7 @@ test('modale auteur : une suggestion remplit le vide et n’efface aucune correc
   // Une fonction déjà corrigée à la main : la personne a changé de poste depuis.
   champs.fonction.value = 'Directrice';
   taper(champs.nom, 'ayer');
-  page.document.body.querySelector('.auteur-sugg').click();
+  page.document.body.querySelector('.szh-sugg-item').click();
   assert.strictEqual(champs.nom.value, 'Ayer');
   assert.strictEqual(champs.prenom.value, 'Géraldine');
   assert.strictEqual(champs.fonction.value, 'Directrice', 'la correction tapée a été écrasée');
@@ -1054,20 +1106,20 @@ test('modale auteur : sans liste reçue, aucune UI — et une liste difforme ne 
   const page = pageAvecModaleAuteur();
   const champs = ouvrirModaleAuteur(page);
   taper(champs.nom, 'morand');
-  assert.strictEqual(page.compterPage('.auteur-suggestions'), 0, 'UI parasite sans liste');
+  assert.strictEqual(page.compterPage('.szh-sugg'), 0, 'UI parasite sans liste');
   // Une liste hostile — entrées vides, types faux — est filtrée sans exception.
   page.envoyer({ type: 'auteurs-connus', auteurs: [
     null, {}, { prenom: '', nom: '' }, { prenom: 42, nom: ['x'] }, { prenom: ' Anne ', nom: ' Dupont ' }
   ] });
   taper(champs.nom, 'dupo');
-  assert.strictEqual(page.compterPage('.auteur-sugg'), 1, 'l’entrée valide devrait survivre au tri');
+  assert.strictEqual(page.compterPage('.szh-sugg-item'), 1, 'l’entrée valide devrait survivre au tri');
   assert.strictEqual(suggestions(page)[0].texte, 'Anne Dupont');
   // Dix suggestions au plus : une liste de trente homonymes ne fait pas un menu d'un mètre.
   const beaucoup = [];
   for (let i = 0; i < 30; i++) { beaucoup.push({ prenom: 'P' + i, nom: 'Morand' }); }
   page.envoyer({ type: 'auteurs-connus', auteurs: beaucoup });
   taper(champs.nom, 'morand');
-  assert.strictEqual(page.compterPage('.auteur-sugg'), 10, 'plafond de suggestions absent');
+  assert.strictEqual(page.compterPage('.szh-sugg-item'), 10, 'plafond de suggestions absent');
 });
 
 // ---- Le compteur de caractères du résumé (media/_fiches.js, seuilResume) ----
@@ -1102,7 +1154,7 @@ test('compteur du résumé : le seuil bascule de 750 à 700 au sixième mot-clé
   const page = ouvrir({
     racine: RACINE, page: 'metadata-articles',
     cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
-    jsPartage: ['_auteurs.js', '_fiches.js'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
     txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
   });
   page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr',
@@ -1214,7 +1266,8 @@ function configRubriques() {
 function pageDocumentation() {
   const txt = DOC_TXT();
   const page = ouvrir({
-    racine: RACINE, page: 'documentation', cssPartage: ['_design.css'], txt: txt
+    racine: RACINE, page: 'documentation', cssPartage: ['_design.css'],
+    jsPartage: ['_messages.js'], txt: txt
   });
   page.envoyer({
     type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
@@ -1267,7 +1320,7 @@ test('documentation : rien ne dépasse d’une carte repliée — lien et image 
   const fiche = page.conteneur().querySelectorAll('.doc-fiche')[0];
   const corps = fiche.querySelectorAll('.doc-corps')[0];
   assert.ok(corps, 'la carte devrait avoir un corps pliable');
-  for (const classe of ['.doc-image', '.doc-depot', '.szh-champ']) {
+  for (const classe of ['.doc-image', '.szh-depot', '.szh-champ']) {
     assert.ok(corps.querySelectorAll(classe).length > 0, classe + ' devrait être DANS le corps');
     assert.strictEqual(fiche.querySelectorAll(classe).length,
       corps.querySelectorAll(classe).length,
@@ -1315,7 +1368,10 @@ test('documentation : le canton est une liste déroulante qui garde sa valeur', 
 
 test('documentation : une valeur hors liste n’est pas perdue au chargement', () => {
   const txt = DOC_TXT();
-  const page = ouvrir({ racine: RACINE, page: 'documentation', cssPartage: ['_design.css'], txt: txt });
+  const page = ouvrir({
+    racine: RACINE, page: 'documentation', cssPartage: ['_design.css'],
+    jsPartage: ['_messages.js'], txt: txt
+  });
   page.envoyer({
     type: 'charger', slug: 'documentation', accent: 'bleuacier', i18n: txt,
     typesConfig: configFiches(), typesRubrique: [], rubriques: [],
@@ -1417,4 +1473,25 @@ test('documentation : une fiche neuve s’ouvre aussitôt, et le sommaire suit',
   const marques = page.parId.sommaire.querySelectorAll('.doc-sommaire-marque').map((m) => m.textContent);
   assert.strictEqual(marques.filter((m) => m === '3').length, 1,
     'le sommaire doit compter la fiche neuve : ' + marques.join(', '));
+});
+
+test('traduction : le placeholder d’un mot-clé vide est dans la langue de l’interface, jamais l’anglais figé', () => {
+  const page = ouvrir({
+    racine: RACINE, page: 'traduction', cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
+    txt: libellesHote(RACINE, ['textesTraduction'])
+  });
+  assert.deepStrictEqual(page.messages.map((m) => m.type), ['pret'], 'la page ne s’annonce pas');
+  page.envoyer({
+    type: 'valeurs', slug: 'essai', langueSource: 'fr',
+    statuts: [{ valeur: 'pret-traduction', libelle: 'Prêt pour traduction' }],
+    groupes: [{
+      cle: 'motscles', groupe: 'motscles', libelle: 'Mots-clés', langue: 'de', langueSource: 'fr',
+      statut: 'pret-traduction',
+      champs: [{ champ: 'keywords', libelle: 'Mots-clés', paires: [{ source: 'diagnostic', cible: '' }] }]
+    }]
+  });
+  const input = page.parId.champs.querySelectorAll('input')[0];
+  assert.ok(input, 'le champ du mot-clé ne s’est pas rendu');
+  assert.strictEqual(input.placeholder, T('mc.aTraduire'));
+  assert.notStrictEqual(input.placeholder, 'TO BE TRANSLATED', 'la sentinelle anglaise ne doit jamais s’afficher');
 });

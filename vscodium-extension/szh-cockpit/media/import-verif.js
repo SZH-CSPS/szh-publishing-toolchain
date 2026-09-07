@@ -17,8 +17,9 @@
   const vscodeApi = acquireVsCodeApi();
   const etat = document.getElementById('etat');
   const conteneur = document.getElementById('cartes');
-  const TAILLE_MAX_IMAGE = 50 * 1024 * 1024;
-  const EXTENSIONS_IMAGE = ['png', 'jpg', 'jpeg', 'gif', 'svg'];
+  // Plus de plafond littéral ici : SZH.LIMITES.image (media/_commun.js), tenu à jour par
+  // le message « valeurs » de l'hôte (cartes.message, media/_fiches.js), lu au moment du
+  // dépôt — jamais mis en cache.
 
   // Identifiants des champs vides d'une carte, d'après ses valeurs et les langues que la
   // carte affiche (langue de l'article, langue de la revue, langues cochées). Fonction
@@ -127,22 +128,21 @@
 
   function envoyerImage(ligne, slug, relatif, f) {
     if (ligne.classList.contains('occupe')) { return; }
-    const ext = (String(f.name || '').match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
-    if (EXTENSIONS_IMAGE.indexOf(ext) === -1) { poserEtatImage(ligne, '⚠ ' + TXT.errImageFormat, true); return; }
-    if (f.size > TAILLE_MAX_IMAGE) { poserEtatImage(ligne, '⚠ ' + TXT.errImageTropVolumineuse, true); return; }
-    const lecteur = new FileReader();
-    lecteur.onload = function () {
-      const texte = String(lecteur.result || '');
-      const virgule = texte.indexOf(',');
-      if (virgule === -1) { poserEtatImage(ligne, '⚠ ' + TXT.errImageFormat, true); return; }
-      ligne.classList.add('occupe');               // levée par la réponse de l'hôte
-      poserEtatImage(ligne, '…');
-      vscodeApi.postMessage({
-        type: 'remplacer-image', slug: slug, relatif: relatif,
-        nomFichier: f.name, donneesBase64: texte.slice(virgule + 1)
-      });
-    };
-    lecteur.readAsDataURL(f);
+    SZH.lireBase64(f, {
+      extensions: SZH.LIMITES.image.extensions, maxi: SZH.LIMITES.image.maxi,
+      msgFormat: '⚠ ' + TXT.errImageFormat, msgPoids: '⚠ ' + TXT.errImageTropVolumineuse,
+      surLecture: function () {
+        ligne.classList.add('occupe');             // levée par la réponse de l'hôte
+        poserEtatImage(ligne, '…');
+      },
+      surErreur: function (message) { poserEtatImage(ligne, message, true); },
+      surDonnees: function (fichier, base64) {
+        vscodeApi.postMessage({
+          type: SZH.MSG.REMPLACER_IMAGE, slug: slug, relatif: relatif,
+          nomFichier: fichier.name, donneesBase64: base64
+        });
+      }
+    });
   }
 
   function ligneImage(slug, zone, image) {
@@ -161,40 +161,14 @@
     infos.appendChild(desc);
     const etatImage = document.createElement('span');
     etatImage.className = 'image-etat';
+    etatImage.setAttribute('role', 'alert');
     infos.appendChild(etatImage);
     ligne.appendChild(infos);
-    const depot = document.createElement('div');
-    depot.className = 'zone-image';
-    const consigne = document.createElement('span');
-    consigne.textContent = TXT.imageDeposer;
-    depot.appendChild(consigne);
-    const ou = document.createElement('span');
-    ou.className = 'ou';
-    ou.textContent = TXT.photoOu;
-    depot.appendChild(ou);
-    const choisir = document.createElement('button');
-    choisir.type = 'button';
-    choisir.textContent = TXT.photoChoisirFichier;
-    depot.appendChild(choisir);
-    const fichier = document.createElement('input');
-    fichier.type = 'file';
-    fichier.accept = '.png,.jpg,.jpeg,.gif,.svg';
-    fichier.hidden = true;
-    depot.appendChild(fichier);
-    choisir.addEventListener('click', function () { fichier.click(); });
-    fichier.addEventListener('change', function () {
-      if (fichier.files && fichier.files[0]) { envoyerImage(ligne, slug, image.relatif, fichier.files[0]); }
-      fichier.value = '';
+    SZH.construireDepot({
+      parent: ligne, libelle: TXT.imageDeposer, texteOu: TXT.photoOu,
+      extensions: SZH.LIMITES.image.extensions, texteChoisir: TXT.photoChoisirFichier,
+      surFichier: function (f) { envoyerImage(ligne, slug, image.relatif, f); }
     });
-    depot.addEventListener('dragover', function (e) { e.preventDefault(); depot.classList.add('survol'); });
-    depot.addEventListener('dragleave', function () { depot.classList.remove('survol'); });
-    depot.addEventListener('drop', function (e) {
-      e.preventDefault();
-      depot.classList.remove('survol');
-      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-      if (f) { envoyerImage(ligne, slug, image.relatif, f); }
-    });
-    ligne.appendChild(depot);
     zone.appendChild(ligne);
   }
 
@@ -232,7 +206,7 @@
   // enregistrées. On lui passe l'état modifié et les cartes concernées, pour qu'il puisse
   // enregistrer depuis sa propre boîte de dialogue.
   document.getElementById('fermer').addEventListener('click', function () {
-    vscodeApi.postMessage({ type: 'fermer', modifie: cartes.estModifie(), articles: cartes.modifiees() });
+    vscodeApi.postMessage({ type: SZH.MSG.FERMER, modifie: cartes.estModifie(), articles: cartes.modifiees() });
   });
 
   cartes.traductions(document.getElementById('traductions'));
@@ -244,20 +218,22 @@
     if (cartes.message(msg)) { return; }
     // La rangée visée est retrouvée par slug et chemin relatif ; une réponse pour une
     // rangée disparue est ignorée.
-    if (msg.type === 'image-remplacee' || msg.type === 'image-erreur' || msg.type === 'image-annulee') {
+    if (msg.type === SZH.MSG.IMAGE_REMPLACEE || msg.type === SZH.MSG.IMAGE_ERREUR || msg.type === SZH.MSG.IMAGE_ANNULEE) {
       const ligne = trouverLigneImage(String(msg.slug || ''), String(msg.relatif || ''));
       if (!ligne) { return; }
       ligne.classList.remove('occupe');
-      if (msg.type === 'image-remplacee') {
+      if (msg.type === SZH.MSG.IMAGE_REMPLACEE) {
         const desc = ligne.querySelector('.image-desc');
         if (desc && msg.description) { desc.textContent = msg.description; }
         poserEtatImage(ligne, TXT.imageRemplacee, false);
-      } else if (msg.type === 'image-erreur') {
+      } else if (msg.type === SZH.MSG.IMAGE_ERREUR) {
         poserEtatImage(ligne, '⚠ ' + (msg.message || '?'), true);
       } else {
         poserEtatImage(ligne, '');                 // annulé : zone simplement réactivée
       }
+      return;
     }
+    console.warn('vérification de l’import : type de message inconnu', msg.type);
   });
   SZH.annoncerPret(vscodeApi, function () { return recu; });
 })();

@@ -1,6 +1,6 @@
 (function () {
 'use strict';
-// Gestionnaire des médias d'un article : une carte par FIGURE — une image seule, ou toutes
+// Gestionnaire des médias d'un article : une carte par figure — une image seule, ou toutes
 // les images d'une même grille — repliée sur ses seuls aperçus. En pied, les portraits des
 // auteur·e·s, qui ne sont pas des figures : on n'y juge que la qualité, on y choisit la
 // version retenue, et on les remplace.
@@ -8,7 +8,7 @@
 // Ce que la disposition dit. Une figure ouverte est longue à parcourir, et la plupart du
 // temps on ne regarde qu'une image parmi d'autres : la carte reste donc courte par défaut,
 // réduite à la rangée d'aperçus et à l'ajout d'une image à côté. Cliquer sur un aperçu
-// déplie SON formulaire sous la rangée — jamais un formulaire par image empilé, jamais deux
+// déplie son formulaire sous la rangée — jamais un formulaire par image empilé, jamais deux
 // ouverts à la fois dans la même figure — et le marque des deux côtés : un filet d'accent
 // sur l'aperçu, et un autre sur le bord gauche du formulaire qu'il commande. Une figure de
 // plusieurs images porte en plus un accordéon, replié lui aussi : les réglages qui valent
@@ -56,12 +56,17 @@
 // version, description, apercu, qualite, rattache }.
 var api = acquireVsCodeApi();
 // Mêmes plafonds et mêmes formats que l'hôte, qui recontrôle tout : ici, c'est pour
-// répondre tout de suite plutôt que d'envoyer 50 Mo pour rien.
-var IMAGE = {
-  maxi: 50 * 1024 * 1024, extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg'],
-  format: 'errFormat', poids: 'errTropVolumineuse'
-};
+// répondre tout de suite plutôt que d'envoyer 50 Mo pour rien. Plus de littéral recopié
+// depuis lib/medias.js : SZH.LIMITES.image (media/_commun.js) porte le repli, et le
+// message « charger » de l'hôte (limites.imageMax/imageExtensions) le tient à jour —
+// recalculé à chaque chargement (voir plus bas, SZH.MSG.CHARGER).
+function imageDepot() {
+  return Object.assign({ format: 'errFormat', poids: 'errTropVolumineuse' }, SZH.LIMITES.image);
+}
+var IMAGE = imageDepot();
 var TXT = {}, ctl = {}, cartes = [], figures = [], portraits = [], dernierModifie = false;
+// Course pret/charger (SZH.jetonDejaTraite, _commun.js) : un jeton, un seul formulaire.
+var etatJeton = { jeton: null };
 // Les grilles de l'article, telles que l'hôte les a lues dans le .md, et ce qu'il permet
 // d'en faire. Rien n'est recalculé ici : les cartes portent l'indice de leur grille, la
 // disposition automatique est celle que le rendu choisira, et le formulaire ne fait que
@@ -71,26 +76,14 @@ var barre = document.getElementById('barre');
 var corps = document.getElementById('corps');
 var modale = null;
 
-function bouton(txt, fn, cls, titre) {
-  var b = document.createElement('button');
-  b.type = 'button';
-  b.textContent = txt;
-  b.className = 'szh-bouton' + (cls ? ' ' + cls : '');
-  if (titre) { b.title = titre; }
-  b.addEventListener('click', fn);
-  return b;
-}
-function boutonIcone(nom, titre, fn, cls) {
-  var b = document.createElement('button');
-  b.type = 'button';
-  b.className = 'szh-ico' + (cls ? ' ' + cls : '');
-  b.title = titre || '';
-  b.setAttribute('aria-label', titre || '');
-  b.appendChild(SZH.icone(nom));
-  b.addEventListener('click', fn);
-  return b;
-}
-function etat(msg) { if (ctl.etat) { ctl.etat.textContent = msg || ''; } }
+// bouton/boutonIcone/texte/ligne/remplir : identiques à documentation.js, partagées
+// depuis _commun.js — texte() y est déjà connu sous le nom SZH.poser.
+var bouton = SZH.bouton;
+var boutonIcone = SZH.boutonIcone;
+var texte = SZH.poser;
+var ligne = SZH.ligne;
+function remplir(cle, valeurs) { return SZH.remplir(TXT, cle, valeurs); }
+function etat(msg) { SZH.poserEtat(ctl.etat, msg); }
 // Écriture immédiate : cette vue n'a pas de carte d'article à enregistrer, et la fiche
 // d'auteur·e n'a donc nulle part où attendre. L'hôte confirme, ou dit pourquoi il refuse.
 var attenteAuteur = null;
@@ -104,25 +97,12 @@ function creerCtlAuteurs() {
     persister: function (fiche, auteur, fini) {
       attenteAuteur = { index: fiche.index, fini: fini };
       api.postMessage({
-        type: 'auteur-enregistrer', slug: fiche.slug, index: fiche.index, auteur: auteur,
+        type: SZH.MSG.AUTEUR_ENREGISTRER, slug: fiche.slug, index: fiche.index, auteur: auteur,
         // Témoin d'identité : l'hôte refuse d'écrire si ce rang ne porte plus cette photo.
         photoAttendue: (fiche.auteur || {}).photo || ''
       });
     }
   });
-}
-function texte(parent, balise, cls, contenu) {
-  var e = document.createElement(balise);
-  if (cls) { e.className = cls; }
-  if (contenu !== undefined && contenu !== null) { e.textContent = contenu; }
-  parent.appendChild(e);
-  return e;
-}
-function ligne(v) { return String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' ').trim(); }
-function remplir(cle, valeurs) {
-  var t = String(TXT[cle] || '');
-  for (var i = 0; i < (valeurs || []).length; i++) { t = t.split('{' + i + '}').join(String(valeurs[i])); }
-  return t;
 }
 
 // ---- Valeurs d'une carte ----
@@ -188,7 +168,7 @@ function messageAlerteAlt(c) {
   var manque = !decorative(c) && ligne(c.ctl.alt.value) === ''
     && (horsFigure(c) || legendeDe(c) === '');
   if (manque) { return TXT.altManquant || ''; }
-  // c.sansAlternative vient de l'hôte, qui a lu TOUTES les insertions : il tombe à
+  // c.sansAlternative vient de l'hôte, qui a lu toutes les insertions : il tombe à
   // l'enregistrement, qui les aligne sur les valeurs de la carte.
   if (c.sansAlternative) { return TXT.altDivergent || ''; }
   return '';
@@ -287,7 +267,7 @@ function majModifie() {
     ctl.indic.textContent = m ? '●' : '';
     ctl.indic.title = m ? (TXT.nonEnregistre || '') : '';
   }
-  if (m !== dernierModifie) { dernierModifie = m; api.postMessage({ type: 'modifie', modifie: m }); }
+  if (m !== dernierModifie) { dernierModifie = m; api.postMessage({ type: SZH.MSG.MODIFIE, modifie: m }); }
 }
 // Cartes à écrire : celles qui ont au moins une insertion dans le texte, seul endroit où
 // une légende et des crédits se rangent.
@@ -347,45 +327,42 @@ function poserEtatMedia(c, message, erreur) {
   if (!cible) { return; }
   for (var i = 0; i < (c.ctl.etatsMedia || []).length; i++) {
     c.ctl.etatsMedia[i].textContent = '';
-    c.ctl.etatsMedia[i].className = 'media-etat';
+    c.ctl.etatsMedia[i].className = 'szh-depot-etat';
   }
   cible.textContent = message || '';
-  cible.className = 'media-etat' + (erreur ? ' erreur' : '');
+  cible.className = 'szh-depot-etat' + (erreur ? ' erreur' : '');
 }
 
 // Lit le fichier déposé ou choisi et l'envoie à l'hôte, qui demande confirmation, garde
 // le nom du fichier cible et répond media-remplace / media-erreur / media-annulee.
-// Un seul geste de fichier à la fois PAR FIGURE : la classe .occupe va sur la carte de
-// figure entière, qui porte les deux zones de dépôt de tous ses membres.
+// Un seul geste de fichier à la fois par figure : la classe .occupe va sur la carte de
+// figure entière, qui porte les deux zones de dépôt de tous ses membres. La lecture et le
+// découpage base64 sont ceux de SZH.lireBase64 (_commun.js), communs aux cinq pages qui
+// déposent un fichier ; ce qui reste propre à cette carte, c'est le verrou « occupe » et
+// le message à construire.
 function envoyerFichier(c, f, typeMessage, cle, genre, extra, zone) {
   if (c.figure.element.classList.contains('occupe')) { return; }
   c.ctl.zoneActive = zone || null;                 // là où la réponse s'affichera
-  var ext = (String(f.name || '').match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
-  if (genre.extensions.indexOf(ext) === -1) { poserEtatMedia(c, '⚠ ' + (TXT[genre.format] || ''), true); return; }
-  if (f.size > genre.maxi) { poserEtatMedia(c, '⚠ ' + (TXT[genre.poids] || ''), true); return; }
-  // Marquée occupée avant la lecture, pas dans son rappel : deux dépôts rapprochés
-  // passeraient sinon tous les deux la garde et écriraient deux fois.
-  c.figure.element.classList.add('occupe');        // levée par la réponse de l'hôte
-  poserEtatMedia(c, '…');
-  var lecteur = new FileReader();
-  lecteur.onerror = function () {
-    c.figure.element.classList.remove('occupe');
-    poserEtatMedia(c, '⚠ ' + (TXT[genre.format] || ''), true);
-  };
-  lecteur.onload = function () {
-    var t = String(lecteur.result || '');
-    var virgule = t.indexOf(',');
-    if (virgule === -1) {
+  SZH.lireBase64(f, {
+    extensions: genre.extensions, maxi: genre.maxi,
+    msgFormat: '⚠ ' + (TXT[genre.format] || ''), msgPoids: '⚠ ' + (TXT[genre.poids] || ''),
+    surLecture: function () {
+      // Marquée occupée avant la lecture, pas dans son rappel : deux dépôts rapprochés
+      // passeraient sinon tous les deux la garde et écriraient deux fois.
+      c.figure.element.classList.add('occupe');    // levée par la réponse de l'hôte
+      poserEtatMedia(c, '…');
+    },
+    surErreur: function (message) {
       c.figure.element.classList.remove('occupe');
-      poserEtatMedia(c, '⚠ ' + (TXT[genre.format] || ''), true);
-      return;
+      poserEtatMedia(c, message, true);
+    },
+    surDonnees: function (fichier, base64) {
+      var msg = { type: typeMessage, nomFichier: fichier.name, donneesBase64: base64 };
+      msg[cle] = c.relatif !== undefined ? c.relatif : c.base;
+      if (extra) { for (var k in extra) { if (Object.prototype.hasOwnProperty.call(extra, k)) { msg[k] = extra[k]; } } }
+      api.postMessage(msg);
     }
-    var msg = { type: typeMessage, nomFichier: f.name, donneesBase64: t.slice(virgule + 1) };
-    msg[cle] = c.relatif !== undefined ? c.relatif : c.base;
-    if (extra) { for (var k in extra) { if (Object.prototype.hasOwnProperty.call(extra, k)) { msg[k] = extra[k]; } } }
-    api.postMessage(msg);
-  };
-  lecteur.readAsDataURL(f);
+  });
 }
 
 // Le dépôt vient juste sous l'image, après le verdict de qualité : on regarde le fichier,
@@ -394,48 +371,29 @@ function envoyerFichier(c, f, typeMessage, cle, genre, extra, zone) {
 // des champs au message au moment du dépôt — c'est par là qu'un « ajouter à côté » emporte
 // les saisies en cours, qu'une réécriture du .md écraserait sinon.
 function zoneDepot(parent, c, o) {
-  var d = texte(parent, 'div', 'depot');
-  if (o.tip) { d.title = o.tip; }
-  var titre = texte(d, 'span', 'depot-titre');
-  titre.appendChild(SZH.icone(o.icone || 'camera'));
-  texte(titre, 'span', null, o.libelle || '');
-  var envoyer = function (f) {
-    // Un dépôt sur une zone que son état refuse doit dire pourquoi, à cet endroit-là :
-    // l'infobulle du cadre ne se lit pas quand on vient de lâcher un fichier dessus.
-    var refus = o.refus ? o.refus() : '';
-    if (refus) {
-      c.ctl.zoneActive = etat;
-      poserEtatMedia(c, '⚠ ' + refus, true);
-      return;
+  var d = SZH.construireDepot({
+    parent: parent, tip: o.tip, icone: o.icone || 'camera', libelle: o.libelle || '',
+    extensions: o.genre.extensions, texteChoisir: TXT.choisirFichier || '',
+    surFichier: function (f) {
+      // Un dépôt sur une zone que son état refuse doit dire pourquoi, à cet endroit-là :
+      // l'infobulle du cadre ne se lit pas quand on vient de lâcher un fichier dessus.
+      var refus = o.refus ? o.refus() : '';
+      if (refus) {
+        c.ctl.zoneActive = d.etat;
+        poserEtatMedia(c, '⚠ ' + refus, true);
+        return;
+      }
+      envoyerFichier(c, f, o.type, o.cle, o.genre, o.extra ? o.extra() : null, d.etat);
     }
-    envoyerFichier(c, f, o.type, o.cle, o.genre, o.extra ? o.extra() : null, etat);
-  };
-  var choisir = bouton(TXT.choisirFichier || '', function () { fichier.click(); });
-  d.appendChild(choisir);
-  var fichier = document.createElement('input');
-  fichier.type = 'file';
-  fichier.accept = o.genre.extensions.map(function (e) { return '.' + e; }).join(',');
-  fichier.hidden = true;
-  d.appendChild(fichier);
-  fichier.addEventListener('change', function () {
-    if (fichier.files && fichier.files[0]) { envoyer(fichier.files[0]); }
-    fichier.value = '';
   });
-  d.addEventListener('dragover', function (e) { e.preventDefault(); d.classList.add('survol'); });
-  d.addEventListener('dragleave', function () { d.classList.remove('survol'); });
-  d.addEventListener('drop', function (e) {
-    e.preventDefault();
-    d.classList.remove('survol');
-    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) { envoyer(f); }
-  });
-  var etat = texte(d, 'span', 'media-etat');
   if (!c.ctl.etatsMedia) { c.ctl.etatsMedia = []; }
-  c.ctl.etatsMedia.push(etat);
-  if (!c.ctl.etatMedia) { c.ctl.etatMedia = etat; }   // repli : la première zone posée
-  d.etat = etat;
-  d.boutonChoisir = choisir;
-  return d;
+  c.ctl.etatsMedia.push(d.etat);
+  if (!c.ctl.etatMedia) { c.ctl.etatMedia = d.etat; }   // repli : la première zone posée
+  // Deux appelants (zoneACote, ci-dessous) attendent encore etat/boutonChoisir sur
+  // l'élément rendu, comme l'ancienne implémentation : on les y repose.
+  d.element.etat = d.etat;
+  d.element.boutonChoisir = d.choisir;
+  return d.element;
 }
 
 // L'aperçu d'une vignette : image, ou constat qu'il n'y en a pas. Contrairement à l'ancien
@@ -561,14 +519,14 @@ function candidates(c) {
 // permettait pas — et garde ce choix-là en second bouton, parce qu'après un import Word
 // les images à ranger côte à côte sont déjà toutes dans l'article.
 //
-// Une seule par figure, posée sous .figure-vignettes, ancrée sur l'ANCRE de la figure —
+// Une seule par figure, posée sous .figure-vignettes, ancrée sur l'ancre de la figure —
 // c'est correct : poserDansGrille() ajoute en queue de la grille quelle que soit l'ancre.
 //
-// Ce que le dépôt NE fait pas : écraser. Le fichier entre sous un nom neuf, et l'hôte
+// Ce que le dépôt ne fait pas : écraser. Le fichier entre sous un nom neuf, et l'hôte
 // demande confirmation avant d'écrire quoi que ce soit.
 function zoneACote(parent, c) {
   var d = zoneDepot(parent, c, {
-    type: 'ajouter-a-cote', cle: 'relatif', genre: IMAGE, icone: 'plus',
+    type: SZH.MSG.AJOUTER_A_COTE, cle: 'relatif', genre: IMAGE, icone: 'plus',
     libelle: TXT.grilleDeposer || '', tip: TXT.grilleDeposerTip || '',
     // Les saisies en cours voyagent avec le fichier : la pose réécrit le .md et recharge
     // le formulaire, qui les perdrait.
@@ -592,7 +550,7 @@ function zoneACote(parent, c) {
   var actions = texte(choix, 'div', 'grille-choix-actions');
   actions.appendChild(bouton(TXT.grilleValider || '', function () {
     if (sel.value === '') { return; }
-    api.postMessage({ type: 'grille-ajouter', relatif: c.relatif, ajout: sel.value,
+    api.postMessage({ type: SZH.MSG.GRILLE_AJOUTER, relatif: c.relatif, ajout: sel.value,
                       medias: medias() });
   }, 'szh-bouton--principal'));
   actions.appendChild(bouton(TXT.grilleAnnuler || '', function () {
@@ -712,8 +670,8 @@ function construireVignette(parent, c) {
   parent.appendChild(b);
 }
 
-// Un clic ouvre le formulaire de CETTE image et ferme celui de toutes les autres images de
-// la MÊME figure ; un clic sur la vignette déjà ouverte referme (bascule). Les autres
+// Un clic ouvre le formulaire de cette image et ferme celui de toutes les autres images de
+// la même figure ; un clic sur la vignette déjà ouverte referme (bascule). Les autres
 // cartes de figure ne sont pas touchées.
 function basculerForm(figure, c) {
   var ferme = figure.ouvert === c;
@@ -770,7 +728,7 @@ function construireGroupeAccordeon(parent, figure) {
   sel.value = String(g.disposition);
   if (sel.value !== String(g.disposition)) { sel.value = AUTO; }   // valeur inconnue
   sel.addEventListener('change', function () {
-    api.postMessage({ type: 'grille-disposition', relatif: figure.ancre.relatif,
+    api.postMessage({ type: SZH.MSG.GRILLE_DISPOSITION, relatif: figure.ancre.relatif,
                       disposition: sel.value, medias: medias() });
   });
   dispo.appendChild(sel);
@@ -789,17 +747,17 @@ function construireGroupeAccordeon(parent, figure) {
   });
 }
 
-// Les deux sorties d'une grille agissent sur UNE image : elles vivent donc dans son
+// Les deux sorties d'une grille agissent sur une image : elles vivent donc dans son
 // formulaire, pas dans l'accordéon commun. Un booléen inversé, et « sortir de la grille »
 // effacerait l'insertion au lieu de la déplacer — sans que rien à l'écran ne change.
 function construireSortiesGrille(parent, c) {
   var sorties = texte(parent, 'div', 'grille-sorties');
   sorties.appendChild(bouton(TXT.grilleRetirer || '', function () {
-    api.postMessage({ type: 'grille-retirer', relatif: c.relatif, garder: true,
+    api.postMessage({ type: SZH.MSG.GRILLE_RETIRER, relatif: c.relatif, garder: true,
                       medias: medias() });
   }, '', TXT.grilleRetirerTip));
   sorties.appendChild(bouton(TXT.grilleOter || '', function () {
-    api.postMessage({ type: 'grille-retirer', relatif: c.relatif, garder: false,
+    api.postMessage({ type: SZH.MSG.GRILLE_RETIRER, relatif: c.relatif, garder: false,
                       medias: medias() });
   }, '', TXT.grilleOterTip));
 }
@@ -826,7 +784,7 @@ function construireFormulaireImage(parent, figure, c) {
   tete.appendChild(boutonIcone('poubelle', TXT.retirerTip || '', function () {
     // Les saisies en cours voyagent avec : une suppression dans une grille fait recharger
     // le formulaire côté hôte, qui les écraserait sans cela.
-    api.postMessage({ type: 'retirer', relatif: c.relatif, medias: medias() });
+    api.postMessage({ type: SZH.MSG.RETIRER, relatif: c.relatif, medias: medias() });
   }, 'szh-ico--danger'));
 
   c.ctl.occ = texte(d, 'p', 'szh-notif');
@@ -838,7 +796,7 @@ function construireFormulaireImage(parent, figure, c) {
   c.ctl.alerteAlt.hidden = true;
 
   zoneDepot(d, c, {
-    type: 'remplacer', cle: 'relatif', genre: IMAGE, icone: 'camera',
+    type: SZH.MSG.REMPLACER, cle: 'relatif', genre: IMAGE, icone: 'camera',
     libelle: TXT.remplacer || ''
   });
 
@@ -909,7 +867,7 @@ function poserOcc(c) {
     var dedans = texte(b, 'span');
     texte(dedans, 'span', null, (TXT.occZero || '') + ' ');
     dedans.appendChild(bouton(TXT.inserer || '', function () {
-      api.postMessage({ type: 'inserer', relatif: c.relatif, medias: medias() });
+      api.postMessage({ type: SZH.MSG.INSERER, relatif: c.relatif, medias: medias() });
     }, 'szh-bouton--principal', TXT.insererTip));
   }
   var verrou = c.occurrences === 0;
@@ -966,20 +924,13 @@ function rendrePortrait(c) {
 // Les commandes du formulaire, toujours à la même place et toujours visibles : dans une
 // liste de médias qui défile, un « Enregistrer » en bas de page ne se retrouve pas.
 function construireBarre() {
-  barre.textContent = '';
-  barre.className = 'szh-barre';
-  ctl.enregistrer = bouton(TXT.enregistrer, function () { enregistrer(false); },
-    'szh-bouton--principal', TXT.enregistrerTip);
-  barre.appendChild(ctl.enregistrer);
-  barre.appendChild(bouton(TXT.retour, function () {
-    api.postMessage({ type: 'retourArticle', modifie: estModifie(), medias: medias() });
-  }, '', TXT.retourTip));
-  ctl.indic = texte(barre, 'span', 'szh-barre-indic');
-  ctl.indic.setAttribute('aria-live', 'polite');
-  ctl.etat = texte(barre, 'span', 'szh-barre-etat');
-  ctl.etat.setAttribute('role', 'status');
-  texte(barre, 'span', 'szh-pousse');
-  ctl.compte = texte(barre, 'span', 'szh-barre-etat');
+  ctl = SZH.construireBarre(barre, {
+    txt: TXT, avecCompte: true,
+    onEnregistrer: function () { enregistrer(false); },
+    onRetour: function () {
+      api.postMessage({ type: SZH.MSG.RETOUR_ARTICLE, modifie: estModifie(), medias: medias() });
+    }
+  });
 }
 
 function rendre(msg) {
@@ -1012,7 +963,7 @@ function rendre(msg) {
       portraits.push(cartePortrait(listePortraits[j], j));
     }
   }
-  // Après coup seulement : ce qu'un bouton « à côté » peut offrir se lit dans les AUTRES
+  // Après coup seulement : ce qu'un bouton « à côté » peut offrir se lit dans les autres
   // cartes, qui n'existaient pas encore quand la sienne s'est construite.
   for (var k = 0; k < cartes.length; k++) { majAjoutGrille(cartes[k]); }
   dernierModifie = false;
@@ -1057,7 +1008,7 @@ function trouverPortraitParIndex(index) {
 function enregistrer(auto) {
   var liste = medias();
   if (liste.length === 0) { if (!auto) { etat(TXT.rienAEcrire || ''); } return; }
-  api.postMessage({ type: 'enregistrer', auto: !!auto, medias: liste });
+  api.postMessage({ type: SZH.MSG.ENREGISTRER, auto: !!auto, medias: liste });
 }
 // Ni minuteur ni enregistrement au changement de champ : l'écriture passe par un
 // WorkspaceEdit et un doc.save() sur le .md, qui recompile l'article. Reste le filet
@@ -1074,8 +1025,13 @@ var recu = false;
 window.addEventListener('message', function (ev) {
   var msg = ev.data || {};
   recu = true;
-  if (msg.type === 'charger') {
+  if (msg.type === SZH.MSG.CHARGER) {
+    // Course pret/charger : un doublon de la réponse à « pret » (aller-retour lent) ne
+    // doit pas reconstruire la page une seconde fois, sauf rechargement forcé.
+    if (SZH.jetonDejaTraite(etatJeton, msg)) { return; }
     SZH.poserAccent(msg.accent);
+    SZH.appliquerLimites(msg.limites);
+    IMAGE = imageDepot();
     if (msg.i18n) {
       TXT = msg.i18n;
       construireBarre();
@@ -1085,7 +1041,7 @@ window.addEventListener('message', function (ev) {
     rendre(msg);
     return;
   }
-  if (msg.type === 'enregistre') {
+  if (msg.type === SZH.MSG.ENREGISTRE) {
     autoEnr.confirme();
     for (var i = 0; i < cartes.length; i++) {
       cartes[i].enregistrees = valeurs(cartes[i]);
@@ -1099,18 +1055,18 @@ window.addEventListener('message', function (ev) {
     majModifie();
     return;
   }
-  if (msg.type === 'erreur') { autoEnr.confirme(); etat('⚠ ' + msg.message); return; }
+  if (msg.type === SZH.MSG.ERREUR) { autoEnr.confirme(); etat('⚠ ' + msg.message); return; }
   // Ctrl+Alt+F sur un panneau déjà ouvert : l'hôte ne recharge pas la page — il y perdrait
   // les saisies non écrites — il demande seulement d'amener la carte à l'écran.
-  if (msg.type === 'focaliser') { focaliser(msg.relatif); return; }
+  if (msg.type === SZH.MSG.FOCALISER) { focaliser(msg.relatif); return; }
   // Réponses ciblées : la carte est retrouvée par son chemin relatif, jamais par un
   // sélecteur construit sur une valeur libre. Une réponse pour une carte disparue est
   // ignorée.
-  if (msg.type === 'media-remplace' || msg.type === 'media-erreur' || msg.type === 'media-annulee') {
+  if (msg.type === SZH.MSG.MEDIA_REMPLACE || msg.type === SZH.MSG.MEDIA_ERREUR || msg.type === SZH.MSG.MEDIA_ANNULEE) {
     var c = trouverCarte(msg.relatif);
     if (!c) { return; }
     c.figure.element.classList.remove('occupe');
-    if (msg.type === 'media-remplace') {
+    if (msg.type === SZH.MSG.MEDIA_REMPLACE) {
       c.apercu = msg.apercu || null;
       poserVignetteImage(c.ctl.vignetteImage, c.apercu);
       if (c.ctl.oeil) { c.ctl.oeil.disabled = !c.apercu; }
@@ -1119,7 +1075,7 @@ window.addEventListener('message', function (ev) {
       poserQualite(c.ctl.qualite, c.qualite);
       majPastilles(c);
       poserEtatMedia(c, TXT.remplacee || '', false);
-    } else if (msg.type === 'media-erreur') {
+    } else if (msg.type === SZH.MSG.MEDIA_ERREUR) {
       poserEtatMedia(c, '⚠ ' + (msg.message || '?'), true);
     } else {
       poserEtatMedia(c, '');                       // annulé : la zone est réactivée
@@ -1130,7 +1086,7 @@ window.addEventListener('message', function (ev) {
   // si la figure n'a plus de membre, elle quitte la page à son tour. Le cas d'un membre de
   // grille est traité par l'hôte, qui recharge tout le formulaire (une suppression y change
   // le compte et la disposition) : ce chemin ne reste utile qu'à l'image seule.
-  if (msg.type === 'media-retire') {
+  if (msg.type === SZH.MSG.MEDIA_RETIRE) {
     var r = trouverCarte(msg.relatif);
     if (!r) { return; }
     var fig = r.figure;
@@ -1161,10 +1117,10 @@ window.addEventListener('message', function (ev) {
   }
   // La fiche d'auteur·e a été écrite : la modale se referme, et la carte du portrait suit
   // ce que l'hôte vient de relire sur le disque — la photo a pu changer de version.
-  if (msg.type === 'auteur-enregistre' || msg.type === 'auteur-erreur') {
+  if (msg.type === SZH.MSG.AUTEUR_ENREGISTRE || msg.type === SZH.MSG.AUTEUR_ERREUR) {
     var suite = attenteAuteur;
     attenteAuteur = null;
-    if (msg.type === 'auteur-erreur') {
+    if (msg.type === SZH.MSG.AUTEUR_ERREUR) {
       if (suite) { suite.fini(msg.message || '?'); }
       return;
     }
@@ -1185,6 +1141,7 @@ window.addEventListener('message', function (ev) {
   }
   // Le composant partagé consomme les réponses photo-*.
   if (ctlAuteurs && ctlAuteurs.message(msg)) { return; }
+  console.warn('médias : type de message inconnu', msg.type);
 });
 SZH.annoncerPret(api, function () { return recu; });
 })();

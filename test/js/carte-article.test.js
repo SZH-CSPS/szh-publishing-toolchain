@@ -344,7 +344,8 @@ test('carte : l’aperçu est complet, et il ne porte aucun champ de saisie', as
   const charge = derniereCharge(p);
   const page = ouvrir({
     racine: RACINE, page: 'articles',
-    cssPartage: ['_design.css', '_liste.css', '_numero.css'], jsPartage: ['_numero.js'],
+    cssPartage: ['_design.css', '_liste.css', '_numero.css'],
+    jsPartage: ['_messages.js', '_numero.js'],
     txt: libellesHote(RACINE, ['textesNumero', 'textesArticles'])
   });
   page.envoyer(charge);
@@ -383,7 +384,8 @@ test('carte : l’aperçu est complet, et il ne porte aucun champ de saisie', as
 function pageArticlesDe(charge) {
   const page = ouvrir({
     racine: RACINE, page: 'articles',
-    cssPartage: ['_design.css', '_liste.css', '_numero.css'], jsPartage: ['_numero.js'],
+    cssPartage: ['_design.css', '_liste.css', '_numero.css'],
+    jsPartage: ['_messages.js', '_numero.js'],
     txt: libellesHote(RACINE, ['textesNumero', 'textesArticles'])
   });
   page.envoyer(charge);

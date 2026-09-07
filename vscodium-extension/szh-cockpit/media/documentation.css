@@ -1,6 +1,6 @@
 /* La Documentation d'un numéro : rubriques de texte riche et fiches structurées dans un
-   seul formulaire, tout pliable, avec un sommaire collant à droite (demandes du
-   02.09.2026). Remplace ressources-article.css et rubriques-article.css.
+   seul formulaire, tout pliable, avec un sommaire collant à droite. Remplace
+   ressources-article.css et rubriques-article.css.
    Aucune couleur en dur, rien que les jetons de thème (_design.css). */
 body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
   line-height: var(--interligne); color: var(--encre); background: var(--fond);
@@ -41,7 +41,7 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
   background: none; border: 0; padding: .15em 0; margin: 0; cursor: pointer;
   font-family: inherit; font-size: var(--t-libelle); text-align: left; color: var(--encre); }
 .doc-sommaire-lien:hover { color: var(--accent); }
-.doc-sommaire-lien:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.doc-sommaire-lien:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .doc-sommaire-nom { flex: 1 1 auto; min-width: 0; }
 /* La marque dit l'état sans couleur seule : un nombre pour une catégorie de fiches, le mot
    « vide » pour une rubrique qui ne s'imprimera pas. */
@@ -75,11 +75,11 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
   font-family: inherit; font-size: var(--t-corps); font-weight: 600; color: var(--encre);
   text-align: left; }
 .doc-bascule:hover { color: var(--accent); }
-.doc-bascule:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.doc-bascule:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .doc-bascule-libelle { flex: 0 1 auto; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Le chevron dit l'état par sa FORME et non par la couleur seule, et pivote à l'ouverture. */
+/* Le chevron dit l'état par sa forme et non par la couleur seule, et pivote à l'ouverture. */
 .doc-bascule::before { content: '▸'; flex: 0 0 auto;
   color: var(--encre-2); transition: transform .12s ease; }
 .doc-carte--ouverte .doc-bascule::before { transform: rotate(90deg); }

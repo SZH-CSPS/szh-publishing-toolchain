@@ -794,6 +794,89 @@ test('resoudreRor : sans libellé français ni allemand, le repli anglais sauve 
     'ror_display porte lang:"en" sur l’instance — exiger une langue absente le manquerait toujours');
 });
 
+// Concurrence bornée : 45 institutions en série, une par une, prendraient des dizaines de
+// secondes au démarrage de l'hôte. Ni illimité non plus — l'API ROR verrait 45 requêtes
+// d'un coup depuis la même adresse.
+test('resoudreRor : au plus 4 requêtes en vol à la fois', async () => {
+  let enCours = 0;
+  let maxEnCours = 0;
+  const ids = Array.from({ length: 10 }, (_, i) => '0' + String(i).padStart(8, '0'));
+  const recuperer = async () => {
+    enCours++;
+    maxEnCours = Math.max(maxEnCours, enCours);
+    await new Promise((r) => setTimeout(r, 5));
+    enCours--;
+    return reponseRor();
+  };
+  const noms = await resoudreRor(recuperer, ids, {});
+  assert.strictEqual(Object.keys(noms).length, 10, 'les dix institutions doivent être résolues');
+  assert.ok(maxEnCours <= 4, 'plus de 4 requêtes ROR en vol à la fois : ' + maxEnCours);
+  assert.strictEqual(maxEnCours, 4, 'la concurrence devrait monter jusqu’à 4, pas moins');
+});
+
+// Échéance globale : un poste hors ligne ne doit pas laisser resoudreRor tourner sans fin.
+// L'horloge est injectable, comme balayerCorpus() de lib/auteurs-corpus.js — cinq minutes
+// réelles ne se testent pas en attendant cinq minutes. Même principe que son test « la
+// borne de temps coupe » : l'horloge bondit à chaque regard, et le budget est vérifié
+// avant de démarrer chaque requête — jamais en cours de route.
+test('resoudreRor : une échéance globale coupe les requêtes restantes', async () => {
+  let appels = 0;
+  const recuperer = async () => { appels++; return reponseRor(); };
+  let tic = 0;
+  const horloge = () => { tic += 1000000; return tic; };
+  const ids = ['01swzsf04', '00w9q2c06', '04nd0xd48', '027h8t796'];
+  const noms = await resoudreRor(recuperer, ids, {}, { horloge: horloge, delaiMs: 10 });
+  assert.ok(appels < ids.length, 'l’échéance n’a coupé aucune requête : ' + appels + ' appels sur ' + ids.length);
+  assert.strictEqual(Object.keys(noms).length, appels, 'seules les requêtes parties ont pu réussir');
+});
+
+test('resoudreRor : une échéance suffisante laisse passer toutes les requêtes', async () => {
+  const recuperer = async () => reponseRor();
+  const debut = 1000;
+  let tic = debut;
+  // L'horloge avance d'une seconde par regard : largement sous les 5 minutes pour deux ids.
+  const horloge = () => { tic += 1000; return tic; };
+  const noms = await resoudreRor(recuperer, ['01swzsf04', '00w9q2c06'], {},
+    { horloge: horloge, delaiMs: 5 * 60 * 1000 });
+  assert.strictEqual(Object.keys(noms).length, 2);
+});
+
+// Un id qui échoue est déjà silencieux (retenté le mois prochain). Mais un poste hors
+// ligne qui rate TOUTES les institutions ne doit plus se taire complètement : une seule
+// ligne de journal, pas une par institution qui noierait la console.
+test('resoudreRor : une résolution qui échoue globalement se dit, une seule fois', async () => {
+  const original = console.warn;
+  const lignes = [];
+  console.warn = (...args) => { lignes.push(args.join(' ')); };
+  try {
+    const interdit = async () => { throw new Error('ECONNREFUSED'); };
+    const noms = await resoudreRor(interdit, ['01swzsf04', '00w9q2c06', '04nd0xd48'], {});
+    assert.deepStrictEqual(noms, {});
+  } finally {
+    console.warn = original;
+  }
+  assert.strictEqual(lignes.length, 1, 'il faut exactement une ligne de journal : ' + JSON.stringify(lignes));
+  assert.match(lignes[0], /\[auteurs-ojs\]/, 'la ligne doit porter le même préfixe que le reste du module');
+});
+
+// Et le cas normal — au moins une institution résolue — ne doit RIEN journaliser : ce
+// n'est un échec global que si tout a échoué.
+test('resoudreRor : une résolution partiellement réussie ne journalise rien', async () => {
+  const original = console.warn;
+  const lignes = [];
+  console.warn = (...args) => { lignes.push(args.join(' ')); };
+  try {
+    const partiel = async (url) => {
+      if (url.indexOf('01swzsf04') !== -1) { return reponseRor(); }
+      throw new Error('HTTP 404');
+    };
+    await resoudreRor(partiel, ['01swzsf04', '00w9q2c06'], {});
+  } finally {
+    console.warn = original;
+  }
+  assert.strictEqual(lignes.length, 0, 'une résolution partielle ne doit rien journaliser : ' + JSON.stringify(lignes));
+});
+
 // La règle de précédence entre les deux sources. Le corpus, c’est ce que la rédaction a
 // tapé à la main dans les fiches meta.yaml ; OJS, c’est ce qui a été publié. Sur les
 // champs d’enrichissement, la saisie maison fait foi.

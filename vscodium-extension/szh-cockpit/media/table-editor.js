@@ -215,7 +215,7 @@ function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.crea
     m.appendChild(itemMenu(TXT['ctx.alignCentre'],function(){aligner('center');}));
     m.appendChild(itemMenu(TXT['ctx.alignDroite'],function(){aligner('right');}));}
   // « Retirer » n'apparaît que si l'en-tête correspondant existe. Au-delà d'une rangée
-  // ou d'une colonne, le libellé dit COMBIEN l'action en définira : le geste part de la
+  // ou d'une colonne, le libellé dit combien l'action en définira : le geste part de la
   // 2e ligne, l'en-tête couvrira les deux premières — rien d'implicite.
   var sens=sensEntete(selection);
   if(sens){sepMenu(m);
@@ -225,11 +225,11 @@ function ouvrirMenu(ev,ctx){fermerMenu();ev.preventDefault();var m=document.crea
     var aRetirer=sens==='lignes'?(modele.attrs.enteteLignes>0):(modele.attrs.enteteColonnes>0);
     if(aRetirer){m.appendChild(itemMenu(TXT.enteteRetirer,onRetirerEntete));}}
   // Titre de section (en-tête intermédiaire) : une seule rangée visée. Les deux
-  // premières rangées (MAX_ENTETES) appartiennent à la ZONE D'EN-TÊTE — « Définir
+  // premières rangées (MAX_ENTETES) appartiennent à la zone d'en-tête — « Définir
   // comme en-tête » y a sa place, pas un titre de section : « définir » n'est offert
   // qu'à partir de la 3e rangée. « Retirer » reste toujours possible, pour un fichier
-  // qui porterait déjà un titre plus haut. Le titre peut être PARTIEL : il porte sur
-  // la PLAGE sélectionnée (fusionnée en une cellule si besoin — une cellule déjà
+  // qui porterait déjà un titre plus haut. Le titre peut être partiel : il porte sur
+  // la plage sélectionnée (fusionnée en une cellule si besoin — une cellule déjà
   // fusionnée n'est pas étendue) et couvre les colonnes de sa fusion pour les rangées
   // qui suivent, jusqu'au prochain titre. Inactif -> le rôle part, la fusion reste.
   if(selection&&selection.rMin===selection.rMax&&modele&&dispo&&dispo.nbLignes>1){
@@ -251,7 +251,7 @@ function bouton(txt,fn,cls,titre){var b=document.createElement('button');b.type=
   b.className='szh-bouton'+(cls?' '+cls:'');if(titre)b.title=titre;b.addEventListener('click',fn);return b;}
 function groupe(label){var g=document.createElement('span');g.className='grp';if(label){var l=document.createElement('span');l.className='lbl';l.textContent=label;g.appendChild(l);}return g;}
 function op(nom,args,extra){if(modele){commitTexte();annuler.push(clone(modele));if(annuler.length>100)annuler.shift();retablir.length=0;}
-  var msg={type:'operation',nom:nom,args:args,modele:modele};if(extra){for(var k in extra){msg[k]=extra[k];}}api.postMessage(msg);}
+  var msg={type: SZH.MSG.OPERATION,nom:nom,args:args,modele:modele};if(extra){for(var k in extra){msg[k]=extra[k];}}api.postMessage(msg);}
 function construireBarre(){barre.textContent='';barre.className='szh-barre';
   var ge=groupe(TXT.grpEdition);
   ctl.annuler=bouton(TXT.annuler,annulerAction,'',TXT['tip.annuler']);ge.appendChild(ctl.annuler);
@@ -262,8 +262,8 @@ function construireBarre(){barre.textContent='';barre.className='szh-barre';
   // L'aperçu de l'article est fermé à l'ouverture de l'éditeur pour libérer de la largeur
   // et se rouvre ici à la demande.
   var ga2=groupe(TXT.grpApercu);
-  ga2.appendChild(bouton(TXT.apercuVoir,function(){api.postMessage({type:'apercu-ouvrir'});},'',TXT['tip.apercuVoir']));
-  ga2.appendChild(bouton(TXT.apercuCacher,function(){api.postMessage({type:'apercu-fermer'});},'',TXT['tip.apercuCacher']));
+  ga2.appendChild(bouton(TXT.apercuVoir,function(){api.postMessage({type: SZH.MSG.APERCU_OUVRIR});},'',TXT['tip.apercuVoir']));
+  ga2.appendChild(bouton(TXT.apercuCacher,function(){api.postMessage({type: SZH.MSG.APERCU_FERMER});},'',TXT['tip.apercuCacher']));
   barre.appendChild(ga2);
   var ret=bouton(TXT.retour,retourArticle,'',TXT['tip.retour']);barre.appendChild(ret);
   var enr=bouton(TXT.enregistrer,function(){autoEnr.annuler();enregistrerTable(false);},'szh-bouton--principal',TXT['tip.enregistrer']);barre.appendChild(enr);
@@ -323,8 +323,8 @@ function majChamps(){if(!modele)return;
     var x=String(modele.attrs[cle]||'');if(champs[cle].value!==x)champs[cle].value=x;});}
 // Sens d'en-tête déduit de la sélection : une rangée du haut sur toute la largeur donne
 // 'lignes', une colonne de gauche sur toute la hauteur donne 'colonnes', sinon le bord
-// touché décide. Un en-tête est toujours CONTIGU depuis le bord (c'est ce que th/scope
-// savent décrire) : la sélection n'a donc pas besoin de PARTIR du bord — désigner la
+// touché décide. Un en-tête est toujours contigu depuis le bord (c'est ce que th/scope
+// savent décrire) : la sélection n'a donc pas besoin de partir du bord — désigner la
 // 2e ligne suffit à demander « les 2 premières lignes en en-tête », le libellé du menu
 // l'annonce. Au-delà de MAX_ENTETES rangées ou colonnes de profondeur, null.
 var MAX_ENTETES=2;   // miroir de normaliserModele (lib/table-model.js)
@@ -422,20 +422,20 @@ function etat(msg){var e=document.getElementById('etat');if(e)e.textContent=msg;
 function commitTexte(){if(!modele)return;recolter();
   if(avantEdition&&JSON.stringify(modele)!==JSON.stringify(avantEdition)){annuler.push(clone(avantEdition));if(annuler.length>100)annuler.shift();retablir.length=0;}
   avantEdition=null;majModifie();}
-function restaurer(m){api.postMessage({type:'restaurer',modele:m});}
+function restaurer(m){api.postMessage({type: SZH.MSG.RESTAURER,modele:m});}
 // Annuler et rétablir : l'état courant est poussé sur l'autre pile, puis on restaure
 // l'état dépilé ; l'hôte renvoie la disposition par un « charger » sans i18n.
 function annulerAction(){commitTexte();if(!annuler.length){return;}retablir.push(clone(modele));restaurer(annuler.pop());}
 function retablirAction(){commitTexte();if(!retablir.length){return;}annuler.push(clone(modele));restaurer(retablir.pop());}
 function estModifie(){if(!modele||!modeleEnregistre)return false;recolter();return JSON.stringify(modele)!==JSON.stringify(modeleEnregistre);}
 function majModifie(){var m=estModifie();var ind=document.getElementById('indic');if(ind){ind.textContent=m?' ●':'';ind.title=m?(TXT.nonEnregistre||''):'';}
-  if(m!==dernierModifie){dernierModifie=m;api.postMessage({type:'modifie',modifie:m});}}
+  if(m!==dernierModifie){dernierModifie=m;api.postMessage({type: SZH.MSG.MODIFIE,modifie:m});}}
 function enregistrerTable(auto){recolter();enrEnCours=clone(modele);
-  api.postMessage({type:'enregistrer',auto:!!auto,modele:modele});}
+  api.postMessage({type: SZH.MSG.ENREGISTRER,auto:!!auto,modele:modele});}
 // Enregistrement automatique, sans risque ici : l'écriture ne touche que
 // articles/<slug>/tables/<n>.html et ne déclenche aucune recompilation.
 var autoEnr=SZH.autoEnregistrement({estModifie:estModifie,enregistrer:enregistrerTable});
-function retourArticle(){recolter();api.postMessage({type:'retourArticle',modifie:estModifie(),modele:modele});}
+function retourArticle(){recolter();api.postMessage({type: SZH.MSG.RETOUR_ARTICLE,modifie:estModifie(),modele:modele});}
 
 // ---- Collage d'un tableau : le HTML d'abord, qui préserve les fusions, sinon le TSV ----
 function collerDepuisPresse(ev){var cd=ev.clipboardData||window.clipboardData;if(!cd)return;
@@ -447,8 +447,8 @@ zone.addEventListener('paste',collerDepuisPresse);
 
 // ---- Copie de la sélection (Ctrl+C) ----
 //
-// Une sélection de TEXTE dans la cellule garde la copie native. Sinon, la sélection de
-// CELLULES part au presse-papiers : une cellule seule -> son texte (et son balisage en
+// Une sélection de texte dans la cellule garde la copie native. Sinon, la sélection de
+// cellules part au presse-papiers : une cellule seule -> son texte (et son balisage en
 // text/html, que le collage natif ré-insère au curseur, strong/em compris) ; une plage ->
 // TSV + <table> minimal, colspan/rowspan compris — c'est le format que le collage de
 // l'éditeur (op coller) et Excel/Word savent relire. La sélection étant toujours étendue
@@ -495,8 +495,10 @@ document.addEventListener('keydown',function(ev){if(!(ev.ctrlKey||ev.metaKey))re
   else if(k==='y'||(k==='z'&&ev.shiftKey)){ev.preventDefault();retablirAction();}
   else if(k==='s'){ev.preventDefault();autoEnr.annuler();enregistrerTable(false);}});
 
+var recu=false;
 window.addEventListener('message',function(ev){var msg=ev.data||{};
-  if(msg.type==='charger'){
+  recu=true;
+  if(msg.type===SZH.MSG.CHARGER){
     modele=msg.modele;dispo=msg.disposition;if(msg.accent!==undefined){accent=msg.accent;SZH.poserAccent(accent);}if(msg.teintes)teintes=msg.teintes;if(msg.presets)PRESETS=msg.presets;
     if(msg.i18n){TXT=msg.i18n;
       modeleEnregistre=clone(modele);annuler=[];retablir=[];avantEdition=null;dernierModifie=false;
@@ -505,8 +507,9 @@ window.addEventListener('message',function(ev){var msg=ev.data||{};
     // ⚠ ne pas réinitialiser l'historique ici, sans quoi « Annuler » reste sans effet.
     // Les piles ne sont touchées que par op et commitTexte.
     selection=clampSel(selection);ancre=null;rendre();majPanneau();majChamps();etat('');majModifie();}
-  else if(msg.type==='enregistre'){autoEnr.confirme();modeleEnregistre=enrEnCours||clone(modele);
+  else if(msg.type===SZH.MSG.ENREGISTRE){autoEnr.confirme();modeleEnregistre=enrEnCours||clone(modele);
     etat(msg.auto?'':(TXT.enregistre||''));majModifie();}
-  else if(msg.type==='erreur'){autoEnr.confirme();etat('⚠ '+msg.message);}});
-api.postMessage({type:'pret'});
+  else if(msg.type===SZH.MSG.ERREUR){autoEnr.confirme();etat('⚠ '+msg.message);}
+  else{console.warn('table-editor : type de message inconnu', msg.type);}});
+SZH.annoncerPret(api,function(){return recu;});
 })();

@@ -131,6 +131,22 @@ function activerHote(revue) {
   // de tester une compilation du cockpit qui va à son terme. Vide tant que fetchTasks()
   // ne rend rien (le défaut) : finirTache() retombe alors sur la forme d'avant.
   const executionsParTache = {};
+  // Le démarrage d'une tâche (onDidStartTask), et sa fin SANS notification de processus
+  // (onDidEndTask) : le chemin le plus fréquent (Ctrl+S, triggerTaskOnSave) ne passe par
+  // aucune fonction du cockpit, seulement par ces deux événements globaux. Même repli que
+  // finTache quand le cockpit n'a pas lui-même lancé la tâche nommée.
+  const debutTache = emetteur();
+  const finTacheBrute = emetteur();
+  // Les deux événements du défilement synchronisé aperçu HTML (pousserDefilementVersApercu,
+  // pousserSurlignageVersApercu, extension.js) : réels et non jetés, pour qu'un test puisse
+  // simuler un geste dans l'éditeur SANS ouvrir une vraie fenêtre.
+  const rangesVisibles = emetteur();
+  const selectionEditeur = emetteur();
+  // Les réglages « szh.* » écrits par update() : un faux getConfiguration() qui les
+  // oublierait rendrait basculerApercu invérifiable — son .update() ne se verrait jamais
+  // au .get() suivant. Une seule table pour tout l'hôte, comme le ferait VS Code au niveau
+  // Global (aucun cockpit n'écrit à un autre niveau).
+  const configValeurs = {};
   const barres = [];
   const panneaux = [];
   const avertissements = [];
@@ -138,6 +154,7 @@ function activerHote(revue) {
   const erreurs = [];
   const motifsSurveilles = []; // les motifs passés à createFileSystemWatcher, dans l'ordre
   let arbre = null;
+  let controleurDepot = null;   // dragAndDropController de la TreeView (.docx glissés dessus)
   // Ce que showWarningMessage rendra, dans l'ordre des appels : une file, et non une seule
   // valeur, parce qu'un geste peut désormais en enchaîner deux — le dialogue de
   // remplacement renvoie vers celui de « poser à côté », et le test doit répondre aux deux.
@@ -188,10 +205,25 @@ function activerHote(revue) {
         });
         return faire('file');
       },
-      parse: (s) => ({ fsPath: s, scheme: 'file' })
+      // Reprend le « schéma://reste » que Uri.file(p).toString() produit ci-dessus, sans
+      // rien décoder (rien n'est encodé au départ) : controleurDepotVue (extension.js) lit
+      // un « text/uri-list » déposé sur l'arbre et en tire ses .docx par ce chemin.
+      parse: (s) => {
+        const texte = String(s || '');
+        const m = texte.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/(.*)$/);
+        return m ? { fsPath: m[2], scheme: m[1] } : { fsPath: texte, scheme: '' };
+      }
     },
     Position: class { constructor(l, c) { this.line = l; this.character = c; } },
-    Range: class { constructor(a, b) { this.start = a; this.end = b; } },
+    // Les deux formes de l'API réelle : (Position, Position) et (ligne, colonne, ligne,
+    // colonne) — revelerLigneSource (extension.js) emploie la seconde.
+    Range: class {
+      constructor(a, b, c, d) {
+        if (typeof a === 'number') {
+          this.start = new stub.Position(a, b); this.end = new stub.Position(c, d);
+        } else { this.start = a; this.end = b; }
+      }
+    },
     Selection: class { constructor(a, b) { this.start = a; this.end = b; this.active = b; } },
     WorkspaceEdit: class { replace() {} insert() {} },
     TreeItem: class { constructor(l, c) { this.label = l; this.collapsibleState = c; } },
@@ -201,6 +233,7 @@ function activerHote(revue) {
     TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
     StatusBarAlignment: { Left: 1, Right: 2 },
     ViewColumn: { One: 1, Two: 2 },
+    TextEditorRevealType: { Default: 0, InCenter: 1, InCenterIfOutsideViewport: 2, AtTop: 3 },
     ConfigurationTarget: { Global: 1, Workspace: 2 },
     QuickPickItemKind: { Separator: -1, Default: 0 },
     ProgressLocation: { Notification: 15 },
@@ -225,6 +258,7 @@ function activerHote(revue) {
       tabGroups: { all: [], close: () => Promise.resolve(true) },
       createTreeView: (id, opts) => {
         arbre = (opts || {}).treeDataProvider || null;
+        controleurDepot = (opts || {}).dragAndDropController || null;
         return {
           title: '', visible: true, dispose() {},
           onDidChangeSelection: evenement(),
@@ -262,15 +296,27 @@ function activerHote(revue) {
       showOpenDialog: () => Promise.resolve(undefined),
       withProgress: (o, f) => f({ report() {} }),
       onDidChangeActiveTextEditor: editeurActif,
-      onDidChangeTextEditorVisibleRanges: evenement(),
-      onDidChangeTextEditorSelection: evenement(),
+      onDidChangeTextEditorVisibleRanges: rangesVisibles,
+      onDidChangeTextEditorSelection: selectionEditeur,
       showTextDocument: () => Promise.resolve({ document: {}, selection: null, revealRange() {} }),
       showQuickPick: () => Promise.resolve(undefined),
       showInputBox: () => Promise.resolve(undefined)
     },
     workspace: {
       workspaceFolders: [{ uri: { fsPath: revue }, name: path.basename(revue), index: 0 }],
-      getConfiguration: () => ({ get: (c, d) => d, update: () => Promise.resolve() }),
+      // Persiste ce qu'update() écrit : sans ça, basculerApercu (szh.apercuMode) ne se
+      // vérifie pas, son .update() ne changeant jamais ce que le .get() suivant rend.
+      getConfiguration: (section) => {
+        const prefixe = section ? section + '.' : '';
+        return {
+          get: (cle, defaut) => {
+            const cheminCle = prefixe + cle;
+            return Object.prototype.hasOwnProperty.call(configValeurs, cheminCle)
+              ? configValeurs[cheminCle] : defaut;
+          },
+          update: (cle, valeur) => { configValeurs[prefixe + cle] = valeur; return Promise.resolve(); }
+        };
+      },
       // Les motifs sont RETENUS : surveiller un chemin qui n'existe pas ne lève rien, et un
       // arbre qui ne se rafraîchit jamais ressemble à un arbre à jour. Seule la liste des
       // motifs demandés distingue les deux.
@@ -325,7 +371,7 @@ function activerHote(revue) {
       }
     },
     tasks: {
-      onDidStartTask: evenement(), onDidEndTaskProcess: finTache,
+      onDidStartTask: debutTache, onDidEndTaskProcess: finTache, onDidEndTask: finTacheBrute,
       fetchTasks: () => Promise.resolve([]),
       executeTask: (tache) => {
         const execution = { task: tache };
@@ -362,6 +408,9 @@ function activerHote(revue) {
     commandes: () => Object.keys(stub.commands._table),
     executer: (id, ...args) => stub.commands.executeCommand(id, ...args),
     arbre: () => arbre,
+    // Le dragAndDropController posé sur la TreeView (controleurDepotVue, extension.js) :
+    // de quoi simuler un .docx glissé sur l'arbre, sans passer par un vrai DataTransfer.
+    controleurDepot: () => controleurDepot,
     panneaux: panneaux,
     dernierPanneau: () => panneaux[panneaux.length - 1] || null,
     // Les panneaux sont des singletons : rouvrir en révèle un, sans en créer. On le
@@ -384,8 +433,22 @@ function activerHote(revue) {
     // que lancerTache() attend pour résoudre. Sinon (le défaut, fetchTasks() vide — Ctrl+S
     // et triggerTaskOnSave, hors du cockpit), une exécution synthétique, comme avant : le
     // suiveur global (onDidStartTask/onDidEndTaskProcess) ne regarde que le nom.
-    finirTache: (nom, code) => finTache.emettre({
-      exitCode: code,
+    // Une tâche normale émet les deux événements de fin, dans cet ordre : onDidEndTaskProcess
+    // (le code de sortie), puis onDidEndTask (VS Code le déclenche pour toute fin de tâche,
+    // processus ou non). Sans le second, aucun test ne peut éprouver un gestionnaire qui
+    // écoute onDidEndTask sur le chemin le plus fréquent d'une compilation qui va à son terme.
+    finirTache: (nom, code) => {
+      const execution = executionsParTache[nom] || { task: { name: nom, definition: { type: 'process' } } };
+      finTache.emettre({ exitCode: code, execution: execution });
+      finTacheBrute.emettre({ execution: execution });
+    },
+    // Démarrage d'une tâche (onDidStartTask), même repli que finirTache ci-dessus.
+    demarrerTache: (nom) => debutTache.emettre({
+      execution: executionsParTache[nom] || { task: { name: nom, definition: { type: 'process' } } }
+    }),
+    // Fin d'une tâche sans notification de processus (onDidEndTask seul) : la tâche a été
+    // interrompue, ou son exécutable n'a jamais démarré.
+    finirTacheSansProcessus: (nom) => finTacheBrute.emettre({
       execution: executionsParTache[nom] || { task: { name: nom, definition: { type: 'process' } } }
     }),
     // Une réponse par appel à venir, dans l'ordre : appeler deux fois enfile deux réponses.
@@ -408,7 +471,16 @@ function activerHote(revue) {
       stub.window.activeTextEditor = chemin
         ? { document: { uri: stub.Uri.file(chemin) } } : undefined;
       editeurActif.emettre(stub.window.activeTextEditor);
-    }
+    },
+    // Le défilement de l'éditeur (pousserDefilementVersApercu) : `editeur` doit être celui
+    // que editeurArticleCourant() retrouverait (voir fauxEditeur() ci-dessous, ou un objet
+    // similaire construit dans le test).
+    changerRangesVisibles: (editeur, ligne0Based) => rangesVisibles.emettre({
+      textEditor: editeur, visibleRanges: [{ start: { line: ligne0Based }, end: { line: ligne0Based } }]
+    }),
+    // Le curseur dans l'éditeur (pousserSurlignageVersApercu) : la position lue est celle
+    // d'`editeur.selection.active`, pas celle de l'événement — même contrat que VS Code.
+    changerSelectionEditeur: (editeur) => selectionEditeur.emettre({ textEditor: editeur })
   };
 }
 
@@ -433,4 +505,21 @@ function livreDEssai() {
   return livre;
 }
 
-module.exports = { revueDEssai, livreDEssai, activerHote };
+// Concatène extension.js et tous les lib/**/*.js. Préalable au découpage d'extension.js :
+// un contrat qui cherche aujourd'hui une chaîne dans extension.js doit continuer de la
+// trouver le jour où elle aura migré vers un module de lib/ — sans quoi chaque migration
+// casserait silencieusement un contrôle qui n'a plus rien à voir avec le découpage lui-même.
+function sourceExtensionEtLib(cockpit) {
+  const morceaux = [fs.readFileSync(path.join(cockpit, 'extension.js'), 'utf8')];
+  const empiler = (base) => {
+    for (const e of fs.readdirSync(base, { withFileTypes: true })) {
+      const p = path.join(base, e.name);
+      if (e.isDirectory()) { empiler(p); }
+      else if (e.name.endsWith('.js')) { morceaux.push(fs.readFileSync(p, 'utf8')); }
+    }
+  };
+  empiler(path.join(cockpit, 'lib'));
+  return morceaux.join('\n');
+}
+
+module.exports = { revueDEssai, livreDEssai, activerHote, sourceExtensionEtLib };

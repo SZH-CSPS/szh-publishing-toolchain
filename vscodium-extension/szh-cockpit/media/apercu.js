@@ -3,10 +3,13 @@
   var vscodeApi = acquireVsCodeApi();
 
   // ---- Bandeau, survol et clic vers la source ----
-  var courant = null;
-  document.getElementById('szh-basculer').addEventListener('click', function () {
-    vscodeApi.postMessage({ type: 'basculer' });
-  });
+  var blocSurvole = null;
+  var boutonBasculer = document.getElementById('szh-basculer');
+  if (boutonBasculer) {
+    boutonBasculer.addEventListener('click', function () {
+      vscodeApi.postMessage({ type: SZH.MSG.BASCULER });
+    });
+  }
   // Le survol ne surligne que des éléments de bloc : pandoc pose aussi des positions sur
   // l'en-ligne, si bien qu'un simple closest('[data-pos]') surlignerait un mot en gras au
   // lieu de son paragraphe.
@@ -27,10 +30,10 @@
 
   document.addEventListener('mouseover', function (e) {
     var c = blocDe(e.target);
-    if (courant === c) { return; }
-    if (courant) { courant.classList.remove('szh-survol'); }
-    courant = c;
-    if (courant) { courant.classList.add('szh-survol'); }
+    if (blocSurvole === c) { return; }
+    if (blocSurvole) { blocSurvole.classList.remove('szh-survol'); }
+    blocSurvole = c;
+    if (blocSurvole) { blocSurvole.classList.add('szh-survol'); }
   });
   document.addEventListener('click', function (e) {
     if (e.target && e.target.closest && e.target.closest('#szh-bandeau')) { return; }
@@ -39,7 +42,7 @@
     e.preventDefault();
     // En plus du bloc, on transmet le mot sous le curseur pour viser le mot exact dans
     // la source ; l'hôte se replie sur le bloc s'il est vide ou introuvable.
-    vscodeApi.postMessage({ type: 'revele', pos: res.pos, mot: res.mot });
+    vscodeApi.postMessage({ type: SZH.MSG.REVELE, pos: res.pos, mot: res.mot });
   });
 
   // Résout un clic en { pos, mot } : normalement le bloc sous le curseur, comme au survol,
@@ -139,15 +142,15 @@
     for (var k = 0; k < blocs.length; k++) {
       if (blocs[k].ligne <= ligne) { i = k; } else { break; }
     }
-    var courant = blocs[i];
-    var y = sommetAbsolu(courant.el);
+    var blocVise = blocs[i];
+    var y = sommetAbsolu(blocVise.el);
     var suivant = null;
     for (var j = i + 1; j < blocs.length; j++) {
-      if (blocs[j].ligne > courant.ligne) { suivant = blocs[j]; break; }
+      if (blocs[j].ligne > blocVise.ligne) { suivant = blocs[j]; break; }
     }
     if (suivant) {
-      var portee = suivant.ligne - courant.ligne;
-      var frac = portee > 0 ? (ligne - courant.ligne) / portee : 0;
+      var portee = suivant.ligne - blocVise.ligne;
+      var frac = portee > 0 ? (ligne - blocVise.ligne) / portee : 0;
       if (frac < 0) { frac = 0; } else if (frac > 1) { frac = 1; }
       y += frac * (sommetAbsolu(suivant.el) - y);
     }
@@ -174,7 +177,7 @@
     minuteurScroll = setTimeout(function () {
       if (!blocs.length) { indexerBlocs(); }
       var c = blocAuSommet();
-      if (c) { vscodeApi.postMessage({ type: 'scrollSource', ligne: c.ligne }); }
+      if (c) { vscodeApi.postMessage({ type: SZH.MSG.SCROLL_SOURCE, ligne: c.ligne }); }
     }, 35);
   }, { passive: true });
 
@@ -253,8 +256,8 @@
   window.addEventListener('message', function (e) {
     var msg = e.data;
     if (!msg) { return; }
-    if (msg.type === 'scroll') { scrollVersLigne(parseInt(msg.ligne, 10) || 1); }
-    if (msg.type === 'surligner') { surligner(parseInt(msg.ligne, 10) || 1, msg.mot || ''); }
+    if (msg.type === SZH.MSG.SCROLL) { scrollVersLigne(parseInt(msg.ligne, 10) || 1); }
+    if (msg.type === SZH.MSG.SURLIGNER) { surligner(parseInt(msg.ligne, 10) || 1, msg.mot || ''); }
   });
 
   indexerBlocs();

@@ -11,6 +11,21 @@ const { T } = require('../i18n');
 const MEDIA = path.join(__dirname, '..', '..', 'media');
 const RE_I18N = /%%SZH:([A-Za-z0-9_.]+)%%/g;
 
+// Le texte du <title> n'est jamais du HTML : un titre d'article, d'archive ou de dossier
+// contenant « < » ou « & » ne doit pas pouvoir ouvrir une balise dans le document.
+function echapperHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Les remplacements posés dans le <script> sont du JSON (ex. __TXT__ : la table des
+// libellés) : un texte saisi par un rédacteur qui contiendrait littéralement
+// « </script> » ne doit jamais pouvoir refermer la balise avant la fin du JSON — le
+// navigateur reconnaît la fermeture au flux de caractères, pas à la syntaxe JS. `<`
+// est un « < » valide dans une chaîne JSON, invisible pour le parseur HTML.
+function echapperPourScript(s) {
+  return String(s).replace(/</g, '\\u003c');
+}
+
 // Options : `titre` pour le <title>, `csp` pour la Content-Security-Policy,
 // `cssPartage` et `jsPartage`, les fragments de media/ à poser avant ceux de la page, et
 // `remplacements`, une map { marqueur: valeur } appliquée au HTML et au JS par split/join
@@ -35,12 +50,12 @@ function construireHtml(base, nonce, opts) {
   const rempl = opts.remplacements || {};
   for (const cle of Object.keys(rempl)) {
     corps = corps.split(cle).join(rempl[cle]);
-    js = js.split(cle).join(rempl[cle]);
+    js = js.split(cle).join(echapperPourScript(rempl[cle]));
   }
   js = js.replace(/\n+$/, '');   // un seul \n sera ajouté avant </script>
 
   const csp = opts.csp || ("default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-" + nonce + "'");
-  const titre = opts.titre === undefined ? 'SZH' : opts.titre;
+  const titre = echapperHtml(opts.titre === undefined ? 'SZH' : opts.titre);
   return '<!DOCTYPE html>\n<html lang="fr">\n<head>\n<meta charset="UTF-8">\n' +
     '<meta http-equiv="Content-Security-Policy" content="' + csp + '">\n' +
     '<title>' + titre + '</title>\n' +

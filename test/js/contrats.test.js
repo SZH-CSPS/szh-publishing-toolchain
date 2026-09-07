@@ -23,8 +23,21 @@ const refs = require(path.join(COCKPIT, 'lib', 'references.js'));
 const cit = require(path.join(COCKPIT, 'lib', 'citations.js'));
 const qualite = require(path.join(COCKPIT, 'lib', 'qualite-image.js'));
 const wsl = require(path.join(COCKPIT, 'lib', 'wsl.js'));
+const { sourceExtensionEtLib } = require('./hote-factice');
 
-const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
+const CHEMIN_EXTENSION = path.join(COCKPIT, 'extension.js');
+
+// Préalable au découpage d'extension.js : une chaîne qu'un contrat cherche aujourd'hui dans
+// extension.js peut demain vivre dans un module de lib/ — lire() rend donc la concaténation
+// des deux dès que le chemin demandé est extension.js, pour tous les contrats qui CHERCHENT
+// une chaîne. Exception : le contrat qui vérifie l'ABSENCE d'un littéral dans le code
+// d'extension.js (dépôt Word, plus bas) lit le fichier seul, sans quoi un littéral qui vit
+// légitimement dans lib/profil.js ferait échouer un contrôle qui ne parle que d'extension.js.
+const lire = (...p) => {
+  const chemin = path.join(RACINE, ...p);
+  if (chemin === CHEMIN_EXTENSION) { return sourceExtensionEtLib(COCKPIT); }
+  return fs.readFileSync(chemin, 'utf8');
+};
 
 // Lit un JSON avec commentaires et virgules traînantes (tasks.json, keybindings.json).
 function jsonc(src) {
@@ -88,6 +101,19 @@ test('buch.yaml : un « impression: » à valeur non vide n’est jamais dupliqu
 });
 
 // ---- Tableaux ----
+
+// decoderEntites() ne connaissait que les cinq entités nommées : un attribut collé qui
+// porte une référence numérique — « Café » copié depuis un tableau Excel/Word dont
+// l'encodage a tourné, par exemple — traversait tel quel, chiffres et dièse compris.
+test('decoderEntites : les références numériques, décimales et hexadécimales, sont décodées', () => {
+  assert.strictEqual(table.decoderEntites('&#233;'), 'é');
+  assert.strictEqual(table.decoderEntites('&#xE9;'), 'é');
+  assert.strictEqual(table.decoderEntites('&#XE9;'), 'é', 'le X majuscule doit aussi être reconnu');
+  assert.strictEqual(table.decoderEntites('Caf&#233; &amp; th&#xe9;'), 'Café & thé');
+  // Un « &amp;#233; » littéral (l'esperluette elle-même échappée) ne doit pas se décoder
+  // deux fois en « é » : &amp; reste décodé en dernier, comme pour quot/apos/lt/gt.
+  assert.strictEqual(table.decoderEntites('&amp;#233;'), '&#233;');
+});
 
 test('tableau : analyser puis sérialiser puis analyser donne le même modèle', () => {
   const html = lire('test', 'articles', 'contenu-long', 'tables', 'table-01.html');
@@ -532,10 +558,13 @@ test('grille : le filtre est branché dans les deux chaînes, avant szh-figure',
   }
 });
 
-test('grille : print.css met en page les rangées que le filtre écrit', () => {
-  const css = lire('pipeline', 'styles', 'print.css');
+test('grille : partage-filtres.css met en page les rangées que le filtre écrit', () => {
+  // Ces règles vivaient dans print.css ; elles sont depuis dans partage-filtres.css, la
+  // feuille empilée juste avant, commune à la revue et au livre — une grille vaut pour
+  // les deux. On lit les deux feuilles comme une seule, dans l'ordre de la pile.
+  const css = lire('pipeline', 'styles', 'partage-filtres.css') + lire('pipeline', 'styles', 'print.css');
   for (const regle of ['.szh-grille-rangee', '.szh-grille-case']) {
-    assert.ok(css.includes(regle), 'règle absente de print.css : ' + regle);
+    assert.ok(css.includes(regle), 'règle absente de partage-filtres.css/print.css : ' + regle);
   }
   // La base nulle est ce qui fait la mise en page justifiée : sans elle, le flex-grow
   // écrit par le filtre ne donne plus des hauteurs égales, mais des largeurs au hasard.
@@ -826,23 +855,28 @@ test('CMJN : le convertisseur du pipeline et son appelant se repondent', () => {
 
 test('médias : la webview et l’hôte plafonnent les dépôts pareil', () => {
   const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
-  // Le plafond des images est extrait dans lib/medias.js ; celui des photos reste dans
-  // extension.js, avec la modale d'auteur·e qui est le seul dépôt de portrait.
   const medias = lire('vscodium-extension', 'szh-cockpit', 'lib', 'medias.js');
-  const webview = lire('vscodium-extension', 'szh-cockpit', 'media', 'medias-article.js');
-  const auteurs = lire('vscodium-extension', 'szh-cockpit', 'media', '_auteurs.js');
-  const nombre = (re, texte) => {
-    const m = re.exec(texte);
-    assert.ok(m, 'valeur introuvable : ' + re);
-    // « 50 * 1024 * 1024 » -> octets, sans eval.
-    return m[1].split('*').map((x) => Number(x.trim())).reduce((a, b) => a * b, 1);
-  };
-  assert.strictEqual(nombre(/maxi: ([\d *]+),[^}]*'png', 'jpg', 'jpeg', 'gif'/, webview),
-    nombre(/const TAILLE_MAX_IMAGE_IMPORT = ([\d *]+);/, medias),
-    'plafond des images : la webview et l’hôte divergent');
-  assert.strictEqual(nombre(/var TAILLE_MAX_PHOTO = ([\d *]+);/, auteurs),
-    nombre(/const TAILLE_MAX_PHOTO = ([\d *]+);/, src),
-    'plafond des portraits : la webview et l’hôte divergent');
+  // Aucune webview ne recalcule plus le plafond elle-même : SZH.LIMITES (media/_commun.js)
+  // n'est plus qu'un repli, alimenté par le `limites` que l'hôte envoie dans son message
+  // de chargement (limitesMedias(), extension.js). Un octet littéral (1024 * 1024) qui
+  // reviendrait dans l'une de ces quatre webviews serait la preuve d'une seconde source.
+  for (const nom of ['medias-article.js', '_auteurs.js', 'import-verif.js', 'documentation.js']) {
+    const texte = lire('vscodium-extension', 'szh-cockpit', 'media', nom);
+    assert.ok(!/\d\s*\*\s*1024\s*\*\s*1024/.test(texte),
+      nom + ' porte encore un plafond en octets écrit en dur : il doit venir de l’hôte');
+  }
+  // L'hôte construit `limites` depuis une seule fonction, elle-même depuis lib/medias.js
+  // (l'image) et ses propres constantes (la photo) : jamais recopiées à la main.
+  assert.match(medias, /const TAILLE_MAX_IMAGE_IMPORT = /,
+    'lib/medias.js ne porte plus le plafond des images, plus rien à envoyer aux webviews');
+  assert.match(src, /function limitesMedias\(\)/,
+    'l’hôte ne construit plus `limites` depuis un seul endroit');
+  assert.match(src, /imageMax: TAILLE_MAX_IMAGE_IMPORT, imageExtensions: EXTENSIONS_IMAGE_IMPORT/,
+    'limitesMedias() ne source plus le plafond des images depuis lib/medias.js');
+  assert.match(src, /photoMax: TAILLE_MAX_PHOTO, photoExtensions: EXTENSIONS_PHOTO/,
+    'limitesMedias() ne source plus le plafond des photos depuis les constantes de l’hôte');
+  assert.match(src, /limites: limitesMedias\(\)/,
+    'aucun message de chargement n’envoie plus `limites` aux webviews');
 });
 
 test('import : la chaîne appelle le rangement des médias, et docx-meta l’alimente', () => {
@@ -1352,7 +1386,9 @@ test('la chaîne ne passe plus par AnyStyle ni par citeproc', () => {
 test('print.css : un appel de citation ne se lit pas comme un lien sortant', () => {
   const css = lire('pipeline', 'styles', 'print.css');
   assert.match(css, /a\[href\^="#"\]::after,\s*a\.szh-appel::after \{ content: none; \}/);
-  assert.match(css, /\.szh-appel-orphelin \{[^}]*dotted/);
+  // .szh-appel-orphelin vit désormais dans partage-filtres.css, commune au livre.
+  const partage = lire('pipeline', 'styles', 'partage-filtres.css');
+  assert.match(partage, /\.szh-appel-orphelin \{[^}]*dotted/);
   // La marque des appels non liés ne doit vivre que dans l'aperçu.
   const lua = lire('pipeline', 'filters', 'szh-citations.lua');
   assert.match(lua, /SZH_APERCU/);
@@ -1369,7 +1405,11 @@ test('le dépôt Word vient du profil, et aucun nom n’est écrit en dur dans e
   assert.strictEqual(profils.profilPour('revue').depot, 'articles-word');
   assert.strictEqual(profils.profilPour('livre').depot, 'chapitres-word');
 
-  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  // Lecture directe, sans lib/ : ce contrat vérifie l'ABSENCE du littéral dans le code
+  // d'extension.js — lib/profil.js le porte légitimement (c'est lui la source), et la
+  // concaténation de lire() ferait donc échouer ce contrôle pour une raison qui n'a rien à
+  // voir avec ce qu'il éprouve.
+  const src = fs.readFileSync(CHEMIN_EXTENSION, 'utf8');
   // Le code seul : un nom de dossier cité dans un commentaire est légitime et documente.
   const code = src.split('\n')
     .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
@@ -1480,10 +1520,39 @@ test('livre : un dossier de chapitre préfixé « _ » n’est pas imprimé, et 
   assert.match(livre, /TOUS_CHAPITRES := \$\(filter-out _%,/,
     'les pièces de travail redeviennent des chapitres : la page de titre du manuscrit '
     + 'd’origine se réimprimerait en dernier chapitre du livre');
-  assert.match(livre, /\$\(foreach c,\$\(filter _%,\$\(DOSSIERS_CHAPITRES\)\)/,
-    'un dossier écarté doit être ANNONCÉ — un chapitre qui disparaît en silence est pire '
-    + 'qu’un chapitre en trop');
+  // La liste des dossiers écartés reste calculée au niveau des variables make ; le
+  // constat, lui, est émis en ligne codée par verifie-livre (plus un $(warning), rejoué
+  // à chaque sous-make) — un dossier écarté doit rester ANNONCÉ, un chapitre qui
+  // disparaît en silence étant pire qu’un chapitre en trop.
+  assert.match(livre, /CHAPITRES_ECARTES := \$\(filter _%,\$\(DOSSIERS_CHAPITRES\)\)/,
+    'la liste des dossiers écartés (préfixe « _ ») n’est plus calculée : plus rien à annoncer');
+  assert.match(livre, /\[livre-avertissement\] chapitre-ecarte \|/,
+    'un dossier écarté doit être ANNONCÉ, en ligne codée — un chapitre qui disparaît en '
+    + 'silence est pire qu’un chapitre en trop');
   // L'exclusion ne vaut que si la scission pose réellement ce préfixe.
   assert.match(lire('pipeline', 'livre-scinder.py'), /_scission-\{slug_original\}/,
     'livre-scinder.py ne préfixe plus sa pièce de rebut : l’exclusion ne protège plus rien');
+});
+
+// ---- Protocole de messages des webviews : une seule table, deux dépôts ----
+//
+// lib/messages.js (l'hôte) et media/_messages.js (la webview) doivent porter EXACTEMENT
+// la même table SZH.MSG — mêmes clés, mêmes valeurs. media/_messages.js n'est pas encore
+// posé dans le jsPartage d'une page (ce câblage touche extension.js, hors périmètre du lot
+// qui l'a introduit) ; ce contrat vaut malgré tout, pour que le jour où il l'est, les deux
+// tables n'aient jamais divergé entre-temps.
+test('protocole de messages : SZH.MSG concorde entre lib/messages.js et media/_messages.js', () => {
+  const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
+  const src = lire('vscodium-extension', 'szh-cockpit', 'media', '_messages.js');
+  const marque = 'SZH.MSG = Object.freeze(';
+  const debut = src.indexOf(marque);
+  assert.notStrictEqual(debut, -1, 'table SZH.MSG introuvable dans media/_messages.js');
+  const fin = src.lastIndexOf(');');
+  // eslint-disable-next-line no-eval
+  const webview = eval('(' + src.slice(debut + marque.length, fin) + ')');
+  assert.deepStrictEqual(Object.keys(webview).sort(), Object.keys(MSG).sort(),
+    'les clés de SZH.MSG divergent entre lib/messages.js et media/_messages.js');
+  for (const cle of Object.keys(MSG)) {
+    assert.strictEqual(webview[cle], MSG[cle], 'valeur SZH.MSG.' + cle + ' divergente');
+  }
 });

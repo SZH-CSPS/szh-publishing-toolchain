@@ -1,12 +1,9 @@
 /* Base commune aux deux formulaires de metadonnees d'article : la carte, ses champs et sa
    zone d'auteurs. Posee apres _design.css, qui fournit la carte, la barre, les
-   notifications et les boutons, et apres _auteurs.css, a qui appartiennent la fiche
-   d'auteur·e et sa modale : rien ici ne doit les redefinir.
+   notifications, les boutons et le corps de page (body/h1, --page-max par defaut : 52rem,
+   la largeur que ces deux pages veulent), et apres _auteurs.css, a qui appartiennent la
+   fiche d'auteur·e et sa modale : rien ici ne doit les redefinir.
    La page peut surcharger : la verification d'import decore .carte h2 de badges. */
-body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
-  line-height: var(--interligne); color: var(--encre); background: var(--fond);
-  padding: var(--e4) var(--e5) var(--e7); max-width: 52rem; }
-h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 
 /* Une pile de cartes, separees par un ecart franc : entre deux articles, c'est le vide
    qui dit la coupure, mieux qu'un filet de plus. */
@@ -26,14 +23,7 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
   box-shadow: inset 3px 0 0 var(--accent);
   display: flex; align-items: baseline; gap: var(--e3); flex-wrap: wrap; }
 
-/* Intitules : plus de gris minuscule. Un champ se trouve d'abord par son nom. */
-label { display: block; margin: var(--e4) 0 var(--e1);
-  font-size: var(--t-libelle); font-weight: 700; letter-spacing: .02em; color: var(--encre); }
-input, select, textarea { width: 100%; box-sizing: border-box; padding: .35em .5em; font: inherit;
-  color: var(--vscode-input-foreground); background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini); }
-textarea { resize: vertical; min-height: 3.4em; font-family: inherit; }
-input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+/* Intitules et champs nus : le socle de _design.css (§9, portee a .carte). */
 /* Traductions : construites toujours, cachees par defaut, revelees par la barre. Chaque
    langue a sa classe champ-<lang>, et la carte ne montre que celles qu'elle porte via
    avec-<lang> : la langue de l'article, la langue par defaut de la revue, et chaque
@@ -56,8 +46,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
    champ-<lang>/champ-trad que le champ qu'il accompagne : il se cache avec lui. */
 .compteur-resume { margin: -.2em 0 var(--e3); font-size: var(--t-mini); color: var(--encre-2);
   text-align: right; }
-.compteur-resume--proche { color: var(--vscode-editorWarning-foreground, #d1901e); }
-.compteur-resume--depasse { color: var(--vscode-errorForeground, #f85149); }
+.compteur-resume--proche { color: var(--avert); }
+.compteur-resume--depasse { color: var(--danger); }
 
 /* DOI : calcule par l'hote et montre verrouille ; la case « Definir manuellement le DOI »
    rend le champ editable, apres l'avertissement modal pose par l'hote. */
@@ -65,38 +55,11 @@ input.doi-verrouille { color: var(--encre-2); background: var(--surface); cursor
 .case-doi { font-weight: 400; font-size: var(--t-libelle); margin-top: var(--e1); }
 .case-doi input { width: auto; margin-right: .35em; accent-color: var(--accent); }
 
-button { padding: .35em .75em; border: 1px solid transparent; border-radius: var(--rayon-mini);
-  font: inherit; cursor: pointer;
-  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
-  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background)); }
-button.principal { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
-button.principal:hover { background: var(--vscode-button-hoverBackground); }
-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-button:disabled { opacity: .45; cursor: default; }
+/* boutons nus : le socle de _design.css (§9, portee a .carte). */
 
 /* ---- Autocomplétion des mots-clés (media/_fiches.js) : le vocabulaire edudoc.ch. La
    grille elle-même (.mc-*) est injectée par _commun.js ; on ne fait ici qu'ajouter de quoi
-   positionner la boîte de suggestions sous la case où l'on tape, à l'intérieur de sa
-   rangée — jamais sous la grille entière, qui couvre plusieurs langues. */
+   positionner la boîte de suggestions (.szh-sugg, _design.css §10, partagée avec les
+   auteur·e·s) sous la case où l'on tape, à l'intérieur de sa rangée — jamais sous la
+   grille entière, qui couvre plusieurs langues. */
 .mc-rangee { position: relative; }
-.mc-sugg {
-  position: absolute; top: 100%; z-index: 10;
-  margin-top: 2px; padding: var(--e1) 0;
-  background: var(--vscode-editor-background);
-  border: 1px solid var(--filet-fort); border-radius: var(--rayon-mini);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, .25);
-  max-height: 12rem; overflow-y: auto;
-}
-.mc-sugg-item {
-  display: block; width: 100%; text-align: left;
-  padding: var(--e1) var(--e2); border: 0; background: none;
-  color: var(--encre); font: inherit; cursor: pointer;
-  overflow-wrap: anywhere;
-}
-.mc-sugg-item:hover,
-.mc-sugg-item.actif {
-  background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground, rgba(128, 128, 128, .2)));
-  color: var(--vscode-list-activeSelectionForeground, var(--encre));
-}
-/* La part trouvée, comme pour les auteur·e·s : le gras seul la marque. */
-.mc-sugg-item strong { font-weight: 700; }

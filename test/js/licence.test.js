@@ -28,6 +28,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { ouvrir, libellesHote, chargerAvecVscodeFactice } = require('./dom-minimal');
+const { sourceExtensionEtLib } = require('./hote-factice');
 
 // Langue des messages fixée : hors de l'éditeur elle vient de l'environnement.
 process.env.SZH_LANGUE = 'fr';
@@ -211,7 +212,8 @@ test('les deux formulaires de cartes recoivent la liste des licences', () => {
   // « Métadonnées des articles » et « Vérification de l'import » partagent le même
   // fragment de carte : un panneau qui oublierait la liste afficherait un <select> vide,
   // sans erreur et sans qu'aucune page ne s'en plaigne.
-  const ext = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  // Concaténé à lib/ : préalable au découpage d'extension.js, voir hote-factice.js.
+  const ext = sourceExtensionEtLib(COCKPIT);
   const envois = ext.split("types: typesTraduits(langue)").slice(1);
   assert.strictEqual(envois.length, 2, 'le nombre d’envois de cartes a changé');
   for (const suite of envois) {
@@ -235,7 +237,7 @@ function ouvrirFiches(articles) {
   const page = ouvrir({
     racine: RACINE, page: 'metadata-articles',
     cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
-    jsPartage: ['_auteurs.js', '_fiches.js'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
     txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
   });
   page.envoyer({

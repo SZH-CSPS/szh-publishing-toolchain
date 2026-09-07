@@ -1,11 +1,8 @@
 /* Vue « Articles » : la barre de commandes, les métadonnées du numéro repliées, puis une
    carte par article. Les cartes viennent de _liste.css, le formulaire du numéro de
-   _numero.css, le reste du socle (_design.css). Il ne reste ici que le cadre de la page,
-   le bloc repliable et la modale des tâches. */
-body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
-  line-height: var(--interligne); color: var(--encre); background: var(--fond);
-  padding: var(--e4) var(--e5) var(--e7); max-width: 60rem; }
-h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
+   _numero.css, le reste du socle (_design.css : body/h1 §0, largeur par défaut 52rem). Il
+   ne reste ici que la largeur, le bloc repliable et la modale des tâches. */
+body { --page-max: 60rem; }
 
 /* Les métadonnées du numéro sont là quand on les cherche, et repliées le reste du temps :
    la page sert d'abord à voir où en sont les articles. */
@@ -29,7 +26,7 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
    hauteur d'un paragraphe, et l'œil descend la colonne des intitulés sans les relire. */
 .carte-apercu { padding: var(--e3) var(--e3) 0; }
 
-/* Les avertissements de la carte (A7.4) : posés dans sa tête, à droite du titre — plus
+/* Les avertissements de la carte : posés dans sa tête, à droite du titre — plus
    dans le corps replié de l'aperçu, où ils étaient les premiers à disparaître avec lui.
    margin-left: auto les pousse hors du titre, qui reste seul à gauche ; ils passent sous
    lui si la carte manque de largeur, .szh-tete portant déjà flex-wrap (media/_liste.css). */
@@ -49,7 +46,7 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 .apercu-texte { overflow-wrap: anywhere; }
 /* Ce qui n'est pas encore là, ou qui ne concorde pas, prend la couleur d'avertissement du
    thème : un « — » gris se confond avec le reste, et c'est justement ce qu'on cherche. */
-.apercu-valeur--attention .apercu-texte { color: var(--vscode-editorWarning-foreground, #cca700); }
+.apercu-valeur--attention .apercu-texte { color: var(--avert); }
 
 /* Le badge de langue tient la place d'un intitulé répété. Chiffres et capitales alignés,
    largeur fixe : la colonne des textes commence au même endroit sur toutes les rangées. */
@@ -64,7 +61,7 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 
 /* La seule chose qui se coche dans ce bloc, et elle ne touche pas la fiche : c'est une
    décision sur le numéro. Sur la ligne du DOI qu'elle concerne, et non plus détachée sous
-   la grille entière (A7.1) : un flex-item de plus dans .apercu-valeur, comme le badge de
+   la grille entière : un flex-item de plus dans .apercu-valeur, comme le badge de
    langue ou une marque « manuel » — avec l'écart qui la sépare du texte du DOI. */
 .apercu-doi { display: inline-flex; align-items: center; gap: .35em; cursor: pointer;
   margin: 0 0 0 .5em; font-size: var(--t-libelle); color: var(--encre); }

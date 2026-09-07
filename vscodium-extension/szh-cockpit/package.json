@@ -2,7 +2,7 @@
   "name": "szh-cockpit",
   "displayName": "SZH – Revue (cockpit)",
   "description": "Barre latérale « Revue SZH » : articles, métadonnées du numéro, import des Word, suivi des traductions, aperçu et réglages.",
-  "version": "0.31.0",
+  "version": "0.32.0",
   "publisher": "szh-csps",
   "license": "MIT",
   "engines": {
@@ -251,6 +251,30 @@
         "title": "%cmd.exporterArticle%",
         "category": "SZH/CSPS",
         "icon": "$(file-pdf)"
+      },
+      {
+        "command": "szh.livreImprimeur",
+        "title": "%cmd.livreImprimeur%",
+        "category": "SZH/CSPS",
+        "icon": "$(file-pdf)"
+      },
+      {
+        "command": "szh.livreCouverture",
+        "title": "%cmd.livreCouverture%",
+        "category": "SZH/CSPS",
+        "icon": "$(book)"
+      },
+      {
+        "command": "szh.livreEpub",
+        "title": "%cmd.livreEpub%",
+        "category": "SZH/CSPS",
+        "icon": "$(package)"
+      },
+      {
+        "command": "szh.livreWeb",
+        "title": "%cmd.livreWeb%",
+        "category": "SZH/CSPS",
+        "icon": "$(globe)"
       },
       {
         "command": "szh.archiverVerrouiller",
@@ -519,7 +543,7 @@
       },
       {
         "command": "szh.apercuLivre",
-        "title": "Aperçu du livre entier",
+        "title": "%cmd.apercuLivre%",
         "category": "SZH/CSPS",
         "icon": "$(book)"
       }
@@ -585,6 +609,22 @@
         {
           "command": "szh.exporterArticle",
           "when": "szh.estRevue"
+        },
+        {
+          "command": "szh.livreImprimeur",
+          "when": "szh.estLivre"
+        },
+        {
+          "command": "szh.livreCouverture",
+          "when": "szh.estLivre"
+        },
+        {
+          "command": "szh.livreEpub",
+          "when": "szh.estLivre"
+        },
+        {
+          "command": "szh.livreWeb",
+          "when": "szh.estLivre"
         },
         {
           "command": "szh.archiverVerrouiller",

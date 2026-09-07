@@ -105,11 +105,18 @@ test('profil : les chemins d’un chapitre', () => {
 });
 
 // La différence de sortie est la seule qui compte vraiment : un article a son PDF, un
-// chapitre n'a qu'un fragment — le PDF est celui du livre entier.
-test('profil : un article a son dossier de sortie, un chapitre n’a qu’un fragment', () => {
+// chapitre n'a qu'un aperçu HTML — le PDF est celui du livre entier.
+test('profil : un article a son dossier de sortie, un chapitre son aperçu HTML', () => {
   assert.equal(profil.chemins('revue', '/w/r', 'a').outUnite, path.join('/w/r', 'out', 'a'));
   assert.equal(profil.chemins('livre', '/w/l', 'a').outUnite,
-               path.join('/w/l', 'out', 'chapitres', 'a.frag.html'));
+               path.join('/w/l', 'out', 'chapitres', 'a.apercu.html'));
+});
+
+// pdfLivre() : le nom du DOSSIER du livre, jamais celui d'un chapitre — comme NOM_LIVRE
+// dans livre.mk (basename $(CURDIR)), pas comme le slug qui a ouvert le formulaire.
+test('profil : le PDF du livre porte le nom de son dossier', () => {
+  assert.equal(profil.pdfLivre('/w/2026-B330-Essai'),
+               path.join('/w/2026-B330-Essai', 'out', '2026-B330-Essai.pdf'));
 });
 
 test('profil : sans slug, seuls les chemins du dossier sont rendus', () => {
@@ -128,6 +135,18 @@ test('profil : la clé de libellé suit le mot du profil', () => {
   assert.equal(profil.cleLibelle('revue'), 'unite.article');
   assert.equal(profil.cleLibelle('livre'), 'unite.chapitre');
   assert.equal(profil.cleLibelle('livre', 'supprimer'), 'unite.chapitre.supprimer');
+});
+
+// cleLibelle() peut former un suffixe (voir le test ci-dessus), mais aucun appelant n'en a
+// aujourd'hui besoin : seules les deux clés SANS suffixe existent réellement dans i18n.js,
+// et c'est elles que ce contrôle éprouve — une clé formée mais absente des deux langues
+// s'afficherait telle quelle (« unite.article ») au lieu du mot attendu.
+test('profil : les clés de libellé réellement formées existent, en français et en allemand', () => {
+  const i18n = require(path.join(COCKPIT, 'lib', 'i18n.js'));
+  for (const cle of [profil.cleLibelle('revue'), profil.cleLibelle('livre')]) {
+    assert.ok(cle in i18n.TEXTES_COCKPIT.fr, 'clé absente en français : ' + cle);
+    assert.ok(cle in i18n.TEXTES_COCKPIT.de, 'clé absente en allemand : ' + cle);
+  }
 });
 
 // Une fenêtre qui passe d'une revue à un livre doit voir la clé de l'autre RETOMBER, sinon

@@ -31,23 +31,24 @@
   var liste = SZH.listeCartes({
     conteneur: document.getElementById('lignes'),
     textes: function () { return TXT; },
-    onOuvrir: function (cle) { api.postMessage({ type: 'ouvrir', cle: cle }); },
-    onAction: function (cle, id) { api.postMessage({ type: 'action', id: id, cle: cle }); }
+    onOuvrir: function (cle) { api.postMessage({ type: SZH.MSG.OUVRIR, cle: cle }); },
+    onAction: function (cle, id) { api.postMessage({ type: SZH.MSG.ACTION, id: id, cle: cle }); }
   });
 
   var recu = false;
   window.addEventListener('message', function (ev) {
     var msg = ev.data || {};
     recu = true;
-    if (msg.type !== 'valeurs') {
-      if (msg.type === 'etat' && ctlEtat) { ctlEtat.textContent = msg.message || ''; }
+    if (msg.type !== SZH.MSG.VALEURS) {
+      if (msg.type === SZH.MSG.ETAT) { if (ctlEtat) { ctlEtat.textContent = msg.message || ''; } }
+      else { console.warn('vue d’ensemble : type de message inconnu', msg.type); }
       return;
     }
     if (msg.i18n) { TXT = msg.i18n; }
     SZH.poserAccent(msg.accent);
     titre.textContent = msg.titre || '';
     ctlEtat = SZH.barreBoutons(barre, msg.boutons || [], function (id) {
-      api.postMessage({ type: 'action', id: id });
+      api.postMessage({ type: SZH.MSG.ACTION, id: id });
     });
     liste.rendre(msg.lignes || []);
   });

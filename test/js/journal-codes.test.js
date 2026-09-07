@@ -225,6 +225,85 @@ test('codes : les champs sont nommés, donc leur ordre est libre', () => {
   assert.ok(phrase.indexOf('allemand') !== -1, 'la langue est nommée par son jeton : ' + phrase);
 });
 
+// ---- 2 bis. Le livre : source « livre », trois codes, et « chapitre » = « article » ----
+//
+// Un livre n'a pas d'« article » : ses unités sont des CHAPITRES, et pipeline/livre-
+// assembler.py (liminaire-introuvable) comme pipeline/profils/livre.mk (chapitre-ecarte,
+// chapitre-introuvable) nomment donc leur champ « chapitre », jamais « article ». Sans
+// cet alias, le constat resterait sans slug, et la carte qui le montre resterait sans
+// article à ouvrir.
+
+test('codes : la source « livre » est reconnue, avec ses trois codes et leurs tons', () => {
+  const blocage = journal.analyserJournal(ligne('livre-blocage', 'liminaire-introuvable',
+    ['pièce « demi-titre.md »'], 'Fr.', 'De.'), 'fr')[0];
+  assert.strictEqual(blocage.source, 'livre');
+  assert.strictEqual(blocage.ton, 'danger');
+  assert.notStrictEqual(blocage.cle, '', 'liminaire-introuvable n’a pas de clé d’i18n maison');
+
+  const ecarte = journal.analyserJournal(ligne('livre-avertissement', 'chapitre-ecarte',
+    ['chapitre « _brouillon »'], 'Fr.', 'De.'), 'fr')[0];
+  assert.strictEqual(ecarte.ton, 'attention');
+  assert.strictEqual(ecarte.slug, '_brouillon',
+    'le champ « chapitre » doit nommer l’unité, comme le fait « article » ailleurs');
+  assert.notStrictEqual(ecarte.cle, '');
+
+  const introuvable = journal.analyserJournal(ligne('livre-avertissement', 'chapitre-introuvable',
+    ['chapitre « 05-conclusion »'], 'Fr.', 'De.'), 'fr')[0];
+  assert.strictEqual(introuvable.ton, 'attention');
+  assert.strictEqual(introuvable.slug, '05-conclusion');
+  assert.notStrictEqual(introuvable.cle, '');
+});
+
+test('codes : les trois codes du livre ont une phrase maison, en français et en allemand', () => {
+  for (const [code, champ, valeur] of [
+    ['liminaire-introuvable', 'pièce', 'demi-titre.md'],
+    ['chapitre-ecarte', 'chapitre', '_brouillon'],
+    ['chapitre-introuvable', 'chapitre', '05-conclusion']
+  ]) {
+    const prefixe = code === 'liminaire-introuvable' ? 'livre-blocage' : 'livre-avertissement';
+    const l = ligne(prefixe, code, [champ + ' « ' + valeur + ' »'],
+      'Prose française oubliable.', 'Vergessliche deutsche Prosa.');
+    for (const langue of ['fr', 'de']) {
+      const c = journal.analyserJournal(l, langue)[0];
+      const phrase = journal.phraseConstat(c, langue);
+      assert.ok(phrase.indexOf(valeur) !== -1,
+        code + ' (' + langue + ') ne substitue pas ' + champ + ' dans sa phrase : ' + phrase);
+      assert.ok(phrase.indexOf('oubliable') === -1 && phrase.indexOf('Vergessliche') === -1,
+        code + ' (' + langue + ') affiche encore la prose du pipeline au lieu de la sienne');
+    }
+  }
+});
+
+// Sur les lignes RÉELLES du pipeline (pipeline/livre-assembler.py et
+// pipeline/profils/livre.mk), pour ne pas prouver quelque chose que le pipeline n'écrit pas.
+test('codes : les trois lignes réelles du pipeline pour le livre sont reconnues', () => {
+  const reelles = [
+    '[livre-blocage] liminaire-introuvable | pièce « demi-titre » | '
+      + "La pièce liminaire « demi-titre » est annoncée dans buch.yaml (liminaires:) mais "
+      + "n'a pas été compilée : out/liminaires/demi-titre.html est introuvable. Vérifiez "
+      + "qu'elle existe dans liminaires/, puis relancez la compilation. | "
+      + '[de] Das im buch.yaml angekündigte Vorsatzstück « demi-titre » (liminaires:) wurde '
+      + 'nicht kompiliert: out/liminaires/demi-titre.html fehlt. Prüfen Sie, ob es in '
+      + 'liminaires/ liegt, und kompilieren Sie danach neu.',
+    "[livre-avertissement] chapitre-ecarte | chapitre « _brouillon » | Ce dossier n'est pas "
+      + "imprimé : un dossier préfixé « _ » est une pièce de travail, à relire et à "
+      + "replacer. Retirez le « _ » pour en faire un chapitre. | [de] Dieser Ordner wird "
+      + 'nicht gedruckt: ein Ordner mit Präfix « _ » ist ein Arbeitsstück. Entfernen Sie das '
+      + '« _ », um daraus ein Kapitel zu machen.',
+    '[livre-avertissement] chapitre-introuvable | chapitre « 05-conclusion » | Ce chapitre '
+      + 'est listé dans ordre-chapitres mais introuvable dans chapitres/ : vérifiez le nom '
+      + 'du dossier, ou retirez-le de la liste. | [de] Dieses Kapitel steht in '
+      + 'ordre-chapitres, wurde aber in chapitres/ nicht gefunden: prüfen Sie den '
+      + 'Ordnernamen, oder entfernen Sie es aus der Liste.'
+  ].join(LF) + LF;
+  const constats = journal.analyserJournal(reelles, 'fr');
+  assert.deepStrictEqual(constats.map((c) => c.code),
+    ['liminaire-introuvable', 'chapitre-ecarte', 'chapitre-introuvable']);
+  assert.deepStrictEqual(constats.map((c) => c.ton), ['danger', 'attention', 'attention']);
+  assert.deepStrictEqual(constats.map((c) => c.slug), ['', '_brouillon', '05-conclusion']);
+  for (const c of constats) { assert.notStrictEqual(c.cle, '', c.code + ' sans clé d’i18n'); }
+});
+
 // ---- 3. Les filtres, pour de vrai : le blocage reste un blocage ----
 
 function wsl(args) {

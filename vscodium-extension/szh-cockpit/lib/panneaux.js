@@ -1,12 +1,14 @@
 // Les trois boutons de la barre de titre — Commande, Édition, Export — ouvrent chacun un
 // QuickPick qui ne fait qu'appeler des commandes enregistrées ailleurs. Les actions de
-// mise en forme viennent de PALETTE_MEF (formatting.js). Format d'une entrée :
+// mise en forme viennent de PALETTE_MEF (lib/formatting-pur.js — la part de
+// lib/formatting.js qui ne référence pas vscode, importée directement pour ne pas tirer
+// tout ce module derrière une simple donnée). Format d'une entrée :
 // ['--', cléGroupe] pour un séparateur, sinon [cléLibellé, commande, raccourci, icône].
 'use strict';
 
 const vscode = require('vscode');
 const { T } = require('./i18n');
-const { PALETTE_MEF } = require('./formatting');
+const { PALETTE_MEF } = require('./formatting-pur');
 // Un QuickPick se ferme dès que le focus bouge : la garde retient, tant qu'un panneau est
 // ouvert, ce qui le lui volerait (rafraîchissement d'aperçu, avis de fin de compilation).
 const { sousGarde } = require('./interaction');
@@ -53,7 +55,7 @@ const HORS_GARDE_MD = ['szh.basculerApercu', 'szh.metadonneesArticle', 'szh.medi
 async function ouvrirPanneauEdition() {
   const ed = vscode.window.activeTextEditor;
   const estMarkdown = !!(ed && ed.document.languageId === 'markdown');
-  // L'aperçu du LIVRE entier n'existe que pour un livre : un chapitre s'aperçoit comme un
+  // L'aperçu du livre entier n'existe que pour un livre : un chapitre s'aperçoit comme un
   // article, mais la pagination, le sommaire et ses numéros de page n'ont de sens
   // qu'une fois tous les chapitres assemblés.
   const apercuLivre = hote.profil() === 'livre'
@@ -80,10 +82,12 @@ async function ouvrirPanneauEdition() {
   await vscode.commands.executeCommand(choix.commande);
 }
 
-// Les documents produits, puis le cycle de vie du numéro. Ne figurent que les entrées que
-// l'état du numéro rend possibles : « Exporter cet article » n'apparaît que sur un numéro
-// gelé, où la compilation automatique est coupée. szh.exporterXml étant facultative, sa
-// présence est testée par getCommands.
+// Les documents produits, puis le cycle de vie du numéro (ou du livre). Ne figurent que
+// les entrées que l'état rend possibles : « Exporter cet article » n'apparaît que sur un
+// numéro gelé, où la compilation automatique est coupée. szh.exporterXml étant facultative,
+// sa présence est testée par getCommands. Le cycle de vie, lui, vaut pour les deux profils
+// (REVUE_SEULEMENT, plus bas) ; suffixeProfil choisit la variante « .livre » des libellés,
+// comme lib/cycle-vie.js le fait déjà pour les textes qu'il affiche.
 async function ouvrirPanneauExport() {
   const etat = hote.etat();
   const entrees = [['--', 'panneau.g.export']];
@@ -95,19 +99,29 @@ async function ouvrirPanneauExport() {
   if (commandes.indexOf('szh.exporterXml') !== -1) {
     entrees.push(['panneau.exporterXml', 'szh.exporterXml', '', '$(file-code)']);
   }
-  entrees.push(['--', 'panneau.g.cycle']);
+  // Les quatre sorties du livre : sans objet sur une revue, offertes ici seulement.
+  if (hote.profil() === 'livre') {
+    entrees.push(
+      ['panneau.livreImprimeur', 'szh.livreImprimeur', '', '$(file-pdf)'],
+      ['panneau.livreCouverture', 'szh.livreCouverture', '', '$(book)'],
+      ['panneau.livreEpub', 'szh.livreEpub', '', '$(package)'],
+      ['panneau.livreWeb', 'szh.livreWeb', '', '$(globe)']
+    );
+  }
+  const suffixeProfil = hote.profil() === 'livre' ? '.livre' : '';
+  entrees.push(['--', 'panneau.g.cycle' + suffixeProfil]);
   if (!etat.archivee) {
-    entrees.push(['panneau.archiver', 'szh.archiverVerrouiller', '', '$(archive)']);
+    entrees.push(['panneau.archiver' + suffixeProfil, 'szh.archiverVerrouiller', '', '$(archive)']);
   } else if (!etat.verrouillee) {
-    // Numéro archivé puis déverrouillé pour une correction : reste à le reverrouiller.
-    // Même commande, qui constate d'elle-même qu'il n'y a plus de dossier à déplacer.
-    entrees.push(['panneau.verrouiller', 'szh.archiverVerrouiller', '', '$(lock)']);
+    // Gelé puis déverrouillé pour une correction : reste à le reverrouiller. Même
+    // commande, qui constate d'elle-même qu'il n'y a plus de dossier à déplacer.
+    entrees.push(['panneau.verrouiller' + suffixeProfil, 'szh.archiverVerrouiller', '', '$(lock)']);
   }
   if (etat.verrouillee) {
-    entrees.push(['panneau.deverrouiller', 'szh.deverrouiller', '', '$(unlock)']);
+    entrees.push(['panneau.deverrouiller' + suffixeProfil, 'szh.deverrouiller', '', '$(unlock)']);
   }
   if (etat.archivee) {
-    entrees.push(['panneau.desarchiver', 'szh.desarchiver', '', '$(folder-opened)']);
+    entrees.push(['panneau.desarchiver' + suffixeProfil, 'szh.desarchiver', '', '$(folder-opened)']);
   }
   await choisirEtExecuter(pourProfil(entrees), 'panneau.export.placeholder');
 }
@@ -121,17 +135,22 @@ let hote = {
   profil: () => 'revue'
 };
 
-// Un livre n'a ni OJS, ni suivi de traduction, ni archivage de numéro. Les proposer dans un
-// panneau ouvrirait un formulaire vide, ou pire — une commande qui écrit dans un
-// ausgabe.yaml qui n'existe pas. On les retire, plutôt que de compter sur la personne pour
-// ne pas cliquer.
+// Un livre n'a ni OJS, ni suivi de traduction. Les proposer dans un panneau ouvrirait un
+// formulaire vide, ou pire — une commande qui écrit dans un ausgabe.yaml qui n'existe pas.
+// On les retire, plutôt que de compter sur la personne pour ne pas cliquer. « Exporter cet
+// article »/« Exporter le XML » sont propres à un article de revue ; un livre a ses quatre
+// sorties à lui, ajoutées plus haut sans passer par cette liste.
+// Le cycle de vie (archiver, verrouiller, désarchiver), en revanche, vaut pour les deux
+// profils : un livre publié se fige et se range comme un numéro. windows/archive-revue.ps1
+// sait déjà traiter les deux ($estLivre, textes arch.*.livre) ; ouvrirPanneauExport et
+// lib/cycle-vie.js portent maintenant les mêmes variantes côté cockpit — ces trois
+// commandes ne sont donc plus dans cette liste.
 // szh.metadonnees en est sorti (docs/REPRISE-LIVRES.md §2.1a) : buch.yaml a désormais son
 // propre formulaire (ouvrirMetadonnees le choisit selon le profil), là où il n'existait
-// aucune saisie pour un livre avant ce lot.
+// aucune saisie pour un livre.
 const REVUE_SEULEMENT = [
   'szh.apercuMetadonnees', 'szh.traduction',
-  'szh.exporterArticle', 'szh.exporterXml',
-  'szh.archiverVerrouiller', 'szh.deverrouiller', 'szh.desarchiver'
+  'szh.exporterArticle', 'szh.exporterXml'
 ];
 
 function pourProfil(entrees) {

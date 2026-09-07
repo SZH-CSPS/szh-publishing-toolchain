@@ -18,7 +18,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { revueDEssai, activerHote } = require('./hote-factice');
+const { revueDEssai, activerHote, sourceExtensionEtLib } = require('./hote-factice');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
@@ -205,6 +205,10 @@ test('hôte : la fin d’une compilation attend la fermeture du QuickPick — la
 // Un futur showQuickPick posé sans garde referait le bogue en silence : on relit la
 // source. Les appels directs sont écrits « sousGarde(() => vscode.window.show… » ;
 // choisirTitreImportant enchaîne deux choix sous une garde englobante, testée à part.
+// Volontairement lu seul, sans lib/ : ce contrat compte déjà lib/panneaux.js et
+// lib/formatting.js comme des entrées à part (avec leur propre exception « englobes ») ;
+// les concaténer sous la clé 'extension.js' compterait deux fois leurs appels et fausserait
+// le compte. Ce test connaît déjà, fichier par fichier, où vivent ces fonctions.
 test('contrat : tous les showQuickPick/showInputBox du cockpit passent par la garde', () => {
   const fichiers = {
     'lib/panneaux.js': fs.readFileSync(path.join(COCKPIT, 'lib', 'panneaux.js'), 'utf8'),
@@ -236,7 +240,8 @@ test('contrat : tous les showQuickPick/showInputBox du cockpit passent par la ga
 });
 
 test('contrat : l’aperçu et la notification de fin de compilation passent par differer', () => {
-  const source = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
+  // Concaténé à lib/ : préalable au découpage d'extension.js, voir hote-factice.js.
+  const source = sourceExtensionEtLib(COCKPIT);
   assert.ok(source.indexOf("differer('apercu-html'") !== -1,
     'rechargerApercuHtmlSiChange réassigne webview.html sans garde : le focus repart');
   assert.ok(source.indexOf("differer('notif-journal'") !== -1,

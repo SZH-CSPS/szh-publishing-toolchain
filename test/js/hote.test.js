@@ -516,3 +516,191 @@ test('médias : « à côté » refusé ne laisse pas d’image orpheline dans l
     'le refus ne nomme pas l’image en cause : ' + erreur.message);
   fs.writeFileSync(md, avant);
 });
+
+// analyserAusgabe retire le BOM depuis longtemps ; analyserMeta ne le faisait pas, et un
+// éditeur qui l'ajoute (Word, Notepad) faisait perdre la clé `type` en tête de fiche —
+// silencieusement, puisque la ligne ne matchait alors plus la regex de clé.
+test('une fiche .meta.yaml avec BOM garde sa clé type', () => {
+  const { analyserMeta } = require(path.join(COCKPIT, 'lib', 'yaml.js'));
+  const avecBom = '﻿' + 'type: article\nlang: fr\n';
+  const valeurs = analyserMeta(avecBom);
+  assert.strictEqual(valeurs.type, 'article', 'la clé type a été perdue par le BOM');
+  assert.strictEqual(valeurs.lang, 'fr');
+});
+
+// Ctrl+S / triggerTaskOnSave lancent la tâche de build sans passer par aucune fonction du
+// cockpit : seuls les gestionnaires globaux onDidStartTask/onDidEndTaskProcess/onDidEndTask
+// (activate()) l'apprennent. S'ils ne posent pas buildEnCours, les 14 gardes qui le lisent —
+// dont supprimerArticle — restent inopérantes sur ce chemin, pourtant le plus fréquent.
+// Deux fins possibles, et le compteur doit relâcher la garde dans les deux cas : une tâche
+// normale émet onDidEndTaskProcess puis onDidEndTask, une tâche interrompue avant le spawn
+// (wsl.exe absent) n'émet jamais onDidEndTaskProcess et ne se termine que par onDidEndTask.
+test('une compilation démarrée hors du cockpit (Ctrl+S) bloque bien les gardes buildEnCours',
+  async () => {
+    const nom = 'Aperçu / Export PDF';
+
+    // Première fin : le cas le plus fréquent, une tâche qui va à son terme.
+    const slug1 = '90-jetable-build';
+    const dossier1 = path.join(REVUE, 'articles', slug1);
+    fs.mkdirSync(dossier1, { recursive: true });
+    fs.writeFileSync(path.join(dossier1, slug1 + '.md'), 'Texte.\n');
+
+    HOTE.demarrerTache(nom);
+    HOTE.repondreModale('Supprimer');
+    await HOTE.executer('szh.supprimerArticle', { slug: slug1 });
+    assert.ok(fs.existsSync(dossier1),
+      'la suppression a eu lieu alors qu’une compilation est en cours');
+    assert.ok(HOTE.statutsDits('Compilation ou import').length > 0,
+      'aucun message « occupé » pendant la compilation en cours');
+
+    await HOTE.finirTache(nom, 0);
+    HOTE.repondreModale('Supprimer');
+    await HOTE.executer('szh.supprimerArticle', { slug: slug1 });
+    assert.ok(!fs.existsSync(dossier1),
+      'la suppression reste refusée après une tâche allée à son terme');
+
+    // Seconde fin : la tâche est interrompue avant le spawn, seul onDidEndTask survient.
+    const slug2 = '90-jetable-build-2';
+    const dossier2 = path.join(REVUE, 'articles', slug2);
+    fs.mkdirSync(dossier2, { recursive: true });
+    fs.writeFileSync(path.join(dossier2, slug2 + '.md'), 'Texte.\n');
+
+    HOTE.demarrerTache(nom);
+    HOTE.repondreModale('Supprimer');
+    await HOTE.executer('szh.supprimerArticle', { slug: slug2 });
+    assert.ok(fs.existsSync(dossier2),
+      'la suppression a eu lieu alors qu’une compilation est en cours (seconde fin)');
+
+    await HOTE.finirTacheSansProcessus(nom);
+    HOTE.repondreModale('Supprimer');
+    await HOTE.executer('szh.supprimerArticle', { slug: slug2 });
+    assert.ok(!fs.existsSync(dossier2),
+      'la suppression reste refusée après une tâche interrompue avant le spawn (onDidEndTask seul)');
+  });
+
+// archiverEtVerrouiller/desarchiver/supprimerArticle ne testaient buildEnCours qu'avant la
+// modale de confirmation : une compilation démarrée pendant que la modale est ouverte (elle
+// reste affichée le temps que le rédacteur réponde) n'était donc jamais vue, et l'effet sur
+// le disque suivait quand même le clic sur « Supprimer ».
+test('supprimerArticle : une compilation démarrée pendant la modale bloque la suppression',
+  async () => {
+    const slug = '91-jetable-modal';
+    const dossier = path.join(REVUE, 'articles', slug);
+    fs.mkdirSync(dossier, { recursive: true });
+    fs.writeFileSync(path.join(dossier, slug + '.md'), 'Texte.\n');
+
+    const original = HOTE.stub.window.showWarningMessage;
+    HOTE.stub.window.showWarningMessage = function (...args) {
+      // La modale est affichée : une compilation démarre avant que le rédacteur ne réponde.
+      HOTE.demarrerTache('Aperçu / Export PDF');
+      return original.apply(HOTE.stub.window, args);
+    };
+    HOTE.repondreModale('Supprimer');
+    try {
+      await HOTE.executer('szh.supprimerArticle', { slug: slug });
+    } finally {
+      HOTE.stub.window.showWarningMessage = original;
+    }
+    assert.ok(fs.existsSync(dossier),
+      'la suppression a eu lieu alors qu’une compilation a démarré pendant la modale');
+
+    // Referme la tâche ouverte par le test, pour ne pas laisser buildEnCours à vrai.
+    await HOTE.finirTache('Aperçu / Export PDF', 0);
+    HOTE.repondreModale('Supprimer');
+    await HOTE.executer('szh.supprimerArticle', { slug: slug });
+    assert.ok(!fs.existsSync(dossier), 'le nettoyage du test a échoué');
+  });
+
+// lancerTache() n'attendait que onDidEndTaskProcess : si cet événement ne vient jamais
+// (tâche interrompue, wsl.exe absent), la promesse ne résolvait jamais et buildEnCours
+// restait vrai jusqu'au rechargement de la fenêtre — même quand onDidEndTask, lui, arrive.
+test('lancerTache : une tâche qui ne notifie que sa fin (onDidEndTask) libère buildEnCours',
+  async () => {
+    HOTE.stub.tasks.fetchTasks = () => Promise.resolve([{ name: 'Tout exporter' }]);
+    const p = HOTE.executer('szh.toutExporter');
+    // Laisse la commande avancer jusqu'à son premier await (executeTask) : buildEnCours
+    // est alors déjà vrai, et lancerTache() attend la fin de la tâche.
+    await new Promise((r) => setImmediate(r));
+    HOTE.finirTacheSansProcessus('Tout exporter');   // seul onDidEndTask survient
+
+    let fini = false;
+    p.then(() => { fini = true; });
+    await Promise.race([p, new Promise((r) => setTimeout(r, 500))]);
+    HOTE.stub.tasks.fetchTasks = () => Promise.resolve([]);
+    assert.ok(fini,
+      'szh.toutExporter ne s’est jamais terminé : lancerTache() attend encore onDidEndTaskProcess');
+
+    // buildEnCours doit être retombé à faux : la suppression doit maintenant réussir.
+    const slug = '92-jetable-guard';
+    const dossier = path.join(REVUE, 'articles', slug);
+    fs.mkdirSync(dossier, { recursive: true });
+    fs.writeFileSync(path.join(dossier, slug + '.md'), 'Texte.\n');
+    HOTE.repondreModale('Supprimer');
+    await HOTE.executer('szh.supprimerArticle', { slug: slug });
+    assert.ok(!fs.existsSync(dossier),
+      'buildEnCours est resté vrai : lancerTache() n’a pas résolu sur onDidEndTask seul');
+  });
+
+// media/documentation.js retire la carte du DOM avant de savoir si l'hôte a pu écrire
+// (retrait optimiste, voir retirerFiche()). Si le numéro se verrouille pendant que le
+// panneau reste ouvert, l'hôte sortait en silence : rien ne disait à la page que rien
+// n'avait été écrit, et la carte restait disparue pour de bon.
+test('documentation : un retrait refusé (numéro verrouillé) est signalé au panneau', async () => {
+  const ausgabe = path.join(REVUE, 'ausgabe.yaml');
+  const avantYaml = fs.readFileSync(ausgabe, 'utf8');
+  await HOTE.executer('szh.ressourcesArticle', { slug: '01-essai' });
+  const p = HOTE.panneauDeType('szhDocumentation');
+  assert.ok(p, 'aucun panneau de documentation');
+  p.messages.length = 0;
+
+  // Verrouille le numéro sans fermer le panneau : c'est exactement le cas visé.
+  fs.writeFileSync(ausgabe, avantYaml + 'locked: "true"\n');
+  await HOTE.executer('szh.cockpit.rafraichir');
+  try {
+    await p._recepteur({ type: 'retirer', famille: 'fiche', id: 'peu-importe' });
+    const erreur = p.messages.filter((m) => m.type === 'erreur').pop();
+    assert.ok(erreur, 'le refus (numéro verrouillé) n’est signalé nulle part au panneau');
+    assert.ok(String(erreur.message).length > 0, 'le message d’erreur est vide');
+  } finally {
+    fs.writeFileSync(ausgabe, avantYaml);
+    await HOTE.executer('szh.cockpit.rafraichir');
+  }
+});
+
+// appliquerEtVerifierVerrou (point 3b) : verrouApplique doit refléter le RÉEL, jamais le
+// voulu. Un settings.json devenu illisible pendant le déverrouillage laisse le verrou
+// intact sur le disque — l'avertissement doit le dire, pas prétendre que ça a marché.
+test('un settings.json illisible pendant le déverrouillage laisse l’interface dire « verrouillé »', async () => {
+  const ausgabe = path.join(REVUE, 'ausgabe.yaml');
+  const avantYaml = fs.readFileSync(ausgabe, 'utf8');
+  const cheminSettings = path.join(REVUE, '.vscode', 'settings.json');
+
+  // Verrouille pour de vrai : settings.json existe et porte le drapeau de lecture seule.
+  fs.writeFileSync(ausgabe, avantYaml + 'locked: "true"\n');
+  await HOTE.executer('szh.cockpit.rafraichir');
+  assert.ok(fs.existsSync(cheminSettings), 'le verrou n’a pas écrit settings.json');
+
+  // Confirme la modale directement, sans passer par la file `repondreModale` partagée par
+  // tout le fichier : une réponse posée par un test précédent et jamais consommée s'y
+  // serait mise devant la nôtre.
+  const showWarningOriginal = HOTE.stub.window.showWarningMessage;
+  HOTE.stub.window.showWarningMessage = (m, ...reste) => {
+    HOTE.avertissements.push(m);
+    const options = (reste[0] && typeof reste[0] === 'object') ? reste[0] : null;
+    return Promise.resolve(options && options.modal ? reste[1] : undefined);
+  };
+  try {
+    // Puis il devient illisible — un JSON cassé, comme une synchro interrompue en laisse.
+    fs.writeFileSync(cheminSettings, '{ ceci ne se referme pas');
+    const nAvant = HOTE.avertissements.length;
+    await HOTE.executer('szh.deverrouiller');
+    const nouveaux = HOTE.avertissements.slice(nAvant);
+    assert.ok(nouveaux.some((m) => String(m).indexOf('lecture seule') !== -1),
+      'aucun avertissement ne dit que le numéro reste verrouillé : ' + JSON.stringify(nouveaux));
+  } finally {
+    HOTE.stub.window.showWarningMessage = showWarningOriginal;
+    fs.writeFileSync(ausgabe, avantYaml);
+    fs.rmSync(path.join(REVUE, '.vscode'), { recursive: true, force: true });
+    await HOTE.executer('szh.cockpit.rafraichir');
+  }
+});

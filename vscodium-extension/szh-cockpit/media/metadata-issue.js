@@ -23,7 +23,7 @@
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
     recu = true;
-    numero.message(msg);
+    if (!numero.message(msg)) { console.warn('métadonnées du numéro : type de message inconnu', msg.type); }
   });
   SZH.annoncerPret(vscodeApi, function () { return recu; });
 })();

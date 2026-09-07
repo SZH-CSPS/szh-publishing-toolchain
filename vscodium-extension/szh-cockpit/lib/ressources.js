@@ -15,22 +15,22 @@
 //   ![](media/couverture-x.jpg){alt=""}
 //   :::
 //
-// Parti pris : tout ce qui est strictement STRUCTURÉ (titre, bibliographie, lien) vit dans
+// Parti pris : tout ce qui est strictement structuré (titre, bibliographie, lien) vit dans
 // les attributs de l'ouverture, en clé=valeur — jamais en prose. Le contenu du bloc ne porte
 // que ce qui ne l'est pas : le descriptif (un paragraphe, éventuellement plusieurs) et
 // l'image. C'est ce qui rend le bloc relisible par une machine : une bibliothèque de livres
 // et de films se reconstruit en relisant les attributs de tous les blocs .szh-ressource d'un
-// numéro, sans jamais avoir à analyser de la prose. Ce lot n'implémente pas cette
-// récupération rétroactive (hors périmètre), mais c'est elle qui gouverne le choix du bloc.
+// numéro, sans jamais avoir à analyser de la prose — même si ce module n'implémente pas
+// lui-même cette récupération rétroactive, c'est elle qui gouverne le choix du bloc.
 //
 // Le texte du lien — « En savoir plus sur le livre {titre} » / « Mehr zum Buch {titre} » —
-// n'est JAMAIS écrit dans le .md : il se déduit du titre, du type et de la langue de
-// l'ARTICLE au moment du rendu, dans szh-ressource.lua. Deux raisons : (1) un intitulé de
+// n'est jamais écrit dans le .md : il se déduit du titre, du type et de la langue de
+// l'article au moment du rendu, dans szh-ressource.lua. Deux raisons : (1) un intitulé de
 // lien explicite et non modifiable par mégarde est ce qui le rend utilisable hors contexte
 // par un lecteur d'écran ; (2) le titre peut changer après coup sans qu'on doive retaper le
 // lien.
 //
-// L'image d'une fiche est TOUJOURS décorative (voir le cahier des charges) : elle s'écrit
+// L'image d'une fiche est toujours décorative (voir le cahier des charges) : elle s'écrit
 // avec un alt="" explicite, et jamais de légende. C'est szh-ressource.lua qui la marque
 // comme telle dans l'arbre de structure (role="presentation"), en s'appuyant sur le même
 // mécanisme que le reste du pipeline (pipeline/filters/szh-numerotation.lua, qui traite déjà
@@ -60,12 +60,12 @@ const CLASSE = 'szh-ressource';
 // l'image, qui ne sont pas des attributs (voir l'en-tête du fichier).
 // ⚠ Recopiée dans pipeline/filters/szh-ressource.lua (table TYPES).
 // Le champ propre à `intervention` qu'on serait tenté d'appeler « type » (Motion, Postulat,
-// Interpellation…) est nommé `categorie` : `type` est déjà l'attribut qui porte le type DE
-// LA FICHE elle-même (type="intervention") sur le même bloc ; deux attributs `type=` sur un
+// Interpellation…) est nommé `categorie` : `type` est déjà l'attribut qui porte le type de
+// la fiche elle-même (type="intervention") sur le même bloc ; deux attributs `type=` sur un
 // même bloc se recouvriraient silencieusement (le second écrase le premier), et l'un des
 // deux sens serait perdu. Un vrai piège de la table plutôt qu'un choix de confort.
 // `reprise` est la fiche « D'une revue à l'autre » / « Blick in die Revue » : la reprise d'un
-// article paru dans la revue sœur. Son nom tient en UN MOT sans trait d'union, et ce n'est pas
+// article paru dans la revue sœur. Son nom tient en un mot sans trait d'union, et ce n'est pas
 // une négligence : la table jumelle de szh-ressource.lua est du Lua, où `revue-soeur = {…}`
 // n'est pas une clé valide (il faudrait `['revue-soeur']`), et les deux tests de non-divergence
 // de test/js/ressources.test.js reconstruisent la ligne Lua attendue sous la forme
@@ -85,7 +85,7 @@ const TYPES = {
 // <select> ou un <input type="date"> sur cette foi, sans connaître un seul nom de champ.
 //
 // `date` veut dire une date ISO (2026-01-05) — pas un choix de présentation, une condition
-// de TRI : les fiches d'agenda se rangent par leur date de début (CLE_TRI plus bas), et une
+// de tri : les fiches d'agenda se rangent par leur date de début (CLE_TRI plus bas), et une
 // date écrite « 05.01.2026 » se rangerait après « 04.07.2028 ». C'est
 // pipeline/filters/szh-ressource.lua qui la remet en forme suisse à l'impression, et lui
 // seul — l'ISO ne sort jamais dans le PDF.
@@ -93,7 +93,7 @@ const SAISIE = {
   agenda: { debut: 'date', fin: 'date' }
 };
 
-// Les listes fermées, par type puis par champ : la valeur dit QUELLE liste, jamais la liste
+// Les listes fermées, par type puis par champ : la valeur dit quelle liste, jamais la liste
 // elle-même. Deux listes aujourd'hui, de deux provenances différentes, et c'est pour cela
 // que ce n'est qu'un nom : `canton` vient de lib/cantons.js (26 cantons + la Confédération),
 // `evenement` de LISTES juste en dessous. L'hôte (extension.js, typesRessourceConfig) fait
@@ -103,16 +103,16 @@ const CHOIX = {
   agenda: { evenement: 'evenement' }
 };
 
-// Les valeurs de la liste `evenement` : des JETONS, jamais des libellés — comme les types de
+// Les valeurs de la liste `evenement` : des jetons, jamais des libellés — comme les types de
 // rubrique (lib/rubriques.js). Le libellé de saisie vient de lib/i18n.js
-// (ressource.option.evenement.<jeton>) et le libellé IMPRIMÉ de la table jumelle de
+// (ressource.option.evenement.<jeton>) et le libellé imprimé de la table jumelle de
 // pipeline/filters/szh-ressource.lua, dans la langue de l'article. Trois endroits, trois
 // métiers : un « Colloque » qui devient « Tagung » côté allemand n'a rien à faire dans un
 // .md, et un jeton corrigé plus tard suit partout sans ressaisie.
 //
-// Le vocabulaire vient du corpus réel (relevé du 02.09.2026 sur les pages « Congrès,
-// colloques » et « Kurse » de szh.ch, celles-là mêmes que la rubrique du numéro donne en
-// lien) : Tagung, Fachtagung, Colloque, Webinaire, Journée d'étude, Kurs. Un jeton absent
+// Le vocabulaire vient du corpus réel (pages « Congrès, colloques » et « Kurse » de
+// szh.ch, celles-là mêmes que la rubrique du numéro donne en lien) : Tagung, Fachtagung,
+// Colloque, Webinaire, Journée d'étude, Kurs. Un jeton absent
 // de la table s'imprime tel quel plutôt que de disparaître.
 const LISTES = {
   evenement: ['colloque', 'congres', 'journee', 'cours', 'webinaire', 'formation']
@@ -161,14 +161,11 @@ function champsManquants(type, valeurs) {
 }
 function ressourceComplete(type, valeurs) { return champsManquants(type, valeurs).length === 0; }
 
-// Ce qui suffit pour ECRIRE une fiche, à distinguer de ce qui la rend COMPLÈTE (au-dessus).
-//
-// Demande de Robin du 02.09.2026 : « permet enregistrement, rajoute un badge "non complet"
-// dans le titre de l'accordéon ». Une fiche à moitié saisie était refusée par
-// ressourceComplete() et le rédacteur perdait sa saisie en quittant le formulaire ; elle
-// s'écrit désormais dès qu'UN champ porte quelque chose, et c'est une pastille qui dit ce
-// qui manque encore. La complétude n'a pas disparu pour autant — elle ne commande plus que
-// cette pastille.
+// Ce qui suffit pour écrire une fiche, à distinguer de ce qui la rend complète (au-dessus).
+// Une fiche à moitié saisie s'écrit dès qu'un champ porte quelque chose, plutôt que d'être
+// refusée par ressourceComplete() et perdue en quittant le formulaire ; une pastille dit
+// alors ce qui manque encore. La complétude n'a pas disparu pour autant — elle ne commande
+// plus que cette pastille.
 //
 // Le garde-fou qui reste : un type inconnu, et une fiche entièrement vide. Écrire un bloc
 // sans une seule valeur ne donnerait qu'un titre vide dans le PDF, et le formulaire en
@@ -332,14 +329,14 @@ function ecrireRessource(texte, id, type, valeurs, langue) {
 
 // ---- Tri des fiches -------------------------------------------------------------------
 //
-// Demande de Robin (01.09.2026) : les fiches se rangent d'elles-mêmes — livres, films et
-// recherches par titre, interventions parlementaires par canton. Le formulaire affiche la
-// POSITION de chaque fiche dans l'en-tête de son accordéon, et c'est ce qui oblige à trier
-// le .md lui-même et non l'affichage seul : une position montrée que le document ne
-// respecterait pas mentirait sur l'ordre du PDF.
+// Les fiches se rangent d'elles-mêmes — livres, films et recherches par titre,
+// interventions parlementaires par canton. Le formulaire affiche la position de chaque
+// fiche dans l'en-tête de son accordéon, et c'est ce qui oblige à trier le .md lui-même et
+// non l'affichage seul : une position montrée que le document ne respecterait pas
+// mentirait sur l'ordre du PDF.
 //
 // Le champ qui range, par type. Un type inconnu se range par titre, faute de mieux.
-// L'agenda se range par DATE DE DÉBUT, et c'est la raison d'être de la saisie ISO
+// L'agenda se range par date de début, et c'est la raison d'être de la saisie ISO
 // (SAISIE plus haut) : un agenda dans le désordre chronologique ne sert à rien, et une date
 // « 05.01.2026 » se rangerait après « 04.07.2028 ».
 const CLE_TRI = { intervention: 'canton', agenda: 'debut' };
@@ -360,7 +357,7 @@ function comparerRessources(a, b, langue) {
     .localeCompare(String((b.valeurs || {}).titre || ''), loc, { sensitivity: 'base', numeric: true });
 }
 
-// Les fiches qui peuvent permuter entre elles : celles qui se suivent, portent le MÊME type,
+// Les fiches qui peuvent permuter entre elles : celles qui se suivent, portent le même type,
 // et qu'aucun titre markdown ne sépare. Ces deux gardes comptent — les fiches d'un article
 // vivent sous des intertitres (« Livres », « Films »), et un tri qui les ignorerait ferait
 // passer un film dans la section des livres, ou une fiche sous le mauvais intertitre.
@@ -384,7 +381,7 @@ function groupesTriables(lignes, fiches) {
 }
 
 // ordreRessources(lignes, fiches, langue) -> [fiches, dans l'ordre où elles doivent être]
-// Pure : ne touche à rien, dit seulement l'ordre voulu. Le tri est STABLE (Array.sort l'est
+// Pure : ne touche à rien, dit seulement l'ordre voulu. Le tri est stable (Array.sort l'est
 // depuis ES2019), donc deux fiches que rien ne départage gardent leur ordre de saisie.
 function ordreRessources(lignes, fiches, langue) {
   const voulu = [];
@@ -395,7 +392,7 @@ function ordreRessources(lignes, fiches, langue) {
 }
 
 // reordonnerRessources(texte, langue) -> texte
-// Permute les blocs de fiches dans le .md pour suivre ordreRessources(). Les EMPLACEMENTS ne
+// Permute les blocs de fiches dans le .md pour suivre ordreRessources(). Les emplacements ne
 // bougent pas : seuls les contenus permutent, si bien que tout ce qui vit entre deux fiches
 // — intertitres, paragraphes, blancs — reste exactement où il était. Réécrit de la fin vers
 // le début pour que les index relevés restent valides pendant l'opération.
@@ -421,7 +418,7 @@ function reordonnerRessources(texte, langue) {
 }
 
 // retirerRessource(texte, id) -> { texte, ok }
-// Ôte la fiche entière. Le fichier de couverture, lui, n'est PAS supprimé de media/ : une
+// Ôte la fiche entière. Le fichier de couverture, lui, n'est pas supprimé de media/ : une
 // image peut avoir été déposée avant que la fiche ne soit complète, et rien ne dit qu'elle
 // ne sera pas réutilisée. Même parti que « Retirer de la figure » dans le gestionnaire des
 // médias (lib/references.js, retirerDeGrille) : le texte se nettoie, le disque non.

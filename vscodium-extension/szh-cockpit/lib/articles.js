@@ -1,21 +1,11 @@
 // Les articles d'un numéro : leur ordre, le nom sous lequel l'interface les désigne, et
-// les tâches éditoriales qui les suivent. Module pur — ni vscode ni écriture disque, pour
-// être éprouvable en ligne de commande.
+// les tâches éditoriales qui les suivent. Module pur — ni vscode ni écriture disque.
 //
-// Trois données, trois endroits, et ce n'est pas un hasard :
-//
-//   l'ORDRE décrit un numéro           -> ausgabe.yaml, clé `ordre-articles`
-//   les DÉFINITIONS de tâches décrivent une revue
-//                                      -> C:\ProgramData\SZH\config.json, `tachesArticle`
-//   l'ÉTAT COCHÉ décrit un article     -> articles/<slug>/<slug>.taches.yaml
-//
-// L'ordre ne vit pas dans les noms de dossier : déplacer un article renommerait dossier et
-// .md, donc tout out/, et casserait les liens du numéro. Il vit dans ausgabe.yaml, avec le
-// reste de ce qui décrit le numéro, il voyage avec le dossier sur SharePoint et se relit à
-// la main. Les définitions de tâches décrivent le processus éditorial d'une revue, pas d'un
-// numéro : elles sont là où vivent déjà les réglages de ce genre, config.json, aux côtés de
-// l'emplacement des revues et de la configuration OJS. L'état coché, lui, ne concerne qu'un
-// article et part avec lui, comme le suivi de traduction juste à côté.
+// Trois données, trois portées, trois endroits : l'ordre décrit un numéro (ausgabe.yaml,
+// `ordre-articles` — il voyage avec le dossier sur SharePoint) ; les définitions de tâches
+// décrivent une revue (C:\ProgramData\SZH\config.json, `tachesArticle`, aux côtés de
+// l'emplacement des revues et de la configuration OJS) ; l'état coché décrit un article
+// (articles/<slug>/<slug>.taches.yaml) et part avec lui, comme le suivi de traduction.
 'use strict';
 
 const { decouperValeurYaml, LANGUES_META, citerFrontmatter, CLE_SANS_DOI,
@@ -47,7 +37,7 @@ function analyserOrdre(valeur) {
 //
 // `sansDoi` applique par-dessus la règle du DOI : les articles qui n'en reçoivent pas sont
 // ramenés à la fin, sans quoi le numéro d'ordre du DOI ne suivrait plus l'ordre de lecture.
-// Le tri est appliqué à la LECTURE, comme la réparation ci-dessus : rien n'est réécrit tant
+// Le tri est appliqué à la lecture, comme la réparation ci-dessus : rien n'est réécrit tant
 // que l'utilisateur n'a pas fait un geste.
 function ordonnerArticles(valeurClef, slugsDisque, sansDoi) {
   const disque = (slugsDisque || []).map((s) => String(s));
@@ -201,7 +191,7 @@ function libelleArticle(index, slug, titre) {
 //
 // Deux absences ne sont pas des défauts, et les annoncer comme tels serait faux :
 //
-//   * une image DÉCORATIVE n'a pas à porter de texte alternatif. Le gestionnaire pose
+//   * une image décorative n'a pas à porter de texte alternatif. Le gestionnaire pose
 //     alt="" exprès pour qu'un lecteur d'écran la saute ; c'est une décision, pas un oubli.
 //     Le descripteur la reconnaît à `altDefini` vrai avec un `alt` vide — exactement comme
 //     la fiche image, qui rallume son bouton « décorative » sur ce même couple.
@@ -210,7 +200,7 @@ function libelleArticle(index, slug, titre) {
 //     Compter sa légende vide reviendrait à reprocher à la rédaction ce qu'elle vient de
 //     décider.
 //
-// Tout le reste se signale : une image INFORMATIVE sans texte alternatif, et une légende
+// Tout le reste se signale : une image informative sans texte alternatif, et une légende
 // vide sur une vraie figure.
 function decorativeImage(image) {
   const i = image || {};

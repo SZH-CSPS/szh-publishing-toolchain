@@ -37,12 +37,8 @@
 .auteur-boutons { flex: 0 0 auto; display: flex; align-items: center; gap: var(--e1);
   flex-wrap: wrap; }
 
-/* ---- Modale d'édition : voile plein écran, rien d'actionnable derrière. */
-.voile-auteur {
-  position: fixed; inset: 0; z-index: 110;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(0, 0, 0, .55);
-}
+/* ---- Modale d'édition : le voile est celui de SZH.modale (.szh-modale, _design.css) ;
+   cette classe n'habille plus que la boîte. */
 .modale-auteur {
   background: var(--vscode-editor-background); color: var(--encre);
   border: 1px solid var(--filet-fort); border-radius: var(--rayon);
@@ -61,18 +57,22 @@
 .auteur-grille .szh-champ--large { grid-column: 1 / -1; }
 @media (max-width: 34rem) { .auteur-grille { grid-template-columns: 1fr; } }
 
-.modale-auteur .zone-depot {
+/* .szh-depot (_design.css §11) est une rangée par défaut ; ce dépôt-ci empile trois lignes
+   centrées (le texte, « ou », le bouton) — le seul des cinq dans ce cas — d'où ce
+   `display: block` qui annule la rangée partagée sans toucher au reste (couleurs, survol). */
+.modale-auteur .szh-depot {
+  display: block;
   border: 2px dashed var(--vscode-panel-border, rgba(128, 128, 128, .6));
   border-radius: var(--rayon-mini); padding: var(--e3); text-align: center;
   color: var(--encre-2);
 }
-.modale-auteur .zone-depot.survol {
+.modale-auteur .szh-depot.survol {
   border-style: solid; border-color: var(--accent);
   background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, .12));
   color: var(--encre);
 }
-.modale-auteur .zone-depot.occupe { opacity: .5; pointer-events: none; }
-.modale-auteur .zone-depot .ou { margin: var(--e1) 0; font-size: var(--t-libelle); }
+.modale-auteur .szh-depot.occupe { opacity: .5; pointer-events: none; }
+.modale-auteur .szh-depot .ou { margin: var(--e1) 0; font-size: var(--t-libelle); }
 .modale-auteur .radios { display: flex; gap: var(--e4); flex-wrap: wrap; margin: var(--e3) 0 var(--e2); }
 .modale-auteur .radios label {
   display: inline-flex; align-items: center; gap: .3em; margin: 0;
@@ -89,37 +89,12 @@
   min-height: 1.2em; margin: var(--e1) 0 var(--e3);
   font-size: var(--t-libelle); color: var(--encre-2); line-height: 1.45;
 }
-.note-modale.erreur { color: var(--vscode-errorForeground, #f14c4c); }
+.note-modale.erreur { color: var(--danger); }
 .boutons-modale { display: flex; gap: var(--e2); flex-wrap: wrap; justify-content: flex-end; }
 
 /* ---- Autocomplétion prénom/nom : les auteur·e·s déjà publiés (OAI, lib/auteurs-ojs.js).
-   La boîte se rattache au bloc du champ où l'on tape ; elle n'existe pas tant que l'hôte
-   n'a pas envoyé de liste, et disparaît dès qu'aucun nom ne correspond. */
+   La boîte (.szh-sugg, partagée avec les mots-clés — _design.css §10) se rattache au bloc
+   du champ où l'on tape ; elle n'existe pas tant que l'hôte n'a pas envoyé de liste, et
+   disparaît dès qu'aucun nom ne correspond. */
 .auteur-grille .szh-champ { position: relative; }
-.auteur-suggestions {
-  position: absolute; top: 100%; left: 0; right: 0; z-index: 10;
-  margin-top: 2px; padding: var(--e1) 0;
-  background: var(--vscode-editor-background);
-  border: 1px solid var(--filet-fort); border-radius: var(--rayon-mini);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, .25);
-  max-height: 12rem; overflow-y: auto;
-}
-.auteur-sugg {
-  display: block; width: 100%; text-align: left;
-  padding: var(--e1) var(--e2); border: 0; background: none;
-  color: var(--encre); font: inherit; cursor: pointer;
-  overflow-wrap: anywhere;
-}
-.auteur-sugg:hover,
-.auteur-sugg.actif {
-  background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground, rgba(128, 128, 128, .2)));
-  color: var(--vscode-list-activeSelectionForeground, var(--encre));
-}
-/* La part trouvée. Le gras seul la marque : une couleur d'accent se perdrait sur la ligne
-   survolée, qui prend déjà la couleur de sélection de l'éditeur. */
-.auteur-sugg strong { font-weight: 700; }
-/* Le filet entre les deux groupes : noms de famille au-dessus, prénoms en dessous. */
-.auteur-sugg-filet {
-  height: 1px; margin: var(--e1) var(--e2);
-  background: var(--filet-fort);
-}
+.auteur-grille .szh-sugg { left: 0; right: 0; }

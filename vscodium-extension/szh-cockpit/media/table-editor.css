@@ -2,9 +2,14 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
   line-height: var(--interligne); color: var(--encre); background: var(--fond);
   padding: var(--e2) var(--e4) 0;
   box-sizing: border-box; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-.barre { position: sticky; top: 0; z-index: 5; background: var(--fond);
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--e1);
-  padding: var(--e2) 0; border-bottom: 1px solid var(--filet); margin-bottom: var(--e2); }
+/* La barre est .szh-barre (_design.css §3, --z-barre compris) : la carte pose sa classe
+   elle-même, cette page n'a plus à en redire le style — l'ancienne règle .barre ne
+   correspondait déjà plus à rien, l'élément portant toujours szh-barre. */
+:root {
+  /* Empilement propre à la grille du tableau : poignées collantes, bouton flottant. Une
+     échelle locale, sans rapport avec celle des autres pages (--z-menu excepté, partagé). */
+  --z-pnum: 2; --z-poignee: 3; --z-coin: 4; --z-plus: 900;
+}
 .grp { display: inline-flex; align-items: center; gap: var(--e1); padding: .1rem var(--e1);
   border: 1px solid var(--filet); border-radius: var(--rayon-mini); }
 .grp > .lbl { font-size: var(--t-mini); color: var(--encre-2); margin-right: .1rem; }
@@ -17,9 +22,9 @@ button.principal { color: var(--vscode-button-foreground); background: var(--vsc
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -1px; }
 select { font: inherit; padding: .2em .3em; color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; }
+  background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); border-radius: var(--rayon-mini); }
 #etat { font-size: var(--t-libelle); color: var(--encre-2); margin-left: var(--e1); }
-#indic { font-size: .95em; color: var(--vscode-editorWarning-foreground, #d1901e); margin-left: .1rem; font-weight: 700; }
+#indic { font-size: .95em; color: var(--avert); margin-left: .1rem; font-weight: 700; }
 /* Champs au-dessus de la grille, dans l'ordre de la fiche d'une image : la légende, qui
    devient le <caption> du fichier, les crédits, puis l'accessibilité sous son intertitre.
    Les intitulés sont au-dessus des champs, comme partout ailleurs. */
@@ -64,9 +69,9 @@ table.grille { border-collapse: collapse; }
 table.grille th, table.grille td { border: 1px solid var(--vscode-panel-border, #888);
   padding: .3em .5em; min-width: 3em; height: 1.9em; vertical-align: top; text-align: left; }
 /* En-têtes figés : la rangée de poignées reste collée en haut, la colonne à gauche. */
-table.grille tr:first-child .poignee { position: sticky; top: 0; z-index: 3; }
-table.grille .poignee.pnum { position: sticky; left: 0; z-index: 2; }
-table.grille .coin { position: sticky; top: 0; left: 0; z-index: 4; }
+table.grille tr:first-child .poignee { position: sticky; top: 0; z-index: var(--z-poignee); }
+table.grille .poignee.pnum { position: sticky; left: 0; z-index: var(--z-pnum); }
+table.grille .coin { position: sticky; top: 0; left: 0; z-index: var(--z-coin); }
 table.grille td.cell, table.grille th.cell { background: var(--vscode-editor-background); cursor: text; }
 /* Une cellule d'en-tête est un <th>, que le navigateur met en gras par défaut, ce qui
    laisse croire que le style « gras » est actif : on annule ce gras, le style réel étant
@@ -75,7 +80,7 @@ table.grille td.cell, table.grille th.cell { background: var(--vscode-editor-bac
 table.grille th.cell { font-weight: 400; }
 table.grille th.cell::before { content: "\2605"; margin-right: .35em; font-size: .8em;
   font-weight: 400; opacity: .5; vertical-align: .06em; }
-table.grille .sel { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px;
+table.grille .sel { outline: 2px solid var(--accent); outline-offset: -2px;
   background: var(--vscode-editor-selectionBackground, rgba(90,140,220,.25)); }
 .poignee { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15));
   color: var(--vscode-descriptionForeground); cursor: pointer; text-align: center; user-select: none;
@@ -86,16 +91,16 @@ table.grille .sel { outline: 2px solid var(--vscode-focusBorder); outline-offset
 .poignee:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.3)); }
 .coin { background: var(--vscode-editorGutter-background, rgba(128,128,128,.15)); }
 .poignee { position: relative; }
-.poignee.drop { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
+.poignee.drop { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* Le « + » est centré par flex : line-height/text-align laissaient le glyphe décalé
    vers le haut du cercle (métriques de la police système). */
-.plusins { position: fixed; z-index: 900; width: 18px; height: 18px; padding: 0;
+.plusins { position: fixed; z-index: var(--z-plus); width: 18px; height: 18px; padding: 0;
   display: flex; align-items: center; justify-content: center; line-height: 1;
   border-radius: 50%; font-size: 13px; font-weight: 700;
   color: var(--vscode-button-foreground); background: var(--vscode-button-background);
   border: 1px solid var(--vscode-editor-background); cursor: pointer; }
 .plusins:hover { background: var(--vscode-button-hoverBackground); }
-.ctxmenu { position: fixed; z-index: 1000; min-width: 13em; padding: .25em 0;
+.ctxmenu { position: fixed; z-index: var(--z-menu); min-width: 13em; padding: .25em 0;
   background: var(--vscode-menu-background, var(--vscode-editor-background));
   color: var(--vscode-menu-foreground, var(--vscode-foreground));
   border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border, rgba(128,128,128,.4)));

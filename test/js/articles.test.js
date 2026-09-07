@@ -22,7 +22,7 @@ const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const art = require(path.join(COCKPIT, 'lib', 'articles.js'));
 const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
 const { ouvrir, libellesHote } = require('./dom-minimal');
-const { revueDEssai, activerHote } = require('./hote-factice');
+const { revueDEssai, activerHote, sourceExtensionEtLib } = require('./hote-factice');
 
 const LF = String.fromCharCode(10);
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
@@ -186,7 +186,8 @@ test('formulaire du numéro : chaque intitulé de la table est fourni par l’h�
   const table = fragment.slice(fragment.indexOf('var CHAMPS = ['), fragment.indexOf('\n  ];'));
   const utilisees = [...table.matchAll(/libelle: '([^']+)'/g)].map((m) => m[1]);
   assert.ok(utilisees.length >= 15, 'table des champs trop maigre : ' + utilisees.length);
-  const src = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
+  // Concaténé à lib/ : préalable au découpage d'extension.js, voir hote-factice.js.
+  const src = sourceExtensionEtLib(COCKPIT);
   const bloc = src.slice(src.indexOf('const LIBELLES_NUMERO = ['), src.indexOf('];', src.indexOf('const LIBELLES_NUMERO = [')));
   const fournies = new Set([...bloc.matchAll(/'([^']+)'/g)].map((m) => m[1]));
   for (const cle of utilisees) {
@@ -241,8 +242,8 @@ test('formulaire du numéro : les deux pages rendent exactement les mêmes champ
     cssPartage: ['_design.css', '_liste.css', '_numero.css'], jsPartage: jsPartage,
     txt: libellesHote(RACINE, ['textesNumero', 'textesArticles'])
   });
-  const seul = rendre('metadata-issue', ['_numero.js']);
-  const dansLaVue = rendre('articles', ['_numero.js']);
+  const seul = rendre('metadata-issue', ['_messages.js', '_numero.js']);
+  const dansLaVue = rendre('articles', ['_messages.js', '_numero.js']);
   const a = clesDeChamps(seul.parId.numero);
   const b = clesDeChamps(dansLaVue.parId.numero);
   assert.ok(a.length >= 8, 'formulaire du numéro vide : ' + JSON.stringify(a));
@@ -258,7 +259,8 @@ test('formulaire du numéro : les deux pages rendent exactement les mêmes champ
 test('vue « Articles » : une carte par article, ses tâches et ses commandes', () => {
   const page = ouvrir({
     racine: RACINE, page: 'articles',
-    cssPartage: ['_design.css', '_liste.css', '_numero.css'], jsPartage: ['_numero.js'],
+    cssPartage: ['_design.css', '_liste.css', '_numero.css'],
+    jsPartage: ['_messages.js', '_numero.js'],
     txt: libellesHote(RACINE, ['textesNumero', 'textesArticles'])
   });
   assert.deepStrictEqual(page.messages.map((m) => m.type), ['pret'], 'la page ne s’annonce pas');
@@ -310,7 +312,7 @@ test('vue « Articles » : une carte par article, ses tâches et ses commandes',
 test('vue d’ensemble : le même rendu de cartes qu’avant l’extraction du fragment', () => {
   const page = ouvrir({
     racine: RACINE, page: 'vue-ensemble',
-    cssPartage: ['_design.css', '_liste.css'], jsPartage: []
+    cssPartage: ['_design.css', '_liste.css'], jsPartage: ['_messages.js']
   });
   page.envoyer({
     type: 'valeurs', titre: 'Traductions', i18n: { ouvrir: 'Ouvrir', listeVide: 'Rien' },

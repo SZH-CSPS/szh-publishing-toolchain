@@ -32,17 +32,12 @@ function cacheTemporaire(nom) {
   return path.join(dossier, 'auteurs.json');
 }
 
-function avecCacheAsync(nom, fn) {
-  const avant = process.env.SZH_AUTEURS_CACHE;
-  process.env.SZH_AUTEURS_CACHE = cacheTemporaire(nom);
-  try { return fn(process.env.SZH_AUTEURS_CACHE); }
-  finally {
-    if (avant === undefined) { delete process.env.SZH_AUTEURS_CACHE; }
-    else { process.env.SZH_AUTEURS_CACHE = avant; }
-  }
-}
-
-async function avecCacheAsyncAlt(nom, fn) {
+// balayerCorpus() est asynchrone (I/O par fs.promises, un `await` par entrée, pour ne pas
+// geler l'hôte d'extensions sur un corpus de plusieurs milliers de fiches). `fn` est donc
+// TOUJOURS attendu avant que le `finally` ne restaure la variable d'environnement — sans
+// ce await, la restauration surviendrait avant que le balayage, encore en vol, ait fini
+// de lire le cache, et un test en polluerait un autre.
+async function avecCacheAsync(nom, fn) {
   const avant = process.env.SZH_AUTEURS_CACHE;
   process.env.SZH_AUTEURS_CACHE = cacheTemporaire(nom);
   try { return await fn(process.env.SZH_AUTEURS_CACHE); }
@@ -84,8 +79,8 @@ ${auteursList}
 
 // ---- Tests principaux ---------------------------------------------------------
 
-test('balayerCorpus : un numéro complet, les 4 champs remontent', () => {
-  avecCacheAsync('complet', () => {
+test('balayerCorpus : un numéro complet, les 4 champs remontent', async () => {
+  await avecCacheAsync('complet', async () => {
     const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-corpus-test-'));
     try {
       mkCorpus(racine, {
@@ -108,7 +103,7 @@ test('balayerCorpus : un numéro complet, les 4 champs remontent', () => {
           }
         }
       });
-      const res = balayerCorpus({ racines: [racine] });
+      const res = await balayerCorpus({ racines: [racine] });
       assert.strictEqual(res.auteurs.length, 3, 'trois auteurs attendus');
       const ayer = res.auteurs.find((a) => a.nom === 'Ayer');
       assert.strictEqual(ayer.prenom, 'Géraldine');
@@ -124,8 +119,8 @@ test('balayerCorpus : un numéro complet, les 4 champs remontent', () => {
   });
 });
 
-test('balayerCorpus : un dossier SANS ausgabe.yaml est ignoré', () => {
-  avecCacheAsync('sansnumero', () => {
+test('balayerCorpus : un dossier SANS ausgabe.yaml est ignoré', async () => {
+  await avecCacheAsync('sansnumero', async () => {
     const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-corpus-test-'));
     try {
       // Dossier sans ausgabe.yaml.
@@ -140,7 +135,7 @@ test('balayerCorpus : un dossier SANS ausgabe.yaml est ignoré', () => {
           'a1': { 'Robin': { prenom: 'Robin', nom: 'Morand', fonction: '', affiliation: '', email: '' } }
         }
       });
-      const res = balayerCorpus({ racines: [racine] });
+      const res = await balayerCorpus({ racines: [racine] });
       assert.strictEqual(res.auteurs.length, 1, 'un seul auteur, du numéro valide');
       assert.strictEqual(res.fichiers, 1, 'une seule fiche lue');
     } finally {
@@ -149,8 +144,8 @@ test('balayerCorpus : un dossier SANS ausgabe.yaml est ignoré', () => {
   });
 });
 
-test('balayerCorpus : une fiche dont le mtime n\'a pas bougé n\'est PAS relue', () => {
-  avecCacheAsync('mtime', () => {
+test('balayerCorpus : une fiche dont le mtime n\'a pas bougé n\'est PAS relue', async () => {
+  await avecCacheAsync('mtime', async () => {
     const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-corpus-test-'));
     try {
       mkCorpus(racine, {
@@ -166,7 +161,7 @@ test('balayerCorpus : une fiche dont le mtime n\'a pas bougé n\'est PAS relue',
         appelsLecture++;
         return fs.readFileSync(chemin, 'utf8');
       };
-      const res = balayerCorpus({ racines: [racine], vus: vus, lire: lireFactice });
+      const res = await balayerCorpus({ racines: [racine], vus: vus, lire: lireFactice });
       // Le mtime n'a pas changé, donc la fiche ne doit pas être relue.
       assert.strictEqual(appelsLecture, 0, 'la fiche avec mtime connu ne doit pas être lue');
       assert.strictEqual(res.auteurs.length, 0, 'aucun auteur trouvé (fiche sautée)');
@@ -177,8 +172,8 @@ test('balayerCorpus : une fiche dont le mtime n\'a pas bougé n\'est PAS relue',
   });
 });
 
-test('balayerCorpus : AUCUN fichier autre qu\'un *.meta.yaml n\'est ouvert', () => {
-  avecCacheAsync('pieges', () => {
+test('balayerCorpus : AUCUN fichier autre qu\'un *.meta.yaml n\'est ouvert', async () => {
+  await avecCacheAsync('pieges', async () => {
     const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-corpus-test-'));
     try {
       mkCorpus(racine, {
@@ -195,7 +190,7 @@ test('balayerCorpus : AUCUN fichier autre qu\'un *.meta.yaml n\'est ouvert', () 
         fichierLuSet.add(path.basename(chemin));
         return fs.readFileSync(chemin, 'utf8');
       };
-      const res = balayerCorpus({ racines: [racine], lire: lireFactice });
+      const res = await balayerCorpus({ racines: [racine], lire: lireFactice });
       // On ne doit lire que la fiche .meta.yaml.
       for (const fichier of fichierLuSet) {
         assert.ok(fichier.endsWith('.meta.yaml'), 'fichier lu : ' + fichier + ' (devrait être .meta.yaml)');
@@ -207,8 +202,8 @@ test('balayerCorpus : AUCUN fichier autre qu\'un *.meta.yaml n\'est ouvert', () 
   });
 });
 
-test('balayerCorpus : le plafond de fichiers coupe proprement, complet=false, résultats gardés', () => {
-  avecCacheAsync('plafond', () => {
+test('balayerCorpus : le plafond de fichiers coupe proprement, complet=false, résultats gardés', async () => {
+  await avecCacheAsync('plafond', async () => {
     const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-corpus-test-'));
     try {
       const corpus = {};
@@ -221,7 +216,7 @@ test('balayerCorpus : le plafond de fichiers coupe proprement, complet=false, r�
         };
       }
       mkCorpus(racine, corpus);
-      const res = balayerCorpus({ racines: [racine], plafondFichiers: 3 });
+      const res = await balayerCorpus({ racines: [racine], plafondFichiers: 3 });
       assert.strictEqual(res.fichiers, 3, 'exactement 3 fiches lues');
       assert.strictEqual(res.complet, false, 'balayage marqué incomplet');
       assert.strictEqual(res.auteurs.length, 3, '3 auteurs trouvés avant la coupure');
@@ -235,8 +230,8 @@ test('balayerCorpus : le plafond de fichiers coupe proprement, complet=false, r�
 // Elle était morte : le code comparait `maintenant` à lui-même, et le test d'origine ne
 // regardait que le cas où l'on ne coupe pas — il passait quoi qu'il arrive. L'horloge est
 // donc injectée, et on vérifie les DEUX côtés de la borne.
-test('balayerCorpus : la borne de temps coupe, et ne coupe pas quand le budget suffit', () => {
-  avecCacheAsync('delai', () => {
+test('balayerCorpus : la borne de temps coupe, et ne coupe pas quand le budget suffit', async () => {
+  await avecCacheAsync('delai', async () => {
     const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-corpus-test-'));
     try {
       mkCorpus(racine, {
@@ -244,13 +239,13 @@ test('balayerCorpus : la borne de temps coupe, et ne coupe pas quand le budget s
         '2024-02': { 'a2': { 'Anne': { prenom: 'Anne', nom: 'Berger' } } },
         '2024-03': { 'a3': { 'Luc': { prenom: 'Luc', nom: 'Perren' } } }
       });
-      const large = balayerCorpus({ racines: [racine], delaiMs: 100000, horloge: () => 0 });
+      const large = await balayerCorpus({ racines: [racine], delaiMs: 100000, horloge: () => 0 });
       assert.strictEqual(large.complet, true, 'un budget suffisant ne doit pas couper');
       assert.strictEqual(large.fichiers, 3, 'les trois fiches sont vues');
 
       // Une horloge qui bondit au-delà du budget dès le premier regard.
       let tic = 0;
-      const court = balayerCorpus({
+      const court = await balayerCorpus({
         racines: [racine], delaiMs: 10, horloge: () => { tic += 1000; return tic; }
       });
       assert.strictEqual(court.complet, false, 'la borne de temps n a pas coupé');
@@ -261,8 +256,8 @@ test('balayerCorpus : la borne de temps coupe, et ne coupe pas quand le budget s
   });
 });
 
-test('balayerCorpus : une racine inexistante est sautée silencieusement', () => {
-  avecCacheAsync('inexistante', () => {
+test('balayerCorpus : une racine inexistante est sautée silencieusement', async () => {
+  await avecCacheAsync('inexistante', async () => {
     const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-corpus-test-'));
     const inexistante = path.join(racine, 'fantome');
     try {
@@ -272,7 +267,7 @@ test('balayerCorpus : une racine inexistante est sautée silencieusement', () =>
         }
       });
       // Passer une racine inexistante ET une valide.
-      const res = balayerCorpus({ racines: [inexistante, racine] });
+      const res = await balayerCorpus({ racines: [inexistante, racine] });
       assert.strictEqual(res.auteurs.length, 1, 'un auteur trouvé malgré la racine inexistante');
       assert.strictEqual(res.erreur, null, 'aucune erreur signalée');
     } finally {
@@ -281,8 +276,8 @@ test('balayerCorpus : une racine inexistante est sautée silencieusement', () =>
   });
 });
 
-test('balayerCorpus : un meta.yaml illisible fait sauter la fiche, pas le balayage', () => {
-  avecCacheAsync('illisible', () => {
+test('balayerCorpus : un meta.yaml illisible fait sauter la fiche, pas le balayage', async () => {
+  await avecCacheAsync('illisible', async () => {
     const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-corpus-test-'));
     try {
       mkCorpus(racine, {
@@ -298,7 +293,7 @@ test('balayerCorpus : un meta.yaml illisible fait sauter la fiche, pas le balaya
         if (chemin === metaA1) { throw new Error('fiche corrompue'); }
         return fs.readFileSync(chemin, 'utf8');
       };
-      const res = balayerCorpus({ racines: [racine], lire: lectureFactice });
+      const res = await balayerCorpus({ racines: [racine], lire: lectureFactice });
       // La fiche a2 doit toujours être lue, et a1 sautée.
       assert.strictEqual(res.auteurs.length, 1, 'un auteur trouvé (a1 sauté)');
       assert.strictEqual(res.auteurs[0].nom, 'Dupont');
@@ -311,7 +306,7 @@ test('balayerCorpus : un meta.yaml illisible fait sauter la fiche, pas le balaya
 });
 
 test('rafraichirCorpus : dateCorpus n\'avance pas sur balayage partiel, mais vus est écrit', async () => {
-  return avecCacheAsyncAlt('dateCorpusPtiel', async () => {
+  return avecCacheAsync('dateCorpusPtiel', async () => {
     const racine = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-corpus-test-'));
     try {
       // Corpus avec plusieurs numéros pour déclencher le plafond.

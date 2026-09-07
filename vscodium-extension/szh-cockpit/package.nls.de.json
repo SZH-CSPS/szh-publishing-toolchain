@@ -9,6 +9,10 @@
   "cmd.toutExporter": "Alles exportieren (vollständiger Rebuild)",
   "cmd.exporterXml": "Zeitschrift als XML exportieren (OJS)",
   "cmd.exporterArticle": "Diesen Artikel exportieren",
+  "cmd.livreImprimeur": "Buch: Druck-PDF",
+  "cmd.livreCouverture": "Buch: Umschlag",
+  "cmd.livreEpub": "Buch: EPUB",
+  "cmd.livreWeb": "Buch: HTML-Web-Version",
   "cmd.archiverVerrouiller": "Ausgabe archivieren und sperren",
   "cmd.deverrouiller": "Ausgabe entsperren",
   "cmd.desarchiver": "Ausgabe dearchivieren",
@@ -83,5 +87,6 @@
   "cmd.conflit.comparer": "Mit der Konfliktkopie vergleichen",
   "cmd.conflit.prendre": "Diese Fassung übernehmen",
   "cmd.conflit.garder": "Meine behalten",
-  "cmd.conflit.supprimerCopie": "Konfliktkopie löschen"
+  "cmd.conflit.supprimerCopie": "Konfliktkopie löschen",
+  "cmd.apercuLivre": "Vorschau des ganzen Buches"
 }

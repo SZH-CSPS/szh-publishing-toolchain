@@ -93,6 +93,11 @@ function element(balise) {
     get options() { return this.enfants.filter((c) => c.balise === 'option'); },
     get className() { return Array.from(this.classes).join(' '); },
     set className(v) { this.classes = new Set(String(v || '').split(/\s+/).filter(Boolean)); },
+    // `el.id = x` doit se voir à `getAttribute('id')`, comme dans le vrai DOM : sans cet
+    // aller-retour, une page qui pose l'id par la seule propriété (et non les deux, comme
+    // le faisaient plusieurs pages avant leur nettoyage) semblait ne porter aucun id ici.
+    get id() { return this.attributs.id === undefined ? '' : this.attributs.id; },
+    set id(v) { this.attributs.id = String(v); },
     classList: {
       add() { for (const x of arguments) { e.classes.add(x); } },
       remove() { for (const x of arguments) { e.classes.delete(x); } },
@@ -218,12 +223,29 @@ function ouvrir(opts) {
   };
 }
 
-// Libellés que l'hôte injecte, relus dans extension.js : le test parle la même langue que
-// la page réelle, sans recopier une liste qui divergerait.
+// Concatène extension.js et tous les lib/**/*.js : une fonction de libellés qui migre vers
+// un module de lib/ (découpage d'extension.js, comme lib/medias-hote.js) doit continuer de
+// s'y trouver — même préalable que sourceExtensionEtLib (test/js/hote-factice.js).
+function sourceExtensionEtLib(cockpit) {
+  const morceaux = [fs.readFileSync(path.join(cockpit, 'extension.js'), 'utf8')];
+  const empiler = (base) => {
+    for (const e of fs.readdirSync(base, { withFileTypes: true })) {
+      const p = path.join(base, e.name);
+      if (e.isDirectory()) { empiler(p); }
+      else if (e.name.endsWith('.js')) { morceaux.push(fs.readFileSync(p, 'utf8')); }
+    }
+  };
+  empiler(path.join(cockpit, 'lib'));
+  return morceaux.join('\n');
+}
+
+// Libellés que l'hôte injecte, relus dans extension.js (ou dans le module de lib/ qui a
+// hérité de la fonction) : le test parle la même langue que la page réelle, sans recopier
+// une liste qui divergerait.
 function libellesHote(racine, fonctions) {
   const cockpit = path.join(racine, 'vscodium-extension', 'szh-cockpit');
   const { T } = chargerAvecVscodeFactice(path.join(cockpit, 'lib', 'i18n.js'));
-  const src = fs.readFileSync(path.join(cockpit, 'extension.js'), 'utf8');
+  const src = sourceExtensionEtLib(cockpit);
   const txt = {};
   for (const nom of fonctions) {
     const i = src.indexOf('function ' + nom);

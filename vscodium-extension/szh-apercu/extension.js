@@ -38,11 +38,13 @@ function ouvrirApercuArticleActif() {
   const ws = vscode.workspace.getWorkspaceFolder(doc.uri);
   if (!ws) { return; }
 
-  // Seulement les articles, rangés un par dossier : articles/<slug>/<slug>.md,
-  // soit exactement trois segments.
+  // Une unité de texte, rangée un par dossier : articles/<slug>/<slug>.md pour une revue,
+  // chapitres/<slug>/<slug>.md pour un livre (même règle que le cockpit, lib/profil.js) —
+  // soit exactement trois segments. Un chapitre n'a pas de PDF à lui (voir plus bas,
+  // fs.existsSync) : ce dossier passe la porte sans rien ouvrir tant que rien n'y écrit.
   const rel = path.relative(ws.uri.fsPath, doc.uri.fsPath);
   const parties = rel.split(path.sep);
-  if (parties.length !== 3 || parties[0] !== 'articles') { return; }
+  if (parties.length !== 3 || (parties[0] !== 'articles' && parties[0] !== 'chapitres')) { return; }
   const slug = parties[1];
   if (parties[2] !== slug + '.md') { return; }   // le .md doit être homonyme du dossier
   const pdfPath = path.join(ws.uri.fsPath, 'out', slug, slug + '.pdf');

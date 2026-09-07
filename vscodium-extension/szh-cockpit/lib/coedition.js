@@ -1,9 +1,9 @@
 // Co-édition : deux postes travaillent le même numéro, et un seul à la fois modifie un
 // fichier donné.
 //
-// ⚠ À NE PAS CONFONDRE avec lib/verrou.js. Là-bas, « verrou » veut dire numéro GELÉ en
+// ⚠ À ne pas confondre avec lib/verrou.js. Là-bas, « verrou » veut dire numéro gelé en
 // lecture seule à la fin du cycle (files.readonlyInclude, barre d'état « 🔒 Verrouillée »,
-// clés i18n verrou.*). Ici, rien n'est gelé : on pose un BAIL de deux minutes sur un
+// clés i18n verrou.*). Ici, rien n'est gelé : on pose un bail de deux minutes sur un
 // fichier pendant qu'un formulaire le modifie, et le bail s'éteint tout seul. Deux notions,
 // deux vocabulaires — bail, titulaire, co-édition d'un côté ; verrou, numéro gelé de
 // l'autre — et les gardes s'enchaînent dans cet ordre : le verrou du numéro refuse d'abord,
@@ -25,7 +25,7 @@
 //
 // ── Un fichier par titulaire, jamais un fichier partagé ───────────────────────────
 // .szh-edition/<fichier-visé>--<qui>.json : deux postes qui posent leur bail au même
-// instant écrivent deux fichiers DIFFÉRENTS. Le mécanisme censé éviter les copies en
+// instant écrivent deux fichiers différents. Le mécanisme censé éviter les copies en
 // conflit n'en fabrique ainsi pas lui-même — ce qu'un fichier de bail unique et partagé
 // ferait forcément. Le titulaire se lit en filtrant le dossier sur le préfixe du nom ; en
 // cas de pose simultanée, le bail posé le premier gagne et l'autre se retire.
@@ -36,7 +36,7 @@
 // trois secondes par le synchroniseur : le remède nourrirait la maladie. Un bail plus jeune
 // que RENOUVELLEMENT_MS n'est donc pas réécrit — la marge sur les deux minutes est large.
 //
-// ⚠ Ce que ce bail NE PEUT PAS faire. Il voyage par le synchroniseur, qui met de quelques
+// ⚠ Ce que ce bail ne peut pas faire. Il voyage par le synchroniseur, qui met de quelques
 // secondes à quelques minutes. Entre l'instant où A le pose et celui où B le voit, deux
 // saisies simultanées restent possibles : le bail ramène la fenêtre de plusieurs minutes à
 // quelques secondes, il ne la ferme pas. D'où le second garde-fou, posé côté hôte :
@@ -46,7 +46,7 @@
 // ⚠ Horloges. Les dates sont écrites par le poste titulaire et relues par un autre.
 // instantReference() retient la plus tardive de la date écrite et de celle du fichier, et
 // écarte la première quand elle est manifestement en avance : un poste réglé une heure trop
-// tard ne tient pas ses baux une heure. Le cas inverse — poste en RETARD — n'est pas
+// tard ne tient pas ses baux une heure. Le cas inverse — poste en retard — n'est pas
 // rattrapable ici, le synchroniseur conservant la date de modification d'origine : son bail
 // paraît déjà expiré aux autres. Sur un parc à l'heure du domaine l'écart est de quelques
 // secondes ; c'est la limite assumée du mécanisme, pas un oubli.
@@ -67,7 +67,7 @@ const INACTIVITE_MS = 5 * 60 * 1000;
 // Un bail plus jeune que ça n'est pas réécrit : voir « Renouvellement étranglé ».
 const RENOUVELLEMENT_MS = 30 * 1000;
 // Les restes d'une session tuée sont ignorés dès l'expiration du bail ; ils ne sont
-// EFFACÉS qu'un jour plus tard, et ceux des autres postes avec. Supprimer tôt un fichier
+// effacés qu'un jour plus tard, et ceux des autres postes avec. Supprimer tôt un fichier
 // qu'un autre poste tient encore, c'est demander au synchroniseur de le ressusciter.
 const PEREMPTION_MS = 24 * 60 * 60 * 1000;
 
@@ -101,7 +101,7 @@ function prefixe(clef) {
   return j.slice(0, 51) + '-' + crypto.createHash('sha1').update(clef).digest('hex').slice(0, 8);
 }
 
-// « qui » désigne une personne SUR UN POSTE. Le même nom sur deux machines pose deux baux,
+// « qui » désigne une personne sur un poste. Le même nom sur deux machines pose deux baux,
 // et c'est voulu : ce sont deux synchronisations distinctes, donc deux écrivains.
 // `nomRegle` est le réglage szh.nomUtilisateur ; sans lui, le nom de session Windows.
 function identite(nomRegle) {
@@ -142,7 +142,7 @@ function instantReference(renouvele, mtimeMs, maintenant) {
 
 // Un bail lu du disque, ou null si le fichier a disparu entre le listage et la lecture.
 //
-// Un contenu illisible n'est PAS ignoré : un bail à moitié synchronisé reste un bail, et
+// Un contenu illisible n'est pas ignoré : un bail à moitié synchronisé reste un bail, et
 // son nom de fichier dit encore qui le tient. L'oublier ferait exactement la perte de
 // saisie que ce module empêche.
 function lireBail(dossier, nom) {
@@ -177,22 +177,55 @@ function nomsDuDossier(racine) {
   } catch (e) { return []; }                       // pas de dossier : aucun bail
 }
 
-// Tous les baux ENCORE VALIDES posés sur ce fichier, le plus ancien d'abord. Le filtre se
-// fait d'abord sur le préfixe du nom — pas de lecture inutile — puis sur la clé écrite dans
-// le fichier, deux chemins différents pouvant donner le même préfixe.
-function baux(racine, clef, maintenant) {
+// Cache de baux() : { racine -> { t, table: Map(clef -> bailsBruts[]) } }. Ce qui est
+// mémorisé, c'est le résultat coûteux — lister .szh-edition/, lire et parser chaque bail —
+// jamais le verdict d'expiration, qui reste recalculé à chaque appel contre le `maintenant`
+// reçu : un bail sur le point d'expirer doit basculer à l'instant précis, pas seulement à
+// la prochaine relecture du dossier deux secondes plus tard. L'enregistrement automatique
+// d'un formulaire (media/_commun.js) renouvelle son bail toutes les trois secondes ; sans
+// ce cache, chaque formulaire ouvert relirait .szh-edition/ en entier à ce rythme. 2
+// secondes de mémoire suffisent (bien en dessous des 2 minutes d'un bail) et une écriture
+// dans le dossier invalide aussitôt le cache de cette racine : poser() doit toujours voir
+// son propre bail tout juste posé, jamais une version d'avant l'écriture.
+const CACHE_BAUX_MS = 2000;
+const cacheBaux = new Map();
+
+function invaliderCacheBaux(racine) { cacheBaux.delete(racine); }
+
+// Les baux bruts (non filtrés sur l'expiration) posés sur ce fichier — la liste, la
+// lecture et le parsing de chaque fichier, la seule partie que le cache épargne.
+function bauxBruts(racine, clef) {
   const dossier = dossierEdition(racine);
   const attendu = prefixe(clef) + '--';
-  const trouves = [];
+  const bruts = [];
   for (const nom of nomsDuDossier(racine)) {
     if (!nom.startsWith(attendu)) { continue; }
     const b = lireBail(dossier, nom);
     if (!b) { continue; }
     if (b.lisible && b.fichier !== '' && b.fichier.toLowerCase() !== clef) { continue; }
+    bruts.push(b);
+  }
+  return bruts;
+}
+
+// Tous les baux encore valides posés sur ce fichier, le plus ancien d'abord.
+function baux(racine, clef, maintenant) {
+  const entree = cacheBaux.get(racine);
+  const frais = entree && (maintenant - entree.t) < CACHE_BAUX_MS && (maintenant - entree.t) >= 0;
+  let bruts;
+  if (frais && entree.table.has(clef)) {
+    bruts = entree.table.get(clef);
+  } else {
+    bruts = bauxBruts(racine, clef);
+    const table = frais ? entree.table : new Map();
+    table.set(clef, bruts);
+    cacheBaux.set(racine, { t: frais ? entree.t : maintenant, table: table });
+  }
+  const trouves = [];
+  for (const b of bruts) {
     const reference = instantReference(b.renouvele, b.mtimeMs, maintenant);
     if (maintenant - reference >= BAIL_MS) { continue; }      // expiré : le fichier est libre
-    b.reference = reference;
-    trouves.push(b);
+    trouves.push(Object.assign({}, b, { reference: reference }));
   }
   // Le plus ancien d'abord : c'est lui qui gagne une pose simultanée.
   trouves.sort((a, b) => {
@@ -206,7 +239,7 @@ function baux(racine, clef, maintenant) {
   return trouves;
 }
 
-// Le bail d'un AUTRE poste sur ce fichier, ou null. C'est la seule question que se posent
+// Le bail d'un autre poste sur ce fichier, ou null. C'est la seule question que se posent
 // les gestes qui écrivent sans tenir de session — déplacer un article, cocher « pas de
 // DOI », geler le numéro : ils regardent, ils ne posent rien.
 function titulaireAutre(racine, chemin, id, maintenant) {
@@ -239,7 +272,7 @@ function titulairesDuNumero(racine, id, maintenant) {
 // Pose ou renouvelle le bail. -> { ok: true } quand le fichier est à nous, sinon
 // { ok: false, titulaire } avec le bail qui barre la route.
 //
-// La pose se vérifie APRÈS écriture : deux postes peuvent avoir trouvé le fichier libre au
+// La pose se vérifie après écriture : deux postes peuvent avoir trouvé le fichier libre au
 // même instant, et le second ne l'apprend qu'en relisant le dossier. Le plus ancien garde
 // le fichier, le perdant retire son propre bail — sans quoi les deux se croiraient
 // titulaires et écriraient ensemble.
@@ -273,10 +306,15 @@ function poser(racine, chemin, id, maintenant) {
     // qu'il écrit sans protection, pour qu'il ne prétende pas le contraire.
     return { ok: true, echec: String((e && e.message) || e) };
   }
+  // Le bail vient d'être écrit : le cache d'avant cette écriture ne doit plus servir, sans
+  // quoi la vérification qui suit relirait le dossier tel qu'il était avant notre propre
+  // pose — jamais gagnant, ou pire, jamais posé du tout à ses propres yeux.
+  invaliderCacheBaux(racine);
   const apres = baux(racine, clef, t);
   const gagnant = apres.length > 0 ? apres[0] : null;
   if (gagnant && gagnant.qui !== moi) {
     try { fs.unlinkSync(fichierBail); } catch (e) { /* déjà retiré */ }
+    invaliderCacheBaux(racine);
     return { ok: false, titulaire: gagnant };
   }
   return { ok: true };
@@ -289,6 +327,7 @@ function rendre(racine, chemin, id) {
   if (!clef) { return; }
   try { fs.unlinkSync(path.join(dossierEdition(racine), nomBail(clef, id))); }
   catch (e) { /* pas posé, ou déjà retiré */ }
+  invaliderCacheBaux(racine);
 }
 
 // Le ménage. Les noms étant déterministes par (fichier, personne), le dossier ne grossit
@@ -305,13 +344,27 @@ function purger(racine, maintenant) {
     try { fs.unlinkSync(path.join(dossier, nom)); } catch (e) { restants++; }
   }
   if (restants === 0) { try { fs.rmdirSync(dossier); } catch (e) { /* pas vide : très bien */ } }
+  invaliderCacheBaux(racine);
 }
+
+// Cache d'empreinte() : chemin -> { taille, mtimeMs, valeur }. Un formulaire ouvert
+// consulte empreinte() à chaque tour de l'enregistrement automatique (trois secondes) ;
+// tant que la taille et la mtime du fichier n'ont pas bougé, il n'y a rien de neuf à lire.
+const cacheEmpreinte = new Map();
 
 // L'empreinte du fichier visé, ou '' s'il n'existe pas. Second garde-fou : elle dit si le
 // fichier a changé pendant qu'un formulaire le tenait à l'écran.
 function empreinte(chemin) {
-  try { return crypto.createHash('sha1').update(fs.readFileSync(chemin)).digest('hex'); }
-  catch (e) { return ''; }                         // absent ou illisible : pas d'empreinte
+  let stat;
+  try { stat = fs.statSync(chemin); }
+  catch (e) { cacheEmpreinte.delete(chemin); return ''; }   // absent ou illisible : pas d'empreinte
+  const avant = cacheEmpreinte.get(chemin);
+  if (avant && avant.taille === stat.size && avant.mtimeMs === stat.mtimeMs) { return avant.valeur; }
+  let valeur;
+  try { valeur = crypto.createHash('sha1').update(fs.readFileSync(chemin)).digest('hex'); }
+  catch (e) { valeur = ''; }
+  cacheEmpreinte.set(chemin, { taille: stat.size, mtimeMs: stat.mtimeMs, valeur: valeur });
+  return valeur;
 }
 
 module.exports = {

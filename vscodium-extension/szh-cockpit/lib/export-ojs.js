@@ -6,7 +6,7 @@
 // Deux revues, une seule instance : la « Revue suisse de pédagogie spécialisée » (locale
 // fr) et la « Schweizerische Zeitschrift für Heilpädagogik » (locale de) sont deux revues
 // OJS distinctes, avec leurs propres rubriques, leur propre groupe d'auteur et leur propre
-// compte de téléversement. OJS apparie tout cela PAR NOM à l'import : un intitulé
+// compte de téléversement. OJS apparie tout cela par nom à l'import : un intitulé
 // approximatif ne provoque pas d'erreur, il crée un doublon ou range l'article ailleurs.
 // D'où la règle de ce module : ce qui n'a pas été relevé sur l'instance reste vide, et un
 // champ vide obligatoire arrête l'export au lieu d'envoyer une valeur inventée.
@@ -25,7 +25,7 @@ const { CLE_ORDRE, CLE_SANS_DOI, analyserSansDoi, ordonnerArticles,
 const { estATraduire, MARQUE_A_TRADUIRE } = require('./traduction');
 const { imagesSansAlternative, listerImages } = require('./references');
 const { referencesDuTexte, referencesDuFichier } = require('./citations');
-const { CONFIG } = require('./archivage');
+const archivage = require('./archivage');
 const { T, TEXTES_COCKPIT } = require('./i18n');
 
 // ---- Configuration de l'OJS cible ---------------------------------------------------
@@ -62,7 +62,7 @@ const DEFAUTS_REVUE = {
 
 // Rubriques réelles des deux revues, dans l'ordre de la base OJS. À l'import, OJS
 // apparie chaque rubrique aux rubriques existantes titre par titre et abréviation par
-// abréviation ; `section_ref` d'un article, lui, est résolu sur la seule ABRÉVIATION
+// abréviation ; `section_ref` d'un article, lui, est résolu sur la seule abréviation
 // (filterByAbbrevs). D'où deux conséquences :
 //   — `cle` n'est qu'un identifiant interne au cockpit, celui que la table des types
 //     désigne ; il ne part jamais dans le XML ;
@@ -116,7 +116,7 @@ const TYPES_DEFAUT = {
 // revues, la lettre les distinguant, AAAA-NN le numéro dans l'année et SS le compteur dans
 // le numéro — « 10.57161/z2026-06-00 ».
 //
-// Le DOI est un CALCUL, sans mémoire : rien ne le stocke, il se redéduit à tout moment de
+// Le DOI est un calcul, sans mémoire : rien ne le stocke, il se redéduit à tout moment de
 // la revue, de l'année, du numéro et du rang de l'article. Le rang est celui de l'article
 // parmi ceux qui reçoivent un DOI, compté à partir de zéro : l'éditorial ouvre le numéro et
 // porte donc « 00 », ce que pipeline/docx-meta.py reconnaît déjà pour deviner un éditorial.
@@ -139,7 +139,7 @@ function deuxChiffres(n) {
 function doiCalcule(locale, annee, numero, rang) {
   const lettre = LETTRE_DOI[String(locale || '').toLowerCase()];
   const an = (String(annee === undefined || annee === null ? '' : annee).match(/\d{4}/) || [''])[0];
-  // Les chiffres du numéro, et RIEN quand il n'y en a pas : sans ce test, un numéro sans
+  // Les chiffres du numéro, et rien quand il n'y en a pas : sans ce test, un numéro sans
   // nombre passerait pour le numéro zéro et fabriquerait « …-00-01 », un DOI qui a l'air
   // juste et qui désigne un numéro qui n'existe pas.
   const chiffres = String(numero === undefined || numero === null ? '' : numero).replace(/\D+/g, '');
@@ -240,10 +240,10 @@ function morceauNomFichier(valeur) {
     .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || '0';
 }
 
-// Les articles que le DISQUE porte, même filtre que la variable SLUGS du Makefile : un
+// Les articles que le disque porte, même filtre que la variable SLUGS du Makefile : un
 // dossier qui contient le .md du même nom.
 //
-// Ce n'est PAS l'ordre du numéro, et le nom des dossiers ne le donne plus : l'ordre est
+// Ce n'est pas l'ordre du numéro, et le nom des dossiers ne le donne plus : l'ordre est
 // devenu modifiable et vit dans les métadonnées du numéro, sans renommer quoi que ce soit —
 // un article préfixé « 02- » peut se lire en cinquième. Cette liste n'est donc qu'une
 // entrée pour ordonnerArticles(), qui en fait le sommaire. Le tri sert à une seule chose :
@@ -265,25 +265,19 @@ function listerSlugs(racine) {
 //
 // Support retenu : le config.json du poste, celui que lit lib/archivage.js et que
 // partagent les scripts PowerShell. Pourquoi celui-là et non un fichier par numéro : ces
-// valeurs décrivent l'INSTANCE OJS (noms de composants, de rôles, de comptes,
+// valeurs décrivent l'instance OJS (noms de composants, de rôles, de comptes,
 // abréviations de rubriques), pas le numéro. Rangées dans le dossier d'un numéro, elles
 // partiraient à l'archivage et un numéro rouvert trois ans plus tard réimporterait avec
 // les intitulés de 2026 ; rangées dans le poste, elles suivent l'instance, se corrigent
 // une fois pour les deux revues, et bootstrap.ps1 a déjà donné au groupe Utilisateurs le
 // droit d'y écrire.
 //
-// SZH_CONFIG_OJS impose un autre fichier : le harnais s'en sert, et une vérification en
-// ligne de commande aussi, sans toucher à C:\ProgramData.
-function cheminConfigOjs() {
-  return texte(process.env.SZH_CONFIG_OJS) || CONFIG;
-}
-
-// BOM retiré avant l'analyse, comme dans lib/archivage.js : d'anciens config.json en
-// portent un, et JSON.parse le refuse.
-function lireConfigPoste() {
-  try { return JSON.parse(String(fs.readFileSync(cheminConfigOjs(), 'utf8')).replace(/^\uFEFF/, '')); }
-  catch (e) { return null; }
-}
+// Lecture et écriture centralisées dans lib/archivage.js (point de passage unique de
+// config.json, écriture atomique, lecture-modification-écriture) : ce module n'en garde
+// plus de copie. cheminConfigOjs() reste exportée telle quelle, personne ne l'appelant
+// plus ici que sous ce nom — SZH_CONFIG_OJS est l'unique override, désormais partagé.
+const cheminConfigOjs = archivage.cheminConfigPoste;
+const lireConfigPoste = archivage.lireConfigPoste;
 
 function cloner(v) { return JSON.parse(JSON.stringify(v)); }
 
@@ -297,7 +291,7 @@ function normaliserCleRubrique(valeur) {
 // même vide » : ce que le panneau montre est ce que l'export emploie, et vider un champ
 // dans l'interface doit avoir un effet, sinon le défaut reviendrait en douce.
 //
-// Les rubriques sont fusionnées PAR CLÉ, et une clé inconnue est ajoutée à la suite :
+// Les rubriques sont fusionnées par clé, et une clé inconnue est ajoutée à la suite :
 // une configuration qui ne corrige qu'un titre allemand ne perd pas le reste de la
 // table, et une rubrique ajoutée dans l'interface survit à une mise à jour du logiciel.
 function normaliserConfigOjs(brut) {
@@ -377,14 +371,17 @@ function typeSansDoi(cfg, type) {
 // Écrit la configuration venue du panneau sous la clé `ojs` de config.json, sans toucher
 // au reste du fichier (devMode, mailsTraduction…). Rend null, ou le message de l'échec.
 function ecrireConfigOjs(config) {
-  try {
-    const fichier = lireConfigPoste() || {};
+  // Lecture-modification-écriture atomique, via le point de passage unique de
+  // lib/archivage.js : la lecture qui précède l'écriture est toujours fraîche, et un
+  // autre bloc de config.json (emplacementRevues, mailsTraduction…) posé entre-temps par
+  // un autre appelant ne se fait plus écraser par un writeFileSync nu.
+  return archivage.ecrireConfigPoste((fichier) => {
+    const sortie = Object.assign({}, fichier);
     // Normalisée avant d'être écrite : le fichier porte toujours la table complète, et
     // une valeur venue du panneau ne s'y écrit pas telle quelle.
-    fichier.ojs = normaliserConfigOjs({ ojs: config });
-    fs.writeFileSync(cheminConfigOjs(), JSON.stringify(fichier, null, 2) + '\n', 'utf8');
-    return null;
-  } catch (e) { return String((e && e.message) || e); }
+    sortie.ojs = normaliserConfigOjs({ ojs: config });
+    return sortie;
+  });
 }
 
 // ---- Collecte et garde-fous ----------------------------------------------------------
@@ -397,7 +394,7 @@ function manqueConfig(libelle, locale, ou) {
 
 // Les références d'un article, en texte brut, relues au dernier moment.
 //
-// La source, c'est le FICHIER de bibliographie que l'import a détaché : ce sont les
+// La source, c'est le fichier de bibliographie que l'import a détaché : ce sont les
 // références et rien d'autre, sans titre à reconnaître et sans découpage à deviner. Un
 // article importé avant que la bibliographie devienne un fichier n'en a pas ; on retombe
 // alors sur son .md, et on le dit — c'est un réimport qui le corrige.
@@ -508,11 +505,11 @@ function collecter(racine, cfg, avertissements) {
   }
 
   // Les articles dont la rédaction a décidé qu'ils ne portent pas de DOI, cochés sur leur
-  // carte dans la vue « Articles ». Une absence VOULUE n'est pas un oubli : elle ne doit
+  // carte dans la vue « Articles ». Une absence voulue n'est pas un oubli : elle ne doit
   // pas arrêter l'export, et elle ne doit pas non plus passer sous silence — d'où un
   // avertissement à elle, distinct de celui des rubriques qui n'en reçoivent jamais.
   //
-  // `sansDoi` est le jeu complet : la case cochée PLUS la rubrique qui n'en reçoit jamais.
+  // `sansDoi` est le jeu complet : la case cochée plus la rubrique qui n'en reçoit jamais.
   // C'est lui, et lui seul, qui décide du compteur, et il est composé exactement comme
   // celui de la vue « Articles ».
   const sansDoiVoulu = new Set(analyserSansDoi(valeurs[CLE_SANS_DOI]));
@@ -522,7 +519,7 @@ function collecter(racine, cfg, avertissements) {
     if (typeSansDoi(cfg, fiches[slug] && fiches[slug].type)) { sansDoi.add(slug); }
   }
 
-  // L'ORDRE DU NUMÉRO, et non le tri des noms de dossier : c'est lui qui donne le rang de
+  // L'ordre du numéro, et non le tri des noms de dossier : c'est lui qui donne le rang de
   // chaque article, et le rang qui donne le DOI. La fonction employée est celle de l'arbre
   // et des cartes, avec le même jeu de sans-DOI, pour qu'un article ne puisse pas porter
   // deux rangs selon l'endroit d'où on le regarde. Elle répare aussi ce que le disque dit :
@@ -612,9 +609,9 @@ function collecter(racine, cfg, avertissements) {
             [n, l.toUpperCase(), MARQUE_A_TRADUIRE]));
         }
       }
-      // Le DOI est un CALCUL, et c'est le calcul qui part : le rang de l'article parmi les
+      // Le DOI est un calcul, et c'est le calcul qui part : le rang de l'article parmi les
       // porteurs du numéro, celui-là même que sa carte affiche. Une seule échappatoire :
-      // un doi resté sur la fiche y a été DÉFINI À LA MAIN (case « Définir manuellement le
+      // un doi resté sur la fiche y a été défini à la main (case « Définir manuellement le
       // DOI » du formulaire, l'import ne l'écrit plus), et c'est lui qui part à la place du
       // calculé — jamais en silence : la divergence se dit, avec les deux valeurs et le
       // geste qui les départage. Deux absences, toutes deux voulues : la case de l'article
@@ -790,7 +787,7 @@ function genererExportOjs(racine, options) {
   let prochainId = 1;
   const allouer = () => prochainId++;
   const idNumero = allouer();
-  const parRubrique = {};                          // seq de publication PAR rubrique (1, 2, …)
+  const parRubrique = {};                          // seq de publication par rubrique (1, 2, …)
   for (const a of articles) {
     a.idArticle = allouer();
     for (const f of a.fichiers) { f.idSubmission = allouer(); f.idFichier = allouer(); }

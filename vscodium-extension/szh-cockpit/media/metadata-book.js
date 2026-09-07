@@ -23,7 +23,7 @@
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
     recu = true;
-    livre.message(msg);
+    if (!livre.message(msg)) { console.warn('métadonnées du livre : type de message inconnu', msg.type); }
   });
   SZH.annoncerPret(vscodeApi, function () { return recu; });
 })();

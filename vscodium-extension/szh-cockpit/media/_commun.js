@@ -380,7 +380,10 @@ var SZH = (function () {
       i.type = 'text';
       i.dataset.langue = langue.code;
       i.value = valeur;
-      i.placeholder = MARQUE;
+      // MARQUE reste la sentinelle écrite dans le YAML (estMarque, ci-dessus) : ce que le
+      // champ vide affiche vient d'une clé i18n envoyée par l'hôte, dans la langue de
+      // l'interface — jamais l'anglais figé de la sentinelle.
+      i.placeholder = textes.aTraduire || MARQUE;
       i.setAttribute('aria-label',
         (textes.motCle || '{0}').split('{0}').join(langue.libelle) + ' ' +
         String(rangee.dataset.index ? Number(rangee.dataset.index) + 1 : ''));
@@ -407,6 +410,9 @@ var SZH = (function () {
         retirer.className = 'mc-retirer';
         retirer.textContent = '×';
         retirer.title = textes.retirer || '';
+        // Le rang distingue les rangées : sans lui, un lecteur d'écran annonce autant de
+        // « retirer » identiques que de mots-clés, sans dire lequel.
+        retirer.setAttribute('aria-label', (textes.retirer || '') + ' ' + String(index + 1));
         retirer.addEventListener('click', function () {
           // On retire la rangée, donc le mot-clé dans toutes les langues, masquées
           // comprises : retirer « diagnostic » sans « Diagnose » décalerait tout le reste.
@@ -559,7 +565,6 @@ var SZH = (function () {
     label.setAttribute('for', id);
     var select = document.createElement('select');
     select.id = id;
-    select.setAttribute('id', id);
     select.dataset.cle = opts.cle;
     for (var i = 0; i < options.length; i++) {
       var opt = document.createElement('option');
@@ -615,14 +620,37 @@ var SZH = (function () {
   // avant de poser le HTML ; cette reprise est la seconde ceinture, pour les fois où
   // l'ordre se reperdrait ou où le message se perd ailleurs. `recu` doit rendre vrai dès
   // le premier message reçu de l'hôte, quel qu'il soit.
+  //
+  // Un jeton (`requete`), le même à chaque relance : sur un aller-retour lent, l'hôte peut
+  // répondre deux fois à « pret » avant que la première réponse n'arrive, et la seconde
+  // « valeurs »/« charger » atterrirait alors après que le rédacteur a commencé à taper —
+  // la reconstruire écraserait cette saisie. L'hôte recopie ce jeton dans sa réponse ;
+  // jetonDejaTraite() (plus bas) dit à la page laquelle honorer.
   function annoncerPret(api, recu) {
     var essais = 0;
-    api.postMessage({ type: 'pret' });
+    var requete = Date.now().toString(36) + Math.random().toString(36).slice(2);
+    api.postMessage({ type: SZH.MSG.PRET, requete: requete });
     var minuteur = setInterval(function () {
       essais++;
       if ((recu && recu()) || essais > 6) { clearInterval(minuteur); return; }
-      api.postMessage({ type: 'pret' });
+      api.postMessage({ type: SZH.MSG.PRET, requete: requete });
     }, 350);
+    return requete;
+  }
+
+  // Course pret/valeurs : rend vrai si `msg` est un doublon à ignorer (même jeton qu'une
+  // réponse déjà traitée), faux sinon — et retient alors ce jeton comme consommé. `etat`
+  // est un objet `{ jeton: null }` tenu par la page, un par formulaire. Une réponse sans
+  // jeton (un rechargement déclenché par un geste, pas par « pret ») n'est jamais un
+  // doublon. Un rechargement forcé (`msg.rechargement === true` : fiche périmée, écrite
+  // ailleurs, ou réponse à « demande-rechargement ») passe toujours, même sur un jeton déjà
+  // vu — sans quoi la webview resterait périmée sous les yeux du rédacteur.
+  function jetonDejaTraite(etat, msg) {
+    if (msg.rechargement) { return false; }
+    if (msg.requete === undefined || msg.requete === null) { return false; }
+    if (etat.jeton === msg.requete) { return true; }
+    etat.jeton = msg.requete;
+    return false;
   }
 
   // ---- Barre de commandes ----
@@ -686,7 +714,7 @@ var SZH = (function () {
     var conteneur = opts.conteneur;
     var lireTextes = opts.textes || function () { return {}; };
     // Les pieds de carte, par clé : c'est ce qui permet de rafraîchir une seule pastille
-    // sans reconstruire la liste. Les compteurs de tâches suivent le même besoin (A7.5) :
+    // sans reconstruire la liste. Les compteurs de tâches suivent le même besoin :
     // cocher une case ne repose que son entête, jamais la carte entière.
     var pieds = {};
     var compteurs = {};
@@ -702,8 +730,7 @@ var SZH = (function () {
     // Les tâches de l'article, cochables sur la carte : l'avancement doit se lire et se
     // changer sans ouvrir quoi que ce soit. Une case par tâche, l'intitulé dans son label,
     // donc rien à apparier par identifiant. Un entête les distingue franchement du reste de
-    // la carte (A7.2) et porte le compteur d'avancement, qui vivait en pastille du pied
-    // avant que A7.5 ne le rapproche des cases qu'il résume.
+    // la carte et porte le compteur d'avancement, qui vivait auparavant en pastille du pied.
     function poserTaches(carte, ligne) {
       var bloc = poser(carte, 'div', 'szh-taches');
       var entete = poser(bloc, 'div', 'szh-taches-entete');
@@ -801,12 +828,259 @@ var SZH = (function () {
     return { rendre: rendre, majPastilles: majPastilles };
   }
 
+  // ---- Petits gestes de construction, recopiés à l'identique dans plusieurs pages ----
+  //
+  // Un bouton texte, un bouton d'icône seule, une ligne aplatie (retours à la ligne rendus
+  // en espace), un gabarit « {0} » substitué depuis une table de textes, et l'écriture
+  // d'une zone d'état : cinq fonctions d'une ligne ou deux, qui vivaient à l'identique dans
+  // documentation.js et medias-article.js. Une page les reprend par un simple alias
+  // (`var bouton = SZH.bouton;`), sans toucher à ses appels.
+  function bouton(txt, fn, cls, titre) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = txt;
+    b.className = 'szh-bouton' + (cls ? ' ' + cls : '');
+    if (titre) { b.title = titre; }
+    b.addEventListener('click', fn);
+    return b;
+  }
+  function boutonIcone(nom, titre, fn, cls) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'szh-ico' + (cls ? ' ' + cls : '');
+    b.title = titre || '';
+    b.setAttribute('aria-label', titre || '');
+    b.appendChild(icone(nom));
+    b.addEventListener('click', fn);
+    return b;
+  }
+  function ligne(v) { return String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' ').trim(); }
+  function remplir(txt, cle, valeurs) {
+    var t = String((txt || {})[cle] || '');
+    for (var i = 0; i < (valeurs || []).length; i++) { t = t.split('{' + i + '}').join(String(valeurs[i])); }
+    return t;
+  }
+  function poserEtat(el, msg) { if (el) { el.textContent = msg || ''; } }
+
+  // ---- Barre d'en-tête d'un formulaire pleine page ----
+  //
+  // documentation.js et medias-article.js construisaient chacun la même barre — bouton
+  // Enregistrer, bouton Retour, indicateur de modification, zone d'état — à trois lignes
+  // d'écart : le message que « Retour » envoie à l'hôte, propre à chaque page, et un
+  // compteur supplémentaire pour le gestionnaire des médias. Les deux voyagent par
+  // `opts.onRetour` et `opts.avecCompte`.
+  //
+  // opts = { txt, onEnregistrer(), onRetour(), avecCompte }
+  // Rend { enregistrer, indic, etat, compte? } : les éléments que la page doit garder.
+  function construireBarre(conteneur, opts) {
+    var o = opts || {};
+    var txt = o.txt || {};
+    conteneur.textContent = '';
+    conteneur.className = 'szh-barre';
+    var ctl = {};
+    ctl.enregistrer = bouton(txt.enregistrer, function () { if (o.onEnregistrer) { o.onEnregistrer(); } },
+      'szh-bouton--principal', txt.enregistrerTip);
+    conteneur.appendChild(ctl.enregistrer);
+    conteneur.appendChild(bouton(txt.retour, function () { if (o.onRetour) { o.onRetour(); } }, '', txt.retourTip));
+    ctl.indic = poser(conteneur, 'span', 'szh-barre-indic');
+    ctl.indic.setAttribute('aria-live', 'polite');
+    ctl.etat = poser(conteneur, 'span', 'szh-barre-etat');
+    ctl.etat.setAttribute('role', 'status');
+    if (o.avecCompte) {
+      poser(conteneur, 'span', 'szh-pousse');
+      ctl.compte = poser(conteneur, 'span', 'szh-barre-etat');
+    }
+    return ctl;
+  }
+
+  // ---- Plafonds d'image ----
+  //
+  // Deux profils : une figure d'article (50 Mo, les formats du pipeline y compris le SVG)
+  // et une photo d'auteur·e (20 Mo, jamais de SVG ni de GIF, le WebP en plus). Une seule
+  // table plutôt que quatre copies dispersées. Ces valeurs ne sont qu'un repli : le message
+  // de chargement de chaque webview porte `limites` (lib/medias.js et les constantes photo
+  // d'extension.js, la source unique), et appliquerLimites() les pose ici — la table ne
+  // change donc que si l'hôte la dément, jamais par une seconde copie littérale.
+  var LIMITES = {
+    image: { maxi: 50 * 1024 * 1024, extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg'] },
+    photo: { maxi: 20 * 1024 * 1024, extensions: ['png', 'jpg', 'jpeg', 'webp'] }
+  };
+
+  // `limites` = { imageMax, imageExtensions, photoMax, photoExtensions } (ou absent : les
+  // valeurs ci-dessus restent alors en place, repli utile aux tests qui postent un message
+  // minimal). Une clé manquante isolément laisse sa propre valeur par défaut inchangée.
+  function appliquerLimites(limites) {
+    if (!limites) { return; }
+    if (limites.imageMax !== undefined) { LIMITES.image.maxi = limites.imageMax; }
+    if (limites.imageExtensions !== undefined) { LIMITES.image.extensions = limites.imageExtensions; }
+    if (limites.photoMax !== undefined) { LIMITES.photo.maxi = limites.photoMax; }
+    if (limites.photoExtensions !== undefined) { LIMITES.photo.extensions = limites.photoExtensions; }
+  }
+
+  // ---- Moteur d'autocomplétion partagé (noms d'auteur·e·s, mots-clés edudoc.ch) ----
+  //
+  // _auteurs.js et _fiches.js pliaient chacun casse et accents à leur façon pour chercher
+  // « commence par ce mot », avec deux écarts qui ne se justifiaient pas : `plier()`
+  // laissait les espaces de bord (le point d'appel des auteur·e·s les retirait après coup,
+  // celui des mots-clés jamais) et le jeu de séparateurs de mot des auteur·e·s ignorait la
+  // virgule et le point-virgule, qui séparent pourtant les descripteurs d'un thésaurus
+  // (« troubles, difficultés »). On garde le comportement le plus large des deux : un
+  // repli systématique, et le séparateur qui inclut la ponctuation des deux usages.
+  var SEPARE_MOT = /[\s\-'’.,;]/;
+
+  // Casse et accents pliés, sans le détail des positions : sert à comparer deux noms
+  // (tri alphabétique), pas à chercher dans un texte.
+  function plier(t) {
+    var s = String(t === undefined || t === null ? '' : t).toLowerCase().replace(/\s+/g, ' ').trim();
+    try { s = s.normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+    catch (e) { /* moteur sans normalize : filtrage sensible aux accents, sans casser */ }
+    return s;
+  }
+
+  // Plie un texte ET garde, pour chaque caractère du plié, l'indice du caractère d'origine
+  // dont il vient : sans cette table, mettre en gras la part trouvée obligerait à découper
+  // l'original aux indices du plié — ce qui se décale exactement sur les caractères qu'un
+  // repli Unicode change de longueur (« İ », par exemple).
+  function plierAvecIndex(brut) {
+    var src = String(brut === undefined || brut === null ? '' : brut);
+    var plie = '';
+    var index = [];
+    for (var i = 0; i < src.length; i++) {
+      var c = src.charAt(i).toLowerCase();
+      try { c = c.normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+      catch (e) { /* moteur sans normalize */ }
+      for (var j = 0; j < c.length; j++) { plie += c.charAt(j); index.push(i); }
+    }
+    return { source: src, plie: plie, index: index };
+  }
+
+  // Les indices, dans le plié, où commence un mot — espace, trait d'union, apostrophes,
+  // point d'initiale, virgule et point-virgule séparent deux mots.
+  function debutsDeMot(plie) {
+    var debuts = [];
+    for (var i = 0; i < plie.length; i++) {
+      if (SEPARE_MOT.test(plie.charAt(i))) { continue; }
+      if (i === 0 || SEPARE_MOT.test(plie.charAt(i - 1))) { debuts.push(i); }
+    }
+    return debuts;
+  }
+
+  // Le premier début de mot à partir duquel `q` se lit tel quel, ou -1.
+  function chercherDebut(pli, debuts, q) {
+    for (var i = 0; i < debuts.length; i++) {
+      if (pli.plie.lastIndexOf(q, debuts[i]) === debuts[i]) { return debuts[i]; }
+    }
+    return -1;
+  }
+
+  // Pose un texte dans `parent`, les parts trouvées en gras. `zones` est une liste de
+  // [début, longueur] en indices du plié ; la table d'index les ramène sur l'original.
+  // Rien n'est construit en HTML : un nom ou un descripteur est une donnée, pas du balisage.
+  function poserAvecGras(parent, pli, zones) {
+    var brut = pli.source;
+    var pose = 0;
+    for (var z = 0; z < zones.length; z++) {
+      var i0 = pli.index[zones[z][0]];
+      var fin = zones[z][0] + zones[z][1];
+      var i1 = (fin < pli.index.length) ? pli.index[fin] : brut.length;
+      if (i0 < pose) { continue; }             // zones qui se recouvrent : la première gagne
+      if (i0 > pose) { parent.appendChild(document.createTextNode(brut.slice(pose, i0))); }
+      var fort = document.createElement('strong');
+      fort.textContent = brut.slice(i0, i1);
+      parent.appendChild(fort);
+      pose = i1;
+    }
+    if (pose < brut.length) { parent.appendChild(document.createTextNode(brut.slice(pose))); }
+  }
+
+  // ---- Zone de dépôt : le motif complet, posé une fois ----
+  //
+  // Cinq pages en avaient chacune une copie : input file caché + bouton « Choisir un
+  // fichier » + glisser-déposer, sur un même cadre `.szh-depot` (survol : `.szh-depot.survol`,
+  // media/_design.css). Cette fonction ne décide de rien après le choix du fichier :
+  // `opts.surFichier(fichier)` reçoit le File choisi ou déposé, à charge pour l'appelant de
+  // le valider et de le lire — voir `SZH.lireBase64` plus bas, le second motif recopié.
+  //
+  // opts.parent, opts.libelle, opts.icone ('camera' par défaut), opts.tip,
+  // opts.extensions (liste, sans le point), opts.texteChoisir, opts.texteOu (facultatif,
+  // « ou » entre le glisser-déposer et le bouton, comme la modale des auteur·e·s)
+  // Rend { element, titre, choisir, fichier, etat } : `etat` est un span vide, à
+  // l'appelant d'y écrire ce qu'il veut ; poserEtat() le fait proprement.
+  function construireDepot(opts) {
+    var o = opts || {};
+    var d = poser(o.parent, 'div', 'szh-depot');
+    if (o.tip) { d.title = o.tip; }
+    // Icône et libellé facultatifs : une zone qui n'en reçoit ni l'un ni l'autre reste
+    // muette, comme avant l'unification de ce motif — ajouter un pictogramme que
+    // personne n'a demandé serait le changement visuel que ce lot s'interdit.
+    var titre = poser(d, 'span', 'szh-depot-titre');
+    if (o.icone) { titre.appendChild(icone(o.icone)); }
+    if (o.libelle) { poser(titre, 'span', null, o.libelle); }
+    if (o.texteOu) { poser(d, 'span', 'ou', o.texteOu); }
+    var choisir = bouton(o.texteChoisir || '', function () { fichier.click(); });
+    d.appendChild(choisir);
+    var fichier = document.createElement('input');
+    fichier.type = 'file';
+    fichier.accept = (o.extensions || []).map(function (e) { return '.' + e; }).join(',');
+    fichier.hidden = true;
+    d.appendChild(fichier);
+    var surFichier = o.surFichier || function () {};
+    fichier.addEventListener('change', function () {
+      if (fichier.files && fichier.files[0]) { surFichier(fichier.files[0]); }
+      fichier.value = '';
+    });
+    d.addEventListener('dragover', function (ev) { ev.preventDefault(); d.classList.add('survol'); });
+    d.addEventListener('dragleave', function () { d.classList.remove('survol'); });
+    d.addEventListener('drop', function (ev) {
+      ev.preventDefault();
+      d.classList.remove('survol');
+      var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+      if (f) { surFichier(f); }
+    });
+    // « alert » et non « status » : cette zone ne porte que le sort d'UN dépôt (en cours,
+    // refusé, réussi), jamais un message d'ambiance — elle mérite d'interrompre plutôt que
+    // d'attendre une pause dans la parole, contrairement à la barre d'état générale.
+    var etat = poser(d, 'span', 'szh-depot-etat');
+    etat.setAttribute('role', 'alert');
+    return { element: d, titre: titre, choisir: choisir, fichier: fichier, etat: etat };
+  }
+
+  // Lecture d'un fichier en base64, formats et poids revérifiés ici et par l'hôte de toute
+  // façon : la webview le dit tout de suite plutôt que d'envoyer un fichier qu'il refusera.
+  //
+  // opts.extensions, opts.maxi (octets), opts.surDonnees(fichier, base64),
+  // opts.surErreur(message), opts.surLecture() (facultatif, appelé avant la lecture)
+  function lireBase64(fichier, opts) {
+    var o = opts || {};
+    var surErreur = o.surErreur || function () {};
+    var ext = (String(fichier.name || '').match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
+    if ((o.extensions || []).indexOf(ext) === -1) { surErreur(o.msgFormat || ''); return; }
+    if (o.maxi && fichier.size > o.maxi) { surErreur(o.msgPoids || ''); return; }
+    if (o.surLecture) { o.surLecture(); }
+    var lecteur = new FileReader();
+    lecteur.onerror = function () { surErreur(o.msgFormat || ''); };
+    lecteur.onload = function () {
+      var t = String(lecteur.result || '');
+      var virgule = t.indexOf(',');
+      if (virgule === -1) { surErreur(o.msgFormat || ''); return; }
+      if (o.surDonnees) { o.surDonnees(fichier, t.slice(virgule + 1)); }
+    };
+    lecteur.readAsDataURL(fichier);
+  }
+
   return {
     autoEnregistrement: autoEnregistrement, motsCles: motsCles,
     choixFerme: choixFerme, choixLangue: choixLangue,
-    annoncerPret: annoncerPret, icone: icone, notif: notif, poserAccent: poserAccent,
+    annoncerPret: annoncerPret, jetonDejaTraite: jetonDejaTraite,
+    icone: icone, notif: notif, poserAccent: poserAccent,
     barreBoutons: barreBoutons, boutonCommande: boutonCommande, listeCartes: listeCartes,
     poser: poser, modale: modale, LANGUES_CHOIX: LANGUES_CHOIX,
-    MARQUE_A_TRADUIRE: MARQUE
+    MARQUE_A_TRADUIRE: MARQUE,
+    bouton: bouton, boutonIcone: boutonIcone, ligne: ligne, remplir: remplir,
+    poserEtat: poserEtat, construireBarre: construireBarre, LIMITES: LIMITES,
+    appliquerLimites: appliquerLimites,
+    plier: plier, plierAvecIndex: plierAvecIndex, debutsDeMot: debutsDeMot,
+    chercherDebut: chercherDebut, poserAvecGras: poserAvecGras,
+    construireDepot: construireDepot, lireBase64: lireBase64
   };
 })();

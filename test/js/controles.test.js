@@ -28,7 +28,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { ouvrir, libellesHote, chargerAvecVscodeFactice } = require('./dom-minimal');
-const { revueDEssai, activerHote } = require('./hote-factice');
+const { revueDEssai, activerHote, sourceExtensionEtLib } = require('./hote-factice');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
@@ -228,7 +228,8 @@ test('journal : une plainte inconnue passe quand même, plutôt que de se taire'
 
 test('page : les constats deviennent des cartes, bloquants d’abord', () => {
   const page = ouvrir({
-    racine: RACINE, page: 'vue-ensemble', cssPartage: ['_design.css', '_liste.css']
+    racine: RACINE, page: 'vue-ensemble', cssPartage: ['_design.css', '_liste.css'],
+    jsPartage: ['_messages.js']
   });
   assert.deepStrictEqual(page.messages.map((m) => m.type), ['pret'], 'la page ne s’annonce pas');
   // La charge que l'hôte envoie : deux tons, pour vérifier qu'ils se distinguent à l'œil.
@@ -434,7 +435,9 @@ test('relecture : le lanceur Windows non plus, dans ses trois langues', () => {
   // portait encore quatre messages de développeur : un nom de script d'installation, une
   // clé de configuration, et deux causes sans le moindre geste. Ses textes sont lus par les
   // mêmes personnes, sur le même poste, et parfois avant même que le cockpit existe.
-  const ps = fs.readFileSync(path.join(RACINE, 'windows', 'szh-common.ps1'), 'utf8');
+  // La table $SzhTextes vit maintenant dans windows/szh-textes.ps1, dot-sourcée par
+  // szh-common.ps1.
+  const ps = fs.readFileSync(path.join(RACINE, 'windows', 'szh-textes.ps1'), 'utf8');
   const textes = [];
   for (const ligne of ps.split(/\r?\n/)) {
     // Les lignes « 'cle' = 'texte' » des trois tables $SzhTextes (fr, de, en).
@@ -463,7 +466,8 @@ test('relecture : le lanceur Windows non plus, dans ses trois langues', () => {
 });
 
 test('relecture : un échec de compilation ne double pas le précis par le vague', () => {
-  const src = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
+  // Concaténé à lib/ : préalable au découpage d'extension.js, voir hote-factice.js.
+  const src = sourceExtensionEtLib(COCKPIT);
   // Ces quatre messages sont des replis : quand la chaîne a nommé une cause, la vue des
   // contrôles vient de la dire avec son geste, et un « la compilation a échoué » par-dessus
   // recouvrirait le précis par le vague.

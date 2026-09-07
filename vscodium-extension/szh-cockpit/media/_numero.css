@@ -52,12 +52,5 @@
 .apercu:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .apercu img { display: block; max-width: 100%; max-height: 16rem; object-fit: contain; }
 .couverture .absent { margin: 0; font-size: var(--t-libelle); color: var(--encre-2); font-style: italic; }
-.depot { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
-  padding: var(--e2) var(--e3); border: 1px dashed var(--filet);
-  border-radius: var(--rayon-mini); }
-.depot.survol { border-style: solid; border-color: var(--accent);
-  background: var(--surface-tete); }
-.depot-titre { display: inline-flex; align-items: center; gap: var(--e1);
-  font-size: var(--t-libelle); color: var(--encre-2); }
-.media-etat { font-size: var(--t-libelle); color: var(--encre-2); }
+/* Dépôt de la couverture : .szh-depot (_design.css §11). */
 .modale-nom { overflow-wrap: anywhere; }

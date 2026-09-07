@@ -134,7 +134,7 @@ function chargerTables() {
   while ((m = plage.exec(brut)) !== null) {
     ignores.push([parseInt(m[1], 16), parseInt(m[2], 16)]);
   }
-  // Le lexique des titres de bibliographie, et les titres que la compilation POSE au-dessus
+  // Le lexique des titres de bibliographie, et les titres que la compilation pose au-dessus
   // de la bibliographie détachée : mêmes tables, même fichier, même raison. Un lexique vide
   // n'est pas un lexique : c'est un filtre d'un autre format.
   const titres = (blocLua(src, 'TITRES_BIB', chemin).match(/'([a-z]+)'/g) || [])
@@ -240,7 +240,7 @@ function titresBib() {
   return chargerTables().titres;
 }
 
-// Comparaison EXACTE, comme est_titre_bib() du filtre. Le préfixe faisait de
+// Comparaison exacte, comme est_titre_bib() du filtre. Le préfixe faisait de
 // « Literaturhinweise für die Praxis » un titre de bibliographie, et tout ce qui suivait
 // cessait d'être regardé.
 function estTitreBib(texte) {
@@ -347,8 +347,11 @@ function nomFichierBiblio(slug) {
   return String(slug) + '.biblio.md';
 }
 
-function cheminBiblio(racine, slug) {
-  return path.join(racine, 'articles', slug, nomFichierBiblio(slug));
+// dossierUnites : 'articles' pour un numéro, 'chapitres' pour un livre (profilCourant().
+// unites.dossier côté extension.js) ; par défaut 'articles', pour les appelants qui
+// ignorent encore le profil (export OJS, mise en forme).
+function cheminBiblio(racine, slug, dossierUnites) {
+  return path.join(racine, dossierUnites || 'articles', slug, nomFichierBiblio(slug));
 }
 
 // Les entrées du fichier de bibliographie, ou null si l'article n'en a pas — ce qui n'est

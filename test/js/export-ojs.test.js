@@ -978,7 +978,7 @@ test('langue de l’article : une langue autre que celle de la revue est signal�
 // sous un titre, et rien ne le dirait — c'est le défaut que webviews.test.js garde ailleurs.
 test('panneau des réglages : la table des rubriques et les champs par revue sont rendus', () => {
   const page = ouvrir({
-    racine: RACINE, page: 'settings', cssPartage: ['_design.css'],
+    racine: RACINE, page: 'settings', cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
     txt: libellesHote(RACINE, ['REGL_LIBELLES'])
   });
   assert.deepStrictEqual(page.messages.map((m) => m.type), ['pret'], 'la page ne s’annonce pas');

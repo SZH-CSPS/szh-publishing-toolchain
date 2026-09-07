@@ -64,6 +64,39 @@ test('dimensions : JPEG, le marqueur SOF0 est retrouvé', () => {
   } finally { fs.rmSync(dossier, { recursive: true, force: true }); }
 });
 
+// Un JPEG d'imprimerie porte son profil ICC CMJN en segments APP2, et un profil comme ISO
+// Coated v2 pèse près de deux mégaoctets : le marqueur SOF tombe alors bien au-delà des 64
+// premiers kilooctets qu'une lecture à fenêtre fixe explorerait. Même piège, même remède
+// que lib/cmyk.js#composantesJpeg (test miroir dans test/js/cmjn-couleurs.test.js) : le
+// fichier est parcouru segment par segment, jamais sur une fenêtre de tête.
+test('dimensions : JPEG, le marqueur SOF est retrouvé même derrière un gros profil ICC (> 64 Ko)', () => {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-medias-'));
+  try {
+    const morceaux = [Buffer.from([0xff, 0xd8])];          // SOI
+    let reste = 70000;
+    while (reste > 0) {
+      const morceau = Math.min(reste, 65000);
+      const entete = Buffer.alloc(4);
+      entete[0] = 0xff; entete[1] = 0xe2;                   // APP2, comme un profil ICC
+      entete.writeUInt16BE(morceau + 2, 2);
+      morceaux.push(entete, Buffer.alloc(morceau));
+      reste -= morceau;
+    }
+    const sof = Buffer.alloc(12);
+    sof[0] = 0xff; sof[1] = 0xc0;                           // SOF0
+    sof.writeUInt16BE(8, 2);                                // Lf (valeur non contrôlée)
+    sof[4] = 8;                                             // précision
+    sof.writeUInt16BE(300, 5);                              // hauteur (Y)
+    sof.writeUInt16BE(600, 7);                              // largeur (X)
+    sof[9] = 3;                                              // Nf
+    morceaux.push(sof, Buffer.from([0xff, 0xd9]));          // EOI
+    const f = path.join(dossier, 'gros-profil.jpg');
+    fs.writeFileSync(f, Buffer.concat(morceaux));
+    assert.deepStrictEqual(medias.lireDimensionsImage(f), { largeur: 600, hauteur: 300 },
+      'le marqueur SOF au-delà des 64 premiers Ko n’a pas été retrouvé');
+  } finally { fs.rmSync(dossier, { recursive: true, force: true }); }
+});
+
 test('dimensions : WEBP, les trois formes de bloc (VP8X, VP8L, VP8)', () => {
   const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-medias-'));
   try {

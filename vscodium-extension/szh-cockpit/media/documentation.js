@@ -1,15 +1,14 @@
 (function () {
 'use strict';
-// La Documentation d'un numéro — « Actualité et ressources » / « News & Ressourcen » — en UN
-// SEUL formulaire : les rubriques de texte riche (références du dossier, tour d'horizon…)
+// La Documentation d'un numéro — « Actualité et ressources » / « News & Ressourcen » — en un
+// seul formulaire : les rubriques de texte riche (références du dossier, tour d'horizon…)
 // puis les fiches structurées (livres, films, interventions parlementaires, agenda…).
-// Remplace les deux pages séparées ressources-article.* et rubriques-article.* — demande de
-// Robin du 02.09.2026 : « fais un seul formulaire avec rubriques et les ressources ».
+// Remplace les deux pages séparées ressources-article.* et rubriques-article.*.
 //
-// Quatre partis de mise en page, tous demandés le même jour :
+// Quatre partis de mise en page :
 //
-//   1. TOUT est pliable. Une rubrique est un accordéon à elle seule : elle n'a qu'un bloc de
-//      prose, son titre EST son en-tête. Une catégorie de fiches est un intertitre suivi
+//   1. Tout est pliable. Une rubrique est un accordéon à elle seule : elle n'a qu'un bloc de
+//      prose, son titre est son en-tête. Une catégorie de fiches est un intertitre suivi
 //      d'une carte pliable par fiche. Un seul accordéon ouvert à la fois dans toute la page :
 //      replié, on lit la structure ; ouvert, on saisit sans rien d'autre autour.
 //   2. Un sommaire collant à droite : la structure entière d'un coup d'œil, le nombre de
@@ -19,22 +18,22 @@
 //      l'ancien pavé « À compléter avant l'enregistrement : … » a disparu avec le refus
 //      d'écrire qu'il annonçait.
 //   4. Rien ne dépasse d'une carte repliée. Le lien, la zone d'image et l'état de la fiche
-//      vivent DANS le corps pliable — ils restaient visibles sous les en-têtes repliés, et
+//      vivent dans le corps pliable — ils restaient visibles sous les en-têtes repliés, et
 //      l'accordéon ne repliait alors presque rien.
 //
-// Les rubriques n'ont PAS de bouton « Ajouter » : chaque type a un bloc, un seul, toujours
+// Les rubriques n'ont pas de bouton « Ajouter » : chaque type a un bloc, un seul, toujours
 // présent et toujours éditable. Vider ce bloc le retire du .md ; le remplir l'y remet. Les
 // fiches, elles, gardent leur bouton d'ajout par catégorie — il y en a autant qu'on veut.
 //
 // Le moteur reste générique : chaque catégorie de fiches est décrite par `typesConfig` et
 // chaque rubrique par `typesRubrique`, tous deux construits par l'hôte depuis
-// lib/ressources.js et lib/rubriques.js. Cette page ne connaît AUCUN nom de type ni de champ
+// lib/ressources.js et lib/rubriques.js. Cette page ne connaît aucun nom de type ni de champ
 // en dur, hormis les quatre champs communs à toute fiche (titre, lien, descriptif, image),
 // qui sont le contrat du moteur lui-même. Un champ peut arriver avec une liste fermée de
 // valeurs (`options` — le canton d'une intervention) ou une saisie de date (`saisie`) : il se
 // rend alors en <select> ou en <input type="date"> sans qu'une ligne d'ici ne le sache.
 //
-// Identité d'une carte : un identifiant que CETTE page choisit à la création (nouvelId()),
+// Identité d'une carte : un identifiant que cette page choisit à la création (nouvelId()),
 // jamais recalculé par l'hôte — voir lib/ressources.js. Une carte neuve n'existe que dans le
 // navigateur tant qu'« Enregistrer » n'a pas été demandé ; la retirer ne dérange donc pas
 // l'hôte pour rien.
@@ -44,7 +43,7 @@
 //   retirer { famille, id } ; deposer-image { id, nomFichier, donneesBase64 } ;
 //   detacher { id } ; envoyer { id } ; retourArticle { modifie, ressources, rubriques }
 // où ressources = [{ id, type, valeurs }], valeurs = { titre, lien, descriptif, image,
-// …champs du type }, et rubriques = [{ id, type, contenu }] — les rubriques VIDES en font
+// …champs du type }, et rubriques = [{ id, type, contenu }] — les rubriques vides en font
 // partie, c'est ainsi que l'hôte apprend qu'un bloc doit sortir du .md.
 // Depuis l'hôte :
 //   charger { slug, ressources, rubriques, typesConfig, typesRubrique, accent, i18n } ;
@@ -56,12 +55,17 @@
 // { valeur, libelleSection }.
 var api = acquireVsCodeApi();
 // Mêmes plafonds que l'hôte, qui recontrôle tout : répondre tout de suite plutôt que
-// d'envoyer un fichier que l'hôte refusera de toute façon.
-var IMAGE = {
-  maxi: 50 * 1024 * 1024, extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg'],
-  format: 'errFormat', poids: 'errTropVolumineuse'
-};
+// d'envoyer un fichier que l'hôte refusera de toute façon. La table (taille, formats) vit
+// dans _commun.js (SZH.LIMITES), tenue à jour par le message « charger » (limites.imageMax/
+// imageExtensions, recalculée à chaque chargement) ; le nom des clés i18n reste propre à
+// cette page.
+function imageDepot() {
+  return Object.assign({ format: 'errFormat', poids: 'errTropVolumineuse' }, SZH.LIMITES.image);
+}
+var IMAGE = imageDepot();
 var TXT = {}, ctl = {}, cartes = [], sections = [], TYPES = [], TYPES_RUBRIQUE = [];
+// Course pret/charger (SZH.jetonDejaTraite, _commun.js) : un jeton, un seul formulaire.
+var etatJeton = { jeton: null };
 var dernierModifie = false;
 var barre = document.getElementById('barre');
 var zoneSections = document.getElementById('sections');
@@ -74,39 +78,14 @@ function nouvelId() {
   return 'r' + Date.now().toString(36) + compteurId.toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
-function bouton(txt, fn, cls, titre) {
-  var b = document.createElement('button');
-  b.type = 'button';
-  b.textContent = txt;
-  b.className = 'szh-bouton' + (cls ? ' ' + cls : '');
-  if (titre) { b.title = titre; }
-  b.addEventListener('click', fn);
-  return b;
-}
-function boutonIcone(nom, titre, fn, cls) {
-  var b = document.createElement('button');
-  b.type = 'button';
-  b.className = 'szh-ico' + (cls ? ' ' + cls : '');
-  b.title = titre || '';
-  b.setAttribute('aria-label', titre || '');
-  b.appendChild(SZH.icone(nom));
-  b.addEventListener('click', fn);
-  return b;
-}
-function texte(parent, balise, cls, contenu) {
-  var e = document.createElement(balise);
-  if (cls) { e.className = cls; }
-  if (contenu !== undefined && contenu !== null) { e.textContent = contenu; }
-  parent.appendChild(e);
-  return e;
-}
-function ligne(v) { return String(v === undefined || v === null ? '' : v).replace(/[\r\n]+/g, ' ').trim(); }
-function remplir(cle, valeurs) {
-  var t = String(TXT[cle] || '');
-  for (var i = 0; i < (valeurs || []).length; i++) { t = t.split('{' + i + '}').join(String(valeurs[i])); }
-  return t;
-}
-function etat(msg) { if (ctl.etat) { ctl.etat.textContent = msg || ''; } }
+// bouton/boutonIcone/texte/ligne : identiques à medias-article.js, partagées depuis
+// _commun.js — texte() y est déjà connu sous le nom SZH.poser.
+var bouton = SZH.bouton;
+var boutonIcone = SZH.boutonIcone;
+var texte = SZH.poser;
+var ligne = SZH.ligne;
+function remplir(cle, valeurs) { return SZH.remplir(TXT, cle, valeurs); }
+function etat(msg) { SZH.poserEtat(ctl.etat, msg); }
 function allerA(el) {
   try { if (el && typeof el.scrollIntoView === 'function') { el.scrollIntoView({ block: 'start' }); } }
   catch (e) { /* environnement sans mise en page (tests) */ }
@@ -129,16 +108,16 @@ function outilBouton(cls, libelle, titre, fn) {
   return b;
 }
 
-// Convention fixe, sans ambiguïté : le GRAS est toujours la couche EXTÉRIEURE (**…**),
-// l'ITALIQUE toujours la couche INTÉRIEURE, collée au texte (*…*). Un texte à la fois gras
+// Convention fixe, sans ambiguïté : le gras est toujours la couche extérieure (**…**),
+// l'italique toujours la couche intérieure, collée au texte (*…*). Un texte à la fois gras
 // et italique s'écrit donc ***texte*** — markdown valide, que pandoc rend en <strong><em>.
 //
 // ⚠ Piège éprouvé : sélectionner « gras » à l'intérieur de « **gras** » et cliquer Italique
-// ne doit PAS produire ***gras*** en ajoutant un astérisque de chaque côté SANS COMPTER ceux
+// ne doit pas produire ***gras*** en ajoutant un astérisque de chaque côté sans compter ceux
 // déjà présents (l'erreur classique d'une bascule qui ne regarde que le caractère collé à la
 // sélection, et confond la moitié d'un double astérisque avec un simple astérisque isolé) —
 // ni, à l'inverse, perdre le gras existant en le prenant pour de l'italique. La bascule
-// compte donc le nombre RÉEL d'astérisques de bord après avoir étendu la sélection pour les
+// compte donc le nombre réel d'astérisques de bord après avoir étendu la sélection pour les
 // absorber tous.
 function compterAstDebut(s) {
   var n = 0;
@@ -160,13 +139,13 @@ function basculerEmphase(valeur, debut, fin, gras) {
   var sel = valeur.slice(e.debut, e.fin);
   var avant = compterAstDebut(sel);
   var apres = compterAstFin(sel);
-  // Garde-fou : une sélection qui ne serait QUE des astérisques (cas pathologique, jamais un
+  // Garde-fou : une sélection qui ne serait que des astérisques (cas pathologique, jamais un
   // vrai contenu de bibliographie) ne doit pas produire un texte nu de longueur négative.
   if (avant + apres > sel.length) { var moitie = Math.floor(sel.length / 2); avant = moitie; apres = sel.length - moitie; }
   var texteNu = sel.slice(avant, sel.length - apres);
   var aBold = avant >= 2 && apres >= 2;
   var aItalique = (avant % 2 === 1) && (apres % 2 === 1);
-  // Chaque bouton ne bascule QUE sa propre couche : Gras ne touche jamais l'état italique,
+  // Chaque bouton ne bascule que sa propre couche : Gras ne touche jamais l'état italique,
   // et réciproquement.
   var nvBold = gras ? !aBold : aBold;
   var nvItalique = gras ? aItalique : !aItalique;
@@ -199,7 +178,7 @@ function creerLien(valeur, debut, fin) {
   };
 }
 
-// Liste : préfixe chaque ligne NON VIDE de la sélection par « - », et bascule — les lignes
+// Liste : préfixe chaque ligne non vide de la sélection par « - », et bascule — les lignes
 // vides (celles qui séparent deux entrées d'une bibliographie) ne comptent jamais, ni pour
 // décider si tout est déjà en liste, ni pour recevoir un « - ».
 function basculerListe(valeur, debut, fin) {
@@ -255,7 +234,7 @@ function appliquer(c, fn) {
 // ---- Valeurs, complétude, modification ------------------------------------------------
 //
 // Champs requis d'une fiche : les mêmes que REQUIS dans lib/ressources.js (titre,
-// descriptif, image) — mais ils ne conditionnent plus l'ÉCRITURE, seulement la pastille
+// descriptif, image) — mais ils ne conditionnent plus l'écriture, seulement la pastille
 // « non complet ». Ce qui conditionne l'écriture est plus bas : estEcrivable().
 var REQUIS = ['titre', 'descriptif', 'image'];
 var LIBELLE_REQUIS = { titre: 'champTitre', descriptif: 'champDescriptif', image: 'champImage' };
@@ -289,10 +268,10 @@ function champsManquants(c) {
   }
   return manque;
 }
-// Ce qui part à l'hôte. Une fiche neuve part dès qu'UN champ porte quelque chose — c'est le
-// « permet enregistrement » demandé le 02.09.2026, en remplacement du refus d'écrire une
-// fiche incomplète. Une fiche déjà dans le .md part toujours, même vidée : sans cela, effacer
-// un champ ne s'enregistrerait jamais et l'ancienne valeur reviendrait au rechargement.
+// Ce qui part à l'hôte. Une fiche neuve part dès qu'un champ porte quelque chose, plutôt
+// que d'être refusée pour être incomplète. Une fiche déjà dans le .md part toujours, même
+// vidée : sans cela, effacer un champ ne s'enregistrerait jamais et l'ancienne valeur
+// reviendrait au rechargement.
 // Une rubrique part toujours elle aussi, vide comprise : c'est ainsi que l'hôte apprend
 // qu'un bloc doit sortir du .md (voir la table de protocole en tête de fichier).
 function aQuelqueChose(c) {
@@ -322,7 +301,7 @@ function majModifie() {
     ctl.indic.textContent = m ? '●' : '';
     ctl.indic.title = m ? (TXT.nonEnregistre || '') : '';
   }
-  if (m !== dernierModifie) { dernierModifie = m; api.postMessage({ type: 'modifie', modifie: m }); }
+  if (m !== dernierModifie) { dernierModifie = m; api.postMessage({ type: SZH.MSG.MODIFIE, modifie: m }); }
 }
 
 function aEnvoyer(famille) {
@@ -339,7 +318,7 @@ function aEnvoyer(famille) {
 
 // ---- La pastille d'état d'une carte ---------------------------------------------------
 // Remplace le pavé « À compléter avant l'enregistrement : … », supprimé avec le refus
-// d'écrire (02.09.2026). Ce qui manque n'a pas disparu pour autant : il est dans l'infobulle
+// d'écrire. Ce qui manque n'a pas disparu pour autant : il est dans l'infobulle
 // de la pastille, là où on le cherche quand on se demande pourquoi elle est là.
 function majEtatCarte(c) {
   var manque = champsManquants(c);
@@ -434,50 +413,28 @@ function poserEtatDepot(c, message, erreur) {
   var e = c.ctl.depotEtat;
   if (!e) { return; }
   e.textContent = message || '';
-  e.className = 'doc-depot-etat' + (erreur ? ' erreur' : '');
+  e.className = 'szh-depot-etat' + (erreur ? ' erreur' : '');
 }
 function envoyerImage(c, f) {
-  var ext = (String(f.name || '').match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
-  if (IMAGE.extensions.indexOf(ext) === -1) { poserEtatDepot(c, '⚠ ' + (TXT[IMAGE.format] || ''), true); return; }
-  if (f.size > IMAGE.maxi) { poserEtatDepot(c, '⚠ ' + (TXT[IMAGE.poids] || ''), true); return; }
-  poserEtatDepot(c, '…');
-  var lecteur = new FileReader();
-  lecteur.onerror = function () { poserEtatDepot(c, '⚠ ' + (TXT[IMAGE.format] || ''), true); };
-  lecteur.onload = function () {
-    var t = String(lecteur.result || '');
-    var virgule = t.indexOf(',');
-    if (virgule === -1) { poserEtatDepot(c, '⚠ ' + (TXT[IMAGE.format] || ''), true); return; }
-    api.postMessage({
-      type: 'deposer-image', id: c.id, nomFichier: f.name, donneesBase64: t.slice(virgule + 1)
-    });
-  };
-  lecteur.readAsDataURL(f);
+  SZH.lireBase64(f, {
+    extensions: IMAGE.extensions, maxi: IMAGE.maxi,
+    msgFormat: '⚠ ' + (TXT[IMAGE.format] || ''), msgPoids: '⚠ ' + (TXT[IMAGE.poids] || ''),
+    surLecture: function () { poserEtatDepot(c, '…'); },
+    surErreur: function (message) { poserEtatDepot(c, message, true); },
+    surDonnees: function (fichier, base64) {
+      api.postMessage({
+        type: SZH.MSG.DEPOSER_IMAGE, id: c.id, nomFichier: fichier.name, donneesBase64: base64
+      });
+    }
+  });
 }
 function construireDepot(parent, c) {
-  var d = texte(parent, 'div', 'doc-depot');
-  var titreZone = texte(d, 'span', 'depot-titre');
-  var choisir = bouton(TXT.choisirFichier || '', function () { fichier.click(); });
-  var fichier = document.createElement('input');
-  fichier.type = 'file';
-  fichier.accept = IMAGE.extensions.map(function (e) { return '.' + e; }).join(',');
-  fichier.hidden = true;
-  fichier.addEventListener('change', function () {
-    if (fichier.files && fichier.files[0]) { envoyerImage(c, fichier.files[0]); }
-    fichier.value = '';
+  var d = SZH.construireDepot({
+    parent: parent, extensions: IMAGE.extensions, texteChoisir: TXT.choisirFichier || '',
+    surFichier: function (f) { envoyerImage(c, f); }
   });
-  d.appendChild(titreZone);
-  d.appendChild(choisir);
-  d.appendChild(fichier);
-  d.addEventListener('dragover', function (e) { e.preventDefault(); d.classList.add('survol'); });
-  d.addEventListener('dragleave', function () { d.classList.remove('survol'); });
-  d.addEventListener('drop', function (e) {
-    e.preventDefault();
-    d.classList.remove('survol');
-    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) { envoyerImage(c, f); }
-  });
-  c.ctl.depotEtat = texte(d, 'span', 'doc-depot-etat');
-  return d;
+  c.ctl.depotEtat = d.etat;
+  return d.element;
 }
 
 // ---- Accordéon : un seul ouvert dans toute la page -----------------------------------
@@ -561,24 +518,24 @@ function construireFiche(section, ressource, persistee) {
 
   var tete = construireTete(c, s, 'doc-tete');
   // Réserve et échange entre les deux revues. Ces deux gestes n'ont de sens que sur une
-  // fiche DÉJÀ DANS LE .MD : l'hôte les traite en relisant le fichier par identifiant, et
+  // fiche déjà dans le .md : l'hôte les traite en relisant le fichier par identifiant, et
   // une carte jamais enregistrée n'y est pas — d'où le masquage, refait à chaque
   // enregistrement (voir majGestesReserve).
   c.ctl.detacher = boutonIcone('bas', TXT.detacherTip || '', function () {
-    api.postMessage({ type: 'detacher', id: c.id });
+    api.postMessage({ type: SZH.MSG.DETACHER, id: c.id });
   });
   c.ctl.envoyer = boutonIcone('traduction', TXT.envoyerTip || '', function () {
-    api.postMessage({ type: 'envoyer', id: c.id });
+    api.postMessage({ type: SZH.MSG.ENVOYER, id: c.id });
   });
   tete.appendChild(c.ctl.detacher);
   tete.appendChild(c.ctl.envoyer);
   majGestesReserve(c);
   tete.appendChild(boutonIcone('poubelle', TXT.retirerTip || '', function () { retirerFiche(c); }, 'szh-ico--danger'));
 
-  // TOUT le reste vit dans le corps pliable — y compris le lien et l'image, qui restaient
-  // dehors et dépassaient donc d'une carte repliée (demande du 02.09.2026). `hidden` plutôt
-  // qu'une classe : l'élément sort alors de l'arbre d'accessibilité, donc un lecteur d'écran
-  // ne lit pas le contenu d'une fiche fermée.
+  // Tout le reste vit dans le corps pliable — y compris le lien et l'image, qui restaient
+  // dehors et dépassaient donc d'une carte repliée. `hidden` plutôt qu'une classe : l'élément
+  // sort alors de l'arbre d'accessibilité, donc un lecteur d'écran ne lit pas le contenu
+  // d'une fiche fermée.
   var corps = texte(s, 'div', 'doc-corps');
   corps.hidden = true;
   c.ctl.corps = corps;
@@ -637,10 +594,19 @@ function majGestesReserve(c) {
   if (c.ctl.envoyer) { c.ctl.envoyer.hidden = !c.persistee; }
 }
 
+// Un retrait envoyé à l'hôte, réponse pas encore reçue : la carte est retirée du DOM tout
+// de suite (retrait optimiste), avant de savoir si l'écriture a réussi. Si l'hôte répond
+// « erreur » (numéro verrouillé, écriture ratée), il faut alors faire revenir la carte —
+// voir le gestionnaire de messages, plus bas.
+var retraitsFicheEnAttente = 0;
+
 function retirerFiche(c) {
   c.element.remove();
   cartes = cartes.filter(function (x) { return x !== c; });
-  if (c.persistee) { api.postMessage({ type: 'retirer', famille: 'fiche', id: c.id }); }
+  if (c.persistee) {
+    retraitsFicheEnAttente++;
+    api.postMessage({ type: SZH.MSG.RETIRER, famille: 'fiche', id: c.id });
+  }
   majPositions();          // les fiches suivantes se décalent : leur numéro doit suivre
   majSommaire();
   majModifie();
@@ -648,11 +614,11 @@ function retirerFiche(c) {
 
 // ---- Une rubrique : un bloc, un seul, toujours là -------------------------------------
 // Pas de bouton « Ajouter », pas de carte à créer ni à supprimer : chaque type de rubrique a
-// son unique bloc, présent dès l'ouverture, vide ou non (demande du 02.09.2026). La corbeille
-// ne retire donc pas la carte — elle en vide le texte, ce qui ôte le bloc du .md et fait
-// disparaître la rubrique du PDF. La remplir la fait revenir.
+// son unique bloc, présent dès l'ouverture, vide ou non. La corbeille ne retire donc pas la
+// carte — elle en vide le texte, ce qui ôte le bloc du .md et fait disparaître la rubrique
+// du PDF. La remplir la fait revenir.
 //
-// L'accordéon est ici la rubrique ELLE-MÊME : son titre imprimé est son en-tête, il n'y a
+// L'accordéon est ici la rubrique elle-même : son titre imprimé est son en-tête, il n'y a
 // donc ni intertitre ni carte à distinguer. C'est aussi pourquoi ce titre ne se saisit
 // jamais — il se déduit du type et de la langue au rendu (pipeline/filters/szh-rubrique.lua).
 function construireRubrique(type, rubrique, persistee) {
@@ -719,7 +685,7 @@ function construireRubrique(type, rubrique, persistee) {
 function viderRubrique(c) {
   c.ctl.contenu.value = '';
   ajusterHauteur(c.ctl.contenu);
-  if (c.persistee) { api.postMessage({ type: 'retirer', famille: 'rubrique', id: c.id }); }
+  if (c.persistee) { api.postMessage({ type: SZH.MSG.RETIRER, famille: 'rubrique', id: c.id }); }
   c.persistee = false;
   c.enregistree = null;
   c.touchee = false;
@@ -755,10 +721,10 @@ function construireSectionFiches(type) {
 }
 
 // ---- Le sommaire collant --------------------------------------------------------------
-// La structure entière, à droite et toujours visible (demande du 02.09.2026) : les rubriques
-// avec leur état — une rubrique vide ne s'imprimera pas, et c'est la seule chose qu'on veuille
-// savoir d'elle sans l'ouvrir — puis les catégories de fiches avec leur nombre. Cliquer une
-// entrée y mène ; pour une rubrique, l'ouvre au passage, puisqu'une rubrique EST son bloc.
+// La structure entière, à droite et toujours visible : les rubriques avec leur état — une
+// rubrique vide ne s'imprimera pas, et c'est la seule chose qu'on veuille savoir d'elle sans
+// l'ouvrir — puis les catégories de fiches avec leur nombre. Cliquer une entrée y mène ;
+// pour une rubrique, l'ouvre au passage, puisqu'une rubrique est son bloc.
 function compteCartes(famille, type) {
   var n = 0;
   for (var i = 0; i < cartes.length; i++) {
@@ -839,21 +805,16 @@ function majSommaire() {
 
 // ---- Barre d'en-tête ------------------------------------------------------------------
 function construireBarre() {
-  barre.textContent = '';
-  barre.className = 'szh-barre';
-  ctl.enregistrer = bouton(TXT.enregistrer, function () { enregistrer(false); },
-    'szh-bouton--principal', TXT.enregistrerTip);
-  barre.appendChild(ctl.enregistrer);
-  barre.appendChild(bouton(TXT.retour, function () {
-    api.postMessage({
-      type: 'retourArticle', modifie: estModifie(),
-      ressources: aEnvoyer('fiche'), rubriques: aEnvoyer('rubrique')
-    });
-  }, '', TXT.retourTip));
-  ctl.indic = texte(barre, 'span', 'szh-barre-indic');
-  ctl.indic.setAttribute('aria-live', 'polite');
-  ctl.etat = texte(barre, 'span', 'szh-barre-etat');
-  ctl.etat.setAttribute('role', 'status');
+  ctl = SZH.construireBarre(barre, {
+    txt: TXT,
+    onEnregistrer: function () { enregistrer(false); },
+    onRetour: function () {
+      api.postMessage({
+        type: SZH.MSG.RETOUR_ARTICLE, modifie: estModifie(),
+        ressources: aEnvoyer('fiche'), rubriques: aEnvoyer('rubrique')
+      });
+    }
+  });
 }
 
 function trouverFiche(id) {
@@ -865,7 +826,7 @@ function trouverFiche(id) {
 
 // ---- Rendu ----------------------------------------------------------------------------
 // Les rubriques d'abord : ouvrir la Documentation doit montrer la liste des rubriques,
-// littéralement (demande du 02.09.2026). Les catégories de fiches ensuite.
+// littéralement. Les catégories de fiches ensuite.
 // `typesRubrique` peut arriver vide — c'est le cas sur un article ordinaire, qui porte des
 // fiches mais aucune rubrique : la page n'affiche alors que les catégories de fiches, sans
 // une ligne de condition de plus.
@@ -918,7 +879,7 @@ function enregistrer(auto) {
   });
   if (!quelqueChose && !estModifie()) { if (!auto) { etat(TXT.rienAEcrire || ''); } return; }
   api.postMessage({
-    type: 'enregistrer', auto: !!auto, ressources: listeFiches, rubriques: listeRubriques
+    type: SZH.MSG.ENREGISTRER, auto: !!auto, ressources: listeFiches, rubriques: listeRubriques
   });
 }
 var autoEnr = SZH.autoEnregistrement({ delai: 0, estModifie: estModifie, enregistrer: enregistrer });
@@ -932,18 +893,23 @@ var recu = false;
 window.addEventListener('message', function (ev) {
   var msg = ev.data || {};
   recu = true;
-  if (msg.type === 'charger') {
+  if (msg.type === SZH.MSG.CHARGER) {
+    // Course pret/charger : un doublon de la réponse à « pret » (aller-retour lent) ne
+    // doit pas reconstruire la page une seconde fois, sauf rechargement forcé.
+    if (SZH.jetonDejaTraite(etatJeton, msg)) { return; }
     SZH.poserAccent(msg.accent);
+    SZH.appliquerLimites(msg.limites);
+    IMAGE = imageDepot();
     if (msg.i18n) { TXT = msg.i18n; construireBarre(); }
     rendre(msg);
     return;
   }
-  if (msg.type === 'enregistre') {
+  if (msg.type === SZH.MSG.ENREGISTRE) {
     autoEnr.confirme();
     for (var i = 0; i < cartes.length; i++) {
       var c = cartes[i];
       // Ce que l'hôte vient d'écrire est exactement ce que estEcrivable() lui a envoyé — et
-      // pour une rubrique, seul un contenu non vide y a survécu : vidée, elle est SORTIE du
+      // pour une rubrique, seul un contenu non vide y a survécu : vidée, elle est sortie du
       // .md, donc plus persistée.
       var retenue = c.famille === 'rubrique' ? aQuelqueChose(c) : estEcrivable(c);
       c.persistee = retenue;
@@ -955,11 +921,18 @@ window.addEventListener('message', function (ev) {
     majModifie();
     return;
   }
-  if (msg.type === 'erreur') { autoEnr.confirme(); etat('⚠ ' + msg.message); return; }
-  if (msg.type === 'image-deposee' || msg.type === 'image-erreur') {
+  if (msg.type === SZH.MSG.ERREUR) {
+    autoEnr.confirme();
+    etat('⚠ ' + msg.message);
+    // Le retrait qui vient d'échouer avait déjà fait disparaître la carte : la seule façon
+    // de la faire revenir est de redemander l'état complet, comme au premier chargement.
+    if (retraitsFicheEnAttente > 0) { retraitsFicheEnAttente--; api.postMessage({ type: SZH.MSG.PRET }); }
+    return;
+  }
+  if (msg.type === SZH.MSG.IMAGE_DEPOSEE || msg.type === SZH.MSG.IMAGE_ERREUR) {
     var f = trouverFiche(msg.id);
     if (!f || !f.avecImage) { return; }              // type sans image : rien à y poser
-    if (msg.type === 'image-deposee') {
+    if (msg.type === SZH.MSG.IMAGE_DEPOSEE) {
       f.image = msg.image || '';
       f.apercu = msg.apercu || null;
       f.touchee = true;
@@ -972,6 +945,7 @@ window.addEventListener('message', function (ev) {
     }
     return;
   }
+  console.warn('documentation : type de message inconnu', msg.type);
 });
 SZH.annoncerPret(api, function () { return recu; });
 })();

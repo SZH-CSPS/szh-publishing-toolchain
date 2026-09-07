@@ -14,7 +14,7 @@
 //     deux moitiés existent, on garde celle qu'on demande ; quand une seule existe, on
 //     passe par une clé d'i18n et la prose du pipeline devient un repli.
 //
-//  1 bis. Et c'est un CODE, jamais une phrase, qui décide de tout. Ce module a longtemps
+//  1 bis. Et c'est un code, jamais une phrase, qui décide de tout. Ce module a longtemps
 //     reconnu la prose de szh-maquette.lua et de szh-citations.lua, dans les deux langues,
 //     pour pouvoir la redire : une reformulation innocente cassait la remontée, en
 //     silence. Les filtres écrivent désormais le format à codes, et la seule prose encore
@@ -36,7 +36,7 @@
 //
 // Une exception, en bas de fichier : le réimport d'un article corrigé est le seul maillon
 // que le cockpit lance lui-même, et il répond par une ligne JSON. constatsReimport() la
-// traduit en constats de la même forme, avec les MÊMES tables de tons et de libellés —
+// traduit en constats de la même forme, avec les mêmes tables de tons et de libellés —
 // c'est tout l'intérêt qu'elle vive ici.
 //
 // Un constat vaut :
@@ -57,8 +57,8 @@ const SEP = '\u0001';
 //   [<source>-<ton>] <code> | <champ> | … | <phrase fr> | [de] <Satz de>
 //
 // C'est le seul format que le pipeline pose exprès pour cette interface, et il porte tout
-// ce dont elle a besoin : la SOURCE (la famille de contrôle, telle que la vue la nomme),
-// le TON, un CODE stable d'où vient la clé d'i18n, des champs NOMMÉS d'où viennent ses
+// ce dont elle a besoin : la source (la famille de contrôle, telle que la vue la nomme),
+// le ton, un code stable d'où vient la clé d'i18n, des champs nommés d'où viennent ses
 // substitutions, et les deux langues — celle qu'on n'affiche pas est jetée ici.
 //
 // Trois tons, trois préfixes, une seule grammaire. « blocage » dit que la compilation
@@ -99,19 +99,19 @@ const TONS_IMPORT = {
   // Ses codes sont listés en entier, ton par ton, même quand c'est « attention » : c'est
   // ici que se lit la règle des cinq issues, et elle ne se lit que d'un bloc.
   //
-  //   REFUSÉ — rien n'a été touché, et il y a un geste à faire. Jamais « danger » : peindre
+  //   Refusé — rien n'a été touché, et il y a un geste à faire. Jamais « danger » : peindre
   //   en rouge un réimport qui n'a rien remplacé ferait croire à un numéro cassé.
   'reimport-sans-article': 'attention',
   'reimport-sans-word': 'attention',
   'reimport-fiche-sans-source': 'attention',
   'reimport-plusieurs-articles': 'attention',
   'annuler-sans-etat': 'attention',
-  //   ÉCHOUÉ — la conversion ou le disque a lâché ; l'article est intact.
+  //   Échoué — la conversion ou le disque a lâché ; l'article est intact.
   'reimport-echec': 'danger',
   'reimport-panne': 'danger',
   //   Interrompu à la main : rien n'a été remplacé à moitié. Ce n'est pas une panne.
   'reimport-interrompu': 'attention',
-  //   RÉUSSI — ce que le remplacement a coûté, et où retrouver ce qu'il a déplacé.
+  //   Réussi — ce que le remplacement a coûté, et où retrouver ce qu'il a déplacé.
   'fiche-du-word-differente': 'attention',
   'tableau-conflit': 'attention',
   'tableaux-origine-inconnue': 'attention',
@@ -186,11 +186,22 @@ const CLES_CITATIONS = {
   'bilan': 'ctl.cit.bilan'
 };
 
-const CLES = { import: CLES_IMPORT, meta: CLES_META, citations: CLES_CITATIONS };
+// « livre » : pipeline/livre-assembler.py (la pièce liminaire manquante arrête
+// l'assemblage) et pipeline/profils/livre.mk (verifie-livre — un chapitre écarté ou
+// introuvable ne bloque pas, il se corrige avant la prochaine compilation). Les deux
+// avertissements du Makefile nomment leur unité par le champ « chapitre », jamais
+// « article » — voir ARGS et lireConstatCode, qui l'accepte comme équivalent.
+const CLES_LIVRE = {
+  'liminaire-introuvable': 'ctl.livre.liminaireintrouvable',
+  'chapitre-ecarte': 'ctl.livre.chapitreecarte',
+  'chapitre-introuvable': 'ctl.livre.chapitreintrouvable'
+};
+
+const CLES = { import: CLES_IMPORT, meta: CLES_META, citations: CLES_CITATIONS, livre: CLES_LIVRE };
 const TONS = { import: TONS_IMPORT };
 
 // Les substitutions de la phrase de la maison, par « source/code ». Elles se prennent dans
-// les champs NOMMÉS de la ligne, jamais dans leur position : le pipeline peut en ajouter
+// les champs nommés de la ligne, jamais dans leur position : le pipeline peut en ajouter
 // un sans décaler les autres. Un code sans entrée ici n'a pas de substitution — ce qui est
 // le cas de tous ceux dont la phrase reste celle du pipeline.
 const ARGS = {
@@ -210,7 +221,10 @@ const ARGS = {
   'citations/ancrage-inconnu': (ch) => [ch('ancrage')],
   'citations/caractere-sans-repli': (ch) => [ch('caractere')],
   'citations/bilan': (ch) => [ch('references'), ch('appels'), ch('lies'),
-                              ch('ambigus'), ch('sansref')]
+                              ch('ambigus'), ch('sansref')],
+  'livre/liminaire-introuvable': (ch) => [ch('pièce')],
+  'livre/chapitre-ecarte': (ch) => [ch('chapitre')],
+  'livre/chapitre-introuvable': (ch) => [ch('chapitre')]
 };
 
 // Préfixes de la maison qui n'ont pas (encore) de format à codes : le Makefile, les
@@ -253,7 +267,7 @@ function decouper(ligne) {
   return { prefixe: m[1], allemand: !!m[2], reste: m[3] };
 }
 
-// ⚠ REPLI SUR LA PROSE — « [pipeline] », les lignes du Makefile. Le shell n'a pas de
+// ⚠ Repli sur la prose — « [pipeline] », les lignes du Makefile. Le shell n'a pas de
 // table de codes, et ces messages sont écrits en clair dans les recettes ; on reconnaît
 // donc leur phrase, et reformuler l'une d'elles coupe la remontée. Le jour où le Makefile
 // passe au format à codes ([pipeline-blocage] …), cette fonction disparaît. Certaines de
@@ -307,7 +321,7 @@ function lirePipeline(reste) {
   return null;
 }
 
-// ⚠ REPLI SUR LA PROSE — « [import] », le journal de conversion du Makefile (les
+// ⚠ Repli sur la prose — « [import] », le journal de conversion du Makefile (les
 // avertissements de l'import, eux, ont leurs codes : voir « [import-avertissement] »). Ses
 // lignes de bilan restent à la vue « Word en attente », qui les montre déjà ; seuls les
 // échecs remontent ici.
@@ -325,7 +339,7 @@ function lireImport(reste) {
   return null;
 }
 
-// ⚠ REPLI SUR LA PROSE — « [niveaux] », szh-niveaux.lua, qui écrit ses deux langues. On
+// ⚠ Repli sur la prose — « [niveaux] », szh-niveaux.lua, qui écrit ses deux langues. On
 // reconnaît la moitié utile et on redit la phrase soi-même — deux lignes du pipeline pour
 // un seul constat. Un code stable y mettrait fin, comme pour szh-maquette et
 // szh-citations ; ce filtre est hors du chantier qui les a convertis.
@@ -363,7 +377,7 @@ function lireRendu(ligne, slug) {
   return null;
 }
 
-// Les champs d'une ligne codée sont NOMMÉS : « article « 03-autre » », « champ « title » »,
+// Les champs d'une ligne codée sont nommés : « article « 03-autre » », « champ « title » »,
 // « tableau 2 », « appel « (Sen, 2001) » ». Un champ que personne ne nomme — un chemin, un
 // « détail : … » — est ignoré sans bruit : le pipeline en pose, et ce n'est pas une erreur.
 // Les noms allemands sont acceptés au cas où un émetteur les écrive un jour ; aucun ne le
@@ -401,10 +415,13 @@ function lireConstatCode(famille, reste, langue) {
   if (famille.source === 'citations' && code === 'bilan'
       && Number(ch('ambigus')) === 0 && Number(ch('sansref')) === 0) { return null; }
   const args = ARGS[famille.source + '/' + code];
+  // Un livre n'a pas d'« article » : ses unités sont des chapitres, et le champ qui les
+  // nomme s'appelle donc « chapitre » — seul un numéro écrit « article ». Les deux ne
+  // coexistent jamais sur une même ligne, l'un des deux vaut toujours ''.
   return {
     source: famille.source, code: code,
     ton: (TONS[famille.source] || {})[code] || famille.ton,
-    slug: ch('article'), cle: (CLES[famille.source] || {})[code] || '',
+    slug: ch('article') || ch('chapitre'), cle: (CLES[famille.source] || {})[code] || '',
     args: args ? args(ch, langue) : [],
     brut: (langue === 'de' && de !== '') ? de : fr
   };
@@ -579,7 +596,7 @@ function resumeJournal(constats) {
 
 // ---- Les citations, regroupées par article ---------------------------------------
 //
-// La vue « Articles » pose sur chaque carte l'état des références de SON article : un
+// La vue « Articles » pose sur chaque carte l'état des références de son article : un
 // rédacteur doit voir d'un coup d'oeil lequel a un problème, sans lire la liste entière des
 // constats. Ce regroupement vit ici et non dans la vue, parce qu'il n'y a qu'un lecteur de
 // journal et que les codes sont déjà nommés plus haut : un code ajouté à szh-citations
@@ -588,7 +605,7 @@ function resumeJournal(constats) {
 // Trois codes seulement, ceux qui parlent d'un lien manquant ou douteux entre le texte et
 // la bibliographie. « bilan » est un chiffre, pas un défaut ; « ancrage-inconnu » et
 // « caractere-sans-repli » sont d'autres familles, et la vue « Contrôles » les montre
-// toutes. Ce sont des CODES et non des phrases : la prose des filtres n'est plus lue nulle
+// toutes. Ce sont des codes et non des phrases : la prose des filtres n'est plus lue nulle
 // part dans ce module, et ce regroupement ne la relit pas non plus.
 const CODES_CITATIONS_CARTE = ['appel-sans-reference', 'appel-ambigu', 'reference-orpheline'];
 
@@ -622,12 +639,12 @@ function citationsParArticle(constats) {
 // codes à l'écran, et c'est exprès qu'ils partagent tout ce qui précède — TONS_IMPORT pour
 // le ton, CLES_IMPORT pour la phrase. Une seconde table serait une seconde vérité.
 //
-// Le ton des CINQ ISSUES, celui de la notification qui suit le geste. Il ne se déduit pas
+// Le ton des quatre issues, celui de la notification qui suit le geste. Il ne se déduit pas
 // des avertissements : « refusé » n'en porte qu'un, et pourtant rien n'a été touché.
 //
 //   reussi   le texte vient du Word ; ce qu'il a coûté est dans les avertissements
 //   rien     le Word n'apportait rien. Ni échec ni avertissement : un fait
-//   refuse   RIEN n'a été touché, et il y a un geste à faire. Jamais « danger »
+//   refuse   rien n'a été touché, et il y a un geste à faire. Jamais « danger »
 //   echec    la conversion ou le disque a lâché ; l'article est intact
 //
 // Une réponse absente ou inconnue vaut « danger » : ne rien dire serait pire.

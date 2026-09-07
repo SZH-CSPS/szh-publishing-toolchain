@@ -247,6 +247,21 @@ test('deposer : deux dépôts du même livre le même jour, à des instants diff
   } finally { fs.rmSync(parent, { recursive: true, force: true }); }
 });
 
+// nomImageVoulu() écrivait le nom brut, espaces et accents compris — sans passer par le
+// même assainissement que medias.nomImageAssaini(), qui slugifie le corps, borne à 60
+// caractères et ne reconnaît que les extensions d'image (jpeg -> jpg).
+test('nomImageVoulu : assaini comme medias.nomImageAssaini (accents, espaces, extension)', () => {
+  assert.strictEqual(reserve.nomImageVoulu({ nom: 'Été à Genève.JPEG' }), 'ete-a-geneve.jpg');
+  assert.strictEqual(reserve.nomImageVoulu({ nom: 'C:\\dossier\\photo enfant.png' }), 'photo-enfant.png');
+  // Extension hors liste : repli sur celle de la source, comme un nom vide.
+  assert.strictEqual(reserve.nomImageVoulu({ nom: 'document.pdf', source: '/tmp/x.jpg' }), 'image.jpg');
+  assert.strictEqual(reserve.nomImageVoulu({ nom: '', source: '/tmp/x.png' }), 'image.png');
+  assert.strictEqual(reserve.nomImageVoulu({}), 'image.jpg');
+  // Plus de 60 caractères : tronqué, comme nomImageAssaini.
+  const long = 'a'.repeat(80) + '.png';
+  assert.strictEqual(reserve.nomImageVoulu({ nom: long }), 'a'.repeat(60) + '.png');
+});
+
 // ---- deposer, avec image ------------------------------------------------------------
 
 // ⚠ L'image va dans un SOUS-DOSSIER media/ à côté du .md, et le bloc garde son préfixe

@@ -9,6 +9,10 @@
   "cmd.toutExporter": "Tout exporter (rebuild complet)",
   "cmd.exporterXml": "Exporter la revue en XML (OJS)",
   "cmd.exporterArticle": "Exporter cet article",
+  "cmd.livreImprimeur": "Livre : PDF imprimeur",
+  "cmd.livreCouverture": "Livre : couverture",
+  "cmd.livreEpub": "Livre : EPUB",
+  "cmd.livreWeb": "Livre : HTML web",
   "cmd.archiverVerrouiller": "Archiver et verrouiller la revue",
   "cmd.deverrouiller": "Déverrouiller la revue",
   "cmd.desarchiver": "Désarchiver la revue",
@@ -83,5 +87,6 @@
   "cmd.conflit.comparer": "Comparer avec la copie en conflit",
   "cmd.conflit.prendre": "Prendre cette version",
   "cmd.conflit.garder": "Garder la mienne",
-  "cmd.conflit.supprimerCopie": "Supprimer la copie en conflit"
+  "cmd.conflit.supprimerCopie": "Supprimer la copie en conflit",
+  "cmd.apercuLivre": "Aperçu du livre entier"
 }

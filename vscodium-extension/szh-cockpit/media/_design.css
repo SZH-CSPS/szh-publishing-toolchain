@@ -9,12 +9,29 @@
    L'accent est la couleur annuelle du numéro (--szh-accent), posée par l'hôte ; à défaut,
    c'est la couleur de focus de l'éditeur.
 
-   Plan : 1. jetons · 2. surfaces et séparations · 3. barre d'en-tête · 4. champs et
-   intitulés · 5. notifications · 6. boutons et icônes · 7. pastilles d'état · 8. modale. */
+   Plan : 0. page · 1. jetons · 2. surfaces et séparations · 3. barre d'en-tête · 4. champs
+   et intitulés · 5. notifications · 6. boutons et icônes · 7. pastilles d'état · 8. modale ·
+   9. champs et boutons nus (.carte) · 10. boîte de suggestions · 11. zone de dépôt. */
 
 /* Un élément caché le reste, quoi que sa classe pose comme display : plusieurs blocs du
    socle sont des flex, qui l'emporteraient sur le display:none par défaut de [hidden]. */
 [hidden] { display: none !important; }
+
+/* ═══ 0. Page ══════════════════════════════════════════════════════════════════
+   Deux variantes de body/h1 vivaient en autant de copies que de pages. La variante
+   « formulaire » (la plupart des pages : une largeur de lecture, un padding généreux) est
+   ici, sa largeur réglée par --page-max ; une page l'ajuste d'une ligne : `body { --page-max:
+   60rem; }`. La variante « plein écran » (documentation.css, medias-article.css : hauteur
+   de la fenêtre entière, défilement propre à un panneau interne) reste propre à ces deux
+   pages, qui redéfinissent body en entier après ce socle — <body> lui-même ne peut pas
+   porter de classe distinguant les deux, la balise étant posée par construireHtml. */
+body {
+  font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
+  line-height: var(--interligne); color: var(--encre); background: var(--fond);
+  padding: var(--e4) var(--e5) var(--e7);
+  max-width: var(--page-max);
+}
+h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 
 /* ═══ 1. Jetons ═══════════════════════════════════════════════════════════════ */
 :root {
@@ -53,6 +70,25 @@
   --filet-fort: var(--vscode-contrastBorder, var(--vscode-panel-border, rgba(128, 128, 128, .6)));
   --encre: var(--vscode-foreground, #ccc);
   --encre-2: var(--vscode-descriptionForeground, rgba(204, 204, 204, .75));
+
+  /* Couleurs sémantiques : une seule valeur chacune, choisie parmi celles qui étaient déjà
+     en usage (grep sur les pages avant ce lot), le jeton de l'éditeur passant devant. Toute
+     teinte en dur d'une des trois familles se remplace par l'un de ces trois jetons. */
+  --danger: var(--vscode-errorForeground, #f85149);
+  --avert: var(--vscode-editorWarning-foreground, #d1901e);
+  --ok: var(--vscode-charts-green, #3fb950);
+
+  /* Échelle de superposition : quatre plans, du plus bas au plus haut. Une valeur nue
+     ailleurs qu'ici serait un cinquième plan inventé au hasard, sans savoir où il se range
+     face aux autres. */
+  --z-sugg: 10;      /* boîte de suggestions (auteur·e·s, mots-clés) */
+  --z-barre: 20;     /* barre de commandes, collante en tête de formulaire */
+  --z-modale: 100;   /* voile de modale */
+  --z-menu: 1000;    /* menu contextuel (éditeur de tableau) */
+
+  /* Largeur d'un formulaire « page » (variante pleine largeur : documentation.css et
+     medias-article.css redéfinissent body en entier, hors de ce jeton). */
+  --page-max: 52rem;
 }
 
 /* Moteur sans color-mix : la teinte revient au jeton de l'éditeur. Sans ce repli la
@@ -116,7 +152,7 @@
    Les boutons qui commandent tout le formulaire, toujours à la même place et toujours
    visibles : dans un formulaire long, un « Enregistrer » qui défile est un piège. */
 .szh-barre {
-  position: sticky; top: 0; z-index: 20;
+  position: sticky; top: 0; z-index: var(--z-barre);
   display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
   padding: var(--e2) 0 var(--e3);
   background: var(--fond);
@@ -129,15 +165,14 @@
 }
 .szh-barre-indic {
   font-size: var(--t-corps); font-weight: 700;
-  color: var(--vscode-editorWarning-foreground, #d1901e);
+  color: var(--avert);
 }
 
 /* ═══ 4. Champs et intitulés ══════════════════════════════════════════════════
    L'intitulé est ce qui manquait le plus : il était gris, minuscule et sans graisse, donc
    invisible. Il monte en graisse et prend la couleur du texte, pas celle des notes. */
 .szh-champ { display: flex; flex-direction: column; gap: var(--e1); }
-.szh-champ > label,
-label.szh-libelle {
+.szh-champ > label {
   font-size: var(--t-libelle); font-weight: 700;
   letter-spacing: .02em; color: var(--encre);
 }
@@ -200,19 +235,18 @@ label.szh-libelle {
 
 .szh-notif--info { border-left-color: var(--accent); }
 .szh-notif--ok {
-  border-left-color: var(--vscode-charts-green, #3fb950);
+  border-left-color: var(--ok);
   color: var(--encre);
-  background: rgba(63, 185, 80, .10);
-  background: color-mix(in srgb, var(--vscode-charts-green, #3fb950) 12%, transparent);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
 }
 .szh-notif--attention {
-  border-left-color: var(--vscode-editorWarning-foreground, #d1901e);
+  border-left-color: var(--avert);
   background: var(--vscode-inputValidation-warningBackground, rgba(209, 144, 30, .14));
   border-color: var(--vscode-inputValidation-warningBorder, rgba(209, 144, 30, .5));
   color: var(--vscode-inputValidation-warningForeground, var(--encre));
 }
 .szh-notif--danger {
-  border-left-color: var(--vscode-errorForeground, #f85149);
+  border-left-color: var(--danger);
   background: var(--vscode-inputValidation-errorBackground, rgba(248, 81, 73, .14));
   border-color: var(--vscode-inputValidation-errorBorder, rgba(248, 81, 73, .5));
   color: var(--vscode-inputValidation-errorForeground, var(--encre));
@@ -224,7 +258,7 @@ label.szh-libelle {
 
 /* ═══ 6. Boutons et icônes ════════════════════════════════════════════════════ */
 /* white-space + flex-shrink: 0 — un bouton compressé par ses voisins pliait son texte sur
-   deux lignes plutôt que de garder sa taille (A7) : deux boutons voisins n'avaient alors
+   deux lignes plutôt que de garder sa taille : deux boutons voisins n'avaient alors
    plus la même hauteur. Un pied de carte qui manque de place doit passer à la ligne en
    entier (.ligne-pied, media/_liste.css), jamais rogner un seul bouton. */
 .szh-bouton {
@@ -265,7 +299,7 @@ label.szh-libelle {
 }
 .szh-ico:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, .2)); color: var(--encre); }
 .szh-ico:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.szh-ico--danger:hover { color: var(--vscode-errorForeground, #f85149); }
+.szh-ico--danger:hover { color: var(--danger); }
 
 /* ═══ 7. Pastilles d'état ═════════════════════════════════════════════════════
    Un état se lit d'un coup d'œil dans la tête de carte, sans lire une phrase. */
@@ -279,8 +313,8 @@ label.szh-libelle {
 }
 .szh-pastille--accent { border-color: var(--accent); color: var(--encre); }
 .szh-pastille--attention {
-  border-color: var(--vscode-editorWarning-foreground, #d1901e);
-  color: var(--vscode-editorWarning-foreground, #d1901e);
+  border-color: var(--avert);
+  color: var(--avert);
 }
 /* Les tons suivent ceux de l'arbre, pour qu'un état se reconnaisse d'un panneau à l'autre :
    bleu ce qui est lancé, ambre ce qui attend un regard, vert ce qui est clos. L'ambre est
@@ -291,18 +325,18 @@ label.szh-libelle {
   color: var(--vscode-charts-blue, #3794ff);
 }
 .szh-pastille--ok {
-  border-color: var(--vscode-charts-green, #3fb950);
-  color: var(--vscode-charts-green, #3fb950);
+  border-color: var(--ok);
+  color: var(--ok);
 }
 .szh-pastille--danger {
-  border-color: var(--vscode-errorForeground, #f85149);
-  color: var(--vscode-errorForeground, #f85149);
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 /* ═══ 8. Modale ═══════════════════════════════════════════════════════════════
    Agrandir un aperçu : le fond s'assombrit, l'image occupe la place, tout le reste attend. */
 .szh-modale {
-  position: fixed; inset: 0; z-index: 100;
+  position: fixed; inset: 0; z-index: var(--z-modale);
   display: none; align-items: center; justify-content: center;
   padding: var(--e5);
   background: rgba(0, 0, 0, .72);
@@ -321,3 +355,85 @@ label.szh-libelle {
   display: flex; align-items: center; gap: var(--e3);
   color: #eee; font-size: var(--t-libelle);
 }
+
+/* ═══ 9. Champs et boutons nus, dans une carte sans wrapper .szh-champ ═════════
+   Métadonnées des articles et vérification de l'import (_fiches.css) d'un côté,
+   Traduction de l'autre : les deux construisent leurs cartes sous la même classe `.carte`
+   (aucune autre page ne s'en sert) sans passer par .szh-champ ni .szh-bouton pour chaque
+   champ. Portée à `.carte` et non posée nue sur toute la page : un `<label>` de Réglages
+   ou un `<input type=radio>` d'un autre panneau n'a pas à en hériter.
+   `:not([type=checkbox]):not([type=radio])` évite d'étirer une case ou un bouton radio à
+   width:100%, ce que ferait un input nu sans cette garde. */
+.carte label {
+  display: block; margin: var(--e4) 0 var(--e1);
+  font-size: var(--t-libelle); font-weight: 700; letter-spacing: .02em; color: var(--encre);
+}
+.carte input:not([type="checkbox"]):not([type="radio"]),
+.carte select, .carte textarea {
+  width: 100%; box-sizing: border-box; padding: .35em .5em; font: inherit;
+  color: var(--vscode-input-foreground); background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini);
+}
+.carte textarea { resize: vertical; min-height: 3.4em; font-family: inherit; }
+.carte input:focus, .carte select:focus, .carte textarea:focus {
+  outline: 2px solid var(--accent); outline-offset: -1px;
+}
+.carte button {
+  padding: .35em .75em; border: 1px solid transparent; border-radius: var(--rayon-mini);
+  font: inherit; cursor: pointer;
+  color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground));
+  background: var(--vscode-button-secondaryBackground, var(--vscode-button-background));
+}
+.carte button.principal { color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
+.carte button.principal:hover { background: var(--vscode-button-hoverBackground); }
+.carte button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.carte button:disabled { opacity: .45; cursor: default; }
+
+/* ═══ 10. Boîte de suggestions ═════════════════════════════════════════════════
+   Autocomplétion des auteur·e·s (_auteurs.css : .auteur-suggestions/.auteur-sugg) et des
+   mots-clés edudoc.ch (_fiches.css : .mc-sugg/.mc-sugg-item) : même boîte, mêmes classes. */
+.szh-sugg {
+  position: absolute; top: 100%; z-index: var(--z-sugg);
+  margin-top: 2px; padding: var(--e1) 0;
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--filet-fort); border-radius: var(--rayon-mini);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .25);
+  max-height: 12rem; overflow-y: auto;
+}
+.szh-sugg-item {
+  display: block; width: 100%; text-align: left;
+  padding: var(--e1) var(--e2); border: 0; background: none;
+  color: var(--encre); font: inherit; cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.szh-sugg-item:hover,
+.szh-sugg-item.actif {
+  background: var(--vscode-list-activeSelectionBackground, var(--vscode-list-hoverBackground, rgba(128, 128, 128, .2)));
+  color: var(--vscode-list-activeSelectionForeground, var(--encre));
+}
+/* La part trouvée : le gras seul la marque, une couleur d'accent se perdrait sur la ligne
+   survolée, qui prend déjà la couleur de sélection de l'éditeur. */
+.szh-sugg-item strong { font-weight: 700; }
+/* Le filet entre deux groupes (auteur·e·s : noms de famille au-dessus, prénoms dessous). */
+.szh-sugg-filet { height: 1px; margin: var(--e1) var(--e2); background: var(--filet-fort); }
+
+/* ═══ 11. Zone de dépôt ═════════════════════════════════════════════════════════
+   Le motif complet (SZH.construireDepot, _commun.js) : icône et libellé facultatifs, un
+   bouton « Choisir un fichier », le glisser-déposer, une zone d'état. Posée par cinq
+   pages (couverture du numéro, portrait d'auteur·e, image de ressource, figure d'article,
+   original d'une image importée) : un seul cadre, avant ce lot un par page. */
+.szh-depot {
+  display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
+  padding: var(--e2); border-radius: var(--rayon-mini); font-size: var(--t-libelle);
+  border: 1px dashed var(--vscode-panel-border, rgba(128, 128, 128, .5));
+  color: var(--encre-2);
+}
+.szh-depot.survol {
+  border-style: solid; border-color: var(--accent);
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, .12));
+}
+.szh-depot-titre { display: inline-flex; align-items: center; gap: var(--e1);
+  font-weight: 700; color: var(--encre); }
+.szh-depot .ou { font-size: var(--t-mini); color: var(--encre-2); }
+.szh-depot-etat { font-size: var(--t-mini); color: var(--encre-2); }
+.szh-depot-etat.erreur { color: var(--vscode-inputValidation-errorForeground, var(--danger)); }

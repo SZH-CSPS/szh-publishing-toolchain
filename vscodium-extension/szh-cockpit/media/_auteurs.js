@@ -36,17 +36,17 @@
 //                     (lib/auteurs-corpus.js). Sans liste reçue, rien ne s'affiche.
 //
 // À la frappe dans nom ou prénom (deux caractères et plus), la modale propose des
-// suggestions filtrées sans tenir compte de la casse ni des accents, en DEUX groupes
+// suggestions filtrées sans tenir compte de la casse ni des accents, en deux groupes
 // séparés d'un filet : d'abord les noms de famille qui commencent par la saisie, triés par
 // nom, puis les prénoms, triés par prénom. C'est l'ordre dans lequel on cherche quelqu'un —
 // par son nom de famille, presque toujours. La part trouvée est mise en gras.
 //
-// « Commence par » se juge au début de CHAQUE MOT, pas de la seule chaîne : sinon « wilde »
+// « Commence par » se juge au début de chaque mot, pas de la seule chaîne : sinon « wilde »
 // ne trouverait pas « Wood de Wilde » et « arx » pas « von Arx », deux graphies courantes
 // chez nos auteur·e·s.
 //
 // Choisir une suggestion écrase toujours nom et prénom, mais ne remplit les autres champs
-// que s'ils sont VIDES : une correction déjà tapée n'est jamais effacée.
+// que s'ils sont vides : une correction déjà tapée n'est jamais effacée.
 
 (function () {
   'use strict';
@@ -63,8 +63,9 @@
   var SUGG_MAX = 10;                 // au-delà, ce n'est plus un menu mais une liste
   var SUGG_MAX_NOMS = 7;             // pour que le second groupe se voie toujours
   var VERSIONS = [['sans-fond', 'vSansFond'], ['avec-fond', 'vAvecFond'], ['original', 'vOriginal']];
-  var TAILLE_MAX_PHOTO = 20 * 1024 * 1024;
-  var EXTENSIONS_PHOTO = ['png', 'jpg', 'jpeg', 'webp'];
+  // Plus de plafond littéral ici : SZH.LIMITES.photo (media/_commun.js), alimenté par
+  // l'hôte (message « valeurs »/« charger », limites.photoMax/photoExtensions), lu au
+  // moment du dépôt — jamais mis en cache, pour rester à jour si l'hôte change d'avis.
 
   function auteurs(opts) {
     var api = opts.api;
@@ -73,61 +74,21 @@
     var surSaisie = opts.surSaisie || function () {};
     var surApercu = opts.surApercu || null;
 
-    var modale = null;      // construite une fois, remplie à chaque ouverture
+    var modale = null;      // les champs et boutons, construits une fois, remplis à chaque ouverture
+    var modaleCtl = null;   // le contrôleur SZH.modale (voile, clic à côté, Échap, retour du focus)
     var ctx = null;         // contexte en cours d'édition
     var attente = null;     // fonction qui reprend la sauvegarde après photo-valeur
     var connus = [];        // auteur·e·s publiés (message auteurs-connus), pour suggérer
 
-    // Casse et accents pliés, comme la déduplication côté hôte : « mor » trouve « Möri ».
-    function plier(t) {
-      var s = String(t === undefined || t === null ? '' : t).toLowerCase().replace(/\s+/g, ' ');
-      try { s = s.normalize('NFD').replace(/[̀-ͯ]/g, ''); }
-      catch (e) { /* moteur sans normalize : filtrage sensible aux accents, sans casser */ }
-      return s;
-    }
-
-    // Plie un texte ET garde, pour chaque caractère du plié, l'indice du caractère
-    // d'origine dont il vient.
-    //
-    // Sans cette table, mettre en gras la part trouvée obligerait à découper l'original aux
-    // indices du plié — ce qui marche sur 99 % des noms et se décale exactement sur ceux
-    // qu'on n'aurait pas testés : « İ » se replie en deux caractères puis un seul, et le
-    // gras glisserait d'un cran sur toute la fin du nom. Le repli caractère par caractère
-    // rend la correspondance exacte, quoi qu'invente Unicode.
-    function plierAvecIndex(brut) {
-      var src = String(brut === undefined || brut === null ? '' : brut);
-      var plie = '';
-      var index = [];
-      for (var i = 0; i < src.length; i++) {
-        var c = src.charAt(i).toLowerCase();
-        try { c = c.normalize('NFD').replace(/[̀-ͯ]/g, ''); }
-        catch (e) { /* moteur sans normalize */ }
-        for (var j = 0; j < c.length; j++) { plie += c.charAt(j); index.push(i); }
-      }
-      return { source: src, plie: plie, index: index };
-    }
-
-    // Ce qui sépare deux mots dans un nom : l'espace, mais aussi le trait d'union, les deux
-    // apostrophes et le point d'une initiale — « Grieshaber-Fuchs », « d'Alembert », « J. »
-    var SEPARE = /[\s\-'’.]/;
-
-    // Les indices, dans le plié, où commence un mot.
-    function debutsDeMot(plie) {
-      var debuts = [];
-      for (var i = 0; i < plie.length; i++) {
-        if (SEPARE.test(plie.charAt(i))) { continue; }
-        if (i === 0 || SEPARE.test(plie.charAt(i - 1))) { debuts.push(i); }
-      }
-      return debuts;
-    }
-
-    // Le premier début de mot à partir duquel `q` se lit tel quel, ou -1.
-    function chercherDebut(pli, debuts, q) {
-      for (var i = 0; i < debuts.length; i++) {
-        if (pli.plie.lastIndexOf(q, debuts[i]) === debuts[i]) { return debuts[i]; }
-      }
-      return -1;
-    }
+    // Casse, accents, positions et séparateurs de mot : le même moteur que _fiches.js pour
+    // les mots-clés edudoc.ch, partagé depuis _commun.js. Les deux divergences qui les
+    // séparaient — plier() sans repli des espaces de bord, séparateur de mot sans virgule
+    // ni point-virgule — sont tranchées vers le comportement le plus large (voir le
+    // commentaire de SZH.plier) : sans effet ici, un nom ne portant ni l'un ni l'autre.
+    var plier = SZH.plier;
+    var plierAvecIndex = SZH.plierAvecIndex;
+    var debutsDeMot = SZH.debutsDeMot;
+    var chercherDebut = SZH.chercherDebut;
 
     function poserConnus(liste) {
       connus = [];
@@ -152,13 +113,9 @@
       }
     }
 
-    function texte(parent, balise, cls, contenu) {
-      var e = document.createElement(balise);
-      if (cls) { e.className = cls; }
-      if (contenu !== undefined && contenu !== null) { e.textContent = contenu; }
-      parent.appendChild(e);
-      return e;
-    }
+    // texte() est SZH.poser (_commun.js) : même geste créer/classer/remplir/insérer,
+    // partagé avec documentation.js et medias-article.js.
+    var texte = SZH.poser;
     function nomComplet(a) {
       return ((a && a.prenom ? String(a.prenom) : '') + ' ' +
         (a && a.nom ? String(a.nom) : '')).trim();
@@ -283,37 +240,49 @@
       if (ctx) { ctx.occupe = occupe; }
     }
 
+    // La lecture et le découpage base64 viennent de SZH.lireBase64 (_commun.js), communs
+    // aux cinq pages qui déposent un fichier.
     function deposerFichier(f) {
       if (!ctx || ctx.occupe) { return; }
-      var ext = (String(f.name || '').match(/\.([A-Za-z0-9]+)$/) || ['', ''])[1].toLowerCase();
-      if (EXTENSIONS_PHOTO.indexOf(ext) === -1) { poserNote(TXT.photoErrFormat, true); return; }
-      if (f.size > TAILLE_MAX_PHOTO) { poserNote(TXT.photoErrTropVolumineux, true); return; }
       var prenom = modale.champs.prenom.value.trim();
       var nom = modale.champs.nom.value.trim();
       // Le nom d'abord : il nomme le fichier déposé, et l'hôte ne peut pas l'inventer.
       if (prenom === '' && nom === '') { poserNote(TXT.photoNomRequis, true); return; }
-      var lecteur = new FileReader();
       var courant = ctx;
-      lecteur.onload = function () {
-        if (ctx !== courant) { return; }            // modale refermée entre-temps
-        var t = String(lecteur.result || '');
-        var virgule = t.indexOf(',');
-        if (virgule === -1) { poserNote(TXT.photoErrFormat, true); return; }
-        occuper(true);
-        poserNote(TXT.traitement);
-        api.postMessage({
-          type: 'photo-deposer', slug: ctx.slug, index: ctx.index,
-          prenom: prenom, nom: nom, nomFichier: f.name, donneesBase64: t.slice(virgule + 1)
-        });
-      };
-      lecteur.readAsDataURL(f);
+      SZH.lireBase64(f, {
+        extensions: SZH.LIMITES.photo.extensions, maxi: SZH.LIMITES.photo.maxi,
+        msgFormat: TXT.photoErrFormat, msgPoids: TXT.photoErrTropVolumineux,
+        surErreur: function (message) { if (ctx === courant) { poserNote(message, true); } },
+        surDonnees: function (fichier, base64) {
+          if (ctx !== courant) { return; }          // modale refermée entre-temps
+          occuper(true);
+          poserNote(TXT.traitement);
+          api.postMessage({
+            type: SZH.MSG.PHOTO_DEPOSER, slug: ctx.slug, index: ctx.index,
+            prenom: prenom, nom: nom, nomFichier: fichier.name, donneesBase64: base64
+          });
+        }
+      });
     }
 
     // ---- Modale ----
+    // Le voile, le clic à côté, Échap et le retour du focus sont ceux de SZH.modale
+    // (_commun.js) — cette modale n'en construit plus sa propre copie.
     function construireModale() {
-      var voile = texte(document.body, 'div', 'voile-auteur');
-      voile.hidden = true;
-      var boite = texte(voile, 'div', 'modale modale-auteur');
+      modaleCtl = SZH.modale({
+        classeBoite: 'modale modale-auteur',
+        construire: construireCorpsModale,
+        surOuverture: remplirModale,
+        surFermeture: function () {
+          modale.fermerSuggestions();
+          ctx = null;                                // une réponse tardive sera ignorée
+          attente = null;
+        },
+        focus: function () { return modale.champs.nom; }
+      });
+    }
+
+    function construireCorpsModale(boite) {
       var titre = texte(boite, 'h3');
 
       var grille = texte(boite, 'div', 'auteur-grille');
@@ -340,10 +309,10 @@
       // ---- Autocomplétion prénom/nom, depuis la liste des auteur·e·s publiés ----
       //
       // Une seule boîte de suggestions, rattachée au bloc du champ où l'on tape. Elle ne
-      // remplit QUE prénom et nom — OAI-PMH n'expose rien d'autre — et ne s'affiche que si
+      // remplit que prénom et nom — OAI-PMH n'expose rien d'autre — et ne s'affiche que si
       // l'hôte a envoyé une liste : sans elle, aucune UI parasite.
       var boiteSugg = document.createElement('div');
-      boiteSugg.className = 'auteur-suggestions';
+      boiteSugg.className = 'szh-sugg';
       boiteSugg.hidden = true;
       boiteSugg.setAttribute('role', 'listbox');
       boiteSugg.setAttribute('aria-label', TXT.auteurSuggestions || '');
@@ -358,7 +327,7 @@
       function choisirSuggestion(a) {
         champs.nom.value = a.nom;
         champs.prenom.value = a.prenom;
-        // Le reste ne remplit QUE du vide : on suggère une personne déjà publiée, mais elle
+        // Le reste ne remplit que du vide : on suggère une personne déjà publiée, mais elle
         // a pu changer de poste ou d'institution depuis, et ce que le rédacteur vient de
         // taper vaut mieux que ce que dit l'archive. Une correction n'est jamais effacée.
         for (var i = 0; i < ENRICHIS.length; i++) {
@@ -381,25 +350,8 @@
         }
         suggEtat.actif = idx;
       }
-      // Pose un texte dans `parent`, les parts trouvées en gras. `zones` est une liste de
-      // [début, longueur] en indices du PLIÉ ; la table d'index les ramène sur l'original.
-      // Rien n'est construit en HTML : un nom d'auteur·e est une donnée, pas du balisage.
-      function poserAvecGras(parent, pli, zones) {
-        var brut = pli.source;
-        var pose = 0;
-        for (var z = 0; z < zones.length; z++) {
-          var i0 = pli.index[zones[z][0]];
-          var fin = zones[z][0] + zones[z][1];
-          var i1 = (fin < pli.index.length) ? pli.index[fin] : brut.length;
-          if (i0 < pose) { continue; }             // zones qui se recouvrent : la première gagne
-          if (i0 > pose) { parent.appendChild(document.createTextNode(brut.slice(pose, i0))); }
-          var fort = document.createElement('strong');
-          fort.textContent = brut.slice(i0, i1);
-          parent.appendChild(fort);
-          pose = i1;
-        }
-        if (pose < brut.length) { parent.appendChild(document.createTextNode(brut.slice(pose))); }
-      }
+      // Partagée avec _fiches.js depuis _commun.js.
+      var poserAvecGras = SZH.poserAvecGras;
 
       // Une saisie de plusieurs mots — « robin mor » — cherche à travers le prénom ET le
       // nom : chaque mot doit commencer un mot de l'un ou de l'autre. Elle ne se range dans
@@ -472,7 +424,7 @@
           var a = t.auteur;
           var b = document.createElement('button');
           b.type = 'button';
-          b.className = 'auteur-sugg';
+          b.className = 'szh-sugg-item';
           b.setAttribute('role', 'option');
           b.setAttribute('aria-selected', 'false');
           // Toujours « Prénom Nom » à l'affichage, quel que soit le groupe : c'est ainsi
@@ -490,7 +442,7 @@
         // Le filet ne sépare que deux groupes réellement présents, et n'entre jamais dans
         // les items : les flèches ne doivent pas s'y arrêter.
         if (groupes.noms.length > 0 && groupes.prenoms.length > 0) {
-          var filet = texte(boiteSugg, 'div', 'auteur-sugg-filet');
+          var filet = texte(boiteSugg, 'div', 'szh-sugg-filet');
           filet.setAttribute('role', 'presentation');
         }
         for (var p = 0; p < groupes.prenoms.length; p++) { poser(groupes.prenoms[p]); }
@@ -526,7 +478,7 @@
       }
 
       texte(boite, 'p', 'szh-section', TXT.auteurPhoto || '');
-      var zone = texte(boite, 'div', 'zone-depot');
+      var zone = texte(boite, 'div', 'szh-depot');
       texte(zone, 'div', null, TXT.photoDeposer || '');
       texte(zone, 'div', 'ou', TXT.photoOu || '');
       var choisir = document.createElement('button');
@@ -586,22 +538,17 @@
       boutons.appendChild(enregistrer);
       boutons.appendChild(annuler);
 
-      voile.addEventListener('click', function (e) { if (e.target === voile) { fermer(); } });
       modale = {
-        voile: voile, titre: titre, champs: champs, zone: zone, radios: radios,
-        cadre: cadre, img: img, note: note, enregistrer: enregistrer, retour: null,
+        titre: titre, champs: champs, zone: zone, radios: radios,
+        cadre: cadre, img: img, note: note, enregistrer: enregistrer,
         fermerSuggestions: fermerSuggestions
       };
     }
 
-    function ouvrir(contexte) {
-      if (!modale) { construireModale(); }
-      modale.retour = document.activeElement || null;
-      ctx = {
-        slug: contexte.slug, index: contexte.index, fiche: contexte,
-        base: null, versions: null, occupe: false
-      };
-      var a = contexte.auteur || {};
+    // Remplit la modale pour l'auteur·e visé : appelé par SZH.modale à chaque ouverture,
+    // une fois le corps construit (la première fois) ou non (les suivantes).
+    function remplirModale() {
+      var a = (ctx.fiche.auteur) || {};
       for (var i = 0; i < CHAMPS.length; i++) {
         modale.champs[CHAMPS[i][0]].value = String(a[CHAMPS[i][0]] || '');
       }
@@ -613,29 +560,26 @@
       poserNote('');
       modale.fermerSuggestions();                  // pas de liste héritée de l'édition d'avant
       occuper(false);
-      modale.voile.hidden = false;
+    }
+
+    function ouvrir(contexte) {
+      ctx = {
+        slug: contexte.slug, index: contexte.index, fiche: contexte,
+        base: null, versions: null, occupe: false
+      };
+      if (!modaleCtl) { construireModale(); }
+      modaleCtl.ouvrir();
       // La photo déjà retenue : l'hôte dit quelles versions existent, et laquelle sert.
+      var a = contexte.auteur || {};
       if (String(a.photo || '') !== '') {
         poserNote(TXT.chargement);
-        api.postMessage({ type: 'photo-ouvrir', slug: ctx.slug, index: ctx.index, photo: a.photo });
+        api.postMessage({ type: SZH.MSG.PHOTO_OUVRIR, slug: ctx.slug, index: ctx.index, photo: a.photo });
       }
-      try { modale.champs.nom.focus(); } catch (e) { /* pas focalisable : le nom est à gauche */ }
     }
 
     function fermer() {
-      if (!modale) { return; }
-      modale.fermerSuggestions();
-      modale.voile.hidden = true;
-      ctx = null;                                  // une réponse tardive sera ignorée
-      attente = null;
-      // Le bouton mémorisé peut avoir été détaché par le re-rendu que la page vient de
-      // faire : lui redonner le focus ne ferait rien, et le focus tomberait sur <body>. La
-      // page focalise alors elle-même la fiche refaite.
-      var retour = modale.retour;
-      modale.retour = null;
-      if (retour && retour.isConnected !== false) {
-        try { retour.focus(); } catch (e) { /* élément disparu */ }
-      }
+      if (!modaleCtl) { return; }
+      modaleCtl.fermer();
     }
 
     // Lit les champs, arrête la version de photo à retenir, puis laisse la page écrire.
@@ -657,7 +601,7 @@
           ecrire(auteur);
         };
         api.postMessage({
-          type: 'photo-choisir', slug: ctx.slug, index: ctx.index,
+          type: SZH.MSG.PHOTO_CHOISIR, slug: ctx.slug, index: ctx.index,
           base: ctx.base, version: versionChoisie()
         });
         return;
@@ -680,15 +624,15 @@
     function message(msg) {
       // La liste des auteur·e·s publiés : gardée pour l'autocomplétion, même reçue avant
       // la construction de la modale ou pendant une édition.
-      if (msg.type === 'auteurs-connus') {
+      if (msg.type === SZH.MSG.AUTEURS_CONNUS) {
         poserConnus(msg.auteurs);
         return true;
       }
-      if (msg.type !== 'photo-versions' && msg.type !== 'photo-valeur' && msg.type !== 'photo-erreur') {
+      if (msg.type !== SZH.MSG.PHOTO_VERSIONS && msg.type !== SZH.MSG.PHOTO_VALEUR && msg.type !== SZH.MSG.PHOTO_ERREUR) {
         return false;
       }
       if (!ctx || msg.slug !== ctx.slug || msg.index !== ctx.index) { return true; }
-      if (msg.type === 'photo-versions') {
+      if (msg.type === SZH.MSG.PHOTO_VERSIONS) {
         occuper(false);
         ctx.base = msg.base || null;
         ctx.versions = msg.versions || {};
@@ -705,7 +649,7 @@
         poserNote(notes.join(' '));
         return true;
       }
-      if (msg.type === 'photo-valeur') {
+      if (msg.type === SZH.MSG.PHOTO_VALEUR) {
         var suite = attente;
         attente = null;
         if (suite) { suite(String(msg.photo || '')); }
@@ -717,9 +661,7 @@
       return true;
     }
 
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && ctx) { fermer(); }
-    });
+    // Échap ferme désormais par SZH.modale, qui écoute tant que le voile est visible.
 
     return { apercu: apercu, ouvrir: ouvrir, message: message, fermer: fermer };
   }

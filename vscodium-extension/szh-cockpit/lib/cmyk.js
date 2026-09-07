@@ -14,54 +14,18 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const { reveillerWsl, DISTRO, cheminWsl } = require('./wsl');
 const { cheminVersWsl, INTERPRETE_DEFAUT } = require('./portraits');
+const { sofJpeg } = require('./medias');
 
 const SCRIPT_DEFAUT = '/mnt/c/ProgramData/SZH/toolkit/pipeline/cmyk-rgb.py';
 // Pillow est déjà chargé par le venv : sans le réveil de la VM, quelques secondes suffisent.
 const TIMEOUT_DEFAUT = 60000;
 
 // Nombre de composantes déclaré par le marqueur SOF d'un JPEG, ou 0 si indéterminable.
-//
-// ⚠ Le fichier est parcouru de segment en segment, et non sur une fenêtre de tête : un JPEG
-// d'imprimerie porte son profil ICC CMJN en segments APP2, et un profil comme ISO Coated v2
-// pèse près de deux mégaoctets. Le marqueur SOF tombe alors très au-delà des premiers
-// kilooctets — précisément sur les fichiers que cette détection existe pour attraper.
-// Chaque lecture ne prend que douze octets, à la position calculée.
+// Délègue à lib/medias.js#sofJpeg, qui parcourt le fichier segment par segment (jamais
+// sur une fenêtre de tête — voir son en-tête pour le profil ICC volumineux que ça attrape).
 function composantesJpeg(chemin) {
-  let fd = null;
-  try {
-    const taille = fs.statSync(chemin).size;
-    fd = fs.openSync(chemin, 'r');
-    const seg = Buffer.alloc(12);
-    if (fs.readSync(fd, seg, 0, 2, 0) !== 2 || seg[0] !== 0xff || seg[1] !== 0xd8) { return 0; }
-    let pos = 2;
-    // Garde-fou : un fichier tronqué ou brouillé ne doit pas faire tourner la boucle sans
-    // fin. Aucun JPEG réel ne porte des milliers de segments d'en-tête.
-    let segments = 0;
-    while (pos + 4 <= taille && segments++ < 4096) {
-      const lu = fs.readSync(fd, seg, 0, 12, pos);
-      if (lu < 4) { return 0; }
-      if (seg[0] !== 0xff) { pos++; continue; }                  // désynchronisé : on se recale
-      const marqueur = seg[1];
-      if (marqueur === 0xff) { pos++; continue; }                // bourrage
-      if (marqueur === 0xd8 || (marqueur >= 0xd0 && marqueur <= 0xd7) || marqueur === 0x01) {
-        pos += 2;                                                // marqueurs sans charge utile
-        continue;
-      }
-      if (marqueur === 0xda || marqueur === 0xd9) { return 0; }  // données ou fin : SOF manqué
-      const longueur = seg.readUInt16BE(2);
-      if (longueur < 2) { return 0; }                            // en-tête corrompu
-      // SOF0 à SOF15, hors DHT (C4), JPG (C8) et DAC (CC) : Nf suit Lf, P, Y et X.
-      if (marqueur >= 0xc0 && marqueur <= 0xcf && marqueur !== 0xc4 && marqueur !== 0xc8 && marqueur !== 0xcc) {
-        return lu >= 10 ? seg[9] : 0;
-      }
-      pos += 2 + longueur;
-    }
-    return 0;
-  } catch (e) {
-    return 0;
-  } finally {
-    if (fd !== null) { try { fs.closeSync(fd); } catch (e) { /* déjà fermé */ } }
-  }
+  const sof = sofJpeg(chemin);
+  return sof ? sof.composantes : 0;
 }
 
 // Quatre composantes = CMJN ou YCCK. Trois = YCbCr, une = niveaux de gris : rien à faire.

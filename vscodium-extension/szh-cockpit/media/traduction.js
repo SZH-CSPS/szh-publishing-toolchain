@@ -37,7 +37,7 @@
   function signalerModifie() {
     if (modifie === dernierModifie) { return; }
     dernierModifie = modifie;
-    vscodeApi.postMessage({ type: 'modifie', modifie: modifie });
+    vscodeApi.postMessage({ type: SZH.MSG.MODIFIE, modifie: modifie });
   }
   function marquer(carte) {
     modifie = true;
@@ -75,7 +75,7 @@
     copier.type = 'button';
     copier.textContent = TXT.copier;
     copier.addEventListener('click', function () {
-      vscodeApi.postMessage({ type: 'copier', texte: texte });
+      vscodeApi.postMessage({ type: SZH.MSG.COPIER, texte: texte });
     });
     zone.appendChild(copier);
     const deepl = document.createElement('button');
@@ -86,7 +86,7 @@
       .split('{0}').join(LANGUE_SOURCE.toUpperCase())
       .split('{1}').join(langue.toUpperCase());
     deepl.addEventListener('click', function () {
-      vscodeApi.postMessage({ type: 'deepl', texte: texte, source: LANGUE_SOURCE, cible: langue });
+      vscodeApi.postMessage({ type: SZH.MSG.DEEPL, texte: texte, source: LANGUE_SOURCE, cible: langue });
     });
     zone.appendChild(deepl);
     return zone;
@@ -151,7 +151,7 @@
       listes: listes,
       edition: false,
       textes: {
-        motCle: TXT.motCle, sansEquivalent: TXT.motCleSansEquiv
+        motCle: TXT.motCle, sansEquivalent: TXT.motCleSansEquiv, aTraduire: TXT.motCleATraduire
       },
       onChange: function () { majBadge(carte); marquer(carte); }
     });
@@ -172,6 +172,10 @@
     h3.textContent = groupe.libelle;
     const badge = document.createElement('span');
     badge.className = 'badge';
+    // majBadge() la remet à jour à chaque frappe (traduit / à traduire, ou X/Y mots-clés) :
+    // sans annonce, un lecteur d'écran ne dit jamais que l'état d'un bloc vient de changer.
+    badge.setAttribute('role', 'status');
+    badge.setAttribute('aria-live', 'polite');
     h3.appendChild(badge);
     carte.appendChild(h3);
 
@@ -266,7 +270,7 @@
     texte.textContent = TXT.envoyer;
     bouton.appendChild(texte);
     if (TXT.envoyerTip) { bouton.title = TXT.envoyerTip; }
-    bouton.addEventListener('click', function () { vscodeApi.postMessage({ type: 'lien' }); });
+    bouton.addEventListener('click', function () { vscodeApi.postMessage({ type: SZH.MSG.LIEN }); });
     const ancre = document.getElementById('enregistrer');
     ancre.parentNode.insertBefore(bouton, ancre.nextSibling);
   }
@@ -323,7 +327,7 @@
       });
     }
     return {
-      type: 'enregistrer', auto: !!auto, slug: SLUG,
+      type: SZH.MSG.ENREGISTRER, auto: !!auto, slug: SLUG,
       groupes: groupes, commentaire: commentaire.value
     };
   }
@@ -348,14 +352,14 @@
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
     recu = true;
-    if (msg.type === 'valeurs') { rendre(msg); return; }
+    if (msg.type === SZH.MSG.VALEURS) { rendre(msg); return; }
     // L'hôte veut changer d'article alors que le panneau est modifié : il lui faut ce que
     // la webview contient pour l'enregistrer avant de recharger.
-    if (msg.type === 'demande-rechargement') {
-      vscodeApi.postMessage(Object.assign(collecter(false), { type: 'rechargement' }));
+    if (msg.type === SZH.MSG.DEMANDE_RECHARGEMENT) {
+      vscodeApi.postMessage(Object.assign(collecter(false), { type: SZH.MSG.RECHARGEMENT }));
       return;
     }
-    if (msg.type === 'enregistre') {
+    if (msg.type === SZH.MSG.ENREGISTRE) {
       auto.confirme();
       modifie = false;
       signalerModifie();
@@ -365,9 +369,9 @@
     }
     // Clic sur un bloc de l'arbre alors que le panneau montre déjà cet article : pas de
     // re-rendu, qui perdrait une saisie en cours, juste le focus.
-    if (msg.type === 'focus') { viser(msg.cle); return; }
-    if (msg.type === 'copie') { etat.textContent = TXT.copie; return; }
-    if (msg.type === 'erreur') { auto.confirme(); etat.textContent = '⚠ ' + msg.message; }
+    if (msg.type === SZH.MSG.FOCUS) { viser(msg.cle); return; }
+    if (msg.type === SZH.MSG.COPIE) { etat.textContent = TXT.copie; return; }
+    if (msg.type === SZH.MSG.ERREUR) { auto.confirme(); etat.textContent = '⚠ ' + msg.message; }
   });
 
   // Un dépôt hors d'une zone prévue ne doit jamais faire naviguer la webview.
