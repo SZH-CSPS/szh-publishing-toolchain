@@ -257,16 +257,23 @@ test('doublon : le couple volume + numéro est cherché en cours ET dans les arc
     assert.strictEqual(sortie.status, 0, 'le pilote PowerShell a échoué : ' + (sortie.stderr || ''));
     const rendus = String(sortie.stdout).split(/\r?\n/).filter((l) => l.trim() !== '');
     assert.strictEqual(rendus.length, CAS.length, 'PowerShell n’a pas répondu à tous les cas');
+    // `base` vient de Node (fs.mkdtempSync, forme courte possible sur un runner de CI dont
+    // le dossier temporaire est exposé en 8.3, ex. C:\Users\RUNNER~1\...) ; `chemin` vient
+    // de PowerShell (Get-ChildItem le rend toujours en forme longue). Comparer les deux
+    // chaînes telles quelles peut faire échouer une correspondance pourtant juste --
+    // fs.realpathSync.native résout les deux côtés vers la même forme canonique.
+    const baseLongue = fs.realpathSync.native(base);
     for (let i = 0; i < CAS.length; i++) {
       const [nom, archive, chemin] = rendus[i].split('|');
       assert.strictEqual(nom, CAS[i].attendu, 'cas : ' + CAS[i].quoi);
       if (CAS[i].attendu) {
         assert.strictEqual(archive, CAS[i].archive ? 'True' : 'False',
           'l’état d’archive est mal rapporté, cas : ' + CAS[i].quoi);
+        const cheminLong = fs.realpathSync.native(chemin);
         // Le message doit pouvoir dire OÙ : le chemin complet nomme le dossier ET son état.
-        assert.ok(chemin.indexOf(nom) !== -1 && chemin.indexOf(base) === 0,
+        assert.ok(cheminLong.indexOf(nom) !== -1 && cheminLong.indexOf(baseLongue) === 0,
           'le chemin rendu ne mène pas au numéro trouvé : ' + chemin);
-        assert.strictEqual(/RV99_Archives|ZS99_Archives/.test(chemin), CAS[i].archive,
+        assert.strictEqual(/RV99_Archives|ZS99_Archives/.test(cheminLong), CAS[i].archive,
           'le chemin ne dit pas si le numéro est archivé : ' + chemin);
       }
     }

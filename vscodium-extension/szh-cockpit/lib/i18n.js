@@ -1204,9 +1204,9 @@ const TEXTES_COCKPIT = {
     'ctl.reimport.reprise-impossible': 'Un remplacement de texte s’était interrompu sur cet article, et son dossier n’a pas pu être remis en place : l’article manque au numéro, mais rien n’est perdu – tout est dans le dossier de sauvegarde. Fermez ce qui pourrait tenir ce dossier ouvert (Word, l’explorateur de fichiers, la synchronisation), puis recompilez le numéro.',
     // Le livre : pipeline/livre-assembler.py (la pièce liminaire) et
     // pipeline/profils/livre.mk, verifie-livre (le chapitre écarté ou introuvable).
-    'ctl.livre.liminaireintrouvable': 'La pièce liminaire « {0} » est annoncée dans buch.yaml (liminaires:), mais elle n’a pas été compilée : vérifiez qu’elle existe bien dans liminaires/, puis relancez la compilation.',
-    'ctl.livre.chapitreecarte': 'Le chapitre « {0} » n’est pas imprimé : son dossier porte le préfixe « _ », qui marque une pièce de travail. Retirez le « _ » pour en faire un chapitre.',
-    'ctl.livre.chapitreintrouvable': 'Le chapitre « {0} » est listé dans ordre-chapitres, mais son dossier est introuvable : vérifiez le nom du dossier, ou retirez-le de la liste.',
+    'ctl.livre.liminaireintrouvable': 'La pièce liminaire « {0} » est annoncée dans buch.yaml (liminaires:), mais elle n’a pas été compilée : vérifiez qu’elle existe bien dans liminaires/, puis relancez la compilation.',
+    'ctl.livre.chapitreecarte': 'Le chapitre « {0} » n’est pas imprimé : son dossier porte le préfixe « _ », qui marque une pièce de travail. Retirez le « _ » pour en faire un chapitre.',
+    'ctl.livre.chapitreintrouvable': 'Le chapitre « {0} » est listé dans ordre-chapitres, mais son dossier est introuvable : vérifiez le nom du dossier, ou retirez-le de la liste.',
     // La confirmation : ce qui est remplacé, ce qui survit, et le retour en arrière.
     'modale.reimport.question': 'Remplacer le texte de l’article « {0} » par celui du Word corrigé ?',
     'modale.reimport.detail': 'SONT REMPLACÉS : le texte de l’article, ses images et ses tableaux. La version du document Word corrigé prend leur place.\n\nSONT CONSERVÉS : la fiche de l’article (type, titre, sous-titre, résumé, mots-clés, auteur·e·s, DOI), les portraits des auteur·e·s, le suivi de traduction et les tâches de l’article.\n\nL’état d’avant est mis de côté AVANT le remplacement : « Revenir au texte d’avant », sur ce même article, le remet en place. Les tableaux retravaillés ici et les images que le Word ne rapporte pas vous sont signalés un par un, avec l’endroit où les retrouver.',

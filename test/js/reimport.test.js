@@ -328,6 +328,23 @@ function bashCompatible() {
   }
 }
 
+// Pandoc, mesuré directement (jamais via wsl.exe : ces tests lancent bash localement, pas
+// une distribution). Un poste « bash sans pandoc » (le runner CI windows-latest, sans
+// pandoc ni WSL, en est un exemple réel) passerait bashCompatible() et ferait alors échouer
+// la conversion réelle, plus loin dans la chaîne. Même patron que pandocAbsent() /
+// t.skip() dans test/js/ancrages.test.js : un saut bruyant, jamais un vert par défaut.
+let pandocVu = null;
+function pandocAbsent() {
+  if (pandocVu !== null) { return pandocVu; }
+  try {
+    const r = cp.spawnSync('pandoc', ['--version'], { encoding: 'utf8' });
+    pandocVu = (!r.error && r.status === 0) ? null : 'pandoc introuvable sur ce poste';
+  } catch (e) {
+    pandocVu = 'pandoc introuvable sur ce poste (' + e.message + ')';
+  }
+  return pandocVu;
+}
+
 const PYTHON = interpretePython();
 
 function revueJetable(slug) {
@@ -435,7 +452,7 @@ test('les issues du réimport : le processus sort sur le code que le JSON annonc
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
-test('issue « rien à faire » : sortie 3, et le Word cesse d’attendre', () => {
+test('issue « rien à faire » : sortie 3, et le Word cesse d’attendre', (t) => {
   assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
   if (!bashCompatible()) {
     // Ni un saut silencieux ni un faux vert : on dit pourquoi, et où la mesure se fait.
@@ -443,6 +460,8 @@ test('issue « rien à faire » : sortie 3, et le Word cesse d’attendre', () =
       'la couture de la conversion a disparu, et ce poste ne peut pas la mesurer');
     return;
   }
+  const absent = pandocAbsent();
+  if (absent) { return t.skip(absent); }
   const slug = '01-essai';
   const racine = revueJetable(slug);
   try {

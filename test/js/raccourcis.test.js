@@ -337,9 +337,20 @@ const PILOTE = [
   "$verrou = Join-Path (Split-Path $menu -Parent) 'menu-verrouille'",
   'New-Item -ItemType Directory -Force -Path $verrou | Out-Null',
   "Invoke-SzhNatif { & icacls $verrou /inheritance:r /grant ($env:USERNAME + ':(RX)') 2>$null | Out-Null }",
+  // Un compte administrateur (le runner de CI, entre autres) passe outre cette ACL : mesuré
+  // en tentant d'écrire un fichier témoin juste après avoir posé la restriction, plutôt que
+  // supposé -- si l'écriture passe, la garde de groupe ne bloque plus rien ici, et le
+  // contrôle qui suit ne mesurerait rien de réel.
+  '$aclContournee = $false',
+  'try {',
+  '  Set-Content -Path (Join-Path $verrou "temoin-acl.txt") -Value "x" -ErrorAction Stop',
+  '  $aclContournee = $true',
+  '  Remove-Item -LiteralPath (Join-Path $verrou "temoin-acl.txt") -Force -ErrorAction SilentlyContinue',
+  '} catch { }',
   '$p3 = Set-SzhRaccourcisMenu -Menu $verrou -Toolkit $toolkit',
   '$r.verrou = [ordered]@{ poses = @($p3.poses).Count; manques = @($p3.manques)',
-  '  fichiers = @(Get-ChildItem -LiteralPath $verrou -Filter \'*.lnk\' -ErrorAction SilentlyContinue).Count }',
+  '  fichiers = @(Get-ChildItem -LiteralPath $verrou -Filter \'*.lnk\' -ErrorAction SilentlyContinue).Count',
+  '  aclContournee = $aclContournee }',
   "Invoke-SzhNatif { & icacls $verrou /reset 2>$null | Out-Null }",
   "Invoke-SzhNatif { & icacls $verrou /grant ($env:USERNAME + ':(F)') 2>$null | Out-Null }",
   // 4. un toolkit incomplet : pas de raccourci mort vers un script absent
@@ -441,8 +452,16 @@ test('un ancien raccourci mal nommé est retiré, pas doublé', { skip: sansPowe
   assert.strictEqual(r.passe2.fichiers, 6);
 });
 
-test('un menu Démarrer non inscriptible n’arrête rien, et le dit', { skip: sansPowerShell }, () => {
+test('un menu Démarrer non inscriptible n’arrête rien, et le dit', { skip: sansPowerShell }, (t) => {
   const v = bilan.r.verrou;
+  // Un compte administrateur (le runner de CI, par exemple) passe outre la restriction
+  // d'ACL posée par le pilote : la garde de groupe ne bloque alors plus rien, et ce
+  // contrôle ne mesurerait rien de réel puisque le menu resterait inscriptible malgré
+  // l'ACL. Le pilote a tenté d'écrire un fichier témoin juste après avoir posé cette
+  // ACL (voir PILOTE plus haut) ; si l'écriture est passée, on saute plutôt que de
+  // prétendre observer un blocage qui n'a pas eu lieu -- même patron que pandocAbsent()
+  // / t.skip() dans test/js/ancrages.test.js.
+  if (v.aclContournee) { t.skip('processus élevé : l’ACL ne bloque pas'); return; }
   // Le contrat : la fonction ne lève pas — le pilote entier serait tombé sinon.
   assert.strictEqual(bilan.status, 0);
   assert.strictEqual(v.poses, 0);

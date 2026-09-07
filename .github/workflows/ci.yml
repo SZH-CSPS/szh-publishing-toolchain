@@ -73,6 +73,14 @@ jobs:
         with:
           node-version: lts/*
 
+      - name: Résoudre le dossier temporaire en forme longue
+        shell: pwsh
+        run: |
+          $long = (Get-Item -LiteralPath $env:TEMP).FullName
+          "TEMP=$long" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TMP=$long"  | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "TEMP: $env:TEMP -> $long"
+
       # `*` n'est développé ni par PowerShell ni par cmd : shell: bash (Git Bash, présent sur
       # les runners windows-latest) fait le même glob que le job `contrats`. Reporter TAP
       # explicite plutôt que le reporter par défaut (qui dépend de la détection de tty) : la

@@ -692,6 +692,22 @@ function Remove-SzhToolkitOrphelins {
     [Parameter(Mandatory = $true)][string]$Toolkit,
     [Parameter(Mandatory = $true)][string]$Extrait
   )
+  # Forme longue dès l'entrée : $Toolkit et $Extrait peuvent arriver en forme courte 8.3 (le
+  # dossier temporaire d'un runner de CI, par exemple C:\Users\RUNNER~1\...) alors que
+  # Get-ChildItem -Recurse rend TOUJOURS la forme longue dans FullName -- vérifié : passer un
+  # chemin court à Get-ChildItem -LiteralPath ne fait pas ressortir ce même chemin court dans
+  # FullName, mais le nom réel, plus long, du dossier. Le calcul de relatif plus bas
+  # ($f.FullName.Substring($dansToolkit.Length)) suppose que les deux mesurent la même
+  # longueur ; sans cette résolution il coupe au milieu d'un composant et rend un chemin
+  # relatif absurde (« pipeline\ine\garde.md » constaté). Get-Item résout une forme courte
+  # déjà sur le disque vers sa forme longue ; [System.IO.Path]::GetFullPath sert de repli
+  # quand le chemin n'existe pas encore -- un chemin absent ne porte alors aucune forme
+  # courte à résoudre. Inline plutôt qu'une fonction à part : cette fonction est éprouvée
+  # extraite seule (test/js/orphelins-toolkit.test.js), sans le reste de ce fichier.
+  if ($Toolkit -and (Test-Path -LiteralPath $Toolkit)) { $Toolkit = (Get-Item -LiteralPath $Toolkit).FullName }
+  elseif ($Toolkit) { $Toolkit = [System.IO.Path]::GetFullPath($Toolkit) }
+  if ($Extrait -and (Test-Path -LiteralPath $Extrait)) { $Extrait = (Get-Item -LiteralPath $Extrait).FullName }
+  elseif ($Extrait) { $Extrait = [System.IO.Path]::GetFullPath($Extrait) }
   $dossiersGeres = @('pipeline', 'vscodium-user', 'revue-template', 'livre-template', 'windows')
   $retires = New-Object System.Collections.ArrayList
   $avertissements = New-Object System.Collections.ArrayList
@@ -800,7 +816,20 @@ function Install-SzhToolkitDepuisArchive {
     [Parameter(Mandatory = $true)][string]$Toolkit,
     [string]$DossierTravail = ''
   )
+  # Forme longue dès l'entrée, même défaut et même remède qu'en tête de
+  # Remove-SzhToolkitOrphelins ci-dessus : sur un runner de CI dont le dossier temporaire est
+  # exposé en forme courte 8.3 (C:\Users\RUNNER~1\...), $Zip, $Toolkit et $DossierTravail
+  # arrivent courts alors que Get-ChildItem, Expand-Archive et Directory.Move les rendent en
+  # forme longue. Résolu ici, une seule fois : $neuf, $vieux et $extrait, qui s'en déduisent
+  # plus bas par simple concaténation ou Join-Path, restent en forme longue à leur tour --
+  # $Toolkit est donc normalisé AVANT que $DossierTravail ne s'en déduise par défaut.
+  if ($Zip -and (Test-Path -LiteralPath $Zip)) { $Zip = (Get-Item -LiteralPath $Zip).FullName }
+  elseif ($Zip) { $Zip = [System.IO.Path]::GetFullPath($Zip) }
+  if ($Toolkit -and (Test-Path -LiteralPath $Toolkit)) { $Toolkit = (Get-Item -LiteralPath $Toolkit).FullName }
+  elseif ($Toolkit) { $Toolkit = [System.IO.Path]::GetFullPath($Toolkit) }
   if (-not $DossierTravail) { $DossierTravail = Split-Path $Toolkit -Parent }
+  if ($DossierTravail -and (Test-Path -LiteralPath $DossierTravail)) { $DossierTravail = (Get-Item -LiteralPath $DossierTravail).FullName }
+  elseif ($DossierTravail) { $DossierTravail = [System.IO.Path]::GetFullPath($DossierTravail) }
   $neuf    = $Toolkit + '.neuf'
   $vieux   = $Toolkit + '.vieux'
   $extrait = Join-Path $DossierTravail ((Split-Path $Toolkit -Leaf) + '-verif-' + [guid]::NewGuid().Guid)
