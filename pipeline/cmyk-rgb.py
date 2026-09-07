@@ -34,6 +34,9 @@ import json
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import szh_commun
+
 from PIL import Image
 
 # Qualité de réencodage. Le JPEG source a déjà été compressé une fois ; 95 rend la seconde
@@ -63,21 +66,11 @@ def en_rgb(img):
 def ecrire_atomique(img, chemin, exif):
     """Réécrit le JPEG sous son propre nom, par un temporaire du même dossier. L'EXIF
     d'origine est reposé : l'orientation en fait partie, et WeasyPrint la lit."""
-    dossier = os.path.dirname(chemin) or '.'
-    tmp = os.path.join(dossier, '~$%s.%d.tmp' % (os.path.basename(chemin), os.getpid()))
     options = {'format': 'JPEG', 'quality': QUALITE, 'optimize': True}
     if exif:
         options['exif'] = exif
-    try:
-        with open(tmp, 'wb') as flux:
-            img.save(flux, **options)
-        os.replace(tmp, chemin)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    szh_commun.ecrire_atomique(chemin, lambda flux: img.save(flux, **options),
+                                prefixe_tmp='~$')
 
 
 def traiter(chemin):

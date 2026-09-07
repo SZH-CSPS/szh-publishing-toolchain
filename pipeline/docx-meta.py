@@ -17,7 +17,7 @@
 #   F  légende de figure détectée par style et voisine d'une image, pour szh-legendes.lua
 #   B  paragraphe de l'étendue de bibliographie, en clé de comparaison, pour
 #      szh-biblio-detacher.lua : le premier et le dernier bornent l'étendue à détacher,
-#      leur NOMBRE dit combien de paragraphes doivent partir
+#      leur nombre dit combien de paragraphes doivent partir
 #   BT titre de la bibliographie, en clé de comparaison : c'est lui qui quitte le corps,
 #      le titre étant reposé à la compilation dans la langue de l'article
 #
@@ -60,6 +60,9 @@ import sys
 import unicodedata
 import zipfile
 import xml.etree.ElementTree as ET
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import szh_commun
 
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
@@ -548,7 +551,7 @@ def cellule_auteur(tc):
         return None
     premier, amorce_fonction = _decouper_ligne_nom(lignes[0][0])
     # Ligne de titres seuls, le nom à la ligne suivante (« Prof. Dr. phil. » puis
-    # « Angelika Schöllhorn ») : la ligne est sautée. Seulement si elle ne contient QUE
+    # « Angelika Schöllhorn ») : la ligne est sautée. Seulement si elle ne contient que
     # des titres — chercher un nom plus loin dans n'importe quelle cellule ferait passer
     # un encadré de contenu pour un bloc auteurs.
     if not premier and len(lignes) > 1 and not _sans_titres_academiques(lignes[0][0]):
@@ -709,21 +712,14 @@ def citer(v):
 
 # Avertissement destiné au rédacteur : une ligne, préfixe fixe, deuxième champ = code
 # stable, français puis allemand. Même format que docx-tables.py, pour que l'interface
-# n'ait qu'un seul motif à reconnaître. stderr et articles-word/.import.log.
+# n'ait qu'un seul motif à reconnaître. stderr et articles-word/.import.log — voir
+# szh_commun.avertir() pour le mécanisme (partagé avec docx-tables.py, livre-scinder.py et
+# reimporter.py, qui recopiaient chacun la même fonction).
 PREFIXE_AVERT = '[import-avertissement]'
 
 
 def avertir(code, champs, fr, de):
-    ligne = ' | '.join([PREFIXE_AVERT + ' ' + code] + list(champs) + [fr, '[de] ' + de])
-    print(ligne, file=sys.stderr)
-    journal = os.getenv('SZH_IMPORT_LOG')
-    if not journal:
-        return
-    try:
-        with open(journal, 'a', encoding='utf-8', newline='\n') as f:
-            f.write(ligne + '\n')
-    except OSError:
-        pass                                  # un journal illisible ne casse pas l'import
+    szh_commun.avertir(PREFIXE_AVERT, code, champs, fr, de)
 
 
 def serialiser_meta(meta):
@@ -784,18 +780,18 @@ def blocs_du_corps(racine):
 # ---------------------------------------------------------------------------------
 # Bibliographie : quelle étendue du corps détacher.
 #
-# Le signal est le STYLE, et lui seul : mesuré sur les 421 galleys publiés, les deux revues
+# Le signal est le style, et lui seul : mesuré sur les 421 galleys publiés, les deux revues
 # marquent leurs références « Literaturverzeichnis », « Bibliographie », « Bibliography »
-# ou « EndNoteBibliography ». Le titre de section, lui, ne sert qu'à trouver le BORD
-# SUPÉRIEUR de la liste — jamais à décider qu'il y a une bibliographie.
+# ou « EndNoteBibliography ». Le titre de section, lui, ne sert qu'à trouver le bord
+# supérieur de la liste — jamais à décider qu'il y a une bibliographie.
 #
-# L'étendue va du titre (exclu) au DERNIER paragraphe stylé. Prendre l'étendue plutôt que
+# L'étendue va du titre (exclu) au dernier paragraphe stylé. Prendre l'étendue plutôt que
 # les seuls paragraphes stylés répare le défaut mesuré sur le corpus — 121 références
 # restées en arrière parce que leur paragraphe avait perdu le style : elles sont dedans, et
 # partent avec les autres. Sur le corpus : 3823 paragraphes stylés, 3902 emportés, et les
 # 79 de plus sont bien des références.
 #
-# Rien n'est cherché AU-DELÀ du dernier paragraphe stylé : 16 articles du corpus ont du
+# Rien n'est cherché au-delà du dernier paragraphe stylé : 16 articles du corpus ont du
 # texte après leur liste (notices d'auteur·e·s en paragraphes), et il n'a rien à faire dans
 # la bibliographie.
 
@@ -1237,10 +1233,10 @@ def principal(argv):
     type_article, type_regle = detecter_type(
         chemin_docx, ' '.join(titre_parts), doi)
 
-    # ---- 6) Bibliographie : l'étendue à détacher, lue dans les STYLES -------------
+    # ---- 6) Bibliographie : l'étendue à détacher, lue dans les styles -------------
     lignes_b, ligne_bt, biblio = etendue_biblio(blocs, classeur, type_article)
 
-    # ---- 7) Légendes de figures par STYLE (voisines d'une image) -----------------
+    # ---- 7) Légendes de figures par style (voisines d'une image) -----------------
     lignes_f = []
     for idx, e in enumerate(blocs):
         if e.tag != W + 'p' or classeur.famille(pstyle(e)) != 'caption':
@@ -1261,7 +1257,7 @@ def principal(argv):
         # Le .docx vit encore dans articles-word/ à cet instant : son nom de fichier
         # est l'identité que la cible `import` du Makefile comparera au prochain dépôt.
         'source': os.path.basename(chemin_docx),
-        # Le DOI du Word n'est PLUS repris dans la fiche : le DOI est un calcul du cockpit
+        # Le DOI du Word n'est plus repris dans la fiche : le DOI est un calcul du cockpit
         # (place de l'article dans le numéro, lib/export-ojs.js), et seul un DOI défini à
         # la main dans le formulaire vit dans le meta.yaml — serialiser_meta sait toujours
         # l'écrire, l'import n'en produit simplement plus. Le doi lu plus haut sert encore

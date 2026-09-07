@@ -1,4 +1,4 @@
--- Livre seulement : la ligne des auteur·e·s d'un CHAPITRE, juste sous son titre.
+-- Livre seulement : la ligne des auteur·e·s d'un chapitre, juste sous son titre.
 --
 -- Un ouvrage collectif donne ses auteur·e·s chapitre par chapitre — c'est même ce qui le
 -- distingue d'une monographie, où ils sont sur la couverture et nulle part ailleurs.
@@ -6,18 +6,19 @@
 -- et Elodie Winkler », en corps de texte allégé, entre le titre du chapitre et le premier
 -- bloc.
 --
--- Pourquoi un filtre et pas le gabarit. Un gabarit pandoc ne sait rien INTERCALER : il
+-- Pourquoi un filtre et pas le gabarit. Un gabarit pandoc ne sait rien intercaler : il
 -- écrit ce qui suit `$body$`, donc la ligne se retrouverait avant le titre du chapitre ou
 -- après tout le chapitre, jamais entre les deux. C'est le même constat qui a fait sortir
 -- le bloc auteurs de templates/szh-article.html vers szh-auteurs.lua ; même raison, même
 -- remède, et le voisin vaut d'être lu.
 --
--- Ce filtre n'est PAS szh-auteurs.lua, et ne le remplace pas :
---   * szh-auteurs.lua compose le bloc de CLÔTURE d'un article — portrait, fonction,
+-- Ce filtre n'est pas szh-auteurs.lua, et ne le remplace pas :
+--   * szh-auteurs.lua compose le bloc de clôture d'un article — portrait, fonction,
 --     affiliation, ORCID —, placé avant la bibliographie ;
---   * celui-ci n'écrit qu'une ligne de noms, en TÊTE de chapitre, sans portrait.
--- Un chapitre d'ouvrage collectif peut recevoir les deux : la ligne d'ouverture ici, et le
--- bloc détaillé en clôture si le livre le veut.
+--   * celui-ci n'écrit qu'une ligne de noms, en tête de chapitre, sans portrait.
+-- Un chapitre ne reçoit que cette ligne : szh-auteurs.lua n'est pas dans FILTRES_CHAPITRE
+-- (pipeline/profils/livre.mk) et ne tourne donc jamais sur un chapitre — le bloc détaillé
+-- de clôture reste propre aux articles de la revue.
 --
 -- Ce qui décide, et rien d'autre : la clé `ouvrage` de buch.yaml.
 --   * `collectif`   -> la ligne est écrite depuis `author` du <slug>.meta.yaml du chapitre ;
@@ -27,15 +28,15 @@
 -- le repli le moins dommageable — une ligne d'auteurs en trop se voit, une ligne manquante
 -- se corrige en une clé.
 --
--- ⚠ La clé s'appelle `ouvrage` et NON `type`, et ce n'est pas une préférence. `type` est
+-- ⚠ La clé s'appelle `ouvrage` et non `type`, et ce n'est pas une préférence. `type` est
 --   déjà la rubrique éditoriale d'un article dans les fiches de la revue (`article`,
 --   `editorial`, `interview`…). Pandoc fusionne les fichiers de métadonnées et garde le
---   DERNIER à clé égale : la fiche du chapitre passant après buch.yaml, un chapitre importé
+--   dernier à clé égale : la fiche du chapitre passant après buch.yaml, un chapitre importé
 --   de Word aurait effacé « collectif » par « article », et l'ouvrage aurait silencieusement
 --   perdu ses auteur·e·s de chapitre.
 --
--- Place dans la chaîne : APRÈS szh-sections.lua, pour que le titre de chapitre porte déjà
--- son numéro et que la ligne se pose sous le titre FINI ; avant szh-citations.lua, comme
+-- Place dans la chaîne : après szh-sections.lua, pour que le titre de chapitre porte déjà
+-- son numéro et que la ligne se pose sous le titre fini ; avant szh-citations.lua, comme
 -- son voisin.
 
 local S = pandoc.utils.stringify
@@ -80,8 +81,12 @@ local function langue_de(meta)
 end
 
 local function ligne_auteurs(meta)
-  local gens = meta and meta.author
-  if gens == nil or #gens == 0 then return nil end
+  local gens = meta and (meta.author or meta.auteurs)
+  if type(gens) ~= 'table' then return nil end
+  -- Une fiche à un seul auteur peut arriver en map nue plutôt qu'en liste d'une map :
+  -- la reconnaître à ses clés, et non au type pandoc, qui varie d'une version à l'autre.
+  if gens.nom ~= nil or gens.prenom ~= nil then gens = { gens } end
+  if #gens == 0 then return nil end
   local noms = {}
   for _, a in ipairs(gens) do
     local n = nom_affiche(a)
@@ -106,7 +111,7 @@ function Pandoc(doc)
   local ligne = ligne_auteurs(doc.meta)
   if not ligne then return doc end
 
-  -- Sous le PREMIER titre du document, qui est le titre du chapitre. Un chapitre qui
+  -- Sous le premier titre du document, qui est le titre du chapitre. Un chapitre qui
   -- n'ouvrirait pas par un titre — cela arrive à une pièce liminaire mal rangée — ne
   -- reçoit rien plutôt que de voir la ligne atterrir au hasard.
   local i = nil

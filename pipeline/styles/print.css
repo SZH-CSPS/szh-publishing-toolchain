@@ -3,7 +3,7 @@
    précalculés. La couleur annuelle (repli gris déclaré au socle) est surchargée à la
    compilation par accent-css.py, qui écrit out/.szh-accent.css — voir couleurs.css.
 
-   Les polices et les jetons :root ne sont PAS ici : ils vivent dans socle.css, que le
+   Les polices et les jetons :root ne sont pas ici : ils vivent dans socle.css, que le
    Makefile empile avant cette feuille, et que la maquette web lira aussi. Une variable ne
    se déclare qu'à un seul endroit. Ici : de la mise en page, et elle seule.
 
@@ -122,11 +122,11 @@ a[href^="#"]:hover { color: #002A56; text-decoration: underline; }
 .footnotes a::after, a.footnote-ref::after, a.footnote-back::after { content: none; }
 a.footnote-ref, a.footnote-back { text-decoration: none; }
 
-/* Notes de bas de page imprimées SOUS LEUR PAGE, et non rejetées en fin d'article.
+/* Notes de bas de page imprimées sous leur page, et non rejetées en fin d'article.
    szh-notes.lua remplace chaque Note pandoc par un <span class="szh-note"> posé à
    l'endroit de l'appel ; `float: footnote` l'envoie dans la zone @footnote de la page
    courante, et le compteur `footnote` numérote appel et marque tout seul — il ne faut
-   donc surtout PAS ajouter de numérotation ici, elle ferait double emploi.
+   donc surtout pas ajouter de numérotation ici, elle ferait double emploi.
    Les styles .footnotes ci-dessus restent : l'aperçu du cockpit, lui, garde des notes
    de fin (le filtre ne s'y applique pas). */
 .szh-note {
@@ -193,7 +193,7 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
   /* Déborde jusqu'aux bords en annulant les marges @page de la 1re page : le haut
      doit égaler la marge @page en cours, sinon une bande blanche apparaît. */
   margin: -86px -72px 0 -72px;
-  box-sizing: border-box;   /* height = hauteur TOTALE (padding inclus) */
+  box-sizing: border-box;   /* height = hauteur totale (padding inclus) */
 }
 .szh-hero-top { position: relative; display: flex; justify-content: space-between;
   align-items: flex-start; gap: 16px; }
@@ -232,7 +232,7 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
 .szh-authors li + li::before {
   content: "\B7";                          /* · point médian */
   position: static; display: inline; left: auto; top: auto;
-  /* ⚠ Couleur PRÉ-MÉLANGÉE, et `opacity` laissée à 1 : ne pas revenir à
+  /* ⚠ Couleur pré-mélangée, et `opacity` laissée à 1 : ne pas revenir à
      `#fff` + `opacity: 0.5`. Toute déclaration `opacity` < 1 fait dessiner l'élément par
      WeasyPrint dans un Form XObject à groupe de transparence, où il ré-émet un /MCID sans
      référence /Stm : le contenu devient orphelin de l'arbre de structure et le PDF n'est
@@ -300,14 +300,14 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
 .szh-cover-body { padding: 30px 0 40px; }   /* marges gérées par @page */
 
 /* Article sans résumé — l'éditorial, la tribune libre, la Documentation : leur rubrique
-   n'en exige pas (lib/export-ojs.js, `sansResume`) — le gabarit n'écrit alors PAS
+   n'en exige pas (lib/export-ojs.js, `sansResume`) — le gabarit n'écrit alors pas
    .szh-cover-body du tout ($if(resumes)$ de templates/szh-article.html). Le filet annuel
    devient le dernier enfant de .szh-cover, et le premier paragraphe du corps venait se
    coller dessous : un éditorial ouvre d'ordinaire sans titre, il n'y avait donc même pas
    la marge d'un h2 pour l'en détacher. Ces 30 px rendent la respiration que le
    `padding-top` de .szh-cover-body donne aux articles qui ont un résumé, et ne s'y
    cumulent jamais — `:last-child` ne matche que quand le bloc des résumés est absent.
-   ⚠ Deux classes plus une pseudo-classe : il FAUT cette spécificité pour passer devant le
+   ⚠ Deux classes plus une pseudo-classe : il faut cette spécificité pour passer devant le
    `margin: 0 -72px` de .szh-filet, qui remet la marge basse à zéro. */
 .szh-cover > .szh-filet:last-child { margin-bottom: 30px; }
 
@@ -449,38 +449,10 @@ blockquote p:last-child { margin-bottom: 0; }
    en forme du numéro (.szh-numero). Les titres de section suivent la même règle depuis
    szh-sections.lua : plus aucun compteur CSS dans cette feuille, hors la pagination. */
 
-/* Préfixe « Figure N — » / « Tableau N — » posé par szh-numerotation.lua. */
-figure > figcaption .szh-numero,
-table > caption .szh-numero { font-weight: 600; }
-
-/* Crédits (© et source) à la suite de la légende, posés par szh-numerotation.lua. La
-   distinction se fait par la taille, pas par un gris plus clair : #444 sur blanc vaut
-   Lc 92,6, et tout le texte de cette maquette étant sous 18 px, le seuil APCA est 90 —
-   #505050 tomberait à 88,0. Ne pas éclaircir sans repasser par test/apca-check.py. */
-figure > figcaption .szh-credit,
-table > caption .szh-credit { font-size: 0.85em; color: #444; }
-
-/* Appels de citation que le liage n'a pas résolus. szh-citations.lua ne pose ces classes
-   que dans l'aperçu du cockpit (SZH_APERCU=1), jamais dans le HTML ni le PDF livrés : le
-   rédacteur voit d'un coup d'œil ce qui reste à lier par « Lier un appel à une référence »
-   (Ctrl+Alt+S), et le document publié n'en porte aucune trace. Soulignement en pointillé
-   plutôt qu'un fond coloré, pour ne pas déplacer une ligne de la maquette. */
-.szh-appel-orphelin { text-decoration: underline dotted #A2322A; text-underline-offset: 0.2em; }
-.szh-appel-ambigu { text-decoration: underline dotted #8A6A12; text-underline-offset: 0.2em; }
-
-/* Description longue d'un tableau (aria-describedby), posée par szh-numerotation.lua.
-   Masquée visuellement mais présente dans l'arbre d'accessibilité : display:none la
-   retirerait aussi des lecteurs d'écran. Le masquage est un dispositif d'écran, donc écrit
-   dans @media screen, que WeasyPrint n'applique pas. En @media print l'élément est retiré :
-   WeasyPrint ne transporte pas aria-describedby dans le PDF. */
-@media screen {
-  .szh-description {
-    position: absolute; width: 1px; height: 1px;
-    margin: -1px; padding: 0; border: 0; overflow: hidden;
-    clip-path: inset(50%); white-space: nowrap;
-  }
-}
-@media print { .szh-description { display: none; } }
+/* Le préfixe « Figure N — » / « Tableau N — », les crédits, les appels de citation non liés
+   (aperçu) et la description longue d'un tableau sont désormais dans
+   styles/partage-filtres.css, avec les autres classes que posent les filtres communs à la
+   revue et au livre — feuille empilée juste avant celle-ci. */
 
 /* Toute image reste dans la colonne : une image hors numérotation sans crédits n'est
    pas dans une <figure>, et sans cette règle un fichier de 2000 px de large — la
@@ -489,7 +461,7 @@ table > caption .szh-credit { font-size: 0.85em; color: #444; }
    portrait ramenée à la largeur de la colonne peut dépasser une page, et une <figure>
    plus haute qu'une page ne tient plus d'un bloc — WeasyPrint abandonne alors son
    `break-inside: avoid` et coupe au premier point permis, juste sous la légende.
-   ⚠ `break-after: avoid` sur la <figcaption>, pour retenir la légende, est INERTE dans
+   ⚠ `break-after: avoid` sur la <figcaption>, pour retenir la légende, est inerte dans
    WeasyPrint 69 (mesuré) : ne pas le rajouter en croyant mieux faire, seule la hauteur
    de l'image referme la page. */
 img { max-width: 100%; height: auto; max-height: var(--plafond-figure); }
@@ -501,83 +473,9 @@ figure > figcaption { font-size: 0.85rem; color: #444; margin-bottom: 0.5em; tex
    précéder — voir szh-legende-avant.lua — donc la marge change de côté. */
 figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
 
-/* ── Grille d'images ──────────────────────────────────────────────────────────
-   Une figure, plusieurs images : filters/szh-grille.lua compose le bloc en rangées et
-   écrit sur chaque case une propriété personnalisée --szh-case-max (calculée en
-   filtrage, appliquée ici en max-width) : la largeur que prend la case à hauteur
-   plafonnée (plafond × rapport largeur/hauteur). La case elle-même reçoit un flex-grow
-   égal au rapport largeur/hauteur de son image. La propriété personnalisée permet de
-   l'annuler sans !important depuis une requête d'écran (sous 34rem, chaque image reprend
-   le plafond entier quand la rangée se défait).
-
-   Ce que fait ce réglage, et pourquoi il est le bon : dans une rangée dont les cases ont
-   une base nulle, une croissance proportionnelle au rapport donne à toutes les images de
-   la rangée LA MÊME HAUTEUR, et la rangée remplit exactement la colonne — la mise en page
-   justifiée des planches imprimées. Quand les images partagent un format, ce qui est le
-   cas ordinaire d'une série, cela revient à des colonnes égales. Aucune image n'est
-   recadrée, aucune n'est déformée.
-
-   IMPORTANT : le plafond doit se POSER EN max-width SUR LA CASE, pas en max-height sur
-   l'image. WeasyPrint 69 ne rétrécit pas l'image en max-height ; au lieu de cela, il
-   l'écrase : un fichier 900 × 1400 sort en 650 × 377 (rapport 1.721 au lieu de 0.643),
-   déformation visible. La max-width sur la case, combinée avec width: 100% et height: auto
-   sur l'image, garde exactement le rapport.
-
-   La croissance déclarée ici (1) sert de repli : une image que le filtre n'a pas su
-   mesurer — SVG sans dimensions, fichier illisible — partage alors la rangée à parts
-   égales. Le style en ligne du filtre l'emporte quand la mesure existe.
-
-   L'écart entre les images est le seul chiffre en dur de ce bloc : 6 px à la largeur de
-   la colonne, assez pour séparer deux visuels sans creuser une gouttière. */
-.szh-grille-rangee { display: flex; align-items: flex-start; justify-content: center; gap: 6px;
-  margin-bottom: 6px; break-inside: avoid; }
-.szh-grille-rangee:last-child { margin-bottom: 0; }
-.szh-grille-case { display: block; flex-grow: 1; flex-shrink: 1; flex-basis: 0%;
-  min-width: 0; max-width: var(--szh-case-max, none); }
-/* Le plafond de hauteur (--plafond-figure, socle.css) vaut pour LA FIGURE ENTIÈRE, pas
-   pour une image : dans une grille, toutes les images d'une rangée ont la même hauteur
-   et les rangées s'empilent, donc le plafond doit se PARTAGER entre elles — d'où la
-   division par --szh-rangees, posé par szh-grille.lua sur chaque .szh-grille-rangee (pas
-   sur la <figure> : une propriété personnalisée s'hérite depuis n'importe quel ancêtre,
-   et c'est le seul qui survive jusqu'ici, voir le commentaire de rangee() dans le filtre).
-   Repli à 1 hors grille.
-   `- 12px` : les écarts entre rangées (6 px, au plus deux fois). */
-.szh-grille-case > img { display: block; width: 100%; height: auto; max-height: none; }
-/* Dans une case de grille, c'est la CASE qui plafonne la hauteur (via --szh-case-max),
-   pas l'image. La règle générale `img { max-height: var(--plafond-figure); }` (§6)
-   s'appliquerait aussi ici et la combinerait avec width: 100%, combinaison qui fait
-   écrase l'image en déformant le rapport — voir le commentaire de ce bloc. On la
-   neutralise donc explicitement. */
-
-/* Image décorative dans une grille : szh-numerotation.lua l'a sortie en fond CSS, avec sa
-   largeur naturelle en pixels. Dans une case, c'est la case qui donne la largeur — la
-   spécificité de ce sélecteur passe devant le <style> de fin de corps. */
-.szh-grille-case > .szh-decor { width: 100%; }
-
-/* Écran étroit : la rangée se défait et les images s'empilent. Une case de la largeur d'un
-   pouce ne montre plus rien, et une grille de quatre en vaudrait quatre.
-
-   ⚠ La requête est IMBRIQUÉE dans un « @media screen » nu, et ce n'est pas un ornement :
-   WeasyPrint 69 ne connaît que les types de média, pas leurs caractéristiques. Écrite à
-   plat, « @media screen and (max-width: 34rem) » lui arrache deux avertissements à chaque
-   article compilé — « Expected a media type » puis « the whole @media rule was ignored » —
-   et le journal de compilation, que le cockpit montre au rédacteur, se met à crier pour
-   une règle qui ne concerne pas le papier. Imbriquée, elle est sautée en silence avec le
-   bloc qui la porte, et les navigateurs, eux, la lisent comme avant. Mesuré. */
-@media screen {
-  @media (max-width: 34rem) {
-    .szh-grille-rangee { display: block; }
-    .szh-grille-case { margin-bottom: 6px; }
-    .szh-grille-case:last-child { margin-bottom: 0; }
-    /* Rangée défaite : chaque image est seule sur sa ligne et le partage du plafond
-       entre rangées n'a plus d'objet. On rend le plafond entier, en `width: auto` —
-       la seule forme qu'un moteur ne déforme pas. WeasyPrint n'applique pas
-       @media screen : ces deux règles ne concernent que la lecture à l'écran. */
-    .szh-grille-case { max-width: none; }
-    .szh-grille-case > img { width: auto; max-width: 100%; margin: 0 auto;
-      max-height: var(--plafond-figure); }
-  }
-}
+/* La grille d'images (filters/szh-grille.lua, .szh-grille-rangee/.szh-grille-case et leur
+   repli à l'écran) est désormais dans styles/partage-filtres.css : une grille vaut pour un
+   livre comme pour un article. */
 
 /* ── Fiche de ressource (livre, film, intervention parlementaire, recherche en cours) ──────
    filters/szh-ressource.lua compose le bloc : titre au-dessus, puis une rangée avec le
@@ -604,7 +502,7 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
    court ni étirée par un texte trop long — même principe qu'une case de grille (§ ci-
    dessus), au rapport près. */
 .szh-ressource-image { flex: 0 0 25%; max-width: 25%; }
-/* L'image de la fiche est TOUJOURS décorative (cahier des charges) : szh-numerotation.lua
+/* L'image de la fiche est toujours décorative (cahier des charges) : szh-numerotation.lua
    l'a donc basculée en fond CSS (.szh-decor, voir plus haut), avec sa largeur naturelle en
    pixels. Ici c'est la colonne qui donne la largeur, comme dans une case de grille
    (.szh-grille-case > .szh-decor) — la spécificité de ce sélecteur (deux classes) passe
@@ -639,16 +537,16 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
 
 /* Rubrique de texte riche de la Documentation (liste bibliographique, liste de liens,
    brève d'actualité) : filters/szh-rubrique.lua pose une <section>, un titre déduit du
-   type et de la langue, puis le contenu inchangé. Un CHAPITRE de la Documentation, pas
+   type et de la langue, puis le contenu inchangé. Un chapitre de la Documentation, pas
    un encadré comme .szh-ressource ci-dessus : ni fond, ni filet gauche. Le titre reste un
-   h2 de corps ORDINAIRE (§6) — aucune surcharge de couleur : la maquette ne met déjà
+   h2 de corps ordinaire (§6) — aucune surcharge de couleur : la maquette ne met déjà
    aucun h2 de corps en couleur annuelle (« À propos des auteur·e·s », §8, même parti
    pris), une rubrique ne fait pas exception. Seul un filet fin, lui, porte la couleur
    annuelle : c'est lui qui marque la coupure, --c-annual-ui plutôt que --c-annual brut
    pour la même raison qu'aux bordures de tableau (§7) — un aplat annuel trop clair
    resterait sous le plancher APCA du non textuel (30).
    Espacement au-dessus au même ordre de grandeur que .szh-auteurs (§8) : une rubrique est
-   une coupure de rang comparable. break-inside reste libre PARTOUT ici, à dessein : une
+   une coupure de rang comparable. break-inside reste libre partout ici, à dessein : une
    liste de trente références doit pouvoir se couper entre deux pages, à la différence
    d'une fiche de ressource. */
 .szh-rubrique { margin: 2.6em 0 0; }
@@ -663,41 +561,9 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
 .szh-tableau th, .szh-tableau td { border: 0; }
 .szh-tableau th { background: transparent; }
 
-/* ── Liste de références ──────────────────────────────────────────────────
-   La liste reste le texte de la rédaction ; szh-citations.lua n'ajoute qu'un
-   identifiant sur chaque entrée (.szh-reference) pour que les appels du corps y
-   pointent. Aucune règle de mise en forme ici, donc aucune pagination changée : si un
-   jour la revue veut le retrait pendant d'usage, c'est ici qu'il se posera —
-   `padding-left: 1.4em; text-indent: -1.4em;`. */
-/* Chaque entrée est désormais un bloc, donc son <p> est un dernier enfant et perdrait sa
-   marge par la règle `p:last-child` : on la rend, sauf à la dernière entrée, pour que la
-   liste garde exactement l'aspect qu'elle avait en paragraphes voisins. */
-.szh-reference:not(:last-child) > p:last-child { margin-bottom: 0.7em; }
-/* Cible d'un appel : ne pas laisser le navigateur coller l'entrée au bord haut. */
-.szh-reference { scroll-margin-top: 1.5em; }
-
-/* Flèche retour : posée par szh-citations.lua (fin de Pandoc()) à la suite de la première
-   occurrence appelée de chaque référence — jamais plus d'une par référence, et jamais
-   quand aucune ancre n'existe (référence jamais appelée, ou szh.desactiverLiensReferences
-   actif sans lien manuel). Cible en « #… » : la règle a[href^="#"] du §4 lui a déjà retiré
-   la flèche « lien sortant » et le soulignement, rien à répéter ici.
-   Le <a> est VOLONTAIREMENT VIDE, l'icône un fond CSS et le nom accessible un aria-label
-   explicite (« Retour à l'appel de … » / « Zurück zum Zitatverweis … ») posé par le
-   filtre : même recette qu'a.szh-orcid au §8, pour la même raison — un <a> qui contient un
-   élément casse le lien PDF/UA sous WeasyPrint (anchors.py, règle 7.18.5). Ne pas y remettre
-   un caractère ou un <svg> enfant.
-   Le tracé est un SVG et non un glyphe de police (comme la flèche « lien » du §4 et l'icône
-   ORCID du §8) : aucune dépendance de police, donc aucun risque pour la reproductibilité des
-   PDF que test/polices-check.py contrôle. Même bleu, même trait que la flèche de lien
-   sortant, mais un crochet de retour plutôt qu'une diagonale, pour que l'œil distingue les
-   deux sans avoir à lire. */
-a.szh-retour-appel {
-  display: inline-block;
-  width: 10px; height: 10px;
-  vertical-align: -0.5px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23002A56' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='9 14 4 9 9 4'/%3E%3Cpath d='M20 20v-7a4 4 0 0 0-4-4H4'/%3E%3C/svg%3E");
-  background-size: 100% 100%; background-repeat: no-repeat;
-}
+/* La liste de références (.szh-reference) et la flèche de retour d'une citation
+   (a.szh-retour-appel) sont désormais dans styles/partage-filtres.css : szh-citations.lua
+   les pose aussi bien dans un livre que dans un article. */
 
 /* ═══ 7. Tableaux stylés de l'éditeur maison (.szh-tableau) ════════════════════
    Style porté par les attributs data-* de l'éditeur du cockpit et par <th scope>. L'accent
@@ -710,18 +576,8 @@ a.szh-retour-appel {
    Les tableaux importés bruts (<table> nu) gardent le style générique ci-dessus. */
 
 
-/* Fichier référencé mais introuvable : un tableau (szh-tabelle-inclure.lua) ou la
-   bibliographie détachée (szh-citations.lua). Doit sauter aux yeux à la relecture, pas
-   passer pour une phrase de l'article. Deux sélecteurs, une seule règle : chaque marqueur
-   porte le nom de ce qui manque, et l'encadré est le même. */
-.szh-tabelle-manquante,
-.szh-biblio-manquante {
-  border-left: 4px solid #b3261e;
-  background: #fdecea;
-  padding: 8px 12px;
-  margin: 12px 0;
-  break-inside: avoid;
-}
+/* L'encadré « fichier référencé introuvable » (.szh-tabelle-manquante,
+   .szh-biblio-manquante) est désormais dans styles/partage-filtres.css. */
 
 /* Table éditoriale : pas de grille pleine, seuls les filets choisis apparaissent.
    Largeurs automatiques (table-layout auto + width 100%), l'éditeur n'émettant aucune
@@ -793,7 +649,7 @@ a.szh-retour-appel {
   margin-top: 2.6em;
 }
 /* Titre du bloc : un h2 de corps ordinaire, au même rang que « Références ». Il ne
-   porte donc AUCUNE surcharge de taille, de graisse ou de casse — c'est le §6 qui le
+   porte donc aucune surcharge de taille, de graisse ou de casse — c'est le §6 qui le
    style, et le seul écart est la marge basse, le bloc qui suit n'étant pas du texte
    courant. Rien à dé-numéroter : ce titre est écrit par le template, hors document
    pandoc, donc szh-sections.lua ne le voit pas. */
@@ -809,7 +665,7 @@ a.szh-retour-appel {
   margin: 0 0 1.2em;
 }
 .szh-auteur:last-child { margin-bottom: 0; }
-/* Portrait : un <span> vide à fond CSS, et PAS un <img>. ⚠ Ne pas le rétablir en <img>,
+/* Portrait : un <span> vide à fond CSS, et pas un <img>. ⚠ Ne pas le rétablir en <img>,
    c'est déjà arrivé deux fois. Le portrait est une image décorative : il n'a aucun texte
    alternatif, délibérément. Le nom de la personne est écrit juste à côté, donc un alt le
    répéterait pour rien ; et un alt fabriqué depuis ce nom affirmerait une identité que le
@@ -840,30 +696,5 @@ a.szh-retour-appel {
 .szh-auteur-email { margin: 0.25em 0 0; text-align: left; font-size: 0.85rem; }
 .szh-auteur-email a[href] { overflow-wrap: anywhere; }
 
-/* Icône-lien ORCID : ni soulignement ni flèche « lien », l'icône est le repère.
-   Sélecteurs a.szh-orcid pour égaler la spécificité de a[href] et a[href]::after du §4,
-   sinon ils l'emportent.
-   ⚠ L'icône est un FOND, et le <a> du gabarit est vide : ne pas y remettre le <svg>.
-   Un <a> qui contient un élément fait produire à WeasyPrint une annotation de lien par
-   boîte descendante (anchors.py : la propriété `link` est héritée), et une seule est
-   rattachée au /Link de l'arbre de structure — les autres pendent sous /Span ou
-   /NonStruct, ce que PDF/UA-1 interdit (règle 7.18.5). Le nom accessible du lien vient
-   de son aria-label, pas de son contenu. */
-a.szh-orcid {
-  text-decoration: none;
-  display: inline-block; width: 12px; height: 12px; vertical-align: -1.5px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Ccircle cx='128' cy='128' r='128' fill='%23002A56'/%3E%3Cpath fill='%23ffffff' fill-rule='evenodd' d='M86.3 186.2H70.9V79.1h15.4v107.1zM108.9 79.1h41.6c39.6 0 57 28.3 57 53.6 0 27.5-21.5 53.6-56.8 53.6h-41.8V79.1zm15.4 93.3h24.5c34.9 0 42.9-26.5 42.9-39.7 0-21.5-13.7-39.7-43.7-39.7h-23.7v79.4zM88.7 56.8c0 5.5-4.5 10.1-10.1 10.1s-10.1-4.6-10.1-10.1c0-5.6 4.5-10.1 10.1-10.1s10.1 4.6 10.1 10.1z'/%3E%3C/svg%3E");
-  background-size: 100% 100%; background-repeat: no-repeat;
-}
-a.szh-orcid::after { content: none; }
-
-/* ── Image décorative (alt="") ─────────────────────────────────────────────────
-   Rendue en fond CSS et non en <img> : voir szh-numerotation.lua, qui explique pourquoi
-   (WeasyPrint balise tout <img> en /Figure, et une /Figure sans /Alt n'est pas conforme).
-   Ici la seule géométrie ; la largeur naturelle et le rapport hauteur/largeur de chaque
-   image sont écrits par le filtre dans un <style> de fin de corps.
-   `display: inline-block` et non `block` : comme un <img>, l'image décorative reste un
-   élément en ligne dans son paragraphe, sinon la ligne perdrait son interlignage. */
-.szh-decor { display: inline-block; max-width: 100%; }
-.szh-decor > span { display: block; height: 0; background-size: 100% 100%;
-  background-repeat: no-repeat; }
+/* L'icône-lien ORCID (a.szh-orcid) et l'image décorative en fond CSS (.szh-decor) sont
+   désormais dans styles/partage-filtres.css, avec les autres icônes de filtre partagé. */

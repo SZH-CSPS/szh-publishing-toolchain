@@ -37,6 +37,9 @@ import os
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import szh_commun
+
 # U2NET_HOME doit être posé avant l'import de rembg, c'est là qu'il cherche ses modèles ;
 # on ne l'écrase pas s'il est déjà dans l'environnement (tests hors rootfs).
 os.environ.setdefault("U2NET_HOME", "/opt/portraits/models")
@@ -178,18 +181,7 @@ def cadrer_centre(img):
 def ecrire_atomique(img, chemin):
     """PNG écrit dans un temporaire du dossier cible puis os.replace : le
     fichier final n'est jamais visible à moitié écrit (OneDrive, cockpit)."""
-    dossier = os.path.dirname(chemin) or "."
-    tmp = os.path.join(dossier, f".~{os.path.basename(chemin)}.{os.getpid()}.tmp")
-    try:
-        with open(tmp, "wb") as flux:
-            img.save(flux, format="PNG")
-        os.replace(tmp, chemin)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    szh_commun.ecrire_atomique(chemin, lambda flux: img.save(flux, format="PNG"))
 
 
 def traiter(slug, source, dossier, detecteur, session):

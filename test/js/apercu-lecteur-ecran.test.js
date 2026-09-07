@@ -33,11 +33,12 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const FILTRES = path.join(RACINE, 'pipeline', 'filters');
 const MODULE = path.join(FILTRES, 'szh-apercu-lecteur-ecran.lua');
 const NUMEROTATION = path.join(FILTRES, 'szh-numerotation.lua');
-// La feuille du PDF est en deux fichiers : socle.css porte les polices et les jetons,
-// print.css la mise en page. Les contrôles ci-dessous les lisent COMME UNE SEULE, dans
-// l'ordre où le Makefile les empile — une règle de print.css renvoie à un jeton du socle,
-// et savoir de quel fichier vient quoi n'apprendrait rien de plus ici.
-const FEUILLES_PDF = ['socle.css', 'print.css']
+// La feuille du PDF est en trois fichiers : socle.css porte les polices et les jetons,
+// partage-filtres.css le balisage des filtres communs au livre, print.css la mise en page
+// propre à la revue. Les contrôles ci-dessous les lisent COMME UNE SEULE, dans l'ordre où
+// le Makefile les empile — une règle de print.css renvoie à un jeton du socle, et savoir de
+// quel fichier vient quoi n'apprendrait rien de plus ici.
+const FEUILLES_PDF = ['socle.css', 'partage-filtres.css', 'print.css']
   .map((n) => path.join(RACINE, 'pipeline', 'styles', n));
 
 const lire = (p) => fs.readFileSync(p, 'utf8');
@@ -60,17 +61,22 @@ const CLASSES = ['szh-lecteur-ecran', 'szh-le-entete', 'szh-le-ligne', 'szh-le-t
 
 // ---- Le PDF n'en porte aucune trace ----
 
-test('le module des encadrés n’est chargé que sous SZH_APERCU', () => {
+test('le module des encadrés n’est chargé que sous SZH_APERCU, le module commun toujours', () => {
   assert.match(numerotation, /local APERCU = \(os\.getenv\('SZH_APERCU'\) or ''\) ~= ''/,
     'szh-numerotation.lua doit lire SZH_APERCU comme szh-citations.lua');
-  // Le dofile vit dans le `if APERCU then`, et nulle part ailleurs.
+  // Le dofile de l'aperçu vit dans le `if APERCU then`, et nulle part ailleurs.
   const garde = numerotation.match(/if APERCU then[\s\S]*?\nend\n/);
   assert.ok(garde, 'aucun bloc « if APERCU then » dans szh-numerotation.lua');
   assert.match(garde[0], /dofile/, 'le chargement du module doit être dans la garde');
-  const dofiles = numerotation.match(/dofile/g) || [];
-  assert.strictEqual(dofiles.length, 1,
-    'un seul dofile : un second pourrait s’exécuter hors de la garde');
   assert.match(garde[0], /szh-apercu-lecteur-ecran\.lua/);
+  // Deux dofile en tout, chacun nommé : celui de l'aperçu ci-dessus (sous garde) et celui
+  // du module commun de langue/slug (szh-commun.lua), chargé pour toute compilation — un
+  // troisième signalerait un chargement non maîtrisé.
+  const dofiles = numerotation.match(/dofile/g) || [];
+  assert.strictEqual(dofiles.length, 2,
+    'deux dofile attendus : celui de l’aperçu (sous garde) et celui de szh-commun.lua');
+  assert.ok(numerotation.indexOf("dofile, dossier_ce_fichier() .. 'szh-commun.lua'") !== -1,
+    'szh-numerotation.lua ne charge plus szh-commun.lua par dofile, nommé');
 });
 
 test('chaque appel au module est gardé par « if lecteur_ecran »', () => {

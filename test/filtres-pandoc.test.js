@@ -14,6 +14,8 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 
 const { spawnSync } = require('child_process');
 
@@ -263,4 +265,230 @@ test('mots-clés : le tri est indépendant par langue', (t) => {
     'liste française altérée : ' + JSON.stringify(res.fr));
   assert.deepEqual(res.de, ['Anlage', 'Österreich', 'Wien'],
     'liste allemande altérée : ' + JSON.stringify(res.de));
+});
+
+// ── Détection de langue : le comportement ACTUEL de quatre filtres ─────────────────────
+// szh-maquette.lua, szh-numerotation.lua, szh-ressource.lua et szh-citations.lua lisent
+// chacun la langue de composition à leur manière — quatre fonctions indépendantes,
+// jamais un module commun (chacune le redit dans son propre commentaire de tête). Ce qui
+// suit ne corrige rien : ça fixe ce qu'elles font aujourd'hui, sur les quatre cas qui les
+// distinguent, pour qu'un futur chantier de convergence parte d'un état mesuré plutôt que
+// supposé. Chaque test vérifie D'ABORD que sa sortie dépend réellement du filtre — le
+// patron déjà suivi plus haut dans ce fichier.
+//
+// Seul szh-maquette.lua et szh-numerotation.lua et szh-citations.lua relisent
+// <slug>.meta.yaml sur le disque (io.open, pas les métadonnées fusionnées de pandoc) :
+// le prouver demande un VRAI fichier, au bon nom, dans le dossier courant de pandoc —
+// une invocation par stdin, sans nom de fichier, ne peut pas nourrir cette lecture.
+// szh-ressource.lua, lui, ne lit que les métadonnées déjà fusionnées (meta.lang,
+// meta.revue) : sans --metadata-file pour la fiche, il ne la voit jamais, quand bien
+// même elle existerait à côté du .md — le cas « fiche seule » ci-dessous le montre.
+
+function dossierJetable(prefixe) {
+  return fs.mkdtempSync(path.join(os.tmpdir(), prefixe));
+}
+
+// Écrit les fichiers donnés (nom -> contenu) dans un dossier jetable, lance pandoc DEPUIS
+// ce dossier sur `principal`, avec le filtre donné. `essai.meta.yaml`, s'il est fourni,
+// n'est jamais passé en --metadata-file : seule une lecture directe par le filtre
+// (io.open) le verra, exactement comme dans la chaîne réelle où le Makefile ne le passe
+// pas non plus à cette place (voir szh-numerotation.lua, langue_fiche()).
+function pandocDansDossier(fichiers, principal, filtre) {
+  const dossier = dossierJetable('szh-langue-');
+  try {
+    for (const nom of Object.keys(fichiers)) {
+      fs.writeFileSync(path.join(dossier, nom), fichiers[nom], 'utf8');
+    }
+    const args = ['--from=markdown', '--to=markdown', '--wrap=none', '--standalone',
+      '--lua-filter=' + path.join(FILTRES, filtre), principal];
+    const r = spawnSync('pandoc', args, { cwd: dossier, encoding: 'utf8' });
+    if (r.error) { throw new Error('pandoc introuvable : ' + r.error.message); }
+    // Un pandoc natif Windows imprime du CRLF (traduction de fin de ligne du runtime
+    // Haskell, indépendante des filtres) : uniformisé ici, comme trierMotscles() plus
+    // haut dans ce fichier, pour que les motifs ancrés sur `\n` nu restent valables
+    // quelle que soit la plateforme qui fait tourner ce test.
+    const stdout = (r.stdout || '').replace(/\r\n/g, '\n');
+    return { stdout, stderr: r.stderr, status: r.status };
+  } finally {
+    fs.rmSync(dossier, { recursive: true, force: true });
+  }
+}
+
+// ── szh-maquette.lua : lit <slug>.meta.yaml en premier, meta.lang puis le jeton de revue,
+// « fr » en dernier repli. Sortie observée : le `lang:` qu'il pose lui-même sur le document
+// (meta['lang'], §Meta() en toute fin) — visible tel quel dans le bloc YAML du writer
+// markdown --standalone.
+function docMaquette(entete) {
+  return '---\n' + entete + 'title:\n  fr: "Titre"\n  de: "Titel"\n---\n\nCorps.\n';
+}
+
+test('langue (préparation) : szh-maquette.lua sans filtre ne pose aucun lang: propre', () => {
+  const r = pandocDansDossier({ 'essai.md': docMaquette('') }, 'essai.md', 'szh-attributs-sains.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!/\nlang: /.test(r.stdout), 'un lang: existe déjà sans szh-maquette.lua : ' + r.stdout);
+});
+
+test('langue : szh-maquette.lua — fiche avec lang: de l’emporte sur revue: revue', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': docMaquette('revue: revue\n'), 'essai.meta.yaml': 'lang: de\n' },
+    'essai.md', 'szh-maquette.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /\nlang: de\n/, 'la fiche ne l’emporte plus sur le jeton de revue : ' + r.stdout);
+});
+
+test('langue : szh-maquette.lua — meta.lang seul', () => {
+  const r = pandocDansDossier({ 'essai.md': docMaquette('lang: de\n') }, 'essai.md', 'szh-maquette.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /\nlang: de\n/, r.stdout);
+});
+
+test('langue : szh-maquette.lua — jeton de revue: zeitschrift seul', () => {
+  const r = pandocDansDossier({ 'essai.md': docMaquette('revue: zeitschrift\n') }, 'essai.md', 'szh-maquette.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /\nlang: de\n/, r.stdout);
+});
+
+test('langue : szh-maquette.lua — rien du tout, repli français', () => {
+  const r = pandocDansDossier({ 'essai.md': docMaquette('') }, 'essai.md', 'szh-maquette.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /\nlang: fr\n/, r.stdout);
+});
+
+// ── szh-numerotation.lua : sa propre langue_fiche()/langue_de(), même ordre de priorité.
+// Sortie observée : le libellé qu'il pose devant une légende de figure — « Figure » ou
+// « Abbildung ».
+function docNumerotation(entete) {
+  return '---\n' + entete + '---\n\n![Légende de test](x.png)\n';
+}
+
+test('langue (préparation) : sans szh-numerotation.lua, pas de préfixe de légende', () => {
+  const r = pandocDansDossier({ 'essai.md': docNumerotation('') }, 'essai.md', 'szh-attributs-sains.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!/Figure 1|Abbildung 1/.test(r.stdout), 'un préfixe existe déjà sans le filtre : ' + r.stdout);
+});
+
+test('langue : szh-numerotation.lua — fiche avec lang: de l’emporte sur revue: revue', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': docNumerotation('revue: revue\n'), 'essai.meta.yaml': 'lang: de\n' },
+    'essai.md', 'szh-numerotation.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Abbildung 1/, 'la fiche ne l’emporte plus sur le jeton de revue : ' + r.stdout);
+});
+
+test('langue : szh-numerotation.lua — meta.lang seul', () => {
+  const r = pandocDansDossier({ 'essai.md': docNumerotation('lang: de\n') }, 'essai.md', 'szh-numerotation.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Abbildung 1/, r.stdout);
+});
+
+test('langue : szh-numerotation.lua — jeton de revue: zeitschrift seul', () => {
+  const r = pandocDansDossier({ 'essai.md': docNumerotation('revue: zeitschrift\n') }, 'essai.md', 'szh-numerotation.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Abbildung 1/, r.stdout);
+});
+
+test('langue : szh-numerotation.lua — rien du tout, repli français', () => {
+  const r = pandocDansDossier({ 'essai.md': docNumerotation('') }, 'essai.md', 'szh-numerotation.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Figure 1/, r.stdout);
+});
+
+// ── szh-ressource.lua : SA propre langue_de(), plus simple — meta.lang direct (fr/de
+// seulement, pas de lecture de fiche), puis le jeton de revue, « fr » en dernier repli.
+// Sortie observée : le texte du lien généré, qui nomme la ressource dans la langue
+// détectée — « En savoir plus sur le livre… » / « Mehr zum Buch… ».
+function docRessource(entete) {
+  return '---\n' + entete + '---\n\n'
+    + '::: {#r1 .szh-ressource type="livre" titre="Mon Titre" lien="https://exemple.org"}\n'
+    + 'Descriptif.\n:::\n';
+}
+
+test('langue (préparation) : sans szh-ressource.lua, pas de texte de lien généré', () => {
+  const r = pandocDansDossier({ 'essai.md': docRessource('') }, 'essai.md', 'szh-attributs-sains.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!/savoir plus|Mehr zum/.test(r.stdout), 'un texte de lien existe déjà sans le filtre : ' + r.stdout);
+});
+
+test('langue : szh-ressource.lua — une fiche sur le disque, JAMAIS lue (pas de meta.lang fusionné)', () => {
+  // Contrairement aux trois autres, ce filtre ne relit aucun fichier : seules les
+  // métadonnées que pandoc a déjà fusionnées comptent. Une fiche présente mais non
+  // passée en --metadata-file (comme ici) n'a donc AUCUN effet — le résultat retombe
+  // sur le même repli français que « rien du tout ».
+  const r = pandocDansDossier(
+    { 'essai.md': docRessource('revue: revue\n'), 'essai.meta.yaml': 'lang: de\n' },
+    'essai.md', 'szh-ressource.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /En savoir plus sur le livre Mon Titre/,
+    'la fiche sur le disque a été lue alors que szh-ressource.lua ne le fait jamais : ' + r.stdout);
+});
+
+test('langue : szh-ressource.lua — meta.lang seul', () => {
+  const r = pandocDansDossier({ 'essai.md': docRessource('lang: de\n') }, 'essai.md', 'szh-ressource.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Mehr zum Buch Mon Titre/, r.stdout);
+});
+
+test('langue : szh-ressource.lua — jeton de revue: zeitschrift seul', () => {
+  const r = pandocDansDossier({ 'essai.md': docRessource('revue: zeitschrift\n') }, 'essai.md', 'szh-ressource.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Mehr zum Buch Mon Titre/, r.stdout);
+});
+
+test('langue : szh-ressource.lua — rien du tout, repli français', () => {
+  const r = pandocDansDossier({ 'essai.md': docRessource('') }, 'essai.md', 'szh-ressource.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /En savoir plus sur le livre Mon Titre/, r.stdout);
+});
+
+// ── szh-citations.lua : langue_article(), même ordre que szh-maquette.lua (sa propre
+// duplication assumée, voir son commentaire de tête). Sortie observée : le titre de
+// bibliographie posé au-dessus de la liste résolue — « Références » ou « Literatur »
+// (TITRES_BIBLIO_DEFAUT ne distingue pas « revue » de « zeitschrift », seule la langue
+// compte pour ce titre-là).
+function docCitations(entete) {
+  return '---\n' + entete + '---\n\n'
+    + 'Un texte, sans appel à lier ici.\n\n'
+    + '::: {.szh-biblio src="essai.biblio.md"}\n:::\n';
+}
+const BIBLIO_ESSAI = 'Dupont, J. (2020). Un titre. Éditions.\n';
+
+test('langue (préparation) : sans szh-citations.lua, la référence à la bibliographie n’est pas résolue', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': docCitations(''), 'essai.biblio.md': BIBLIO_ESSAI },
+    'essai.md', 'szh-attributs-sains.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!/Références|Literatur/.test(r.stdout), 'un titre de bibliographie existe déjà sans le filtre : ' + r.stdout);
+});
+
+test('langue : szh-citations.lua — fiche avec lang: de l’emporte sur revue: revue', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': docCitations('revue: revue\n'), 'essai.meta.yaml': 'lang: de\n',
+      'essai.biblio.md': BIBLIO_ESSAI },
+    'essai.md', 'szh-citations.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Literatur/, 'la fiche ne l’emporte plus sur le jeton de revue : ' + r.stdout);
+});
+
+test('langue : szh-citations.lua — meta.lang seul', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': docCitations('lang: de\n'), 'essai.biblio.md': BIBLIO_ESSAI },
+    'essai.md', 'szh-citations.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Literatur/, r.stdout);
+});
+
+test('langue : szh-citations.lua — jeton de revue: zeitschrift seul', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': docCitations('revue: zeitschrift\n'), 'essai.biblio.md': BIBLIO_ESSAI },
+    'essai.md', 'szh-citations.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Literatur/, r.stdout);
+});
+
+test('langue : szh-citations.lua — rien du tout, repli français', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': docCitations(''), 'essai.biblio.md': BIBLIO_ESSAI },
+    'essai.md', 'szh-citations.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Références/, r.stdout);
 });

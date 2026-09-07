@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 # livre-assembler.py — assemble les fragments HTML des chapitres, les liminaires et le
-# sommaire en UN document, celui que WeasyPrint paginera.
+# sommaire en un document, celui que WeasyPrint paginera.
 #
 #   python3 livre-assembler.py --meta buch.yaml --gabarit <g.html> --sortie <out.html>
 #                              [--css <feuille>]... [--css-embed <feuille>]... <fragment>...
 #
 # --css lie la feuille (<link>) : la voie du PDF, où un chemin absolu ne pose pas de
-# problème. --css-embed l'incorpore (<style>) : la voie du HTML web, qui doit rester UN
-# SEUL fichier ouvrable par file:// sans rien à côté — voir main() pour le détail.
+# problème. --css-embed l'incorpore (<style>) : la voie du HTML web, qui doit rester un
+# seul fichier ouvrable par file:// sans rien à côté — voir main() pour le détail.
 #
 # Pourquoi un assembleur, et pas une seule invocation de pandoc sur tous les chapitres.
 # La règle de compilation fait `cd chapitres/<slug>` avant pandoc, pour que `media/` tombe
-# juste — c'est ce qui permet à un chapitre d'être compilé EXACTEMENT comme un article de
+# juste — c'est ce qui permet à un chapitre d'être compilé exactement comme un article de
 # revue, avec la même suite de filtres et le même gestionnaire de médias. Douze chapitres,
 # ce sont douze dossiers courants différents : une seule invocation ne peut pas les avoir
 # tous. On compile donc chapitre par chapitre, avec --embed-resources, et l'assemblage
-# devient une opération de TEXTE : chaque fragment est déjà autonome, images comprises en
+# devient une opération de texte : chaque fragment est déjà autonome, images comprises en
 # data: URI. Mesuré sur le banc : zéro chemin relatif survivant dans un fragment.
 #
 # Ce que ce script fait, et rien d'autre :
@@ -35,92 +35,13 @@ import os
 import re
 import sys
 
-# --------------------------------------------------------------------------------------
-# Analyseur YAML plat, du même modèle que celui de szh-common.ps1 et de lib/yaml.js : une
-# clé par ligne, listes en tirets, sous-blocs indentés d'un niveau. Il ne prétend pas lire
-# YAML ; il lit LE fichier que le cockpit écrit.
-# --------------------------------------------------------------------------------------
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import szh_commun
 
-def _valeur(brut):
-    v = brut.strip()
-    if len(v) >= 2 and v[0] == v[-1] and v[0] in ('"', "'"):
-        v = v[1:-1]
-    if v in ('true', 'True'):
-        return True
-    if v in ('false', 'False'):
-        return False
-    return v
-
-
-def lire_yaml(chemin):
-    """Rend un dict. Une passe, trois formes, et rien d'autre :
-
-        cle: valeur              -> chaîne, booléen
-        cle: [a, b]              -> liste sur une ligne
-        cle:                     -> bloc, suivi soit de « - item » (liste), soit de
-          sous-cle: valeur          lignes indentées (dict)
-
-    Ce n'est pas un analyseur YAML et cela n'essaie pas de l'être : c'est le lecteur du
-    fichier que le cockpit écrit. Une construction qu'il ne connaît pas est ignorée en
-    silence plutôt qu'inventée.
-    """
-    racine = {}
-    try:
-        lignes = open(chemin, encoding='utf-8-sig').read().splitlines()
-    except OSError:
-        return racine
-    cle = None          # la clé de premier niveau en cours de remplissage
-    conteneur = None    # la liste ou le dict qu'elle porte, quand elle en porte un
-    for ligne in lignes:
-        if not ligne.strip() or ligne.lstrip().startswith('#'):
-            continue
-        indent = len(ligne) - len(ligne.lstrip())
-        nu = ligne.strip()
-
-        # ⚠ Un item de liste s'écrit AU FER À GAUCHE dans les fiches de la maison —
-        # `auteurs:` puis `- prenom: …` en colonne 0, comme dans les <slug>.meta.yaml de
-        # la revue. Le tiret se teste donc AVANT l'indentation, sans quoi « - prenom »
-        # passerait pour une clé de premier niveau et la liste des auteur·e·s se perdrait.
-        if indent == 0 and not nu.startswith('- '):
-            if ':' not in nu:
-                continue
-            c, _, v = nu.partition(':')
-            cle, v = c.strip(), v.strip()
-            conteneur = None
-            if v == '':
-                racine[cle] = None          # bloc : la ligne suivante dira lequel
-            elif v.startswith('[') and v.endswith(']'):
-                racine[cle] = [_valeur(x) for x in v[1:-1].split(',') if x.strip()]
-            else:
-                racine[cle] = _valeur(v)
-            continue
-
-        if cle is None:
-            continue
-
-        if nu.startswith('- '):
-            if not isinstance(conteneur, list):
-                conteneur = []
-                racine[cle] = conteneur
-            item = nu[2:]
-            if ':' in item:
-                c, _, v = item.partition(':')
-                conteneur.append({c.strip(): _valeur(v)})
-            else:
-                conteneur.append(_valeur(item))
-            continue
-
-        if ':' in nu:
-            c, _, v = nu.partition(':')
-            # Ligne indentée sous un tiret : elle complète le dernier item de la liste.
-            if isinstance(conteneur, list) and conteneur and isinstance(conteneur[-1], dict):
-                conteneur[-1][c.strip()] = _valeur(v)
-                continue
-            if not isinstance(conteneur, dict):
-                conteneur = {}
-                racine[cle] = conteneur
-            conteneur[c.strip()] = _valeur(v)
-    return racine
+# Analyseur YAML plat (une clé par ligne, listes en tirets, sous-blocs indentés d'un
+# niveau) : voir szh_commun.lire_yaml(), dont couverture.py se sert aussi — une divergence
+# entre les deux lecteurs serait un livre dont la couverture et l'intérieur se contredisent.
+lire_yaml = szh_commun.lire_yaml
 
 
 # --------------------------------------------------------------------------------------
@@ -135,7 +56,7 @@ RE_BALISE = re.compile(r'<[^>]+>')
 # La couleur d'un chapitre est déjà dans son fragment : livre.mk (PALETTE_CHAPITRE) l'a
 # posée en --c-chapitre sur la <section class="szh-chapitre"> qui l'enveloppe (voir
 # templates/szh-livre-chapitre.html) — c'est ce qui peint la pastille et l'onglet de
-# tranche sur la page d'ouverture. On la LIT ici, on ne la recalcule pas : un chapitre, un
+# tranche sur la page d'ouverture. On la lit ici, on ne la recalcule pas : un chapitre, un
 # seul calcul de sa couleur. Une liminaire ou la 4e de couverture n'a pas cette section et
 # ne matche donc jamais — ses entrées de sommaire, s'il y en avait, resteraient sans
 # couleur, ce qui est la bonne réponse : elles n'appartiennent à aucun chapitre.
@@ -193,7 +114,11 @@ def sommaire_html(entrees, titre):
 # Liminaires composés par la machine.
 # --------------------------------------------------------------------------------------
 
-def _auteurs_ligne(meta):
+# Même table que CONJONCTION dans szh-livre-auteurs.lua : la conjonction avant le dernier nom.
+CONJONCTION_AUTEURS = {'fr': ' et ', 'de': ' und ', 'it': ' e ', 'en': ' and '}
+
+
+def _auteurs_ligne(meta, lang='fr'):
     """« Prénom Nom, Prénom Nom et Prénom Nom ». Rien de plus : le bloc auteurs détaillé
     (fonction, affiliation, ORCID) est l'affaire des chapitres."""
     noms = []
@@ -208,25 +133,26 @@ def _auteurs_ligne(meta):
         return ''
     if len(noms) == 1:
         return noms[0]
-    return ', '.join(noms[:-1]) + ' et ' + noms[-1]
+    conjonction = CONJONCTION_AUTEURS.get(lang, CONJONCTION_AUTEURS['fr'])
+    return ', '.join(noms[:-1]) + conjonction + noms[-1]
 
 
-def demi_titre(meta):
+def demi_titre(meta, lang='fr'):
     return ('<section class="szh-liminaire szh-demi-titre">'
             '<p class="szh-auteurs">%s</p>'
             '<p class="szh-titre">%s</p>'
             '<p class="szh-sous-titre">%s</p></section>'
-            % (html.escape(_auteurs_ligne(meta)),
+            % (html.escape(_auteurs_ligne(meta, lang)),
                html.escape(str(meta.get('titre') or '')),
                html.escape(str(meta.get('sous-titre') or ''))))
 
 
-def page_titre(meta):
+def page_titre(meta, lang='fr'):
     return ('<section class="szh-liminaire szh-page-titre">'
             '<p class="szh-auteurs">%s</p>'
             '<p class="szh-titre">%s</p>'
             '<p class="szh-sous-titre">%s</p></section>'
-            % (html.escape(_auteurs_ligne(meta)),
+            % (html.escape(_auteurs_ligne(meta, lang)),
                html.escape(str(meta.get('titre') or '')),
                html.escape(str(meta.get('sous-titre') or ''))))
 
@@ -322,35 +248,25 @@ def _url_absolues(css_texte, css_chemin):
 
 
 # --------------------------------------------------------------------------------------
-# Substitution des jetons du gabarit — EN ÉVITANT SES PROPRES COMMENTAIRES.
+# Substitution des jetons du gabarit, jamais à l'intérieur d'un commentaire HTML de celui-ci.
 #
-# CAUSE PROUVÉE d'un défaut PDF/UA-1 réel (ISO 14289-1 7.4.2-1, « H1 doit être le premier »)
-# sur 2025-B329-CSPS_ProspectrumFALC_FR : szh-livre.html explique en tête, dans son propre
-# commentaire HTML, ce que fait l'assembleur — « remplacement de jetons littéraux ($titre$,
-# $corps$…) ». Un remplacement fait au ras du texte (`str.replace` sur le gabarit ENTIER)
-# matchait ce rappel documentaire comme s'il s'agissait du VRAI jeton, et injectait le
-# corps entier du livre — les 9 chapitres — À L'INTÉRIEUR DU COMMENTAIRE D'EN-TÊTE, en
-# plus de son unique vraie place plus bas. Sans danger tant que ce commentaire reste bien
-# formé : un contenu qui referme un commentaire HTML par accident change tout. Or pandoc
-# pose lui-même un « <!-- --> » entre deux listes adjacentes de même type (pour qu'un outil
-# qui relit le HTML ne les recolle pas en une seule) — mesuré : le chapitre 06 en contient
-# un. Ce commentaire-jouet, une fois dupliqué dans le commentaire du gabarit, LE REFERMAIT
-# PRÉMATURÉMENT : tout ce qui suivait (jusqu'au <html>, <head>, $corps$ compris) devenait du
-# HTML bien réel, situé AVANT même la balise <html> — de quoi faire reconstruire à tout
-# analyseur HTML5 conforme (WeasyPrint compris) un arbre où le premier titre du livre n'est
-# plus au premier rang. Mesuré sur le PDF produit : aucun H1 dans l'arbre de structure, le
-# titre du premier chapitre tagué H2 — sans qu'un seul niveau de titre n'ait bougé dans le
-# texte source (le HTML assemblé, lu tel quel, montre bien un <h1> à sa place).
+# Un remplacement fait au ras du texte (`str.replace` sur le gabarit entier) matcherait
+# aussi bien un jeton cité dans un commentaire de documentation du gabarit que celui que
+# pandoc insère lui-même entre deux listes adjacentes de même type d'un fragment (pour
+# qu'un outil qui relit le HTML ne les recolle pas en une seule) ; refermer ce commentaire
+# par erreur fait alors passer tout ce qui suit pour du HTML réel avant la balise <html>,
+# ce qui a déjà fait sortir un livre publié sans H1 dans son arbre de structure (PDF/UA-1
+# non conforme), sans qu'un seul niveau de titre n'ait bougé dans le texte source.
 #
 # Le remède ne touche pas au commentaire — le nommer est légitime, c'est de la
-# documentation — il rend le REMPLACEMENT aveugle à ce qu'il y a dans un commentaire.
+# documentation — il rend le remplacement aveugle à ce qu'il y a dans un commentaire.
 _RE_COMMENTAIRE = re.compile(r'(<!--.*?-->)', re.S)
 
 
 def _remplacer_jetons(gabarit, remplacements):
-    """Substitue les jetons du dict PARTOUT SAUF dans un commentaire HTML du gabarit.
+    """Substitue les jetons du dict partout sauf dans un commentaire HTML du gabarit.
 
-    `re.split` avec un groupe CAPTURANT rend une liste où les commentaires eux-mêmes
+    `re.split` avec un groupe capturant rend une liste où les commentaires eux-mêmes
     alternent avec le texte qui les sépare : indices pairs = hors commentaire (à
     substituer), indices impairs = le commentaire tel quel (à laisser intact, jetons
     littéraux compris)."""
@@ -387,7 +303,7 @@ def metadonnees_epub(meta):
         lignes.append('subtitle: ' + guillemets(meta['sous-titre']))
     lignes.append('lang: ' + guillemets(str(meta.get('lang') or 'fr')))
 
-    # Les auteur·e·s de l'OUVRAGE. En ouvrage collectif la liste est vide, et c'est voulu :
+    # Les auteur·e·s de l'ouvrage. En ouvrage collectif la liste est vide, et c'est voulu :
     # les auteur·e·s y sont ceux des chapitres, et les hisser en dc:creator du volume
     # attribuerait le livre entier à la première personne de la liste.
     noms = []
@@ -432,6 +348,11 @@ def main(argv):
     seul fichier qu'on partage ou qu'on ouvre par file:// sans rien à côté — et un <link>
     vers un chemin absolu du poste de compilation ne survivrait pas au voyage."""
     meta_p = gabarit_p = sortie_p = meta_epub = None
+    # Dossier de sortie du livre (celui que livre.mk appelle $(OUT), toujours « out » sur ce
+    # dépôt) : un argument plutôt qu'un chemin en dur, pour que la recherche des liminaires
+    # écrits à la main (out/liminaires/<nom>.html) suive livre.mk si ce dossier changeait un
+    # jour. SZH_OUT_LIVRE en repli, pour un appel hors Makefile (tests, essai à la main).
+    out_dir = os.environ.get('SZH_OUT_LIVRE') or 'out'
     feuilles, feuilles_incorporees, fragments = [], [], []
     i = 1
     while i < len(argv):
@@ -454,6 +375,9 @@ def main(argv):
         elif a == '--css-embed' and i + 1 < len(argv):
             feuilles_incorporees.append(argv[i + 1])
             i += 2
+        elif a == '--out' and i + 1 < len(argv):
+            out_dir = argv[i + 1]
+            i += 2
         elif a.startswith('--'):
             print('[livre] option inconnue : ' + a, file=sys.stderr)
             return 2
@@ -462,8 +386,8 @@ def main(argv):
             i += 1
     if not (meta_p and gabarit_p and sortie_p):
         print('usage: livre-assembler.py --meta buch.yaml --gabarit g.html '
-              '--sortie out.html [--css f.css]... [--css-embed f.css]... '
-              '<fragment>...', file=sys.stderr)
+              '--sortie out.html [--out dossier] [--css f.css]... '
+              '[--css-embed f.css]... <fragment>...', file=sys.stderr)
         return 2
 
     meta = lire_yaml(meta_p)
@@ -484,10 +408,10 @@ def main(argv):
     # à la main, compilée comme un chapitre ; les autres sont des mots-clés que la machine
     # compose à partir de buch.yaml.
     composeurs = {
-        'demi-titre': lambda: demi_titre(meta),
+        'demi-titre': lambda: demi_titre(meta, langue),
         'colophon':   lambda: impressum(meta),
         'impressum':  lambda: impressum(meta),
-        'page-titre': lambda: page_titre(meta),
+        'page-titre': lambda: page_titre(meta, langue),
         'sommaire':   lambda: sommaire_html(entrees,
                                             TITRES_SOMMAIRE.get(langue, 'Sommaire')),
     }
@@ -497,13 +421,24 @@ def main(argv):
         if piece in composeurs:
             tete.append(composeurs[piece]())
         elif piece.endswith('.md'):
-            f = os.path.join(racine, 'out', 'liminaires', piece[:-3] + '.html')
+            f = os.path.join(racine, out_dir, 'liminaires', piece[:-3] + '.html')
             if os.path.exists(f):
                 tete.append('<section class="szh-liminaire szh-romain">'
                             + open(f, encoding='utf-8').read() + '</section>')
             else:
-                print('[livre] liminaire annonce mais non compile : ' + piece,
-                      file=sys.stderr)
+                # Une pièce liminaire annoncée dans buch.yaml (`liminaires:`) mais jamais
+                # compilée manquerait au livre sans un mot si on continuait : un simple
+                # print sur stderr, suivi d'un retour 0, laissait partir un livre incomplet
+                # en se donnant l'air d'avoir réussi. Ici, l'absence arrête l'assemblage.
+                print('[livre-blocage] liminaire-introuvable | pièce « ' + piece + ' » | '
+                      "La pièce liminaire « " + piece + " » est annoncée dans buch.yaml "
+                      "(liminaires:) mais n'a pas été compilée : " + f + " est introuvable. "
+                      "Vérifiez qu'elle existe dans liminaires/, puis relancez la "
+                      'compilation. | [de] Das im buch.yaml angekündigte Vorsatzstück « '
+                      + piece + ' » (liminaires:) wurde nicht kompiliert: ' + f
+                      + ' fehlt. Prüfen Sie, ob es in liminaires/ liegt, und kompilieren '
+                      'Sie danach neu.', file=sys.stderr)
+                return 1
         else:
             print('[livre] liminaire inconnu, ignore : ' + piece, file=sys.stderr)
 
@@ -533,7 +468,7 @@ def main(argv):
         '$lang$':          langue,
         '$titre$':         html.escape(str(meta.get('titre') or '')),
         '$sous-titre$':    html.escape(str(meta.get('sous-titre') or '')),
-        '$auteurs$':       html.escape(_auteurs_ligne(meta)),
+        '$auteurs$':       html.escape(_auteurs_ligne(meta, langue)),
         '$classe-format$': 'szh-a4' if str(meta.get('format')) == 'a4' else '',
         '$css$':           liens,
         '$liminaires$':    '\n'.join(tete),

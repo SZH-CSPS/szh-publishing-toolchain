@@ -3,29 +3,29 @@
    `a4` (210 × 297 mm) ; le second se déclenche par la classe `.szh-a4` sur <html>, posée
    par le gabarit d'après la clé `format` de buch.yaml.
 
-   Valeurs MESURÉES, pas choisies :
+   Valeurs mesurées, pas choisies :
    * mise en page et corps : relevés glyphe par glyphe sur `2025-Prospectrum_FALC_FR_ebook`,
      le livre FALC composé — bloc de texte x 15,0 → 141,2 mm, première ligne à 16,2 mm,
      folio à 208,9 mm ;
    * les deux formats et leurs marges : `<w:pgSz>` et `<w:pgMar>` des .docx de référence
      (8789 × 12758 twips = 155 × 225 mm, marges 851 twips = 15 mm ; 11906 × 16838 =
      210 × 297 mm, marges 1418 twips = 25 mm) ;
-   * les titres sont NOIRS, à 18 / 16 / 14 pt : les styles `Titre1..3` du .docx ne
+   * les titres sont noirs, à 18 / 16 / 14 pt : les styles `Titre1..3` du .docx ne
      déclarent aucune couleur, et le PDF d'origine les relève à #000000 ;
    * l'interligne des listes, 19,2 pt, et leur retrait, 6,3 mm — plus serrés que le texte
      courant, mesurés puce à puce.
    Le relevé complet est dans docs/ARCHITECTURE-LIVRES.md § 5.2.
 
-   ⚠ LA RÈGLE QUI COMMANDE TOUT : en FALC, le retour à la ligne porte du SENS. Une phrase,
+   ⚠ La règle qui commande tout : en FALC, le retour à la ligne porte du sens. Une phrase,
    une ligne ; une idée, une ligne. Justifier le texte ou le couper en syllabes détruirait
-   ce travail — c'est pourquoi cette charte est au fer à gauche, SANS CÉSURE, et pourquoi
+   ce travail — c'est pourquoi cette charte est au fer à gauche, sans césure, et pourquoi
    les retours du .md sont significatifs (le gabarit compile avec `hard_line_breaks`).
    Ne pas « améliorer » cela en remettant `text-align: justify`. */
 
 :root {
   /* ── Page, format standard ────────────────────────────────────────────────── */
   --page-l: 155mm;   --page-h: 225mm;
-  /* ⚠ 15 mm sur les QUATRE côtés, comme le `<w:pgMar>` du .docx de référence. La marge du
+  /* ⚠ 15 mm sur les quatre côtés, comme le `<w:pgMar>` du .docx de référence. La marge du
      bas était à 20 mm : le bloc de texte ne faisait plus que 176 mm de haut contre 198 mm
      à l'édition d'origine — vingt-deux millimètres perdus à chaque page, soit une page
      gagnée toutes les neuf. Le folio tient dans 15 mm (11 pt posés à 6 mm du bord). */
@@ -53,7 +53,7 @@
   --plafond-figure: 70vh;
 
   /* ── Encres ───────────────────────────────────────────────────────────────
-     Les titres sont NOIRS. Vérifié des deux côtés : les styles `Titre1..3` du .docx de
+     Les titres sont noirs. Vérifié des deux côtés : les styles `Titre1..3` du .docx de
      référence ne déclarent aucune couleur — ils héritent, donc du noir — et les titres de
      l'édition d'origine se relèvent à #000000 dans le PDF, à 16 et 18 pt.
      Ils étaient posés ici en bleu nuit #252B46, présenté comme « la couleur des modèles
@@ -71,10 +71,10 @@
 
 /* ── Couleurs de chapitre ─────────────────────────────────────────────────────
    Un chapitre, une couleur : elle peint la pastille du numéro, l'onglet de tranche et le
-   repère du sommaire. La couleur elle-même est POSÉE PAR LE MAKEFILE, en --c-chapitre sur
+   repère du sommaire. La couleur elle-même est posée par le Makefile, en --c-chapitre sur
    la section du chapitre (profils/livre.mk, PALETTE_CHAPITRE), et non choisie ici.
    ⚠ Ne pas la rétablir en CSS avec `:nth-of-type` : ce sélecteur compte les <section>
-     frères, LIMINAIRES COMPRISES, et décale toute la suite d'autant de pièces liminaires
+     frères, liminaires comprises, et décale toute la suite d'autant de pièces liminaires
      que le livre en a. Le sommaire disait alors une couleur, le chapitre une autre. */
 
 /* Format A4 : mêmes règles, autre page et un cran de corps en plus — c'est le réglage des
@@ -95,7 +95,7 @@
 p { margin-bottom: var(--esp-para); }
 
 /* ═══ Titres ══════════════════════════════════════════════════════════════════
-   Chapitre 18 pt, section 16 pt, sous-section 14 pt — tous en demi-gras, tous NOIRS : le
+   Chapitre 18 pt, section 16 pt, sous-section 14 pt — tous en demi-gras, tous noirs : le
    .docx ne leur donne aucune couleur, et l’édition d’origine les imprime en noir.
    Aucun n'est numéroté dans le texte : en FALC, un « 2.1.3 » est un obstacle. La
    numérotation vit dans la pastille et dans le sommaire, pas dans le titre. */
@@ -130,8 +130,8 @@ h4 { font-size: 13pt; font-weight: 600; color: var(--c-falc-titre); margin: 6mm 
    Un rectangle plein en bord extérieur, un par chapitre, qui descend de chapitre en
    chapitre : c'est un index à pouce, il se lit tranche fermée.
 
-   ⚠ CE QUI NE MARCHAIT PAS : un `.szh-chapitre::after` en `position: absolute`. Un
-   chapitre est une <section> qui court sur PLUSIEURS PAGES ; la boîte d'un pseudo-élément
+   ⚠ Ce qui ne marchait pas : un `.szh-chapitre::after` en `position: absolute`. Un
+   chapitre est une <section> qui court sur plusieurs pages ; la boîte d'un pseudo-élément
    n'existe qu'une fois, là où le moteur pose le premier fragment de cette section — donc
    peinte sur la première page du chapitre, nulle part ailleurs. Et sans fond perdu
    déclaré (le cas de livre-pdf), `right: -15mm` n'avait littéralement aucun canevas où
@@ -140,21 +140,21 @@ h4 { font-size: 13pt; font-weight: 600; color: var(--c-falc-titre); margin: 6mm 
    `WARNING: Ignored '--onglet-haut:' … no value`, preuve que la métadonnée censée la
    faire varier n'arrivait jamais jusqu'ici — un défaut qui s'ajoutait au premier.
 
-   CE QUI MARCHE : un running element (CSS GCPM, § https://www.w3.org/TR/css-gcpm-3/).
+   Ce qui marche : un running element (CSS GCPM, § https://www.w3.org/TR/css-gcpm-3/).
    `.szh-onglet` — un <div> vide, premier enfant de la section, voir
-   templates/szh-livre-chapitre.html — est PROMU hors du flux par
+   templates/szh-livre-chapitre.html — est promu hors du flux par
    `position: running(onglet)`, puis rappelé par `content: element(onglet)` dans une
-   boîte de marge du gabarit de PAGE, ci-dessous. Ce rappel « porte » la dernière valeur
-   promue jusqu'à la suivante : déclaré une fois par chapitre, il s'affiche sur CHAQUE
+   boîte de marge du gabarit de page, ci-dessous. Ce rappel « porte » la dernière valeur
+   promue jusqu'à la suivante : déclaré une fois par chapitre, il s'affiche sur chaque
    page de ce chapitre — y compris sa page d'ouverture — jusqu'à ce que le chapitre
    suivant promeuve le sien. Vérifié sur banc, trois pages rendues et regardées :
    ouverture, page courante du même chapitre (même couleur, même position), page d'un
    autre chapitre (couleur et position différentes).
 
-   Couleur et position verticale restent celles que livre.mk calcule PAR RANG de
+   Couleur et position verticale restent celles que livre.mk calcule par rang de
    chapitre (PALETTE_CHAPITRE / ONGLET_HAUT_CHAPITRE) et pose en variables CSS sur la
    section (--c-chapitre, --onglet-haut), pas ici : un `:nth-of-type` compterait les
-   <section> frères, LIMINAIRES COMPRISES, et décalerait tout d'autant de pièces
+   <section> frères, liminaires comprises, et décalerait tout d'autant de pièces
    liminaires que le livre en a — le défaut déjà évité pour la couleur, évité ici aussi. */
 .szh-onglet {
   position: running(onglet);
@@ -162,7 +162,7 @@ h4 { font-size: 13pt; font-weight: 600; color: var(--c-falc-titre); margin: 6mm 
   margin-top: var(--onglet-haut, 30mm);
   background: var(--c-chapitre, var(--c-falc-accent-defaut));
 }
-/* Pages en vis-à-vis (base.css) : l'onglet doit toujours tomber du côté EXTÉRIEUR — à
+/* Pages en vis-à-vis (base.css) : l'onglet doit toujours tomber du côté extérieur — à
    droite sur une page recto, à gauche sur une verso — jamais du côté de la couture, d'où
    les deux boîtes de marge. `height` couvre toute la zone de contenu (page moins marge
    haute et basse) : sans elle, les trois bandes @*-top/-middle/-bottom se partageraient
@@ -218,7 +218,7 @@ h4 { font-size: 13pt; font-weight: 600; color: var(--c-falc-titre); margin: 6mm 
 /* Retrait de 6,3 mm : celui du `w:ind` des styles de liste du .docx de référence, et non
    un chiffre rond choisi à l'œil.
 
-   L'interligne d'une liste est PLUS SERRÉ que celui du texte courant : 19,2 pt mesurés
+   L'interligne d'une liste est plus serré que celui du texte courant : 19,2 pt mesurés
    entre deux puces sur l'édition d'origine, contre 21,3 pt entre deux lignes de
    paragraphe. Et aucun blanc entre deux items — une liste est un bloc, pas une suite de
    paragraphes. Nous en étions à 27,0 pt : l'interligne du texte plus 2 mm de marge, soit

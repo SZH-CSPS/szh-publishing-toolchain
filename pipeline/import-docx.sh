@@ -29,7 +29,7 @@
 #                      titres promus, et avant szh-tabelle-reference, les Table étant
 #                      encore des Table)
 #        szh-tabelle-reference (Table restants -> ::: {.szh-tabelle src=…})
-#        szh-attributs-sains (EN DERNIER : il assainit les classes et identifiants que
+#        szh-attributs-sains (en dernier : il assainit les classes et identifiants que
 #                      tout ce qui précède a pu poser. Le lecteur docx met le nom du style
 #                      Word en classe — « Titre 2 (small) » — et pandoc ne sait pas relire
 #                      une parenthèse dans un nom de classe : le bloc d'attributs entier
@@ -53,6 +53,14 @@ DOCX_ABS="$(realpath "$F")"
 
 # Le slug, pour que les pré-passes nomment l'article dans leurs messages.
 export SZH_SLUG="$SLUG"
+
+# Les quatre fichiers temporaires de la chaîne (métadonnées, appariement photo, légendes de
+# tableaux, titres déduits), nettoyés par un seul trap plutôt que par des rm épars à chaque
+# sortie possible — succès, `exit 1` d'une pré-passe, ou un futur point de sortie qu'on
+# oublierait de couvrir à la main. Déclarées vides ici : `set -u` ferait échouer le trap
+# lui-même s'il se déclenchait avant qu'un mktemp les remplisse.
+META=""; PHOTOS=""; LEGT=""; TITRES=""
+trap 'rm -f "$META" "$PHOTOS" "$LEGT" "$TITRES"' EXIT
 
 # Un message destiné au rédacteur : sur stderr, et dans articles-word/.import.log quand la
 # cible `import` du Makefile en a passé le chemin absolu. Le journal nourrit la vue
@@ -80,7 +88,6 @@ PHOTOS="$(mktemp)"
 export SZH_PHOTOS="$PHOTOS"
 if ! STATS="$(python3 "$PIPE/docx-meta.py" "$DOCX_ABS" "$SLUG" .)"; then
   signaler "[import] ⚠ Les métadonnées de « $SLUG » n'ont pas pu être lues : l'article n'est pas importé et son fichier Word reste en attente. Vérifiez que le document s'ouvre dans Word, puis relancez la conversion. [de] Die Metadaten von « $SLUG » konnten nicht gelesen werden: der Artikel wird nicht importiert, die Word-Datei bleibt in der Warteschlange. Prüfen Sie, ob sich das Dokument in Word öffnet, und starten Sie die Konvertierung erneut."
-  rm -f "$META" "$PHOTOS"
   exit 1
 fi
 [ -n "$STATS" ] && echo "[import-meta] $STATS"
@@ -92,7 +99,7 @@ fi
 # SZH_LEGENDES_TABLES, pour que szh-legendes.lua retire les paragraphes du .md.
 LEGT="$(mktemp)"
 export SZH_LEGENDES_TABLES="$LEGT"
-python3 "$PIPE/docx-tables.py" "$DOCX_ABS" tables || { rm -f "$LEGT" "$META" "$PHOTOS"; exit 1; }
+python3 "$PIPE/docx-tables.py" "$DOCX_ABS" tables || exit 1
 
 # Titres déduits : pré-pass Python qui lit les tailles de police de word/document.xml
 # (pandoc les perd) et écrit les titres présumés, consommés par szh-titres.lua. Non
@@ -100,11 +107,6 @@ python3 "$PIPE/docx-tables.py" "$DOCX_ABS" tables || { rm -f "$LEGT" "$META" "$P
 TITRES="$(mktemp)"
 python3 "$PIPE/docx-titres.py" "$DOCX_ABS" "$TITRES" || true
 export SZH_TITRES="$TITRES"
-
-# $PHOTOS survit à nettoyer() : il est consommé après pandoc, une fois les images
-# extraites. nettoyer_tout() sert donc aux sorties en échec.
-nettoyer() { rm -f "$TITRES" "$LEGT" "$META"; }
-nettoyer_tout() { nettoyer; rm -f "$PHOTOS"; }
 
 # --extract-media=. : images extraites sous media/, en chemins relatifs au .md,
 #   corrects parce que le build HTML tourne dans le dossier de l'article. ⚠ écrire
@@ -123,8 +125,7 @@ pandoc "$DOCX_ABS" \
   --lua-filter="$PIPE/filters/szh-tabelle-reference.lua" \
   --lua-filter="$PIPE/filters/szh-attributs-sains.lua" \
   --wrap=none \
-  -o "$SLUG.md" || { nettoyer_tout; exit 1; }
-nettoyer
+  -o "$SLUG.md" || exit 1
 
 # Pas de tableau dans ce docx : ne pas laisser un tables/ vide.
 rmdir tables 2>/dev/null || true
@@ -141,7 +142,6 @@ fi
 # un échec laisse le dossier tel quel, l'article est déjà converti.
 MEDIAS="$(python3 "$PIPE/import-medias.py" "$SLUG" . "$PHOTOS" || true)"
 [ -n "$MEDIAS" ] && echo "[import-medias] $MEDIAS"
-rm -f "$PHOTOS"
 
 # Empreintes de ce que cette conversion a livré : c'est ce qui permettra à « Réimporter cet
 # article » de distinguer un tableau retravaillé dans l'éditeur d'un tableau tel que le Word

@@ -90,20 +90,32 @@ test('langues de la revue : une seule liste, trois fichiers', () => {
   assert.deepStrictEqual(duLua.slice().sort(), yaml.LANGUES_ARTICLE.slice().sort());
 });
 
-test('les deux filtres lisent la langue dans la fiche de l’article', () => {
+test('les deux filtres résolvent la langue via le module commun', () => {
   // szh-numerotation tourne aussi dans la chaîne d'aperçu, où szh-maquette n'est pas
-  // branché : sans cette lecture, l'aperçu dirait « Figure » et le PDF « Abbildung ».
+  // branché : sans cette lecture, l'aperçu dirait « Figure » et le PDF « Abbildung ». Les
+  // deux filtres délèguent désormais la lecture de la fiche à commun.langue_de() — c'est
+  // le nom de la fonction commune et de ses options qui font foi ici, plus aucun code
+  // local ne la reproduit.
   for (const [nom, src] of [['szh-maquette', MAQUETTE], ['szh-numerotation', NUMEROTATION]]) {
-    assert.match(src, /\.meta\.yaml/, nom + ' ne lit pas la fiche de l’article');
-    assert.match(src, /PANDOC_STATE/, nom + ' ne sait pas quel article il compose');
-    assert.ok(src.indexOf('function langue_fiche') !== -1,
-      nom + ' ne résout plus la langue depuis la fiche');
+    assert.ok(src.indexOf("dofile, dossier_ce_fichier() .. 'szh-commun.lua'") !== -1,
+      nom + ' ne charge plus szh-commun.lua par dofile');
+    assert.match(src, /commun\.langue_de\(meta,/,
+      nom + ' ne résout plus la langue via la fonction commune langue_de()');
+    assert.match(src, /lire_fiche = true,/, nom + ' ne lit plus la fiche de l’article');
   }
-  // Et la langue de l'article passe devant le jeton de revue, dans les deux filtres.
-  assert.match(MAQUETTE, /lire_cle\(slug \.\. '\.meta\.yaml', 'lang'\)/);
-  assert.ok(NUMEROTATION.indexOf('local fiche = langue_fiche()') <
-    NUMEROTATION.indexOf("revue:find('zeitschrift')"),
-    'szh-numerotation : le jeton de revue passe encore devant la langue de l’article');
+  // Chaque filtre garde son propre ensemble de langues acceptées pour la fiche : les trois
+  // de la revue pour szh-maquette (qui bloque hors de cet ensemble, voir fiche_invalide
+  // plus bas), plus l'anglais des libellés de figure pour szh-numerotation (qui ne bloque
+  // jamais, un article mal rempli ne devant pas empêcher l'aperçu).
+  assert.match(MAQUETTE, /langues_valides = LANGUES,/,
+    'szh-maquette ne valide plus la fiche contre les trois langues de la revue');
+  assert.match(NUMEROTATION, /langues_valides = LIBELLE_FIGURE,/,
+    'szh-numerotation ne valide plus la fiche contre ses libellés');
+  // Et, dans le repli de szh-numerotation — atteint seulement si la fiche est absente ou
+  // hors liste — le jeton de revue passe toujours devant meta.lang du numéro.
+  const repli = NUMEROTATION.slice(NUMEROTATION.indexOf('local function langue_de'));
+  assert.ok(repli.indexOf("revue:find('zeitschrift')") < repli.indexOf('m.lang'),
+    'szh-numerotation : le jeton de revue doit encore passer devant meta.lang dans le repli');
 });
 
 test('szh-maquette : plus de repli silencieux sur une autre langue', () => {
@@ -167,7 +179,7 @@ function ouvrirFiches(articles, langueNumero) {
   const page = ouvrir({
     racine: RACINE, page: 'metadata-articles',
     cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
-    jsPartage: ['_auteurs.js', '_fiches.js'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
     txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
   });
   page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: langueNumero, filtre: null });
@@ -204,13 +216,14 @@ test('métadonnées des articles : le choix suit la langue du numéro', () => {
 // ---- La cascade de langue à la compilation ----
 
 test('szh-maquette : la langue déclarée prime — un article IT dans une revue FR sort en IT', () => {
-  // La cascade lang_art > lang_num vit dans Meta() : la langue de la fiche est prise
-  // telle quelle dès qu'elle est déclarée — et « une seule liste, trois fichiers »
-  // garantit plus haut que l'italien fait partie des langues acceptées.
-  assert.match(MAQUETTE, /local lang_art = langue_fiche\(slug\)/,
-    'la maquette ne lit plus la langue de la fiche');
-  assert.match(MAQUETTE, /^\s*lang = lang_art$/m,
-    'la langue déclarée ne prime plus sur celle du numéro');
+  // La cascade fiche > repli (lang_num) vit dans l'appel à commun.langue_de() : la langue
+  // de la fiche est prise telle quelle dès qu'elle est déclarée et valide — et « une
+  // seule liste, trois fichiers » garantit plus haut que l'italien fait partie des
+  // langues acceptées (langues_valides = LANGUES).
+  assert.match(MAQUETTE, /local lang = commun\.langue_de\(meta, \{/,
+    'la maquette ne résout plus la langue via la fonction commune');
+  assert.match(MAQUETTE, /lire_fiche = true,\s*\n\s*langues_valides = LANGUES,/,
+    'la fiche n’est plus lue et validée avant le repli sur la langue du numéro');
   // …et c'est ce `lang` que pandoc reçoit et que le gabarit imprime : <html lang="it">
   // pour un article italien, quelle que soit la revue.
   assert.match(MAQUETTE, /meta\['lang'\] = pandoc\.MetaString\(lang\)/,
@@ -273,21 +286,31 @@ test('changer la langue d’un article permute aussi les statuts de traduction',
     'le sidecar a été réécrit sans changement de langue');
 
   // Et quand le sidecar ne PEUT PAS s'écrire, l'échec se dit — chasse aux échecs muets.
-  // La panne : un dossier squatte le nom du fichier temporaire de l'écriture atomique
-  // (~$<nom>), et writeFileSync échoue sur toutes les plateformes. La fiche, elle,
-  // s'enregistre quand même, et l'avertissement non bloquant oriente vers le panneau.
-  fs.mkdirSync(path.join(dossier, '~$01-essai.traduction.yaml'));
+  // Le nom du temporaire de l'écriture atomique porte désormais pid + aléa : il n'y a plus
+  // de nom fixe à squatter par un dossier. La panne se simule donc directement sur le
+  // rename final, ciblé sur ce seul fichier — la fiche, elle, s'enregistre quand même, et
+  // l'avertissement non bloquant oriente vers le panneau.
+  const contenuAvant = fs.readFileSync(chemin, 'utf8');
+  const renameOriginal = fs.renameSync;
+  fs.renameSync = (src, dest) => {
+    if (dest === chemin) { const e = new Error('EPERM (simulé)'); e.code = 'EPERM'; throw e; }
+    return renameOriginal(src, dest);
+  };
   const nAvant = hote.avertissements.length;
-  await p._recepteur({ type: 'enregistrer', auto: true, articles: { '01-essai': {
-    type: 'article', lang: 'de', title: { de: 'Titel', it: 'Titolo' }, subtitle: {},
-    resume: {}, keywords: {}, author: [{ nom: 'SZH' }] } } });
+  try {
+    await p._recepteur({ type: 'enregistrer', auto: true, articles: { '01-essai': {
+      type: 'article', lang: 'de', title: { de: 'Titel', it: 'Titolo' }, subtitle: {},
+      resume: {}, keywords: {}, author: [{ nom: 'SZH' }] } } });
+  } finally {
+    fs.renameSync = renameOriginal;
+  }
   assert.match(fs.readFileSync(path.join(dossier, '01-essai.meta.yaml'), 'utf8'), /^lang: de$/m,
     'la fiche elle-même doit s’enregistrer malgré le sidecar bloqué');
   const nouveaux = hote.avertissements.slice(nAvant);
   assert.ok(nouveaux.some((m) => String(m).indexOf('01-essai') !== -1
     && /suivi de traduction/.test(String(m))),
     'l’échec de la permutation des statuts est resté muet : ' + JSON.stringify(nouveaux));
-  assert.strictEqual(fs.readFileSync(chemin, 'utf8').indexOf('title.it:'), -1,
+  assert.strictEqual(fs.readFileSync(chemin, 'utf8'), contenuAvant,
     'le sidecar aurait dû rester tel quel, l’écriture étant bloquée');
 });
 

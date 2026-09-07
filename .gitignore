@@ -22,3 +22,8 @@ tmp/
 # d'essai du dépôt — test/, revue-template/ — en reçoivent dès qu'on ouvre le cockpit
 # dessus : ils n'ont rien à faire dans un commit.
 .szh-edition/
+
+# Journaux d'import et de compilation écrits par la chaîne dans un dossier de revue ou de
+# livre (import-docx.sh, tasks.json) : les bancs de test en reçoivent à chaque essai.
+.import.log
+.szh-journal.log

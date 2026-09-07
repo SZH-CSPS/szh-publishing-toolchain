@@ -30,6 +30,7 @@ const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 
 const PY = lire('pipeline', 'reimporter.py');
 const SH = lire('pipeline', 'import-docx.sh');
+const COMMUN = lire('pipeline', 'szh_commun.py');
 const MK = lire('pipeline', 'Makefile');
 const MEDIAS = lire('pipeline', 'import-medias.py');
 const TABLES = lire('pipeline', 'docx-tables.py');
@@ -188,7 +189,11 @@ test('réimport : aucun message ne part sans son allemand', () => {
     'l’allemand est redevenu optionnel dans les lignes d’information');
   assert.match(PY, /def avertir\(self, code, champs, fr, de\):/,
     'la forme des avertissements a changé');
-  assert.match(PY, /'\[de\] ' \+ de/, 'l’allemand n’est plus préfixé « [de] »');
+  // Le formatage lui-même (« [de] » + de) vit dans szh_commun.avertir(), partagé avec
+  // docx-meta.py, docx-tables.py et livre-scinder.py — reimporter.py délègue.
+  assert.match(PY, /szh_commun\.avertir\(PREFIXE_AVERT, code, champs, fr, de/,
+    'reimporter.py ne délègue plus le formatage à szh_commun.avertir()');
+  assert.match(COMMUN, /'\[de\] ' \+ de/, 'l’allemand n’est plus préfixé « [de] »');
   // Même préfixe que les autres maillons : l'interface n'a qu'un motif à reconnaître.
   assert.match(PY, /PREFIXE_AVERT = '\[import-avertissement\]'/,
     'le préfixe des avertissements a changé — l’interface ne les retrouvera plus');

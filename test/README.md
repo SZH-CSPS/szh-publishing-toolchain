@@ -52,6 +52,12 @@ publication.
   avec les crédits des quatre rassemblés dans une seule légende, puis deux bandeaux sans
   attribut `disposition`, que le mode automatique doit empiler plutôt que mettre côte à
   côte. Les images sont des bandes de couleur générées, de quelques kilooctets.
+- `articles/lecteur-ecran/` — n'existe que pour l'encadré « ce qu'un lecteur d'écran
+  reçoit » de l'aperçu du cockpit (`szh-apercu-lecteur-ecran.lua`), invisible dans le
+  PDF : quatre cas d'image (texte alternatif distinct de la légende, alt vide repris de
+  la légende, décorative `alt=""`, ni alt ni légende — le seul cas rouge) et deux
+  tableaux (description longue, puis ni description ni en-tête). À regarder dans
+  l'aperçu, pas dans le PDF.
 
 ## Les deux livres
 
@@ -64,22 +70,53 @@ page, et surtout la conformité PDF/UA d'un document de plusieurs chapitres.
   chapitres. Elle porte les deux figures et le tableau qui éprouvent la numérotation
   continue (« Abbildung 1 » et « Abbildung 2 » sont toutes deux au chapitre 2, parce que
   le chapitre 1 n'en a aucune), une note de bas de page, un chapitre plus court qu'une
-  page, et cinq pièces liminaires dont un avant-propos écrit à la main.
+  page, et cinq pièces liminaires dont un avant-propos écrit à la main. Le chapitre 2
+  porte aussi une bibliographie détachée (`02-konzepte.biblio.md`, deux appels dans le
+  texte), un tableau extrait avec description longue (`data-alt`, qui ne doit jamais
+  s'imprimer), une image décorative (`alt=""`, quelques kilooctets) et une grille de deux
+  images — ce que `partage-filtres.css` (styles communs à la revue et au livre) doit
+  habiller sans que print.css soit chargé. Chaque chapitre porte désormais son propre
+  `<slug>.meta.yaml`.
 - `livre-falc/` — **ouvrage collectif** français, maquette FALC. Il éprouve ce que la
   charte FALC a de particulier : une phrase par ligne (donc le lecteur pandoc en
   `hard_line_breaks`, et un texte au fer à gauche sans césure), la pastille ronde de
   chapitre à sa couleur, l'encadré gris de résumé, et la ligne d'auteur·e·s propre à
-  chaque chapitre — qu'une monographie ne doit PAS avoir.
+  chaque chapitre — qu'une monographie ne doit PAS avoir. Le chapitre 2 déclare ses deux
+  auteures sous la clé `auteurs:` (l'alias français de `author:`, que szh-livre-auteurs.lua
+  accepte aussi).
 
 ```sh
 wsl -d SZH-Publishing -- bash -lc "cd /mnt/c/<chemin>/test/livre-normal && make -f ../../pipeline/Makefile livre"
 ```
+
+`make -f ../../pipeline/Makefile livre-epub` (même répertoire) sort l'EPUB 3 ; `python3 test/epub-check.py <chemin>/out/<nom>.epub` en contrôle la structure (mimetype, OPF, manifeste, liens internes, sommaire) sans dépendance — voir docs/ARCHITECTURE-LIVRES.md §4.5.
 
 `build-render.sh` les compile tous les deux et **refuse de rendre 0 si l'un des PDF sort
 non balisé**. Ce contrôle-là n'est pas décoratif : un tableau qui tombe au mauvais endroit
 fait lâcher le baliseur de WeasyPrint, le Makefile rattrape en sortant un PDF sans balises,
 et rien — ni erreur rouge, ni PNG — ne le montre. Le livre part alors chez l'imprimeur en
 ayant perdu son accessibilité. Voir `pipeline/filters/szh-tableau-boite.lua`.
+
+`build-render.sh` compile aussi `livre-imprimeur` sur une copie temporaire de `livre-normal`
+avec un profil CMJN posé, puis lance `cmjn-check.py` (texte K seul, couleurs de la maison,
+aucun RVB résiduel) — sauté si Ghostscript ou le profil ICC de l'image manquent.
+
+## Corpus d'accessibilité
+
+Un second dossier de numéro, `test/accessibilite/`, séparé du banc de maquette ci-dessus :
+la porte PDF/UA (`make verifier-ua`) est bloquante et prend le numéro entier, donc un
+article volontairement fautif glissé dans `test/articles/` ferait échouer le banc en
+permanence. Le corpus a sa propre porte — voir la note de tête de
+`test/accessibilite/ausgabe.yaml` pour le détail de ce qu'il exerce (tableaux sans en-tête
+ni légende, bibliographie à diacritiques polonais/turcs/serbes, sauts de niveau de titre,
+article français dans un numéro de la Zeitschrift) — et une paire d'articles français /
+allemand du même texte (`participation-fr` / `teilhabe-de`) dont les numéros de figure
+divergent à dessein.
+
+`test/build-render.sh` le construit et le vérifie automatiquement (sauf en mode un seul
+slug) : sa porte PDF/UA doit rendre 0, aucun article n'y étant volontairement non
+conforme ; `verifier-numerotation` entre les deux articles doit au contraire rendre 1 —
+sans quoi ce contrôle ne pourrait plus jamais échouer.
 
 > **En-tête condensé** — le banc compose la couverture par défaut, à hauteur fixe.
 > Pour éprouver l'autre allure, ajouter une ligne `entete-condensee: true` à

@@ -431,7 +431,7 @@ def _autoverification():
     # « 90 » sur un cran que le vérificateur refuse.
     assert tient(89.5, LC_TEXTE_14) and not tient(89.49, LC_TEXTE_14)
     assert tient(-89.6, LC_TEXTE_14), 'la polarité ne doit pas entrer dans le jugement'
-    # Les seuils par TAILLE, y compris les deux tailles réelles de la maquette.
+    # Les seuils par taille, y compris les deux tailles réelles de la maquette.
     assert seuil_pour(13.6) == LC_TEXTE_14, 'texte de tableau (0,85rem) : 90, pas 75'
     assert seuil_pour(14.0) == LC_TEXTE_14, 'corps (--body-size 0,875rem) : 90'
     assert seuil_pour(18.0) == LC_TEXTE_18

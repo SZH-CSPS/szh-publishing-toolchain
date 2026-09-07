@@ -2,7 +2,7 @@
 -- partir des clés d'ausgabe.yaml et de <slug>.meta.yaml : étiquette de dossier, nom et
 -- ISSN de la revue, ligne « Vol. X · N/année », résumés, licence, titre du bloc auteurs,
 -- et par auteur `orcid-url` et `photo-rang`. Aucune clé n'est inventée côté fichiers.
--- Le titre du DOSSIER (ausgabe.yaml `title`) est écrasé dans Meta par le `title` de
+-- Le titre du dossier (ausgabe.yaml `title`) est écrasé dans Meta par le `title` de
 -- l'article, pandoc gardant le dernier fichier à clé égale : il est donc relu dans
 -- ausgabe.yaml via la variable d'environnement SZH_AUSGABE, posée par le Makefile.
 --
@@ -15,7 +15,7 @@
 -- comme avant. « droits-reserves » n'a pas d'adresse : la couverture imprime alors la
 -- mention sans lien, et aucune URL n'est inventée.
 --
--- Langue de composition : celle de l'ARTICLE (`lang:` de <slug>.meta.yaml) prime sur le
+-- Langue de composition : celle de l'article (`lang:` de <slug>.meta.yaml) prime sur le
 -- jeton de revue et sur le `lang:` du numéro. Un article allemand d'un numéro français se
 -- compose donc en allemand — césure, libellés « Abbildung », /Lang du PDF, lecteur
 -- d'écran. Fiche sans `lang:` : repli sur la langue du numéro, et un avertissement qui
@@ -27,6 +27,28 @@
 -- tient la place d'un mot-clé non traduit et deviendrait une puce de la couverture.
 
 local utils = pandoc.utils
+
+-- Module commun (slug_article, langue_de) : un chargement raté arrête la compilation, ce
+-- filtre ne pouvant plus dire de langue ni de slug fiables sans lui.
+local commun
+do
+  -- debug.getinfo, pas PANDOC_SCRIPT_FILE : ce dernier nomme le script reçu par pandoc en
+  -- ligne de commande, pas celui-ci quand un autre le charge par dofile — voir
+  -- szh-commun.lua.
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[maquette] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
+end
 
 local function S(v)
   if v == nil then return '' end
@@ -73,7 +95,7 @@ local function lire_cle(chemin, cle)
   return valeur
 end
 
--- Année portée par la couverture. `date:` d'ausgabe.yaml est la date de PUBLICATION du
+-- Année portée par la couverture. `date:` d'ausgabe.yaml est la date de publication du
 -- numéro : elle reste vide jusqu'à la parution, alors que la couverture doit porter son
 -- année dès le premier PDF. Repli sur le nom du dossier du numéro, qui suit la convention
 -- « 2027-03 » — SZH_AUSGABE pointe l'ausgabe.yaml de ce dossier. Une date complète saisie
@@ -87,22 +109,12 @@ local function annee_numero(date_val)
   return nom:match('^(%d%d%d%d)%-%d') or ''
 end
 
--- Slug de l'article, tiré du fichier d'entrée : le Makefile compile depuis le dossier de
--- l'article, la fiche est donc <slug>.meta.yaml dans le répertoire courant. Sert aussi à
--- nommer l'article dans les messages.
-local function slug_article()
-  local fichiers = (PANDOC_STATE and PANDOC_STATE.input_files) or {}
-  local chemin = fichiers[1]
-  if type(chemin) ~= 'string' then return '' end
-  return (chemin:gsub('.*[/\\]', ''):gsub('%.md$', ''))
-end
-
 -- Les trois langues de la revue. L'anglais n'en est pas : ni libellé de résumé, ni
 -- mention de licence, ni titre de bloc auteurs n'existent pour lui.
 local LANGUES = { fr = true, de = true, it = true }
 
 -- ─── Tri alphabétique des mots-clés (A8) ─────────────────────────────────────
--- table.sort nu trie par OCTET : en UTF-8, une lettre accentuée occupe deux octets dont
+-- table.sort nu trie par octet : en UTF-8, une lettre accentuée occupe deux octets dont
 -- le premier (0xC3 ou 0xC5) est plus grand que celui de toute lettre ASCII — « École »
 -- partirait après « Zurich », « Ökonomie » après « Zürich ». Le français et l'allemand
 -- rangent au contraire une lettre accentuée avec sa lettre de base (ordre du
@@ -140,19 +152,12 @@ local function motcle_avant(a, b)
   return a < b
 end
 
--- Langue déclarée par la fiche, en jeton court, ou '' si la clé est absente. La valeur
--- n'est pas validée ici : une langue inconnue doit être nommée dans le message d'erreur.
-local function langue_fiche(slug)
-  if slug == '' then return '' end
-  return lire_cle(slug .. '.meta.yaml', 'lang'):lower():sub(1, 2)
-end
-
--- DOI calculé de l'article, lu dans le fichier DÉRIVÉ dois-calcules.yaml que le cockpit
--- dépose à côté d'ausgabe.yaml (repéré par SZH_AUSGABE, comme annee_numero). Le CALCUL
+-- DOI calculé de l'article, lu dans le fichier dérivé dois-calcules.yaml que le cockpit
+-- dépose à côté d'ausgabe.yaml (repéré par SZH_AUSGABE, comme annee_numero). Le calcul
 -- lui-même vit dans le cockpit — le rang de l'article parmi les porteurs du numéro,
 -- lib/articles.js, un seul endroit — et le pipeline ne fait que lire la valeur déposée :
 -- un second calcul ici finirait par diverger du premier. Lecture hors pandoc, ligne à
--- ligne, la clé comparée en TEXTE et non passée à lire_cle : un slug porte des tirets,
+-- ligne, la clé comparée en texte et non passée à lire_cle : un slug porte des tirets,
 -- qui sont des quantificateurs dans un motif Lua. Fichier absent ou slug absent -> '' —
 -- les dépôts montés à la main et les tests n'ont pas ce fichier, et un article sans DOI
 -- n'y a pas de ligne : la couverture sort alors sans bandeau, comme avant, jamais en
@@ -266,7 +271,7 @@ end
 -- message nomme l'article, le champ, la langue attendue et le geste qui corrige. Deux
 -- langues, celles du cockpit ; l'allemand en orthographe suisse.
 --
--- Les deux langues partent sur la MÊME ligne, l'allemande introduite par « [de] », et le
+-- Les deux langues partent sur la même ligne, l'allemande introduite par « [de] », et le
 -- cockpit jette celle qu'il n'affiche pas. Ce filtre n'a donc plus de langue à choisir :
 -- il n'écrivait qu'une langue, celle du numéro, et le cockpit devait reconnaître ses
 -- phrases françaises et allemandes pour pouvoir les redire dans la sienne. Une
@@ -350,8 +355,8 @@ local MESSAGES = {
 --
 --   [meta-<ton>] <code> | <champ> | … | <phrase fr> | [de] <Satz de>
 --
--- Le préfixe porte le TON — « blocage » quand la compilation s'arrête, « avertissement »
--- quand elle continue — et le deuxième champ un CODE stable. L'interface s'ancre sur ces
+-- Le préfixe porte le ton — « blocage » quand la compilation s'arrête, « avertissement »
+-- quand elle continue — et le deuxième champ un code stable. L'interface s'ancre sur ces
 -- deux-là ; la prose n'est qu'un repli d'affichage, et se reformule sans rien casser.
 -- « meta » est la famille : les métadonnées et la langue de l'article, telles que la vue
 -- des contrôles les nomme déjà.
@@ -452,7 +457,7 @@ end
 function Meta(meta)
   local revue_val = S(meta.revue)
   local nom, issn, revue_lang = derive_revue(revue_val)
-  local slug = slug_article()
+  local slug = commun.slug_article()
 
   -- Langue du NUMÉRO : le jeton de revue, puis le `lang:` d'ausgabe.yaml. Ce `lang:` est
   -- relu dans le fichier et non dans `meta.lang`, que la fiche de l'article vient
@@ -463,22 +468,25 @@ function Meta(meta)
   local lang_num = revue_lang ~= '' and revue_lang
                    or (LANGUES[lang_ausgabe] and lang_ausgabe or 'fr')
 
-  -- Langue de l'ARTICLE : elle prime sur tout. Absente, on retombe sur le numéro et on
-  -- le dit — casser les articles existants serait pire que composer comme avant.
-  local lang_art = langue_fiche(slug)
-  local lang
-  if lang_art == '' then
-    if slug ~= '' then
-      avertir('sans-langue', { chp_article(slug) },
-        MESSAGES.fr.sans_langue(slug, lang_num), MESSAGES.de.sans_langue(slug, lang_num))
-    end
-    lang = lang_num
-  elseif not LANGUES[lang_art] then
-    bloquer('langue-inconnue', { chp_article(slug), chp_langue(lang_art) },
-      MESSAGES.fr.langue_inconnue(slug, lang_art), MESSAGES.de.langue_inconnue(slug, lang_art))
-  else
-    lang = lang_art
-  end
+  -- Langue de l'article : elle prime sur tout, lue par le module commun (fiche relue hors
+  -- pandoc, comme avant la migration). Absente, on retombe sur le numéro et on le dit —
+  -- casser les articles existants serait pire que composer comme avant. Une langue hors
+  -- des trois de la revue arrête la compilation, message nommant l'article — c'est ce que
+  -- fait fiche_invalide, jamais un simple repli silencieux.
+  local lang = commun.langue_de(meta, {
+    slug = slug,
+    lire_fiche = true,
+    langues_valides = LANGUES,
+    fiche_absente = function(s)
+      avertir('sans-langue', { chp_article(s) },
+        MESSAGES.fr.sans_langue(s, lang_num), MESSAGES.de.sans_langue(s, lang_num))
+    end,
+    fiche_invalide = function(s, brut)
+      bloquer('langue-inconnue', { chp_article(s), chp_langue(brut) },
+        MESSAGES.fr.langue_inconnue(s, brut), MESSAGES.de.langue_inconnue(s, brut))
+    end,
+    repli = function() return lang_num end,
+  })
 
   verifier_marque(meta, slug)
 
@@ -520,7 +528,7 @@ function Meta(meta)
     local mots = {}
     local km = meta.keywords
     if km ~= nil and km[l] ~= nil then
-      -- A8 : ordre alphabétique, propre à CETTE langue — l'ordre de saisie (souvent celui
+      -- A8 : ordre alphabétique, propre à cette langue — l'ordre de saisie (souvent celui
       -- de la langue source de la traduction) ne doit pas se voir à l'impression, et rien
       -- n'oblige les deux langues à s'aligner entre elles.
       local textes = {}
@@ -561,7 +569,7 @@ function Meta(meta)
   meta['entete-condensee'] = est_vrai(meta['entete-condensee']) or nil
 
   -- Bandeau DOI de la couverture ($if(doi)$ du template). Le meta.yaml ne porte plus de
-  -- `doi:` que lorsqu'il a été défini À LA MAIN dans le cockpit (l'échappatoire « Définir
+  -- `doi:` que lorsqu'il a été défini à la main dans le cockpit (l'échappatoire « Définir
   -- manuellement le DOI ») : ce doi-là est déjà dans meta et gagne naturellement. Sinon,
   -- le DOI courant se lit dans le fichier dérivé du cockpit — voir doi_calcule_du_numero.
   -- Rien de trouvé : pas de bandeau, et jamais un blocage.

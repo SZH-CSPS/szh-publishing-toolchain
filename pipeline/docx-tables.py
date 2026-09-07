@@ -42,6 +42,9 @@ import zipfile
 import xml.etree.ElementTree as ET
 from html import escape
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import szh_commun
+
 W = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
 WP = '{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}'
@@ -251,22 +254,15 @@ def paragraphe_tout_gras(p):
 
 # Préfixe unique des avertissements remontés au rédacteur. Une ligne, des champs séparés
 # par « | », le deuxième étant un code stable : l'interface du cockpit peut la reconnaître
-# sans lire le français. Écrite sur stderr ET dans articles-word/.import.log (chemin absolu
+# sans lire le français. Écrite sur stderr et dans articles-word/.import.log (chemin absolu
 # passé par la cible `import` du Makefile dans $SZH_IMPORT_LOG) — l'import, lui, réussit.
+# Mécanisme dans szh_commun.avertir(), partagé avec docx-meta.py, livre-scinder.py et
+# reimporter.py.
 PREFIXE_AVERT = '[import-avertissement]'
 
 
 def avertir(code, champs, fr, de):
-    ligne = ' | '.join([PREFIXE_AVERT + ' ' + code] + list(champs) + [fr, '[de] ' + de])
-    print(ligne, file=sys.stderr)
-    journal = os.getenv('SZH_IMPORT_LOG')
-    if not journal:
-        return
-    try:
-        with open(journal, 'a', encoding='utf-8', newline='\n') as f:
-            f.write(ligne + '\n')
-    except OSError:
-        pass                                  # un journal illisible ne casse pas l'import
+    szh_commun.avertir(PREFIXE_AVERT, code, champs, fr, de)
 
 
 def nom_article():
@@ -576,9 +572,9 @@ def principal(argv):
             for t in legendes:
                 f.write(t + '\n')
     # Le convertisseur n'a pas su reconnaître d'en-tête : ni `w:tblHeader`, ni première
-    # rangée entièrement en gras. C'est une DEVINETTE qui a échoué, pas un défaut constaté.
+    # rangée entièrement en gras. C'est une devinette qui a échoué, pas un défaut constaté.
     # Ni le RGAA ni les WCAG n'exigent qu'un tableau ait un en-tête : ils exigent que
-    # l'en-tête qui EXISTE soit déclaré. Un tableau qui n'en a pas est légitime. Le message
+    # l'en-tête qui existe soit déclaré. Un tableau qui n'en a pas est légitime. Le message
     # pose donc une question au lieu d'accuser — dire « désignez la première rangée »
     # ferait poser une relation fausse sur un tableau correct. Cas fréquent qui justifie la
     # question : un en-tête mis en valeur par un fond coloré plutôt que par du gras.

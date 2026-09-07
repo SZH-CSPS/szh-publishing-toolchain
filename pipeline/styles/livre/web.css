@@ -1,25 +1,25 @@
 /* Charte WEB : la sortie « livre-html-web », un livre lu à l'écran, pas imprimé.
    Empilée après ../socle.css (polices et jetons de la maison) et avant .szh-accent.css —
-   voir templates/szh-livre.html. À la différence de la voie PDF, elle N'EMPILE PAS
+   voir templates/szh-livre.html. À la différence de la voie PDF, elle n'empile pas
    livre/base.css ni livre/normal.css / livre/falc.css : ces trois feuilles sont bâties en
-   MILLIMÈTRES pour une page qui existe une fois, imprimée — `@page`, folios, target-
+   millimètres pour une page qui existe une fois, imprimée — `@page`, folios, target-
    counter(), pastille et onglet de tranche n'ont ici ni sens ni le moindre effet (un
    navigateur ignore silencieusement `@page`, et un `--corps: 10pt` de la charte FALC
    composerait un livre entier dans un corps de labeur, illisible plein écran). Cette
    feuille redonne donc sa propre forme, en unités d'écran (rem, ch, %), aux mêmes classes
    de contenu que la chaîne pose déjà (.falc-resume, .szh-sommaire, figure, table…) — le
-   SENS de ces blocs ne change pas d'une sortie à l'autre, seule leur FORME est refaite ici
+   sens de ces blocs ne change pas d'une sortie à l'autre, seule leur forme est refaite ici
    pour l'écran (docs/SORTIES.md).
 
    Elle est chargée de deux façons, selon ce que produit le Makefile :
-     * livre-html-web (le HTML autonome, --css-embed) : les jetons ci-dessous ET tout le
-       reste sont INCORPORÉS dans un <style> par livre-assembler.py, avec les url() des
+     * livre-html-web (le HTML autonome, --css-embed) : les jetons ci-dessous et tout le
+       reste sont incorporés dans un <style> par livre-assembler.py, avec les url() des
        polices réécrites en chemins absolus — un seul fichier, ouvrable par file:// sans
        rien à côté ;
-     * un aperçu futur du cockpit pourrait la LIER (--css) telle quelle, sans changement.
+     * un aperçu futur du cockpit pourrait la lier (--css) telle quelle, sans changement.
 
-   ⚠ Choix délibéré, à ne pas « corriger » : AUCUNE justification, à aucune largeur d'écran.
-   Le corps d'un chapitre FALC est composé avec des retours à la ligne SIGNIFICATIFS (une
+   ⚠ Choix délibéré, à ne pas « corriger » : aucune justification, à aucune largeur d'écran.
+   Le corps d'un chapitre FALC est composé avec des retours à la ligne significatifs (une
    phrase, une ligne, un <br> par retour — voir livre/falc.css) : une ligne d'une phrase
    courte, poussée en justify, s'étire en espaces énormes bien avant d'atteindre 62ch. Cette
    feuille ne sait pas quelle maquette a produit le HTML qu'elle habille ; plutôt que de le
@@ -27,7 +27,7 @@
    s'en accommode très bien au fer à gauche. */
 
 :root {
-  /* Encres et famille : les MÊMES jetons que le reste (socle.css), pas de nouvelle
+  /* Encres et famille : les mêmes jetons que le reste (socle.css), pas de nouvelle
      palette. Le corps de lecture : socle.css le déclare déjà en rem, précisément pour
      l'écran (« corps : rem (accessibilité HTML) ») — pas de raison d'en inventer un autre. */
   --web-fond:      #ffffff;
@@ -43,7 +43,7 @@
   --web-colonne: 62ch;
 }
 
-/* Thème sombre : peu coûteux, donc fait. Seuls CES jetons locaux changent — pas les
+/* Thème sombre : peu coûteux, donc fait. Seuls ces jetons locaux changent — pas les
    jetons partagés de socle.css, qui restent la vérité du papier. Les couleurs de chapitre
    (--c-chapitre) sont déjà choisies à Lc −90 ou mieux sur fond blanc (PALETTE_CHAPITRE,
    livre.mk) : non re-vérifiées ici sur fond sombre, seul écart honnête de cette section. */
@@ -125,8 +125,8 @@ h4 { font-size: 1rem; font-style: italic; margin: 1.25rem 0 0.4rem; }
 
 /* ═══ 5. Le sommaire : une vraie navigation ═══════════════════════════════════
    Un livre en pagination écrit son numéro de page par target-counter() (base.css) — une
-   fonction qui n'existe qu'EN PAGINATION et que cette feuille, volontairement, ne charge
-   jamais : la sortie web n'a donc AUCUN numéro à masquer, elle n'en a simplement jamais
+   fonction qui n'existe qu'en pagination et que cette feuille, volontairement, ne charge
+   jamais : la sortie web n'a donc aucun numéro à masquer, elle n'en a simplement jamais
    reçu. Ce qui reste — un lien par chapitre — devient ici une vraie liste de navigation,
    grande cible de clic, repère de couleur en regard comme la maquette FALC imprimée. */
 .szh-sommaire { margin: 0 0 2.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--web-filet); }
@@ -148,7 +148,7 @@ h4 { font-size: 1rem; font-style: italic; margin: 1.25rem 0 0.4rem; }
 .szh-sommaire .niveau-2, .szh-sommaire .niveau-3 { padding-left: 1.5em; font-size: 0.95em; }
 
 /* ═══ 6. Blocs FALC (falc-resume, falc-encadre, falc-cle, falc-etapes, falc-projet) ═══
-   Le SENS de ces blocs — un résumé de tête de chapitre, un encadré, un paragraphe-clé, une
+   Le sens de ces blocs — un résumé de tête de chapitre, un encadré, un paragraphe-clé, une
    liste d'étapes — vaut à l'écran comme sur le papier ; leur mesure en millimètres, non :
    refaite ici en rem/%, sans quoi elle vaudrait du texte en 13pt fixe plein écran. */
 .falc-resume {
@@ -177,7 +177,7 @@ blockquote { font-style: italic; margin: 1em 0 1em 1rem; padding-left: 1rem;
              border-left: 3px solid var(--web-filet); }
 
 /* ═══ 8. Figures ═══════════════════════════════════════════════════════════════
-   Aucun plafond de hauteur : c'est une contrainte de PAGE (une image ne doit pas déborder
+   Aucun plafond de hauteur : c'est une contrainte de page (une image ne doit pas déborder
    le folio suivant), qui n'existe pas dans une page qui défile — seule la largeur reste
    bornée, par la colonne de lecture elle-même. */
 figure { margin: 1.5rem 0; }
@@ -193,7 +193,7 @@ table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
 caption { text-align: left; font-size: 0.85rem; color: var(--web-ink2); margin-bottom: 0.4em; }
 th, td { text-align: left; vertical-align: top; padding: 0.35rem 0.6rem; border-bottom: 1px solid var(--web-filet); }
 /* Accent des tableaux stylés de l'éditeur (.szh-tableau) : mêmes jetons que le PDF
-   (accent-css.py écrit --szh-accent-*/--szh-gris-clair/--szh-zebre depuis buch.yaml). */
+   (accent-css.py écrit --szh-accent-…/--szh-gris-clair/--szh-zebre depuis buch.yaml). */
 .szh-tableau thead th { background: var(--szh-accent-clair); }
 .szh-tableau tbody tr:nth-child(even) { background: var(--szh-zebre); }
 
@@ -205,7 +205,7 @@ th, td { text-align: left; vertical-align: top; padding: 0.35rem 0.6rem; border-
 .szh-note { display: inline; font-size: 0.85em; color: var(--web-ink2); }
 
 /* ═══ 11. Liens ════════════════════════════════════════════════════════════════
-   Ici, à la différence du PDF imprimeur, un lien EST vivant : on lui laisse son
+   Ici, à la différence du PDF imprimeur, un lien est vivant : on lui laisse son
    affordance (couleur, soulignement au survol), sauf les ancres internes du sommaire et
    les appels de note/citation, déjà stylés à leur place ci-dessus et dans leur filtre. */
 a { color: var(--web-lien); }

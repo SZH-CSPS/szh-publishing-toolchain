@@ -28,7 +28,7 @@ local function normaliser(t)
   return (assainir(t):gsub('%s+', ' '):gsub('^%s+', ''):gsub('%s+$', ''))
 end
 
--- Un ensemble d'inlines est-il ENTIÈREMENT en gras (hors espaces) ?
+-- Un ensemble d'inlines est-il entièrement en gras (hors espaces) ?
 local function tout_gras(inls)
   local reel = 0
   for _, i in ipairs(inls) do
@@ -157,7 +157,7 @@ local function charger_legendes_table()
   return ens
 end
 
--- Légendes de figure détectées PAR STYLE par docx-meta.py (lignes F de $SZH_META).
+-- Légendes de figure détectées par style par docx-meta.py (lignes F de $SZH_META).
 local function charger_legendes_figures()
   local ens = {}
   local chemin = os.getenv('SZH_META')

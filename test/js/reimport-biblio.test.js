@@ -32,7 +32,9 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 
 const PY = lire('pipeline', 'reimporter.py');
-const CSS = lire('pipeline', 'styles', 'print.css');
+// L'encadré « fichier introuvable » vit désormais dans partage-filtres.css (commune au
+// livre) ; on lit les deux feuilles comme une seule, dans l'ordre où le Makefile les empile.
+const CSS = lire('pipeline', 'styles', 'partage-filtres.css') + lire('pipeline', 'styles', 'print.css');
 const CITATIONS = lire('pipeline', 'filters', 'szh-citations.lua');
 const SH = lire('pipeline', 'import-docx.sh');
 

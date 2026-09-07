@@ -1,8 +1,8 @@
 -- Enveloppe chaque tableau dans une boîte qui ne se coupe pas.
 --
 -- Le défaut qu'il corrige, constaté sur le premier livre du banc d'essai. Un <table> qui
--- porte une <caption> n'est pas mis en page seul : le moteur l'entoure d'une BOÎTE
--- ENVELOPPE anonyme, qui porte la légende. Cette enveloppe-là n'est atteignable par aucun
+-- porte une <caption> n'est pas mis en page seul : le moteur l'entoure d'une boîte
+-- enveloppe anonyme, qui porte la légende. Cette enveloppe-là n'est atteignable par aucun
 -- sélecteur CSS — `break-inside: avoid` posé sur `table` ne la retient pas — et quand elle
 -- se coupe entre sa légende et sa table, le baliseur de WeasyPrint 69 s'arrête net :
 --
@@ -24,12 +24,12 @@
 -- se coupe donc plus au mauvais endroit, et l'enveloppe anonyme n'a plus l'occasion de se
 -- retrouver sans table.
 --
--- ⚠ Ce filtre s'applique aussi à la REVUE, où le même défaut est possible et n'a
+-- ⚠ Ce filtre s'applique aussi à la revue, où le même défaut est possible et n'a
 --   simplement jamais été rencontré : aucun article publié n'a eu la géométrie qu'il faut.
 --   C'est de la chance, pas une garantie.
 --
--- Place dans la chaîne : APRÈS szh-tabelle-inclure (sinon les tableaux réinjectés ne sont
--- pas encore là) et APRÈS szh-numerotation (qui pose la légende « Tableau N — » ; enveloppé
+-- Place dans la chaîne : après szh-tabelle-inclure (sinon les tableaux réinjectés ne sont
+-- pas encore là) et après szh-numerotation (qui pose la légende « Tableau N — » ; enveloppé
 -- avant, le tableau ne serait plus un enfant direct du document et le compteur le raterait).
 
 local CLASSE = 'szh-tableau-boite'

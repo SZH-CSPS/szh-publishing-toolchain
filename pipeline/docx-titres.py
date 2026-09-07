@@ -243,7 +243,7 @@ def principal(argv):
         plus_grand = (taille is not None and taille_corps is not None
                       and taille >= taille_corps * SEUIL_TAILLE)
         if tout_gras or plus_grand:
-            # taille EFFECTIVE : celle du run si titre « plus grand », sinon la taille
+            # taille effective : celle du run si titre « plus grand », sinon la taille
             # du corps (titre gras seul) -> classe au plus bas des paliers de titre.
             eff = taille if plus_grand else taille_corps
             candidats.append((txt, eff))

@@ -1,12 +1,12 @@
 -- Encadré « ce qu'un lecteur d'écran reçoit », sous chaque image et chaque tableau de
--- l'APERÇU du cockpit. Un texte alternatif, une description de tableau, se saisissent une
+-- l'aperçu du cockpit. Un texte alternatif, une description de tableau, se saisissent une
 -- fois dans un formulaire et ne se relisent plus jamais : ni le PDF ni le galley Word ne
 -- les montrent. L'aperçu est le seul endroit où le rédacteur regarde vraiment son article,
 -- donc le seul endroit où ce travail-là peut se relire. C'est de l'accessibilité au second
 -- degré : rendre vérifiable, par la personne qui le fait, un travail dont le résultat est
 -- invisible.
 --
--- ⚠ Ce fichier n'est LU que quand SZH_APERCU=1. szh-numerotation.lua le charge par dofile
+-- ⚠ Ce fichier n'est lu que quand SZH_APERCU=1. szh-numerotation.lua le charge par dofile
 -- sous cette seule condition (même mécanisme que szh-citations.lua, qui ne pose ses marques
 -- d'appel douteux que dans l'aperçu). La chaîne du PDF n'ouvre donc pas ce fichier : ni
 -- balisage, ni règle CSS, ni classe ne peut en sortir. C'est la garantie la plus forte
@@ -38,14 +38,14 @@ local utils = pandoc.utils
 local M = {}
 
 -- ─── Libellés ────────────────────────────────────────────────────────────────
--- Localisés sur la langue de composition de l'ARTICLE, comme « Figure » / « Abbildung » :
+-- Localisés sur la langue de composition de l'article, comme « Figure » / « Abbildung » :
 -- un encadré français sous les images d'un article allemand serait un défaut à lui seul.
 -- Vocabulaire repris mot pour mot de lib/i18n.js du cockpit — « Texte alternatif » /
 -- « Alternativtext », « Description du tableau » / « Beschreibung der Tabelle », « Image
 -- purement décorative » / « Rein dekoratives Bild » : le rédacteur doit reconnaître dans
 -- l'aperçu les mots du formulaire où il a saisi la valeur.
 -- Les étiquettes ALT= et DESCRIPTION= restent en clair et non traduites : ce sont les noms
--- des attributs, ils désignent la CASE du formulaire et pas une phrase, et ils survivent au
+-- des attributs, ils désignent la case du formulaire et pas une phrase, et ils survivent au
 -- copier-coller dans un message d'aide. Toute la prose, elle, est traduite.
 local L = {
   fr = {
@@ -103,7 +103,7 @@ local function trim(t) return (t:gsub('^%s+', ''):gsub('%s+$', '')) end
 local function vide(t) return t == nil or t:match('^%s*$') ~= nil end
 
 -- Échappement d'un texte venu de l'AST (attribut alt=, légende) avant insertion dans le
--- HTML de l'encadré. Les valeurs lues dans le HTML brut d'un tableau, elles, sont DÉJÀ
+-- HTML de l'encadré. Les valeurs lues dans le HTML brut d'un tableau, elles, sont déjà
 -- échappées — elles sortent d'un attribut — et s'insèrent telles quelles : les échapper
 -- une seconde fois afficherait « &amp;amp; ». Même arbitrage que traiter_tableau, qui
 -- recopie les crédits d'un data-* sans y toucher.
@@ -117,7 +117,7 @@ local function ligne(contenu) return '<span class="szh-le-ligne">' .. contenu ..
 local function etiq(t) return '<span class="szh-le-tag">' .. t .. '</span> ' end
 local function note(t) return '<span class="szh-le-note">' .. ech(t) .. '</span>' end
 
--- Grammaire de l'encadré, tenue partout : après une étiquette vient TOUJOURS la valeur —
+-- Grammaire de l'encadré, tenue partout : après une étiquette vient toujours la valeur —
 -- le texte lui-même, ou l'un des deux témoins de vide ci-dessous. La prose qui explique
 -- vit sur une ligne de note, jamais dans l'emplacement de la valeur : « ALT= image
 -- purement décorative » se lirait comme un texte alternatif qui dirait cela.
@@ -141,19 +141,19 @@ end
 -- Quatre états, et un seul est signalé en rouge.
 --
 --   alt="…"            -> le texte, tel qu'un lecteur d'écran l'énoncera.
---   alt=""             -> déclaration « décorative ». C'est une INFORMATION, pas une
+--   alt=""             -> déclaration « décorative ». C'est une information, pas une
 --                         absence : la revue prend cette décision exprès (les portraits
 --                         d'auteur·e·s, par exemple). Jamais de rouge ici.
 --   alt absent, mais une légende -> le rendu recopie la légende dans l'alt. Le rédacteur
 --                         doit le savoir : le lecteur d'écran entendra deux fois la même
 --                         phrase. Ce n'est pas une faute, seulement une redondance, donc
 --                         une note et pas une alerte.
---   alt absent, aucune légende -> RIEN n'atteindra le lecteur d'écran, et rien ne dit que
+--   alt absent, aucune légende -> rien n'atteindra le lecteur d'écran, et rien ne dit que
 --                         c'est voulu. C'est exactement le cas que imagesSansAlternative()
 --                         de lib/references.js refuse à l'export OJS ; l'encadré le montre
 --                         beaucoup plus tôt, à la relecture. Seul cas rouge.
 --
--- La distinction alt="" / alt absent n'existe que sur l'AST INTACT : les passes suivantes
+-- La distinction alt="" / alt absent n'existe que sur l'AST intact : les passes suivantes
 -- de szh-numerotation.lua posent alt="" partout où l'alt manque, et l'intention est alors
 -- perdue. D'où la place de ce module, tout au début de Pandoc(doc).
 local function encadre_image(img, l)
@@ -173,7 +173,7 @@ local function encadre_image(img, l)
 end
 
 -- ─── Tableaux ────────────────────────────────────────────────────────────────
--- Ligne d'en-têtes. Aucun en-tête n'est PAS une faute : ni le RGAA ni les WCAG n'exigent
+-- Ligne d'en-têtes. Aucun en-tête n'est pas une faute : ni le RGAA ni les WCAG n'exigent
 -- qu'un tableau en ait un, ils exigent que celui qui existe soit déclaré. Le cockpit dit
 -- déjà la même chose à l'import (« Si ce tableau n'a réellement pas d'en-tête, il n'y a
 -- rien à faire ») ; l'encadré garde ce ton. Un <th> sans scope est signalé au compte, sans
@@ -182,7 +182,7 @@ local function ligne_entetes(l, n_th, portees, sans_portee)
   if n_th == 0 then return ligne(note(l.sans_entete)) end
   local bouts = { string.format(l.entetes, n_th) }
   -- Les quatre portées de HTML d'abord, dans cet ordre ; toute autre valeur ensuite,
-  -- telle quelle. Une portée inventée doit se VOIR, pas se faire compter en silence.
+  -- telle quelle. Une portée inventée doit se voir, pas se faire compter en silence.
   local vues, montrees = {}, {}
   for _, v in ipairs({ 'col', 'colgroup', 'row', 'rowgroup' }) do
     if portees[v] then
@@ -203,7 +203,7 @@ end
 
 -- Tableau réinjecté en HTML brut (szh-tabelle-inclure.lua) : opaque à l'AST, on lit le
 -- texte. data-alt est la description longue — le seul contenu de toute la chaîne qui
--- n'apparaisse NULLE PART ailleurs : print.css la masque à l'écran (elle n'est là que pour
+-- n'apparaisse nulle part ailleurs : print.css la masque à l'écran (elle n'est là que pour
 -- l'aria-describedby), la retire en @media print, et szh-galley-docx.lua l'ôte du Word.
 -- L'aperçu est donc le seul endroit où elle se relit. Absente, elle est facultative : pas
 -- d'alerte, un simple témoin.
@@ -275,7 +275,7 @@ end
 -- de blocs, un filtre Blocks y poserait donc un second encadré à l'intérieur de la figure.
 -- Ici, une Figure est traitée une fois, à son propre niveau, et on ne redescend pas dedans.
 -- (Même arbitrage que la descente à la main de szh-citations.lua, pour une autre raison.)
--- Deux limites assumées : une image posée dans la CELLULE d'un tableau markdown n'a pas
+-- Deux limites assumées : une image posée dans la cellule d'un tableau markdown n'a pas
 -- d'encadré (on ne descend pas dans les cellules, l'encadré n'aurait pas de place où se
 -- mettre), et une image glissée dans une note de bas de page en reçoit un après le
 -- paragraphe appelant, pas dans la note. Aucun des deux cas n'existe dans le corpus, et
@@ -316,8 +316,8 @@ descendre = function(blocs, l)
 end
 
 -- ─── Feuille de style ────────────────────────────────────────────────────────
--- Un champ vide doit se voir PLUS qu'un champ rempli : l'encadré d'alerte prend un aplat
--- rose, un filet rouge de 2 px et le mot VIDE en 1,3 em de gras espacé, là où l'encadré
+-- Un champ vide doit se voir plus qu'un champ rempli : l'encadré d'alerte prend un aplat
+-- rose, un filet rouge de 2 px et le mot « vide » en 1,3 em de gras espacé, là où l'encadré
 -- ordinaire n'est qu'un pointillé gris clair. Sur une page compilée, c'est le seul objet
 -- coloré : il se repère sans lire.
 -- L'absence légitime (description de tableau non renseignée, aucun en-tête) est en gris

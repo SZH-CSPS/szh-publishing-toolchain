@@ -12,7 +12,7 @@
 # Le dernier mode n'est pas pour un humain : import-docx.sh l'appelle en fin d'import pour
 # noter ce que la conversion a produit (voir « Empreintes » plus bas).
 #
-# CE QUE LE WORD POSSÈDE, ET RIEN D'AUTRE
+# Ce que le Word possède, et rien d'autre
 #
 #   <slug>.md         le corps
 #   <slug>.biblio.md  la bibliographie détachée à l'import — mêmes conditions qu'un tableau
@@ -24,7 +24,7 @@
 # rangerait. La règle est une liste blanche de ce qui est remplacé, non une liste de ce qui
 # survit : un sidecar inventé demain survivra sans qu'on y pense.
 #
-# LES TABLEAUX : TROIS ÉTATS, PAS DEUX
+# Les tableaux : trois états, pas deux
 #
 # Un tableau vit deux vies. L'auteur le corrige dans son Word ; la rédaction le retravaille
 # dans l'éditeur de tableaux (préréglage, fusions, légende, description pour les lecteurs
@@ -33,12 +33,12 @@
 # produit. Trois comparaisons deviennent alors possibles, et la décision est claire :
 #
 #   * le Word livre le même tableau qu'à l'import (empreinte retrouvée) -> l'auteur n'y a
-#     pas touché : la version de la rédaction est GARDÉE, quel qu'ait été son travail. Si
+#     pas touché : la version de la rédaction est gardée, quel qu'ait été son travail. Si
 #     le tableau a changé de rang (l'auteur en a inséré un avant), il suit son rang.
 #   * le Word livre un tableau différent, et la rédaction n'avait pas touché celui-là ->
-#     la version du Word REMPLACE l'ancienne. Personne ne perd rien.
-#   * le Word livre un tableau différent ET la rédaction avait retravaillé le sien -> la
-#     version du Word gagne, et le conflit est NOMMÉ au rédacteur, avec le chemin où
+#     la version du Word remplace l'ancienne. Personne ne perd rien.
+#   * le Word livre un tableau différent et la rédaction avait retravaillé le sien -> la
+#     version du Word gagne, et le conflit est nommé au rédacteur, avec le chemin où
 #     retrouver la sienne. Pourquoi le Word gagne : le corps et le tableau viennent du même
 #     document. Garder l'ancien tableau publierait une donnée que l'auteur vient de
 #     corriger, sous un texte qui parle de la nouvelle — et le ferait en silence, ce qui
@@ -47,28 +47,28 @@
 #   * article importé avant les empreintes -> on ne peut pas savoir. Tout tableau qui
 #     diffère est traité comme un conflit, et un message le dit une fois pour l'article.
 #
-# LA BIBLIOGRAPHIE : LE MÊME MODÈLE, SUR UN SEUL FICHIER
+# La bibliographie : le même modèle, sur un seul fichier
 #
 # Depuis que l'import détache la bibliographie dans <slug>.biblio.md, elle vit les deux
 # mêmes vies qu'un tableau : l'auteur corrige ses références dans son Word, et la rédaction
 # peut les corriger ici — l'arborescence du cockpit ouvre ce fichier d'un clic. Les trois
 # états sont donc les mêmes, sur un fichier au lieu d'une série :
 #
-#   * le Word livre les mêmes références qu'à l'import -> la version d'ici est GARDÉE ;
-#   * le Word livre autre chose, personne n'avait touché -> le Word REMPLACE ;
+#   * le Word livre les mêmes références qu'à l'import -> la version d'ici est gardée ;
+#   * le Word livre autre chose, personne n'avait touché -> le Word remplace ;
 #   * les deux ont bougé -> le Word gagne (le corps et les références viennent du même
-#     document), et le conflit est NOMMÉ, avec le chemin de l'ancienne version.
+#     document), et le conflit est nommé, avec le chemin de l'ancienne version.
 #
 # Et deux cas propres à un fichier unique : le Word qui n'en détache plus (ses références
 # ne portent plus le style ; la liste reste dans son corps, et le fichier d'ici s'en va),
 # et l'article importé quand la chaîne détachait déjà sans noter l'empreinte — on ne peut
 # alors pas savoir, et un message le dit plutôt que d'accuser la rédaction à tort.
 #
-# ⚠ La bibliographie compte AUSSI dans « rien à faire » : sans cela, un Word dont seules
+# ⚠ La bibliographie compte aussi dans « rien à faire » : sans cela, un Word dont seules
 # les références changent était jugé sans effet, consommé, et la correction de l'auteur
 # était jetée en silence — mesuré. C'est le défaut même que ce script existe pour empêcher.
 #
-# LES IMAGES : ELLES VOYAGENT AVEC LE CORPS
+# Les images : elles voyagent avec le corps
 #
 # import-medias.py les nomme <slug>-fig-NN d'après leur ordre de première citation dans le
 # texte. Une image insérée en tête décale toute la numérotation : mélanger l'ancien jeu et
@@ -78,14 +78,14 @@
 # attend dans .szh-avant-reimport/. Les portraits ne sont pas concernés : ils vivent dans
 # portraits/, appartiennent au formulaire des auteur·e·s, et ne sont pas touchés.
 #
-# LA FICHE : ELLE SURVIT, MAIS CE QUE LE WORD DISAIT EST DÉPOSÉ À CÔTÉ
+# La fiche : elle survit, mais ce que le Word disait est déposé à côté
 #
 # La fiche est saisie à la main et ne doit pas être écrasée. Mais l'auteur a peut-être
 # corrigé son titre ou son résumé dans le Word. La fiche que ce Word aurait produite est
 # donc écrite dans le rebut sous fiche-du-word.meta.yaml, et les champs qui diffèrent sont
 # nommés. À la rédaction de recopier ce qu'elle veut, dans son formulaire.
 #
-# RÉVERSIBILITÉ ET INTERRUPTION
+# Réversibilité et interruption
 #
 # Le dossier de l'article n'est jamais modifié sur place : il est déplacé — pas copié —
 # dans .szh-avant-reimport/<slug>/<horodatage>/article-avant/, avec le Word consommé, un
@@ -102,7 +102,7 @@
 # `import` du Makefile appelle à chaque compilation : un article laissé sous
 # .szh-bascule-<slug> serait invisible du numéro, et se publierait sans lui sans un mot.
 #
-# SORTIE
+# Sortie
 #
 # Une ligne JSON sur stdout, comme portraits.py et docx-meta.py, et rien d'autre sur
 # stdout : c'est le contrat du cockpit. Les messages destinés au rédacteur vont sur stderr
@@ -120,6 +120,9 @@ import shutil
 import subprocess
 import sys
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import szh_commun
 
 NOM_EMPREINTES = '.szh-import.empreintes'
 DOSSIER_REBUT = '.szh-avant-reimport'
@@ -150,7 +153,7 @@ EXTENSIONS_IMAGE = ('.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp',
 #
 #   0 reussi   le corps vient du Word corrigé
 #   3 rien     un Word a été examiné, il ne changeait rien ; il est consommé
-#   4 refuse   il n'y avait rien à faire de ce Word ou de cet article, et RIEN n'a été
+#   4 refuse   il n'y avait rien à faire de ce Word ou de cet article, et rien n'a été
 #              touché. Ce n'est pas une panne : à ne jamais peindre en rouge.
 #   1 echec    la conversion ou le système de fichiers a lâché ; l'article est intact
 #   2 —        appel mal formé (pas de ligne JSON : c'est un bug d'appelant)
@@ -192,9 +195,14 @@ class Voix(object):
         self._poser(PREFIXE_INFO + ' ' + fr + ' [de] ' + de)
 
     def avertir(self, code, champs, fr, de):
+        # Même préfixe et même mécanisme que docx-meta.py, docx-tables.py et
+        # livre-scinder.py (szh_commun.avertir()) — seul le journal diffère : le nôtre est
+        # un chemin résolu au constructeur, jamais SZH_IMPORT_LOG, et l'écriture se fait ici
+        # avec flush=True, comme le reste de cette classe (voir _poser).
         self.avertissements.append(code)
-        self._poser(' | '.join([PREFIXE_AVERT + ' ' + code] + list(champs)
-                               + [fr, '[de] ' + de]))
+        ligne = szh_commun.avertir(PREFIXE_AVERT, code, champs, fr, de,
+                                    journal=self.journal, flush=True)
+        self.lignes.append(ligne)
 
 
 # ---------------------------------------------------------------------------------
@@ -1303,7 +1311,7 @@ def principal(argv):
 # Le seul point de sortie du processus. Le code rendu ici est celui que la ligne JSON
 # annonce : un appelant qui teste $? et un appelant qui lit le JSON doivent conclure la
 # même chose. ⚠ Piège d'appel, mesuré : dans un tube (« … | tail »), $? est le code du
-# DERNIER maillon, donc 0 — il faut lire ${PIPESTATUS[0]}, ou ne pas mettre de tube.
+# dernier maillon, donc 0 — il faut lire ${PIPESTATUS[0]}, ou ne pas mettre de tube.
 #
 # `except Exception` n'attrape ni SystemExit ni KeyboardInterrupt (tous deux dérivent de
 # BaseException) : le code de sortie de principal() passe donc intact, et Ctrl+C garde sa

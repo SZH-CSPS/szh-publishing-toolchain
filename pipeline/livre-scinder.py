@@ -19,68 +19,24 @@ import sys
 import os
 import re
 import shutil
-import unicodedata
 from pathlib import Path
 from collections import defaultdict
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import szh_commun
 
 # Pas d'import yaml - la WSL de production n'a que la stdlib (voir lire_ordre_existant() :
 # buch.yaml se lit en texte brut pour cette raison, jamais avec un module absent en
 # production).
 
 # --------------------------------------------------------------------------------------
-# Translittération et normalisation de slug, reproduisant slug.js exactement
+# Translittération et normalisation de slug — szh_commun.slugifier() reproduit exactement
+# celle de la cible « import » du Makefile (~l.598-605) ; slugifier_chapitre() n'ajoute que
+# le bornage, propre aux chapitres (pas de complément de deux chiffres, c'est pour les
+# articles).
 # --------------------------------------------------------------------------------------
-def slugifier(nom_fichier: str) -> str:
-    """
-    Reproduit le slug de la cible « import » du Makefile :
-    nom sans extension | iconv ASCII//TRANSLIT | minuscules | [^a-z0-9]+ -> '-' | trim '-'
-    """
-    # Retirer l'extension
-    s = re.sub(r'\.[^.]*$', '', nom_fichier)
-
-    # Translittération des ligatures françaises (comme en JS)
-    s = s.replace('œ', 'oe').replace('Œ', 'oe')
-    s = s.replace('æ', 'ae').replace('Æ', 'ae')
-    s = s.replace('ß', 'ss')
-
-    # NFD normalisation + suppression des diacritiques
-    s = unicodedata.normalize('NFD', s)
-    s = re.sub(r'[̀-ͯ]', '', s)
-
-    # Minuscules, remplacer [^a-z0-9]+ par '-', trim
-    s = s.lower()
-    s = re.sub(r'[^a-z0-9]+', '-', s)
-    s = re.sub(r'^-+|-+$', '', s)
-
-    return s or 'article'
-
-LONGUEUR_MAX_SLUG = 39
-
-def borner_slug(s: str) -> str:
-    """
-    Coupe au dernier mot entier plutôt qu'au caractère près.
-    Retire les segments orphelins d'une lettre à la fin (élisions comme « d-enseignement »).
-    """
-    if len(s) <= LONGUEUR_MAX_SLUG:
-        return s
-
-    coupe = s[:LONGUEUR_MAX_SLUG]
-    i = coupe.rfind('-')
-    court = coupe[:i] if i > 0 else coupe
-
-    # Retirer les segments orphelins à la fin, mais pas si ça laisse un seul segment
-    sans_orphelin = re.sub(r'(-[a-z0-9])+$', '', court)
-    if '-' in sans_orphelin:
-        court = sans_orphelin
-
-    return court
-
-def slugifier_chapitre(titre: str) -> str:
-    """
-    Slug d'un chapitre : slugifier puis borner. Pas de complément de deux chiffres
-    (c'est pour les articles, pas les chapitres).
-    """
-    return borner_slug(slugifier(titre))
+slugifier = szh_commun.slugifier
+slugifier_chapitre = szh_commun.slugifier_chapitre
 
 # --------------------------------------------------------------------------------------
 # Lecture et découpe du chapitre
@@ -96,16 +52,27 @@ def lire_chapitre(chemin_md: str) -> tuple[str, list[tuple[str, str]]]:
     # Découper aux « # titre » (ligne commençant par # suivi d'espace, pas ##)
     # Pattern : début de ligne, exactement un #, puis espace, puis le titre
     pattern = r'^#\s+(.+)$'
+    # Un bloc de code clôturé (```…```) n'est pas de la prose : un « # commentaire » qui
+    # s'y trouve (un script cité en exemple) n'est pas un titre de niveau 1, et ne doit
+    # pas scinder le chapitre en son milieu.
+    cloture = re.compile(r'^\s*```')
 
     sections = []
     liminaire = []
     dans_liminaire = True
+    dans_bloc_code = False
     lignes = texte.split('\n')
     section_actuelle_titre = None
     section_actuelle_contenu = []
 
     for ligne in lignes:
-        match = re.match(pattern, ligne)
+        if cloture.match(ligne):
+            dans_bloc_code = not dans_bloc_code
+            match = None
+        elif dans_bloc_code:
+            match = None
+        else:
+            match = re.match(pattern, ligne)
         if match:
             # C'est un titre de niveau 1
             titre = match.group(1).strip()
@@ -228,7 +195,7 @@ def copier_ressource(src: Path, dst: Path, nom_ressource: str, contexte: str) ->
 
 # --------------------------------------------------------------------------------------
 # Constats nommés — même forme que docx-meta.py, docx-tables.py et reimporter.py : un code
-# stable, des champs, une phrase française puis allemande, sur stderr ET dans SZH_IMPORT_LOG
+# stable, des champs, une phrase française puis allemande, sur stderr et dans SZH_IMPORT_LOG
 # si le lanceur en a posé un. C'est l'absence de cette forme qui a rendu l'incident du
 # B329 indiagnosticable le 31.08 : un « ⚠ » perdu dans stderr, jamais bloquant, suivi d'un
 # rmtree — voir docs/REPRISE-LIVRES.md. Le code est ce qu'un outil de surveillance doit
@@ -237,16 +204,7 @@ def copier_ressource(src: Path, dst: Path, nom_ressource: str, contexte: str) ->
 PREFIXE_AVERT = '[scission-avertissement]'
 
 def avertir(code: str, champs: list, fr: str, de: str) -> None:
-    ligne = ' | '.join([PREFIXE_AVERT + ' ' + code] + list(champs) + [fr, '[de] ' + de])
-    print(ligne, file=sys.stderr)
-    journal = os.getenv('SZH_IMPORT_LOG')
-    if not journal:
-        return
-    try:
-        with open(journal, 'a', encoding='utf-8', newline='\n') as f:
-            f.write(ligne + '\n')
-    except OSError:
-        pass                                  # un journal illisible ne casse pas la scission
+    szh_commun.avertir(PREFIXE_AVERT, code, champs, fr, de)
 
 def copier_medias_references(chemin_md: Path, dossier_source_medias: Path) -> tuple:
     """
@@ -286,8 +244,11 @@ def copier_medias_references(chemin_md: Path, dossier_source_medias: Path) -> tu
 # --------------------------------------------------------------------------------------
 def lire_ordre_existant(chemin_buch: str) -> list:
     """
-    Lit la liste actuelle de « ordre-chapitres: » en texte brut — même lecture que le sed
-    de pipeline/profils/livre.mk (ORDRE_LU), volontairement, pour ne jamais dire une chose
+    Lit la liste actuelle de « ordre-chapitres: » en texte brut, dans les deux formes que
+    pipeline/profils/livre.mk sait aussi lire (szh-lire-config.lua) — en ligne « [a, b] »
+    (celle qu'écrit serialiserAusgabe(), et la seule qu'ecrire_buch_yaml() plus bas sait
+    réécrire) et en blocs, un « - slug » par ligne au fer à gauche (celle qu'un humain
+    saisirait à la main dans buch.yaml) — volontairement, pour ne jamais dire une chose
     différente de ce que le moteur de compilation va lire. Ne dépend PAS de PyYAML : sur la
     WSL de production, `yaml` est absent (voir l'import en tête de ce fichier). L'ancien
     code lisait buch.yaml avec PyYAML quand il était là et {} sinon, puis écrasait de toute
@@ -298,16 +259,28 @@ def lire_ordre_existant(chemin_buch: str) -> list:
     """
     if not os.path.exists(chemin_buch):
         return []
-    motif = re.compile(r'^ordre-chapitres:\s*\[([^\]]*)\]')
+    motif_ligne = re.compile(r'^ordre-chapitres:\s*\[([^\]]*)\]')
+    motif_bloc = re.compile(r'^ordre-chapitres:\s*$')
+    motif_item = re.compile(r'^-\s*(.*)$')
     with open(chemin_buch, 'r', encoding='utf-8') as f:
-        for ligne in f:
-            m = motif.match(ligne)
-            if not m:
-                continue
+        lignes = f.readlines()
+    for i, ligne in enumerate(lignes):
+        m = motif_ligne.match(ligne)
+        if m:
             contenu = m.group(1).strip()
             if not contenu:
                 return []
             return [s.strip().strip('\'"') for s in contenu.split(',') if s.strip()]
+        if motif_bloc.match(ligne):
+            items = []
+            for suivante in lignes[i + 1:]:
+                if not suivante.strip() or suivante.lstrip().startswith('#'):
+                    continue
+                m_item = motif_item.match(suivante)
+                if not m_item:
+                    break
+                items.append(m_item.group(1).strip().strip('\'"'))
+            return items
     return []
 
 def fusionner_ordre(ordre_existant: list, slug_remplace: str, slugs_nouveaux: list) -> list:
@@ -338,8 +311,8 @@ def ecrire_buch_yaml(chemin_buch: str, data: dict) -> None:
     if not os.path.exists(chemin_buch):
         return
 
-    # Lire le fichier existant pour le modifier
-    with open(chemin_buch, 'r', encoding='utf-8') as f:
+    # newline='' : les fins de ligne du fichier (CRLF compris) traversent sans conversion.
+    with open(chemin_buch, 'r', encoding='utf-8', newline='') as f:
         lignes = f.readlines()
 
     # Chercher et remplacer la ligne ordre-chapitres
@@ -349,17 +322,32 @@ def ecrire_buch_yaml(chemin_buch: str, data: dict) -> None:
         slugs = ', '.join(f"'{slug}'" for slug in data['ordre-chapitres'])
         ordre_str = f'[{slugs}]'
 
+    # La fin de ligne déjà en usage dans ce fichier, pour ne pas lui en imposer une autre.
+    fin_ligne = '\r\n' if '\r\n' in ''.join(lignes) else '\n'
+
     # Remplacer dans le contenu
+    trouve = False
     nouvelles_lignes = []
     for ligne in lignes:
         if ligne.startswith('ordre-chapitres:'):
-            nouvelles_lignes.append(f'ordre-chapitres: {ordre_str}\n')
+            nouvelles_lignes.append(f'ordre-chapitres: {ordre_str}{fin_ligne}')
+            trouve = True
         else:
             nouvelles_lignes.append(ligne)
 
-    # Écrire le fichier modifié
-    with open(chemin_buch, 'w', encoding='utf-8') as f:
-        f.writelines(nouvelles_lignes)
+    # La clé n'existait pas encore : l'ajouter en fin de fichier plutôt que la perdre.
+    if not trouve:
+        if nouvelles_lignes and not nouvelles_lignes[-1].endswith(('\n', '\r')):
+            nouvelles_lignes[-1] += fin_ligne
+        derniere_vide = bool(nouvelles_lignes) and nouvelles_lignes[-1].strip('\r\n') == ''
+        if nouvelles_lignes and not derniere_vide:
+            nouvelles_lignes.append(fin_ligne)
+        nouvelles_lignes.append(f'ordre-chapitres: {ordre_str}{fin_ligne}')
+
+    # Écrit dans un temporaire du même dossier puis os.replace : jamais visible à moitié écrit.
+    szh_commun.ecrire_atomique(
+        os.path.abspath(chemin_buch), lambda f: f.writelines(nouvelles_lignes),
+        binaire=False, encoding='utf-8', newline='')
 
 # --------------------------------------------------------------------------------------
 # Main
@@ -423,9 +411,9 @@ def main():
         num_chapitre = str(i + 1).zfill(2)
         slug_numerote = f"{num_chapitre}-{slug_final}"
 
-        # Garde-fou d'IDEMPOTENCE : si l'import repasse sur un manuscrit déjà scindé — ou
+        # Garde-fou d'idempotence : si l'import repasse sur un manuscrit déjà scindé — ou
         # si un autre chapitre porte déjà, par coïncidence, le nom qu'un des nouveaux
-        # prendrait — on s'arrête ICI, avant de créer ou de supprimer quoi que ce soit.
+        # prendrait — on s'arrête ici, avant de créer ou de supprimer quoi que ce soit.
         # dossier_original lui-même est exempté (c'est le cas normal d'une scission qui
         # renomme le dossier qu'elle scinde en son premier chapitre). Sans ce garde-fou,
         # un second passage sur le même manuscrit écraserait un chapitre déjà retravaillé
@@ -477,7 +465,7 @@ def main():
             dossier_nouveau.mkdir(parents=True, exist_ok=True)
             dossiers_crees.append((slug_numerote, titre))
 
-            # Écrire le .md : on l'écrit AVEC le titre # (c'est le titre du chapitre)
+            # Écrire le .md : on l'écrit avec le titre # (c'est le titre du chapitre)
             # Reconstruction du contenu : ajouter le titre # en début
             contenu_complet = f"# {titre}\n\n{contenu.strip()}\n"
 
@@ -535,12 +523,12 @@ def main():
                         'NICHT gelöscht: zuerst klären, warum sie fehlt.'
                         % (slug_numerote, table_path, chemin_src))
 
-        # Le texte de tête (avant le premier titre de niveau 1) n'entre dans AUCUN des
+        # Le texte de tête (avant le premier titre de niveau 1) n'entre dans aucun des
         # nouveaux chapitres : lire_chapitre() le sépare, mais rien ne l'écrivait plus
         # loin — jeté en silence par l'ancien main(). C'est ainsi qu'impressum-du-livre.md
         # a vu le jour : quelqu'un l'a retrouvé en lisant le .md source, recopié à la main
         # dans liminaires/, syntaxe d'image comprise, sans le media/ qui va avec (voir
-        # docs/REPRISE-LIVRES.md, 31.08). On ne l'écrit PAS nous-même dans liminaires/ :
+        # docs/REPRISE-LIVRES.md, 31.08). On ne l'écrit pas nous-même dans liminaires/ :
         # les pièces liminaires sont éditoriales et écrites à la main (livre.mk:88), et un
         # fichier posé là sans revue se ferait passer pour l'une d'elles à la prochaine
         # compilation. On le met de côté, on le dit, et on lui évite de perdre ses images
@@ -642,7 +630,7 @@ def main():
                 if chemin_relatif_str not in tables_utilisees:
                     print(f"  ⚠ Tableau orphelin : {chemin_relatif_str}", file=sys.stderr)
 
-        # Mettre à jour buch.yaml avec ordre-chapitres — FUSIONNÉ, pas écrasé : voir
+        # Mettre à jour buch.yaml avec ordre-chapitres — fusionné, pas écrasé : voir
         # fusionner_ordre() ci-dessus pour ce que ça corrige.
         slugs_numerotes = [f"{i+1:02d}-{slugs_nouveaux[i]}" for i in range(len(sections))]
         ordre_existant = lire_ordre_existant(str(dossier_buch))
@@ -651,7 +639,7 @@ def main():
         print(f"Écriture de buch.yaml avec ordre-chapitres...", file=sys.stderr)
         ecrire_buch_yaml(str(dossier_buch), {'ordre-chapitres': nouvel_ordre})
 
-        # Supprimer le chapitre d'origine — seulement si TOUT ce qu'il devait fournir a pu
+        # Supprimer le chapitre d'origine — seulement si tout ce qu'il devait fournir a pu
         # être copié. C'est le correctif du 31.08 : une copie qui échoue interdit désormais
         # la destruction de la source, quelle que soit la ressource en cause (image ou
         # tableau d'une section, ou média d'un texte de tête mis de côté ci-dessus). Un
@@ -685,19 +673,29 @@ def main():
 
     except Exception as e:
         print(f"Erreur lors de la scission : {e}", file=sys.stderr)
-        # Ne pas nettoyer les dossiers partiellement créés pour éviter la perte de données
-        # mais le signaler
-        print(f"Les dossiers partiellement créés ne sont PAS supprimés par sécurité", file=sys.stderr)
+        # Ne pas nettoyer les dossiers partiellement créés pour éviter la perte de données,
+        # mais le signaler clairement : dossier_original n'a pas non plus été supprimé (ça
+        # n'arrive que plus bas, une fois le bloc try entièrement réussi), donc les deux sont
+        # maintenant des chapitres valides aux yeux du Makefile, et le livre les imprimera
+        # tous les deux tant que l'un des deux n'aura pas été retiré à la main.
+        print("Les dossiers déjà créés ET le manuscrit d'origine restent tous deux sur le "
+              "disque : ce sont désormais, les uns comme l'autre, des chapitres valides, et "
+              "le livre sortira en double tant que l'un des deux n'est pas retiré à la main.",
+              file=sys.stderr)
+        print("[de] Die bereits erstellten Ordner UND das Ursprungsmanuskript bleiben beide "
+              "auf der Platte: beide sind jetzt gültige Kapitel, und das Buch erscheint "
+              "doppelt, solange nicht eines der beiden von Hand entfernt wird.",
+              file=sys.stderr)
         import traceback
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
     # Échec franc si des ressources manquent, même si la scission elle-même n'a levé
-    # aucune exception. La cible `import` de pipeline/Makefile EST désormais ce lanceur
+    # aucune exception. La cible `import` de pipeline/Makefile est désormais ce lanceur
     # (elle ne l'était pas quand ce paragraphe a été écrit le 31.08 — voir git blame) : elle
     # teste ce code de sortie et compte le manuscrit comme une scission incomplète, sans
     # pour autant effacer quoi que ce soit ni faire disparaître les chapitres déjà écrits.
-    # Sortir non nul ici ne casse donc PAS l'automatisation, il la renseigne : c'est ce qui
+    # Sortir non nul ici ne casse donc pas l'automatisation, il la renseigne : c'est ce qui
     # permet de ne pas choisir entre « échouer » et « conserver la source en le disant » :
     # les deux à la fois. Les chapitres et buch.yaml restent écrits (rien d'utile n'est
     # perdu), le dossier d'origine reste sur le disque (ci-dessus), et le code de sortie

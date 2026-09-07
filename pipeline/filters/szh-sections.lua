@@ -24,14 +24,9 @@
 -- Le CSS devait les dé-numéroter à la main (`counter-increment: none`) ; ce n'est plus
 -- nécessaire, et ces neutralisations ont été retirées avec les compteurs.
 --
--- Doit tourner **après szh-citations.lua** : celui-ci reconnaît le titre de la
--- bibliographie sur son texte (« Références », « Literatur »), et un numéro collé devant
--- l'empêche de le trouver. Mesuré sur un article à deux références, filtres inversés :
--- 0 référence, 0 ancrage, 0 appel lié — toute la liste de références perd son ancrage, en
--- silence. Et le piège est pire qu'il n'y paraît : au-delà de trois références,
--- szh-citations retombe sur une heuristique de fin de document et s'en sort quand même.
--- L'ordre inversé passerait donc le banc et casserait sur un article court.
--- Voir l'ordre des --lua-filter dans le Makefile.
+-- Tourne AVANT szh-citations.lua, pas après (voir l'ordre des --lua-filter dans le
+-- Makefile) : ce qui rend cet ordre sûr est texte_de_titre(), dans szh-citations.lua, qui
+-- retire le Span de numéro (classe szh-num-section) avant de comparer le titre au lexique.
 
 local PREMIER_RANG = 2      -- <h2> = premier rang de section (le <h1> est le titre de l'article)
 local RANGS = 3             -- h2, h3, h4 numérotés ; h5 et h6 non
@@ -40,9 +35,9 @@ local CLASSE = 'szh-num-section'
 -- seul en fin de ligne. print.css ajoute la respiration visuelle (margin-right).
 local LIAISON = '\u{00A0}'
 
--- Livre seulement : un LIVRE compile chaque chapitre par une invocation pandoc séparée
+-- Livre seulement : un livre compile chaque chapitre par une invocation pandoc séparée
 -- (pipeline/profils/livre.mk), et le <h1> qu'on rejette ci-dessus pour un article — sa
--- page de garde, hors document pandoc — EST ici le titre du chapitre. Un livre publié le
+-- page de garde, hors document pandoc — est ici le titre du chapitre. Un livre publié le
 -- numérote (« 2 Theoretische Konzepte… ») et les sections s'y accrochent (« 2.1 »,
 -- « 2.1.1 »). SZH_CHAPITRE porte le rang du chapitre ; absent (hors livre, ou pour les
 -- pièces liminaires qui ne le reçoivent pas), RANG_CHAPITRE reste nil et tout ce qui suit

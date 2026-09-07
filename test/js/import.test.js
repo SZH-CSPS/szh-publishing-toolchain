@@ -174,15 +174,19 @@ test('import-docx.sh : des métadonnées illisibles ne passent plus pour un impo
 
 test('docx-tables.py : un tableau sans en-tête avertit sans faire échouer l’import', () => {
   const py = lire('pipeline', 'docx-tables.py');
+  const commun = lire('pipeline', 'szh_commun.py');
   // Préfixe et code stables : c'est par eux que l'interface reconnaîtra la ligne.
   assert.match(py, /PREFIXE_AVERT = '\[import-avertissement\]'/,
     'le préfixe des avertissements a changé — l’interface ne les retrouvera plus');
   assert.match(py, /'tableau-sans-entete'/, 'le code de l’avertissement a changé');
-  // stderr et articles-word/.import.log, les deux.
-  assert.match(py, /print\(ligne, file=sys\.stderr\)/, 'l’avertissement ne va plus sur stderr');
-  assert.match(py, /os\.getenv\('SZH_IMPORT_LOG'\)/, 'l’avertissement n’entre plus au journal');
+  // stderr et articles-word/.import.log, les deux : le mécanisme vit dans szh_commun.py,
+  // partagé avec docx-meta.py, livre-scinder.py et reimporter.py ; docx-tables.py délègue.
+  assert.match(py, /szh_commun\.avertir\(PREFIXE_AVERT, code, champs, fr, de\)/,
+    'l’avertissement ne délègue plus à szh_commun.avertir()');
+  assert.match(commun, /print\(ligne, file=sys\.stderr/, 'l’avertissement ne va plus sur stderr');
+  assert.match(commun, /os\.getenv\('SZH_IMPORT_LOG'\)/, 'l’avertissement n’entre plus au journal');
   // Un rédacteur doit pouvoir lire la ligne, en français et en allemand.
-  assert.match(py, /'\[de\] '/, 'l’avertissement n’existe qu’en français');
+  assert.match(commun, /'\[de\] '/, 'l’avertissement n’existe qu’en français');
   // L'article et le tableau sont nommés.
   assert.match(py, /article « %s »/, 'l’avertissement ne nomme plus l’article');
   assert.match(py, /'tableau %d'/, 'l’avertissement ne nomme plus le tableau');
@@ -207,6 +211,9 @@ test('Makefile : le même Word redéposé ne fabrique pas un second article', ()
   assert.ok(iSource !== -1, 'la lecture du champ source: a disparu du Makefile');
   assert.ok(iSource < iBoucle,
     'le redépôt est cherché après le suffixe : un doublon serait déjà créé');
+  // La boucle doit parcourir les fiches sous UNITES_DIR, pas la racine du système de fichiers.
+  assert.ok(mk.indexOf('for fiche in $(UNITES_DIR)/*/*.meta.yaml') !== -1,
+    'un glob sans dossier ne trouve aucune fiche');
   // Trois issues nommées, chacune avec son code stable.
   assert.ok(mk.indexOf('word-redepose') !== -1, 'le code du redépôt a changé');
   assert.ok(mk.indexOf('origine-inconnue') !== -1,
@@ -253,10 +260,13 @@ test('docx-meta.py : une langue devinée est écrite, mais elle est dite', () =>
   assert.match(py, /if meta_ecrit and langue_source in \('contenu', 'defaut'\):/,
     'la provenance d’une langue devinée n’est plus signalée');
   assert.ok(py.indexOf("'langue-deduite'") !== -1, 'le code de l’avertissement a changé');
-  // Même mécanique d'avertissement que docx-tables.py : un seul motif pour l'interface.
+  // Même mécanique d'avertissement que docx-tables.py : un seul motif pour l'interface —
+  // szh_commun.avertir(), partagé, que docx-meta.py appelle avec son propre préfixe.
   assert.match(py, /PREFIXE_AVERT = '\[import-avertissement\]'/);
-  assert.match(py, /os\.getenv\('SZH_IMPORT_LOG'\)/);
-  assert.match(py, /'\[de\] '/, 'l’avertissement n’existe qu’en français');
+  assert.match(py, /szh_commun\.avertir\(PREFIXE_AVERT, code, champs, fr, de\)/);
+  const commun = lire('pipeline', 'szh_commun.py');
+  assert.match(commun, /os\.getenv\('SZH_IMPORT_LOG'\)/);
+  assert.match(commun, /'\[de\] '/, 'l’avertissement n’existe qu’en français');
 });
 
 // ---- Le tableau des auteurs : ce qui l'a fait tomber en silence ----

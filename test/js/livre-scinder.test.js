@@ -206,6 +206,39 @@ test('ordre-chapitres se fusionne : un chapitre déjà listé n’est pas effac�
   }
 });
 
+test('ordre-chapitres en BLOCS (au fer à gauche) se fusionne comme la forme en ligne', () => {
+  // pipeline/profils/livre.mk lit désormais les deux formes (szh-lire-config.lua) : ce
+  // script ne doit plus être le seul maillon à ignorer la forme en blocs, sous peine de
+  // dire une chose différente de ce que le moteur de compilation va lire.
+  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+
+  const racine = livreJetable();
+  try {
+    ecrire(racine, 'buch.yaml',
+      'titre: "Essai"\nordre-chapitres:\n- \'01-avant\'\napres: 1\n');
+    ecrire(racine, 'chapitres', '01-avant', '01-avant.md', '# Avant\n\nDéjà là.\n');
+    ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md',
+      '# Un premier\n\nTexte.\n');
+
+    const r = lancer(racine, 'manuscrit');
+
+    assert.strictEqual(r.status, 0, r.stderr);
+    const buch = fs.readFileSync(path.join(racine, 'buch.yaml'), 'utf8');
+    const ligne = buch.split('\n').find((l) => l.startsWith('ordre-chapitres:'));
+    assert.match(ligne, /'01-avant'/,
+      'le chapitre déjà listé EN BLOCS a disparu : la lecture ne comprend que la forme en ligne');
+    assert.match(ligne, /'01-un-premier'/);
+    const avant = ligne.indexOf('01-avant');
+    const premier = ligne.indexOf('01-un-premier');
+    assert.ok(avant !== -1 && premier !== -1 && avant < premier,
+      '« 01-avant » ne précède plus le chapitre de la scission dans ordre-chapitres');
+    // apres: 1, à la suite du bloc, doit survivre intact.
+    assert.ok(buch.indexOf('apres: 1') !== -1, 'la clé suivant le bloc a été perdue');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
 test('idempotence : un chapitre déjà présent au nom visé arrête la scission avant tout dégât', () => {
   assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
 
@@ -325,6 +358,85 @@ test('une image citée par un tableau mais ABSENTE est nommée, et la source sur
       'le manque n’est pas nommé : il ne se verrait qu’à la compilation');
     assert.ok(fs.existsSync(path.join(racine, 'chapitres', 'manuscrit')),
       'le dossier d’origine a été détruit alors qu’une image manquait');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('un buch.yaml sans ordre-chapitres: reçoit la clé, au lieu de la perdre', () => {
+  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+
+  const racine = livreJetable();
+  try {
+    // Aucune ligne ordre-chapitres: dans ce buch.yaml : un livre qui n'en a pas encore.
+    ecrire(racine, 'buch.yaml', 'titre: "Essai"\n');
+    ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md', '# Un premier\n\nTexte.\n');
+
+    const r = lancer(racine, 'manuscrit');
+
+    assert.strictEqual(r.status, 0, r.stderr);
+    const buch = fs.readFileSync(path.join(racine, 'buch.yaml'), 'utf8');
+    const ligne = buch.split('\n').find((l) => l.startsWith('ordre-chapitres:'));
+    assert.ok(ligne, 'la clé ordre-chapitres: n’a pas été ajoutée : elle a été jetée');
+    assert.match(ligne, /'01-un-premier'/);
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('un « # » dans un bloc de code clôturé n’ouvre pas un chapitre supplémentaire', () => {
+  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+
+  const racine = livreJetable();
+  try {
+    ecrire(racine, 'buch.yaml', 'titre: "Essai"\nordre-chapitres: []\n');
+    // Le bloc de code cite un script qui commence par un commentaire « # » : pas un titre
+    // de niveau 1, même si le motif de découpe (« ^#\s+ ») le matcherait hors contexte.
+    ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md',
+      '# Un premier\n\nTexte avant le script.\n\n'
+      + '```\n# Un faux titre, en commentaire de script\necho "bonjour"\n```\n\n'
+      + 'Texte après le script, dans la même section.\n\n'
+      + '# Un second\n\nTexte.\n');
+
+    const r = lancer(racine, 'manuscrit');
+
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(fs.existsSync(path.join(racine, 'chapitres', '01-un-premier', '01-un-premier.md')),
+      'le premier chapitre n’a pas été créé');
+    assert.ok(fs.existsSync(path.join(racine, 'chapitres', '02-un-second', '02-un-second.md')),
+      'le second chapitre n’a pas été créé');
+    // Pas de troisième chapitre : le « # » du bloc de code n’a pas scindé une section de plus.
+    assert.ok(!fs.existsSync(path.join(racine, 'chapitres', '03-un-faux-titre-en-commentaire-de-script')),
+      'le « # » du bloc de code a été pris pour un titre de niveau 1 : un chapitre en trop a été créé');
+    const premier = fs.readFileSync(
+      path.join(racine, 'chapitres', '01-un-premier', '01-un-premier.md'), 'utf8');
+    assert.match(premier, /```\r?\n# Un faux titre, en commentaire de script\r?\necho "bonjour"\r?\n```/,
+      'le bloc de code n’a pas suivi intact dans la section « Un premier »');
+    assert.match(premier, /Texte après le script, dans la même section\./,
+      'le texte qui suit le bloc de code, dans la même section, a disparu ou a changé de chapitre');
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
+test('un buch.yaml en CRLF reste en CRLF après la réécriture d’ordre-chapitres', () => {
+  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+
+  const racine = livreJetable();
+  try {
+    ecrire(racine, 'buch.yaml', 'titre: "Essai"\r\nordre-chapitres: []\r\n');
+    ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md', '# Un premier\n\nTexte.\n');
+
+    const r = lancer(racine, 'manuscrit');
+
+    assert.strictEqual(r.status, 0, r.stderr);
+    const buch = fs.readFileSync(path.join(racine, 'buch.yaml'), 'utf8');
+    const nbLF = (buch.match(/\n/g) || []).length;
+    const nbCRLF = (buch.match(/\r\n/g) || []).length;
+    assert.strictEqual(nbCRLF, nbLF,
+      'la réécriture de buch.yaml a mélangé les fins de ligne : le fichier n’est plus en CRLF pur');
+    assert.match(buch, /ordre-chapitres: \[.*\]\r\n/,
+      'la ligne ordre-chapitres réécrite n’est plus en CRLF');
   } finally {
     fs.rmSync(racine, { recursive: true, force: true });
   }

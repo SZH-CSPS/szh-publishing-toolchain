@@ -397,7 +397,7 @@ def renommer(dossier, slug, texte):
             os.replace(tmp, os.path.join(media, nouveau))
         except OSError as exc:
             # Seconde phase en échec : remettre le fichier sous son ancien nom, et surtout
-            # ne PAS réécrire sa référence — elle pointerait un fichier absent, et les
+            # ne pas réécrire sa référence — elle pointerait un fichier absent, et les
             # octets dormiraient sous un « ~$ » que le cockpit masque et qu'OneDrive ignore.
             progression('[import-medias] renommage annulé pour %s : %s' % (nouveau, exc))
             try:

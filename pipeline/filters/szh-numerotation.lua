@@ -35,11 +35,34 @@
 
 local utils = pandoc.utils
 
+-- Module commun (a_classe, trim, langue_de) : un chargement raté arrête la compilation, ce
+-- filtre ne pouvant plus distinguer une classe, nettoyer un texte ni dire de langue fiable
+-- sans lui.
+local commun
+do
+  -- debug.getinfo, pas PANDOC_SCRIPT_FILE : ce dernier nomme le script reçu par pandoc en
+  -- ligne de commande, pas celui-ci quand un autre le charge par dofile — voir
+  -- szh-commun.lua.
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[numerotation] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
+end
+
 -- ─── Aperçu du cockpit seulement ─────────────────────────────────────────────
 -- SZH_APERCU=1 distingue les deux chaînes, comme dans szh-citations.lua : l'aperçu et le
 -- PDF sortent de deux appels à pandoc, et seul l'aperçu porte cette variable.
 -- szh-apercu-lecteur-ecran.lua y pose sous chaque image et chaque tableau un encadré
--- montrant ce qu'un lecteur d'écran reçoit. Le fichier n'est même pas OUVERT hors aperçu :
+-- montrant ce qu'un lecteur d'écran reçoit. Le fichier n'est même pas ouvert hors aperçu :
 -- rien de ce qu'il contient — balisage, classe, règle CSS — ne peut atteindre le PDF.
 -- Chargé par dofile plutôt que par require : le Makefile ne pose aucun chemin de recherche
 -- Lua aux filtres, et PANDOC_SCRIPT_FILE donne le dossier de celui-ci. Fichier absent ou
@@ -59,21 +82,21 @@ if APERCU then
 end
 
 -- ─── Livre : numérotation continue sur tout le volume ───────────────────────
--- Un LIVRE compile chaque chapitre par une invocation pandoc séparée (voir
+-- Un livre compile chaque chapitre par une invocation pandoc séparée (voir
 -- pipeline/profils/livre.mk) : les compteurs n_figure/n_tableau ci-dessous, locaux à
 -- cette invocation, repartiraient sinon à zéro à chaque chapitre. Les livres publiés
 -- numérotent en continu (« Abbildung 12 » au chapitre 4, pas « Abbildung 1 »).
 --
--- Mécanisme : SZH_COMPTEURS donne le chemin où CE chapitre écrit, en fin de passe, ce
+-- Mécanisme : SZH_COMPTEURS donne le chemin où ce chapitre écrit, en fin de passe, ce
 -- qu'il a consommé — deux nombres, figures puis tableaux, un par ligne — et ce chemin
 -- suit la convention « <dossier-partagé>/<rang>.txt » (une entrée par chapitre, même
 -- dossier). Pour trouver son point de départ, ce chapitre additionne ce que les
--- chapitres 1..SZH_CHAPITRE-1 ont chacun écrit dans LEUR fichier — pas seulement le
+-- chapitres 1..SZH_CHAPITRE-1 ont chacun écrit dans leur fichier — pas seulement le
 -- précédent, pour rester correct même si l'un d'eux n'a consommé ni figure ni tableau.
 -- SZH_LIVRE absent -> aucun de ces fichiers n'est ni lu ni écrit, comportement identique
 -- à aujourd'hui.
 --
--- ⚠ make peut recompiler UN SEUL chapitre. Si le report d'un chapitre précédent manque
+-- ⚠ make peut recompiler un seul chapitre. Si le report d'un chapitre précédent manque
 -- (dossier de sortie nettoyé entre deux builds, ordre de compilation inhabituel...),
 -- impossible de savoir combien de figures ce chapitre absent a réellement consommées :
 -- mieux vaut le dire et repartir de 0 (numérotation locale à ce chapitre, comme hors
@@ -103,7 +126,7 @@ local function depart_compteurs()
     local chemin = chemin_report(rang)
     local fh = io.open(chemin, 'r')
     -- Deux lectures séparées : une affectation multiple n'ordonnerait pas forcément ses
-    -- expressions de droite de gauche à droite, or c'est le PREMIER nombre lu qui doit
+    -- expressions de droite de gauche à droite, or c'est le premier nombre lu qui doit
     -- être les figures.
     local f, t = nil, nil
     if fh then
@@ -123,7 +146,7 @@ local function depart_compteurs()
   return figures, tableaux
 end
 
--- Écrit ce que CE chapitre a consommé (n_figure, n_tableau DÉJÀ diminués du point de
+-- Écrit ce que ce chapitre a consommé (n_figure, n_tableau déjà diminués du point de
 -- départ), pour que les chapitres suivants le retrouvent. N'écrit rien hors mode livre.
 local function ecrire_compteurs(n_figure, n_tableau)
   if not CHEMIN_COMPTEURS then return end
@@ -159,7 +182,7 @@ local CLASSE_HORS_FIGURE = 'szh-hors-figure'
 local CLASSE_CREDIT_SEUL = 'szh-credit-seul'
 
 -- ─── Image décorative : un fond CSS, jamais un <img> ─────────────────────────
--- WeasyPrint 69 balise TOUT <img> en /Figure et n'y pose un /Alt que si l'attribut alt
+-- WeasyPrint 69 balise tout <img> en /Figure et n'y pose un /Alt que si l'attribut alt
 -- est non vide. Une image décorative (alt="") sortait donc en /Figure sans /Alt, ce que
 -- PDF/UA-1 interdit (règle 7.3) : mesuré à la loupe, role="presentation" et
 -- aria-hidden="true" n'y changent rien. Le seul moyen de dire « ce dessin ne porte
@@ -221,6 +244,21 @@ end
 -- (spécificité 0,1,0) remplacerait le `max-width: 100%` de `.szh-decor` (print.css) et un
 -- décor large déborderait de la colonne. Une seule formule couvre grille et hors grille :
 -- --szh-rangees retombe sur 1 hors grille (posé par szh-grille.lua).
+-- Échappement du chemin inséré dans url("…") : le guillemet cassait déjà la chaîne CSS,
+-- mais une parenthèse, une apostrophe ou un retour à la ligne dans le nom du fichier
+-- (« Bild (1).png », un nom saisi avec une apostrophe) casse tout autant l'analyse du
+-- url("…") — la sienne, faite par pandoc --embed-resources pour retrouver le fichier à
+-- incorporer, comme celle de tout outil qui relirait ce <style>. Un retour à la ligne, en
+-- plus de casser la valeur, romprait la règle CSS elle-même.
+local function echapper_url(s)
+  s = s:gsub('"', '%%22')
+  s = s:gsub("'", '%%27')
+  s = s:gsub('%(', '%%28')
+  s = s:gsub('%)', '%%29')
+  s = s:gsub('\r\n', '%%0A'):gsub('[\r\n]', '%%0A')
+  return s
+end
+
 local function style_decors()
   if #decors == 0 then return nil end
   local regles = {}
@@ -229,60 +267,41 @@ local function style_decors()
       '.%s{width:%dpx;max-width:min(100%%,calc((var(--plafond-figure) - 12px)'
         .. ' / var(--szh-rangees, 1) / %.4f))}\n'
         .. '.%s>span{padding-top:%.4f%%;background-image:url("%s")}',
-      d.classe, d.largeur, d.ratio / 100.0, d.classe, d.ratio, (d.src:gsub('"', '%%22')))
+      d.classe, d.largeur, d.ratio / 100.0, d.classe, d.ratio, echapper_url(d.src))
   end
   return pandoc.RawBlock('html', '<style>\n' .. table.concat(regles, '\n') .. '\n</style>')
 end
 
-local function a_classe(el, nom)
-  for _, c in ipairs(el.classes or {}) do
-    if c == nom then return true end
-  end
-  return false
-end
-
-local function trim(t) return (t:gsub('^%s+', ''):gsub('%s+$', '')) end
+local a_classe = commun.a_classe
+local trim = commun.trim
 local function vide(t) return t == nil or t:match('^%s*$') ~= nil end
 
--- Langue de composition : le `lang:` de l'ARTICLE prime, puis le jeton de revue, puis le
--- `lang:` du numéro. Même règle que szh-maquette.lua, et le même ordre : « Abbildung »
--- dans le PDF et « Figure » dans l'aperçu seraient un défaut à eux seuls.
+-- Langue de composition : le `lang:` de l'article prime, puis le jeton de revue, puis le
+-- `lang:` du numéro, « fr » en dernier repli — même ordre que szh-maquette.lua, sans
+-- son blocage sur une langue inconnue : ce filtre tourne aussi dans la chaîne d'aperçu, où
+-- szh-maquette n'est pas branché, et une fiche mal remplie ne doit pas y empêcher l'aperçu
+-- — une langue absente ou hors liste retombe silencieusement sur le jeton de revue.
 --
--- ⚠ Duplication assumée, et à garder alignée avec szh-maquette.lua : ce filtre tourne
--- aussi dans la chaîne d'aperçu, où szh-maquette n'est pas branché, et où personne
--- d'autre ne lit la fiche. `meta.lang` ne suffit pas — pandoc y fusionne ausgabe.yaml et
--- la fiche sans dire de quel fichier la valeur vient, or le jeton de revue doit passer
--- devant le `lang:` du numéro mais derrière celui de l'article.
---
--- Le slug vient du fichier d'entrée : le Makefile compile depuis le dossier de l'article,
--- la fiche est donc <slug>.meta.yaml dans le répertoire courant.
-local function langue_fiche()
-  local fichiers = (PANDOC_STATE and PANDOC_STATE.input_files) or {}
-  local chemin = fichiers[1]
-  if type(chemin) ~= 'string' then return nil end
-  local slug = chemin:gsub('.*[/\\]', ''):gsub('%.md$', '')
-  if slug == '' then return nil end
-  local fh = io.open(slug .. '.meta.yaml', 'r')
-  if not fh then return nil end
-  local lang = nil
-  for ligne in fh:lines() do
-    local m = ligne:match('^lang:%s*[\'"]?(%a%a)')
-    if m then lang = m:lower(); break end
-  end
-  fh:close()
-  return lang
-end
-
+-- Le module commun (szh-commun.lua) fait la lecture de la fiche, partagée avec
+-- szh-maquette.lua ; ce qui reste ici et lui est propre, c'est cette suite de replis
+-- (jeton de revue puis `lang:` du numéro, en `repli`) et l'ensemble des langues acceptées
+-- (`langues_valides`), qui inclut l'anglais des libellés de figure — szh-maquette, lui,
+-- n'accepte que fr/de/it.
 local function langue_de(meta)
-  local fiche = langue_fiche()
-  if fiche and LIBELLE_FIGURE[fiche] then return fiche end
-  local revue = utils.stringify(meta.revue or ''):lower()
-  if revue:find('zeitschrift') then return 'de' end
-  if revue:find('revue') then return 'fr' end
-  local lang = utils.stringify(meta.lang or ''):lower()
-  local court = lang:match('^(%a%a)')
-  if court and LIBELLE_FIGURE[court] then return court end
-  return 'fr'
+  return commun.langue_de(meta, {
+    lire_fiche = true,
+    variante_fiche = 'deux_lettres',
+    langues_valides = LIBELLE_FIGURE,
+    repli = function(m)
+      local revue = utils.stringify(m.revue or ''):lower()
+      if revue:find('zeitschrift') then return 'de' end
+      if revue:find('revue') then return 'fr' end
+      local court = utils.stringify(m.lang or ''):lower():match('^(%a%a)')
+      if court and LIBELLE_FIGURE[court] then return court end
+      return nil
+    end,
+    defaut = 'fr',
+  })
 end
 
 -- Crédits « © J. Dupont / Source : ESA ». L'un des deux peut manquer ; les deux
@@ -342,7 +361,7 @@ local OUVRANTE = '<[cC][aA][pP][tT][iI][oO][nN][^>]*>'
 local FERMANTE = '</[cC][aA][pP][tT][iI][oO][nN]%s*>'
 local TABLE    = '<[tT][aA][bB][lL][eE]([^>]*)>'
 
--- Valeur BRUTE (encore échappée HTML) d'un attribut du <table …>, ou nil.
+-- Valeur brute (encore échappée HTML) d'un attribut du <table …>, ou nil.
 local function attribut(attrs, nom)
   local n = nom:gsub('%-', '%%-')
   return attrs:match('%s' .. n .. '%s*=%s*"([^"]*)"')
@@ -459,7 +478,7 @@ function Pandoc(doc)
   local depart_figure, depart_tableau = depart_compteurs()
   local n_figure, n_tableau, n_desc = depart_figure, depart_tableau, 0
 
-  -- Aperçu : les encadrés « lecteur d'écran » AVANT toute autre passe, sur l'AST encore
+  -- Aperçu : les encadrés « lecteur d'écran » avant toute autre passe, sur l'AST encore
   -- intact. C'est là, et seulement là, que se lit l'intention du rédacteur : un alt=""
   -- écrit exprès (image décorative) ne se distingue plus d'un alt absent dès que les
   -- passes ci-dessous ont normalisé, elles posent alt="" dans les deux cas.
@@ -605,7 +624,7 @@ function Pandoc(doc)
     if style_le then doc.blocks:insert(style_le) end
   end
 
-  -- Ce que CE chapitre a consommé (au-delà de son point de départ), pour le chapitre
+  -- Ce que ce chapitre a consommé (au-delà de son point de départ), pour le chapitre
   -- suivant. N'écrit rien hors mode livre (voir ecrire_compteurs).
   ecrire_compteurs(n_figure - depart_figure, n_tableau - depart_tableau)
 

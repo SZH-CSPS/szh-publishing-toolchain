@@ -18,7 +18,7 @@
 --      met donc le lien sur l'année, comme le font les revues en ligne.
 --   3. le rapport : chaque appel sans référence et chaque référence jamais appelée part sur
 --      stderr, où le journal de compilation le montre au rédacteur — en constats codés, qui
---      NOMMENT leur article (voir « constats au rédacteur » plus bas). Avec SZH_APERCU=1,
+--      nomment leur article (voir « constats au rédacteur » plus bas). Avec SZH_APERCU=1,
 --      les appels non liés reçoivent en plus la classe « szh-appel-orphelin », que
 --      print.css souligne en pointillé dans l'aperçu seulement.
 --
@@ -28,18 +28,40 @@
 --
 -- Réglage szh.desactiverLiensReferences (config.json du poste, clé desactiverLiensReferences,
 -- même relais que le titre de la bibliographie — voir CONFIG_POSTE plus bas) : actif, l'étape
--- 2 ne pose plus le Link autour d'un appel apparié. Seul CE lien disparaît : l'entrée de
+-- 2 ne pose plus le Link autour d'un appel apparié. Seul ce lien disparaît : l'entrée de
 -- référence garde son Div ancré (étape 3, id=ref-nom-annee), donc un lien écrit à la main y
 -- mène toujours ; le bilan, les constats appel-sans-reference/appel-ambigu et la marque
 -- d'aperçu des appels orphelins/ambigus ne changent pas — l'appel reste apparié, il n'est
 -- simplement plus cliquable.
 --
--- Doit tourner en DERNIER, après szh-sections.lua : le titre de bibliographie qu'il pose
--- ne doit pas recevoir de numéro de section, et une bibliographie n'en porte pas. Le repli
+-- Tourne après szh-sections.lua : le titre de bibliographie qu'il pose ne doit pas recevoir
+-- de numéro de section, et une bibliographie n'en porte pas. Le repli
 -- des articles anciens, lui, retrouve son titre malgré le numéro déjà collé devant : voir
 -- texte_de_titre().
 
 local utils = pandoc.utils
+
+-- Module commun (slug_article, trim, langue_de) : un chargement raté arrête la
+-- compilation, ce filtre ne pouvant plus dire de langue ni de slug fiables sans lui.
+local commun
+do
+  -- debug.getinfo, pas PANDOC_SCRIPT_FILE : ce dernier nomme le script reçu par pandoc en
+  -- ligne de commande, pas celui-ci quand il est chargé par dofile depuis un autre script
+  -- (test/js/ancrages.test.js le fait, par un harnais situé ailleurs) — voir szh-commun.lua.
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[citations] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
+end
 
 -- ---------------------------------------------------------------- texte et comparaison
 local function assainir(t)
@@ -48,7 +70,7 @@ local function assainir(t)
   return t
 end
 
-local function trim(t) return (t:gsub('^%s+', ''):gsub('%s+$', '')) end
+local trim = commun.trim
 local function normaliser(t) return trim(assainir(t):gsub('%s+', ' ')) end
 
 -- ---------------------------------------------------------------- constats au rédacteur
@@ -56,32 +78,31 @@ local function normaliser(t) return trim(assainir(t):gsub('%s+', ' ')) end
 --
 --   [citations-<ton>] <code> | article « <slug> » | <champ> | … | <fr> | [de] <de>
 --
--- Le préfixe porte le TON, le deuxième champ un CODE stable, et l'article est NOMMÉ.
+-- Le préfixe porte le ton, le deuxième champ un code stable, et l'article est nommé.
 -- Deux défauts corrigés d'un coup : ces lignes n'étaient qu'en français, et le cockpit
 -- devait reconnaître leurs phrases pour les redire en allemand ; elles ne disaient pas de
 -- quel article elles parlaient, et le cockpit prenait celui de la ligne
 -- « pandoc articles/<slug>/… » qui précédait — sous « make -j », celle d'un autre article.
 -- La prose n'est plus qu'un repli d'affichage : elle se reformule sans rien casser.
 --
--- slug_article() est le même que celui de szh-maquette.lua, cinq lignes recopiées. Deux
--- filtres pandoc ne partagent pas de module sans que le Makefile leur pose un chemin de
--- recherche, et celui-ci est en plus relu comme un fichier de données par lib/citations.js
--- du cockpit. Même arbitrage que la lecture de `lang:`, déjà notée comme dette.
-local function slug_article()
-  local fichiers = (PANDOC_STATE and PANDOC_STATE.input_files) or {}
-  local chemin = fichiers[1]
-  if type(chemin) ~= 'string' then return '' end
-  return (chemin:gsub('.*[/\\]', ''):gsub('%.md$', ''))
-end
+-- slug_article() est le même que celui de szh-maquette.lua : commun.slug_article().
+local slug_article = commun.slug_article
 
 -- « | » sépare les champs : un texte d'article qui en porte un couperait la ligne en deux
 -- et emporterait la moitié allemande. Le seul endroit où cela peut venir du texte, c'est
 -- l'appel et l'entrée de bibliographie recopiés dans un champ.
 local function sans_barre(t) return (tostring(t):gsub('|', '/')) end
 
+-- Livre : même variable que celle que lit szh-niveaux.lua (SZH_LIVRE, posée par
+-- livre.mk sur chaque recette de chapitre). Le champ nommé du constat devient alors
+-- « chapitre « <slug> » » plutôt que « article « <slug> » » — le cockpit reconnaît ses
+-- champs par leur nom, jamais par leur position, donc ce seul mot suffit à faire lire
+-- correctement les constats de citations d'un chapitre.
+local LIVRE = (os.getenv('SZH_LIVRE') or '') ~= ''
+
 local function constat(ton, code, champs, fr, de)
   local morceaux = { '[citations-' .. ton .. '] ' .. code,
-                     'article « ' .. slug_article() .. ' »' }
+                     (LIVRE and 'chapitre « ' or 'article « ') .. slug_article() .. ' »' }
   for _, c in ipairs(champs) do morceaux[#morceaux + 1] = sans_barre(c) end
   morceaux[#morceaux + 1] = sans_barre(fr)
   morceaux[#morceaux + 1] = '[de] ' .. sans_barre(de)
@@ -273,7 +294,7 @@ local TITRES_BIB = {
   'referencesbibliographiques',
 }
 
--- Le titre que la compilation POSE au-dessus de la bibliographie détachée, par revue et par
+-- Le titre que la compilation pose au-dessus de la bibliographie détachée, par revue et par
 -- langue d'article. Ce sont les valeurs par défaut : le config.json du poste les surcharge
 -- clé par clé, et le bloc « Bibliographie » des Réglages SZH les modifie sans republier
 -- l'extension.
@@ -284,7 +305,7 @@ local TITRES_BIB = {
 -- une fois — pour son seul article italien. Aucun article n'a jamais porté le titre de
 -- l'autre langue : c'est la langue qui décide, et les deux revues partent donc du même jeu.
 --
--- ⚠ lib/citations.js du cockpit RELIT cette table ici, comme il relit le lexique et les
+-- ⚠ lib/citations.js du cockpit relit cette table ici, comme il relit le lexique et les
 --   tables de repli : deux copies, ce seraient deux titres.
 local TITRES_BIBLIO_DEFAUT = {
   revue       = { fr = [[Références]], de = [[Literatur]], it = [[Bibliografia]] },
@@ -312,7 +333,7 @@ for m in ('van von de des du della di da dos der den ter te le la zu zur af av e
   PARTICULES[m] = true
 end
 
--- Titre de bibliographie : comparaison EXACTE sur la forme aplatie, jamais par préfixe.
+-- Titre de bibliographie : comparaison exacte sur la forme aplatie, jamais par préfixe.
 -- Le préfixe faisait de « Literaturhinweise für die Praxis » un titre de bibliographie, et
 -- tout ce qui suivait — de la prose — cessait d'être regardé : le défaut était invisible.
 -- Le lexique porte donc les formes complètes que la maison écrit ; les trois relevées sur
@@ -321,7 +342,7 @@ end
 --
 -- Un titre déjà numéroté par szh-sections.lua porte son numéro dans un Span de tête :
 -- texte_de_titre() l'écarte avant de comparer. Sans cela, « 6 Références » ne serait plus
--- reconnu, et ce filtre tournant maintenant APRÈS szh-sections, plus rien ne le serait.
+-- reconnu, et ce filtre tournant maintenant après szh-sections, plus rien ne le serait.
 local function est_titre_bib(txt)
   local p = plat(txt)
   for _, t in ipairs(TITRES_BIB) do
@@ -369,7 +390,7 @@ local function sigles_de(entete)
 end
 
 local function noms_de(entete)
-  -- ⚠ Replier les accents AVANT de découper. Les motifs Lua comptent les octets : sur le
+  -- ⚠ Replier les accents avant de découper. Les motifs Lua comptent les octets : sur le
   -- texte d'origine, « Weiß » se coupait en « Wei » puis « ß », et « Schröttle » en
   -- « Schr » puis « öttle » — le nom relevé ne correspondait alors plus à celui de l'appel,
   -- et la référence passait pour introuvable.
@@ -582,23 +603,22 @@ end
 -- d'abord, la revue ensuite. La fiche est relue au lieu d'être prise dans les métadonnées
 -- fusionnées, qui ne disent pas de quel fichier une clé vient — même arbitrage, et même
 -- dette, que szh-maquette.
-local function langue_article(slug, revue)
-  if slug ~= '' then
-    local f = io.open(slug .. '.meta.yaml', 'r')
-    if f then
-      for ligne in f:lines() do
-        local v = ligne:match('^lang:%s*(.*)$')
-        if v then
-          v = trim(v:gsub('^["\']', ''):gsub('["\']%s*$', '')):lower():sub(1, 2)
-          f:close()
-          if v ~= '' then return v end
-          break
-        end
-      end
-      if f then f:close() end
-    end
-  end
-  return (revue == 'zeitschrift') and 'de' or 'fr'
+-- Un livre n'a pas de <slug>.meta.yaml : meta.lang (buch.yaml) s'intercale avant le repli sur
+-- la revue ; sans effet pour la revue, dont la fiche porte toujours lang (szh-maquette.lua bloque sinon).
+local function langue_article(slug, revue, meta)
+  return commun.langue_de(meta, {
+    slug = slug,
+    lire_fiche = true,
+    variante_fiche = 'guillemets_simples',
+    -- Pas de langues_valides : une fiche qui porte quoi que ce soit sur sa ligne « lang: »
+    -- l'emporte, sans validation — à la différence de szh-maquette.lua, qui bloque.
+    repli = function(m)
+      local v = utils.stringify(m and m.lang or ''):lower():sub(1, 2)
+      if v ~= '' then return v end
+      return nil
+    end,
+    defaut = (revue == 'zeitschrift') and 'de' or 'fr',
+  })
 end
 
 -- « Références bibliographiques » en inlines pandoc : un Str par mot, un Space entre. Un
@@ -615,7 +635,7 @@ end
 
 local function titre_bibliographie(meta, slug)
   local revue = jeton_revue(meta)
-  local lang = langue_article(slug, revue)
+  local lang = langue_article(slug, revue, meta)
   local defauts = TITRES_BIBLIO_DEFAUT[revue] or TITRES_BIBLIO_DEFAUT.revue
   local titre = defauts[lang] or defauts.fr
   local cfg = lire_config_poste()
@@ -881,7 +901,7 @@ local function poser(inlines, depart, s, e, fabriquer)
   return sortie
 end
 
--- id_ancre, s'il est fourni, pose un identifiant SUR L'APPEL lui-même : c'est la cible que
+-- id_ancre, s'il est fourni, pose un identifiant sur l'appel lui-même : c'est la cible que
 -- la flèche retour de la bibliographie vise. Seule la première occurrence d'une référence
 -- en reçoit un — voir le tri par position dans traiter_inlines() et marquer_liens_manuels().
 local function lien(cible, id_ancre)
@@ -897,7 +917,7 @@ end
 -- --------------------------------------------- la bibliographie détachée, réinsérée
 -- Même contrat que szh-tabelle-inclure.lua : le cwd est le dossier de l'article, les
 -- chemins relatifs tombent donc juste, et un fichier manquant donne un bloc
--- d'avertissement VISIBLE dans le rendu — jamais un article amputé en silence.
+-- d'avertissement visible dans le rendu — jamais un article amputé en silence.
 -- Deux classes, et la seconde n'est pas un oubli : « szh-tabelle-manquante » est l'encadré
 -- rouge que print.css donne déjà à « fichier référencé introuvable », et c'est exactement
 -- ce cas-ci. Son nom parle de tableau parce qu'il n'y avait alors que des tableaux à
@@ -978,12 +998,12 @@ function Pandoc(doc)
   local slug = slug_article()
   -- Langue de la flèche retour (aria-label, FR/DE) : même calcul que le titre de
   -- bibliographie, dont c'est la seule autre consommatrice — pas de troisième copie.
-  local LANG_RETOUR = langue_article(slug, jeton_revue(doc.meta))
+  local LANG_RETOUR = langue_article(slug, jeton_revue(doc.meta), doc.meta)
   local blocs, premiere, derniere_liste = resoudre_biblio(doc, slug)
 
   -- Repli, et nommé comme tel : un article importé avant que la bibliographie devienne un
   -- fichier porte encore sa liste dans le corps. On la retrouve sous son titre, comparé
-  -- EXACTEMENT au lexique — plus par préfixe, et plus d'heuristique qui balayait la
+  -- exactement au lexique — plus par préfixe, et plus d'heuristique qui balayait la
   -- seconde moitié du document pour y deviner une liste. Ces deux paris coûtaient cher :
   -- une section « Literaturhinweise für die Praxis » suivie de prose, et tout ce qui
   -- suivait cessait d'être regardé pour les appels, sans le moindre signe.
@@ -1052,7 +1072,7 @@ function Pandoc(doc)
   local reprise = (premiere and derniere_liste) and (derniere_liste + 1) or (#blocs + 1)
   local appels, orphelins, ambigus = 0, {}, {}
   local appelees = {}
-  -- Flèche retour : ancre_posee[id] est vrai dès que la PREMIÈRE occurrence de l'appel de
+  -- Flèche retour : ancre_posee[id] est vrai dès que la première occurrence de l'appel de
   -- cette référence a reçu un identifiant (« appel-<id> ») — la bibliographie n'y renvoie
   -- qu'alors, jamais vers une ancre qui n'existe pas. libelle_par_ref[id] garde le texte
   -- exact de cette première occurrence (« (Dupont, 2024) »), pour l'aria-label.
@@ -1112,7 +1132,7 @@ function Pandoc(doc)
               -- seul le Link disparaît quand le réglage est actif — l'ancre de la référence,
               -- elle, est posée plus bas sans condition.
               --
-              -- `faire` n'est PAS fabriqué ici : savoir si CETTE occurrence est la première
+              -- `faire` n'est pas fabriqué ici : savoir si cette occurrence est la première
               -- de la référence exige de voir tout le paragraphe d'abord (deux motifs,
               -- parenthèses puis crochets, balayés séparément plus bas — l'ordre de
               -- découverte n'est pas l'ordre du texte). id_ref voyage donc dans la plage ;
@@ -1161,7 +1181,7 @@ function Pandoc(doc)
     end
     if #plages == 0 then return inlines end
     -- Flèche retour : parmi les plages qui portent un id_ref (un appel apparié à une seule
-    -- référence), décider laquelle est la première DANS L'ORDRE DU TEXTE, sur une copie
+    -- référence), décider laquelle est la première dans l'ordre du texte, sur une copie
     -- triée en position croissante — la seule qu'on puisse construire qu'une fois les deux
     -- motifs (parenthèses, puis crochets) balayés. ancre_posee est partagé par tout le
     -- document : la vraie première occurrence, tous paragraphes confondus, l'emporte.
@@ -1280,7 +1300,7 @@ function Pandoc(doc)
             local b = dedans[k]
             if b.t == 'Plain' or b.t == 'Para' then
               local libelle = libelle_par_ref[f.id] or ''
-              -- Texte accessible EXPLICITE (pas une flèche nue) : un lecteur d'écran doit
+              -- Texte accessible explicite (pas une flèche nue) : un lecteur d'écran doit
               -- entendre où ce lien mène, pas deviner une icône. Le contenu du lien reste
               -- vide et l'icône un fond CSS posé par .szh-retour-appel (print.css) — même
               -- recette que a.szh-orcid, pour la même raison (un <a> non vide casse le

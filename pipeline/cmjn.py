@@ -8,10 +8,10 @@ et remplace ses opérateurs de couleur dans le flux de contenu selon trois règl
 
 a) Noir du texte : un `rg` (RVB) immédiatement suivi de `BT` (début texte) dont
    la couleur est un neutre sombre → `0 0 0 1 k` (noir K seul, DeviceCMYK).
-   ⚠ N'APPLIQUE JAMAIS cette règle à un `rg` suivi d'un tracé (re, m, c…) —
+   ⚠ N'applique jamais cette règle à un `rg` suivi d'un tracé (re, m, c…) —
    un aplat noir n'est pas du texte.
 
-b) Sept couleurs de maison remplacées par leurs CMJN OFFICIELS (pas ICC) :
+b) Sept couleurs de maison remplacées par leurs CMJN officiels (pas ICC) :
    - Rouge SZH-CSPS (#D31932)         → 0.16 0.90 0.64 0
    - Nuit (#252B46)                   → 0.65 0.45 0 0.60
    - Capucine (#EB5E51)               → 0 0.74 0.64 0
@@ -40,7 +40,6 @@ import os
 import subprocess
 import sys
 import re
-import zlib
 
 import pypdf
 from pypdf.generic import StreamObject
@@ -245,11 +244,22 @@ def convert_pdf(input_path, output_path):
                             modified_bytes, changes = converter.convert_stream(stream_bytes)
                             total_changes.extend(changes)
 
-                            # Modifier le flux dans le lecteur en place
-                            # Désactiver le filtre de compression pour voir les changements clairement
-                            if "/Filter" in stream_obj:
-                                del stream_obj["/Filter"]
-                            stream_obj._data = modified_bytes
+                            # Modifier le flux dans le lecteur en place. get_data() a rendu
+                            # des octets DÉCOMPRESSÉS ; write_to_stream() de pypdf écrit
+                            # _data tel quel, sans jamais regarder /Filter — un flux annoncé
+                            # FlateDecode mais laissé en clair produirait un PDF illisible.
+                            # L'ancien code contournait ça en supprimant /Filter (le flux
+                            # sortait alors en clair, plus gros qu'il ne devrait). set_data()
+                            # — l'API publique de pypdf, à la place de l'accès privé _data —
+                            # fait exactement ce qu'il faut sur un EncodedStreamObject dont
+                            # /Filter vaut FlateDecode : elle recompresse elle-même en zlib
+                            # (filters.FlateDecode.encode) et garde le flux lisible, /Filter
+                            # inchangé. Un filtre différent (rare pour un flux de page
+                            # WeasyPrint) fait lever pypdf.errors.PdfReadError, déjà pris par
+                            # le `except Exception` qui entoure ce bloc : ce flux-là reste
+                            # alors intact plutôt que d'être écrit dans un format qu'on ne
+                            # sait pas produire correctement.
+                            stream_obj.set_data(modified_bytes)
 
                         except Exception as e:
                             # Ignorer les flux illisibles
@@ -277,13 +287,13 @@ def convert_pdf(input_path, output_path):
 # Étape 2 : Ghostscript convertit ce qui reste — les images, et les teintes dérivées dont
 # le graphiste n'a pas donné de CMJN.
 #
-# ⚠ Le fait qui rend la recette possible, et qui a été MESURÉ : avec
-#   `-sColorConversionStrategy=CMYK`, Ghostscript LAISSE INTACT ce qui est déjà en
+# ⚠ Le fait qui rend la recette possible, et qui a été mesuré : avec
+#   `-sColorConversionStrategy=CMYK`, Ghostscript laisse intact ce qui est déjà en
 #   DeviceCMYK. Le `0 0 0 1 k` posé à l'étape 1 traverse donc la passe sans être retouché.
 #   Sans cette propriété, tout ce fichier serait inutile : gs reconvertirait le noir K seul
 #   en noir quadri, et le texte de labeur franerait à l'impression.
 #
-# ⚠ Si gs manque, on ÉCHOUE. Un PDF resté en RVB qu'on livrerait comme CMJN est pire
+# ⚠ Si gs manque, on échoue. Un PDF resté en RVB qu'on livrerait comme CMJN est pire
 #   qu'une absence de fichier : personne ne le vérifie avant la facture de l'imprimeur.
 #   C'est la règle de la porte PDF/UA du Makefile, appliquée ici.
 
@@ -296,8 +306,16 @@ def passe_ghostscript(entree, sortie, profil_icc):
     l'espace de l'imprimeur et ne se voit qu'une fois imprimé."""
     if not profil_icc or not os.path.exists(profil_icc):
         return False, ('profil ICC introuvable : %s' % profil_icc)
+    # --permit-file-read : mesuré sur gs 10.05.1 (Debian trixie), Ghostscript tourne en
+    # bac à sable SAFER par défaut et refuse de lire un fichier hors de ses répertoires
+    # connus. Sans cette ligne, /opt/icc/*.icc est refusé et gs échoue avec un message
+    # qui ne parle pas de permission : « Error: /undefined in --runpdf-- », suivi de
+    # « Last OS error: Permission denied » tout en bas — rien n'indique le profil ICC.
+    # Le PDF d'entrée n'a rien à voir : le même échec se produit sur un PDF WeasyPrint
+    # tout neuf, balisé ou non, avant même que cmjn.py y touche.
     cmd = [GS, '-dNOPAUSE', '-dBATCH', '-dQUIET', '-sDEVICE=pdfwrite',
            '-dProcessColorModel=/DeviceCMYK', '-sColorConversionStrategy=CMYK',
+           '--permit-file-read=' + profil_icc,
            '-sOutputICCProfile=' + profil_icc,
            '-o', sortie, entree]
     try:

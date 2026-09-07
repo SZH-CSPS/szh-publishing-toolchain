@@ -1,0 +1,4 @@
+# Fiche du chapitre : exerce le chemin <slug>.meta.yaml de livre.mk (--metadata-file), que
+# le banc n'avait couvert par aucun chapitre avant ce complément. Même langue que buch.yaml :
+# aucun changement de rendu attendu.
+lang: de

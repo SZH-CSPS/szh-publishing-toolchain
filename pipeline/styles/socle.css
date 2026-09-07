@@ -1,5 +1,5 @@
 /* Socle de la maquette SZH/CSPS : les polices et les jetons, et rien d'autre.
-   Lu par TOUTES les sorties — le PDF, et la maquette web à venir — et empilé avant elles
+   Lu par toutes les sorties — le PDF, et la maquette web à venir — et empilé avant elles
    par le Makefile (--css=socle.css --css=print.css --css=out/.szh-accent.css, dans cet
    ordre). Une variable se déclare ici, une fois ; les feuilles de sortie ne font que la
    consommer.
@@ -10,11 +10,11 @@
    média, parce que le papier et l'écran n'en veulent pas la même chose.
 
    ⚠ Deux pièges connus :
-   * Le socle vient TOUJOURS du toolkit, même quand un dossier de revue porte son propre
+   * Le socle vient toujours du toolkit, même quand un dossier de revue porte son propre
      styles/print.css (le Makefile préfère alors celui-là). Une feuille locale hérite donc
      de ces jetons sans les redéclarer — c'est voulu, et c'est le seul moyen qu'elle ne
      dérive pas.
-   * L'accent annuel doit rester APRÈS : out/.szh-accent.css surcharge les replis gris du
+   * L'accent annuel doit rester après : out/.szh-accent.css surcharge les replis gris du
      §2 ci-dessous. Empilé avant, il n'aurait aucun effet et le PDF sortirait en gris.
 
    Les couleurs annuelles elles-mêmes vivent dans couleurs.css, échelle APCA à clarté fixe,
@@ -74,8 +74,8 @@
   --c-bullet-marker: #000000;
   --c-num-marker:    #000000;
 
-  /* Plafond de hauteur d'une image de figure. En pagination, 100vh vaut la ZONE DE
-     CONTENU de la page — 958,5 px en A4 avec les marges de print.css, mesuré sur
+  /* Plafond de hauteur d'une image de figure. En pagination, 100vh vaut la zone de
+     contenu de la page — 958,5 px en A4 avec les marges de print.css, mesuré sur
      WeasyPrint 69 ; à l'écran, la hauteur de la fenêtre. Les 20vh qui restent paient les
      marges de la figure et sa légende, soit six lignes de crédits.
      Sans ce plafond, une image en portrait ramenée à la largeur de la colonne dépasse la

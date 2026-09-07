@@ -1,36 +1,34 @@
 -- Resserre les listes : un item dont le contenu est un seul paragraphe le perd.
 --
--- Le défaut qu'il corrige, et il est sévère. Markdown distingue les listes SERRÉES (items
--- collés) des listes LÂCHES (une ligne vide entre les items). Pandoc rend les premières en
+-- Le défaut qu'il corrige, et il est sévère. Markdown distingue les listes serrées (items
+-- collés) des listes lâches (une ligne vide entre les items). Pandoc rend les premières en
 -- `<li>texte</li>` et les secondes en `<li><p>texte</p></li>`. WeasyPrint 69 balise alors
--- le paragraphe en <P> DIRECTEMENT sous le <LI>, sans le <LBody> que PDF/UA-1 exige :
+-- le paragraphe en <P> directement sous le <LI>, sans le <LBody> que PDF/UA-1 exige :
 --
 --   ISO 14289-1 7.2-20 — « LI element may contain only Lbl and LBody elements »
 --
--- Mesuré, isolé, reproduit sur deux lignes de HTML : une liste serrée passe la porte
--- veraPDF, la même liste lâche échoue. Sur le premier livre réel — un FALC, où presque
--- toute la matière est en listes — la règle tombait **182 fois** et le PDF sortait non
--- conforme.
+-- Une liste serrée passe la vérification PDF/UA (veraPDF) ; la même liste lâche échoue.
+-- En maquette FALC, où la matière est presque entièrement composée en listes, l'écart
+-- touche la quasi-totalité du texte, non un cas isolé.
 --
--- ⚠ CE DÉFAUT VAUT AUSSI POUR LA REVUE, et il y dort. Aucun article du banc n'a de liste
+-- ⚠ Ce défaut vaut aussi pour la revue, et il y dort. Aucun article du banc n'a de liste
 --   lâche ; le jour où une rédaction en écrit une, la porte `verifier-ua` refuse l'export
 --   du numéro entier, sans que personne comprenne pourquoi. Ce filtre est donc branché des
 --   deux côtés.
 --
--- Ce qu'on ne peut PAS faire à la place : il n'existe aucun balisage HTML ni aucune
+-- Ce qu'on ne peut pas faire à la place : il n'existe aucun balisage HTML ni aucune
 -- propriété CSS qui demande un <LBody>. C'est WeasyPrint qui décide, d'après la structure
 -- qu'on lui donne. La seule prise est donc en amont, sur l'arbre pandoc.
 --
 -- Ce que cela coûte, et pourquoi ce n'est presque rien : une liste lâche s'affiche avec de
 -- l'air entre ses items, et cet air venait de la marge du <p>. Il se remet en CSS, sur le
 -- <li> — c'est déjà ce que font print.css et les chartes de livre (`li { margin-bottom }`).
--- L'écart visuel est nul ; on l'a comparé.
+-- L'écart visuel est nul.
 --
--- ⚠ Deux formes d'item à PLUSIEURS blocs, et elles ne se traitent pas pareil — mesuré,
---   chacune isolée sur trois lignes de HTML :
---   * « texte + sous-liste » : PASSE la porte telle quelle. WeasyPrint met le texte dans un
+-- ⚠ Deux formes d'item à plusieurs blocs, et elles ne se traitent pas pareil :
+--   * « texte + sous-liste » : passe la porte telle quelle. WeasyPrint met le texte dans un
 --     LBody et la sous-liste avec. On n'y touche pas.
---   * « deux paragraphes » : ÉCHOUE. Les deux <p> deviennent deux enfants directs du <LI>.
+--   * « deux paragraphes » : échoue. Les deux <p> deviennent deux enfants directs du <LI>.
 --     Ceux-là sont fusionnés en un seul bloc, les paragraphes séparés par un saut de ligne.
 --     C'est un changement de structure, assumé : dans un item de liste, deux paragraphes se
 --     lisent comme deux lignes — et c'est littéralement la règle FALC, une phrase par ligne.
@@ -38,9 +36,9 @@
 --   Un item qui mêle les deux formes n'est pas touché : il est rare, et le fusionner
 --   collerait une liste à un paragraphe.
 
--- Les paragraphes DE TÊTE d'un item, fusionnés en un seul bloc en ligne. Le reste — une
+-- Les paragraphes de tête d'un item, fusionnés en un seul bloc en ligne. Le reste — une
 -- sous-liste, un tableau — est laissé où il est : c'est une forme que WeasyPrint balise
--- correctement (mesuré), et la fusionner collerait une liste à un paragraphe.
+-- correctement, et la fusionner collerait une liste à un paragraphe.
 -- Un saut est-il déjà posé en fin de contenu ? Sert à ne pas en ajouter un second.
 local function finit_par_saut(inlines)
   local dernier = inlines[#inlines]
@@ -69,7 +67,7 @@ local function resserrer_items(items)
         -- Deux paragraphes d'un même item se lisent comme deux lignes — et c'est
         -- littéralement la règle FALC, une phrase par ligne.
         --
-        -- ⚠ SAUF si le paragraphe précédent finit DÉJÀ par un saut. L'import Word pose un
+        -- ⚠ Sauf si le paragraphe précédent finit déjà par un saut. L'import Word pose un
         --   `\` en fin de chaque ligne FALC : en ajouter un second doublerait l'interligne
         --   de l'item, et deux <br> ne se signalent nulle part — HTML valide, PDF conforme,
         --   seul le nombre de pages trahit. szh-sauts-uniques.lua tient la même règle pour

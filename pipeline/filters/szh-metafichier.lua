@@ -1,45 +1,44 @@
--- Images natives Word (.emf, .wmf) : substituées par un placeholder visible, et NOMMÉES.
+-- Images natives Word (.emf, .wmf) : substituées par un placeholder visible, et nommées.
 --
 -- ── Le problème ───────────────────────────────────────────────────────────────────
 -- Word emballe dans un métafichier Windows tout ce qu'on y colle depuis une autre
 -- application : un dessin, un graphique Excel, une capture d'écran, une équation. pandoc
--- EXTRAIT ces fichiers tels quels à l'import — ni lui ni la chaîne ne savent les rendre.
+-- extrait ces fichiers tels quels à l'import — ni lui ni la chaîne ne savent les rendre.
 -- WeasyPrint s'y arrête net : Pillow n'a pas de moteur EMF hors de Windows, et lève
 -- « OSError: cannot find loader for this WMF file » au milieu de la mise en page. La
--- compilation entière tombait alors, sur UNE image, et le seul message qui parvenait au
+-- compilation entière tombait alors, sur une image, et le seul message qui parvenait au
 -- rédacteur était un « mv: cannot stat » sur le fichier temporaire jamais écrit.
--- C'est ainsi que le livre 2026-B399-VN_FALC est resté bloqué le 01.09.2026.
 --
 -- ── Le choix : substituer, pas refuser ────────────────────────────────────────────
 -- Ce filtre ne bloque rien. Il remplace l'image par un placeholder qui dit « IMAGE À
 -- REMPLACER », garde la place qu'occupait l'originale, et écrit un constat nommé. Le
--- document se compose donc jusqu'au bout, et le trou se VOIT sur l'épreuve, à sa place,
+-- document se compose donc jusqu'au bout, et le trou se voit sur l'épreuve, à sa place,
 -- plutôt que de faire échouer la compilation sans dire où. Le geste attendu — reprendre le
 -- Word, y remettre l'image en PNG, réimporter — est dans le message.
 --
 -- ── Pourquoi ici, et pas à l'import ──────────────────────────────────────────────
 -- À l'import, il faudrait réécrire le .md du rédacteur ; à la compilation, on ne touche
--- à rien. Surtout, un filtre voit AUSSI les images des tableaux : docx-tables.py sort les
+-- à rien. Surtout, un filtre voit aussi les images des tableaux : docx-tables.py sort les
 -- tableaux du corps dans tables/table-NN.html, et szh-tabelle-inclure.lua les réinjecte en
--- HTML brut. Une image citée là n'apparaît nulle part dans le .md — c'était le cas de
--- fig-73 au chapitre 09 du VN-FALC. Les deux formes sont traitées ci-dessous.
+-- HTML brut. Une image citée là n'apparaît nulle part dans le .md. Les deux formes sont
+-- traitées ci-dessous.
 --
--- ⚠ Les motifs Lua n'ont PAS d'alternation « | » : ce ne sont pas des expressions
+-- ⚠ Les motifs Lua n'ont pas d'alternation « | » : ce ne sont pas des expressions
 --   régulières. '%.(emf|wmf)$' matcherait le texte littéral « (emf|wmf) », donc jamais
---   rien, et le filtre se tairait TOUJOURS — exactement le défaut qui a fait passer
+--   rien, et le filtre se tairait toujours — exactement le défaut qui a fait passer
 --   szh-legende-avant.lua pour actif pendant des mois. Deux motifs simples, l'un ou
 --   l'autre. Ne pas y toucher sans relire cette note.
 --
--- Position dans la chaîne : APRÈS szh-tabelle-inclure (sans quoi le HTML des tableaux
--- n'est pas encore là) et APRÈS szh-typographie (qui ne doit pas retoucher le libellé du
--- placeholder, qui est une décision de composition et non du texte de rédaction) ; AVANT
+-- Position dans la chaîne : après szh-tabelle-inclure (sans quoi le HTML des tableaux
+-- n'est pas encore là) et après szh-typographie (qui ne doit pas retoucher le libellé du
+-- placeholder, qui est une décision de composition et non du texte de rédaction) ; avant
 -- szh-grille et szh-figure, qui continuent de voir une Image ordinaire — la substitution
 -- ne change que la cible et le texte alternatif, jamais la nature du nœud.
 
 local EXTENSIONS = { '%.emf$', '%.wmf$' }
 
 -- Le placeholder vit dans le toolkit, à côté des filtres. PANDOC_SCRIPT_FILE donne le
--- chemin de CE fichier : de quoi atteindre l'asset sans variable d'environnement ni
+-- chemin de ce fichier : de quoi atteindre l'asset sans variable d'environnement ni
 -- chemin codé en dur, et quel que soit le dossier depuis lequel pandoc est lancé (il
 -- tourne dans celui de l'article, pas dans celui du toolkit).
 local function chemin_placeholder()
@@ -74,7 +73,7 @@ local function est_metafichier(cible)
   return false
 end
 
--- Un constat par FICHIER, pas par occurrence : la même image citée trois fois ne doit
+-- Un constat par fichier, pas par occurrence : la même image citée trois fois ne doit
 -- pas remplir le journal de trois lignes identiques. Même forme que les autres constats
 -- de la chaîne (szh-maquette.lua) : code, champs nommés, phrase française, puis « [de] ».
 local vus = {}
@@ -113,7 +112,7 @@ local function alt_de(fichier)
 end
 
 -- ---- Images pandoc ordinaires -------------------------------------------------------
--- Les attributs (width, height posés par l'import Word) sont CONSERVÉS : le placeholder
+-- Les attributs (width, height posés par l'import Word) sont conservés : le placeholder
 -- occupe exactement la boîte de l'image absente, et la mise en page ne se déplace pas
 -- sous les autres illustrations. L'identifiant et les classes suivent de même.
 local function remplacer_image(img)
@@ -171,7 +170,7 @@ local function remplacer_brut(el)
   return el
 end
 
--- La langue se lit AVANT de parcourir le document : un walker Image seul ne saurait pas
+-- La langue se lit avant de parcourir le document : un walker Image seul ne saurait pas
 -- dans quelle langue nommer ce qui manque. `lang` vient de buch.yaml pour un livre, de la
 -- fiche de l'article pour un article ; en son absence, le français, langue de la maison.
 function Pandoc(doc)

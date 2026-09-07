@@ -1,4 +1,4 @@
--- Notes de bas de page : les rendre imprimables AU BAS DE LEUR PAGE, et non rejetées en
+-- Notes de bas de page : les rendre imprimables au bas de leur page, et non rejetées en
 -- bloc à la fin de l'article.
 --
 -- Le writer HTML de pandoc n'offre pas ce choix : il déplace toute Note dans une
@@ -10,10 +10,10 @@
 -- un élément déclaré `float: footnote` sort du flux, s'imprime dans la zone @footnote de
 -- la page où son appel se trouve, et le compteur `footnote` numérote appel et marque tout
 -- seul (::footnote-call, ::footnote-marker). Encore faut-il que le contenu de la note soit
--- INLINE, à l'endroit de l'appel — c'est ce que ce filtre fait : chaque Note devient un
+-- inline, à l'endroit de l'appel — c'est ce que ce filtre fait : chaque Note devient un
 -- Span de classe « szh-note » portant le contenu aplati. Vérifié sur WeasyPrint 69.
 --
--- Ce filtre tourne en DERNIER, après szh-citations.lua. Les Notes traversent donc toute la
+-- Ce filtre tourne en dernier, après szh-citations.lua. Les Notes traversent donc toute la
 -- chaîne inchangées, comme avant, et ne deviennent des Spans qu'à la sortie : aucun autre
 -- filtre ne change de comportement, et le rapport d'appels de citation compte la même
 -- chose qu'hier.
@@ -35,7 +35,7 @@ if (os.getenv('SZH_APERCU') or '') ~= '' then return {} end
 
 local blocs_en_inlines = pandoc.utils.blocks_to_inlines
 
--- ⚠ Le contenu de la note doit sortir SUR UNE SEULE LIGNE de HTML. Mesuré sur
+-- ⚠ Le contenu de la note doit sortir sur une seule ligne de HTML. Mesuré sur
 --   WeasyPrint 69 : dans la zone @footnote, un saut de ligne du source HTML est rendu
 --   comme une coupure dure, et la note se compose en escalier au lieu de remplir la
 --   largeur. Partout ailleurs le même saut se réduit à une espace, comme le veut HTML —
@@ -47,7 +47,7 @@ local blocs_en_inlines = pandoc.utils.blocks_to_inlines
 --   jamais y couper de ligne.
 local function html_deplie(inlines)
   local html = pandoc.write(pandoc.Pandoc({ pandoc.Plain(inlines) }), 'html')
-  -- %s couvre le saut de ligne : toute suite d'espaces blancs devient UNE espace.
+  -- %s couvre le saut de ligne : toute suite d'espaces blancs devient une espace.
   return (html:gsub('%s+', ' '):gsub('^ +', ''):gsub(' +$', ''))
 end
 

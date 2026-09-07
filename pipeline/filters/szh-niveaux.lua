@@ -18,14 +18,14 @@
 -- (2.1, 2.1.1) sur les trois premiers rangs seulement, et avec print.css, qui les style
 -- en miroir.
 
--- Le rang le plus haut du CORPS. Dans un article, le <h1> est le titre de la couverture,
+-- Le rang le plus haut du corps. Dans un article, le <h1> est le titre de la couverture,
 -- posé par le gabarit et absent du document : le corps commence donc à <h2>. Dans un
--- LIVRE, le « # » d'un chapitre EST le titre de ce chapitre, donc son <h1> : le corps
--- commence à <h2> aussi, mais le h1 doit RESTER h1 et ne pas entrer dans le compactage.
+-- livre, le « # » d'un chapitre est le titre de ce chapitre, donc son <h1> : le corps
+-- commence à <h2> aussi, mais le h1 doit rester h1 et ne pas entrer dans le compactage.
 --
 -- ⚠ Ce filtre n'était pas branché du tout côté livre, au motif qu'il aurait décalé les
 --   titres. Le prix s'est vu au premier livre réel : un manuscrit Word qui passe de « # »
---   à « ### » produit un saut de niveau, et le PDF sort NON CONFORME PDF/UA-1
+--   à « ### » produit un saut de niveau, et le PDF sort non conforme PDF/UA-1
 --   (ISO 14289-1 7.4.2-1, « un niveau de titre est sauté »). Un lecteur d'écran y perd le
 --   plan du document. Le compactage est donc branché des deux côtés ; seul le h1 du
 --   chapitre est mis à part.
@@ -33,15 +33,32 @@ local LIVRE = (os.getenv('SZH_LIVRE') or '') ~= ''
 local MIN_CIBLE = 2
 local MAX_CIBLE = 6
 
+-- Module commun (slug_article) : un chargement raté arrête la compilation, ce filtre ne
+-- pouvant plus nommer l'article dans ses messages sans lui.
+local commun
+do
+  -- debug.getinfo, pas PANDOC_SCRIPT_FILE : voir szh-commun.lua (celui-ci nomme le script
+  -- reçu par pandoc en ligne de commande, pas ce fichier quand un autre le charge par
+  -- dofile).
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[niveaux] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
+end
+
 -- Nom de l'article pour le journal : le fichier d'entrée suffit, la chaîne compile dans
 -- le dossier de l'article et le slug est ce que le rédacteur reconnaît.
 local function nom_article()
-  local etat = PANDOC_STATE
-  local entrees = etat and etat.input_files
-  if entrees and entrees[1] then
-    return (tostring(entrees[1]):gsub('.*[/\\]', ''):gsub('%.md$', ''))
-  end
-  return 'article'
+  return commun.slug_article('article')
 end
 
 local function signaler(niveaux_ecrases)

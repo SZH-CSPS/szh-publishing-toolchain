@@ -33,20 +33,21 @@
 -- print.css met le titre au-dessus de tout, et dans .szh-ressource-corps le texte à gauche,
 -- l'image au quart de la largeur alignée à droite (cahier des charges).
 --
--- L'image est TOUJOURS décorative (cahier des charges) : le formulaire l'écrit avec un
--- alt="" et sans légende, et ce filtre la laisse EXACTEMENT ainsi — un pandoc.Image nu, sans
--- description — à szh-numerotation.lua, branché juste après dans le Makefile. C'est lui qui,
+-- L'image est toujours décorative (cahier des charges) : le formulaire l'écrit avec un
+-- alt="" et sans légende, et ce filtre la laisse exactement ainsi — un pandoc.Image nu, sans
+-- description — à szh-numerotation.lua, branché plus loin dans le Makefile (après
+-- szh-figure.lua). C'est lui qui,
 -- pour toute image sans texte ni description, pose déjà role="presentation" et la bascule en
 -- fond CSS (fonction en_decor de ce filtre) : le seul moyen d'obtenir un PDF/UA-1 conforme,
 -- un <img alt=""> sortant en /Figure sans /Alt, ce que la règle 7.3 interdit — voir son
 -- commentaire de tête. Dupliquer ce mécanisme ici l'aurait fait diverger tôt ou tard.
--- print.css n'a donc qu'à ANNULER la largeur que ce mécanisme calcule pour une figure pleine
+-- print.css n'a donc qu'à annuler la largeur que ce mécanisme calcule pour une figure pleine
 -- colonne — la nôtre visant le quart de la largeur — voir la règle
 -- « .szh-ressource-image .szh-decor ».
 --
--- Le texte du lien — « En savoir plus sur le livre {titre} » — n'est JAMAIS écrit dans le
+-- Le texte du lien — « En savoir plus sur le livre {titre} » — n'est jamais écrit dans le
 -- .md (voir lib/ressources.js) : il se déduit ici du titre, du type et de la langue de
--- l'ARTICLE. C'est ce qui le rend explicite et non modifiable par mégarde — donc utilisable
+-- l'article. C'est ce qui le rend explicite et non modifiable par mégarde — donc utilisable
 -- hors contexte par un lecteur d'écran — et ce qui lui permet de suivre un titre corrigé
 -- après coup sans qu'on doive retaper le lien.
 --
@@ -60,6 +61,28 @@
 --   grilles (lib/references.js).
 
 local utils = pandoc.utils
+
+-- Module commun (a_classe, langue_de...) : un chargement raté arrête la compilation, ce
+-- filtre ne pouvant plus dire de langue fiable sans lui.
+local commun
+do
+  -- debug.getinfo, pas PANDOC_SCRIPT_FILE : voir szh-commun.lua (celui-ci nomme le script
+  -- reçu par pandoc en ligne de commande, pas ce fichier quand un autre le charge par
+  -- dofile).
+  local function dossier_ce_fichier()
+    local source = debug.getinfo(1, 'S').source
+    if source:sub(1, 1) == '@' then source = source:sub(2) end
+    return source:match('^(.*[/\\])') or ''
+  end
+  local ok, module = pcall(dofile, dossier_ce_fichier() .. 'szh-commun.lua')
+  if not ok or type(module) ~= 'table' then
+    io.stderr:write('[ressource] szh-commun.lua introuvable ou fautif (' ..
+      tostring(module) .. ') : ce filtre ne peut pas composer sans lui, arrêt.\n')
+    os.exit(1, true)
+    error('szh-commun.lua manquant', 0)
+  end
+  commun = module
+end
 
 local CLASSE = 'szh-ressource'
 
@@ -87,7 +110,7 @@ local LIBELLE_LIEN = {
 }
 local LIBELLE_LIEN_DEFAUT = { fr = 'En savoir plus : %s', de = 'Mehr erfahren: %s' }
 
--- Les libellés IMPRIMÉS de la liste fermée `evenement` d'une fiche d'agenda, par jeton et
+-- Les libellés imprimés de la liste fermée `evenement` d'une fiche d'agenda, par jeton et
 -- par langue. Le .md ne porte que le jeton (agenda type d'événement) : c'est ce qui permet
 -- à un « Colloque » français de sortir « Tagung » côté allemand sans qu'on ait rien à
 -- ressaisir, exactement comme le libellé de lien de LIBELLE_LIEN.
@@ -106,13 +129,13 @@ local EVENEMENTS = {
 -- Les champs dont la valeur est un jeton à traduire, par type puis par champ.
 local JETONS = { agenda = { evenement = EVENEMENTS } }
 
--- La paire de dates qui se fond en UNE seule mention à l'impression, par type. « 2026-01-05
+-- La paire de dates qui se fond en une seule mention à l'impression, par type. « 2026-01-05
 -- · 2026-01-06 » dans la ligne d'une fiche ne se lit pas ; le corpus, lui, écrit
 -- « 05.–06.01.2026 » (relevé du 02.09.2026 sur les pages « Congrès, colloques » et « Kurse »
 -- de szh.ch, celles-là mêmes que la rubrique du numéro donne en lien).
 local PLAGE = { agenda = { debut = 'debut', fin = 'fin' } }
 
--- Une date ISO (2026-01-05) en date suisse (05.01.2026). L'ISO est la forme STOCKÉE, parce
+-- Une date ISO (2026-01-05) en date suisse (05.01.2026). L'ISO est la forme stockée, parce
 -- que c'est la seule qui se trie (lib/ressources.js, SAISIE et CLE_TRI) ; elle ne sort
 -- jamais telle quelle dans le PDF. Toute autre forme — un .md écrit à la main, une valeur
 -- d'avant la saisie ISO — sort inchangée : mieux vaut une date au format d'origine qu'une
@@ -151,21 +174,23 @@ end
 -- lit en plus la fiche <slug>.meta.yaml pour départager, dans les métadonnées fusionnées,
 -- un lang: d'article d'un lang: de numéro). Un lien mal traduit reste lisible ; une figure
 -- mal numérotée ne l'est pas — la duplication complète n'apporterait rien ici.
--- meta.lang de l'article d'abord, puis le jeton de revue, puis le français.
+-- meta.lang de l'article d'abord, puis le jeton de revue, puis le français. lire_fiche
+-- omis (faux) : ce filtre ne lit que les métadonnées déjà fusionnées par pandoc, jamais la
+-- fiche sur le disque.
 local function langue_de(meta)
-  local l = utils.stringify(meta and meta.lang or ''):lower():match('^(%a%a)')
-  if l == 'fr' or l == 'de' then return l end
-  local revue = utils.stringify(meta and meta.revue or ''):lower()
-  if revue:find('zeitschrift') then return 'de' end
-  return 'fr'
+  return commun.langue_de(meta, {
+    repli = function(m)
+      local l = utils.stringify(m and m.lang or ''):lower():match('^(%a%a)')
+      if l == 'fr' or l == 'de' then return l end
+      local revue = utils.stringify(m and m.revue or ''):lower()
+      if revue:find('zeitschrift') then return 'de' end
+      return nil
+    end,
+    defaut = 'fr',
+  })
 end
 
-local function a_classe(el, nom)
-  for _, c in ipairs(el.classes or {}) do
-    if c == nom then return true end
-  end
-  return false
-end
+local a_classe = commun.a_classe
 
 -- L'image seule d'un Para/Plain, si elle n'est accompagnée que d'espaces — même lecture
 -- qu'image_hors_figure() de szh-numerotation.lua, dont ce filtre ne peut pas dépendre (deux
@@ -259,7 +284,7 @@ function Pandoc(doc)
       end
 
       -- Colonne d'image : laissée nue (voir l'en-tête du fichier) — c'est
-      -- szh-numerotation.lua qui la rendra décorative, juste après dans le Makefile.
+      -- szh-numerotation.lua qui la rendra décorative, plus loin dans le Makefile.
       -- Absente du tout si la fiche n'a pas d'image : print.css n'a alors pas à deviner
       -- une case vide, et le texte reprend naturellement toute la largeur.
       local corps_enfants = { bloc_classe('szh-ressource-texte', texte) }
@@ -276,7 +301,7 @@ function Pandoc(doc)
       local classes = { CLASSE }
       if type_sain(type_) then classes[#classes + 1] = CLASSE .. '-' .. type_ end
       -- Accroche générique pour print.css : pas de nom de type ici, seulement le fait
-      -- constaté qu'il n'y a pas d'image dans CE bloc — ce qui couvre aussi bien
+      -- constaté qu'il n'y a pas d'image dans ce bloc — ce qui couvre aussi bien
       -- intervention/recherche (qui n'en portent jamais) qu'un livre saisi à la main sans
       -- couverture. Une case vide au quart de la largeur serait pire qu'une entrée compacte.
       if not image then classes[#classes + 1] = CLASSE .. '-sans-image' end

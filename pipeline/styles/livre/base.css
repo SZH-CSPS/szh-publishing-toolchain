@@ -4,15 +4,15 @@
 
    Ce qui a sa place ici : la géométrie de page, les liminaires, le sommaire, les folios,
    la mécanique des coupures. Ce qui n'y a pas sa place : une taille de corps, une encre,
-   une famille — cela appartient à la charte, parce que « normal » et « FALC » ne veulent
+   une famille — cela appartient à la charte, parce que « normal » et « falc » ne veulent
    pas la même page.
 
    ⚠ Trois pièges déjà payés ailleurs, et qui coûtent plus cher dans un livre :
-   * La feuille est lue par UN SEUL document de deux cents pages, pas par un article. Une
+   * La feuille est lue par un seul document de deux cents pages, pas par un article. Une
      règle qui coûte cher au rendu se paie deux cents fois.
    * `break-before: recto` n'est honoré que si le document a un sens de pages en
      vis-à-vis. WeasyPrint le tient (mesuré, v69), mais une page nommée sans folio doit
-     annuler les DEUX boîtes de marge, gauche et droite : la page d'ouverture peut tomber
+     annuler les deux boîtes de marge, gauche et droite : la page d'ouverture peut tomber
      à droite comme à gauche selon la parité du chapitre précédent.
    * Les images arrivent en data: URI (--embed-resources sur chaque chapitre). Un plafond
      de hauteur reste indispensable — sans lui, une image en portrait déborde la page et
@@ -27,7 +27,7 @@
   margin: var(--marge-haut) var(--marge-ext) var(--marge-bas) var(--marge-int);
 }
 
-/* Pages en vis-à-vis : la marge INTÉRIEURE est à gauche sur une page de droite, à droite
+/* Pages en vis-à-vis : la marge intérieure est à gauche sur une page de droite, à droite
    sur une page de gauche. Sans cette paire, le blanc de couture est du mauvais côté une
    page sur deux — invisible à l'écran, évident une fois relié. */
 @page :left  { margin-left: var(--marge-ext); margin-right: var(--marge-int); }
@@ -46,22 +46,22 @@
 @page liminaire { @bottom-left { content: none } @bottom-right { content: none } }
 /* ⚠ Un seul folio par page : les deux boîtes se déclarent séparément sur :left et :right,
    jamais toutes les deux sur la même page nommée. Déclarées ensemble, WeasyPrint remplit
-   les deux — le numéro s'imprime alors à gauche ET à droite. Vu au premier rendu. */
+   les deux — le numéro s'imprime alors à gauche et à droite. Vu au premier rendu. */
 @page romain:left  { @bottom-left  { content: counter(page, lower-roman);
                        font: var(--folio-font); color: var(--c-ink2);
                        margin-bottom: var(--folio-fond); } }
 @page romain:right { @bottom-right { content: counter(page, lower-roman);
                        font: var(--folio-font); color: var(--c-ink2);
                        margin-bottom: var(--folio-fond); } }
-/* Ouverture de chapitre : pas de folio. Les DEUX boîtes s'annulent — voir le piège en
+/* Ouverture de chapitre : pas de folio. Les deux boîtes s'annulent — voir le piège en
    tête de fichier. */
 @page ouverture { @bottom-left { content: none } @bottom-right { content: none } }
 
-/* Une page blanche de passage au recto ne porte RIEN, folio compris. C'est l'usage, et
+/* Une page blanche de passage au recto ne porte rien, folio compris. C'est l'usage, et
    c'est aussi ce qui la donne à lire pour ce qu'elle est : une page laissée vide exprès, et
    non une page dont le contenu se serait perdu. Le PDF sortait avec cinq pages ne portant
    qu'un numéro — l'édition d'origine, elle, les laisse nues.
-   ⚠ Cette règle doit rester APRÈS les folios de :left et :right. `:blank` l'emporte sur
+   ⚠ Cette règle doit rester après les folios de :left et :right. `:blank` l'emporte sur
      eux par spécificité, mais l'ordre le dit à qui relit sans avoir la table en tête. */
 @page :blank { @bottom-left { content: none } @bottom-right { content: none } }
 
@@ -130,11 +130,12 @@ h1, h2, h3, h4, h5, h6 { break-after: avoid; break-inside: avoid; }
 p, li { orphans: 2; widows: 2; }
 figure, blockquote { break-inside: avoid; }
 
-/* ⚠ `table` n'est PAS dans la ligne ci-dessus, et ce n'est pas un oubli : posé sur la
-   table, `break-inside: avoid` ne retient pas la BOÎTE ENVELOPPE anonyme que le moteur
+/* ⚠ `table` n'est pas dans la ligne ci-dessus, et ce n'est pas un oubli : posé sur la
+   table, `break-inside: avoid` ne retient pas la boîte enveloppe anonyme que le moteur
    crée pour porter la <caption> — mesuré, le défaut persiste avec comme sans. C'est
-   szh-tableau-boite.lua qui pose un vrai Div autour, et la règle qui le retient est en
-   fin de fichier. Le pourquoi complet est en tête de ce filtre. */
+   szh-tableau-boite.lua qui pose un vrai Div autour, et la règle qui le retient vit dans
+   partage-filtres.css (le filtre est partagé avec la revue). Le pourquoi complet est en
+   tête de ce filtre. */
 
 /* Saut de page volontaire, écrit dans le .md :  ::: {.szh-saut} ::: */
 .szh-saut { break-after: page; }
@@ -148,7 +149,7 @@ figure img { max-width: 100%; max-height: var(--plafond-figure); height: auto; d
 figcaption { font-size: var(--legende); line-height: 1.35; color: var(--c-ink2); text-indent: 0; }
 
 /* ═══ 6. Notes ════════════════════════════════════════════════════════════════
-   Comme dans la revue : au bas de LEUR page. szh-notes.lua a déjà transformé les Note en
+   Comme dans la revue : au bas de leur page. szh-notes.lua a déjà transformé les Note en
    Span porteurs de la classe ; c'est `float: footnote` qui les descend. */
 .szh-note { float: footnote; font-size: var(--note); }
 @page { @footnote { border-top: 0.5pt solid var(--c-rule); padding-top: 2mm; margin-top: 4mm; } }
@@ -164,9 +165,3 @@ th, td { text-align: left; vertical-align: top; padding: 1mm 2mm; }
 @media screen {
   .szh-note { float: none; display: block; margin: 0.5em 0 0.5em 2em; }
 }
-
-/* Boîte de tableau posée par szh-tableau-boite.lua. Elle existe pour une seule raison :
-   retenir ensemble la légende et la table, que l'enveloppe anonyme du moteur laisserait
-   se séparer — et cette séparation fait tomber le baliseur PDF/UA de WeasyPrint 69.
-   Le pourquoi complet est en tête du filtre. */
-.szh-tableau-boite { break-inside: avoid; }

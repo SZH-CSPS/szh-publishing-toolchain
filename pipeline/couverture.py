@@ -9,7 +9,7 @@
 #                         [--css feuille.css]...
 #
 # Ce que ce script fait, et rien d'autre :
-#   1. lit buch.yaml (lire_yaml(), importé de livre-assembler.py — pas recopié) ;
+#   1. lit buch.yaml (lire_yaml(), partagée par szh_commun.py — pas recopiée) ;
 #   2. calcule l'épaisseur du dos, SAUF si impression.dos-mm porte une valeur : c'est
 #      l'imprimeur qui a le dernier mot, et rien ici ne doit contredire son chiffre ;
 #   3. si le dos se calcule, LIT le nombre de pages dans le PDF intérieur déjà compilé —
@@ -33,24 +33,29 @@ import zlib
 
 PIPELINE_DIR = os.path.dirname(os.path.abspath(__file__))
 
+sys.path.insert(0, PIPELINE_DIR)
+import szh_commun
+
+lire_yaml = szh_commun.lire_yaml
+
 
 def _importer(nom_module, nom_fichier):
-    """Importe un module frère par son CHEMIN, pas par son nom : les deux scripts qu'on
-    réutilise ici (livre-assembler.py, apca.py) ne forment pas un paquet Python, et
-    livre-assembler.py porte un tiret, imprononçable pour `import`. Le fichier n'a aucun
-    effet de bord au chargement (son `main()` est sous `if __name__ == '__main__'`)."""
+    """Importe un module frère par son CHEMIN, pas par son nom : les scripts qu'on réutilise
+    ainsi (livre-assembler.py, apca.py) ne forment pas un paquet Python, et livre-assembler.py
+    porte un tiret, imprononçable pour `import`. Le fichier n'a aucun effet de bord au
+    chargement (son `main()` est sous `if __name__ == '__main__'`)."""
     chemin = os.path.join(PIPELINE_DIR, nom_fichier)
     spec = importlib.util.spec_from_file_location(nom_module, chemin)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
-# Réutilisés tels quels — voir l'avertissement en tête de chaque fichier sur ce qu'ils
-# n'inventent pas. Ne pas recopier lire_yaml() ni _auteurs_ligne() : une divergence entre
-# les deux lecteurs YAML serait un livre dont la couverture et l'intérieur se contredisent.
+# _auteurs_ligne() et _remplacer_jetons() restent propres à livre-assembler.py — seule
+# lire_yaml() est partagée (szh_commun.py, ci-dessus) ; les recopier ici diverguerait à la
+# première modification de l'une des deux copies.
 _assembleur = _importer('szh_livre_assembler', 'livre-assembler.py')
-lire_yaml = _assembleur.lire_yaml
 _auteurs_ligne = _assembleur._auteurs_ligne
+_remplacer_jetons = _assembleur._remplacer_jetons
 apca = _importer('szh_apca', 'apca.py')
 
 
@@ -59,11 +64,11 @@ apca = _importer('szh_apca', 'apca.py')
 # ──────────────────────────────────────────────────────────────────────────────────────
 # pypdf n'est pas dans l'image WSL (vérifié : `python3 -c "import pypdf"` -> ModuleNotFound,
 # de même pour PyPDF2, pdfminer, fitz/pymupdf). Ce lecteur est donc écrit à la main, et il
-# faut le dire : ce n'est PAS un analyseur PDF général, c'est un lecteur ciblé sur ce que
+# faut le dire : ce n'est pas un analyseur PDF général, c'est un lecteur ciblé sur ce que
 # WeasyPrint 69 écrit réellement — mesuré ici sur les deux livres de banc :
-#   * table de références sous forme de FLUX COMPRESSÉ (/Type /XRef), pas la table `xref`
+#   * table de références sous forme de flux compressé (/Type /XRef), pas la table `xref`
 #     classique en texte clair ;
-#   * les objets eux-mêmes (Catalog, Pages…) vivent DANS des flux d'objets compressés
+#   * les objets eux-mêmes (Catalog, Pages…) vivent dans des flux d'objets compressés
 #     (/Type /ObjStm), pas comme des objets indirects lisibles tels quels.
 # C'est précisément pourquoi compter les occurrences de « /Type /Page » dans les octets
 # bruts est fragile (l'avertissement de la mission) : ces octets n'existent nulle part en
@@ -241,7 +246,7 @@ def compter_pages_pdf(chemin):
     calculé sur un compte inventé serait le défaut que ce script existe pour éviter."""
     data = open(chemin, 'rb').read()
     # Plusieurs « startxref » sont possibles après des mises à jour incrémentales ; seul le
-    # DERNIER fait foi — c'est lui que rend `finditer` en dernière position.
+    # dernier fait foi — c'est lui que rend `finditer` en dernière position.
     toutes = list(re.finditer(rb'startxref\s+(\d+)', data))
     if not toutes:
         raise _PdfIllisible('mot-clé startxref introuvable — ce n\'est pas un PDF valide '
@@ -260,7 +265,7 @@ def compter_pages_pdf(chemin):
             nouvelles, entete = _lire_xref_table(data, offset)
         else:
             nouvelles, entete = _lire_xref_stream(data, offset)
-        # Une entrée plus ANCIENNE (table /Prev) ne doit jamais écraser une entrée déjà lue
+        # Une entrée plus ancienne (table /Prev) ne doit jamais écraser une entrée déjà lue
         # depuis une table plus récente.
         for k, v in nouvelles.items():
             entrees.setdefault(k, v)
@@ -287,8 +292,8 @@ def compter_pages_pdf(chemin):
 # 2. Le dos : la formule de docs/ARCHITECTURE-LIVRES.md §3, et rien de plus.
 # ──────────────────────────────────────────────────────────────────────────────────────
 
-# Valeur de DÉPART citée dans ARCHITECTURE-LIVRES.md §3 aux côtés du grammage (90 g/m²) et
-# de la main (1,22) — PAS une mesure sur un livre réel, contrairement à ces deux-là. La
+# Valeur de départ citée dans ARCHITECTURE-LIVRES.md §3 aux côtés du grammage (90 g/m²) et
+# de la main (1,22) — pas une mesure sur un livre réel, contrairement à ces deux-là. La
 # vérification faite dans ce même document (FALC A4, dos mesuré 8,26 mm, 134 pages) ne
 # distingue d'ailleurs pas ce terme de l'épaisseur de feuille : (134/2)×0,123 = 8,241 mm
 # colle déjà à 0,26 mm près sans lui. Elle reste dans la formule parce que la formule la
@@ -422,7 +427,7 @@ def main(argv):
     illustration_uri = _illustration_data_uri(opts.get('illustration'))
 
     # Couleur de l'ouvrage : buch.yaml, pas l'accent de la revue (accent-css.py restreint
-    # aux six teintes de charte de la REVUE — une couleur de livre hors de cette liste
+    # aux six teintes de charte de la revue — une couleur de livre hors de cette liste
     # sortirait grise sans un mot, un défaut pire ici que sur un tableau interne). Un texte
     # noir ou blanc est choisi par contraste APCA plutôt que codé en dur : la charte varie
     # d'un livre à l'autre (§5.1 de l'architecture), pas la lisibilité qu'elle doit garder.
@@ -461,15 +466,13 @@ def main(argv):
         '$css$':             liens,
         '$titre$':           html.escape(str(buch.get('titre') or '')),
         '$sous-titre$':      html.escape(str(buch.get('sous-titre') or '')),
-        '$auteurs$':         html.escape(_auteurs_ligne(buch)),
+        '$auteurs$':         html.escape(_auteurs_ligne(buch, str(buch.get('lang') or 'fr'))),
         '$quatrieme$':       quatrieme_html,
         '$collection$':      bloc_collection,
         '$illustration$':    ('<img src="%s" alt="" />' % html.escape(illustration_uri, quote=True)
                               if illustration_uri else ''),
     }
-    sortie = gabarit
-    for cle, val in remplacements.items():
-        sortie = sortie.replace(cle, val)
+    sortie = _remplacer_jetons(gabarit, remplacements)
 
     dossier = os.path.dirname(os.path.abspath(opts['sortie']))
     if dossier:

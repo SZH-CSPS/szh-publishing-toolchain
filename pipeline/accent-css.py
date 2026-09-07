@@ -46,7 +46,10 @@ def lire_couleur(chemin):
     except OSError:
         return None
     for ligne in contenu.splitlines():
-        m = re.match(r'\s*couleur\s*:\s*(.*)$', ligne)
+        # Ancré en tout début de ligne : une clé `couleur:` indentée sous un autre bloc
+        # (par exemple `impression:` ou une entrée de liste) n'est pas la couleur annuelle
+        # du numéro et ne doit pas être prise pour elle.
+        m = re.match(r'couleur\s*:\s*(.*)$', ligne)
         if not m:
             continue
         v = m.group(1).strip()

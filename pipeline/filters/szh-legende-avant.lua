@@ -12,9 +12,9 @@
 -- Réservé aux sorties HTML : un writer non-HTML jette les RawBlock html et les images
 -- disparaîtraient. La garde ci-dessous le rappelle.
 --
--- ⚠ Les motifs Lua n'ont PAS d'alternation « | » (ce n'est pas une expression régulière) :
+-- ⚠ Les motifs Lua n'ont pas d'alternation « | » (ce n'est pas une expression régulière) :
 -- '^(html|epub)' matchait le texte littéral « (html|epub) », jamais trouvé en tête de
--- FORMAT ('html5', 'epub3'…) — le filtre se désactivait donc TOUJOURS, quel que soit le
+-- FORMAT ('html5', 'epub3'…) — le filtre se désactivait donc toujours, quel que soit le
 -- format. C'était la cause réelle de A9 (légende sous l'image au lieu d'avant) : le
 -- reste du fichier était correct et n'a jamais tourné. Deux motifs simples, l'un ou
 -- l'autre, remplacent l'alternation absente.

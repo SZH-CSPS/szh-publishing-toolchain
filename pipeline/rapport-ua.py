@@ -41,7 +41,7 @@ import xml.etree.ElementTree as ET
 PREFIXE = '[pdf-ua]'
 
 # ── Les règles que la chaîne SZH peut casser ────────────────────────────────────
-# Pour chacune : un titre, ce qui est EN CAUSE, et LE GESTE de correction. Une règle
+# Pour chacune : un titre, ce qui est en cause, et le geste de correction. Une règle
 # absente de ce tableau sort avec son libellé anglais brut — une phrase anglaise vaut
 # mieux qu'un silence — et sa ligne « ISO 14289-1 » suffit alors à retrouver la règle chez
 # veraPDF (github.com/veraPDF/veraPDF-validation-profiles/wiki/PDFUA-Part-1-rules).

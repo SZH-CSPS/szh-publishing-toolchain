@@ -33,3 +33,27 @@ Unterabschnitt.
 | drei | vier |
 
 : Eine kleine Tabelle, damit die Tabellennummerierung ebenfalls geprüft wird.
+
+## Ergänzende Materialien
+
+Ein Beispielbild ohne Informationsgehalt, rein dekorativ platziert:
+
+![](media/konzepte-decor.png){alt=""}
+
+Zwei Ansichten nebeneinander, als Tafel gelesen:
+
+::: {.szh-grille disposition="2"}
+![Zwei Ansichten der Abschlussgrafik](media/konzepte-grille-01.png){alt="Farbverlauf, erste Ansicht" copyright="© Prüfband"}
+![](media/konzepte-grille-02.png){alt="Farbverlauf, zweite Ansicht"}
+:::
+
+Die folgende Tabelle trägt eine Langbeschreibung (`data-alt`), die nirgends sonst im Text
+erscheint:
+
+::: {.szh-tabelle src="tables/table-01.html"}
+:::
+
+Der Befund stützt sich auf zwei Quellen (Bovey, 2022; vgl. Kunz, 2016).
+
+::: {.szh-biblio src="02-konzepte.biblio.md"}
+:::

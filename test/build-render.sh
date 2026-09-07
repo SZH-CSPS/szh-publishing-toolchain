@@ -173,6 +173,64 @@ if [ -z "$only" ]; then
   done
 fi
 
+# CMJN du PDF imprimeur : pas sur le banc lui-même — `test/livre-normal/buch.yaml` garde
+# `profil-cmjn: ""` en dépôt, et la CI n'a de toute façon pas Ghostscript — mais sur une
+# COPIE temporaire, sous test/out/, où `profil-cmjn` est posé au profil ICC de l'image
+# (voir image/Containerfile). `livre-imprimeur` y tourne, puis cmjn-check.py relit le PDF
+# produit et vérifie ce que pipeline/cmjn.py promet : texte de labeur en noir K seul,
+# images converties, aucun `rg`/`RG` résiduel — voir l'en-tête de ce script pour les trois
+# défauts recherchés. Sauté proprement si Ghostscript ou le profil manquent : c'est le cas
+# de la CI, et c'était déjà le cas du banc avant ce contrôle.
+if [ -z "$only" ]; then
+  echo "=== CMJN (PDF imprimeur, noir K seul) ==="
+  ICC_DIR="${SZH_ICC_DIR:-/opt/icc}"
+  ICC_NOM="${SZH_ICC_NOM:-PSOuncoated_v3_FOGRA52.icc}"
+  ICC="$ICC_DIR/$ICC_NOM"
+  if command -v gs >/dev/null 2>&1 && [ -f "$ICC" ]; then
+    copie="$REPO/test/out/.cmjn-livre-normal"
+    rm -rf "$copie"
+    mkdir -p "$REPO/test/out"
+    cp -r "$REPO/test/livre-normal" "$copie"
+    rm -rf "$copie/out"
+    # Seule cette copie porte le profil : le banc committé reste à profil-cmjn: "".
+    sed -i "s/^\([[:space:]]*profil-cmjn:\).*/\1 \"$ICC_NOM\"/" "$copie/buch.yaml"
+    journal="$REPO/test/out/.cmjn.log"
+    if ( cd "$copie" && make -f "$REPO/pipeline/Makefile" livre-imprimeur ) > "$journal" 2>&1; then
+      pdf="$copie/out/$(basename "$copie")-imprimeur.pdf"
+      if [ -f "$pdf" ]; then
+        if [ -x "$FONTPY" ] || command -v "$FONTPY" >/dev/null 2>&1; then
+          "$FONTPY" "$REPO/test/cmjn-check.py" "$pdf" | sed 's/^/  /' || echec=1
+        else
+          echo "  (cmjn-check ignoré : interpréteur pypdf introuvable en $FONTPY)"
+        fi
+      else
+        echo "  ✗ livre-imprimeur n'a pas produit $pdf :"
+        sed -n '1,20p' "$journal" | sed 's/^/    /'
+        echec=1
+      fi
+    else
+      echo "  ✗ ÉCHEC de la compilation CMJN :"
+      sed -n '1,40p' "$journal" | sed 's/^/    /'
+      echec=1
+    fi
+  else
+    echo "  (contrôle CMJN ignoré : gs ou le profil ICC introuvable en $ICC)"
+  fi
+fi
+
+# EPUB : contrôle structurel sans dépendance externe (voir l'en-tête d'epub-check.py,
+# §4.5 de docs/ARCHITECTURE-LIVRES.md) — gardé par sa seule existence, ce script étant
+# d'un autre chantier que celui-ci.
+if [ -z "$only" ] && [ -f "$REPO/test/epub-check.py" ]; then
+  echo "=== EPUB (structure) ==="
+  for livre in livre-normal livre-falc; do
+    for epub in "$REPO/test/$livre"/out/*.epub; do
+      [ -f "$epub" ] || continue
+      python3 "$REPO/test/epub-check.py" "$epub" | sed 's/^/  /' || echec=1
+    done
+  done
+fi
+
 # Reproductibilité des polices : aucun PDF ne doit embarquer une police absente de
 # pipeline/fonts/. Sans ce passage, un caractère non couvert par les faces livrées est
 # comblé par fontconfig avec ce qu'il trouve sur la machine, et le PDF cesse d'être le

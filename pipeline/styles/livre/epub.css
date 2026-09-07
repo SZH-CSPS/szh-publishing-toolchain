@@ -7,9 +7,9 @@
    - fond perdu, traits de coupe : sans pertinence hors impression
 
    À la différence de web.css (l'autre sortie sans @page), cette feuille ne réinvente
-   PAS le design : elle ajoute seulement ce qu'il faut pour qu'un EPUB se lise bien sur
+   pas le design : elle ajoute seulement ce qu'il faut pour qu'un EPUB se lise bien sur
    une liseuse, sans mettre en page en millimètres. Les éléments de livre (chapitre,
-   sommaire, liminaires) sont donc ICI, pas dans l'enveloppe EPUB à l'extérieur.
+   sommaire, liminaires) sont donc ici, pas dans l'enveloppe EPUB à l'extérieur.
 */
 
 /* ═══ 1. Racine et corps ════════════════════════════════════════════════════════ */

@@ -6,7 +6,7 @@
 -- compilation, szh-citations.lua résout la référence, pose le titre dans la langue de
 -- l'article et ancre chaque entrée.
 --
--- Ce filtre ne décide RIEN. L'étendue à détacher est décidée par docx-meta.py, qui lit les
+-- Ce filtre ne décide rien. L'étendue à détacher est décidée par docx-meta.py, qui lit les
 -- STYLES du .docx — le seul signal fiable, mesuré sur les 421 galleys publiés. Il arrive
 -- ici en lignes B de $SZH_META (une clé de comparaison par paragraphe) et BT (le titre de
 -- section, qui quitte le corps puisqu'il est reposé à la compilation). Sans lignes B, le
@@ -87,13 +87,13 @@ end
 
 -- L'étendue, retrouvée en remontant depuis la fin du document.
 --
--- docx-meta.py annonce la clé de CHAQUE paragraphe de l'étendue, y compris ceux qui ont
+-- docx-meta.py annonce la clé de chaque paragraphe de l'étendue, y compris ceux qui ont
 -- perdu le style en chemin : un paragraphe du corps n'a donc jamais sa clé dans la liste, et
 -- c'est ce qui rend la remontée sûre. On consomme les clés en multi-ensemble — deux entrées
 -- du même auteur institutionnel commencent par les mêmes quarante caractères, et les
 -- compter à part était un décalage d'un paragraphe, mesuré sur le corpus.
 --
--- Les bornes sont les paragraphes APPARIÉS les plus extrêmes ; tout ce qui est entre elles
+-- Les bornes sont les paragraphes appariés les plus extrêmes ; tout ce qui est entre elles
 -- part avec la liste, apparié ou non. C'est ce qui répare le défaut mesuré sur le corpus —
 -- un paragraphe dont la clé diverge (un caractère en police Symbole dans ses quarante
 -- premiers signes) ne fait plus sortir de la liste tout ce qui le précède. Et le sens de
@@ -210,7 +210,7 @@ function Pandoc(doc)
   doc.blocks = garde
 
   -- Le compte, toujours : c'est la seule preuve qu'aucune référence n'est restée derrière.
-  -- Deux faits, et il faut les DEUX pour conclure à un reste. Une clé non appariée seule ne
+  -- Deux faits, et il faut les deux pour conclure à un reste. Une clé non appariée seule ne
   -- prouve rien : le paragraphe est peut-être dans l'étendue, et il est alors parti quand
   -- même. Moins de blocs qu'annoncé ne prouve rien non plus : pandoc rend parfois deux
   -- paragraphes Word en un seul, ce qui ne perd rien. C'est leur conjonction qui signe un

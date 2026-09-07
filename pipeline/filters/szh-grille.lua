@@ -1,4 +1,4 @@
--- Grilles d'images : plusieurs images qui se lisent ensemble deviennent UNE figure.
+-- Grilles d'images : plusieurs images qui se lisent ensemble deviennent une figure.
 --
 --   ::: {.szh-grille disposition="2-2"}
 --   ![Légende de la figure](media/a.png){alt="…" copyright="© A"}
@@ -21,7 +21,7 @@
 --
 -- Pourquoi flex-grow porte le rapport largeur/hauteur de l'image, et non « une colonne par
 -- image » : dans une rangée dont les cases ont une base nulle, une croissance
--- proportionnelle au rapport donne à toutes les images LA MÊME HAUTEUR, et la rangée
+-- proportionnelle au rapport donne à toutes les images la même hauteur, et la rangée
 -- remplit exactement la colonne. C'est la mise en page justifiée des planches imprimées.
 -- Quand toutes les images ont le même format — le cas ordinaire d'une série — cela revient
 -- à des colonnes égales. Aucune image n'est jamais recadrée.
@@ -31,7 +31,7 @@
 -- largeur de la colonne. Deux panoramas partent donc l'un sur l'autre, deux portraits côte
 -- à côte : c'est ce que ferait un maquettiste, et c'est mesuré sur les fichiers.
 --
--- Place dans la chaîne : AVANT szh-figure.lua — une grille tombée à une seule image se
+-- Place dans la chaîne : avant szh-figure.lua — une grille tombée à une seule image se
 -- dissout en paragraphe, et c'est szh-figure.lua qui en refera une figure sous le lecteur
 -- de l'aperçu — donc avant szh-numerotation.lua, qui numérote la figure produite ici et y
 -- pose les crédits de toutes ses images.
@@ -150,7 +150,7 @@ end
 --     et la seule sous commonmark_x) : la légende est la description de l'Image, l'alt est
 --     resté dans ses attributs ;
 --   * une image seule dans son paragraphe sous le lecteur `markdown` : implicit_figures en
---     a déjà fait une Figure, la légende est celle de la FIGURE, et la description de
+--     a déjà fait une Figure, la légende est celle de la figure, et la description de
 --     l'Image porte l'alt, que le lecteur y a déplacé.
 -- Prendre la description de l'Image dans les deux cas donnait la légende de l'une et le
 -- texte alternatif de l'autre, sans que rien ne le dise.
@@ -199,7 +199,7 @@ end
 -- fait déjà primer l'attribut, mais laisser les deux ferait dépendre le rendu d'une
 -- préséance qu'aucune ligne du dépôt ne garantit.
 --
--- ⚠ L'attribut alt= est laissé EN PLACE, et ce n'est pas un oubli. C'est lui, et lui seul,
+-- ⚠ L'attribut alt= est laissé en place, et ce n'est pas un oubli. C'est lui, et lui seul,
 -- que lit szh-apercu-lecteur-ecran.lua pour distinguer les trois cas de son encadré
 -- « ce qu'un lecteur d'écran reçoit » : un alt= rempli, un alt="" voulu (image décorative)
 -- et un alt absent (rien de saisi, et l'encadré crie). Le déplacer dans la description
@@ -216,14 +216,14 @@ end
 
 -- Une rangée : un Div qui porte le flex, une case par image qui porte sa croissance et
 -- sa max-width. `rangees` (nombre total de rangées de la grille) est posé ici en
--- --szh-rangees, sur CE Div : print.css en lit cette variable pour calculer le plafond
+-- --szh-rangees, sur ce Div : print.css en lit cette variable pour calculer le plafond
 -- de hauteur divisé par le nombre de rangées. La case, elle, reçoit une propriété
 -- personnalisée --szh-case-max (calculée ici, appliquée en print.css) qui donne à
 -- l'image exactement la hauteur plafonnée, sans déformation — WeasyPrint 69 ne
 -- rétrécit pas en max-height sur l'image, il l'écrase. C'est une propriété personnalisée,
 -- pas une max-width directe, pour pouvoir l'annuler sans !important depuis une requête
 -- d'écran (sous 34rem, la rangée se défait et chaque image reprend le plafond entier).
--- ⚠ Posé sur le Div de la rangée, PAS sur la <figure> englobante : szh-legende-avant.lua
+-- ⚠ Posé sur le Div de la rangée, pas sur la <figure> englobante : szh-legende-avant.lua
 -- réécrit à la main la balise ouvrante de la <figure> et n'y reprend que l'id et les
 -- classes — tout `style` qu'on y poserait s'y perdrait (mesuré). Un Div de rangée, lui,
 -- reste jusqu'au bout un bloc pandoc ordinaire, et son `style=` survit tel quel ; la
@@ -327,7 +327,7 @@ function Div(div)
   -- --szh-rangees qui sert, posé par la fonction rangee() ci-dessus sur chaque Div de
   -- rangée (et non ici, sur la <figure> — voir pourquoi dans son commentaire). Une image
   -- de figure a un plafond de hauteur (--plafond-figure, socle.css), et dans une grille
-  -- les rangées s'empilent : le plafond doit se PARTAGER entre elles, ce que
+  -- les rangées s'empilent : le plafond doit se partager entre elles, ce que
   -- .szh-grille-case > img fait en divisant par --szh-rangees.
   return pandoc.Figure(
     contenu,

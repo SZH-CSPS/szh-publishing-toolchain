@@ -1,20 +1,20 @@
--- Bloc des auteur·e·s, posé DANS le document et non par le gabarit.
+-- Bloc des auteur·e·s, posé dans le document et non par le gabarit.
 --
 -- Pourquoi il a quitté templates/szh-article.html : un gabarit pandoc ne sait rien
 -- intercaler, il écrit ce qui suit `$body$`. Le bloc auteurs se retrouvait donc toujours
--- APRÈS la bibliographie, alors qu'il doit venir avant elle — les références ferment
+-- après la bibliographie, alors qu'il doit venir avant elle — les références ferment
 -- l'article, elles ne sont pas suivies d'autre chose. Écrit ici, le bloc s'insère juste
 -- devant le marqueur « ::: {.szh-biblio src=…} », et l'ordre du DOM — celui que lisent le
 -- flux du PDF, l'extraction de texte et les lecteurs d'écran — devient le bon.
 --
--- Doit tourner APRÈS szh-sections.lua et AVANT szh-citations.lua :
+-- Doit tourner après szh-sections.lua et avant szh-citations.lua :
 --   * après szh-sections, sinon le titre du bloc recevrait un numéro de section (il n'en
 --     porte pas : c'est un titre de clôture, comme celui de la bibliographie) ;
 --   * avant szh-citations, qui dissout le marqueur .szh-biblio en titre + entrées. Après
 --     lui, il n'y aurait plus de repère pour savoir où finit l'article.
 --
 -- Le balisage reproduit exactement celui que le gabarit écrivait, à la lettre près :
--- <span> vide à fond CSS pour le portrait et PAS un <img> (le pourquoi est dans
+-- <span> vide à fond CSS pour le portrait et pas un <img> (le pourquoi est dans
 -- print.css § 8 — en un mot : WeasyPrint balise tout <img> en /Figure, ce serait une
 -- /Figure sans /Alt, donc PDF/UA-1 7.3 violée). Le <style> qui porte l'URL de chaque
 -- portrait reste, lui, dans l'en-tête du gabarit : --embed-resources ne réécrit url()

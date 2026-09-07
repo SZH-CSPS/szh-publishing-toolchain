@@ -23,6 +23,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync, execFileSync } = require('child_process');
+const { sourceExtensionEtLib } = require('./hote-factice');
 
 process.env.SZH_LANGUE = 'fr';
 
@@ -35,8 +36,12 @@ const DETACHEUR = path.join(RACINE, 'pipeline', 'filters', 'szh-biblio-detacher.
 const DOCX_META = path.join(RACINE, 'pipeline', 'docx-meta.py');
 const TRAVAIL = path.join(os.tmpdir(), 'szh-biblio-test');
 
+// Concatène extension.js et lib/ quand c'est ce fichier qui est demandé : préalable au
+// découpage d'extension.js, voir hote-factice.js.
 function lire() {
-  return fs.readFileSync(path.join.apply(path, [RACINE].concat(Array.from(arguments))), 'utf8');
+  const chemin = path.join.apply(path, [RACINE].concat(Array.from(arguments)));
+  if (chemin === path.join(COCKPIT, 'extension.js')) { return sourceExtensionEtLib(COCKPIT); }
+  return fs.readFileSync(chemin, 'utf8');
 }
 
 // ---- la clé d'appariement, des deux côtés -------------------------------------------
@@ -326,7 +331,7 @@ test('arbre : la bibliographie est un enfant de l’article, sans description', 
   // Sans fichier, pas d'entrée : une entrée morte ferait croire à une liste vide.
   assert.match(blocBiblio, /if \(!fs\.existsSync\(chemin\)\) \{ return null; \}/);
   // Et l'article devient dépliable pour elle, même sans tableau.
-  assert.match(src, /\|\| fs\.existsSync\(cheminBiblio\(this\.racine, slug\)\)/);
+  assert.match(src, /\|\| fs\.existsSync\(cheminBiblio\(this\.racine, slug(?:, [^)]+)?\)\)/);
 });
 
 // ---- le panneau des Réglages, réellement rendu ---------------------------------------
@@ -334,7 +339,7 @@ test('arbre : la bibliographie est un enfant de l’article, sans description', 
 test('réglages : une case par revue et par langue, et un champ vidé se voit', () => {
   const { ouvrir, libellesHote } = require('./dom-minimal');
   const page = ouvrir({
-    racine: RACINE, page: 'settings', cssPartage: ['_design.css'],
+    racine: RACINE, page: 'settings', cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
     txt: libellesHote(RACINE, ['REGL_LIBELLES'])
   });
   // Même charge utile que donneesBiblio() de extension.js.

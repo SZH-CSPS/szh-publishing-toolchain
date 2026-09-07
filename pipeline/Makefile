@@ -8,20 +8,21 @@
 # Word corrigé d'un article déjà importé : cible `reimporter`, portée par reimporter.py.
 #
 # Ordre des --lua-filter à la compilation, et ce qui casse si on permute :
-#   szh-maquette -> szh-niveaux -> szh-tabelle-inclure -> szh-tabelle-scope ->
-#   szh-typographie -> szh-metafichier -> szh-grille -> szh-figure ->
-#   szh-numerotation -> szh-legende-avant -> szh-sections -> szh-auteurs ->
-#   szh-citations -> szh-rubrique -> szh-notes
+#   szh-maquette -> szh-niveaux -> szh-listes-serrees -> szh-tabelle-inclure ->
+#   szh-tabelle-scope -> szh-typographie -> szh-metafichier -> szh-grille ->
+#   szh-ressource -> szh-figure -> szh-numerotation -> szh-tableau-boite ->
+#   szh-legende-avant -> szh-sections -> szh-auteurs -> szh-citations ->
+#   szh-rubrique -> szh-notes
 #   * szh-numerotation après szh-tabelle-inclure : il numérote des tableaux qui
 #     n'existent qu'une fois le HTML réinjecté ;
-#   * szh-typographie après szh-tabelle-scope et AVANT szh-numerotation : après, parce
+#   * szh-typographie après szh-tabelle-scope et avant szh-numerotation : après, parce
 #     que le texte des tableaux n'arrive qu'avec szh-tabelle-inclure, en RawBlock html ;
-#     avant, parce que ce filtre ne normalise que le texte de la RÉDACTION — le
+#     avant, parce que ce filtre ne normalise que le texte de la rédaction — le
 #     « Figure N — » et le « Source : » que la maquette compose ensuite sont des
 #     décisions de composition, pas des fautes de frappe, et lui passer dessus les
 #     déferait ;
-#   * szh-metafichier après szh-tabelle-inclure ET après szh-typographie, avant szh-grille :
-#     après tabelle-inclure, parce qu'une image native Word peut n'être citée QUE dans un
+#   * szh-metafichier après szh-tabelle-inclure et après szh-typographie, avant szh-grille :
+#     après tabelle-inclure, parce qu'une image native Word peut n'être citée que dans un
 #     tableau extrait, invisible depuis le .md (le chapitre 09 du VN-FALC citait ainsi
 #     fig-73) ; après typographie, parce que le libellé « IMAGE À REMPLACER » qu'il pose est
 #     une décision de composition et non du texte de rédaction ; avant grille et figure,
@@ -38,10 +39,10 @@
 #     auteurs recevrait un numéro de section ; avant szh-citations, qui dissout le
 #     marqueur .szh-biblio devant lequel le bloc doit s'insérer — les références ferment
 #     l'article, rien ne les suit ;
-#   * szh-rubrique APRÈS szh-sections ET APRÈS szh-citations, deux raisons qui se
+#   * szh-rubrique après szh-sections et après szh-citations, deux raisons qui se
 #     cumulent : il pose un h2 (le titre de la rubrique, déduit du type), or szh-sections
 #     numéroterait ce titre — « 1 Références du dossier » — et szh-citations reconnaît le
-#     titre de la bibliographie SUR SON TEXTE, si bien qu'un « Références du dossier » ou
+#     titre de la bibliographie sur son texte, si bien qu'un « Références du dossier » ou
 #     un « Literatur zum Schwerpunkt » posé avant lui se ferait prendre pour la
 #     bibliographie de l'article. Le contenu du bloc, lui, est du markdown ordinaire lu par
 #     pandoc : tous les filtres d'amont l'ont déjà traité, celui-ci ne fait que l'envelopper ;
@@ -70,15 +71,25 @@ VERAPDF_JAVA ?= /opt/jre-min
 THIS         := $(abspath $(lastword $(MAKEFILE_LIST)))
 PIPELINE_DIR := $(patsubst %/,%,$(dir $(THIS)))
 
-# Socle partagé : polices et jetons :root, lus par toutes les sorties. TOUJOURS celui du
+# Socle partagé : polices et jetons :root, lus par toutes les sorties. Toujours celui du
 # toolkit, même quand la revue porte son propre styles/print.css — une feuille locale hérite
-# ainsi des jetons sans les redéclarer, et ne peut pas dériver. Empilé EN PREMIER.
+# ainsi des jetons sans les redéclarer, et ne peut pas dériver. Empilé en premier.
 SOCLE      := $(PIPELINE_DIR)/styles/socle.css
 SOCLE_ABS  := $(abspath $(SOCLE))
 
 # Style de la revue s'il existe (styles/print.css), sinon style central du toolkit.
 STYLE      := $(firstword $(wildcard styles/print.css) $(PIPELINE_DIR)/styles/print.css)
 STYLE_ABS  := $(abspath $(STYLE))
+
+# Mise en forme du balisage posé par les filtres Lua communs à la revue et au livre (une
+# grille d'images, une image décorative, un appel de citation, une description longue…) :
+# voir l'en-tête de ce fichier pour ce qui y vit et pourquoi. Empilée après print.css : ses
+# règles complètent des composants que les filtres posent et doivent l'emporter sur les
+# règles génériques de la maquette à spécificité égale (mesuré : `a.szh-orcid::after` et
+# `a[href]::after`, même spécificité, la seconde écrasait la première quand partage-filtres
+# précédait print.css — l'icône ORCID sortait avec la flèche de lien externe en trop).
+PARTAGE     := $(PIPELINE_DIR)/styles/partage-filtres.css
+PARTAGE_ABS := $(abspath $(PARTAGE))
 
 # Template pandoc de la couverture + filtre Lua qui dérive les métadonnées de
 # couverture et d'en-tête (étiquette de dossier, nom et ISSN de la revue).
@@ -89,24 +100,27 @@ MAQUETTE_LUA := $(PIPELINE_DIR)/filters/szh-maquette.lua
 FILTRES      := $(wildcard $(PIPELINE_DIR)/filters/*.lua)
 
 # ---------------------------------------------------------------------------
-# Profil de compilation du dossier, lu dans ausgabe.yaml par sed + head : l'image WSL
-# n'embarque pas PyYAML.
-# ⚠ `sed` renvoie une chaîne vide dans deux cas opposés : clé `profil:` absente (dossier
-#   historique, à compiler comme avant) ou clé présente sans valeur (choix du rédacteur :
-#   aucun document). La présence se compte donc à part, avec `grep -c '^profil:'` ;
-#   l'ancrage `^` écarte les lignes d'aide commentées et les clés indentées.
-PROFIL_PRESENT := $(shell grep -c "^profil:" ausgabe.yaml 2>/dev/null | head -1)
+# Profil de compilation du dossier, lu dans ausgabe.yaml par szh-lire-config.lua (pandoc
+# lua, sans dépendance) : l'image WSL n'embarque pas PyYAML, et cette lecture — un seul
+# petit analyseur, réutilisé par livre.mk et par exiger_titre plus bas — remplace le sed +
+# head d'origine, qui ne comprenait que la forme la plus simple de chaque clé.
+LIRE_CONFIG := $(PIPELINE_DIR)/filters/szh-lire-config.lua
+# ⚠ Le script rend une chaîne vide dans deux cas opposés : clé `profil:` absente (dossier
+#   historique, à compiler comme avant ; code de sortie 1) ou clé présente sans valeur
+#   (choix du rédacteur : aucun document ; code de sortie 0). La présence se lit donc à
+#   part, sur ce code de sortie.
+PROFIL_PRESENT := $(shell $(PANDOC) lua $(LIRE_CONFIG) ausgabe.yaml profil >/dev/null 2>&1 && echo 1 || echo 0)
 # La valeur : guillemets d'un sérialiseur tolérés, arrêt au premier caractère hors
 # [a-zA-Z-] (espace, commentaire de fin de ligne, CR de Windows). Une valeur exotique
 # est donc tronquée et tombe dans la branche « profil inconnu », qui échoue avec un
 # message clair : pas de repli silencieux sur un autre profil.
-PROFIL_LU      := $(shell sed -n "s/^profil:[[:space:]]*[\"']*\([a-zA-Z-]*\).*/\1/p" ausgabe.yaml 2>/dev/null | head -1)
+PROFIL_LU      := $(shell $(PANDOC) lua $(LIRE_CONFIG) ausgabe.yaml profil 2>/dev/null | sed -E 's/^([a-zA-Z-]*).*/\1/')
 PROFIL         := $(strip $(PROFIL_LU))
 # Vide si la clé est absente (ou 0 occurrence) ; non vide sinon.
 PROFIL_DECLARE := $(filter-out 0,$(PROFIL_PRESENT))
 
-# Un dossier qui porte buch.yaml est un LIVRE. La détection se fait sur la PRÉSENCE DU
-# FICHIER, et non sur une clé de configuration : un livre n'a pas d'ausgabe.yaml, donc
+# Un dossier qui porte buch.yaml est un livre. La détection se fait sur la présence du
+# fichier, et non sur une clé de configuration : un livre n'a pas d'ausgabe.yaml, donc
 # aucune clé `profil:` à y lire. C'est aussi ce qui garde les règles de la revue
 # intactes — elles ne s'exécutent que dans un dossier de revue, et leur littéral
 # « ausgabe.yaml » n'a pas à devenir une variable.
@@ -114,8 +128,8 @@ LIVRE_CONFIG := $(wildcard buch.yaml)
 
 # Routage de la cible `all`, résolu à la lecture du Makefile : `make -n all` montre
 # la route prise sans exécuter pandoc.
-# Un livre PRIME sur la cle `profil:` d'un ausgabe.yaml qui trainerait dans le meme
-# dossier : buch.yaml present, la route est « livre », point final.
+# Un livre prime sur la clé `profil:` d'un ausgabe.yaml qui traînerait dans le même
+# dossier : buch.yaml présent, la route est « livre », point final.
 ifneq ($(LIVRE_CONFIG),)
 PROFIL_ROUTE := livre
 else ifeq ($(PROFIL_DECLARE),)
@@ -161,6 +175,8 @@ WORD_DIR   := articles-word
         profil-book-sans-fichier \
         profil-inconnu
 .SECONDEXPANSION:
+# Une recette qui échoue ne doit pas laisser une cible à moitié écrite et plus récente que ses prérequis.
+.DELETE_ON_ERROR:
 
 # Cible du build (Ctrl+S, Ctrl+E) : importe les Word déposés puis régénère les sorties, en
 # deux sous-make pour que les articles fraîchement convertis soient vus par la passe pdf.
@@ -245,7 +261,7 @@ verifier-numerotation:
 # Bloquante — et volontairement absente de `pdf` et de `all` : le rédacteur doit pouvoir
 # relire l'épreuve d'un article encore imparfait. Elle garde ce qui s'exporte.
 #
-# ⚠ Le code de sortie de veraPDF dit deux choses différentes : 0 conforme, 1 NON conforme,
+# ⚠ Le code de sortie de veraPDF dit deux choses différentes : 0 conforme, 1 non conforme,
 #   mais 4 (fichier introuvable), 7 (fichier illisible) et 127 (veraPDF absent) sont des
 #   pannes d'outillage. Sans le test « > 1 » ci-dessous, un validateur manquant se lirait
 #   comme un PDF conforme — exactement le mensonge qu'on est venu corriger.
@@ -256,19 +272,17 @@ verifier-numerotation:
 #   sort 2) fait recracher la sortie d'erreur du validateur, seul endroit où la vraie
 #   cause se lit.
 # Ce que la porte PDF/UA valide. Pour une revue, les PDF des articles ; pour un livre, le
-# PDF de l'ouvrage — profils/livre.mk réaffecte cette variable, et c'est le SEUL endroit
+# PDF de l'ouvrage — profils/livre.mk réaffecte cette variable, et c'est le seul endroit
 # où le profil décide de la liste.
 #
 # ⚠ `$$(PDFS_UA)` et non `$(PDFS_UA)` : les prérequis d'une règle explicite sont développés
-#   à la LECTURE du Makefile, or livre.mk est inclus tout à la fin. Sans la seconde
+#   à la lecture du Makefile, or livre.mk est inclus tout à la fin. Sans la seconde
 #   expansion (`.SECONDEXPANSION`), la liste serait figée à sa valeur d'ici — celle de la
 #   revue — et un livre validerait une liste vide.
 #
-# Jusqu'au 02.09.2026 la cible lisait $(PDFS) en direct : dans un dossier de livre, où il
-# n'y a pas d'articles/, elle sortait « Aucun PDF à valider » et le PDF de l'ouvrage n'était
-# JAMAIS validé. Le commentaire de livre.mk affirmait pourtant que « la porte dure reste
-# verifier-ua, appelée par l'export ». Pour un livre FALC, dont l'accessibilité est la
-# raison d'être, c'était la porte la plus utile qui manquait.
+# PDFS_UA reste $(PDFS) ici : dans un dossier de livre, profils/livre.mk la réaffecte au
+# PDF de l'ouvrage (voir plus haut) — sans quoi cette porte ne validerait jamais un livre,
+# un dossier sans articles/ n'ayant aucun PDF à lui proposer.
 PDFS_UA    := $(PDFS)
 
 verifier-ua: $$(PDFS_UA)
@@ -320,11 +334,7 @@ verifier-ua: $$(PDFS_UA)
 define exiger_titre
 @for slug in $(1); do \
   fiche="articles/$$slug/$$slug.meta.yaml"; \
-  titre=$$(sed '1s/^\xEF\xBB\xBF//' "$$fiche" 2>/dev/null \
-    | sed -n '/^title:/,/^[^[:space:]]/p' \
-    | sed -n -e 's/^title:[[:space:]]*//p' \
-             -e 's/^[[:space:]][[:space:]]*[A-Za-z_-][A-Za-z_-]*:[[:space:]]*//p' \
-    | tr -d "\"'~{}[:space:]"); \
+  titre=$$($(PANDOC) lua $(LIRE_CONFIG) "$$fiche" title 2>/dev/null); \
   [ -n "$$titre" ] && continue; \
   echo "[pipeline] ⚠ L'article « $$slug » n'a pas de titre : la fiche $$fiche est absente, ou son titre est vide."; \
   echo "[pipeline] À faire : ouvrez « Métadonnées des articles » dans le cockpit, saisissez le titre de cet article, enregistrez, puis relancez la compilation (Ctrl+S)."; \
@@ -359,7 +369,7 @@ $(ACCENT_CSS): $(CONFIG_COULEUR) $(PIPELINE_DIR)/styles/couleurs.css \
 # (<slug>.biblio.md, prérequis lui aussi), lui pose son titre, ancre chaque référence et
 # transforme les appels du corps en liens internes. Le texte des références n'est jamais
 # réécrit.
-$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $(STYLE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
+$(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $(STYLE) $(PARTAGE) $(ACCENT_CSS) $(TEMPLATE) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
 	@mkdir -p "$(dir $@)"
 	$(call exiger_titre,$(notdir $*))
 	@slug="$(notdir $*)"; \
@@ -369,7 +379,7 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $
 	  --metadata-file="$(abspath ausgabe.yaml)" --metadata-file="$$slug.meta.yaml" \
 	  --standalone --embed-resources \
 	  --template="$(TEMPLATE_ABS)" \
-	  --css="$(SOCLE_ABS)" --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
+	  --css="$(SOCLE_ABS)" --css="$(STYLE_ABS)" --css="$(PARTAGE_ABS)" --css="$(ACCENT_ABS)" \
 	  --lua-filter="$(MAQUETTE_LUA)" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-listes-serrees.lua" \
@@ -408,7 +418,7 @@ endef
 # .md -> HTML d'aperçu : mêmes filtres, CSS et métadonnées que la sortie PDF, mais
 # reader commonmark_x+sourcepos -> chaque bloc porte data-pos, ce qui permet le clic
 # vers le texte source dans la webview. Consommé par le cockpit seulement.
-$(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $(STYLE) $(ACCENT_CSS) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
+$(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $(STYLE) $(PARTAGE) $(ACCENT_CSS) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
 	meta=""; \
@@ -418,7 +428,7 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --from=commonmark_x+sourcepos --to=html5 \
 	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
 	  --standalone --embed-resources \
-	  --css="$(SOCLE_ABS)" --css="$(STYLE_ABS)" --css="$(ACCENT_ABS)" \
+	  --css="$(SOCLE_ABS)" --css="$(STYLE_ABS)" --css="$(PARTAGE_ABS)" --css="$(ACCENT_ABS)" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-listes-serrees.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
@@ -529,11 +539,11 @@ docx: verifie-dossier verifier-ua $(DOCXS)
 # Code de sortie : tout fichier Word resté sur le carreau fait échouer la recette. Sans
 # cela un article disparaissait du numéro avec une sortie 0, personne n'étant averti.
 #
-# ⚠ LIVRE SEULEMENT — scission automatique. Juste après avoir converti un .docx de
+# ⚠ Livre seulement — scission automatique. Juste après avoir converti un .docx de
 # chapitres-word/ en chapitre unique (ci-dessus), on compte ses titres de niveau 1 : 2 ou
-# plus, et livre-scinder.py le redécoupe aussitôt en autant de chapitres, dans le MÊME
+# plus, et livre-scinder.py le redécoupe aussitôt en autant de chapitres, dans le même
 # geste que la conversion — aucun geste séparé à apprendre. Un seul titre de niveau 1 (le
-# titre du chapitre lui-même, comme le pose Modele-chapitre-SZH.docx) n'est PAS un
+# titre du chapitre lui-même, comme le pose Modele-chapitre-SZH.docx) n'est pas un
 # manuscrit à scinder : c'est déjà un chapitre, on le laisse tel quel. Cette règle vient de
 # chapitres-word/LISEZ-MOI.txt (« Un manuscrit en UN SEUL fichier… se découpe ensuite, aux
 # titres de niveau 1 ») et de lire_chapitre() dans livre-scinder.py, qui ne coupe qu'à ces
@@ -544,7 +554,7 @@ docx: verifie-dossier verifier-ua $(DOCXS)
 # constat « chapitre-cible-existe » dans livre-scinder.py.
 # Une ressource manquante à la scission (image, tableau) n'efface pas le dossier d'origine
 # — voir livre-scinder.py, avertir('source-non-supprimee') — et ne fait pas non plus
-# échouer la CONVERSION déjà réussie : le compteur $$scission_rate le distingue de $$rate.
+# échouer la conversion déjà réussie : le compteur $$scission_rate le distingue de $$rate.
 import:
 	@set -u; \
 	shopt -s nullglob; \
@@ -567,7 +577,9 @@ import:
 	    echo "[import] media aplati : $${d}media/media -> $${d}media"; \
 	  fi; \
 	done; \
-	PYTHONIOENCODING=utf-8 python3 "$(PIPELINE_DIR)/reimporter.py" --reprise || true; \
+	if [ "$(PROFIL_ROUTE)" = "article" ]; then \
+	  PYTHONIOENCODING=utf-8 python3 "$(PIPELINE_DIR)/reimporter.py" --reprise || true; \
+	fi; \
 	[ -d "$(WORD_DIR)" ] || exit 0; \
 	journal="$(WORD_DIR)/.import.log"; \
 	: > "$$journal"; \
@@ -589,7 +601,7 @@ import:
 	  if [ "$$a_un_numero" = 1 ]; then slug=$$(printf '%s' "$$slug" | sed -E 's/^[0-9]+-//'); fi; \
 	  if [ $${#slug} -gt 39 ]; then scourt="$${slug:0:39}"; scourt="$${scourt%-*}"; sorph=$$(printf '%s' "$$scourt" | sed -E 's/(-[a-z0-9])+$$//'); case "$$sorph" in *-*) scourt="$$sorph";; esac; slug="$${scourt:-$${slug:0:39}}"; fi; \
 	  venu_de=""; \
-	  for fiche in /*/*.meta.yaml; do \
+	  for fiche in $(UNITES_DIR)/*/*.meta.yaml; do \
 	    src=$$(sed -n 's/^source:[[:space:]]*//p' "$$fiche" | head -1 | sed -e 's/^"//' -e 's/"$$//'); \
 	    if [ "$$src" = "$$nom" ]; then venu_de=$$(basename "$$(dirname "$$fiche")"); break; fi; \
 	  done; \
@@ -692,7 +704,7 @@ clean:
 	rm -rf "$(OUT)"
 
 # ---------------------------------------------------------------------------
-# Moteur LIVRE. Inclus seulement dans un dossier qui porte buch.yaml : dans une revue,
+# Moteur livre. Inclus seulement dans un dossier qui porte buch.yaml : dans une revue,
 # aucune de ses règles n'existe, et rien de ce qui suit ne peut donc peser sur elle.
 # ---------------------------------------------------------------------------
 ifneq ($(LIVRE_CONFIG),)

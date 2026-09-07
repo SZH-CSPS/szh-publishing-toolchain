@@ -1,31 +1,30 @@
--- Compilation : applique au TEXTE DE L'ARTICLE la typographie de la maison, selon la
+-- Compilation : applique au texte de l'article la typographie de la maison, selon la
 -- langue déclarée de l'article. Douze règles, codées A1 à C2, listées pour la rédaction
 -- dans docs/TYPOGRAPHIE-FR.md et docs/TYPOGRAPHIE-DE.md.
 --
--- ⚠ Le fichier .md n'est JAMAIS réécrit. La normalisation a lieu à la compilation, sur
+-- ⚠ Le fichier .md n'est jamais réécrit. La normalisation a lieu à la compilation, sur
 -- l'arbre pandoc : la source reste exactement ce que la rédaction a tapé, lisible et
 -- comparable d'une version à l'autre, et c'est la sortie — PDF, HTML, galley DOCX — qui
 -- porte la typographie. Semer des insécables et des chevrons dans le .md le rendrait
 -- pénible à relire pour un gain nul : personne ne lit le Markdown, tout le monde lit le PDF.
 --
--- Le fait qui commande tout : français et allemand ont des règles OPPOSÉES d'espacement.
--- Le français SÉPARE (insécable devant la ponctuation haute, à l'intérieur des
--- guillemets), l'allemand suisse et l'italien COLLENT. Une règle unique serait fausse pour
+-- Le fait qui commande tout : français et allemand ont des règles opposées d'espacement.
+-- Le français sépare (insécable devant la ponctuation haute, à l'intérieur des
+-- guillemets), l'allemand suisse et l'italien collent. Une règle unique serait fausse pour
 -- l'une des deux langues. Les mesures qui l'établissent sont dans docs/TYPOGRAPHIE.md.
 --
--- Place dans la chaîne : EN DERNIER, après szh-notes. À ce moment les notes sont devenues
--- des Spans (leur contenu est donc atteignable), szh-citations a déjà apparié ses appels
--- sur le texte d'origine — une insécable posée avant lui déplacerait ses ancrages —, et
--- les tableaux réinjectés par szh-tabelle-inclure sont là, sous forme de RawBlock html
--- que ce filtre traite à part.
+-- Place dans la chaîne : sixième, après szh-tabelle-scope et avant szh-numerotation et
+-- szh-citations (voir l'ordre des --lua-filter dans le Makefile), pour ne normaliser que le
+-- texte de la rédaction. Ancrages protégés malgré cet ordre par assainir_iso(), dans
+-- szh-citations.lua, qui ramène les caractères posés ici à une longueur d'octets constante.
 --
--- Ce qui n'est PAS corrigé, et pourquoi :
+-- Ce qui n'est pas corrigé, et pourquoi :
 --   * le « ß » d'un article allemand : « Klauß » n'est pas « Klauss », et une citation
---     d'un ouvrage allemand garde son orthographe. Le filtre le SIGNALE (code C1) ;
+--     d'un ouvrage allemand garde son orthographe. Le filtre le signale (code C1) ;
 --   * les guillemets droits que pandoc n'a pas su apparier : les remplacer au jugé
 --     ouvrirait ou fermerait au hasard. Signalés aussi (code C2) ;
 --   * les plages de nombres en général (« 2020-2021 », « COVID-19 », un DOI, une date
---     ISO) : seules les plages de PAGES, reconnaissables à leur « p. » ou « S. », passent
+--     ISO) : seules les plages de pages, reconnaissables à leur « p. » ou « S. », passent
 --     au demi-cadratin (T2) ;
 --   * le contenu des `code` et des blocs de code, jamais touché.
 
@@ -37,7 +36,7 @@ local ELL = '\226\128\166'                    -- U+2026, points de suspension
 local GO, GF = '\194\171', '\194\187'         -- « »
 local SO, SF = '\226\128\185', '\226\128\186' -- ‹ ›
 
--- Lettre « au sens large » : les classes Lua sont des classes d'OCTETS et %a ne connaît
+-- Lettre « au sens large » : les classes Lua sont des classes d'octets et %a ne connaît
 -- que l'ASCII. « d'été » porte un é sur deux octets, dont le premier vaut 0xC3 : sans la
 -- plage \128-\255, la règle A1 raterait une élision sur deux, celles qui précèdent un
 -- accent. Tout octet non-ASCII est ici tenu pour une lettre, ce qui suffit : le caractère
@@ -45,8 +44,8 @@ local SO, SF = '\226\128\185', '\226\128\186' -- ‹ ›
 local LETTRE = '[%a\128-\255]'
 
 -- ⚠ Aucune classe d'octets ne peut décrire « une espace, quelle qu'elle soit ». L'octet
--- 0xC2 ouvre l'insécable ET le guillemet « : une classe [ \194\160…] mangerait la moitié
--- d'un chevron. Les règles d'espacement travaillent donc sur une liste de CARACTÈRES,
+-- 0xC2 ouvre l'insécable et le guillemet « : une classe [ \194\160…] mangerait la moitié
+-- d'un chevron. Les règles d'espacement travaillent donc sur une liste de caractères,
 -- découpée ici, et non sur des motifs Lua.
 local function caracteres(t)
   local out = {}
@@ -56,12 +55,12 @@ end
 
 local EST_ESPACE = { [' '] = true, [NBSP] = true,
                      ['\226\128\175'] = true, ['\226\128\137'] = true }
--- Les deux qui ne se coupent pas : l'insécable ordinaire et la FINE insécable. Une règle
+-- Les deux qui ne se coupent pas : l'insécable ordinaire et la fine insécable. Une règle
 -- qui demande « une insécable » est déjà tenue par l'une comme par l'autre.
 local INSECABLES = { [NBSP] = true, ['\226\128\175'] = true }
 local HAUTE = { [';'] = true, [':'] = true, ['!'] = true, ['?'] = true }
 
--- Les signes multi-octets qui ne sont PAS des lettres. Tout ce qui fait plus d'un octet
+-- Les signes multi-octets qui ne sont pas des lettres. Tout ce qui fait plus d'un octet
 -- sans figurer ici — é, ü, œ, ç — en est une, ce qui suffit à décider si une insécable
 -- doit se poser devant un deux-points.
 local PAS_LETTRE = {
@@ -151,7 +150,7 @@ end
 -- ------------------------------------------------------ règles internes à une chaîne
 --
 -- Tout ce qui se décide sans regarder l'inline voisin. L'ordre compte à un endroit : A2
--- pose les chevrons AVANT que E1 ne s'occupe de leur espacement.
+-- pose les chevrons avant que E1 ne s'occupe de leur espacement.
 
 -- A1 · apostrophe typographique dans les élisions
 local function a1_apostrophe(t)
@@ -165,7 +164,7 @@ end
 
 -- A2/A3 · les guillemets courbes d'un traitement de texte deviennent des chevrons.
 --
--- ⚠ « “ » n'a pas de sens fixe : il OUVRE en anglais (“word”) et il FERME en allemand
+-- ⚠ « “ » n'a pas de sens fixe : il ouvre en anglais (“word”) et il ferme en allemand
 -- d'Allemagne („Wort“). Une table de correspondance fixe le rendait donc ouvrant dans
 -- « „Guten Tag“ », qui sortait « «Guten Tag« ». On tranche par le voisinage, comme le
 -- fait tout correcteur de guillemets : un guillemet suivi d'une lettre ouvre, un
@@ -225,9 +224,9 @@ local function e4_abreviations(t)
   return t
 end
 
--- T2 · plage de PAGES au demi-cadratin. Le contexte « p. » ou « S. » est ce qui rend la
+-- T2 · plage de pages au demi-cadratin. Le contexte « p. » ou « S. » est ce qui rend la
 -- règle sûre : hors de lui, « 2020-2021 » peut être un exercice et « COVID-19 » un nom.
--- Passe AVANT e4_abreviations, qui remplacerait l'espace par une insécable et rendrait le
+-- Passe avant e4_abreviations, qui remplacerait l'espace par une insécable et rendrait le
 -- contexte méconnaissable.
 -- Deux formes, parce que pandoc en produit deux : le lecteur markdown « smart » soude
 -- certaines abréviations au nombre qui suit par une insécable — « pp.<NBSP>12-25 » arrive
@@ -260,7 +259,7 @@ local function e_espacement(t)
         or (apres == '%' and avant ~= nil and avant:match('^%d$') ~= nil)
       if colle then
         if not COLLEE then
-          -- Une insécable déjà posée satisfait la règle, qu'elle soit ordinaire ou FINE :
+          -- Une insécable déjà posée satisfait la règle, qu'elle soit ordinaire ou fine :
           -- la maquette écrit « Source⍽: » avec une fine insécable (szh-numerotation.lua),
           -- et l'élargir en insécable ordinaire défairait une décision de composition.
           if j == i + 1 and INSECABLES[cs[i]] then
@@ -330,7 +329,7 @@ end
 
 -- ------------------------------------------------ règles qui traversent une frontière
 --
--- pandoc découpe « mot : suite » en Str/Space/Str : l'espace à corriger est un ÉLÉMENT de
+-- pandoc découpe « mot : suite » en Str/Space/Str : l'espace à corriger est un élément de
 -- la liste, pas un caractère d'une chaîne. Ces règles-là se jouent donc sur la liste
 -- d'inlines, et pas dans normaliser_texte.
 
@@ -384,7 +383,7 @@ end
 -- --------------------------------------------------------------------- le HTML réinjecté
 --
 -- szh-tabelle-inclure pose les tableaux en RawBlock html : leur texte n'est plus un Str et
--- échapperait à tout. On y passe donc à la main, en ne touchant QUE ce qui est entre deux
+-- échapperait à tout. On y passe donc à la main, en ne touchant que ce qui est entre deux
 -- balises — jamais un attribut, jamais un nom d'élément.
 local function normaliser_html(html)
   local sortie = {}
