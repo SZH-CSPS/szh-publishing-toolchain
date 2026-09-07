@@ -446,6 +446,27 @@ def _demasquer(codes):
     return lambda v, _l: motif.sub(lambda m: codes[int(m.group(1))], v)
 
 
+RE_TWIG_TAG = re.compile(r"\{\{.*?\}\}|\{%.*?%\}|\{#.*?#\}")
+
+
+def extraire_twig(lignes, langue):
+    """mail-templates/*.twig : texte brut d'un gabarit, hors constructions Twig.
+
+    {{ expr }}, {% tag %} et {# commentaire #} sont masqués avant contrôle : ce ne sont
+    pas des messages. `langue` vient du nom de fichier (.fr./.de.), un gabarit est écrit
+    dans une seule langue.
+    """
+    for i, l in enumerate(lignes):
+        codes = []
+
+        def masquer(m, codes=codes):
+            codes.append(m.group(0))
+            return JETON + str(len(codes) - 1) + JETON
+
+        masque = RE_TWIG_TAG.sub(masquer, l)
+        yield i, langue, masque, _demasquer(codes)
+
+
 # Ce qui est lu, et rien d'autre. Chaque entrée : (chemin, extracteur, langue par défaut).
 # La langue par défaut ne sert qu'aux surfaces monolingues ; les autres la portent dans
 # leur structure.
@@ -454,7 +475,9 @@ SURFACES = [
     ("vscodium-extension/szh-cockpit/package.nls.json", extraire_json, "fr"),
     ("vscodium-extension/szh-cockpit/package.nls.de.json", extraire_json, "de"),
     ("vscodium-extension/szh-cockpit/package.json", extraire_json, "fr"),
-    ("windows/szh-common.ps1", extraire_ps, None),
+    # La table $SzhTextes vit dans windows/szh-textes.ps1, dot-sourcée par szh-common.ps1
+    # (voir test/js/controles.test.js) : ce dernier ne porte plus aucun texte à contrôler.
+    ("windows/szh-textes.ps1", extraire_ps, None),
     # Les deux jeux de libellés bilingues qui ne passent pas par i18n.js, parce qu'ils
     # sont des données du modèle et non des messages : les tâches éditoriales et les types
     # d'article. Ils s'affichent malgré tout dans les panneaux.
@@ -479,6 +502,26 @@ SURFACES = [
 for _nom in sorted(os.listdir(os.path.join(RACINE, "pipeline", "filters"))):
     if _nom.endswith(".lua"):
         SURFACES.append(("pipeline/filters/" + _nom, extraire_lua, None))
+
+# Les gabarits de courriel : un fichier par langue, déduite du nom (envoi-auteur.fr.twig,
+# envoi-auteur.de.twig, …).
+for _nom in sorted(os.listdir(os.path.join(RACINE, "vscodium-extension/szh-cockpit/mail-templates"))):
+    if _nom.endswith(".twig"):
+        _langue_gabarit = "de" if ".de." in _nom else "fr"
+        SURFACES.append(("vscodium-extension/szh-cockpit/mail-templates/" + _nom, extraire_twig, _langue_gabarit))
+
+# Le lanceur Windows a les siens (support.fr.twig, support.de.twig, support.en.twig) :
+# même règle de nom, mais avec un .en. en plus, jamais contrôlé (voir LANGUES_CONTROLEES,
+# le même sort que l'anglais des .ps1 lus par extraire_ps ci-dessus).
+for _nom in sorted(os.listdir(os.path.join(RACINE, "windows/mail-templates"))):
+    if _nom.endswith(".twig"):
+        if ".de." in _nom:
+            _langue_gabarit = "de"
+        elif ".en." in _nom:
+            _langue_gabarit = "en"
+        else:
+            _langue_gabarit = "fr"
+        SURFACES.append(("windows/mail-templates/" + _nom, extraire_twig, _langue_gabarit))
 
 # L'anglais n'a pas de règle ici : il ne sert qu'au repli des raccourcis Windows, où seuls
 # comptent les caractères ASCII.

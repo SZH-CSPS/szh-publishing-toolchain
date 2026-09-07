@@ -312,21 +312,15 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
   et damier de transparence lisibles en thème clair comme sombre, console de la webview sans
   erreur. Sans WSL, ou avec la distribution absente, la modale doit afficher une erreur propre,
   sans blocage ni « Chargement… » figé.
-- [ ] Valider le DOI. C'est un champ texte libre : ni format, ni préfixe, ni unicité dans le
-  numéro. Un `meta.yaml` recopié d'un article à l'autre suffit à envoyer deux fois le même DOI
-  sans que personne ne le voie. La forme réelle a été relevée le 23.08.2026 sur `ojs.szh.ch` par
-  l'interface OAI, et elle est simple :
-
-      10.57161/r{AAAA}-{NN}-{SS}   revue française
-      10.57161/z{AAAA}-{NN}-{SS}   Zeitschrift
-
-  Un seul préfixe pour les deux revues, la lettre `r` ou `z` les distinguant. `NN` est le numéro
-  dans l'année sur deux chiffres, `SS` un compteur courant dans le numéro, sur deux chiffres, qui
-  traverse les rubriques dans l'ordre du sommaire — l'éditorial portant `00`. La rubrique
-  Documentation ne reçoit pas de DOI. À faire : vérifier ce motif à la saisie, refuser un doublon
-  dans `collecter()`, et corriger le DOI inventé du corpus de test
-  (`test/articles/contenu-long/` porte `10.57262/szh/2026-iter-001`, dont ni le préfixe ni la
-  structure n'existent). Reporté sciemment le 23.08.2026.
+- [x] Valider le DOI. La forme (`10.57161/r{AAAA}-{NN}-{SS}` pour la revue française,
+  `10.57161/z{AAAA}-{NN}-{SS}` pour la Zeitschrift) est vérifiée à la saisie : la case
+  « Définir manuellement le DOI » cochée, une note discrète et jamais bloquante signale une
+  forme hors motif (`fiches.doi.forme`, `media/_fiches.js`) ou un DOI déjà porté par un autre
+  article de la fiche (`fiches.doi.double`) ; la carte de la vue Articles porte les mêmes
+  constats (`art.doi.forme`, `art.doi.double`). Le doublon, lui, est bloquant à l'export :
+  `collecter()` (`lib/export-ojs.js`) le refuse avec `ojs.err.doi.double`. Le corpus de test
+  (`test/articles/contenu-long`, `couverture-stress`, `figures`, `lecteur-ecran`) porte
+  désormais des DOI dans la forme (`10.57161/r2026-99-9x`).
 - [ ] Détourage sur de vraies photos : le test automatique n'a couvert qu'un visage synthétique.
   Valider sur des visages non frontaux, des lunettes, des groupes, un contre-jour, une photo très
   serrée et une photo sans visage, et juger le rendu noir et blanc 400 × 400 des deux versions.

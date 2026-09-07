@@ -1,3 +1,23 @@
+### Cinq livraisons (7 septembre 2026)
+
+- **Modèles de courriel en fichiers Twig** : les e-mails du cockpit (version finale à
+  l'auteur, lien de traduction) et celui du lanceur Windows (support) vivent désormais dans
+  `mail-templates/*.twig`, un moteur par plate-forme (`lib/gabarits.js` en JS,
+  `Get-SzhCourriel` en PowerShell). Changer un texte ne touche plus au code.
+- **DOI contrôlé** : une saisie manuelle hors de la forme de la revue, ou qui coïncide avec
+  un autre article, se signale sans bloquer la saisie ; un doublon, lui, arrête l'export OJS.
+- **Mode test annoncé** : un bandeau rouge dans le lanceur (bloc d'informations, formulaires
+  « Nouveau… ») et un badge dans la barre d'état du cockpit disent sans détour quand on
+  travaille dans le dossier de test.
+- **Figure sans texte alternatif** : `szh-numerotation.lua` le signale dès l'aperçu, dans
+  « Contrôles de la compilation », avec un bouton direct vers le formulaire des médias.
+- **Validation PDF/UA en arrière-plan** : le même validateur qu'à l'export
+  (`pipeline/verifier-ua.sh`, extrait du Makefile) tourne après chaque compilation réussie,
+  sans bloquer, avec un badge par article et un cache par empreinte de PDF
+  (`lib/pdfua-hote.js`).
+
+Cockpit en version 0.33.0.
+
 ### Revue d'architecture et lots 0 à 3 (6 et 7 septembre 2026)
 
 **Constat.** `extension.js` (8 726 lignes) et `windows/szh-common.ps1` (socle Windows entier)

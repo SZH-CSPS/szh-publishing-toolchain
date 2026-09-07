@@ -355,7 +355,9 @@ reste à faire par l'utilisateur, une fois.
    n'ouvre rien. La clé est posée par `update.ps1` sous
    `HKCU\…\Trusted Protocols\All Applications\szh:`.
 2. Le destinataire est sur le **nouvel** Outlook, qui ne connaît pas ce protocole. Le
-   corps de l'e-mail porte pour cette raison une ligne de repli « menu Démarrer → … ».
+   corps de l'e-mail porte pour cette raison une ligne de repli « menu Démarrer → … ». Ce
+   texte vient de `traduction.fr.twig` / `traduction.de.twig`, dans
+   `vscodium-extension/szh-cockpit/mail-templates/`, rendu par `lib/courriel.js`.
 
 ### La mise à jour automatique : ce qui la déclenche, et ce qui la retient
 
@@ -507,6 +509,10 @@ gâchées : ce n'est plus un mauvais moment, c'est un blocage —, la passe cess
 - une alerte visible par semaine au plus (`alerteLe`), sinon la passe muette deviendrait la
   plus bavarde de la chaîne.
 
+Sujet et corps de cet e-mail de support viennent de `windows/mail-templates/`
+(`support.fr.twig`, `.de.twig`, `.en.twig`), rendus par `Get-SzhCourriel`
+(`windows/szh-common.ps1`).
+
 **À observer.** `C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log` et
 `C:\ProgramData\SZH\maj-auto.json` : un `bloqueFois` à deux chiffres avec un
 `bloqueDepuis` ancien est un poste qui décroche. **Avant chaque numéro**, la barre d'état du
@@ -517,7 +523,9 @@ cockpit, qui compare la version du toolkit à celle qui a créé le numéro, suf
 **Cause.** Le brouillon passe par `mailto:`, donc par le client de messagerie déclaré
 par défaut dans Windows. S'il ne s'ouvre pas, c'est ce réglage-là qu'il faut regarder,
 pas le toolkit. Le lien de traduction est de toute façon copié dans le presse-papiers :
-un collage dans un message écrit à la main donne le même résultat.
+un collage dans un message écrit à la main donne le même résultat. Sujet et corps viennent de
+`traduction.fr.twig` / `traduction.de.twig` (`vscodium-extension/szh-cockpit/mail-templates/`),
+rendus par `lib/courriel.js` — une correction de texte se fait là, sans toucher au code.
 
 **À observer.** Rarement. L'ancienne voie par automatisation COM d'Outlook, qui seule
 donnait un lien cliquable, a été retirée le 23.08.2026 : elle ne fonctionnait pas avec
@@ -540,8 +548,8 @@ son dossier au tag précédent : s'il a changé et que `version` ne l'a pas suiv
 cas jusqu'ici — plusieurs releases de septembre ont été reconstruites sans être réinstallées
 nulle part, faute de ce contrôle.
 
-**À observer.** Le prochain tag doit porter la version `0.32.0` pour `szh-cockpit` (la
-dernière release publiée portait `0.31.0`). La CI refuse désormais un tag qui l'oublierait ;
+**À observer.** Le prochain tag doit porter la version `0.33.0` pour `szh-cockpit` (la
+dernière release publiée portait `0.32.0`). La CI refuse désormais un tag qui l'oublierait ;
 elle ne dispense pas de vérifier soi-même avant de taguer.
 
 ### Un raccourci du menu Démarrer ne se pose pas
@@ -662,7 +670,8 @@ lanceur regarde ailleurs.
 **À observer.** Le **titre de la fenêtre du lanceur** nomme la racine active —
 `Revues SZH — dossier de test (Revues-TESTING)` ou
 `… — dossier de production (2_Produkte)`. Le journal du mois porte la même chose :
-`revues : emplacement "…" -> <chemin>`.
+`revues : emplacement "…" -> <chemin>`. Un numéro déjà ouvert dans le cockpit porte la même
+information sans redémarrer le lanceur : le badge « Dossier de test » de sa barre d'état.
 
 **Manœuvre.** [`docs/EMPLACEMENTS.md`](EMPLACEMENTS.md) §8 — la cartographie complète des
 deux racines, ce que chacune contient, et la reprise pas à pas.
@@ -885,6 +894,32 @@ fait pointer sur son installation à lui.
 **À observer.** Que les cinq cas se comportent encore comme prévu après toute montée de
 veraPDF ou du runtime : témoin conforme, validateur absent, runtime cassé, PDF tronqué,
 PDF non conforme. **À chaque reconstruction du rootfs.**
+
+### La validation PDF/UA en arrière-plan, après chaque Ctrl+S
+
+**Ce qui change.** La logique de la cible `verifier-ua` a quitté le Makefile pour
+`pipeline/verifier-ua.sh` (garde-fous d'outillage, appel de veraPDF, traduction par
+`rapport-ua.py`) ; le Makefile ne fait plus qu'appeler ce script. `lib/pdfua-hote.js`, côté
+cockpit, lance ce même script dans WSL après chaque compilation réussie — sans attendre
+l'export, et sans jamais bloquer la rédaction — et pose un badge dans la barre d'état
+(« PDF/UA », icône `$(verified)` conforme, `$(error)` non conforme, `$(sync~spin)` en
+cours, `$(question)` panne d'outillage) pour l'article ouvert, ou pour le livre.
+
+**Le cache.** `<racine>/.szh-pdfua.json` (ignoré par git, comme `.szh-journal.log`) garde un
+verdict par empreinte de PDF (`lib/coedition.js#empreinte`) : un Ctrl+S qui ne touche pas au
+PDF ouvert ne relance rien. Un seul travail de validation en vol par numéro ; si une
+compilation démarre pendant qu'un travail est en cours, son résultat est jeté au retour — le
+PDF jugé n'est peut-être plus celui du disque — et la compilation suivante replanifie.
+
+**Le réglage.** `szh.controlePdfUa` (booléen, `true` par défaut) désactive tout ceci : badge
+et constats retombent à « inconnu » sans que le cache disque soit effacé.
+
+**Ce qui remonte dans les Contrôles.** Un PDF non conforme apparaît sous « Accessibilité du
+PDF », comme un refus d'export, et compte comme bloquant ; une panne d'outillage y apparaît
+comme un simple avertissement (`ctl.pdfua.outillage`), jamais comme un verdict.
+
+**À observer.** Que `pipeline/verifier-ua.sh` reste la seule logique de la porte : la cible
+`verifier-ua` du Makefile ne doit jamais reprendre son propre garde-fou en double.
 
 ### Un passage en langue seconde n'est pas annoncé comme tel
 

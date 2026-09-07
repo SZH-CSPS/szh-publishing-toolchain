@@ -563,10 +563,15 @@ Extraction proposée :
 | Import guidé, réimport, annulation | `lib/import.js` | ~420 |
 | Assets, remplacement, gestionnaire de médias | `lib/medias.js` | ~1 130 |
 | Gabarits de webview (9 constructeurs `html*`) | `lib/vues/*.js` | ~1 500 |
-| Courriels (auteur, traduction) | `lib/courriel.js` | ~500 |
+| Courriels (auteur, traduction) | `lib/courriel.js` — **fait** | — |
 | Cycle de vie (verrou, archive, version) | `lib/cycle-vie.js` | ~370 |
 | Compilation et contrôles | `lib/compilation.js` | ~440 |
 | Résolution des conflits bloc à bloc | `lib/conflits-hote.js` | ~300 |
+
+`lib/courriel.js` a été extrait pour un autre motif que celui de ce plan – les modèles de
+courriel en fichiers Twig plutôt qu'en dur dans `lib/i18n.js` – mais il couvre exactement ce que
+cette ligne visait : `adressesAuteurs`, `brouillonAuteur`, `brouillonTraduction`, `uriMailto` ont
+quitté `extension.js`.
 
 Le tableau ci-dessus **sous-compte** : environ 800 lignes de plus (co-édition, articles,
 suivi de traduction, auteur·e·s publiés, photos) portent un intitulé qui a déjà un module

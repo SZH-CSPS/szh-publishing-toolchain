@@ -10,6 +10,26 @@ d'une webview, lui envoyer le message de l'hôte et compter ce qu'elle a constru
 cela, une erreur au rendu ne se voyait pas — la page gardait son titre et son bouton, les
 cartes n'arrivaient jamais, et rien ne le disait. C'est arrivé deux fois.
 
+`pdfua.test.js` éprouve la validation PDF/UA en arrière-plan (`lib/pdfua-hote.js`) : badge par
+article, cache par empreinte de PDF, un seul travail en vol par numéro, résultat jeté si une
+compilation démarre pendant la validation — sept cas, un hôte réellement activé, le lancement
+réel du validateur remplacé par un `lancerValidateur` factice.
+
+Quatre fichiers de plus, pour les modèles de courriel et le mode test : `gabarits.test.js`
+(le moteur de gabarits Twig, `lib/gabarits.js`, un cas par construction reconnue) ;
+`courriel.test.js` (les gabarits du cockpit, `lib/courriel.js` — chaque `.twig` compile, rend un
+sujet et un corps non vides, et retrouve au caractère près les quatre anciens textes de
+`lib/i18n.js`) ; `courriel-support.test.js` (le gabarit de support du lanceur Windows, rendu par
+DEUX moteurs qui ne se parlent jamais — `lib/gabarits.js` en JS et `Get-SzhCourriel` en
+PowerShell — comparés côte à côte, Windows seulement) ; `mode-test.test.js` (le badge « Dossier
+de test » de la barre d'état du cockpit, contre les quatre scénarios d'emplacement). Et des cas
+ajoutés à des fichiers existants : `filtres-pandoc.test.js` et `journal-codes.test.js` pour le
+constat `figure-sans-alt` de `szh-numerotation.lua` (une image sans texte alternatif ni légende,
+à la passe d'aperçu seulement) ; `controles.test.js` pour sa carte dans la vue Contrôles et son
+bouton « Décrire les images » ; `carte-article.test.js` et `webviews.test.js` pour la forme et
+l'unicité d'un DOI manuel ; `export-ojs.test.js` pour le refus d'un DOI en double à l'export ;
+`lanceur.test.js` pour `emplacement`/`modeTest` dans le JSON simulé du lanceur.
+
 ```sh
 node --test "test/js/*.test.js"  # contrats du cockpit, et rendu réel des webviews
 python3 test/apca-check.py      # contrastes : palette, couverture, pages courantes

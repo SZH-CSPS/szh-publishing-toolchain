@@ -149,7 +149,9 @@ Deux formats de message comptent ici, et ils sont contractuels :
   `[import-avertissement]` ; `szh-maquette.lua` sous `[meta-blocage]` / `[meta-avertissement]` ;
   `szh-citations.lua` sous `[citations-avertissement]` / `[citations-info]` ; côté livre,
   `profils/livre.mk` sous `[livre-avertissement]` (`chapitre-ecarte`, `chapitre-introuvable`)
-  et `livre-assembler.py` sous `[livre-blocage]` (`liminaire-introuvable`).
+  et `livre-assembler.py` sous `[livre-blocage]` (`liminaire-introuvable`) ; `szh-numerotation.lua`
+  sous `[numerotation-avertissement]` (`figure-sans-alt`, une image sans texte alternatif ni
+  légende), à la passe d'aperçu seulement.
 - `[prefixe] …` en français, `[prefixe] [de] …` en allemand, ou les deux moitiés sur une
   seule ligne séparées par `[de] `. Le pipeline n'a pas de mécanisme de locale, en shell
   comme en Python : il écrit les deux et l'interface choisit. C'est ce qui reste au
@@ -158,6 +160,15 @@ Deux formats de message comptent ici, et ils sont contractuels :
   phrase, c'est promettre de ne jamais la reformuler : les deux filtres qui en dépendaient
   sont passés au format à codes, et `test/js/journal-codes.test.js` interdit le retour en
   arrière.
+
+Un chemin distinct existe pour la validation PDF/UA en arrière-plan (`lib/pdfua-hote.js`) : elle
+ne passe ni par `.szh-journal.log` ni par les deux formats ci-dessus. Après chaque compilation
+réussie, elle relance elle-même `pipeline/verifier-ua.sh` dans WSL, garde son verdict par
+empreinte de PDF dans `<racine>/.szh-pdfua.json`, et fournit ses propres constats (source
+`pdfua`) directement à la vue « Contrôles » et à son compteur — sans écriture de journal
+intermédiaire. `pipeline/verifier-ua.sh` porte la logique que la cible `verifier-ua` du
+`Makefile` posait seule auparavant (garde-fous d'outillage, appel de veraPDF, traduction par
+`rapport-ua.py`), pour que le pipeline et le cockpit appellent le même code.
 
 ## Ce qui est géré, donc mis à jour d'un coup
 

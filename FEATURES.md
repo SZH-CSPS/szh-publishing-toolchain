@@ -29,19 +29,12 @@ Un clic sur « Articles » ouvre une vue d'ensemble, sur le modèle des vues « 
   finale aux autrices et auteurs » ;
 - **le réordonnancement des articles** (voir F4) ;
 - **un bouton « envoyer à l'auteur » par article** : compile le PDF, prépare un modèle de
-  courriel et la pièce jointe. **La voie reste à trancher**, et c'est le seul point de cette
-  campagne qui n'a pas de solution sûre : `mailto:` ne sait pas porter de pièce jointe, et
-  l'automatisation COM d'Outlook — qui, elle, le sait — a été retirée le 23.08.2026 parce
-  qu'elle ne fonctionne pas avec le nouveau client. Restent trois voies, à éprouver sur un
-  poste réel avant de choisir :
-  1. un fichier `.eml` déposé sur le disque puis ouvert : porte la pièce jointe et un corps
-     HTML, mais le nouvel Outlook le gère mal, parfois en lecture seule ;
-  2. `mailto:` pour le texte, plus l'ouverture du dossier contenant le PDF : le rédacteur fait
-     glisser la pièce jointe lui-même. Sans magie, mais sans surprise ;
-  3. le presse-papiers : corps du message copié, PDF copié comme fichier, un seul collage dans
-     le brouillon. À vérifier, Windows sait copier un fichier dans le presse-papiers.
-  Ne rien promettre au rédacteur que le client de messagerie ne tienne : mieux vaut la voie 2,
-  explicite, qu'une voie 1 qui échoue une fois sur deux selon le poste ;
+  courriel et la pièce jointe. **Tranché : la voie 3**, le presse-papiers – corps du message
+  copié, PDF copié comme fichier, un seul collage dans le brouillon (`mailto:` ne sait pas porter
+  de pièce jointe, et l'automatisation COM d'Outlook — qui, elle, le savait — a été retirée le
+  23.08.2026, parce qu'elle ne fonctionne pas avec le nouveau client). Sujet et corps viennent
+  d'un gabarit Twig (`envoi-auteur.fr.twig` / `.de.twig`, dans `mail-templates/`), rendu par
+  `lib/courriel.js` : changer le texte ne touche pas au code ;
 - **l'édition de toutes les métadonnées du numéro**, en réutilisant le code du formulaire
   existant : mêmes champs, même sauvegarde, aucune duplication ;
 - **les réglages de couverture** (voir F5).
@@ -461,6 +454,15 @@ Toutes bloquées par un territoire de fichiers, pas par une décision. À lancer
 
   Bloqué par `extension.js`, `lib/yaml.js`, `lib/articles.js`, `lib/export-ojs.js` et
   `lib/i18n.js`.
+
+- [x] **Le DOI manuel est désormais contrôlé, pas seulement calculé.** À la saisie
+  (`media/_fiches.js`), la case « Définir manuellement le DOI » cochée fait apparaître une note
+  discrète, jamais bloquante, quand la forme ne correspond pas à celle de la revue ou quand un
+  autre article porte déjà le même DOI. Sur la carte de la vue Articles, les mêmes deux constats
+  (`art.doi.forme`, `art.doi.double`) ; `art.doi.fiche.autre` reste pour un manuel bien formé
+  mais différent du calculé. À l'export, un doublon **est** bloquant : `collecter()`
+  (`lib/export-ojs.js`) compare le DOI effectif de chaque article et refuse avec
+  `ojs.err.doi.double`.
 
 ---
 

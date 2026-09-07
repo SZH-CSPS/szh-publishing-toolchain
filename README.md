@@ -209,6 +209,15 @@ hyperlien exigerait l'automatisation COM d'Outlook, qui n'existe pas pour le nou
 cette voie a été retirée le 23.08.2026 plutôt que maintenue pour un seul client. L'adresse de
 destination se surcharge par `"mailsTraduction"` dans `config.json`.
 
+Sujet et corps de ce courriel, et de celui d'« Envoyer à l'auteur », viennent chacun d'un gabarit
+Twig, un fichier par nom et par langue, dans `vscodium-extension/szh-cockpit/mail-templates/`
+(`envoi-auteur.fr.twig`, `traduction.de.twig`, …) : `lib/gabarits.js` en lit un sous-ensemble
+(variables, filtres, `if`/`for`/`set`, blocs, commentaires), `lib/courriel.js` les rend
+(`rendreCourriel`), avec repli sur le français si la langue manque. Changer un texte se fait dans
+le `.twig`, sans toucher au code. Le lanceur Windows a les siens, dans `windows/mail-templates/`,
+rendus par `Get-SzhCourriel` (`windows/szh-common.ps1`), qui ne comprend que variables, blocs et
+commentaires.
+
 ### Les raccourcis du menu Démarrer
 
 Quatre entrées, au niveau utilisateur, posées par `Set-SzhRaccourcisMenu` (`szh-common.ps1`) :

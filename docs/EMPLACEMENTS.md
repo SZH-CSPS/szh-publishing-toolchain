@@ -160,6 +160,8 @@ L'archivage ne sort jamais de la racine active : un numéro archivé passe de
 | **« Nouvelle revue… » crée dans** | `2_Produkte\52_Revue\RV02_Redaction` | `Revues-TESTING\52_Revue\RV02_Redaction` |
 | **L'archivage déplace vers** | `2_Produkte\…\RV99_Archives` | `Revues-TESTING\…\RV99_Archives` |
 | **Les quatre dossiers manquants** | ne sont **pas** créés | sont créés au prochain lancement |
+| **Ce que le lanceur affiche en plus** | rien | bandeau rouge (bloc d'informations, formulaires « Nouveau… ») |
+| **Ce que le cockpit affiche en plus** | rien | badge orangé « Dossier de test » dans la barre d'état |
 | **Un numéro déjà ouvert dans l'éditeur** | reste ouvert et se compile normalement : le chemin est celui de la fenêtre, pas celui du réglage | idem |
 | **Ce qui ne bouge pas** | toute la colonne du §3 : toolkit, WSL, extensions, journal, réglages de l'éditeur | idem |
 
@@ -187,6 +189,10 @@ L'archivage ne sort jamais de la racine active : un numéro archivé passe de
    `revues : emplacement "test" -> C:\Users\robin\OneDrive - SZH CSPS\Revues-TESTING`
    et, la première fois que la valeur a été figée :
    `emplacement des revues : "test" ecrit dans config.json (numeros trouves : test 4, production 0)`
+4. **Le badge de la barre d'état du cockpit**, une fois un numéro ouvert dans l'éditeur : icône
+   éprouvette, fond orangé, étiqueté « Dossier de test » (« Testordner » en allemand), visible
+   seulement en test. Un clic ouvre les Réglages ; l'infobulle distingue un poste sans
+   `config.json` (le test par défaut) d'un poste où l'emplacement `test` est écrit en clair.
 
 ---
 

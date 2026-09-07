@@ -315,7 +315,10 @@ depuis n’importe où dans la revue) :
     sous-titre, **résumé** et mots-clés – d’abord dans la **langue de l’article**, puis
     dans la langue par défaut de la revue ; une case « + Français / + Allemand /
     + Italien » par langue restante pour l’ajouter à un article –, auteur(s) (**nom**,
-    **prénom**, fonction, affiliation, **ROR**, ORCID, **e-mail**) et DOI. **Changer la langue d’un
+    **prénom**, fonction, affiliation, **ROR**, ORCID, **e-mail**) et DOI – calculé et verrouillé
+    par défaut ; la case **« Définir manuellement le DOI »** le libère, avec une note discrète
+    (jamais bloquante) si la saisie n’a pas la forme des DOI de la revue, ou si un autre article
+    porte déjà le même DOI. **Changer la langue d’un
     article échange les contenus** entre l’ancienne et la nouvelle langue (titres,
     sous-titres, résumés, mots-clés) : rien n’est perdu, et l’échange ne s’écrit qu’à
     l’enregistrement. Le **résumé** (abrégé) se saisit ici – jamais dans le texte
@@ -354,7 +357,8 @@ depuis n’importe où dans la revue) :
     auteur·e·s »** en fin d’article (photo, nom, pastille ORCID, fonction, affiliation,
     e-mail).
   - **Réglages SZH** – thème, taille de l’interface et du texte, **aperçu par défaut**
-    (voir ci-dessous) et langue de l’interface.
+    (voir ci-dessous), langue de l’interface, et la **validation PDF/UA en arrière-plan**
+    (activée par défaut – voir « Les contrôles de la compilation » ci-dessous).
 - **✏ Édition** (`Ctrl+Alt+S`) – la **bascule d’aperçu HTML ⇄ PDF** (`Ctrl+Alt+P`),
   **Lier un appel à une référence** (voir « Les références » ci-dessous) et toutes les
   actions de **mise en forme** (gras, titres, blocs, figure, tableau…) – les mêmes que le
@@ -372,7 +376,7 @@ depuis n’importe où dans la revue) :
     listées en **avertissements** et l’export part quand même ; ce qui rendrait le numéro
     faux dans OJS **arrête l’export**, avec la liste de ce qu’il faut corriger et où – la
     **date de publication** du numéro, un **titre** ou un **résumé** manquant dans la
-    langue de l’article, un **DOI** absent, un PDF / HTML / Word pas encore produit, ou
+    langue de l’article, un **DOI** absent, **deux articles au même DOI**, un PDF / HTML / Word pas encore produit, ou
     un champ vide dans **Réglages SZH → Export OJS** (voir « Régler l’export OJS »
     ci-dessous). Dans ce cas **rien n’est écrit** : pas de fichier à moitié fait.
   - **Archiver et verrouiller la revue** – voir « Terminer un numéro » ci-dessous ;
@@ -599,8 +603,22 @@ références », « Métadonnées et langue », « Accessibilité du PDF »
 entière : **ce qui s’est passé**, **le geste** qui corrige, et, quand cela bloque,
 **pourquoi**. Le bouton **« Ouvrir »** mène droit à l’article en cause.
 
+Une carte peut porter un second bouton, propre à son constat – ainsi « Décrire les images »
+sur une image sans texte alternatif ni légende (source « Figures »), qui ouvre directement le
+formulaire des médias de l’article concerné.
+
 Les messages sont dans la langue de l’interface, et dans elle seule : le réglage de langue
 (**🚀 Commande → Réglages SZH**) les fait basculer du français à l’allemand.
+
+### Le badge PDF/UA de l’article ouvert
+
+Un second contrôle tourne après chaque compilation réussie, sans rien bloquer : un badge
+« PDF/UA » apparaît dans la barre d’état et dit si le PDF de l’article ouvert (ou du livre)
+respecte la norme d’accessibilité – une coche s’il la respecte, une croix sinon, une roue
+tournante pendant la validation, un point d’interrogation si le validateur n’a pas pu se
+prononcer cette fois-ci. Un clic dessus ouvre « Contrôles de la compilation », où un PDF non
+conforme apparaît sous « Accessibilité du PDF » comme un point qui empêche de publier. Ce
+contrôle se désactive dans **Réglages SZH** si besoin – voir plus haut.
 
 ### Le journal reste sur le disque
 
@@ -891,6 +909,17 @@ emplacements officiels.
 Ce bouton **ne change aucun état** de traduction : pour lancer la campagne, c’est le bouton ✓✓ de
 la section « Traductions » (ou les boutons d’état du panneau).
 
+### Changer le texte de ces deux e-mails
+
+Sujet et corps des deux messages ci-dessus (« Envoyer à l’auteur » et « Envoyer pour
+traduction ») viennent d’un fichier par langue, sous
+`vscodium-extension/szh-cockpit/mail-templates/` (`envoi-auteur.fr.twig`, `.de.twig`,
+`traduction.fr.twig`, `.de.twig`). On peut y corriger une formule sans toucher au code, à
+condition de garder les repères entre doubles accolades (`{{ titre }}`, `{{ numero }}` pour le
+premier message, `{{ quoi }}`, `{{ lien }}` pour le second) : ce sont eux qui insèrent le titre,
+le numéro ou le lien au bon endroit. Le nom du bouton et les avertissements autour (adresse
+manquante, par exemple) restent dans `lib/i18n.js`, à changer par qui touche au code.
+
 ## Régler l’export OJS (une fois par poste)
 
 **Réglages SZH → « Export OJS »** (en allemand : *SZH-Einstellungen → « OJS-Export »*)
@@ -936,6 +965,10 @@ rubrique »** en crée une, pour une rubrique qui n’existait pas encore sur l
 | **Titre** | l’intitulé affiché de la rubrique, dans la langue de la revue |
 | **Résumé exigé** | cochée, un article de cette rubrique **doit** avoir un résumé, sinon l’export s’arrête |
 | **DOI exigé** | cochée, un article de cette rubrique **doit** avoir un DOI |
+
+Un DOI saisi à la main et hors de la forme de la revue, ou identique à celui d’un autre article,
+n’empêche pas la saisie – une note discrète le signale sur la fiche et sur la carte de l’article.
+Deux articles envoyés avec le même DOI, eux, arrêtent l’export.
 
 Abréviation et titre se lisent dans **OJS → Paramètres → Revue → Rubriques**. Une rubrique
 dont l’abréviation manque dans la revue visée arrête l’export dès qu’un article y est rangé
@@ -1297,11 +1330,18 @@ dans `RV02_Redaction` (ou `ZS02_Redaktion`) et il apparaîtra.
 
 **Où vivent vos numéros.** Tant que la chaîne est en rodage, le poste travaille dans un dossier
 d’essai : `OneDrive - SZH CSPS\Revues-TESTING`, avec exactement la même arborescence que la
-production. Le lanceur le dit **toujours**, à deux endroits :
+production. Le lanceur le dit **toujours**, à trois endroits :
 
 - le **titre de la fenêtre** – `Revues SZH — dossier de test (Revues-TESTING)` ;
 - la ligne **« Revue dans : … »** (ou « Zeitschrift dans : … ») sous les deux listes, avec le
-  chemin complet.
+  chemin complet,
+- une ligne rouge en tête du bloc d’informations, qui rappelle que tout ce qui est créé ici part
+  dans le dossier de test et non en production – reprise dans les formulaires « Nouvelle
+  revue… » et « Nouveau livre… ».
+
+Dans le cockpit, un numéro déjà ouvert le montre aussi, par un badge orangé de la barre d’état,
+« Dossier de test » (icône éprouvette) – un clic ouvre les Réglages, et son infobulle précise si
+c’est le réglage du poste ou seulement son défaut, faute de configuration.
 
 La bascule se fait dans **Réglages SZH → Mode développeur**. Elle ne déplace **aucun fichier** :
 elle change l’endroit où le lanceur regarde. Si vos numéros disparaissent des listes, lisez ces
