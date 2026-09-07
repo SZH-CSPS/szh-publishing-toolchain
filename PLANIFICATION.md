@@ -18,6 +18,10 @@
 
 Cockpit en version 0.33.0.
 
+Désinstalleur de poste documenté (`windows/uninstall.ps1`) : section dédiée dans
+`docs/MAINTENANCE.md`, renvois dans `README.md`, `docs/SECURITE.md`, `docs/EMPLACEMENTS.md`
+et `test/README.md`.
+
 ### Revue d'architecture et lots 0 à 3 (6 et 7 septembre 2026)
 
 **Constat.** `extension.js` (8 726 lignes) et `windows/szh-common.ps1` (socle Windows entier)

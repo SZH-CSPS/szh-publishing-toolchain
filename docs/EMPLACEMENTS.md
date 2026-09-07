@@ -124,6 +124,10 @@ Rien de cette liste ne dépend de `emplacementRevues`.
 L'archivage ne sort jamais de la racine active : un numéro archivé passe de
 `RV02_Redaction` à `RV99_Archives` **de la même racine**.
 
+Le désinstalleur de poste (`docs/MAINTENANCE.md`, § Désinstaller un poste) retire le reste
+de `C:\ProgramData\SZH` mais laisse toujours `WSL\` et la racine elle-même : les disques des
+distributions ne sont jamais désinscrits ni supprimés.
+
 ---
 
 ## 4. Qui décide quoi

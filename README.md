@@ -220,11 +220,12 @@ commentaires.
 
 ### Les raccourcis du menu Démarrer
 
-Quatre entrées, au niveau utilisateur, posées par `Set-SzhRaccourcisMenu` (`szh-common.ps1`) :
-« Revues SZH » et « Zeitschriften SZH » (un lanceur par produit, sans console, par
-`wscript.exe //B hidden.vbs`), puis « Mise à jour de l'outil Revue » et « Aktualisierung des
-Redaktionstools », qui visent `powershell.exe -File update.ps1 -Langue fr|de` — **fenêtre
-visible**, parce qu'une mise à jour télécharge, prend du temps et peut échouer.
+Cinq entrées, au niveau utilisateur, posées par `Set-SzhRaccourcisMenu` (`szh-shell.ps1`) :
+« Revues SZH », « Zeitschriften SZH » et « Books SZH-CSPS » (un lanceur par produit, sans
+console, par `wscript.exe //B hidden.vbs`), puis « Mise à jour de l'outil Revue » et
+« Aktualisierung des Redaktionstools », qui visent `powershell.exe -File update.ps1 -Langue
+fr|de` — **fenêtre visible**, parce qu'une mise à jour télécharge, prend du temps et peut
+échouer.
 
 Deux entrées de mise à jour plutôt qu'une renommée : le nom d'un `.lnk` est figé alors que la
 langue de l'interface bouge (env, `state.json`, langue de Windows). Un poste neuf résout
@@ -255,6 +256,13 @@ par le groupe Utilisateurs, et un administrateur qui l'exécuterait tel quel ex�
 bien un code qu'un compte standard y aurait déposé. Toujours repartir d'un clone frais du dépôt
 ou d'une archive `toolkit-<v>.zip` fraîchement téléchargée et vérifiée par sha256. Détail des
 manœuvres de reprise dans [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md).
+
+### Désinstaller un poste
+
+Retire le toolkit, les tâches planifiées, les raccourcis et les réglages VSCodium du
+compte, sans jamais toucher à WSL ni aux revues — `windows\uninstall.ps1 -Simuler` d'abord,
+ou double-clic sur `windows\Désinstaller le poste SZH.cmd`. Détail des options dans
+[`docs/MAINTENANCE.md`](docs/MAINTENANCE.md), § Désinstaller un poste.
 
 ## Le flux rédacteur
 

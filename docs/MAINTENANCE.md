@@ -957,6 +957,99 @@ retirer la référence du texte.
 
 ---
 
+## Désinstaller un poste
+
+À utiliser avant de sortir un poste du parc, de le réaffecter, ou pour retirer proprement
+un compte qui n'utilise plus l'outil (`-ProfilSeulement`).
+
+**D'où le lancer.** Depuis un clone frais du dépôt ou une extraction de
+`toolkit-<v>.zip` — jamais depuis `C:\ProgramData\SZH\toolkit` sous élévation, même règle
+que « Réparer un poste » (README.md) : ce dossier est inscriptible par le groupe
+Utilisateurs, et un administrateur qui l'exécuterait tel quel exécuterait aussi bien un
+code qu'un compte standard y aurait déposé. `-Simuler` n'est pas concerné : il ne fait
+qu'afficher un plan.
+
+**Comment lancer.** Double-clic sur `Désinstaller le poste SZH.cmd`, ou en ligne de
+commande :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\uninstall.ps1 -Simuler
+powershell -ExecutionPolicy Bypass -File .\uninstall.ps1
+```
+
+Commencer toujours par `-Simuler` et lire le plan affiché : rien n'est touché, et
+l'administrateur n'est pas exigé pour ce mode.
+
+**Paramètres.**
+
+| Paramètre | Effet |
+|---|---|
+| `-Simuler` | affiche le plan sans rien toucher ; n'exige pas l'administrateur |
+| `-Json` | avec `-Simuler` : le plan en JSON sur la sortie standard, rien d'autre — pour les tests et l'inspection automatisée ; aucune suppression n'a lieu |
+| `-ProfilSeulement` | sans administrateur : ne retire que ce qui est au compte courant (raccourcis, fichiers profil, registre, extensions), jamais les fichiers du poste ni les tâches planifiées |
+| `-TousLesProfils` | administrateur ; en plus du compte courant, les fichiers profil (jamais le registre) de chaque compte sous `C:\Users` ayant un dossier `AppData` |
+| `-Applications` | désinstalle aussi VSCodium et SumatraPDF (Program Files) ; jamais par défaut, logiciels partagés |
+| `-SansConfirmation` | n'attend pas que « oui » soit tapé en clair avant d'agir |
+
+**Ordre d'application.** Tâches planifiées, puis extensions VSCodium, raccourcis du menu
+Démarrer, fichiers du compte, registre (HKCU), fichiers du poste
+(`C:\ProgramData\SZH`), puis applications.
+
+**Ce qui est retiré.**
+- le toolkit et tout ce qu'`update.ps1` pose sous `C:\ProgramData\SZH` (`staging`, `logs`,
+  `comptes`, `config.json`, `state.json`, `auteurs.json`, `mots-cles.json`,
+  `maj-auto.json`, et les restes `toolkit.neuf` / `toolkit.vieux` d'une bascule
+  interrompue) ;
+- les deux tâches planifiées (`SZH - Mise a jour`, `SZH - Prechauffage WSL`) ;
+- les cinq raccourcis du menu Démarrer ;
+- les réglages et extraits de code VSCodium du compte ;
+- les extensions VSCodium épinglées (`vsix.lock`), plus `szh-cockpit` et `szh-apercu` ;
+- les clés de registre HKCU posées par `update.ps1` (association `.md`, protocole
+  `szh:`, confiance Office pour Outlook).
+
+**Ce qui est toujours conservé, quelle que soit l'option.**
+- la distribution WSL et son enregistrement : jamais désinscrite ;
+- `C:\ProgramData\SZH\WSL\` et son contenu : les disques des rédacteurs, un par compte ;
+- la racine `C:\ProgramData\SZH` elle-même, tant que `WSL\` existe ;
+- `%USERPROFILE%\.wslconfig` (réglages WSL globaux, valent pour toutes les distributions) ;
+- `%APPDATA%\VSCodium\argv.json` (langue de l'éditeur, réglage commun à tous les postes
+  VSCodium) ;
+- les revues et les livres eux-mêmes, sur OneDrive ou ailleurs.
+
+**Retirer la distribution ensuite, si on le veut vraiment.** Le désinstalleur ne le fait
+jamais. À la main, par chaque compte du poste (l'enregistrement d'une distribution WSL est
+par utilisateur, voir plus haut « Un dossier par SID, et pourquoi ») :
+
+```powershell
+wsl --unregister SZH-Publishing
+```
+
+Efface le disque de la distribution pour ce compte, donc tout l'environnement de
+fabrication — jamais une donnée de revue, qui n'y vit pas.
+
+**Pré-conditions qui font refuser.**
+
+| Condition | Code de sortie |
+|---|---|
+| lancé depuis `C:\ProgramData\SZH\toolkit` sous élévation (hors `-Simuler`) | 2 |
+| pas administrateur (hors `-Simuler` et `-ProfilSeulement`) | 2 |
+| une mise à jour est en cours (mutex de poste) | 2 |
+| VSCodium ouvert (hors `-Simuler`) | 2 |
+| confirmation refusée (« oui » non tapé, hors `-SansConfirmation`) | 2 |
+| des suppressions ont échoué | 1 |
+| tout s'est déroulé sans échec | 0 |
+
+**Journal.** `%TEMP%\szh-desinstallation-<horodatage>.log`.
+
+**La limite des autres comptes.** `-TousLesProfils` ne retire que les fichiers profil des
+autres comptes ; leur registre ne se retire que depuis leur propre session, avec
+`-ProfilSeulement`.
+
+**VSCodium et SumatraPDF** ne sont désinstallés qu'avec `-Applications` explicite : ce sont
+des logiciels partagés avec d'autres usages du poste.
+
+---
+
 ## Si tout casse : la reprise minimale
 
 1. `wsl --shutdown`, puis test de fumée. Cela règle la plupart des blocages.

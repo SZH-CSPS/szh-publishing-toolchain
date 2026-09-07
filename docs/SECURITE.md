@@ -39,7 +39,9 @@ L'élévation vers l'administrateur, en revanche, est fermée : `bootstrap.ps1` 
 `update.ps1` ni `diagnostic.ps1` depuis `toolkit\windows`, mais depuis une seconde extraction
 de l'archive déjà téléchargée et vérifiée par sha256, dans un dossier que ce processus élevé
 vient de créer sous `%TEMP%` et supprime en repartant — l'administrateur n'exécute donc
-jamais la copie du toolkit que le groupe Utilisateurs peut réécrire.
+jamais la copie du toolkit que le groupe Utilisateurs peut réécrire. Le désinstalleur
+(`windows/uninstall.ps1`) suit la même règle : il refuse de s'exécuter depuis
+`C:\ProgramData\SZH\toolkit` sous élévation, hors `-Simuler`.
 
 ## À vérifier avec le prestataire — checklist déploiement (×10)
 

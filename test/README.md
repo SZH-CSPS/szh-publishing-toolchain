@@ -30,6 +30,12 @@ bouton « Décrire les images » ; `carte-article.test.js` et `webviews.test.js`
 l'unicité d'un DOI manuel ; `export-ojs.test.js` pour le refus d'un DOI en double à l'export ;
 `lanceur.test.js` pour `emplacement`/`modeTest` dans le JSON simulé du lanceur.
 
+`desinstallation.test.js` éprouve le désinstalleur de poste (`windows/uninstall.ps1`,
+`windows/szh-desinstallation.ps1`) : les contrats de source, vérifiés partout — jamais de
+`wsl --unregister`, garde `Assert-SzhCibleMachineAutorisee` réappliquée à chaque suppression
+d'un fichier-machine — puis, Windows seulement, la construction et l'application du plan sur
+une arborescence `$SZH_BASE` jetable, et le mode simulé `-Simuler -Json`.
+
 ```sh
 node --test "test/js/*.test.js"  # contrats du cockpit, et rendu réel des webviews
 python3 test/apca-check.py      # contrastes : palette, couverture, pages courantes
