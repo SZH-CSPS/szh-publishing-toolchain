@@ -29,8 +29,24 @@ permissions:
   packages: write          # pousser l'image sur GHCR
 
 jobs:
+  # Rejoue ci.yml (contrats du cockpit + PDF/UA) avant de publier : release.yml ne rejouait
+  # jusqu'ici que `node --test`, et une régression de maquette ou de balisage ne se voyait
+  # qu'au moment de la release, trop tard. `permissions` borne ce que le workflow réutilisé
+  # peut faire, comme sa propre déclaration en tête de ci.yml.
+  controles:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   release:
+    needs: controles
     runs-on: ubuntu-latest
+    # Groupe distinct de celui de ci.yml : github.workflow y vaut le nom de l'appelant une
+    # fois réutilisé par le job controles ci-dessus. Jamais de cancel-in-progress : une
+    # release à moitié publiée est pire qu'une release qui attend son tour.
+    concurrency:
+      group: release-publish-${{ github.ref }}
+      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -136,8 +152,31 @@ jobs:
           done
           rm -rf apps-out
 
-      - name: Vérifier les contrats du cockpit
-        run: node --test test/js/*.test.js
+      - name: Vérifier le bump de version des extensions
+        run: |
+          # update.ps1 compare les numéros de version, pas les empreintes : sans bump, un
+          # VSIX reconstruit n'est jamais réinstallé sur les postes -- cinq releases de
+          # septembre l'ont subi. PREV_TAG vide : première release de ce format, rien à comparer.
+          PREV_TAG="${{ steps.prev.outputs.tag }}"
+          if [ -z "$PREV_TAG" ]; then
+            echo "pas de tag précédent (1re release) -> contrôle sauté"
+          else
+            for d in szh-apercu szh-cockpit; do
+              dossier="vscodium-extension/$d"
+              if git diff --quiet "$PREV_TAG"..HEAD -- "$dossier"; then
+                echo "$dossier inchangé depuis $PREV_TAG"
+                continue
+              fi
+              fichier="$dossier/package.json"
+              v_head="$(jq -r .version "$fichier")"
+              v_prev="$(git show "$PREV_TAG:$fichier" | jq -r .version)"
+              if [ "$v_head" = "$v_prev" ]; then
+                echo "::error::$fichier a changé depuis $PREV_TAG mais sa version est restée $v_head -- bump requis"
+                exit 1
+              fi
+              echo "$dossier : $v_prev -> $v_head"
+            done
+          fi
 
       - name: Construire les extensions maison
         run: |

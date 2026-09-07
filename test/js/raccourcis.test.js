@@ -31,11 +31,19 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 const COMMUN = lire('windows', 'szh-common.ps1');
+const SHELL = lire('windows', 'szh-shell.ps1');
+const TEXTES = lire('windows', 'szh-textes.ps1');
 const UPDATE = lire('windows', 'update.ps1');
 const LANCEUR_MAJ = lire('windows', 'update-launcher.ps1');
 const BOOTSTRAP = lire('windows', 'bootstrap.ps1');
 const OUVRIR = lire('windows', 'open-revue.ps1');
 const OUVRIR_LIVRE = lire('windows', 'open-livre.ps1');
+// open-revue.ps1 et open-livre.ps1 restent les points d'entrée que visent les raccourcis et
+// le protocole "szh:", mais ne sont plus que des enveloppes de quelques lignes : la fenêtre,
+// l'icône et l'identité de barre des tâches vivent maintenant dans ce troisième fichier,
+// commun aux trois produits (revue, zeitschrift, livre).
+const OUVRIR_PRODUIT = lire('windows', 'open-produit.ps1');
+const SHELL_PRODUITS = lire('windows', 'szh-produits.ps1');
 const ICONE_PY = lire('windows', 'icone.py');
 
 // Les cinq entrées voulues, telles que le rédacteur les lit dans son menu. « Books
@@ -44,16 +52,16 @@ const ICONE_PY = lire('windows', 'icone.py');
 const NOMS = ['Revues SZH', 'Zeitschriften SZH', 'Books SZH-CSPS',
   'Mise à jour de l’outil Revue', 'Aktualisierung des Redaktionstools'];
 
-// ---- Ce que szh-common.ps1 déclare ----
+// ---- Ce que szh-shell.ps1 déclare ----
 
 test('les raccourcis du menu sont posés par une seule fonction, paramétrable', () => {
   // Une seule, parce que trois scripts la posent : la mise à jour, la tâche de connexion
   // et l'installation d'un poste. Trois copies divergeraient sans qu'on le voie.
   for (const attendu of ['function Get-SzhRaccourcisMenu', 'function Set-SzhRaccourcisMenu']) {
-    assert.ok(COMMUN.indexOf(attendu) !== -1, 'szh-common.ps1 ne déclare plus : ' + attendu);
+    assert.ok(SHELL.indexOf(attendu) !== -1, 'szh-shell.ps1 ne déclare plus : ' + attendu);
   }
-  const debut = COMMUN.indexOf('function Set-SzhRaccourcisMenu');
-  const corps = COMMUN.slice(debut, COMMUN.indexOf('\r\nfunction ', debut + 10));
+  const debut = SHELL.indexOf('function Set-SzhRaccourcisMenu');
+  const corps = SHELL.slice(debut, SHELL.indexOf('\r\nfunction ', debut + 10));
   // $Menu et $Toolkit paramétrables : c'est ce qui rend la fonction éprouvable hors du
   // vrai menu Démarrer, et c'est ce dont se sert le contrôle du bas de ce fichier.
   assert.match(corps, /\[string\]\$Menu\s+=\s+''/);
@@ -70,9 +78,9 @@ test('deux entrées de mise à jour, une par équipe, à noms fixes', () => {
   // courante. Un poste neuf résout « en » — les Windows d'ici sont en anglais et
   // state.json est encore muet —, la langue bascule dès qu'un collègue ouvre l'autre
   // lanceur, et un renommage casse l'épinglage.
-  assert.match(COMMUN, /\$script:SzhLanguesRaccourci = @\('fr', 'de'\)/);
-  const debut = COMMUN.indexOf('function Get-SzhRaccourcisMenu');
-  const corps = COMMUN.slice(debut, COMMUN.indexOf('\r\nfunction ', debut + 10));
+  assert.match(SHELL, /\$script:SzhLanguesRaccourci = @\('fr', 'de'\)/);
+  const debut = SHELL.indexOf('function Get-SzhRaccourcisMenu');
+  const corps = SHELL.slice(debut, SHELL.indexOf('\r\nfunction ', debut + 10));
   assert.ok(corps.indexOf('foreach ($langue in $SzhLanguesRaccourci)') !== -1,
     'les entrées de mise à jour ne sont plus une par langue');
   // Le nom du .lnk est lu dans la table de SA langue, pas dans la langue courante : c'est
@@ -85,8 +93,8 @@ test('deux entrées de mise à jour, une par équipe, à noms fixes', () => {
 });
 
 test('la mise à jour se voit, les lanceurs non', () => {
-  const debut = COMMUN.indexOf('function Get-SzhRaccourcisMenu');
-  const corps = COMMUN.slice(debut, COMMUN.indexOf('\r\nfunction ', debut + 10));
+  const debut = SHELL.indexOf('function Get-SzhRaccourcisMenu');
+  const corps = SHELL.slice(debut, SHELL.indexOf('\r\nfunction ', debut + 10));
   // Les trois lanceurs (revue, zeitschrift, livre) : wscript.exe //B hidden.vbs, donc sans
   // console.
   const lignesVbs = corps.split('\r\n').filter((l) => l.indexOf('//B "{0}"') !== -1);
@@ -102,17 +110,17 @@ test('la mise à jour se voit, les lanceurs non', () => {
   // jour avait été lancée depuis PowerShell 7, et pwsh n'a pas de powershell.exe à côté.
   assert.ok(corps.indexOf("System32\\WindowsPowerShell\\v1.0\\powershell.exe") !== -1);
   // Fenêtre normale, dite explicitement plutôt que laissée au défaut.
-  assert.match(COMMUN, /\$lnk\.WindowStyle = 1/);
+  assert.match(SHELL, /\$lnk\.WindowStyle = 1/);
 });
 
 test('un raccourci de mise à jour porte sa propre icône, fabriquée par icone.py', () => {
   // Épinglé à la barre des tâches, un raccourci perd son libellé : l'icône devient le seul
   // repère, et quatre entrées ne peuvent pas partager la même image.
-  const debut = COMMUN.indexOf('function Get-SzhRaccourcisMenu');
-  const corps = COMMUN.slice(debut, COMMUN.indexOf('\r\nfunction ', debut + 10));
+  const debut = SHELL.indexOf('function Get-SzhRaccourcisMenu');
+  const corps = SHELL.slice(debut, SHELL.indexOf('\r\nfunction ', debut + 10));
   const icones = ['szh-revue.ico', 'szh-zeitschrift.ico', 'szh-maj.ico', 'szh-livre.ico'];
   for (const ico of icones) {
-    assert.ok(corps.indexOf(ico) !== -1, 'szh-common.ps1 ne cherche plus ' + ico);
+    assert.ok(corps.indexOf(ico) !== -1, 'szh-shell.ps1 ne cherche plus ' + ico);
     // Le fichier existe, et icone.py sait le refaire : un .ico déposé à la main ne se
     // régénère pas, et l'écart ne se verrait qu'à la prochaine retouche du dessin.
     assert.ok(fs.existsSync(path.join(RACINE, 'windows', ico)), ico + ' manque au dépôt');
@@ -124,7 +132,7 @@ test('un raccourci de mise à jour porte sa propre icône, fabriquée par icone.
   assert.strictEqual(empreintes.size, 4, 'deux icônes sont identiques');
   // Le repli quand l'icône manque reste celle de l'éditeur, jamais rien : sans
   // IconLocation le shell montre celle de wscript.exe, qui ne dit rien à personne.
-  assert.ok(COMMUN.indexOf('elseif ($codium) { $lnk.IconLocation = $codium }') !== -1);
+  assert.ok(SHELL.indexOf('elseif ($codium) { $lnk.IconLocation = $codium }') !== -1);
 });
 
 test('la barre des tâches reçoit une identité, des deux côtés', () => {
@@ -134,37 +142,46 @@ test('la barre des tâches reçoit une identité, des deux côtés', () => {
   // AppUserModelID et prend l'image de ce côté-là. Sans identité déclarée, Windows en
   // déduit une de l'exécutable hôte — powershell.exe, lancé par hidden.vbs — et affiche
   // son icône. Il faut les deux moitiés, et ce sont elles que ce contrôle garde.
-  assert.match(COMMUN, /\$script:SzhAppIds = @\{/);
+  assert.match(SHELL, /\$script:SzhAppIds = @\{/);
   for (const id of ['SZH.Publishing.Revue', 'SZH.Publishing.Zeitschrift', 'SZH.Publishing.Livres',
     'SZH.Publishing.MiseAJour.fr', 'SZH.Publishing.MiseAJour.de']) {
-    assert.ok(COMMUN.indexOf("'" + id + "'") !== -1, 'identité disparue : ' + id);
+    assert.ok(SHELL.indexOf("'" + id + "'") !== -1, 'identité disparue : ' + id);
   }
   // Première moitié : le .lnk porte l'identité — c'est elle qui fait retrouver au bouton
   // l'icône du raccourci, et qui fait qu'« Épingler » épingle le lanceur et non
   // powershell.exe. Posée APRÈS $lnk.Save() : WScript.Shell réécrit le fichier entier et
   // effacerait une propriété posée avant lui.
-  const save = COMMUN.indexOf('$lnk.Save()');
-  const pose = COMMUN.indexOf('Set-SzhLnkAppId', save);
+  const save = SHELL.indexOf('$lnk.Save()');
+  const pose = SHELL.indexOf('Set-SzhLnkAppId', save);
   assert.ok(save !== -1 && pose !== -1, 'l’identité n’est plus posée sur les raccourcis');
   assert.ok(pose > save, 'posée avant $lnk.Save(), elle serait effacée par la sauvegarde');
   // Seconde moitié : le processus se déclare AVANT sa première fenêtre. Windows lit
   // l'identité quand la fenêtre s'inscrit à la barre et ne la relit jamais ensuite ;
-  // déclarée après, elle n'a plus aucun effet.
-  const decl = OUVRIR.indexOf('Set-SzhAppUserModelId');
-  const fenetre = OUVRIR.indexOf('New-Object System.Windows.Forms.Form');
-  assert.ok(decl !== -1, 'open-revue.ps1 ne déclare plus son identité');
+  // déclarée après, elle n'a plus aucun effet. Les trois lanceurs partagent maintenant un
+  // seul script (open-produit.ps1) : une seule déclaration, table-driven (Get-SzhAppId
+  // $Info.appId), plutôt qu'une par produit — c'est la table $SzhProduits qui distingue les
+  // trois identités, pas trois appels séparés.
+  const decl = OUVRIR_PRODUIT.indexOf('Set-SzhAppUserModelId');
+  const fenetre = OUVRIR_PRODUIT.indexOf('New-Object System.Windows.Forms.Form');
+  assert.ok(decl !== -1, 'open-produit.ps1 ne déclare plus l’identité de barre des tâches');
+  assert.ok(fenetre !== -1, 'open-produit.ps1 ne crée plus la fenêtre de sélection');
   assert.ok(decl < fenetre, 'identité déclarée après la première fenêtre : trop tard');
-  // Et chaque produit la sienne, sinon les deux lanceurs ne font qu'un seul bouton.
-  assert.ok(OUVRIR.indexOf('Get-SzhAppId $produitFiltre') !== -1,
-    'les deux lanceurs partageraient une identité, donc un bouton');
-  // Le troisième lanceur, celui du livre : même règle, déclarée avant sa première fenêtre,
-  // avec sa propre identité — jamais celle de la revue ou de la Zeitschrift.
-  const declLivre = OUVRIR_LIVRE.indexOf('Set-SzhAppUserModelId');
-  const fenetreLivre = OUVRIR_LIVRE.indexOf('New-Object System.Windows.Forms.Form');
-  assert.ok(declLivre !== -1, 'open-livre.ps1 ne déclare plus son identité');
-  assert.ok(declLivre < fenetreLivre, 'identité déclarée après la première fenêtre : trop tard');
-  assert.ok(OUVRIR_LIVRE.indexOf("Get-SzhAppId 'livre'") !== -1,
-    'open-livre.ps1 ne déclare plus l’identité du livre');
+  assert.ok(OUVRIR_PRODUIT.indexOf('Get-SzhAppId $Info.appId') !== -1,
+    'l’identité n’est plus tirée de la table de produit ($Info.appId)');
+  // Chaque produit garde sa propre ligne dans la table, donc sa propre identité — sinon les
+  // trois lanceurs ne feraient qu'un seul bouton de barre des tâches.
+  for (const [jeton, appId] of [['revue', "'revue'"], ['zeitschrift', "'zeitschrift'"], ['livre', "'livre'"]]) {
+    const debutLigne = SHELL_PRODUITS.indexOf(jeton + ' = @{');
+    assert.ok(debutLigne !== -1, 'szh-produits.ps1 : ligne de table manquante pour ' + jeton);
+  }
+  // Les deux enveloppes appellent open-produit.ps1 avec le bon -Produit, et rien d'autre :
+  // c'est tout ce qu'il leur reste à faire.
+  assert.ok(OUVRIR.indexOf("Join-Path $PSScriptRoot 'open-produit.ps1'") !== -1,
+    'open-revue.ps1 ne délègue plus à open-produit.ps1');
+  assert.ok(OUVRIR_LIVRE.indexOf("Join-Path $PSScriptRoot 'open-produit.ps1'") !== -1,
+    'open-livre.ps1 ne délègue plus à open-produit.ps1');
+  assert.ok(OUVRIR_LIVRE.indexOf("-Produit 'livre'") !== -1,
+    'open-livre.ps1 ne transmet plus -Produit livre à open-produit.ps1');
   // La fenêtre de mise à jour n'est pas un lanceur, mais elle a son bouton elle aussi.
   assert.ok(UPDATE.indexOf("Get-SzhAppId ('maj.' + $SzhLangue)") !== -1,
     'update.ps1 ne déclare plus l’identité de sa langue');
@@ -178,33 +195,37 @@ test('les libellés des raccourcis existent dans les trois langues, en « ss »'
   for (const cle of ['raccourci.maj.nom', 'raccourci.maj.desc',
     'raccourci.revue.desc', 'raccourci.zs.desc', 'raccourci.livre.desc']) {
     const motif = new RegExp("'" + cle.replace(/\./g, '\\.') + "'\\s*=\\s*(.+)", 'g');
-    const lignes = COMMUN.match(motif) || [];
+    const lignes = TEXTES.match(motif) || [];
     assert.strictEqual(lignes.length, 3, 'il manque une traduction de ' + cle);
     for (const l of lignes) {
       assert.ok(l.indexOf('ß') === -1, 'orthographe suisse (ss) : ' + l);
       assert.ok(l.trim().length > cle.length + 6, 'traduction vide : ' + l);
     }
   }
-  // Les deux noms de .lnk sont des noms de fichiers : aucun caractère interdit par Windows.
+  // Les trois noms de produit (« Revues SZH », « Zeitschriften SZH », « Books SZH-CSPS »)
+  // sont des littéraux de szh-shell.ps1, pas des clés traduites ; les deux noms de mise à
+  // jour viennent de szh-textes.ps1 (valeurs de raccourci.maj.nom). Chacun est un nom de
+  // fichier .lnk : aucun caractère interdit par Windows.
   for (const nom of NOMS) {
     assert.ok(!/[<>:"/\\|?*]/.test(nom), 'nom de fichier impossible : ' + nom);
     // PowerShell traite l’apostrophe courbe comme un délimiteur de chaîne, au même titre
     // que la droite : dans le source elle est DOUBLÉE. On compare donc les deux formes —
     // sans quoi ce contrôle échouerait sur une chaîne pourtant correcte.
     const doublee = nom.split('’').join('’’');
-    assert.ok(COMMUN.indexOf(nom) !== -1 || COMMUN.indexOf(doublee) !== -1,
-      'szh-common.ps1 ne porte plus le libellé : ' + nom);
+    assert.ok(SHELL.indexOf(nom) !== -1 || SHELL.indexOf(doublee) !== -1 ||
+      TEXTES.indexOf(nom) !== -1 || TEXTES.indexOf(doublee) !== -1,
+      'ni szh-shell.ps1 ni szh-textes.ps1 ne portent plus le libellé : ' + nom);
   }
   // Le libellé français, avec son apostrophe doublée comme PowerShell l'exige.
-  assert.ok(COMMUN.indexOf("'Mise à jour de l’’outil Revue'") !== -1);
-  assert.ok(COMMUN.indexOf("'Aktualisierung des Redaktionstools'") !== -1);
+  assert.ok(TEXTES.indexOf("'Mise à jour de l’’outil Revue'") !== -1);
+  assert.ok(TEXTES.indexOf("'Aktualisierung des Redaktionstools'") !== -1);
 });
 
 test('la mise à jour ne parle plus d’un seul raccourci, ni d’un produit', () => {
   // Le message de fin d'étape annonçait « raccourci « Revues SZH » à jour » — au singulier,
   // et en nommant le produit français jusque dans la phrase allemande, alors qu'il y a
   // quatre entrées et deux équipes.
-  const lignes = COMMUN.match(/'maj\.e4\.ok'\s*=\s*(.+)/g) || [];
+  const lignes = TEXTES.match(/'maj\.e4\.ok'\s*=\s*(.+)/g) || [];
   assert.strictEqual(lignes.length, 3, 'il manque une traduction de maj.e4.ok');
   for (const l of lignes) {
     assert.ok(l.indexOf('Revues SZH') === -1, 'maj.e4.ok nomme encore un produit : ' + l);

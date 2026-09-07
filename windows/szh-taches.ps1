@@ -19,7 +19,7 @@ $script:SzhMajHeure    = 14
 # Suivi de la passe silencieuse. Fichier à part, et non state.json : celui-ci est réécrit
 # entièrement par update.ps1 à chaque succès, ce qui effacerait la cadence.
 #
-# PAR UTILISATEUR, et non plus sous C:\ProgramData\SZH : la cadence gouverne un travail qui
+# Par utilisateur, et non plus sous C:\ProgramData\SZH : la cadence gouverne un travail qui
 # est par utilisateur — distribution WSL, extensions, réglages, raccourcis —, et un fichier
 # commun laissait le premier compte connecté consommer la fenêtre de la semaine pour tout le
 # monde. Le deuxième compte ressortait muet, sans rien avoir reçu, jusqu'au mardi suivant.
@@ -81,7 +81,7 @@ function New-SzhTacheMajDeclencheurs {
 # service occupé le mardi à 14 h, la tâche part à la première occasion ensuite, une dizaine
 # de minutes après le retour.
 #
-# AllowStartIfOnBatteries : sans lui, la tâche ne démarre PAS sur batterie — ni le mardi, ni
+# AllowStartIfOnBatteries : sans lui, la tâche ne démarre pas sur batterie — ni le mardi, ni
 # à l'ouverture de session. Un portable jamais branché ne se mettait donc jamais à jour, et
 # passer du quotidien à l'hebdomadaire aggravait le cas de sept chances par semaine à une.
 # La passe silencieuse ne coûte qu'une lecture de manifest ; les 574 Mo de l'environnement
@@ -344,6 +344,14 @@ function Save-SzhSuiviMaj($Suivi) {
 # dit le message 'err.wsl'. Passer à un déclencheur de 14 h met cette collision en plein
 # après-midi de travail, d'où ce garde-fou.
 #
+# `DistroEnMarche` seul n'en est plus un : le préchauffage WSL démarre la distribution à
+# chaque ouverture de session, sur le même déclencheur que la mise à jour elle-même -- la
+# distro tourne donc presque toujours au moment où la passe silencieuse se pose la
+# question, et renoncer sur ce seul signal revenait à ne plus jamais trouver de fenêtre.
+# Seules une compilation en vol ou l'éditeur ouvert font encore renoncer ; une distribution
+# en marche sans l'un ni l'autre laisse update.ps1 faire `--terminate` avant de
+# désenregistrer.
+#
 # La décision est séparée de la mesure : ce qui suit est pur, donc éprouvable sur les
 # trente-deux combinaisons, et Test-SzhMomentMaj plus bas se contente de mesurer.
 function Resolve-SzhMomentMaj {
@@ -376,11 +384,8 @@ function Resolve-SzhMomentMaj {
     $bilan.raison = 'l''éditeur est ouvert'
     return $bilan
   }
-  if ($DistroEnMarche) {
-    $bilan.propice = $false
-    $bilan.raison = 'l''environnement de fabrication est en marche'
-    return $bilan
-  }
+  # $DistroEnMarche n'est plus un motif de renoncement à lui seul : voir le commentaire de
+  # la fonction ci-dessus.
   return $bilan
 }
 
@@ -440,7 +445,8 @@ function Test-SzhMomentMaj {
   $compil = $false
   $editeur = $false
   # Aucune mesure quand il n'y a rien à remplacer : la décision est déjà prise, et sonder
-  # la distro la réveillerait pour rien.
+  # la distro la réveillerait pour rien. $enMarche reste mesurée même si elle ne fait plus
+  # renoncer à elle seule : c'est elle qui arme la sonde de compilation ci-dessous.
   if ($remplace) {
     $enMarche = Test-SzhDistroEnMarche
     $compil = Test-SzhCompilationEnVol -DistroEnMarche $enMarche

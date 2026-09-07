@@ -33,7 +33,7 @@ const TACHES = lire('windows', 'szh-taches.ps1');
 const LANCEUR = lire('windows', 'update-launcher.ps1');
 const UPDATE = lire('windows', 'update.ps1');
 const BOOTSTRAP = lire('windows', 'bootstrap.ps1');
-const COMMUN = lire('windows', 'szh-common.ps1');
+const SHELL = lire('windows', 'szh-shell.ps1');
 
 // ---- Une seule vérité pour la forme de la tâche ----
 
@@ -143,13 +143,14 @@ test('le raccourci manuel, lui, reste visible', () => {
   assert.ok(voulue.indexOf('update-launcher.ps1') !== -1);
   assert.ok(voulue.indexOf('update.ps1') === -1,
     'la tâche doit lancer la vérification silencieuse, pas la fenêtre visible');
-  // L'entrée du menu, définie ailleurs, n'est pas cachée et s'ouvre en fenêtre normale.
-  const menu = COMMUN.slice(COMMUN.indexOf('function Get-SzhRaccourcisMenu'),
-    COMMUN.indexOf('function Set-SzhRaccourcisMenu'));
+  // L'entrée du menu, définie dans szh-shell.ps1, n'est pas cachée et s'ouvre en fenêtre
+  // normale.
+  const menu = SHELL.slice(SHELL.indexOf('function Get-SzhRaccourcisMenu'),
+    SHELL.indexOf('function Set-SzhRaccourcisMenu'));
   const ligneMaj = menu.split('\r\n').filter((l) => l.indexOf('-Langue {1}') !== -1);
   assert.strictEqual(ligneMaj.length, 1);
   assert.ok(ligneMaj[0].indexOf('hidden.vbs') === -1, 'la mise à jour manuelle doit se voir');
-  assert.match(COMMUN, /\$lnk\.WindowStyle = 1/);
+  assert.match(SHELL, /\$lnk\.WindowStyle = 1/);
 });
 
 // ---- L'ordre des choses dans la passe silencieuse ----
@@ -417,13 +418,14 @@ test('la politesse expire au bout de quatre semaines, l’alerte se répète au 
 test('le moment : les trente-deux combinaisons', { skip: sansPowerShell }, () => {
   // Le modèle, dit une fois ici : rien à remplacer, on y va ; une compilation en vol, jamais ;
   // le délai expiré fait céder les gênes réversibles, pas la compilation ; sinon l'éditeur
-  // ouvert ou l'environnement en marche font renoncer.
+  // ouvert fait renoncer. Une distribution en marche seule ne fait plus renoncer : le
+  // préchauffage WSL la démarre à chaque ouverture de session, sur le même déclencheur que
+  // la mise à jour, et update.ps1 sait la terminer avant de la désenregistrer.
   const attendu = (m) => {
     if (!m.remplace) { return { propice: true, grave: false }; }
     if (m.compilation) { return { propice: false, grave: true }; }
     if (m.presse) { return { propice: true, grave: false }; }
     if (m.editeur) { return { propice: false, grave: false }; }
-    if (m.distro) { return { propice: false, grave: false }; }
     return { propice: true, grave: false };
   };
   assert.strictEqual(bilan.r.moments.length, 32);

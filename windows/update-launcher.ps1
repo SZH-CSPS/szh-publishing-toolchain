@@ -19,114 +19,23 @@
 . "$PSScriptRoot\szh-common.ps1"
 . "$PSScriptRoot\szh-taches.ps1"
 
-# ---- Orphelins du toolkit ----
-# Même manque, et même correction, que dans update.ps1 et bootstrap.ps1 : ce script
-# rafraîchit $SzhToolkit plus bas (avant d'y lancer update.ps1), avec le même
-# `Expand-Archive -Force` qui écrase ce que l'archive contient mais ne supprime jamais ce
-# qu'elle ne contient plus.
+# Remove-SzhToolkitOrphelins vit dans szh-common.ps1 (une seule définition, appelée aussi
+# par update.ps1 et bootstrap.ps1) : ce script rafraîchit $SzhToolkit plus bas (avant d'y
+# lancer update.ps1), avec le même `Expand-Archive -Force` qui écrase ce que l'archive
+# contient mais ne supprime jamais ce qu'elle ne contient plus.
 #
-# Sans la même garde ici, le manque reviendrait par ce chemin même une fois update.ps1 et
+# Sans le même nettoyage ici, le manque reviendrait par ce chemin même une fois update.ps1 et
 # bootstrap.ps1 corrigés, et de façon plus sournoise qu'ailleurs : ce rafraîchissement écrit
 # déjà VERSION à la version cible, et update.ps1, lancé juste après par
 # Start-SzhFenetreVisible, lit alors le toolkit comme déjà à jour — sa propre étape 1/5 ne
 # s'exécute même pas, donc son propre nettoyage non plus.
-#
-# $Extrait : extraction à part de LA MÊME archive, faite avant d'écraser le toolkit.
-# Uniquement dans les dossiers que l'archive gère (release.yml : pipeline, vscodium-user,
-# revue-template, livre-template, windows).
-function Remove-SzhToolkitOrphelins {
-  param(
-    [Parameter(Mandatory = $true)][string]$Toolkit,
-    [Parameter(Mandatory = $true)][string]$Extrait
-  )
-  $dossiersGeres = @('pipeline', 'vscodium-user', 'revue-template', 'livre-template', 'windows')
-  $retires = New-Object System.Collections.ArrayList
-  $avertissements = New-Object System.Collections.ArrayList
-
-  # ---- Garde globale : l'extraction doit ressembler à un vrai toolkit avant qu'on y touche ----
-  # Constaté en bac à sable : une extraction vide (zip qui réussit sans rien contenir) aurait
-  # vidé les cinq dossiers gérés du toolkit, faute de quoi que ce soit à quoi les comparer. Si
-  # l'extraction ne porte NI le VERSION NI un seul des dossiers gérés, elle ne dit rien de
-  # fiable sur cette version : le nettoyage entier s'abstient plutôt que de juger sur du vide.
-  $versionExtraite = Test-Path -LiteralPath (Join-Path $Extrait 'VERSION') -PathType Leaf
-  $auMoinsUnDossier = $false
-  foreach ($d in $dossiersGeres) {
-    if (Test-Path -LiteralPath (Join-Path $Extrait $d) -PathType Container) { $auMoinsUnDossier = $true; break }
-  }
-  if ((-not $versionExtraite) -or (-not $auMoinsUnDossier)) {
-    [void]$avertissements.Add('nettoyage abandonné en entier : extraction sans VERSION ni aucun des cinq dossiers gérés -- rien n''est fiable à comparer')
-    return [ordered]@{ retires = $retires; avertissements = $avertissements }
-  }
-
-  # Sous ce nombre de fichiers, une proportion élevée d'orphelins reste plausible (un petit
-  # dossier retaillé de moitié) et la garde de vraisemblance ci-dessous ne s'applique pas.
-  $seuilPlancherFichiers = 4
-  # Au-delà de cette part, un nettoyage n'est plus « quelques fichiers retirés du dépôt » mais
-  # la majorité d'un dossier géré : invraisemblable pour une mise à jour normale.
-  $seuilProportionOrpheline = 0.5
-
-  foreach ($d in $dossiersGeres) {
-    $dansToolkit = Join-Path $Toolkit $d
-    if (-not (Test-Path $dansToolkit)) { continue }
-    $dansArchive = Join-Path $Extrait $d
-
-    # ---- Garde par dossier : le dossier doit exister dans l'archive extraite ----
-    # Le défaut constaté en bac à sable : $Extrait\pipeline absent alors que $Extrait\windows
-    # est présent effaçait TOUT $Toolkit\pipeline, faute de savoir ce que cette version y
-    # garde. En cas de doute, ce dossier-ci n'est pas touché ; les autres, eux, restent jugés
-    # chacun sur sa propre comparaison.
-    if (-not (Test-Path -LiteralPath $dansArchive -PathType Container)) {
-      [void]$avertissements.Add('dossier absent de l''archive extraite, rien retiré -> ' + $d)
-      continue
-    }
-
-    $fichiers = @(Get-ChildItem -LiteralPath $dansToolkit -Recurse -File -Force -ErrorAction SilentlyContinue)
-    if ($fichiers.Count -eq 0) { continue }
-
-    # Candidats orphelins : présents dans le toolkit, absents de l'archive. Calculés d'abord,
-    # sans rien supprimer -- la garde de vraisemblance ci-dessous doit juger sur l'ensemble
-    # avant qu'un seul fichier ne parte.
-    $candidats = New-Object System.Collections.ArrayList
-    foreach ($f in $fichiers) {
-      $relatif = $f.FullName.Substring($dansToolkit.Length).TrimStart('\')
-      $cible = Join-Path $dansArchive $relatif
-      if (-not (Test-Path -LiteralPath $cible)) {
-        [void]$candidats.Add([ordered]@{ chemin = $f.FullName; relatif = $relatif })
-      }
-    }
-    if ($candidats.Count -eq 0) { continue }
-
-    # ---- Garde de vraisemblance : proportion invraisemblable ----
-    # Une archive authentique mais incomplète (dossier source vidé par erreur avant le `cp -r`
-    # de release.yml, zip valide, empreinte correcte) passe les deux gardes ci-dessus : le
-    # dossier EXISTE dans l'archive, il est juste creux. Elle ne passe pas celle-ci.
-    if (($fichiers.Count -ge $seuilPlancherFichiers) -and
-        (($candidats.Count / [double]$fichiers.Count) -gt $seuilProportionOrpheline)) {
-      [void]$avertissements.Add(('proportion invraisemblable, rien retiré -> {0} : {1}/{2} fichier(s) auraient été retirés' -f $d, $candidats.Count, $fichiers.Count))
-      continue
-    }
-
-    foreach ($c in $candidats) {
-      Remove-Item -LiteralPath $c.chemin -Force
-      [void]$retires.Add((Join-Path $d $c.relatif))
-    }
-
-    # Dossiers restés vides derrière les fichiers retirés, du plus profond au moins profond ;
-    # le dossier géré lui-même ($dansToolkit) n'est jamais retiré, même vide.
-    Get-ChildItem -LiteralPath $dansToolkit -Recurse -Directory -Force -ErrorAction SilentlyContinue |
-      Sort-Object { $_.FullName.Length } -Descending |
-      Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue) } |
-      Remove-Item -Force -ErrorAction SilentlyContinue
-  }
-  return [ordered]@{ retires = $retires; avertissements = $avertissements }
-}
 
 # Le menu Démarrer est remis d'aplomb à chaque ouverture de session, avant même de regarder
 # s'il y a du neuf, et avant la cadence hebdomadaire ci-dessous. Deux raisons : un poste
 # déjà à la dernière version n'exécute plus update.ps1 et n'obtiendrait jamais une entrée
 # ajoutée après coup ; et les raccourcis vivent dans le profil de l'utilisateur, donc chacun
 # doit recevoir les siens là où il ouvre sa session, pas là où l'administrateur a installé
-# le poste. Idempotent — les mêmes quatre .lnk sont réécrits à l'identique — et jamais
+# le poste. Idempotent — les mêmes cinq .lnk sont réécrits à l'identique — et jamais
 # bloquant : ce script ne fait que vérifier. Le journal ne dit que l'anormal, pour ne pas
 # grossir d'une ligne par jour.
 try {
@@ -206,19 +115,30 @@ function Save-SzhBlocage([string]$Raison) {
 }
 
 # Passer la main à la fenêtre visible : c'est elle qui télécharge, qui installe et qui, en
-# cas d'échec, montre à l'écran le geste à faire.
+# cas d'échec, montre à l'écran le geste à faire. Rend son code de sortie : c'est lui qui
+# dit si la vérification peut vraiment se marquer faite.
 function Start-SzhFenetreVisible {
-  # Relâché ICI, avant de lancer update.ps1 : sinon la fenêtre tout juste ouverte tenterait
+  # Relâché ici, avant de lancer update.ps1 : sinon la fenêtre tout juste ouverte tenterait
   # d'acquérir le même verrou pendant que ce script le tient encore, et sortirait aussitôt en
-  # croyant une mise à jour concurrente alors qu'il n'y en a aucune.
+  # croyant une mise à jour concurrente alors qu'il n'y en a aucune. Fenêtre de course
+  # résiduelle acceptée : entre ce relâchement et la prise du verrou par update.ps1, un autre
+  # déclenchement (double-clic manuel, ou une seconde session) pourrait s'y glisser.
   if ($script:SzhMutexTenu) {
     try { $SzhMutex.ReleaseMutex() } catch { }
     $script:SzhMutexTenu = $false
   }
-  Start-Process -FilePath "$PSHOME\powershell.exe" -ArgumentList @(
+  # Windows PowerShell 5.1 explicitement : $PSHOME désignerait pwsh si ce script tournait
+  # sous PowerShell 7, qui n'a pas de powershell.exe à côté (même repli que
+  # Get-SzhRaccourcisMenu, szh-common.ps1).
+  $ps = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+  if (-not (Test-Path $ps)) { $ps = Join-Path $PSHOME 'powershell.exe' }
+  # -Wait -PassThru : sans eux, « vérification faite » (Save-SzhVerifFaite, plus bas)
+  # s'écrivait avant même de savoir si cette fenêtre avait réussi.
+  $p = Start-Process -FilePath $ps -Wait -PassThru -ArgumentList @(
     '-NoProfile', '-ExecutionPolicy', 'Bypass',
     '-File', (Join-Path $SzhToolkit 'windows\update.ps1')
   )
+  return $p.ExitCode
 }
 
 # ---- Une seule mise à jour à la fois (mutex nommé, portée poste) ----
@@ -231,7 +151,12 @@ function Start-SzhFenetreVisible {
 # le relâche avant de lui passer la main pour qu'il puisse le reprendre à son tour.
 $script:SzhMutex = New-SzhMutexPoste
 $script:SzhMutexTenu = $false
-try { $script:SzhMutexTenu = $SzhMutex.WaitOne(0) } catch { $script:SzhMutexTenu = $false }
+# Même piège qu'update.ps1 : un processus mort en tenant ce mutex le laisse abandonné, et un
+# catch générique confondrait AbandonedMutexException avec « déjà pris », sortant sans
+# ReleaseMutex -- le mutex resterait abandonné pour de bon.
+try { $script:SzhMutexTenu = $SzhMutex.WaitOne(0) }
+catch [System.Threading.AbandonedMutexException] { $script:SzhMutexTenu = $true; Write-SzhLog 'check : mutex abandonné par une passe précédente, repris' }
+catch { $script:SzhMutexTenu = $false }
 if (-not $script:SzhMutexTenu) {
   Write-SzhLog 'check : une autre mise à jour est déjà en cours -> sortie'
   exit 0
@@ -239,23 +164,33 @@ if (-not $script:SzhMutexTenu) {
 
 try {
   $manifest = Get-SzhManifest
+  # Champs du manifest utilisés comme noms de fichiers ou de dossiers, rejoints tels quels à
+  # $SzhStaging : un manifest corrompu ou détourné ne doit jamais pouvoir écrire ni lire hors
+  # de ce dossier.
+  if (-not (Test-SzhVersionTag $manifest.version)) {
+    throw ('Version de manifest invalide : ' + [string]$manifest.version)
+  }
+  if (-not (Test-SzhNomFichierManifest $manifest.toolkit.file)) {
+    throw ('Nom de fichier de manifest invalide (toolkit) : ' + [string]$manifest.toolkit.file)
+  }
   $etat = Get-SzhState
   $etatUtil = Get-SzhEtatUtilisateur
-  $actuel = ''
-  if ($etat -and $etat.version) { $actuel = $etat.version }
+  # VERSION du toolkit d'abord, state.json en repli, comme partout ailleurs : lire $etat.version
+  # seul divergeait dès qu'une passe échouait après avoir extrait le toolkit mais avant d'avoir
+  # écrit ses clés d'état -- le fichier VERSION disait déjà la vérité, state.json encore l'ancienne.
+  $actuel = Get-SzhVersionInstallee
 
-  # Deux questions, et non une. « Le poste est-il à la bonne version ? » ne dit rien de CE
+  # Deux questions, et non une. « Le poste est-il à la bonne version ? » ne dit rien de ce
   # compte : le toolkit est commun au poste, mais la distribution WSL, les extensions et les
   # réglages sont par utilisateur. Le premier compte connecté mettait le poste à jour, et
-  # tous les autres lisaient « à jour » puis ressortaient sans rien avoir reçu — c'est le
-  # poste du 26 août 2026, où la rédactrice n'avait ni environnement, ni extensions, ni
-  # raccourcis sur un poste que le journal disait à jour.
+  # tous les autres lisaient « à jour » puis ressortaient sans environnement, sans
+  # extensions et sans raccourcis, sur un poste que le journal disait pourtant à jour.
   $rootfsActuel = Get-SzhEtatUtilisateurChamp $etatUtil 'rootfs'
   # Même reprise que dans update.ps1 pour les postes d'avant l'état par utilisateur : la
   # version n'y était retenue que dans l'état commun, et sans cette lecture le premier
   # passage après cette mise à jour ouvrirait une fenêtre visible sur un poste qui n'a rien
   # à installer. Comme là-bas, la confiance ne vaut que si la distribution est bien
-  # enregistrée pour CE compte — et la question n'est posée à wsl.exe qu'en dernier, une
+  # enregistrée pour ce compte — et la question n'est posée à wsl.exe qu'en dernier, une
   # seule fois dans la vie du poste.
   if ((-not $rootfsActuel) -and $etat -and $etat.rootfs -and
       ((Get-SzhDistrosEnregistrees) -contains $SzhDistro)) {
@@ -295,7 +230,7 @@ try {
   if ($moment.raison) { Write-SzhLog ('check : ' + $moment.raison) }
 
   # Mettre le toolkit à niveau pour disposer du dernier update.ps1. Sauté quand le poste
-  # porte déjà la bonne version : c'est le cas du compte qui n'a pas encore reçu SA part
+  # porte déjà la bonne version : c'est le cas du compte qui n'a pas encore reçu sa part
   # d'un poste par ailleurs à jour, et retélécharger l'archive pour la redéplier à
   # l'identique ne lui apporterait rien.
   if ($actuel -ne $manifest.version) {
@@ -307,35 +242,31 @@ try {
         throw ('empreinte invalide pour {0}' -f $manifest.toolkit.file)
       }
     }
-    # Écarte les orphelins AVANT d'écraser le toolkit — comme dans update.ps1 et
-    # bootstrap.ps1. Jamais bloquant : un souci ici ne doit pas empêcher le rafraîchissement
-    # normal qui suit, ni la suite de la passe silencieuse.
-    $extrait = ''
-    try {
-      $extrait = Join-Path $SzhStaging ('toolkit-extrait-' + $manifest.version)
-      if (Test-Path $extrait) { Remove-Item -LiteralPath $extrait -Recurse -Force }
-      Expand-Archive -Path $zip -DestinationPath $extrait -Force
-      $bilanOrphelins = Remove-SzhToolkitOrphelins -Toolkit $SzhToolkit -Extrait $extrait
-      foreach ($o in $bilanOrphelins.retires) {
-        Write-SzhLog ('check : orphelin retiré du toolkit -> ' + $o)
-      }
-      if ($bilanOrphelins.retires.Count -gt 0) {
-        Write-SzhLog ('check : ' + $bilanOrphelins.retires.Count + ' orphelin(s) retiré(s) du toolkit (absents de la version ' + $manifest.version + ')')
-      }
-      foreach ($a in $bilanOrphelins.avertissements) {
-        Write-SzhLog ('check : nettoyage des orphelins, anomalie -> ' + $a)
-      }
-    } catch {
-      Write-SzhLog ('check : nettoyage des orphelins du toolkit non effectué : ' + $_.Exception.Message)
-    } finally {
-      if ($extrait -and (Test-Path $extrait)) { Remove-Item -LiteralPath $extrait -Recurse -Force -ErrorAction SilentlyContinue }
+    # Remplacement atomique — comme dans update.ps1 et bootstrap.ps1 : voir
+    # Install-SzhToolkitDepuisArchive (szh-common.ps1). Une bascule qui échoue (fichier
+    # encore ouvert) remonte à la boucle catch de ce script, comme toute autre erreur d'ici.
+    $bilanOrphelins = Install-SzhToolkitDepuisArchive -Zip $zip -Toolkit $SzhToolkit -DossierTravail $SzhStaging
+    foreach ($o in $bilanOrphelins.retires) {
+      Write-SzhLog ('check : orphelin retiré du toolkit -> ' + $o)
     }
-
-    Expand-Archive -Path $zip -DestinationPath $SzhToolkit -Force
+    if ($bilanOrphelins.retires.Count -gt 0) {
+      Write-SzhLog ('check : ' + $bilanOrphelins.retires.Count + ' orphelin(s) retiré(s) du toolkit (absents de la version ' + $manifest.version + ')')
+    }
+    foreach ($a in $bilanOrphelins.avertissements) {
+      Write-SzhLog ('check : nettoyage des orphelins, anomalie -> ' + $a)
+    }
   }
 
-  Start-SzhFenetreVisible
-  Save-SzhVerifFaite
+  $codeFenetre = Start-SzhFenetreVisible
+  if ($codeFenetre -eq 0) {
+    Save-SzhVerifFaite
+  } else {
+    # Le filet des 28 jours doit aussi compter un échec d'installation, pas seulement un
+    # renoncement de moment : sans cela, une fenêtre qui échoue à chaque passage n'aurait
+    # jamais laissé Test-SzhPolitesseExpiree finir par passer outre.
+    Write-SzhLog ('check : la fenêtre de mise à jour a échoué (code ' + $codeFenetre + ')')
+    Save-SzhBlocage ('la fenêtre de mise à jour a échoué (code ' + $codeFenetre + ')')
+  }
   exit 0
 } catch {
   # Une ligne, un événement : les messages du planificateur et du réseau portent des sauts
@@ -350,7 +281,7 @@ try {
   if ($presse -and (Test-SzhAlerteDue -Maintenant $maintenant -AlerteLe $alerteLe)) {
     Write-SzhLog ('check : bloqué depuis le {0} -> ouverture de la fenêtre visible pour que l''échec se voie' -f $bloqueDepuis)
     try {
-      Start-SzhFenetreVisible
+      [void](Start-SzhFenetreVisible)
       Save-SzhSuiviMaj ([ordered]@{
         derniereVerif = $derniereVerif
         bloqueDepuis  = $bloqueDepuis

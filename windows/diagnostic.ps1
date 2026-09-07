@@ -46,7 +46,7 @@ $session = Get-SzhSessionUtilisateur
 Dire 'note' 'Compte qui exécute' ('{0} (admin : {1})' -f $moi.nom, $moi.admin)
 Dire 'note' 'SID' $moi.sid
 if ($session) {
-  # L'écart entre les deux est LA cause du 26 août 2026 : une installation élevée avec le
+  # L'écart entre les deux est la cause du 26 août 2026 : une installation élevée avec le
   # compte du support pose tout dans le profil du support, et la rédactrice n'a rien.
   if ($session -eq $moi.nom) {
     Dire 'ok' 'Session ouverte pour' $session
@@ -145,7 +145,7 @@ if ($distroPresente) {
 }
 Dire 'note' 'Disque de la distribution' $dossierDistro
 
-# Les extensions, telles que l'éditeur les liste POUR CE COMPTE.
+# Les extensions, telles que l'éditeur les liste pour ce compte.
 $reelles = Get-SzhExtensionsInstallees
 if ($null -eq $reelles) {
   Dire 'note' 'Extensions de l''éditeur' 'CLI de l''éditeur sans réponse — mesure impossible'

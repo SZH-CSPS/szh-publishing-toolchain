@@ -1,6 +1,8 @@
 ﻿<#
 .SYNOPSIS
-  Déplace un dossier de revue entre l'arborescence « en cours » et celle des archives.
+  Déplace un dossier de revue ou de livre entre l'arborescence « en cours » et celle des
+  archives. Le produit se reconnaît à la présence du fichier de configuration -- buch.yaml
+  d'abord, ausgabe.yaml ensuite, même ordre que lib/profil.js et le Makefile.
   Appelé par le cockpit (« Archiver et verrouiller », « Désarchiver »), utilisable aussi
   à la main :
 
@@ -33,37 +35,53 @@ param(
 # Show-SzhErreur non plus, dont les textes annoncent un nouvel essai automatique, alors
 # qu'ici rien ne réessaiera.
 function Show-SzhErreurArchivage([string]$Etape, [string]$Message) {
-  $texte = $Etape + "`n`n" + $Message + "`n`n" + (T 'err.rassure') + "`n" + (T 'arch.err.suite' @($SzhSupport))
+  $texte = $Etape + "`n`n" + $Message + "`n`n" + (T 'err.rassure') + "`n" + (T ('arch.err.suite' + $suffixeLivre) @($SzhSupport))
   Write-Host ''
   Write-Host ('  ' + $texte)
   try {
     Add-Type -AssemblyName System.Windows.Forms
-    [void][System.Windows.Forms.MessageBox]::Show($texte, (T 'arch.titre'),
+    [void][System.Windows.Forms.MessageBox]::Show($texte, $titreFenetre,
       [System.Windows.Forms.MessageBoxButtons]::OK,
       [System.Windows.Forms.MessageBoxIcon]::Warning)
   } catch { Start-Sleep -Seconds 10 }
 }
 
+# ---- Le produit : livre d'abord, ausgabe.yaml ensuite -- même ordre que lib/profil.js et
+# le Makefile (LIVRE_CONFIG := $(wildcard buch.yaml) prime sur profil: d'un ausgabe.yaml qui
+# traînerait dans le même dossier). $suffixeLivre choisit la variante « .livre » des textes
+# arch.* qui parlent, sinon, faussement de « revue ».
+$estLivre = Test-Path (Join-Path $Dossier 'buch.yaml')
+$suffixeLivre = ''
+if ($estLivre) { $suffixeLivre = '.livre' }
+
 $etatCible = 'archive'
-$titreFenetre = (T 'arch.titre')
-if ($Desarchiver) { $etatCible = 'encours'; $titreFenetre = (T 'arch.titre.des') }
+$titreFenetre = (T ('arch.titre' + $suffixeLivre))
+if ($Desarchiver) { $etatCible = 'encours'; $titreFenetre = (T ('arch.titre.des' + $suffixeLivre)) }
 try { $Host.UI.RawUI.WindowTitle = $titreFenetre } catch { }
 
 $etape = $titreFenetre
 try {
   Write-SzhBanniere $titreFenetre
 
-  # ---- La revue ----
-  if (-not (Test-Path (Join-Path $Dossier 'ausgabe.yaml'))) {
+  # ---- Le produit ----
+  if (-not $estLivre -and -not (Test-Path (Join-Path $Dossier 'ausgabe.yaml'))) {
     throw (T 'arch.err.introuvable' @($Dossier))
   }
-  $source = (Resolve-Path $Dossier).Path
+  $source = (Resolve-Path -LiteralPath $Dossier).Path
   $nom = Split-Path $source -Leaf
-  $etatRevue = Get-SzhRevueEtat $source
-  if (-not $etatRevue.jeton) { throw (T 'arch.err.emplacement' @($nom)) }
+  $jeton = 'livre'
+  if ($estLivre) {
+    # État lu pour la cohérence avec Get-SzhRevueEtat ci-dessous ; le livre n'a pas de
+    # jeton (pas d'ambiguïté « laquelle » comme entre revue et zeitschrift).
+    $etatProduit = Get-SzhLivreEtat $source
+  } else {
+    $etatProduit = Get-SzhRevueEtat $source
+    $jeton = $etatProduit.jeton
+    if (-not $jeton) { throw (T 'arch.err.emplacement' @($nom)) }
+  }
 
   # ---- La destination ----
-  $racineCible = Get-SzhEmplacementRevue $etatRevue.jeton $etatCible
+  $racineCible = Get-SzhEmplacementRevue $jeton $etatCible
   if (-not $racineCible) { throw (T 'arch.err.emplacement' @($nom)) }
   $cible = Join-Path $racineCible $nom
   if ((Test-Path $cible) -and ($cible.ToLower() -ne $source.ToLower())) {
@@ -72,7 +90,7 @@ try {
   if ($cible.ToLower() -eq $source.ToLower()) {
     # Déjà à sa place (dossier déplacé à la main, script relancé) : rien à déplacer, mais
     # le raccourci et la réouverture restent utiles.
-    Write-SzhOk (T 'arch.ok' @($cible))
+    Write-SzhOk (T ('arch.ok' + $suffixeLivre) @($cible))
     $deplace = $false
   } else {
     New-Item -ItemType Directory -Force -Path $racineCible | Out-Null
@@ -109,18 +127,23 @@ try {
       Write-SzhLog ('archive-revue : deplacement impossible (' + $derniere + ')')
       throw (T 'arch.err.verrou' @($AttenteSecondes))
     }
-    Write-SzhOk (T 'arch.ok' @($cible))
+    Write-SzhOk (T ('arch.ok' + $suffixeLivre) @($cible))
   }
 
   # ---- Le raccourci du dossier voyage avec lui ----
-  # « Ouvrir la revue.lnk » porte un chemin absolu : sans réécriture, il rouvrirait
-  # l'ancien emplacement. Jamais bloquant.
-  try { Set-SzhRaccourciRevue $cible | Out-Null } catch { }
+  # Le raccourci porte un chemin absolu et doit être mis à jour pour suivre le déplacement.
+  try {
+    if ($estLivre) {
+      Set-SzhRaccourciRevue $cible 'Ouvrir le livre' 'Ouvrir ce livre dans l''éditeur' | Out-Null
+    } else {
+      Set-SzhRaccourciRevue $cible | Out-Null
+    }
+  } catch { }
 
-  # ---- Réouverture de la revue à sa nouvelle place ----
-  # C'est ce qui rend le geste lisible : la revue revient sous les yeux, à son nouvel
+  # ---- Réouverture à sa nouvelle place ----
+  # C'est ce qui rend le geste lisible : le dossier revient sous les yeux, à son nouvel
   # emplacement.
-  Write-SzhEtape (T 'arch.rouvre')
+  Write-SzhEtape (T ('arch.rouvre' + $suffixeLivre))
   [void](Start-SzhCodium $cible)
   Write-SzhLog ('archive-revue OK : ' + $source + ' -> ' + $cible)
   Start-Sleep -Seconds 4

@@ -33,6 +33,7 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 const COMMUN = lire('windows', 'szh-common.ps1');
+const TEXTES = lire('windows', 'szh-textes.ps1');
 const UPDATE = lire('windows', 'update.ps1');
 const LANCEUR = lire('windows', 'update-launcher.ps1');
 const TACHES = lire('windows', 'szh-taches.ps1');
@@ -167,7 +168,7 @@ test('trois pannes WSL, trois messages, trois gestes — dans les trois langues'
   // dossier déjà pris ne se ferme pas, et la virtualisation ne s'active pas sans la DSI.
   for (const cle of ['err.wsl', 'err.wsl.dossier', 'err.wsl.moteur', 'err.espace', 'maj.partiel']) {
     const motif = new RegExp("'" + cle.replace(/\./g, '\\.') + "'\\s*=\\s*(.+)", 'g');
-    const lignes = COMMUN.match(motif) || [];
+    const lignes = TEXTES.match(motif) || [];
     assert.strictEqual(lignes.length, 3, 'il manque une traduction de ' + cle);
     for (const l of lignes) {
       assert.ok(l.indexOf('ß') === -1, 'orthographe suisse (ss) : ' + l);

@@ -2,8 +2,8 @@
 .SYNOPSIS
   Ouverture d'un .md par double-clic : cible de l'association « Ouvrir avec » →
   « Revue SZH » (ProgId SZH.Markdown posé par update.ps1). Reçoit le chemin du fichier
-  en premier argument positionnel, remonte jusqu'au dossier de revue (celui qui porte
-  ausgabe.yaml) et ouvre VSCodium sur le dossier puis sur le fichier.
+  en premier argument positionnel, remonte jusqu'au dossier de revue ou de livre (celui qui
+  porte buch.yaml ou ausgabe.yaml) et ouvre VSCodium sur le dossier puis sur le fichier.
 
 .DESCRIPTION
   Il ne compile rien et n'appelle pas WSL : le Makefile n'a aucun verrou et un build lancé
@@ -38,8 +38,8 @@ function Write-SzhTrace([string]$Message) {
 # (szh-common.ps1:4) : une exception non interceptée plus bas tuerait le script sans
 # fenêtre, sans boîte de dialogue et sans ligne de journal — depuis un .md double-cliqué,
 # cela se lit « il ne s'est rien passé ». `trap` plutôt qu'un try/catch enveloppant : il
-# couvre toute la portée sans réindenter tout le fichier, sur le modèle d'open-revue.ps1 et
-# d'open-livre.ps1. Mode simulation respecté : un test ne doit jamais rester bloqué sur une
+# couvre toute la portée sans réindenter tout le fichier, sur le modèle d'open-produit.ps1.
+# Mode simulation respecté : un test ne doit jamais rester bloqué sur une
 # boîte de dialogue, la sortie standard en tient lieu.
 trap {
   $souci = $_.Exception.Message
@@ -69,11 +69,15 @@ function Show-SzhMessage([string]$Texte) {
   } catch { }
 }
 
-# Remontée jusqu'au dossier de revue, .Parent jusqu'à $null : pas de profondeur maximale,
-# une revue pouvant être n'importe où sous OneDrive. $null si aucun ausgabe.yaml.
+# Remontée jusqu'au dossier de revue ou de livre, .Parent jusqu'à $null : pas de profondeur
+# maximale, une revue ou un livre pouvant être n'importe où sous OneDrive. buch.yaml d'abord,
+# comme lib/profil.js et le Makefile (LIVRE_CONFIG := $(wildcard buch.yaml)) : un livre n'a
+# pas d'ausgabe.yaml, et un chapitre (chapitres/<slug>/<slug>.md) tombait donc dans la branche
+# « hors revue » faute de le chercher aussi. $null si ni l'un ni l'autre.
 function Find-SzhRacineRevue([System.IO.DirectoryInfo]$Depart) {
   $d = $Depart
   while ($null -ne $d) {
+    if (Test-Path -LiteralPath (Join-Path $d.FullName 'buch.yaml')) { return $d }
     if (Test-Path -LiteralPath (Join-Path $d.FullName 'ausgabe.yaml')) { return $d }
     $d = $d.Parent
   }
@@ -152,22 +156,26 @@ if (-not $codium) {
 # plutôt que barrer la route.
 $estUnc = $complet.StartsWith('\\')
 
-# ---- La revue : remontée jusqu'à ausgabe.yaml ----
+# ---- La revue ou le livre : remontée jusqu'à ausgabe.yaml ou buch.yaml ----
 $racine = Find-SzhRacineRevue $md.Directory
 
 if ($null -eq $racine) {
-  # Hors de toute revue : on ouvre le fichier seul, ouvrir un dossier arbitraire serait
-  # pire, et on annonce la limite.
+  # Hors de toute revue ou livre : on ouvre le fichier seul, ouvrir un dossier arbitraire
+  # serait pire, et on annonce la limite. Le message T 'openmd.horsrevue' sert aux deux --
+  # il ne nomme ni l'un ni l'autre.
   Write-SzhTrace ('hors revue : ' + $complet)
   Start-SzhCodiumFichier $codium @($complet)
   if ($estUnc) { Show-SzhMessage (T 'openmd.reseau') } else { Show-SzhMessage (T 'openmd.horsrevue') }
   exit 0
 }
 
-# Dans une revue : dossier puis fichier. Article ou simple .md à la racine du numéro, le
-# geste est le même, seule la trace change. Cas nominal : aucun message.
+# Dans une revue ou un livre : dossier puis fichier, le même geste dans les deux cas -- seule
+# la trace en dit lequel, pour ne rien supposer d'autre en aval.
+$estLivre = Test-Path -LiteralPath (Join-Path $racine.FullName 'buch.yaml')
 $estArticle = Test-SzhArticle $md $racine.FullName
-if ($estArticle) {
+if ($estLivre) {
+  Write-SzhTrace ('fichier {0} du livre {1}' -f $md.Name, $racine.Name)
+} elseif ($estArticle) {
   Write-SzhTrace ('article {0} de la revue {1}' -f $md.BaseName, $racine.Name)
 } else {
   Write-SzhTrace ('fichier {0} (hors articles) de la revue {1}' -f $md.Name, $racine.Name)

@@ -2,7 +2,22 @@
 # Compatibilité : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).
 
 $ErrorActionPreference = 'Stop'
-[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
+# Les trois fils, dans l'ordre de leurs dépendances : les textes avant que T (plus bas) ne
+# s'en serve, les produits après les fonctions de config qu'ils appellent (résolues à
+# l'appel, jamais à la lecture), le shell en dernier car il se sert des deux premiers.
+# $SzhBaseUtilisateur (plus bas) est calculé après ce dot-source et n'en dépend pas, mais
+# szh-taches.ps1, dot-sourcé ensuite par les scripts appelants, le lit dès son chargement.
+. "$PSScriptRoot\szh-textes.ps1"
+. "$PSScriptRoot\szh-produits.ps1"
+. "$PSScriptRoot\szh-shell.ps1"
+# Affectation, pas -bor : un -bor sur la valeur en place garde SSL3/TLS 1.0 si le poste les
+# avait déjà, aux côtés de TLS 1.2. Tls13 en plus quand l'énumération de ce .NET la connaît
+# -- absente sur des postes plus anciens, d'où le try/catch plutôt qu'une casse à l'ouverture
+# même du script.
+$szhTls = [Net.SecurityProtocolType]::Tls12
+try { $szhTls = $szhTls -bor [Net.SecurityProtocolType]::Tls13 } catch { }
+[Net.ServicePointManager]::SecurityProtocol = $szhTls
 
 # Proxy d'entreprise : sans ces deux lignes, un proxy qui demande une authentification rend
 # 407 à chaque téléchargement, et l'installation d'un poste devient impossible sans qu'un
@@ -26,6 +41,7 @@ foreach ($nuisible in 'ELECTRON_RUN_AS_NODE', 'ELECTRON_NO_ATTACH_CONSOLE') {
 }
 
 $script:SzhBase       = 'C:\ProgramData\SZH'
+if ($env:SZH_BASE) { $script:SzhBase = $env:SZH_BASE }   # tests : arborescence jetable, $SzhToolkit et $SzhStaging en dérivent ci-dessous
 $script:SzhToolkit    = Join-Path $SzhBase 'toolkit'
 $script:SzhStaging    = Join-Path $SzhBase 'staging'
 $script:SzhLogs       = Join-Path $SzhBase 'logs'
@@ -58,480 +74,15 @@ if ($env:SZH_LANGUE -and (@('fr', 'de', 'en') -contains $env:SZH_LANGUE.ToLower(
   $script:SzhLangue = $env:SZH_LANGUE.ToLower()
 }
 
-$script:SzhTextes = @{
-  fr = @{
-    'app.titre'         = 'SZH/CSPS – Toolchain de publication'
-    'maj.soustitre'     = 'Mise à jour de l’’outil Revue'
-    'maj.fenetre'       = 'Mise à jour de l’’outil Revue SZH'
-    'maj.intro1'        = 'Vos textes et vos revues ne sont pas touchés par cette opération.'
-    'maj.intro2'        = 'Vous pouvez continuer à travailler pendant ce temps.'
-    'maj.verif'         = 'Vérification de la version disponible…'
-    'maj.cible'         = 'Version cible : {0}'
-    'maj.e1'            = '1/5  Maquette et réglages…'
-    'maj.e1.ok'         = 'Maquette et réglages à jour.'
-    'maj.deja'          = 'Déjà à jour.'
-    'maj.e2'            = '2/5  Environnement de fabrication du PDF…'
-    'maj.dl.gros'       = 'C’’est le plus gros téléchargement – merci de patienter.'
-    'maj.dl.cache'      = 'Archive déjà téléchargée, réutilisée.'
-    'maj.install'       = 'Installation (l’’ancien environnement est jetable : aucune donnée dedans)…'
-    'maj.env.ok'        = 'Environnement {0} installé.'
-    'maj.env.deja'      = 'Déjà à jour ({0}).'
-    'maj.e3'            = '3/5  Extensions de l’’éditeur…'
-    'maj.ext.ok'        = 'Extensions à jour.'
-    'maj.ext.ratee'     = 'Ces extensions n’’ont pas pu être posées : {0}. Le reste de la mise à jour a bien eu lieu. Fermez complètement l’’éditeur – toutes ses fenêtres – puis relancez cette mise à jour : il refuse de reposer une extension tant qu’’il n’’a pas redémarré.'
-    'maj.codium.absent' = 'L’’éditeur n’’est pas installé sur ce poste : ses extensions ont été laissées de côté, tout le reste est à jour. Faites faire l’’installation initiale du poste par le service informatique, puis relancez cette mise à jour.'
-    'maj.e4'            = '4/5  Réglages de l’’éditeur…'
-    'maj.e4.ok'         = 'Réglages appliqués, raccourcis du menu Démarrer à jour.'
-    'maj.e5'            = '5/5  Nettoyage…'
-    'maj.e5.ok'         = 'Terminé.'
-    'maj.fini'          = '✓ Tout est à jour (version {0}). Bonne rédaction !'
-    'maj.ferme'         = 'Cette fenêtre se ferme toute seule dans quelques secondes.'
-    'etape.prepa'       = 'préparation'
-    'etape.manifest'    = 'lecture de la version disponible'
-    'etape.toolkit'     = 'mise à jour de la maquette et des réglages'
-    'etape.env'         = 'mise à jour de l’’environnement de fabrication'
-    'etape.ext'         = 'mise à jour des extensions de l’’éditeur'
-    'etape.reglages'    = 'application des réglages de l’’éditeur'
-    'etape.nettoyage'   = 'nettoyage'
-    'err.empreinte'     = 'Le fichier téléchargé « {0} » est arrivé abîmé : sa signature ne correspond pas. Rien n’’a été installé – mieux vaut s’’arrêter que d’’installer un fichier douteux. Relancez la mise à jour : le fichier sera retéléchargé. Si cela se répète, c’’est la connexion qui coupe en cours de route.'
-    'err.wsl'           = 'L’’environnement qui fabrique les PDF n’’a pas pu être installé. Fermez l’’éditeur et les revues ouvertes, puis relancez la mise à jour : l’’installation ne peut pas remplacer cet environnement pendant qu’’une compilation s’’en sert. Si cela ne suffit pas, redémarrez le poste. Sans lui, aucun PDF ne peut être produit.'
-    # Trois causes, trois gestes : « occupé » ci-dessus se ferme en fermant l'éditeur, mais
-    # un dossier déjà pris ne se ferme pas et la virtualisation ne s'active pas sans le
-    # service informatique. Un seul message pour les trois envoyait le support fermer un
-    # éditeur qui n'avait rien à voir — c'est arrivé.
-    'err.wsl.dossier'   = 'L’’environnement qui fabrique les PDF n’’a pas pu être installé : son dossier est déjà pris sur ce poste, sans appartenir à votre compte. Relancez la mise à jour – elle sait écarter ce reste d’’une installation précédente. Si le message revient, redémarrez le poste puis relancez-la : un environnement en marche tient encore ses fichiers.'
-    'err.wsl.moteur'    = 'L’’environnement qui fabrique les PDF s’’est installé mais refuse de démarrer. C’’est presque toujours la virtualisation, désactivée dans le firmware du poste ou par une stratégie : le service informatique doit l’’activer (VT-x / AMD-V, et la plateforme d’’hyperviseur Windows). Sans elle, aucun PDF ne peut être produit sur ce poste.'
-    'err.espace'        = 'Il ne reste que {0} Go libres sur le disque C:, et il en faut {1} pour installer l’’environnement qui fabrique les PDF. Rien n’’a été installé. Faites de la place, puis relancez la mise à jour.'
-    'maj.env.repare'    = 'Reste d’’une installation interrompue écarté.'
-    'maj.env.essai'     = 'Vérification de l’’environnement…'
-    'maj.partiel'       = '⚠ Presque tout est à jour (version {0}). Ce point est resté en panne : {1}'
-    'err.titre'         = 'Une erreur est survenue pendant la mise à jour.'
-    'err.l.etape'       = 'Étape   : {0}'
-    'err.l.detail'      = 'Détail  : {0}'
-    'err.l.journal'     = 'Journal : {0}'
-    'err.rassure'       = 'Pas d’’inquiétude : vos textes et vos revues ne sont pas touchés.'
-    'err.retry'         = 'La mise à jour réessaiera toute seule. Si le problème persiste : {0}'
-    'err.menu'          = '[E] préparer un e-mail au support   [O] ouvrir le journal   [autre touche] fermer'
-    'mail.sujet'        = 'Probleme de mise a jour - outil Revue SZH ({0})'
-    'mail.corps'        = "Bonjour,`r`n`r`nLa mise a jour de l'outil Revue a rencontre un probleme.`r`n`r`nPoste   : {0}`r`nEtape   : {1}`r`nDetail  : {2}`r`nJournal : {3}`r`n`r`nMerci de joindre le fichier journal ci-dessus a ce message."
-    'dl.format'         = '{0:N1} / {1:N1} Mo'
-    'lanceur.choisir'   = 'Choisissez la revue à ouvrir :'
-    'lanceur.ouvrir'    = 'Ouvrir'
-    'lanceur.annuler'   = 'Annuler'
-    'lanceur.modifie'   = '{0}    (modifiée le {1})'
-    'lanceur.codium'    = 'L’’éditeur VSCodium est introuvable sur ce poste. Contact : {0}'
-    'lanceur.vide'      = 'Aucune revue sur ce poste pour l’’instant – « Nouvelle revue… » pour commencer.'
-    'lanceur.nouvelle'          = 'Nouvelle revue…'
-    # Un numéro se décrit par son année et son rang ; le volume et le nom du dossier s'en
-    # déduisent. Plus rien à saisir qui ne soit une donnée du numéro.
-    'lanceur.nouvelle.annee'    = 'Année :'
-    'lanceur.nouvelle.numero'   = 'Numéro :'
-    'lanceur.nouvelle.volume'   = 'Volume :'
-    'lanceur.nouvelle.volume.manuel' = 'Régler le volume manuellement (déconseillé)'
-    'lanceur.nouvelle.volume.auto'   = 'Revenir au volume calculé'
-    'lanceur.nouvelle.dossier'  = 'Dossier : {0}'
-    'lanceur.nouvelle.ou'       = "Il sera créé dans :`n{0}"
-    'lanceur.nouvelle.existe'   = 'Un dossier « {0} » existe déjà à cet emplacement.'
-    'lanceur.nouvelle.doublon'  = "Le volume {0}, numéro {1} existe déjà : c'est le numéro « {2} », ici :`n{3}"
-    'lanceur.nouvelle.doublon.arch'  = 'Ce numéro-là est archivé – un numéro archivé reste un numéro publié.'
-    'lanceur.nouvelle.doublon.suite' = 'Deux numéros ne peuvent pas porter le même volume et le même numéro. Supprimez d’’abord celui qui existe, puis recréez celui-ci.'
-    'lanceur.nouvelle.erreur'   = "La création de la revue a échoué :`n{0}"
-    # Cycle de vie du numéro : listes du lanceur, version du logiciel, mode test.
-    'maj.concurrente'           = 'Une mise à jour est déjà en cours dans une autre fenêtre – celle-ci se ferme.'
-    'lanceur.versions.chargement' = 'Recherche des versions publiées…'
-    'lanceur.versions.horsligne.deja' = "Aucune version n'est installable hors ligne sur ce poste : seule la version déjà installée est proposée."
-    'lanceur.erreur'            = "Le lanceur n'a pas pu démarrer :`n`n{0}`n`nContact : {1}"
-    'lanceur.titre'             = 'Revues SZH – {racine}'
-    'lanceur.titre.zs'          = 'Zeitschriften SZH – {racine}'
-    'lanceur.choisir.zs'        = 'Choisissez la Zeitschrift à ouvrir :'
-    'lanceur.vide.zs'           = 'Aucune Zeitschrift sur ce poste pour l’’instant – « Nouvelle revue… » pour commencer.'
-    'lien.invalide'             = "Ce lien n'est pas un lien de revue SZH valide :`n`n{0}"
-    'lien.introuvable'          = "Ce lien renvoie au numéro « {0} » ({1}), introuvable sur ce poste.`n`nVérifiez que OneDrive a fini de synchroniser le dossier, puis réessayez. Vous pouvez aussi ouvrir le numéro à la main depuis « Revues SZH »."
-    'lanceur.hors'              = '{0} revue(s) hors arborescence dans {1} – à déplacer.'
-    'lanceur.encours'           = 'En cours :'
-    'lanceur.archives'          = 'Archivées :'
-    'lanceur.vide.archives'     = 'Aucune revue archivée.'
-    'lanceur.version'           = 'Version : {0}'
-    'lanceur.version.inconnue'  = 'Version : inconnue'
-    # Où vivent les numéros, dit dans les deux racines et non plus en test seulement : avec
-    # le titre de la fenêtre, c'est le seul endroit qui rende la racine active visible, et le
-    # chemin complet suffit à la reconnaître (« Revues-TESTING » ou « 2_Produkte »).
-    'lanceur.test'              = 'Revue dans : {0}'
-    'lanceur.test.zs'           = 'Zeitschrift dans : {0}'
-    'racine.test'               = 'dossier de test'
-    'racine.prod'               = 'dossier de production'
-    'lanceur.versions.bouton'   = 'Version du logiciel…'
-    'lanceur.versions.titre'    = 'Version du logiciel'
-    'lanceur.versions.intro'    = 'Version installée : {0}. Choisissez la version à installer :'
-    'lanceur.versions.installee' = '{0}    (installée)'
-    'lanceur.versions.locale'   = '{0}    (installable hors ligne)'
-    'lanceur.versions.installer' = 'Installer'
-    'lanceur.versions.horsligne' = "Impossible de lister les versions publiées : pas de connexion, ou trop de demandes vers GitHub depuis ce réseau.`nSeules les versions installables hors ligne sont proposées."
-    'lanceur.versions.vide'     = 'Aucune version disponible sur ce poste.'
-    'lanceur.versions.avert'    = "Changer de version remplace la maquette, l'environnement de fabrication du PDF et les extensions de l'éditeur.`n`nFermez les fenêtres de rédaction avant de continuer, puis redémarrez l'éditeur à la fin.`n`nInstaller la version {0} ?"
-    # Archivage / désarchivage d'une revue (archive-revue.ps1)
-    'arch.titre'                = 'Archivage de la revue'
-    'arch.titre.des'            = 'Désarchivage de la revue'
-    'arch.attente'              = 'Attente de la fermeture de l’’éditeur…'
-    'arch.deplacement'          = 'Déplacement vers {0}…'
-    'arch.ok'                   = 'Revue déplacée : {0}'
-    'arch.rouvre'              = 'Réouverture de la revue…'
-    'arch.err.introuvable'      = 'Dossier de revue introuvable : {0}'
-    'arch.err.existe'           = 'Un dossier « {0} » existe déjà à destination – rien n’’a été déplacé.'
-    'arch.err.verrou'           = "Le dossier est encore utilisé par une autre application après {0} s — rien n'a été déplacé. Fermez l'éditeur et l'aperçu PDF, puis réessayez."
-    'arch.err.emplacement'      = 'Le numéro « {0} » ne dit pas de quelle revue il fait partie : on ne sait donc pas dans quel dossier le ranger. Rien n’’a été déplacé. Ouvrez ce numéro dans l’’éditeur, choisissez la revue dans « Métadonnées du numéro », enregistrez, puis relancez l’’archivage.'
-    'arch.err.suite'            = 'Rien n’’a été déplacé : la revue est restée où elle était. En cas de doute : {0}'
-    # Double-clic sur un .md (open-md.ps1) : messages des cas anormaux seulement.
-    'openmd.vide'         = "Aucun fichier à ouvrir.`n`nCe raccourci s'utilise en double-cliquant un fichier .md."
-    'openmd.introuvable'  = "Ce fichier est introuvable.`n`nIl a peut-être été déplacé ou renommé, ou OneDrive ne l'a pas encore synchronisé."
-    'openmd.horsrevue'    = "Ce fichier ne fait pas partie d'une revue : l'aperçu et la régénération ne seront pas actifs.`n`nIl s'ouvre quand même, pour le lire ou le corriger."
-    'openmd.reseau'       = "Ce fichier est dans un dossier réseau. Il s'ouvre, mais la fabrication du PDF et l'aperçu ne fonctionnent pas depuis un chemin réseau.`n`nPour travailler dessus, copiez la revue dans OneDrive ou sur le disque de ce poste."
-    # Raccourcis du menu Démarrer. Ces deux premiers noms sont ceux des FICHIERS .lnk :
-    # les changer renomme les entrées du menu (l'ancienne est retirée, jamais doublée).
-    'raccourci.maj.nom'   = 'Mise à jour de l’’outil Revue'
-    'raccourci.maj.desc'  = 'Installer la dernière version de l’’outil Revue SZH. Une fenêtre s’’ouvre et montre ce qui se passe.'
-    'raccourci.revue.desc' = 'Ouvrir une revue SZH'
-    'raccourci.zs.desc'   = 'Ouvrir une Zeitschrift SZH'
-    'raccourci.livre.desc' = 'Ouvrir un livre SZH-CSPS'
-    # Lanceur « Books SZH-CSPS » : un livre n'a ni volume ni numéro, il a un titre, une
-    # année et une référence B — voir open-livre.ps1.
-    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
-    'lanceur.choisir.livre'        = 'Choisissez le livre à ouvrir :'
-    'lanceur.vide.livre'           = 'Aucun livre sur ce poste pour l’’instant – « Nouveau livre… » pour commencer.'
-    'lanceur.nouvelle.livre'       = 'Nouveau livre…'
-    'lanceur.test.livre'           = 'Livre dans : {0}'
-    'lanceur.modifie.livre'        = '{0}    (modifié le {1})'
-    'lanceur.vide.archives.livre'  = 'Aucun livre archivé.'
-    'lanceur.nouvelle.livre.titre'      = 'Titre :'
-    'lanceur.nouvelle.livre.reference'  = 'Référence B :'
-    'lanceur.nouvelle.livre.type'       = 'Type :'
-    'lanceur.nouvelle.livre.type.mono'      = 'Monographie'
-    'lanceur.nouvelle.livre.type.collectif' = 'Ouvrage collectif'
-    'lanceur.nouvelle.livre.maquette'        = 'Maquette :'
-    'lanceur.nouvelle.livre.maquette.normal' = 'Normal'
-    'lanceur.nouvelle.livre.maquette.falc'   = 'FALC'
-    'lanceur.nouvelle.livre.format'          = 'Format :'
-    'lanceur.nouvelle.livre.format.standard' = 'Standard (155 × 225 mm)'
-    'lanceur.nouvelle.livre.format.a4'       = 'A4 (210 × 297 mm)'
-    'lanceur.nouvelle.livre.titre.manque'    = 'Le titre du livre est nécessaire pour créer son dossier.'
-    'lanceur.nouvelle.livre.doublon'         = "La référence B{0} existe déjà : c'est le livre « {1} », ici :`n{2}"
-    'lanceur.nouvelle.livre.doublon.arch'    = 'Ce livre-là est archivé – un livre archivé reste un livre publié.'
-    'lanceur.nouvelle.livre.doublon.suite'   = 'Deux livres ne peuvent pas porter la même référence B. Supprimez d’’abord celui qui existe, puis recréez celui-ci.'
-    'lanceur.nouvelle.livre.erreur'          = "La création du livre a échoué :`n{0}"
-  }
-  de = @{
-    'app.titre'         = 'SZH/CSPS – Publikations-Toolchain'
-    'maj.soustitre'     = 'Aktualisierung des Redaktionstools'
-    'maj.fenetre'       = 'Aktualisierung – SZH-Redaktionstool'
-    'maj.intro1'        = 'Ihre Texte und Zeitschriften werden dabei nicht verändert.'
-    'maj.intro2'        = 'Sie können währenddessen weiterarbeiten.'
-    'maj.verif'         = 'Prüfe die verfügbare Version…'
-    'maj.cible'         = 'Zielversion: {0}'
-    'maj.e1'            = '1/5  Layout und Einstellungen…'
-    'maj.e1.ok'         = 'Layout und Einstellungen sind aktuell.'
-    'maj.deja'          = 'Bereits aktuell.'
-    'maj.e2'            = '2/5  PDF-Erzeugungsumgebung…'
-    'maj.dl.gros'       = 'Dies ist der grösste Download – bitte etwas Geduld.'
-    'maj.dl.cache'      = 'Archiv bereits heruntergeladen, wird wiederverwendet.'
-    'maj.install'       = 'Installation (die alte Umgebung ist wegwerfbar: sie enthält keine Daten)…'
-    'maj.env.ok'        = 'Umgebung {0} installiert.'
-    'maj.env.deja'      = 'Bereits aktuell ({0}).'
-    'maj.e3'            = '3/5  Editor-Erweiterungen…'
-    'maj.ext.ok'        = 'Erweiterungen sind aktuell.'
-    'maj.ext.ratee'     = 'Diese Erweiterungen konnten nicht gesetzt werden: {0}. Der Rest der Aktualisierung ist erfolgt. Schliessen Sie den Editor vollständig – alle Fenster – und starten Sie diese Aktualisierung erneut: er setzt eine Erweiterung erst nach einem Neustart wieder.'
-    'maj.codium.absent' = 'Der Editor ist auf diesem Rechner nicht installiert: seine Erweiterungen wurden übersprungen, alles andere ist aktuell. Lassen Sie die Ersteinrichtung des Rechners von der Informatik durchführen und starten Sie diese Aktualisierung danach erneut.'
-    'maj.e4'            = '4/5  Editor-Einstellungen…'
-    'maj.e4.ok'         = 'Einstellungen angewendet, Verknüpfungen im Startmenü aktualisiert.'
-    'maj.e5'            = '5/5  Aufräumen…'
-    'maj.e5.ok'         = 'Fertig.'
-    'maj.fini'          = '✓ Alles ist aktuell (Version {0}). Gutes Schreiben!'
-    'maj.ferme'         = 'Dieses Fenster schliesst sich in wenigen Sekunden von selbst.'
-    'etape.prepa'       = 'Vorbereitung'
-    'etape.manifest'    = 'Abruf der verfügbaren Version'
-    'etape.toolkit'     = 'Aktualisierung von Layout und Einstellungen'
-    'etape.env'         = 'Aktualisierung der Erzeugungsumgebung'
-    'etape.ext'         = 'Aktualisierung der Editor-Erweiterungen'
-    'etape.reglages'    = 'Anwenden der Editor-Einstellungen'
-    'etape.nettoyage'   = 'Aufräumen'
-    'err.empreinte'     = 'Die heruntergeladene Datei «{0}» ist beschädigt angekommen: ihre Signatur stimmt nicht. Es wurde nichts installiert – besser abbrechen als eine zweifelhafte Datei einspielen. Starten Sie die Aktualisierung erneut, die Datei wird neu heruntergeladen. Wiederholt sich das, bricht die Verbindung unterwegs ab.'
-    'err.wsl'           = 'Die Umgebung, die die PDF erzeugt, konnte nicht installiert werden. Schliessen Sie den Editor und die offenen Ausgaben und starten Sie die Aktualisierung erneut: die Installation kann diese Umgebung nicht ersetzen, während eine Kompilierung sie benutzt. Hilft das nicht, starten Sie den Rechner neu. Ohne sie lässt sich kein PDF erzeugen.'
-    'err.wsl.dossier'   = 'Die Umgebung, die die PDF erzeugt, konnte nicht installiert werden: ihr Ordner ist auf diesem Rechner schon belegt und gehört nicht Ihrem Konto. Starten Sie die Aktualisierung erneut – sie kann diesen Rest einer früheren Installation beiseiteschieben. Kommt die Meldung wieder, starten Sie den Rechner neu und dann die Aktualisierung: eine laufende Umgebung hält ihre Dateien noch fest.'
-    'err.wsl.moteur'    = 'Die Umgebung, die die PDF erzeugt, wurde installiert, startet aber nicht. Fast immer ist es die Virtualisierung, die in der Firmware des Rechners oder durch eine Richtlinie abgeschaltet ist: die Informatik muss sie einschalten (VT-x / AMD-V und die Windows-Hypervisor-Plattform). Ohne sie lässt sich auf diesem Rechner kein PDF erzeugen.'
-    'err.espace'        = 'Auf Laufwerk C: sind nur noch {0} GB frei, gebraucht werden {1} GB für die Umgebung, die die PDF erzeugt. Es wurde nichts installiert. Schaffen Sie Platz und starten Sie die Aktualisierung erneut.'
-    'maj.env.repare'    = 'Rest einer abgebrochenen Installation beiseitegeschoben.'
-    'maj.env.essai'     = 'Prüfung der Umgebung…'
-    'maj.partiel'       = '⚠ Fast alles ist aktuell (Version {0}). Dieser Punkt bleibt gestört: {1}'
-    'err.titre'         = 'Bei der Aktualisierung ist ein Fehler aufgetreten.'
-    'err.l.etape'       = 'Schritt  : {0}'
-    'err.l.detail'      = 'Detail   : {0}'
-    'err.l.journal'     = 'Protokoll: {0}'
-    'err.rassure'       = 'Keine Sorge: Ihre Texte und Zeitschriften sind nicht betroffen.'
-    'err.retry'         = 'Die Aktualisierung versucht es später automatisch erneut. Falls das Problem bleibt: {0}'
-    'err.menu'          = '[E] E-Mail an den Support vorbereiten   [O] Protokoll öffnen   [andere Taste] schliessen'
-    'mail.sujet'        = 'Problem bei der Aktualisierung - SZH-Redaktionstool ({0})'
-    'mail.corps'        = "Guten Tag,`r`n`r`nBei der Aktualisierung des SZH-Redaktionstools ist ein Problem aufgetreten.`r`n`r`nComputer  : {0}`r`nSchritt   : {1}`r`nDetail    : {2}`r`nProtokoll : {3}`r`n`r`nBitte haengen Sie die oben genannte Protokolldatei an diese Nachricht an."
-    'dl.format'         = '{0:N1} / {1:N1} MB'
-    'lanceur.choisir'   = 'Wählen Sie die zu öffnende Zeitschrift:'
-    'lanceur.ouvrir'    = 'Öffnen'
-    'lanceur.annuler'   = 'Abbrechen'
-    'lanceur.modifie'   = '{0}    (geändert am {1})'
-    'lanceur.codium'    = 'Der Editor VSCodium wurde auf diesem Computer nicht gefunden. Kontakt: {0}'
-    'lanceur.vide'      = 'Noch keine Zeitschrift auf diesem Computer – mit «Neue Zeitschrift…» beginnen.'
-    'lanceur.nouvelle'          = 'Neue Zeitschrift…'
-    'lanceur.nouvelle.annee'    = 'Jahr:'
-    'lanceur.nouvelle.numero'   = 'Nummer:'
-    'lanceur.nouvelle.volume'   = 'Band:'
-    'lanceur.nouvelle.volume.manuel' = 'Band manuell einstellen (nicht empfohlen)'
-    'lanceur.nouvelle.volume.auto'   = 'Zurück zum berechneten Band'
-    'lanceur.nouvelle.dossier'  = 'Ordner: {0}'
-    'lanceur.nouvelle.ou'       = "Die Ausgabe wird erstellt in:`n{0}"
-    'lanceur.nouvelle.existe'   = 'Ein Ordner «{0}» existiert an diesem Ort bereits.'
-    'lanceur.nouvelle.doublon'  = "Band {0}, Nummer {1} existiert bereits: es ist die Ausgabe « {2} », hier:`n{3}"
-    'lanceur.nouvelle.doublon.arch'  = 'Jene Ausgabe ist archiviert – eine archivierte Ausgabe bleibt eine veröffentlichte Ausgabe.'
-    'lanceur.nouvelle.doublon.suite' = 'Zwei Ausgaben können nicht denselben Band und dieselbe Nummer tragen. Löschen Sie zuerst die vorhandene Ausgabe und erstellen Sie diese danach neu.'
-    'lanceur.nouvelle.erreur'   = "Die Zeitschrift konnte nicht erstellt werden:`n{0}"
-    # Lebenszyklus der Ausgabe
-    'maj.concurrente'           = 'In einem anderen Fenster läuft bereits eine Aktualisierung – dieses schliesst sich.'
-    'lanceur.versions.chargement' = 'Suche nach veröffentlichten Versionen…'
-    'lanceur.versions.horsligne.deja' = "Auf diesem Computer ist keine Version offline installierbar: es wird nur die bereits installierte Version angeboten."
-    'lanceur.erreur'            = "Der Starter konnte nicht gestartet werden:`n`n{0}`n`nKontakt: {1}"
-    'lanceur.titre'             = 'Revues SZH – {racine}'
-    'lanceur.titre.zs'          = 'Zeitschriften SZH – {racine}'
-    'lanceur.choisir.zs'        = 'Wählen Sie die zu öffnende Zeitschrift:'
-    'lanceur.vide.zs'           = 'Noch keine Zeitschrift auf diesem Computer – mit «Neue Zeitschrift…» beginnen.'
-    'lien.invalide'             = "Dieser Link ist kein gültiger SZH-Zeitschriftenlink:`n`n{0}"
-    'lien.introuvable'          = "Dieser Link verweist auf die Ausgabe « {0} » ({1}), die auf diesem Computer nicht gefunden wurde.`n`nPrüfen Sie, ob OneDrive den Ordner fertig synchronisiert hat, und versuchen Sie es erneut. Sie können die Ausgabe auch von Hand über « Zeitschriften SZH » öffnen."
-    'lanceur.hors'              = '{0} Zeitschrift(en) ausserhalb der Ablage in {1} – zu verschieben.'
-    'lanceur.encours'           = 'In Arbeit:'
-    'lanceur.archives'          = 'Archiviert:'
-    'lanceur.vide.archives'     = 'Keine archivierte Zeitschrift.'
-    'lanceur.version'           = 'Version: {0}'
-    'lanceur.version.inconnue'  = 'Version: unbekannt'
-    'lanceur.test'              = 'Revue in: {0}'
-    'lanceur.test.zs'           = 'Zeitschrift in: {0}'
-    'racine.test'               = 'Testordner'
-    'racine.prod'               = 'Produktionsordner'
-    'lanceur.versions.bouton'   = 'Software-Version…'
-    'lanceur.versions.titre'    = 'Software-Version'
-    'lanceur.versions.intro'    = 'Installierte Version: {0}. Wählen Sie die zu installierende Version:'
-    'lanceur.versions.installee' = '{0}    (installiert)'
-    'lanceur.versions.locale'   = '{0}    (offline installierbar)'
-    'lanceur.versions.installer' = 'Installieren'
-    'lanceur.versions.horsligne' = "Die veröffentlichten Versionen konnten nicht abgerufen werden: keine Verbindung, oder zu viele Anfragen an GitHub aus diesem Netz.`nEs werden nur die offline installierbaren Versionen angeboten."
-    'lanceur.versions.vide'     = 'Keine Version auf diesem Computer verfügbar.'
-    'lanceur.versions.avert'    = "Ein Versionswechsel ersetzt das Layout, die PDF-Erzeugungsumgebung und die Editor-Erweiterungen.`n`nSchliessen Sie zuerst die Redaktionsfenster und starten Sie den Editor am Ende neu.`n`nVersion {0} installieren?"
-    # Archivieren / Dearchivieren (archive-revue.ps1)
-    'arch.titre'                = 'Archivierung der Zeitschrift'
-    'arch.titre.des'            = 'Dearchivierung der Zeitschrift'
-    'arch.attente'              = 'Warten auf das Schliessen des Editors…'
-    'arch.deplacement'          = 'Verschieben nach {0}…'
-    'arch.ok'                   = 'Zeitschrift verschoben: {0}'
-    'arch.rouvre'              = 'Zeitschrift wird wieder geöffnet…'
-    'arch.err.introuvable'      = 'Ordner der Zeitschrift nicht gefunden: {0}'
-    'arch.err.existe'           = 'Am Ziel existiert bereits ein Ordner «{0}» – es wurde nichts verschoben.'
-    'arch.err.verrou'           = "Der Ordner wird nach {0} s noch von einer anderen Anwendung verwendet — es wurde nichts verschoben. Schliessen Sie den Editor und die PDF-Vorschau und versuchen Sie es erneut."
-    'arch.err.emplacement'      = 'Die Ausgabe «{0}» sagt nicht, zu welcher Zeitschrift sie gehört: darum ist nicht bekannt, in welchen Ordner sie kommt. Es wurde nichts verschoben. Öffnen Sie diese Ausgabe im Editor, wählen Sie die Zeitschrift unter «Metadaten der Ausgabe», speichern Sie und starten Sie die Archivierung erneut.'
-    'arch.err.suite'            = 'Es wurde nichts verschoben: die Zeitschrift ist an ihrem Platz geblieben. Bei Zweifeln: {0}'
-    # Doppelklick auf eine .md-Datei (open-md.ps1): nur die anormalen Fälle.
-    'openmd.vide'         = "Keine Datei zum Öffnen.`n`nDieser Befehl wird per Doppelklick auf eine .md-Datei verwendet."
-    'openmd.introuvable'  = "Diese Datei wurde nicht gefunden.`n`nSie wurde vielleicht verschoben oder umbenannt, oder OneDrive hat sie noch nicht synchronisiert."
-    'openmd.horsrevue'    = "Diese Datei gehört zu keiner Zeitschrift: Vorschau und Neuerzeugung sind nicht aktiv.`n`nSie wird trotzdem geöffnet, zum Lesen oder Korrigieren."
-    'openmd.reseau'       = "Diese Datei liegt in einem Netzwerkordner. Sie wird geöffnet, aber die PDF-Erzeugung und die Vorschau funktionieren von einem Netzwerkpfad aus nicht.`n`nKopieren Sie die Zeitschrift zum Arbeiten nach OneDrive oder auf die Festplatte dieses Computers."
-    # Verknüpfungen im Startmenü. Die ersten beiden Namen sind DATEINAMEN (.lnk):
-    # werden sie geändert, wird der Eintrag umbenannt — der alte wird entfernt, nie doppelt.
-    'raccourci.maj.nom'   = 'Aktualisierung des Redaktionstools'
-    'raccourci.maj.desc'  = 'Die neueste Version des SZH-Redaktionstools installieren. Ein Fenster öffnet sich und zeigt, was geschieht.'
-    'raccourci.revue.desc' = 'Eine SZH-Revue öffnen'
-    'raccourci.zs.desc'   = 'Eine SZH-Zeitschrift öffnen'
-    'raccourci.livre.desc' = 'Ein SZH-CSPS-Buch öffnen'
-    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
-    'lanceur.choisir.livre'        = 'Wählen Sie das zu öffnende Buch:'
-    'lanceur.vide.livre'           = 'Noch kein Buch auf diesem Computer – mit «Neues Buch…» beginnen.'
-    'lanceur.nouvelle.livre'       = 'Neues Buch…'
-    'lanceur.test.livre'           = 'Buch in: {0}'
-    'lanceur.modifie.livre'        = '{0}    (geändert am {1})'
-    'lanceur.vide.archives.livre'  = 'Kein archiviertes Buch.'
-    'lanceur.nouvelle.livre.titre'      = 'Titel:'
-    'lanceur.nouvelle.livre.reference'  = 'B-Referenz:'
-    'lanceur.nouvelle.livre.type'       = 'Typ:'
-    'lanceur.nouvelle.livre.type.mono'      = 'Monografie'
-    'lanceur.nouvelle.livre.type.collectif' = 'Sammelband'
-    'lanceur.nouvelle.livre.maquette'        = 'Layout:'
-    'lanceur.nouvelle.livre.maquette.normal' = 'Normal'
-    'lanceur.nouvelle.livre.maquette.falc'   = 'FALC'
-    'lanceur.nouvelle.livre.format'          = 'Format:'
-    'lanceur.nouvelle.livre.format.standard' = 'Standard (155 × 225 mm)'
-    'lanceur.nouvelle.livre.format.a4'       = 'A4 (210 × 297 mm)'
-    'lanceur.nouvelle.livre.titre.manque'    = 'Der Titel des Buchs wird benötigt, um seinen Ordner anzulegen.'
-    'lanceur.nouvelle.livre.doublon'         = "Die B-Referenz {0} existiert bereits: es ist das Buch «{1}», hier:`n{2}"
-    'lanceur.nouvelle.livre.doublon.arch'    = 'Jenes Buch ist archiviert – ein archiviertes Buch bleibt ein veröffentlichtes Buch.'
-    'lanceur.nouvelle.livre.doublon.suite'   = 'Zwei Bücher können nicht dieselbe B-Referenz tragen. Löschen Sie zuerst das vorhandene Buch und erstellen Sie dieses danach neu.'
-    'lanceur.nouvelle.livre.erreur'          = "Das Buch konnte nicht erstellt werden:`n{0}"
-  }
-  en = @{
-    'app.titre'         = 'SZH/CSPS — Publishing toolchain'
-    'maj.soustitre'     = 'Journal tool update'
-    'maj.fenetre'       = 'SZH journal tool — update'
-    'maj.intro1'        = 'Your texts and journals are not affected by this operation.'
-    'maj.intro2'        = 'You can keep working in the meantime.'
-    'maj.verif'         = 'Checking the available version…'
-    'maj.cible'         = 'Target version: {0}'
-    'maj.e1'            = '1/5  Layout and settings…'
-    'maj.e1.ok'         = 'Layout and settings up to date.'
-    'maj.deja'          = 'Already up to date.'
-    'maj.e2'            = '2/5  PDF build environment…'
-    'maj.dl.gros'       = 'This is the largest download — please be patient.'
-    'maj.dl.cache'      = 'Archive already downloaded, reusing it.'
-    'maj.install'       = 'Installing (the old environment is disposable: it holds no data)…'
-    'maj.env.ok'        = 'Environment {0} installed.'
-    'maj.env.deja'      = 'Already up to date ({0}).'
-    'maj.e3'            = '3/5  Editor extensions…'
-    'maj.ext.ok'        = 'Extensions up to date.'
-    'maj.ext.ratee'     = 'These extensions could not be installed: {0}. The rest of the update went through. Close the editor completely — every window — then start this update again: it refuses to reinstall an extension until it has restarted.'
-    'maj.codium.absent' = 'The editor is not installed on this computer: its extensions were skipped, everything else is up to date. Have IT run the initial setup of this computer, then start this update again.'
-    'maj.e4'            = '4/5  Editor settings…'
-    'maj.e4.ok'         = 'Settings applied, Start menu shortcuts up to date.'
-    'maj.e5'            = '5/5  Cleanup…'
-    'maj.e5.ok'         = 'Done.'
-    'maj.fini'          = '✓ Everything is up to date (version {0}). Happy writing!'
-    'maj.ferme'         = 'This window will close itself in a few seconds.'
-    'etape.prepa'       = 'preparation'
-    'etape.manifest'    = 'reading the available version'
-    'etape.toolkit'     = 'updating layout and settings'
-    'etape.env'         = 'updating the build environment'
-    'etape.ext'         = 'updating editor extensions'
-    'etape.reglages'    = 'applying editor settings'
-    'etape.nettoyage'   = 'cleanup'
-    'err.empreinte'     = 'The downloaded file “{0}” arrived damaged: its signature does not match. Nothing was installed — better to stop than to install a doubtful file. Start the update again and the file will be downloaded afresh. If it keeps happening, the connection is dropping midway.'
-    'err.wsl'           = 'The environment that produces the PDFs could not be installed. Close the editor and any open issues, then start the update again: the installer cannot replace that environment while a compilation is using it. If that does not help, restart the computer. Without it, no PDF can be produced.'
-    'err.wsl.dossier'   = 'The environment that produces the PDFs could not be installed: its folder is already taken on this computer and does not belong to your account. Start the update again — it knows how to set that leftover from an earlier installation aside. If the message comes back, restart the computer and start the update again: a running environment still holds its files.'
-    'err.wsl.moteur'    = 'The environment that produces the PDFs was installed but refuses to start. This is almost always virtualisation, switched off in the computer’’s firmware or by a policy: IT must enable it (VT-x / AMD-V, and the Windows Hypervisor Platform). Without it, no PDF can be produced on this computer.'
-    'err.espace'        = 'Only {0} GB are free on drive C:, and {1} GB are needed to install the environment that produces the PDFs. Nothing was installed. Free up some space, then start the update again.'
-    'maj.env.repare'    = 'Leftover from an interrupted installation set aside.'
-    'maj.env.essai'     = 'Checking the environment…'
-    'maj.partiel'       = '⚠ Almost everything is up to date (version {0}). This one point is still broken: {1}'
-    'err.titre'         = 'An error occurred during the update.'
-    'err.l.etape'       = 'Step  : {0}'
-    'err.l.detail'      = 'Detail: {0}'
-    'err.l.journal'     = 'Log   : {0}'
-    'err.rassure'       = 'No worries: your texts and journals are not affected.'
-    'err.retry'         = 'The update will retry automatically. If the problem persists: {0}'
-    'err.menu'          = '[E] prepare a support e-mail   [O] open the log   [any other key] close'
-    'mail.sujet'        = 'Update problem - SZH journal tool ({0})'
-    'mail.corps'        = "Hello,`r`n`r`nThe SZH journal tool update ran into a problem.`r`n`r`nComputer: {0}`r`nStep    : {1}`r`nDetail  : {2}`r`nLog     : {3}`r`n`r`nPlease attach the log file above to this message."
-    'dl.format'         = '{0:N1} / {1:N1} MB'
-    'lanceur.choisir'   = 'Choose the journal to open:'
-    'lanceur.ouvrir'    = 'Open'
-    'lanceur.annuler'   = 'Cancel'
-    'lanceur.modifie'   = '{0}    (modified on {1})'
-    'lanceur.codium'    = 'The VSCodium editor was not found on this computer. Contact: {0}'
-    'lanceur.vide'      = 'No journal on this computer yet — use “New journal…” to get started.'
-    'lanceur.nouvelle'          = 'New journal…'
-    'lanceur.nouvelle.annee'    = 'Year:'
-    'lanceur.nouvelle.numero'   = 'Number:'
-    'lanceur.nouvelle.volume'   = 'Volume:'
-    'lanceur.nouvelle.volume.manuel' = 'Set the volume manually (not recommended)'
-    'lanceur.nouvelle.volume.auto'   = 'Back to the calculated volume'
-    'lanceur.nouvelle.dossier'  = 'Folder: {0}'
-    'lanceur.nouvelle.ou'       = "It will be created in:`n{0}"
-    'lanceur.nouvelle.existe'   = 'A folder named {0} already exists at this location.'
-    'lanceur.nouvelle.doublon'  = "Volume {0}, number {1} already exists — that is issue {2}, here:`n{3}"
-    'lanceur.nouvelle.doublon.arch'  = 'That issue is archived — an archived issue is still a published issue.'
-    'lanceur.nouvelle.doublon.suite' = 'Two issues cannot carry the same volume and the same number. Delete the existing one first, then create this one again.'
-    'lanceur.nouvelle.erreur'   = "Creating the journal failed:`n{0}"
-    # Issue life cycle
-    'maj.concurrente'           = 'An update is already running in another window — this one is closing.'
-    'lanceur.versions.chargement' = 'Looking for published versions…'
-    'lanceur.versions.horsligne.deja' = "No version can be installed offline on this computer: only the version already installed is offered."
-    'lanceur.erreur'            = "The launcher could not start:`n`n{0}`n`nContact: {1}"
-    'lanceur.titre'             = 'Revues SZH — {racine}'
-    'lanceur.titre.zs'          = 'Zeitschriften SZH — {racine}'
-    'lanceur.choisir.zs'        = 'Choose the Zeitschrift to open:'
-    'lanceur.vide.zs'           = 'No Zeitschrift on this computer yet — use "New journal…" to get started.'
-    'lien.invalide'             = "This is not a valid SZH journal link:`n`n{0}"
-    'lien.introuvable'          = "This link points to issue {0} ({1}), which was not found on this computer.`n`nCheck that OneDrive has finished syncing the folder, then try again. You can also open the issue by hand from the Revues SZH launcher."
-    'lanceur.hors'              = '{0} journal(s) outside the official tree in {1} — to be moved.'
-    'lanceur.encours'           = 'In progress:'
-    'lanceur.archives'          = 'Archived:'
-    'lanceur.vide.archives'     = 'No archived journal.'
-    'lanceur.version'           = 'Version: {0}'
-    'lanceur.version.inconnue'  = 'Version: unknown'
-    'lanceur.test'              = 'Revue in: {0}'
-    'lanceur.test.zs'           = 'Zeitschrift in: {0}'
-    'racine.test'               = 'test folder'
-    'racine.prod'               = 'production folder'
-    'lanceur.versions.bouton'   = 'Software version…'
-    'lanceur.versions.titre'    = 'Software version'
-    'lanceur.versions.intro'    = 'Installed version: {0}. Choose the version to install:'
-    'lanceur.versions.installee' = '{0}    (installed)'
-    'lanceur.versions.locale'   = '{0}    (installable offline)'
-    'lanceur.versions.installer' = 'Install'
-    'lanceur.versions.horsligne' = "Could not list the published versions: no connection, or too many requests to GitHub from this network.`nOnly versions installable offline are offered."
-    'lanceur.versions.vide'     = 'No version available on this computer.'
-    'lanceur.versions.avert'    = "Switching version replaces the layout, the PDF build environment and the editor extensions.`n`nClose the writing windows first, then restart the editor when it is done.`n`nInstall version {0}?"
-    # Archiving / unarchiving a journal (archive-revue.ps1)
-    'arch.titre'                = 'Archiving the journal'
-    'arch.titre.des'            = 'Unarchiving the journal'
-    'arch.attente'              = 'Waiting for the editor to close…'
-    'arch.deplacement'          = 'Moving to {0}…'
-    'arch.ok'                   = 'Journal moved: {0}'
-    'arch.rouvre'              = 'Reopening the journal…'
-    'arch.err.introuvable'      = 'Journal folder not found: {0}'
-    'arch.err.existe'           = 'A folder named “{0}” already exists at the destination — nothing was moved.'
-    'arch.err.verrou'           = "The folder is still in use by another application after {0} s — nothing was moved. Close the editor and the PDF preview, then try again."
-    'arch.err.emplacement'      = 'Issue “{0}” does not say which journal it belongs to, so there is no folder to file it in. Nothing has been moved. Open the issue in the editor, pick the journal under “Issue metadata”, save, then run the archiving again.'
-    'arch.err.suite'            = 'Nothing was moved: the journal stayed where it was. If in doubt: {0}'
-    # Double-click on a .md file (open-md.ps1): abnormal cases only.
-    'openmd.vide'         = "No file to open.`n`nThis shortcut is meant to be used by double-clicking a .md file."
-    'openmd.introuvable'  = "This file cannot be found.`n`nIt may have been moved or renamed, or OneDrive has not synced it yet."
-    'openmd.horsrevue'    = "This file is not part of a journal: the preview and automatic rebuild will not be active.`n`nIt opens anyway, so you can read or fix it."
-    'openmd.reseau'       = "This file sits on a network folder. It opens, but PDF building and the preview do not work from a network path.`n`nTo work on it, copy the journal to OneDrive or to this computer's disk."
-    # Start menu shortcuts. The first two names are .lnk FILE names: changing them
-    # renames the menu entry — the old one is removed, never left as a duplicate.
-    'raccourci.maj.nom'   = 'Update the journal tool'
-    'raccourci.maj.desc'  = 'Install the latest version of the SZH journal tool. A window opens and shows what is going on.'
-    'raccourci.revue.desc' = 'Open an SZH journal'
-    'raccourci.zs.desc'   = 'Open an SZH Zeitschrift'
-    'raccourci.livre.desc' = 'Open an SZH-CSPS book'
-    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
-    'lanceur.choisir.livre'        = 'Choose the book to open:'
-    'lanceur.vide.livre'           = 'No book on this computer yet — use “New book…” to get started.'
-    'lanceur.nouvelle.livre'       = 'New book…'
-    'lanceur.test.livre'           = 'Book in: {0}'
-    'lanceur.modifie.livre'        = '{0}    (modified on {1})'
-    'lanceur.vide.archives.livre'  = 'No archived book.'
-    'lanceur.nouvelle.livre.titre'      = 'Title:'
-    'lanceur.nouvelle.livre.reference'  = 'B reference:'
-    'lanceur.nouvelle.livre.type'       = 'Type:'
-    'lanceur.nouvelle.livre.type.mono'      = 'Monograph'
-    'lanceur.nouvelle.livre.type.collectif' = 'Edited volume'
-    'lanceur.nouvelle.livre.maquette'        = 'Layout:'
-    'lanceur.nouvelle.livre.maquette.normal' = 'Normal'
-    'lanceur.nouvelle.livre.maquette.falc'   = 'FALC'
-    'lanceur.nouvelle.livre.format'          = 'Format:'
-    'lanceur.nouvelle.livre.format.standard' = 'Standard (155 × 225 mm)'
-    'lanceur.nouvelle.livre.format.a4'       = 'A4 (210 × 297 mm)'
-    'lanceur.nouvelle.livre.titre.manque'    = 'The book’’s title is needed to create its folder.'
-    'lanceur.nouvelle.livre.doublon'         = "Reference B{0} already exists — that is the book {1}, here:`n{2}"
-    'lanceur.nouvelle.livre.doublon.arch'    = 'That book is archived — an archived book is still a published book.'
-    'lanceur.nouvelle.livre.doublon.suite'   = 'Two books cannot carry the same B reference. Delete the existing one first, then create this one again.'
-    'lanceur.nouvelle.livre.erreur'          = "Creating the book failed:`n{0}"
-  }
-}
 
-# « Revues SZH » parle français, « Zeitschriften SZH » allemand : chaque lanceur s'adresse
-# à son équipe, et non à la langue d'affichage de Windows. Le choix est retenu pour les
-# scripts qui n'ont pas de produit — la mise à jour, surtout, qui s'ouvre seule.
-# $env:SZH_LANGUE garde le dernier mot, pour un essai.
+# « Revues SZH » parle français, « Zeitschriften SZH » allemand : chaque lanceur s'adresse à
+# son équipe, pas à la langue de Windows. Vaut aussi pour ce qui n'a pas de produit, la mise
+# à jour surtout, qui s'ouvre seule. $env:SZH_LANGUE garde le dernier mot, pour un essai.
 #
-# ⚠ Le livre est l'exception : une revue est française, une Zeitschrift allemande, mais un
-#   livre est écrit dans SA langue à lui (`lang:` de buch.yaml, propre à chaque ouvrage) —
-#   il n'a pas de langue de PRODUIT. Forcer 'fr' ici comme pour tout ce qui n'est pas
-#   'zeitschrift' ferait donc parler français un lanceur qu'un poste germanophone vient
-#   d'ouvrir. Le lanceur « Books SZH-CSPS » appelle quand même cette fonction, pour rester
-#   au même endroit que les deux autres produits ; elle ne fait ici que ne rien changer, et
-#   $SzhLangue reste ce que la cascade du haut du fichier a déjà résolu (variable
-#   d'environnement, préférence retenue dans state.json, puis langue de Windows).
+# ⚠ Le livre est l'exception : il s'écrit dans sa propre langue (`lang:` de buch.yaml), jamais
+#   celle d'un produit. Le lanceur « Books SZH-CSPS » appelle quand même cette fonction, pour
+#   rester au même endroit que les deux autres, mais elle n'y change rien : $SzhLangue garde
+#   ce que la cascade du haut du fichier a déjà résolu.
 function Set-SzhLangueProduit([string]$Produit) {
   if (([string]$Produit).ToLower() -eq 'livre') { return }
   $voulue = if (([string]$Produit).ToLower() -eq 'zeitschrift') { 'de' } else { 'fr' }
@@ -584,10 +135,18 @@ function Get-SzhConfig {
   return $null
 }
 
+$script:SzhRepoDefaut = 'SZH-CSPS/szh-publishing-toolchain'
+
+# La clé n'est surchargeable que vers un autre dépôt de l'organisation : config.json est
+# inscriptible par les Utilisateurs, et sans ce filtre, un poste pourrait être pointé vers
+# n'importe quel dépôt GitHub pour tout son approvisionnement (toolkit, rootfs, extensions).
 function Get-SzhRepo {
   $cfg = Get-SzhConfig
-  if ($cfg -and $cfg.repo) { return $cfg.repo }
-  return 'SZH-CSPS/szh-publishing-toolchain'
+  if ($cfg -and $cfg.repo) {
+    if ([string]$cfg.repo -match '^SZH-CSPS/[A-Za-z0-9_.-]+$') { return $cfg.repo }
+    Write-SzhLog ('config.json : clé repo refusée (hors organisation SZH-CSPS) -> ' + [string]$cfg.repo)
+  }
+  return $script:SzhRepoDefaut
 }
 
 function Get-SzhState {
@@ -598,10 +157,12 @@ function Get-SzhState {
 }
 
 function Save-SzhState($Etat) {
-  $Etat | ConvertTo-Json -Depth 5 | Set-Content -Path $SzhStateFile -Encoding UTF8
+  # Sans BOM, par Set-SzhJson : Set-Content -Encoding UTF8 en pose un sous PowerShell 5.1,
+  # que lib/archivage.js retire par contournement (BOM connu, pas corrigé à sa source).
+  Set-SzhJson $SzhStateFile $Etat
 }
 
-# Écrit les clés données SANS effacer le reste du fichier. state.json porte aussi la langue
+# Écrit les clés données sans effacer le reste du fichier. state.json porte aussi la langue
 # choisie par le dernier lanceur ouvert (Set-SzhLangueProduit), et une réécriture complète
 # l'effaçait à chaque mise à jour : sur ces postes, dont Windows est en anglais, le lanceur
 # reparlait anglais à une équipe francophone jusqu'au prochain clic sur « Revues SZH ».
@@ -626,13 +187,13 @@ function Set-SzhStateCles($Cles, [string[]]$Retirer = @()) {
 # ---- Qui exécute, et pour qui ----
 #
 # Une installation lancée depuis la session du rédacteur mais élevée avec le compte du
-# support tourne SOUS le compte du support : HKCU, %APPDATA%, %LOCALAPPDATA% et
+# support tourne sous le compte du support : HKCU, %APPDATA%, %LOCALAPPDATA% et
 # l'enregistrement des distributions WSL sont ceux du support. Tout ce qui est « par
 # utilisateur » atterrit alors dans le mauvais profil, et le rédacteur ouvre sa session
-# sans raccourcis, sans extensions, sans réglages et sans environnement de fabrication.
-# C'est le poste du 26 août 2026, et rien dans les journaux ne le disait : les lignes
-# « raccourcis posés » ne nommaient pas le compte. D'où ces deux mesures, et le nom du
-# compte dans chaque ligne qui pose quelque chose par utilisateur.
+# sans raccourcis, sans extensions, sans réglages ni environnement de fabrication, sans
+# qu'aucun journal ne le dise (les lignes « raccourcis posés » ne nommaient pas le compte).
+# D'où ces deux mesures, et le nom du compte dans chaque ligne qui pose quelque chose par
+# utilisateur.
 function Get-SzhIdentite {
   $id = [Security.Principal.WindowsIdentity]::GetCurrent()
   $admin = $false
@@ -665,8 +226,8 @@ function Get-SzhSessionUtilisateur {
 # ---- État par utilisateur ----
 #
 # state.json vit dans C:\ProgramData\SZH : il est donc commun à tous les comptes du poste.
-# Or l'enregistrement de la distribution WSL et les extensions de l'éditeur sont, eux, PAR
-# UTILISATEUR. Un état commun affirmait « environnement 2026.08.42 installé, dix extensions
+# Or l'enregistrement de la distribution WSL et les extensions de l'éditeur sont, eux, par
+# utilisateur. Un état commun affirmait « environnement 2026.08.42 installé, dix extensions
 # posées » à un compte qui n'avait ni l'un ni les autres, et la mise à jour les sautait
 # comme « déjà à jour » : le rédacteur se retrouvait sans cockpit, sans que rien n'échoue.
 # Ce qui est par utilisateur se retient donc chez lui.
@@ -733,11 +294,22 @@ function Get-SzhVersionInstallee {
 function Sort-SzhVersions($Versions) {
   $paires = @()
   foreach ($v in $Versions) {
+    $texte = [string]$v
     $num = $null
-    try { $num = [version]($v -replace '[^0-9.]', '') } catch { $num = $null }
-    $paires += [pscustomobject]@{ texte = [string]$v; num = $num }
+    $base = ''
+    # La partie numérique s'arrête au premier caractère qui n'est ni un chiffre ni un point :
+    # « 2026.08.10-rc1 » donne « 2026.08.10 », pas « 2026.08.101 » (l'ancien
+    # -replace '[^0-9.]', '' recollait les chiffres du suffixe à la version nue, faisant
+    # passer une pré-version pour une version plus récente).
+    if ($texte -match '^([0-9]+(\.[0-9]+)*)') { $base = $Matches[1] }
+    if ($base) { try { $num = [version]$base } catch { $num = $null } }
+    # Un suffixe (« -rc1 », « -local »…) se classe sous la version nue de même numéro : ce
+    # n'est pas un numéro plus récent, mais une pré-version de celui-là.
+    $suffixe = ($base -and ($base -ne $texte))
+    $paires += [pscustomobject]@{ texte = $texte; num = $num; suffixe = $suffixe }
   }
-  $avec = @($paires | Where-Object { $null -ne $_.num } | Sort-Object -Property num -Descending)
+  $avec = @($paires | Where-Object { $null -ne $_.num } |
+    Sort-Object -Property @{Expression = 'num'; Descending = $true}, @{Expression = 'suffixe'; Descending = $false})
   $sans = @($paires | Where-Object { $null -eq $_.num } | Sort-Object -Property texte -Descending)
   return @(($avec + $sans) | ForEach-Object { $_.texte })
 }
@@ -784,512 +356,145 @@ function Test-SzhVersionTag([string]$Version) {
   return ($Version -match '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$')
 }
 
-# ---- Emplacement des revues (et des livres) : test ou production ----
-# Seul endroit qui décide où vivent les revues : le cockpit ne calcule aucun chemin
-# SharePoint, il délègue l'archivage à archive-revue.ps1. Sous-dossiers identiques en test
-# et en production, seule la base change, si bien qu'un essai exerce le code réel.
-#
-# ⚠ HYPOTHÈSE À CONFIRMER AVEC LA RÉDACTION, pour la ligne `livre` seulement — les deux
-#   autres sont vérifiées sur SharePoint. On sait que la convention « BU » existe et que le
-#   dossier d'ARCHIVES livré s'appelle littéralement « BU01_Auflagen finale » (espace
-#   compris, pas de tiret bas avant « finale ») ; on NE SAIT PAS sous quel numéro de dossier
-#   produit il vit (« 52_Revue », « 53_Zeitschrift » suggèrent « 54_Buch », posé ici par
-#   déduction, jamais vérifié), ni comment s'appelle le dossier de RÉDACTION (« RV02 »/« ZS02 »
-#   suggèrent « BU02_Redaktion », posé de même). Configurable par `config.json`
-#   (« sousDossiersLivre ») → Get-SzhSousDossierLivre ci-dessous, précisément parce que
-#   cette ligne-ci n'est qu'un défaut plausible et non une valeur relevée.
-$script:SzhSousDossiers = @{
-  revue       = @{ encours = '52_Revue\RV02_Redaction';        archive = '52_Revue\RV99_Archives' }
-  zeitschrift = @{ encours = '53_Zeitschrift\ZS02_Redaktion';  archive = '53_Zeitschrift\ZS99_Archives' }
-  livre       = @{ encours = '54_Buch\BU02_Redaktion';         archive = '54_Buch\BU01_Auflagen finale' }
-}
-# Bases par défaut, surchargeables par config.json (« basesRevues ») : seule chaîne à
-# corriger si la bibliothèque SharePoint est synchronisée ailleurs. Les livres partagent la
-# même base que les revues — c'est la même bibliothèque SharePoint, « 2_Produkte » — seul le
-# sous-dossier change, ci-dessus.
-$script:SzhBasesDefaut = @{
-  prod = '%USERPROFILE%\SZH CSPS\Daten_Allgemein - General\2_Produkte'
-  dev  = '%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING'
+# Garde-fou de chemin : les champs *.file du manifest (manifest.json, servi par la Release
+# mais rejoint tel quel à $SzhStaging via Join-Path) ne doivent désigner qu'un nom de fichier
+# — jamais un séparateur ni un « .. » qui écrirait ou lirait hors du dossier de staging.
+function Test-SzhNomFichierManifest([string]$Nom) {
+  if (-not $Nom) { return $false }
+  return ($Nom -match '^[A-Za-z0-9][A-Za-z0-9._-]{0,200}$')
 }
 
-# Sous-dossier de livre effectif : le défaut ci-dessus, ou la valeur de `config.json` quand
-# la rédaction l'a corrigée. Seule la ligne « livre » de $SzhSousDossiers a besoin de ce
-# détour — revue et zeitschrift sont des valeurs relevées, pas des hypothèses.
-#   "sousDossiersLivre": { "encours": "...", "archive": "..." }
-function Get-SzhSousDossierLivre([string]$Etat) {
-  $defaut = $SzhSousDossiers.livre.$Etat
-  $cfg = Get-SzhConfig
-  if ($cfg -and $cfg.PSObject.Properties['sousDossiersLivre']) {
-    $table = $cfg.sousDossiersLivre
-    if ($table -and $table.PSObject.Properties[$Etat] -and [string]$table.$Etat) {
-      return [string]$table.$Etat
+# ---- Sélecteur de version du logiciel ----
+# Partagé par les trois produits (open-produit.ps1, bouton « Changer de version… ») :
+# recomposer un ancien numéro à l'identique suppose de réinstaller la version qui l'a
+# fabriqué ; `update.ps1 -Version X` sait le faire, ce dialogue le rend atteignable, et
+# explicitement : le changement remplace le rootfs WSL et les extensions, et demande un
+# redémarrage de l'éditeur.
+#
+# $Parent : fenêtre appelante, ou $null en processus détaché (le sélecteur ouvert seul, hors
+# du lanceur). $FichierIcone : icône de ce lanceur (szh-revue.ico, szh-zeitschrift.ico ou
+# szh-livre.ico) — chaque produit garde la sienne, cette fonction ne décide donc pas d'icône
+# elle-même. Chargée en tableau d'octets et non par nom de fichier : Icon(String) garderait
+# le .ico ouvert tant que la fenêtre vit, et une mise à jour concurrente ne pourrait pas le
+# remplacer. Ne lève jamais, une icône n'étant pas une condition d'ouverture.
+function Show-SzhVersions($Parent, [string]$FichierIcone) {
+  $installee = Get-SzhVersionInstallee
+  # Aucun appel réseau ici : la liste est remplie au Shown, plus bas ; le faire avant
+  # l'affichage fige la fenêtre jusqu'au bout du timeout.
+  $locales = @(Get-SzhVersionsLocales)
+  $disponibles = New-Object System.Collections.ArrayList
+
+  $boite = New-Object System.Windows.Forms.Form
+  $boite.Text = (T 'lanceur.versions.titre')
+  if ($Parent) { $boite.StartPosition = 'CenterParent' } else { $boite.StartPosition = 'CenterScreen' }
+  $boite.ClientSize = New-Object System.Drawing.Size(460, 340)
+  $boite.FormBorderStyle = 'FixedDialog'
+  $boite.MaximizeBox = $false
+  $boite.MinimizeBox = $false
+  # Atteignable sans la fenêtre principale : elle a son propre bouton de barre des tâches,
+  # donc son propre besoin d'icône.
+  if ($FichierIcone -and (Test-Path $FichierIcone)) {
+    try {
+      $flux = New-Object System.IO.MemoryStream (,[System.IO.File]::ReadAllBytes($FichierIcone))
+      $boite.Icon = New-Object System.Drawing.Icon $flux
+    } catch {
+      Write-SzhLog ('Show-SzhVersions : icone non chargee (' + $_.Exception.Message + ')')
     }
   }
-  return $defaut
-}
 
-# Les deux valeurs de `emplacementRevues` dans config.json. Cette clé remplace `devMode` :
-# elle dit son effet — l'endroit où sont les revues — là où « mode développeur » ne parlait
-# que du développeur. L'ancienne clé reste lue, des postes la portent déjà.
-$script:SzhEmplacementTest = 'test'
-$script:SzhEmplacementProd = 'production'
+  $intro = New-Object System.Windows.Forms.Label
+  $etiqInstallee = $installee
+  if (-not $etiqInstallee) { $etiqInstallee = '?' }
+  $intro.Text = (T 'lanceur.versions.intro' @($etiqInstallee))
+  $intro.Location = New-Object System.Drawing.Point(16, 14)
+  $intro.Size = New-Object System.Drawing.Size(428, 34)
+  $boite.Controls.Add($intro)
 
-# Booléen d'un JSON écrit à la main : $true/$false, "true"/"false", 1/0. Tout le reste rend
-# $null, soit « clé absente ». Sans cette normalisation, `"devMode": "false"` vaut vrai ici
-# ([bool]'false' est $true) et faux côté JavaScript : les deux moitiés liraient deux
-# racines différentes pour la même configuration.
-function Resolve-SzhBooleenConfig($Valeur) {
-  if ($null -eq $Valeur) { return $null }
-  if ($Valeur -is [bool]) { return $Valeur }
-  if ($Valeur -is [int] -or $Valeur -is [long] -or $Valeur -is [double] -or $Valeur -is [decimal]) {
-    if ($Valeur -eq 1) { return $true }
-    if ($Valeur -eq 0) { return $false }
-    return $null
-  }
-  $t = ([string]$Valeur).Trim().ToLower()
-  if ($t -eq 'true') { return $true }
-  if ($t -eq 'false') { return $false }
-  return $null
-}
+  $liVersions = New-Object System.Windows.Forms.ListBox
+  $liVersions.Location = New-Object System.Drawing.Point(16, 54)
+  $liVersions.Size = New-Object System.Drawing.Size(428, 180)
+  $liVersions.Font = New-Object System.Drawing.Font('Segoe UI', 11)
+  $boite.Controls.Add($liVersions)
 
-# Résolution pure : la clé neuve, puis l'ancienne, puis le défaut historique « test ». Rien
-# n'est lu du disque ici — c'est Initialize-SzhEmplacementRevues qui interroge le disque, une
-# fois, pour écrire la valeur en clair. Mêmes règles et même ordre que
-# resoudreEmplacementRevues() de lib/archivage.js ; test/js/emplacements.test.js compare les
-# deux sur les mêmes configurations.
-function Resolve-SzhEmplacementRevues($Config) {
-  if ($Config) {
-    $brut = $null
-    if ($Config.PSObject.Properties['emplacementRevues']) { $brut = $Config.emplacementRevues }
-    $v = ([string]$brut).Trim().ToLower()
-    if ($v -eq $SzhEmplacementProd) { return $SzhEmplacementProd }
-    if ($v -eq $SzhEmplacementTest) { return $SzhEmplacementTest }
-    $ancien = $null
-    if ($Config.PSObject.Properties['devMode']) { $ancien = Resolve-SzhBooleenConfig $Config.devMode }
-    if ($null -ne $ancien) {
-      if ($ancien) { return $SzhEmplacementTest }
-      return $SzhEmplacementProd
+  $note = New-Object System.Windows.Forms.Label
+  $note.Text = (T 'lanceur.versions.chargement')
+  $note.Location = New-Object System.Drawing.Point(16, 240)
+  $note.Size = New-Object System.Drawing.Size(428, 44)
+  $note.ForeColor = [System.Drawing.Color]::DimGray
+  $boite.Controls.Add($note)
+
+  $bInstaller = New-Object System.Windows.Forms.Button
+  $bInstaller.Text = (T 'lanceur.versions.installer')
+  $bInstaller.Location = New-Object System.Drawing.Point(248, 292)
+  $bInstaller.Size = New-Object System.Drawing.Size(96, 32)
+  $bInstaller.Enabled = $false                     # activé quand la liste est peuplée
+  $boite.Controls.Add($bInstaller)
+
+  $bFermer = New-Object System.Windows.Forms.Button
+  $bFermer.Text = (T 'lanceur.annuler')
+  $bFermer.Location = New-Object System.Drawing.Point(350, 292)
+  $bFermer.Size = New-Object System.Drawing.Size(94, 32)
+  $bFermer.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+  $boite.Controls.Add($bFermer)
+  $boite.CancelButton = $bFermer
+
+  # La liste se remplit après l'affichage : la fenêtre est là tout de suite, et l'attente
+  # réseau se voit au lieu de figer l'interface.
+  $boite.Add_Shown({
+    $boite.Refresh()
+    $publiees = @(Get-SzhVersionsPubliees)
+    foreach ($v in $publiees) { if (-not $disponibles.Contains($v)) { [void]$disponibles.Add($v) } }
+    foreach ($v in $locales) { if (-not $disponibles.Contains($v)) { [void]$disponibles.Add($v) } }
+    if ($installee -and (-not $disponibles.Contains($installee))) { [void]$disponibles.Insert(0, $installee) }
+    foreach ($v in $disponibles) {
+      if ($v -eq $installee) { [void]$liVersions.Items.Add((T 'lanceur.versions.installee' @($v))) }
+      elseif ($locales -contains $v) { [void]$liVersions.Items.Add((T 'lanceur.versions.locale' @($v))) }
+      else { [void]$liVersions.Items.Add($v) }
     }
-  }
-  return $SzhEmplacementTest
-}
-
-# Base d'un emplacement donné. Les sous-clés de `basesRevues` gardent leurs noms d'avant
-# (`dev`, `prod`) : des postes les portent déjà.
-function Get-SzhBaseRevuesPour([string]$Emplacement) {
-  $cle = 'prod'
-  if ($Emplacement -eq $SzhEmplacementTest) { $cle = 'dev' }
-  $base = $SzhBasesDefaut[$cle]
-  $cfg = Get-SzhConfig
-  if ($cfg -and $cfg.basesRevues -and $cfg.basesRevues.$cle) { $base = [string]$cfg.basesRevues.$cle }
-  return [Environment]::ExpandEnvironmentVariables($base)
-}
-
-# Combien de numéros dorment sous un emplacement : un dossier portant un ausgabe.yaml, dans
-# les quatre dossiers du produit. Ne lève jamais — un OneDrive non synchronisé rend 0.
-function Measure-SzhNumeros([string]$Emplacement) {
-  $base = Get-SzhBaseRevuesPour $Emplacement
-  $total = 0
-  foreach ($produit in @('revue', 'zeitschrift')) {
-    foreach ($etat in @('encours', 'archive')) {
-      $racine = Join-Path $base $SzhSousDossiers[$produit][$etat]
-      if (-not (Test-Path $racine)) { continue }
-      try {
-        $total += @(Get-ChildItem -Path $racine -Directory -ErrorAction SilentlyContinue |
-          Where-Object { Test-Path (Join-Path $_.FullName 'ausgabe.yaml') }).Count
-      } catch { }
-    }
-  }
-  return $total
-}
-
-# Écrit l'emplacement en clair dans config.json quand il n'y est pas : la racine de tout le
-# travail ne doit pas dépendre d'un défaut implicite, qu'une mise à jour pourrait renverser
-# sous les pieds du rédacteur.
-#
-#   * `emplacementRevues` déjà là et valide -> rien ;
-#   * `devMode` seul -> recopié sous le nom neuf, décision inchangée ;
-#   * ni l'un ni l'autre -> le disque tranche, et jamais contre ce qui existe :
-#     « production » seulement si la racine de production porte des numéros et celle de test
-#     aucun. Dans tous les autres cas « test », c'est-à-dire ce que le poste voyait déjà.
-#     Une racine de test vide n'a rien à perdre ; si OneDrive n'avait rien synchronisé
-#     encore, le compte des deux racines part au journal, et une ligne de config.json
-#     suffit à revenir (docs/EMPLACEMENTS.md).
-#
-# N'écrit rien si config.json n'existe pas : bootstrap.ps1 le crée lui-même, et un fichier
-# posé ici l'empêcherait d'y mettre `repo` et `basesRevues`. Au plus une fois par processus.
-$script:SzhEmplacementFige = $false
-function Initialize-SzhEmplacementRevues {
-  if ($SzhEmplacementFige) { return '' }
-  $script:SzhEmplacementFige = $true
-  if (-not (Test-Path $SzhConfigFile)) { return '' }
-  $cfg = Get-SzhConfig
-  if (-not $cfg) { return '' }
-  if ($cfg.PSObject.Properties['emplacementRevues']) {
-    $deja = ([string]$cfg.emplacementRevues).Trim().ToLower()
-    if ($deja -eq $SzhEmplacementProd -or $deja -eq $SzhEmplacementTest) { return '' }
-  }
-  $ancien = $null
-  if ($cfg.PSObject.Properties['devMode']) { $ancien = Resolve-SzhBooleenConfig $cfg.devMode }
-  if ($null -ne $ancien) {
-    $choisi = $SzhEmplacementProd
-    if ($ancien) { $choisi = $SzhEmplacementTest }
-    $motif = 'devMode existant recopie'
-  } else {
-    $nTest = Measure-SzhNumeros $SzhEmplacementTest
-    $nProd = Measure-SzhNumeros $SzhEmplacementProd
-    $choisi = $SzhEmplacementTest
-    if ($nTest -eq 0 -and $nProd -gt 0) { $choisi = $SzhEmplacementProd }
-    $motif = ('numeros trouves : test {0}, production {1}' -f $nTest, $nProd)
-  }
-  try {
-    if ($cfg.PSObject.Properties['emplacementRevues']) { $cfg.emplacementRevues = $choisi }
-    else { $cfg | Add-Member -MemberType NoteProperty -Name 'emplacementRevues' -Value $choisi }
-    Set-SzhJson $SzhConfigFile $cfg
-    Write-SzhLog ('emplacement des revues : "{0}" ecrit dans config.json ({1})' -f $choisi, $motif)
-  } catch {
-    try { Write-SzhLog ('emplacement des revues : ecriture impossible (' + $_.Exception.Message + ')') } catch { }
-  }
-  return $choisi
-}
-
-# Emplacement actif : passage obligé de tout le monde, et il fige la valeur au premier appel,
-# pour que le titre du lanceur et les listes qu'il affiche viennent du même choix.
-function Get-SzhEmplacementRevues {
-  [void](Initialize-SzhEmplacementRevues)
-  return (Resolve-SzhEmplacementRevues (Get-SzhConfig))
-}
-
-# Compatibilité : « mode développeur » n'était que le nom d'alors de l'emplacement de test.
-function Get-SzhDevMode {
-  return ((Get-SzhEmplacementRevues) -eq $SzhEmplacementTest)
-}
-
-function Get-SzhBaseRevues {
-  return (Get-SzhBaseRevuesPour (Get-SzhEmplacementRevues))
-}
-
-# Étiquette courte de la racine active, pour le jeton {racine} des textes : le titre du
-# lanceur dit alors où sont les revues, sans qu'on ouvre config.json. Mémorisée par langue —
-# T est appelé souvent, et Set-SzhLangueProduit peut changer de langue après un premier
-# appel : une mémoire d'une seule case figerait le titre en anglais.
-$script:SzhEtiquetteMemo = @{}
-function Get-SzhEtiquetteRacine {
-  if ($SzhEtiquetteMemo.ContainsKey($SzhLangue)) { return $SzhEtiquetteMemo[$SzhLangue] }
-  $emplacement = Get-SzhEmplacementRevues
-  $mot = (T 'racine.prod')
-  if ($emplacement -eq $SzhEmplacementTest) { $mot = (T 'racine.test') }
-  $feuille = ''
-  try { $feuille = Split-Path (Get-SzhBaseRevuesPour $emplacement) -Leaf } catch { }
-  $etiquette = $mot
-  if ($feuille) { $etiquette = ('{0} ({1})' -f $mot, $feuille) }
-  $SzhEtiquetteMemo[$SzhLangue] = $etiquette
-  return $etiquette
-}
-
-# Les quatre emplacements de revue du poste, plus les deux de livre ; les listes à plat
-# (`encours`/`archives`) restent celles des DEUX PRODUITS DE REVUE — c'est ce que balaie
-# open-revue.ps1, et ce qu'il balayait déjà avant le livre — le livre vit à part, dans sa
-# propre paire `livre.encours`/`livre.archive`, lue par open-livre.ps1 (Get-SzhEmplacementRevue
-# 'livre' …). La racine active part au journal une fois par processus : après coup, il dit
-# d'où venaient les revues d'un lancement donné.
-$script:SzhRacineJournalisee = $false
-function Get-SzhEmplacements {
-  $emplacement = Get-SzhEmplacementRevues
-  $base = Get-SzhBaseRevuesPour $emplacement
-  if (-not $SzhRacineJournalisee) {
-    $script:SzhRacineJournalisee = $true
-    try { Write-SzhLog ('revues : emplacement "{0}" -> {1}' -f $emplacement, $base) } catch { }
-  }
-  $revue = @{
-    encours = (Join-Path $base $SzhSousDossiers.revue.encours)
-    archive = (Join-Path $base $SzhSousDossiers.revue.archive)
-  }
-  $zeitschrift = @{
-    encours = (Join-Path $base $SzhSousDossiers.zeitschrift.encours)
-    archive = (Join-Path $base $SzhSousDossiers.zeitschrift.archive)
-  }
-  $livre = @{
-    encours = (Join-Path $base (Get-SzhSousDossierLivre 'encours'))
-    archive = (Join-Path $base (Get-SzhSousDossierLivre 'archive'))
-  }
-  return [pscustomobject]@{
-    emplacement = $emplacement
-    devMode     = ($emplacement -eq $SzhEmplacementTest)
-    base        = $base
-    revue       = $revue
-    zeitschrift = $zeitschrift
-    livre       = $livre
-    encours     = @($revue.encours, $zeitschrift.encours)
-    archives    = @($revue.archive, $zeitschrift.archive)
-  }
-}
-
-# En mode test seulement, crée les dossiers manquants — les quatre de revue, plus les deux
-# de livre. En production, jamais : l'arborescence est celle de SharePoint, un poste n'a pas
-# à l'inventer.
-function Initialize-SzhEmplacementsTest {
-  $emp = Get-SzhEmplacements
-  if (-not $emp.devMode) { return $false }
-  foreach ($d in ($emp.encours + $emp.archives + @($emp.livre.encours, $emp.livre.archive))) {
-    if (-not (Test-Path $d)) {
-      try { New-Item -ItemType Directory -Force -Path $d | Out-Null } catch { }
-    }
-  }
-  return $true
-}
-
-# $Jeton = 'revue' | 'zeitschrift' | 'livre', $Etat = 'encours' | 'archive' ; '' si jeton
-# inconnu. Le livre n'a pas de « numéro » (volume + numéro) : il partage néanmoins ce point
-# d'entrée, open-livre.ps1 s'en servant exactement comme open-revue.ps1 s'en sert déjà.
-function Get-SzhEmplacementRevue([string]$Jeton, [string]$Etat) {
-  $emp = Get-SzhEmplacements
-  if ($Jeton -eq 'zeitschrift') { return [string]$emp.zeitschrift.$Etat }
-  if ($Jeton -eq 'livre') { return [string]$emp.livre.$Etat }
-  if ($Jeton -eq 'revue') { return [string]$emp.revue.$Etat }
-  return ''
-}
-
-# ---- Lecture d'ausgabe.yaml ----
-# YAML plat, une clé par ligne, comme le sed du Makefile : pas de module YAML à installer
-# sur le poste. Guillemets et commentaire de fin de ligne retirés, première occurrence
-# gagnante, comme analyserAusgabe côté cockpit.
-function Get-SzhAusgabe([string]$Fichier) {
-  $valeurs = @{}
-  if (-not (Test-Path $Fichier)) { return $valeurs }
-  foreach ($ligne in (Get-Content $Fichier -Encoding UTF8)) {
-    if ($ligne -notmatch '^([A-Za-z0-9_-]+):\s*(.*)$') { continue }
-    $cle = $Matches[1]
-    if ($valeurs.ContainsKey($cle)) { continue }
-    $brut = $Matches[2].Trim()
-    if ($brut -match '^"(.*)"\s*(#.*)?$') { $brut = $Matches[1] }
-    elseif ($brut -match "^'(.*)'\s*(#.*)?$") { $brut = $Matches[1] }
-    elseif ($brut -match '^([^#]*?)\s*#.*$') { $brut = $Matches[1] }
-    $valeurs[$cle] = $brut.Trim()
-  }
-  return $valeurs
-}
-
-# Valeurs « vraies » tolérées, à garder alignées avec VRAIS_YAML (lib/yaml.js) et
-# szh-maquette.lua : un ausgabe.yaml peut avoir été écrit à la main.
-function Test-SzhVraiYaml($Valeur) {
-  if ($null -eq $Valeur) { return $false }
-  return (@('true', '1', 'oui', 'ja', 'yes', 'si') -contains ([string]$Valeur).Trim().ToLower())
-}
-
-# Accepte aussi l'ancien nom complet ; « zeitschrift » testé avant « revue », même ordre
-# que normaliserRevue côté cockpit.
-function Get-SzhJetonRevue($Valeur) {
-  $v = ([string]$Valeur).ToLower()
-  if ($v -like '*zeitschrift*') { return 'zeitschrift' }
-  if ($v -like '*revue*') { return 'revue' }
-  return ''
-}
-
-# État complet d'un dossier de revue, pour le lanceur et pour l'archivage.
-function Get-SzhRevueEtat([string]$Dossier) {
-  $valeurs = Get-SzhAusgabe (Join-Path $Dossier 'ausgabe.yaml')
-  $titre = ''
-  if ($valeurs.ContainsKey('title')) { $titre = $valeurs['title'] }
-  $jeton = ''
-  if ($valeurs.ContainsKey('revue')) { $jeton = Get-SzhJetonRevue $valeurs['revue'] }
-  $verrou = $false
-  if ($valeurs.ContainsKey('locked')) { $verrou = Test-SzhVraiYaml $valeurs['locked'] }
-  $archive = $false
-  if ($valeurs.ContainsKey('archived')) { $archive = Test-SzhVraiYaml $valeurs['archived'] }
-  return [pscustomobject]@{
-    dossier     = $Dossier
-    titre       = $titre
-    jeton       = $jeton
-    verrouillee = $verrou
-    archivee    = $archive
-  }
-}
-
-# État complet d'un dossier de livre, sur le modèle de Get-SzhRevueEtat ci-dessus, pour le
-# lanceur « Books SZH-CSPS ». Réutilise Get-SzhAusgabe (l'analyseur YAML plat), qui ne sait
-# rien du nom du fichier qu'on lui donne — buch.yaml n'est ici qu'un chemin de plus.
-#
-# ⚠ La langue du texte se lit dans `lang:` : c'est la clé que lit réellement la chaîne
-#   (pipeline/livre-assembler.py, `meta.get('lang')`) et celle des deux livres du banc
-#   (test/livre-normal, test/livre-falc). `langue:` — l'orthographe de l'exemple de
-#   docs/ARCHITECTURE-LIVRES.md — reste tolérée pour un buch.yaml qui l'aurait suivi à la
-#   lettre, mais `lang:` l'emporte si les deux sont présentes.
-function Get-SzhLivreEtat([string]$Dossier) {
-  $valeurs = Get-SzhAusgabe (Join-Path $Dossier 'buch.yaml')
-  $titre = ''
-  if ($valeurs.ContainsKey('titre')) { $titre = $valeurs['titre'] }
-  $langue = ''
-  if ($valeurs.ContainsKey('lang')) { $langue = $valeurs['lang'] }
-  elseif ($valeurs.ContainsKey('langue')) { $langue = $valeurs['langue'] }
-  $maquette = 'normal'
-  if ($valeurs.ContainsKey('maquette') -and $valeurs['maquette']) { $maquette = $valeurs['maquette'] }
-  $verrou = $false
-  if ($valeurs.ContainsKey('locked')) { $verrou = Test-SzhVraiYaml $valeurs['locked'] }
-  $archive = $false
-  if ($valeurs.ContainsKey('archived')) { $archive = Test-SzhVraiYaml $valeurs['archived'] }
-  return [pscustomobject]@{
-    dossier     = $Dossier
-    titre       = $titre
-    langue      = $langue
-    maquette    = $maquette
-    verrouillee = $verrou
-    archivee    = $archive
-  }
-}
-
-# ---- Identité d'un numéro : année, numéro, volume ----
-# Le volume est le millésime de la revue : un par année civile. Il s'imprime sur la
-# couverture (szh-maquette.lua) et part dans OJS en <volume> ; se tromper l'étiquetterait
-# faux partout, sans qu'un message le dise. Il n'a donc pas à être saisi : l'année le donne,
-# chaque revue ayant sa propre année de départ.
-#
-# Relevé sur ojs.szh.ch le 24.08.2026, neuf millésimes de suite pour chacune, sans trou :
-#   Revue        2018 -> Vol. 8  … 2026 -> Vol. 16    soit annee - 2010
-#   Zeitschrift  2018 -> Bd. 24  … 2026 -> Bd. 32     soit annee - 1994
-# Un volume par année, sans exception sur ces neuf-là. Ne pas déduire autre chose du compte
-# de numéros visible dans l'archive : une année en cours en montre moins que les autres, et
-# la numérotation elle-même a changé de forme au fil du temps — ni l'un ni l'autre ne dit
-# quoi que ce soit du volume. Une revue pourrait néanmoins sauter un volume ou en doubler
-# un : le formulaire garde un réglage manuel, et c'est lui qui tranche le jour où le compte
-# se décale.
-$script:SzhVolumeAnneeZero = @{
-  revue       = 2010
-  zeitschrift = 1994
-}
-
-# Volume calculé, ou 0 si le produit est inconnu ou l'année antérieure au premier volume.
-function Get-SzhVolumePour([string]$Produit, [int]$Annee) {
-  $jeton = Get-SzhJetonRevue $Produit
-  if (-not $jeton) { return 0 }
-  if (-not $SzhVolumeAnneeZero.ContainsKey($jeton)) { return 0 }
-  $volume = $Annee - $SzhVolumeAnneeZero[$jeton]
-  if ($volume -lt 1) { return 0 }
-  return $volume
-}
-
-# Première année dont le volume existe : la borne basse du formulaire, pour qu'il ne propose
-# jamais un volume nul ou négatif.
-function Get-SzhPremiereAnnee([string]$Produit) {
-  $jeton = Get-SzhJetonRevue $Produit
-  if ($jeton -and $SzhVolumeAnneeZero.ContainsKey($jeton)) { return ($SzhVolumeAnneeZero[$jeton] + 1) }
-  return 1
-}
-
-# Nom de dossier d'un numéro : la convention « AAAA-NN », numéro sur deux chiffres. Toute la
-# chaîne s'y appuie — szh-maquette.lua y prend l'année quand `date:` est vide, lib/yaml.js le
-# titre de la barre latérale — et c'est pourquoi ce nom se déduit et ne se saisit pas.
-function Get-SzhNomNumero([int]$Annee, [int]$Numero) {
-  return ('{0:0000}-{1:00}' -f $Annee, $Numero)
-}
-
-# Entier d'une valeur d'ausgabe.yaml, 0 si elle n'en est pas une : « 01 » et « 1 » sont le
-# même numéro, et un champ vide ne doit ressembler à aucun.
-function Get-SzhEntierYaml($Valeur) {
-  $texte = ([string]$Valeur).Trim()
-  if ($texte -notmatch '^[0-9]{1,6}$') { return 0 }
-  return [int]$texte
-}
-
-# Un numéro se reconnaît à son couple volume + numéro, jamais à son nom de dossier : deux
-# dossiers différents peuvent porter le même couple, et c'est précisément ce qu'il faut
-# refuser. On cherche donc dans les DEUX emplacements du produit, en cours et archives — un
-# numéro archivé reste un numéro publié, et son volume est pris.
-#
-# Rend $null, ou le premier numéro trouvé : { nom, chemin, dossier, archive }.
-function Find-SzhNumeroVolume([string]$Produit, [int]$Volume, [int]$Numero) {
-  if ($Volume -lt 1) { return $null }
-  if ($Numero -lt 1) { return $null }
-  $jeton = Get-SzhJetonRevue $Produit
-  if (-not $jeton) { return $null }
-  foreach ($etat in @('encours', 'archive')) {
-    $racine = Get-SzhEmplacementRevue $jeton $etat
-    if (-not $racine) { continue }
-    if (-not (Test-Path $racine)) { continue }
-    $dossiers = @()
-    try { $dossiers = @(Get-ChildItem -Path $racine -Directory -ErrorAction SilentlyContinue) } catch { }
-    foreach ($d in $dossiers) {
-      $fichier = Join-Path $d.FullName 'ausgabe.yaml'
-      if (-not (Test-Path $fichier)) { continue }
-      $valeurs = Get-SzhAusgabe $fichier
-      # Le produit vient du jeton du numéro, pas de son emplacement : un dossier rangé du
-      # mauvais côté ne doit pas bloquer la création d'un numéro de l'autre revue.
-      $sien = ''
-      if ($valeurs.ContainsKey('revue')) { $sien = Get-SzhJetonRevue $valeurs['revue'] }
-      if ($sien -ne $jeton) { continue }
-      if ((Get-SzhEntierYaml $valeurs['volume']) -ne $Volume) { continue }
-      if ((Get-SzhEntierYaml $valeurs['numero']) -ne $Numero) { continue }
-      return [pscustomobject]@{
-        nom     = $d.Name
-        chemin  = $d.FullName
-        dossier = $racine
-        archive = ($etat -eq 'archive')
-      }
-    }
-  }
-  return $null
-}
-
-# ---- Identité d'un livre : titre, année, référence B ----
-# Un livre n'a pas de « numéro d'une année » : il a un TITRE, une ANNÉE et une RÉFÉRENCE —
-# les dossiers réels s'appellent « Buch_2019-B301-Thaler », « 2025-B328-SZH_ProspectrumFALC_DE ».
-# La convention retenue pour les nouveaux livres, plus régulière : « <année>-B<référence>-<nom> »,
-# le <nom> étant déduit du titre, jamais saisi séparément — même principe que
-# Get-SzhNomNumero ci-dessus.
-#
-# Translittération vers ASCII (accents retirés, tout le reste réduit à des « _ ») : un nom
-# de dossier lisible sans dépendre d'un jeu de caractères, sur le modèle de la
-# translittération de l'import (iconv -t ASCII//TRANSLIT, pipeline/Makefile). Borné à 40
-# caractères : le nom compte plusieurs fois dans un chemin de sortie (out/<nom>.pdf…), et un
-# titre entier dépasserait vite la limite Windows de 260 caractères.
-function Get-SzhSlugLivre([string]$Titre) {
-  $texte = ([string]$Titre).Trim()
-  $decompose = $texte.Normalize([Text.NormalizationForm]::FormD)
-  $sansAccents = -join ($decompose.ToCharArray() | Where-Object {
-    [Globalization.CharUnicodeInfo]::GetUnicodeCategory($_) -ne
-      [Globalization.UnicodeCategory]::NonSpacingMark
+    if ($liVersions.Items.Count -gt 0) { $liVersions.SelectedIndex = 0 }
+    # Trois états à nommer : liste complète, hors ligne avec un repli réel, hors ligne
+    # sans repli (seule la version installée, donc rien à installer).
+    if ($publiees.Count -gt 0) { $note.Text = '' }
+    elseif ($locales.Count -gt 0) { $note.Text = (T 'lanceur.versions.horsligne') }
+    else { $note.Text = (T 'lanceur.versions.horsligne.deja') }
+    if ($disponibles.Count -eq 0) { $note.Text = (T 'lanceur.versions.vide') }
+    $bInstaller.Enabled = ($disponibles.Count -gt 0)
   })
-  $slug = ($sansAccents -replace '[^A-Za-z0-9]+', '_').Trim('_')
-  if ($slug.Length -gt 40) { $slug = $slug.Substring(0, 40).Trim('_') }
-  if (-not $slug) { $slug = 'Livre' }
-  return $slug
-}
 
-# Nom de dossier d'un livre neuf : « <année>-B<référence>-<nom> ». Voir Get-SzhSlugLivre.
-function Get-SzhNomLivre([int]$Annee, [int]$Reference, [string]$Titre) {
-  return ('{0}-B{1}-{2}' -f $Annee, $Reference, (Get-SzhSlugLivre $Titre))
-}
-
-# Un livre se reconnaît à sa RÉFÉRENCE B, jamais à son nom de dossier — même principe que
-# Find-SzhNumeroVolume ci-dessus, adapté : buch.yaml ne porte pas cette référence en clé (elle
-# ne vit que dans le nom du dossier), donc c'est le nom qui est lu, avec le motif que produit
-# Get-SzhNomLivre. On cherche dans les DEUX emplacements — en cours et archives — un livre
-# archivé restant un livre publié.
-#
-# Rend $null, ou le premier livre trouvé : { nom, titre, chemin, dossier, archive }.
-function Find-SzhLivreReference([int]$Reference) {
-  if ($Reference -lt 1) { return $null }
-  foreach ($etat in @('encours', 'archive')) {
-    $racine = Get-SzhEmplacementRevue 'livre' $etat
-    if (-not $racine) { continue }
-    if (-not (Test-Path $racine)) { continue }
-    $dossiers = @()
-    try { $dossiers = @(Get-ChildItem -Path $racine -Directory -ErrorAction SilentlyContinue) } catch { }
-    foreach ($d in $dossiers) {
-      if ($d.Name -notmatch '^\d{4}-B(\d+)-') { continue }
-      if ([int]$Matches[1] -ne $Reference) { continue }
-      if (-not (Test-Path (Join-Path $d.FullName 'buch.yaml'))) { continue }
-      $etatLivre = Get-SzhLivreEtat $d.FullName
-      return [pscustomobject]@{
-        nom     = $d.Name
-        titre   = $etatLivre.titre
-        chemin  = $d.FullName
-        dossier = $racine
-        archive = ($etat -eq 'archive')
-      }
+  $bInstaller.Add_Click({
+    if ($liVersions.SelectedIndex -lt 0) { return }
+    $choix = [string]$disponibles[$liVersions.SelectedIndex]
+    # Garde-fou de quoting : la valeur peut venir d'un nom de fichier de staging et part
+    # en argument de update.ps1, où « 2026.08.0 -Verbose » injecterait un paramètre.
+    if (-not (Test-SzhVersionTag $choix)) {
+      [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.versions.vide'), (T 'lanceur.versions.titre'))
+      return
     }
+    $reponse = [System.Windows.Forms.MessageBox]::Show(
+      (T 'lanceur.versions.avert' @($choix)), (T 'lanceur.versions.titre'),
+      [System.Windows.Forms.MessageBoxButtons]::OKCancel,
+      [System.Windows.Forms.MessageBoxIcon]::Warning)
+    if ($reponse -ne [System.Windows.Forms.DialogResult]::OK) { return }
+    # update.ps1 fait le reste, sans demander l'administrateur. Chaque argument est cité,
+    # le chemin du toolkit contenant des espaces.
+    Write-SzhLog ('Show-SzhVersions : installation de la version ' + $choix + ' demandee')
+    Start-Process -FilePath 'powershell.exe' -ArgumentList @(
+      '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+      ('"{0}"' -f (Join-Path $PSScriptRoot 'update.ps1')), '-Version', ('"{0}"' -f $choix))
+    $boite.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $boite.Close()
+  })
+
+  # Sans parent (processus détaché), rien ne garantit le premier plan, et une boîte qui
+  # s'ouvre derrière VSCodium se lit comme un bouton inerte.
+  $resultat = [System.Windows.Forms.DialogResult]::Cancel
+  if ($Parent) { $resultat = $boite.ShowDialog($Parent) }
+  else {
+    $boite.TopMost = $true
+    $resultat = $boite.ShowDialog()
   }
-  return $null
+  # $true = une installation a été lancée : l'appelant doit se retirer.
+  return ($resultat -eq [System.Windows.Forms.DialogResult]::OK)
 }
 
 
@@ -1382,6 +587,9 @@ function Get-SzhFichierUneFois {
   $resp = $req.GetResponse()
   try {
     $total = $resp.ContentLength
+    # -1 : le serveur n'a pas annoncé de taille (réponse « chunked », par exemple). La
+    # complétude ne se contrôle alors pas ici — c'est Test-SzhSha256, plus loin, qui tranche.
+    if ($total -lt 0) { Write-SzhLog ('téléchargement : taille inconnue (Content-Length absent) -> ' + $Url) }
     $flux  = $resp.GetResponseStream()
     $sortie = [System.IO.File]::Create($Destination)
     try {
@@ -1434,7 +642,7 @@ function Get-SzhEspaceLibreGo {
   } catch { return -1 }
 }
 
-# ---- Une seule mise à jour à la fois sur le POSTE ----
+# ---- Une seule mise à jour à la fois sur le poste ----
 # « Local\ » borne le mutex à la session : deux comptes connectés en même temps détendaient
 # donc deux Expand-Archive sur le même C:\ProgramData\SZH\toolkit, qui finit à moitié
 # écrit. « Global\ » le rend visible à tout le poste, et son ACL doit nommer les
@@ -1453,6 +661,7 @@ function New-SzhMutexPoste {
   } catch {
     # Poste où « Global\ » est refusé (SeCreateGlobalPrivilege retiré par stratégie) : un
     # verrou de session vaut mieux que pas de verrou.
+    try { Write-SzhLog ('mutex : "Global\' + $Nom + '" refusé, repli sur "Local\' + $Nom + '" -> ' + $_.Exception.Message) } catch { }
     return (New-Object System.Threading.Mutex($false, ('Local\' + $Nom)))
   }
 }
@@ -1464,571 +673,196 @@ function Test-SzhSha256 {
   return ($h -eq $Attendu.ToLower())
 }
 
-# ---- Écriture d'une clé plate dans ausgabe.yaml (ou buch.yaml) ----
-# Ligne existante remplacée, sinon ajoutée en fin de fichier : le reste est préservé,
-# comme serialiserAusgabe côté cockpit. `$Cite` suit formaterValeurYaml ; `revue` et
-# `lang` restent des jetons nus, le sed du Makefile ne comprenant pas les guillemets.
-# `$Vide` autorise une valeur vide, pour qu'un appel sans valeur n'efface pas une clé.
+# ---- Remplacement du toolkit ----
+# `Expand-Archive -Force` écrase ce que l'archive contient, mais ne supprime jamais ce
+# qu'elle ne contient plus : un fichier retiré du dépôt survivrait donc indéfiniment dans le
+# toolkit de chaque poste, mise à jour après mise à jour.
 #
-# `$NomFichier` : « ausgabe.yaml » par défaut, pour que new-revue.ps1 n'ait rien à changer ;
-# new-livre.ps1 passe « buch.yaml », même mécanique d'écriture, seul le nom change. ⚠ Le
-# paramètre est nommé avec une majuscule pour ne pas être confondu avec la variable locale
-# `$fichier` ci-dessous — PowerShell ignore la casse des noms de variables, et les deux
-# auraient sinon désigné la même case mémoire.
-function Set-SzhAusgabeCle([string]$Dossier, [string]$Cle, [string]$Valeur, [bool]$Cite, [bool]$Vide, [string]$NomFichier = 'ausgabe.yaml') {
-  if ((-not $Valeur) -and (-not $Vide)) { return $false }
-  $fichier = Join-Path $Dossier $NomFichier
-  if (-not (Test-Path $fichier)) { return $false }
-  $lignes = @(Get-Content $fichier -Encoding UTF8)
-  $ligne = ('{0}: {1}' -f $Cle, $Valeur)
-  if ($Cite) { $ligne = ('{0}: "{1}"' -f $Cle, $Valeur) }
-  $trouvee = $false
-  for ($i = 0; $i -lt $lignes.Count; $i++) {
-    if ($lignes[$i] -match ('^' + [regex]::Escape($Cle) + ':')) { $lignes[$i] = $ligne; $trouvee = $true; break }
-  }
-  if (-not $trouvee) { $lignes += $ligne }
-  # Sans BOM et par remplacement atomique : les lecteurs ancrés en début de ligne (sed du
-  # Makefile, ^title: de szh-maquette.lua) ne savent pas ignorer un BOM.
-  $tmp = Join-Path $Dossier ('~$' + $NomFichier)
-  [System.IO.File]::WriteAllLines($tmp, $lignes, (New-Object System.Text.UTF8Encoding($false)))
-  Move-Item -LiteralPath $tmp -Destination $fichier -Force
-  return $true
-}
-
-# `version-toolkit` dit avec quelle version le numéro (ou le livre) a été fabriqué, de quoi
-# le recomposer plus tard à l'identique. Posée à la création, jamais réécrite ensuite.
-function Set-SzhAusgabeVersion([string]$Dossier, [string]$Version, [string]$NomFichier = 'ausgabe.yaml') {
-  return (Set-SzhAusgabeCle $Dossier 'version-toolkit' $Version $true $false $NomFichier)
-}
-
-# ---- Liens profonds « szh:// » ----
-# Grammaire szh://traduction/<produit>/<numero>[/<article>], à garder alignée avec
-# lib/liens.js, qui fabrique les liens. Un lien vient d'un e-mail, donc d'une source non
-# fiable : il ne porte aucun chemin, et le dossier est cherché dans les seuls emplacements
-# connus du poste.
-$script:SzhLienMotif = '^szh://traduction/(revue|zeitschrift)/([A-Za-z0-9][A-Za-z0-9._-]{0,63})(?:/([a-z0-9][a-z0-9-]{0,63}))?/?$'
-
-# Analyse un lien -> { vue, produit, numero, article }, ou $null si la grammaire n'est
-# pas respectée. Le protocole Windows peut ajouter un « / » final ou un caractère nul.
-function Get-SzhLien([string]$Lien) {
-  if (-not $Lien) { return $null }
-  $net = ([string]$Lien).Trim().Trim([char]0)
-  if ($net -notmatch $SzhLienMotif) { return $null }
-  $numero = [string]$Matches[2]
-  if ($numero -like '*..*') { return $null }
-  $article = ''
-  if ($Matches.Count -ge 4) { $article = [string]$Matches[3] }
-  return [pscustomobject]@{
-    vue     = 'traduction'
-    produit = [string]$Matches[1]
-    numero  = $numero
-    article = $article
-  }
-}
-
-# « En cours » d'abord, puis les archives, et nulle part ailleurs : le nom vient du lien,
-# la racine du poste, et le dossier doit porter un ausgabe.yaml. '' si introuvable.
-function Find-SzhRevue([string]$Produit, [string]$Numero) {
-  foreach ($etat in @('encours', 'archive')) {
-    $racine = Get-SzhEmplacementRevue $Produit $etat
-    if (-not $racine) { continue }
-    $candidat = Join-Path $racine $Numero
-    if (Test-Path (Join-Path $candidat 'ausgabe.yaml')) { return (Resolve-Path $candidat).Path }
-  }
-  return ''
-}
-
-# ---- Intention d'ouverture, à usage unique ----
-# Le lanceur ne peut pas dire à VSCodium quel panneau ouvrir : il dépose une intention que
-# le cockpit lit, vérifie, consomme et supprime. Chemin, clés et unité à garder alignés
-# avec lib/liens.js : `pose` en millisecondes Unix, péremption 5 min. Posée hors du
-# dossier de revue, où rien de technique n'entre.
-$script:SzhIntentionFile = Join-Path $env:LOCALAPPDATA 'SZH\intention.json'
-
-function Set-SzhIntention([string]$Revue, [string]$Vue, [string]$Article) {
-  $dossier = Split-Path $SzhIntentionFile -Parent
-  New-Item -ItemType Directory -Force -Path $dossier | Out-Null
-  $intention = [ordered]@{
-    revue   = $Revue
-    vue     = $Vue
-    article = $Article
-    pose    = [long]([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
-  }
-  Set-SzhJson $SzhIntentionFile $intention
-}
-
-# ---- Ouverture d'un dossier dans VSCodium ----
-# Ici, l'environnement doit être assaini (ELECTRON_RUN_AS_NODE ci-dessus ; la garde est
-# répétée, un script pouvant régler ses variables après le dot-source) et un échec doit se
-# voir dans le journal. open-md.ps1 a son propre lanceur, Start-SzhCodiumFichier, et ne passe
-# pas par ici : il doit ouvrir DEUX chemins d'un coup (le dossier de revue ET le fichier, pour
-# que l'aperçu comme la régénération s'activent) et porte un mode simulation pour les tests
-# (SZH_OPENMD_SIMULE=1), deux besoins que cette fonction-ci n'a pas. Garder les deux noms
-# distincts et corrects : une redéfinition locale de Start-SzhCodium occulterait celle-ci en
-# silence, comme cela s'est déjà produit une fois.
-function Start-SzhCodium([string]$Dossier) {
-  $codium = Get-VSCodiumExe
-  if (-not $codium) {
-    Write-SzhLog ('codium : introuvable, impossible d''ouvrir ' + $Dossier)
-    return $false
-  }
-  if (Test-Path 'Env:ELECTRON_RUN_AS_NODE') { Remove-Item 'Env:ELECTRON_RUN_AS_NODE' -ErrorAction SilentlyContinue }
-  try {
-    Start-Process -FilePath $codium -ArgumentList ('"{0}"' -f $Dossier)
-    return $true
-  } catch {
-    Write-SzhLog ('codium : lancement impossible (' + $_.Exception.Message + ') pour ' + $Dossier)
-    return $false
-  }
-}
-
-# ---- Identité de barre des tâches (AppUserModelID) ----
-# La barre des tâches ne prend pas l'icône de la fenêtre : elle groupe les boutons par
-# AppUserModelID et va chercher l'image de ce côté-là. Un processus qui n'en déclare aucun
-# s'en voit attribuer un, déduit de son exécutable hôte — powershell.exe pour nos lanceurs,
-# ouverts par hidden.vbs —, et le bouton porte alors l'icône de PowerShell. L'icône posée
-# sur la fenêtre (Set-SzhIconeFenetre, dans open-revue.ps1) ne se voit plus alors que dans
-# le bandeau de titre et dans Alt+Tab, jamais dans la barre.
+# Une seule définition, appelée par update.ps1, update-launcher.ps1 et bootstrap.ps1 : trois
+# copies la feraient diverger sans que rien ne le signale.
 #
-# Il faut les deux moitiés :
-#   * le processus déclare son identité AVANT sa première fenêtre — Windows lit
-#     l'AppUserModelID quand la fenêtre s'inscrit à la barre, et ne le relit pas ensuite ;
-#   * le .lnk du menu Démarrer porte la même chaîne. C'est elle qui fait que le bouton et
-#     le raccourci ne font qu'un : le bouton reprend l'icône du raccourci — donc la même
-#     image qu'au menu Démarrer — et « Épingler à la barre des tâches » épingle le lanceur
-#     au lieu d'épingler powershell.exe.
-#
-# Une identité par programme : les deux lanceurs de produit ont chacun la leur, sans quoi
-# ils ne feraient qu'un seul bouton et l'icône ne distinguerait plus la Revue de la
-# Zeitschrift. Les deux entrées de mise à jour partagent la leur : c'est le même
-# update.ps1, la même icône, et seule la langue de la fenêtre les sépare — les voir
-# groupées sous un bouton est ce qu'on veut.
-#
-# ⚠ Un raccourci déjà épinglé est une copie, faite avant que ces identités existent : elle
-# ne les porte pas. Il faut dépingler puis réépingler une fois, geste laissé au rédacteur —
-# le dossier des épinglages est tenu par le shell, et y écrire reste sans effet jusqu'au
-# redémarrage d'explorer.exe.
-# Une identité par ENTRÉE de menu, et non par script. Windows tient l'AppUserModelID pour
-# l'identité de l'application et ne garde qu'une entrée par identité : les deux mises à
-# jour, qui partageaient « SZH.Publishing.MiseAJour », ne s'affichaient qu'une fois dans le
-# menu Démarrer — l'allemande sur un poste francophone, le .lnk français présent sur le
-# disque mais absent de Get-StartApps. Le nom sans langue reste le repli des fenêtres
-# lancées autrement que par le menu.
-# Le livre n'a qu'UNE entrée de menu (contrairement à la mise à jour, qui en a deux) : une
-# seule identité lui suffit, jamais partagée avec aucune des cinq autres.
-$script:SzhAppIds = @{
-  'revue'       = 'SZH.Publishing.Revue'
-  'zeitschrift' = 'SZH.Publishing.Zeitschrift'
-  'livre'       = 'SZH.Publishing.Livres'
-  'maj'         = 'SZH.Publishing.MiseAJour'
-  'maj.fr'      = 'SZH.Publishing.MiseAJour.fr'
-  'maj.de'      = 'SZH.Publishing.MiseAJour.de'
-}
-
-# Rend '' pour une clé inconnue plutôt que de lever : sans identité on retombe sur le
-# comportement d'avant, une icône de PowerShell, et non sur un lanceur qui ne s'ouvre pas.
-function Get-SzhAppId([string]$Cle) {
-  if ($SzhAppIds.ContainsKey($Cle)) { return $SzhAppIds[$Cle] }
-  return ''
-}
-
-# Le pont vers le shell, en C# : ni WScript.Shell ni aucune applet PowerShell ne sait
-# écrire une propriété de raccourci — il y faut IPropertyStore, que seul COM expose.
-# Compilé à la première demande et non au dot-source : szh-common.ps1 est chargé par tous
-# les scripts, y compris ceux qui n'ouvrent aucune fenêtre, et une compilation C# leur
-# coûterait une demi-seconde pour rien.
-$script:SzhPontBarre = $null
-$script:SzhSourcePontBarre = @'
-using System;
-using System.Runtime.InteropServices;
-
-namespace Szh {
-
-  // PROPERTYKEY : le GUID d'un jeu de propriétés, et le numéro de l'une d'elles.
-  [StructLayout(LayoutKind.Sequential, Pack = 4)]
-  public struct CleProp {
-    public Guid fmtid;
-    public uint pid;
-  }
-
-  // PROPVARIANT ne sert ici que de tampon : propsys le remplit, ole32 le vide, et rien
-  // ci-dessous ne lit ses champs. Ces six-là en couvrent la taille en 32 comme en 64 bits.
-  [StructLayout(LayoutKind.Sequential)]
-  public struct VarProp {
-    public ushort vt;
-    public ushort r1;
-    public ushort r2;
-    public ushort r3;
-    public IntPtr p1;
-    public IntPtr p2;
-  }
-
-  [ComImport, Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99"),
-   InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-  public interface IPropertyStore {
-    void GetCount(out uint nb);
-    void GetAt(uint rang, out CleProp cle);
-    void GetValue(ref CleProp cle, out VarProp valeur);
-    void SetValue(ref CleProp cle, ref VarProp valeur);
-    void Commit();
-  }
-
-  [ComImport, Guid("0000010b-0000-0000-C000-000000000046"),
-   InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-  public interface IPersistFile {
-    void GetClassID(out Guid classe);
-    [PreserveSig] int IsDirty();
-    void Load([MarshalAs(UnmanagedType.LPWStr)] string fichier, uint mode);
-    void Save([MarshalAs(UnmanagedType.LPWStr)] string fichier,
-              [MarshalAs(UnmanagedType.Bool)] bool memoriser);
-    void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string fichier);
-    void GetCurFile([MarshalAs(UnmanagedType.LPWStr)] out string fichier);
-  }
-
-  [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
-  public class LienShell { }
-
-  public static class BarreDesTaches {
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
-    private static extern void SetCurrentProcessExplicitAppUserModelID(string id);
-
-    [DllImport("ole32.dll", PreserveSig = false)]
-    private static extern void PropVariantClear(ref VarProp valeur);
-
-    private const ushort VT_EMPTY = 0;
-    private const ushort VT_BSTR = 8;
-    private const ushort VT_LPWSTR = 31;
-
-    // PKEY_AppUserModel_ID : {9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}, propriété 5.
-    private static CleProp Cle() {
-      CleProp c = new CleProp();
-      c.fmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3");
-      c.pid = 5;
-      return c;
-    }
-
-    public static void Declarer(string id) {
-      SetCurrentProcessExplicitAppUserModelID(id);
-    }
-
-    // Charger, écrire, valider, enregistrer : c'est l'ordre qu'impose le shell. Commit()
-    // seul ne touche que la copie en mémoire ; sans le Save() final, le .lnk sur le disque
-    // reste tel qu'il était.
-    public static void Poser(string lnk, string id) {
-      object lien = new LienShell();
-      try {
-        ((IPersistFile)lien).Load(lnk, 2);          // STGM_READWRITE
-        CleProp cle = Cle();
-        // Le PROPVARIANT monté à la main : propsys.dll n'exporte pas de fabrique pour
-        // les chaînes (InitPropVariantFromString est une inline de l'en-tête, pas un
-        // symbole). StringToCoTaskMemUni alloue par CoTaskMemAlloc, c'est-à-dire dans
-        // l'allocateur que PropVariantClear rendra.
-        VarProp valeur = new VarProp();
-        valeur.vt = VT_LPWSTR;
-        valeur.p1 = Marshal.StringToCoTaskMemUni(id);
-        try {
-          IPropertyStore magasin = (IPropertyStore)lien;
-          magasin.SetValue(ref cle, ref valeur);
-          magasin.Commit();
-        } finally {
-          PropVariantClear(ref valeur);
-        }
-        ((IPersistFile)lien).Save(lnk, true);
-      } finally {
-        Marshal.ReleaseComObject(lien);
-      }
-    }
-
-    // Rend "" quand le raccourci ne porte aucune identité : c'est le cas de tous ceux
-    // posés par les versions antérieures, et ce n'est pas une erreur.
-    public static string Lire(string lnk) {
-      object lien = new LienShell();
-      try {
-        ((IPersistFile)lien).Load(lnk, 0);          // STGM_READ
-        CleProp cle = Cle();
-        VarProp valeur;
-        ((IPropertyStore)lien).GetValue(ref cle, out valeur);
-        try {
-          if (valeur.vt == VT_LPWSTR) { return Marshal.PtrToStringUni(valeur.p1); }
-          if (valeur.vt == VT_BSTR) { return Marshal.PtrToStringBSTR(valeur.p1); }
-          return "";                                // VT_EMPTY, ou un type inattendu
-        } finally {
-          PropVariantClear(ref valeur);
-        }
-      } finally {
-        Marshal.ReleaseComObject(lien);
-      }
-    }
-  }
-}
-'@
-
-# Ne lève jamais et ne se plaint qu'une fois : une identité de barre des tâches est un
-# confort d'affichage, pas une condition d'ouverture d'un lanceur.
-function Initialize-SzhPontBarre {
-  if ($null -ne $script:SzhPontBarre) { return $script:SzhPontBarre }
-  $script:SzhPontBarre = $false
-  try {
-    if (-not ('Szh.BarreDesTaches' -as [type])) {
-      Add-Type -TypeDefinition $script:SzhSourcePontBarre -ErrorAction Stop
-    }
-    $script:SzhPontBarre = $true
-  } catch {
-    Write-SzhLog ('AppUserModelID : pont COM indisponible (' + $_.Exception.Message + ')')
-  }
-  return $script:SzhPontBarre
-}
-
-# À appeler avant la première fenêtre du processus. Voir le commentaire d'en-tête : passé
-# ce moment, Windows a déjà rangé le bouton sous l'identité déduite de powershell.exe.
-function Set-SzhAppUserModelId([string]$Id) {
-  if (-not $Id) { return $false }
-  if (-not (Initialize-SzhPontBarre)) { return $false }
-  try {
-    [Szh.BarreDesTaches]::Declarer($Id)
-    return $true
-  } catch {
-    Write-SzhLog ('AppUserModelID « ' + $Id + ' » non déclaré : ' + $_.Exception.Message)
-    return $false
-  }
-}
-
-function Set-SzhLnkAppId([string]$Lnk, [string]$Id) {
-  if ((-not $Id) -or (-not (Test-Path -LiteralPath $Lnk))) { return $false }
-  if (-not (Initialize-SzhPontBarre)) { return $false }
-  try {
-    [Szh.BarreDesTaches]::Poser((Resolve-Path -LiteralPath $Lnk).Path, $Id)
-    return $true
-  } catch {
-    Write-SzhLog ('AppUserModelID non posé sur ' + $Lnk + ' : ' + $_.Exception.Message)
-    return $false
-  }
-}
-
-function Get-SzhLnkAppId([string]$Lnk) {
-  if (-not (Test-Path -LiteralPath $Lnk)) { return '' }
-  if (-not (Initialize-SzhPontBarre)) { return '' }
-  try {
-    return [Szh.BarreDesTaches]::Lire((Resolve-Path -LiteralPath $Lnk).Path)
-  } catch {
-    return ''
-  }
-}
-
-# ---- Raccourcis du menu Démarrer ----
-# Quatre entrées, au niveau utilisateur : les deux lanceurs de produit et les deux entrées
-# de mise à jour. Posées par update.ps1 (mise à jour), par update-launcher.ps1 (à chaque
-# ouverture de session) et par bootstrap.ps1 (poste neuf), pour qu'un poste déjà à jour
-# comme un poste sortant de sa boîte finisse par les avoir sans que personne n'intervienne,
-# et chacun dans le profil du rédacteur qui ouvre la session.
-#
-# Pourquoi DEUX entrées de mise à jour, une française et une allemande, plutôt qu'une seule
-# renommée selon la langue du poste ? Parce qu'un nom de fichier .lnk est figé alors que la
-# langue de l'interface bouge (variable d'environnement, préférence retenue dans state.json,
-# langue de Windows). Renommer à chaque mise à jour aurait trois défauts : sur un poste neuf
-# la langue résolue est l'anglais — les Windows d'ici sont en anglais et state.json est
-# encore muet —, c'est-à-dire la seule langue qu'aucune des deux équipes n'emploie ; le nom
-# changerait sous les doigts du rédacteur dès qu'un collègue ouvre l'autre lanceur, alors
-# qu'on ne retrouve une entrée du menu Démarrer qu'en tapant son nom ; et un renommage
-# revient à supprimer puis recréer, ce qui casse l'épinglage. Deux noms fixes, chacun
-# portant sa langue à update.ps1 : c'est déjà ce que font « Revues SZH » et
-# « Zeitschriften SZH », qui cohabitent sur tous les postes. Ajouter 'en' ici y ajouterait
-# une troisième entrée.
-$script:SzhLanguesRaccourci = @('fr', 'de')
-
-# Ce que le menu doit porter, une ligne par entrée : le nom du .lnk, sa cible, ses
-# arguments, sa description (l'infobulle), son icône, et le script qu'elle pilote.
-#
-# Les deux lanceurs passent par hidden.vbs, qui lance sans console : une fenêtre noire
-# devant un lanceur graphique n'apprendrait rien à personne. La mise à jour, elle, vise
-# powershell.exe en direct : elle télécharge, elle prend plusieurs minutes, elle peut
-# échouer, et sa fenêtre est la seule chose qui le montre — c'est aussi là que
-# Show-SzhErreur propose le journal et l'e-mail au support.
-#
-# Chaque entrée porte une icône (windows/icone.py) : épinglée à la barre des tâches, elle
-# perd son libellé et l'icône devient le seul repère. Sans IconLocation le shell affiche
-# celle de wscript.exe, qui ne dit rien à personne ; d'où le repli sur celle de VSCodium.
-# Elle porte aussi son AppUserModelID : l'icône du raccourci ne vaut que pour le menu, et
-# c'est cette identité-là qui la fait suivre jusqu'au bouton de la barre des tâches.
-# Voir « Identité de barre des tâches » ci-dessus.
-function Get-SzhRaccourcisMenu {
-  param([string]$Toolkit = $SzhToolkit)
-  $vbs     = Join-Path $Toolkit 'windows\hidden.vbs'
-  $lanceur = Join-Path $Toolkit 'windows\open-revue.ps1'
-  $lanceurLivre = Join-Path $Toolkit 'windows\open-livre.ps1'
-  $maj     = Join-Path $Toolkit 'windows\update.ps1'
-  $wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
-  # Windows PowerShell 5.1 explicitement : $PSHOME désignerait pwsh si la mise à jour
-  # avait été lancée depuis PowerShell 7, et pwsh n'a pas de powershell.exe à côté.
-  $ps = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-  if (-not (Test-Path $ps)) { $ps = Join-Path $PSHOME 'powershell.exe' }
-
-  $liste = New-Object System.Collections.ArrayList
-  # « Revues SZH » et « Zeitschriften SZH » sont des noms de produit, pas des phrases à
-  # traduire : ils ne bougent pas, des épinglages les désignent. Le produit est passé
-  # explicitement des deux côtés, pour qu'un raccourci ancien ne montre pas les deux listes
-  # mêlées. Chacun s'adresse à son équipe, donc chacun décrit dans sa langue.
-  [void]$liste.Add([ordered]@{
-    nom    = 'Revues SZH'
-    cible  = $wscript
-    args   = ('//B "{0}" "{1}" "-Produit" "revue"' -f $vbs, $lanceur)
-    desc   = $SzhTextes['fr']['raccourci.revue.desc']
-    icone  = (Join-Path $Toolkit 'windows\szh-revue.ico')
-    appid  = (Get-SzhAppId 'revue')
-    pilote = $lanceur
-  })
-  [void]$liste.Add([ordered]@{
-    nom    = 'Zeitschriften SZH'
-    cible  = $wscript
-    args   = ('//B "{0}" "{1}" "-Produit" "zeitschrift"' -f $vbs, $lanceur)
-    desc   = $SzhTextes['de']['raccourci.zs.desc']
-    icone  = (Join-Path $Toolkit 'windows\szh-zeitschrift.ico')
-    appid  = (Get-SzhAppId 'zeitschrift')
-    pilote = $lanceur
-  })
-  # « Books SZH-CSPS » : un troisième produit, sans langue à lui — un livre s'écrit dans SA
-  # langue (`lang:` de buch.yaml), jamais celle du lanceur qui les liste. La description
-  # suit donc $SzhLangue, la langue déjà résolue en tête de ce fichier (variable
-  # d'environnement, préférence retenue, langue de Windows), au lieu d'un « fr » ou « de »
-  # figé comme pour les deux autres produits. Le caractère « / » n'est pas de mise dans un nom de FICHIER
-  # .lnk (Windows le lit comme un séparateur de chemin) : le nom du raccourci et de la
-  # fenêtre s'écrit donc « Books SZH-CSPS », trait d'union, partout où c'est un nom de
-  # fichier ou une identité, pas seulement ici.
-  [void]$liste.Add([ordered]@{
-    nom    = 'Books SZH-CSPS'
-    cible  = $wscript
-    args   = ('//B "{0}" "{1}"' -f $vbs, $lanceurLivre)
-    desc   = $SzhTextes[$SzhLangue]['raccourci.livre.desc']
-    icone  = (Join-Path $Toolkit 'windows\szh-livre.ico')
-    appid  = (Get-SzhAppId 'livre')
-    pilote = $lanceurLivre
-  })
-  foreach ($langue in $SzhLanguesRaccourci) {
-    [void]$liste.Add([ordered]@{
-      nom    = $SzhTextes[$langue]['raccourci.maj.nom']
-      cible  = $ps
-      args   = ('-NoProfile -ExecutionPolicy Bypass -File "{0}" -Langue {1}' -f $maj, $langue)
-      desc   = $SzhTextes[$langue]['raccourci.maj.desc']
-      icone  = (Join-Path $Toolkit 'windows\szh-maj.ico')
-      appid  = (Get-SzhAppId ('maj.' + $langue))
-      pilote = $maj
-    })
-  }
-  return $liste
-}
-
-# Pose les entrées ci-dessus et retire celles d'une version antérieure. Ne lève jamais :
-# un menu Démarrer verrouillé par une stratégie de groupe ne doit pas faire échouer une
-# mise à jour par ailleurs réussie. Rend un bilan — poses, retires, manques — que
-# l'appelant écrit au journal, car un raccourci absent qui ne se dit pas est introuvable.
-# $Menu est paramétrable pour éprouver la fonction hors du vrai menu Démarrer.
-function Set-SzhRaccourcisMenu {
+# $Extrait est une extraction à part de la même archive : elle dit exactement ce que cette
+# version contient. Uniquement dans les dossiers que l'archive gère (release.yml : pipeline,
+# vscodium-user, revue-template, livre-template, windows) — un dossier qui n'appartient pas
+# à l'archive n'a pas à être jugé par elle, et c'est cette limite qui rend l'opération sûre.
+# Rien hors $Toolkit n'est même regardé : state.json, config.json, staging, logs et l'état
+# par compte vivent ailleurs.
+function Remove-SzhToolkitOrphelins {
   param(
-    [string]$Menu    = '',
-    [string]$Toolkit = $SzhToolkit
+    [Parameter(Mandatory = $true)][string]$Toolkit,
+    [Parameter(Mandatory = $true)][string]$Extrait
   )
-  if (-not $Menu) { $Menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs' }
-  $bilan = [ordered]@{
-    poses   = New-Object System.Collections.ArrayList
-    retires = New-Object System.Collections.ArrayList
-    manques = New-Object System.Collections.ArrayList
-  }
-  $voulus = @(Get-SzhRaccourcisMenu -Toolkit $Toolkit)
-  $canoniques = @{}
-  foreach ($r in $voulus) { $canoniques[($r.nom + '.lnk').ToLower()] = $true }
+  $dossiersGeres = @('pipeline', 'vscodium-user', 'revue-template', 'livre-template', 'windows')
+  $retires = New-Object System.Collections.ArrayList
+  $avertissements = New-Object System.Collections.ArrayList
 
-  $shell = $null
-  try {
-    New-Item -ItemType Directory -Force -Path $Menu | Out-Null
-    $shell = New-Object -ComObject WScript.Shell
-  } catch {
-    # Dossier non inscriptible, ou COM indisponible : rien ne sera posé, et c'est tout ce
-    # qu'on peut en dire. On le dit une fois, pas quatre.
-    [void]$bilan.manques.Add(('menu Démarrer inaccessible ({0}) : {1}' -f $Menu, $_.Exception.Message))
-    return $bilan
+  # ---- Garde globale : l'extraction doit ressembler à un vrai toolkit avant qu'on y touche ----
+  # Une extraction vide (zip qui réussit sans rien contenir) viderait sinon les cinq dossiers
+  # gérés du toolkit, faute de quoi que ce soit à quoi les comparer. Si l'extraction ne porte
+  # ni le VERSION ni un seul des dossiers gérés, elle ne dit rien de fiable sur cette version :
+  # le nettoyage entier s'abstient plutôt que de juger sur du vide.
+  $versionExtraite = Test-Path -LiteralPath (Join-Path $Extrait 'VERSION') -PathType Leaf
+  $auMoinsUnDossier = $false
+  foreach ($d in $dossiersGeres) {
+    if (Test-Path -LiteralPath (Join-Path $Extrait $d) -PathType Container) { $auMoinsUnDossier = $true; break }
+  }
+  if ((-not $versionExtraite) -or (-not $auMoinsUnDossier)) {
+    [void]$avertissements.Add('nettoyage abandonné en entier : extraction sans VERSION ni aucun des cinq dossiers gérés -- rien n''est fiable à comparer')
+    return [ordered]@{ retires = $retires; avertissements = $avertissements }
   }
 
-  $codium = Get-VSCodiumExe
-  foreach ($r in $voulus) {
-    try {
-      # Pas de raccourci mort : un .lnk vers un script absent ne ferait que clignoter. Un
-      # raccourci déjà en place est alors laissé tel quel plutôt que remplacé par du vide.
-      if (-not (Test-Path $r.pilote)) {
-        [void]$bilan.manques.Add(('{0} : non posé, {1} manque au toolkit — celui-ci est incomplet, la tâche planifiée le réinstalle à la prochaine ouverture de session.' -f $r.nom, (Split-Path $r.pilote -Leaf)))
-        continue
-      }
-      $lnk = $shell.CreateShortcut((Join-Path $Menu ($r.nom + '.lnk')))
-      $lnk.TargetPath  = $r.cible
-      $lnk.Arguments   = $r.args
-      $lnk.Description = $r.desc
-      $lnk.WindowStyle = 1        # fenêtre normale : la mise à jour doit se voir
-      if (Test-Path $r.icone) { $lnk.IconLocation = ('{0},0' -f $r.icone) }
-      elseif ($codium) { $lnk.IconLocation = $codium }
-      $lnk.Save()
-      # L'identité vient après Save() : WScript.Shell réécrit le fichier entier et
-      # effacerait une propriété posée avant lui. Un échec ici ne retire pas l'entrée du
-      # menu — elle s'ouvre, elle n'a que la mauvaise icône dans la barre des tâches.
-      if ($r.appid -and (-not (Set-SzhLnkAppId (Join-Path $Menu ($r.nom + '.lnk')) $r.appid))) {
-        [void]$bilan.manques.Add(('{0} : identité de barre des tâches non posée, le bouton de la barre gardera l''icône de PowerShell.' -f $r.nom))
-      }
-      [void]$bilan.poses.Add($r.nom)
-    } catch {
-      [void]$bilan.manques.Add(('{0} : {1}' -f $r.nom, $_.Exception.Message))
+  # Sous ce nombre de fichiers, une proportion élevée d'orphelins reste plausible (un petit
+  # dossier retaillé de moitié) et la garde de vraisemblance ci-dessous ne s'applique pas.
+  $seuilPlancherFichiers = 4
+  # Au-delà de cette part, un nettoyage n'est plus « quelques fichiers retirés du dépôt » mais
+  # la majorité d'un dossier géré : invraisemblable pour une mise à jour normale.
+  $seuilProportionOrpheline = 0.5
+
+  foreach ($d in $dossiersGeres) {
+    $dansToolkit = Join-Path $Toolkit $d
+    if (-not (Test-Path $dansToolkit)) { continue }
+    $dansArchive = Join-Path $Extrait $d
+
+    # ---- Garde par dossier : le dossier doit exister dans l'archive extraite ----
+    # $Extrait\pipeline absent alors que $Extrait\windows est présent effacerait sinon tout
+    # $Toolkit\pipeline, faute de savoir ce que cette version y garde. En cas de doute, ce
+    # dossier-ci n'est pas touché ; les autres, eux, restent jugés chacun sur sa propre
+    # comparaison.
+    if (-not (Test-Path -LiteralPath $dansArchive -PathType Container)) {
+      [void]$avertissements.Add('dossier absent de l''archive extraite, rien retiré -> ' + $d)
+      continue
     }
-  }
 
-  # Une seule ligne suffit à dire qu'un dossier entier se refuse, et elle doit dire la
-  # suite : rien ne s'arrête pour autant, et la mise à jour garde deux autres portes.
-  if (($bilan.poses.Count -eq 0) -and ($bilan.manques.Count -gt 0)) {
-    [void]$bilan.manques.Add(('aucune entrée n''a pu être écrite dans « {0} » : ce dossier refuse l''écriture, le plus souvent parce qu''une stratégie de groupe tient le menu Démarrer. Rien d''autre n''est affecté, et la mise à jour reste atteignable par le bouton « Changer de version… » du lanceur et par la tâche planifiée qui la déclenche.' -f $Menu))
-  }
+    $fichiers = @(Get-ChildItem -LiteralPath $dansToolkit -Recurse -File -Force -ErrorAction SilentlyContinue)
+    if ($fichiers.Count -eq 0) { continue }
 
-  # Un raccourci d'une version antérieure, mal nommé, doublerait l'entrée sans jamais
-  # disparaître : on retire donc tout .lnk qui pilote un de nos scripts sans porter l'un
-  # des noms voulus. Un raccourci bien nommé mais pointant ailleurs a déjà été corrigé
-  # ci-dessus, CreateShortcut réécrivant le fichier existant. Le premier niveau du menu
-  # seulement : le sous-dossier « SZH » appartient à un autre produit, et rien ici ne doit
-  # y toucher.
-  $nos = @('open-revue.ps1', 'open-livre.ps1', 'update.ps1')
-  try {
-    foreach ($f in @(Get-ChildItem -LiteralPath $Menu -Filter '*.lnk' -File -ErrorAction Stop)) {
-      if ($canoniques.ContainsKey($f.Name.ToLower())) { continue }
-      $vise = $false
-      try {
-        $vieux = $shell.CreateShortcut($f.FullName)
-        $ligne = (([string]$vieux.TargetPath) + ' ' + ([string]$vieux.Arguments)).ToLower()
-        foreach ($n in $nos) { if ($ligne -like ('*' + $n + '*')) { $vise = $true } }
-      } catch { $vise = $false }
-      if ($vise) {
-        Remove-Item -LiteralPath $f.FullName -Force
-        [void]$bilan.retires.Add($f.Name)
+    # Candidats orphelins : présents dans le toolkit, absents de l'archive. Calculés d'abord,
+    # sans rien supprimer -- la garde de vraisemblance ci-dessous doit juger sur l'ensemble
+    # avant qu'un seul fichier ne parte.
+    $candidats = New-Object System.Collections.ArrayList
+    foreach ($f in $fichiers) {
+      $relatif = $f.FullName.Substring($dansToolkit.Length).TrimStart('\')
+      $cible = Join-Path $dansArchive $relatif
+      if (-not (Test-Path -LiteralPath $cible)) {
+        [void]$candidats.Add([ordered]@{ chemin = $f.FullName; relatif = $relatif })
       }
     }
-  } catch {
-    [void]$bilan.manques.Add(('nettoyage des anciens raccourcis : ' + $_.Exception.Message))
+    if ($candidats.Count -eq 0) { continue }
+
+    # ---- Garde de vraisemblance : proportion invraisemblable ----
+    # Une archive authentique mais incomplète (dossier source vidé par erreur avant le `cp -r`
+    # de release.yml, zip valide, empreinte correcte) passe les deux gardes ci-dessus : le
+    # dossier existe dans l'archive, il est juste creux. Elle ne passe pas celle-ci.
+    if (($fichiers.Count -ge $seuilPlancherFichiers) -and
+        (($candidats.Count / [double]$fichiers.Count) -gt $seuilProportionOrpheline)) {
+      [void]$avertissements.Add(('proportion invraisemblable, rien retiré -> {0} : {1}/{2} fichier(s) auraient été retirés' -f $d, $candidats.Count, $fichiers.Count))
+      continue
+    }
+
+    foreach ($c in $candidats) {
+      Remove-Item -LiteralPath $c.chemin -Force
+      [void]$retires.Add((Join-Path $d $c.relatif))
+    }
+
+    # Dossiers restés vides derrière les fichiers retirés, du plus profond au moins profond ;
+    # le dossier géré lui-même ($dansToolkit) n'est jamais retiré, même vide.
+    Get-ChildItem -LiteralPath $dansToolkit -Recurse -Directory -Force -ErrorAction SilentlyContinue |
+      Sort-Object { $_.FullName.Length } -Descending |
+      Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue) } |
+      Remove-Item -Force -ErrorAction SilentlyContinue
   }
-  return $bilan
+  return [ordered]@{ retires = $retires; avertissements = $avertissements }
 }
 
-# ---- Raccourci « Ouvrir la revue » (ou « Ouvrir le livre ») ----
-# Le raccourci vit dans le dossier de revue et porte son chemin absolu : à réécrire à
-# chaque déplacement, sinon il rouvre un chemin disparu. Ne lève pas si VSCodium manque,
-# c'est un confort et non la condition du déplacement.
-# `$NomLien`/`$Description` par défaut : ceux de la revue, pour que new-revue.ps1 n'ait rien
-# à changer ; new-livre.ps1 passe les siens.
-function Set-SzhRaccourciRevue([string]$Dossier, [string]$NomLien = 'Ouvrir la revue', [string]$Description = 'Ouvrir cette revue dans l''éditeur') {
-  $codium = Get-VSCodiumExe
-  if (-not $codium) { return $false }
-  $chemin = (Resolve-Path $Dossier).Path
-  $shell = New-Object -ComObject WScript.Shell
-  $lnk = $shell.CreateShortcut((Join-Path $chemin ($NomLien + '.lnk')))
-  $lnk.TargetPath = $codium
-  $lnk.Arguments = ('"{0}"' -f $chemin)
-  $lnk.IconLocation = $codium
-  $lnk.Description = $Description
-  $lnk.Save()
-  return $true
+# Bascule le toolkit d'un coup, jamais fichier par fichier sur l'arbre vivant : construit la
+# nouvelle version dans <toolkit>.neuf (copie de l'actuel, complétée par l'archive, nettoyée
+# de ses orphelins -- Remove-SzhToolkitOrphelins ci-dessus, appliquée à cette copie et non
+# plus au toolkit en service), puis bascule par un renommage NTFS, tout ou rien.
+#
+# [System.IO.Directory]::Move, et non Move-Item : Move-Item recopie récursivement dossier par
+# dossier et peut laisser le toolkit coupé en deux si un fichier est verrouillé en cours de
+# route -- Move-Item peut alors créer <toolkit>\neuf au lieu de remplacer <toolkit>, sans lever
+# la moindre erreur. Directory.Move est un renommage NTFS -- une seule opération sur le nom du
+# dossier, jamais sur son contenu -- qui réussit ou échoue entièrement, sans état intermédiaire.
+#
+# $Zip : l'archive déjà téléchargée et vérifiée par sha256 (l'appelant l'a fait avant d'appeler
+# cette fonction). $Toolkit : le dossier cible, en service. $DossierTravail : où poser
+# l'extraction de référence qui sert à détecter les orphelins -- $SzhStaging en service, un
+# dossier jetable dans les tests.
+#
+# Rend le bilan de Remove-SzhToolkitOrphelins ({ retires; avertissements }) ; lève (T
+# 'err.toolkit') si la construction de la copie ou la bascule elle-même échoue -- presque
+# toujours un fichier encore ouvert dans l'éditeur -- après avoir remis le toolkit d'origine
+# en place si la bascule avait déjà commencé.
+function Install-SzhToolkitDepuisArchive {
+  param(
+    [Parameter(Mandatory = $true)][string]$Zip,
+    [Parameter(Mandatory = $true)][string]$Toolkit,
+    [string]$DossierTravail = ''
+  )
+  if (-not $DossierTravail) { $DossierTravail = Split-Path $Toolkit -Parent }
+  $neuf    = $Toolkit + '.neuf'
+  $vieux   = $Toolkit + '.vieux'
+  $extrait = Join-Path $DossierTravail ((Split-Path $Toolkit -Leaf) + '-verif-' + [guid]::NewGuid().Guid)
+  $bilanOrphelins = [ordered]@{ retires = @(); avertissements = @() }
+
+  # Reste d'une passe précédente interrompue entre la construction et la bascule : jamais
+  # rejoué tel quel, la copie repart de zéro.
+  foreach ($d in $neuf, $vieux) {
+    if (Test-Path -LiteralPath $d) { Remove-Item -LiteralPath $d -Recurse -Force }
+  }
+
+  try {
+    # ---- La copie : jamais l'arbre vivant ----
+    # Une lecture qui échoue ici (fichier du toolkit courant encore ouvert dans l'éditeur)
+    # est le même dérangement qu'un renommage refusé plus bas : même cause, même remède,
+    # donc le même message clair plutôt que l'exception .NET brute (« used by another
+    # process »), que personne ne comprend sans lire le code.
+    try {
+      New-Item -ItemType Directory -Force -Path $neuf | Out-Null
+      if (Test-Path -LiteralPath $Toolkit) {
+        Get-ChildItem -LiteralPath $Toolkit -Force | Copy-Item -Destination $neuf -Recurse -Force
+      }
+      Expand-Archive -Path $Zip -DestinationPath $neuf -Force
+    } catch {
+      throw (T 'err.toolkit')
+    }
+
+    # ---- Nettoyage des orphelins, sur la copie ----
+    # Jamais bloquant : un souci ici ne doit pas empêcher la bascule qui suit -- la copie
+    # reste un toolkit valide même si un reste de l'ancienne version y traîne encore.
+    try {
+      Expand-Archive -Path $Zip -DestinationPath $extrait -Force
+      $bilanOrphelins = Remove-SzhToolkitOrphelins -Toolkit $neuf -Extrait $extrait
+    } catch {
+      Write-SzhLog ('Install-SzhToolkitDepuisArchive : nettoyage des orphelins non effectué : ' + $_.Exception.Message)
+    } finally {
+      if (Test-Path -LiteralPath $extrait) { Remove-Item -LiteralPath $extrait -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    # ---- La bascule : deux renommages, jamais un fichier copié un par un ----
+    if (Test-Path -LiteralPath $Toolkit) {
+      try {
+        [System.IO.Directory]::Move($Toolkit, $vieux)
+      } catch {
+        throw (T 'err.toolkit')
+      }
+    }
+    try {
+      [System.IO.Directory]::Move($neuf, $Toolkit)
+    } catch {
+      # Le toolkit d'origine n'a pas bougé de $vieux : on l'y remet avant de lever, pour
+      # qu'un échec de bascule ne laisse jamais le poste sans toolkit du tout.
+      if (Test-Path -LiteralPath $vieux) {
+        try { [System.IO.Directory]::Move($vieux, $Toolkit) } catch { }
+      }
+      throw (T 'err.toolkit')
+    }
+    if (Test-Path -LiteralPath $vieux) { Remove-Item -LiteralPath $vieux -Recurse -Force -ErrorAction SilentlyContinue }
+    return $bilanOrphelins
+  } finally {
+    if (Test-Path -LiteralPath $neuf) { Remove-Item -LiteralPath $neuf -Recurse -Force -ErrorAction SilentlyContinue }
+  }
 }
 
 # ---- Résolution d'exécutables ----
@@ -2058,11 +892,11 @@ function Get-VSCodiumCli {
   return $null
 }
 
-# Les extensions posées, telles que l'éditeur les liste POUR CE COMPTE. La source de vérité
+# Les extensions posées, telles que l'éditeur les liste pour ce compte. La source de vérité
 # est l'éditeur, pas state.json : celui-ci est commun au poste alors qu'une extension
 # s'installe par utilisateur, et il affirmait « posée » à un compte qui n'avait rien.
 # Table id -> version, et $null — pas une table vide — quand le CLI ne répond pas : un
-# profil neuf n'a AUCUNE extension, et confondre les deux ferait sauter l'installation
+# profil neuf n'a aucune extension, et confondre les deux ferait sauter l'installation
 # exactement là où elle est nécessaire. Les tables PowerShell ignorent la casse, ce qu'il
 # faut ici : l'éditeur écrit « MS-CEINTL.vscode-language-pack-de ».
 function Get-SzhExtensionsInstallees {
@@ -2126,7 +960,7 @@ function Get-SzhDistrosEnregistrees {
   return $noms
 }
 
-# Un dossier de distribution présent alors que la distribution n'est PAS enregistrée pour
+# Un dossier de distribution présent alors que la distribution n'est pas enregistrée pour
 # ce compte est un reste : installation interrompue, disque plein, ou un autre compte qui
 # l'avait posé là du temps du dossier commun. On l'écarte — l'environnement est jetable, il
 # ne contient aucune donnée — et seulement si le dossier porte bien notre nom, jamais un

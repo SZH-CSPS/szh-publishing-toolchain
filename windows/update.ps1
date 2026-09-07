@@ -141,105 +141,9 @@ function Set-SzhProtocoleSzh {
   }
 }
 
-# ---- Orphelins du toolkit ----
-# `Expand-Archive -Force` écrase ce que l'archive contient, mais ne supprime jamais ce
-# qu'elle ne contient plus : un fichier retiré du dépôt survivait donc indéfiniment dans le
-# toolkit de chaque poste, mise à jour après mise à jour (constaté : neuf fichiers de
-# pipeline/filters, pipeline/rapport.py et pipeline/attic, encore présents après plusieurs
-# mises à jour qui auraient dû les effacer).
-#
-# $Extrait est une extraction à part de LA MÊME archive, faite avant d'écraser le toolkit :
-# elle dit exactement ce que cette version contient. Uniquement dans les dossiers que
-# l'archive gère (release.yml : pipeline, vscodium-user, revue-template, livre-template,
-# windows) — un dossier qui n'appartient pas à l'archive n'a pas à être jugé par elle, et
-# c'est cette limite qui rend l'opération sûre. Rien HORS $Toolkit n'est même regardé :
-# state.json, config.json, staging, logs et l'état par compte vivent ailleurs.
-function Remove-SzhToolkitOrphelins {
-  param(
-    [Parameter(Mandatory = $true)][string]$Toolkit,
-    [Parameter(Mandatory = $true)][string]$Extrait
-  )
-  $dossiersGeres = @('pipeline', 'vscodium-user', 'revue-template', 'livre-template', 'windows')
-  $retires = New-Object System.Collections.ArrayList
-  $avertissements = New-Object System.Collections.ArrayList
-
-  # ---- Garde globale : l'extraction doit ressembler à un vrai toolkit avant qu'on y touche ----
-  # Constaté en bac à sable : une extraction vide (zip qui réussit sans rien contenir) aurait
-  # vidé les cinq dossiers gérés du toolkit, faute de quoi que ce soit à quoi les comparer. Si
-  # l'extraction ne porte NI le VERSION NI un seul des dossiers gérés, elle ne dit rien de
-  # fiable sur cette version : le nettoyage entier s'abstient plutôt que de juger sur du vide.
-  $versionExtraite = Test-Path -LiteralPath (Join-Path $Extrait 'VERSION') -PathType Leaf
-  $auMoinsUnDossier = $false
-  foreach ($d in $dossiersGeres) {
-    if (Test-Path -LiteralPath (Join-Path $Extrait $d) -PathType Container) { $auMoinsUnDossier = $true; break }
-  }
-  if ((-not $versionExtraite) -or (-not $auMoinsUnDossier)) {
-    [void]$avertissements.Add('nettoyage abandonné en entier : extraction sans VERSION ni aucun des cinq dossiers gérés -- rien n''est fiable à comparer')
-    return [ordered]@{ retires = $retires; avertissements = $avertissements }
-  }
-
-  # Sous ce nombre de fichiers, une proportion élevée d'orphelins reste plausible (un petit
-  # dossier retaillé de moitié) et la garde de vraisemblance ci-dessous ne s'applique pas.
-  $seuilPlancherFichiers = 4
-  # Au-delà de cette part, un nettoyage n'est plus « quelques fichiers retirés du dépôt » mais
-  # la majorité d'un dossier géré : invraisemblable pour une mise à jour normale.
-  $seuilProportionOrpheline = 0.5
-
-  foreach ($d in $dossiersGeres) {
-    $dansToolkit = Join-Path $Toolkit $d
-    if (-not (Test-Path $dansToolkit)) { continue }
-    $dansArchive = Join-Path $Extrait $d
-
-    # ---- Garde par dossier : le dossier doit exister dans l'archive extraite ----
-    # Le défaut constaté en bac à sable : $Extrait\pipeline absent alors que $Extrait\windows
-    # est présent effaçait TOUT $Toolkit\pipeline, faute de savoir ce que cette version y
-    # garde. En cas de doute, ce dossier-ci n'est pas touché ; les autres, eux, restent jugés
-    # chacun sur sa propre comparaison.
-    if (-not (Test-Path -LiteralPath $dansArchive -PathType Container)) {
-      [void]$avertissements.Add('dossier absent de l''archive extraite, rien retiré -> ' + $d)
-      continue
-    }
-
-    $fichiers = @(Get-ChildItem -LiteralPath $dansToolkit -Recurse -File -Force -ErrorAction SilentlyContinue)
-    if ($fichiers.Count -eq 0) { continue }
-
-    # Candidats orphelins : présents dans le toolkit, absents de l'archive. Calculés d'abord,
-    # sans rien supprimer -- la garde de vraisemblance ci-dessous doit juger sur l'ensemble
-    # avant qu'un seul fichier ne parte.
-    $candidats = New-Object System.Collections.ArrayList
-    foreach ($f in $fichiers) {
-      $relatif = $f.FullName.Substring($dansToolkit.Length).TrimStart('\')
-      $cible = Join-Path $dansArchive $relatif
-      if (-not (Test-Path -LiteralPath $cible)) {
-        [void]$candidats.Add([ordered]@{ chemin = $f.FullName; relatif = $relatif })
-      }
-    }
-    if ($candidats.Count -eq 0) { continue }
-
-    # ---- Garde de vraisemblance : proportion invraisemblable ----
-    # Une archive authentique mais incomplète (dossier source vidé par erreur avant le `cp -r`
-    # de release.yml, zip valide, empreinte correcte) passe les deux gardes ci-dessus : le
-    # dossier EXISTE dans l'archive, il est juste creux. Elle ne passe pas celle-ci.
-    if (($fichiers.Count -ge $seuilPlancherFichiers) -and
-        (($candidats.Count / [double]$fichiers.Count) -gt $seuilProportionOrpheline)) {
-      [void]$avertissements.Add(('proportion invraisemblable, rien retiré -> {0} : {1}/{2} fichier(s) auraient été retirés' -f $d, $candidats.Count, $fichiers.Count))
-      continue
-    }
-
-    foreach ($c in $candidats) {
-      Remove-Item -LiteralPath $c.chemin -Force
-      [void]$retires.Add((Join-Path $d $c.relatif))
-    }
-
-    # Dossiers restés vides derrière les fichiers retirés, du plus profond au moins profond ;
-    # le dossier géré lui-même ($dansToolkit) n'est jamais retiré, même vide.
-    Get-ChildItem -LiteralPath $dansToolkit -Recurse -Directory -Force -ErrorAction SilentlyContinue |
-      Sort-Object { $_.FullName.Length } -Descending |
-      Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue) } |
-      Remove-Item -Force -ErrorAction SilentlyContinue
-  }
-  return [ordered]@{ retires = $retires; avertissements = $avertissements }
-}
+# Remove-SzhToolkitOrphelins vit dans szh-common.ps1, appelée par Install-SzhToolkitDepuisArchive
+# (elle aussi dans szh-common.ps1) : une seule définition, pour que bootstrap.ps1 et
+# update-launcher.ps1 ne puissent pas en garder une copie qui diverge de celle-ci.
 
 # ---- Une seule mise à jour à la fois (mutex nommé, portée poste) ----
 # Deux update.ps1 concurrents écrivent la même archive de staging et détendent deux
@@ -248,7 +152,13 @@ function Remove-SzhToolkitOrphelins {
 # même temps sur le même poste écrivent le même C:\ProgramData\SZH\toolkit.
 $script:SzhMutex = New-SzhMutexPoste
 $aLaMain = $false
-try { $aLaMain = $SzhMutex.WaitOne(0) } catch { $aLaMain = $false }
+# Un processus mort en tenant ce mutex nommé le laisse abandonné : le suivant qui l'acquiert
+# reçoit AbandonedMutexException en plus de la propriété. Un catch générique le confondrait
+# avec « déjà pris » et sortirait sans ReleaseMutex, abandonnant le mutex à son tour -- plus
+# aucune mise à jour ne passerait jamais sur ce poste.
+try { $aLaMain = $SzhMutex.WaitOne(0) }
+catch [System.Threading.AbandonedMutexException] { $aLaMain = $true; Write-SzhLog 'update : mutex abandonné par une passe précédente, repris' }
+catch { $aLaMain = $false }
 if (-not $aLaMain) {
   Write-SzhLog 'update : une autre mise à jour est déjà en cours -> sortie'
   Write-SzhBanniere (T 'maj.soustitre')
@@ -269,10 +179,10 @@ try {
   Write-Host ''
 
   # Le compte qui exécute, dans le journal, avant tout le reste. Une mise à jour pose
-  # l'essentiel PAR UTILISATEUR — distribution WSL, extensions, réglages, raccourcis,
-  # associations de fichiers — et les lignes de journal ne disaient pas pour qui. Sur le
-  # poste du 26 août 2026, elles annonçaient « raccourcis posés » pour un compte de support
-  # élevé depuis la session de la rédactrice, qui n'a donc rien reçu.
+  # l'essentiel par utilisateur — distribution WSL, extensions, réglages, raccourcis,
+  # associations de fichiers — et une ligne « raccourcis posés » qui ne nomme pas le compte
+  # ne dit rien d'un compte de support élevé depuis la session d'une rédactrice, qui n'aura
+  # donc rien reçu.
   $moi = Get-SzhIdentite
   Write-SzhLog ('update : compte {0} (admin : {1})' -f $moi.nom, $moi.admin)
 
@@ -285,6 +195,22 @@ try {
   $etape = (T 'etape.manifest')
   Write-SzhEtape (T 'maj.verif')
   $manifest = Get-SzhManifest $Version
+  # Champs du manifest utilisés comme noms de fichiers, rejoints tels quels à $SzhStaging :
+  # un manifest corrompu ou détourné ne doit jamais pouvoir écrire ni lire hors de ce dossier.
+  if (-not (Test-SzhVersionTag $manifest.version)) {
+    throw ('Version de manifest invalide : ' + [string]$manifest.version)
+  }
+  if (-not (Test-SzhNomFichierManifest $manifest.toolkit.file)) {
+    throw ('Nom de fichier de manifest invalide (toolkit) : ' + [string]$manifest.toolkit.file)
+  }
+  if (-not (Test-SzhNomFichierManifest $manifest.rootfs.file)) {
+    throw ('Nom de fichier de manifest invalide (rootfs) : ' + [string]$manifest.rootfs.file)
+  }
+  foreach ($ext in $manifest.vsix) {
+    if (-not (Test-SzhNomFichierManifest $ext.file)) {
+      throw ('Nom de fichier de manifest invalide (vsix ' + [string]$ext.id + ') : ' + [string]$ext.file)
+    }
+  }
   $etat = Get-SzhState
   $etatUtil = Get-SzhEtatUtilisateur
   Write-SzhOk (T 'maj.cible' @($manifest.version))
@@ -306,32 +232,22 @@ try {
         throw (T 'err.empreinte' @($manifest.toolkit.file))
       }
     }
-    # Écarte les orphelins AVANT d'écraser le toolkit : il faut le contenu exact de cette
-    # version, extrait à part, pour savoir ce qui n'y est plus. Jamais bloquant — un souci
-    # ici ne doit ni interrompre cette étape ni les suivantes ($ennuis n'est pas touché),
-    # l'extraction normale qui suit répare de toute façon ce que l'archive gère.
-    $extrait = ''
-    try {
-      $extrait = Join-Path $SzhStaging ('toolkit-extrait-' + $manifest.version)
-      if (Test-Path $extrait) { Remove-Item -LiteralPath $extrait -Recurse -Force }
-      Expand-Archive -Path $zip -DestinationPath $extrait -Force
-      $bilanOrphelins = Remove-SzhToolkitOrphelins -Toolkit $SzhToolkit -Extrait $extrait
-      foreach ($o in $bilanOrphelins.retires) {
-        Write-SzhLog ('update : orphelin retiré du toolkit -> ' + $o)
-      }
-      if ($bilanOrphelins.retires.Count -gt 0) {
-        Write-SzhLog ('update : ' + $bilanOrphelins.retires.Count + ' orphelin(s) retiré(s) du toolkit (absents de la version ' + $manifest.version + ')')
-      }
-      foreach ($a in $bilanOrphelins.avertissements) {
-        Write-SzhLog ('update : nettoyage des orphelins, anomalie -> ' + $a)
-      }
-    } catch {
-      Write-SzhLog ('update : nettoyage des orphelins du toolkit non effectué : ' + $_.Exception.Message)
-    } finally {
-      if ($extrait -and (Test-Path $extrait)) { Remove-Item -LiteralPath $extrait -Recurse -Force -ErrorAction SilentlyContinue }
+    # Remplacement atomique : construit le nouveau toolkit à part (copie de l'actuel,
+    # complétée par l'archive, nettoyée de ses orphelins), puis bascule par un renommage —
+    # jamais un Expand-Archive -Force fichier par fichier sur l'arbre vivant, qui laissait
+    # une fenêtre où le toolkit était amputé. Voir Install-SzhToolkitDepuisArchive
+    # (szh-common.ps1) pour le détail et le mode d'échec.
+    $bilanOrphelins = Install-SzhToolkitDepuisArchive -Zip $zip -Toolkit $SzhToolkit -DossierTravail $SzhStaging
+    foreach ($o in $bilanOrphelins.retires) {
+      Write-SzhLog ('update : orphelin retiré du toolkit -> ' + $o)
+    }
+    if ($bilanOrphelins.retires.Count -gt 0) {
+      Write-SzhLog ('update : ' + $bilanOrphelins.retires.Count + ' orphelin(s) retiré(s) du toolkit (absents de la version ' + $manifest.version + ')')
+    }
+    foreach ($a in $bilanOrphelins.avertissements) {
+      Write-SzhLog ('update : nettoyage des orphelins, anomalie -> ' + $a)
     }
 
-    Expand-Archive -Path $zip -DestinationPath $SzhToolkit -Force
     Write-SzhOk (T 'maj.e1.ok')
   } else {
     Write-SzhOk (T 'maj.deja')
@@ -340,12 +256,12 @@ try {
   # ---- 2/5 Environnement de fabrication (distro WSL) ----
   #
   # Jamais fatale. C'est l'étape la plus lourde — 574 Mo, un import, des verrous de
-  # fichiers — et son échec emportait les étapes 3, 4 et 5 : la rédactrice du poste du
-  # 26 août 2026 s'est retrouvée sans raccourcis, sans extensions et sans réglages pour une
-  # panne qui ne concernait qu'elle. L'ennui est retenu, la passe continue, l'écran de fin
+  # fichiers — et son échec emportait autrefois les étapes 3, 4 et 5 : une panne qui ne
+  # concerne que l'environnement de fabrication privait le rédacteur de ses raccourcis, de
+  # ses extensions et de ses réglages. L'ennui est retenu, la passe continue, l'écran de fin
   # le dit.
   #
-  # La version posée se lit dans l'état PAR UTILISATEUR : l'enregistrement d'une
+  # La version posée se lit dans l'état par utilisateur : l'enregistrement d'une
   # distribution WSL est par compte, et l'état commun du poste affirmait « installé » à un
   # compte qui n'avait rien.
   $etape = (T 'etape.env')
@@ -354,7 +270,7 @@ try {
   $distroPresente = ((Get-SzhDistrosEnregistrees) -contains $SzhDistro)
   # Reprise des postes d'avant l'état par utilisateur : la version n'y était retenue que
   # dans l'état commun. On l'accepte une fois, et seulement si la distribution est bien
-  # enregistrée pour CE compte — sinon les postes déjà installés réimporteraient 3 Go pour
+  # enregistrée pour ce compte — sinon les postes déjà installés réimporteraient 3 Go pour
   # rien. Un compte qui n'a rien enregistré, lui, ne reçoit pas cette confiance : c'est
   # précisément le mensonge qu'on retire.
   if ((-not $rootfsPose) -and $distroPresente -and $etat -and $etat.rootfs) {
@@ -378,12 +294,20 @@ try {
         }
       }
 
-      # La place se vérifie AVANT de désenregistrer quoi que ce soit : un import à moitié
+      # La place se vérifie avant de désenregistrer quoi que ce soit : un import à moitié
       # fait laisse un dossier pris et aucune distribution, et c'est cet état-là qui bloque
       # ensuite toutes les mises à jour. 5 Go : l'archive (0,6) et le disque qu'elle déplie
       # (≈ 2,4), avec la marge de l'ancien environnement pas encore effacé.
       $libre = Get-SzhEspaceLibreGo
       if (($libre -ge 0) -and ($libre -lt 5)) { throw (T 'err.espace' @($libre, 5)) }
+
+      # Cette fenêtre est celle du menu Démarrer : rien, avant elle, n'a vérifié que le
+      # moment se prête à désenregistrer l'environnement. Mêmes commutateurs que la passe
+      # silencieuse (update-launcher.ps1) -- on remplace l'environnement, donc
+      # -RemplaceEnvironnement -- sans quoi une mise à jour manuelle pouvait couper une
+      # compilation en vol.
+      $moment = Test-SzhMomentMaj -RemplaceEnvironnement
+      if (-not $moment.propice) { throw (T 'err.wsl') }
 
       Write-SzhInfo (T 'maj.install')
       if ($distroPresente) {
@@ -431,7 +355,7 @@ try {
   # ---- 3/5 Extensions de l'éditeur ----
   $etape = (T 'etape.ext')
   Write-SzhEtape (T 'maj.e3')
-  # Ce qui est réellement posé POUR CE COMPTE : l'éditeur en est la seule preuve. L'état
+  # Ce qui est réellement posé pour ce compte : l'éditeur en est la seule preuve. L'état
   # retenu ne sert que si son CLI ne répond pas. Un état commun au poste affirmait « dix
   # extensions posées » à un compte qui n'en avait aucune, et la mise à jour les sautait
   # comme « déjà à jour » : le rédacteur se retrouvait sans cockpit, sans rien qui échoue.
@@ -459,7 +383,7 @@ try {
         if (-not (Test-SzhSha256 -Fichier $vf -Attendu $ext.sha256)) {
           throw (T 'err.empreinte' @($ext.file))
         }
-        # Le code de retour est LU, et l'etat n'enregistre la version que si
+        # Le code de retour est lu, et l'etat n'enregistre la version que si
         # l'installation a reussi. Sans cela un echec passager -- editeur a redemarrer,
         # fichier verrouille -- faisait croire l'extension posee, et la mise a jour
         # suivante la sautait comme « deja a jour » : l'extension ne revenait jamais.
@@ -517,24 +441,43 @@ try {
       if ($contenu -match '"locale"\s*:\s*"([^"]*)"') {
         if ($Matches[1] -ne 'de') {
           $rx = New-Object System.Text.RegularExpressions.Regex '"locale"\s*:\s*"[^"]*"'
-          Set-Content -Path $argv -Value $rx.Replace($contenu, '"locale": "de"', 1) -Encoding UTF8
+          # Sans BOM, comme Set-SzhJson : Set-Content -Encoding UTF8 en poserait un sous
+          # PowerShell 5.1, qu'Electron peut refuser de lire.
+          [System.IO.File]::WriteAllText($argv, $rx.Replace($contenu, '"locale": "de"', 1), (New-Object System.Text.UTF8Encoding($false)))
         }
       } else {
         $rx = New-Object System.Text.RegularExpressions.Regex '\{'
-        Set-Content -Path $argv -Value $rx.Replace($contenu, ('{' + "`r`n" + '  "locale": "de",'), 1) -Encoding UTF8
+        [System.IO.File]::WriteAllText($argv, $rx.Replace($contenu, ('{' + "`r`n" + '  "locale": "de",'), 1), (New-Object System.Text.UTF8Encoding($false)))
       }
     } else {
       New-Item -ItemType Directory -Force -Path (Split-Path $argv) | Out-Null
-      Set-Content -Path $argv -Value ('{' + "`r`n" + '  "locale": "de"' + "`r`n" + '}') -Encoding UTF8
+      [System.IO.File]::WriteAllText($argv, ('{' + "`r`n" + '  "locale": "de"' + "`r`n" + '}'), (New-Object System.Text.UTF8Encoding($false)))
     }
   }
 
   # Réglages WSL du poste : plafond de mémoire et extinction automatique de la machine.
+  # Écrasé seulement s'il diffère : sans cette garde, un réglage que le rédacteur avait
+  # corrigé à la main (plus de mémoire allouée, par exemple) revenait à la valeur du gabarit
+  # à chaque mise à jour, sans qu'aucun message ne le dise. L'original est sauvegardé une
+  # seule fois, avant la première bascule -- jamais réécrit ensuite, sinon la sauvegarde
+  # finirait par n'être qu'une copie de ce que nous avons nous-mêmes posé.
   $wslCfg = Join-Path $SzhToolkit 'windows\user.wslconfig'
-  if (Test-Path $wslCfg) { Copy-Item $wslCfg (Join-Path $env:USERPROFILE '.wslconfig') -Force }
+  $wslCfgUtilisateur = Join-Path $env:USERPROFILE '.wslconfig'
+  if (Test-Path $wslCfg) {
+    $wslCfgVoulu = Get-Content $wslCfg -Raw
+    $wslCfgActuel = $null
+    if (Test-Path $wslCfgUtilisateur) { $wslCfgActuel = Get-Content $wslCfgUtilisateur -Raw }
+    if ($wslCfgActuel -ne $wslCfgVoulu) {
+      if ($wslCfgActuel) {
+        $wslCfgSauvegarde = Join-Path $env:USERPROFILE '.wslconfig.szh-avant'
+        if (-not (Test-Path $wslCfgSauvegarde)) { Copy-Item $wslCfgUtilisateur $wslCfgSauvegarde -Force }
+      }
+      Copy-Item $wslCfg $wslCfgUtilisateur -Force
+    }
+  }
 
-  # Raccourcis du menu Démarrer, au niveau utilisateur : les deux lanceurs de produit et
-  # les deux entrées de mise à jour. La liste et les libellés sont dans szh-common.ps1,
+  # Raccourcis du menu Démarrer, au niveau utilisateur : les trois lanceurs de produit et
+  # les deux entrées de mise à jour. La liste et les libellés vivent dans le socle commun,
   # que bootstrap.ps1 et update-launcher.ps1 appellent aussi — un poste neuf comme un
   # poste déjà à jour reçoit ainsi les mêmes entrées, sans intervention.
   #

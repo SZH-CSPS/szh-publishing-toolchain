@@ -32,7 +32,7 @@ const { spawnSync } = require('child_process');
 const RACINE = path.resolve(__dirname, '..', '..');
 const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
-const OUVRIR = lire('windows', 'open-revue.ps1');
+const OUVRIR = lire('windows', 'open-produit.ps1');
 const UPDATE = lire('windows', 'update.ps1');
 
 // ---- La prémisse : le protocole est enregistré sans -Produit ----
@@ -59,7 +59,7 @@ test('open-revue.ps1 : le lien rappelle Set-SzhLangueProduit avec SON produit, a
   const iRappel = OUVRIR.indexOf('Set-SzhLangueProduit $cible.produit');
   const iRacines = OUVRIR.indexOf('# ---- Racines à balayer ----');
   assert.ok(iBlocLien !== -1 && iGetLien !== -1 && iRappel !== -1,
-    'un des trois repères a disparu de open-revue.ps1');
+    'un des trois repères a disparu de open-produit.ps1');
   assert.ok(iBlocLien < iGetLien, 'Get-SzhLien doit être dans le bloc if ($Lien)');
   // L'ordre qui est tout le sujet : le rappel vient après l'analyse du lien, jamais avant —
   // sinon $cible.produit n'existe pas encore et l'appel plante ou passe une valeur vide.
@@ -76,9 +76,9 @@ test('open-revue.ps1 : le lien rappelle Set-SzhLangueProduit avec SON produit, a
   // Une seule autre occurrence : celle du tout début, avec le produit du LANCEUR
   // ($produitFiltre), avant toute analyse de lien. Si ce compte change, un appel a été
   // ajouté ou perdu sans que ce test le sache.
-  const occurrences = (OUVRIR.match(/Set-SzhLangueProduit /g) || []).length;
+  const occurrences = (OUVRIR.match(/Set-SzhLangueProduit \$/g) || []).length;
   assert.strictEqual(occurrences, 2,
-    'open-revue.ps1 doit appeler Set-SzhLangueProduit exactement deux fois : une fois pour ' +
+    'open-produit.ps1 doit appeler Set-SzhLangueProduit exactement deux fois : une fois pour ' +
     'le lanceur, une fois — après coup — pour le lien');
 });
 
@@ -89,15 +89,15 @@ test('open-revue.ps1 : le titre de la fenêtre est recalculé après la bascule 
   // du lien diffère de celui du lanceur, donc rarement remarqué à l'œil.
   const iRappel = OUVRIR.indexOf('Set-SzhLangueProduit $cible.produit');
   const iIntrouvable = OUVRIR.indexOf("T 'lien.introuvable'");
-  assert.ok(iRappel !== -1 && iIntrouvable !== -1, 'repère manquant dans open-revue.ps1');
+  assert.ok(iRappel !== -1 && iIntrouvable !== -1, 'repère manquant dans open-produit.ps1');
   // Le titre doit être recalculé entre le rappel de langue et la boîte « introuvable » —
   // sinon celle-ci lit encore l'ancienne table de textes.
   const segment = OUVRIR.slice(iRappel, iIntrouvable);
-  assert.match(segment, /\$titreFenetre = \(T 'lanceur\.titre'\)/,
-    '$titreFenetre n’est pas recalculé entre le rappel de langue et la boîte « introuvable »');
+  assert.match(segment, /\$titreFenetre = \(T \$infoLien\.texteTitre\)/,
+    "$titreFenetre n'est pas recalculé entre le rappel de langue et la boîte « introuvable »");
   assert.match(segment,
-    /if \(\(\[string\]\$cible\.produit\)\.ToLower\(\) -eq 'zeitschrift'\) \{ \$titreFenetre = \(T 'lanceur\.titre\.zs'\) \}/,
-    'le titre recalculé ne suit pas le produit DU LIEN (zeitschrift => titre.zs)');
+    /Get-SzhProduitInfo \$cible\.produit/,
+    "le titre recalculé ne suit pas le produit DU LIEN (info du produit non récupérée)");
 });
 
 // ---- Le mécanisme, réellement exécuté : le dernier appel gagne ----

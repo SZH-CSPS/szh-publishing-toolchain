@@ -4,7 +4,7 @@
     powershell -ExecutionPolicy Bypass -File new-livre.ps1 -Dossier "$env:OneDrive\Livres\2026-B330-Nom"
 
   Le lanceur passe en plus -Titre, -Annee, -Reference, -Type, -Maquette et -Format : c'est
-  lui qui les fait saisir (voir Read-SzhNouveauLivre dans open-livre.ps1). Sans -Titre ou
+  lui qui les fait saisir (voir Read-SzhNouveauLivre dans open-produit.ps1). Sans -Titre ou
   sans -Annee, ils se relisent dans le nom du dossier (convention « <année>-B<référence>-<nom> »,
   Get-SzhNomLivre) — repli imparfait, gardé pour un appel en ligne de commande sur un
   dossier déjà nommé, comme le fait new-revue.ps1 pour l'année et le numéro.
@@ -49,13 +49,15 @@ New-Item -ItemType Directory -Force -Path $Dossier | Out-Null
 if ($existait) {
   Write-SzhInfo 'Ce dossier contient déjà un livre : rien n''est écrasé, seul le raccourci est (re)créé.'
 } else {
-  Copy-Item (Join-Path $template '*') $Dossier -Recurse -Force
+  # -Force sur Get-ChildItem, pas seulement sur Copy-Item : un gabarit caché (.gitkeep,
+  # .gitattributes) suit désormais la copie, là où le joker '*' seul le sautait.
+  Get-ChildItem -LiteralPath $template -Force | Copy-Item -Destination $Dossier -Recurse -Force
 }
-$chemin = (Resolve-Path $Dossier).Path
+$chemin = (Resolve-Path -LiteralPath $Dossier).Path
 
 # Sans -Titre ni -Annee (appel en ligne de commande sur un dossier déjà nommé), on relit la
 # convention « <année>-B<référence>-<nom> » du nom de dossier. Le <nom> qu'on y retrouve est
-# un SLUG (accents et espaces perdus, underscores à la place) : loin d'un vrai titre, mais
+# un slug (accents et espaces perdus, underscores à la place) : loin d'un vrai titre, mais
 # moins vide qu'un titre resté blanc — et le champ reste modifiable dans buch.yaml.
 if ((-not $existait) -and ((-not $Titre) -or ($Annee -le 0))) {
   $leaf = Split-Path $chemin -Leaf

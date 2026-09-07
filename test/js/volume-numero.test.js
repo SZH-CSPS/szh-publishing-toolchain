@@ -24,10 +24,17 @@ const { spawnSync } = require('child_process');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COMMUN = path.join(RACINE, 'windows', 'szh-common.ps1');
-const LANCEUR = path.join(RACINE, 'windows', 'open-revue.ps1');
+const PRODUITS = path.join(RACINE, 'windows', 'szh-produits.ps1');
+const TEXTES = path.join(RACINE, 'windows', 'szh-textes.ps1');
+const LANCEUR = path.join(RACINE, 'windows', 'open-produit.ps1');
 const CREATION = path.join(RACINE, 'windows', 'new-revue.ps1');
 
 const psCommun = fs.readFileSync(COMMUN, 'utf8');
+// Le socle a été découpé : les ancres de volume et la formule vivent dans szh-produits.ps1,
+// les textes de l'interface dans szh-textes.ps1 ; szh-common.ps1 dot-source les deux et ne
+// garde que le reste.
+const psProduits = fs.readFileSync(PRODUITS, 'utf8');
+const psTextes = fs.readFileSync(TEXTES, 'utf8');
 const psLanceur = fs.readFileSync(LANCEUR, 'utf8');
 const psCreation = fs.readFileSync(CREATION, 'utf8');
 
@@ -45,8 +52,8 @@ const RELEVE = {
 
 test('volume : les deux ancres déclarées reproduisent le relevé de ojs.szh.ch', () => {
   // L'année zéro est écrite une seule fois dans le dépôt, ici.
-  const bloc = psCommun.match(/\$script:SzhVolumeAnneeZero = @\{([^}]*)\}/);
-  assert.ok(bloc, 'SzhVolumeAnneeZero a disparu de szh-common.ps1');
+  const bloc = psProduits.match(/\$script:SzhVolumeAnneeZero = @\{([^}]*)\}/);
+  assert.ok(bloc, 'SzhVolumeAnneeZero a disparu de szh-produits.ps1');
   const ancres = {};
   for (const m of bloc[1].matchAll(/(revue|zeitschrift)\s*=\s*(\d{4})/g)) {
     ancres[m[1]] = Number(m[2]);
@@ -71,10 +78,10 @@ function codeSeul(source) {
 test('volume : la formule ne se laisse pas écrire ailleurs', () => {
   // Une deuxième copie de 1994 ou de 2010 quelque part, et les deux se décaleraient
   // séparément. Get-SzhVolumePour est le seul chemin.
-  const copies = (codeSeul(psCommun).match(/\b(1994|2010)\b/g) || []).length;
-  assert.strictEqual(copies, 2, 'les années zéro apparaissent ' + copies + ' fois dans szh-common.ps1');
+  const copies = (codeSeul(psProduits).match(/\b(1994|2010)\b/g) || []).length;
+  assert.strictEqual(copies, 2, 'les années zéro apparaissent ' + copies + ' fois dans szh-produits.ps1');
   assert.strictEqual((psLanceur.match(/\b(1994|2010)\b/g) || []).length, 0,
-    'open-revue.ps1 recalcule le volume au lieu d’appeler Get-SzhVolumePour');
+    'open-produit.ps1 recalcule le volume au lieu d’appeler Get-SzhVolumePour');
   assert.strictEqual((psCreation.match(/\b(1994|2010)\b/g) || []).length, 0,
     'new-revue.ps1 recalcule le volume au lieu d’appeler Get-SzhVolumePour');
 });
@@ -84,7 +91,12 @@ test('volume : la formule ne se laisse pas écrire ailleurs', () => {
 test('formulaire : l’année et le numéro se saisissent, le volume et le dossier se lisent', () => {
   const i = psLanceur.indexOf('function Read-SzhNouveauNumero');
   assert.notStrictEqual(i, -1, 'le formulaire d’année et de numéro a disparu du lanceur');
-  const corps = psLanceur.slice(i, psLanceur.indexOf('\r\n$boutonNouvelle', i));
+  // Les deux formulaires « Nouveau… » vivent maintenant côte à côte dans le même fichier
+  // (Read-SzhNouveauNumero pour la revue et la Zeitschrift, Read-SzhNouveauLivre pour le
+  // livre) : le corps s'arrête à la fonction suivante, pas à un repère de mise en page.
+  const j = psLanceur.indexOf('function Read-SzhNouveauLivre', i);
+  assert.notStrictEqual(j, -1, 'la fonction Read-SzhNouveauLivre a disparu du lanceur');
+  const corps = psLanceur.slice(i, j);
 
   // Trois NumericUpDown : année, numéro, volume. Pas de champ de texte libre — c'est
   // précisément ce dont on sort.
@@ -338,10 +350,10 @@ test('gabarit : le fichier livré documente le volume', () => {
 
 // ---- Les textes, dans les trois langues --------------------------------------------
 
-// Les tables de szh-common.ps1, une par langue, dans l'ordre fr, de, en.
+// Les tables de szh-textes.ps1, une par langue, dans l'ordre fr, de, en.
 function textes(cle) {
   const motif = new RegExp("'" + cle.replace(/\./g, '\\.') + "'\\s*=\\s*(\"[^\"]*\"|'(?:[^']|'')*')", 'g');
-  return (psCommun.match(motif) || []).map((m) => m.slice(m.indexOf('=') + 1).trim());
+  return (psTextes.match(motif) || []).map((m) => m.slice(m.indexOf('=') + 1).trim());
 }
 
 test('textes : chaque clé du formulaire existe dans les trois langues', () => {
@@ -390,7 +402,7 @@ test('textes : la version se dit « Version », plus « Logiciel v. »', () => {
     assert.ok(dit.indexOf('Version') === 1, 'libellé inattendu : ' + dit);
     assert.ok(!/Logiciel|Software/.test(dit), 'le mot « logiciel » est resté : ' + dit);
   }
-  assert.ok(!/'Logiciel v\.|'Software v\./.test(psCommun), 'un « v. » a survécu');
+  assert.ok(!/'Logiciel v\.|'Software v\./.test(psTextes), 'un « v. » a survécu');
 });
 
 test('textes : la racine active se dit par le nom du produit, dans les deux racines', () => {
@@ -427,15 +439,30 @@ test('lanceur : la racine active s’affiche dans les DEUX racines', () => {
   // mode test seulement laissait justement le cas grave — la production — sans un mot.
   const i = psLanceur.indexOf('$lignesInfo = @()');
   assert.notStrictEqual(i, -1, 'le bloc d’informations a disparu');
-  const corps = psLanceur.slice(i, psLanceur.indexOf('$form = New-Object', i));
-  assert.match(corps, /\$lignesInfo \+= \(T \$cleRacine @\(\$emplacements\.base\)\)/,
+  // La borne de fin suit désormais le recalcul de $yBoutons (et non plus la création de
+  // $form, qui a lieu plus tôt qu'avant) : c'est là que se termine tout le bloc info,
+  // mesure de hauteur comprise.
+  const corps = psLanceur.slice(i, psLanceur.indexOf('$yBoutons = $yInfos + $hInfos + 2', i));
+  assert.match(corps, /\$lignesInfo \+= \(T \$Info\.texteTest @\(\$emplacements\.base\)\)/,
     'la ligne de racine ne s’ajoute plus');
   // Sans condition : aucune garde de mode test autour de cette ligne.
   assert.ok(!/devMode/.test(corps),
     'la ligne de racine est redevenue conditionnelle au mode test');
-  // Et le libellé suit le produit du lanceur ouvert.
-  assert.match(corps, /\$cleRacine = 'lanceur\.test'/);
-  assert.match(corps, /if \(\$produitFiltre -eq 'zeitschrift'\) \{ \$cleRacine = 'lanceur\.test\.zs' \}/);
+  // Et le libellé suit le produit du lanceur ouvert : ce n'est plus un if/else recopiant
+  // $cleRacine ici, mais une lecture de $Info (la ligne de $SzhProduits, szh-produits.ps1,
+  // choisie une fois pour toutes selon $produitFiltre), chaque produit portant son propre
+  // texteTest.
+  assert.match(psLanceur, /\$Info = \$SzhProduits\[\$produitFiltre\]/,
+    'le libellé ne se lit plus dans la table de produit');
+  const iRevueProduit = psProduits.indexOf('revue = @{', psProduits.indexOf('$script:SzhProduits = @{'));
+  const iZsProduit = psProduits.indexOf('zeitschrift = @{', iRevueProduit);
+  const iLivreProduit = psProduits.indexOf('livre = @{', iZsProduit);
+  assert.notStrictEqual(iRevueProduit, -1, 'la ligne « revue » de la table de produit a disparu');
+  assert.notStrictEqual(iZsProduit, -1, 'la ligne « zeitschrift » de la table de produit a disparu');
+  assert.match(psProduits.slice(iRevueProduit, iZsProduit), /texteTest\s*=\s*'lanceur\.test'/,
+    'le produit revue n’a plus son texteTest propre');
+  assert.match(psProduits.slice(iZsProduit, iLivreProduit), /texteTest\s*=\s*'lanceur\.test\.zs'/,
+    'le produit zeitschrift n’a plus son texteTest propre');
   // La hauteur du bloc est mesurée : un chemin long revient à la ligne, et tronqué il ne
   // dirait plus rien. Mesurée par le libellé lui-même — TextRenderer ne coupe qu'aux
   // espaces, et un chemin Windows n'en a pas.
@@ -443,7 +470,7 @@ test('lanceur : la racine active s’affiche dans les DEUX racines', () => {
   assert.match(psLanceur, /\$yBoutons = \$yInfos \+ \$hInfos \+ 2/,
     'les boutons ne suivent plus la hauteur du bloc');
   // Le titre de la fenêtre garde le jeton {racine} : deux endroits, pas un.
-  assert.match(psCommun, /'lanceur\.titre'\s*=\s*'[^']*\{racine\}/);
+  assert.match(psTextes, /'lanceur\.titre'\s*=\s*'[^']*\{racine\}/);
 });
 
 // ---- La forme des fichiers ----------------------------------------------------------

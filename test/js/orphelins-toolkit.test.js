@@ -45,6 +45,7 @@ const { spawn, spawnSync } = require('child_process');
 const RACINE = path.resolve(__dirname, '..', '..');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
+const COMMUN = lire('windows', 'szh-common.ps1');
 const UPDATE = lire('windows', 'update.ps1');
 const BOOTSTRAP = lire('windows', 'bootstrap.ps1');
 const LANCEUR = lire('windows', 'update-launcher.ps1');
@@ -88,56 +89,73 @@ function finallyApresAppel(source, nom) {
   return source.slice(iDebutLigne, iFermeture + 2 + indent.length + 1);
 }
 
-// ---- Les trois copies restent identiques ----
-// Dupliquée à l'identique dans les trois scripts (aucun des trois ne dot-source les deux
-// autres) : elles doivent donc rester identiques, sinon un correctif posé dans l'un ne
-// protège pas les postes qui passent par les deux autres chemins.
+// ---- Une seule définition, appelée par les trois ----
+// Trois copies mot pour mot avaient divergé sans qu'on le voie : la fonction vit maintenant
+// une seule fois dans szh-common.ps1 (que les trois scripts dot-sourcent déjà), et rien ne
+// doit en redéfinir une copie locale.
 
-test('Remove-SzhToolkitOrphelins est identique, mot pour mot, dans les trois scripts', () => {
-  const corps = {
-    'update.ps1': corpsFonction(UPDATE, 'Remove-SzhToolkitOrphelins'),
-    'bootstrap.ps1': corpsFonction(BOOTSTRAP, 'Remove-SzhToolkitOrphelins'),
-    'update-launcher.ps1': corpsFonction(LANCEUR, 'Remove-SzhToolkitOrphelins')
-  };
-  assert.strictEqual(corps['bootstrap.ps1'], corps['update.ps1'],
-    'bootstrap.ps1 a divergé d’update.ps1');
-  assert.strictEqual(corps['update-launcher.ps1'], corps['update.ps1'],
-    'update-launcher.ps1 a divergé d’update.ps1');
+test('Remove-SzhToolkitOrphelins est définie une seule fois, dans szh-common.ps1, et appelée (via Install-SzhToolkitDepuisArchive) par les trois scripts', () => {
+  // Une seule déclaration dans tout le dépôt : szh-common.ps1 la porte, aucun des trois
+  // scripts ne la redéfinit localement. Depuis le remplacement atomique du toolkit, les
+  // trois scripts n'appellent plus Remove-SzhToolkitOrphelins directement : c'est
+  // Install-SzhToolkitDepuisArchive (szh-common.ps1 aussi) qui le fait, sur une copie
+  // jetable du toolkit plutôt que sur l'arbre vivant.
+  assert.ok(COMMUN.indexOf('function Remove-SzhToolkitOrphelins') !== -1,
+    'szh-common.ps1 ne déclare plus Remove-SzhToolkitOrphelins');
+  assert.ok(COMMUN.indexOf('function Install-SzhToolkitDepuisArchive') !== -1,
+    'szh-common.ps1 ne déclare plus Install-SzhToolkitDepuisArchive');
+  const corpsInstall = corpsFonction(COMMUN, 'Install-SzhToolkitDepuisArchive');
+  assert.ok(corpsInstall.indexOf('Remove-SzhToolkitOrphelins') !== -1,
+    'Install-SzhToolkitDepuisArchive n’appelle plus Remove-SzhToolkitOrphelins');
+  for (const [nom, source] of [['update.ps1', UPDATE], ['bootstrap.ps1', BOOTSTRAP],
+    ['update-launcher.ps1', LANCEUR]]) {
+    assert.ok(source.indexOf('function Remove-SzhToolkitOrphelins') === -1,
+      nom + ' redéfinit encore sa propre copie de Remove-SzhToolkitOrphelins');
+    assert.ok(source.indexOf('function Install-SzhToolkitDepuisArchive') === -1,
+      nom + ' redéfinit sa propre copie de Install-SzhToolkitDepuisArchive');
+    assert.ok(source.indexOf('$bilanOrphelins = Install-SzhToolkitDepuisArchive') !== -1,
+      nom + ' n’appelle plus Install-SzhToolkitDepuisArchive');
+    // La mention en commentaire (« Remove-SzhToolkitOrphelins vit dans szh-common.ps1… »)
+    // est admise ; seul un APPEL direct ne l'est plus.
+    assert.ok(source.indexOf('= Remove-SzhToolkitOrphelins ') === -1,
+      nom + ' appelle encore Remove-SzhToolkitOrphelins directement, plus seulement via Install-SzhToolkitDepuisArchive');
+  }
+  // Le corps unique, extrait de szh-common.ps1 : c'est lui que les scénarios dégénérés plus
+  // bas rejouent tel quel.
+  const corps = corpsFonction(COMMUN, 'Remove-SzhToolkitOrphelins');
+  assert.ok(corps.length > 200, 'le corps extrait de szh-common.ps1 paraît vide');
 });
 
 test('les trois appelants relisent .retires et .avertissements, plus un $orphelins nu', () => {
   // La fonction rend désormais une table ordonnée, pas juste la liste des retirés : les trois
   // appelants doivent avoir suivi, sinon `.Count` sur un $orphelins nu (l'ancienne forme)
-  // planterait au tout premier nettoyage.
+  // planterait au tout premier nettoyage. Même bilan, maintenant rendu par
+  // Install-SzhToolkitDepuisArchive plutôt que par Remove-SzhToolkitOrphelins directement.
   for (const [nom, source] of [['update.ps1', UPDATE], ['bootstrap.ps1', BOOTSTRAP],
     ['update-launcher.ps1', LANCEUR]]) {
-    assert.ok(source.indexOf('$bilanOrphelins = Remove-SzhToolkitOrphelins') !== -1,
+    assert.ok(source.indexOf('$bilanOrphelins = Install-SzhToolkitDepuisArchive') !== -1,
       nom + ' ne relit plus le nettoyage sous sa forme structurée');
     assert.ok(source.indexOf('$bilanOrphelins.retires') !== -1, nom + ' ne lit plus .retires');
     assert.ok(source.indexOf('$bilanOrphelins.avertissements') !== -1,
       nom + ' ne journalise plus les anomalies du nettoyage');
-    assert.ok(source.indexOf('$orphelins = Remove-SzhToolkitOrphelins') === -1,
+    assert.ok(source.indexOf('$orphelins = Install-SzhToolkitDepuisArchive') === -1,
       nom + ' relit encore l’ancienne forme ($orphelins nu)');
   }
 });
 
-test('les trois scripts nettoient leur dossier d’extraction, dans un finally qui suit l’appel', () => {
-  // Le staging ($SzhStaging\toolkit-extrait-<version>) est une extraction À PART, faite
+test('le remplacement du toolkit nettoie son dossier d’extraction, dans un finally qui suit l’appel', () => {
+  // Le staging ($SzhStaging\toolkit-verif-<guid>) est une extraction À PART, faite
   // seulement pour comparer -- elle n'a aucune raison de survivre à l'appel. Ce nettoyage vit
   // dans un `finally` précisément parce que Remove-SzhToolkitOrphelins peut lever (dossier
   // illisible, chemin trop long...) : sans ce filet, une seule mise à jour malchanceuse
-  // suffirait à laisser le dossier d'extraction derrière elle. Si une copie perdait ce
-  // `finally` -- ou ne nettoyait plus que sur le chemin heureux --, le staging du poste
-  // grossirait d'un toolkit complet à CHAQUE mise à jour qui passe par ce chemin, sans qu'un
-  // seul message ne le signale : Remove-Item y est en -ErrorAction SilentlyContinue, exprès,
-  // pour ne jamais faire échouer une mise à jour par ailleurs réussie sur un souci de ménage.
-  for (const [nom, source] of [['update.ps1', UPDATE], ['bootstrap.ps1', BOOTSTRAP],
-    ['update-launcher.ps1', LANCEUR]]) {
-    const filet = finallyApresAppel(source, nom);
-    assert.match(filet,
-      /if \(\$extrait -and \(Test-Path \$extrait\)\) \{ Remove-Item -LiteralPath \$extrait -Recurse -Force -ErrorAction SilentlyContinue \}/,
-      nom + ' : le finally qui suit l’appel ne nettoie plus $extrait');
-  }
+  // suffirait à laisser le dossier d'extraction derrière elle. Ce nettoyage vit maintenant
+  // dans Install-SzhToolkitDepuisArchive (szh-common.ps1), appelée par les trois scripts :
+  // un seul endroit à garder juste, plutôt que trois copies qui auraient pu diverger.
+  const corpsInstall = corpsFonction(COMMUN, 'Install-SzhToolkitDepuisArchive');
+  const filet = finallyApresAppel(corpsInstall, 'Install-SzhToolkitDepuisArchive');
+  assert.match(filet,
+    /if \(Test-Path -LiteralPath \$extrait\) \{ Remove-Item -LiteralPath \$extrait -Recurse -Force -ErrorAction SilentlyContinue \}/,
+    'le finally qui suit l’appel ne nettoie plus $extrait');
 });
 
 test('$dossiersGeres coïncide, dans les deux sens, avec ce que release.yml copie dans le toolkit', () => {
@@ -151,8 +169,8 @@ test('$dossiersGeres coïncide, dans les deux sens, avec ce que release.yml copi
   // l'ajouter aux trois scripts, ce dossier-là s'accumule sur chaque poste sans jamais être
   // nettoyé -- exactement le défaut que ce fichier garde par ailleurs, réintroduit par un
   // chemin que ni les trois scripts ni ce fichier ne surveillaient jusqu'ici.
-  const mGeres = UPDATE.match(/\$dossiersGeres = @\(([^)]*)\)/);
-  assert.ok(mGeres, 'update.ps1 : $dossiersGeres a changé de forme, la comparaison ne sait plus le lire');
+  const mGeres = COMMUN.match(/\$dossiersGeres = @\(([^)]*)\)/);
+  assert.ok(mGeres, 'szh-common.ps1 : $dossiersGeres a changé de forme, la comparaison ne sait plus le lire');
   const dossiersGeres = mGeres[1].split(',').map((s) => s.trim().replace(/^'(.*)'$/, '$1'));
 
   const mCp = RELEASE.match(/cp -r ([^\r\n]+) toolkit\/\r?\n/);
@@ -204,9 +222,10 @@ test('update-launcher.ps1 pose le même mutex nommé qu’update.ps1, et le rel�
 
 // ---- Les scénarios dégénérés, réellement exécutés ----
 // Windows seulement. La fonction ne dépend que de cmdlets natives (Test-Path, Get-ChildItem,
-// Remove-Item…), jamais de szh-common.ps1 : elle est donc éprouvée seule, extraite du VRAI
-// texte d'update.ps1 (identique aux deux autres, prouvé ci-dessus) et évaluée dans des
-// dossiers de travail jetables. Rien n'est jamais touché sous C:\ProgramData\SZH.
+// Remove-Item…), jamais du reste de szh-common.ps1 : elle est donc éprouvée seule, extraite
+// du VRAI texte de szh-common.ps1 (celui que les trois scripts appellent, prouvé ci-dessus)
+// et évaluée dans des dossiers de travail jetables. Rien n'est jamais touché sous
+// C:\ProgramData\SZH.
 
 const POWERSHELL = (function () {
   if (process.platform !== 'win32') { return ''; }
@@ -220,7 +239,7 @@ const POWERSHELL = (function () {
 })();
 const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
 
-const CORPS_FONCTION = corpsFonction(UPDATE, 'Remove-SzhToolkitOrphelins');
+const CORPS_FONCTION = corpsFonction(COMMUN, 'Remove-SzhToolkitOrphelins');
 
 // Les blocs éprouvés ici sont extraits mot pour mot des vrais .ps1, donc portent leurs
 // messages en français accentué. Windows PowerShell 5.1 lit un script SANS BOM avec la page

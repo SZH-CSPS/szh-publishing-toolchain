@@ -43,9 +43,11 @@ New-Item -ItemType Directory -Force -Path $Dossier | Out-Null
 if ($existait) {
   Write-SzhInfo 'Ce dossier contient déjà une revue : rien n''est écrasé, seul le raccourci est (re)créé.'
 } else {
-  Copy-Item (Join-Path $template '*') $Dossier -Recurse -Force
+  # -Force sur Get-ChildItem, pas seulement sur Copy-Item : un gabarit caché (.gitkeep,
+  # .gitattributes) suit désormais la copie, là où le joker '*' seul le sautait.
+  Get-ChildItem -LiteralPath $template -Force | Copy-Item -Destination $Dossier -Recurse -Force
 }
-$chemin = (Resolve-Path $Dossier).Path
+$chemin = (Resolve-Path -LiteralPath $Dossier).Path
 
 # Ce jeton décide dans quel lanceur le numéro apparaîtra. Sans lui, un numéro créé dans
 # le dossier de la Zeitschrift garderait le « revue: revue » du gabarit et serait listé
@@ -63,7 +65,7 @@ if (-not $existait) {
 # vidé. Sans cela, un numéro neuf porterait les valeurs d'exemple, en contradiction avec le
 # nom que montrent le lanceur, les liens et les archives.
 #
-# `date:` reste vide, et ce n'est pas un oubli : c'est la date de PUBLICATION du numéro,
+# `date:` reste vide, et ce n'est pas un oubli : c'est la date de publication du numéro,
 # que personne ne connaît le jour où le dossier est créé. Y écrire l'année du dossier
 # faisait paraître le champ rempli alors qu'il ne l'était pas — l'export OJS refuse une
 # année seule, et le rédacteur ne voyait pas pourquoi. La couverture, elle, n'a pas besoin

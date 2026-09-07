@@ -21,6 +21,9 @@ const { spawnSync } = require('child_process');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
+const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
+const PRODUITS = lire('windows', 'szh-produits.ps1');
+const TEXTES = lire('windows', 'szh-textes.ps1');
 const archivage = require(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'archivage.js'));
 
 // Les cas soumis aux deux moitiés. `attendu` est ce que voit le rédacteur : 'test' pour la
@@ -91,16 +94,16 @@ test('la bascule écrit les deux clés, la neuve et l’ancienne', () => {
 // ---- L'accord des deux moitiés ----
 
 test('les deux moitiés déclarent les mêmes clés et les mêmes valeurs', () => {
-  const ps = fs.readFileSync(COMMUN_PS1, 'utf8');
+  const ps = PRODUITS;
   for (const attendu of ["$script:SzhEmplacementTest = 'test'",
     "$script:SzhEmplacementProd = 'production'"]) {
-    assert.ok(ps.indexOf(attendu) !== -1, 'szh-common.ps1 ne déclare plus : ' + attendu);
+    assert.ok(ps.indexOf(attendu) !== -1, 'szh-produits.ps1 ne déclare plus : ' + attendu);
   }
   assert.strictEqual(archivage.EMPLACEMENT_TEST, 'test');
   assert.strictEqual(archivage.EMPLACEMENT_PRODUCTION, 'production');
   // Le corps du résolveur PowerShell, pour y lire l'ordre des règles.
   const debut = ps.indexOf('function Resolve-SzhEmplacementRevues');
-  assert.ok(debut !== -1, 'Resolve-SzhEmplacementRevues a disparu de szh-common.ps1');
+  assert.ok(debut !== -1, 'Resolve-SzhEmplacementRevues a disparu de szh-produits.ps1');
   const corps = ps.slice(debut, ps.indexOf('\r\nfunction ', debut + 10));
   const rangs = ['emplacementRevues', 'devMode', '$SzhEmplacementTest'].map((c) => corps.indexOf(c));
   assert.ok(rangs.every((r) => r !== -1), 'une des trois règles manque : ' + rangs.join(', '));
@@ -153,7 +156,7 @@ test('PowerShell et JavaScript rendent le même emplacement', { skip: POWERSHELL
 // ---- Ce que le lanceur montre ----
 
 test('le titre du lanceur nomme la racine active, dans les trois langues', () => {
-  const ps = fs.readFileSync(COMMUN_PS1, 'utf8');
+  const ps = TEXTES;
   // Un titre par langue, et le jeton que T remplace par l'étiquette de la racine.
   const titres = ps.match(/'lanceur\.titre'\s*=\s*'[^']*'/g) || [];
   assert.strictEqual(titres.length, 3, 'il faut un titre de lanceur par langue');
@@ -161,8 +164,10 @@ test('le titre du lanceur nomme la racine active, dans les trois langues', () =>
   const titresZs = ps.match(/'lanceur\.titre\.zs'\s*=\s*'[^']*'/g) || [];
   assert.strictEqual(titresZs.length, 3);
   for (const t of titresZs) { assert.ok(t.indexOf('{racine}') !== -1, 'titre sans {racine} : ' + t); }
-  // T doit savoir le remplacer, sinon le jeton s'afficherait tel quel.
-  assert.ok(ps.indexOf("$texte.Replace('{racine}', (Get-SzhEtiquetteRacine))") !== -1,
+  // T doit savoir le remplacer, sinon le jeton s'afficherait tel quel — T vit dans
+  // szh-common.ps1, la table qu'il lit dans szh-textes.ps1.
+  const commun = fs.readFileSync(COMMUN_PS1, 'utf8');
+  assert.ok(commun.indexOf("$texte.Replace('{racine}', (Get-SzhEtiquetteRacine))") !== -1,
     'T ne remplace plus {racine}');
   // Les deux mots de l'étiquette existent dans les trois langues, allemand en « ss ».
   for (const cle of ['racine.test', 'racine.prod']) {
@@ -173,7 +178,7 @@ test('le titre du lanceur nomme la racine active, dans les trois langues', () =>
 });
 
 test('l’écriture de l’emplacement ne touche pas un config.json absent', () => {
-  const ps = fs.readFileSync(COMMUN_PS1, 'utf8');
+  const ps = PRODUITS;
   const debut = ps.indexOf('function Initialize-SzhEmplacementRevues');
   assert.ok(debut !== -1, 'Initialize-SzhEmplacementRevues a disparu');
   const corps = ps.slice(debut, ps.indexOf('\r\n# Emplacement actif', debut));

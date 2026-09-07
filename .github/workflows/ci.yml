@@ -17,6 +17,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Rejoué par release.yml (job `controles`), sans paramètre : une release ne publie
+  # qu'après le même verdict que push et pull_request, plutôt que de rejouer `node --test`
+  # seul et de découvrir une régression de maquette au moment de publier.
+  workflow_call:
 
 permissions:
   contents: read          # lecture seule : rien n'est publié ici
@@ -49,6 +53,65 @@ jobs:
       # début de ligne, et ne se voit qu'imprimé.
       - name: Vérifier la typographie des textes visibles
         run: python3 test/typo-check.py
+
+  # `contrats` tourne sur ubuntu-latest : il ne voit jamais les tests dont le corps est du
+  # PowerShell réel (spawnSync de powershell.exe) — orphelins-toolkit, toolkit-remplacement,
+  # socle-decoupage, lanceur, rythme-maj, emplacements, diagnostic, installation,
+  # volume-numero, raccourcis... — ils s'y sautent proprement (powershell.exe introuvable)
+  # au lieu d'y échouer, et la CI ne validait donc jamais ce que ces scripts font vraiment
+  # sur un poste Windows. Indépendant de `pdf-ua` (pas de `needs`) : les deux tournent en
+  # parallèle. Repris par release.yml (workflow_call) : ce job garde aussi les releases.
+  contrats-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read          # lecture seule, comme le reste du workflow
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Installer Node LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      # `*` n'est développé ni par PowerShell ni par cmd : shell: bash (Git Bash, présent sur
+      # les runners windows-latest) fait le même glob que le job `contrats`. Reporter TAP
+      # explicite plutôt que le reporter par défaut (qui dépend de la détection de tty) : la
+      # prochaine étape doit lire un total fiable quel que soit le runner.
+      - name: Vérifier les contrats du cockpit (Windows)
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test --test-reporter=tap --test-reporter-destination=stdout \
+            test/js/*.test.js | tee contrats-windows.tap
+
+      # Sans ce plancher, un powershell.exe devenu introuvable sur le runner (image GitHub
+      # changée, PATH modifié) ferait sauter en silence les tests PowerShell et le job
+      # resterait vert avec un total plus bas — jamais un vert par défaut.
+      #
+      # Plancher ESTIMÉ, pas mesuré : ces tests ne reconnaissent aucune bascule du genre
+      # SZH_SANS_POWERSHELL pour rejouer « sans PowerShell » sur ce poste de développement,
+      # qui a PowerShell, la WSL et pandoc tous les trois installés (1018 tests, 1018 pass, 0
+      # sauté). Compte à la lecture des gardes :
+      #   - 44 tests se sautent via `{ skip: sansPowerShell }` / `POWERSHELL ? false : ...`
+      #     (diagnostic, emplacements, installation, lanceur, lien-langue, orphelins-toolkit,
+      #     raccourcis, rythme-maj, socle-decoupage, toolkit-remplacement, volume-numero) —
+      #     absent seulement sur ubuntu (pas de powershell.exe) ; PRÉSENT sur windows-latest.
+      #   - 39 tests se sautent via une vérification réelle de wsl.exe/pandoc, pas seulement
+      #     process.platform (ancrages, biblio, date-numero, fleche-retour,
+      #     import-numerotation-titres, journal-codes, metafichier, lire-config) — absents ici
+      #     COMME sur ubuntu, ce runner n'a pas la distro SZH-Publishing.
+      # D'où : ubuntu ≈ 1018-44-39 = 935 ; windows-latest ≈ 1018-39 = 979. Plancher posé à 950,
+      # au-dessus du compte ubuntu, en dessous du compte Windows attendu.
+      - name: Vérifier le nombre de tests passés
+        shell: bash
+        run: |
+          compte="$(grep -E '^# pass [0-9]+$' contrats-windows.tap | tail -n1 | grep -oE '[0-9]+')"
+          plancher=950
+          echo "tests passés : ${compte:-?} (plancher $plancher)"
+          if [ -z "$compte" ] || [ "$compte" -lt "$plancher" ]; then
+            echo "::error::$compte tests passés sur ce runner, plancher $plancher — les tests PowerShell n'ont peut-être pas tourné"
+            exit 1
+          fi
 
   pdf-ua:
     # Version du runner épinglée : les noms de paquets apt ci-dessous (libffi8) sont liés

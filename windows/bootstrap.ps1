@@ -11,7 +11,7 @@
   une première mise à jour visible. Ensuite le poste n'a plus besoin d'administrateur,
   sauf pour monter VSCodium ou SumatraPDF de version, geste volontairement manuel.
 
-  Ce script pose aussi, POUR LE COMPTE QUI L'EXÉCUTE, ce qui est par utilisateur
+  Ce script pose aussi, pour le compte qui l'exécute, ce qui est par utilisateur
   (raccourcis, réglages, extensions, environnement WSL). Élevé avec un compte de support
   depuis la session d'un rédacteur, il ne peut donc pas servir ce rédacteur : il le dit,
   s'en abstient, et laisse la tâche planifiée le faire à sa prochaine ouverture de session.
@@ -36,25 +36,24 @@ if (-not $estAdmin) { throw 'Lancer ce script en tant qu''administrateur.' }
 Write-SzhBanniere 'Installation du poste (administrateur)'
 
 # ---- Journal ----
-# Sans transcription, l'installation d'un poste ne laissait AUCUNE trace : seule la mise à
-# jour en écrivait, et le diagnostic du 26 août 2026 s'est fait sur quatre journaux qui ne
-# parlaient que d'elle. Le journal mensuel reçoit en plus les deux comptes en jeu.
+# Sans transcription, l'installation d'un poste ne laissait aucune trace : seule la mise à
+# jour en écrivait, et un diagnostic sur ce seul journal ne dit rien de l'installation qui a
+# précédé. Le journal mensuel reçoit en plus les deux comptes en jeu.
 New-Item -ItemType Directory -Force -Path $SzhLogs | Out-Null
 $journalInstall = Join-Path $SzhLogs ('bootstrap-{0}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 try { Start-Transcript -Path $journalInstall | Out-Null } catch { }
 
 # ---- Qui installe, et pour qui ----
 #
-# Le piège de cette installation, et la cause de toute la panne du 26 août 2026 : élevée
-# depuis la session d'une rédactrice avec le compte du support, elle tourne SOUS le compte
-# du support. HKCU, %APPDATA%, %LOCALAPPDATA% et l'enregistrement des distributions WSL
-# sont ceux du support. Tout ce qui est par utilisateur — distribution WSL, extensions,
-# réglages, raccourcis, associations — atterrit donc dans le mauvais profil, et la
-# rédactrice ouvre sa session sans rien. Rien ne le disait : les lignes de journal ne
-# nommaient pas le compte.
+# Le piège de cette installation : élevée depuis la session d'une rédactrice avec le compte
+# du support, elle tourne sous le compte du support. HKCU, %APPDATA%, %LOCALAPPDATA% et
+# l'enregistrement des distributions WSL sont ceux du support. Tout ce qui est par
+# utilisateur — distribution WSL, extensions, réglages, raccourcis, associations — atterrit
+# donc dans le mauvais profil, et la rédactrice ouvre sa session sans rien, sans qu'aucune
+# ligne de journal ne nomme le compte pour le dire.
 #
 # On ne peut pas y remédier ici — un processus ne peut pas écrire dans le profil d'un autre
-# compte —, mais on peut le NOMMER, et ne pas gaspiller 3 Go d'environnement pour un compte
+# compte —, mais on peut le nommer, et ne pas gaspiller 3 Go d'environnement pour un compte
 # de support qui ne rédigera jamais.
 $moi = Get-SzhIdentite
 $sessionUtilisateur = Get-SzhSessionUtilisateur
@@ -63,10 +62,10 @@ Info ('Compte qui installe : ' + $moi.nom)
 Write-SzhLog ('bootstrap : compte {0}, session ouverte pour « {1} »' -f $moi.nom, $sessionUtilisateur)
 if (-not $memeCompte) {
   Attention ('Session ouverte pour ' + $sessionUtilisateur + ', installation élevée sous ' + $moi.nom + '.')
-  Attention 'Ce qui est par utilisateur (extensions, réglages, raccourcis, environnement WSL) NE PEUT PAS'
+  Attention 'Ce qui est par utilisateur (extensions, réglages, raccourcis, environnement WSL) ne peut pas'
   Attention ('être posé dans le profil de ' + $sessionUtilisateur + " depuis ici : c'est fait à sa prochaine")
   Attention 'ouverture de session, par la tâche planifiée. Rien à faire de plus, sinon vérifier ensuite'
-  Attention 'avec windows\diagnostic.ps1, lancé DANS SA session et sans élévation.'
+  Attention 'avec windows\diagnostic.ps1, lancé dans sa session et sans élévation.'
 }
 
 # ---- Dossiers et droits ----
@@ -74,6 +73,9 @@ Info 'Dossiers C:\ProgramData\SZH + droits Utilisateurs (mises à jour sans admi
 New-Item -ItemType Directory -Force -Path $SzhBase, $SzhStaging, $SzhLogs, $SzhToolkit | Out-Null
 # S-1-5-32-545 = groupe Utilisateurs (indépendant de la langue de Windows)
 & icacls $SzhBase /grant '*S-1-5-32-545:(OI)(CI)M' | Out-Null
+if ($LASTEXITCODE -ne 0) {
+  throw ('icacls a échoué (code {0}) sur {1} : les mises à jour sans administrateur ne pourraient pas écrire dans ce dossier.' -f $LASTEXITCODE, $SzhBase)
+}
 
 if (-not (Test-Path $SzhConfigFile)) {
   $cfg = [ordered]@{
@@ -101,9 +103,9 @@ Info 'Vérification du moteur WSL'
 $wsl = Get-WslExe
 Invoke-SzhNatif { $null = & $wsl --status 2>&1 }
 if ($LASTEXITCODE -ne 0) {
-  Attention 'WSL absent -> installation du moteur (sans distribution). REDÉMARRAGE requis ensuite.'
+  Attention 'WSL absent -> installation du moteur (sans distribution). Redémarrage requis ensuite.'
   & $wsl --install --no-distribution
-  Attention 'Redémarrer le poste puis RELANCER bootstrap.ps1.'
+  Attention 'Redémarrer le poste puis relancer bootstrap.ps1.'
   return
 }
 
@@ -114,8 +116,7 @@ if ($LASTEXITCODE -ne 0) {
 # (« 0x8a15000f : données manquantes »), source msstore qui réclame une région à deux
 # lettres, proxy d'entreprise qui coupe cdn.winget.microsoft.com — et, sous une élévation
 # faite avec un compte de support, son App Installer n'est même pas provisionné pour ce
-# compte : winget n'existe simplement pas. Le 26 août 2026, les deux applications ont fini
-# par être posées à la main.
+# compte : winget n'existe simplement pas.
 #
 # À la place, le patron de vsix.lock : version et empreinte figées dans windows/apps.lock,
 # téléchargement direct, sha256 vérifié, signature de l'éditeur lue, installation
@@ -131,7 +132,7 @@ function Get-SzhApplicationsEpinglees {
 # leur ordre : le paquet système d'abord, le paquet par utilisateur ensuite.
 #
 # $SystemeSeulement : quand l'installation est élevée avec un autre compte, le paquet « par
-# utilisateur » qu'on trouverait serait celui du SUPPORT, et le rédacteur ouvrirait sa
+# utilisateur » qu'on trouverait serait celui du support, et le rédacteur ouvrirait sa
 # session sans éditeur. On l'ignore alors, et on pose le paquet système.
 function Get-SzhAppChemin($App, [switch]$SystemeSeulement) {
   foreach ($s in @($App.sondes)) {
@@ -257,138 +258,46 @@ if ($codium -like ($env:LOCALAPPDATA + '*')) {
              'puis reprendre avec l''installeur système, sinon les rédacteurs n''auront pas d''éditeur.')
 }
 
-# ---- Orphelins du toolkit ----
-# Même manque que update.ps1, et même correction : `Expand-Archive -Force` écrase ce que
-# l'archive contient mais ne supprime jamais ce qu'elle ne contient plus. Sans effet sur un
-# poste neuf, qui part d'un $SzhToolkit vide — mais bootstrap.ps1 est aussi ce qu'un
-# administrateur relance en réparation sur un poste déjà installé (voir plus bas, tâche
-# planifiée), et cette rejouabilité mérite la même garantie.
-#
-# $Extrait est une extraction à part de LA MÊME archive, faite avant d'écraser le toolkit :
-# elle dit exactement ce que cette version contient. Uniquement dans les dossiers que
-# l'archive gère (release.yml : pipeline, vscodium-user, revue-template, livre-template,
-# windows) — un dossier qui n'appartient pas à l'archive n'a pas à être jugé par elle.
-function Remove-SzhToolkitOrphelins {
-  param(
-    [Parameter(Mandatory = $true)][string]$Toolkit,
-    [Parameter(Mandatory = $true)][string]$Extrait
-  )
-  $dossiersGeres = @('pipeline', 'vscodium-user', 'revue-template', 'livre-template', 'windows')
-  $retires = New-Object System.Collections.ArrayList
-  $avertissements = New-Object System.Collections.ArrayList
-
-  # ---- Garde globale : l'extraction doit ressembler à un vrai toolkit avant qu'on y touche ----
-  # Constaté en bac à sable : une extraction vide (zip qui réussit sans rien contenir) aurait
-  # vidé les cinq dossiers gérés du toolkit, faute de quoi que ce soit à quoi les comparer. Si
-  # l'extraction ne porte NI le VERSION NI un seul des dossiers gérés, elle ne dit rien de
-  # fiable sur cette version : le nettoyage entier s'abstient plutôt que de juger sur du vide.
-  $versionExtraite = Test-Path -LiteralPath (Join-Path $Extrait 'VERSION') -PathType Leaf
-  $auMoinsUnDossier = $false
-  foreach ($d in $dossiersGeres) {
-    if (Test-Path -LiteralPath (Join-Path $Extrait $d) -PathType Container) { $auMoinsUnDossier = $true; break }
-  }
-  if ((-not $versionExtraite) -or (-not $auMoinsUnDossier)) {
-    [void]$avertissements.Add('nettoyage abandonné en entier : extraction sans VERSION ni aucun des cinq dossiers gérés -- rien n''est fiable à comparer')
-    return [ordered]@{ retires = $retires; avertissements = $avertissements }
-  }
-
-  # Sous ce nombre de fichiers, une proportion élevée d'orphelins reste plausible (un petit
-  # dossier retaillé de moitié) et la garde de vraisemblance ci-dessous ne s'applique pas.
-  $seuilPlancherFichiers = 4
-  # Au-delà de cette part, un nettoyage n'est plus « quelques fichiers retirés du dépôt » mais
-  # la majorité d'un dossier géré : invraisemblable pour une mise à jour normale.
-  $seuilProportionOrpheline = 0.5
-
-  foreach ($d in $dossiersGeres) {
-    $dansToolkit = Join-Path $Toolkit $d
-    if (-not (Test-Path $dansToolkit)) { continue }
-    $dansArchive = Join-Path $Extrait $d
-
-    # ---- Garde par dossier : le dossier doit exister dans l'archive extraite ----
-    # Le défaut constaté en bac à sable : $Extrait\pipeline absent alors que $Extrait\windows
-    # est présent effaçait TOUT $Toolkit\pipeline, faute de savoir ce que cette version y
-    # garde. En cas de doute, ce dossier-ci n'est pas touché ; les autres, eux, restent jugés
-    # chacun sur sa propre comparaison.
-    if (-not (Test-Path -LiteralPath $dansArchive -PathType Container)) {
-      [void]$avertissements.Add('dossier absent de l''archive extraite, rien retiré -> ' + $d)
-      continue
-    }
-
-    $fichiers = @(Get-ChildItem -LiteralPath $dansToolkit -Recurse -File -Force -ErrorAction SilentlyContinue)
-    if ($fichiers.Count -eq 0) { continue }
-
-    # Candidats orphelins : présents dans le toolkit, absents de l'archive. Calculés d'abord,
-    # sans rien supprimer -- la garde de vraisemblance ci-dessous doit juger sur l'ensemble
-    # avant qu'un seul fichier ne parte.
-    $candidats = New-Object System.Collections.ArrayList
-    foreach ($f in $fichiers) {
-      $relatif = $f.FullName.Substring($dansToolkit.Length).TrimStart('\')
-      $cible = Join-Path $dansArchive $relatif
-      if (-not (Test-Path -LiteralPath $cible)) {
-        [void]$candidats.Add([ordered]@{ chemin = $f.FullName; relatif = $relatif })
-      }
-    }
-    if ($candidats.Count -eq 0) { continue }
-
-    # ---- Garde de vraisemblance : proportion invraisemblable ----
-    # Une archive authentique mais incomplète (dossier source vidé par erreur avant le `cp -r`
-    # de release.yml, zip valide, empreinte correcte) passe les deux gardes ci-dessus : le
-    # dossier EXISTE dans l'archive, il est juste creux. Elle ne passe pas celle-ci.
-    if (($fichiers.Count -ge $seuilPlancherFichiers) -and
-        (($candidats.Count / [double]$fichiers.Count) -gt $seuilProportionOrpheline)) {
-      [void]$avertissements.Add(('proportion invraisemblable, rien retiré -> {0} : {1}/{2} fichier(s) auraient été retirés' -f $d, $candidats.Count, $fichiers.Count))
-      continue
-    }
-
-    foreach ($c in $candidats) {
-      Remove-Item -LiteralPath $c.chemin -Force
-      [void]$retires.Add((Join-Path $d $c.relatif))
-    }
-
-    # Dossiers restés vides derrière les fichiers retirés, du plus profond au moins profond ;
-    # le dossier géré lui-même ($dansToolkit) n'est jamais retiré, même vide.
-    Get-ChildItem -LiteralPath $dansToolkit -Recurse -Directory -Force -ErrorAction SilentlyContinue |
-      Sort-Object { $_.FullName.Length } -Descending |
-      Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue) } |
-      Remove-Item -Force -ErrorAction SilentlyContinue
-  }
-  return [ordered]@{ retires = $retires; avertissements = $avertissements }
-}
+# Remove-SzhToolkitOrphelins vit dans szh-common.ps1 (une seule définition, appelée aussi par
+# update.ps1 et update-launcher.ps1). Sans effet sur un poste neuf, qui part d'un $SzhToolkit
+# vide — mais bootstrap.ps1 est aussi ce qu'un administrateur relance en réparation sur un
+# poste déjà installé (voir plus bas, tâche planifiée), et cette rejouabilité mérite la même
+# garantie.
 
 # ---- Toolkit initial ----
 Info 'Toolkit initial'
 $toolkitOk = $false
+# D'où relancer update.ps1 et diagnostic.ps1 plus bas, une fois ce toolkit en place :
+# 'release' quand l'archive vient d'être téléchargée et vérifiée par sha256, 'depot' au
+# repli hors ligne. Voir le bloc juste après l'acquisition du toolkit, ci-dessous.
+$origineToolkit = ''
 try {
   $manifest = Get-SzhManifest
+  # Nom de fichier utilisé tel quel dans un Join-Path vers $SzhStaging : un manifest
+  # corrompu ou détourné ne doit jamais pouvoir écrire ni lire hors de ce dossier.
+  if (-not (Test-SzhNomFichierManifest $manifest.toolkit.file)) {
+    throw ('Nom de fichier de manifest invalide (toolkit) : ' + [string]$manifest.toolkit.file)
+  }
   $zip = Join-Path $SzhStaging $manifest.toolkit.file
   Get-SzhFichier -Url $manifest.toolkit.url -Destination $zip -Silencieux
   if (Test-SzhSha256 -Fichier $zip -Attendu $manifest.toolkit.sha256) {
-    # Écarte les orphelins AVANT d'écraser le toolkit. Jamais bloquant : un souci ici ne
-    # doit pas empêcher l'installation du poste, l'extraction normale qui suit répare de
-    # toute façon ce que l'archive gère.
-    $extrait = ''
-    try {
-      $extrait = Join-Path $SzhStaging ('toolkit-extrait-' + $manifest.version)
-      if (Test-Path $extrait) { Remove-Item -LiteralPath $extrait -Recurse -Force }
-      Expand-Archive -Path $zip -DestinationPath $extrait -Force
-      $bilanOrphelins = Remove-SzhToolkitOrphelins -Toolkit $SzhToolkit -Extrait $extrait
-      foreach ($o in $bilanOrphelins.retires) {
-        Write-SzhLog ('bootstrap : orphelin retiré du toolkit -> ' + $o)
-      }
-      if ($bilanOrphelins.retires.Count -gt 0) {
-        Write-SzhLog ('bootstrap : ' + $bilanOrphelins.retires.Count + ' orphelin(s) retiré(s) du toolkit (absents de la version ' + $manifest.version + ')')
-      }
-      foreach ($a in $bilanOrphelins.avertissements) {
-        Write-SzhLog ('bootstrap : nettoyage des orphelins, anomalie -> ' + $a)
-      }
-    } catch {
-      Write-SzhLog ('bootstrap : nettoyage des orphelins du toolkit non effectué : ' + $_.Exception.Message)
-    } finally {
-      if ($extrait -and (Test-Path $extrait)) { Remove-Item -LiteralPath $extrait -Recurse -Force -ErrorAction SilentlyContinue }
+    # Remplacement atomique — comme dans update.ps1 et update-launcher.ps1 : voir
+    # Install-SzhToolkitDepuisArchive (szh-common.ps1). Une bascule qui échoue (fichier
+    # encore ouvert, réparation d'un poste déjà en service) remonte au catch ci-dessous,
+    # comme le ferait un Expand-Archive direct.
+    $bilanOrphelins = Install-SzhToolkitDepuisArchive -Zip $zip -Toolkit $SzhToolkit -DossierTravail $SzhStaging
+    foreach ($o in $bilanOrphelins.retires) {
+      Write-SzhLog ('bootstrap : orphelin retiré du toolkit -> ' + $o)
+    }
+    if ($bilanOrphelins.retires.Count -gt 0) {
+      Write-SzhLog ('bootstrap : ' + $bilanOrphelins.retires.Count + ' orphelin(s) retiré(s) du toolkit (absents de la version ' + $manifest.version + ')')
+    }
+    foreach ($a in $bilanOrphelins.avertissements) {
+      Write-SzhLog ('bootstrap : nettoyage des orphelins, anomalie -> ' + $a)
     }
 
-    Expand-Archive -Path $zip -DestinationPath $SzhToolkit -Force
     $toolkitOk = $true
+    $origineToolkit = 'release'
     Info ('Toolkit {0} téléchargé depuis la Release.' -f $manifest.version)
   }
 } catch {
@@ -397,16 +306,56 @@ try {
 if (-not $toolkitOk) {
   # Repli hors ligne : le script tourne depuis un clone du dépôt, on copie sur place.
   $racineDepot = Split-Path $PSScriptRoot -Parent
-  if (Test-Path (Join-Path $racineDepot 'pipeline\Makefile')) {
+  # $racineDepot est déjà le toolkit lui-même quand bootstrap.ps1 tourne depuis
+  # C:\ProgramData\SZH\toolkit\windows (réparation d'un poste déjà installé, sans dépôt cloné
+  # à côté) : copier un dossier sur lui-même n'a rien à faire ici.
+  $memeArbre = ([System.IO.Path]::GetFullPath($racineDepot).TrimEnd('\') -ieq
+                [System.IO.Path]::GetFullPath($SzhToolkit).TrimEnd('\'))
+  if ($memeArbre) {
+    Attention 'Repli hors ligne impossible : ce script tourne depuis le toolkit lui-même, rien à copier sur lui-même.'
+  } elseif (Test-Path (Join-Path $racineDepot 'pipeline\Makefile')) {
     Attention 'Repli : copie du toolkit depuis le dépôt cloné (version locale).'
-    foreach ($d in 'pipeline', 'vscodium-user', 'revue-template', 'windows') {
-      Copy-Item (Join-Path $racineDepot $d) $SzhToolkit -Recurse -Force
+    # Même liste que $dossiersGeres (Remove-SzhToolkitOrphelins ci-dessus) : sans
+    # livre-template, new-livre.ps1 s'arrêterait sur « Gabarit de livre introuvable » sur un
+    # poste installé par ce repli.
+    foreach ($d in 'pipeline', 'vscodium-user', 'revue-template', 'livre-template', 'windows') {
+      $src  = Join-Path $racineDepot $d
+      $dest = Join-Path $SzhToolkit $d
+      # Le dossier de destination est créé d'abord, puis c'est son contenu (le *) qui est
+      # copié dedans : `Copy-Item $src $SzhToolkit -Recurse` copiait le dossier source
+      # lui-même dans $SzhToolkit, et quand $SzhToolkit\<d> existait déjà (réparation d'un
+      # poste déjà installé), ceci l'imbriquait au lieu de le fusionner (toolkit\windows\windows).
+      New-Item -ItemType Directory -Force -Path $dest | Out-Null
+      Copy-Item (Join-Path $src '*') $dest -Recurse -Force
     }
     Set-Content -Path (Join-Path $SzhToolkit 'VERSION') -Value '0.0.0-local' -Encoding ASCII
     $toolkitOk = $true
+    $origineToolkit = 'depot'
   }
 }
 if (-not $toolkitOk) { throw 'Impossible d''obtenir le toolkit (ni Release, ni dépôt local).' }
+
+# ---- Dossier d'où lancer update.ps1 et diagnostic.ps1, jamais $SzhToolkit\windows ----
+#
+# $SzhToolkit\windows appartient en écriture au groupe Utilisateurs (icacls plus haut) :
+# lancer un script de ce dossier depuis ce processus élevé exécuterait, avec les droits de
+# l'administrateur, un code qu'un compte standard quelconque du poste pourrait y avoir
+# déposé. Le remède : une seconde extraction de la même archive, déjà téléchargée et
+# vérifiée par sha256, dans un dossier que ce processus élevé vient tout juste de créer
+# sous %TEMP% -- un dossier où aucun compte standard n'a jamais pu écrire. Au repli hors
+# ligne, rien à réextraire : la copie à lancer est celle du dépôt cloné, celle-là même que
+# l'administrateur a déjà lancée pour arriver jusqu'ici. Le dossier temporaire est supprimé
+# dans le finally, plus bas.
+$script:SzhDossierScripts = ''
+$script:SzhDossierScriptsTemp = ''
+if ($origineToolkit -eq 'release') {
+  $script:SzhDossierScriptsTemp = Join-Path $env:TEMP ('szh-bootstrap-' + [guid]::NewGuid())
+  New-Item -ItemType Directory -Force -Path $script:SzhDossierScriptsTemp | Out-Null
+  Expand-Archive -Path $zip -DestinationPath $script:SzhDossierScriptsTemp -Force
+  $script:SzhDossierScripts = Join-Path $script:SzhDossierScriptsTemp 'windows'
+} else {
+  $script:SzhDossierScripts = Join-Path $racineDepot 'windows'
+}
 
 # ---- Raccourcis du menu Démarrer ----
 # Posés ici, sans attendre la première mise à jour : si la Release est injoignable, celle-ci
@@ -431,8 +380,6 @@ Info 'Tâches planifiées (pour tout utilisateur connecté, sans admin)'
 $vbs = Join-Path $SzhToolkit 'windows\hidden.vbs'
 # Groupe Utilisateurs : la tâche tourne dans la session de l'utilisateur connecté.
 $principal = New-ScheduledTaskPrincipal -GroupId 'S-1-5-32-545' -RunLevel Limited
-$reglages = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries `
-              -ExecutionTimeLimit (New-TimeSpan -Hours 2) -MultipleInstances IgnoreNew
 
 # Mise à jour : déclencheurs, réglages et action viennent de szh-taches.ps1, que la passe de
 # mise à jour relit ensuite à chaque passage. Une seule vérité, sinon un poste installé
@@ -444,54 +391,96 @@ if ($bilanTache.etat -eq 'refusee') {
   Info ('Tâche « ' + $SzhTacheMaj + ' » : ' + $bilanTache.etat + ' (ouverture de session + mardi 14 h)')
 }
 
+# « Prechauffage WSL » : sans -AllowStartIfOnBatteries, un portable jamais branché ne
+# préchauffe jamais WSL à l'ouverture de session -- même défaut, et même correctif, que la
+# tâche de mise à jour (szh-taches.ps1, New-SzhTacheMajReglages). Réécrite seulement si elle
+# diffère : un Register-ScheduledTask -Force à chaque passage lui remettrait son historique
+# à zéro, y compris quand bootstrap.ps1 sert à réparer un poste déjà installé.
 $actionChauffe = New-ScheduledTaskAction -Execute "$env:WINDIR\System32\wscript.exe" `
   -Argument ('//B "{0}" "{1}" "-d" "{2}" "--exec" "/bin/true"' -f $vbs, "$env:WINDIR\System32\wsl.exe", $SzhDistro)
-Register-ScheduledTask -TaskName 'SZH - Prechauffage WSL' -Action $actionChauffe `
-  -Principal $principal -Trigger (New-ScheduledTaskTrigger -AtLogOn) -Settings $reglages -Force | Out-Null
+$reglagesChauffe = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopIfGoingOnBatteries `
+  -AllowStartIfOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 2) -MultipleInstances IgnoreNew
+$tacheChauffe = $null
+try { $tacheChauffe = Get-ScheduledTask -TaskName 'SZH - Prechauffage WSL' -ErrorAction Stop } catch { $tacheChauffe = $null }
+$chauffeConforme = $false
+if ($tacheChauffe) {
+  $r = $tacheChauffe.Settings
+  $declencheurOk = (@($tacheChauffe.Triggers).Count -eq 1) -and
+    ([string]$tacheChauffe.Triggers[0].CimClass.CimClassName -eq 'MSFT_TaskLogonTrigger')
+  $actionOk = (@($tacheChauffe.Actions).Count -eq 1) -and
+    ([string]$tacheChauffe.Actions[0].Execute -eq $actionChauffe.Execute) -and
+    ([string]$tacheChauffe.Actions[0].Arguments -eq $actionChauffe.Arguments)
+  $chauffeConforme = ($declencheurOk -and $actionOk -and $r -and $r.StartWhenAvailable -and
+    (-not $r.DisallowStartIfOnBatteries) -and (-not $r.StopIfGoingOnBatteries) -and
+    ([string]$r.MultipleInstances -eq 'IgnoreNew') -and ([string]$r.ExecutionTimeLimit -eq 'PT2H'))
+}
+if ($chauffeConforme) {
+  Info 'Tâche « SZH - Prechauffage WSL » : déjà conforme.'
+} else {
+  Register-ScheduledTask -TaskName 'SZH - Prechauffage WSL' -Action $actionChauffe `
+    -Principal $principal -Trigger (New-ScheduledTaskTrigger -AtLogOn) -Settings $reglagesChauffe -Force | Out-Null
+  Info 'Tâche « SZH - Prechauffage WSL » : créée ou corrigée.'
+}
 
 # ---- Première mise à jour, en fenêtre visible ----
 #
 # Seulement si l'installation tourne sous le compte de la session : sinon elle poserait
 # 3 Go d'environnement de fabrication, dix extensions et tous les réglages dans le profil
-# du compte de support, qui ne rédigera jamais — et c'est exactement ce dossier
-# d'environnement, posé par un compte pour un autre, qui a bloqué le poste du 26 août 2026.
+# du compte de support, qui ne rédigera jamais — et le dossier de distribution WSL, tenu
+# par SID (Get-SzhDossierDistro), resterait pris pour ce compte-là sans que le rédacteur
+# n'en profite jamais.
 #
 # -Wait : sans lui, bootstrap annonçait « Terminé » et ses consignes d'antivirus pendant que
 # 574 Mo se téléchargeaient encore, et une session fermée trop tôt laissait un import à
 # moitié fait.
-if ($memeCompte) {
-  Info 'Lancement de la première mise à jour (fenêtre visible)…'
-  Start-Process -Wait -FilePath "$PSHOME\powershell.exe" -ArgumentList @(
-    '-NoProfile', '-ExecutionPolicy', 'Bypass',
-    '-File', (Join-Path $SzhToolkit 'windows\update.ps1')
-  )
-} else {
-  Info 'Première mise à jour laissée à la session du rédacteur (tâche planifiée à l''ouverture).'
-  Write-SzhLog ('bootstrap : première mise à jour non lancée ici, elle appartient à ' + $sessionUtilisateur)
-}
-
-Write-Host ''
-Info 'Terminé.'
-# Le disque de la distribution est rangé par SID depuis que son dossier commun bloquait le
-# deuxième compte du poste : l'exclusion doit donc couvrir les sous-dossiers.
-Attention ('Antivirus : exclure {0}\WSL\ (tous sous-dossiers, *.vhdx) et {1}\*, + processus vmcompute.exe, vmmem.exe, wsl.exe, wslservice.exe.' -f $SzhBase, $SzhStaging)
-Attention 'Chaque utilisateur du poste recevra réglages + raccourcis à sa prochaine connexion (tâche planifiée).'
-Attention 'Nouvelle revue : menu Démarrer > Revues SZH (ou Zeitschriften SZH) > « Nouvelle revue ».'
-Attention 'Mise à jour à la demande : menu Démarrer > « Mise à jour de l''outil Revue » (ou « Aktualisierung des Redaktionstools »).'
-Attention ('Contrôle : powershell -ExecutionPolicy Bypass -File "{0}", dans la session du rédacteur.' -f (Join-Path $SzhToolkit 'windows\diagnostic.ps1'))
-
-# Le bilan, tout de suite et à l'écran : une installation qui s'annonce terminée sans dire
-# ce qui manque est ce qui a laissé partir un poste sans éditeur utilisable. Ce qu'il dit ne
-# vaut que pour le compte qui installe — le diagnostic le dit lui-même quand ils diffèrent.
-# Dans un processus à lui : le diagnostic sort en code 1 quand il manque quelque chose, et
-# un `exit` dot-sourcé emporterait bootstrap avec lui, transcription comprise.
-Write-Host ''
+#
+# Lancés depuis $SzhDossierScripts (calculé plus haut), jamais depuis $SzhToolkit\windows —
+# voir le commentaire à l'acquisition du toolkit. Le dossier temporaire qu'il a pu créer est
+# supprimé dans le finally tout en bas, qu'update.ps1 et le diagnostic aient réussi ou non.
+#
+# Windows PowerShell 5.1 explicitement, même repli que Get-SzhRaccourcisMenu
+# (szh-common.ps1) : $PSHOME désignerait pwsh si ce script tournait sous PowerShell 7.
+$psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+if (-not (Test-Path $psExe)) { $psExe = Join-Path $PSHOME 'powershell.exe' }
 try {
-  Invoke-SzhNatif {
-    & "$PSHOME\powershell.exe" -NoProfile -ExecutionPolicy Bypass `
-      -File (Join-Path $SzhToolkit 'windows\diagnostic.ps1') | Out-Host
+  if ($memeCompte) {
+    Info 'Lancement de la première mise à jour (fenêtre visible)…'
+    Start-Process -Wait -FilePath $psExe -ArgumentList @(
+      '-NoProfile', '-ExecutionPolicy', 'Bypass',
+      '-File', (Join-Path $SzhDossierScripts 'update.ps1')
+    )
+  } else {
+    Info 'Première mise à jour laissée à la session du rédacteur (tâche planifiée à l''ouverture).'
+    Write-SzhLog ('bootstrap : première mise à jour non lancée ici, elle appartient à ' + $sessionUtilisateur)
   }
-} catch {
-  Attention ('Diagnostic non exécuté : ' + $_.Exception.Message)
+
+  Write-Host ''
+  Info 'Terminé.'
+  # Le disque de la distribution est rangé par SID depuis que son dossier commun bloquait le
+  # deuxième compte du poste : l'exclusion doit donc couvrir les sous-dossiers.
+  Attention ('Antivirus : exclure {0}\WSL\ (tous sous-dossiers, *.vhdx) et {1}\*, + processus vmcompute.exe, vmmem.exe, wsl.exe, wslservice.exe.' -f $SzhBase, $SzhStaging)
+  Attention 'Chaque utilisateur du poste recevra réglages + raccourcis à sa prochaine connexion (tâche planifiée).'
+  Attention 'Nouvelle revue : menu Démarrer > Revues SZH (ou Zeitschriften SZH) > « Nouvelle revue ».'
+  Attention 'Mise à jour à la demande : menu Démarrer > « Mise à jour de l''outil Revue » (ou « Aktualisierung des Redaktionstools »).'
+  Attention ('Contrôle : powershell -ExecutionPolicy Bypass -File "{0}", dans la session du rédacteur.' -f (Join-Path $SzhToolkit 'windows\diagnostic.ps1'))
+
+  # Le bilan, tout de suite et à l'écran : une installation qui s'annonce terminée sans dire
+  # ce qui manque est ce qui a laissé partir un poste sans éditeur utilisable. Ce qu'il dit ne
+  # vaut que pour le compte qui installe — le diagnostic le dit lui-même quand ils diffèrent.
+  # Dans un processus à lui : le diagnostic sort en code 1 quand il manque quelque chose, et
+  # un `exit` dot-sourcé emporterait bootstrap avec lui, transcription comprise.
+  Write-Host ''
+  try {
+    Invoke-SzhNatif {
+      & $psExe -NoProfile -ExecutionPolicy Bypass `
+        -File (Join-Path $SzhDossierScripts 'diagnostic.ps1') | Out-Host
+    }
+  } catch {
+    Attention ('Diagnostic non exécuté : ' + $_.Exception.Message)
+  }
+} finally {
+  if ($script:SzhDossierScriptsTemp -and (Test-Path $script:SzhDossierScriptsTemp)) {
+    Remove-Item -LiteralPath $script:SzhDossierScriptsTemp -Recurse -Force -ErrorAction SilentlyContinue
+  }
 }
 try { Stop-Transcript | Out-Null } catch { }
