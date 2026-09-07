@@ -1,0 +1,14 @@
+{# support.fr.twig : courriel de support prerempli depuis l'ecran d'erreur (Show-SzhErreur) #}
+{% block sujet %}Probleme de mise a jour - outil Revue SZH ({{ poste }}){% endblock %}
+{% block corps %}
+Bonjour,
+
+La mise a jour de l’outil Revue a rencontre un probleme.
+
+Poste   : {{ poste }}
+Etape   : {{ etape }}
+Detail  : {{ message }}
+Journal : {{ journal }}
+
+Merci de joindre le fichier journal ci-dessus a ce message.
+{% endblock %}

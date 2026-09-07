@@ -1055,6 +1055,91 @@ function Write-SzhInfo([string]$Texte)  { Write-Host ('    ' + $Texte) -Foregrou
 # Ce qui n'a pas abouti sans faire echouer le reste : visible, mais pas rouge.
 function Write-SzhAttention([string]$Texte) { Write-Host ('    ! ' + $Texte) -ForegroundColor Yellow }
 
+# Petit frère de lib/gabarits.js (cockpit) : mêmes gabarits Twig
+# (windows/mail-templates/*.twig), mais un sous-ensemble minuscule -- variables, blocs de
+# premier niveau et commentaires, rien d'autre. Un test (test/js/courriel-support.test.js)
+# compare les deux rendus caractère pour caractère sur support.fr.twig.
+function Get-SzhCourriel {
+  param(
+    [Parameter(Mandatory = $true)][string]$Nom,
+    [Parameter(Mandatory = $true)][hashtable]$Variables,
+    [string]$Langue = $SzhLangue
+  )
+  $dossier = Join-Path $PSScriptRoot 'mail-templates'
+  $langueUtilisee = $Langue
+  $chemin = Join-Path $dossier ($Nom + '.' + $Langue + '.twig')
+  if (-not (Test-Path -LiteralPath $chemin)) {
+    $langueUtilisee = 'fr'
+    $chemin = Join-Path $dossier ($Nom + '.fr.twig')
+  }
+  if (-not (Test-Path -LiteralPath $chemin)) {
+    throw ('gabarit de courriel introuvable : « ' + $Nom + ' » (langue « ' + $Langue +
+      ' », et son repli français absent aussi)')
+  }
+  $etiquette = $Nom + '.' + $langueUtilisee + '.twig'
+  $texte = [System.IO.File]::ReadAllText($chemin, [System.Text.Encoding]::UTF8)
+  $texte = $texte -replace "`r`n", "`n"
+  # Commentaires retirés avant l'analyse des tags : un « {# {% bloc %} #} » ne doit jamais
+  # être lu comme un vrai tag.
+  $texte = [regex]::Replace($texte, '\{#[\s\S]*?#\}', '')
+
+  $blocs = @{}
+  $pile = New-Object System.Collections.Generic.Stack[object]
+  foreach ($m in [regex]::Matches($texte, '\{%\s*([\s\S]*?)\s*%\}')) {
+    $contenu = $m.Groups[1].Value
+    $parties = $contenu -split '\s+', 2
+    $mot = $parties[0]
+    if ($mot -eq 'block') {
+      $nomBloc = if ($parties.Count -gt 1) { $parties[1].Trim() } else { '' }
+      $pile.Push(@{ Nom = $nomBloc; Debut = $m.Index + $m.Length })
+    } elseif ($mot -eq 'endblock') {
+      if ($pile.Count -eq 0) {
+        throw ('gabarit « ' + $etiquette + ' » : « endblock » sans « block » ouvert')
+      }
+      $cadre = $pile.Pop()
+      $blocs[$cadre.Nom] = $texte.Substring($cadre.Debut, $m.Index - $cadre.Debut)
+    } else {
+      throw ('gabarit « ' + $etiquette + ' » : construction Twig non prise en charge : « {% ' +
+        $contenu + ' %} »')
+    }
+  }
+  if ($pile.Count -gt 0) {
+    throw ('gabarit « ' + $etiquette + ' » : bloc « ' + $pile.Peek().Nom + ' » non fermé')
+  }
+
+  # Variables {{ nom }} substituées, une absente rend une chaîne vide. Tout ce qui reste
+  # après cette passe (filtre |, chemin a.b, littéral...) n'est pas de notre ressort : lever,
+  # avec le nom du gabarit, plutôt que produire un courriel à moitié rendu.
+  function Rendre-SzhBlocCourriel([string]$Brut) {
+    $rendu = [regex]::Replace($Brut, '\{\{\s*([A-Za-z0-9_]+)\s*\}\}', {
+      param($m2)
+      $cle = $m2.Groups[1].Value
+      if ($Variables.Contains($cle)) { return [string]$Variables[$cle] }
+      return ''
+    })
+    if ($rendu.IndexOf('{{') -ne -1 -or $rendu.IndexOf('}}') -ne -1) {
+      throw ('gabarit « ' + $etiquette +
+        ' » : construction Twig non prise en charge dans « {{ … }} » (filtre ou expression)')
+    }
+    return $rendu
+  }
+
+  # Convention du cockpit (lib/courriel.js#rendreCourriel) : le sujet est débarrassé de ses
+  # blancs de bord, le corps perd exactement un retour à la ligne après l'ouverture du bloc
+  # et un avant sa fermeture -- le gabarit les porte pour rester lisible en édition, ce ne
+  # sont pas des blancs du message.
+  $sujetFinal = ''
+  if ($blocs.ContainsKey('sujet')) { $sujetFinal = (Rendre-SzhBlocCourriel $blocs['sujet']).Trim() }
+  $corpsFinal = ''
+  if ($blocs.ContainsKey('corps')) {
+    $rendu = Rendre-SzhBlocCourriel $blocs['corps']
+    $corpsFinal = ($rendu -replace '^\n', '') -replace '\n$', ''
+  }
+  $sujetFinal = $sujetFinal -replace '\n', "`r`n"
+  $corpsFinal = $corpsFinal -replace '\n', "`r`n"
+  return [pscustomobject]@{ sujet = $sujetFinal; corps = $corpsFinal }
+}
+
 # Écran d'erreur final : message calme, contact, e-mail pré-rempli, accès au journal.
 function Show-SzhErreur {
   param([string]$Etape, [string]$Message, [string]$Journal)
@@ -1073,8 +1158,11 @@ function Show-SzhErreur {
     $car = [string]$touche.Character
   } catch { $car = '' }
   if ($car -eq 'e' -or $car -eq 'E') {
-    $sujet = (T 'mail.sujet' @($env:COMPUTERNAME))
-    $corps = (T 'mail.corps' @($env:COMPUTERNAME, $Etape, $Message, $Journal))
+    $rendu = Get-SzhCourriel -Nom 'support' -Variables @{
+      poste = $env:COMPUTERNAME; etape = $Etape; message = $Message; journal = $Journal
+    }
+    $sujet = $rendu.sujet
+    $corps = $rendu.corps
     if ($corps.Length -gt 1500) { $corps = $corps.Substring(0, 1500) }   # limite de longueur d'un mailto
     $uri = ('mailto:{0}?subject={1}&body={2}' -f $SzhSupport, [Uri]::EscapeDataString($sujet), [Uri]::EscapeDataString($corps))
     Start-Process $uri

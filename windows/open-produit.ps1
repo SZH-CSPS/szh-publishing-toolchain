@@ -288,7 +288,10 @@ $archives = @($archives | Sort-Object nom -Descending)
 # offrir "Nouveau..." sur un poste vierge.
 
 # ---- Le bloc d'informations, calcule avant la mise en page (ou avant le JSON) ----
+# Mode test : $emplacements.emplacement decide seul, jamais une autre lecture de la config.
+$modeTest = ($emplacements.emplacement -eq $SzhEmplacementTest)
 $lignesInfo = @()
+if ($modeTest) { $lignesInfo += (T 'lanceur.modeTest') }
 $vInstallee = Get-SzhVersionInstallee
 if ($vInstallee) { $lignesInfo += (T 'lanceur.version' @($vInstallee)) }
 else { $lignesInfo += (T 'lanceur.version.inconnue') }
@@ -326,6 +329,7 @@ if ($script:SzhSimule) {
     titreFenetre     = $titreFenetre
     etiquetteRacine  = (Get-SzhEtiquetteRacine)
     emplacement      = $emplacements.emplacement
+    modeTest         = ($emplacements.emplacement -eq $SzhEmplacementTest)
     racineBase       = $emplacements.base
     racineEnCours    = $encoursProduit
     racineArchive    = $archiveProduit
@@ -418,7 +422,8 @@ try {
 } catch { }
 $infos.Location = New-Object System.Drawing.Point(16, $yInfos)
 $infos.Size = New-Object System.Drawing.Size(488, $hInfos)
-$infos.ForeColor = [System.Drawing.Color]::DimGray
+if ($modeTest) { $infos.ForeColor = [System.Drawing.Color]::Firebrick }
+else { $infos.ForeColor = [System.Drawing.Color]::DimGray }
 $form.Controls.Add($infos)
 # Le bloc de boutons suit la hauteur reelle du texte d'info, pas la valeur de repli fixee
 # plus haut pour le calcul de la fenetre -- recalcule ici, une fois $hInfos connu.
@@ -471,21 +476,37 @@ function Read-SzhNouveauNumero {
   $boite = New-Object System.Windows.Forms.Form
   $boite.Text = (T 'lanceur.nouvelle') -replace '…', ''
   $boite.StartPosition = 'CenterParent'
-  $boite.ClientSize = New-Object System.Drawing.Size(430, 296)   # ajustee plus bas
   $boite.FormBorderStyle = 'FixedDialog'
   $boite.MaximizeBox = $false
   $boite.MinimizeBox = $false
 
+  # Bandeau du mode test : jamais en production, decide uniquement par l'emplacement actif
+  # ($emplacements, calcule plus haut dans open-produit.ps1) -- decale tout le reste du
+  # formulaire de sa hauteur reelle, mesuree et non devinee (comme $hOu plus bas).
+  $modeTest = ($emplacements.emplacement -eq $SzhEmplacementTest)
+  $decalage = 0
+  if ($modeTest) {
+    $etiqModeTest = New-Object System.Windows.Forms.Label
+    $etiqModeTest.Text = (T 'lanceur.modeTest')
+    $etiqModeTest.ForeColor = [System.Drawing.Color]::Firebrick
+    $etiqModeTest.AutoSize = $true
+    $etiqModeTest.MaximumSize = New-Object System.Drawing.Size(398, 0)
+    $etiqModeTest.Location = New-Object System.Drawing.Point(16, 10)
+    $boite.Controls.Add($etiqModeTest)
+    $decalage = $etiqModeTest.PreferredSize.Height + 8
+  }
+  $boite.ClientSize = New-Object System.Drawing.Size(430, (296 + $decalage))   # ajustee plus bas
+
   $etiqAnnee = New-Object System.Windows.Forms.Label
   $etiqAnnee.Text = (T 'lanceur.nouvelle.annee')
-  $etiqAnnee.Location = New-Object System.Drawing.Point(16, 21)
+  $etiqAnnee.Location = New-Object System.Drawing.Point(16, (21 + $decalage))
   $etiqAnnee.Size = New-Object System.Drawing.Size(96, 22)
   $boite.Controls.Add($etiqAnnee)
 
   # NumericUpDown plutot que TextBox : une annee et un numero sont des nombres dans des
   # bornes, il n'y a plus de saisie invalide a refuser par un message.
   $champAnnee = New-Object System.Windows.Forms.NumericUpDown
-  $champAnnee.Location = New-Object System.Drawing.Point(118, 16)
+  $champAnnee.Location = New-Object System.Drawing.Point(118, (16 + $decalage))
   $champAnnee.Size = New-Object System.Drawing.Size(96, 28)
   $champAnnee.Font = New-Object System.Drawing.Font('Segoe UI', 11)
   $champAnnee.Minimum = $anneeMin
@@ -495,13 +516,13 @@ function Read-SzhNouveauNumero {
 
   $etiqNumero = New-Object System.Windows.Forms.Label
   $etiqNumero.Text = (T 'lanceur.nouvelle.numero')
-  $etiqNumero.Location = New-Object System.Drawing.Point(16, 57)
+  $etiqNumero.Location = New-Object System.Drawing.Point(16, (57 + $decalage))
   $etiqNumero.Size = New-Object System.Drawing.Size(96, 22)
   $boite.Controls.Add($etiqNumero)
 
   # 1 a 99 : la convention "AAAA-NN" du nom de dossier tient le numero sur deux chiffres.
   $champNumero = New-Object System.Windows.Forms.NumericUpDown
-  $champNumero.Location = New-Object System.Drawing.Point(118, 52)
+  $champNumero.Location = New-Object System.Drawing.Point(118, (52 + $decalage))
   $champNumero.Size = New-Object System.Drawing.Size(96, 28)
   $champNumero.Font = New-Object System.Drawing.Font('Segoe UI', 11)
   $champNumero.Minimum = 1
@@ -511,14 +532,14 @@ function Read-SzhNouveauNumero {
 
   $etiqVolume = New-Object System.Windows.Forms.Label
   $etiqVolume.Text = (T 'lanceur.nouvelle.volume')
-  $etiqVolume.Location = New-Object System.Drawing.Point(16, 93)
+  $etiqVolume.Location = New-Object System.Drawing.Point(16, (93 + $decalage))
   $etiqVolume.Size = New-Object System.Drawing.Size(96, 22)
   $boite.Controls.Add($etiqVolume)
 
   # Desactive, donc grise : le volume se lit, il ne se saisit pas -- tant que le bouton
   # ci-dessous n'a pas ete presse.
   $champVolume = New-Object System.Windows.Forms.NumericUpDown
-  $champVolume.Location = New-Object System.Drawing.Point(118, 88)
+  $champVolume.Location = New-Object System.Drawing.Point(118, (88 + $decalage))
   $champVolume.Size = New-Object System.Drawing.Size(96, 28)
   $champVolume.Font = New-Object System.Drawing.Font('Segoe UI', 11)
   $champVolume.Minimum = 1
@@ -532,13 +553,13 @@ function Read-SzhNouveauNumero {
   # faux s'imprime sur la couverture et part dans OJS sans que rien ne le signale.
   $boutonManuel = New-Object System.Windows.Forms.Button
   $boutonManuel.Text = (T 'lanceur.nouvelle.volume.manuel')
-  $boutonManuel.Location = New-Object System.Drawing.Point(118, 122)
+  $boutonManuel.Location = New-Object System.Drawing.Point(118, (122 + $decalage))
   $boutonManuel.Size = New-Object System.Drawing.Size(296, 30)
   $boite.Controls.Add($boutonManuel)
 
   # Un libelle, pas un champ : le nom du dossier est montre et ne se change pas.
   $etiqDossier = New-Object System.Windows.Forms.Label
-  $etiqDossier.Location = New-Object System.Drawing.Point(16, 166)
+  $etiqDossier.Location = New-Object System.Drawing.Point(16, (166 + $decalage))
   $etiqDossier.Size = New-Object System.Drawing.Size(398, 22)
   $etiqDossier.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
   $boite.Controls.Add($etiqDossier)
@@ -554,12 +575,12 @@ function Read-SzhNouveauNumero {
     $vouluOu = $ou.GetPreferredSize((New-Object System.Drawing.Size(398, 0))).Height + 8
     if ($vouluOu -gt $hOu) { $hOu = $vouluOu }
   } catch { }
-  $ou.Location = New-Object System.Drawing.Point(16, 192)
+  $ou.Location = New-Object System.Drawing.Point(16, (192 + $decalage))
   $ou.Size = New-Object System.Drawing.Size(398, $hOu)
   $ou.ForeColor = [System.Drawing.Color]::DimGray
   $boite.Controls.Add($ou)
 
-  $yBoutonsBoite = 192 + $hOu + 12
+  $yBoutonsBoite = 192 + $decalage + $hOu + 12
   $boite.ClientSize = New-Object System.Drawing.Size(430, ($yBoutonsBoite + 46))
 
   $okBouton = New-Object System.Windows.Forms.Button
@@ -663,31 +684,47 @@ function Read-SzhNouveauLivre {
   $boite.MinimizeBox = $false
   Set-SzhIconeFenetre $boite
 
+  # Bandeau du mode test : jamais en production, decide uniquement par l'emplacement actif
+  # ($emplacements, calcule plus haut dans open-produit.ps1) -- decale tout le reste du
+  # formulaire de sa hauteur reelle, mesuree et non devinee (comme $hOu plus bas).
+  $modeTest = ($emplacements.emplacement -eq $SzhEmplacementTest)
+  $decalage = 0
+  if ($modeTest) {
+    $etiqModeTest = New-Object System.Windows.Forms.Label
+    $etiqModeTest.Text = (T 'lanceur.modeTest')
+    $etiqModeTest.ForeColor = [System.Drawing.Color]::Firebrick
+    $etiqModeTest.AutoSize = $true
+    $etiqModeTest.MaximumSize = New-Object System.Drawing.Size(398, 0)
+    $etiqModeTest.Location = New-Object System.Drawing.Point(16, 10)
+    $boite.Controls.Add($etiqModeTest)
+    $decalage = $etiqModeTest.PreferredSize.Height + 8
+  }
+
   $xChamp = 140
   $largeurChamp = 260
 
   $etiqTitre = New-Object System.Windows.Forms.Label
   $etiqTitre.Text = (T 'lanceur.nouvelle.livre.titre')
-  $etiqTitre.Location = New-Object System.Drawing.Point(16, 19)
+  $etiqTitre.Location = New-Object System.Drawing.Point(16, (19 + $decalage))
   $etiqTitre.Size = New-Object System.Drawing.Size(118, 22)
   $boite.Controls.Add($etiqTitre)
 
   $champTitre = New-Object System.Windows.Forms.TextBox
-  $champTitre.Location = New-Object System.Drawing.Point($xChamp, 16)
+  $champTitre.Location = New-Object System.Drawing.Point($xChamp, (16 + $decalage))
   $champTitre.Size = New-Object System.Drawing.Size($largeurChamp, 26)
   $champTitre.Font = New-Object System.Drawing.Font('Segoe UI', 11)
   $boite.Controls.Add($champTitre)
 
   $etiqAnnee = New-Object System.Windows.Forms.Label
   $etiqAnnee.Text = (T 'lanceur.nouvelle.annee')
-  $etiqAnnee.Location = New-Object System.Drawing.Point(16, 55)
+  $etiqAnnee.Location = New-Object System.Drawing.Point(16, (55 + $decalage))
   $etiqAnnee.Size = New-Object System.Drawing.Size(118, 22)
   $boite.Controls.Add($etiqAnnee)
 
   # Bornes larges : un livre n'a pas de premier volume connu comme une revue
   # (Get-SzhPremiereAnnee ne s'applique qu'aux jetons revue/zeitschrift).
   $champAnnee = New-Object System.Windows.Forms.NumericUpDown
-  $champAnnee.Location = New-Object System.Drawing.Point($xChamp, 52)
+  $champAnnee.Location = New-Object System.Drawing.Point($xChamp, (52 + $decalage))
   $champAnnee.Size = New-Object System.Drawing.Size(110, 28)
   $champAnnee.Font = New-Object System.Drawing.Font('Segoe UI', 11)
   $champAnnee.Minimum = 1990
@@ -697,14 +734,14 @@ function Read-SzhNouveauLivre {
 
   $etiqRef = New-Object System.Windows.Forms.Label
   $etiqRef.Text = (T 'lanceur.nouvelle.livre.reference')
-  $etiqRef.Location = New-Object System.Drawing.Point(16, 91)
+  $etiqRef.Location = New-Object System.Drawing.Point(16, (91 + $decalage))
   $etiqRef.Size = New-Object System.Drawing.Size(118, 22)
   $boite.Controls.Add($etiqRef)
 
   # La reference B est un compteur tenu par la redaction, pas calcule : rien dans buch.yaml
   # ne le dit (il ne vit que dans le nom du dossier), il se saisit donc a la main.
   $champRef = New-Object System.Windows.Forms.NumericUpDown
-  $champRef.Location = New-Object System.Drawing.Point($xChamp, 88)
+  $champRef.Location = New-Object System.Drawing.Point($xChamp, (88 + $decalage))
   $champRef.Size = New-Object System.Drawing.Size(110, 28)
   $champRef.Font = New-Object System.Drawing.Font('Segoe UI', 11)
   $champRef.Minimum = 1
@@ -714,13 +751,13 @@ function Read-SzhNouveauLivre {
 
   $etiqType = New-Object System.Windows.Forms.Label
   $etiqType.Text = (T 'lanceur.nouvelle.livre.type')
-  $etiqType.Location = New-Object System.Drawing.Point(16, 127)
+  $etiqType.Location = New-Object System.Drawing.Point(16, (127 + $decalage))
   $etiqType.Size = New-Object System.Drawing.Size(118, 22)
   $boite.Controls.Add($etiqType)
 
   $champType = New-Object System.Windows.Forms.ComboBox
   $champType.DropDownStyle = 'DropDownList'
-  $champType.Location = New-Object System.Drawing.Point($xChamp, 124)
+  $champType.Location = New-Object System.Drawing.Point($xChamp, (124 + $decalage))
   $champType.Size = New-Object System.Drawing.Size($largeurChamp, 26)
   $champType.Font = New-Object System.Drawing.Font('Segoe UI', 10)
   [void]$champType.Items.Add((T 'lanceur.nouvelle.livre.type.mono'))
@@ -730,13 +767,13 @@ function Read-SzhNouveauLivre {
 
   $etiqMaquette = New-Object System.Windows.Forms.Label
   $etiqMaquette.Text = (T 'lanceur.nouvelle.livre.maquette')
-  $etiqMaquette.Location = New-Object System.Drawing.Point(16, 163)
+  $etiqMaquette.Location = New-Object System.Drawing.Point(16, (163 + $decalage))
   $etiqMaquette.Size = New-Object System.Drawing.Size(118, 22)
   $boite.Controls.Add($etiqMaquette)
 
   $champMaquette = New-Object System.Windows.Forms.ComboBox
   $champMaquette.DropDownStyle = 'DropDownList'
-  $champMaquette.Location = New-Object System.Drawing.Point($xChamp, 160)
+  $champMaquette.Location = New-Object System.Drawing.Point($xChamp, (160 + $decalage))
   $champMaquette.Size = New-Object System.Drawing.Size($largeurChamp, 26)
   $champMaquette.Font = New-Object System.Drawing.Font('Segoe UI', 10)
   [void]$champMaquette.Items.Add((T 'lanceur.nouvelle.livre.maquette.normal'))
@@ -746,13 +783,13 @@ function Read-SzhNouveauLivre {
 
   $etiqFormat = New-Object System.Windows.Forms.Label
   $etiqFormat.Text = (T 'lanceur.nouvelle.livre.format')
-  $etiqFormat.Location = New-Object System.Drawing.Point(16, 199)
+  $etiqFormat.Location = New-Object System.Drawing.Point(16, (199 + $decalage))
   $etiqFormat.Size = New-Object System.Drawing.Size(118, 22)
   $boite.Controls.Add($etiqFormat)
 
   $champFormat = New-Object System.Windows.Forms.ComboBox
   $champFormat.DropDownStyle = 'DropDownList'
-  $champFormat.Location = New-Object System.Drawing.Point($xChamp, 196)
+  $champFormat.Location = New-Object System.Drawing.Point($xChamp, (196 + $decalage))
   $champFormat.Size = New-Object System.Drawing.Size($largeurChamp, 26)
   $champFormat.Font = New-Object System.Drawing.Font('Segoe UI', 10)
   [void]$champFormat.Items.Add((T 'lanceur.nouvelle.livre.format.standard'))
@@ -770,7 +807,7 @@ function Read-SzhNouveauLivre {
 
   # Un libelle, pas un champ : le nom du dossier est montre et ne se change pas.
   $etiqDossier = New-Object System.Windows.Forms.Label
-  $etiqDossier.Location = New-Object System.Drawing.Point(16, 236)
+  $etiqDossier.Location = New-Object System.Drawing.Point(16, (236 + $decalage))
   $etiqDossier.Size = New-Object System.Drawing.Size(398, 22)
   $etiqDossier.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
   $boite.Controls.Add($etiqDossier)
@@ -784,12 +821,12 @@ function Read-SzhNouveauLivre {
     $vouluOu = $ou.GetPreferredSize((New-Object System.Drawing.Size(398, 0))).Height + 8
     if ($vouluOu -gt $hOu) { $hOu = $vouluOu }
   } catch { }
-  $ou.Location = New-Object System.Drawing.Point(16, 262)
+  $ou.Location = New-Object System.Drawing.Point(16, (262 + $decalage))
   $ou.Size = New-Object System.Drawing.Size(398, $hOu)
   $ou.ForeColor = [System.Drawing.Color]::DimGray
   $boite.Controls.Add($ou)
 
-  $yBoutonsBoite = 262 + $hOu + 12
+  $yBoutonsBoite = 262 + $decalage + $hOu + 12
   $boite.ClientSize = New-Object System.Drawing.Size(430, ($yBoutonsBoite + 46))
 
   $okBouton = New-Object System.Windows.Forms.Button

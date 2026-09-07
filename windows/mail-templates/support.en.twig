@@ -1,0 +1,14 @@
+{# support.en.twig : courriel de support prerempli depuis l'ecran d'erreur (Show-SzhErreur) #}
+{% block sujet %}Update problem - SZH journal tool ({{ poste }}){% endblock %}
+{% block corps %}
+Hello,
+
+The SZH journal tool update ran into a problem.
+
+Computer: {{ poste }}
+Step    : {{ etape }}
+Detail  : {{ message }}
+Log     : {{ journal }}
+
+Please attach the log file above to this message.
+{% endblock %}

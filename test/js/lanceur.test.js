@@ -83,10 +83,24 @@ ecrireYaml(ZS_ENCOURS, 'ausgabe.yaml', ['title: "Ausgabe Test"', 'revue: "zeitsc
 const LIVRE_ENCOURS = creerDossier('54_Buch', 'BU02_Redaktion', '2026-B300-MonLivre');
 ecrireYaml(LIVRE_ENCOURS, 'buch.yaml', ['titre: "Mon Livre Test"', 'lang: "fr"']);
 
-function executer(scriptPath, args) {
+// ---- Deuxieme arborescence jetable, en emplacement "production" cette fois : de quoi
+// verifier que `emplacement` et `modeTest` suivent config.json (basesRevues.prod) plutot
+// que le defaut "test" -- Resolve-SzhEmplacementRevues, Get-SzhBaseRevuesPour (szh-produits.ps1).
+const TRAVAIL_PROD = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-lanceur-prod-'));
+const PROGRAMDATA_PROD = path.join(TRAVAIL_PROD, 'ProgramData');
+const BASE_PROD = path.join(TRAVAIL_PROD, 'Base');
+fs.mkdirSync(PROGRAMDATA_PROD, { recursive: true });
+fs.writeFileSync(path.join(PROGRAMDATA_PROD, 'config.json'), JSON.stringify({
+  emplacementRevues: 'production',
+  basesRevues: { prod: BASE_PROD },
+}), 'utf8');
+fs.mkdirSync(path.join(PROGRAMDATA_PROD, 'toolkit'), { recursive: true });
+fs.writeFileSync(path.join(PROGRAMDATA_PROD, 'toolkit', 'VERSION'), VERSION_INSTALLEE + '\n', 'utf8');
+
+function executer(scriptPath, args, programData) {
   if (!POWERSHELL) { return null; }
   const env = Object.assign({}, process.env, {
-    SZH_BASE: PROGRAMDATA,
+    SZH_BASE: programData || PROGRAMDATA,
     SZH_LANCEUR_SIMULE: '1',
   });
   const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, ...args],
@@ -104,10 +118,14 @@ function executer(scriptPath, args) {
 const revue = (function () { return executer(OUVRIR_REVUE, ['-Produit', 'revue']); })();
 const zeitschrift = (function () { return executer(OUVRIR_REVUE, ['-Produit', 'zeitschrift']); })();
 const livre = (function () { return executer(OUVRIR_LIVRE, []); })();
+// Meme enveloppe que "revue" ci-dessus, mais contre la deuxieme arborescence -- emplacement
+// "production" dans son config.json, et non plus le defaut "test".
+const production = (function () { return executer(OUVRIR_REVUE, ['-Produit', 'revue'], PROGRAMDATA_PROD); })();
 
-// L'arborescence jetable n'est plus lue une fois les trois resultats captures ci-dessus :
-// rien ne doit rester sous le dossier temporaire du systeme apres coup.
+// L'arborescence jetable n'est plus lue une fois les resultats captures ci-dessus : rien ne
+// doit rester sous le dossier temporaire du systeme apres coup.
 try { fs.rmSync(TRAVAIL, { recursive: true, force: true }); } catch (e) { /* best effort */ }
+try { fs.rmSync(TRAVAIL_PROD, { recursive: true, force: true }); } catch (e) { /* best effort */ }
 
 function verifierExecution(r, nom) {
   assert.ok(r, nom + ' : aucun resultat (powershell.exe indisponible ?)');
@@ -132,6 +150,11 @@ test('open-revue.ps1 -Produit revue : titre, liste, archive, version, en mode si
     assert.strictEqual(r.archives[0].archivee, true, 'un numero sous RV99_Archives doit se dire archive');
     assert.strictEqual(r.enCours[0].archivee, false);
     assert.strictEqual(r.versionInstallee, VERSION_INSTALLEE);
+    // Poste de test : l'emplacement actif le dit en clair, modeTest en decoule, et
+    // l'etiquette de racine (jointe au titre par le jeton {racine}) n'est jamais vide.
+    assert.strictEqual(r.emplacement, 'test', 'emplacement attendu : test');
+    assert.strictEqual(r.modeTest, true, 'modeTest doit etre vrai en emplacement test');
+    assert.ok(r.etiquetteRacine && r.etiquetteRacine.length > 0, 'etiquetteRacine ne doit pas etre vide');
   });
 
 // ---- Zeitschrift : meme enveloppe, produit different, liste different ----
@@ -164,6 +187,16 @@ test('open-livre.ps1 : le livre ne voit que les livres, etiquete par son titre',
       'le libelle du livre doit porter son titre : ' + r.enCours[0].libelle);
     assert.strictEqual(r.archives.length, 0);
     assert.strictEqual(r.versionInstallee, VERSION_INSTALLEE);
+  });
+
+// ---- Emplacement "production" dans config.json : emplacement et modeTest en decoulent ----
+
+test('emplacementRevues "production" (basesRevues.prod) : emplacement et modeTest suivent, jamais le defaut test',
+  { skip: sansPowerShell }, () => {
+    verifierExecution(production, 'production');
+    const r = production.sortie;
+    assert.strictEqual(r.emplacement, 'production', 'emplacement attendu : production');
+    assert.strictEqual(r.modeTest, false, 'modeTest doit etre faux en emplacement production');
   });
 
 // ---- Etancheite entre les trois produits, sur les trois resultats a la fois ----

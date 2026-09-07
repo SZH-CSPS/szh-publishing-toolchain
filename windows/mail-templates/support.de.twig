@@ -1,0 +1,14 @@
+{# support.de.twig : courriel de support prerempli depuis l'ecran d'erreur (Show-SzhErreur) #}
+{% block sujet %}Problem bei der Aktualisierung - SZH-Redaktionstool ({{ poste }}){% endblock %}
+{% block corps %}
+Guten Tag,
+
+Bei der Aktualisierung des SZH-Redaktionstools ist ein Problem aufgetreten.
+
+Computer   : {{ poste }}
+Schritt    : {{ etape }}
+Detail     : {{ message }}
+Protokoll  : {{ journal }}
+
+Bitte haengen Sie die oben genannte Protokolldatei an diese Nachricht an.
+{% endblock %}
