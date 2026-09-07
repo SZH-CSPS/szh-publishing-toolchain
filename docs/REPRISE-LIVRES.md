@@ -11,12 +11,12 @@ Quand une tâche est terminée et constatée, la supprimer d'ici.
 
 ## 1. Où en est le dépôt
 
-- Branche `main`, la branche `livres` y est fusionnée. Dernière étiquette : `v2026.08.66`.
+- Branche `main`, la branche `livres` y est fusionnée. Dernière étiquette : `v2026.09.6`.
 - Les livres sont **visibles pour tout le monde** : aucun drapeau de configuration ne les
   cache. Un dossier est un livre s'il porte `buch.yaml`, un numéro s'il porte
   `ausgabe.yaml` — c'est la seule règle, et elle est tenue des deux côtés
   (`vscodium-extension/szh-cockpit/lib/profil.js` et `pipeline/Makefile`).
-- 610 tests JS au vert : `node --test "test/js/*.test.js"` depuis la racine.
+- environ 1017 tests JS au vert (899 avant ce lot) : `node --test "test/js/*.test.js"` depuis la racine.
 - Banc de rendu au vert : `test/build-render.sh` compile les deux livres d'essai
   (`test/livre-normal`, `test/livre-falc`), cinq sorties chacun, et refuse un PDF non
   conforme PDF/UA-1.
@@ -40,45 +40,24 @@ Seule `origin/livres` subsiste sur le distant, entièrement fusionnée — inoff
 
 ### 2.1 Parité cockpit revue / livre
 
-C'est le plus gros morceau, et il est **mesuré**, pas supposé. Onze commandes sont
-réservées à la revue par `REVUE_SEULEMENT` dans
-[lib/panneaux.js](../vscodium-extension/szh-cockpit/lib/panneaux.js#L128) et par les
-`when: szh.estRevue` du `commandPalette` de `package.json`. Neuf le sont à juste titre :
-un livre n'a ni OJS, ni suivi de traduction, ni cycle de vie de numéro. **Deux ne le sont
-pas.**
+Le formulaire de métadonnées du livre (`media/metadata-book.*`, sur le modèle partagé
+`media/_numero.js`) existe déjà, et porte les six variables d'impression
+(`impression.grammage`, `main`, `dos-mm`, `fond-perdu-mm`, `traits-de-coupe`,
+`profil-cmjn`) — ce n'est donc plus du YAML à éditer à la main. L'aperçu HTML par chapitre,
+les quatre tâches de sortie du livre (PDF imprimeur, couverture, EPUB, HTML web),
+l'archivage d'un livre (`archive-revue.ps1`, `$estLivre`) et le journal de compilation côté
+livre (`CLES_LIVRE` de `lib/journal.js`, codes `liminaire-introuvable`, `chapitre-ecarte`,
+`chapitre-introuvable`) sont faits. Le double-clic sur un chapitre ouvre déjà le livre
+complet comme pour un article : l'arbre traite un chapitre comme une unité générique
+(`profilCourant().unites`), sans code propre à écrire. Le badge « déjà converti » sur un
+Word redéposé (`word-deja`) est générique depuis que `_itemsWord()` lit
+`profilCourant().depot` : il vaut pour un chapitre comme pour un article.
 
-**a) `szh.metadonnees` : il n'existe aucun formulaire pour `buch.yaml`.** Les métadonnées
-d'un livre (titre, ISBN papier et numérique, année, collection, grammage, nombre de pages
-pour le dos) ne se saisissent aujourd'hui qu'en éditant le YAML à la main. Il faut un
-formulaire, sur le modèle de `media/metadata-issue.*` et de `media/_numero.{css,js}` ; ce
-dernier est déjà partagé entre deux vues, donc conçu pour être réutilisé. C'est le travail
-naturel à déléguer.
-
-**b) Réordonnancement des chapitres — ✅ FAIT le 30 août.** Ne pas refaire.
-
-Le socle de persistance est routé : `cheminConfig(racine)` rend `ausgabe.yaml` ou
-`buch.yaml` selon le profil, `cleOrdre()` rend `ordre-articles` ou `ordre-chapitres`, et
-les six appels de co-édition passent par le premier. `articlesSansDoi()` rend un jeu vide
-sur un livre — un chapitre n'a pas de DOI, donc pas de « frontière DOI » à franchir.
-`ordre-chapitres` est entrée dans `CLES_METADONNEES` et `CLES_LISTES` de `lib/yaml.js` :
-elle en était absente, et `analyserAusgabe` la laissait tomber **en silence**.
-
-Le geste existe : **« Monter d'un rang » / « Descendre d'un rang »** au menu contextuel
-d'une unité dans l'arbre, pour les deux profils (`szh.monterUnite`, `szh.descendreUnite`).
-Ils réutilisent `deplacerUnite()`, extraite du gestionnaire de la vue en cartes pour que
-les deux chemins n'écrivent pas deux ordres différents.
-
-Il subsiste **8 littéraux `'ausgabe.yaml'`** dans `extension.js` : tous lisent des clés qui
-n'existent que pour un numéro — `revue`, `couleur`, `articles-sans-doi`. Ils sont à leur
-place ; ne pas les remplacer en masse.
-
-Reste, si on le juge utile : donner à `szh.apercuMetadonnees` une vue de chapitres. Moins
-urgent depuis que l'arbre réordonne.
-
-**c) Écarts mineurs, même famille.** Pas de formulaire de couverture : le dos est bien
-calculé par la chaîne à partir du grammage et du nombre de pages réel, mais rien dans
-l'interface ne saisit ces variables. Pas de pastille `word-deja` sur les chapitres déjà
-importés.
+**Ce qui reste, plus étroit qu'annoncé jusqu'ici :** le formulaire de métadonnées du livre
+ne porte pas de zone de dépôt pour l'illustration de couverture (`couverture/illustration.*`,
+facultative) ni de lecture seule affichant le dos déjà calculé par la chaîne — ces deux
+variables-là (grammage, main…) se saisissent, mais l'image et le retour du calcul ne se
+voient encore que dans le PDF compilé.
 
 ### 2.2 Maquette FALC — rapprocher le rendu de l'original
 
@@ -208,11 +187,20 @@ et les déposer dans `liminaires/media/` du B329, pour que ce livre-ci sorte com
 ⚠ Ne pas régler la maquette FALC en modifiant `socle.css` ou `livre/base.css` : ces deux
 feuilles servent aussi la maquette « normal » et la revue.
 
-### 2.3 Extraction de `lib/medias.js`
+### 2.3 Extraction du gestionnaire de médias — faite, sous un autre nom
 
-À **refaire à neuf depuis `main`**. Une tentative précédente a produit un `extension.js`
-divergent de 1333 lignes ; ne pas essayer de la réconcilier, elle est abandonnée
-volontairement. Repartir du fichier tel qu'il est aujourd'hui.
+Faite : `lib/medias-hote.js` (828 lignes) porte le gestionnaire des médias d'un article —
+formulaire, images, grilles, portraits — extrait d'`extension.js`, qui redescend à environ
+6 700 lignes (8 726 avant ce lot). `lib/medias.js` (320 lignes, sans dépendance à `vscode`)
+reste à part : dimensions d'image, noms de fichiers sûrs, portraits en `data:` URI,
+doublons par empreinte — la part réutilisable sans hôte. Cinq autres modules ont été
+extraits dans le même mouvement : `lib/session.js`, `lib/cycle-vie.js`, `lib/apercu.js`,
+`lib/import-hote.js`, `lib/documentation-hote.js`.
+
+Si l'objectif de fond (extraction complète en dessous de 5 500 lignes) reste souhaité,
+`extension.js` en est encore à ~6 700 : il resterait à extraire les gabarits de webview
+(9 constructeurs `html*`) et les gestionnaires de messages des formulaires, comme le
+décrivait déjà le lot B de [ARCHITECTURE-LIVRES.md §6](ARCHITECTURE-LIVRES.md#6-un-seul-vsix-deux-profils).
 
 ### 2.4 Livres à produire
 
@@ -355,7 +343,7 @@ sortie imprimeur soit utilisable ailleurs qu'en développement.
 ## 3. Comment vérifier
 
 ```
-node --test "test/js/*.test.js"      # 610 tests, depuis la racine du dépôt
+node --test "test/js/*.test.js"      # environ 1017 tests, depuis la racine du dépôt
 test/build-render.sh                 # banc complet : compile les livres, exige PDF/UA-1
 python3 test/typo-check.py           # typographie des textes visibles
 python3 test/apca-check.py           # contrastes de la palette

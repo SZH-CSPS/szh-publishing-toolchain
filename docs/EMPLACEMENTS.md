@@ -130,18 +130,19 @@ L'archivage ne sort jamais de la racine active : un numéro archivé passe de
 
 | Où | Quoi | Appelé par |
 |---|---|---|
-| `windows\szh-common.ps1` · `Resolve-SzhEmplacementRevues` | La règle : clé neuve, puis clé ancienne, puis défaut. Pure, ne lit ni disque ni fichier. | tout le reste de cette liste |
-| `windows\szh-common.ps1` · `Initialize-SzhEmplacementRevues` | Écrit la valeur en clair dans `config.json` si elle manque, après avoir compté les numéros des deux racines. Une fois par poste, journalisée. | `Get-SzhEmplacementRevues` |
-| `windows\szh-common.ps1` · `Get-SzhEmplacementRevues` | Passage obligé : `test` ou `production`. | `Get-SzhEmplacements`, `Get-SzhEtiquetteRacine` |
-| `windows\szh-common.ps1` · `Get-SzhBaseRevuesPour` | La racine, `basesRevues` compris. **Seul endroit du dépôt qui connaît ces deux chemins.** | `Get-SzhEmplacements`, `Measure-SzhNumeros` |
-| `windows\szh-common.ps1` · `Get-SzhEmplacements` | Les quatre dossiers du poste, plus l'emplacement actif. Journalise la racine une fois par lancement. | `open-revue.ps1`, `new-revue.ps1`, `archive-revue.ps1` |
-| `windows\szh-common.ps1` · `Initialize-SzhEmplacementsTest` | Crée les quatre dossiers manquants — **en test seulement**. En production, jamais : l'arborescence est celle de SharePoint. | `open-revue.ps1` |
-| `windows\open-revue.ps1` | Le lanceur : liste les numéros de la racine active, affiche version et racine, ouvre VSCodium. | menu Démarrer, liens `szh://` |
-| `windows\new-revue.ps1` | Crée un numéro dans le dossier « en cours » de la racine active, et écrit son année, son numéro et son volume. | bouton « Nouvelle revue… » |
-| `windows\szh-common.ps1` · `Get-SzhVolumePour` | Le volume d'après l'année : Zeitschrift = année − 1994, Revue = année − 2010. **Seul endroit du dépôt qui porte ces deux années zéro.** | le formulaire « Nouvelle revue… », `new-revue.ps1` |
-| `windows\szh-common.ps1` · `Find-SzhNumeroVolume` | Cherche un numéro déjà posé sur un couple volume + numéro, **en cours et dans les archives** de la racine active. Rend son nom et son chemin ; ne supprime ni ne déplace rien. | le formulaire « Nouvelle revue… » |
+| `windows\szh-produits.ps1` · `Resolve-SzhEmplacementRevues` | La règle : clé neuve, puis clé ancienne, puis défaut. Pure, ne lit ni disque ni fichier. | tout le reste de cette liste |
+| `windows\szh-produits.ps1` · `Initialize-SzhEmplacementRevues` | Écrit la valeur en clair dans `config.json` si elle manque, après avoir compté les numéros des trois racines (revue, zeitschrift, **et livre**). Une fois par poste, journalisée. | `Get-SzhEmplacementRevues` |
+| `windows\szh-produits.ps1` · `Get-SzhEmplacementRevues` | Passage obligé : `test` ou `production`. | `Get-SzhEmplacements`, `Get-SzhEtiquetteRacine` |
+| `windows\szh-produits.ps1` · `Get-SzhBaseRevuesPour` | La racine, `basesRevues` compris. **Seul endroit du dépôt qui connaît ces deux chemins.** | `Get-SzhEmplacements`, `Measure-SzhNumeros` |
+| `windows\szh-produits.ps1` · `Measure-SzhNumeros` | Compte les dossiers portant un manifeste (`ausgabe.yaml` pour une revue ou une zeitschrift, `buch.yaml` pour un livre — via `Get-SzhSousDossierLivre`), en cours et aux archives, dans une racine. Un livre compte donc lui aussi dans la bascule automatique `test`/`production`. | `Initialize-SzhEmplacementRevues` |
+| `windows\szh-produits.ps1` · `Get-SzhEmplacements` | Les quatre dossiers du poste, plus l'emplacement actif. Journalise la racine une fois par lancement. | `open-produit.ps1`, `new-revue.ps1`, `new-livre.ps1`, `archive-revue.ps1` |
+| `windows\szh-produits.ps1` · `Initialize-SzhEmplacementsTest` | Crée les quatre dossiers manquants — **en test seulement**. En production, jamais : l'arborescence est celle de SharePoint. | `open-produit.ps1` |
+| `windows\open-produit.ps1` | Le lanceur : liste les numéros (ou les livres) de la racine active, affiche version et racine, ouvre VSCodium. `open-revue.ps1` et `open-livre.ps1` en sont des enveloppes. | menu Démarrer, liens `szh://` |
+| `windows\new-revue.ps1`, `windows\new-livre.ps1` | Crée un numéro ou un livre dans le dossier « en cours » de la racine active ; `new-revue.ps1` écrit en plus l'année, le numéro et le volume. | bouton « Nouvelle revue… » / « Nouveau livre… » |
+| `windows\szh-produits.ps1` · `Get-SzhVolumePour` | Le volume d'après l'année : Zeitschrift = année − 1994, Revue = année − 2010. **Seul endroit du dépôt qui porte ces deux années zéro.** | le formulaire « Nouvelle revue… », `new-revue.ps1` |
+| `windows\szh-produits.ps1` · `Find-SzhNumeroVolume` | Cherche un numéro déjà posé sur un couple volume + numéro, **en cours et dans les archives** de la racine active. Rend son nom et son chemin ; ne supprime ni ne déplace rien. | le formulaire « Nouvelle revue… » |
 | `test\js\volume-numero.test.js` | Juge la formule du volume contre un relevé de `ojs.szh.ch` (neuf millésimes) et éprouve le refus du doublon sur une arborescence jetable. | `node --test` |
-| `windows\archive-revue.ps1` | Déplace un numéro « en cours » ⇄ « archives », dans la racine active. | panneau d'export du cockpit |
+| `windows\archive-revue.ps1` | Déplace un numéro **ou un livre** « en cours » ⇄ « archives », dans la racine active — `$estLivre` choisit la variante `.livre` des textes et le sous-dossier de livre. | panneau d'export du cockpit |
 | `szh-cockpit\lib\archivage.js` · `resoudreEmplacementRevues` | La même règle, côté cockpit. Ne connaît **aucun** chemin de revue : il ne rend que la décision. | réglages du cockpit |
 | `szh-cockpit\lib\archivage.js` · `ecrireEmplacementRevues` | La bascule depuis « Réglages SZH ». Écrit les deux clés à la fois. | `extension.js` |
 | `windows\bootstrap.ps1` | Pose `config.json` sur un poste neuf, avec `devMode = $true` (donc l'emplacement de test). | installation, une fois |

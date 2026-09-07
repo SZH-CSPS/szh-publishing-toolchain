@@ -33,6 +33,14 @@ important de tout le système.
 | **Sur un poste partagé, cette écriture traverse les comptes** | le toolkit est commun, et la tâche planifiée l'exécute à l'ouverture de session de **chaque** utilisateur | un compte standard qui remplacerait `toolkit\windows\*.ps1` ferait exécuter son code dans la session des autres comptes du poste — pas une élévation vers l'administrateur, mais un passage latéral. Assumé pour une flotte interne de postes à un rédacteur ; sur un poste réellement partagé, retirer l'écriture aux Utilisateurs sur `toolkit\` et confier la pose du toolkit à une tâche SYSTEM (au prix d'un téléchargement distant exécuté en SYSTEM, ce qui déplace le risque plutôt que de le supprimer) |
 | **Le toolkit local n'est pas re-vérifié à chaque exécution** | seuls les **téléchargements** sont contrôlés (sha256) | idem ci-dessus : la protection repose sur l'intégrité du poste (EDR, MAJ Windows) |
 
+**Risque résiduel accepté.** Le passage latéral d'un compte standard à un autre sur le même
+poste, via le toolkit inscriptible (ligne ci-dessus), reste possible et n'est pas traité ici.
+L'élévation vers l'administrateur, en revanche, est fermée : `bootstrap.ps1` ne lance plus
+`update.ps1` ni `diagnostic.ps1` depuis `toolkit\windows`, mais depuis une seconde extraction
+de l'archive déjà téléchargée et vérifiée par sha256, dans un dossier que ce processus élevé
+vient de créer sous `%TEMP%` et supprime en repartant — l'administrateur n'exécute donc
+jamais la copie du toolkit que le groupe Utilisateurs peut réécrire.
+
 ## À vérifier avec le prestataire — checklist déploiement (×10)
 
 - [ ] **Droits admin ponctuels** : le prestataire peut-il exécuter `bootstrap.ps1` **une fois**

@@ -42,24 +42,40 @@ szh-publishing-toolchain/
 ├── pipeline/                       → C:\ProgramData\SZH\toolkit\pipeline
 │   ├── Makefile                    source de vérité de la compilation
 │   ├── filters/*.lua               transformations Pandoc (import et rendu)
+│   │   ├── szh-commun.lua          fonctions partagées entre filtres (slug, langue, classe),
+│   │   │                           chargée par dofile
+│   │   └── szh-lire-config.lua     lit une clé d'un YAML par le lecteur pandoc lui-même
+│   │                               (`pandoc lua`) ; remplace le sed/grep du Makefile et de livre.mk
 │   ├── docx-*.py                   extraction Word : métadonnées, tableaux, titres
+│   ├── szh_commun.py               fonctions partagées entre les scripts Python (avertir,
+│   │                               lire_yaml, slugifier, écriture atomique)
 │   ├── import-docx.sh              chaîne d'import d'un Word en article
 │   ├── import-medias.py            fin d'import : photos rangées, images ôtées, médias renommés
 │   ├── cmyk-rgb.py                 JPEG livrés en CMJN -> RVB (Pillow, venv des portraits)
 │   ├── accent-css.py, apca.py      couleur annuelle et contrôle de contraste
 │   ├── portraits.py                recadrage et détourage des photos d'auteurs
 │   ├── styles/                     socle.css (polices et jetons, partagé), print.css
-│   │                               (mise en page du PDF), couleurs.css (palette APCA)
+│   │                               (mise en page du PDF), couleurs.css (palette APCA),
+│   │                               partage-filtres.css (balisage posé par les filtres Lua
+│   │                               communs à la revue et au moteur livre)
 │   └── templates/                  gabarit HTML de la couverture
 ├── windows/                        → C:\ProgramData\SZH\toolkit\windows
 │   ├── bootstrap.ps1               administrateur, une fois par poste
 │   ├── update-launcher.ps1         tâche planifiée : vérification silencieuse
 │   ├── update.ps1                  mise à jour visible, sans administrateur
-│   ├── new-revue.ps1               création d'un numéro
-│   ├── open-revue.ps1              lanceur du menu Démarrer, un par produit
+│   ├── new-revue.ps1, new-livre.ps1 création d'un numéro ou d'un livre
+│   ├── open-produit.ps1            lanceur du menu Démarrer, table des produits (revue,
+│   │                               zeitschrift, livre) ; open-revue.ps1 et open-livre.ps1
+│   │                               en sont des enveloppes de quelques lignes
 │   ├── open-md.ps1                 ouverture d'un .md par double-clic
-│   ├── archive-revue.ps1           déplacement en cours ⇄ archives
-│   ├── szh-common.ps1              socle commun : manifest, téléchargement, textes
+│   ├── archive-revue.ps1           déplacement en cours ⇄ archives, revue ou livre
+│   ├── szh-common.ps1              socle : manifest, téléchargement, mutex, remplacement
+│   │                               atomique du toolkit ; dot-source les trois suivants
+│   ├── szh-textes.ps1              table des textes fr/de/en de tous les scripts
+│   ├── szh-produits.ps1            table des produits, emplacements, identité d'un
+│   │                               numéro ou d'un livre
+│   ├── szh-shell.ps1               identité de barre des tâches, raccourcis, lancement
+│   │                               de VSCodium
 │   ├── szh-taches.ps1              tâche planifiée, cadence hebdomadaire, choix du moment
 │   ├── icone.py                    fabrique les quatre .ico livrés à côté
 │   └── vsix.lock                   extensions tierces épinglées (version + sha256)
@@ -81,14 +97,20 @@ Pousser un tag déclenche [`release.yml`](.github/workflows/release.yml) :
 git tag v2026.07.0 && git push origin v2026.07.0
 ```
 
-La CI vérifie les contrats du cockpit (`node --test test/js/*.test.js`), construit les VSIX,
-assemble le toolkit et publie une Release avec `manifest.json`. Le rootfs n'est reconstruit que
-si `image/` a changé ; une retouche de maquette produit donc une release de quelques kilooctets.
-Reconstruction forcée : Actions → release → *Run workflow*, case `force_rootfs`.
+`release.yml` rejoue d'abord entièrement `ci.yml` (contrats du cockpit, contraste APCA,
+typographie, compilation et validation PDF/UA des bancs) avant de publier quoi que ce soit :
+une régression qui n'aurait dû se voir qu'au prochain push sur `main` s'arrête ici. Il vérifie
+ensuite qu'une extension modifiée depuis le tag précédent porte bien une version supérieure —
+sinon la release échoue avec le nom du `package.json` en cause, avant de construire les VSIX.
+Une fois ces deux portes passées : construction des VSIX, assemblage du toolkit, publication
+d'une Release avec `manifest.json`. Le rootfs n'est reconstruit que si `image/` a changé ; une
+retouche de maquette produit donc une release de quelques kilooctets. Reconstruction forcée :
+Actions → release → *Run workflow*, case `force_rootfs`.
 
-⚠ **Incrémenter la `version` dans le `package.json` de chaque extension modifiée.** `update.ps1`
-compare les numéros de version, pas les empreintes : sans bump, le VSIX reconstruit n'est jamais
-réinstallé sur les postes.
+⚠ **Incrémenter la `version` dans le `package.json` de chaque extension modifiée** reste le
+geste attendu de qui prépare la release — la CI le refuse sinon, elle ne le fait pas à sa
+place. `update.ps1` compare les numéros de version, pas les empreintes : sans bump, le VSIX
+reconstruit n'est jamais réinstallé sur les postes.
 
 ### Préparer un poste — une fois, en administrateur
 
@@ -215,6 +237,15 @@ scripts sans porter l'un des noms voulus est retiré — le sous-dossier `SZH\` 
 ligne de commande : lanceur → *Version du logiciel…*, ou le bouton *Changer de version…* de
 l'avertissement de divergence du cockpit. Volontairement manuel et visible — l'opération remplace
 le rootfs et les extensions, et demande un redémarrage de l'éditeur.
+
+### Réparer un poste
+
+Un script qui répare (`bootstrap.ps1` relancé en administrateur, `update.ps1` en ligne de
+commande) ne s'exécute jamais depuis `C:\ProgramData\SZH\toolkit` : ce dossier est inscriptible
+par le groupe Utilisateurs, et un administrateur qui l'exécuterait tel quel exécuterait aussi
+bien un code qu'un compte standard y aurait déposé. Toujours repartir d'un clone frais du dépôt
+ou d'une archive `toolkit-<v>.zip` fraîchement téléchargée et vérifiée par sha256. Détail des
+manœuvres de reprise dans [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md).
 
 ## Le flux rédacteur
 

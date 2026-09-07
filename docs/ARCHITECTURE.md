@@ -85,6 +85,27 @@ un galley DOCX pour l'export OJS. Le détail — quelle sortie vient de quel lec
 que le site fait du HTML qu'il reçoit, et l'organisation des feuilles de style — est dans
 [`SORTIES.md`](SORTIES.md).
 
+### Le moteur livre partage la même chaîne
+
+Un dossier qui porte `buch.yaml` est un livre : `pipeline/profils/livre.mk` s'inclut alors dans
+le `Makefile`, et un chapitre s'y compile **comme un article** — même suite de filtres, même
+`--embed-resources`. `livre-assembler.py` colle ensuite les fragments, compose les pièces
+liminaires et bâtit le sommaire. `out/chapitres/<slug>.apercu.html` donne au cockpit un aperçu
+HTML cliquable par chapitre, exactement comme l'aperçu d'un article.
+
+La configuration (`ausgabe.yaml`, `buch.yaml`, une fiche `<slug>.meta.yaml`) se lit par
+`pipeline/filters/szh-lire-config.lua` (`pandoc lua`, le lecteur YAML de pandoc lui-même) :
+le Makefile lit ainsi une clé exactement comme pandoc la relira à la compilation, à la place du
+sed/grep d'origine qui ne comprenait que la forme la plus simple d'une clé. Deux modules
+évitent la copie entre scripts : `pipeline/szh_commun.py` (avertir, lire_yaml, slugifier,
+écriture atomique), importé par les scripts Python d'import et de scission, et
+`pipeline/filters/szh-commun.lua` (slug_article, langue_de, a_classe, trim), chargé par
+`dofile` par six filtres. La feuille `pipeline/styles/partage-filtres.css` porte les règles des
+composants que ces filtres communs posent — une grille d'images, la description longue d'un
+tableau, un appel de citation orphelin — et s'empile après la maquette de la revue
+(`print.css`) et après la base et la charte du livre : le détail de la pile est dans
+[`SORTIES.md`](SORTIES.md).
+
 ### Ce que la chaîne relève, et par où cela remonte
 
 La chaîne ne fait pas que produire : elle relève. Appel de citation sans référence, appel
@@ -126,7 +147,9 @@ Deux formats de message comptent ici, et ils sont contractuels :
   avertissement non bloquant s'y déguiserait en import raté.
   Émetteurs : `docx-meta.py`, `docx-tables.py`, `reimporter.py` et le `Makefile` sous
   `[import-avertissement]` ; `szh-maquette.lua` sous `[meta-blocage]` / `[meta-avertissement]` ;
-  `szh-citations.lua` sous `[citations-avertissement]` / `[citations-info]`.
+  `szh-citations.lua` sous `[citations-avertissement]` / `[citations-info]` ; côté livre,
+  `profils/livre.mk` sous `[livre-avertissement]` (`chapitre-ecarte`, `chapitre-introuvable`)
+  et `livre-assembler.py` sous `[livre-blocage]` (`liminaire-introuvable`).
 - `[prefixe] …` en français, `[prefixe] [de] …` en allemand, ou les deux moitiés sur une
   seule ligne séparées par `[de] `. Le pipeline n'a pas de mécanisme de locale, en shell
   comme en Python : il écrit les deux et l'interface choisit. C'est ce qui reste au
@@ -139,8 +162,10 @@ Deux formats de message comptent ici, et ils sont contractuels :
 ## Ce qui est géré, donc mis à jour d'un coup
 
 - Le **pipeline** : `Makefile`, filtres Lua, scripts Python d'import, génération de la couleur
-  annuelle.
-- La **maquette** : `print.css`, `couleurs.css`, gabarit de couverture, polices.
+  annuelle, le moteur livre (`profils/livre.mk`, `livre-assembler.py`) et les modules communs
+  (`szh_commun.py`, `filters/szh-commun.lua`, `filters/szh-lire-config.lua`).
+- La **maquette** : `print.css`, `couleurs.css`, `partage-filtres.css`, gabarit de couverture,
+  polices, et les feuilles du livre (`styles/livre/*.css`).
 - Les **extensions** : `szh-cockpit` (la barre « Revue SZH ») et `szh-apercu`.
 - La **configuration de l'éditeur** : réglages, raccourcis, tâches, snippets.
 - Les **scripts de déploiement** et l'**image WSL**.

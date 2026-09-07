@@ -242,54 +242,83 @@ clé.
 | `livre-epub` | EPUB 3 | **pas résolu — voir §4.5** |
 | `livre-mobi` | *(refusé, voir §7)* | |
 
-### 4.3 Le seul vrai manque de l'outillage : le CMJN
+### 4.3 Le CMJN : mécanisme mesuré, texte en K seul confirmé
 
 **Mesuré, pas supposé.** WeasyPrint 69 honore `bleed` et `marks: crop cross` : un essai sur
 ce poste sort un `MediaBox` agrandi du fond perdu, un `TrimBox` juste, et des traits de
 coupe et repères de montage dessinés. Les traits de coupe **ne demandent donc aucun outil
 supplémentaire**.
 
-Le CMJN, si. WeasyPrint écrit en `DeviceRGB` et n'a pas de mode CMJN. Il faut une passe de
-conversion, et le seul outil crédible est **Ghostscript** :
+Le CMJN, si. WeasyPrint écrit en `DeviceRGB` et n'a pas de mode CMJN. `pipeline/cmjn.py`
+fait la conversion en deux étapes :
 
-```
-gs -dNOPAUSE -dBATCH -sDEVICE=pdfwrite \
-   -sColorConversionStrategy=CMYK -dProcessColorModel=/DeviceCMYK \
-   -sOutputICCProfile=<profil>.icc -o sortie.pdf entree.pdf
-```
+1. **Une passe sur le flux de contenu**, avant Ghostscript : le texte de labeur (un `rg`
+   neutre et sombre immédiatement suivi de `BT`) devient `0 0 0 1 k` — noir K seul —, les
+   sept couleurs de la maison deviennent leur CMJN chiffré par le graphiste (table dans
+   `cmjn.py`), et le blanc `1 1 1 rg` devient `0 0 0 0 k` (papier, pas d'encre). Tout le
+   reste — images, teintes non chiffrées — reste en RVB à ce stade.
+2. **Ghostscript** convertit ce qui reste :
+   ```
+   gs -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -dProcessColorModel=/DeviceCMYK \
+      -sColorConversionStrategy=CMYK --permit-file-read=<profil>.icc \
+      -sOutputICCProfile=<profil>.icc -o sortie.pdf entree.pdf
+   ```
+   `-sColorConversionStrategy=CMYK` laisse intact ce qui est déjà en `DeviceCMYK` : le
+   `0 0 0 1 k` posé à l'étape 1 traverse donc la passe sans être retouché.
 
-C'est une modification de `image/Containerfile`, donc **un nouveau rootfs** — une release
-lourde (le `.tar.gz` repart) et non une simple mise à jour de toolkit. C'est le seul point
-du chantier qui touche l'image.
+**`--permit-file-read` n'est pas cosmétique : sans lui, la passe échoue TOUJOURS, sur
+n'importe quel PDF.** Mesuré sur ce poste, Ghostscript 10.05.1 tourne par défaut en bac à
+sable SAFER, qui refuse de lire un fichier hors de ses répertoires connus — le profil ICC
+de `/opt/icc/`, y compris. L'échec ne dit rien de tel : `gs` s'arrête sur « Error: /undefined
+in --runpdf-- » puis, tout en bas de la pile, « Last OS error: Permission denied » — un
+message qui ressemble à un PDF corrompu, sur un fichier qui ne l'est pas. Reproduit à
+l'identique sur le PDF WeasyPrint le plus neuf, balisé PDF/UA-1 ou non : ce n'est pas un
+défaut du contenu, c'est Ghostscript qui refuse le profil. C'était, avant ce constat, ce qui
+faisait échouer `make livre-imprimeur` dès qu'un `profil-cmjn` réel était posé.
 
-**Et cette commande ne marche pas.** Éprouvée sur ce poste, Ghostscript 10.05.1, sur un PDF
-réellement produit par WeasyPrint (texte noir en `0 0 0 rg`), avec un vrai profil
-`CoatedFOGRA39.icc` :
+Sans cette option, et sans la passe 1 de `cmjn.py` — une conversion Ghostscript nue, sur un
+PDF WeasyPrint tout juste sorti (texte noir en `0 0 0 rg`), avec le profil PSO Uncoated
+v3/FOGRA52 épinglé dans `image/Containerfile` :
 
-| Variante | Ce que devient le noir du texte |
+| Texte du PDF | Ce que devient le noir |
 |---|---|
-| conversion CMJN nue | `0.722 0.675 0.671 0.882 k` — noir quadri |
-| avec `-sOutputICCProfile=CoatedFOGRA39.icc` | `0.89 0.784 0.616 0.969 k` — pire |
-| avec `-dUseFastColor=true` | `1 1 1 0 k` — C+M+J à 100 %, **sans plaque noire** |
+| `0 0 0 rg` (WeasyPrint, avant toute passe) | `0.89 0.655 0.325 0.824 k` — noir quadri |
 
 Aucune imprimerie n'accepte un texte de labeur de 10 pt composé en quadrichromie : au
-moindre défaut de repérage, les lettres frangent. **Le CMJN n'est donc pas un réglage, c'est
-un chantier** : il faut préserver le noir du texte en K seul, ce qu'aucune option unique de
-Ghostscript ne fait. Les pistes à instruire, dans l'ordre du moins cher au plus cher :
+moindre défaut de repérage, les lettres frangent. C'est exactement ce que la passe 1 de
+`cmjn.py` empêche, en posant le noir K seul AVANT que Ghostscript n'y touche.
 
-1. séparer le noir avant la passe couleur — convertir les images seules en CMJN, et laisser
-   le texte et les filets en noir K ;
-2. un profil de sortie à séparation noire dédiée (`GCR` maximal), fourni ou validé par
-   l'imprimeur ;
-3. la voie Pillow/littleCMS, déjà présente dans le toolkit pour l'opération inverse
-   (`pipeline/cmyk-rgb.py`, `lib/cmyk.js`), qui donne un contrôle par objet.
+**Ce que la passe garantit, mesuré bout en bout sur les 16 pages du banc `test/livre-normal`
+(profil PSO Uncoated v3/FOGRA52, `test/cmjn-check.py`) :**
+* le texte de labeur sort en `0 0 0 1 k`, sans exception, sur les pages de texte, de
+  tableau et d'image contrôlées ;
+* les sept couleurs de la maison sortent en leur CMJN chiffré, jamais reconverties par
+  Ghostscript (elles sont déjà `k` avant qu'il n'intervienne) ;
+* aucun XObject image ne reste en `DeviceRGB` : les images du chapitre 2 (dont une en
+  grille et celles d'un tableau) sortent en `DeviceCMYK` ;
+* aucun opérateur `rg`/`RG` ne survit dans les 16 flux de contenu.
+
+**Ce qu'elle ne garantit pas :**
+* une couleur qui n'est ni un neutre sombre avant `BT`, ni l'une des sept couleurs de la
+  table, ni du blanc pur — un dégradé, une teinte décorative — passe par la conversion ICC
+  générique de Ghostscript, sans CMJN chiffré par le graphiste. Mesuré sur le banc : un
+  fond de bandeau `0.788 0.776 0.745 rg` (gris chaud, ni texte ni couleur de la maison)
+  ressort en `0.176 0.133 0.165 0.016 k` — correct pour une décoration, mais ce n'est pas
+  une teinte qu'un imprimeur pourrait reproduire à l'identique d'un tirage à l'autre ;
+* le mécanisme n'a été mesuré qu'avec le profil PSO Uncoated v3/FOGRA52 épinglé dans
+  `image/Containerfile` — pas avec un profil fourni par un autre imprimeur ;
+* `test/cmjn-check.py` contrôle le résultat (texte K seul, couleurs de la maison, aucun RVB
+  résiduel) mais ne tourne pas sur le banc committé : `test/livre-normal/buch.yaml` garde
+  `profil-cmjn: ""`, et `test/build-render.sh` ne pose le profil que sur une copie
+  temporaire, sautée si Ghostscript ou le profil ICC manquent — le cas de la CI.
 
 ⚠ Le profil ICC est de toute façon une décision d'imprimeur, pas de logiciel. `ISO Coated v2`
 n'est pas librement redistribuable ; les profils ECI le sont sous licence d'usage.
 
-**En attendant, le PDF imprimeur sort en RVB, avec fond perdu et traits de coupe** — ce que
-beaucoup d'imprimeries acceptent, et qui est de toute façon meilleur qu'un CMJN faux. La
-clé `profil-cmjn` reste prévue pour le jour où la séparation sera juste.
+**Sans `profil-cmjn` dans `buch.yaml`, le PDF imprimeur sort en RVB, avec fond perdu et
+traits de coupe** — ce que beaucoup d'imprimeries acceptent, et qui est de toute façon
+meilleur qu'un CMJN faux. La clé n'est plus un chantier ouvert : le mécanisme est écrit et
+mesuré ; ce qui reste est la publication dans un rootfs (voir L7b, §8).
 
 ### 4.4 Le défaut qui a coûté le plus cher : le tableau qui décroche le balisage
 
@@ -309,31 +338,114 @@ seul passe, précédé de deux figures il échoue — donc aucun test de contenu
 l'attraper.
 
 `szh-tableau-boite.lua` enveloppe chaque tableau dans un vrai `Div`, atteignable en CSS, et
-`break-inside: avoid` sur lui retire la condition. **Ce filtre vaut aussi pour la revue**,
-où le même défaut est possible et n'a simplement jamais été rencontré : c'est de la chance,
-pas une garantie.
+`break-inside: avoid` sur lui retire la condition. **Ce filtre est désormais branché aussi
+pour la revue** (`pipeline/Makefile`, même ordre que dans `profils/livre.mk`) : le même
+défaut y est possible.
 
-### 4.5 EPUB : la seule sortie qui ne peut pas réutiliser l'assemblage
+Sa règle CSS l'a maintenant suivi. `.szh-tableau-boite { break-inside: avoid; }` vit dans
+`styles/partage-filtres.css`, chargée après la maquette dans les deux profils (le Makefile
+de la revue et `profils/livre.mk`, §4) : la revue est donc protégée au même titre que le
+livre. `styles/livre/base.css` ne la duplique plus. La règle générale que ce constat
+illustre : **une règle de composant émise par un filtre partagé entre la revue et le livre
+vit dans `partage-filtres.css`**, pas dans une feuille propre au livre. `epub.css` et
+`web.css` gardent chacune leur propre règle pour `.szh-tableau-boite` (défilement
+horizontal, pas coupure de page) : ce sont des sorties hors pagination, qui refont déjà
+tout ce qu'il faut à leur medium — voir l'en-tête de ces deux feuilles, et celui de
+`partage-filtres.css` pour la liste des sorties qui la chargent.
 
-Le writer `epub3` de pandoc construit lui-même le manifeste OPF, le *spine* et la navigation
-**à partir d'une seule invocation** portant tous les chapitres. Le contournement du §4 —
-compiler chapitre par chapitre et recoller du texte — ne s'y applique donc pas : recoller
-des fragments ne produit pas un EPUB.
+### 4.5 EPUB : mesuré sur `livre-epub`, deux défauts trouvés et corrigés
 
-Deux voies, aucune gratuite :
+La route retenue est un assembleur maison, pas une invocation pandoc unique sur tous les
+`.md` : `profils/livre.mk` compile chaque chapitre une seconde fois, en fragments EPUB
+(`%.epub-frag.html` — même suite de filtres que le PDF, moins `szh-notes.lua` : pandoc fait
+de vraies notes de fin en EPUB, mieux que nos notes flottantes en CSS).
+`livre-assembler.py` les colle en un seul HTML (`--metadonnees-epub` écrit au passage le
+fichier de métadonnées que pandoc attend), et `livre-epub-prepare.py` prépare ce HTML pour
+`pandoc --to=epub3 --split-level=1` : retirer les `<section class="szh-chapitre">`
+(indispensables au PDF pour l'ouverture sur belle page, la couleur et l'onglet de tranche —
+invisibles pour un writer qui découpe aux `<h1>` non imbriqués).
 
-* **une invocation pandoc sur tous les `.md`**, avec `--resource-path` listant chaque dossier
-  de chapitre. Elle bute sur la collision des noms de tableaux extraits (`table-01.html` dans
-  chaque chapitre) : il faudrait les préfixer par le slug, ce qui touche `docx-tables.py`,
-  `szh-tabelle-reference.lua` et les dossiers déjà écrits ;
-* **un assembleur d'EPUB maison** (OPF, nav, zip) nourri des fragments, sur le modèle de
-  `livre-assembler.py`.
+**Ce que l'archive produite contient, relevé sur `test/livre-normal` et `test/livre-falc`
+(décompression du fichier, un vrai zip) :**
 
-À quoi s'ajoute un détail réel : `szh-legende-avant.lua` se garde par `FORMAT:match('^html')`
-et ne s'applique donc pas à `epub3` — en EPUB, la légende resterait **après** l'image, ce que
-toute la chaîne s'emploie à corriger ailleurs. Un caractère à changer, mais il faut le savoir.
+* le tableau du chapitre 2 (`tables/table-01.html`) est présent dans son XHTML, avec sa
+  description longue (`aria-describedby` vers un `<div>` masqué visuellement) et les
+  `scope` d'en-tête — ceux-ci sont écrits en dur dans le fichier source, pas posés par
+  `szh-tabelle-scope.lua` (qui ne voit que les tableaux markdown, pas le HTML brut
+  réinjecté par `szh-tabelle-inclure.lua`) ;
+* la bibliographie et ses ancres survivent au passage par pandoc : les identifiants qui
+  commencent par un chiffre (`02-konzepte-ref-bovey-2022`) sont renommés `id_…` par le
+  writer XHTML, et toutes les références internes (appel → référence, retour-appel) sont
+  renommées à l'identique — vérifié lien par lien, aucun lien mort ;
+* la grille de deux images sort en deux vrais `<img>`, extraits dans `EPUB/media/` et
+  référencés par leur chemin — rien à corriger ;
+* le sommaire (`nav.xhtml`) porte un lien par chapitre, vers l'ancre préfixée par le slug du
+  chapitre (`#id_02-konzepte-…`) — vérifié sur les deux livres ;
+* `szh-legende-avant.lua` s'applique bien à `epub3` (sa garde `FORMAT:match` accepte
+  `'^epub'` depuis le correctif du défaut A9) : la légende précède l'image dans le XHTML,
+  vérifié sur les figures numérotées du banc ;
+* les métadonnées OPF portent le titre, la langue, un `dc:identifier` (l'ISBN e-book —
+  `isbn-print` n'y entre pas, comme prévu), et l'auteur·e de la monographie (aucun pour
+  l'ouvrage collectif, où l'auteur·e appartient au chapitre, pas au volume) — mais **pas le
+  DOI** : `metadonnees_epub()` (`livre-assembler.py`) ne l'écrit pas, seul l'ISBN e-book
+  entre dans `identifier:`. Hors des fichiers autorisés pour cette passe, non corrigé ;
+* `epub.css` est bien la seule feuille embarquée dans l'archive (`styles/stylesheet1.css`).
 
-**L'EPUB n'est donc pas « faible » : c'est un lot à part entière.**
+**Deux défauts réels trouvés, tous deux corrigés dans `livre-epub-prepare.py` — aucun autre
+fichier touché :**
+
+1. **L'image décorative disparaissait entièrement, sans un mot.** `szh-numerotation.lua`
+   pose le fond d'une image décorative en CSS (`<span class="szh-decor…">`, jamais un
+   `<img>`, pour qu'un lecteur d'écran n'annonce rien) : le fond vit dans un `<style>`
+   ajouté en fin de chapitre. Pandoc, à l'écriture de l'EPUB, retrouve ce `<style>` de
+   corps et le remonte dans le `<head>` du XHTML — mais VIDE, son contenu perdu (reproduit
+   sur un HTML minimal ne portant que ce `<style>`). Ni `<img>`, ni fond CSS : l'image
+   sortait absente de l'EPUB, sans erreur ni avertissement. Corrigé en basculant les
+   règles en attributs `style=` sur les deux `<span>` concernés, dans les bornes de
+   chaque chapitre (les classes `szh-decor-N` ne sont, elles non plus, pas préfixées par
+   chapitre — même compteur Lua remis à 1 à chaque invocation pandoc, il fallait donc
+   apparier chaque règle à la bonne image sans sortir des bornes de sa section). Le
+   fichier image n'entre plus dans l'archive comme entrée séparée : il vit en `data:` URI
+   dans l'attribut `style=`, déjà résolu par `--embed-resources` à la compilation du
+   fragment, avant que `livre-epub-prepare.py` ne s'exécute.
+2. **Un chapitre sur deux gagnait un fichier XHTML fantôme, absent du sommaire.** Le
+   `<div class="szh-onglet">` que le gabarit de chapitre écrit en tout premier enfant de
+   la section (avant `$body$`, donc avant le `<h1>` une fois la section retirée) est mort
+   pour l'EPUB (`epub.css` : `display:none`, l'onglet de tranche n'existe qu'en
+   pagination). Laissé en place, ce `<div>` vide traîne juste avant chaque `<h1>` de
+   chapitre, et `pandoc --split-level=1` le range dans le fichier du chapitre PRÉCÉDENT
+   (tout ce qui précède un `<h1>` appartient au découpage d'avant) : un fichier XHTML
+   quasi vide s'intercalait entre les liminaires et le premier chapitre (`ch004.xhtml`
+   sur le banc `livre-normal`), et le `<div>` du dernier chapitre traînait à la fin de
+   l'avant-dernier. Rien n'était perdu (le `<div>` est vide, `aria-hidden`), mais un
+   fichier fantôme absent de `nav.xhtml` — exactement ce que `test/epub-check.py` (point
+   8 ci-dessous) attrape. Corrigé en retirant ce `<div>` avant la conversion EPUB.
+
+**Un doublon d'identifiant théorique, pas observé en pratique.** `szh-tabelle-desc-N`
+(l'id visé par l'`aria-describedby` d'un tableau à description longue) compte par
+invocation pandoc, donc par chapitre — comme `szh-decor-N`. Deux chapitres portant chacun
+un tel tableau produiraient le même id une fois fusionnés par `livre-assembler.py`, AVANT
+que pandoc ne découpe le document en fichiers EPUB. Éprouvé en ajoutant temporairement un
+second chapitre à tableau dans une copie de banc (`livre-normal-preuve`, hors dépôt) :
+**le doublon ne survit pas au découpage** — chaque chapitre atterrit dans son propre
+XHTML, et un id dupliqué entre deux documents XML distincts n'est pas un défaut (l'unicité
+d'un id est une contrainte par document, pas par livre). `livre-epub-prepare.py` préfixe
+quand même l'id par le slug du chapitre, par précaution : le défaut 2 ci-dessus prouve que
+du contenu sans `<h1>` propre PEUT se retrouver mélangé au chapitre voisin — un liminaire à
+tableau ferait le même doublon pour de vrai. Cas qui ne s'est pas encore présenté sur ce
+banc, corrigé préventivement puisque cela ne coûte rien.
+
+**`test/epub-check.py`** contrôle la structure (`zipfile` + `xml.etree`, aucune dépendance
+externe) : mimetype en tête non compressé, `container.xml` → OPF, manifeste ↔ archive dans
+les deux sens, chaque XHTML bien formé, liens internes et images résolus, titre/langue/
+identifiant posés, et chaque document du *spine* atteint par un lien de `nav.xhtml` — ce
+dernier point est ce qui aurait attrapé le défaut 2 à lui seul (vérifié en désactivant la
+correction puis en relançant le contrôle : échec, qui nomme exactement le fichier fantôme).
+`epubcheck` (Java) n'est pas dans la distro SZH-Publishing ; ce script ne le remplace pas,
+il tient la porte en attendant. Les deux livres du banc le passent (6/6).
+
+**L'EPUB n'est donc plus un lot différé : `livre-epub` sort une archive conforme sur les
+deux livres du banc, deux défauts réels fermés.**
 
 ---
 
@@ -419,14 +531,16 @@ Pourquoi :
   `szh.profil` ∈ {`revue`, `livre`}, et les `when` du `package.json` s'y accrochent.
   `activationEvents` vaut `onStartupFinished`, indifférent au profil : rien à y changer.
 
-⚠ Deux frictions que les `when` ne règlent pas, et qui sont du travail réel :
-* **la catégorie des commandes.** Les ~60 commandes portent `"category": "Revue SZH"` en
-  dur. VS Code n'a pas de catégorie conditionnelle : dans un livre, la palette annoncerait
-  toujours « Revue SZH ». Il faut soit une catégorie neutre pour les deux produits — le
-  moins cher, et sans doute le mieux : « SZH/CSPS » —, soit deux jeux de déclarations.
-* **la vue latérale.** Un seul bloc `views`, un seul id (`szhCockpitVue`), gardé par
-  `szh.estRevue`, et son `name` n'est même pas passé par l'i18n. Un profil livre veut sa
-  vue, son icône et ses ~15 entrées de menu contextuel en parallèle.
+Les deux frictions que les `when` ne réglaient pas à eux seuls sont closes :
+* **la catégorie des commandes** est désormais `"category": "SZH/CSPS"`, neutre pour les
+  deux produits — plus de mention « Revue SZH » en dur.
+* **la vue latérale** garde un seul bloc `views`, un seul id (`szhCockpitVue`), mais son
+  `name` vaut lui aussi « SZH/CSPS » et son `when` est `szh.estRevue || szh.estLivre` : elle
+  apparaît pour les deux profils.
+* **la palette de commandes** porte 87 entrées dans `contributes.menus.commandPalette`, dont
+  57 gardées par `szh.estRevue`, `szh.estLivre` ou `szh.estRevue || szh.estLivre` — ce que
+  §10.5 relevait comme un trou (deux entrées seulement, sans rapport avec le profil) est
+  refermé.
 
 Ce que cela coûte, et comment on le paie : un défaut du moteur livre peut faire tomber
 l'extension d'une rédaction de revue. Le prix se paie en tests — les 578 contrats existants
@@ -502,13 +616,13 @@ se rejoignent au lanceur.
 | **L4b** | Numérotation continue et numéro de chapitre | **fort** — filtres partagés avec la revue | **fait**, ordre de compilation garanti |
 | **L5** | Couverture à plat, dos calculé sur les pages lues dans le PDF intérieur | moyen | **fait** |
 | **L6** | HTML responsive | faible | **fait** |
-| **L6b** | EPUB 3 — assembleur propre, préfixe de slug sur les tableaux | **fort** (§4.5) | à faire |
+| **L6b** | EPUB 3 — assembleur propre, contrôle structurel | **fort** (§4.5) | **fait et mesuré** : `livre-epub` sort une archive conforme sur les deux livres du banc (`test/epub-check.py`, 6/6). Deux défauts réels trouvés et corrigés dans `livre-epub-prepare.py` — image décorative perdue (pandoc vide le `<style>` de corps à l'écriture de l'EPUB), fichier XHTML fantôme absent du sommaire (`<div class="szh-onglet">` avant chaque `<h1>`, mal réparti par `--split-level=1`). DOI absent des métadonnées OPF (seul l'ISBN e-book y entre) — hors fichiers autorisés pour cette passe, non corrigé |
 | **L7** | Fond perdu et traits de coupe | faible — natif WeasyPrint | **fait** |
-| **L7b** | CMJN à noir préservé | **fort, non résolu** (§4.3) | à instruire |
-| **L1** | Extraction d'`extension.js` en modules | moyen — voir les deux avertissements du §6 | à faire |
-| **L2** | `lib/profil.js` + routage des chemins par le profil | moyen | **amorcé** : la table et la détection sont là, les chemins pas encore routés |
+| **L7b** | CMJN à noir préservé | **mécanisme mesuré, publication restante** (§4.3) | `cmjn.py` préserve le noir du texte en K seul et convertit les couleurs de la maison ; Ghostscript termine par le profil PSO Uncoated v3/FOGRA52, épinglé et vérifié dans `image/Containerfile`. **Mesuré bout en bout** sur `test/livre-normal` — `--permit-file-read` sur le profil ICC était le maillon manquant : sans lui Ghostscript refuse de le lire, et le dit par un message qui ne parle pas de permission. `test/cmjn-check.py` vérifie automatiquement texte K seul, couleurs de la maison et absence de RVB résiduel. **Reste non publié** : aucun poste de rédaction n'en bénéficie tant que le rootfs n'a pas été reconstruit par une release |
+| **L1** | Extraction d'`extension.js` en modules | moyen — voir les deux avertissements du §6 | **fait partiellement** : six modules extraits (`session.js`, `cycle-vie.js`, `apercu.js`, `import-hote.js`, `medias-hote.js`, `documentation-hote.js`), `extension.js` réduit à environ 6 700 lignes |
+| **L2** | `lib/profil.js` + routage des chemins par le profil | moyen | **fait** : `chemins()` a des appelants dans `extension.js`, `session.js`, `cycle-vie.js`, `apercu.js`, `import-hote.js`, `medias-hote.js` et `media/_commun.js` |
 | **L8** | Lanceur « Books SZH-CSPS », `new-livre.ps1`, gabarit, icône, identité, raccourci | moyen | **fait** — racine SharePoint à confirmer |
-| **L9** | Cockpit côté livre : arbre des chapitres, formulaire d'ouvrage, de couverture | moyen | à faire |
+| **L9** | Cockpit côté livre : arbre des chapitres, formulaire d'ouvrage, de couverture | moyen | **fait partiellement** : formulaire de métadonnées de l'ouvrage fait, les quatre tâches de sortie faites, aperçu HTML par chapitre fait ; formulaire de couverture (grammage, main, fond perdu, profil CMJN, dos en lecture seule) pas encore fait |
 
 ---
 
@@ -544,6 +658,21 @@ chemins et les sections.
 ⚠ **Ce qui suit est la deuxième rédaction.** La première a été relue de façon adverse, et
 elle s'est trompée sur cinq points vérifiables. Les corrections sont dans le texte, et les
 erreurs sont nommées : un plan qu'on corrige en silence se retrompe de la même façon.
+
+**État au 7 septembre 2026 — ce que ce plan tenait pour manquant et qui est fait, vérifié
+dans le code.** Le remède de la correction n° 1 est posé : chaque module qui tient des
+panneaux expose `fermerPanneauxDe`, et `cycle-vie.js` les appelle en boucle
+(`ctx.fermerPanneauxDe`). La section « Traductions » de l'arbre (correction n° 5,
+`getChildren`) est devenue conditionnelle à `profilCourant().cle === 'revue'`, de même que
+la section « Actualité » ; `sectionDeployee` s'initialise sur `categorieUnites()` et non
+plus sur le littéral `'articles'`. `profils.chemins()` (correction n° 5) a maintenant des
+appelants — `extension.js`, `session.js`, `cycle-vie.js`, `apercu.js`, `import-hote.js`,
+`medias-hote.js`, `media/_commun.js`. Le formulaire de métadonnées de l'ouvrage (§10.4)
+existe (`media/metadata-book.*`). La palette de commandes (§10.5) porte désormais des
+`when` par profil (voir §6). Le badge « déjà converti » sur un dépôt Word répété
+(correction n° 8, §10.6) est générique : `_itemsWord()` lit `profilCourant().depot` et pose
+`word-deja` pour un chapitre comme pour un article. Ce qui reste ouvert, par sous-section,
+est signalé plus bas ; [`REPRISE-LIVRES.md`](REPRISE-LIVRES.md) tient la liste vivante.
 
 ### 10.1 Le préalable : dégonfler `extension.js`
 

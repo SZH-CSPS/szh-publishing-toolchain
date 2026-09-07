@@ -1084,6 +1084,40 @@ Deux boutons pour revenir en arrière, indépendants l’un de l’autre :
 Dans le lanceur **« Revues SZH »**, les numéros archivés apparaissent dans une **liste
 séparée**, et un **🔒** signale ceux qui sont verrouillés.
 
+## Un livre, dans le même outil
+
+Un dossier de livre (`buch.yaml`) s’ouvre et s’écrit comme un numéro : la même barre
+latérale, les mêmes formulaires, les mêmes raccourcis. Ce qui suit ne redit pas tout le
+reste de ce document, valable aussi pour un livre — seulement ce qui lui est propre.
+
+- Les raccourcis des panneaux (`Ctrl+Alt+A` Commande, `Ctrl+Alt+S` Édition,
+  `Ctrl+Alt+D` Export) et la bascule d’aperçu (`Ctrl+Alt+P`) fonctionnent aussi dans un
+  livre. La barre latérale d’un livre n’a pas de section « Traductions » ni « Actualité » :
+  un livre est écrit dans une seule langue, et sa traduction est un autre livre.
+- Un **double-clic sur un chapitre** l’ouvre exactement comme un double-clic sur un
+  article : le chapitre s’ouvre à gauche, son aperçu à droite, recompilé si besoin.
+- Le panneau **Export** (`Ctrl+Alt+D`) porte quatre sorties propres au livre, à côté du PDF
+  numérique (le build par défaut, `Ctrl+S`) : **PDF imprimeur du livre**, **Couverture du
+  livre**, **EPUB du livre**, **HTML web du livre**. Chacune compile et le dit dans une
+  notification, en cas d’échec comme de réussite.
+- **Archiver et désarchiver un livre** fonctionne comme pour un numéro (voir « Terminer un
+  numéro » ci-dessus) : le livre passe en lecture seule, ses sorties compilées sont
+  effacées puis régénérables à la demande, et le dossier est déplacé vers les archives.
+
+### « La clé n’a pas pu être réécrite fidèlement »
+
+Si un enregistrement (métadonnées du numéro ou du livre, d’un article ou d’un chapitre,
+réglages) échoue avec un message qui nomme une clé et dit qu’elle « ne peut pas être
+réécrite fidèlement », ce n’est pas une panne : le formulaire a **refusé d’écrire** plutôt
+que de risquer d’abîmer le fichier. Cela arrive quand quelqu’un a écrit cette clé dans le
+YAML (`ausgabe.yaml`, `buch.yaml`, une fiche `.meta.yaml`) sous une forme que l’analyseur du
+cockpit ne sait pas relire à l’identique — un texte sur plusieurs lignes introduit par `|`
+ou `>`, une valeur entre guillemets qui déborde sur la ligne suivante, ou une indentation à
+la tabulation. Le message nomme la clé en cause : ouvrez le fichier concerné (clic droit
+dans l’explorateur → Ouvrir, ou depuis le dossier) et réécrivez cette seule valeur sur une
+seule ligne, entre guillemets si elle contient un caractère spécial. Le formulaire s’enregistre
+de nouveau normalement dès que la ligne redevient simple.
+
 ## Mettre l’outil à jour soi-même
 
 L’outil se met à jour tout seul, **une fois par semaine** : le mardi à partir de 14 h, ou à

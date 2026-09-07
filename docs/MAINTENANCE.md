@@ -125,7 +125,15 @@ Sinon : la virtualisation est-elle activée dans le BIOS ? Les fonctionnalités 
 « Plateforme de machine virtuelle » et « Sous-système Windows pour Linux » ?
 
 **Manœuvre.** Réactiver les fonctionnalités Windows, redémarrer. En dernier recours,
-relancer `windows/bootstrap.ps1` en administrateur.
+relancer `bootstrap.ps1` en administrateur, depuis un clone frais du dépôt (jamais depuis
+`C:\ProgramData\SZH\toolkit`, que le groupe Utilisateurs peut réécrire — un administrateur
+qui l'exécuterait tel quel exécuterait aussi bien un code qu'un compte standard y aurait
+déposé) :
+
+```powershell
+git clone https://github.com/SZH-CSPS/szh-publishing-toolchain.git
+powershell -ExecutionPolicy Bypass -File .\szh-publishing-toolchain\windows\bootstrap.ps1
+```
 
 ### La distro est corrompue
 
@@ -381,11 +389,18 @@ check : tâche planifiée refusee — écarts : déclencheur quotidien à retire
 check : tâche planifiée non corrigée (Access is denied.) — un administrateur doit…
 ```
 
-**Manœuvre**, une seule fois par poste, dans un PowerShell **en administrateur** :
+**Manœuvre**, une seule fois par poste, dans un PowerShell **en administrateur**, depuis un
+clone frais du dépôt ou une archive toolkit fraîchement téléchargée et vérifiée par sha256,
+extraite dans un dossier de l'administrateur — **jamais** en dot-sourçant
+`C:\ProgramData\SZH\toolkit\windows\*.ps1` : ce dossier est inscriptible par le groupe
+Utilisateurs (mises à jour sans administrateur), et un administrateur qui l'exécuterait tel
+quel exécuterait aussi bien un code qu'un compte standard y aurait déposé — exactement la
+faille d'élévation locale que `bootstrap.ps1` évite désormais pour lui-même (§ Sécurité) :
 
 ```powershell
-. 'C:\ProgramData\SZH\toolkit\windows\szh-common.ps1'
-. 'C:\ProgramData\SZH\toolkit\windows\szh-taches.ps1'
+git clone https://github.com/SZH-CSPS/szh-publishing-toolchain.git
+. '.\szh-publishing-toolchain\windows\szh-common.ps1'
+. '.\szh-publishing-toolchain\windows\szh-taches.ps1'
 Set-SzhTacheMaj
 ```
 
@@ -432,22 +447,26 @@ coupée par un débranchement.
 Un réveil serait la bonne réponse s'il fallait absolument que la mise à jour tombe à une
 heure précise. Ce n'est pas le cas : ce qui compte est qu'elle tombe une fois par semaine.
 
-### La mise à jour silencieuse renonce, et repasse plus tard
+### La mise à jour renonce, et repasse plus tard
 
 14 h tombe en pleine après-midi de travail, et une mise à jour peut remplacer l'**image WSL**
 — 574 Mo à la dernière release. L'installation doit alors désenregistrer la distribution, ce
 qu'elle ne peut pas faire pendant qu'une compilation s'en sert : c'est exactement ce que dit
 `err.wsl`, qui demande de fermer l'éditeur.
 
-`update-launcher.ps1` mesure donc le moment, mais **seulement quand l'environnement de
-fabrication change** : un toolkit, des extensions et des réglages s'installent très bien sous
-l'éditeur ouvert, et renoncer là retarderait des corrections pour rien.
+`Test-SzhMomentMaj` (`windows/szh-taches.ps1`) mesure donc le moment, mais **seulement quand
+l'environnement de fabrication change** (`-RemplaceEnvironnement`) : un toolkit, des
+extensions et des réglages s'installent très bien sous l'éditeur ouvert, et renoncer là
+retarderait des corrections pour rien. `update-launcher.ps1` (la passe silencieuse) **et**
+`update.ps1` (la mise à jour manuelle depuis le menu Démarrer) l'appellent tous les deux avant
+de désenregistrer la distribution — avant ce garde-fou, une mise à jour lancée à la main
+pouvait couper une compilation en vol, ce que seule la passe silencieuse évitait.
 
 | Ce qui est mesuré | Comment | Conséquence |
 |---|---|---|
 | Une compilation en vol | un client `wsl.exe` dont la ligne de commande porte le `Makefile` de la chaîne — la forme que prend `Ctrl+S`, voir `vscodium-user/tasks.json` — **et** les processus lus dans `/proc` à l'intérieur de la distro : l'image n'embarque pas `procps`, donc ni `ps` ni `pgrep` | **Renoncement sans appel** : la couper détruit du travail |
 | L'éditeur est ouvert | un processus `VSCodium` | Renoncement, réversible (voir le délai de politesse) |
-| La distribution tourne | `wsl -l --running -q`, qui rend des noms de distributions sans la colonne d'état, laquelle est traduite selon la langue de WSL | Renoncement, réversible |
+| La distribution tourne | `wsl -l --running -q`, qui rend des noms de distributions sans la colonne d'état, laquelle est traduite selon la langue de WSL | **N'est plus, à elle seule, un motif de renoncement** : le préchauffage WSL démarre la distribution à chaque ouverture de session, sur le même déclencheur que la mise à jour — y renoncer revenait à ne (presque) plus jamais trouver de fenêtre. Elle sert seulement à armer la sonde de compilation en vol ci-dessus ; sans elle et sans l'éditeur ouvert, `update.ps1` fait `--terminate` puis désenregistre |
 
 Un renoncement **ne consomme pas la fenêtre de la semaine** : le prochain déclenchement
 réessaie, et l'ouverture de session du lendemain est justement un bon moment. C'est la raison
@@ -461,7 +480,18 @@ check : renoncement, l'éditeur est ouvert (fois 1) -> nouvel essai au prochain 
 
 plus un état dans `C:\ProgramData\SZH\maj-auto.json` (`derniereVerif`, `bloqueDepuis`,
 `bloqueFois`, `bloqueRaison`, `alerteLe`). Fichier séparé de `state.json`, que `update.ps1`
-réécrit entièrement à chaque succès et qui effacerait la cadence.
+réécrit entièrement à chaque succès et qui effacerait la cadence. **`derniereVerif` — la
+fenêtre de la semaine — ne s'écrit qu'au succès** (`Save-SzhVerifFaite`) : un renoncement ou
+un échec (`Save-SzhBlocage`) la laisse inchangée, pour que le prochain déclenchement retente
+la même semaine plutôt que d'attendre la suivante.
+
+**Une seule mise à jour à la fois.** `update-launcher.ps1` pose un mutex nommé, à l'échelle
+du poste (`New-SzhMutexPoste`, `szh-common.ps1`) : deux comptes connectés en même temps, ou
+un déclenchement qui chevauche le précédent, ne lancent jamais deux passes ensemble. Un
+processus mort en tenant ce mutex le laisse « abandonné » — le cas est reconnu
+(`AbandonedMutexException`) et repris plutôt que traité comme « déjà pris », auquel cas la
+passe se serait tue pour toujours. La ligne de journal `check : mutex abandonné par une
+passe précédente, repris` dit que ce cas s'est produit.
 
 **Et si ça dure ?** Un poste qui ne se met plus à jour depuis six semaines ne doit pas
 l'apprendre par un journal que personne ne lit. Au bout de **28 jours** de blocage
@@ -504,10 +534,15 @@ version **déclarée dans le `package.json`** de chaque extension à celle qui e
 installée. Si le code d'une extension change sans que sa `version` soit incrémentée,
 le VSIX est bien reconstruit et publié, mais **jamais réinstallé**.
 
-**À observer.** À chaque release : que `vscodium-extension/szh-cockpit/package.json` et
-`szh-apercu/package.json` portent une version supérieure à celle de la release
-précédente. Rien ne le vérifie automatiquement aujourd'hui — c'est le premier contrôle
-à automatiser.
+**Ce qui protège désormais.** `release.yml` compare, pour chaque extension, le contenu de
+son dossier au tag précédent : s'il a changé et que `version` ne l'a pas suivi, la release
+échoue avant même de construire les VSIX, en nommant le fichier en cause. Ce n'était pas le
+cas jusqu'ici — plusieurs releases de septembre ont été reconstruites sans être réinstallées
+nulle part, faute de ce contrôle.
+
+**À observer.** Le prochain tag doit porter la version `0.32.0` pour `szh-cockpit` (la
+dernière release publiée portait `0.31.0`). La CI refuse désormais un tag qui l'oublierait ;
+elle ne dispense pas de vérifier soi-même avant de taguer.
 
 ### Un raccourci du menu Démarrer ne se pose pas
 
@@ -556,7 +591,10 @@ Le nettoyage complet passe par une réinstallation du toolkit.
 déclenche à chaque push sur `main` et à chaque pull request : il **vérifie** — contrats
 du cockpit (`node --test test/js/*.test.js`), banc `test/` recompilé de zéro, puis
 `make verifier-ua`. Une porte qui ne se ferme qu'au moment de publier se ferme trop
-tard, d'où le second.
+tard, d'où le second. `release.yml` rejoue désormais entièrement `ci.yml` comme premier
+job (`controles`, `uses: ./.github/workflows/ci.yml`) avant de publier quoi que ce soit :
+une régression qui n'aurait dû se voir qu'au prochain push sur `main` arrête la release
+elle-même.
 
 `ci.yml` installe lui-même pandoc 3.5, WeasyPrint depuis `image/requirements.txt` et
 veraPDF 1.30.2, tous épinglés et vérifiés par sha256 — sans quoi son verdict ne serait
@@ -889,8 +927,10 @@ retirer la référence du texte.
 1. `wsl --shutdown`, puis test de fumée. Cela règle la plupart des blocages.
 2. Toujours en échec : `wsl --unregister SZH-Publishing`, puis réimporter le dernier
    rootfs.
-3. Toujours en échec : relancer `windows/bootstrap.ps1` en administrateur — il
-   réinstalle proprement.
+3. Toujours en échec : relancer `bootstrap.ps1` en administrateur, depuis un clone frais du
+   dépôt ou une archive toolkit fraîchement téléchargée et vérifiée, extraite dans un
+   dossier de l'administrateur (jamais depuis `C:\ProgramData\SZH\toolkit`, inscriptible
+   par le groupe Utilisateurs) — il réinstalle proprement.
 4. En dernier recours : `update.ps1 -Version <X>` revient à la version précédente du
    toolkit, conservée en regard de la courante.
 

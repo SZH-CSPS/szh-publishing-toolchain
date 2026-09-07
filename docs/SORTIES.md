@@ -133,8 +133,9 @@ Une variable se déclare à un seul endroit. Quatre fichiers, empilés dans cet 
 
 | Fichier | Ce qu'il porte | Lu par |
 |---|---|---|
-| `styles/socle.css` | polices `@font-face`, jetons `:root` : familles, échelle, encres, filets, replis d'accent annuel | toutes les sorties |
-| `styles/print.css` | ce qui n'a de sens que sur une page : `@page`, couverture, en-têtes courants, zone `@footnote`, coupures | PDF |
+| `styles/socle.css` | polices `@font-face`, jetons `:root` : familles, échelle, encres, filets, replis d'accent annuel | toutes les sorties, revue et livre |
+| `styles/print.css` | ce qui n'a de sens que sur une page : `@page`, couverture, en-têtes courants, zone `@footnote`, coupures | PDF de la revue |
+| `styles/partage-filtres.css` | le balisage posé par les filtres Lua communs à la revue et au livre (`szh-numerotation.lua`, `szh-citations.lua`, `szh-grille.lua`) : préfixe « Figure N — », crédits de légende, description longue d'un tableau, appel de citation non lié, grille d'images | PDF de la revue ; PDF numérique et PDF imprimeur du livre — ni le HTML web ni l'EPUB du livre, qui refont déjà tout ce qu'il faut à leur médium dans leurs propres unités d'écran |
 | `styles/web.css` *(à venir)* | ce qui n'a de sens qu'à l'écran : grille fluide, tableaux qui défilent, bloc de métadonnées | web et aperçu |
 | `out/.szh-accent.css` | la couleur annuelle du numéro, écrite à la compilation par `accent-css.py` | toutes les sorties |
 
@@ -160,3 +161,36 @@ clarté fixe, six teintes × onze crans, vérifiée cran par cran par `test/apca
 > pages du banc d'essai et de la mini-revue de test rendent des PNG **identiques au pixel**,
 > avant et après. C'est le contrôle à refaire pour tout déplacement de règle entre feuilles —
 > `test/README.md` décrit la boucle.
+
+## Ce que produit un livre
+
+Un chapitre se compile comme un article ; ce qui diffère, ce sont les six sorties assemblées
+par `livre-assembler.py` depuis les fragments de chapitre, et les tâches VSCodium qui les
+appellent (`vscodium-user/tasks.json`, catégorie « Livre : … »).
+
+| Sortie | Cible make | Tâche VSCodium | Fichier |
+|---|---|---|---|
+| PDF numérique | `livre-pdf` | *(build par défaut, Ctrl+S)* | `out/<nom-du-livre>.pdf` |
+| PDF imprimeur | `livre-imprimeur` | **Livre : PDF imprimeur** | `out/<nom-du-livre>-imprimeur.pdf` |
+| Couverture à plat | `livre-couverture` | **Livre : couverture** | `out/<nom-du-livre>-couverture.pdf` |
+| EPUB 3 | `livre-epub` | **Livre : EPUB** | `out/<nom-du-livre>.epub` |
+| HTML web | `livre-html-web` | **Livre : HTML web** | `out/web/<nom-du-livre>.html` |
+
+Les quatre tâches vivent dans le panneau Export du cockpit, à côté des sorties de la revue,
+et n'apparaissent que pour un dossier de livre (`buch.yaml`).
+
+### L'aperçu par chapitre
+
+`out/chapitres/<slug>.apercu.html` est l'équivalent, pour un chapitre, de
+`out/<slug>.apercu.html` pour un article : même lecteur `commonmark_x+sourcepos` (chaque bloc
+porte `data-pos`, pour le clic vers le texte source), même suite de filtres que le fragment
+publié. Il ne lit ni n'écrit dans les compteurs du fragment PDF ou EPUB — un aperçu ne doit
+pas décaler la numérotation continue des figures et des tableaux du livre publié.
+
+### Fichiers intermédiaires
+
+| Fichier | Rôle |
+|---|---|
+| `out/.szh-ordre-chapitres` | l'ordre des chapitres, écrit une fois calculé (`ordre-chapitres` de `buch.yaml` puis tri alphabétique du reste), pour en faire un prérequis explicite des fragments — sans lui, retirer un chapitre du milieu du livre ne recompilait aucun des suivants |
+| `out/.szh-compteurs/<rang>.txt`, `epub/<rang>.txt`, `apercu/<rang>.txt` | le report de numérotation des figures et des tableaux d'un chapitre au suivant, un fichier par rang et par sortie (PDF, EPUB, aperçu ne se mélangent jamais) |
+| `~<cible>.weasyprint.err` | le journal WeasyPrint de chaque cible du livre (`livre-pdf`, `livre-imprimeur`, `livre-couverture`), un fichier par cible plutôt qu'un seul partagé — une compilation de la couverture n'écrase plus le journal du PDF intérieur |

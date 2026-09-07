@@ -1,3 +1,67 @@
+### Revue d'architecture et lots 0 à 3 (6 et 7 septembre 2026)
+
+**Constat.** `extension.js` (8 726 lignes) et `windows/szh-common.ps1` (socle Windows entier)
+avaient chacun grossi au point de porter, dans un seul fichier, des responsabilités que rien
+ne reliait plus les unes aux autres — panneaux, cycle de vie, import, médias, aperçu côté
+cockpit ; textes, produits, shell côté Windows — au prix d'une lecture et d'une revue de
+plus en plus coûteuses.
+
+**Cause.** Chaque lot livré depuis l'ouverture du chantier livres avait ajouté sa part au même
+fichier plutôt que d'ouvrir un module, faute d'un moment dédié à ce découpage.
+
+**Ce qui change**
+
+- *Cockpit* : six modules extraits d'`extension.js` (`lib/session.js`, `lib/cycle-vie.js`,
+  `lib/apercu.js`, `lib/import-hote.js`, `lib/medias-hote.js`,
+  `lib/documentation-hote.js`), plus `lib/formatting-pur.js` et un protocole de messages
+  nommé (`lib/messages.js` / `media/_messages.js`). `lib/yaml.js` refuse désormais d'écrire
+  une clé qu'il ne peut pas relire fidèlement plutôt que de la corrompre en silence.
+  `config.json` se lit et s'écrit par deux fonctions centralisées
+  (`lireConfigPoste`/`ecrireConfigPoste`, `lib/archivage.js`). Le verrou d'un numéro se
+  relit après écriture pour confirmer qu'il a bien pris. Quatre tâches et commandes
+  couvrent les sorties du livre (PDF imprimeur, couverture, EPUB, HTML web), avec un aperçu
+  HTML par chapitre.
+- *Pipeline* : une feuille `partage-filtres.css` regroupe le balisage posé par les filtres
+  Lua communs à la revue et au livre. La configuration (`ausgabe.yaml`, `buch.yaml`, une
+  fiche `.meta.yaml`) se lit désormais par `pandoc lua` (`szh-lire-config.lua`), à la place
+  du sed/grep d'origine. Deux modules communs (`szh_commun.py`, `filters/szh-commun.lua`)
+  remplacent des fonctions recopiées d'un script à l'autre.
+- *Déploiement* : le socle Windows se scinde en quatre fichiers
+  (`szh-common.ps1`, `szh-textes.ps1`, `szh-produits.ps1`, `szh-shell.ps1`), et le lanceur en
+  un script unique par table de produits (`open-produit.ps1`), `open-revue.ps1` et
+  `open-livre.ps1` n'en étant plus que des enveloppes. Le remplacement du toolkit devient
+  atomique (`Install-SzhToolkitDepuisArchive`) et `bootstrap.ps1` ne fait plus exécuter le
+  toolkit inscriptible par le groupe Utilisateurs à un processus administrateur.
+- *CI/release* : `release.yml` rejoue entièrement `ci.yml` (contrats du cockpit, contraste
+  APCA, typographie, PDF/UA) avant de publier, et refuse un tag si une extension modifiée
+  n'a pas vu sa version incrémentée.
+
+**Ce qui est assumé (décisions prises, pas des oublis)**
+
+- L'ACL qui laisse le groupe Utilisateurs écrire dans `C:\ProgramData\SZH` reste telle
+  quelle ; ce qui change, c'est qu'un administrateur n'exécute plus jamais ce dossier-là
+  pour se réparer lui-même.
+- Une mise à jour manuelle (`update.ps1`) refuse désormais, comme la passe silencieuse,
+  de remplacer l'environnement de fabrication pendant une compilation en vol ou l'éditeur
+  ouvert.
+- Une distribution WSL simplement en marche ne fait plus à elle seule renoncer une mise à
+  jour : le préchauffage la démarre à chaque ouverture de session, la trouver en marche ne
+  voulait plus dire grand-chose.
+- `lib/yaml.js` refuse d'écrire une clé qu'il ne relit pas fidèlement plutôt que de deviner.
+- Côté livre, l'aperçu par chapitre reste un aperçu — il ne lit ni n'écrit dans les
+  compteurs de numérotation du fragment publié.
+
+**Mesure.** Suite JavaScript passée de 899 à environ 1017 tests. Empreinte des sorties
+inchangée sur le corpus de bancs (HTML autonome et rendu PNG des articles témoins,
+pixel-identiques avant et après le déplacement de règles entre feuilles CSS).
+
+**Ce qui reste.** Voir [`docs/REPRISE-LIVRES.md`](docs/REPRISE-LIVRES.md) : le préfixe de
+slug sur les tableaux extraits d'un EPUB, la publication du rootfs portant le profil CMJN,
+la racine SharePoint des livres à confirmer, et l'extraction complète d'`extension.js` si
+on la juge encore utile.
+
+---
+
 # Planification — lot de corrections A–H (2026-08-25)
 
 Pilotage du lot demandé le 25.08.2026. Chaque lot suit le même protocole :
