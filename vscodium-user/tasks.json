@@ -16,6 +16,21 @@
   //   supprimer out/, et `tee` continuerait d'écrire dans un fichier déjà effacé.
   // ⚠ `reveal: silent` reste : un terminal brut n'est pas une interface de rédaction. Ce
   //   qu'il faut lire arrive par l'interface, jamais par le terminal.
+  //
+  // ⚠ `-j2 -O` : les articles d'un numéro n'ont aucune dépendance entre eux, et le poste
+  //   donne deux cœurs à WSL (%UserProfile%\.wslconfig, `processors=2`, posé par update.ps1).
+  //   Sans `-j`, un cœur restait inoccupé pendant que WeasyPrint paginait — mesuré sur un
+  //   numéro de six articles : 31,9 s en séquentiel, 19,6 s en `-j2`. `-j4` n'apporte rien,
+  //   il n'y a pas quatre cœurs à prendre ; si .wslconfig en accorde davantage un jour, c'est
+  //   ce `-j2` qu'il faut monter avec lui — les deux chiffres vont ensemble.
+  // ⚠ `-O` (`--output-sync`) n'est pas décoratif : en parallèle, deux recettes écrivent leurs
+  //   messages en même temps, et les lignes de l'article B s'intercaleraient au milieu de
+  //   celles de l'article A. Or c'est ce flux-là que `tee` verse dans .szh-journal.log et que
+  //   lib/journal.js relit ligne à ligne : un journal entrelacé lui ferait attribuer les
+  //   avertissements au mauvais article. `-O` met la sortie de chaque cible en tampon et ne
+  //   la déverse que d'un bloc, à la fin de sa recette. Demande GNU Make >= 4 (l'image a 4.4.1).
+  // La tâche « Importer les Word » ne les porte pas : `import` est une recette unique, il n'y
+  // a rien à y paralléliser.
   "version": "2.0.0",
   "tasks": [
     {
@@ -27,7 +42,7 @@
       "args": [
         "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
         "bash", "-c",
-        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' all 2>&1 | tee .szh-journal.log"
+        "set -o pipefail; make -j2 -O -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' all 2>&1 | tee .szh-journal.log"
       ],
       "group": { "kind": "build", "isDefault": true },
       "presentation": {
@@ -46,7 +61,7 @@
       "args": [
         "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
         "bash", "-c",
-        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' tout-exporter 2>&1 | tee .szh-journal.log"
+        "set -o pipefail; make -j2 -O -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' tout-exporter 2>&1 | tee .szh-journal.log"
       ],
       "presentation": {
         "reveal": "silent",
@@ -65,7 +80,7 @@
       "args": [
         "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
         "bash", "-c",
-        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' docx 2>&1 | tee .szh-journal.log"
+        "set -o pipefail; make -j2 -O -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' docx 2>&1 | tee .szh-journal.log"
       ],
       "presentation": {
         "reveal": "silent",
@@ -104,7 +119,7 @@
       "args": [
         "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
         "bash", "-c",
-        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' livre-imprimeur 2>&1 | tee .szh-journal.log"
+        "set -o pipefail; make -j2 -O -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' livre-imprimeur 2>&1 | tee .szh-journal.log"
       ],
       "presentation": {
         "reveal": "silent",
@@ -122,7 +137,7 @@
       "args": [
         "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
         "bash", "-c",
-        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' livre-couverture 2>&1 | tee .szh-journal.log"
+        "set -o pipefail; make -j2 -O -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' livre-couverture 2>&1 | tee .szh-journal.log"
       ],
       "presentation": {
         "reveal": "silent",
@@ -140,7 +155,7 @@
       "args": [
         "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
         "bash", "-c",
-        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' livre-epub 2>&1 | tee .szh-journal.log"
+        "set -o pipefail; make -j2 -O -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' livre-epub 2>&1 | tee .szh-journal.log"
       ],
       "presentation": {
         "reveal": "silent",
@@ -158,7 +173,7 @@
       "args": [
         "-d", "SZH-Publishing", "--cd", "${workspaceFolder}", "--",
         "bash", "-c",
-        "set -o pipefail; make -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' livre-html-web 2>&1 | tee .szh-journal.log"
+        "set -o pipefail; make -j2 -O -f '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile' livre-html-web 2>&1 | tee .szh-journal.log"
       ],
       "presentation": {
         "reveal": "silent",

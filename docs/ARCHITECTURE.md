@@ -116,10 +116,31 @@ une dizaine de contrôles, tous écrits sur la sortie d'erreur.
 Ce chemin de retour est explicite et tient en trois pièces :
 
 1. Les tâches de `vscodium-user/tasks.json` n'appellent plus `make` en direct mais
-   `bash -c "set -o pipefail; make … 2>&1 | tee .szh-journal.log"`. Le journal vit à la
-   racine du numéro, et non sous `out/`, que `tout-exporter` commence par supprimer.
+   `bash -c "set -o pipefail; make -j2 -O … 2>&1 | tee .szh-journal.log"`. Le journal vit à
+   la racine du numéro, et non sous `out/`, que `tout-exporter` commence par supprimer.
    `pipefail` conserve le code de sortie de `make` : sans lui ce serait celui de `tee`,
    toujours 0.
+
+   `-j2` parce que les articles d'un numéro ne dépendent pas les uns des autres et que le
+   poste accorde deux cœurs à WSL (`%UserProfile%\.wslconfig`, `processors=2`) : mesuré sur
+   un numéro de six articles, 36,6 s en séquentiel contre 22,9 s. Les deux chiffres vont
+   ensemble — si `.wslconfig` accorde davantage de cœurs un jour, c'est ce `-j2` qu'il faut
+   monter avec lui, `-j4` sur deux cœurs n'ayant rien donné.
+
+   `-O` (`--output-sync`) est ce qui rend `-j` compatible avec ce chemin de retour, et il
+   n'est pas facultatif. En parallèle, deux recettes écrivent leurs messages en même temps :
+   le bloc d'avertissements de l'article B s'intercale au milieu de celui de l'article A, et
+   `lib/journal.js`, qui relit ce fichier ligne à ligne, attribue les constats au mauvais
+   article. Mesuré sur six articles, en comptant les basculements d'un article à l'autre
+   dans le journal : 11 en séquentiel — le minimum, deux recettes parlantes par article —,
+   23 en `-j2` seul, 11 de nouveau en `-j2 -O`, dans le même ordre qu'en séquentiel. `-O`
+   met la sortie de chaque cible en tampon et ne la déverse qu'à la fin de sa recette ;
+   il demande GNU Make ≥ 4 (l'image en embarque 4.4.1). `test/js/contrats.test.js` interdit
+   qu'un `-j` reparaisse un jour sans son `-O`.
+
+   La tâche « Importer les articles Word » ne les porte ni l'un ni l'autre : `import` est une
+   recette unique, il n'y a rien à y paralléliser.
+
 2. `lib/journal.js` du cockpit traduit ce fichier en constats — un code, un ton, une clé
    d'i18n, l'article concerné. L'article est nommé par le message lui-même ; les lignes
    `pandoc articles/<slug>/…` ne servent plus que de contexte aux outils étrangers (pandoc,

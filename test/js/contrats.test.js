@@ -938,6 +938,44 @@ test('la distro WSL est la même dans le code et dans tasks.json', () => {
   }
 });
 
+// Compiler en parallèle et journaliser sont deux besoins qui se contredisent : `-j` fait
+// écrire deux recettes en même temps, et lib/journal.js relit .szh-journal.log ligne à ligne
+// pour attribuer chaque avertissement à un article. Sans `-O` (--output-sync), les lignes de
+// l'article B s'intercalent au milieu de celles de l'article A, et le cockpit accuse le
+// mauvais article — un défaut qui ne se voit qu'à la lecture du panneau, jamais au build.
+// Ce test ne réclame pas `-j` : il interdit `-j` SANS `-O`, partout où le cockpit lance make.
+test('aucune compilation parallèle ne part sans --output-sync', () => {
+  // Les jetons d'une commande, qu'elle vienne d'un `bash -c` (tasks.json) ou d'un tableau
+  // d'arguments (ProcessExecution). Les guillemets simples du source JS sont retirés.
+  const jetons = (cmd) => cmd.split(/[\s,]+/).map((t) => t.replace(/'/g, '')).filter(Boolean);
+  const parallele = (t) => t === '-j' || (t.startsWith('-j') && /^\d+$/.test(t.slice(2)));
+  const synchrone = (t) => t === '-O' || t.startsWith('--output-sync')
+    || ['-Otarget', '-Oline', '-Orecurse', '-Onone'].includes(t);
+
+  const commandes = [];
+  for (const t of jsonc(lire('vscodium-user', 'tasks.json')).tasks) {
+    commandes.push({ ou: 'tasks.json', nom: t.label, jetons: jetons(t.args.join(' ')) });
+  }
+  // Les invocations du code : un tableau d'arguments qui contient 'make'.
+  const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
+  let n = 0;
+  for (const m of src.matchAll(/\[[^[\]]*'make'[^[\]]*\]/g)) {
+    n += 1;
+    commandes.push({ ou: 'extension.js', nom: 'invocation #' + n, jetons: jetons(m[0]) });
+  }
+  assert.ok(n > 0, 'plus aucune invocation de make dans extension.js : le test ne garde rien');
+
+  let vus = 0;
+  for (const c of commandes) {
+    if (!c.jetons.some(parallele)) { continue; }
+    vus += 1;
+    assert.ok(c.jetons.some(synchrone),
+      c.ou + ' : « ' + c.nom + ' » compile en parallèle sans -O — le journal sortirait '
+      + 'entrelacé et lib/journal.js attribuerait les avertissements au mauvais article');
+  }
+  assert.ok(vus > 0, 'plus aucune tâche ne compile en parallèle : le gain de -j est perdu');
+});
+
 test('les libellés de tâches attendus par le code existent dans tasks.json', () => {
   const labels = jsonc(lire('vscodium-user', 'tasks.json')).tasks.map((t) => t.label);
   const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
