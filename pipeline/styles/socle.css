@@ -43,8 +43,11 @@
   --title-family: var(--font-sans);
 
   /* Encres sur papier, du plus contrasté au moins : ink Lc +105, ink2 +95, ink3 +91.
-     ink3 sert aux 9 px de l'en-tête courant et du pied, les plus petits textes de la
-     maquette : seuil 90, donc pas plus clair que ceci (#5b5b66 n'en donnait que 83). */
+     ink3 sert aux 9 px de l'en-tête courant et du pied : seuil 90, donc pas plus clair que
+     ceci (#5b5b66 n'en donnait que 83). Le plus petit texte de la maquette n'est plus ces
+     9 px depuis le 08.09.2026 mais l'exposant du « Nᵒ » de l'en-tête, à 0,72 em — il n'y
+     gagne aucun droit : sous 14 px APCA ne documente aucun niveau et apca.seuil_pour()
+     rend 90 comme plancher, le même qu'ici. */
   --c-ink:   #16161f;  --c-ink2: #3d3d49;  --c-ink3: #484853;
   --c-nuit:  #252B46;                       /* hero bleu nuit */
   /* Encres claires du hero, miroir de ink2/ink3 en polarité inverse : plus le numéro est

@@ -62,7 +62,17 @@ $endfor$
   <span class="d">$vol-ligne$</span>
 </div>
 <div class="szh-pied-courant" role="presentation" aria-hidden="true">
-  <span class="issn">$if(issn)$ISSN $issn$$endif$</span>
+  <!-- Nom de la revue puis ISSN (08.09.2026) : une page détachée de son numéro doit dire
+       de quelle revue elle vient, l'ISSN seul ne le disant qu'à qui sait le lire. Les deux
+       viennent du même jeton `revue:` (derive_revue, szh-maquette.lua) : une revue connue a
+       toujours les deux, une valeur libre n'a qu'un nom — d'où le point médian à
+       l'intérieur de la condition sur l'ISSN, pour qu'il ne reste jamais pendu au bout du
+       nom.
+       ⚠ Ne pas écrire de syntaxe de gabarit dans ce commentaire : pandoc analyse le modèle
+       AVANT tout HTML, un « if » cité entre chevrons de commentaire ouvrirait une
+       condition qu'il chercherait ensuite à fermer (mesuré : « unexpected end of
+       input »). -->
+  <span class="issn">$revue-nom$$if(issn)$ · ISSN $issn$$endif$</span>
   <span class="folio"></span>
 </div>
 
@@ -106,7 +116,20 @@ $endif$
 $if(author)$
       <!-- Liste d'auteur·e·s = <ul> (RGAA 9.3) ; le point médian séparateur est
            décoratif, posé par print.css (li + li::before) et non écrit dans le texte. -->
-      <ul class="szh-authors">$for(author)$<li>$author.nom$$if(author.prenom)$, $author.prenom$$endif$</li>$endfor$</ul>
+      <!-- « Nom, I. » sur la couverture (08.09.2026) : le prénom y est réduit à ses
+           initiales — « Morand, R. », « Rossier, J.-B. » — que szh-maquette.lua compose
+           (initiales_prenom). Le prénom entier reste dans le bloc « À propos des
+           auteur·e·s », posé par filters/szh-auteurs.lua : c'est là qu'on présente les
+           personnes, ici on ne fait que les créditer. La condition porte sur les
+           initiales et non sur le prénom : un auteur sans prénom n'imprime que son nom,
+           comme avant.
+           ⚠ Aucune syntaxe de gabarit dans ce commentaire — voir l'avertissement du pied
+           courant plus haut. Un « if » cité entre parenthèses y a été lu comme un appel de
+           partial (mesuré : « Could not find data file templates/if.html »).
+           Insécable entre le nom et les initiales : « Schwarzenbach, T. » est une seule
+           étiquette et ne se coupe pas d'une ligne à l'autre. Les seules coupures de la
+           liste restent celles que print.css ouvre après chaque point médian (U+200B). -->
+      <ul class="szh-authors">$for(author)$<li>$author.nom$$if(author.initiales)$,&#160;$author.initiales$$endif$</li>$endfor$</ul>
 $endif$
       <!-- ⚠ La flèche est HORS du <a>, et le <a> ne contient que du texte : ne remettez
            jamais un élément (<span>, <svg>) à l'intérieur d'un <a>. WeasyPrint pose une

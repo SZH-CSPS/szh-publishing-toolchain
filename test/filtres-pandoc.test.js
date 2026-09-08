@@ -535,3 +535,154 @@ test('langue : szh-citations.lua — rien du tout, repli français', () => {
   assert.strictEqual(r.status, 0, r.stderr);
   assert.match(r.stdout, /Références/, r.stdout);
 });
+
+
+// ── szh-cesure.lua : les noms propres soustraits à la césure, en français seulement ───
+// Le corps est justifié avec `hyphens: auto` (print.css §4) et WeasyPrint coupait donc
+// « Fri-bourg ». Le filtre relève les noms propres sur la POSITION de leur majuscule, puis
+// les enveloppe dans un span de classe szh-sans-cesure — voir son commentaire de tête pour
+// les deux règles du relevé et le défaut qui reste. Ce qui est fixé ici, ce sont ces règles
+// et l'exception PDF/UA sur les liens.
+//
+// Lecture markdown -> HTML : c'est la sortie où le span se lit tel quel. Le `lang:` du bloc
+// YAML suffit à porter la langue de composition (meta.lang), le filtre ne relisant pas la
+// fiche sur le disque.
+
+function docFr(corps, langue) {
+  return '---\nlang: ' + (langue || 'fr') + '\n---\n\n' + corps + '\n';
+}
+
+function cesure(corps, langue) {
+  return pandoc(docFr(corps, langue),
+    { de: 'markdown', vers: 'html', filtres: ['szh-cesure.lua'] });
+}
+
+// Combien de fois `mot` est enveloppé. Le writer HTML de pandoc replie ses lignes : la
+// balise ouvrante peut donc être coupée entre `<span` et `class=`, d'où la classe de
+// caractères plutôt qu'un point.
+function enveloppes(html, mot) {
+  const re = new RegExp('<span[\\s\\S]*?class="szh-sans-cesure">' + mot + '</span>', 'g');
+  return (html.match(re) || []).length;
+}
+
+test('césure (préparation) : sans le filtre, aucun span n’est posé', () => {
+  const html = pandoc(docFr('Le module de Fribourg accueille du monde.'),
+    { de: 'markdown', vers: 'html' });
+  assert.ok(!/szh-sans-cesure/.test(html), 'un span existe déjà sans le filtre : ' + html);
+});
+
+test('césure : une majuscule au milieu d’une phrase est un nom propre', () => {
+  const html = cesure('Le module de Fribourg accueille du monde.');
+  assert.strictEqual(enveloppes(html, 'Fribourg'), 1, html);
+});
+
+test('césure : moins de 5 lettres, jamais enveloppé — WeasyPrint ne les coupe pas', () => {
+  const html = cesure('Le module de Sion accueille du monde.');
+  assert.ok(!/szh-sans-cesure/.test(html), 'un mot de 4 lettres a été enveloppé : ' + html);
+});
+
+test('césure : un mot qui n’apparaît qu’en tête de phrase, suivi d’une minuscule, est laissé', () => {
+  const html = cesure('Fribourg est une ville de Suisse romande.');
+  assert.strictEqual(enveloppes(html, 'Fribourg'), 0,
+    'un mot de tête de phrase a été pris pour un nom propre : ' + html);
+});
+
+test('césure : deux capitales de suite en tête de phrase — un nom de personne', () => {
+  const html = cesure('Christian Singele parle de son travail.');
+  assert.strictEqual(enveloppes(html, 'Christian'), 1, html);
+  assert.strictEqual(enveloppes(html, 'Singele'), 1, html);
+});
+
+test('césure : un nom relevé une fois est protégé partout, tête de phrase comprise', () => {
+  const html = cesure('Le canton de Fribourg est grand. Fribourg accueille du monde.');
+  assert.strictEqual(enveloppes(html, 'Fribourg'), 2,
+    'la seconde occurrence, en tête de phrase, n’est pas protégée : ' + html);
+});
+
+test('césure : le trait d’union fait corps avec le nom', () => {
+  const html = cesure('Le texte de Cudré-Mauroux et de La Chaux-de-Fonds.');
+  assert.strictEqual(enveloppes(html, 'Cudré-Mauroux'), 1, html);
+  assert.strictEqual(enveloppes(html, 'Chaux-de-Fonds'), 1, html);
+});
+
+test('césure : en allemand, RIEN — tous les substantifs y portent la majuscule', () => {
+  const html = cesure('Das Modul von Freiburg nimmt Studierende auf.', 'de');
+  assert.ok(!/szh-sans-cesure/.test(html), 'le filtre a agi sur un article allemand : ' + html);
+});
+
+// ⚠ PDF/UA-1 7.18.5 : un lien ne doit contenir aucun élément, sinon WeasyPrint pose une
+// annotation par boîte descendante et une seule est rattachée au /Link de l'arbre de
+// structure. Mesuré le 08.09.2026 : les spans posés dans les liens de l'article d'essai
+// faisaient tomber la porte veraPDF (« Lien mal balisé, 11 fois, page 2 »). Le lien porte
+// donc la classe lui-même, et ce contrôle est la seule chose qui garde cette décision.
+test('césure : dans un lien, la classe va sur le <a> et JAMAIS un span dedans', () => {
+  const html = cesure('Voir la [Haute école de Fribourg](https://example.ch) pour cela.');
+  assert.match(html, /<a href="https:\/\/example\.ch" class="szh-sans-cesure">/,
+    'le lien ne porte pas la classe : ' + html);
+  assert.ok(!/<a[\s\S]*?szh-sans-cesure[\s\S]*?<span/.test(html),
+    'un span a été laissé à l’intérieur du lien (PDF/UA-1 7.18.5) : ' + html);
+});
+
+// ── szh-maquette.lua : les initiales de prénom de la couverture ────────────────────────
+// Sur la couverture, le prénom est réduit à ses initiales — « de Diesbach, J. » (décision
+// du 08.09.2026). Le bloc « À propos des auteur·e·s », lui, garde le prénom entier : c'est
+// là qu'on présente les personnes, la couverture ne fait que les créditer.
+//
+// Sortie observée : la clé `initiales` que le filtre pose sur chaque auteur, visible telle
+// quelle dans le bloc YAML du writer markdown --standalone. Lire la source ne dirait rien
+// du découpage réel d'un prénom accentué ou composé, qui est tout l'enjeu.
+
+function initiales(auteurs) {
+  const md = ['---', 'revue: revue', 'lang: fr', 'title:', '  fr: "Titre"', 'author:']
+    .concat(auteurs).concat(['---', '', 'Corps.', '']).join('\n');
+  const r = pandocDansDossier({ 'essai.md': md }, 'essai.md', 'szh-maquette.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  // Le writer YAML de pandoc range les cles par ordre alphabetique : `initiales` ouvre
+  // donc l'element de liste et prend le tiret, sauf si l'auteur porte une cle qui la
+  // precede (affiliation). Les deux formes sont acceptees.
+  return (r.stdout.match(/^[- ]\s*initiales: (.*)$/gm) || [])
+    .map((l) => l.replace(/^[- ]\s*initiales: /, '').replace(/^'|'$/g, ''));
+}
+
+test('initiales (préparation) : sans le filtre, la clé n’existe pas', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': ['---', 'author:', '- prenom: "Jérôme"', '  nom: "de Diesbach"',
+      '---', '', 'Corps.', ''].join('\n') },
+    'essai.md', 'szh-attributs-sains.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!/initiales:/.test(r.stdout), 'une clé initiales existe déjà sans le filtre : ' + r.stdout);
+});
+
+test('initiales : un prénom simple donne une lettre et un point', () => {
+  assert.deepStrictEqual(
+    initiales(['- prenom: "Jérôme"', '  nom: "de Diesbach"']), ['J.']);
+});
+
+// ⚠ Trait d'union INSÉCABLE (U+2011) et non ordinaire : « J.-B. » est une abréviation, pas
+// un mot composé, et la coupure à un trait d'union ordinaire relève de UAX #14 — aucun
+// réglage `hyphens` ne l'empêche. Mesuré : la couverture à dix auteur·e·s sortait
+// « Rossier, J.- » en fin de ligne et « B. » au début de la suivante.
+test('initiales : un prénom à trait d’union garde un trait d’union, mais INSÉCABLE', () => {
+  const TIRET = '\u2011';
+  assert.deepStrictEqual(
+    initiales(['- prenom: "Jean-Baptiste"', '  nom: "Rossier"']), ['J.' + TIRET + 'B.']);
+  assert.deepStrictEqual(
+    initiales(['- prenom: "Marie-Christine"', '  nom: "Vannotti"']), ['M.' + TIRET + 'C.']);
+});
+
+// ⚠ Une espace ORDINAIRE ouvrirait une coupure de ligne au milieu d'un nom, sur une
+// couverture où la liste passe déjà à deux ou trois lignes.
+test('initiales : deux prénoms séparés d’une espace prennent une INSÉCABLE', () => {
+  assert.deepStrictEqual(
+    initiales(['- prenom: "Marie Christine"', '  nom: "Vannotti"']), ['M.\u00A0C.']);
+});
+
+// ⚠ Le cas qui casse un découpage en octets : « É » s'encode sur deux octets, et un
+// prenom:sub(1, 1) rendrait la moitié d'un caractère.
+test('initiales : une capitale accentuée sort entière', () => {
+  assert.deepStrictEqual(initiales(['- prenom: "\u00c9lodie"', '  nom: "Winkler"']), ['\u00c9.']);
+});
+
+test('initiales : pas de prénom, pas de clé — la couverture n’imprime que le nom', () => {
+  assert.deepStrictEqual(initiales(['- nom: "SZH/CSPS"']), []);
+});

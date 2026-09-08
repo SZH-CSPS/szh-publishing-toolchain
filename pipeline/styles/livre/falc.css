@@ -39,6 +39,12 @@
   --interligne: 1.64;
   --alignement: left;
   --cesure: none;
+  /* Aucune césure, pas même pour un nom propre. filters/szh-cesure.lua enveloppe les noms
+     propres français dans .szh-sans-cesure, que partage-filtres.css met en `hyphens:
+     manual` — le réglage juste pour une page justifiée, mais qui rouvrirait ici la coupure
+     à une césure conditionnelle écrite dans le texte. En FALC on ne coupe pas un mot,
+     jamais : c'est la règle du haut de ce fichier. */
+  --cesure-nom-propre: none;
   --alinea: 0;
   --esp-para: 18pt;
 

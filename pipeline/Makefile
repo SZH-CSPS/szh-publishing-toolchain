@@ -12,7 +12,7 @@
 #   szh-tabelle-scope -> szh-typographie -> szh-metafichier -> szh-grille ->
 #   szh-ressource -> szh-figure -> szh-numerotation -> szh-tableau-boite ->
 #   szh-legende-avant -> szh-sections -> szh-auteurs -> szh-citations ->
-#   szh-rubrique -> szh-notes
+#   szh-rubrique -> szh-cesure -> szh-notes
 #   * szh-numerotation après szh-tabelle-inclure : il numérote des tableaux qui
 #     n'existent qu'une fois le HTML réinjecté ;
 #   * szh-typographie après szh-tabelle-scope et avant szh-numerotation : après, parce
@@ -46,6 +46,13 @@
 #     un « Literatur zum Schwerpunkt » posé avant lui se ferait prendre pour la
 #     bibliographie de l'article. Le contenu du bloc, lui, est du markdown ordinaire lu par
 #     pandoc : tous les filtres d'amont l'ont déjà traité, celui-ci ne fait que l'envelopper ;
+#   * szh-cesure en avant-dernier, et surtout APRÈS szh-citations : il enveloppe les noms
+#     propres français dans un <span class="szh-sans-cesure"> pour les soustraire à la
+#     césure automatique, et szh-citations apparie les appels de citation et reconnaît le
+#     titre de la bibliographie SUR LE TEXTE — un span posé avant lui casserait
+#     l'appariement. Après szh-rubrique aussi, dont le contenu est du markdown analysé
+#     tardivement et qui doit être protégé comme le reste du corps ; avant szh-notes, pour
+#     que le texte des notes le soit également, les Note étant encore des Note à ce stade ;
 #   * szh-notes tout à la fin : les Note traversent la chaîne inchangées et ne
 #     deviennent des Spans « szh-note » qu'à la sortie, si bien qu'aucun filtre en
 #     amont ne change de comportement ;
@@ -364,6 +371,7 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-auteurs.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-rubrique.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-cesure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua" \
 	  --output="$(abspath $@)"
 	$(call reordonner_appels_de_note,$@)
@@ -412,6 +420,7 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-auteurs.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-citations.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-rubrique.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-cesure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-notes.lua" \
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour cet article (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"

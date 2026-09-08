@@ -1,6 +1,6 @@
 -- Calcule les variables de template de la maquette (couverture et en-tête courant) à
 -- partir des clés d'ausgabe.yaml et de <slug>.meta.yaml : étiquette de dossier, nom et
--- ISSN de la revue, ligne « Vol. X · N/année », résumés, licence, titre du bloc auteurs,
+-- ISSN de la revue, ligne « Vol. X · Nᵒ N/année », résumés, licence, titre du bloc auteurs,
 -- et par auteur `orcid-url` et `photo-rang`. Aucune clé n'est inventée côté fichiers.
 -- Le titre du dossier (ausgabe.yaml `title`) est écrasé dans Meta par le `title` de
 -- l'article, pandoc gardant le dernier fichier à clé égale : il est donc relu dans
@@ -201,6 +201,69 @@ local LIBELLES = {
 local TYPES_DOSSIER = { article = true, editorial = true, interview = true }
 
 local LABELS_RESUME = { de = 'Zusammenfassung', fr = 'Résumé', it = 'Riassunto' }
+
+-- U+00A0, l'espace insécable. Même écriture que dans szh-typographie.lua.
+local NBSP = '\194\160'
+-- U+2011, le trait d'union insécable — voir initiales_prenom() ci-dessous.
+local TIRET_INSEC = '\226\128\145'
+
+-- Initiales d'un prénom, pour la ligne d'auteur·e·s de la COUVERTURE seulement
+-- (08.09.2026) : « Jérôme » -> « J. », « Jean-Baptiste » -> « J.-B. », « Marie Christine »
+-- -> « M. C. ». Le bloc « À propos des auteur·e·s », lui, garde le prénom entier — c'est
+-- là qu'on présente les personnes, la couverture ne fait que les créditer.
+-- Le séparateur d'un prénom composé est CONSERVÉ dans sa nature, mais dans sa forme
+-- INSÉCABLE : trait d'union insécable (U+2011) pour un prénom à trait d'union, espace
+-- insécable pour deux prénoms séparés d'une espace. « J.-B. » est une abréviation, pas un
+-- mot composé, et ne se coupe jamais : avec un trait d'union ordinaire, la couverture à dix
+-- auteur·e·s sortait « Rossier, J.- » en fin de ligne et « B. » au début de la suivante
+-- (mesuré le 08.09.2026 — la coupure à un trait d'union relève de UAX #14, aucun réglage
+-- `hyphens` ne l'empêche). Les faces livrées portent toutes U+2011, c'est contrôlé par
+-- test/polices-check.py.
+-- Le NOM, lui, garde son trait d'union ordinaire : « Cudré-Mauroux » est un nom composé, et
+-- la coupure à son trait d'union est la seule que le français permette dans un nom propre.
+-- ⚠ Découpage en caractères et non en octets : « Élodie » commence sur deux octets, et
+-- prenom:sub(1, 1) rendrait la moitié d'un É. utf8.offset donne la frontière du deuxième
+-- caractère, quelle que soit la lettre — et rend #s+1 quand il n'y en a qu'un.
+local function initiales_prenom(prenom)
+  local sortie = {}
+  local i = 1
+  while true do
+    local a, b = prenom:find('[^%-%s]+', i)
+    if not a then break end
+    local morceau = prenom:sub(a, b)
+    local suivant = utf8.offset(morceau, 2)
+    table.insert(sortie, (suivant and morceau:sub(1, suivant - 1) or morceau) .. '.')
+    -- Le séparateur ne s'écrit que s'il reste un morceau derrière : pas de tiret pendu.
+    local c, d = prenom:find('[%-%s]+', b + 1)
+    if c == b + 1 and prenom:find('[^%-%s]', d + 1) then
+      table.insert(sortie, prenom:sub(c, d):find('%-') and TIRET_INSEC or NBSP)
+    end
+    i = b + 1
+  end
+  return table.concat(sortie)
+end
+
+-- Abréviation de « numéro » devant le rang du numéro, dans la langue de composition
+-- (08.09.2026) : « Vol. 17 · Nᵒ02/2027 » en français, « Nr. 02/2027 » en allemand. Sans
+-- elle, la ligne se lisait « Vol. 17 · 02/2027 », où le 02 pouvait passer pour un mois.
+-- Langue hors des trois : pas d'abréviation inventée, la ligne sort comme avant.
+--
+-- `sup` — le « o » de l'abréviation française est un o EN EXPOSANT, et non le signe degré.
+-- Aucune des faces livrées ne porte U+1D52 (le o modificateur), et le seul o en exposant
+-- qu'elles portent, U+00BA, ne se distingue pas de « ° » à l'œil (mesuré le 08.09.2026,
+-- rendus comparés à 9 et 22 px). C'est donc un vrai <sup>, ce qui oblige à composer la
+-- ligne en INLINES : pandoc échappe le contenu d'une MetaString, il rend celui d'une
+-- MetaInlines. print.css lui rend sa casse — les deux boîtes qui portent cette ligne sont
+-- en capitales, et un « O » capital en exposant n'est pas l'abréviation.
+--
+-- `espace` — rien en français : « Nᵒ02/2027 », demandé le 08.09.2026. L'allemand et
+-- l'italien gardent l'insécable, leur abréviation finissant par un point : « Nr.02 » se
+-- lirait comme un nombre décimal.
+local ABREV_NUMERO = {
+  fr = { texte = 'N',   sup = 'o', espace = ''   },
+  de = { texte = 'Nr.',            espace = NBSP },
+  it = { texte = 'N.',             espace = NBSP },
+}
 local ORDRE_LANGUES = { 'de', 'fr', 'it' }
 
 -- Bloc des auteur·e·s : titre localisé. Un seul libellé, quel que soit le nombre de
@@ -503,17 +566,33 @@ function Meta(meta)
     etiquette = dossier   -- type absent/inconnu : dégradation propre
   end
 
-  -- Ligne « Vol. X · N/année » (parties manquantes omises).
+  -- Ligne « Vol. X · Nᵒ N/année » (parties manquantes omises), composée en inlines : voir
+  -- ABREV_NUMERO ci-dessus pour le pourquoi de l'exposant. L'abréviation ne se pose que
+  -- devant un RANG de numéro : une ligne réduite à l'année (`numero:` vide) reste l'année
+  -- nue, « Nᵒ2027 » ne voulant rien dire.
   local volume = S(meta.volume)
   local numero = S(meta.numero)
   local annee = annee_numero(S(meta.date))
-  local droite = ''
-  if numero ~= '' and annee ~= '' then droite = numero .. '/' .. annee
-  elseif numero ~= '' then droite = numero
-  elseif annee ~= '' then droite = annee end
-  local vol_ligne = ''
-  if volume ~= '' then vol_ligne = 'Vol. ' .. volume end
-  if droite ~= '' then vol_ligne = (vol_ligne ~= '' and vol_ligne .. ' · ' or '') .. droite end
+  local droite = {}
+  if numero ~= '' then
+    local abrev = ABREV_NUMERO[lang]
+    if abrev then
+      table.insert(droite, pandoc.Str(abrev.texte))
+      if abrev.sup then
+        table.insert(droite, pandoc.Superscript({ pandoc.Str(abrev.sup) }))
+      end
+      if abrev.espace ~= '' then table.insert(droite, pandoc.Str(abrev.espace)) end
+    end
+    table.insert(droite, pandoc.Str(annee ~= '' and (numero .. '/' .. annee) or numero))
+  elseif annee ~= '' then
+    table.insert(droite, pandoc.Str(annee))
+  end
+  local vol_ligne = {}
+  if volume ~= '' then table.insert(vol_ligne, pandoc.Str('Vol. ' .. volume)) end
+  if #droite > 0 then
+    if #vol_ligne > 0 then table.insert(vol_ligne, pandoc.Str(' · ')) end
+    for _, el in ipairs(droite) do table.insert(vol_ligne, el) end
+  end
 
   -- Résumés (de/fr/it présents), langue de composition en premier.
   local resumes = {}
@@ -553,7 +632,7 @@ function Meta(meta)
   meta['revue-nom']        = pandoc.MetaString(nom)
   meta['issn']             = pandoc.MetaString(issn)
   meta['etiquette-dossier'] = pandoc.MetaString(etiquette)
-  meta['vol-ligne']        = pandoc.MetaString(vol_ligne)
+  meta['vol-ligne']        = pandoc.MetaInlines(vol_ligne)
   local titre = champ_localise(meta.title, lang, 'title', true, slug)
   meta['titre-affiche']    = pandoc.MetaString(titre)
   meta['sous-titre-affiche'] = pandoc.MetaString(
@@ -611,6 +690,13 @@ function Meta(meta)
           elseif orcid:match('^https?://') then
             a['orcid-url'] = pandoc.MetaString(orcid)
           end
+        end
+        -- Initiales du prénom, pour la couverture — voir initiales_prenom() plus haut.
+        -- Clé absente quand il n'y a pas de prénom : le gabarit teste `$if(…)$` et
+        -- n'imprime alors que le nom, comme avant.
+        if p ~= '' then
+          local init = initiales_prenom(p)
+          if init ~= '' then a['initiales'] = pandoc.MetaString(init) end
         end
         -- Rang du portrait : il nomme la règle CSS que le gabarit écrit pour cette
         -- photo. Aucun texte alternatif n'est fabriqué ici, et le portrait n'est pas

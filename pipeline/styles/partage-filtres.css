@@ -210,3 +210,23 @@ a.szh-orcid {
   background-size: 100% 100%; background-repeat: no-repeat;
 }
 a.szh-orcid::after { content: none; }
+
+/* ── Nom propre soustrait à la césure ─────────────────────────────────────────
+   Posé par filters/szh-cesure.lua, en français seulement, autour des noms propres qu'il
+   reconnaît. Le corps de la maquette est justifié avec césure automatique (print.css §4) et
+   WeasyPrint coupait donc « Fri-bourg » et « Dies-bach », ce que le français proscrit.
+   `hyphens: manual` est le réglage exact voulu, et non `none` : la coupure automatique
+   s'arrête, une césure écrite à la main par la rédaction (soft hyphen U+00AD) reste
+   honorée, et la coupure à un trait d'union déjà présent — « Cudré-Mauroux » — reste
+   permise, parce qu'elle relève de UAX #14 et non de cette propriété.
+   Le jeton --cesure-nom-propre laisse une charte refuser jusqu'à cela : la charte FALC du
+   livre y met `none`, où l'on ne coupe aucun mot. Il est lu et non surchargé partout
+   ailleurs. Un jeton plutôt qu'une règle plus spécifique dans la charte : cette feuille est
+   empilée APRÈS la charte du livre (voir profils/livre.mk), et une règle de même
+   spécificité posée là-bas ne gagnerait pas.
+   ⚠ La contrepartie se voit en colonne étroite : une césure en moins, c'est de
+   l'espacement en plus sur la ligne. Sur les 650 px de la maquette, c'est de l'ordre du
+   dixième de cadratin ; dans une case de grille ou une cellule de tableau, cela peut
+   s'entendre. Le filtre n'entre pas dans les tableaux (ce sont des RawBlock à son passage),
+   ce qui laisse le cas le plus étroit tranquille. */
+.szh-sans-cesure { hyphens: var(--cesure-nom-propre, manual); }

@@ -124,6 +124,15 @@ test('barre : le titre d’un numéro sans date de publication garde son année'
 // Le filtre est appelé par pandoc avec un template d'une seule variable : ce qui sort est
 // exactement la ligne que la couverture imprime. Lire la source ne dirait rien.
 const TEMPLATE = '$vol-ligne$\n';
+// La ligne n'est plus une chaîne mais des INLINES (szh-maquette.lua, ABREV_NUMERO) : le « o »
+// de l'abréviation française est un o en exposant, et un <sup> ne peut pas passer par une
+// MetaString, que pandoc échappe. C'est donc le balisage qu'on lit ici, et c'est voulu — un
+// « ° » ou un U+00BA remis à la place se verrait dans le diff.
+// L'insécable, elle, ne sert plus qu'à l'allemand et à l'italien, dont l'abréviation finit
+// par un point : « Nr.02 » se lirait comme un nombre décimal. Le français ne prend AUCUNE
+// espace — « Nᵒ02/2027 », décision du 08.09.2026.
+const NBSP = '\u00A0';
+const NO_FR = 'N<sup>o</sup>';
 
 let pandocVu = null;
 
@@ -148,16 +157,21 @@ function sauterSansLua(t, raison) {
 
 // Compose la ligne de couverture d'un numéro posé dans un dossier nommé `dossier`, avec la
 // valeur `date` dans son ausgabe.yaml. Rend la chaîne imprimée, telle quelle.
-function ligneCouverture(dossier, date) {
+// `revue` : le jeton de revue, « revue » par défaut. Il porte la langue de composition, dont
+// dépend l'abréviation du numéro — c'est le seul moyen d'éprouver la forme allemande.
+function ligneCouverture(dossier, date, revue) {
   const numero = path.join(TRAVAIL, dossier);
   const article = path.join(numero, 'articles', '01-essai');
   fs.rmSync(numero, { recursive: true, force: true });
   fs.mkdirSync(article, { recursive: true });
   fs.writeFileSync(path.join(numero, 'ausgabe.yaml'),
-    ['revue: revue', 'title: "Un dossier"', 'volume: "44"', 'numero: "03"',
-      'date: "' + date + '"', 'lang: fr', ''].join('\n'), 'utf8');
+    ['revue: ' + (revue || 'revue'), 'title: "Un dossier"', 'volume: "44"',
+      'numero: "03"', 'date: "' + date + '"', ''].join('\n'), 'utf8');
+  // Pas de `lang:` dans la fiche : c'est le jeton de revue qui doit décider, sinon la
+  // variante allemande ci-dessous se composerait en français sans qu'on le voie.
   fs.writeFileSync(path.join(article, '01-essai.meta.yaml'),
-    ['type: article', 'lang: fr', 'title:', '  fr: "Un titre"', ''].join('\n'), 'utf8');
+    ['type: article', 'title:', '  fr: "Un titre"', '  de: "Ein Titel"',
+      ''].join('\n'), 'utf8');
   fs.writeFileSync(path.join(article, '01-essai.md'), 'Un paragraphe.\n', 'utf8');
   const modele = path.join(TRAVAIL, 'vol-ligne.txt');
   fs.writeFileSync(modele, TEMPLATE, 'utf8');
@@ -181,7 +195,7 @@ test('couverture : sans date de publication, l’année vient du nom du dossier'
   if (absent) { return sauterSansLua(t, absent); }
   const ligne = ligneCouverture('2027-03', '');
   t.diagnostic('dossier « 2027-03 », date vide -> « ' + ligne + ' »');
-  assert.strictEqual(ligne, 'Vol. 44 · 03/2027',
+  assert.strictEqual(ligne, 'Vol. 44 · ' + NO_FR + '03/2027',
     'la couverture d’un numéro sans date de publication a perdu son année');
 });
 
@@ -191,7 +205,7 @@ test('couverture : une date de publication complète passe devant le dossier', (
   // Dossier et date en désaccord : le seul cas où l'on voit laquelle des deux fait loi.
   const ligne = ligneCouverture('2027-03', '2028-01-20');
   t.diagnostic('dossier « 2027-03 », date « 2028-01-20 » -> « ' + ligne + ' »');
-  assert.strictEqual(ligne, 'Vol. 44 · 03/2028',
+  assert.strictEqual(ligne, 'Vol. 44 · ' + NO_FR + '03/2028',
     'la date saisie ne fait plus foi sur la couverture');
 });
 
@@ -202,8 +216,21 @@ test('couverture : un dossier hors convention laisse l’année absente, pas fau
   // année prise ailleurs. Le lanceur laisse aussi le numéro à remplir dans ce cas.
   const ligne = ligneCouverture('numero-de-printemps', '');
   t.diagnostic('dossier « numero-de-printemps », date vide -> « ' + ligne + ' »');
-  assert.strictEqual(ligne, 'Vol. 44 · 03',
+  assert.strictEqual(ligne, 'Vol. 44 · ' + NO_FR + '03',
     'une année a été inventée pour un dossier qui n’en porte pas');
+});
+
+test('couverture : en allemand, « Nr. » et son insécable, jamais le o en exposant', (t) => {
+  const absent = pandocAbsent();
+  if (absent) { return sauterSansLua(t, absent); }
+  // L'abréviation allemande finit par un point : elle garde l'espace que le français perd,
+  // « Nr.03 » se lisant comme un nombre décimal. Et pas de <sup> : « Nr. » s'écrit en
+  // lettres pleines.
+  const ligne = ligneCouverture('2027-03', '', 'zeitschrift');
+  t.diagnostic('revue: zeitschrift -> « ' + ligne + ' »');
+  assert.strictEqual(ligne, 'Vol. 44 · Nr.' + NBSP + '03/2027',
+    'la forme allemande du numéro a changé');
+  assert.ok(!/<sup>/.test(ligne), 'un exposant est parti dans la ligne allemande : ' + ligne);
 });
 
 // ---- l'export OJS --------------------------------------------------------------------

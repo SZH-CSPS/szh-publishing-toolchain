@@ -54,7 +54,20 @@
 .szh-entete-courante .g { color: var(--c-ink2); }
 .szh-entete-courante .d { color: var(--c-ink3); font-variant-numeric: tabular-nums; }
 
-/* Pied courant : ISSN à gauche, folio (numéro de page) à droite, filet dessus. */
+/* Le « o » de l'abréviation « Nᵒ », posé en Superscript pandoc par szh-maquette.lua (§ son
+   ABREV_NUMERO, qui dit pourquoi ce n'est ni « ° » ni U+00BA). Les deux boîtes qui portent
+   cette ligne — l'en-tête courant ici, la ligne de volume du hero au §5 — sont en
+   capitales et interlettrées : sans cette règle, l'exposant sortirait en « O » capital,
+   qui n'est pas l'abréviation, avec un interlettrage traîné derrière une seule lettre.
+   Taille et hauteur choisies sur rendu comparé (08.09.2026) ; `line-height: 0` empêche
+   l'exposant de faire grandir sa ligne, comme pour ::footnote-call au §4. */
+.szh-entete-courante sup, .szh-hero-vol sup {
+  text-transform: none; letter-spacing: 0;
+  font-size: 0.72em; vertical-align: 0.42em; line-height: 0;
+}
+
+/* Pied courant : « revue · ISSN » à gauche, folio (numéro de page) à droite, filet
+   dessus. Le texte de gauche est composé par le gabarit — voir szh-article.html. */
 .szh-pied-courant {
   position: running(piedCourant);
   display: flex; justify-content: space-between; align-items: baseline;
@@ -213,24 +226,70 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
    serré (1.12) fait dépasser de la boîte de contenu ; ces 4 px sont retirés de
    `max-height` pour que la boîte totale ne change pas. */
 .szh-hero-main { max-width: 67%; max-height: 164px; padding-bottom: 4px; overflow: hidden; }
+/* Taille du titre et du sous-titre : 25 / 16 px (variante A2, retenue le 08.09.2026 ;
+   28 / 14,5 px avant). Le titre reste sans ambiguïté le premier plan — un rapport de 1,56
+   entre les deux, plus le demi-gras contre le romain et le blanc franc contre --c-hero2.
+   ⚠ Les deux valeurs sont recopiées dans test/apca-check.py (TAILLE_HERO_TITRE,
+   TAILLE_HERO_SOUSTITRE), qui en tire le seuil de contraste : les changer ici seulement
+   ferait mesurer le contraste à la mauvaise taille. */
 .szh-title {
-  font-family: var(--title-family); font-weight: 600; font-size: 28px; line-height: 1.12;
+  font-family: var(--title-family); font-weight: 600; font-size: 25px; line-height: 1.12;
   letter-spacing: -0.005em; color: #fff; margin: 20px 0 0; text-align: left; hyphens: manual;
 }
-.szh-subtitle { font-family: var(--title-family); font-weight: 400; font-size: 14.5px;
-  line-height: 1.35; color: var(--c-hero2); margin: 12px 0 0; text-align: left; }
+/* `hyphens: manual` comme le titre au-dessus (08.09.2026) : sans lui, le sous-titre
+   héritait du `hyphens: auto` du corps (§4) et se coupait dès qu'il passait à la ligne —
+   « ... comme partenaires de forma-tion » en tête de couverture. Un titre de couverture ne
+   se coupe pas. Constaté en essayant d'agrandir le sous-titre, où le repli à la ligne
+   devient le cas ordinaire et non l'exception. */
+.szh-subtitle { font-family: var(--title-family); font-weight: 400; font-size: 16px;
+  line-height: 1.35; color: var(--c-hero2); margin: 12px 0 0; text-align: left;
+  hyphens: manual; }
 /* Ancré en bas du hero par position absolue, le flexbox de WeasyPrint ne gérant pas
-   margin-top: auto : DOI et licence restent à la même place quel que soit le titre. */
-.szh-hero-meta { position: absolute; left: 72px; bottom: 38px; max-width: 76%; }
+   margin-top: auto : DOI et licence restent à la même place quel que soit le titre.
+   `line-height: 1.1` (08.09.2026) : c'est lui, et non les marges des deux lignes, qui
+   décide du blanc entre le DOI et la licence. Mesuré au pixel sur le PDF rendu — le modèle
+   de boîte en ligne de WeasyPrint ne se devine pas depuis la feuille : avec l'interligne du
+   corps (1,55) et une marge nulle, il restait 10 px entre les deux, soit la densité du
+   couple « nom de la revue / dossier ». À 1,1 il en reste 5, exactement le blanc qui sépare
+   deux lignes de la liste d'auteur·e·s : DOI et licence se lisent alors comme un bloc de
+   deux lignes, ce qu'ils sont. Une marge négative aurait donné le même résultat en
+   dépendant du strut de cette boîte, donc de l'interligne du corps ; celle-ci ne dépend de
+   rien d'autre qu'elle-même.
+   ⚠ Elle descend dans la liste d'auteur·e·s, qui vit ici : ul.szh-authors reprend donc
+   --leading explicitement plus bas, sinon ses lignes se refermaient avec. */
+.szh-hero-meta { position: absolute; left: 72px; bottom: 38px; max-width: 76%;
+  line-height: 1.1; }
 /* Les auteur·e·s sont une <ul> (RGAA 9.3) rendue en ligne. Chaque règle annule
    explicitement le style de liste global du §6 (puce ▸ absolue, retrait 1.5em) ; le
    point médian séparateur est décoratif, généré ici par li + li::before. */
+/* `line-height: var(--leading)` : reprise explicite de l'interligne du corps, que le
+   `line-height: 1.1` de .szh-hero-meta ci-dessus lui retirerait — voir sa note. C'est cet
+   interligne qui donne les 5 px de blanc entre deux lignes de noms, la mesure de référence
+   de tout le bloc. */
 ul.szh-authors { margin: 0; padding: 0; list-style: none;
-  font-size: 12.5px; font-weight: 700; color: #fff; }
-.szh-authors li { display: inline; padding: 0; margin: 0; text-align: left; }
+  font-size: 12.5px; font-weight: 700; color: #fff; line-height: var(--leading); }
+/* `hyphens: manual` (08.09.2026) : un nom de personne ne se coupe pas. Constaté sur une
+   couverture à dix auteur·e·s, la seule où la ligne passe à trois lignes : elle sortait
+   « Vannot- / ti-Bourquin » et « Schwarzenbach, Tho- / mas ». C'est la même règle que
+   filters/szh-cesure.lua tient dans le corps, mais elle doit être écrite ici : cette liste
+   est composée par le gabarit, hors du document pandoc, et aucun filtre ne la voit.
+   ⚠ Et elle doit être écrite SUR LE <li>, pas sur le <ul> : le `li` du §6 pose
+   `hyphens: auto` directement sur ces mêmes éléments, et une déclaration directe passe
+   toujours devant une valeur héritée, quelle que soit la spécificité de son sélecteur.
+   Posée sur le <ul>, elle n'avait aucun effet et la césure restait (mesuré). */
+.szh-authors li { display: inline; padding: 0; margin: 0; text-align: left;
+  hyphens: manual; }
 .szh-authors li::before { content: none; }
+/* ⚠ L'espace de largeur nulle qui suit le point médian n'est pas un ornement : c'est la
+   SEULE occasion de retour à la ligne de toute la liste. Le gabarit écrit les <li> sans
+   blanc entre eux (`</li><li>`), le point médian vient d'un ::before et ses 6 px sont
+   une marge — or ni une marge ni un point médian n'ouvrent une coupure (UAX #14, le
+   point médian est un séparateur infixe). Sans elle, WeasyPrint n'a plus qu'un endroit
+   où couper une ligne trop longue : l'intérieur d'un nom, par césure. C'est ce qui
+   donnait « Vannot- / ti-Bourquin ». U+200B est de classe ZW, coupure permise ; il suit
+   le point médian, qui reste donc collé au nom qui précède. */
 .szh-authors li + li::before {
-  content: "\B7";                          /* · point médian */
+  content: "\B7\200B";                     /* · point médian + coupure permise (U+200B) */
   position: static; display: inline; left: auto; top: auto;
   /* ⚠ Couleur pré-mélangée, et `opacity` laissée à 1 : ne pas revenir à
      `#fff` + `opacity: 0.5`. Toute déclaration `opacity` < 1 fait dessiner l'élément par
@@ -246,8 +305,13 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
   display: inline-flex; align-items: center; gap: 6px; color: var(--c-hero2);
   font-weight: 400; text-decoration: none;
 }
-.szh-doi { margin-top: 6px; font-size: 12.5px; }
-.szh-licence { margin-top: 15px; font-size: 11.5px; }
+/* 15 px au-dessus du DOI, rien au-dessus de la licence (08.09.2026 ; c'était 6 et 15) :
+   DOI et licence sont deux mentions de même nature et se lisent en paire, détachée de la
+   ligne d'auteur·e·s. Avant, le DOI était collé aux auteur·e·s et la licence flottait
+   seule. Le blanc qui reste entre les deux ne vient pas d'ici mais du `line-height` de
+   .szh-hero-meta — voir sa note. */
+.szh-doi { margin-top: 15px; font-size: 12.5px; }
+.szh-licence { margin-top: 0; font-size: 11.5px; }
 .szh-arrow { width: 11px; height: 11px; opacity: 0.9; flex-shrink: 0; display: block; }
 /* Filigrane de couverture. ⚠ Même règle que le point médian ci-dessus : pas d'`opacity`
    < 1, sinon WeasyPrint dessine le filigrane dans un calque de transparence et son
@@ -399,7 +463,10 @@ ol > li::before {
   content: counter(liste-ol) ".";
   counter-increment: liste-ol;
   position: absolute; left: 0; top: 0;
-  color: var(--c-num-marker); font-weight: 700; font-variant-numeric: tabular-nums;
+  /* Numéro non gras (08.09.2026) : le rang d'une liste numérotée est un repère, pas une
+     mise en avant. La puce ▸ des listes à puces reste en gras, elle : c'est un signe et
+     non un mot, et son poids fait sa lisibilité au corps où elle est dessinée. */
+  color: var(--c-num-marker); font-weight: 400; font-variant-numeric: tabular-nums;
 }
 /* Listes imbriquées : re-numérotation / re-puçage cohérents. */
 li > ul, li > ol { margin: 0.2em 0 0.1em; }
@@ -415,8 +482,15 @@ blockquote p:last-child { margin-bottom: 0; }
   margin: 1em 0; padding: 0 0 0 20px; border: 0;
   border-left: 4px solid var(--c-annual); break-inside: avoid;
 }
+/* Taille du corps, et non plus 1,15 em (08.09.2026) : la mise en avant se lit au filet
+   annuel et au fer à gauche dans une page justifiée, pas à un corps plus gros. Le
+   `font-size: 1em` reste écrit plutôt que supprimé — c'est ici qu'on lira la décision le
+   jour où l'on voudra y revenir. Le fer à gauche, lui, était déjà là : il est confirmé.
+   ⚠ `font-weight: 500` ne pèse rien : Open Sans est instanciée en 400/600/700 (socle.css),
+   et l'appariement CSS ramène 500 sur le 400. À corps égal, il ne reste donc que le filet
+   et l'alignement pour distinguer le bloc — c'est le parti pris, pas un oubli. */
 .hervorhebung > *, .highlight > * {
-  margin: 0; font-size: 1.15em; line-height: 1.4; font-weight: 500;
+  margin: 0; font-size: 1em; line-height: 1.4; font-weight: 500;
   color: var(--c-ink); text-align: left; hyphens: none;
 }
 

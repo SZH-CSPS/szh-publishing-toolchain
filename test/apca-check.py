@@ -70,8 +70,8 @@ TAILLE_GROS_TITRE = 24.0
 # tombe dans la bande 19-24 px, la seule où la graisse change le niveau APCA : `gras` est
 # donc inutile ici, et il faudra le passer le jour où un texte s'y installera.
 TAILLE_HERO_ETIQUETTE = 9.5    # .szh-hero-eyebrow / -dossier / -vol (700, capitales)
-TAILLE_HERO_TITRE = 28.0       # .szh-title
-TAILLE_HERO_SOUSTITRE = 14.5   # .szh-subtitle
+TAILLE_HERO_TITRE = 25.0       # .szh-title
+TAILLE_HERO_SOUSTITRE = 16.0   # .szh-subtitle
 TAILLE_HERO_META = 12.5        # ul.szh-authors et .szh-doi
 TAILLE_HERO_LICENCE = 11.5     # .szh-licence — le plus petit texte du hero avec l'étiquette
 TAILLE_COURANTE = 9.0          # .szh-entete-courante et .szh-pied-courant
