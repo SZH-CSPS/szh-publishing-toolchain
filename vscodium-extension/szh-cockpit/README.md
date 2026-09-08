@@ -103,6 +103,18 @@ lib/
   qualite-image.js      seuils de résolution des images et verdict de qualité
   references.js         insertions d'images et de tableaux dans le markdown, et les
                         grilles d'images (plusieurs images pour une seule figure)
+  reglages-flotte.js    les réglages de l'éditeur imposés à tous les postes : lecture du
+                        gabarit commenté (vscodium-user/settings.json, recopié en défauts
+                        d'extension dans package.json), empreinte des valeurs voulues, et
+                        mesure de ce que l'éditeur refuse en défaut — que le cockpit pose
+                        alors lui-même, sans jamais réécrire le fichier du rédacteur
+  reglages-proteges.js  les réglages qui décrivent la chaîne de publication et non le
+                        confort d'une personne — configuration de l'export OJS, titres de
+                        bibliographie. Déployés par la mise à jour
+                        (windows/settings-protected.json), relayés dans config.json pour la
+                        compilation, affichés en lecture seule tant qu'on n'a pas
+                        déverrouillé, et comparés à la version déployée pour dire quand un
+                        poste diverge
   reserve.js            réserve de fiches hors numéro (dossier parent, _reserve/<revue>/) :
                         mettre de côté, et envoyer une copie à traduire dans la revue sœur
   ressources.js         fiches de « ressources » d'un article (livre, film, intervention

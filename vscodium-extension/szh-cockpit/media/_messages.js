@@ -45,6 +45,9 @@ SZH.MSG = Object.freeze({
 
   // Réglages
   REGLER: 'regler', REGLER_OJS: 'reglerOjs', REGLER_BIBLIO: 'reglerBiblio',
+  // Réglages protégés : le déverrouillage demandé par la page, et l'export du fichier
+  // à transmettre à l'administrateur.
+  DEVERROUILLER: 'deverrouiller', PROTEGES: 'proteges', TELECHARGER_PROTEGES: 'telecharger-proteges',
 
   // Traduction
   COPIER: 'copier', DEEPL: 'deepl', LIEN: 'lien', FOCUS: 'focus', COPIE: 'copie',

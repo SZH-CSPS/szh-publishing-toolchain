@@ -27,6 +27,8 @@ const path = require('path');
 const { revueDEssai, activerHote } = require('./hote-factice');
 
 const LF = '\n';
+const COCKPIT_DOC = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit',
+  'lib', 'documentation-hote.js');
 const REVUE = revueDEssai();
 const HOTE = activerHote(REVUE);
 
@@ -289,4 +291,119 @@ test('un article ordinaire reçoit les fiches, mais aucune rubrique', async () =
   assert.deepStrictEqual(m.rubriques, []);
   assert.strictEqual(m.typesConfig.length, 6,
     'il garde en revanche toutes ses catégories de fiches');
+});
+
+// ---- Aucun libellé français ne traîne dans le formulaire allemand ----
+//
+// Le symptôme rapporté le 08.09.2026 : sur un poste dont l'interface était en allemand, les
+// champs d'ACTUALITÉ restaient en français. Deux causes possibles, et il faut les séparer,
+// car elles ne se réparent pas au même endroit.
+//
+//   1. Le cockpit parlait français alors que les menus parlaient allemand. Ce n'est pas une
+//      traduction manquante : les menus viennent de package.nls*.json (langue d'affichage de
+//      l'éditeur) et les formulaires de lib/i18n.js (cascade de sourceLangue). Cette cause-là
+//      est gardée par test/js/langue-interface.test.js, et se lit sur un poste par
+//      windows/diagnostic.ps1.
+//
+//   2. Un libellé écrit en dur, ou traduit en français dans la table allemande. La parité des
+//      clés (contrats.test.js) ne l'attrape pas : une clé PRÉSENTE en allemand mais dont la
+//      valeur est restée française passe, et un littéral français dans
+//      lib/documentation-hote.js passe aussi. C'est ce que ce contrôle-ci attrape, en
+//      construisant les libellés du formulaire dans les DEUX langues et en exigeant qu'ils
+//      diffèrent.
+//
+// Les seuls libellés autorisés à être identiques : ce qui n'est pas un mot de langue. La
+// liste est courte et explicite — l'allonger doit être un geste réfléchi, pas un réflexe pour
+// faire passer le contrôle.
+const IDENTIQUES_ADMISES = new Set([
+  'https://…',   // le gabarit d'une adresse Internet
+  '–',           // le tiret de l'option vide d'une liste déroulante
+  'DOI',         // sigle
+  'Genre',       // s'écrit ainsi dans les deux langues
+  'Liste'        // idem
+]);
+
+// Les cantons, eux, ne s'inscrivent pas à la main sur cette liste : quatre d'entre eux
+// portent le même nom dans les deux langues (Jura, Neuchâtel, Tessin, Uri) et la table de
+// lib/cantons.js le dit déjà. On la relit plutôt que de recopier les quatre noms, qui
+// deviendraient faux le jour où la table changerait d'avis — sans cesser de faire passer
+// le contrôle, ce qui est le pire des deux mondes.
+for (const c of require(path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit',
+  'lib', 'cantons.js')).CANTONS) {
+  if (c.fr === c.de) { IDENTIQUES_ADMISES.add(c.fr + ' (' + c.code + ')'); }
+}
+
+// Tous les libellés du formulaire d'ACTUALITÉ dans une langue donnée, mis à plat : les
+// textes de la page, les sections et les champs de chaque type de fiche, et les titres des
+// rubriques. On passe par la vraie fonction de l'hôte, pas par la table de traduction : un
+// libellé écrit en dur dans lib/documentation-hote.js doit tomber ici.
+function libellesActualite(langue) {
+  const doc = require(COCKPIT_DOC);
+  process.env.SZH_LANGUE = langue;
+  try {
+    const plat = {};
+    const textes = doc._libelles.textesDocumentation('Zeitschrift');
+    for (const cle of Object.keys(textes)) { plat['texte.' + cle] = String(textes[cle]); }
+    for (const type of doc._libelles.typesRessourceConfig()) {
+      plat['fiche.' + type.valeur + '.section'] = String(type.libelleSection);
+      plat['fiche.' + type.valeur + '.ajouter'] = String(type.libelleAjouter);
+      plat['fiche.' + type.valeur + '.ajouter.tip'] = String(type.libelleAjouterTip);
+      for (const champ of type.champs) {
+        plat['champ.' + champ.cle] = String(champ.libelle);
+        for (const option of (champ.options || [])) {
+          plat['option.' + champ.cle + '.' + option.valeur] = String(option.libelle);
+        }
+      }
+    }
+    for (const type of doc._libelles.typesRubriqueConfig()) {
+      plat['rubrique.' + type.valeur] = String(type.libelleSection);
+    }
+    return plat;
+  } finally { delete process.env.SZH_LANGUE; }
+}
+
+test('ACTUALITÉ : le formulaire allemand ne garde aucun libellé français', () => {
+  const fr = libellesActualite('fr');
+  const de = libellesActualite('de');
+  assert.ok(Object.keys(fr).length > 60,
+    'trop peu de libellés relevés (' + Object.keys(fr).length + ') : le relevé ne prouve rien');
+  // Triés : les listes déroulantes se rangent par ordre alphabétique DANS leur langue —
+  // « Bâle-Campagne » avant « Berne », « Basel-Landschaft » après « Bern » — et l'ordre des
+  // clés diffère donc légitimement d'une langue à l'autre. Ce sont les champs offerts qui
+  // doivent être les mêmes, pas leur rang.
+  assert.deepStrictEqual(Object.keys(de).sort(), Object.keys(fr).sort(),
+    'les deux langues ne proposent pas les mêmes champs');
+  const suspects = [];
+  for (const cle of Object.keys(fr)) {
+    assert.notStrictEqual(fr[cle], '', 'libellé vide : ' + cle);
+    assert.notStrictEqual(fr[cle], 'undefined', 'libellé non fourni par l’hôte : ' + cle);
+    if (fr[cle] === de[cle] && !IDENTIQUES_ADMISES.has(fr[cle])) {
+      suspects.push(cle + ' = ' + JSON.stringify(fr[cle]));
+    }
+  }
+  assert.deepStrictEqual(suspects, [],
+    'libellés identiques dans les deux langues — écrits en dur, ou non traduits :' + LF
+      + suspects.join(LF));
+  // Et l'allemand de la maison s'écrit en « ss ».
+  for (const cle of Object.keys(de)) {
+    assert.strictEqual(de[cle].indexOf('ß'), -1, 'eszett dans le libellé allemand : ' + cle);
+  }
+});
+
+test('ACTUALITÉ : les libellés suivent la langue du cockpit, pas celle du numéro', () => {
+  // La règle en vigueur, écrite noir sur blanc pour qu'un changement d'avis soit un geste
+  // délibéré : ce formulaire est une interface, il parle donc la langue de la personne qui
+  // s'en sert. La fixture est une Revue française ; les libellés doivent pourtant sortir en
+  // allemand dès que le cockpit est en allemand.
+  const de = libellesActualite('de');
+  assert.strictEqual(de['fiche.livre.section'], 'Bücher');
+  assert.strictEqual(de['champ.canton'], 'Kanton');
+  assert.strictEqual(de['rubrique.tour-horizon'], 'Rundschau');
+  // Les cantons aussi, jusque dans les options de la liste déroulante.
+  const cantons = Object.keys(de).filter((c) => c.indexOf('option.canton.') === 0);
+  assert.ok(cantons.length >= 27, 'la liste des cantons est incomplète : ' + cantons.length);
+  // Le code suit le nom : c'est lui qui s'écrit dans la fiche (canton="BL"), et le voir à
+  // la saisie évite d'avoir à deviner lequel des vingt-six a été retenu.
+  assert.strictEqual(de['option.canton.BL'], 'Basel-Landschaft (BL)');
+  assert.strictEqual(libellesActualite('fr')['option.canton.BL'], 'Bâle-Campagne (BL)');
 });

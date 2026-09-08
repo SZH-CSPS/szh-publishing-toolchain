@@ -37,6 +37,21 @@ label input { accent-color: var(--accent); }
 /* Clé d'une rubrique livrée : lisible, pas modifiable — c'est l'intitulé qui se corrige. */
 .regl-grille input.fige { background: transparent; border-color: transparent;
   color: var(--encre-2); font-weight: 700; }
+
+/* ---- Les réglages protégés ----
+   Verrouillés, les deux blocs de la chaîne de publication se lisent mais ne se saisissent
+   plus : pas de cadre de champ, pas de fond de saisie, le curseur du texte ordinaire. Le
+   contraste du texte, lui, ne baisse PAS — un réglage qu'on ne peut pas changer doit rester
+   lisible, et un gris pâle sur gris pâle ne se lit plus. C'est le cadre qui disparaît, pas
+   le contenu. Même parti que la clé de rubrique livrée, figée depuis plus longtemps. */
+.fige { background: transparent; border-color: transparent; cursor: default; }
+input.fige, select.fige, textarea.fige { box-shadow: none; }
+button.fige { opacity: .5; }
+.regl-proteges-barre {
+  display: flex; align-items: center; gap: var(--e3); flex-wrap: wrap;
+  margin-top: var(--e2);
+}
+.regl-proteges-barre label { display: flex; align-items: center; gap: var(--e1); }
 .regl-grille input[type="checkbox"] { justify-self: center; accent-color: var(--accent); }
 .regl-note { font-size: var(--t-mini); color: var(--encre-2); margin: var(--e1) 0 0; }
 .regl-ajouter { margin-top: var(--e2); padding: .3em .8em; font: inherit; cursor: pointer;

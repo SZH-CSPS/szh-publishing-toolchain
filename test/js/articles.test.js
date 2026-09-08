@@ -508,3 +508,185 @@ test('« Envoyer à l’auteur » : le brouillon parle la langue de l’auteur',
   assert.ok(uri.indexOf('mailto:anne@example.ch,beat@example.ch?subject=') === 0);
   assert.ok(uri.indexOf('%0A') !== -1, 'les retours à la ligne du corps ne sont pas encodés');
 });
+
+// ---- Les deux interrupteurs d'affichage de la vue ----
+//
+// Une carte porte l'aperçu complet des métadonnées et la liste des tâches à cocher : neuf
+// lignes et quatre cases, fois le nombre d'articles du numéro. Sur un numéro complet, la
+// liste devient longue à parcourir. Deux boutons la raccourcissent — sans rien retirer du
+// numéro : c'est ce que l'on choisit de LIRE qui change, jamais ce qui est écrit.
+//
+// Ils vivent dans la configuration du poste et non dans les réglages de l'éditeur, que la
+// mise à jour réécrit en entier (même motif que la langue, voir langue-interface.test.js).
+
+function apercuDe(charge, slug) {
+  const ligne = charge.lignes.find((l) => l.cle === slug);
+  assert.ok(ligne, 'article absent de la charge : ' + slug);
+  const par = {};
+  for (const l of ligne.apercu.lignes) { par[l.libelle] = l.valeurs.map((v) => v.marque); }
+  return { ligne: ligne, marques: par };
+}
+
+function derniereCharge(p) {
+  return p.messages.filter((m) => m.type === 'valeurs').pop();
+}
+
+// Les deux interrupteurs remis à « tout montrer », quoi qu'il soit arrivé avant : ce sont
+// des réglages de poste, ils survivent au contrôle qui les allume, et un contrôle qui
+// échoue en laissant l'un allumé ferait tomber les suivants pour la mauvaise raison.
+async function eteindreVue(p) {
+  const etat = (derniereCharge(p).boutons || []);
+  for (const id of ['cacher-taches', 'cacher-traductions']) {
+    const bouton = etat.find((b) => b.id === id);
+    if (bouton && /Afficher/.test(bouton.libelle)) {
+      await p._recepteur({ type: 'commande', id: id });
+    }
+  }
+}
+
+test('vue Articles : les deux interrupteurs d’affichage sont offerts, et disent le geste', async () => {
+  await HOTE.executer('szh.vueArticles');
+  const p = HOTE.panneauDeType('szhVueArticles');
+  await p._recepteur({ type: 'pret' });
+  const charge = derniereCharge(p);
+  const boutons = {};
+  for (const b of charge.boutons) { boutons[b.id] = b; }
+  for (const id of ['cacher-taches', 'cacher-traductions']) {
+    assert.ok(boutons[id], 'bouton absent de la barre : ' + id);
+    assert.ok(boutons[id].libelle && boutons[id].tip,
+      'bouton sans libellé ni infobulle : ' + id);
+  }
+  // Le libellé annonce le geste à venir, jamais l'état courant : rien n'est caché pour
+  // l'instant, les deux boutons proposent donc de cacher.
+  assert.match(boutons['cacher-taches'].libelle, /Cacher/);
+  assert.match(boutons['cacher-traductions'].libelle, /Cacher/);
+});
+
+test('vue Articles : « Cacher les tâches » raccourcit la carte sans rien décocher', async () => {
+  const sidecar = path.join(REVUE, 'articles', '01-essai', '01-essai.taches.yaml');
+  fs.writeFileSync(sidecar, ['faites:', '- version-finale', ''].join(LF));
+
+  await HOTE.executer('szh.vueArticles');
+  const p = HOTE.panneauDeType('szhVueArticles');
+  await p._recepteur({ type: 'pret' });
+  const avant = derniereCharge(p);
+  assert.ok(avant.lignes.every((l) => l.taches.length > 0), 'les tâches manquaient déjà');
+
+  await p._recepteur({ type: 'commande', id: 'cacher-taches' });
+  const apres = derniereCharge(p);
+  assert.ok(apres.lignes.every((l) => l.taches.length === 0),
+    'des tâches sont encore envoyées à la page : la carte ne raccourcit pas');
+  // Le bouton propose maintenant le geste inverse, sans quoi le retour serait introuvable.
+  assert.match(apres.boutons.find((b) => b.id === 'cacher-taches').libelle, /Afficher/);
+  // Et rien n'a été décoché au passage : le sidecar de l'article est intact.
+  assert.match(fs.readFileSync(sidecar, 'utf8'), /version-finale/,
+    'cacher les tâches a touché à leur état');
+
+  // Le choix a été écrit dans la configuration du poste, sans emporter ses voisines.
+  const cfg = JSON.parse(fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8'));
+  assert.strictEqual(cfg.vueArticles.cacherTaches, true);
+  assert.strictEqual(cfg.vueArticles.cacherTraductions, false);
+
+  // Rallumer les remet, toutes, dans leur état.
+  await p._recepteur({ type: 'commande', id: 'cacher-taches' });
+  const ligne = derniereCharge(p).lignes.find((l) => l.cle === '01-essai');
+  assert.strictEqual(ligne.taches.length, 4);
+  assert.strictEqual(ligne.taches.find((t) => t.id === 'version-finale').faite, true);
+  fs.rmSync(sidecar, { force: true });
+});
+
+test('vue Articles : « Cacher les traductions » ne laisse que la langue de l’article', async () => {
+  // Une fiche bilingue, et une langue déclarée qui n'est PAS celle du numéro : c'est le seul
+  // cas où l'on voit laquelle des deux le bouton retient.
+  const fiche = path.join(REVUE, 'articles', '01-essai', '01-essai.meta.yaml');
+  const original = fs.readFileSync(fiche, 'utf8');
+  fs.writeFileSync(fiche, ['type: article', 'lang: de', 'doi: "10.57161/x"',
+    'title:', '  fr: "Titre"', '  de: "Titel"',
+    'subtitle:', '  fr: "Sous-titre"', '  de: "Untertitel"',
+    'resume:', '  fr: "Un résumé."', '  de: "Eine Zusammenfassung."',
+    'keywords:', '  fr: ["école", "accès"]', '  de: ["Schule", "Zugang"]',
+    'author:', '- prenom: "Anne"', '  nom: "Dupont"', ''].join(LF));
+  const bilingues = ['Titre', 'Sous-titre', 'Résumé', 'Mots-clés'];
+  await HOTE.executer('szh.vueArticles');
+  const p = HOTE.panneauDeType('szhVueArticles');
+  try {
+    await p._recepteur({ type: 'pret' });
+    const avant = apercuDe(derniereCharge(p), '01-essai');
+    for (const libelle of bilingues) {
+      assert.deepStrictEqual(avant.marques[libelle], ['FR', 'DE'],
+        'les deux langues devraient se lire sur « ' + libelle + ' »');
+    }
+
+    await p._recepteur({ type: 'commande', id: 'cacher-traductions' });
+    const apres = apercuDe(derniereCharge(p), '01-essai');
+    for (const libelle of bilingues) {
+      assert.deepStrictEqual(apres.marques[libelle], ['DE'],
+        'la ligne « ' + libelle + ' » ne s’est pas réduite à la langue de l’article');
+    }
+    // Les lignes sans langue ne bougent pas : l'article reste identifiable.
+    for (const libelle of ['Rubrique', 'Langue', 'Auteur·e·s', 'Licence', 'DOI']) {
+      assert.ok(apres.marques[libelle], 'ligne perdue au passage : ' + libelle);
+    }
+    // Et la case « pas de DOI », qui vit dans le même bloc, reste offerte.
+    assert.ok(apres.ligne.sansDoi, 'la case « pas de DOI » a disparu avec les traductions');
+    // Rien n'a été écrit dans la fiche : seul l'affichage a changé.
+    assert.ok(fs.readFileSync(fiche, 'utf8').indexOf('fr: "Titre"') !== -1,
+      'le texte de l’autre langue a été touché');
+
+    await p._recepteur({ type: 'commande', id: 'cacher-traductions' });
+    assert.deepStrictEqual(apercuDe(derniereCharge(p), '01-essai').marques['Titre'],
+      ['FR', 'DE'], 'le bouton ne remontre plus rien');
+  } finally {
+    // L'interrupteur est un réglage de poste : il survit à ce contrôle, et une sortie par
+    // exception le laisserait allumé pour les suivants.
+    await eteindreVue(p);
+    fs.writeFileSync(fiche, original);
+  }
+});
+
+test('vue Articles : sans langue déclarée, c’est celle du numéro qui reste', async () => {
+  // Le repli de la compilation, et donc la langue dans laquelle l'article paraîtra. Montrer
+  // autre chose que ce qui s'imprimera serait le pire des cas.
+  const fiche = path.join(REVUE, 'articles', '01-essai', '01-essai.meta.yaml');
+  const original = fs.readFileSync(fiche, 'utf8');
+  fs.writeFileSync(fiche, ['type: article', 'doi: "10.57161/x"',
+    'title:', '  fr: "Titre"', '  de: "Titel"', 'author:', '- nom: "SZH"', ''].join(LF));
+  await HOTE.executer('szh.vueArticles');
+  const p = HOTE.panneauDeType('szhVueArticles');
+  try {
+    await p._recepteur({ type: 'pret' });
+    await eteindreVue(p);
+    await p._recepteur({ type: 'commande', id: 'cacher-traductions' });
+    assert.deepStrictEqual(apercuDe(derniereCharge(p), '01-essai').marques['Titre'], ['FR'],
+      'la langue du numéro n’a pas servi de repli');
+  } finally {
+    await eteindreVue(p);
+    fs.writeFileSync(fiche, original);
+  }
+});
+
+test('vue Articles : les deux interrupteurs sont indépendants et se souviennent', async () => {
+  await HOTE.executer('szh.vueArticles');
+  const p = HOTE.panneauDeType('szhVueArticles');
+  await p._recepteur({ type: 'commande', id: 'cacher-taches' });
+  await p._recepteur({ type: 'commande', id: 'cacher-traductions' });
+  const cfg = JSON.parse(fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8'));
+  assert.deepStrictEqual(cfg.vueArticles, { cacherTaches: true, cacherTraductions: true });
+
+  // Le choix ne vit pas dans le panneau : la vue rouverte le relit.
+  await HOTE.executer('szh.vueArticles');
+  await p._recepteur({ type: 'pret' });
+  const rouvert = derniereCharge(p);
+  assert.ok(rouvert.lignes.every((l) => l.taches.length === 0));
+  assert.match(rouvert.boutons.find((b) => b.id === 'cacher-traductions').libelle, /Afficher/);
+
+  // Et un identifiant de bouton inconnu ne touche à rien.
+  const avant = fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8');
+  await p._recepteur({ type: 'commande', id: 'cacher-la-lune' });
+  assert.strictEqual(fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8'), avant);
+
+  await eteindreVue(p);
+  assert.deepStrictEqual(
+    JSON.parse(fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8')).vueArticles,
+    { cacherTaches: false, cacherTraductions: false });
+});

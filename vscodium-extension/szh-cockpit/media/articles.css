@@ -13,8 +13,15 @@ body { --page-max: 60rem; }
   text-transform: uppercase; color: var(--encre-2); }
 .bloc > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .bloc[open] > summary { border-bottom: 1px solid var(--filet); }
-.bloc > .szh-barre { padding: var(--e3) var(--e3) 0; }
-.bloc > #numero { padding: 0 var(--e3) var(--e4); max-width: 38rem; }
+/* La bande blanche du bouton « Enregistrer » : le fond de la barre (--fond) tranche sur
+   celui du bloc (--surface), elle se lit donc comme une bande à part entière, et le bouton
+   doit y être centré. Il y flottait haut, et pour deux raisons qui se cumulaient : le socle
+   de .szh-barre pose une marge basse, qui appartient au bloc et non à la bande, et le
+   calage local annulait le padding bas. La marge est donc reprise ici, l'espace avant le
+   premier champ passe au formulaire, et la bande n'a plus qu'un padding égal en haut et en
+   bas. */
+.bloc > .szh-barre { padding: var(--e3); margin-bottom: 0; }
+.bloc > #numero { padding: var(--e4) var(--e3); max-width: 38rem; }
 
 /* ---- L'aperçu des métadonnées sur la carte ----
    Non éditable, et cela doit se voir : pas de cadre de champ, pas de fond de saisie, rien

@@ -7,13 +7,25 @@
 // « vscode » n'existe pas. Le module doit se charger quand même : sans cela, tout ce qui
 // traduit un message devient inéprouvable et lib/export-ojs.js n'est plus lançable à la
 // main. La langue retombe alors sur SZH_LANGUE, puis sur le français.
+const fs = require('fs');
+const path = require('path');
 let vscode = null;
 try { vscode = require('vscode'); } catch (e) { /* hors éditeur */ }
 
-// Toutes les chaînes visibles passent par T(clé[, args]). La langue vient du réglage
-// szh.langue s'il est défini, sinon de celle de VSCodium (de -> de, tout le reste -> fr).
-// Les titres de commandes de package.json, eux, passent par %clé% et package.nls*.json,
-// que VSCodium résout selon sa propre langue d'interface et non selon szh.langue.
+// Toutes les chaînes visibles passent par T(clé[, args]). La langue vient de sourceLangue(),
+// tout en bas de ce fichier, qui interroge six sources dans l'ordre et dit laquelle a
+// tranché.
+//
+// ⚠ Les titres de commandes, les noms de vues et les descriptions de réglages déclarés dans
+//   package.json ne passent PAS par ici : ils passent par %clé% et package.nls*.json, que
+//   VSCodium résout selon SA PROPRE langue d'affichage (argv.json, « locale ») et non selon
+//   la langue du cockpit. Ce sont deux mécanismes indépendants, et c'est la seule façon
+//   d'obtenir une interface mi-allemande mi-française : des menus dans une langue et des
+//   formulaires dans l'autre. Les deux se rejoignent parce que le formulaire de réglages
+//   écrit les deux d'un même geste (extension.js, ecrireLocaleArgv) et parce que la langue
+//   d'affichage de VSCodium est l'une des sources ci-dessous. Quand elles divergent quand
+//   même — réglage posé à la main, pack de langue absent, SZH_LANGUE traînant dans
+//   l'environnement — c'est windows/diagnostic.ps1 qui les met côte à côte.
 
 const TEXTES_COCKPIT = {
   fr: {
@@ -111,6 +123,24 @@ const TEXTES_COCKPIT = {
     'ojs.revue.fr': 'Revue suisse de pédagogie spécialisée',
     'ojs.revue.de': 'Schweizerische Zeitschrift für Heilpädagogik',
     'ojs.titre': 'Export OJS',
+    // Les réglages protégés : l'export OJS et le titre de la bibliographie. Ils décrivent la
+    // chaîne de publication et non le confort d'une personne — une rubrique renommée sur un
+    // seul poste fait atterrir ses articles dans la mauvaise section de la revue. D'où la
+    // lecture seule, et un déverrouillage qui dit ce qu'il engage.
+    'regl.proteges.titre': 'Réglages de la rédaction',
+    'regl.proteges.verrouille': 'Ces réglages valent pour toute la rédaction et sont déployés sur tous les postes : ils se lisent ici, ils ne se modifient pas.',
+    'regl.proteges.deverrouiller': 'Déverrouiller ces réglages',
+    'regl.proteges.question': 'Déverrouiller les réglages de la chaîne de publication ?',
+    'regl.proteges.detail': 'Ces réglages valent pour toute la rédaction. Une modification faite ici ne vaudra que sur ce poste, et la prochaine mise à jour de l’outil la remplacera par celle de tout le monde. Prévenez la personne qui administre l’outil : c’est elle qui déploie un changement pour toute l’équipe. Vous pouvez lui envoyer vos valeurs avec le bouton « Télécharger les réglages protégés ».',
+    'regl.proteges.confirmer': 'Déverrouiller',
+    'regl.proteges.refus': 'Ces réglages sont verrouillés. Cochez « Déverrouiller ces réglages » pour les modifier.',
+    'regl.proteges.bloc.ojs': 'Export OJS',
+    'regl.proteges.bloc.biblio': 'Titre de la bibliographie',
+    'regl.proteges.diverge': '{0} : ce poste ne porte plus les valeurs de la rédaction. Envoyez-les à la personne qui administre l’outil ; sans cela, la prochaine mise à jour les remplacera.',
+    'regl.proteges.telecharger': 'Télécharger les réglages protégés',
+    'regl.proteges.telecharger.tip': 'Enregistrer ces réglages dans un fichier, à envoyer à la personne qui administre l’outil pour qu’elle les déploie sur tous les postes.',
+    'regl.proteges.telecharge': 'Réglages protégés enregistrés dans « {0} ».',
+    'regl.proteges.lisezmoi': 'Réglages de la chaîne de publication relevés sur un poste. À déployer pour toute la rédaction après relecture. Les clés commençant par un tiret bas ne sont pas lues.',
     'ojs.intro': 'OJS reconnaît un genre de fichier, un groupe d’auteur et une rubrique à leur intitulé exact. Un intitulé approximatif ne provoque pas d’erreur : il crée un doublon dans OJS, ou range l’article ailleurs. Les valeurs relevées sur l’instance sont déjà là ; ce qui reste vide est à lire dans OJS, et un champ obligatoire vide arrête l’export au lieu d’envoyer une valeur inventée.',
     'ojs.revues': 'Valeurs propres à chaque revue',
     'ojs.vide': 'à relever dans OJS',
@@ -359,6 +389,17 @@ const TEXTES_COCKPIT = {
     'art.taches.titre': 'Tâches par article',
     'art.taches.reglage': 'Tâches',
     'art.taches.reglage.tip': 'Régler les intitulés des tâches, pour cette revue comme pour l’autre.',
+    // Les deux interrupteurs d'affichage de la vue. Le libellé annonce le geste à venir et
+    // non l'état courant : « Cacher les tâches » sur une liste qui n'en montre plus se
+    // lirait comme une case cochée, et le chemin du retour disparaîtrait.
+    'art.taches.cacher': 'Cacher les tâches',
+    'art.taches.cacher.tip': 'Retirer la liste des tâches de chaque carte : rien n’est décoché, la liste est seulement plus courte à lire.',
+    'art.taches.afficher': 'Afficher les tâches',
+    'art.taches.afficher.tip': 'Remontrer la liste des tâches à cocher sur chaque carte.',
+    'art.trad.cacher': 'Cacher les traductions',
+    'art.trad.cacher.tip': 'N’afficher que les champs dans la langue de l’article : titre, sous-titre, résumé et mots-clés de l’autre langue restent écrits, ils ne sont plus montrés ici.',
+    'art.trad.afficher': 'Afficher les traductions',
+    'art.trad.afficher.tip': 'Remontrer les champs traduits dans l’autre langue, à côté de ceux de la langue de l’article.',
     'art.taches.aide': 'Ces intitulés décrivent le processus d’une revue et non un numéro : ils valent pour tous ses numéros, et chaque revue a sa liste. Ils vivent dans les réglages du poste ; l’état coché, lui, vit dans le dossier de l’article.',
     'art.taches.fr': 'Intitulé français',
     'art.taches.de': 'Intitulé allemand',
@@ -1092,6 +1133,10 @@ const TEXTES_COCKPIT = {
     'cmyk.err': 'Conversion CMJN impossible : {0}',
     'cmyk.err.wsl': 'Les images d’imprimerie n’ont pas pu être converties : l’outil de traitement n’a pas répondu. Elles restent telles quelles, et le PDF peut sortir avec des couleurs fausses. Réessayez, ou lancez « Mise à jour de l’outil Revue » depuis le menu Démarrer.',
     'regl.langue': 'Langue de l’interface',
+    // Ne paraît que si les menus de VSCodium et les textes du cockpit divergent : deux
+    // mécanismes indépendants les décident (voir l’en-tête de ce fichier), et une interface
+    // à moitié dans chaque langue ne se devine pas, elle se dit.
+    'regl.langue.discordance': 'Les formulaires sont en {0}, les menus de VSCodium en {1}. Choisissez la langue ci-dessus, puis redémarrez VSCodium : les deux se remettront d’accord.',
     'apercu.barre.html': '$(preview) Aperçu : HTML',
     'apercu.barre.pdf': '$(file-pdf) Aperçu : PDF',
     'apercu.barre.tooltip': 'Basculer l’aperçu HTML ⇄ PDF (tous les articles)',
@@ -1330,6 +1375,20 @@ const TEXTES_COCKPIT = {
     'ojs.revue.fr': 'Revue suisse de pédagogie spécialisée',
     'ojs.revue.de': 'Schweizerische Zeitschrift für Heilpädagogik',
     'ojs.titre': 'OJS-Export',
+    'regl.proteges.titre': 'Einstellungen der Redaktion',
+    'regl.proteges.verrouille': 'Diese Einstellungen gelten für die ganze Redaktion und werden auf allen Arbeitsplätzen verteilt: sie werden hier gelesen, nicht geändert.',
+    'regl.proteges.deverrouiller': 'Diese Einstellungen entsperren',
+    'regl.proteges.question': 'Die Einstellungen der Publikationskette entsperren?',
+    'regl.proteges.detail': 'Diese Einstellungen gelten für die ganze Redaktion. Eine hier vorgenommene Änderung gilt nur auf diesem Arbeitsplatz, und die nächste Aktualisierung des Werkzeugs ersetzt sie durch die für alle gültige. Melden Sie sich bei der Person, die das Werkzeug betreut: sie verteilt eine Änderung an das ganze Team. Mit der Schaltfläche «Geschützte Einstellungen herunterladen» können Sie ihr Ihre Werte schicken.',
+    'regl.proteges.confirmer': 'Entsperren',
+    'regl.proteges.refus': 'Diese Einstellungen sind gesperrt. Kreuzen Sie «Diese Einstellungen entsperren» an, um sie zu ändern.',
+    'regl.proteges.bloc.ojs': 'OJS-Export',
+    'regl.proteges.bloc.biblio': 'Titel des Literaturverzeichnisses',
+    'regl.proteges.diverge': '{0}: dieser Arbeitsplatz trägt nicht mehr die Werte der Redaktion. Schicken Sie sie der Person, die das Werkzeug betreut; sonst ersetzt die nächste Aktualisierung sie.',
+    'regl.proteges.telecharger': 'Geschützte Einstellungen herunterladen',
+    'regl.proteges.telecharger.tip': 'Diese Einstellungen in eine Datei speichern, die der Person zu schicken ist, die das Werkzeug betreut, damit sie sie auf allen Arbeitsplätzen verteilt.',
+    'regl.proteges.telecharge': 'Geschützte Einstellungen in «{0}» gespeichert.',
+    'regl.proteges.lisezmoi': 'Einstellungen der Publikationskette, von einem Arbeitsplatz erhoben. Nach Durchsicht für die ganze Redaktion zu verteilen. Schlüssel, die mit einem Unterstrich beginnen, werden nicht gelesen.',
     'ojs.intro': 'OJS erkennt eine Dateigattung, eine Autorengruppe und eine Rubrik an ihrer genauen Bezeichnung. Eine ungefähre Bezeichnung führt nicht zu einem Fehler: sie erzeugt in OJS ein Duplikat oder legt den Artikel anderswo ab. Die auf der Instanz abgelesenen Werte stehen bereits hier; was leer bleibt, ist in OJS nachzulesen, und ein leeres Pflichtfeld hält den Export an, statt einen erfundenen Wert zu senden.',
     'ojs.revues': 'Werte je Zeitschrift',
     'ojs.vide': 'in OJS ablesen',
@@ -1557,6 +1616,14 @@ const TEXTES_COCKPIT = {
     'art.taches.titre': 'Aufgaben pro Artikel',
     'art.taches.reglage': 'Aufgaben',
     'art.taches.reglage.tip': 'Die Bezeichnungen der Aufgaben festlegen, für diese wie für die andere Zeitschrift.',
+    'art.taches.cacher': 'Aufgaben ausblenden',
+    'art.taches.cacher.tip': 'Die Aufgabenliste von jeder Karte nehmen: nichts wird abgehakt, die Liste ist nur kürzer zu lesen.',
+    'art.taches.afficher': 'Aufgaben einblenden',
+    'art.taches.afficher.tip': 'Die Liste der abzuhakenden Aufgaben wieder auf jeder Karte zeigen.',
+    'art.trad.cacher': 'Übersetzungen ausblenden',
+    'art.trad.cacher.tip': 'Nur die Felder in der Sprache des Artikels zeigen: Titel, Untertitel, Zusammenfassung und Schlagwörter der anderen Sprache bleiben geschrieben, sie werden hier nur nicht mehr gezeigt.',
+    'art.trad.afficher': 'Übersetzungen einblenden',
+    'art.trad.afficher.tip': 'Die übersetzten Felder der anderen Sprache wieder neben denen der Artikelsprache zeigen.',
     'art.taches.aide': 'Diese Bezeichnungen beschreiben den Ablauf einer Zeitschrift und nicht einer Ausgabe: sie gelten für alle ihre Ausgaben, und jede Zeitschrift hat ihre eigene Liste. Sie stehen in den Einstellungen des Arbeitsplatzes; der Häkchenstand dagegen steht im Ordner des Artikels.',
     'art.taches.fr': 'Französische Bezeichnung',
     'art.taches.de': 'Deutsche Bezeichnung',
@@ -2260,6 +2327,7 @@ const TEXTES_COCKPIT = {
     'cmyk.err': 'CMYK-Konvertierung nicht möglich: {0}',
     'cmyk.err.wsl': 'Die Druckbilder konnten nicht umgewandelt werden: das Verarbeitungswerkzeug hat nicht geantwortet. Sie bleiben unverändert, und das PDF kann mit falschen Farben herauskommen. Versuchen Sie es erneut, oder starten Sie «Aktualisierung des Redaktionstools» über das Startmenü.',
     'regl.langue': 'Sprache der Oberfläche',
+    'regl.langue.discordance': 'Die Formulare sind auf {0}, die Menüs von VSCodium auf {1}. Wählen Sie oben die Sprache und starten Sie VSCodium neu: dann stimmen beide wieder überein.',
     'apercu.barre.html': '$(preview) Vorschau: HTML',
     'apercu.barre.pdf': '$(file-pdf) Vorschau: PDF',
     'apercu.barre.tooltip': 'Vorschau HTML ⇄ PDF umschalten (alle Artikel)',
@@ -2383,18 +2451,103 @@ const TEXTES_COCKPIT = {
   }
 };
 
-function langueCockpit() {
-  // SZH_LANGUE impose la langue, comme pour les filtres du pipeline : c'est de quoi lire
-  // un même message dans les deux langues sans changer le réglage du poste. Jamais posée
-  // sur un poste de rédaction.
+// ---- Le choix de la langue -------------------------------------------------------
+//
+// Six sources, dans cet ordre, et la première qui répond gagne. L'ordre n'est pas
+// arbitraire : il va du plus explicite au plus deviné.
+//
+//   1. SZH_LANGUE        un essai, pour lire un même message dans les deux langues sans
+//                        toucher au poste. Jamais posée sur un poste de rédaction — et si
+//                        elle traîne quand même dans l'environnement, elle explique à elle
+//                        seule un cockpit qui refuse de suivre le reste de l'interface.
+//   2. szh.langue        le choix du rédacteur, fait dans le formulaire de réglages.
+//   3. config.json       le MÊME choix, écrit une seconde fois hors de %APPDATA%. Ce n'est
+//                        pas une redondance de confort : windows/update.ps1 réécrit
+//                        entièrement les réglages de l'éditeur à chaque mise à jour, et le
+//                        choix du rédacteur disparaissait avec eux — l'outil remis à jour
+//                        reparlait français sur un poste allemand.
+//   4. state.json        la langue du dernier lanceur ouvert (« Zeitschriften SZH » ->
+//                        allemand, « Revues SZH » -> français), écrite par
+//                        Set-SzhLangueProduit. C'est le seul signal automatique qui vaille
+//                        quelque chose ici : Windows et VSCodium sont en anglais sur ces
+//                        postes, et ne disent donc rien de l'équipe qui s'en sert.
+//   5. VSCodium          sa langue d'affichage, quand un pack de langue est installé.
+//   6. Windows           sa langue d'affichage, par la locale du système.
+//
+// … et le français en dernier recours, faute de mieux.
+const BASE_POSTE = 'C:\\ProgramData\\SZH';
+
+// Mêmes surcharges que partout ailleurs dans le cockpit : SZH_CONFIG_OJS pour config.json
+// (lib/archivage.js l'emploie déjà), SZH_ETAT_POSTE pour state.json. Des fonctions et non
+// des constantes, pour voir une surcharge posée après le chargement du module — c'est
+// ainsi que les tests travaillent sans jamais toucher C:\ProgramData\SZH.
+function cheminConfigDuPoste() {
+  return String(process.env.SZH_CONFIG_OJS || '').trim() || path.join(BASE_POSTE, 'config.json');
+}
+function cheminEtatDuPoste() {
+  return String(process.env.SZH_ETAT_POSTE || '').trim() || path.join(BASE_POSTE, 'state.json');
+}
+
+// La clé `langue` d'un de ces deux fichiers, ou '' — fichier absent, illisible, valeur
+// inconnue. Le BOM est retiré avant l'analyse : Save-SzhState en pose un, et JSON.parse
+// le refuse (même contournement que lib/archivage.js).
+function langueDansJson(chemin) {
+  try {
+    const brut = String(fs.readFileSync(chemin, 'utf8')).replace(/^﻿/, '');
+    const v = String((JSON.parse(brut) || {}).langue || '').trim().toLowerCase().slice(0, 2);
+    return (v === 'fr' || v === 'de') ? v : '';
+  } catch (e) { return ''; }
+}
+
+// La langue d'affichage de Windows. Node la donne par sa locale par défaut, qui vient de
+// l'ICU du système ; LANG et LC_ALL servent de repli hors Windows, pour le harnais de test.
+function langueDuSysteme() {
+  let brut = '';
+  try { brut = String(Intl.DateTimeFormat().resolvedOptions().locale || ''); } catch (e) { brut = ''; }
+  if (brut === '') { brut = String(process.env.LANG || process.env.LC_ALL || ''); }
+  const v = brut.toLowerCase().slice(0, 2);
+  return (v === 'fr' || v === 'de') ? v : '';
+}
+
+// T() appelle sourceLangue() à chaque chaîne traduite : les deux fichiers du poste sont
+// donc lus une seule fois et gardés. oublierLanguePoste() jette ce souvenir — le
+// formulaire de réglages l'appelle après avoir écrit, et les tests après avoir posé un
+// config.json.
+let languesDuPoste = null;
+function oublierLanguePoste() { languesDuPoste = null; }
+function lireLanguesDuPoste() {
+  if (!languesDuPoste) {
+    languesDuPoste = {
+      config: langueDansJson(cheminConfigDuPoste()),
+      etat: langueDansJson(cheminEtatDuPoste()),
+      systeme: langueDuSysteme()
+    };
+  }
+  return languesDuPoste;
+}
+
+// -> { langue, source }. `source` ne sert qu'à se faire comprendre : le formulaire de
+// réglages l'affiche et windows/diagnostic.ps1 le recoupe, pour qu'une interface
+// mi-allemande mi-française se diagnostique en la regardant plutôt qu'en la devinant.
+function sourceLangue() {
   const impose = String(process.env.SZH_LANGUE || '').toLowerCase().slice(0, 2);
-  if (impose === 'fr' || impose === 'de') { return impose; }
+  if (impose === 'fr' || impose === 'de') { return { langue: impose, source: 'essai' }; }
   let choix = '';
   try { choix = String(vscode.workspace.getConfiguration('szh').get('langue', '') || ''); }
-  catch (e) { /* configuration indisponible : repli env */ }
-  if (choix === 'fr' || choix === 'de') { return choix; }
-  const env = String((vscode && vscode.env && vscode.env.language) || 'fr').toLowerCase();
-  return env.indexOf('de') === 0 ? 'de' : 'fr';
+  catch (e) { /* configuration indisponible : on descend d'un cran */ }
+  if (choix === 'fr' || choix === 'de') { return { langue: choix, source: 'reglage' }; }
+  const poste = lireLanguesDuPoste();
+  if (poste.config) { return { langue: poste.config, source: 'poste' }; }
+  if (poste.etat) { return { langue: poste.etat, source: 'lanceur' }; }
+  const env = String((vscode && vscode.env && vscode.env.language) || '').toLowerCase();
+  if (env.indexOf('de') === 0) { return { langue: 'de', source: 'editeur' }; }
+  if (env.indexOf('fr') === 0) { return { langue: 'fr', source: 'editeur' }; }
+  if (poste.systeme) { return { langue: poste.systeme, source: 'windows' }; }
+  return { langue: 'fr', source: 'defaut' };
+}
+
+function langueCockpit() {
+  return sourceLangue().langue;
 }
 
 // TL('de', 'clé', [args]) -> texte dans une langue imposée, avec repli sur le français
@@ -2414,4 +2567,4 @@ function T(cle, args) {
   return TL(langueCockpit(), cle, args);
 }
 
-module.exports = { TEXTES_COCKPIT, T, TL, langueCockpit };
+module.exports = { TEXTES_COCKPIT, T, TL, langueCockpit, sourceLangue, oublierLanguePoste };

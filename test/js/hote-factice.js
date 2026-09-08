@@ -30,6 +30,23 @@ const LF = String.fromCharCode(10);
 // edudoc.ch — la panne qui a motivé ce garde-fou (voir plus bas, cache des auteur·e·s).
 process.env.SZH_RESEAU_INTERDIT = '1';
 
+// Les deux fichiers du poste — C:\ProgramData\SZH\config.json et state.json — sont
+// détournés vers des fichiers vides, pour la même raison que le garde-fou anti-réseau
+// juste au-dessus : un test ne doit rien lire de la machine qui l'exécute. Le second est
+// arrivé avec la cascade de langue (lib/i18n.js) : state.json porte la langue du dernier
+// lanceur ouvert, et sans ce détour la suite entière basculait en allemand sur un poste
+// allemand — mille assertions comparées à des textes français. Le premier ferait de même
+// le jour où un rédacteur cache les tâches de la vue « Articles », choix qui vit dans
+// config.json. Posés seulement s'ils ne le sont pas déjà : plusieurs contrôles pointent
+// SZH_CONFIG_OJS vers leur propre fichier, et c'est le leur qui doit gagner.
+const POSTE_ESSAI = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-poste-'));
+for (const [variable, nom] of [['SZH_CONFIG_OJS', 'config.json'], ['SZH_ETAT_POSTE', 'state.json']]) {
+  if (process.env[variable]) { continue; }
+  const chemin = path.join(POSTE_ESSAI, nom);
+  fs.writeFileSync(chemin, '{}' + LF);
+  process.env[variable] = chemin;
+}
+
 // Une revue minimale mais complète : deux articles dont un sans fiche, un portrait à ses
 // trois versions désigné par la fiche, une image insérée dans le texte, un Word en attente
 // et le rapport de la dernière conversion.
@@ -160,6 +177,8 @@ function activerHote(revue) {
   // remplacement renvoie vers celui de « poser à côté », et le test doit répondre aux deux.
   // File vide -> undefined, c'est-à-dire « Annuler », comme avant.
   const reponsesModales = [];
+  // Le chemin que showSaveDialog rendra : null = « Annuler ».
+  let cibleEnregistrement = null;
   // L'appel entier, pour les contrôles qui portent sur les ISSUES OFFERTES et pas seulement
   // sur la question posée : un bouton perdu ne change rien à la question.
   const modales = [];
@@ -294,6 +313,10 @@ function activerHote(revue) {
       // rejoue pas. Retenus dans l'ordre, lisibles par `statutsDits`.
       setStatusBarMessage: (m) => { statuts.push(String(m)); return { dispose() {} }; },
       showOpenDialog: () => Promise.resolve(undefined),
+      // Le chemin que showSaveDialog rendra, posé par le test (`repondreEnregistrement`).
+      // undefined = l'utilisateur a annulé, et c'est le défaut.
+      showSaveDialog: () => Promise.resolve(cibleEnregistrement
+        ? { fsPath: cibleEnregistrement } : undefined),
       withProgress: (o, f) => f({ report() {} }),
       onDidChangeActiveTextEditor: editeurActif,
       onDidChangeTextEditorVisibleRanges: rangesVisibles,
@@ -314,7 +337,17 @@ function activerHote(revue) {
             return Object.prototype.hasOwnProperty.call(configValeurs, cheminCle)
               ? configValeurs[cheminCle] : defaut;
           },
-          update: (cle, valeur) => { configValeurs[prefixe + cle] = valeur; return Promise.resolve(); }
+          update: (cle, valeur) => { configValeurs[prefixe + cle] = valeur; return Promise.resolve(); },
+          // La sonde des réglages de la maison (poserReglagesMaison) lit le défaut EFFECTIF
+          // de chaque clé pour savoir laquelle la contribution n'a pas prise. Ce harnais n'a
+          // pas de couche de défauts : il rend ce qui a été écrit, et undefined sinon —
+          // toutes les clés paraissent donc « à poser », ce qui est le cas le plus complet.
+          inspect: (cle) => ({
+            key: prefixe + cle,
+            defaultValue: undefined,
+            globalValue: Object.prototype.hasOwnProperty.call(configValeurs, prefixe + cle)
+              ? configValeurs[prefixe + cle] : undefined
+          })
         };
       },
       // Les motifs sont RETENUS : surveiller un chemin qui n'existe pas ne lève rien, et un
@@ -397,9 +430,17 @@ function activerHote(revue) {
   };
 
   const ext = require(path.join(cockpit, 'extension.js'));
+  // Un globalState qui SE SOUVIENT : deux mécanismes n'agissent qu'une fois par valeur
+  // voulue (les réglages de la maison, les réglages protégés) et se règlent sur ce qu'il
+  // porte. Un état qui oublie tout les ferait rejouer à chaque activation, et le contrôle
+  // du « une seule fois » n'aurait rien à mesurer.
+  const memoire = {};
   const contexte = {
     subscriptions: [], extensionPath: cockpit,
-    globalState: { get: () => undefined, update: () => Promise.resolve() }
+    globalState: {
+      get: (cle) => memoire[cle],
+      update: (cle, valeur) => { memoire[cle] = valeur; return Promise.resolve(); }
+    }
   };
   ext.activate(contexte);
 
@@ -416,6 +457,9 @@ function activerHote(revue) {
     // Les panneaux sont des singletons : rouvrir en révèle un, sans en créer. On le
     // retrouve donc par son type, et non par l'ordre de création.
     panneauDeType: (type) => panneaux.filter((x) => x.type === type).pop() || null,
+    // Ce que showSaveDialog rendra au prochain appel ; null pour simuler « Annuler ».
+    repondreEnregistrement: (chemin) => { cibleEnregistrement = chemin; },
+    memoire: memoire,
     avertissements: avertissements,
     erreurs: erreurs,
     motifsSurveilles: () => motifsSurveilles.slice(),

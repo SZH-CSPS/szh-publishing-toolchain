@@ -176,6 +176,177 @@ foreach ($f in 'settings.json', 'keybindings.json', 'tasks.json') {
 if ($manquants.Count -eq 0) { Dire 'ok' 'Réglages de l''éditeur' $dstReglages }
 else { Dire 'manque' 'Réglages de l''éditeur' ('manquent : ' + ($manquants -join ', ')) }
 
+# ---- Réglages protégés de la chaîne de publication ----
+#
+# La configuration de l'export OJS et les titres de bibliographie valent pour toute la
+# rédaction. Un poste qui les a modifiés localement — c'est possible, après déverrouillage
+# explicite dans « Réglages SZH » — publiera autrement que les autres jusqu'à la prochaine
+# mise à jour, et personne ne le saura si on ne le dit pas ici.
+Write-SzhTitre 'Réglages de la rédaction'
+
+$protegesFichier = Join-Path $SzhBase 'settings-protected.json'
+$protegesBlocs = @('ojs', 'biblio')
+$reference = $null
+try {
+  if (Test-Path $protegesFichier) {
+    $reference = (Get-Content $protegesFichier -Raw -Encoding UTF8 | ConvertFrom-Json)
+  }
+} catch { }
+$configPoste = Get-SzhConfig
+
+if (-not $reference) {
+  Dire 'note' 'Réglages de la rédaction' ('pas encore déployés sur ce poste — ' + $protegesFichier)
+} else {
+  # Comparaison sur le JSON réordonné : l'ordre des clés d'un objet n'a pas de sens, et la
+  # table des rubriques OJS en porte des dizaines. Une comparaison brute aurait fait
+  # diverger un poste qui n'avait rien changé.
+  function Get-SzhJsonCanonique($Valeur) {
+    if ($null -eq $Valeur) { return 'null' }
+    if ($Valeur -is [array]) {
+      return '[' + (($Valeur | ForEach-Object { Get-SzhJsonCanonique $_ }) -join ',') + ']'
+    }
+    if ($Valeur -is [psobject] -and $Valeur.PSObject.Properties.Name.Count -gt 0 -and -not ($Valeur -is [string])) {
+      $morceaux = foreach ($n in ($Valeur.PSObject.Properties.Name | Sort-Object)) {
+        '"' + $n + '":' + (Get-SzhJsonCanonique $Valeur.$n)
+      }
+      return '{' + ($morceaux -join ',') + '}'
+    }
+    return (ConvertTo-Json $Valeur -Compress -Depth 20)
+  }
+  $ecarts = New-Object System.Collections.ArrayList
+  $poses = New-Object System.Collections.ArrayList
+  foreach ($bloc in $protegesBlocs) {
+    if (-not $reference.PSObject.Properties[$bloc]) { continue }
+    [void]$poses.Add($bloc)
+    $ici = $null
+    if ($configPoste -and $configPoste.PSObject.Properties[$bloc]) { $ici = $configPoste.$bloc }
+    if ((Get-SzhJsonCanonique $ici) -ne (Get-SzhJsonCanonique $reference.$bloc)) {
+      [void]$ecarts.Add($bloc)
+    }
+  }
+  if ($poses.Count -eq 0) {
+    Dire 'note' 'Réglages de la rédaction' 'déployés, mais sans rien imposer : le poste garde les valeurs livrées avec l''outil'
+  } elseif ($ecarts.Count -eq 0) {
+    Dire 'ok' 'Réglages de la rédaction' ('conformes (' + ($poses -join ', ') + ')')
+  } else {
+    Dire 'manque' 'Réglages de la rédaction' (($ecarts -join ', ') + ' : ce poste ne porte pas les valeurs de la rédaction. Il publiera autrement que les autres. Ouvrez « Réglages SZH », bouton « Télécharger les réglages protégés », et transmettez le fichier.')
+  }
+}
+
+# ---- Langue de l'interface ----
+#
+# Deux moitiés d'écran, deux sources, et rien ne les oblige à s'accorder : les menus de
+# l'éditeur suivent argv.json et le pack de langue installé, les textes du cockpit suivent
+# leur propre cascade (voir l'en-tête de lib/i18n.js). Un poste s'est retrouvé avec les
+# menus en allemand et les formulaires en français, et il a fallu deviner pourquoi. Cette
+# section pose les six sources côte à côte, dans l'ordre où le cockpit les interroge, et
+# nomme celle qui a tranché.
+Write-SzhTitre 'Langue de l''interface'
+
+# Lectures tolérantes : ces fichiers sont écrits par plusieurs mains, parfois avec un BOM,
+# parfois avec des commentaires (argv.json et settings.json en portent). On ne les analyse
+# donc pas en JSON, on y cherche la seule clé qui nous intéresse. Un diagnostic lit ; il ne
+# doit jamais échouer sur la forme de ce qu'il lit.
+function Get-SzhCleTexte([string]$Chemin, [string]$Cle) {
+  try {
+    if (-not (Test-Path $Chemin)) { return '' }
+    $contenu = Get-Content $Chemin -Raw -Encoding UTF8
+    $motif = '"' + [regex]::Escape($Cle) + '"\s*:\s*"([^"]*)"'
+    $m = [regex]::Match($contenu, $motif)
+    if ($m.Success) { return $m.Groups[1].Value.Trim().ToLower() }
+  } catch { }
+  return ''
+}
+function Get-SzhLangueSaine([string]$Valeur) {
+  $v = ([string]$Valeur).Trim().ToLower()
+  if ($v.Length -ge 2) { $v = $v.Substring(0, 2) }
+  if ($v -eq 'fr' -or $v -eq 'de') { return $v }
+  return ''
+}
+
+$argvJson     = Join-Path $env:APPDATA 'VSCodium\argv.json'
+$settingsJson = Join-Path $env:APPDATA 'VSCodium\User\settings.json'
+$srcEssai   = Get-SzhLangueSaine $env:SZH_LANGUE
+$srcReglage = Get-SzhLangueSaine (Get-SzhCleTexte $settingsJson 'szh.langue')
+$srcPoste   = Get-SzhLangueSaine (Get-SzhCleTexte $SzhConfigFile 'langue')
+$srcLanceur = Get-SzhLangueSaine (Get-SzhCleTexte $SzhStateFile 'langue')
+$localeArgv = Get-SzhLangueSaine (Get-SzhCleTexte $argvJson 'locale')
+$srcWindows = ''
+try { $srcWindows = Get-SzhLangueSaine (Get-UICulture).TwoLetterISOLanguageName } catch { }
+
+# Le pack de langue décide si la locale demandée s'applique vraiment : sans lui, l'éditeur
+# retombe en anglais sans le dire, et sa langue d'affichage n'est plus celle d'argv.json.
+#
+# ⚠ Un pack manquant n'est un DÉFAUT que si nous le livrons. Seul l'allemand est épinglé —
+#   le pack français n'est plus à jour depuis 2021 et n'est volontairement pas livré. Une
+#   locale « fr » qui laisse les menus en anglais est donc l'état VOULU d'un poste
+#   francophone, et le dire en défaut ferait ressortir tout poste sain en « exit 1 ». Même
+#   piège que SumatraPDF, non requis, dans la section des applications.
+$packsLangue = @{ de = 'MS-CEINTL.vscode-language-pack-de'; fr = 'MS-CEINTL.vscode-language-pack-fr' }
+$packAttendu = ''
+if ($localeArgv -and $packsLangue.ContainsKey($localeArgv)) { $packAttendu = $packsLangue[$localeArgv] }
+# Épinglé, c'est-à-dire livré par la version installée. Le manifest peut manquer (Release
+# injoignable) : on ne conclut alors rien sur ce qui devrait être là.
+$packEpingle = $false
+if ($manifest -and $packAttendu) {
+  foreach ($ext in @($manifest.vsix)) { if ([string]$ext.id -eq $packAttendu) { $packEpingle = $true } }
+}
+# $reelles vient de la section des extensions, plus haut : la table des extensions posées,
+# obtenue en interrogeant la CLI de l'éditeur. On la relit plutôt que d'appeler la CLI une
+# seconde fois, qui coûte une à deux secondes pour la même réponse. $null quand la CLI n'a
+# pas répondu — le pack est alors dit inconnu, et non absent.
+$packPose = $false
+if ($reelles -and $packAttendu) { $packPose = $reelles.ContainsKey($packAttendu) }
+# La langue RÉELLE des menus : celle du fichier seulement si son pack est là. C'est cette
+# valeur, et non la locale demandée, qui entre dans la cascade et dans le verdict.
+$langueMenus = ''
+if ($localeArgv -and $packPose) { $langueMenus = $localeArgv }
+
+# La cascade du cockpit, dans l'ordre exact de sourceLangue() (lib/i18n.js). Toute
+# divergence entre les deux se paierait ici en diagnostic qui ment.
+$langueCockpit = 'fr'
+$sourceCockpit = 'repli'
+foreach ($paire in @(
+    @($srcEssai,    'variable d''essai SZH_LANGUE'),
+    @($srcReglage,  'choix enregistré dans les réglages de l''éditeur'),
+    @($srcPoste,    'choix enregistré pour ce poste'),
+    @($srcLanceur,  'dernier lanceur ouvert'),
+    @($langueMenus, 'langue d''affichage de l''éditeur'),
+    @($srcWindows,  'langue d''affichage de Windows'))) {
+  if ($paire[0]) { $langueCockpit = $paire[0]; $sourceCockpit = $paire[1]; break }
+}
+
+function Show-SzhSourceLangue([string]$Sujet, [string]$Valeur, [string]$Ou) {
+  if ($Valeur) { Dire 'note' $Sujet ($Valeur + ' — ' + $Ou) }
+  else { Dire 'note' $Sujet ('rien — ' + $Ou) }
+}
+Show-SzhSourceLangue '1. Variable d''essai' $srcEssai 'SZH_LANGUE dans l''environnement ; ne doit rien porter sur un poste de rédaction'
+Show-SzhSourceLangue '2. Choix dans les réglages' $srcReglage $settingsJson
+Show-SzhSourceLangue '3. Choix pour ce poste' $srcPoste $SzhConfigFile
+Show-SzhSourceLangue '4. Dernier lanceur ouvert' $srcLanceur $SzhStateFile
+if ($null -eq $reelles) {
+  Dire 'note' '5. Affichage de l''éditeur' ($localeArgv + ' demandé — pack de langue non mesurable, la CLI de l''éditeur n''a pas répondu')
+} elseif ($packEpingle -and (-not $packPose)) {
+  Dire 'manque' '5. Affichage de l''éditeur' ($localeArgv + ' demandé, et son pack de langue est livré mais pas posé : les menus restent en anglais. Lancez la mise à jour depuis le menu Démarrer.')
+} elseif ($localeArgv -and (-not $packPose)) {
+  Dire 'note' '5. Affichage de l''éditeur' ($localeArgv + ' demandé ; aucun pack de cette langue n''est livré, les menus restent donc en anglais — c''est l''état voulu')
+} else {
+  Show-SzhSourceLangue '5. Affichage de l''éditeur' $langueMenus $argvJson
+}
+Show-SzhSourceLangue '6. Affichage de Windows' $srcWindows 'langue d''affichage du compte'
+Dire 'note' 'Langue des formulaires' ($langueCockpit + ' — ' + $sourceCockpit)
+
+# Le verdict : les deux moitiés de l'écran parlent-elles la même langue ? Des menus en
+# anglais ne sont pas une discordance — c'est l'état ordinaire d'un poste sans pack de
+# langue, et personne ne s'en plaint.
+if ($null -eq $reelles) {
+  Dire 'note' 'Interface cohérente' 'non mesurable : la langue des menus n''est pas connue sans la CLI de l''éditeur'
+} elseif ($langueMenus -and ($langueMenus -ne $langueCockpit)) {
+  Dire 'manque' 'Interface cohérente' ('les menus sont en ' + $langueMenus + ' et les formulaires en ' + $langueCockpit + ' : ouvrez « Réglages SZH » dans l''outil, choisissez la langue, puis redémarrez l''éditeur.')
+} else {
+  Dire 'ok' 'Interface cohérente' 'les menus et les formulaires parlent la même langue'
+}
+
 # Raccourcis du menu Démarrer, dans le profil de ce compte.
 $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
 $absents = New-Object System.Collections.ArrayList

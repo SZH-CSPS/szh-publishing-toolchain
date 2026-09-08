@@ -42,7 +42,7 @@ const MAKEFILE_WSL = '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile';
 const REIMPORTER_WSL = '/mnt/c/ProgramData/SZH/toolkit/pipeline/reimporter.py';
 
 // ---- i18n du cockpit -> lib/i18n.js ----------------------------------------------
-const { TEXTES_COCKPIT, T, langueCockpit } = require('./lib/i18n');
+const { TEXTES_COCKPIT, T, langueCockpit, oublierLanguePoste } = require('./lib/i18n');
 // ---- Protocole de messages hôte <-> webviews -> lib/messages.js -----------------
 const { MSG } = require('./lib/messages');
 // ---- Sérialiseurs YAML -> lib/yaml.js --------------------------------------------
@@ -65,8 +65,12 @@ const {
   // par module.exports._pur, qui la veut en liaison de module — pas seulement ré-exportée.
   versionsDivergent,
   lireModeDeveloppeur, ecrireModeDeveloppeur, lireConfigPoste, ecrireConfigPoste,
-  CONFIG_POSTE
+  configAvecLangue, CONFIG_POSTE
 } = require('./lib/archivage');
+// ---- Réglages protégés de la chaîne -> lib/reglages-proteges.js -------------------
+const proteges = require('./lib/reglages-proteges');
+// ---- Réglages de la maison -> lib/reglages-flotte.js -----------------------------
+const { empreinteReglages, clesRefusees } = require('./lib/reglages-flotte');
 // ---- Auteur·e·s connus : OJS (OAI-PMH) et les numéros du poste --------------------
 // Deux sources, un seul cache. OJS donne les noms et l'affiliation ; la fonction et
 // l'e-mail n'existent nulle part dans son interface publique et ne viennent que des
@@ -314,6 +318,7 @@ const {
   libelleArticle, analyserSansDoi, basculerSansDoi, trierParDoi, refusDeplacement,
   rangDoi, resumeImages,
   REVUES_TACHES, tachesRevue, tachesConfig, configAvecTaches, libelleTache,
+  vueArticlesConfig, configAvecVueArticles,
   analyserTachesFaites, serialiserTachesFaites, resumeTaches, basculerTache,
   NOMS_COUVERTURE, EXTENSIONS_COUVERTURE, nomCouverture, MAX_COUVERTURE
 } = require('./lib/articles');
@@ -1586,10 +1591,15 @@ const CLES_LIVRE_WEB = { statut: 'livre.web.statut', fait: 'livre.web.fait', err
 // ---- Export d'un seul article ----------------------------------------------------
 // Sur un numéro gelé, seul ce geste régénère un document. La tâche vise le PDF et
 // l'aperçu HTML, sans clean ni import, qui supprimerait le .docx source.
+// `-j2 -O` comme les tâches de vscodium-user/tasks.json, et ici même sur un seul article :
+// les deux cibles ne dépendent pas l'une de l'autre — le .pdf descend du .html, l'aperçu est
+// une passe pandoc séparée. Sans `-j`, la seconde attendait la fin de la première alors que
+// le poste a deux cœurs à donner (%UserProfile%\.wslconfig, `processors=2`).
+// `-O` va avec `-j` : voir tasks.json pour ce qu'un journal entrelacé coûterait à lib/journal.js.
 function tacheMakeArticle(racine, slug) {
   const cibles = ['out/' + slug + '/' + slug + '.pdf', 'out/' + slug + '/' + slug + '.apercu.html'];
   const execution = new vscode.ProcessExecution('wsl.exe',
-    ['-d', DISTRO_WSL, '--cd', racine, '--', 'make', '-f', MAKEFILE_WSL].concat(cibles));
+    ['-d', DISTRO_WSL, '--cd', racine, '--', 'make', '-j2', '-O', '-f', MAKEFILE_WSL].concat(cibles));
   const tache = new vscode.Task(
     { type: 'szh', cible: 'article', slug: slug }, vscode.TaskScope.Workspace,
     T('tache.exportArticle') + ' — ' + slug, 'SZH', execution, []);
@@ -3207,9 +3217,14 @@ function couperApercu(texte, limite) {
 
 // Une ligne « un intitulé, une valeur par langue ». Seules les langues où quelque chose est
 // écrit paraissent : un article monolingue ne montre pas deux lignes vides.
-function ligneApercuLangues(libelle, map, limite) {
+//
+// `langues` restreint la ligne à ce qui doit se lire — la seule langue de l'article quand
+// « Cacher les traductions » est en service. Une restriction d'AFFICHAGE, et rien d'autre :
+// les textes des autres langues sont toujours là, dans la fiche, et l'article s'exporte
+// avec eux.
+function ligneApercuLangues(libelle, map, limite, langues) {
   const valeurs = [];
-  for (const l of LANGUES_META) {
+  for (const l of (langues || LANGUES_META)) {
     const t = couperApercu((map || {})[l], limite);
     if (t !== '') { valeurs.push({ marque: l.toUpperCase(), texte: t }); }
   }
@@ -3218,13 +3233,13 @@ function ligneApercuLangues(libelle, map, limite) {
 
 // Les mots-clés : une ligne par langue, la liste mise à plat. Le séparateur est celui des
 // listes du cockpit.
-function ligneApercuMotsCles(meta) {
+function ligneApercuMotsCles(meta, langues) {
   const plat = {};
   for (const l of LANGUES_META) {
     const liste = ((meta.keywords || {})[l] || []).map((x) => String(x).trim()).filter((x) => x !== '');
     if (liste.length > 0) { plat[l] = liste.join(' · '); }
   }
-  return ligneApercuLangues(T('trad.champ.keywords'), plat, APERCU_LONG);
+  return ligneApercuLangues(T('trad.champ.keywords'), plat, APERCU_LONG, langues);
 }
 
 // Les auteur·e·s : l'identité d'abord, puis ce qui la situe, puis en badges ce que la fiche
@@ -3360,10 +3375,19 @@ function constatsCarte(images, citations) {
 
 // L'aperçu complet d'un article : neuf lignes, dans l'ordre où on les lit — ce que
 // l'article est, ce qu'il dit, qui l'a écrit, sous quelles conditions il paraît.
-function apercuArticle(meta, langue, doi) {
+//
+// `langueSeule` — le code de la langue de l'article, ou '' — réduit les quatre lignes
+// bilingues (titre, sous-titre, résumé, mots-clés) à cette seule langue : c'est le bouton
+// « Cacher les traductions » de la vue. Les cinq autres lignes n'ont pas de langue et ne
+// bougent pas. Rien n'est perdu ni modifié : l'autre langue est toujours dans la fiche, et
+// le bouton la remontre.
+function apercuArticle(meta, langue, doi, langueSeule) {
   const type = String(meta.type || '').trim();
   const langueArticle = normaliserLangueArticle(meta.lang);
   const vide = T('art.apercu.vide');
+  // Une langue hors des trois de la revue, ou aucune, ne restreint rien : mieux vaut
+  // montrer les quatre lignes en entier que les vider en silence.
+  const langues = LANGUES_META.indexOf(langueSeule) !== -1 ? [langueSeule] : LANGUES_META;
   const seule = (libelle, texte) => ({
     libelle: libelle,
     valeurs: [{ marque: '', texte: String(texte || '') !== '' ? String(texte) : vide }]
@@ -3373,10 +3397,10 @@ function apercuArticle(meta, langue, doi) {
       seule(T('art.apercu.type'), (LIBELLES_TYPES[type] || {})[langue] || type),
       seule(T('art.apercu.langue'),
         langueArticle === '' ? T('art.apercu.langue.numero') : T('meta.langue.' + langueArticle)),
-      ligneApercuLangues(T('trad.champ.title'), meta.title, APERCU_COURT),
-      ligneApercuLangues(T('trad.champ.subtitle'), meta.subtitle, APERCU_COURT),
-      ligneApercuLangues(T('trad.champ.resume'), meta.resume, APERCU_LONG),
-      ligneApercuMotsCles(meta),
+      ligneApercuLangues(T('trad.champ.title'), meta.title, APERCU_COURT, langues),
+      ligneApercuLangues(T('trad.champ.subtitle'), meta.subtitle, APERCU_COURT, langues),
+      ligneApercuLangues(T('trad.champ.resume'), meta.resume, APERCU_LONG, langues),
+      ligneApercuMotsCles(meta, langues),
       ligneApercuAuteurs(meta),
       seule(T('art.apercu.licence'), nomCourtLicence(meta.licence)),
       { libelle: T('art.apercu.doi'), valeurs: [doi] }
@@ -3392,6 +3416,13 @@ function chargeArticles(fournisseur) {
   const racine = fournisseur.racine;
   const langue = langueRevue(racine);
   const interface_ = langueCockpit();
+  // La configuration du poste, lue une fois : elle porte les intitulés des tâches ET les
+  // deux interrupteurs d'affichage de la vue.
+  const configPoste = lireConfigPoste();
+  // Ce que les interrupteurs cachent n'est pas envoyé du tout — pas envoyé puis masqué en
+  // CSS : une carte sans tâches et sans traductions est vraiment plus courte, et le message
+  // qui la porte aussi.
+  const vue = vueArticlesConfig(configPoste);
   const taches = tachesDuNumero(racine);
   const slugs = fournisseur.listerArticles();
   let valeurs = {};
@@ -3459,7 +3490,11 @@ function chargeArticles(fournisseur) {
       // `cle` ci-dessus, qui vaut toujours ce même slug.
       pastilles: pastillesCarte(images),
       ouvrir: true,
-      apercu: apercuArticle(meta, interface_, doi.ligne),
+      // La langue de l'article, ou celle du numéro quand la fiche n'en déclare pas : c'est
+      // exactement le repli que la compilation applique, donc la langue dans laquelle
+      // l'article paraîtra.
+      apercu: apercuArticle(meta, interface_, doi.ligne,
+        vue.cacherTraductions ? (normaliserLangueArticle(meta.lang) || langue) : ''),
       constats: constats,
       // La case « pas de DOI ». Verrouillée quand c'est la rubrique qui décide : cocher ou
       // décocher n'y changerait rien, et un interrupteur sans effet est un mensonge.
@@ -3489,7 +3524,7 @@ function chargeArticles(fournisseur) {
           tip: T('art.medias.editer.tip') },
         { id: 'envoyer', libelle: T('art.envoyer'), icone: 'traduction', tip: T('art.envoyer.tip') }
       ],
-      taches: taches.map((t) => ({
+      taches: vue.cacherTaches ? [] : taches.map((t) => ({
         id: t.id, libelle: libelleTache(t, interface_), faite: faites.indexOf(t.id) !== -1
       }))
     };
@@ -3498,10 +3533,19 @@ function chargeArticles(fournisseur) {
     titre: T('art.vue.titre'),
     boutons: [
       { id: 'importer', libelle: T('art.importer'), icone: 'fleche', principal: true },
-      { id: 'taches', libelle: T('art.taches.reglage'), icone: 'ok', tip: T('art.taches.reglage.tip') }
+      { id: 'taches', libelle: T('art.taches.reglage'), icone: 'ok', tip: T('art.taches.reglage.tip') },
+      // Les deux interrupteurs d'affichage. Le libellé dit le geste à venir, jamais l'état
+      // courant : un bouton « Cacher les tâches » sur une liste déjà sans tâches se lirait
+      // comme une case cochée, et personne ne saurait plus comment les faire revenir.
+      { id: 'cacher-taches', icone: 'oeil',
+        libelle: T(vue.cacherTaches ? 'art.taches.afficher' : 'art.taches.cacher'),
+        tip: T(vue.cacherTaches ? 'art.taches.afficher.tip' : 'art.taches.cacher.tip') },
+      { id: 'cacher-traductions', icone: 'oeil',
+        libelle: T(vue.cacherTraductions ? 'art.trad.afficher' : 'art.trad.cacher'),
+        tip: T(vue.cacherTraductions ? 'art.trad.afficher.tip' : 'art.trad.cacher.tip') }
     ],
     lignes: lignes,
-    taches: tachesConfig(lireConfigPoste()),
+    taches: tachesConfig(configPoste),
     revue: revueNumero(racine)
   };
 }
@@ -3516,6 +3560,21 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
   const racine = fournisseur.racine;
   if (msg.type === MSG.COMMANDE) {
     if (msg.id === 'importer') { await vscode.commands.executeCommand('szh.convertirEnAttente'); }
+    // Les deux interrupteurs d'affichage. Réglage de poste et non de numéro — ce qu'on
+    // choisit de lire ne dépend pas du numéro ouvert — donc le verrou du numéro ne s'y
+    // applique pas, pas plus qu'au réglage des tâches juste en dessous.
+    const bascules = { 'cacher-taches': 'cacherTaches', 'cacher-traductions': 'cacherTraductions' };
+    const cle = bascules[String(msg.id || '')];
+    if (cle) {
+      const avant = lireConfigPoste();
+      // Illisible n'est pas absent : on n'écrase pas ce qu'on n'a pas su lire, sans quoi
+      // l'emplacement des revues et la configuration OJS partiraient avec.
+      if (avant === null && fs.existsSync(CONFIG_POSTE)) { return T('err.ecriture', [CONFIG_POSTE]); }
+      const etat = vueArticlesConfig(avant);
+      const erreur = ecrireConfigPoste(configAvecVueArticles(avant, cle, !etat[cle]));
+      if (erreur) { return T('err.ecriture', [erreur]); }
+      return null;                                 // la vue se repose, les cartes suivent
+    }
     return null;
   }
   if (msg.type === MSG.TACHE) {
@@ -4395,6 +4454,11 @@ function REGL_LIBELLES() {
   liensReferencesActifs: T('regl.liensReferences.actifs'),
   liensReferencesDesactives: T('regl.liensReferences.desactives'),
   langue: T('regl.langue'),
+  protegesTitre: T('regl.proteges.titre'),
+  protegesVerrouille: T('regl.proteges.verrouille'),
+  protegesDeverrouiller: T('regl.proteges.deverrouiller'),
+  protegesTelecharger: T('regl.proteges.telecharger'),
+  protegesTelechargerTip: T('regl.proteges.telecharger.tip'),
   dev: T('regl.dev'), devOui: T('regl.dev.oui'), devNon: T('regl.dev.non'),
   auteursMaj: T('regl.auteurs.maj'), auteursJamais: T('regl.auteurs.jamais'),
   auteursCorpus: T('regl.auteurs.corpus'), auteursCorpusJamais: T('regl.auteurs.corpus.jamais'),
@@ -4498,6 +4562,93 @@ function ecrireLocaleArgv(langue) {
   }
 }
 
+// La langue d'affichage de VSCodium, réduite aux deux que nous connaissons. '' quand un
+// pack de langue n'est pas installé — l'anglais des postes d'ici — auquel cas il n'y a rien
+// à comparer : c'est l'état normal d'une rédaction francophone, dont les menus sont en
+// anglais et les formulaires en français.
+function langueEditeur() {
+  const brut = String((vscode.env && vscode.env.language) || '').toLowerCase();
+  if (brut.indexOf('de') === 0) { return 'de'; }
+  if (brut.indexOf('fr') === 0) { return 'fr'; }
+  return '';
+}
+
+// Le mot à poser sous le choix de la langue quand les menus de VSCodium et les textes du
+// cockpit ne parlent pas la même langue. Deux mécanismes indépendants les décident (voir
+// l'en-tête de lib/i18n.js), et rien ne les oblige à s'accorder : un réglage posé à la
+// main, une variable d'essai restée dans l'environnement, un choix effacé par une mise à
+// jour, et l'écran se retrouve à moitié dans chaque langue. -> '' quand tout va bien.
+function avertissementLangue() {
+  const cockpit = langueCockpit();
+  const editeur = langueEditeur();
+  if (editeur === '' || editeur === cockpit) { return ''; }
+  return T('regl.langue.discordance', [T('meta.langue.' + cockpit), T('meta.langue.' + editeur)]);
+}
+
+// ---- Les réglages protégés : relais, état, et fichier à transmettre --------------
+//
+// Le fichier déployé par la mise à jour est la référence ; config.json est ce que le poste
+// emploie, et le seul que la chaîne de compilation sache lire. Le relais recopie l'un dans
+// l'autre — mais SEULEMENT quand la référence a changé, jamais à chaque démarrage : une
+// modification faite ici après un déverrouillage doit tenir jusqu'à la prochaine mise à
+// jour, et un relais à chaque ouverture l'effacerait le lendemain matin.
+const CLE_EMPREINTE_PROTEGES = 'szh.reglagesProteges.empreinte';
+
+async function relayerReglagesProteges(context) {
+  const reference = proteges.lireReglagesProteges();
+  if (!reference) { return; }                      // absent ou illisible : on ne relaie rien
+  const blocs = proteges.blocsProteges(reference);
+  if (Object.keys(blocs).length === 0) { return; } // rien à imposer : le poste garde le sien
+  const empreinte = empreinteReglages(blocs);
+  if (context.globalState.get(CLE_EMPREINTE_PROTEGES) === empreinte) { return; }
+  const avant = lireConfigPoste();
+  // Illisible n'est pas absent : on n'écrase pas ce qu'on n'a pas su lire, sans quoi
+  // l'emplacement des revues et les tâches partiraient avec.
+  if (avant === null && fs.existsSync(CONFIG_POSTE)) { return; }
+  const erreur = ecrireConfigPoste(proteges.configAvecProteges(avant, blocs));
+  if (erreur) { console.warn('réglages protégés non relayés : ' + erreur); return; }
+  await context.globalState.update(CLE_EMPREINTE_PROTEGES, empreinte);
+}
+
+// L'état des réglages protégés, tel que le formulaire en a besoin : verrouillés ou non, et
+// la liste des blocs où ce poste s'écarte de la version déployée. Le déverrouillage ne vit
+// que le temps du panneau ouvert — il se redemande à chaque fois, et c'est voulu : c'est un
+// geste d'exception, pas un mode dans lequel on s'installe.
+let protegesDeverrouilles = false;
+
+function etatProteges() {
+  const ecarts = proteges.divergences(lireConfigPoste(), proteges.lireReglagesProteges());
+  return {
+    deverrouille: protegesDeverrouilles,
+    divergences: ecarts,
+    avertissement: ecarts.length > 0
+      ? T('regl.proteges.diverge', [ecarts.map((b) => T('regl.proteges.bloc.' + b)).join(', ')])
+      : ''
+  };
+}
+
+// « Télécharger les réglages protégés » : l'état courant du poste, au format du fichier
+// déployé, à transmettre à l'administrateur. Offert même verrouillé — lire et transmettre
+// ne modifie rien, et c'est justement ce qu'on demande à quelqu'un qui signale un problème.
+async function telechargerReglagesProteges() {
+  const contenu = proteges.fichierATelecharger(lireConfigPoste(), T('regl.proteges.lisezmoi'));
+  let cible;
+  try {
+    cible = await vscode.window.showSaveDialog({
+      saveLabel: T('regl.proteges.telecharger'),
+      defaultUri: vscode.Uri.file(path.join(
+        process.env.USERPROFILE || process.env.HOME || '', 'Desktop', proteges.NOM_FICHIER))
+    });
+  } catch (e) { cible = null; }
+  if (!cible) { return null; }                     // annulé : rien à dire
+  try {
+    ecrireAtomique(cible.fsPath, contenu);
+    return T('regl.proteges.telecharge', [path.basename(cible.fsPath)]);
+  } catch (e) {
+    return T('err.ecriture', [String((e && e.message) || e)]);
+  }
+}
+
 function lireReglagesActuels() {
   const cfg = vscode.workspace.getConfiguration();
   const autoDetect = cfg.get('window.autoDetectColorScheme', false) === true;
@@ -4533,7 +4684,8 @@ function ouvrirReglages(rafraichirTout) {
     panneauReglages.reveal(vscode.ViewColumn.One);
     panneauReglages.webview.postMessage(
       { type: 'valeurs', valeurs: lireReglagesActuels(), ojs: donneesOjs(),
-        biblio: donneesBiblio(), auteursOjs: resumeAuteursPublies() });
+        biblio: donneesBiblio(), auteursOjs: resumeAuteursPublies(),
+        avertLangue: avertissementLangue(), proteges: etatProteges() });
     return;
   }
   const panneau = vscode.window.createWebviewPanel(
@@ -4547,7 +4699,43 @@ function ouvrirReglages(rafraichirTout) {
     if (msg.type === MSG.PRET) {
       panneau.webview.postMessage(
         { type: 'valeurs', valeurs: lireReglagesActuels(), ojs: donneesOjs(),
-        biblio: donneesBiblio(), auteursOjs: resumeAuteursPublies() });
+        biblio: donneesBiblio(), auteursOjs: resumeAuteursPublies(),
+        avertLangue: avertissementLangue(), proteges: etatProteges() });
+      return;
+    }
+    // ---- Les réglages protégés ----
+    //
+    // Déverrouiller n'est pas un réglage mais un geste, et il se redemande à chaque
+    // ouverture du panneau : c'est une exception, pas un mode dans lequel on s'installe.
+    // La question modale est posée ICI et non dans la page : une webview ne peut pas
+    // bloquer, et un avertissement qu'on peut ignorer d'un clic à côté n'avertit personne.
+    if (msg.type === MSG.DEVERROUILLER) {
+      if (!msg.valeur) {
+        protegesDeverrouilles = false;
+        repondrePanneau(panneau, Object.assign({ type: MSG.PROTEGES }, etatProteges()));
+        return;
+      }
+      const continuer = await vscode.window.showWarningMessage(
+        T('regl.proteges.question'),
+        { modal: true, detail: T('regl.proteges.detail') },
+        T('regl.proteges.confirmer'));
+      protegesDeverrouilles = continuer === T('regl.proteges.confirmer');
+      repondrePanneau(panneau, Object.assign({ type: MSG.PROTEGES }, etatProteges()));
+      return;
+    }
+    if (msg.type === MSG.TELECHARGER_PROTEGES) {
+      const dit = await telechargerReglagesProteges();
+      if (dit) { vscode.window.showInformationMessage(dit); }
+      return;
+    }
+    // Verrouillé, ces deux blocs ne s'écrivent pas. Le formulaire les grise déjà et
+    // n'enverrait rien, mais un message qui arriverait quand même — page restée ouverte
+    // pendant un reverrouillage, envoi automatique en vol — ne doit pas passer.
+    if ((msg.type === MSG.REGLER_OJS || msg.type === MSG.REGLER_BIBLIO) && !protegesDeverrouilles) {
+      repondrePanneau(panneau, {
+        type: 'erreur', bloc: msg.type === MSG.REGLER_OJS ? 'ojs' : 'biblio',
+        message: T('regl.proteges.refus')
+      });
       return;
     }
     // La configuration de l'export OJS va dans config.json, comme le mode développeur :
@@ -4560,7 +4748,12 @@ function ouvrirReglages(rafraichirTout) {
         // Sinon l'auto-enregistrement du panneau (enVol) reste bloqué : plus rien ne
         // s'enregistre jamais après le premier échec.
         repondrePanneau(panneau, { type: 'erreur', bloc: 'ojs', message: message });
-      } else { repondrePanneau(panneau, { type: 'enregistre', bloc: 'ojs' }); }
+      } else {
+        repondrePanneau(panneau, { type: 'enregistre', bloc: 'ojs' });
+        // Le poste vient peut-être de s'écarter de la version déployée : le bandeau
+        // doit le dire tout de suite, pas au prochain rechargement du panneau.
+        repondrePanneau(panneau, Object.assign({ type: MSG.PROTEGES }, etatProteges()));
+      }
       return;
     }
     // Le titre de la bibliographie, dans le même config.json et par les mêmes deux
@@ -4579,7 +4772,12 @@ function ouvrirReglages(rafraichirTout) {
         const message = T('err.ecriture', [erreur]);
         vscode.window.showErrorMessage(message);
         repondrePanneau(panneau, { type: 'erreur', bloc: 'biblio', message: message });
-      } else { repondrePanneau(panneau, { type: 'enregistre', bloc: 'biblio' }); }
+      } else {
+        repondrePanneau(panneau, { type: 'enregistre', bloc: 'biblio' });
+        // Le poste vient peut-être de s'écarter de la version déployée : le bandeau
+        // doit le dire tout de suite, pas au prochain rechargement du panneau.
+        repondrePanneau(panneau, Object.assign({ type: MSG.PROTEGES }, etatProteges()));
+      }
       return;
     }
     if (msg.type !== MSG.REGLER) {
@@ -4646,6 +4844,18 @@ function ouvrirReglages(rafraichirTout) {
       } else if (msg.cle === 'langue') {
         const langue = msg.valeur === 'de' ? 'de' : 'fr';
         await vscode.workspace.getConfiguration('szh').update('langue', langue, Global);
+        // Deux écritures, comme pour les liens des références juste au-dessus — et pour une
+        // raison de plus : la mise à jour du poste réécrit entièrement les réglages de
+        // l'éditeur, et le choix de la langue partait avec eux. Le second exemplaire vit
+        // hors de leur portée, et c'est lui que le cockpit relit sur un poste remis à jour.
+        const avantLangue = lireConfigPoste();
+        if (avantLangue === null && fs.existsSync(CONFIG_POSTE)) {
+          vscode.window.showErrorMessage(T('err.ecriture', [CONFIG_POSTE]));
+        } else {
+          const erreur = ecrireConfigPoste(configAvecLangue(avantLangue, langue));
+          if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [erreur])); }
+        }
+        oublierLanguePoste();                      // le fichier vient de changer sous nous
         ecrireLocaleArgv(langue);                  // langue native : au prochain démarrage
         vscode.window.showInformationMessage(T('info.redemarrer'));
         if (rafraichirTout) { rafraichirTout(); }  // libellés de l'arbre tout de suite
@@ -5087,7 +5297,69 @@ async function ouvrirReserve(fournisseur, rafraichirTout) {
   if (rafraichirTout) { rafraichirTout(); }
 }
 
+// ---- Les réglages de la maison, posés sans écraser ceux du rédacteur -------------
+//
+// Le gabarit `vscodium-user/settings.json` est déclaré en DÉFAUTS d'extension
+// (contributes.configurationDefaults, recopie exacte du gabarit — voir
+// lib/reglages-flotte.js et test/js/reglages-flotte.test.js). Un défaut vit sous le fichier
+// du rédacteur au lieu de le remplacer : la mise à jour du poste n'a donc plus à réécrire
+// ses réglages, et ce qu'il a choisi ne disparaît plus.
+//
+// Reste ce que l'éditeur REFUSE en défaut d'extension — les réglages de portée
+// « application », qu'il retire de la contribution avec un simple avertissement. Ceux-là,
+// on les pose ici, par l'API de configuration, qui fait une retouche chirurgicale du
+// fichier. Lesquels ? On ne le devine pas, on le mesure : la portée d'un réglage peut
+// changer d'une version de l'éditeur à l'autre, et une liste écrite en dur vieillirait sans
+// prévenir.
+//
+// ⚠ Une seule fois par valeur voulue, jamais à chaque démarrage : l'empreinte du gabarit est
+//   mémorisée, et tant qu'elle ne bouge pas on ne touche à rien. Sans cette garde, un
+//   rédacteur qui aurait délibérément changé un de ces réglages se le verrait réimposer à
+//   chaque ouverture — le défaut de départ sous une autre forme.
+const DEFAUTS_MAISON = (require('./package.json').contributes || {}).configurationDefaults || {};
+const CLE_EMPREINTE_REGLAGES = 'szh.reglagesMaison.empreinte';
+
+// Les surcharges par langue (« [markdown] ») ne passent pas par la sonde : le point
+// d'extension les accepte toujours, et inspect() ne les lit pas comme une clé ordinaire.
+function clesMesurables(table) {
+  const sortie = {};
+  for (const cle of Object.keys(table)) { if (!/^\[.+\]$/.test(cle)) { sortie[cle] = table[cle]; } }
+  return sortie;
+}
+
+async function poserReglagesMaison(context) {
+  const empreinte = empreinteReglages(DEFAUTS_MAISON);
+  if (context.globalState.get(CLE_EMPREINTE_REGLAGES) === empreinte) { return []; }
+  const cfg = vscode.workspace.getConfiguration();
+  const aPoser = clesRefusees(clesMesurables(DEFAUTS_MAISON), (cle) => {
+    const vu = cfg.inspect(cle);
+    return vu ? vu.defaultValue : undefined;
+  });
+  for (const cle of aPoser) {
+    try { await cfg.update(cle, DEFAUTS_MAISON[cle], vscode.ConfigurationTarget.Global); }
+    catch (e) {
+      // Un réglage que l'éditeur refuse aussi par l'API : on le dit et on continue. Le
+      // poste vaut mieux avec cinquante réglages sur cinquante et un qu'avec aucun.
+      console.warn('réglage de la maison non posé : ' + cle + ' — ' + ((e && e.message) || e));
+    }
+  }
+  // L'empreinte est mémorisée même en cas d'échec partiel : réessayer à chaque démarrage ne
+  // réparerait rien et réécrirait le fichier du rédacteur sans fin.
+  await context.globalState.update(CLE_EMPREINTE_REGLAGES, empreinte);
+  return aPoser;
+}
+
 function activate(context) {
+  // Rien n'attend ce travail : il ne conditionne aucune commande, et le faire attendre
+  // retarderait l'ouverture de la barre latérale.
+  poserReglagesMaison(context).catch((e) => {
+    console.warn('réglages de la maison : ' + ((e && e.message) || e));
+  });
+  // Et les réglages protégés déployés par la mise à jour, recopiés là où la chaîne de
+  // compilation les lit — seulement s'ils ont changé depuis la dernière fois.
+  relayerReglagesProteges(context).catch((e) => {
+    console.warn('réglages protégés : ' + ((e && e.message) || e));
+  });
   const fournisseur = new FournisseurRevue();
   const vue = vscode.window.createTreeView(ID_VUE, {
     treeDataProvider: fournisseur,

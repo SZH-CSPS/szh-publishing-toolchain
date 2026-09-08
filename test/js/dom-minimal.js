@@ -8,7 +8,7 @@
 // exception remonte au test.
 //
 // N'implémente que ce que les webviews utilisent : createElement(NS), textContent,
-// appendChild, dataset, classList, value/checked/disabled, childNodes/nodeType/tagName
+// appendChild, dataset, classList, value/checked/disabled/readOnly, childNodes/nodeType/tagName
 // (l'éditeur de tableau relit ses cellules nœud par nœud), et des sélecteurs réduits
 // (« .classe », « balise », « [data-x] », « [data-x="v"] », « balise[data-x=v] »,
 // combinés par un espace). Les gestionnaires posés par addEventListener sont retenus et
@@ -19,6 +19,22 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const os = require('os');
+
+// Les deux fichiers du poste que lib/i18n.js interroge pour choisir sa langue —
+// C:\ProgramData\SZH\config.json et state.json — détournés vers des fichiers vides. Sans
+// ce détour, un poste allemand (state.json porte la langue du dernier lanceur ouvert)
+// ferait rendre à T() des textes allemands, et toute la suite, qui compare à des textes
+// français, tomberait. Un test ne lit rien de la machine qui l'exécute. Posés seulement
+// s'ils ne le sont pas déjà : plusieurs contrôles pointent SZH_CONFIG_OJS vers leur propre
+// fichier, et c'est le leur qui doit gagner.
+const POSTE_ESSAI = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-poste-dom-'));
+for (const [variable, nom] of [['SZH_CONFIG_OJS', 'config.json'], ['SZH_ETAT_POSTE', 'state.json']]) {
+  if (process.env[variable]) { continue; }
+  const chemin = path.join(POSTE_ESSAI, nom);
+  fs.writeFileSync(chemin, '{}' + String.fromCharCode(10));
+  process.env[variable] = chemin;
+}
 
 // Charge un module de lib/ en neutralisant `require('vscode')`, absent hors de l'éditeur.
 function chargerAvecVscodeFactice(chemin) {
@@ -50,7 +66,28 @@ function correspond(e, motif) {
   return parties.every((c) => e.classes.has(c));
 }
 
+// Une liste de sélecteurs séparés par des virgules — « input, select, button » — rend
+// l'union, dans l'ordre du document et sans doublon, comme le vrai DOM. Le formulaire des
+// réglages s'en sert pour verrouiller d'un coup tous les contrôles d'un bloc ; sans cette
+// forme, le harnais rendait une liste vide et le verrou paraissait ne rien faire.
 function chercher(racine, selecteur) {
+  const listes = String(selecteur).split(',').map((x) => x.trim()).filter((x) => x !== '');
+  if (listes.length > 1) {
+    const vus = new Set();
+    const union = [];
+    for (const un of listes) {
+      for (const e of chercherUn(racine, un)) {
+        if (vus.has(e)) { continue; }
+        vus.add(e);
+        union.push(e);
+      }
+    }
+    return union;
+  }
+  return chercherUn(racine, listes[0] || selecteur);
+}
+
+function chercherUn(racine, selecteur) {
   let courants = [racine];
   for (const motif of String(selecteur).trim().split(/\s+/)) {
     const suivants = [];
@@ -70,7 +107,8 @@ function element(balise) {
   const e = {
     balise: String(balise || '').toLowerCase(),
     enfants: [], parent: null, dataset: {}, style: {}, attributs: {}, classes: new Set(),
-    hidden: false, value: '', checked: false, disabled: false, type: '', name: '',
+    hidden: false, value: '', checked: false, disabled: false, readOnly: false,
+    type: '', name: '',
     maxLength: 0, placeholder: '', accept: '', files: null, rows: 0,
     _texte: '',
     // Le strict nécessaire du DOM de nœuds : 3 pour un texte, 1 pour le reste.

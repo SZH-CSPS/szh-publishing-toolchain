@@ -605,5 +605,12 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
 
 module.exports = {
   configurer,
-  ouvrirDocumentation, ouvrirPageDocumentation, fermerPanneauxDocumentationDe
+  ouvrirDocumentation, ouvrirPageDocumentation, fermerPanneauxDocumentationDe,
+  // Les trois fabriques de libellés du formulaire, exposées pour le contrôle. Elles ne
+  // sont pas pures — elles lisent la langue du cockpit — et c'est précisément ce qu'il
+  // faut éprouver : test/js/actualite.test.js les appelle dans les deux langues et exige
+  // que tout diffère. Un libellé écrit en dur ici, ou resté français dans la table
+  // allemande, ne se voit d'aucune autre façon : la parité des clés (contrats.test.js) ne
+  // regarde pas les valeurs, et le formulaire, lui, n'est lu que par la rédaction.
+  _libelles: { textesDocumentation, typesRessourceConfig, typesRubriqueConfig }
 };

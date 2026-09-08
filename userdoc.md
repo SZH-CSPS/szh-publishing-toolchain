@@ -384,6 +384,50 @@ depuis n’importe où dans la revue) :
     numéro est verrouillé / archivé ;
   - **Exporter cet article** – présente seulement sur un numéro gelé (voir ci-dessous).
 
+### Les réglages de la rédaction (lecture seule)
+
+Deux blocs de **Réglages SZH** ne se modifient pas : **« Titre de la bibliographie »** et
+**« Export OJS »**. Ils ne décrivent pas votre confort mais la façon dont la revue paraît,
+et ils valent pour **toute la rédaction** : une rubrique OJS renommée sur un seul poste fait
+atterrir ses articles dans la mauvaise section de la revue. Ils s’affichent donc en gris, à
+lire, sans cadre de saisie.
+
+Si l’un d’eux est faux, le geste normal est de **prévenir la personne qui administre
+l’outil** : c’est elle qui déploie une correction pour tout le monde. Le bouton
+**« Télécharger les réglages protégés »** enregistre un fichier que vous pouvez lui envoyer –
+il porte les valeurs de votre poste, telles qu’elles sont.
+
+En cas d’urgence – un bouclage, un export qui doit partir aujourd’hui – la case
+**« Déverrouiller ces réglages »** rend les champs modifiables. Une question s’affiche
+d’abord et dit ce que cela engage. À retenir :
+
+- votre modification vaut **tout de suite, mais sur votre poste seulement** ;
+- la **prochaine mise à jour de l’outil la remplacera** par celle de la rédaction ;
+- tant qu’elle n’est pas déployée, la page affiche en orange *« ce poste ne porte plus les
+  valeurs de la rédaction »*. Ce n’est pas un reproche : c’est le rappel qu’il reste un
+  message à envoyer.
+
+Le déverrouillage ne dure que le temps où la page est ouverte : la question se repose à
+chaque fois. C’est voulu – c’est un geste d’exception, pas un mode dans lequel on s’installe.
+
+
+### La langue de l’outil
+
+Au premier lancement, l’outil **prend la langue du lanceur** : ouvrir « Zeitschriften SZH »
+le met en allemand, « Revues SZH » en français. Il n’y a rien à régler sur un poste neuf.
+
+Pour en changer, ou pour le figer : **🚀 Commande → Réglages SZH → Langue de l’interface**.
+Le choix est retenu **pour ce poste**, et il y reste – une mise à jour de l’outil ne le
+remet plus au français. Les **menus** de l’éditeur (la barre du haut, la palette de
+commandes) ne basculent qu’au **redémarrage** de l’éditeur ; les textes de l’outil, eux,
+suivent tout de suite.
+
+Un cas déroutant, et il se répare en deux clics : **les menus dans une langue et les
+formulaires dans l’autre**. Cela veut dire que les deux réglages ont divergé. Le formulaire
+de réglages l’écrit alors en clair sous le choix de la langue ; il suffit de **rechoisir la
+langue** puis de **redémarrer l’éditeur**. Des menus en **anglais** avec un outil en
+français ou en allemand, en revanche, sont normaux : c’est ainsi que les postes sont livrés.
+
 L’aperçu HTML s’affiche **toujours sur fond blanc**, comme du papier, même si l’éditeur est en
 thème sombre : c’est ce que montrera le PDF.
 
@@ -693,6 +737,25 @@ dans les réglages du poste, pas dans le dossier.
 Corriger un intitulé ne décoche rien : c’est l’identifiant interne, et non le texte, qui
 relie une case à son article. Retirer une tâche de la liste la retire de toutes les cartes,
 et l’avancement se recompte sur ce que la revue demande aujourd’hui.
+
+### Raccourcir la liste : cacher les tâches, cacher les traductions
+
+Sur un numéro complet, la vue devient longue : chaque carte porte l’aperçu de ses
+métadonnées – neuf lignes, chacune dans les deux langues – **et** sa liste de cases à
+cocher. Deux boutons de la barre la resserrent :
+
+- **« Cacher les tâches »** retire la liste de cases de toutes les cartes. Rien n’est
+  décoché : l’avancement reste écrit, et la barre latérale continue de l’afficher à côté du
+  nom du dossier.
+- **« Cacher les traductions »** ne laisse, sur chaque carte, que les champs **dans la
+  langue de l’article** – son titre, son sous-titre, son résumé et ses mots clés. Les textes
+  de l’autre langue **restent écrits** dans la fiche et paraîtront normalement ; ils ne sont
+  simplement plus montrés ici. Un article qui ne déclare pas sa langue prend celle du numéro,
+  exactement comme à la compilation.
+
+Le libellé dit toujours **le geste à venir** : quand les tâches sont cachées, le bouton
+propose « Afficher les tâches ». Les deux choix sont retenus dans les réglages du poste –
+ils valent donc pour tous les numéros, et ils survivent à une mise à jour de l’outil.
 
 ### Les métadonnées du numéro, dans la vue
 

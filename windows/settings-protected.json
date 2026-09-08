@@ -1,0 +1,19 @@
+{
+  "_lisezmoi": "Réglages protégés de la chaîne de publication SZH : la configuration de l'export OJS (bloc « ojs ») et les titres de bibliographie (bloc « biblio »). Ils valent pour TOUS les postes, et c'est ici, dans le dépôt, qu'on les change — la mise à jour les déploie dans C:\\ProgramData\\SZH\\settings-protected.json et écrase ce qui s'y trouvait. Un bloc ABSENT de ce fichier laisse celui du poste tel quel ; un bloc présent prend la main sur tous les postes. Les deux sont donc absents tant que la rédaction n'a rien à imposer : les valeurs livrées avec l'outil suffisent. Pour en poser un, recopiez la forme donnée par « _exemple » à la racine, sous le nom « ojs » ou « biblio ». Le formulaire « Réglages SZH » du cockpit les affiche en lecture seule et sait produire ce fichier : bouton « Télécharger les réglages protégés ». Voir README.md, § « Les réglages protégés ».",
+  "_exemple": {
+    "ojs": {
+      "revues": {
+        "de": { "genreFichier": "Artikeltext", "groupeAuteur": "Autor/in", "televerseur": "redaktion", "paysAuteur": "" }
+      },
+      "rubriques": [
+        { "cle": "ED", "abbrev": { "fr": "ED", "de": "Ed" }, "titre": { "fr": "Éditorial", "de": "Editorial" } }
+      ],
+      "types": { "editorial": "ED" }
+    },
+    "biblio": {
+      "titres": {
+        "revue": { "fr": "Références", "de": "Literatur", "it": "Bibliografia" }
+      }
+    }
+  }
+}

@@ -248,6 +248,103 @@ ligne de commande : lanceur → *Version du logiciel…*, ou le bouton *Changer 
 l'avertissement de divergence du cockpit. Volontairement manuel et visible — l'opération remplace
 le rootfs et les extensions, et demande un redémarrage de l'éditeur.
 
+### Les réglages de l'éditeur, et pourquoi la mise à jour n'y touche plus
+
+Le gabarit commenté `vscodium-user/settings.json` est la **source unique** de ce que la
+maison impose à tous les postes. Il est recopié tel quel dans
+`contributes.configurationDefaults` du cockpit (`package.json`) — deux fichiers, une seule
+vérité, et `test/js/reglages-flotte.test.js` refuse qu'ils divergent en affichant le bloc à
+recoller.
+
+Un **défaut d'extension** vit *sous* le fichier du rédacteur au lieu de le remplacer. C'est
+tout le correctif : `update.ps1` ne recopie plus `settings.json` que sur un poste **qui n'en
+a pas**, et ce que le rédacteur choisit dans « Réglages SZH » — thème, zoom, taille de
+police, langue, mode d'aperçu — ne disparaît plus à chaque mise à jour. `keybindings.json`
+et `tasks.json`, eux, restent écrasés : personne ne les édite.
+
+⚠ L'éditeur **refuse certains défauts d'extension, en silence**. Son point d'extension
+filtre sur la portée du réglage : mesuré sur VSCodium 1.121, `update.mode`,
+`extensions.autoUpdate`, `extensions.autoCheckUpdates`, `window.commandCenter` et
+`window.menuBarVisibility` (portée « application ») sont retirés de la contribution avec un
+simple avertissement. Le cockpit les pose donc lui-même, par
+`getConfiguration().update(…, Global)` — la seule écriture qui retouche `settings.json`
+chirurgicalement, commentaires et clés voisines conservés.
+
+Ce partage **n'est pas écrit en dur** : `poserReglagesMaison` (extension.js) relit le défaut
+effectif de chaque clé au démarrage et pose celles qui n'ont pas pris. Une clé refusée par
+une version future de l'éditeur se rattrape donc seule. Et l'écriture n'a lieu **qu'une fois
+par valeur voulue** — l'empreinte du gabarit est mémorisée : sans cette garde, un rédacteur
+qui a délibérément changé un de ces réglages se le verrait réimposer à chaque ouverture.
+
+### Les réglages protégés
+
+Deux blocs de « Réglages SZH » ne décrivent pas le confort d'une personne mais la **chaîne de
+publication** : la configuration de l'export OJS et les titres de bibliographie. Une rubrique
+OJS renommée sur un seul poste fait atterrir ses articles dans la mauvaise section de la
+revue. Ils sont donc **en lecture seule**, et déployés depuis
+`windows/settings-protected.json` vers `C:\ProgramData\SZH\settings-protected.json` —
+écrasé à chaque mise à jour, c'est le sens du fichier.
+
+Le cockpit relaie ensuite ces blocs dans `config.json`, **seul fichier que
+`pipeline/filters/szh-citations.lua` sache lire depuis la machine virtuelle** : ni le filtre
+ni `lib/export-ojs.js` ne changent de source. Le relais n'a lieu que **quand la référence a
+changé**, jamais à chaque démarrage — sinon une modification locale disparaîtrait le
+lendemain matin.
+
+⚠ Un bloc **absent** du fichier déployé laisse celui du poste intact ; seul un bloc présent
+prend la main. Le fichier part vide : s'il effaçait ce qu'il ne nomme pas, la première mise à
+jour emporterait la configuration OJS des postes qui en avaient déjà une.
+
+Le rédacteur peut déverrouiller — case à cocher, question modale qui dit ce que cela engage.
+Sa modification vaut alors **tout de suite sur son poste**, et jusqu'à la prochaine mise à
+jour seulement. Le formulaire affiche alors un bandeau « ce poste ne porte plus les valeurs
+de la rédaction », le bouton **« Télécharger les réglages protégés »** produit le fichier à
+transmettre, et `windows/diagnostic.ps1` (§ *Réglages de la rédaction*) sort la divergence en
+défaut à réparer.
+
+### La langue de l'interface
+
+**Deux sources, indépendantes, et c'est ce qui rend un écran mi-français mi-allemand
+possible.** Les menus de l'éditeur, les titres de commandes et les descriptions de réglages
+viennent de `package.nls.json` / `package.nls.de.json`, que VSCodium résout selon **sa propre
+langue d'affichage** (`argv.json`, clé `locale`, et le pack de langue épinglé dans
+`vsix.lock`). Tout le reste — arbre, formulaires, messages — vient de `lib/i18n.js`, que
+`sourceLangue()` résout par cette cascade, la première source qui répond gagnant :
+
+| # | Source | Où |
+|---|--------|-----|
+| 1 | `SZH_LANGUE` | l'environnement — un essai, jamais posée sur un poste de rédaction |
+| 2 | réglage `szh.langue` | réglages de l'éditeur, écrits par « Réglages SZH » |
+| 3 | clé `langue` | configuration du poste — le même choix, **hors** des réglages de l'éditeur |
+| 4 | clé `langue` | état du poste, écrit par le dernier lanceur ouvert (`Set-SzhLangueProduit`) |
+| 5 | langue d'affichage de l'éditeur | `argv.json` + pack de langue |
+| 6 | langue d'affichage de Windows | locale du système |
+| — | français | faute de mieux |
+
+Deux points valent d'être sus avant d'y toucher.
+
+**Pourquoi l'étage 4.** Les postes d'ici affichent Windows ET VSCodium en anglais : ni l'un
+ni l'autre ne dit l'équipe qui s'en sert, et la cascade retombait donc toujours sur le
+français — y compris à la rédaction germanophone. Le lanceur, lui, le dit : « Zeitschriften
+SZH » écrit `de`, « Revues SZH » écrit `fr`.
+
+**Pourquoi l'étage 3 double l'étage 2.** `update.ps1` (étape 4/5) réécrit *intégralement* les
+réglages de l'éditeur à chaque mise à jour. Le choix du rédacteur y disparaissait — un poste
+allemand se remettait à parler français après chaque mise à jour. Le second exemplaire vit
+dans la configuration du poste, que la mise à jour ne touche pas. ⚠ Le thème, le zoom et la
+taille de police du formulaire de réglages n'ont PAS ce second exemplaire : eux repartent
+encore de zéro à chaque mise à jour.
+
+Quand les deux moitiés divergent, personne n'a à le deviner : `windows/diagnostic.ps1`
+(§ *Langue de l'interface*) pose les six sources côte à côte, nomme celle qui a tranché et
+ressort en défaut à réparer ; et « Réglages SZH » affiche la discordance sous le choix de la
+langue. Des menus en **anglais** ne sont pas une discordance — c'est l'état ordinaire d'un
+poste francophone, aucun pack de langue français n'étant épinglé.
+
+Gardé par `test/js/langue-interface.test.js` (la cascade, les deux écritures, l'ordre du
+diagnostic) et `test/js/actualite.test.js` (aucun libellé français dans le formulaire
+allemand).
+
 ### Réparer un poste
 
 Un script qui répare (`bootstrap.ps1` relancé en administrateur, `update.ps1` en ligne de

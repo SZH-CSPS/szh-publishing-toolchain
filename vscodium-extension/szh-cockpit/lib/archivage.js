@@ -238,6 +238,25 @@ function ecrireEmplacementRevues(emplacement) {
   return ecrireConfigPoste((avant) => configAvecEmplacement(avant, emplacement));
 }
 
+// ---- Langue de l'interface : le choix du rédacteur, mis hors d'atteinte ----------
+//
+// Le formulaire de réglages écrit la langue à deux endroits : le réglage de l'éditeur, et
+// ici. Ce n'est pas une redondance de confort. La mise à jour du poste réécrit entièrement
+// les réglages de l'éditeur — thème, zoom, taille de police et langue avec eux — et le
+// choix disparaissait donc à chaque mise à jour : un poste allemand se remettait à parler
+// français. Ce fichier-ci, lui, n'est jamais réécrit par la mise à jour.
+//
+// C'est lib/i18n.js qui relit la clé, sans passer par ce module : il ne doit dépendre de
+// rien pour rester chargeable hors de l'éditeur. Pure, pour être éprouvable sans écrire
+// dans C:\ProgramData ; c'est l'appelant qui appelle ecrireConfigPoste.
+function configAvecLangue(cfg, langue) {
+  const sortie = Object.assign({}, (cfg && typeof cfg === 'object') ? cfg : {});
+  const v = String(langue === undefined || langue === null ? '' : langue).trim().toLowerCase();
+  if (v === 'fr' || v === 'de') { sortie.langue = v; }
+  else { delete sortie.langue; }       // valeur inconnue : on efface plutôt que d'inventer
+  return sortie;
+}
+
 // Noms d'avant, gardés pour l'hôte et ses réglages : « mode développeur » n'était que le nom
 // de l'emplacement de test.
 function lireModeDeveloppeur() {
@@ -253,7 +272,7 @@ module.exports = {
   cheminConfigPoste, lireConfigPoste, ecrireConfigPoste, FORME_MAIL,
   MAILS_TRADUCTION, MAIL_TRADUCTION_DEFAUT, choisirAdresseMail, adresseMailTraduction,
   EMPLACEMENT_TEST, EMPLACEMENT_PRODUCTION, normaliserBooleenConfig,
-  resoudreEmplacementRevues, lireEmplacementRevues, configAvecEmplacement,
+  resoudreEmplacementRevues, lireEmplacementRevues, configAvecEmplacement, configAvecLangue,
   ecrireEmplacementRevues, lireModeDeveloppeur, ecrireModeDeveloppeur,
   versionInstallee, versionsDivergent, tailleDossier,
   lancerArchivage, lancerChoixVersion

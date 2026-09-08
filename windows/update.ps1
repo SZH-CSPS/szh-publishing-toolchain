@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   Met à jour l'outil Revue SZH dans une fenêtre visible. Lancée d'ordinaire par
   update-launcher.ps1, ou par les entrées « Mise à jour » du menu Démarrer, qui lui
@@ -422,12 +422,42 @@ try {
   if (Test-Path $src) {
     $dst = Join-Path $env:APPDATA 'VSCodium\User'
     New-Item -ItemType Directory -Force -Path $dst, (Join-Path $dst 'snippets') | Out-Null
-    foreach ($f in 'settings.json', 'keybindings.json', 'tasks.json') {
+    # ⚠ settings.json n'est PLUS écrasé, et c'est le correctif d'un défaut qui a duré : ce
+    #   fichier appartient au rédacteur. Le recopier en entier effaçait à chaque mise à jour
+    #   tout ce qu'il avait choisi dans « Réglages SZH » — thème, zoom, taille de police,
+    #   langue de l'interface, mode d'aperçu. Les valeurs de la maison ne passent plus par
+    #   lui : le cockpit les déclare en défauts d'extension (contributes.configurationDefaults
+    #   de son package.json, recopie du gabarit) et pose lui-même les quelques réglages que
+    #   l'éditeur refuse en défaut. Voir vscodium-extension/szh-cockpit/lib/reglages-flotte.js.
+    #
+    #   Il est encore POSÉ sur un poste qui n'en a pas : le cockpit ne tourne pas avant le
+    #   premier démarrage de l'éditeur, et un poste neuf doit être configuré dès la première
+    #   ouverture, même si l'extension venait à ne pas s'activer.
+    #
+    #   Les deux autres fichiers restent écrasés : personne ne les édite, ils décrivent les
+    #   raccourcis et les tâches de compilation de la maison.
+    $reglagesRedacteur = Join-Path $dst 'settings.json'
+    $srcReglages = Join-Path $src 'settings.json'
+    if ((Test-Path $srcReglages) -and (-not (Test-Path $reglagesRedacteur))) {
+      Copy-Item $srcReglages $reglagesRedacteur -Force
+    }
+    foreach ($f in 'keybindings.json', 'tasks.json') {
       $s = Join-Path $src $f
       if (Test-Path $s) { Copy-Item $s (Join-Path $dst $f) -Force }
     }
     $sn = Join-Path $src 'snippets'
     if (Test-Path $sn) { Copy-Item (Join-Path $sn '*') (Join-Path $dst 'snippets') -Force }
+  }
+
+  # ---- Réglages protégés de la chaîne de publication ----
+  # La configuration de l'export OJS et les titres de bibliographie : ils valent pour TOUS
+  # les postes, et se décident dans le dépôt. Écrasés à chaque mise à jour — c'est le sens
+  # même du fichier : la version déployée fait foi, et remplace ce qu'un poste aurait
+  # modifié localement. Le cockpit les recopie ensuite dans config.json, seul fichier que la
+  # chaîne de compilation sache lire depuis la machine virtuelle.
+  $protegesSrc = Join-Path $SzhToolkit 'windows\settings-protected.json'
+  if (Test-Path $protegesSrc) {
+    Copy-Item $protegesSrc (Join-Path $SzhBase 'settings-protected.json') -Force
   }
 
   # Le pack de langue allemand est épinglé dans vsix.lock, mais VSCodium ne bascule ses

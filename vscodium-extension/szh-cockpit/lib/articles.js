@@ -311,6 +311,41 @@ function configAvecTaches(cfg, revue, liste) {
   return sortie;
 }
 
+// ---- Ce que la vue « Articles » montre ou cache ----------------------------------
+//
+// Deux interrupteurs, et rien d'autre : la liste des tâches sur chaque carte, et les champs
+// traduits de l'aperçu. Ils raccourcissent la carte sans rien perdre — ce qui est caché est
+// caché à la lecture, jamais retiré du numéro.
+//
+// Ils vivent dans config.json et non dans les réglages de l'éditeur, pour deux raisons : la
+// mise à jour du poste réécrit ces derniers en entier (même motif que la langue, voir
+// lib/archivage.js, configAvecLangue), et un interrupteur d'affichage n'a pas à peupler la
+// liste des réglages de VSCodium. Un réglage de confort, pas un réglage de publication.
+const CLE_VUE_ARTICLES = 'vueArticles';
+
+// -> { cacherTaches, cacherTraductions }, toujours des booléens. Une configuration absente,
+// illisible ou à moitié écrite rend « tout est montré » : c'est l'état d'un poste neuf, et
+// c'est celui qui ne cache rien à personne.
+function vueArticlesConfig(cfg) {
+  const brut = (cfg && typeof cfg === 'object' && cfg[CLE_VUE_ARTICLES]) || {};
+  return {
+    cacherTaches: brut.cacherTaches === true,
+    cacherTraductions: brut.cacherTraductions === true
+  };
+}
+
+// Bascule un des deux interrupteurs sans toucher au reste de config.json. Pure, pour être
+// éprouvable sans écrire dans C:\ProgramData ; c'est l'appelant qui appelle
+// ecrireConfigPoste. Une clé inconnue ne change rien plutôt que d'en inventer une.
+function configAvecVueArticles(cfg, cle, valeur) {
+  const sortie = Object.assign({}, (cfg && typeof cfg === 'object') ? cfg : {});
+  const etat = vueArticlesConfig(cfg);
+  if (!(cle in etat)) { return sortie; }
+  etat[cle] = valeur === true;
+  sortie[CLE_VUE_ARTICLES] = etat;
+  return sortie;
+}
+
 // L'intitulé dans la langue de l'interface, avec repli sur l'autre : une tâche n'ayant été
 // nommée qu'en français doit rester lisible sur un cockpit allemand.
 function libelleTache(tache, langue) {
@@ -443,6 +478,7 @@ module.exports = {
   titreFiche, libelleArticle, SEPARATEUR_LIBELLE,
   TACHES_DEFAUT, REVUES_TACHES, CLE_TACHES, MAX_TACHES, LONGUEUR_MAX_TACHE,
   idTache, normaliserTaches, tachesConfig, tachesRevue, configAvecTaches, libelleTache,
+  CLE_VUE_ARTICLES, vueArticlesConfig, configAvecVueArticles,
   ENTETE_TACHES, analyserTachesFaites, serialiserTachesFaites, resumeTaches, basculerTache,
   NOMS_COUVERTURE, EXTENSIONS_COUVERTURE, nomCouverture, MAX_COUVERTURE
 };

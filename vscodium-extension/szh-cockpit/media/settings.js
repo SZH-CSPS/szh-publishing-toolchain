@@ -29,6 +29,12 @@
     { cle: 'langue', legende: TXT.langue, options: [['fr', 'Français'], ['de', 'Deutsch']] },
     { cle: 'dev', legende: TXT.dev, options: [['oui', TXT.devOui], ['non', TXT.devNon]] }
   ];
+  // La discordance de langue, sous le choix de la langue et nulle part ailleurs : les menus
+  // de VSCodium et les textes du cockpit ne viennent pas de la même source, et rien ne les
+  // oblige à s'accorder. Quand ils divergent — l'interface en allemand, les formulaires en
+  // français — c'est ici que ça se dit, à l'endroit où l'on peut y remédier. Vide le reste
+  // du temps, c'est-à-dire presque toujours.
+  let zoneLangue = null;
   function rendre() {
     for (const g of GROUPES) {
       const zone = document.createElement('fieldset');
@@ -48,8 +54,19 @@
         l.appendChild(document.createTextNode(libelle));
         zone.appendChild(l);
       }
+      if (g.cle === 'langue') {
+        zoneLangue = document.createElement('p');
+        zoneLangue.className = 'szh-notif szh-notif--attention szh-notif--discret';
+        zoneLangue.hidden = true;
+        zone.appendChild(zoneLangue);
+      }
       zones.appendChild(zone);
     }
+  }
+  function afficherDiscordanceLangue(texte) {
+    if (!zoneLangue) { return; }
+    zoneLangue.textContent = String(texte || '');
+    zoneLangue.hidden = String(texte || '') === '';
   }
   function cocher(valeurs) {
     for (const cle of Object.keys(valeurs)) {
@@ -333,6 +350,7 @@
     rendreRevues();
     rendreRubriques();
     rendreTypes();
+    appliquerVerrou();                     // le bloc vient d'être reconstruit, à neuf
   }
 
   const auto = SZH.autoEnregistrement({
@@ -354,6 +372,90 @@
   let biblioModifie = false;
 
   function marquerBiblio() { biblioModifie = true; autoBiblio.programmer(); }
+
+  // ---- Les réglages protégés ------------------------------------------------------
+  //
+  // Les deux blocs qui suivent — titre de la bibliographie, export OJS — décrivent la
+  // chaîne de publication et non le confort d'une personne : ils valent pour toute la
+  // rédaction, et une rubrique renommée sur un seul poste fait atterrir ses articles dans
+  // la mauvaise section de la revue. Ils sont donc en lecture seule, et le déverrouillage
+  // passe par l'hôte : c'est lui qui pose la question, en modale, parce qu'une webview ne
+  // peut pas bloquer et qu'un avertissement qu'on chasse d'un clic n'avertit personne.
+  //
+  // La page ne décide jamais de son propre verrou : elle demande, et se règle sur ce que
+  // l'hôte répond. Cocher la case ne déverrouille rien tant que la modale n'a pas été
+  // acceptée.
+  const protegesZone = document.getElementById('proteges');
+  let protegesEtat = { deverrouille: false, divergences: [], avertissement: '' };
+  let caseDeverrouiller = null;
+  let banniereProteges = null;
+
+  function rendreProteges() {
+    if (!protegesZone) { return; }
+    protegesZone.textContent = '';
+    const f = zone(TXT.protegesTitre);
+    note(f, TXT.protegesVerrouille);
+
+    const barre = document.createElement('div');
+    barre.className = 'regl-proteges-barre';
+
+    const l = document.createElement('label');
+    caseDeverrouiller = document.createElement('input');
+    caseDeverrouiller.type = 'checkbox';
+    caseDeverrouiller.checked = protegesEtat.deverrouille;
+    caseDeverrouiller.addEventListener('change', function () {
+      // On renvoie l'intention, pas l'état : la case se remettra sur ce que l'hôte répond,
+      // y compris quand la modale a été refusée.
+      vscodeApi.postMessage({ type: SZH.MSG.DEVERROUILLER, valeur: caseDeverrouiller.checked });
+    });
+    l.appendChild(caseDeverrouiller);
+    l.appendChild(document.createTextNode(TXT.protegesDeverrouiller));
+    barre.appendChild(l);
+
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'szh-bouton';
+    b.textContent = TXT.protegesTelecharger;
+    b.title = TXT.protegesTelechargerTip;
+    // Offert même verrouillé : lire et transmettre ne modifie rien, et c'est justement ce
+    // qu'on demande à quelqu'un qui signale un problème.
+    b.addEventListener('click', function () {
+      vscodeApi.postMessage({ type: SZH.MSG.TELECHARGER_PROTEGES });
+    });
+    barre.appendChild(b);
+    f.appendChild(barre);
+
+    banniereProteges = document.createElement('p');
+    banniereProteges.className = 'szh-notif szh-notif--attention szh-notif--discret';
+    banniereProteges.hidden = true;
+    f.appendChild(banniereProteges);
+
+    protegesZone.appendChild(f);
+    appliquerVerrou();
+  }
+
+  // Le verrou est posé sur les CONTRÔLES des deux blocs, et non sur chaque fabrique de
+  // champ : un champ ajouté plus tard à l'un de ces formulaires est verrouillé sans qu'on
+  // ait à y penser. C'est le seul endroit qui sache ce qui se grise.
+  function appliquerVerrou() {
+    const verrouille = !protegesEtat.deverrouille;
+    for (const bloc of [document.getElementById('biblio'), ojsZone]) {
+      if (!bloc) { continue; }
+      for (const el of bloc.querySelectorAll('input, select, textarea, button')) {
+        // readOnly sur un champ de saisie, disabled sur le reste : un champ désactivé sort
+        // de l'ordre de tabulation et n'est plus lisible au lecteur d'écran, alors qu'un
+        // réglage qu'on ne peut pas changer doit rester lisible.
+        if (el.tagName === 'INPUT' && el.type === 'text') { el.readOnly = verrouille; }
+        else { el.disabled = verrouille; }
+        el.classList.toggle('fige', verrouille);
+      }
+    }
+    if (caseDeverrouiller) { caseDeverrouiller.checked = protegesEtat.deverrouille; }
+    if (banniereProteges) {
+      banniereProteges.textContent = String(protegesEtat.avertissement || '');
+      banniereProteges.hidden = String(protegesEtat.avertissement || '') === '';
+    }
+  }
 
   function rendreBiblio() {
     biblioZone.textContent = '';
@@ -406,6 +508,7 @@
   });
 
   rendre();
+  rendreProteges();
   window.addEventListener('message', function (e) {
     const msg = e.data || {};
     recu = true;
@@ -422,8 +525,17 @@
       afficherErreur(msg.message);
       return;
     }
+    // L'état des réglages protégés arrive seul après un déverrouillage ou une écriture, et
+    // avec les valeurs à l'ouverture. Les deux passent par ici.
+    if (msg.type === SZH.MSG.PROTEGES) {
+      protegesEtat = msg;
+      appliquerVerrou();
+      return;
+    }
     if (msg.type !== SZH.MSG.VALEURS) { return; }
     cocher(msg.valeurs || {});
+    afficherDiscordanceLangue(msg.avertLangue);
+    if (msg.proteges) { protegesEtat = msg.proteges; }
     if (msg.auteursOjs) { rendreAuteursOjs(msg.auteursOjs); }
     // Une saisie en cours ne se fait pas écraser par un renvoi de valeurs : le panneau
     // reste tel quel, l'enregistrement automatique s'en occupe.
@@ -434,6 +546,7 @@
     if (msg.biblio && !biblioModifie) {
       biblio = msg.biblio;
       rendreBiblio();
+      appliquerVerrou();
     }
   });
   SZH.annoncerPret(vscodeApi, function () { return recu; });
