@@ -9,10 +9,14 @@
 #
 # Ordre des --lua-filter à la compilation, et ce qui casse si on permute :
 #   szh-maquette -> szh-niveaux -> szh-listes-serrees -> szh-tabelle-inclure ->
-#   szh-tabelle-scope -> szh-typographie -> szh-metafichier -> szh-grille ->
-#   szh-ressource -> szh-figure -> szh-numerotation -> szh-tableau-boite ->
-#   szh-legende-avant -> szh-sections -> szh-auteurs -> szh-citations ->
-#   szh-rubrique -> szh-cesure -> szh-notes
+#   szh-tabelle-scope -> szh-typographie -> szh-titre-lignes -> szh-metafichier ->
+#   szh-grille -> szh-ressource -> szh-figure -> szh-numerotation ->
+#   szh-tableau-boite -> szh-legende-avant -> szh-sections -> szh-auteurs ->
+#   szh-citations -> szh-rubrique -> szh-cesure -> szh-notes
+#   * szh-titre-lignes juste après szh-typographie : il MESURE le titre pour le couper en
+#     escalier (première ligne plus courte que la deuxième), et doit donc voir le titre
+#     tel qu'il s'imprimera — insécables et mots outils soudés compris, ce que
+#     szh-typographie vient de poser. Avant lui, il mesurerait un titre qui n'existe pas ;
 #   * szh-numerotation après szh-tabelle-inclure : il numérote des tableaux qui
 #     n'existent qu'une fois le HTML réinjecté ;
 #   * szh-typographie après szh-tabelle-scope et avant szh-numerotation : après, parce
@@ -360,6 +364,7 @@ $(OUT)/%.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-titre-lignes.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-metafichier.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-grille.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-ressource.lua" \
@@ -409,6 +414,7 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-scope.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-typographie.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-titre-lignes.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-metafichier.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-grille.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-ressource.lua" \

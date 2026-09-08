@@ -26,6 +26,9 @@ import tempfile
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FILTRE = os.path.join(RACINE, "pipeline", "filters", "szh-typographie.lua")
+# L3 (l'escalier du titre) vit dans un filtre à part : il mesure le titre et doit donc
+# passer APRÈS celui-ci, qui pose les insécables et soude les mots outils.
+FILTRE_TITRE = os.path.join(RACINE, "pipeline", "filters", "szh-titre-lignes.lua")
 
 NB = " "
 FIN = " "
@@ -96,14 +99,20 @@ CAS = [
     ("E4", "de", "siehe S. 202 dort", "siehe S." + NB + "202 dort"),
 
     # ---- T1 · tiret d'incise ------------------------------------------------------------
+    # L'insécable devant le tiret est la seconde moitié de la règle : elle manquait ici
+    # jusqu'au 08.09.2026, alors que typo-check.py la tenait déjà pour l'interface.
     ("T1", "fr", "un mot --- une incise --- la suite",
-     "un mot – une incise – la suite"),
+     "un mot" + NB + "– une incise" + NB + "– la suite"),
     ("T1", "de", "ein Wort --- ein Einschub --- der Rest",
      "ein Wort – ein Einschub – der Rest"),
 
-    # ---- T2 · plage de pages -------------------------------------------------------------
-    ("T2", "fr", "voir pp. 12-25 ici", "voir pp." + NB + "12–25 ici"),
+    # ---- T2 · plage de pages, deux prescriptions inverses (08.09.2026) -------------------
+    # Trait d'union en français (bis-Strich romand), demi-cadratin en allemand (Duden).
+    # La règle convertit dans les DEUX sens : ce que la rédaction a tapé ne décide pas.
+    ("T2", "fr", "voir pp. 12-25 ici", "voir pp." + NB + "12-25 ici"),
+    ("T2", "fr", "voir pp. 12–25 ici", "voir pp." + NB + "12-25 ici"),
     ("T2", "de", "siehe S. 12-25 dort", "siehe S." + NB + "12–25 dort"),
+    ("T2", "de", "siehe S. 12–25 dort", "siehe S." + NB + "12–25 dort"),
     ("T2", "fr", "le projet COVID-19 de 2020-2021",
      "le projet COVID-19 de 2020-2021"),
 
@@ -112,6 +121,94 @@ CAS = [
 
     # ---- S2 · ordinaux ---------------------------------------------------------------------
     ("S2", "fr", "la 2ème fois et la 3ième", "la 2e fois et la 3e"),
+
+    # ---- S4 · le point abréviatif absorbe le point final -----------------------------------
+    ("S4", "fr", "voir etc.. ici", "voir etc. ici"),
+    ("S4", "fr", "voir etc... ici", "voir etc. ici"),
+    ("S4", "de", "siehe usw... hier", "siehe usw. hier"),
+    # Ce qui n'est PAS un point doublé : les points de suspension d'une phrase inachevée.
+    ("S4", "fr", "et ainsi de suite... ", "et ainsi de suite…"),
+
+    # ---- E3 · pour mille, comme le pour-cent, dans les trois langues -----------------------
+    ("E3", "fr", "environ 2 ‰ des cas", "environ 2" + NB + "‰ des cas"),
+    ("E3", "de", "etwa 2‰ der Fälle", "etwa 2" + NB + "‰ der Fälle"),
+
+    # ---- E5 · les insécables de contexte ---------------------------------------------------
+    ("E5", "fr", "il a couru 12 km en 54,5 minutes",
+     "il a couru 12" + NB + "km en 54,5" + NB + "minutes"),
+    ("E5", "fr", "voir art. 8 et al. 2", "voir art." + NB + "8 et al." + NB + "2"),
+    ("E5", "fr", "reçu par Mme Berger et M. Dupont",
+     "reçu par Mme" + NB + "Berger et M." + NB + "Dupont"),
+    ("E5", "fr", "signé J. Dupont", "signé J." + NB + "Dupont"),
+    ("E5", "fr", "le 6 août 2017", "le 6" + NB + "août 2017"),
+    ("E5", "fr", "à 4 h 04 précises", "à 4" + NB + "h" + NB + "04 précises"),
+    ("E5", "fr", "coûte 160 fr. et 25 €", "coûte 160" + NB + "fr. et 25" + NB + "€"),
+    ("E5", "fr", "sous Louis XIV", "sous Louis" + NB + "XIV"),
+    ("E5", "de", "in 3 Tagen um 8.30 Uhr", "in 3" + NB + "Tagen um 8.30" + NB + "Uhr"),
+    ("E5", "de", "siehe Abb. 4 und Art. 8",
+     "siehe Abb." + NB + "4 und Art." + NB + "8"),
+    # Ce qui n'est pas une unité reste sécable : souder tout nombre au mot qui suit
+    # multiplierait les insécables dans une colonne étroite.
+    ("E5", "fr", "il y avait 2000 personnes", "il y avait 2000 personnes"),
+
+    # ---- E6 · le groupement des nombres ne se coupe pas ------------------------------------
+    ("E6", "fr", "un budget de 22 255 725 francs",
+     "un budget de 22" + FIN + "255" + FIN + "725" + NB + "francs"),
+    ("E6", "de", "ein Budget von 22 255 725 Franken",
+     "ein Budget von 22" + FIN + "255" + FIN + "725" + NB + "Franken"),
+
+    # ---- E7 · pas d'espace à l'intérieur des parenthèses ni des crochets -------------------
+    ("E7", "fr", "la machine ( ci-joint ) tourne", "la machine (ci-joint) tourne"),
+    ("E7", "de", "die Maschine ( siehe oben ) läuft", "die Maschine (siehe oben) läuft"),
+
+    # ---- E8 · la virgule et le point sont collés au mot ------------------------------------
+    ("E8", "fr", "le mot , puis la suite .", "le mot, puis la suite."),
+    ("E8", "de", "das Wort , dann der Rest .", "das Wort, dann der Rest."),
+
+    # ---- A4 · majuscules accentuées ---------------------------------------------------------
+    # Le « A » isolé qui est un « À », en OUVERTURE DE PHRASE seulement.
+    ("A4", "fr", "A l'heure actuelle, tout va bien.",
+     "À l’heure actuelle, tout va bien."),
+    ("A4", "fr", "Tout va bien. A la maison aussi.", "Tout va bien. À la maison aussi."),
+    # Au milieu d'une phrase, un « A » capital est un « à » minuscule : une coquille de
+    # casse, que le filtre ne peut pas distinguer d'un intitulé. Il n'y touche pas.
+    ("A4", "fr", "Il va A la maison.", "Il va A la maison."),
+    ("A4", "fr", "Voir A. Dupont et la variante A) ici.",
+     "Voir A." + NB + "Dupont et la variante A) ici."),
+    # Le lexique : corrigé dans un intertitre, laissé dans le corps (un titre anglais
+    # s'écrit « Education » sans faute).
+    ("A4", "fr", "## Le role de l'Ecole", "Le" + NB + "role de" + NB + "l’École"),
+    ("A4", "fr", "Un Etat dans le corps.", "Un Etat dans le corps."),
+
+    # ---- A5 · ligatures œ et æ --------------------------------------------------------------
+    ("A5", "fr", "le coeur de l'oeuvre", "le cœur de l’œuvre"),
+    ("A5", "fr", "OEUVRES choisies", "ŒUVRES choisies"),
+    ("A5", "fr", "Oeuvres choisies", "Œuvres choisies"),
+    # Les pièges : le o et le e ne se lient pas ici.
+    ("A5", "fr", "un coefficient de moelle", "un coefficient de moelle"),
+    ("A5", "de", "das Oeuvre bleibt", "das Oeuvre bleibt"),
+
+    # ---- L2 · déterminant et préposition restent avec leur mot (titres) ---------------------
+    # L'exemple de la rédaction : la coupure ne peut plus tomber entre « de » et
+    # « formation », elle se fera devant « de ».
+    ("L2", "fr", "## Les personnes en situation de handicap comme partenaires de formation",
+     "Les" + NB + "personnes en" + NB + "situation de" + NB + "handicap comme"
+     + NB + "partenaires de" + NB + "formation"),
+    ("L2", "de", "## Menschen mit Behinderung als Partner in der Ausbildung",
+     "Menschen mit" + NB + "Behinderung als" + NB + "Partner in" + NB + "der"
+     + NB + "Ausbildung"),
+    # La chaîne de soudures s'arrête au plafond de 30 signes : la boîte du titre est en
+    # overflow: hidden, et un groupe insécable plus long qu'elle serait tronqué sans bruit.
+    # « Malgré la professionnalisation » fait exactement 30 signes et passe donc encore.
+    ("L2", "fr", "## Malgré la professionnalisation des métiers",
+     "Malgré" + NB + "la" + NB + "professionnalisation des" + NB + "métiers"),
+    # Un seul mot de 27 signes fait déjà dépasser le plafond : l'espace reste sécable.
+    ("L2", "de", "## Nach der Behindertenrechtskonvention",
+     "Nach" + NB + "der Behindertenrechtskonvention"),
+    # Le corps ne reçoit PAS la soudure : ce sont les points de coupure qui permettent à
+    # WeasyPrint de répartir le blanc d'un paragraphe justifié.
+    ("L2", "fr", "Les personnes de la formation restent ici.",
+     "Les personnes de la formation restent ici."),
 
     # ---- ce que la maquette a déjà posé, et qui doit survivre ---------------------------
     # szh-numerotation.lua écrit « Source⍽: » avec une FINE insécable : c'est une décision
@@ -132,6 +229,52 @@ CAS = [
 ]
 
 
+# (code, langue, clé, titre saisi, titre tel que la couverture l'imprime)
+#
+# Le hero n'est pas du texte d'article : le titre et le sous-titre sont des MetaString que
+# szh-maquette.lua pose AVANT szh-typographie, et ce sont deux filtres qui les composent —
+# szh-typographie pour la typographie et la soudure des mots outils (L2), szh-titre-lignes
+# pour l'escalier (L3). Ces cas-ci passent donc par un gabarit minimal, qui imprime la clé
+# comme le fait szh-article.html. « ⏎ » marque la fin de ligne calculée par L3.
+CAS_TITRE = [
+    # ---- L3 · effet d'escalier : la première ligne plus courte que la deuxième ---------
+    # Sans le filtre, WeasyPrint remplit la première ligne et laisse « régulière » seule
+    # (mesuré sur test/accessibilite/out/participation-fr.pdf, rendu du 08.09.2026).
+    ("L3", "fr", "titre-affiche", "La participation sociale en classe régulière",
+     # L'espace du point de coupure disparaît : c'est le <br> qui porte la fin de ligne,
+     # et une espace traînante devant lui serait de toute façon ravalée.
+     "La" + NB + "participation⏎sociale en" + NB + "classe régulière"),
+    # Rien à faire : ce titre-là se replie DÉJÀ en escalier (304 px puis 340 px), et le
+    # filtre s'abstient plutôt que de déplacer une coupure qui est juste.
+    ("L3", "fr", "titre-affiche", "Développer ses compétences relationnelles grâce au handicap",
+     "Développer ses" + NB + "compétences relationnelles grâce au" + NB + "handicap"),
+    # Un titre d'une seule ligne n'a pas d'escalier.
+    ("L3", "fr", "titre-affiche", "Un titre court", "Un" + NB + "titre court"),
+    # En allemand, la soudure des mots outils suffit à mettre le titre en escalier
+    # (357 px puis 388 px) : aucune coupure n'est posée.
+    ("L3", "de", "titre-affiche", "Erfahrungen von Schülerinnen und Schülern in inklusiven Klassen",
+     "Erfahrungen von" + NB + "Schülerinnen und" + NB + "Schülern in" + NB
+     + "inklusiven Klassen"),
+
+    # ---- L2 · le sous-titre de couverture, l'exemple de la rédaction -------------------
+    # Avant : « … comme partenaires de / formation », préposition en fin de ligne et mot
+    # seul en dessous. La soudure de « de formation » déplace la coupure devant « de ».
+    ("L2", "fr", "sous-titre-affiche",
+     "Les personnes en situation de handicap comme partenaires de formation",
+     "Les" + NB + "personnes en" + NB + "situation de" + NB + "handicap comme"
+     + NB + "partenaires de" + NB + "formation"),
+
+    # ---- la couverture reçoit la MÊME typographie que le corps -------------------------
+    # ⚠ Ce n'était pas le cas avant le 08.09.2026 : szh-maquette pose ces clés avant le
+    # filtre, et une MetaString arrive en chaîne nue dans un filtre Lua — la
+    # normalisation les traversait sans rien faire.
+    ("A4", "fr", "titre-affiche", "L'Ecole inclusive : un défi",
+     "L’École inclusive" + NB + ": un" + NB + "défi"),
+    ("A5", "fr", "titre-affiche", "Au coeur de l'oeuvre",
+     "Au" + NB + "cœur de" + NB + "l’œuvre"),
+]
+
+
 def rendre(md, langue):
     """Compile un fragment avec le filtre, dans un dossier d'article factice."""
     with tempfile.TemporaryDirectory() as dossier:
@@ -147,6 +290,31 @@ def rendre(md, langue):
         if r.returncode != 0:
             return None, r.stderr.decode("utf-8", "replace").strip()
         return r.stdout.decode("utf-8").strip(), r.stderr.decode("utf-8", "replace").strip()
+
+
+def rendre_titre(titre, langue, cle):
+    """Compose une clé de couverture par les deux filtres, comme le fait le gabarit."""
+    if cle == "titre-affiche":
+        # La même expansion qu'à la ligne 110 de szh-article.html.
+        gabarit = "$if(titre-lignes)$$titre-lignes$$else$$titre-affiche$$endif$\n"
+    else:
+        gabarit = "$" + cle + "$\n"
+    with tempfile.TemporaryDirectory() as dossier:
+        with open(os.path.join(dossier, "vide.md"), "w", encoding="utf-8") as f:
+            f.write("")
+        with open(os.path.join(dossier, "gabarit.html"), "w", encoding="utf-8") as f:
+            f.write(gabarit)
+        r = subprocess.run(
+            ["pandoc", "vide.md", "--from=markdown", "--to=html", "--wrap=none",
+             "--template=gabarit.html", "--metadata=lang=" + langue,
+             "--metadata=" + cle + "=" + titre,
+             "--lua-filter=" + FILTRE, "--lua-filter=" + FILTRE_TITRE],
+            cwd=dossier, capture_output=True)
+        if r.returncode != 0:
+            return None, r.stderr.decode("utf-8", "replace").strip()
+        sortie = r.stdout.decode("utf-8").strip()
+        sortie = sortie.replace('<br class="szh-titre-ligne" />', "⏎")
+        return sortie, r.stderr.decode("utf-8", "replace").strip()
 
 
 def main(argv):
@@ -166,6 +334,17 @@ def main(argv):
         elif bavard:
             print("  ok   %-4s %-3s %s" % (code, langue, montrer(obtenu)))
 
+    for code, langue, cle, entree, attendu in CAS_TITRE:
+        obtenu, err = rendre_titre(entree, langue, cle)
+        if obtenu is None:
+            echecs.append((code, langue, entree, attendu, "pandoc en échec : " + err))
+            continue
+        if obtenu != attendu:
+            echecs.append((code, langue, entree, attendu, obtenu))
+        elif bavard:
+            print("  ok   %-4s %-3s %s" % (code, langue, montrer(obtenu)))
+
+    total = len(CAS) + len(CAS_TITRE)
     print()
     if echecs:
         for code, langue, entree, attendu, obtenu in echecs:
@@ -173,9 +352,9 @@ def main(argv):
             print("   entrée   " + montrer(entree))
             print("   attendu  " + montrer(attendu))
             print("   obtenu   " + montrer(obtenu))
-        print("\n%d cas en échec sur %d." % (len(echecs), len(CAS)))
+        print("\n%d cas en échec sur %d." % (len(echecs), total))
         return 1
-    print("%d cas, tous conformes." % len(CAS))
+    print("%d cas, tous conformes." % total)
     return 0
 
 

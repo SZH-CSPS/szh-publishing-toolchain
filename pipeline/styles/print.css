@@ -168,6 +168,16 @@ a.footnote-ref, a.footnote-back { text-decoration: none; }
    Pas de ligne seule en bas ni en haut d'une page ; les titres restent avec le texte
    qui suit ; les encadrés ne se coupent pas. */
 p, li, blockquote p { orphans: 3; widows: 3; }
+/* Limites de coupure de mot, FRANÇAIS SEULEMENT (08.09.2026, règle L4).
+   Le code romand veut au moins deux lettres avant la coupure et TROIS reportées à la
+   ligne suivante — « on ne renvoie pas moins de trois lettres » —, là où le défaut de
+   WeasyPrint 69 est (5, 2, 2). `6 3 3` est la variante de texte soigné : mot de six
+   lettres au minimum, trois de part et d'autre du tiret.
+   ⚠ Pas en allemand, et ce n'est pas un oubli : la langue vit de ses composés, et lui
+   retirer des points de coupure élargirait les blancs d'une ligne justifiée au lieu de
+   les resserrer. Le défaut (5, 2, 2) y reste donc en vigueur.
+   La propriété s'hérite : posée sur <html>, elle descend dans tout le document. */
+html:lang(fr) { hyphenate-limit-chars: 6 3 3; }
 h2, h3, h4, h5, h6 { break-after: avoid-page; break-inside: avoid; }
 blockquote, .hervorhebung, .important, .question, figure, .szh-abstract { break-inside: avoid; }
 li { break-inside: avoid; }
@@ -244,6 +254,15 @@ code, pre, kbd, samp { font-family: var(--font-mono); }
 .szh-subtitle { font-family: var(--title-family); font-weight: 400; font-size: 16px;
   line-height: 1.35; color: var(--c-hero2); margin: 12px 0 0; text-align: left;
   hyphens: manual; }
+/* Fin de ligne de l'escalier du titre (règle L3), posée par filters/szh-titre-lignes.lua
+   sous forme de <br class="szh-titre-ligne">. Elle est calculée pour une colonne de
+   435 px — 67 % de la justification à 25 px — et n'a donc aucun sens à une autre largeur :
+   sur un écran, où la boîte suit la fenêtre, elle est neutralisée. WeasyPrint n'applique
+   pas @media screen (voir §4, la note des notes de bas de page) : le PDF la garde, le
+   navigateur replie comme il veut. */
+@media screen {
+  .szh-titre-ligne { display: none; }
+}
 /* Ancré en bas du hero par position absolue, le flexbox de WeasyPrint ne gérant pas
    margin-top: auto : DOI et licence restent à la même place quel que soit le titre.
    `line-height: 1.1` (08.09.2026) : c'est lui, et non les marges des deux lignes, qui

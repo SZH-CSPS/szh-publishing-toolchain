@@ -107,7 +107,12 @@ $endfor$
       <p class="szh-hero-vol">$vol-ligne$</p>
     </div>
     <div class="szh-hero-main">
-      <h1 class="szh-title">$titre-affiche$</h1>
+      <!-- `titre-lignes` porte le titre coupé en escalier — première ligne plus courte
+           que la deuxième, règle L3 —, posé par filters/szh-titre-lignes.lua quand il a
+           pu mesurer que la coupure tient sans ajouter de ligne. Absent, on retombe sur
+           le titre d'une pièce et WeasyPrint replie comme avant. Le <title> de la page
+           garde `titre-affiche` : une balise <br> n'a pas de sens dans le /Title du PDF. -->
+      <h1 class="szh-title">$if(titre-lignes)$$titre-lignes$$else$$titre-affiche$$endif$</h1>
 $if(sous-titre-affiche)$
       <p class="szh-subtitle">$sous-titre-affiche$</p>
 $endif$
