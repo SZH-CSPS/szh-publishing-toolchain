@@ -190,7 +190,16 @@ function chargeNumero(racine, avecCouverture) {
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')); }
   catch (e) { /* fichier illisible : formulaire vide */ }
-  valeurs['entete-condensee'] = estVraiYaml(valeurs['entete-condensee']) ? 'true' : 'false';
+  // Défaut « compact » depuis le 09.09.2026 : une clé ABSENTE d'ausgabe.yaml (aucun numéro
+  // existant ne l'a — voir szh-maquette.lua) doit cocher la case, pas la décocher, sinon le
+  // formulaire affiche l'inverse de l'état réel du numéro. C'est le mensonge d'écran le
+  // plus grave possible ici : media/_numero.js n'envoie que les champs touchés, mais si la
+  // rédaction touche cette case-là — même pour la laisser décochée, croyant confirmer ce
+  // qu'elle voit déjà — elle écrit un `entete-condensee: false` explicite, qui, lui,
+  // ramène vraiment la hauteur fixe, sans que personne ne l'ait demandé. Une clé PRÉSENTE
+  // reste lue telle quelle par estVraiYaml.
+  valeurs['entete-condensee'] = valeurs['entete-condensee'] === undefined ? 'true'
+    : (estVraiYaml(valeurs['entete-condensee']) ? 'true' : 'false');
   const charge = { valeurs: valeurs };
   if (avecCouverture) { charge.couverture = chargeCouverture(racine); }
   return charge;

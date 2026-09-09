@@ -34,6 +34,14 @@
   { "key": "ctrl+alt+q", "command": "szh.fmt.question",  "when": "editorTextFocus && editorLangId == markdown" },
   { "key": "ctrl+alt+c", "command": "szh.fmt.citation",  "when": "editorTextFocus && editorLangId == markdown" },
   { "key": "ctrl+alt+f", "command": "szh.fmt.figure",    "when": "editorTextFocus && editorLangId == markdown" },
+
+  // Note de bas de page : insère l'appel [^n] au curseur (n = le premier numéro libre,
+  // déduit des étiquettes numériques déjà posées) et ajoute sa définition [^n]:  en fin de
+  // document, où le curseur se retrouve pour que la personne y tape le texte de la note.
+  // Forme en référence, jamais la note inline ^[…] : c'est celle que rend l'import Word, et
+  // une note en ligne noierait la phrase dans l'éditeur (lib/formatting-pur.js#noteBasPage).
+  { "key": "ctrl+alt+n", "command": "szh.fmt.noteBasPage", "when": "editorTextFocus && editorLangId == markdown" },
+
   // « Insérer un tableau » : dans un article, crée articles/<slug>/tables/table-NN.html,
   // insère sa référence ::: {.szh-tabelle src="…"} au curseur et ouvre l'éditeur de
   // tableau. Hors article, repli sur un squelette Markdown.

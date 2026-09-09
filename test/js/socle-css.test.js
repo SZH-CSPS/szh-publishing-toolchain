@@ -63,11 +63,26 @@ test('socle : les chemins de polices restent relatifs au dossier styles/', () =>
 
 // ---- Ce que print.css ne doit plus porter ----
 
-test('print.css ne redéclare ni police ni jeton :root', () => {
+test('print.css ne redéclare aucun jeton du socle', () => {
   assert.doesNotMatch(PRINT_NU, /@font-face/,
     'un @font-face est revenu dans print.css : la police serait déclarée deux fois, et la maquette web hériterait de l’autre');
-  assert.doesNotMatch(PRINT_NU, /(^|[\s},])\:root\s*\{/,
-    'un bloc :root est revenu dans print.css : c’est exactement la duplication que le socle existe pour éviter');
+  // print.css porte désormais son propre :root (09.09.2026) : la géométrie PAGINÉE — marges
+  // de @page, hero — qui n'a justement pas sa place au socle (« une boîte, une marge, un
+  // @page… appartiennent à la feuille de leur média », socle.css §0). Le contrat n'est donc
+  // plus « aucun :root ici », qui interdirait cette séparation légitime, mais « aucun jeton
+  // du socle n'y est REDÉCLARÉ » : c'est précisément la duplication que le socle existe
+  // pour éviter, et elle se juge au nom du jeton, pas à la présence du sélecteur.
+  const jetonsDe = (css) => {
+    const jetons = new Set();
+    for (const bloc of css.match(/:root\s*\{[^}]*\}/g) || []) {
+      for (const m of bloc.matchAll(/(--[\w-]+)\s*:/g)) jetons.add(m[1]);
+    }
+    return jetons;
+  };
+  const jetonsSocle = jetonsDe(SOCLE_NU);
+  const doublons = [...jetonsDe(PRINT_NU)].filter((j) => jetonsSocle.has(j));
+  assert.deepStrictEqual(doublons, [],
+    'jeton(s) du socle redéclaré(s) dans le :root de print.css : ' + doublons.join(', '));
 });
 
 // ---- L'empilement, dont l'ordre est porteur ----

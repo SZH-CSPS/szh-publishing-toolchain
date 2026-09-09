@@ -144,12 +144,16 @@ slug) : sa porte PDF/UA doit rendre 0, aucun article n'y étant volontairement n
 conforme ; `verifier-numerotation` entre les deux articles doit au contraire rendre 1 —
 sans quoi ce contrôle ne pourrait plus jamais échouer.
 
-> **En-tête condensé** — le banc compose la couverture par défaut, à hauteur fixe.
-> Pour éprouver l'autre allure, ajouter une ligne `entete-condensee: true` à
+> **En-tête condensé** — depuis le 09.09.2026, le banc compose la couverture par défaut en
+> mode **compact** (clé `entete-condensee` absente de `test/ausgabe.yaml` : c'est le nouveau
+> défaut). Pour éprouver l'autre allure, ajouter une ligne `entete-condensee: false` à
 > `test/ausgabe.yaml`, rebâtir, comparer les PNG, puis **retirer la ligne** (le banc doit
-> rester sur le défaut). Le cas le plus parlant n'est pas ici : c'est une couverture
-> **courte** (titre de deux lignes, un seul auteur, pas de sous-titre), celle où le mode
-> par défaut laisse un grand blanc.
+> rester sur le défaut). Le cas le plus parlant n'est plus une couverture courte — le
+> compact y est désormais la norme, sans rien de spécial à surveiller — mais
+> `articles/couverture-stress` (douze auteur·e·s, titre et sous-titre longs) : en compact,
+> le plafond de hauteur du bloc titre tombe, donc un titre trop long agrandit le hero au
+> lieu d'être rogné. Vérifié le 09.09.2026 (render.py + lecture du PNG) : il tient, sans
+> déborder ni chevaucher ce qui suit.
 - `apca-check.py` — vérificateur de **contraste APCA** : lit les hex de
   `pipeline/styles/couleurs.css`, les jetons émis par `pipeline/accent-css.py` et, depuis
   le 23.08.2026, les couleurs de `pipeline/styles/print.css` — celles du hero de

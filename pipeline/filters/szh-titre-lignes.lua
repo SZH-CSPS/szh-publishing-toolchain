@@ -62,21 +62,106 @@ do
   end
 end
 
--- ── La géométrie, recopiée de print.css ────────────────────────────────────────────────
+-- ── Lecteur de jetons CSS (09.09.2026) ──────────────────────────────────────────────────
 --
--- ⚠ Ces quatre valeurs sont un MIROIR de print.css. Les changer là sans les changer ici
--- ferait mesurer une colonne qui n'existe pas, et l'escalier tomberait à côté. Le même
--- avertissement figure dans print.css §5, et test/apca-check.py tient déjà les tailles du
--- hero de la même façon.
+-- Avant ce jour, ce filtre recopiait à la main les quatre valeurs de géométrie ci-dessous ;
+-- il les LIT désormais dans socle.css et print.css eux-mêmes, comme test/apca-check.py lit
+-- les tailles du hero. Quatre unités seulement, celles que la maquette emploie réellement :
+-- px se rend telle quelle, rem se convertit en px (`html { font-size: 100% }`, print.css
+-- §4, donc 1 rem = 16 px), % se ramène à un facteur 0-1, et em se GARDE en facteur — un em
+-- n'a de sens qu'une fois multiplié par la taille qui l'accompagne, et cette taille est
+-- elle-même un jeton lu à côté : le convertir ici reviendrait à deviner laquelle.
+local REM_EN_PX = 16
+
+-- Lit `--jeton: valeur;` dans le fichier CSS `chemin` et rend le nombre converti. Ne
+-- devine jamais : un nombre qui ne suit pas exactement ce schéma, ou une unité que la
+-- maquette n'emploie pas, fait échouer la lecture au lieu d'inventer une valeur. Rend
+-- (nombre, nil) si tout va bien, (nil, message) sinon — jamais d'erreur Lua levée, pour
+-- que l'appelant décide lui-même de la conduite à tenir (voir plus bas).
+local function lire_jeton_css(chemin, jeton)
+  local f = io.open(chemin, 'r')
+  if f == nil then return nil, chemin .. ' introuvable' end
+  local css = f:read('a')
+  f:close()
+
+  local motif = jeton:gsub('%-', '%%-') .. '%s*:%s*([^;]+);'
+  local brut = css:match(motif)
+  if brut == nil then return nil, jeton .. ' absent de ' .. chemin end
+  brut = brut:match('^%s*(.-)%s*$')
+
+  local nombre, unite = brut:match('^(%-?%d+%.?%d*)([%%%a]*)$')
+  if nombre == nil then
+    return nil, jeton .. ' vaut « ' .. brut .. ' » dans ' .. chemin .. ', nombre non reconnu'
+  end
+  nombre = tonumber(nombre)
+
+  if unite == 'px' then return nombre end
+  if unite == 'rem' then return nombre * REM_EN_PX end
+  if unite == '%' then return nombre / 100 end
+  if unite == 'em' then return nombre end   -- facteur ; l'appelant multiplie par la taille
+  return nil, jeton .. ' porte une unité non reconnue (« ' .. unite .. ' ») dans ' .. chemin
+end
+
+-- ── La géométrie, LUE dans socle.css et print.css ───────────────────────────────────────
 --
---   page A4          210 mm = 793,70 px (96 ppp)
---   marges @page     72 px à gauche et à droite  -> justification 649,70 px
---   .szh-hero        déborde de 72 px de chaque côté puis reprend 72 px de padding : sa
---                    boîte de contenu vaut donc exactement la justification
---   .szh-hero-main   max-width: 67 %              -> 435,30 px
-local LARGEUR_COLONNE = 435.3
-local TAILLE = 25                       -- .szh-title, font-size
-local INTERLETTRAGE = -0.005 * TAILLE   -- letter-spacing: -0.005em, par caractère
+-- Jusqu'au 09.09.2026, les quatre valeurs ci-dessous étaient un MIROIR recopié à la main de
+-- print.css ; l'avertissement disait « les changer là sans les changer ici ferait mesurer
+-- une colonne qui n'existe pas ». Ce filtre les LIT désormais depuis les jetons eux-mêmes,
+-- avec lire_jeton_css ci-dessus — socle.css §2 (groupe « Échelle typographique partagée »)
+-- et print.css §3 documentent le lien en retour. Ce qui casse maintenant, ce n'est plus de
+-- changer une valeur — elle se propage seule — mais de RENOMMER ou SUPPRIMER un jeton : la
+-- lecture ne le retrouve plus, voir le repli plus bas.
+--
+-- socle.css et print.css sont voisins de ce fichier, à ../styles/ : même mécanique que
+-- dossier_ce_fichier() pour szh-titre-metriques.lua.
+local SOCLE_CSS = dossier_ce_fichier() .. '../styles/socle.css'
+local PRINT_CSS = dossier_ce_fichier() .. '../styles/print.css'
+
+-- ⚠ 793,7 px n'est PAS un réglage de maquette mais la largeur d'une page A4 (210 mm) à
+-- 96 ppp : la même norme que `@page { size: A4 }` (print.css §3). Elle ne porte donc pas de
+-- jeton CSS — en fabriquer un pour une constante de papier serait le geste inverse de ce
+-- chantier. Changer le format de page (passer en Letter, par exemple) oblige à revoir CETTE
+-- constante ici ; ce n'est pas un jeton qui peut se renommer sous elle sans qu'on le sache.
+local LARGEUR_A4 = 793.7
+
+-- Essaie les cinq lectures dans l'ordre et s'arrête à la première qui manque, message
+-- d'erreur en retour. Un échec partiel (par exemple TAILLE lu mais pas le ratio de colonne)
+-- ne doit pas laisser la moitié du calcul se faire sur une valeur devinée : tout ou rien.
+local function lire_geometrie_titre()
+  local taille, erreur = lire_jeton_css(SOCLE_CSS, '--corps-titre-hero')
+  if taille == nil then return nil, nil, nil, erreur end
+  local interlettrage_em
+  interlettrage_em, erreur = lire_jeton_css(SOCLE_CSS, '--interlettrage-titre-hero')
+  if interlettrage_em == nil then return nil, nil, nil, erreur end
+  local marge_gauche
+  marge_gauche, erreur = lire_jeton_css(PRINT_CSS, '--page-marge-gauche')
+  if marge_gauche == nil then return nil, nil, nil, erreur end
+  local marge_droite
+  marge_droite, erreur = lire_jeton_css(PRINT_CSS, '--page-marge-droite')
+  if marge_droite == nil then return nil, nil, nil, erreur end
+  local ratio_colonne
+  ratio_colonne, erreur = lire_jeton_css(PRINT_CSS, '--hero-ratio-colonne')
+  if ratio_colonne == nil then return nil, nil, nil, erreur end
+
+  local largeur_colonne = (LARGEUR_A4 - marge_gauche - marge_droite) * ratio_colonne
+  return largeur_colonne, taille, interlettrage_em * taille, nil
+end
+
+local LARGEUR_COLONNE, TAILLE, INTERLETTRAGE
+do
+  local erreur
+  LARGEUR_COLONNE, TAILLE, INTERLETTRAGE, erreur = lire_geometrie_titre()
+  if erreur ~= nil then
+    -- Même repli que la table de métriques ci-dessus, et pour la même raison : ne jamais
+    -- deviner une taille. Un titre replié par WeasyPrint sans escalier est une dégradation
+    -- visible et sûre ; un escalier calculé sur une valeur inventée serait la dérive
+    -- silencieuse que ce chantier supprime.
+    io.stderr:write('[titre-lignes] ' .. erreur .. ' : le titre sera replié par WeasyPrint, ' ..
+      'sans escalier.\n')
+    METRIQUES = nil
+  end
+end
+
 local MARGE = 0.98                      -- ce que le modèle ne calcule pas (crénage)
 
 -- Au-delà de deux caractères inconnus de la table, le titre est déclaré non mesurable :

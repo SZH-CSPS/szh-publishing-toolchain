@@ -25,7 +25,7 @@ const {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
   attrBloc, enroberBloc, CLASSES_BLOCS, blocAutour, poserBloc,
   squeletteTableau, tableauVierge, nomMediaUnique, nomTableLibre,
-  blocReferenceTable, blocSautPage, PALETTE_MEF
+  blocReferenceTable, blocSautPage, noteBasPage, PALETTE_MEF
 } = formattingPur;
 
 // Contexte de la revue, injecté par extension.js à l'enregistrement des commandes plutôt
@@ -284,6 +284,29 @@ async function fmtSautPage() {
   await editeur.edit((b) => { b.replace(editeur.selection, texte); });
 }
 
+// Insère l'appel [^n] à la fin de la sélection (ou au curseur) et pose sa définition
+// [^n]:  en fin de document — voir noteBasPage (lib/formatting-pur.js) pour le choix de
+// cette forme plutôt que la note inline ^[…]. Même mécanique qu'appliquerBlocClasse : les
+// lignes du document sont lues ici, la fonction pure calcule la plage à remplacer, et le
+// curseur est posé en fin de la ligne de définition — c'est là que la personne écrit sa note.
+async function fmtNoteBasPage() {
+  const editeur = vscode.window.activeTextEditor;
+  if (!editeur) { return; }
+  const doc = editeur.document;
+  const sel = editeur.selection;
+  const lignes = [];
+  for (let i = 0; i < doc.lineCount; i++) { lignes.push(doc.lineAt(i).text); }
+  const r = noteBasPage(lignes, {
+    debutLigne: sel.start.line, debutCol: sel.start.character,
+    finLigne: sel.end.line, finCol: sel.end.character
+  });
+  const plage = new vscode.Range(r.ligneDebut, 0, r.ligneFin, lignes[r.ligneFin].length);
+  const ok = await editeur.edit((b) => { b.replace(plage, r.texte); });
+  if (!ok) { return; }
+  const pos = new vscode.Position(r.curseur.ligne, r.curseur.colonne);
+  editeur.selection = new vscode.Selection(pos, pos);
+}
+
 async function fmtCollerTableau() {
   const editeur = vscode.window.activeTextEditor;
   if (!editeur) { return; }
@@ -433,6 +456,7 @@ function enregistrerCommandesMiseEnForme(context, hote) {
   c('szh.fmt.question', () => appliquerBlocClasse('question', ''));
   c('szh.fmt.citation', () => appliquerSelection((t) => basculerCitation(t), { parLigne: true }));
   c('szh.fmt.figure', () => fmtFigure());
+  c('szh.fmt.noteBasPage', () => fmtNoteBasPage());
   c('szh.fmt.tableau', () => fmtTableau());
   c('szh.fmt.collerTableau', () => fmtCollerTableau());
   c('szh.fmt.sautPage', () => fmtSautPage());
@@ -443,6 +467,6 @@ function enregistrerCommandesMiseEnForme(context, hote) {
 module.exports = {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
   enroberBloc, poserBloc, blocAutour, CLASSES_BLOCS,
-  squeletteTableau, tableauVierge, blocReferenceTable, blocSautPage, nomTableLibre,
+  squeletteTableau, tableauVierge, blocReferenceTable, blocSautPage, noteBasPage, nomTableLibre,
   lireHtmlPressePapiers, enregistrerCommandesMiseEnForme, PALETTE_MEF
 };

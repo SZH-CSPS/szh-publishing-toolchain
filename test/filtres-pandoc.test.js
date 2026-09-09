@@ -359,6 +359,44 @@ test('langue : szh-maquette.lua — rien du tout, repli français', () => {
   assert.match(r.stdout, /\nlang: fr\n/, r.stdout);
 });
 
+// ── szh-maquette.lua : entete-condensee, défaut « compact » depuis le 09.09.2026 ───────
+// Verrou des trois cas de la clé (absente / true / false), plus le cas que le garde-fou
+// est_vrai existe pour attraper : une chaîne CITÉE « false » — le sérialiseur du cockpit
+// cite ses valeurs, et pour pandoc toute chaîne non vide est vraie. Sortie observée : la
+// ligne `entete-condensee: true` du bloc YAML du writer markdown --standalone quand la clé
+// doit ressortir vraie, son absence complète sinon — pandoc n'imprime jamais une valeur
+// MetaBool fausse, il retire la clé (voir le relevé manuel qui a servi à écrire ce motif).
+test('entete-condensee : clé absente -> vraie, le nouveau défaut', () => {
+  const r = pandocDansDossier({ 'essai.md': docMaquette('') }, 'essai.md', 'szh-maquette.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /\nentete-condensee: true\n/,
+    'clé absente d’ausgabe.yaml : elle doit ressortir vraie (compact) — ' + r.stdout);
+});
+
+test('entete-condensee : true -> reste vraie', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': docMaquette('entete-condensee: true\n') }, 'essai.md', 'szh-maquette.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /\nentete-condensee: true\n/, r.stdout);
+});
+
+test('entete-condensee : false -> reste fausse, hauteur fixe', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': docMaquette('entete-condensee: false\n') }, 'essai.md', 'szh-maquette.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!/\nentete-condensee: /.test(r.stdout),
+    'une valeur explicite fausse ne doit pas ressortir vraie — ' + r.stdout);
+});
+
+test('entete-condensee : "false" citée (comme l’écrit le cockpit) -> reste fausse', () => {
+  const r = pandocDansDossier(
+    { 'essai.md': docMaquette('entete-condensee: "false"\n') }, 'essai.md', 'szh-maquette.lua');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!/\nentete-condensee: /.test(r.stdout),
+    'une chaîne "false" citée compte comme vraie pour pandoc si on ne passe pas par ' +
+    'est_vrai — c’est exactement le cas que ce garde-fou existe pour attraper — ' + r.stdout);
+});
+
 // ── szh-numerotation.lua : sa propre langue_fiche()/langue_de(), même ordre de priorité.
 // Sortie observée : le libellé qu'il pose devant une légende de figure — « Figure » ou
 // « Abbildung ».

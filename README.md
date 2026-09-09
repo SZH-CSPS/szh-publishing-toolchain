@@ -408,6 +408,7 @@ compris un sidecar qu'une version future ajouterait.
 | `Ctrl+Alt+W` / `H` / `Q` | Bloc Important / Mise en évidence / Question | szh-cockpit |
 | `Ctrl+Alt+C` | Citation | szh-cockpit |
 | `Ctrl+Alt+F` / `Ctrl+Alt+T` | Insérer une figure / un tableau | szh-cockpit |
+| `Ctrl+Alt+N` | Insérer une note de bas de page | szh-cockpit |
 | `Ctrl+Alt+V` | Coller un tableau depuis Excel ou Word, fusions comprises | szh-cockpit |
 | `Ctrl+Alt+Entrée` | Saut de page, dans le PDF seulement | szh-cockpit |
 | `Ctrl+Alt+A` | Panneau de commande | szh-cockpit |

@@ -1423,7 +1423,17 @@ test('la chaîne ne passe plus par AnyStyle ni par citeproc', () => {
 
 test('print.css : un appel de citation ne se lit pas comme un lien sortant', () => {
   const css = lire('pipeline', 'styles', 'print.css');
-  assert.match(css, /a\[href\^="#"\]::after,\s*a\.szh-appel::after \{ content: none; \}/);
+  // La flèche « lien sortant » posée en ::after a été retirée le 09.09.2026 (demande du
+  // responsable de la revue) : plus aucun lien du corps, appel de citation compris, n'en
+  // porte une. Assertion NÉGATIVE, à dessein — c'est elle qui verrouille la décision
+  // contre un retour en arrière involontaire, et non plus la présence d'une règle qui
+  // l'annulait pour l'appel de citation : cette règle a disparu avec la flèche elle-même,
+  // il n'y avait donc plus rien à annuler.
+  assert.doesNotMatch(css, /a\[href\]::after\s*\{[^}]*content:\s*url\(/,
+    'une flèche ::after est revenue sur les liens du corps : décision du 09.09.2026 défaite');
+  // Ce qui reste vrai, et doit rester vrai : l'appel de citation « (Bovey, 2022) » se lit
+  // comme du texte, pas comme un lien — même couleur héritée, sans soulignement.
+  assert.match(css, /a\[href\^="#"\],\s*a\.szh-appel\s*\{\s*\n\s*color:\s*inherit;\s*text-decoration:\s*none;\s*\n\}/);
   // .szh-appel-orphelin vit désormais dans partage-filtres.css, commune au livre.
   const partage = lire('pipeline', 'styles', 'partage-filtres.css');
   assert.match(partage, /\.szh-appel-orphelin \{[^}]*dotted/);

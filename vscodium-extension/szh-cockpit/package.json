@@ -613,6 +613,11 @@
         "category": "SZH/CSPS"
       },
       {
+        "command": "szh.fmt.noteBasPage",
+        "title": "%cmd.fmt.noteBasPage%",
+        "category": "SZH/CSPS"
+      },
+      {
         "command": "szh.fmt.tableau",
         "title": "%cmd.fmt.tableau%",
         "category": "SZH/CSPS"
@@ -890,6 +895,10 @@
         },
         {
           "command": "szh.fmt.figure",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.fmt.noteBasPage",
           "when": "szh.estRevue || szh.estLivre"
         },
         {

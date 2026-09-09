@@ -63,6 +63,46 @@
   --body-size: 0.875rem;   /* corps : rem (accessibilité HTML) ; ~14px/10,5pt à l'export */
   --leading:   1.55;
 
+  /* ═══ Échelle typographique partagée (09.09.2026) ═══════════════════════════════════
+     Les corps de caractères — et le seul interlettrage — qui vivaient jusqu'ici en dur
+     dans print.css : titre et sous-titre du hero, méta (auteur·e·s, DOI), licence,
+     étiquettes du hero, en-tête/pied courants, mots-clés, texte de tableau. Ce qui leur
+     donne leur place ICI et non dans print.css, doctrine en tête de ce fichier : ils sont
+     partagés ENTRE MÉDIAS (la maquette web à venir les lira comme le PDF) ET ENTRE
+     LANGAGES (voir l'avertissement ci-dessous) — une boîte ou une marge ne l'est jamais,
+     un corps de texte l'est presque toujours.
+     Nommés avec « corps », comme --body-size ci-dessus ; cohérence à l'intérieur de ce
+     groupe plutôt qu'alignement sur le mélange français/anglais des jetons plus anciens
+     de ce fichier — ce dernier compte moins.
+     ⚠ CE GROUPE EST LU HORS DU CSS, par deux fichiers qui ne l'importent pas comme feuille
+     de style mais qui en LISENT les jetons directement dans ce fichier texte (09.09.2026 :
+     avant cette date ils en RECOPIAIENT la valeur à la main, chacun sa propre copie du
+     nombre — ce lot a supprimé les deux copies) :
+       * pipeline/filters/szh-titre-lignes.lua lit --corps-titre-hero (TAILLE) et
+         --interlettrage-titre-hero (INTERLETTRAGE = jeton × TAILLE) pour mesurer l'escalier
+         du titre de couverture. Si la lecture échoue, il écrit un message sur stderr,
+         nommant le jeton et le fichier, et DÉSACTIVE l'escalier : WeasyPrint replie alors
+         le titre comme n'importe quel autre, une dégradation visible mais sûre — jamais une
+         taille devinée ;
+       * test/apca-check.py lit les huit tailles de ce groupe dans TAILLE_HERO_TITRE,
+         TAILLE_HERO_SOUSTITRE, TAILLE_HERO_META, TAILLE_HERO_LICENCE, TAILLE_HERO_ETIQUETTE,
+         TAILLE_COURANTE, TAILLE_KW et TAILLE_TABLEAU. Si la lecture échoue, il s'arrête net
+         avec un message explicite et un code de sortie non nul : ici l'échec doit être
+         FRANC, parce qu'un contrôle de contraste mesuré sur une taille devinée donnerait un
+         feu vert sans valeur — pire que pas de contrôle du tout.
+     Changer une valeur ici n'est donc plus ce qui casse : elle se propage seule aux deux
+     lecteurs. Ce qui casse, c'est de RENOMMER ou SUPPRIMER un jeton de ce groupe — la
+     lecture ne le retrouve plus, et chacun des deux fichiers réagit comme décrit ci-dessus. */
+  --corps-titre-hero:         25px;      /* .szh-title (titre de couverture) */
+  --corps-soustitre-hero:     15px;      /* .szh-subtitle */
+  --interlettrage-titre-hero: -0.005em;  /* .szh-title */
+  --corps-meta-hero:          12.5px;    /* ul.szh-authors, .szh-doi */
+  --corps-licence-hero:       11.5px;    /* .szh-licence — le plus petit texte du hero */
+  --corps-etiquette-hero:     9.5px;     /* .szh-hero-eyebrow / -dossier / -vol */
+  --corps-courante:           9px;       /* .szh-entete-courante, .szh-pied-courant */
+  --corps-mots-cles:          10px;      /* .szh-kw */
+  --corps-tableau:            0.85rem;   /* table (texte de tableau nu, 13,6px à l'export) */
+
   /* Couleur annuelle — repli gris neutre. accent-css.py surcharge ces jetons quand
      ausgabe.yaml définit `couleur:`. Le hero, lui, reste nuit. */
   --c-annual:        #8f8f95;

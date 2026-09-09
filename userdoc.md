@@ -302,14 +302,14 @@ depuis n’importe où dans la revue) :
     volume, numéro, date, langue, couleur) ; **Enregistrer** met à jour la revue sans rien
     toucher d’autre. Aucun fichier technique à ouvrir.
     Une case à cocher y règle aussi l’allure de la couverture, **pour tout le numéro** :
-    **« Condenser l’en-tête de couverture »**. Par défaut, l’en-tête bleu nuit a une
-    **hauteur fixe** : le titre commence toujours à la même place et le bloc auteur·e·s /
-    DOI / licence est collé en bas – d’où un **blanc au milieu** quand le titre est court,
-    qu’il n’y a pas de sous-titre ou qu’un seul auteur signe. Cochée, l’option **supprime
-    ce blanc** : les éléments se suivent à un espacement minimum et l’en-tête fait
-    exactement la hauteur de son contenu (il grandit donc avec un titre long, un
-    sous-titre ou deux lignes d’auteur·e·s). À décider une fois par numéro : tous les
-    articles suivent.
+    **« Condenser l’en-tête de couverture »**, cochée par défaut depuis le
+    09.09.2026 : l’en-tête bleu nuit fait alors exactement la hauteur de son contenu,
+    sans jamais laisser de blanc inutile – il grandit avec un titre long, un
+    sous-titre ou plusieurs lignes d’auteur·e·s. Décochée, l’en-tête revient à une
+    **hauteur fixe** : le titre commence toujours à la même place et le bloc
+    auteur·e·s / DOI / licence est collé en bas, au prix d’un **blanc au milieu** quand le
+    titre est court, qu’il n’y a pas de sous-titre ou qu’un seul auteur signe. À décider
+    une fois par numéro : tous les articles suivent.
   - **Métadonnées des articles** – un formulaire qui liste **tous les articles** :
     **type d’article** (menu déroulant, libellés dans la langue de la revue), titre,
     sous-titre, **résumé** et mots-clés – d’abord dans la **langue de l’article**, puis
@@ -1315,6 +1315,11 @@ plus la bascule d’aperçu). Le sous-menu propose (chaque raccourci y est rappe
   reste qu’à écrire la légende. À la composition, la légende (« Figure 1 – … »,
   numérotée toute seule) est placée **au-dessus** de l’image, comme celle d’un
   tableau – quel que soit l’endroit où elle est écrite dans le texte ;
+- **Insérer une note de bas de page** (`Ctrl+Alt+N`) : pose l’appel de note à
+  l’endroit du curseur – ou juste après le texte sélectionné, s’il y en a un, qui
+  n’est ni coupé ni déplacé – puis ajoute la ligne de la note tout en bas de
+  l’article et y amène le curseur : il ne reste qu’à taper son texte. Le numéro
+  se choisit tout seul, au premier libre de l’article ;
 - **Insérer un saut de page** (`Ctrl+Alt+Entrée`) : ce qui suit repart en haut d’une
   nouvelle page **dans le PDF**. Rien ne change dans l’aperçu ni dans la version HTML :
   une page web n’a pas de pages, le saut n’y a donc aucun sens et n’y apparaît pas.

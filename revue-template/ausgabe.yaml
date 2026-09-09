@@ -20,8 +20,10 @@
 #             dossier (« 2027-03 »).
 #   couleur : couleur annuelle, en hexadécimal, qui repeint tous les accents.
 #   profil  : absent ou « article » = PDF et HTML ; « book » = différé ; vide = aucun document.
-#   entete-condensee : « true » = en-tête de couverture à la hauteur de son contenu ;
-#             absente ou « false » = hauteur fixe, bloc auteurs ancré en bas.
+#   entete-condensee : absente ou « true » = en-tête à la hauteur de son
+#             contenu, le défaut depuis le 09.09.2026 : un titre court n’y laisse plus un
+#             grand blanc comme le faisait la hauteur fixe. « false » = hauteur
+#             fixe, bloc auteurs ancré en bas.
 #
 # Cycle de vie du numéro, piloté par le panneau d’export du cockpit (Ctrl+Alt+D) :
 #   locked   : numéro gelé – éditeur en lecture seule et gestes d’écriture refusés

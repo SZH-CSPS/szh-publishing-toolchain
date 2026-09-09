@@ -314,11 +314,13 @@ local function licence_article(slug, lang)
   return string.format(MENTION_CC[lang] or MENTION_CC.fr, entree.nom), entree.url
 end
 
--- Réglage « condenser l'en-tête » (ausgabe.yaml), normalisé ici et non laissé à
--- `$if(entete-condensee)$` : pour pandoc, toute chaîne non vide est vraie, donc un
--- `entete-condensee: "false"` — le sérialiseur du cockpit cite ses valeurs — activerait
--- l'option. Seule une liste fermée de valeurs vraies est reconnue, tout le reste vaut
--- « pas condensé ».
+-- Réglage « condenser l'en-tête » (ausgabe.yaml). Depuis le 09.09.2026, la clé ABSENTE
+-- vaut « compact » — c'est le nouveau défaut demandé par le responsable de la revue, câblé
+-- dans Meta() plus bas. Ce normalisateur-ci ne s'applique, lui, qu'à une clé PRÉSENTE : il
+-- existe parce que pandoc ne peut pas juger seul avec `$if(entete-condensee)$` — pour lui,
+-- toute chaîne non vide est vraie, donc un `entete-condensee: "false"` — le sérialiseur du
+-- cockpit cite ses valeurs — activerait l'option au lieu de la couper. Seule une liste
+-- fermée de valeurs vraies est reconnue, tout le reste vaut « pas condensé ».
 local VRAIS = { ['true'] = true, ['1'] = true, ['oui'] = true, ['ja'] = true,
                 ['yes'] = true, ['si'] = true }
 local function est_vrai(v)
@@ -643,9 +645,18 @@ function Meta(meta)
   -- Clé remise à nil quand il n'y a pas d'adresse : le gabarit teste `$if(licence-url)$`
   -- et imprime alors la mention sans lien ni flèche, plutôt qu'une URL inventée.
   meta['licence-url']      = licence_url ~= '' and pandoc.MetaString(licence_url) or nil
-  -- Clé remise à nil quand elle est fausse : le template teste `$if(entete-condensee)$`,
-  -- et une valeur présente mais fausse doit être indistinguable d'une clé absente.
-  meta['entete-condensee'] = est_vrai(meta['entete-condensee']) or nil
+  -- Défaut « compact » depuis le 09.09.2026 (décision du responsable de la revue) : la clé
+  -- ABSENTE doit désormais valoir vrai — une clé PRÉSENTE reste respectée telle quelle, un
+  -- `entete-condensee: false` explicite continuant à donner la hauteur fixe. D'où la
+  -- condition sur `nil` AVANT d'appeler est_vrai, et non l'inverse : passer par est_vrai en
+  -- premier confondrait « rien n'a été demandé » (compact, le nouveau défaut) et « on a
+  -- explicitement décoché » (hauteur fixe) — les deux retomberaient sur nil, indistinguables
+  -- pour `$if(entete-condensee)$`.
+  if meta['entete-condensee'] == nil then
+    meta['entete-condensee'] = true
+  else
+    meta['entete-condensee'] = est_vrai(meta['entete-condensee']) or nil
+  end
 
   -- Bandeau DOI de la couverture ($if(doi)$ du template). Le meta.yaml ne porte plus de
   -- `doi:` que lorsqu'il a été défini à la main dans le cockpit (l'échappatoire « Définir

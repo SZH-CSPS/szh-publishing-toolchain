@@ -4,17 +4,18 @@
 #   python3 test/apca-check.py    -> tableau lisible ; sortie 0 si tout passe, 1 sinon.
 #
 # À relancer après toute retouche de pipeline/styles/couleurs.css, de
-# pipeline/styles/print.css ou de pipeline/accent-css.py. Le script ne recalcule rien : il
-# lit les hex réellement écrits dans couleurs.css et dans les règles de print.css (renvois
-# var() suivis) et les jetons réellement émis par accent-css.py, puis il mesure.
+# pipeline/styles/socle.css ou print.css, ou de pipeline/accent-css.py. Le script ne
+# recalcule rien : il lit les hex réellement écrits dans couleurs.css et dans les règles de
+# print.css (renvois var() suivis), les tailles réellement écrites dans le :root de
+# socle.css, et les jetons réellement émis par accent-css.py, puis il mesure.
 #
 # Un seuil APCA dépend de la taille du texte : 90 dès 14 px, 75 seulement à partir de
 # 18 px, 60 en gros texte (>= 24 px, ou >= 19 px en gras), 30 pour le non textuel. Presque
 # tout ici est sous 18 px — corps à 14 px, texte de tableau à 13,6 px, étiquettes du hero
 # et de l'en-tête courant à 9 et 9,5 px —, donc tout texte de lecture se juge à 90 ; seul
-# le titre de couverture (28 px) relève du gros titre. ⚠ Aucun nombre de seuil n'est écrit
-# en dur dans ce fichier : chaque paire déclare sa taille et apca.seuil_pour en déduit le
-# niveau (voir TAILLE_* plus bas).
+# le titre de couverture, seul texte au-delà du seuil des 24 px, relève du gros titre.
+# ⚠ Aucun nombre de seuil n'est écrit en dur dans ce fichier : chaque paire déclare sa
+# taille et apca.seuil_pour en déduit le niveau (voir TAILLE_* plus bas).
 #
 # Deux règles d'affichage communes à toute la chaîne, tenues par pipeline/apca.py : les Lc
 # s'affichent arrondis à l'entier (apca.lc_affiche), et une tolérance de 0,5 joue sur toute
@@ -33,8 +34,13 @@ import re
 import sys
 
 # Sortie en UTF-8 même dans une console Windows : le tableau contient des accents.
+# stderr aussi (09.09.2026) : jusqu'ici ce script n'y écrivait jamais, mais l'échec FRANC
+# d'une lecture de jeton (voir taille_depuis_jeton plus bas) y écrit un message accentué —
+# sans ce reconfigure, une console Windows le rend illisible juste au moment où il compte
+# le plus.
 try:
     sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
 except (AttributeError, OSError):   # flux non reconfigurable
     pass
 
@@ -58,23 +64,131 @@ accent = _charger('accent_css', os.path.join(PIPELINE, 'accent-css.py'))
 
 NOIR, BLANC = '#000000', '#FFFFFF'
 
+# ---- socle.css + print.css : lus comme une seule feuille ----
+# Le hero de couverture, l'en-tête courant et le pied ne passent pas par la palette
+# annuelle : leurs encres sont écrites en jeton :root dans socle.css, ou en hex dans la
+# règle qui les utilise, dans print.css. On les lit donc dans les fichiers, sélecteur par
+# sélecteur, plutôt que de les recopier ici : une règle éclaircie ou supprimée doit faire
+# réagir le test, pas le laisser mesurer une couleur qui n'est plus à l'écran.
+#
+# Les deux feuilles sont lues COMME UNE SEULE, dans l'ordre où le Makefile les empile : la
+# résolution d'un var() traverse la frontière — une règle de print.css renvoie à un jeton du
+# socle — et rien ici n'a besoin de savoir de quel fichier vient quoi.
+#
+# ⚠ Ce bloc vivait plus bas jusqu'au 09.09.2026, juste avant couleur_de(). Il est remonté
+# ici parce que les neuf tailles de la maquette (TAILLE_*, plus bas) en ont désormais besoin
+# elles aussi, et qu'elles doivent être prêtes avant la toute première mesure : _declaration
+# sert donc maintenant deux publics, les couleurs et les tailles, avec le même contrat de
+# lecture — jamais de valeur recopiée à la main.
+CHEMINS_CSS = [os.path.join(PIPELINE, 'styles', n) for n in ('socle.css', 'print.css')]
+morceaux = []
+for chemin in CHEMINS_CSS:
+    try:
+        with open(chemin, encoding='utf-8') as f:
+            # Commentaires retirés, comme pour couleurs.css : ceux de ces feuilles citent
+            # des hex et des noms de jetons, qui seraient pris pour des déclarations.
+            morceaux.append(re.sub(r'/\*.*?\*/', '', f.read(), flags=re.S))
+    except OSError:
+        pass
+PRINT = '\n'.join(morceaux)
+
+# (liste de sélecteurs, corps) pour chaque bloc de règles. Les blocs imbriqués de @page et
+# de @media ressortent en vrac : sans effet ici, on ne cherche que des sélecteurs nommés.
+BLOCS = [(m.group(1), m.group(2)) for m in re.finditer(r'([^{}]+)\{([^{}]*)\}', PRINT)]
+
+
+def _un_seul_espace(texte):
+    return re.sub(r'\s+', ' ', texte).strip()
+
+
+def _declaration(selecteur, propriete):
+    """Valeur brute que print.css donne à `propriete` pour `selecteur`, ou None.
+
+    Le dernier bloc l'emporte, comme la cascade à spécificité égale, et un sélecteur groupé
+    (« a, b { … } ») compte pour chacun de ses membres. Le lookbehind empêche `color` d'être
+    trouvé dans `background-color` et `background` dans `background-image`.
+
+    Sert aussi bien aux couleurs qu'aux tailles : un jeton --nom vit dans un bloc :root,
+    qui est un « sélecteur » comme un autre pour ce lecteur — voir taille_depuis_jeton()."""
+    motif = re.compile(r'(?<![-\w])' + re.escape(propriete) + r'\s*:\s*([^;}]+)')
+    cible = _un_seul_espace(selecteur)
+    trouve = None
+    for selecteurs, corps in BLOCS:
+        if not any(_un_seul_espace(s) == cible for s in selecteurs.split(',')):
+            continue
+        for m in motif.finditer(corps):
+            trouve = m.group(1)
+    return trouve
+
+
+# ---- Lecteur des jetons de taille (09.09.2026) ----
+# Avant ce jour, les neuf constantes TAILLE_* ci-dessous recopiaient à la main les valeurs
+# écrites dans socle.css §2 (groupe « Échelle typographique partagée »). _declaration(),
+# juste au-dessus, sait déjà retrouver la valeur brute d'un nom dans un bloc CSS — un jeton
+# --nom déclaré dans :root n'est qu'un cas particulier de ce que couleur_de() lui fait déjà
+# faire pour les couleurs. Il ne manquait qu'une conversion d'unité vers le px, ajoutée ici,
+# explicite plutôt que devinée : ce chantier existe pour supprimer des copies, pas pour en
+# réintroduire une sous une autre forme.
+REM_EN_PX = 16   # html { font-size: 100% } (print.css §4) : 1 rem = 16 px
+
+
+def taille_depuis_jeton(jeton):
+    """Convertit en px (ou en facteur pour % et em) le jeton `--jeton` lu dans le :root de
+    socle.css/print.css via _declaration(). Quatre unités seulement, celles que la maquette
+    emploie réellement ; toute autre situation — jeton absent, nombre illisible, unité
+    inconnue — lève RuntimeError plutôt que de deviner une taille."""
+    brut = _declaration(':root', jeton)
+    if brut is None:
+        raise RuntimeError('%s introuvable dans le :root de socle.css/print.css' % jeton)
+    brut = brut.strip()
+    m = re.match(r'^(-?\d+(?:\.\d+)?)(px|rem|%|em)$', brut)
+    if m is None:
+        raise RuntimeError('%s vaut « %s » : nombre ou unité non reconnu' % (jeton, brut))
+    nombre, unite = float(m.group(1)), m.group(2)
+    if unite == 'px':
+        return nombre
+    if unite == 'rem':
+        return nombre * REM_EN_PX
+    if unite == '%':
+        return nombre / 100
+    return nombre   # em : facteur brut, l'appelant multiplie par la taille qui l'accompagne
+
+
 # ---- Tailles réelles de la maquette : la seule source des seuils ----
 # On déclare la taille du texte d'une paire, apca.seuil_pour en déduit le niveau. Une
 # constante « TEXTE = 75 » se recopierait sans qu'on se demande à quelle taille elle
 # s'applique ; une taille, non.
-TAILLE_TABLEAU = 13.6   # print.css : table { font-size: 0.85rem } -> 13,6 px
-TAILLE_CORPS = 14.0     # print.css : --body-size: 0.875rem -> 14 px
-TAILLE_KW = 10.0        # print.css : .szh-kw { font-size: 10px } (puces de mots-clés)
-TAILLE_GROS_TITRE = 24.0
-# Hero de couverture et pages courantes (print.css §3 et §5). Aucune de ces tailles ne
-# tombe dans la bande 19-24 px, la seule où la graisse change le niveau APCA : `gras` est
-# donc inutile ici, et il faudra le passer le jour où un texte s'y installera.
-TAILLE_HERO_ETIQUETTE = 9.5    # .szh-hero-eyebrow / -dossier / -vol (700, capitales)
-TAILLE_HERO_TITRE = 25.0       # .szh-title
-TAILLE_HERO_SOUSTITRE = 16.0   # .szh-subtitle
-TAILLE_HERO_META = 12.5        # ul.szh-authors et .szh-doi
-TAILLE_HERO_LICENCE = 11.5     # .szh-licence — le plus petit texte du hero avec l'étiquette
-TAILLE_COURANTE = 9.0          # .szh-entete-courante et .szh-pied-courant
+#
+# ⚠ Ici l'échec est FRANC, à la différence de pipeline/filters/szh-titre-lignes.lua : un
+# contrôle de contraste qui mesurerait une taille devinée est pire que pas de contrôle du
+# tout, puisqu'il donnerait un feu vert sans valeur. Le filtre Lua, lui, peut s'abstenir
+# sans dommage — un titre replié sans escalier reste un titre juste, replié par WeasyPrint
+# comme n'importe quel autre. Cette différence de traitement est délibérée.
+try:
+    TAILLE_TABLEAU = taille_depuis_jeton('--corps-tableau')       # socle.css : --corps-tableau (table)
+    TAILLE_CORPS = taille_depuis_jeton('--body-size')             # socle.css : --body-size (corps de texte)
+    TAILLE_KW = taille_depuis_jeton('--corps-mots-cles')          # socle.css : --corps-mots-cles (.szh-kw, puces de mots-clés)
+    TAILLE_GROS_TITRE = 24.0
+    # Hero de couverture et pages courantes (print.css §3 et §5, jetons de socle.css §2).
+    # Aucune de ces tailles ne tombe dans la bande 19-24 px, la seule où la graisse change
+    # le niveau APCA : `gras` est donc inutile ici, et il faudra le passer le jour où un
+    # texte s'y installera.
+    TAILLE_HERO_ETIQUETTE = taille_depuis_jeton('--corps-etiquette-hero')  # .szh-hero-eyebrow / -dossier / -vol (700, capitales)
+    TAILLE_HERO_TITRE = taille_depuis_jeton('--corps-titre-hero')          # .szh-title
+    # 15.0 et non 16.0 (09.09.2026) : le sous-titre est passé à 15 px dans print.css (rapport
+    # 25/15, la sixte majeure — voir la note de .szh-title dans print.css §5). Le contrôle
+    # passait déjà avec l'ancienne constante à 16 : ce n'était pas un faux positif, le seuil
+    # APCA est une fonction en escalier (apca.seuil_pour) et 15 comme 16 px tombent tous deux
+    # sous 18 px, donc seuil 90 dans les deux cas — seule la couleur décide de la mesure
+    # (Lc −95). Mais la constante mentait sur la taille réelle du texte mesuré.
+    TAILLE_HERO_SOUSTITRE = taille_depuis_jeton('--corps-soustitre-hero')  # .szh-subtitle
+    TAILLE_HERO_META = taille_depuis_jeton('--corps-meta-hero')            # ul.szh-authors et .szh-doi
+    TAILLE_HERO_LICENCE = taille_depuis_jeton('--corps-licence-hero')      # .szh-licence — le plus petit texte du hero avec l'étiquette
+    TAILLE_COURANTE = taille_depuis_jeton('--corps-courante')              # .szh-entete-courante et .szh-pied-courant
+except RuntimeError as exc:
+    print('[apca-check] %s : contrôle abandonné plutôt que de mesurer un contraste sur '
+          'une taille devinée.' % exc, file=sys.stderr)
+    sys.exit(1)
 
 # Seuil de référence du script : les aplats d'accent sont d'abord des fonds de tableau.
 SEUIL_TABLEAU = apca.seuil_pour(TAILLE_TABLEAU)      # 90
@@ -122,54 +236,7 @@ def var(nom):
     return hexa
 
 
-# ---- socle.css + print.css : les couleurs lues là où elles servent ----
-# Le hero de couverture, l'en-tête courant et le pied ne passent pas par la palette
-# annuelle : leurs encres sont écrites en jeton :root dans socle.css, ou en hex dans la
-# règle qui les utilise, dans print.css. On les lit donc dans les fichiers, sélecteur par
-# sélecteur, plutôt que de les recopier ici : une règle éclaircie ou supprimée doit faire
-# réagir le test, pas le laisser mesurer une couleur qui n'est plus à l'écran.
-#
-# Les deux feuilles sont lues COMME UNE SEULE, dans l'ordre où le Makefile les empile : la
-# résolution d'un var() traverse la frontière — une règle de print.css renvoie à un jeton du
-# socle — et rien ici n'a besoin de savoir de quel fichier vient quoi.
-CHEMINS_CSS = [os.path.join(PIPELINE, 'styles', n) for n in ('socle.css', 'print.css')]
-morceaux = []
-for chemin in CHEMINS_CSS:
-    try:
-        with open(chemin, encoding='utf-8') as f:
-            # Commentaires retirés, comme pour couleurs.css : ceux de ces feuilles citent
-            # des hex et des noms de jetons, qui seraient pris pour des déclarations.
-            morceaux.append(re.sub(r'/\*.*?\*/', '', f.read(), flags=re.S))
-    except OSError:
-        pass
-PRINT = '\n'.join(morceaux)
-
-# (liste de sélecteurs, corps) pour chaque bloc de règles. Les blocs imbriqués de @page et
-# de @media ressortent en vrac : sans effet ici, on ne cherche que des sélecteurs nommés.
-BLOCS = [(m.group(1), m.group(2)) for m in re.finditer(r'([^{}]+)\{([^{}]*)\}', PRINT)]
-
 regles_absentes = []   # (sélecteur, propriété) que print.css ne déclare pas / plus
-
-
-def _un_seul_espace(texte):
-    return re.sub(r'\s+', ' ', texte).strip()
-
-
-def _declaration(selecteur, propriete):
-    """Valeur brute que print.css donne à `propriete` pour `selecteur`, ou None.
-
-    Le dernier bloc l'emporte, comme la cascade à spécificité égale, et un sélecteur groupé
-    (« a, b { … } ») compte pour chacun de ses membres. Le lookbehind empêche `color` d'être
-    trouvé dans `background-color` et `background` dans `background-image`."""
-    motif = re.compile(r'(?<![-\w])' + re.escape(propriete) + r'\s*:\s*([^;}]+)')
-    cible = _un_seul_espace(selecteur)
-    trouve = None
-    for selecteurs, corps in BLOCS:
-        if not any(_un_seul_espace(s) == cible for s in selecteurs.split(',')):
-            continue
-        for m in motif.finditer(corps):
-            trouve = m.group(1)
-    return trouve
 
 
 def couleur_de(selecteur, propriete='color'):

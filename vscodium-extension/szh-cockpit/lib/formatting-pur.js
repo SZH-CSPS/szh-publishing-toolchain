@@ -257,6 +257,79 @@ function blocSautPage(avant, apres) {
        + (String(apres || '').trim() === '' ? '' : '\n\n');
 }
 
+// ---- Insérer une note de bas de page ----
+//
+// Forme retenue, décidée le 09.09.2026 : la note en RÉFÉRENCE — [^n] au fil du texte, sa
+// définition [^n]: détachée en fin de document — jamais la note inline ^[…]. Deux raisons.
+// D'abord, c'est la forme que rend pipeline/import-docx.sh : pandoc, appelé vers
+// markdown-simple_tables-multiline_tables-grid_tables, sort TOUJOURS les notes Word en
+// [^n] avec leur définition en fin de document — la rédaction l'a donc déjà sous les yeux
+// dans chaque article importé, et une seconde forme la dérouterait sans raison. Ensuite,
+// une note inline noyée en plein milieu d'une phrase rendrait le paragraphe illisible dans
+// l'éditeur : exactement ce qu'on cherche à épargner à un public non technique en lui
+// donnant un raccourci plutôt que la syntaxe pandoc à retenir par cœur.
+
+// Le plus petit entier absent des étiquettes [^n] déjà posées dans le document — l'appel et
+// sa définition s'écrivent tous deux [^n], compter l'un compte l'autre sans double emploi.
+// Les étiquettes non numériques que pandoc sait aussi lire ([^note-a]) ne sont pas des
+// entiers : le \d+ ne les capture pas, elles ne faussent donc jamais le calcul.
+function premiereNoteLibre(texte) {
+  const prises = new Set();
+  const re = /\[\^(\d+)\]/g;
+  let m;
+  while ((m = re.exec(texte)) !== null) { prises.add(Number(m[1])); }
+  let n = 1;
+  while (prises.has(n)) { n++; }
+  return n;
+}
+
+// noteBasPage(lignes, sel) -> { ligneDebut, ligneFin, texte, curseur }
+//
+// `lignes` : les lignes du document ; `sel` : { debutLigne, debutCol, finLigne, finCol }.
+// Pose l'appel [^n] à la fin de la sélection — donc au curseur, sur une sélection vide, le
+// cas courant — et ajoute sa définition [^n]:  en fin de document, précédée d'une ligne
+// vide si le document n'en finit pas déjà par une : pandoc l'exige pour reconnaître une
+// définition de note. Rend le curseur en fin de cette ligne de définition, là où la
+// personne va taper le texte de sa note.
+//
+// ⚠ La sélection ne sert qu'à SITUER l'appel, à sa fin : son texte n'est ni déplacé ni
+// supprimé. Amputer le corps du texte pour y loger l'appel serait destructeur et
+// surprenant — tout le contraire de ce qu'un raccourci de mise en forme doit faire.
+//
+// Pure — comme poserBloc, dont elle reprend la forme : aucune dépendance à vscode, un
+// document en mémoire en entrée, une plage de lignes à remplacer en sortie ; c'est
+// fmtNoteBasPage (lib/formatting.js) qui traduit en édition vscode.
+function noteBasPage(lignes, sel) {
+  const tab = Array.isArray(lignes) && lignes.length > 0
+    ? lignes.map((x) => String(x === undefined || x === null ? '' : x)) : [''];
+  const borne = (n, max) => Math.max(0, Math.min(Number(n) || 0, max));
+  let dl = borne(sel && sel.debutLigne, tab.length - 1);
+  let fl = borne(sel && sel.finLigne, tab.length - 1);
+  if (fl < dl) { const t = dl; dl = fl; fl = t; }
+  let dc = borne(sel && sel.debutCol, tab[dl].length);
+  let fc = borne(sel && sel.finCol, tab[fl].length);
+  if (dl === fl && fc < dc) { const t = dc; dc = fc; fc = t; }
+
+  const etiquette = '[^' + premiereNoteLibre(tab.join('\n')) + ']';
+  // L'appel se pose à la fin de la sélection ; ce qui la précède sur cette ligne — le texte
+  // sélectionné compris — n'est pas touché.
+  const ligneAppel = tab[fl].slice(0, fc) + etiquette + tab[fl].slice(fc);
+  const suite = tab.slice(fl + 1);               // tout ce qui suit l'appel, intact
+
+  // « Le document finit-il déjà par une ligne vide ? » se lit APRÈS la pose de l'appel :
+  // posé sur ce qui était la dernière ligne, il la rend forcément non vide.
+  const derniereLigne = suite.length > 0 ? suite[suite.length - 1] : ligneAppel;
+  const definition = (derniereLigne.trim() === '' ? [] : ['']).concat([etiquette + ': ']);
+
+  const morceaux = [ligneAppel].concat(suite, definition);
+  return {
+    ligneDebut: fl,
+    ligneFin: tab.length - 1,
+    texte: morceaux.join('\n'),
+    curseur: { ligne: fl + morceaux.length - 1, colonne: morceaux[morceaux.length - 1].length }
+  };
+}
+
 // Palette du menu contextuel, bâtie sur les commandes szh.fmt.*. Format d'une entrée :
 // ['--', cléGroupe] pour un séparateur, sinon [cléLibellé, commande, raccourci, icône].
 const PALETTE_MEF = [
@@ -275,6 +348,7 @@ const PALETTE_MEF = [
   ['palette.citation', 'szh.fmt.citation', 'Ctrl+Alt+C', ''],
   ['--', 'palette.g.inserer'],
   ['palette.figure', 'szh.fmt.figure', 'Ctrl+Alt+F', ''],
+  ['palette.noteBasPage', 'szh.fmt.noteBasPage', 'Ctrl+Alt+N', ''],
   ['palette.tableau', 'szh.fmt.tableau', 'Ctrl+Alt+T', ''],
   ['palette.collerTableau', 'szh.fmt.collerTableau', 'Ctrl+Alt+V', ''],
   ['palette.sautPage', 'szh.fmt.sautPage', 'Ctrl+Alt+Entrée', '']
@@ -284,5 +358,5 @@ module.exports = {
   estEnrobe, basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
   attrBloc, enroberBloc, CLASSES_BLOCS, blocAutour, poserBloc,
   squeletteTableau, tableauVierge, nomMediaUnique, nomTableLibre,
-  blocReferenceTable, blocSautPage, PALETTE_MEF
+  blocReferenceTable, blocSautPage, noteBasPage, PALETTE_MEF
 };
