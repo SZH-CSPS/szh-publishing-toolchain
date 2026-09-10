@@ -38,6 +38,19 @@ const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cock
 const rapportErreur = require(path.join(COCKPIT, 'lib', 'rapport-erreur.js'));
 const codesErreur = require(path.join(COCKPIT, 'lib', 'codes-erreur.js'));
 
+// Les tests qui comparent un VRAI chemin de dossier ne peuvent tenir que sous Windows :
+// lib/rapport-erreur.js normalise ses chemins à l'antislash — c'est son contrat, la flotte
+// est sous Windows et les chemins d'un rapport doivent se coller tels quels dans
+// l'explorateur — si bien qu'un /tmp/xyz d'ubuntu en ressort en \tmp\xyz, et qu'aucune de
+// ces attentes ne peut y tenir. Même partage que les tests à corps PowerShell (voir
+// .github/workflows/ci.yml) : sautés par le job `contrats` (ubuntu), joués en entier par
+// `contrats-windows`, qui passe le même node --test sur windows-latest. Les tests qui ne
+// parlent que du schéma, du masquage, de la politique anti-inondation ou de la source du
+// module, eux, restent joués partout.
+const HORS_WINDOWS = process.platform !== 'win32'
+  ? 'chemins Windows : joué par le job contrats-windows'
+  : false;
+
 function dossierJetable(prefixe) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefixe + '-'));
 }
@@ -148,7 +161,7 @@ test('construireRapport() : message/pile/extrait passent par le masquage (§4.1)
   assert.match(rapport.journal.extrait[0], /secret: \*\*\*/, 'l’extrait du journal doit lui aussi passer par le masquage');
 });
 
-test('dossierRapportsDepuisAncrage() : la faute de frappe est reproduite à l’identique, jamais corrigée', () => {
+test('dossierRapportsDepuisAncrage() : la faute de frappe est reproduite à l’identique, jamais corrigée', { skip: HORS_WINDOWS }, () => {
   const derive = rapportErreur.dossierRapportsDepuisAncrage('C:\\un\\ancrage');
   // Comparé à une chaîne tapée en dur ICI, indépendamment de la constante du module : si
   // quelqu'un « corrige » un jour la faute de frappe dans rapport-erreur.js, ce test doit
@@ -159,7 +172,7 @@ test('dossierRapportsDepuisAncrage() : la faute de frappe est reproduite à l’
     'la faute de frappe a été « corrigée » — c’est le vrai nom du dossier, à ne jamais toucher');
 });
 
-test('résolution passive : SZH_ANCRAGE (essai) l’emporte sur config.json et sur le cache', () => {
+test('résolution passive : SZH_ANCRAGE (essai) l’emporte sur config.json et sur le cache', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   fs.writeFileSync(path.join(s.base, 'config.json'), JSON.stringify({ ancrageSharePoint: s.base }) + '\n');
   fs.mkdirSync(path.join(s.local, 'SZH'), { recursive: true });
@@ -170,7 +183,7 @@ test('résolution passive : SZH_ANCRAGE (essai) l’emporte sur config.json et s
   });
 });
 
-test('résolution passive : config.json l’emporte sur le cache quand SZH_ANCRAGE est absent', () => {
+test('résolution passive : config.json l’emporte sur le cache quand SZH_ANCRAGE est absent', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   fs.rmSync(s.ancrage, { recursive: true, force: true });   // « essai » ne doit rien trouver
   fs.writeFileSync(path.join(s.base, 'config.json'), JSON.stringify({ ancrageSharePoint: s.base }) + '\n');
@@ -182,7 +195,7 @@ test('résolution passive : config.json l’emporte sur le cache quand SZH_ANCRA
   });
 });
 
-test('résolution passive : le cache (etat-utilisateur.json) sert de dernier recours', () => {
+test('résolution passive : le cache (etat-utilisateur.json) sert de dernier recours', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   fs.rmSync(s.ancrage, { recursive: true, force: true });
   // config.json existe mais sans ancrageSharePoint.
@@ -195,7 +208,7 @@ test('résolution passive : le cache (etat-utilisateur.json) sert de dernier rec
   });
 });
 
-test('résolution passive : variables d’environnement développées dans la valeur de config.json', () => {
+test('résolution passive : variables d’environnement développées dans la valeur de config.json', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   fs.rmSync(s.ancrage, { recursive: true, force: true });
   avecEnv({ SZH_ANCRAGE_ESSAI_CIBLE: s.base }, () => {
@@ -221,7 +234,7 @@ test('résolution passive : rien de tout cela n’aboutit -> absent, en silence'
 // recopiait tel quel — un SZH_ANCRAGE tapé avec des barres obliques (habitude de shell)
 // rendait donc deux chaînes différentes pour le MÊME ancrage, incollables l'une à l'autre
 // avec `fichiers[].chemin` (toujours en antislash, lui).
-test('résolution passive : SZH_ANCRAGE en barres obliques -> chemin rendu en antislash, sans séparateur final', () => {
+test('résolution passive : SZH_ANCRAGE en barres obliques -> chemin rendu en antislash, sans séparateur final', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   const enOblique = s.ancrage.replace(/\\/g, '/') + '/';   // + un séparateur final, pour de bon
   avecEnv({ SZH_ANCRAGE: enOblique, SZH_BASE: s.base, LOCALAPPDATA: s.local }, () => {
@@ -234,7 +247,7 @@ test('résolution passive : SZH_ANCRAGE en barres obliques -> chemin rendu en an
   });
 });
 
-test('résolution passive : la même normalisation s’applique à l’ancrage venu de config.json', () => {
+test('résolution passive : la même normalisation s’applique à l’ancrage venu de config.json', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   fs.rmSync(s.ancrage, { recursive: true, force: true });   // « essai » ne doit rien trouver
   const enOblique = s.base.replace(/\\/g, '/');
@@ -252,7 +265,7 @@ test('résolution passive : la même normalisation s’applique à l’ancrage v
 // pour RECONNAÎTRE la racine dans un chemin absolu (vérifié par exécution, pas supposé) —
 // seul le champ `ancrage.chemin` lui-même, jamais masqué (§4.1), avait besoin du correctif
 // ci-dessus. Ce test-ci le prouve de bout en bout, ancrage ET fichier concaténables.
-test('emettreRapport() : ancrage en barres obliques + fichier réel -> chemins collables tels quels', () => {
+test('emettreRapport() : ancrage en barres obliques + fichier réel -> chemins collables tels quels', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   const cheminArticle = path.join(s.ancrage, '2_Produkte', '52_Revue', 'x.md');   // toujours en antislash (fs/path)
   avecEnv({ SZH_ANCRAGE: s.ancrage.replace(/\\/g, '/'), SZH_BASE: s.base, LOCALAPPDATA: s.local }, () => {
@@ -293,7 +306,7 @@ test('le module ne référence aucune API de sélection de dossier ni de demande
   }
 });
 
-test('emettreRapport() : le nom de fichier est <id>.json, et le tri du dossier est chronologique', async () => {
+test('emettreRapport() : le nom de fichier est <id>.json, et le tri du dossier est chronologique', { skip: HORS_WINDOWS }, async () => {
   const s = sandbox();
   await avecEnv(varsSandbox(s), async () => {
     const r1 = rapportErreur.emettreRapport(Object.assign({}, CHAMPS_MINIMAUX, { etape: 'premier' }));
@@ -310,7 +323,7 @@ test('emettreRapport() : le nom de fichier est <id>.json, et le tri du dossier e
   });
 });
 
-test('anti-inondation : la même signature deux fois de suite -> un seul fichier, le second étouffé', () => {
+test('anti-inondation : la même signature deux fois de suite -> un seul fichier, le second étouffé', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   avecEnv(varsSandbox(s), () => {
     const champs = Object.assign({}, CHAMPS_MINIMAUX, { etape: 'toujours le même' });
@@ -324,7 +337,7 @@ test('anti-inondation : la même signature deux fois de suite -> un seul fichier
   });
 });
 
-test('anti-inondation : le 21e rapport du jour est refusé, les 20 premiers passent', () => {
+test('anti-inondation : le 21e rapport du jour est refusé, les 20 premiers passent', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   avecEnv(varsSandbox(s), () => {
     const resultats = [];
@@ -365,7 +378,7 @@ test('decisionAntiInondation() : la fenêtre de 24 h se referme juste après, pa
   assert.equal(autorise.autorise, true);
 });
 
-test('emettreRapport() : dossier de rapports injoignable -> mise en attente, puis viderFileAttente() la vide', () => {
+test('emettreRapport() : dossier de rapports injoignable -> mise en attente, puis viderFileAttente() la vide', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   // Obstrue le dossier réel : un FICHIER là où '2_Produkte' devrait être un dossier fait
   // échouer le mkdirSync récursif de l'écriture — exactement « injoignable » (SharePoint
@@ -415,7 +428,7 @@ test('purgerFileAttente() : plafond de 50 fichiers (les plus anciens effacés) e
   assert.ok(nomsRestants.every((n) => n.indexOf('vieux-') === -1), 'les fichiers de plus de 30 jours doivent avoir disparu');
 });
 
-test('emettreRapport() : un échec d’écriture, réel ET en attente, ne lève pas et ne produit pas de second rapport', () => {
+test('emettreRapport() : un échec d’écriture, réel ET en attente, ne lève pas et ne produit pas de second rapport', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   fs.writeFileSync(path.join(s.ancrage, '2_Produkte'), 'obstacle');   // le dossier réel échoue
   const localBloque = path.join(dossierJetable('szh-local-bloque'), 'fichier-pas-un-dossier');
@@ -466,7 +479,7 @@ test('ecritureReelleEviteeParHarnaisTest() : ne coupe QUE sous SZH_RESEAU_INTERD
   }
 });
 
-test('emettreRapport() : sans SZH_RESEAU_INTERDIT, l’écriture réelle a bien lieu même hors origine « essai »', () => {
+test('emettreRapport() : sans SZH_RESEAU_INTERDIT, l’écriture réelle a bien lieu même hors origine « essai »', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   // L'ancrage vient de config.json (origine 'config'), PAS de SZH_ANCRAGE : exactement le
   // cas que la garde du banc de test pourrait couper à tort si elle était mal réglée.
@@ -496,7 +509,7 @@ test('emettreRapport() : sans SZH_RESEAU_INTERDIT, l’écriture réelle a bien 
 // dessous de lui. Les trois tests ci-dessous couvrent chaque variable séparément, puis leur
 // combinaison — exactement le piège qui a été trouvé.
 
-test('SZH_ANCRAGE seule : dérive le dossier de rapports habituel (2_Produkte\\…) SOUS elle', () => {
+test('SZH_ANCRAGE seule : dérive le dossier de rapports habituel (2_Produkte\\…) SOUS elle', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   avecEnv({ SZH_ANCRAGE: s.ancrage, SZH_BASE: s.base, LOCALAPPDATA: s.local }, () => {
     const resultat = rapportErreur.emettreRapport(CHAMPS_MINIMAUX);
@@ -529,7 +542,7 @@ test('SZH_RAPPORTS seule : le dossier de rapports EST cette valeur, telle quelle
   });
 });
 
-test('SZH_ANCRAGE + SZH_RAPPORTS ensemble : orthogonales — chacune ne fait que ce que son nom dit', () => {
+test('SZH_ANCRAGE + SZH_RAPPORTS ensemble : orthogonales — chacune ne fait que ce que son nom dit', { skip: HORS_WINDOWS }, () => {
   const s = sandbox();
   const rapportsDirect = dossierJetable('szh-rapports-direct-combine');
   avecEnv({ SZH_ANCRAGE: s.ancrage, SZH_RAPPORTS: rapportsDirect, SZH_BASE: s.base, LOCALAPPDATA: s.local }, () => {
@@ -594,7 +607,7 @@ test('hôte : mise en route', async () => {
   for (let i = 0; i < 20; i++) { await unTick(); }
 });
 
-test('hôte : une compilation en échec (code non nul) écrit un rapport COMPIL-ECHEC', async () => {
+test('hôte : une compilation en échec (code non nul) écrit un rapport COMPIL-ECHEC', { skip: HORS_WINDOWS }, async () => {
   reposerEnvHote();
   const avant = fichiersRapportsHote().length;
   await HOTE.finirTache(NOM_TACHE_BUILD, 1);
@@ -622,7 +635,7 @@ test('hôte : une compilation réussie (code 0) ne déclenche jamais de rapport,
     'un constat de qualité de contenu ne doit jamais, à lui seul, déclencher un rapport');
 });
 
-test('hôte : une commande szh.* qui lève écrit un rapport COCKPIT-EXCEPTION, puis relance l’erreur telle quelle', () => {
+test('hôte : une commande szh.* qui lève écrit un rapport COCKPIT-EXCEPTION, puis relance l’erreur telle quelle', { skip: HORS_WINDOWS }, () => {
   reposerEnvHote();
   const arbre = HOTE.arbre();   // le même FournisseurRevue que le treeDataProvider posé par activate()
   const original = arbre.definirSectionDeployee;
