@@ -41,6 +41,10 @@ lib/
                         stocké et imprimé, le nom complet ne sert qu'à la liste déroulante
   citations.js          liste de références d'un article et liage manuel d'un appel
   cmyk.js               detection des JPEG CMJN et appel du convertisseur, dans WSL
+  codes-erreur.js       table des 9 codes d'erreur applicatifs et schéma v1 des rapports
+                        automatiques (masquage, plafonds, anti-inondation) : données et
+                        fonctions pures, sans vscode ni fs, partagées avec l'écrivain
+                        PowerShell (docs/RAPPORTS-ERREUR.md ; pas encore posé)
   coedition.js          bail de deux minutes posé sur un fichier pendant qu'un formulaire le
                         modifie : deux postes sur le même numéro n'écrivent pas ensemble
                         (à ne pas confondre avec verrou.js, qui gèle le numéro entier)
@@ -101,6 +105,11 @@ lib/
   profil.js             ce qu'est le dossier ouvert — numéro de revue (ausgabe.yaml,
                         articles/) ou livre (buch.yaml, chapitres/) — et ses chemins
   qualite-image.js      seuils de résolution des images et verdict de qualité
+  rapport-erreur.js     construit et écrit les rapports d'erreur automatiques (schéma v1) :
+                        résolution passive de l'ancrage SharePoint, masquage, anti-
+                        inondation, file d'attente hors ligne. S'appuie sur codes-erreur.js
+                        sans le modifier ; l'écrivain PowerShell (windows/*.ps1) est un
+                        autre jalon (docs/RAPPORTS-ERREUR.md)
   references.js         insertions d'images et de tableaux dans le markdown, et les
                         grilles d'images (plusieurs images pour une seule figure)
   reglages-flotte.js    les réglages de l'éditeur imposés à tous les postes : lecture du

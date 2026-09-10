@@ -94,12 +94,26 @@ function Resolve-SzhEmplacementRevues($Config) {
 
 # Base d'un emplacement donné. Les sous-clés de `basesRevues` gardent leurs noms d'avant
 # (`dev`, `prod`) : des postes les portent déjà.
+#
+# Pour « prod » seulement (« dev » n'a jamais rien à voir avec SharePoint) : `basesRevues.prod`
+# garde la priorité absolue, inchangée -- personne ne doit voir son réglage explicite écrasé
+# par une détection. C'est seulement quand cette clé est absente que l'ancrage SharePoint
+# résolu (szh-ancrage.ps1, Resolve-SzhAncrage) sert de repli, avant le défaut codé en dur qui
+# reste le tout dernier recours. Sur un poste où l'ancrage se détecte au même endroit que ce
+# défaut, les deux chemins coïncident à l'identique -- c'est ce que garantit l'absence de
+# régression (test/js/ancrage-sharepoint.test.js), pas un court-circuit qui l'éviterait.
 function Get-SzhBaseRevuesPour([string]$Emplacement) {
   $cle = 'prod'
   if ($Emplacement -eq $SzhEmplacementTest) { $cle = 'dev' }
   $base = $SzhBasesDefaut[$cle]
   $cfg = Get-SzhConfig
-  if ($cfg -and $cfg.basesRevues -and $cfg.basesRevues.$cle) { $base = [string]$cfg.basesRevues.$cle }
+  if ($cfg -and $cfg.basesRevues -and $cfg.basesRevues.$cle) {
+    return [Environment]::ExpandEnvironmentVariables([string]$cfg.basesRevues.$cle)
+  }
+  if ($cle -eq 'prod') {
+    $ancrage = Resolve-SzhAncrage
+    if ($ancrage -and $ancrage.chemin) { return (Get-SzhBaseProduitsDepuisAncrage $ancrage.chemin) }
+  }
   return [Environment]::ExpandEnvironmentVariables($base)
 }
 

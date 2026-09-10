@@ -34,7 +34,13 @@ param(
 # une console cachée, seule façon fiable de survivre à la fermeture de VSCodium. Pas
 # Show-SzhErreur non plus, dont les textes annoncent un nouvel essai automatique, alors
 # qu'ici rien ne réessaiera.
+#
+# Rapport d'erreur automatique et silencieux (SPEC-RAPPORTS.md, szh-rapport.ps1) avant
+# d'afficher quoi que ce soit : Write-SzhRapport ne bloque jamais et n'affiche rien (D2, D5),
+# la MessageBox ci-dessous reste inchangée. $Dossier (paramètre du script) est le seul chemin
+# sûrement connu à ce stade -- il part en fichier concerné, en relatif à l'ancrage si possible.
 function Show-SzhErreurArchivage([string]$Etape, [string]$Message) {
+  try { Write-SzhRapport -Code 'ARCHIVAGE-ECHEC' -Source 'archivage' -Etape $Etape -Message $Message -Fichiers @($Dossier) } catch { }
   $texte = $Etape + "`n`n" + $Message + "`n`n" + (T 'err.rassure') + "`n" + (T ('arch.err.suite' + $suffixeLivre) @($SzhSupport))
   Write-Host ''
   Write-Host ('  ' + $texte)

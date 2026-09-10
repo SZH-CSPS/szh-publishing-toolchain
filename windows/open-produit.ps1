@@ -78,6 +78,15 @@ elseif (([string]$Produit).ToLower() -eq 'livre') { $titreSecours = 'Books SZH-C
 trap {
   $souci = $_.Exception.Message
   try { Write-SzhLog ('open-produit ERREUR (' + $Produit + ') : ' + $souci) } catch { }
+  # Rapport d'erreur automatique et silencieux (SPEC-RAPPORTS.md) : Write-SzhRapport ne
+  # bloque jamais, n'affiche rien et se tait de lui-même en simulation (D2, D5) -- rien
+  # ci-dessous n'a besoin de savoir si on est en simulation ou non.
+  try {
+    $produitTrap = $null
+    if ($produitFiltre) { $produitTrap = @{ type = $produitFiltre } }
+    Write-SzhRapport -Code 'LANCEUR-TRAP' -Source 'lanceur' -Etape 'ouverture du lanceur' `
+      -Message $souci -Pile $_.ScriptStackTrace -Produit $produitTrap
+  } catch { }
   if ($script:SzhSimule) {
     try { Write-SzhSimuleJson ([pscustomobject]@{ produit = $Produit; erreur = $souci }) } catch { }
     exit 1
@@ -154,9 +163,54 @@ $codium = Get-VSCodiumExe
 # En simulation, l'absence de VSCodium ne doit pas empecher de calculer les listes : un poste
 # de test n'a pas de raison de l'avoir installe. Le champ codiumTrouve du JSON le dit.
 if ((-not $codium) -and (-not $script:SzhSimule)) {
+  try { Write-SzhRapport -Code 'LANCEUR-CODIUM-ABSENT' -Source 'lanceur' -Etape 'démarrage du lanceur' -Produit @{ type = $produitFiltre } } catch { }
   [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.codium' @($SzhSupport)), $titreFenetre)
   exit 1
 }
+
+# ---- Ancrage SharePoint : resolu (et, au besoin, demande) UNE SEULE FOIS ici ----
+# Initialize-SzhAncrage (szh-ancrage.ps1) est la seule fonction habilitee a ouvrir le
+# selecteur de dossier (amendement du 09.09.2026, garde-fou anti-harcelement compris) ;
+# ce lanceur est son seul appelant autorise, une seule fois par lancement. open-md.ps1 et
+# archive-revue.ps1, qui tournent sans console, continuent de passer par la seule
+# resolution passive (Resolve-SzhAncrage, via Get-SzhBaseRevuesPour) et ne demandent
+# jamais rien -- ce n'est pas a eux d'ouvrir cette fenetre.
+#
+# Placee APRES le controle VSCodium ci-dessus, expres : si l'editeur manque, ce script va
+# de toute facon s'arreter juste au-dessus (MessageBox + exit) sans rien ouvrir d'autre --
+# inutile de faire chercher un dossier SharePoint a quelqu'un a qui on va ensuite dire que
+# l'outil ne peut pas demarrer du tout. Placee AVANT le lien "szh://..." ci-dessous et
+# "Racines a balayer" plus bas : Find-SzhRevue (lien) et Get-SzhEmplacements (racines)
+# dependent tous les deux de Get-SzhBaseRevuesPour, qui lit l'ancrage -- ils doivent le
+# voir deja rattache, sans quoi la liste resterait vide sans que la personne n'ait meme eu
+# l'occasion d'indiquer son dossier SharePoint.
+#
+# En simulation (SZH_LANCEUR_SIMULE=1), Initialize-SzhAncrage ne demande jamais rien
+# (szh-ancrage.ps1) : cet appel est donc sans danger ici, et alimente aussi le JSON de
+# simulation plus bas. D5 (regle absolue) : si rien n'est trouve et que la personne
+# annule ou ne repond pas, $ancrageResolu.chemin reste vide et le lanceur poursuit
+# normalement -- il ne s'arrete pas, il ne bloque pas ; les produits resteront
+# introuvables, ce que dit la ligne de journal ci-dessous et, plus bas, le bloc
+# d'informations de la fenetre.
+$ancrageResolu = Initialize-SzhAncrage
+if ($ancrageResolu.chemin) {
+  Write-SzhLog ('open-produit : ancrage SharePoint "{0}" (origine {1})' -f $ancrageResolu.chemin, $ancrageResolu.origine)
+} else {
+  Write-SzhLog ('open-produit : ancrage SharePoint introuvable (origine {0})' -f $ancrageResolu.origine)
+}
+
+# Rapport d'erreur ANCRAGE-INTROUVABLE (SPEC-RAPPORTS.md §3) : seulement quand une VRAIE
+# demande a ete faite et n'a rien donne (origine "absent") -- jamais quand la demande a ete
+# evitee par l'anti-harcelement ou la simulation (origine "defaut"), un cas frequent et
+# attendu qui ne doit pas produire un rapport a chaque lancement.
+if ($ancrageResolu.origine -eq 'absent') {
+  try { Write-SzhRapport -Code 'ANCRAGE-INTROUVABLE' -Source 'lanceur' -Etape (T 'ancrage.demande.titre') -Produit @{ type = $produitFiltre } } catch { }
+}
+
+# Vidage de la file d'attente des rapports d'erreur hors ligne (SPEC-RAPPORTS.md §4.4) :
+# silencieux, jamais bloquant -- l'ancrage vient d'etre resolu, c'est le bon moment pour
+# retenter les rapports ecrits hors ligne depuis le dernier lancement.
+try { Clear-SzhRapportsEnAttente } catch { }
 
 # ---- Lien "szh://..." recu : on ouvre, on ne liste pas ----
 # Seuls revue et zeitschrift ont une grammaire de lien (Get-SzhLien) ; le livre n'y figure
@@ -296,6 +350,17 @@ $vInstallee = Get-SzhVersionInstallee
 if ($vInstallee) { $lignesInfo += (T 'lanceur.version' @($vInstallee)) }
 else { $lignesInfo += (T 'lanceur.version.inconnue') }
 $lignesInfo += (T $Info.texteTest @($emplacements.base))
+# Ancrage SharePoint absent : dit pourquoi la liste ci-dessus est vide, sans rouvrir la
+# moindre fenetre -- Initialize-SzhAncrage, plus haut, a deja fait tout ce qu'il pouvait
+# faire pour cette fois (D5). Seulement en emplacement "production", et seulement si
+# basesRevues.prod n'est pas configure a la main : dans ces deux autres cas, l'ancrage
+# n'entre pour rien dans la racine effectivement utilisee (szh-produits.ps1,
+# Get-SzhBaseRevuesPour), et le dire serait une fausse alerte.
+if ((-not $modeTest) -and (-not $ancrageResolu.chemin)) {
+  $cfgAncrageInfo = Get-SzhConfig
+  $baseProdConfiguree = ($cfgAncrageInfo -and $cfgAncrageInfo.basesRevues -and $cfgAncrageInfo.basesRevues.prod)
+  if (-not $baseProdConfiguree) { $lignesInfo += (T 'lanceur.ancrage.absent') }
+}
 $avertissementHors = ''
 if ($Info.racinesHeritees -and ($horsArborescence -gt 0)) {
   $avertissementHors = (T 'lanceur.hors' @($horsArborescence, $dossierHors))
@@ -331,6 +396,7 @@ if ($script:SzhSimule) {
     emplacement      = $emplacements.emplacement
     modeTest         = ($emplacements.emplacement -eq $SzhEmplacementTest)
     racineBase       = $emplacements.base
+    ancrage          = [ordered]@{ chemin = $ancrageResolu.chemin; origine = $ancrageResolu.origine }
     racineEnCours    = $encoursProduit
     racineArchive    = $archiveProduit
     versionInstallee = $vInstallee

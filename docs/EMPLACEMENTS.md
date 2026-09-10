@@ -137,7 +137,8 @@ distributions ne sont jamais désinscrits ni supprimés.
 | `windows\szh-produits.ps1` · `Resolve-SzhEmplacementRevues` | La règle : clé neuve, puis clé ancienne, puis défaut. Pure, ne lit ni disque ni fichier. | tout le reste de cette liste |
 | `windows\szh-produits.ps1` · `Initialize-SzhEmplacementRevues` | Écrit la valeur en clair dans `config.json` si elle manque, après avoir compté les numéros des trois racines (revue, zeitschrift, **et livre**). Une fois par poste, journalisée. | `Get-SzhEmplacementRevues` |
 | `windows\szh-produits.ps1` · `Get-SzhEmplacementRevues` | Passage obligé : `test` ou `production`. | `Get-SzhEmplacements`, `Get-SzhEtiquetteRacine` |
-| `windows\szh-produits.ps1` · `Get-SzhBaseRevuesPour` | La racine, `basesRevues` compris. **Seul endroit du dépôt qui connaît ces deux chemins.** | `Get-SzhEmplacements`, `Measure-SzhNumeros` |
+| `windows\szh-produits.ps1` · `Get-SzhBaseRevuesPour` | La racine, `basesRevues` compris. **Seul endroit du dépôt qui connaît ces deux chemins.** Pour `prod` seulement (depuis le 09.09.2026) : `basesRevues.prod` garde la priorité absolue et inchangée ; sinon l'**ancrage SharePoint** résolu (`Resolve-SzhAncrage`) sert de repli ; sinon le défaut codé en dur, tout dernier recours. `dev` ne regarde jamais l'ancrage. | `Get-SzhEmplacements`, `Measure-SzhNumeros` |
+| `windows\szh-ancrage.ps1` · `Resolve-SzhAncrage` / `Initialize-SzhAncrage` | L'ancrage SharePoint : le dossier `Daten_Allgemein - General`, dont `2_Produkte` **dérive** — cherché (4 niveaux passifs, jamais de fenêtre), pas déduit d'une variable d'environnement. `Initialize-SzhAncrage` seule peut ouvrir un sélecteur de dossier, une fois par lancement. Détail complet : `docs/RAPPORTS-ERREUR.md`, §1. | `Get-SzhBaseRevuesPour`, `windows\open-produit.ps1` |
 | `windows\szh-produits.ps1` · `Measure-SzhNumeros` | Compte les dossiers portant un manifeste (`ausgabe.yaml` pour une revue ou une zeitschrift, `buch.yaml` pour un livre — via `Get-SzhSousDossierLivre`), en cours et aux archives, dans une racine. Un livre compte donc lui aussi dans la bascule automatique `test`/`production`. | `Initialize-SzhEmplacementRevues` |
 | `windows\szh-produits.ps1` · `Get-SzhEmplacements` | Les quatre dossiers du poste, plus l'emplacement actif. Journalise la racine une fois par lancement. | `open-produit.ps1`, `new-revue.ps1`, `new-livre.ps1`, `archive-revue.ps1` |
 | `windows\szh-produits.ps1` · `Initialize-SzhEmplacementsTest` | Crée les quatre dossiers manquants — **en test seulement**. En production, jamais : l'arborescence est celle de SharePoint. | `open-produit.ps1` |
@@ -251,6 +252,24 @@ c'est-à-dire exactement ce que le poste voyait déjà.
 6. Si le titre disait déjà `dossier de test` et que la liste est vide : ce n'est pas
    l'interrupteur. Regarder si OneDrive a fini de synchroniser (icône de la barre des
    tâches), puis le journal du jour dans `C:\ProgramData\SZH\logs\`.
+7. **Depuis le 09.09.2026, un geste de plus si le titre dit bien `production`** : sans
+   `basesRevues.prod` configuré à la main, la racine de production vient désormais de
+   l'**ancrage SharePoint** — le dossier `Daten_Allgemein - General`, **cherché**, pas déduit
+   d'une variable d'environnement (`%OneDrive%` ne suffit pas). Introuvable : le bloc
+   d'informations du lanceur porte une ligne dédiée (« Dossier partagé SharePoint
+   introuvable : la liste ci-dessus restera vide tant que ce dossier ne sera pas rattaché. »),
+   et un sélecteur de dossier s'ouvre au **prochain lancement qui suit de plus de 24 h** la
+   dernière tentative — jamais plus tôt, pour ne pas harceler. Un dossier **enfant** de
+   l'ancrage convient toujours, à n'importe quelle profondeur (la remontée des parents est
+   gratuite, sans limite) : `Daten_Allgemein - General` lui-même, `2_Produkte`, un numéro
+   précis, jusqu'au dossier des rapports. Un dossier **parent** convient aussi, mais la
+   descente est bornée à 3 niveaux sous le dossier choisi (garde-fou anti-`C:\`) : `SZH CSPS`
+   et `C:\Users\<compte>` sont tous deux à l'intérieur de cette limite sur ce poste, un
+   ancêtre plus lointain ne le serait pas. Pour ne pas attendre les 24 h : poser
+   `ancrageSharePoint` à la main dans
+   `C:\ProgramData\SZH\config.json` (tout le poste) ou dans
+   `%LOCALAPPDATA%\SZH\etat-utilisateur.json` (ce compte) fait sauter l'attente au lancement
+   suivant. Détail complet de la résolution : `docs/RAPPORTS-ERREUR.md`, §1.
 
 Sens inverse — passer un poste de rédaction en production : poser
 `"emplacementRevues": "production"`, puis **déplacer** les numéros de

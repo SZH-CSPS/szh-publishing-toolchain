@@ -171,6 +171,15 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.livre.doublon.arch'    = 'Ce livre-là est archivé – un livre archivé reste un livre publié.'
     'lanceur.nouvelle.livre.doublon.suite'   = 'Deux livres ne peuvent pas porter la même référence B. Supprimez d’’abord celui qui existe, puis recréez celui-ci.'
     'lanceur.nouvelle.livre.erreur'          = "La création du livre a échoué :`n{0}"
+    # Demande du dossier partage SharePoint (ancrage) quand rien ne l'a trouve tout seul --
+    # szh-ancrage.ps1, Resolve-SzhAncrage/Request-SzhAncrageUtilisateur.
+    'ancrage.demande.titre' = 'Dossier partagé SharePoint introuvable'
+    'ancrage.demande.texte' = 'L’’outil n’’a pas trouvé automatiquement le dossier partagé SharePoint des revues et des livres. Indiquez un dossier qui s’’y trouve, ou qui contient le dossier « Daten_Allgemein - General ».'
+    'ancrage.demande.echec' = 'Ce dossier ne mène pas au dossier partagé recherché : un dossier nommé « Daten_Allgemein - General », sous le dossier indiqué ou au-dessus de lui. Choisissez un autre dossier.'
+    'ancrage.abandon'       = 'Le dossier partagé SharePoint n’’a pas pu être rattaché : les revues et les livres resteront introuvables sur ce poste tant qu’’il ne l’’est pas. Pour réessayer, fermez ce lanceur et rouvrez-le : la demande réapparaîtra dans 24 heures. Besoin d’’aide plus tôt : {0}'
+    # Ligne d'info du lanceur (open-produit.ps1) quand l'ancrage reste absent après
+    # Initialize-SzhAncrage : dit pourquoi la liste est vide, sans rouvrir de fenêtre.
+    'lanceur.ancrage.absent' = 'Dossier partagé SharePoint introuvable : la liste ci-dessus restera vide tant que ce dossier ne sera pas rattaché.'
   }
   de = @{
     'app.titre'         = 'SZH/CSPS – Publikations-Toolchain'
@@ -326,6 +335,15 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.livre.doublon.arch'    = 'Jenes Buch ist archiviert – ein archiviertes Buch bleibt ein veröffentlichtes Buch.'
     'lanceur.nouvelle.livre.doublon.suite'   = 'Zwei Bücher können nicht dieselbe B-Referenz tragen. Löschen Sie zuerst das vorhandene Buch und erstellen Sie dieses danach neu.'
     'lanceur.nouvelle.livre.erreur'          = "Das Buch konnte nicht erstellt werden:`n{0}"
+    # Anfrage nach dem freigegebenen SharePoint-Ordner (Ancrage), wenn nichts automatisch
+    # gefunden wurde -- szh-ancrage.ps1, Resolve-SzhAncrage/Request-SzhAncrageUtilisateur.
+    'ancrage.demande.titre' = 'Freigegebener SharePoint-Ordner nicht gefunden'
+    'ancrage.demande.texte' = 'Das Werkzeug hat den freigegebenen SharePoint-Ordner der Zeitschriften und Bücher nicht automatisch gefunden. Wählen Sie einen Ordner, der darin liegt, oder der den Ordner «Daten_Allgemein - General» enthält.'
+    'ancrage.demande.echec' = 'Dieser Ordner führt nicht zum gesuchten freigegebenen Ordner: ein Ordner namens «Daten_Allgemein - General», unterhalb des gewählten Ordners oder darüber. Wählen Sie einen anderen Ordner.'
+    'ancrage.abandon'       = 'Der freigegebene SharePoint-Ordner konnte nicht verknüpft werden: Zeitschriften und Bücher bleiben auf diesem Rechner unauffindbar, bis er es ist. Starten Sie zum erneuten Versuch dieses Programm neu: die Anfrage erscheint nach 24 Stunden wieder. Für frühere Hilfe: {0}'
+    # Info-Zeile des Launchers (open-produit.ps1), wenn der Ordner nach Initialize-SzhAncrage
+    # weiterhin fehlt: sagt, weshalb die Liste leer bleibt.
+    'lanceur.ancrage.absent' = 'Freigegebener SharePoint-Ordner nicht gefunden: Die Liste bleibt leer, bis er verknüpft ist.'
   }
   en = @{
     'app.titre'         = 'SZH/CSPS — Publishing toolchain'
@@ -481,5 +499,14 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.livre.doublon.arch'    = 'That book is archived — an archived book is still a published book.'
     'lanceur.nouvelle.livre.doublon.suite'   = 'Two books cannot carry the same B reference. Delete the existing one first, then create this one again.'
     'lanceur.nouvelle.livre.erreur'          = "Creating the book failed:`n{0}"
+    # Asking for the shared SharePoint folder (anchor) when nothing was found automatically --
+    # szh-ancrage.ps1, Resolve-SzhAncrage/Request-SzhAncrageUtilisateur.
+    'ancrage.demande.titre' = 'Shared SharePoint folder not found'
+    'ancrage.demande.texte' = 'The tool could not automatically find the shared SharePoint folder for journals and books. Pick a folder that is inside it, or that contains the "Daten_Allgemein - General" folder.'
+    'ancrage.demande.echec' = 'This folder does not lead to the shared folder being searched for: one named "Daten_Allgemein - General", below the folder you picked or above it. Choose another folder.'
+    'ancrage.abandon'       = 'The shared SharePoint folder could not be linked: journals and books will stay unreachable on this computer until it is. To try again, close this launcher and reopen it: the request will reappear after 24 hours. For earlier help: {0}'
+    # Launcher info line (open-produit.ps1) when the anchor is still missing after
+    # Initialize-SzhAncrage: says why the list stays empty.
+    'lanceur.ancrage.absent' = 'Shared SharePoint folder not found: the list will stay empty until it is linked.'
   }
 }

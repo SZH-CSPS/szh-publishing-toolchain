@@ -3,12 +3,18 @@
 
 $ErrorActionPreference = 'Stop'
 
-# Les trois fils, dans l'ordre de leurs dépendances : les textes avant que T (plus bas) ne
-# s'en serve, les produits après les fonctions de config qu'ils appellent (résolues à
-# l'appel, jamais à la lecture), le shell en dernier car il se sert des deux premiers.
-# $SzhBaseUtilisateur (plus bas) est calculé après ce dot-source et n'en dépend pas, mais
-# szh-taches.ps1, dot-sourcé ensuite par les scripts appelants, le lit dès son chargement.
+# Les cinq fils, dans l'ordre de leurs dépendances : les textes avant que T (plus bas) ne
+# s'en serve, l'ancrage SharePoint avant szh-produits.ps1 qui s'en sert
+# (Get-SzhBaseRevuesPour -> Resolve-SzhAncrage) et avant szh-rapport.ps1 qui réutilise cette
+# même résolution passive pour le dossier des rapports d'erreur, les produits après les
+# fonctions de config qu'ils appellent (résolues à l'appel, jamais à la lecture), le shell en
+# dernier car il se sert des précédents. $SzhBaseUtilisateur (plus bas) est calculé après ce
+# dot-source et n'en dépend pas, mais szh-taches.ps1 et szh-rapport.ps1 (file d'attente hors
+# ligne), dot-sourcés ensuite ou juste ici, le lisent dès leur premier appel, jamais à leur
+# chargement.
 . "$PSScriptRoot\szh-textes.ps1"
+. "$PSScriptRoot\szh-ancrage.ps1"
+. "$PSScriptRoot\szh-rapport.ps1"
 . "$PSScriptRoot\szh-produits.ps1"
 . "$PSScriptRoot\szh-shell.ps1"
 # Affectation, pas -bor : un -bor sur la valeur en place garde SSL3/TLS 1.0 si le poste les
@@ -1141,8 +1147,13 @@ function Get-SzhCourriel {
 }
 
 # Écran d'erreur final : message calme, contact, e-mail pré-rempli, accès au journal.
+# -Code distingue les deux appelants d'update.ps1 (échec partiel d'une étape, ou échec total)
+# pour le rapport d'erreur automatique silencieux (SPEC-RAPPORTS.md, szh-rapport.ps1) --
+# Write-SzhRapport ne bloque jamais et n'affiche jamais rien (D2, D5) : l'écran ci-dessous,
+# lui, continue de s'afficher exactement comme avant.
 function Show-SzhErreur {
-  param([string]$Etape, [string]$Message, [string]$Journal)
+  param([string]$Etape, [string]$Message, [string]$Journal, [string]$Code = 'MAJ-ECHEC')
+  try { Write-SzhRapport -Code $Code -Source 'maj' -Etape $Etape -Message $Message -Journal $Journal } catch { }
   Write-Host ''
   Write-Host ('  ' + (T 'err.titre')) -ForegroundColor Yellow
   Write-Host ('  ' + (T 'err.l.etape' @($Etape)))

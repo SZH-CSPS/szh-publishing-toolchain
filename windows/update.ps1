@@ -628,7 +628,7 @@ try {
     Write-Host ('  ' + (T 'maj.partiel' @($manifest.version, $premier.etape))) -ForegroundColor Yellow
     try { Stop-Transcript | Out-Null } catch { }
     try { $SzhMutex.ReleaseMutex() } catch { }
-    Show-SzhErreur -Etape $premier.etape -Message $premier.message -Journal $journal
+    Show-SzhErreur -Etape $premier.etape -Message $premier.message -Journal $journal -Code 'MAJ-ETAPE-ECHEC'
     exit 1
   }
 
@@ -647,6 +647,6 @@ try {
   Write-SzhLog ('update ERREUR ({0}) : {1}' -f $etape, $message)
   try { Stop-Transcript | Out-Null } catch { }
   try { $SzhMutex.ReleaseMutex() } catch { }
-  Show-SzhErreur -Etape $etape -Message $message -Journal $journal
+  Show-SzhErreur -Etape $etape -Message $message -Journal $journal -Code 'MAJ-ECHEC'
   exit 1
 }

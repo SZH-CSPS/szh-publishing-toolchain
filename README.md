@@ -10,6 +10,7 @@ WSL s'appelle `SZH-Publishing`.
 **Documentation** — [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (vue d'ensemble) ·
 [`docs/SORTIES.md`](docs/SORTIES.md) (ce que produit une compilation, et le contrat de balisage) ·
 [`docs/EMPLACEMENTS.md`](docs/EMPLACEMENTS.md) (où vivent les revues, poste par poste) ·
+[`docs/RAPPORTS-ERREUR.md`](docs/RAPPORTS-ERREUR.md) (les rapports d'erreur automatiques du lanceur et du cockpit) ·
 [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) (ce qu'il faut surveiller et quand) ·
 [`docs/SECURITE.md`](docs/SECURITE.md) (déploiement flotte) ·
 [`userdoc.md`](userdoc.md) (côté rédacteur).
@@ -170,7 +171,10 @@ Un seul endroit du code connaît les chemins : `Get-SzhEmplacements`, dans
 `windows/szh-common.ps1`. Base de production
 `%USERPROFILE%\SZH CSPS\Daten_Allgemein - General\2_Produkte`, base de test
 `%USERPROFILE%\OneDrive - SZH CSPS\Revues-TESTING` — les deux surchargeables par la clé
-`basesRevues` de `C:\ProgramData\SZH\config.json`. Mêmes sous-dossiers dans les deux cas :
+`basesRevues` de `C:\ProgramData\SZH\config.json`. Depuis le 09.09.2026, la base de
+production ne dépend plus **que** de ce chemin codé en dur : sans `basesRevues.prod`, elle
+vient de l'**ancrage SharePoint**, *cherché* plutôt que déduit (§ suivante). Mêmes
+sous-dossiers dans les deux cas :
 
 | | Revue (fr) | Zeitschrift (de) |
 |---|---|---|
@@ -185,6 +189,18 @@ se voit écrire la clé en clair au premier lancement, la valeur suivant le disq
 titre du lanceur (`Revues SZH — dossier de test (Revues-TESTING)`) et dans le journal. Le
 lanceur ne liste que cette arborescence ; les revues restées ailleurs sont comptées et
 signalées, pas listées.
+
+### L'ancrage SharePoint et les rapports d'erreur automatiques
+
+Le dossier `Daten_Allgemein - General` (l'« ancrage ») est *cherché* — quatre niveaux passifs
+qui n'ouvrent jamais de fenêtre, plus un sélecteur de dossier réservé au lanceur, une fois par
+lancement, valable pour Revue, Zeitschrift et Books d'un coup. Il fait deux choses : il sert de
+repli pour la base des produits (ci-dessus) et il détermine où atterrissent les **rapports
+d'erreur automatiques** — un JSON par panne, écrit en silence par le lanceur et par le cockpit
+quand quelque chose échoue de façon inattendue, jamais par l'action de la personne qui rédige.
+Détail complet, schéma du JSON, table des codes et procédure de reprise :
+[`docs/RAPPORTS-ERREUR.md`](docs/RAPPORTS-ERREUR.md) et
+[`docs/EMPLACEMENTS.md`](docs/EMPLACEMENTS.md), §8.
 
 ### Cycle de vie d'un numéro
 

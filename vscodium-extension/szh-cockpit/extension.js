@@ -67,6 +67,12 @@ const {
   lireModeDeveloppeur, ecrireModeDeveloppeur, lireConfigPoste, ecrireConfigPoste,
   configAvecLangue, CONFIG_POSTE
 } = require('./lib/archivage');
+// ---- Rapports d'erreur automatiques -> lib/rapport-erreur.js ---------------------
+// Toute la logique (résolution passive de l'ancrage, masquage, anti-inondation, file
+// d'attente, écriture) vit dans ce module, testable hors éditeur ; ici, seulement deux
+// accroches (COMPIL-ECHEC dans relireJournal(), COCKPIT-EXCEPTION ci-dessous) et le
+// vidage de la file au démarrage — voir SPEC-RAPPORTS.md.
+const rapportErreur = require('./lib/rapport-erreur');
 // ---- Réglages protégés de la chaîne -> lib/reglages-proteges.js -------------------
 const proteges = require('./lib/reglages-proteges');
 // ---- Réglages de la maison -> lib/reglages-flotte.js -----------------------------
@@ -2963,6 +2969,25 @@ async function relireJournal(fournisseur, code) {
   // en conflit reste vrai après un Ctrl+S, et la chaîne ne le connaît pas.
   const reimport = dernierJournal.racine === racine ? dernierJournal.reimport : [];
   dernierJournal = { racine: racine, constats: constats, code: code, reimport: reimport };
+  // Rapport automatique (lib/rapport-erreur.js) : une compilation qui s'arrête avec un code
+  // de sortie non nul est une panne de la chaîne (COMPIL-ECHEC), pas un simple constat de
+  // contenu — les constats (tableau-sans-entête, figure-sans-alt…) ne déclenchent JAMAIS de
+  // rapport à eux seuls (décision actée du lot ; les noyer dans le dossier partagé le
+  // rendrait inutile) : ils ne partent qu'en contexte, ici, quand un rapport part pour une
+  // autre raison. `code === 0` (les Ctrl+S qui réussissent, l'immense majorité) ne passe
+  // jamais par ici : aucun coût pour le chemin le plus fréquent.
+  if (code !== 0) {
+    try {
+      rapportErreur.emettreRapport({
+        gravite: 'erreur', source: 'chaine', code: 'COMPIL-ECHEC',
+        message: 'La compilation a rendu le code de sortie ' + code + '.',
+        produit: rapportErreur.produitDepuisRacine(racine, profilCourant().cle),
+        journal: rapportErreur.lireExtraitFichier(path.join(racine, JOURNAL_TACHE)),
+        constats: constats,
+        langueInterface: langueCockpit(), vscodiumVersion: vscode.version || null
+      });
+    } catch (e) { /* D5 : un rapport ne doit jamais faire échouer ni ralentir la compilation */ }
+  }
   majBarreControles();
   const ouverte = panneauxVue.get('controles');
   if (ouverte) { envoyerVue(ouverte, fournisseur, 'controles'); }
@@ -5361,6 +5386,37 @@ function activate(context) {
     console.warn('réglages protégés : ' + ((e && e.message) || e));
   });
   const fournisseur = new FournisseurRevue();
+
+  // Rapports d'erreur automatiques (lib/rapport-erreur.js) : la file mise de côté la
+  // dernière fois que le dossier SharePoint était injoignable part maintenant que
+  // l'extension redémarre — un échec la laisse en place pour la prochaine activation
+  // (§4.4).
+  //
+  // ⚠ Pas d'écouteur global sur l'exception non rattrapée du processus ici, et ce n'est
+  // pas un oubli : ce processus est l'hôte d'extensions de VSCodium, PARTAGÉ avec toutes
+  // les autres extensions. Y poser un tel écouteur supprime le comportement par défaut de
+  // Node pour TOUT le processus (sans lui, Node journalise et termine ; avec lui, s'il ne
+  // relance rien, le processus continue dans un état potentiellement corrompu) — un
+  // changement global, hors périmètre d'un lot qui ne parle que de rapports d'erreur —, et
+  // attraperait aussi bien les exceptions des AUTRES extensions, qui se retrouveraient
+  // signalées comme des pannes SZH dans le dossier partagé. signalerExceptionCockpit()
+  // (juste en dessous) n'est donc appelée que depuis nos propres frontières : l'enveloppe
+  // posée sur cmd()/cmdEcriture(), là où toute commande szh.* est enregistrée — une
+  // exception qui en sort est certainement la nôtre, jamais celle d'une autre extension.
+  rapportErreur.viderFileAttente();
+  function signalerExceptionCockpit(err, etape) {
+    try {
+      rapportErreur.emettreRapport({
+        gravite: 'erreur', source: 'cockpit', code: 'COCKPIT-EXCEPTION',
+        etape: etape || null,
+        message: String((err && err.message) || err || ''),
+        pile: (err && err.stack) ? String(err.stack) : null,
+        produit: rapportErreur.produitDepuisRacine(fournisseur.racine, profilCourant().cle),
+        langueInterface: langueCockpit(), vscodiumVersion: vscode.version || null
+      });
+    } catch (e) { /* D5 : un gestionnaire d'exception ne doit jamais lui-même en lever */ }
+  }
+
   const vue = vscode.window.createTreeView(ID_VUE, {
     treeDataProvider: fournisseur,
     showCollapseAll: false,
@@ -5549,12 +5605,25 @@ function activate(context) {
   };
 
   // `cmd` pour ce qui lit, `cmdEcriture` pour ce qui modifie le numéro et se voit refusé
-  // quand il est verrouillé : la liste montre ce que le verrou protège.
-  const cmd = (id, fn) => vscode.commands.registerCommand(id, fn);
-  const cmdEcriture = (id, fn) => vscode.commands.registerCommand(id, function () {
+  // quand il est verrouillé : la liste montre ce que le verrou protège. Les deux passent
+  // par envelopperCommande() : toute commande szh.* qui lève, ou dont la promesse rendue
+  // se rejette, est certainement UNE DES NÔTRES (jamais celle d'une autre extension,
+  // contrairement à un écouteur global) — signalée en COCKPIT-EXCEPTION puis RELANCÉE À
+  // L'IDENTIQUE, pour ne rien changer à ce que VSCodium affiche déjà de son côté.
+  const envelopperCommande = (fn) => function (...args) {
+    let resultat;
+    try { resultat = fn.apply(null, args); }
+    catch (err) { signalerExceptionCockpit(err, 'commande'); throw err; }
+    if (resultat && typeof resultat.then === 'function') {
+      return resultat.catch((err) => { signalerExceptionCockpit(err, 'commande'); throw err; });
+    }
+    return resultat;
+  };
+  const cmd = (id, fn) => vscode.commands.registerCommand(id, envelopperCommande(fn));
+  const cmdEcriture = (id, fn) => vscode.commands.registerCommand(id, envelopperCommande(function () {
     if (refuserSiVerrouille()) { return undefined; }
     return fn.apply(null, arguments);
-  });
+  }));
 
   context.subscriptions.push(
     cmd('szh.cockpit.rafraichir', majContexte),

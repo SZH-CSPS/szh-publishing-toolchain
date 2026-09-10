@@ -44,6 +44,13 @@ function Write-SzhTrace([string]$Message) {
 trap {
   $souci = $_.Exception.Message
   Write-SzhTrace ('ERREUR : ' + $souci)
+  # Rapport d'erreur automatique et silencieux (SPEC-RAPPORTS.md) : Write-SzhRapport ne
+  # bloque jamais, n'affiche rien et se tait de lui-même en simulation (D2, D5, en-tête de
+  # szh-rapport.ps1 -- $env:SZH_OPENMD_SIMULE).
+  try {
+    Write-SzhRapport -Code 'LANCEUR-TRAP' -Source 'lanceur' -Etape 'ouverture d''un fichier .md' `
+      -Message $souci -Pile $_.ScriptStackTrace -Fichiers @($Fichier)
+  } catch { }
   if ($script:SzhSimule) {
     Write-Host ('[ERREUR] ' + $souci)
     exit 1
