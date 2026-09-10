@@ -39,7 +39,7 @@ un champ du JSON (`produit.type`), pas un sous-dossier.
 ### Comment l'ancrage est retrouvé, et qui a le droit d'ouvrir une fenêtre
 
 L'ancrage n'est plus déduit d'une variable d'environnement (`%OneDrive%` ne pointe pas
-forcément dessus, voir SPEC-RAPPORTS.md §0) : il est **cherché**, à quatre niveaux passifs
+forcément dessus) : il est **cherché**, à quatre niveaux passifs
 partagés avec la base des produits (`windows/szh-ancrage.ps1`, `Resolve-SzhAncrage`,
 mémoïsée en portée script) :
 

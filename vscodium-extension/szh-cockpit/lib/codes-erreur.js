@@ -1,5 +1,5 @@
 // La table des codes d'erreur applicatifs et le schéma v1 des rapports automatiques
-// (SPEC-RAPPORTS.md, §3 et §4) : données pures et fonctions pures, sans dépendance — ni
+// (docs/RAPPORTS-ERREUR.md, §2 et §7) : données pures et fonctions pures, sans dépendance — ni
 // `vscode`, ni `fs`, aucun accès disque. Chargeable en CommonJS aussi bien par l'extension
 // du cockpit que par les tests. Le futur écrivain PowerShell (lanceur) n'exécute pas ce
 // fichier — il ne sait pas lire du JS — mais doit reproduire à l'identique les algorithmes

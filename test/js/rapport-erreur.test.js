@@ -1,5 +1,5 @@
 // lib/rapport-erreur.js : l'écrivain des rapports d'erreur automatiques côté cockpit
-// (SPEC-RAPPORTS.md, §4 et §5), et les deux accroches d'extension.js (COMPIL-ECHEC,
+// (docs/RAPPORTS-ERREUR.md, §2 et §4 à §6), et les deux accroches d'extension.js (COMPIL-ECHEC,
 // COCKPIT-EXCEPTION). Défaut réel gardé par ce fichier (trouvé en l'écrivant, pas en le
 // vivant en production) : sans garde dédiée, une compilation en échec déclenchée par un
 // AUTRE fichier de test (controles.test.js, interaction.test.js, pdfua.test.js — hors du

@@ -71,7 +71,7 @@ const {
 // Toute la logique (résolution passive de l'ancrage, masquage, anti-inondation, file
 // d'attente, écriture) vit dans ce module, testable hors éditeur ; ici, seulement deux
 // accroches (COMPIL-ECHEC dans relireJournal(), COCKPIT-EXCEPTION ci-dessous) et le
-// vidage de la file au démarrage — voir SPEC-RAPPORTS.md.
+// vidage de la file au démarrage — voir docs/RAPPORTS-ERREUR.md.
 const rapportErreur = require('./lib/rapport-erreur');
 // ---- Réglages protégés de la chaîne -> lib/reglages-proteges.js -------------------
 const proteges = require('./lib/reglages-proteges');

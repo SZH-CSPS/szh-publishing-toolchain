@@ -1,4 +1,4 @@
-﻿# Ecrivain PowerShell des rapports d'erreur automatiques (SPEC-RAPPORTS.md, jalon J3 ;
+﻿# Ecrivain PowerShell des rapports d'erreur automatiques (docs/RAPPORTS-ERREUR.md, jalon J3 ;
 # docs/RAPPORTS-ERREUR.md). Construit un rapport conforme au schema v1 et l'ecrit -- ou
 # n'ecrit rien, mais ne leve JAMAIS (D5, la regle absolue). Dot-source par szh-common.ps1,
 # juste apres szh-ancrage.ps1 dont il reutilise Resolve-SzhAncrage (passive, memoisee,
@@ -23,7 +23,7 @@
 # assumee), donc rien ne l'y gate ici.
 
 # =========================================================================================
-# 1. Masquage (SPEC-RAPPORTS §4.1 amende -- equivalent JS : codesErreur.masquer)
+# 1. Masquage (docs/RAPPORTS-ERREUR.md §3, regle 5 amendee -- equivalent JS : codesErreur.masquer)
 # =========================================================================================
 #
 # Sept regles, dans cet ordre : 1 ancrage -> 2 %USERPROFILE% -> 3 ProgramData ->
@@ -477,7 +477,7 @@ function Test-SzhRapportValide {
 }
 
 # =========================================================================================
-# 9. Anti-inondation (SPEC-RAPPORTS §4.3, D6 : jour calendaire LOCAL) -- equivalent JS :
+# 9. Anti-inondation (docs/RAPPORTS-ERREUR.md §5, D6 : jour calendaire LOCAL) -- equivalent JS :
 #    purgerCompteursRapports + decisionAntiInondation. Compteurs partages avec l'ecrivain JS
 #    dans etat-utilisateur.json, cle "rapports" : reproduits ICI au signe pres.
 # =========================================================================================
@@ -650,7 +650,7 @@ function Write-SzhRapportSurDisque {
 }
 
 # =========================================================================================
-# 13. File d'attente hors ligne (SPEC-RAPPORTS §4.4) -- equivalent JS : listerFileAttente +
+# 13. File d'attente hors ligne (docs/RAPPORTS-ERREUR.md §6) -- equivalent JS : listerFileAttente +
 #     purgerFileAttente + viderFileAttente.
 # =========================================================================================
 

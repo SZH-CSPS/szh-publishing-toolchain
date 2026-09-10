@@ -1148,7 +1148,7 @@ function Get-SzhCourriel {
 
 # Écran d'erreur final : message calme, contact, e-mail pré-rempli, accès au journal.
 # -Code distingue les deux appelants d'update.ps1 (échec partiel d'une étape, ou échec total)
-# pour le rapport d'erreur automatique silencieux (SPEC-RAPPORTS.md, szh-rapport.ps1) --
+# pour le rapport d'erreur automatique silencieux (docs/RAPPORTS-ERREUR.md, szh-rapport.ps1) --
 # Write-SzhRapport ne bloque jamais et n'affiche jamais rien (D2, D5) : l'écran ci-dessous,
 # lui, continue de s'afficher exactement comme avant.
 function Show-SzhErreur {

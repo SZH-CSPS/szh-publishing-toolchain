@@ -1,5 +1,5 @@
 // lib/codes-erreur.js : la table des 9 codes d'erreur et les fonctions pures du schéma v1
-// des rapports automatiques (SPEC-RAPPORTS.md, §3 et §4). Module neuf (jalon J0) : pas de
+// des rapports automatiques (docs/RAPPORTS-ERREUR.md, §2 et §7). Module neuf (jalon J0) : pas de
 // régression à rejouer, mais deux pièges du gel lui-même, repérés en le lisant plutôt qu'en
 // les vivant en production, et que ces tests gardent explicitement :
 //
@@ -18,7 +18,7 @@
 //     imbriqué, et l'ordre inverse masquerait un chemin utile en « ~\… » au lieu du
 //     relatif à l'ancrage.
 //
-// AMENDEMENT du 09.09.2026 (SPEC-RAPPORTS.md, en fin de fichier) : la règle 5 d'origine
+// AMENDEMENT du 09.09.2026 (docs/RAPPORTS-ERREUR.md §3, en fin de section) : la règle 5 d'origine
 // (« ≥ 32 caractères de [A-Za-z0-9+/=_-] ») incluait `/` et masquait donc, mesuré sur des
 // lignes réelles de la chaîne, exactement ce que D3 demande de garder — un chemin relatif,
 // une URL, une empreinte SHA-256. Remplacée par 5a (secret nu resserré, sans `/`, casse et
@@ -174,7 +174,7 @@ test('masquage, règle 4 : la phrase qui suit un mot-clé absent reste lisible',
 });
 
 test('masquage : les cinq lignes réelles de l’amendement du 09.09.2026 survivent intactes', () => {
-  // Rejeu exact du tableau de mesure de l'amendement (SPEC-RAPPORTS.md) : la règle 5
+  // Rejeu exact du tableau de mesure de l'amendement (docs/RAPPORTS-ERREUR.md §3) : la règle 5
   // d'origine (avec `/` dans sa classe) transformait chacune de ces lignes réelles de la
   // chaîne en un « ***.<extension> » ou pire — exactement ce que D3 interdit de perdre.
   const lignes = [

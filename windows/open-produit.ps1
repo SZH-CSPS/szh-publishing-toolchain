@@ -78,7 +78,7 @@ elseif (([string]$Produit).ToLower() -eq 'livre') { $titreSecours = 'Books SZH-C
 trap {
   $souci = $_.Exception.Message
   try { Write-SzhLog ('open-produit ERREUR (' + $Produit + ') : ' + $souci) } catch { }
-  # Rapport d'erreur automatique et silencieux (SPEC-RAPPORTS.md) : Write-SzhRapport ne
+  # Rapport d'erreur automatique et silencieux (docs/RAPPORTS-ERREUR.md) : Write-SzhRapport ne
   # bloque jamais, n'affiche rien et se tait de lui-même en simulation (D2, D5) -- rien
   # ci-dessous n'a besoin de savoir si on est en simulation ou non.
   try {
@@ -199,7 +199,7 @@ if ($ancrageResolu.chemin) {
   Write-SzhLog ('open-produit : ancrage SharePoint introuvable (origine {0})' -f $ancrageResolu.origine)
 }
 
-# Rapport d'erreur ANCRAGE-INTROUVABLE (SPEC-RAPPORTS.md §3) : seulement quand une VRAIE
+# Rapport d'erreur ANCRAGE-INTROUVABLE (docs/RAPPORTS-ERREUR.md §7) : seulement quand une VRAIE
 # demande a ete faite et n'a rien donne (origine "absent") -- jamais quand la demande a ete
 # evitee par l'anti-harcelement ou la simulation (origine "defaut"), un cas frequent et
 # attendu qui ne doit pas produire un rapport a chaque lancement.
@@ -207,7 +207,7 @@ if ($ancrageResolu.origine -eq 'absent') {
   try { Write-SzhRapport -Code 'ANCRAGE-INTROUVABLE' -Source 'lanceur' -Etape (T 'ancrage.demande.titre') -Produit @{ type = $produitFiltre } } catch { }
 }
 
-# Vidage de la file d'attente des rapports d'erreur hors ligne (SPEC-RAPPORTS.md §4.4) :
+# Vidage de la file d'attente des rapports d'erreur hors ligne (docs/RAPPORTS-ERREUR.md §6) :
 # silencieux, jamais bloquant -- l'ancrage vient d'etre resolu, c'est le bon moment pour
 # retenter les rapports ecrits hors ligne depuis le dernier lancement.
 try { Clear-SzhRapportsEnAttente } catch { }

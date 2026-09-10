@@ -44,7 +44,7 @@ function Write-SzhTrace([string]$Message) {
 trap {
   $souci = $_.Exception.Message
   Write-SzhTrace ('ERREUR : ' + $souci)
-  # Rapport d'erreur automatique et silencieux (SPEC-RAPPORTS.md) : Write-SzhRapport ne
+  # Rapport d'erreur automatique et silencieux (docs/RAPPORTS-ERREUR.md) : Write-SzhRapport ne
   # bloque jamais, n'affiche rien et se tait de lui-même en simulation (D2, D5, en-tête de
   # szh-rapport.ps1 -- $env:SZH_OPENMD_SIMULE).
   try {

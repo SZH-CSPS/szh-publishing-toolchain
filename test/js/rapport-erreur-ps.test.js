@@ -314,7 +314,7 @@ test('Get-SzhRapportId (PowerShell) et codesErreur.calculerId (JS) rendent le m�
         assert.equal(resultat.ok, true, resultat.erreur);
         assert.equal(resultat.resultat, attendu, 'id divergent pour ' + JSON.stringify(c));
       }
-      // L'exemple même du schéma v1 (SPEC-RAPPORTS.md §4).
+      // L'exemple même du schéma v1 (docs/RAPPORTS-ERREUR.md §2).
       const exemple = codesErreur.calculerId(new Date('2026-09-09T08:15:30Z'), 'ROBIN-PC', 'a1b2c3');
       assert.equal(exemple, '20260909-081530-ROBIN-PC-a1b2c3');
     } finally {

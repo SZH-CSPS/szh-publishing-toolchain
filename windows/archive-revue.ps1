@@ -35,7 +35,7 @@ param(
 # Show-SzhErreur non plus, dont les textes annoncent un nouvel essai automatique, alors
 # qu'ici rien ne réessaiera.
 #
-# Rapport d'erreur automatique et silencieux (SPEC-RAPPORTS.md, szh-rapport.ps1) avant
+# Rapport d'erreur automatique et silencieux (docs/RAPPORTS-ERREUR.md, szh-rapport.ps1) avant
 # d'afficher quoi que ce soit : Write-SzhRapport ne bloque jamais et n'affiche rien (D2, D5),
 # la MessageBox ci-dessous reste inchangée. $Dossier (paramètre du script) est le seul chemin
 # sûrement connu à ce stade -- il part en fichier concerné, en relatif à l'ancrage si possible.

@@ -1,5 +1,5 @@
-// L'écrivain de rapports d'erreur automatiques côté cockpit (SPEC-RAPPORTS.md, §4 et §5 ;
-// docs/RAPPORTS-ERREUR.md). Construit un rapport conforme au schéma v1, résout l'ancrage
+// L'écrivain de rapports d'erreur automatiques côté cockpit (docs/RAPPORTS-ERREUR.md,
+// §2 et §4 à §6). Construit un rapport conforme au schéma v1, résout l'ancrage
 // SharePoint PASSIVEMENT (jamais de balayage de disque, jamais de fenêtre), applique
 // l'anti-inondation et la file d'attente hors ligne, et écrit le fichier — ou n'écrit rien,
 // mais ne lève jamais (D5).
