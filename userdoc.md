@@ -1418,34 +1418,34 @@ deux lignes avant tout : elles disent laquelle des deux racines est active
 
 ## « L’outil me demande où est le dossier SZH »
 
-Au premier lancement d’un poste – ou si l’outil ne retrouve plus tout seul le dossier partagé
-SharePoint des revues et des livres – une fenêtre s’ouvre pour demander de l’indiquer.
+Au premier lancement d’un poste – ou si l’outil ne retrouve plus tout seul le dossier partagé
+SharePoint des revues et des livres – une fenêtre s’ouvre pour demander de l’indiquer.
 
 > **« Dossier partagé SharePoint introuvable ».** L’outil n’a pas trouvé automatiquement le
 > dossier des revues et des livres ; il demande d’indiquer un dossier qui s’y trouve, ou qui
 > le contient.
 
-**Quoi répondre.** N’importe quel dossier du côté du dossier partagé convient – pas besoin de
+**Quoi répondre.** N’importe quel dossier du côté du dossier partagé convient – pas besoin de
 tomber exactement sur le bon dossier :
 
-- **un dossier qui est dedans**, à n’importe quelle profondeur – le dossier d’une revue, d’un
+- **un dossier qui est dedans**, à n’importe quelle profondeur – le dossier d’une revue, d’un
   numéro, ou même d’un article ;
-- **un dossier qui le contient** – votre dossier personnel Windows, par exemple.
+- **un dossier qui le contient** – votre dossier personnel Windows, par exemple.
 
 L’outil remonte ou redescend tout seul jusqu’au bon endroit. Une fois trouvé, il s’en
 souvient : la question ne revient pas à chaque lancement.
 
 Si le dossier choisi ne convient pas, un message le dit et repropose la fenêtre (trois essais
 au plus). Si vous annulez, ou qu’aucun des trois essais n’aboutit, **le lanceur continue de
-fonctionner normalement** – cette question ne bloque jamais rien – mais les revues et les
+fonctionner normalement** – cette question ne bloque jamais rien – mais les revues et les
 livres restent introuvables tant que le dossier n’est pas rattaché. La question ne revient
 pas non plus avant 24 heures, pour ne pas harceler : fermer puis rouvrir le lanceur tout de
 suite ne la fait pas réapparaître.
 
 ## Des rapports d’erreur partent tout seuls en cas de panne
 
-Quand quelque chose casse de façon inattendue – un numéro qui refuse de s’ouvrir, une mise à
-jour interrompue en cours de route, une extension du cockpit qui plante – l’outil écrit tout
+Quand quelque chose casse de façon inattendue – un numéro qui refuse de s’ouvrir, une mise à
+jour interrompue en cours de route, une extension du cockpit qui plante – l’outil écrit tout
 seul, en silence, un petit fichier technique dans le dossier partagé SharePoint :
 
 ```
@@ -1458,24 +1458,24 @@ vous ayez à la décrire vous-même.
 
 **Ce qu’un rapport contient** : l’heure de la panne, ce que l’outil était en train de faire,
 un message technique, le nom de votre poste et de votre compte Windows, les versions
-installées, et les fichiers concernés – en chemin relatif au dossier partagé, jamais le
+installées, et les fichiers concernés – en chemin relatif au dossier partagé, jamais le
 chemin complet de votre ordinateur.
 
 **Ce qu’il ne contient jamais** :
 
-- **votre adresse e-mail** – seul le nom du compte Windows est gardé, pas de quoi vous
+- **votre adresse e-mail** – seul le nom du compte Windows est gardé, pas de quoi vous
   écrire ;
-- **l’article lui-même** – ni son fichier, ni son texte intégral, jamais joints au rapport ;
+- **l’article lui-même** – ni son fichier, ni son texte intégral, jamais joints au rapport ;
 - **un mot de passe ou une clé technique**, si jamais l’un d’eux s’était trouvé dans un
-  message d’erreur – l’outil les remplace par `***` avant d’écrire quoi que ce soit.
+  message d’erreur – l’outil les remplace par `***` avant d’écrire quoi que ce soit.
 
 **Une nuance honnête, à connaître.** Le rapport peut joindre un extrait technique du journal
 de compilation (jusqu’à 200 lignes). Cet extrait est la sortie brute des outils de la chaîne
 (Pandoc, WeasyPrint…) : la plupart du temps, ce sont des chemins de fichiers et des codes de
-contrôle (« tableau sans en-tête », par exemple) – mais si l’un de ces outils cite, dans son
+contrôle (« tableau sans en-tête », par exemple) – mais si l’un de ces outils cite, dans son
 message d’erreur, le passage exact du texte qui l’a fait échouer (une clé de citation
 introuvable, une cellule de tableau mal formée…), ce fragment peut s’y trouver. Ce n’est pas
-fréquent, et ce n’est jamais l’article entier ni un fichier joint – seulement, à l’occasion,
+fréquent, et ce n’est jamais l’article entier ni un fichier joint – seulement, à l’occasion,
 la ligne fautive telle que l’outil de compilation l’a citée.
 
 Ces fichiers ne demandent aucune action de votre part. Détail technique complet, pour qui
