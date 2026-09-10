@@ -159,6 +159,19 @@ function pousserSurlignageVersApercu(fournisseur) {
   }, 60));
 }
 
+// Le script de la page, en un seul morceau et donc sous un seul nonce, comme le fait
+// construireHtml pour les onze autres webviews : la table du protocole
+// (media/_messages.js -> SZH.MSG) AVANT media/apercu.js, qui nomme par elle chaque
+// message échangé avec l'hôte. L'aperçu n'emprunte pas construireHtml — il enrobe le
+// HTML de pandoc au lieu d'un gabarit de media/ — et n'héritait donc d'aucun socle :
+// `SZH` restait indéfini, et la première lecture de SZH.MSG levait une ReferenceError
+// qui emportait le clic vers la source et le défilement synchronisé. Le socle posé ici
+// est le strict minimum : media/_commun.js n'entre pas, l'aperçu n'ayant aucune de ses
+// fonctions à appeler, et _messages.js suppose seulement que `SZH` existe.
+function scriptApercu() {
+  return ['var SZH = SZH || {};', lireMedia('_messages.js'), lireMedia('apercu.js')].join('\n');
+}
+
 // Injecte dans le HTML de pandoc la CSP, le bandeau, les styles de survol et le script.
 function injecterApercu(contenu, nonce) {
   const csp = '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; font-src data:; style-src \'unsafe-inline\'; script-src \'nonce-' + nonce + '\'">';
@@ -166,7 +179,7 @@ function injecterApercu(contenu, nonce) {
     '<style>' + lireMedia('apercu.css') + '</style>' +
     '<div id="szh-bandeau"><span>' + T('apercu.bandeau') + '</span>' +
     '<button id="szh-basculer" type="button">' + T('apercu.bandeau.pdf') + '</button></div>' +
-    '<script nonce="' + nonce + '">' + lireMedia('apercu.js') + '</script>';
+    '<script nonce="' + nonce + '">' + scriptApercu() + '</script>';
   let html = contenu;
   html = html.indexOf('<head>') !== -1 ? html.replace('<head>', '<head>\n' + csp) : csp + html;
   html = html.indexOf('</body>') !== -1 ? html.replace('</body>', ajout + '\n</body>') : html + ajout;

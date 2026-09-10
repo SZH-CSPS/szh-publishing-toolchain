@@ -1588,10 +1588,12 @@ test('livre : un dossier de chapitre préfixé « _ » n’est pas imprimé, et 
 // ---- Protocole de messages des webviews : une seule table, deux dépôts ----
 //
 // lib/messages.js (l'hôte) et media/_messages.js (la webview) doivent porter EXACTEMENT
-// la même table SZH.MSG — mêmes clés, mêmes valeurs. media/_messages.js n'est pas encore
-// posé dans le jsPartage d'une page (ce câblage touche extension.js, hors périmètre du lot
-// qui l'a introduit) ; ce contrat vaut malgré tout, pour que le jour où il l'est, les deux
-// tables n'aient jamais divergé entre-temps.
+// la même table SZH.MSG — mêmes clés, mêmes valeurs. media/_messages.js est posé dans le
+// jsPartage des onze pages bâties par construireHtml, et à la main dans le script de
+// l'aperçu HTML (scriptApercu, lib/apercu.js), qui n'emprunte pas construireHtml. Ce
+// contrat ne dit rien de ce câblage : il ne compare que les deux tables. Une page qui
+// nomme SZH.MSG sans recevoir le socle lève au chargement, et c'est aux contrôles qui
+// exécutent les pages (webviews.test.js, apercu-page.test.js) de le voir.
 test('protocole de messages : SZH.MSG concorde entre lib/messages.js et media/_messages.js', () => {
   const { MSG } = require(path.join(COCKPIT, 'lib', 'messages.js'));
   const src = lire('vscodium-extension', 'szh-cockpit', 'media', '_messages.js');

@@ -3,8 +3,11 @@
 // divergent pas), pour que l'hôte et la page nomment le même protocole au lieu de se fier
 // chacun à ses propres littéraux. Posé par construireHtml (lib/webviews/util.js) dans le
 // jsPartage des onze pages, avant leur propre script — SZH.MSG existe donc avant la
-// première ligne de chaque page. La table n'existe plus qu'ici et dans lib/messages.js :
-// _commun.js n'en garde aucune copie.
+// première ligne de chaque page. Douzième surface : l'aperçu HTML, qui enrobe le HTML de
+// pandoc au lieu d'un gabarit de media/ et n'emprunte donc pas construireHtml ; c'est
+// scriptApercu (lib/apercu.js) qui pose ce fichier devant media/apercu.js. Ce fichier
+// suppose seulement que `SZH` existe : c'est à qui l'injecte de le déclarer. La table
+// n'existe plus qu'ici et dans lib/messages.js : _commun.js n'en garde aucune copie.
 SZH.MSG = Object.freeze({
   // Commun à toutes les pages
   PRET: 'pret', MODIFIE: 'modifie', VALEURS: 'valeurs',
