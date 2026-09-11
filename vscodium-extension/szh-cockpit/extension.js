@@ -264,7 +264,7 @@ const { copieConflitPour } = require('./lib/copies-conflit');
 // (réassignation du HTML de l'aperçu, notification des contrôles) ne doit pas interrompre
 // le geste en cours. sousGarde enveloppe les choix, differer retient ce qui volerait le
 // focus et le rejoue à la fermeture. Instance partagée avec panneaux.js et formatting.js.
-const { sousGarde, differer } = require('./lib/interaction');
+const { sousGarde, differer, confirmerAbandon } = require('./lib/interaction');
 const {
   genererExportOjs, configOjs, ecrireConfigOjs, doiCalcule, typeSansDoi,
   CHAMPS_REVUE, LOCALES_REVUE, RUBRIQUES_DEFAUT, FORME_DOI
@@ -644,7 +644,7 @@ function ecrireSousMain(panneau, racine, chemin, ecrire) {
   const refus = mainCoedition(panneau, racine, chemin, { ecriture: true });
   if (refus) { return refus; }
   const erreur = ecrire();
-  if (erreur) { return { code: 'echec', message: T('err.ecriture', [erreur]) }; }
+  if (erreur) { return { code: 'echec', message: T('err.ecriture', [path.basename(chemin), erreur]) }; }
   rafraichirEmpreinteCoedition(racine, chemin);
   return null;
 }
@@ -2377,7 +2377,7 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
       if (await vscode.workspace.applyEdit(edition)) { retirees = resultat.n; }
     }
   } catch (e) {
-    vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
+    vscode.window.showErrorMessage(T('err.ecriture', [path.basename(md), e.message]));
     return false;
   }
 
@@ -2394,7 +2394,7 @@ async function supprimerAsset(fournisseur, rafraichirTout, item, estTable) {
   }
   if (retirees > 0 && doc) {
     try { await doc.save(); }                      // déclenche la recompilation
-    catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [e.message])); }
+    catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(md), e.message])); }
   }
   vscode.window.setStatusBarMessage(
     retirees > 0
@@ -2612,7 +2612,9 @@ function marquerToutStatutRevue(fournisseur, rafraichirTout, statut, seulementPa
       });
     } catch (e) { erreurs.push(slug + ' (' + e.message + ')'); }
   }
-  if (erreurs.length > 0) { vscode.window.showErrorMessage(T('err.ecriture', [erreurs.join(', ')])); }
+  if (erreurs.length > 0) {
+    vscode.window.showErrorMessage(T('err.ecriture', [erreurs.join(', '), erreurs.length]));
+  }
   if (rafraichirTout) { rafraichirTout(); }
   rafraichirPanneauTraduction(fournisseur);        // le panneau ouvert suit le bouton
   return n;
@@ -2811,6 +2813,8 @@ function lireRapportImport(racine) {
 const pdfuaHote = require('./lib/pdfua-hote');
 // La table des constats : ce qu'un defaut ferme, ou on va le corriger, comment il s'ecrit.
 const tableConstats = require('./lib/constats');
+// L'alignement des dossiers d'article sur leur rang affiché : le plan et son exécution.
+const renumerotation = require('./lib/renumerotation-fs');
 
 const JOURNAL_TACHE = '.szh-journal.log';
 
@@ -2822,6 +2826,18 @@ const JOURNAL_TACHE = '.szh-journal.log';
 // aussitôt les effacerait s'ils étaient mêlés à ceux de la chaîne. Ils passent devant —
 // c'est le geste que le rédacteur vient de faire.
 let dernierJournal = { racine: null, constats: [], code: 0, reimport: [], export: [] };
+
+// Le mode « Changer l'ordre » : { racine, slugs } pendant qu'on réordonne, null sinon.
+//
+// Renommer un dossier à chaque clic sur « Monter » ferait autant d'occasions de tomber sur
+// un fichier ouvert ou une synchronisation OneDrive en cours. On accumule donc l'ordre voulu
+// ici, sans rien écrire, et « Terminer » exécute le lot d'un coup. L'état vit dans l'hôte et
+// non dans la page : un rafraîchissement de la vue ne doit pas le perdre.
+let modeOrdre = null;
+
+function ordreEnCours(racine) {
+  return (modeOrdre && modeOrdre.racine === racine) ? modeOrdre.slugs : null;
+}
 
 // Ce que la vue et la barre d'état ont à montrer, les deux listes réunies. pdfua.constats()
 // s'ajoute toujours : la validation PDF/UA tourne hors tâche, ses verdicts en cache ne
@@ -3605,7 +3621,10 @@ function chargeArticles(fournisseur) {
   // qui la porte aussi.
   const vue = vueArticlesConfig(configPoste);
   const taches = tachesDuNumero(racine);
-  const slugs = fournisseur.listerArticles();
+  // Dans le mode « Changer l'ordre », l'ordre affiché est celui qu'on est en train de
+  // composer : rien n'a encore été écrit, ni dans ausgabe.yaml ni sur le disque.
+  const enOrdre = ordreEnCours(racine);
+  const slugs = enOrdre || fournisseur.listerArticles();
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(path.join(racine, 'ausgabe.yaml'), 'utf8')); }
   catch (e) { /* illisible : le DOI sera dit incalculable, ce qui est vrai */ }
@@ -3697,7 +3716,15 @@ function chargeArticles(fournisseur) {
       // remplit ses formulaires, on l'envoie à son auteur, et on l'ouvre — « Ouvrir »
       // ferme donc la série au lieu de l'ouvrir. C'est le geste qu'on fait après avoir lu
       // la carte, pas avant.
-      actions: [
+      //
+      // Dans le mode « Changer l'ordre », les deux flèches seules : ouvrir un formulaire
+      // sur un dossier qui est sur le point d'être renommé n'a pas de sens.
+      actions: enOrdre ? [
+        { id: 'monter', libelle: T('art.monter'), icone: 'haut', tip: T('art.monter.tip'),
+          desactive: index === 0 },
+        { id: 'descendre', libelle: T('art.descendre'), icone: 'bas', tip: T('art.descendre.tip'),
+          desactive: index === slugs.length - 1 }
+      ] : [
         // Aux bords de son bloc, et non de la liste : un article sans DOI ne remonte pas
         // au-dessus de ceux qui en portent un, sinon la numérotation cesserait de suivre
         // l'ordre de lecture. Le bouton refuse là où l'hôte refuserait de toute façon.
@@ -3738,7 +3765,16 @@ function chargeArticles(fournisseur) {
       { id: 'cacher-meta', icone: 'oeil',
         libelle: T(vue.cacherMeta ? 'art.meta.voir' : 'art.meta.cacher'),
         tip: T(vue.cacherMeta ? 'art.meta.voir.tip' : 'art.meta.cacher.tip') }
-    ],
+    ].concat(enOrdre
+      // Dans le mode, la barre ne propose plus que d'en sortir : par le haut ou par le bas.
+      ? [{ id: 'ordre-terminer', libelle: T('art.ordre.terminer'), icone: 'ok', principal: true,
+           tip: T('art.ordre.terminer.tip') },
+         { id: 'ordre-annuler', libelle: T('art.ordre.annuler'), icone: 'fermer',
+           tip: T('art.ordre.annuler.tip') }]
+      : [{ id: 'ordre', libelle: T('art.ordre.mode'), icone: 'liste',
+           tip: T('art.ordre.mode.tip') }]),
+    // La page gèle ce qui n'a pas de sens pendant qu'on réordonne.
+    ordre: !!enOrdre,
     // L'aperçu part toujours, même replié : contrairement aux tâches, que l'interrupteur
     // vide pour de bon, celui-ci ne fait que décider l'état de départ des cartes. Le
     // chevron de chaque carte reste donc capable d'en déplier une seule, sans aller-retour
@@ -3763,6 +3799,29 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     // Les trois interrupteurs d'affichage. Réglage de poste et non de numéro — ce qu'on
     // choisit de lire ne dépend pas du numéro ouvert — donc le verrou du numéro ne s'y
     // applique pas, pas plus qu'au réglage des tâches juste en dessous.
+    // Le mode « Changer l'ordre ». Entrer et sortir n'écrit rien ; seul « Terminer »
+    // renomme, et d'un seul lot.
+    if (msg.id === 'ordre') {
+      if (refuserSiVerrouille()) { return null; }
+      modeOrdre = { racine: racine, slugs: fournisseur.listerArticles() };
+      return null;
+    }
+    if (msg.id === 'ordre-annuler') { modeOrdre = null; return null; }
+    if (msg.id === 'ordre-terminer') {
+      const voulu = ordreEnCours(racine);
+      modeOrdre = null;
+      if (!voulu) { return null; }
+      const r = renumerotation.renumeroter(racine, voulu, { dossier: dossierUnites() });
+      if (r.erreur) { return T('art.ordre.echec', [r.erreur]); }
+      // Les constats nomment les anciens slugs : ils sont périmés pour les articles
+      // renommés, et la prochaine compilation les reposera sous leur nouveau nom.
+      if (r.renommes > 0 && dernierJournal.racine === racine) {
+        dernierJournal.constats = [];
+        majBarreControles();
+      }
+      if (rafraichirTout) { rafraichirTout(); }
+      return r.renommes === 0 ? null : T('art.ordre.fait', [r.renommes]);
+    }
     const bascules = {
       'cacher-taches': 'cacherTaches',
       'cacher-traductions': 'cacherTraductions',
@@ -3773,10 +3832,10 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
       const avant = lireConfigPoste();
       // Illisible n'est pas absent : on n'écrase pas ce qu'on n'a pas su lire, sans quoi
       // l'emplacement des revues et la configuration OJS partiraient avec.
-      if (avant === null && fs.existsSync(CONFIG_POSTE)) { return T('err.ecriture', [CONFIG_POSTE]); }
+      if (avant === null && fs.existsSync(CONFIG_POSTE)) { return T('err.ecriture', [path.basename(CONFIG_POSTE), CONFIG_POSTE]); }
       const etat = vueArticlesConfig(avant);
       const erreur = ecrireConfigPoste(configAvecVueArticles(avant, cle, !etat[cle]));
-      if (erreur) { return T('err.ecriture', [erreur]); }
+      if (erreur) { return T('err.ecriture', [path.basename(CONFIG_POSTE), erreur]); }
       return null;                                 // la vue se repose, les cartes suivent
     }
     return null;
@@ -3789,7 +3848,7 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     const suivi = lireTachesArticle(racine, slug);
     const faites = basculerTache(suivi.faites, String(msg.id || ''), !!msg.cochee, taches);
     try { ecrireTachesArticle(racine, slug, { faites: faites, _inconnues: suivi._inconnues }); }
-    catch (e) { return T('err.ecriture', [String((e && e.message) || e)]); }
+    catch (e) { return T('err.ecriture', [slug + '.taches.yaml', String((e && e.message) || e)]); }
     if (rafraichirTout) { rafraichirTout(); }      // l'arbre porte le même avancement
     const avance = resumeTaches(taches, faites);
     return { dit: T('art.taches.avancement', [avance.faites, avance.total]),
@@ -3810,11 +3869,11 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     // qu'absent : on n'écrase pas ce qu'on n'a pas su lire, sans quoi l'emplacement des
     // revues et la configuration OJS partiraient avec.
     if (avant === null && fs.existsSync(CONFIG_POSTE)) {
-      return T('err.ecriture', [CONFIG_POSTE]);
+      return T('err.ecriture', [path.basename(CONFIG_POSTE), CONFIG_POSTE]);
     }
     const cfg = configAvecTaches(avant, revue, Array.isArray(msg.taches) ? msg.taches : []);
     const erreur = ecrireConfigPoste(cfg);
-    if (erreur) { return T('err.ecriture', [erreur]); }
+    if (erreur) { return T('err.ecriture', [path.basename(CONFIG_POSTE), erreur]); }
     if (rafraichirTout) { rafraichirTout(); }
     return T('art.taches.enregistrees');
   }
@@ -3841,7 +3900,7 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     const refusBail = refusCoedition(racine, cheminConfig(racine));
     if (refusBail) { return refusBail; }
     const erreur = ecrireClesAusgabe(racine, modifies);
-    if (erreur) { return T('err.ecriture', [erreur]); }
+    if (erreur) { return T('err.ecriture', ['ausgabe.yaml', erreur]); }
     if (rafraichirTout) { rafraichirTout(); }
     return T('art.doi.enregistre', [voulus.length]);
   }
@@ -3863,6 +3922,13 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     return null;
   }
   if (msg.id !== 'monter' && msg.id !== 'descendre') { return null; }
+  // Dans le mode, le déplacement ne vit qu'en mémoire : ni ausgabe.yaml ni le disque ne
+  // bougent avant « Terminer ».
+  const enOrdre = ordreEnCours(fournisseur.racine);
+  if (enOrdre) {
+    modeOrdre.slugs = deplacerArticle(enOrdre, slug, msg.id === 'monter' ? -1 : 1);
+    return null;
+  }
   return deplacerUnite(fournisseur, slug, msg.id === 'monter' ? -1 : 1, rafraichirTout);
 }
 
@@ -3900,7 +3966,7 @@ function deplacerUnite(fournisseur, slug, delta, rafraichirTout) {
   const refusBail = refusCoedition(racine, cheminConfig(racine));
   if (refusBail) { return refusBail; }             // quelqu'un modifie le fichier en ce moment
   const erreur = ecrireClesAusgabe(racine, modifies);
-  if (erreur) { return T('err.ecriture', [erreur]); }
+  if (erreur) { return T('err.ecriture', ['ausgabe.yaml', erreur]); }
   if (rafraichirTout) { rafraichirTout(); }
   return T('art.ordre.enregistre', [prefixeOrdre(nouveau.indexOf(slug))]);
 }
@@ -4204,7 +4270,7 @@ function enregistrerTraduction(fournisseur, msg, panneau) {
   const racine = fournisseur.racine;
   const slug = String((msg && msg.slug) || '');
   if (!racine || fournisseur.listerArticles().indexOf(slug) === -1) {
-    return { ok: false, message: T('err.ecriture', [slug]) };
+    return { ok: false, message: T('err.ecriture', [slug + '.trad.yaml', slug]) };
   }
   const source = langueRevue(racine);
   const meta = lireMetaArticle(racine, slug);
@@ -4421,11 +4487,9 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
       const attente = rechargementTraduction;
       rechargementTraduction = null;
       if (!attente) { return; }                    // réponse tardive : abandonné
-      const choix = await vscode.window.showWarningMessage(
-        T('trad.recharger.question'), { modal: true, detail: T('table.quitter.detail') },
-        T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
-      if (choix === undefined) { return; }         // Annuler : on reste sur l'article
-      if (choix === T('form.enregistrer')) {
+      const choix = await confirmerAbandon(T('trad.recharger.question'));
+      if (choix === 'annuler') { return; }         // Annuler : on reste sur l'article
+      if (choix === 'enregistrer') {
         const res = enregistrerTraduction(fournisseur, msg, panneau);
         if (!res.ok) { repondrePanneau(panneau, { type: 'erreur', message: res.message }); return; }
         vscode.window.setStatusBarMessage(T('statut.traduction', [msg.slug]), 3000);
@@ -4592,11 +4656,9 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
     if (msg.type === MSG.FERMER) {
       // Seul chemin de fermeture contrôlable : la croix de l'onglet est hors de portée.
       if (msg.modifie) {
-        const choix = await vscode.window.showWarningMessage(
-          T('importv.quitter.question'), { modal: true, detail: T('table.quitter.detail') },
-          T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
-        if (choix === undefined) { return; }                       // Annuler : on reste
-        if (choix === T('form.enregistrer')) {
+        const choix = await confirmerAbandon(T('importv.quitter.question'));
+        if (choix === 'annuler') { return; }                       // Annuler : on reste
+        if (choix === 'enregistrer') {
           const res = ecrireCartesArticles(fournisseur, msg.articles, slugsImportVerif, panneau);
           const refusCartes = messageCartes(res);
           if (refusCartes) {
@@ -4850,7 +4912,7 @@ async function telechargerReglagesProteges() {
     ecrireAtomique(cible.fsPath, contenu);
     return T('regl.proteges.telecharge', [path.basename(cible.fsPath)]);
   } catch (e) {
-    return T('err.ecriture', [String((e && e.message) || e)]);
+    return T('err.ecriture', [path.basename(cible.fsPath), String((e && e.message) || e)]);
   }
 }
 
@@ -4967,14 +5029,14 @@ function ouvrirReglages(rafraichirTout) {
     if (msg.type === MSG.REGLER_BIBLIO) {
       const avant = lireConfigPoste();
       if (avant === null && fs.existsSync(CONFIG_POSTE)) {
-        const message = T('err.ecriture', [CONFIG_POSTE]);
+        const message = T('err.ecriture', [path.basename(CONFIG_POSTE), CONFIG_POSTE]);
         vscode.window.showErrorMessage(message);
         repondrePanneau(panneau, { type: 'erreur', bloc: 'biblio', message: message });
         return;
       }
       const erreur = ecrireConfigPoste(configAvecTitresBiblio(avant, msg.titres || {}));
       if (erreur) {
-        const message = T('err.ecriture', [erreur]);
+        const message = T('err.ecriture', [path.basename(CONFIG_POSTE), erreur]);
         vscode.window.showErrorMessage(message);
         repondrePanneau(panneau, { type: 'erreur', bloc: 'biblio', message: message });
       } else {
@@ -5036,10 +5098,10 @@ function ouvrirReglages(rafraichirTout) {
           .update('desactiverLiensReferences', desactiver, Global);
         const avant = lireConfigPoste();
         if (avant === null && fs.existsSync(CONFIG_POSTE)) {
-          vscode.window.showErrorMessage(T('err.ecriture', [CONFIG_POSTE]));
+          vscode.window.showErrorMessage(T('err.ecriture', [path.basename(CONFIG_POSTE), CONFIG_POSTE]));
         } else {
           const erreur = ecrireConfigPoste(configAvecLiensDesactives(avant, desactiver));
-          if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [erreur])); }
+          if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(CONFIG_POSTE), erreur])); }
         }
       } else if (msg.cle === 'dev') {
         // bootstrap.ps1 donne au groupe Utilisateurs le droit d'écrire ce fichier.
@@ -5055,10 +5117,10 @@ function ouvrirReglages(rafraichirTout) {
         // hors de leur portée, et c'est lui que le cockpit relit sur un poste remis à jour.
         const avantLangue = lireConfigPoste();
         if (avantLangue === null && fs.existsSync(CONFIG_POSTE)) {
-          vscode.window.showErrorMessage(T('err.ecriture', [CONFIG_POSTE]));
+          vscode.window.showErrorMessage(T('err.ecriture', [path.basename(CONFIG_POSTE), CONFIG_POSTE]));
         } else {
           const erreur = ecrireConfigPoste(configAvecLangue(avantLangue, langue));
-          if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [erreur])); }
+          if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(CONFIG_POSTE), erreur])); }
         }
         oublierLanguePoste();                      // le fichier vient de changer sous nous
         ecrireLocaleArgv(langue);                  // langue native : au prochain démarrage
@@ -5066,7 +5128,7 @@ function ouvrirReglages(rafraichirTout) {
         if (rafraichirTout) { rafraichirTout(); }  // libellés de l'arbre tout de suite
       }
     } catch (e) {
-      vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
+      vscode.window.showErrorMessage(T('err.ecriture', ['settings.json', e.message]));
     }
   });
   panneau.webview.html = htmlReglages(crypto.randomBytes(16).toString('hex'));
@@ -5280,11 +5342,9 @@ async function ouvrirEditeurTable(fournisseur, item) {
     if (msg.type === MSG.RETOUR_ARTICLE) {
       // Garde « non enregistré » sur un chemin de fermeture que l'on contrôle.
       if (msg.modifie) {
-        const choix = await vscode.window.showWarningMessage(
-          T('table.quitter.question', [nom]), { modal: true, detail: T('table.quitter.detail') },
-          T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
-        if (choix === undefined) { return; }                       // Annuler : on reste
-        if (choix === T('form.enregistrer')) {
+        const choix = await confirmerAbandon(T('table.quitter.question', [nom]));
+        if (choix === 'annuler') { return; }                       // Annuler : on reste
+        if (choix === 'enregistrer') {
           const refus = enregistrer(msg.modele);
           if (refus) { panneau.webview.postMessage({ type: 'erreur', message: refus.message }); return; }
         }
@@ -5429,7 +5489,7 @@ async function insererFicheDeReserve(fournisseur, rafraichirTout, entree) {
   const md = path.join(racine, dossierUnites(), slug, slug + '.md');
   let doc;
   try { doc = await vscode.workspace.openTextDocument(md); }
-  catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [e.message])); return; }
+  catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(md), e.message])); return; }
   const texte = ressourcesLib.ajouterRessource(doc.getText(), fiche.id, fiche.type, valeurs);
   try {
     const edition = new vscode.WorkspaceEdit();
@@ -5437,7 +5497,7 @@ async function insererFicheDeReserve(fournisseur, rafraichirTout, entree) {
     edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), texte);
     if (!(await vscode.workspace.applyEdit(edition))) { return; }
     await doc.save();
-  } catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [e.message])); return; }
+  } catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(md), e.message])); return; }
 
   reserveLib.retirer(entree.chemin);                // prise en réserve = sortie de réserve
   vscode.window.setStatusBarMessage(T('reserve.insere'), 5000);

@@ -718,3 +718,99 @@ test('vue Articles : les trois interrupteurs sont indépendants et se souviennen
     JSON.parse(fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8')).vueArticles,
     { cacherTaches: false, cacherTraductions: false, cacherMeta: false });
 });
+
+
+// ---- Le mode « Changer l'ordre » ---------------------------------------------------
+//
+// Le numéro qu'un article porte à l'écran vient de son rang ; le préfixe de son dossier
+// était figé à l'import. Les aligner demande de renommer des dossiers, et renommer à
+// chaque clic sur « Monter » ferait autant d'occasions de tomber sur un fichier ouvert ou
+// une synchronisation en cours. D'où un mode : on déplace autant qu'on veut sans rien
+// toucher au disque, et « Terminer » exécute le lot d'un coup.
+//
+// Ce que ces contrôles tiennent : qu'aucun déplacement n'écrive tant que le mode est
+// ouvert, que « Terminer » aligne vraiment les dossiers, et qu'« Annuler » ne laisse rien.
+
+function ausgabeOrdre() {
+  const texte = fs.readFileSync(path.join(REVUE, 'ausgabe.yaml'), 'utf8');
+  const m = texte.match(/^ordre-articles:\s*\[(.*)\]/m);
+  return m ? m[1].split(',').map((x) => x.trim().replace(/^"|"$/g, '')) : [];
+}
+const dossiersArticles = () => fs.readdirSync(path.join(REVUE, 'articles')).sort();
+
+test('ordre : la barre porte « Changer l’ordre », et le mode se voit dans la charge', async () => {
+  await HOTE.executer('szh.vueArticles');
+  const p = HOTE.panneauDeType('szhVueArticles');
+  await p._recepteur({ type: 'pret' });
+  const bouton = derniereCharge(p).boutons.find((b) => b.id === 'ordre');
+  assert.ok(bouton, 'aucun bouton n’ouvre le mode : ' +
+    derniereCharge(p).boutons.map((b) => b.id).join(', '));
+  assert.ok(bouton.libelle && bouton.tip);
+  assert.ok(!derniereCharge(p).ordre, 'la vue s’ouvre déjà en mode ordre');
+
+  await p._recepteur({ type: 'commande', id: 'ordre' });
+  const dedans = derniereCharge(p);
+  assert.strictEqual(dedans.ordre, true, 'le mode ne se dit pas à la page');
+  // Dans le mode, une carte ne propose plus que de se déplacer : ouvrir un formulaire
+  // pendant qu'on réordonne, c'est repartir avec un dossier sur le point d'être renommé.
+  for (const ligne of dedans.lignes) {
+    assert.deepStrictEqual(ligne.actions.map((a) => a.id).sort(), ['descendre', 'monter'],
+      'une carte garde ses autres gestes en mode ordre : ' + ligne.actions.map((a) => a.id).join(', '));
+  }
+  // Et la barre propose de terminer ou d'abandonner.
+  const ids = dedans.boutons.map((b) => b.id);
+  assert.ok(ids.indexOf('ordre-terminer') !== -1 && ids.indexOf('ordre-annuler') !== -1,
+    'le mode n’offre pas de sortie : ' + ids.join(', '));
+  await p._recepteur({ type: 'commande', id: 'ordre-annuler' });
+});
+
+test('ordre : déplacer dans le mode n’écrit rien tant qu’on n’a pas terminé', async () => {
+  await HOTE.executer('szh.vueArticles');
+  const p = HOTE.panneauDeType('szhVueArticles');
+  await p._recepteur({ type: 'pret' });
+  const ordreAvant = ausgabeOrdre();
+  const dossiersAvant = dossiersArticles();
+
+  await p._recepteur({ type: 'commande', id: 'ordre' });
+  const premier = derniereCharge(p).lignes[0].cle;
+  const second = derniereCharge(p).lignes[1].cle;
+  await p._recepteur({ type: 'action', cle: second, id: 'monter' });
+
+  // L'ordre affiché a bougé…
+  assert.strictEqual(derniereCharge(p).lignes[0].cle, second,
+    'le déplacement ne se voit pas à l’écran');
+  // …et rien d'autre.
+  assert.deepStrictEqual(ausgabeOrdre(), ordreAvant, 'ausgabe.yaml écrit avant « Terminer »');
+  assert.deepStrictEqual(dossiersArticles(), dossiersAvant, 'un dossier renommé avant « Terminer »');
+
+  // Annuler remet l'affichage d'aplomb, sans avoir rien touché.
+  await p._recepteur({ type: 'commande', id: 'ordre-annuler' });
+  assert.strictEqual(derniereCharge(p).lignes[0].cle, premier, 'l’abandon n’a pas rendu l’ordre d’avant');
+  assert.deepStrictEqual(ausgabeOrdre(), ordreAvant);
+  assert.deepStrictEqual(dossiersArticles(), dossiersAvant);
+});
+
+test('ordre : « Terminer » aligne les dossiers sur les rangs affichés', async () => {
+  await HOTE.executer('szh.vueArticles');
+  const p = HOTE.panneauDeType('szhVueArticles');
+  await p._recepteur({ type: 'pret' });
+  const avant = derniereCharge(p).lignes.map((l) => l.cle);
+  assert.ok(avant.length >= 2, 'le corpus n’a pas deux articles à échanger');
+
+  await p._recepteur({ type: 'commande', id: 'ordre' });
+  await p._recepteur({ type: 'action', cle: avant[1], id: 'monter' });
+  await p._recepteur({ type: 'commande', id: 'ordre-terminer' });
+
+  // Le mode est refermé.
+  assert.ok(!derniereCharge(p).ordre, 'le mode reste ouvert après « Terminer »');
+  // Les dossiers portent le rang qu'ils affichent : c'est tout l'objet du chantier.
+  const apres = derniereCharge(p).lignes.map((l) => l.cle);
+  apres.forEach((slug, i) => {
+    const rang = (i + 1 < 10 ? '0' : '') + String(i + 1);
+    assert.strictEqual(slug.slice(0, 3), rang + '-',
+      'l’article de rang ' + (i + 1) + ' porte le dossier « ' + slug + ' »');
+  });
+  assert.deepStrictEqual(ausgabeOrdre(), apres, 'l’ordre écrit ne suit pas les dossiers');
+  assert.deepStrictEqual(dossiersArticles(), apres.slice().sort(),
+    'le disque et l’écran ne disent pas la même chose');
+});
