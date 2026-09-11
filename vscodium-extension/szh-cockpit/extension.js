@@ -880,6 +880,9 @@ class FournisseurRevue {
       }
       sections.push(
         this._section('word', T('arbre.word'), 'inbox', n > 0 ? '(' + n + ')' : undefined));
+      // En dernier, sous « Word en attente » : ce n'est pas une étape du travail mais son
+      // contrôle, et c'est là qu'on revient quand quelque chose cloche.
+      sections.push(this._itemControles());
       return sections;
     }
     if (element.categorie === categorieUnites()) { return this._itemsArticles(); }
@@ -1005,6 +1008,30 @@ class FournisseurRevue {
   slugDocumentation() {
     const entrees = this._repartirUnites().actualite;
     return entrees.length > 0 ? entrees[0].slug : null;
+  }
+
+  // Le raccourci vers « À corriger », sous « Word en attente » : la vue vivait derrière un
+  // compteur de barre d'état que personne ne regarde et une entrée du panneau Commande.
+  // Une ligne de l'arbre, elle, est là en permanence — et son icône dit d'un coup d'oeil
+  // s'il y a un blocage (rouge), un point à vérifier (ambre), ou rien (gris).
+  _itemControles() {
+    const r = resumeJournal(constatsCourants(this.racine));
+    const it = new vscode.TreeItem(T('arbre.controles'), vscode.TreeItemCollapsibleState.None);
+    it.id = 'controles';
+    it.contextValue = 'controles';
+    if (r.bloquants > 0) {
+      it.iconPath = new vscode.ThemeIcon('error', new vscode.ThemeColor('list.errorForeground'));
+      it.description = '(' + r.bloquants + ')';
+    } else if (r.avertissements > 0) {
+      it.iconPath = new vscode.ThemeIcon('warning', new vscode.ThemeColor('list.warningForeground'));
+      it.description = '(' + r.avertissements + ')';
+    } else {
+      it.iconPath = new vscode.ThemeIcon('checklist');
+      it.description = T('arbre.controles.rien');
+    }
+    it.tooltip = T('arbre.controles.tooltip');
+    it.command = { command: 'szh.vueControles', title: T('arbre.controles'), arguments: [] };
+    return it;
   }
 
   _itemReserve() {

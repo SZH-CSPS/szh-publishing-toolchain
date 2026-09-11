@@ -61,7 +61,8 @@ test('livre : l’arbre montre Chapitres et Word, jamais Traductions', async () 
   const arbre = HOTE.arbre();
   assert.ok(arbre, 'aucun fournisseur d’arbre enregistré');
   const racine = await arbre.getChildren();
-  const categories = racine.map((it) => it.categorie);
+  // Le raccourci « À corriger » n'est pas une section d'accordéon : il n'a pas de catégorie.
+  const categories = racine.filter((it) => it.categorie).map((it) => it.categorie);
   assert.deepStrictEqual(categories, ['chapitres', 'word'],
     'sections attendues pour un livre : chapitres puis word — obtenu ' + categories.join(', '));
 });

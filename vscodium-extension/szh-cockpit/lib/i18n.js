@@ -44,6 +44,9 @@ const TEXTES_COCKPIT = {
     'panneau.apercuLivre': 'Aperçu du livre entier',
 
     'arbre.word': 'WORD EN ATTENTE',
+    'arbre.controles': 'À CORRIGER',
+    'arbre.controles.tooltip': 'Ce qui empêche de publier et ce qui mérite un regard – clic = ouvrir la liste',
+    'arbre.controles.rien': 'Rien à signaler',
     'arbre.traductions': 'TRADUCTIONS',
     'arbre.actualite': 'ACTUALITÉ',
     'arbre.vide.articles': 'Aucun article pour l’instant',
@@ -1163,7 +1166,7 @@ const TEXTES_COCKPIT = {
     // en lit. Trois temps pour chacune, dans cet ordre : ce qui s'est passé, le geste, et
     // pourquoi cela arrête la publication quand cela l'arrête. Aucune n'a le droit de
     // nommer un filtre, un chemin ou un code de sortie.
-    'ctl.titre': 'Contrôles de la compilation',
+    'ctl.titre': 'À corriger',
     'ctl.vue.rien': 'La dernière compilation n’a rien à signaler.',
     'ctl.groupe.bloquant': 'Ce qui empêche de publier',
     'ctl.groupe.avert': 'À regarder avant de publier',
@@ -1315,6 +1318,9 @@ const TEXTES_COCKPIT = {
     'livre.apercu.compiler': 'Buch kompilieren',
     'panneau.apercuLivre': 'Vorschau des ganzen Buches',
     'arbre.word': 'WORD IN WARTESCHLANGE',
+    'arbre.controles': 'ZU KORRIGIEREN',
+    'arbre.controles.tooltip': 'Was die Veröffentlichung verhindert und was einen Blick verdient – Klick = Liste öffnen',
+    'arbre.controles.rien': 'Nichts zu melden',
     'arbre.traductions': 'ÜBERSETZUNGEN',
     'arbre.actualite': 'NEWS',
     'arbre.vide.articles': 'Noch keine Artikel',
@@ -2356,7 +2362,7 @@ const TEXTES_COCKPIT = {
     'apercu.gele': 'Ausgabe eingefroren: die automatische Kompilierung ist abgeschaltet. Verwenden Sie «Diesen Artikel exportieren» (Ctrl+Alt+D oder die Schaltfläche beim Überfahren des Artikels), um die Dokumente neu zu erzeugen.',
 
     // ---- Prüfungen der Kompilierung (lib/journal.js) ----
-    'ctl.titre': 'Prüfungen der Kompilierung',
+    'ctl.titre': 'Zu korrigieren',
     'ctl.vue.rien': 'Die letzte Kompilierung hat nichts zu melden.',
     'ctl.groupe.bloquant': 'Was die Veröffentlichung verhindert',
     'ctl.groupe.avert': 'Vor der Veröffentlichung anzusehen',

@@ -301,6 +301,37 @@ test('hôte : rouvrir un numéro retrouve ses contrôles, sans les annoncer', as
   assert.strictEqual(charge.lignes.length, 4);
 });
 
+// Le compteur de la barre d'état ne se regarde pas : la liste a donc son raccourci dans
+// l'arbre, sous « Word en attente ». Son icône porte la gravité — c'est le seul endroit
+// visible en permanence, il doit dire s'il y a un blocage sans qu'on l'ouvre.
+test('arbre : le raccourci « À corriger » suit l’état, sous « Word en attente »', async () => {
+  const arbre = HOTE.arbre();
+  const racine = await arbre.getChildren();
+  const dernier = racine[racine.length - 1];
+  assert.strictEqual(dernier.contextValue, 'controles',
+    'le raccourci ne ferme pas la liste des sections');
+  assert.strictEqual(racine[racine.length - 2].contextValue, 'section-word',
+    'le raccourci ne suit pas « Word en attente »');
+  assert.strictEqual(dernier.collapsibleState, 0, 'le raccourci ne doit pas se déplier');
+  assert.ok(dernier.command && dernier.command.command === 'szh.vueControles',
+    'le raccourci n’ouvre pas la vue');
+  assert.ok(dernier.tooltip, 'raccourci sans infobulle');
+  // JOURNAL_CITATIONS ne porte que des avertissements : ambre, et leur compte.
+  assert.strictEqual(dernier.iconPath.id, 'warning',
+    'trois points à vérifier, et l’icône ne les annonce pas : ' + dernier.iconPath.id);
+  assert.match(String(dernier.description), /3/);
+
+  // Un journal qui bloque : l'icône passe au rouge et compte les seuls bloquants.
+  poserJournal(JOURNAL_AVERTISSEMENTS);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+  const bloquants = (await arbre.getChildren()).pop();
+  assert.strictEqual(bloquants.iconPath.id, 'error',
+    'un blocage ne se voit pas dans l’arbre : ' + bloquants.iconPath.id);
+  assert.match(String(bloquants.description), /^\(\d+\)$/);
+  poserJournal(JOURNAL_CITATIONS);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+});
+
 test('hôte : une compilation qui avertit le dit sans ouvrir de terminal', async () => {
   poserJournal(JOURNAL_CITATIONS);
   const avant = HOTE.avertissements.length;
@@ -331,7 +362,7 @@ test('hôte : une compilation qui avertit le dit sans ouvrir de terminal', async
   await p._recepteur({ type: 'pret' });              // la page s'annonce, comme dans l'éditeur
   const charge = p.messages.filter((m) => m.type === 'valeurs').pop();
   assert.strictEqual(charge.lignes.length, 5, 'les cartes ne portent pas tous les constats');
-  assert.match(charge.titre, /Contrôles/);
+  assert.match(charge.titre, /À corriger/);
   const corps = charge.lignes.map((l) => l.notif.texte).join(' | ');
   assert.ok(corps.indexOf('(Shaw et al., 2023)') !== -1, 'l’appel sans référence n’est pas à l’écran');
   assert.ok(corps.indexOf('fig-absente.png') !== -1, 'l’image absente n’est pas à l’écran');

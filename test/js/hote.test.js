@@ -19,6 +19,13 @@ const { revueDEssai, activerHote } = require('./hote-factice');
 const REVUE = revueDEssai();
 const HOTE = activerHote(REVUE);
 
+// Les sections de l'accordéon, sans le raccourci « À corriger » qui les suit : celui-ci
+// n'est pas une section (aucune catégorie, aucun pli), et les contrôles d'accordéon
+// ci-dessous ne parlent que des sections.
+function sectionsDe(racine) {
+  return racine.filter((it) => String(it.contextValue || '').indexOf('section-') === 0);
+}
+
 test('l’extension s’active et enregistre ses commandes', () => {
   const ids = HOTE.commandes();
   assert.ok(ids.length > 30, 'trop peu de commandes enregistrées : ' + ids.length);
@@ -34,7 +41,7 @@ test('l’extension s’active et enregistre ses commandes', () => {
 test('les en-têtes de section basculent leur section (accordéon)', async () => {
   const arbre = HOTE.arbre();
   assert.ok(arbre, 'aucun fournisseur d’arbre enregistré');
-  const racine = await arbre.getChildren();
+  const racine = sectionsDe(await arbre.getChildren());
   assert.strictEqual(racine.length, 4, 'quatre sections attendues');
   for (const it of racine) {
     assert.ok(it.command, 'section sans commande : ' + it.contextValue);
@@ -56,7 +63,7 @@ const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cock
 // dont les articles ont quitté la section ARTICLES — voir TYPE_ACTUALITE dans extension.js.
 test('l’arbre : sections dans l’ordre Articles / Actualité / Traductions / Word, en majuscules et en couleur', async () => {
   const arbre = HOTE.arbre();
-  const racine = await arbre.getChildren();
+  const racine = sectionsDe(await arbre.getChildren());
   assert.deepStrictEqual(racine.map((it) => it.contextValue),
     ['section-articles', 'section-actualite', 'section-traductions', 'section-word'],
     'l’ordre des sections n’est pas celui du travail');
@@ -136,7 +143,7 @@ test('l’arbre : chaque article porte l’icône colorée de son avancement', a
 test('accordéon : une seule section dépliée, et l’id des en-têtes suit l’état', async () => {
   const arbre = HOTE.arbre();
   await HOTE.executer('szh.ouvrirSection', 'traductions');
-  let racine = await arbre.getChildren();
+  let racine = sectionsDe(await arbre.getChildren());
   assert.deepStrictEqual(racine.map((it) => it.collapsibleState), [1, 1, 2, 1],
     'déplier « Traductions » doit replier les autres');
   assert.strictEqual(racine[2].id, 'section:traductions:ouvert');
@@ -145,12 +152,12 @@ test('accordéon : une seule section dépliée, et l’id des en-têtes suit l�
     'le clic sur l’en-tête doit aussi ouvrir la vue d’ensemble');
   // Recliquer l'en-tête ouvert : la section active reste dépliée, la colonne ne saute pas.
   await HOTE.executer('szh.ouvrirSection', 'traductions');
-  racine = await arbre.getChildren();
+  racine = sectionsDe(await arbre.getChildren());
   assert.deepStrictEqual(racine.map((it) => it.collapsibleState), [1, 1, 2, 1],
     'recliquer l’en-tête ouvert ne doit pas replier la section active');
   // Retour à l'état de départ pour la suite du fichier.
   await HOTE.executer('szh.ouvrirSection', 'articles');
-  racine = await arbre.getChildren();
+  racine = sectionsDe(await arbre.getChildren());
   assert.strictEqual(racine[0].collapsibleState, 2);
   fermerVuesEnsemble();   // les panneaux sont des singletons : le test des panneaux veut les créer
 });
@@ -170,14 +177,14 @@ test('accordéon : déplier par le chevron replie les autres sections', async ()
   const arbre = HOTE.arbre();
   const racine = await arbre.getChildren();
   HOTE.deplierElement(racine.find((it) => it.contextValue === 'section-word'));
-  const apres = await arbre.getChildren();
+  const apres = sectionsDe(await arbre.getChildren());
   assert.deepStrictEqual(apres.map((it) => it.collapsibleState), [1, 1, 1, 2],
     'le chevron n’a pas replié les autres sections');
   assert.ok(HOTE.panneauDeType('szhVueWord'),
     'le dépliage au chevron doit aussi ouvrir la vue d’ensemble');
   // Replier par le chevron : l'état suit, sans reconstruction forcée.
   HOTE.replierElement(apres.find((it) => it.contextValue === 'section-word'));
-  const fin = await arbre.getChildren();
+  const fin = sectionsDe(await arbre.getChildren());
   assert.deepStrictEqual(fin.map((it) => it.collapsibleState), [1, 1, 1, 1],
     'replier par le chevron doit libérer l’accordéon');
   await HOTE.executer('szh.ouvrirSection', 'articles');   // état de départ
@@ -198,7 +205,7 @@ test('ouvrir un article resélectionne son élément sans voler le focus', async
   assert.strictEqual(r.options && r.options.select, true, 'reveal sans sélection');
   assert.strictEqual(r.options && r.options.focus, false,
     'le focus doit rester à l’éditeur');
-  const racine = await HOTE.arbre().getChildren();
+  const racine = sectionsDe(await HOTE.arbre().getChildren());
   assert.strictEqual(racine[0].collapsibleState, 2,
     'la section « Articles » doit suivre le clic');
   // Décision B : le dépliage que VS Code signale au reveal (sectionDeployee déjà posé)
