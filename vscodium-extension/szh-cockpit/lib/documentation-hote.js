@@ -88,6 +88,7 @@ const LIBELLES_CHAMP_RESSOURCE = {
   auteurs: 'ressource.champ.auteurs', annee: 'ressource.champ.annee',
   editeur: 'ressource.champ.editeur', realisateur: 'ressource.champ.realisateur',
   genre: 'ressource.champ.genre', pays: 'ressource.champ.pays',
+  distributeur: 'ressource.champ.distributeur',
   canton: 'ressource.champ.canton', categorie: 'ressource.champ.categorie',
   numero: 'ressource.champ.numero', date: 'ressource.champ.date',
   institutions: 'ressource.champ.institutions', debut: 'ressource.champ.debut',

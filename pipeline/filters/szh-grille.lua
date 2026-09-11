@@ -156,9 +156,28 @@ end
 -- texte alternatif de l'autre, sans que rien ne le dise.
 -- Ce qui n'est ni l'un ni l'autre est conservé tel quel, à la suite des rangées : rien de
 -- ce qu'un rédacteur a écrit ne doit disparaître sans un mot.
+-- Le lecteur `commonmark_x+sourcepos` de l'aperçu enveloppe chaque bloc imbriqué dans un
+-- Div « wrapper=1 » : les paragraphes d'images d'une grille arrivaient donc en Div, jamais
+-- en Para, et collecter() les rangeait tous dans `autres` — la grille n'était pas construite
+-- du tout, l'aperçu montrait des images l'une sous l'autre là où le PDF composait ses
+-- rangées (constaté le 11.09.2026). szh-sourcepos.lua ne défait pas ces Div, à dessein :
+-- c'est d'eux que pandoc tire le `data-pos` de bloc dont dépend le clic vers la source.
+-- On les traverse donc ici, où l'on sait ce qu'on cherche.
+local function sans_enveloppe(blocs)
+  local plat = pandoc.Blocks({})
+  for _, b in ipairs(blocs) do
+    if b.t == 'Div' and b.attributes['wrapper'] == '1' then
+      for _, dedans in ipairs(sans_enveloppe(b.content)) do plat:insert(dedans) end
+    else
+      plat:insert(b)
+    end
+  end
+  return plat
+end
+
 local function collecter(div)
   local trouvees, autres = {}, pandoc.Blocks({})
-  for _, b in ipairs(div.content) do
+  for _, b in ipairs(sans_enveloppe(div.content)) do
     if b.t == 'Para' or b.t == 'Plain' then
       local seulement, lot = true, {}
       for _, i in ipairs(b.content) do

@@ -1,0 +1,12 @@
+# Page de Documentation du banc : « News & Ressourcen » d'un numéro allemand. Elle
+# n'existe que pour éprouver les deux régimes de contenu de la Documentation — les
+# rubriques de texte riche (szh-rubrique.lua) et les fiches structurées
+# (szh-ressource.lua) — et la césure des pages d'une fiche plus haute qu'une page.
+# En allemand à dessein : les titres de rubrique et les libellés de lien se déduisent de
+# la langue de l'article, et la moitié allemande de ces tables n'était rendue nulle part
+# dans le banc.
+type: documentation
+lang: de
+title:
+  de: "News & Ressourcen"
+  fr: "Actualité et ressources"

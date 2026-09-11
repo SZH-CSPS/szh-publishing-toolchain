@@ -678,6 +678,15 @@ ul > li::before {
   position: absolute; left: 0; top: 0;    /* aligné sur la marge du texte (comme les numéros) */
   color: var(--c-bullet-marker); font-weight: 700; font-size: 1.05em; line-height: inherit;
 }
+/* ⚠ Mesuré sur WeasyPrint 69 : l'attribut `start` d'un <ol> n'est PAS honoré, et ce
+   compteur maison n'y est pour rien — un `<ol start="13">` rendu par le marqueur natif
+   (`list-style: decimal`, sans ::before) numérote « 1. » lui aussi. Les quatre variantes
+   ont été essayées : natif pur, ::marker, ::before + counter(list-item), et le compteur
+   maison ci-dessous. Toutes donnent « 1. ». Une liste qui doit commencer à un autre rang
+   ne peut donc pas s'obtenir en CSS ici ; ne pas remplacer ce compteur en croyant régler
+   la question. Conséquence côté saisie : un descriptif de fiche qui commence par « 13. »
+   perdrait son nombre en silence — lib/ressources.js (cockpit) échappe donc le point à
+   l'écriture, pour que ce texte reste un paragraphe. */
 ol { counter-reset: liste-ol; }
 ol > li { padding-left: 1.7em; }
 ol > li::before {
@@ -796,10 +805,12 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
 
 /* ── Fiche de ressource (livre, film, intervention parlementaire, recherche en cours) ──────
    filters/szh-ressource.lua compose le bloc : titre au-dessus, puis une rangée avec le
-   texte à gauche (bibliographie courte, descriptif, lien) et l'image au quart de la
-   largeur, alignée à droite (cahier des charges) — l'ordre du flux suffit à cet alignement,
-   aucun besoin de `float` ni d'`order`. Intervention et recherche n'ont pas d'image : rendu
-   compact dédié plus bas, « Fiche sans image ».
+   texte (bibliographie courte, descriptif, lien) et l'image au quart de la largeur, en
+   haut à droite (cahier des charges). L'image est un flottant, et la colonne de texte
+   passe dessous quand elle est plus longue que lui — voir le ⚠ de .szh-ressource-corps
+   pour ce que la rangée flex d'origine coûtait à la césure des pages.
+   Intervention et recherche n'ont pas d'image : rendu compact dédié plus bas,
+   « Fiche sans image ».
    Boîte discrète, sur le modèle de .szh-abstract (§5) : fond neutre, filet gauche, mais
    sans la couleur annuelle — une fiche n'est pas une mise en avant éditoriale. Chacune
    reste d'un bloc à la césure des pages, comme une figure. */
@@ -811,14 +822,24 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
   margin: 0 0 0.5em; font-family: var(--title-family); font-weight: 700;
   font-size: 1.05rem; line-height: 1.22; color: var(--c-ink);
 }
-.szh-ressource-corps { display: flex; align-items: flex-start; gap: 16px; }
-.szh-ressource-texte { flex: 1 1 auto; min-width: 0; }
+/* Le corps établit un contexte de formatage pour contenir le flottant ci-dessous — c'est
+   tout ce que `flow-root` fait ici, sans le hack du clearfix.
+   ⚠ Ce n'est plus une rangée flex, et c'est une correction, pas un goût. Mesuré sur
+     WeasyPrint 69 : un conteneur flex n'y est pas sécable entre deux pages. Une fiche plus
+     haute que la place restante ne se coupait donc pas — elle laissait une page entière de
+     fond de carte, titre seul en tête, et reprenait à la page suivante, malgré
+     `break-inside: avoid`. Vu sur la Documentation allemande du 2027-02 (une notule de
+     lecture de trois paragraphes), reproduit à l'isolé sur un cas minimal. Avec un
+     flottant, la fiche se coupe proprement : l'image reste sur le premier fragment, le
+     texte continue page suivante. */
+.szh-ressource-corps { display: flow-root; }
 .szh-ressource-texte > *:last-child { margin-bottom: 0; }
-/* Le quart de la largeur du bloc, alignée à droite : une base nulle et une croissance
-   nulle donnent une largeur fixée par flex-basis, jamais grignotée par un texte trop
-   court ni étirée par un texte trop long — même principe qu'une case de grille (§ ci-
-   dessus), au rapport près. */
-.szh-ressource-image { flex: 0 0 25%; max-width: 25%; }
+/* Le quart de la largeur du bloc, alignée à droite. Le flottant s'ancre là où il paraît
+   dans le flux : szh-ressource.lua écrit donc la colonne d'image AVANT celle de texte —
+   sans quoi elle s'ancrerait sous le texte, et partirait à la page suivante. La marge
+   gauche remplace le `gap` de l'ancienne rangée flex ; la marge basse dégage le texte qui
+   repasse sous l'image quand elle est plus courte que lui. */
+.szh-ressource-image { float: right; width: 25%; margin: 0 0 10px 16px; }
 /* L'image de la fiche est toujours décorative (cahier des charges) : szh-numerotation.lua
    l'a donc basculée en fond CSS (.szh-decor, voir plus haut), avec sa largeur naturelle en
    pixels. Ici c'est la colonne qui donne la largeur, comme dans une case de grille
@@ -830,13 +851,14 @@ figure > figcaption.szh-credit-seul { margin: 0.35em 0 0; }
   margin: 0 0 0.5em; font-size: 0.85em; color: #444; text-align: left;
 }
 .szh-ressource-lien p { margin: 0.6em 0 0; }
-/* Colonne étroite : le texte passe avant l'image, qui reprend sa largeur naturelle plutôt
-   que de rétrécir jusqu'à l'illisible — même repli que la grille (§ ci-dessus). N'affecte
-   que l'écran ; WeasyPrint n'applique pas @media screen. */
+/* Colonne étroite : le flottant est levé et l'image reprend une largeur lisible plutôt que
+   de rétrécir jusqu'à l'illisible — même repli que la grille (§ ci-dessus). Elle passe
+   alors au-dessus du texte, qui est son rang dans le flux depuis le passage au flottant :
+   une couverture en tête de notule, comme sur n'importe quelle fiche de librairie.
+   N'affecte que l'écran ; WeasyPrint n'applique pas @media screen. */
 @media screen {
   @media (max-width: 30rem) {
-    .szh-ressource-corps { display: block; }
-    .szh-ressource-image { max-width: 40%; margin: 0.6em 0 0; }
+    .szh-ressource-image { float: none; width: 40%; margin: 0.6em 0 0; }
   }
 }
 

@@ -71,9 +71,15 @@ const CLASSE = 'szh-ressource';
 // de test/js/ressources.test.js reconstruisent la ligne Lua attendue sous la forme
 // `<type> = { … }`. Tout jeton non conforme à un identifiant Lua casse donc les deux à la fois.
 // C'est aussi ce qui explique que les quatre types plus anciens soient des mots simples.
+// `distributeur` (Verleih) est à `film` ce qu'`editeur` est à `livre`, et il manquait : le
+// corpus donne toujours la maison qui sort le film — « Déjà-vu Film », « W-Film », « Der
+// Filmverleih » — et elle n'avait aucune case où aller. Elle ne survivait que comme cible
+// du lien, c'est-à-dire nulle part pour qui lit le PDF. Ajouté en fin de liste, comme
+// `editeur` l'est pour un livre : les fiches déjà écrites n'ont pas l'attribut, ne
+// l'impriment pas, et rien ne bouge pour elles.
 const TYPES = {
   livre: ['auteurs', 'annee', 'editeur'],
-  film: ['realisateur', 'annee', 'genre', 'pays'],
+  film: ['realisateur', 'annee', 'genre', 'pays', 'distributeur'],
   intervention: ['canton', 'categorie', 'numero', 'date'],
   recherche: ['institutions', 'debut', 'fin'],
   reprise: ['auteurs', 'revue', 'reference', 'doi'],
@@ -137,6 +143,17 @@ function valeursListe(nom) { return (LISTES[nom] || []).slice(); }
 const SANS_IMAGE = new Set(['intervention', 'recherche', 'reprise', 'agenda']);
 function typeAvecImage(type) { return typeValide(type) && !SANS_IMAGE.has(type); }
 
+// Types dont le descriptif n'est pas exigé pour qu'une fiche soit complète. Une seule
+// entrée, et elle vient du corpus : la rubrique des interventions parlementaires ne donne
+// jamais qu'un intitulé et le lien vers l'objet (Curia Vista, base cantonale) — ni la
+// Revue ni la Zeitschrift n'y écrivent de résumé, et ce serait d'ailleurs un résumé de
+// texte de loi. Relevé sur la Documentation allemande du 2026-06 : 11 interventions,
+// 11 sans descriptif. Sans cette exception, ces 11 fiches portaient toutes la pastille
+// « incomplète » alors qu'elles sont exactement ce que la rubrique doit contenir.
+// L'agenda n'y est pas : ses fiches portent bien une ligne de présentation.
+const SANS_DESCRIPTIF = new Set(['intervention']);
+function typeAvecDescriptif(type) { return typeValide(type) && !SANS_DESCRIPTIF.has(type); }
+
 // Champs communs à toute fiche, requis pour qu'elle s'écrive : le cahier des charges veut
 // toujours un titre et un descriptif, et une image pour les types qui en portent une
 // (typeAvecImage) ; le lien et la bibliographie restent facultatifs à l'écriture, même
@@ -155,7 +172,8 @@ function tousLesChamps(type) { return ['titre'].concat(champsBiblio(type), ['lie
 // (typeAvecImage) n'a, lui, jamais besoin de la sienne pour être complet.
 function champsManquants(type, valeurs) {
   if (!typeValide(type)) { return REQUIS.slice(); }
-  const requis = typeAvecImage(type) ? REQUIS : REQUIS.filter((c) => c !== 'image');
+  const requis = REQUIS.filter((c) =>
+    (c !== 'image' || typeAvecImage(type)) && (c !== 'descriptif' || typeAvecDescriptif(type)));
   const v = valeurs || {};
   return requis.filter((c) => String(v[c] === undefined || v[c] === null ? '' : v[c]).trim() === '');
 }
@@ -181,6 +199,40 @@ function ressourceEcrivable(type, valeurs) {
 // citation, dupliquée plutôt qu'empruntée à un module qui ne l'expose pas).
 function citerValeur(v) {
   return '"' + String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+// ---- Marqueur de liste ordonnée en tête de ligne d'un descriptif ----------------------
+//
+// Un descriptif est de la prose. Une ligne qui commence par « 13. » y est presque toujours
+// un nom qui commence par un nombre — « 13. Nationale Arkadis-Fachtagung. », un millésime,
+// un rang. Pandoc, lui, y lit une liste ordonnée qui démarre à 13, et WeasyPrint 69
+// n'honore pas l'attribut `start` : le PDF imprimait « 1. Nationale Arkadis-Fachtagung. ».
+// Le nombre disparaissait en silence, sans le moindre avertissement de la chaîne. Mesuré
+// sur la Documentation allemande du 2027-02 ; les quatre façons d'obtenir le rang en CSS
+// ont été essayées, aucune ne marche (voir la note du § des listes de
+// pipeline/styles/print.css).
+//
+// Le point est donc échappé à l'écriture et déséchappé à la lecture : le .md porte
+// « 13\. », le formulaire montre « 13. », et un aller-retour charger/enregistrer rend le
+// texte au caractère près — la garantie que ce module doit à son appelant.
+//
+// Portée volontairement étroite :
+//   - seul le marqueur de liste ORDONNÉE est visé ; « - », « * » et « # » passent intacts,
+//     un descriptif peut donc encore porter une liste à puces ;
+//   - les rubriques (lib/rubriques.js) ne sont PAS concernées. Leur contenu est du markdown
+//     assumé — c'est là que vivent les listes d'un numéro, et une liste numérotée y reste
+//     une liste numérotée.
+// Le prix, assumé : une liste numérotée écrite à la main dans un descriptif redevient des
+// paragraphes au premier enregistrement. Le corpus n'en contient aucune (32 fiches
+// relevées sur le 2026-06, toutes en prose), et la carte — un pavé étroit avec une
+// couverture flottante — n'est pas un endroit pour une liste.
+const RE_ORDONNEE = /^(\s{0,3}\d{1,9})([.)])(\s)/;
+const RE_ORDONNEE_ECHAPPEE = /^(\s{0,3}\d{1,9})\\([.)])(\s)/;
+function echapperOrdonnees(lignes) {
+  return lignes.map((l) => String(l).replace(RE_ORDONNEE, '$1\\$2$3'));
+}
+function desechapperOrdonnees(lignes) {
+  return lignes.map((l) => String(l).replace(RE_ORDONNEE_ECHAPPEE, '$1$2$3'));
 }
 
 // Une ligne qui ne porte qu'une seule image, comme lireGrilles() dans lib/references.js
@@ -234,7 +286,7 @@ function lireRessources(texte) {
 
     const valeurs = {
       titre: attrs.titre || '', lien: attrs.lien || '',
-      descriptif: descLignes.join('\n'), image: image || ''
+      descriptif: desechapperOrdonnees(descLignes).join('\n'), image: image || ''
     };
     for (const c of champsBiblio(type)) { valeurs[c] = attrs[c] || ''; }
 
@@ -270,7 +322,7 @@ function blocRessource(id, type, valeurs) {
   const lignes = [ligneOuverture(id, type, v)];
   const descriptif = String(v.descriptif === undefined || v.descriptif === null ? '' : v.descriptif)
     .replace(/\r\n/g, '\n').replace(/[\t]+/g, ' ');
-  const descLignes = descriptif.split('\n');
+  const descLignes = echapperOrdonnees(descriptif.split('\n'));
   while (descLignes.length > 0 && descLignes[0].trim() === '') { descLignes.shift(); }
   while (descLignes.length > 0 && descLignes[descLignes.length - 1].trim() === '') { descLignes.pop(); }
   if (descLignes.length > 0) { lignes.push(''); lignes.push(...descLignes); }
@@ -438,7 +490,7 @@ function retirerRessource(texte, id) {
 
 module.exports = {
   CLASSE, TYPES, REQUIS, SAISIE, CHOIX, LISTES,
-  typeValide, typesConnus, champsBiblio, tousLesChamps, typeAvecImage,
+  typeValide, typesConnus, champsBiblio, tousLesChamps, typeAvecImage, typeAvecDescriptif,
   saisieChamp, listeChamp, valeursListe,
   champsManquants, ressourceComplete, ressourceEcrivable,
   lireRessources, ajouterRessource, ecrireRessource, retirerRessource,

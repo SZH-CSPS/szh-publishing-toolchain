@@ -91,7 +91,7 @@ local CLASSE = 'szh-ressource'
 -- ⚠ Recopiée depuis lib/ressources.js (table TYPES).
 local TYPES = {
   livre = { 'auteurs', 'annee', 'editeur' },
-  film = { 'realisateur', 'annee', 'genre', 'pays' },
+  film = { 'realisateur', 'annee', 'genre', 'pays', 'distributeur' },
   intervention = { 'canton', 'categorie', 'numero', 'date' },
   recherche = { 'institutions', 'debut', 'fin' },
   reprise = { 'auteurs', 'revue', 'reference', 'doi' },
@@ -287,11 +287,25 @@ function Pandoc(doc)
       -- szh-numerotation.lua qui la rendra décorative, plus loin dans le Makefile.
       -- Absente du tout si la fiche n'a pas d'image : print.css n'a alors pas à deviner
       -- une case vide, et le texte reprend naturellement toute la largeur.
-      local corps_enfants = { bloc_classe('szh-ressource-texte', texte) }
+      --
+      -- ⚠ L'image passe AVANT la colonne de texte, et ce n'est pas cosmétique : print.css
+      --   la met en `float: right`, et un flottant s'ancre là où il paraît dans le flux.
+      --   Placé après le texte, il s'ancrait sous lui — donc à la page suivante pour une
+      --   fiche un peu longue. Le rendu visuel, lui, est le même : image en haut à droite,
+      --   texte à gauche.
+      --   Le passage de `display: flex` à un flottant a été mesuré sur WeasyPrint 69 : un
+      --   conteneur flex n'y est pas sécable, si bien qu'une fiche plus haute qu'une page
+      --   laissait une page entière vide (fond de carte seul, titre en tête) avant de
+      --   reprendre à la page suivante — malgré `break-inside: avoid`. Constaté sur la
+      --   Documentation allemande du 2027-02, reproduit à l'isolé.
+      --   L'image reste décorative (role="presentation", posé par szh-numerotation.lua) :
+      --   sa place dans l'ordre de lecture PDF/UA ne change rien pour un lecteur d'écran.
+      local corps_enfants = {}
       if image then
         corps_enfants[#corps_enfants + 1] =
           bloc_classe('szh-ressource-image', { pandoc.Plain({ image }) })
       end
+      corps_enfants[#corps_enfants + 1] = bloc_classe('szh-ressource-texte', texte)
       local corps = bloc_classe('szh-ressource-corps', corps_enfants)
 
       local blocs = pandoc.Blocks({})

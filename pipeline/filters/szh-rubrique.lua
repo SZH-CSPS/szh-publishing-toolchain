@@ -6,6 +6,11 @@
 -- retouche pas (pas de retype, pas de reformatage : l'italique, le gras, les liens, les
 -- listes du .md sortent inchangés).
 --
+-- Une seule exception, et elle ne touche à aucun texte : le RANG des titres écrits dans le
+-- bloc est rabattu sous le <h2> de titre que ce filtre pose (abaisser_titres, plus bas).
+-- Sans cela, « ## International » dans une Rundschau ressortait au rang du titre de la
+-- rubrique, et szh-sections.lua le numérotait — « 1 International », « 1.1 la brève ».
+--
 --   ::: {#b1a2b3c4 .szh-rubrique type="dossier-references"}
 --   Barreyre, J. (2019). *Les personnes en situation de handicap complexe*. Alter,
 --   13-3, 207-217.
@@ -119,6 +124,51 @@ local function titre_id(div)
   return CLASSE .. '-titre-secours-' .. secours
 end
 
+-- Identifiant du <div> de contenu : même règle et même raison que titre_id() — voir le ⚠
+-- posé à l'endroit où il sert, plus bas. Compteur de secours partagé : deux rubriques sans
+-- identifiant n'ont ainsi jamais le même, ni pour leur titre ni pour leur corps.
+local function corps_id(div)
+  if div.identifier and div.identifier ~= '' then return div.identifier .. '-corps' end
+  secours = secours + 1
+  return CLASSE .. '-corps-secours-' .. secours
+end
+
+-- Les titres écrits dans le bloc, rabattus sous le <h2> que ce filtre pose juste au-dessus.
+-- Le rang le plus haut présent devient h3 ; les autres suivent du même décalage, si bien
+-- que l'écart entre deux rangs est conservé et qu'aucun trou n'apparaît. Le rédacteur peut
+-- donc écrire « ## International » comme « ### International » : les deux donnent un h3,
+-- et le plan reste « h2 Rundschau > h3 International > h4 la brève ».
+--
+-- Pourquoi ici et pas dans szh-niveaux.lua, qui fait le compactage du corps : ce filtre est
+-- le seul à savoir à quel rang sort le titre de la rubrique, et il est le dernier à passer.
+-- szh-niveaux.lua, lui, laisse désormais les rubriques tranquilles — sans quoi il les aurait
+-- remontées au rang du titre avant qu'on arrive ici.
+--
+-- Le reste du contenu ne bouge pas : ni l'italique, ni le gras, ni les liens, ni les listes
+-- (voir l'en-tête du fichier). Seul le RANG d'un titre change, jamais son texte, et jamais
+-- le .md sur le disque.
+local RANG_CONTENU = 3
+local function abaisser_titres(contenu)
+  local plus_haut = nil
+  contenu:walk({
+    Header = function(h)
+      if not plus_haut or h.level < plus_haut then plus_haut = h.level end
+    end,
+  })
+  if not plus_haut then return contenu end              -- aucun titre : rien à faire
+  local decalage = RANG_CONTENU - plus_haut
+  if decalage == 0 then return contenu end
+  return contenu:walk({
+    Header = function(h)
+      local rang = h.level + decalage
+      -- pandoc dégraderait un rang 7 en paragraphe : on bute à 6, comme szh-niveaux.lua.
+      if rang < RANG_CONTENU then rang = RANG_CONTENU elseif rang > 6 then rang = 6 end
+      h.level = rang
+      return h
+    end,
+  })
+end
+
 function Pandoc(doc)
   local lang = langue_de(doc.meta)
 
@@ -143,8 +193,19 @@ function Pandoc(doc)
         blocs:insert(pandoc.Header(2, pandoc.Inlines({ pandoc.Str(titre) }),
           pandoc.Attr(titre_id(div), { CLASSE .. '-titre' }, {})))
       end
-      -- Le contenu du bloc, inchangé, seulement enveloppé.
-      blocs:insert(pandoc.Div(div.content, pandoc.Attr('', { CLASSE .. '-corps' }, {})))
+      -- Le contenu du bloc, enveloppé — seuls les rangs de ses titres sont rabattus sous
+      -- le <h2> ci-dessus (abaisser_titres, et rien d'autre).
+      --
+      -- ⚠ L'identifiant de ce Div n'est pas décoratif : c'est le même piège du writer html5
+      --   que celui décrit dans l'en-tête pour le titre de la rubrique. Un Div d'identifiant
+      --   VIDE dont le premier enfant est un Header sort en <section>, et pandoc lui déplace
+      --   l'identifiant de ce Header — une rubrique qui commence par « ## International »
+      --   donnait <section id="international" class="szh-rubrique-corps"> et un <h3> nu,
+      --   privé de son ancre. Un identifiant non vide suffit à l'empêcher : le bloc reste un
+      --   <div> et chaque titre garde le sien. Constaté après le rabattement des rangs
+      --   ci-dessus, qui a rendu ce cas courant (avant, une rubrique commençait par du texte).
+      blocs:insert(pandoc.Div(abaisser_titres(div.content),
+        pandoc.Attr(corps_id(div), { CLASSE .. '-corps' }, {})))
 
       return pandoc.Div(blocs, pandoc.Attr(div.identifier or '', classes, {}))
     end,

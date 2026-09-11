@@ -69,7 +69,23 @@ local function poser_numero(h, numero)
   return h
 end
 
-function Header(h)
+-- Une rubrique de la Documentation ne se numérote pas. Son titre (« Rundschau »,
+-- « Ressourcen ») est posé plus tard par szh-rubrique.lua et échappe donc déjà à ce
+-- filtre ; ce qui suit met à l'abri ce que le rédacteur écrit DANS le bloc. Une brève
+-- d'actualité intitulée « 1.1 Schweizer Engagement an der UN-BRK-Konferenz » n'a pas de
+-- sens : la Documentation est une suite de rubriques, pas un article à sections.
+-- Le fenced div du .md porte déjà la classe quand ce filtre passe, bien avant
+-- szh-rubrique.lua. Même exception dans szh-niveaux.lua, qui ne compacte pas ces rangs.
+local CLASSE_RUBRIQUE = 'szh-rubrique'
+local function est_rubrique(el)
+  if el.t ~= 'Div' then return false end
+  for _, classe in ipairs(el.classes or {}) do
+    if classe == CLASSE_RUBRIQUE then return true end
+  end
+  return false
+end
+
+local function numeroter(h)
   if deja_numerote(h.content) then return nil end
 
   -- Le titre de chapitre, un seul par document livre : il reçoit le rang du chapitre
@@ -90,4 +106,17 @@ function Header(h)
   if RANG_CHAPITRE then morceaux[#morceaux + 1] = tostring(RANG_CHAPITRE) end
   for i = 1, rang do morceaux[#morceaux + 1] = tostring(compteurs[i]) end
   return poser_numero(h, table.concat(morceaux, '.'))
+end
+
+-- Un seul point d'entrée, et pas de `function Header` globale : les deux coexisteraient,
+-- pandoc appliquant la seconde à TOUS les titres avant d'appeler Pandoc — les titres de
+-- rubrique seraient numérotés quand même. `false` en second retour arrête la descente
+-- (traverse = 'topdown', pandoc >= 2.17).
+function Pandoc(doc)
+  doc.blocks = doc.blocks:walk({
+    traverse = 'topdown',
+    Div = function(d) if est_rubrique(d) then return d, false end end,
+    Header = numeroter,
+  })
+  return doc
 end

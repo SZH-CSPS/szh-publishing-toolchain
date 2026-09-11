@@ -78,15 +78,39 @@ local function signaler(niveaux_ecrases)
     .. 'Screenreader ununterscheidbar. Zu tun: die tiefsten Untertitel um eine Stufe anheben.\n')
 end
 
+-- Une rubrique de la Documentation porte sa propre hiérarchie, que la chaîne ne touche
+-- pas : szh-rubrique.lua lui posera un <h2> de titre (déduit du type et de la langue) et
+-- rabattra ses titres intérieurs sous ce <h2>. Les compacter ici les remonterait au rang
+-- du titre de la rubrique — un « Rundschau » suivi d'un « International » de même rang,
+-- donc un plan faux pour un lecteur d'écran. Ce filtre passe avant szh-rubrique.lua, mais
+-- la classe est déjà là : le fenced div du .md la porte dès la lecture.
+--
+-- ⚠ Un titre de rubrique ne compte pas non plus dans le recensement : sans cela, une
+--   Documentation (dont TOUS les titres vivent dans des rubriques) verrait ses rangs
+--   recalculés d'après eux seuls.
+local CLASSE_RUBRIQUE = 'szh-rubrique'
+local function est_rubrique(el)
+  return el.t == 'Div' and commun.a_classe(el, CLASSE_RUBRIQUE)
+end
+
+-- Parcours qui s'arrête au seuil d'une rubrique : `false` en second retour dit à pandoc
+-- de ne pas descendre dans ce bloc (traverse = 'topdown', pandoc >= 2.17).
+local function parcourir_hors_rubriques(cible, sur_titre)
+  return cible:walk({
+    traverse = 'topdown',
+    Div = function(d) if est_rubrique(d) then return d, false end end,
+    Header = sur_titre,
+  })
+end
+
 function Pandoc(doc)
   local presents = {}
-  doc:walk({
+  parcourir_hors_rubriques(doc,
     -- En mode livre, le h1 est le titre du chapitre : il garde son rang et ne participe
     -- pas au calcul, sinon il descendrait en h2 et le chapitre perdrait son titre.
-    Header = function(h)
+    function(h)
       if not (LIVRE and h.level == 1) then presents[h.level] = true end
-    end,
-  })
+    end)
   local rangs = {}
   for niveau in pairs(presents) do rangs[#rangs + 1] = niveau end
   if #rangs == 0 then return doc end   -- aucun titre dans le corps
@@ -111,11 +135,9 @@ function Pandoc(doc)
     signaler(ecrases)
   end
 
-  return doc:walk({
-    Header = function(h)
-      if LIVRE and h.level == 1 then return h end
-      h.level = cible[h.level] or h.level
-      return h
-    end,
-  })
+  return parcourir_hors_rubriques(doc, function(h)
+    if LIVRE and h.level == 1 then return h end
+    h.level = cible[h.level] or h.level
+    return h
+  end)
 end

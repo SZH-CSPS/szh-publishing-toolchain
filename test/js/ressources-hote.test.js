@@ -47,7 +47,7 @@ test('ouverture : la charge porte les six types, avec les champs complets voulus
     ['agenda', 'film', 'intervention', 'livre', 'recherche', 'reprise']);
   assert.deepStrictEqual(types.livre.champs.map((c) => c.cle), ['auteurs', 'annee', 'editeur']);
   assert.deepStrictEqual(types.film.champs.map((c) => c.cle),
-    ['realisateur', 'annee', 'genre', 'pays']);
+    ['realisateur', 'annee', 'genre', 'pays', 'distributeur']);
   assert.deepStrictEqual(types.intervention.champs.map((c) => c.cle),
     ['canton', 'categorie', 'numero', 'date']);
   assert.deepStrictEqual(types.recherche.champs.map((c) => c.cle), ['institutions', 'debut', 'fin']);

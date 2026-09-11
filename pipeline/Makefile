@@ -398,6 +398,10 @@ endef
 # .md -> HTML d'aperçu : mêmes filtres, CSS et métadonnées que la sortie PDF, mais
 # reader commonmark_x+sourcepos -> chaque bloc porte data-pos, ce qui permet le clic
 # vers le texte source dans la webview. Consommé par le cockpit seulement.
+# ⚠ szh-sourcepos.lua vient EN PREMIER, et n'est dans aucune autre recette : sourcepos
+# enveloppe aussi chaque mot dans un Span et découpe les mots à chaque signe, ce qui
+# rendait szh-typographie.lua et le liage de szh-citations.lua entièrement inertes ici,
+# sans rien dire. Les mesures sont en tête de ce filtre.
 $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(SOCLE) $(STYLE) $(PARTAGE) $(ACCENT_CSS) $(FILTRES) $$(wildcard articles/$$(notdir $$*)/tables/*.html) $$(wildcard articles/$$(notdir $$*)/media/*) $$(wildcard articles/$$(notdir $$*)/portraits/*) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).meta.yaml) $$(wildcard articles/$$(notdir $$*)/$$(notdir $$*).biblio.md)
 	@mkdir -p "$(dir $@)"
 	@slug="$(notdir $*)"; \
@@ -409,6 +413,8 @@ $(OUT)/%.apercu.html: articles/$$(notdir $$*)/$$(notdir $$*).md ausgabe.yaml $(S
 	  --metadata-file="$(abspath ausgabe.yaml)" $$meta \
 	  --standalone --embed-resources \
 	  --css="$(SOCLE_ABS)" --css="$(STYLE_ABS)" --css="$(PARTAGE_ABS)" --css="$(ACCENT_ABS)" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-sourcepos.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-ancres.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-niveaux.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-listes-serrees.lua" \
 	  --lua-filter="$(PIPELINE_DIR)/filters/szh-tabelle-inclure.lua" \

@@ -164,6 +164,16 @@ MAQUETTE     := $(if $(MAQUETTE_LUE),$(MAQUETTE_LUE),normal)
 # des retours durs y feraient des lignes courtes au hasard des saisies.
 LECTEUR := $(if $(filter falc,$(MAQUETTE)),markdown+hard_line_breaks,markdown)
 
+# Le lecteur de l'aperçu HTML. Il ne peut pas être $(LECTEUR) : les positions source dont
+# la webview a besoin pour le clic vers le .md n'existent que dans le lecteur commonmark
+# — pandoc refuse « markdown+sourcepos ». Mais la règle FALC ci-dessus vaut des deux côtés,
+# et l'aperçu la perdait : la recette forçait « commonmark_x+sourcepos » sans
+# `+hard_line_breaks`, si bien qu'un chapitre FALC se relisait en paragraphes recollés
+# pendant que le PDF, lui, gardait ses lignes (constaté le 11.09.2026). Une ligne = une
+# idée est toute la maquette FALC : l'aperçu ne peut pas être le seul endroit où on ne la
+# voit pas.
+LECTEUR_APERCU := commonmark_x$(if $(filter falc,$(MAQUETTE)),+hard_line_breaks,)+sourcepos
+
 # Couleur d'un chapitre : elle peint la pastille du numéro, l'onglet de tranche et le
 # repère du sommaire (maquette FALC). Les six sont les couleurs de charte de la maison
 # (styles/couleurs.css) prises au cran 800, le seul qui porte du texte blanc à Lc −90 ou
@@ -367,11 +377,15 @@ $(OUT)/$(CH_DIR)/%.epub-frag.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARI
 	  --output="$(abspath $@)"
 
 # Aperçu HTML cliquable d'un chapitre, comme $(OUT)/%.apercu.html pour un article de revue
-# (Makefile ~l.420) : même suite de filtres que le fragment, mais lecteur
-# commonmark_x+sourcepos (chaque bloc porte data-pos, pour le clic vers le texte source
-# dans la webview) sous SZH_APERCU=1. La revue n'y passe pas le gabarit de l'article
-# (szh-article.html, la couverture) : son aperçu n'a pas de couverture à composer. Un
-# chapitre n'a pas cette différence — son gabarit (GABARIT_CHAPITRE) est déjà le même
+# (Makefile ~l.420) : même suite de filtres que le fragment, mais lecteur $(LECTEUR_APERCU)
+# (chaque bloc porte data-pos, pour le clic vers le texte source dans la webview) sous
+# SZH_APERCU=1, et deux filtres de plus en tête. Ces deux-là réparent ce que le lecteur
+# commonmark fait autrement que $(LECTEUR) : szh-sourcepos.lua défait les enveloppes et le
+# découpage des mots qui rendaient la typographie et le liage des citations inertes ici,
+# szh-ancres.lua rend aux titres l'identifiant du PDF, sans quoi un lien de table des
+# matières ne menait nulle part dans l'aperçu. Ils ne sont dans aucune autre recette.
+# La revue n'y passe pas le gabarit de l'article (szh-article.html, la couverture) :
+# son aperçu n'a pas de couverture à composer. Un chapitre n'a pas cette différence — son gabarit (GABARIT_CHAPITRE) est déjà le même
 # habillage minimal pour le fragment comme pour l'aperçu — donc celui-ci le garde.
 # Compteurs à part (SZH_COMPTEURS/apercu/) : cet aperçu ne doit ni lire ni écrire dans les
 # reports du fragment PDF ou EPUB, qui font foi pour la numérotation publiée.
@@ -392,7 +406,7 @@ $(OUT)/$(CH_DIR)/%.apercu.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_C
 	cd "$(CH_DIR)/$$slug" && SZH_APERCU=1 SZH_LIVRE=1 SZH_CHAPITRE="$$rang" \
 	  SZH_COMPTEURS="$(abspath $(COMPTEURS_DIR))/apercu/$$rang.txt" \
 	  SZH_AUSGABE="$(abspath $(CONFIG_LIVRE))" $(PANDOC) "$$slug.md" \
-	  --from=commonmark_x+sourcepos --to=html5 \
+	  --from=$(LECTEUR_APERCU) --to=html5 \
 	  --id-prefix="$$slug-" \
 	  --metadata-file="$(abspath $(CONFIG_LIVRE))" $$meta \
 	  --metadata slug="$$slug" \
@@ -401,6 +415,8 @@ $(OUT)/$(CH_DIR)/%.apercu.html: $(CH_DIR)/$$*/$$*.md $(CONFIG_LIVRE) $(GABARIT_C
 	  --metadata onglet-haut="$$onglet" \
 	  --standalone --embed-resources \
 	  --template="$(abspath $(GABARIT_CHAPITRE))" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-sourcepos.lua" \
+	  --lua-filter="$(PIPELINE_DIR)/filters/szh-ancres.lua" \
 	  $(FILTRES_CHAPITRE) \
 	  --output="$(abspath $@)" || \
 	printf '%s' '<!DOCTYPE html><html lang="fr"><body><p>Aperçu HTML indisponible pour ce chapitre (le PDF, lui, est compilé) : voir le panneau de compilation.</p></body></html>' > "$(abspath $@)"

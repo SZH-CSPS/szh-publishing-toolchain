@@ -23,7 +23,8 @@ const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 
 test('types : livre et film portent les champs complets voulus par le cahier des charges', () => {
   assert.deepStrictEqual(res.champsBiblio('livre'), ['auteurs', 'annee', 'editeur']);
-  assert.deepStrictEqual(res.champsBiblio('film'), ['realisateur', 'annee', 'genre', 'pays']);
+  assert.deepStrictEqual(res.champsBiblio('film'),
+    ['realisateur', 'annee', 'genre', 'pays', 'distributeur']);
   assert.deepStrictEqual(res.typesConnus().sort(),
     ['agenda', 'film', 'intervention', 'livre', 'recherche', 'reprise']);
   assert.deepStrictEqual(res.tousLesChamps('livre'),
@@ -171,8 +172,30 @@ test('typeAvecImage : livre et film en portent une, intervention et recherche ja
 test('requis : une intervention complète sans image ne manque de rien', () => {
   assert.deepStrictEqual(res.champsManquants('intervention', { titre: 'X', descriptif: 'Y' }), []);
   assert.strictEqual(res.ressourceComplete('intervention', { titre: 'X', descriptif: 'Y' }), true);
-  // Le titre et le descriptif restent, eux, requis même sans image à fournir.
-  assert.deepStrictEqual(res.champsManquants('intervention', {}), ['titre', 'descriptif']);
+  // Ni image ni descriptif : seul le titre reste requis (voir SANS_DESCRIPTIF).
+  assert.deepStrictEqual(res.champsManquants('intervention', {}), ['titre']);
+});
+
+// ---- Types sans descriptif (intervention) : REQUIS ne leur en exige pas ----
+// Le corpus ne donne qu'un intitulé et un lien à une intervention parlementaire ; exiger
+// un résumé faisait porter la pastille « incomplète » aux 11 fiches d'un numéro réel.
+
+test('typeAvecDescriptif : seule l’intervention s’en passe', () => {
+  assert.strictEqual(res.typeAvecDescriptif('intervention'), false);
+  for (const t of ['livre', 'film', 'recherche', 'reprise', 'agenda']) {
+    assert.strictEqual(res.typeAvecDescriptif(t), true, t + ' doit garder son descriptif requis');
+  }
+  assert.strictEqual(res.typeAvecDescriptif('inconnu'), false,
+    'un type invalide n’« a » pas de descriptif non plus');
+});
+
+test('requis : une intervention sans descriptif est complète, un livre non', () => {
+  const intervention = { titre: 'Sonderschulplätze', canton: 'ZH', categorie: 'Anfrage' };
+  assert.deepStrictEqual(res.champsManquants('intervention', intervention), []);
+  assert.strictEqual(res.ressourceComplete('intervention', intervention), true);
+  // La contrepartie : ailleurs, le descriptif reste exigé.
+  assert.deepStrictEqual(res.champsManquants('recherche', { titre: 'X' }), ['descriptif']);
+  assert.deepStrictEqual(res.champsManquants('livre', { titre: 'X', image: 'c.jpg' }), ['descriptif']);
 });
 
 test('requis : une recherche complète sans image ne manque de rien', () => {
@@ -226,10 +249,10 @@ test('bloc : le lien facultatif, absent, ne laisse aucun attribut lien=', () => 
   assert.ok(!/lien=/.test(texte.split('\n')[0]), 'lien="" écrit malgré une valeur vide');
 });
 
-test('bloc : film porte réalisateur, année, genre et pays', () => {
+test('bloc : film porte réalisateur, année, genre, pays et distributeur', () => {
   const valeurs = {
     titre: 'Un film', realisateur: 'Jeanne Réal', annee: '2021', genre: 'Documentaire',
-    pays: 'Suisse', lien: 'https://exemple.org/bande-annonce',
+    pays: 'Suisse', distributeur: 'Déjà-vu Film', lien: 'https://exemple.org/bande-annonce',
     descriptif: 'Descriptif du film.', image: 'affiche.jpg'
   };
   const texte = res.ajouterRessource('', 'f1', 'film', valeurs);
@@ -431,6 +454,81 @@ test('print.css : une fiche sans image (intervention, recherche) a son rendu com
   const css = lire('pipeline', 'styles', 'print.css');
   assert.ok(css.includes('.szh-ressource-sans-image'),
     'règle absente de print.css : .szh-ressource-sans-image');
+});
+
+// ---- Césure des pages : le couple flottant / ordre du flux ----------------------------
+// Mesuré sur WeasyPrint 69 : un conteneur flex n'est pas sécable, et une fiche plus haute
+// que la place restante laissait une page entière vide avant de reprendre. Le corps est
+// donc un contexte de formatage ordinaire et l'image un flottant — ce qui n'a de sens que
+// si szh-ressource.lua l'écrit AVANT la colonne de texte, un flottant s'ancrant là où il
+// paraît dans le flux. Les deux moitiés doivent rester ensemble : ce contrôle refuse
+// qu'on en défasse une seule.
+
+test('print.css : le corps de fiche n’est plus une rangée flex, l’image est un flottant', () => {
+  const css = lire('pipeline', 'styles', 'print.css');
+  const corps = css.match(/\.szh-ressource-corps\s*\{[^}]*\}/);
+  assert.ok(corps, 'règle .szh-ressource-corps introuvable dans print.css');
+  assert.ok(!/display\s*:\s*flex/.test(corps[0]),
+    'le corps de fiche est redevenu flex : WeasyPrint 69 ne sait pas le couper entre deux pages');
+  const image = css.match(/\.szh-ressource-image\s*\{[^}]*\}/);
+  assert.ok(image, 'règle .szh-ressource-image introuvable dans print.css');
+  assert.match(image[0], /float\s*:\s*right/,
+    'l’image de fiche doit rester un flottant pour que la fiche se coupe proprement');
+});
+
+test('szh-ressource.lua : la colonne d’image est écrite avant la colonne de texte', () => {
+  const lua = lire('pipeline', 'filters', 'szh-ressource.lua');
+  const corps = lua.slice(lua.indexOf('local corps_enfants'), lua.indexOf('local corps ='));
+  assert.ok(corps.length > 0, 'assemblage du corps de fiche introuvable dans szh-ressource.lua');
+  const rangImage = corps.indexOf("'szh-ressource-image'");
+  const rangTexte = corps.indexOf("'szh-ressource-texte'");
+  assert.ok(rangImage !== -1 && rangTexte !== -1, 'les deux colonnes doivent être posées ici');
+  assert.ok(rangImage < rangTexte,
+    'l’image doit précéder le texte : un flottant posé après lui s’ancre sous lui, donc à la page suivante');
+});
+
+// ---- Marqueur de liste ordonnée en tête d'un descriptif -------------------------------
+// « 13. Nationale Arkadis-Fachtagung. » est un nom, pas une liste. Pandoc y lit une liste
+// qui démarre à 13 et WeasyPrint 69 n'honore pas `start` : le PDF imprimait « 1. ». Le
+// point est donc échappé dans le .md et déséchappé au chargement.
+
+test('descriptif : un nombre en tête de ligne est échappé dans le .md, et rendu tel quel à la lecture', () => {
+  const valeurs = {
+    titre: 'Darüber müssen wir reden!', evenement: 'journee', debut: '2026-09-03',
+    descriptif: '13. Nationale Arkadis-Fachtagung.'
+  };
+  const texte = res.ajouterRessource('', 'r1', 'agenda', valeurs);
+  assert.ok(texte.includes('13\\. Nationale Arkadis-Fachtagung.'),
+    'le point n’est pas échappé : pandoc lira une liste numérotée et le 13 sera perdu');
+  assert.strictEqual(res.lireRessources(texte)[0].valeurs.descriptif,
+    '13. Nationale Arkadis-Fachtagung.', 'le formulaire doit revoir son texte sans échappement');
+});
+
+test('descriptif : l’échappement est stable — réécrire un bloc déjà écrit ne l’empile pas', () => {
+  const v = { titre: 'X', descriptif: '13. Un' + NL + NL + '2) Deux' };
+  const un = res.ajouterRessource('', 'r1', 'livre', v);
+  const relu = res.lireRessources(un)[0].valeurs.descriptif;
+  assert.strictEqual(relu, '13. Un' + NL + NL + '2) Deux');
+  const deux = res.ecrireRessource(un, 'r1', 'livre',
+    Object.assign({}, v, { descriptif: relu })).texte;
+  assert.strictEqual(deux, un, 'un aller-retour doit rendre le même .md, au caractère près');
+});
+
+test('descriptif : ni les puces ni les titres ne sont touchés, seule la liste ordonnée l’est', () => {
+  const descriptif = ['- une puce', '* une autre', '+ une troisième', '# un titre',
+    'une phrase. 13. pas en tête de ligne'].join(NL);
+  const texte = res.ajouterRessource('', 'r1', 'livre', { titre: 'X', descriptif: descriptif });
+  assert.ok(!texte.includes('\\'), 'rien d’autre qu’un marqueur ordonné ne doit être échappé');
+  assert.strictEqual(res.lireRessources(texte)[0].valeurs.descriptif, descriptif);
+});
+
+test('rubriques : leur contenu markdown n’est pas touché, une liste numérotée y reste une liste', () => {
+  const rub = require(path.join(COCKPIT, 'lib', 'rubriques.js'));
+  const contenu = '13. Nationale Arkadis-Fachtagung.' + NL + NL + '14. La suivante.';
+  const texte = rub.ajouterRubrique('', 'b1', 'tour-horizon', contenu);
+  assert.ok(!texte.includes('\\'),
+    'lib/rubriques.js ne doit rien échapper : son contenu est du markdown assumé');
+  assert.strictEqual(rub.lireRubriques(texte)[0].contenu, contenu);
 });
 
 test('szh-ressource.lua : pose .szh-ressource-sans-image quand le bloc n’a pas d’image, sans nommer de type', () => {

@@ -84,6 +84,22 @@ publication.
   la légende, décorative `alt=""`, ni alt ni légende — le seul cas rouge) et deux
   tableaux (description longue, puis ni description ni en-tête). À regarder dans
   l'aperçu, pas dans le PDF.
+- `articles/documentation/` — la page de Documentation (« News & Ressourcen »), le seul
+  article du banc dont le contenu n'est pas de la prose suivie : deux rubriques de texte
+  riche (`szh-rubrique.lua`) et quatre fiches structurées (`szh-ressource.lua`, un type
+  par cas). **En allemand à dessein** : les titres de rubrique et les libellés de lien se
+  déduisent de la langue de l'article, et la moitié allemande de ces tables n'était rendue
+  nulle part ailleurs. Ce qu'il garde, et qui a tout cassé une fois :
+  - une fiche livre **plus haute qu'une page**. Avec le corps de fiche en `display: flex`,
+    WeasyPrint 69 ne savait pas la couper : elle laissait une page entière de fond de
+    carte, titre seul, avant de reprendre à la suivante. La page 2 du PDF doit montrer la
+    fiche qui commence et se poursuit page 3, sans page blanche entre les deux.
+  - une rubrique dont le contenu porte des titres. Ils ne doivent **pas** être numérotés,
+    et doivent descendre sous le `h2` de la rubrique ; la section « Eine echte
+    Abschnittsüberschrift », hors rubrique, doit l'être (« 1 »). C'est la contre-épreuve.
+  - un descriptif qui commence par « 13\. » : il doit s'imprimer « 13. » en paragraphe et
+    non « 1. » en liste (WeasyPrint 69 n'honore pas l'attribut `start` d'un `<ol>`).
+  - une fiche d'intervention **sans descriptif** et une fiche d'agenda à plage de dates.
 
 ## Les deux livres
 
