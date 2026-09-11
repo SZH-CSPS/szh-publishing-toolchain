@@ -2,9 +2,14 @@
    seul formulaire, tout pliable, avec un sommaire collant à droite. Remplace
    ressources-article.css et rubriques-article.css.
    Aucune couleur en dur, rien que les jetons de thème (_design.css). */
+/* `max-width: none` : le socle (_design.css) borne le corps à --page-max, une largeur de
+   lecture faite pour une page qui coule toute seule. Cette page-ci ne coule pas, elle tient
+   deux colonnes dont la seconde est collée à droite — sous la borne, le sommaire flottait au
+   milieu de la fenêtre avec une large bande vide à sa droite. C'est .doc-colonnes, plus bas,
+   qui borne maintenant la seule colonne qui doit l'être : le formulaire. */
 body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
   line-height: var(--interligne); color: var(--encre); background: var(--fond);
-  padding: var(--e2) var(--e4) 0; box-sizing: border-box; height: 100vh;
+  padding: var(--e2) var(--e4) 0; box-sizing: border-box; height: 100vh; max-width: none;
   display: flex; flex-direction: column; overflow: hidden; }
 
 /* C'est .corps qui défile — et c'est donc lui qui sert de référence au sommaire collant :
@@ -14,8 +19,12 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 /* Deux colonnes : le formulaire, et le sommaire. `align-items: start` est ce qui permet au
    sommaire de rester collé — étiré sur toute la hauteur (le défaut, `stretch`), il n'aurait
    jamais de quoi glisser. */
-.doc-colonnes { display: grid; grid-template-columns: minmax(0, 1fr) 15rem;
-  gap: var(--e5); align-items: start; }
+/* Le formulaire s'arrête à 64rem — au-delà, une ligne de texte se suit mal d'un bord à
+   l'autre — et `space-between` donne tout le reste à l'écart entre les deux colonnes, ce qui
+   colle le sommaire au bord droit de la fenêtre au lieu de laisser une bande vide après lui.
+   Sur une fenêtre étroite, la borne ne joue pas et les deux colonnes se serrent comme avant. */
+.doc-colonnes { display: grid; grid-template-columns: minmax(0, 64rem) 15rem;
+  gap: var(--e5); align-items: start; justify-content: space-between; }
 .doc-sections { display: flex; flex-direction: column; gap: var(--e3); min-width: 0; }
 .doc-sections > * { flex: 0 0 auto; }
 
@@ -130,10 +139,14 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 /* Un textarea qui grandit avec son texte (voir ajusterHauteur() dans le script), jusqu'à un
    plafond au-delà duquel il défile lui-même plutôt que de pousser la page à l'infini — une
    bibliographie de trente références ne doit pas se lire dans une fenêtre de trois lignes,
-   mais ne doit pas non plus noyer la carte suivante. */
+   mais ne doit pas non plus noyer la carte suivante.
+   `min-height` vaut le double de ce qu'il valait : ces champs reçoivent des paragraphes, et
+   un cadre de trois lignes disait le contraire. `resize: vertical` rend le coin tirable pour
+   les cas où même le plafond ne suffit pas ; la hauteur tirée gagne alors sur la mesure
+   automatique (ajusterHauteur), sans quoi la frappe suivante la reprendrait aussitôt. */
 .doc-champ textarea {
-  width: 100%; box-sizing: border-box; resize: none;
-  min-height: 6rem; overflow-y: hidden;
+  width: 100%; box-sizing: border-box; resize: vertical;
+  min-height: 12rem; overflow-y: hidden;
   font-family: inherit; line-height: var(--interligne);
 }
 

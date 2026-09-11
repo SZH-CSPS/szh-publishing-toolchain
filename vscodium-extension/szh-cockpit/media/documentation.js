@@ -203,12 +203,26 @@ function basculerListe(valeur, debut, fin) {
 
 // Le textarea grandit avec son contenu, borné : passé ce point il garde sa propre barre de
 // défilement plutôt que de pousser la page à l'infini.
+//
+// Sauf si une main a tiré le coin (resize: vertical, documentation.css). On le reconnaît
+// sans écouter aucun événement : la hauteur inline n'est plus celle que cette fonction a
+// posée la dernière fois, donc quelqu'un d'autre l'a écrite. À partir de là ce champ garde
+// sa hauteur, avec sa propre barre de défilement — une hauteur choisie est une décision, et
+// la frappe suivante n'a pas à la défaire.
 var HAUTEUR_MAX = 480;
 function ajusterHauteur(zone) {
   try {
+    if (zone.dataset.hauteurTiree === '1') { return; }
+    if (zone.dataset.hauteurPosee && zone.style.height &&
+        zone.style.height !== zone.dataset.hauteurPosee) {
+      zone.dataset.hauteurTiree = '1';
+      zone.style.overflowY = 'auto';
+      return;
+    }
     zone.style.height = 'auto';
     if (typeof zone.scrollHeight === 'number' && zone.scrollHeight > 0) {
       zone.style.height = Math.min(zone.scrollHeight, HAUTEUR_MAX) + 'px';
+      zone.dataset.hauteurPosee = zone.style.height;
       zone.style.overflowY = zone.scrollHeight > HAUTEUR_MAX ? 'auto' : 'hidden';
     }
   } catch (e) { /* environnement sans mesure de disposition (tests) */ }
