@@ -2203,7 +2203,9 @@ async function annoncerReimport(fournisseur, rafraichirTout, r, slug, annulation
     return;
   }
   const langue = langueCockpit();
-  const premiere = constats.length > 0 ? phraseConstat(constats[0], langue) : '';
+  // Le meme gabarit que la liste « A corriger » : deux voix pour un meme constat, c'est
+  // exactement ce que ce lot est venu supprimer.
+  const premiere = constats.length > 0 ? tableConstats.phrase(constats[0], langue) : '';
   const voir = T('ctl.notif.bouton');
   const revenir = T('modale.annulerReimport.bouton');
   const ouvrirControles = () => vscode.commands.executeCommand('szh.vueControles');
@@ -2765,7 +2767,7 @@ function lireRapportImport(racine) {
   for (const c of avertissements.values()) {
     entrees.push({
       nom: c.slug === '' ? T('ctl.numero') : T('ctl.article', [c.slug]),
-      ligne: phraseConstat(c, langue),
+      ligne: tableConstats.phrase(c, langue),
       libelle: T(c.ton === 'danger' ? 'ctl.badge.bloquant' : 'ctl.badge.avert'),
       ton: c.ton, icone: c.ton
     });
