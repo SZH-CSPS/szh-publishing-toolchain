@@ -740,6 +740,14 @@ function collecter(racine, cfg, avertissements) {
   if (tous.length > 0) {
     const e = new Error(T('ojs.bloquants') + '\n- ' + tous.join('\n- '));
     e.szhConfigOjs = bloquantsConfig.length > 0;
+    // La liste, en plus de la prose. Ces points partaient concaténés dans une seule
+    // notification, avec des puces et des retours à la ligne que VSCodium écrase : le plus
+    // grave de l'application était son message le moins lisible. L'hôte en fait maintenant
+    // une carte par point dans « À corriger », chacune avec son bouton.
+    e.szhBloquants = tous;
+    // Les points de configuration ouvrent la liste : leur compte suffit a l'hote pour
+    // savoir lesquels menent aux reglages et non a une fiche d'article.
+    e.szhBloquantsConfig = bloquantsConfig.length;
     throw e;
   }
   return { numero: numero, articles: articles, revue: revue };

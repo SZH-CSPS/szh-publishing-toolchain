@@ -189,6 +189,7 @@ test('exhaustivité : aucune ligne morte dans la table', () => {
   const connus = codesDeJournal();
   // Les codes que le cockpit produit lui-même, hors journal de la chaîne.
   const propres = ['pipeline/pdf-verrouille', 'pdfua/non-conforme', 'pdfua/outillage',
+    'export/refus',
     'pdfua/regle', 'cockpit/doi-double', 'cockpit/sans-fiche', 'cockpit/image-sans-alt',
     'cockpit/image-sans-legende'];
   const mortes = Object.keys(constats.TABLE)

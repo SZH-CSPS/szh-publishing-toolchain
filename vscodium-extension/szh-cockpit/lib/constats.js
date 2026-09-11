@@ -219,6 +219,11 @@ const TABLE = Object.freeze({
     defaut: 'defaut.doi-double' },
   'cockpit/image-sans-alt': { barrage: 'pdfua', nature: D, lieu: 'medias',
     focusChamp: 'image', defaut: 'defaut.figure-sans-alt' },
+  // L'export refuse, et chaque raison devient une carte. Le lieu n'est pas dans la table :
+  // il depend de la raison -- les reglages OJS pour un champ de configuration, la fiche de
+  // l'article nomme pour le reste -- et c'est donc le constat qui le porte.
+  'export/refus': { barrage: 'export', nature: D, lieu: '',
+    defaut: 'defaut.export-refus', objetChamp: 'raison' },
   'cockpit/image-sans-legende': { barrage: null, nature: D, lieu: 'medias',
     focusChamp: 'image', defaut: 'defaut.image-sans-legende' }
 });
@@ -271,12 +276,16 @@ function dernierSegment(valeur) {
 // -> { lieu, slug, focus } ou null quand aucun geste n'existe pour ce défaut.
 function cible(constat) {
   const e = entree(constat);
-  if (!e || !e.lieu) { return null; }
+  if (!e) { return null; }
+  // Un constat peut nommer sa cible quand la table ne peut pas la deviner : les raisons
+  // d'un refus d'export ne menent pas toutes au meme endroit.
+  const lieu = (constat && constat.lieu) || e.lieu;
+  if (!lieu) { return null; }
   const champs = (constat && constat.champs) || {};
   let focus = '';
   if (e.focusFixe) { focus = e.focusFixe; }
   else if (e.focusChamp) { focus = dernierSegment(champs[e.focusChamp]); }
-  return { lieu: e.lieu, slug: String((constat && constat.slug) || ''), focus: focus };
+  return { lieu: lieu, slug: String((constat && constat.slug) || ''), focus: focus };
 }
 
 // Le bouton à poser sur la carte, ou null. Les libellés vivent dans le dictionnaire : huit

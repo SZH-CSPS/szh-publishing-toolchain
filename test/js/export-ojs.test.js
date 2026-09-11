@@ -499,6 +499,31 @@ test('date de publication : une année seule arrête l’export et dit où la sa
   assert.deepStrictEqual(fs.readdirSync(racine).filter((f) => f.indexOf('.xml') !== -1), []);
 });
 
+// Les points bloquants partaient concaténés dans le message d'une seule notification, avec
+// des puces et des retours à la ligne que VSCodium écrase : le plus grave de l'application
+// était son message le moins lisible. L'erreur les porte donc aussi en liste, pour que
+// l'hôte les pose un par un dans « À corriger », chacun avec son bouton.
+test('refus : l’erreur porte les points bloquants un par un, pas seulement en prose', () => {
+  const racine = monter({ produit: 'revue' });
+  const e = refuse(racine, {});
+  assert.ok(Array.isArray(e.szhBloquants), 'l’erreur ne porte pas la liste des bloquants');
+  assert.ok(e.szhBloquants.length >= 2,
+    'un seul point listé : la liste n’est pas celle qui a servi au message');
+  // Chaque point est une phrase à lui, sans puce ni retour à la ligne : c'est ce qui permet
+  // d'en faire une carte.
+  for (const point of e.szhBloquants) {
+    assert.ok(point && point.length > 0, 'point vide dans la liste');
+    assert.ok(point.indexOf('\n') === -1, 'un point porte encore un retour à la ligne : ' + point);
+    assert.ok(point.indexOf('- ') !== 0, 'un point porte encore sa puce : ' + point);
+  }
+  // Et le message reste ce qu'il était : la notification n'est pas le seul chemin, mais
+  // elle continue de dire pourquoi l'export n'est pas parti.
+  for (const point of e.szhBloquants) {
+    assert.ok(e.message.indexOf(point) !== -1,
+      'un point de la liste manque au message : les deux chemins divergent');
+  }
+});
+
 // ---- La configuration ---------------------------------------------------------------
 
 test('configuration : un champ obligatoire vide arrête l’export, en français et en allemand', () => {

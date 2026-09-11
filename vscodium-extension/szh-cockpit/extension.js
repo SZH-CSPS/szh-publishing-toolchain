@@ -1578,15 +1578,18 @@ async function exporterXml(fournisseur, rafraichirTout) {
       vscode.window.showInformationMessage(message);
     }
   } catch (e) {
-    const message = T('exportOjs.erreur', [String((e && e.message) || e)]);
-    // Un intitulé de rubrique ou un nom de groupe qui manque ne se corrige pas dans le
-    // numéro : le bouton mène droit au panneau où le relever.
-    if (e && e.szhConfigOjs) {
-      const bouton = T('exportOjs.configurer');
-      const choix = await vscode.window.showErrorMessage(message, bouton);
-      if (choix === bouton) { ouvrirReglages(rafraichirTout); }
+    // Les points bloquants deviennent des cartes dans « À corriger » : la notification
+    // n'a plus à les porter tous, elle dit combien et où les lire. Ce qui ne vient pas de
+    // la collecte (une panne, un disque) garde son message en clair, faute de liste.
+    const liste = (e && e.szhBloquants) || [];
+    if (liste.length > 0) {
+      poserConstatsExport(racine, liste, (e && e.szhBloquantsConfig) || 0);
+      const bouton = T('ctl.notif.bouton');
+      const choix = await vscode.window.showErrorMessage(
+        T('exportOjs.refus', [liste.length]), bouton);
+      if (choix === bouton) { await vscode.commands.executeCommand('szh.vueControles'); }
     } else {
-      vscode.window.showErrorMessage(message);
+      vscode.window.showErrorMessage(T('exportOjs.erreur', [String((e && e.message) || e)]));
     }
   } finally {
     statut.dispose();
@@ -2818,7 +2821,7 @@ const JOURNAL_TACHE = '.szh-journal.log';
 // constats ne sont donc pas dans .szh-journal.log, et la recompilation qui le suit
 // aussitôt les effacerait s'ils étaient mêlés à ceux de la chaîne. Ils passent devant —
 // c'est le geste que le rédacteur vient de faire.
-let dernierJournal = { racine: null, constats: [], code: 0, reimport: [] };
+let dernierJournal = { racine: null, constats: [], code: 0, reimport: [], export: [] };
 
 // Ce que la vue et la barre d'état ont à montrer, les deux listes réunies. pdfua.constats()
 // s'ajoute toujours : la validation PDF/UA tourne hors tâche, ses verdicts en cache ne
@@ -2826,15 +2829,45 @@ let dernierJournal = { racine: null, constats: [], code: 0, reimport: [] };
 function constatsCourants(racine) {
   const base = dernierJournal.racine !== racine
     ? lireJournalTache(racine)
-    : dernierJournal.reimport.concat(dernierJournal.constats);
+    : dernierJournal.export.concat(dernierJournal.reimport, dernierJournal.constats);
   return base.concat(pdfuaHote.constats(racine));
+}
+
+// Les points qui ont fait refuser le dernier export, un par carte. Ils partaient
+// concaténés dans le message d'une seule notification, avec des puces et des retours à la
+// ligne que VSCodium écrase : le plus grave de l'application était son message le moins
+// lisible, et rien n'en restait une fois la notification disparue. Ils vivent donc dans la
+// liste « À corriger » jusqu'au prochain export — réussi, il les efface.
+//
+// Le lieu n'est pas dans la table des constats : il dépend de la raison. Les points de
+// configuration ouvrent la liste (szhBloquantsConfig en donne le compte) et mènent aux
+// réglages ; les autres nomment leur article en tête de phrase et mènent à sa fiche.
+function constatsExport(liste, nConfig) {
+  return (liste || []).map((brut, i) => {
+    const m = String(brut).match(/^articles\/([^\s:]+)\s*:\s*([\s\S]*)$/);
+    const slug = m ? m[1] : '';
+    return { source: 'export', code: 'refus', ton: 'danger', cle: '', args: [],
+             champs: { raison: m ? m[2] : String(brut) }, slug: slug,
+             lieu: i < nConfig ? 'reglages' : (slug === '' ? '' : 'fiche'),
+             brut: String(brut) };
+  });
+}
+
+function poserConstatsExport(racine, liste, nConfig) {
+  if (dernierJournal.racine !== racine) {
+    dernierJournal = { racine: racine, constats: lireJournalTache(racine), code: 0,
+                       reimport: [], export: [] };
+  }
+  dernierJournal.export = constatsExport(liste, nConfig || 0);
+  majBarreControles();
 }
 
 // Les constats du dernier réimport, posés ou effacés. Un nouveau réimport remplace ceux
 // du précédent : deux jeux d'avertissements sur le même article se contrediraient.
 function poserConstatsReimport(racine, constats) {
   if (dernierJournal.racine !== racine) {
-    dernierJournal = { racine: racine, constats: lireJournalTache(racine), code: 0, reimport: [] };
+    dernierJournal = { racine: racine, constats: lireJournalTache(racine), code: 0,
+                       reimport: [], export: [] };
   }
   dernierJournal.reimport = constats || [];
   majBarreControles();
@@ -3051,8 +3084,11 @@ async function relireJournal(fournisseur, code) {
   // Ce que le dernier réimport a signalé survit à la compilation qui le suit : un tableau
   // en conflit reste vrai après un Ctrl+S, et la chaîne ne le connaît pas.
   const reimport = dernierJournal.racine === racine ? dernierJournal.reimport : [];
+  // Les refus du dernier export survivent à la compilation : ils restent vrais tant que
+  // l'export n'a pas été relancé, et la chaîne ne les connaît pas.
+  const refusExport = dernierJournal.racine === racine ? dernierJournal.export : [];
   dernierJournal = { racine: racine, constats: fusionnerConstats(racine, constats),
-                     code: code, reimport: reimport };
+                     code: code, reimport: reimport, export: refusExport };
   // Rapport automatique (lib/rapport-erreur.js) : une compilation qui s'arrête avec un code
   // de sortie non nul est une panne de la chaîne (COMPIL-ECHEC), pas un simple constat de
   // contenu — les constats (tableau-sans-entête, figure-sans-alt…) ne déclenchent JAMAIS de
@@ -5726,7 +5762,8 @@ function activate(context) {
     if (dernierJournal.racine !== racine) {
       // `reimport` compris : les cinq autres affectations le posent, et lireControles le
       // concatène sans le tester. L'oublier ici suffisait à faire taire tous les constats.
-      dernierJournal = { racine: racine, constats: lireJournalTache(racine), code: 0, reimport: [] };
+      dernierJournal = { racine: racine, constats: lireJournalTache(racine), code: 0,
+                         reimport: [], export: [] };
     }
     majBarreControles();
     majBarreModeTest();
