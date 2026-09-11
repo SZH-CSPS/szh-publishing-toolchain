@@ -31,6 +31,19 @@ const { spawnSync } = require('child_process');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
+
+// AVANT le premier require du cockpit : lib/i18n.js résout la langue une fois, à son
+// chargement, et sa cascade finit sur l'état du poste — C:\ProgramData\SZH\state.json, qui
+// porte la langue du dernier lanceur ouvert. Ce fichier ne passe pas par hote-factice.js,
+// qui neutralise cet état pour tous les autres : sur un poste dont le dernier lanceur était
+// « Zeitschriften SZH », le message d'erreur de l'export sortait en allemand et le contrôle
+// ci-dessous tombait — sur la machine du développeur seulement, jamais en intégration, où
+// aucun état de poste n'existe. Une demi-heure perdue à chercher une régression qui n'en
+// était pas une.
+process.env.SZH_ETAT_POSTE = path.join(
+  fs.mkdtempSync(path.join(os.tmpdir(), 'szh-date-etat-')), 'state.json');
+fs.writeFileSync(process.env.SZH_ETAT_POSTE, '{}\n');
+
 const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
 const { DISTRO, cheminWsl } = require(path.join(COCKPIT, 'lib', 'wsl.js'));
 const { cheminVersWsl } = require(path.join(COCKPIT, 'lib', 'portraits.js'));

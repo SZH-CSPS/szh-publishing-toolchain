@@ -286,46 +286,46 @@ function lirePipeline(reste) {
   let m = reste.match(/^⚠ L'article «\s*(.+?)\s*» n'a pas de titre/);
   if (m) {
     return { source: 'pipeline', code: 'titre-manquant', ton: 'danger', slug: m[1],
-             cle: 'ctl.titre.manquant', args: [] };
+             cle: 'ctl.titre.manquant', args: [], champs: {} };
   }
   if (/^⚠ Un dossier de articles\/ contient des espaces/.test(reste)) {
     return { source: 'pipeline', code: 'dossier-espaces', ton: 'danger', slug: '',
-             cle: 'ctl.espaces', args: [] };
+             cle: 'ctl.espaces', args: [], champs: {} };
   }
   if (/^Aucun article \(articles\//.test(reste)) {
     return { source: 'pipeline', code: 'aucun-article', ton: 'danger', slug: '',
-             cle: 'ctl.aucunarticle', args: [] };
+             cle: 'ctl.aucunarticle', args: [], champs: {} };
   }
   if (/n'est pas une revue/.test(reste)) {
     return { source: 'pipeline', code: 'pas-une-revue', ton: 'danger', slug: '',
-             cle: 'ctl.pasrevue', args: [] };
+             cle: 'ctl.pasrevue', args: [], champs: {} };
   }
   m = reste.match(/^PDF\/UA-1 indisponible -> PDF balisé simple : out\/([^/]+)\//);
   if (m) {
     return { source: 'pipeline', code: 'balisage-simple', ton: 'attention', slug: m[1],
-             cle: 'ctl.balisage.simple', args: [] };
+             cle: 'ctl.balisage.simple', args: [], champs: {} };
   }
   m = reste.match(/^balisage PDF indisponible -> PDF non balisé : out\/([^/]+)\//);
   if (m) {
     return { source: 'pipeline', code: 'balisage-aucun', ton: 'danger', slug: m[1],
-             cle: 'ctl.balisage.aucun', args: [] };
+             cle: 'ctl.balisage.aucun', args: [], champs: {} };
   }
   if (/^profil vide dans ausgabe\.yaml/.test(reste)) {
     return { source: 'pipeline', code: 'profil-rien', ton: 'info', slug: '',
-             cle: 'ctl.profil.rien', args: [] };
+             cle: 'ctl.profil.rien', args: [], champs: {} };
   }
   if (/^profil « book »/.test(reste)) {
     return { source: 'pipeline', code: 'profil-differe', ton: 'danger', slug: '',
-             cle: 'ctl.profil.differe', args: [] };
+             cle: 'ctl.profil.differe', args: [], champs: {} };
   }
   m = reste.match(/^profil inconnu dans ausgabe\.yaml : «\s*(.*?)\s*»/);
   if (m) {
     return { source: 'pipeline', code: 'profil-inconnu', ton: 'danger', slug: '',
-             cle: 'ctl.profil.inconnu', args: [m[1]] };
+             cle: 'ctl.profil.inconnu', args: [m[1]], champs: {} };
   }
   if (/^Aucun PDF à valider/.test(reste)) {
     return { source: 'pdfua', code: 'aucun-pdf', ton: 'danger', slug: '',
-             cle: 'ctl.pdfua.aucun', args: [] };
+             cle: 'ctl.pdfua.aucun', args: [], champs: {} };
   }
   return null;
 }
@@ -338,12 +338,12 @@ function lireImport(reste) {
   let m = reste.match(/^⚠ échec sur\s*:\s*(.+?)(?:\s*[—(].*)?$/);
   if (m) {
     return { source: 'import', code: 'echec', ton: 'danger', slug: '',
-             cle: 'ctl.import.echec', args: [m[1]] };
+             cle: 'ctl.import.echec', args: [m[1]], champs: {} };
   }
   m = reste.match(/^⚠ (\d+) fichier\(s\) Word ne sont pas entrés/);
   if (m) {
     return { source: 'import', code: 'restes', ton: 'danger', slug: '',
-             cle: 'ctl.import.restes', args: [m[1]] };
+             cle: 'ctl.import.restes', args: [m[1]], champs: {} };
   }
   return null;
 }
@@ -356,7 +356,7 @@ function lireNiveaux(reste) {
   const m = reste.match(/^(\S+)\s*:\s*(?:plus de \d+ rangs de titre|mehr als \d+ Titelstufen)\s*—\s*(?:les niveaux|die Stufen)\s+(.+?)\s+(?:se retrouvent|landen)/);
   if (!m) { return null; }
   return { source: 'rendu', code: 'niveaux-ecrases', ton: 'attention', slug: m[1],
-           cle: 'ctl.niveaux', args: [m[2]] };
+           cle: 'ctl.niveaux', args: [m[2]], champs: {} };
 }
 
 // Repli assumé, et le seul qui le restera : pandoc et WeasyPrint, en anglais et sans
@@ -371,17 +371,31 @@ function lireRendu(ligne, slug) {
   let m = ligne.match(/^\[WARNING\] Could not fetch resource (.+?)\s*$/);
   if (m) {
     return { source: 'rendu', code: 'image-manquante', ton: 'danger', slug: slug,
-             cle: 'ctl.image.manquante', args: [nomFichier(m[1])] };
+             cle: 'ctl.image.manquante', args: [nomFichier(m[1])], champs: { image: nomFichier(m[1]) } };
   }
   m = ligne.match(/^WARNING: Failed to load image at ["']?(.+?)["']?\s*:/);
   if (m) {
     return { source: 'rendu', code: 'image-manquante', ton: 'danger', slug: slug,
-             cle: 'ctl.image.manquante', args: [nomFichier(m[1])] };
+             cle: 'ctl.image.manquante', args: [nomFichier(m[1])], champs: { image: nomFichier(m[1]) } };
   }
   m = ligne.match(/^WARNING: Failed to load (?:font|local font) ["']?(.+?)["']?\s*[:.]/);
   if (m) {
     return { source: 'rendu', code: 'police-manquante', ton: 'attention', slug: slug,
-             cle: 'ctl.police.manquante', args: [m[1]] };
+             cle: 'ctl.police.manquante', args: [m[1]], champs: { police: m[1] } };
+  }
+  // mv, au dépôt final du PDF dans out/ : mesuré sur ce poste, quand un lecteur (Adobe
+  // Reader) tient le PDF ouvert, WeasyPrint a bien écrit son fichier temporaire, et c'est
+  // ce déplacement qui refuse. La ligne ne porte aucun préfixe de la maison : sans cette
+  // règle, le silence par défaut la jetait, et la compilation s'arrêtait sans cause visible.
+  // Le Makefile apprend son propre code ([pipeline-blocage] pdf-verrouille) ; ce repli reste
+  // utile tant qu'un poste a un cockpit neuf et un toolkit ancien qui ne l'écrit pas encore.
+  // Le slug vient du chemin de destination, pas du contexte pandoc : cette ligne peut
+  // arriver seule dans le journal, sans la ligne pandoc qui poserait courant.slug.
+  m = ligne.match(/^mv: cannot move '.*?' to '(.+\.pdf)': Permission denied$/);
+  if (m) {
+    return { source: 'pipeline', code: 'pdf-verrouille', ton: 'danger',
+             slug: slugDuPdf(nomFichier(m[1])), cle: '', args: [],
+             champs: { fichier: m[1] }, brut: ligne };
   }
   return null;
 }
@@ -431,7 +445,7 @@ function lireConstatCode(famille, reste, langue) {
     source: famille.source, code: code,
     ton: (TONS[famille.source] || {})[code] || famille.ton,
     slug: ch('article') || ch('chapitre'), cle: (CLES[famille.source] || {})[code] || '',
-    args: args ? args(ch, langue) : [],
+    args: args ? args(ch, langue) : [], champs: nommes,
     brut: (langue === 'de' && de !== '') ? de : fr
   };
 }
@@ -445,20 +459,20 @@ function lirePdfUa(reste, courant) {
   let m = reste.match(/^PDF\/UA-1\s*:?\s*(\S+)\s+—\s+(?:NON conforme|NICHT konform), (\d+)/);
   if (m) {
     return { source: 'pdfua', code: 'non-conforme', ton: 'danger', slug: slugDuPdf(m[1]),
-             cle: 'ctl.pdfua.nonconforme', args: [m[2]] };
+             cle: 'ctl.pdfua.nonconforme', args: [m[2]], champs: {} };
   }
   m = reste.match(/^PDF\/UA-1\s*:?\s*(\S+)\s+—\s+(?:conforme|konform)\.$/);
   if (m) { return null; }                            // rien à dire d'un PDF conforme
   m = reste.match(/^\s*•\s*(.+)$/);
   if (m) {
     return { source: 'pdfua', code: 'regle', ton: 'danger', slug: courant.pdf,
-             cle: '', args: [], brut: m[1] };
+             cle: '', args: [], champs: {}, brut: m[1] };
   }
   // Cause et geste d'une règle : accrochés au constat qu'on vient de poser.
   if (/^\s{4,}\S/.test(reste)) { return { suite: reste.trim() }; }
   if (reste.indexOf('✗') === 0) {
     return { source: 'pdfua', code: 'outillage', ton: 'danger', slug: '',
-             cle: '', args: [], brut: reste.replace(/^✗\s*/, '') };
+             cle: '', args: [], champs: {}, brut: reste.replace(/^✗\s*/, '') };
   }
   return null;
 }
@@ -558,7 +572,7 @@ function analyserJournal(texte, langue) {
     if (/[⚠✗]/.test(coupe.reste)) {
       poser({ source: coupe.prefixe === 'pdf-ua' ? 'pdfua' : 'pipeline',
               code: 'autre', ton: coupe.reste.indexOf('✗') !== -1 ? 'danger' : 'attention',
-              slug: courant.slug, cle: '', args: [],
+              slug: courant.slug, cle: '', args: [], champs: {},
               brut: moitieInline(coupe.reste, lang).replace(/^[⚠✗]\s*/, '') }, moitie);
       continue;
     }
@@ -571,7 +585,7 @@ function complet(constat, moitie) {
   return {
     source: constat.source, code: constat.code, ton: constat.ton,
     cle: constat.cle || '', args: constat.args || [], slug: constat.slug || '',
-    brut: constat.brut || '', moitie: moitie
+    champs: constat.champs || {}, brut: constat.brut || '', moitie: moitie
   };
 }
 
@@ -607,7 +621,7 @@ function departager(constats, langue) {
   return ordre.map((cle) => {
     const c = groupes.get(cle);
     return { source: c.source, code: c.code, ton: c.ton, cle: c.cle, args: c.args,
-             slug: c.slug, brut: c.brut };
+             slug: c.slug, champs: c.champs, brut: c.brut };
   });
 }
 

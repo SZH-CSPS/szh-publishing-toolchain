@@ -463,7 +463,10 @@ $(OUT)/%.pdf: $(OUT)/%.html
 	fi; \
 	sed -E 's@(data:[a-z/+.-]+;base64,[A-Za-z0-9+/=]{16})[A-Za-z0-9+/=]+@\1… (image incorporée)@g' "$$jrnl" >&2; \
 	rm -f "$$jrnl"; \
-	mv -f "$$tmp" $@
+	mv -f "$$tmp" $@ || { \
+	  rm -f "$$tmp"; \
+	  echo "[pipeline-blocage] pdf-verrouille | fichier « $@ » | Le PDF est ouvert dans une autre application. | [de] Das PDF ist in einer anderen Anwendung geöffnet."; \
+	  exit 1; }
 
 # HTML autonome -> DOCX : galley Word de l'export OJS, régénéré depuis le HTML final
 # et non depuis le .md — le reader html de pandoc comprend les tableaux réinjectés en

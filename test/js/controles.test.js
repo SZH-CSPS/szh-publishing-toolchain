@@ -96,6 +96,51 @@ const cles = (constats) => constats.map((c) => c.source + '/' + c.code);
 
 // ---- 1. Le journal, lu ----
 
+// Les champs nommés de la ligne survivent au constat : lib/constats.js y prend l'objet à
+// nommer dans la phrase ET la cible du bouton — l'image à ouvrir, le champ à remplir. Ils
+// étaient jusqu'ici consommés par ARGS puis jetés, et un bouton ne pouvait donc mener
+// qu'à la page, jamais à l'endroit exact.
+test('journal : les champs nommés de la ligne restent sur le constat', () => {
+  const ligne = '[numerotation-blocage] figure-sans-alt | article « 01-inclusion » '
+    + '| image « media/fig-01.png » | Image sans alternative. | [de] Bild ohne Alternative.';
+  const c = journal.analyserJournal(ligne + LF, 'fr')[0];
+  assert.ok(c, 'la ligne n’est pas lue');
+  assert.strictEqual(c.code, 'figure-sans-alt');
+  assert.ok(c.champs, 'le constat ne porte pas ses champs nommés');
+  assert.strictEqual(c.champs.image, 'media/fig-01.png');
+  assert.strictEqual(c.champs.article, '01-inclusion');
+});
+
+// Le cas le plus fréquent des compilations qui « s'arrêtent sans rien dire » : un lecteur
+// de PDF tient le fichier ouvert, WeasyPrint a bien produit son document, et c'est le
+// déplacement final qui refuse. Mesuré : `mv` rend 1, l'ancien PDF garde son contenu, et
+// la ligne d'erreur ne porte aucun préfixe de la maison — elle était donc jetée en
+// silence, et la personne ne voyait qu'un échec sans cause.
+test('journal : un PDF tenu ouvert se dit, par le code comme par la ligne brute', () => {
+  const code = '[pipeline-blocage] pdf-verrouille | fichier « out/01-inclusion/01-inclusion.pdf » '
+    + '| Le PDF est ouvert ailleurs. | [de] Das PDF ist anderswo geöffnet.';
+  const parCode = journal.analyserJournal(code + LF, 'fr')[0];
+  assert.ok(parCode, 'la ligne à code n’est pas lue');
+  assert.strictEqual(parCode.source, 'pipeline');
+  assert.strictEqual(parCode.code, 'pdf-verrouille');
+  assert.strictEqual(parCode.ton, 'danger');
+  assert.strictEqual(parCode.champs.fichier, 'out/01-inclusion/01-inclusion.pdf');
+
+  // Le repli. Le Makefile vit dans le toolkit déployé, le cockpit se met à jour de son
+  // côté : un poste dont le cockpit est neuf et le toolkit ancien doit quand même le dire.
+  const brut = "mv: cannot move '~01-inclusion.pdf' to 'out/01-inclusion/01-inclusion.pdf': Permission denied";
+  const parLigne = journal.analyserJournal(brut + LF, 'fr')[0];
+  assert.ok(parLigne, 'la ligne brute de mv est encore jetée en silence');
+  assert.strictEqual(parLigne.code, 'pdf-verrouille');
+  assert.strictEqual(parLigne.ton, 'danger');
+  assert.strictEqual(parLigne.champs.fichier, 'out/01-inclusion/01-inclusion.pdf',
+    'le fichier tenu ouvert n’est pas relevé : ' + JSON.stringify(parLigne.champs));
+  // Et une erreur de déplacement qui n'a rien à voir avec un PDF ne prend pas ce code.
+  const autre = "mv: cannot move 'a.txt' to 'b.txt': Permission denied";
+  const c = journal.analyserJournal(autre + LF, 'fr')[0];
+  assert.ok(!c || c.code !== 'pdf-verrouille', 'tout échec de mv passe pour un PDF verrouillé');
+});
+
 test('journal : les avertissements d’une vraie compilation arrivent tous, et rien d’autre', () => {
   const constats = journal.analyserJournal(JOURNAL_AVERTISSEMENTS, 'fr');
   assert.deepStrictEqual(cles(constats), [
