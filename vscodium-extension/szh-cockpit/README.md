@@ -118,6 +118,11 @@ lib/
                         autre jalon (docs/RAPPORTS-ERREUR.md)
   references.js         insertions d'images et de tableaux dans le markdown, et les
                         grilles d'images (plusieurs images pour une seule figure)
+  renumerotation.js     aligner le numéro du dossier d'un article sur son rang à l'écran :
+                        plan de renommage en deux passes (un échange de rangs ne peut pas
+                        se renommer en place), fichiers du dossier qui suivent son nom, et
+                        reprise d'un lot interrompu. Pur, sans vscode ni fs — l'hôte
+                        exécute le plan
   reglages-flotte.js    les réglages de l'éditeur imposés à tous les postes : lecture du
                         gabarit commenté (vscodium-user/settings.json, recopié en défauts
                         d'extension dans package.json), empreinte des valeurs voulues, et
