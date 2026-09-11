@@ -136,7 +136,7 @@ const TABLE = Object.freeze({
   // ---- L'accessibilité du PDF ----------------------------------------------------
   'pdfua/aucun-pdf': { barrage: null, nature: A, lieu: '', defaut: 'defaut.aucun-pdf' },
   'pdfua/non-conforme': { barrage: 'pdfua', nature: D, lieu: '',
-    defaut: 'defaut.pdfua-non-conforme' },
+    defaut: 'defaut.pdfua-non-conforme', detail: 'detail.pdfua-non-conforme' },
   'pdfua/regle': { barrage: 'pdfua', nature: D, lieu: '', defaut: 'defaut.pdfua-regle' },
   'pdfua/outillage': { barrage: null, nature: D, lieu: '', defaut: 'defaut.pdfua-outillage' },
   // ---- Les citations -------------------------------------------------------------
@@ -322,7 +322,10 @@ function phrase(constat, langue) {
 // Vide partout ailleurs, et c'est la règle : le gabarit ne doit pas redevenir un paragraphe.
 function detail(constat, langue) {
   const e = entree(constat);
-  return e && e.detail ? TL(langue, e.detail) : '';
+  // Les arguments du constat lui sont passés : c'est la seule ligne des deux qui peut
+  // porter un compte, et le compte des règles PDF/UA en échec est ce qui dit s'il reste
+  // une correction ou vingt.
+  return e && e.detail ? TL(langue, e.detail, (constat && constat.args) || []) : '';
 }
 
 module.exports = { LIEUX, TABLE, gravite, ton, cible, bouton, phrase, detail, objet };

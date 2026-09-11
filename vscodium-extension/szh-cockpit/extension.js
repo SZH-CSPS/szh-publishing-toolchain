@@ -2806,6 +2806,8 @@ function lireRapportImport(racine) {
 // ne passe pas par une tâche — mais son état rejoint les mêmes compteur et vue : voir
 // pdfuaHote.constats() plus bas, et le badge posé par article (majBadgePdfUa).
 const pdfuaHote = require('./lib/pdfua-hote');
+// La table des constats : ce qu'un defaut ferme, ou on va le corriger, comment il s'ecrit.
+const tableConstats = require('./lib/constats');
 
 const JOURNAL_TACHE = '.szh-journal.log';
 
@@ -2870,37 +2872,59 @@ const SOURCES_CONSTAT = {
 // Une carte par constat : l'article concerné en tête, la nature du contrôle en mesure, la
 // phrase dans le corps, le ton en pastille. Les bloquants d'abord — l'ordre de lecture est
 // celui des gestes à faire.
+// Ce dont lib/constats.js a besoin pour décider si une barrière est vraiment fermée. La
+// validation PDF/UA est un réglage : là où elle est éteinte, une image muette ne fait plus
+// échouer de PDF, et la couleur doit retomber avec elle.
+function contexteConstats() {
+  return { pdfua: pdfuaHote.reglageActif() };
+}
+
+// Les trois destinations qui parlent d'un article : un constat peut nommer un Word qui
+// n'est jamais devenu un article, et un bouton qui ouvrirait le vide serait pire que rien.
+const LIEUX_ARTICLE = new Set(['article', 'fiche', 'medias']);
+
+// Le bouton d'un constat, ou aucun. L'identifiant porte la destination ET l'objet à
+// atteindre — « medias:fig-01.png » — parce que la page renvoie l'identifiant tel quel :
+// l'hôte n'a ainsi pas à retrouver de quel constat venait le clic, ce qui serait ambigu dès
+// que deux défauts du même article visent le même formulaire.
+function actionsConstat(constat, connus) {
+  const cible = tableConstats.cible(constat);
+  if (!cible) { return []; }
+  if (LIEUX_ARTICLE.has(cible.lieu) && !(cible.slug !== '' && connus.has(cible.slug))) {
+    return [];
+  }
+  const lieu = tableConstats.LIEUX[cible.lieu];
+  return [{ id: cible.lieu + (cible.focus === '' ? '' : ':' + cible.focus),
+            libelle: T(lieu.libelle), icone: lieu.icone, tip: T(lieu.tip) }];
+}
+
 function vueControles(fournisseur) {
   const racine = fournisseur.racine;
   const constats = constatsCourants(racine);
   const langue = langueCockpit();
   const connus = new Set(fournisseur.listerArticles());
+  const contexte = contexteConstats();
   const lignes = [];
-  for (const ton of ['danger', 'attention', 'info']) {
+  for (const gravite of ['bloquant', 'avert', 'info']) {
     for (const c of constats) {
-      if (c.ton !== ton) { continue; }
+      if (tableConstats.gravite(c, contexte) !== gravite) { continue; }
+      const ton = tableConstats.ton(c, contexte);
       const past = PASTILLE_CONSTAT[ton] || PASTILLE_CONSTAT.info;
       // « Ouvrir » n'a de sens que sur un article qui existe encore : un constat peut
       // nommer un Word qui n'est jamais devenu un article.
       const ouvrable = c.slug !== '' && connus.has(c.slug);
-      // Une image sans texte alternatif ni légende se corrige dans le formulaire des
-      // médias de son article : le bouton y mène directement, plutôt que de laisser
-      // rouvrir l'aperçu pour retrouver laquelle. Même icône que la vue Articles pour ce
-      // même geste (« Éditer les médias »).
-      const estFigureSansAlt = c.source === 'numerotation' && c.code === 'figure-sans-alt';
-      const actions = (estFigureSansAlt && ouvrable)
-        ? [{ id: 'medias', libelle: T('ctl.action.medias'), icone: 'camera',
-             tip: T('ctl.action.medias.tip') }]
-        : [];
+      const detail = tableConstats.detail(c, langue);
       lignes.push({
         cle: ouvrable ? c.slug : '',
         groupe: T(past.groupe),
         titre: c.slug === '' ? T('ctl.numero') : T('ctl.article', [c.slug]),
         meta: T(SOURCES_CONSTAT[c.source] || 'ctl.source.pipeline'),
-        notif: { ton: ton, texte: phraseConstat(c, langue) },
+        notif: { ton: ton,
+                 texte: tableConstats.phrase(c, langue)
+                   + (detail === '' ? '' : ' ' + detail) },
         pastilles: [{ texte: T(past.badge), ton: ton === 'info' ? '' : ton, icone: past.icone }],
         ouvrir: ouvrable,
-        actions: actions
+        actions: actionsConstat(c, connus)
       });
     }
   }
@@ -3107,6 +3131,22 @@ async function ouvrirVueEnsemble(fournisseur, rafraichirTout, type) {
   panneau.webview.html = htmlVueEnsemble(crypto.randomBytes(16).toString('hex'), charge.titre);
 }
 
+// Le bouton d'un constat : « <lieu>:<objet> », tel que actionsConstat l'a formé et que la
+// page l'a renvoyé. Une seule fonction pour les huit destinations — c'est tout ce qui
+// remplace le `if` en dur qui ne servait qu'à un code sur cinquante-cinq.
+//
+// `focus` dit à la page visée ce qu'elle doit amener à l'écran : le formulaire des médias
+// déplie l'image nommée et pose le curseur là où il y a quelque chose à écrire ; les
+// commandes qui ne savent pas encore le lire l'ignorent sans rien casser.
+async function ouvrirCible(id, cle) {
+  const sep = id.indexOf(':');
+  const lieu = sep === -1 ? id : id.slice(0, sep);
+  const focus = sep === -1 ? '' : id.slice(sep + 1);
+  const entree = tableConstats.LIEUX[lieu];
+  if (!entree) { return; }
+  await vscode.commands.executeCommand(entree.commande, { slug: String(cle || ''), focus: focus });
+}
+
 // Les commandes globales d'une section. Celles qui écrivent partout sont confirmées : un
 // clic ne doit pas repasser tout un numéro en relecture par surprise.
 // -> le message à afficher dans la barre, ou null.
@@ -3130,9 +3170,7 @@ async function actionVue(fournisseur, rafraichirTout, type, id, cle) {
     // Recompiler refait tous les contrôles : c'est le seul geste global de cette vue, le
     // reste se corrige article par article.
     if (id === 'recompiler') { await vscode.commands.executeCommand('szh.toutExporter'); }
-    // Le bouton d'une carte « figure-sans-alt » : ouvre le formulaire des médias de
-    // l'article concerné, là où le texte alternatif se corrige.
-    if (id === 'medias' && cle) { await vscode.commands.executeCommand('szh.mediasArticle', { slug: cle }); }
+    else { await ouvrirCible(id, cle); }
     return null;
   }
   if (type === 'word') {

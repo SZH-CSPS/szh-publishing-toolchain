@@ -411,10 +411,11 @@ test('hôte : une compilation qui avertit le dit sans ouvrir de terminal', async
   const corps = charge.lignes.map((l) => l.notif.texte).join(' | ');
   assert.ok(corps.indexOf('(Shaw et al., 2023)') !== -1, 'l’appel sans référence n’est pas à l’écran');
   assert.ok(corps.indexOf('fig-absente.png') !== -1, 'l’image absente n’est pas à l’écran');
-  // Les bloquants en tête, et les tons portés par les cartes.
-  assert.strictEqual(charge.lignes[0].notif.ton, 'danger');
+  // Aucun bloquant ici : une image introuvable laisse sortir le PDF, elle ne ferme ni la
+  // compilation, ni la validation PDF/UA, ni l'export. Elle etait rouge par principe, elle
+  // est ambre par mesure -- et l'info ferme la marche.
   assert.deepStrictEqual(charge.lignes.map((l) => l.notif.ton),
-    ['danger', 'attention', 'attention', 'attention', 'info']);
+    ['attention', 'attention', 'attention', 'attention', 'info']);
 });
 
 test('hôte : une compilation arrêtée le dit autrement', async () => {
@@ -494,14 +495,15 @@ test('hôte : une image sans texte alternatif ouvre le formulaire des médias de
   assert.ok(carte, 'la carte de l’image sans alt n’apparaît pas : '
     + JSON.stringify(charge.lignes.map((l) => l.titre)));
   assert.strictEqual(carte.meta, 'Figures', 'la source « numerotation » ne montre pas son libellé');
-  assert.match(carte.notif.texte, /n’a ni texte alternatif ni légende/);
-  assert.ok(carte.actions && carte.actions.some((a) => a.id === 'medias'),
+  // Le gabarit : l'intitule du defaut, puis l'objet. Le geste est passe dans le bouton.
+  assert.match(carte.notif.texte, /^Figure sans texte alternatif.*fig-1.png$/);
+  assert.ok(carte.actions && carte.actions.some((a) => a.id === 'medias:fig-1.png'),
     'le bouton « Décrire les images » manque sur la carte : ' + JSON.stringify(carte.actions));
 
   // Le bouton mène au bon formulaire, sur le bon article — même contrôle que pour la vue
   // Articles (carte-article.test.js), avec le même geste et la même commande.
   const avant = HOTE.panneaux.length;
-  await p._recepteur({ type: 'action', cle: '01-essai', id: 'medias' });
+  await p._recepteur({ type: 'action', cle: '01-essai', id: 'medias:fig-1.png' });
   const medias = HOTE.panneauDeType('szhMedias');
   assert.ok(medias, 'le bouton « Décrire les images » n’ouvre rien');
   assert.ok(String(medias.title).indexOf('01-essai') !== -1,
@@ -634,4 +636,122 @@ test('les tâches livrées écrivent bien le journal que le cockpit relit', () =
   assert.ok(src.indexOf('tee out/') === -1, 'le journal est sous out/, que le clean supprime');
   // Et le terminal reste fermé : c'est l'interface qui parle.
   assert.ok(src.indexOf('"reveal": "silent"') !== -1, 'un terminal s’ouvre sous le nez du rédacteur');
+});
+
+// ---- La vue branchée sur lib/constats.js -------------------------------------------
+//
+// Jusqu'ici, un seul constat sur cinquante-cinq portait un bouton — un `if` en dur sur
+// `figure-sans-alt` — et le ton venait de sept endroits différents. La vue lit désormais la
+// table : la couleur se déduit de la barrière que le défaut ferme, et le bouton de sa cible.
+
+// Un journal qui porte, en une compilation, un défaut par famille de destination : une
+// image muette (formulaire des médias, sur CETTE image), un champ vide (la fiche, sur CE
+// champ), un profil inconnu (les métadonnées du numéro), un dossier à espaces (aucun geste
+// dans l'application).
+const JOURNAL_CIBLES = [
+  '[numerotation-blocage] figure-sans-alt | article « 01-essai » | image « media/fig-01.png » | Image sans alternative. | [de] Bild ohne Alternative.',
+  '[meta-blocage] champ-vide | article « 01-essai » | champ « title » | langue « de » | Champ vide. | [de] Feld leer.',
+  '[pipeline] ⚠ Le profil de production « bizarre » du numéro n’est pas reconnu.',
+  "[pipeline] ⚠ Le dossier d'article « 01 essai » contient des espaces."
+].join(LF) + LF;
+
+test('vue : chaque constat porte le bouton de sa destination, et l’endroit exact', async () => {
+  poserJournal(JOURNAL_CIBLES);
+  await HOTE.finirTache('Aperçu / Export PDF', 2);
+  await HOTE.executer('szh.vueControles');
+  const p = HOTE.panneauDeType('szhVueControles');
+  await p._recepteur({ type: 'pret' });
+  const lignes = p.messages.filter((m) => m.type === 'valeurs').pop().lignes;
+
+  const parTexte = (motif) => lignes.find((l) => motif.test(l.notif.texte));
+  const muette = parTexte(/alternatif/);
+  assert.ok(muette, 'l’image muette n’est pas dans la liste');
+  assert.strictEqual(muette.actions.length, 1, 'un bouton et un seul');
+  // L'identifiant porte la destination ET l'objet : la page le renvoie tel quel, l'hôte n'a
+  // donc pas à retrouver de quel constat venait le clic.
+  assert.strictEqual(muette.actions[0].id, 'medias:fig-01.png');
+  assert.ok(muette.actions[0].libelle && muette.actions[0].tip, 'bouton sans libellé ni tip');
+
+  const champ = parTexte(/Champ vide/);
+  assert.ok(champ, 'le champ vide n’est pas dans la liste');
+  assert.strictEqual(champ.actions[0].id, 'fiche:title');
+
+  // Un défaut qui ne se corrige nulle part dans l'application n'a pas de bouton : renommer
+  // un dossier se fait dans l'explorateur de Windows.
+  const espaces = parTexte(/[Ee]space/);
+  assert.ok(espaces, 'le dossier à espaces n’est pas dans la liste');
+  assert.strictEqual(espaces.actions.length, 0, 'un bouton mène « quelque part » : mensonge');
+
+  poserJournal(JOURNAL_CITATIONS);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+});
+
+test('vue : le bouton ouvre le formulaire sur l’image en cause', async () => {
+  poserJournal(JOURNAL_CIBLES);
+  await HOTE.finirTache('Aperçu / Export PDF', 2);
+  await HOTE.executer('szh.vueControles');
+  const p = HOTE.panneauDeType('szhVueControles');
+  await p._recepteur({ type: 'pret' });
+  const ligne = p.messages.filter((m) => m.type === 'valeurs').pop()
+    .lignes.find((l) => /alternatif/.test(l.notif.texte));
+
+  await p._recepteur({ type: 'action', cle: ligne.cle, id: ligne.actions[0].id });
+  const medias = HOTE.panneauDeType('szhMedias');
+  assert.ok(medias, 'le bouton n’a pas ouvert le formulaire des médias');
+  // Deux chemins, selon que le formulaire était déjà ouvert : une charge neuve qui porte
+  // « focus », ou un message « focaliser » sur le panneau qui vivait déjà. L'un des deux
+  // doit désigner l'image du constat, et pas seulement son article. On ne réveille pas la
+  // page par un « pret » : elle se rechargerait avec le focus qu'elle gardait d'avant.
+  const vise = medias.messages.map((m) => m.focus || m.relatif).filter((x) => x);
+  assert.ok(vise.indexOf('fig-01.png') !== -1,
+    'le formulaire ne vise pas l’image du constat : ' + JSON.stringify(vise));
+
+  poserJournal(JOURNAL_CITATIONS);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+});
+
+test('vue : la couleur suit la barrière, et la barrière suit le réglage', async () => {
+  poserJournal(JOURNAL_CIBLES);
+  await HOTE.finirTache('Aperçu / Export PDF', 2);
+  const muette = () => {
+    const p = HOTE.panneauDeType('szhVueControles');
+    return p.messages.filter((m) => m.type === 'valeurs').pop()
+      .lignes.find((l) => /alternatif/.test(l.notif.texte));
+  };
+  await HOTE.executer('szh.vueControles');
+  const p = HOTE.panneauDeType('szhVueControles');
+  await p._recepteur({ type: 'pret' });
+  // Validation PDF/UA active : une image muette fait échouer le PDF, donc l'export.
+  assert.strictEqual(muette().notif.ton, 'danger');
+
+  // Éteinte, plus rien ne refuse ce PDF : le défaut reste, la couleur retombe.
+  await HOTE.stub.workspace.getConfiguration('szh').update('controlePdfUa', false);
+  await p._recepteur({ type: 'pret' });
+  assert.strictEqual(muette().notif.ton, 'attention',
+    'la couleur ne suit pas le réglage : elle annonce un refus qui n’aura pas lieu');
+  await HOTE.stub.workspace.getConfiguration('szh').update('controlePdfUa', true);
+
+  poserJournal(JOURNAL_CITATIONS);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+});
+
+test('vue : la phrase nomme le défaut et son objet, et s’arrête là', async () => {
+  poserJournal(JOURNAL_CIBLES);
+  await HOTE.finirTache('Aperçu / Export PDF', 2);
+  await HOTE.executer('szh.vueControles');
+  const p = HOTE.panneauDeType('szhVueControles');
+  await p._recepteur({ type: 'pret' });
+  const textes = p.messages.filter((m) => m.type === 'valeurs').pop()
+    .lignes.map((l) => l.notif.texte);
+
+  assert.ok(textes.some((t) => /^Figure sans texte alternatif\b.*fig-01\.png$/.test(t)),
+    'le gabarit « {défaut} : {objet} » n’est pas appliqué : ' + textes.join(' | '));
+  // Le geste est dans le bouton : plus une phrase ne dit où cliquer.
+  for (const t of textes) {
+    assert.ok(!/Ouvrez « |Ouvrez le |puis recompilez|Cliquez/.test(t),
+      'une phrase explique encore où cliquer : ' + t);
+  }
+
+  poserJournal(JOURNAL_CITATIONS);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
 });

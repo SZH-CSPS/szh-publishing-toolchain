@@ -285,4 +285,4 @@ function constats(racine) {
   return out;
 }
 
-module.exports = { configurer, planifier, etat, constats, signalerDebutBuild };
+module.exports = { configurer, planifier, etat, constats, signalerDebutBuild, reglageActif };
