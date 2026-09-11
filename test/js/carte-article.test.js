@@ -427,29 +427,33 @@ test('carte : ses avertissements vivent dans l’encadré « À faire », group�
   const p = await vue();
   const charge = derniereCharge(p);
   const idx = charge.lignes.findIndex((l) => l.cle === '01-gremion');
-  // Deux avertissements d'images et deux de citations, déjà éprouvés par les contrôles
-  // « compteur d’images » et « appel de citation » plus haut dans ce fichier. Aucun des
-  // quatre n'arrête quoi que ce soit : ils sont donc tous du ton « attention ».
-  assert.strictEqual(charge.lignes[idx].constats.length, 4,
-    'le corpus n’a plus les quatre avertissements connus de 01-gremion');
-  assert.ok(charge.lignes[idx].constats.every((c) => c.ton === 'attention'),
-    'un de ces quatre avertissements est passé bloquant : ' +
-    charge.lignes[idx].constats.map((c) => c.ton).join(' | '));
+  // Deux constats d'images et deux de citations. Leur ton vient de lib/constats.js, comme
+  // dans la liste « À corriger » : l'image muette ferme la validation PDF/UA, donc l'export,
+  // et elle est rouge ; les trois autres partent tels quels et restent ambre. C'est tout
+  // l'intérêt d'une seule table — la carte ne peut plus dire bénin ce que la liste dit
+  // bloquant deux écrans plus loin.
+  const constats = charge.lignes[idx].constats;
+  assert.strictEqual(constats.length, 4,
+    'le corpus n’a plus les quatre constats connus de 01-gremion');
+  assert.deepStrictEqual(constats.map((c) => c.ton).sort(),
+    ['attention', 'attention', 'attention', 'danger'],
+    'les tons de la carte ne suivent plus la table : ' + constats.map((c) => c.ton).join(' | '));
   const page = pageArticlesDe(charge);
   const carte = page.conteneur().querySelectorAll('.szh-carte')[idx];
   // Dans l'encadré des tâches, et dans aucun des deux endroits où ils ont vécu avant :
   // ni la barre de titre, ni le corps de l'aperçu.
-  assert.strictEqual(carte.querySelectorAll('.szh-taches .szh-constats--attention .szh-notif').length, 4,
+  assert.strictEqual(carte.querySelectorAll('.szh-taches .szh-constats--attention .szh-notif').length, 3,
     'les avertissements ne sont pas dans le groupe « Attention » de l’encadré « À faire »');
+  assert.strictEqual(carte.querySelectorAll('.szh-taches .szh-constats--danger .szh-notif').length, 1,
+    'l’image muette n’est pas dans le groupe bloquant de l’encadré « À faire »');
   assert.strictEqual(carte.querySelectorAll('.szh-tete .szh-notif').length, 0,
     'les avertissements sont restés (en double) dans la barre de titre');
   assert.strictEqual(carte.querySelectorAll('.carte-apercu .szh-notif').length, 0,
     'les avertissements sont restés (en double) dans le corps replié de l’aperçu');
   // Le groupe porte son titre ; celui des bloquants n'est pas posé, il n'a rien à montrer.
   assert.deepStrictEqual(carte.querySelectorAll('.szh-constats-titre').map((e) => e.textContent),
-    [i18n.T('art.constats.attention')], 'le titre du groupe « Attention » manque, ou un groupe vide a été posé');
-  assert.strictEqual(carte.querySelectorAll('.szh-constats--danger').length, 0,
-    'un groupe « Erreur / bloquant » vide traîne sur une carte qui n’a rien de bloquant');
+    [i18n.T('art.constats.attention'), i18n.T('art.constats.danger')],
+    'les deux groupes ne portent pas leur titre, ou un groupe vide a été posé');
   // Un article sans avertissement ne construit aucun groupe parasite : son encadré
   // « À faire » n'a que ses tâches.
   const sans = charge.lignes.findIndex((l) => l.cle === '02-chanier');
@@ -665,8 +669,8 @@ test('carte : les images ne reprochent que ce qui manque, en toutes lettres et u
   // seule image informative sans texte alternatif — la décorative n'est pas comptée —
   // et une seule légende vide ; si les portraits entraient dans le compte, ces deux
   // constats en annonceraient quatre.
-  assert.match(dits, /1 image\(s\) apportent une information et n’ont pas de texte alternatif/);
-  assert.match(dits, /1 image\(s\) sans légende/);
+  assert.match(dits, /Figure sans texte alternatif \(1\)/);
+  assert.match(dits, /Image sans légende \(1\)/);
   // Plus de pastille dans le pied : le compteur « 1 image(s) » y redisait, en abrégé et
   // sans dire quoi, le reproche que l'encadré « À faire » écrit juste au-dessus.
   assert.ok(!(ligne.pastilles || []).some((x) => /image/.test(x.texte || '')),
@@ -681,9 +685,10 @@ test('carte : un appel de citation sans référence se dit sur la carte, avec so
   const p = await vue();
   const ligne = derniereCharge(p).lignes.find((l) => l.cle === '01-gremion');
   const dits = ligne.constats.map((c) => c.texte);
-  assert.ok(dits.some((t) => /2 appel\(s\) de citation ne mènent à aucune référence/.test(t)),
+  assert.ok(dits.some((t) => /^Appel sans référence \(2\)$/.test(t)),
     'l’article ne dit pas ses appels non liés : ' + dits.join(' | '));
-  assert.ok(dits.some((t) => /1 appel\(s\) de citation désignent plusieurs références/.test(t)));
+  assert.ok(dits.some((t) => /^Appel ambigu \(1\)$/.test(t)),
+    'l’appel ambigu ne suit pas l’intitulé de la liste : ' + dits.join(' | '));
   // Et l'article que le journal ne nomme pas ne porte rien de la sorte.
   const autre = derniereCharge(p).lignes.find((l) => l.cle === '02-chanier');
   assert.ok(!autre.constats.some((c) => /citation/.test(c.texte)),

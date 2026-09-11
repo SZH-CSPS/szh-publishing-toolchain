@@ -625,6 +625,25 @@ function departager(constats, langue) {
   });
 }
 
+// Les articles que cette compilation a réellement traversés, d'après les lignes de pandoc
+// — les deux mêmes formes que le lecteur de contexte reconnaît plus haut.
+//
+// `make` est incrémental et le journal est réécrit à chaque tâche : enregistrer un seul
+// article donne un journal qui ne parle que de lui. Sans cette liste, l'hôte remplaçait
+// tous les constats par ceux du dernier passage, et ceux des autres articles disparaissaient
+// alors que leurs défauts tenaient toujours — la liste mentait par omission, et dans le sens
+// rassurant. Elle sert à ne jeter que les constats des articles recompilés : un défaut
+// corrigé s'en va, un défaut qu'on n'a pas retouché reste.
+function slugsCompiles(texte) {
+  const vus = new Set();
+  for (const brute of String(texte === undefined || texte === null ? '' : texte).split(/\r?\n/)) {
+    let m = brute.match(/^pandoc articles\/([^/]+)\//);
+    if (!m) { m = brute.match(/^pandoc .* -> out\/([^/]+)\//); }
+    if (m) { vus.add(m[1]); }
+  }
+  return vus;
+}
+
 // La phrase à montrer : celle de la maison si le constat a une clé, celle du pipeline
 // sinon. Jamais les deux langues, jamais une clé nue.
 function phraseConstat(constat, langue) {
@@ -734,7 +753,7 @@ function constatsReimport(resultat, slug) {
 
 module.exports = {
   TONS_IMPORT, CLES_IMPORT, TONS_RESULTAT_REIMPORT,
-  analyserJournal, phraseConstat, resumeJournal,
+  analyserJournal, phraseConstat, resumeJournal, slugsCompiles,
   CODES_CITATIONS_CARTE, citationsParArticle,
   constatsReimport, tonResultatReimport,
   verdictsPdfUa

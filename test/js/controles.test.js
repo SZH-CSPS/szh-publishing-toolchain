@@ -432,7 +432,13 @@ test('hôte : une compilation arrêtée le dit autrement', async () => {
 });
 
 test('hôte : un journal muet ne dérange personne', async () => {
-  poserJournal('pandoc articles/01-essai/01-essai.md -> out/01-essai/01-essai.html' + LF);
+  // Le journal traverse les DEUX articles dont les contrôles précédents ont parlé, et n'a
+  // rien à dire d'eux : c'est ce que fait une recompilation complète propre. Les constats
+  // sont retenus par article (fusionnerConstats), un journal qui ne parlerait que du premier
+  // laisserait donc ceux du second — et le compteur ne serait pas vide.
+  poserJournal(['pandoc articles/01-essai/01-essai.md -> out/01-essai/01-essai.html',
+    'pandoc articles/01-inclusion/01-inclusion.md -> out/01-inclusion/01-inclusion.html',
+    'pandoc articles/02-sans-fiche/02-sans-fiche.md -> out/02-sans-fiche/02-sans-fiche.html'].join(LF) + LF);
   const avert = HOTE.avertissements.length;
   const err = HOTE.erreurs.length;
   await HOTE.finirTache('Aperçu / Export PDF', 0);
@@ -751,6 +757,53 @@ test('vue : la phrase nomme le défaut et son objet, et s’arrête là', async 
     assert.ok(!/Ouvrez « |Ouvrez le |puis recompilez|Cliquez/.test(t),
       'une phrase explique encore où cliquer : ' + t);
   }
+
+  poserJournal(JOURNAL_CITATIONS);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+});
+
+// ---- Le journal est réécrit à chaque compilation, et `make` est incrémental ----------
+//
+// Corriger l’article 3 et enregistrer ne recompile que lui : le journal ne contient plus
+// que ses lignes. La liste effaçait alors les constats des articles 1 et 2, dont les
+// défauts étaient pourtant toujours là — elle mentait par omission, et dans le sens
+// rassurant. Les constats sont donc retenus par article, et remplacés article par article :
+// seuls ceux d’un article que la compilation vient de traverser sont jetés.
+const JOURNAL_UN_SEUL = (slug, avecDefaut) => [
+  'pandoc articles/' + slug + '/' + slug + '.md -> out/' + slug + '/' + slug + '.html'
+].concat(avecDefaut
+  ? ['[citations-avertissement] appel-sans-reference | article « ' + slug + ' » | appel « (Untel, 2020) »'
+     + ' | Appel sans référence. | [de] Verweis ohne Eintrag.']
+  : []).join(LF) + LF;
+
+test('journal : recompiler un seul article n’efface pas les constats des autres', async () => {
+  const lignesDe = async () => {
+    await HOTE.executer('szh.vueControles');
+    const p = HOTE.panneauDeType('szhVueControles');
+    await p._recepteur({ type: 'pret' });
+    // Les seules cartes qui nous concernent : ce fichier laisse derrière lui des constats
+    // de réimport et de numéro entier, qui survivent aux compilations par construction.
+    return p.messages.filter((m) => m.type === 'valeurs').pop()
+      .lignes.filter((l) => l.cle === '01-essai' || l.cle === '02-sans-fiche');
+  };
+
+  // Deux articles fautifs, en une compilation complète.
+  poserJournal(JOURNAL_UN_SEUL('01-essai', true) + JOURNAL_UN_SEUL('02-sans-fiche', true));
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+  assert.deepStrictEqual((await lignesDe()).map((l) => l.cle).sort(), ['01-essai', '02-sans-fiche']);
+
+  // On enregistre le seul article 01 : la chaîne ne recompile que lui, et son défaut est
+  // corrigé. Celui de 02, que rien n’a recompilé, doit rester.
+  poserJournal(JOURNAL_UN_SEUL('01-essai', false));
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+  assert.deepStrictEqual((await lignesDe()).map((l) => l.cle), ['02-sans-fiche'],
+    'la compilation d’un seul article a emporté les constats des autres');
+
+  // Et l’inverse tient : recompiler 02 sans défaut le fait disparaître pour de bon.
+  poserJournal(JOURNAL_UN_SEUL('02-sans-fiche', false));
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+  assert.deepStrictEqual((await lignesDe()).map((l) => l.cle), [],
+    'un défaut corrigé reste affiché : le constat ne part jamais');
 
   poserJournal(JOURNAL_CITATIONS);
   await HOTE.finirTache('Aperçu / Export PDF', 0);

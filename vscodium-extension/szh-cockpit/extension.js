@@ -294,7 +294,7 @@ const cantonsLib = require('./lib/cantons');
 const { traiterPortraits } = require('./lib/portraits');
 // ---- Journal de compilation -> lib/journal.js ------------------------------------
 const {
-  analyserJournal, phraseConstat, resumeJournal, citationsParArticle,
+  analyserJournal, phraseConstat, resumeJournal, slugsCompiles, citationsParArticle,
   constatsReimport, tonResultatReimport
 } = require('./lib/journal');
 // ---- JPEG CMJN -> RVB -> lib/cmyk.js ---------------------------------------------
@@ -2848,6 +2848,38 @@ function lireJournalTache(racine) {
   return analyserJournal(texte, langueCockpit());
 }
 
+// Le texte brut du dernier journal, pour savoir quels articles la compilation a traversés.
+function texteJournalTache(racine) {
+  if (!racine) { return ''; }
+  try { return fs.readFileSync(path.join(racine, JOURNAL_TACHE), 'utf8'); }
+  catch (e) { return ''; }
+}
+
+// Les constats du dernier passage, PLUS ceux des articles que ce passage n'a pas touchés.
+//
+// `make` est incrémental et la tâche réécrit le journal : enregistrer un seul article donne
+// un journal qui ne parle que de lui. On remplaçait pourtant tous les constats par les
+// siens, et ceux des autres articles disparaissaient de la liste comme du compteur, alors
+// que leurs défauts tenaient toujours. La liste mentait par omission, et dans le sens
+// rassurant — celui qui laisse publier.
+//
+// Ne sont donc jetés que les constats des articles recompilés (slugsCompiles) : un défaut
+// corrigé s'en va au passage suivant sur SON article, un défaut qu'on n'a pas retouché
+// reste. Les constats du numéro entier (slug vide) sont toujours remplacés : ils parlent de
+// l'ensemble, et l'ensemble vient d'être recompilé.
+// Un article est « traversé » s'il a sa ligne de pandoc, MAIS AUSSI si le nouveau journal
+// parle de lui : une porte qui ferme avant pandoc — un titre vide, un dossier à espaces —
+// écrit son constat sans qu'aucune compilation n'ait eu lieu. Sans ce second cas, l'ancien
+// constat du même article restait à côté du neuf, et le même défaut se comptait deux fois.
+function fusionnerConstats(racine, neufs) {
+  if (dernierJournal.racine !== racine) { return neufs; }
+  const traverses = slugsCompiles(texteJournalTache(racine));
+  for (const c of neufs) { if (c.slug !== '') { traverses.add(c.slug); } }
+  const gardes = dernierJournal.constats.filter(
+    (c) => c.slug !== '' && !traverses.has(c.slug));
+  return gardes.concat(neufs);
+}
+
 // Ton d'une pastille et son pictogramme : les mêmes trois tons que partout ailleurs dans
 // le cockpit, pour qu'un avertissement se reconnaisse sans être lu.
 const PASTILLE_CONSTAT = {
@@ -3019,7 +3051,8 @@ async function relireJournal(fournisseur, code) {
   // Ce que le dernier réimport a signalé survit à la compilation qui le suit : un tableau
   // en conflit reste vrai après un Ctrl+S, et la chaîne ne le connaît pas.
   const reimport = dernierJournal.racine === racine ? dernierJournal.reimport : [];
-  dernierJournal = { racine: racine, constats: constats, code: code, reimport: reimport };
+  dernierJournal = { racine: racine, constats: fusionnerConstats(racine, constats),
+                     code: code, reimport: reimport };
   // Rapport automatique (lib/rapport-erreur.js) : une compilation qui s'arrête avec un code
   // de sortie non nul est une panne de la chaîne (COMPIL-ECHEC), pas un simple constat de
   // contenu — les constats (tableau-sans-entête, figure-sans-alt…) ne déclenchent JAMAIS de
@@ -3444,28 +3477,39 @@ function resumeImagesArticle(fournisseur, slug) {
 // jamais dans une infobulle : les images incomplètes, puis l'état des références relevé à
 // la dernière compilation.
 //
-// Le ton range le constat dans l'un des deux groupes de l'encadré, et la frontière n'est
-// pas une question de goût : `danger` est ce que la publication REFUSERA — ce que
-// compilerArticle ou l'export OJS comptent parmi leurs bloquants — et `attention` tout le
-// reste, qui part tel quel si personne n'y touche. Une image sans texte alternatif est un
-// défaut d'accessibilité réel, mais elle ne bloque rien : elle reste en « attention ».
-function constatsCarte(images, citations) {
+// Le ton ne se décide plus ici : il vient de lib/constats.js, comme dans la liste
+// « À corriger ». Ces constats-là forçaient tous « attention », et une image muette
+// paraissait donc bénigne sur la carte au moment même où elle arrêtait l'export deux
+// écrans plus loin.
+//
+// La carte résume, la liste détaille : ici un constat par FAMILLE de défaut avec son
+// compte entre parenthèses, là-bas un constat par image et par appel, chacun avec son
+// bouton. Les deux partagent l'intitulé — « Figure sans texte alternatif » — pour qu'on
+// reconnaisse le même défaut d'un écran à l'autre. Et aucun bouton sur ces constats-ci :
+// le pied de la carte porte déjà « Éditer les médias » et « Éditer les métadonnées », qui
+// mènent exactement là où ces défauts se corrigent.
+function constatsCarte(images, citations, contexte) {
   const constats = [];
-  if (images.sansAlt > 0) {
-    constats.push({ ton: 'attention', texte: T('art.images.sansalt', [images.sansAlt]) });
-  }
-  if (images.sansLegende > 0) {
-    constats.push({ ton: 'attention', texte: T('art.images.sanslegende', [images.sansLegende]) });
-  }
+  const langue = langueCockpit();
+  const ajouter = (code, compte) => {
+    if (compte <= 0) { return; }
+    const brut = { source: 'cockpit', code: code, slug: '', champs: {}, args: [] };
+    constats.push({ ton: tableConstats.ton(brut, contexte),
+                    texte: tableConstats.phrase(brut, langue) + ' (' + compte + ')' });
+  };
+  ajouter('image-sans-alt', images.sansAlt);
+  ajouter('image-sans-legende', images.sansLegende);
   const c = citations || null;
   if (c) {
-    const dits = [
-      ['appel-sans-reference', 'art.cit.sansref'],
-      ['appel-ambigu', 'art.cit.ambigu'],
-      ['reference-orpheline', 'art.cit.orpheline']
-    ];
-    for (const paire of dits) {
-      if (c[paire[0]] > 0) { constats.push({ ton: 'attention', texte: T(paire[1], [c[paire[0]]]) }); }
+    // Les trois codes de citations sont ceux de la chaîne : même table, même intitulé, même
+    // ton que dans la liste — seul le compte remplace l'appel fautif, qu'une carte n'a pas
+    // à énumérer.
+    for (const code of ['appel-sans-reference', 'appel-ambigu', 'reference-orpheline']) {
+      if (c[code] > 0) {
+        const brut = { source: 'citations', code: code, slug: '', champs: {}, args: [] };
+        constats.push({ ton: tableConstats.ton(brut, contexte),
+                        texte: tableConstats.phrase(brut, langue) + ' (' + c[code] + ')' });
+      }
     }
   }
   return constats;
@@ -3514,6 +3558,9 @@ function chargeArticles(fournisseur) {
   const racine = fournisseur.racine;
   const langue = langueRevue(racine);
   const interface_ = langueCockpit();
+  // Les cartes tirent leur ton de la même table que la liste « À corriger » : il faut donc
+  // le même contexte, celui qui dit si la validation PDF/UA tourne sur ce poste.
+  const contexte = contexteConstats();
   // La configuration du poste, lue une fois : elle porte les intitulés des tâches ET les
   // deux interrupteurs d'affichage de la vue.
   const configPoste = lireConfigPoste();
@@ -3569,7 +3616,7 @@ function chargeArticles(fournisseur) {
     const images = resumeImagesArticle(fournisseur, slug);
     const doi = apercuDoi(locale, annee, numeroRevue, rangDoi(slugs, slug, sansDoi),
       meta.doi, voulus.has(slug));
-    const constats = doi.constats.concat(constatsCarte(images, citations.get(slug)));
+    const constats = doi.constats.concat(constatsCarte(images, citations.get(slug), contexte));
     // Un DOI qui désigne aussi un autre article : les deux cartes le disent, chacune
     // nommant l'autre.
     const autresMemeDoi = (parDoiEffectif[effectifs[slug]] || []).filter((s) => s !== slug);
