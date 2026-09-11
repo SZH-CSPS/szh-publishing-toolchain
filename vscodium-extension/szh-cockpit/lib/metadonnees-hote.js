@@ -16,6 +16,7 @@ const profils = require('./profil');
 const { construireHtml } = require('./webviews/util');
 const { refuserSiVerrouille, poidsLisible } = require('./cycle-vie');
 const { fermerTousLesApercus } = require('./apercu');
+const { confirmerAbandon } = require('./interaction');
 const { slugifier } = require('./slug');
 const { traiterPortraits } = require('./portraits');
 const { alignerMotsCles } = require('./traduction');
@@ -134,7 +135,7 @@ function ecrireCouverture(racine, nomFichier, donneesBase64) {
     } finally {
       try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
     }
-  } catch (e) { return T('err.ecriture', [String((e && e.message) || e)]); }
+  } catch (e) { return T('err.ecriture', [nom, String((e && e.message) || e)]); }
   // Une seule couverture par numéro : les autres noms que l'export essaie sont retirés,
   // sans quoi il prendrait le premier de sa liste et non celui qu'on vient de déposer.
   for (const autre of NOMS_COUVERTURE) {
@@ -917,7 +918,7 @@ async function ecrirePortraitEtTraiter(fournisseur, slug, slugAuteur, ext, donne
         try { if (fs.existsSync(tmp)) { fs.unlinkSync(tmp); } } catch (e) { /* déjà renommé */ }
       }
     } catch (e) {
-      return echec(T('err.ecriture', [e.message]));
+      return echec(T('err.ecriture', [nomOriginal, e.message]));
     }
     let resultats;
     try {
@@ -1099,11 +1100,9 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
       const attente = rechargementEnAttente;
       rechargementEnAttente = null;
       if (!attente) { return; }
-      const choix = await vscode.window.showWarningMessage(
-        T('fiches.recharger.question'), { modal: true, detail: T('table.quitter.detail') },
-        T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
-      if (choix === undefined) { return; }
-      if (choix === T('form.enregistrer')) {
+      const choix = await confirmerAbandon(T('fiches.recharger.question'));
+      if (choix === 'annuler') { return; }
+      if (choix === 'enregistrer') {
         const res = ecrireCartesArticles(fournisseur, msg.articles, filtreArticles, panneau);
         const refusCartes = messageCartes(res);
         if (refusCartes) {

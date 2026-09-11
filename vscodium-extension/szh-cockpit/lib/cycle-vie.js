@@ -189,7 +189,7 @@ async function verrouillerSeulement(fournisseur, rafraichirTout) {
     T('modale.verrouiller.bouton'));
   if (choix !== T('modale.verrouiller.bouton')) { return; }
   const erreur = ctx.ecrireClesAusgabe(racine, { locked: 'true' });
-  if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [erreur])); return; }
+  if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', ['ausgabe.yaml', erreur])); return; }
   fermerFormulairesEcriture(null, null);           // un formulaire ouvert écrit par fs
   rafraichirTout();
   vscode.window.setStatusBarMessage(Tcycle('statut.verrouille'), 4000);
@@ -227,7 +227,7 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
 
   // 1. les deux drapeaux seuls : l'étape 2 peut échouer, il faut pouvoir revenir.
   const erreurYaml = ctx.ecrireClesAusgabe(racine, { locked: 'true', archived: 'true' });
-  if (erreurYaml) { vscode.window.showErrorMessage(T('err.ecriture', [erreurYaml])); return; }
+  if (erreurYaml) { vscode.window.showErrorMessage(T('err.ecriture', ['ausgabe.yaml', erreurYaml])); return; }
 
   // 2. ⚠ fermer les onglets avant de supprimer out/ : un PDF affiché est verrouillé
   //    côté Windows. En cas d'échec on relève les drapeaux, avant tout déplacement.
@@ -286,7 +286,7 @@ async function desarchiver(fournisseur, rafraichirTout) {
     return;
   }
   const erreurYaml = ctx.ecrireClesAusgabe(racine, { archived: 'false' });
-  if (erreurYaml) { vscode.window.showErrorMessage(T('err.ecriture', [erreurYaml])); return; }
+  if (erreurYaml) { vscode.window.showErrorMessage(T('err.ecriture', ['ausgabe.yaml', erreurYaml])); return; }
   await ctx.fermerTousLesApercus();
   session.poserApercuCourantUri(null);
   session.poserApercuCourantSlug(null);
@@ -317,7 +317,7 @@ async function deverrouiller(fournisseur, rafraichirTout) {
     { modal: true, detail: Tcycle('modale.deverrouiller.detail') }, bouton);
   if (choix !== bouton) { return; }
   const erreur = ctx.ecrireClesAusgabe(racine, { locked: 'false' });
-  if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [erreur])); return; }
+  if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', ['ausgabe.yaml', erreur])); return; }
   appliquerEtVerifierVerrou(racine, false);
   session.poserRacineVerrou(racine);
   rafraichirTout();
@@ -524,7 +524,7 @@ async function resoudreBlocConflit(uri, blocs, index, prendre) {
   if (!bloc) { return; }
   let doc;
   try { doc = await vscode.workspace.openTextDocument(vscode.Uri.file(chemin)); }
-  catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [chemin])); return; }
+  catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(chemin), chemin])); return; }
   const mien = doc.getText();                      // le tampon, pas le disque : une frappe non
   let sien = '';                                   // enregistrée compte comme « ma version »
   try { sien = fs.readFileSync(copie, 'utf8'); }
@@ -546,12 +546,12 @@ async function resoudreBlocConflit(uri, blocs, index, prendre) {
       const fin = doc.lineAt(doc.lineCount - 1).range.end;
       edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), texte);
       if (!(await vscode.workspace.applyEdit(edition))) {
-        vscode.window.showErrorMessage(T('err.ecriture', [chemin]));
+        vscode.window.showErrorMessage(T('err.ecriture', [path.basename(chemin), chemin]));
         return;
       }
       await doc.save();
     } catch (e) {
-      vscode.window.showErrorMessage(T('err.ecriture', [String((e && e.message) || e)]));
+      vscode.window.showErrorMessage(T('err.ecriture', [path.basename(chemin), String((e && e.message) || e)]));
       return;
     }
     // L'écriture n'est pas passée par le point d'écriture du fichier du numéro : les
@@ -567,7 +567,7 @@ async function resoudreBlocConflit(uri, blocs, index, prendre) {
   if (texte === sien) { return; }
   try { ecrireAtomique(copie, texte); }
   catch (e) {
-    vscode.window.showErrorMessage(T('err.ecriture', [String((e && e.message) || e)]));
+    vscode.window.showErrorMessage(T('err.ecriture', [path.basename(copie), String((e && e.message) || e)]));
     return;
   }
   // Le contenu « original » a changé : sans cet avis, la gouttière garderait ses marques.
@@ -597,7 +597,7 @@ async function supprimerCopieConflit(copie, demander) {
     if (choix !== bouton) { return; }
   }
   try { fs.unlinkSync(copie); }
-  catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [String((e && e.message) || e)])); return; }
+  catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(copie), String((e && e.message) || e)])); return; }
   // Retirée du jeu des fichiers déjà signalés : si le synchroniseur en dépose une autre plus
   // tard, elle sera annoncée comme une nouvelle.
   copiesSignalees.delete(copie);

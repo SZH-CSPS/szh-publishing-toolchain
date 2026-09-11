@@ -189,7 +189,7 @@ async function fmtTableau() {
     fs.mkdirSync(dossier, { recursive: true });
     ecrireAtomique(path.join(dossier, nom), serialiserTable(tableauVierge(T('fmt.tableau.colonne'))));
   } catch (e) {
-    vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
+    vscode.window.showErrorMessage(T('err.ecriture', [nom, e.message]));
     return;
   }
   const sel = editeur.selection;
@@ -333,7 +333,7 @@ async function fmtCollerTableau() {
     fs.mkdirSync(dossier, { recursive: true });
     ecrireAtomique(path.join(dossier, nom), serialiserTable(modele));
   } catch (e) {
-    vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
+    vscode.window.showErrorMessage(T('err.ecriture', [nom, e.message]));
     return;
   }
   const sel = editeur.selection;

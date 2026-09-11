@@ -15,6 +15,7 @@ const profils = require('./profil');
 const { construireHtml } = require('./webviews/util');
 const { refuserSiVerrouille } = require('./cycle-vie');
 const { fermerTousLesApercus } = require('./apercu');
+const { confirmerAbandon } = require('./interaction');
 const {
   ordreImages, imagesSansAlternative, lireGrilles, lireAttributsImage, ecrireAttributsImage,
   placeFigure, envelopperFigure, GRILLE_AUTO, GRILLE_MAX, grilleDeImage,
@@ -500,19 +501,23 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
   const ecrireTexteArticle = async (texte) => {
     let doc;
     try { doc = await vscode.workspace.openTextDocument(md); }
-    catch (e) { repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) }); return false; }
+    catch (e) {
+      repondrePanneau(panneau,
+        { type: 'erreur', message: T('err.ecriture', [path.basename(md), e.message]) });
+      return false;
+    }
     if (doc.getText() === texte) { return true; }   // déjà à jour : pas d'édition
     try {
       const edition = new vscode.WorkspaceEdit();
       const fin = doc.lineAt(doc.lineCount - 1).range.end;
       edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), texte);
       if (!(await vscode.workspace.applyEdit(edition))) {
-        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [md]) });
+        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), T('err.edition.refusee')]) });
         return false;
       }
       await doc.save();
     } catch (e) {
-      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) });
+      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), e.message]) });
       return false;
     }
     return true;
@@ -522,7 +527,11 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
   const enregistrer = async (liste) => {
     let doc;
     try { doc = await vscode.workspace.openTextDocument(md); }
-    catch (e) { repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) }); return -1; }
+    catch (e) {
+      repondrePanneau(panneau,
+        { type: 'erreur', message: T('err.ecriture', [path.basename(md), e.message]) });
+      return -1;
+    }
     const source = doc.getText();
     let texte = source;
     let total = 0;
@@ -546,12 +555,12 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       const fin = doc.lineAt(doc.lineCount - 1).range.end;
       edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), texte);
       if (!(await vscode.workspace.applyEdit(edition))) {
-        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [md]) });
+        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), T('err.edition.refusee')]) });
         return -1;
       }
       await doc.save();                              // déclenche la recompilation
     } catch (e) {
-      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) });
+      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), e.message]) });
       return -1;
     }
     return total;
@@ -676,7 +685,7 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
       if (Array.isArray(msg.medias) && msg.medias.length > 0 && await enregistrer(msg.medias) < 0) { return; }
       const pose = await insererImageDansArticle(md, relatif);
       if (!pose.ok) {
-        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [md]) });
+        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), T('err.edition.refusee')]) });
         return;
       }
       // Dire où elle est allée : au curseur, ou en fin d'article quand le curseur était
@@ -791,11 +800,9 @@ async function ouvrirGestionMedias(fournisseur, rafraichirTout, item) {
     if (msg.type === MSG.RETOUR_ARTICLE) {
       // Garde « non enregistré », comme dans l'éditeur de tableau.
       if (msg.modifie) {
-        const choix = await vscode.window.showWarningMessage(
-          T('medias.quitter.question', [slug]), { modal: true, detail: T('table.quitter.detail') },
-          T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
-        if (choix === undefined) { return; }          // Annuler : on reste
-        if (choix === T('form.enregistrer')) {
+        const choix = await confirmerAbandon(T('medias.quitter.question', [slug]));
+        if (choix === 'annuler') { return; }          // Annuler : on reste
+        if (choix === 'enregistrer') {
           const n = await enregistrer(msg.medias);
           if (n < 0) { return; }                      // échec d'écriture : on reste
           if (n > 0) { vscode.window.setStatusBarMessage(T('medias.statut.enregistrees', [n]), 5000); }

@@ -9,6 +9,12 @@
 // (test/js/interaction.test.js), et c'est le point d'appel qui décide ce qui mérite
 // d'attendre. Les mises à jour de barre d'état, inoffensives pour le focus, ne passent
 // pas par ici.
+//
+// confirmerAbandon, plus bas, est l'exception : elle pose la modale « à enregistrer »
+// commune aux six formulaires du cockpit qui peuvent se quitter sans enregistrer. Ses
+// require('vscode')/require('./i18n') sont dans la fonction, pas en tête de fichier —
+// interaction.test.js charge ce module seul, avant tout hôte, pour éprouver la garde
+// ci-dessus ; un require('vscode') en tête le casserait.
 'use strict';
 
 function creerGarde() {
@@ -63,9 +69,25 @@ function creerGarde() {
 // exporté pour les tests, qui veulent un compteur vierge à chaque cas.
 const garde = creerGarde();
 
+// La même modale « des modifications ne sont pas enregistrées » posée aux six endroits du
+// cockpit qui peuvent quitter un formulaire sans passer par Ctrl+S : traduction, import,
+// éditeur de tableau, médias, métadonnées, Documentation. Seule la question change ;
+// le detail et les deux boutons viennent tous du même dictionnaire.
+async function confirmerAbandon(question) {
+  const vscode = require('vscode');
+  const { T } = require('./i18n');
+  const choix = await vscode.window.showWarningMessage(
+    question, { modal: true, detail: T('table.quitter.detail') },
+    T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
+  if (choix === T('form.enregistrer')) { return 'enregistrer'; }
+  if (choix === T('table.quitter.sansEnregistrer')) { return 'quitter'; }
+  return 'annuler';                        // Échap ou fermeture de la modale sans choix
+}
+
 module.exports = {
   creerGarde,
   sousGarde: garde.sousGarde,
   differer: garde.differer,
-  interactionEnCours: garde.interactionEnCours
+  interactionEnCours: garde.interactionEnCours,
+  confirmerAbandon
 };

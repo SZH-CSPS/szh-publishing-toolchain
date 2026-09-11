@@ -34,6 +34,7 @@ const profils = require('./profil');
 const { construireHtml } = require('./webviews/util');
 const { refuserSiVerrouille } = require('./cycle-vie');
 const { fermerTousLesApercus } = require('./apercu');
+const { confirmerAbandon } = require('./interaction');
 const { langueRevue, serialiserMeta, ecrireAtomique } = require('./yaml');
 const {
   relatifImageValide, apercuMedia, BUDGET_APERCUS_MEDIA, nomImageAssaini, nomMediaLibre,
@@ -281,7 +282,8 @@ function creerPageDocumentation(fournisseur) {
       title: titre, subtitle: {}, keywords: {}, author: []
     }));
   } catch (e) {
-    vscode.window.showWarningMessage(T('err.ecriture', [e.message]));
+    // La page n'existe pas : ce n'est pas un avertissement, la fonction rend null juste après.
+    vscode.window.showErrorMessage(T('err.ecriture', [slug + '.md', e.message]));
     return null;
   }
   vscode.window.setStatusBarMessage(T('doc.creee'), 5000);
@@ -414,19 +416,19 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
   const ecrireTexteArticle = async (texte) => {
     let doc;
     try { doc = await vscode.workspace.openTextDocument(md); }
-    catch (e) { repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) }); return false; }
+    catch (e) { repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), e.message]) }); return false; }
     if (doc.getText() === texte) { return true; }   // déjà à jour : pas d'édition
     try {
       const edition = new vscode.WorkspaceEdit();
       const fin = doc.lineAt(doc.lineCount - 1).range.end;
       edition.replace(doc.uri, new vscode.Range(new vscode.Position(0, 0), fin), texte);
       if (!(await vscode.workspace.applyEdit(edition))) {
-        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [md]) });
+        repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), md]) });
         return false;
       }
       await doc.save();                              // déclenche la recompilation
     } catch (e) {
-      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [e.message]) });
+      repondrePanneau(panneau, { type: 'erreur', message: T('err.ecriture', [path.basename(md), e.message]) });
       return false;
     }
     return true;
@@ -580,12 +582,10 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
     if (msg.type === MSG.RETOUR_ARTICLE) {
       // Garde « non enregistré », comme dans le gestionnaire des médias.
       if (msg.modifie) {
-        const choix = await vscode.window.showWarningMessage(
-          pageDoc ? T('doc.quitter.page') : T('doc.quitter.question', [slug]),
-          { modal: true, detail: T('table.quitter.detail') },
-          T('form.enregistrer'), T('table.quitter.sansEnregistrer'));
-        if (choix === undefined) { return; }          // Annuler : on reste
-        if (choix === T('form.enregistrer')) {
+        const choix = await confirmerAbandon(
+          pageDoc ? T('doc.quitter.page') : T('doc.quitter.question', [slug]));
+        if (choix === 'annuler') { return; }          // Annuler : on reste
+        if (choix === 'enregistrer') {
           const n = await enregistrer(msg.ressources, msg.rubriques);
           if (n < 0) { return; }                      // échec d'écriture : on reste
           if (n > 0) { vscode.window.setStatusBarMessage(T('doc.statut.enregistres', [n]), 5000); }

@@ -325,7 +325,7 @@ async function basculerApercu(fournisseur, majBarreApercu) {
   try {
     await vscode.workspace.getConfiguration('szh').update('apercuMode', nouveau, vscode.ConfigurationTarget.Global);
   } catch (e) {
-    vscode.window.showErrorMessage(T('err.ecriture', [e.message]));
+    vscode.window.showErrorMessage(T('err.ecriture', ['settings.json', e.message]));
     return;
   }
   if (majBarreApercu) { majBarreApercu(); }
