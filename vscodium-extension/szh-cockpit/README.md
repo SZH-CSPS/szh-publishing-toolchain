@@ -48,6 +48,12 @@ lib/
   coedition.js          bail de deux minutes posé sur un fichier pendant qu'un formulaire le
                         modifie : deux postes sur le même numéro n'écrivent pas ensemble
                         (à ne pas confondre avec verrou.js, qui gèle le numéro entier)
+  constats.js           ce qu'un défaut ferme, où on va le corriger, et comment il s'écrit :
+                        la barrière (compilation, PDF/UA, export, geste) d'où la couleur se
+                        déduit, les huit destinations d'où le bouton se fabrique, et le
+                        gabarit « {défaut} : {objet} ». Données et fonctions pures, sans
+                        vscode ni fs ; un code de journal.js sans ligne ici fait tomber
+                        test/js/constats.test.js
   copies-conflit.js     détection des copies en conflit déposées par OneDrive/SharePoint, et
                         application bloc par bloc des divergences que l'éditeur calcule
                         (« Prendre cette version » / « Garder la mienne »)
