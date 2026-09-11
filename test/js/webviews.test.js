@@ -748,7 +748,10 @@ test('médias : corbeille et agrandissement sont dans l’en-tête du formulaire
 // est le même signe que celui de l'accordéon du groupe, et il pivote pareil.
 test('médias : l’aperçu et l’accordéon portent le même chevron, et il pivote', () => {
   const page = pageMedias(MEDIAS_TXT());
-  const chevron = (e) => e.querySelectorAll('svg');
+  // Compté dans la ligne du nom, et non dans la vignette entière : depuis que les
+  // pastilles de gravité portent leur pictogramme, une vignette contient légitimement
+  // d'autres icônes que son chevron. Ce contrôle parle du chevron, pas de leur nombre.
+  const chevron = (e) => e.querySelectorAll('.vignette-nom-ligne svg');
   assert.strictEqual(chevron(vignetteDe(page, 'fig-01.png')).length, 1,
     'la vignette ne dit pas qu’elle commande un pli');
   assert.ok(page.conteneur().querySelectorAll('.vignette').every((v) => chevron(v).length === 1),
@@ -792,6 +795,51 @@ test('médias : l’en-tête de l’accordéon redit la légende de la figure, e
 // une image visée. Elles étaient sûres tant qu'une carte valait un fichier ; avec des
 // cartes de figure elles visent maintenant trois nœuds différents — la vignette, le
 // formulaire, la carte — et se trompent de cible sans lever la moindre erreur.
+
+// La gravité se voit AUTOUR DE L'IMAGE, et pas seulement en pastille : c'est l'image qui
+// est fautive, et c'est elle qu'on cherche des yeux dans une liste de vingt. Le cadre de
+// l'image porte donc le ton — jamais la carte, qui garde sa bordure d'accent pour dire
+// « ouverte » — et la pastille gagne un pictogramme, pour que la couleur ne soit pas seule
+// à porter l'information.
+//
+// Le code couleur est celui de tout le cockpit : rouge ce qui refuse (une image muette fait
+// échouer la validation PDF/UA, donc l'export), ambre ce qui part tel quel si personne n'y
+// touche (basse résolution, doublon, jamais insérée).
+test('médias : le cadre de l’image porte la gravité, et la pastille son pictogramme', () => {
+  const page = pageMedias(MEDIAS_TXT());
+  const cadre = (r) => {
+    const v = vignetteDe(page, r);
+    return v.querySelectorAll('.vignette-image')[0];
+  };
+  const classes = (r) => String(cadre(r).className);
+
+  // fig-03 : ni texte alternatif ni légende. Rouge.
+  assert.match(classes('fig-03.png'), /vignette-image--danger/,
+    'l’image muette n’a pas de cadre rouge : ' + classes('fig-03.png'));
+  // fig-09 : 413 px sur le petit côté, doublon, jamais insérée. Ambre, pas rouge.
+  assert.match(classes('fig-09.png'), /vignette-image--attention/,
+    'la basse résolution n’a pas de cadre ambre : ' + classes('fig-09.png'));
+  assert.ok(!/danger/.test(classes('fig-09.png')),
+    'un défaut non bloquant se peint en rouge : la couleur cesse de vouloir dire quelque chose');
+  // fig-02 : légende, texte alternatif, résolution suffisante. Aucun cadre.
+  assert.ok(!/vignette-image--/.test(classes('fig-02.png')),
+    'une image complète porte un cadre de gravité : ' + classes('fig-02.png'));
+
+  // La carte, elle, ne prend pas le ton : sa bordure dit l'ouverture, pas la gravité.
+  const carte = vignetteDe(page, 'fig-03.png');
+  assert.ok(!/danger|attention/.test(String(carte.className)),
+    'le ton a débordé sur la carte : ' + carte.className);
+
+  // Le pictogramme : une pastille de ton en porte un, une pastille neutre n'en a pas
+  // besoin. Sans lui, deux personnes sur cent ne voient pas la différence.
+  const pastilles = page.conteneur().querySelectorAll('.szh-pastille');
+  const deTon = pastilles.filter((p) => /--danger|--attention/.test(String(p.className)));
+  assert.ok(deTon.length >= 3, 'trop peu de pastilles de ton dans le corpus : ' + deTon.length);
+  for (const p of deTon) {
+    assert.ok(p.querySelectorAll('svg').length > 0,
+      'pastille de ton sans pictogramme : ' + p.textContent);
+  }
+});
 
 // Ctrl+Alt+F insère une image puis ouvre le formulaire SUR elle. Replié par défaut, le
 // formulaire doit s'ouvrir : sinon le geste dépose le rédacteur devant une carte fermée,

@@ -34,6 +34,11 @@ body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size
 .vignette--ouverte { border-color: var(--accent);
   background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, .12)); }
 .vignette-image { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-height: 0; }
+/* Le ton se pose ici, jamais sur .vignette : sa bordure à elle dit « survolée »/« ouverte »,
+   et les deux ne doivent pas se marcher dessus. Le padding tient la bordure à l'écart de
+   l'image — collée, elle se lirait comme le cadre de la photo elle-même. */
+.vignette-image--danger { border: 2px solid var(--danger); padding: var(--e1); border-radius: var(--rayon-mini); }
+.vignette-image--attention { border: 2px solid var(--avert); padding: var(--e1); border-radius: var(--rayon-mini); }
 .vignette img { display: block; max-width: 100%; max-height: 7rem;
   object-fit: contain; }
 .vignette .absent { margin: 0; font-size: var(--t-mini); font-style: italic; color: var(--encre-2); }

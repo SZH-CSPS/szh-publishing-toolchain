@@ -211,31 +211,56 @@ function poserQualite(boite, qualite) {
   texte(boite, 'span', null, messageQualite(q));
 }
 
+// Le ton d'une image, calculé une seule fois pour que le cadre de la vignette et sa pastille
+// ne puissent jamais se contredire. Rouge est seul à bloquer — une image muette fait échouer
+// la validation PDF/UA, donc l'export — les deux autres défauts partent tels quels si
+// personne n'y touche.
+function tonImage(c) {
+  if (messageAlerteAlt(c) !== '') { return 'danger'; }
+  if ((c.qualite && (c.qualite.niveau === 'insuffisant' || c.qualite.niveau === 'juste'))
+    || c.doublons.length > 0 || c.occurrences === 0) {
+    return 'attention';
+  }
+  return '';
+}
+
 // Pastilles d'état : deux conteneurs identiques, la vignette repliée et l'en-tête du
-// formulaire déplié, pour que ce qui cloche se voie même sans rien ouvrir.
+// formulaire déplié, pour que ce qui cloche se voie même sans rien ouvrir. Chaque pastille de
+// ton porte son pictogramme avant son texte : la couleur seule ne parle pas à tout le monde.
 function remplirPastilles(zone, c) {
   zone.textContent = '';
   if (c.occurrences === 0) {
-    texte(zone, 'span', 'szh-pastille szh-pastille--attention', TXT.etatJamais || '');
+    var pJamais = texte(zone, 'span', 'szh-pastille szh-pastille--attention', TXT.etatJamais || '');
+    pJamais.insertBefore(SZH.icone('attention'), pJamais.firstChild);
   } else if (c.occurrences > 1) {
     texte(zone, 'span', 'szh-pastille szh-pastille--accent', remplir('etatInsertions', [c.occurrences]));
   }
   if (horsFigure(c)) { texte(zone, 'span', 'szh-pastille', TXT.etatHorsFigure || ''); }
   if (c.qualite && (c.qualite.niveau === 'insuffisant' || c.qualite.niveau === 'juste')) {
     var p = texte(zone, 'span', 'szh-pastille szh-pastille--attention', TXT.etatBasse || '');
+    p.insertBefore(SZH.icone('attention'), p.firstChild);
     p.title = messageQualite(c.qualite);
   }
   if (messageAlerteAlt(c) !== '') {
-    texte(zone, 'span', 'szh-pastille szh-pastille--danger', TXT.etatMuette || '');
+    var pMuette = texte(zone, 'span', 'szh-pastille szh-pastille--danger', TXT.etatMuette || '');
+    pMuette.insertBefore(SZH.icone('danger'), pMuette.firstChild);
   }
   if (c.doublons.length > 0) {
-    texte(zone, 'span', 'szh-pastille szh-pastille--attention', TXT.etatDoublon || '');
+    var pDoublon = texte(zone, 'span', 'szh-pastille szh-pastille--attention', TXT.etatDoublon || '');
+    pDoublon.insertBefore(SZH.icone('attention'), pDoublon.firstChild);
   }
 }
 function majPastilles(c) {
   if (c.ctl.pastilles) { remplirPastilles(c.ctl.pastilles, c); }
   if (c.ctl.pastillesVignette) { remplirPastilles(c.ctl.pastillesVignette, c); }
   majDoublon(c);
+  // Le ton se repose à chaque mise à jour, comme le verdict de qualité : sans cela, la
+  // classe du fichier remplacé resterait accrochée au cadre de son remplaçant.
+  if (c.ctl.vignetteImage) {
+    c.ctl.vignetteImage.className = 'vignette-image';
+    var ton = tonImage(c);
+    if (ton) { c.ctl.vignetteImage.classList.add('vignette-image--' + ton); }
+  }
 }
 
 // Deux noms pour un seul visuel : l'hôte l'a vu par l'empreinte du contenu. Le nom du
