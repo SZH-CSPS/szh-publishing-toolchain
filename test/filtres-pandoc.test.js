@@ -9,6 +9,16 @@
 //
 // Aucun de ces contrôles ne s'abstient : si pandoc manque, ils ÉCHOUENT. Un test qui se
 // neutralise tout seul ne protège rien.
+//
+// ⚠ ILS TOURNENT AVEC LE PANDOC DU PATH, ET CE N'EST PAS FORCÉMENT CELUI QUI COMPILE.
+// La CI installe le 3.5 épinglé (ci.yml, PANDOC_VERSION), comme image/Containerfile et comme
+// la WSL d'un poste de rédaction. Un poste de développement Windows, lui, peut avoir tout
+// autre chose dans son PATH — 3.9 sur celui d'origine. Les deux versions ne rendent pas le
+// même HTML pour les mêmes documents : sous 3.5 un Div « wrapper » de commonmark+sourcepos
+// sort en « <div data-pos> », sous 3.9 il est fondu en « <p data-pos> ». Un contrôle écrit
+// sur la FORME du HTML passe donc ici et tombe en CI. Écrire les assertions sur ce qui ne
+// dépend pas de la version : un compte comparé à un autre compte, une sortie comparée à
+// l'autre sortie — jamais une balise précise, jamais un nombre écrit en dur.
 'use strict';
 
 const test = require('node:test');
@@ -887,21 +897,38 @@ test('grille : sous sourcepos, une fois data-pos et data-wrapper retirés, sorti
 
 // ── Les positions de BLOC survivent : le garde-fou contre une correction de trop ───────
 // szh-sourcepos.lua ne défait QUE les Span « wrapper=1 » (les mots) : les Div « wrapper=1 »
-// (les blocs imbriqués) restent, à dessein — voir son commentaire de tête. C'est de ces Div
-// que pandoc tire le data-pos qu'il fond dans l'élément qu'ils contiennent à l'écriture :
-// le <p>, le <h2>, le <ul> ou le <div> qui en sort porte l'attribut dont media/apercu.js a
-// besoin pour le clic vers la source. Déballer aussi ces Div-là — la correction la plus
-// tentante, puisqu'ils portent le même attribut que les Span — ferait tomber les blocs
-// positionnés de 9 à 2 sur l'article d'essai (mesuré le 11.09.2026) : le clic ne marcherait
-// plus que sur les titres. Ce test est le seul qui s'en apercevrait.
+// (les blocs imbriqués) restent, à dessein — voir son commentaire de tête. C'est d'eux que
+// vient la position dont media/apercu.js a besoin pour le clic vers la source. Les déballer
+// aussi — la correction la plus tentante, puisqu'ils portent le même attribut que les Span —
+// ferait tomber les blocs positionnés de 9 à 2 sur l'article d'essai (mesuré le 11.09.2026).
+// Ce test est le seul qui s'en apercevrait.
+//
+// ⚠ Il compte, il ne cherche pas une balise précise : les deux pandoc du projet n'écrivent
+// PAS ces Div de la même façon. 3.5 (la version épinglée, image/Containerfile et ci.yml) en
+// fait un vrai <div data-pos> autour du bloc ; 3.9 fond l'attribut dans l'élément enfant et
+// rend <p data-pos>. Une première version de ce test exigeait « data-pos sur <p> et sur
+// <ul> » : elle passait sur le poste de développement en 3.9 et aurait échoué en CI, sur la
+// version qui compile vraiment. L'invariant qui vaut des deux côtés, et le seul qui compte
+// pour la webview, c'est qu'AUCUNE position de bloc ne se perde.
 const DOC_POSITIONS = '## Titre\n\nParagraphe.\n\n- Un\n- Deux\n\n::: {.encadre}\nTexte.\n:::\n';
 
-test('sourcepos : un data-pos de bloc reste sur <p>, <h2>, <ul> et <div>', () => {
-  const html = pandoc(DOC_POSITIONS, { de: 'commonmark_x+sourcepos', vers: 'html', filtres: ['szh-sourcepos.lua'] });
-  assert.match(html, /<h2[^>]*\sdata-pos="/, 'le titre a perdu sa position de bloc : ' + html);
-  assert.match(html, /<p[^>]*\sdata-pos="/, 'le paragraphe a perdu sa position de bloc : ' + html);
-  assert.match(html, /<ul[^>]*\sdata-pos="/, 'la liste a perdu sa position de bloc : ' + html);
-  assert.match(html, /<div[^>]*\sdata-pos="/, 'le div fencé a perdu sa position de bloc : ' + html);
+// Les éléments de bloc porteurs d'une position, au sens de la table BLOCS de
+// media/apercu.js : ceux que blocDe() accepte de renvoyer à l'hôte au clic.
+function blocsPositionnes(html) {
+  const motif = /<(?:p|h[1-6]|li|dt|dd|blockquote|pre|figure|figcaption|table|caption|ul|ol|dl|div|section|header|aside)\b[^>]*\sdata-pos="/g;
+  return (html.match(motif) || []).length;
+}
+
+test('sourcepos : szh-sourcepos.lua n’ôte aucune position de bloc', () => {
+  const sans = pandoc(DOC_POSITIONS, { de: 'commonmark_x+sourcepos', vers: 'html' });
+  const avec = pandoc(DOC_POSITIONS,
+    { de: 'commonmark_x+sourcepos', vers: 'html', filtres: ['szh-sourcepos.lua'] });
+  const attendu = blocsPositionnes(sans);
+  assert.ok(attendu > 0,
+    'le lecteur ne pose plus aucune position de bloc : ce test ne prouve plus rien — ' + sans);
+  assert.strictEqual(blocsPositionnes(avec), attendu,
+    'szh-sourcepos.lua a fait disparaître des positions de bloc : le clic vers la source en '
+    + 'perdra autant dans la webview — ' + avec);
 });
 
 // ── `markdown+sourcepos` n'existe pas : ce qui force tout ce qui précède ───────────────

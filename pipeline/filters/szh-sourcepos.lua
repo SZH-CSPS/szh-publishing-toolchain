@@ -34,6 +34,15 @@
 -- explicitement (table BLOCS) et retrouve le mot par recherche de texte dans la plage du
 -- bloc. Les perdre ne coûte rien.
 --
+-- ⚠ Les deux pandoc du projet n'écrivent PAS ces Div de la même façon, et c'est invisible
+-- tant qu'on ne compare pas. 3.5 — la version épinglée, image/Containerfile et ci.yml — en
+-- fait un vrai « <div data-pos> » autour du bloc ; 3.9 fond l'attribut dans l'élément enfant
+-- et rend « <p data-pos> ». Le nombre de blocs positionnés est le même (9 sur l'article
+-- d'essai des deux côtés), et c'est lui seul qui compte pour la webview : blocDe() accepte
+-- DIV comme P. Ne jamais écrire de contrôle qui cherche l'attribut sur une balise précise —
+-- il passerait sur un poste de développement en 3.9 et tomberait en CI, sur la version qui
+-- compile vraiment.
+--
 -- À poser en TÊTE de la chaîne d'aperçu, avant tout autre filtre. Hors de l'aperçu il
 -- n'est pas chargé : sous le lecteur `markdown` il n'y a ni Span d'enveloppe ni mot coupé.
 
