@@ -123,6 +123,12 @@ lib/
                         se renommer en place), fichiers du dossier qui suivent son nom, et
                         reprise d'un lot interrompu. Pur, sans vscode ni fs — l'hôte
                         exécute le plan
+  renumerotation-fs.js  l'exécution du plan ci-dessus sur le disque : les deux passes, les
+                        fichiers du dossier alignés sur son nom, les documents produits sous
+                        l'ancien nom retirés, et l'ordre du numéro écrit EN DERNIER — écrit
+                        avant, une interruption laisserait un ausgabe.yaml qui désigne des
+                        dossiers inexistants. Sans vscode : les refus d'interface restent à
+                        l'appelant
   reglages-flotte.js    les réglages de l'éditeur imposés à tous les postes : lecture du
                         gabarit commenté (vscodium-user/settings.json, recopié en défauts
                         d'extension dans package.json), empreinte des valeurs voulues, et
