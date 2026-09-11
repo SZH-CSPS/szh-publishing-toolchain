@@ -3200,29 +3200,18 @@ function htmlArticles(nonce) {
   });
 }
 
-// Le compteur d'images d'une carte : ce qui manque, en pastille.
+// Plus aucune pastille dans le pied d'une carte d'article — ni compteur d'images, ni
+// avancement des tâches.
 //
-// L'avancement des tâches vivait ici aussi, en pastille dans le pied ; il vit maintenant
-// dans l'entête « À faire » — c'est resumeTachesLigne() qui le porte, à
-// côté des cases à cocher qu'il résume. Séparer les deux évite qu'une carte sans tâche
-// affichée n'ait plus qu'une pastille solitaire à défendre dans son pied.
+// Le compteur d'images redisait en abrégé ce que l'encadré « À faire » écrit déjà en
+// toutes lettres : « ⚠ 1 image(s) » dans le pied, juste sous « 1 image(s) apportent une
+// information et n'ont pas de texte alternatif ». Le même reproche montré deux fois se
+// compte deux fois à la lecture, et l'abrégé ne disait pas ce qui manquait. Ce qui manque
+// se lit donc dans les constats (constatsCarte), et l'avancement des tâches dans
+// l'entête « À faire » (resumeTachesLigne), à côté des cases qu'il résume.
 //
-// Sorti de chargeArticles() parce que cocher une case ne renvoie que cette pastille-ci
-// (et le résumé des tâches, voir plus bas), jamais la liste entière : la reconstruire
-// ferait perdre au clavier le focus de la case qu'il vient d'utiliser.
-function pastillesCarte(images) {
-  const pastilles = [];
-  // Un compteur à zéro est du bruit : un article sans image n'a rien à dire là-dessus.
-  if (images && images.total > 0) {
-    const manque = images.sansAlt + images.sansLegende;
-    pastilles.push({
-      texte: T('art.images.compteur', [images.total]),
-      ton: manque > 0 ? 'attention' : '',
-      icone: manque > 0 ? 'attention' : 'camera'
-    });
-  }
-  return pastilles;
-}
+// Rien n'est perdu au passage : le nombre total d'images n'était un reproche que par
+// accident, quand il portait le ton « attention » d'un manque décrit en dessous.
 
 // Le résumé de l'avancement des tâches d'une carte, pour l'entête « À faire » :
 // -> { texte, toutes } ou null quand la revue ne définit aucune tâche — l'entête ne
@@ -3536,8 +3525,10 @@ function chargeArticles(fournisseur) {
       // vient de dire. Il reste l'identifiant technique de l'article — la carte le
       // porte encore en infobulle du titre, côté webview (media/articles.js), à partir de
       // `cle` ci-dessus, qui vaut toujours ce même slug.
-      pastilles: pastillesCarte(images),
-      ouvrir: true,
+      // Pas de bouton « Ouvrir » posé par le composant : il le mettrait en tête du pied,
+      // alors qu'il ferme la série des gestes de la carte. Il est ajouté en dernier dans
+      // `actions` ci-dessous, avec la flèche de l'entête.
+      ouvrir: false,
       // La langue de l'article, ou celle du numéro quand la fiche n'en déclare pas : c'est
       // exactement le repli que la compilation applique, donc la langue dans laquelle
       // l'article paraîtra.
@@ -3550,12 +3541,14 @@ function chargeArticles(fournisseur) {
         coche: sansDoi.has(slug),
         verrouille: !voulus.has(slug) && sansDoi.has(slug)
       },
-      // L'avancement de ses tâches, pour l'entête « À faire » de la carte — plus
-      // en pastille du pied, voir pastillesCarte() ci-dessus.
+      // L'avancement de ses tâches, pour l'entête « À faire » de la carte — jamais en
+      // pastille du pied, qui n'en porte plus aucune (voir le bloc au-dessus de
+      // resumeTachesLigne).
       tachesResume: resumeTachesLigne(avance),
-      // Ouvrir, Monter, Descendre, puis le reste : le bouton « Ouvrir » n'est pas ici,
-      // il vient de `ouvrir: true` ci-dessus et le pied le pose déjà en premier ; Monter et
-      // Descendre suivent donc directement, avant les deux formulaires et l'envoi.
+      // L'ordre du pied suit celui du travail : on déplace l'article dans le numéro, on
+      // remplit ses formulaires, on l'envoie à son auteur, et on l'ouvre — « Ouvrir »
+      // ferme donc la série au lieu de l'ouvrir. C'est le geste qu'on fait après avoir lu
+      // la carte, pas avant.
       actions: [
         // Aux bords de son bloc, et non de la liste : un article sans DOI ne remonte pas
         // au-dessus de ceux qui en portent un, sinon la numérotation cesserait de suivre
@@ -3570,7 +3563,10 @@ function chargeArticles(fournisseur) {
           tip: T('art.meta.editer.tip') },
         { id: 'medias', libelle: T('art.medias.editer'), icone: 'camera',
           tip: T('art.medias.editer.tip') },
-        { id: 'envoyer', libelle: T('art.envoyer'), icone: 'traduction', tip: T('art.envoyer.tip') }
+        { id: 'envoyer', libelle: T('art.envoyer'), icone: 'traduction', tip: T('art.envoyer.tip') },
+        // Le même geste que la flèche de l'entête, même libellé et même icône : sur une
+        // carte dépliée, le pied est à un écran de distance du titre.
+        { id: 'ouvrir', libelle: T('art.ouvrir'), icone: 'fleche', tip: T('art.ouvrir.tip') }
       ],
       taches: vue.cacherTaches ? [] : taches.map((t) => ({
         id: t.id, libelle: libelleTache(t, interface_), faite: faites.indexOf(t.id) !== -1
@@ -3582,7 +3578,7 @@ function chargeArticles(fournisseur) {
     boutons: [
       { id: 'importer', libelle: T('art.importer'), icone: 'fleche', principal: true },
       { id: 'taches', libelle: T('art.taches.reglage'), icone: 'ok', tip: T('art.taches.reglage.tip') },
-      // Les deux interrupteurs d'affichage. Le libellé dit le geste à venir, jamais l'état
+      // Les trois interrupteurs d'affichage. Le libellé dit le geste à venir, jamais l'état
       // courant : un bouton « Cacher les tâches » sur une liste déjà sans tâches se lirait
       // comme une case cochée, et personne ne saurait plus comment les faire revenir.
       { id: 'cacher-taches', icone: 'oeil',
@@ -3590,8 +3586,16 @@ function chargeArticles(fournisseur) {
         tip: T(vue.cacherTaches ? 'art.taches.afficher.tip' : 'art.taches.cacher.tip') },
       { id: 'cacher-traductions', icone: 'oeil',
         libelle: T(vue.cacherTraductions ? 'art.trad.afficher' : 'art.trad.cacher'),
-        tip: T(vue.cacherTraductions ? 'art.trad.afficher.tip' : 'art.trad.cacher.tip') }
+        tip: T(vue.cacherTraductions ? 'art.trad.afficher.tip' : 'art.trad.cacher.tip') },
+      { id: 'cacher-meta', icone: 'oeil',
+        libelle: T(vue.cacherMeta ? 'art.meta.voir' : 'art.meta.cacher'),
+        tip: T(vue.cacherMeta ? 'art.meta.voir.tip' : 'art.meta.cacher.tip') }
     ],
+    // L'aperçu part toujours, même replié : contrairement aux tâches, que l'interrupteur
+    // vide pour de bon, celui-ci ne fait que décider l'état de départ des cartes. Le
+    // chevron de chaque carte reste donc capable d'en déplier une seule, sans aller-retour
+    // avec l'hôte.
+    metaRepliees: vue.cacherMeta,
     lignes: lignes,
     taches: tachesConfig(configPoste),
     revue: revueNumero(racine)
@@ -3608,10 +3612,14 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
   const racine = fournisseur.racine;
   if (msg.type === MSG.COMMANDE) {
     if (msg.id === 'importer') { await vscode.commands.executeCommand('szh.convertirEnAttente'); }
-    // Les deux interrupteurs d'affichage. Réglage de poste et non de numéro — ce qu'on
+    // Les trois interrupteurs d'affichage. Réglage de poste et non de numéro — ce qu'on
     // choisit de lire ne dépend pas du numéro ouvert — donc le verrou du numéro ne s'y
     // applique pas, pas plus qu'au réglage des tâches juste en dessous.
-    const bascules = { 'cacher-taches': 'cacherTaches', 'cacher-traductions': 'cacherTraductions' };
+    const bascules = {
+      'cacher-taches': 'cacherTaches',
+      'cacher-traductions': 'cacherTraductions',
+      'cacher-meta': 'cacherMeta'
+    };
     const cle = bascules[String(msg.id || '')];
     if (cle) {
       const avant = lireConfigPoste();
@@ -3638,10 +3646,11 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     const avance = resumeTaches(taches, faites);
     return { dit: T('art.taches.avancement', [avance.faites, avance.total]),
              avancement: { cle: slug,
-                           pastilles: pastillesCarte(resumeImagesArticle(fournisseur, slug)),
                            // Le compteur de l'entête « À faire » suit la case cochée sans
                            // reconstruire la carte : reposer la liste entière ferait perdre
-                           // au clavier le focus de la case qu'il vient d'utiliser.
+                           // au clavier le focus de la case qu'il vient d'utiliser. Plus de
+                           // pastille à renvoyer avec lui, donc plus de relecture des images
+                           // de l'article à chaque case cochée.
                            tachesResume: resumeTachesLigne(avance) } };
   }
   if (msg.type === MSG.TACHES_ENREGISTRER) {

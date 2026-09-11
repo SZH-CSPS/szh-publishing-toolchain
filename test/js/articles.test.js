@@ -531,12 +531,12 @@ function derniereCharge(p) {
   return p.messages.filter((m) => m.type === 'valeurs').pop();
 }
 
-// Les deux interrupteurs remis à « tout montrer », quoi qu'il soit arrivé avant : ce sont
+// Les trois interrupteurs remis à « tout montrer », quoi qu'il soit arrivé avant : ce sont
 // des réglages de poste, ils survivent au contrôle qui les allume, et un contrôle qui
 // échoue en laissant l'un allumé ferait tomber les suivants pour la mauvaise raison.
 async function eteindreVue(p) {
   const etat = (derniereCharge(p).boutons || []);
-  for (const id of ['cacher-taches', 'cacher-traductions']) {
+  for (const id of ['cacher-taches', 'cacher-traductions', 'cacher-meta']) {
     const bouton = etat.find((b) => b.id === id);
     if (bouton && /Afficher/.test(bouton.libelle)) {
       await p._recepteur({ type: 'commande', id: id });
@@ -544,22 +544,48 @@ async function eteindreVue(p) {
   }
 }
 
-test('vue Articles : les deux interrupteurs d’affichage sont offerts, et disent le geste', async () => {
+test('vue Articles : les trois interrupteurs d’affichage sont offerts, et disent le geste', async () => {
   await HOTE.executer('szh.vueArticles');
   const p = HOTE.panneauDeType('szhVueArticles');
   await p._recepteur({ type: 'pret' });
   const charge = derniereCharge(p);
   const boutons = {};
   for (const b of charge.boutons) { boutons[b.id] = b; }
-  for (const id of ['cacher-taches', 'cacher-traductions']) {
+  for (const id of ['cacher-taches', 'cacher-traductions', 'cacher-meta']) {
     assert.ok(boutons[id], 'bouton absent de la barre : ' + id);
     assert.ok(boutons[id].libelle && boutons[id].tip,
       'bouton sans libellé ni infobulle : ' + id);
   }
   // Le libellé annonce le geste à venir, jamais l'état courant : rien n'est caché pour
-  // l'instant, les deux boutons proposent donc de cacher.
+  // l'instant, les trois boutons proposent donc de cacher.
   assert.match(boutons['cacher-taches'].libelle, /Cacher/);
   assert.match(boutons['cacher-traductions'].libelle, /Cacher/);
+  assert.match(boutons['cacher-meta'].libelle, /Cacher/);
+});
+
+test('vue Articles : « Cacher les métadonnées » vaut pour toutes les cartes', async () => {
+  await HOTE.executer('szh.vueArticles');
+  const p = HOTE.panneauDeType('szhVueArticles');
+  await p._recepteur({ type: 'pret' });
+  await eteindreVue(p);
+  assert.strictEqual(derniereCharge(p).metaRepliees, false);
+
+  await p._recepteur({ type: 'commande', id: 'cacher-meta' });
+  const apres = derniereCharge(p);
+  // La page reçoit l'état de départ de toutes ses cartes, et le bouton propose le retour.
+  assert.strictEqual(apres.metaRepliees, true);
+  assert.match(apres.boutons.find((b) => b.id === 'cacher-meta').libelle, /Afficher/);
+  // L'aperçu part quand même : replié n'est pas retiré, une carte se déplie encore seule
+  // par son chevron, sans aller-retour avec l'hôte.
+  assert.ok(apres.lignes.every((l) => l.apercu && (l.apercu.lignes || []).length > 0),
+    'l’aperçu des métadonnées n’est plus envoyé : une carte ne pourrait plus se déplier seule');
+
+  const cfg = JSON.parse(fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8'));
+  assert.strictEqual(cfg.vueArticles.cacherMeta, true);
+  assert.strictEqual(cfg.vueArticles.cacherTaches, false);
+
+  await eteindreVue(p);
+  assert.strictEqual(derniereCharge(p).metaRepliees, false);
 });
 
 test('vue Articles : « Cacher les tâches » raccourcit la carte sans rien décocher', async () => {
@@ -665,13 +691,15 @@ test('vue Articles : sans langue déclarée, c’est celle du numéro qui reste'
   }
 });
 
-test('vue Articles : les deux interrupteurs sont indépendants et se souviennent', async () => {
+test('vue Articles : les trois interrupteurs sont indépendants et se souviennent', async () => {
   await HOTE.executer('szh.vueArticles');
   const p = HOTE.panneauDeType('szhVueArticles');
   await p._recepteur({ type: 'commande', id: 'cacher-taches' });
   await p._recepteur({ type: 'commande', id: 'cacher-traductions' });
+  await p._recepteur({ type: 'commande', id: 'cacher-meta' });
   const cfg = JSON.parse(fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8'));
-  assert.deepStrictEqual(cfg.vueArticles, { cacherTaches: true, cacherTraductions: true });
+  assert.deepStrictEqual(cfg.vueArticles,
+    { cacherTaches: true, cacherTraductions: true, cacherMeta: true });
 
   // Le choix ne vit pas dans le panneau : la vue rouverte le relit.
   await HOTE.executer('szh.vueArticles');
@@ -688,5 +716,5 @@ test('vue Articles : les deux interrupteurs sont indépendants et se souviennent
   await eteindreVue(p);
   assert.deepStrictEqual(
     JSON.parse(fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8')).vueArticles,
-    { cacherTaches: false, cacherTraductions: false });
+    { cacherTaches: false, cacherTraductions: false, cacherMeta: false });
 });

@@ -567,8 +567,11 @@ test('page : l’avertissement « aperçu seul » a quitté le gabarit et les li
 test('carte : l’avancement des tâches vit dans l’entête « À faire », plus en pastille (A7.5)', async () => {
   const p = await vue();
   const charge = derniereCharge(p);
-  assert.ok(!charge.lignes.some((l) => l.pastilles.some((x) => /tâche/.test(x.texte))),
-    'l’hôte envoie encore une pastille d’avancement des tâches, en double avec l’entête');
+  // Le pied d'une carte d'article ne porte plus aucune pastille : ni l'avancement des
+  // tâches, qui vit dans l'entête « À faire », ni le compteur d'images, qui doublait le
+  // constat écrit juste au-dessus.
+  assert.ok(charge.lignes.every((l) => (l.pastilles || []).length === 0),
+    'l’hôte envoie encore une pastille dans le pied, en double avec l’encadré « À faire »');
   const page = pageArticlesDe(charge);
   assert.strictEqual(page.compter('.szh-taches-entete'), charge.lignes.length,
     'l’entête « À faire » manque à une carte');
@@ -576,15 +579,26 @@ test('carte : l’avancement des tâches vit dans l’entête « À faire », pl
     'l’avancement de départ (0/4 tâches) ne se lit plus nulle part');
 });
 
-test('carte : les boutons du pied suivent l’ordre Ouvrir, Monter, Descendre, puis le reste (A7)', async () => {
+test('carte : le pied suit l’ordre du travail, et « Ouvrir l’article » le ferme', async () => {
   const p = await vue();
   const charge = derniereCharge(p);
   const idx = charge.lignes.findIndex((l) => l.cle === '01-gremion');   // au milieu : rien n’est désactivé
+  const ligne = charge.lignes[idx];
+  // Pas posé par le composant, qui le mettrait en tête du pied : il vient en dernier
+  // dans `actions`, avec la flèche et l'infobulle de l'entête.
+  assert.strictEqual(ligne.ouvrir, false);
+  const dernier = ligne.actions[ligne.actions.length - 1];
+  assert.strictEqual(dernier.id, 'ouvrir');
+  assert.strictEqual(dernier.icone, 'fleche', 'la flèche de l’entête manque au pied');
+  assert.ok(dernier.libelle && dernier.tip);
+
   const page = pageArticlesDe(charge);
   const carte = page.conteneur().querySelectorAll('.szh-carte')[idx];
   const libelles = carte.querySelectorAll('.ligne-pied button').map((b) => b.textContent.trim());
-  assert.deepStrictEqual(libelles.slice(0, 3), ['Ouvrir l’article', 'Monter', 'Descendre'],
-    'Monter et Descendre ne suivent plus directement Ouvrir l’article : ' + libelles.join(' | '));
+  assert.deepStrictEqual(libelles,
+    ['Monter', 'Descendre', 'Éditer les métadonnées', 'Éditer les médias',
+      'Envoyer à l’auteur', 'Ouvrir l’article'],
+    'l’ordre du pied a changé : ' + libelles.join(' | '));
 });
 
 test('carte : les deux boutons ouvrent les bons formulaires, sur le bon article', async () => {
@@ -642,23 +656,24 @@ test('fiches : l’hôte envoie le DOI calculé, et la case manuelle passe par s
     'la question modale a écrit dans la fiche');
 });
 
-test('carte : le compteur d’images exclut les portraits, et ne reproche que ce qui manque', async () => {
+test('carte : les images ne reprochent que ce qui manque, en toutes lettres et une seule fois', async () => {
   const p = await vue();
   const ligne = derniereCharge(p).lignes.find((l) => l.cle === '01-gremion');
-  // Trois images dans media/, et trois fichiers de portrait à côté : le compteur dit trois.
-  const compteur = ligne.pastilles.find((x) => /image/.test(x.texte));
-  assert.ok(compteur, 'aucun compteur d’images sur la carte');
-  assert.match(compteur.texte, /^3 image/,
-    'les photos des autrices et auteurs sont comptées comme des figures : ' + compteur.texte);
   const dits = ligne.constats.map((c) => c.texte).join(' | ');
-  // Une seule image informative sans texte alternatif : la décorative n'est pas comptée.
+  // Trois images dans media/, et trois fichiers de portrait à côté : les photos des
+  // autrices et auteurs ne sont pas des figures, elles ne se reprochent donc pas. Une
+  // seule image informative sans texte alternatif — la décorative n'est pas comptée —
+  // et une seule légende vide ; si les portraits entraient dans le compte, ces deux
+  // constats en annonceraient quatre.
   assert.match(dits, /1 image\(s\) apportent une information et n’ont pas de texte alternatif/);
-  // Une seule légende vide.
   assert.match(dits, /1 image\(s\) sans légende/);
+  // Plus de pastille dans le pied : le compteur « 1 image(s) » y redisait, en abrégé et
+  // sans dire quoi, le reproche que l'encadré « À faire » écrit juste au-dessus.
+  assert.ok(!(ligne.pastilles || []).some((x) => /image/.test(x.texte || '')),
+    'le compteur d’images est revenu en pastille : il double le constat');
   // Un article sans image ne dit rien du tout de ses images.
   const nu = derniereCharge(p).lignes.find((l) => l.cle === '02-chanier');
-  assert.ok(!nu.pastilles.some((x) => /image/.test(x.texte)),
-    'un compteur à zéro s’affiche : c’est du bruit');
+  assert.ok(!(nu.pastilles || []).some((x) => /image/.test(x.texte || '')));
   assert.ok(!nu.constats.some((c) => /image/.test(c.texte)));
 });
 

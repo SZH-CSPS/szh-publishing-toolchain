@@ -313,9 +313,9 @@ function configAvecTaches(cfg, revue, liste) {
 
 // ---- Ce que la vue « Articles » montre ou cache ----------------------------------
 //
-// Deux interrupteurs, et rien d'autre : la liste des tâches sur chaque carte, et les champs
-// traduits de l'aperçu. Ils raccourcissent la carte sans rien perdre — ce qui est caché est
-// caché à la lecture, jamais retiré du numéro.
+// Trois interrupteurs, et rien d'autre : la liste des tâches sur chaque carte, les champs
+// traduits de l'aperçu, et l'aperçu des métadonnées lui-même. Ils raccourcissent la carte
+// sans rien perdre — ce qui est caché est caché à la lecture, jamais retiré du numéro.
 //
 // Ils vivent dans config.json et non dans les réglages de l'éditeur, pour deux raisons : la
 // mise à jour du poste réécrit ces derniers en entier (même motif que la langue, voir
@@ -323,18 +323,19 @@ function configAvecTaches(cfg, revue, liste) {
 // liste des réglages de VSCodium. Un réglage de confort, pas un réglage de publication.
 const CLE_VUE_ARTICLES = 'vueArticles';
 
-// -> { cacherTaches, cacherTraductions }, toujours des booléens. Une configuration absente,
-// illisible ou à moitié écrite rend « tout est montré » : c'est l'état d'un poste neuf, et
-// c'est celui qui ne cache rien à personne.
+// -> { cacherTaches, cacherTraductions, cacherMeta }, toujours des booléens. Une
+// configuration absente, illisible ou à moitié écrite rend « tout est montré » : c'est
+// l'état d'un poste neuf, et c'est celui qui ne cache rien à personne.
 function vueArticlesConfig(cfg) {
   const brut = (cfg && typeof cfg === 'object' && cfg[CLE_VUE_ARTICLES]) || {};
   return {
     cacherTaches: brut.cacherTaches === true,
-    cacherTraductions: brut.cacherTraductions === true
+    cacherTraductions: brut.cacherTraductions === true,
+    cacherMeta: brut.cacherMeta === true
   };
 }
 
-// Bascule un des deux interrupteurs sans toucher au reste de config.json. Pure, pour être
+// Bascule un des trois interrupteurs sans toucher au reste de config.json. Pure, pour être
 // éprouvable sans écrire dans C:\ProgramData ; c'est l'appelant qui appelle
 // ecrireConfigPoste. Une clé inconnue ne change rien plutôt que d'en inventer une.
 function configAvecVueArticles(cfg, cle, valeur) {

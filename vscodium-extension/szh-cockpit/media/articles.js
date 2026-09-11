@@ -20,7 +20,8 @@
 //   sansdoi { cle, coche } ; commande { id } ; taches-enregistrer { revue, taches } ;
 //   enregistrer { auto, modifies } ; couverture-deposer { nomFichier, donneesBase64 }
 // Depuis l'hôte :
-//   valeurs { titre, boutons, lignes, accent, valeurs, couverture, taches, revue } ;
+//   valeurs { titre, boutons, lignes, accent, valeurs, couverture, taches, revue,
+//             metaRepliees } ;
 //   etat { message } ; avancement { cle, pastilles } ; enregistre ; erreur { message } ;
 //   couverture { nom, description, apercu } ; taches { taches }
 // où une ligne vaut { cle, titre, meta, notif, pastilles, ouvrir, actions, taches,
@@ -53,7 +54,13 @@
     conteneur: cartes,
     textes: function () { return TXT; },
     onOuvrir: function (cle) { api.postMessage({ type: SZH.MSG.OUVRIR, cle: cle }); },
-    onAction: function (cle, id) { api.postMessage({ type: SZH.MSG.ACTION, cle: cle, id: id }); },
+    // « Ouvrir l'article » est en fin de pied et arrive donc par `actions`, comme les
+    // autres boutons ; c'est pourtant le même geste que la flèche de l'entête, et il part
+    // par le même message. L'hôte n'a qu'un chemin pour ouvrir un article, pas deux.
+    onAction: function (cle, id) {
+      if (id === 'ouvrir') { api.postMessage({ type: SZH.MSG.OUVRIR, cle: cle }); return; }
+      api.postMessage({ type: SZH.MSG.ACTION, cle: cle, id: id });
+    },
     onTache: function (cle, id, cochee) {
       api.postMessage({ type: SZH.MSG.TACHE, cle: cle, id: id, cochee: cochee });
     }
@@ -116,7 +123,17 @@
   // mémoire il redéplierait ce qu'on vient de replier. La page n'a pas
   // `retainContextWhenHidden` : passer à un autre onglet et revenir remet tout à plat, et
   // c'est assumé — l'état déplié est celui qui montre tout, jamais celui qui cache.
+  //
+  // Ce ne sont que des exceptions : l'état de départ de toutes les cartes vient de l'hôte
+  // (metaRepliees, l'interrupteur « Cacher les métadonnées » de la barre), et un slug
+  // absent d'ici le suit. Actionner l'interrupteur efface les exceptions — c'est un geste
+  // qui porte sur toutes les cartes, il ne laisse pas trois cartes en travers.
   var replies = Object.create(null);
+  var metaRepliees = false;
+
+  function estReplie(cle) {
+    return (cle in replies) ? replies[cle] === true : metaRepliees;
+  }
 
   // Le bouton « Afficher / cacher les métadonnées » d'une carte. Ce qu'il replie est le
   // seul bloc d'aperçu : le titre, les tâches et les constats restent, puisque c'est sur
@@ -131,13 +148,13 @@
     b.appendChild(texte);
     b.title = TXT.metaBasculeTip || '';
     function appliquer() {
-      var replie = !!replies[cle];
+      var replie = estReplie(cle);
       bloc.hidden = replie;
       b.setAttribute('aria-expanded', replie ? 'false' : 'true');
       texte.textContent = replie ? (TXT.metaVoir || '') : (TXT.metaCacher || '');
     }
     b.addEventListener('click', function () {
-      replies[cle] = !replies[cle];
+      replies[cle] = !estReplie(cle);
       appliquer();
     });
     appliquer();
@@ -385,6 +402,11 @@
       titre.textContent = msg.titre || '';
       definitions = msg.taches || {};
       revueCourante = String(msg.revue || '');
+      // Avant decorer(), qui pose les blocs et lit cet état. L'interrupteur vient de
+      // bouger : les cartes tenues à part retrouvent le rang, sans quoi celle qu'on avait
+      // dépliée resterait seule ouverte sur une liste qu'on vient de tout replier.
+      var repliDemande = msg.metaRepliees === true;
+      if (repliDemande !== metaRepliees) { metaRepliees = repliDemande; replies = Object.create(null); }
       ctlEtat = SZH.barreBoutons(barre, msg.boutons || [], function (id) {
         if (id === 'taches') { modaleTaches.ouvrir(); return; }
         api.postMessage({ type: SZH.MSG.COMMANDE, id: id });

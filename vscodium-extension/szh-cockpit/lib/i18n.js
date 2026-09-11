@@ -450,6 +450,10 @@ const TEXTES_COCKPIT = {
     'art.meta.voir': 'Afficher les métadonnées',
     'art.meta.cacher': 'Cacher les métadonnées',
     'art.meta.basculer.tip': 'Replier l’aperçu des métadonnées de cette carte : ne restent que son titre, ses tâches et ce qu’elle signale.',
+    // Les deux mêmes libellés servent à l'interrupteur de la barre, qui vaut pour toutes
+    // les cartes ; seule l'infobulle change, pour dire la portée.
+    'art.meta.cacher.tip': 'Replier l’aperçu des métadonnées sur toutes les cartes : ne restent que leur titre, leurs tâches et ce qu’elles signalent. Une carte se déplie toujours seule, par son chevron.',
+    'art.meta.voir.tip': 'Remontrer l’aperçu des métadonnées sur toutes les cartes.',
     'art.meta.editer': 'Éditer les métadonnées',
     'art.meta.editer.tip': 'Ouvrir le formulaire des métadonnées, filtré sur cet article : c’est là que ces valeurs se modifient.',
     'art.medias.editer': 'Éditer les médias',
@@ -478,7 +482,6 @@ const TEXTES_COCKPIT = {
     // pas : elles ne sont pas des figures et ne portent ni légende ni texte alternatif.
     'art.constats.attention': 'Attention',
     'art.constats.danger': 'Erreur / bloquant',
-    'art.images.compteur': '{0} image(s)',
     'art.images.sansalt': '{0} image(s) apportent une information et n’ont pas de texte alternatif : un lecteur d’écran ne dira rien de ce qu’elles montrent.',
     'art.images.sanslegende': '{0} image(s) sans légende.',
     // L'état des références de cet article, relevé à la dernière compilation.
@@ -1675,6 +1678,8 @@ const TEXTES_COCKPIT = {
     'art.meta.voir': 'Metadaten anzeigen',
     'art.meta.cacher': 'Metadaten ausblenden',
     'art.meta.basculer.tip': 'Die Metadaten-Übersicht dieser Karte einklappen: es bleiben nur Titel, Aufgaben und Hinweise.',
+    'art.meta.cacher.tip': 'Die Metadaten-Übersicht auf allen Karten einklappen: es bleiben nur Titel, Aufgaben und Hinweise. Eine einzelne Karte lässt sich weiterhin über ihr Chevron ausklappen.',
+    'art.meta.voir.tip': 'Die Metadaten-Übersicht wieder auf allen Karten zeigen.',
     'art.meta.editer': 'Metadaten bearbeiten',
     'art.meta.editer.tip': 'Das Metadaten-Formular öffnen, gefiltert auf diesen Artikel: dort werden diese Werte geändert.',
     'art.medias.editer': 'Medien bearbeiten',
@@ -1697,7 +1702,6 @@ const TEXTES_COCKPIT = {
     'art.ordre.archive.bouton': 'Aus dem Archiv holen',
     'art.constats.attention': 'Achtung',
     'art.constats.danger': 'Fehler / blockierend',
-    'art.images.compteur': '{0} Bild(er)',
     'art.images.sansalt': '{0} Bild(er) vermitteln eine Information und haben keinen Alternativtext: eine Screenreader-Nutzerin erfährt nichts über ihren Inhalt.',
     'art.images.sanslegende': '{0} Bild(er) ohne Legende.',
     'art.cit.sansref': '{0} Literaturverweis(e) führen zu keiner Referenz.',
