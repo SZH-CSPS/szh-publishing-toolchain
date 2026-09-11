@@ -705,7 +705,8 @@ var SZH = (function () {
   //   { cle, groupe, titre, meta, notif: { ton, texte },
   //     pastilles: [{ texte, ton, icone }], ouvrir,
   //     actions: [{ id, libelle, icone, tip, desactive, danger }],
-  //     taches: [{ id, libelle, faite }] }
+  //     taches: [{ id, libelle, faite }],
+  //     constats: [{ ton, texte }] }
   //
   // opts.conteneur   élément qui reçoit les cartes
   // opts.textes()    -> { ouvrir, listeVide }, relu à chaque rendu : la langue peut arriver après
@@ -727,17 +728,31 @@ var SZH = (function () {
       compteur.classList.toggle('szh-taches-compteur--ok', !!(resume && resume.toutes));
     }
 
-    // Les tâches de l'article, cochables sur la carte : l'avancement doit se lire et se
-    // changer sans ouvrir quoi que ce soit. Une case par tâche, l'intitulé dans son label,
-    // donc rien à apparier par identifiant. Un entête les distingue franchement du reste de
-    // la carte et porte le compteur d'avancement, qui vivait auparavant en pastille du pied.
-    function poserTaches(carte, ligne) {
+    // Ce qui reste à faire sur cette carte, dans un seul encadré : les tâches cochables,
+    // puis ce que la carte signale — d'abord ce qui mérite un regard, ensuite ce qui
+    // arrêtera la publication. Trois groupes, trois titres, un seul cadre : l'avancement et
+    // les avertissements se lisent d'un coup, et non l'un dans le pied et l'autre dans la
+    // barre de titre.
+    //
+    // L'encadré naît dès qu'un des trois groupes a quelque chose à montrer ; une carte sans
+    // tâche ni constat n'en a pas du tout.
+    //
+    // -> { bloc, compteur } ; `compteur` est null quand la revue ne définit aucune tâche,
+    // l'entête « À faire » n'étant alors pas posé.
+    function poserAFaire(carte, ligne) {
+      var taches = ligne.taches || [];
+      var constats = ligne.constats || [];
+      if (taches.length === 0 && constats.length === 0) { return null; }
+      var mots = lireTextes() || {};
       var bloc = poser(carte, 'div', 'szh-taches');
-      var entete = poser(bloc, 'div', 'szh-taches-entete');
-      poser(entete, 'span', 'szh-taches-titre', (lireTextes() || {}).tachesEntete || '');
-      var compteur = poser(entete, 'span', 'szh-taches-compteur');
-      poserCompteurTaches(compteur, ligne.tachesResume);
-      for (var i = 0; i < ligne.taches.length; i++) {
+      var compteur = null;
+      if (taches.length > 0) {
+        var entete = poser(bloc, 'div', 'szh-taches-entete');
+        poser(entete, 'span', 'szh-taches-titre', mots.tachesEntete || '');
+        compteur = poser(entete, 'span', 'szh-taches-compteur');
+        poserCompteurTaches(compteur, ligne.tachesResume);
+      }
+      for (var i = 0; i < taches.length; i++) {
         (function (tache) {
           var l = poser(bloc, 'label', 'szh-tache');
           var case_ = document.createElement('input');
@@ -749,9 +764,29 @@ var SZH = (function () {
           });
           l.appendChild(case_);
           poser(l, 'span', null, tache.libelle || '');
-        }(ligne.taches[i]));
+        }(taches[i]));
       }
+      poserGroupeConstats(bloc, constats, 'attention', mots.constatsAttention);
+      poserGroupeConstats(bloc, constats, 'danger', mots.constatsDanger);
       return { bloc: bloc, compteur: compteur };
+    }
+
+    // Un groupe de constats d'un même ton, titre compris — rien du tout quand aucun
+    // constat ne porte ce ton, plutôt qu'un titre suivi du vide.
+    function poserGroupeConstats(bloc, constats, ton, titre) {
+      var miens = [];
+      for (var i = 0; i < constats.length; i++) {
+        // Les tons inconnus retombent sur « attention » : un constat ne doit jamais
+        // disparaître parce que son ton a été mal orthographié côté hôte.
+        var mien = constats[i].ton === 'danger' ? 'danger' : 'attention';
+        if (mien === ton) { miens.push(constats[i]); }
+      }
+      if (miens.length === 0) { return; }
+      var groupe = poser(bloc, 'div', 'szh-constats szh-constats--' + ton);
+      poser(groupe, 'p', 'szh-taches-titre szh-constats-titre', titre || '');
+      for (var k = 0; k < miens.length; k++) {
+        groupe.appendChild(notif(ton, miens[k].texte || ''));
+      }
     }
 
     // Les pastilles d'une carte, reposées seules, et le compteur de son entête « À faire »
@@ -807,9 +842,8 @@ var SZH = (function () {
           var corps = poser(carte, 'div', 'szh-corps');
           corps.appendChild(notif(l.notif.ton || 'info', l.notif.texte));
         }
-        if (l.taches && l.taches.length > 0) {
-          compteurs[String(l.cle || '')] = poserTaches(carte, l).compteur;
-        }
+        var aFaire = poserAFaire(carte, l);
+        if (aFaire && aFaire.compteur) { compteurs[String(l.cle || '')] = aFaire.compteur; }
         var pied = poser(carte, 'footer', 'ligne-pied');
         pieds[String(l.cle || '')] = pied;
         if (l.ouvrir) {

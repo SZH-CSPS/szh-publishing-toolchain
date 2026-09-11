@@ -26,7 +26,7 @@
 // où une ligne vaut { cle, titre, meta, notif, pastilles, ouvrir, actions, taches,
 //                     apercu, constats, sansDoi } ,
 //   apercu   = { lignes: [{ libelle, valeurs: [{ marque, texte, marques, ton }] }] }
-//   constats = [{ ton, texte }]
+//   constats = [{ ton, texte }] — posés par SZH.listeCartes dans l'encadré « À faire »
 //   sansDoi  = { coche, verrouille }
 (function () {
   'use strict';
@@ -72,11 +72,13 @@
     var boites = cartes.querySelectorAll('.szh-carte');
     for (var i = 0; i < boites.length && i < lignes.length; i++) {
       var ligne = lignes[i] || {};
-      decorerTete(boites[i], ligne);
       var bloc = construireBloc(ligne);
-      if (!bloc) { continue; }
-      var cible = boites[i].querySelector('.szh-taches') || boites[i].querySelector('.ligne-pied');
-      if (cible) { boites[i].insertBefore(bloc, cible); } else { boites[i].appendChild(bloc); }
+      if (bloc) {
+        var cible = boites[i].querySelector('.szh-taches') || boites[i].querySelector('.ligne-pied');
+        if (cible) { boites[i].insertBefore(bloc, cible); } else { boites[i].appendChild(bloc); }
+      }
+      // Après le bloc, et non avant : la barre de titre porte le bouton qui le replie.
+      decorerTete(boites[i], ligne, bloc);
     }
   }
 
@@ -84,10 +86,15 @@
   // « 01 · Construire sa propre rampe » porte déjà le rang, et redire le slug juste après
   // ne faisait que doubler la même information. Le slug reste l'identifiant technique de
   // l'article ; il se lit maintenant en infobulle du titre plutôt que sur sa propre ligne.
-  // Les avertissements de la carte montent dans cette même tête, alignés à droite du
-  // titre : c'est là qu'on les voit d'un coup d'œil, avant même d'ouvrir la carte — ils ne
-  // vivent plus, en double, dans le corps replié sous l'aperçu.
-  function decorerTete(carte, ligne) {
+  // Les avertissements de la carte ne vivent plus ici : ils sont descendus dans l'encadré
+  // « À faire », sous les tâches et groupés par gravité (SZH.listeCartes, media/_commun.js).
+  // Un avertissement est de la même nature qu'une tâche — quelque chose qui attend — et il
+  // se lisait mal en colonne serrée contre le bord droit de la barre de titre.
+  //
+  // Restent donc deux gestes, à droite du titre : replier l'aperçu des métadonnées, et
+  // ouvrir l'article. Le second double celui du pied à dessein — sur une carte dépliée, le
+  // pied est à un écran de distance du titre qu'on vient de lire.
+  function decorerTete(carte, ligne, bloc) {
     var tete = carte.querySelector('.szh-tete');
     if (!tete) { return; }
     // L'hôte n'envoie plus `meta` pour cette vue (voir extension.js, chargeArticles) ; le
@@ -96,12 +103,45 @@
     if (meta) { meta.remove(); }
     var nom = tete.querySelector('.szh-tete-nom');
     if (nom) { nom.title = String(ligne.cle || ''); }
-    var constats = ligne.constats || [];
-    if (constats.length === 0) { return; }
-    var alerte = poser(tete, 'div', 'carte-alerte');
-    for (var i = 0; i < constats.length; i++) {
-      alerte.appendChild(SZH.notif(constats[i].ton || 'attention', constats[i].texte || ''));
+    var cle = String(ligne.cle || '');
+    var gestes = poser(tete, 'div', 'carte-gestes');
+    if (bloc) { gestes.appendChild(basculeApercu(cle, bloc)); }
+    gestes.appendChild(SZH.boutonCommande(
+      { id: 'ouvrir', libelle: TXT.ouvrir || '', icone: 'fleche', tip: TXT.ouvrirTip || '' },
+      function () { api.postMessage({ type: SZH.MSG.OUVRIR, cle: cle }); }));
+  }
+
+  // Les aperçus repliés, par slug. Retenu pour la durée de la page : un re-rendu — un ordre
+  // enregistré, une métadonnée de numéro écrite — repose toutes les cartes, et sans cette
+  // mémoire il redéplierait ce qu'on vient de replier. La page n'a pas
+  // `retainContextWhenHidden` : passer à un autre onglet et revenir remet tout à plat, et
+  // c'est assumé — l'état déplié est celui qui montre tout, jamais celui qui cache.
+  var replies = Object.create(null);
+
+  // Le bouton « Afficher / cacher les métadonnées » d'une carte. Ce qu'il replie est le
+  // seul bloc d'aperçu : le titre, les tâches et les constats restent, puisque c'est sur
+  // eux qu'on parcourt un numéro. Son libellé dit le geste à venir, pas l'état courant —
+  // « Cacher les métadonnées » quand elles sont là — et `aria-expanded` dit l'état.
+  function basculeApercu(cle, bloc) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'szh-bouton bouton-bascule';
+    b.appendChild(SZH.icone('chevron'));
+    var texte = document.createElement('span');
+    b.appendChild(texte);
+    b.title = TXT.metaBasculeTip || '';
+    function appliquer() {
+      var replie = !!replies[cle];
+      bloc.hidden = replie;
+      b.setAttribute('aria-expanded', replie ? 'false' : 'true');
+      texte.textContent = replie ? (TXT.metaVoir || '') : (TXT.metaCacher || '');
     }
+    b.addEventListener('click', function () {
+      replies[cle] = !replies[cle];
+      appliquer();
+    });
+    appliquer();
+    return b;
   }
 
   // -> l'élément à insérer, ou null quand la ligne n'apporte ni aperçu ni case. Les

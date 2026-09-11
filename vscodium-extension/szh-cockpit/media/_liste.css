@@ -28,12 +28,13 @@
 .bouton-danger:hover { color: var(--vscode-button-foreground, #fff);
   background: var(--danger); }
 
-/* Les tâches de la carte, dans leur propre encadré : un filet et un fond distincts
-   séparent franchement ce qui reste à faire du reste de la carte, plutôt qu'une case de
-   plus au milieu de l'aperçu. L'entête porte un titre compact et l'avancement — « 2/4
+/* Ce qui reste à faire sur la carte, dans son propre encadré : un filet et un fond
+   distincts séparent franchement ce qui l'attend du reste de la carte, plutôt qu'une case
+   de plus au milieu de l'aperçu. L'entête porte un titre compact et l'avancement — « 2/4
    tâches », déplacé ici depuis la pastille du pied — puis une case par tâche, en
    colonne et non en ligne : un intitulé de six mots ne se coupe pas au milieu, et la case
-   reste collée au texte qu'elle coche. */
+   reste collée au texte qu'elle coche. Viennent ensuite, dans le même cadre, les deux
+   groupes de constats — voir plus bas. */
 .szh-taches { display: flex; flex-direction: column; gap: var(--e1);
   margin: var(--e3) var(--e3) 0; padding: var(--e2) var(--e3);
   border: 1px solid var(--filet); border-radius: var(--rayon-mini);
@@ -55,3 +56,20 @@
 .szh-tache input { flex: 0 0 auto; margin: .15em 0 0; accent-color: var(--accent); }
 .szh-tache span { line-height: 1.4; }
 .szh-tache:hover { color: var(--accent); }
+
+/* Ce que la carte signale, sous ses tâches et dans le même encadré : « Attention » pour ce
+   qui mérite un regard, « Erreur / bloquant » pour ce qui arrêtera la publication. Chaque
+   groupe porte le titre compact des tâches, teinté de son ton — c'est le titre qui dit la
+   gravité, les messages restent lisibles. Un écart franc au-dessus du premier groupe le
+   détache de la dernière case à cocher. */
+.szh-constats { display: flex; flex-direction: column; gap: var(--e1);
+  margin-top: var(--e2); }
+.szh-constats-titre { margin: 0; }
+.szh-constats--attention .szh-constats-titre { color: var(--avert); }
+.szh-constats--danger .szh-constats-titre { color: var(--danger); }
+/* Plus petits que le corps de la carte : ce sont des notes en marge d'un titre, pas des
+   paragraphes à lire. Le même corps que celui qu'ils avaient dans la barre de titre.
+   margin: 0 — un .szh-notif est un <p>, et la marge par défaut du navigateur s'ajoutait au
+   gap du conteneur : deux messages voisins se retrouvaient à trois interlignes l'un de
+   l'autre dans un encadré qui cherche justement à les serrer. */
+.szh-constats .szh-notif { font-size: var(--t-mini); padding: var(--e1) var(--e2); margin: 0; }

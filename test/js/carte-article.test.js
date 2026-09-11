@@ -423,26 +423,145 @@ test('carte : le nom du dossier ne double plus le titre, il reste en infobulle (
   }
 });
 
-test('carte : ses avertissements vivent dans sa barre de titre, plus dans son corps replié (A7.4)', async () => {
+test('carte : ses avertissements vivent dans l’encadré « À faire », groupés par gravité (A8.2)', async () => {
   const p = await vue();
   const charge = derniereCharge(p);
   const idx = charge.lignes.findIndex((l) => l.cle === '01-gremion');
   // Deux avertissements d'images et deux de citations, déjà éprouvés par les contrôles
-  // « compteur d’images » et « appel de citation » plus haut dans ce fichier.
+  // « compteur d’images » et « appel de citation » plus haut dans ce fichier. Aucun des
+  // quatre n'arrête quoi que ce soit : ils sont donc tous du ton « attention ».
   assert.strictEqual(charge.lignes[idx].constats.length, 4,
     'le corpus n’a plus les quatre avertissements connus de 01-gremion');
+  assert.ok(charge.lignes[idx].constats.every((c) => c.ton === 'attention'),
+    'un de ces quatre avertissements est passé bloquant : ' +
+    charge.lignes[idx].constats.map((c) => c.ton).join(' | '));
   const page = pageArticlesDe(charge);
   const carte = page.conteneur().querySelectorAll('.szh-carte')[idx];
-  const dansTete = carte.querySelectorAll('.szh-tete .carte-alerte .szh-notif');
-  assert.strictEqual(dansTete.length, 4, 'les avertissements ne sont pas dans la barre de titre');
-  const dansCorps = carte.querySelectorAll('.carte-apercu .szh-notif');
-  assert.strictEqual(dansCorps.length, 0,
+  // Dans l'encadré des tâches, et dans aucun des deux endroits où ils ont vécu avant :
+  // ni la barre de titre, ni le corps de l'aperçu.
+  assert.strictEqual(carte.querySelectorAll('.szh-taches .szh-constats--attention .szh-notif').length, 4,
+    'les avertissements ne sont pas dans le groupe « Attention » de l’encadré « À faire »');
+  assert.strictEqual(carte.querySelectorAll('.szh-tete .szh-notif').length, 0,
+    'les avertissements sont restés (en double) dans la barre de titre');
+  assert.strictEqual(carte.querySelectorAll('.carte-apercu .szh-notif').length, 0,
     'les avertissements sont restés (en double) dans le corps replié de l’aperçu');
-  // Un article sans avertissement ne construit aucun encadré parasite dans sa tête.
+  // Le groupe porte son titre ; celui des bloquants n'est pas posé, il n'a rien à montrer.
+  assert.deepStrictEqual(carte.querySelectorAll('.szh-constats-titre').map((e) => e.textContent),
+    [i18n.T('art.constats.attention')], 'le titre du groupe « Attention » manque, ou un groupe vide a été posé');
+  assert.strictEqual(carte.querySelectorAll('.szh-constats--danger').length, 0,
+    'un groupe « Erreur / bloquant » vide traîne sur une carte qui n’a rien de bloquant');
+  // Un article sans avertissement ne construit aucun groupe parasite : son encadré
+  // « À faire » n'a que ses tâches.
   const sans = charge.lignes.findIndex((l) => l.cle === '02-chanier');
+  const carteSans = page.conteneur().querySelectorAll('.szh-carte')[sans];
+  assert.strictEqual(carteSans.querySelectorAll('.szh-constats').length, 0,
+    'un groupe d’avertissement vide traîne sur une carte qui n’a rien à signaler');
+  assert.strictEqual(carteSans.querySelectorAll('.szh-taches').length, 1,
+    'l’encadré « À faire » a disparu d’une carte qui porte pourtant des tâches');
+});
+
+test('carte : ce qui bloquera la publication a son propre groupe, sous celui des avertissements (A8.2)', async () => {
+  const p = await vue();
+  const cheminFiche = (slug) => path.join(REVUE, 'articles', slug, slug + '.meta.yaml');
+  const avant2 = fs.readFileSync(cheminFiche('02-chanier'), 'utf8');
+  const avant3 = fs.readFileSync(cheminFiche('03-guilley'), 'utf8');
+  try {
+    // Le même DOI sur deux fiches : l'export OJS compte ce doublon parmi ses BLOQUANTS
+    // (lib/export-ojs.js, ojs.err.doi.double) et rien ne part du tout. C'est cette
+    // frontière-là qui décide du groupe, et non la gravité qu'on prête au défaut.
+    const doiCommun = '10.57161/r2020-01-01';
+    fs.writeFileSync(cheminFiche('02-chanier'),
+      avant2.replace('title:', 'doi: "' + doiCommun + '"' + LF + 'title:'));
+    fs.writeFileSync(cheminFiche('03-guilley'),
+      avant3.replace('title:', 'doi: "' + doiCommun + '"' + LF + 'title:'));
+    await HOTE.executer('szh.cockpit.rafraichir');
+    await p._recepteur({ type: 'pret' });
+    const charge = derniereCharge(p);
+    const idx = charge.lignes.findIndex((l) => l.cle === '02-chanier');
+    const double = charge.lignes[idx].constats
+      .find((c) => c.texte === i18n.T('art.doi.double', ['03-guilley']));
+    assert.ok(double, 'le doublon de DOI ne se dit plus sur la carte');
+    assert.strictEqual(double.ton, 'danger',
+      'le doublon de DOI est annoncé comme un simple avertissement, alors que rien ne partira');
+    const page = pageArticlesDe(charge);
+    const carte = page.conteneur().querySelectorAll('.szh-carte')[idx];
+    const bloquants = carte.querySelectorAll('.szh-taches .szh-constats--danger .szh-notif');
+    assert.strictEqual(bloquants.length, 1, 'le groupe « Erreur / bloquant » ne porte pas le doublon');
+    assert.ok(bloquants[0].classList.contains('szh-notif--danger'),
+      'le message bloquant garde le ton d’un avertissement ordinaire');
+    // Les deux groupes cohabitent : le DOI manuel qui diverge du calculé reste, lui, un
+    // avertissement — et les titres se suivent dans l'ordre attention puis bloquant.
+    assert.deepStrictEqual(carte.querySelectorAll('.szh-constats-titre').map((e) => e.textContent),
+      [i18n.T('art.constats.attention'), i18n.T('art.constats.danger')],
+      'les deux groupes ne se suivent pas dans l’ordre attendu');
+  } finally {
+    fs.writeFileSync(cheminFiche('02-chanier'), avant2);
+    fs.writeFileSync(cheminFiche('03-guilley'), avant3);
+    await HOTE.executer('szh.cockpit.rafraichir');
+    await p._recepteur({ type: 'pret' });
+  }
+});
+
+// ---- A8 : les deux gestes de la barre de titre, et l'aide qui a disparu ------------
+
+test('carte : sa barre de titre replie les métadonnées et ouvre l’article (A8.3, A8.4)', async () => {
+  const p = await vue();
+  const charge = derniereCharge(p);
+  const idx = charge.lignes.findIndex((l) => l.cle === '01-gremion');
+  const page = pageArticlesDe(charge);
+  const carte = page.conteneur().querySelectorAll('.szh-carte')[idx];
+  const gestes = carte.querySelectorAll('.szh-tete .carte-gestes button');
+  assert.strictEqual(gestes.length, 2,
+    'la barre de titre ne porte plus ses deux gestes : ' + gestes.length + ' bouton(s)');
+  const bascule = gestes[0];
+  const ouvrirArticle = gestes[1];
+
+  // A8.4 : « Ouvrir l’article », et non « Ouvrir » — sur cette vue, la carte EST un
+  // article. Et le bouton ouvre bien celui de sa carte, pas un autre.
+  assert.strictEqual(ouvrirArticle.textContent.trim(), i18n.T('art.ouvrir'));
+  ouvrirArticle.dispatchEvent({ type: 'click' });
+  // Champ par champ : le message naît dans le contexte de la page, et son prototype n'est
+  // pas celui du test — deepStrictEqual s'y arrêterait avant de comparer les valeurs.
+  const dernier = page.messages[page.messages.length - 1];
+  assert.strictEqual(dernier.type, 'ouvrir');
+  assert.strictEqual(dernier.cle, '01-gremion',
+    'la flèche de la barre de titre n’ouvre pas l’article de sa carte');
+
+  // A8.3 : le pli ne cache que l'aperçu des métadonnées. Le libellé dit le geste à venir,
+  // `aria-expanded` dit l'état — sans quoi un lecteur d'écran annoncerait l'inverse.
+  const bloc = carte.querySelectorAll('.carte-apercu')[0];
+  assert.ok(bloc, 'la carte n’a plus de bloc d’aperçu à replier');
+  assert.strictEqual(bloc.hidden, false, 'l’aperçu arrive replié : le défaut doit tout montrer');
+  assert.strictEqual(bascule.getAttribute('aria-expanded'), 'true');
+  assert.strictEqual(bascule.textContent.trim(), i18n.T('art.meta.cacher'));
+  bascule.dispatchEvent({ type: 'click' });
+  assert.strictEqual(bloc.hidden, true, 'un clic ne replie pas l’aperçu des métadonnées');
+  assert.strictEqual(bascule.getAttribute('aria-expanded'), 'false');
+  assert.strictEqual(bascule.textContent.trim(), i18n.T('art.meta.voir'));
+  // Ce que le pli doit laisser : le titre, les tâches, et ce que la carte signale.
+  assert.strictEqual(carte.querySelectorAll('.szh-tete-nom').length, 1, 'le titre est parti avec l’aperçu');
+  assert.strictEqual(carte.querySelectorAll('.szh-taches').length, 1, 'les tâches sont parties avec l’aperçu');
+  assert.ok(carte.querySelectorAll('.szh-constats .szh-notif').length > 0,
+    'les avertissements sont partis avec l’aperçu');
+
+  // Et le pli survit à un re-rendu : enregistrer une métadonnée du numéro repose toutes
+  // les cartes, et redéplier ce qu’on vient de replier serait insupportable.
+  page.envoyer(charge);
   assert.strictEqual(
-    page.conteneur().querySelectorAll('.szh-carte')[sans].querySelectorAll('.carte-alerte').length, 0,
-    'un encadré d’avertissement vide traîne sur une carte qui n’a rien à signaler');
+    page.conteneur().querySelectorAll('.szh-carte')[idx].querySelectorAll('.carte-apercu')[0].hidden, true,
+    'un re-rendu redéplie l’aperçu qu’on venait de replier');
+});
+
+test('page : l’avertissement « aperçu seul » a quitté le gabarit et les libellés (A8.1)', () => {
+  // Il se répétait sous chaque liste d'articles pour dire ce que les deux boutons du pied
+  // de chaque carte disent déjà. Retiré des deux côtés : le gabarit ne le pose plus, et la
+  // clé ne traîne plus dans les libellés, où elle aurait survécu sans emploi.
+  const html = fs.readFileSync(path.join(COCKPIT, 'media', 'articles.html'), 'utf8');
+  assert.strictEqual(html.indexOf('apercuAide'), -1,
+    'le gabarit de la page pose encore le paragraphe « Aperçu seul »');
+  const libelles = fs.readFileSync(path.join(COCKPIT, 'lib', 'i18n.js'), 'utf8');
+  assert.strictEqual(libelles.indexOf('art.apercu.aide'), -1,
+    'la clé art.apercu.aide est restée dans les libellés, sans plus personne pour l’afficher');
 });
 
 test('carte : l’avancement des tâches vit dans l’entête « À faire », plus en pastille (A7.5)', async () => {
@@ -464,8 +583,8 @@ test('carte : les boutons du pied suivent l’ordre Ouvrir, Monter, Descendre, p
   const page = pageArticlesDe(charge);
   const carte = page.conteneur().querySelectorAll('.szh-carte')[idx];
   const libelles = carte.querySelectorAll('.ligne-pied button').map((b) => b.textContent.trim());
-  assert.deepStrictEqual(libelles.slice(0, 3), ['Ouvrir', 'Monter', 'Descendre'],
-    'Monter et Descendre ne suivent plus directement Ouvrir : ' + libelles.join(' | '));
+  assert.deepStrictEqual(libelles.slice(0, 3), ['Ouvrir l’article', 'Monter', 'Descendre'],
+    'Monter et Descendre ne suivent plus directement Ouvrir l’article : ' + libelles.join(' | '));
 });
 
 test('carte : les deux boutons ouvrent les bons formulaires, sur le bon article', async () => {

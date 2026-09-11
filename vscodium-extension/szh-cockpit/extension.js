@@ -3153,7 +3153,12 @@ let panneauVueArticles = null;
 
 function textesArticles() {
   return Object.assign(textesNumero(), {
-    ouvrir: T('vue.ouvrir'),
+    // « Ouvrir l'article » et non « Ouvrir » : sur cette vue, la carte EST un article, et
+    // le bouton se lit aussi bien dans la barre de titre que dans le pied. `vue.ouvrir`
+    // reste « Ouvrir » pour « Traductions » et « Word en attente », où la carte est un bloc
+    // de traduction ou un fichier.
+    ouvrir: T('art.ouvrir'),
+    ouvrirTip: T('art.ouvrir.tip'),
     // `listeVide` et non `rien` : `rien` est déjà « Aucune modification » dans la table du
     // formulaire du numéro, que cette table étend.
     listeVide: T('art.vue.rien'),
@@ -3169,10 +3174,18 @@ function textesArticles() {
     tachesEnregistrer: T('form.enregistrer'),
     tachesEnregistrees: T('art.taches.enregistrees'),
     tachesFermer: T('art.taches.fermer'),
+    // Les deux titres des groupes de constats, dans l'encadré « À faire » de la carte :
+    // ce qui mérite un regard, puis ce qui arrêtera la publication.
+    constatsAttention: T('art.constats.attention'),
+    constatsDanger: T('art.constats.danger'),
+    // Le bouton qui replie l'aperçu des métadonnées d'une carte. Deux libellés, parce
+    // qu'il dit le geste à venir et non l'état courant.
+    metaVoir: T('art.meta.voir'),
+    metaCacher: T('art.meta.cacher'),
+    metaBasculeTip: T('art.meta.basculer.tip'),
     // La case « pas de DOI » : le seul texte que la page écrit elle-même. Les intitulés et
     // les valeurs de l'aperçu, eux, arrivent tout faits dans chaque ligne — c'est l'hôte qui
-    // sait dire une licence ou une rubrique. L'avertissement « aperçu seul » est dans le
-    // gabarit de la page, où il ne s'affiche qu'une fois.
+    // sait dire une licence ou une rubrique.
     doiCase: T('art.doi.case'),
     doiCaseTip: T('art.doi.case.tip'),
     revues: { revue: T('meta.revue.revue'), zeitschrift: T('meta.revue.zeitschrift') }
@@ -3373,9 +3386,15 @@ function resumeImagesArticle(fournisseur, slug) {
   }));
 }
 
-// Ce que la carte doit signaler, en toutes lettres et dans son corps — jamais dans une
-// infobulle : les images incomplètes, puis l'état des références relevé à la dernière
-// compilation.
+// Ce que la carte doit signaler, en toutes lettres et dans son encadré « À faire » —
+// jamais dans une infobulle : les images incomplètes, puis l'état des références relevé à
+// la dernière compilation.
+//
+// Le ton range le constat dans l'un des deux groupes de l'encadré, et la frontière n'est
+// pas une question de goût : `danger` est ce que la publication REFUSERA — ce que
+// compilerArticle ou l'export OJS comptent parmi leurs bloquants — et `attention` tout le
+// reste, qui part tel quel si personne n'y touche. Une image sans texte alternatif est un
+// défaut d'accessibilité réel, mais elle ne bloque rien : elle reste en « attention ».
 function constatsCarte(images, citations) {
   const constats = [];
   if (images.sansAlt > 0) {
@@ -3500,12 +3519,16 @@ function chargeArticles(fournisseur) {
     // Un DOI qui désigne aussi un autre article : les deux cartes le disent, chacune
     // nommant l'autre.
     const autresMemeDoi = (parDoiEffectif[effectifs[slug]] || []).filter((s) => s !== slug);
+    // Bloquant, et c'est l'export qui le dit : deux articles au même DOI comptent parmi
+    // ses `bloquants` (lib/export-ojs.js, ojs.err.doi.double), rien ne part du tout.
     if (autresMemeDoi.length > 0) {
-      constats.push({ ton: 'attention', texte: T('art.doi.double', [autresMemeDoi[0]]) });
+      constats.push({ ton: 'danger', texte: T('art.doi.double', [autresMemeDoi[0]]) });
     }
     // Un article sans titre reste dans la liste, et la carte dit pourquoi elle montre un
     // slug : la compilation refusera de partir sur cet article, et il faut le savoir ici.
-    if (titre === '') { constats.unshift({ ton: 'attention', texte: T('art.sansfiche') }); }
+    // Bloquant aussi, et le message le dit déjà : sans titre dans sa fiche, la compilation
+    // de cet article refuse de partir.
+    if (titre === '') { constats.unshift({ ton: 'danger', texte: T('art.sansfiche') }); }
     return {
       cle: slug,
       titre: libelleArticle(index, slug, titre),

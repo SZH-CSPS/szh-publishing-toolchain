@@ -33,13 +33,24 @@ body { --page-max: 60rem; }
    hauteur d'un paragraphe, et l'œil descend la colonne des intitulés sans les relire. */
 .carte-apercu { padding: var(--e3) var(--e3) 0; }
 
-/* Les avertissements de la carte : posés dans sa tête, à droite du titre — plus
-   dans le corps replié de l'aperçu, où ils étaient les premiers à disparaître avec lui.
-   margin-left: auto les pousse hors du titre, qui reste seul à gauche ; ils passent sous
-   lui si la carte manque de largeur, .szh-tete portant déjà flex-wrap (media/_liste.css). */
-.carte-alerte { display: flex; flex-direction: column; gap: var(--e1);
-  margin-left: auto; min-width: 0; max-width: 26rem; }
-.carte-alerte .szh-notif { font-size: var(--t-mini); padding: var(--e1) var(--e2); }
+/* Les deux gestes de la barre de titre : replier l'aperçu des métadonnées, et ouvrir
+   l'article. Les avertissements, eux, ont quitté cette barre pour l'encadré « À faire »
+   (media/_liste.css, .szh-constats) — ils tenaient mal dans une colonne serrée contre le
+   bord droit, et ils sont de la même nature qu'une tâche.
+
+   margin-left: auto pousse les boutons hors du titre, qui reste seul à gauche ; ils passent
+   sous lui si la carte manque de largeur, .szh-tete portant déjà flex-wrap (_liste.css). */
+.carte-gestes { display: flex; align-items: center; flex-wrap: wrap; gap: var(--e2);
+  margin-left: auto; }
+/* Le titre prend la place qui reste et cède la sienne aux boutons plutôt que de les
+   comprimer : sans min-width: 0, un titre long refuserait de se replier. */
+.ligne .szh-tete-nom { flex: 1 1 12rem; min-width: 0; }
+
+/* Le chevron du bouton « Afficher / cacher les métadonnées » suit ce qu'il annonce : vers
+   le bas quand l'aperçu est là et qu'un clic le replie, vers la droite quand il est replié.
+   La même convention que le bloc « Méta-données du numéro » juste au-dessus. */
+.bouton-bascule svg { transition: transform .12s ease; }
+.bouton-bascule[aria-expanded="false"] svg { transform: rotate(-90deg); }
 
 .apercu-grille { margin: 0; font-size: var(--t-libelle); }
 .apercu-rangee { display: grid; grid-template-columns: 7.5em 1fr; gap: var(--e2);

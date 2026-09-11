@@ -2,7 +2,7 @@
   "name": "szh-cockpit",
   "displayName": "SZH – Revue (cockpit)",
   "description": "Barre latérale « Revue SZH » : articles, métadonnées du numéro, import des Word, suivi des traductions, aperçu et réglages.",
-  "version": "0.36.0",
+  "version": "0.37.0",
   "publisher": "szh-csps",
   "license": "MIT",
   "engines": {
@@ -1000,14 +1000,9 @@
           "group": "inline@2"
         },
         {
-          "command": "szh.ressourcesArticle",
-          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
-          "group": "inline@3"
-        },
-        {
           "command": "szh.supprimerArticle",
           "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
-          "group": "inline@4"
+          "group": "inline@3"
         },
         {
           "command": "szh.convertirEnAttente",

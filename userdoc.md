@@ -73,18 +73,17 @@ Elle a **quatre sections** :
   dans le numéro, avec le nom de son dossier et son avancement juste à côté. Cliquer
   l'**onglet** « Articles » lui-même ouvre la **vue « Articles »**, où se règlent
   l’ordre du numéro, les tâches et la couverture (voir plus bas).
-  Au survol d’un article, quatre boutons, la poubelle fermant la rangée :
+  Au survol d’un article, trois boutons, la poubelle fermant la rangée :
   - **☰ Éditer les métadonnées de cet article** – le formulaire des fiches, filtré sur
     ce seul article ;
   - **🖼 Gérer les médias de cet article** – le formulaire décrit juste en dessous ;
-  - **📚 Gérer la documentation de cet article** – les fiches de livre, de film,
-    d’intervention parlementaire, de recherche en cours, d’agenda et de reprise d’un
-    article de la revue sœur (voir la section « Actualité », plus bas) ;
   - **🗑 Supprimer l’article** – efface l’article **et** son PDF, après une demande de
     confirmation explicite (l’action est irréversible : rien n’est supprimé sans accord).
 
-  Ces deux boutons du milieu servent surtout aux pages de **Documentation**, mais rien
-  n’empêche de s’en servir ailleurs : ils sont proposés sur tous les articles d’une revue.
+  La documentation d’un article – fiches de livre, de film, d’intervention parlementaire,
+  de recherche en cours, d’agenda, et reprise d’un article de la revue sœur – n’a plus son
+  bouton ici : elle se règle dans la section « Actualité » (plus bas), qui est le seul
+  endroit où elle paraît vraiment.
 
   Si l’article contient des **tableaux**, une petite flèche permet de le **déplier** :
   chaque **tableau** (fichiers `table-01.html`, `table-02.html`…) vient du document
@@ -685,13 +684,52 @@ parce qu’on les regarde ensemble.
 Dans la barre comme dans la vue, un article s’appelle désormais **« 03 · Technologies au
 service des apprentissages »** : les **deux chiffres** disent où il se situe dans le
 numéro, et le titre vient de sa fiche. Le **nom du dossier** (`03-technologies-au-…`)
-passe en petit à côté : c’est par lui qu’on retrouve l’article dans l’explorateur, ce
+passe en petit à côté dans la barre ; sur la carte de la vue, il se lit en
+**infobulle** du titre. C’est par lui qu’on retrouve l’article dans l’explorateur, ce
 n’est plus lui qu’on lit.
 
 Un article dont la fiche manque, ou dont le titre est vide, **reste visible** : son nom de
-dossier s’affiche à la place du titre, et sa carte le signale en orange. Ce n’est pas un
-détail de confort : la compilation refuse de partir sur un article sans titre, et il faut
-le voir tout de suite.
+dossier s’affiche à la place du titre, et sa carte le range parmi ses **erreurs
+bloquantes**, en rouge. Ce n’est pas un détail de confort : la compilation refuse de
+partir sur un article sans titre, et il faut le voir tout de suite.
+
+### Ce que la carte montre, et ce qu’elle cache
+
+Une carte se lit de haut en bas : sa **barre de titre**, l’**aperçu de ses
+métadonnées**, son encadré **« À faire »**, puis ses boutons.
+
+La barre de titre porte deux gestes, à droite du titre :
+
+- **Cacher les métadonnées** replie l’aperçu de cette carte. Il ne reste alors que le
+  titre, les tâches et ce que la carte signale – de quoi parcourir un numéro entier d’un
+  coup d’œil. Un second clic les ramène. Chaque carte se replie séparément, et le pli
+  tient tant que la page reste ouverte.
+- **→ Ouvrir l’article** ouvre son texte dans l’éditeur, sans compiler ni ouvrir
+  l’aperçu : depuis cette vue, on vient lire ou corriger. Le même bouton se retrouve en
+  bas de la carte, avec les autres.
+
+L’aperçu des métadonnées, lui, ne se **modifie** pas ici : c’est un aperçu, et les deux
+boutons du bas – **Éditer les métadonnées**, **Éditer les médias** – mènent aux
+formulaires qui écrivent. Seule exception, assumée : la case **Pas de DOI**, qui n’est
+pas une métadonnée de l’article mais une décision sur le numéro.
+
+### Ce que la carte signale
+
+Tout ce qui attend sur un article vit dans le **même encadré**, sous le titre
+**« À faire »** : les cases à cocher d’abord, puis deux groupes de messages,
+quand il y a lieu.
+
+- **Attention** (orange) – ce qui mérite un regard mais ne bloque rien : une image sans
+  texte alternatif, une image sans légende, un appel de citation qui ne mène à aucune
+  référence, un DOI saisi à la main qui ne correspond pas au calcul. Le numéro peut
+  paraître ainsi ; c’est un choix, pas un accident.
+- **Erreur / bloquant** (rouge) – ce que la publication **refusera** : un article sans
+  titre, dont la compilation ne partira pas, ou deux articles qui portent le même DOI,
+  auquel cas l’export OJS ne part pas du tout.
+
+Un groupe sans message ne s’affiche pas, et une carte qui n’a rien à signaler n’a que
+ses cases à cocher. Ces messages se lisent **en toutes lettres**, jamais en infobulle,
+et ils restent visibles quand l’aperçu des métadonnées est replié : c’est le sens du pli.
 
 ### Changer l’ordre du numéro
 
@@ -723,9 +761,9 @@ Cocher écrit tout de suite, dans le dossier de l’article (`<article>.taches.y
 fichier n’est **ni publié ni exporté** : il ne décrit que l’avancement de l’atelier, et il
 part avec l’article si on le déplace.
 
-**L’avancement se lit sans ouvrir quoi que ce soit** : une pastille sur la carte
-(« 2/4 tâches », verte quand tout est fait), et la même mesure dans la barre latérale, à
-côté du nom du dossier.
+**L’avancement se lit sans ouvrir quoi que ce soit** : à droite de l’entête
+**« À faire »** de la carte (« 2/4 tâches », vert quand tout est fait), et la
+même mesure dans la barre latérale, à côté du nom du dossier.
 
 Le bouton **« Tâches »** de la barre de la vue ouvre le réglage des **intitulés**. Deux
 colonnes, français et allemand : un intitulé laissé vide dans une langue reprend l’autre.
