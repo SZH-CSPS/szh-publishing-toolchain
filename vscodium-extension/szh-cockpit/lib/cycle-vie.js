@@ -207,7 +207,21 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
   if (refusBail) { vscode.window.showWarningMessage(refusBail); return; }
   // Déjà archivé : il ne reste qu'à reposer le verrou.
   if (session.etatNumero().archivee) {
-    if (session.etatNumero().verrouillee) { vscode.window.showInformationMessage(Tcycle('info.deja.archivee')); return; }
+    if (session.etatNumero().verrouillee) {
+      // Et pas un cul-de-sac. Les deux drapeaux s'écrivent AVANT le déplacement (étape 1
+      // ci-dessous) : un déplacement qui échoue — fenêtre pas encore fermée, dossier tenu
+      // par OneDrive — laisse un numéro marqué archivé, resté parmi les numéros en cours,
+      // que plus aucun geste du cockpit ne savait ranger. Le script est idempotent : déjà
+      // à sa place, il le dit et rouvre le dossier. Le relancer ne coûte donc rien, et
+      // rattrape le seul cas où le rédacteur voit « archivé » sans voir le dossier bouger.
+      const ranger = T('arch.ranger.bouton');
+      if (await vscode.window.showInformationMessage(Tcycle('info.deja.archivee'), ranger) !== ranger) { return; }
+      const erreurReprise = lancerArchivage('archiver', racine);
+      if (erreurReprise) { vscode.window.showErrorMessage(Tcycle('err.archivage', [erreurReprise])); return; }
+      vscode.window.setStatusBarMessage(T('statut.archivage'), 10000);
+      await fermerFenetreApresArchivage();
+      return;
+    }
     await verrouillerSeulement(fournisseur, rafraichirTout);
     return;
   }
@@ -235,13 +249,14 @@ async function archiverEtVerrouiller(fournisseur, rafraichirTout) {
   await ctx.fermerOngletsSous(dossierOut);
   session.poserApercuCourantUri(null);
   session.poserApercuCourantSlug(null);
+  // out/ tient le gros du volume, d'où l'envie de le retirer d'ici ; mais s'il résiste,
+  // l'archivage continue. archive-revue.ps1 le supprime lui aussi, et LUI s'exécute une
+  // fois cette fenêtre fermée, c'est-à-dire quand les poignées que VSCodium tenait encore
+  // sont enfin rendues. Renoncer à tout le geste parce qu'un dossier de documents produits
+  // résiste dix secondes revenait à refuser l'archivage pour son accessoire — et le
+  // message renvoyait à fermer un aperçu PDF qui n'y était le plus souvent pour rien.
   const erreurOut = await ctx.supprimerAvecReprises(dossierOut);
-  if (erreurOut) {
-    ctx.ecrireClesAusgabe(racine, { locked: 'false', archived: 'false' });
-    rafraichirTout();
-    vscode.window.showErrorMessage(T('err.out.suppression', [erreurOut]));
-    return;
-  }
+  if (erreurOut) { vscode.window.showWarningMessage(T('avert.out.suppression', [erreurOut])); }
 
   // 3. la version du logiciel, si le numéro n'en portait pas ; après le point de
   //    non-retour, pour qu'un archivage annulé ne laisse pas d'estampille.

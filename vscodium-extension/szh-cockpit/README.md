@@ -155,6 +155,10 @@ lib/
                         aperçu en cours, import/compilation en vol…) derrière des accesseurs
                         nommés — aucune de ces variables n'est plus une variable de module nue
   slug.js               slug d'article, miroir de celui du Makefile
+  supprimer.js          effacer un arbre qui vit sur OneDrive : l'attribut « lecture seule »
+                        que le synchroniseur pose sur ses dossiers marque-place retiré (fs
+                        ne le retire que des fichiers), puis quelques reprises espacées pour
+                        les poignées qui tombent d'elles-mêmes. Sans vscode
   table-model.js        analyse, sérialisation et opérations du modèle de tableau
   traduction.js         sidecar <slug>.traduction.yaml et suivi des traductions
   verrou.js             lecture seule du dossier quand le numéro est gelé

@@ -1384,35 +1384,21 @@ async function fermerOnglets(predicat) {
 
 // ---- Effacer un dossier que Windows tient encore ---------------------------------
 //
-// Fermer l'aperçu, les formulaires et les onglets ne suffit pas toujours : OneDrive en
-// pleine synchronisation, l'indexeur ou le lecteur de PDF gardent la poignée quelques
-// secondes de plus, et l'effacement échoue sur un EPERM alors que plus rien ne s'y
-// oppose vraiment. On insiste donc, comme archive-revue.ps1 le fait pour le déplacement
-// du numéro, plutôt que de renvoyer à un geste qui passerait tout seul dix secondes
-// plus tard. Les autres codes (chemin introuvable, disque plein) ne s'arrangeront pas
-// avec le temps : ils ressortent tout de suite.
-const VERROUS_PASSAGERS = new Set(['EPERM', 'EACCES', 'EBUSY', 'ENOTEMPTY']);
-const REPRISES_SUPPRESSION = [200, 500, 1000, 2000, 2000, 2000, 2000];   // ~10 s en tout
+// La patience et le retrait de l'attribut « lecture seule » vivent dans lib/supprimer.js,
+// qui explique le pourquoi de chacun ; il n'y a ici que le mot dit au rédacteur pendant
+// qu'on insiste.
+const { supprimerArbre } = require('./lib/supprimer');
 
 function attendre(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 // -> null quand le chemin est parti (ou n'existait déjà plus), sinon le message du
 // dernier échec, prêt à être montré.
-async function supprimerAvecReprises(chemin) {
-  for (let essai = 0; ; essai++) {
-    try {
-      fs.rmSync(chemin, { recursive: true, force: true });
-      return null;
-    } catch (e) {
-      if (essai >= REPRISES_SUPPRESSION.length || !VERROUS_PASSAGERS.has(e.code)) {
-        return String((e && e.message) || e);
-      }
-      // Dix secondes d'attente muette passeraient pour un blocage.
-      vscode.window.setStatusBarMessage(
-        T('statut.suppression.reprise', [path.basename(chemin)]), 3000);
-      await attendre(REPRISES_SUPPRESSION[essai]);
-    }
-  }
+function supprimerAvecReprises(chemin) {
+  return supprimerArbre(chemin, {
+    // Dix secondes d'attente muette passeraient pour un blocage.
+    surReprise: (nom) => vscode.window.setStatusBarMessage(
+      T('statut.suppression.reprise', [nom]), 3000)
+  });
 }
 
 // Dernier filet, silencieux : le verrou d'un synchroniseur tombe parfois bien après le
@@ -2464,7 +2450,19 @@ async function supprimerArticle(fournisseur, rafraichirTout, item) {
     vscode.window.showErrorMessage(T('err.suppression.article', [slug, echec]));
     return;
   }
-  vscode.window.setStatusBarMessage(T('statut.supprime', [slug]), 3000);
+  // Le dossier parti laisse un trou dans la numérotation – 01, 03, 04 – et les numéros des
+  // dossiers cesseraient de suivre la liste dès la première suppression. On referme le rang
+  // tout de suite, par le même lot en deux passes que « Changer l'ordre » : l'article est
+  // déjà supprimé, un renommage qui coince ne remet donc rien en cause, il se reprend.
+  const rangs = alignerDossiersSurOrdre(racine, fournisseur.listerArticles());
+  rafraichirTout();
+  if (rangs.erreur) {
+    vscode.window.showWarningMessage(T('art.suppr.renumerote.echec', [rangs.erreur]));
+    return;
+  }
+  vscode.window.setStatusBarMessage(
+    rangs.renommes === 0 ? T('statut.supprime', [slug])
+      : T('statut.supprime.renumerote', [slug, rangs.renommes]), 3000);
 }
 
 // ---- Formulaire des livres, et fiches de tous les articles -> lib/metadonnees-hote.js ---
@@ -2817,6 +2815,21 @@ const pdfuaHote = require('./lib/pdfua-hote');
 const tableConstats = require('./lib/constats');
 // L'alignement des dossiers d'article sur leur rang affiché : le plan et son exécution.
 const renumerotation = require('./lib/renumerotation-fs');
+
+// Aligner les dossiers d'article sur une liste de rangs, et ranger ce que le renommage
+// périme. Deux appelants : « Terminer », qui donne l'ordre voulu à l'écran, et la
+// suppression d'un article, qui donne ce qui reste.
+// -> { erreur, renommes }, tel que lib/renumerotation-fs.js le rend.
+function alignerDossiersSurOrdre(racine, voulu) {
+  const r = renumerotation.renumeroter(racine, voulu, { dossier: dossierUnites() });
+  // Les constats nomment les anciens slugs : ils sont périmés pour les articles renommés,
+  // et la prochaine compilation les reposera sous leur nouveau nom.
+  if (r.renommes > 0 && dernierJournal.racine === racine) {
+    dernierJournal.constats = [];
+    majBarreControles();
+  }
+  return r;
+}
 
 const JOURNAL_TACHE = '.szh-journal.log';
 
@@ -3813,14 +3826,8 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
       const voulu = ordreEnCours(racine);
       modeOrdre = null;
       if (!voulu) { return null; }
-      const r = renumerotation.renumeroter(racine, voulu, { dossier: dossierUnites() });
+      const r = alignerDossiersSurOrdre(racine, voulu);
       if (r.erreur) { return T('art.ordre.echec', [r.erreur]); }
-      // Les constats nomment les anciens slugs : ils sont périmés pour les articles
-      // renommés, et la prochaine compilation les reposera sous leur nouveau nom.
-      if (r.renommes > 0 && dernierJournal.racine === racine) {
-        dernierJournal.constats = [];
-        majBarreControles();
-      }
       if (rafraichirTout) { rafraichirTout(); }
       return r.renommes === 0 ? null : T('art.ordre.fait', [r.renommes]);
     }
