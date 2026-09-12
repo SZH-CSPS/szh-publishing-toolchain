@@ -468,3 +468,47 @@ test('export OJS : en droits réservés, le crédit de figure ne se plaint plus'
   assert.strictEqual(dits.length, 1, 'un second avertissement est apparu : ' + JSON.stringify(dits));
   assert.match(dits[0], /licenseUrl/);
 });
+
+// ── La flèche « lien sortant » du DOI et de la licence ─────────────────────────────────
+//
+// Les deux mentions du hero sont des liens, et chacune porte un <svg class="szh-arrow">
+// inline. Sa position verticale ne tient qu'à une marge basse, dont le rôle n'a rien
+// d'évident à la lecture : .szh-doi / .szh-licence sont des `inline-flex` en
+// `align-items: center`, qui centrent la boîte de MARGE de leur enfant — une marge basse
+// de N remonte donc l'encre de N/2. Retirer cette marge en la prenant pour du blanc
+// superflu redescendrait les deux flèches à mi-hauteur du texte, ce qui est précisément le
+// défaut corrigé le 12.09.2026.
+
+const lireFichier = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
+
+test('flèche du hero : les deux mentions du gabarit la portent', () => {
+  const gabarit = lireFichier('pipeline', 'templates', 'szh-article.html');
+  const spans = gabarit.match(/<span class="szh-(doi|licence)">[\s\S]*?<\/span>/g) || [];
+  const avecLien = spans.filter((s) => /<a href=/.test(s));
+  assert.strictEqual(avecLien.length, 2,
+    'le DOI et la licence liés sont les deux seules mentions à flèche');
+  for (const s of avecLien) {
+    assert.match(s, /<svg class="szh-arrow"/, 'mention sans flèche : ' + s.slice(0, 60));
+  }
+});
+
+test('flèche du hero : sa remontée tient à une marge basse, et reste sous le plafond mesuré', () => {
+  const css = lireFichier('pipeline', 'styles', 'print.css');
+  // Ancré en début de ligne : `.szh-hero .szh-arrow` (la couleur, §6) porte le même nom et
+  // serait trouvé le premier.
+  const regle = css.match(/^\.szh-arrow\s*\{[^}]*\}/m);
+  assert.ok(regle, 'règle .szh-arrow introuvable dans print.css');
+  const marge = regle[0].match(/margin-bottom:\s*([\d.]+)px/);
+  assert.ok(marge, 'la marge basse a disparu : les flèches sont retombées à mi-hauteur du texte');
+  const px = Number(marge[1]);
+  assert.ok(px > 0, 'une marge nulle ne remonte rien');
+  // Au-delà de 2 px, la boîte de marge dépasse la ligne de texte et pousse le contenu du
+  // hero vers le bas — mesuré au rendu : +1 px à 3 px de marge, +7 px à 4 px.
+  assert.ok(px <= 2, 'marge de ' + px + ' px : au-delà de 2 px, la ligne du hero se met à descendre');
+});
+
+test('flèche du hero : elle reste opaque, sinon le PDF sort du cadre PDF/UA', () => {
+  const css = lireFichier('pipeline', 'styles', 'print.css');
+  assert.match(css, /\.szh-hero \.szh-arrow\s*\{[^}]*opacity:\s*1/,
+    'une opacité < 1 fait dessiner la flèche dans un calque de transparence (PDF/UA-1 7.1-3)');
+});

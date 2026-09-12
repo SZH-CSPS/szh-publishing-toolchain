@@ -711,3 +711,114 @@ test('un settings.json illisible pendant le déverrouillage laisse l’interface
     await HOTE.executer('szh.cockpit.rafraichir');
   }
 });
+
+// ---- « Exporter cet article » dans le panneau Export -------------------------------
+//
+// L'entrée n'était offerte que sur un numéro gelé, au motif que la compilation automatique
+// s'occupe du reste sur un numéro vivant. Elle s'en occupe à l'enregistrement, ce qui n'est
+// pas la même chose que de le demander. Ces deux contrôles tiennent les deux bouts : elle est
+// là sur un numéro vivant — ce qui n'était pas vrai — ET elle y reste sur un numéro gelé, où
+// elle est le SEUL moyen de régénérer un document, l'archivage ayant vidé out/.
+
+// Les entrées d'un panneau, telles que la personne les voit : on intercepte le QuickPick
+// plutôt que de relire la liste dans la source, pour prouver le chemin entier.
+async function entreesDuPanneau(commande) {
+  const original = HOTE.stub.window.showQuickPick;
+  let items = null;
+  HOTE.stub.window.showQuickPick = (its) => { items = its; return Promise.resolve(undefined); };
+  try {
+    await HOTE.executer(commande);
+  } finally {
+    HOTE.stub.window.showQuickPick = original;
+  }
+  return items;
+}
+
+test('le panneau Export offre « Exporter cet article » sur un numéro vivant', async () => {
+  const items = await entreesDuPanneau('szh.panneauExport');
+  assert.ok(items, 'le panneau Export ne s’est pas ouvert (aucun QuickPick affiché)');
+  const entree = items.find((it) => it.commande === 'szh.exporterArticle');
+  assert.ok(entree,
+    'szh.exporterArticle n’est pas proposé : un rédacteur n’a aucun moyen de refaire un seul '
+    + 'article sans lancer le numéro entier — ' + JSON.stringify(items.map((it) => it.commande)));
+  // Elle vient avant « Tout exporter » : on refait un article bien plus souvent qu'un numéro.
+  const rangs = items.map((it) => it.commande);
+  assert.ok(rangs.indexOf('szh.exporterArticle') < rangs.indexOf('szh.toutExporter'),
+    '« Exporter cet article » est passé après « Tout exporter » : ' + JSON.stringify(rangs));
+});
+
+test('le panneau Export garde « Exporter cet article » sur un numéro verrouillé', async () => {
+  const ausgabe = path.join(REVUE, 'ausgabe.yaml');
+  const avantYaml = fs.readFileSync(ausgabe, 'utf8');
+  fs.writeFileSync(ausgabe, avantYaml + 'locked: "true"\n');
+  await HOTE.executer('szh.cockpit.rafraichir');
+  try {
+    const items = await entreesDuPanneau('szh.panneauExport');
+    assert.ok(items, 'le panneau Export ne s’est pas ouvert sur un numéro verrouillé');
+    assert.ok(items.some((it) => it.commande === 'szh.exporterArticle'),
+      'szh.exporterArticle a disparu du numéro gelé, où il est le seul moyen de régénérer '
+      + 'un document : ' + JSON.stringify(items.map((it) => it.commande)));
+  } finally {
+    fs.writeFileSync(ausgabe, avantYaml);
+    await HOTE.executer('szh.cockpit.rafraichir');
+  }
+});
+
+// ---- L'export d'un article finit dans l'Explorateur --------------------------------
+//
+// On demande un document pour en faire quelque chose : le joindre à un courriel, le déposer
+// sur OJS, l'envoyer à l'imprimeur. Le retrouver à la main dans out/<slug>/ était le seul
+// bout du chemin qui restait à la charge du rédacteur. Le second contrôle est le plus
+// important des deux : sur un export EN ÉCHEC, aucune fenêtre ne doit s'ouvrir — un dossier
+// vide, ou pire un PDF de la veille, ferait croire que ça a marché.
+
+// Joue szh.exporterArticle de bout en bout et rend les chemins révélés dans l'Explorateur.
+// La tâche est simulée : on intercepte son nom à l'envol plutôt que de le réécrire ici, qui
+// serait réécrire un libellé traduit et son cadratin.
+async function exporterEtNoterExplorateur(slug, codeSortie) {
+  const dossierOut = path.join(REVUE, 'out', slug);
+  // Ce que `make` aurait produit. Sans ces deux fichiers, ouvrirArticle() juge l'aperçu
+  // obsolète et attend une compilation que personne ne finira : le contrôle se figerait.
+  fs.mkdirSync(dossierOut, { recursive: true });
+  fs.writeFileSync(path.join(dossierOut, slug + '.pdf'), 'PDF factice');
+  fs.writeFileSync(path.join(dossierOut, slug + '.apercu.html'), '<p>aperçu factice</p>');
+
+  const execOriginal = HOTE.stub.tasks.executeTask;
+  const cmdOriginal = HOTE.stub.commands.executeCommand;
+  const reveles = [];
+  let nomTache = null;
+  HOTE.stub.tasks.executeTask = (t) => { nomTache = t && t.name; return execOriginal(t); };
+  HOTE.stub.commands.executeCommand = function (id, ...a) {
+    if (id === 'revealFileInOS') { reveles.push(a[0]); }
+    return cmdOriginal.call(this, id, ...a);
+  };
+  try {
+    const p = HOTE.executer('szh.exporterArticle', { slug: slug });
+    await new Promise((r) => setImmediate(r));
+    assert.ok(nomTache, 'szh.exporterArticle n’a lancé aucune tâche');
+    HOTE.finirTache(nomTache, codeSortie);
+    await p;
+  } finally {
+    HOTE.stub.tasks.executeTask = execOriginal;
+    HOTE.stub.commands.executeCommand = cmdOriginal;
+    fs.rmSync(path.join(REVUE, 'out'), { recursive: true, force: true });
+  }
+  return reveles;
+}
+
+test('« Exporter cet article » ouvre le dossier de sortie, le PDF sélectionné', async () => {
+  const slug = '01-essai';
+  const reveles = await exporterEtNoterExplorateur(slug, 0);
+  assert.strictEqual(reveles.length, 1,
+    'l’Explorateur n’a pas été ouvert une fois et une seule : ' + reveles.length);
+  const montre = String((reveles[0] && reveles[0].fsPath) || reveles[0]).replace(/\\/g, '/');
+  assert.match(montre, new RegExp('out/' + slug + '/' + slug + '\\.pdf$'),
+    'ce n’est pas le PDF de l’article qui est montré : ' + montre);
+});
+
+test('un export en échec n’ouvre aucune fenêtre d’Explorateur', async () => {
+  const reveles = await exporterEtNoterExplorateur('01-essai', 1);
+  assert.strictEqual(reveles.length, 0,
+    'l’Explorateur s’est ouvert sur un export raté : le rédacteur croira que le document '
+    + 'est à jour — ' + JSON.stringify(reveles.map((u) => String(u && u.fsPath))));
+});

@@ -83,18 +83,25 @@ async function ouvrirPanneauEdition() {
 }
 
 // Les documents produits, puis le cycle de vie du numéro (ou du livre). Ne figurent que
-// les entrées que l'état rend possibles : « Exporter cet article » n'apparaît que sur un
-// numéro gelé, où la compilation automatique est coupée. szh.exporterXml étant facultative,
-// sa présence est testée par getCommands. Le cycle de vie, lui, vaut pour les deux profils
-// (REVUE_SEULEMENT, plus bas) ; suffixeProfil choisit la variante « .livre » des libellés,
-// comme lib/cycle-vie.js le fait déjà pour les textes qu'il affiche.
+// les entrées que l'état rend possibles. szh.exporterXml étant facultative, sa présence est
+// testée par getCommands.
+//
+// « Exporter cet article » n'était offert ici que sur un numéro gelé, au motif que la
+// compilation automatique s'occupe du reste sur un numéro vivant. Elle s'en occupe à
+// l'enregistrement, ce qui n'est pas la même chose que de le demander : on veut refaire le
+// PDF d'un seul article sans attendre ni toucher au texte, et sans lancer le numéro entier.
+// L'entrée est donc là dans les deux cas — la commande, elle, n'a jamais rien exigé de
+// l'état (exporterArticle, extension.js). Elle vise l'article du .md actif, à défaut celui
+// en aperçu, et le dit si elle n'en trouve aucun.
+//
+// Le cycle de vie, lui, vaut pour les deux profils (REVUE_SEULEMENT, plus bas) ;
+// suffixeProfil choisit la variante « .livre » des libellés, comme lib/cycle-vie.js le
+// fait déjà pour les textes qu'il affiche.
 async function ouvrirPanneauExport() {
   const etat = hote.etat();
-  const entrees = [['--', 'panneau.g.export']];
-  if (etat.archivee || etat.verrouillee) {
-    entrees.push(['panneau.exporterArticle', 'szh.exporterArticle', '', '$(file-pdf)']);
-  }
-  entrees.push(['panneau.toutExporter', 'szh.toutExporter', '', '$(export)']);
+  const entrees = [['--', 'panneau.g.export'],
+                   ['panneau.exporterArticle', 'szh.exporterArticle', '', '$(file-pdf)'],
+                   ['panneau.toutExporter', 'szh.toutExporter', '', '$(export)']];
   const commandes = await vscode.commands.getCommands(true);
   if (commandes.indexOf('szh.exporterXml') !== -1) {
     entrees.push(['panneau.exporterXml', 'szh.exporterXml', '', '$(file-code)']);

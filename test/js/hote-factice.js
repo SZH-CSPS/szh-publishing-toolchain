@@ -256,6 +256,35 @@ function activerHote(revue) {
     ConfigurationTarget: { Global: 1, Workspace: 2 },
     QuickPickItemKind: { Separator: -1, Default: 0 },
     ProgressLocation: { Notification: 15 },
+    // Les pièces d'une tâche construite à la main. tacheMakeArticle() (extension.js) est le
+    // seul endroit du cockpit qui en fabrique une : partout ailleurs on reprend une tâche
+    // déjà déclarée dans tasks.json, via fetchTasks(). Elles manquaient ici, si bien que
+    // « Exporter cet article » levait « vscode.ProcessExecution is not a constructor » dès
+    // sa première ligne — envelopperCommande avalait l'exception, et le geste ne faisait
+    // simplement rien. Aucun contrôle ne pouvait le voir : ce chemin n'était pas jouable.
+    // Les champs retenus sont ceux que le harnais lit (`name`, `definition`) et ceux que le
+    // cockpit relit après coup ; le reste est gardé tel quel, sans interprétation.
+    ProcessExecution: class {
+      constructor(processus, args, options) {
+        this.process = processus;
+        this.args = args || [];
+        this.options = options;
+      }
+    },
+    Task: class {
+      constructor(definition, cible, nom, source, execution, problemes) {
+        this.definition = definition;
+        this.scope = cible;
+        this.name = nom;
+        this.source = source;
+        this.execution = execution;
+        this.problemMatchers = problemes || [];
+        this.presentationOptions = {};
+      }
+    },
+    TaskScope: { Global: 1, Workspace: 2 },
+    TaskRevealKind: { Always: 1, Silent: 2, Never: 3 },
+    TaskPanelKind: { Shared: 1, Dedicated: 2, New: 3 },
     env: {
       language: 'fr', clipboard: { writeText: () => Promise.resolve() },
       openExternal: () => Promise.resolve(true)

@@ -532,7 +532,24 @@ ul.szh-authors { margin: 0; padding: 0; list-style: none;
    .szh-hero-meta — voir sa note. */
 .szh-doi { margin-top: 15px; font-size: var(--corps-meta-hero); }
 .szh-licence { margin-top: 0; font-size: var(--corps-licence-hero); }
-.szh-arrow { width: 11px; height: 11px; opacity: 0.9; flex-shrink: 0; display: block; }
+/* La flèche « lien sortant », posée en <svg> inline par templates/szh-article.html à côté
+   du DOI et de la licence.
+   `margin-bottom` n'est pas un réglage de blanc : c'est le seul moyen de la REMONTER ici.
+   .szh-doi et .szh-licence sont des `inline-flex` en `align-items: center`, qui centrent la
+   boîte de MARGE de leur enfant — une marge basse de N décale donc l'encre de N/2 vers le
+   haut, sans rien changer au reste de la ligne.
+   Pourquoi la remonter (12.09.2026) : géométriquement elle était déjà centrée sur la bande
+   des chiffres (mesuré au rendu : 0,25 px AU-DESSUS de leur centre). Elle paraissait basse
+   quand même — un marqueur de lien sortant se lit en haut du mot, pas à mi-hauteur. Ces 2 px
+   valent 1 px de remontée, ce qui amène le haut de la flèche à fleur du haut des chiffres.
+   ⚠ Ne pas monter plus haut. Mesuré sur le même rendu : à 3 px la flèche dépasse le haut des
+     chiffres, et surtout sa boîte de marge devient plus haute que la ligne de texte, qui se
+     met alors à descendre (+1 px à 3 px, +7 px à 4 px). Le hero a une hauteur FIXE
+     (--hero-hauteur) et ce glissement finirait par y toucher. */
+.szh-arrow {
+  width: 11px; height: 11px; opacity: 0.9; flex-shrink: 0; display: block;
+  margin-bottom: 2px;
+}
 /* Filigrane de couverture. ⚠ Même règle que le point médian ci-dessus : pas d'`opacity`
    < 1, sinon WeasyPrint dessine le filigrane dans un calque de transparence et son
    contenu sort de l'arbre de structure (PDF/UA-1 7.1-3). Les 7 % sont pré-mélangés dans

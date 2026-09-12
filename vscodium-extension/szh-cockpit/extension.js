@@ -1611,7 +1611,9 @@ const CLES_LIVRE_EPUB = { statut: 'livre.epub.statut', fait: 'livre.epub.fait', 
 const CLES_LIVRE_WEB = { statut: 'livre.web.statut', fait: 'livre.web.fait', err: 'livre.web.err' };
 
 // ---- Export d'un seul article ----------------------------------------------------
-// Sur un numéro gelé, seul ce geste régénère un document. La tâche vise le PDF et
+// Sur un numéro gelé, seul ce geste régénère un document. Sur un numéro vivant, il refait
+// un article à la demande sans attendre un enregistrement ni lancer le numéro entier — le
+// panneau Export l'offre dans les deux cas (lib/panneaux.js). La tâche vise le PDF et
 // l'aperçu HTML, sans clean ni import, qui supprimerait le .docx source.
 // `-j2 -O` comme les tâches de vscodium-user/tasks.json, et ici même sur un seul article :
 // les deux cibles ne dépendent pas l'une de l'autre — le .pdf descend du .html, l'aperçu est
@@ -1665,6 +1667,17 @@ async function exporterArticle(fournisseur, rafraichirTout, cible) {
     session.poserBuildEnCours(false);
   }
   await ouvrirArticle(fournisseur, slug);   // montre le document régénéré
+
+  // Puis le dossier de sortie, PDF sélectionné. On vient de demander un document : le
+  // geste n'est fini que quand on l'a sous la main — pour le joindre à un courriel, le
+  // déposer sur OJS, l'envoyer à l'imprimeur. Le retrouver à la main dans out/<slug>/
+  // était le seul bout du chemin qui restait à la charge du rédacteur.
+  // En dernier, et à dessein : revelerDansExplorateur() donne le focus à l'Explorateur,
+  // ce qui recouvrirait l'éditeur qu'ouvrirArticle vient de mettre en place.
+  // Seulement après une compilation réussie : le `return` du code non nul plus haut sort
+  // de la fonction, un export en échec n'ouvre donc aucune fenêtre — ouvrir un dossier
+  // vide, ou pire un PDF de la veille, ferait croire que ça a marché.
+  await revelerDansExplorateur(vscode.Uri.file(path.join(racine, 'out', slug, slug + '.pdf')));
 }
 
 // ---- Archiver, verrouiller, désarchiver -> lib/cycle-vie.js ---------------------
