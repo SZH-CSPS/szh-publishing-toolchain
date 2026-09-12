@@ -122,15 +122,15 @@ test('portrait : la silhouette est dessinée dans la feuille, pas cherchée sur 
     'la silhouette redéfinit la géométrie du portrait : elle doit hériter la case de .szh-auteur-photo, sinon les deux cessent de coïncider');
 });
 
-test('portrait : l’encre de la silhouette suit encore celle du texte', () => {
+test('portrait : l’encre de la silhouette suit encore le bleu nuit du hero', () => {
   // Une url() en data: ne lit pas les variables CSS : l'encre du dessin y est écrite en
-  // clair. Si --c-ink bouge, la silhouette resterait seule sur l'ancien noir, et personne
-  // ne le verrait avant le PDF imprimé.
-  const encre = lire('pipeline', 'styles', 'socle.css').match(/--c-ink:\s*#([0-9a-fA-F]{6})/);
-  assert.ok(encre, '--c-ink a disparu de socle.css');
+  // clair. Si --c-nuit bouge, le hero changerait de bleu et la silhouette resterait seule
+  // sur l'ancien, deux pages plus loin — personne ne le verrait avant le PDF imprimé.
+  const encre = lire('pipeline', 'styles', 'socle.css').match(/--c-nuit:\s*#([0-9a-fA-F]{6})/);
+  assert.ok(encre, '--c-nuit a disparu de socle.css');
   const regle = CSS.match(/\.szh-auteur-photo-silhouette \{[^}]*\}/)[0];
   assert.ok(regle.toLowerCase().includes('%23' + encre[1].toLowerCase()),
-    'la silhouette est dessinée dans une autre encre que --c-ink (#' + encre[1] + ') : elle jurerait avec le texte qu’elle accompagne');
+    'la silhouette est dessinée dans un autre bleu que --c-nuit (#' + encre[1] + ') : elle ne serait plus celui du hero de l’article');
 });
 
 // ---- L'URL passe par un <style>, seul endroit où --embed-resources la réécrit ----

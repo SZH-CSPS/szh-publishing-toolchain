@@ -1052,11 +1052,15 @@ table > caption { caption-side: top; text-align: left; font-size: 9.5pt; color: 
    ne survivrait ni au HTML autonome ni au PDF, et --embed-resources ne réécrit url() que
    dans un <style>, pas dans une feuille liée. Son viewBox est carré comme la case, donc
    le « cover » ci-dessus le pose exactement comme le gabarit Word le montre, sans recadrage.
-   L'encre est écrite en clair — #16161f, soit --c-ink de socle.css : une url() en data: ne
-   lit pas les variables CSS. Même contrainte que la pastille ORCID, même remède ; c'est
-   test/js/portrait.test.js qui empêche les deux de diverger en silence. */
+   L'encre est le bleu nuit du hero — #252B46, soit --c-nuit de socle.css — et non l'encre
+   du texte : à 28 mm, la silhouette est une masse pleine, et le noir du corps en faisait
+   l'objet le plus sombre de la page, plus sombre qu'aucun portrait (ils sortent en niveaux
+   de gris). Le bleu nuit la rattache au hero du même article, où il couvre déjà une pleine
+   largeur. Écrite en clair parce qu'une url() en data: ne lit pas les variables CSS — même
+   contrainte que la pastille ORCID, même remède ; c'est test/js/portrait.test.js qui
+   empêche les deux de diverger en silence. */
 .szh-auteur-photo-silhouette {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Ccircle cx='48' cy='30' r='16' fill='%2316161f'/%3E%3Cpath fill='%2316161f' d='M80 82 80 66C80 63.6 78.8 61.2 76.8 59.6 72.4 56 66.8 53.6 61.2 52 57.2 50.8 52.8 50 48 50 43.6 50 39.2 50.8 34.8 52 29.2 53.6 23.6 56.4 19.2 59.6 17.2 61.2 16 63.6 16 66L16 82 80 82Z'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'%3E%3Ccircle cx='48' cy='30' r='16' fill='%23252B46'/%3E%3Cpath fill='%23252B46' d='M80 82 80 66C80 63.6 78.8 61.2 76.8 59.6 72.4 56 66.8 53.6 61.2 52 57.2 50.8 52.8 50 48 50 43.6 50 39.2 50.8 34.8 52 29.2 53.6 23.6 56.4 19.2 59.6 17.2 61.2 16 63.6 16 66L16 82 80 82Z'/%3E%3C/svg%3E");
 }
 .szh-auteur-texte { min-width: 0; }   /* autorise le repli du texte long */
 .szh-auteur-nom {
