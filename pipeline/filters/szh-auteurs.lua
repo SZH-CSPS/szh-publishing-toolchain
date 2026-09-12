@@ -58,6 +58,14 @@ local function bloc_auteur(a, rang)
     ins(string.format(
       '    <span class="szh-auteur-photo szh-auteur-photo-%s" role="presentation"></span>',
       ech(a['photo-rang'] ~= nil and a['photo-rang'] or rang)))
+  else
+    -- Personne sans photo : la silhouette du gabarit de mise en page tient la case, au
+    -- même format. Sans elle, la colonne de texte de cette personne repartait à la marge
+    -- pendant que celle de ses voisins commençait après le portrait — le bloc descendait
+    -- en escalier dès qu'un auteur sur trois refusait la sienne.
+    -- Même span vide à fond CSS que le portrait, et pour la même raison — une balise
+    -- d'image ressortirait en /Figure sans /Alt. Le dessin est dans print.css § 8.
+    ins('    <span class="szh-auteur-photo szh-auteur-photo-silhouette" role="presentation"></span>')
   end
   ins('    <div class="szh-auteur-texte">')
 

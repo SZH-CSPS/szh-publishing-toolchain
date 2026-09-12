@@ -100,6 +100,39 @@ test('portrait : le filtre numérote les portraits pour nommer leur règle CSS',
     'le rang n’est plus incrémenté sous la seule condition d’une photo');
 });
 
+// ---- Sans photo : la silhouette tient la case ----
+
+test('portrait : sans photo, la silhouette tient la case du portrait', () => {
+  assert.match(BLOC_AUTEURS,
+    /<span class="szh-auteur-photo szh-auteur-photo-silhouette" role="presentation"><\/span>/,
+    'la silhouette a quitté le bloc auteurs : la colonne de texte de qui n’a pas de photo repartirait à la marge, et le bloc descendrait en escalier');
+  // Branche « sinon » du test de photo, et pas une ligne de plus : ajoutée à côté, elle
+  // doublerait la case des personnes qui ont bien un portrait.
+  assert.match(BLOC_AUTEURS,
+    /if texte\(a\.photo\) ~= '' then[\s\S]*?\n  else\n[\s\S]*?szh-auteur-photo-silhouette/,
+    'la silhouette n’est plus la branche « pas de photo » : elle s’ajouterait au portrait au lieu de le remplacer');
+});
+
+test('portrait : la silhouette est dessinée dans la feuille, pas cherchée sur le disque', () => {
+  const regle = CSS.match(/\.szh-auteur-photo-silhouette \{[^}]*\}/);
+  assert.ok(regle, '.szh-auteur-photo-silhouette a disparu de print.css : la case resterait vide');
+  assert.match(regle[0], /background-image: url\("data:image\/svg\+xml,/,
+    'la silhouette passe par un fichier : le chemin partirait mort dans le HTML autonome, et le PDF ne montrerait rien');
+  assert.doesNotMatch(regle[0], /width:|height:/,
+    'la silhouette redéfinit la géométrie du portrait : elle doit hériter la case de .szh-auteur-photo, sinon les deux cessent de coïncider');
+});
+
+test('portrait : l’encre de la silhouette suit encore celle du texte', () => {
+  // Une url() en data: ne lit pas les variables CSS : l'encre du dessin y est écrite en
+  // clair. Si --c-ink bouge, la silhouette resterait seule sur l'ancien noir, et personne
+  // ne le verrait avant le PDF imprimé.
+  const encre = lire('pipeline', 'styles', 'socle.css').match(/--c-ink:\s*#([0-9a-fA-F]{6})/);
+  assert.ok(encre, '--c-ink a disparu de socle.css');
+  const regle = CSS.match(/\.szh-auteur-photo-silhouette \{[^}]*\}/)[0];
+  assert.ok(regle.toLowerCase().includes('%23' + encre[1].toLowerCase()),
+    'la silhouette est dessinée dans une autre encre que --c-ink (#' + encre[1] + ') : elle jurerait avec le texte qu’elle accompagne');
+});
+
 // ---- L'URL passe par un <style>, seul endroit où --embed-resources la réécrit ----
 
 test('portrait : l’URL de la photo passe par un <style>, pas par un attribut style', () => {

@@ -355,6 +355,12 @@ depuis n’importe où dans la revue) :
     fond** (détourée). On choisit celle qui paraîtra dans le **bloc « À propos des
     auteur·e·s »** en fin d’article (photo, nom, pastille ORCID, fonction, affiliation,
     e-mail).
+
+    Une personne qui ne veut pas de photo garde sa place dans le bloc : une **silhouette**
+     – celle du gabarit de mise en page – paraît à la place du portrait, au même format,
+    et la colonne de texte reste alignée sur celle des autres. Elle paraît dès qu’aucune photo
+    n’est retenue ; la fiche, elle, continue d’afficher « Aucune photo » tant qu’il n’y
+    en a pas.
   - **Réglages SZH** – thème, taille de l’interface et du texte, **aperçu par défaut**
     (voir ci-dessous), langue de l’interface, et la **validation PDF/UA en arrière-plan**
     (activée par défaut – voir « Les contrôles de la compilation » ci-dessous).
