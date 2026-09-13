@@ -1184,7 +1184,7 @@ const TEXTES_COCKPIT = {
     // nommer un filtre, un chemin ou un code de sortie.
     // Les huit destinations d’un bouton de constat (lib/constats.js). Huit paires, quel
     // que soit le nombre de défauts : c’est la cible qui est nommée, jamais le défaut.
-    'action.article': 'Ouvrir l’article',
+    'action.article': 'Vers l’article',
     'action.article.tip': 'Ouvrir le texte de l’article dans l’éditeur.',
     'action.fiche': 'Éditer les métadonnées',
     'action.fiche.tip': 'Ouvrir le formulaire des métadonnées de cet article.',
@@ -1278,7 +1278,6 @@ const TEXTES_COCKPIT = {
     'ctl.groupe.info': 'Pour information',
     'ctl.badge.bloquant': 'bloquant',
     'ctl.badge.avert': 'à vérifier',
-    'ctl.badge.info': 'information',
     'ctl.barre.bloquant': '$(error) {0} à corriger',
     'ctl.barre.avert': '$(warning) {0} à vérifier',
     'ctl.barre.tooltip': 'Ce que la dernière compilation a relevé – cliquer pour l’ouvrir.',
@@ -2480,7 +2479,7 @@ const TEXTES_COCKPIT = {
     'apercu.gele': 'Ausgabe eingefroren: die automatische Kompilierung ist abgeschaltet. Verwenden Sie «Diesen Artikel exportieren» (Ctrl+Alt+D oder die Schaltfläche beim Überfahren des Artikels), um die Dokumente neu zu erzeugen.',
 
     // ---- Prüfungen der Kompilierung (lib/journal.js) ----
-    'action.article': 'Artikel öffnen',
+    'action.article': 'Zum Artikel',
     'action.article.tip': 'Den Text des Artikels im Editor öffnen.',
     'action.fiche': 'Metadaten bearbeiten',
     'action.fiche.tip': 'Das Metadaten-Formular dieses Artikels öffnen.',
@@ -2572,7 +2571,6 @@ const TEXTES_COCKPIT = {
     'ctl.groupe.info': 'Zur Information',
     'ctl.badge.bloquant': 'blockierend',
     'ctl.badge.avert': 'zu prüfen',
-    'ctl.badge.info': 'Information',
     'ctl.barre.bloquant': '$(error) {0} zu beheben',
     'ctl.barre.avert': '$(warning) {0} zu prüfen',
     'ctl.barre.tooltip': 'Was die letzte Kompilierung gemeldet hat – zum Öffnen anklicken.',

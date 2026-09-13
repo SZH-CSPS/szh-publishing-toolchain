@@ -2957,12 +2957,11 @@ function fusionnerConstats(racine, neufs) {
   return gardes.concat(neufs);
 }
 
-// Ton d'une pastille et son pictogramme : les mêmes trois tons que partout ailleurs dans
-// le cockpit, pour qu'un avertissement se reconnaisse sans être lu.
-const PASTILLE_CONSTAT = {
-  danger: { badge: 'ctl.badge.bloquant', groupe: 'ctl.groupe.bloquant', icone: 'danger' },
-  attention: { badge: 'ctl.badge.avert', groupe: 'ctl.groupe.avert', icone: 'attention' },
-  info: { badge: 'ctl.badge.info', groupe: 'ctl.groupe.info', icone: 'info' }
+// Le titre de section, par gravité. Il se lisait jusqu'ici dans une table indexée par le
+// ton, qui dérive strictement de la gravité (lib/constats.js) : deux tables disaient la
+// même chose, et la vue passait de l'une à l'autre à chaque ligne.
+const GROUPE_GRAVITE = {
+  bloquant: 'ctl.groupe.bloquant', avert: 'ctl.groupe.avert', info: 'ctl.groupe.info'
 };
 
 const SOURCES_CONSTAT = {
@@ -3007,6 +3006,16 @@ function actionsConstat(constat, connus) {
             libelle: T(lieu.libelle), icone: lieu.icone, tip: T(lieu.tip) }];
 }
 
+// Une carte par article, et non une par constat. Trois défauts de citation sur le même
+// article donnaient trois cartes portant le même nom, le même sous-titre et le même bouton :
+// on relisait l'entête trois fois pour trois phrases, et rien ne disait qu'elles parlaient
+// du même texte. La séparation par gravité, elle, reste — ce qui empêche de publier ne se
+// range pas avec ce qui mérite un regard, même pour un seul article.
+//
+// Ce que la carte ne porte plus, et pourquoi : la pastille de ton répétait le titre de
+// section ET la couleur de l'encadré, trois fois le même mot ; le bouton « Ouvrir » doublait
+// celui du constat, qui mène au même endroit et plus précisément. Le geste de chaque défaut
+// est désormais au bout de sa phrase (media/_commun.js, `messages`).
 function vueControles(fournisseur) {
   const racine = fournisseur.racine;
   const constats = constatsCourants(racine);
@@ -3015,25 +3024,34 @@ function vueControles(fournisseur) {
   const contexte = contexteConstats();
   const lignes = [];
   for (const gravite of ['bloquant', 'avert', 'info']) {
+    const cartes = new Map();
     for (const c of constats) {
       if (tableConstats.gravite(c, contexte) !== gravite) { continue; }
-      const ton = tableConstats.ton(c, contexte);
-      const past = PASTILLE_CONSTAT[ton] || PASTILLE_CONSTAT.info;
-      // « Ouvrir » n'a de sens que sur un article qui existe encore : un constat peut
-      // nommer un Word qui n'est jamais devenu un article.
-      const ouvrable = c.slug !== '' && connus.has(c.slug);
       const detail = tableConstats.detail(c, langue);
-      lignes.push({
-        cle: ouvrable ? c.slug : '',
-        groupe: T(past.groupe),
-        titre: c.slug === '' ? T('ctl.numero') : T('ctl.article', [c.slug]),
-        meta: T(SOURCES_CONSTAT[c.source] || 'ctl.source.pipeline'),
-        notif: { ton: ton,
-                 texte: tableConstats.phrase(c, langue)
-                   + (detail === '' ? '' : ' ' + detail) },
-        pastilles: [{ texte: T(past.badge), ton: ton === 'info' ? '' : ton, icone: past.icone }],
-        ouvrir: ouvrable,
-        actions: actionsConstat(c, connus)
+      const source = T(SOURCES_CONSTAT[c.source] || 'ctl.source.pipeline');
+      let carte = cartes.get(c.slug);
+      if (!carte) {
+        carte = {
+          // La clé ne vaut que sur un article qui existe encore : un constat peut nommer
+          // un Word qui n'est jamais devenu un article.
+          cle: c.slug !== '' && connus.has(c.slug) ? c.slug : '',
+          groupe: T(GROUPE_GRAVITE[gravite]),
+          titre: c.slug === '' ? T('ctl.numero') : T('ctl.article', [c.slug]),
+          meta: source,
+          messages: [],
+          pastilles: [], ouvrir: false, actions: []
+        };
+        cartes.set(c.slug, carte);
+        lignes.push(carte);
+      }
+      // Le sous-titre ne tient que si toute la carte vient du même contrôle : deux sources
+      // dessous, et il mentirait sur la moitié des phrases.
+      if (carte.meta !== source) { carte.meta = ''; }
+      carte.messages.push({
+        ton: tableConstats.ton(c, contexte),
+        texte: tableConstats.phrase(c, langue) + (detail === '' ? '' : ' ' + detail),
+        // Un seul geste par défaut, ou aucun : actionsConstat rend au plus une entrée.
+        action: actionsConstat(c, connus)[0] || null
       });
     }
   }
@@ -3220,9 +3238,8 @@ async function ouvrirVueEnsemble(fournisseur, rafraichirTout, type) {
       if (type === 'traductions') {
         await vscode.commands.executeCommand('szh.traduction', { slug: String(msg.cle || '') });
       }
-      if (type === 'controles') {
-        await vscode.commands.executeCommand('szh.ouvrirArticle', String(msg.cle || ''));
-      }
+      // La vue Contrôles n'envoie plus « ouvrir » : son bouton doublait celui du constat,
+      // qui mène au même endroit et plus précisément (vueControles).
       return;
     }
     if (msg.type !== MSG.ACTION) {
@@ -5967,7 +5984,17 @@ function activate(context) {
     cmd('szh.desarchiver', () => desarchiver(fournisseur, rafraichirTout)),
     // Le second argument transmet les options (sansApercu depuis la vue Articles) ; les
     // appelants historiques (arbre, Contrôles, démarrage) n'en passent pas : rien ne change.
-    cmd('szh.ouvrirArticle', (slug, opts) => ouvrirArticle(fournisseur, slug, opts)),
+    // Deux formes d'appel arrivent ici, et c'est voulu : l'arbre et les vues d'ensemble
+    // passent le slug tout court, les boutons de constat passent { slug, focus } — le
+    // contrat que lib/constats.js écrit en tête de sa table des destinations. La seconde
+    // repartait sans un mot (ouvrirArticle exige `typeof slug === 'string'`), et le bouton
+    // « Vers l'article » des Contrôles ne faisait rien du tout. On normalise donc ici,
+    // au bord, plutôt que d'obliger chaque appelant à connaître l'autre.
+    cmd('szh.ouvrirArticle', (arg, opts) => {
+      const objet = arg !== null && typeof arg === 'object';
+      return ouvrirArticle(fournisseur, objet ? String(arg.slug || '') : arg,
+        objet ? undefined : opts);
+    }),
     // Le clic sur un en-tête de section : sa section se déplie, les autres se replient,
     // et la vue d'ensemble correspondante s'ouvre — le geste d'avant l'accordéon,
     // conservé. Un en-tête déjà déplié reste déplié : le clic n'ouvre alors que la vue.

@@ -703,10 +703,16 @@ var SZH = (function () {
   // attente », « Articles » — et pour celles qui viendront. Une ligne vaut :
   //
   //   { cle, groupe, titre, meta, notif: { ton, texte },
+  //     messages: [{ ton, texte, action }],
   //     pastilles: [{ texte, ton, icone }], ouvrir,
   //     actions: [{ id, libelle, icone, tip, desactive, danger }],
   //     taches: [{ id, libelle, faite }],
   //     constats: [{ ton, texte }] }
+  //
+  // `messages` : plusieurs défauts dans une même carte, une phrase chacun, le geste de
+  // chacun au bout de sa phrase. C'est ce qui permet à la vue Contrôles de tenir un article
+  // par carte au lieu d'une carte par défaut. `action` vaut une entrée de `actions` — ou
+  // null quand rien n'est à faire ailleurs — et part par le même opts.onAction(cle, id).
   //
   // opts.conteneur   élément qui reçoit les cartes
   // opts.textes()    -> { ouvrir, listeVide }, relu à chaque rendu : la langue peut arriver après
@@ -789,6 +795,24 @@ var SZH = (function () {
       }
     }
 
+    // Une phrase de défaut et, au bout, le geste qui mène là où on le corrige. Le bouton
+    // est posé DANS le corps de la notification, pas à côté : il suit ainsi le dernier mot
+    // et se replie avec le texte, au lieu de s'ancrer dans un coin que l'œil ne relie plus
+    // à la phrase.
+    function messageAvecGeste(ligne, msg) {
+      var contenu = [document.createTextNode(msg.texte || '')];
+      var action = msg.action;
+      if (action && action.id) {
+        contenu.push(boutonIcone(action.icone || 'fleche',
+          action.libelle || action.tip || '',
+          (function (cle, id) {
+            return function () { if (opts.onAction) { opts.onAction(cle, id); } };
+          }(String(ligne.cle || ''), String(action.id || ''))),
+          'szh-ico--enligne'));
+      }
+      return notif(msg.ton || 'info', contenu);
+    }
+
     // Les pastilles d'une carte, reposées seules, et le compteur de son entête « À faire »
     // avec elles quand l'hôte l'envoie. Cocher une tâche ne doit pas reconstruire la liste :
     // le clavier perdrait le focus de la case qu'il vient d'utiliser, et deux clics
@@ -841,6 +865,16 @@ var SZH = (function () {
         if (l.notif && l.notif.texte) {
           var corps = poser(carte, 'div', 'szh-corps');
           corps.appendChild(notif(l.notif.ton || 'info', l.notif.texte));
+        }
+        // Les défauts d'une carte groupée. Un pied par défaut aurait rendu la carte
+        // illisible — trois phrases, trois rangées de boutons ; le geste tient donc au
+        // bout de la phrase, en flèche étroite (.szh-ico--enligne, media/_liste.css).
+        var messages = l.messages || [];
+        if (messages.length > 0) {
+          var corpsM = poser(carte, 'div', 'szh-corps szh-messages');
+          for (var m = 0; m < messages.length; m++) {
+            corpsM.appendChild(messageAvecGeste(l, messages[m]));
+          }
         }
         var aFaire = poserAFaire(carte, l);
         if (aFaire && aFaire.compteur) { compteurs[String(l.cle || '')] = aFaire.compteur; }

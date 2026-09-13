@@ -623,10 +623,12 @@ Désormais, **quand il y a quelque chose à dire, cela se dit** :
 - un **compteur reste dans la barre d’état**, en bas à gauche : `⚠ 3 à vérifier` ou
   `⛔ 1 à corriger`. Il survit à la notification, qui disparaît toute seule ; un clic
   dessus ouvre la page ;
-- la page **« Contrôles de la compilation »** liste un point par carte. Elle s’ouvre aussi
+- la page **« Contrôles de la compilation »** range ses points par article : une carte par article, et dessous ce
+  qu’il y a à y corriger. Elle s’ouvre aussi
   par **🚀 Commande → Contrôles de la compilation**.
 
-[capture : la vue « Contrôles de la compilation », deux sections et une carte par point]
+[capture : la vue « Contrôles de la compilation », deux sections, une carte par article, et une flèche au
+bout de chaque point]
 
 ### Deux tons, et ils ne mentent pas
 
@@ -647,14 +649,18 @@ Une troisième section, **« Pour information »**, porte les chiffres : « 
 
 ### Ce qu’une carte contient
 
-Chaque carte nomme **l’article concerné**, la **nature du contrôle** (« Citations et
-références », « Métadonnées et langue », « Accessibilité du PDF »…), et donne la phrase
-entière : **ce qui s’est passé**, **le geste** qui corrige, et, quand cela bloque,
-**pourquoi**. Le bouton **« Ouvrir »** mène droit à l’article en cause.
+Chaque carte nomme **l’article concerné** et, quand tous ses points viennent du même
+contrôle, la **nature de celui-ci** (« Citations et références », « Métadonnées et
+langue », « Accessibilité du PDF »…). Dessous vient **un encadré par point** : ce qui s’est
+passé, et l’objet en cause. Un article qui a trois appels de citation à lier ne fait donc
+qu’une carte, et non trois – son nom, sa nature et son geste ne se répètent plus à chaque
+phrase.
 
-Une carte peut porter un second bouton, propre à son constat – ainsi « Décrire les images »
-sur une image sans texte alternatif ni légende (source « Figures »), qui ouvre directement le
-formulaire des médias de l’article concerné.
+Au bout de chaque phrase, une **flèche étroite** mène là où le point se corrige : le texte
+de l’article, le formulaire des métadonnées, celui des images. Le survol le dit – « Vers
+l’article », « Décrire les images ». Un point qui ne se corrige nulle part dans
+l’application n’a pas de flèche : renommer un dossier, par exemple, se fait dans
+l’explorateur de Windows.
 
 Les messages sont dans la langue de l’interface, et dans elle seule : le réglage de langue
 (**🚀 Commande → Réglages SZH**) les fait basculer du français à l’allemand.

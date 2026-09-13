@@ -150,7 +150,9 @@ test('un PDF modifié et non conforme est compté bloquant et montré dans les C
   const carte = charge.lignes.find((l) => l.meta === 'Accessibilité du PDF');
   assert.ok(carte, 'aucune carte « Accessibilité du PDF » dans la vue Contrôles : '
     + JSON.stringify(charge.lignes.map((l) => l.meta)));
-  assert.match(carte.notif.texte, /3 règle/, 'le nombre de règles en échec n’est pas dans la phrase');
+  // Une carte par article, plusieurs défauts dessous : la phrase est dans l'un d'eux.
+  const phrases = (carte.messages || []).map((m) => m.texte).join(' | ');
+  assert.match(phrases, /3 règle/, 'le nombre de règles en échec n’est pas dans la phrase : ' + phrases);
 });
 
 // ---- 4. Une panne d'outillage n'est ni un verdict ni un blocage ---------------------

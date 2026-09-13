@@ -1306,10 +1306,17 @@ test('vue Articles : « ouvrir » passe sansApercu, et seul ce chemin la porte',
     /executeCommand\('szh\.ouvrirArticle',[^;]*\{ sansApercu: true \}/,
     'la vue Articles n’envoie pas sansApercu : l’aperçu s’ouvrirait encore');
   // 2. L'enregistrement de la commande transmet le second argument, sinon l'option se
-  //    perdrait entre executeCommand et la fonction.
-  assert.match(src,
-    /cmd\('szh\.ouvrirArticle', \(slug, opts\) => ouvrirArticle\(fournisseur, slug, opts\)\)/,
+  //    perdrait entre executeCommand et la fonction. Et il accepte les DEUX formes
+  //    d'appel : le slug tout court (arbre, vue Articles) et { slug, focus } (les gestes
+  //    de constat, contrat écrit en tête de lib/constats.js). La seconde repartait sans
+  //    un mot — c'est ce qui rendait la flèche « Vers l'article » des Contrôles inerte.
+  const iCmd = src.indexOf("cmd('szh.ouvrirArticle'");
+  assert.notStrictEqual(iCmd, -1, 'szh.ouvrirArticle n’est plus enregistrée');
+  const enregistrement = src.slice(iCmd, iCmd + 400);
+  assert.match(enregistrement, /ouvrirArticle\(fournisseur,[\s\S]*?opts\)/,
     'szh.ouvrirArticle ne propage pas les options à ouvrirArticle');
+  assert.match(enregistrement, /typeof arg === 'object'/,
+    'szh.ouvrirArticle n’accepte plus { slug, focus } : le geste d’un constat ne ferait rien');
   // 3. ouvrirArticle honore l'option : après l'ouverture du .md, avant le calcul
   //    d'obsolescence et la compilation.
   const fn = bloc('ouvrirArticle');

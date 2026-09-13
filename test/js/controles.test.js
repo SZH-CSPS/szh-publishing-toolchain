@@ -269,6 +269,13 @@ test('journal : une plainte inconnue passe quand même, plutôt que de se taire'
   assert.deepStrictEqual(journal.analyserJournal(null, 'fr'), []);
 });
 
+// La vue Contrôles tient UN ARTICLE par carte, et plusieurs défauts dessous : ce qu'on
+// cherche dans ces contrôles est donc un défaut, pas une carte. `defauts` les remet à plat
+// en gardant sa carte sous la main, pour lire la clé et le titre au besoin.
+const defauts = (lignes) => (lignes || []).reduce(
+  (tout, l) => tout.concat((l.messages || []).map((m) => Object.assign({ carte: l }, m))), []);
+const parTexte = (lignes, motif) => defauts(lignes).find((m) => motif.test(m.texte));
+
 // ---- 2. La page : les constats jusqu'aux cartes ----
 
 test('page : les constats deviennent des cartes, bloquants d’abord', () => {
@@ -285,20 +292,38 @@ test('page : les constats deviennent des cartes, bloquants d’abord', () => {
     lignes: [
       { cle: '01-inclusion', groupe: 'Ce qui empêche de publier',
         titre: 'Article « 01-inclusion »', meta: 'Mise en page',
-        notif: { ton: 'danger', texte: 'L’image « fig-absente.png » est appelée par le texte mais introuvable.' },
-        pastilles: [{ texte: 'bloquant', ton: 'danger', icone: 'danger' }], ouvrir: true },
+        messages: [{ ton: 'danger',
+          texte: 'L’image « fig-absente.png » est appelée par le texte mais introuvable.',
+          action: { id: 'medias:fig-absente.png', libelle: 'Décrire les images', icone: 'camera' } }],
+        pastilles: [], ouvrir: false, actions: [] },
       { cle: '01-inclusion', groupe: 'À regarder avant de publier',
         titre: 'Article « 01-inclusion »', meta: 'Citations et références',
-        notif: { ton: 'attention', texte: 'L’appel (Shaw et al., 2023) ne mène à aucune référence.' },
-        pastilles: [{ texte: 'à vérifier', ton: 'attention', icone: 'attention' }], ouvrir: true }
+        messages: [
+          { ton: 'attention', texte: 'L’appel (Shaw et al., 2023) ne mène à aucune référence.',
+            action: { id: 'article', libelle: 'Vers l’article', icone: 'fleche' } },
+          { ton: 'attention', texte: 'La référence « Ricœur, 1990 » n’est citée nulle part.',
+            action: null }
+        ],
+        pastilles: [], ouvrir: false, actions: [] }
     ]
   });
+  // Un article, deux gravités : deux cartes — et non une carte par défaut, ce qui répétait
+  // le nom de l'article, son sous-titre et son bouton à chaque phrase.
   assert.strictEqual(page.compter('.szh-carte'), 2, 'les cartes ne sont pas posées');
   // Les deux tons se distinguent : c'est tout ce qui sépare, à l'œil, un blocage d'un détail.
   assert.strictEqual(page.compter('.szh-notif--danger'), 1);
-  assert.strictEqual(page.compter('.szh-notif--attention'), 1);
-  assert.strictEqual(page.compter('.szh-pastille--danger'), 1);
-  assert.strictEqual(page.compter('.szh-pastille--attention'), 1);
+  assert.strictEqual(page.compter('.szh-notif--attention'), 2,
+    'les deux défauts de citation ne tiennent pas dans la même carte');
+  // La pastille de ton répétait le titre de section ET la couleur de l'encadré ; le bouton
+  // « Ouvrir » doublait celui du défaut, qui mène au même endroit et plus précisément.
+  assert.strictEqual(page.compter('.szh-pastille'), 0,
+    'la pastille de ton est revenue faire doublon avec le titre de section');
+  assert.strictEqual(page.compter('.ligne-pied .szh-bouton'), 0,
+    'le pied de carte porte de nouveau un bouton');
+  // Une flèche au bout de chaque phrase qui mène quelque part — et rien là où il n'y a
+  // aucun geste à faire.
+  assert.strictEqual(page.compter('.szh-ico--enligne'), 2,
+    'le geste d’un défaut n’est plus au bout de sa phrase');
   // Les deux groupes ont leur titre : l'ordre de lecture est celui des gestes à faire.
   const textes = page.textes();
   assert.strictEqual(textes.indexOf('Ce qui empêche de publier'), 0,
@@ -308,8 +333,10 @@ test('page : les constats deviennent des cartes, bloquants d’abord', () => {
   const joint = textes.join(' | ');
   assert.ok(joint.indexOf('fig-absente.png') !== -1, 'la phrase du constat n’est pas affichée');
   assert.ok(joint.indexOf('(Shaw et al., 2023)') !== -1, 'l’appel fautif n’est pas affiché');
-  // « Ouvrir » mène à l'article nommé.
-  assert.strictEqual(page.compter('.ligne-pied button') >= 2, true, 'aucun bouton « Ouvrir »');
+  // Le pied de carte ne porte plus rien du tout : il se replie (.ligne-pied:empty), et la
+  // carte se termine sur sa dernière phrase.
+  assert.strictEqual(page.compter('.ligne-pied button'), 0,
+    'le pied de carte porte encore un bouton');
 });
 
 // ---- 3. L'hôte, réellement activé ----
@@ -343,7 +370,11 @@ test('hôte : rouvrir un numéro retrouve ses contrôles, sans les annoncer', as
   const p = HOTE.panneauDeType('szhVueControles');
   await p._recepteur({ type: 'pret' });
   const charge = p.messages.filter((m) => m.type === 'valeurs').pop();
-  assert.strictEqual(charge.lignes.length, 4);
+  // Quatre constats du même article : trois à vérifier et un pour information, donc deux
+  // cartes — une par gravité.
+  assert.strictEqual(charge.lignes.length, 2,
+    JSON.stringify(charge.lignes.map((l) => [l.groupe, (l.messages || []).length])));
+  assert.strictEqual(defauts(charge.lignes).length, 4);
 });
 
 // Le compteur de la barre d'état ne se regarde pas : la liste a donc son raccourci dans
@@ -406,15 +437,24 @@ test('hôte : une compilation qui avertit le dit sans ouvrir de terminal', async
   assert.ok(p, 'la vue des contrôles ne s’ouvre pas');
   await p._recepteur({ type: 'pret' });              // la page s'annonce, comme dans l'éditeur
   const charge = p.messages.filter((m) => m.type === 'valeurs').pop();
-  assert.strictEqual(charge.lignes.length, 5, 'les cartes ne portent pas tous les constats');
+  // Cinq constats, tous sur le même article : deux cartes — une par gravité — et non une
+  // par défaut. Ce qui empêche de publier ne se range pas avec ce qui mérite un regard,
+  // même pour un seul article ; le reste se regroupe.
+  assert.strictEqual(charge.lignes.length, 2,
+    'les défauts du même article ne sont pas regroupés : '
+      + JSON.stringify(charge.lignes.map((l) => l.titre)));
+  assert.ok(charge.lignes.every((l) => l.pastilles.length === 0 && l.ouvrir === false),
+    'la pastille de ton ou le bouton « Ouvrir » sont revenus faire doublon');
   assert.match(charge.titre, /À corriger/);
-  const corps = charge.lignes.map((l) => l.notif.texte).join(' | ');
+  const dits = defauts(charge.lignes);
+  assert.strictEqual(dits.length, 5, 'les cartes ne portent pas tous les constats');
+  const corps = dits.map((m) => m.texte).join(' | ');
   assert.ok(corps.indexOf('(Shaw et al., 2023)') !== -1, 'l’appel sans référence n’est pas à l’écran');
   assert.ok(corps.indexOf('fig-absente.png') !== -1, 'l’image absente n’est pas à l’écran');
   // Aucun bloquant ici : une image introuvable laisse sortir le PDF, elle ne ferme ni la
   // compilation, ni la validation PDF/UA, ni l'export. Elle etait rouge par principe, elle
   // est ambre par mesure -- et l'info ferme la marche.
-  assert.deepStrictEqual(charge.lignes.map((l) => l.notif.ton),
+  assert.deepStrictEqual(dits.map((m) => m.ton),
     ['attention', 'attention', 'attention', 'attention', 'info']);
 });
 
@@ -502,9 +542,11 @@ test('hôte : une image sans texte alternatif ouvre le formulaire des médias de
     + JSON.stringify(charge.lignes.map((l) => l.titre)));
   assert.strictEqual(carte.meta, 'Figures', 'la source « numerotation » ne montre pas son libellé');
   // Le gabarit : l'intitule du defaut, puis l'objet. Le geste est passe dans le bouton.
-  assert.match(carte.notif.texte, /^Figure sans texte alternatif.*fig-1.png$/);
-  assert.ok(carte.actions && carte.actions.some((a) => a.id === 'medias:fig-1.png'),
-    'le bouton « Décrire les images » manque sur la carte : ' + JSON.stringify(carte.actions));
+  assert.strictEqual(carte.messages.length, 1);
+  assert.match(carte.messages[0].texte, /^Figure sans texte alternatif.*fig-1.png$/);
+  assert.ok(carte.messages[0].action && carte.messages[0].action.id === 'medias:fig-1.png',
+    'le geste « Décrire les images » manque au bout de la phrase : '
+      + JSON.stringify(carte.messages[0].action));
 
   // Le bouton mène au bon formulaire, sur le bon article — même contrôle que pour la vue
   // Articles (carte-article.test.js), avec le même geste et la même commande.
@@ -669,24 +711,26 @@ test('vue : chaque constat porte le bouton de sa destination, et l’endroit exa
   await p._recepteur({ type: 'pret' });
   const lignes = p.messages.filter((m) => m.type === 'valeurs').pop().lignes;
 
-  const parTexte = (motif) => lignes.find((l) => motif.test(l.notif.texte));
-  const muette = parTexte(/alternatif/);
+  const muette = parTexte(lignes, /alternatif/);
   assert.ok(muette, 'l’image muette n’est pas dans la liste');
-  assert.strictEqual(muette.actions.length, 1, 'un bouton et un seul');
+  assert.ok(muette.action, 'un geste, au bout de la phrase');
   // L'identifiant porte la destination ET l'objet : la page le renvoie tel quel, l'hôte n'a
   // donc pas à retrouver de quel constat venait le clic.
-  assert.strictEqual(muette.actions[0].id, 'medias:fig-01.png');
-  assert.ok(muette.actions[0].libelle && muette.actions[0].tip, 'bouton sans libellé ni tip');
+  assert.strictEqual(muette.action.id, 'medias:fig-01.png');
+  assert.ok(muette.action.libelle && muette.action.tip, 'geste sans libellé ni tip');
+  // Le libellé est le survol de la flèche : il doit tenir en deux mots, pas en phrase.
+  assert.ok(muette.action.libelle.length <= 30,
+    'le survol de la flèche est une phrase : ' + muette.action.libelle);
 
-  const champ = parTexte(/Champ vide/);
+  const champ = parTexte(lignes, /Champ vide/);
   assert.ok(champ, 'le champ vide n’est pas dans la liste');
-  assert.strictEqual(champ.actions[0].id, 'fiche:title');
+  assert.strictEqual(champ.action.id, 'fiche:title');
 
-  // Un défaut qui ne se corrige nulle part dans l'application n'a pas de bouton : renommer
+  // Un défaut qui ne se corrige nulle part dans l'application n'a pas de flèche : renommer
   // un dossier se fait dans l'explorateur de Windows.
-  const espaces = parTexte(/[Ee]space/);
+  const espaces = parTexte(lignes, /[Ee]space/);
   assert.ok(espaces, 'le dossier à espaces n’est pas dans la liste');
-  assert.strictEqual(espaces.actions.length, 0, 'un bouton mène « quelque part » : mensonge');
+  assert.strictEqual(espaces.action, null, 'une flèche mène « quelque part » : mensonge');
 
   poserJournal(JOURNAL_CITATIONS);
   await HOTE.finirTache('Aperçu / Export PDF', 0);
@@ -698,10 +742,10 @@ test('vue : le bouton ouvre le formulaire sur l’image en cause', async () => {
   await HOTE.executer('szh.vueControles');
   const p = HOTE.panneauDeType('szhVueControles');
   await p._recepteur({ type: 'pret' });
-  const ligne = p.messages.filter((m) => m.type === 'valeurs').pop()
-    .lignes.find((l) => /alternatif/.test(l.notif.texte));
+  const defaut = parTexte(p.messages.filter((m) => m.type === 'valeurs').pop().lignes,
+    /alternatif/);
 
-  await p._recepteur({ type: 'action', cle: ligne.cle, id: ligne.actions[0].id });
+  await p._recepteur({ type: 'action', cle: defaut.carte.cle, id: defaut.action.id });
   const medias = HOTE.panneauDeType('szhMedias');
   assert.ok(medias, 'le bouton n’a pas ouvert le formulaire des médias');
   // Deux chemins, selon que le formulaire était déjà ouvert : une charge neuve qui porte
@@ -716,24 +760,69 @@ test('vue : le bouton ouvre le formulaire sur l’image en cause', async () => {
   await HOTE.finirTache('Aperçu / Export PDF', 0);
 });
 
+// Le défaut que Robin a signalé le 13.09.2026 : la flèche était là, elle ne faisait rien.
+// lib/constats.js appelle chaque destination avec { slug, focus } — c'est écrit en tête de
+// sa table — et szh.ouvrirArticle attendait un slug tout court : elle repartait sur
+// « typeof slug !== 'string' », sans un mot, sans une erreur, sans rien à l'écran. Rien ne
+// tenait les deux formes ensemble, d'où ce contrôle : il part de la vue et va jusqu'au
+// fichier ouvert, exactement le chemin que le clic emprunte.
+const JOURNAL_VERS_ARTICLE = [
+  '[citations-avertissement] appel-sans-reference | article « 01-essai » | appel « (Shaw et al., 2023) » | '
+    + 'Appel sans référence : (Shaw et al., 2023). | '
+    + '[de] Zitatverweis ohne Eintrag im Verzeichnis: (Shaw et al., 2023).'
+].join(LF) + LF;
+
+test('vue : la flèche « Vers l’article » ouvre vraiment l’article', async () => {
+  poserJournal(JOURNAL_VERS_ARTICLE);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+  await HOTE.executer('szh.vueControles');
+  const p = HOTE.panneauDeType('szhVueControles');
+  await p._recepteur({ type: 'pret' });
+  const lignes = p.messages.filter((m) => m.type === 'valeurs').pop().lignes;
+  // Par la carte ET par la phrase : les constats des articles qu'on n'a pas recompilés
+  // restent en liste (fusionnerConstats), et l'un d'eux porte la même phrase sur un article
+  // qui n'existe pas dans cette revue d'essai — donc sans geste, à juste titre.
+  const defaut = defauts(lignes).find(
+    (m) => m.carte.cle === '01-essai' && /Appel sans référence/.test(m.texte));
+  assert.ok(defaut && defaut.action, 'l’appel sans référence n’a plus de geste : '
+    + JSON.stringify(lignes.map((l) => [l.cle, (l.messages || []).length])));
+  // « article:<appel> » : la destination, puis ce qu'il faut amener à l'écran là-bas.
+  assert.match(String(defaut.action.id), /^article:/,
+    'le geste ne mène plus à l’article : ' + defaut.action.id);
+
+  // vscode.open n'est pas une commande du cockpit : on la pose le temps du contrôle, pour
+  // voir ce que l'éditeur recevrait vraiment.
+  const ouverts = [];
+  HOTE.stub.commands._table['vscode.open'] = (uri) => { ouverts.push(String((uri || {}).fsPath || '')); };
+  try {
+    await p._recepteur({ type: 'action', cle: defaut.carte.cle, id: defaut.action.id });
+  } finally {
+    delete HOTE.stub.commands._table['vscode.open'];
+  }
+  assert.ok(ouverts.some((c) => c.indexOf('01-essai.md') !== -1),
+    'la flèche n’ouvre toujours rien : ' + JSON.stringify(ouverts));
+
+  poserJournal(JOURNAL_CITATIONS);
+  await HOTE.finirTache('Aperçu / Export PDF', 0);
+});
+
 test('vue : la couleur suit la barrière, et la barrière suit le réglage', async () => {
   poserJournal(JOURNAL_CIBLES);
   await HOTE.finirTache('Aperçu / Export PDF', 2);
   const muette = () => {
     const p = HOTE.panneauDeType('szhVueControles');
-    return p.messages.filter((m) => m.type === 'valeurs').pop()
-      .lignes.find((l) => /alternatif/.test(l.notif.texte));
+    return parTexte(p.messages.filter((m) => m.type === 'valeurs').pop().lignes, /alternatif/);
   };
   await HOTE.executer('szh.vueControles');
   const p = HOTE.panneauDeType('szhVueControles');
   await p._recepteur({ type: 'pret' });
   // Validation PDF/UA active : une image muette fait échouer le PDF, donc l'export.
-  assert.strictEqual(muette().notif.ton, 'danger');
+  assert.strictEqual(muette().ton, 'danger');
 
   // Éteinte, plus rien ne refuse ce PDF : le défaut reste, la couleur retombe.
   await HOTE.stub.workspace.getConfiguration('szh').update('controlePdfUa', false);
   await p._recepteur({ type: 'pret' });
-  assert.strictEqual(muette().notif.ton, 'attention',
+  assert.strictEqual(muette().ton, 'attention',
     'la couleur ne suit pas le réglage : elle annonce un refus qui n’aura pas lieu');
   await HOTE.stub.workspace.getConfiguration('szh').update('controlePdfUa', true);
 
@@ -747,8 +836,8 @@ test('vue : la phrase nomme le défaut et son objet, et s’arrête là', async 
   await HOTE.executer('szh.vueControles');
   const p = HOTE.panneauDeType('szhVueControles');
   await p._recepteur({ type: 'pret' });
-  const textes = p.messages.filter((m) => m.type === 'valeurs').pop()
-    .lignes.map((l) => l.notif.texte);
+  const textes = defauts(p.messages.filter((m) => m.type === 'valeurs').pop().lignes)
+    .map((m) => m.texte);
 
   assert.ok(textes.some((t) => /^Figure sans texte alternatif\b.*fig-01\.png$/.test(t)),
     'le gabarit « {défaut} : {objet} » n’est pas appliqué : ' + textes.join(' | '));

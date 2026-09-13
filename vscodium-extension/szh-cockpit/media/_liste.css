@@ -22,6 +22,23 @@
 }
 .ligne-pied:empty { display: none; }
 
+/* Plusieurs défauts dans une carte : une phrase par défaut, empilées, et le bas du bloc
+   reprend la marge que le pied donnait — le pied d'une carte groupée est vide, donc replié
+   (.ligne-pied:empty), et sans cela la dernière phrase touchait le bord. */
+.ligne .szh-messages { display: flex; flex-direction: column; gap: var(--e2);
+  padding-bottom: var(--e3); }
+
+/* Le geste d'un défaut, au bout de sa phrase. Étroit et sans fond : c'est une flèche dans
+   du texte, pas un bouton de barre — trois boutons pleins empilés dans une carte pesaient
+   plus que les phrases qu'ils accompagnent. La cible reste au-dessus du pouce (1,5 rem à la
+   taille d'interface par défaut), et le survol lui rend un fond, donc un contour.
+   vertical-align : un inline-flex se pose sur la ligne de base, ce qui suspendait la flèche
+   au-dessus du texte. */
+.szh-ico--enligne {
+  width: 1.5rem; height: 1.5rem; margin-left: var(--e1);
+  vertical-align: -.35em; color: inherit;
+}
+
 /* Un bouton qui détruit se distingue sans crier : le texte prend la couleur d'erreur du
    thème, le fond reste celui des autres. */
 .bouton-danger { color: var(--danger); }
