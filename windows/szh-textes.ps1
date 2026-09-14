@@ -189,7 +189,7 @@ $script:SzhTextes = @{
     # le journal choisi.
     'lanceur.journal.signaler'         = 'Signaler une erreur…'
     'lanceur.journal.signaler.titre'   = 'Signaler une erreur'
-    'lanceur.journal.signaler.quoi'    = 'En une phrase : que s’’est-il passé ?'
+    'lanceur.journal.signaler.quoi'    = 'En une phrase : que s’’est-il passé ?'
     'lanceur.journal.signaler.fait'    = 'Merci. Le signalement est parti, avec le journal choisi.'
     'lanceur.journal.signaler.attente' = 'Le signalement est enregistré. Il partira dès que le dossier SharePoint sera de nouveau joignable.'
     'lanceur.journal.signaler.refuse'  = 'Le signalement n’’a pas pu être enregistré. Le journal du poste en dit la raison.'

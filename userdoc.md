@@ -422,7 +422,7 @@ chaque fois. C’est voulu – c’est un geste d’exception, pas un mode dans
 ### La langue de l’outil
 
 Au premier lancement, l’outil **prend la langue que le lanceur a résolue** : celle de
-Windows si elle est française ou allemande, l’allemand sinon – ce n’est plus le nom du
+Windows si elle est française ou allemande, l’allemand sinon – ce n’est plus le nom du
 lanceur ouvert qui décide, depuis que « Revues SZH » et « Zeitschriften SZH »
 ont fusionné en un seul lanceur, « Revue & Zeitschrift ». Il n’y a rien à régler sur
 un poste neuf.
@@ -525,17 +525,17 @@ La même grille de mots-clés sert dans **« Métadonnées des articles »** e
 **vérification de l’import** : le comportement y est identique, avec en plus les
 boutons pour ajouter et retirer une ligne.
 
-### Le vérificateur de traduction – proposer sans toucher au texte
+### Le vérificateur de traduction – proposer sans toucher au texte
 
 Un second mode, à part de la section « Traductions » ci-dessus, pour qui relit une
-traduction sans avoir la main dessus – un regard extérieur, une relecture croisée, une
+traduction sans avoir la main dessus – un regard extérieur, une relecture croisée, une
 personne qui préfère ne jamais changer un texte publié elle-même. Là où le panneau de
 traduction **écrit** la traduction dans l’article, celui-ci ne fait que **proposer** : rien
 de ce qu’il enregistre ne change quoi que ce soit à ce qui est publié.
 
 **Pour l’activer** : **🚀 Commande → Réglages SZH → « Vérificateur de traduction »**, puis
-**Activé**. Une fois actif, chaque champ traduisible d’un article – titre, sous-titre,
-résumé, mots-clés, dans chaque langue – porte une petite pastille à côté de son intitulé,
+**Activé**. Une fois actif, chaque champ traduisible d’un article – titre, sous-titre,
+résumé, mots-clés, dans chaque langue – porte une petite pastille à côté de son intitulé,
 dans les fiches, dans la vérification de l’import et dans le panneau de traduction lui-même.
 
 **Un clic sur la pastille** ouvre un petit formulaire : de quel article, de quel champ et de
@@ -551,7 +551,7 @@ tranche. Le titre, le sous-titre, le résumé et les mots-clés **publiés** res
 ce qu’ils étaient tant que personne n’a repris la main sur la fiche.
 
 **Une limite à connaître** : un panneau déjà ouvert au moment où l’on active (ou désactive)
-le réglage ne montre les pastilles qu’à sa prochaine reconstruction – changer d’article,
+le réglage ne montre les pastilles qu’à sa prochaine reconstruction – changer d’article,
 changer de filtre, ou rouvrir le panneau. Rien ne les fait apparaître sur une carte déjà à l’écran.
 
 [capture : la section « Traductions » dépliée sur un article]
@@ -1325,9 +1325,9 @@ Quatre choses valent la peine d’être sues.
   quand rien ne s’est affiché. Et si le silence dure trop longtemps sans qu’une mise à jour
   aboutisse, l’outil renonce à se taire et ouvre la fenêtre visible, pour que ça se voie.
 
-Pour le faire à la demande – après un appel au support, ou parce qu’une correction vient
-d’être annoncée – le menu Démarrer porte l’entrée **« Revue & Zeitschrift (Updater) »** : une
-seule entrée, quelle que soit votre langue de travail – la fenêtre parle la langue réglée sur
+Pour le faire à la demande – après un appel au support, ou parce qu’une correction vient
+d’être annoncée – le menu Démarrer porte l’entrée **« Revue & Zeitschrift (Updater) »** : une
+seule entrée, quelle que soit votre langue de travail – la fenêtre parle la langue réglée sur
 votre poste. Une fenêtre s’ouvre et se ferme toute seule à la fin.
 
 Ce qu’il faut savoir avant de cliquer :
@@ -1430,7 +1430,7 @@ mise en forme (bascule).
 ## Créer une nouvelle revue
 
 Le menu Démarrer porte **une seule** entrée de lanceur, **« Revue & Zeitschrift »**, avec un
-onglet par produit – **Revue**, **Zeitschrift**, **Book** (ces noms d’onglet ne se traduisent pas)
+onglet par produit – **Revue**, **Zeitschrift**, **Book** (ces noms d’onglet ne se traduisent pas)
 – plus un onglet **Journal** et un onglet **Paramètres**. Chaque onglet de produit ne montre
 **que son produit** et ne crée **que dans son dossier** – c’est ce qui garantit qu’un numéro ne se retrouve pas rangé du mauvais
 côté. (L’entrée **« Revue & Zeitschrift (Updater) »** du même menu, elle, ne crée rien : voir
@@ -1445,7 +1445,7 @@ ne va pas »  :
   l’envoie au support avec le journal choisi, le nom de votre poste et les versions installées.
   C’est le seul cas où c’est vous qui déclenchez l’envoi : sinon, un rapport part tout seul,
   sur une panne que l’outil a su reconnaître (voir plus bas « Des rapports d’erreur partent
-  tout seuls en cas de panne ») – ce bouton couvre le cas où rien n’a planté, et pourtant
+  tout seuls en cas de panne ») – ce bouton couvre le cas où rien n’a planté, et pourtant
   quelque chose ne va pas ;
 - **« Envoyer les journaux… »** réunit les dix journaux dans une archive, ouvre un brouillon de
   courriel au support et montre l’archive dans l’explorateur. Un courriel ne sait pas porter de
@@ -1456,14 +1456,14 @@ L’onglet **Paramètres** choisit quatre choses. Les trois premières sont pour
 Windows seulement (une autre personne qui ouvre une session sur le même poste garde les siens) :
 quel onglet s’ouvre par défaut, dans quelle langue le lanceur lui-même s’affiche, et si la mise
 à jour se fait avec ou sans fenêtre (voir plus bas « Mettre l’outil à jour soi-même »). Laissé
-sur **Automatique**, l’onglet suit la langue du poste – allemand donne Zeitschrift, français
+sur **Automatique**, l’onglet suit la langue du poste – allemand donne Zeitschrift, français
 donne Revue, tout le reste donne Zeitschrift ; le livre n’est jamais l’onglet automatique, il
 faut le choisir. Ce réglage d’onglet ne change rien à la langue de l’**éditeur** une fois une
 revue ouverte (voir « La langue de l’outil » plus haut) : ce sont deux réglages distincts.
 
 Le quatrième, **« Mode développeur (dossiers de test) »**, est différent des trois autres : il
 vaut pour **tout le poste**, quel que soit le compte qui ouvre une session, et non pour vous
-seul – l’onglet le dit. C’est lui qui bascule entre le dossier de test et la production (voir
+seul – l’onglet le dit. C’est lui qui bascule entre le dossier de test et la production (voir
 plus bas « Où vivent vos numéros ») ; les listes et le titre de la fenêtre ne le suivent qu’à la
 prochaine ouverture du lanceur.
 

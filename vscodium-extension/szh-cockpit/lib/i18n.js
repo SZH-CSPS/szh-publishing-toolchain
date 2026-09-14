@@ -1434,8 +1434,8 @@ const TEXTES_COCKPIT = {
     // Le badge « Dossier de test » de la barre d'état : un poste qui pointe sur
     // l'arborescence de test le dit, en couleur — la décision test/production reste ouverte.
     'etat.barre.test': 'Dossier de test',
-    'etat.barre.test.tooltip': 'Ce poste travaille dans le dossier de test : les numéros créés ici ne sont pas en production.',
-    'etat.barre.test.defaut': 'Aucune configuration de poste trouvée : le dossier de test est utilisé par défaut.',
+    'etat.barre.test.tooltip': 'Ce poste travaille dans le dossier de test : les numéros créés ici ne sont pas en production.',
+    'etat.barre.test.defaut': 'Aucune configuration de poste trouvée : le dossier de test est utilisé par défaut.',
     // Le badge n'ouvre plus rien au clic depuis que le réglage a quitté le cockpit : cette
     // phrase dit où il vit désormais.
     'etat.barre.test.parametres': 'Se règle dans les Paramètres du lanceur « Revue & Zeitschrift », au menu Démarrer.',
