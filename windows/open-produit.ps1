@@ -1441,8 +1441,7 @@ if ($dejaOnglet) {
   $vu = [array]::IndexOf([string[]]$SzhOrdreOnglets, $dejaOnglet)
   if ($vu -ge 0) { $rangOnglet = $vu + 1 }
 }
-$yR = Add-SzhReglage $pageReglages $yR (T 'lanceur.reglages.onglet') $choixOnglet $rangOnglet `
-  (T 'lanceur.reglages.onglet.regle') {
+$yR = Add-SzhReglage $pageReglages $yR (T 'lanceur.reglages.onglet') $choixOnglet $rangOnglet '' {
     $rang = $this.SelectedIndex
     $voulu = ''
     if ($rang -ge 1) { $voulu = [string]$SzhOrdreOnglets[$rang - 1] }
@@ -1502,14 +1501,6 @@ $yR = Add-SzhReglage $pageReglages $yR (T 'lanceur.reglages.dev') `
     [void](Set-SzhEmplacementRevues $voulu)
     Write-SzhLog ('open-produit : emplacement des revues -> ' + $voulu)
   }
-
-$ouRange = New-Object System.Windows.Forms.Label
-$ouRange.Text = (T 'lanceur.reglages.ou')
-$ouRange.AutoSize = $false
-$ouRange.Location = New-Object System.Drawing.Point($xPage, ($yNouveau - 4))
-$ouRange.Size = New-Object System.Drawing.Size($largeurPage, 34)
-$ouRange.ForeColor = [System.Drawing.Color]::DimGray
-$pageReglages.Controls.Add($ouRange)
 
 # ---- Les boutons, hors du TabControl : ils valent pour l'onglet au premier plan ----
 $boutonVersions = New-Object System.Windows.Forms.Button

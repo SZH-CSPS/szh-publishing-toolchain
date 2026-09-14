@@ -62,7 +62,10 @@ let ctx = {
   revueCourante: () => 'revue',
   nomRevueAffiche: (revue) => String(revue || ''),
   deposerFicheEnReserve: () => false,
-  convertirCmykSiBesoin: async () => 0
+  convertirCmykSiBesoin: async () => 0,
+  // Mode « Trad » : le clic détourné vers le formulaire de suggestion. Un module non
+  // configuré ne détourne rien — voir repondreModeTrad dans extension.js.
+  repondreModeTrad: () => false
 };
 
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
@@ -512,6 +515,9 @@ async function ouvrirDocumentation(fournisseur, rafraichirTout, cible) {
 
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
+    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
+    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
+    if (ctx.repondreModeTrad(panneau, msg)) { return; }
     if (msg.type === MSG.PRET) { await charger(panneau, { requete: msg.requete }); return; }
     if (msg.type === MSG.MODIFIE) {
       panneau.title = (msg.modifie ? '● ' : '') + titrePanneau;

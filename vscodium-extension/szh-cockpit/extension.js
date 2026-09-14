@@ -70,11 +70,19 @@ const {
   configAvecLangue, CONFIG_POSTE,
   // Vérificateur de traduction : un réglage du poste et non de l'éditeur, pour que trois
   // panneaux le lisent et qu'il survive à la mise à jour du poste.
-  lireVerifTraduction, ecrireVerifTraduction
+  lireVerifTraduction, ecrireVerifTraduction,
+  // Mode « Trad » : jumeau du précédent pour les textes de l'outil, dans le même fichier et
+  // pour la même raison — plusieurs panneaux le lisent, et il doit survivre à la mise à
+  // jour du poste.
+  lireModeTrad, ecrireModeTrad
 } = require('./lib/archivage');
 // ---- Suggestions de traduction -> lib/suggestion-traduction.js -------------------
 // Le dossier traduction/ d'un numéro : une proposition par fichier, et rien de publié.
 const suggestionTraduction = require('./lib/suggestion-traduction');
+// ---- Index des libellés de l'interface -> lib/index-textes.js --------------------
+// Retrouver la clé i18n d'un texte lu à l'écran. C'est ce que le mode « Trad » envoie aux
+// panneaux, et seulement quand il est allumé.
+const indexTextes = require('./lib/index-textes');
 // ---- Rapports d'erreur automatiques -> lib/rapport-erreur.js ---------------------
 // Toute la logique (résolution passive de l'ancrage, masquage, anti-inondation, file
 // d'attente, écriture) vit dans ce module, testable hors éditeur ; ici, seulement deux
@@ -172,7 +180,8 @@ const {
 } = apercuLib;
 apercuLib.configurer({
   fermerOnglets: (predicat) => fermerOnglets(predicat),
-  ouvrirApercuPdf: (uri) => ouvrirApercuPdf(uri)
+  ouvrirApercuPdf: (uri) => ouvrirApercuPdf(uri),
+  repondreModeTrad: (panneau, msg) => repondreModeTrad(panneau, msg)
 });
 // ---- Import guidé -> lib/import-hote.js ------------------------------------------
 const importHote = require('./lib/import-hote');
@@ -224,7 +233,8 @@ metadonneesHote.configurer({
   // Le vérificateur de traduction : le réglage se lit ici, et la pastille du formulaire des
   // fiches ouvre le panneau de suggestion, qui vit ici aussi.
   lireVerifTraduction: () => lireVerifTraduction(),
-  ouvrirSuggestionTraduction: (fournisseur, msg) => ouvrirSuggestionTraduction(fournisseur, msg)
+  ouvrirSuggestionTraduction: (fournisseur, msg) => ouvrirSuggestionTraduction(fournisseur, msg),
+  repondreModeTrad: (panneau, msg) => repondreModeTrad(panneau, msg)
 });
 // ---- Gestionnaire des médias d'un article -> lib/medias-hote.js -------------------
 const mediasHote = require('./lib/medias-hote');
@@ -246,7 +256,8 @@ mediasHote.configurer({
   deposerPhotoAuteur: (fournisseur, panneau, msg) => deposerPhotoAuteur(fournisseur, panneau, msg),
   ouvrirVersionsPhoto: (fournisseur, panneau, msg) => ouvrirVersionsPhoto(fournisseur, panneau, msg),
   choisirPhotoAuteur: (fournisseur, panneau, msg) => choisirPhotoAuteur(fournisseur, panneau, msg),
-  convertirCmykSiBesoin: (chemins) => convertirCmykSiBesoin(chemins)
+  convertirCmykSiBesoin: (chemins) => convertirCmykSiBesoin(chemins),
+  repondreModeTrad: (panneau, msg) => repondreModeTrad(panneau, msg)
 });
 // ---- La Documentation d'un numéro -> lib/documentation-hote.js -------------------
 const documentationHote = require('./lib/documentation-hote');
@@ -263,7 +274,8 @@ documentationHote.configurer({
   nomRevueAffiche: (revue) => nomRevueAffiche(revue),
   deposerFicheEnReserve: (racine, slug, fiche, vers, aTraduire) =>
     deposerFicheEnReserve(racine, slug, fiche, vers, aTraduire),
-  convertirCmykSiBesoin: (chemins) => convertirCmykSiBesoin(chemins)
+  convertirCmykSiBesoin: (chemins) => convertirCmykSiBesoin(chemins),
+  repondreModeTrad: (panneau, msg) => repondreModeTrad(panneau, msg)
 });
 // ---- Co-édition d'un même numéro -> lib/coedition.js, lib/copies-conflit.js -------
 // ⚠ Rien à voir avec le verrou de lib/verrou.js juste au-dessus, qui gèle un numéro entier
@@ -3244,6 +3256,9 @@ async function ouvrirVueEnsemble(fournisseur, rafraichirTout, type) {
   panneau.onDidDispose(() => { if (panneauxVue.get(type) === panneau) { panneauxVue.delete(type); } });
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
+    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
+    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
+    if (repondreModeTrad(panneau, msg)) { return; }
     if (msg.type === MSG.PRET) { envoyer(panneau); return; }
     if (msg.type === MSG.OUVRIR) {
       // Par la commande, et non par la fonction : c'est cmdEcriture qui porte la garde du
@@ -4057,6 +4072,9 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
   });
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
+    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
+    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
+    if (repondreModeTrad(panneau, msg)) { return; }
     if (msg.type === MSG.PRET) { envoyer(panneau, true); return; }
     // Le formulaire du numéro d'abord : c'est le même code que la page « Méta-données du
     // numéro », et il répond lui-même au panneau. Aucun bail n'est posé à l'ouverture de
@@ -4528,6 +4546,9 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
   });
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
+    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
+    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
+    if (repondreModeTrad(panneau, msg)) { return; }
     if (msg.type === MSG.PRET) {
       envoyerValeursTraduction(panneau, fournisseur, slugTraduction, focusInitial);
       focusInitial = null;
@@ -4584,6 +4605,105 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
   montrerApercu(vise.slug);
 }
 
+// ---- Mode « Trad » : l'index des libellés, et les panneaux qui détournent -------
+//
+// Allumé, le mode change le sens du clic dans les panneaux : au lieu de faire ce que le
+// bouton fait d'habitude, un clic ouvre le formulaire de suggestion sur le texte cliqué.
+// L'hôte n'y tient que deux rôles — dire si le mode est allumé et fournir l'index qui
+// retrouve la clé d'un texte, puis recevoir le clic détourné.
+//
+// ⚠ L'INDEX NE PART QUE SI LE MODE EST ALLUMÉ : c'est la table entière des libellés de la
+//   langue courante, quelques dizaines de kilo-octets, et éteint il n'y a rien à chercher.
+//   C'est donc la page qui demande (media/_commun.js, au premier « pret »), et l'hôte qui
+//   répond.
+//
+// ⚠ DEUX PANNEAUX NE BRANCHENT PAS repondreModeTrad, et c'est le premier garde-fou du
+//   mode, pas un oubli : les réglages — c'est là qu'on éteint le mode — et le formulaire de
+//   suggestion — c'est lui que le mode ouvre. Ni l'un ni l'autre ne reçoit jamais l'index,
+//   et la page le redit de son côté (SZH.modeTradJamais).
+const panneauxTrad = new Set();
+let indexTradCache = null;
+let indexTradLangue = '';
+
+// L'index de la langue courante, construit une fois et gardé : le refaire à chaque
+// ouverture de panneau parcourrait pour rien plus de mille libellés. Il se refait si la
+// langue du cockpit change.
+function indexTradCourant() {
+  const langue = langueCockpit();
+  if (!indexTradCache || indexTradLangue !== langue) {
+    indexTradCache = indexTextes.construireIndex(TEXTES_COCKPIT[langue] || TEXTES_COCKPIT.fr);
+    indexTradLangue = langue;
+  }
+  return indexTradCache;
+}
+
+// Ce que le bandeau du mode dit dans chaque panneau : ce qu'un clic va faire, et comment
+// sortir. La page ne connaît pas la langue de l'interface, elle reçoit des mots tout faits.
+function textesModeTrad() {
+  return { bandeau: T('trad.mode.bandeau'), eteindre: T('trad.mode.eteindre') };
+}
+
+function etatModeTrad() {
+  return lireModeTrad()
+    ? { type: MSG.MODE_TRAD, actif: true, index: indexTradCourant(), textes: textesModeTrad() }
+    : { type: MSG.MODE_TRAD, actif: false };
+}
+
+// Branché en tête du gestionnaire de messages de chaque panneau qui peut détourner ses
+// clics. Rend vrai quand il a traité le message : l'appelant s'arrête alors là.
+function repondreModeTrad(panneau, msg) {
+  if (!msg) { return false; }
+  // La demande voyage avec le « pret » de la page : un message de plus à l'ouverture
+  // n'apprendrait rien de neuf. Une page qui ne le porte pas ne reçoit jamais l'index —
+  // c'est le cas des réglages et du formulaire de suggestion. On rend FAUX : ce « pret »
+  // reste celui de la page, qui a ses valeurs à envoyer.
+  if (msg.type === MSG.PRET) {
+    if (msg.modeTrad) {
+      panneauxTrad.add(panneau);
+      repondrePanneau(panneau, etatModeTrad());
+    }
+    return false;
+  }
+  if (msg.type === MSG.MODE_TRAD) {
+    panneauxTrad.add(panneau);
+    // `actif: false` : la page vient d'éteindre le mode depuis son bandeau ou par Échap.
+    // Toute autre forme est une demande d'état.
+    if (msg.actif === false) {
+      const erreur = ecrireModeTrad(false);
+      if (erreur) {
+        vscode.window.showErrorMessage(T('err.ecriture', [path.basename(CONFIG_POSTE), erreur]));
+      }
+      diffuserModeTrad();
+      return true;
+    }
+    repondrePanneau(panneau, etatModeTrad());
+    return true;
+  }
+  if (msg.type === MSG.SUGGERER_INTERFACE) { ouvrirSuggestionInterface(msg); return true; }
+  return false;
+}
+
+// Combien de suggestions sur les textes de l'outil attendent d'être relues, sur ce poste.
+// Recompté à chaque envoi de valeurs au formulaire de réglages, jamais gardé : le dossier
+// se vide à la main, entre deux ouvertures du panneau.
+function compterSuggestionsInterface() {
+  try {
+    return suggestionTraduction.compterSuggestionsInterface(
+      suggestionTraduction.dossierSuggestionsInterface());
+  } catch (e) { return 0; }              // pas de dossier, ou illisible : rien en attente
+}
+
+// Le mode vient de changer : les panneaux ouverts doivent le savoir tout de suite. Sans
+// cela, l'éteindre depuis un panneau laisserait les autres bloqués jusqu'à leur
+// réouverture — exactement le piège que les garde-fous doivent empêcher.
+function diffuserModeTrad() {
+  const etat = etatModeTrad();
+  for (const panneau of Array.from(panneauxTrad)) {
+    try { panneau.webview.postMessage(etat); }
+    catch (e) { panneauxTrad.delete(panneau); }   // panneau fermé entre-temps
+  }
+}
+
 // ---- Suggestion de traduction (webview) ------------------------------------------
 //
 // Ouvert par la pastille d'un champ traduisible, quand le vérificateur de traduction est
@@ -4604,7 +4724,13 @@ let viseSuggestion = null;       // { slug, champ, langue, actuel } — ce que l
 function textesSuggestion() {
   return {
     article: T('sugg.article'), champ: T('sugg.champ'), langue: T('sugg.langue'),
-    actuelVide: T('sugg.actuel.vide'), rien: T('sugg.rien')
+    actuelVide: T('sugg.actuel.vide'), rien: T('sugg.rien'),
+    supprimerQuoi: T('sugg.supprimer.quoi'),
+    // La seconde cible : un libellé de l'outil, cliqué dans le mode « Trad ». Ni article,
+    // ni champ — la clé du libellé, et de quoi dire qu'on ne l'a pas retrouvée.
+    cible: T('sugg.cible'), cibleInterface: T('sugg.cible.interface'),
+    cle: T('sugg.cle'), cleInconnue: T('sugg.cle.inconnue'),
+    cleInconnueAide: T('sugg.cle.inconnue.aide'), clePlusieurs: T('sugg.cle.plusieurs')
   };
 }
 
@@ -4624,19 +4750,45 @@ function libellesSuggestion(champ, langue) {
 
 function envoyerValeursSuggestion(panneau) {
   if (!viseSuggestion) { return; }
-  repondrePanneau(panneau, Object.assign({
-    type: MSG.VALEURS,
-    libelles: libellesSuggestion(viseSuggestion.champ, viseSuggestion.langue)
-  }, viseSuggestion));
+  // Un libellé de l'outil n'a ni champ ni langue d'article : seule la langue de l'interface
+  // a un intitulé à donner.
+  const libelles = viseSuggestion.cible === suggestionTraduction.CIBLE_INTERFACE
+    ? { langue: T('meta.langue.' + viseSuggestion.langue) }
+    : libellesSuggestion(viseSuggestion.champ, viseSuggestion.langue);
+  repondrePanneau(panneau, Object.assign({ type: MSG.VALEURS, libelles: libelles }, viseSuggestion));
 }
 
 // Écrit la proposition. Le numéro n'est pas verrouillé pour autant qu'il soit gelé ou
 // archivé : une suggestion ne touche à aucun fichier publié, et c'est justement sur un
 // numéro figé qu'on relit. Un dossier réellement en lecture seule le dira par l'erreur
 // d'écriture, plutôt que par un refus posé d'avance.
+// Une suggestion sur un libellé de l'outil ne concerne aucun numéro : elle se range sur le
+// poste, dans %LOCALAPPDATA%\SZH\suggestions-interface. Ni produit, ni numéro, ni article,
+// ni champ — la clé du libellé, les candidates qu'on avait proposées, et la langue.
+function enregistrerSuggestionInterface(msg) {
+  return suggestionTraduction.ecrireSuggestionInterface(
+    suggestionTraduction.dossierSuggestionsInterface(), {
+      auteur: moiCoedition().utilisateur,
+      // La clé retenue vient de la page : elle a pu être choisie parmi plusieurs
+      // candidates, ou n'exister du tout — le formulaire s'ouvre quand même.
+      cle: msg.cle,
+      cles: viseSuggestion.cles,
+      langue: viseSuggestion.langue,
+      actuel: viseSuggestion.actuel,
+      geste: msg.geste,
+      propose: msg.propose,
+      commentaire: msg.commentaire
+    });
+}
+
 function enregistrerSuggestion(fournisseur, panneau, msg) {
-  const racine = fournisseur.racine;
-  if (!racine || !viseSuggestion) { return; }
+  if (!viseSuggestion) { return; }
+  if (viseSuggestion.cible === suggestionTraduction.CIBLE_INTERFACE) {
+    rendreCompteSuggestion(panneau, enregistrerSuggestionInterface(msg));
+    return;
+  }
+  const racine = fournisseur && fournisseur.racine;
+  if (!racine) { return; }
   const res = suggestionTraduction.ecrireSuggestion(racine, {
     auteur: moiCoedition().utilisateur,
     produit: revueNumero(racine),
@@ -4647,9 +4799,18 @@ function enregistrerSuggestion(fournisseur, panneau, msg) {
     // Le texte d'avant est celui que la pastille a capté, et non celui que la fiche porte
     // maintenant : c'est de celui-là que la proposition parle.
     actuel: viseSuggestion.actuel,
+    // Le geste vient de la page : « supprimer » dit que ce texte ne devrait pas exister.
+    // Tout ce qui n'est pas ce mot vaut « remplacer » (suggestion-traduction.js#normaliserGeste).
+    geste: msg.geste,
     propose: msg.propose,
     commentaire: msg.commentaire
   });
+  rendreCompteSuggestion(panneau, res);
+}
+
+// Ce que la page apprend d'une écriture, quelle qu'ait été la cible : le refus, ou le nom
+// du fichier écrit.
+function rendreCompteSuggestion(panneau, res) {
   if (!res.ok) {
     repondrePanneau(panneau, {
       type: MSG.ERREUR,
@@ -4679,14 +4840,44 @@ function ouvrirSuggestionTraduction(fournisseur, msg) {
     slug: String(msg.slug || ''), champ: champ, langue: langue,
     actuel: String(msg.valeur === undefined || msg.valeur === null ? '' : msg.valeur)
   };
+  montrerPanneauSuggestion(fournisseur, T('sugg.titre.un', [viseSuggestion.slug]));
+}
+
+// Le clic détourné par le mode « Trad » : un texte lu à l'écran, et les clés que la page a
+// cru reconnaître.
+//
+// Les clés viennent d'une webview : on ne garde que celles que la table de la langue
+// courante porte vraiment. Si rien ne reste, on refait la recherche ici — le formulaire doit
+// s'ouvrir dans tous les cas, sur le texte littéral s'il le faut : une suggestion sur un
+// texte non identifié vaut mieux que rien, et c'est justement là qu'un mainteneur veut
+// regarder.
+function ouvrirSuggestionInterface(msg) {
+  if (!msg) { return; }
+  const texte = String(msg.texte === undefined || msg.texte === null ? '' : msg.texte);
+  if (texte.trim() === '') { return; }
+  const table = TEXTES_COCKPIT[langueCockpit()] || TEXTES_COCKPIT.fr;
+  let cles = (Array.isArray(msg.cles) ? msg.cles : []).map((c) => String(c))
+    .filter((c) => Object.prototype.hasOwnProperty.call(table, c));
+  if (cles.length === 0) { cles = indexTextes.trouverCles(indexTradCourant(), texte); }
+  viseSuggestion = {
+    cible: suggestionTraduction.CIBLE_INTERFACE,
+    cles: cles, langue: langueCockpit(), actuel: texte
+  };
+  montrerPanneauSuggestion(null, T('sugg.titre.interface'));
+}
+
+// Le panneau lui-même, un seul pour les deux cibles : une seconde demande le recharge sur
+// son nouveau texte plutôt que d'ouvrir un second onglet où la première proposition serait
+// oubliée.
+function montrerPanneauSuggestion(fournisseur, titre) {
   if (panneauSuggestion) {
-    panneauSuggestion.title = T('sugg.titre.un', [viseSuggestion.slug]);
+    panneauSuggestion.title = titre;
     panneauSuggestion.reveal(vscode.ViewColumn.Beside);
     envoyerValeursSuggestion(panneauSuggestion);
     return;
   }
   const panneau = vscode.window.createWebviewPanel(
-    'szhSuggestionTraduction', T('sugg.titre.un', [viseSuggestion.slug]), vscode.ViewColumn.Beside,
+    'szhSuggestionTraduction', titre, vscode.ViewColumn.Beside,
     { enableScripts: true, localResourceRoots: [] }
   );
   panneauSuggestion = panneau;
@@ -4831,6 +5022,9 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
   });
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
+    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
+    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
+    if (repondreModeTrad(panneau, msg)) { return; }
     if (msg.type === MSG.PRET) { envoyerValeursImportVerif(panneau, fournisseur, { requete: msg.requete }); return; }
     if (msg.type === MSG.PHOTO_DEPOSER) { await deposerPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type === MSG.PHOTO_OUVRIR) { ouvrirVersionsPhoto(fournisseur, panneau, msg); return; }
@@ -4910,6 +5104,14 @@ function REGL_LIBELLES() {
   // les réglages de l'éditeur — voir la branche d'écriture, plus bas.
   verifTrad: T('regl.verifTrad'),
   verifTradActif: T('regl.verifTrad.actif'), verifTradInactif: T('regl.verifTrad.inactif'),
+  // Mode « Trad » : le jumeau du précédent pour les textes de l'outil, et le compte de ce
+  // qu'il a produit — sans ce compte, les suggestions seraient écrites et jamais relues.
+  modeTrad: T('regl.modeTrad'), modeTradAide: T('regl.modeTrad.aide'),
+  modeTradActif: T('regl.modeTrad.actif'), modeTradInactif: T('regl.modeTrad.inactif'),
+  suggInterfaceTitre: T('regl.suggInterface.titre'), suggInterface: T('regl.suggInterface'),
+  suggInterfaceAucune: T('regl.suggInterface.aucune'),
+  suggInterfaceOuvrir: T('regl.suggInterface.ouvrir'),
+  suggInterfaceAide: T('regl.suggInterface.aide'),
   // Fichier de langue de l'interface : un bouton, et la ligne qui dit à quoi il sert.
   exportLangueTitre: T('regl.exportLangue.titre'), exportLangue: T('regl.exportLangue'),
   exportLangueAide: T('regl.exportLangue.aide'),
@@ -5185,7 +5387,9 @@ function lireReglagesActuels() {
     langue: langueCockpit(),
     // Lu dans config.json, comme la langue : c'est le seul exemplaire, il n'y a rien à
     // recouper avec un réglage d'éditeur.
-    verifTrad: lireVerifTraduction() ? 'actif' : 'inactif'
+    verifTrad: lireVerifTraduction() ? 'actif' : 'inactif',
+    // Même fichier, même lecture : le mode « Trad » vit à côté du vérificateur.
+    modeTrad: lireModeTrad() ? 'actif' : 'inactif'
     // Le mode développeur (dossiers de test) ne fait plus partie de cet état : il se lit
     // et s'écrit depuis l'onglet « Paramètres » du lanceur Windows.
   };
@@ -5199,6 +5403,7 @@ function ouvrirReglages(rafraichirTout) {
     panneauReglages.webview.postMessage(
       { type: 'valeurs', valeurs: lireReglagesActuels(), ojs: donneesOjs(),
         biblio: donneesBiblio(), auteursOjs: resumeAuteursPublies(),
+        suggInterface: compterSuggestionsInterface(),
         avertLangue: avertissementLangue(), proteges: etatProteges() });
     return;
   }
@@ -5214,6 +5419,7 @@ function ouvrirReglages(rafraichirTout) {
       panneau.webview.postMessage(
         { type: 'valeurs', valeurs: lireReglagesActuels(), ojs: donneesOjs(),
         biblio: donneesBiblio(), auteursOjs: resumeAuteursPublies(),
+        suggInterface: compterSuggestionsInterface(),
         avertLangue: avertissementLangue(), proteges: etatProteges() });
       return;
     }
@@ -5244,6 +5450,17 @@ function ouvrirReglages(rafraichirTout) {
     }
     // Le fichier de langue de l'interface. Annulé, rien ne se dit : la personne vient de
     // refermer la boîte, elle sait ce qu'elle a fait.
+    // Le dossier des suggestions sur les textes de l'outil. Créé s'il n'existe pas : un
+    // bouton qui ne fait rien la première fois passerait pour cassé, et un dossier vide dit
+    // au moins où elles atterriront.
+    if (msg.type === MSG.SUGGESTIONS_INTERFACE) {
+      const dossier = suggestionTraduction.dossierSuggestionsInterface();
+      try { fs.mkdirSync(dossier, { recursive: true }); }
+      catch (e) { /* déjà là, ou disque en lecture seule : openExternal le dira */ }
+      try { await vscode.env.openExternal(vscode.Uri.file(dossier)); }
+      catch (e) { vscode.window.showErrorMessage(T('err.ecriture', [dossier, String((e && e.message) || e)])); }
+      return;
+    }
     if (msg.type === MSG.EXPORTER_LANGUE) {
       const dit = await telechargerFichierLangue();
       if (dit && dit.erreur) { vscode.window.showErrorMessage(dit.erreur); }
@@ -5371,6 +5588,18 @@ function ouvrirReglages(rafraichirTout) {
         } else {
           const erreur = ecrireVerifTraduction(msg.valeur === 'actif');
           if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(CONFIG_POSTE), erreur])); }
+        }
+      } else if (msg.cle === 'modeTrad') {
+        // Même fichier et même précaution que le vérificateur juste au-dessus. Les panneaux
+        // ouverts sont prévenus tout de suite : sans cela, allumer le mode ne se verrait
+        // qu'à la réouverture de chacun, et l'éteindre laisserait les autres bloqués.
+        const avantTrad = lireConfigPoste();
+        if (avantTrad === null && fs.existsSync(CONFIG_POSTE)) {
+          vscode.window.showErrorMessage(T('err.ecriture', [path.basename(CONFIG_POSTE), CONFIG_POSTE]));
+        } else {
+          const erreur = ecrireModeTrad(msg.valeur === 'actif');
+          if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(CONFIG_POSTE), erreur])); }
+          else { diffuserModeTrad(); }
         }
       } else if (msg.cle === 'langue') {
         const langue = msg.valeur === 'de' ? 'de' : 'fr';
@@ -5559,6 +5788,9 @@ async function ouvrirEditeurTable(fournisseur, item) {
   };
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
+    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
+    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
+    if (repondreModeTrad(panneau, msg)) { return; }
     if (msg.type === MSG.PRET) {
       charger();
       // Un éditeur de tableau ne s'ouvre pas pour lire : le bail se prend tout de suite.

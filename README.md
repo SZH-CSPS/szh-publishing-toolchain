@@ -11,7 +11,7 @@ WSL s'appelle `SZH-Publishing`.
 [`docs/SORTIES.md`](docs/SORTIES.md) (ce que produit une compilation, et le contrat de balisage) ·
 [`docs/EMPLACEMENTS.md`](docs/EMPLACEMENTS.md) (où vivent les revues, poste par poste) ·
 [`docs/RAPPORTS-ERREUR.md`](docs/RAPPORTS-ERREUR.md) (les rapports d'erreur automatiques du lanceur et du cockpit) ·
-[`docs/TRADUCTION.md`](docs/TRADUCTION.md) (le vérificateur de traduction : suggestions, jamais d'édition) ·
+[`docs/TRADUCTION.md`](docs/TRADUCTION.md) (le vérificateur de traduction et le mode « Trad » : suggestions, jamais d'édition) ·
 [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) (ce qu'il faut surveiller et quand) ·
 [`docs/SECURITE.md`](docs/SECURITE.md) (déploiement flotte) ·
 [`userdoc.md`](userdoc.md) (côté rédacteur).

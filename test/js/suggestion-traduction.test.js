@@ -21,6 +21,11 @@
 //   * le RÉGLAGE ÉTEINT PAR DÉFAUT, et tolérant à un config.json écrit à la main — la même
 //     tolérance que l'emplacement des revues, sans quoi « "verifTraduction": "true" » se
 //     lirait faux en silence.
+//   * le GESTE « supprimer », et le PIÈGE qui va avec. Une suggestion de suppression n'a
+//     pas de texte proposé : le contrôle « rien à proposer », écrit avant elle, la
+//     refuserait à tous les coups. Et le champ `geste` est apparu APRÈS les premiers
+//     fichiers : ceux-là n'en portent pas et doivent se relire « remplacer », sans quoi le
+//     schéma /1 aurait menti en restant /1.
 'use strict';
 
 const test = require('node:test');
@@ -65,6 +70,7 @@ test('une suggestion écrite se relit à l’identique', () => {
   assert.strictEqual(s.article, 'mon-article');
   assert.strictEqual(s.champ, 'title');
   assert.strictEqual(s.langue, 'de');
+  assert.strictEqual(s.geste, 'remplacer', 'le geste par défaut n’est pas « remplacer »');
   assert.strictEqual(s.actuel, 'Alter Titel');
   assert.strictEqual(s.propose, 'Neuer Titel');
   assert.strictEqual(s.commentaire, 'Contresens sur « alt ».');
@@ -149,6 +155,87 @@ test('une suggestion sans changement et sans commentaire est refusée', () => {
   // Le même texte AVEC un commentaire a quelque chose à dire : c'est une remarque.
   assert.ok(sugg.ecrireSuggestion(racine,
     proposition({ propose: 'Alter Titel', commentaire: 'Vérifier la source.' })).ok);
+});
+
+// ---- Le geste « supprimer » ---------------------------------------------------------
+//
+// Proposer le vide serait ambigu : personne ne saurait si c'est un oubli. Le geste le dit.
+
+test('une suggestion de suppression s’écrit sans aucun texte proposé', () => {
+  const racine = numeroEssai();
+  // Ni proposition, ni commentaire : ce qu'estVide refuse pour un remplacement. Ici, le
+  // geste EST le propos, et c'est le piège de ce chantier.
+  const res = sugg.ecrireSuggestion(racine,
+    proposition({ geste: 'supprimer', propose: '', commentaire: '' }));
+  assert.ok(res.ok, 'la suppression a été refusée comme « rien à proposer » : ' + JSON.stringify(res));
+
+  const relues = sugg.listerSuggestions(racine);
+  assert.strictEqual(relues.length, 1);
+  assert.strictEqual(relues[0].geste, 'supprimer');
+  assert.strictEqual(relues[0].propose, '', 'une suppression ne propose aucun texte');
+  // Le texte d'avant reste consigné : c'est de LUI que la suggestion parle.
+  assert.strictEqual(relues[0].actuel, 'Alter Titel');
+  // Et le schéma ne change pas de version pour un champ ajouté.
+  assert.strictEqual(relues[0].schema, 'szh-suggestion-traduction/1');
+});
+
+test('une suppression jette le texte que le formulaire avait dans sa zone de saisie', () => {
+  // La page cache la zone « Traduction proposée » quand le geste est armé, mais l'hôte ne
+  // s'y fie pas : un fichier qui porterait « supprimer » ET une proposition donnerait à
+  // relire un remplacement que personne n'a fait.
+  const racine = numeroEssai();
+  sugg.ecrireSuggestion(racine, proposition({ geste: 'supprimer', propose: 'Reste de frappe' }));
+  assert.strictEqual(sugg.listerSuggestions(racine)[0].propose, '');
+});
+
+test('un fichier écrit avant le champ « geste » se relit « remplacer »', () => {
+  const racine = numeroEssai();
+  // Un fichier de la première version du format, mot pour mot : pas de clé « geste ».
+  const dossier = path.join(racine, 'traduction');
+  fs.mkdirSync(dossier, { recursive: true });
+  fs.writeFileSync(path.join(dossier, '20260901-080000-mon-article-title-de.json'),
+    JSON.stringify({
+      schema: 'szh-suggestion-traduction/1',
+      horodatage: '2026-09-01T08:00:00+02:00',
+      auteur: 'Robin', produit: 'revue', numero: '2026-03', article: 'mon-article',
+      champ: 'title', langue: 'de',
+      actuel: 'Alter Titel', propose: 'Neuer Titel', commentaire: ''
+    }, null, 2) + '\n');
+  const relues = sugg.listerSuggestions(racine);
+  assert.strictEqual(relues.length, 1);
+  assert.strictEqual(relues[0].geste, 'remplacer',
+    'un fichier sans le champ ne se relit plus comme avant : le schéma /1 aurait menti');
+});
+
+test('un geste inconnu vaut « remplacer », et ne fait pas lever', () => {
+  // Le geste vient d'un message de webview : tout ce qui n'est pas « supprimer » est le
+  // geste ordinaire, plutôt qu'une valeur libre recopiée dans le fichier.
+  const racine = numeroEssai();
+  sugg.ecrireSuggestion(racine, proposition({ geste: 'effacer-la-revue' }));
+  assert.strictEqual(sugg.listerSuggestions(racine)[0].geste, 'remplacer');
+  assert.strictEqual(sugg.normaliserGeste(undefined), 'remplacer');
+  assert.strictEqual(sugg.normaliserGeste(' supprimer '), 'supprimer');
+});
+
+test('la page arme le geste au lieu de l’envoyer, et le formulaire dit ce qu’il enregistrera', () => {
+  // Trois relais entre le bouton et le fichier, et aucun n'est visible d'ici : le bouton
+  // bascule un interrupteur, le message porte « geste », et la page montre un bandeau. Le
+  // défaut voisin de celui des pastilles serait un bouton qui envoie tout de suite.
+  const page = fs.readFileSync(path.join(COCKPIT, 'media', 'suggestion.js'), 'utf8');
+  const html = fs.readFileSync(path.join(COCKPIT, 'media', 'suggestion.html'), 'utf8');
+  assert.match(html, /id="supprimer"/, 'le second bouton n’est pas dans la page');
+  assert.match(html, /%%SZH:sugg\.supprimer%%/, 'le bouton n’a pas de libellé traduit');
+  assert.match(html, /id="geste-quoi"/, 'rien ne dira ce que le geste armé enregistrera');
+  assert.match(page, /geste: suppression \? 'supprimer' : 'remplacer'/,
+    'le message envoyé à l’hôte ne porte pas le geste');
+  assert.match(page, /gesteQuoi\.textContent = suppression \? TXT\.supprimerQuoi/,
+    'le bandeau ne reprend pas le texte du geste');
+  // Et l'hôte transmet ce que la page a dit, sinon tout ce qui précède est décoratif.
+  const extension = fs.readFileSync(path.join(COCKPIT, 'extension.js'), 'utf8');
+  assert.match(extension, /geste: msg\.geste/,
+    'l’hôte n’envoie pas le geste au module : toute suppression s’écrirait « remplacer »');
+  assert.match(extension, /supprimerQuoi: T\('sugg\.supprimer\.quoi'\)/,
+    'le texte du bandeau ne parvient pas à la page');
 });
 
 test('un fichier illisible dans le dossier ne fait pas lever la lecture', () => {

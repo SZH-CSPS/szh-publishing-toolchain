@@ -12,6 +12,27 @@
 .sugg-quoi dt { font-weight: 700; color: var(--encre-2); }
 .sugg-quoi dd { margin: 0; overflow-wrap: anywhere; }
 .sugg-quoi dd.slug { font-family: var(--vscode-editor-font-family, monospace); }
+/* La clé d'un libellé de l'outil se lit comme un slug — c'est un identifiant, pas une
+   phrase. Quand elle n'a pas été retrouvée, le mot qui le dit n'en est pas un : il reprend
+   la voix du reste du formulaire. */
+.sugg-quoi dd.slug.sans-cle {
+  font-family: inherit; font-style: italic; color: var(--encre-2);
+}
+/* Plusieurs candidates : la clé se choisit dans un <select>, et un contrôle de formulaire
+   n'hérite pas de la police de son parent — la même clé se lisait donc en chasse fixe
+   quand elle était seule, et dans la police du texte courant quand il fallait la choisir.
+   Deux voix pour la même chose ; celle de l'identifiant est la bonne. */
+.sugg-quoi dd.slug select {
+  font: inherit; font-family: var(--vscode-editor-font-family, monospace);
+  color: inherit; background: var(--vscode-input-background, var(--surface));
+  border: 1px solid var(--vscode-input-border, var(--filet));
+  border-radius: var(--rayon-mini); padding: 0 var(--e1);
+  max-width: 100%;
+}
+.sugg-quoi dd.slug select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* L'hésitation sur la clé, sous la tête du formulaire : plusieurs libellés portent ce
+   texte, ou aucun. Elle ne paraît que dans ces deux cas. */
+.sugg-cle-aide { margin: 0 0 var(--e4); }
 
 /* L'intitulé du texte actuel : même aspect que les <label> de la carte, mais ce n'en est
    pas un — il ne désigne aucun champ de saisie, et un label pointant un bloc de lecture
@@ -41,6 +62,32 @@
 .carte .sugg-libelle { margin-top: var(--e4); }
 .carte .sugg-libelle:first-child { margin-top: 0; }
 .aide { margin: var(--e1) 0 0; font-size: var(--t-mini); color: var(--encre-2); }
+
+/* Le bandeau du geste « supprimer », armé : il dit ce qui sera enregistré, à la place de
+   la zone « Traduction proposée » qu'il remplace. Le ton « attention » et non « danger » —
+   rien n'est effacé, c'est une proposition — mais il ne se confond pas avec l'aide du haut. */
+.sugg-geste { margin: var(--e3) 0 0; }
+
+/* Le bouton qui arme la suppression. Secondaire, jamais principal : ce n'est pas le geste
+   courant. Au repos, la teinte de danger le distingue du bouton « Annuler » qui le suit. */
+.sugg-bouton-supprimer[aria-pressed="false"] {
+  color: var(--danger);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 45%, transparent);
+}
+/* Armé, il NE prend PAS le fond plein du socle (.szh-bouton[aria-pressed="true"]) : c'est
+   le fond de « Enregistrer la suggestion », et la barre montrait alors deux boutons bleus
+   côte à côte, de même taille, dont l'un enregistre et l'autre non — il fallait les lire
+   pour les départager. Le geste armé garde donc sa teinte de danger, sur le fond tramé des
+   avertissements du socle (.szh-notif--danger, mêmes jetons) : l'état se voit — cerne
+   épais, fond teinté — sans emprunter la couleur du geste qui, lui, valide. */
+.sugg-bouton-supprimer[aria-pressed="true"] {
+  color: var(--vscode-inputValidation-errorForeground, var(--danger));
+  background: var(--vscode-inputValidation-errorBackground, rgba(248, 81, 73, .14));
+  box-shadow: inset 0 0 0 2px var(--danger);
+}
+.sugg-bouton-supprimer[aria-pressed="true"]:hover {
+  background: var(--vscode-inputValidation-errorBackground, rgba(248, 81, 73, .22));
+}
 
 /* La barre est en bas ici, et non collée en haut : le geste se termine par elle. */
 .szh-barre {

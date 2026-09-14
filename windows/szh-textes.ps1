@@ -38,7 +38,7 @@ $script:SzhTextes = @{
     'etape.reglages'    = 'application des réglages de l’’éditeur'
     'etape.nettoyage'   = 'nettoyage'
     'err.empreinte'     = 'Le fichier téléchargé « {0} » est arrivé abîmé : sa signature ne correspond pas. Rien n’’a été installé – mieux vaut s’’arrêter que d’’installer un fichier douteux. Relancez la mise à jour : le fichier sera retéléchargé. Si cela se répète, c’’est la connexion qui coupe en cours de route.'
-    'err.wsl'           = 'L’’environnement qui fabrique les PDF n’’a pas pu être installé. Fermez l’’éditeur et les revues ouvertes, puis relancez la mise à jour : l’’installation ne peut pas remplacer cet environnement pendant qu’’une compilation s’’en sert. Si cela ne suffit pas, redémarrez le poste. Sans lui, aucun PDF ne peut être produit.'
+    'err.wsl'           = 'L’’environnement qui fabrique les PDF n’’a pas pu être installé. Fermez l’’éditeur et les numéros ouverts, puis relancez la mise à jour : l’’installation ne peut pas remplacer cet environnement pendant qu’’une compilation s’’en sert. Si cela ne suffit pas, redémarrez le poste. Sans lui, aucun PDF ne peut être produit.'
     # Trois causes, trois gestes : « occupé » ci-dessus se ferme en fermant l'éditeur, mais
     # un dossier déjà pris ne se ferme pas et la virtualisation ne s'active pas sans le
     # service informatique. Un seul message pour les trois envoyait le support fermer un
@@ -156,29 +156,28 @@ $script:SzhTextes = @{
     'lanceur.reglages'              = 'Paramètres'
     'lanceur.reglages.onglet'       = 'Onglet ouvert au démarrage'
     'lanceur.reglages.auto'         = 'Automatique (selon la langue du poste)'
-    'lanceur.reglages.onglet.regle' = 'Sans choix ici : Zeitschrift sur un poste en allemand, Revue sur un poste en français, Zeitschrift partout ailleurs.'
     'lanceur.reglages.langue'       = 'Langue de l’’interface'
     'lanceur.reglages.langue.auto'  = 'Automatique ({0})'
     'lanceur.reglages.langue.fr'    = 'Français'
     'lanceur.reglages.langue.de'    = 'Allemand'
-    'lanceur.reglages.langue.apres' = 'La langue change à la prochaine ouverture du lanceur.'
-    'lanceur.reglages.ou'           = 'Sauf le dernier, ces réglages appartiennent à ce compte Windows et non au poste.'
+    'lanceur.reglages.langue.apres' = 'Effet à la prochaine ouverture.'
     # Réglage « mise à jour » : fenêtre visible ou silencieuse ; un échec répété se
     # signale quand même (voir la note ci-dessous).
     'lanceur.reglages.maj'          = 'Mise à jour de l’’outil'
     'lanceur.reglages.maj.visible'  = 'Montrer la fenêtre pendant la mise à jour'
     'lanceur.reglages.maj.silence'  = 'Mettre à jour en silence, sans fenêtre'
-    'lanceur.reglages.maj.note'     = 'En silence, une mise à jour qui échoue plusieurs fois de suite se signale quand même.'
+    'lanceur.reglages.maj.note'     = 'Un échec répété se signale quand même.'
     # Mode développeur : déménagé du formulaire de réglages de l'éditeur (mêmes
-    # libellés), vaut pour tout le poste et non pour ce seul compte.
+    # libellés), vaut pour tout le poste et non pour ce seul compte. L'onglet ne le dit
+    # plus : où vit un réglage n'intéresse personne qui s'en sert.
     'lanceur.reglages.dev'          = 'Mode développeur (dossiers de test)'
     'lanceur.reglages.dev.oui'      = 'Activé'
     'lanceur.reglages.dev.non'      = 'Désactivé'
-    'lanceur.reglages.dev.note'     = 'Seul réglage de cet onglet qui vaille pour tout le poste, et non pour ce seul compte. Les listes et le titre le suivent à la prochaine ouverture.'
+    'lanceur.reglages.dev.note'     = 'Les listes suivent à la prochaine ouverture.'
     # Onglet « Journal » : les dix dernières mises à jour et leur verdict.
     'lanceur.journal'                  = 'Journal'
     'lanceur.journal.liste'            = 'Dix dernières mises à jour :'
-    'lanceur.journal.vide'             = 'Aucune mise à jour n’’a encore été enregistrée sur ce poste.'
+    'lanceur.journal.vide'             = 'Aucune mise à jour enregistrée.'
     'lanceur.journal.entree'           = '{0}    {1}    ({2} ko)'
     'lanceur.journal.ok'               = 'réussie'
     'lanceur.journal.echec'            = 'échouée'
@@ -190,8 +189,8 @@ $script:SzhTextes = @{
     'lanceur.journal.signaler'         = 'Signaler une erreur…'
     'lanceur.journal.signaler.titre'   = 'Signaler une erreur'
     'lanceur.journal.signaler.quoi'    = 'En une phrase : que s’’est-il passé ?'
-    'lanceur.journal.signaler.fait'    = 'Merci. Le signalement est parti, avec le journal choisi.'
-    'lanceur.journal.signaler.attente' = 'Le signalement est enregistré. Il partira dès que le dossier SharePoint sera de nouveau joignable.'
+    'lanceur.journal.signaler.fait'    = 'Le signalement est parti, avec le journal choisi.'
+    'lanceur.journal.signaler.attente' = 'Le signalement partira dès que le dossier SharePoint sera de nouveau joignable.'
     'lanceur.journal.signaler.refuse'  = 'Le signalement n’’a pas pu être enregistré. Le journal du poste en dit la raison.'
     # Bouton « Envoyer les journaux » : réunit les journaux dans une archive, ouvre un
     # brouillon de courriel et montre l'archive dans l'explorateur (mailto ne porte pas de pièce jointe).
@@ -227,7 +226,7 @@ $script:SzhTextes = @{
     'ancrage.demande.titre' = 'Dossier partagé SharePoint introuvable'
     'ancrage.demande.texte' = 'L’’outil n’’a pas trouvé automatiquement le dossier partagé SharePoint des revues et des livres. Indiquez un dossier qui s’’y trouve, ou qui contient le dossier « Daten_Allgemein - General ».'
     'ancrage.demande.echec' = 'Ce dossier ne mène pas au dossier partagé recherché : un dossier nommé « Daten_Allgemein - General », sous le dossier indiqué ou au-dessus de lui. Choisissez un autre dossier.'
-    'ancrage.abandon'       = 'Le dossier partagé SharePoint n’’a pas pu être rattaché : les revues et les livres resteront introuvables sur ce poste tant qu’’il ne l’’est pas. Pour réessayer, fermez ce lanceur et rouvrez-le : la demande réapparaîtra dans 24 heures. Besoin d’’aide plus tôt : {0}'
+    'ancrage.abandon'       = 'Le dossier partagé SharePoint n’’a pas pu être rattaché : les revues et les livres resteront introuvables sur ce poste tant qu’’il ne l’’est pas. La demande réapparaîtra à la prochaine ouverture de « Revue & Zeitschrift », passé 24 heures. Besoin d’’aide plus tôt : {0}'
     # Ligne d'info du lanceur (open-produit.ps1) quand l'ancrage reste absent après
     # Initialize-SzhAncrage : dit pourquoi la liste est vide, sans rouvrir de fenêtre.
     'lanceur.ancrage.absent' = 'Dossier partagé SharePoint introuvable : la liste ci-dessus restera vide tant que ce dossier ne sera pas rattaché.'
@@ -370,29 +369,27 @@ $script:SzhTextes = @{
     'lanceur.reglages'              = 'Einstellungen'
     'lanceur.reglages.onglet'       = 'Beim Start geöffnete Registerkarte'
     'lanceur.reglages.auto'         = 'Automatisch (nach der Sprache des Computers)'
-    'lanceur.reglages.onglet.regle' = 'Ohne Auswahl hier: Zeitschrift auf einem deutschsprachigen Computer, Revue auf einem französischsprachigen, sonst überall Zeitschrift.'
     'lanceur.reglages.langue'       = 'Sprache der Oberfläche'
     'lanceur.reglages.langue.auto'  = 'Automatisch ({0})'
     'lanceur.reglages.langue.fr'    = 'Französisch'
     'lanceur.reglages.langue.de'    = 'Deutsch'
-    'lanceur.reglages.langue.apres' = 'Die Sprache wechselt beim nächsten Öffnen des Programms.'
-    'lanceur.reglages.ou'           = 'Ausser der letzten gehören diese Einstellungen zu diesem Windows-Konto und nicht zum Computer.'
+    'lanceur.reglages.langue.apres' = 'Wirkt beim nächsten Öffnen.'
     # Einstellung «Aktualisierung»: Fenster sichtbar oder still; ein wiederholt
     # fehlschlagender Vorgang meldet sich trotzdem.
     'lanceur.reglages.maj'          = 'Aktualisierung des Programms'
     'lanceur.reglages.maj.visible'  = 'Fenster während der Aktualisierung anzeigen'
     'lanceur.reglages.maj.silence'  = 'Still aktualisieren, ohne Fenster'
-    'lanceur.reglages.maj.note'     = 'Auch im stillen Modus meldet sich eine Aktualisierung, die mehrmals hintereinander fehlschlägt.'
+    'lanceur.reglages.maj.note'     = 'Ein wiederholter Fehlschlag meldet sich trotzdem.'
     # Entwicklermodus: aus dem Einstellungsformular des Editors verschoben (gleiche
     # Bezeichnungen), gilt für den ganzen Computer.
     'lanceur.reglages.dev'          = 'Entwicklermodus (Testordner)'
     'lanceur.reglages.dev.oui'      = 'Ein'
     'lanceur.reglages.dev.non'      = 'Aus'
-    'lanceur.reglages.dev.note'     = 'Als einzige Einstellung dieser Registerkarte gilt sie für den ganzen Computer, nicht nur für dieses Konto. Listen und Titel folgen beim nächsten Öffnen.'
+    'lanceur.reglages.dev.note'     = 'Listen folgen beim nächsten Öffnen.'
     # Registerkarte «Protokoll»: die letzten zehn Aktualisierungen und ihr Ausgang.
     'lanceur.journal'                  = 'Protokoll'
     'lanceur.journal.liste'            = 'Letzte zehn Aktualisierungen:'
-    'lanceur.journal.vide'             = 'Auf diesem Computer wurde noch keine Aktualisierung aufgezeichnet.'
+    'lanceur.journal.vide'             = 'Keine Aktualisierung aufgezeichnet.'
     'lanceur.journal.entree'           = '{0}    {1}    ({2} kB)'
     'lanceur.journal.ok'               = 'erfolgreich'
     'lanceur.journal.echec'            = 'fehlgeschlagen'
@@ -404,8 +401,8 @@ $script:SzhTextes = @{
     'lanceur.journal.signaler'         = 'Fehler melden…'
     'lanceur.journal.signaler.titre'   = 'Fehler melden'
     'lanceur.journal.signaler.quoi'    = 'In einem Satz: Was ist geschehen?'
-    'lanceur.journal.signaler.fait'    = 'Danke. Die Meldung ist zusammen mit dem gewählten Protokoll abgegangen.'
-    'lanceur.journal.signaler.attente' = 'Die Meldung ist gespeichert. Sie geht ab, sobald der SharePoint-Ordner wieder erreichbar ist.'
+    'lanceur.journal.signaler.fait'    = 'Die Meldung ist mit dem gewählten Protokoll abgegangen.'
+    'lanceur.journal.signaler.attente' = 'Die Meldung geht ab, sobald der SharePoint-Ordner wieder erreichbar ist.'
     'lanceur.journal.signaler.refuse'  = 'Die Meldung konnte nicht gespeichert werden. Das Protokoll des Computers nennt den Grund.'
     # Schaltfläche «Protokolle senden»: fasst die Protokolle in einem Archiv zusammen,
     # öffnet einen E-Mail-Entwurf und zeigt das Archiv im Explorer (mailto trägt keinen Anhang).
@@ -439,7 +436,7 @@ $script:SzhTextes = @{
     'ancrage.demande.titre' = 'Freigegebener SharePoint-Ordner nicht gefunden'
     'ancrage.demande.texte' = 'Das Werkzeug hat den freigegebenen SharePoint-Ordner der Zeitschriften und Bücher nicht automatisch gefunden. Wählen Sie einen Ordner, der darin liegt, oder der den Ordner «Daten_Allgemein - General» enthält.'
     'ancrage.demande.echec' = 'Dieser Ordner führt nicht zum gesuchten freigegebenen Ordner: ein Ordner namens «Daten_Allgemein - General», unterhalb des gewählten Ordners oder darüber. Wählen Sie einen anderen Ordner.'
-    'ancrage.abandon'       = 'Der freigegebene SharePoint-Ordner konnte nicht verknüpft werden: Zeitschriften und Bücher bleiben auf diesem Rechner unauffindbar, bis er es ist. Starten Sie zum erneuten Versuch dieses Programm neu: die Anfrage erscheint nach 24 Stunden wieder. Für frühere Hilfe: {0}'
+    'ancrage.abandon'       = 'Der freigegebene SharePoint-Ordner konnte nicht verknüpft werden: Zeitschriften und Bücher bleiben auf diesem Rechner unauffindbar, bis er es ist. Die Anfrage erscheint beim nächsten Öffnen von «Revue & Zeitschrift» wieder, nach 24 Stunden. Für frühere Hilfe: {0}'
     # Info-Zeile des Launchers (open-produit.ps1), wenn der Ordner nach Initialize-SzhAncrage
     # weiterhin fehlt: sagt, weshalb die Liste leer bleibt.
     'lanceur.ancrage.absent' = 'Freigegebener SharePoint-Ordner nicht gefunden: Die Liste bleibt leer, bis er verknüpft ist.'
@@ -582,29 +579,27 @@ $script:SzhTextes = @{
     'lanceur.reglages'              = 'Settings'
     'lanceur.reglages.onglet'       = 'Tab opened at startup'
     'lanceur.reglages.auto'         = 'Automatic (follows the computer’’s language)'
-    'lanceur.reglages.onglet.regle' = 'With no choice here: Zeitschrift on a German computer, Revue on a French one, Zeitschrift everywhere else.'
     'lanceur.reglages.langue'       = 'Interface language'
     'lanceur.reglages.langue.auto'  = 'Automatic ({0})'
     'lanceur.reglages.langue.fr'    = 'French'
     'lanceur.reglages.langue.de'    = 'German'
-    'lanceur.reglages.langue.apres' = 'The language changes the next time the launcher is opened.'
-    'lanceur.reglages.ou'           = 'Except the last one, these settings belong to this Windows account rather than to the computer.'
+    'lanceur.reglages.langue.apres' = 'Takes effect the next time it opens.'
     # “Update” setting: window shown or silent; an update that keeps failing still
     # speaks up.
     'lanceur.reglages.maj'          = 'Updating the tool'
     'lanceur.reglages.maj.visible'  = 'Show the window while updating'
     'lanceur.reglages.maj.silence'  = 'Update silently, with no window'
-    'lanceur.reglages.maj.note'     = 'Even silently, an update that fails several times in a row still speaks up.'
+    'lanceur.reglages.maj.note'     = 'A repeated failure still speaks up.'
     # Developer mode: moved from the editor's settings form (same labels), applies
     # to the whole computer.
     'lanceur.reglages.dev'          = 'Developer mode (test folders)'
     'lanceur.reglages.dev.oui'      = 'On'
     'lanceur.reglages.dev.non'      = 'Off'
-    'lanceur.reglages.dev.note'     = 'The only setting on this tab that applies to the whole computer rather than this account alone. Lists and title follow the next time it opens.'
+    'lanceur.reglages.dev.note'     = 'Lists follow the next time it opens.'
     # “Log” tab: the last ten updates and their outcome.
     'lanceur.journal'                  = 'Log'
     'lanceur.journal.liste'            = 'Last ten updates:'
-    'lanceur.journal.vide'             = 'No update has been recorded on this computer yet.'
+    'lanceur.journal.vide'             = 'No update recorded.'
     'lanceur.journal.entree'           = '{0}    {1}    ({2} kB)'
     'lanceur.journal.ok'               = 'succeeded'
     'lanceur.journal.echec'            = 'failed'
@@ -615,8 +610,8 @@ $script:SzhTextes = @{
     'lanceur.journal.signaler'         = 'Report a problem…'
     'lanceur.journal.signaler.titre'   = 'Report a problem'
     'lanceur.journal.signaler.quoi'    = 'In one sentence: what happened?'
-    'lanceur.journal.signaler.fait'    = 'Thank you. The report has gone off, together with the chosen log.'
-    'lanceur.journal.signaler.attente' = 'The report is saved. It will go off as soon as the SharePoint folder can be reached again.'
+    'lanceur.journal.signaler.fait'    = 'The report has gone off, with the chosen log.'
+    'lanceur.journal.signaler.attente' = 'The report will go off as soon as the SharePoint folder can be reached again.'
     'lanceur.journal.signaler.refuse'  = 'The report could not be saved. The computer’’s log says why.'
     # “Send the logs” button: gathers the logs into an archive, opens a draft e-mail,
     # and shows the archive in Explorer (mailto cannot carry an attachment).
@@ -650,7 +645,7 @@ $script:SzhTextes = @{
     'ancrage.demande.titre' = 'Shared SharePoint folder not found'
     'ancrage.demande.texte' = 'The tool could not automatically find the shared SharePoint folder for journals and books. Pick a folder that is inside it, or that contains the "Daten_Allgemein - General" folder.'
     'ancrage.demande.echec' = 'This folder does not lead to the shared folder being searched for: one named "Daten_Allgemein - General", below the folder you picked or above it. Choose another folder.'
-    'ancrage.abandon'       = 'The shared SharePoint folder could not be linked: journals and books will stay unreachable on this computer until it is. To try again, close this launcher and reopen it: the request will reappear after 24 hours. For earlier help: {0}'
+    'ancrage.abandon'       = 'The shared SharePoint folder could not be linked: journals and books will stay unreachable on this computer until it is. The request comes back the next time the Revue & Zeitschrift launcher is opened, after 24 hours. For earlier help: {0}'
     # Launcher info line (open-produit.ps1) when the anchor is still missing after
     # Initialize-SzhAncrage: says why the list stays empty.
     'lanceur.ancrage.absent' = 'Shared SharePoint folder not found: the list will stay empty until it is linked.'

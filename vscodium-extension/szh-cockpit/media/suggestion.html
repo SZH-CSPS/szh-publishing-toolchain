@@ -1,17 +1,22 @@
 <h1>%%SZH:sugg.titre%%</h1>
 <p class="szh-notif szh-notif--info szh-notif--discret">%%SZH:sugg.aide%%</p>
 <dl class="sugg-quoi" id="quoi"></dl>
+<p class="szh-notif szh-notif--info szh-notif--discret sugg-cle-aide" id="cle-aide" role="status" hidden></p>
 <div class="carte">
 <p class="sugg-libelle" id="libelle-actuel">%%SZH:sugg.actuel%%</p>
 <div class="source" id="actuel" role="group" aria-labelledby="libelle-actuel" tabindex="0"></div>
+<p class="szh-notif szh-notif--attention sugg-geste" id="geste-quoi" role="status" hidden></p>
+<div id="bloc-propose">
 <label for="propose">%%SZH:sugg.propose%%</label>
 <textarea id="propose" rows="5"></textarea>
+</div>
 <label for="commentaire">%%SZH:sugg.commentaire%%</label>
 <textarea id="commentaire" rows="4"></textarea>
 <p class="aide">%%SZH:sugg.commentaire.aide%%</p>
 </div>
 <div class="szh-barre" id="barre">
   <button class="szh-bouton szh-bouton--principal" id="enregistrer">%%SZH:sugg.enregistrer%%</button>
+  <button class="szh-bouton sugg-bouton-supprimer" id="supprimer" aria-pressed="false">%%SZH:sugg.supprimer%%</button>
   <button class="szh-bouton" id="annuler">%%SZH:sugg.annuler%%</button>
   <span class="szh-barre-etat" id="etat" role="status"></span>
 </div>

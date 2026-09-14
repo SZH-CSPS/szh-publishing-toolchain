@@ -77,6 +77,9 @@ lib/
   gabarits.js           moteur de gabarits, sous-ensemble de Twig sans vscode ni dépendance :
                         sert lib/courriel.js
   i18n.js               textes fr/de et T(clé[, args])
+  index-textes.js       l'index qui retrouve la clé i18n d'un texte lu à l'écran :
+                        exact, motifs à trous ({0}) et clés partagées. Sert le mode
+                        « Trad ». Module pur, sans disque ni vscode
   import-hote.js        import guidé : conversion des .docx en attente (bouton ou glisser-
                         déposer), écriture de l'ordre des nouveaux articles (le numéro de
                         tête du Word migre vers ordre-articles/ordre-chapitres), et la

@@ -21,7 +21,10 @@ const VUE_PDF = 'pdf.preview';
 // ---- Rappels vers l'hôte ----------------------------------------------------------
 let ctx = {
   fermerOnglets: async () => {},
-  ouvrirApercuPdf: async () => {}
+  ouvrirApercuPdf: async () => {},
+  // Mode « Trad » : le clic détourné vers le formulaire de suggestion. Un module non
+  // configuré ne détourne rien — voir repondreModeTrad dans extension.js.
+  repondreModeTrad: () => false
 };
 
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
@@ -288,6 +291,9 @@ function ouvrirApercuHtml(fournisseur, slug, enAttente) {
     panneau.onDidDispose(() => { if (session.panneauApercuHtml() === panneau) { session.poserPanneauApercuHtml(null); } });
     panneau.webview.onDidReceiveMessage((msg) => {
       if (!msg) { return; }
+      // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
+      // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
+      if (ctx.repondreModeTrad(panneau, msg)) { return; }
       if (msg.type === MSG.BASCULER) { vscode.commands.executeCommand('szh.basculerApercu'); return; }
       if (msg.type === MSG.REVELE) {
         if (session.apercuCourantSlug()) { revelerPos(fournisseur, session.apercuCourantSlug(), msg.pos, msg.mot); }

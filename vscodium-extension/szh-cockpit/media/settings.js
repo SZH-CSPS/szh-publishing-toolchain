@@ -1,5 +1,9 @@
 (function () {
   'use strict';
+  // GARDE-FOU DU MODE « TRAD » : cette page ne détourne JAMAIS ses clics, mode allumé
+  // compris. C'est ici qu'on l'éteint — une page de réglages qui intercepterait ses propres
+  // clics allumerait un mode qu'on ne pourrait plus éteindre.
+  SZH.modeTradJamais();
   const TXT = __TXT__;
   const vscodeApi = acquireVsCodeApi();
   let recu = false;
@@ -36,7 +40,12 @@
     // l'éditeur, parce que trois panneaux le lisent et que la mise à jour du poste réécrit
     // ces derniers en entier — voir lib/archivage.js#lireVerifTraduction.
     { cle: 'verifTrad', legende: TXT.verifTrad,
-      options: [['actif', TXT.verifTradActif], ['inactif', TXT.verifTradInactif]] }
+      options: [['actif', TXT.verifTradActif], ['inactif', TXT.verifTradInactif]] },
+    // Le mode « Trad », jumeau du précédent pour les textes de l'OUTIL : allumé, un clic
+    // sur un libellé d'un panneau ouvre une suggestion au lieu de faire ce qu'il fait
+    // d'habitude. Même fichier de réglage, et pour la même raison.
+    { cle: 'modeTrad', legende: TXT.modeTrad, aide: TXT.modeTradAide,
+      options: [['actif', TXT.modeTradActif], ['inactif', TXT.modeTradInactif]] }
   ];
   // La discordance de langue, sous le choix de la langue et nulle part ailleurs : les menus
   // de VSCodium et les textes du cockpit ne viennent pas de la même source, et rien ne les
@@ -69,9 +78,12 @@
         zoneLangue.hidden = true;
         zone.appendChild(zoneLangue);
       }
+      // Un mode qui change le sens de tous les clics ne se devine pas de son seul intitulé.
+      if (g.aide) { note(zone, g.aide); }
       zones.appendChild(zone);
     }
     rendreExportLangue();
+    rendreSuggInterface();
   }
   // Le fichier de langue de l'interface, sous les groupes : une copie de tous les libellés
   // du cockpit, fr et de côte à côte, à envoyer à qui relit. Ce bouton ne règle rien — il
@@ -89,6 +101,31 @@
     f.appendChild(b);
     note(f, TXT.exportLangueAide);
     zones.appendChild(f);
+  }
+  // Ce que le mode « Trad » a produit : le nombre de suggestions en attente sur ce poste,
+  // et de quoi ouvrir leur dossier. Sans cette ligne, elles seraient écrites et jamais
+  // relues — un mode de relecture dont personne ne lit jamais le résultat.
+  let compteSuggInterface = null;
+  function rendreSuggInterface() {
+    const f = zone(TXT.suggInterfaceTitre);
+    compteSuggInterface = note(f, TXT.suggInterfaceAucune);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'szh-bouton';
+    b.textContent = TXT.suggInterfaceOuvrir;
+    b.addEventListener('click', function () {
+      vscodeApi.postMessage({ type: SZH.MSG.SUGGESTIONS_INTERFACE });
+    });
+    f.appendChild(b);
+    note(f, TXT.suggInterfaceAide);
+    zones.appendChild(f);
+  }
+  function afficherSuggInterface(nombre) {
+    if (!compteSuggInterface) { return; }
+    const n = Number(nombre) || 0;
+    compteSuggInterface.textContent = n === 0
+      ? TXT.suggInterfaceAucune
+      : String(TXT.suggInterface || '').split('{0}').join(String(n));
   }
   function afficherDiscordanceLangue(texte) {
     if (!zoneLangue) { return; }
@@ -564,6 +601,9 @@
     afficherDiscordanceLangue(msg.avertLangue);
     if (msg.proteges) { protegesEtat = msg.proteges; }
     if (msg.auteursOjs) { rendreAuteursOjs(msg.auteursOjs); }
+    // Le compte des suggestions d'interface : recompté par l'hôte à chaque envoi de
+    // valeurs, jamais tenu ici — il change quand on clique ailleurs.
+    afficherSuggInterface(msg.suggInterface);
     // Une saisie en cours ne se fait pas écraser par un renvoi de valeurs : le panneau
     // reste tel quel, l'enregistrement automatique s'en occupe.
     if (msg.ojs && !ojsModifie) {

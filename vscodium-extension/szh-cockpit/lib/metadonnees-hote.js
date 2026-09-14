@@ -68,7 +68,10 @@ let ctx = {
   // pastille d'un champ ouvre. Éteint par défaut — un test qui require ce module seul ne
   // doit pas se mettre à poser des pastilles.
   lireVerifTraduction: () => false,
-  ouvrirSuggestionTraduction: () => {}
+  ouvrirSuggestionTraduction: () => {},
+  // Mode « Trad » : le clic détourné vers le formulaire de suggestion. Un module non
+  // configuré ne détourne rien — voir repondreModeTrad dans extension.js.
+  repondreModeTrad: () => false
 };
 
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
@@ -431,6 +434,9 @@ async function ouvrirMetadonnees(fournisseur, rafraichirTout) {
   });
   panneau.webview.onDidReceiveMessage((msg) => {
     if (!msg) { return; }
+    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
+    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
+    if (ctx.repondreModeTrad(panneau, msg)) { return; }
     if (msg.type === MSG.PRET) {
       envoyerValeurs(panneau);
       ctx.annoncerMain(panneau, racine, cheminConfig(racine));
@@ -1105,6 +1111,9 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
   });
   panneau.webview.onDidReceiveMessage(async (msg) => {
     if (!msg) { return; }
+    // Mode « Trad » : l'état du mode, et le clic détourné. Branché ici et non dans les
+    // réglages ni dans le formulaire de suggestion — voir repondreModeTrad.
+    if (ctx.repondreModeTrad(panneau, msg)) { return; }
     if (msg.type === MSG.PRET) { envoyerValeurs(panneau, { requete: msg.requete }); return; }
     if (msg.type === MSG.MODIFIE) { fichesModifie = !!msg.modifie; return; }
     if (msg.type === MSG.TOUS) { await ouvrirApercuMetadonnees(fournisseur, rafraichirTout, null); return; }

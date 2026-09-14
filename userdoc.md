@@ -544,6 +544,14 @@ texte, où l’on écrit la traduction qu’on propose à la place ; un comment
 pourquoi. **Enregistrer la suggestion** dépose une proposition ; **Annuler** referme le
 formulaire sans rien écrire.
 
+Un second bouton, « Proposer de supprimer ce texte », sert un cas différent : dire que ce
+texte ne devrait pas exister du tout – ce qu’une simple proposition ne sait pas exprimer,
+puisque laisser la zone vide serait ambigu (un oubli, ou un texte à retirer ?). Ce bouton ne
+range rien tout de suite : il prépare le geste. La zone de traduction disparaît, un message
+dit ce qui sera enregistré, et c’est alors « Enregistrer la suggestion » qui l’envoie pour de
+bon. Un second clic sur le même bouton annule cette préparation et rend la main sur une
+proposition ordinaire.
+
 Une suggestion enregistrée part dans un dossier **« traduction »**, à la racine du numéro –
 ⚠ un emplacement **provisoire**, appelé à changer. Personne ne la relit tout de suite ni
 automatiquement : c’est un pense-bête, écrit pour qu’une personne le lise plus tard et
@@ -553,6 +561,53 @@ ce qu’ils étaient tant que personne n’a repris la main sur la fiche.
 **Une limite à connaître** : un panneau déjà ouvert au moment où l’on active (ou désactive)
 le réglage ne montre les pastilles qu’à sa prochaine reconstruction – changer d’article,
 changer de filtre, ou rouvrir le panneau. Rien ne les fait apparaître sur une carte déjà à l’écran.
+
+### Le mode « Trad » – relire les textes de l’outil lui-même
+
+Un troisième mode, indépendant des deux précédents : on peut l’allumer ou l’éteindre sans
+toucher au vérificateur de traduction ni au panneau « Traductions ». Il ne concerne aucun
+article : il sert à relire les textes de l’outil lui-même – les intitulés des boutons, des
+formulaires et des messages du cockpit, plus d’un millier au total, à l’endroit exact où ils
+s’affichent à l’écran.
+
+**Pour l’activer** : **🚀 Commande → Réglages SZH → « Mode « Trad » »**, puis **Activé**.
+
+Une fois actif, tout change de comportement : un clic sur un texte, n’importe où dans un
+panneau du cockpit, n’exécute plus l’action habituelle. Il ouvre le même formulaire de
+suggestion que ci-dessus, sur ce texte-là – avec le même bouton de suppression, le même
+commentaire libre. Quand le texte cliqué correspond à un intitulé connu, le formulaire
+l’indique ; s’il y a une hésitation entre plusieurs, on choisit celui qu’on est en train de
+relire ; si rien n’est reconnu, le formulaire s’ouvre quand même, tel quel.
+
+**Comment en sortir, et c’est le point à retenir** : tant que ce mode est actif, plus aucun
+bouton ne fait ce qu’il fait d’habitude, dans aucun panneau – seuls les Réglages et le
+formulaire de suggestion continuent de répondre normalement, précisément parce que c’est par
+eux qu’on doit pouvoir sortir. Un bandeau reste affiché en haut de chaque page pour le
+rappeler, avec un bouton « Éteindre le mode « Trad » ». La touche Échap fait la même chose,
+depuis n’importe quel panneau. Si un jour plus rien ne semble répondre dans le cockpit,
+c’est le premier réflexe à avoir.
+
+Ce mode ne peut rien contre les textes qui ne sont pas dans une page du cockpit : les
+notifications de VSCodium, ses boîtes de dialogue, les noms de commandes dans le menu
+déroulant, l’arborescence de fichiers, la barre d’état tout en bas. Ce sont des éléments de
+l’éditeur lui-même, pas des pages de l’outil. C’est pour les couvrir eux aussi qu’existe le
+fichier de langue téléchargeable ci-dessous.
+
+### Le fichier de langue de l’interface
+
+Dans **Réglages SZH**, sous « Fichier de langue de l’interface », un bouton « Télécharger
+(JSON) » enregistre un fichier qui reprend tous les textes de l’interface du cockpit, en
+français et en allemand côte à côte, puis l’affiche dans l’Explorateur de fichiers. C’est une
+copie : la corriger dans ce fichier ne change rien à l’écran ; elle sert à envoyer des
+remarques groupées à la personne qui administre l’outil. Le fichier porte lui-même, en tête,
+un petit avertissement bilingue qui le redit.
+
+### Les suggestions sur les textes de l’outil
+
+Une suggestion faite en mode « Trad » ne concerne aucun numéro : elle ne part pas dans le
+dossier « traduction » d’une revue, mais dans un dossier propre à votre poste. Dans
+**Réglages SZH**, la ligne « Suggestions sur les textes de l’outil » dit combien en attendent
+d’être relues, et le bouton « Ouvrir le dossier » les montre dans l’Explorateur.
 
 [capture : la section « Traductions » dépliée sur un article]
 [capture : le panneau de traduction, aperçu à droite]

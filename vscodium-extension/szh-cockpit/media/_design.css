@@ -492,3 +492,26 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 .carte .szh-sugg-trad:focus-visible {
   color: var(--accent); outline: 2px solid var(--accent); outline-offset: 1px;
 }
+
+/* ═══ Mode « Trad » ═══════════════════════════════════════════════════════════ */
+/* Le bandeau posé en tête de tout panneau qui détourne ses clics. Collé en haut : un
+   panneau qu'on fait défiler ne doit pas perdre l'explication de ce qui lui arrive, ni la
+   sortie. Le ton « attention » et non « danger » — rien n'est cassé, et rien ne s'écrit —
+   mais il ne se confond pas avec les notes d'aide des pages. */
+/* align-items reste celui du socle (flex-start) : la phrase du bandeau tient sur deux
+   lignes dans un panneau de largeur ordinaire, et un pictogramme centré sur le bloc entier
+   se retrouvait dans la gouttière, à hauteur du dernier mot, comme s'il annonçait autre
+   chose. En tête de la première ligne, il annonce la phrase. */
+.szh-trad-bandeau {
+  position: sticky; top: 0; z-index: 30;
+  margin: 0 0 var(--e3);
+}
+/* SZH.notif enveloppe son contenu dans un <span> : c'est lui qui range la phrase et le
+   bouton, et qui les fait passer à la ligne dans un panneau étroit. */
+.szh-trad-bandeau > span {
+  display: flex; flex: 1 1 auto; flex-wrap: wrap;
+  align-items: center; gap: var(--e2) var(--e3);
+}
+/* Le bouton de sortie à l'extrémité : c'est la seule chose cliquable de la page tant que
+   le mode est actif, elle doit se trouver sans chercher. */
+.szh-trad-bandeau .szh-trad-sortie { margin-left: auto; }

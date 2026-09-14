@@ -9,6 +9,11 @@
 // d'ici là, rien n'a bougé. C'est toute la différence avec lib/traduction.js, qui, lui,
 // écrit dans la fiche.
 //
+// DEUX CIBLES depuis le mode « Trad ». Une suggestion vise soit un champ d'ARTICLE (le
+// geste d'origine, rangé dans traduction/ du numéro), soit un libellé de l'OUTIL lui-même
+// (rangé sur le poste, %LOCALAPPDATA%\SZH\suggestions-interface). Même format, même
+// mécanique, deux dossiers : un libellé de bouton n'appartient à aucun numéro.
+//
 // ⚠ Le dossier est FRÈRE de articles/, jamais dedans. Les deux recensements d'articles du
 //   dépôt listent les sous-dossiers de <racine>/articles (FournisseurRevue._sousDossiersAvecMd
 //   dans extension.js, listerSlugs dans lib/export-ojs.js) : un dossier « traduction »
@@ -45,6 +50,43 @@ const LISEZ_MOI = 'LISEZ-MOI.txt';
 // dire à quelle grammaire il a affaire sans la deviner.
 const SCHEMA = 'szh-suggestion-traduction/1';
 
+// Le GESTE d'une suggestion. « remplacer » dit « ce texte gagnerait à être dit ainsi » ;
+// « supprimer » dit « ce texte ne devrait pas exister » — ce qu'une proposition de
+// remplacement ne sait pas exprimer : proposer le vide est ambigu, on ne saurait pas si
+// c'est un oubli.
+//
+// ⚠ RÈGLE DU CHAMP AJOUTÉ, et c'est pourquoi le schéma reste /1 : `geste` est apparu
+//   APRÈS les premiers fichiers. Un fichier écrit avant lui n'en porte pas, et il se lit
+//   comme « remplacer » — c'était son seul geste possible. normaliserGeste est le seul
+//   endroit où cette règle est écrite, et listerSuggestions y passe comme
+//   construireSuggestion. Tout champ qu'on ajouterait ensuite doit suivre la même
+//   discipline : une valeur par défaut qui redonne le comportement d'avant, et le numéro
+//   de schéma ne bouge que le jour où un fichier ancien deviendrait ILLISIBLE.
+const GESTE_REMPLACER = 'remplacer';
+const GESTE_SUPPRIMER = 'supprimer';
+
+function normaliserGeste(valeur) {
+  return String(valeur === undefined || valeur === null ? '' : valeur).trim() === GESTE_SUPPRIMER
+    ? GESTE_SUPPRIMER : GESTE_REMPLACER;
+}
+
+// La CIBLE d'une suggestion. « article » vise un champ traduisible d'un article — le geste
+// d'origine, celui des pastilles. « interface » vise un libellé de l'outil lui-même, cliqué
+// dans le mode « Trad » : elle ne concerne aucun numéro, ne porte ni produit, ni numéro, ni
+// article, ni champ, et se range ailleurs (voir dossierSuggestionsInterface).
+//
+// ⚠ MÊME RÈGLE DU CHAMP AJOUTÉ que `geste`, et c'est pourquoi le schéma reste /1 : `cible`
+//   est apparu APRÈS les premiers fichiers. Un fichier écrit avant lui n'en porte pas, et
+//   il se lit « article » — c'était sa seule cible possible. normaliserCible est le seul
+//   endroit où cette règle est écrite.
+const CIBLE_ARTICLE = 'article';
+const CIBLE_INTERFACE = 'interface';
+
+function normaliserCible(valeur) {
+  return String(valeur === undefined || valeur === null ? '' : valeur).trim() === CIBLE_INTERFACE
+    ? CIBLE_INTERFACE : CIBLE_ARTICLE;
+}
+
 // Le mode d'emploi laissé à qui tombe sur ce dossier, en français puis en allemand — même
 // forme que celui de .szh-avant-reimport (pipeline/reimporter.py) : le texte français,
 // puis une seconde moitié ouverte par « [de] ». Écrit en CRLF, comme lui : ces fichiers
@@ -54,7 +96,8 @@ const TEXTE_LISEZ_MOI = [
   '',
   'Un fichier JSON par suggestion, nommé par sa date, son article, son champ et sa langue.',
   'Chacun dit le texte qui était en place au moment de la suggestion, celui qui est proposé',
-  'à la place, et pourquoi.',
+  'à la place, et pourquoi. Certains ne proposent rien : leur « geste » vaut « supprimer »,',
+  'et ils disent que ce texte ne devrait pas exister du tout.',
   '',
   'RIEN ICI N’EST PUBLIÉ, et rien ici ne modifie aucun texte. Les titres, sous-titres,',
   'résumés et mots-clés du numéro vivent dans articles/<article>/<article>.meta.yaml, et',
@@ -68,7 +111,8 @@ const TEXTE_LISEZ_MOI = [
   '',
   'Eine JSON-Datei pro Vorschlag, benannt nach Datum, Artikel, Feld und Sprache. Jede Datei',
   'nennt den Text, der zum Zeitpunkt des Vorschlags vorlag, den vorgeschlagenen Text und die',
-  'Begründung.',
+  'Begründung. Manche schlagen nichts vor: ihr «geste» lautet «supprimer», und sie sagen,',
+  'dass dieser Text gar nicht bestehen sollte.',
   '',
   'HIER WIRD NICHTS VERÖFFENTLICHT, und nichts hier ändert einen Text. Titel, Untertitel,',
   'Zusammenfassungen und Schlagwörter der Ausgabe liegen in',
@@ -84,6 +128,48 @@ const TEXTE_LISEZ_MOI = [
 function dossierSuggestions(racine) {
   return path.join(String(racine || ''), DOSSIER_SUGGESTIONS);
 }
+
+// ---- Les suggestions sur les textes de l'OUTIL ------------------------------------
+//
+// Une suggestion d'interface ne concerne aucun numéro : la ranger dans le traduction/ d'un
+// numéro la rendrait introuvable — elle partirait à l'archivage avec un numéro qui n'a rien
+// à voir, et la même remarque, faite depuis deux numéros, s'éparpillerait. Elle vit donc sur
+// le POSTE, dans %LOCALAPPDATA%\SZH\suggestions-interface. Un fichier JSON par suggestion,
+// pour la même raison que pour les autres.
+const DOSSIER_INTERFACE = 'suggestions-interface';
+
+function dossierSuggestionsInterface(base) {
+  const b = String(base === undefined || base === null ? '' : base).trim() ||
+    String(process.env.LOCALAPPDATA || '');
+  return path.join(b, 'SZH', DOSSIER_INTERFACE);
+}
+
+// Le mode d'emploi du dossier de l'outil. Celui des numéros parle de meta.yaml et n'aurait
+// aucun sens ici ; même forme, français puis « [de] », CRLF pour le Bloc-notes.
+const TEXTE_LISEZ_MOI_INTERFACE = [
+  'Ce dossier contient des SUGGESTIONS sur les TEXTES DE L’OUTIL lui-même :',
+  'les libellés des boutons, des formulaires et des messages du cockpit.',
+  '',
+  'Un fichier JSON par suggestion. Chacun dit le texte qui était affiché, celui qui est',
+  'proposé à la place, pourquoi, et — quand elle a pu être retrouvée — la clé du libellé.',
+  'Certains ne proposent rien : leur « geste » vaut « supprimer ».',
+  '',
+  'RIEN ICI NE CHANGE L’INTERFACE. Les libellés vivent dans le code de l’extension, et',
+  'seule une nouvelle version les modifie. Transmettez ce dossier à la personne qui gère',
+  'l’outil.',
+  '',
+  '[de] Dieser Ordner enthält VORSCHLÄGE zu den TEXTEN DES WERKZEUGS selbst:',
+  'Beschriftungen der Schaltflächen, Formulare und Meldungen des Cockpits.',
+  '',
+  'Eine JSON-Datei pro Vorschlag. Jede nennt den angezeigten Text, den vorgeschlagenen',
+  'Text, die Begründung und – sofern gefunden – den Schlüssel der Beschriftung. Manche',
+  'schlagen nichts vor: ihr «geste» lautet «supprimer».',
+  '',
+  'HIER WIRD NICHTS AN DER OBERFLÄCHE GEÄNDERT. Die Beschriftungen liegen im Code der',
+  'Erweiterung und ändern sich nur mit einer neuen Version. Leiten Sie diesen Ordner an die',
+  'Person weiter, die das Werkzeug betreut.',
+  ''
+].join('\r\n');
 
 // Deux chiffres, pour l'horodatage et pour le fuseau.
 function p2(n) { return String(n).padStart(2, '0'); }
@@ -124,11 +210,11 @@ function texteNet(valeur) {
 // l'annoter, ou le traduire dans une troisième langue, et une réécriture à chaque
 // suggestion effacerait cela sans rien dire. Son échec n'est jamais fatal — le mode
 // d'emploi n'est pas la suggestion.
-function poserLisezMoi(dossier) {
+function poserLisezMoi(dossier, texte) {
   const chemin = path.join(dossier, LISEZ_MOI);
   try {
     if (fs.existsSync(chemin)) { return false; }
-    ecrireAtomique(chemin, TEXTE_LISEZ_MOI);
+    ecrireAtomique(chemin, texte === undefined ? TEXTE_LISEZ_MOI : texte);
     return true;
   } catch (e) { return false; }
 }
@@ -161,17 +247,23 @@ function auteurSuggestion(nomRegle) {
 // fichier se lit de haut en bas sans sauter.
 function construireSuggestion(infos, date) {
   const i = infos || {};
+  const geste = normaliserGeste(i.geste);
   return {
     schema: SCHEMA,
     horodatage: horodatageIso(date),
     auteur: auteurSuggestion(i.auteur),
+    cible: CIBLE_ARTICLE,
     produit: String(i.produit || ''),
     numero: String(i.numero || ''),
     article: String(i.article || ''),
     champ: String(i.champ || ''),
     langue: String(i.langue || ''),
+    geste: geste,
     actuel: texteNet(i.actuel),
-    propose: texteNet(i.propose),
+    // Une suppression ne propose AUCUN texte, et le fichier doit le montrer : laisser
+    // passer ce que le formulaire avait dans sa zone de saisie donnerait à relire une
+    // proposition de remplacement là où personne n'en a fait.
+    propose: geste === GESTE_SUPPRIMER ? '' : texteNet(i.propose),
     commentaire: texteNet(i.commentaire)
   };
 }
@@ -179,7 +271,13 @@ function construireSuggestion(infos, date) {
 // Une suggestion identique au texte actuel ET sans commentaire ne dit rien : elle n'a pas
 // à devenir un fichier que quelqu'un ouvrira pour n'y rien trouver. Le refus est rendu à
 // l'appelant, qui l'affiche ; ce module n'a pas de voix.
+//
+// ⚠ Une SUPPRESSION n'a jamais de texte proposé : la comparer au texte actuel la
+//   déclarerait vide de sens et la refuserait sans commentaire, alors qu'elle porte à elle
+//   seule tout son propos — ce texte ne devrait pas exister. Le geste se lit donc avant la
+//   comparaison, et non après.
 function estVide(suggestion) {
+  if (normaliserGeste(suggestion.geste) === GESTE_SUPPRIMER) { return false; }
   return suggestion.propose.trim() === suggestion.actuel.trim() &&
     suggestion.commentaire.trim() === '';
 }
@@ -195,6 +293,53 @@ function ecrireSuggestion(racine, infos, date) {
     poserLisezMoi(dossier);
     const souche = horodatageNom(date) + '-' + jeton(suggestion.article) +
       '-' + jeton(suggestion.champ) + '-' + jeton(suggestion.langue);
+    const nom = nomLibre(dossier, souche);
+    const chemin = path.join(dossier, nom);
+    ecrireAtomique(chemin, JSON.stringify(suggestion, null, 2) + '\n');
+    return { ok: true, chemin: chemin, nom: nom, suggestion: suggestion };
+  } catch (e) {
+    return { ok: false, raison: 'ecriture', message: String((e && e.message) || e) };
+  }
+}
+
+// La suggestion d'interface telle qu'elle est écrite. Ni produit, ni numéro, ni article,
+// ni champ : rien de tout cela n'existe ici. À la place, la CLÉ du libellé quand elle a été
+// retrouvée (sinon null), et les candidates quand le texte en avait plusieurs — les garder
+// dit au relecteur ce que l'outil avait proposé, et pourquoi telle clé a été retenue.
+function construireSuggestionInterface(infos, date) {
+  const i = infos || {};
+  const geste = normaliserGeste(i.geste);
+  const cles = Array.isArray(i.cles) ? i.cles.map((c) => String(c)) : [];
+  const cle = String(i.cle === undefined || i.cle === null ? '' : i.cle).trim();
+  return {
+    schema: SCHEMA,
+    horodatage: horodatageIso(date),
+    auteur: auteurSuggestion(i.auteur),
+    cible: CIBLE_INTERFACE,
+    // Null et non '' : « aucune clé retrouvée » n'est pas « clé vide ». Le formulaire
+    // s'ouvre quand même dans ce cas, et c'est justement celui qu'un mainteneur veut voir.
+    cle: cle === '' ? null : cle,
+    cles: cles,
+    langue: String(i.langue || ''),
+    geste: geste,
+    actuel: texteNet(i.actuel),
+    propose: geste === GESTE_SUPPRIMER ? '' : texteNet(i.propose),
+    commentaire: texteNet(i.commentaire)
+  };
+}
+
+// Écrit une suggestion d'interface dans le dossier du poste. Même mécanique que
+// ecrireSuggestion, et mêmes retours : { ok, chemin, nom, suggestion } ou { ok: false, raison }.
+// Le nom porte la clé quand il y en a une, « sans-cle » sinon : un dossier se lit sans
+// ouvrir un seul fichier, et les textes non identifiés s'y repèrent d'un coup d'oeil.
+function ecrireSuggestionInterface(dossier, infos, date) {
+  const suggestion = construireSuggestionInterface(infos, date);
+  if (estVide(suggestion)) { return { ok: false, raison: 'vide' }; }
+  try {
+    fs.mkdirSync(dossier, { recursive: true });
+    poserLisezMoi(dossier, TEXTE_LISEZ_MOI_INTERFACE);
+    const souche = horodatageNom(date) + '-' + jeton(suggestion.cle || 'sans-cle') +
+      '-' + jeton(suggestion.langue);
     const nom = nomLibre(dossier, souche);
     const chemin = path.join(dossier, nom);
     ecrireAtomique(chemin, JSON.stringify(suggestion, null, 2) + '\n');
@@ -244,17 +389,61 @@ function listerSuggestions(racine) {
       schema: String(valeurs.schema || ''),
       horodatage: String(valeurs.horodatage || ''),
       auteur: String(valeurs.auteur || ''),
+      // Le champ ajouté : absent d'un fichier ancien, il se relit « article ».
+      cible: normaliserCible(valeurs.cible),
       produit: String(valeurs.produit || ''),
       numero: String(valeurs.numero || ''),
       article: String(valeurs.article || ''),
       champ: String(valeurs.champ || ''),
       langue: String(valeurs.langue || ''),
+      // Le champ ajouté : absent d'un fichier ancien, il se relit « remplacer ».
+      geste: normaliserGeste(valeurs.geste),
       actuel: texteNet(valeurs.actuel),
       propose: texteNet(valeurs.propose),
       commentaire: texteNet(valeurs.commentaire)
     });
   }
   return sorties.sort(comparerSuggestions);
+}
+
+// Les suggestions d'interface du poste, de la plus récente à la plus ancienne. Mêmes
+// tolérances que ci-dessus : pas de dossier, pas de suggestion ; un fichier illisible est
+// sauté, jamais levé.
+function listerSuggestionsInterface(dossier) {
+  let noms = [];
+  try { noms = fs.readdirSync(dossier); }
+  catch (e) { return []; }
+  const sorties = [];
+  for (const nom of noms) {
+    if (!/\.json$/i.test(nom)) { continue; }
+    let valeurs;
+    try { valeurs = JSON.parse(fs.readFileSync(path.join(dossier, nom), 'utf8')); }
+    catch (e) { continue; }
+    if (!valeurs || typeof valeurs !== 'object' || Array.isArray(valeurs)) { continue; }
+    sorties.push({
+      fichier: nom,
+      chemin: path.join(dossier, nom),
+      schema: String(valeurs.schema || ''),
+      horodatage: String(valeurs.horodatage || ''),
+      auteur: String(valeurs.auteur || ''),
+      cible: normaliserCible(valeurs.cible),
+      cle: valeurs.cle === undefined || valeurs.cle === null || String(valeurs.cle) === ''
+        ? null : String(valeurs.cle),
+      cles: Array.isArray(valeurs.cles) ? valeurs.cles.map((c) => String(c)) : [],
+      langue: String(valeurs.langue || ''),
+      geste: normaliserGeste(valeurs.geste),
+      actuel: texteNet(valeurs.actuel),
+      propose: texteNet(valeurs.propose),
+      commentaire: texteNet(valeurs.commentaire)
+    });
+  }
+  return sorties.sort(comparerSuggestions);
+}
+
+// Combien en attente. Compté sur les fichiers relus et non sur le contenu du dossier : le
+// LISEZ-MOI et une copie en conflit du synchroniseur ne sont pas des suggestions.
+function compterSuggestionsInterface(dossier) {
+  return listerSuggestionsInterface(dossier).length;
 }
 
 // Garde-fous de l'hôte : le champ et la langue viennent d'un message de webview, et seuls
@@ -268,8 +457,12 @@ function langueValide(langue) {
 
 module.exports = {
   DOSSIER_SUGGESTIONS, LISEZ_MOI, SCHEMA, TEXTE_LISEZ_MOI,
+  GESTE_REMPLACER, GESTE_SUPPRIMER, normaliserGeste,
+  CIBLE_ARTICLE, CIBLE_INTERFACE, normaliserCible,
+  DOSSIER_INTERFACE, TEXTE_LISEZ_MOI_INTERFACE, dossierSuggestionsInterface,
   dossierSuggestions, horodatageIso, horodatageNom, auteurSuggestion,
-  construireSuggestion, estVide, poserLisezMoi,
-  ecrireSuggestion, listerSuggestions, comparerSuggestions,
-  champValide, langueValide
+  construireSuggestion, construireSuggestionInterface, estVide, poserLisezMoi,
+  ecrireSuggestion, ecrireSuggestionInterface,
+  listerSuggestions, listerSuggestionsInterface, compterSuggestionsInterface,
+  comparerSuggestions, champValide, langueValide
 };

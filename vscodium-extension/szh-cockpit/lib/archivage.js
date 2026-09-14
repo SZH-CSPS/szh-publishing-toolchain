@@ -293,6 +293,35 @@ function ecrireVerifTraduction(actif) {
   return ecrireConfigPoste((avant) => configAvecVerifTraduction(avant, actif === true));
 }
 
+// Le mode « Trad » : tant qu'il est allumé, un clic sur un texte de l'interface ouvre le
+// formulaire de suggestion au lieu de l'action normale. Jumelles exactes des quatre
+// fonctions ci-dessus, et dans le même config.json pour la même raison : plusieurs panneaux
+// le lisent, et la mise à jour du poste réécrit les réglages de l'éditeur en entier — le
+// mode s'y éteindrait à chaque mise à jour.
+//
+// Indépendant du vérificateur : les deux peuvent être allumés en même temps. L'un sert les
+// quatre champs traduisibles d'un ARTICLE, l'autre les libellés de l'OUTIL.
+const CLE_MODE_TRAD = 'modeTrad';
+
+function resoudreModeTrad(cfg) {
+  if (!cfg || typeof cfg !== 'object') { return false; }
+  return normaliserBooleenConfig(cfg[CLE_MODE_TRAD]) === true;
+}
+
+function lireModeTrad() {
+  return resoudreModeTrad(lireConfigPoste());
+}
+
+function configAvecModeTrad(cfg, actif) {
+  const sortie = Object.assign({}, (cfg && typeof cfg === 'object') ? cfg : {});
+  sortie[CLE_MODE_TRAD] = actif === true;
+  return sortie;
+}
+
+function ecrireModeTrad(actif) {
+  return ecrireConfigPoste((avant) => configAvecModeTrad(avant, actif === true));
+}
+
 // Noms d'avant, gardés pour l'hôte et ses réglages : « mode développeur » n'était que le nom
 // de l'emplacement de test.
 function lireModeDeveloppeur() {
@@ -312,6 +341,8 @@ module.exports = {
   ecrireEmplacementRevues, lireModeDeveloppeur, ecrireModeDeveloppeur,
   CLE_VERIF_TRADUCTION, resoudreVerifTraduction, configAvecVerifTraduction,
   lireVerifTraduction, ecrireVerifTraduction,
+  CLE_MODE_TRAD, resoudreModeTrad, configAvecModeTrad,
+  lireModeTrad, ecrireModeTrad,
   versionInstallee, versionsDivergent, tailleDossier,
   lancerArchivage, lancerChoixVersion
 };

@@ -7,6 +7,7 @@
 //   SZH.choixFerme(opts)          un intitulé et un <select> à liste fermée, sur une carte
 //   SZH.choixLangue(opts)         le <select> de la langue d'un article, posé sur sa carte
 //   SZH.annoncerPret(api, recu)   « pret », redemandé tant que l'hôte se tait
+//   SZH.modeTradJamais()          cette page ne détourne JAMAIS ses clics (mode « Trad »)
 //   SZH.icone(nom)                une icône de 16 px, dessinée en SVG
 //   SZH.notif(ton, contenu)       une notification : info, ok, attention, danger
 //   SZH.poser(parent, balise, …)  créer, classer, remplir, insérer : le geste de base
@@ -612,6 +613,283 @@ var SZH = (function () {
     });
   }
 
+  // ---- L'écoute des messages de l'hôte, partagée ----
+  //
+  // Le socle doit entendre l'hôte pour son propre compte — le mode « Trad », plus bas —
+  // sans rien demander aux pages : elles sont douze, et la treizième oublierait la ligne de
+  // relais. Il pose donc son écoute ici, une fois, et chaîne celle que chaque page posera
+  // ensuite : une seule écoute réelle sur `window`, plusieurs destinataires, servis dans
+  // l'ordre où ils se sont annoncés.
+  //
+  // Un destinataire qui rend `true` a CONSOMMÉ le message et arrête la chaîne : les
+  // messages du socle ne sont pas ceux de la page, et les lui passer ferait crier « type de
+  // message inconnu » dans chacune des pages qui surveillent leur protocole.
+  var ecouteursHote = [];
+  var ecouteInstallee = false;
+  var ajouterEcouteur = window.addEventListener.bind(window);
+
+  function ecouterHote(fn) {
+    ecouteursHote.push(fn);
+    if (ecouteInstallee) { return; }
+    ecouteInstallee = true;
+    ajouterEcouteur('message', function (ev) {
+      for (var i = 0; i < ecouteursHote.length; i++) {
+        if (ecouteursHote[i].call(window, ev) === true) { return; }
+      }
+    });
+  }
+
+  window.addEventListener = function (type, fn, opts) {
+    if (type === 'message' && typeof fn === 'function') { ecouterHote(fn); return; }
+    return ajouterEcouteur(type, fn, opts);
+  };
+
+  // ---- Mode « Trad » : relire les libellés de l'outil là où ils s'affichent ----
+  //
+  // Allumé dans les réglages, il détourne le clic : au lieu de faire ce que le bouton fait
+  // d'habitude, un clic sur n'importe quel texte d'un panneau ouvre le formulaire de
+  // suggestion sur CE texte-là. C'est la seule façon de relire les libellés de l'outil là
+  // où ils s'affichent : ils sont plus de mille, créés à des centaines d'endroits, et les
+  // marquer un par un serait intenable — le prochain bouton ajouté oublierait sa marque.
+  // L'interception est donc écrite ICI, une fois, et vaut pour toutes les pages.
+  //
+  // À ne pas confondre avec la pastille du vérificateur de traduction : celle-ci sert les
+  // quatre champs traduisibles d'un ARTICLE et passe par une seule fonction. Les deux modes
+  // sont indépendants et peuvent être allumés en même temps.
+  //
+  // DEUX GARDE-FOUS, sans lesquels le mode serait un piège.
+  //   1. On doit TOUJOURS pouvoir l'éteindre. La page des réglages et le formulaire de
+  //      suggestion s'excluent eux-mêmes (SZH.modeTradJamais, en tête de leur script) :
+  //      sans cela on allumerait le mode sans plus pouvoir l'éteindre, et « Enregistrer »
+  //      deviendrait inatteignable. S'y ajoutent deux sorties depuis n'importe quel
+  //      panneau : le bouton du bandeau, et la touche Échap.
+  //   2. Le mode se VOIT. Un outil dont plus aucun bouton ne répond, sans explication,
+  //      passe pour cassé : tout panneau qui détourne pose un bandeau en tête de page.
+  //
+  // Protocole avec l'hôte :
+  //   webview -> hôte : modeTrad (demande) ; modeTrad { actif: false } (extinction) ;
+  //                     suggererInterface { texte, cles }
+  //   hôte -> webview : modeTrad { actif, index, textes }
+  var trad = {
+    exclue: false, actif: false, demandee: false, branche: false,
+    api: null, index: null, textes: {}, bandeau: null
+  };
+
+  function modeTradJamais() { trad.exclue = true; }
+
+  // ---- Retrouver la clé du texte cliqué ----
+  //
+  // Même recherche que lib/index-textes.js, côté page : l'hôte envoie l'index une fois, et
+  // c'est ici qu'on le consulte, à chaque clic. Les deux doivent rendre la même chose —
+  // test/js/mode-trad.test.js compare les clés postées à celles du module.
+  var RE_ESPACES_TRAD = /[\s   ]+/g;
+
+  function normaliserTrad(texte) {
+    return String(texte === undefined || texte === null ? '' : texte)
+      .replace(RE_ESPACES_TRAD, ' ').trim();
+  }
+
+  // Chaque trou vaut au moins un caractère : sans cela « Volume {0} » reconnaîtrait
+  // « Volume », qui est un autre libellé.
+  function motifColleTrad(parts, texte) {
+    if (!parts || parts.length < 2) { return false; }
+    var debut = parts[0];
+    if (texte.slice(0, debut.length) !== debut) { return false; }
+    var pos = debut.length;
+    for (var i = 1; i < parts.length - 1; i++) {
+      var j = texte.indexOf(parts[i], pos + 1);
+      if (j === -1) { return false; }
+      pos = j + parts[i].length;
+    }
+    var fin = parts[parts.length - 1];
+    if (fin !== '' && texte.slice(texte.length - fin.length) !== fin) { return false; }
+    return texte.length - fin.length > pos;
+  }
+
+  function trouverClesTrad(texte) {
+    var index = trad.index;
+    var t = normaliserTrad(texte);
+    if (!index || t === '') { return []; }
+    var exact = index.exact || {};
+    if (Object.prototype.hasOwnProperty.call(exact, t)) { return exact[t].slice(); }
+    var sortie = [];
+    var motifs = index.motifs || [];
+    for (var i = 0; i < motifs.length; i++) {
+      if (motifColleTrad(motifs[i].parts, t)) { sortie.push(motifs[i].cle); }
+    }
+    return sortie;
+  }
+
+  // ---- Le texte visé par un clic ----
+  //
+  // Le texte qu'un élément porte EN PROPRE, et non celui de ses descendants réunis : sans
+  // cette distinction, un clic dans la marge rendrait le panneau entier.
+  function texteEnPropre(e) {
+    var enfants = e.childNodes || [];
+    var propre = '';
+    var elements = 0;
+    for (var i = 0; i < enfants.length; i++) {
+      if (enfants[i].nodeType === 3) { propre += enfants[i].nodeValue || ''; }
+      else if (enfants[i].nodeType === 1) { elements++; }
+    }
+    propre = normaliserTrad(propre);
+    // Sans aucun descendant, le textContent EST le texte propre.
+    if (propre === '' && elements === 0) { propre = normaliserTrad(e.textContent); }
+    return propre;
+  }
+
+  // Ces éléments-là portent un libellé d'un seul tenant : un bouton fait d'un pictogramme
+  // et d'un mot n'a pas de texte « en propre », et c'est pourtant son mot qu'on vient
+  // relire. Ailleurs, on s'en tient au texte propre.
+  var CONTROLES_TRAD = ['button', 'a', 'label', 'legend', 'option', 'summary', 'th', 'dt'];
+
+  function valeurAttribut(e, prop, nom) {
+    var v = prop && e[prop] !== undefined && e[prop] !== null ? e[prop] : '';
+    if (String(v) === '' && e.getAttribute) { v = e.getAttribute(nom); }
+    return normaliserTrad(v);
+  }
+
+  function texteDe(e) {
+    var t = texteEnPropre(e);
+    if (t !== '') { return t; }
+    var balise = String(e.tagName || '').toLowerCase();
+    if (CONTROLES_TRAD.indexOf(balise) !== -1) {
+      t = normaliserTrad(e.textContent);
+      if (t !== '') { return t; }
+    }
+    // Les textes qui ne vivent dans aucun nœud de texte. `value` seulement sur un bouton :
+    // sur un champ de saisie, ce serait ce que le rédacteur vient de taper, jamais un
+    // libellé de l'outil.
+    var type = String(e.type || '').toLowerCase();
+    if (balise === 'button' || (balise === 'input' &&
+        ['button', 'submit', 'reset'].indexOf(type) !== -1)) {
+      t = valeurAttribut(e, 'value', 'value');
+      if (t !== '') { return t; }
+    }
+    t = valeurAttribut(e, 'placeholder', 'placeholder');
+    if (t !== '') { return t; }
+    t = valeurAttribut(e, 'title', 'title');
+    if (t !== '') { return t; }
+    return valeurAttribut(e, null, 'aria-label');
+  }
+
+  // L'élément le plus PROCHE qui porte un texte, en remontant depuis la cible du clic.
+  function texteCliquable(depart) {
+    var e = depart;
+    var garde = 0;
+    while (e && e.nodeType === 1 && garde < 40) {
+      var t = texteDe(e);
+      if (t !== '') { return t; }
+      if (e === document.body) { return ''; }
+      // Remonter d'un cran : `parentElement` dans le DOM, les replis pour les hôtes de
+      // rendu réduits, où le lien porte un autre nom.
+      e = e.parentElement || e.parentNode || e.parent;
+      garde++;
+    }
+    return '';
+  }
+
+  function dansBandeau(e) {
+    if (!trad.bandeau || !e) { return false; }
+    if (e === trad.bandeau) { return true; }
+    return !!(e.closest && e.closest('.szh-trad-bandeau'));
+  }
+
+  function surClicTrad(ev) {
+    if (!trad.actif || trad.exclue) { return; }
+    var cible = ev.target || null;
+    // Le bandeau reste cliquable : c'est la sortie du mode.
+    if (dansBandeau(cible)) { return; }
+    // On barre la route AVANT de savoir si un texte a été trouvé : sinon un clic dans la
+    // marge d'un bouton ferait l'action normale alors que le bandeau annonce le contraire.
+    if (ev.preventDefault) { ev.preventDefault(); }
+    if (ev.stopPropagation) { ev.stopPropagation(); }
+    var texte = texteCliquable(cible);
+    if (texte === '' || !trad.api) { return; }
+    trad.api.postMessage({
+      type: SZH.MSG.SUGGERER_INTERFACE, texte: texte, cles: trouverClesTrad(texte)
+    });
+  }
+
+  function surToucheTrad(ev) {
+    if (!trad.actif || trad.exclue) { return; }
+    if (ev.key !== 'Escape' && ev.key !== 'Esc') { return; }
+    eteindreTrad();
+  }
+
+  // Éteindre depuis n'importe quel panneau. On éteint ICI d'abord — la page redevient
+  // cliquable sans attendre l'hôte — puis on le lui dit : c'est lui qui écrit le réglage et
+  // prévient les autres panneaux ouverts.
+  function eteindreTrad() {
+    appliquerTrad({ actif: false });
+    if (trad.api) {
+      try { trad.api.postMessage({ type: SZH.MSG.MODE_TRAD, actif: false }); }
+      catch (e) { /* panneau déjà fermé */ }
+    }
+  }
+
+  function poserBandeau() {
+    if (trad.bandeau) { return; }
+    var dit = document.createElement('span');
+    dit.textContent = String(trad.textes.bandeau || '');
+    var sortie = document.createElement('button');
+    sortie.type = 'button';
+    sortie.className = 'szh-bouton szh-trad-sortie';
+    sortie.textContent = String(trad.textes.eteindre || '');
+    sortie.addEventListener('click', function (ev) {
+      if (ev && ev.stopPropagation) { ev.stopPropagation(); }
+      eteindreTrad();
+    });
+    var p = notif('attention', [dit, sortie]);
+    p.classList.add('szh-trad-bandeau');
+    document.body.insertBefore(p, document.body.firstChild);
+    trad.bandeau = p;
+  }
+
+  function retirerBandeau() {
+    if (!trad.bandeau) { return; }
+    if (trad.bandeau.remove) { trad.bandeau.remove(); }
+    trad.bandeau = null;
+  }
+
+  function appliquerTrad(msg) {
+    if (trad.exclue) { return; }
+    trad.actif = msg.actif === true;
+    if (msg.index) { trad.index = msg.index; }
+    if (msg.textes) { trad.textes = msg.textes; }
+    if (!trad.actif) { retirerBandeau(); return; }
+    if (!trad.branche) {
+      trad.branche = true;
+      // En CAPTURE et sur <body> : tout le contenu de la page y est, et la capture y passe
+      // avant le moindre gestionnaire posé sur un descendant — sans quoi le bouton aurait
+      // déjà agi quand nous serions prévenus.
+      document.body.addEventListener('click', surClicTrad, true);
+      document.body.addEventListener('keydown', surToucheTrad, true);
+    }
+    poserBandeau();
+  }
+
+  // L'index pèse des dizaines de kilo-octets : il ne part que si le mode est allumé. C'est
+  // donc la page qui demande, et l'hôte qui répond — ou se tait.
+  //
+  // La demande voyage AVEC le « pret » (voir annoncerPret) plutôt que dans un message à
+  // elle : un aller-retour de plus à chaque ouverture de panneau n'apprendrait rien de
+  // neuf, et le socle n'a pas à ajouter un message au protocole que chaque page décrit en
+  // tête de son fichier.
+  function demanderModeTrad(api) {
+    if (trad.exclue || !api) { return false; }
+    trad.demandee = true;
+    trad.api = api;
+    return true;
+  }
+
+  ecouterHote(function (ev) {
+    var msg = (ev && ev.data) || {};
+    if (msg.type !== SZH.MSG.MODE_TRAD) { return false; }
+    appliquerTrad(msg);
+    return true;
+  });
+
   // ---- Annonce de la page ----
   //
   // Poser le HTML d'une webview la charge : un hôte qui branche son écoute après ce
@@ -629,11 +907,17 @@ var SZH = (function () {
   function annoncerPret(api, recu) {
     var essais = 0;
     var requete = Date.now().toString(36) + Math.random().toString(36).slice(2);
-    api.postMessage({ type: SZH.MSG.PRET, requete: requete });
+    // Toutes les pages passent par ici, avec leur api : c'est le seul endroit où le socle
+    // tienne de quoi parler à l'hôte sans que chacune ait à le lui passer. `modeTrad` dit
+    // « et dis-moi aussi si le mode est allumé » ; les pages qui s'en excluent ne le
+    // portent pas, et l'hôte ne leur envoie donc jamais l'index.
+    var pret = { type: SZH.MSG.PRET, requete: requete };
+    if (demanderModeTrad(api)) { pret.modeTrad = true; }
+    api.postMessage(pret);
     var minuteur = setInterval(function () {
       essais++;
       if ((recu && recu()) || essais > 6) { clearInterval(minuteur); return; }
-      api.postMessage({ type: SZH.MSG.PRET, requete: requete });
+      api.postMessage(pret);
     }, 350);
     return requete;
   }
@@ -1140,6 +1424,7 @@ var SZH = (function () {
     autoEnregistrement: autoEnregistrement, motsCles: motsCles,
     choixFerme: choixFerme, choixLangue: choixLangue,
     annoncerPret: annoncerPret, jetonDejaTraite: jetonDejaTraite,
+    modeTradJamais: modeTradJamais,
     icone: icone, notif: notif, poserAccent: poserAccent,
     barreBoutons: barreBoutons, boutonCommande: boutonCommande, listeCartes: listeCartes,
     poser: poser, modale: modale, LANGUES_CHOIX: LANGUES_CHOIX,

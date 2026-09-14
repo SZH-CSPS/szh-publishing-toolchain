@@ -54,12 +54,19 @@ const MSG = Object.freeze({
   // Le fichier de langue de l'interface : une copie des libellés, fr et de côte à côte,
   // pour relecture. Il ne relit rien — corriger le fichier ne change pas l'interface.
   EXPORTER_LANGUE: 'exporterLangue',
+  // Le dossier des suggestions sur les textes de l'outil, révélé dans l'explorateur : sans
+  // ce bouton, elles seraient écrites et jamais relues.
+  SUGGESTIONS_INTERFACE: 'suggestionsInterface',
 
   // Traduction
   COPIER: 'copier', DEEPL: 'deepl', LIEN: 'lien', FOCUS: 'focus', COPIE: 'copie',
   // Vérificateur de traduction : la pastille d'un champ traduisible demande le
   // formulaire de suggestion. Elle ne modifie rien — c'est une proposition.
   SUGGERER_TRADUCTION: 'suggererTraduction',
+  // Mode « Trad » : la page demande l'état du mode, l'hôte répond par le même type et
+  // joint l'index des libellés ; le clic détourné repart en SUGGERER_INTERFACE avec le
+  // texte lu à l'écran et ses clés candidates.
+  MODE_TRAD: 'modeTrad', SUGGERER_INTERFACE: 'suggererInterface',
 
   // Éditeur de tableau
   OPERATION: 'operation', APERCU_OUVRIR: 'apercu-ouvrir', APERCU_FERMER: 'apercu-fermer',
