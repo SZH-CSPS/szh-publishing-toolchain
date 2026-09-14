@@ -71,6 +71,24 @@
       }
       zones.appendChild(zone);
     }
+    rendreExportLangue();
+  }
+  // Le fichier de langue de l'interface, sous les groupes : une copie de tous les libellés
+  // du cockpit, fr et de côte à côte, à envoyer à qui relit. Ce bouton ne règle rien — il
+  // demande, et c'est l'hôte qui ouvre la boîte d'enregistrement : une webview ne voit pas
+  // le disque, et le choix de l'endroit appartient à la personne.
+  function rendreExportLangue() {
+    const f = zone(TXT.exportLangueTitre);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'szh-bouton';
+    b.textContent = TXT.exportLangue;
+    b.addEventListener('click', function () {
+      vscodeApi.postMessage({ type: SZH.MSG.EXPORTER_LANGUE });
+    });
+    f.appendChild(b);
+    note(f, TXT.exportLangueAide);
+    zones.appendChild(f);
   }
   function afficherDiscordanceLangue(texte) {
     if (!zoneLangue) { return; }

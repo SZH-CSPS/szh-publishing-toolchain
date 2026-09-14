@@ -51,6 +51,9 @@ const MSG = Object.freeze({
   // Réglages protégés : le déverrouillage demandé par la page, et l'export du fichier
   // à transmettre à l'administrateur.
   DEVERROUILLER: 'deverrouiller', PROTEGES: 'proteges', TELECHARGER_PROTEGES: 'telecharger-proteges',
+  // Le fichier de langue de l'interface : une copie des libellés, fr et de côte à côte,
+  // pour relecture. Il ne relit rien — corriger le fichier ne change pas l'interface.
+  EXPORTER_LANGUE: 'exporterLangue',
 
   // Traduction
   COPIER: 'copier', DEEPL: 'deepl', LIEN: 'lien', FOCUS: 'focus', COPIE: 'copie',

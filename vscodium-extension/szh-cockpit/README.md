@@ -66,6 +66,9 @@ lib/
                         (configurer()), jamais par import
   documentation-hote.js la Documentation d'un numéro : fiches et rubriques, un seul
                         formulaire. Rappelle l'hôte par configurer(), jamais par import
+  export-langue.js      le fichier de langue de l'interface : tous les libellés du
+                        cockpit, fr et de côte à côte, pour relecture. Module pur,
+                        sans disque ni vscode
   export-ojs.js         génération du XML natif OJS
   formatting.js         mise en forme markdown et commandes szh.fmt.*
   formatting-pur.js      la part de formatting.js qui ne référence pas vscode (bascules de

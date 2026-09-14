@@ -42,7 +42,7 @@ const MAKEFILE_WSL = '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile';
 const REIMPORTER_WSL = '/mnt/c/ProgramData/SZH/toolkit/pipeline/reimporter.py';
 
 // ---- i18n du cockpit -> lib/i18n.js ----------------------------------------------
-const { TEXTES_COCKPIT, T, langueCockpit, oublierLanguePoste } = require('./lib/i18n');
+const { TEXTES_COCKPIT, T, TL, langueCockpit, oublierLanguePoste } = require('./lib/i18n');
 // ---- Protocole de messages hôte <-> webviews -> lib/messages.js -----------------
 const { MSG } = require('./lib/messages');
 // ---- Sérialiseurs YAML -> lib/yaml.js --------------------------------------------
@@ -83,6 +83,8 @@ const suggestionTraduction = require('./lib/suggestion-traduction');
 const rapportErreur = require('./lib/rapport-erreur');
 // ---- Réglages protégés de la chaîne -> lib/reglages-proteges.js -------------------
 const proteges = require('./lib/reglages-proteges');
+// ---- Fichier de langue de l'interface -> lib/export-langue.js ---------------------
+const exportLangue = require('./lib/export-langue');
 // ---- Réglages de la maison -> lib/reglages-flotte.js -----------------------------
 const { empreinteReglages, clesRefusees } = require('./lib/reglages-flotte');
 // ---- Auteur·e·s connus : OJS (OAI-PMH) et les numéros du poste --------------------
@@ -4908,6 +4910,9 @@ function REGL_LIBELLES() {
   // les réglages de l'éditeur — voir la branche d'écriture, plus bas.
   verifTrad: T('regl.verifTrad'),
   verifTradActif: T('regl.verifTrad.actif'), verifTradInactif: T('regl.verifTrad.inactif'),
+  // Fichier de langue de l'interface : un bouton, et la ligne qui dit à quoi il sert.
+  exportLangueTitre: T('regl.exportLangue.titre'), exportLangue: T('regl.exportLangue'),
+  exportLangueAide: T('regl.exportLangue.aide'),
   protegesTitre: T('regl.proteges.titre'),
   protegesVerrouille: T('regl.proteges.verrouille'),
   protegesDeverrouiller: T('regl.proteges.deverrouiller'),
@@ -5104,6 +5109,57 @@ async function telechargerReglagesProteges() {
   }
 }
 
+// Les titres de commandes et le tutoriel : ils ne passent pas par lib/i18n.js mais par
+// package.nls*.json, que VSCodium résout selon SA langue d'affichage. Ils s'affichent
+// pourtant à l'écran, et les laisser hors du fichier de langue laisserait la moitié des
+// menus hors de la relecture. Lus à côté de cette extension, jamais ailleurs ; un fichier
+// absent ou illisible rend une table vide plutôt que de faire échouer tout l'export.
+function nlsCommandes() {
+  const paire = {};
+  for (const [langue, nom] of [['fr', 'package.nls.json'], ['de', 'package.nls.de.json']]) {
+    try {
+      const brut = String(fs.readFileSync(path.join(__dirname, nom), 'utf8')).replace(/^﻿/, '');
+      const valeurs = JSON.parse(brut);
+      paire[langue] = valeurs && typeof valeurs === 'object' ? valeurs : {};
+    } catch (e) { paire[langue] = {}; }
+  }
+  return paire;
+}
+
+// « Télécharger le fichier de langue » : tous les libellés de l'interface, français et
+// allemand côte à côte, dans un JSON qu'on envoie à qui relit. Les deux phrases de _lire
+// passent par TL() et non par T() : le fichier porte les deux langues, quelle que soit
+// celle dans laquelle le cockpit s'affiche à cet instant.
+async function telechargerFichierLangue() {
+  const version = rapportErreur.versionCockpit() || '';
+  const contenu = exportLangue.serialiser(exportLangue.construire({
+    cockpit: TEXTES_COCKPIT,
+    commandes: nlsCommandes(),
+    version: version,
+    lire: { fr: TL('fr', 'regl.exportLangue.lire'), de: TL('de', 'regl.exportLangue.lire') }
+  }));
+  let cible;
+  try {
+    cible = await vscode.window.showSaveDialog({
+      saveLabel: T('regl.exportLangue'),
+      filters: { JSON: ['json'] },
+      defaultUri: vscode.Uri.file(path.join(
+        process.env.USERPROFILE || process.env.HOME || '', 'Desktop',
+        exportLangue.nomFichier(version)))
+    });
+  } catch (e) { cible = null; }
+  if (!cible) { return null; }                     // annulé : rien à dire
+  try {
+    ecrireAtomique(cible.fsPath, contenu);
+  } catch (e) {
+    return { erreur: T('regl.exportLangue.echec', [path.basename(cible.fsPath), String((e && e.message) || e)]) };
+  }
+  // Révélé dans l'Explorateur : le but du fichier est d'être glissé dans un courriel, et
+  // un chemin affiché dans un message ne se glisse nulle part.
+  await revelerDansExplorateur(cible);
+  return { message: T('regl.exportLangue.faite', [path.basename(cible.fsPath)]) };
+}
+
 function lireReglagesActuels() {
   const cfg = vscode.workspace.getConfiguration();
   const autoDetect = cfg.get('window.autoDetectColorScheme', false) === true;
@@ -5184,6 +5240,14 @@ function ouvrirReglages(rafraichirTout) {
     if (msg.type === MSG.TELECHARGER_PROTEGES) {
       const dit = await telechargerReglagesProteges();
       if (dit) { vscode.window.showInformationMessage(dit); }
+      return;
+    }
+    // Le fichier de langue de l'interface. Annulé, rien ne se dit : la personne vient de
+    // refermer la boîte, elle sait ce qu'elle a fait.
+    if (msg.type === MSG.EXPORTER_LANGUE) {
+      const dit = await telechargerFichierLangue();
+      if (dit && dit.erreur) { vscode.window.showErrorMessage(dit.erreur); }
+      else if (dit && dit.message) { vscode.window.showInformationMessage(dit.message); }
       return;
     }
     // Verrouillé, ces deux blocs ne s'écrivent pas. Le formulaire les grise déjà et

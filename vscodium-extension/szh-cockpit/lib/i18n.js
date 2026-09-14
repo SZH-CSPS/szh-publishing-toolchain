@@ -1171,6 +1171,16 @@ const TEXTES_COCKPIT = {
     'regl.verifTrad': 'Vérificateur de traduction',
     'regl.verifTrad.actif': 'Activé',
     'regl.verifTrad.inactif': 'Désactivé',
+    // ---- Fichier de langue de l'interface (lib/export-langue.js) ----
+    // Le pendant, pour les libellés du cockpit, du vérificateur ci-dessus : une copie
+    // qu'on envoie à qui relit. Rien ne se relit en retour, c'est un geste humain.
+    'regl.exportLangue.titre': 'Fichier de langue de l’interface',
+    'regl.exportLangue': 'Télécharger le fichier de langue (JSON)',
+    'regl.exportLangue.aide': 'Enregistre dans un fichier tous les textes du cockpit, français et allemand côte à côte, à envoyer à la personne qui relit les libellés. Le fichier ne change rien par lui-même : renvoyez-le corrigé.',
+    'regl.exportLangue.faite': 'Fichier de langue enregistré dans « {0} ».',
+    'regl.exportLangue.echec': 'Fichier de langue non enregistré : {0} ({1}).',
+    // La seule place où dire ce qu'est ce fichier : un JSON ne porte pas de commentaire.
+    'regl.exportLangue.lire': 'Ce fichier est une COPIE des textes affichés par le cockpit. Le corriger ne change rien à l’interface : renvoyez-le à la personne qui gère l’outil pour que les corrections soient reprises.',
     // La pastille posée à côté de chaque intitulé traduisible, et le formulaire qu'elle
     // ouvre. Le texte publié n'y est jamais modifié : on propose, quelqu'un lira.
     'sugg.pastille': 'Proposer une autre traduction pour ce champ – rien n’est modifié, c’est une suggestion.',
@@ -2506,6 +2516,13 @@ const TEXTES_COCKPIT = {
     'regl.verifTrad': 'Übersetzungsprüfer',
     'regl.verifTrad.actif': 'Eingeschaltet',
     'regl.verifTrad.inactif': 'Ausgeschaltet',
+    // Sprachdatei der Oberfläche: siehe den französischen Kommentar, gleiche Abmachung.
+    'regl.exportLangue.titre': 'Sprachdatei der Oberfläche',
+    'regl.exportLangue': 'Sprachdatei herunterladen (JSON)',
+    'regl.exportLangue.aide': 'Speichert alle Texte des Cockpits in einer Datei, Französisch und Deutsch nebeneinander, zum Verschicken an die Person, die die Beschriftungen gegenliest. Die Datei ändert von sich aus nichts: schicken Sie sie korrigiert zurück.',
+    'regl.exportLangue.faite': 'Sprachdatei in «{0}» gespeichert.',
+    'regl.exportLangue.echec': 'Sprachdatei nicht gespeichert: {0} ({1}).',
+    'regl.exportLangue.lire': 'Diese Datei ist eine KOPIE der Texte, die das Cockpit anzeigt. Sie zu korrigieren ändert nichts an der Oberfläche: schicken Sie sie der Person zurück, die das Werkzeug betreut, damit die Korrekturen übernommen werden.',
     'sugg.pastille': 'Eine andere Übersetzung für dieses Feld vorschlagen – nichts wird geändert, es bleibt ein Vorschlag.',
     'sugg.titre': 'Übersetzung vorschlagen',
     'sugg.titre.un': 'Übersetzung vorschlagen – {0}',

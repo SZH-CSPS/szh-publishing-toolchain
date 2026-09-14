@@ -218,3 +218,70 @@ test('ecrireVerifTraduction pose un booléen propre sans toucher au reste de con
     delete process.env.SZH_CONFIG_OJS;
   }
 });
+
+// ---- La pastille, dans le DOM, par le chemin réel ----
+//
+// Le défaut qui a valu ces trois tests : Robin a activé le mode et n'a jamais vu la
+// pastille. Tout ce qui précède passait au vert, parce que tout ce qui précède éprouve le
+// MODULE — le format des fichiers, le réglage, la relecture — et jamais la webview. Entre le
+// réglage sur le disque et un bouton à l'écran il y a quatre relais, et aucun n'était gardé :
+// l'hôte lit le réglage, le met dans le message `valeurs`, la page le retient, et les cartes
+// posent leurs pastilles au rendu. Un seul relais muet, et le mode est invisible sans qu'une
+// ligne de code n'ait l'air fausse.
+//
+// On rend donc ici la vraie page, avec le vrai _fiches.js, et on compte les boutons.
+const { ouvrir, libellesHote } = require('./dom-minimal');
+
+function ouvrirFichesVerif(verifTrad) {
+  const page = ouvrir({
+    racine: RACINE, page: 'metadata-articles',
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+  });
+  const message = {
+    type: 'valeurs', langue: 'fr', filtre: null, types: [],
+    articles: [{
+      slug: 'mon-article',
+      valeurs: {
+        title: { fr: 'Le titre', de: 'Der Titel' },
+        resume: { fr: 'Un résumé.', de: 'Eine Zusammenfassung.' },
+        keywords: { fr: ['un', 'deux'], de: ['eins', 'zwei'] }
+      }
+    }]
+  };
+  if (verifTrad !== undefined) { message.verifTrad = verifTrad; }
+  page.envoyer(message);
+  return page;
+}
+
+const pastilles = (page) => page.conteneur().querySelectorAll('.szh-sugg-trad');
+
+test('pastilles : le mode actif en pose, et chacune dit sa langue', () => {
+  const vues = pastilles(ouvrirFichesVerif(true));
+  assert.ok(vues.length > 0,
+    'aucune pastille alors que le mode est actif : le réglage ne parvient plus à la page');
+  // Le contenu EST le code de langue : c'est lui qui distingue les deux pastilles des
+  // mots-clés, que rien d'autre ne sépare.
+  for (const b of vues) {
+    assert.strictEqual(b.balise, 'button', 'la pastille n’est pas un bouton');
+    assert.match(b.textContent, /^(FR|DE|IT)$/,
+      'pastille sans code de langue lisible : ' + JSON.stringify(b.textContent));
+  }
+  // Les quatre champs traduisibles, dans les deux langues de la fiche.
+  assert.strictEqual(vues.filter((b) => b.textContent === 'FR').length,
+    vues.filter((b) => b.textContent === 'DE').length,
+    'les deux langues n’ont pas le même nombre de pastilles');
+});
+
+test('pastilles : le mode inactif n’en pose aucune, et n’en réserve pas la place', () => {
+  assert.strictEqual(pastilles(ouvrirFichesVerif(false)).length, 0,
+    'le mode est éteint et des pastilles restent');
+});
+
+test('pastilles : un message sans verifTrad n’en pose aucune — l’absence vaut éteint', () => {
+  // Un hôte plus ancien, ou un relais qui oublierait la clé, ne doit pas allumer le mode
+  // par accident. C'est l'inverse du défaut gardé plus haut, et les deux comptent.
+  assert.strictEqual(pastilles(ouvrirFichesVerif(undefined)).length, 0,
+    'une clé absente allume le mode');
+});
