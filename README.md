@@ -245,8 +245,9 @@ commentaires.
 ### Les raccourcis du menu Démarrer
 
 Depuis le 13.09.2026, **deux** entrées, au niveau utilisateur, posées par `Set-SzhRaccourcisMenu`
-(`szh-shell.ps1`) : **« Revue & Zeitschrift »**, le lanceur unique — une fenêtre, cinq onglets
-Revue / Zeitschrift / Book / Journal / Paramètres, sans console, par `wscript.exe //B hidden.vbs`
+(`szh-shell.ps1`) : **« Revue & Zeitschrift »**, le lanceur unique — une fenêtre, six onglets
+Revue / Zeitschrift / Book / Journal / Export et secrétariat / Paramètres, sans console, par
+`wscript.exe //B hidden.vbs`
 — et
 **« Revue & Zeitschrift (Updater) »**, qui vise `powershell.exe -File update.ps1` — **fenêtre
 visible**, parce qu'une mise à jour télécharge, prend du temps et peut échouer. Un seul raccourci
@@ -256,7 +257,7 @@ comme le lanceur.
 
 Ces deux noms sont **provisoires** — le nom définitif de l'application viendra plus tard — et
 tenus en un seul endroit : `$SzhNomApplication` et `$SzhNomMiseAJour` (`szh-shell.ps1`). Les
-libellés des cinq onglets, eux, ne se traduisent pas.
+libellés des six onglets, eux, ne se traduisent pas.
 
 Avant cette date il y avait cinq entrées : « Revues SZH », « Zeitschriften SZH » et
 « Books SZH-CSPS » (un lanceur par produit, chacun forçant sa langue), plus « Mise à jour de
@@ -286,7 +287,7 @@ scripts sans porter l'un des deux noms voulus est retiré — le sous-dossier `S
 appartient à un autre produit et n'est jamais touché.
 
 Une seule identité de barre des tâches pour le lanceur, `SZH.Publishing.Suite`, commune aux
-cinq onglets, là où il y en avait une par produit ; `SZH.Publishing.MiseAJour` pour l'updater.
+six onglets, là où il y en avait une par produit ; `SZH.Publishing.MiseAJour` pour l'updater.
 `$SzhAppIds` (`szh-shell.ps1`) ne porte plus que ces deux clés. Faute d'une icône propre à
 l'application, le lanceur reprend `szh-revue.ico` ; les trois icônes de produit (`szh-revue.ico`,
 `szh-zeitschrift.ico`, `szh-livre.ico`) restent livrées et servent encore aux boîtes
@@ -294,8 +295,8 @@ l'application, le lanceur reprend `szh-revue.ico` ; les trois icônes de produit
 
 ### L'onglet « Journal », et les deux réglages ajoutés depuis le 14.09.2026
 
-Un cinquième onglet, **Journal**, posé entre Book et Paramètres (`open-produit.ps1`). Il liste
-les dix derniers transcrits de mise à jour (`Get-SzhJournauxMaj`, `windows/szh-common.ps1`) —
+Un cinquième onglet, **Journal**, posé entre Book et Export et secrétariat (`open-produit.ps1`).
+Il liste les dix derniers transcrits de mise à jour (`Get-SzhJournauxMaj`, `windows/szh-common.ps1`) —
 `C:\ProgramData\SZH\logs\update-<horodatage>.log` — avec leur date (tirée du **nom** du fichier,
 pas de sa date de modification, qui bouge à la copie), leur verdict (`Get-SzhVerdictJournalMaj` :
 lu sur la **queue** du transcript — pied de page `Stop-Transcript` absent → `inconnu`, présent
@@ -339,6 +340,46 @@ réglages du cockpit vers cet onglet — voir plus haut « Où vivent les revues
 réglage de cet onglet qui vaille pour **tout le poste** et non pour le seul compte ; l'onglet
 le dit, et les listes ne le suivent qu'à la prochaine ouverture. Côté cockpit, le badge orangé
 « Dossier de test » de la barre d'état reste, mais ne se clique plus.
+
+### L'onglet « Export et secrétariat »
+
+Un sixième onglet, posé entre Journal et Paramètres (`open-produit.ps1`, à partir du
+14.09.2026). Pas un produit : `.Tag` reste vide, « Ouvrir » n'y ouvre rien. Il porte quatre
+exports pour le secrétariat de rédaction — newsletter/auteurs, Edudoc, caractères par article,
+contrôle des métadonnées — décrits côté rédacteur dans `userdoc.md`.
+
+Le lanceur ne fait que le dialogue (choix du ou des numéros, dossier de sortie, journal ligne à
+ligne) ; toute la logique vit dans `vscodium-extension/szh-cockpit/lib/secretariat.js`, un
+module pur (aucun `require('vscode')`) appelé par `outils/secretariat-cli.js`, sa seule porte
+d'entrée en ligne de commande. `Invoke-SzhSecretariat` lance ce script avec le VSCodium déjà
+résolu (`$codium`) et `ELECTRON_RUN_AS_NODE=1` — sans cette variable, VSCodium ouvrirait une
+fenêtre d'éditeur au lieu d'exécuter le script — puis lit stdout **ligne à ligne** : contrat
+figé, JSON Lines UTF-8, un objet par ligne (`etape`/`avert`/`numero`/`fichier`/`fin`), la ligne
+`fin` toujours en dernier, code de sortie 0 si `ok` sinon 1. `Show-SzhBoiteExportOjs` factorise
+la boîte commune à Edudoc et « Caractères par article » (choix Revue/Zeitschrift, chargement des
+numéros publiés, sélection multiple).
+
+`lib/secretariat.js` réutilise ce qui existe déjà plutôt que de le redupliquer : le calcul du DOI
+et la table des rubriques de `lib/export-ojs.js`, l'ordre des articles de `lib/articles.js`, la
+lecture des fiches de `lib/yaml.js`. Il ajoute sa propre moisson OAI-PMH en `oai_dc` (titre,
+résumé, mots-clés, source, galleys) — `lib/auteurs-ojs.js` moissonne aussi l'OAI mais en
+`marcxml` et pour les seuls noms d'auteur·e·s, ce qui ne suffit pas ici. Cette moisson alimente
+un cache JSON temporaire (`$env:TEMP`, un fichier par ouverture de boîte), qu'`edudoc`,
+`caracteres` et `metadonnees` relisent ensuite sans requêter deux fois le même numéro.
+
+**Limite connue, documentée dans le rapport lui-même plutôt que cachée** : l'OAI moissonné est
+en `oai_dc`, qui ne porte pas l'affiliation des auteur·e·s (seul `marcxml` le ferait) — la
+commande `metadonnees` ne compare donc pas ce champ, et le dit sur chaque article comparé
+(`NOTE_AFFILIATION_NON_VERIFIABLE`). De même, les pages restent vides dans `edudoc.csv` pour les
+numéros récents : la chaîne ne pagine plus les articles, OJS ne les porte donc pas non plus — un
+fait du corpus, pas un bug de l'export.
+
+Chaque fichier produit sort d'un gabarit Twig, jamais du code : `export-templates/*.twig`, lus
+par le même moteur que les courriels (`lib/gabarits.js`), installés — une fois, jamais
+écrasés — vers `C:\ProgramData\SZH\gabarits-export` (repli `%LOCALAPPDATA%\SZH\gabarits-export`
+si le premier n'est pas inscriptible). Robin peut donc corriger la forme d'un export sans
+toucher au code, et une mise à jour de l'extension ne perd pas sa retouche — même logique que
+`mail-templates/`, dossier et convention distincts.
 
 ### Revenir à une version précédente
 

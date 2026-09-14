@@ -11,10 +11,21 @@
 // premier niveau ; le contrôle des blancs à la Twig ({%- -%} etc.).
 // Non reconnu : parenthèses dans les conditions, expressions arithmétiques, macros,
 // inclusion d'un autre gabarit, échappement HTML (le texte sort tel quel).
+//
+// ⚠ Ce moteur est le SEUL du produit, et doit le rester. Trois surfaces s'en servent : les
+// courriels du cockpit (lib/courriel.js), les exports du secrétariat (lib/secretariat.js,
+// lancés par outils/secretariat-cli.js) et le lanceur PowerShell, qui n'en porte aucun et
+// fait rendre ses gabarits de courriel par outils/rendre-gabarit.js, exécuté par le Node
+// qu'embarque VSCodium (ELECTRON_RUN_AS_NODE=1). Deux portages ont été écrits puis retirés
+// — un en Python pour la WSL, un en PowerShell pour le lanceur : deux moteurs d'un même
+// langage de gabarit divergent, et ces gabarits sont faits pour être retouchés par la
+// rédaction, qui ne peut pas deviner lequel des deux la relira. Le filtre « csv » vient des
+// exports, qui écrivent des CSV entiers en gabarit.
 'use strict';
 
 const FILTRES_CONNUS = [
-  'default', 'upper', 'lower', 'trim', 'capitalize', 'join', 'length', 'first', 'last'
+  'default', 'upper', 'lower', 'trim', 'capitalize', 'join', 'length', 'first', 'last',
+  'csv'
 ];
 
 function erreur(nomGabarit, ligne, message) {
@@ -361,6 +372,11 @@ function appliquerFiltre(nom, v, args) {
       if (Array.isArray(v)) { return v[v.length - 1]; }
       if (typeof v === 'string') { return v.charAt(v.length - 1); }
       return undefined;
+    // Toujours citer, et non « seulement si nécessaire » : une règle sans condition se
+    // vérifie d'un coup d'œil dans un gabarit, et un tableur lit sans broncher un champ
+    // cité qui n'en avait pas besoin. C'est ce qui permet d'écrire un CSV entier dans un
+    // gabarit sans qu'un point-virgule se retrouve un jour au milieu d'un titre.
+    case 'csv': return '"' + formaterValeur(v).replace(/"/g, '""') + '"';
     default: return v; // inatteignable : le nom est validé à l'analyse
   }
 }

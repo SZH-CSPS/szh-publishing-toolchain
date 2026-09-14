@@ -1599,6 +1599,131 @@ fichier** : il change l’endroit où le lanceur regarde, et les listes ne le s
 prochaine ouverture du lanceur. Si vos numéros disparaissent des listes, lisez ces deux lignes
 avant tout : elles disent laquelle des deux racines est active (voir `docs/EMPLACEMENTS.md`).
 
+## L’onglet « Export et secrétariat »
+
+Menu Démarrer → **Revue & Zeitschrift** porte un onglet de plus, à côté de Revue,
+Zeitschrift, Book, Journal et Paramètres : **« Export et secrétariat »**. Il ne sert pas à
+ouvrir un numéro, mais à produire quatre fichiers pour le secrétariat de rédaction.
+
+L’onglet montre une liste de tous les numéros du poste, Revue et Zeitschrift confondues, en
+cours comme archivés (jamais le livre). En dessous, un journal qui suit chaque export ligne à
+ligne, et un bouton **« Ouvrir le dossier »**, qui ne s’allume qu’une fois un export réussi :
+il ouvre dans l’explorateur le dossier où le fichier vient d’être écrit.
+
+**Le dossier de sortie est redemandé à chaque export** : rien n’est retenu d’une fois sur
+l’autre, il faut le choisir à chaque clic.
+
+**Deux des quatre exports ont besoin d’Internet** : « Export Edudoc (CSV)… » et « Caractères
+par article (CSV)… » interrogent le site public ojs.szh.ch pour aller y chercher ce qui est
+publié. « Newsletter et auteurs… » part du numéro tel qu’il est sur le poste, sans rien
+demander au réseau ; « Contrôle des métadonnées… » part lui aussi d’un numéro local, mais a
+ensuite besoin d’Internet pour le comparer à ce qu’OJS publie. Sans connexion, seul
+« Newsletter et auteurs… » fonctionne.
+
+### Newsletter et auteurs…
+
+Sélectionnez **un seul numéro** dans la liste (si plusieurs lignes sont cochées, seule la
+première compte), cliquez **« Newsletter et auteurs… »**, puis choisissez un dossier de
+sortie. L’outil y écrit :
+
+- un fichier `.txt` par rubrique qui compte au moins un article – `editorial.txt`,
+  `dossier-thematique.txt`, `varia.txt`, `tribune-libre.txt`, `documentation.txt` – chacun
+  portant le bloc à **coller tel quel dans Mailchimp** ;
+- `auteurs.csv`, une ligne par auteur·e du numéro, dans l’ordre des articles puis
+  alphabétique à l’intérieur d’un même article.
+
+Une rubrique sans article ne produit pas de fichier : le journal le dit.
+
+Les titres sortent liés à leur DOI (`https://doi.org/…`), calculé **sur le poste** – ce qui
+veut dire que cet export fonctionne **avant même que le numéro soit publié dans OJS**. Un
+article sans DOI encore attribué sort sans lien ; le journal le signale.
+
+Pourquoi des fichiers `.txt` et non `.html` : c’est avec le Bloc-notes qu’on copie ce bloc
+dans Mailchimp, et le Bloc-notes n’ouvre pas les fichiers `.html` d’un double-clic.
+
+### Export Edudoc (CSV) et Caractères par article (CSV)
+
+Ces deux exports se pilotent de la même façon. Cliquez **« Export Edudoc (CSV)… »** ou
+**« Caractères par article (CSV)… »** : une fenêtre à part s’ouvre.
+
+1. Choisissez **Revue** ou **Zeitschrift**.
+2. **« Charger les numéros »** – va chercher, sur ojs.szh.ch, la liste des numéros déjà
+   publiés pour cette revue.
+3. Cochez un ou plusieurs numéros dans la liste qui apparaît.
+4. **OK**, puis choisissez le dossier de sortie.
+
+« Export Edudoc (CSV)… » écrit `edudoc.csv`, au format que le secrétariat dépose sur Edudoc.
+« Caractères par article (CSV)… » écrit `caracteres.csv` : il télécharge la version HTML de
+chaque article publié et compte ses caractères visibles.
+
+**Les pages sont vides pour les numéros récents**, dans le CSV Edudoc. Ce n’est pas un défaut
+de l’export : la chaîne de fabrication ne pagine plus les articles, donc OJS ne les porte pas
+non plus – il n’y a rien à afficher tant que cela n’aura pas changé en amont.
+
+### Contrôle des métadonnées…
+
+Cochez un ou plusieurs numéros **locaux** dans la liste de gauche, cliquez
+**« Contrôle des métadonnées… »**, puis choisissez un dossier de sortie. L’outil compare,
+pour chaque numéro coché, ce que sa fiche locale contient à ce qu’OJS publie déjà (titres,
+résumés, mots-clés, auteur·e·s), et écrit `metadonnees.txt` : un rapport des concordances,
+des divergences et des articles absents d’un côté ou de l’autre.
+
+Cet export **ne se lance jamais tout seul** : c’est un geste volontaire, à faire quand on veut
+vérifier qu’un numéro déjà publié correspond bien à ce qui est sur le poste.
+
+Le site interrogé (Revue ou Zeitschrift) suit le **premier** numéro coché dans la liste – ne
+mélangez pas les deux revues dans une même sélection, le contrôle des numéros de l’autre revue
+n’y trouverait aucune correspondance.
+
+**Les affiliations ne sont pas comparées** : ce qu’OJS expose publiquement à cet endroit ne
+les porte pas. Le rapport le rappelle lui-même sur chaque article, plutôt que de laisser
+croire à une vérification qui n’a pas eu lieu.
+
+### Modifier la forme d’un export
+
+Les cinq `.txt` de la newsletter, `auteurs.csv`, `edudoc.csv`, `caracteres.csv` et
+`metadonnees.txt` sortent tous d’un **gabarit** – un fichier séparé, sans rien à programmer,
+que vous pouvez modifier vous-même pour changer la forme d’un export.
+
+À la première utilisation, les gabarits sont recopiés dans :
+
+```
+C:\ProgramData\SZH\gabarits-export\
+```
+
+**C’est là qu’il faut les modifier** – jamais dans l’extension elle-même : ce dossier-là est
+remplacé à chaque mise à jour de l’outil, et une retouche y serait effacée à la mise à jour
+suivante. `C:\ProgramData\SZH\gabarits-export\`, lui, n’est jamais réécrit une fois qu’il
+existe : une modification y reste, mise à jour après mise à jour. Le lanceur rappelle ce
+chemin dans le journal après chaque export (« Gabarits d’export lus dans : … »).
+
+Chaque fichier de ce dossier commence par un commentaire, entre `{#` et `#}`, qui liste
+**toutes les variables disponibles pour cet export**, avec un exemple de valeur pour chacune –
+lisez-le avant de toucher au reste. Seul ce qui se trouve entre `{% block contenu %}` et
+`{% endblock %}` est écrit dans le fichier produit ; le reste du gabarit ne fait que le
+préparer.
+
+Dans un gabarit, on peut écrire :
+
+- `{{ une_variable }}` – pour l’écrire à cet endroit ;
+- `{% if … %} … {% endif %}` – pour n’écrire quelque chose que sous condition ;
+- `{% for x in liste %} … {% endfor %}` – pour répéter un bloc pour chaque élément d’une
+  liste (un article, un auteur…) ;
+- des **filtres**, après une variable, avec une barre verticale : `{{ variable|upper }}` la
+  met en MAJUSCULES, `|lower` en minuscules, `|trim` retire les espaces au début et à la fin,
+  `|capitalize` met une majuscule au premier mot, `|join` assemble une liste en une seule
+  ligne, `|length` compte les éléments d’une liste, `|first` et `|last` en prennent le premier
+  ou le dernier, `|default` propose une valeur de repli quand le champ est vide, `|csv`
+  protège une valeur pour un fichier CSV.
+
+**Dans un gabarit de CSV** (Edudoc, caractères, auteurs de la newsletter), **chaque valeur qui
+vient d’un article doit passer par `|csv`** : sans ce filtre, un point-virgule ou un guillemet
+dans un titre casse le fichier pour Excel.
+
+**Pour revenir en arrière** : supprimez le fichier modifié dans
+`C:\ProgramData\SZH\gabarits-export\`. Il est réinstallé, dans sa version d’origine, au
+prochain export.
+
 ## « L’outil me demande où est le dossier SZH »
 
 Au premier lancement d’un poste – ou si l’outil ne retrouve plus tout seul le dossier partagé

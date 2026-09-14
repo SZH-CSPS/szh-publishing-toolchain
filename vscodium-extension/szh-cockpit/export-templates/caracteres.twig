@@ -1,0 +1,27 @@
+{# caracteres.twig : le CSV du compte de caractères, entièrement d'après l'OAI et la galley
+   HTML téléchargée — écrit par lib/secretariat.js (commande « caracteres »). Colonnes
+   inspirées de excel_fields dans tmp/export et secretariat/OJS_Export_Article_count.py.
+   CSV suisse : séparateur ";", BOM UTF-8 et fins de ligne CRLF posés par lib/secretariat.js
+   (versCsvFinal) — ce gabarit n'écrit que le texte, en ";" et en "\n". Toutes les valeurs
+   passent par |csv.
+
+   Variables disponibles ici :
+   articles                 une ligne par article dont la galley HTML a pu être comptée
+   articles[].identifiant           "oai:ojs.szh.ch:article/1234" (l'identifiant OAI de l'article)
+   articles[].titre                  "Compensation des désavantages et universités en Suisse romande"
+   articles[].auteurs                "Dentz, Amélie ; Frank Baud, Bianca ; Ruffieux, Nicolas ; Martin Sölch, Chantal"
+                                      (les dc:creator bruts, joints par " ; ")
+   articles[].caracteres              "18342" (nombre de caractères du texte visible de la galley HTML)
+   articles[].doi                     "10.57161/r2026-03-08" (peut être vide)
+   articles[].volume                  "16"
+   articles[].numero                  "03"
+   articles[].titreNumero              titre du numéro, tel que dc:source le porte (peut être vide)
+   articles[].annee                    "2026"
+   articles[].motsCles                 "observation, adaptation" (dc:subject de la langue de l'article, joints par ", ")
+#}
+{% block contenu -%}
+"identifiant";"titre";"auteurs";"caracteres";"doi";"volume";"numero";"titreNumero";"annee";"motsCles"
+{% for a in articles -%}
+{{ a.identifiant|csv }};{{ a.titre|csv }};{{ a.auteurs|csv }};{{ a.caracteres|csv }};{{ a.doi|csv }};{{ a.volume|csv }};{{ a.numero|csv }};{{ a.titreNumero|csv }};{{ a.annee|csv }};{{ a.motsCles|csv }}
+{% endfor -%}
+{% endblock %}

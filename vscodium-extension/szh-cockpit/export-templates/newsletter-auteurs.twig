@@ -1,0 +1,27 @@
+{# newsletter-auteurs.twig : auteurs.csv, une ligne par auteur·e du numéro, dans l'ordre
+   des articles puis alphabétique du nom dans l'article — écrit par lib/secretariat.js
+   (commande « newsletter »). CSV suisse : séparateur ";", BOM UTF-8 et fins de ligne CRLF
+   posés par lib/secretariat.js (versCsvFinal), pas par ce gabarit — il n'écrit que le texte,
+   en ";" et en "\n". Toutes les valeurs passent par le filtre |csv (guillemets doublés,
+   toujours entre guillemets droits).
+
+   Variables disponibles ici :
+   numero.cle             "2026-03" (non utilisé dans les colonnes ci-dessous, disponible si besoin)
+   numero.libelle         "R2026-03 | Édition spéciale" (repli d'année inclus : lib/yaml.js, titreNumero)
+   auteurs                une entrée par auteur·e, déjà triée
+   auteurs[].nom                 "Dupont"
+   auteurs[].prenom              "Anne"
+   auteurs[].fonction             "Professeure HEP" (peut être vide)
+   auteurs[].affiliation          "HEP Vaud"
+   auteurs[].orcid                "https://orcid.org/0000-0002-1825-0097" (peut être vide)
+   auteurs[].email                "anne.dupont@example.ch" (peut être vide)
+   auteurs[].titreArticle          "Compensation des désavantages et universités en Suisse romande"
+   auteurs[].rang                  "8" (rang du DOI ; "" si l'article n'en reçoit pas)
+   auteurs[].doi                   "10.57161/r2026-03-08" (peut être vide)
+#}
+{% block contenu -%}
+"nom";"prenom";"fonction";"institution";"orcid";"courriel";"titreArticle";"rang";"doi"
+{% for a in auteurs -%}
+{{ a.nom|csv }};{{ a.prenom|csv }};{{ a.fonction|csv }};{{ a.affiliation|csv }};{{ a.orcid|csv }};{{ a.email|csv }};{{ a.titreArticle|csv }};{{ a.rang|csv }};{{ a.doi|csv }}
+{% endfor -%}
+{% endblock %}

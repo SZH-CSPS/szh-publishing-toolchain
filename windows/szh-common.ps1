@@ -1098,6 +1098,28 @@ function Get-VSCodiumCli {
   return $null
 }
 
+# Le dossier de l'extension du cockpit posée pour ce compte (szh-csps.szh-cockpit-*, la plus
+# récente sous %USERPROFILE%\.vscode-oss\extensions par date d'écriture) -- chaîne vide si
+# aucune n'y est posée. Un seul point de résolution pour les deux appelants qui en ont
+# besoin : Get-SzhOutilSecretariat (open-produit.ps1, cherche outils\secretariat-cli.js) et
+# Get-SzhCourriel (ci-dessous, cherche outils\rendre-gabarit.js) -- chacun demande ensuite le
+# fichier qui l'intéresse dans ce dossier, cette fonction ne connaît aucun des deux noms.
+#
+# $env:SZH_COCKPIT_DOSSIER, quand posé, nomme DIRECTEMENT ce dossier et court-circuite le
+# balayage -- sur le patron de $env:SZH_RAPPORTS (szh-rapport.ps1) et $env:SZH_ANCRAGE
+# (szh-ancrage.ps1). Un test s'en sert pour viser le dépôt lui-même (rendu de courriel
+# identique à lib/gabarits.js, sans installation réelle de l'extension) ou un dossier vide
+# (repli de Get-SzhCourriel quand rien n'est posé).
+function Get-SzhDossierCockpit {
+  if ($env:SZH_COCKPIT_DOSSIER) { return $env:SZH_COCKPIT_DOSSIER }
+  $dossierExtensions = Join-Path $env:USERPROFILE '.vscode-oss\extensions'
+  if (-not (Test-Path -LiteralPath $dossierExtensions)) { return '' }
+  $candidats = @(Get-ChildItem -LiteralPath $dossierExtensions -Directory `
+    -Filter 'szh-csps.szh-cockpit-*' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
+  if ($candidats.Count -eq 0) { return '' }
+  return $candidats[0].FullName
+}
+
 # Les extensions posées, telles que l'éditeur les liste pour ce compte. La source de vérité
 # est l'éditeur, pas state.json : celui-ci est commun au poste alors qu'une extension
 # s'installe par utilisateur, et il affirmait « posée » à un compte qui n'avait rien.
@@ -1232,88 +1254,138 @@ function Write-SzhInfo([string]$Texte)  { Write-Host ('    ' + $Texte) -Foregrou
 # Ce qui n'a pas abouti sans faire echouer le reste : visible, mais pas rouge.
 function Write-SzhAttention([string]$Texte) { Write-Host ('    ! ' + $Texte) -ForegroundColor Yellow }
 
-# Petit frère de lib/gabarits.js (cockpit) : mêmes gabarits Twig
-# (windows/mail-templates/*.twig), mais un sous-ensemble minuscule -- variables, blocs de
-# premier niveau et commentaires, rien d'autre. Un test (test/js/courriel-support.test.js)
-# compare les deux rendus caractère pour caractère sur support.fr.twig.
+# Un seul moteur de rendu dans tout le produit (choix de Robin, 14.09.2026) : plus de
+# mini-Twig écrit à la main ici. Le gabarit (windows/mail-templates/*.twig) est rendu par
+# lib/gabarits.js -- le même moteur que le cockpit -- via outils/rendre-gabarit.js
+# (vscodium-extension/szh-cockpit), exécuté par le Node qu'embarque VSCodium
+# (ELECTRON_RUN_AS_NODE=1, même mécanisme qu'Invoke-SzhSecretariat dans open-produit.ps1,
+# en plus court : un aller-retour JSON sur stdin/stdout, pas un suivi ligne à ligne).
+#
+# Repli OBLIGATOIRE, et ce n'est pas un second moteur : Show-SzhErreur, seul appelant, est
+# l'écran d'une mise à jour qui a échoué -- y compris à la toute première installation, où
+# VSCodium peut ne pas encore exister sur le poste. Si l'exécutable, le dossier d'extension
+# ou le script manquent, ou si le rendu échoue pour n'importe quelle raison, cette fonction
+# NE LÈVE JAMAIS : elle rend un message minimal assemblé depuis szh-textes.ps1
+# (courriel.repli.*) et journalise pourquoi le repli a servi. Ce repli ne lit jamais le
+# .twig et ne substitue jamais un {{ }} : un texte d'incident, volontairement différent du
+# gabarit habituel, pas une deuxième implémentation.
 function Get-SzhCourriel {
   param(
     [Parameter(Mandatory = $true)][string]$Nom,
     [Parameter(Mandatory = $true)][hashtable]$Variables,
     [string]$Langue = $SzhLangue
   )
-  $dossier = Join-Path $PSScriptRoot 'mail-templates'
+  $dossierGabarits = Join-Path $PSScriptRoot 'mail-templates'
   $langueUtilisee = $Langue
-  $chemin = Join-Path $dossier ($Nom + '.' + $Langue + '.twig')
+  $chemin = Join-Path $dossierGabarits ($Nom + '.' + $Langue + '.twig')
   if (-not (Test-Path -LiteralPath $chemin)) {
     $langueUtilisee = 'fr'
-    $chemin = Join-Path $dossier ($Nom + '.fr.twig')
+    $chemin = Join-Path $dossierGabarits ($Nom + '.fr.twig')
   }
   if (-not (Test-Path -LiteralPath $chemin)) {
     throw ('gabarit de courriel introuvable : « ' + $Nom + ' » (langue « ' + $Langue +
       ' », et son repli français absent aussi)')
   }
-  $etiquette = $Nom + '.' + $langueUtilisee + '.twig'
-  $texte = [System.IO.File]::ReadAllText($chemin, [System.Text.Encoding]::UTF8)
-  $texte = $texte -replace "`r`n", "`n"
-  # Commentaires retirés avant l'analyse des tags : un « {# {% bloc %} #} » ne doit jamais
-  # être lu comme un vrai tag.
-  $texte = [regex]::Replace($texte, '\{#[\s\S]*?#\}', '')
 
-  $blocs = @{}
-  $pile = New-Object System.Collections.Generic.Stack[object]
-  foreach ($m in [regex]::Matches($texte, '\{%\s*([\s\S]*?)\s*%\}')) {
-    $contenu = $m.Groups[1].Value
-    $parties = $contenu -split '\s+', 2
-    $mot = $parties[0]
-    if ($mot -eq 'block') {
-      $nomBloc = if ($parties.Count -gt 1) { $parties[1].Trim() } else { '' }
-      $pile.Push(@{ Nom = $nomBloc; Debut = $m.Index + $m.Length })
-    } elseif ($mot -eq 'endblock') {
-      if ($pile.Count -eq 0) {
-        throw ('gabarit « ' + $etiquette + ' » : « endblock » sans « block » ouvert')
-      }
-      $cadre = $pile.Pop()
-      $blocs[$cadre.Nom] = $texte.Substring($cadre.Debut, $m.Index - $cadre.Debut)
-    } else {
-      throw ('gabarit « ' + $etiquette + ' » : construction Twig non prise en charge : « {% ' +
-        $contenu + ' %} »')
-    }
-  }
-  if ($pile.Count -gt 0) {
-    throw ('gabarit « ' + $etiquette + ' » : bloc « ' + $pile.Peek().Nom + ' » non fermé')
-  }
-
-  # Variables {{ nom }} substituées, une absente rend une chaîne vide. Tout ce qui reste
-  # après cette passe (filtre |, chemin a.b, littéral...) n'est pas de notre ressort : lever,
-  # avec le nom du gabarit, plutôt que produire un courriel à moitié rendu.
-  function Rendre-SzhBlocCourriel([string]$Brut) {
-    $rendu = [regex]::Replace($Brut, '\{\{\s*([A-Za-z0-9_]+)\s*\}\}', {
-      param($m2)
-      $cle = $m2.Groups[1].Value
-      if ($Variables.Contains($cle)) { return [string]$Variables[$cle] }
-      return ''
-    })
-    if ($rendu.IndexOf('{{') -ne -1 -or $rendu.IndexOf('}}') -ne -1) {
-      throw ('gabarit « ' + $etiquette +
-        ' » : construction Twig non prise en charge dans « {{ … }} » (filtre ou expression)')
-    }
-    return $rendu
-  }
-
-  # Convention du cockpit (lib/courriel.js#rendreCourriel) : le sujet est débarrassé de ses
-  # blancs de bord, le corps perd exactement un retour à la ligne après l'ouverture du bloc
-  # et un avant sa fermeture -- le gabarit les porte pour rester lisible en édition, ce ne
-  # sont pas des blancs du message.
+  $raisonRepli = $null
   $sujetFinal = ''
-  if ($blocs.ContainsKey('sujet')) { $sujetFinal = (Rendre-SzhBlocCourriel $blocs['sujet']).Trim() }
   $corpsFinal = ''
-  if ($blocs.ContainsKey('corps')) {
-    $rendu = Rendre-SzhBlocCourriel $blocs['corps']
-    $corpsFinal = ($rendu -replace '^\n', '') -replace '\n$', ''
+  try {
+    $codiumCourriel = Get-VSCodiumExe
+    if (-not $codiumCourriel) { throw 'VSCodium introuvable sur ce poste' }
+    $dossierCockpitCourriel = Get-SzhDossierCockpit
+    if (-not $dossierCockpitCourriel) { throw 'dossier de l''extension du cockpit introuvable' }
+    $scriptRendu = Join-Path $dossierCockpitCourriel 'outils\rendre-gabarit.js'
+    if (-not (Test-Path -LiteralPath $scriptRendu)) { throw ('outils\rendre-gabarit.js introuvable dans ' + $dossierCockpitCourriel) }
+
+    # Un seul argument, un chemin de fichier : jamais de guillemet ni de barre oblique
+    # inverse en fin de nom, un simple entourage de guillemets suffit à le protéger d'une
+    # espace (un compte "Robin Morand" vit sous un profil qui en porte une).
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $codiumCourriel
+    $psi.Arguments = '"' + $scriptRendu + '"'
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+    $psi.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
+
+    $processusCourriel = New-Object System.Diagnostics.Process
+    $processusCourriel.StartInfo = $psi
+    try {
+      [void]$processusCourriel.Start()
+      # stdout ET stderr lus par des Task .NET (ReadToEndAsync), jamais par un gestionnaire
+      # d'évènement PowerShell (add_ErrorDataReceived) : ce dernier s'exécute sur un thread
+      # hors pipeline dès qu'aucune boucle de messages WinForms ne le marshale (le cas ici,
+      # Show-SzhErreur étant une console) -- planté en vrai sur ce poste (processus PowerShell
+      # entier interrompu, sans exception à attraper). Deux Task lues EN PARALLÈLE, avant même
+      # d'écrire l'entrée : ni l'une ni l'autre ne peut alors saturer son tube et bloquer
+      # l'écriture ou la sortie du processus.
+      $tacheSortie = $processusCourriel.StandardOutput.ReadToEndAsync()
+      $tacheErreur = $processusCourriel.StandardError.ReadToEndAsync()
+      $entreeJson = [pscustomobject]@{ chemin = $chemin; variables = $Variables } | ConvertTo-Json -Depth 6 -Compress
+      # UTF-8 SANS BOM : un BOM en tête romprait le JSON.parse() côté Node.
+      $encodageEntree = New-Object System.Text.UTF8Encoding($false)
+      $octetsEntree = $encodageEntree.GetBytes($entreeJson)
+      $processusCourriel.StandardInput.BaseStream.Write($octetsEntree, 0, $octetsEntree.Length)
+      $processusCourriel.StandardInput.Close()
+      [System.Threading.Tasks.Task]::WaitAll(@($tacheSortie, $tacheErreur))
+      $processusCourriel.WaitForExit()
+      $sortieBrute = $tacheSortie.Result
+
+      $objetRendu = $null
+      try { $objetRendu = $sortieBrute.Trim() | ConvertFrom-Json -ErrorAction Stop } catch { $objetRendu = $null }
+      if ($processusCourriel.ExitCode -ne 0 -or (-not $objetRendu) -or (-not $objetRendu.ok)) {
+        $detailErreur = ''
+        if ($objetRendu -and $objetRendu.erreur) { $detailErreur = [string]$objetRendu.erreur }
+        if (-not $detailErreur) { $detailErreur = $tacheErreur.Result.Trim() }
+        if (-not $detailErreur) { $detailErreur = 'code de sortie ' + $processusCourriel.ExitCode }
+        throw ('rendre-gabarit.js : ' + $detailErreur)
+      }
+
+      $blocsRendus = $objetRendu.blocs
+      # Convention du cockpit (lib/courriel.js#rendreCourriel), reprise ici à l'identique :
+      # le sujet est débarrassé de ses blancs de bord, le corps perd exactement un retour à
+      # la ligne après l'ouverture du bloc et un avant sa fermeture -- le gabarit les porte
+      # pour rester lisible en édition, ce ne sont pas des blancs du message. C'est une
+      # convention de RENDU, elle reste ici, ce n'est pas l'affaire du moteur.
+      if ($blocsRendus -and ($blocsRendus.PSObject.Properties.Name -contains 'sujet')) {
+        $sujetFinal = ([string]$blocsRendus.sujet).Trim()
+      }
+      if ($blocsRendus -and ($blocsRendus.PSObject.Properties.Name -contains 'corps')) {
+        $corpsFinal = (([string]$blocsRendus.corps) -replace '^\n', '') -replace '\n$', ''
+      }
+    } finally {
+      try {
+        if ($processusCourriel -and -not $processusCourriel.HasExited) { $processusCourriel.Kill() }
+        if ($processusCourriel) { $processusCourriel.Dispose() }
+      } catch { }
+    }
+  } catch {
+    $raisonRepli = $_.Exception.Message
   }
-  $sujetFinal = $sujetFinal -replace '\n', "`r`n"
-  $corpsFinal = $corpsFinal -replace '\n', "`r`n"
+
+  if ($null -eq $raisonRepli) {
+    $sujetFinal = $sujetFinal -replace '\n', "`r`n"
+    $corpsFinal = $corpsFinal -replace '\n', "`r`n"
+    return [pscustomobject]@{ sujet = $sujetFinal; corps = $corpsFinal }
+  }
+
+  # ---- Repli : texte simple assemblé depuis szh-textes.ps1, jamais un second moteur ----
+  try { Write-SzhLog ('Get-SzhCourriel : repli en texte simple (' + $Nom + ', ' + $Langue + ') -- ' + $raisonRepli) } catch { }
+  $posteRepli = ''
+  if ($Variables.Contains('poste')) { $posteRepli = [string]$Variables['poste'] }
+  $etapeRepli = ''
+  if ($Variables.Contains('etape')) { $etapeRepli = [string]$Variables['etape'] }
+  $messageRepli = ''
+  if ($Variables.Contains('message')) { $messageRepli = [string]$Variables['message'] }
+  $journalRepli = ''
+  if ($Variables.Contains('journal')) { $journalRepli = [string]$Variables['journal'] }
+  $sujetFinal = (T 'courriel.repli.sujet' @($posteRepli)) -replace '\n', "`r`n"
+  $corpsFinal = (T 'courriel.repli.corps' @($etapeRepli, $messageRepli, $journalRepli)) -replace '\n', "`r`n"
   return [pscustomobject]@{ sujet = $sujetFinal; corps = $corpsFinal }
 }
 

@@ -1,0 +1,41 @@
+{# edudoc.twig : le CSV d'import Edudoc, entièrement d'après l'OAI (décision de Robin) —
+   écrit par lib/secretariat.js (commande « edudoc »). Colonnes reprises de l'ancien script
+   tmp/export et secretariat/OJS_Export_Edudoc.py (create_excel, populate_excel_list), dans
+   le même ordre. CSV suisse : séparateur ";", BOM UTF-8 et fins de ligne CRLF posés par
+   lib/secretariat.js (versCsvFinal) — ce gabarit n'écrit que le texte, en ";" et en "\n".
+   Les colonnes fixes (037__a, 336__a, 338__a, 790__a, 910__a-1, 950__a) sont des constantes
+   de la maison, écrites ici en clair ; tout ce qui varie par article passe par |csv.
+
+   Les colonnes 7001_a-1 … 7001_a-N (une par auteur·e, jusqu'au maximum rencontré dans cet
+   export) sont déjà complétées à droite par des cellules vides dans `enTetesAuteurs` et
+   dans `articles[].auteursInverses` : ce gabarit n'a qu'à les faire défiler, jamais à
+   compter jusqu'à N lui-même (le moteur ne sait pas faire d'arithmétique).
+
+   Variables disponibles ici :
+   dateExport              "2026-09-14" (583__c : date du jour, une seule fois pour tout l'export)
+   enTetesAuteurs           ["7001_a-1", "7001_a-2"] — les en-têtes des colonnes d'auteur·e·s, déjà nommées
+   articles                 une ligne par article, triée par volume puis numéro puis DOI
+   articles[].langueMarc            "fre" ou "ger" (041__a)
+   articles[].titre                 "Compensation des désavantages et universités en Suisse romande" (245__a-1 ;
+                                     dc:title porte déjà le sous-titre s'il y en a un, l'OAI ne les sépare pas)
+   articles[].signature             "Amélie Dentz, Bianca Frank Baud, Nicolas Ruffieux et Chantal Martin Sölch" (245__c-1)
+   articles[].annee                 "2026" (269__a)
+   articles[].volume                "16" (773__j-1)
+   articles[].numero                "03" (773__k-1)
+   articles[].pages                 "27-32" (773__q-1 ; souvent vide sur les numéros récents, l'OAI ne les porte pas encore)
+   articles[].revueId               "207536" ou "202299" (773__0-2)
+   articles[].revueTitre             "Revue suisse de pédagogie spécialisée" (773__t-2)
+   articles[].resume                 le résumé dans la langue de l'article (520__a)
+   articles[].urlDoi                 "https://doi.org/10.57161/r2026-03-08" (910__u-1)
+   articles[].urlPdfTelechargement   URL de la galley PDF, "/view/" remplacé par "/download/" (FFT__a)
+   articles[].auteursInverses[]      ["Dentz, Amélie", "Frank Baud, Bianca", …] déjà en forme "Nom, Prénom",
+                                      complétée à droite jusqu'à la longueur de `enTetesAuteurs`
+#}
+{% block contenu -%}
+"001";"037__a";"041__a";"245__a-1";"245__c-1";"269__a";"336__a";"338__a";"520__a";"583__c";"773__j-1";"773__k-1";"773__q-1";"773__0-2";"773__t-2";"790__a";"910__a-1";"910__u-1";"950__a";"FFT__a";{% for h in enTetesAuteurs -%}
+{{ h|csv }}{% if not loop.last %};{% endif %}{% endfor %}
+{% for a in articles -%}
+"";"ARTICLE";{{ a.langueMarc|csv }};{{ a.titre|csv }};{{ a.signature|csv }};{{ a.annee|csv }};"Article";"Online-Volltext / Plein texte - en ligne";{{ a.resume|csv }};{{ dateExport|csv }};{{ a.volume|csv }};{{ a.numero|csv }};{{ a.pages|csv }};{{ a.revueId|csv }};{{ a.revueTitre|csv }};"SZH-CSPS";"Permalink (Open Access)";{{ a.urlDoi|csv }};"edition@szh.ch";{{ a.urlPdfTelechargement|csv }};{% for n in a.auteursInverses -%}
+{{ n|csv }}{% if not loop.last %};{% endif %}{% endfor %}
+{% endfor -%}
+{% endblock %}

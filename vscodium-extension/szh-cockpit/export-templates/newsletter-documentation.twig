@@ -1,0 +1,43 @@
+{# newsletter-documentation.twig : le bloc HTML de la rubrique Documentation, à coller tel
+   quel dans Mailchimp. Écrit dans documentation.txt par lib/secretariat.js (commande
+   « newsletter »). Cinq gabarits presque identiques (un par rubrique, voir
+   newsletter-varia.twig pour le détail) plutôt qu'un seul partagé : le moteur ne sait pas
+   inclure un autre gabarit.
+
+   Seul le bloc `contenu` est écrit dans le fichier (convention du moteur, lib/gabarits.js).
+
+   Variables disponibles ici :
+   numero.cle            "2026-03"
+   numero.revue          "revue" ou "zeitschrift"
+   numero.locale         "fr" ou "de" — décide le "et"/"und" des signatures et l'ordre des langues
+   numero.annee          "2026"
+   numero.numero         "03"
+   numero.volume         "16"
+   numero.titre          "Édition spéciale" (le titre du numéro, peut être vide)
+   numero.libelle        "R2026-03 | Édition spéciale" (repli d'année inclus : lib/yaml.js, titreNumero)
+   section.cle           "DC"
+   section.titre         "Documentation" (ou "Dokumentation" côté Zeitschrift) — mis en majuscules par le gabarit
+   articles               les articles de CETTE rubrique seulement, dans l'ordre du numéro
+   articles[].slug                 "10-comptes-rendus"
+   articles[].doi                  "" — la rubrique Documentation ne reçoit pas de DOI (sansDoi=1)
+   articles[].urlDoi               ""
+   articles[].signature            "La rédaction"
+   articles[].titre                titre + ". " + sous-titre s'il existe, dans la langue du numéro
+   articles[].titreAutreLangue     le même titre dans l'AUTRE langue de la revue ("" s'il n'existe pas)
+   articles[].rang                 -1 pour cette rubrique (jamais de DOI)
+   articles[].auteurs[]            les 7 champs de la fiche + nomComplet/nomInverse (non utilisés ici)
+#}
+{% block contenu %}<p><b>{{ section.titre|upper }}</b><br>
+<br>
+{% for article in articles -%}
+{% if not loop.first %}<br>
+<br>
+{% endif -%}
+{{ article.signature }}<br>
+{% if article.doi -%}
+<a href="{{ article.urlDoi }}">{{ article.titre }}</a>{% else -%}
+{{ article.titre }}{% endif -%}
+{% if article.titreAutreLangue %}<br>
+<i>{{ article.titreAutreLangue }}</i>{% endif -%}
+{% endfor %}</p>
+{% endblock %}

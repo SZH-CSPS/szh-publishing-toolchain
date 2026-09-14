@@ -1373,6 +1373,539 @@ $boutonEnvoyer.Location = New-Object System.Drawing.Point(($xPage + 212), $yNouv
 $boutonEnvoyer.Size = New-Object System.Drawing.Size(200, 30)
 $boutonEnvoyer.Add_Click({ Invoke-SzhEnvoiJournaux })
 $pageJournal.Controls.Add($boutonEnvoyer)
+# ---- L'onglet « Export et secretariat » : quatre exports pilotes par secretariat-cli.js,
+# livre dans l'extension du cockpit et execute par le Node qu'embarque VSCodium (pas un
+# Node du poste, pas WSL -- Robin a tranche pour un seul moteur de rendu dans tout le
+# produit, le JS). Ce fichier ne fait que le dialogue : choix du ou des numeros, dossier de
+# sortie, suivi ligne a ligne du script pendant qu'il tourne. Les quatre gestes se
+# ressemblent (meme processus, JSON sur stdout, dossier de sortie demande a chaque fois) :
+# une seule fonction, Invoke-SzhSecretariat, fait tout le dialogue avec le processus, et une
+# seule boite (Show-SzhBoiteExportOjs) sert aux deux exports CSV qui ne different que par
+# leur commande.
+#
+# Comme « Journal » et « Reglages » : pas un produit, .Tag reste vide, « Ouvrir » n'a rien a
+# ouvrir ici.
+
+# Echappement Windows d'un argument de ligne de commande (guillemets, barres obliques
+# inverses) -- l'algorithme standard, puisque ProcessStartInfo.Arguments est UNE chaine et
+# non une liste : les chemins de numeros vivent sous OneDrive et portent presque tous une
+# espace.
+function ConvertTo-SzhArgumentEchappe([string]$Valeur) {
+  if ($null -eq $Valeur) { $Valeur = '' }
+  if ($Valeur -eq '') { return '""' }
+  if ($Valeur -notmatch '[\s"]') { return $Valeur }
+  $resultat = '"'
+  $nbBarres = 0
+  foreach ($caractere in $Valeur.ToCharArray()) {
+    if ($caractere -eq '\') {
+      $nbBarres++
+      $resultat += $caractere
+    } elseif ($caractere -eq '"') {
+      $resultat += ('\' * $nbBarres) + '\"'
+      $nbBarres = 0
+    } else {
+      $nbBarres = 0
+      $resultat += $caractere
+    }
+  }
+  $resultat += ('\' * $nbBarres) + '"'
+  return $resultat
+}
+function ConvertTo-SzhArguments([string[]]$Valeurs) {
+  return (($Valeurs | ForEach-Object { ConvertTo-SzhArgumentEchappe $_ }) -join ' ')
+}
+
+# Le script Node du secretariat, livre dans l'extension du cockpit -- jamais dans ce depot.
+# La resolution du dossier d'extension (szh-csps.szh-cockpit-*, le plus recent) est
+# factorisee dans szh-common.ps1 (Get-SzhDossierCockpit) -- Get-SzhCourriel, dans ce meme
+# fichier, en a besoin tout autant pour outils\rendre-gabarit.js. Leve une erreur claire et
+# traduite si le dossier ou le script manquent : un poste mal installe doit le dire, pas
+# planter a la premiere ligne de JSON attendue.
+function Get-SzhOutilSecretariat {
+  $dossierCockpit = Get-SzhDossierCockpit
+  if ($dossierCockpit) {
+    $scriptCandidat = Join-Path $dossierCockpit 'outils\secretariat-cli.js'
+    if (Test-Path -LiteralPath $scriptCandidat) { return $scriptCandidat }
+  }
+  throw (T 'lanceur.secretariat.outil.absent')
+}
+
+# Le seul appelant de secretariat-cli.js. Le lance avec le VSCodium DEJA resolu plus haut
+# ($codium ; le lanceur se serait deja arrete si l'editeur manquait) et
+# ELECTRON_RUN_AS_NODE=1 -- sans cette variable, VSCodium.exe ouvre une fenetre d'editeur
+# au lieu d'executer le script. Grise les quatre boutons de l'onglet et pose le sablier
+# pendant que le processus tourne (les rallume dans le finally, quelle que soit l'issue) ;
+# lit stdout LIGNE A LIGNE pendant l'execution -- avec un DoEvents() apres chaque ligne,
+# sinon la fenetre se fige pendant tout un moissonnage OJS -- et decode chaque ligne comme
+# du JSON : etape/avert vont dans le journal, numero et fichier s'accumulent, fin memorise
+# l'issue. Une ligne qui n'est pas du JSON valide s'affiche telle quelle plutot que de faire
+# tomber le lanceur. stderr n'est lu qu'APRES WaitForExit, et seulement si le code de sortie
+# n'est pas nul -- le lire pendant que le processus vit bloquerait.
+function Invoke-SzhSecretariat {
+  param(
+    [Parameter(Mandatory = $true)][string]$Commande,
+    [string[]]$Arguments = @(),
+    [Parameter(Mandatory = $true)]$Journal,
+    [string]$DossierSortie = ''
+  )
+  foreach ($boutonGrise in $script:secretariatBoutons) { $boutonGrise.Enabled = $false }
+  $script:form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+  $numerosRecus = New-Object System.Collections.ArrayList
+  $fichiersRecus = New-Object System.Collections.ArrayList
+  $dossierRendu = ''
+  $dossierGabarits = ''
+  $ok = $false
+  $texteFin = ''
+  $processus = $null
+  $tacheErreurSecretariat = $null
+  try {
+    if (-not $codium) { throw (T 'lanceur.codium' @($SzhSupport)) }
+    $cheminOutilSecretariat = Get-SzhOutilSecretariat
+    $tousArguments = @($cheminOutilSecretariat, $Commande) + $Arguments
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $codium
+    $psi.Arguments = ConvertTo-SzhArguments $tousArguments
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+    $psi.EnvironmentVariables['ELECTRON_RUN_AS_NODE'] = '1'
+
+    $processus = New-Object System.Diagnostics.Process
+    $processus.StartInfo = $psi
+    [void]$processus.Start()
+    # stdout reste lu ligne par ligne pour la progression du journal (boucle ci-dessous) ;
+    # stderr est lu par une Task .NET (ReadToEndAsync), jamais par un gestionnaire d'événement
+    # PowerShell (add_ErrorDataReceived) : ce dernier s'exécute sur un thread hors pipeline dès
+    # que Show-SzhErreur n'encapsule pas de boucle WinForms -- planté en vrai sur ce poste
+    # (processus PowerShell entier interrompu, sans exception à attraper). La Task démarre AVANT
+    # la boucle de stdout pour empêcher stderr de saturer son tube et bloquer l'enfant.
+    $tacheErreurSecretariat = $processus.StandardError.ReadToEndAsync()
+
+    while ($true) {
+      $ligne = $processus.StandardOutput.ReadLine()
+      if ($null -eq $ligne) { break }
+      $ligneVue = $ligne.Trim()
+      if ($ligneVue) {
+        $objetJson = $null
+        try { $objetJson = $ligneVue | ConvertFrom-Json -ErrorAction Stop } catch { $objetJson = $null }
+        if ($objetJson -and $objetJson.t) {
+          switch ([string]$objetJson.t) {
+            'etape'   { Add-SzhLigneJournal $Journal ([string]$objetJson.texte) }
+            'avert'   { Add-SzhLigneJournal $Journal ([string]$objetJson.texte) }
+            'numero'  { [void]$numerosRecus.Add($objetJson) }
+            'fichier' {
+              [void]$fichiersRecus.Add($objetJson)
+              if ($DossierSortie) { $dossierRendu = $DossierSortie }
+            }
+            'fin'     {
+              $ok = [bool]$objetJson.ok
+              $texteFin = [string]$objetJson.texte
+              $dossierGabarits = [string]$objetJson.gabarits
+            }
+            default   { Add-SzhLigneJournal $Journal $ligneVue }
+          }
+        } else {
+          Add-SzhLigneJournal $Journal $ligneVue
+        }
+      }
+      [System.Windows.Forms.Application]::DoEvents()
+    }
+    $processus.WaitForExit()
+    if ($processus.ExitCode -ne 0) {
+      $erreurStd = $tacheErreurSecretariat.Result
+      if ($erreurStd -and $erreurStd.Trim()) { Add-SzhLigneJournal $Journal $erreurStd.Trim() }
+      $ok = $false
+    }
+  } catch {
+    $ok = $false
+    $texteFin = $_.Exception.Message
+    Add-SzhLigneJournal $Journal $texteFin
+  } finally {
+    try {
+      if ($processus -and -not $processus.HasExited) { $processus.Kill() }
+      if ($processus) { $processus.Dispose() }
+    } catch { }
+    $script:form.Cursor = [System.Windows.Forms.Cursors]::Default
+    foreach ($boutonRallume in $script:secretariatBoutons) { $boutonRallume.Enabled = $true }
+  }
+  return [pscustomobject]@{
+    ok       = $ok
+    texte    = $texteFin
+    numeros  = @($numerosRecus)
+    fichiers = @($fichiersRecus)
+    dossier  = $dossierRendu
+    gabarits = $dossierGabarits
+  }
+}
+
+# Affiche l'issue d'un export dans le journal, et n'active « Ouvrir le dossier » que si tout
+# s'est bien passe -- un ok:false le dit clairement et n'ouvre jamais de dossier.
+function Show-SzhResultatSecretariat($Resultat) {
+  if ($Resultat.ok) {
+    if ($Resultat.texte) {
+      Add-SzhLigneJournal $script:journalSecretariat (T 'lanceur.secretariat.resultat.ok' @($Resultat.texte))
+    }
+    if ($Resultat.gabarits) {
+      Add-SzhLigneJournal $script:journalSecretariat (T 'lanceur.secretariat.gabarits' @($Resultat.gabarits))
+    }
+    if ($Resultat.dossier) {
+      $script:secretariatDossierCourant = $Resultat.dossier
+      $script:boutonSecretariatDossier.Enabled = $true
+    }
+  } else {
+    $texteEchecAffiche = $Resultat.texte
+    if (-not $texteEchecAffiche) { $texteEchecAffiche = (T 'lanceur.secretariat.echec.inconnu') }
+    Add-SzhLigneJournal $script:journalSecretariat (T 'lanceur.secretariat.resultat.echec' @($texteEchecAffiche))
+  }
+}
+
+# Ajoute une ligne a la zone de journal (TextBox multiligne en lecture seule) et fait suivre
+# le defilement -- appelee aussi bien pour les lignes du script Node que pour les erreurs
+# rencontrees ici.
+function Add-SzhLigneJournal($ZoneTexte, [string]$Ligne) {
+  if (-not $Ligne) { return }
+  if ($ZoneTexte.TextLength -gt 0) { $ZoneTexte.AppendText("`r`n" + $Ligne) }
+  else { $ZoneTexte.AppendText($Ligne) }
+  $ZoneTexte.SelectionStart = $ZoneTexte.TextLength
+  $ZoneTexte.ScrollToCaret()
+}
+
+# Le dossier de sortie : redemande a CHAQUE export, jamais retenu d'une fois sur l'autre --
+# decision du cahier des charges. Rend $null si annule.
+function Get-SzhDossierSortieChoisi {
+  $boiteDossier = New-Object System.Windows.Forms.FolderBrowserDialog
+  $boiteDossier.Description = (T 'lanceur.secretariat.dossier.demande')
+  $boiteDossier.ShowNewFolderButton = $true
+  if ($boiteDossier.ShowDialog($script:form) -ne [System.Windows.Forms.DialogResult]::OK) { return $null }
+  return $boiteDossier.SelectedPath
+}
+
+# La boite commune a l'export Edudoc et a « Caracteres par article » -- ils ne different que
+# par leur titre et leur commande, ecrite UNE fois ici plutot que deux. Revue ou Zeitschrift,
+# un bouton qui charge les numeros dans un cache temporaire (JSON, $env:TEMP) et remplit la
+# CheckedListBox, un OK qui n'est actif que si au moins un numero est coche. Le meme fichier
+# de cache sert ensuite a la commande finale ; il n'est efface qu'a la toute fin, que
+# l'export ait eu lieu ou que la boite ait ete annulee.
+function Show-SzhBoiteExportOjs([string]$Titre, [string]$Commande) {
+  $cacheTemp = Join-Path $env:TEMP ('szh-secretariat-' + [guid]::NewGuid().ToString('N') + '.json')
+  try {
+    $boite = New-Object System.Windows.Forms.Form
+    $boite.Text = $Titre
+    $boite.StartPosition = 'CenterParent'
+    $boite.FormBorderStyle = 'FixedDialog'
+    $boite.MaximizeBox = $false
+    $boite.MinimizeBox = $false
+    $boite.ClientSize = New-Object System.Drawing.Size(420, 360)
+    Set-SzhIconeFenetre $boite
+
+    $etiqRevueOjs = New-Object System.Windows.Forms.Label
+    $etiqRevueOjs.Text = (T 'lanceur.secretariat.export.revue')
+    $etiqRevueOjs.Location = New-Object System.Drawing.Point(16, 16)
+    $etiqRevueOjs.AutoSize = $true
+    $boite.Controls.Add($etiqRevueOjs)
+
+    $radioRevueOjs = New-Object System.Windows.Forms.RadioButton
+    $radioRevueOjs.Text = $SzhProduits['revue'].onglet
+    $radioRevueOjs.Location = New-Object System.Drawing.Point(16, 38)
+    $radioRevueOjs.AutoSize = $true
+    $radioRevueOjs.Checked = $true
+    $boite.Controls.Add($radioRevueOjs)
+
+    $radioZeitschriftOjs = New-Object System.Windows.Forms.RadioButton
+    $radioZeitschriftOjs.Text = $SzhProduits['zeitschrift'].onglet
+    $radioZeitschriftOjs.Location = New-Object System.Drawing.Point(150, 38)
+    $radioZeitschriftOjs.AutoSize = $true
+    $boite.Controls.Add($radioZeitschriftOjs)
+
+    $boutonChargerOjs = New-Object System.Windows.Forms.Button
+    $boutonChargerOjs.Text = (T 'lanceur.secretariat.export.charger')
+    $boutonChargerOjs.Location = New-Object System.Drawing.Point(16, 68)
+    $boutonChargerOjs.Size = New-Object System.Drawing.Size(200, 28)
+    $boite.Controls.Add($boutonChargerOjs)
+
+    $etiqNumerosOjs = New-Object System.Windows.Forms.Label
+    $etiqNumerosOjs.Text = (T 'lanceur.secretariat.export.instructions')
+    $etiqNumerosOjs.Location = New-Object System.Drawing.Point(16, 104)
+    $etiqNumerosOjs.AutoSize = $true
+    $boite.Controls.Add($etiqNumerosOjs)
+
+    $listeNumerosOjs = New-Object System.Windows.Forms.CheckedListBox
+    $listeNumerosOjs.Location = New-Object System.Drawing.Point(16, 126)
+    $listeNumerosOjs.Size = New-Object System.Drawing.Size(388, 160)
+    $listeNumerosOjs.CheckOnClick = $true
+    $boite.Controls.Add($listeNumerosOjs)
+
+    $okBoutonOjs = New-Object System.Windows.Forms.Button
+    $okBoutonOjs.Text = 'OK'
+    $okBoutonOjs.Location = New-Object System.Drawing.Point(216, 296)
+    $okBoutonOjs.Size = New-Object System.Drawing.Size(90, 32)
+    $okBoutonOjs.Enabled = $false
+    $okBoutonOjs.DialogResult = [System.Windows.Forms.DialogResult]::OK
+    $boite.Controls.Add($okBoutonOjs)
+    $boite.AcceptButton = $okBoutonOjs
+
+    $nonBoutonOjs = New-Object System.Windows.Forms.Button
+    $nonBoutonOjs.Text = (T 'lanceur.annuler')
+    $nonBoutonOjs.Location = New-Object System.Drawing.Point(312, 296)
+    $nonBoutonOjs.Size = New-Object System.Drawing.Size(90, 32)
+    $nonBoutonOjs.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+    $boite.Controls.Add($nonBoutonOjs)
+    $boite.CancelButton = $nonBoutonOjs
+
+    # Table de hachage et non une variable : le gestionnaire de "Charger" doit pouvoir
+    # ecrire la liste des cles OJS (une par ligne cochable), et une variable simple ne se
+    # reassigne pas depuis une fermeture -- voir le meme choix dans Read-SzhNouveauNumero.
+    $etatBoiteOjs = @{ cles = @() }
+
+    $listeNumerosOjs.Add_ItemCheck({
+      # ItemCheck se declenche AVANT que l'etat change : on ajuste le compte de cases
+      # cochees selon la nouvelle valeur, pour activer OK des la premiere case cochee.
+      $dejaCocheesOjs = $listeNumerosOjs.CheckedIndices.Count
+      if ($_.NewValue -eq [System.Windows.Forms.CheckState]::Checked) { $dejaCocheesOjs++ } else { $dejaCocheesOjs-- }
+      $okBoutonOjs.Enabled = ($dejaCocheesOjs -gt 0)
+    })
+
+    $boutonChargerOjs.Add_Click({
+      $boutonChargerOjs.Enabled = $false
+      $script:form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+      $listeNumerosOjs.Items.Clear()
+      $etatBoiteOjs.cles = @()
+      $okBoutonOjs.Enabled = $false
+      try {
+        $revueChoisieOjs = 'revue'
+        if ($radioZeitschriftOjs.Checked) { $revueChoisieOjs = 'zeitschrift' }
+        $resultatChargementOjs = Invoke-SzhSecretariat -Commande 'numeros-ojs' `
+          -Arguments @('--revue', $revueChoisieOjs, '--cache', $cacheTemp) -Journal $script:journalSecretariat
+        if (-not $resultatChargementOjs.ok) {
+          Add-SzhLigneJournal $script:journalSecretariat (T 'lanceur.secretariat.resultat.echec' @($resultatChargementOjs.texte))
+        }
+        if ($resultatChargementOjs.numeros.Count -eq 0) {
+          [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.secretariat.export.aucun'), $Titre)
+        } else {
+          $clesVuesOjs = New-Object System.Collections.ArrayList
+          foreach ($numeroOjs in $resultatChargementOjs.numeros) {
+            [void]$listeNumerosOjs.Items.Add([string]$numeroOjs.libelle)
+            [void]$clesVuesOjs.Add([string]$numeroOjs.cle)
+          }
+          $etatBoiteOjs.cles = @($clesVuesOjs)
+        }
+      } catch {
+        [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.secretariat.erreur' @($_.Exception.Message)), $Titre)
+      } finally {
+        $script:form.Cursor = [System.Windows.Forms.Cursors]::Default
+        $boutonChargerOjs.Enabled = $true
+      }
+    })
+
+    if ($boite.ShowDialog($script:form) -ne [System.Windows.Forms.DialogResult]::OK) { return }
+
+    $clesChoisiesOjs = New-Object System.Collections.ArrayList
+    foreach ($indiceCoche in $listeNumerosOjs.CheckedIndices) { [void]$clesChoisiesOjs.Add($etatBoiteOjs.cles[$indiceCoche]) }
+    if ($clesChoisiesOjs.Count -eq 0) { return }
+
+    $dossierSortieOjs = Get-SzhDossierSortieChoisi
+    if (-not $dossierSortieOjs) { return }
+
+    try {
+      $resultatFinalOjs = Invoke-SzhSecretariat -Commande $Commande `
+        -Arguments @('--cache', $cacheTemp, '--numeros', ($clesChoisiesOjs -join ','), '--sortie', $dossierSortieOjs) `
+        -Journal $script:journalSecretariat -DossierSortie $dossierSortieOjs
+      Show-SzhResultatSecretariat $resultatFinalOjs
+    } catch {
+      Add-SzhLigneJournal $script:journalSecretariat (T 'lanceur.secretariat.erreur' @($_.Exception.Message))
+    }
+  } finally {
+    if (Test-Path -LiteralPath $cacheTemp) { Remove-Item -LiteralPath $cacheTemp -Force -ErrorAction SilentlyContinue }
+  }
+}
+
+$pageSecretariat = New-Object System.Windows.Forms.TabPage
+$pageSecretariat.Text = (T 'lanceur.secretariat')
+$pageSecretariat.Tag = ''          # pas un produit : « Ouvrir » n'a rien a ouvrir ici
+$pageSecretariat.UseVisualStyleBackColor = $true
+
+$introSecretariat = New-Object System.Windows.Forms.Label
+$introSecretariat.Text = (T 'lanceur.secretariat.intro')
+$introSecretariat.Location = New-Object System.Drawing.Point($xPage, 10)
+$introSecretariat.AutoSize = $true
+$pageSecretariat.Controls.Add($introSecretariat)
+
+# La liste des numeros locaux, tous produits confondus (jamais le livre), batie une fois a
+# partir des inventaires deja calcules plus haut -- ni balayage ni tri supplementaire. Le
+# tableau parallele retrouve le chemin (et le produit) de la ligne choisie : la ListBox ne
+# porte que du texte.
+$script:secretariatEntrees = New-Object System.Collections.ArrayList
+foreach ($jetonSec in $SzhOrdreOnglets) {
+  if ($jetonSec -eq 'livre') { continue }
+  $infoSec = $SzhProduits[$jetonSec]
+  $invSec = $inventaires[$jetonSec]
+  foreach ($groupeSec in @($invSec.enCours, $invSec.archives)) {
+    foreach ($entreeSec in $groupeSec) {
+      [void]$script:secretariatEntrees.Add([pscustomobject]@{
+        jeton  = $jetonSec
+        onglet = $infoSec.onglet
+        nom    = $entreeSec.nom
+        titre  = $entreeSec.titre
+        chemin = $entreeSec.chemin
+      })
+    }
+  }
+}
+
+$largeurListeSecretariat = 340
+$xBoutonsSecretariat = $xPage + $largeurListeSecretariat + 10
+$largeurBoutonsSecretariat = ($xPage + $largeurPage) - $xBoutonsSecretariat
+
+$script:listeSecretariat = New-Object System.Windows.Forms.ListBox
+$script:listeSecretariat.Location = New-Object System.Drawing.Point($xPage, 34)
+$script:listeSecretariat.Size = New-Object System.Drawing.Size($largeurListeSecretariat, 120)
+$script:listeSecretariat.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+$script:listeSecretariat.SelectionMode = 'MultiExtended'
+foreach ($entreeListeSec in $script:secretariatEntrees) {
+  [void]$script:listeSecretariat.Items.Add(
+    (T 'lanceur.secretariat.liste.entree' @($entreeListeSec.onglet, $entreeListeSec.nom, $entreeListeSec.titre)))
+}
+$pageSecretariat.Controls.Add($script:listeSecretariat)
+
+# Les quatre boutons, en colonne a droite de la liste -- meme hauteur de rangee, memes
+# marges, pour ne jamais deborder de $largeurPage (aucun onglet ne doit agrandir la
+# fenetre : voir l'en-tete du fichier).
+$script:secretariatBoutons = @()
+
+$boutonNewsletter = New-Object System.Windows.Forms.Button
+$boutonNewsletter.Text = (T 'lanceur.secretariat.newsletter')
+$boutonNewsletter.Location = New-Object System.Drawing.Point($xBoutonsSecretariat, 34)
+$boutonNewsletter.Size = New-Object System.Drawing.Size($largeurBoutonsSecretariat, 26)
+$pageSecretariat.Controls.Add($boutonNewsletter)
+$script:secretariatBoutons += $boutonNewsletter
+
+$boutonEdudoc = New-Object System.Windows.Forms.Button
+$boutonEdudoc.Text = (T 'lanceur.secretariat.edudoc')
+$boutonEdudoc.Location = New-Object System.Drawing.Point($xBoutonsSecretariat, 64)
+$boutonEdudoc.Size = New-Object System.Drawing.Size($largeurBoutonsSecretariat, 26)
+$pageSecretariat.Controls.Add($boutonEdudoc)
+$script:secretariatBoutons += $boutonEdudoc
+
+$boutonCaracteres = New-Object System.Windows.Forms.Button
+$boutonCaracteres.Text = (T 'lanceur.secretariat.caracteres')
+$boutonCaracteres.Location = New-Object System.Drawing.Point($xBoutonsSecretariat, 94)
+$boutonCaracteres.Size = New-Object System.Drawing.Size($largeurBoutonsSecretariat, 26)
+$pageSecretariat.Controls.Add($boutonCaracteres)
+$script:secretariatBoutons += $boutonCaracteres
+
+$boutonMetadonnees = New-Object System.Windows.Forms.Button
+$boutonMetadonnees.Text = (T 'lanceur.secretariat.metadonnees')
+$boutonMetadonnees.Location = New-Object System.Drawing.Point($xBoutonsSecretariat, 124)
+$boutonMetadonnees.Size = New-Object System.Drawing.Size($largeurBoutonsSecretariat, 26)
+$pageSecretariat.Controls.Add($boutonMetadonnees)
+$script:secretariatBoutons += $boutonMetadonnees
+
+# Le journal de progression -- meme gabarit que celui de l'onglet Journal (Consolas 9, lecture
+# seule, meme budget vertical : de y=162 a $yNouveau, deja eprouve sur tous les paliers de
+# hauteur d'ecran par cet onglet-la).
+$script:journalSecretariat = New-Object System.Windows.Forms.TextBox
+$script:journalSecretariat.Multiline = $true
+$script:journalSecretariat.ReadOnly = $true
+$script:journalSecretariat.ScrollBars = 'Vertical'
+$script:journalSecretariat.Font = New-Object System.Drawing.Font('Consolas', 9)
+$script:journalSecretariat.BackColor = [System.Drawing.Color]::White
+$script:journalSecretariat.Location = New-Object System.Drawing.Point($xPage, 162)
+$script:journalSecretariat.Size = New-Object System.Drawing.Size($largeurPage, ($yNouveau - 170))
+$pageSecretariat.Controls.Add($script:journalSecretariat)
+
+$script:secretariatDossierCourant = ''
+$script:boutonSecretariatDossier = New-Object System.Windows.Forms.Button
+$script:boutonSecretariatDossier.Text = (T 'lanceur.secretariat.dossier')
+$script:boutonSecretariatDossier.Location = New-Object System.Drawing.Point($xPage, $yNouveau)
+$script:boutonSecretariatDossier.Size = New-Object System.Drawing.Size(220, 30)
+$script:boutonSecretariatDossier.Enabled = $false
+$pageSecretariat.Controls.Add($script:boutonSecretariatDossier)
+
+$onglets.TabPages.Add($pageSecretariat)
+
+# ---- Les quatre gestes, cote interface ----
+
+$boutonNewsletter.Add_Click({
+  if ($script:listeSecretariat.SelectedIndex -lt 0) {
+    [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.secretariat.newsletter.manque'), $titreFenetre)
+    return
+  }
+  $entreeNewsletter = $script:secretariatEntrees[$script:listeSecretariat.SelectedIndex]
+  $dossierNewsletter = Get-SzhDossierSortieChoisi
+  if (-not $dossierNewsletter) { return }
+  try {
+    $resultatNewsletter = Invoke-SzhSecretariat -Commande 'newsletter' `
+      -Arguments @('--numero', $entreeNewsletter.chemin, '--sortie', $dossierNewsletter) `
+      -Journal $script:journalSecretariat -DossierSortie $dossierNewsletter
+    Show-SzhResultatSecretariat $resultatNewsletter
+  } catch {
+    Add-SzhLigneJournal $script:journalSecretariat (T 'lanceur.secretariat.erreur' @($_.Exception.Message))
+  }
+})
+
+$boutonEdudoc.Add_Click({
+  Show-SzhBoiteExportOjs (T 'lanceur.secretariat.export.titre.edudoc') 'edudoc'
+})
+
+$boutonCaracteres.Add_Click({
+  Show-SzhBoiteExportOjs (T 'lanceur.secretariat.export.titre.caracteres') 'caracteres'
+})
+
+$boutonMetadonnees.Add_Click({
+  $indicesMeta = $script:listeSecretariat.SelectedIndices
+  if ($indicesMeta.Count -eq 0) {
+    [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.secretariat.metadonnees.manque'), $titreFenetre)
+    return
+  }
+  $entreesMeta = New-Object System.Collections.ArrayList
+  foreach ($indiceMeta in $indicesMeta) { [void]$entreesMeta.Add($script:secretariatEntrees[$indiceMeta]) }
+  $dossierMeta = Get-SzhDossierSortieChoisi
+  if (-not $dossierMeta) { return }
+  # La revue a moissonner suit le produit du PREMIER numero choisi -- un controle qui
+  # melangerait revue et Zeitschrift n'a de toute facon aucun sens cote OJS (deux sites).
+  $revueMeta = $entreesMeta[0].jeton
+  $cacheMeta = Join-Path $env:TEMP ('szh-secretariat-' + [guid]::NewGuid().ToString('N') + '.json')
+  try {
+    $chargementMeta = Invoke-SzhSecretariat -Commande 'numeros-ojs' `
+      -Arguments @('--revue', $revueMeta, '--cache', $cacheMeta) -Journal $script:journalSecretariat
+    if (-not $chargementMeta.ok) {
+      Show-SzhResultatSecretariat $chargementMeta
+      return
+    }
+    $argumentsMeta = New-Object System.Collections.ArrayList
+    foreach ($entreeMeta in $entreesMeta) {
+      [void]$argumentsMeta.Add('--numero')
+      [void]$argumentsMeta.Add($entreeMeta.chemin)
+    }
+    [void]$argumentsMeta.Add('--cache')
+    [void]$argumentsMeta.Add($cacheMeta)
+    [void]$argumentsMeta.Add('--sortie')
+    [void]$argumentsMeta.Add($dossierMeta)
+    $resultatMeta = Invoke-SzhSecretariat -Commande 'metadonnees' -Arguments @($argumentsMeta) `
+      -Journal $script:journalSecretariat -DossierSortie $dossierMeta
+    Show-SzhResultatSecretariat $resultatMeta
+  } catch {
+    Add-SzhLigneJournal $script:journalSecretariat (T 'lanceur.secretariat.erreur' @($_.Exception.Message))
+  } finally {
+    if (Test-Path -LiteralPath $cacheMeta) { Remove-Item -LiteralPath $cacheMeta -Force -ErrorAction SilentlyContinue }
+  }
+})
+
+$script:boutonSecretariatDossier.Add_Click({
+  if (-not $script:secretariatDossierCourant) { return }
+  try {
+    if (Test-Path -LiteralPath $script:secretariatDossierCourant) {
+      Start-Process explorer.exe ('"' + $script:secretariatDossierCourant + '"')
+    }
+  } catch {
+    Write-SzhLog ('open-produit : ouverture du dossier de sortie echouee (' + $_.Exception.Message + ')')
+  }
+})
+
 
 # ---- L'onglet des reglages ----
 # Quatre reglages, pas de bouton « Enregistrer ». Un choix fait dans une liste EST le choix :

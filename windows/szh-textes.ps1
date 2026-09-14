@@ -57,6 +57,14 @@ $script:SzhTextes = @{
     'err.rassure'       = 'Pas d’’inquiétude : vos textes et vos revues ne sont pas touchés.'
     'err.retry'         = 'La mise à jour réessaiera toute seule. Si le problème persiste : {0}'
     'err.menu'          = '[E] préparer un e-mail au support   [O] ouvrir le journal   [autre touche] fermer'
+    # Repli de Get-SzhCourriel (szh-common.ps1) quand le rendu Twig est hors d'atteinte
+    # (VSCodium ou l'extension du cockpit absents, script manquant...) : un texte minimal,
+    # jamais un second moteur -- volontairement différent du gabarit habituel. Chaîne à
+    # double guillemets (retours `n) : comme les autres messages multi-lignes de ce fichier
+    # (lanceur.nouvelle.doublon, lien.introuvable...), hors de portée de test/typo-check.py,
+    # qui ne lit que les valeurs entre apostrophes sur une seule ligne.
+    'courriel.repli.sujet' = 'SZH – problème sur le poste {0}'
+    'courriel.repli.corps' = "Bonjour,`n`nLa mise à jour de l'outil Revue a rencontré un problème. Ce message est un repli, envoyé sans le gabarit habituel.`n`nÉtape   : {0}`nDétail  : {1}`nJournal : {2}`n`nMerci de joindre le fichier journal ci-dessus à ce message."
     'dl.format'         = '{0:N1} / {1:N1} Mo'
     'lanceur.choisir'   = 'Choisissez la revue à ouvrir :'
     'lanceur.ouvrir'    = 'Ouvrir'
@@ -230,6 +238,33 @@ $script:SzhTextes = @{
     # Ligne d'info du lanceur (open-produit.ps1) quand l'ancrage reste absent après
     # Initialize-SzhAncrage : dit pourquoi la liste est vide, sans rouvrir de fenêtre.
     'lanceur.ancrage.absent' = 'Dossier partagé SharePoint introuvable : la liste ci-dessus restera vide tant que ce dossier ne sera pas rattaché.'
+    # Onglet « Export et secrétariat » : quatre exports pilotés par secretariat-cli.js, livré
+    # dans l'extension du cockpit et exécuté par le Node de VSCodium (Invoke-SzhSecretariat,
+    # open-produit.ps1) -- newsletter/auteurs, Edudoc,
+    # caractères par article, contrôle des métadonnées.
+    'lanceur.secretariat'                         = 'Export et secrétariat'
+    'lanceur.secretariat.intro'                   = 'Choisissez un ou plusieurs numéros ci-dessous, puis un export.'
+    'lanceur.secretariat.liste.entree'            = '{0}    {1}    {2}'
+    'lanceur.secretariat.newsletter'              = 'Newsletter et auteurs…'
+    'lanceur.secretariat.newsletter.manque'       = 'Choisissez d’’abord un numéro dans la liste.'
+    'lanceur.secretariat.edudoc'                  = 'Export Edudoc (CSV)…'
+    'lanceur.secretariat.caracteres'              = 'Caractères par article (CSV)…'
+    'lanceur.secretariat.metadonnees'             = 'Contrôle des métadonnées…'
+    'lanceur.secretariat.metadonnees.manque'      = 'Choisissez au moins un numéro dans la liste.'
+    'lanceur.secretariat.dossier'                 = 'Ouvrir le dossier'
+    'lanceur.secretariat.dossier.demande'         = 'Choisissez le dossier de destination :'
+    'lanceur.secretariat.export.titre.edudoc'     = 'Export Edudoc'
+    'lanceur.secretariat.export.titre.caracteres' = 'Caractères par article'
+    'lanceur.secretariat.export.revue'            = 'Revue :'
+    'lanceur.secretariat.export.charger'          = 'Charger les numéros'
+    'lanceur.secretariat.export.instructions'     = 'Cochez les numéros à inclure :'
+    'lanceur.secretariat.export.aucun'            = 'Aucun numéro n’’a pu être chargé.'
+    'lanceur.secretariat.resultat.ok'             = '✓ {0}'
+    'lanceur.secretariat.resultat.echec'          = '⚠ {0}'
+    'lanceur.secretariat.echec.inconnu'           = 'Raison inconnue.'
+    'lanceur.secretariat.erreur'                  = 'Erreur : {0}'
+    ‘lanceur.secretariat.outil.absent’            = ‘L’’outil de secrétariat (secretariat-cli.js) est introuvable dans l’’extension du cockpit sur ce poste. Réinstallez ou mettez à jour l’’outil, puis réessayez.’
+    ‘lanceur.secretariat.gabarits’                = ‘Gabarits d’’export lus dans : {0}’
   }
   de = @{
     'app.titre'         = 'SZH/CSPS – Publikations-Toolchain'
@@ -281,6 +316,10 @@ $script:SzhTextes = @{
     'err.rassure'       = 'Keine Sorge: Ihre Texte und Zeitschriften sind nicht betroffen.'
     'err.retry'         = 'Die Aktualisierung versucht es später automatisch erneut. Falls das Problem bleibt: {0}'
     'err.menu'          = '[E] E-Mail an den Support vorbereiten   [O] Protokoll öffnen   [andere Taste] schliessen'
+    # Ersatztext von Get-SzhCourriel (szh-common.ps1), wenn das Twig-Rendering nicht
+    # erreichbar ist -- siehe den gleichen Kommentar im fr-Block weiter oben.
+    'courriel.repli.sujet' = 'SZH – Problem auf dem Arbeitsplatz {0}'
+    'courriel.repli.corps' = "Guten Tag,`n`nBei der Aktualisierung des SZH-Redaktionstools ist ein Problem aufgetreten. Diese Meldung ist ein Ersatztext ohne die übliche Vorlage.`n`nSchritt  : {0}`nDetail   : {1}`nProtokoll: {2}`n`nBitte hängen Sie die oben genannte Protokolldatei an diese Nachricht an."
     'dl.format'         = '{0:N1} / {1:N1} MB'
     'lanceur.choisir'   = 'Wählen Sie die zu öffnende Revue:'
     'lanceur.ouvrir'    = 'Öffnen'
@@ -440,6 +479,32 @@ $script:SzhTextes = @{
     # Info-Zeile des Launchers (open-produit.ps1), wenn der Ordner nach Initialize-SzhAncrage
     # weiterhin fehlt: sagt, weshalb die Liste leer bleibt.
     'lanceur.ancrage.absent' = 'Freigegebener SharePoint-Ordner nicht gefunden: Die Liste bleibt leer, bis er verknüpft ist.'
+    # Registerkarte «Export und Sekretariat»: vier Exporte, gesteuert von
+    # secretariat-cli.js, shipped in the cockpit extension and run by VSCodium's Node
+    # (Invoke-SzhSecretariat, open-produit.ps1).
+    'lanceur.secretariat'                         = 'Export und Sekretariat'
+    'lanceur.secretariat.intro'                   = 'Wählen Sie unten eine oder mehrere Ausgaben, dann einen Export.'
+    'lanceur.secretariat.liste.entree'            = '{0}    {1}    {2}'
+    'lanceur.secretariat.newsletter'              = 'Newsletter und Autorenschaft…'
+    'lanceur.secretariat.newsletter.manque'       = 'Wählen Sie zuerst eine Ausgabe in der Liste.'
+    'lanceur.secretariat.edudoc'                  = 'Edudoc-Export (CSV)…'
+    'lanceur.secretariat.caracteres'              = 'Zeichen pro Artikel (CSV)…'
+    'lanceur.secretariat.metadonnees'             = 'Metadatenkontrolle…'
+    'lanceur.secretariat.metadonnees.manque'      = 'Wählen Sie mindestens eine Ausgabe in der Liste.'
+    'lanceur.secretariat.dossier'                 = 'Ordner öffnen'
+    'lanceur.secretariat.dossier.demande'         = 'Wählen Sie den Zielordner:'
+    'lanceur.secretariat.export.titre.edudoc'     = 'Edudoc-Export'
+    'lanceur.secretariat.export.titre.caracteres' = 'Zeichen pro Artikel'
+    'lanceur.secretariat.export.revue'            = 'Zeitschrift:'
+    'lanceur.secretariat.export.charger'          = 'Ausgaben laden'
+    'lanceur.secretariat.export.instructions'     = 'Wählen Sie die einzuschliessenden Ausgaben aus:'
+    'lanceur.secretariat.export.aucun'            = 'Es konnte keine Ausgabe geladen werden.'
+    'lanceur.secretariat.resultat.ok'             = '✓ {0}'
+    'lanceur.secretariat.resultat.echec'          = '⚠ {0}'
+    'lanceur.secretariat.echec.inconnu'           = 'Grund unbekannt.'
+    'lanceur.secretariat.erreur'                  = 'Fehler: {0}'
+    'lanceur.secretariat.outil.absent'            = 'Das Sekretariats-Werkzeug (secretariat-cli.js) wurde in der Cockpit-Erweiterung auf diesem Rechner nicht gefunden. Installieren oder aktualisieren Sie das Werkzeug und versuchen Sie es dann erneut.'
+    'lanceur.secretariat.gabarits'                = 'Export-Vorlagen gelesen aus: {0}'
   }
   en = @{
     'app.titre'         = 'SZH/CSPS — Publishing toolchain'
@@ -491,6 +556,10 @@ $script:SzhTextes = @{
     'err.rassure'       = 'No worries: your texts and journals are not affected.'
     'err.retry'         = 'The update will retry automatically. If the problem persists: {0}'
     'err.menu'          = '[E] prepare a support e-mail   [O] open the log   [any other key] close'
+    # Fallback text for Get-SzhCourriel (szh-common.ps1) when the Twig rendering is out of
+    # reach -- see the same comment in the fr block above.
+    'courriel.repli.sujet' = 'SZH – problem on workstation {0}'
+    'courriel.repli.corps' = "Hello,`n`nThe SZH journal tool update ran into a problem. This is a fallback message, sent without the usual template.`n`nStep  : {0}`nDetail: {1}`nLog   : {2}`n`nPlease attach the log file above to this message."
     'dl.format'         = '{0:N1} / {1:N1} MB'
     'lanceur.choisir'   = 'Choose the journal to open:'
     'lanceur.ouvrir'    = 'Open'
@@ -649,5 +718,30 @@ $script:SzhTextes = @{
     # Launcher info line (open-produit.ps1) when the anchor is still missing after
     # Initialize-SzhAncrage: says why the list stays empty.
     'lanceur.ancrage.absent' = 'Shared SharePoint folder not found: the list will stay empty until it is linked.'
+    # "Export and secretariat" tab: four exports driven by secretariat-cli.js
+    # (Invoke-SzhSecretariat, open-produit.ps1).
+    'lanceur.secretariat'                         = 'Export and secretariat'
+    'lanceur.secretariat.intro'                   = 'Choose one or more issues below, then an export.'
+    'lanceur.secretariat.liste.entree'            = '{0}    {1}    {2}'
+    'lanceur.secretariat.newsletter'              = 'Newsletter and authors…'
+    'lanceur.secretariat.newsletter.manque'       = 'First choose an issue in the list.'
+    'lanceur.secretariat.edudoc'                  = 'Edudoc export (CSV)…'
+    'lanceur.secretariat.caracteres'              = 'Characters per article (CSV)…'
+    'lanceur.secretariat.metadonnees'             = 'Metadata check…'
+    'lanceur.secretariat.metadonnees.manque'      = 'Choose at least one issue in the list.'
+    'lanceur.secretariat.dossier'                 = 'Open the folder'
+    'lanceur.secretariat.dossier.demande'         = 'Choose the destination folder:'
+    'lanceur.secretariat.export.titre.edudoc'     = 'Edudoc export'
+    'lanceur.secretariat.export.titre.caracteres' = 'Characters per article'
+    'lanceur.secretariat.export.revue'            = 'Journal:'
+    'lanceur.secretariat.export.charger'          = 'Load the issues'
+    'lanceur.secretariat.export.instructions'     = 'Check the issues to include:'
+    'lanceur.secretariat.export.aucun'            = 'No issue could be loaded.'
+    'lanceur.secretariat.resultat.ok'             = '✓ {0}'
+    'lanceur.secretariat.resultat.echec'          = '⚠ {0}'
+    'lanceur.secretariat.echec.inconnu'           = 'Reason unknown.'
+    'lanceur.secretariat.erreur'                  = 'Error: {0}'
+    'lanceur.secretariat.outil.absent'            = 'The secretariat tool (secretariat-cli.js) could not be found in the cockpit extension on this computer. Reinstall or update the tool, then try again.'
+    'lanceur.secretariat.gabarits'                = 'Export templates read from: {0}'
   }
 }

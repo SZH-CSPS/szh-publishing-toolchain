@@ -157,6 +157,13 @@ lib/
   rubriques.js          rubriques de texte riche d'un article de Documentation (références
                         du dossier, tour d'horizon, podcasts) : un bloc de prose titré, le
                         titre étant déduit du type par pipeline/filters/szh-rubrique.lua
+  secretariat.js        les quatre exports du secrétariat : newsletter (local), edudoc et
+                        caractères (moisson OAI-PMH oai_dc propre au secrétariat — ni
+                        auteurs-ojs.js ni mots-cles-edudoc.js n'exposent le titre, le résumé
+                        ou les galleys), métadonnées (comparaison locale/OJS). Gabarits Twig
+                        dans export-templates/, copiés une fois vers
+                        C:\ProgramData\SZH\gabarits-export sans jamais écraser une retouche.
+                        Module pur, sans vscode ; appelé par outils/secretariat-cli.js
   session.js            état de session partagé entre les zones d'extension.js (verrouillage,
                         aperçu en cours, import/compilation en vol…) derrière des accesseurs
                         nommés — aucune de ces variables n'est plus une variable de module nue
@@ -174,8 +181,17 @@ lib/
   wsl.js                distro, localisation de wsl.exe, maintien en vie de la VM
   yaml.js               (dé)sérialiseurs ausgabe/frontmatter/meta, écriture atomique
   webviews/util.js      assemblage du HTML des webviews (nonce, CSP, fichiers de media/)
+outils/
+  secretariat-cli.js    entrée en ligne de commande de lib/secretariat.js : JSON Lines sur
+                        stdout, lancée par le lanceur Windows avec le Node qu'embarque
+                        VSCodium (ELECTRON_RUN_AS_NODE=1)
 mail-templates/          gabarits Twig des courriels, un fichier par nom et par langue
                         (envoi-auteur.fr.twig, traduction.de.twig, …) — voir son README.md
+export-templates/        gabarits Twig des quatre exports du secrétariat (lib/secretariat.js),
+                        livrés par défaut : un fichier par section de newsletter, plus
+                        edudoc.twig, caracteres.twig, metadonnees.twig. Copiés vers
+                        C:\ProgramData\SZH\gabarits-export à la première exécution ; une
+                        retouche là-bas n'est plus jamais écrasée par une mise à jour
 media/
   _commun.js            fragments partagés par les formulaires (mots-clés, auto-enregistrement,
                         icônes, notifications, barre de commandes, liste de cartes)
