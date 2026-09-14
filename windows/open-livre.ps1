@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Lanceur du menu Demarrer « Books SZH-CSPS », appele par hidden.vbs, donc sans console.
+  Point d'entree de l'onglet « Book » du lanceur, appele par hidden.vbs, donc sans console.
   Enveloppe de quelques lignes : les raccourcis du menu Demarrer (Get-SzhRaccourcisMenu, dans
   le socle) visent ce script par son nom, il reste donc le point d'entree --
   toute la logique (fenetre, listes, "Nouveau livre...", selecteur de version) vit

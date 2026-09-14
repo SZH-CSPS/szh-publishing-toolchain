@@ -119,8 +119,11 @@ test('formulaire : l’année et le numéro se saisissent, le volume et le dossi
   assert.match(corps, /Get-SzhNomNumero \$anneeVue \$numeroVue/,
     'le nom du dossier ne se déduit plus de l’année et du numéro');
 
-  // La borne basse de l'année est celle du premier volume : jamais de volume nul.
-  assert.match(corps, /\$anneeMin = Get-SzhPremiereAnnee \$produitFiltre/);
+  // La borne basse de l'année est celle du premier volume : jamais de volume nul. Glissement
+  // du 13.09.2026 (fusion des trois lanceurs) : le formulaire ne lit plus le produit dans la
+  // portée du script ($produitFiltre a disparu de ce fichier) mais le reçoit en paramètre
+  // ($ProduitInfo, un onglet parmi trois) — le défaut gardé est le même, seul le nom change.
+  assert.match(corps, /\$anneeMin = Get-SzhPremiereAnnee \$ProduitInfo\.jeton/);
   assert.match(corps, /\$champAnnee\.Minimum = \$anneeMin/);
   // Deux chiffres pour le numéro, comme la convention de nom de dossier.
   assert.match(corps, /\$champNumero\.Maximum = 99/);
@@ -139,7 +142,10 @@ test('formulaire : les deux refus se font la boîte ouverte, et ne suppriment ri
   const corps = psLanceur.slice(i, psLanceur.indexOf('& $rafraichir', i));
   // Le dossier homonyme, puis le couple volume + numéro.
   assert.match(corps, /lanceur\.nouvelle\.existe/, 'le dossier homonyme n’est plus refusé');
-  assert.match(corps, /Find-SzhNumeroVolume \$produitFiltre \$volumeOk \$numeroOk/,
+  // Glissement du 13.09.2026 : $produitFiltre (une portée de script, un seul produit) a fait
+  // place à $ProduitInfo.jeton (un paramètre, un onglet parmi trois) — le défaut gardé, lui,
+  // ne change pas : le doublon se cherche dans le bon produit, jamais dans les trois à la fois.
+  assert.match(corps, /Find-SzhNumeroVolume \$ProduitInfo\.jeton \$volumeOk \$numeroOk/,
     'le doublon de volume + numéro n’est plus cherché');
   assert.match(corps, /lanceur\.nouvelle\.doublon/);
   // Le refus garde la boîte ouverte : le remède est à un chiffre près.
@@ -444,22 +450,26 @@ test('lanceur : la racine active s’affiche dans les DEUX racines', () => {
   // C'était le correctif d'un danger réel : `emplacementRevues` déplace la racine de tout
   // le travail, et un lanceur aux listes vides ne se comprend pas sans elle. Le dire en
   // mode test seulement laissait justement le cas grave — la production — sans un mot.
+  //
+  // Glissement du 13.09.2026 (fusion des trois lanceurs en un seul, à onglets) : le bloc
+  // d'informations vit maintenant dans Get-SzhInventaireProduit, une fonction appelée une
+  // fois PAR ONGLET avant toute fenêtre — il n'y a plus un seul $Info de script ni un seul
+  // $yBoutons juste après le bloc. Le défaut gardé ne change pas : la ligne de racine reste
+  // inconditionnelle, et le libellé reste propre à chaque produit.
   const i = psLanceur.indexOf('$lignesInfo = @()');
   assert.notStrictEqual(i, -1, 'le bloc d’informations a disparu');
-  // La borne de fin suit désormais le recalcul de $yBoutons (et non plus la création de
-  // $form, qui a lieu plus tôt qu'avant) : c'est là que se termine tout le bloc info,
-  // mesure de hauteur comprise.
-  const corps = psLanceur.slice(i, psLanceur.indexOf('$yBoutons = $yInfos + $hInfos + 2', i));
-  assert.match(corps, /\$lignesInfo \+= \(T \$Info\.texteTest @\(\$emplacements\.base\)\)/,
+  // La borne de fin suit le `return` de Get-SzhInventaireProduit : c'est là que s'arrête tout
+  // ce que cette fonction ajoute au bloc info, pour CET onglet.
+  const corps = psLanceur.slice(i, psLanceur.indexOf('return [pscustomobject]@{', i));
+  assert.match(corps, /\$lignesInfo \+= \(T \$info\.texteTest @\(\$emplacements\.base\)\)/,
     'la ligne de racine ne s’ajoute plus');
   // Sans condition : aucune garde de mode test autour de cette ligne.
   assert.ok(!/devMode/.test(corps),
     'la ligne de racine est redevenue conditionnelle au mode test');
-  // Et le libellé suit le produit du lanceur ouvert : ce n'est plus un if/else recopiant
-  // $cleRacine ici, mais une lecture de $Info (la ligne de $SzhProduits, szh-produits.ps1,
-  // choisie une fois pour toutes selon $produitFiltre), chaque produit portant son propre
-  // texteTest.
-  assert.match(psLanceur, /\$Info = \$SzhProduits\[\$produitFiltre\]/,
+  // Et le libellé suit le produit de CET onglet : $info vient de $SzhProduits[$Jeton], le
+  // paramètre de Get-SzhInventaireProduit — appelée une fois par jeton de $SzhOrdreOnglets —
+  // et chaque produit garde son propre texteTest.
+  assert.match(psLanceur, /\$info = \$SzhProduits\[\$Jeton\]/,
     'le libellé ne se lit plus dans la table de produit');
   const iRevueProduit = psProduits.indexOf('revue = @{', psProduits.indexOf('$script:SzhProduits = @{'));
   const iZsProduit = psProduits.indexOf('zeitschrift = @{', iRevueProduit);
@@ -471,13 +481,27 @@ test('lanceur : la racine active s’affiche dans les DEUX racines', () => {
   assert.match(psProduits.slice(iZsProduit, iLivreProduit), /texteTest\s*=\s*'lanceur\.test\.zs'/,
     'le produit zeitschrift n’a plus son texteTest propre');
   // La hauteur du bloc est mesurée : un chemin long revient à la ligne, et tronqué il ne
-  // dirait plus rien. Mesurée par le libellé lui-même — TextRenderer ne coupe qu'aux
-  // espaces, et un chemin Windows n'en a pas.
-  assert.match(corps, /\$infos\.GetPreferredSize/, 'la hauteur du bloc n’est plus mesurée');
-  assert.match(psLanceur, /\$yBoutons = \$yInfos \+ \$hInfos \+ 2/,
-    'les boutons ne suivent plus la hauteur du bloc');
-  // Le titre de la fenêtre garde le jeton {racine} : deux endroits, pas un.
-  assert.match(psTextes, /'lanceur\.titre'\s*=\s*'[^']*\{racine\}/);
+  // dirait plus rien. Ce n'est plus l'étiquette de chaque onglet qui se mesure elle-même
+  // ($infos a disparu de cette mesure) : un TabControl impose la MÊME taille aux trois
+  // pages, donc un unique $mesure compare les trois textes AVANT que les pages n'existent.
+  assert.match(psLanceur, /\$mesure\.GetPreferredSize/, 'la hauteur du bloc n’est plus mesurée');
+  assert.match(psLanceur,
+    /foreach \(\$jeton in \$SzhOrdreOnglets\) \{[\s\S]{0,200}\$mesure\.GetPreferredSize/,
+    'la mesure ne compare plus les trois onglets entre eux');
+  // Les boutons descendent toujours de la hauteur du bloc, mais par une chaîne de positions
+  // (bande d'onglets comprise) et non plus un simple « + 2 » : la fenêtre n'a plus une page,
+  // elle en a quatre.
+  assert.match(psLanceur, /\$yNouveau\s*=\s*\$yInfos \+ \$hInfos \+ 6/,
+    'le bouton « Nouveau… » ne suit plus la hauteur du bloc d’informations');
+  assert.match(psLanceur, /\$yBoutons\s*=\s*8 \+ \$hOnglets \+ 10/,
+    'les boutons ne suivent plus la hauteur de la bande d’onglets, elle-même issue de $hInfos');
+  // Le titre de la fenêtre garde le jeton {racine} — mais un seul titre, commun aux trois
+  // onglets (lanceur.titre.suite), et non plus un par produit (lanceur.titre a disparu du
+  // lanceur, qui ne le lit plus).
+  assert.match(psTextes, /'lanceur\.titre\.suite'\s*=\s*'[^']*\{racine\}/,
+    'le titre commun aux trois onglets a perdu son jeton {racine}');
+  assert.match(psLanceur, /\$titreFenetre = \(T 'lanceur\.titre\.suite'/,
+    'le titre ne se lit plus dans lanceur.titre.suite');
 });
 
 // ---- La forme des fichiers ----------------------------------------------------------

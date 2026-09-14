@@ -791,10 +791,9 @@ const TEXTES_COCKPIT = {
     'tache.exportArticle': 'Exporter l’article',
     'version.divergence': 'Vous utilisez la version {0} du logiciel ; ce numéro a été créé avec la version {1}. Vérifiez les documents produits.',
     'version.divergence.bouton': 'Changer de version…',
-    'err.version.lancement': 'La fenêtre de choix de version n’a pas pu s’ouvrir ({0}). Passez par le menu Démarrer, « Revues SZH », bouton « Version du logiciel… ».',
-    'regl.dev': 'Mode développeur (dossiers de test)',
-    'regl.dev.oui': 'Activé',
-    'regl.dev.non': 'Désactivé',
+    'err.version.lancement': 'La fenêtre de choix de version n’a pas pu s’ouvrir ({0}). Passez par le menu Démarrer, « Revue & Zeitschrift », bouton « Version du logiciel… ».',
+    // regl.dev / regl.dev.oui / regl.dev.non : parties avec le groupe du formulaire, qui a
+    // déménagé dans l'onglet « Paramètres » du lanceur Windows.
     'err.dev.ecriture': 'Ce réglage n’a pas pu être enregistré ({0}) : il reprendra sa valeur précédente à la prochaine ouverture.',
     'table.titre': 'Tableau – {0}',
     'table.enregistrer': 'Enregistrer',
@@ -1166,6 +1165,36 @@ const TEXTES_COCKPIT = {
     // mécanismes indépendants les décident (voir l’en-tête de ce fichier), et une interface
     // à moitié dans chaque langue ne se devine pas, elle se dit.
     'regl.langue.discordance': 'Les formulaires sont en {0}, les menus de VSCodium en {1}. Choisissez la langue ci-dessus, puis redémarrez VSCodium : les deux se remettront d’accord.',
+    // ---- Vérificateur de traduction (lib/suggestion-traduction.js) ----
+    // Le réglage vit dans config.json et non dans les réglages de l'éditeur : trois
+    // panneaux le lisent, et la mise à jour du poste réécrit ces derniers en entier.
+    'regl.verifTrad': 'Vérificateur de traduction',
+    'regl.verifTrad.actif': 'Activé',
+    'regl.verifTrad.inactif': 'Désactivé',
+    // La pastille posée à côté de chaque intitulé traduisible, et le formulaire qu'elle
+    // ouvre. Le texte publié n'y est jamais modifié : on propose, quelqu'un lira.
+    'sugg.pastille': 'Proposer une autre traduction pour ce champ – rien n’est modifié, c’est une suggestion.',
+    'sugg.titre': 'Proposer une traduction',
+    'sugg.titre.un': 'Proposer une traduction – {0}',
+    'sugg.article': 'Article',
+    'sugg.champ': 'Champ',
+    'sugg.langue': 'Langue',
+    'sugg.actuel': 'Texte actuel',
+    'sugg.actuel.vide': '(vide)',
+    'sugg.propose': 'Traduction proposée',
+    'sugg.commentaire': 'Pourquoi ?',
+    'sugg.commentaire.aide': 'Ce qui vous fait proposer ce changement : un contresens, un terme de la maison, une tournure plus claire.',
+    'sugg.aide': 'Votre proposition est rangée dans le dossier « traduction » du numéro. Elle ne remplace rien : le texte publié ne bouge pas tant que personne n’a tranché.',
+    'sugg.enregistrer': 'Enregistrer la suggestion',
+    'sugg.annuler': 'Annuler',
+    'sugg.rien': 'Rien à proposer : le texte est inchangé et il n’y a pas de commentaire. Corrigez la proposition, ou dites en commentaire ce qui vous gêne.',
+    'sugg.enregistree': 'Suggestion enregistrée : {0}',
+    'sugg.err.ecriture': 'La suggestion n’a pas pu être écrite : {0}',
+    'sugg.err.champ': 'Ce champ ne se traduit pas : il n’y a rien à proposer ici.',
+    'sugg.champ.title': 'Titre',
+    'sugg.champ.subtitle': 'Sous-titre',
+    'sugg.champ.resume': 'Résumé',
+    'sugg.champ.keywords': 'Mots-clés',
     'apercu.barre.html': '$(preview) Aperçu : HTML',
     'apercu.barre.pdf': '$(file-pdf) Aperçu : PDF',
     'apercu.barre.tooltip': 'Basculer l’aperçu HTML ⇄ PDF (tous les articles)',
@@ -1325,7 +1354,7 @@ const TEXTES_COCKPIT = {
     'ctl.titre.manquant': 'Cet article n’a pas de titre. Ouvrez « Métadonnées des articles », saisissez-le, enregistrez, puis recompilez (Ctrl+S). La compilation s’arrête ici : le PDF sortirait avec un titre vide tout en s’annonçant accessible, et un lecteur d’écran n’aurait rien à annoncer.',
     'ctl.espaces': 'Un dossier d’article contient des espaces dans son nom, et la chaîne ne sait pas les suivre. Renommez-le sans espaces. La compilation s’arrête ici : l’article ne serait pas produit.',
     'ctl.aucunarticle': 'Ce numéro n’a encore aucun article. Déposez les documents Word dans le dossier « articles-word », puis enregistrez (Ctrl+S) : ils seront convertis.',
-    'ctl.pasrevue': 'Le dossier ouvert n’est pas un numéro de revue : il n’a pas de fichier de numéro. Ouvrez un numéro depuis le menu Démarrer, « Revues SZH ».',
+    'ctl.pasrevue': 'Le dossier ouvert n’est pas un numéro de revue : il n’a pas de fichier de numéro. Ouvrez un numéro depuis le menu Démarrer, « Revue & Zeitschrift ».',
     'ctl.balisage.simple': 'Le PDF de cet article est sorti avec un balisage simple, et non avec le balisage complet promis aux lecteurs d’écran. Recompilez ; si cela se reproduit, signalez-le : c’est la chaîne qui est en cause, pas l’article.',
     'ctl.balisage.aucun': 'Le PDF de cet article est sorti sans aucun balisage : un lecteur d’écran n’y trouvera ni titres, ni tableaux, ni ordre de lecture. Recompilez, et si cela se reproduit, signalez-le avant de publier – ce fichier ne peut pas porter la mention d’accessibilité.',
     'ctl.profil.rien': 'Ce numéro est réglé pour ne produire aucun document : c’est un choix enregistré dans ses métadonnées, pas une panne.',
@@ -1392,7 +1421,7 @@ const TEXTES_COCKPIT = {
     'reimport.annule': 'L’article « {0} » est revenu au texte d’avant.',
     'reimport.refuse': 'Rien n’a été touché sur l’article « {0} ».',
     'reimport.echec': 'Le remplacement du texte de l’article « {0} » n’a pas abouti. L’article est intact.',
-    'reimport.injoignable': 'Le remplacement du texte n’a pas pu être lancé sur ce poste. L’article n’a pas été touché. Fermez le numéro, rouvrez-le par le raccourci « Revues SZH », puis recommencez ; si cela résiste, signalez-le.',
+    'reimport.injoignable': 'Le remplacement du texte n’a pas pu être lancé sur ce poste. L’article n’a pas été touché. Fermez le numéro, rouvrez-le par le raccourci « Revue & Zeitschrift », puis recommencez ; si cela résiste, signalez-le.',
     // Le bouton de la carte, dans la vue « Word en attente » : court, l'infobulle dit le reste.
     'cmd.reimporter.court': 'Réimporter',
     'cmd.reimporter.tip': 'Remplacer le texte, les images et les tableaux de l’article par ceux de ce Word corrigé. La fiche, les portraits et les traductions sont conservés.',
@@ -1405,14 +1434,19 @@ const TEXTES_COCKPIT = {
     // Le badge « Dossier de test » de la barre d'état : un poste qui pointe sur
     // l'arborescence de test le dit, en couleur — la décision test/production reste ouverte.
     'etat.barre.test': 'Dossier de test',
-    'etat.barre.test.tooltip': 'Ce poste travaille dans le dossier de test : les numéros créés ici ne sont pas en production. Cliquer pour changer dans les réglages.',
-    'etat.barre.test.defaut': 'Aucune configuration de poste trouvée : le dossier de test est utilisé par défaut. Cliquer pour changer dans les réglages.',
+    'etat.barre.test.tooltip': 'Ce poste travaille dans le dossier de test : les numéros créés ici ne sont pas en production.',
+    'etat.barre.test.defaut': 'Aucune configuration de poste trouvée : le dossier de test est utilisé par défaut.',
+    // Le badge n'ouvre plus rien au clic depuis que le réglage a quitté le cockpit : cette
+    // phrase dit où il vit désormais.
+    'etat.barre.test.parametres': 'Se règle dans les Paramètres du lanceur « Revue & Zeitschrift », au menu Démarrer.',
   },
   de: {
     // Le badge « Testordner » : voir le commentaire côté français, même contrat.
     'etat.barre.test': 'Testordner',
-    'etat.barre.test.tooltip': 'Dieser Arbeitsplatz arbeitet im Testordner: hier angelegte Ausgaben sind nicht in der Produktion. Klicken, um es in den Einstellungen zu ändern.',
-    'etat.barre.test.defaut': 'Keine Arbeitsplatz-Konfiguration gefunden: der Testordner wird standardmässig verwendet. Klicken, um es in den Einstellungen zu ändern.',
+    'etat.barre.test.tooltip': 'Dieser Arbeitsplatz arbeitet im Testordner: hier angelegte Ausgaben sind nicht in der Produktion.',
+    'etat.barre.test.defaut': 'Keine Arbeitsplatz-Konfiguration gefunden: der Testordner wird standardmässig verwendet.',
+    // Kein Klick mehr auf das Badge: das Feld hat das Cockpit verlassen, diese Zeile sagt wohin.
+    'etat.barre.test.parametres': 'Wird im Startmenü unter «Revue & Zeitschrift», Reiter «Einstellungen», festgelegt.',
     // Majuscules voulues, comme en français : ce sont les en-têtes de section de l'arbre.
     'arbre.articles': 'ARTIKEL',
     'arbre.chapitres': 'KAPITEL',
@@ -2105,10 +2139,9 @@ const TEXTES_COCKPIT = {
     'tache.exportArticle': 'Artikel exportieren',
     'version.divergence': 'Sie verwenden Version {0} der Software; diese Ausgabe wurde mit Version {1} erstellt. Prüfen Sie die erzeugten Dokumente.',
     'version.divergence.bouton': 'Version wechseln…',
-    'err.version.lancement': 'Das Fenster zur Versionsauswahl liess sich nicht öffnen ({0}). Gehen Sie über das Startmenü, «Zeitschriften SZH», Schaltfläche «Version der Software…».',
-    'regl.dev': 'Entwicklermodus (Testordner)',
-    'regl.dev.oui': 'Ein',
-    'regl.dev.non': 'Aus',
+    'err.version.lancement': 'Das Fenster zur Versionsauswahl liess sich nicht öffnen ({0}). Gehen Sie über das Startmenü, «Revue & Zeitschrift», Schaltfläche «Version der Software…».',
+    // regl.dev / regl.dev.oui / regl.dev.non : dasselbe Feld ist in den Reiter
+    // «Einstellungen» des Windows-Starters umgezogen.
     'err.dev.ecriture': 'Diese Einstellung konnte nicht gespeichert werden ({0}): sie nimmt beim nächsten Öffnen wieder ihren vorherigen Wert an.',
     'table.titre': 'Tabelle – {0}',
     'table.enregistrer': 'Speichern',
@@ -2469,6 +2502,32 @@ const TEXTES_COCKPIT = {
     'cmyk.err.wsl': 'Die Druckbilder konnten nicht umgewandelt werden: das Verarbeitungswerkzeug hat nicht geantwortet. Sie bleiben unverändert, und das PDF kann mit falschen Farben herauskommen. Versuchen Sie es erneut, oder starten Sie «Aktualisierung des Redaktionstools» über das Startmenü.',
     'regl.langue': 'Sprache der Oberfläche',
     'regl.langue.discordance': 'Die Formulare sind auf {0}, die Menüs von VSCodium auf {1}. Wählen Sie oben die Sprache und starten Sie VSCodium neu: dann stimmen beide wieder überein.',
+    // Übersetzungsprüfer : siehe den französischen Kommentar, gleiche Abmachung.
+    'regl.verifTrad': 'Übersetzungsprüfer',
+    'regl.verifTrad.actif': 'Eingeschaltet',
+    'regl.verifTrad.inactif': 'Ausgeschaltet',
+    'sugg.pastille': 'Eine andere Übersetzung für dieses Feld vorschlagen – nichts wird geändert, es bleibt ein Vorschlag.',
+    'sugg.titre': 'Übersetzung vorschlagen',
+    'sugg.titre.un': 'Übersetzung vorschlagen – {0}',
+    'sugg.article': 'Artikel',
+    'sugg.champ': 'Feld',
+    'sugg.langue': 'Sprache',
+    'sugg.actuel': 'Jetziger Text',
+    'sugg.actuel.vide': '(leer)',
+    'sugg.propose': 'Vorgeschlagene Übersetzung',
+    'sugg.commentaire': 'Weshalb?',
+    'sugg.commentaire.aide': 'Was Sie zu diesem Vorschlag bewegt: ein Missverständnis, ein hauseigener Begriff, eine klarere Formulierung.',
+    'sugg.aide': 'Ihr Vorschlag wird im Ordner «traduction» der Ausgabe abgelegt. Er ersetzt nichts: der veröffentlichte Text bleibt stehen, bis jemand entschieden hat.',
+    'sugg.enregistrer': 'Vorschlag speichern',
+    'sugg.annuler': 'Abbrechen',
+    'sugg.rien': 'Nichts vorzuschlagen: der Text ist unverändert und es steht kein Kommentar da. Ändern Sie den Vorschlag, oder halten Sie im Kommentar fest, was Sie stört.',
+    'sugg.enregistree': 'Vorschlag gespeichert: {0}',
+    'sugg.err.ecriture': 'Der Vorschlag konnte nicht geschrieben werden: {0}',
+    'sugg.err.champ': 'Dieses Feld wird nicht übersetzt: hier gibt es nichts vorzuschlagen.',
+    'sugg.champ.title': 'Titel',
+    'sugg.champ.subtitle': 'Untertitel',
+    'sugg.champ.resume': 'Zusammenfassung',
+    'sugg.champ.keywords': 'Schlagwörter',
     'apercu.barre.html': '$(preview) Vorschau: HTML',
     'apercu.barre.pdf': '$(file-pdf) Vorschau: PDF',
     'apercu.barre.tooltip': 'Vorschau HTML ⇄ PDF umschalten (alle Artikel)',
@@ -2607,7 +2666,7 @@ const TEXTES_COCKPIT = {
     'ctl.titre.manquant': 'Dieser Artikel hat keinen Titel. Öffnen Sie «Metadaten der Artikel», erfassen Sie ihn, speichern Sie und kompilieren Sie neu (Ctrl+S). Die Kompilierung bricht hier ab: das PDF käme mit leerem Titel heraus und würde sich dennoch als barrierefrei ausgeben – ein Screenreader hätte nichts anzusagen.',
     'ctl.espaces': 'Ein Artikelordner hat Leerzeichen im Namen, und die Kette kann ihnen nicht folgen. Benennen Sie ihn ohne Leerzeichen um. Die Kompilierung bricht hier ab: der Artikel würde nicht erzeugt.',
     'ctl.aucunarticle': 'Diese Ausgabe hat noch keinen Artikel. Legen Sie die Word-Dokumente in den Ordner «articles-word» und speichern Sie (Ctrl+S): sie werden dann umgewandelt.',
-    'ctl.pasrevue': 'Der geöffnete Ordner ist keine Ausgabe: die Ausgabedatei fehlt. Öffnen Sie eine Ausgabe über das Startmenü, «Zeitschriften SZH».',
+    'ctl.pasrevue': 'Der geöffnete Ordner ist keine Ausgabe: die Ausgabedatei fehlt. Öffnen Sie eine Ausgabe über das Startmenü, «Revue & Zeitschrift».',
     'ctl.balisage.simple': 'Das PDF dieses Artikels wurde nur einfach getaggt, nicht mit dem vollständigen Tagging, das Screenreadern versprochen ist. Kompilieren Sie neu; tritt es wieder auf, melden Sie es: die Ursache liegt in der Kette, nicht im Artikel.',
     'ctl.balisage.aucun': 'Das PDF dieses Artikels wurde ohne jedes Tagging erzeugt: ein Screenreader findet darin weder Überschriften noch Tabellen noch eine Leseordnung. Kompilieren Sie neu, und melden Sie es vor der Veröffentlichung, falls es wieder auftritt – diese Datei darf den Hinweis auf Barrierefreiheit nicht tragen.',
     'ctl.profil.rien': 'Diese Ausgabe ist so eingestellt, dass sie kein Dokument erzeugt: das ist eine in ihren Metadaten gespeicherte Entscheidung, keine Störung.',
@@ -2664,7 +2723,7 @@ const TEXTES_COCKPIT = {
     'reimport.annule': 'Der Artikel «{0}» ist zum vorherigen Text zurückgekehrt.',
     'reimport.refuse': 'Beim Artikel «{0}» wurde nichts angetastet.',
     'reimport.echec': 'Das Ersetzen des Textes des Artikels «{0}» ist nicht gelungen. Der Artikel ist unversehrt.',
-    'reimport.injoignable': 'Das Ersetzen des Textes konnte auf diesem Arbeitsplatz nicht gestartet werden. Der Artikel wurde nicht angetastet. Schliessen Sie die Ausgabe, öffnen Sie sie über die Verknüpfung «Revues SZH» erneut und versuchen Sie es nochmals; hält es sich, melden Sie es.',
+    'reimport.injoignable': 'Das Ersetzen des Textes konnte auf diesem Arbeitsplatz nicht gestartet werden. Der Artikel wurde nicht angetastet. Schliessen Sie die Ausgabe, öffnen Sie sie über die Verknüpfung «Revue & Zeitschrift» erneut und versuchen Sie es nochmals; hält es sich, melden Sie es.',
     'cmd.reimporter.court': 'Neu importieren',
     'cmd.reimporter.tip': 'Text, Bilder und Tabellen des Artikels durch die dieser korrigierten Word-Datei ersetzen. Metadaten, Porträts und Übersetzungen bleiben erhalten.',
     'reimport.choisirWord': 'Word-Datei wählen',
@@ -2691,11 +2750,11 @@ const TEXTES_COCKPIT = {
 //                        entièrement les réglages de l'éditeur à chaque mise à jour, et le
 //                        choix du rédacteur disparaissait avec eux — l'outil remis à jour
 //                        reparlait français sur un poste allemand.
-//   4. state.json        la langue du dernier lanceur ouvert (« Zeitschriften SZH » ->
-//                        allemand, « Revues SZH » -> français), écrite par
-//                        Set-SzhLangueProduit. C'est le seul signal automatique qui vaille
-//                        quelque chose ici : Windows et VSCodium sont en anglais sur ces
-//                        postes, et ne disent donc rien de l'équipe qui s'en sert.
+//   4. state.json        la langue choisie par le rédacteur dans l'onglet « Paramètres »
+//                        du lanceur, écrite par Set-SzhLangueInterface. Ce n'est plus un
+//                        signal automatique déduit du raccourci cliqué : la fenêtre à onglets
+//                        est unique et parle une seule langue, quel que soit le produit
+//                        ouvert — ce choix explicite en décide.
 //   5. VSCodium          sa langue d'affichage, quand un pack de langue est installé.
 //   6. Windows           sa langue d'affichage, par la locale du système.
 //

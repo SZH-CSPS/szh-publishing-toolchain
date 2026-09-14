@@ -159,6 +159,9 @@ lib/
                         que le synchroniseur pose sur ses dossiers marque-place retiré (fs
                         ne le retire que des fichiers), puis quelques reprises espacées pour
                         les poignées qui tombent d'elles-mêmes. Sans vscode
+  suggestion-traduction.js  dossier traduction/ du numéro : une SUGGESTION de traduction par
+                        fichier JSON, jamais un fichier commun (OneDrive), et leur lecture.
+                        Rien n'y est publié et aucun texte n'y est modifié. Sans vscode
   table-model.js        analyse, sérialisation et opérations du modèle de tableau
   traduction.js         sidecar <slug>.traduction.yaml et suivi des traductions
   verrou.js             lecture seule du dossier quand le numéro est gelé

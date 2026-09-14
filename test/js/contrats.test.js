@@ -1232,7 +1232,12 @@ test('chaque formulaire qui écrit enregistre automatiquement', () => {
 test('chaque webview reçoit le socle visuel, et ses fragments existent', () => {
   const src = lire('vscodium-extension', 'szh-cockpit', 'extension.js');
   const appels = [...src.matchAll(/construireHtml\('([a-z-]+)', nonce, \{([\s\S]{0,700}?)\}\);/g)];
-  assert.strictEqual(appels.length, 11, 'appels à construireHtml : ' + appels.length);
+  // Le compte est en dur, et c'est voulu : il tient lieu d'inventaire. Une page ajoutée
+  // sans passer par construireHtml n'apparaîtrait pas ici et n'aurait pas le socle ; une
+  // page ajoutée correctement fait échouer ce chiffre, et c'est le moment de relire les
+  // assertions ci-dessous plutôt que de bumper le nombre sans regarder. Douzième page :
+  // « suggestion », le formulaire du mode vérificateur de traduction (14.09.2026).
+  assert.strictEqual(appels.length, 12, 'appels à construireHtml : ' + appels.length);
   for (const [, page, corps] of appels) {
     assert.ok(/cssPartage:\s*\[[^\]]*'_design\.css'/.test(corps), 'page sans le socle : ' + page);
     for (const m of corps.matchAll(/'(_[a-z]+\.(?:css|js))'/g)) {

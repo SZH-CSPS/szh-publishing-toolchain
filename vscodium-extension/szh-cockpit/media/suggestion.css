@@ -1,0 +1,51 @@
+/* Formulaire de suggestion de traduction. Corps de page, carte, champs et boutons viennent
+   du socle (_design.css : body/h1 §0, .szh-barre §3, .carte §9) ; il ne reste ici que de
+   quoi dire de QUOI l'on parle, et montrer le texte actuel sans laisser croire qu'on
+   l'édite. Page courte : la largeur de lecture par défaut suffit. */
+
+/* De quel article, de quel champ, de quelle langue : trois lignes en tête, en paires
+   intitulé/valeur. La grille les aligne, ce qu'une suite de <p> ne ferait pas. */
+.sugg-quoi {
+  display: grid; grid-template-columns: auto 1fr; gap: var(--e1) var(--e3);
+  margin: var(--e4) 0; font-size: var(--t-libelle);
+}
+.sugg-quoi dt { font-weight: 700; color: var(--encre-2); }
+.sugg-quoi dd { margin: 0; overflow-wrap: anywhere; }
+.sugg-quoi dd.slug { font-family: var(--vscode-editor-font-family, monospace); }
+
+/* L'intitulé du texte actuel : même aspect que les <label> de la carte, mais ce n'en est
+   pas un — il ne désigne aucun champ de saisie, et un label pointant un bloc de lecture
+   ferait promettre au lecteur d'écran une édition qui n'existe pas. */
+.sugg-libelle {
+  margin: 0 0 var(--e1);
+  font-size: var(--t-libelle); font-weight: 700; letter-spacing: .02em; color: var(--encre);
+}
+
+/* Le texte actuel : lisible, sélectionnable, jamais éditable — il vit dans la fiche, et ce
+   panneau n'y touche pas. Même traitement que le texte source du panneau « Traductions »,
+   d'où le pointillé : une bordure pleine se lirait comme un champ. Le retour à la ligne est
+   conservé : une liste de mots-clés arrive un mot par ligne. */
+.source {
+  white-space: pre-wrap; padding: var(--e2) var(--e3); border-radius: var(--rayon-mini);
+  background: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, .1));
+  border: 1px dashed var(--filet); color: var(--encre);
+}
+.source.vide { color: var(--encre-2); font-style: italic; border-style: dotted; }
+.source:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* La carte du formulaire : un seul bloc, sans la tête ni l'ombre d'une liste de cartes. */
+.carte {
+  background: var(--surface); border: 1px solid var(--filet); border-radius: var(--rayon);
+  padding: var(--e3) var(--e4) var(--e4); margin: 0 0 var(--e4);
+}
+.carte .sugg-libelle { margin-top: var(--e4); }
+.carte .sugg-libelle:first-child { margin-top: 0; }
+.aide { margin: var(--e1) 0 0; font-size: var(--t-mini); color: var(--encre-2); }
+
+/* La barre est en bas ici, et non collée en haut : le geste se termine par elle. */
+.szh-barre {
+  position: static;
+  border-top: 1px solid var(--filet); border-bottom: 0;
+  padding: var(--e3) 0 var(--e2); margin: 0;
+}
+.szh-barre-etat.erreur { color: var(--vscode-inputValidation-errorForeground, var(--danger)); }

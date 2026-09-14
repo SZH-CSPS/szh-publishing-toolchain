@@ -81,7 +81,7 @@ function lancerArchivage(action, racine) {
   return lancerScriptPowerShell(SCRIPT_ARCHIVAGE, args);
 }
 
-// Ouvre le sélecteur de versions du lanceur « Revues SZH », seule implémentation du choix
+// Ouvre le sélecteur de versions du lanceur « Revue & Zeitschrift », seule implémentation du choix
 // de version. Rien ne remonte de ce lancement : le lanceur journalise son entrée dans
 // C:\ProgramData\SZH\logs, unique trace si l'utilisateur dit que rien ne se passe.
 function lancerChoixVersion() {
@@ -257,6 +257,42 @@ function configAvecLangue(cfg, langue) {
   return sortie;
 }
 
+// ---- Vérificateur de traduction : le mode qui pose une pastille sur les champs --
+//
+// Ici et non dans les réglages de l'éditeur, pour les deux raisons de `vueArticles`
+// (lib/articles.js) : trois panneaux le lisent — fiches, vérification de l'import,
+// traduction — et la mise à jour du poste réécrit en entier les réglages de VSCodium, si
+// bien que le mode s'y éteindrait à chaque mise à jour.
+//
+// Le défaut est « éteint » : la pastille est un outil de relecture, pas l'état normal d'un
+// formulaire de saisie. Un JSON écrit à la main est toléré — true, "true" ou 1 — par la
+// même normalisation que l'emplacement des revues, pour qu'un `"verifTraduction": "true"`
+// ne se lise pas faux en silence.
+const CLE_VERIF_TRADUCTION = 'verifTraduction';
+
+// Résolution pure — la config lui est passée — pour être éprouvable sans écrire dans
+// C:\ProgramData. Absente ou illisible : éteint.
+function resoudreVerifTraduction(cfg) {
+  if (!cfg || typeof cfg !== 'object') { return false; }
+  return normaliserBooleenConfig(cfg[CLE_VERIF_TRADUCTION]) === true;
+}
+
+function lireVerifTraduction() {
+  return resoudreVerifTraduction(lireConfigPoste());
+}
+
+// Pure elle aussi ; c'est l'appelant qui appelle ecrireConfigPoste. La clé est toujours
+// écrite en booléen propre, quelle que soit la forme reçue à la lecture.
+function configAvecVerifTraduction(cfg, actif) {
+  const sortie = Object.assign({}, (cfg && typeof cfg === 'object') ? cfg : {});
+  sortie[CLE_VERIF_TRADUCTION] = actif === true;
+  return sortie;
+}
+
+function ecrireVerifTraduction(actif) {
+  return ecrireConfigPoste((avant) => configAvecVerifTraduction(avant, actif === true));
+}
+
 // Noms d'avant, gardés pour l'hôte et ses réglages : « mode développeur » n'était que le nom
 // de l'emplacement de test.
 function lireModeDeveloppeur() {
@@ -274,6 +310,8 @@ module.exports = {
   EMPLACEMENT_TEST, EMPLACEMENT_PRODUCTION, normaliserBooleenConfig,
   resoudreEmplacementRevues, lireEmplacementRevues, configAvecEmplacement, configAvecLangue,
   ecrireEmplacementRevues, lireModeDeveloppeur, ecrireModeDeveloppeur,
+  CLE_VERIF_TRADUCTION, resoudreVerifTraduction, configAvecVerifTraduction,
+  lireVerifTraduction, ecrireVerifTraduction,
   versionInstallee, versionsDivergent, tailleDossier,
   lancerArchivage, lancerChoixVersion
 };

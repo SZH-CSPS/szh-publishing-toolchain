@@ -257,6 +257,7 @@ function Get-SzhRapportResume {
     'COMPIL-ECHEC' = @{ fr = 'La compilation s’’est arrêtée sans produire de résultat exploitable ; le journal de la tâche en donne le détail.'; de = 'Die Kompilierung wurde beendet, ohne ein brauchbares Ergebnis zu liefern; das Aufgabenprotokoll enthält die Einzelheiten.' }
     'COCKPIT-EXCEPTION' = @{ fr = 'Une erreur inattendue est survenue dans l’’extension du cockpit ; VSCodium reste ouvert, seule une fonctionnalité peut être affectée.'; de = 'In der Cockpit-Erweiterung ist ein unerwarteter Fehler aufgetreten; VSCodium bleibt geöffnet, nur eine einzelne Funktion kann betroffen sein.' }
     'RAPPORT-ECHEC-ECRITURE' = @{ fr = 'L’’écriture d’’un rapport d’’erreur a elle-même échoué ; par construction, cet échec n’’est jamais transformé en nouveau rapport, seul le journal local le garde.'; de = 'Das Schreiben eines Fehlerberichts ist selbst fehlgeschlagen; dieser Fehler wird bewusst nicht erneut als Bericht erzeugt, nur das lokale Protokoll hält ihn fest.' }
+    'LANCEUR-SIGNALEMENT' = @{ fr = 'Une personne a signalé elle-même un problème depuis l’’onglet « Journal » du lanceur ; le message est celui qu’’elle a écrit, et le journal joint celui qu’’elle a choisi.'; de = 'Eine Person hat ein Problem selbst über die Registerkarte «Protokoll» des Starters gemeldet; die Meldung ist ihr eigener Text, das beigefügte Protokoll das von ihr gewählte.' }
   }
 
   if ($table.ContainsKey($Code)) {
@@ -269,7 +270,8 @@ function Get-SzhRapportResume {
 # Codes connus de la table (pour Test-SzhRapportValide, sans dupliquer les textes complets).
 function Get-SzhRapportCodesConnus {
   return @('LANCEUR-TRAP', 'LANCEUR-CODIUM-ABSENT', 'ANCRAGE-INTROUVABLE', 'MAJ-ETAPE-ECHEC',
-    'MAJ-ECHEC', 'ARCHIVAGE-ECHEC', 'COMPIL-ECHEC', 'COCKPIT-EXCEPTION', 'RAPPORT-ECHEC-ECRITURE')
+    'MAJ-ECHEC', 'ARCHIVAGE-ECHEC', 'COMPIL-ECHEC', 'COCKPIT-EXCEPTION', 'RAPPORT-ECHEC-ECRITURE',
+    'LANCEUR-SIGNALEMENT')
 }
 
 # =========================================================================================

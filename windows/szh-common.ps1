@@ -57,18 +57,35 @@ $script:SzhDistro     = 'SZH-Publishing'
 $script:SzhSupport    = 'robin.morand@szh.ch'          # contact affiché en cas de problème
 
 # ---- Langue de l'interface ----
-# Trois sources, par ordre de priorité : la variable d'environnement (pour un essai), la
-# préférence enregistrée par le dernier lanceur ouvert, puis la langue d'affichage de
-# Windows. Anglais en dernier recours seulement : les postes d'ici affichent Windows en
-# anglais, et le lanceur parlait donc anglais à des équipes francophone et germanophone.
+# Une seule langue pour toute la fenêtre du lanceur, et pour tout ce que la chaîne affiche.
+# Cinq sources, de la plus devinée à la plus explicite, la dernière posée l'emportant :
+#
+#   1. l'allemand, en dernier recours — et non l'anglais. Les Windows d'ici sont en anglais,
+#      et la cascade retombait donc sur la seule langue qu'aucune des deux équipes n'emploie.
+#      L'allemand est celle de la majorité des postes ; c'est aussi la règle que suit
+#      l'onglet par défaut du lanceur (Get-SzhOngletDefaut, szh-produits.ps1).
+#   2. la langue d'affichage de Windows, quand elle dit fr ou de.
+#   3. state.json — l'héritage. Avant l'onglet « Paramètres », c'est là que le lanceur
+#      écrivait la langue de son produit. La valeur qui s'y trouve déjà sur un poste en
+#      service reste donc la bonne, et personne ne voit sa langue changer à la mise à jour.
+#      C'est aussi la clé que lit le cockpit dans l'éditeur (lib/i18n.js), et le lanceur
+#      continue d'y écrire en miroir — voir Set-SzhLangueInterface.
+#   4. etat-utilisateur.json — le choix fait à la main dans l'onglet « Paramètres ». Rangé
+#      par compte et non par poste : deux personnes qui se partagent un poste ne se changent
+#      plus la langue l'une à l'autre.
+#   5. $env:SZH_LANGUE — un essai, pour lire un même message dans les deux langues sans rien
+#      toucher au poste. Garde le dernier mot.
+#
 # Textes allemands en orthographe suisse (ss, pas de ß).
-$script:SzhLangue = 'en'
+$script:SzhLangue = 'de'
 try {
   $langueUi = (Get-UICulture).TwoLetterISOLanguageName.ToLower()
   if ($langueUi -eq 'fr' -or $langueUi -eq 'de') { $script:SzhLangue = $langueUi }
 } catch { }
-# Lecture directe, sans Get-SzhState : la table des textes est utilisée dès le début du
-# script, avant que les fonctions de plus bas soient définies pour tout le monde.
+# Lectures directes, sans Get-SzhState ni Get-SzhEtatUtilisateur : la table des textes est
+# utilisée dès le début du script, avant que les fonctions de plus bas soient définies pour
+# tout le monde. Même raison pour le chemin de l'état par compte, recalculé ici à la main —
+# %LOCALAPPDATA% seulement, un contexte sans profil n'ayant de toute façon aucune préférence.
 try {
   if (Test-Path $SzhStateFile) {
     $etatLangue = (Get-Content $SzhStateFile -Raw -Encoding UTF8 | ConvertFrom-Json)
@@ -76,31 +93,116 @@ try {
     if (@('fr', 'de') -contains $memo) { $script:SzhLangue = $memo }
   }
 } catch { }
+try {
+  if ([string]$env:LOCALAPPDATA) {
+    $fichierPrefLangue = Join-Path $env:LOCALAPPDATA 'SZH\etat-utilisateur.json'
+    if (Test-Path $fichierPrefLangue) {
+      $prefLangue = (Get-Content $fichierPrefLangue -Raw -Encoding UTF8 | ConvertFrom-Json)
+      $choisie = [string]$prefLangue.langueInterface
+      if (@('fr', 'de') -contains $choisie) { $script:SzhLangue = $choisie }
+    }
+  }
+} catch { }
 if ($env:SZH_LANGUE -and (@('fr', 'de', 'en') -contains $env:SZH_LANGUE.ToLower())) {
   $script:SzhLangue = $env:SZH_LANGUE.ToLower()
 }
 
 
-# « Revues SZH » parle français, « Zeitschriften SZH » allemand : chaque lanceur s'adresse à
-# son équipe, pas à la langue de Windows. Vaut aussi pour ce qui n'a pas de produit, la mise
-# à jour surtout, qui s'ouvre seule. $env:SZH_LANGUE garde le dernier mot, pour un essai.
-#
-# ⚠ Le livre est l'exception : il s'écrit dans sa propre langue (`lang:` de buch.yaml), jamais
-#   celle d'un produit. Le lanceur « Books SZH-CSPS » appelle quand même cette fonction, pour
-#   rester au même endroit que les deux autres, mais elle n'y change rien : $SzhLangue garde
-#   ce que la cascade du haut du fichier a déjà résolu.
-function Set-SzhLangueProduit([string]$Produit) {
-  if (([string]$Produit).ToLower() -eq 'livre') { return }
-  $voulue = if (([string]$Produit).ToLower() -eq 'zeitschrift') { 'de' } else { 'fr' }
-  if ($env:SZH_LANGUE -and (@('fr', 'de', 'en') -contains $env:SZH_LANGUE.ToLower())) { return }
-  $script:SzhLangue = $voulue
+# La langue que la cascade donnerait sans aucune préférence : Windows s'il parle fr ou de,
+# l'allemand sinon. Ne lit ni state.json ni l'état par compte, exprès — ce sont justement
+# des préférences, et « automatique » veut dire « sans préférence ». Sert au mode
+# automatique de l'onglet « Paramètres », et à l'onglet par défaut du lanceur.
+function Get-SzhLangueAutomatique {
   try {
-    $etat = Get-SzhState
-    if (-not $etat) { $etat = New-Object psobject }
-    if ($etat.PSObject.Properties['langue']) { $etat.langue = $voulue }
-    else { $etat | Add-Member -MemberType NoteProperty -Name 'langue' -Value $voulue }
-    Save-SzhState $etat
-  } catch { }        # préférence non écrite : la session courante reste dans la bonne langue
+    $ui = (Get-UICulture).TwoLetterISOLanguageName.ToLower()
+    if ($ui -eq 'fr' -or $ui -eq 'de') { return $ui }
+  } catch { }
+  return 'de'
+}
+
+# Le choix fait dans l'onglet « Paramètres » du lanceur. '' (ou toute valeur inconnue) vaut
+# « automatique ». Écrit à DEUX endroits, et ce n'est pas une redondance :
+#   * etat-utilisateur.json (par compte) porte le CHOIX, « automatique » compris — une
+#     chaîne vide, qui rend la main à la langue de Windows ;
+#   * state.json (par poste) porte la langue RÉSOLUE, jamais vide. C'est le miroir que lit
+#     le cockpit dans l'éditeur, qui ne voit pas l'état par compte. Sans lui, choisir
+#     l'allemand dans le lanceur laisserait les panneaux de l'éditeur en français.
+# Rend la langue résolue. Ne lève jamais : une préférence non écrite se represente à la
+# prochaine ouverture, alors qu'une exception ici fermerait le lanceur.
+function Set-SzhLangueInterface([string]$Langue) {
+  $choix = ([string]$Langue).ToLower()
+  if (-not (@('fr', 'de') -contains $choix)) { $choix = '' }
+  $resolue = $choix
+  if (-not $resolue) { $resolue = Get-SzhLangueAutomatique }
+  $script:SzhLangue = $resolue
+  try {
+    $pref = Get-SzhEtatUtilisateur
+    if (-not $pref) { $pref = New-Object psobject }
+    if ($pref.PSObject.Properties['langueInterface']) { $pref.langueInterface = $choix }
+    else { $pref | Add-Member -MemberType NoteProperty -Name 'langueInterface' -Value $choix }
+    [void](Save-SzhEtatUtilisateur $pref)
+  } catch { }
+  try { Set-SzhStateCles @{ langue = $resolue } } catch { }
+  return $resolue
+}
+
+# Le choix d'onglet par défaut, lu et écrit au même endroit que la langue (par compte).
+# '' = automatique. Une valeur inconnue est traitée comme '' : un état écrit par une version
+# ultérieure, ou abîmé, ne doit pas empêcher le lanceur de s'ouvrir.
+function Get-SzhOngletChoisi {
+  try {
+    $pref = Get-SzhEtatUtilisateur
+    $choix = (Get-SzhEtatUtilisateurChamp $pref 'ongletDefaut').ToLower()
+    if ($SzhProduits.ContainsKey($choix)) { return $choix }
+  } catch { }
+  return ''
+}
+
+function Set-SzhOngletChoisi([string]$Produit) {
+  $choix = ([string]$Produit).ToLower()
+  if (-not $SzhProduits.ContainsKey($choix)) { $choix = '' }
+  try {
+    $pref = Get-SzhEtatUtilisateur
+    if (-not $pref) { $pref = New-Object psobject }
+    if ($pref.PSObject.Properties['ongletDefaut']) { $pref.ongletDefaut = $choix }
+    else { $pref | Add-Member -MemberType NoteProperty -Name 'ongletDefaut' -Value $choix }
+    [void](Save-SzhEtatUtilisateur $pref)
+  } catch { }
+  return $choix
+}
+
+# Réglage « mise à jour silencieuse », rangé par COMPTE, même endroit et même mécanique que
+# ongletDefaut ci-dessus (etat-utilisateur.json). Pas par poste : la tâche planifiée qui
+# déclenche la vérification (update-launcher.ps1) tourne dans la session de chacun, et
+# update.ps1 met aussi à jour des choses propres au compte (la distribution WSL, les
+# extensions de l'éditeur) -- un réglage commun aurait rendu muette la mise à jour d'un compte
+# qui n'en voulait pas, ou bavarde chez celui qui l'avait demandée. Défaut $false : sans ce
+# choix exprès, la fenêtre reste visible comme avant ce réglage.
+function Get-SzhMajSilencieuse {
+  try {
+    $pref = Get-SzhEtatUtilisateur
+    if ($pref -and $pref.PSObject.Properties['majSilencieuse']) {
+      # Resolve-SzhBooleenConfig (szh-produits.ps1) : un JSON écrit à la main peut porter
+      # "true"/"false" en chaîne plutôt qu'un booléen natif.
+      $v = Resolve-SzhBooleenConfig $pref.majSilencieuse
+      if ($null -ne $v) { return $v }
+    }
+  } catch { }
+  return $false
+}
+
+# Ne lève jamais : un état non écrit fait revoir le réglage à la prochaine ouverture de
+# l'onglet « Paramètres », alors qu'une exception ici interromprait le lanceur pour un simple
+# interrupteur.
+function Set-SzhMajSilencieuse([bool]$Actif) {
+  try {
+    $pref = Get-SzhEtatUtilisateur
+    if (-not $pref) { $pref = New-Object psobject }
+    if ($pref.PSObject.Properties['majSilencieuse']) { $pref.majSilencieuse = $Actif }
+    else { $pref | Add-Member -MemberType NoteProperty -Name 'majSilencieuse' -Value $Actif }
+    [void](Save-SzhEtatUtilisateur $pref)
+  } catch { }
+  return $Actif
 }
 
 # T 'clé' @(args…) -> texte dans la langue courante, fallback anglais, sinon la clé.
@@ -169,9 +271,9 @@ function Save-SzhState($Etat) {
 }
 
 # Écrit les clés données sans effacer le reste du fichier. state.json porte aussi la langue
-# choisie par le dernier lanceur ouvert (Set-SzhLangueProduit), et une réécriture complète
-# l'effaçait à chaque mise à jour : sur ces postes, dont Windows est en anglais, le lanceur
-# reparlait anglais à une équipe francophone jusqu'au prochain clic sur « Revues SZH ».
+# de l'interface (Set-SzhLangueInterface, plus haut), et une réécriture complète l'effaçait à
+# chaque mise à jour : sur ces postes, dont Windows est en anglais, le lanceur reparlait
+# anglais à une équipe francophone jusqu'au prochain passage dans l'onglet « Paramètres ».
 # $Retirer : les clés d'une version antérieure qui ne veulent plus rien dire là où elles
 # sont. `rootfs` et `vsix` ont déménagé dans l'état par utilisateur, et les laisser ici
 # donnerait deux vérités pour une même question — celle qui a fait croire à un compte neuf
@@ -545,6 +647,75 @@ function Write-SzhLog([string]$Message) {
   New-Item -ItemType Directory -Force -Path $SzhLogs | Out-Null
   $ligne = ('{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message)
   Add-Content -Path (Join-Path $SzhLogs ('szh-{0}.log' -f (Get-Date -Format 'yyyy-MM'))) -Value $ligne -Encoding UTF8
+}
+
+# ---- Journaux de mise à jour (transcripts d'update.ps1) ----
+#
+# Chaque passage d'update.ps1 pose son propre transcript complet (Start-Transcript, ~ligne 176
+# de update.ps1) : update-yyyyMMdd-HHmmss.log dans $SzhLogs. C'est la seule relecture possible
+# d'une fenêtre déjà refermée.
+#
+# Le verdict ne devine rien, il s'appuie sur ce qu'update.ps1 écrit RÉELLEMENT juste avant
+# Stop-Transcript, dans ses trois issues (vérifié contre le code, pas supposé) :
+#   * fin heureuse (~ligne 642) : `Write-Host (T 'maj.fini' …)`, qui commence par « ✓ » dans
+#     les trois langues (szh-textes.ps1 : fr/de/en de 'maj.fini' partagent ce seul caractère) ;
+#   * fin malheureuse mais partielle (~ligne 632) : `Write-Host (T 'maj.partiel' …)`, qui
+#     commence par « ⚠ » dans les trois langues -- un échec tout de même (exit 1) ;
+#   * fin malheureuse totale (bloc catch, ~ligne 651) : RIEN n'est écrit à l'écran avant
+#     Stop-Transcript -- seul Write-SzhLog part, et dans le journal mensuel, pas dans ce
+#     transcript-ci. Un tel fichier ne porte donc ni « ✓ » ni « ⚠ » : c'est justement
+#     l'absence du premier qui le désigne comme un échec.
+# Stop-Transcript écrit lui-même, en toute fin de fichier, un pied de page fixe (vérifié sur ce
+# poste : « Windows PowerShell transcript end », suivi de « End time: … »). Sa présence dit que
+# Stop-Transcript est allé au bout, l'une ou l'autre issue ; son absence dit un transcript
+# tronqué -- processus tué, disque plein, fichier fabriqué à moitié -- dont le contenu ne
+# permet de rien conclure.
+#
+# D'où, sur la QUEUE du fichier seulement (-Tail : ces transcripts peuvent grossir, et les deux
+# marqueurs qui comptent sont toujours dans les dernières lignes) :
+#   pas de pied de page Stop-Transcript -> 'inconnu'
+#   pied de page présent, et « ✓ »      -> 'ok'
+#   pied de page présent, sans « ✓ »    -> 'echec'   (partiel ⚠, ou total silencieux)
+function Get-SzhVerdictJournalMaj([string]$Chemin) {
+  try {
+    $fin = Get-Content -LiteralPath $Chemin -Tail 40 -Encoding UTF8 -ErrorAction Stop
+  } catch { return 'inconnu' }
+  $texte = [string]($fin -join "`n")
+  if ($texte -notmatch 'Windows PowerShell transcript end') { return 'inconnu' }
+  if ($texte -match '✓') { return 'ok' }
+  return 'echec'
+}
+
+# Ne lève jamais : un dossier de journaux absent (poste jamais mis à jour) rend un tableau
+# vide, pas une erreur.
+function Get-SzhJournauxMaj {
+  param([int]$Combien = 10)
+  $resultats = New-Object System.Collections.ArrayList
+  $fichiers = @()
+  try {
+    $fichiers = @(Get-ChildItem -LiteralPath $SzhLogs -Filter 'update-*.log' -File -ErrorAction Stop)
+  } catch { $fichiers = @() }
+  foreach ($f in $fichiers) {
+    # La date vient du NOM (update-yyyyMMdd-HHmmss.log), pas de la date du fichier : une copie
+    # (sauvegarde, pièce jointe à un ticket) change LastWriteTime sans changer le moment réel
+    # de la mise à jour. Repli sur LastWriteTime si le nom ne se lit pas (fichier renommé à la
+    # main, ou d'un format plus ancien).
+    $quand = $f.LastWriteTime
+    if ($f.Name -match '^update-(\d{8})-(\d{6})\.log$') {
+      try {
+        $quand = [datetime]::ParseExact($Matches[1] + $Matches[2], 'yyyyMMddHHmmss',
+          [Globalization.CultureInfo]::InvariantCulture)
+      } catch { $quand = $f.LastWriteTime }
+    }
+    [void]$resultats.Add([pscustomobject]@{
+      chemin  = $f.FullName
+      nom     = $f.Name
+      date    = $quand
+      taille  = [long]$f.Length
+      verdict = (Get-SzhVerdictJournalMaj $f.FullName)
+    })
+  }
+  return @($resultats | Sort-Object date -Descending | Select-Object -First ([Math]::Max(0, $Combien)))
 }
 
 # ---- Téléchargement (barre de progression) ----
@@ -1146,6 +1317,14 @@ function Get-SzhCourriel {
   return [pscustomobject]@{ sujet = $sujetFinal; corps = $corpsFinal }
 }
 
+# Mode sans interaction (update.ps1 -Silencieux, posé par update-launcher.ps1 quand
+# Get-SzhMajSilencieuse est actif) : cette fenêtre n'existe pour personne, aucune touche ne
+# viendra jamais. $Host.UI.RawUI.ReadKey, plus bas dans Show-SzhErreur, bloquerait alors le
+# processus POUR TOUJOURS -- mutex de mise à jour compris, qu'aucune passe suivante ne
+# reprendrait plus jamais. Faux par défaut : une fenêtre ouverte à la main garde son écran
+# d'erreur interactif exactement comme avant ce réglage.
+$script:SzhSansInteraction = $false
+
 # Écran d'erreur final : message calme, contact, e-mail pré-rempli, accès au journal.
 # -Code distingue les deux appelants d'update.ps1 (échec partiel d'une étape, ou échec total)
 # pour le rapport d'erreur automatique silencieux (docs/RAPPORTS-ERREUR.md, szh-rapport.ps1) --
@@ -1163,6 +1342,15 @@ function Show-SzhErreur {
   Write-Host ('  ' + (T 'err.rassure')) -ForegroundColor Green
   Write-Host ('  ' + (T 'err.retry' @($SzhSupport)))
   Write-Host ''
+  # Mode silencieux : tout ce qui précède (rapport automatique Write-SzhRapport compris) est
+  # déjà parti et reste lisible dans le journal — c'est ce que montre l'onglet « Journal » du
+  # lanceur. Ce qui suit, en revanche, n'a plus de sens : la ligne de menu proposerait trois
+  # touches à personne, et la touche attendue, sans fenêtre pour la frapper, bloquerait le
+  # processus pour toujours — mutex de mise à jour compris. La main revient tout de suite.
+  if ($script:SzhSansInteraction) {
+    try { Write-SzhLog ('update : erreur survenue en mode silencieux (' + $Etape + ') -> ' + $Message) } catch { }
+    return
+  }
   Write-Host ('  ' + (T 'err.menu'))
   try {
     $touche = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')

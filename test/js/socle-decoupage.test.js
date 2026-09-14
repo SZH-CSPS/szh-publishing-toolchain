@@ -125,7 +125,8 @@ test('un pilote qui ne dot-source que szh-common.ps1 obtient un résultat non vi
       'Get-SzhEmplacements ne rend plus un emplacement connu : ' + JSON.stringify(r.emplacement));
     assert.ok(r.base && r.base.length > 0, 'Get-SzhEmplacements rend une base vide');
     assert.strictEqual(r.encoursCount, 2, 'Get-SzhEmplacements ne rend plus les deux racines en cours');
-    // szh-shell.ps1 : les cinq entrées du menu Démarrer, jamais un tableau vide.
-    assert.strictEqual(r.raccourcisCount, 5, 'Get-SzhRaccourcisMenu ne rend plus les cinq entrées');
+    // szh-shell.ps1 : les DEUX entrées du menu Démarrer (le lanceur et sa mise à jour, depuis
+    // la fusion du 13.09.2026 -- il y en avait cinq avant), jamais un tableau vide.
+    assert.strictEqual(r.raccourcisCount, 2, 'Get-SzhRaccourcisMenu ne rend plus les deux entrées');
     assert.ok(r.premierNom && r.premierNom.length > 0, 'la première entrée du menu est sans nom');
   });

@@ -54,6 +54,9 @@ const MSG = Object.freeze({
 
   // Traduction
   COPIER: 'copier', DEEPL: 'deepl', LIEN: 'lien', FOCUS: 'focus', COPIE: 'copie',
+  // Vérificateur de traduction : la pastille d'un champ traduisible demande le
+  // formulaire de suggestion. Elle ne modifie rien — c'est une proposition.
+  SUGGERER_TRADUCTION: 'suggererTraduction',
 
   // Éditeur de tableau
   OPERATION: 'operation', APERCU_OUVRIR: 'apercu-ouvrir', APERCU_FERMER: 'apercu-fermer',

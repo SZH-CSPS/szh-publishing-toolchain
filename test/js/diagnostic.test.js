@@ -125,7 +125,12 @@ function bornesFonction(source, nom) {
   return { debut: debut + 1, fin: fin + 1 };
 }
 
-test('correctif 3 : les lignes citées (update.ps1:54-107 et 115-142) sont toujours les bonnes', () => {
+// Ce test a déjà attrapé ce qu'il garde : la fusion des trois lanceurs (13.09.2026) a
+// inséré des lignes dans update.ps1 au-dessus de ces deux fonctions, et la citation de
+// diagnostic.ps1 a vieilli sans que rien ne le dise. Elle a été recalée sur les bornes
+// réelles. Les chiffres ne sont volontairement PAS écrits dans le nom du test : ils
+// changeront encore, et un nom qui les porte devrait être réécrit à chaque fois.
+test('correctif 3 : les lignes citées d’update.ps1 sont toujours les bonnes', () => {
   // Si update.ps1 bouge ces fonctions sans que quiconque ne relise ce commentaire, ce test
   // le dit — plutôt que de laisser une citation de lignes fausse orienter le prochain
   // lecteur vers le mauvais endroit du fichier.

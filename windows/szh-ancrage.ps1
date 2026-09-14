@@ -1,4 +1,4 @@
-# Resolution de l'ancrage SharePoint -- le dossier "Daten_Allgemein - General" dont derive
+﻿# Resolution de l'ancrage SharePoint -- le dossier "Daten_Allgemein - General" dont derive
 # tout le reste (base des produits, dossier des rapports d'erreur automatiques). Dot-source
 # par szh-common.ps1, juste avant szh-produits.ps1 qui s'en sert (Get-SzhBaseRevuesPour).
 # Compatibilite : Windows PowerShell 5.1 (proscrire ?. ?? ?: && ||).

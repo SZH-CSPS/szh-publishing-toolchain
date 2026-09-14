@@ -27,7 +27,16 @@
     { cle: 'liensReferences', legende: TXT.liensReferences,
       options: [['actifs', TXT.liensReferencesActifs], ['desactives', TXT.liensReferencesDesactives]] },
     { cle: 'langue', legende: TXT.langue, options: [['fr', 'Français'], ['de', 'Deutsch']] },
-    { cle: 'dev', legende: TXT.dev, options: [['oui', TXT.devOui], ['non', TXT.devNon]] }
+    // Le groupe « dev » (mode développeur / dossiers de test) a déménagé dans l'onglet
+    // « Paramètres » du lanceur Windows (windows/open-produit.ps1) : il décide où vivent
+    // toutes les revues du poste, pas seulement les réglages d'un numéro.
+    //
+    // Le vérificateur de traduction, lui, reste ici : il ne décide de rien hors du cockpit.
+    // Il se range dans config.json (clé verifTraduction) et non dans les réglages de
+    // l'éditeur, parce que trois panneaux le lisent et que la mise à jour du poste réécrit
+    // ces derniers en entier — voir lib/archivage.js#lireVerifTraduction.
+    { cle: 'verifTrad', legende: TXT.verifTrad,
+      options: [['actif', TXT.verifTradActif], ['inactif', TXT.verifTradInactif]] }
   ];
   // La discordance de langue, sous le choix de la langue et nulle part ailleurs : les menus
   // de VSCodium et les textes du cockpit ne viennent pas de la même source, et rien ne les

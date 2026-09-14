@@ -30,6 +30,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
 const path = require('path');
 
 const codes = require(path.join(
@@ -41,10 +42,11 @@ const codes = require(path.join(
 
 const CODES_ATTENDUS = [
   'LANCEUR-TRAP', 'LANCEUR-CODIUM-ABSENT', 'ANCRAGE-INTROUVABLE', 'MAJ-ETAPE-ECHEC',
-  'MAJ-ECHEC', 'ARCHIVAGE-ECHEC', 'COMPIL-ECHEC', 'COCKPIT-EXCEPTION', 'RAPPORT-ECHEC-ECRITURE'
+  'MAJ-ECHEC', 'ARCHIVAGE-ECHEC', 'COMPIL-ECHEC', 'COCKPIT-EXCEPTION', 'RAPPORT-ECHEC-ECRITURE',
+  'LANCEUR-SIGNALEMENT'
 ];
 
-test('CODES : les 9 codes gelés sont présents, chacun avec un résumé FR et DE non vide', () => {
+test('CODES : les codes gelés sont présents, chacun avec un résumé FR et DE non vide', () => {
   assert.deepStrictEqual(Object.keys(codes.CODES).sort(), CODES_ATTENDUS.slice().sort());
   for (const code of CODES_ATTENDUS) {
     const entree = codes.CODES[code];
@@ -54,6 +56,39 @@ test('CODES : les 9 codes gelés sont présents, chacun avec un résumé FR et D
     assert.ok(entree.resume.fr.length > 0, code + ' : résumé français vide');
     assert.strictEqual(typeof entree.resume.de, 'string');
     assert.ok(entree.resume.de.length > 0, code + ' : résumé allemand vide');
+  }
+});
+
+// Le défaut qui a valu ce test, le 14.09.2026 : le bouton « Signaler une erreur… » de
+// l'onglet « Journal » du lanceur écrivait -Code 'LANCEUR-SIGNALEMENT', un code qu'aucune
+// des deux tables ne connaissait. Test-SzhRapportValide le refusait, Write-SzhRapport
+// s'arrêtait juste après sans rien écrire — ni sur le disque, ni dans la file d'attente hors
+// ligne — et la fenêtre annonçait quand même que le signalement était parti. Aucune
+// exception, aucun test, aucune trace sauf une ligne de journal local : un bouton mort qui
+// se disait vivant.
+//
+// La porte se ferme ici, statiquement : le test ne lance pas PowerShell, il lit les scripts.
+test('tout code cité par un script de windows/ est connu des DEUX tables', () => {
+  const dossier = path.join(__dirname, '..', '..', 'windows');
+  const cites = new Set();
+  for (const f of fs.readdirSync(dossier).filter((n) => n.endsWith('.ps1'))) {
+    const src = fs.readFileSync(path.join(dossier, f), 'utf8');
+    for (const m of src.matchAll(/-Code\s+'([A-Z][A-Z-]*)'/g)) { cites.add(m[1]); }
+  }
+  assert.ok(cites.size > 0, 'aucun -Code trouvé dans windows/*.ps1 : la recherche ne mord plus');
+
+  const rapport = fs.readFileSync(path.join(dossier, 'szh-rapport.ps1'), 'utf8');
+  const depuis = rapport.slice(rapport.indexOf('function Get-SzhRapportCodesConnus'));
+  const corps = depuis.slice(0, depuis.indexOf('\n}'));
+  const connusPs = new Set([...corps.matchAll(/'([A-Z][A-Z-]*)'/g)].map((m) => m[1]));
+  assert.ok(connusPs.size > 0, 'Get-SzhRapportCodesConnus ne se lit plus : la découpe a changé');
+
+  for (const code of [...cites].sort()) {
+    assert.ok(connusPs.has(code),
+      code + ' : cité par un script du poste, absent de Get-SzhRapportCodesConnus '
+      + '(szh-rapport.ps1) — le rapport serait refusé sans rien écrire');
+    assert.ok(codes.CODES[code],
+      code + ' : cité par un script du poste, absent de CODES (lib/codes-erreur.js)');
   }
 });
 

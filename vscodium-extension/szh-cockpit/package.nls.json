@@ -69,7 +69,7 @@
   "tuto.titre": "Prendre en main la chaîne SZH",
   "tuto.intro": "Neuf étapes, dans l’ordre d’un numéro : du premier Word reçu au PDF archivé. Chaque étape se coche quand vous l’avez faite pour de vrai.",
   "tuto.ouvrir.titre": "Ouvrir un numéro",
-  "tuto.ouvrir.texte": "Un numéro est un dossier. Ouvrez-le par le raccourci **Revues SZH** du menu Démarrer, qui liste vos numéros en cours et archivés.\n\nLa barre latérale **Revue SZH** est votre tableau de bord : les articles, les Word en attente, les traductions. Cliquez un article pour le compiler et voir son PDF.\n\n[Afficher la barre latérale](command:szh.cockpit.rafraichir)",
+  "tuto.ouvrir.texte": "Un numéro est un dossier. Ouvrez-le par le raccourci **Revue & Zeitschrift** du menu Démarrer, onglet **Revue** ou **Zeitschrift**, qui liste vos numéros en cours et archivés.\n\nLa barre latérale **Revue SZH** est votre tableau de bord : les articles, les Word en attente, les traductions. Cliquez un article pour le compiler et voir son PDF.\n\n[Afficher la barre latérale](command:szh.cockpit.rafraichir)",
   "tuto.word.titre": "Déposer les Word, puis convertir",
   "tuto.word.texte": "Glissez les fichiers Word sur la barre latérale, ou utilisez le bouton. Ils atterrissent dans `articles-word/`.\n\nL’onglet **Word en attente** montre ce qui attend, et le rapport de la dernière conversion – ses échecs surtout. Un Word déjà converti est ignoré, jamais écrasé.\n\n[Importer des Word](command:szh.importerWord) · [Word en attente](command:szh.vueWord) · [Convertir](command:szh.convertirEnAttente)",
   "tuto.verifier.titre": "Vérifier ce que l’import a compris",

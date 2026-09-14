@@ -71,7 +71,7 @@ set "SZH_CODE=%errorlevel%"
 echo.
 if "%SZH_CODE%"=="0" (
   echo   Installation terminee.
-  echo   Le menu Demarrer porte desormais "Revues SZH" et "Zeitschriften SZH".
+  echo   Le menu Demarrer porte desormais "Revue ^& Zeitschrift".
 ) else (
   echo   L'installation s'est arretee ^(code %SZH_CODE%^).
   echo   Le detail est au-dessus, et dans C:\ProgramData\SZH\logs.

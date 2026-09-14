@@ -105,11 +105,12 @@ Rien de cette liste ne dépend de `emplacementRevues`.
 |---|---|
 | Configuration partagée PowerShell ↔ cockpit | `C:\ProgramData\SZH\config.json` |
 | État du **poste** (version du toolkit, langue) | `C:\ProgramData\SZH\state.json` |
-| État de **ce compte** (environnement WSL, extensions posées) | `C:\Users\robin\AppData\Local\SZH\etat-utilisateur.json` |
+| État de **ce compte** (environnement WSL, extensions posées, onglet et langue du lanceur, mise à jour silencieuse — clés `ongletDefaut`, `langueInterface` et `majSilencieuse`, absente/vide = automatique ou fenêtre visible) | `C:\Users\robin\AppData\Local\SZH\etat-utilisateur.json` |
 | Cadence de la vérification hebdomadaire, par compte | `C:\Users\robin\AppData\Local\SZH\maj-auto.json` |
 | Auteur·e·s publiés (autocomplétion, cache OAI-PMH) | `C:\ProgramData\SZH\auteurs.json` |
 | Journal (une ligne par geste, un fichier par mois) | `C:\ProgramData\SZH\logs\szh-2026-08.log` |
-| Journaux détaillés d'une mise à jour | `C:\ProgramData\SZH\logs\update-<horodatage>.log` |
+| Journaux détaillés d'une mise à jour | `C:\ProgramData\SZH\logs\update-<horodatage>.log` — les dix derniers se listent dans l'onglet **Journal** du lanceur (`Get-SzhJournauxMaj`) |
+| Archive des journaux réunis pour le support (bouton « Envoyer les journaux » de l'onglet Journal) | dossier temporaire de l'utilisateur, `journaux-szh-<poste>-<horodatage>.zip` — l'outil ne la nettoie pas |
 | Téléchargements et versions installables hors ligne | `C:\ProgramData\SZH\staging\` (`toolkit-<v>.zip`, `manifest-<v>.json`, `szh-publishing-rootfs-<v>.tar.gz`) |
 | Toolkit déployé (maquette, scripts, gabarit) | `C:\ProgramData\SZH\toolkit\` — `VERSION`, `pipeline\`, `windows\`, `revue-template\`, `vscodium-user\` |
 | Version du toolkit installée | `C:\ProgramData\SZH\toolkit\VERSION` → `2026.08.41` |
@@ -118,7 +119,7 @@ Rien de cette liste ne dépend de `emplacementRevues`.
 | Extensions VSCodium installées | `C:\Users\robin\.vscode-oss\extensions\` — dont `szh-csps.szh-cockpit-0.22.1` et `szh-csps.szh-apercu-0.1.2` |
 | Réglages de l'éditeur | `C:\Users\robin\AppData\Roaming\VSCodium\User\settings.json` |
 | Intention d'ouverture (lien `szh://`, usage unique) | `C:\Users\robin\AppData\Local\SZH\intention.json` |
-| Raccourcis du menu Démarrer | `Revues SZH.lnk`, `Zeitschriften SZH.lnk` (posés par `update.ps1`) |
+| Raccourcis du menu Démarrer | `Revue & Zeitschrift.lnk`, `Revue & Zeitschrift (Updater).lnk` (posés par `update.ps1` ; noms provisoires, tenus dans `$SzhNomApplication`/`$SzhNomMiseAJour`, `windows/szh-shell.ps1`) |
 | Archives d'un numéro | **dans la racine active**, sous `…RV99_Archives` / `…ZS99_Archives` |
 
 L'archivage ne sort jamais de la racine active : un numéro archivé passe de
@@ -148,8 +149,9 @@ distributions ne sont jamais désinscrits ni supprimés.
 | `windows\szh-produits.ps1` · `Find-SzhNumeroVolume` | Cherche un numéro déjà posé sur un couple volume + numéro, **en cours et dans les archives** de la racine active. Rend son nom et son chemin ; ne supprime ni ne déplace rien. | le formulaire « Nouvelle revue… » |
 | `test\js\volume-numero.test.js` | Juge la formule du volume contre un relevé de `ojs.szh.ch` (neuf millésimes) et éprouve le refus du doublon sur une arborescence jetable. | `node --test` |
 | `windows\archive-revue.ps1` | Déplace un numéro **ou un livre** « en cours » ⇄ « archives », dans la racine active — `$estLivre` choisit la variante `.livre` des textes et le sous-dossier de livre. | panneau d'export du cockpit |
-| `szh-cockpit\lib\archivage.js` · `resoudreEmplacementRevues` | La même règle, côté cockpit. Ne connaît **aucun** chemin de revue : il ne rend que la décision. | réglages du cockpit |
-| `szh-cockpit\lib\archivage.js` · `ecrireEmplacementRevues` | La bascule depuis « Réglages SZH ». Écrit les deux clés à la fois. | `extension.js` |
+| `windows\szh-produits.ps1` · `Set-SzhEmplacementRevues` | **La bascule réelle, depuis le 14.09.2026.** Écrit `emplacementRevues` et `devMode` dans `config.json` d'un coup. Vaut pour **tout le poste**, pas pour un seul compte Windows. | réglage « Mode développeur (dossiers de test) » de l'onglet **Paramètres** du lanceur (`open-produit.ps1`) |
+| `szh-cockpit\lib\archivage.js` · `resoudreEmplacementRevues` | La même règle, côté cockpit. Ne connaît **aucun** chemin de revue : il ne rend que la décision. | `lireEmplacementRevues` / `lireModeDeveloppeur`, pour le seul badge de la barre d'état (`extension.js`) |
+| `szh-cockpit\lib\archivage.js` · `ecrireEmplacementRevues` / `ecrireModeDeveloppeur` | Existent encore, exportées, mais **plus appelées par aucune commande du cockpit** : le groupe de boutons radio du formulaire « Réglages SZH » a disparu quand la bascule a déménagé dans le lanceur. | aucune, côté interface — gardées pour les tests |
 | `windows\bootstrap.ps1` | Pose `config.json` sur un poste neuf, avec `devMode = $true` (donc l'emplacement de test). | installation, une fois |
 | `test\js\emplacements.test.js` | Soumet les deux moitiés aux mêmes configurations et refuse qu'elles divergent. | `node --test` |
 
@@ -174,12 +176,14 @@ distributions ne sont jamais désinscrits ni supprimés.
 
 ## 6. Lire l'emplacement actif sans ouvrir un fichier
 
-1. **Le titre de la fenêtre du lanceur** (menu Démarrer → *Revues SZH* / *Zeitschriften
-   SZH*) le porte toujours, dans les deux sens :
-   - `Revues SZH — dossier de test (Revues-TESTING)`
-   - `Revues SZH — dossier de production (2_Produkte)`
-   - `Zeitschriften SZH — Testordner (Revues-TESTING)`
-   - `Zeitschriften SZH — Produktionsordner (2_Produkte)`
+1. **Le titre de la fenêtre du lanceur** (menu Démarrer → *Revue & Zeitschrift*) le porte
+   toujours, dans les deux sens — **un seul titre**, quel que soit l'onglet ouvert (Revue,
+   Zeitschrift ou Book), depuis que les trois produits partagent une fenêtre unique ; seule
+   l'étiquette de la racine suit la langue du lanceur :
+   - `Revue & Zeitschrift – dossier de test (Revues-TESTING)`
+   - `Revue & Zeitschrift – dossier de production (2_Produkte)`
+   - `Revue & Zeitschrift – Testordner (Revues-TESTING)`
+   - `Revue & Zeitschrift – Produktionsordner (2_Produkte)`
 2. **Le bloc d'informations du lanceur**, sous les deux listes, donne le chemin complet de
    la racine active — dans les **deux** racines, et non plus en test seulement. C'était le
    cas grave qui restait muet : un lanceur basculé sur `production`, listes vides, ne disait
@@ -196,7 +200,9 @@ distributions ne sont jamais désinscrits ni supprimés.
    `emplacement des revues : "test" ecrit dans config.json (numeros trouves : test 4, production 0)`
 4. **Le badge de la barre d'état du cockpit**, une fois un numéro ouvert dans l'éditeur : icône
    éprouvette, fond orangé, étiqueté « Dossier de test » (« Testordner » en allemand), visible
-   seulement en test. Un clic ouvre les Réglages ; l'infobulle distingue un poste sans
+   seulement en test. Depuis le 14.09.2026, **il ne se clique plus** : le réglage qui décide de
+   ce badge a déménagé dans l'onglet **Paramètres** du lanceur Windows, hors de portée de
+   VSCodium, et l'infobulle le dit — en plus de distinguer, comme avant, un poste sans
    `config.json` (le test par défaut) d'un poste où l'emplacement `test` est écrit en clair.
 
 ---
@@ -222,8 +228,11 @@ Ordre de lecture, identique côté PowerShell et côté cockpit :
    (`"true"`, `"false"`, `1` et `0` acceptés de la même façon des deux côtés) ;
 3. faute des deux : `test` — ce que voyaient tous les postes avant que la clé existe.
 
-La bascule des « Réglages SZH » du cockpit écrit **les deux** clés à la fois : un poste
-resté sur un toolkit plus ancien continue de lire `devMode` et voit la même chose.
+La bascule se fait dans l'onglet **Paramètres** du lanceur (réglage « Mode développeur »),
+qui écrit **les deux** clés à la fois (`Set-SzhEmplacementRevues`, `windows/szh-produits.ps1`) :
+un poste resté sur un toolkit plus ancien continue de lire `devMode` et voit la même chose. Le
+cockpit sait encore écrire les deux clés (`ecrireEmplacementRevues`), mais depuis le
+14.09.2026 plus aucune commande de son interface ne l'appelle.
 
 Au premier lancement après la mise à jour, un poste dont `config.json` ne portait aucune
 des deux clés se voit écrire `emplacementRevues` en clair. La valeur retenue suit le
@@ -235,13 +244,15 @@ c'est-à-dire exactement ce que le poste voyait déjà.
 
 ## 8. Reprise : « je ne vois plus mes revues »
 
-1. Menu Démarrer → **Revues SZH**. Lire le **titre de la fenêtre**.
+1. Menu Démarrer → **Revue & Zeitschrift**. Lire le **titre de la fenêtre**.
 2. S'il dit `dossier de production (2_Produkte)` et que les listes sont vides : les numéros
    sont dans la racine de test, l'interrupteur est du mauvais côté. **Rien n'a été
    déplacé ni supprimé.**
 3. Remettre l'interrupteur :
-   - *par le cockpit* — ouvrir n'importe quel numéro, **Réglages SZH**, activer le mode
-     développeur (c'est le nom d'avant de l'emplacement de test) ;
+   - *par le lanceur* — menu Démarrer → **Revue & Zeitschrift** → onglet **Paramètres** →
+     « Mode développeur (dossiers de test) » → Activé (c'est le nom d'avant de l'emplacement
+     de test). Ce réglage vaut pour **tout le poste**, pas pour un seul compte Windows, et les
+     listes ne le suivent qu'à la prochaine ouverture du lanceur ;
    - *à la main* — ouvrir `C:\ProgramData\SZH\config.json` dans le Bloc-notes et poser
      `"emplacementRevues": "test"`, en gardant le reste du fichier tel quel.
 4. Fermer le lanceur, le rouvrir : le titre doit dire `dossier de test (Revues-TESTING)` et
@@ -282,7 +293,8 @@ passage que la bibliothèque SharePoint est bien synchronisée sous ce nom-là.
 ## 9. Ce qui reste à poser
 
 - **Le cockpit ne dit pas encore l'emplacement actif** dans sa barre latérale : seul le
-  lanceur le montre. Le réglage existe (« Réglages SZH »), l'affichage non.
+  lanceur le montre ; le badge de la barre d'état (§6) ne fait qu'annoncer, il ne règle plus
+  rien depuis que le réglage a déménagé dans l'onglet **Paramètres** du lanceur.
 - **`bootstrap.ps1` pose encore `devMode = $true`** sur un poste neuf, donc l'emplacement
   de test. Sur un poste de rédaction, poser `"emplacementRevues": "production"` juste après
   l'installation — ou corriger le script.

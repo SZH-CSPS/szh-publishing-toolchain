@@ -64,9 +64,17 @@ const {
   // versionsDivergent n'est plus appelée ici (voir lib/cycle-vie.js) mais reste exposée
   // par module.exports._pur, qui la veut en liaison de module — pas seulement ré-exportée.
   versionsDivergent,
-  lireModeDeveloppeur, ecrireModeDeveloppeur, lireConfigPoste, ecrireConfigPoste,
-  configAvecLangue, CONFIG_POSTE
+  // ecrireModeDeveloppeur n'est plus appelée ici : l'écriture se fait désormais depuis
+  // l'onglet « Paramètres » du lanceur Windows. Elle reste exportée par lib/archivage.js.
+  lireModeDeveloppeur, lireConfigPoste, ecrireConfigPoste,
+  configAvecLangue, CONFIG_POSTE,
+  // Vérificateur de traduction : un réglage du poste et non de l'éditeur, pour que trois
+  // panneaux le lisent et qu'il survive à la mise à jour du poste.
+  lireVerifTraduction, ecrireVerifTraduction
 } = require('./lib/archivage');
+// ---- Suggestions de traduction -> lib/suggestion-traduction.js -------------------
+// Le dossier traduction/ d'un numéro : une proposition par fichier, et rien de publié.
+const suggestionTraduction = require('./lib/suggestion-traduction');
 // ---- Rapports d'erreur automatiques -> lib/rapport-erreur.js ---------------------
 // Toute la logique (résolution passive de l'ancrage, masquage, anti-inondation, file
 // d'attente, écriture) vit dans ce module, testable hors éditeur ; ici, seulement deux
@@ -210,7 +218,11 @@ metadonneesHote.configurer({
   relancerCompilation: (fournisseur, slug, opts) => relancerCompilation(fournisseur, slug, opts),
   focaliserUnite: (fournisseur, slug) => focaliserUnite(fournisseur, slug),
   slugDepuisChemin: (racine, chemin) => slugDepuisChemin(racine, chemin),
-  articlesSansDoi: (racine, slugs) => articlesSansDoi(racine, slugs)
+  articlesSansDoi: (racine, slugs) => articlesSansDoi(racine, slugs),
+  // Le vérificateur de traduction : le réglage se lit ici, et la pastille du formulaire des
+  // fiches ouvre le panneau de suggestion, qui vit ici aussi.
+  lireVerifTraduction: () => lireVerifTraduction(),
+  ouvrirSuggestionTraduction: (fournisseur, msg) => ouvrirSuggestionTraduction(fournisseur, msg)
 });
 // ---- Gestionnaire des médias d'un article -> lib/medias-hote.js -------------------
 const mediasHote = require('./lib/medias-hote');
@@ -4236,7 +4248,9 @@ function textesTraduction() {
     motsClesAide: T('trad.motscles.aide'),
     // Placeholder d'un mot-clé vide : la même clé que la fiche des métadonnées, jamais
     // la sentinelle anglaise écrite dans le YAML.
-    motCleATraduire: T('mc.aTraduire')
+    motCleATraduire: T('mc.aTraduire'),
+    // Vérificateur de traduction : l'infobulle de la pastille, la même que sur les fiches.
+    suggPastille: T('sugg.pastille')
   };
 }
 
@@ -4282,7 +4296,10 @@ function envoyerValeursTraduction(panneau, fournisseur, slug, focus) {
     groupes: groupesPourWebview(etat),
     commentaire: etat.suivi.commentaire,
     statuts: STATUTS.map((s) => ({ valeur: s, libelle: T('trad.statut.' + s) })),
-    focus: focus || null
+    focus: focus || null,
+    // Le vérificateur de traduction : lu à chaque envoi, donc pris en compte dès le
+    // prochain rendu des cartes (changement d'article, rechargement).
+    verifTrad: lireVerifTraduction()
   });
   traductionModifiee = false;                      // les cartes viennent d'être reconstruites
   // Les deux fichiers que ce panneau écrit, et ce qu'ils valaient à cet instant.
@@ -4522,6 +4539,7 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
     }
     if (msg.type === MSG.DEEPL) { ouvrirDeepl(panneau, msg); return; }
     if (msg.type === MSG.LIEN) { envoyerPourTraduction(fournisseur, { slug: slugTraduction }); return; }
+    if (msg.type === MSG.SUGGERER_TRADUCTION) { ouvrirSuggestionTraduction(fournisseur, msg); return; }
     if (msg.type === MSG.RECHARGEMENT) {
       const attente = rechargementTraduction;
       rechargementTraduction = null;
@@ -4562,6 +4580,128 @@ async function ouvrirTraduction(fournisseur, rafraichirTout, cible) {
   });
   panneau.webview.html = htmlTraduction(crypto.randomBytes(16).toString('hex'));
   montrerApercu(vise.slug);
+}
+
+// ---- Suggestion de traduction (webview) ------------------------------------------
+//
+// Ouvert par la pastille d'un champ traduisible, quand le vérificateur de traduction est
+// actif (réglage du poste, lib/archivage.js#lireVerifTraduction). Il ne modifie RIEN : la
+// proposition part dans le dossier traduction/ du numéro, à côté de articles/, et le texte
+// publié reste ce qu'il était. Le panneau « Traductions », lui, écrit dans la fiche — les
+// deux gestes cohabitent sans se gêner, et il ne faut pas les confondre.
+//
+// À côté (ViewColumn.Beside) et non en pleine page : on propose une traduction en regardant
+// le formulaire d'où l'on vient.
+//
+// Un seul panneau à la fois : une seconde pastille le recharge sur son champ plutôt que
+// d'ouvrir un second onglet où la première proposition serait oubliée.
+
+let panneauSuggestion = null;
+let viseSuggestion = null;       // { slug, champ, langue, actuel } — ce que la pastille visait
+
+function textesSuggestion() {
+  return {
+    article: T('sugg.article'), champ: T('sugg.champ'), langue: T('sugg.langue'),
+    actuelVide: T('sugg.actuel.vide'), rien: T('sugg.rien')
+  };
+}
+
+function htmlSuggestion(nonce) {
+  return construireHtml('suggestion', nonce, {
+    cssPartage: ['_design.css'], jsPartage: ['_messages.js'],
+    titre: T('sugg.titre'),
+    remplacements: { '__TXT__': JSON.stringify(textesSuggestion()) }
+  });
+}
+
+// Les intitulés lisibles du champ et de la langue : la webview ne connaît pas la langue de
+// l'interface, elle reçoit des mots tout faits.
+function libellesSuggestion(champ, langue) {
+  return { champ: T('sugg.champ.' + champ), langue: T('meta.langue.' + langue) };
+}
+
+function envoyerValeursSuggestion(panneau) {
+  if (!viseSuggestion) { return; }
+  repondrePanneau(panneau, Object.assign({
+    type: MSG.VALEURS,
+    libelles: libellesSuggestion(viseSuggestion.champ, viseSuggestion.langue)
+  }, viseSuggestion));
+}
+
+// Écrit la proposition. Le numéro n'est pas verrouillé pour autant qu'il soit gelé ou
+// archivé : une suggestion ne touche à aucun fichier publié, et c'est justement sur un
+// numéro figé qu'on relit. Un dossier réellement en lecture seule le dira par l'erreur
+// d'écriture, plutôt que par un refus posé d'avance.
+function enregistrerSuggestion(fournisseur, panneau, msg) {
+  const racine = fournisseur.racine;
+  if (!racine || !viseSuggestion) { return; }
+  const res = suggestionTraduction.ecrireSuggestion(racine, {
+    auteur: moiCoedition().utilisateur,
+    produit: revueNumero(racine),
+    numero: path.basename(racine),
+    article: viseSuggestion.slug,
+    champ: viseSuggestion.champ,
+    langue: viseSuggestion.langue,
+    // Le texte d'avant est celui que la pastille a capté, et non celui que la fiche porte
+    // maintenant : c'est de celui-là que la proposition parle.
+    actuel: viseSuggestion.actuel,
+    propose: msg.propose,
+    commentaire: msg.commentaire
+  });
+  if (!res.ok) {
+    repondrePanneau(panneau, {
+      type: MSG.ERREUR,
+      message: res.raison === 'vide' ? T('sugg.rien') : T('sugg.err.ecriture', [res.message])
+    });
+    return;
+  }
+  repondrePanneau(panneau, { type: MSG.ENREGISTRE, message: T('sugg.enregistree', [res.nom]) });
+  vscode.window.setStatusBarMessage(T('sugg.enregistree', [res.nom]), 4000);
+  // Le panneau montre que c'est fait, puis s'efface : laisser un formulaire enregistré
+  // ouvert invite à l'enregistrer une seconde fois.
+  setTimeout(() => { try { panneau.dispose(); } catch (e) { /* déjà fermé */ } }, 1200);
+}
+
+// `msg` vient de la pastille : { slug, champ, langue, valeur }.
+function ouvrirSuggestionTraduction(fournisseur, msg) {
+  if (!fournisseur.racine || !msg) { return; }
+  const champ = String(msg.champ || '');
+  const langue = String(msg.langue || '');
+  // Le champ et la langue viennent d'une webview : seuls les quatre champs traduisibles de
+  // la fiche et les langues qu'elle connaît ont un sens ici.
+  if (!suggestionTraduction.champValide(champ) || !suggestionTraduction.langueValide(langue)) {
+    vscode.window.showWarningMessage(T('sugg.err.champ'));
+    return;
+  }
+  viseSuggestion = {
+    slug: String(msg.slug || ''), champ: champ, langue: langue,
+    actuel: String(msg.valeur === undefined || msg.valeur === null ? '' : msg.valeur)
+  };
+  if (panneauSuggestion) {
+    panneauSuggestion.title = T('sugg.titre.un', [viseSuggestion.slug]);
+    panneauSuggestion.reveal(vscode.ViewColumn.Beside);
+    envoyerValeursSuggestion(panneauSuggestion);
+    return;
+  }
+  const panneau = vscode.window.createWebviewPanel(
+    'szhSuggestionTraduction', T('sugg.titre.un', [viseSuggestion.slug]), vscode.ViewColumn.Beside,
+    { enableScripts: true, localResourceRoots: [] }
+  );
+  panneauSuggestion = panneau;
+  panneau.onDidDispose(() => {
+    if (panneauSuggestion === panneau) { panneauSuggestion = null; viseSuggestion = null; }
+  });
+  panneau.webview.onDidReceiveMessage((recu) => {
+    if (!recu) { return; }
+    if (recu.type === MSG.PRET) { envoyerValeursSuggestion(panneau); return; }
+    if (recu.type === MSG.FERMER) { panneau.dispose(); return; }
+    if (recu.type !== MSG.ENREGISTRER) {
+      console.warn('suggestion de traduction : type de message inconnu', recu.type);
+      return;
+    }
+    enregistrerSuggestion(fournisseur, panneau, recu);
+  });
+  panneau.webview.html = htmlSuggestion(crypto.randomBytes(16).toString('hex'));
 }
 
 // ---- Photos, auteur·e·s connus et fiches de tous les articles -> lib/metadonnees-hote.js
@@ -4639,7 +4779,10 @@ function envoyerValeursImportVerif(panneau, fournisseur, extra) {
     licences: licencesTraduites(), licenceDefaut: LICENCE_DEFAUT,
     // Le plafond des originaux d'image (section « Originaux des images ») et celui des
     // photos d'auteur·e·s (modale partagée) : plus aucun littéral côté webview.
-    limites: limitesMedias()
+    limites: limitesMedias(),
+    // Le vérificateur de traduction : relu à chaque envoi de valeurs, c'est-à-dire à
+    // chaque reconstruction des cartes.
+    verifTrad: lireVerifTraduction()
   }, extra || {}));
   envoyerAuteursConnus(panneau, fournisseur.racine);
   envoyerMotsClesConnus(panneau);
@@ -4691,6 +4834,7 @@ async function ouvrirImportVerif(fournisseur, rafraichirTout, slugs) {
     if (msg.type === MSG.PHOTO_OUVRIR) { ouvrirVersionsPhoto(fournisseur, panneau, msg); return; }
     if (msg.type === MSG.PHOTO_CHOISIR) { choisirPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type === MSG.DOI_MANUEL_CONFIRMER) { await confirmerDoiManuel(panneau, msg); return; }
+    if (msg.type === MSG.SUGGERER_TRADUCTION) { ouvrirSuggestionTraduction(fournisseur, msg); return; }
     if (msg.type === MSG.REMPLACER_IMAGE) { await remplacerImageImport(fournisseur, rafraichirTout, panneau, msg); return; }
     if (msg.type === MSG.FERMER) {
       // Seul chemin de fermeture contrôlable : la croix de l'onglet est hors de portée.
@@ -4760,12 +4904,17 @@ function REGL_LIBELLES() {
   liensReferencesActifs: T('regl.liensReferences.actifs'),
   liensReferencesDesactives: T('regl.liensReferences.desactives'),
   langue: T('regl.langue'),
+  // Vérificateur de traduction : rangé dans config.json (clé verifTraduction) et non dans
+  // les réglages de l'éditeur — voir la branche d'écriture, plus bas.
+  verifTrad: T('regl.verifTrad'),
+  verifTradActif: T('regl.verifTrad.actif'), verifTradInactif: T('regl.verifTrad.inactif'),
   protegesTitre: T('regl.proteges.titre'),
   protegesVerrouille: T('regl.proteges.verrouille'),
   protegesDeverrouiller: T('regl.proteges.deverrouiller'),
   protegesTelecharger: T('regl.proteges.telecharger'),
   protegesTelechargerTip: T('regl.proteges.telecharger.tip'),
-  dev: T('regl.dev'), devOui: T('regl.dev.oui'), devNon: T('regl.dev.non'),
+  // Le mode développeur (dossiers de test) est parti dans l'onglet « Paramètres » du
+  // lanceur Windows : plus de texte à fournir ici pour ce réglage.
   auteursMaj: T('regl.auteurs.maj'), auteursJamais: T('regl.auteurs.jamais'),
   auteursCorpus: T('regl.auteurs.corpus'), auteursCorpusJamais: T('regl.auteurs.corpus.jamais'),
   ojsRevues: T('ojs.revues'), ojsVide: T('ojs.vide'),
@@ -4978,8 +5127,11 @@ function lireReglagesActuels() {
     warnings: reduireWarningsImpressionActif() ? 'reduits' : 'complets',
     liensReferences: desactiverLiensReferencesActif() ? 'desactives' : 'actifs',
     langue: langueCockpit(),
-    // Dans config.json : ses consommateurs sont les scripts PowerShell.
-    dev: lireModeDeveloppeur() ? 'oui' : 'non'
+    // Lu dans config.json, comme la langue : c'est le seul exemplaire, il n'y a rien à
+    // recouper avec un réglage d'éditeur.
+    verifTrad: lireVerifTraduction() ? 'actif' : 'inactif'
+    // Le mode développeur (dossiers de test) ne fait plus partie de cet état : il se lit
+    // et s'écrit depuis l'onglet « Paramètres » du lanceur Windows.
   };
 }
 
@@ -5142,11 +5294,20 @@ function ouvrirReglages(rafraichirTout) {
           const erreur = ecrireConfigPoste(configAvecLiensDesactives(avant, desactiver));
           if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(CONFIG_POSTE), erreur])); }
         }
-      } else if (msg.cle === 'dev') {
-        // bootstrap.ps1 donne au groupe Utilisateurs le droit d'écrire ce fichier.
-        const erreur = ecrireModeDeveloppeur(msg.valeur !== 'non');
-        if (erreur) { vscode.window.showErrorMessage(T('err.dev.ecriture', [erreur])); }
-        vscode.commands.executeCommand('szh.cockpit.rafraichir');   // le badge « test » suit
+      } else if (msg.cle === 'verifTrad') {
+        // Une seule écriture, et pas dans les réglages de l'éditeur : trois panneaux
+        // lisent ce mode — fiches, vérification de l'import, traduction — et la mise à
+        // jour du poste réécrit en entier les réglages de VSCodium, si bien que le mode
+        // s'y éteindrait à chaque mise à jour. Même raison, et même fichier, que la langue
+        // juste en dessous. Une config illisible n'est pas écrasée : elle emporterait
+        // l'emplacement des revues et la configuration OJS avec elle.
+        const avantVerif = lireConfigPoste();
+        if (avantVerif === null && fs.existsSync(CONFIG_POSTE)) {
+          vscode.window.showErrorMessage(T('err.ecriture', [path.basename(CONFIG_POSTE), CONFIG_POSTE]));
+        } else {
+          const erreur = ecrireVerifTraduction(msg.valeur === 'actif');
+          if (erreur) { vscode.window.showErrorMessage(T('err.ecriture', [path.basename(CONFIG_POSTE), erreur])); }
+        }
       } else if (msg.cle === 'langue') {
         const langue = msg.valeur === 'de' ? 'de' : 'fr';
         await vscode.workspace.getConfiguration('szh').update('langue', langue, Global);
@@ -5773,8 +5934,10 @@ function activate(context) {
   // dans la barre d'état, en couleur — la décision test/production reste ouverte, ce badge
   // ne fait qu'annoncer. Couleur posée une fois pour toutes : elle ne varie pas, seule la
   // visibilité change.
+  // Pas de commande de clic : le réglage qui décide de ce badge a déménagé dans l'onglet
+  // « Paramètres » du lanceur Windows, hors de portée de VSCodium — szh.reglages n'y mène
+  // plus, ce serait une impasse. L'infobulle dit où aller à la place.
   const barreModeTest = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 70);
-  barreModeTest.command = 'szh.reglages';
   barreModeTest.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
   context.subscriptions.push(barreModeTest);
 
@@ -5789,7 +5952,8 @@ function activate(context) {
   const majBarreModeTest = () => {
     if (fournisseur.racine && lireModeDeveloppeur()) {
       barreModeTest.text = '$(beaker) ' + T('etat.barre.test');
-      barreModeTest.tooltip = T(lireConfigPoste() ? 'etat.barre.test.tooltip' : 'etat.barre.test.defaut');
+      barreModeTest.tooltip = T(lireConfigPoste() ? 'etat.barre.test.tooltip' : 'etat.barre.test.defaut')
+        + ' ' + T('etat.barre.test.parametres');
       barreModeTest.show();
     } else {
       barreModeTest.hide();

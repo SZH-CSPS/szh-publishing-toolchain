@@ -460,8 +460,8 @@ try {
   # deuxième compte du poste : l'exclusion doit donc couvrir les sous-dossiers.
   Attention ('Antivirus : exclure {0}\WSL\ (tous sous-dossiers, *.vhdx) et {1}\*, + processus vmcompute.exe, vmmem.exe, wsl.exe, wslservice.exe.' -f $SzhBase, $SzhStaging)
   Attention 'Chaque utilisateur du poste recevra réglages + raccourcis à sa prochaine connexion (tâche planifiée).'
-  Attention 'Nouvelle revue : menu Démarrer > Revues SZH (ou Zeitschriften SZH) > « Nouvelle revue ».'
-  Attention 'Mise à jour à la demande : menu Démarrer > « Mise à jour de l''outil Revue » (ou « Aktualisierung des Redaktionstools »).'
+  Attention ('Nouvelle revue : menu Démarrer > « ' + $SzhNomApplication + ' », onglet Revue (ou Zeitschrift) > « Nouvelle revue... ».')
+  Attention ('Mise à jour à la demande : menu Démarrer > « ' + $SzhNomMiseAJour + ' ».')
   Attention ('Contrôle : powershell -ExecutionPolicy Bypass -File "{0}", dans la session du rédacteur.' -f (Join-Path $SzhToolkit 'windows\diagnostic.ps1'))
 
   # Le bilan, tout de suite et à l'écran : une installation qui s'annonce terminée sans dire

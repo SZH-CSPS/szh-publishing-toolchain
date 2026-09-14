@@ -233,11 +233,29 @@ function Get-SzhPlanDesinstallation {
       [void]$plan.Add((New-SzhPlanEntree 'extension' $id 'extension VSCodium (codium --uninstall-extension)' $present))
     }
 
-    # Raccourcis du menu Démarrer (les cinq entrées voulues, quel que soit leur état réel).
+    # Raccourcis du menu Démarrer (les deux entrées voulues, quel que soit leur état réel).
     $menu = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+    $nomsCanoniques = @{}
     foreach ($r in @(Get-SzhRaccourcisMenu)) {
       $cible = Join-Path $menu ($r.nom + '.lnk')
+      $nomsCanoniques[$r.nom.ToLowerInvariant()] = $true
       [void]$plan.Add((New-SzhPlanEntree 'raccourci' $cible $r.nom (Test-Path -LiteralPath $cible)))
+    }
+
+    # Anciens noms (Get-SzhRaccourcisObsoletes, szh-shell.ps1). Set-SzhRaccourcisMenu, elle,
+    # reconnaît un ancien raccourci à sa CIBLE plutôt qu'à son nom -- mais la désinstallation
+    # tourne sur un poste dont le toolkit peut déjà avoir été retiré avant elle, et ne peut
+    # donc pas ouvrir les .lnk pour lire où ils pointent. Il ne lui reste que les noms.
+    # Seuls les fichiers réellement présents sont ajoutés ici, contrairement aux entrées
+    # canoniques ci-dessus : le plan est lu par un humain avant exécution, et une poignée de
+    # lignes « absent » à chaque désinstallation ne dirait rien à personne. Le nom canonique
+    # prime en cas de coïncidence, pour ne jamais compter deux fois le même .lnk.
+    foreach ($nom in @(Get-SzhRaccourcisObsoletes)) {
+      if ($nomsCanoniques.ContainsKey($nom.ToLowerInvariant())) { continue }
+      $cible = Join-Path $menu ($nom + '.lnk')
+      if (Test-Path -LiteralPath $cible) {
+        [void]$plan.Add((New-SzhPlanEntree 'raccourci' $cible $nom $true))
+      }
     }
 
     # Fichiers profil du compte courant.

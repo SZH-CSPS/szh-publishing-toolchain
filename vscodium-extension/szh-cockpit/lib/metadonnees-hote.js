@@ -63,7 +63,12 @@ let ctx = {
   relancerCompilation: () => {},
   focaliserUnite: () => {},
   slugDepuisChemin: () => null,
-  articlesSansDoi: () => new Set()
+  articlesSansDoi: () => new Set(),
+  // Vérificateur de traduction : le réglage du poste, et le panneau de suggestion que la
+  // pastille d'un champ ouvre. Éteint par défaut — un test qui require ce module seul ne
+  // doit pas se mettre à poser des pastilles.
+  lireVerifTraduction: () => false,
+  ouvrirSuggestionTraduction: () => {}
 };
 
 function configurer(nouveauCtx) { ctx = Object.assign({}, ctx, nouveauCtx); }
@@ -467,7 +472,10 @@ function textesCarteArticle() {
     // Deux notes discrètes, jamais bloquantes : la forme attendue d'un DOI saisi à la main,
     // et l'avertissement d'unicité quand deux cartes en portent un identique. Voir
     // champDoi() et verifierDoublonsDoi() dans media/_fiches.js.
-    doiForme: T('fiches.doi.forme'), doiDouble: T('fiches.doi.double')
+    doiForme: T('fiches.doi.forme'), doiDouble: T('fiches.doi.double'),
+    // Vérificateur de traduction : l'infobulle de la pastille posée à côté de chaque
+    // intitulé traduisible. Le mode lui-même arrive dans le message « valeurs ».
+    suggPastille: T('sugg.pastille')
   }, textesAuteur());
 }
 
@@ -1055,7 +1063,11 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
       types: typesTraduits(langue),
       licences: licencesTraduites(), licenceDefaut: LICENCE_DEFAUT,
       limites: limitesMedias(),
-      formeDoi: { motif: forme.motif.source, exemple: forme.exemple }
+      formeDoi: { motif: forme.motif.source, exemple: forme.exemple },
+      // Le vérificateur de traduction, relu à chaque envoi : un panneau déjà ouvert quand
+      // le réglage change ne verra les pastilles qu'à sa prochaine reconstruction — un
+      // filtre, un rechargement, ou sa réouverture.
+      verifTrad: ctx.lireVerifTraduction()
     }, extra || {}));
     envoyerAuteursConnus(panneau, fournisseur.racine);
     envoyerMotsClesConnus(panneau);
@@ -1120,6 +1132,7 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
     if (msg.type === MSG.PHOTO_OUVRIR) { ouvrirVersionsPhoto(fournisseur, panneau, msg); return; }
     if (msg.type === MSG.PHOTO_CHOISIR) { choisirPhotoAuteur(fournisseur, panneau, msg); return; }
     if (msg.type === MSG.DOI_MANUEL_CONFIRMER) { await confirmerDoiManuel(panneau, msg); return; }
+    if (msg.type === MSG.SUGGERER_TRADUCTION) { ctx.ouvrirSuggestionTraduction(fournisseur, msg); return; }
     if (msg.type !== MSG.ENREGISTRER) {
       console.warn('métadonnées des articles (hôte) : type de message inconnu', msg.type);
       return;

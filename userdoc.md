@@ -53,7 +53,8 @@ par personne et par poste.
 Les deux autres entrées restent disponibles et font exactement la même chose :
 
 - **« Ouvrir la revue »** – le raccourci présent dans le dossier de chaque revue ;
-- **« Revues SZH »** – dans le menu Démarrer (liste toutes les revues du poste).
+- **« Revue & Zeitschrift »** – dans le menu Démarrer (liste toutes les revues du poste,
+  onglet par onglet).
 
 ## La barre « Revue » (tout gérer sans l’explorateur)
 
@@ -362,8 +363,10 @@ depuis n’importe où dans la revue) :
     n’est retenue ; la fiche, elle, continue d’afficher « Aucune photo » tant qu’il n’y
     en a pas.
   - **Réglages SZH** – thème, taille de l’interface et du texte, **aperçu par défaut**
-    (voir ci-dessous), langue de l’interface, et la **validation PDF/UA en arrière-plan**
-    (activée par défaut – voir « Les contrôles de la compilation » ci-dessous).
+    (voir ci-dessous), langue de l’interface, la **validation PDF/UA en arrière-plan**
+    (activée par défaut – voir « Les contrôles de la compilation » ci-dessous), et le
+    **vérificateur de traduction** (voir « Le vérificateur de traduction –
+    proposer sans toucher au texte » ci-dessous).
 - **✏ Édition** (`Ctrl+Alt+S`) – la **bascule d’aperçu HTML ⇄ PDF** (`Ctrl+Alt+P`),
   **Lier un appel à une référence** (voir « Les références » ci-dessous) et toutes les
   actions de **mise en forme** (gras, titres, blocs, figure, tableau…) – les mêmes que le
@@ -418,8 +421,11 @@ chaque fois. C’est voulu – c’est un geste d’exception, pas un mode dans
 
 ### La langue de l’outil
 
-Au premier lancement, l’outil **prend la langue du lanceur** : ouvrir « Zeitschriften SZH »
-le met en allemand, « Revues SZH » en français. Il n’y a rien à régler sur un poste neuf.
+Au premier lancement, l’outil **prend la langue que le lanceur a résolue** : celle de
+Windows si elle est française ou allemande, l’allemand sinon – ce n’est plus le nom du
+lanceur ouvert qui décide, depuis que « Revues SZH » et « Zeitschriften SZH »
+ont fusionné en un seul lanceur, « Revue & Zeitschrift ». Il n’y a rien à régler sur
+un poste neuf.
 
 Pour en changer, ou pour le figer : **🚀 Commande → Réglages SZH → Langue de l’interface**.
 Le choix est retenu **pour ce poste**, et il y reste – une mise à jour de l’outil ne le
@@ -518,6 +524,35 @@ revue et ne sont **jamais publiés**.
 La même grille de mots-clés sert dans **« Métadonnées des articles »** et dans la
 **vérification de l’import** : le comportement y est identique, avec en plus les
 boutons pour ajouter et retirer une ligne.
+
+### Le vérificateur de traduction – proposer sans toucher au texte
+
+Un second mode, à part de la section « Traductions » ci-dessus, pour qui relit une
+traduction sans avoir la main dessus – un regard extérieur, une relecture croisée, une
+personne qui préfère ne jamais changer un texte publié elle-même. Là où le panneau de
+traduction **écrit** la traduction dans l’article, celui-ci ne fait que **proposer** : rien
+de ce qu’il enregistre ne change quoi que ce soit à ce qui est publié.
+
+**Pour l’activer** : **🚀 Commande → Réglages SZH → « Vérificateur de traduction »**, puis
+**Activé**. Une fois actif, chaque champ traduisible d’un article – titre, sous-titre,
+résumé, mots-clés, dans chaque langue – porte une petite pastille à côté de son intitulé,
+dans les fiches, dans la vérification de l’import et dans le panneau de traduction lui-même.
+
+**Un clic sur la pastille** ouvre un petit formulaire : de quel article, de quel champ et de
+quelle langue il s’agit ; le texte actuel, en lecture seule ; une zone déjà remplie du même
+texte, où l’on écrit la traduction qu’on propose à la place ; un commentaire libre, pour dire
+pourquoi. **Enregistrer la suggestion** dépose une proposition ; **Annuler** referme le
+formulaire sans rien écrire.
+
+Une suggestion enregistrée part dans un dossier **« traduction »**, à la racine du numéro –
+⚠ un emplacement **provisoire**, appelé à changer. Personne ne la relit tout de suite ni
+automatiquement : c’est un pense-bête, écrit pour qu’une personne le lise plus tard et
+tranche. Le titre, le sous-titre, le résumé et les mots-clés **publiés** restent exactement
+ce qu’ils étaient tant que personne n’a repris la main sur la fiche.
+
+**Une limite à connaître** : un panneau déjà ouvert au moment où l’on active (ou désactive)
+le réglage ne montre les pastilles qu’à sa prochaine reconstruction – changer d’article,
+changer de filtre, ou rouvrir le panneau. Rien ne les fait apparaître sur une carte déjà à l’écran.
 
 [capture : la section « Traductions » dépliée sur un article]
 [capture : le panneau de traduction, aperçu à droite]
@@ -1016,7 +1051,7 @@ Windows demande une fois l’autorisation d’ouvrir ce type de lien : c’est 
 
 Si le lien ne fonctionne pas (poste sans la chaîne installée, dossier pas encore synchronisé par
 OneDrive), le message le dit et il reste toujours possible d’ouvrir le numéro à la main depuis
-« Revues SZH ». Le lien ne contient aucun chemin : il ne peut désigner qu’un numéro rangé aux
+« Revue & Zeitschrift ». Le lien ne contient aucun chemin : il ne peut désigner qu’un numéro rangé aux
 emplacements officiels.
 
 Ce bouton **ne change aucun état** de traduction : pour lancer la campagne, c’est le bouton ✓✓ de
@@ -1227,7 +1262,7 @@ Deux boutons pour revenir en arrière, indépendants l’un de l’autre :
 - **« Désarchiver la revue »** le ramène dans l’arborescence « en cours » (le verrou,
   lui, reste posé : à déverrouiller séparément si vous voulez corriger quelque chose).
 
-Dans le lanceur **« Revues SZH »**, les numéros archivés apparaissent dans une **liste
+Dans le lanceur **« Revue & Zeitschrift »**, les numéros archivés apparaissent dans une **liste
 séparée**, et un **🔒** signale ceux qui sont verrouillés.
 
 ## Un livre, dans le même outil
@@ -1270,7 +1305,7 @@ L’outil se met à jour tout seul, **une fois par semaine** : le mardi à part
 l’ouverture de session suivante. Il regarde s’il y a du neuf et, le cas échéant, ouvre une
 fenêtre qui montre ce qu’il fait. Il n’y a normalement rien à lancer.
 
-Trois choses valent la peine d’être sues.
+Quatre choses valent la peine d’être sues.
 
 - **Si le poste est éteint, endormi ou verrouillé le mardi à 14 h, rien n’est perdu.** La
   mise à jour part au retour, ou à l’ouverture de session suivante. Elle ne réveille jamais
@@ -1282,11 +1317,18 @@ Trois choses valent la peine d’être sues.
 - **Si elle n’y arrive pas pendant plusieurs semaines**, elle finit par ouvrir la fenêtre
   visible, même à un mauvais moment : il vaut mieux un message qu’un poste qui décroche en
   silence. Si cette fenêtre échoue, elle dit quoi fermer.
+- **Vous pouvez choisir qu’elle ne montre jamais de fenêtre.** Dans l’onglet **Paramètres** du
+  lanceur, « Mettre à jour en silence, sans fenêtre » fait exactement ce que la mise à jour
+  automatique fait déjà chaque semaine, sans jamais rien afficher à l’écran, même en cas
+  d’échec. Rien n’est perdu pour autant : l’onglet **Journal** du lanceur garde la trace de
+  chaque tentative, avec sa date et son issue, et c’est là qu’on va voir ce qui s’est passé
+  quand rien ne s’est affiché. Et si le silence dure trop longtemps sans qu’une mise à jour
+  aboutisse, l’outil renonce à se taire et ouvre la fenêtre visible, pour que ça se voie.
 
-Pour le faire à la demande – après un appel au support, ou parce qu’une correction vient
-d’être annoncée – le menu Démarrer porte l’entrée **« Mise à jour de l’outil Revue »**
-(**« Aktualisierung des Redaktionstools »** pour l’équipe de la Zeitschrift : la même mise à
-jour, dans l’autre langue). Une fenêtre s’ouvre et se ferme toute seule à la fin.
+Pour le faire à la demande – après un appel au support, ou parce qu’une correction vient
+d’être annoncée – le menu Démarrer porte l’entrée **« Revue & Zeitschrift (Updater) »** : une
+seule entrée, quelle que soit votre langue de travail – la fenêtre parle la langue réglée sur
+votre poste. Une fenêtre s’ouvre et se ferme toute seule à la fin.
 
 Ce qu’il faut savoir avant de cliquer :
 
@@ -1304,7 +1346,7 @@ bouton **« Changer de version… »** du lanceur fait la même chose.
 
 ## La version du logiciel
 
-Le lanceur **« Revues SZH »** affiche en bas **« Version : … »** : la version installée
+Le lanceur **« Revue & Zeitschrift »** affiche en bas **« Version : … »** : la version installée
 sur ce poste. Chaque numéro, lui, retient la version avec laquelle il a été **créé**.
 
 Si vous ouvrez un ancien numéro et que les deux ne correspondent pas, un message
@@ -1387,13 +1429,46 @@ mise en forme (bascule).
 
 ## Créer une nouvelle revue
 
-Le menu Démarrer porte **deux** entrées de lanceur : **« Revues SZH »** pour la Revue, et
-**« Zeitschriften SZH »** pour la Zeitschrift. Chacune ne montre **que son produit** et ne crée
-**que dans son dossier** – c’est ce qui garantit qu’un numéro ne se retrouve pas rangé du mauvais
-côté. (Les deux entrées **« Mise à jour »** du même menu, elles, ne créent rien : voir
+Le menu Démarrer porte **une seule** entrée de lanceur, **« Revue & Zeitschrift »**, avec un
+onglet par produit – **Revue**, **Zeitschrift**, **Book** (ces noms d’onglet ne se traduisent pas)
+– plus un onglet **Journal** et un onglet **Paramètres**. Chaque onglet de produit ne montre
+**que son produit** et ne crée **que dans son dossier** – c’est ce qui garantit qu’un numéro ne se retrouve pas rangé du mauvais
+côté. (L’entrée **« Revue & Zeitschrift (Updater) »** du même menu, elle, ne crée rien : voir
 « Mettre l’outil à jour soi-même ».)
 
-Menu Démarrer → le lanceur du produit voulu → bouton **« Nouvelle revue… »** (en bas à gauche).
+L’onglet **Journal** liste les dix dernières mises à jour de l’outil sur ce poste, avec leur
+date, leur issue (réussie, échouée, ou inconnue) et leur taille ; cliquer l’une d’elles en
+montre le détail technique dans le cadre en dessous. Deux boutons y répondent à « quelque chose
+ne va pas »  :
+
+- **« Signaler une erreur… »** demande une phrase, en une ligne (ce qui s’est passé), puis
+  l’envoie au support avec le journal choisi, le nom de votre poste et les versions installées.
+  C’est le seul cas où c’est vous qui déclenchez l’envoi : sinon, un rapport part tout seul,
+  sur une panne que l’outil a su reconnaître (voir plus bas « Des rapports d’erreur partent
+  tout seuls en cas de panne ») – ce bouton couvre le cas où rien n’a planté, et pourtant
+  quelque chose ne va pas ;
+- **« Envoyer les journaux… »** réunit les dix journaux dans une archive, ouvre un brouillon de
+  courriel au support et montre l’archive dans l’explorateur. Un courriel ne sait pas porter de
+  pièce jointe tout seul : la fenêtre vous invite à glisser le fichier dans le brouillon avant
+  de l’envoyer.
+
+L’onglet **Paramètres** choisit quatre choses. Les trois premières sont pour votre compte
+Windows seulement (une autre personne qui ouvre une session sur le même poste garde les siens) :
+quel onglet s’ouvre par défaut, dans quelle langue le lanceur lui-même s’affiche, et si la mise
+à jour se fait avec ou sans fenêtre (voir plus bas « Mettre l’outil à jour soi-même »). Laissé
+sur **Automatique**, l’onglet suit la langue du poste – allemand donne Zeitschrift, français
+donne Revue, tout le reste donne Zeitschrift ; le livre n’est jamais l’onglet automatique, il
+faut le choisir. Ce réglage d’onglet ne change rien à la langue de l’**éditeur** une fois une
+revue ouverte (voir « La langue de l’outil » plus haut) : ce sont deux réglages distincts.
+
+Le quatrième, **« Mode développeur (dossiers de test) »**, est différent des trois autres : il
+vaut pour **tout le poste**, quel que soit le compte qui ouvre une session, et non pour vous
+seul – l’onglet le dit. C’est lui qui bascule entre le dossier de test et la production (voir
+plus bas « Où vivent vos numéros ») ; les listes et le titre de la fenêtre ne le suivent qu’à la
+prochaine ouverture du lanceur.
+
+Menu Démarrer → **Revue & Zeitschrift** → l’onglet du produit voulu → bouton
+**« Nouvelle revue… »** (en bas à gauche).
 La boîte demande deux choses, et deux seulement :
 
 | | |
@@ -1450,7 +1525,7 @@ dans `RV02_Redaction` (ou `ZS02_Redaktion`) et il apparaîtra.
 d’essai : `OneDrive - SZH CSPS\Revues-TESTING`, avec exactement la même arborescence que la
 production. Le lanceur le dit **toujours**, à trois endroits :
 
-- le **titre de la fenêtre** – `Revues SZH — dossier de test (Revues-TESTING)` ;
+- le **titre de la fenêtre** – `Revue & Zeitschrift – dossier de test (Revues-TESTING)` ;
 - la ligne **« Revue dans : … »** (ou « Zeitschrift dans : … ») sous les deux listes, avec le
   chemin complet,
 - une ligne rouge en tête du bloc d’informations, qui rappelle que tout ce qui est créé ici part
@@ -1458,13 +1533,16 @@ production. Le lanceur le dit **toujours**, à trois endroits :
   revue… » et « Nouveau livre… ».
 
 Dans le cockpit, un numéro déjà ouvert le montre aussi, par un badge orangé de la barre d’état,
-« Dossier de test » (icône éprouvette) – un clic ouvre les Réglages, et son infobulle précise si
-c’est le réglage du poste ou seulement son défaut, faute de configuration.
+« Dossier de test » (icône éprouvette). Il ne se clique plus : son infobulle dit désormais où se
+règle le mode développeur, et précise si c’est le réglage du poste ou seulement son défaut,
+faute de configuration.
 
-La bascule se fait dans **Réglages SZH → Mode développeur**. Elle ne déplace **aucun fichier** :
-elle change l’endroit où le lanceur regarde. Si vos numéros disparaissent des listes, lisez ces
-deux lignes avant tout : elles disent laquelle des deux racines est active
-(voir `docs/EMPLACEMENTS.md`).
+La bascule se fait dans le lanceur : menu Démarrer → **Revue & Zeitschrift** → onglet
+**Paramètres** → « Mode développeur (dossiers de test) ». C’est le seul réglage de cet onglet
+qui vaille pour **tout le poste**, et non pour votre seul compte Windows. Il ne déplace **aucun
+fichier** : il change l’endroit où le lanceur regarde, et les listes ne le suivent qu’à la
+prochaine ouverture du lanceur. Si vos numéros disparaissent des listes, lisez ces deux lignes
+avant tout : elles disent laquelle des deux racines est active (voir `docs/EMPLACEMENTS.md`).
 
 ## « L’outil me demande où est le dossier SZH »
 

@@ -144,10 +144,13 @@ test('le raccourci manuel, lui, reste visible', () => {
   assert.ok(voulue.indexOf('update.ps1') === -1,
     'la tâche doit lancer la vérification silencieuse, pas la fenêtre visible');
   // L'entrée du menu, définie dans szh-shell.ps1, n'est pas cachée et s'ouvre en fenêtre
-  // normale.
+  // normale. Glissement du 13.09.2026 : le raccourci unique ne passe plus -Langue (la
+  // fenêtre prend la langue du réglage du compte, comme le lanceur) — c'est
+  // « -ExecutionPolicy Bypass -File », propre à la seule entrée de mise à jour, qui la
+  // distingue maintenant des trois lanceurs (qui, eux, visent wscript.exe //B hidden.vbs).
   const menu = SHELL.slice(SHELL.indexOf('function Get-SzhRaccourcisMenu'),
     SHELL.indexOf('function Set-SzhRaccourcisMenu'));
-  const ligneMaj = menu.split('\r\n').filter((l) => l.indexOf('-Langue {1}') !== -1);
+  const ligneMaj = menu.split('\r\n').filter((l) => l.indexOf('-ExecutionPolicy Bypass -File') !== -1);
   assert.strictEqual(ligneMaj.length, 1);
   assert.ok(ligneMaj[0].indexOf('hidden.vbs') === -1, 'la mise à jour manuelle doit se voir');
   assert.match(SHELL, /\$lnk\.WindowStyle = 1/);
@@ -206,8 +209,10 @@ test('un blocage qui dure finit par ouvrir la fenêtre visible, une fois par sem
   assert.ok(i !== -1, 'plus rien ne rend un échec répété visible');
   const suite = LANCEUR.slice(i - 200, i + 700);
   assert.ok(suite.indexOf('$presse') !== -1, 'l’alerte doit attendre le délai de politesse');
-  assert.ok(suite.indexOf('Start-SzhFenetreVisible') !== -1,
-    'l’alerte doit passer par la fenêtre visible, pas par un message maison');
+  // Renommée depuis : « le nom disait "visible" quand cette fonction ne savait faire que
+  // cela ; il a suivi quand elle a appris à se cacher » (commentaire de update-launcher.ps1).
+  assert.ok(suite.indexOf('Start-SzhFenetreMaj') !== -1,
+    'l’alerte doit passer par la fenêtre visible (Start-SzhFenetreMaj -Visible), pas par un message maison');
   assert.ok(suite.indexOf('alerteLe') !== -1, 'l’alerte ne se retient pas, elle se répétera');
 });
 

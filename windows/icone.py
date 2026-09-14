@@ -1,19 +1,24 @@
 #!/usr/bin/env python3
 # icone.py — fabrique les quatre icônes du toolkit, à côté de ce script :
 #
-#     szh-revue.ico        raccourci « Revues SZH » du menu Démarrer, fenêtres du lanceur,
-#                          entrée « Revue SZH » d'« Ouvrir avec » et type de fichier .md
-#     szh-zeitschrift.ico  raccourci « Zeitschriften SZH » et fenêtres de ce lanceur
-#     szh-maj.ico          les deux raccourcis de mise à jour du menu Démarrer
-#     szh-livre.ico        raccourci « Books SZH-CSPS » et fenêtres de ce lanceur
+#     szh-revue.ico        raccourci « Revue & Zeitschrift » du menu Démarrer, fenêtre du
+#                          lanceur, entrée « Revue SZH » d'« Ouvrir avec » et type .md
+#     szh-zeitschrift.ico  boîte « Nouvelle Zeitschrift… », ouverte depuis cet onglet
+#     szh-maj.ico          raccourci « Revue & Zeitschrift (Updater) » du menu Démarrer
+#     szh-livre.ico        boîte « Nouveau livre… », ouverte depuis l'onglet « Book »
 #
 #     python3 windows/icone.py        (réécrit les quatre .ico à côté)
 #
 # Une icône à nous plutôt que celle de VSCodium : les entrées se suivent dans la
 # boîte « Ouvrir avec », et l'utilisateur doit reconnaître d'un coup d'œil celle qu'il
 # coche une fois pour toutes. Sans icône, le shell affiche celle de wscript.exe, qui ne
-# dit rien à personne. Une par produit : épinglés à la barre des tâches, les raccourcis
-# perdent leur libellé et l'icône devient le seul repère.
+# dit rien à personne. Épinglé à la barre des tâches, un raccourci perd son libellé et
+# l'icône devient le seul repère.
+#
+# Il y avait un raccourci par produit jusqu'au 13.09.2026, donc une icône par raccourci.
+# Le lanceur est maintenant unique et reprend celle de la revue, faute d'une image propre à
+# l'application. Les deux autres restent fabriquées et livrées : elles habillent les boîtes
+# « Nouveau… » d'un onglet, les seules fenêtres du lanceur qui appartiennent à un produit.
 #
 # Le dessin, « l'étagère » : trois dos de fascicule couleur papier, de hauteurs inégales,
 # posés sur une tablette de la couleur du produit — capucine #EB5E51 pour la Revue,

@@ -26,6 +26,15 @@ const { spawnSync } = require('child_process');
 const RACINE = path.resolve(__dirname, '..', '..');
 const OUVRIR_REVUE = path.join(RACINE, 'windows', 'open-revue.ps1');
 const OUVRIR_LIVRE = path.join(RACINE, 'windows', 'open-livre.ps1');
+const OUVRIR_PRODUIT = path.join(RACINE, 'windows', 'open-produit.ps1');
+
+// Le nom définitif de l'application n'est pas arrêté (voir windows/szh-shell.ps1) : il vit à
+// UN seul endroit, $script:SzhNomApplication, et ce fichier le LIT plutôt que de le recopier
+// en dur -- sans quoi un futur baptême casserait ce test sans avoir rien cassé de réel.
+const SHELL = fs.readFileSync(path.join(RACINE, 'windows', 'szh-shell.ps1'), 'utf8');
+const mNom = SHELL.match(/\$script:SzhNomApplication\s*=\s*'([^']+)'/);
+assert.ok(mNom, 'szh-shell.ps1 ne déclare plus $script:SzhNomApplication');
+const NOM_APPLICATION = mNom[1];
 
 const POWERSHELL = (function () {
   if (process.platform !== 'win32') { return ''; }
@@ -38,6 +47,11 @@ const POWERSHELL = (function () {
   return '';
 })();
 const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
+
+// Échappe les caractères spéciaux d'une regex -- NOM_APPLICATION porte un « & », inoffensif
+// en regex, mais un futur nom pourrait porter autre chose.
+function echapperRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+const TITRE_SUITE = new RegExp('^' + echapperRegex(NOM_APPLICATION));
 
 // ---- L'arborescence jetable : deux numeros de revue, une Zeitschrift, un livre ----
 //
@@ -140,7 +154,10 @@ test('open-revue.ps1 -Produit revue : titre, liste, archive, version, en mode si
     verifierExecution(revue, 'revue');
     const r = revue.sortie;
     assert.strictEqual(r.produit, 'revue');
-    assert.match(r.titreFenetre, /^Revues SZH/, 'titre de fenetre inattendu : ' + r.titreFenetre);
+    // Glissement du 13.09.2026 : il n'y a plus un titre par produit (« Revues SZH ») mais un
+    // seul titre, commun aux trois onglets (lanceur.titre.suite) -- c'est l'onglet actif, pas
+    // le titre, qui dit quel produit est ouvert.
+    assert.match(r.titreFenetre, TITRE_SUITE, 'titre de fenetre inattendu : ' + r.titreFenetre);
     // La revue ne voit que ses propres numeros : un en cours, un archive -- ni la
     // Zeitschrift ni le livre, ranges ailleurs, ne peuvent y apparaitre.
     assert.strictEqual(r.enCours.length, 1, 'la revue ne devrait voir qu\'un numero en cours');
@@ -164,7 +181,9 @@ test('open-revue.ps1 -Produit zeitschrift : sa propre liste, jamais celle de la 
     verifierExecution(zeitschrift, 'zeitschrift');
     const r = zeitschrift.sortie;
     assert.strictEqual(r.produit, 'zeitschrift');
-    assert.match(r.titreFenetre, /^Zeitschriften SZH/, 'titre de fenetre inattendu : ' + r.titreFenetre);
+    // Le même titre commun qu'au test précédent, malgré un onglet différent -- justement ce
+    // que garde ce test.
+    assert.match(r.titreFenetre, TITRE_SUITE, 'titre de fenetre inattendu : ' + r.titreFenetre);
     assert.strictEqual(r.enCours.length, 1);
     assert.strictEqual(r.enCours[0].nom, '2026-03');
     assert.strictEqual(r.archives.length, 0, 'aucune Zeitschrift archivee dans ce banc');
@@ -178,7 +197,8 @@ test('open-livre.ps1 : le livre ne voit que les livres, etiquete par son titre',
     verifierExecution(livre, 'livre');
     const r = livre.sortie;
     assert.strictEqual(r.produit, 'livre');
-    assert.match(r.titreFenetre, /^Books SZH-CSPS/, 'titre de fenetre inattendu : ' + r.titreFenetre);
+    // Là encore le titre commun -- ce sont les listes ci-dessous qui distinguent le livre.
+    assert.match(r.titreFenetre, TITRE_SUITE, 'titre de fenetre inattendu : ' + r.titreFenetre);
     assert.strictEqual(r.enCours.length, 1);
     assert.strictEqual(r.enCours[0].nom, '2026-B300-MonLivre');
     assert.strictEqual(r.enCours[0].titre, 'Mon Livre Test');
@@ -216,6 +236,174 @@ test('les trois listes sont etanches : aucun nom ne fuit d\'un produit vers un a
     for (const n of nomsRevue) {
       assert.ok(nomsZs.indexOf(n) === -1 && nomsLivre.indexOf(n) === -1, n + ' fuit hors de la revue');
     }
+  });
+
+// ---- Le JSON de simulation porte les trois produits, étanches entre eux ----
+// Pas seulement entre trois appels séparés (le test ci-dessus) : DANS UN SEUL ET MÊME JSON,
+// `produits` porte les trois blocs -- ouvrir sur l'onglet Revue ne doit pas priver les
+// lecteurs (diagnostic, tests d'ouverture) de ce que les deux autres onglets auraient
+// montré.
+
+test('le JSON de simulation porte les trois produits dans `produits`, étanches entre eux',
+  { skip: sansPowerShell }, () => {
+    verifierExecution(revue, 'revue');
+    const p = revue.sortie.produits;
+    assert.ok(p && p.revue && p.zeitschrift && p.livre,
+      'les trois produits ne sont pas tous dans `produits` : ' + JSON.stringify(Object.keys(p || {})));
+    assert.strictEqual(p.revue.enCours.length, 1);
+    assert.strictEqual(p.revue.enCours[0].nom, '2026-01');
+    assert.strictEqual(p.revue.archives.length, 1);
+    assert.strictEqual(p.revue.archives[0].nom, '2020-05');
+    assert.strictEqual(p.zeitschrift.enCours.length, 1);
+    assert.strictEqual(p.zeitschrift.enCours[0].nom, '2026-03');
+    assert.strictEqual(p.zeitschrift.archives.length, 0);
+    assert.strictEqual(p.livre.enCours.length, 1);
+    assert.strictEqual(p.livre.enCours[0].nom, '2026-B300-MonLivre');
+    assert.strictEqual(p.livre.archives.length, 0);
+    // Chaque bloc porte aussi son propre onglet et ses propres racines -- pas seulement ses
+    // listes -- et les racines ne se recopient pas d'un produit à l'autre.
+    assert.strictEqual(p.revue.onglet, 'Revue');
+    assert.strictEqual(p.zeitschrift.onglet, 'Zeitschrift');
+    assert.strictEqual(p.livre.onglet, 'Book');
+    assert.notStrictEqual(p.revue.racineEnCours, p.zeitschrift.racineEnCours);
+    assert.notStrictEqual(p.revue.racineEnCours, p.livre.racineEnCours);
+    // Étanche à l'intérieur de ce MÊME JSON : aucun nom ne fuit d'un bloc à l'autre.
+    const noms = {
+      revue: p.revue.enCours.concat(p.revue.archives).map((e) => e.nom),
+      zeitschrift: p.zeitschrift.enCours.concat(p.zeitschrift.archives).map((e) => e.nom),
+      livre: p.livre.enCours.concat(p.livre.archives).map((e) => e.nom)
+    };
+    for (const a of Object.keys(noms)) {
+      for (const b of Object.keys(noms)) {
+        if (a === b) { continue; }
+        for (const n of noms[a]) {
+          assert.ok(noms[b].indexOf(n) === -1, n + ' (dans produits.' + a + ') fuit aussi dans produits.' + b);
+        }
+      }
+    }
+  });
+
+// ---- Cascades : quel onglet s'ouvre, quelle langue parle la fenêtre ----
+// Un pilote dédié, sur une arborescence minimale (un seul config.json, aucune revue) : ces
+// deux cascades ne dépendent d'aucun contenu, seulement des réglages du poste et du compte.
+// Chaque appel isole SON PROPRE dossier jetable pour state.json (SZH_BASE) et
+// etat-utilisateur.json (LOCALAPPDATA), afin qu'un scénario n'en influence jamais un autre.
+
+function executerProduit(options) {
+  options = options || {};
+  if (!POWERSHELL) { return null; }
+  const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-cascade-'));
+  const programData = path.join(travail, 'ProgramData');
+  const localAppData = path.join(travail, 'Local');
+  fs.mkdirSync(programData, { recursive: true });
+  fs.mkdirSync(path.join(localAppData, 'SZH'), { recursive: true });
+  fs.writeFileSync(path.join(programData, 'config.json'),
+    JSON.stringify({ emplacementRevues: 'test' }), 'utf8');
+  if (options.stateJson) {
+    fs.writeFileSync(path.join(programData, 'state.json'), JSON.stringify(options.stateJson), 'utf8');
+  }
+  if (options.etatUtilisateur) {
+    fs.writeFileSync(path.join(localAppData, 'SZH', 'etat-utilisateur.json'),
+      JSON.stringify(options.etatUtilisateur), 'utf8');
+  }
+  const env = Object.assign({}, process.env, {
+    SZH_BASE: programData,
+    LOCALAPPDATA: localAppData,
+    SZH_LANCEUR_SIMULE: '1',
+  });
+  delete env.SZH_LANGUE;
+  delete env.SZH_ONGLET;
+  if (options.envLangue) { env.SZH_LANGUE = options.envLangue; }
+  if (options.envOnglet) { env.SZH_ONGLET = options.envOnglet; }
+  const args = [];
+  if (options.produit) { args.push('-Produit', options.produit); }
+  const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', OUVRIR_PRODUIT, ...args],
+    { encoding: 'utf8', windowsHide: true, timeout: 60000, env });
+  fs.rmSync(travail, { recursive: true, force: true });
+  let sortie = null;
+  try { sortie = JSON.parse((run.stdout || '').trim()); } catch (e) { /* rapporté par l'appelant */ }
+  return { status: run.status, stderr: run.stderr || '', stdout: run.stdout || '', sortie };
+}
+
+test('Get-SzhOngletDefaut : quatre échelons, le livre jamais par défaut, -Produit devant le réglage du compte',
+  { skip: sansPowerShell }, () => {
+    // Échelon 1 (le plus deviné) : la langue résolue seule décide. Zéro configuration
+    // explicite d'onglet ici -- SZH_LANGUE force juste la langue résolue, sans passer par
+    // state.json ni etat-utilisateur.json (la cascade de langue est éprouvée séparément
+    // plus bas).
+    let r = executerProduit({ envLangue: 'de' });
+    assert.ok(r && r.sortie, 'échelon 1 (de) : pas de JSON -- ' + (r ? r.stderr : ''));
+    assert.strictEqual(r.sortie.ongletActif, 'zeitschrift', 'allemand -> Zeitschrift par défaut');
+    r = executerProduit({ envLangue: 'fr' });
+    assert.ok(r && r.sortie, 'échelon 1 (fr) : pas de JSON -- ' + (r ? r.stderr : ''));
+    assert.strictEqual(r.sortie.ongletActif, 'revue', 'français -> Revue par défaut');
+    // Le livre n'apparaît dans AUCUn des deux cas : aucune langue ne le désigne jamais
+    // seule, contrairement à revue et zeitschrift.
+    assert.notStrictEqual(r.sortie.ongletActif, 'livre');
+
+    // Échelon 2 : le réglage du compte (etat-utilisateur.json, ongletDefaut) l'emporte sur
+    // la langue -- y compris pour choisir le livre, que la langue seule ne désigne jamais.
+    r = executerProduit({ envLangue: 'fr', etatUtilisateur: { ongletDefaut: 'livre' } });
+    assert.ok(r && r.sortie, 'échelon 2 : pas de JSON -- ' + (r ? r.stderr : ''));
+    assert.strictEqual(r.sortie.ongletActif, 'livre',
+      'le réglage du compte ne l’emporte plus sur la langue');
+    assert.strictEqual(r.sortie.reglages.ongletChoisi, 'livre');
+
+    // Échelon 3 : -Produit l'emporte sur le réglage du compte -- un raccourci d'une version
+    // antérieure, resté épinglé à la barre des tâches, doit continuer d'ouvrir SON onglet
+    // même si le compte a depuis choisi autre chose.
+    r = executerProduit({ envLangue: 'fr', etatUtilisateur: { ongletDefaut: 'livre' }, produit: 'zeitschrift' });
+    assert.ok(r && r.sortie, 'échelon 3 : pas de JSON -- ' + (r ? r.stderr : ''));
+    assert.strictEqual(r.sortie.ongletActif, 'zeitschrift',
+      '-Produit ne l’emporte plus sur le réglage du compte');
+    // Le réglage du compte, lui, n'a pas bougé pour autant : -Produit ne l'écrase pas.
+    assert.strictEqual(r.sortie.reglages.ongletChoisi, 'livre');
+
+    // Échelon 4 (le plus explicite) : $env:SZH_ONGLET l'emporte sur -Produit.
+    r = executerProduit({ envLangue: 'fr', etatUtilisateur: { ongletDefaut: 'livre' },
+      produit: 'zeitschrift', envOnglet: 'revue' });
+    assert.ok(r && r.sortie, 'échelon 4 : pas de JSON -- ' + (r ? r.stderr : ''));
+    assert.strictEqual(r.sortie.ongletActif, 'revue', '$env:SZH_ONGLET ne l’emporte plus sur -Produit');
+  });
+
+test('la cascade de $SzhLangue : cinq échelons, et le repli à « de », jamais « en »',
+  { skip: sansPowerShell }, () => {
+    // Échelon 5 (le plus explicite) : $env:SZH_LANGUE l'emporte sur tout le reste.
+    let r = executerProduit({ stateJson: { langue: 'fr' }, etatUtilisateur: { langueInterface: 'fr' }, envLangue: 'de' });
+    assert.ok(r && r.sortie, 'échelon 5 : pas de JSON -- ' + (r ? r.stderr : ''));
+    assert.strictEqual(r.sortie.langue, 'de', '$env:SZH_LANGUE ne garde plus le dernier mot');
+
+    // Échelon 4 : le choix du compte (etat-utilisateur.json, langueInterface) l'emporte sur
+    // state.json et sur Windows, tant que rien de plus explicite n'est fourni.
+    r = executerProduit({ stateJson: { langue: 'fr' }, etatUtilisateur: { langueInterface: 'de' } });
+    assert.ok(r && r.sortie, 'échelon 4 : pas de JSON -- ' + (r ? r.stderr : ''));
+    assert.strictEqual(r.sortie.langue, 'de', 'le choix du compte ne l’emporte plus sur state.json');
+
+    // Échelon 3 : state.json (l'héritage, celui qu'écrivait l'ancien lanceur) l'emporte sur
+    // Windows et sur le repli, tant que le compte n'a rien choisi lui-même.
+    r = executerProduit({ stateJson: { langue: 'fr' } });
+    assert.ok(r && r.sortie, 'échelon 3 : pas de JSON -- ' + (r ? r.stderr : ''));
+    assert.strictEqual(r.sortie.langue, 'fr', 'state.json ne l’emporte plus sur Windows/le repli');
+
+    // Échelons 1 et 2, ensemble : rien de plus explicite n'est fourni, donc le résultat suit
+    // Windows s'il parle fr ou de, sinon retombe sur 'de' -- jamais 'en'. L'attendu est
+    // calculé ici à partir de la VRAIE langue d'affichage de Windows sur cette machine,
+    // interrogée indépendamment (pas en rappelant Get-SzhLangueAutomatique, ce qui
+    // éprouverait la fonction contre elle-même) : ce test reste donc correct que le poste
+    // qui l'exécute soit lui-même en français, en allemand, ou dans une troisième langue.
+    const sondeCulture = spawnSync(POWERSHELL, ['-NoProfile', '-Command',
+      '(Get-UICulture).TwoLetterISOLanguageName'], { encoding: 'utf8', windowsHide: true, timeout: 30000 });
+    const langueWindows = (sondeCulture.stdout || '').trim().toLowerCase();
+    const attendu = (langueWindows === 'fr' || langueWindows === 'de') ? langueWindows : 'de';
+    r = executerProduit({});
+    assert.ok(r && r.sortie, 'échelons 1-2 : pas de JSON -- ' + (r ? r.stderr : ''));
+    assert.strictEqual(r.sortie.langue, attendu,
+      'sans aucune préférence, la langue devrait suivre Windows (fr/de) ou retomber sur « de »');
+    assert.notStrictEqual(r.sortie.langue, 'en', 'le repli est retombé sur « en », pas sur « de »');
+    // Et le littéral source le confirme, indépendamment de la langue de CE poste-ci.
+    const commun = fs.readFileSync(path.join(RACINE, 'windows', 'szh-common.ps1'), 'utf8');
+    assert.match(commun, /\$script:SzhLangue = 'de'/,
+      'le repli de $SzhLangue n’est plus la littérale \'de\'');
   });
 
 // ---- Le mode simule ne charge aucune classe WinForms ----

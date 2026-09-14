@@ -27,7 +27,7 @@
 # Sans le même nettoyage ici, le manque reviendrait par ce chemin même une fois update.ps1 et
 # bootstrap.ps1 corrigés, et de façon plus sournoise qu'ailleurs : ce rafraîchissement écrit
 # déjà VERSION à la version cible, et update.ps1, lancé juste après par
-# Start-SzhFenetreVisible, lit alors le toolkit comme déjà à jour — sa propre étape 1/5 ne
+# Start-SzhFenetreMaj, lit alors le toolkit comme déjà à jour — sa propre étape 1/5 ne
 # s'exécute même pas, donc son propre nettoyage non plus.
 
 # Le menu Démarrer est remis d'aplomb à chaque ouverture de session, avant même de regarder
@@ -35,7 +35,7 @@
 # déjà à la dernière version n'exécute plus update.ps1 et n'obtiendrait jamais une entrée
 # ajoutée après coup ; et les raccourcis vivent dans le profil de l'utilisateur, donc chacun
 # doit recevoir les siens là où il ouvre sa session, pas là où l'administrateur a installé
-# le poste. Idempotent — les mêmes cinq .lnk sont réécrits à l'identique — et jamais
+# le poste. Idempotent — les mêmes deux .lnk sont réécrits à l'identique — et jamais
 # bloquant : ce script ne fait que vérifier. Le journal ne dit que l'anormal, pour ne pas
 # grossir d'une ligne par jour.
 try {
@@ -114,10 +114,20 @@ function Save-SzhBlocage([string]$Raison) {
   }) | Out-Null
 }
 
-# Passer la main à la fenêtre visible : c'est elle qui télécharge, qui installe et qui, en
-# cas d'échec, montre à l'écran le geste à faire. Rend son code de sortie : c'est lui qui
-# dit si la vérification peut vraiment se marquer faite.
-function Start-SzhFenetreVisible {
+# Passer la main à la fenêtre de mise à jour : c'est elle qui télécharge, qui installe et
+# qui, en cas d'échec, montre le geste à faire -- à l'écran quand la fenêtre est visible, ou
+# au seul journal quand le réglage « mise à jour silencieuse » (Get-SzhMajSilencieuse,
+# szh-common.ps1) la fait tourner cachée. Rend son code de sortie dans les deux cas : c'est
+# lui qui dit si la vérification peut vraiment se marquer faite. Le nom disait « visible »
+# quand cette fonction ne savait faire que cela ; il a suivi quand elle a appris à se cacher.
+function Start-SzhFenetreMaj {
+  # -Visible passe outre le réglage « mise à jour silencieuse ». Un seul appelant s'en sert :
+  # l'alerte d'un poste bloqué depuis des semaines, plus bas. Le réglage dit « ne me montre
+  # pas la fenêtre à chaque mise à jour », pas « ne me préviens jamais de rien » — et l'échec
+  # répété est justement le cas où une mise à jour silencieuse doit cesser de l'être. Sans ce
+  # commutateur, le poste le plus en retard serait aussi le plus muet.
+  param([switch]$Visible)
+
   # Relâché ici, avant de lancer update.ps1 : sinon la fenêtre tout juste ouverte tenterait
   # d'acquérir le même verrou pendant que ce script le tient encore, et sortirait aussitôt en
   # croyant une mise à jour concurrente alors qu'il n'y en a aucune. Fenêtre de course
@@ -132,11 +142,36 @@ function Start-SzhFenetreVisible {
   # Get-SzhRaccourcisMenu, szh-common.ps1).
   $ps = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
   if (-not (Test-Path $ps)) { $ps = Join-Path $PSHOME 'powershell.exe' }
+  $update = Join-Path $SzhToolkit 'windows\update.ps1'
+
+  if ((Get-SzhMajSilencieuse) -and (-not $Visible)) {
+    # -WindowStyle Hidden sur Start-Process ne suffit pas toujours à cacher un exécutable de
+    # console : le process est créé, PUIS redimensionné selon le style demandé -- une fenêtre
+    # peut donc s'ouvrir et se refermer le temps d'un clignement (défaut documenté de
+    # Start-Process avec les applications console, plus visible depuis que Windows Terminal en
+    # est l'hôte par défaut). WScript.Shell.Run, lui, crée le process directement avec le style
+    # de fenêtre demandé : rien ne s'affiche jamais. C'est le mécanisme qu'emploie déjà
+    # hidden.vbs pour les raccourcis et la tâche planifiée (`sh.Run cmd, 0, False`) -- seul le
+    # troisième argument change : False là-bas (fenêtre lancée puis oubliée, hidden.vbs sert
+    # aussi à des raccourcis qui ne doivent jamais bloquer), True ici, pour rendre la main
+    # seulement une fois update.ps1 fini ET récupérer son code de sortie, comme le fait
+    # Start-Process -Wait -PassThru plus bas.
+    $ligne = ('"{0}" -NoProfile -ExecutionPolicy Bypass -File "{1}" -Silencieux' -f $ps, $update)
+    try {
+      $sh = New-Object -ComObject WScript.Shell
+      return [int]$sh.Run($ligne, 0, $true)
+    } catch {
+      Write-SzhLog ('update-launcher : WScript.Shell indisponible, repli sur une fenêtre visible (' + $_.Exception.Message + ')')
+      # Repli : la boucle continue plus bas, en fenêtre normale -- mieux vaut une mise à jour
+      # visible qu'aucune mise à jour du tout.
+    }
+  }
+
   # -Wait -PassThru : sans eux, « vérification faite » (Save-SzhVerifFaite, plus bas)
   # s'écrivait avant même de savoir si cette fenêtre avait réussi.
   $p = Start-Process -FilePath $ps -Wait -PassThru -ArgumentList @(
     '-NoProfile', '-ExecutionPolicy', 'Bypass',
-    '-File', (Join-Path $SzhToolkit 'windows\update.ps1')
+    '-File', $update
   )
   return $p.ExitCode
 }
@@ -147,7 +182,7 @@ function Start-SzhFenetreVisible {
 # Expand-Archive -Force sur $SzhToolkit plus bas — deux déclenchements concurrents de la passe
 # silencieuse (ouverture de session et tâche planifiée, ou deux comptes sur un poste partagé)
 # écriraient et effaceraient sinon en même temps sur le même arbre. Nommé, donc partagé avec
-# update.ps1 : c'est le même verrou qui protège les deux, et Start-SzhFenetreVisible ci-dessus
+# update.ps1 : c'est le même verrou qui protège les deux, et Start-SzhFenetreMaj ci-dessus
 # le relâche avant de lui passer la main pour qu'il puisse le reprendre à son tour.
 $script:SzhMutex = New-SzhMutexPoste
 $script:SzhMutexTenu = $false
@@ -257,7 +292,7 @@ try {
     }
   }
 
-  $codeFenetre = Start-SzhFenetreVisible
+  $codeFenetre = Start-SzhFenetreMaj
   if ($codeFenetre -eq 0) {
     Save-SzhVerifFaite
   } else {
@@ -278,10 +313,14 @@ try {
   # qu'en lisant un journal. La passe reste muette ; c'est la fenêtre visible qui parle, et
   # elle dira soit « terminé », soit l'erreur réelle avec le geste à faire. Une fois par
   # semaine au plus, sinon la passe muette deviendrait la plus bavarde de la chaîne.
+  #
+  # -Visible, et non le réglage : c'est le seul endroit de ce script qui passe outre « mise à
+  # jour silencieuse ». Ce réglage écarte la fenêtre de routine, pas l'alerte — un poste
+  # bloqué depuis un mois qui se tairait aussi n'aurait plus rien pour se faire réparer.
   if ($presse -and (Test-SzhAlerteDue -Maintenant $maintenant -AlerteLe $alerteLe)) {
     Write-SzhLog ('check : bloqué depuis le {0} -> ouverture de la fenêtre visible pour que l''échec se voie' -f $bloqueDepuis)
     try {
-      [void](Start-SzhFenetreVisible)
+      [void](Start-SzhFenetreMaj -Visible)
       Save-SzhSuiviMaj ([ordered]@{
         derniereVerif = $derniereVerif
         bloqueDepuis  = $bloqueDepuis
@@ -294,7 +333,7 @@ try {
   exit 1
 } finally {
   # Filet de sûreté pour toute autre sortie de la passe (« déjà à jour », renoncement de
-  # moment) : Start-SzhFenetreVisible l'a déjà relâché sur le chemin qui y mène, ce qui rend
+  # moment) : Start-SzhFenetreMaj l'a déjà relâché sur le chemin qui y mène, ce qui rend
   # cet appel sans effet là — ReleaseMutex n'est pas appelé deux fois grâce au drapeau.
   if ($script:SzhMutexTenu) {
     try { $SzhMutex.ReleaseMutex() } catch { }

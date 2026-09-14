@@ -11,6 +11,7 @@ WSL s'appelle `SZH-Publishing`.
 [`docs/SORTIES.md`](docs/SORTIES.md) (ce que produit une compilation, et le contrat de balisage) ·
 [`docs/EMPLACEMENTS.md`](docs/EMPLACEMENTS.md) (où vivent les revues, poste par poste) ·
 [`docs/RAPPORTS-ERREUR.md`](docs/RAPPORTS-ERREUR.md) (les rapports d'erreur automatiques du lanceur et du cockpit) ·
+[`docs/TRADUCTION.md`](docs/TRADUCTION.md) (le vérificateur de traduction : suggestions, jamais d'édition) ·
 [`docs/MAINTENANCE.md`](docs/MAINTENANCE.md) (ce qu'il faut surveiller et quand) ·
 [`docs/SECURITE.md`](docs/SECURITE.md) (déploiement flotte) ·
 [`userdoc.md`](userdoc.md) (côté rédacteur).
@@ -155,10 +156,11 @@ Ensuite, plus besoin d'administrateur. Seule la montée de VSCodium ou de Sumatr
 
 ### Créer une revue
 
-Depuis le menu Démarrer : **Revues SZH** (ou **Zeitschriften SZH**) → *Nouvelle revue…*. Le
-numéro est créé dans le dossier « en cours » du produit ; il n'y a rien à choisir. `new-revue.ps1`
-copie le gabarit, écrit le jeton de produit, déduit l'année et le numéro du nom du dossier, vide
-le titre d'exemple, estampille la version du toolkit et crée « Ouvrir la revue.lnk ».
+Depuis le menu Démarrer : **Revue & Zeitschrift** → onglet **Revue** (ou **Zeitschrift**) →
+*Nouvelle revue…*. Le numéro est créé dans le dossier « en cours » du produit ; il n'y a rien à
+choisir. `new-revue.ps1` copie le gabarit, écrit le jeton de produit, déduit l'année et le numéro
+du nom du dossier, vide le titre d'exemple, estampille la version du toolkit et crée « Ouvrir la
+revue.lnk ».
 
 Dans OneDrive : clic droit sur le dossier → **Toujours conserver sur cet appareil**.
 
@@ -182,13 +184,18 @@ sous-dossiers dans les deux cas :
 | archives | `52_Revue\RV99_Archives` | `53_Zeitschrift\ZS99_Archives` |
 
 La clé **`emplacementRevues`** de `config.json` choisit la base : `"test"` ou
-`"production"`. Elle remplace `devMode`, qui reste lu (`true` = test) et que la bascule des
-réglages du cockpit continue d'écrire en parallèle. Un poste qui ne porte ni l'une ni l'autre
+`"production"`. Elle remplace `devMode`, qui reste lu (`true` = test) et que la bascule
+continue d'écrire en parallèle — depuis le 14.09.2026, cette bascule se fait dans l'onglet
+**Paramètres** du lanceur (« Mode développeur », `Set-SzhEmplacementRevues`,
+`windows/szh-produits.ps1`), pas dans « Réglages SZH » du cockpit : le formulaire du cockpit
+a perdu son groupe de boutons radio, et `ecrireEmplacementRevues` (`lib/archivage.js`) n'est
+plus appelée par aucune commande de l'extension. Un poste qui ne porte ni l'une ni l'autre
 se voit écrire la clé en clair au premier lancement, la valeur suivant le disque : jamais
 `production` si la racine de test porte des numéros. L'emplacement actif est nommé dans le
-titre du lanceur (`Revues SZH — dossier de test (Revues-TESTING)`) et dans le journal. Le
-lanceur ne liste que cette arborescence ; les revues restées ailleurs sont comptées et
-signalées, pas listées.
+titre du lanceur (`Revue & Zeitschrift – dossier de test (Revues-TESTING)`) et dans le journal —
+un seul titre, quel que soit l'onglet ouvert, depuis que le lanceur est unique (voir « Le lanceur
+unique » ci-dessous). Le lanceur ne liste que cette arborescence ; les revues restées ailleurs
+sont comptées et signalées, pas listées.
 
 ### L'ancrage SharePoint et les rapports d'erreur automatiques
 
@@ -196,9 +203,10 @@ Le dossier `Daten_Allgemein - General` (l'« ancrage ») est *cherché* — quat
 qui n'ouvrent jamais de fenêtre, plus un sélecteur de dossier réservé au lanceur, une fois par
 lancement, valable pour Revue, Zeitschrift et Books d'un coup. Il fait deux choses : il sert de
 repli pour la base des produits (ci-dessus) et il détermine où atterrissent les **rapports
-d'erreur automatiques** — un JSON par panne, écrit en silence par le lanceur et par le cockpit
-quand quelque chose échoue de façon inattendue, jamais par l'action de la personne qui rédige.
-Détail complet, schéma du JSON, table des codes et procédure de reprise :
+d'erreur** — un JSON par rapport, écrit en silence par le lanceur et par le cockpit : presque
+toujours parce que quelque chose échoue de façon inattendue, et une seule fois sur un geste
+volontaire du rédacteur (« Signaler une erreur… », onglet Journal du lanceur). Détail complet, schéma du
+JSON, table des codes et procédure de reprise :
 [`docs/RAPPORTS-ERREUR.md`](docs/RAPPORTS-ERREUR.md) et
 [`docs/EMPLACEMENTS.md`](docs/EMPLACEMENTS.md), §8.
 
@@ -236,26 +244,101 @@ commentaires.
 
 ### Les raccourcis du menu Démarrer
 
-Cinq entrées, au niveau utilisateur, posées par `Set-SzhRaccourcisMenu` (`szh-shell.ps1`) :
-« Revues SZH », « Zeitschriften SZH » et « Books SZH-CSPS » (un lanceur par produit, sans
-console, par `wscript.exe //B hidden.vbs`), puis « Mise à jour de l'outil Revue » et
-« Aktualisierung des Redaktionstools », qui visent `powershell.exe -File update.ps1 -Langue
-fr|de` — **fenêtre visible**, parce qu'une mise à jour télécharge, prend du temps et peut
-échouer.
+Depuis le 13.09.2026, **deux** entrées, au niveau utilisateur, posées par `Set-SzhRaccourcisMenu`
+(`szh-shell.ps1`) : **« Revue & Zeitschrift »**, le lanceur unique — une fenêtre, cinq onglets
+Revue / Zeitschrift / Book / Journal / Paramètres, sans console, par `wscript.exe //B hidden.vbs`
+— et
+**« Revue & Zeitschrift (Updater) »**, qui vise `powershell.exe -File update.ps1` — **fenêtre
+visible**, parce qu'une mise à jour télécharge, prend du temps et peut échouer. Un seul raccourci
+de mise à jour, au nom fixe : `update.ps1` garde son paramètre `-Langue` pour un essai en ligne de
+commande, mais le raccourci ne le passe plus — la fenêtre parle désormais la langue du réglage,
+comme le lanceur.
 
-Deux entrées de mise à jour plutôt qu'une renommée : le nom d'un `.lnk` est figé alors que la
-langue de l'interface bouge (env, `state.json`, langue de Windows). Un poste neuf résout
-« en » — la seule langue qu'aucune équipe n'emploie —, la préférence bascule dès qu'un collègue
-ouvre l'autre lanceur, et un renommage casse l'épinglage. `$SzhLanguesRaccourci` décide quelles
-langues reçoivent une entrée.
+Ces deux noms sont **provisoires** — le nom définitif de l'application viendra plus tard — et
+tenus en un seul endroit : `$SzhNomApplication` et `$SzhNomMiseAJour` (`szh-shell.ps1`). Les
+libellés des cinq onglets, eux, ne se traduisent pas.
 
-Les trois chemins les posent, et c'est voulu : `bootstrap.ps1` (poste neuf, y compris quand la
-Release est injoignable), `update.ps1` (étape 4/5) et `update-launcher.ps1` **à chaque ouverture
-de session, avant le test de version** — sans quoi un poste déjà à la dernière version
+Avant cette date il y avait cinq entrées : « Revues SZH », « Zeitschriften SZH » et
+« Books SZH-CSPS » (un lanceur par produit, chacun forçant sa langue), plus « Mise à jour de
+l'outil Revue » et « Aktualisierung des Redaktionstools » (une entrée de mise à jour par langue,
+chacune passant `-Langue fr|de` à `update.ps1`) — deux entrées plutôt qu'une renommée, parce que
+le nom d'un `.lnk` est figé alors que la langue de l'interface bouge. `$SzhLanguesRaccourci`
+décidait quelles langues recevaient une entrée ; il n'y a plus qu'une seule entrée de mise à
+jour, la variable a disparu avec lui.
+
+**La migration se fait toute seule.** `Set-SzhRaccourcisMenu` reconnaît un ancien raccourci à
+**sa cible**, et non à son nom — ce qui vaut pour tous les renommages, passés et à venir — et
+retire donc les cinq anciens en posant les deux nouveaux, à la prochaine mise à jour d'un poste
+déjà installé. La désinstallation, elle, a besoin des noms : le toolkit peut avoir disparu avant
+elle, et `Get-SzhRaccourcisObsoletes` (`szh-shell.ps1`) porte la liste figée de ce qu'un menu a
+pu porter.
+
+Un raccourci **épinglé** à la barre des tâches est une copie, indépendante du `.lnk` du menu
+Démarrer : la migration ne le touche pas. Il faut le dépingler puis réépingler le nouveau à la
+main, une fois par poste.
+
+Les trois chemins posent les raccourcis, et c'est voulu : `bootstrap.ps1` (poste neuf, y compris
+quand la Release est injoignable), `update.ps1` (étape 4/5) et `update-launcher.ps1` **à chaque
+ouverture de session, avant le test de version** — sans quoi un poste déjà à la dernière version
 n'obtiendrait jamais une entrée ajoutée après coup. Jamais bloquant : un menu tenu par une
 stratégie de groupe est journalisé, pas fatal. Un `.lnk` du premier niveau qui pilote un de nos
-scripts sans porter l'un des noms voulus est retiré — le sous-dossier `SZH\` du menu appartient
-à un autre produit et n'est jamais touché.
+scripts sans porter l'un des deux noms voulus est retiré — le sous-dossier `SZH\` du menu
+appartient à un autre produit et n'est jamais touché.
+
+Une seule identité de barre des tâches pour le lanceur, `SZH.Publishing.Suite`, commune aux
+cinq onglets, là où il y en avait une par produit ; `SZH.Publishing.MiseAJour` pour l'updater.
+`$SzhAppIds` (`szh-shell.ps1`) ne porte plus que ces deux clés. Faute d'une icône propre à
+l'application, le lanceur reprend `szh-revue.ico` ; les trois icônes de produit (`szh-revue.ico`,
+`szh-zeitschrift.ico`, `szh-livre.ico`) restent livrées et servent encore aux boîtes
+« Nouveau… » ouvertes depuis un onglet.
+
+### L'onglet « Journal », et les deux réglages ajoutés depuis le 14.09.2026
+
+Un cinquième onglet, **Journal**, posé entre Book et Paramètres (`open-produit.ps1`). Il liste
+les dix derniers transcrits de mise à jour (`Get-SzhJournauxMaj`, `windows/szh-common.ps1`) —
+`C:\ProgramData\SZH\logs\update-<horodatage>.log` — avec leur date (tirée du **nom** du fichier,
+pas de sa date de modification, qui bouge à la copie), leur verdict (`Get-SzhVerdictJournalMaj` :
+lu sur la **queue** du transcript — pied de page `Stop-Transcript` absent → `inconnu`, présent
+avec `✓` → `ok`, sans → `echec`) et leur taille ; un clic affiche le journal choisi dans un
+cadre à chasse fixe. Avant cet onglet, ces fichiers n'étaient lisibles qu'en allant les chercher
+à la main dans `ProgramData`.
+
+Deux boutons dans cet onglet :
+
+- **« Signaler une erreur… »** (`Invoke-SzhSignalement`) demande une phrase, puis appelle
+  `Write-SzhRapport -Code 'LANCEUR-SIGNALEMENT'` (`windows/szh-rapport.ps1`) en y joignant le
+  journal sélectionné — le seul code de la table qu'un geste déclenche, et non une panne
+  détectée (voir [`docs/RAPPORTS-ERREUR.md`](docs/RAPPORTS-ERREUR.md) §7, qui raconte aussi le
+  défaut initial — ce code n'était déclaré dans aucune des deux tables, et le bouton annonçait
+  un envoi qui n'avait pas lieu — et le test qui l'empêche de revenir) ;
+- **« Envoyer les journaux… »** (`Invoke-SzhEnvoiJournaux`) réunit les dix journaux et le journal
+  mensuel (`szh-AAAA-MM.log`) dans une archive zip du dossier temporaire, ouvre un brouillon de
+  courriel au support et ouvre l'explorateur sur l'archive — un `mailto:` ne portant pas de
+  pièce jointe, le message dit qu'il faut l'y glisser plutôt que de laisser croire que c'est
+  parti.
+
+Un troisième réglage, **« Mise à jour de l'outil »** : fenêtre visible (défaut) ou mise à jour en
+silence. Rangé par compte, clé `majSilencieuse` de `%LOCALAPPDATA%\SZH\etat-utilisateur.json`
+(`Get-SzhMajSilencieuse` / `Set-SzhMajSilencieuse`, `windows/szh-common.ps1`). Le silence est
+obtenu par `Start-SzhFenetreMaj` (`windows/update-launcher.ps1`, renommée depuis
+`Start-SzhFenetreVisible`) : `update.ps1 -Silencieux` est lancé par
+`WScript.Shell.Run(cmd, 0, $true)`, pas par `Start-Process -WindowStyle Hidden`, qui crée
+d'abord le processus avant de le redimensionner et peut donc laisser clignoter une console ; le
+`$true` final garde l'attente et le code de sortie, dont dépend le reste du script. Le
+transcript, donc le journal, reste complet dans les deux cas — c'est la fenêtre qu'on cache, pas
+la trace. L'écran d'erreur `Show-SzhErreur` attendait une touche ; sans fenêtre, il bloquerait le
+processus pour toujours, mutex de mise à jour compris — une variable `$script:SzhSansInteraction`
+(posée par `update.ps1` quand `-Silencieux` est passé) le rend non bloquant : le rapport
+automatique part comme avant, le journal note l'échec, la main revient tout de suite. L'alerte
+d'un poste bloqué depuis 28 jours reste visible : `update-launcher.ps1` appelle
+`Start-SzhFenetreMaj -Visible`, qui passe outre ce réglage — il écarte la fenêtre de routine, pas
+l'alerte.
+
+Un quatrième réglage, **« Mode développeur (dossiers de test) »**, déménagé du formulaire de
+réglages du cockpit vers cet onglet — voir plus haut « Où vivent les revues ». C'est le seul
+réglage de cet onglet qui vaille pour **tout le poste** et non pour le seul compte ; l'onglet
+le dit, et les listes ne le suivent qu'à la prochaine ouverture. Côté cockpit, le badge orangé
+« Dossier de test » de la barre d'état reste, mais ne se clique plus.
 
 ### Revenir à une version précédente
 
@@ -332,7 +415,7 @@ langue d'affichage** (`argv.json`, clé `locale`, et le pack de langue épinglé
 | 1 | `SZH_LANGUE` | l'environnement — un essai, jamais posée sur un poste de rédaction |
 | 2 | réglage `szh.langue` | réglages de l'éditeur, écrits par « Réglages SZH » |
 | 3 | clé `langue` | configuration du poste — le même choix, **hors** des réglages de l'éditeur |
-| 4 | clé `langue` | état du poste, écrit par le dernier lanceur ouvert (`Set-SzhLangueProduit`) |
+| 4 | clé `langue` | état du poste, recopiée en miroir par le lanceur (`Set-SzhLangueInterface`, depuis le 13.09.2026 — `Set-SzhLangueProduit`, disparue, l'écrivait avant elle) |
 | 5 | langue d'affichage de l'éditeur | `argv.json` + pack de langue |
 | 6 | langue d'affichage de Windows | locale du système |
 | — | français | faute de mieux |
@@ -341,8 +424,13 @@ Deux points valent d'être sus avant d'y toucher.
 
 **Pourquoi l'étage 4.** Les postes d'ici affichent Windows ET VSCodium en anglais : ni l'un
 ni l'autre ne dit l'équipe qui s'en sert, et la cascade retombait donc toujours sur le
-français — y compris à la rédaction germanophone. Le lanceur, lui, le dit : « Zeitschriften
-SZH » écrit `de`, « Revues SZH » écrit `fr`.
+français — y compris à la rédaction germanophone. Le lanceur, lui, le dit : il résout sa
+propre langue par sa propre cascade (compte, héritage de `state.json`, langue de Windows,
+allemand en dernier recours — `windows/szh-common.ps1`, `$SzhLangue`) et la recopie en miroir
+dans `state.json`. Jusqu'au 13.09.2026 ce miroir était écrit par `Set-SzhLangueProduit`, et
+c'était le choix du lanceur ouvert qui décidait de tout : « Zeitschriften SZH » écrivait `de`,
+« Revues SZH » écrivait `fr`. Le lanceur unique n'a plus ce choix à faire — `Set-SzhLangueInterface`
+écrit la langue que sa propre cascade a résolue, quel que soit l'onglet ouvert.
 
 **Pourquoi l'étage 3 double l'étage 2.** `update.ps1` (étape 4/5) réécrit *intégralement* les
 réglages de l'éditeur à chaque mise à jour. Le choix du rédacteur y disparaissait — un poste

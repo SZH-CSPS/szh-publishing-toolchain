@@ -29,8 +29,11 @@ param(
 
 . "$PSScriptRoot\szh-common.ps1"
 
-# Le produit demandé décide aussi de la langue des messages.
-if ($Produit) { Set-SzhLangueProduit $Produit }
+# Le produit ne décide plus de la langue des messages. Il le faisait : créer une Zeitschrift
+# basculait tout l'outil en allemand, pour tous les comptes du poste, et le rédacteur
+# francophone qui rendait service à sa collègue retrouvait son lanceur en allemand. La langue
+# est un réglage, fait dans l'onglet « Paramètres » du lanceur et rangé par compte — ce
+# script s'exprime donc dans la langue déjà résolue par szh-common.ps1, comme tout le reste.
 Write-SzhTitre 'Nouvelle revue'
 
 $template = Join-Path $SzhToolkit 'revue-template'
@@ -135,9 +138,9 @@ if ($officiel) {
   Write-SzhOk ('Revue créée : {0}' -f $chemin)
   Write-SzhInfo 'Dans OneDrive : clic droit sur ce dossier -> « Toujours conserver sur cet appareil ».'
   Write-SzhInfo 'Déposez les articles Word finalisés dans « articles-word », puis double-cliquez « Ouvrir la revue ».'
-  $lanceur = 'Revues SZH'
-  if ((Get-SzhJetonRevue $Produit) -eq 'zeitschrift') { $lanceur = 'Zeitschriften SZH' }
-  Write-SzhInfo ('Le numéro apparaît dans le lanceur « {0} » du menu Démarrer.' -f $lanceur)
+  $onglet = $SzhProduits['revue'].onglet
+  if ((Get-SzhJetonRevue $Produit) -eq 'zeitschrift') { $onglet = $SzhProduits['zeitschrift'].onglet }
+  Write-SzhInfo ('Le numéro apparaît dans « {0} », onglet « {1} », du menu Démarrer.' -f $SzhNomApplication, $onglet)
   return
 }
 Write-SzhInfo ('Ce dossier est hors de l''arborescence officielle : le lanceur le signalera au lieu de lister la revue.')
@@ -157,4 +160,4 @@ if (-not $connu) {
 Write-SzhOk ('Revue créée : {0}' -f $chemin)
 Write-SzhInfo 'Dans OneDrive : clic droit sur ce dossier -> « Toujours conserver sur cet appareil ».'
 Write-SzhInfo 'Déposez les articles Word finalisés dans « articles-word », puis double-cliquez « Ouvrir la revue ».'
-Write-SzhInfo 'La revue apparaît aussi dans le lanceur « Revues SZH » du menu Démarrer.'
+Write-SzhInfo ('La revue apparaît aussi dans « {0} », au menu Démarrer.' -f $SzhNomApplication)

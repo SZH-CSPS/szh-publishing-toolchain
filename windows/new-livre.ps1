@@ -115,4 +115,4 @@ Set-SzhRaccourciRevue $chemin 'Ouvrir le livre' 'Ouvrir ce livre dans l''éditeu
 Write-SzhOk ('Livre créé : {0}' -f $chemin)
 Write-SzhInfo 'Dans OneDrive : clic droit sur ce dossier -> « Toujours conserver sur cet appareil ».'
 Write-SzhInfo 'Écrivez les chapitres dans « chapitres » (un dossier par chapitre, sur le modèle de « 01-exemple »), puis double-cliquez « Ouvrir le livre ».'
-Write-SzhInfo 'Le livre apparaît dans le lanceur « Books SZH-CSPS » du menu Démarrer.'
+Write-SzhInfo ('Le livre apparaît dans « {0} », onglet « {1} », du menu Démarrer.' -f $SzhNomApplication, $SzhProduits['livre'].onglet)

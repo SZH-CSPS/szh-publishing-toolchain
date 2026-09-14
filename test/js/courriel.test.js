@@ -18,18 +18,24 @@ const courriel = require(path.join(COCKPIT, 'lib', 'courriel'));
 
 // Les quatre textes d'origine (art.envoi.sujet/corps, trad.lien.sujet/corps), fr et de,
 // recopiés de lib/i18n.js avant leur retrait — l'oracle indépendant de ce test.
+//
+// Glissement du 13.09.2026 : le chemin de secours de trad.lien.corps (« sans le lien ») nommait
+// un lanceur de produit disparu (« Zeitschriften SZH », « Revues SZH ») ; il nomme maintenant
+// le lanceur unique et son onglet, au caractère près (espaces insécables comprises) — recopié
+// ici depuis traduction.fr.twig / traduction.de.twig. Le défaut gardé ne change pas : un
+// gabarit qui s'écarterait de cet oracle, ne serait-ce que d'un caractère, se verrait ici.
 const ANCIENS = {
   "fr": {
     "art.envoi.sujet": "Version finale – {0}",
     "art.envoi.corps": "Bonjour,\n\nVous trouverez en pièce jointe la version finale de votre article « {0} », telle qu’elle paraîtra dans {1}.\n\nMerci de nous signaler toute correction avant l’impression.\n\nAvec nos remerciements pour votre contribution,\nLa rédaction",
     "trad.lien.sujet": "Traduction allemand vers français – {0}",
-    "trad.lien.corps": "Bonjour,\n\nLe numéro {0} de la Schweizerische Zeitschrift für Heilpädagogik est prêt pour la traduction de l’allemand vers le français.\n\nPour l’ouvrir directement au bon endroit : COPIEZ le lien ci-dessous, puis collez-le dans la fenêtre « Exécuter » de Windows (touche Windows + R) et validez.\n\n{1}\n\nAutre chemin, sans le lien : menu Démarrer -> « Zeitschriften SZH », puis choisir le numéro.\n"
+    "trad.lien.corps": "Bonjour,\n\nLe numéro {0} de la Schweizerische Zeitschrift für Heilpädagogik est prêt pour la traduction de l’allemand vers le français.\n\nPour l’ouvrir directement au bon endroit : COPIEZ le lien ci-dessous, puis collez-le dans la fenêtre « Exécuter » de Windows (touche Windows + R) et validez.\n\n{1}\n\nAutre chemin, sans le lien : menu Démarrer -> « Revue & Zeitschrift », onglet « Zeitschrift », puis le numéro.\n"
   },
   "de": {
     "art.envoi.sujet": "Endfassung – {0}",
     "art.envoi.corps": "Guten Tag\n\nIm Anhang finden Sie die Endfassung Ihres Artikels «{0}», so wie er in {1} erscheinen wird.\n\nBitte melden Sie uns allfällige Korrekturen vor dem Druck.\n\nMit bestem Dank für Ihren Beitrag\nDie Redaktion",
     "trad.lien.sujet": "Übersetzung Französisch nach Deutsch – {0}",
-    "trad.lien.corps": "Guten Tag\n\nDie Ausgabe {0} der Revue suisse de pédagogie spécialisée ist bereit für die Übersetzung vom Französischen ins Deutsche.\n\nSo öffnen Sie sie direkt an der richtigen Stelle: KOPIEREN Sie den Link unten, fügen Sie ihn im Windows-Fenster «Ausführen» ein (Windows-Taste + R) und bestätigen Sie.\n\n{1}\n\nOhne den Link: Startmenü -> «Revues SZH», dann die Ausgabe wählen.\n"
+    "trad.lien.corps": "Guten Tag\n\nDie Ausgabe {0} der Revue suisse de pédagogie spécialisée ist bereit für die Übersetzung vom Französischen ins Deutsche.\n\nSo öffnen Sie sie direkt an der richtigen Stelle: KOPIEREN Sie den Link unten, fügen Sie ihn im Windows-Fenster «Ausführen» ein (Windows-Taste + R) und bestätigen Sie.\n\n{1}\n\nOhne den Link: Startmenü -> «Revue & Zeitschrift», Registerkarte «Revue», dann die Ausgabe wählen.\n"
   }
 };
 

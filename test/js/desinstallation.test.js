@@ -35,6 +35,18 @@ const UNINSTALL_PS1 = path.join(RACINE, 'windows', 'uninstall.ps1');
 const UNINSTALL = lire('windows', 'uninstall.ps1');
 const DESINSTALLATION = lire('windows', 'szh-desinstallation.ps1');
 const CMD = lire('windows', 'Désinstaller le poste SZH.cmd');
+const SHELL = lire('windows', 'szh-shell.ps1');
+
+// Les deux noms actuels, lus dans szh-shell.ps1 plutôt que recopiés en dur : son
+// commentaire dit que le nom définitif n'est pas arrêté (voir test/js/raccourcis.test.js,
+// qui fait de même).
+function litLitteral(source, nomVar) {
+  const m = source.match(new RegExp('\\$script:' + nomVar + "\\s*=\\s*'([^']+)'"));
+  assert.ok(m, nomVar + ' introuvable dans szh-shell.ps1');
+  return m[1];
+}
+const NOM_APPLICATION = litLitteral(SHELL, 'SzhNomApplication');
+const NOM_MISE_A_JOUR = litLitteral(SHELL, 'SzhNomMiseAJour');
 
 // ---- Contrats de source : partout, pas seulement sous Windows ----
 
@@ -446,4 +458,75 @@ test('uninstall.ps1 -Simuler -Json : l’arborescence jetable est intacte après
     assert.deepStrictEqual(scenarioE.apres, scenarioE.avant,
       '-Simuler -Json a quand même modifié l’arborescence jetable : ' +
       JSON.stringify({ avant: scenarioE.avant, apres: scenarioE.apres }));
+  });
+
+// ---- Scénario (f) : un nom périmé n'entre dans le plan QUE si le fichier existe ----
+//
+// Get-SzhRaccourcisObsoletes (szh-shell.ps1, voir test/js/raccourcis.test.js) nomme six
+// entrées disparues avec la fusion des trois lanceurs en un seul, à onglets (13.09.2026).
+// La désinstallation ne doit lister QUE celles qui laissent RÉELLEMENT un .lnk sur le
+// disque : Set-SzhRaccourcisMenu retire déjà ces vieux .lnk (à leur CIBLE, pas à leur nom)
+// à chaque ouverture de session -- un poste qui a tourné au moins une fois depuis la mise à
+// jour ne doit donc plus se voir proposer cinq lignes fantômes dans le plan.
+//
+// $env:APPDATA est redirigé vers un dossier « menu Démarrer » jetable : ni le vrai menu du
+// compte qui exécute les tests, ni C:\ProgramData\SZH ne sont touchés -- même prudence que
+// les scénarios (a) à (d) plus haut, par un pilote direct (Get-SzhPlanDesinstallation
+// -Profil) plutôt que par uninstall.ps1, pour ne dépendre que du strict nécessaire.
+
+const scenarioF = (function () {
+  if (!POWERSHELL) { return null; }
+  const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-desinstall-f-'));
+  const base = path.join(travail, 'ProgramData');
+  const appdata = path.join(travail, 'AppData');
+  const menu = path.join(appdata, 'Microsoft', 'Windows', 'Start Menu', 'Programs');
+  const sortie = path.join(travail, 'plan.json');
+  const pilote = path.join(travail, 'eprouver.ps1');
+  fs.mkdirSync(base, { recursive: true });
+  fs.mkdirSync(menu, { recursive: true });
+  // Un SEUL des six noms périmés laisse un vrai fichier sur cette arborescence -- les cinq
+  // autres restent absents, et ne doivent donc pas apparaître dans le plan.
+  fs.writeFileSync(path.join(menu, 'Revues SZH.lnk'), 'x', 'utf8');
+
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "$env:SZH_BASE = '" + base + "'",
+    "$env:APPDATA = '" + appdata + "'",
+    '. "' + COMMUN_PS1 + '"',
+    '. "' + DESINSTALL_PS1 + '"',
+    '$plan = @(Get-SzhPlanDesinstallation -Profil)',
+    'Set-SzhJson \'' + sortie + '\' $plan'
+  ].join('\r\n') + '\r\n';
+  ecrirePs1(pilote, script);
+
+  const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', pilote],
+    { encoding: 'utf8', windowsHide: true, timeout: 60000 });
+  const lu = fs.existsSync(sortie) ? JSON.parse(fs.readFileSync(sortie, 'utf8')) : null;
+  const restes = { status: run.status, stderr: run.stderr || '' };
+  fs.rmSync(travail, { recursive: true, force: true });
+  return Object.assign({}, restes, { plan: lu });
+})();
+
+test('un nom périmé n’entre dans le plan de désinstallation que si le fichier existe',
+  { skip: sansPowerShell }, () => {
+    assert.strictEqual(scenarioF.status, 0, 'le pilote PowerShell a échoué : ' + scenarioF.stderr);
+    assert.ok(Array.isArray(scenarioF.plan), 'sortie non JSON');
+    const raccourcis = scenarioF.plan.filter((e) => e.type === 'raccourci');
+
+    // Les deux entrées ACTUELLES sont toujours dans le plan, quel que soit leur état réel :
+    // seules les entrées PÉRIMÉES sont soumises à la garde « seulement si le fichier existe ».
+    const canoniques = raccourcis.filter((e) => e.detail === NOM_APPLICATION || e.detail === NOM_MISE_A_JOUR);
+    assert.strictEqual(canoniques.length, 2, 'les deux entrées actuelles ont disparu du plan');
+    for (const c of canoniques) {
+      assert.strictEqual(c.present, false, c.detail + ' ne devrait pas exister sur cette arborescence jetable');
+    }
+
+    // Tout le reste des entrées « raccourci » est donc PÉRIMÉ par élimination -- et il ne
+    // doit en rester qu'une seule : celle dont le fichier a été réellement posé ci-dessus.
+    const perimes = raccourcis.filter((e) => canoniques.indexOf(e) === -1);
+    assert.strictEqual(perimes.length, 1,
+      'un nom périmé sans fichier réel est quand même entré dans le plan : ' +
+      perimes.map((e) => e.detail).join(', '));
+    assert.strictEqual(perimes[0].detail, 'Revues SZH');
+    assert.strictEqual(perimes[0].present, true);
   });

@@ -32,9 +32,11 @@ des copies en conflit, l'accessibilité PDF/UA — est indifférent au fait que 
 un article ou un chapitre.
 
 Le toolkit sait d'ailleurs **déjà** gérer deux produits : `revue` et `zeitschrift`
-partagent tout et ne diffèrent que par un jeton, deux icônes, deux identités de barre des
-tâches et deux racines SharePoint (`windows/szh-common.ps1`, `$SzhSousDossiers` et
-`$SzhAppIds`). Le livre est un troisième produit — plus éloigné, mais du même patron.
+partagent tout et ne diffèrent que par un jeton, deux icônes et deux racines SharePoint
+(`windows/szh-common.ps1`, `$SzhSousDossiers`). Le livre est un troisième produit — plus
+éloigné, mais du même patron. (Depuis le 13.09.2026, les trois produits partagent en plus une
+seule fenêtre de lanceur, à onglets, et une seule identité de barre des tâches — `$SzhAppIds`,
+`windows/szh-shell.ps1`, ne porte plus qu'une clé par lanceur et non plus une par produit.)
 
 ---
 
@@ -626,7 +628,7 @@ se rejoignent au lanceur.
 | **L7b** | CMJN à noir préservé | **mécanisme mesuré, publication restante** (§4.3) | `cmjn.py` préserve le noir du texte en K seul et convertit les couleurs de la maison ; Ghostscript termine par le profil PSO Uncoated v3/FOGRA52, épinglé et vérifié dans `image/Containerfile`. **Mesuré bout en bout** sur `test/livre-normal` — `--permit-file-read` sur le profil ICC était le maillon manquant : sans lui Ghostscript refuse de le lire, et le dit par un message qui ne parle pas de permission. `test/cmjn-check.py` vérifie automatiquement texte K seul, couleurs de la maison et absence de RVB résiduel. **Reste non publié** : aucun poste de rédaction n'en bénéficie tant que le rootfs n'a pas été reconstruit par une release |
 | **L1** | Extraction d'`extension.js` en modules | moyen — voir les deux avertissements du §6 | **fait partiellement** : six modules extraits (`session.js`, `cycle-vie.js`, `apercu.js`, `import-hote.js`, `medias-hote.js`, `documentation-hote.js`), `extension.js` réduit à environ 6 700 lignes |
 | **L2** | `lib/profil.js` + routage des chemins par le profil | moyen | **fait** : `chemins()` a des appelants dans `extension.js`, `session.js`, `cycle-vie.js`, `apercu.js`, `import-hote.js`, `medias-hote.js` et `media/_commun.js` |
-| **L8** | Lanceur « Books SZH-CSPS », `new-livre.ps1`, gabarit, icône, identité, raccourci | moyen | **fait** — racine SharePoint à confirmer |
+| **L8** | Lanceur « Books SZH-CSPS », `new-livre.ps1`, gabarit, icône, identité, raccourci | moyen | **fait**, puis **remplacé le 13.09.2026** : le livre est un onglet (« Book ») du lanceur unique « Revue & Zeitschrift », plus une entrée de menu à lui — racine SharePoint à confirmer |
 | **L9** | Cockpit côté livre : arbre des chapitres, formulaire d'ouvrage, de couverture | moyen | **fait partiellement** : formulaire de métadonnées de l'ouvrage fait, les quatre tâches de sortie faites, aperçu HTML par chapitre fait ; formulaire de couverture (grammage, main, fond perdu, profil CMJN, dos en lecture seule) pas encore fait |
 
 ---
@@ -637,11 +639,13 @@ se rejoignent au lanceur.
    (en cours) et `54_Buch\BU01_Auflagen finale` (archives). Seul le second nom est
    confirmé — il vient du dossier de référence livré ; les deux autres étendent le patron
    `52_Revue` / `53_Zeitschrift`. Configurable par `config.json`, clé `sousDossiersLivre`.
-2. **Le nom du produit.** « Books SZH/CSPS » a été demandé, mais un nom de fichier `.lnk`
-   ne peut pas porter de barre oblique — et c'est ce nom qui s'affiche dans le menu
-   Démarrer. L'entrée s'appelle donc « Books SZH-CSPS ». À trancher : garder le trait
-   d'union, ou suivre le patron des deux autres entrées — « Revues SZH » et
-   « Zeitschriften SZH » —, qui ne portent pas de sigle double.
+2. **Le nom du produit.** *Dépassé par l'unification du 13.09.2026 : il n'y a plus d'entrée de
+   menu par produit à nommer.* « Books SZH/CSPS » avait été demandé pour une entrée séparée,
+   mais un nom de fichier `.lnk` ne peut pas porter de barre oblique. Le livre est désormais un
+   onglet (« Book », non traduit) du lanceur unique « Revue & Zeitschrift » — lui-même un nom
+   provisoire, tenu dans `$SzhNomApplication` (`windows/szh-shell.ps1`) — et non plus une entrée
+   de menu à son nom propre. La question du sigle double ne se pose donc plus dans ces termes ;
+   elle resurgira si le produit reçoit un jour son propre onglet nommé.
 3. **Le profil CMJN** exigé par l'imprimerie (Edubook / Ediprim). C'est lui qui décidera
    de la voie à prendre sur le noir (§4.3).
 4. **Le papier de référence** (grammage et main) des collections courantes.

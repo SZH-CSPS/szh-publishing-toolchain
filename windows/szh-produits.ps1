@@ -193,6 +193,39 @@ function Initialize-SzhEmplacementRevues {
   return $choisi
 }
 
+# Écrit l'emplacement en clair dans config.json, à la demande (onglet « Paramètres » du
+# lanceur) -- Initialize-SzhEmplacementRevues, ci-dessus, ne pose la clé qu'une fois, et
+# seulement quand elle est ABSENTE : ce n'est pas la même fonction, un réglage exprès doit
+# pouvoir changer un choix déjà écrit, ce que l'autre refuse par construction.
+#
+# Mêmes DEUX clés que configAvecEmplacement côté cockpit
+# (vscodium-extension/szh-cockpit/lib/archivage.js), dans le même ordre de priorité :
+# `emplacementRevues` ('test' ou 'production'), qui fait foi, ET l'ancienne `devMode`
+# (booléenne, vraie quand l'emplacement vaut 'test'), pour un toolkit plus ancien resté sur le
+# poste qui ne connaît que ce nom-là. Une valeur inconnue vaut 'test' -- même défaut que
+# Resolve-SzhEmplacementRevues ci-dessus et que resoudreEmplacementRevues côté cockpit.
+#
+# Fusionné dans le config.json existant (Get-SzhConfig / Set-SzhJson, comme
+# Initialize-SzhEmplacementRevues ci-dessus) : rien d'autre n'est perdu. Ne lève jamais -- un
+# config.json non inscriptible ne doit pas faire échouer un simple réglage.
+function Set-SzhEmplacementRevues([string]$Emplacement) {
+  $voulu = $SzhEmplacementTest
+  if (([string]$Emplacement).Trim().ToLower() -eq $SzhEmplacementProd) { $voulu = $SzhEmplacementProd }
+  try {
+    $cfg = Get-SzhConfig
+    if (-not $cfg) { $cfg = New-Object psobject }
+    if ($cfg.PSObject.Properties['emplacementRevues']) { $cfg.emplacementRevues = $voulu }
+    else { $cfg | Add-Member -MemberType NoteProperty -Name 'emplacementRevues' -Value $voulu }
+    $devMode = ($voulu -eq $SzhEmplacementTest)
+    if ($cfg.PSObject.Properties['devMode']) { $cfg.devMode = $devMode }
+    else { $cfg | Add-Member -MemberType NoteProperty -Name 'devMode' -Value $devMode }
+    Set-SzhJson $SzhConfigFile $cfg
+  } catch {
+    try { Write-SzhLog ('emplacement des revues : ecriture impossible (Set-SzhEmplacementRevues) -> ' + $_.Exception.Message) } catch { }
+  }
+  return $voulu
+}
+
 # Emplacement actif : passage obligé de tout le monde, et il fige la valeur au premier appel,
 # pour que le titre du lanceur et les listes qu'il affiche viennent du même choix.
 function Get-SzhEmplacementRevues {
@@ -202,8 +235,8 @@ function Get-SzhEmplacementRevues {
 
 # Étiquette courte de la racine active, pour le jeton {racine} des textes : le titre du
 # lanceur dit alors où sont les revues, sans qu'on ouvre config.json. Mémorisée par langue —
-# T est appelé souvent, et Set-SzhLangueProduit peut changer de langue après un premier
-# appel : une mémoire d'une seule case figerait le titre en anglais.
+# T est appelé souvent, et Set-SzhLangueInterface peut changer de langue après un premier
+# appel : une mémoire d'une seule case figerait le titre dans la langue d'avant le réglage.
 $script:SzhEtiquetteMemo = @{}
 function Get-SzhEtiquetteRacine {
   if ($SzhEtiquetteMemo.ContainsKey($SzhLangue)) { return $SzhEtiquetteMemo[$SzhLangue] }
@@ -338,7 +371,7 @@ function Get-SzhRevueEtat([string]$Dossier) {
 }
 
 # État complet d'un dossier de livre, sur le modèle de Get-SzhRevueEtat ci-dessus, pour le
-# lanceur « Books SZH-CSPS ». Réutilise Get-SzhAusgabe (l'analyseur YAML plat), qui ne sait
+# l'onglet « Book » du lanceur. Réutilise Get-SzhAusgabe (l'analyseur YAML plat), qui ne sait
 # rien du nom du fichier qu'on lui donne — buch.yaml n'est ici qu'un chemin de plus.
 #
 # ⚠ La langue du texte se lit dans `lang:` : c'est la clé que lit réellement la chaîne
@@ -636,11 +669,14 @@ function Set-SzhIntention([string]$Revue, [string]$Vue, [string]$Article) {
 #   racinesHeritees   : vrai pour revue et zeitschrift -- `revuesRoots` de config.json et
 #                       OneDrive\Revues n'existaient qu'avant le livre, et ne signalent jamais
 #                       rien pour lui.
-#   appId             : la clé de $SzhAppIds (Get-SzhAppId), pour l'identité de barre des tâches.
 #   icone             : le nom du fichier .ico, sous windows\.
+#   onglet            : le libellé de l'onglet dans le lanceur. Un nom de produit, pas une
+#                       phrase à traduire -- « Revue », « Zeitschrift », « Book » se lisent
+#                       tels quels dans les deux langues, et ne bougent donc pas avec
+#                       $SzhLangue, contrairement à tout le reste de la fenêtre.
 #   etiquetteChamp    : 'nom' (le nom du dossier) pour revue et zeitschrift, 'titre' (celui de
 #                       buch.yaml, replié sur le nom si vide) pour le livre.
-#   texteTitre / texteChoisir / texteVide / texteTest / texteNouvelle / texteModifie /
+#   texteChoisir / texteVide / texteTest / texteNouvelle / texteModifie /
 #   texteVideArchives : les clés de $SzhTextes propres à ce produit (szh-textes.ps1).
 #   nouveauFormulaire : le nom de la fonction qui pose le formulaire « Nouveau… » -- deux
 #                       fonctions distinctes (Read-SzhNouveauNumero, Read-SzhNouveauLivre), qui
@@ -648,14 +684,13 @@ function Set-SzhIntention([string]$Revue, [string]$Vue, [string]$Article) {
 $script:SzhProduits = @{
   revue = @{
     jeton             = 'revue'
+    onglet            = 'Revue'
     manifeste         = 'ausgabe.yaml'
     etatFn            = 'Get-SzhRevueEtat'
     filtrerJeton      = $true
     racinesHeritees   = $true
-    appId             = 'revue'
     icone             = 'szh-revue.ico'
     etiquetteChamp    = 'nom'
-    texteTitre        = 'lanceur.titre'
     texteChoisir      = 'lanceur.choisir'
     texteVide         = 'lanceur.vide'
     texteTest         = 'lanceur.test'
@@ -666,32 +701,30 @@ $script:SzhProduits = @{
   }
   zeitschrift = @{
     jeton             = 'zeitschrift'
+    onglet            = 'Zeitschrift'
     manifeste         = 'ausgabe.yaml'
     etatFn            = 'Get-SzhRevueEtat'
     filtrerJeton      = $true
     racinesHeritees   = $true
-    appId             = 'zeitschrift'
     icone             = 'szh-zeitschrift.ico'
     etiquetteChamp    = 'nom'
-    texteTitre        = 'lanceur.titre.zs'
     texteChoisir      = 'lanceur.choisir.zs'
     texteVide         = 'lanceur.vide.zs'
     texteTest         = 'lanceur.test.zs'
-    texteNouvelle     = 'lanceur.nouvelle'
+    texteNouvelle     = 'lanceur.nouvelle.zs'
     texteModifie      = 'lanceur.modifie'
-    texteVideArchives = 'lanceur.vide.archives'
+    texteVideArchives = 'lanceur.vide.archives.zs'
     nouveauFormulaire = 'Read-SzhNouveauNumero'
   }
   livre = @{
     jeton             = 'livre'
+    onglet            = 'Book'
     manifeste         = 'buch.yaml'
     etatFn            = 'Get-SzhLivreEtat'
     filtrerJeton      = $false
     racinesHeritees   = $false
-    appId             = 'livre'
     icone             = 'szh-livre.ico'
     etiquetteChamp    = 'titre'
-    texteTitre        = 'lanceur.titre.livre'
     texteChoisir      = 'lanceur.choisir.livre'
     texteVide         = 'lanceur.vide.livre'
     texteTest         = 'lanceur.test.livre'
@@ -708,4 +741,39 @@ function Get-SzhProduitInfo([string]$Jeton) {
   $cle = ([string]$Jeton).ToLower()
   if ($SzhProduits.ContainsKey($cle)) { return $SzhProduits[$cle] }
   return $SzhProduits['revue']
+}
+
+# ---- Quel onglet s'ouvre ----
+# L'ordre des onglets dans le lanceur, et l'ordre de repli : le premier de la liste sert
+# quand rien d'autre ne répond. Figé ici, et non déduit de $SzhProduits, qui est une table
+# de hachage sans ordre garanti.
+$script:SzhOrdreOnglets = @('revue', 'zeitschrift', 'livre')
+
+# Quatre sources, de la plus devinée à la plus explicite -- la première qui répond en partant
+# du bas gagne :
+#
+#   1. la langue du poste. Allemand -> Zeitschrift, français -> Revue, tout le reste ->
+#      Zeitschrift. C'est la même règle que le repli de $SzhLangue (szh-common.ps1) : sur un
+#      poste dont Windows est en anglais, le lanceur s'ouvre en allemand ET sur l'onglet
+#      Zeitschrift, pas l'un sans l'autre. Elle part de la langue RÉSOLUE et non de celle de
+#      Windows : qui choisit le français dans l'onglet « Paramètres » sans toucher à l'onglet
+#      par défaut arrive sur Revue, ce qu'il voulait dire.
+#   2. le choix fait à la main dans l'onglet « Paramètres » (Get-SzhOngletChoisi).
+#   3. le paramètre -Produit de la ligne de commande. Un raccourci d'une version antérieure,
+#      resté épinglé à la barre des tâches, en porte un : il doit continuer d'ouvrir le
+#      lanceur sur SON produit, et non sur celui que le réglage préfère.
+#   4. $env:SZH_ONGLET -- un essai, sur le patron de $env:SZH_LANGUE. Garde le dernier mot.
+#
+# Le livre n'est jamais le défaut automatique : aucune langue ne le désigne. On n'y arrive
+# que par un choix exprès, ou par -Produit livre.
+function Get-SzhOngletDefaut([string]$Demande = '') {
+  $onglet = 'zeitschrift'
+  if ($SzhLangue -eq 'fr') { $onglet = 'revue' }
+  $choisi = Get-SzhOngletChoisi
+  if ($choisi) { $onglet = $choisi }
+  $demande = ([string]$Demande).ToLower()
+  if ($SzhProduits.ContainsKey($demande)) { $onglet = $demande }
+  $essai = ([string]$env:SZH_ONGLET).ToLower()
+  if ($SzhProduits.ContainsKey($essai)) { $onglet = $essai }
+  return $onglet
 }

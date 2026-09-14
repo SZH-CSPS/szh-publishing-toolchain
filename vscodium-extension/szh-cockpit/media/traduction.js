@@ -11,10 +11,16 @@
 //   webview -> hôte : pret ; modifie { modifie } ; lien ; copier { texte } ;
 //                     deepl { texte, source, cible } ;
 //                     enregistrer { auto, slug, groupes, commentaire } ;
-//                     rechargement { … même charge utile qu'enregistrer }
-//   hôte -> webview : valeurs { slug, statuts, langueSource, groupes, commentaire } ;
-//                     demande-rechargement ; enregistre ; erreur { message } ;
+//                     rechargement { … même charge utile qu'enregistrer } ;
+//                     suggererTraduction { slug, champ, langue, valeur }
+//   hôte -> webview : valeurs { slug, statuts, langueSource, groupes, commentaire,
+//                     verifTrad } ; demande-rechargement ; enregistre ; erreur { message } ;
 //                     copie ; focus
+//
+// Le vérificateur de traduction (verifTrad) pose une pastille à côté de l'intitulé de
+// chaque champ cible. Elle ne fait rien à ce panneau-ci : elle ouvre un formulaire où l'on
+// PROPOSE une autre traduction, à l'intention de qui relira. Ce panneau, lui, écrit dans la
+// fiche pour de bon — les deux gestes cohabitent, et ne doivent pas se confondre.
 (function () {
   'use strict';
   const TXT = __TXT__;
@@ -29,6 +35,11 @@
   let SLUG = null;
   let LANGUE_SOURCE = 'fr';
   let STATUTS = [];          // [{ valeur, libelle }], envoyés par l'hôte
+  // Vérificateur de traduction : un réglage du poste, posé par l'hôte dans « valeurs »
+  // (lib/archivage.js#lireVerifTraduction). Un panneau déjà ouvert quand le réglage change
+  // ne le voit qu'au prochain « valeurs » — ici, un changement d'article ou un
+  // rechargement suffit, les cartes étant reconstruites à chaque fois.
+  let VERIF_TRAD = false;
   let modifie = false;
   let dernierModifie = false;
 
@@ -65,6 +76,30 @@
       ? remplies + '/' + total
       : (remplies === total && total > 0 ? TXT.traduit : TXT.atraduire);
     badge.classList.toggle('traduit', total > 0 && remplies === total);
+  }
+
+  // La pastille du vérificateur, dans l'intitulé du champ cible et non dans la zone de
+  // saisie, qu'elle ne doit pas rétrécir. `lireValeur` est appelée AU CLIC : ce qui part à
+  // l'hôte est la traduction telle qu'elle est affichée à cet instant, frappe en cours
+  // comprise. Même contenu et même classe que sur les fiches (_design.css, §12).
+  function pastilleTraduction(parent, champ, langue, lireValeur) {
+    if (!VERIF_TRAD) { return null; }
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'szh-sugg-trad';
+    b.title = TXT.suggPastille || '';
+    b.setAttribute('aria-label', (TXT.suggPastille || '') + ' — ' + champ + ' ' + langue.toUpperCase());
+    // Le code de langue en capitales plutôt que le dessin : voir _fiches.js, même raison —
+    // illisible à la taille d'un intitulé, et muet sur la langue visée.
+    b.textContent = langue.toUpperCase();
+    b.addEventListener('click', function () {
+      vscodeApi.postMessage({
+        type: SZH.MSG.SUGGERER_TRADUCTION, slug: SLUG, champ: champ, langue: langue,
+        valeur: String(lireValeur() || '')
+      });
+    });
+    parent.appendChild(b);
+    return b;
   }
 
   function boutonsSource(texte, langue) {
@@ -121,6 +156,7 @@
     zone.rows = champ.multiligne ? 7 : 2;
     zone.value = champ.cible || '';
     zone.addEventListener('input', function () { majBadge(carte); marquer(carte); });
+    pastilleTraduction(lCible, champ.champ, groupe.langue, function () { return zone.value; });
     carte.appendChild(zone);
   }
 
@@ -158,6 +194,14 @@
     editeur.langueCible = groupe.langue;
     editeursMotsCles[groupe.cle] = editeur;
     carte.appendChild(editeur.element);
+    // Une seule pastille pour toute la liste, et non une par mot : le champ traduisible
+    // est « keywords » dans une langue, pas chacune de ses cases. La valeur part jointe
+    // par des retours à la ligne, un mot-clé par ligne, dans l'ordre de la grille.
+    pastilleTraduction(l, 'keywords', groupe.langue, function () {
+      return Array.prototype.slice.call(editeur.element.querySelectorAll('input'))
+        .map(function (i) { return i.value.trim(); })
+        .filter(function (t) { return t !== ''; }).join('\n');
+    });
   }
 
   function carteGroupe(groupe) {
@@ -281,6 +325,8 @@
     SLUG = msg.slug || null;
     STATUTS = msg.statuts || [];
     LANGUE_SOURCE = msg.langueSource || 'fr';
+    // Posé avant la reconstruction des cartes : c'est elle qui pose les pastilles.
+    VERIF_TRAD = msg.verifTrad === true;
     titreArticle.textContent = SLUG || '';
     conteneur.textContent = '';
     for (const cle of Object.keys(editeursMotsCles)) { delete editeursMotsCles[cle]; }

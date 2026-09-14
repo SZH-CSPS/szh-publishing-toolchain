@@ -68,7 +68,7 @@ Ce qui est fait de cela, depuis 2026-08 :
   s'installer ne prive plus personne de ses raccourcis ni de ses extensions.
 
 **Rien de tout cela n'exige d'attendre.** Dans la session du rédacteur, sans élévation :
-« Mise à jour de l'outil Revue » depuis le menu Démarrer suffit à tout poser.
+« Revue & Zeitschrift (Updater) » depuis le menu Démarrer suffit à tout poser.
 
 ---
 
@@ -518,6 +518,46 @@ Sujet et corps de cet e-mail de support viennent de `windows/mail-templates/`
 `bloqueDepuis` ancien est un poste qui décroche. **Avant chaque numéro**, la barre d'état du
 cockpit, qui compare la version du toolkit à celle qui a créé le numéro, suffit.
 
+### La mise à jour silencieuse change la façon de dépanner un poste
+
+Depuis le 14.09.2026, l'onglet **Paramètres** du lanceur porte un réglage « Mise à jour de
+l'outil » : fenêtre visible (défaut) ou silencieuse. Rangé **par compte** (comme `ongletDefaut`
+et `langueInterface`), clé `majSilencieuse` de `%LOCALAPPDATA%\SZH\etat-utilisateur.json`
+(`Get-SzhMajSilencieuse` / `Set-SzhMajSilencieuse`, `windows/szh-common.ps1`) — pas par poste :
+la distribution WSL et les extensions se posent par utilisateur, un réglage commun aurait rendu
+muette la mise à jour d'un compte qui n'en voulait pas.
+
+**Savoir si un poste est en silencieux.** Ouvrir `%LOCALAPPDATA%\SZH\etat-utilisateur.json` de
+ce compte et lire `majSilencieuse` (absente ou `false` = fenêtre visible). Rien à l'écran ne le
+trahit autrement : c'est justement le but du réglage.
+
+**Ce qui change mécaniquement.** `Start-SzhFenetreMaj` (`windows/update-launcher.ps1`) lance
+alors `update.ps1 -Silencieux` par `WScript.Shell.Run(cmd, 0, $true)` plutôt que par
+`Start-Process -WindowStyle Hidden` : ce dernier crée le processus **puis** le redimensionne, ce
+qui peut laisser clignoter une console — mesuré, pas supposé. `-Silencieux` pose
+`$script:SzhSansInteraction` (`windows/update.ps1`), qui rend `Show-SzhErreur` non bloquant :
+sans lui, l'écran d'erreur attendrait une touche que personne ne peut taper, et bloquerait le
+processus **pour toujours**, mutex de mise à jour compris.
+
+**Où lire ce qui s'est passé.** Le mode silencieux ne réduit **aucune** trace : le transcript
+complet de chaque tentative reste dans `C:\ProgramData\SZH\logs\update-<horodatage>.log`, ce
+qui change c'est seulement l'absence de fenêtre. Deux façons de le lire, du plus simple au plus
+brut :
+- l'onglet **Journal** du lanceur (`Get-SzhJournauxMaj`, `windows/szh-common.ps1`) liste les dix
+  derniers, avec date, verdict (`Get-SzhVerdictJournalMaj` : lu sur la fin du transcript — pied
+  de page `Stop-Transcript` absent → `inconnu`, présent avec `✓` → `ok`, sans → `echec`) et
+  taille ; un clic l'affiche en entier. C'est aussi de là que partent « Signaler une erreur… »
+  (voir [`docs/RAPPORTS-ERREUR.md`](RAPPORTS-ERREUR.md), qui documente un défaut trouvé sur ce
+  chemin) et « Envoyer les journaux… » (archive zip des dix journaux et du journal mensuel dans
+  le dossier temporaire de l'utilisateur, brouillon de courriel au support) ;
+- à la main, directement dans `C:\ProgramData\SZH\logs\`.
+
+**L'alerte des postes bloqués reste visible, silence ou pas.** Le réglage écarte la fenêtre de
+**routine** ; il ne coupe pas l'alerte du poste bloqué depuis 28 jours (§ ci-dessus,
+`Test-SzhPolitesseExpiree`) : `update-launcher.ps1` appelle alors `Start-SzhFenetreMaj -Visible`,
+qui **passe outre** le réglage silencieux — un poste très en retard resterait sinon aussi le
+plus muet, exactement celui qui a le plus besoin d'être vu.
+
 ### L'e-mail de traduction ne part pas
 
 **Cause.** Le brouillon passe par `mailto:`, donc par le client de messagerie déclaré
@@ -555,7 +595,7 @@ elle ne dispense pas de vérifier soi-même avant de taguer.
 ### Un raccourci du menu Démarrer ne se pose pas
 
 **Symptôme.** Une entrée manque au menu Démarrer d'un poste — le plus souvent
-« Mise à jour de l'outil Revue » — alors que la mise à jour s'est terminée sans erreur.
+« Revue & Zeitschrift (Updater) » — alors que la mise à jour s'est terminée sans erreur.
 
 **À observer.** `C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log` : chaque entrée non posée y
 laisse une ligne `raccourci du menu Démarrer non posé -> …`, et une ligne d'ensemble quand
@@ -568,7 +608,7 @@ tenu par une stratégie de groupe ne doit pas faire échouer une mise à jour pa
 réussie. La mise à jour reste atteignable par le bouton *Changer de version…* du lanceur et
 par la tâche planifiée qui la déclenche.
 
-**Manœuvre.** Rien, d'ordinaire : `update-launcher.ps1` repose les quatre entrées à chaque
+**Manœuvre.** Rien, d'ordinaire : `update-launcher.ps1` repose les deux entrées à chaque
 ouverture de session, avant même de regarder s'il y a du neuf. Si la stratégie de groupe est
 définitive, il faut passer par le menu « Tous les utilisateurs »
 (`%ProgramData%\Microsoft\Windows\Start Menu\Programs`) — à faire déployer par
@@ -667,9 +707,9 @@ celles de l'autre. **La règle de travail reste : un numéro, une personne à la
 cherche les numéros, sans déplacer un seul fichier : les revues sont toujours là, le
 lanceur regarde ailleurs.
 
-**À observer.** Le **titre de la fenêtre du lanceur** nomme la racine active —
-`Revues SZH — dossier de test (Revues-TESTING)` ou
-`… — dossier de production (2_Produkte)`. Le journal du mois porte la même chose :
+**À observer.** Le **titre de la fenêtre du lanceur** nomme la racine active — un seul titre,
+quel que soit l'onglet ouvert — `Revue & Zeitschrift – dossier de test (Revues-TESTING)` ou
+`… – dossier de production (2_Produkte)`. Le journal du mois porte la même chose :
 `revues : emplacement "…" -> <chemin>`. Un numéro déjà ouvert dans le cockpit porte la même
 information sans redémarrer le lanceur : le badge « Dossier de test » de sa barre d'état.
 
@@ -1001,7 +1041,9 @@ Démarrer, fichiers du compte, registre (HKCU), fichiers du poste
   `maj-auto.json`, et les restes `toolkit.neuf` / `toolkit.vieux` d'une bascule
   interrompue) ;
 - les deux tâches planifiées (`SZH - Mise a jour`, `SZH - Prechauffage WSL`) ;
-- les cinq raccourcis du menu Démarrer ;
+- les raccourcis du menu Démarrer : les deux actuels (`Revue & Zeitschrift`,
+  `Revue & Zeitschrift (Updater)`), plus tout ancien nom encore présent sur ce poste
+  (`Get-SzhRaccourcisObsoletes`, `szh-shell.ps1`) ;
 - les réglages et extraits de code VSCodium du compte ;
 - les extensions VSCodium épinglées (`vsix.lock`), plus `szh-cockpit` et `szh-apercu` ;
 - les clés de registre HKCU posées par `update.ps1` (association `.md`, protocole

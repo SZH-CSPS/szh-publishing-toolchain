@@ -62,19 +62,28 @@ async function avecConfigPoste(contenu, fn) {
   }
 }
 
-// Le badge, qu'il soit visible ou non : retrouvé par sa commande (fixée une fois pour
-// toutes à la création), pas par son texte — un badge caché n'a plus le texte qu'on
-// chercherait.
+// Le badge, qu'il soit visible ou non : retrouvé par sa couleur d'avertissement, posée une
+// fois pour toutes à la création. Ni par son texte — un badge caché n'a plus le texte qu'on
+// chercherait — ni par sa commande, qu'il n'a plus depuis que le réglage a déménagé.
 function barreModeTest() {
-  return HOTE.barres.filter((b) => b.command === 'szh.reglages').pop() || null;
+  return HOTE.barres.filter(
+    (b) => b.backgroundColor && b.backgroundColor.id === 'statusBarItem.warningBackground').pop() || null;
 }
 
-test('emplacementRevues: "test" -> badge visible, orange, commande des Réglages', async () => {
+// Le défaut gardé ici a changé de nature le 13.09.2026. Le badge menait aux Réglages du
+// cockpit, où se trouvait la case « Mode développeur ». Cette case a déménagé dans l'onglet
+// « Paramètres » du lanceur Windows : cliquer le badge ne menait plus nulle part. La
+// commande a donc été retirée — et c'est précisément ce qui rend l'infobulle obligatoire.
+// Un badge qui ne se clique plus ET ne dit pas où aller est une impasse : ce test garde
+// les deux moitiés ensemble, parce que retirer l'une sans l'autre est le vrai danger.
+test('emplacementRevues: "test" -> badge visible, orange, et qui dit où se règle le mode', async () => {
   await avecConfigPoste({ emplacementRevues: 'test' }, () => {
     const barre = HOTE.barreQuiDit('Dossier de test');
     assert.ok(barre, 'le badge « Dossier de test » n’est pas visible');
-    assert.strictEqual(barre.command, 'szh.reglages',
-      'le clic sur le badge ne mène pas aux réglages');
+    assert.ok(!barre.command,
+      'le badge porte encore une commande : elle mènerait aux Réglages, d’où le mode a disparu');
+    assert.match(String(barre.tooltip), /Param/,
+      'l’infobulle ne dit plus où se règle le mode test : le badge devient une impasse');
     assert.ok(barre.backgroundColor, 'le badge n’a pas de fond de couleur');
     assert.strictEqual(barre.backgroundColor.id, 'statusBarItem.warningBackground',
       'le badge n’a pas la couleur d’avertissement attendue');

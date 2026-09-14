@@ -157,13 +157,14 @@ test('PowerShell et JavaScript rendent le même emplacement', { skip: POWERSHELL
 
 test('le titre du lanceur nomme la racine active, dans les trois langues', () => {
   const ps = TEXTES;
-  // Un titre par langue, et le jeton que T remplace par l'étiquette de la racine.
-  const titres = ps.match(/'lanceur\.titre'\s*=\s*'[^']*'/g) || [];
+  // Glissement du 13.09.2026 (fusion des trois lanceurs en un seul, à onglets) : il n'y a
+  // plus un titre par produit ('lanceur.titre' pour la revue, 'lanceur.titre.zs' pour la
+  // Zeitschrift) mais un seul titre, commun aux trois onglets -- 'lanceur.titre.suite'. Le
+  // défaut gardé ne change pas : le jeton {racine} doit rester dans les trois langues, et T
+  // doit savoir le remplacer par l'étiquette de la racine active.
+  const titres = ps.match(/'lanceur\.titre\.suite'\s*=\s*'[^']*'/g) || [];
   assert.strictEqual(titres.length, 3, 'il faut un titre de lanceur par langue');
   for (const t of titres) { assert.ok(t.indexOf('{racine}') !== -1, 'titre sans {racine} : ' + t); }
-  const titresZs = ps.match(/'lanceur\.titre\.zs'\s*=\s*'[^']*'/g) || [];
-  assert.strictEqual(titresZs.length, 3);
-  for (const t of titresZs) { assert.ok(t.indexOf('{racine}') !== -1, 'titre sans {racine} : ' + t); }
   // T doit savoir le remplacer, sinon le jeton s'afficherait tel quel — T vit dans
   // szh-common.ps1, la table qu'il lit dans szh-textes.ps1.
   const commun = fs.readFileSync(COMMUN_PS1, 'utf8');

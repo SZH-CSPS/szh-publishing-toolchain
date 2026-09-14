@@ -43,31 +43,26 @@ function Start-SzhCodium([string]$Dossier) {
 #     image qu'au menu Démarrer — et « Épingler à la barre des tâches » épingle le lanceur
 #     au lieu d'épingler powershell.exe.
 #
-# Une identité par programme : les trois lanceurs de produit ont chacun la leur, sans quoi
-# ils ne feraient qu'un seul bouton et l'icône ne distinguerait plus la Revue de la
-# Zeitschrift. Les deux entrées de mise à jour partagent la leur : c'est le même
-# update.ps1, la même icône, et seule la langue de la fenêtre les sépare — les voir
-# groupées sous un bouton est ce qu'on veut.
+# Deux identités, parce que le poste ne porte plus que deux entrées de menu : le lanceur, et
+# la mise à jour. Le lanceur en a UNE et non trois — il n'y a plus qu'une fenêtre, dont les
+# onglets changent de contenu sans changer de programme. Windows tient l'AppUserModelID pour
+# l'identité de l'application : trois identités pour une seule fenêtre lui feraient croire à
+# trois programmes, et le bouton de la barre des tâches sauterait d'un groupe à l'autre au
+# gré de l'onglet ouvert.
 #
 # ⚠ Un raccourci déjà épinglé est une copie, faite avant que ces identités existent : elle
 # ne les porte pas. Il faut dépingler puis réépingler une fois, geste laissé au rédacteur —
 # le dossier des épinglages est tenu par le shell, et y écrire reste sans effet jusqu'au
-# redémarrage d'explorer.exe.
-# Une identité par entrée de menu, et non par script. Windows tient l'AppUserModelID pour
-# l'identité de l'application et ne garde qu'une entrée par identité : les deux mises à
-# jour, qui partageaient « SZH.Publishing.MiseAJour », ne s'affichaient qu'une fois dans le
-# menu Démarrer — l'allemande sur un poste francophone, le .lnk français présent sur le
-# disque mais absent de Get-StartApps. Le nom sans langue reste le repli des fenêtres
-# lancées autrement que par le menu.
-# Le livre n'a qu'une entrée de menu (contrairement à la mise à jour, qui en a deux) : une
-# seule identité lui suffit, jamais partagée avec aucune des cinq autres.
+# redémarrage d'explorer.exe. Le renommage des entrées de menu (« Revues SZH » et les deux
+# autres sont devenues « Revue & Zeitschrift ») oblige de toute façon à ce geste : un
+# épinglage désigne un .lnk qui n'existe plus.
+#
+# « SZH.Publishing.Suite » est un nom neuf, jamais porté par les anciennes entrées : une
+# identité réutilisée aurait fait hériter le nouveau bouton des vignettes et de la liste de
+# raccourcis de l'ancien.
 $script:SzhAppIds = @{
-  'revue'       = 'SZH.Publishing.Revue'
-  'zeitschrift' = 'SZH.Publishing.Zeitschrift'
-  'livre'       = 'SZH.Publishing.Livres'
-  'maj'         = 'SZH.Publishing.MiseAJour'
-  'maj.fr'      = 'SZH.Publishing.MiseAJour.fr'
-  'maj.de'      = 'SZH.Publishing.MiseAJour.de'
+  'suite' = 'SZH.Publishing.Suite'
+  'maj'   = 'SZH.Publishing.MiseAJour'
 }
 
 # Rend '' pour une clé inconnue plutôt que de lever : sans identité on retombe sur le
@@ -262,46 +257,80 @@ function Get-SzhLnkAppId([string]$Lnk) {
 }
 
 # ---- Raccourcis du menu Démarrer ----
-# Cinq entrées, au niveau utilisateur : les trois lanceurs de produit et les deux entrées
-# de mise à jour. Posées par update.ps1 (mise à jour), par update-launcher.ps1 (à chaque
-# ouverture de session) et par bootstrap.ps1 (poste neuf), pour qu'un poste déjà à jour
-# comme un poste sortant de sa boîte finisse par les avoir sans que personne n'intervienne,
-# et chacun dans le profil du rédacteur qui ouvre la session.
+# Deux entrées, au niveau utilisateur : le lanceur et la mise à jour. Posées par update.ps1
+# (mise à jour), par update-launcher.ps1 (à chaque ouverture de session) et par
+# bootstrap.ps1 (poste neuf), pour qu'un poste déjà à jour comme un poste sortant de sa
+# boîte finisse par les avoir sans que personne n'intervienne, et chacune dans le profil du
+# rédacteur qui ouvre la session.
 #
-# Pourquoi deux entrées de mise à jour, une française et une allemande, plutôt qu'une seule
-# renommée selon la langue du poste ? Parce qu'un nom de fichier .lnk est figé alors que la
-# langue de l'interface bouge (variable d'environnement, préférence retenue dans state.json,
-# langue de Windows). Renommer à chaque mise à jour aurait trois défauts : sur un poste neuf
-# la langue résolue est l'anglais — les Windows d'ici sont en anglais et state.json est
-# encore muet —, c'est-à-dire la seule langue qu'aucune des deux équipes n'emploie ; le nom
-# changerait sous les doigts du rédacteur dès qu'un collègue ouvre l'autre lanceur, alors
-# qu'on ne retrouve une entrée du menu Démarrer qu'en tapant son nom ; et un renommage
-# revient à supprimer puis recréer, ce qui casse l'épinglage. Deux noms fixes, chacun
-# portant sa langue à update.ps1 : c'est déjà ce que font « Revues SZH » et
-# « Zeitschriften SZH », qui cohabitent sur tous les postes. Ajouter 'en' ici y ajouterait
-# une troisième entrée.
-$script:SzhLanguesRaccourci = @('fr', 'de')
+# Elles étaient cinq jusqu'au 13.09.2026 : un lanceur par produit et une mise à jour par
+# langue. Les trois premières ont fusionné en une fenêtre à onglets, les deux dernières en
+# une entrée dont le nom ne se traduit pas.
+#
+# ---- Le nom de l'application ----
+# Provisoire : le nom définitif n'est pas arrêté. Tout ce que PowerShell affiche le lit d'ici
+# — les deux entrées du menu Démarrer, le titre de la fenêtre du lanceur, celui de la fenêtre
+# de mise à jour, les messages de new-revue.ps1 et de new-livre.ps1.
+#
+# ⚠ Mais PAS tout : ces deux lignes ne suffisent pas à rebaptiser l'outil. Le nom est écrit en
+# toutes lettres dans des textes que PowerShell ne lit pas, et qui expliquent au rédacteur par
+# où passer. Au prochain baptême, les corriger aussi — la recherche qui les trouve tous est
+# celle du nom lui-même, sur tout le dépôt :
+#   windows/szh-textes.ps1               'lien.introuvable', dans les trois langues
+#   vscodium-extension/…/lib/i18n.js     'err.version.lancement', 'ctl.pasrevue',
+#                                        'reimport.injoignable', 'etat.barre.test.parametres'
+#   vscodium-extension/…/mail-templates/ traduction.fr.twig et traduction.de.twig
+#   vscodium-extension/…/package.nls*.json  'tuto.ouvrir.texte'
+#   revue-template/BIENVENUE.md, livre-template/BIENVENUE.md
+#   windows/Installer le poste SZH.cmd   (et son « & » y reste échappé en « ^& »)
+# Les faire lire d'ici serait pire que le mal : il faudrait injecter une variable PowerShell
+# dans du JavaScript, du Markdown et un gabarit de courriel, qui tournent tous sans PowerShell.
+#
+# « & » est un caractère légal dans un nom de fichier Windows, et donc dans un .lnk. Ceux qui
+# ne le sont pas, et qu'il ne faut pas y glisser au prochain baptême, sont les neuf de
+# Windows : la barre oblique est le piège le plus tentant — « Revue / Zeitschrift » se lirait
+# comme un chemin, et CreateShortcut échouerait sans rien dire.
+#
+# Renommer ces entrées n'est pas gratuit : un .lnk renommé est un .lnk supprimé puis recréé,
+# ce qui casse les épinglages de barre des tâches. Set-SzhRaccourcisMenu retire les anciens
+# noms de lui-même (voir plus bas) ; le réépinglage, lui, reste un geste du rédacteur.
+$script:SzhNomApplication = 'Revue & Zeitschrift'
+$script:SzhNomMiseAJour   = 'Revue & Zeitschrift (Updater)'
 
 # Ce que le menu doit porter, une ligne par entrée : le nom du .lnk, sa cible, ses
 # arguments, sa description (l'infobulle), son icône, et le script qu'elle pilote.
 #
-# Les deux lanceurs passent par hidden.vbs, qui lance sans console : une fenêtre noire
-# devant un lanceur graphique n'apprendrait rien à personne. La mise à jour, elle, vise
-# powershell.exe en direct : elle télécharge, elle prend plusieurs minutes, elle peut
-# échouer, et sa fenêtre est la seule chose qui le montre — c'est aussi là que
-# Show-SzhErreur propose le journal et l'e-mail au support.
+# Deux entrées, et deux seulement. Avant, il y en avait cinq : un lanceur par produit
+# (« Revues SZH », « Zeitschriften SZH », « Books SZH-CSPS ») et une mise à jour par langue.
+# Les trois produits vivent maintenant dans une seule fenêtre à onglets (open-produit.ps1),
+# et la mise à jour prend sa langue du réglage du compte au lieu de la recevoir de son
+# raccourci — il n'y a donc plus rien à distinguer par le nom.
+#
+# Pourquoi une seule mise à jour, alors qu'il en fallait deux ? Un nom de .lnk est figé,
+# alors que la langue de l'interface bouge : renommer l'entrée à chaque passe l'aurait fait
+# changer sous les doigts du rédacteur, et cassé son épinglage à chaque fois. D'où deux noms
+# fixes, l'un français l'autre allemand. « Revue & Zeitschrift (Updater) » règle la même
+# question autrement : un nom qui ne demande aucune traduction, donc qui ne bouge jamais.
+# Le mot « Updater » se lit dans les deux langues, contrairement à « Mise à jour ».
+#
+# Le lanceur passe par hidden.vbs, qui lance sans console : une fenêtre noire devant un
+# lanceur graphique n'apprendrait rien à personne. La mise à jour, elle, vise powershell.exe
+# en direct : elle télécharge, elle prend plusieurs minutes, elle peut échouer, et sa fenêtre
+# est la seule chose qui le montre — c'est aussi là que Show-SzhErreur propose le journal et
+# l'e-mail au support.
 #
 # Chaque entrée porte une icône (windows/icone.py) : épinglée à la barre des tâches, elle
 # perd son libellé et l'icône devient le seul repère. Sans IconLocation le shell affiche
 # celle de wscript.exe, qui ne dit rien à personne ; d'où le repli sur celle de VSCodium.
-# Elle porte aussi son AppUserModelID : l'icône du raccourci ne vaut que pour le menu, et
-# c'est cette identité-là qui la fait suivre jusqu'au bouton de la barre des tâches.
-# Voir « Identité de barre des tâches » ci-dessus.
+# Le lanceur reprend szh-revue.ico, l'icône du produit le plus ancien, faute d'une image
+# propre à l'application — les trois .ico de produit restent livrés et servent encore aux
+# fenêtres secondaires du lanceur. Chaque entrée porte aussi son AppUserModelID : l'icône du
+# raccourci ne vaut que pour le menu, et c'est cette identité-là qui la fait suivre jusqu'au
+# bouton de la barre des tâches. Voir « Identité de barre des tâches » ci-dessus.
 function Get-SzhRaccourcisMenu {
   param([string]$Toolkit = $SzhToolkit)
   $vbs     = Join-Path $Toolkit 'windows\hidden.vbs'
   $lanceur = Join-Path $Toolkit 'windows\open-revue.ps1'
-  $lanceurLivre = Join-Path $Toolkit 'windows\open-livre.ps1'
   $maj     = Join-Path $Toolkit 'windows\update.ps1'
   $wscript = Join-Path $env:WINDIR 'System32\wscript.exe'
   # Windows PowerShell 5.1 explicitement : $PSHOME désignerait pwsh si la mise à jour
@@ -310,57 +339,55 @@ function Get-SzhRaccourcisMenu {
   if (-not (Test-Path $ps)) { $ps = Join-Path $PSHOME 'powershell.exe' }
 
   $liste = New-Object System.Collections.ArrayList
-  # « Revues SZH » et « Zeitschriften SZH » sont des noms de produit, pas des phrases à
-  # traduire : ils ne bougent pas, des épinglages les désignent. Le produit est passé
-  # explicitement des deux côtés, pour qu'un raccourci ancien ne montre pas les deux listes
-  # mêlées. Chacun s'adresse à son équipe, donc chacun décrit dans sa langue.
+  # Aucun -Produit : l'onglet qui s'ouvre vient du réglage du compte, pas du raccourci
+  # (Get-SzhOngletDefaut, szh-produits.ps1). C'est exactement ce que l'argument figé
+  # empêchait. La description suit $SzhLangue — une seule entrée, donc une seule infobulle,
+  # et elle s'adresse à qui a réglé le poste.
   [void]$liste.Add([ordered]@{
-    nom    = 'Revues SZH'
+    nom    = $SzhNomApplication
     cible  = $wscript
-    args   = ('//B "{0}" "{1}" "-Produit" "revue"' -f $vbs, $lanceur)
-    desc   = $SzhTextes['fr']['raccourci.revue.desc']
+    args   = ('//B "{0}" "{1}"' -f $vbs, $lanceur)
+    desc   = $SzhTextes[$SzhLangue]['raccourci.lanceur.desc']
     icone  = (Join-Path $Toolkit 'windows\szh-revue.ico')
-    appid  = (Get-SzhAppId 'revue')
+    appid  = (Get-SzhAppId 'suite')
     pilote = $lanceur
   })
+  # Aucun -Langue : update.ps1 garde le paramètre pour la ligne de commande, mais son
+  # raccourci ne le passe plus — la fenêtre parle la langue du réglage, comme le lanceur.
   [void]$liste.Add([ordered]@{
-    nom    = 'Zeitschriften SZH'
-    cible  = $wscript
-    args   = ('//B "{0}" "{1}" "-Produit" "zeitschrift"' -f $vbs, $lanceur)
-    desc   = $SzhTextes['de']['raccourci.zs.desc']
-    icone  = (Join-Path $Toolkit 'windows\szh-zeitschrift.ico')
-    appid  = (Get-SzhAppId 'zeitschrift')
-    pilote = $lanceur
+    nom    = $SzhNomMiseAJour
+    cible  = $ps
+    args   = ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $maj)
+    desc   = $SzhTextes[$SzhLangue]['raccourci.maj.desc']
+    icone  = (Join-Path $Toolkit 'windows\szh-maj.ico')
+    appid  = (Get-SzhAppId 'maj')
+    pilote = $maj
   })
-  # « Books SZH-CSPS » : un troisième produit, sans langue à lui — un livre s'écrit dans sa
-  # langue (`lang:` de buch.yaml), jamais celle du lanceur qui les liste. La description
-  # suit donc $SzhLangue, la langue déjà résolue en tête de ce fichier (variable
-  # d'environnement, préférence retenue, langue de Windows), au lieu d'un « fr » ou « de »
-  # figé comme pour les deux autres produits. Le caractère « / » n'est pas de mise dans un nom de fichier
-  # .lnk (Windows le lit comme un séparateur de chemin) : le nom du raccourci et de la
-  # fenêtre s'écrit donc « Books SZH-CSPS », trait d'union, partout où c'est un nom de
-  # fichier ou une identité, pas seulement ici.
-  [void]$liste.Add([ordered]@{
-    nom    = 'Books SZH-CSPS'
-    cible  = $wscript
-    args   = ('//B "{0}" "{1}"' -f $vbs, $lanceurLivre)
-    desc   = $SzhTextes[$SzhLangue]['raccourci.livre.desc']
-    icone  = (Join-Path $Toolkit 'windows\szh-livre.ico')
-    appid  = (Get-SzhAppId 'livre')
-    pilote = $lanceurLivre
-  })
-  foreach ($langue in $SzhLanguesRaccourci) {
-    [void]$liste.Add([ordered]@{
-      nom    = $SzhTextes[$langue]['raccourci.maj.nom']
-      cible  = $ps
-      args   = ('-NoProfile -ExecutionPolicy Bypass -File "{0}" -Langue {1}' -f $maj, $langue)
-      desc   = $SzhTextes[$langue]['raccourci.maj.desc']
-      icone  = (Join-Path $Toolkit 'windows\szh-maj.ico')
-      appid  = (Get-SzhAppId ('maj.' + $langue))
-      pilote = $maj
-    })
-  }
   return $liste
+}
+
+# Les noms que le menu Démarrer a portés avant le 13.09.2026, et qu'il ne doit plus porter.
+#
+# Set-SzhRaccourcisMenu n'en a pas besoin : elle reconnaît un ancien raccourci à sa cible,
+# ce qui vaut pour tous les renommages passés et à venir. La désinstallation, si : elle
+# tourne sur un poste dont le toolkit peut avoir été retiré avant elle, et ne peut donc pas
+# ouvrir les .lnk pour lire où ils pointent — il ne lui reste que les noms.
+#
+# Les deux mises à jour ne sont pas nommées ici en dur mais lues dans la table des textes,
+# où elles n'ont pas bougé : un poste francophone et un poste germanophone n'ont pas le
+# même fichier à retirer, et c'est la raison même pour laquelle ces deux entrées ont
+# disparu. Cette liste ne grandit qu'à un renommage, et ne rétrécit jamais : un poste qui
+# saute plusieurs versions doit retrouver ici tout ce qu'il a pu recevoir.
+function Get-SzhRaccourcisObsoletes {
+  $noms = New-Object System.Collections.ArrayList
+  foreach ($n in @('Revues SZH', 'Zeitschriften SZH', 'Books SZH-CSPS')) { [void]$noms.Add($n) }
+  foreach ($langue in @('fr', 'de', 'en')) {
+    try {
+      $nom = [string]$SzhTextes[$langue]['raccourci.maj.nom']
+      if ($nom -and (-not $noms.Contains($nom))) { [void]$noms.Add($nom) }
+    } catch { }
+  }
+  return $noms
 }
 
 # Pose les entrées ci-dessus et retire celles d'une version antérieure. Ne lève jamais :
@@ -435,7 +462,15 @@ function Set-SzhRaccourcisMenu {
   # ci-dessus, CreateShortcut réécrivant le fichier existant. Le premier niveau du menu
   # seulement : le sous-dossier « SZH » appartient à un autre produit, et rien ici ne doit
   # y toucher.
-  $nos = @('open-revue.ps1', 'open-livre.ps1', 'update.ps1')
+  #
+  # C'est ce nettoyage, et lui seul, qui débarrasse un poste des cinq anciennes entrées
+  # (« Revues SZH », « Zeitschriften SZH », « Books SZH-CSPS » et les deux mises à jour) au
+  # profit des deux nouvelles : elles ne portent plus un nom voulu, elles pilotent toujours
+  # l'un de ces scripts, donc elles partent. Aucune liste de noms périmés à tenir à jour —
+  # c'est la cible du raccourci qui le désigne, pas son libellé, et c'est justement ce qui
+  # rend un renommage sans danger. La désinstallation, elle, a besoin des noms : voir
+  # Get-SzhRaccourcisObsoletes.
+  $nos = @('open-revue.ps1', 'open-livre.ps1', 'open-produit.ps1', 'update.ps1')
   try {
     foreach ($f in @(Get-ChildItem -LiteralPath $Menu -Filter '*.lnk' -File -ErrorAction Stop)) {
       if ($canoniques.ContainsKey($f.Name.ToLower())) { continue }

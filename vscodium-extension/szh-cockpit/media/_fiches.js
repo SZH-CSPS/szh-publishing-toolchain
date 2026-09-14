@@ -36,13 +36,16 @@
   //
   // Protocole avec l'hôte :
   //   hôte -> webview : valeurs { articles, types, licences, licenceDefaut, langue, accent,
-  //                     formeDoi: { motif, exemple } } ; formeDoi vaut la forme des DOI de
-  //                     la revue du numéro — absente sur la page de vérification d'import,
-  //                     qui ne l'envoie pas (voir champDoi plus bas) ;
+  //                     formeDoi: { motif, exemple }, verifTrad } ; formeDoi vaut la forme
+  //                     des DOI de la revue du numéro — absente sur la page de vérification
+  //                     d'import, qui ne l'envoie pas (voir champDoi plus bas) ; verifTrad
+  //                     dit si le vérificateur de traduction est actif (voir la pastille
+  //                     plus bas) ;
   //                     doi-manuel-reponse { slug, sens, ok } ;
   //                     mots-cles-connus { motsCles: [{ de, fr }] } (autocomplétion, voir
   //                     attacherAutocompletionMotsCles plus bas)
-  //   webview -> hôte : doi-manuel-confirmer { slug, sens }
+  //   webview -> hôte : doi-manuel-confirmer { slug, sens } ;
+  //                     suggererTraduction { slug, champ, langue, valeur }
   // La partie photo est celle de _auteurs.js, à qui les messages sont passés.
 
   // ---- Autocomplétion des mots-clés : le vocabulaire edudoc.ch (lib/mots-cles-edudoc.js) --
@@ -183,6 +186,16 @@
     // page de vérification d'import, qui ne l'envoie pas : reste null, et la note de forme
     // ne s'affiche jamais là.
     var FORME_DOI_ACTUELLE = null;
+    // ---- Le vérificateur de traduction ----
+    //
+    // Un mode, posé par l'hôte dans le message « valeurs » (réglage du poste, voir
+    // lib/archivage.js#lireVerifTraduction). Actif, chaque champ traduisible — titre,
+    // sous-titre, résumé, mots-clés, chacun par langue — reçoit à côté de son intitulé une
+    // pastille qui ouvre le formulaire de suggestion. Rien d'autre ne change : la carte
+    // s'édite et s'enregistre exactement comme avant, et une suggestion ne modifie aucun
+    // texte. Un panneau déjà ouvert quand le réglage change ne le voit qu'à sa réouverture,
+    // les cartes n'étant reconstruites qu'au prochain message « valeurs ».
+    var VERIF_TRAD = false;
     // Le vocabulaire edudoc.ch (message mots-cles-connus), partagé par toutes les cartes
     // de la page — une seule liste, comme TYPES et LICENCES.
     var motsClesConnus = [];
@@ -218,6 +231,33 @@
       appeler('marque', carte, slug);
     }
 
+    // La pastille du vérificateur, posée dans l'intitulé et non dans le champ : elle ne
+    // doit ni rétrécir la zone de saisie ni s'intercaler dans la tabulation entre
+    // l'intitulé et son champ. `lireValeur` est appelée AU CLIC, jamais avant : ce qui part
+    // à l'hôte est ce que la personne a sous les yeux à ce moment-là, frappe en cours
+    // comprise.
+    function pastilleTraduction(parent, slug, champ, langue, lireValeur) {
+      if (!VERIF_TRAD || !langue) { return null; }
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'szh-sugg-trad';
+      b.title = TXT.suggPastille || '';
+      b.setAttribute('aria-label', (TXT.suggPastille || '') + ' — ' + champ + ' ' + langue.toUpperCase());
+      // Le code de langue en capitales, et non ICONES.traduction : ce dessin à trois tracés
+      // est fait pour un bouton de barre, il tombe en bouillie à la taille d'un intitulé. Deux
+      // capitales survivent à toute taille ET disent quelle langue la pastille vise — ce que le
+      // dessin ne disait qu'en infobulle, d'où deux pastilles indiscernables sur les mots-clés.
+      b.textContent = langue.toUpperCase();
+      b.addEventListener('click', function () {
+        api.postMessage({
+          type: SZH.MSG.SUGGERER_TRADUCTION, slug: slug, champ: champ, langue: langue,
+          valeur: String(lireValeur() || '')
+        });
+      });
+      parent.appendChild(b);
+      return b;
+    }
+
     // `traduction` marque les champs d'une autre langue que celle de l'article : ils sont
     // cachés par défaut, et révélés par le bouton de la barre. Une fiche se remplit
     // d'abord dans sa langue ; tout afficher d'emblée triplait la hauteur de la carte.
@@ -231,6 +271,10 @@
       i.dataset.cle = cle;
       if (langue) { i.dataset.langue = langue; l.classList.add('champ-' + langue); i.classList.add('champ-' + langue); }
       if (traduction) { l.classList.add('champ-trad'); i.classList.add('champ-trad'); }
+      // Les quatre champs traduisibles de la fiche sont title, subtitle, resume et keywords
+      // (lib/traduction.js) ; les trois premiers passent par ici, les mots-clés ont leur
+      // propre pastille plus bas. La pastille suit l'intitulé, donc son affichage.
+      pastilleTraduction(l, slug, cle, langue, function () { return i.value; });
       i.addEventListener('input', function () { marquer(carte, slug); });
       parent.appendChild(l);
       parent.appendChild(i);
@@ -759,6 +803,20 @@
       motsClesParCarte.set(carte, editeurMots);
       carte.appendChild(editeurMots.element);
       attacherAutocompletionMotsCles(editeurMots);
+      // Une pastille PAR LANGUE et non par mot : le champ traduisible est la liste
+      // entière, et c'est elle qu'on propose autrement — une pastille par case en
+      // donnerait quinze sur une carte à cinq mots-clés. Posées pour les trois langues et
+      // cachées par la classe champ-<lang>, comme les intitulés (_fiches.css) : la colonne
+      // d'une langue qu'on coche apporte ainsi sa pastille sans re-rendu. Pas de
+      // champ-trad ici — les mots-clés ne se cachent pas avec les traductions.
+      // La valeur part jointe par des retours à la ligne, un mot-clé par ligne.
+      ordreAffichage().forEach(function (lg) {
+        var p = pastilleTraduction(lMots, slug, 'keywords', lg, function () {
+          return (editeurMots.collecterBrut()[lg] || [])
+            .filter(function (m) { return String(m).trim() !== ''; }).join('\n');
+        });
+        if (p) { p.classList.add('champ-' + lg); }
+      });
       // `editeurMots` n'existait pas encore au premier rendreChampsTextes() : ses
       // compteurs y ont ouvert sur zéro mot-clé. On les corrige ici, avant que la carte ne
       // quitte construireCarte() — rien de faux ne s'est donc affiché.
@@ -949,6 +1007,8 @@
         // Le plafond des photos (modale partagée) et, pour la vérification d'import, celui
         // des originaux d'image : posé avant le rendu, jamais mis en cache localement.
         SZH.appliquerLimites(msg.limites);
+        // Posé avant rendre() : les cartes construisent leurs pastilles au passage.
+        VERIF_TRAD = msg.verifTrad === true;
         rendre(msg.articles || [], msg.types || [], msg.langue || 'fr',
           msg.licences || null, msg.licenceDefaut || null, msg.formeDoi || null);
         surValeurs(msg);

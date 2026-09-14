@@ -11,7 +11,8 @@
 
    Plan : 0. page · 1. jetons · 2. surfaces et séparations · 3. barre d'en-tête · 4. champs
    et intitulés · 5. notifications · 6. boutons et icônes · 7. pastilles d'état · 8. modale ·
-   9. champs et boutons nus (.carte) · 10. boîte de suggestions · 11. zone de dépôt. */
+   9. champs et boutons nus (.carte) · 10. boîte de suggestions · 11. zone de dépôt ·
+   12. pastille du vérificateur de traduction. */
 
 /* Un élément caché le reste, quoi que sa classe pose comme display : plusieurs blocs du
    socle sont des flex, qui l'emporteraient sur le display:none par défaut de [hidden]. */
@@ -437,3 +438,57 @@ h1 { font-size: var(--t-titre); font-weight: 700; margin: 0 0 var(--e2); }
 .szh-depot .ou { font-size: var(--t-mini); color: var(--encre-2); }
 .szh-depot-etat { font-size: var(--t-mini); color: var(--encre-2); }
 .szh-depot-etat.erreur { color: var(--vscode-inputValidation-errorForeground, var(--danger)); }
+
+
+/* ═══ 12. Pastille du vérificateur de traduction ════════════════════
+   Posée à CÔTÉ de l'intitulé d'un champ traduisible, jamais dans le champ de saisie
+   qu'elle ne doit pas rétrécir : d'où l'inline-flex, et le calage sur le MILIEU de la ligne
+   et non sur la ligne de base — depuis qu'elle porte du texte, sa propre ligne de base est
+   celle de ses deux capitales, et un calage en `-.25em` la faisait pendre sous l'intitulé,
+   qui gagnait 2 px par champ. Avec `middle`, la carte fait exactement la hauteur qu'elle
+   faisait du temps du dessin (mesuré : 1476 px dans le harnais tmp/apercu-suggestion).
+   Elle n'apparaît que si le mode est actif (lib/archivage.js, lireVerifTraduction), et
+   c'est la même sur les trois pages qui la portent — fiches, vérification de l'import,
+   panneau « Traductions ».
+
+   Elle porte le CODE DE LANGUE en capitales — FR, DE, IT — et non plus le dessin
+   d'ICONES.traduction (_commun.js). Deux raisons, réglées d'un coup : le dessin, fait pour
+   un bouton de barre, tombait en bouillie à la taille d'un intitulé ; et les deux pastilles
+   des mots-clés, posées côte à côte contre le même intitulé, étaient alors indiscernables —
+   seule l'infobulle disait laquelle visait le français. Le panneau « Traductions » nomme
+   déjà ses colonnes FR et DE : le vocabulaire est le même.
+
+   Elle doit se lire comme un BOUTON, pas comme une étiquette, sans quoi on ne la clique
+   pas : d'où le cadre et la surface au repos, que les intitulés de colonne du bloc des
+   mots-clés (.mc-entete, _commun.js — du texte nu, sans cadre) n'ont pas. Discrète au
+   repos — elle accompagne un intitulé, elle ne le concurrence pas — elle prend l'accent au
+   survol et au focus. La cible reste de 1.4rem de haut, assez large pour la souris sur une
+   ligne d'intitulé.
+
+   ⚠ Le sélecteur `.carte .szh-sugg-trad` n'est pas une redondance : `.carte button` (§9) et
+     `.entete-source button` (traduction.css) sont tous deux plus spécifiques qu'une classe
+     seule, et rendraient la pastille à l'aspect d'un bouton de formulaire. Deux classes
+     l'emportent sur une classe et un élément. La forme nue reste pour une page qui la
+     poserait hors d'une carte. */
+.szh-sugg-trad,
+.carte .szh-sugg-trad {
+  display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box;
+  min-width: 1.4rem; height: 1.4rem; padding: 0 .3em; margin-left: var(--e1);
+  vertical-align: middle;
+  border: 1px solid var(--filet); border-radius: var(--rayon-mini);
+  background: var(--surface); color: var(--encre-2); cursor: pointer;
+  /* Un bouton n'hérite pas de la police de la page : sans font-family, les deux capitales
+     partaient dans la police système des formulaires, plus large que le reste de la ligne. */
+  font-family: inherit; font-size: var(--t-mini); font-weight: 700;
+  line-height: 1; letter-spacing: .05em;
+}
+.szh-sugg-trad:hover,
+.carte .szh-sugg-trad:hover {
+  color: var(--accent); border-color: var(--accent);
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, .2));
+}
+.szh-sugg-trad:focus-visible,
+.carte .szh-sugg-trad:focus-visible {
+  color: var(--accent); outline: 2px solid var(--accent); outline-offset: 1px;
+}

@@ -205,7 +205,10 @@ test('update-launcher.ps1 pose le même mutex nommé qu’update.ps1, et le rel�
   // Relâché avant de passer la main à la fenêtre visible : sinon update.ps1, qui prend le
   // même verrou à son tour, le trouverait occupé par ce script-ci et sortirait aussitôt en
   // croyant une mise à jour concurrente qui n'existe pas.
-  const corpsFenetre = corpsFonction(LANCEUR, 'Start-SzhFenetreVisible');
+  // Renommée depuis Start-SzhFenetreVisible : « le nom disait "visible" quand cette
+  // fonction ne savait faire que cela ; il a suivi quand elle a appris à se cacher »
+  // (commentaire de update-launcher.ps1) -- le comportement gardé ici ne change pas.
+  const corpsFenetre = corpsFonction(LANCEUR, 'Start-SzhFenetreMaj');
   const iRelache = corpsFenetre.indexOf('ReleaseMutex');
   const iLance = corpsFenetre.indexOf('Start-Process');
   assert.ok(iRelache !== -1 && iLance !== -1 && iRelache < iLance,

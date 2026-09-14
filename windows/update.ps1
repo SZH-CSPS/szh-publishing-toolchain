@@ -1,12 +1,13 @@
-<#
+﻿<#
 .SYNOPSIS
   Met à jour l'outil Revue SZH dans une fenêtre visible. Lancée d'ordinaire par
-  update-launcher.ps1, ou par les entrées « Mise à jour » du menu Démarrer, qui lui
-  passent la langue de l'équipe à qui elles s'adressent :
+  update-launcher.ps1, ou par l'entrée « Revue & Zeitschrift (Updater) » du menu Démarrer,
+  qui ne passe plus de langue : la fenêtre prend celle du réglage du compte, comme le
+  lanceur.
 
     powershell -ExecutionPolicy Bypass -File update.ps1                  # dernière version
     powershell -ExecutionPolicy Bypass -File update.ps1 -Version X.Y.Z  # version précise
-    powershell -ExecutionPolicy Bypass -File update.ps1 -Langue de       # fenêtre en allemand
+    powershell -ExecutionPolicy Bypass -File update.ps1 -Langue de       # essai manuel, en allemand
 
   Ne demande jamais les droits administrateur : import WSL, extensions et réglages de
   l'éditeur sont au niveau utilisateur. Idempotente, composant par composant d'après
@@ -16,19 +17,25 @@
 #>
 [CmdletBinding()]
 param(
-  [string]$Version,   # vide = dernière release ; sinon le tag sans son « v »
-  [string]$Langue     # vide = langue du poste ; 'fr', 'de' ou 'en' pour cette fenêtre
+  [string]$Version,     # vide = dernière release ; sinon le tag sans son « v »
+  [string]$Langue,      # vide = langue du poste ; 'fr', 'de' ou 'en' pour cette fenêtre
+  [switch]$Silencieux   # posé par update-launcher.ps1 (Start-SzhFenetreMaj) quand
+                        # Get-SzhMajSilencieuse est actif : aucune fenêtre n'existe pour
+                        # personne. Show-SzhErreur ne bloque alors plus sur une touche.
 )
 
 . "$PSScriptRoot\szh-common.ps1"
 . "$PSScriptRoot\szh-taches.ps1"
 
-# Langue de l'entrée du menu Démarrer qui a ouvert cette fenêtre : les deux raccourcis
-# « Mise à jour » parlent chacun à son équipe, et la fenêtre doit suivre. Pour cette
-# session seulement — la préférence du poste, écrite par les lanceurs de produit, n'est pas
-# touchée : la mise à jour n'est pas un produit et n'a pas à choisir pour eux. Valeur
-# inconnue : on l'ignore et le poste garde sa langue, plutôt que d'échouer sur un détail
-# d'affichage. $env:SZH_LANGUE garde le dernier mot, comme partout ailleurs.
+if ($Silencieux) { $script:SzhSansInteraction = $true }
+
+# -Langue reste un paramètre de ligne de commande, pour un essai manuel : le raccourci
+# unique du menu Démarrer n'en passe plus — il n'y a plus qu'une entrée « Mise à jour », et
+# la fenêtre prend la langue du réglage du compte, comme le lanceur. Pour cette session
+# seulement — la préférence du poste, écrite par le lanceur, n'est pas touchée : la mise à
+# jour n'est pas un produit et n'a pas à choisir pour lui. Valeur inconnue : on l'ignore et
+# le poste garde sa langue, plutôt que d'échouer sur un détail d'affichage. $env:SZH_LANGUE
+# garde le dernier mot, comme partout ailleurs.
 $envLangue = ($env:SZH_LANGUE -and (@('fr', 'de', 'en') -contains $env:SZH_LANGUE.ToLower()))
 if ($Langue -and (-not $envLangue) -and (@('fr', 'de', 'en') -contains $Langue.ToLower())) {
   $script:SzhLangue = $Langue.ToLower()
@@ -37,9 +44,11 @@ if ($Langue -and (-not $envLangue) -and (@('fr', 'de', 'en') -contains $Langue.T
 # Cette fenêtre se présente sous sa propre identité : sans elle, la barre des tâches range
 # son bouton avec les autres consoles PowerShell du poste et en prend l'icône. Sans effet
 # quand la console est hébergée par Windows Terminal, dont la fenêtre ne nous appartient
-# pas ; l'entrée du menu Démarrer, elle, garde son icône dans tous les cas.
-$idMaj = Get-SzhAppId ('maj.' + $SzhLangue)
-if (-not $idMaj) { $idMaj = Get-SzhAppId 'maj' }
+# pas ; l'entrée du menu Démarrer, elle, garde son icône dans tous les cas. Une seule
+# identité — 'maj' —, et non plus une par langue : il n'y a plus qu'un raccourci de mise à
+# jour, sans argument -Langue, et son identité ne dépend donc plus de la langue de la
+# fenêtre.
+$idMaj = Get-SzhAppId 'maj'
 [void](Set-SzhAppUserModelId $idMaj)
 
 try { $Host.UI.RawUI.WindowTitle = (T 'maj.fenetre') } catch { }
@@ -506,10 +515,10 @@ try {
     }
   }
 
-  # Raccourcis du menu Démarrer, au niveau utilisateur : les trois lanceurs de produit et
-  # les deux entrées de mise à jour. La liste et les libellés vivent dans le socle commun,
-  # que bootstrap.ps1 et update-launcher.ps1 appellent aussi — un poste neuf comme un
-  # poste déjà à jour reçoit ainsi les mêmes entrées, sans intervention.
+  # Raccourcis du menu Démarrer, au niveau utilisateur : le lanceur (une fenêtre à onglets)
+  # et la mise à jour, deux entrées et non plus cinq. La liste et les libellés vivent dans
+  # le socle commun, que bootstrap.ps1 et update-launcher.ps1 appellent aussi — un poste
+  # neuf comme un poste déjà à jour reçoit ainsi les mêmes entrées, sans intervention.
   #
   # Jamais bloquant, pour la même raison que la ruche de classes plus bas : un menu
   # Démarrer verrouillé par une stratégie de groupe ne doit pas faire échouer une mise à

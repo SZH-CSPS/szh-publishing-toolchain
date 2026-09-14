@@ -84,12 +84,12 @@ $script:SzhTextes = @{
     'lanceur.versions.chargement' = 'Recherche des versions publiées…'
     'lanceur.versions.horsligne.deja' = "Aucune version n'est installable hors ligne sur ce poste : seule la version déjà installée est proposée."
     'lanceur.erreur'            = "Le lanceur n'a pas pu démarrer :`n`n{0}`n`nContact : {1}"
-    'lanceur.titre'             = 'Revues SZH – {racine}'
-    'lanceur.titre.zs'          = 'Zeitschriften SZH – {racine}'
     'lanceur.choisir.zs'        = 'Choisissez la Zeitschrift à ouvrir :'
-    'lanceur.vide.zs'           = 'Aucune Zeitschrift sur ce poste pour l’’instant – « Nouvelle revue… » pour commencer.'
+    'lanceur.vide.zs'           = 'Aucune Zeitschrift sur ce poste pour l’’instant – « Nouvelle Zeitschrift… » pour commencer.'
+    'lanceur.nouvelle.zs'       = 'Nouvelle Zeitschrift…'
+    'lanceur.vide.archives.zs'  = 'Aucune Zeitschrift archivée.'
     'lien.invalide'             = "Ce lien n'est pas un lien de revue SZH valide :`n`n{0}"
-    'lien.introuvable'          = "Ce lien renvoie au numéro « {0} » ({1}), introuvable sur ce poste.`n`nVérifiez que OneDrive a fini de synchroniser le dossier, puis réessayez. Vous pouvez aussi ouvrir le numéro à la main depuis « Revues SZH »."
+    'lien.introuvable'          = "Ce lien renvoie au numéro « {0} » ({1}), introuvable sur ce poste.`n`nVérifiez que OneDrive a fini de synchroniser le dossier, puis réessayez. Vous pouvez aussi ouvrir le numéro à la main depuis « Revue & Zeitschrift »."
     'lanceur.hors'              = '{0} revue(s) hors arborescence dans {1} – à déplacer.'
     'lanceur.encours'           = 'En cours :'
     'lanceur.archives'          = 'Archivées :'
@@ -141,14 +141,65 @@ $script:SzhTextes = @{
     'openmd.reseau'       = "Ce fichier est dans un dossier réseau. Il s'ouvre, mais la fabrication du PDF et l'aperçu ne fonctionnent pas depuis un chemin réseau.`n`nPour travailler dessus, copiez la revue dans OneDrive ou sur le disque de ce poste."
     # Raccourcis du menu Démarrer. Ces deux premiers noms sont ceux des fichiers .lnk :
     # les changer renomme les entrées du menu (l'ancienne est retirée, jamais doublée).
+    # raccourci.maj.nom ne nomme plus aucun raccourci actuel : elle sert seulement à la
+    # désinstallation, pour reconnaître et retirer l'ancien .lnk d'un poste venu d'une version
+    # antérieure (Get-SzhRaccourcisObsoletes, szh-shell.ps1). Ne pas changer sa valeur.
     'raccourci.maj.nom'   = 'Mise à jour de l’’outil Revue'
     'raccourci.maj.desc'  = 'Installer la dernière version de l’’outil Revue SZH. Une fenêtre s’’ouvre et montre ce qui se passe.'
     'raccourci.revue.desc' = 'Ouvrir une revue SZH'
     'raccourci.zs.desc'   = 'Ouvrir une Zeitschrift SZH'
     'raccourci.livre.desc' = 'Ouvrir un livre SZH-CSPS'
-    # Lanceur « Books SZH-CSPS » : un livre n'a ni volume ni numéro, il a un titre, une
+    'raccourci.lanceur.desc' = 'Ouvrir une revue, une Zeitschrift ou un livre SZH'
+    # Fenêtre unique à quatre onglets (Revue, Zeitschrift, Book, Paramètres) : titre générique
+    # et textes de l'onglet Paramètres (langue de l'interface, onglet ouvert au démarrage).
+    'lanceur.titre.suite'           = '{0} – {racine}'
+    'lanceur.reglages'              = 'Paramètres'
+    'lanceur.reglages.onglet'       = 'Onglet ouvert au démarrage'
+    'lanceur.reglages.auto'         = 'Automatique (selon la langue du poste)'
+    'lanceur.reglages.onglet.regle' = 'Sans choix ici : Zeitschrift sur un poste en allemand, Revue sur un poste en français, Zeitschrift partout ailleurs.'
+    'lanceur.reglages.langue'       = 'Langue de l’’interface'
+    'lanceur.reglages.langue.auto'  = 'Automatique ({0})'
+    'lanceur.reglages.langue.fr'    = 'Français'
+    'lanceur.reglages.langue.de'    = 'Allemand'
+    'lanceur.reglages.langue.apres' = 'La langue change à la prochaine ouverture du lanceur.'
+    'lanceur.reglages.ou'           = 'Sauf le dernier, ces réglages appartiennent à ce compte Windows et non au poste.'
+    # Réglage « mise à jour » : fenêtre visible ou silencieuse ; un échec répété se
+    # signale quand même (voir la note ci-dessous).
+    'lanceur.reglages.maj'          = 'Mise à jour de l’’outil'
+    'lanceur.reglages.maj.visible'  = 'Montrer la fenêtre pendant la mise à jour'
+    'lanceur.reglages.maj.silence'  = 'Mettre à jour en silence, sans fenêtre'
+    'lanceur.reglages.maj.note'     = 'En silence, une mise à jour qui échoue plusieurs fois de suite se signale quand même.'
+    # Mode développeur : déménagé du formulaire de réglages de l'éditeur (mêmes
+    # libellés), vaut pour tout le poste et non pour ce seul compte.
+    'lanceur.reglages.dev'          = 'Mode développeur (dossiers de test)'
+    'lanceur.reglages.dev.oui'      = 'Activé'
+    'lanceur.reglages.dev.non'      = 'Désactivé'
+    'lanceur.reglages.dev.note'     = 'Seul réglage de cet onglet qui vaille pour tout le poste, et non pour ce seul compte. Les listes et le titre le suivent à la prochaine ouverture.'
+    # Onglet « Journal » : les dix dernières mises à jour et leur verdict.
+    'lanceur.journal'                  = 'Journal'
+    'lanceur.journal.liste'            = 'Dix dernières mises à jour :'
+    'lanceur.journal.vide'             = 'Aucune mise à jour n’’a encore été enregistrée sur ce poste.'
+    'lanceur.journal.entree'           = '{0}    {1}    ({2} ko)'
+    'lanceur.journal.ok'               = 'réussie'
+    'lanceur.journal.echec'            = 'échouée'
+    'lanceur.journal.inconnu'          = 'issue inconnue'
+    'lanceur.journal.choisir'          = 'Choisissez une mise à jour pour lire son journal.'
+    'lanceur.journal.illisible'        = 'Ce journal n’’a pas pu être lu : {0}'
+    # Bouton « Signaler une erreur » : envoie au support un rapport structuré avec
+    # le journal choisi.
+    'lanceur.journal.signaler'         = 'Signaler une erreur…'
+    'lanceur.journal.signaler.titre'   = 'Signaler une erreur'
+    'lanceur.journal.signaler.quoi'    = 'En une phrase : que s’’est-il passé ?'
+    'lanceur.journal.signaler.fait'    = 'Merci. Le signalement est parti, avec le journal choisi.'
+    'lanceur.journal.signaler.attente' = 'Le signalement est enregistré. Il partira dès que le dossier SharePoint sera de nouveau joignable.'
+    'lanceur.journal.signaler.refuse'  = 'Le signalement n’’a pas pu être enregistré. Le journal du poste en dit la raison.'
+    # Bouton « Envoyer les journaux » : réunit les journaux dans une archive, ouvre un
+    # brouillon de courriel et montre l'archive dans l'explorateur (mailto ne porte pas de pièce jointe).
+    'lanceur.journal.envoyer'          = 'Envoyer les journaux…'
+    'lanceur.journal.envoyer.fait'     = 'Les journaux sont réunis dans « {0} », que l’’explorateur vient d’’ouvrir. Un brouillon de courriel au support est ouvert : glissez-y ce fichier avant d’’envoyer.'
+    'lanceur.journal.envoyer.erreur'   = 'Les journaux n’’ont pas pu être réunis : {0}'
+    # Onglet « Book » du lanceur : un livre n'a ni volume ni numéro, il a un titre, une
     # année et une référence B — voir szh-produits.ps1.
-    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
     'lanceur.choisir.livre'        = 'Choisissez le livre à ouvrir :'
     'lanceur.vide.livre'           = 'Aucun livre sur ce poste pour l’’instant – « Nouveau livre… » pour commencer.'
     'lanceur.nouvelle.livre'       = 'Nouveau livre…'
@@ -232,13 +283,13 @@ $script:SzhTextes = @{
     'err.retry'         = 'Die Aktualisierung versucht es später automatisch erneut. Falls das Problem bleibt: {0}'
     'err.menu'          = '[E] E-Mail an den Support vorbereiten   [O] Protokoll öffnen   [andere Taste] schliessen'
     'dl.format'         = '{0:N1} / {1:N1} MB'
-    'lanceur.choisir'   = 'Wählen Sie die zu öffnende Zeitschrift:'
+    'lanceur.choisir'   = 'Wählen Sie die zu öffnende Revue:'
     'lanceur.ouvrir'    = 'Öffnen'
     'lanceur.annuler'   = 'Abbrechen'
     'lanceur.modifie'   = '{0}    (geändert am {1})'
     'lanceur.codium'    = 'Der Editor VSCodium wurde auf diesem Computer nicht gefunden. Kontakt: {0}'
-    'lanceur.vide'      = 'Noch keine Zeitschrift auf diesem Computer – mit «Neue Zeitschrift…» beginnen.'
-    'lanceur.nouvelle'          = 'Neue Zeitschrift…'
+    'lanceur.vide'      = 'Noch keine Revue auf diesem Computer – mit «Neue Revue…» beginnen.'
+    'lanceur.nouvelle'          = 'Neue Revue…'
     'lanceur.nouvelle.annee'    = 'Jahr:'
     'lanceur.nouvelle.numero'   = 'Nummer:'
     'lanceur.nouvelle.volume'   = 'Band:'
@@ -250,22 +301,22 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.doublon'  = "Band {0}, Nummer {1} existiert bereits: es ist die Ausgabe « {2} », hier:`n{3}"
     'lanceur.nouvelle.doublon.arch'  = 'Jene Ausgabe ist archiviert – eine archivierte Ausgabe bleibt eine veröffentlichte Ausgabe.'
     'lanceur.nouvelle.doublon.suite' = 'Zwei Ausgaben können nicht denselben Band und dieselbe Nummer tragen. Löschen Sie zuerst die vorhandene Ausgabe und erstellen Sie diese danach neu.'
-    'lanceur.nouvelle.erreur'   = "Die Zeitschrift konnte nicht erstellt werden:`n{0}"
+    'lanceur.nouvelle.erreur'   = "Die Revue konnte nicht erstellt werden:`n{0}"
     # Lebenszyklus der Ausgabe
     'maj.concurrente'           = 'In einem anderen Fenster läuft bereits eine Aktualisierung – dieses schliesst sich.'
     'lanceur.versions.chargement' = 'Suche nach veröffentlichten Versionen…'
     'lanceur.versions.horsligne.deja' = "Auf diesem Computer ist keine Version offline installierbar: es wird nur die bereits installierte Version angeboten."
     'lanceur.erreur'            = "Der Starter konnte nicht gestartet werden:`n`n{0}`n`nKontakt: {1}"
-    'lanceur.titre'             = 'Revues SZH – {racine}'
-    'lanceur.titre.zs'          = 'Zeitschriften SZH – {racine}'
     'lanceur.choisir.zs'        = 'Wählen Sie die zu öffnende Zeitschrift:'
     'lanceur.vide.zs'           = 'Noch keine Zeitschrift auf diesem Computer – mit «Neue Zeitschrift…» beginnen.'
+    'lanceur.nouvelle.zs'       = 'Neue Zeitschrift…'
+    'lanceur.vide.archives.zs'  = 'Keine archivierte Zeitschrift.'
     'lien.invalide'             = "Dieser Link ist kein gültiger SZH-Zeitschriftenlink:`n`n{0}"
-    'lien.introuvable'          = "Dieser Link verweist auf die Ausgabe « {0} » ({1}), die auf diesem Computer nicht gefunden wurde.`n`nPrüfen Sie, ob OneDrive den Ordner fertig synchronisiert hat, und versuchen Sie es erneut. Sie können die Ausgabe auch von Hand über « Zeitschriften SZH » öffnen."
+    'lien.introuvable'          = "Dieser Link verweist auf die Ausgabe « {0} » ({1}), die auf diesem Computer nicht gefunden wurde.`n`nPrüfen Sie, ob OneDrive den Ordner fertig synchronisiert hat, und versuchen Sie es erneut. Sie können die Ausgabe auch von Hand über « Revue & Zeitschrift » öffnen."
     'lanceur.hors'              = '{0} Zeitschrift(en) ausserhalb der Ablage in {1} – zu verschieben.'
     'lanceur.encours'           = 'In Arbeit:'
     'lanceur.archives'          = 'Archiviert:'
-    'lanceur.vide.archives'     = 'Keine archivierte Zeitschrift.'
+    'lanceur.vide.archives'     = 'Keine archivierte Revue.'
     'lanceur.version'           = 'Version: {0}'
     'lanceur.version.inconnue'  = 'Version: unbekannt'
     'lanceur.modeTest'          = 'Testmodus: Alles, was Sie hier anlegen, landet im Testordner, nicht in der Produktion.'
@@ -312,7 +363,55 @@ $script:SzhTextes = @{
     'raccourci.revue.desc' = 'Eine SZH-Revue öffnen'
     'raccourci.zs.desc'   = 'Eine SZH-Zeitschrift öffnen'
     'raccourci.livre.desc' = 'Ein SZH-CSPS-Buch öffnen'
-    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
+    'raccourci.lanceur.desc' = 'Eine Revue, eine Zeitschrift oder ein Buch des SZH öffnen'
+    # Einzelnes Fenster mit vier Registerkarten (Revue, Zeitschrift, Book, Einstellungen): allgemeiner
+    # Titel und Texte der Registerkarte Einstellungen (Sprache der Oberfläche, Start-Registerkarte).
+    'lanceur.titre.suite'           = '{0} – {racine}'
+    'lanceur.reglages'              = 'Einstellungen'
+    'lanceur.reglages.onglet'       = 'Beim Start geöffnete Registerkarte'
+    'lanceur.reglages.auto'         = 'Automatisch (nach der Sprache des Computers)'
+    'lanceur.reglages.onglet.regle' = 'Ohne Auswahl hier: Zeitschrift auf einem deutschsprachigen Computer, Revue auf einem französischsprachigen, sonst überall Zeitschrift.'
+    'lanceur.reglages.langue'       = 'Sprache der Oberfläche'
+    'lanceur.reglages.langue.auto'  = 'Automatisch ({0})'
+    'lanceur.reglages.langue.fr'    = 'Französisch'
+    'lanceur.reglages.langue.de'    = 'Deutsch'
+    'lanceur.reglages.langue.apres' = 'Die Sprache wechselt beim nächsten Öffnen des Programms.'
+    'lanceur.reglages.ou'           = 'Ausser der letzten gehören diese Einstellungen zu diesem Windows-Konto und nicht zum Computer.'
+    # Einstellung «Aktualisierung»: Fenster sichtbar oder still; ein wiederholt
+    # fehlschlagender Vorgang meldet sich trotzdem.
+    'lanceur.reglages.maj'          = 'Aktualisierung des Programms'
+    'lanceur.reglages.maj.visible'  = 'Fenster während der Aktualisierung anzeigen'
+    'lanceur.reglages.maj.silence'  = 'Still aktualisieren, ohne Fenster'
+    'lanceur.reglages.maj.note'     = 'Auch im stillen Modus meldet sich eine Aktualisierung, die mehrmals hintereinander fehlschlägt.'
+    # Entwicklermodus: aus dem Einstellungsformular des Editors verschoben (gleiche
+    # Bezeichnungen), gilt für den ganzen Computer.
+    'lanceur.reglages.dev'          = 'Entwicklermodus (Testordner)'
+    'lanceur.reglages.dev.oui'      = 'Ein'
+    'lanceur.reglages.dev.non'      = 'Aus'
+    'lanceur.reglages.dev.note'     = 'Als einzige Einstellung dieser Registerkarte gilt sie für den ganzen Computer, nicht nur für dieses Konto. Listen und Titel folgen beim nächsten Öffnen.'
+    # Registerkarte «Protokoll»: die letzten zehn Aktualisierungen und ihr Ausgang.
+    'lanceur.journal'                  = 'Protokoll'
+    'lanceur.journal.liste'            = 'Letzte zehn Aktualisierungen:'
+    'lanceur.journal.vide'             = 'Auf diesem Computer wurde noch keine Aktualisierung aufgezeichnet.'
+    'lanceur.journal.entree'           = '{0}    {1}    ({2} kB)'
+    'lanceur.journal.ok'               = 'erfolgreich'
+    'lanceur.journal.echec'            = 'fehlgeschlagen'
+    'lanceur.journal.inconnu'          = 'Ausgang unbekannt'
+    'lanceur.journal.choisir'          = 'Wählen Sie eine Aktualisierung, um ihr Protokoll zu lesen.'
+    'lanceur.journal.illisible'        = 'Dieses Protokoll konnte nicht gelesen werden: {0}'
+    # Schaltfläche «Fehler melden»: schickt dem Support einen strukturierten Bericht
+    # mit dem gewählten Protokoll.
+    'lanceur.journal.signaler'         = 'Fehler melden…'
+    'lanceur.journal.signaler.titre'   = 'Fehler melden'
+    'lanceur.journal.signaler.quoi'    = 'In einem Satz: Was ist geschehen?'
+    'lanceur.journal.signaler.fait'    = 'Danke. Die Meldung ist zusammen mit dem gewählten Protokoll abgegangen.'
+    'lanceur.journal.signaler.attente' = 'Die Meldung ist gespeichert. Sie geht ab, sobald der SharePoint-Ordner wieder erreichbar ist.'
+    'lanceur.journal.signaler.refuse'  = 'Die Meldung konnte nicht gespeichert werden. Das Protokoll des Computers nennt den Grund.'
+    # Schaltfläche «Protokolle senden»: fasst die Protokolle in einem Archiv zusammen,
+    # öffnet einen E-Mail-Entwurf und zeigt das Archiv im Explorer (mailto trägt keinen Anhang).
+    'lanceur.journal.envoyer'          = 'Protokolle senden…'
+    'lanceur.journal.envoyer.fait'     = 'Die Protokolle liegen zusammen in «{0}», das der Explorer soeben geöffnet hat. Ein E-Mail-Entwurf an den Support ist offen: Ziehen Sie die Datei hinein, bevor Sie senden.'
+    'lanceur.journal.envoyer.erreur'   = 'Die Protokolle konnten nicht zusammengefasst werden: {0}'
     'lanceur.choisir.livre'        = 'Wählen Sie das zu öffnende Buch:'
     'lanceur.vide.livre'           = 'Noch kein Buch auf diesem Computer – mit «Neues Buch…» beginnen.'
     'lanceur.nouvelle.livre'       = 'Neues Buch…'
@@ -420,12 +519,12 @@ $script:SzhTextes = @{
     'lanceur.versions.chargement' = 'Looking for published versions…'
     'lanceur.versions.horsligne.deja' = "No version can be installed offline on this computer: only the version already installed is offered."
     'lanceur.erreur'            = "The launcher could not start:`n`n{0}`n`nContact: {1}"
-    'lanceur.titre'             = 'Revues SZH — {racine}'
-    'lanceur.titre.zs'          = 'Zeitschriften SZH — {racine}'
     'lanceur.choisir.zs'        = 'Choose the Zeitschrift to open:'
-    'lanceur.vide.zs'           = 'No Zeitschrift on this computer yet — use "New journal…" to get started.'
+    'lanceur.vide.zs'           = 'No Zeitschrift on this computer yet — use "New Zeitschrift…" to get started.'
+    'lanceur.nouvelle.zs'       = 'New Zeitschrift…'
+    'lanceur.vide.archives.zs'  = 'No archived Zeitschrift.'
     'lien.invalide'             = "This is not a valid SZH journal link:`n`n{0}"
-    'lien.introuvable'          = "This link points to issue {0} ({1}), which was not found on this computer.`n`nCheck that OneDrive has finished syncing the folder, then try again. You can also open the issue by hand from the Revues SZH launcher."
+    'lien.introuvable'          = "This link points to issue {0} ({1}), which was not found on this computer.`n`nCheck that OneDrive has finished syncing the folder, then try again. You can also open the issue by hand from the Revue & Zeitschrift launcher."
     'lanceur.hors'              = '{0} journal(s) outside the official tree in {1} — to be moved.'
     'lanceur.encours'           = 'In progress:'
     'lanceur.archives'          = 'Archived:'
@@ -476,7 +575,54 @@ $script:SzhTextes = @{
     'raccourci.revue.desc' = 'Open an SZH journal'
     'raccourci.zs.desc'   = 'Open an SZH Zeitschrift'
     'raccourci.livre.desc' = 'Open an SZH-CSPS book'
-    'lanceur.titre.livre'          = 'Books SZH-CSPS – {racine}'
+    'raccourci.lanceur.desc' = 'Open an SZH journal, Zeitschrift or book'
+    # Single window with four tabs (Revue, Zeitschrift, Book, Settings): generic title and the
+    # Settings tab's strings (interface language, tab opened at startup).
+    'lanceur.titre.suite'           = '{0} — {racine}'
+    'lanceur.reglages'              = 'Settings'
+    'lanceur.reglages.onglet'       = 'Tab opened at startup'
+    'lanceur.reglages.auto'         = 'Automatic (follows the computer’’s language)'
+    'lanceur.reglages.onglet.regle' = 'With no choice here: Zeitschrift on a German computer, Revue on a French one, Zeitschrift everywhere else.'
+    'lanceur.reglages.langue'       = 'Interface language'
+    'lanceur.reglages.langue.auto'  = 'Automatic ({0})'
+    'lanceur.reglages.langue.fr'    = 'French'
+    'lanceur.reglages.langue.de'    = 'German'
+    'lanceur.reglages.langue.apres' = 'The language changes the next time the launcher is opened.'
+    'lanceur.reglages.ou'           = 'Except the last one, these settings belong to this Windows account rather than to the computer.'
+    # “Update” setting: window shown or silent; an update that keeps failing still
+    # speaks up.
+    'lanceur.reglages.maj'          = 'Updating the tool'
+    'lanceur.reglages.maj.visible'  = 'Show the window while updating'
+    'lanceur.reglages.maj.silence'  = 'Update silently, with no window'
+    'lanceur.reglages.maj.note'     = 'Even silently, an update that fails several times in a row still speaks up.'
+    # Developer mode: moved from the editor's settings form (same labels), applies
+    # to the whole computer.
+    'lanceur.reglages.dev'          = 'Developer mode (test folders)'
+    'lanceur.reglages.dev.oui'      = 'On'
+    'lanceur.reglages.dev.non'      = 'Off'
+    'lanceur.reglages.dev.note'     = 'The only setting on this tab that applies to the whole computer rather than this account alone. Lists and title follow the next time it opens.'
+    # “Log” tab: the last ten updates and their outcome.
+    'lanceur.journal'                  = 'Log'
+    'lanceur.journal.liste'            = 'Last ten updates:'
+    'lanceur.journal.vide'             = 'No update has been recorded on this computer yet.'
+    'lanceur.journal.entree'           = '{0}    {1}    ({2} kB)'
+    'lanceur.journal.ok'               = 'succeeded'
+    'lanceur.journal.echec'            = 'failed'
+    'lanceur.journal.inconnu'          = 'outcome unknown'
+    'lanceur.journal.choisir'          = 'Choose an update to read its log.'
+    'lanceur.journal.illisible'        = 'This log could not be read: {0}'
+    # “Report a problem” button: sends support a structured report with the chosen log.
+    'lanceur.journal.signaler'         = 'Report a problem…'
+    'lanceur.journal.signaler.titre'   = 'Report a problem'
+    'lanceur.journal.signaler.quoi'    = 'In one sentence: what happened?'
+    'lanceur.journal.signaler.fait'    = 'Thank you. The report has gone off, together with the chosen log.'
+    'lanceur.journal.signaler.attente' = 'The report is saved. It will go off as soon as the SharePoint folder can be reached again.'
+    'lanceur.journal.signaler.refuse'  = 'The report could not be saved. The computer’’s log says why.'
+    # “Send the logs” button: gathers the logs into an archive, opens a draft e-mail,
+    # and shows the archive in Explorer (mailto cannot carry an attachment).
+    'lanceur.journal.envoyer'          = 'Send the logs…'
+    'lanceur.journal.envoyer.fait'     = 'The logs are gathered in “{0}”, which Explorer has just opened. A draft e-mail to support is open: drag the file into it before sending.'
+    'lanceur.journal.envoyer.erreur'   = 'The logs could not be gathered: {0}'
     'lanceur.choisir.livre'        = 'Choose the book to open:'
     'lanceur.vide.livre'           = 'No book on this computer yet — use “New book…” to get started.'
     'lanceur.nouvelle.livre'       = 'New book…'

@@ -372,8 +372,8 @@ if ($absents.Count -eq 0) {
 }
 
 # ⚠ Ces deux chemins de registre sont dupliqués en littéral : update.ps1 en est
-# propriétaire et les nomme (Set-SzhProgIdMarkdown, update.ps1:54-107, et
-# Set-SzhProtocoleSzh, update.ps1:115-142). Aucune variable ni fonction de szh-common.ps1
+# propriétaire et les nomme (Set-SzhProgIdMarkdown, update.ps1:63-116, et
+# Set-SzhProtocoleSzh, update.ps1:124-151). Aucune variable ni fonction de szh-common.ps1
 # ne les expose aujourd'hui — une centralisation reste à faire, pour qu'un renommage du
 # ProgId SZH.Markdown ou du schéma szh se répercute ici automatiquement. En l'état, un tel
 # renommage fait annoncer « non enregistré » par ce diagnostic sur un poste pourtant sain.
@@ -428,7 +428,7 @@ if ($aReparer.Count -eq 0) {
 Write-Host ('  {0} point(s) à reprendre pour ce compte :' -f $aReparer.Count) -ForegroundColor Yellow
 foreach ($p in $aReparer) { Write-Host ('   - {0} : {1}' -f $p.sujet, $p.detail) }
 Write-Host ''
-Write-Host ('  La plupart se réparent en lançant « Mise à jour de l''outil Revue » depuis le menu' ) -ForegroundColor Gray
+Write-Host ('  La plupart se réparent en lançant « ' + $SzhNomMiseAJour + ' » depuis le menu' ) -ForegroundColor Gray
 Write-Host ('  Démarrer de CE compte. Journal : ' + $SzhLogs) -ForegroundColor Gray
 Write-Host ('  Contact : ' + $SzhSupport) -ForegroundColor Gray
 Write-Host ''

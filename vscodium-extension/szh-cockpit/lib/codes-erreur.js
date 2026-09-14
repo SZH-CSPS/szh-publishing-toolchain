@@ -85,6 +85,17 @@ const CODES = Object.freeze({
   // complète et que le code soit connu de validerRapport() si, un jour, quelqu'un se
   // trompe et l'écrit quand même — l'écrivain, lui, ne doit jamais boucler sur son propre
   // échec d'écriture.
+  // Le seul code qu'une PERSONNE déclenche, et non une panne : le bouton « Signaler une
+  // erreur… » de l'onglet « Journal » du lanceur. Sa gravité reste « erreur » — l'énumération
+  // est close et ne s'élargit qu'avec une nouvelle version de schéma —, ce qui se défend :
+  // quelqu'un signale bien que quelque chose ne va pas.
+  'LANCEUR-SIGNALEMENT': Object.freeze({
+    resume: Object.freeze({
+      fr: 'Une personne a signalé elle-même un problème depuis l’onglet « Journal » du lanceur ; le message est celui qu’elle a écrit, et le journal joint celui qu’elle a choisi.',
+      de: 'Eine Person hat ein Problem selbst über die Registerkarte «Protokoll» des Starters gemeldet; die Meldung ist ihr eigener Text, das beigefügte Protokoll das von ihr gewählte.'
+    })
+  }),
+
   'RAPPORT-ECHEC-ECRITURE': Object.freeze({
     resume: Object.freeze({
       fr: 'L’écriture d’un rapport d’erreur a elle-même échoué ; par construction, cet échec n’est jamais transformé en nouveau rapport, seul le journal local le garde.',

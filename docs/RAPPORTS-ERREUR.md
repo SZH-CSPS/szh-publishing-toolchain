@@ -153,7 +153,7 @@ clés de premier niveau **dans l'ordre ci-dessous** — c'est ce que `ORDRE_CLES
 | `horodatageLocal` | chaîne ISO-8601, décalage inclus | le même instant, à l'heure du poste — pour la personne qui relit, pas pour le tri |
 | `gravite` | énumération | `erreur` \| `echec-partiel` |
 | `source` | énumération | `lanceur` \| `maj` \| `archivage` \| `cockpit` \| `chaine` |
-| `code` | chaîne stable | une des 9 clés de la table des codes, §7 |
+| `code` | chaîne stable | une des 10 clés de la table des codes, §7 |
 | `signature` | chaîne, 12 hex | pour le regroupement anti-inondation, §5 — pas un identifiant |
 | `resume` | objet `{ fr, de }` | une phrase courte, non technique — copiée depuis la table des codes |
 | `etape` | chaîne ou `null` | ce que faisait l'outil quand ça a cassé, en langage humain |
@@ -338,7 +338,7 @@ cockpit, sur le même poste, atterrissent donc côte à côte.
 
 ## 7. La table des codes
 
-Neuf codes, gelés dans `lib/codes-erreur.js` (`CODES`). Une clé de code, une fois publiée,
+Dix codes, gelés dans `lib/codes-erreur.js` (`CODES`). Une clé de code, une fois publiée,
 **ne se renomme et ne se supprime jamais** — un poste peut tourner des mois avec une version
 plus ancienne du toolkit et continuer à écrire ce code-là.
 
@@ -352,11 +352,43 @@ plus ancienne du toolkit et continuer à écrire ce code-là.
 | `ARCHIVAGE-ECHEC` | échec de `archive-revue.ps1` |
 | `COMPIL-ECHEC` | tâche de compilation terminée avec un code de sortie non nul |
 | `COCKPIT-EXCEPTION` | exception non rattrapée côté extension |
+| `LANCEUR-SIGNALEMENT` | un rédacteur clique **« Signaler une erreur… »** dans l'onglet Journal du lanceur — **le seul des dix codes qu'un geste déclenche, et non une panne détectée** |
 | `RAPPORT-ECHEC-ECRITURE` | **jamais écrit en rapport** — journal local seulement ; sans quoi un échec d'écriture de rapport tenterait d'écrire un rapport sur son propre échec, indéfiniment |
 
 Chaque code porte un `resume` en français et en allemand (`CODES[code].resume.fr` /
 `.de`) : une phrase courte, factuelle, jamais alarmiste, lisible par une personne qui ouvre
 le fichier JSON sans être technicienne.
+
+### Le dixième code : un geste, pas une panne
+
+Depuis le 14.09.2026, le bouton **« Signaler une erreur… »** de l'onglet **Journal** du lanceur
+(`Invoke-SzhSignalement`, `windows/open-produit.ps1`) donne au rédacteur un moyen de partir un
+rapport **de sa propre initiative**, et non plus seulement sur une panne que le code a su
+reconnaître : jusque-là, rien ne couvrait le cas le plus courant — rien n'a planté, et pourtant
+quelque chose ne va pas. Il appelle :
+
+```powershell
+Write-SzhRapport -Code 'LANCEUR-SIGNALEMENT' -Gravite 'erreur' -Source 'lanceur' `
+  -Etape … -Message <phrase du rédacteur> -Journal <journal choisi, ou vide> -Produit @{ type = … }
+```
+
+`LANCEUR-SIGNALEMENT` est **opérationnel** : déclaré dans `Get-SzhRapportCodesConnus` et dans
+`Get-SzhRapportResume` (`windows/szh-rapport.ps1`), avec un résumé fr/de, et dans la table
+`CODES` de `lib/codes-erreur.js`, avec le même résumé. `Test-SzhRapportValide` l'accepte, et un
+signalement écrit bien son fichier JSON — dans le dossier SharePoint, ou dans la file d'attente
+hors ligne (§6) si l'ancrage est injoignable au moment du clic.
+
+**Le défaut qu'il vaut la peine de raconter.** Ce code a d'abord été ajouté au seul appelant
+(`Invoke-SzhSignalement`) sans être déclaré dans les deux tables : `Test-SzhRapportValide`
+refusait alors tout rapport dont le `code` n'était pas `-in (Get-SzhRapportCodesConnus)`, et
+`Write-SzhRapport` s'arrêtait juste après ce contrôle — rien n'était écrit, ni sur le disque ni
+dans la file d'attente, avec pour seule trace une ligne de journal local. Pendant ce temps,
+`Invoke-SzhSignalement` affichait quand même au rédacteur un message de confirmation, sans
+jamais regarder le résultat réel de `Write-SzhRapport` : un bouton mort qui se disait vivant.
+Le garde-fou qui empêche ce défaut de revenir est statique, pas empirique :
+`test/js/codes-erreur.test.js` relit tous les `-Code '...'` cités par `windows/*.ps1` et exige
+que chacun soit connu des deux tables — un code ajouté à un seul endroit fait échouer ce test
+avant même de lancer PowerShell.
 
 ---
 
@@ -377,8 +409,8 @@ le fichier JSON sans être technicienne.
 
 | Où | Quoi |
 |---|---|
-| `vscodium-extension/szh-cockpit/lib/codes-erreur.js` | La table des 9 codes, les constantes du schéma (version, énumérations, plafonds §4, seuils anti-inondation §5), et les fonctions pures partagées par les deux écrivains : `masquer`, `versCheminRelatif`, `calculerSignature`, `calculerId`, `genererAleatoireHex`, `appliquerPlafonds`, `validerRapport`. Aucun accès disque, aucune dépendance à `vscode`. |
-| `test/js/codes-erreur.test.js` | Éprouve cette table et ces fonctions contre le schéma gelé — `node --test test/js/codes-erreur.test.js`. |
+| `vscodium-extension/szh-cockpit/lib/codes-erreur.js` | La table des 10 codes, les constantes du schéma (version, énumérations, plafonds §4, seuils anti-inondation §5), et les fonctions pures partagées par les deux écrivains : `masquer`, `versCheminRelatif`, `calculerSignature`, `calculerId`, `genererAleatoireHex`, `appliquerPlafonds`, `validerRapport`. Aucun accès disque, aucune dépendance à `vscode`. |
+| `test/js/codes-erreur.test.js` | Éprouve cette table et ces fonctions contre le schéma gelé, et relit tous les `-Code '...'` cités par `windows/*.ps1` pour exiger que chacun soit connu des deux tables (§7, le garde-fou du défaut `LANCEUR-SIGNALEMENT`) — `node --test test/js/codes-erreur.test.js`. |
 | `windows/szh-ancrage.ps1` | L'ancrage SharePoint : résolution passive à 4 niveaux (`Resolve-SzhAncrage`, mémoïsée, n'ouvre jamais de fenêtre), normalisation d'un chemin donné à la main, et `Initialize-SzhAncrage` (5ᵉ niveau, seule fonction habilitée à ouvrir un `FolderBrowserDialog`). |
 | `windows/szh-rapport.ps1` | L'écrivain PowerShell (`Write-SzhRapport`) : construit le rapport, masque, plafonne, valide, applique l'anti-inondation, écrit ou met en attente — reproduit à la main les fonctions de `lib/codes-erreur.js`, PowerShell n'exécutant pas de JS. |
 | `test/js/ancrage-sharepoint.test.js`, `test/js/lanceur-ancrage.test.js` | Éprouvent la résolution de l'ancrage (le partage des 4 niveaux passifs, le garde-fou « jamais de fenêtre » de `Resolve-SzhAncrage`) et son câblage unique, au bon endroit, dans `open-produit.ps1`. |
@@ -390,8 +422,8 @@ le fichier JSON sans être technicienne.
 
 ## 10. Les accroches réelles, et leurs codes
 
-Neuf codes gelés (§7), mais un seul (`RAPPORT-ECHEC-ECRITURE`) n'est jamais écrit. Voici,
-pour chacun des huit autres, l'endroit exact du dépôt qui l'émet — pas un exemple, le vrai
+Dix codes gelés (§7), mais un seul (`RAPPORT-ECHEC-ECRITURE`) n'est jamais écrit. Voici,
+pour chacun des neuf autres, l'endroit exact du dépôt qui l'émet — pas un exemple, le vrai
 point d'appel.
 
 | Code | Émis depuis | Condition précise |
@@ -405,6 +437,7 @@ point d'appel.
 | `ARCHIVAGE-ECHEC` | `windows/archive-revue.ps1` (`Show-SzhErreurArchivage`) | le déplacement en cours ⇄ archives échoue ; `fichiers` porte `$Dossier`, le seul chemin sûrement connu à ce stade |
 | `COMPIL-ECHEC` | `extension.js` (`relireJournal`) | une tâche de compilation se termine avec un code de sortie non nul — **jamais** sur un `code === 0`, le cas le plus fréquent ; les constats de contenu (tableau sans en-tête, figure sans alt…) ne déclenchent jamais un rapport à eux seuls, ils ne partent qu'en contexte d'un rapport parti pour une autre raison |
 | `COCKPIT-EXCEPTION` | `extension.js` (`signalerExceptionCockpit`), appelée depuis l'enveloppe posée sur `cmd()`/`cmdEcriture()` | une exception sort d'une commande `szh.*` de l'extension — **jamais** via un écouteur global sur le processus (D7, §0 : ce processus est partagé avec toutes les autres extensions de VSCodium) |
+| `LANCEUR-SIGNALEMENT` | `windows/open-produit.ps1` (`Invoke-SzhSignalement`), bouton **« Signaler une erreur… »** de l'onglet Journal | un rédacteur clique le bouton et écrit une phrase — **jamais** détecté par le code, voir §7 |
 
 ---
 
