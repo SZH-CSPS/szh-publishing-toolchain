@@ -30,6 +30,8 @@ bouton « Décrire les images » ; `carte-article.test.js` et `webviews.test.js`
 l'unicité d'un DOI manuel ; `export-ojs.test.js` pour le refus d'un DOI en double à l'export ;
 `lanceur.test.js` pour `emplacement`/`modeTest` dans le JSON simulé du lanceur.
 
+`docx-meta-titre.test.js` éprouve la coupe du titre à deux-points (`pipeline/docx-meta.py`) : la fonction seule sur ce qui doit et ne doit pas se scinder (heures, URL, titres numérotés), puis l'import réel sur trois `.docx` fabriqués par le test — dont un qui porte déjà un sous-titre stylé et ne doit donc RIEN changer — et enfin le constat `sous-titre-deduit` tel qu'il arrive à l'écran, dans les deux langues.
+
 `desinstallation.test.js` éprouve le désinstalleur de poste (`windows/uninstall.ps1`,
 `windows/szh-desinstallation.ps1`) : les contrats de source, vérifiés partout — jamais de
 `wsl --unregister`, garde `Assert-SzhCibleMachineAutorisee` réappliquée à chaque suppression

@@ -159,6 +159,10 @@ const TABLE = Object.freeze({
     focusChamp: 'tableau', defaut: 'defaut.tableau-sans-entete' },
   'import/langue-deduite': { barrage: null, nature: F, lieu: 'fiche', focusFixe: 'lang',
     defaut: 'defaut.langue-deduite' },
+  // Titre et sous-titre sont voisins dans le formulaire : la carte ouvre le premier, et
+  // la coupe se defait d'un copier-coller.
+  'import/sous-titre-deduit': { barrage: null, nature: F, lieu: 'fiche', focusFixe: 'title',
+    objetChamp: 'soustitre', defaut: 'defaut.sous-titre-deduit' },
   'import/word-redepose': { barrage: null, nature: F, lieu: 'word', focusChamp: 'fichier',
     defaut: 'defaut.word-redepose' },
   'import/origine-inconnue': { barrage: null, nature: D, lieu: 'word', focusChamp: 'fichier',

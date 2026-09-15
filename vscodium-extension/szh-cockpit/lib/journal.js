@@ -86,6 +86,7 @@ function familleCode(prefixe) {
 const TONS_IMPORT = {
   'tableau-sans-entete': 'attention',
   'langue-deduite': 'attention',
+  'sous-titre-deduit': 'attention',
   // Rien n'a été créé, mais l'import se termine en code 0 : le Word attend, l'article
   // publié est encore l'ancien. Ce n'est pas un échec, et le dire comme tel ferait croire
   // à un numéro cassé.
@@ -140,6 +141,7 @@ const TONS_IMPORT = {
 const CLES_IMPORT = {
   'tableau-sans-entete': 'ctl.import.tableau-sans-entete',
   'langue-deduite': 'ctl.import.langue-deduite',
+  'sous-titre-deduit': 'ctl.import.sous-titre-deduit',
   'word-redepose': 'ctl.import.word-redepose',
   'origine-inconnue': 'ctl.import.origine-inconnue',
   // Le réimport. Une seule table pour les deux chemins qui mènent ces codes à l'écran —
@@ -213,6 +215,7 @@ const TONS = { import: TONS_IMPORT };
 const ARGS = {
   'import/tableau-sans-entete': (ch) => [ch('tableau')],
   'import/langue-deduite': (ch, l) => [nomLangue(ch('langue'), l)],
+  'import/sous-titre-deduit': (ch) => [ch('soustitre')],
   'import/word-redepose': (ch) => [ch('fichier')],
   'import/origine-inconnue': (ch) => [ch('fichier')],
   'meta/champ-vide': (ch, l) => [nomChamp(ch('champ'), l), nomLangue(ch('langue'), l)],

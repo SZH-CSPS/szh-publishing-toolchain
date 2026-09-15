@@ -733,6 +733,34 @@ aucun nom reconnu.
 styles attendus. Le corpus de mise au point est dans `tmp/docx-dev/` (hors dépôt) :
 c'est là qu'on rejoue un cas qui échoue.
 
+### Le titre a été coupé en deux, ou aurait dû l'être
+
+**Symptôme.** Après l'import, « Métadonnées des articles » montre un titre plus court que
+celui du Word, et le reste dans le champ **sous-titre** — ou l'inverse, le titre entier est
+resté d'une pièce avec son deux-points au milieu.
+
+**Le mécanisme.** Les deux revues écrivent souvent titre et sous-titre sur une seule ligne,
+sans style *Untertitel* derrière : « Inclusion scolaire : le rôle de l'enseignant ». La ligne
+entière partait alors en titre, et la maquette, qui compose les deux différemment, n'avait
+plus rien à composer. Depuis, `docx-meta.py` coupe au **premier deux-points suivi d'une
+espace**, et **seulement quand le document n'a donné aucun sous-titre** : un style
+*Untertitel* dans le Word a toujours le dernier mot, et le titre reste alors entier.
+
+**Ce qui ne se coupe jamais.** Un deux-points collé à ce qui suit — heures (« 10:30 »),
+rapports, URL (« https:// ») — et un titre qui commence par une numérotation (« 2 : Die
+Schule »). La partie gauche ne peut pas enjamber un deux-points : une heure en tête de titre
+empêche la coupe au lieu de la déplacer.
+
+**À observer.** Le code `sous-titre-deduit` du journal d'import, et `"sous_titre_source"` sur
+la ligne `[import-meta]` : `style` (lu dans le Word), `heuristique` (deviné à la taille des
+caractères), `deux-points` (coupé ici), `aucun`. Le constat n'est pas rouge — rien n'est
+cassé — mais il se dit, parce que la coupe est une décision de l'outil et pas une lecture du
+document.
+
+**Manœuvre.** La carte du constat ouvre le champ **titre** du formulaire : titre et
+sous-titre y sont voisins, et une coupe fausse se défait d'un copier-coller. Une coupe
+**manquante** se fait à la main au même endroit ; inutile de retoucher le Word pour ça.
+
 ### La fiche n'a que les noms : ni fonction, ni e-mail, ni portrait
 
 **Symptôme.** Après l'import, « Métadonnées des articles » montre les autrices et auteurs
