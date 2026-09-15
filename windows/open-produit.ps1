@@ -1685,8 +1685,18 @@ function Get-SzhDossierSortieChoisi {
 # chargement, pas le journal de l'onglet, cache derriere la boite modale. L'export final
 # (apres OK), lui, tourne une fois la boite refermee : il continue d'ecrire dans le journal
 # de l'onglet, avec la barre et le bouton de l'onglet.
+#
+# Le premier bouton ne charge plus que l'annee EN COURS (--depuis-annee) : 20 a 41 s de
+# moisson complete contre 3 a 5 s pour une seule annee (meme mesure du 15.09.2026). Un
+# second bouton, « Charger aussi <annee-1> », remonte d'une annee a la fois -- chaque clic
+# REJOUE la liste entiere (le contrat de numeros-ojs --depuis-annee n'est pas cumulatif,
+# une annee plus basse ramene deja un sur-ensemble complet), jamais une fusion. $etatBoiteOjs
+# tient l'annee plancher courante et le nombre de numeros du dernier chargement ; un
+# chargement qui n'en ramene pas plus que le precedent dit qu'il n'y a plus rien de plus
+# ancien, et grise le second bouton pour de bon -- sans jamais coder d'annee limite en dur.
 function Show-SzhBoiteExportOjs([string]$Titre, [string]$Commande, [string]$JetonRevue) {
   $cacheTemp = Join-Path $env:TEMP ('szh-secretariat-' + [guid]::NewGuid().ToString('N') + '.json')
+  $anneeCouranteOjs = (Get-Date).Year
   try {
     $boite = New-Object System.Windows.Forms.Form
     $boite.Text = $Titre
@@ -1704,10 +1714,20 @@ function Show-SzhBoiteExportOjs([string]$Titre, [string]$Commande, [string]$Jeto
     $boite.Controls.Add($etiqRevueOjs)
 
     $boutonChargerOjs = New-Object System.Windows.Forms.Button
-    $boutonChargerOjs.Text = (T 'lanceur.secretariat.export.charger')
+    $boutonChargerOjs.Text = (T 'lanceur.secretariat.export.charger' @([string]$anneeCouranteOjs))
     $boutonChargerOjs.Location = New-Object System.Drawing.Point(16, 44)
     $boutonChargerOjs.Size = New-Object System.Drawing.Size(200, 28)
     $boite.Controls.Add($boutonChargerOjs)
+
+    # Reste de la rangee (la boite fait 420 de large, les contrôles vont jusqu'a x=404) :
+    # inactif tant qu'aucun chargement n'a eu lieu, personne n'a encore d'annee plancher a
+    # etendre.
+    $boutonChargerPlusOjs = New-Object System.Windows.Forms.Button
+    $boutonChargerPlusOjs.Text = (T 'lanceur.secretariat.export.charger.plus' @([string]($anneeCouranteOjs - 1)))
+    $boutonChargerPlusOjs.Location = New-Object System.Drawing.Point(224, 44)
+    $boutonChargerPlusOjs.Size = New-Object System.Drawing.Size(180, 28)
+    $boutonChargerPlusOjs.Enabled = $false
+    $boite.Controls.Add($boutonChargerPlusOjs)
 
     $etiqNumerosOjs = New-Object System.Windows.Forms.Label
     $etiqNumerosOjs.Text = (T 'lanceur.secretariat.export.instructions')
@@ -1766,10 +1786,13 @@ function Show-SzhBoiteExportOjs([string]$Titre, [string]$Commande, [string]$Jeto
     $boite.Controls.Add($nonBoutonOjs)
     $boite.CancelButton = $nonBoutonOjs
 
-    # Table de hachage et non une variable : le gestionnaire de "Charger" doit pouvoir
-    # ecrire la liste des cles OJS (une par ligne cochable), et une variable simple ne se
-    # reassigne pas depuis une fermeture -- voir le meme choix dans Read-SzhNouveauNumero.
-    $etatBoiteOjs = @{ cles = @(); chargement = $false }
+    # Table de hachage et non une variable : les gestionnaires de "Charger" doivent pouvoir
+    # ecrire la liste des cles OJS (une par ligne cochable) et l'annee plancher courante, et
+    # une variable simple ne se reassigne pas depuis une fermeture -- voir le meme choix dans
+    # Read-SzhNouveauNumero. anneePlancher reste $null tant qu'aucun chargement n'a reussi ;
+    # dernierNombre est le compte de numeros du dernier chargement, seule base de comparaison
+    # pour detecter la fin de course (voir $chargerNumerosOjs plus bas).
+    $etatBoiteOjs = @{ cles = @(); chargement = $false; anneePlancher = $null; dernierNombre = 0; finDeCourse = $false }
 
     # Pendant un chargement, « Annuler » et la croix refermaient la boite alors que le
     # moissonnage tournait encore : la fenetre disparaissait et le lanceur restait inerte
@@ -1790,22 +1813,34 @@ function Show-SzhBoiteExportOjs([string]$Titre, [string]$Commande, [string]$Jeto
       $okBoutonOjs.Enabled = ($dejaCocheesOjs -gt 0)
     })
 
-    $boutonChargerOjs.Add_Click({
+    # Un chargement REJOUE toujours la liste entiere (vide la CheckedListBox puis la
+    # remplit), jamais une fusion -- le contrat de numeros-ojs --depuis-annee n'est pas
+    # cumulatif, un appel a une annee plus basse ramene deja un sur-ensemble complet.
+    # $EstPremier distingue le tout premier chargement (rien a comparer) des suivants, ou
+    # $nombreRecuOjs est compare au dernier compte connu pour decider la fin de course.
+    $chargerNumerosOjs = {
+      param([int]$AnneeDepart, [bool]$EstPremier)
       $boutonChargerOjs.Enabled = $false
+      $boutonChargerPlusOjs.Enabled = $false
       $script:form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
       $listeNumerosOjs.Items.Clear()
       $etatBoiteOjs.cles = @()
       $okBoutonOjs.Enabled = $false
       $etatBoiteOjs.chargement = $true
+      # Un chargement reparti de l'annee en cours efface la fin de course : sinon, rappuyer
+      # sur le premier bouton apres avoir remonte jusqu'au fond laissait le second grise pour
+      # toujours, alors qu'il reste tout l'historique a reparcourir.
+      if ($EstPremier) { $etatBoiteOjs.finDeCourse = $false; $etatBoiteOjs.dernierNombre = 0 }
       try {
         $resultatChargementOjs = Invoke-SzhSecretariat -Commande 'numeros-ojs' `
-          -Arguments @('--revue', $JetonRevue, '--cache', $cacheTemp) -Journal $zoneMessagesOjs `
-          -NomExport (T 'lanceur.secretariat.export.titre.chargement') `
+          -Arguments @('--revue', $JetonRevue, '--cache', $cacheTemp, '--depuis-annee', [string]$AnneeDepart) `
+          -Journal $zoneMessagesOjs -NomExport (T 'lanceur.secretariat.export.titre.chargement') `
           -BarreProgression $barreOjs -BoutonInterrompre $boutonInterrompreOjs -EtatAnnulation $etatAnnulationOjs
         if (-not $resultatChargementOjs.ok) {
           Add-SzhLigneJournal $zoneMessagesOjs (T 'lanceur.secretariat.resultat.echec' @($resultatChargementOjs.texte))
         }
-        if ($resultatChargementOjs.numeros.Count -eq 0) {
+        $nombreRecuOjs = $resultatChargementOjs.numeros.Count
+        if ($nombreRecuOjs -eq 0) {
           [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.secretariat.export.aucun'), $Titre)
         } else {
           $clesVuesOjs = New-Object System.Collections.ArrayList
@@ -1815,14 +1850,31 @@ function Show-SzhBoiteExportOjs([string]$Titre, [string]$Commande, [string]$Jeto
           }
           $etatBoiteOjs.cles = @($clesVuesOjs)
         }
+        if ($resultatChargementOjs.ok) {
+          if (-not $EstPremier -and $nombreRecuOjs -le $etatBoiteOjs.dernierNombre) {
+            # Pas plus de numeros qu'au chargement precedent : plus rien de plus ancien a
+            # aller chercher. Grise pour de bon, base sur le COMPTE recu -- jamais une annee
+            # codee en dur.
+            $etatBoiteOjs.finDeCourse = $true
+            Add-SzhLigneJournal $zoneMessagesOjs (T 'lanceur.secretariat.export.fincourse')
+          } else {
+            $etatBoiteOjs.anneePlancher = $AnneeDepart
+            $etatBoiteOjs.dernierNombre = $nombreRecuOjs
+            $boutonChargerPlusOjs.Text = (T 'lanceur.secretariat.export.charger.plus' @([string]($AnneeDepart - 1)))
+          }
+        }
       } catch {
         [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.secretariat.erreur' @($_.Exception.Message)), $Titre)
       } finally {
         $etatBoiteOjs.chargement = $false
         $script:form.Cursor = [System.Windows.Forms.Cursors]::Default
         $boutonChargerOjs.Enabled = $true
+        $boutonChargerPlusOjs.Enabled = ((-not $etatBoiteOjs.finDeCourse) -and ($null -ne $etatBoiteOjs.anneePlancher))
       }
-    })
+    }
+
+    $boutonChargerOjs.Add_Click({ & $chargerNumerosOjs $anneeCouranteOjs $true })
+    $boutonChargerPlusOjs.Add_Click({ & $chargerNumerosOjs ($etatBoiteOjs.anneePlancher - 1) $false })
 
     if ($boite.ShowDialog($script:form) -ne [System.Windows.Forms.DialogResult]::OK) { return }
 
@@ -2063,9 +2115,26 @@ $boutonMetadonnees.Add_Click({
   # n'a de toute facon aucun sens cote OJS, deux sites distincts).
   $revueMeta = $script:jetonsFiltreSecretariat[$script:comboFiltreSecretariat.SelectedIndex]
   $cacheMeta = Join-Path $env:TEMP ('szh-secretariat-' + [guid]::NewGuid().ToString('N') + '.json')
+  # --depuis-annee restreint la moisson a l'annee la plus ancienne des numeros COCHES (et
+  # les suivantes) : un numero local dont l'annee n'est pas lisible dans son nom ne doit pas
+  # se retrouver compare a une moisson qui ne le contient pas -- moisson complete dans ce
+  # cas, comme avant, sans rien dire a l'utilisateur.
+  $anneesMeta = New-Object System.Collections.ArrayList
+  $anneesLisiblesMeta = $true
+  foreach ($entreeAnneeMeta in $entreesMeta) {
+    $correspondanceAnneeMeta = [regex]::Match([string]$entreeAnneeMeta.nom, '^(\d{4})-')
+    if ($correspondanceAnneeMeta.Success) { [void]$anneesMeta.Add([int]$correspondanceAnneeMeta.Groups[1].Value) }
+    else { $anneesLisiblesMeta = $false }
+  }
+  $argumentsChargementMeta = New-Object System.Collections.ArrayList
+  [void]$argumentsChargementMeta.AddRange(@('--revue', $revueMeta, '--cache', $cacheMeta))
+  if ($anneesLisiblesMeta -and $anneesMeta.Count -gt 0) {
+    $anneePlancherMeta = ($anneesMeta | Measure-Object -Minimum).Minimum
+    [void]$argumentsChargementMeta.AddRange(@('--depuis-annee', [string]$anneePlancherMeta))
+  }
   try {
     $chargementMeta = Invoke-SzhSecretariat -Commande 'numeros-ojs' `
-      -Arguments @('--revue', $revueMeta, '--cache', $cacheMeta) -Journal $script:journalSecretariat `
+      -Arguments @($argumentsChargementMeta) -Journal $script:journalSecretariat `
       -NomExport (T 'lanceur.secretariat.export.titre.chargement') `
       -BarreProgression $script:barreSecretariat -BoutonInterrompre $script:boutonInterrompreSecretariat `
       -EtatAnnulation $script:etatAnnulationSecretariat

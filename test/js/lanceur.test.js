@@ -487,6 +487,8 @@ test('secretariat : les nouvelles clés de texte existent dans les trois langues
     'lanceur.secretariat.export.titre.newsletter',
     'lanceur.secretariat.export.titre.metadonnees',
     'lanceur.secretariat.export.titre.chargement',
+    'lanceur.secretariat.export.charger.plus',
+    'lanceur.secretariat.export.fincourse',
   ];
   for (const cle of nouvellesCles) {
     // Chaque clé porte sa propre table (fr, de, en) : trois occurrences du littéral, ni
@@ -495,4 +497,38 @@ test('secretariat : les nouvelles clés de texte existent dans les trois langues
     assert.strictEqual(occurrences, 3,
       'la clé « ' + cle + ' » ne porte pas exactement trois entrées (fr/de/en) : ' + occurrences);
   }
+});
+
+// Le premier bouton de la boîte d'export CSV (Show-SzhBoiteExportOjs) ne charge plus que
+// l'année en cours (20 à 41 s de moisson complète contre 3 à 5 s pour une seule année,
+// mesure du 15.09.2026) ; le contrôle des métadonnées ne restreint la moisson qu'à
+// l'année la plus ancienne des numéros locaux cochés. Vérifié ici sur le SOURCE plutôt
+// qu'en conditions réelles : la boîte modale et son dialogue OAI-PMH ne passent pas par
+// SZH_LANCEUR_SIMULE, qui ne couvre que la liste des produits.
+test('secretariat : --depuis-annee est passé par la boîte d\'export CSV et par le contrôle des métadonnées', () => {
+  const source = fs.readFileSync(OUVRIR_PRODUIT, 'utf8');
+
+  // Deux appels réels de numeros-ojs portent --depuis-annee suivi d'une valeur explicitement
+  // convertie en chaîne -- un dans Show-SzhBoiteExportOjs (le second, chargé conditionnellement
+  // par $anneesLisiblesMeta, ne l'écrit que dans l'argument assemblé plus haut).
+  const motifAppel = /'--depuis-annee',\s*\[string\]/g;
+  const occurrencesAppel = (source.match(motifAppel) || []).length;
+  assert.strictEqual(occurrencesAppel, 2,
+    '--depuis-annee devrait être construit exactement deux fois (boîte d\'export, contrôle des métadonnées) : '
+    + occurrencesAppel);
+
+  // Le second bouton de la boîte existe, démarre inactif, et son gestionnaire redescend
+  // d'une année depuis l'année plancher tenue dans $etatBoiteOjs -- jamais une fusion.
+  assert.ok(source.indexOf('$boutonChargerPlusOjs.Enabled = $false') !== -1,
+    'le second bouton "Charger aussi" ne démarre plus inactif');
+  assert.ok(source.indexOf('& $chargerNumerosOjs ($etatBoiteOjs.anneePlancher - 1) $false') !== -1,
+    'le second bouton ne redescend plus d\'une année depuis $etatBoiteOjs.anneePlancher');
+  assert.ok(source.indexOf('& $chargerNumerosOjs $anneeCouranteOjs $true') !== -1,
+    'le premier bouton ne charge plus $anneeCouranteOjs');
+
+  // Le contrôle des métadonnées : un numéro dont l'année n'est pas lisible dans son nom fait
+  // basculer en moisson complète, jamais en silence trompeur -- $anneesLisiblesMeta porte
+  // cette garde.
+  assert.ok(source.indexOf('$anneesLisiblesMeta = $false') !== -1,
+    'le contrôle des métadonnées ne garde plus la moisson complète en repli sur un nom illisible');
 });

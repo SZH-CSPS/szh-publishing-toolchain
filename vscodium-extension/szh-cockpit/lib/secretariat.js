@@ -457,10 +457,17 @@ function decoderRecordOai(corpsRecord, revueCle) {
 
 // Pagination OAI-PMH pour un `verb=ListRecords&metadataPrefix=oai_dc` — même garde
 // anti-boucle (jeton déjà vu, plafond de pages) que moissonner() de lib/auteurs-ojs.js.
-async function moissonnerOaiDc(recuperer, base, emettre) {
+//
+// `depuisAnnee` (AAAA ou null) : ojs.szh.ch honore `&from=AAAA-MM-JJ` sur ListRecords
+// (vérifié en direct le 15.09.2026 ; granularité annoncée YYYY-MM-DDThh:mm:ssZ,
+// earliestDatestamp 2022-12-22). Il n'est posé que sur cette PREMIÈRE requête : la norme
+// OAI-PMH veut qu'une page suivante ne porte QUE le resumptionToken (il encode déjà toute
+// la requête d'origine côté serveur) — le lui répéter fait rejeter la requête.
+async function moissonnerOaiDc(recuperer, base, emettre, depuisAnnee) {
   const emit = typeof emettre === 'function' ? emettre : () => {};
   const blocs = [];
-  let url = base + (base.indexOf('?') === -1 ? '?' : '&') + 'verb=ListRecords&metadataPrefix=oai_dc';
+  let url = base + (base.indexOf('?') === -1 ? '?' : '&') + 'verb=ListRecords&metadataPrefix=oai_dc' +
+    (depuisAnnee ? '&from=' + depuisAnnee + '-01-01' : '');
   const tokensVus = new Set();
   for (let page = 0; page < PAGES_MAX_OAI_DC; page++) {
     // L'étape AVANT la requête : c'est pendant les ~4,6 s d'attente réseau, pas après, que
@@ -546,14 +553,44 @@ async function commandeNumerosOjs(opts) {
   if (!o.cheminCache) { throw new Error('--cache est requis'); }
   const recuperer = o.recuperer || oaiPmh.recupererAvecRepli;
 
-  emit({ t: 'etape', texte: 'connexion à l’OAI-PMH de ' + revue + '...' });
-  const blocs = await moissonnerOaiDc(recuperer, BASES_OAI[revue], emit);
+  // null = moisson complète, comportement inchangé (voir moissonnerOaiDc). Sinon l'année
+  // demandée, telle quelle : elle part dans l'URL (&from=<anneePlancher>-01-01) ET sert au
+  // filtre ci-dessous à écarter ce qu'elle a ramené de trop ancien.
+  const anneePlancher = o.depuisAnnee ? String(o.depuisAnnee) : null;
+  if (anneePlancher !== null && !/^\d{4}$/.test(anneePlancher)) {
+    throw new Error('--depuis-annee attend une année à quatre chiffres (reçu : ' + anneePlancher + ')');
+  }
+
+  emit({ t: 'etape', texte: 'connexion à l’OAI-PMH de ' + revue + (anneePlancher ? ', à partir de ' + anneePlancher : '') + '...' });
+  const blocs = await moissonnerOaiDc(recuperer, BASES_OAI[revue], emit, anneePlancher);
   const articles = blocs.map((c) => decoderRecordOai(c, revue)).filter((a) => a && !a.supprime);
   const numerosMap = grouperNumeros(articles, emit);
 
+  // `from` filtre le DATESTAMP (dernière modification), pas la date de parution : un numéro
+  // plus ancien que anneePlancher peut donc quand même traverser le filtre si un seul de ses
+  // articles a été retouché après le <anneePlancher>-01-01 demandé — incomplet par
+  // construction, ses autres articles (non modifiés depuis) restant hors de la fenêtre.
+  // Constaté en vrai le 15.09.2026 : from=2026-01-01 sur la revue ramène r2025-04 avec
+  // 1 article sur 9 (un article de 2025 retouché en 2026). Coché tel quel par l'utilisateur,
+  // ce numéro produirait un export amputé sans rien dire : on l'écarte donc entièrement
+  // plutôt que de le laisser paraître complet.
+  if (anneePlancher) {
+    for (const cle of Object.keys(numerosMap)) {
+      if (parseInt(numerosMap[cle].annee, 10) < parseInt(anneePlancher, 10)) {
+        emit({ t: 'avert', texte: cle + ' : numéro plus ancien que ' + anneePlancher
+          + ', remonté en partie seulement ; chargez aussi ' + numerosMap[cle].annee + ' pour l’avoir en entier.' });
+        delete numerosMap[cle];
+      }
+    }
+  }
+
   const cache = lireCacheNumeros(o.cheminCache);
   // Ne remplace que les numéros de LA revue moissonnée ; l'autre revue, déjà en cache,
-  // reste intacte — numeros-ojs est appelé une fois par revue.
+  // reste intacte — numeros-ojs est appelé une fois par revue. Pas de fusion incrémentale
+  // non plus entre deux moissons de la même revue, même avec --depuis-annee : remonter d'une
+  // année se fait en relançant avec --depuis-annee diminué de 1, qui ramène de lui-même un
+  // SUR-ensemble complet (from=2026-01-01 ne perd aucun article des numéros 2026, vérifié en
+  // vrai) — fusionner ferait cohabiter des numéros venus de deux fenêtres différentes.
   for (const cle of Object.keys(cache.numeros)) {
     cache.numeros[cle] = cache.numeros[cle].filter((n) => n.revue !== revue);
     if (cache.numeros[cle].length === 0) { delete cache.numeros[cle]; }
@@ -569,7 +606,10 @@ async function commandeNumerosOjs(opts) {
   for (const n of listeTriee) {
     emit({ t: 'numero', cle: n.cle, libelle: n.titre || n.cle, annee: n.annee, numero: n.numero, volume: n.volume });
   }
-  return { ok: true, texte: articles.length + ' notice(s), ' + listeTriee.length + ' numéro(s) trouvé(s) pour ' + revue + '.' };
+  return {
+    ok: true, texte: articles.length + ' notice(s), ' + listeTriee.length + ' numéro(s) trouvé(s) pour ' + revue + '.',
+    anneePlancher: anneePlancher
+  };
 }
 
 // ---- edudoc : CSV, entièrement d'après l'OAI ------------------------------------------

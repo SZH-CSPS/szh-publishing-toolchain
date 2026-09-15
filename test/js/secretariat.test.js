@@ -473,6 +473,70 @@ test('commandeNumerosOjs : revue inconnue refusée, --cache requis', async () =>
   await assert.rejects(() => secretariat.commandeNumerosOjs({ revue: 'revue' }), /--cache/);
 });
 
+// ---- --depuis-annee : from=AAAA-01-01 sur la première page seulement, numéros trop anciens
+// écartés (from filtre la date de MODIFICATION, pas de parution — voir le commentaire de
+// commandeNumerosOjs pour le cas réel r2025-04) -----------------------------------------
+
+test('commandeNumerosOjs : --depuis-annee pose &from=AAAA-01-01 sur la première page, jamais sur la page suivante (resumptionToken)', async () => {
+  const base = secretariat.BASES_OAI.revue;
+  const pages = {};
+  pages[base + '?verb=ListRecords&metadataPrefix=oai_dc&from=2026-01-01'] = enveloppeOai(
+    recordOaiDc({ id: '1', setSpec: 'revue:ED', titreFr: 'Éditorial', creators: ['Morand, Robin'],
+      doi: '10.57161/r2026-03-00', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numéro' }),
+    'jeton-1');
+  // Pas de `from` ici : une page de resumptionToken ne porte QUE le jeton. Si le code le
+  // répétait, cette URL ne serait pas dans `pages` et le test échouerait sur « URL inattendue ».
+  pages[base + '?verb=ListRecords&resumptionToken=jeton-1'] = enveloppeOai(
+    recordOaiDc({ id: '2', setSpec: 'revue:VA', titreFr: 'Varia', creators: ['Dupont, Anne'],
+      doi: '10.57161/r2026-03-01', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numéro' }));
+
+  const resultat = await secretariat.commandeNumerosOjs({
+    revue: 'revue', cheminCache: path.join(dossierTemp('szh-secr-depuis-'), 'cache.json'), depuisAnnee: '2026',
+    recuperer: async (url) => { if (!(url in pages)) { throw new Error('URL inattendue : ' + url); } return pages[url]; }
+  });
+  assert.strictEqual(resultat.ok, true);
+  assert.strictEqual(resultat.anneePlancher, '2026');
+});
+
+test('commandeNumerosOjs : sans --depuis-annee, aucun `from` dans l’URL et le champ `anneePlancher` vaut null (comportement d’hier, inchangé)', async () => {
+  let urlVue = '';
+  const resultat = await secretariat.commandeNumerosOjs({
+    revue: 'revue', cheminCache: path.join(dossierTemp('szh-secr-sans-depuis-'), 'cache.json'),
+    recuperer: async (url) => {
+      urlVue = url;
+      return enveloppeOai(recordOaiDc({ id: '1', setSpec: 'revue:ED', titreFr: 'Éditorial', creators: ['Morand, Robin'],
+        doi: '10.57161/r2026-03-00', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numéro' }));
+    }
+  });
+  assert.strictEqual(resultat.ok, true);
+  assert.strictEqual(resultat.anneePlancher, null);
+  assert.strictEqual(urlVue.indexOf('from='), -1);
+});
+
+test('commandeNumerosOjs : --depuis-annee écarte un numéro d’année antérieure ramené par `from` (r2025-04, 1 article sur 9 — cas réel du 15.09.2026)', async () => {
+  const xml = enveloppeOai(
+    recordOaiDc({ id: '1', setSpec: 'revue:ED', titreFr: 'Éditorial 2026', creators: ['Morand, Robin'],
+      doi: '10.57161/r2026-03-00', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numéro 2026' }) + '\n' +
+    // Le seul des neuf articles de r2025-04 retouché après le 01.01.2026 : `from` le ramène
+    // seul, sans les huit autres — le numéro serait donc amputé s'il n'était pas écarté.
+    recordOaiDc({ id: '2', setSpec: 'revue:VA', titreFr: 'Article retouché', creators: ['Dupont, Anne'],
+      doi: '10.57161/r2025-04-03', volume: '15', numero: '04', annee: '2025', titreNumero: 'Numéro 2025' })
+  );
+  const cheminCache = path.join(dossierTemp('szh-secr-depuis-ecarte-'), 'cache.json');
+  const evenements = [];
+  const resultat = await secretariat.commandeNumerosOjs({
+    revue: 'revue', cheminCache: cheminCache, depuisAnnee: '2026', emettre: (e) => evenements.push(e),
+    recuperer: async () => xml
+  });
+  assert.strictEqual(resultat.ok, true);
+  const numeros = evenements.filter((e) => e.t === 'numero');
+  assert.deepStrictEqual(numeros.map((n) => n.cle), ['2026-03']); // aucune ligne `numero` pour 2025-04
+  assert.ok(evenements.some((e) => e.t === 'avert' && e.texte.indexOf('2025-04') !== -1));
+
+  const cache = secretariat.lireCacheNumeros(cheminCache);
+  assert.deepStrictEqual(Object.keys(cache.numeros), ['2026-03']); // aucune entrée de cache pour 2025-04
+});
+
 // ---- Progression pendant le moissonnage : étape AVANT la requête, total toujours 0 ----
 //
 // Le point du correctif n'est pas seulement « une étape existe » (elle existait déjà, mais

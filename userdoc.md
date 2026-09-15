@@ -1613,8 +1613,9 @@ bouton **« Ouvrir le dossier »**, qui ne s’allume qu’une fois un export 
 il ouvre dans l’explorateur le dossier où le fichier vient d’être écrit ; la dernière ligne
 du journal le rappelle. À droite de ce bouton, une barre de progression et un bouton
 **« Interrompre »** suivent l’export en cours et permettent de l’arrêter : les deux
-exports CSV interrogent ojs.szh.ch, et le chargement des numéros peut prendre plusieurs
-dizaines de secondes selon la revue.
+exports CSV interrogent ojs.szh.ch, dont le moissonnage complet prend 20 à 41 secondes
+selon la revue – c’est pourquoi « Charger les numéros » ne charge par défaut
+que l’année en cours, en 3 à 5 secondes.
 
 **Le dossier de sortie est redemandé à chaque export** : rien n’est retenu d’une fois sur
 l’autre, il faut le choisir à chaque clic.
@@ -1652,13 +1653,17 @@ dans Mailchimp, et le Bloc-notes n’ouvre pas les fichiers `.html` d’un doubl
 Ces deux exports se pilotent de la même façon. Cliquez **« Export Edudoc (CSV)… »** ou
 **« Caractères par article (CSV)… »** : une fenêtre à part s’ouvre.
 
-1. **« Charger les numéros »** – va chercher, sur ojs.szh.ch, la liste des numéros
-   déjà publiés pour la revue choisie en haut de l’onglet. La fenêtre rappelle laquelle :
-   pour passer à l’autre, refermez-la et changez la liste déroulante de l’onglet.
+1. **« Charger les numéros de 2026 »** – le bouton porte l’année en cours. Il va
+   chercher, sur ojs.szh.ch, les numéros de cette année déjà publiés pour la revue choisie
+   en haut de l’onglet. La fenêtre rappelle laquelle : pour passer à l’autre, refermez-la
+   et changez la liste déroulante de l’onglet. Besoin d’un numéro plus ancien :
+   **« Charger aussi 2025 »**, à droite du premier bouton, refait la liste en y ajoutant
+   l’année précédente – répétable autant de fois que nécessaire, il se grise tout seul une
+   fois qu’il n’y a plus rien de plus ancien à charger.
 2. Cochez un ou plusieurs numéros dans la liste qui apparaît.
 3. **OK**, puis choisissez le dossier de sortie.
 
-Le chargement peut prendre **plusieurs dizaines de secondes** : la fenêtre affiche ce
+Chaque clic peut prendre **plusieurs secondes** : la fenêtre affiche ce
 qu’elle fait ligne à ligne, avec une barre de progression, et un bouton
 **« Interrompre »** l’arrête sans rien laisser derrière. Refermer la fenêtre pendant un
 chargement l’interrompt aussi.

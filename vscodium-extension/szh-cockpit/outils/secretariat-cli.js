@@ -61,6 +61,10 @@ async function main() {
     if (commande === 'numeros-ojs') {
       opts.revue = args.revue;
       opts.cheminCache = args.cache;
+      // Absente : moisson complète, comme avant. Présente : l'année à partir de laquelle
+      // moissonner (voir lib/secretariat.js, commandeNumerosOjs) ; remonter d'une année se
+      // fait en relançant avec une valeur plus petite, jamais en cumulant les appels.
+      opts.depuisAnnee = args['depuis-annee'];
       resultat = await secretariat.commandeNumerosOjs(opts);
     } else if (commande === 'newsletter') {
       opts.racineNumero = args.numero;
@@ -83,7 +87,11 @@ async function main() {
       resultat = await secretariat.commandeMetadonnees(opts);
     }
 
-    emettre({ t: 'fin', ok: true, texte: (resultat && resultat.texte) || '', gabarits: dossierGabarits });
+    // anneePlancher : seule commandeNumerosOjs le rend (string ou null) ; les autres
+    // commandes ne portent pas ce champ, la ligne `fin` ne le porte alors pas non plus.
+    const ligneFin = { t: 'fin', ok: true, texte: (resultat && resultat.texte) || '', gabarits: dossierGabarits };
+    if (resultat && resultat.anneePlancher !== undefined) { ligneFin.anneePlancher = resultat.anneePlancher; }
+    emettre(ligneFin);
     process.exit(0);
   } catch (e) {
     emettre({ t: 'fin', ok: false, texte: String((e && e.message) || e), gabarits: dossierGabarits || undefined });
