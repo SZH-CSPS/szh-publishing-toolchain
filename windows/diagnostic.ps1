@@ -178,14 +178,14 @@ else { Dire 'manque' 'Réglages de l''éditeur' ('manquent : ' + ($manquants -jo
 
 # ---- Réglages protégés de la chaîne de publication ----
 #
-# La configuration de l'export OJS et les titres de bibliographie valent pour toute la
-# rédaction. Un poste qui les a modifiés localement — c'est possible, après déverrouillage
+# La configuration de l'export OJS, les titres de bibliographie et les tâches éditoriales
+# valent pour toute la rédaction. Un poste qui les a modifiés localement — c'est possible, après déverrouillage
 # explicite dans « Réglages SZH » — publiera autrement que les autres jusqu'à la prochaine
 # mise à jour, et personne ne le saura si on ne le dit pas ici.
 Write-SzhTitre 'Réglages de la rédaction'
 
 $protegesFichier = Join-Path $SzhBase 'settings-protected.json'
-$protegesBlocs = @('ojs', 'biblio')
+$protegesBlocs = @('ojs', 'biblio', 'tachesArticle')   # BLOCS, lib/reglages-proteges.js
 $reference = $null
 try {
   if (Test-Path $protegesFichier) {

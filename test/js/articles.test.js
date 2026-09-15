@@ -485,8 +485,32 @@ test('formulaire du numéro : la vue « Articles » écrit par le même chemin',
   const charge = p.messages.filter((m) => m.type === 'valeurs').pop();
   assert.strictEqual(charge.valeurs.volume, '17');
   assert.ok(charge.couverture, 'la couverture n’est pas dans la charge de la vue');
-  assert.ok(charge.taches.revue && charge.taches.zeitschrift,
-    'les deux jeux de tâches ne sont pas envoyés');
+  // Les INTITULÉS des tâches ne voyagent plus jusqu'à cette page : ils se règlent dans
+  // « Réglages SZH », avec les autres réglages de la rédaction. Seules les cases d'un
+  // article restent ici, ligne par ligne.
+  assert.strictEqual(charge.taches, undefined,
+    'la table des intitulés est encore envoyée : la vue croirait pouvoir la régler');
+  assert.ok((charge.lignes[0].taches || []).length > 0,
+    'les cases à cocher d’un article ont disparu avec la table');
+});
+
+// Le bouton « Régler les tâches » de la barre est devenu un aiguillage : il n'écrit rien,
+// il ouvre le panneau où ces intitulés vivent désormais. C'est ce qui garantit qu'on ne
+// peut plus les changer sans passer par le déverrouillage des réglages protégés.
+test('vue Articles : « Régler les tâches » ouvre les réglages et n’écrit rien', async () => {
+  await HOTE.executer('szh.vueArticles');
+  const p = HOTE.panneauDeType('szhVueArticles');
+  await p._recepteur({ type: 'pret' });
+  const avant = fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8');
+  HOTE.oublierCommandes();
+
+  await p._recepteur({ type: 'commande', id: 'taches' });
+
+  assert.ok(HOTE.commandesJouees().some((c) => c.id === 'szh.reglages'),
+    'le bouton n’ouvre pas les réglages : '
+    + HOTE.commandesJouees().map((c) => c.id).join(', '));
+  assert.strictEqual(fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8'), avant,
+    'le bouton a écrit dans la configuration du poste');
 });
 
 test('« Envoyer à l’auteur » : le brouillon parle la langue de l’auteur', () => {

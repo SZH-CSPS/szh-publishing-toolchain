@@ -212,6 +212,7 @@ const {
   nettoyerCarte, ecrireCartesArticles, messageCartes, relancerCompilationCartes,
   textesCarteArticle, textesAuteur, licencesTraduites, typesTraduits,
   ouvrirMetadonnees, ouvrirApercuMetadonnees, ouvrirMetadonneesArticle,
+  imprimerFeuilleVerifTous,
   limitesMedias, BUDGET_VIGNETTES, vignetteAuteur, envoyerAuteursConnus, envoyerMotsClesConnus,
   rafraichirMotsClesConnusEnFond, rafraichirAuteursPubliesEnFond,
   deposerPhotoAuteur, ouvrirVersionsPhoto, choisirPhotoAuteur, signalerFichesPerimees,
@@ -355,7 +356,7 @@ const {
   CLE_SANS_DOI, ordonnerArticles, deplacerArticle, prefixeOrdre, titreFiche,
   libelleArticle, analyserSansDoi, basculerSansDoi, trierParDoi, refusDeplacement,
   rangDoi, resumeImages,
-  REVUES_TACHES, tachesRevue, tachesConfig, configAvecTaches, libelleTache,
+  REVUES_TACHES, CLE_TACHES, MAX_TACHES, tachesRevue, tachesConfig, configAvecTaches, libelleTache,
   vueArticlesConfig, configAvecVueArticles,
   analyserTachesFaites, serialiserTachesFaites, resumeTaches, basculerTache,
   NOMS_COUVERTURE, EXTENSIONS_COUVERTURE, nomCouverture, MAX_COUVERTURE
@@ -3892,7 +3893,13 @@ function chargeArticles(fournisseur) {
     titre: T('art.vue.titre'),
     boutons: [
       { id: 'importer', libelle: T('art.importer'), icone: 'fleche', principal: true },
-      { id: 'taches', libelle: T('art.taches.reglage'), icone: 'ok', tip: T('art.taches.reglage.tip') },
+      // Aiguillage, et non réglage : les intitulés des tâches valent pour toute la rédaction
+      // et vivent désormais avec les réglages protégés. Le bouton reste ici — c'est là qu'on
+      // les cherche, à côté des cases — mais il ouvre « Réglages SZH ».
+      { id: 'taches', libelle: T('art.taches.reglage'), icone: 'liste', tip: T('art.taches.reglage.tip') },
+      // La feuille de relecture de TOUT le numéro, d'un coup — le pendant du bouton du
+      // formulaire des fiches, qui ne tire que ce qu'il montre.
+      { id: 'verif-meta', libelle: T('verif.bouton'), icone: 'liste', tip: T('verif.tous.tip') },
       // Les trois interrupteurs d'affichage. Le libellé nomme la chose et ne bouge pas ;
       // c'est `actif` qui dit si elle est à l'écran — fond plein, oeil ouvert, aria-pressed
       // (voir boutonCommande, media/_commun.js). Le libellé disait auparavant le geste à
@@ -3929,22 +3936,24 @@ function chargeArticles(fournisseur) {
     // chevron de chaque carte reste donc capable d'en déplier une seule, sans aller-retour
     // avec l'hôte.
     metaRepliees: vue.cacherMeta,
-    lignes: lignes,
-    taches: tachesConfig(configPoste),
-    revue: revueNumero(racine)
+    lignes: lignes
   };
 }
 
 // Les seuls types que actionArticle (ci-dessous) sait traiter : la vue Articles s'en sert
 // pour reconnaître un message inconnu avant de l'appeler, plutôt que de laisser un type
 // jamais vu retomber sur « rien à faire » et recharger toute la liste pour rien.
-const TYPES_ACTION_ARTICLE = [MSG.COMMANDE, MSG.TACHE, MSG.TACHES_ENREGISTRER, MSG.SANSDOI, MSG.ACTION];
+const TYPES_ACTION_ARTICLE = [MSG.COMMANDE, MSG.TACHE, MSG.SANSDOI, MSG.ACTION];
 
 // Les gestes de la vue. -> le message à afficher dans la barre, ou null.
 async function actionArticle(fournisseur, rafraichirTout, msg) {
   const racine = fournisseur.racine;
   if (msg.type === MSG.COMMANDE) {
     if (msg.id === 'importer') { await vscode.commands.executeCommand('szh.convertirEnAttente'); }
+    // Les intitulés des tâches se règlent dans « Réglages SZH », avec les autres réglages de
+    // la rédaction : le bouton y mène, il ne règle rien ici.
+    if (msg.id === 'taches') { await vscode.commands.executeCommand('szh.reglages'); return null; }
+    if (msg.id === 'verif-meta') { await imprimerFeuilleVerifTous(fournisseur); return null; }
     // Les trois interrupteurs d'affichage. Réglage de poste et non de numéro — ce qu'on
     // choisit de lire ne dépend pas du numéro ouvert — donc le verrou du numéro ne s'y
     // applique pas, pas plus qu'au réglage des tâches juste en dessous.
@@ -4002,23 +4011,6 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
                            // pastille à renvoyer avec lui, donc plus de relecture des images
                            // de l'article à chaque case cochée.
                            tachesResume: resumeTachesLigne(avance) } };
-  }
-  if (msg.type === MSG.TACHES_ENREGISTRER) {
-    const revue = String(msg.revue || '');
-    if (REVUES_TACHES.indexOf(revue) === -1) { return null; }
-    // Réglage de poste, pas de numéro : le verrou du numéro ne s'y applique pas.
-    const avant = lireConfigPoste();
-    // Illisible — JSON malformé, fichier tenu par la synchro — n'est pas la même chose
-    // qu'absent : on n'écrase pas ce qu'on n'a pas su lire, sans quoi l'emplacement des
-    // revues et la configuration OJS partiraient avec.
-    if (avant === null && fs.existsSync(CONFIG_POSTE)) {
-      return T('err.ecriture', [path.basename(CONFIG_POSTE), CONFIG_POSTE]);
-    }
-    const cfg = configAvecTaches(avant, revue, Array.isArray(msg.taches) ? msg.taches : []);
-    const erreur = ecrireConfigPoste(cfg);
-    if (erreur) { return T('err.ecriture', [path.basename(CONFIG_POSTE), erreur]); }
-    if (rafraichirTout) { rafraichirTout(); }
-    return T('art.taches.enregistrees');
   }
   // La case « pas de DOI » d'un article. Elle décide de deux choses d'un seul coup : que
   // l'article ne reçoit pas de DOI, et qu'il passe en fin de numéro — donc l'ordre est
@@ -4188,9 +4180,6 @@ async function ouvrirVueArticles(fournisseur, rafraichirTout) {
     // dont le sujet est l'accessibilité, cela compte.
     if (avancement) { repondrePanneau(panneau, Object.assign({ type: 'avancement' }, avancement)); }
     else { envoyer(panneau); }
-    if (msg.type === MSG.TACHES_ENREGISTRER) {
-      repondrePanneau(panneau, { type: 'taches', taches: tachesConfig(lireConfigPoste()) });
-    }
     if (dit) { repondrePanneau(panneau, { type: 'etat', message: dit }); }
   });
   panneau.webview.html = htmlArticles(crypto.randomBytes(16).toString('hex'));
@@ -5206,7 +5195,21 @@ function REGL_LIBELLES() {
   ojsAjouter: T('ojs.ajouter'), ojsCleNouvelle: T('ojs.cle.nouvelle'),
   ojsTypes: T('ojs.types'), ojsTypesAide: T('ojs.types.aide'),
   biblioTitre: T('biblio.titre'), biblioColLangue: T('biblio.col.langue'),
-  biblioVide: T('biblio.vide')
+  biblioVide: T('biblio.vide'),
+  // Les tâches éditoriales, déménagées de la vue « Articles » : mêmes clés, mêmes mots.
+  tachesFr: T('art.taches.fr'), tachesDe: T('art.taches.de'),
+  tachesAjouter: T('art.taches.ajouter'), tachesRetirer: T('art.taches.retirer')
+  };
+}
+
+// Ce que le panneau doit connaître des tâches : la table effective des deux revues et leur
+// nom lisible. Les listes viennent de lib/articles.js — le panneau n'en recopie aucune, et
+// le jeu de départ vit là-bas, seul endroit où il existe.
+function donneesTaches() {
+  return {
+    table: tachesConfig(lireConfigPoste()),
+    revues: REVUES_TACHES.map((cle) => ({ cle: cle, libelle: T('meta.revue.' + cle) })),
+    max: MAX_TACHES
   };
 }
 
@@ -5477,7 +5480,7 @@ function ouvrirReglages(rafraichirTout) {
     panneauReglages.reveal(vscode.ViewColumn.One);
     panneauReglages.webview.postMessage(
       { type: 'valeurs', valeurs: lireReglagesActuels(), ojs: donneesOjs(),
-        biblio: donneesBiblio(), auteursOjs: resumeAuteursPublies(),
+        biblio: donneesBiblio(), taches: donneesTaches(), auteursOjs: resumeAuteursPublies(),
         suggInterface: compterSuggestionsInterface(),
         avertLangue: avertissementLangue(), proteges: etatProteges() });
     return;
@@ -5493,7 +5496,7 @@ function ouvrirReglages(rafraichirTout) {
     if (msg.type === MSG.PRET) {
       panneau.webview.postMessage(
         { type: 'valeurs', valeurs: lireReglagesActuels(), ojs: donneesOjs(),
-        biblio: donneesBiblio(), auteursOjs: resumeAuteursPublies(),
+        biblio: donneesBiblio(), taches: donneesTaches(), auteursOjs: resumeAuteursPublies(),
         suggInterface: compterSuggestionsInterface(),
         avertLangue: avertissementLangue(), proteges: etatProteges() });
       return;
@@ -5545,10 +5548,13 @@ function ouvrirReglages(rafraichirTout) {
     // Verrouillé, ces deux blocs ne s'écrivent pas. Le formulaire les grise déjà et
     // n'enverrait rien, mais un message qui arriverait quand même — page restée ouverte
     // pendant un reverrouillage, envoi automatique en vol — ne doit pas passer.
-    if ((msg.type === MSG.REGLER_OJS || msg.type === MSG.REGLER_BIBLIO) && !protegesDeverrouilles) {
+    const BLOC_DE_MSG = {};
+    BLOC_DE_MSG[MSG.REGLER_OJS] = 'ojs';
+    BLOC_DE_MSG[MSG.REGLER_BIBLIO] = 'biblio';
+    BLOC_DE_MSG[MSG.TACHES_ENREGISTRER] = CLE_TACHES;
+    if (BLOC_DE_MSG[msg.type] && !protegesDeverrouilles) {
       repondrePanneau(panneau, {
-        type: 'erreur', bloc: msg.type === MSG.REGLER_OJS ? 'ojs' : 'biblio',
-        message: T('regl.proteges.refus')
+        type: 'erreur', bloc: BLOC_DE_MSG[msg.type], message: T('regl.proteges.refus')
       });
       return;
     }
@@ -5592,6 +5598,40 @@ function ouvrirReglages(rafraichirTout) {
         // doit le dire tout de suite, pas au prochain rechargement du panneau.
         repondrePanneau(panneau, Object.assign({ type: MSG.PROTEGES }, etatProteges()));
       }
+      return;
+    }
+    // Les tâches éditoriales, dans le même config.json. Écrites revue par revue —
+    // configAvecTaches n'en touche qu'une à la fois, et c'est ce qui garantit qu'une revue
+    // absente du message ne soit pas effacée. L'arbre et la vue « Articles » portent ces
+    // intitulés : ils se refont, sans quoi les cases cocheraient des noms d'avant.
+    if (msg.type === MSG.TACHES_ENREGISTRER) {
+      const avant = lireConfigPoste();
+      if (avant === null && fs.existsSync(CONFIG_POSTE)) {
+        const message = T('err.ecriture', [path.basename(CONFIG_POSTE), CONFIG_POSTE]);
+        vscode.window.showErrorMessage(message);
+        repondrePanneau(panneau, { type: 'erreur', bloc: CLE_TACHES, message: message });
+        return;
+      }
+      let cfg = avant;
+      const table = (msg.taches && typeof msg.taches === 'object') ? msg.taches : {};
+      for (const revue of REVUES_TACHES) {
+        if (!Array.isArray(table[revue])) { continue; }
+        cfg = configAvecTaches(cfg, revue, table[revue]);
+      }
+      const erreur = ecrireConfigPoste(cfg);
+      if (erreur) {
+        const message = T('err.ecriture', [path.basename(CONFIG_POSTE), erreur]);
+        vscode.window.showErrorMessage(message);
+        repondrePanneau(panneau, { type: 'erreur', bloc: CLE_TACHES, message: message });
+        return;
+      }
+      repondrePanneau(panneau, { type: 'enregistre', bloc: CLE_TACHES });
+      // Les identifiants viennent d'être dérivés pour les tâches neuves : la page doit les
+      // recevoir, sinon la rangée suivante en fabriquerait un second sur le même intitulé.
+      repondrePanneau(panneau, { type: MSG.VALEURS, valeurs: lireReglagesActuels(),
+        taches: donneesTaches(), proteges: etatProteges() });
+      repondrePanneau(panneau, Object.assign({ type: MSG.PROTEGES }, etatProteges()));
+      if (rafraichirTout) { rafraichirTout(); }
       return;
     }
     if (msg.type !== MSG.REGLER) {

@@ -143,6 +143,19 @@ test('le fichier livré n’impose rien, et montre la forme attendue', () => {
   }
 });
 
+// Le diagnostic du poste compare les mêmes blocs, depuis PowerShell, sans partager une
+// ligne de code avec lib/reglages-proteges.js : sa liste est une COPIE, et une copie qui ne
+// se vérifie pas finit par dormir. Un bloc ajouté ici et oublié là-bas ne se dirait nulle
+// part — le poste divergerait en silence, ce qui est précisément ce que ce fichier évite.
+test('le diagnostic du poste regarde exactement les mêmes blocs', () => {
+  const ps = lire('windows', 'diagnostic.ps1');
+  const m = ps.match(/\$protegesBlocs\s*=\s*@\(([^)]*)\)/);
+  assert.ok(m, 'liste des blocs introuvable dans diagnostic.ps1');
+  const laBas = m[1].split(',').map((x) => x.trim().replace(/^'|'$/g, '')).filter((x) => x !== '');
+  assert.deepStrictEqual(laBas.slice().sort(), proteges.BLOCS.slice().sort(),
+    'diagnostic.ps1 et lib/reglages-proteges.js ne regardent plus les mêmes blocs');
+});
+
 test('la mise à jour déploie le fichier, et l’écrase — c’est son sens', () => {
   const maj = lire('windows', 'update.ps1');
   assert.match(maj, /settings-protected\.json/, 'le fichier n’est plus déployé');
@@ -167,7 +180,7 @@ function dernier(p, type) {
   return p.messages.filter((m) => m.type === type).pop();
 }
 
-test('les deux blocs partent verrouillés, et l’écriture est refusée', async () => {
+test('les trois blocs partent verrouillés, et l’écriture est refusée', async () => {
   const p = await panneauReglages();
   const valeurs = dernier(p, 'valeurs');
   assert.ok(valeurs.proteges, 'l’état des réglages protégés n’est pas envoyé à la page');
@@ -182,6 +195,49 @@ test('les deux blocs partent verrouillés, et l’écriture est refusée', async
   assert.match(refus.message, /verrouill/i);
   await p._recepteur({ type: 'reglerBiblio', titres: { revue: { fr: 'Sources' } } });
   assert.strictEqual(dernier(p, 'erreur').bloc, 'biblio', 'la bibliographie s’écrit encore verrouillée');
+  // Les tâches éditoriales ont rejoint les deux autres : elles décrivent le processus d'une
+  // revue, pas le confort d'une personne, et chaque poste tenait jusqu'ici sa propre liste.
+  await p._recepteur({ type: 'taches-enregistrer', taches: { revue: [{ id: 'x', fr: 'x', de: 'x' }] } });
+  assert.strictEqual(dernier(p, 'erreur').bloc, 'tachesArticle',
+    'les tâches s’écrivent encore verrouillées');
+});
+
+test('les tâches partent à la page, et s’écrivent une fois déverrouillées', async () => {
+  const p = await panneauReglages();
+  const valeurs = dernier(p, 'valeurs');
+  assert.ok(valeurs.taches, 'la table des tâches n’est pas envoyée au panneau');
+  assert.ok(valeurs.taches.table.revue.length > 0 && valeurs.taches.table.zeitschrift.length > 0,
+    'les deux revues doivent partir, même sur un poste qui n’a jamais rien réglé');
+  assert.deepStrictEqual(valeurs.taches.revues.map((r) => r.cle), ['revue', 'zeitschrift']);
+  assert.ok(valeurs.taches.revues.every((r) => r.libelle), 'les revues partent sans nom lisible');
+
+  HOTE.repondreModale('Déverrouiller');
+  await p._recepteur({ type: 'deverrouiller', valeur: true });
+  await p._recepteur({ type: 'taches-enregistrer', taches: {
+    revue: [{ id: '', fr: 'relecture croisée', de: 'Gegenlesen' }]
+  } });
+  const enregistre = dernier(p, 'enregistre');
+  assert.ok(enregistre && enregistre.bloc === 'tachesArticle', 'l’écriture n’a pas abouti');
+
+  const cfg = JSON.parse(fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8'));
+  assert.deepStrictEqual(cfg.tachesArticle.revue,
+    [{ id: 'relecture-croisee', fr: 'relecture croisée', de: 'Gegenlesen' }],
+    'l’identifiant n’a pas été dérivé de l’intitulé français');
+  // Une revue absente du message garde SES intitulés : configAvecTaches n'en touche qu'une,
+  // et écrit la table complète — celle d'à côté y descend donc telle qu'elle était lue,
+  // c'est-à-dire le jeu de départ sur un poste neuf. Jamais vide, jamais celle qu'on vient
+  // d'écrire : c'est là qu'une seule liste pour les deux revues se serait vue.
+  assert.ok(Array.isArray(cfg.tachesArticle.zeitschrift)
+    && cfg.tachesArticle.zeitschrift.length > 1,
+    'la revue absente du message a perdu ses intitulés');
+  assert.ok(!cfg.tachesArticle.zeitschrift.some((t) => t.id === 'relecture-croisee'),
+    'la tâche écrite sur une revue a débordé sur l’autre');
+
+  // La page reçoit la table relue : sans elle, la rangée suivante fabriquerait un second
+  // identifiant sur le même intitulé.
+  const relu = dernier(p, 'valeurs');
+  assert.strictEqual(relu.taches.table.revue[0].id, 'relecture-croisee');
+  await p._recepteur({ type: 'deverrouiller', valeur: false });
 });
 
 test('déverrouiller pose une question modale, et un refus ne déverrouille pas', async () => {
@@ -263,13 +319,19 @@ function ouvrirReglages() {
     revues: cit.REVUES_BIBLIO.map((cle) => ({ cle: cle, libelle: cle })),
     langues: cit.LANGUES_BIBLIO.map((cle) => ({ cle: cle, libelle: cle }))
   };
-  return { page: page, biblio: biblio };
+  const art = require(path.join(COCKPIT, 'lib', 'articles.js'));
+  const taches = {
+    table: art.tachesConfig({}),
+    revues: art.REVUES_TACHES.map((cle) => ({ cle: cle, libelle: cle })),
+    max: art.MAX_TACHES
+  };
+  return { page: page, biblio: biblio, taches: taches };
 }
 
-// Tous les contrôles des deux blocs protégés, à plat.
+// Tous les contrôles des trois blocs protégés, à plat.
 function controles(page) {
   const sortie = [];
-  for (const id of ['biblio', 'ojs']) {
+  for (const id of ['biblio', 'taches', 'ojs']) {
     const bloc = page.parId[id];
     if (!bloc) { continue; }
     sortie.push(...bloc.querySelectorAll('input, select, textarea, button'));
@@ -277,10 +339,10 @@ function controles(page) {
   return sortie;
 }
 
-test('le formulaire grise les deux blocs tant qu’on n’a pas déverrouillé', () => {
-  const { page, biblio } = ouvrirReglages();
+test('le formulaire grise les trois blocs tant qu’on n’a pas déverrouillé', () => {
+  const { page, biblio, taches } = ouvrirReglages();
   page.envoyer({
-    type: 'valeurs', valeurs: { langue: 'fr' }, biblio: biblio,
+    type: 'valeurs', valeurs: { langue: 'fr' }, biblio: biblio, taches: taches,
     proteges: { deverrouille: false, divergences: [], avertissement: '' }
   });
   const verrouilles = controles(page);
@@ -302,9 +364,9 @@ test('le formulaire grise les deux blocs tant qu’on n’a pas déverrouillé',
 });
 
 test('le formulaire ne se déverrouille que sur la réponse de l’hôte', () => {
-  const { page, biblio } = ouvrirReglages();
+  const { page, biblio, taches } = ouvrirReglages();
   page.envoyer({
-    type: 'valeurs', valeurs: { langue: 'fr' }, biblio: biblio,
+    type: 'valeurs', valeurs: { langue: 'fr' }, biblio: biblio, taches: taches,
     proteges: { deverrouille: false, divergences: [], avertissement: '' }
   });
   const zone = page.parId.proteges;
@@ -328,9 +390,9 @@ test('le formulaire ne se déverrouille que sur la réponse de l’hôte', () =>
 });
 
 test('le formulaire dit quand ce poste s’écarte de la version de la rédaction', () => {
-  const { page, biblio } = ouvrirReglages();
+  const { page, biblio, taches } = ouvrirReglages();
   page.envoyer({
-    type: 'valeurs', valeurs: { langue: 'fr' }, biblio: biblio,
+    type: 'valeurs', valeurs: { langue: 'fr' }, biblio: biblio, taches: taches,
     proteges: { deverrouille: false, divergences: [], avertissement: '' }
   });
   const zone = page.parId.proteges;
@@ -344,4 +406,43 @@ test('le formulaire dit quand ce poste s’écarte de la version de la rédactio
   });
   assert.strictEqual(bandeau().hidden, false, 'la divergence est mesurée mais pas montrée');
   assert.match(bandeau().textContent, /ne porte plus/);
+});
+
+// Les tâches éditoriales, réellement rendues. Ce bloc a déménagé d'une modale de la vue
+// « Articles » : c'est le genre de déménagement qui s'arrête à mi-chemin sans que rien ne
+// le dise — la page s'affiche, le bloc reste vide, et personne ne s'en aperçoit avant le
+// prochain bouclage.
+test('le formulaire montre les tâches des deux revues, et relit ce qui est à l’écran', () => {
+  const { page, biblio, taches } = ouvrirReglages();
+  page.envoyer({
+    type: 'valeurs', valeurs: { langue: 'fr' }, biblio: biblio, taches: taches,
+    proteges: { deverrouille: true, divergences: [], avertissement: '' }
+  });
+  const zone = page.parId.taches;
+  assert.ok(zone, 'le bloc des tâches n’est pas dans la page');
+  const champs = zone.querySelectorAll('[data-tache-revue]');
+  const attendus = (taches.table.revue.length + taches.table.zeitschrift.length) * 2;
+  assert.strictEqual(champs.length, attendus,
+    'un champ par tâche et par langue attendu, pour les deux revues');
+  // L'identifiant n'est PAS un champ : il est écrit dans le sidecar de chaque article, et
+  // le montrer inviterait à le corriger — ce qui décocherait la tâche partout.
+  assert.ok(champs.every((c) => c.dataset.tacheId), 'l’identifiant ne suit plus le champ');
+  assert.ok(zone.querySelectorAll('[data-tache-langue="fr"]').length > 0
+    && zone.querySelectorAll('[data-tache-langue="de"]').length > 0,
+    'une des deux langues manque');
+
+  // Corriger un intitulé ne touche pas à l'identifiant : c'est là que se joue le
+  // décochage silencieux de tous les articles.
+  // Un seul attribut par sélecteur dans le harnais DOM : on filtre le reste à la main.
+  const premier = champs.filter((c) => c.dataset.tacheRevue === 'revue'
+    && c.dataset.tacheLangue === 'fr')[0];
+  assert.ok(premier, 'aucun champ français pour la revue');
+  const idAvant = premier.dataset.tacheId;
+  premier.value = 'version définitive';
+  premier.dispatchEvent({ type: 'input' });
+  const envoi = page.messages.filter((m) => m.type === 'taches-enregistrer').pop();
+  if (envoi) {
+    assert.strictEqual(envoi.taches.revue[0].id, idAvant, 'l’identifiant a été recalculé');
+  }
+  assert.strictEqual(premier.dataset.tacheId, idAvant, 'l’identifiant a bougé avec l’intitulé');
 });

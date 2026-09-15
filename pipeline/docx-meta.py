@@ -357,6 +357,34 @@ def decouper_liste(texte):
 
 
 # ---------------------------------------------------------------------------------
+# Titre à deux-points. Les deux revues écrivent souvent le sous-titre à la suite du titre,
+# sur une seule ligne et sans style Untertitel derrière : « Inclusion scolaire : le rôle de
+# l'enseignant », « Frühförderung: Wege in die Praxis ». Faute de sous-titre, la ligne
+# entière partait en titre — et la maquette, qui compose les deux différemment, n'avait
+# plus rien à composer.
+#
+# On scinde au premier deux-points SUIVI D'UN ESPACE. Ce détail suffit à laisser dehors
+# tout ce qui n'est pas une scission : heures (« 10:30 »), rapports, et URL (« https:// »),
+# où le deux-points colle à ce qui suit. La partie gauche ne peut pas enjamber un
+# deux-points : le premier est donc le seul point de coupe examiné, et une heure en tête de
+# titre empêche la scission au lieu de la déplacer.
+
+RE_TITRE_DEUX_POINTS = re.compile(r'^([^:]+?)\s*:\s+(\S.*)$')
+
+
+def scinder_titre(titre):
+    """(titre, sous-titre) — le sous-titre est '' quand la ligne ne se scinde pas."""
+    m = RE_TITRE_DEUX_POINTS.match(titre or '')
+    if not m:
+        return (titre or '').strip(), ''
+    gauche, droite = m.group(1).strip(), m.group(2).strip()
+    # Une numérotation n'est pas un titre : « 2 : Die Schule » reste d'une seule pièce.
+    if not gauche or not droite or not re.search(r'[^\W\d_]', gauche, re.UNICODE):
+        return (titre or '').strip(), ''
+    return gauche, droite
+
+
+# ---------------------------------------------------------------------------------
 # Ligne d'auteurs (byline sous le titre) et cellules du tableau des auteurs.
 
 CONNECTEURS = re.compile(
@@ -977,6 +1005,7 @@ def principal(argv):
     logos = 0
     dernier_resume = None                 # langue du dernier résumé (continuations)
     titre_source = ''
+    sous_titre_source = ''
     i = 0
     while i < len(blocs) and i < 25:
         e = blocs[i]
@@ -1008,6 +1037,7 @@ def principal(argv):
                 titre_source = 'style-sous-titre'
             else:
                 sous_titre_parts.append(txt)
+                sous_titre_source = 'style'
             consommer()
         elif fam == 'author':
             byline = (byline + ', ' + txt) if byline else txt
@@ -1076,6 +1106,7 @@ def principal(argv):
                             and taille_corps and t2 > taille_corps \
                             and not auteurs_depuis_byline(txt2):
                         sous_titre_parts.append(txt2)
+                        sous_titre_source = 'heuristique'
                         if not classeur.pandoc_mange(pstyle(e2)):
                             consommes_p.append(txt2)
             break
@@ -1250,6 +1281,17 @@ def principal(argv):
                 lignes_f.append(txt)
                 break
 
+    # ---- 7bis) Titre à deux-points, faute de sous-titre ---------------------------
+    # Après le type d'article et la bibliographie : detecter_type() lit le titre entier, et
+    # « Aktuelles: Dokumentation » ne doit pas perdre son rubriquage en route. Les lignes P
+    # retirées du corps ne bougent pas non plus — c'est le paragraphe entier qui quitte le
+    # texte, scindé ou non ; seule la fiche voit deux champs au lieu d'un.
+    if titre_parts and not sous_titre_parts:
+        gauche, droite = scinder_titre(' '.join(titre_parts))
+        if droite:
+            titre_parts, sous_titre_parts = [gauche], [droite]
+            sous_titre_source = 'deux-points'
+
     # ---- 8) meta.yaml (jamais écrasé), $SZH_META et stats ------------------------
     meta = {
         'type': type_article,
@@ -1296,6 +1338,22 @@ def principal(argv):
             'Die Sprache dieses Artikels stand nicht im Dokument: sie wurde erraten. '
             'Prüfen Sie sie unter « Metadaten der Artikel » — Layout und '
             'Zusammenfassungen richten sich danach.')
+
+    # Le sous-titre déduit d'un deux-points est une coupe que nous avons décidée, et elle
+    # se voit à l'impression : le rédacteur doit pouvoir la défaire d'un coller. Sur une
+    # fiche conservée, rien à dire — nous ne l'avons pas touchée.
+    if meta_ecrit and sous_titre_source == 'deux-points':
+        avertir(
+            'sous-titre-deduit',
+            ['article « %s »' % slug, 'titre « %s »' % ' '.join(titre_parts),
+             'soustitre « %s »' % ' '.join(sous_titre_parts)],
+            "Le document ne donnait qu'un titre, avec un deux-points au milieu : ce qui "
+            'suit a été repris comme sous-titre. Vérifiez la coupe dans « Métadonnées des '
+            "articles » — titre et sous-titre ne se composent pas de la même façon.",
+            'Das Dokument enthielt nur einen Titel, mit einem Doppelpunkt darin: was '
+            'darauf folgt, wurde als Untertitel übernommen. Prüfen Sie die Trennung unter '
+            '« Metadaten der Artikel » — Titel und Untertitel werden nicht gleich '
+            'gesetzt.')
 
     # Un tableau de fin porteur d'e-mails que nous n'avons pas su lire, et pas un seul
     # auteur venu d'un tableau : la fiche n'aura que des noms — ni fonction, ni
@@ -1409,6 +1467,7 @@ def principal(argv):
         'langue': langue, 'langue_source': langue_source,
         'titre': bool(titre_parts), 'titre_source': titre_source or 'aucun',
         'sous_titre': bool(sous_titre_parts),
+        'sous_titre_source': sous_titre_source or 'aucun',
         'resumes': sorted(k for k in resumes if k and resumes[k]),
         'keywords': {k: len(v) for k, v in meta['keywords'].items()},
         'doi': doi,

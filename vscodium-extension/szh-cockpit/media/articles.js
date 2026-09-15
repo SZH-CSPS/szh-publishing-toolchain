@@ -6,8 +6,13 @@
 // SZH.barreBoutons (media/_commun.js), les mêmes que « Traductions » et « Word en
 // attente ». Le formulaire du numéro est SZH.formulaireNumero (media/_numero.js), le même
 // que la page « Méta-données du numéro » : un champ ajouté à sa table apparaît ici sans
-// seconde modification. La modale des tâches est bâtie sur SZH.modale, comme celle de la
-// couverture. Ne reste propre à cette page que ce que la modale des tâches contient.
+// seconde modification.
+//
+// Les INTITULÉS des tâches ne se règlent plus ici. Ils décrivent le processus éditorial
+// d'une revue et valent pour toute la rédaction : ils ont rejoint les réglages protégés,
+// dans « Réglages SZH » (lib/reglages-proteges.js). Le bouton de la barre est devenu un
+// aiguillage, comme « Changer la langue de l'article » sur la fiche : il dit où se fait le
+// geste. Cette page ne garde que les CASES à cocher, qui, elles, sont propres à un article.
 //
 // L'aperçu des métadonnées, lui, est propre à cette page — il n'existe nulle part
 // ailleurs : partout ailleurs, les métadonnées d'un article sont un formulaire. Ici on
@@ -17,13 +22,12 @@
 //
 // Protocole. Vers l'hôte :
 //   pret ; ouvrir { cle } ; action { cle, id } ; tache { cle, id, cochee } ;
-//   sansdoi { cle, coche } ; commande { id } ; taches-enregistrer { revue, taches } ;
+//   sansdoi { cle, coche } ; commande { id } ;
 //   enregistrer { auto, modifies } ; couverture-deposer { nomFichier, donneesBase64 }
 // Depuis l'hôte :
-//   valeurs { titre, boutons, lignes, accent, valeurs, couverture, taches, revue,
-//             metaRepliees } ;
+//   valeurs { titre, boutons, lignes, accent, valeurs, couverture, taches, metaRepliees } ;
 //   etat { message } ; avancement { cle, pastilles } ; enregistre ; erreur { message } ;
-//   couverture { nom, description, apercu } ; taches { taches }
+//   couverture { nom, description, apercu }
 // où une ligne vaut { cle, titre, meta, notif, pastilles, ouvrir, actions, taches,
 //                     apercu, constats, sansDoi } ,
 //   apercu   = { lignes: [{ libelle, valeurs: [{ marque, texte, marques, ton }] }] }
@@ -37,8 +41,6 @@
   var titre = document.getElementById('titre');
   var barre = document.getElementById('barre');
   var ctlEtat = null;
-  var definitions = {};       // revue -> [{ id, fr, de }], tel que l'hôte l'envoie
-  var revueCourante = '';
 
   var numero = SZH.formulaireNumero({
     conteneur: document.getElementById('numero'),
@@ -228,164 +230,6 @@
     return l;
   }
 
-  // ---- Modale des tâches ----
-  //
-  // Les intitulés décrivent le processus éditorial d'une revue et non un numéro : ils
-  // valent pour tous les numéros de cette revue, et les deux maisons ont chacune leur
-  // liste. On règle donc les deux ici, l'une après l'autre, sans quitter la vue.
-  //
-  // ⚠ Passer d'une revue à l'autre, ou refermer, enregistre d'abord ce qui vient d'être
-  // saisi : sans cela, taper trois intitulés français puis cliquer « Zeitschrift » les
-  // jetterait sans un mot. C'est l'enregistrement automatique des autres formulaires,
-  // appliqué aux deux gestes qui font sortir de la liste courante.
-  var vue = { revue: '', modele: [], modifie: false };
-  var modaleTaches = SZH.modale({
-    classeBoite: 'modale modale-taches',
-    construire: function (boite) {
-      poser(boite, 'h3', null, TXT.tachesTitre || '');
-      poser(boite, 'p', 'szh-notif szh-notif--info szh-notif--discret', TXT.tachesAide || '');
-      vue.revues = poser(boite, 'div', 'taches-revues');
-      vue.grille = poser(boite, 'div', 'taches-grille');
-      var pied = poser(boite, 'div', 'taches-pied');
-      vue.ajouter = document.createElement('button');
-      vue.ajouter.type = 'button';
-      vue.ajouter.className = 'szh-bouton';
-      vue.ajouter.textContent = TXT.tachesAjouter || '';
-      vue.ajouter.addEventListener('click', function () {
-        absorber();
-        vue.modele.push({ id: '', fr: '', de: '' });
-        vue.modifie = true;
-        rendreGrille();
-      });
-      pied.appendChild(vue.ajouter);
-      poser(pied, 'span', 'szh-pousse');
-      vue.etat = poser(pied, 'span', 'szh-barre-etat');
-      vue.etat.setAttribute('role', 'status');
-      var enregistrer = document.createElement('button');
-      enregistrer.type = 'button';
-      enregistrer.className = 'szh-bouton szh-bouton--principal';
-      enregistrer.textContent = TXT.tachesEnregistrer || '';
-      enregistrer.addEventListener('click', function () { enregistrerCourante(true); });
-      pied.appendChild(enregistrer);
-      var fermer = document.createElement('button');
-      fermer.type = 'button';
-      fermer.className = 'szh-bouton';
-      fermer.textContent = TXT.tachesFermer || '';
-      fermer.addEventListener('click', function () { modaleTaches.fermer(); });
-      pied.appendChild(fermer);
-    },
-    surOuverture: function () {
-      vue.revue = definitions[revueCourante] ? revueCourante : (Object.keys(definitions)[0] || '');
-      charger(vue.revue);
-      vue.etat.textContent = '';
-      rendreRevues();
-    },
-    // Refermer n'est pas annuler : ce qui a été saisi part avant que la boîte disparaisse.
-    surFermeture: function () { enregistrerCourante(false); },
-    focus: function () { return vue.ajouter; }
-  });
-
-  function charger(cle) {
-    vue.modele = (definitions[cle] || []).map(function (t) {
-      return { id: t.id, fr: t.fr, de: t.de };
-    });
-    vue.modifie = false;
-    rendreGrille();
-  }
-
-  // -> true si quelque chose est parti vers l'hôte.
-  function enregistrerCourante(force) {
-    absorber();
-    if (!vue.modifie && !force) { return false; }
-    if (vue.revue === '') { return false; }
-    vue.modifie = false;
-    api.postMessage({ type: SZH.MSG.TACHES_ENREGISTRER, revue: vue.revue, taches: vue.modele });
-    return true;
-  }
-
-  // Relit la grille avant toute reconstruction : sans cela, ajouter une rangée jetterait
-  // la frappe en cours dans les autres.
-  function absorber() {
-    if (!vue.grille) { return; }
-    var rangees = vue.grille.querySelectorAll('.taches-ligne');
-    var n = 0;
-    for (var i = 0; i < rangees.length; i++) {
-      var fr = rangees[i].querySelector('[data-langue="fr"]');
-      var de = rangees[i].querySelector('[data-langue="de"]');
-      if (!fr && !de) { continue; }
-      if (!vue.modele[n]) { vue.modele[n] = { id: '', fr: '', de: '' }; }
-      if (fr) { vue.modele[n].fr = fr.value; }
-      if (de) { vue.modele[n].de = de.value; }
-      n++;
-    }
-    vue.modele.length = n;
-  }
-
-  function rendreRevues() {
-    vue.revues.textContent = '';
-    var cles = Object.keys(definitions);
-    for (var i = 0; i < cles.length; i++) {
-      (function (cle) {
-        var b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'szh-bouton';
-        b.textContent = (TXT.revues || {})[cle] || cle;
-        b.setAttribute('aria-pressed', cle === vue.revue ? 'true' : 'false');
-        b.addEventListener('click', function () {
-          if (cle === vue.revue) { return; }
-          enregistrerCourante(false);         // ce qui vient d'être saisi part d'abord
-          vue.revue = cle;
-          charger(cle);
-          rendreRevues();
-        });
-        vue.revues.appendChild(b);
-      }(cles[i]));
-    }
-  }
-
-  function rendreGrille() {
-    vue.grille.textContent = '';
-    var entete = poser(vue.grille, 'div', 'taches-rangee taches-entete');
-    poser(entete, 'span', 'num', '');
-    poser(entete, 'span', null, TXT.tachesFr || '');
-    poser(entete, 'span', 'colonne-de', TXT.tachesDe || '');
-    poser(entete, 'span', null, '');
-    for (var i = 0; i < vue.modele.length; i++) {
-      (function (tache, index) {
-        var r = poser(vue.grille, 'div', 'taches-rangee taches-ligne');
-        poser(r, 'span', 'num', String(index + 1));
-        for (var l = 0; l < 2; l++) {
-          var langue = l === 0 ? 'fr' : 'de';
-          var champ = document.createElement('input');
-          champ.type = 'text';
-          champ.dataset.langue = langue;
-          champ.value = tache[langue] || '';
-          champ.setAttribute('aria-label',
-            (langue === 'fr' ? (TXT.tachesFr || '') : (TXT.tachesDe || '')) + ' ' + String(index + 1));
-          if (langue === 'de') { champ.className = 'colonne-de'; }
-          champ.addEventListener('input', function () {
-            vue.modifie = true;
-            vue.etat.textContent = '';
-          });
-          r.appendChild(champ);
-        }
-        var retirer = document.createElement('button');
-        retirer.type = 'button';
-        retirer.className = 'szh-bouton bouton-danger';
-        retirer.textContent = '×';
-        retirer.title = TXT.tachesRetirer || '';
-        retirer.setAttribute('aria-label', (TXT.tachesRetirer || '') + ' ' + String(index + 1));
-        retirer.addEventListener('click', function () {
-          absorber();
-          vue.modele.splice(index, 1);
-          vue.modifie = true;
-          rendreGrille();
-        });
-        r.appendChild(retirer);
-      }(vue.modele[i], i));
-    }
-  }
-
   // ---- Messages ----
   var recu = false;
   window.addEventListener('message', function (ev) {
@@ -400,15 +244,12 @@
     if (msg.type === SZH.MSG.VALEURS) {
       SZH.poserAccent(msg.accent);
       titre.textContent = msg.titre || '';
-      definitions = msg.taches || {};
-      revueCourante = String(msg.revue || '');
       // Avant decorer(), qui pose les blocs et lit cet état. L'interrupteur vient de
       // bouger : les cartes tenues à part retrouvent le rang, sans quoi celle qu'on avait
       // dépliée resterait seule ouverte sur une liste qu'on vient de tout replier.
       var repliDemande = msg.metaRepliees === true;
       if (repliDemande !== metaRepliees) { metaRepliees = repliDemande; replies = Object.create(null); }
       ctlEtat = SZH.barreBoutons(barre, msg.boutons || [], function (id) {
-        if (id === 'taches') { modaleTaches.ouvrir(); return; }
         api.postMessage({ type: SZH.MSG.COMMANDE, id: id });
       });
       liste.rendre(msg.lignes || []);
@@ -423,11 +264,6 @@
     }
     if (msg.type === SZH.MSG.ETAT) {
       if (ctlEtat) { ctlEtat.textContent = msg.message || ''; }
-      return;
-    }
-    if (msg.type === SZH.MSG.TACHES) {
-      definitions = msg.taches || definitions;
-      if (vue.etat) { vue.etat.textContent = TXT.tachesEnregistrees || ''; }
       return;
     }
     if (!traiteParNumero) { console.warn('articles : type de message inconnu', msg.type); }

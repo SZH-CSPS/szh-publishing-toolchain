@@ -59,3 +59,11 @@ button.fige { opacity: .5; }
   color: var(--vscode-button-secondaryForeground, var(--encre));
   background: var(--vscode-button-secondaryBackground, transparent); }
 .regl-ajouter:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Retirer une tâche. La croix porte la couleur du danger, comme les poubelles des
+   listes de cartes — mais la règle est ici : _liste.css n'est pas chargé sur cette
+   page, et `bouton-danger` y serait un nom de classe sans style. */
+.regl-retirer { color: var(--danger); }
+.regl-retirer:hover:not(:disabled) {
+  color: var(--vscode-button-foreground, #fff); background: var(--danger);
+}

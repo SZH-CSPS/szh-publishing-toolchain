@@ -419,11 +419,14 @@ qui a délibérément changé un de ces réglages se le verrait réimposer à ch
 
 ### Les réglages protégés
 
-Deux blocs de « Réglages SZH » ne décrivent pas le confort d'une personne mais la **chaîne de
-publication** : la configuration de l'export OJS et les titres de bibliographie. Une rubrique
-OJS renommée sur un seul poste fait atterrir ses articles dans la mauvaise section de la
-revue. Ils sont donc **en lecture seule**, et déployés depuis
-`windows/settings-protected.json` vers `C:\ProgramData\SZH\settings-protected.json` —
+Trois blocs de « Réglages SZH » ne décrivent pas le confort d'une personne mais la **chaîne
+de publication** : la configuration de l'export OJS, les titres de bibliographie et les
+**tâches éditoriales par article** (`tachesArticle`). Une rubrique OJS renommée sur un seul
+poste fait atterrir ses articles dans la mauvaise section de la revue ; un jeu de tâches
+propre à chaque poste fait suivre le même numéro avec deux processus différents, et la case
+cochée par l'une n'existe pas chez l'autre. Ils sont donc **en lecture seule**, et déployés
+depuis `windows/settings-protected.json` vers
+`C:\ProgramData\SZH\settings-protected.json` —
 écrasé à chaque mise à jour, c'est le sens du fichier.
 
 Le cockpit relaie ensuite ces blocs dans `config.json`, **seul fichier que

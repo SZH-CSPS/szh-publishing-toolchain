@@ -1258,21 +1258,26 @@ function libellesFeuilleVerif(langueNumero) {
   };
 }
 
+// Les trois intitulés traduisibles du formulaire portent la langue entre parenthèses
+// (« Titre ({0}) ») parce qu'à l'écran chaque champ a sa case par langue. Sur la feuille,
+// la langue a sa propre colonne : le gabarit garde donc l'intitulé nu, sans quoi il
+// afficherait « Titre ({0}) » tel quel.
+function sansLangue(texte) { return String(texte).replace(/\s*\(\{0\}\)\s*$/, ''); }
+
 function textesFeuilleVerif() {
   return {
     titrePage: T('verif.titre'), article: T('verif.article'), consigne: T('verif.consigne'),
-    noteMachine: T('verif.note'), legende: T('verif.legende'),
-    verifiePar: T('verif.signature'), empreinte: T('verif.empreinte'),
+    empreinte: T('verif.empreinte'),
     sectionIdentification: T('verif.section.identification'),
     sectionTextes: T('verif.section.textes'),
     sectionMotsCles: T('verif.section.motscles'),
-    sectionAuteurs: T('verif.section.auteurs'), sectionAuteur: T('verif.section.auteur'),
+    sectionAuteurs: T('verif.section.auteurs'),
     doiCalcule: T('verif.doi.calcule'), doiManuel: T('verif.doi.manuel'),
     // Les intitulés des champs sont CEUX DU FORMULAIRE, repris tels quels : la feuille
     // suit son ordre et ses mots, pour que la correction soit mécanique.
     type: T('fiches.type'), langue: T('fiches.langue.article'), licence: T('fiches.licence'),
-    doi: 'DOI', titre: T('fiches.titre.champ'), sousTitre: T('fiches.soustitre'),
-    resume: T('fiches.resume'),
+    doi: 'DOI', titre: sansLangue(T('fiches.titre.champ')),
+    sousTitre: sansLangue(T('fiches.soustitre')), resume: sansLangue(T('fiches.resume')),
     prenom: T('fiches.auteur.prenom'), nom: T('fiches.auteur.nom'),
     fonction: T('fiches.auteur.fonction'), affiliation: T('fiches.auteur.affiliation'),
     courriel: T('fiches.auteur.email'), orcid: T('fiches.auteur.orcid'),
@@ -1288,9 +1293,41 @@ function horodatageFeuille(quand) {
     + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
 }
 
+// Le rendu lui-même : lu du disque, écrit dans out/, rendu au navigateur. `panneau` sert
+// à dire un échec d'écriture à la page qui a demandé la feuille ; il est absent quand le
+// geste vient de la vue « Articles », qui n'attend aucune réponse.
+async function genererFeuilleVerif(fournisseur, filtre, panneau) {
+  const racine = fournisseur.racine;
+  const modele = verifMeta.construireModele(
+    lireMetadonneesArticles(fournisseur, filtre), {
+      numero: titreNumero(racine),
+      horodatage: horodatageFeuille(),
+      libelles: libellesFeuilleVerif(langueRevue(racine)),
+      textes: textesFeuilleVerif()
+    });
+  if (modele.total === 0) {
+    vscode.window.setStatusBarMessage(T('verif.aucun'), 4000);
+    return;
+  }
+  const cible = cheminFeuilleVerif(racine, filtre);
+  try {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'print-templates', 'verification-meta.twig'), 'utf8');
+    fs.mkdirSync(path.dirname(cible), { recursive: true });
+    ecrireAtomique(cible, verifMeta.rendre(source, modele));
+  } catch (e) {
+    const message = T('verif.err', [String((e && e.message) || e)]);
+    if (panneau) { repondrePanneau(panneau, { type: MSG.ERREUR, message: message }); }
+    else { vscode.window.showErrorMessage(message); }
+    return;
+  }
+  await vscode.env.openExternal(vscode.Uri.file(cible));
+  vscode.window.setStatusBarMessage(T('verif.ouverte', [modele.total]), 5000);
+}
+
+// Depuis le formulaire des fiches : ce que le panneau montre, filtre compris.
 async function imprimerFeuilleVerif(fournisseur, panneau, msg) {
-  const racine = fournisseur && fournisseur.racine;
-  if (!racine) { return; }
+  if (!fournisseur || !fournisseur.racine) { return; }
   // Enregistrement d'abord. Un refus (numéro verrouillé, fiche périmée) arrête tout : une
   // feuille tirée d'un disque qui ne porte pas ce qu'on a sous les yeux serait pire que
   // pas de feuille du tout.
@@ -1305,30 +1342,22 @@ async function imprimerFeuilleVerif(fournisseur, panneau, msg) {
     repondrePanneau(panneau, { type: MSG.ENREGISTRE, n: res.n });
     relancerCompilationCartes(fournisseur, res);
   }
-  const langue = langueRevue(racine);
-  const modele = verifMeta.construireModele(
-    lireMetadonneesArticles(fournisseur, filtreArticles), {
-      numero: titreNumero(racine),
-      horodatage: horodatageFeuille(),
-      libelles: libellesFeuilleVerif(langue),
-      textes: textesFeuilleVerif()
-    });
-  if (modele.total === 0) {
-    vscode.window.setStatusBarMessage(T('verif.aucun'), 4000);
+  await genererFeuilleVerif(fournisseur, filtreArticles, panneau);
+}
+
+// Depuis la vue « Articles » : TOUT le numéro d'un coup, sans se soucier du filtre que le
+// formulaire des fiches porte peut-être.
+//
+// Ici on ne peut rien enregistrer : les cartes en cours de saisie sont dans une page qu'on
+// ne pilote pas. Plutôt que de tirer une feuille périmée — ce que l'empreinte du pied de
+// page est censée rendre impossible — on le dit et on s'arrête.
+async function imprimerFeuilleVerifTous(fournisseur) {
+  if (!fournisseur || !fournisseur.racine) { return; }
+  if (fichesModifie) {
+    vscode.window.showInformationMessage(T('verif.nonenregistre'));
     return;
   }
-  const cible = cheminFeuilleVerif(racine, filtreArticles);
-  try {
-    const source = fs.readFileSync(
-      path.join(__dirname, '..', 'print-templates', 'verification-meta.twig'), 'utf8');
-    fs.mkdirSync(path.dirname(cible), { recursive: true });
-    ecrireAtomique(cible, verifMeta.rendre(source, modele));
-  } catch (e) {
-    repondrePanneau(panneau, { type: MSG.ERREUR, message: T('verif.err', [String((e && e.message) || e)]) });
-    return;
-  }
-  await vscode.env.openExternal(vscode.Uri.file(cible));
-  vscode.window.setStatusBarMessage(T('verif.ouverte', [modele.total]), 5000);
+  await genererFeuilleVerif(fournisseur, null, null);
 }
 
 // Sans item, l'article visé est celui du .md actif, à défaut celui en aperçu.
@@ -1353,6 +1382,7 @@ module.exports = {
   textesNumero, chargeNumero, ecrireChampsNumero, messageNumero,
   cheminMeta, migrerFrontmatterVersMeta, doisCalculesArticles, ecrireDoisCalcules,
   lireMetadonneesArticles, nettoyerCarte, ecrireCartesArticles, messageCartes,
+  imprimerFeuilleVerifTous,
   relancerCompilationCartes, textesCarteArticle, textesAuteur, licencesTraduites, typesTraduits,
   ecrireChampsLivre, filtreValide, signalerFichesPerimees, titreFiches,
   confirmerDoiManuel, ouvrirMetadonnees, ouvrirApercuMetadonnees, ouvrirMetadonneesArticle,

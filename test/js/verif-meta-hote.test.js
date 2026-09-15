@@ -87,3 +87,33 @@ test('un champ vidé s’imprime LEER plutôt que de disparaître', async () => 
   });
   assert.ok(fs.readFileSync(FEUILLE, 'utf8').indexOf('LEER') !== -1);
 });
+
+// ---- Depuis la vue « Articles » : tout le numéro d'un coup ---------------------------
+
+test('la vue « Articles » offre le bouton, et il tire la feuille de tout le numéro', async () => {
+  await hote.executer('szh.vueArticles');
+  const vue = hote.panneauDeType('szhVueArticles');
+  assert.ok(vue, 'la vue « Articles » ne s’est pas ouverte');
+  // La vue ne se peint qu'après son « pret », comme toute page du cockpit.
+  await vue._recepteur({ type: 'pret' });
+  const valeurs = vue.messages.filter((m) => m.type === 'valeurs').pop();
+  assert.ok(valeurs, 'la vue n’a reçu aucune valeur');
+  const bouton = (valeurs.boutons || []).filter((b) => b.id === 'verif-meta').pop();
+  assert.ok(bouton, 'le bouton de vérification n’est pas dans la barre de la vue');
+  assert.ok(bouton.libelle, 'le bouton n’a pas de libellé');
+
+  try { fs.unlinkSync(FEUILLE); } catch (e) { /* pas encore écrite */ }
+  await vue._recepteur({ type: 'commande', id: 'verif-meta' });
+  assert.ok(fs.existsSync(FEUILLE), 'le bouton de la vue n’a pas écrit la feuille');
+  assert.ok(hote.ouvertures().indexOf(FEUILLE) !== -1,
+    'la feuille n’a pas été rendue au navigateur');
+});
+
+// ---- Les intitulés viennent du formulaire, sans son gabarit de langue ----------------
+
+test('l’intitulé d’un champ traduisible ne porte pas le trou « ({0}) » du formulaire', async () => {
+  const p = await panneauFiches();
+  await p._recepteur({ type: 'verif-meta', articles: {} });
+  const html = fs.readFileSync(FEUILLE, 'utf8');
+  assert.ok(html.indexOf('({0})') === -1, 'le gabarit de langue du formulaire est passé tel quel');
+});

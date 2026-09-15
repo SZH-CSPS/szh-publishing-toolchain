@@ -142,7 +142,8 @@ lib/
                         alors lui-même, sans jamais réécrire le fichier du rédacteur
   reglages-proteges.js  les réglages qui décrivent la chaîne de publication et non le
                         confort d'une personne — configuration de l'export OJS, titres de
-                        bibliographie. Déployés par la mise à jour
+                        bibliographie, tâches éditoriales par article. Déployés par la mise
+                        à jour
                         (windows/settings-protected.json), relayés dans config.json pour la
                         compilation, affichés en lecture seule tant qu'on n'a pas
                         déverrouillé, et comparés à la version déployée pour dire quand un

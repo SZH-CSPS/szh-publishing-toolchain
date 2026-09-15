@@ -21,8 +21,7 @@
 // ---- Le découpage n'invente rien ---------------------------------------------------
 // Les séparateurs affichés entre les groupes (@ . - /) sont les caractères RÉELS de la
 // valeur, jamais des ajouts : le relecteur peut lire la feuille comme la chaîne. Seul
-// l'identifiant ROR, qui n'a aucun séparateur, reçoit un blanc purement visuel — la
-// légende de la page le dit.
+// l'identifiant ROR, qui n'a aucun séparateur, reçoit un blanc purement visuel.
 //
 // ---- Un champ vide s'imprime -------------------------------------------------------
 // L'erreur classique d'une fiche de contrôle est qu'un champ absent ressemble à un champ
@@ -109,7 +108,7 @@ function piecesRor(valeur) {
   const identifiant = sansPrefixe(valeur, 'ror\\.org');
   const pieces = [];
   // Neuf caractères sans le moindre séparateur : le seul cas où l'on pose un blanc qui
-  // n'existe pas dans la valeur. Par trois, comme un numéro de téléphone.
+  // n'existe pas dans la valeur (d'où `visuel`). Par trois, comme un numéro de téléphone.
   for (let i = 0; i < identifiant.length; i += 3) {
     pieces.push({ groupe: identifiant.slice(i, i + 3), visuel: i > 0 });
   }
@@ -176,15 +175,24 @@ function ligne(champs) {
   return { champs: champs, seule: champs.length === 1 };
 }
 
-// Les champs traduisibles se lisent COTE A COTE : une traduction manquante saute aux
-// yeux, et un texte français collé dans la case allemande aussi. La troisième langue
-// n'apparaît que si elle porte quelque chose — elle n'est activée que par exception.
-function rangeeMultilingue(libelle, map, langues) {
-  const cellules = langues.map((l) => {
+// Les champs traduisibles s'empilent, une langue par ligne, sur toute la largeur : un
+// titre ou un résumé se lit comme du texte, et deux colonnes étroites le hachaient en
+// replis. La langue est nommée sur chaque ligne, l'intitulé du champ une seule fois —
+// d'où `debutChamp`, qui dit au gabarit où commence un nouveau champ (et donc où poser
+// son filet). La troisième langue n'apparaît que si elle porte quelque chose : elle n'est
+// activée que par exception.
+//
+// Les mots-clés font exception et restent en colonnes (rangeesMotsCles) : ce sont des
+// rangées APPARIÉES, et c'est l'appariement qui se vérifie.
+function rangeesMultilingues(libelle, map, langues, libellesLangues) {
+  return langues.map((l, i) => {
     const b = baliserTexte((map || {})[l]);
-    return { langue: l, valeurHtml: b.html, vide: b.vide };
+    return {
+      libelle: i === 0 ? libelle : '', debutChamp: i === 0,
+      langue: l, langueLibelle: libellesLangues[l] || l,
+      valeurHtml: b.html, vide: b.vide
+    };
   });
-  return { libelle: libelle, cellules: cellules };
 }
 
 // Les mots-clés sont des RANGÉES appariées d'une langue à l'autre : le mot-clé n° 2 en
@@ -236,9 +244,10 @@ function construireFiche(article, options, index, total) {
       rangee(txt.langue || 'Langue', libelleDe(lib.langues, v.lang))]),
     ligne([rangee(txt.licence || 'Licence', libelleDe(lib.licences, v.licence)), rDoi])
   ];
-  const auteurs = (v.author || []).map((a, i) => ({
-    numero: i + 1,
-    nom: [a.prenom, a.nom].filter((x) => x).join(' '),
+  // Un seul titre pour toute la section, et un filet entre les fiches : numéroter chaque
+  // auteur·e et répéter son nom en titre redisait ce que les champs disent déjà juste en
+  // dessous.
+  const auteurs = (v.author || []).map((a) => ({
     lignes: [
       ligne([rangee(txt.prenom || 'Prénom', a.prenom), rangee(txt.nom || 'Nom', a.nom)]),
       ligne([rangee(txt.fonction || 'Fonction', a.fonction),
@@ -247,11 +256,12 @@ function construireFiche(article, options, index, total) {
       ligne([rangee(txt.orcid || 'ORCID', a.orcid, 'orcid'), rangee(txt.ror || 'ROR', a.ror, 'ror')])
     ]
   }));
-  const textes = [
-    rangeeMultilingue(txt.titre || 'Titre', v.title, langues),
-    rangeeMultilingue(txt.sousTitre || 'Sous-titre', v.subtitle, langues),
-    rangeeMultilingue(txt.resume || 'Résumé', v.resume, langues)
-  ];
+  const nomsLangues = {};
+  for (const l of langues) { nomsLangues[l] = libelleDe(lib.langues, l) || l; }
+  const textes = []
+    .concat(rangeesMultilingues(txt.titre || 'Titre', v.title, langues, nomsLangues))
+    .concat(rangeesMultilingues(txt.sousTitre || 'Sous-titre', v.subtitle, langues, nomsLangues))
+    .concat(rangeesMultilingues(txt.resume || 'Résumé', v.resume, langues, nomsLangues));
   return {
     slug: article.slug, index: index, total: total,
     langues: langues.map((l) => ({ code: l, libelle: libelleDe(lib.langues, l) || l })),

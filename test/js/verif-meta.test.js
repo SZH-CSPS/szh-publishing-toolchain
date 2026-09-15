@@ -104,6 +104,72 @@ test('les champs du numéro et les textes traduisibles y sont aussi', () => {
   assert.ok(html.indexOf('CC BY 4.0') !== -1, 'la licence est rendue en clair');
 });
 
+// ---- Textes empilés, mots-clés en colonnes ------------------------------------------
+
+test('un champ traduisible s’empile : une ligne par langue, la langue nommée', () => {
+  const fiche = verif.construireFiche(article(COMPLET), { libelles: LIBELLES, textes: TEXTES }, 1, 1);
+  // Trois champs (titre, sous-titre, résumé) x deux langues.
+  assert.equal(fiche.textes.length, 6);
+  assert.equal(fiche.textes[0].libelle, TEXTES.titre);
+  assert.equal(fiche.textes[0].debutChamp, true);
+  assert.equal(fiche.textes[0].langueLibelle, LIBELLES.langues.fr);
+  // La deuxième ligne du même champ ne répète pas l’intitulé, et ouvre pas un champ.
+  assert.equal(fiche.textes[1].libelle, '');
+  assert.equal(fiche.textes[1].debutChamp, false);
+  assert.equal(fiche.textes[1].langueLibelle, LIBELLES.langues.de);
+  assert.equal(fiche.textes[2].libelle, TEXTES.sousTitre);
+  assert.equal(fiche.textes[2].debutChamp, true);
+});
+
+test('les deux langues d’un même champ se suivent, elles ne sont pas côte à côte', () => {
+  const html = feuille([article(COMPLET)]);
+  const iFr = html.indexOf('Un titre');
+  const iDe = html.indexOf('Ein Titel');
+  assert.ok(iFr !== -1 && iDe !== -1);
+  // Une ligne de tableau les sépare : c’est ce qui distingue l’empilement des colonnes.
+  assert.ok(html.slice(iFr, iDe).indexOf('<tr') !== -1,
+    'les deux langues sont dans la même rangée — elles devraient être empilées');
+});
+
+test('les mots-clés restent en COLONNES : c’est leur appariement qui se vérifie', () => {
+  const html = feuille([article(COMPLET)]);
+  const iFr = html.indexOf('école');
+  const iDe = html.indexOf('Schule');
+  assert.ok(iFr !== -1 && iDe !== -1);
+  assert.ok(html.slice(iFr, iDe).indexOf('<tr') === -1,
+    'les mots-clés appariés ont été séparés en deux rangées');
+});
+
+// ---- Quatre yeux ---------------------------------------------------------------------
+
+test('chaque ligne à vérifier porte DEUX cases : une par relecteur', () => {
+  const html = feuille([article(COMPLET)]);
+  const rangees = html.split('<td class="col-case">').length - 1;
+  const cases = html.split('<span class="case">').length - 1;
+  assert.ok(rangees > 0);
+  assert.equal(cases, rangees * 2, 'il faut deux cases par rangée, vu ' + cases + ' pour ' + rangees);
+});
+
+// ---- Ce qui a été retiré de la feuille ------------------------------------------------
+
+test('la feuille ne porte ni note d’en-tête, ni légende, ni ligne de signature', () => {
+  const html = feuille([article(COMPLET)]);
+  for (const classe of ['tete-note', 'legende', 'signature', 'ligne-sign', 'auteur-titre']) {
+    assert.ok(html.indexOf(classe) === -1, 'reste de l’ancienne maquette : ' + classe);
+  }
+});
+
+test('un seul titre pour toute la section des auteur·e·s', () => {
+  const deux = Object.assign({}, COMPLET, {
+    author: [{ prenom: 'Marie', nom: 'Dupont' }, { prenom: 'Jean', nom: 'Muster' }]
+  });
+  const html = feuille([article(deux)]);
+  assert.equal(html.split(TEXTES.sectionAuteurs).length - 1, 1,
+    'le titre de section est répété — il ne doit y en avoir qu’un');
+  // Et un filet sépare les deux fiches.
+  assert.equal(html.split('class="auteur"').length - 1, 2);
+});
+
 // ---- Un champ vide s'imprime -------------------------------------------------------
 
 test('un champ vide porte la marque LEER, il ne disparaît pas', () => {

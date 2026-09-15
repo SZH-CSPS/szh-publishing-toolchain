@@ -1,12 +1,19 @@
 // Les réglages protégés : ceux qui décrivent la CHAÎNE DE PUBLICATION et non le confort
-// d'une personne — la configuration de l'export OJS et les titres de bibliographie.
+// d'une personne — la configuration de l'export OJS, les titres de bibliographie, et les
+// tâches éditoriales par article.
 //
-// Pourquoi les protéger. Ces deux blocs ne valent pas pour un poste mais pour la maison
+// Pourquoi les protéger. Ces blocs ne valent pas pour un poste mais pour la maison
 // entière : une rubrique OJS renommée sur un seul poste fait atterrir ses articles dans la
 // mauvaise section de la revue, et un titre de bibliographie changé d'un côté fait paraître
 // deux numéros de la même revue avec deux titres différents. Ils étaient pourtant offerts à
 // la saisie libre dans « Réglages SZH », au milieu du thème et du zoom, sans que rien ne
 // dise qu'on engageait tout le monde.
+//
+// Les tâches ont rejoint la liste pour la même raison, et une de plus : elles décrivent le
+// PROCESSUS éditorial d'une revue, pas un numéro ni une personne. Chaque poste tenait sa
+// propre liste, réglée depuis la vue « Articles » ; deux rédactrices pouvaient donc suivre
+// le même numéro avec deux jeux d'étapes différents, et la case cochée par l'une
+// n'existait pas chez l'autre — le sidecar la gardait sous `_inconnues`, sans un mot.
 //
 // D'où la règle : ces réglages se LISENT sur tous les postes, et ne se MODIFIENT qu'après un
 // déverrouillage explicite, qui dit ce qu'il engage. Une modification vaut alors tout de
@@ -48,10 +55,14 @@ function cheminReglagesProteges() {
     || path.join(BASE_POSTE, NOM_FICHIER);
 }
 
-// Les deux blocs protégés, et rien d'autre. Nommés une fois ici : c'est cette liste qui
-// décide de ce que le formulaire grise, de ce que le fichier déployé porte, et de ce que la
-// comparaison regarde. En ajouter un troisième ne demande que de l'écrire ici.
-const BLOCS = ['ojs', 'biblio'];
+// Les blocs protégés, et rien d'autre. Nommés une fois ici : c'est cette liste qui décide
+// de ce que le formulaire grise, de ce que le fichier déployé porte, et de ce que la
+// comparaison regarde. En ajouter un ne demande que de l'écrire ici.
+//
+// ⚠ Ce sont les clés de config.json telles quelles, et non des noms d'affichage : « ojs »,
+//   « biblio », « tachesArticle » (CLE_TACHES, lib/articles.js). Les renommer ici déplacerait
+//   ce qui est protégé sans déplacer ce qui est lu.
+const BLOCS = ['ojs', 'biblio', 'tachesArticle'];
 
 // Le contenu du fichier déployé, ou null — absent, illisible, ou pas un objet. null n'est
 // pas {} : « je n'ai pas su lire » ne se confond pas avec « il n'y a rien dedans », et

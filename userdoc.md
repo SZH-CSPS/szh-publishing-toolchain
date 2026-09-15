@@ -416,11 +416,13 @@ depuis n’importe où dans la revue) :
 
 ### Les réglages de la rédaction (lecture seule)
 
-Deux blocs de **Réglages SZH** ne se modifient pas : **« Titre de la bibliographie »** et
-**« Export OJS »**. Ils ne décrivent pas votre confort mais la façon dont la revue paraît,
-et ils valent pour **toute la rédaction** : une rubrique OJS renommée sur un seul poste fait
-atterrir ses articles dans la mauvaise section de la revue. Ils s’affichent donc en gris, à
-lire, sans cadre de saisie.
+Trois blocs de **Réglages SZH** ne se modifient pas : **« Titre de la bibliographie »**,
+**« Tâches par article »** et **« Export OJS »**. Ils ne décrivent pas votre confort mais
+la façon dont la revue paraît et dont elle se fabrique, et ils valent pour **toute la
+rédaction** : une rubrique OJS renommée sur un seul poste fait atterrir ses articles dans la
+mauvaise section de la revue, et un jeu de tâches propre à chaque poste fait suivre le même
+numéro avec deux processus différents. Ils s’affichent donc en gris, à lire, sans cadre de
+saisie.
 
 Si l’un d’eux est faux, le geste normal est de **prévenir la personne qui administre
 l’outil** : c’est elle qui déploie une correction pour tout le monde. Le bouton
@@ -720,6 +722,48 @@ Ces sauvegardes s’accumulent dans le numéro et **ne se suppriment pas toutes 
 sont là pour vous rassurer, pas pour être gérées. Quand un numéro est publié et archivé, on
 peut les effacer à la main ; chaque dossier porte un `LISEZ-MOI.txt` qui le dit.
 
+## Relire les métadonnées sur papier
+
+Les métadonnées se relisent mal à l’écran : on fait défiler, on perd sa place, et une
+adresse e-mail fausse d’une lettre passe sans qu’on la voie. Le bouton
+**« Vérifier les méta (print) »** en tire une **page A4 par article**.
+
+Il est à deux endroits, et ils ne font pas la même chose :
+
+- dans le formulaire **« Métadonnées des articles »**, il tire ce que le formulaire
+  montre – l’article seul si vous y êtes entré depuis un article, tout le numéro sinon ;
+- dans la vue **« Articles »**, il tire **tout le numéro d’un coup**.
+
+La feuille s’ouvre **dans le navigateur**, pas dans l’éditeur : c’est lui qui imprime, avec
+**Ctrl + P**. Un cadre gris en haut rappelle la marche à suivre ; il ne s’imprime pas.
+
+**Ce qu’on y trouve.** Tous les champs du formulaire, dans son ordre. Un champ vide porte
+la marque **LEER** – une feuille de contrôle qui tairait un champ absent ne servirait à
+rien. Les textes traduisibles sont **empilés**, français puis allemand, ce qui fait sauter
+aux yeux une traduction qui manque ; les mots-clés, eux, restent **en colonnes**, parce que
+c’est leur appariement d’une langue à l’autre qui se vérifie. E-mail, ORCID, DOI et ROR
+sont en **chasse fixe, découpés en groupes** : c’est ainsi qu’on relit une suite de
+caractères sans signification, lettre à lettre plutôt que par mots. Les séparateurs
+affichés (`@ . - /`) sont les caractères réels de la valeur ; l’espacement, lui, est
+ajouté pour la lecture. ORCID et ROR sont montrés sans leur adresse en tête.
+
+**Deux cases par ligne**, pour une relecture à quatre yeux.
+
+**Ce qu’elle ne fait pas.** Elle ne refait pas le travail de la compilation, qui refuse
+déjà un champ vide dans la langue de l’article, une marque de traduction restée en place
+et un DOI mal formé. Elle sert à ce que la machine ne peut pas voir : **l’exactitude** –
+est-ce bien l’adresse de cette personne, son affiliation, le titre qu’elle a écrit.
+
+**La feuille périme.** Elle se lit du disque, et le formulaire est donc **enregistré
+d’abord**. En pied de page, une **empreinte** de six caractères dit de quel état elle sort :
+si quelqu’un modifie une fiche après coup, la feuille relue et cochée ne correspond plus, et
+l’empreinte de la feuille suivante le montre. Depuis la vue « Articles », si le formulaire
+des métadonnées porte des modifications non enregistrées, l’outil le dit et ne tire rien.
+
+Un article ordinaire tient sur une page ; un article à beaucoup d’auteur·e·s peut déborder
+sur une deuxième. Ce qui est garanti, c’est que **deux articles ne partagent jamais une
+feuille**.
+
 ## Les contrôles de la compilation
 
 À chaque compilation – chaque **Ctrl + S**, chaque conversion de Word, chaque
@@ -898,12 +942,21 @@ part avec l’article si on le déplace.
 **« À faire »** de la carte (« 2/4 tâches », vert quand tout est fait), et la
 même mesure dans la barre latérale, à côté du nom du dossier.
 
-Le bouton **« Tâches »** de la barre de la vue ouvre le réglage des **intitulés**. Deux
-colonnes, français et allemand : un intitulé laissé vide dans une langue reprend l’autre.
-Et **une liste par revue** – la *Revue* et la *Zeitschrift* ne suivent pas le même
-processus, et ajouter une étape à l’une ne l’impose pas à l’autre. Ces intitulés décrivent
-le processus d’une revue et non un numéro : ils valent pour **tous** ses numéros, et vivent
-dans les réglages du poste, pas dans le dossier.
+Le bouton **« Régler les tâches »** de la barre ne règle plus rien sur place : il
+**ouvre « Réglages SZH »**, où les intitulés vivent désormais, à côté du titre de la
+bibliographie et de l’export OJS. Ils y sont en **lecture seule** : ce sont des réglages de
+la rédaction (voir « Les réglages de la rédaction » plus haut), et les modifier demande de
+cocher **« Déverrouiller ces réglages »**.
+
+Pourquoi ce déménagement. Ces intitulés décrivent le **processus** d’une revue, pas un
+numéro ni le confort d’une personne. Chaque poste tenait pourtant sa propre liste : deux
+personnes pouvaient suivre le même numéro avec deux jeux d’étapes, et la case cochée par
+l’une n’existait pas chez l’autre – sans qu’aucun écran ne le dise. Une seule liste, déployée
+pour toute la rédaction, et le suivi redevient comparable d’un poste à l’autre.
+
+Le formulaire lui-même n’a pas changé : deux colonnes, français et allemand – un intitulé
+laissé vide dans une langue reprend l’autre – et **une liste par revue**, la *Revue* et la
+*Zeitschrift* ne suivant pas le même processus.
 
 Corriger un intitulé ne décoche rien : c’est l’identifiant interne, et non le texte, qui
 relie une case à son article. Retirer une tâche de la liste la retire de toutes les cartes,

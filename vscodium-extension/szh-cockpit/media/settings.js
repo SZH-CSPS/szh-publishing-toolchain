@@ -437,10 +437,117 @@
 
   function marquerBiblio() { biblioModifie = true; autoBiblio.programmer(); }
 
+  // ---- Tâches par article ---------------------------------------------------------
+  //
+  // Les intitulés décrivent le PROCESSUS éditorial d'une revue : ils valent pour tous ses
+  // numéros, et les deux maisons ont chacune sa liste. Ils se réglaient jusqu'ici dans la
+  // vue « Articles », poste par poste — deux rédactrices pouvaient donc suivre le même
+  // numéro avec deux jeux d'étapes. Ils sont maintenant ici, avec les réglages de la
+  // rédaction, donc en lecture seule tant que rien n'est déverrouillé.
+  //
+  // L'identifiant n'est PAS à l'écran : c'est lui qui est écrit dans le sidecar de chaque
+  // article, et le montrer inviterait à le corriger — ce qui décocherait la tâche partout.
+  // Il voyage dans un attribut, se dérive une fois de l'intitulé français à la création, et
+  // ne bouge plus (normaliserTaches, lib/articles.js).
+  const tachesZone = document.getElementById('taches');
+  let taches = null;           // { revues: [{cle, libelle}], table: {revue: [...], ...}, max }
+  let tachesModifie = false;
+
+  function marquerTaches() { tachesModifie = true; autoTaches.programmer(); }
+
+  function rangeeTache(g, revue, tache, index) {
+    const num = document.createElement('span');
+    num.className = 'regl-libelle';
+    num.textContent = String(index + 1);
+    g.appendChild(num);
+    for (const langue of ['fr', 'de']) {
+      const i = document.createElement('input');
+      i.type = 'text';
+      i.value = String(tache[langue] || '');
+      i.setAttribute('aria-label',
+        (langue === 'fr' ? TXT.tachesFr : TXT.tachesDe) + ' — ' + revue.libelle + ' ' + String(index + 1));
+      i.dataset.tacheRevue = revue.cle;
+      i.dataset.tacheLangue = langue;
+      i.dataset.tacheId = String(tache.id || '');
+      i.dataset.tacheRang = String(index);
+      i.addEventListener('input', marquerTaches);
+      g.appendChild(i);
+    }
+    const retirer = document.createElement('button');
+    retirer.type = 'button';
+    retirer.className = 'szh-bouton regl-retirer';
+    retirer.textContent = '×';
+    retirer.title = TXT.tachesRetirer;
+    retirer.setAttribute('aria-label', TXT.tachesRetirer + ' — ' + revue.libelle + ' ' + String(index + 1));
+    retirer.addEventListener('click', function () {
+      taches.table = collecterTaches();
+      taches.table[revue.cle].splice(index, 1);
+      marquerTaches();
+      rendreTaches();
+    });
+    g.appendChild(retirer);
+  }
+
+  function rendreTaches() {
+    tachesZone.textContent = '';
+    if (!taches) { return; }
+    for (const revue of taches.revues) {
+      const f = zone(revue.libelle);
+      const g = grille('2.5em minmax(10em, 1fr) minmax(10em, 1fr) 4.5em');
+      entete(g, ['', TXT.tachesFr, TXT.tachesDe, '']);
+      const liste = taches.table[revue.cle] || [];
+      for (let i = 0; i < liste.length; i++) { rangeeTache(g, revue, liste[i], i); }
+      f.appendChild(g);
+      const plus = document.createElement('button');
+      plus.type = 'button';
+      plus.className = 'regl-ajouter';
+      plus.textContent = TXT.tachesAjouter;
+      plus.disabled = liste.length >= taches.max;
+      plus.addEventListener('click', function () {
+        taches.table = collecterTaches();
+        taches.table[revue.cle].push({ id: '', fr: '', de: '' });
+        marquerTaches();
+        rendreTaches();
+        const champs = tachesZone.querySelectorAll('[data-tache-revue="' + revue.cle + '"]');
+        if (champs.length) { champs[champs.length - 2].focus(); }
+      });
+      f.appendChild(plus);
+      tachesZone.appendChild(f);
+    }
+    appliquerVerrou();                     // le bloc vient d'être reconstruit, à neuf
+  }
+
+  // Relit l'écran : ce qui est affiché est ce qui part. L'identifiant vient de l'attribut,
+  // jamais d'un recalcul — corriger une faute dans un intitulé ne doit pas décocher la
+  // tâche sur les articles qui la portent.
+  function collecterTaches() {
+    const sortie = {};
+    for (const revue of taches.revues) { sortie[revue.cle] = []; }
+    for (const champ of tachesZone.querySelectorAll('[data-tache-revue]')) {
+      const liste = sortie[champ.dataset.tacheRevue];
+      if (!liste) { continue; }            // revue disparue entre-temps : ignorée
+      const rang = Number(champ.dataset.tacheRang);
+      if (!liste[rang]) { liste[rang] = { id: champ.dataset.tacheId || '', fr: '', de: '' }; }
+      liste[rang][champ.dataset.tacheLangue] = champ.value.trim();
+    }
+    for (const cle of Object.keys(sortie)) {
+      sortie[cle] = sortie[cle].filter(function (t) { return !!t; });
+    }
+    return sortie;
+  }
+
+  const autoTaches = SZH.autoEnregistrement({
+    estModifie: function () { return tachesModifie; },
+    enregistrer: function (autoEcriture) {
+      tachesModifie = false;
+      vscodeApi.postMessage({ type: SZH.MSG.TACHES_ENREGISTRER, taches: collecterTaches(), auto: autoEcriture });
+    }
+  });
+
   // ---- Les réglages protégés ------------------------------------------------------
   //
-  // Les deux blocs qui suivent — titre de la bibliographie, export OJS — décrivent la
-  // chaîne de publication et non le confort d'une personne : ils valent pour toute la
+  // Les trois blocs qui suivent — titre de la bibliographie, tâches par article, export
+  // OJS — décrivent la chaîne de publication et non le confort d'une personne : ils valent pour toute la
   // rédaction, et une rubrique renommée sur un seul poste fait atterrir ses articles dans
   // la mauvaise section de la revue. Ils sont donc en lecture seule, et le déverrouillage
   // passe par l'hôte : c'est lui qui pose la question, en modale, parce qu'une webview ne
@@ -498,12 +605,12 @@
     appliquerVerrou();
   }
 
-  // Le verrou est posé sur les CONTRÔLES des deux blocs, et non sur chaque fabrique de
+  // Le verrou est posé sur les CONTRÔLES des trois blocs, et non sur chaque fabrique de
   // champ : un champ ajouté plus tard à l'un de ces formulaires est verrouillé sans qu'on
   // ait à y penser. C'est le seul endroit qui sache ce qui se grise.
   function appliquerVerrou() {
     const verrouille = !protegesEtat.deverrouille;
-    for (const bloc of [document.getElementById('biblio'), ojsZone]) {
+    for (const bloc of [document.getElementById('biblio'), tachesZone, ojsZone]) {
       if (!bloc) { continue; }
       for (const el of bloc.querySelectorAll('input, select, textarea, button')) {
         // readOnly sur un champ de saisie, disabled sur le reste : un champ désactivé sort
@@ -577,15 +684,17 @@
     const msg = e.data || {};
     recu = true;
     // Un accusé nomme son bloc : sans cela, l'accusé de l'un confirmerait l'écriture en vol
-    // de l'autre.
-    if (msg.type === SZH.MSG.ENREGISTRE) {
-      if (msg.bloc === 'biblio') { autoBiblio.confirme(); } else { auto.confirme(); }
-      return;
-    }
+    // de l'autre. Le bloc sans nom est celui de l'export OJS, le plus ancien des trois.
+    const confirmerBloc = function (bloc) {
+      if (bloc === 'biblio') { autoBiblio.confirme(); }
+      else if (bloc === 'tachesArticle') { autoTaches.confirme(); }
+      else { auto.confirme(); }
+    };
+    if (msg.type === SZH.MSG.ENREGISTRE) { confirmerBloc(msg.bloc); return; }
     // Une écriture ratée doit relâcher le verrou de l'auto-enregistrement (enVol) autant
     // qu'un succès : sinon plus rien ne s'enregistre jamais après le premier échec.
     if (msg.type === SZH.MSG.ERREUR) {
-      if (msg.bloc === 'biblio') { autoBiblio.confirme(); } else { auto.confirme(); }
+      confirmerBloc(msg.bloc);
       afficherErreur(msg.message);
       return;
     }
@@ -614,6 +723,10 @@
       biblio = msg.biblio;
       rendreBiblio();
       appliquerVerrou();
+    }
+    if (msg.taches && !tachesModifie) {
+      taches = msg.taches;
+      rendreTaches();
     }
   });
   SZH.annoncerPret(vscodeApi, function () { return recu; });
