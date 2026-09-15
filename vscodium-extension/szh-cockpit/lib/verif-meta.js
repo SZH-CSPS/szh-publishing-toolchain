@@ -184,12 +184,18 @@ function ligne(champs) {
 //
 // Les mots-clés font exception et restent en colonnes (rangeesMotsCles) : ce sont des
 // rangées APPARIÉES, et c'est l'appariement qui se vérifie.
-function rangeesMultilingues(libelle, map, langues, libellesLangues) {
+function rangeesMultilingues(libelle, map, langues, libellesLangues, pleineLargeur) {
   return langues.map((l, i) => {
     const b = baliserTexte((map || {})[l]);
+    const nomLangue = libellesLangues[l] || l;
     return {
-      libelle: i === 0 ? libelle : '', debutChamp: i === 0,
-      langue: l, langueLibelle: libellesLangues[l] || l,
+      // En pleine largeur, chaque langue est un bloc à elle seule : son étiquette porte
+      // donc le champ ET la langue (« Résumé — français »). En ligne, l'intitulé du champ
+      // ne s'écrit que sur la première langue, la colonne de langue disant le reste.
+      libelle: pleineLargeur ? libelle : (i === 0 ? libelle : ''),
+      debutChamp: i === 0,
+      langue: l, langueLibelle: nomLangue,
+      pleineLargeur: !!pleineLargeur,
       valeurHtml: b.html, vide: b.vide
     };
   });
@@ -261,7 +267,11 @@ function construireFiche(article, options, index, total) {
   const textes = []
     .concat(rangeesMultilingues(txt.titre || 'Titre', v.title, langues, nomsLangues))
     .concat(rangeesMultilingues(txt.sousTitre || 'Sous-titre', v.subtitle, langues, nomsLangues))
-    .concat(rangeesMultilingues(txt.resume || 'Résumé', v.resume, langues, nomsLangues));
+    // Le résumé passe en PLEINE LARGEUR : étiquette sur sa propre ligne, texte dessous,
+    // depuis le bord de la colonne des intitulés. C'est le seul champ assez long pour que
+    // les 46 mm mangés par les colonnes d'intitulé et de langue coûtent des lignes de
+    // repli — un titre, lui, tient sur une ligne et gagne à rester aligné avec le reste.
+    .concat(rangeesMultilingues(txt.resume || 'Résumé', v.resume, langues, nomsLangues, true));
   return {
     slug: article.slug, index: index, total: total,
     langues: langues.map((l) => ({ code: l, libelle: libelleDe(lib.langues, l) || l })),

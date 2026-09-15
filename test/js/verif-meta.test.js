@@ -57,7 +57,7 @@ const COMPLET = {
   type: 'dossier', lang: 'fr', licence: 'ccby', doi: '',
   title: { fr: 'Un titre', de: 'Ein Titel' },
   subtitle: { fr: 'Un sous-titre', de: '' },
-  resume: { fr: 'Un résumé', de: 'Eine Zusammenfassung' },
+  resume: { fr: 'Corps du resume francais', de: 'Rumpf der deutschen Zusammenfassung' },
   keywords: { fr: ['école'], de: ['Schule'] },
   author: [{
     prenom: 'Marie', nom: 'Dupont', fonction: 'Professeure', affiliation: 'HEP',
@@ -97,9 +97,11 @@ test('les valeurs d’auteur·e s’impriment toutes', () => {
 test('les champs du numéro et les textes traduisibles y sont aussi', () => {
   const html = feuille([article(COMPLET)]);
   for (const attendu of [TEXTES.type, TEXTES.langue, TEXTES.licence, TEXTES.doi,
-    TEXTES.titre, TEXTES.sousTitre, TEXTES.resume]) {
+    TEXTES.titre, TEXTES.sousTitre]) {
     assert.ok(html.indexOf('>' + attendu + '<') !== -1, 'intitulé absent : ' + attendu);
   }
+  // Le résumé ouvre un bloc pleine largeur : son intitulé est suivi de sa langue.
+  assert.ok(html.indexOf('>' + TEXTES.resume + ' — ') !== -1, 'intitulé du résumé absent');
   assert.ok(html.indexOf('Article du dossier') !== -1, 'le type est rendu en clair');
   assert.ok(html.indexOf('CC BY 4.0') !== -1, 'la licence est rendue en clair');
 });
@@ -140,14 +142,45 @@ test('les mots-clés restent en COLONNES : c’est leur appariement qui se véri
     'les mots-clés appariés ont été séparés en deux rangées');
 });
 
+test('le résumé passe en pleine largeur : étiquette sur sa ligne, texte dessous', () => {
+  const fiche = verif.construireFiche(article(COMPLET), { libelles: LIBELLES, textes: TEXTES }, 1, 1);
+  const resumes = fiche.textes.filter((r) => r.pleineLargeur);
+  assert.equal(resumes.length, 2, 'les deux langues du résumé, et elles seules');
+  // Chaque bloc porte l’intitulé du champ ET sa langue : il se lit seul.
+  for (const r of resumes) { assert.equal(r.libelle, TEXTES.resume); }
+  assert.equal(resumes[0].langueLibelle, LIBELLES.langues.fr);
+  assert.equal(resumes[1].langueLibelle, LIBELLES.langues.de);
+});
+
+test('le titre et le sous-titre restent en ligne : ils tiennent sur une ligne', () => {
+  const fiche = verif.construireFiche(article(COMPLET), { libelles: LIBELLES, textes: TEXTES }, 1, 1);
+  const enLigne = fiche.textes.filter((r) => !r.pleineLargeur);
+  assert.equal(enLigne.length, 4);
+  for (const r of enLigne) { assert.ok(r.pleineLargeur === false); }
+});
+
+test('le texte du résumé prend toute la largeur, sous son étiquette', () => {
+  const html = feuille([article(COMPLET)]);
+  const i = html.indexOf('Corps du resume francais');
+  assert.ok(i !== -1);
+  // La cellule qui le porte enjambe les colonnes d’intitulé et de langue.
+  const avant = html.slice(0, i);
+  assert.ok(avant.lastIndexOf('texte-bloc') > avant.lastIndexOf('col-langue-ligne'),
+    'le résumé est resté dans la colonne des valeurs');
+  assert.ok(html.indexOf('class="texte-bloc" colspan="3"') !== -1, 'aucune cellule pleine largeur');
+});
+
 // ---- Quatre yeux ---------------------------------------------------------------------
 
 test('chaque ligne à vérifier porte DEUX cases : une par relecteur', () => {
   const html = feuille([article(COMPLET)]);
-  const rangees = html.split('<td class="col-case">').length - 1;
+  const paire = '<td class="col-case"><span class="case"></span><span class="case"></span></td>';
+  const paires = html.split(paire).length - 1;
   const cases = html.split('<span class="case">').length - 1;
-  assert.ok(rangees > 0);
-  assert.equal(cases, rangees * 2, 'il faut deux cases par rangée, vu ' + cases + ' pour ' + rangees);
+  assert.ok(paires > 10, 'trop peu de rangées à cocher : ' + paires);
+  // Aucune case orpheline : toutes vont par deux. La ligne de texte d'un bloc pleine
+  // largeur n'en porte aucune — c'est son étiquette, juste au-dessus, qui se coche.
+  assert.equal(cases, paires * 2, 'des cases isolées : ' + cases + ' pour ' + paires + ' paires');
 });
 
 // ---- Ce qui a été retiré de la feuille ------------------------------------------------
@@ -182,9 +215,10 @@ test('un champ vide porte la marque LEER, il ne disparaît pas', () => {
 test('une fiche entièrement vide imprime quand même toutes ses rangées', () => {
   const html = feuille([article({})]);
   for (const attendu of [TEXTES.type, TEXTES.langue, TEXTES.licence, TEXTES.doi,
-    TEXTES.titre, TEXTES.sousTitre, TEXTES.resume]) {
+    TEXTES.titre, TEXTES.sousTitre]) {
     assert.ok(html.indexOf('>' + attendu + '<') !== -1, 'intitulé perdu sur fiche vide : ' + attendu);
   }
+  assert.ok(html.indexOf('>' + TEXTES.resume + ' — ') !== -1, 'le résumé a disparu d’une fiche vide');
   const leer = html.split('LEER').length - 1;
   assert.ok(leer >= 6, 'une fiche vide doit afficher LEER partout, vu ' + leer + ' fois');
 });

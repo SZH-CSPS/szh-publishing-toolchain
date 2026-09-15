@@ -89,6 +89,20 @@ td.col-libelle, th.col-libelle { width: 26mm; font-size: 8pt; color: #222; }
 /* La langue d'une ligne de texte empilée : une étiquette étroite, à côté du champ. */
 td.col-langue-ligne { width: 20mm; font-size: 8pt; color: #444; letter-spacing: 0.04em;
   text-transform: uppercase; }
+/* Le résumé en pleine largeur : son étiquette sur une ligne, son texte dessous, qui part
+   du bord de la colonne des intitulés. Un résumé de 400 signes serré dans la colonne des
+   valeurs se hachait en replis ; ici il récupère les 46 mm des deux colonnes de gauche. */
+.etiquette-bloc { font-size: 8pt; color: #222; }
+/* La langue se lit comme dans les autres rangées : capitales et interlettrage. */
+.langue-bloc { text-transform: uppercase; letter-spacing: 0.04em; color: #444; }
+.bloc-texte td { padding-top: 0; }
+/* En drapeau, jamais justifié : sans césure, la justification étire les blancs d'une
+   ligne à l'autre, et un blanc irrégulier gêne exactement la lecture qu'on demande ici. */
+.texte-bloc { text-align: left; }
+/* Le filet s'ouvre AVANT l'étiquette du bloc, jamais entre elle et son texte. */
+tbody tr.bloc-tete + tr td { border-top: none; }
+tbody tr.bloc-tete:not(:first-child) td { border-top: 0.5pt solid #888; }
+
 /* Le filet ne sépare que les CHAMPS, pas les langues d'un même champ : titre fr et titre
    de se lisent d'un bloc. `tbody tr + tr td` le poserait partout, d'où la reprise. */
 tbody tr.debut-champ + tr td { border-top: none; }
@@ -160,12 +174,23 @@ td.col-numero, th.col-numero { width: 7mm; font-size: 8.5pt; color: #444; }
     <table>
       <tbody>
       {% for r in fiche.textes %}
+        {% if r.pleineLargeur %}
+        <tr class="bloc-tete">
+          <td class="col-case"><span class="case"></span><span class="case"></span></td>
+          <td class="etiquette-bloc" colspan="3">{{ r.libelle|e }} — <span class="langue-bloc">{{ r.langueLibelle|e }}</span></td>
+        </tr>
+        <tr class="bloc-texte">
+          <td class="col-case"></td>
+          <td class="texte-bloc" colspan="3">{% if r.vide %}<span class="leer">{{ vide|e }}</span>{% else %}{{ r.valeurHtml }}{% endif %}</td>
+        </tr>
+        {% else %}
         <tr{% if r.debutChamp %} class="debut-champ"{% endif %}>
           <td class="col-case"><span class="case"></span><span class="case"></span></td>
           <td class="col-libelle">{{ r.libelle|e }}</td>
           <td class="col-langue-ligne">{{ r.langueLibelle|e }}</td>
           <td>{% if r.vide %}<span class="leer">{{ vide|e }}</span>{% else %}{{ r.valeurHtml }}{% endif %}</td>
         </tr>
+        {% endif %}
       {% endfor %}
       </tbody>
     </table>
