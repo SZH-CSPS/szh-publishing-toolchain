@@ -97,7 +97,7 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.zs'       = 'Nouvelle Zeitschrift…'
     'lanceur.vide.archives.zs'  = 'Aucune Zeitschrift archivée.'
     'lien.invalide'             = "Ce lien n'est pas un lien de revue SZH valide :`n`n{0}"
-    'lien.introuvable'          = "Ce lien renvoie au numéro « {0} » ({1}), introuvable sur ce poste.`n`nVérifiez que OneDrive a fini de synchroniser le dossier, puis réessayez. Vous pouvez aussi ouvrir le numéro à la main depuis « Revue & Zeitschrift »."
+    'lien.introuvable'          = "Ce lien renvoie au numéro « {0} » ({1}), introuvable sur ce poste.`n`nVérifiez que OneDrive a fini de synchroniser le dossier, puis réessayez. Vous pouvez aussi ouvrir le numéro à la main depuis « Pronto »."
     'lanceur.hors'              = '{0} revue(s) hors arborescence dans {1} – à déplacer.'
     'lanceur.encours'           = 'En cours :'
     'lanceur.archives'          = 'Archivées :'
@@ -234,7 +234,7 @@ $script:SzhTextes = @{
     'ancrage.demande.titre' = 'Dossier partagé SharePoint introuvable'
     'ancrage.demande.texte' = 'L’’outil n’’a pas trouvé automatiquement le dossier partagé SharePoint des revues et des livres. Indiquez un dossier qui s’’y trouve, ou qui contient le dossier « Daten_Allgemein - General ».'
     'ancrage.demande.echec' = 'Ce dossier ne mène pas au dossier partagé recherché : un dossier nommé « Daten_Allgemein - General », sous le dossier indiqué ou au-dessus de lui. Choisissez un autre dossier.'
-    'ancrage.abandon'       = 'Le dossier partagé SharePoint n’’a pas pu être rattaché : les revues et les livres resteront introuvables sur ce poste tant qu’’il ne l’’est pas. La demande réapparaîtra à la prochaine ouverture de « Revue & Zeitschrift », passé 24 heures. Besoin d’’aide plus tôt : {0}'
+    'ancrage.abandon'       = 'Le dossier partagé SharePoint n’’a pas pu être rattaché : les revues et les livres resteront introuvables sur ce poste tant qu’’il ne l’’est pas. La demande réapparaîtra à la prochaine ouverture de « Pronto », passé 24 heures. Besoin d’’aide plus tôt : {0}'
     # Ligne d'info du lanceur (open-produit.ps1) quand l'ancrage reste absent après
     # Initialize-SzhAncrage : dit pourquoi la liste est vide, sans rouvrir de fenêtre.
     'lanceur.ancrage.absent' = 'Dossier partagé SharePoint introuvable : la liste ci-dessus restera vide tant que ce dossier ne sera pas rattaché.'
@@ -360,7 +360,7 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.zs'       = 'Neue Zeitschrift…'
     'lanceur.vide.archives.zs'  = 'Keine archivierte Zeitschrift.'
     'lien.invalide'             = "Dieser Link ist kein gültiger SZH-Zeitschriftenlink:`n`n{0}"
-    'lien.introuvable'          = "Dieser Link verweist auf die Ausgabe « {0} » ({1}), die auf diesem Computer nicht gefunden wurde.`n`nPrüfen Sie, ob OneDrive den Ordner fertig synchronisiert hat, und versuchen Sie es erneut. Sie können die Ausgabe auch von Hand über « Revue & Zeitschrift » öffnen."
+    'lien.introuvable'          = "Dieser Link verweist auf die Ausgabe « {0} » ({1}), die auf diesem Computer nicht gefunden wurde.`n`nPrüfen Sie, ob OneDrive den Ordner fertig synchronisiert hat, und versuchen Sie es erneut. Sie können die Ausgabe auch von Hand über « Pronto » öffnen."
     'lanceur.hors'              = '{0} Zeitschrift(en) ausserhalb der Ablage in {1} – zu verschieben.'
     'lanceur.encours'           = 'In Arbeit:'
     'lanceur.archives'          = 'Archiviert:'
@@ -485,7 +485,7 @@ $script:SzhTextes = @{
     'ancrage.demande.titre' = 'Freigegebener SharePoint-Ordner nicht gefunden'
     'ancrage.demande.texte' = 'Das Werkzeug hat den freigegebenen SharePoint-Ordner der Zeitschriften und Bücher nicht automatisch gefunden. Wählen Sie einen Ordner, der darin liegt, oder der den Ordner «Daten_Allgemein - General» enthält.'
     'ancrage.demande.echec' = 'Dieser Ordner führt nicht zum gesuchten freigegebenen Ordner: ein Ordner namens «Daten_Allgemein - General», unterhalb des gewählten Ordners oder darüber. Wählen Sie einen anderen Ordner.'
-    'ancrage.abandon'       = 'Der freigegebene SharePoint-Ordner konnte nicht verknüpft werden: Zeitschriften und Bücher bleiben auf diesem Rechner unauffindbar, bis er es ist. Die Anfrage erscheint beim nächsten Öffnen von «Revue & Zeitschrift» wieder, nach 24 Stunden. Für frühere Hilfe: {0}'
+    'ancrage.abandon'       = 'Der freigegebene SharePoint-Ordner konnte nicht verknüpft werden: Zeitschriften und Bücher bleiben auf diesem Rechner unauffindbar, bis er es ist. Die Anfrage erscheint beim nächsten Öffnen von «Pronto» wieder, nach 24 Stunden. Für frühere Hilfe: {0}'
     # Info-Zeile des Launchers (open-produit.ps1), wenn der Ordner nach Initialize-SzhAncrage
     # weiterhin fehlt: sagt, weshalb die Liste leer bleibt.
     'lanceur.ancrage.absent' = 'Freigegebener SharePoint-Ordner nicht gefunden: Die Liste bleibt leer, bis er verknüpft ist.'
@@ -611,7 +611,7 @@ $script:SzhTextes = @{
     'lanceur.nouvelle.zs'       = 'New Zeitschrift…'
     'lanceur.vide.archives.zs'  = 'No archived Zeitschrift.'
     'lien.invalide'             = "This is not a valid SZH journal link:`n`n{0}"
-    'lien.introuvable'          = "This link points to issue {0} ({1}), which was not found on this computer.`n`nCheck that OneDrive has finished syncing the folder, then try again. You can also open the issue by hand from the Revue & Zeitschrift launcher."
+    'lien.introuvable'          = "This link points to issue {0} ({1}), which was not found on this computer.`n`nCheck that OneDrive has finished syncing the folder, then try again. You can also open the issue by hand from the Pronto launcher."
     'lanceur.hors'              = '{0} journal(s) outside the official tree in {1} — to be moved.'
     'lanceur.encours'           = 'In progress:'
     'lanceur.archives'          = 'Archived:'
@@ -735,7 +735,7 @@ $script:SzhTextes = @{
     'ancrage.demande.titre' = 'Shared SharePoint folder not found'
     'ancrage.demande.texte' = 'The tool could not automatically find the shared SharePoint folder for journals and books. Pick a folder that is inside it, or that contains the "Daten_Allgemein - General" folder.'
     'ancrage.demande.echec' = 'This folder does not lead to the shared folder being searched for: one named "Daten_Allgemein - General", below the folder you picked or above it. Choose another folder.'
-    'ancrage.abandon'       = 'The shared SharePoint folder could not be linked: journals and books will stay unreachable on this computer until it is. The request comes back the next time the Revue & Zeitschrift launcher is opened, after 24 hours. For earlier help: {0}'
+    'ancrage.abandon'       = 'The shared SharePoint folder could not be linked: journals and books will stay unreachable on this computer until it is. The request comes back the next time the Pronto launcher is opened, after 24 hours. For earlier help: {0}'
     # Launcher info line (open-produit.ps1) when the anchor is still missing after
     # Initialize-SzhAncrage: says why the list stays empty.
     'lanceur.ancrage.absent' = 'Shared SharePoint folder not found: the list will stay empty until it is linked.'

@@ -1,7 +1,7 @@
 ﻿<#
 .SYNOPSIS
   Le lanceur du poste : une fenetre, quatre onglets -- Revue, Zeitschrift, Book, et les
-  reglages. Appele par hidden.vbs depuis l'entree « Revue & Zeitschrift » du menu Demarrer,
+  reglages. Appele par hidden.vbs depuis l'entree « Pronto » du menu Demarrer,
   donc sans console. Chaque onglet de produit liste les numeros (ou les livres) en cours et
   archives, et ouvre celui qu'on choisit dans VSCodium ; l'onglet des reglages decide lequel
   des trois s'ouvre au demarrage, et dans quelle langue.

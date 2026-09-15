@@ -54,7 +54,7 @@ function Start-SzhCodium([string]$Dossier) {
 # ne les porte pas. Il faut dépingler puis réépingler une fois, geste laissé au rédacteur —
 # le dossier des épinglages est tenu par le shell, et y écrire reste sans effet jusqu'au
 # redémarrage d'explorer.exe. Le renommage des entrées de menu (« Revues SZH » et les deux
-# autres sont devenues « Revue & Zeitschrift ») oblige de toute façon à ce geste : un
+# autres sont devenues « Pronto ») oblige de toute façon à ce geste : un
 # épinglage désigne un .lnk qui n'existe plus.
 #
 # « SZH.Publishing.Suite » est un nom neuf, jamais porté par les anciennes entrées : une
@@ -294,8 +294,8 @@ function Get-SzhLnkAppId([string]$Lnk) {
 # Renommer ces entrées n'est pas gratuit : un .lnk renommé est un .lnk supprimé puis recréé,
 # ce qui casse les épinglages de barre des tâches. Set-SzhRaccourcisMenu retire les anciens
 # noms de lui-même (voir plus bas) ; le réépinglage, lui, reste un geste du rédacteur.
-$script:SzhNomApplication = 'Revue & Zeitschrift'
-$script:SzhNomMiseAJour   = 'Revue & Zeitschrift (Updater)'
+$script:SzhNomApplication = 'Pronto'
+$script:SzhNomMiseAJour   = 'Pronto (Updater)'
 
 # Ce que le menu doit porter, une ligne par entrée : le nom du .lnk, sa cible, ses
 # arguments, sa description (l'infobulle), son icône, et le script qu'elle pilote.
@@ -309,7 +309,7 @@ $script:SzhNomMiseAJour   = 'Revue & Zeitschrift (Updater)'
 # Pourquoi une seule mise à jour, alors qu'il en fallait deux ? Un nom de .lnk est figé,
 # alors que la langue de l'interface bouge : renommer l'entrée à chaque passe l'aurait fait
 # changer sous les doigts du rédacteur, et cassé son épinglage à chaque fois. D'où deux noms
-# fixes, l'un français l'autre allemand. « Revue & Zeitschrift (Updater) » règle la même
+# fixes, l'un français l'autre allemand. « Pronto (Updater) » règle la même
 # question autrement : un nom qui ne demande aucune traduction, donc qui ne bouge jamais.
 # Le mot « Updater » se lit dans les deux langues, contrairement à « Mise à jour ».
 #
@@ -348,7 +348,7 @@ function Get-SzhRaccourcisMenu {
     cible  = $wscript
     args   = ('//B "{0}" "{1}"' -f $vbs, $lanceur)
     desc   = $SzhTextes[$SzhLangue]['raccourci.lanceur.desc']
-    icone  = (Join-Path $Toolkit 'windows\szh-revue.ico')
+    icone  = (Join-Path $Toolkit 'windows\pronto.ico')
     appid  = (Get-SzhAppId 'suite')
     pilote = $lanceur
   })
@@ -359,7 +359,7 @@ function Get-SzhRaccourcisMenu {
     cible  = $ps
     args   = ('-NoProfile -ExecutionPolicy Bypass -File "{0}"' -f $maj)
     desc   = $SzhTextes[$SzhLangue]['raccourci.maj.desc']
-    icone  = (Join-Path $Toolkit 'windows\szh-maj.ico')
+    icone  = (Join-Path $Toolkit 'windows\pronto-maj.ico')
     appid  = (Get-SzhAppId 'maj')
     pilote = $maj
   })
@@ -380,7 +380,8 @@ function Get-SzhRaccourcisMenu {
 # saute plusieurs versions doit retrouver ici tout ce qu'il a pu recevoir.
 function Get-SzhRaccourcisObsoletes {
   $noms = New-Object System.Collections.ArrayList
-  foreach ($n in @('Revues SZH', 'Zeitschriften SZH', 'Books SZH-CSPS')) { [void]$noms.Add($n) }
+  foreach ($n in @('Revues SZH', 'Zeitschriften SZH', 'Books SZH-CSPS',
+                   'Revue & Zeitschrift', 'Revue & Zeitschrift (Updater)')) { [void]$noms.Add($n) }
   foreach ($langue in @('fr', 'de', 'en')) {
     try {
       $nom = [string]$SzhTextes[$langue]['raccourci.maj.nom']

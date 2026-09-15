@@ -53,7 +53,7 @@ par personne et par poste.
 Les deux autres entrées restent disponibles et font exactement la même chose :
 
 - **« Ouvrir la revue »** – le raccourci présent dans le dossier de chaque revue ;
-- **« Revue & Zeitschrift »** – dans le menu Démarrer (liste toutes les revues du poste,
+- **« Pronto »** – dans le menu Démarrer (liste toutes les revues du poste,
   onglet par onglet).
 
 ## La barre « Revue » (tout gérer sans l’explorateur)
@@ -424,7 +424,7 @@ chaque fois. C’est voulu – c’est un geste d’exception, pas un mode dans
 Au premier lancement, l’outil **prend la langue que le lanceur a résolue** : celle de
 Windows si elle est française ou allemande, l’allemand sinon – ce n’est plus le nom du
 lanceur ouvert qui décide, depuis que « Revues SZH » et « Zeitschriften SZH »
-ont fusionné en un seul lanceur, « Revue & Zeitschrift ». Il n’y a rien à régler sur
+ont fusionné en un seul lanceur, « Pronto ». Il n’y a rien à régler sur
 un poste neuf.
 
 Pour en changer, ou pour le figer : **🚀 Commande → Réglages SZH → Langue de l’interface**.
@@ -1106,7 +1106,7 @@ Windows demande une fois l’autorisation d’ouvrir ce type de lien : c’est 
 
 Si le lien ne fonctionne pas (poste sans la chaîne installée, dossier pas encore synchronisé par
 OneDrive), le message le dit et il reste toujours possible d’ouvrir le numéro à la main depuis
-« Revue & Zeitschrift ». Le lien ne contient aucun chemin : il ne peut désigner qu’un numéro rangé aux
+« Pronto ». Le lien ne contient aucun chemin : il ne peut désigner qu’un numéro rangé aux
 emplacements officiels.
 
 Ce bouton **ne change aucun état** de traduction : pour lancer la campagne, c’est le bouton ✓✓ de
@@ -1317,7 +1317,7 @@ Deux boutons pour revenir en arrière, indépendants l’un de l’autre :
 - **« Désarchiver la revue »** le ramène dans l’arborescence « en cours » (le verrou,
   lui, reste posé : à déverrouiller séparément si vous voulez corriger quelque chose).
 
-Dans le lanceur **« Revue & Zeitschrift »**, les numéros archivés apparaissent dans une **liste
+Dans le lanceur **« Pronto »**, les numéros archivés apparaissent dans une **liste
 séparée**, et un **🔒** signale ceux qui sont verrouillés.
 
 ## Un livre, dans le même outil
@@ -1381,7 +1381,7 @@ Quatre choses valent la peine d’être sues.
   aboutisse, l’outil renonce à se taire et ouvre la fenêtre visible, pour que ça se voie.
 
 Pour le faire à la demande – après un appel au support, ou parce qu’une correction vient
-d’être annoncée – le menu Démarrer porte l’entrée **« Revue & Zeitschrift (Updater) »** : une
+d’être annoncée – le menu Démarrer porte l’entrée **« Pronto (Updater) »** : une
 seule entrée, quelle que soit votre langue de travail – la fenêtre parle la langue réglée sur
 votre poste. Une fenêtre s’ouvre et se ferme toute seule à la fin.
 
@@ -1401,7 +1401,7 @@ bouton **« Changer de version… »** du lanceur fait la même chose.
 
 ## La version du logiciel
 
-Le lanceur **« Revue & Zeitschrift »** affiche en bas **« Version : … »** : la version installée
+Le lanceur **« Pronto »** affiche en bas **« Version : … »** : la version installée
 sur ce poste. Chaque numéro, lui, retient la version avec laquelle il a été **créé**.
 
 Si vous ouvrez un ancien numéro et que les deux ne correspondent pas, un message
@@ -1484,11 +1484,11 @@ mise en forme (bascule).
 
 ## Créer une nouvelle revue
 
-Le menu Démarrer porte **une seule** entrée de lanceur, **« Revue & Zeitschrift »**, avec un
+Le menu Démarrer porte **une seule** entrée de lanceur, **« Pronto »**, avec un
 onglet par produit – **Revue**, **Zeitschrift**, **Book** (ces noms d’onglet ne se traduisent pas)
 – plus un onglet **Journal** et un onglet **Paramètres**. Chaque onglet de produit ne montre
 **que son produit** et ne crée **que dans son dossier** – c’est ce qui garantit qu’un numéro ne se retrouve pas rangé du mauvais
-côté. (L’entrée **« Revue & Zeitschrift (Updater) »** du même menu, elle, ne crée rien : voir
+côté. (L’entrée **« Pronto (Updater) »** du même menu, elle, ne crée rien : voir
 « Mettre l’outil à jour soi-même ».)
 
 L’onglet **Journal** liste les dix dernières mises à jour de l’outil sur ce poste, avec leur
@@ -1522,7 +1522,7 @@ seul – l’onglet le dit. C’est lui qui bascule entre le dossier de test et
 plus bas « Où vivent vos numéros ») ; les listes et le titre de la fenêtre ne le suivent qu’à la
 prochaine ouverture du lanceur.
 
-Menu Démarrer → **Revue & Zeitschrift** → l’onglet du produit voulu → bouton
+Menu Démarrer → **Pronto** → l’onglet du produit voulu → bouton
 **« Nouvelle revue… »** (en bas à gauche).
 La boîte demande deux choses, et deux seulement :
 
@@ -1580,7 +1580,7 @@ dans `RV02_Redaction` (ou `ZS02_Redaktion`) et il apparaîtra.
 d’essai : `OneDrive - SZH CSPS\Revues-TESTING`, avec exactement la même arborescence que la
 production. Le lanceur le dit **toujours**, à trois endroits :
 
-- le **titre de la fenêtre** – `Revue & Zeitschrift – dossier de test (Revues-TESTING)` ;
+- le **titre de la fenêtre** – `Pronto – dossier de test (Revues-TESTING)` ;
 - la ligne **« Revue dans : … »** (ou « Zeitschrift dans : … ») sous les deux listes, avec le
   chemin complet,
 - une ligne rouge en tête du bloc d’informations, qui rappelle que tout ce qui est créé ici part
@@ -1592,7 +1592,7 @@ Dans le cockpit, un numéro déjà ouvert le montre aussi, par un badge orangé 
 règle le mode développeur, et précise si c’est le réglage du poste ou seulement son défaut,
 faute de configuration.
 
-La bascule se fait dans le lanceur : menu Démarrer → **Revue & Zeitschrift** → onglet
+La bascule se fait dans le lanceur : menu Démarrer → **Pronto** → onglet
 **Paramètres** → « Mode développeur (dossiers de test) ». C’est le seul réglage de cet onglet
 qui vaille pour **tout le poste**, et non pour votre seul compte Windows. Il ne déplace **aucun
 fichier** : il change l’endroit où le lanceur regarde, et les listes ne le suivent qu’à la
@@ -1601,7 +1601,7 @@ avant tout : elles disent laquelle des deux racines est active (voir `docs/EMPL
 
 ## L’onglet « Export et secrétariat »
 
-Menu Démarrer → **Revue & Zeitschrift** porte un onglet de plus, à côté de Revue,
+Menu Démarrer → **Pronto** porte un onglet de plus, à côté de Revue,
 Zeitschrift, Book, Journal et Paramètres : **« Export et secrétariat »**. Il ne sert pas à
 ouvrir un numéro, mais à produire quatre fichiers pour le secrétariat de rédaction.
 

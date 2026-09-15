@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Point d'entree du lanceur « Revue & Zeitschrift », appele par hidden.vbs, donc sans
+  Point d'entree du lanceur « Pronto », appele par hidden.vbs, donc sans
   console. Enveloppe de quelques lignes : le raccourci du menu Demarrer
   (Get-SzhRaccourcisMenu, dans le socle) et le gestionnaire du protocole "szh:" (update.ps1)
   visent ce script par son nom, il reste donc le point d'entree -- toute la logique (fenetre

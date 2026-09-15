@@ -119,7 +119,7 @@ Rien de cette liste ne dépend de `emplacementRevues`.
 | Extensions VSCodium installées | `C:\Users\robin\.vscode-oss\extensions\` — dont `szh-csps.szh-cockpit-0.22.1` et `szh-csps.szh-apercu-0.1.2` |
 | Réglages de l'éditeur | `C:\Users\robin\AppData\Roaming\VSCodium\User\settings.json` |
 | Intention d'ouverture (lien `szh://`, usage unique) | `C:\Users\robin\AppData\Local\SZH\intention.json` |
-| Raccourcis du menu Démarrer | `Revue & Zeitschrift.lnk`, `Revue & Zeitschrift (Updater).lnk` (posés par `update.ps1` ; noms provisoires, tenus dans `$SzhNomApplication`/`$SzhNomMiseAJour`, `windows/szh-shell.ps1`) |
+| Raccourcis du menu Démarrer | `Pronto.lnk`, `Pronto (Updater).lnk` (posés par `update.ps1` ; noms provisoires, tenus dans `$SzhNomApplication`/`$SzhNomMiseAJour`, `windows/szh-shell.ps1`) |
 | Archives d'un numéro | **dans la racine active**, sous `…RV99_Archives` / `…ZS99_Archives` |
 
 L'archivage ne sort jamais de la racine active : un numéro archivé passe de
@@ -176,14 +176,14 @@ distributions ne sont jamais désinscrits ni supprimés.
 
 ## 6. Lire l'emplacement actif sans ouvrir un fichier
 
-1. **Le titre de la fenêtre du lanceur** (menu Démarrer → *Revue & Zeitschrift*) le porte
+1. **Le titre de la fenêtre du lanceur** (menu Démarrer → *Pronto*) le porte
    toujours, dans les deux sens — **un seul titre**, quel que soit l'onglet ouvert (Revue,
    Zeitschrift ou Book), depuis que les trois produits partagent une fenêtre unique ; seule
    l'étiquette de la racine suit la langue du lanceur :
-   - `Revue & Zeitschrift – dossier de test (Revues-TESTING)`
-   - `Revue & Zeitschrift – dossier de production (2_Produkte)`
-   - `Revue & Zeitschrift – Testordner (Revues-TESTING)`
-   - `Revue & Zeitschrift – Produktionsordner (2_Produkte)`
+   - `Pronto – dossier de test (Revues-TESTING)`
+   - `Pronto – dossier de production (2_Produkte)`
+   - `Pronto – Testordner (Revues-TESTING)`
+   - `Pronto – Produktionsordner (2_Produkte)`
 2. **Le bloc d'informations du lanceur**, sous les deux listes, donne le chemin complet de
    la racine active — dans les **deux** racines, et non plus en test seulement. C'était le
    cas grave qui restait muet : un lanceur basculé sur `production`, listes vides, ne disait
@@ -244,12 +244,12 @@ c'est-à-dire exactement ce que le poste voyait déjà.
 
 ## 8. Reprise : « je ne vois plus mes revues »
 
-1. Menu Démarrer → **Revue & Zeitschrift**. Lire le **titre de la fenêtre**.
+1. Menu Démarrer → **Pronto**. Lire le **titre de la fenêtre**.
 2. S'il dit `dossier de production (2_Produkte)` et que les listes sont vides : les numéros
    sont dans la racine de test, l'interrupteur est du mauvais côté. **Rien n'a été
    déplacé ni supprimé.**
 3. Remettre l'interrupteur :
-   - *par le lanceur* — menu Démarrer → **Revue & Zeitschrift** → onglet **Paramètres** →
+   - *par le lanceur* — menu Démarrer → **Pronto** → onglet **Paramètres** →
      « Mode développeur (dossiers de test) » → Activé (c'est le nom d'avant de l'emplacement
      de test). Ce réglage vaut pour **tout le poste**, pas pour un seul compte Windows, et les
      listes ne le suivent qu'à la prochaine ouverture du lanceur ;

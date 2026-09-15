@@ -29,13 +29,13 @@ const ANCIENS = {
     "art.envoi.sujet": "Version finale – {0}",
     "art.envoi.corps": "Bonjour,\n\nVous trouverez en pièce jointe la version finale de votre article « {0} », telle qu’elle paraîtra dans {1}.\n\nMerci de nous signaler toute correction avant l’impression.\n\nAvec nos remerciements pour votre contribution,\nLa rédaction",
     "trad.lien.sujet": "Traduction allemand vers français – {0}",
-    "trad.lien.corps": "Bonjour,\n\nLe numéro {0} de la Schweizerische Zeitschrift für Heilpädagogik est prêt pour la traduction de l’allemand vers le français.\n\nPour l’ouvrir directement au bon endroit : COPIEZ le lien ci-dessous, puis collez-le dans la fenêtre « Exécuter » de Windows (touche Windows + R) et validez.\n\n{1}\n\nAutre chemin, sans le lien : menu Démarrer -> « Revue & Zeitschrift », onglet « Zeitschrift », puis le numéro.\n"
+    "trad.lien.corps": "Bonjour,\n\nLe numéro {0} de la Schweizerische Zeitschrift für Heilpädagogik est prêt pour la traduction de l’allemand vers le français.\n\nPour l’ouvrir directement au bon endroit : COPIEZ le lien ci-dessous, puis collez-le dans la fenêtre « Exécuter » de Windows (touche Windows + R) et validez.\n\n{1}\n\nAutre chemin, sans le lien : menu Démarrer -> « Pronto », onglet « Zeitschrift », puis le numéro.\n"
   },
   "de": {
     "art.envoi.sujet": "Endfassung – {0}",
     "art.envoi.corps": "Guten Tag\n\nIm Anhang finden Sie die Endfassung Ihres Artikels «{0}», so wie er in {1} erscheinen wird.\n\nBitte melden Sie uns allfällige Korrekturen vor dem Druck.\n\nMit bestem Dank für Ihren Beitrag\nDie Redaktion",
     "trad.lien.sujet": "Übersetzung Französisch nach Deutsch – {0}",
-    "trad.lien.corps": "Guten Tag\n\nDie Ausgabe {0} der Revue suisse de pédagogie spécialisée ist bereit für die Übersetzung vom Französischen ins Deutsche.\n\nSo öffnen Sie sie direkt an der richtigen Stelle: KOPIEREN Sie den Link unten, fügen Sie ihn im Windows-Fenster «Ausführen» ein (Windows-Taste + R) und bestätigen Sie.\n\n{1}\n\nOhne den Link: Startmenü -> «Revue & Zeitschrift», Registerkarte «Revue», dann die Ausgabe wählen.\n"
+    "trad.lien.corps": "Guten Tag\n\nDie Ausgabe {0} der Revue suisse de pédagogie spécialisée ist bereit für die Übersetzung vom Französischen ins Deutsche.\n\nSo öffnen Sie sie direkt an der richtigen Stelle: KOPIEREN Sie den Link unten, fügen Sie ihn im Windows-Fenster «Ausführen» ein (Windows-Taste + R) und bestätigen Sie.\n\n{1}\n\nOhne den Link: Startmenü -> «Pronto», Registerkarte «Revue», dann die Ausgabe wählen.\n"
   }
 };
 

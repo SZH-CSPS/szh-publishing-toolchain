@@ -83,6 +83,6 @@ gestes :
 - L’**ordre des articles** suit l’ordre des fichiers dans `articles` – renomme-les au besoin (`01-…`, `02-…`).
 - Pour rédiger en **allemand**, nomme le fichier `….de.md` (la correction passe en allemand).
 - Pour **rouvrir** une revue plus tard : raccourci **« Ouvrir la revue »** dans le dossier, ou
-  **« Revue & Zeitschrift »** (onglet **Revue**) dans le menu Démarrer.
+  **« Pronto »** (onglet **Revue**) dans le menu Démarrer.
 
 Bonne mise en page ! ✨

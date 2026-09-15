@@ -81,7 +81,7 @@ function lancerArchivage(action, racine) {
   return lancerScriptPowerShell(SCRIPT_ARCHIVAGE, args);
 }
 
-// Ouvre le sélecteur de versions du lanceur « Revue & Zeitschrift », seule implémentation du choix
+// Ouvre le sélecteur de versions du lanceur « Pronto », seule implémentation du choix
 // de version. Rien ne remonte de ce lancement : le lanceur journalise son entrée dans
 // C:\ProgramData\SZH\logs, unique trace si l'utilisateur dit que rien ne se passe.
 function lancerChoixVersion() {

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # icone.py — fabrique les quatre icônes du toolkit, à côté de ce script :
 #
-#     szh-revue.ico        raccourci « Revue & Zeitschrift » du menu Démarrer, fenêtre du
-#                          lanceur, entrée « Revue SZH » d'« Ouvrir avec » et type .md
+#     szh-revue.ico        boîte « Nouvelle revue… », ouverte depuis l'onglet « Revue »
 #     szh-zeitschrift.ico  boîte « Nouvelle Zeitschrift… », ouverte depuis cet onglet
-#     szh-maj.ico          raccourci « Revue & Zeitschrift (Updater) » du menu Démarrer
+#     szh-maj.ico          plus référencé nulle part depuis le renommage en « Pronto » ;
+#                          gardé et fabriqué le temps qu'on décide de son sort
 #     szh-livre.ico        boîte « Nouveau livre… », ouverte depuis l'onglet « Book »
 #
 #     python3 windows/icone.py        (réécrit les quatre .ico à côté)
@@ -16,8 +16,10 @@
 # l'icône devient le seul repère.
 #
 # Il y avait un raccourci par produit jusqu'au 13.09.2026, donc une icône par raccourci.
-# Le lanceur est maintenant unique et reprend celle de la revue, faute d'une image propre à
-# l'application. Les deux autres restent fabriquées et livrées : elles habillent les boîtes
+# Le lanceur unique a repris celle de la revue jusqu'au renommage en « Pronto » du
+# 15.09.2026 : les deux entrées du menu Démarrer portent depuis pronto.ico et
+# pronto-maj.ico, d'un tout autre dessin, fabriquées par icone-pronto.py à partir des .svg.
+# Les icônes ci-dessous restent fabriquées et livrées : elles habillent les boîtes
 # « Nouveau… » d'un onglet, les seules fenêtres du lanceur qui appartiennent à un produit.
 #
 # Le dessin, « l'étagère » : trois dos de fascicule couleur papier, de hauteurs inégales,
@@ -75,7 +77,7 @@ FLECHE = ((TABLETTE, None), (FLECHE_HAMPE, PAPIER), (FLECHE_POINTE, PAPIER))
 # tuiles et les propriétés de fichier.
 TAILLES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 ICI = os.path.dirname(os.path.abspath(__file__))
-# Un fichier par usage. Ces noms sont ceux que cherchent szh-common.ps1, open-revue.ps1 et
+# Un fichier par usage. Ces noms sont ceux que cherchent szh-produits.ps1, open-produit.ps1 et
 # open-livre.ps1 : les changer ici sans les changer là-bas fait retomber les raccourcis sur
 # VSCodium.
 VARIANTES = (('szh-revue.ico', CAPUCINE, ETAGERE),

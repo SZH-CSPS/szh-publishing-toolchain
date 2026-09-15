@@ -357,6 +357,32 @@ if ($origineToolkit -eq 'release') {
   $script:SzhDossierScripts = Join-Path $racineDepot 'windows'
 }
 
+# ---- Windows PowerShell 5.1, une fois pour les trois scripts lancés plus bas ----
+# Explicitement 5.1, même repli que Get-SzhRaccourcisMenu (szh-common.ps1) : $PSHOME
+# désignerait pwsh si ce script tournait sous PowerShell 7. Sert à patch-icone.ps1 juste en
+# dessous, puis à update.ps1 et diagnostic.ps1 tout en bas.
+$psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+if (-not (Test-Path $psExe)) { $psExe = Join-Path $PSHOME 'powershell.exe' }
+
+# ---- Icône Pronto sur l'éditeur ----
+#
+# Après le toolkit, exprès : patch-icone.ps1 inscrit dans les raccourcis le chemin
+# $SzhToolkit\windows\pronto.ico, qui doit donc déjà être là — un raccourci retient un
+# chemin, pas une image. Lancé depuis $SzhDossierScripts pour la même raison qu'update.ps1
+# et diagnostic.ps1 (voir juste au-dessus), et dans son propre processus : il sort en code 1
+# quand un point reste à regarder, et un `exit` dot-sourcé emporterait bootstrap avec lui.
+#
+# Jamais bloquant : une icône est un confort d'affichage, pas une condition d'installation.
+Info 'Icône Pronto sur l''éditeur'
+try {
+  Invoke-SzhNatif {
+    & $psExe -NoProfile -ExecutionPolicy Bypass `
+      -File (Join-Path $SzhDossierScripts 'patch-icone.ps1') | Out-Host
+  }
+} catch {
+  Attention ('Icône non posée : ' + $_.Exception.Message)
+}
+
 # ---- Raccourcis du menu Démarrer ----
 # Posés ici, sans attendre la première mise à jour : si la Release est injoignable, celle-ci
 # s'arrête à la lecture du manifest et le poste resterait sans aucune entrée de menu alors
@@ -437,11 +463,7 @@ if ($chauffeConforme) {
 # Lancés depuis $SzhDossierScripts (calculé plus haut), jamais depuis $SzhToolkit\windows —
 # voir le commentaire à l'acquisition du toolkit. Le dossier temporaire qu'il a pu créer est
 # supprimé dans le finally tout en bas, qu'update.ps1 et le diagnostic aient réussi ou non.
-#
-# Windows PowerShell 5.1 explicitement, même repli que Get-SzhRaccourcisMenu
-# (szh-common.ps1) : $PSHOME désignerait pwsh si ce script tournait sous PowerShell 7.
-$psExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-if (-not (Test-Path $psExe)) { $psExe = Join-Path $PSHOME 'powershell.exe' }
+# $psExe vient du même endroit, avec patch-icone.ps1.
 try {
   if ($memeCompte) {
     Info 'Lancement de la première mise à jour (fenêtre visible)…'

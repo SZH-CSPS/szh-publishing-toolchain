@@ -628,7 +628,7 @@ se rejoignent au lanceur.
 | **L7b** | CMJN à noir préservé | **mécanisme mesuré, publication restante** (§4.3) | `cmjn.py` préserve le noir du texte en K seul et convertit les couleurs de la maison ; Ghostscript termine par le profil PSO Uncoated v3/FOGRA52, épinglé et vérifié dans `image/Containerfile`. **Mesuré bout en bout** sur `test/livre-normal` — `--permit-file-read` sur le profil ICC était le maillon manquant : sans lui Ghostscript refuse de le lire, et le dit par un message qui ne parle pas de permission. `test/cmjn-check.py` vérifie automatiquement texte K seul, couleurs de la maison et absence de RVB résiduel. **Reste non publié** : aucun poste de rédaction n'en bénéficie tant que le rootfs n'a pas été reconstruit par une release |
 | **L1** | Extraction d'`extension.js` en modules | moyen — voir les deux avertissements du §6 | **fait partiellement** : six modules extraits (`session.js`, `cycle-vie.js`, `apercu.js`, `import-hote.js`, `medias-hote.js`, `documentation-hote.js`), `extension.js` réduit à environ 6 700 lignes |
 | **L2** | `lib/profil.js` + routage des chemins par le profil | moyen | **fait** : `chemins()` a des appelants dans `extension.js`, `session.js`, `cycle-vie.js`, `apercu.js`, `import-hote.js`, `medias-hote.js` et `media/_commun.js` |
-| **L8** | Lanceur « Books SZH-CSPS », `new-livre.ps1`, gabarit, icône, identité, raccourci | moyen | **fait**, puis **remplacé le 13.09.2026** : le livre est un onglet (« Book ») du lanceur unique « Revue & Zeitschrift », plus une entrée de menu à lui — racine SharePoint à confirmer |
+| **L8** | Lanceur « Books SZH-CSPS », `new-livre.ps1`, gabarit, icône, identité, raccourci | moyen | **fait**, puis **remplacé le 13.09.2026** : le livre est un onglet (« Book ») du lanceur unique « Pronto », plus une entrée de menu à lui — racine SharePoint à confirmer |
 | **L9** | Cockpit côté livre : arbre des chapitres, formulaire d'ouvrage, de couverture | moyen | **fait partiellement** : formulaire de métadonnées de l'ouvrage fait, les quatre tâches de sortie faites, aperçu HTML par chapitre fait ; formulaire de couverture (grammage, main, fond perdu, profil CMJN, dos en lecture seule) pas encore fait |
 
 ---
@@ -642,7 +642,7 @@ se rejoignent au lanceur.
 2. **Le nom du produit.** *Dépassé par l'unification du 13.09.2026 : il n'y a plus d'entrée de
    menu par produit à nommer.* « Books SZH/CSPS » avait été demandé pour une entrée séparée,
    mais un nom de fichier `.lnk` ne peut pas porter de barre oblique. Le livre est désormais un
-   onglet (« Book », non traduit) du lanceur unique « Revue & Zeitschrift » — lui-même un nom
+   onglet (« Book », non traduit) du lanceur unique « Pronto » — lui-même un nom
    provisoire, tenu dans `$SzhNomApplication` (`windows/szh-shell.ps1`) — et non plus une entrée
    de menu à son nom propre. La question du sigle double ne se pose donc plus dans ces termes ;
    elle resurgira si le produit reçoit un jour son propre onglet nommé.

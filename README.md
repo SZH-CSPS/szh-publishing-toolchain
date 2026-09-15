@@ -156,7 +156,7 @@ Ensuite, plus besoin d'administrateur. Seule la montée de VSCodium ou de Sumatr
 
 ### Créer une revue
 
-Depuis le menu Démarrer : **Revue & Zeitschrift** → onglet **Revue** (ou **Zeitschrift**) →
+Depuis le menu Démarrer : **Pronto** → onglet **Revue** (ou **Zeitschrift**) →
 *Nouvelle revue…*. Le numéro est créé dans le dossier « en cours » du produit ; il n'y a rien à
 choisir. `new-revue.ps1` copie le gabarit, écrit le jeton de produit, déduit l'année et le numéro
 du nom du dossier, vide le titre d'exemple, estampille la version du toolkit et crée « Ouvrir la
@@ -192,7 +192,7 @@ a perdu son groupe de boutons radio, et `ecrireEmplacementRevues` (`lib/archivag
 plus appelée par aucune commande de l'extension. Un poste qui ne porte ni l'une ni l'autre
 se voit écrire la clé en clair au premier lancement, la valeur suivant le disque : jamais
 `production` si la racine de test porte des numéros. L'emplacement actif est nommé dans le
-titre du lanceur (`Revue & Zeitschrift – dossier de test (Revues-TESTING)`) et dans le journal —
+titre du lanceur (`Pronto – dossier de test (Revues-TESTING)`) et dans le journal —
 un seul titre, quel que soit l'onglet ouvert, depuis que le lanceur est unique (voir « Le lanceur
 unique » ci-dessous). Le lanceur ne liste que cette arborescence ; les revues restées ailleurs
 sont comptées et signalées, pas listées.
@@ -245,11 +245,11 @@ commentaires.
 ### Les raccourcis du menu Démarrer
 
 Depuis le 13.09.2026, **deux** entrées, au niveau utilisateur, posées par `Set-SzhRaccourcisMenu`
-(`szh-shell.ps1`) : **« Revue & Zeitschrift »**, le lanceur unique — une fenêtre, six onglets
+(`szh-shell.ps1`) : **« Pronto »**, le lanceur unique — une fenêtre, six onglets
 Revue / Zeitschrift / Book / Journal / Export et secrétariat / Paramètres, sans console, par
 `wscript.exe //B hidden.vbs`
 — et
-**« Revue & Zeitschrift (Updater) »**, qui vise `powershell.exe -File update.ps1` — **fenêtre
+**« Pronto (Updater) »**, qui vise `powershell.exe -File update.ps1` — **fenêtre
 visible**, parce qu'une mise à jour télécharge, prend du temps et peut échouer. Un seul raccourci
 de mise à jour, au nom fixe : `update.ps1` garde son paramètre `-Langue` pour un essai en ligne de
 commande, mais le raccourci ne le passe plus — la fenêtre parle désormais la langue du réglage,

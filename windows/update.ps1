@@ -1,7 +1,7 @@
 ﻿<#
 .SYNOPSIS
   Met à jour l'outil Revue SZH dans une fenêtre visible. Lancée d'ordinaire par
-  update-launcher.ps1, ou par l'entrée « Revue & Zeitschrift (Updater) » du menu Démarrer,
+  update-launcher.ps1, ou par l'entrée « Pronto (Updater) » du menu Démarrer,
   qui ne passe plus de langue : la fenêtre prend celle du réglage du compte, comme le
   lanceur.
 
@@ -71,7 +71,7 @@ function Set-SzhProgIdMarkdown {
   # arguments, donc le « %1 » arrive intact à open-md.ps1, espaces compris.
   $commande = ('"{0}\System32\wscript.exe" //B "{1}" "{2}" "%1"' -f $env:WINDIR, $vbs, $ps1)
 
-  $icone = Join-Path $Toolkit 'windows\szh-revue.ico'
+  $icone = Join-Path $Toolkit 'windows\pronto.ico'
 
   $cleProg = Join-Path $Racine 'SZH.Markdown'
   $cleApp = Join-Path $cleProg 'Application'
@@ -129,7 +129,7 @@ function Set-SzhProtocoleSzh {
   $vbs = Join-Path $Toolkit 'windows\hidden.vbs'
   $ps1 = Join-Path $Toolkit 'windows\open-revue.ps1'
   $commande = ('"{0}\System32\wscript.exe" //B "{1}" "{2}" "%1"' -f $env:WINDIR, $vbs, $ps1)
-  $icone = Join-Path $Toolkit 'windows\szh-revue.ico'
+  $icone = Join-Path $Toolkit 'windows\pronto.ico'
 
   $cle = Join-Path $Racine 'szh'
   foreach ($c in $cle, (Join-Path $cle 'shell\open\command'), (Join-Path $cle 'DefaultIcon')) {

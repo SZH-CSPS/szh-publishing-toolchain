@@ -83,7 +83,7 @@ const TEXTES_COCKPIT = {
     'statut.table.enregistree': 'Tableau « {0} » enregistré – recompilez (cliquez l’article) pour voir le PDF à jour.',
     'statut.ausgabe': 'Métadonnées du numéro enregistrées.',
     'statut.fiches': '{0} fiche(s) de métadonnées enregistrée(s).',
-    'err.tache': 'Cette action a besoin d’un réglage de l’éditeur qui manque sur ce poste. Lancez « Revue & Zeitschrift (Updater) » depuis le menu Démarrer, puis rouvrez le numéro. Rien n’a été modifié.',
+    'err.tache': 'Cette action a besoin d’un réglage de l’éditeur qui manque sur ce poste. Lancez « Pronto (Updater) » depuis le menu Démarrer, puis rouvrez le numéro. Rien n’a été modifié.',
     // Repli : ce message ne sort que si le journal de compilation n'a rien à dire.
     // Quand il a quelque chose, c'est la vue « Contrôles de la compilation » qui parle,
     // et elle nomme la cause. L'ancien texte renvoyait au panneau du terminal, que
@@ -604,7 +604,7 @@ const TEXTES_COCKPIT = {
     'photo.err.tropvolumineux': 'Photo trop volumineuse (max. 20 Mo).',
     'photo.err.format': 'Format non pris en charge – utilisez PNG, JPG ou WebP.',
     'photo.err.traitement': 'Le traitement de la photo a échoué : {0}',
-    'photo.err.wsl': 'L’outil qui recadre et détoure les photos n’a pas répondu. Il démarre à froid au premier usage : attendez quelques secondes et réessayez. Si cela persiste, lancez « Revue & Zeitschrift (Updater) » depuis le menu Démarrer.',
+    'photo.err.wsl': 'L’outil qui recadre et détoure les photos n’a pas répondu. Il démarre à froid au premier usage : attendez quelques secondes et réessayez. Si cela persiste, lancez « Pronto (Updater) » depuis le menu Démarrer.',
     'photo.err.introuvable': 'Version introuvable sur le disque – déposez d’abord une photo.',
     'importv.titre': 'Vérification de l’import',
     'importv.badge.detecte': 'détecté',
@@ -791,7 +791,7 @@ const TEXTES_COCKPIT = {
     'tache.exportArticle': 'Exporter l’article',
     'version.divergence': 'Vous utilisez la version {0} du logiciel ; ce numéro a été créé avec la version {1}. Vérifiez les documents produits.',
     'version.divergence.bouton': 'Changer de version…',
-    'err.version.lancement': 'La fenêtre de choix de version n’a pas pu s’ouvrir ({0}). Passez par le menu Démarrer, « Revue & Zeitschrift », bouton « Version du logiciel… ».',
+    'err.version.lancement': 'La fenêtre de choix de version n’a pas pu s’ouvrir ({0}). Passez par le menu Démarrer, « Pronto », bouton « Version du logiciel… ».',
     // regl.dev / regl.dev.oui / regl.dev.non : parties avec le groupe du formulaire, qui a
     // déménagé dans l'onglet « Paramètres » du lanceur Windows.
     'err.dev.ecriture': 'Ce réglage n’a pas pu être enregistré ({0}) : il reprendra sa valeur précédente à la prochaine ouverture.',
@@ -1159,7 +1159,7 @@ const TEXTES_COCKPIT = {
     'regl.auteurs.corpus.jamais': 'Numéros du poste pas encore balayés – la fonction et l’e-mail se rempliront au prochain démarrage.',
     'cmyk.statut': '{0} image(s) CMJN converties en RVB.',
     'cmyk.err': 'Conversion CMJN impossible : {0}',
-    'cmyk.err.wsl': 'Les images d’imprimerie n’ont pas pu être converties : l’outil de traitement n’a pas répondu. Elles restent telles quelles, et le PDF peut sortir avec des couleurs fausses. Réessayez, ou lancez « Revue & Zeitschrift (Updater) » depuis le menu Démarrer.',
+    'cmyk.err.wsl': 'Les images d’imprimerie n’ont pas pu être converties : l’outil de traitement n’a pas répondu. Elles restent telles quelles, et le PDF peut sortir avec des couleurs fausses. Réessayez, ou lancez « Pronto (Updater) » depuis le menu Démarrer.',
     'regl.langue': 'Langue de l’interface',
     // Ne paraît que si les menus de VSCodium et les textes du cockpit divergent : deux
     // mécanismes indépendants les décident (voir l’en-tête de ce fichier), et une interface
@@ -1397,7 +1397,7 @@ const TEXTES_COCKPIT = {
     'ctl.titre.manquant': 'Cet article n’a pas de titre. Ouvrez « Métadonnées des articles », saisissez-le, enregistrez, puis recompilez (Ctrl+S). La compilation s’arrête ici : le PDF sortirait avec un titre vide tout en s’annonçant accessible, et un lecteur d’écran n’aurait rien à annoncer.',
     'ctl.espaces': 'Un dossier d’article contient des espaces dans son nom, et la chaîne ne sait pas les suivre. Renommez-le sans espaces. La compilation s’arrête ici : l’article ne serait pas produit.',
     'ctl.aucunarticle': 'Ce numéro n’a encore aucun article. Déposez les documents Word dans le dossier « articles-word », puis enregistrez (Ctrl+S) : ils seront convertis.',
-    'ctl.pasrevue': 'Le dossier ouvert n’est pas un numéro de revue : il n’a pas de fichier de numéro. Ouvrez un numéro depuis le menu Démarrer, « Revue & Zeitschrift ».',
+    'ctl.pasrevue': 'Le dossier ouvert n’est pas un numéro de revue : il n’a pas de fichier de numéro. Ouvrez un numéro depuis le menu Démarrer, « Pronto ».',
     'ctl.balisage.simple': 'Le PDF de cet article est sorti avec un balisage simple, et non avec le balisage complet promis aux lecteurs d’écran. Recompilez ; si cela se reproduit, signalez-le : c’est la chaîne qui est en cause, pas l’article.',
     'ctl.balisage.aucun': 'Le PDF de cet article est sorti sans aucun balisage : un lecteur d’écran n’y trouvera ni titres, ni tableaux, ni ordre de lecture. Recompilez, et si cela se reproduit, signalez-le avant de publier – ce fichier ne peut pas porter la mention d’accessibilité.',
     'ctl.profil.rien': 'Ce numéro est réglé pour ne produire aucun document : c’est un choix enregistré dans ses métadonnées, pas une panne.',
@@ -1464,7 +1464,7 @@ const TEXTES_COCKPIT = {
     'reimport.annule': 'L’article « {0} » est revenu au texte d’avant.',
     'reimport.refuse': 'Rien n’a été touché sur l’article « {0} ».',
     'reimport.echec': 'Le remplacement du texte de l’article « {0} » n’a pas abouti. L’article est intact.',
-    'reimport.injoignable': 'Le remplacement du texte n’a pas pu être lancé sur ce poste. L’article n’a pas été touché. Fermez le numéro, rouvrez-le par le raccourci « Revue & Zeitschrift », puis recommencez ; si cela résiste, signalez-le.',
+    'reimport.injoignable': 'Le remplacement du texte n’a pas pu être lancé sur ce poste. L’article n’a pas été touché. Fermez le numéro, rouvrez-le par le raccourci « Pronto », puis recommencez ; si cela résiste, signalez-le.',
     // Le bouton de la carte, dans la vue « Word en attente » : court, l'infobulle dit le reste.
     'cmd.reimporter.court': 'Réimporter',
     'cmd.reimporter.tip': 'Remplacer le texte, les images et les tableaux de l’article par ceux de ce Word corrigé. La fiche, les portraits et les traductions sont conservés.',
@@ -1481,7 +1481,7 @@ const TEXTES_COCKPIT = {
     'etat.barre.test.defaut': 'Aucune configuration de poste trouvée : le dossier de test est utilisé par défaut.',
     // Le badge n'ouvre plus rien au clic depuis que le réglage a quitté le cockpit : cette
     // phrase dit où il vit désormais.
-    'etat.barre.test.parametres': 'Se règle dans les Paramètres du lanceur « Revue & Zeitschrift », au menu Démarrer.',
+    'etat.barre.test.parametres': 'Se règle dans les Paramètres du lanceur « Pronto », au menu Démarrer.',
   },
   de: {
     // Le badge « Testordner » : voir le commentaire côté français, même contrat.
@@ -1489,7 +1489,7 @@ const TEXTES_COCKPIT = {
     'etat.barre.test.tooltip': 'Dieser Arbeitsplatz arbeitet im Testordner: hier angelegte Ausgaben sind nicht in der Produktion.',
     'etat.barre.test.defaut': 'Keine Arbeitsplatz-Konfiguration gefunden: der Testordner wird standardmässig verwendet.',
     // Kein Klick mehr auf das Badge: das Feld hat das Cockpit verlassen, diese Zeile sagt wohin.
-    'etat.barre.test.parametres': 'Wird im Startmenü unter «Revue & Zeitschrift», Reiter «Einstellungen», festgelegt.',
+    'etat.barre.test.parametres': 'Wird im Startmenü unter «Pronto», Reiter «Einstellungen», festgelegt.',
     // Majuscules voulues, comme en français : ce sont les en-têtes de section de l'arbre.
     'arbre.articles': 'ARTIKEL',
     'arbre.chapitres': 'KAPITEL',
@@ -1535,7 +1535,7 @@ const TEXTES_COCKPIT = {
     'statut.table.enregistree': 'Tabelle «{0}» gespeichert – neu kompilieren (Artikel anklicken), um das PDF zu aktualisieren.',
     'statut.ausgabe': 'Metadaten der Ausgabe gespeichert.',
     'statut.fiches': '{0} Metadaten-Datei(en) gespeichert.',
-    'err.tache': 'Diese Aktion braucht eine Editor-Einstellung, die auf diesem Arbeitsplatz fehlt. Starten Sie «Revue & Zeitschrift (Updater)» über das Startmenü und öffnen Sie die Ausgabe neu. Es wurde nichts geändert.',
+    'err.tache': 'Diese Aktion braucht eine Editor-Einstellung, die auf diesem Arbeitsplatz fehlt. Starten Sie «Pronto (Updater)» über das Startmenü und öffnen Sie die Ausgabe neu. Es wurde nichts geändert.',
     'err.build': 'Die Kompilierung ist nicht durchgelaufen, und die Kette hat nichts weiter gemeldet. Speichern Sie erneut (Ctrl+S), um es nochmals zu versuchen; wiederholt sich das, melden Sie es. Ihre Texte sind unberührt.',
     'err.import': 'Die Umwandlung der Word-Dokumente ist nicht durchgelaufen. Die Dateien sind in «articles-word» geblieben: nichts ist verloren. Versuchen Sie es erneut; wiederholt sich das, melden Sie es mit dem betroffenen Dokument.',
     'err.export': 'Die vollständige Neukompilierung ist nicht durchgelaufen, und die Kette hat nichts weiter gemeldet. Versuchen Sie es erneut; wiederholt sich das, melden Sie es. Ihre Texte, Bilder und Metadaten sind unberührt.',
@@ -2004,7 +2004,7 @@ const TEXTES_COCKPIT = {
     'photo.err.tropvolumineux': 'Foto zu gross (max. 20 MB).',
     'photo.err.format': 'Format nicht unterstützt – bitte PNG, JPG oder WebP verwenden.',
     'photo.err.traitement': 'Die Fotoverarbeitung ist fehlgeschlagen: {0}',
-    'photo.err.wsl': 'Das Werkzeug, das Fotos zuschneidet und freistellt, hat nicht geantwortet. Es startet beim ersten Gebrauch kalt: warten Sie einige Sekunden und versuchen Sie es erneut. Hält es an, starten Sie «Revue & Zeitschrift (Updater)» über das Startmenü.',
+    'photo.err.wsl': 'Das Werkzeug, das Fotos zuschneidet und freistellt, hat nicht geantwortet. Es startet beim ersten Gebrauch kalt: warten Sie einige Sekunden und versuchen Sie es erneut. Hält es an, starten Sie «Pronto (Updater)» über das Startmenü.',
     'photo.err.introuvable': 'Version auf der Festplatte nicht gefunden – bitte zuerst ein Foto ablegen.',
     'importv.titre': 'Überprüfung des Imports',
     'importv.badge.detecte': 'erkannt',
@@ -2182,7 +2182,7 @@ const TEXTES_COCKPIT = {
     'tache.exportArticle': 'Artikel exportieren',
     'version.divergence': 'Sie verwenden Version {0} der Software; diese Ausgabe wurde mit Version {1} erstellt. Prüfen Sie die erzeugten Dokumente.',
     'version.divergence.bouton': 'Version wechseln…',
-    'err.version.lancement': 'Das Fenster zur Versionsauswahl liess sich nicht öffnen ({0}). Gehen Sie über das Startmenü, «Revue & Zeitschrift», Schaltfläche «Version der Software…».',
+    'err.version.lancement': 'Das Fenster zur Versionsauswahl liess sich nicht öffnen ({0}). Gehen Sie über das Startmenü, «Pronto», Schaltfläche «Version der Software…».',
     // regl.dev / regl.dev.oui / regl.dev.non : dasselbe Feld ist in den Reiter
     // «Einstellungen» des Windows-Starters umgezogen.
     'err.dev.ecriture': 'Diese Einstellung konnte nicht gespeichert werden ({0}): sie nimmt beim nächsten Öffnen wieder ihren vorherigen Wert an.',
@@ -2542,7 +2542,7 @@ const TEXTES_COCKPIT = {
     'regl.auteurs.corpus.jamais': 'Ausgaben des Arbeitsplatzes noch nicht durchsucht – Funktion und E-Mail füllen sich beim nächsten Start.',
     'cmyk.statut': '{0} CMYK-Bild(er) nach RGB konvertiert.',
     'cmyk.err': 'CMYK-Konvertierung nicht möglich: {0}',
-    'cmyk.err.wsl': 'Die Druckbilder konnten nicht umgewandelt werden: das Verarbeitungswerkzeug hat nicht geantwortet. Sie bleiben unverändert, und das PDF kann mit falschen Farben herauskommen. Versuchen Sie es erneut, oder starten Sie «Revue & Zeitschrift (Updater)» über das Startmenü.',
+    'cmyk.err.wsl': 'Die Druckbilder konnten nicht umgewandelt werden: das Verarbeitungswerkzeug hat nicht geantwortet. Sie bleiben unverändert, und das PDF kann mit falschen Farben herauskommen. Versuchen Sie es erneut, oder starten Sie «Pronto (Updater)» über das Startmenü.',
     'regl.langue': 'Sprache der Oberfläche',
     'regl.langue.discordance': 'Die Formulare sind auf {0}, die Menüs von VSCodium auf {1}. Wählen Sie oben die Sprache und starten Sie VSCodium neu: dann stimmen beide wieder überein.',
     // Übersetzungen gegenlesen: siehe den französischen Kommentar, gleiche Abmachung.
@@ -2736,7 +2736,7 @@ const TEXTES_COCKPIT = {
     'ctl.titre.manquant': 'Dieser Artikel hat keinen Titel. Öffnen Sie «Metadaten der Artikel», erfassen Sie ihn, speichern Sie und kompilieren Sie neu (Ctrl+S). Die Kompilierung bricht hier ab: das PDF käme mit leerem Titel heraus und würde sich dennoch als barrierefrei ausgeben – ein Screenreader hätte nichts anzusagen.',
     'ctl.espaces': 'Ein Artikelordner hat Leerzeichen im Namen, und die Kette kann ihnen nicht folgen. Benennen Sie ihn ohne Leerzeichen um. Die Kompilierung bricht hier ab: der Artikel würde nicht erzeugt.',
     'ctl.aucunarticle': 'Diese Ausgabe hat noch keinen Artikel. Legen Sie die Word-Dokumente in den Ordner «articles-word» und speichern Sie (Ctrl+S): sie werden dann umgewandelt.',
-    'ctl.pasrevue': 'Der geöffnete Ordner ist keine Ausgabe: die Ausgabedatei fehlt. Öffnen Sie eine Ausgabe über das Startmenü, «Revue & Zeitschrift».',
+    'ctl.pasrevue': 'Der geöffnete Ordner ist keine Ausgabe: die Ausgabedatei fehlt. Öffnen Sie eine Ausgabe über das Startmenü, «Pronto».',
     'ctl.balisage.simple': 'Das PDF dieses Artikels wurde nur einfach getaggt, nicht mit dem vollständigen Tagging, das Screenreadern versprochen ist. Kompilieren Sie neu; tritt es wieder auf, melden Sie es: die Ursache liegt in der Kette, nicht im Artikel.',
     'ctl.balisage.aucun': 'Das PDF dieses Artikels wurde ohne jedes Tagging erzeugt: ein Screenreader findet darin weder Überschriften noch Tabellen noch eine Leseordnung. Kompilieren Sie neu, und melden Sie es vor der Veröffentlichung, falls es wieder auftritt – diese Datei darf den Hinweis auf Barrierefreiheit nicht tragen.',
     'ctl.profil.rien': 'Diese Ausgabe ist so eingestellt, dass sie kein Dokument erzeugt: das ist eine in ihren Metadaten gespeicherte Entscheidung, keine Störung.',
@@ -2793,7 +2793,7 @@ const TEXTES_COCKPIT = {
     'reimport.annule': 'Der Artikel «{0}» ist zum vorherigen Text zurückgekehrt.',
     'reimport.refuse': 'Beim Artikel «{0}» wurde nichts angetastet.',
     'reimport.echec': 'Das Ersetzen des Textes des Artikels «{0}» ist nicht gelungen. Der Artikel ist unversehrt.',
-    'reimport.injoignable': 'Das Ersetzen des Textes konnte auf diesem Arbeitsplatz nicht gestartet werden. Der Artikel wurde nicht angetastet. Schliessen Sie die Ausgabe, öffnen Sie sie über die Verknüpfung «Revue & Zeitschrift» erneut und versuchen Sie es nochmals; hält es sich, melden Sie es.',
+    'reimport.injoignable': 'Das Ersetzen des Textes konnte auf diesem Arbeitsplatz nicht gestartet werden. Der Artikel wurde nicht angetastet. Schliessen Sie die Ausgabe, öffnen Sie sie über die Verknüpfung «Pronto» erneut und versuchen Sie es nochmals; hält es sich, melden Sie es.',
     'cmd.reimporter.court': 'Neu importieren',
     'cmd.reimporter.tip': 'Text, Bilder und Tabellen des Artikels durch die dieser korrigierten Word-Datei ersetzen. Metadaten, Porträts und Übersetzungen bleiben erhalten.',
     'reimport.choisirWord': 'Word-Datei wählen',

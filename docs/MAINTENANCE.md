@@ -68,7 +68,7 @@ Ce qui est fait de cela, depuis 2026-08 :
   s'installer ne prive plus personne de ses raccourcis ni de ses extensions.
 
 **Rien de tout cela n'exige d'attendre.** Dans la session du rédacteur, sans élévation :
-« Revue & Zeitschrift (Updater) » depuis le menu Démarrer suffit à tout poser.
+« Pronto (Updater) » depuis le menu Démarrer suffit à tout poser.
 
 ---
 
@@ -595,7 +595,7 @@ elle ne dispense pas de vérifier soi-même avant de taguer.
 ### Un raccourci du menu Démarrer ne se pose pas
 
 **Symptôme.** Une entrée manque au menu Démarrer d'un poste — le plus souvent
-« Revue & Zeitschrift (Updater) » — alors que la mise à jour s'est terminée sans erreur.
+« Pronto (Updater) » — alors que la mise à jour s'est terminée sans erreur.
 
 **À observer.** `C:\ProgramData\SZH\logs\szh-<AAAA-MM>.log` : chaque entrée non posée y
 laisse une ligne `raccourci du menu Démarrer non posé -> …`, et une ligne d'ensemble quand
@@ -708,7 +708,7 @@ cherche les numéros, sans déplacer un seul fichier : les revues sont toujours 
 lanceur regarde ailleurs.
 
 **À observer.** Le **titre de la fenêtre du lanceur** nomme la racine active — un seul titre,
-quel que soit l'onglet ouvert — `Revue & Zeitschrift – dossier de test (Revues-TESTING)` ou
+quel que soit l'onglet ouvert — `Pronto – dossier de test (Revues-TESTING)` ou
 `… – dossier de production (2_Produkte)`. Le journal du mois porte la même chose :
 `revues : emplacement "…" -> <chemin>`. Un numéro déjà ouvert dans le cockpit porte la même
 information sans redémarrer le lanceur : le badge « Dossier de test » de sa barre d'état.
@@ -1041,8 +1041,8 @@ Démarrer, fichiers du compte, registre (HKCU), fichiers du poste
   `maj-auto.json`, et les restes `toolkit.neuf` / `toolkit.vieux` d'une bascule
   interrompue) ;
 - les deux tâches planifiées (`SZH - Mise a jour`, `SZH - Prechauffage WSL`) ;
-- les raccourcis du menu Démarrer : les deux actuels (`Revue & Zeitschrift`,
-  `Revue & Zeitschrift (Updater)`), plus tout ancien nom encore présent sur ce poste
+- les raccourcis du menu Démarrer : les deux actuels (`Pronto`,
+  `Pronto (Updater)`), plus tout ancien nom encore présent sur ce poste
   (`Get-SzhRaccourcisObsoletes`, `szh-shell.ps1`) ;
 - les réglages et extraits de code VSCodium du compte ;
 - les extensions VSCodium épinglées (`vsix.lock`), plus `szh-cockpit` et `szh-apercu` ;

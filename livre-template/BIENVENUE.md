@@ -4,7 +4,7 @@ Cet espace sert à **mettre en page un livre**. Tu n'as **rien à installer ni �
 configurer** : tout est déjà prêt. Tu écris, tu enregistres, le **PDF de l'ouvrage entier
 se fabrique tout seul**.
 
-Ce dossier a été créé par le lanceur **« Revue & Zeitschrift »** (onglet **Book**) du menu Démarrer, et
+Ce dossier a été créé par le lanceur **« Pronto »** (onglet **Book**) du menu Démarrer, et
 « Ouvrir le livre » (dans ce dossier) permet de le retrouver plus tard.
 
 ---
@@ -73,6 +73,6 @@ de même en repartant de zéro.
 - L'**ordre des chapitres** suit l'ordre des dossiers dans `chapitres` — renomme-les au
   besoin (`01-…`, `02-…`).
 - Pour **rouvrir** ce livre plus tard : raccourci **« Ouvrir le livre »** dans ce dossier,
-  ou **« Revue & Zeitschrift »** (onglet **Book**) dans le menu Démarrer.
+  ou **« Pronto »** (onglet **Book**) dans le menu Démarrer.
 
 Bonne écriture ! ✨

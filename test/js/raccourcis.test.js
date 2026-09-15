@@ -45,6 +45,10 @@ const OUVRIR_LIVRE = lire('windows', 'open-livre.ps1');
 const OUVRIR_PRODUIT = lire('windows', 'open-produit.ps1');
 const SHELL_PRODUITS = lire('windows', 'szh-produits.ps1');
 const ICONE_PY = lire('windows', 'icone.py');
+// Les deux icônes de l'application ne sortent pas du même dessin ni du même outil que
+// les trois icônes de produit : leur source est un .svg, rendu par Edge. D'où un second
+// fabricant, et c'est celui-là qu'il faut interroger pour pronto.ico et pronto-maj.ico.
+const ICONE_PRONTO_PY = lire('windows', 'icone-pronto.py');
 
 // Les cinq entrées PÉRIMÉES depuis le 13.09.2026 (fusion des trois lanceurs en un seul, à
 // onglets, et des deux mises à jour en une entrée à nom fixe) : elles ne se posent plus,
@@ -173,23 +177,23 @@ test('la mise à jour se voit, le lanceur non', () => {
   assert.match(SHELL, /\$lnk\.WindowStyle = 1/);
 });
 
-test('le lanceur et sa mise à jour portent chacun leur propre icône, fabriquée par icone.py', () => {
+test('le lanceur et sa mise à jour portent chacun leur propre icône, fabriquée par icone-pronto.py', () => {
   // Épinglé à la barre des tâches, un raccourci perd son libellé : l'icône devient le seul
   // repère. Glissement du 13.09.2026 : Get-SzhRaccourcisMenu ne pose plus que DEUX entrées,
-  // donc ne cherche plus que DEUX icônes (szh-revue.ico pour le lanceur, faute d'une image
-  // propre à l'application unifiée ; szh-maj.ico pour la mise à jour). szh-zeitschrift.ico
-  // et szh-livre.ico restent au dépôt et fabriqués par icone.py — ils servent encore aux
-  // fenêtres « Nouveau... » de open-produit.ps1 — mais ce n'est plus ce fichier-ci qui les
-  // cherche pour le menu Démarrer.
+  // donc ne cherche plus que DEUX icônes (pronto.ico pour le lanceur, pronto-maj.ico pour
+  // la mise à jour), fabriquées par icone-pronto.py depuis pronto.svg et pronto-maj.svg.
+  // szh-revue.ico, szh-zeitschrift.ico et szh-livre.ico restent au dépôt et fabriqués par
+  // icone.py — ils servent encore aux fenêtres « Nouveau... » de open-produit.ps1 — mais ce
+  // n'est plus ce fichier-ci qui les cherche pour le menu Démarrer.
   const debut = SHELL.indexOf('function Get-SzhRaccourcisMenu');
   const corps = SHELL.slice(debut, SHELL.indexOf('\r\nfunction ', debut + 10));
-  const icones = ['szh-revue.ico', 'szh-maj.ico'];
+  const icones = ['pronto.ico', 'pronto-maj.ico'];
   for (const ico of icones) {
     assert.ok(corps.indexOf(ico) !== -1, 'szh-shell.ps1 ne cherche plus ' + ico);
     // Le fichier existe, et icone.py sait le refaire : un .ico déposé à la main ne se
     // régénère pas, et l'écart ne se verrait qu'à la prochaine retouche du dessin.
     assert.ok(fs.existsSync(path.join(RACINE, 'windows', ico)), ico + ' manque au dépôt');
-    assert.ok(ICONE_PY.indexOf("'" + ico + "'") !== -1, 'icone.py ne fabrique plus ' + ico);
+    assert.ok(ICONE_PRONTO_PY.indexOf("'" + ico + "'") !== -1, 'icone-pronto.py ne fabrique plus ' + ico);
   }
   // Deux images distinctes, sinon l'icône ne distingue plus le lanceur de sa mise à jour.
   const empreintes = new Set(icones.map((i) =>
@@ -474,7 +478,7 @@ test('le menu reçoit les DEUX entrées, résolues comme le shell les lit', { sk
   assert.ok(lanceur.args.indexOf('hidden.vbs') !== -1, 'le lanceur doit rester sans console');
   assert.ok(lanceur.args.indexOf('-Produit') === -1,
     'le lanceur reçoit encore -Produit : l’onglet ouvert ne devrait plus dépendre du raccourci');
-  assert.ok(lanceur.icone.indexOf('szh-revue.ico') !== -1, 'icône ' + lanceur.icone);
+  assert.ok(lanceur.icone.indexOf('pronto.ico') !== -1, 'icône ' + lanceur.icone);
   assert.ok(lanceur.desc.length > 8, 'description vide');
   assert.strictEqual(lanceur.appid, 'SZH.Publishing.Suite', 'identité de barre des tâches');
 
@@ -488,7 +492,7 @@ test('le menu reçoit les DEUX entrées, résolues comme le shell les lit', { sk
     'la mise à jour reçoit encore -Langue par son raccourci');
   assert.ok(maj.args.indexOf('update.ps1"') !== -1, maj.args);
   assert.strictEqual(maj.fenetre, 1, 'la fenêtre doit être normale');
-  assert.ok(maj.icone.indexOf('szh-maj.ico') !== -1, 'icône ' + maj.icone);
+  assert.ok(maj.icone.indexOf('pronto-maj.ico') !== -1, 'icône ' + maj.icone);
   assert.strictEqual(maj.appid, 'SZH.Publishing.MiseAJour', 'identité');
   assert.ok(maj.desc.length > 8, 'description vide');
 
@@ -526,7 +530,7 @@ test('un ancien raccourci mal nommé est retiré, pas doublé', { skip: sansPowe
 // où il pointe, il ne lui reste que le nom (voir test/js/desinstallation.test.js, qui
 // éprouve la seconde moitié du contrat : un nom périmé n'entre dans le plan que si le
 // fichier existe réellement).
-test('Get-SzhRaccourcisObsoletes nomme les six entrées périmées : trois produits, trois langues de mise à jour',
+test('Get-SzhRaccourcisObsoletes nomme les huit entrées périmées : trois produits, trois langues de mise à jour, deux anciens noms d\'application',
   { skip: sansPowerShell }, () => {
     const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-obsoletes-'));
     const sortie = path.join(travail, 'bilan.json');
@@ -549,9 +553,10 @@ test('Get-SzhRaccourcisObsoletes nomme les six entrées périmées : trois produ
     fs.rmSync(travail, { recursive: true, force: true });
     // Les trois noms de produit, en dur -- disparus avec la fusion des lanceurs -- puis les
     // trois traductions de « raccourci.maj.nom » (fr, de, ET en : un poste dont Windows
-    // résolvait « en » avant qu'un compte n'y touche a pu recevoir cette troisième version).
-    const attendus = ['Revues SZH', 'Zeitschriften SZH', 'Books SZH-CSPS', r.majFr, r.majDe, r.majEn];
-    assert.strictEqual(r.obsoletes.length, 6, 'Get-SzhRaccourcisObsoletes ne nomme plus les six anciens');
+    // résolvait « en » avant qu'un compte n'y touche a pu recevoir cette troisième version), et
+    // enfin les deux anciens noms de l'application avant le renommage en « Pronto ».
+    const attendus = ['Revues SZH', 'Zeitschriften SZH', 'Books SZH-CSPS', r.majFr, r.majDe, r.majEn, 'Revue & Zeitschrift', 'Revue & Zeitschrift (Updater)'];
+    assert.strictEqual(r.obsoletes.length, 8, 'Get-SzhRaccourcisObsoletes doit nommer les huit anciens noms');
     assert.deepStrictEqual(r.obsoletes.slice().sort(), attendus.slice().sort());
     // Aucune des deux entrées ACTUELLES ne doit s’y glisser : la désinstallation compterait
     // sinon le lanceur ou sa mise à jour, bien réels, parmi ce qui n’existe plus.
