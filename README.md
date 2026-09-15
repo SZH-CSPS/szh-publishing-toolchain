@@ -375,11 +375,12 @@ numéros récents : la chaîne ne pagine plus les articles, OJS ne les porte don
 fait du corpus, pas un bug de l'export.
 
 Chaque fichier produit sort d'un gabarit Twig, jamais du code : `export-templates/*.twig`, lus
-par le même moteur que les courriels (`lib/gabarits.js`), installés — une fois, jamais
-écrasés — vers `C:\ProgramData\SZH\gabarits-export` (repli `%LOCALAPPDATA%\SZH\gabarits-export`
-si le premier n'est pas inscriptible). Robin peut donc corriger la forme d'un export sans
-toucher au code, et une mise à jour de l'extension ne perd pas sa retouche — même logique que
-`mail-templates/`, dossier et convention distincts.
+par le même moteur que les courriels (`lib/gabarits.js`), directement depuis ce dossier de
+l'extension — jamais copiés sur le poste. Retoucher la forme d'un export (colonnes d'un CSV,
+disposition d'un bloc de newsletter) se fait dans ces fichiers, dans le dépôt ; le VSIX les
+porte, la mise à jour normale les livre — même logique que `mail-templates/`, dossier et
+convention distincts. Voir le détail (variables disponibles, filtre `|csv`) dans
+`vscodium-extension/szh-cockpit/README.md`.
 
 ### Revenir à une version précédente
 

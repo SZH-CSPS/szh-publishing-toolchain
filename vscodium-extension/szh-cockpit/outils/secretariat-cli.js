@@ -48,9 +48,9 @@ async function main() {
       throw new Error("commande inconnue : « " + (commande || '') + " » (attendu : " + commandesConnues.join(', ') + ')');
     }
 
-    const gabaritsForces = typeof args.gabarits === 'string' ? args.gabarits : null;
-    dossierGabarits = secretariat.resoudreDossierGabarits(gabaritsForces, emettre);
-    secretariat.installerGabaritsManquants(dossierGabarits, emettre);
+    // --gabarits : aide de mise au point (et porte d'entrée des tests), jamais un réglage de
+    // rédacteur — en usage normal les gabarits sont toujours ceux livrés dans export-templates/.
+    dossierGabarits = (typeof args.gabarits === 'string' ? args.gabarits : null) || secretariat.dossierGabaritsSource();
 
     const opts = { emettre: emettre, dossierGabarits: dossierGabarits };
     let resultat;

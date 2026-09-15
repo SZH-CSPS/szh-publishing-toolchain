@@ -27,15 +27,6 @@ process.env.SZH_CONFIG_OJS = CONFIG_ESSAI;
 
 function dossierTemp(prefixe) { return fs.mkdtempSync(path.join(os.tmpdir(), prefixe)); }
 
-// Les commandes n'installent pas elles-mêmes les gabarits manquants — c'est le rôle de
-// outils/secretariat-cli.js, avant de dispatcher (voir sa fonction main()). Un test qui
-// appelle directement une commande doit donc le faire lui-même, comme la CLI le ferait.
-function dossierGabaritsInstalle(prefixe) {
-  const dossier = dossierTemp(prefixe);
-  secretariat.installerGabaritsManquants(dossier);
-  return dossier;
-}
-
 // ---- Fixtures : un numéro local jetable, avec accents, plusieurs auteurs et un titre à
 // épreuve du CSV (point-virgule + guillemet) -----------------------------------------
 
@@ -329,7 +320,6 @@ test('commandeNewsletter : un numéro sans date: produit quand même un DOI, don
     const evenements = [];
     const resultat = await secretariat.commandeNewsletter({
       racineNumero: racine, dossierSortie: dossierSortie,
-      dossierGabarits: dossierGabaritsInstalle('szh-secr-sansdate-gab-'),
       emettre: (e) => evenements.push(e)
     });
     assert.strictEqual(resultat.ok, true);
@@ -352,10 +342,9 @@ test('commandeNewsletter : produit les .txt de rubrique et auteurs.csv, sans ré
   try {
     const racine = ecrireNumeroEssai();
     const dossierSortie = dossierTemp('szh-secr-sortie-');
-    const dossierGabarits = dossierGabaritsInstalle('szh-secr-gabarits-');
     const evenements = [];
     const resultat = await secretariat.commandeNewsletter({
-      racineNumero: racine, dossierSortie: dossierSortie, dossierGabarits: dossierGabarits,
+      racineNumero: racine, dossierSortie: dossierSortie,
       emettre: (e) => evenements.push(e)
     });
     assert.strictEqual(resultat.ok, true);
@@ -395,26 +384,42 @@ test('commandeNewsletter : produit les .txt de rubrique et auteurs.csv, sans ré
     assert.ok(lignesAuteurs.some((l) => l.indexOf('""guillemet""') !== -1), lignesAuteurs.join('\n'));
 
     assert.ok(evenements.some((e) => e.t === 'avert' && e.texte.indexOf('10-doc') !== -1));
-    // gabarits installés depuis export-templates/ : aucun n'est resté manquant.
-    for (const nom of secretariat.NOMS_GABARITS_DEFAUT) {
-      assert.ok(fs.existsSync(path.join(dossierGabarits, nom)), nom + ' non installé');
-    }
   } finally {
     if (avant === undefined) { delete process.env.SZH_RESEAU_INTERDIT; } else { process.env.SZH_RESEAU_INTERDIT = avant; }
   }
 });
 
-// ---- installerGabaritsManquants : n'écrase jamais la retouche de Robin -----------------
+// ---- Sans --gabarits : lecture directe d'export-templates/, rien écrit hors de la sortie --
+//
+// Il n'existe plus de dossier « installé » sur le poste : un gabarit se modifie dans le
+// dépôt, part dans le VSIX, et se lit toujours depuis export-templates/ de l'extension —
+// une copie locale figerait une version périmée qu'aucune mise à jour ne rattraperait.
 
-test('installerGabaritsManquants : installe ce qui manque, n’écrase jamais un gabarit déjà présent', () => {
-  const dossier = dossierTemp('szh-secr-gab2-');
-  fs.writeFileSync(path.join(dossier, 'newsletter-varia.twig'), '{% block contenu %}RETOUCHE DE ROBIN{% endblock %}');
-  secretariat.installerGabaritsManquants(dossier);
-  // Le fichier déjà présent n'a pas bougé…
-  assert.strictEqual(fs.readFileSync(path.join(dossier, 'newsletter-varia.twig'), 'utf8'), '{% block contenu %}RETOUCHE DE ROBIN{% endblock %}');
-  // … mais tous les autres ont bien été installés.
-  for (const nom of secretariat.NOMS_GABARITS_DEFAUT) {
-    assert.ok(fs.existsSync(path.join(dossier, nom)), nom + ' non installé');
+test('commandeNewsletter : sans --gabarits, lit export-templates/ et n’écrit rien hors de sa sortie', async () => {
+  const avant = process.env.SZH_RESEAU_INTERDIT;
+  process.env.SZH_RESEAU_INTERDIT = '1';
+  const source = secretariat.dossierGabaritsSource();
+  const avantListe = fs.readdirSync(source).sort();
+  const avantMtimes = avantListe.map((n) => fs.statSync(path.join(source, n)).mtimeMs);
+  try {
+    const racine = ecrireNumeroEssai();
+    const dossierSortie = dossierTemp('szh-secr-defaut-sortie-');
+    // Aucun dossierGabarits dans les options : le défaut de commandeNewsletter doit suffire.
+    const resultat = await secretariat.commandeNewsletter({ racineNumero: racine, dossierSortie: dossierSortie });
+    assert.strictEqual(resultat.ok, true);
+    // Le rendu a bien eu lieu, avec les gabarits livrés — sans qu'aucun --gabarits ne soit passé.
+    assert.ok(fs.existsSync(path.join(dossierSortie, 'varia.txt')));
+    assert.ok(fs.existsSync(path.join(dossierSortie, 'auteurs.csv')));
+    // Les neuf gabarits attendus sont bien tous là où ils sont lus, à la source.
+    for (const nom of secretariat.NOMS_GABARITS_DEFAUT) {
+      assert.ok(fs.existsSync(path.join(source, nom)), nom + ' absent de export-templates/');
+    }
+    // export-templates/ n'a pas bougé : ni fichier ajouté, ni fichier touché — la lecture
+    // est seule en jeu, rien n'y est jamais écrit.
+    assert.deepStrictEqual(fs.readdirSync(source).sort(), avantListe);
+    assert.deepStrictEqual(avantListe.map((n) => fs.statSync(path.join(source, n)).mtimeMs), avantMtimes);
+  } finally {
+    if (avant === undefined) { delete process.env.SZH_RESEAU_INTERDIT; } else { process.env.SZH_RESEAU_INTERDIT = avant; }
   }
 });
 
@@ -488,10 +493,9 @@ test('commandeEdudoc : colonnes MARC, padding des colonnes auteur·e·s, view->d
   const cheminCache = path.join(dossierTemp('szh-secr-edu-'), 'cache.json');
   cacheEdudocEssai(cheminCache);
   const dossierSortie = dossierTemp('szh-secr-edu-sortie-');
-  const dossierGabarits = dossierGabaritsInstalle('szh-secr-edu-gab-');
   const evenements = [];
   const resultat = await secretariat.commandeEdudoc({
-    cheminCache: cheminCache, cles: ['2026-03'], dossierSortie: dossierSortie, dossierGabarits: dossierGabarits,
+    cheminCache: cheminCache, cles: ['2026-03'], dossierSortie: dossierSortie,
     emettre: (e) => evenements.push(e)
   });
   assert.strictEqual(resultat.ok, true);
@@ -529,7 +533,7 @@ test('commandeCaracteres : compte les caractères de la galley HTML, signale l�
   const evenements = [];
   const resultat = await secretariat.commandeCaracteres({
     cheminCache: cheminCache, cles: ['2026-03'], dossierSortie: dossierSortie,
-    dossierGabarits: dossierGabaritsInstalle('szh-secr-car-gab-'), emettre: (e) => evenements.push(e),
+    emettre: (e) => evenements.push(e),
     recuperer: async (url) => {
       assert.strictEqual(url, 'https://ojs.szh.ch/index.php/revue/article/view/1/html');
       return '<html><body><p>Douze caractères</p></body></html>';
@@ -561,8 +565,7 @@ test('commandeMetadonnees : compare et rapporte concordances/divergences/absence
 
   const dossierSortie = dossierTemp('szh-secr-meta-sortie-');
   const resultat = await secretariat.commandeMetadonnees({
-    racinesNumeros: [racine], cheminCache: cheminCache, dossierSortie: dossierSortie,
-    dossierGabarits: dossierGabaritsInstalle('szh-secr-meta-gab-')
+    racinesNumeros: [racine], cheminCache: cheminCache, dossierSortie: dossierSortie
   });
   assert.strictEqual(resultat.ok, true);
   const rapport = fs.readFileSync(path.join(dossierSortie, 'metadonnees.txt'), 'utf8');
@@ -590,7 +593,7 @@ test('SZH_RESEAU_INTERDIT : numeros-ojs échoue sans recuperer injecté, newslet
 
     const racine = ecrireNumeroEssai();
     const resultat = await secretariat.commandeNewsletter({
-      racineNumero: racine, dossierSortie: dossierTemp('szh-secr-net-sortie-'), dossierGabarits: dossierGabaritsInstalle('szh-secr-net-gab-')
+      racineNumero: racine, dossierSortie: dossierTemp('szh-secr-net-sortie-')
     });
     assert.strictEqual(resultat.ok, true);
   } finally {

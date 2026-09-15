@@ -10,15 +10,13 @@
 // des rubriques ; lib/articles.js l'ordre des articles et le rang du DOI ; lib/yaml.js la
 // lecture des fiches. Rien de tout cela n'est réécrit ici.
 //
-// Chaque export passe par un gabarit Twig (lib/gabarits.js), installé par défaut dans
-// export-templates/ et copié — une fois, jamais écrasé — vers C:\ProgramData\SZH\gabarits-export
-// (repli %LOCALAPPDATA%\SZH\gabarits-export si le premier n'est pas inscriptible) : Robin
-// peut donc corriger un gabarit sans toucher au code, et une mise à jour de l'extension ne
-// perd pas sa retouche.
+// Chaque export passe par un gabarit Twig (lib/gabarits.js), lu directement dans
+// export-templates/ de l'extension — jamais copié sur le poste. Un gabarit se modifie dans
+// le dépôt, part dans le VSIX, arrive par la mise à jour normale ; une copie locale figerait
+// une version périmée qu'aucune mise à jour ne rattraperait.
 'use strict';
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const gabaritsMoteur = require('./gabarits');
@@ -98,52 +96,18 @@ function listerSlugsLocaux(racine) {
 
 // ---- Dossier des gabarits --------------------------------------------------------------
 
-const GABARITS_PROGRAMDATA = 'C:\\ProgramData\\SZH\\gabarits-export';
-
-function gabaritsLocalAppData() {
-  const base = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-  return path.join(base, 'SZH', 'gabarits-export');
-}
-
-// Dossier des gabarits livrés par défaut avec l'extension : celui d'où
-// installerGabaritsManquants() copie ce qui manque encore côté poste.
+// LA source des gabarits — livrés avec l'extension, jamais recopiés ailleurs. `--gabarits`
+// (secretariat-cli.js) peut la remplacer, pour la mise au point ou les tests ; en usage
+// normal c'est toujours ce dossier qui est lu.
 function dossierGabaritsSource() { return path.join(__dirname, '..', 'export-templates'); }
 
+// Les neuf gabarits attendus dans dossierGabaritsSource() — utile aux tests, qui vérifient
+// qu'aucun ne manque, sans les nommer une seconde fois en dur.
 const NOMS_GABARITS_DEFAUT = [
   'newsletter-editorial.twig', 'newsletter-dossier-thematique.twig', 'newsletter-varia.twig',
   'newsletter-tribune-libre.twig', 'newsletter-documentation.twig', 'newsletter-auteurs.twig',
   'edudoc.twig', 'caracteres.twig', 'metadonnees.twig'
 ];
-
-// Le dossier retenu pour cette exécution : `force` (--gabarits) gagne toujours ; sinon
-// C:\ProgramData\SZH\gabarits-export, et si ce dossier n'est pas inscriptible,
-// %LOCALAPPDATA%\SZH\gabarits-export — avec un avertissement, puisque c'est un repli.
-function resoudreDossierGabarits(force, emettre) {
-  const emit = typeof emettre === 'function' ? emettre : () => {};
-  if (force) { return force; }
-  try {
-    fs.mkdirSync(GABARITS_PROGRAMDATA, { recursive: true });
-    fs.accessSync(GABARITS_PROGRAMDATA, fs.constants.W_OK);
-    return GABARITS_PROGRAMDATA;
-  } catch (e) {
-    const repli = gabaritsLocalAppData();
-    emit({ t: 'avert', texte: 'C:\\ProgramData inaccessible en écriture, gabarits repliés sur ' + repli });
-    return repli;
-  }
-}
-
-// Copie vers `dossier` chaque gabarit par défaut qui n'y existe pas encore — jamais un
-// fichier déjà présent : c'est la retouche de Robin, elle ne se réécrase jamais.
-function installerGabaritsManquants(dossier, emettre) {
-  const emit = typeof emettre === 'function' ? emettre : () => {};
-  fs.mkdirSync(dossier, { recursive: true });
-  for (const nom of NOMS_GABARITS_DEFAUT) {
-    const cible = path.join(dossier, nom);
-    if (fs.existsSync(cible)) { continue; }
-    fs.copyFileSync(path.join(dossierGabaritsSource(), nom), cible);
-    emit({ t: 'etape', texte: 'gabarit installé : ' + nom });
-  }
-}
 
 function chargerGabarit(dossier, nomFichier) {
   const chemin = path.join(dossier, nomFichier);
@@ -287,7 +251,7 @@ async function commandeNewsletter(opts) {
   const emit = typeof o.emettre === 'function' ? o.emettre : () => {};
   if (!o.racineNumero) { throw new Error('--numero est requis'); }
   if (!o.dossierSortie) { throw new Error('--sortie est requis'); }
-  const dossierGabarits = o.dossierGabarits || resoudreDossierGabarits(null, emit);
+  const dossierGabarits = o.dossierGabarits || dossierGabaritsSource();
 
   emit({ t: 'etape', texte: 'lecture du numéro local...' });
   const { numero, articles } = collecterNumeroLocal(o.racineNumero, emit);
@@ -632,7 +596,7 @@ async function commandeEdudoc(opts) {
   if (!o.cheminCache) { throw new Error('--cache est requis'); }
   if (!Array.isArray(o.cles) || o.cles.length === 0) { throw new Error('--numeros est requis'); }
   if (!o.dossierSortie) { throw new Error('--sortie est requis'); }
-  const dossierGabarits = o.dossierGabarits || resoudreDossierGabarits(null, emit);
+  const dossierGabarits = o.dossierGabarits || dossierGabaritsSource();
 
   const cache = lireCacheNumeros(o.cheminCache);
   const numeros = selectionnerNumeros(cache, o.cles, emit);
@@ -680,7 +644,7 @@ async function commandeCaracteres(opts) {
   if (!o.cheminCache) { throw new Error('--cache est requis'); }
   if (!Array.isArray(o.cles) || o.cles.length === 0) { throw new Error('--numeros est requis'); }
   if (!o.dossierSortie) { throw new Error('--sortie est requis'); }
-  const dossierGabarits = o.dossierGabarits || resoudreDossierGabarits(null, emit);
+  const dossierGabarits = o.dossierGabarits || dossierGabaritsSource();
   const recuperer = o.recuperer || oaiPmh.recupererAvecRepli;
 
   const cache = lireCacheNumeros(o.cheminCache);
@@ -805,7 +769,7 @@ async function commandeMetadonnees(opts) {
   if (racines.length === 0) { throw new Error('--numero est requis (une ou plusieurs fois)'); }
   if (!o.cheminCache) { throw new Error('--cache est requis'); }
   if (!o.dossierSortie) { throw new Error('--sortie est requis'); }
-  const dossierGabarits = o.dossierGabarits || resoudreDossierGabarits(null, emit);
+  const dossierGabarits = o.dossierGabarits || dossierGabaritsSource();
 
   const cache = lireCacheNumeros(o.cheminCache);
   const rapports = [];
@@ -830,8 +794,7 @@ async function commandeMetadonnees(opts) {
 
 module.exports = {
   // dossier des gabarits
-  GABARITS_PROGRAMDATA, dossierGabaritsSource, gabaritsLocalAppData,
-  NOMS_GABARITS_DEFAUT, resoudreDossierGabarits, installerGabaritsManquants, chargerGabarit,
+  dossierGabaritsSource, NOMS_GABARITS_DEFAUT, chargerGabarit,
   versCsvFinal,
   // aides pures, éprouvables isolément
   formerSignature, combinerTitre, auteurComplet, listerSlugsLocaux, deuxChiffres,

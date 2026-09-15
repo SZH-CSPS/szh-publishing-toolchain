@@ -1679,50 +1679,16 @@ n’y trouverait aucune correspondance.
 les porte pas. Le rapport le rappelle lui-même sur chaque article, plutôt que de laisser
 croire à une vérification qui n’a pas eu lieu.
 
-### Modifier la forme d’un export
+### La forme des exports
 
 Les cinq `.txt` de la newsletter, `auteurs.csv`, `edudoc.csv`, `caracteres.csv` et
-`metadonnees.txt` sortent tous d’un **gabarit** – un fichier séparé, sans rien à programmer,
-que vous pouvez modifier vous-même pour changer la forme d’un export.
+`metadonnees.txt` sortent tous d’un **gabarit** – les colonnes d’un CSV, la disposition
+d’un bloc de newsletter, tout cela est fixé par un fichier livré avec l’outil, pas écrit
+par vous.
 
-À la première utilisation, les gabarits sont recopiés dans :
-
-```
-C:\ProgramData\SZH\gabarits-export\
-```
-
-**C’est là qu’il faut les modifier** – jamais dans l’extension elle-même : ce dossier-là est
-remplacé à chaque mise à jour de l’outil, et une retouche y serait effacée à la mise à jour
-suivante. `C:\ProgramData\SZH\gabarits-export\`, lui, n’est jamais réécrit une fois qu’il
-existe : une modification y reste, mise à jour après mise à jour. Le lanceur rappelle ce
-chemin dans le journal après chaque export (« Gabarits d’export lus dans : … »).
-
-Chaque fichier de ce dossier commence par un commentaire, entre `{#` et `#}`, qui liste
-**toutes les variables disponibles pour cet export**, avec un exemple de valeur pour chacune –
-lisez-le avant de toucher au reste. Seul ce qui se trouve entre `{% block contenu %}` et
-`{% endblock %}` est écrit dans le fichier produit ; le reste du gabarit ne fait que le
-préparer.
-
-Dans un gabarit, on peut écrire :
-
-- `{{ une_variable }}` – pour l’écrire à cet endroit ;
-- `{% if … %} … {% endif %}` – pour n’écrire quelque chose que sous condition ;
-- `{% for x in liste %} … {% endfor %}` – pour répéter un bloc pour chaque élément d’une
-  liste (un article, un auteur…) ;
-- des **filtres**, après une variable, avec une barre verticale : `{{ variable|upper }}` la
-  met en MAJUSCULES, `|lower` en minuscules, `|trim` retire les espaces au début et à la fin,
-  `|capitalize` met une majuscule au premier mot, `|join` assemble une liste en une seule
-  ligne, `|length` compte les éléments d’une liste, `|first` et `|last` en prennent le premier
-  ou le dernier, `|default` propose une valeur de repli quand le champ est vide, `|csv`
-  protège une valeur pour un fichier CSV.
-
-**Dans un gabarit de CSV** (Edudoc, caractères, auteurs de la newsletter), **chaque valeur qui
-vient d’un article doit passer par `|csv`** : sans ce filtre, un point-virgule ou un guillemet
-dans un titre casse le fichier pour Excel.
-
-**Pour revenir en arrière** : supprimez le fichier modifié dans
-`C:\ProgramData\SZH\gabarits-export\`. Il est réinstallé, dans sa version d’origine, au
-prochain export.
+Cette forme peut changer, mais ça se demande : ce n’est pas un réglage du poste, ni
+quelque chose qui se modifie à côté de l’outil – signalez-le à la personne qui maintient
+l’outil si un export doit changer de colonnes ou de mise en forme.
 
 ## « L’outil me demande où est le dossier SZH »
 

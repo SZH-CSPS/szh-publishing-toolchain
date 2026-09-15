@@ -161,8 +161,7 @@ lib/
                         caractères (moisson OAI-PMH oai_dc propre au secrétariat — ni
                         auteurs-ojs.js ni mots-cles-edudoc.js n'exposent le titre, le résumé
                         ou les galleys), métadonnées (comparaison locale/OJS). Gabarits Twig
-                        dans export-templates/, copiés une fois vers
-                        C:\ProgramData\SZH\gabarits-export sans jamais écraser une retouche.
+                        lus directement dans export-templates/, jamais copiés sur le poste.
                         Module pur, sans vscode ; appelé par outils/secretariat-cli.js
   session.js            état de session partagé entre les zones d'extension.js (verrouillage,
                         aperçu en cours, import/compilation en vol…) derrière des accesseurs
@@ -187,11 +186,14 @@ outils/
                         VSCodium (ELECTRON_RUN_AS_NODE=1)
 mail-templates/          gabarits Twig des courriels, un fichier par nom et par langue
                         (envoi-auteur.fr.twig, traduction.de.twig, …) — voir son README.md
-export-templates/        gabarits Twig des quatre exports du secrétariat (lib/secretariat.js),
-                        livrés par défaut : un fichier par section de newsletter, plus
-                        edudoc.twig, caracteres.twig, metadonnees.twig. Copiés vers
-                        C:\ProgramData\SZH\gabarits-export à la première exécution ; une
-                        retouche là-bas n'est plus jamais écrasée par une mise à jour
+export-templates/        gabarits Twig des quatre exports du secrétariat (lib/secretariat.js) :
+                        un fichier par section de newsletter, plus edudoc.twig,
+                        caracteres.twig, metadonnees.twig. Lus directement d'ici — jamais
+                        copiés sur le poste. Une retouche se fait dans le dépôt, seul
+                        {% block contenu %} s'écrit (l'en-tête {# … #} de chaque fichier
+                        liste ses variables), et toute valeur qui alimente un CSV doit
+                        passer par le filtre |csv (un point-virgule non échappé y casserait
+                        une ligne)
 media/
   _commun.js            fragments partagés par les formulaires (mots-clés, auto-enregistrement,
                         icônes, notifications, barre de commandes, liste de cartes)
