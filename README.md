@@ -560,7 +560,7 @@ compris un sidecar qu'une version future ajouterait.
 | `Ctrl+Alt+A` | Panneau de commande | szh-cockpit |
 | `Ctrl+Alt+S` | Panneau d'édition | szh-cockpit |
 | `Ctrl+Alt+D` | Panneau d'export | szh-cockpit |
-| `Ctrl+Alt+P` | Basculer l'aperçu HTML ⇄ PDF | szh-cockpit |
+| `Ctrl+Alt+P` | Basculer l'aperçu HTML ⇄ PDF — sur un `.biblio.md`, montrer ou cacher son rendu | szh-cockpit |
 | `Ctrl+Alt+I` | Importer les Word à la demande | tâche utilisateur |
 | `Ctrl+E` / `Ctrl+Maj+B` | Relancer la compilation | tâche utilisateur |
 | `Ctrl+Alt+R` | Recharger la fenêtre, si l'aperçu se fige | keybindings |

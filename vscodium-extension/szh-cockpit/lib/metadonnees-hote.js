@@ -29,13 +29,14 @@ const {
   TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,
   analyserAusgabe, ecrireAtomique,
   separerFrontmatter, analyserFrontmatter, serialiserFrontmatter,
-  analyserMeta, serialiserMeta, langueRevue, langueDefaut, normaliserLangueArticle,
+  analyserMeta, serialiserMeta, langueRevue, langueDefaut, normaliserLangueArticle, titreNumero,
   LICENCE_DEFAUT, LICENCES_ARTICLE, normaliserLicence, etatRevue
 } = require('./yaml');
 const {
   NOMS_COUVERTURE, EXTENSIONS_COUVERTURE, nomCouverture, MAX_COUVERTURE, rangDoi
 } = require('./articles');
 const { doiCalcule, FORME_DOI } = require('./export-ojs');
+const verifMeta = require('./verif-meta');
 const {
   EXTENSIONS_IMAGE_IMPORT, TAILLE_MAX_IMAGE_IMPORT,
   assainirCheminPhoto, decomposerPhoto, baseAuteurValide,
@@ -62,6 +63,10 @@ let ctx = {
   permuterStatutsTraduction: () => {},
   relancerCompilation: () => {},
   focaliserUnite: () => {},
+  // Les onglets de l'éditeur, pour l'interrupteur « Markdown ». Non configuré : rien n'est
+  // ouvert, rien ne se ferme — le bouton reste éteint plutôt que de mentir.
+  ongletOuvert: () => false,
+  fermerOnglets: async () => {},
   slugDepuisChemin: () => null,
   articlesSansDoi: () => new Set(),
   // Vérificateur de traduction : le réglage du poste, et le panneau de suggestion que la
@@ -472,6 +477,11 @@ function textesCarteArticle() {
     motCleATraduire: T('mc.aTraduire'),
     motsClesSuggestions: T('fiches.motscles.suggestions'),
     rien: T('form.rien'), enregistre: T('fiches.enregistre'),
+    // L'interrupteur des traductions : un libellé fixe, et les deux infobulles qui disent
+    // le geste à venir. Il porte aussi l'oeil, ouvert ou fermé — traductions() le reconstruit.
+    tradBouton: T('fiches.trad.bouton'),
+    mdBouton: T('fiches.md.bouton'),
+    mdAfficher: T('fiches.md.afficher'), mdMasquer: T('fiches.md.masquer'),
     tradAfficher: T('fiches.trad.afficher'), tradMasquer: T('fiches.trad.masquer'),
     langueAvenir: T('fiches.langue.avenir'),
     doiVerrouTip: T('fiches.doi.tip'), doiManuel: T('fiches.doi.manuel'),
@@ -1048,6 +1058,55 @@ async function confirmerDoiManuel(panneau, msg) {
   });
 }
 
+// ---- « Markdown » : le texte de l'article à droite de sa fiche ---------------------
+//
+// Le formulaire occupe la colonne 1 ; le .md s'ouvre en colonne 2, donc à sa droite. De
+// quoi recopier un titre, un résumé ou une référence d'un côté à l'autre sans fermer la
+// fiche. Rien n'est écrit d'ici : c'est l'éditeur ordinaire, avec l'enregistrement
+// automatique du poste.
+//
+// L'état n'est pas tenu en mémoire mais RELU dans les onglets à chaque bascule : un onglet
+// se ferme aussi à la croix, et un interrupteur qui ne connaîtrait que ses propres clics
+// finirait par montrer l'inverse de l'écran. La page ne décide donc de rien : elle demande,
+// et se peint sur la réponse.
+function estOngletDu(entree, chemin) {
+  return !!(entree && entree.uri && entree.uri.fsPath
+    && entree.uri.fsPath.toLowerCase() === String(chemin).toLowerCase());
+}
+
+async function basculerMarkdownFiche(fournisseur, panneau, msg) {
+  const racine = fournisseur.racine;
+  const connus = racine ? new Set(fournisseur.listerArticles()) : new Set();
+  // Ce que la page a visé, puis le filtre quand il ne désigne qu'un article : rouvrir la
+  // fiche d'un article la filtre sur lui seul, et la page n'a alors rien à deviner.
+  let slug = String((msg && msg.slug) || '');
+  if (!connus.has(slug) && filtreArticles && filtreArticles.length === 1) { slug = filtreArticles[0]; }
+  if (!connus.has(slug)) {
+    repondrePanneau(panneau, { type: MSG.MARKDOWN, visible: false, message: T('fiches.md.horsarticle') });
+    return;
+  }
+  const md = path.join(racine, dossierUnites(), slug, slug + '.md');
+  if (ctx.ongletOuvert((e) => estOngletDu(e, md))) {
+    await ctx.fermerOnglets((e) => estOngletDu(e, md));
+    repondrePanneau(panneau, { type: MSG.MARKDOWN, visible: false, slug: slug });
+    return;
+  }
+  if (!fs.existsSync(md)) {
+    repondrePanneau(panneau, { type: MSG.MARKDOWN, visible: false, message: T('fiches.md.horsarticle') });
+    return;
+  }
+  // `preserveFocus` : la fiche garde la main. On vient d'y saisir un champ, et se faire
+  // déplacer le curseur dans le .md à chaque clic serait insupportable.
+  try {
+    await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(md),
+      { viewColumn: vscode.ViewColumn.Two, preserveFocus: true });
+  } catch (e) {
+    repondrePanneau(panneau, { type: MSG.MARKDOWN, visible: false, message: String((e && e.message) || e) });
+    return;
+  }
+  repondrePanneau(panneau, { type: MSG.MARKDOWN, visible: true, slug: slug });
+}
+
 // Pleine page : les aperçus sont fermés avant, même pour un simple reveal.
 async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
   if (!fournisseur.racine) { return; }
@@ -1117,6 +1176,8 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
     if (msg.type === MSG.PRET) { envoyerValeurs(panneau, { requete: msg.requete }); return; }
     if (msg.type === MSG.MODIFIE) { fichesModifie = !!msg.modifie; return; }
     if (msg.type === MSG.TOUS) { await ouvrirApercuMetadonnees(fournisseur, rafraichirTout, null); return; }
+    if (msg.type === MSG.MARKDOWN) { await basculerMarkdownFiche(fournisseur, panneau, msg); return; }
+    if (msg.type === MSG.VERIF_META) { await imprimerFeuilleVerif(fournisseur, panneau, msg); return; }
     if (msg.type === MSG.RECHARGEMENT) {
       const attente = rechargementEnAttente;
       rechargementEnAttente = null;
@@ -1162,6 +1223,114 @@ async function ouvrirApercuMetadonnees(fournisseur, rafraichirTout, slugs) {
   panneau.webview.html = htmlApercuMetadonnees(crypto.randomBytes(16).toString('hex'));
 }
 
+// ---- « Vérifier les méta (print) » ------------------------------------------------
+//
+// Une page A4 par article, à imprimer et à relire à côté de la source. Le HTML est
+// autonome et s'ouvre dans le navigateur par défaut, qui l'imprime (Ctrl+P) : une webview
+// VSCodium ne sait pas imprimer, et passer par la WSL pour un PDF ferait dépendre un
+// geste de relecture d'une machine virtuelle qui met dix secondes à se réveiller.
+//
+// La feuille se lit du DISQUE, jamais de l'écran : on enregistre donc d'abord ce que le
+// panneau porte de modifié. C'est ce qui donne son sens à l'empreinte imprimée en pied de
+// page — une feuille signée doit correspondre à un fichier, pas à une saisie en cours.
+
+// Le fichier est jetable et se réécrit à chaque clic : il va dans out/, avec le reste de
+// ce que la chaîne fabrique. Un filtre sur un seul article a son propre nom, pour ne pas
+// écraser la feuille du numéro entier qui vient peut-être d'être imprimée.
+function cheminFeuilleVerif(racine, filtre) {
+  const nom = (filtre && filtre.length === 1)
+    ? 'verification-' + filtre[0] + '.html'
+    : 'verification-metadonnees.html';
+  return path.join(racine, 'out', nom);
+}
+
+// Les tables de libellés que le module de rendu ne peut pas connaître : il ne parle
+// aucune langue. Les types sont dans celle du numéro (c'est ainsi qu'ils s'affichent
+// dans le formulaire), le reste dans celle de l'interface.
+function libellesFeuilleVerif(langueNumero) {
+  const types = {};
+  for (const t of TYPES_ARTICLE) { types[t] = (LIBELLES_TYPES[t] || {})[langueNumero] || t; }
+  const licences = {};
+  for (const l of LICENCES_ARTICLE) { licences[l.cle] = T('licence.' + l.cle); }
+  return {
+    types: types, licences: licences,
+    langues: { fr: T('meta.langue.fr'), de: T('meta.langue.de'), it: T('meta.langue.it') }
+  };
+}
+
+function textesFeuilleVerif() {
+  return {
+    titrePage: T('verif.titre'), article: T('verif.article'), consigne: T('verif.consigne'),
+    noteMachine: T('verif.note'), legende: T('verif.legende'),
+    verifiePar: T('verif.signature'), empreinte: T('verif.empreinte'),
+    sectionIdentification: T('verif.section.identification'),
+    sectionTextes: T('verif.section.textes'),
+    sectionMotsCles: T('verif.section.motscles'),
+    sectionAuteurs: T('verif.section.auteurs'), sectionAuteur: T('verif.section.auteur'),
+    doiCalcule: T('verif.doi.calcule'), doiManuel: T('verif.doi.manuel'),
+    // Les intitulés des champs sont CEUX DU FORMULAIRE, repris tels quels : la feuille
+    // suit son ordre et ses mots, pour que la correction soit mécanique.
+    type: T('fiches.type'), langue: T('fiches.langue.article'), licence: T('fiches.licence'),
+    doi: 'DOI', titre: T('fiches.titre.champ'), sousTitre: T('fiches.soustitre'),
+    resume: T('fiches.resume'),
+    prenom: T('fiches.auteur.prenom'), nom: T('fiches.auteur.nom'),
+    fonction: T('fiches.auteur.fonction'), affiliation: T('fiches.auteur.affiliation'),
+    courriel: T('fiches.auteur.email'), orcid: T('fiches.auteur.orcid'),
+    ror: T('fiches.auteur.ror')
+  };
+}
+
+// Deux chiffres partout, et le point suisse : la feuille est imprimée, pas analysée.
+function horodatageFeuille(quand) {
+  const d = quand || new Date();
+  const p2 = (n) => (n < 10 ? '0' : '') + n;
+  return p2(d.getDate()) + '.' + p2(d.getMonth() + 1) + '.' + d.getFullYear()
+    + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
+}
+
+async function imprimerFeuilleVerif(fournisseur, panneau, msg) {
+  const racine = fournisseur && fournisseur.racine;
+  if (!racine) { return; }
+  // Enregistrement d'abord. Un refus (numéro verrouillé, fiche périmée) arrête tout : une
+  // feuille tirée d'un disque qui ne porte pas ce qu'on a sous les yeux serait pire que
+  // pas de feuille du tout.
+  if (msg && msg.articles && Object.keys(msg.articles).length) {
+    if (refuserSiVerrouille()) { return; }
+    const res = ecrireCartesArticles(fournisseur, msg.articles, filtreArticles, panneau);
+    const refus = messageCartes(res);
+    if (refus) {
+      repondrePanneau(panneau, { type: MSG.ERREUR, message: refus });
+      return;
+    }
+    repondrePanneau(panneau, { type: MSG.ENREGISTRE, n: res.n });
+    relancerCompilationCartes(fournisseur, res);
+  }
+  const langue = langueRevue(racine);
+  const modele = verifMeta.construireModele(
+    lireMetadonneesArticles(fournisseur, filtreArticles), {
+      numero: titreNumero(racine),
+      horodatage: horodatageFeuille(),
+      libelles: libellesFeuilleVerif(langue),
+      textes: textesFeuilleVerif()
+    });
+  if (modele.total === 0) {
+    vscode.window.setStatusBarMessage(T('verif.aucun'), 4000);
+    return;
+  }
+  const cible = cheminFeuilleVerif(racine, filtreArticles);
+  try {
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'print-templates', 'verification-meta.twig'), 'utf8');
+    fs.mkdirSync(path.dirname(cible), { recursive: true });
+    ecrireAtomique(cible, verifMeta.rendre(source, modele));
+  } catch (e) {
+    repondrePanneau(panneau, { type: MSG.ERREUR, message: T('verif.err', [String((e && e.message) || e)]) });
+    return;
+  }
+  await vscode.env.openExternal(vscode.Uri.file(cible));
+  vscode.window.setStatusBarMessage(T('verif.ouverte', [modele.total]), 5000);
+}
+
 // Sans item, l'article visé est celui du .md actif, à défaut celui en aperçu.
 async function ouvrirMetadonneesArticle(fournisseur, rafraichirTout, item) {
   if (!fournisseur.racine) { return; }
@@ -1187,6 +1356,7 @@ module.exports = {
   relancerCompilationCartes, textesCarteArticle, textesAuteur, licencesTraduites, typesTraduits,
   ecrireChampsLivre, filtreValide, signalerFichesPerimees, titreFiches,
   confirmerDoiManuel, ouvrirMetadonnees, ouvrirApercuMetadonnees, ouvrirMetadonneesArticle,
+  basculerMarkdownFiche,
   limitesMedias, BUDGET_VIGNETTES, vignetteAuteur, envoyerAuteursConnus, envoyerMotsClesConnus,
   rafraichirMotsClesConnusEnFond, rafraichirAuteursPubliesEnFond,
   deposerPhotoAuteur, ouvrirVersionsPhoto, choisirPhotoAuteur, recalerPhotoOriginale

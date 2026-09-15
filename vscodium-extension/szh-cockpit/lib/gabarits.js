@@ -10,7 +10,8 @@
 // loop.last, loop.length ; {% set x = expr %} ; {# commentaire #} ; {% block nom %} au
 // premier niveau ; le contrôle des blancs à la Twig ({%- -%} etc.).
 // Non reconnu : parenthèses dans les conditions, expressions arithmétiques, macros,
-// inclusion d'un autre gabarit, échappement HTML (le texte sort tel quel).
+// inclusion d'un autre gabarit, échappement AUTOMATIQUE (le texte sort tel quel ; un
+// gabarit HTML doit poser le filtre |e sur chaque valeur, voir FILTRES_CONNUS).
 //
 // ⚠ Ce moteur est le SEUL du produit, et doit le rester. Trois surfaces s'en servent : les
 // courriels du cockpit (lib/courriel.js), les exports du secrétariat (lib/secretariat.js,
@@ -25,8 +26,15 @@
 
 const FILTRES_CONNUS = [
   'default', 'upper', 'lower', 'trim', 'capitalize', 'join', 'length', 'first', 'last',
-  'csv'
+  'csv', 'escape', 'e'
 ];
+
+// Le moteur sort le texte tel quel — c'est voulu pour les courriels et les exports, qui
+// sont en texte brut. La feuille de vérification, elle, est du HTML : un titre d'article
+// contenant « & » ou « < » y casserait la page. `escape` (alias `e`) est donc à poser sur
+// CHAQUE valeur d'un gabarit HTML ; il n'y a pas d'échappement automatique, et il ne peut
+// pas y en avoir sans changer le sens des gabarits déjà écrits.
+const ECHAPPEMENTS_HTML = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 function erreur(nomGabarit, ligne, message) {
   return new Error('gabarit « ' + nomGabarit + ' », ligne ' + ligne + ' : ' + message);
@@ -377,6 +385,11 @@ function appliquerFiltre(nom, v, args) {
     // cité qui n'en avait pas besoin. C'est ce qui permet d'écrire un CSV entier dans un
     // gabarit sans qu'un point-virgule se retrouve un jour au milieu d'un titre.
     case 'csv': return '"' + formaterValeur(v).replace(/"/g, '""') + '"';
+    // L'apostrophe et le guillemet sont échappés comme le reste : un gabarit HTML pose
+    // aussi des valeurs dans des attributs, et distinguer les deux contextes demanderait
+    // au moteur de savoir où il écrit — ce qu'il ne sait pas.
+    case 'escape':
+    case 'e': return formaterValeur(v).replace(/[&<>"']/g, (c) => ECHAPPEMENTS_HTML[c]);
     default: return v; // inatteignable : le nom est validé à l'analyse
   }
 }

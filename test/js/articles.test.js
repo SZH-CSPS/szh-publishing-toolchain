@@ -66,14 +66,17 @@ test('ordre des articles : un déplacement rend la liste entière, et s’arrêt
 });
 
 test('nom d’un article : deux chiffres, le titre de la fiche, le slug en dernier recours', () => {
-  assert.strictEqual(art.prefixeOrdre(0), '01');
-  assert.strictEqual(art.prefixeOrdre(9), '10');
-  assert.strictEqual(art.prefixeOrdre(99), '100');   // au-delà de 99, le nombre tel quel
+  // À partir de 00, comme le rang que porte le DOI (rangDoi → doiCalcule, « …-03-00 ») :
+  // la carte, la barre latérale et le DOI disent le même nombre du même article.
+  assert.strictEqual(art.prefixeOrdre(0), '00');
+  assert.strictEqual(art.prefixeOrdre(9), '09');
+  assert.strictEqual(art.prefixeOrdre(10), '10');
+  assert.strictEqual(art.prefixeOrdre(100), '100');   // au-delà de 99, le nombre tel quel
   const meta = yaml.analyserMeta('title:' + LF + '  fr: "Un titre"' + LF);
-  assert.strictEqual(art.libelleArticle(2, '03-truc', art.titreFiche(meta, 'fr')), '03 · Un titre');
+  assert.strictEqual(art.libelleArticle(2, '03-truc', art.titreFiche(meta, 'fr')), '02 · Un titre');
   // Fiche absente, ou titre vide : l'article garde sa place et son slug s'affiche.
   assert.strictEqual(art.libelleArticle(2, '03-truc', art.titreFiche(yaml.analyserMeta(''), 'fr')),
-    '03 · 03-truc');
+    '02 · 03-truc');
   // Titre dans une seule langue : mieux vaut un titre allemand que le slug.
   assert.strictEqual(art.titreFiche(yaml.analyserMeta('title:' + LF + '  de: "Titel"' + LF), 'fr'),
     'Titel');
@@ -346,7 +349,8 @@ test('arborescence : les articles portent leur titre, préfixé de deux chiffres
   const items = await HOTE.arbre().getChildren(sectionArticles());
   const libelles = items.map((it) => it.label);
   // « 01-essai » a un titre dans sa fiche, « 02-sans-fiche » n'en a pas : les deux se voient.
-  assert.deepStrictEqual(libelles, ['01 · Titre', '02 · 02-sans-fiche']);
+  // Les deux chiffres partent de 00, comme le rang du DOI.
+  assert.deepStrictEqual(libelles, ['00 · Titre', '01 · 02-sans-fiche']);
   // Le slug passe en description : c'est par lui qu'on retrouve le dossier.
   assert.ok(items[0].description.indexOf('01-essai') === 0,
     'le slug a disparu de la description : ' + items[0].description);
@@ -374,7 +378,7 @@ test('ordre : monter un article écrit ausgabe.yaml et ne renomme aucun dossier'
 
   // L'ordre pilote l'arborescence, et donc les préfixes à deux chiffres.
   const items = await HOTE.arbre().getChildren(sectionArticles());
-  assert.deepStrictEqual(items.map((it) => it.label), ['01 · 02-sans-fiche', '02 · Titre']);
+  assert.deepStrictEqual(items.map((it) => it.label), ['00 · 02-sans-fiche', '01 · Titre']);
   // Et la carte de la vue le dit aussi.
   const charge = p.messages.filter((m) => m.type === 'valeurs').pop();
   assert.deepStrictEqual(charge.lignes.map((l) => l.cle), ['02-sans-fiche', '01-essai']);
@@ -392,7 +396,7 @@ test('ordre : un article ajouté à la main apparaît sans casser l’ordre', as
 
   const items = await HOTE.arbre().getChildren(sectionArticles());
   assert.deepStrictEqual(items.map((it) => it.label),
-    ['01 · 02-sans-fiche', '02 · Titre', '03 · Ajouté hors interface'],
+    ['00 · 02-sans-fiche', '01 · Titre', '02 · Ajouté hors interface'],
     'l’article ajouté n’apparaît pas, ou l’ordre s’est perdu');
   // Rien n'a été réécrit au passage : la clé n'est écrite que par un geste de l'utilisateur.
   assert.match(fs.readFileSync(AUSGABE, 'utf8'), /^ordre-articles: \["02-sans-fiche", "01-essai"\]$/m);
@@ -534,20 +538,24 @@ function derniereCharge(p) {
 // Les trois interrupteurs remis à « tout montrer », quoi qu'il soit arrivé avant : ce sont
 // des réglages de poste, ils survivent au contrôle qui les allume, et un contrôle qui
 // échoue en laissant l'un allumé ferait tomber les suivants pour la mauvaise raison.
+//
+// C'est `actif` qui dit l'état, et non le libellé : celui-ci nomme la chose et ne bouge
+// plus. `actif` vaut « la chose est à l'écran », donc éteindre veut dire rallumer.
 async function eteindreVue(p) {
   const etat = (derniereCharge(p).boutons || []);
   for (const id of ['cacher-taches', 'cacher-traductions', 'cacher-meta']) {
     const bouton = etat.find((b) => b.id === id);
-    if (bouton && /Afficher/.test(bouton.libelle)) {
+    if (bouton && bouton.actif === false) {
       await p._recepteur({ type: 'commande', id: id });
     }
   }
 }
 
-test('vue Articles : les trois interrupteurs d’affichage sont offerts, et disent le geste', async () => {
+test('vue Articles : les trois interrupteurs d’affichage sont offerts, allumés, et nommés', async () => {
   await HOTE.executer('szh.vueArticles');
   const p = HOTE.panneauDeType('szhVueArticles');
   await p._recepteur({ type: 'pret' });
+  await eteindreVue(p);
   const charge = derniereCharge(p);
   const boutons = {};
   for (const b of charge.boutons) { boutons[b.id] = b; }
@@ -555,12 +563,17 @@ test('vue Articles : les trois interrupteurs d’affichage sont offerts, et dise
     assert.ok(boutons[id], 'bouton absent de la barre : ' + id);
     assert.ok(boutons[id].libelle && boutons[id].tip,
       'bouton sans libellé ni infobulle : ' + id);
+    // Rien n'est caché : les trois sont allumés, oeil ouvert. C'est là que se jouait la
+    // faute facile — la configuration retient ce qui est CACHÉ, recopier sa valeur dans
+    // `actif` allumerait précisément les trois boutons dont le contenu ne s'affiche pas.
+    assert.strictEqual(boutons[id].actif, true, 'interrupteur éteint alors que rien n’est caché : ' + id);
+    assert.strictEqual(boutons[id].icone, 'oeil', 'oeil fermé sur un contenu affiché : ' + id);
   }
-  // Le libellé annonce le geste à venir, jamais l'état courant : rien n'est caché pour
-  // l'instant, les trois boutons proposent donc de cacher.
-  assert.match(boutons['cacher-taches'].libelle, /Cacher/);
-  assert.match(boutons['cacher-traductions'].libelle, /Cacher/);
-  assert.match(boutons['cacher-meta'].libelle, /Cacher/);
+  // Le libellé nomme la chose et ne dit pas le geste : c'est l'infobulle qui l'annonce.
+  assert.strictEqual(boutons['cacher-taches'].libelle, 'Tâches');
+  assert.strictEqual(boutons['cacher-traductions'].libelle, 'Traductions');
+  assert.strictEqual(boutons['cacher-meta'].libelle, 'Métadonnées');
+  assert.match(boutons['cacher-meta'].tip, /Replier/);
 });
 
 test('vue Articles : « Cacher les métadonnées » vaut pour toutes les cartes', async () => {
@@ -574,7 +587,11 @@ test('vue Articles : « Cacher les métadonnées » vaut pour toutes les cartes'
   const apres = derniereCharge(p);
   // La page reçoit l'état de départ de toutes ses cartes, et le bouton propose le retour.
   assert.strictEqual(apres.metaRepliees, true);
-  assert.match(apres.boutons.find((b) => b.id === 'cacher-meta').libelle, /Afficher/);
+  const btMeta = apres.boutons.find((b) => b.id === 'cacher-meta');
+  assert.strictEqual(btMeta.actif, false, 'l’interrupteur est resté allumé');
+  assert.strictEqual(btMeta.libelle, 'Métadonnées', 'le libellé d’un interrupteur ne doit pas bouger');
+  assert.strictEqual(btMeta.icone, 'oeil-ferme');
+  assert.match(btMeta.tip, /Remontrer/, 'l’infobulle n’annonce pas le retour');
   // L'aperçu part quand même : replié n'est pas retiré, une carte se déplie encore seule
   // par son chevron, sans aller-retour avec l'hôte.
   assert.ok(apres.lignes.every((l) => l.apercu && (l.apercu.lignes || []).length > 0),
@@ -602,8 +619,12 @@ test('vue Articles : « Cacher les tâches » raccourcit la carte sans rien déc
   const apres = derniereCharge(p);
   assert.ok(apres.lignes.every((l) => l.taches.length === 0),
     'des tâches sont encore envoyées à la page : la carte ne raccourcit pas');
-  // Le bouton propose maintenant le geste inverse, sans quoi le retour serait introuvable.
-  assert.match(apres.boutons.find((b) => b.id === 'cacher-taches').libelle, /Afficher/);
+  // L'interrupteur s'éteint, et son infobulle propose le retour : sans elle, le chemin
+  // inverse serait introuvable.
+  const btTaches = apres.boutons.find((b) => b.id === 'cacher-taches');
+  assert.strictEqual(btTaches.actif, false);
+  assert.strictEqual(btTaches.icone, 'oeil-ferme');
+  assert.match(btTaches.tip, /Remontrer/);
   // Et rien n'a été décoché au passage : le sidecar de l'article est intact.
   assert.match(fs.readFileSync(sidecar, 'utf8'), /version-finale/,
     'cacher les tâches a touché à leur état');
@@ -706,7 +727,7 @@ test('vue Articles : les trois interrupteurs sont indépendants et se souviennen
   await p._recepteur({ type: 'pret' });
   const rouvert = derniereCharge(p);
   assert.ok(rouvert.lignes.every((l) => l.taches.length === 0));
-  assert.match(rouvert.boutons.find((b) => b.id === 'cacher-traductions').libelle, /Afficher/);
+  assert.strictEqual(rouvert.boutons.find((b) => b.id === 'cacher-traductions').actif, false);
 
   // Et un identifiant de bouton inconnu ne touche à rien.
   const avant = fs.readFileSync(process.env.SZH_CONFIG_OJS, 'utf8');

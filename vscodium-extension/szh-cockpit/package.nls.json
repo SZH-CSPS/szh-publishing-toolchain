@@ -36,6 +36,7 @@
   "cmd.envoyerTraduction": "Envoyer pour traduction (lien)",
   "cmd.reglages": "Réglages SZH",
   "cmd.basculerApercu": "Basculer l’aperçu HTML ⇄ PDF",
+  "cmd.apercuBiblio": "Bibliographie et son rendu côte à côte",
   "cmd.panneauCommande": "Panneau de commande",
   "cmd.panneauEdition": "Panneau d’édition",
   "cmd.panneauExport": "Panneau d’export",

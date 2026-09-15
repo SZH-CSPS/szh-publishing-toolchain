@@ -214,3 +214,93 @@ test('témoin : sans sansAffichage, la même compilation réassigne l’aperçu 
     HOTE.stub.tasks.fetchTasks = () => Promise.resolve([]);
   }
 });
+
+// ---- A1 bis : focaliser, c'est aussi DÉSIGNER -----------------------------------------
+//
+// Le cockpit n'a qu'une notion d'« article courant », et elle vivait dans le seul .md
+// ouvert. Or ces deux formulaires n'en ouvrent aucun : après un clic sur « Éditer les
+// métadonnées », Ctrl+Alt+P, la barre d'état et la compilation parlaient encore de
+// l'article précédent — ou de rien du tout sur un poste qui vient de démarrer. C'est
+// exactement ce que le geste avait l'air de faire, et ne faisait pas.
+
+const session = require(path.join(COCKPIT, 'lib', 'session.js'));
+
+test('A1 bis : « Métadonnées » désigne l’article, sans rien afficher', async () => {
+  session.poserApercuCourantSlug('02-sans-fiche');
+  const panneauxAvant = HOTE.panneaux.length;
+  await HOTE.executer('szh.metadonneesArticle', { slug: '01-essai' });
+  assert.strictEqual(session.apercuCourantSlug(), '01-essai',
+    'l’aperçu parlerait encore de l’article précédent');
+  // Désigner n'est pas montrer : aucun aperçu n'est né de ce geste. On compte les panneaux
+  // CRÉÉS pendant l'appel — panneauDeType() rend aussi ceux des contrôles précédents.
+  const nes = HOTE.panneaux.slice(panneauxAvant).map((x) => x.type);
+  assert.deepStrictEqual(nes.filter((t) => t === 'szhApercuHtml'), [],
+    'un aperçu s’est ouvert : la désignation doit rester muette');
+});
+
+test('A1 bis : « Médias » désigne l’article de la même façon', async () => {
+  session.poserApercuCourantSlug('02-sans-fiche');
+  await HOTE.executer('szh.mediasArticle', { slug: '01-essai' });
+  assert.strictEqual(session.apercuCourantSlug(), '01-essai');
+});
+
+// ---- « Markdown » : le texte de l'article à droite de sa fiche -------------------------
+//
+// Un interrupteur dont l'état n'est pas tenu en mémoire mais RELU dans les onglets : un
+// onglet se ferme aussi à la croix, et un bouton qui ne connaîtrait que ses propres clics
+// finirait par montrer l'inverse de l'écran. La page ne décide donc de rien.
+
+test('Markdown : le texte s’ouvre en colonne 2, la fiche garde la main', async () => {
+  await HOTE.executer('szh.metadonneesArticle', { slug: '01-essai' });
+  const p = HOTE.panneauDeType('szhApercuMetadonnees');
+  assert.ok(p, 'le formulaire des métadonnées ne s’est pas ouvert');
+  HOTE.poserOnglets([]);
+  HOTE.oublierCommandes();
+  p.messages.length = 0;
+
+  await p._recepteur({ type: 'markdown', slug: '01-essai' });
+
+  const ouverture = HOTE.commandesJouees().find((c) => c.id === 'vscode.open');
+  assert.ok(ouverture, 'le texte de l’article n’a pas été ouvert');
+  assert.strictEqual(ouverture.args[0].fsPath,
+    path.join(REVUE, 'articles', '01-essai', '01-essai.md'));
+  assert.strictEqual(ouverture.args[1].viewColumn, 2, 'le texte doit s’ouvrir À DROITE de la fiche');
+  assert.strictEqual(ouverture.args[1].preserveFocus, true,
+    'le curseur a quitté la fiche : on y saisissait un champ');
+  const reponse = p.messages.filter((m) => m.type === 'markdown').pop();
+  assert.ok(reponse && reponse.visible === true, 'la page n’a pas appris que le texte est là');
+});
+
+test('Markdown : le second appui referme, et l’état vient des onglets', async () => {
+  const p = HOTE.panneauDeType('szhApercuMetadonnees');
+  // L'onglet existe maintenant pour de bon : c'est LUI que l'hôte relit, et non un drapeau.
+  HOTE.poserOnglets([{ uri: { fsPath: path.join(REVUE, 'articles', '01-essai', '01-essai.md') } }]);
+  HOTE.oublierFermetures();
+  HOTE.oublierCommandes();
+  p.messages.length = 0;
+
+  await p._recepteur({ type: 'markdown', slug: '01-essai' });
+
+  assert.strictEqual(HOTE.fermetures().length, 1, 'l’onglet n’a pas été fermé');
+  assert.ok(!HOTE.commandesJouees().some((c) => c.id === 'vscode.open'),
+    'le texte a été rouvert au lieu d’être refermé');
+  const reponse = p.messages.filter((m) => m.type === 'markdown').pop();
+  assert.strictEqual(reponse.visible, false);
+  HOTE.poserOnglets([]);
+});
+
+test('Markdown : hors article, rien ne s’ouvre et le bouton reste éteint', async () => {
+  const p = HOTE.panneauDeType('szhApercuMetadonnees');
+  // Tant que la fiche est filtrée sur UN article, un slug inconnu retombe sur lui : c'est
+  // voulu, et c'est le cas ordinaire. Le refus ne se voit donc qu'en vue complète.
+  await p._recepteur({ type: 'tous' });
+  HOTE.poserOnglets([]);
+  HOTE.oublierCommandes();
+  p.messages.length = 0;
+
+  await p._recepteur({ type: 'markdown', slug: 'article-qui-n-existe-pas' });
+
+  const reponse = p.messages.filter((m) => m.type === 'markdown').pop();
+  assert.strictEqual(reponse.visible, false);
+  assert.ok(reponse.message, 'aucune explication : le clic aurait l’air cassé');
+});

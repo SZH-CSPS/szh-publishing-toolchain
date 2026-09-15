@@ -142,12 +142,21 @@ function deplacerArticle(liste, slug, delta) {
   return l;
 }
 
-// Le préfixe visible : « 01 », « 02 »… Il suit l'ordre ci-dessus et non le nom du dossier,
+// Le préfixe visible : « 00 », « 01 »… Il suit l'ordre ci-dessus et non le nom du dossier,
 // et dit d'un coup d'oeil où l'article se situe dans le numéro. Au-delà de 99 articles, le
 // nombre s'écrit tel quel plutôt que de mentir sur deux chiffres.
+//
+// Il compte À PARTIR DE ZÉRO, et ce n'est pas un décalage : c'est le rang que le DOI
+// porte. doiCalcule() (lib/export-ojs.js) reçoit rangDoi(), qui vaut 0 pour le premier
+// article porteur, et écrit « …-2026-03-00 ». Numéroter l'écran à partir de 1 obligeait à
+// faire la soustraction de tête chaque fois qu'on rapproche une carte d'un DOI, d'une
+// galley ou d'une ligne de l'instance OJS — et c'est exactement là qu'on ne veut pas se
+// tromper d'article. Les articles SANS DOI, rangés en fin de numéro par trierParDoi(),
+// continuent la série au-delà du dernier porteur : leur nombre ne désigne alors aucun DOI,
+// puisqu'ils n'en ont pas.
 function prefixeOrdre(index) {
-  const n = Number(index) + 1;
-  if (!isFinite(n) || n < 1) { return '00'; }
+  const n = Math.trunc(Number(index));
+  if (!isFinite(n) || n < 0) { return '00'; }
   return n < 10 ? '0' + n : String(n);
 }
 

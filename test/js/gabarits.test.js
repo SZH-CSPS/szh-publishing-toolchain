@@ -74,6 +74,30 @@ test('filtres chaînés', () => {
   assert.equal(corps('{{ x|trim|upper }}', { x: '  ab  ' }), 'AB');
 });
 
+// L'échappement HTML sert les gabarits de page (print-templates/), pas les courriels ni
+// les exports, qui sont en texte brut. Il n'est JAMAIS automatique : un gabarit HTML doit
+// le poser champ par champ, et ce banc fige les deux moitiés de cette règle.
+test('filtre escape : les cinq caractères qui cassent une page HTML', () => {
+  assert.equal(corps('{{ x|escape }}', { x: '<a href="u">T & T\'s</a>' }),
+    '&lt;a href=&quot;u&quot;&gt;T &amp; T&#39;s&lt;/a&gt;');
+});
+
+test('filtre e : le même, sous son nom court', () => {
+  assert.equal(corps('{{ x|e }}', { x: '<b>' }), '&lt;b&gt;');
+});
+
+test('l’esperluette n’est échappée qu’une fois', () => {
+  assert.equal(corps('{{ x|e }}', { x: '&amp;' }), '&amp;amp;');
+});
+
+test('sans filtre, le texte sort tel quel : l’échappement n’est jamais automatique', () => {
+  assert.equal(corps('{{ x }}', { x: '<b>' }), '<b>');
+});
+
+test('escape sur une valeur absente ne rend rien, pas « undefined »', () => {
+  assert.equal(corps('{{ x|e }}', {}), '');
+});
+
 test('if / else', () => {
   assert.equal(corps('{% if x %}A{% else %}B{% endif %}', { x: true }), 'A');
   assert.equal(corps('{% if x %}A{% else %}B{% endif %}', { x: false }), 'B');

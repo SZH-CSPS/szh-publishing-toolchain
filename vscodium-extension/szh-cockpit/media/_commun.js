@@ -71,6 +71,16 @@ var SZH = (function () {
       ['path', { d: 'M8 3.25C4.7 3.25 2 5.15 1.15 8 2 10.85 4.7 12.75 8 12.75s6-1.9 6.85-4.75C14 5.15 11.3 3.25 8 3.25zm0 1.5c2.4 0 4.4 1.3 5.25 3.25C12.4 9.95 10.4 11.25 8 11.25S3.6 9.95 2.75 8C3.6 6.05 5.6 4.75 8 4.75z' }],
       ['circle', { cx: '8', cy: '8', r: '1.9' }]
     ],
+    // L'oeil ferme : une paupiere baissee et trois cils, jamais un oeil barre d'un trait.
+    // A 14 px le trait oblique se superpose au dessin plein de `oeil` et les deux etats
+    // deviennent une tache indistincte ; la paupiere, elle, change la SILHOUETTE, ce qui se
+    // lit du coin de l'oeil. Les cils partent de la courbe elle-meme (t = .25, .5, .75).
+    'oeil-ferme': [
+      ['path', { d: 'M2 7.5Q8 13 14 7.5', fill: 'none', stroke: 'currentColor',
+        'stroke-width': '1.6', 'stroke-linecap': 'round' }],
+      ['path', { d: 'M5 9.6 4 11.4M8 10.3V12.3M11 9.6 12 11.4', fill: 'none', stroke: 'currentColor',
+        'stroke-width': '1.6', 'stroke-linecap': 'round' }]
+    ],
     // Agrandir un aperçu : un cercle en contour et un manche oblique.
     loupe: [
       ['circle', { cx: '7', cy: '7', r: '4.25', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5' }],
@@ -941,14 +951,25 @@ var SZH = (function () {
   //
   // Texte court plus pictogramme : le premier dit ce que fait le bouton, le second le fait
   // reconnaître d'un coup d'oeil dans une barre qui en porte plusieurs. Un bouton vaut
-  // { id, libelle, icone, tip, principal, danger, desactive } et `onAction(id)` est appelé
-  // au clic. Rend la zone d'état de la barre, où l'appelant écrit ce qu'il vient de faire.
+  // { id, libelle, icone, tip, principal, danger, desactive, actif } et `onAction(id)` est
+  // appelé au clic. Rend la zone d'état de la barre, où l'appelant écrit ce qu'il vient
+  // de faire.
+  //
+  // `actif` (booléen, absent sur un bouton ordinaire) fait de ce bouton un INTERRUPTEUR :
+  // aria-pressed part avec, et _design.css lui donne alors le fond plein. L'état allumé
+  // veut dire « ce que ce bouton commande est à l'écran », jamais « le clic va l'allumer »
+  // — c'est le sens que le reste de l'éditeur donne à un bouton de barre allumé. Le libellé
+  // d'un interrupteur ne bouge donc PLUS avec son état (WAI-ARIA : un bouton à bascule garde
+  // son nom, seul aria-pressed change) ; c'est l'infobulle qui dit le geste à venir.
   function boutonCommande(b, onAction) {
     var el = document.createElement('button');
     el.type = 'button';
     el.className = 'szh-bouton'
       + (b.principal ? ' szh-bouton--principal' : '')
       + (b.danger ? ' bouton-danger' : '');
+    if (b.actif !== undefined && b.actif !== null) {
+      el.setAttribute('aria-pressed', b.actif ? 'true' : 'false');
+    }
     if (b.icone) { el.appendChild(icone(b.icone)); }
     var texte = document.createElement('span');
     texte.textContent = b.libelle || '';

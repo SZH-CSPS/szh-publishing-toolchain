@@ -177,6 +177,11 @@ lib/
   table-model.js        analyse, sérialisation et opérations du modèle de tableau
   traduction.js         sidecar <slug>.traduction.yaml et suivi des traductions
   verrou.js             lecture seule du dossier quand le numéro est gelé
+  verif-meta.js         feuille « Vérifier les méta (print) » : une page A4 par article,
+                        rendue depuis print-templates/verification-meta.twig. Module pur,
+                        sans disque ni vscode. Les clés du modèle qui finissent par `Html`
+                        en sortent déjà échappées ; toutes les autres attendent le filtre
+                        |e du gabarit
   wsl.js                distro, localisation de wsl.exe, maintien en vie de la VM
   yaml.js               (dé)sérialiseurs ausgabe/frontmatter/meta, écriture atomique
   webviews/util.js      assemblage du HTML des webviews (nonce, CSP, fichiers de media/)
@@ -219,6 +224,10 @@ media/
   vue-ensemble.{html,css,js}      vue d'ensemble d'une section (traductions, Word, contrôles)
   articles.{html,css,js}          vue « Articles » : ordre, tâches, métadonnées du numéro
 ```
+print-templates/         gabarit Twig de la feuille de vérification des métadonnées
+                        (verification-meta.twig, lib/verif-meta.js) : du HTML, donc chaque
+                        valeur y porte le filtre |e — le moteur n'échappe rien tout seul.
+                        Lu directement d'ici, jamais copié sur le poste
 
 `test/js/contrats.test.js` vérifie que cette liste reste complète, en même temps que les
 autres valeurs recopiées d'un fichier à l'autre. `test/js/webviews.test.js` rend les pages

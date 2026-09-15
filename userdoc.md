@@ -81,6 +81,11 @@ Elle a **quatre sections** :
   - **🗑 Supprimer l’article** – efface l’article **et** son PDF, après une demande de
     confirmation explicite (l’action est irréversible : rien n’est supprimé sans accord).
 
+  Les deux premiers **désignent l’article** au passage : la barre latérale le sélectionne,
+  et l’outil sait dès lors de quel article on parle – sans ouvrir son texte, que le
+  formulaire recouvrirait de toute façon. `Ctrl+Alt+P` montre donc l’aperçu **du bon
+  article** en sortant du formulaire, et non celui d’avant.
+
   La documentation d’un article – fiches de livre, de film, d’intervention parlementaire,
   de recherche en cours, d’agenda, et reprise d’un article de la revue sœur – n’a plus son
   bouton ici : elle se règle dans la section « Actualité » (plus bas), qui est le seul
@@ -96,6 +101,14 @@ Elle a **quatre sections** :
   tableau ne laisse donc jamais de trou dans le rendu). Une confirmation est demandée ;
   la modification du texte reste annulable par **Ctrl + Z** tant que l’article
   est ouvert.
+
+  La flèche déplie aussi la **bibliographie** de l’article (`<slug>.biblio.md`, ses
+  références seules, une par paragraphe), quand il en a une. **Un clic l’ouvre en deux
+  volets : son texte à gauche, son rendu à droite** – italiques, capitales et ponctuation
+  telles qu’elles paraîtront, sans avoir à compiler le numéro entier pour vérifier une
+  virgule. `Ctrl+Alt+P` montre ou cache ce rendu, comme il bascule l’aperçu ailleurs.
+  L’aperçu de l’article libère la place le temps qu’on relit les références, et la reprend
+  dès qu’on revient au texte.
 
   Les **images**, elles, ne sont plus listées sous l’article : elles se gèrent toutes
   ensemble dans le gestionnaire des médias.
@@ -362,6 +375,15 @@ depuis n’importe où dans la revue) :
     et la colonne de texte reste alignée sur celle des autres. Elle paraît dès qu’aucune photo
     n’est retenue ; la fiche, elle, continue d’afficher « Aucune photo » tant qu’il n’y
     en a pas.
+
+    **Voir le Markdown à côté.** Le bouton **« Markdown »** de la barre ouvre le
+    **texte de l’article à droite** du formulaire, en deux volets – de quoi y recopier un
+    titre, une phrase de résumé ou une référence sans fermer la fiche. C’est l’éditeur
+    ordinaire : ce qu’on y tape s’enregistre comme d’habitude. Le bouton vise la carte où
+    l’on travaille (celle où le curseur se trouve) ; sur une fiche ouverte depuis la barre
+    latérale, il n’y a qu’un article et la question ne se pose pas. Un second clic referme
+    le texte, et le bouton s’éteint aussi si l’on ferme l’onglet à la croix : il dit ce qui
+    est à l’écran, pas ce qu’on a cliqué.
   - **Réglages SZH** – thème, taille de l’interface et du texte, **aperçu par défaut**
     (voir ci-dessous), langue de l’interface, la **validation PDF/UA en arrière-plan**
     (activée par défaut – voir « Les contrôles de la compilation » ci-dessous), et le
@@ -790,6 +812,15 @@ passe en petit à côté dans la barre ; sur la carte de la vue, il se lit en
 **infobulle** du titre. C’est par lui qu’on retrouve l’article dans l’explorateur, ce
 n’est plus lui qu’on lit.
 
+Ces deux chiffres commencent à **00**, et ce n’est pas une bizarrerie : c’est le nombre que
+porte le **DOI** de l’article. Le premier article d’un numéro reçoit
+`10.57161/r2026-03-00`, le deuxième `…-01`, et ainsi de suite. Écrire « 01 » à l’écran
+obligeait à faire la soustraction de tête chaque fois qu’on rapproche une carte d’un DOI,
+d’une galley ou d’une ligne de la plateforme – et c’est précisément là qu’on ne veut pas se
+tromper d’article. Les articles **sans DOI** (l’actualité, la documentation), rangés en fin
+de numéro, continuent la série : leur nombre ne désigne alors aucun DOI, puisqu’ils n’en
+ont pas.
+
 Un article dont la fiche manque, ou dont le titre est vide, **reste visible** : son nom de
 dossier s’affiche à la place du titre, et sa carte le range parmi ses **erreurs
 bloquantes**, en rouge. Ce n’est pas un détail de confort : la compilation refuse de
@@ -882,20 +913,26 @@ et l’avancement se recompte sur ce que la revue demande aujourd’hui.
 
 Sur un numéro complet, la vue devient longue : chaque carte porte l’aperçu de ses
 métadonnées – neuf lignes, chacune dans les deux langues – **et** sa liste de cases à
-cocher. Deux boutons de la barre la resserrent :
+cocher. Trois boutons de la barre la resserrent :
 
-- **« Cacher les tâches »** retire la liste de cases de toutes les cartes. Rien n’est
+- **« Tâches »**, éteint, retire la liste de cases de toutes les cartes. Rien n’est
   décoché : l’avancement reste écrit, et la barre latérale continue de l’afficher à côté du
   nom du dossier.
-- **« Cacher les traductions »** ne laisse, sur chaque carte, que les champs **dans la
+- **« Traductions »**, éteint, ne laisse sur chaque carte que les champs **dans la
   langue de l’article** – son titre, son sous-titre, son résumé et ses mots clés. Les textes
   de l’autre langue **restent écrits** dans la fiche et paraîtront normalement ; ils ne sont
   simplement plus montrés ici. Un article qui ne déclare pas sa langue prend celle du numéro,
   exactement comme à la compilation.
+- **« Métadonnées »**, éteint, replie l’aperçu de **toutes** les cartes d’un coup ;
+  chaque carte se déplie ensuite seule, par son chevron.
 
-Le libellé dit toujours **le geste à venir** : quand les tâches sont cachées, le bouton
-propose « Afficher les tâches ». Les deux choix sont retenus dans les réglages du poste –
-ils valent donc pour tous les numéros, et ils survivent à une mise à jour de l’outil.
+Ces trois boutons sont des **interrupteurs**, et ils montrent leur état plutôt que de le
+faire deviner : quand la chose est à l’écran, le bouton est **allumé** (fond plein) et
+porte un **œil ouvert** ; quand elle est cachée, il reprend son fond ordinaire et l’œil se
+**ferme**. Leur libellé, lui, ne bouge plus : il nomme la chose (« Tâches »,
+« Traductions », « Métadonnées »), et c’est l’**infobulle** qui annonce ce que le
+clic fera. Les trois choix sont retenus dans les réglages du poste – ils valent donc pour
+tous les numéros, et ils survivent à une mise à jour de l’outil.
 
 ### Les métadonnées du numéro, dans la vue
 

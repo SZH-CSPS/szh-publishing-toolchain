@@ -36,6 +36,7 @@
   "cmd.envoyerTraduction": "Zur Übersetzung senden (Link)",
   "cmd.reglages": "SZH-Einstellungen",
   "cmd.basculerApercu": "Vorschau HTML ⇄ PDF umschalten",
+  "cmd.apercuBiblio": "Literaturverzeichnis und seine Vorschau nebeneinander",
   "cmd.panneauCommande": "Steuerungs-Panel",
   "cmd.panneauEdition": "Bearbeitungs-Panel",
   "cmd.panneauExport": "Export-Panel",

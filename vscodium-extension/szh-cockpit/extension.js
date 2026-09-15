@@ -176,10 +176,12 @@ const {
   editeurArticleCourant, revelerLigneSource, pousserDefilementVersApercu,
   pousserSurlignageVersApercu, injecterApercu, revelerPos,
   fermerApercuCourant, fermerApercuHtml, fermerTousLesApercus, echapperTexte,
+  ouvrirApercuBiblio,
   ouvrirApercuHtml, rechargerApercuHtmlSiChange, basculerApercu, cheminApercuHtml
 } = apercuLib;
 apercuLib.configurer({
   fermerOnglets: (predicat) => fermerOnglets(predicat),
+  ongletOuvert: (predicat) => ongletOuvert(predicat),
   ouvrirApercuPdf: (uri) => ouvrirApercuPdf(uri),
   repondreModeTrad: (panneau, msg) => repondreModeTrad(panneau, msg)
 });
@@ -228,6 +230,10 @@ metadonneesHote.configurer({
     permuterStatutsTraduction(racine, slug, avant, apres),
   relancerCompilation: (fournisseur, slug, opts) => relancerCompilation(fournisseur, slug, opts),
   focaliserUnite: (fournisseur, slug) => focaliserUnite(fournisseur, slug),
+  // « Markdown » : le texte de l'article à droite de sa fiche. Les onglets se lisent et se
+  // ferment ici, comme pour l'aperçu — aucun module de lib/ ne touche à tabGroups.
+  ongletOuvert: (predicat) => ongletOuvert(predicat),
+  fermerOnglets: (predicat) => fermerOnglets(predicat),
   slugDepuisChemin: (racine, chemin) => slugDepuisChemin(racine, chemin),
   articlesSansDoi: (racine, slugs) => articlesSansDoi(racine, slugs),
   // Le vérificateur de traduction : le réglage se lit ici, et la pastille du formulaire des
@@ -1183,9 +1189,11 @@ class FournisseurRevue {
   // article. Un éditeur structuré se battrait contre ce geste-là ; le texte est la bonne
   // surface, et c'est déjà celle de l'article.
   //
-  // Colonne 1, comme le .md : « Beside » est relatif à la vue active et empile les colonnes,
-  // et la colonne 2 appartient à l'aperçu. L'onglet s'ouvre donc à côté de l'article, pas à
-  // sa place, et sans chasser l'aperçu.
+  // Colonne 1, comme le .md, et son RENDU en colonne 2 : une référence se relit mise en
+  // forme, et rien d'autre ne la montre — la compilation du numéro entier pour vérifier une
+  // italique serait hors de proportion. L'aperçu de l'article libère donc la colonne 2 le
+  // temps qu'on est dans la bibliographie, et Ctrl+Alt+P bascule ce rendu-là
+  // (basculerApercu, lib/apercu.js).
   //
   // Pas de fichier : pas d'entrée. Un article sans bibliographie n'a rien à montrer — une
   // entrée morte ferait croire à une liste vide, ce qui n'est pas la même chose.
@@ -1199,8 +1207,7 @@ class FournisseurRevue {
     it.contextValue = 'biblio';
     it.tooltip = T('arbre.biblio.tip');
     it.command = {
-      command: 'vscode.open', title: T('arbre.biblio'),
-      arguments: [vscode.Uri.file(chemin), { viewColumn: vscode.ViewColumn.One }]
+      command: 'szh.apercuBiblio', title: T('arbre.biblio'), arguments: [it]
     };
     return it;
   }
@@ -1393,6 +1400,19 @@ async function ouvrirApercuLivre(fournisseur) {
     return;
   }
   await ouvrirApercuPdf(vscode.Uri.file(pdf));
+}
+
+// Un onglet dont l'entrée satisfait le prédicat est-il ouvert ? Même parcours et même
+// typage canard que fermerOnglets juste en dessous. Sert aux interrupteurs qui commandent
+// un ONGLET et non une webview : leur état ne peut pas se tenir en mémoire, puisqu'un
+// onglet se ferme aussi à la croix, sans que rien ne nous le dise.
+function ongletOuvert(predicat) {
+  for (const groupe of vscode.window.tabGroups.all) {
+    for (const onglet of groupe.tabs) {
+      if (predicat(onglet.input)) { return true; }
+    }
+  }
+  return false;
 }
 
 // Ferme les onglets dont l'entrée satisfait le prédicat ; les `TabInput` sont typés en
@@ -1785,6 +1805,15 @@ function reselectionnerArticle(fournisseur, slug) {
 // son aperçu : ces deux formulaires pleine page ferment déjà l'aperçu de leur côté, et
 // ouvrir le texte par-dessus leur webview n'aurait pas de sens. Pas de focus clavier non
 // plus : le formulaire qui vient de s'ouvrir garde la main.
+//
+// Focaliser, c'est aussi DÉSIGNER l'article : le cockpit n'a qu'une notion d'« article
+// courant », et elle vivait jusqu'ici dans le seul .md ouvert. Un formulaire pleine page
+// n'en ouvre aucun — Ctrl+Alt+P, la barre d'état et la compilation ne savaient donc plus
+// de quel article on parle, ou pire, parlaient encore du précédent. Les deux marqueurs
+// suivent donc le clic : le point de l'article ouvert (majArticleOuvert, qui tient aussi
+// le badge PDF/UA) et l'article visé en colonne 2 (apercuCourantSlug). Rien ne s'affiche
+// pour autant : ouvrirApercuHtml et ouvrirApercuPdf ne sont pas appelés, et
+// rechargerApercuHtmlSiChange s'abstient tant qu'aucun panneau d'aperçu n'existe.
 function focaliserUnite(fournisseur, slug) {
   let arbreChange = fournisseur.definirDeploye(slug);
   // La section à déplier est celle où l'article vit : ACTUALITÉ pour une page de
@@ -1793,6 +1822,43 @@ function focaliserUnite(fournisseur, slug) {
   arbreChange = fournisseur.definirSectionDeployee(fournisseur.categorieDeSlug(slug)) || arbreChange;
   if (arbreChange) { fournisseur.rafraichir(); }
   reselectionnerArticle(fournisseur, slug);
+  designerUniteCourante(fournisseur, slug);
+}
+
+// La bibliographie d'un article : son texte en colonne 1, son rendu en colonne 2. Appelée
+// par l'entrée de l'arbre, et par la palette — sans item, c'est celle de l'article courant.
+//
+// L'article est désigné au passage : on travaille sur lui, même si son texte n'est pas à
+// l'écran. Sans ça, la compilation et la barre d'état parleraient encore du précédent.
+async function ouvrirBibliographie(fournisseur, item) {
+  const racine = fournisseur.racine;
+  if (!racine) { return; }
+  // Même cascade que les deux formulaires : l'item de l'arbre, le .md actif, puis l'article
+  // en aperçu. Sans item, c'est la palette qui appelle, et il faut bien viser quelque chose.
+  let slug = (item && item.slug) ? String(item.slug) : '';
+  if (!slug) { slug = String(cibleTraduction(fournisseur, null).slug || ''); }
+  if (!slug) { vscode.window.setStatusBarMessage(T('fiches.horsarticle'), 4000); return; }
+  const chemin = cheminBiblio(racine, slug, dossierUnites());
+  if (!fs.existsSync(chemin)) {
+    vscode.window.setStatusBarMessage(T('biblio.aucune', [slug]), 4000);
+    return;
+  }
+  designerUniteCourante(fournisseur, slug);
+  await ouvrirApercuBiblio(vscode.Uri.file(chemin));
+}
+
+// L'unité dont parlent l'aperçu, la barre d'état et le badge PDF/UA — sans rien ouvrir.
+// Séparée de focaliserUnite() parce qu'elle vaut pour tout geste qui vise un article sans
+// afficher son texte : les deux formulaires, et l'aperçu de sa bibliographie.
+function designerUniteCourante(fournisseur, slug) {
+  if (!fournisseur.racine || !slug) { return; }
+  const md = path.join(fournisseur.racine, dossierUnites(), slug, slug + '.md');
+  // Rien à désigner sans texte : la Documentation appelle focaliserUnite() avec des pages
+  // qui n'ont pas toutes de .md, et l'aperçu se mettrait alors à viser un article qui
+  // n'existe pas — sans que rien ne s'affiche pour le dire.
+  try { if (!fs.statSync(md).isFile()) { return; } } catch (e) { return; }
+  majArticleOuvert(fournisseur, md);
+  session.poserApercuCourantSlug(slug);
 }
 
 // Au démarrage, si l'éditeur actif est déjà un article, enchaîner ce que fait un clic
@@ -3827,17 +3893,26 @@ function chargeArticles(fournisseur) {
     boutons: [
       { id: 'importer', libelle: T('art.importer'), icone: 'fleche', principal: true },
       { id: 'taches', libelle: T('art.taches.reglage'), icone: 'ok', tip: T('art.taches.reglage.tip') },
-      // Les trois interrupteurs d'affichage. Le libellé dit le geste à venir, jamais l'état
-      // courant : un bouton « Cacher les tâches » sur une liste déjà sans tâches se lirait
-      // comme une case cochée, et personne ne saurait plus comment les faire revenir.
-      { id: 'cacher-taches', icone: 'oeil',
-        libelle: T(vue.cacherTaches ? 'art.taches.afficher' : 'art.taches.cacher'),
+      // Les trois interrupteurs d'affichage. Le libellé nomme la chose et ne bouge pas ;
+      // c'est `actif` qui dit si elle est à l'écran — fond plein, oeil ouvert, aria-pressed
+      // (voir boutonCommande, media/_commun.js). Le libellé disait auparavant le geste à
+      // venir, ce qui contredisait le fond dès qu'un fond a existé : il fallait lire les
+      // deux pour savoir où l'on en était. L'infobulle a gardé ce rôle, et elle seule.
+      //
+      // ⚠ La configuration retient ce qui est CACHÉ (cacherTaches…) : `actif` est donc sa
+      //   négation, et non sa valeur. Les recopier telles quelles allumerait exactement les
+      //   trois boutons dont le contenu ne s'affiche pas.
+      { id: 'cacher-taches', actif: !vue.cacherTaches,
+        icone: vue.cacherTaches ? 'oeil-ferme' : 'oeil',
+        libelle: T('art.taches.bouton'),
         tip: T(vue.cacherTaches ? 'art.taches.afficher.tip' : 'art.taches.cacher.tip') },
-      { id: 'cacher-traductions', icone: 'oeil',
-        libelle: T(vue.cacherTraductions ? 'art.trad.afficher' : 'art.trad.cacher'),
+      { id: 'cacher-traductions', actif: !vue.cacherTraductions,
+        icone: vue.cacherTraductions ? 'oeil-ferme' : 'oeil',
+        libelle: T('art.trad.bouton'),
         tip: T(vue.cacherTraductions ? 'art.trad.afficher.tip' : 'art.trad.cacher.tip') },
-      { id: 'cacher-meta', icone: 'oeil',
-        libelle: T(vue.cacherMeta ? 'art.meta.voir' : 'art.meta.cacher'),
+      { id: 'cacher-meta', actif: !vue.cacherMeta,
+        icone: vue.cacherMeta ? 'oeil-ferme' : 'oeil',
+        libelle: T('art.meta.bouton'),
         tip: T(vue.cacherMeta ? 'art.meta.voir.tip' : 'art.meta.cacher.tip') }
     ].concat(enOrdre
       // Dans le mode, la barre ne propose plus que d'en sortir : par le haut ou par le bas.
@@ -6425,6 +6500,10 @@ function activate(context) {
     cmd('szh.envoyerTraduction', (item) => envoyerPourTraduction(fournisseur, item)),
     cmd('szh.reglages', () => ouvrirReglages(rafraichirTout)),
     cmd('szh.basculerApercu', () => basculerApercu(fournisseur, majBarreApercu)),
+    // La bibliographie d'un article : son texte à gauche, son rendu à droite. Lecture
+    // seule du côté du cockpit — rien n'est écrit ici — donc `cmd` et non `cmdEcriture` :
+    // un numéro verrouillé se relit.
+    cmd('szh.apercuBiblio', (item) => ouvrirBibliographie(fournisseur, item)),
     cmd('szh.apercuLivre', () => ouvrirApercuLivre(fournisseur)),
     cmdEcriture('szh.importerWord', () => importerWord(fournisseur, rafraichirTout)),
     cmdEcriture('szh.convertirEnAttente', () => lancerConversion(fournisseur, rafraichirTout)),

@@ -18,9 +18,18 @@ const { MSG } = require('./messages');
 
 const VUE_PDF = 'pdf.preview';
 
+// L'aperçu Markdown de l'éditeur (extension intégrée markdown-language-features). Son
+// `viewType` est préfixé par l'hôte (« mainThreadWebview-markdown.preview ») : on le
+// reconnaît donc à l'inclusion, jamais à l'égalité. C'est lui qui rend la bibliographie
+// — aucun moteur n'est embarqué pour ça, et une liste de références est de la prose.
+const VUE_MD = 'markdown.preview';
+
 // ---- Rappels vers l'hôte ----------------------------------------------------------
 let ctx = {
   fermerOnglets: async () => {},
+  // Les onglets ouverts, pour savoir si l'aperçu Markdown est à l'écran : son état vit dans
+  // l'éditeur et nulle part ici — il se ferme aussi à la croix.
+  ongletOuvert: () => false,
   ouvrirApercuPdf: async () => {},
   // Mode « Trad » : le clic détourné vers le formulaire de suggestion. Un module non
   // configuré ne détourne rien — voir repondreModeTrad dans extension.js.
@@ -229,7 +238,41 @@ async function fermerTousLesApercus() {
   fermerApercuHtml();
   await fermerApercuCourant(null);
   await ctx.fermerOnglets((e) => e && e.viewType === VUE_PDF);
+  // Le rendu d'une bibliographie occupe la même colonne que les deux autres : il part avec
+  // eux. Sans cette ligne, un formulaire pleine page s'ouvrirait derrière lui.
+  await fermerApercuMd();
   session.poserApercuCourantUri(null);
+}
+
+// ---- Aperçu d'une bibliographie -------------------------------------------------
+//
+// <slug>.biblio.md est de la prose : une référence par paragraphe, collée depuis Zotero.
+// Ce qu'on veut en voir, c'est le texte mis en forme — pas la maquette du numéro, qui
+// demanderait une compilation entière pour un fichier qu'on relit au fil de la saisie.
+// L'aperçu Markdown de l'éditeur suffit, et il se rafraîchit à la frappe.
+function estBiblio(chemin) { return /\.biblio\.md$/i.test(String(chemin || '')); }
+
+function estOngletMd(entree) {
+  return !!(entree && typeof entree.viewType === 'string' && entree.viewType.indexOf(VUE_MD) !== -1);
+}
+
+function apercuMdOuvert() { return !!ctx.ongletOuvert(estOngletMd); }
+
+async function fermerApercuMd() { await ctx.fermerOnglets(estOngletMd); }
+
+// Le texte en colonne 1, son rendu en colonne 2. Le focus revient au texte : c'est là
+// qu'on écrit, et `markdown.showPreviewToSide` le laisse sur le rendu, où l'on ne peut
+// rien saisir.
+async function ouvrirApercuBiblio(uri) {
+  await fermerTousLesApercus();            // la colonne 2 n'a qu'un propriétaire à la fois
+  await vscode.commands.executeCommand('vscode.open', uri, { viewColumn: vscode.ViewColumn.One });
+  try {
+    await vscode.commands.executeCommand('markdown.showPreviewToSide', uri);
+  } catch (e) {
+    vscode.window.setStatusBarMessage(T('biblio.apercu.absent'), 4000);
+    return;
+  }
+  await vscode.commands.executeCommand('vscode.open', uri, { viewColumn: vscode.ViewColumn.One });
 }
 
 // Seuls des libellés traduits sont posés dans ce HTML ; ils sont échappés quand même.
@@ -326,7 +369,24 @@ function rechargerApercuHtmlSiChange(fournisseur) {
 }
 
 // Persiste szh.apercuMode ; jamais deux aperçus en colonne 2.
+//
+// Sur une bibliographie, la même touche (Ctrl+Alt+P) bascule SON aperçu : HTML ⇄ PDF n'a
+// aucun sens sur un fichier qui n'est pas compilé seul, et demander une seconde touche
+// pour le même geste à un endroit différent se retiendrait mal. Le rendu ouvert sans
+// éditeur de texte actif compte aussi : la webview a alors le focus, et c'est pourtant elle
+// qu'on veut refermer.
 async function basculerApercu(fournisseur, majBarreApercu) {
+  const actif = vscode.window.activeTextEditor;
+  const surBiblio = !!(actif && estBiblio(actif.document.uri.fsPath));
+  const mdOuvert = apercuMdOuvert();
+  if (surBiblio || (mdOuvert && !actif)) {
+    if (mdOuvert) { await fermerApercuMd(); }
+    else { await ouvrirApercuBiblio(actif.document.uri); }
+    return;
+  }
+  // Ailleurs : l'aperçu de l'article reprend la colonne 2, donc le rendu d'une
+  // bibliographie la libère d'abord.
+  if (mdOuvert) { await fermerApercuMd(); }
   const nouveau = modeApercu() === 'html' ? 'pdf' : 'html';
   try {
     await vscode.workspace.getConfiguration('szh').update('apercuMode', nouveau, vscode.ConfigurationTarget.Global);
@@ -356,6 +416,7 @@ module.exports = {
   editeurArticleCourant, revelerLigneSource, pousserDefilementVersApercu,
   pousserSurlignageVersApercu, injecterApercu, revelerPos,
   fermerApercuCourant, fermerApercuHtml, fermerTousLesApercus, echapperTexte,
+  estBiblio, apercuMdOuvert, fermerApercuMd, ouvrirApercuBiblio,
   ouvrirApercuHtml, rechargerApercuHtmlSiChange, basculerApercu,
   // Le chemin d'aperçu attendu, seul endroit qui sache choisir entre le chapitre et
   // l'article : ouvrirArticle et compilerPuisAfficher (extension.js) s'y raccrochent au

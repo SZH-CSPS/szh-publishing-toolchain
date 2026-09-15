@@ -133,6 +133,42 @@ test('métadonnées des articles : deux « valeurs » avec le même jeton ne rec
     'rechargement: true n’a pas passé outre le jeton déjà consommé');
 });
 
+// « Markdown » : le texte de l'article à droite de sa fiche. La page ne décide de RIEN —
+// elle demande la bascule et se peint sur la réponse de l'hôte, qui seul sait ce que les
+// onglets portent. Un bouton qui tiendrait son propre état resterait allumé devant un
+// onglet fermé à la croix, et le clic suivant ne ferait rien de visible.
+test('métadonnées des articles : le bouton « Markdown » vise une carte et suit l’hôte', () => {
+  const articles = articlesDuCorpus();
+  const page = ouvrir({
+    racine: RACINE, page: 'metadata-articles',
+    cssPartage: ['_design.css', '_auteurs.css', '_fiches.css'],
+    jsPartage: ['_messages.js', '_auteurs.js', '_fiches.js'],
+    txt: libellesHote(RACINE, ['textesCarteArticle', 'textesAuteur', 'htmlApercuMetadonnees'])
+  });
+  page.envoyer({ type: 'valeurs', articles: articles, types: TYPES, langue: 'fr',
+                 licences: LICENCES, licenceDefaut: LICENCE_DEFAUT, filtre: null });
+  const bouton = page.parId.markdown;
+  assert.ok(bouton, 'le bouton « Markdown » n’existe pas');
+  // Éteint au départ, oeil fermé : rien n'est à l'écran tant que l'hôte n'a rien dit.
+  assert.strictEqual(bouton.getAttribute('aria-pressed'), 'false');
+  assert.ok(bouton.textContent.indexOf('Markdown') !== -1,
+    'le libellé du bouton a disparu : ' + bouton.textContent);
+
+  bouton.click();
+  const demande = page.messages.filter((m) => m.type === 'markdown').pop();
+  assert.ok(demande, 'le clic ne demande rien à l’hôte');
+  assert.strictEqual(demande.slug, articles[0].slug,
+    'à défaut de focus, c’est la première carte qui doit être visée');
+  // Rien ne s'allume tant que l'hôte n'a pas répondu : c'est lui qui sait.
+  assert.strictEqual(bouton.getAttribute('aria-pressed'), 'false',
+    'le bouton s’est allumé tout seul, sans savoir si l’onglet s’est ouvert');
+
+  page.envoyer({ type: 'markdown', visible: true, slug: articles[0].slug });
+  assert.strictEqual(bouton.getAttribute('aria-pressed'), 'true');
+  page.envoyer({ type: 'markdown', visible: false });
+  assert.strictEqual(bouton.getAttribute('aria-pressed'), 'false');
+});
+
 test('métadonnées : le DOI est verrouillé sur le calculé, et l’échappatoire passe par l’hôte', () => {
   // Trois cartes, trois états : une fiche neuve (verrouillée sur le calculé), un héritage
   // (doi déjà dans la fiche : mode manuel d'office, rien ne se perd), un article dont le

@@ -364,18 +364,31 @@ test('réglages : une case par revue et par langue, et un champ vidé se voit', 
 
 // ---- l'arbre, réellement construit ---------------------------------------------------
 
+// L'hôte factice ne s'active qu'UNE FOIS par processus : extension.js est mis en cache par
+// require, et son `const vscode = require('vscode')` reste lié au premier stub. Une seconde
+// activation rendrait un objet sans arbre et sans panneaux, et les contrôles tomberaient
+// pour une raison qui n'a rien à voir avec ce qu'ils mesurent. D'où cet hôte partagé.
+let hotePartage = null;
+async function hoteBiblio() {
+  if (hotePartage) { return hotePartage; }
+  const { revueDEssai, activerHote } = require('./hote-factice');
+  const revue = revueDEssai();
+  const hote = activerHote(revue);
+  const arbre = hote.arbre();
+  assert.ok(arbre, 'aucun fournisseur d’arbre');
+  // L'activation pose la racine sur une promesse : sans ce tour de boucle, l'arbre est
+  // encore vide et rien de ce qui suit ne mesurerait quoi que ce soit.
+  for (let i = 0; i < 20 && (await arbre.getChildren()).length === 0; i++) {
+    await new Promise((r) => setImmediate(r));
+  }
+  hotePartage = { revue: revue, hote: hote, arbre: arbre,
+                  md: path.join(revue, 'articles', '01-essai', '01-essai.biblio.md') };
+  return hotePartage;
+}
+
 test('arbre : l’hôte activé montre la bibliographie sous son article, et rien sans elle',
   async () => {
-    const { revueDEssai, activerHote } = require('./hote-factice');
-    const revue = revueDEssai();
-    const hote = activerHote(revue);
-    const arbre = hote.arbre();
-    assert.ok(arbre, 'aucun fournisseur d’arbre');
-    // L'activation pose la racine sur une promesse : sans ce tour de boucle, l'arbre est
-    // encore vide et le contrôle ne mesurerait rien.
-    for (let i = 0; i < 20 && (await arbre.getChildren()).length === 0; i++) {
-      await new Promise((r) => setImmediate(r));
-    }
+    const { revue, arbre } = await hoteBiblio();
     const racine = await arbre.getChildren();
     const section = racine.find((it) => it.contextValue === 'section-articles');
     const articles = await arbre.getChildren(section);
@@ -395,16 +408,95 @@ test('arbre : l’hôte activé montre la bibliographie sous son article, et rie
     for (const it of enfants) {
       assert.ok(!it.description, 'description inattendue sur « ' + it.label + ' »');
     }
-    // Un clic l'ouvre en texte, dans la colonne du .md — la colonne 2 appartient à l'aperçu.
-    assert.strictEqual(biblio.command.command, 'vscode.open');
-    assert.strictEqual(biblio.command.arguments[0].fsPath,
+    // Un clic ouvre son texte ET son rendu, côte à côte : szh.apercuBiblio prend la colonne 2
+    // à l'aperçu de l'article, que l'on ne regarde pas pendant qu'on relit des références.
+    // L'item entier est passé à la commande, qui y lit le slug — comme les deux formulaires.
+    assert.strictEqual(biblio.command.command, 'szh.apercuBiblio');
+    assert.strictEqual(biblio.command.arguments[0], biblio);
+    assert.strictEqual(biblio.slug, '01-essai');
+    assert.strictEqual(biblio.cheminAsset,
       path.join(revue, 'articles', '01-essai', '01-essai.biblio.md'));
-    assert.strictEqual(biblio.command.arguments[1].viewColumn, 1);
 
     // L'article sans bibliographie : pas d'entrée, et rien qui laisse croire à une liste
     // vide. Il n'a pas de tableau non plus, il n'est donc même pas dépliable.
     assert.deepStrictEqual(await arbre.getChildren(sans), []);
   });
+
+// ---- l'aperçu de la bibliographie ----------------------------------------------------
+//
+// Une référence se relit mise en forme : italiques, capitales, point final. Rien ne la
+// montrait ainsi — la maquette du numéro demande une compilation entière. C'est l'aperçu
+// Markdown de l'éditeur qui rend, et le cockpit ne fait que le placer et le basculer.
+//
+// Ce qui doit tenir : la colonne 2 n'a qu'UN propriétaire — l'aperçu de l'article part
+// quand celui de la bibliographie arrive — et Ctrl+Alt+P (szh.basculerApercu) fait ici la
+// bascule de CE rendu, sans qu'un second raccourci soit à retenir.
+
+const MD_PREVIEW = 'mainThreadWebview-markdown.preview';
+
+test('aperçu biblio : un clic ouvre le texte en colonne 1 et son rendu à côté', async () => {
+  const { hote, md } = await hoteBiblio();
+  hote.oublierCommandes();
+  await hote.executer('szh.apercuBiblio', { slug: '01-essai' });
+  const jouees = hote.commandesJouees();
+  const ouvertures = jouees.filter((c) => c.id === 'vscode.open');
+  assert.ok(ouvertures.length > 0, 'le texte n’a pas été ouvert : '
+    + jouees.map((c) => c.id).join(', '));
+  assert.strictEqual(ouvertures[0].args[0].fsPath, md);
+  assert.strictEqual(ouvertures[0].args[1].viewColumn, 1, 'le texte doit rester en colonne 1');
+  const rendu = jouees.find((c) => c.id === 'markdown.showPreviewToSide');
+  assert.ok(rendu, 'le rendu Markdown n’a pas été demandé');
+  assert.strictEqual(rendu.args[0].fsPath, md);
+  // Le focus revient au texte : `markdown.showPreviewToSide` le laisse sur le rendu, où
+  // l'on ne peut rien saisir. La dernière ouverture est donc celle du .md, après le rendu.
+  assert.strictEqual(jouees[jouees.length - 1].id, 'vscode.open',
+    'le focus reste sur le rendu : on ne peut plus taper');
+});
+
+test('aperçu biblio : un article sans bibliographie ne fait rien, et le dit', async () => {
+  const { hote } = await hoteBiblio();
+  hote.oublierCommandes();
+  await hote.executer('szh.apercuBiblio', { slug: '02-sans-fiche' });
+  assert.deepStrictEqual(hote.commandesJouees().filter((c) => c.id === 'vscode.open'), [],
+    'un fichier absent a quand même été ouvert');
+});
+
+test('Ctrl+Alt+P sur une bibliographie bascule SON rendu, pas HTML ⇄ PDF', async () => {
+  const { hote, md } = await hoteBiblio();
+  hote.poserEditeurActif(md);
+  hote.poserOnglets([]);
+  hote.oublierCommandes();
+  await hote.executer('szh.basculerApercu');
+  const jouees = hote.commandesJouees();
+  assert.ok(jouees.some((c) => c.id === 'markdown.showPreviewToSide'),
+    'le rendu de la bibliographie ne s’ouvre pas : ' + jouees.map((c) => c.id).join(', '));
+
+  // Second appui, le rendu étant ouvert : il se ferme, et le mode d'aperçu de l'article
+  // n'a pas bougé — c'est là qu'un simple `if` mal placé aurait fait les deux.
+  hote.poserOnglets([{ viewType: MD_PREVIEW }]);
+  hote.oublierFermetures();
+  hote.oublierCommandes();
+  await hote.executer('szh.basculerApercu');
+  assert.strictEqual(hote.fermetures().length, 1, 'le rendu n’a pas été fermé');
+  assert.ok(!hote.commandesJouees().some((c) => c.id === 'markdown.showPreviewToSide'),
+    'le rendu a été rouvert au lieu d’être fermé');
+  hote.poserEditeurActif(null);
+  hote.poserOnglets([]);
+});
+
+test('Ctrl+Alt+P hors bibliographie rend la colonne 2 à l’aperçu de l’article', async () => {
+  const { hote, revue } = await hoteBiblio();
+  // Le rendu d'une bibliographie traîne encore, mais on est revenu sur le texte d'un
+  // article : la colonne 2 lui revient, et la bascule HTML ⇄ PDF se fait quand même.
+  hote.poserEditeurActif(path.join(revue, 'articles', '01-essai', '01-essai.md'));
+  hote.poserOnglets([{ viewType: MD_PREVIEW }]);
+  hote.oublierFermetures();
+  await hote.executer('szh.basculerApercu');
+  assert.strictEqual(hote.fermetures().length >= 1, true,
+    'le rendu de la bibliographie est resté en colonne 2');
+  hote.poserEditeurActif(null);
+  hote.poserOnglets([]);
+});
 
 // ---- l'intégrité, mesurée sur un vrai document ---------------------------------------
 //

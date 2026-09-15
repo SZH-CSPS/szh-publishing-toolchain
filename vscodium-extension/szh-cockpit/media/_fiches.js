@@ -1070,12 +1070,22 @@
     // dans la langue du numéro, et trois langues déroulées d'emblée triplaient la hauteur
     // de chaque carte. L'état vit sur le conteneur, et non carte par carte : il survit
     // ainsi au re-rendu, qui recrée toutes les cartes. Le libellé du bouton dit l'état.
+    // Le bouton est un INTERRUPTEUR : son libellé ne bouge pas (WAI-ARIA : un bouton à
+    // bascule garde son nom), l'oeil s'ouvre ou se ferme, aria-pressed suit, et
+    // _design.css lui donne le fond plein quand les traductions sont à l'écran. Le geste à
+    // venir passe en infobulle. Le gabarit HTML ne pose que le texte : c'est ici que
+    // l'icône arrive, une fois SZH chargé — d'où la reconstruction du contenu.
     var traductionsVisibles = !!opts.traductionsVisibles;
     function traductions(bouton) {
       var poser = function () {
         conteneur.classList.toggle('sans-trad', !traductionsVisibles);
         if (!bouton) { return; }
-        bouton.textContent = traductionsVisibles ? TXT.tradMasquer : TXT.tradAfficher;
+        bouton.textContent = '';
+        bouton.appendChild(SZH.icone(traductionsVisibles ? 'oeil' : 'oeil-ferme'));
+        var texte = document.createElement('span');
+        texte.textContent = TXT.tradBouton || '';
+        bouton.appendChild(texte);
+        bouton.title = traductionsVisibles ? (TXT.tradMasquer || '') : (TXT.tradAfficher || '');
         bouton.setAttribute('aria-pressed', traductionsVisibles ? 'true' : 'false');
       };
       if (bouton) {

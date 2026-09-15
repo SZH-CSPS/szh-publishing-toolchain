@@ -16,7 +16,14 @@ SZH.MSG = Object.freeze({
   RECHARGEMENT: 'rechargement', DEMANDE_RECHARGEMENT: 'demande-rechargement', ETAT: 'etat',
 
   // Métadonnées des articles / Vérification de l'import (_fiches.js)
-  TOUS: 'tous', DOI_MANUEL_CONFIRMER: 'doi-manuel-confirmer', DOI_MANUEL_REPONSE: 'doi-manuel-reponse',
+  // MARKDOWN : la page demande la bascule du texte de l'article à côté de sa fiche,
+  // l'hôte répond par le même type et l'état OBTENU — un onglet se ferme aussi à la croix.
+  TOUS: 'tous', MARKDOWN: 'markdown',
+  // VERIF_META : la feuille A4 à imprimer (une page par article). La page enregistre
+  // d'abord ce qui est modifié, puis l'hôte génère depuis le DISQUE — la feuille et le
+  // fichier disent ainsi la même chose, ce que son empreinte en pied de page engage.
+  VERIF_META: 'verif-meta',
+  DOI_MANUEL_CONFIRMER: 'doi-manuel-confirmer', DOI_MANUEL_REPONSE: 'doi-manuel-reponse',
   MOTS_CLES_CONNUS: 'mots-cles-connus', FERMER: 'fermer',
   REMPLACER_IMAGE: 'remplacer-image', IMAGE_REMPLACEE: 'image-remplacee',
   IMAGE_ERREUR: 'image-erreur', IMAGE_ANNULEE: 'image-annulee',

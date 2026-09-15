@@ -1,0 +1,244 @@
+{# verification-meta.twig : la feuille « Vérifier les méta (print) » — une page A4 par
+   article, à imprimer et à relire à côté de la source (le Word de l'auteur·e, son
+   courriel). Rendue par lib/verif-meta.js, écrite et ouverte par l'hôte dans le
+   navigateur par défaut : c'est le navigateur qui imprime (Ctrl+P), pas l'extension.
+
+   ⚠ ÉCHAPPEMENT. Le moteur (lib/gabarits.js) ne l'applique PAS tout seul. Toute valeur
+   de texte doit porter le filtre |e, sans quoi un titre contenant « & » ou « < »
+   casserait la page. Les clés qui finissent par `Html` font exception : elles sortent de
+   lib/verif-meta.js déjà échappées, et leur poser |e les afficherait en clair.
+
+   Variables disponibles ici :
+   numero                      "R2026-03 | Adaptations du PER" (yaml.js, titreNumero)
+   horodatage                  "15.09.2026 14:22"
+   vide                        la marque d'un champ vide — "LEER"
+   total                       nombre de fiches
+   textes.*                    tous les intitulés, dans la langue de l'interface
+   fiches[]                    une par article, une page A4 chacune
+   fiches[].slug                     "08-compensation-des-desavantages"
+   fiches[].index / .total           "article 3 / 12"
+   fiches[].empreinte                "3f9a2c" — repère d'état, voir le pied de page
+   fiches[].langues[]                { code, libelle } — colonnes des champs traduisibles
+   fiches[].identification[]         { libelle, valeurHtml, vide, identifiant, note }
+   fiches[].textes[]                 { libelle, cellules[] } — titre, sous-titre, résumé
+   fiches[].textes[].cellules[]      { langue, valeurHtml, vide } — dans l'ordre de .langues
+   fiches[].motsCles[]               { numero, cellules[] } — rangées appariées
+   fiches[].auteurs[]                { numero, nom, rangees[] }
+   fiches[].sansAuteur               true quand la fiche n'en porte aucun
+#}
+{% block contenu %}<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>{{ textes.titrePage|e }} — {{ numero|e }}</title>
+<style>
+/* A4. Marges latérales de 12 mm : assez pour annoter au stylo, et 4 mm de largeur
+   gagnés sur les colonnes, qui valent une ligne de repli en moins par résumé. */
+@page { size: A4; margin: 10mm 12mm 12mm 12mm; }
+
+/* 9.5 pt : la feuille doit tenir en une page pour un article ordinaire — deux
+   auteur·e·s et deux résumés — sans descendre sous une taille qui se relit. Un article
+   très fourni déborde sur une seconde page, et c'est assumé : mieux vaut deux pages
+   lisibles qu'une page illisible. Ce qui est garanti, c'est qu'un article ne partage
+   JAMAIS sa feuille avec un autre. */
+html { font-size: 9.5pt; }
+body { margin: 0; color: #000; background: #fff;
+  font-family: Georgia, "Times New Roman", serif; line-height: 1.3; }
+
+/* Une fiche = une page. La dernière ne pousse pas de page blanche. */
+.fiche { break-after: page; page-break-after: always; }
+.fiche:last-child { break-after: auto; page-break-after: auto; }
+
+/* ---- En-tête de page ---- */
+.tete { border-bottom: 1.5pt solid #000; padding-bottom: 1.5mm; margin-bottom: 2.5mm; }
+.tete-haut { display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 8.5pt; letter-spacing: 0.04em; text-transform: uppercase; }
+.tete-slug { font-family: Consolas, "Courier New", monospace; font-size: 12pt;
+  font-weight: bold; margin-top: 1mm; }
+/* Une seule ligne : la consigne longue est à l'écran, lue une fois avant d'imprimer.
+   Répéter trois lignes d'explication sur douze pages coûte une page entière. */
+.tete-note { font-size: 8pt; color: #333; margin-top: 1.2mm; font-style: italic; }
+
+/* ---- Sections ---- */
+.section { margin-top: 3mm; }
+.section-titre { font-size: 8.5pt; font-weight: bold; letter-spacing: 0.08em;
+  text-transform: uppercase; border-bottom: 0.5pt solid #000; padding-bottom: 0.8mm;
+  margin-bottom: 1.5mm; }
+.auteur-titre { font-size: 8.5pt; font-weight: bold; letter-spacing: 0.08em;
+  text-transform: uppercase; margin-bottom: 1.5mm; border-bottom: 0.5pt solid #000;
+  padding-bottom: 0.8mm; }
+.auteur-titre .auteur-nom { text-transform: none; letter-spacing: 0; font-style: italic;
+  font-weight: normal; }
+.auteur { margin-top: 2.5mm; break-inside: avoid; page-break-inside: avoid; }
+
+/* ---- Tableaux de champs ---- */
+table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+td, th { vertical-align: top; padding: 0.7mm 1.5mm; word-wrap: break-word; }
+tr { break-inside: avoid; page-break-inside: avoid; }
+tbody tr + tr td { border-top: 0.25pt solid #bbb; }
+
+/* La case à cocher : le geste de la relecture. Un carré vide, assez grand pour une
+   croix au stylo. */
+.case { display: inline-block; width: 3.2mm; height: 3.2mm; border: 0.5pt solid #000; }
+td.col-case, th.col-case { width: 6mm; }
+td.col-libelle, th.col-libelle { width: 26mm; font-size: 8pt; color: #222; }
+th.col-langue { font-size: 8pt; letter-spacing: 0.06em; text-transform: uppercase;
+  text-align: left; border-bottom: 0.25pt solid #000; padding-bottom: 0.6mm; }
+td.col-numero { width: 6mm; font-size: 8.5pt; color: #444; }
+
+/* Le vide s'imprime. Un mot, pas un tiret : un tiret se lit comme une valeur. */
+.leer { font-family: Consolas, "Courier New", monospace; font-size: 8pt; font-weight: bold;
+  letter-spacing: 0.12em; color: #666; border: 0.5pt solid #999; padding: 0 1mm; }
+
+/* ---- Les deux régimes typographiques ----
+   Le texte se lit par mots : proportionnel, interlettrage normal. L'identifiant se lit
+   lettre à lettre : chasse fixe, espacé, découpé en groupes. */
+.ident { font-family: Consolas, "Courier New", monospace; font-size: 9.5pt; }
+.ident-groupe { letter-spacing: 0.10em; }
+/* Deux groupes qui se suivent sans séparateur : c'est le ROR, et le blanc entre eux
+   n'existe pas dans la valeur. Il lui faut donc un écart franc, pas l'interlettrage. */
+.ident-groupe + .ident-groupe { margin-left: 1.4mm; }
+.ident-sep { display: inline-block; padding: 0 0.6mm; font-weight: bold; color: #000; }
+/* Un groupe ne se coupe jamais en fin de ligne : un identifiant scindé au milieu se
+   relit faux. La coupure, s'il en faut une, tombe entre deux groupes. */
+.ident-groupe { white-space: nowrap; }
+.note { font-size: 8pt; color: #555; font-style: italic; }
+
+/* ---- Pied de page ---- */
+.pied { margin-top: 4mm; border-top: 1pt solid #000; padding-top: 2mm;
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 6mm; }
+.legende { font-size: 7.5pt; color: #444; max-width: 105mm; }
+.signature { font-size: 8pt; text-align: right; white-space: nowrap; }
+.ligne-sign { display: inline-block; border-bottom: 0.5pt solid #000; width: 34mm;
+  margin-left: 2mm; }
+.trace { font-family: Consolas, "Courier New", monospace; font-size: 7pt; color: #555;
+  margin-top: 1.5mm; }
+
+/* À l'écran seulement : un rappel de la marche à suivre, qui ne s'imprime pas. */
+.consigne { background: #f3f3f3; border: 0.5pt solid #999; padding: 3mm 4mm;
+  margin-bottom: 6mm; font-size: 9pt; }
+@media print { .consigne { display: none; } }
+</style>
+</head>
+<body>
+<p class="consigne">{{ textes.consigne|e }}</p>
+{% for fiche in fiches %}
+<article class="fiche">
+
+  <div class="tete">
+    <div class="tete-haut">
+      <span>{{ numero|e }}</span>
+      <span>{{ textes.article|e }} {{ fiche.index }} / {{ fiche.total }}</span>
+    </div>
+    <div class="tete-slug">{{ fiche.slug|e }}</div>
+    <div class="tete-note">{{ textes.noteMachine|e }}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-titre">{{ textes.sectionIdentification|e }}</div>
+    <table>
+      <tbody>
+      {% for l in fiche.identification %}
+        <tr>
+          <td class="col-case"><span class="case"></span></td>
+          {% for r in l.champs %}
+          <td class="col-libelle">{{ r.libelle|e }}</td>
+          <td{% if l.seule %} colspan="3"{% endif %}>{% if r.vide %}<span class="leer">{{ vide|e }}</span>{% else %}{{ r.valeurHtml }}{% endif %}{% if r.note %} <span class="note">{{ r.note|e }}</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-titre">{{ textes.sectionTextes|e }}</div>
+    <table>
+      <thead>
+        <tr>
+          <th class="col-case"></th>
+          <th class="col-libelle"></th>
+          {% for l in fiche.langues %}<th class="col-langue">{{ l.libelle|e }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in fiche.textes %}
+        <tr>
+          <td class="col-case"><span class="case"></span></td>
+          <td class="col-libelle">{{ r.libelle|e }}</td>
+          {% for c in r.cellules %}
+          <td>{% if c.vide %}<span class="leer">{{ vide|e }}</span>{% else %}{{ c.valeurHtml }}{% endif %}</td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-titre">{{ textes.sectionMotsCles|e }}</div>
+    {% if fiche.motsCles is empty %}
+      <p><span class="leer">{{ vide|e }}</span></p>
+    {% else %}
+    <table>
+      <thead>
+        <tr>
+          <th class="col-case"></th>
+          <th class="col-numero"></th>
+          {% for l in fiche.langues %}<th class="col-langue">{{ l.libelle|e }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in fiche.motsCles %}
+        <tr>
+          <td class="col-case"><span class="case"></span></td>
+          <td class="col-numero">{{ r.numero }}.</td>
+          {% for c in r.cellules %}
+          <td>{% if c.vide %}<span class="leer">{{ vide|e }}</span>{% else %}{{ c.valeurHtml }}{% endif %}</td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+
+  {% if fiche.sansAuteur %}
+  <div class="section">
+    <div class="section-titre">{{ textes.sectionAuteurs|e }}</div>
+    <p><span class="leer">{{ vide|e }}</span></p>
+  </div>
+  {% endif %}
+  {% for a in fiche.auteurs %}
+  <div class="auteur">
+    <div class="auteur-titre">{{ textes.sectionAuteur|e }} {{ a.numero }} / {{ fiche.auteurs|length }}
+      {% if a.nom %}<span class="auteur-nom">— {{ a.nom|e }}</span>{% endif %}</div>
+    <table>
+      <tbody>
+      {% for l in a.lignes %}
+        <tr>
+          <td class="col-case"><span class="case"></span></td>
+          {% for r in l.champs %}
+          <td class="col-libelle">{{ r.libelle|e }}</td>
+          <td{% if l.seule %} colspan="3"{% endif %}>{% if r.vide %}<span class="leer">{{ vide|e }}</span>{% else %}{{ r.valeurHtml }}{% endif %}</td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+
+  <div class="pied">
+    <div class="legende">{{ textes.legende|e }}</div>
+    <div class="signature">
+      {{ textes.verifiePar|e }}<span class="ligne-sign"></span>
+      <div class="trace">{{ numero|e }} · {{ fiche.slug|e }} · {{ horodatage|e }} · {{ textes.empreinte|e }} {{ fiche.empreinte|e }}</div>
+    </div>
+  </div>
+
+</article>
+{% endfor %}
+</body>
+</html>
+{% endblock %}

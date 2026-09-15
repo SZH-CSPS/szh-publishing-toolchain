@@ -166,6 +166,7 @@ function activerHote(revue) {
   const configValeurs = {};
   const barres = [];
   const panneaux = [];
+  const fermetures = [];   // ce que tabGroups.close a reçu, lot par lot
   const avertissements = [];
   const statuts = [];          // ce que setStatusBarMessage a affiché, dans l'ordre
   const erreurs = [];
@@ -191,6 +192,8 @@ function activerHote(revue) {
   // l'événement d'éditeur actif, déclenchable.
   let decorateur = null;
   const editeurActif = emetteur();
+
+  const ouvertures = [];
 
   function fauxPanneau(type, titre) {
     const p = {
@@ -287,14 +290,23 @@ function activerHote(revue) {
     TaskPanelKind: { Shared: 1, Dedicated: 2, New: 3 },
     env: {
       language: 'fr', clipboard: { writeText: () => Promise.resolve() },
-      openExternal: () => Promise.resolve(true)
+      // Ce qui part vers l'extérieur du cockpit — un fichier rendu au navigateur, un
+      // lien. Enregistré, parce qu'un geste dont tout l'effet est « le système ouvre ça »
+      // ne se mesure pas autrement.
+      openExternal: (u) => { ouvertures.push(u && u.fsPath ? u.fsPath : String(u)); return Promise.resolve(true); }
     },
     extensions: { getExtension: () => undefined },
     commands: {
       _table: {},
       registerCommand(id, fn) { stub.commands._table[id] = fn; return { dispose() {} }; },
+      // Le journal des commandes jouées. Les commandes de l'ÉDITEUR (vscode.open,
+      // markdown.showPreviewToSide…) ne sont enregistrées nulle part et retombaient donc
+      // dans le vide : un geste qui ne fait qu'en enchaîner ne se mesurait pas du tout.
+      // `setContext` en est exclu : il part à chaque rafraîchissement et noierait le reste.
+      _journal: [],
       executeCommand(id, ...a) {
         if (id === 'setContext') { return Promise.resolve(); }
+        stub.commands._journal.push({ id: id, args: a });
         if (stub.commands._table[id]) { return Promise.resolve(stub.commands._table[id](...a)); }
         return Promise.resolve();
       },
@@ -303,7 +315,12 @@ function activerHote(revue) {
     window: {
       activeTextEditor: undefined,
       visibleTextEditors: [],
-      tabGroups: { all: [], close: () => Promise.resolve(true) },
+      // Les onglets : `all` se remplace par un test (ongletsFactices) pour simuler un
+      // aperçu déjà ouvert, et `close` retient ce qu'on lui demande de fermer.
+      tabGroups: {
+        all: [],
+        close: (onglets) => { fermetures.push(onglets); return Promise.resolve(true); }
+      },
       createTreeView: (id, opts) => {
         arbre = (opts || {}).treeDataProvider || null;
         controleurDepot = (opts || {}).dragAndDropController || null;
@@ -477,11 +494,30 @@ function activerHote(revue) {
     stub: stub,
     commandes: () => Object.keys(stub.commands._table),
     executer: (id, ...args) => stub.commands.executeCommand(id, ...args),
+    // Ce qui a été joué depuis le dernier oubli, commandes de l'éditeur comprises.
+    commandesJouees: () => stub.commands._journal.slice(),
+    oublierCommandes: () => { stub.commands._journal.length = 0; },
+    // L'éditeur de texte actif, et les onglets ouverts : deux états que l'hôte lit et que
+    // rien ne posait ici.
+    poserEditeurActif: (chemin) => {
+      stub.window.activeTextEditor = chemin
+        ? { document: { uri: stub.Uri.file(chemin), fileName: chemin, languageId: 'markdown' },
+            selection: { active: { line: 0, character: 0 } }, viewColumn: 1 }
+        : undefined;
+    },
+    poserOnglets: (entrees) => {
+      stub.window.tabGroups.all = (entrees || []).length === 0
+        ? [] : [{ tabs: entrees.map((e) => ({ input: e })) }];
+    },
+    fermetures: () => fermetures.slice(),
+    oublierFermetures: () => { fermetures.length = 0; },
     arbre: () => arbre,
     // Le dragAndDropController posé sur la TreeView (controleurDepotVue, extension.js) :
     // de quoi simuler un .docx glissé sur l'arbre, sans passer par un vrai DataTransfer.
     controleurDepot: () => controleurDepot,
     panneaux: panneaux,
+    // Les chemins et liens passés à env.openExternal, dans l'ordre.
+    ouvertures: () => ouvertures.slice(),
     dernierPanneau: () => panneaux[panneaux.length - 1] || null,
     // Les panneaux sont des singletons : rouvrir en révèle un, sans en créer. On le
     // retrouve donc par son type, et non par l'ordre de création.
