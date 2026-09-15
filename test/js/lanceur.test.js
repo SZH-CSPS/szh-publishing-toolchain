@@ -27,6 +27,7 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const OUVRIR_REVUE = path.join(RACINE, 'windows', 'open-revue.ps1');
 const OUVRIR_LIVRE = path.join(RACINE, 'windows', 'open-livre.ps1');
 const OUVRIR_PRODUIT = path.join(RACINE, 'windows', 'open-produit.ps1');
+const TEXTES_PS1 = path.join(RACINE, 'windows', 'szh-textes.ps1');
 
 // Le nom définitif de l'application n'est pas arrêté (voir windows/szh-shell.ps1) : il vit à
 // UN seul endroit, $script:SzhNomApplication, et ce fichier le LIT plutôt que de le recopier
@@ -428,3 +429,70 @@ test('SZH_LANCEUR_SIMULE=1 ne charge ni System.Windows.Forms ni System.Drawing',
     assert.ok(gardeAvant.indexOf('if (-not $script:SzhSimule)') !== -1,
       'Add-Type WinForms n\'est plus protege par le mode simulation');
   });
+
+// ---- L'onglet « Export et secretariat » : lecture non bloquante, plus de dossier de
+// gabarits affiche, nouvelles clés de texte ----
+//
+// Mesure du 15.09.2026 (voir le commentaire d'Invoke-SzhSecretariat, open-produit.ps1) :
+// une page OAI-PMH de 100 notices prend 4,6 s, la Zeitschrift en compte 7 -> ~32 s qui
+// figeaient toute la fenêtre avec l'ancien ReadLine() bloquant. Non-régression, sans
+// dérouler le lanceur en vrai (les quatre exports appellent un vrai processus Node) :
+// garde textuelle sur ce qui a changé.
+
+test('secretariat : ReadLine bloquant a disparu, aucune API interdite ne l\'a remplacé',
+  () => {
+    const source = fs.readFileSync(OUVRIR_PRODUIT, 'utf8');
+
+    // INTERDIT ABSOLU (voir le commentaire d'Invoke-SzhSecretariat) : ces gestionnaires
+    // tournent sur un fil hors du pipeline PowerShell et ont déjà tué le processus entier
+    // sur ce poste, sans exception à attraper. On ne cherche que l'APPEL -- un nom suivi
+    // d'une parenthèse : les noms seuls, sans parenthèse, apparaissent à bon droit dans le
+    // commentaire qui explique l'interdiction.
+    for (const api of ['add_ErrorDataReceived', 'BeginErrorReadLine', 'add_OutputDataReceived']) {
+      const motif = new RegExp('\\.?' + api + '\\s*\\(', 'i');
+      assert.ok(!motif.test(source),
+        'open-produit.ps1 appelle ' + api + ' : interdit, voir la mesure du 15.09.2026');
+    }
+
+    // La boucle de lecture du secrétariat ne bloque plus le fil de l'interface.
+    assert.ok(source.indexOf('StandardOutput.ReadLine()') === -1,
+      'Invoke-SzhSecretariat lit encore stdout de façon bloquante (ReadLine)');
+    assert.ok(source.indexOf('StandardOutput.ReadLineAsync()') !== -1,
+      'Invoke-SzhSecretariat ne lit plus stdout de façon asynchrone (ReadLineAsync)');
+  });
+
+test('secretariat : le dossier des gabarits ne s\'affiche plus nulle part', () => {
+  // La clé ELLE-MÊME a disparu (pas seulement son affichage) : ni dans le lanceur, ni dans
+  // aucune des trois tables de texte, ni ailleurs dans windows/.
+  const dossierWindows = path.join(RACINE, 'windows');
+  for (const nom of fs.readdirSync(dossierWindows)) {
+    if (!nom.endsWith('.ps1')) { continue; }
+    const source = fs.readFileSync(path.join(dossierWindows, nom), 'utf8');
+    assert.ok(source.indexOf('lanceur.secretariat.gabarits') === -1,
+      nom + ' porte encore la clé lanceur.secretariat.gabarits');
+  }
+  const doc = fs.readFileSync(path.join(RACINE, 'userdoc.md'), 'utf8');
+  assert.ok(doc.indexOf('lanceur.secretariat.gabarits') === -1,
+    'userdoc.md porte encore la clé lanceur.secretariat.gabarits');
+});
+
+test('secretariat : les nouvelles clés de texte existent dans les trois langues', () => {
+  const textes = fs.readFileSync(TEXTES_PS1, 'utf8');
+  const nouvellesCles = [
+    'lanceur.secretariat.filtre',
+    'lanceur.secretariat.journal.entete',
+    'lanceur.secretariat.resultat.enregistre',
+    'lanceur.secretariat.interrompu',
+    'lanceur.secretariat.interrompre',
+    'lanceur.secretariat.export.titre.newsletter',
+    'lanceur.secretariat.export.titre.metadonnees',
+    'lanceur.secretariat.export.titre.chargement',
+  ];
+  for (const cle of nouvellesCles) {
+    // Chaque clé porte sa propre table (fr, de, en) : trois occurrences du littéral, ni
+    // plus ni moins -- une clé absente d'une langue afficherait la clé nue à l'écran.
+    const occurrences = textes.split('\'' + cle + '\'').length - 1;
+    assert.strictEqual(occurrences, 3,
+      'la clé « ' + cle + ' » ne porte pas exactement trois entrées (fr/de/en) : ' + occurrences);
+  }
+});

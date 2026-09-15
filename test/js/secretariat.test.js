@@ -473,6 +473,65 @@ test('commandeNumerosOjs : revue inconnue refusée, --cache requis', async () =>
   await assert.rejects(() => secretariat.commandeNumerosOjs({ revue: 'revue' }), /--cache/);
 });
 
+// ---- Progression pendant le moissonnage : étape AVANT la requête, total toujours 0 ----
+//
+// Le point du correctif n'est pas seulement « une étape existe » (elle existait déjà, mais
+// APRÈS la page reçue) : c'est l'ORDRE qui compte, puisque c'est pendant les ~4,6 s d'attente
+// réseau que l'utilisateur a besoin d'un signe de vie. La vérification se fait donc DANS
+// `recuperer`, avant qu'il ne rende la main — le seul endroit qui voit vraiment l'ordre.
+
+test('commandeNumerosOjs : une étape "page N" est émise AVANT chaque requête réseau, pas seulement après', async () => {
+  const xmlPage1 = enveloppeOai(recordOaiDc({
+    id: '1', setSpec: 'revue:ED', titreFr: 'Éditorial', creators: ['Morand, Robin'],
+    doi: '10.57161/r2026-03-00', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numéro'
+  }), 'jeton-1');
+  const xmlPage2 = enveloppeOai(recordOaiDc({
+    id: '2', setSpec: 'revue:VA', titreFr: 'Varia', creators: ['Dupont, Anne'],
+    doi: '10.57161/r2026-03-01', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numéro'
+  }));
+  const evenements = [];
+  let appels = 0;
+  const resultat = await secretariat.commandeNumerosOjs({
+    revue: 'revue', cheminCache: path.join(dossierTemp('szh-secr-progres-ordre-'), 'cache.json'),
+    emettre: (e) => evenements.push(e),
+    recuperer: async () => {
+      appels++;
+      // Au moment de la requête, l'étape « page <n> » doit DÉJÀ avoir été émise — avec le
+      // code d'avant le correctif, elle n'arrivait qu'après ce retour, cette assertion aurait
+      // donc échoué.
+      assert.ok(
+        evenements.some((e) => e.t === 'etape' && e.texte.indexOf('page ' + appels) !== -1),
+        'l’étape « page ' + appels + ' » doit précéder la requête, pas la suivre'
+      );
+      return appels === 1 ? xmlPage1 : xmlPage2;
+    }
+  });
+  assert.strictEqual(resultat.ok, true);
+  assert.strictEqual(appels, 2);
+});
+
+test('commandeNumerosOjs : total toujours 0 pendant le moissonnage (completeListSize absent des réponses d’ojs.szh.ch)', async () => {
+  const xmlPage1 = enveloppeOai(recordOaiDc({
+    id: '1', setSpec: 'revue:ED', titreFr: 'Éditorial', creators: ['Morand, Robin'],
+    doi: '10.57161/r2026-03-00', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numéro'
+  }), 'jeton-1');
+  const xmlPage2 = enveloppeOai(recordOaiDc({
+    id: '2', setSpec: 'revue:VA', titreFr: 'Varia', creators: ['Dupont, Anne'],
+    doi: '10.57161/r2026-03-01', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numéro'
+  }));
+  const evenements = [];
+  let appels = 0;
+  await secretariat.commandeNumerosOjs({
+    revue: 'revue', cheminCache: path.join(dossierTemp('szh-secr-progres-total0-'), 'cache.json'),
+    emettre: (e) => evenements.push(e),
+    recuperer: async () => { appels++; return appels === 1 ? xmlPage1 : xmlPage2; }
+  });
+  const progres = evenements.filter((e) => e.t === 'progres');
+  assert.strictEqual(progres.length, 2);
+  assert.deepStrictEqual(progres.map((e) => e.fait), [1, 2]);
+  assert.ok(progres.every((e) => e.total === 0), 'total doit rester à 0, il est inconnu sur cet OAI : ' + JSON.stringify(progres));
+});
+
 // ---- commandeEdudoc : colonnes, padding des auteur·e·s, view -> download, sans-DOI -----
 
 function cacheEdudocEssai(cheminCache) {
@@ -514,6 +573,36 @@ test('commandeEdudoc : colonnes MARC, padding des colonnes auteur·e·s, view->d
   assert.ok(lignes[1].indexOf('"27-32"') !== -1);
 });
 
+test('commandeEdudoc : progres monotone, un total connu d’avance (nombre de numéros), fait qui finit à total', async () => {
+  const art1 = secretariat.decoderRecordOai(secretariat.extraireBlocsRecord(enveloppeOai(recordOaiDc({
+    id: '1', setSpec: 'revue:VA', titreFr: 'Article A', creators: ['Dentz, Amélie'],
+    doi: '10.57161/r2026-03-01', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numéro 3'
+  })))[0], 'revue');
+  const art2 = secretariat.decoderRecordOai(secretariat.extraireBlocsRecord(enveloppeOai(recordOaiDc({
+    id: '2', setSpec: 'revue:VA', titreFr: 'Article B', creators: ['Meyer, Bruno'],
+    doi: '10.57161/r2026-04-01', volume: '16', numero: '04', annee: '2026', titreNumero: 'Numéro 4'
+  })))[0], 'revue');
+  const cheminCache = path.join(dossierTemp('szh-secr-edu-progres-'), 'cache.json');
+  secretariat.ecrireCacheNumeros(cheminCache, {
+    version: 1, dateRecolte: null,
+    numeros: {
+      '2026-03': [{ cle: '2026-03', revue: 'revue', locale: 'fr', annee: '2026', numero: '03', volume: '16', titre: '', issn: '', articles: [art1] }],
+      '2026-04': [{ cle: '2026-04', revue: 'revue', locale: 'fr', annee: '2026', numero: '04', volume: '16', titre: '', issn: '', articles: [art2] }]
+    }
+  });
+  const dossierSortie = dossierTemp('szh-secr-edu-progres-sortie-');
+  const evenements = [];
+  const resultat = await secretariat.commandeEdudoc({
+    cheminCache: cheminCache, cles: ['2026-03', '2026-04'], dossierSortie: dossierSortie,
+    emettre: (e) => evenements.push(e)
+  });
+  assert.strictEqual(resultat.ok, true);
+  const progres = evenements.filter((e) => e.t === 'progres');
+  assert.strictEqual(progres.length, 2); // un par numéro demandé, ici deux
+  assert.ok(progres.every((e) => e.total === 2), 'même total partout : ' + JSON.stringify(progres));
+  assert.deepStrictEqual(progres.map((e) => e.fait), [1, 2]); // strictement croissant, finit à total
+});
+
 // ---- commandeCaracteres : téléchargement (factice), comptage, galley absente -----------
 
 test('commandeCaracteres : compte les caractères de la galley HTML, signale l’absence de galley', async () => {
@@ -546,6 +635,42 @@ test('commandeCaracteres : compte les caractères de la galley HTML, signale l�
   assert.strictEqual(lignes.length, 2); // en-tête + 1 (le second article est écarté, pas de galley)
   assert.ok(lignes[1].indexOf('"16"') !== -1 && lignes[1].indexOf('"03"') !== -1);
   assert.ok(lignes[1].indexOf('"' + 'Douze caractères'.length + '"') !== -1, lignes[1]);
+});
+
+test('commandeCaracteres : progres monotone, total = seuls les articles à galley HTML (calculé avant la boucle)', async () => {
+  const art1 = secretariat.decoderRecordOai(secretariat.extraireBlocsRecord(enveloppeOai(recordOaiDc({
+    id: '1', setSpec: 'revue:VA', titreFr: 'Avec HTML un', creators: ['Dupont, Anne'],
+    doi: '10.57161/r2026-03-01', volume: '16', numero: '03', annee: '2026',
+    html: 'https://ojs.szh.ch/index.php/revue/article/view/1/html'
+  })))[0], 'revue');
+  const art2 = secretariat.decoderRecordOai(secretariat.extraireBlocsRecord(enveloppeOai(recordOaiDc({
+    id: '2', setSpec: 'revue:VA', titreFr: 'Sans HTML', creators: ['Meyer, Bruno'],
+    doi: '10.57161/r2026-03-02', volume: '16', numero: '03', annee: '2026'
+  })))[0], 'revue');
+  const art3 = secretariat.decoderRecordOai(secretariat.extraireBlocsRecord(enveloppeOai(recordOaiDc({
+    id: '3', setSpec: 'revue:VA', titreFr: 'Avec HTML deux', creators: ['Ruffieux, Nicolas'],
+    doi: '10.57161/r2026-03-03', volume: '16', numero: '03', annee: '2026',
+    html: 'https://ojs.szh.ch/index.php/revue/article/view/3/html'
+  })))[0], 'revue');
+  const cheminCache = path.join(dossierTemp('szh-secr-car-progres-'), 'cache.json');
+  secretariat.ecrireCacheNumeros(cheminCache, {
+    version: 1, dateRecolte: null,
+    numeros: { '2026-03': [{ cle: '2026-03', revue: 'revue', locale: 'fr', annee: '2026', numero: '03', volume: '16', titre: '', issn: '', articles: [art1, art2, art3] }] }
+  });
+  const dossierSortie = dossierTemp('szh-secr-car-progres-sortie-');
+  const evenements = [];
+  const resultat = await secretariat.commandeCaracteres({
+    cheminCache: cheminCache, cles: ['2026-03'], dossierSortie: dossierSortie,
+    emettre: (e) => evenements.push(e),
+    recuperer: async () => '<html><body><p>Texte</p></body></html>'
+  });
+  assert.strictEqual(resultat.ok, true);
+  const progres = evenements.filter((e) => e.t === 'progres');
+  // Seuls les deux articles à galley HTML comptent, l'article sans galley n'entre jamais
+  // dans le total (il n'est jamais téléchargé, donc jamais compté « à télécharger »).
+  assert.strictEqual(progres.length, 2);
+  assert.ok(progres.every((e) => e.total === 2), 'même total partout : ' + JSON.stringify(progres));
+  assert.deepStrictEqual(progres.map((e) => e.fait), [1, 2]);
 });
 
 // ---- commandeMetadonnees : concordance, divergence, absent des deux côtés --------------

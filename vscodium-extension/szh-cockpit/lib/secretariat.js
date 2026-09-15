@@ -257,11 +257,18 @@ async function commandeNewsletter(opts) {
   const { numero, articles } = collecterNumeroLocal(o.racineNumero, emit);
   fs.mkdirSync(o.dossierSortie, { recursive: true });
 
+  // Total connu d'avance : les cinq rubriques, plus auteurs.csv — qu'un fichier soit
+  // produit ou sauté (rubrique vide), c'est un pas de progression franchi.
+  const totalNewsletter = SECTIONS_NEWSLETTER.length + 1;
+  let faitNewsletter = 0;
+
   const fichiers = [];
   for (const section of SECTIONS_NEWSLETTER) {
     const articlesSection = articles.filter((a) => a.rubriqueCle === section.cle);
     if (articlesSection.length === 0) {
       emit({ t: 'etape', texte: section.fichier + ' : aucun article dans cette rubrique, fichier non produit' });
+      faitNewsletter++;
+      emit({ t: 'progres', fait: faitNewsletter, total: totalNewsletter });
       continue;
     }
     for (const a of articlesSection) {
@@ -278,6 +285,8 @@ async function commandeNewsletter(opts) {
     fs.writeFileSync(chemin, blocs.contenu || '', 'utf8');
     fichiers.push(chemin);
     emit({ t: 'fichier', chemin: chemin, nom: section.fichier });
+    faitNewsletter++;
+    emit({ t: 'progres', fait: faitNewsletter, total: totalNewsletter });
   }
 
   const auteursLignes = construireAuteursNewsletter(articles);
@@ -287,6 +296,8 @@ async function commandeNewsletter(opts) {
   fs.writeFileSync(cheminAuteurs, versCsvFinal(blocsAuteurs.contenu || ''));
   fichiers.push(cheminAuteurs);
   emit({ t: 'fichier', chemin: cheminAuteurs, nom: 'auteurs.csv' });
+  faitNewsletter++;
+  emit({ t: 'progres', fait: faitNewsletter, total: totalNewsletter });
 
   return { ok: true, texte: fichiers.length + ' fichier(s) produit(s) pour ' + numero.libelle + '.' };
 }
@@ -452,6 +463,9 @@ async function moissonnerOaiDc(recuperer, base, emettre) {
   let url = base + (base.indexOf('?') === -1 ? '?' : '&') + 'verb=ListRecords&metadataPrefix=oai_dc';
   const tokensVus = new Set();
   for (let page = 0; page < PAGES_MAX_OAI_DC; page++) {
+    // L'étape AVANT la requête : c'est pendant les ~4,6 s d'attente réseau, pas après, que
+    // l'utilisateur a besoin de voir que ça vit (mesuré en vrai le 15.09.2026).
+    emit({ t: 'etape', texte: 'page ' + (page + 1) + ' : interrogation de l’OAI-PMH...' });
     const xml = await recuperer(url);
     const erreur = oaiPmh.erreurOai(xml);
     if (erreur) {
@@ -460,6 +474,9 @@ async function moissonnerOaiDc(recuperer, base, emettre) {
     }
     for (const bloc of extraireBlocsRecord(xml)) { blocs.push(bloc); }
     emit({ t: 'etape', texte: blocs.length + ' notice(s) OAI récupérée(s)...' });
+    // total: 0 = inconnu — ojs.szh.ch n'envoie pas completeListSize sur resumptionToken
+    // (constaté le 15.09.2026, seul expirationDate y figure) : rien à rapporter `fait` à.
+    emit({ t: 'progres', fait: page + 1, total: 0 });
     const token = oaiPmh.extraireResumptionToken(xml);
     if (token === '') { return blocs; }
     if (tokensVus.has(token)) { throw new Error('resumptionToken répété sur ' + base); }
@@ -602,12 +619,18 @@ async function commandeEdudoc(opts) {
   const numeros = selectionnerNumeros(cache, o.cles, emit);
   if (numeros.length === 0) { throw new Error('aucun numéro à exporter (cache vide ou clés inconnues)'); }
 
+  // Total connu d'avance : un numéro résolu du cache = un pas de progression, qu'il porte
+  // beaucoup ou peu d'articles — c'est le numéro qui est l'unité de travail ici.
+  const totalEdudoc = numeros.length;
   const lignes = [];
-  for (const numero of numeros) {
+  for (let i = 0; i < numeros.length; i++) {
+    const numero = numeros[i];
+    emit({ t: 'etape', texte: 'numéro ' + numero.cle + ' (' + (i + 1) + '/' + totalEdudoc + ')...' });
     for (const art of numero.articles) {
       if (!art.doi) { emit({ t: 'avert', texte: (art.identifiant || '?') + ' : sans DOI, ignoré pour Edudoc' }); continue; }
       lignes.push(construireLigneEdudoc(numero, art));
     }
+    emit({ t: 'progres', fait: i + 1, total: totalEdudoc });
   }
   lignes.sort((a, b) => (String(a.volume) + '-' + String(a.numero)).localeCompare(String(b.volume) + '-' + String(b.numero)) || a.doi.localeCompare(b.doi));
 
@@ -651,6 +674,12 @@ async function commandeCaracteres(opts) {
   const numeros = selectionnerNumeros(cache, o.cles, emit);
   if (numeros.length === 0) { throw new Error('aucun numéro à traiter (cache vide ou clés inconnues)'); }
 
+  // Total connu d'avance, tous numéros confondus : seuls les articles qui portent une
+  // galley HTML seront effectivement téléchargés — un article sans galley n'entre jamais
+  // dans le compte (il n'est jamais tenté).
+  const totalCaracteres = numeros.reduce((n, numero) => n + numero.articles.filter((a) => a.galleys.html).length, 0);
+  let faitCaracteres = 0;
+
   const lignes = [];
   for (const numero of numeros) {
     for (const art of numero.articles) {
@@ -663,6 +692,8 @@ async function commandeCaracteres(opts) {
         caracteres = compterCaracteresHtml(html);
       } catch (e) {
         emit({ t: 'avert', texte: titre + ' : échec du téléchargement (' + String((e && e.message) || e) + ')' });
+        faitCaracteres++;
+        emit({ t: 'progres', fait: faitCaracteres, total: totalCaracteres });
         continue;
       }
       lignes.push({
@@ -671,6 +702,8 @@ async function commandeCaracteres(opts) {
         titreNumero: numero.titre, annee: numero.annee,
         motsCles: (art.sujets[art.locale] || Object.values(art.sujets)[0] || []).join(', ')
       });
+      faitCaracteres++;
+      emit({ t: 'progres', fait: faitCaracteres, total: totalCaracteres });
     }
   }
 
@@ -772,14 +805,17 @@ async function commandeMetadonnees(opts) {
   const dossierGabarits = o.dossierGabarits || dossierGabaritsSource();
 
   const cache = lireCacheNumeros(o.cheminCache);
+  const totalMetadonnees = racines.length;
   const rapports = [];
-  for (const racine of racines) {
-    emit({ t: 'etape', texte: 'lecture locale : ' + racine + '...' });
+  for (let i = 0; i < racines.length; i++) {
+    const racine = racines[i];
+    emit({ t: 'etape', texte: 'lecture locale : ' + racine + ' (' + (i + 1) + '/' + totalMetadonnees + ')...' });
     const local = collecterNumeroLocal(racine, emit);
     const liste = cache.numeros[local.numero.cle] || [];
     const oaiNumero = liste.find((n) => n.revue === local.numero.revue) || liste[0] || null;
     if (!oaiNumero) { emit({ t: 'avert', texte: local.numero.cle + ' : aucune correspondance dans le cache OAI' }); }
     rapports.push(comparerNumero(local, oaiNumero));
+    emit({ t: 'progres', fait: i + 1, total: totalMetadonnees });
   }
 
   fs.mkdirSync(o.dossierSortie, { recursive: true });

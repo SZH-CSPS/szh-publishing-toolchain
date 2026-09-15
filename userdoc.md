@@ -1605,10 +1605,16 @@ Menu Démarrer → **Revue & Zeitschrift** porte un onglet de plus, à côté de
 Zeitschrift, Book, Journal et Paramètres : **« Export et secrétariat »**. Il ne sert pas à
 ouvrir un numéro, mais à produire quatre fichiers pour le secrétariat de rédaction.
 
-L’onglet montre une liste de tous les numéros du poste, Revue et Zeitschrift confondues, en
-cours comme archivés (jamais le livre). En dessous, un journal qui suit chaque export ligne à
-ligne, et un bouton **« Ouvrir le dossier »**, qui ne s’allume qu’une fois un export réussi :
-il ouvre dans l’explorateur le dossier où le fichier vient d’être écrit.
+Une liste déroulante en haut de l’onglet choisit **Revue** ou **Zeitschrift** : la liste
+des numéros n’en montre jamais qu’un des deux à la fois, jamais les deux mélangés. En
+dessous, un journal qui suit chaque export ligne à ligne – chaque export y ouvre par une
+ligne d’en-tête horodatée, pour qu’on distingue un export du suivant – et, en bas, un
+bouton **« Ouvrir le dossier »**, qui ne s’allume qu’une fois un export réussi :
+il ouvre dans l’explorateur le dossier où le fichier vient d’être écrit ; la dernière ligne
+du journal le rappelle. À droite de ce bouton, une barre de progression et un bouton
+**« Interrompre »** suivent l’export en cours et permettent de l’arrêter : les deux
+exports CSV interrogent ojs.szh.ch, et le chargement des numéros peut prendre plusieurs
+dizaines de secondes selon la revue.
 
 **Le dossier de sortie est redemandé à chaque export** : rien n’est retenu d’une fois sur
 l’autre, il faut le choisir à chaque clic.
@@ -1646,11 +1652,16 @@ dans Mailchimp, et le Bloc-notes n’ouvre pas les fichiers `.html` d’un doubl
 Ces deux exports se pilotent de la même façon. Cliquez **« Export Edudoc (CSV)… »** ou
 **« Caractères par article (CSV)… »** : une fenêtre à part s’ouvre.
 
-1. Choisissez **Revue** ou **Zeitschrift**.
-2. **« Charger les numéros »** – va chercher, sur ojs.szh.ch, la liste des numéros déjà
-   publiés pour cette revue.
-3. Cochez un ou plusieurs numéros dans la liste qui apparaît.
-4. **OK**, puis choisissez le dossier de sortie.
+1. **« Charger les numéros »** – va chercher, sur ojs.szh.ch, la liste des numéros
+   déjà publiés pour la revue choisie en haut de l’onglet. La fenêtre rappelle laquelle :
+   pour passer à l’autre, refermez-la et changez la liste déroulante de l’onglet.
+2. Cochez un ou plusieurs numéros dans la liste qui apparaît.
+3. **OK**, puis choisissez le dossier de sortie.
+
+Le chargement peut prendre **plusieurs dizaines de secondes** : la fenêtre affiche ce
+qu’elle fait ligne à ligne, avec une barre de progression, et un bouton
+**« Interrompre »** l’arrête sans rien laisser derrière. Refermer la fenêtre pendant un
+chargement l’interrompt aussi.
 
 « Export Edudoc (CSV)… » écrit `edudoc.csv`, au format que le secrétariat dépose sur Edudoc.
 « Caractères par article (CSV)… » écrit `caracteres.csv` : il télécharge la version HTML de
@@ -1671,9 +1682,9 @@ des divergences et des articles absents d’un côté ou de l’autre.
 Cet export **ne se lance jamais tout seul** : c’est un geste volontaire, à faire quand on veut
 vérifier qu’un numéro déjà publié correspond bien à ce qui est sur le poste.
 
-Le site interrogé (Revue ou Zeitschrift) suit le **premier** numéro coché dans la liste – ne
-mélangez pas les deux revues dans une même sélection, le contrôle des numéros de l’autre revue
-n’y trouverait aucune correspondance.
+Le site interrogé, Revue ou Zeitschrift, est celui de la liste déroulante en haut de
+l’onglet – et comme cette liste ne montre jamais les numéros des deux revues à la fois,
+le contrôle ne peut plus comparer un numéro au mauvais site.
 
 **Les affiliations ne sont pas comparées** : ce qu’OJS expose publiquement à cet endroit ne
 les porte pas. Le rapport le rappelle lui-même sur chaque article, plutôt que de laisser

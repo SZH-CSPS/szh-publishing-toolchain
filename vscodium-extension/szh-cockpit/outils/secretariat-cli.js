@@ -5,7 +5,11 @@
 //
 // Contrat figé (voir lib/secretariat.js pour la logique) : JSON Lines sur stdout, UTF-8, un
 // objet par ligne, vidé à chaque ligne — rien d'autre sur stdout, une trace de pile va sur
-// stderr. La ligne `fin` est TOUJOURS la dernière. Code de sortie 0 si `ok`, sinon 1.
+// stderr. Types de ligne : `etape` (texte libre, ce qui se passe), `avert` (avertissement
+// non bloquant), `numero` (un numéro OJS trouvé), `fichier` (un fichier produit), `progres`
+// ({fait, total} — total à 0 quand il est inconnu d'avance, cas du moissonnage OAI-PMH : le
+// lanceur y affiche une barre indéterminée), `fin` (bilan, TOUJOURS la dernière ligne).
+// Code de sortie 0 si `ok`, sinon 1.
 'use strict';
 
 const path = require('path');
