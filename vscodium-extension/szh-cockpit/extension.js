@@ -128,6 +128,11 @@ const { construireHtml } = require('./lib/webviews/util');
 const profils = require('./lib/profil');
 // ---- Modules impératifs -> lib/{slug,wsl,formatting}.js --------------------------
 const { slugifier, slugifierArticle } = require('./lib/slug');
+// tige() ignore le préfixe « NN- » d'un dossier : depuis que l'import en pose un
+// (lib/import-hote.js), le slug qu'un Word laisse deviner (slugifierArticle) et le nom
+// du dossier qui le porte (« 00-inclusion ») ne sont plus la même chaîne. Comparer sans
+// cette fonction referait le doublon que « déjà converti » existe pour éviter.
+const { tige } = require('./lib/renumerotation');
 const { demarrerDormeurWsl, arreterDormeurWsl, reveillerWsl, cheminWsl } = require('./lib/wsl');
 const {
   basculerEnrobage, basculerSouligne, basculerTitre, basculerCitation,
@@ -353,7 +358,7 @@ const {
 } = require('./lib/traduction');
 // ---- Ordre, noms et tâches des articles -> lib/articles.js ---------------------
 const {
-  CLE_SANS_DOI, ordonnerArticles, deplacerArticle, prefixeOrdre, titreFiche,
+  CLE_SANS_DOI, ordonnerArticles, deplacerArticle, prefixeOrdre, prefixeDossier, titreFiche,
   libelleArticle, analyserSansDoi, basculerSansDoi, trierParDoi, refusDeplacement,
   rangDoi, resumeImages,
   REVUES_TACHES, CLE_TACHES, MAX_TACHES, tachesRevue, tachesConfig, configAvecTaches, libelleTache,
@@ -803,9 +808,10 @@ function revueNumero(racine) {
 
 // Le nom d'un article dans l'interface : « 03 · Titre », le titre venant de sa fiche. Sans
 // fiche ou sans titre, le slug reprend sa place : l'article doit rester visible et
-// repérable, jamais disparaître.
-function nomArticle(racine, slug, index, langue) {
-  return libelleArticle(index, slug, titreFiche(lireMetaArticle(racine, slug), langue));
+// repérable, jamais disparaître. Le numéro vient du dossier — c'est l'état du disque que
+// l'arbre montre, jamais un rang qui n'existe pas dessus.
+function nomArticle(racine, slug, langue) {
+  return libelleArticle(prefixeDossier(slug), slug, titreFiche(lireMetaArticle(racine, slug), langue));
 }
 
 // ---- Tâches d'un article : le sidecar <slug>.taches.yaml ------------------------
@@ -967,17 +973,18 @@ class FournisseurRevue {
     return lireMetaArticle(this.racine, slug).type === TYPE_ACTUALITE;
   }
 
-  // Les unités du numéro réparties entre les deux sections, chacune avec son rang global.
-  // Le rang est celui du numéro entier et non celui de la sous-liste : un article de
-  // Documentation reste « 09 · … » dans la section Actualité, comme il l'est au sommaire et
-  // dans le PDF. Filtrer sans garder le rang aurait renuméroté les deux sections à partir
-  // de 01, et deux articles différents auraient porté le même numéro dans l'arbre.
+  // Les unités du numéro réparties entre les deux sections (Documentation dans
+  // « Actualité », le reste dans « Articles »), sans toucher à leur ordre relatif — c'est
+  // déjà celui du numéro. Ne portait autrefois qu'un rang global, pour que le numéro
+  // affiché ne se remette pas à 01 dans chaque section ; ce rang a quitté l'affichage
+  // (nomArticle() lit désormais le dossier, pas ce rang), et `entree` ne porte donc plus
+  // que le slug.
   _repartirUnites() {
     if (!this.racine) { return { unites: [], actualite: [] }; }
     const revue = profilCourant().cle === 'revue';
     const unites = [], actualite = [];
-    this.listerArticles().forEach((slug, index) => {
-      const entree = { slug: slug, index: index };
+    this.listerArticles().forEach((slug) => {
+      const entree = { slug: slug };
       if (revue && this.estActualite(slug)) { actualite.push(entree); }
       else { unites.push(entree); }
     });
@@ -1015,9 +1022,11 @@ class FournisseurRevue {
   }
 
   // Article = dossier articles/<slug>/ avec le .md homonyme, comme dans le Makefile.
-  // L'ordre est celui du numéro (ausgabe.yaml) et non celui des noms de dossier ; le
-  // libellé est le titre de la fiche précédé de son rang à deux chiffres, et le slug passe
-  // en description — c'est le nom du dossier, ce n'est pas le nom de l'article.
+  // L'ordre de l'arbre est celui du numéro (ausgabe.yaml) ; le numéro AFFICHÉ devant le
+  // titre, lui, vient du nom du dossier (prefixeDossier(), lib/articles.js) et non plus de
+  // ce rang — les deux divergent depuis que seuls les dossiers importés ou réalignés par
+  // « Changer l'ordre » en portent un. Le slug passe en description — c'est le nom du
+  // dossier, ce n'est pas le nom de l'article.
   _itemsArticles() {
     return this._itemsUnites(this._repartirUnites().unites,
       'arbre.vide.' + profilCourant().unites.dossier);
@@ -1079,7 +1088,7 @@ class FournisseurRevue {
     return it;
   }
 
-  // `entrees` = [{ slug, index }], le rang étant celui du numéro entier (_repartirUnites).
+  // `entrees` = [{ slug }] (_repartirUnites).
   _itemsUnites(entrees, cleVide) {
     const base = path.join(this.racine, dossierUnites());
     if (entrees.length === 0) { return [this._vide(T(cleVide))]; }
@@ -1087,7 +1096,7 @@ class FournisseurRevue {
     const langue = langueRevue(this.racine);
     const taches = tachesDuNumero(this.racine);
     return entrees.map((entree) => {
-      const slug = entree.slug, index = entree.index;
+      const slug = entree.slug;
       const md = vscode.Uri.file(path.join(base, slug, slug + '.md'));
       // Seuls les tableaux se déplient sous l'article : les images se gèrent dans le
       // formulaire « Médias de cet article », qui les montre avec leurs légendes, leurs
@@ -1098,7 +1107,7 @@ class FournisseurRevue {
       const aDesAssets = this._tablesArticle(slug).length > 0
         || fs.existsSync(cheminBiblio(this.racine, slug, dossierUnites()));
       const deploye = auto && aDesAssets && slug === this.slugDeploye;
-      const nom = nomArticle(this.racine, slug, index, langue);
+      const nom = nomArticle(this.racine, slug, langue);
       const it = new vscode.TreeItem(nom, !aDesAssets
         ? vscode.TreeItemCollapsibleState.None
         : (deploye ? vscode.TreeItemCollapsibleState.Expanded
@@ -1246,14 +1255,14 @@ class FournisseurRevue {
     const slugs = this.listerArticles();
     if (slugs.length === 0) { return [this._vide(T('arbre.vide.traductions'))]; }
     const source = langueRevue(this.racine);
-    return slugs.map((slug, index) => {
+    return slugs.map((slug) => {
       const etat = etatTraduction(this.racine, slug, source);
       const rien = etat.lignes.length === 0;
       // Le même nom que dans la section « Articles » : un article se reconnaît partout à
-      // son titre et à son rang, jamais à son slug tronqué. La fiche vient d'etatTraduction,
-      // qui l'a déjà lue.
+      // son titre et à son numéro de dossier, jamais à son slug tronqué. La fiche vient
+      // d'etatTraduction, qui l'a déjà lue.
       const it = new vscode.TreeItem(
-        libelleArticle(index, slug, titreFiche(etat.meta, source)), rien
+        libelleArticle(prefixeDossier(slug), slug, titreFiche(etat.meta, source)), rien
         ? vscode.TreeItemCollapsibleState.None
         : vscode.TreeItemCollapsibleState.Collapsed);
       it.slug = slug;
@@ -1333,9 +1342,16 @@ class FournisseurRevue {
       articlesSansDoi(this.racine, slugs)).slugs;
   }
 
+  // Le slug donné vient d'un nom de fichier Word (slugifierArticle) : il n'a jamais de
+  // préfixe « NN- », qu'il vienne d'un article ancien ou d'un import récent (voir
+  // lib/import-hote.js, qui pose ce préfixe sur les dossiers qu'il crée). Se contenter du
+  // nom exact laisserait donc « déjà converti » aveugle dès qu'un article vit sous
+  // « 00-inclusion » — d'où la comparaison par tige(), qui ignore ce préfixe des deux côtés.
   _articleExiste(slug) {
-    try { return fs.statSync(path.join(this.racine, dossierUnites(), slug, slug + '.md')).isFile(); }
-    catch (e) { return false; }
+    const base = path.join(this.racine, dossierUnites());
+    try { if (fs.statSync(path.join(base, slug, slug + '.md')).isFile()) { return true; } }
+    catch (e) { /* pas sous ce nom exact : peut-être préfixé, voir ci-dessous */ }
+    return this._sousDossiersAvecMd(base).some((dossier) => tige(dossier) === tige(slug));
   }
 
   _sousDossiersAvecMd(base) {
@@ -2153,17 +2169,20 @@ function articleDuWord(fournisseur, nom) {
 // Le rédacteur désigne l'article. C'est la sortie des deux cas où le script refuse de
 // choisir : plusieurs articles disent venir du même Word, ou aucun ne dit d'où il vient.
 // L'article dont le nom de dossier correspond au fichier est proposé en tête — c'est le
-// plus probable, et ce n'est qu'une proposition.
+// plus probable, et ce n'est qu'une proposition. La comparaison se fait par tige() : le
+// nom deviné (slugifierArticle) n'a jamais de préfixe, mais le dossier peut en porter un
+// depuis que l'import en pose (lib/import-hote.js) — sans cet oubli, un article rangé sous
+// « 00-inclusion » ne se proposerait jamais en tête pour le Word « inclusion.docx ».
 async function choisirArticleReimport(fournisseur, nom) {
   const racine = fournisseur.racine;
   const langue = langueRevue(racine);
   const slugs = fournisseur.listerArticles();
   const probable = slugifierArticle(nom);
-  const rang = (slug) => (slug === probable ? 0 : 1);
+  const rang = (slug) => (tige(slug) === probable ? 0 : 1);
   const items = slugs.slice()
     .sort((a, b) => rang(a) - rang(b) || slugs.indexOf(a) - slugs.indexOf(b))
     .map((slug) => ({
-      label: libelleArticle(slugs.indexOf(slug), slug, titreFiche(lireMetaArticle(racine, slug), langue)),
+      label: libelleArticle(prefixeDossier(slug), slug, titreFiche(lireMetaArticle(racine, slug), langue)),
       description: slug, slug: slug
     }));
   if (items.length === 0) { return ''; }
@@ -2766,12 +2785,11 @@ function vueTraductions(fournisseur) {
   const source = langueRevue(racine);
   const lignes = [];
   const slugs = fournisseur.listerArticles();
-  for (let index = 0; index < slugs.length; index++) {
-    const slug = slugs[index];
+  for (const slug of slugs) {
     const etat = etatTraduction(racine, slug, source);
-    // Le titre de l'article, et son slug juste à côté : le même nom que partout ailleurs.
-    // La fiche vient d'etatTraduction, qui l'a déjà lue.
-    const nom = libelleArticle(index, slug, titreFiche(etat.meta, source));
+    // Le titre de l'article, et son slug juste à côté : le même nom que partout ailleurs —
+    // le numéro du dossier, pas un rang. La fiche vient d'etatTraduction, qui l'a déjà lue.
+    const nom = libelleArticle(prefixeDossier(slug), slug, titreFiche(etat.meta, source));
     if (etat.lignes.length === 0) {
       lignes.push({ cle: slug, titre: nom, meta: T('trad.rien.court'), pastilles: [], ouvrir: false });
       continue;
@@ -3469,11 +3487,12 @@ function textesArticles() {
     // ce qui mérite un regard, puis ce qui arrêtera la publication.
     constatsAttention: T('art.constats.attention'),
     constatsDanger: T('art.constats.danger'),
-    // Le bouton qui replie l'aperçu des métadonnées d'une carte. Deux libellés, parce
-    // qu'il dit le geste à venir et non l'état courant.
+    // Le bouton qui replie l'aperçu des métadonnées d'une carte — réduit au chevron seul
+    // (media/articles.js, basculeApercu) : ces deux libellés ne s'affichent donc plus,
+    // ils vivent dans son infobulle et son aria-label. Le titre de la carte porte le même
+    // geste, en second bouton, et partage le même état.
     metaVoir: T('art.meta.voir'),
     metaCacher: T('art.meta.cacher'),
-    metaBasculeTip: T('art.meta.basculer.tip'),
     // La case « pas de DOI » : le seul texte que la page écrit elle-même. Les intitulés et
     // les valeurs de l'aperçu, eux, arrivent tout faits dans chaque ligne — c'est l'hôte qui
     // sait dire une licence ou une rubrique.
@@ -3744,9 +3763,10 @@ function apercuArticle(meta, langue, doi, langueSeule) {
 }
 
 // Une carte par article, dans l'ordre du numéro : son nom, son slug, l'aperçu complet de
-// ses métadonnées, ses tâches cochables, ce qui lui manque, et de quoi le déplacer d'un
-// cran. Tout se lit sans rien ouvrir ; les deux boutons du pied mènent aux formulaires qui
-// écrivent, et sont les seuls à écrire.
+// ses métadonnées, ses tâches cochables, et ce qui lui manque. Tout se lit sans rien
+// ouvrir ; les boutons du pied mènent aux formulaires qui écrivent, et sont les seuls à
+// écrire. Le classement, lui, ne vit plus ici : voir le mode « Changer l'ordre » plus bas,
+// où la carte se réduit à un bandeau porté par ses seules flèches.
 function chargeArticles(fournisseur) {
   const racine = fournisseur.racine;
   const langue = langueRevue(racine);
@@ -3807,6 +3827,42 @@ function chargeArticles(fournisseur) {
   const lignes = slugs.map((slug, index) => {
     const meta = metas[slug];
     const titre = titreFiche(meta, langue);
+    // Le mode « Changer l'ordre » réduit la carte à un bandeau : rien à lire, rien à cocher,
+    // rien à ouvrir — seulement à classer. On ne calcule donc ni l'aperçu, ni le DOI, ni les
+    // constats : ce que la webview ne reçoit pas ne peut pas réapparaître par accident
+    // (media/articles.js, decorerBandeauOrdre). Le nom qui nomme la destination des deux
+    // flèches est le titre de la fiche, jamais le libellé numéroté — « 02 » y figure déjà.
+    if (enOrdre) {
+      const nom = titre || slug;
+      return {
+        cle: slug,
+        // Rang à venir, et non le préfixe du dossier : c'est ce mode-ci qui va l'écrire
+        // (« Terminer »), les flèches doivent donc annoncer la même chose que le titre.
+        titre: libelleArticle(prefixeOrdre(index), slug, titre),
+        ouvrir: false,
+        actions: [],
+        constats: [],
+        taches: [],
+        // Le rang visé vient de prefixeOrdre(), la même fonction que le DOI et
+        // l'arborescence : le redire ici à la main finirait par diverger. Un bouton en
+        // bord de liste reçoit le générique en aria-label lui aussi — il n'annonce jamais
+        // un rang qui n'existe pas.
+        ordre: {
+          monter: {
+            desactive: index === 0,
+            tip: T('art.monter.tip'),
+            ariaLabel: index === 0 ? T('art.monter.tip')
+              : T('art.ordre.aria.monter', [nom, prefixeOrdre(index - 1)])
+          },
+          descendre: {
+            desactive: index === slugs.length - 1,
+            tip: T('art.descendre.tip'),
+            ariaLabel: index === slugs.length - 1 ? T('art.descendre.tip')
+              : T('art.ordre.aria.descendre', [nom, prefixeOrdre(index + 1)])
+          }
+        }
+      };
+    }
     const faites = lireTachesArticle(racine, slug).faites;
     const avance = resumeTaches(taches, faites);
     const images = resumeImagesArticle(fournisseur, slug);
@@ -3828,21 +3884,28 @@ function chargeArticles(fournisseur) {
     if (titre === '') { constats.unshift({ ton: 'danger', texte: T('art.sansfiche') }); }
     return {
       cle: slug,
-      titre: libelleArticle(index, slug, titre),
+      // Le numéro du DOSSIER, pas le rang dans l'ordre : ce nombre sert à retrouver
+      // l'article dans l'Explorateur de fichiers, il ne doit donc jamais promettre un
+      // rangement que le disque n'a pas. Un dossier sans préfixe n'affiche ni numéro ni
+      // séparateur (libelleArticle) — la carte dit la vérité du disque, trous compris.
+      titre: libelleArticle(prefixeDossier(slug), slug, titre),
       // Plus de `meta: slug` : le slug redisait dans l'entête ce que le titre numéroté
       // vient de dire. Il reste l'identifiant technique de l'article — la carte le
       // porte encore en infobulle du titre, côté webview (media/articles.js), à partir de
       // `cle` ci-dessus, qui vaut toujours ce même slug.
       // Pas de bouton « Ouvrir » posé par le composant : il le mettrait en tête du pied,
       // alors qu'il ferme la série des gestes de la carte. Il est ajouté en dernier dans
-      // `actions` ci-dessous, avec la flèche de l'entête.
+      // `actions` ci-dessous.
       ouvrir: false,
       // La langue de l'article, ou celle du numéro quand la fiche n'en déclare pas : c'est
       // exactement le repli que la compilation applique, donc la langue dans laquelle
       // l'article paraîtra.
       apercu: apercuArticle(meta, interface_, doi.ligne,
         vue.cacherTraductions ? (normaliserLangueArticle(meta.lang) || langue) : ''),
-      constats: constats,
+      // Le quatrième interrupteur : les avertissements sont calculés dans tous les cas — la
+      // frontière du DOI et le refus de déplacement en dépendent ailleurs — mais la carte ne
+      // les reçoit pas quand on a choisi de ne pas les lire.
+      constats: vue.cacherConstats ? [] : constats,
       // La case « pas de DOI ». Verrouillée quand c'est la rubrique qui décide : cocher ou
       // décocher n'y changerait rien, et un interrupteur sans effet est un mensonge.
       sansDoi: {
@@ -3853,26 +3916,11 @@ function chargeArticles(fournisseur) {
       // pastille du pied, qui n'en porte plus aucune (voir le bloc au-dessus de
       // resumeTachesLigne).
       tachesResume: resumeTachesLigne(avance),
-      // L'ordre du pied suit celui du travail : on déplace l'article dans le numéro, on
-      // remplit ses formulaires, on l'envoie à son auteur, et on l'ouvre — « Ouvrir »
-      // ferme donc la série au lieu de l'ouvrir. C'est le geste qu'on fait après avoir lu
-      // la carte, pas avant.
-      //
-      // Dans le mode « Changer l'ordre », les deux flèches seules : ouvrir un formulaire
-      // sur un dossier qui est sur le point d'être renommé n'a pas de sens.
-      actions: enOrdre ? [
-        { id: 'monter', libelle: T('art.monter'), icone: 'haut', tip: T('art.monter.tip'),
-          desactive: index === 0 },
-        { id: 'descendre', libelle: T('art.descendre'), icone: 'bas', tip: T('art.descendre.tip'),
-          desactive: index === slugs.length - 1 }
-      ] : [
-        // Aux bords de son bloc, et non de la liste : un article sans DOI ne remonte pas
-        // au-dessus de ceux qui en portent un, sinon la numérotation cesserait de suivre
-        // l'ordre de lecture. Le bouton refuse là où l'hôte refuserait de toute façon.
-        { id: 'monter', libelle: T('art.monter'), icone: 'haut', tip: T('art.monter.tip'),
-          desactive: refusDeplacement(slugs, slug, -1, sansDoi) !== '' },
-        { id: 'descendre', libelle: T('art.descendre'), icone: 'bas', tip: T('art.descendre.tip'),
-          desactive: refusDeplacement(slugs, slug, 1, sansDoi) !== '' },
+      // Le classement ne se fait plus ici : « Monter »/« Descendre » ont quitté le pied de
+      // la carte complète, et ne vivent plus que dans le bandeau du mode « Changer l'ordre »
+      // (ligne.ordre, ci-dessus) — nulle part ailleurs. L'ordre du pied suit celui du
+      // travail qui reste : remplir les formulaires, envoyer à l'auteur, ouvrir.
+      actions: [
         // Les deux formulaires, ouverts sur cet article. Le pied de carte est le seul
         // endroit d'où l'on écrit : l'aperçu au-dessus ne se modifie pas.
         { id: 'metadonnees', libelle: T('art.meta.editer'), icone: 'info',
@@ -3880,8 +3928,8 @@ function chargeArticles(fournisseur) {
         { id: 'medias', libelle: T('art.medias.editer'), icone: 'camera',
           tip: T('art.medias.editer.tip') },
         { id: 'envoyer', libelle: T('art.envoyer'), icone: 'traduction', tip: T('art.envoyer.tip') },
-        // Le même geste que la flèche de l'entête, même libellé et même icône : sur une
-        // carte dépliée, le pied est à un écran de distance du titre.
+        // Ferme la série au lieu de l'ouvrir : c'est le geste qu'on fait après avoir lu la
+        // carte, pas avant.
         { id: 'ouvrir', libelle: T('art.ouvrir'), icone: 'fleche', tip: T('art.ouvrir.tip') }
       ],
       taches: vue.cacherTaches ? [] : taches.map((t) => ({
@@ -3892,43 +3940,57 @@ function chargeArticles(fournisseur) {
   return {
     titre: T('art.vue.titre'),
     boutons: [
-      { id: 'importer', libelle: T('art.importer'), icone: 'fleche', principal: true },
-      // Aiguillage, et non réglage : les intitulés des tâches valent pour toute la rédaction
-      // et vivent désormais avec les réglages protégés. Le bouton reste ici — c'est là qu'on
-      // les cherche, à côté des cases — mais il ouvre « Réglages SZH ».
-      { id: 'taches', libelle: T('art.taches.reglage'), icone: 'liste', tip: T('art.taches.reglage.tip') },
-      // La feuille de relecture de TOUT le numéro, d'un coup — le pendant du bouton du
-      // formulaire des fiches, qui ne tire que ce qu'il montre.
-      { id: 'verif-meta', libelle: T('verif.bouton'), icone: 'liste', tip: T('verif.tous.tip') },
-      // Les trois interrupteurs d'affichage. Le libellé nomme la chose et ne bouge pas ;
-      // c'est `actif` qui dit si elle est à l'écran — fond plein, oeil ouvert, aria-pressed
-      // (voir boutonCommande, media/_commun.js). Le libellé disait auparavant le geste à
-      // venir, ce qui contredisait le fond dès qu'un fond a existé : il fallait lire les
-      // deux pour savoir où l'on en était. L'infobulle a gardé ce rôle, et elle seule.
+      // Les quatre interrupteurs d'affichage, LIGNE DU HAUT de la barre : `groupe: 'filtre'`
+      // est le seul contrat qui le dit — media/articles.js répartit `boutons` sur ses deux
+      // lignes selon ce champ, et pose la ligne du bas (les gestes, ci-dessous) avec ce qui
+      // n'en porte pas. Le libellé nomme la chose et ne bouge pas ; c'est `actif` qui dit si
+      // elle est à l'écran — fond plein, oeil ouvert, aria-pressed (voir boutonCommande,
+      // media/_commun.js). Le libellé disait auparavant le geste à venir, ce qui
+      // contredisait le fond dès qu'un fond a existé : il fallait lire les deux pour savoir
+      // où l'on en était. L'infobulle a gardé ce rôle, et elle seule.
       //
       // ⚠ La configuration retient ce qui est CACHÉ (cacherTaches…) : `actif` est donc sa
       //   négation, et non sa valeur. Les recopier telles quelles allumerait exactement les
-      //   trois boutons dont le contenu ne s'affiche pas.
-      { id: 'cacher-taches', actif: !vue.cacherTaches,
+      //   quatre boutons dont le contenu ne s'affiche pas.
+      { id: 'cacher-taches', groupe: 'filtre', actif: !vue.cacherTaches,
         icone: vue.cacherTaches ? 'oeil-ferme' : 'oeil',
         libelle: T('art.taches.bouton'),
         tip: T(vue.cacherTaches ? 'art.taches.afficher.tip' : 'art.taches.cacher.tip') },
-      { id: 'cacher-traductions', actif: !vue.cacherTraductions,
+      { id: 'cacher-traductions', groupe: 'filtre', actif: !vue.cacherTraductions,
         icone: vue.cacherTraductions ? 'oeil-ferme' : 'oeil',
         libelle: T('art.trad.bouton'),
         tip: T(vue.cacherTraductions ? 'art.trad.afficher.tip' : 'art.trad.cacher.tip') },
-      { id: 'cacher-meta', actif: !vue.cacherMeta,
+      { id: 'cacher-meta', groupe: 'filtre', actif: !vue.cacherMeta,
         icone: vue.cacherMeta ? 'oeil-ferme' : 'oeil',
         libelle: T('art.meta.bouton'),
-        tip: T(vue.cacherMeta ? 'art.meta.voir.tip' : 'art.meta.cacher.tip') }
+        tip: T(vue.cacherMeta ? 'art.meta.voir.tip' : 'art.meta.cacher.tip') },
+      { id: 'cacher-constats', groupe: 'filtre', actif: !vue.cacherConstats,
+        icone: vue.cacherConstats ? 'oeil-ferme' : 'oeil',
+        libelle: T('art.constats.bouton'),
+        tip: T(vue.cacherConstats ? 'art.constats.afficher.tip' : 'art.constats.cacher.tip') }
     ].concat(enOrdre
       // Dans le mode, la barre ne propose plus que d'en sortir : par le haut ou par le bas.
-      ? [{ id: 'ordre-terminer', libelle: T('art.ordre.terminer'), icone: 'ok', principal: true,
-           tip: T('art.ordre.terminer.tip') },
-         { id: 'ordre-annuler', libelle: T('art.ordre.annuler'), icone: 'fermer',
+      // LIGNE DU BAS (`groupe: 'action'`, comme « Vérifier les méta » ci-dessous) : ce sont
+      // des gestes, jamais des réglages d'affichage — ils gardent leur ligne à eux, que la
+      // vue soit en mode normal ou en mode « Changer l'ordre ».
+      ? [{ id: 'ordre-terminer', groupe: 'action', libelle: T('art.ordre.terminer'), icone: 'ok',
+           principal: true, tip: T('art.ordre.terminer.tip') },
+         { id: 'ordre-annuler', groupe: 'action', libelle: T('art.ordre.annuler'), icone: 'fermer',
            tip: T('art.ordre.annuler.tip') }]
-      : [{ id: 'ordre', libelle: T('art.ordre.mode'), icone: 'liste',
-           tip: T('art.ordre.mode.tip') }]),
+      : [{ id: 'ordre', groupe: 'action', libelle: T('art.ordre.mode'), icone: 'liste',
+           tip: T('art.ordre.mode.tip') }])
+      // La feuille de relecture de TOUT le numéro, d'un coup — le pendant du bouton du
+      // formulaire des fiches, qui ne tire que ce qu'il montre. Dernier bouton de la ligne
+      // des ACTIONS (les quatre interrupteurs vivent sur leur propre ligne, `groupe: 'filtre'`
+      // ci-dessus) : ni un réglage d'affichage, ni un geste sur le sommaire, mais
+      // l'aboutissement des deux — on y recourt une fois le numéro monté et relu.
+      //
+      // Absent du mode « Changer l'ordre » : pendant qu'on réordonne, les dossiers sont sur
+      // le point d'être renommés par « Terminer ». Une feuille tirée à ce moment porterait
+      // des slugs et une empreinte déjà périmés au moment où elle sort de l'imprimante —
+      // exactement ce que l'empreinte en pied de feuille est censée empêcher.
+      .concat(enOrdre ? [] : [{ id: 'verif-meta', groupe: 'action', libelle: T('verif.bouton'),
+                 icone: 'imprimante', tip: T('verif.tous.tip') }]),
     // La page gèle ce qui n'a pas de sens pendant qu'on réordonne.
     ordre: !!enOrdre,
     // L'aperçu part toujours, même replié : contrairement aux tâches, que l'interrupteur
@@ -3949,14 +4011,10 @@ const TYPES_ACTION_ARTICLE = [MSG.COMMANDE, MSG.TACHE, MSG.SANSDOI, MSG.ACTION];
 async function actionArticle(fournisseur, rafraichirTout, msg) {
   const racine = fournisseur.racine;
   if (msg.type === MSG.COMMANDE) {
-    if (msg.id === 'importer') { await vscode.commands.executeCommand('szh.convertirEnAttente'); }
-    // Les intitulés des tâches se règlent dans « Réglages SZH », avec les autres réglages de
-    // la rédaction : le bouton y mène, il ne règle rien ici.
-    if (msg.id === 'taches') { await vscode.commands.executeCommand('szh.reglages'); return null; }
     if (msg.id === 'verif-meta') { await imprimerFeuilleVerifTous(fournisseur); return null; }
-    // Les trois interrupteurs d'affichage. Réglage de poste et non de numéro — ce qu'on
+    // Les quatre interrupteurs d'affichage. Réglage de poste et non de numéro — ce qu'on
     // choisit de lire ne dépend pas du numéro ouvert — donc le verrou du numéro ne s'y
-    // applique pas, pas plus qu'au réglage des tâches juste en dessous.
+    // applique pas.
     // Le mode « Changer l'ordre ». Entrer et sortir n'écrit rien ; seul « Terminer »
     // renomme, et d'un seul lot.
     if (msg.id === 'ordre') {
@@ -3977,6 +4035,7 @@ async function actionArticle(fournisseur, rafraichirTout, msg) {
     const bascules = {
       'cacher-taches': 'cacherTaches',
       'cacher-traductions': 'cacherTraductions',
+      'cacher-constats': 'cacherConstats',
       'cacher-meta': 'cacherMeta'
     };
     const cle = bascules[String(msg.id || '')];
@@ -4303,6 +4362,28 @@ async function envoyerAuteur(fournisseur, cible) {
   const message = copie ? T('art.envoi.pret') : T('art.envoi.presse.echec');
   const choix = await vscode.window.showInformationMessage(message, bouton);
   if (choix === bouton) { await revelerDansExplorateur(uri); }
+}
+
+// « Voir le PDF (Explorateur) » : un geste de LECTURE — rien n'est compilé, rien n'est
+// écrit — donc offert même sur un numéro verrouillé ou archivé : c'est justement là qu'on
+// cherche à remettre la main sur un document déjà sorti. Ne montre jamais un chemin qui
+// n'existe pas : un article jamais exporté, ou dont la dernière compilation a échoué, n'a
+// pas de PDF, et révéler un chemin absent ne ferait qu'ouvrir l'Explorateur sur du vide.
+// On se rabat alors sur le dossier out/<slug>/ s'il existe (une compilation en échec y
+// laisse parfois un reste), et à défaut on le dit au rédacteur plutôt que de rester muet.
+async function voirPdfArticle(fournisseur, cible) {
+  const racine = fournisseur.racine;
+  if (!racine) { return; }
+  const slug = cibleTraduction(fournisseur, cible).slug;
+  if (!slug || fournisseur.listerArticles().indexOf(slug) === -1) {
+    vscode.window.showInformationMessage(T('err.article.introuvable'));
+    return;
+  }
+  const dossier = path.join(racine, 'out', slug);
+  const pdf = path.join(dossier, slug + '.pdf');
+  if (fs.existsSync(pdf)) { await revelerDansExplorateur(vscode.Uri.file(pdf)); return; }
+  if (fs.existsSync(dossier)) { await revelerDansExplorateur(vscode.Uri.file(dossier)); return; }
+  vscode.window.showInformationMessage(T('art.pdf.absent', [slug]));
 }
 
 // Le dossier du PDF, fichier sélectionné. La commande de l'éditeur d'abord ; à défaut, le
@@ -6523,6 +6604,9 @@ function activate(context) {
       () => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'traductions')),
     cmd('szh.vueArticles', () => ouvrirVueArticles(fournisseur, rafraichirTout)),
     cmd('szh.envoyerAuteur', (item) => envoyerAuteur(fournisseur, item)),
+    // Rien n'est écrit : `cmd`, pas `cmdEcriture`, et pas de garde szh.verrouillee dans le
+    // `when` du menu (package.json) — voir voirPdfArticle ci-dessus.
+    cmd('szh.voirPdfArticle', (item) => voirPdfArticle(fournisseur, item)),
     // Monter et descendre depuis l'arbre. ⚠ `cmd` et non `cmdEcriture` : un numéro
     // verrouillé a ses textes figés mais son sommaire peut encore se décider, et
     // deplacerUnite() porte déjà le refus qui convient — celui de l'archivage.

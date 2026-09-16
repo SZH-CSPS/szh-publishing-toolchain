@@ -4,6 +4,36 @@
    ne reste ici que la largeur, le bloc repliable et la modale des tâches. */
 body { --page-max: 60rem; }
 
+/* Plus compact que le socle : un numéro complet pose une carte par article, et --t-titre
+   (1.05rem) ne laissait voir que deux ou trois titres sans défiler. À --t-section
+   (.82rem), un titre ordinaire tient sur une ligne — un titre exceptionnellement long
+   garde pourtant le droit de passer à la ligne, rien ici ne l'en empêche : la troncature
+   n'existe que dans le bandeau du mode « Changer l'ordre » (.tete-nom-tronque, plus bas),
+   où une seule ligne est une contrainte du bandeau, pas un choix de lisibilité. Les trois
+   sélecteurs par id restent locaux à cette vue : le socle (_liste.css) sert aussi
+   « Traductions » et « Word en attente », qui n'ont pas à en hériter. */
+#cartes.szh-liste { gap: var(--e2); }
+#cartes .szh-tete { padding: var(--e1) var(--e3); }
+#cartes .szh-tete-nom { font-size: var(--t-section); }
+
+/* La barre en deux lignes — filtres au-dessus, gestes en dessous (media/articles.js
+   répartit `boutons` entre #barreFiltres et #barreActions selon `groupe`, extension.js).
+   .szh-barre (socle, _design.css) reste le seul sticky/bord/marge : #barre n'ajoute que la
+   direction en colonne, l'écart entre les deux lignes tenant lieu de la marge basse d'une
+   ligne de boutons ordinaire. Chaque ligne redevient un simple flex-row, ce que .szh-barre
+   faisait pour une seule rangée de boutons. */
+#barre.art-barre { flex-direction: column; align-items: stretch; }
+.art-barre-ligne {
+  display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
+}
+/* Mode « Changer l'ordre » : plus de tâche, d'aperçu ni d'avertissement à montrer sur les
+   bandeaux minimaux (decorerBandeauOrdre, media/articles.js) — les quatre interrupteurs de
+   la ligne du haut y seraient inertes, et une ligne de boutons sans effet est un mensonge.
+   La ligne se cache par `hidden` (media/articles.js) plutôt que par un simple vidage : le
+   socle (_design.css, [hidden] { display: none !important }) l'emporte sur le display:flex
+   ci-dessus et referme la ligne sans laisser le moindre écart avant celle des gestes.
+   Rien à ajouter ici — c'est bien le point de cette règle du socle. */
+
 /* Les métadonnées du numéro sont là quand on les cherche, et repliées le reste du temps :
    la page sert d'abord à voir où en sont les articles. */
 .bloc { margin: var(--e4) 0 0; border: 1px solid var(--filet);
@@ -31,26 +61,53 @@ body { --page-max: 60rem; }
    « Le plus compact possible mais lisible » : deux colonnes, l'intitulé aligné à droite
    contre sa valeur, un pas vertical d'un quart de rem. Neuf champs tiennent alors dans la
    hauteur d'un paragraphe, et l'œil descend la colonne des intitulés sans les relire. */
-.carte-apercu { padding: var(--e3) var(--e3) 0; }
+.carte-apercu { padding: var(--e2) var(--e3) 0; }
 
-/* Les deux gestes de la barre de titre : replier l'aperçu des métadonnées, et ouvrir
-   l'article. Les avertissements, eux, ont quitté cette barre pour l'encadré « À faire »
-   (media/_liste.css, .szh-constats) — ils tenaient mal dans une colonne serrée contre le
-   bord droit, et ils sont de la même nature qu'une tâche.
+/* Le seul geste qui reste dans la barre de titre : replier l'aperçu des métadonnées. Le
+   bouton « Ouvrir l'article » l'a quitté — le même geste ferme déjà le pied de carte, et
+   le répéter ici doublait un bouton pour rien. Les avertissements, eux, ont quitté cette
+   barre pour l'encadré « À faire » (media/_liste.css, .szh-constats) — ils tenaient mal
+   dans une colonne serrée contre le bord droit, et ils sont de la même nature qu'une tâche.
 
-   margin-left: auto pousse les boutons hors du titre, qui reste seul à gauche ; ils passent
-   sous lui si la carte manque de largeur, .szh-tete portant déjà flex-wrap (_liste.css). */
+   margin-left: auto pousse le bouton hors du titre, qui reste seul à gauche et porte
+   maintenant lui-même la bascule (.szh-tete-nom--bascule, plus bas) ; il passe sous le
+   titre si la carte manque de largeur, .szh-tete portant déjà flex-wrap (_liste.css). */
 .carte-gestes { display: flex; align-items: center; flex-wrap: wrap; gap: var(--e2);
   margin-left: auto; }
 /* Le titre prend la place qui reste et cède la sienne aux boutons plutôt que de les
    comprimer : sans min-width: 0, un titre long refuserait de se replier. */
 .ligne .szh-tete-nom { flex: 1 1 12rem; min-width: 0; }
 
+/* Le titre devient lui-même la bascule quand la carte porte un aperçu (decorerTete,
+   media/articles.js) : un vrai <button>, jamais un <div> cliquable, pour rester atteignable
+   au clavier et actionnable par Entrée/Espace. Reset des styles de bouton du navigateur,
+   pour qu'il continue à se lire comme un titre plutôt que comme un contrôle de formulaire. */
+.szh-tete-nom--bascule { background: none; border: none; padding: 0; margin: 0;
+  font: inherit; text-align: left; cursor: pointer; color: inherit; }
+.szh-tete-nom--bascule:hover { color: var(--accent); }
+.szh-tete-nom--bascule:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* Le chevron du bouton « Afficher / cacher les métadonnées » suit ce qu'il annonce : vers
    le bas quand l'aperçu est là et qu'un clic le replie, vers la droite quand il est replié.
    La même convention que le bloc « Méta-données du numéro » juste au-dessus. */
 .bouton-bascule svg { transition: transform .12s ease; }
 .bouton-bascule[aria-expanded="false"] svg { transform: rotate(-90deg); }
+
+/* ---- Le mode « Changer l'ordre » : la carte réduite à un bandeau de titre ----
+   Les deux flèches, tout à gauche, avant le rang et le titre (decorerBandeauOrdre,
+   media/articles.js). Un bouton désactivé annonce un bord du numéro, pas une panne — le
+   même repli visuel que .szh-bouton:disabled (_design.css), porté ici sur .szh-ico, que
+   ces flèches utilisent pour rester une simple icône. */
+.carte-ordre { display: flex; align-items: center; gap: var(--e1); flex: 0 0 auto; }
+.carte-ordre button:disabled { opacity: .45; cursor: default; }
+/* Tronqué sur une seule ligne, dans ce mode seulement : le bandeau doit tenir en une
+   ligne quoi qu'il arrive, contrairement au titre de la carte complète (#cartes
+   .szh-tete-nom, plus haut), qui a le droit de passer à la ligne. La largeur complète du
+   texte reste lisible en infobulle (decorerBandeauOrdre pose le titre entier en `title`). */
+.tete-nom-tronque { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Garantit la seule ligne ci-dessus : .szh-tete porte flex-wrap par défaut (_liste.css),
+   utile à la carte complète mais qui romprait justement la contrainte du bandeau. */
+#cartes.mode-ordre .szh-tete { flex-wrap: nowrap; }
 
 .apercu-grille { margin: 0; font-size: var(--t-libelle); }
 .apercu-rangee { display: grid; grid-template-columns: 7.5em 1fr; gap: var(--e2);
@@ -93,34 +150,4 @@ body { --page-max: 60rem; }
 @media (max-width: 44rem) {
   .apercu-rangee { grid-template-columns: 1fr; gap: 0; padding: var(--e1) 0; }
   .apercu-cle { text-align: left; }
-}
-
-/* ---- Modale des tâches ----
-   Les intitulés décrivent le processus d'une revue : on les règle ici, dans les deux
-   langues, et le réglage vaut pour tous les numéros de cette revue. */
-.modale-taches {
-  background: var(--vscode-editor-background); color: var(--encre);
-  border: 1px solid var(--filet-fort); border-radius: var(--rayon);
-  padding: var(--e4) var(--e5) var(--e5);
-  width: min(46rem, calc(100vw - 3rem));
-  max-height: calc(100vh - 3rem); overflow-y: auto;
-  box-shadow: 0 8px 28px var(--vscode-widget-shadow, rgba(0, 0, 0, .35));
-}
-.modale-taches > h3 { margin: 0 0 var(--e3); font-size: var(--t-titre); font-weight: 700; }
-.taches-revues { display: flex; gap: var(--e2); flex-wrap: wrap; margin: 0 0 var(--e4); }
-/* Une rangée par tâche, une colonne par langue : l'appariement se lit et se corrige. */
-.taches-grille { display: flex; flex-direction: column; gap: var(--e2); }
-.taches-rangee { display: grid; grid-template-columns: 1.6em 1fr 1fr 2em;
-  align-items: center; gap: var(--e2); }
-.taches-entete { font-size: var(--t-libelle); font-weight: 700; color: var(--encre-2); }
-.taches-rangee .num { text-align: right; font-size: var(--t-libelle); color: var(--encre-2); }
-.taches-rangee input { width: 100%; box-sizing: border-box; padding: .3em .45em; font: inherit;
-  color: var(--vscode-input-foreground); background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini); }
-.taches-rangee input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.taches-pied { display: flex; align-items: center; gap: var(--e2); flex-wrap: wrap;
-  margin-top: var(--e4); }
-@media (max-width: 40rem) {
-  .taches-rangee { grid-template-columns: 1.6em 1fr 2em; }
-  .taches-rangee .colonne-de { grid-column: 2 / span 1; }
 }

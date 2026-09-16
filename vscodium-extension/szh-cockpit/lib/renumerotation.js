@@ -8,7 +8,9 @@
 // LE PROBLÈME. Le numéro qu'un article porte à l'écran vient de son rang dans l'ordre du
 // numéro ; le préfixe de son dossier est figé à l'import et n'était jamais renommé — c'était
 // écrit noir sur blanc dans l'infobulle de « Monter ». Les deux divergent donc au premier
-// déplacement, et l'on cherche l'article 3 dans l'explorateur pour tomber sur « 01- ».
+// déplacement, et l'on cherche l'article affiché « 02 » dans l'explorateur pour tomber sur
+// « 01- » — ou l'inverse, le rang affiché COMPTANT À PARTIR DE ZÉRO (prefixeOrdre(),
+// lib/articles.js) alors qu'un décalage de un s'était glissé ici.
 //
 // DEUX PASSES, ET POURQUOI. Deux articles qui échangent leur rang ne peuvent pas se
 // renommer directement : le premier viserait un nom que le second occupe encore. Tout
@@ -26,6 +28,8 @@
 // jour où la chaîne en ajoute un.
 'use strict';
 
+const { prefixeOrdre } = require('./articles');
+
 // Le préfixe temporaire. Le tilde n'apparaît dans aucun slug (slugifier ne le produit
 // jamais) et trie en fin de liste dans l'explorateur : un lot interrompu se voit.
 const PREFIXE_TEMPO = '~ordre-';
@@ -37,14 +41,12 @@ function tige(slug) {
   return m ? m[2] : String(slug);
 }
 
-// Deux chiffres jusqu'à 99, puis autant qu'il en faut : un numéro de revue en compte dix,
-// jamais cent, mais tronquer serait pire que s'allonger.
-function prefixe(rang) {
-  return (rang < 10 ? '0' : '') + String(rang);
-}
-
+// Le préfixe vient de prefixeOrdre() (lib/articles.js), la même fonction qui calcule le
+// nombre affiché à l'écran (libelleArticle(), et le DOI par rangDoi()). En avoir un second
+// calcul ici est précisément ce qui a créé la divergence que ce module corrige : le disque
+// et l'écran doivent lire le même nombre, jamais deux formules qui s'accordent par hasard.
 function nomVoulu(slug, rang) {
-  return prefixe(rang) + '-' + tige(slug);
+  return prefixeOrdre(rang) + '-' + tige(slug);
 }
 
 // Les fichiers d'un dossier qui portent son nom, et le nom qu'ils prendront. Un fichier
@@ -86,7 +88,7 @@ function planRenumerotation(articles, ordreVoulu) {
 
   const renommages = [];
   voulu.forEach((slug, i) => {
-    const vers = nomVoulu(slug, i + 1);
+    const vers = nomVoulu(slug, i);
     if (vers === slug) { return; }                 // déjà au bon rang : on n'y touche pas
     renommages.push({ de: slug, vers: vers,
                       tempo: PREFIXE_TEMPO + vers,

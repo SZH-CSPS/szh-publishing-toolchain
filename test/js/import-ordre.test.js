@@ -1,7 +1,14 @@
 // B1 (26.08.2026, demande de Robin) : le numéro de tête d'un Word ne nomme plus le dossier
 // — il ne survivait pas à un déplacement dans l'ordre (lib/slug.js). Il migre à la place
 // vers `ordre-articles` (ou `ordre-chapitres` sur un livre), la même clé que « Monter » /
-// « Descendre » modifient déjà.
+// « Descendre » modifient déjà : c'est lui qui décide où l'article se glisse.
+//
+// Depuis (11.09.2026), le dossier d'un article nouvellement importé reçoit lui aussi un
+// préfixe — mais celui-ci porte le RANG dans l'ordre final, jamais le numéro brut du Word :
+// « 1_Alpha.docx » et « 3_Zebre.docx » ci-dessous donnent bien « 02-alpha » puis
+// « 03-zebre », pas « 01-alpha »/« 03-zebre», parce que deux articles existants les
+// précèdent déjà dans l'ordre. Confondre les deux nombres serait exactement la régression
+// que lib/import-hote.js:prefixerNouveauxArticles() corrige.
 //
 //   node --test test/js/import-ordre.test.js
 //
@@ -83,9 +90,14 @@ test('import réel : le numéro de tête du Word migre vers ordre-articles, num�
     const texte = fs.readFileSync(AUSGABE, 'utf8');
     // alpha (1) avant zebre (3) : l'ordre du Word l'emporte sur l'ordre alphabétique des
     // slugs, qui les aurait rangés zebre avant alpha (repli de _sousDossiersAvecMd). Le Word
-    // sans numéro de tête suit, à la fin — il n'a pas de rang à faire valoir.
-    assert.match(texte, /^ordre-articles: \["01-essai", "02-sans-fiche", "alpha", "zebre", "sans-numero"\]$/m,
+    // sans numéro de tête suit, à la fin — il n'a pas de rang à faire valoir. Et chacun des
+    // trois dossiers reçoit le préfixe de SON rang dans cet ordre-là (02, 03, 04 : deux
+    // articles existants précèdent), pas le numéro brut du Word (1, 3, aucun).
+    assert.match(texte,
+      /^ordre-articles: \["01-essai", "02-sans-fiche", "02-alpha", "03-zebre", "04-sans-numero"\]$/m,
       'ordre-articles ne reprend pas le numéro de tête du Word, ou perturbe l’existant : ' + texte);
+    assert.ok(fs.existsSync(path.join(REVUE, 'articles', '02-alpha', '02-alpha.md')),
+      'le dossier « alpha » n’a pas été préfixé sur son rang');
   } finally {
     HOTE.stub.tasks.fetchTasks = () => Promise.resolve([]);
   }
@@ -95,7 +107,8 @@ test('import réel : un second lot s’ajoute en queue sans bousculer l’ordre 
   HOTE.stub.tasks.fetchTasks = () => Promise.resolve([{ name: NOM_IMPORT }, { name: NOM_BUILD }]);
   try {
     const avant = fs.readFileSync(AUSGABE, 'utf8');
-    assert.match(avant, /^ordre-articles: \["01-essai", "02-sans-fiche", "alpha", "zebre", "sans-numero"\]$/m,
+    assert.match(avant,
+      /^ordre-articles: \["01-essai", "02-sans-fiche", "02-alpha", "03-zebre", "04-sans-numero"\]$/m,
       'l’ordre du contrôle précédent devrait encore être en place');
 
     fs.writeFileSync(path.join(MOTS, '9_Omega.docx'), Buffer.alloc(16));
@@ -113,9 +126,12 @@ test('import réel : un second lot s’ajoute en queue sans bousculer l’ordre 
     const texte = fs.readFileSync(AUSGABE, 'utf8');
     // Le nouveau prend la queue, et RIEN d'autre ne bouge — ni son numéro (9) ni le fait
     // qu'il vient après un article sans DOI ne lui donnent le droit de se glisser plus tôt.
+    // Son rang dans cette queue est 5 (cinq articles déjà là) : le dossier prend « 05- ».
     assert.match(texte,
-      /^ordre-articles: \["01-essai", "02-sans-fiche", "alpha", "zebre", "sans-numero", "omega"\]$/m,
+      /^ordre-articles: \["01-essai", "02-sans-fiche", "02-alpha", "03-zebre", "04-sans-numero", "05-omega"\]$/m,
       'un import ultérieur a bousculé l’ordre déjà établi : ' + texte);
+    assert.ok(fs.existsSync(path.join(REVUE, 'articles', '05-omega', '05-omega.md')),
+      'le dossier « omega » n’a pas été préfixé sur son rang');
   } finally {
     HOTE.stub.tasks.fetchTasks = () => Promise.resolve([]);
   }

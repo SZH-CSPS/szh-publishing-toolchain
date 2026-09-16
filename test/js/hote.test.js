@@ -807,7 +807,14 @@ async function exporterEtNoterExplorateur(slug, codeSortie) {
 }
 
 test('« Exporter cet article » ouvre le dossier de sortie, le PDF sélectionné', async () => {
-  const slug = '01-essai';
+  // Le fixture nommait cet article « 01-essai », mais les suppressions plus haut dans ce
+  // fichier (les gardes buildEnCours, ~L545) ont depuis fait passer alignerDossiersSurOrdre()
+  // sur ce qui restait, et son dossier porte désormais son rang en base 0
+  // (lib/renumerotation.js). On lit le slug réel sur l'arbre plutôt que d'en supposer un
+  // figé, sans quoi ce test casserait à chaque réalignement amont, sans rapport avec ce
+  // qu'il éprouve.
+  const [slug] = HOTE.arbre().listerArticles();
+  assert.ok(slug, 'aucun article sur lequel exporter');
   const reveles = await exporterEtNoterExplorateur(slug, 0);
   assert.strictEqual(reveles.length, 1,
     'l’Explorateur n’a pas été ouvert une fois et une seule : ' + reveles.length);
@@ -817,8 +824,98 @@ test('« Exporter cet article » ouvre le dossier de sortie, le PDF sélectionn�
 });
 
 test('un export en échec n’ouvre aucune fenêtre d’Explorateur', async () => {
-  const reveles = await exporterEtNoterExplorateur('01-essai', 1);
+  const [slug] = HOTE.arbre().listerArticles();
+  const reveles = await exporterEtNoterExplorateur(slug, 1);
   assert.strictEqual(reveles.length, 0,
     'l’Explorateur s’est ouvert sur un export raté : le rédacteur croira que le document '
     + 'est à jour — ' + JSON.stringify(reveles.map((u) => String(u && u.fsPath))));
+});
+
+// ---- « Voir le PDF (Explorateur) » depuis le menu contextuel -----------------------
+//
+// Lecture pure : la commande ne compile rien et n'écrit rien, et le menu (package.json,
+// group navigation@3) ne porte aucune garde szh.verrouillee — retrouver un PDF déjà sorti
+// est justement le geste qu'on cherche sur un numéro qu'on ne peut plus modifier. Trois
+// états à couvrir : le PDF est là, il ne l'est pas mais out/<slug>/ existe encore (reste
+// d'une compilation en échec), et rien du tout n'existe — le seul cas où une notification
+// doit parler, faute de quoi montrer un chemin absent ferait croire à un document à jour.
+
+// Joue szh.voirPdfArticle et rend { reveles, infos } : les chemins montrés dans
+// l'Explorateur, et les notifications d'information envoyées au rédacteur. Même détour que
+// exporterEtNoterExplorateur ci-dessus pour intercepter revealFileInOS ; showInformationMessage
+// s'intercepte de la même façon (archivage-suppression.test.js), l'hôte factice ne le
+// journalise pas de lui-même.
+async function voirPdfEtNoter(slug) {
+  const execOriginal = HOTE.stub.commands.executeCommand;
+  const infoOriginal = HOTE.stub.window.showInformationMessage;
+  const reveles = [];
+  const infos = [];
+  HOTE.stub.commands.executeCommand = function (id, ...a) {
+    if (id === 'revealFileInOS') { reveles.push(a[0]); }
+    return execOriginal.call(this, id, ...a);
+  };
+  HOTE.stub.window.showInformationMessage = (m) => {
+    infos.push(String(m));
+    return Promise.resolve(undefined);
+  };
+  try {
+    await HOTE.executer('szh.voirPdfArticle', { slug: slug });
+  } finally {
+    HOTE.stub.commands.executeCommand = execOriginal;
+    HOTE.stub.window.showInformationMessage = infoOriginal;
+  }
+  return { reveles: reveles, infos: infos };
+}
+
+test('« Voir le PDF (Explorateur) » montre le PDF déjà compilé', async () => {
+  const [slug] = HOTE.arbre().listerArticles();
+  const dossierOut = path.join(REVUE, 'out', slug);
+  fs.mkdirSync(dossierOut, { recursive: true });
+  fs.writeFileSync(path.join(dossierOut, slug + '.pdf'), 'PDF factice');
+  try {
+    const { reveles, infos } = await voirPdfEtNoter(slug);
+    assert.strictEqual(reveles.length, 1,
+      'l’Explorateur n’a pas été ouvert une fois et une seule : ' + reveles.length);
+    const montre = String((reveles[0] && reveles[0].fsPath) || reveles[0]).replace(/\\/g, '/');
+    assert.match(montre, new RegExp('out/' + slug + '/' + slug + '\\.pdf$'),
+      'ce n’est pas le PDF de l’article qui est montré : ' + montre);
+    assert.strictEqual(infos.length, 0,
+      'un PDF présent n’a pourtant provoqué aucune notification, ce qui n’est pas le cas : '
+      + JSON.stringify(infos));
+  } finally {
+    fs.rmSync(path.join(REVUE, 'out'), { recursive: true, force: true });
+  }
+});
+
+test('« Voir le PDF (Explorateur) » sans PDF se rabat sur le dossier out/<slug>/', async () => {
+  const [slug] = HOTE.arbre().listerArticles();
+  const dossierOut = path.join(REVUE, 'out', slug);
+  // Le dossier existe (reste d'une compilation en échec), mais pas le PDF : montrer le
+  // dossier plutôt qu'un fichier absent.
+  fs.mkdirSync(dossierOut, { recursive: true });
+  try {
+    const { reveles, infos } = await voirPdfEtNoter(slug);
+    assert.strictEqual(reveles.length, 1,
+      'le dossier de sortie n’a pas été montré : ' + reveles.length);
+    const montre = String((reveles[0] && reveles[0].fsPath) || reveles[0]).replace(/\\/g, '/');
+    assert.match(montre, new RegExp('out/' + slug + '$'),
+      'ce n’est pas le dossier out/<slug>/ qui est montré : ' + montre);
+    assert.strictEqual(infos.length, 0);
+  } finally {
+    fs.rmSync(path.join(REVUE, 'out'), { recursive: true, force: true });
+  }
+});
+
+test('« Voir le PDF (Explorateur) » sans compilation ne montre jamais un chemin absent', async () => {
+  const [slug] = HOTE.arbre().listerArticles();
+  fs.rmSync(path.join(REVUE, 'out'), { recursive: true, force: true });
+  const { reveles, infos } = await voirPdfEtNoter(slug);
+  assert.strictEqual(reveles.length, 0,
+    'l’Explorateur s’est ouvert sur un chemin qui n’existe pas : '
+    + JSON.stringify(reveles.map((u) => String(u && u.fsPath))));
+  assert.strictEqual(infos.length, 1,
+    'aucune notification n’a averti le rédacteur que l’article n’a pas encore été compilé : '
+    + JSON.stringify(infos));
+  assert.match(infos[0], /pas encore .*compil/i,
+    'la notification ne dit pas que l’article n’a pas encore été compilé : ' + infos[0]);
 });

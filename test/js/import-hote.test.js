@@ -77,8 +77,11 @@ test('lancer l’import : la commande démarre bien LA tâche d’import nommée
     await HOTE.finirTache(NOM_BUILD, 0);
     await promesse;
 
-    // Rafraîchi : le nouvel article est maintenant listé par l'arbre.
-    assert.ok(HOTE.arbre().listerArticles().indexOf('nouveau') !== -1,
+    // Rafraîchi : le nouvel article est maintenant listé par l'arbre — sous « 02-nouveau »,
+    // pas « nouveau » : deux articles le précèdent dans l'ordre (01-essai, 02-sans-fiche),
+    // et le dossier créé par l'import reçoit le préfixe de ce rang (lib/import-hote.js,
+    // prefixerNouveauxArticles).
+    assert.ok(HOTE.arbre().listerArticles().indexOf('02-nouveau') !== -1,
       'l’arbre n’a pas été rafraîchi après l’import : le nouvel article est invisible');
 
     // Et la vérification d'import s'est ouverte, puisqu'il y avait un nouvel article.
@@ -96,7 +99,9 @@ test('la vérification d’import montre le nouvel article, avec son titre', asy
   await panneau._recepteur({ type: 'pret' });
   const valeurs = panneau.messages.slice().reverse().find((m) => m.type === 'valeurs');
   assert.ok(valeurs, 'aucun message « valeurs » envoyé à la vérification d’import');
-  const article = valeurs.articles.find((a) => a.slug === 'nouveau');
+  // Le slug porte désormais le préfixe pris à l'import (voir le contrôle précédent) : la
+  // vérification doit parler du même dossier que celui qui existe réellement sur le disque.
+  const article = valeurs.articles.find((a) => a.slug === '02-nouveau');
   assert.ok(article, 'l’article importé n’apparaît pas dans la vérification d’import');
   assert.strictEqual(article.valeurs.title && article.valeurs.title.fr, 'Article nouveau');
 });

@@ -33,29 +33,41 @@ function article(slug, extras) {
 
 test('plan : un dossier déjà au bon rang n’est pas touché', () => {
   const p = plan.planRenumerotation(
-    [article('01-edito'), article('02-inclusion')],
-    ['01-edito', '02-inclusion']);
+    [article('00-edito'), article('01-inclusion')],
+    ['00-edito', '01-inclusion']);
   assert.deepStrictEqual(p.renommages, [], 'un renommage inutile est un risque gratuit');
   assert.strictEqual(p.aFaire, false);
 });
 
+// La règle métier qui a motivé toute cette bascule : le premier article affiché à l'écran
+// (prefixeOrdre(0), lib/articles.js) doit être celui dont le dossier porte « 00- », pas
+// « 01- ». Un décalage de un ici referait exactement le bug que ce module corrige.
+test('plan : le premier article de l’ordre prend « 00 »', () => {
+  const p = plan.planRenumerotation(
+    [article('edito'), article('inclusion')],
+    ['edito', 'inclusion']);
+  const vers = new Map(p.renommages.map((r) => [r.de, r.vers]));
+  assert.strictEqual(vers.get('edito'), '00-edito', 'le premier article n’a pas pris « 00 »');
+  assert.strictEqual(vers.get('inclusion'), '01-inclusion');
+});
+
 test('plan : le rang décide du préfixe, et le reste du nom ne bouge pas', () => {
   const p = plan.planRenumerotation(
-    [article('01-edito'), article('02-inclusion')],
-    ['02-inclusion', '01-edito']);
+    [article('00-edito'), article('01-inclusion')],
+    ['01-inclusion', '00-edito']);
   assert.strictEqual(p.aFaire, true);
   // Deux articles qui échangent leur rang : chacun prend le préfixe de l'autre, la partie
   // parlante du nom reste la sienne.
   assert.deepStrictEqual(p.renommages.map((r) => r.de + ' -> ' + r.vers),
-    ['02-inclusion -> 01-inclusion', '01-edito -> 02-edito']);
+    ['01-inclusion -> 00-inclusion', '00-edito -> 01-edito']);
 });
 
 test('plan : un échange passe par un nom temporaire, sinon il écrase', () => {
-  // Le cas qui casse une implémentation naïve : renommer 01 en 02 alors que 02 existe
+  // Le cas qui casse une implémentation naïve : renommer 00 en 01 alors que 01 existe
   // encore. Le plan doit donc sortir en deux passes.
   const p = plan.planRenumerotation(
-    [article('01-edito'), article('02-inclusion')],
-    ['02-inclusion', '01-edito']);
+    [article('00-edito'), article('01-inclusion')],
+    ['01-inclusion', '00-edito']);
   assert.strictEqual(p.passes.length, 2, 'un échange sans passe temporaire écrase un dossier');
   const [aller, retour] = p.passes;
   for (const etape of aller) {
@@ -66,7 +78,7 @@ test('plan : un échange passe par un nom temporaire, sinon il écrase', () => {
     assert.ok(!/^~ordre-/.test(etape.vers), 'un nom temporaire est resté à l’arrivée');
   }
   // Et aucun nom temporaire ne peut heurter un dossier existant.
-  const existants = new Set(['01-edito', '02-inclusion']);
+  const existants = new Set(['00-edito', '01-inclusion']);
   for (const etape of aller) { assert.ok(!existants.has(etape.vers)); }
 });
 
@@ -78,12 +90,12 @@ test('plan : les fichiers du dossier suivent son nom', () => {
     [article('03-gremion', ['03-gremion.biblio.md', '03-gremion.taches.yaml'])],
     ['03-gremion']);
   const r = p.renommages[0];
-  assert.strictEqual(r.vers, '01-gremion');
+  assert.strictEqual(r.vers, '00-gremion');
   assert.deepStrictEqual(r.fichiers.map((f) => f.de + ' -> ' + f.vers), [
-    '03-gremion.md -> 01-gremion.md',
-    '03-gremion.meta.yaml -> 01-gremion.meta.yaml',
-    '03-gremion.biblio.md -> 01-gremion.biblio.md',
-    '03-gremion.taches.yaml -> 01-gremion.taches.yaml'
+    '03-gremion.md -> 00-gremion.md',
+    '03-gremion.meta.yaml -> 00-gremion.meta.yaml',
+    '03-gremion.biblio.md -> 00-gremion.biblio.md',
+    '03-gremion.taches.yaml -> 00-gremion.taches.yaml'
   ]);
 });
 
@@ -98,19 +110,19 @@ test('plan : un fichier qui ne porte pas le nom du dossier reste tranquille', ()
 
 test('plan : un dossier sans préfixe en reçoit un', () => {
   // Un article créé à la main, ou importé avant que la chaîne ne préfixe.
-  const p = plan.planRenumerotation([article('inclusion'), article('01-edito')],
-    ['01-edito', 'inclusion']);
+  const p = plan.planRenumerotation([article('inclusion'), article('00-edito')],
+    ['00-edito', 'inclusion']);
   const vers = p.renommages.map((r) => r.vers);
-  assert.ok(vers.indexOf('02-inclusion') !== -1, 'le dossier sans préfixe n’a pas été aligné : ' + vers);
+  assert.ok(vers.indexOf('01-inclusion') !== -1, 'le dossier sans préfixe n’a pas été aligné : ' + vers);
 });
 
 test('plan : au-delà de neuf, le préfixe garde deux chiffres', () => {
   const slugs = [];
-  for (let i = 1; i <= 12; i++) { slugs.push(article('a' + i)); }
+  for (let i = 0; i <= 11; i++) { slugs.push(article('a' + i)); }
   const p = plan.planRenumerotation(slugs, slugs.map((a) => a.slug));
   const dernier = p.renommages[p.renommages.length - 1];
-  assert.strictEqual(dernier.vers, '12-a12');
-  assert.ok(p.renommages.some((r) => r.vers === '09-a9'), 'le neuvième perd son zéro');
+  assert.strictEqual(dernier.vers, '11-a11');
+  assert.ok(p.renommages.some((r) => r.vers === '09-a9'), 'le neuvième (rang 9) perd son zéro');
 });
 
 // ---- 2. Ce que le plan refuse ------------------------------------------------------

@@ -104,8 +104,15 @@ test('Makefile : la désambiguïsation du shell reprend les constantes de slug.j
   //   d'un livre ($(UNITES_DIR), qui vaut « articles » par défaut et « chapitres » sous
   //   livre.mk). Le contrat porte sur la BOUCLE, pas sur le nom du dossier : c'est elle qui
   //   cherche un slug libre au lieu d'abandonner, et c'est elle qui doit rester.
-  assert.match(mk, /while \[ -e "\$\(UNITES_DIR\)\/\$\$slug\/\$\$slug\.md" \]; do/,
+  // ⚠ Depuis que le cockpit préfixe le dossier d'un article nouvellement importé sur son
+  //   rang (« 00-inclusion », lib/import-hote.js), un simple test [ -e ] sur le slug nu ne
+  //   verrait pas un dossier déjà préfixé et laisserait passer un doublon. La boucle
+  //   interroge donc dossier_existant(), qui regarde les deux formes — voir sa définition
+  //   plus haut dans la recette, juste après dire().
+  assert.match(mk, /while dossier_existant "\$\$slug" >\/dev\/null; do/,
     'la boucle de désambiguïsation a disparu du Makefile');
+  assert.match(mk, /dossier_existant\(\) \{ \\/,
+    'la fonction qui reconnaît un dossier préfixé a disparu du Makefile');
   assert.ok(mk.indexOf('déjà converti (ignoré)') === -1,
     'la branche d’abandon silencieux est de retour');
   // Mêmes nombres des deux côtés : la borne et le plafond d'homonymes.
@@ -207,7 +214,7 @@ test('Makefile : le même Word redéposé ne fabrique pas un second article', ()
   const mk = lire('pipeline', 'Makefile');
   // La décision se prend sur le champ `source:` des fiches, avant toute désambiguïsation.
   const iSource = mk.indexOf("sed -n 's/^source:[[:space:]]*//p'");
-  const iBoucle = mk.indexOf('while [ -e "$(UNITES_DIR)/$$slug/$$slug.md" ]; do');
+  const iBoucle = mk.indexOf('while dossier_existant "$$slug" >/dev/null; do');
   assert.ok(iSource !== -1, 'la lecture du champ source: a disparu du Makefile');
   assert.ok(iSource < iBoucle,
     'le redépôt est cherché après le suffixe : un doublon serait déjà créé');

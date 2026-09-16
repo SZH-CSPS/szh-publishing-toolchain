@@ -86,6 +86,16 @@ var SZH = (function () {
       ['circle', { cx: '7', cy: '7', r: '4.25', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.5' }],
       ['path', { d: 'M10.4 10.4 14 14', fill: 'none', stroke: 'currentColor',
         'stroke-width': '1.5', 'stroke-linecap': 'round' }]
+    ],
+    // Imprimer : le corps et la feuille, tous deux en contour (CONTOUR), comme ses voisines
+    // de la barre. Un premier essai à trois rectangles PLEINS se fondait en un seul bloc
+    // noir à 14 px (comparé rendu contre rendu, tmp/apercu-articles/) ; un second à un seul
+    // rectangle plein pour la feuille détonnait encore parmi des icônes en trait. Deux
+    // rectangles en contour, l'un posé sur l'autre, suffisent à lire « corps » et « feuille »
+    // sans jamais fondre en un pâté.
+    imprimante: [
+      ['rect', Object.assign({ x: '2', y: '6', width: '12', height: '6', rx: '1' }, CONTOUR)],
+      ['rect', Object.assign({ x: '5', y: '2', width: '6', height: '4.5' }, CONTOUR)]
     ]
   };
 
@@ -951,9 +961,18 @@ var SZH = (function () {
   //
   // Texte court plus pictogramme : le premier dit ce que fait le bouton, le second le fait
   // reconnaître d'un coup d'oeil dans une barre qui en porte plusieurs. Un bouton vaut
-  // { id, libelle, icone, tip, principal, danger, desactive, actif } et `onAction(id)` est
-  // appelé au clic. Rend la zone d'état de la barre, où l'appelant écrit ce qu'il vient
-  // de faire.
+  // { id, libelle, icone, tip, principal, danger, desactive, actif, groupe } et
+  // `onAction(id)` est appelé au clic — `groupe` n'est lu par aucune fonction d'ici : c'est
+  // un contrat entre l'hôte et la page appelante (media/articles.js, qui répartit ses
+  // boutons sur deux lignes selon ce champ), invisible à ce composant. Rend la zone d'état
+  // de la barre, où l'appelant écrit ce qu'il vient de faire.
+  //
+  // `opts.sansEtat` omet le pousse et la zone d'état (rend alors null) : une page à
+  // plusieurs barres ne doit en garder qu'UNE avec role="status" — deux zones concurrentes,
+  // et un lecteur d'écran annoncerait deux fois le même geste, ou aucune. Sans cette
+  // option, tout se comporte comme avant : les trois autres vues d'ensemble (Traductions,
+  // Word en attente, Contrôles, media/vue-ensemble.js) n'ont qu'une barre et ne la passent
+  // jamais.
   //
   // `actif` (booléen, absent sur un bouton ordinaire) fait de ce bouton un INTERRUPTEUR :
   // aria-pressed part avec, et _design.css lui donne alors le fond plein. L'état allumé
@@ -983,11 +1002,12 @@ var SZH = (function () {
     return el;
   }
 
-  function barreBoutons(conteneur, boutons, onAction) {
+  function barreBoutons(conteneur, boutons, onAction, opts) {
     conteneur.textContent = '';
     for (var i = 0; i < (boutons || []).length; i++) {
       conteneur.appendChild(boutonCommande(boutons[i], onAction));
     }
+    if ((opts || {}).sansEtat) { return null; }
     var pousse = document.createElement('span');
     pousse.className = 'szh-pousse';
     conteneur.appendChild(pousse);

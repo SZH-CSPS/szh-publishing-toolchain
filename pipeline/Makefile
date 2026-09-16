@@ -522,6 +522,14 @@ docx: verifie-dossier verifier-ua $(DOCXS)
 #   * origine inconnue (fiche antérieure à `source:`, ou article sans fiche) -> on ne
 #     tranche pas et on ne crée rien : un doublon est plus difficile à défaire qu'un Word
 #     resté en attente. Le message dit quoi faire dans les deux cas.
+# « Déjà pris » se juge par dossier_existant() (définie dans la recette, juste après
+# dire()), jamais par un simple test [ -e ] sur le slug nu : depuis que le cockpit préfixe
+# le dossier d'un article nouvellement importé sur son rang (lib/import-hote.js, « 00-
+# inclusion »), le slug deviné ici n'a jamais ce préfixe, et un import qui ne verrait que
+# le nom nu créerait un second dossier pour le même titre à côté du premier. La fonction
+# imprime le nom du dossier trouvé (nu, ou préfixé) et réussit ; elle échoue sans rien
+# imprimer si aucun des deux n'existe — les deux gardes qui suivent (redépôt d'origine
+# inconnue, désambiguïsation des homonymes) s'en servent chacune à sa façon.
 # Le redépôt a son propre compteur au bilan : caché dans « ignoré », il redeviendrait le
 # silence que cette recette corrige.
 # À garder aligné avec slugifierArticle() et slugifierArticleUnique() de
@@ -576,6 +584,15 @@ import:
 	: > "$$journal"; \
 	export SZH_IMPORT_LOG="$$PWD/$$journal"; \
 	dire() { echo "$$*"; printf '%s\n' "$$*" >> "$$journal"; }; \
+	dossier_existant() { \
+	  local s g; \
+	  s="$$1"; \
+	  if [ -e "$(UNITES_DIR)/$$s/$$s.md" ]; then printf '%s' "$$s"; return 0; fi; \
+	  for g in "$(UNITES_DIR)"/[0-9]*-"$$s"; do \
+	    if [ -e "$$g/$$(basename "$$g").md" ]; then printf '%s' "$$(basename "$$g")"; return 0; fi; \
+	  done; \
+	  return 1; \
+	}; \
 	shopt -s nocaseglob; \
 	files=("$(WORD_DIR)"/*.docx); \
 	shopt -u nocaseglob; \
@@ -600,12 +617,13 @@ import:
 	    dire "[import-avertissement] word-redepose | article « $$venu_de » | fichier « $$nom » | Cet article a déjà été importé depuis ce même fichier Word. Rien n'a été créé : la version corrigée reste en attente dans $(WORD_DIR)/, et l'article publié est encore l'ancien. Pour publier la correction sans perdre la fiche, les médias ni les traductions : « Réimporter cet article », sur cet article. | [de] Dieser Artikel wurde schon aus derselben Word-Datei importiert. Es wurde nichts angelegt: die korrigierte Fassung bleibt in $(WORD_DIR)/, veröffentlicht ist noch die alte. Um die Korrektur zu veröffentlichen, ohne Metadaten, Medien und Übersetzungen zu verlieren: « Artikel neu importieren », beim betreffenden Artikel."; \
 	    redepot=$$((redepot+1)); continue; \
 	  fi; \
-	  if [ -e "$(UNITES_DIR)/$$slug/$$slug.md" ] && ! grep -q "^source:" "$(UNITES_DIR)/$$slug/$$slug.meta.yaml" 2>/dev/null; then \
-	    dire "[import-avertissement] origine-inconnue | article « $$slug » | fichier « $$nom » | Un article porte déjà ce nom de dossier, sans qu'on sache de quel Word il vient. Rien n'a été créé, pour ne pas risquer un doublon dans le numéro. S'il s'agit d'un autre article, renommez le fichier Word puis enregistrez (Ctrl+S) ; s'il s'agit du même article corrigé, lancez « Réimporter cet article » et désignez-lui ce fichier Word. | [de] Ein Artikel trägt diesen Ordnernamen bereits, ohne bekannte Word-Herkunft. Es wurde nichts angelegt, um kein Duplikat in der Ausgabe zu erzeugen. Handelt es sich um einen anderen Artikel, benennen Sie die Word-Datei um und speichern Sie (Ctrl+S); ist es derselbe Artikel, korrigiert, starten Sie « Artikel neu importieren » und weisen Sie ihm diese Word-Datei zu."; \
+	  dossier_actuel=$$(dossier_existant "$$slug") || dossier_actuel=""; \
+	  if [ -n "$$dossier_actuel" ] && ! grep -q "^source:" "$(UNITES_DIR)/$$dossier_actuel/$$dossier_actuel.meta.yaml" 2>/dev/null; then \
+	    dire "[import-avertissement] origine-inconnue | article « $$dossier_actuel » | fichier « $$nom » | Un article porte déjà ce nom de dossier, sans qu'on sache de quel Word il vient. Rien n'a été créé, pour ne pas risquer un doublon dans le numéro. S'il s'agit d'un autre article, renommez le fichier Word puis enregistrez (Ctrl+S) ; s'il s'agit du même article corrigé, lancez « Réimporter cet article » et désignez-lui ce fichier Word. | [de] Ein Artikel trägt diesen Ordnernamen bereits, ohne bekannte Word-Herkunft. Es wurde nichts angelegt, um kein Duplikat in der Ausgabe zu erzeugen. Handelt es sich um einen anderen Artikel, benennen Sie die Word-Datei um und speichern Sie (Ctrl+S); ist es derselbe Artikel, korrigiert, starten Sie « Artikel neu importieren » und weisen Sie ihm diese Word-Datei zu."; \
 	    redepot=$$((redepot+1)); continue; \
 	  fi; \
 	  base="$$slug"; n=1; trop=0; \
-	  while [ -e "$(UNITES_DIR)/$$slug/$$slug.md" ]; do \
+	  while dossier_existant "$$slug" >/dev/null; do \
 	    n=$$((n+1)); \
 	    if [ $$n -gt 99 ]; then trop=1; break; fi; \
 	    suf="-$$n"; tronc="$$base"; \

@@ -160,6 +160,37 @@ function prefixeOrdre(index) {
   return n < 10 ? '0' + n : String(n);
 }
 
+// Le préfixe que porte RÉELLEMENT le dossier, lu sur son nom — jamais recalculé. '' s'il
+// n'en a pas. Depuis que seuls les dossiers créés par un import ou réalignés par
+// « Changer l'ordre » en reçoivent un, un numéro peut légitimement mélanger des dossiers
+// numérotés et non numérotés : ce nombre sert à retrouver l'article dans l'Explorateur de
+// fichiers, il ne doit donc jamais promettre un rangement que le disque n'a pas.
+//
+// Même motif que tige() (lib/renumerotation.js), qui retire ce même préfixe pour isoler la
+// partie parlante du nom : les deux ne se partagent pas la même fonction parce que
+// renumerotation.js dépend déjà de ce module (prefixeOrdre) — l'importer ici fermerait un
+// cycle, et lib/articles.js reste sans dépendance vers ses propres dépendants. Le motif
+// ^(\d+)- est donc lu à deux endroits, pour deux raisons opposées (retirer le préfixe là,
+// le lire ici), plutôt que d'ouvrir ce cycle pour économiser une ligne de regex.
+//
+// tigeDossier() ci-dessous applique le même motif, pour la même raison, à un troisième
+// endroit : elle ne retire pas le préfixe pour le lire (ici) ni pour renommer le dossier
+// (tige()), mais pour que le repli sur le slug de libelleArticle() ne le répète pas à côté
+// du numéro déjà affiché.
+function prefixeDossier(slug) {
+  const m = String(slug === undefined || slug === null ? '' : slug).match(/^(\d+)-/);
+  return m ? m[1] : '';
+}
+
+// Le complément de prefixeDossier() : ce qui reste du nom une fois son préfixe « NN- »
+// retiré. Un slug sans préfixe garde son nom entier. Sert au repli de libelleArticle()
+// ci-dessous — jamais à autre chose, sinon autant importer tige() (lib/renumerotation.js).
+function tigeDossier(slug) {
+  const s = String(slug === undefined || slug === null ? '' : slug);
+  const m = s.match(/^(\d+)-(.+)$/);
+  return m ? m[2] : s;
+}
+
 // ---- Nom d'un article ------------------------------------------------------------
 
 // Le titre de la fiche, dans la langue du numéro si elle y est, sinon dans une autre —
@@ -181,9 +212,22 @@ const SEPARATEUR_LIBELLE = ' · ';
 // « 03 · Inklusive Bildung in der Sekundarstufe I ». Le slug n'est plus le libellé : il
 // passe en description, là où l'on va chercher le nom du dossier. Une fiche absente ou un
 // titre vide laisse le slug en place — l'article se voit, il ne disparaît pas.
-function libelleArticle(index, slug, titre) {
+//
+// `numero` est déjà formaté par l'appelant, jamais recalculé ici : `prefixeDossier(slug)`
+// pour ce que le disque porte vraiment (la vue normale, l'arbre, les listes de choix), ou
+// `prefixeOrdre(index)` pour le rang à venir que seul le mode « Changer l'ordre » affiche
+// (« Terminer » l'écrira sur les dossiers). '' est un numéro valide : un dossier sans
+// préfixe n'affiche alors ni chiffre ni séparateur — « Titre », et non « · Titre », qui
+// promettrait un rangement que le dossier n'a pas.
+function libelleArticle(numero, slug, titre) {
   const t = String(titre === undefined || titre === null ? '' : titre).trim();
-  return prefixeOrdre(index) + SEPARATEUR_LIBELLE + (t !== '' ? t : String(slug));
+  // Le repli retire le préfixe du dossier (tigeDossier) : `numero` l'affiche déjà à côté,
+  // qu'il vienne du disque (prefixeDossier) ou du rang à venir en mode « Changer l'ordre »
+  // (prefixeOrdre) — dans les deux cas, le redire dans le nom ferait « 02 · 02-sans-fiche »,
+  // voire pire en mode ordre, un numéro qui n'est même pas celui du dossier.
+  const nom = t !== '' ? t : tigeDossier(slug);
+  const n = String(numero === undefined || numero === null ? '' : numero);
+  return n !== '' ? n + SEPARATEUR_LIBELLE + nom : nom;
 }
 
 // ---- Les images d'un article -----------------------------------------------------
@@ -322,9 +366,10 @@ function configAvecTaches(cfg, revue, liste) {
 
 // ---- Ce que la vue « Articles » montre ou cache ----------------------------------
 //
-// Trois interrupteurs, et rien d'autre : la liste des tâches sur chaque carte, les champs
-// traduits de l'aperçu, et l'aperçu des métadonnées lui-même. Ils raccourcissent la carte
-// sans rien perdre — ce qui est caché est caché à la lecture, jamais retiré du numéro.
+// Quatre interrupteurs, et rien d'autre : la liste des tâches sur chaque carte, les champs
+// traduits de l'aperçu, l'aperçu des métadonnées lui-même, et ses avertissements. Ils
+// raccourcissent la carte sans rien perdre — ce qui est caché est caché à la lecture,
+// jamais retiré du numéro.
 //
 // Ils vivent dans config.json et non dans les réglages de l'éditeur, pour deux raisons : la
 // mise à jour du poste réécrit ces derniers en entier (même motif que la langue, voir
@@ -332,19 +377,20 @@ function configAvecTaches(cfg, revue, liste) {
 // liste des réglages de VSCodium. Un réglage de confort, pas un réglage de publication.
 const CLE_VUE_ARTICLES = 'vueArticles';
 
-// -> { cacherTaches, cacherTraductions, cacherMeta }, toujours des booléens. Une
-// configuration absente, illisible ou à moitié écrite rend « tout est montré » : c'est
-// l'état d'un poste neuf, et c'est celui qui ne cache rien à personne.
+// -> { cacherTaches, cacherTraductions, cacherMeta, cacherConstats }, toujours des
+// booléens. Une configuration absente, illisible ou à moitié écrite rend « tout est
+// montré » : c'est l'état d'un poste neuf, et c'est celui qui ne cache rien à personne.
 function vueArticlesConfig(cfg) {
   const brut = (cfg && typeof cfg === 'object' && cfg[CLE_VUE_ARTICLES]) || {};
   return {
     cacherTaches: brut.cacherTaches === true,
     cacherTraductions: brut.cacherTraductions === true,
-    cacherMeta: brut.cacherMeta === true
+    cacherMeta: brut.cacherMeta === true,
+    cacherConstats: brut.cacherConstats === true
   };
 }
 
-// Bascule un des trois interrupteurs sans toucher au reste de config.json. Pure, pour être
+// Bascule un des quatre interrupteurs sans toucher au reste de config.json. Pure, pour être
 // éprouvable sans écrire dans C:\ProgramData ; c'est l'appelant qui appelle
 // ecrireConfigPoste. Une clé inconnue ne change rien plutôt que d'en inventer une.
 function configAvecVueArticles(cfg, cle, valeur) {
@@ -483,6 +529,7 @@ const MAX_COUVERTURE = 12 * 1024 * 1024;
 
 module.exports = {
   CLE_ORDRE, CLE_SANS_DOI, FORME_SLUG, analyserOrdre, ordonnerArticles, deplacerArticle, prefixeOrdre,
+  prefixeDossier, tigeDossier,
   analyserSansDoi, basculerSansDoi, trierParDoi, refusDeplacement, rangDoi,
   resumeImages, decorativeImage,
   titreFiche, libelleArticle, SEPARATEUR_LIBELLE,

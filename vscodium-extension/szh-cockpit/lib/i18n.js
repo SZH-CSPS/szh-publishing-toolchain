@@ -270,7 +270,6 @@ const TEXTES_COCKPIT = {
     'meta.langue.en': 'anglais',
     'meta.langue.it': 'italien',
     'meta.couleur': 'Couleur du numéro',
-    'meta.couleur.aucune': '(aucune)',
     'meta.couleur.rouge': 'Rouge',
     'meta.couleur.capucine': 'Capucine',
     'meta.couleur.moutarde': 'Moutarde',
@@ -420,14 +419,32 @@ const TEXTES_COCKPIT = {
     'art.vue.rien': 'Aucun article dans ce numéro pour l’instant.',
     'art.numero.section': 'Méta-données du numéro',
     'art.liste.section': 'Articles du numéro',
+    // Les deux lignes de la barre de commandes (media/articles.html, media/articles.js) :
+    // aucun titre visible entre elles — la vue vise à gagner de la hauteur, deux titres
+    // de section la reprendraient — donc c’est l’aria-label qui les nomme pour un
+    // lecteur d’écran, sur le conteneur de chaque ligne.
+    'art.barre.filtres.aria': 'Filtres d’affichage',
+    'art.barre.actions.aria': 'Actions',
     'art.arbre.tooltip': '{0} – dossier « {1} » – {2}',
     'art.sansfiche': 'Pas de titre dans la fiche de cet article : c’est son slug qui s’affiche ici, et la compilation refusera de partir.',
     'art.ouvrir': 'Ouvrir l’article',
     'art.ouvrir.tip': 'Ouvrir le texte de l’article dans l’éditeur. Ni compilation ni aperçu : on vient y lire ou corriger.',
+    // « Voir le PDF (Explorateur) » : le seul cas où l’article n’a
+    // encore aucun PDF à montrer — jamais compilé, ou la dernière compilation a
+    // échoué sans rien laisser dans out/<slug>/. voirPdfArticle (extension.js) se
+    // rabat d’abord sur ce dossier s’il existe ; cette clé ne sert que quand il n’y a
+    // vraiment rien à révéler.
+    'art.pdf.absent': 'Aucun PDF pour « {0} » : cet article n’a pas encore été compilé.',
     'art.monter': 'Monter',
     'art.monter.tip': 'Placer cet article un cran plus haut dans le numéro. Aucun dossier n’est renommé.',
     'art.descendre': 'Descendre',
     'art.descendre.tip': 'Placer cet article un cran plus bas dans le numéro. Aucun dossier n’est renommé.',
+    // Les deux flèches du bandeau, en mode « Changer l'ordre » : l'infobulle reprend les
+    // tips ci-dessus (le geste est le même), mais l'aria-label nomme l'article ET le rang
+    // visé, calculé côté hôte (prefixeOrdre) — sinon deux flèches « Monter » consécutives
+    // se liraient pareil au clavier.
+    'art.ordre.aria.monter': 'Monter « {0} » au rang {1}',
+    'art.ordre.aria.descendre': 'Descendre « {0} » au rang {1}',
     // Le mode « Changer l'ordre » : on déplace autant qu'on veut sans rien écrire, et
     // « Terminer » renomme les dossiers d'un seul lot. Renommer à chaque clic ferait
     // autant d'occasions de tomber sur un fichier ouvert ou une synchronisation en cours.
@@ -440,11 +457,8 @@ const TEXTES_COCKPIT = {
     'art.ordre.fait': '{0} dossier(s) renommé(s) : les numéros des dossiers suivent ceux de la liste.',
     'art.ordre.echec': 'Les dossiers n’ont pas tous pu être renommés ({0}). Fermez ce qui est ouvert, puis reprenez « Changer l’ordre ».',
     'art.ordre.enregistre': 'Ordre du numéro enregistré – cet article est en position {0}.',
-    'art.importer': 'Convertir les Word en attente',
     'art.taches.titre': 'Tâches par article',
-    'art.taches.reglage': 'Régler les tâches',
-    'art.taches.reglage.tip': 'Régler les intitulés des tâches, pour cette revue comme pour l’autre.',
-    // Les trois interrupteurs d'affichage de la vue. Leur libellé nomme CE QU'ILS MONTRENT
+    // Les quatre interrupteurs d'affichage de la vue. Leur libellé nomme CE QU'ILS MONTRENT
     // et ne bouge plus avec l'état : c'est l'oeil, le fond plein et aria-pressed qui disent
     // si la chose est à l'écran. Un libellé « Cacher les tâches » sur un bouton allumé
     // disait le contraire de son fond, et il fallait lire les deux pour trancher.
@@ -455,6 +469,11 @@ const TEXTES_COCKPIT = {
     'art.trad.bouton': 'Traductions',
     'art.trad.cacher.tip': 'N’afficher que les champs dans la langue de l’article : titre, sous-titre, résumé et mots-clés de l’autre langue restent écrits, ils ne sont plus montrés ici.',
     'art.trad.afficher.tip': 'Remontrer les champs traduits dans l’autre langue, à côté de ceux de la langue de l’article.',
+    // Le quatrième interrupteur : les avertissements de la carte (ligne.constats), posés
+    // dans l'encadré « À faire ». Même modèle que les trois précédents.
+    'art.constats.bouton': 'Avertissements',
+    'art.constats.cacher.tip': 'Retirer les avertissements de chaque carte : rien n’est corrigé, ils sont seulement moins nombreux à lire ici.',
+    'art.constats.afficher.tip': 'Remontrer les avertissements sur chaque carte.',
     'art.taches.aide': 'Ces intitulés décrivent le processus d’une revue et non un numéro : ils valent pour tous ses numéros, et chaque revue a sa liste.',
     'art.taches.fr': 'Intitulé français',
     'art.taches.de': 'Intitulé allemand',
@@ -503,7 +522,6 @@ const TEXTES_COCKPIT = {
     'art.meta.voir': 'Afficher les métadonnées',
     'art.meta.cacher': 'Cacher les métadonnées',
     'art.meta.bouton': 'Métadonnées',
-    'art.meta.basculer.tip': 'Replier l’aperçu des métadonnées de cette carte : ne restent que son titre, ses tâches et ce qu’elle signale.',
     // Les deux libellés ci-dessus restent ceux du chevron d'UNE carte, qui n'est pas un
     // interrupteur de barre : il dit le geste, et rien ne l'allume. L'interrupteur de la
     // barre, lui, porte le nom de la chose et deux infobulles selon la portée.
@@ -1743,14 +1761,18 @@ const TEXTES_COCKPIT = {
     'meta.langue.de': 'Deutsch',
     'meta.langue.en': 'Englisch',
     'meta.langue.it': 'Italienisch',
+    // Les noms de couleurs ne se traduisent pas (décision de la rédaction) : l'ordre des
+    // pastilles à l'écran EST l'ordre dans lequel la couleur avance d'une année à l'autre
+    // (couleurAnnuelle, lib/yaml.js), et traduire les noms les rangerait autrement en
+    // allemand — « la couleur de l'an prochain est la suivante à droite » cesserait d'être
+    // vrai. Un seul jeu de noms, un seul ordre : mêmes valeurs qu'en français.
     'meta.couleur': 'Farbe der Ausgabe',
-    'meta.couleur.aucune': '(keine)',
-    'meta.couleur.rouge': 'Rot',
-    'meta.couleur.capucine': 'Kapuzinerkresse',
-    'meta.couleur.moutarde': 'Senfgelb',
-    'meta.couleur.poireau': 'Lauchgrün',
-    'meta.couleur.bleuacier': 'Stahlblau',
-    'meta.couleur.mountbatten': 'Mountbatten-Rosa',
+    'meta.couleur.rouge': 'Rouge',
+    'meta.couleur.capucine': 'Capucine',
+    'meta.couleur.moutarde': 'Moutarde',
+    'meta.couleur.poireau': 'Poireau',
+    'meta.couleur.bleuacier': 'Bleu acier',
+    'meta.couleur.mountbatten': 'Mountbatten',
     'meta.entete.condensee': 'Kopfbereich der Titelseite verdichten',
     'meta.livre.panneau': 'Metadaten des Buchs',
     'meta.livre.titre': 'Titel',
@@ -1870,14 +1892,28 @@ const TEXTES_COCKPIT = {
     'art.vue.rien': 'In dieser Ausgabe gibt es noch keinen Artikel.',
     'art.numero.section': 'Metadaten der Ausgabe',
     'art.liste.section': 'Artikel der Ausgabe',
+    // Die beiden Zeilen der Befehlsleiste (media/articles.html, media/articles.js): kein
+    // sichtbarer Titel dazwischen — die Ansicht soll Höhe gewinnen, zwei Abschnittstitel
+    // würden das wieder aufheben — daher benennt sie das aria-label je Zeile für
+    // Screenreader.
+    'art.barre.filtres.aria': 'Anzeigefilter',
+    'art.barre.actions.aria': 'Aktionen',
     'art.arbre.tooltip': '{0} – Ordner «{1}» – {2}',
     'art.sansfiche': 'Kein Titel im Datenblatt dieses Artikels: hier steht sein Slug, und die Kompilierung wird sich weigern.',
     'art.ouvrir': 'Artikel öffnen',
     'art.ouvrir.tip': 'Den Text des Artikels im Editor öffnen. Keine Kompilierung, keine Vorschau: hier wird gelesen oder korrigiert.',
+    // «PDF ansehen (Explorer)»: der einzige Fall, in dem der Artikel noch kein PDF
+    // zum Anzeigen hat — nie kompiliert, oder die letzte Kompilierung ist ohne
+    // Ergebnis in out/<slug>/ fehlgeschlagen. voirPdfArticle (extension.js) weicht
+    // zuerst auf diesen Ordner aus, falls er existiert; dieser Schlüssel greift nur,
+    // wenn es wirklich nichts zu zeigen gibt.
+    'art.pdf.absent': 'Kein PDF für «{0}»: dieser Artikel wurde noch nicht kompiliert.',
     'art.monter': 'Nach oben',
     'art.monter.tip': 'Diesen Artikel eine Stufe höher in die Ausgabe setzen. Kein Ordner wird umbenannt.',
     'art.descendre': 'Nach unten',
     'art.descendre.tip': 'Diesen Artikel eine Stufe tiefer in die Ausgabe setzen. Kein Ordner wird umbenannt.',
+    'art.ordre.aria.monter': '«{0}» auf Rang {1} nach oben verschieben',
+    'art.ordre.aria.descendre': '«{0}» auf Rang {1} nach unten verschieben',
     'art.ordre.mode': 'Reihenfolge ändern',
     'art.ordre.mode.tip': 'Artikel verschieben, dann die Ordner an die angezeigten Ränge anpassen. Vor «Abschliessen» wird nichts geschrieben.',
     'art.ordre.terminer': 'Abschliessen',
@@ -1887,16 +1923,16 @@ const TEXTES_COCKPIT = {
     'art.ordre.fait': '{0} Ordner umbenannt: die Ordnernummern folgen nun der Liste.',
     'art.ordre.echec': 'Nicht alle Ordner konnten umbenannt werden ({0}). Schliessen Sie, was geöffnet ist, und starten Sie «Reihenfolge ändern» erneut.',
     'art.ordre.enregistre': 'Reihenfolge der Ausgabe gespeichert – dieser Artikel steht an Position {0}.',
-    'art.importer': 'Wartende Word-Dateien umwandeln',
     'art.taches.titre': 'Aufgaben pro Artikel',
-    'art.taches.reglage': 'Aufgaben festlegen',
-    'art.taches.reglage.tip': 'Die Bezeichnungen der Aufgaben festlegen, für diese wie für die andere Zeitschrift.',
     'art.taches.bouton': 'Aufgaben',
     'art.taches.cacher.tip': 'Die Aufgabenliste von jeder Karte nehmen: nichts wird abgehakt, die Liste ist nur kürzer zu lesen.',
     'art.taches.afficher.tip': 'Die Liste der abzuhakenden Aufgaben wieder auf jeder Karte zeigen.',
     'art.trad.bouton': 'Übersetzungen',
     'art.trad.cacher.tip': 'Nur die Felder in der Sprache des Artikels zeigen: Titel, Untertitel, Zusammenfassung und Schlagwörter der anderen Sprache bleiben geschrieben, sie werden hier nur nicht mehr gezeigt.',
     'art.trad.afficher.tip': 'Die übersetzten Felder der anderen Sprache wieder neben denen der Artikelsprache zeigen.',
+    'art.constats.bouton': 'Hinweise',
+    'art.constats.cacher.tip': 'Die Hinweise von jeder Karte nehmen: nichts wird behoben, sie sind nur weniger zu lesen.',
+    'art.constats.afficher.tip': 'Die Hinweise wieder auf jeder Karte zeigen.',
     'art.taches.aide': 'Diese Bezeichnungen beschreiben den Ablauf einer Zeitschrift und nicht einer Ausgabe: sie gelten für alle ihre Ausgaben, und jede Zeitschrift hat ihre eigene Liste.',
     'art.taches.fr': 'Französische Bezeichnung',
     'art.taches.de': 'Deutsche Bezeichnung',
@@ -1939,7 +1975,6 @@ const TEXTES_COCKPIT = {
     'art.meta.voir': 'Metadaten anzeigen',
     'art.meta.cacher': 'Metadaten ausblenden',
     'art.meta.bouton': 'Metadaten',
-    'art.meta.basculer.tip': 'Die Metadaten-Übersicht dieser Karte einklappen: es bleiben nur Titel, Aufgaben und Hinweise.',
     'art.meta.cacher.tip': 'Die Metadaten-Übersicht auf allen Karten einklappen: es bleiben nur Titel, Aufgaben und Hinweise. Eine einzelne Karte lässt sich weiterhin über ihr Chevron ausklappen.',
     'art.meta.voir.tip': 'Die Metadaten-Übersicht wieder auf allen Karten zeigen.',
     'art.meta.editer': 'Metadaten bearbeiten',

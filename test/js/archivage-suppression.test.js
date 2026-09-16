@@ -59,27 +59,29 @@ test('suppression : les dossiers restants sont renumérotés, fichiers compris',
   HOTE.repondreModale(T('modale.supprimer.bouton'));
   await HOTE.executer('szh.supprimerArticle', { slug: '02-sans-fiche' });
 
-  assert.deepStrictEqual(dossiers(), ['01-essai', '02-troisieme', '03-quatrieme'],
+  // Le rang compte à partir de ZÉRO (prefixeOrdre(), lib/articles.js) : le premier article
+  // restant reprend « 00- », pas « 01- ».
+  assert.deepStrictEqual(dossiers(), ['00-essai', '01-troisieme', '02-quatrieme'],
     'le trou laissé par l’article supprimé n’a pas été refermé');
-  // Le fichier suit son dossier : « 03-troisieme.md » sous « 02-troisieme » n'est lu par
+  // Le fichier suit son dossier : « 03-troisieme.md » sous « 01-troisieme » n'est lu par
   // personne — ni par le Makefile, ni par l'arbre du cockpit.
-  assert.ok(fs.existsSync(path.join(ARTICLES, '02-troisieme', '02-troisieme.md')),
+  assert.ok(fs.existsSync(path.join(ARTICLES, '01-troisieme', '01-troisieme.md')),
     'le .md est resté sous son ancien nom');
-  assert.ok(!fs.existsSync(path.join(ARTICLES, '02-troisieme', '03-troisieme.md')),
+  assert.ok(!fs.existsSync(path.join(ARTICLES, '01-troisieme', '03-troisieme.md')),
     'l’ancien .md traîne encore dans le dossier renommé');
-  assert.match(ausgabe(), /ordre-articles: \["01-essai", "02-troisieme", "03-quatrieme"\]/,
+  assert.match(ausgabe(), /ordre-articles: \["00-essai", "01-troisieme", "02-quatrieme"\]/,
     'l’ordre du numéro ne nomme pas les dossiers tels qu’ils sont sur le disque');
 });
 
 test('suppression : le dernier rang ne renomme rien, et le dit simplement', async () => {
   const avant = HOTE.statuts.length;
   HOTE.repondreModale(T('modale.supprimer.bouton'));
-  await HOTE.executer('szh.supprimerArticle', { slug: '03-quatrieme' });
+  await HOTE.executer('szh.supprimerArticle', { slug: '02-quatrieme' });
 
-  assert.deepStrictEqual(dossiers(), ['01-essai', '02-troisieme'],
+  assert.deepStrictEqual(dossiers(), ['00-essai', '01-troisieme'],
     'la suppression du dernier article a bougé ses voisins');
   const dits = HOTE.statuts.slice(avant).join(' | ');
-  assert.match(dits, /03-quatrieme/, 'la suppression n’a rien dit dans la barre d’état');
+  assert.match(dits, /02-quatrieme/, 'la suppression n’a rien dit dans la barre d’état');
   assert.ok(dits.indexOf('renumérot') === -1,
     'aucun dossier n’a été renommé, il ne faut pas l’annoncer : ' + dits);
 });

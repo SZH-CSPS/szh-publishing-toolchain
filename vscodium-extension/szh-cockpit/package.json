@@ -2,7 +2,7 @@
   "name": "szh-cockpit",
   "displayName": "SZH – Revue (cockpit)",
   "description": "Barre latérale « Revue SZH » : articles, métadonnées du numéro, import des Word, suivi des traductions, aperçu et réglages.",
-  "version": "0.54.0",
+  "version": "0.55.0",
   "publisher": "szh-csps",
   "license": "MIT",
   "engines": {
@@ -437,6 +437,12 @@
         "title": "%cmd.mediasArticle%",
         "category": "SZH/CSPS",
         "icon": "$(file-media)"
+      },
+      {
+        "command": "szh.voirPdfArticle",
+        "title": "%cmd.voirPdfArticle%",
+        "category": "SZH/CSPS",
+        "icon": "$(file-pdf)"
       },
       {
         "command": "szh.ressourcesArticle",
@@ -1010,6 +1016,16 @@
           "group": "inline@2"
         },
         {
+          "command": "szh.metadonneesArticle",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
+          "group": "navigation@1"
+        },
+        {
+          "command": "szh.mediasArticle",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
+          "group": "navigation@2"
+        },
+        {
           "command": "szh.supprimerArticle",
           "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
           "group": "inline@3"
@@ -1035,34 +1051,29 @@
           "group": "navigation"
         },
         {
+          "command": "szh.voirPdfArticle",
+          "when": "view == szhCockpitVue && viewItem == article",
+          "group": "navigation@3"
+        },
+        {
           "command": "szh.envoyerAuteur",
           "when": "view == szhCockpitVue && viewItem == article",
-          "group": "navigation"
-        },
-        {
-          "command": "szh.monterUnite",
-          "when": "view == szhCockpitVue && viewItem == article && !szh.archivee",
-          "group": "ordre@1"
-        },
-        {
-          "command": "szh.descendreUnite",
-          "when": "view == szhCockpitVue && viewItem == article && !szh.archivee",
-          "group": "ordre@2"
+          "group": "navigation@4"
         },
         {
           "command": "szh.reimporterArticle",
           "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee && szh.estRevue",
           "group": "reimport@1"
-        },
-        {
-          "command": "szh.annulerReimport",
-          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee && szh.estRevue",
-          "group": "reimport@2"
         },
         {
           "command": "szh.reimporterArticle",
           "when": "view == szhCockpitVue && viewItem == word-deja && !szh.verrouillee && szh.estRevue",
           "group": "reimport@1"
+        },
+        {
+          "command": "szh.supprimerArticle",
+          "when": "view == szhCockpitVue && viewItem == article && !szh.verrouillee",
+          "group": "supprimer@1"
         },
         {
           "command": "szh.supprimerTable",

@@ -47,29 +47,41 @@ const ordreEcrit = (racine) => ((fs.readFileSync(path.join(racine, 'ausgabe.yaml
   .split(',').map((x) => x.trim().replace(/^"|"$/g, '')).filter((x) => x !== '');
 
 test('exécution : un échange de rangs renomme les deux dossiers et leurs fichiers', () => {
-  const racine = numero(['01-edito', '02-inclusion']);
-  const r = hote.renumeroter(racine, ['02-inclusion', '01-edito']);
+  const racine = numero(['00-edito', '01-inclusion']);
+  const r = hote.renumeroter(racine, ['01-inclusion', '00-edito']);
   assert.strictEqual(r.erreur, null, 'renumérotation refusée : ' + r.erreur);
-  assert.deepStrictEqual(dossiers(racine), ['01-inclusion', '02-edito']);
+  assert.deepStrictEqual(dossiers(racine), ['00-inclusion', '01-edito']);
   // Les fichiers suivent le dossier : le Makefile exige que le .md porte son nom.
-  assert.ok(fs.existsSync(path.join(racine, 'articles', '01-inclusion', '01-inclusion.md')));
-  assert.ok(fs.existsSync(path.join(racine, 'articles', '01-inclusion', '01-inclusion.meta.yaml')));
+  assert.ok(fs.existsSync(path.join(racine, 'articles', '00-inclusion', '00-inclusion.md')));
+  assert.ok(fs.existsSync(path.join(racine, 'articles', '00-inclusion', '00-inclusion.meta.yaml')));
   // Ce qui est désigné en chemin relatif depuis le .md ne bouge pas.
-  assert.ok(fs.existsSync(path.join(racine, 'articles', '01-inclusion', 'media', 'fig.png')));
+  assert.ok(fs.existsSync(path.join(racine, 'articles', '00-inclusion', 'media', 'fig.png')));
   assert.strictEqual(
-    fs.readFileSync(path.join(racine, 'articles', '01-inclusion', '01-inclusion.md'), 'utf8')
+    fs.readFileSync(path.join(racine, 'articles', '00-inclusion', '00-inclusion.md'), 'utf8')
       .indexOf('![](media/fig.png)') !== -1, true, 'le texte de l’article a été touché');
   // Et le fichier étranger au slug reste tranquille.
-  assert.ok(fs.existsSync(path.join(racine, 'articles', '01-inclusion', 'notes.txt')));
+  assert.ok(fs.existsSync(path.join(racine, 'articles', '00-inclusion', 'notes.txt')));
   // L'ordre du numéro parle des nouveaux noms.
-  assert.deepStrictEqual(ordreEcrit(racine), ['01-inclusion', '02-edito']);
+  assert.deepStrictEqual(ordreEcrit(racine), ['00-inclusion', '01-edito']);
+  fs.rmSync(racine, { recursive: true, force: true });
+});
+
+// La règle métier : le premier article de l'ordre écran (prefixeOrdre(0),
+// lib/articles.js) doit porter « 00- » sur le disque, jamais « 01- ».
+test('exécution : le premier article de l’ordre prend « 00 » sur le disque', () => {
+  const racine = numero(['edito', 'inclusion']);
+  const r = hote.renumeroter(racine, ['edito', 'inclusion']);
+  assert.strictEqual(r.erreur, null, 'renumérotation refusée : ' + r.erreur);
+  assert.deepStrictEqual(dossiers(racine), ['00-edito', '01-inclusion']);
+  assert.ok(fs.existsSync(path.join(racine, 'articles', '00-edito', '00-edito.md')),
+    'le premier article de l’ordre n’a pas pris « 00 »');
   fs.rmSync(racine, { recursive: true, force: true });
 });
 
 test('exécution : rien à faire ne touche rien, pas même ausgabe.yaml', () => {
-  const racine = numero(['01-edito', '02-inclusion']);
+  const racine = numero(['00-edito', '01-inclusion']);
   const avant = fs.statSync(path.join(racine, 'ausgabe.yaml')).mtimeMs;
-  const r = hote.renumeroter(racine, ['01-edito', '02-inclusion']);
+  const r = hote.renumeroter(racine, ['00-edito', '01-inclusion']);
   assert.strictEqual(r.erreur, null);
   assert.strictEqual(r.renommes, 0);
   assert.strictEqual(fs.statSync(path.join(racine, 'ausgabe.yaml')).mtimeMs, avant,
@@ -80,47 +92,47 @@ test('exécution : rien à faire ne touche rien, pas même ausgabe.yaml', () => 
 test('exécution : les documents produits des articles renommés sont retirés', () => {
   // out/<slug>/ porte le nom d'avant : le laisser ferait cohabiter deux PDF pour un même
   // article, dont un périmé que l'export pourrait reprendre.
-  const racine = numero(['01-edito', '02-inclusion']);
-  for (const slug of ['01-edito', '02-inclusion']) {
+  const racine = numero(['00-edito', '01-inclusion']);
+  for (const slug of ['00-edito', '01-inclusion']) {
     fs.mkdirSync(path.join(racine, 'out', slug), { recursive: true });
     fs.writeFileSync(path.join(racine, 'out', slug, slug + '.pdf'), 'PDF');
   }
-  hote.renumeroter(racine, ['02-inclusion', '01-edito']);
+  hote.renumeroter(racine, ['01-inclusion', '00-edito']);
   assert.deepStrictEqual(fs.readdirSync(path.join(racine, 'out')), [],
     'les documents produits sous l’ancien nom sont restés');
   fs.rmSync(racine, { recursive: true, force: true });
 });
 
 test('exécution : un ordre qui ne parle pas des mêmes articles est refusé, sans rien toucher', () => {
-  const racine = numero(['01-edito', '02-inclusion']);
-  const r = hote.renumeroter(racine, ['01-edito']);
+  const racine = numero(['00-edito', '01-inclusion']);
+  const r = hote.renumeroter(racine, ['00-edito']);
   assert.ok(r.erreur, 'un ordre incomplet doit être refusé');
-  assert.deepStrictEqual(dossiers(racine), ['01-edito', '02-inclusion'], 'des dossiers ont bougé malgré le refus');
-  assert.deepStrictEqual(ordreEcrit(racine), ['01-edito', '02-inclusion']);
+  assert.deepStrictEqual(dossiers(racine), ['00-edito', '01-inclusion'], 'des dossiers ont bougé malgré le refus');
+  assert.deepStrictEqual(ordreEcrit(racine), ['00-edito', '01-inclusion']);
   fs.rmSync(racine, { recursive: true, force: true });
 });
 
 test('reprise : un lot interrompu se termine, et l’ordre s’écrit alors seulement', () => {
   // On simule l'interruption : les dossiers sont passés par leur nom temporaire, et la
   // seconde passe n'a pas eu lieu. C'est l'état que laisse une fermeture de fenêtre.
-  const racine = numero(['01-edito', '02-inclusion']);
+  const racine = numero(['00-edito', '01-inclusion']);
   const base = path.join(racine, 'articles');
-  fs.renameSync(path.join(base, '01-edito'), path.join(base, '~ordre-02-edito'));
-  fs.renameSync(path.join(base, '02-inclusion'), path.join(base, '~ordre-01-inclusion'));
+  fs.renameSync(path.join(base, '00-edito'), path.join(base, '~ordre-01-edito'));
+  fs.renameSync(path.join(base, '01-inclusion'), path.join(base, '~ordre-00-inclusion'));
 
   const r = hote.reprendre(racine);
   assert.strictEqual(r.erreur, null, 'reprise refusée : ' + r.erreur);
-  assert.deepStrictEqual(dossiers(racine), ['01-inclusion', '02-edito']);
+  assert.deepStrictEqual(dossiers(racine), ['00-inclusion', '01-edito']);
   // Les fichiers portaient encore l'ancien nom : la reprise les aligne aussi.
-  assert.ok(fs.existsSync(path.join(base, '01-inclusion', '01-inclusion.md')),
+  assert.ok(fs.existsSync(path.join(base, '00-inclusion', '00-inclusion.md')),
     'la reprise a laissé les fichiers sous leur ancien nom : ' +
-    fs.readdirSync(path.join(base, '01-inclusion')).join(', '));
-  assert.deepStrictEqual(ordreEcrit(racine), ['01-inclusion', '02-edito']);
+    fs.readdirSync(path.join(base, '00-inclusion')).join(', '));
+  assert.deepStrictEqual(ordreEcrit(racine), ['00-inclusion', '01-edito']);
   fs.rmSync(racine, { recursive: true, force: true });
 });
 
 test('reprise : rien à reprendre ne fait rien', () => {
-  const racine = numero(['01-edito']);
+  const racine = numero(['00-edito']);
   const r = hote.reprendre(racine);
   assert.strictEqual(r.erreur, null);
   assert.strictEqual(r.renommes, 0);
@@ -128,13 +140,13 @@ test('reprise : rien à reprendre ne fait rien', () => {
 });
 
 test('reprise : une destination occupée est refusée, et rien ne s’écrase', () => {
-  const racine = numero(['01-edito']);
+  const racine = numero(['00-edito']);
   const base = path.join(racine, 'articles');
-  fs.mkdirSync(path.join(base, '~ordre-01-edito'));
-  fs.writeFileSync(path.join(base, '~ordre-01-edito', 'marqueur.txt'), 'temporaire');
+  fs.mkdirSync(path.join(base, '~ordre-00-edito'));
+  fs.writeFileSync(path.join(base, '~ordre-00-edito', 'marqueur.txt'), 'temporaire');
   const r = hote.reprendre(racine);
   assert.ok(r.erreur, 'la reprise devait refuser une destination occupée');
-  assert.ok(fs.existsSync(path.join(base, '01-edito', '01-edito.md')),
+  assert.ok(fs.existsSync(path.join(base, '00-edito', '00-edito.md')),
     'le dossier en place a été écrasé');
   fs.rmSync(racine, { recursive: true, force: true });
 });
@@ -142,10 +154,10 @@ test('reprise : une destination occupée est refusée, et rien ne s’écrase', 
 test('état : on sait dire qu’un lot a été interrompu', () => {
   // Ce que l'interface lira pour proposer la reprise plutôt que de laisser un numéro
   // dans un état que personne ne sait nommer.
-  const racine = numero(['01-edito']);
+  const racine = numero(['00-edito']);
   assert.strictEqual(hote.repriseEnAttente(racine), false);
-  fs.renameSync(path.join(racine, 'articles', '01-edito'),
-    path.join(racine, 'articles', '~ordre-01-edito'));
+  fs.renameSync(path.join(racine, 'articles', '00-edito'),
+    path.join(racine, 'articles', '~ordre-00-edito'));
   assert.strictEqual(hote.repriseEnAttente(racine), true);
   fs.rmSync(racine, { recursive: true, force: true });
 });

@@ -506,42 +506,52 @@ test('carte : ce qui bloquera la publication a son propre groupe, sous celui des
   }
 });
 
-// ---- A8 : les deux gestes de la barre de titre, et l'aide qui a disparu ------------
+// ---- A8 : le geste de la barre de titre, et l'aide qui a disparu ------------------
+//
+// « Ouvrir l'article » a quitté l'entête (point 4b) : le même geste ferme déjà le pied de
+// carte, plus bas dans ce fichier (« le pied suit l'ordre du travail »). Ne reste que la
+// bascule de l'aperçu, réduite au chevron (point 4c) — et le titre, qui porte maintenant
+// le même geste, en second bouton, synchronisé sur le même état.
 
-test('carte : sa barre de titre replie les métadonnées et ouvre l’article (A8.3, A8.4)', async () => {
+test('carte : le chevron ET le titre replient les métadonnées, ensemble (A8.3)', async () => {
   const p = await vue();
   const charge = derniereCharge(p);
   const idx = charge.lignes.findIndex((l) => l.cle === '01-gremion');
   const page = pageArticlesDe(charge);
   const carte = page.conteneur().querySelectorAll('.szh-carte')[idx];
+  // Un seul bouton dans la barre de titre : le chevron.
   const gestes = carte.querySelectorAll('.szh-tete .carte-gestes button');
-  assert.strictEqual(gestes.length, 2,
-    'la barre de titre ne porte plus ses deux gestes : ' + gestes.length + ' bouton(s)');
+  assert.strictEqual(gestes.length, 1,
+    'la barre de titre porte encore plus d’un geste : ' + gestes.length + ' bouton(s)');
   const bascule = gestes[0];
-  const ouvrirArticle = gestes[1];
+  // Le titre lui-même est devenu un vrai <button> : la seconde commande du même geste.
+  const titreBouton = carte.querySelector('.szh-tete-nom');
+  assert.strictEqual(titreBouton.balise, 'button',
+    'le titre n’est plus un bouton : il ne peut donc pas partager le geste du chevron');
 
-  // A8.4 : « Ouvrir l’article », et non « Ouvrir » — sur cette vue, la carte EST un
-  // article. Et le bouton ouvre bien celui de sa carte, pas un autre.
-  assert.strictEqual(ouvrirArticle.textContent.trim(), i18n.T('art.ouvrir'));
-  ouvrirArticle.dispatchEvent({ type: 'click' });
-  // Champ par champ : le message naît dans le contexte de la page, et son prototype n'est
-  // pas celui du test — deepStrictEqual s'y arrêterait avant de comparer les valeurs.
-  const dernier = page.messages[page.messages.length - 1];
-  assert.strictEqual(dernier.type, 'ouvrir');
-  assert.strictEqual(dernier.cle, '01-gremion',
-    'la flèche de la barre de titre n’ouvre pas l’article de sa carte');
-
-  // A8.3 : le pli ne cache que l'aperçu des métadonnées. Le libellé dit le geste à venir,
-  // `aria-expanded` dit l'état — sans quoi un lecteur d'écran annoncerait l'inverse.
+  // A8.3 : le pli ne cache que l'aperçu des métadonnées. Plus de texte visible sur le
+  // chevron — son libellé vit dans l’infobulle et l’aria-label, comme avant dans le texte.
   const bloc = carte.querySelectorAll('.carte-apercu')[0];
   assert.ok(bloc, 'la carte n’a plus de bloc d’aperçu à replier');
   assert.strictEqual(bloc.hidden, false, 'l’aperçu arrive replié : le défaut doit tout montrer');
   assert.strictEqual(bascule.getAttribute('aria-expanded'), 'true');
-  assert.strictEqual(bascule.textContent.trim(), i18n.T('art.meta.cacher'));
+  assert.strictEqual(titreBouton.getAttribute('aria-expanded'), 'true',
+    'le titre ne partage pas l’état du chevron');
+  assert.strictEqual(bascule.title, i18n.T('art.meta.cacher'));
+  assert.strictEqual(bascule.getAttribute('aria-label'), i18n.T('art.meta.cacher'));
+
+  // Un clic sur le TITRE fait le même geste qu’un clic sur le chevron.
+  titreBouton.dispatchEvent({ type: 'click' });
+  assert.strictEqual(bloc.hidden, true, 'un clic sur le titre ne replie pas l’aperçu');
+  assert.strictEqual(bascule.getAttribute('aria-expanded'), 'false', 'le chevron n’a pas suivi le titre');
+  assert.strictEqual(titreBouton.getAttribute('aria-expanded'), 'false');
+  assert.strictEqual(bascule.title, i18n.T('art.meta.voir'));
+
+  // Et un clic sur le CHEVRON referme la boucle : les deux commandes restent synchronisées.
   bascule.dispatchEvent({ type: 'click' });
-  assert.strictEqual(bloc.hidden, true, 'un clic ne replie pas l’aperçu des métadonnées');
-  assert.strictEqual(bascule.getAttribute('aria-expanded'), 'false');
-  assert.strictEqual(bascule.textContent.trim(), i18n.T('art.meta.voir'));
+  assert.strictEqual(bloc.hidden, false, 'le chevron ne rouvre pas l’aperçu');
+  assert.strictEqual(titreBouton.getAttribute('aria-expanded'), 'true', 'le titre n’a pas suivi le chevron');
+
   // Ce que le pli doit laisser : le titre, les tâches, et ce que la carte signale.
   assert.strictEqual(carte.querySelectorAll('.szh-tete-nom').length, 1, 'le titre est parti avec l’aperçu');
   assert.strictEqual(carte.querySelectorAll('.szh-taches').length, 1, 'les tâches sont parties avec l’aperçu');
@@ -549,11 +559,12 @@ test('carte : sa barre de titre replie les métadonnées et ouvre l’article (A
     'les avertissements sont partis avec l’aperçu');
 
   // Et le pli survit à un re-rendu : enregistrer une métadonnée du numéro repose toutes
-  // les cartes, et redéplier ce qu’on vient de replier serait insupportable.
+  // les cartes, et redéplier ce qu’on vient de replier serait insupportable — ici, c'est
+  // l'inverse qu'on vérifie : l'aperçu est resté OUVERT après les deux clics ci-dessus.
   page.envoyer(charge);
   assert.strictEqual(
-    page.conteneur().querySelectorAll('.szh-carte')[idx].querySelectorAll('.carte-apercu')[0].hidden, true,
-    'un re-rendu redéplie l’aperçu qu’on venait de replier');
+    page.conteneur().querySelectorAll('.szh-carte')[idx].querySelectorAll('.carte-apercu')[0].hidden, false,
+    'un re-rendu n’a pas gardé l’état rouvert par le second clic');
 });
 
 test('page : l’avertissement « aperçu seul » a quitté le gabarit et les libellés (A8.1)', () => {
@@ -589,18 +600,21 @@ test('carte : le pied suit l’ordre du travail, et « Ouvrir l’article » le 
   const idx = charge.lignes.findIndex((l) => l.cle === '01-gremion');   // au milieu : rien n’est désactivé
   const ligne = charge.lignes[idx];
   // Pas posé par le composant, qui le mettrait en tête du pied : il vient en dernier
-  // dans `actions`, avec la flèche et l'infobulle de l'entête.
+  // dans `actions`. « Monter »/« Descendre » ont quitté ce pied — le classement se fait
+  // désormais dans le mode « Changer l'ordre », et nulle part ailleurs.
   assert.strictEqual(ligne.ouvrir, false);
   const dernier = ligne.actions[ligne.actions.length - 1];
   assert.strictEqual(dernier.id, 'ouvrir');
-  assert.strictEqual(dernier.icone, 'fleche', 'la flèche de l’entête manque au pied');
+  assert.strictEqual(dernier.icone, 'fleche', 'la flèche du pied a disparu');
   assert.ok(dernier.libelle && dernier.tip);
+  assert.ok(!ligne.actions.some((a) => a.id === 'monter' || a.id === 'descendre'),
+    'le pied porte encore Monter/Descendre hors du mode « Changer l’ordre »');
 
   const page = pageArticlesDe(charge);
   const carte = page.conteneur().querySelectorAll('.szh-carte')[idx];
   const libelles = carte.querySelectorAll('.ligne-pied button').map((b) => b.textContent.trim());
   assert.deepStrictEqual(libelles,
-    ['Monter', 'Descendre', 'Éditer les métadonnées', 'Éditer les médias',
+    ['Éditer les métadonnées', 'Éditer les médias',
       'Envoyer à l’auteur', 'Ouvrir l’article'],
     'l’ordre du pied a changé : ' + libelles.join(' | '));
 });
@@ -863,19 +877,11 @@ test('carte : un DOI manuel égal au calculé d’un voisin montre art.doi.doubl
 
 test('déplacement : franchir la frontière du DOI est refusé, et le refus s’explique', async () => {
   const p = await vue();
-  const charge = derniereCharge(p);
-  // Le bouton l'annonce déjà : la Documentation ne peut ni monter ni descendre, seule dans
-  // son bloc et en fin de numéro.
-  const doc = charge.lignes.find((l) => l.cle === '10-documentation');
-  assert.strictEqual(doc.actions.find((a) => a.id === 'monter').desactive, true);
-  assert.strictEqual(doc.actions.find((a) => a.id === 'descendre').desactive, true);
-  // Le dernier porteur ne peut pas descendre sous elle.
-  const tribune = charge.lignes.find((l) => l.cle === '09-tribune');
-  assert.strictEqual(tribune.actions.find((a) => a.id === 'descendre').desactive, true);
-  assert.strictEqual(tribune.actions.find((a) => a.id === 'monter').desactive, false);
-
-  // Et l'hôte refuse aussi, une webview pouvant envoyer n'importe quel message. Le refus
-  // est DIT : c'est une règle, pas une évidence de bord de liste.
+  // « Monter »/« Descendre » ont quitté le pied de la carte complète (point 4d) : la
+  // frontière du DOI ne s'annonce donc plus par un bouton désactivé sur la carte — elle
+  // reste appliquée par l'hôte, qui la refuse et l'explique, quel que soit le chemin par
+  // lequel le geste lui arrive (menu contextuel de l'arbre, ou une webview qui enverrait
+  // n'importe quel message).
   const avant = fs.readFileSync(AUSGABE, 'utf8');
   await p._recepteur({ type: 'action', cle: '10-documentation', id: 'monter' });
   const etat = p.messages.filter((m) => m.type === 'etat').pop();

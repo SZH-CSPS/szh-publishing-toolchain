@@ -8,7 +8,9 @@
 // exception remonte au test.
 //
 // N'implémente que ce que les webviews utilisent : createElement(NS), textContent,
-// appendChild, dataset, classList, value/checked/disabled/readOnly, childNodes/nodeType/tagName
+// appendChild/insertBefore/replaceChild (repositionnent vraiment, comme le vrai DOM — un
+// nœud n'est jamais dupliqué), dataset, classList,
+// value/checked/disabled/readOnly, childNodes/firstChild/nodeType/tagName
 // (l'éditeur de tableau relit ses cellules nœud par nœud), et des sélecteurs réduits
 // (« .classe », « balise », « [data-x] », « [data-x="v"] », « balise[data-x=v] »,
 // combinés par un espace). Les gestionnaires posés par addEventListener sont retenus et
@@ -129,6 +131,7 @@ function element(balise) {
     // valeur stockée figure bien dans sa liste (media/documentation.js, poserValeurChoix)
     // lèverait sans cela sur `sel.options.length`.
     get options() { return this.enfants.filter((c) => c.balise === 'option'); },
+    get firstChild() { return this.enfants[0] || null; },
     get className() { return Array.from(this.classes).join(' '); },
     set className(v) { this.classes = new Set(String(v || '').split(/\s+/).filter(Boolean)); },
     // `el.id = x` doit se voir à `getAttribute('id')`, comme dans le vrai DOM : sans cet
@@ -147,7 +150,25 @@ function element(balise) {
     },
     appendChild(c) { c.parent = e; e.enfants.push(c); return c; },
     removeChild(c) { e.enfants = e.enfants.filter((x) => x !== c); return c; },
-    insertBefore(c) { c.parent = e; e.enfants.push(c); return c; },
+    // Comme le vrai DOM : insère AVANT `ref`, ou en fin de liste si `ref` est absent ou
+    // introuvable — jamais en fin de liste dans tous les cas. Retire d'abord `c` de sa
+    // position chez `e`, s'il y était déjà (le motif « appendChild, puis insertBefore pour
+    // repositionner » ne doit pas le dupliquer).
+    insertBefore(c, ref) {
+      c.parent = e;
+      e.enfants = e.enfants.filter((x) => x !== c);
+      const i = ref ? e.enfants.indexOf(ref) : -1;
+      if (i === -1) { e.enfants.push(c); } else { e.enfants.splice(i, 0, c); }
+      return c;
+    },
+    // Comme le vrai DOM : remplace `ancien` par `neuf` à sa place, et rend `ancien`.
+    replaceChild(neuf, ancien) {
+      const i = e.enfants.indexOf(ancien);
+      neuf.parent = e;
+      ancien.parent = null;
+      if (i === -1) { e.enfants.push(neuf); } else { e.enfants[i] = neuf; }
+      return ancien;
+    },
     remove() { if (e.parent) { e.parent.removeChild(e); } },
     setAttribute(k, v) { e.attributs[k] = String(v); },
     getAttribute(k) { return e.attributs[k] === undefined ? null : e.attributs[k]; },

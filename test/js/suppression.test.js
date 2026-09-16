@@ -68,7 +68,13 @@ test('un verrou passager ne fait plus échouer la suppression', async () => {
 });
 
 test('un dossier d’article qui résiste n’emporte pas les documents produits', async () => {
-  const slug = '01-essai';
+  // Le fixture nommait ce dossier « 01-essai », mais le contrôle précédent a supprimé
+  // « 02-sans-fiche » et alignerDossiersSurOrdre() a depuis réaligné les rangs restants
+  // (base 0 : lib/renumerotation.js) — il porte maintenant « 00-essai ». On lit le nom
+  // réel sur l'arbre plutôt que de supposer un nom figé, sans quoi ce test casserait à
+  // chaque réalignement amont, sans rapport avec ce qu'il éprouve.
+  const [slug] = HOTE.arbre().listerArticles();
+  assert.ok(slug, 'aucun article sur lequel jouer ce contrôle');
   const dossier = path.join(REVUE, 'articles', slug);
   const sortie = poserSortie(slug);
   const nErreurs = HOTE.erreurs.length;

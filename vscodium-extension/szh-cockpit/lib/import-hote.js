@@ -11,7 +11,9 @@ const { T } = require('./i18n');
 const session = require('./session');
 const profils = require('./profil');
 const { slugifierArticle, numeroOrdreArticle } = require('./slug');
-const { trierParDoi } = require('./articles');
+const { trierParDoi, prefixeOrdre } = require('./articles');
+const { tige } = require('./renumerotation');
+const { alignerFichiers } = require('./renumerotation-fs');
 const { refuserSiVerrouille } = require('./cycle-vie');
 
 // À garder identiques aux labels de vscodium-user/tasks.json, qui les nomme.
@@ -74,6 +76,53 @@ function resoudreNumeroOrdre(slug, parBase) {
   return null;
 }
 
+// Le rang qui décide du préfixe d'un dossier nouvellement importé est celui de l'ordre
+// ÉCRAN final (ordreFinal ci-dessous, calculé par ecrireOrdreNouveauxArticles avant tout
+// renommage) — jamais le nombre de tête du Word. Ce nombre ne fait que placer l'article
+// dans cet ordre ; une fois la place décidée, seul le rang compte, exactement comme
+// Monter/Descendre ne connaît que le rang (lib/renumerotation.js:nomVoulu()). Confondre les
+// deux referait le bug que ce module corrige ailleurs : un dossier qui ne porte plus le
+// nombre que l'écran affiche.
+//
+// Seuls les dossiers de `nouveaux` sont touchés : un article déjà présent, même sans
+// préfixe, reste tel quel — ce n'est pas à un import de réaligner tout le numéro en
+// silence, ce geste-là appartient à « Terminer » (lib/renumerotation-fs.js), sur demande
+// explicite. Un numéro peut donc mélanger des dossiers préfixés et non préfixés : assumé.
+//
+// Un nom cible déjà occupé (par un dossier antérieur au même nom, préfixé ou pas) ne laisse
+// PAS l'article sans préfixe : un article sans préfixe est un article qu'on ne retrouve
+// pas dans l'Explorateur, exactement le problème que ce préfixe corrige. On monte donc
+// d'un rang à la fois au-delà de celui calculé, jusqu'au premier nom libre — l'article se
+// pose en fin de chaîne plutôt que de rester nu. Borné tout de même : un numéro compte au
+// plus quelques dizaines d'articles, et une occupation de tous les rangs jusque-là ne peut
+// arriver que par accident (un script qui boucle, un dossier recréé en masse) — le seul cas
+// où l'on revient au repli sans préfixe, en dernier recours, jamais en fonctionnement normal.
+const MAX_RECHERCHE_RANG_LIBRE = 999;
+
+// -> Map ancien slug -> nouveau slug, pour les seuls dossiers effectivement renommés.
+function prefixerNouveauxArticles(racine, ordreFinal, nouveaux) {
+  const base = path.join(racine, dossierUnites());
+  const aNouveau = new Set(nouveaux);
+  const renommes = new Map();
+  ordreFinal.forEach((slug, rang) => {
+    if (!aNouveau.has(slug)) { return; }             // article déjà présent : jamais touché
+    let cible = prefixeOrdre(rang) + '-' + tige(slug);
+    if (cible === slug) { return; }
+    let r = rang;
+    while (fs.existsSync(path.join(base, cible))) {
+      r++;
+      if (r - rang > MAX_RECHERCHE_RANG_LIBRE) { return; }   // cas absurde : reste sans préfixe
+      cible = prefixeOrdre(r) + '-' + tige(slug);
+    }
+    fs.renameSync(path.join(base, slug), path.join(base, cible));
+    // Même règle que renumeroter() : le .md, la fiche et les sidecars suivent le dossier,
+    // sans quoi le Makefile ne retrouve plus le .md sous le nom qu'il exige.
+    alignerFichiers(base, cible);
+    renommes.set(slug, cible);
+  });
+  return renommes;
+}
+
 // Ce câblage est essentiel : sans lui, les articles nouvellement importés retombent sur le
 // repli alphabétique de _sousDossiersAvecMd() (ordonnerArticles(), lib/articles.js), qui n'a
 // plus aucun rapport avec le numéro que le rédacteur a mis dans le nom de ses Word — l'ordre
@@ -86,6 +135,10 @@ function resoudreNumeroOrdre(slug, parBase) {
 // viennent d'abord, dans l'ordre du Word ; les autres (Word sans numéro de tête, ou mélange
 // des deux) suivent, dans l'ordre où l'import les a rangés — le tri est stable, un nombre
 // égal ou absent (null) ne bouscule donc personne.
+//
+// -> Map ancien slug -> nouveau slug (voir prefixerNouveauxArticles) : l'appelant en a
+// besoin pour parler du bon dossier une fois l'écriture faite (conversion CMYK, vérification
+// d'import) — ces slugs-là ont changé sous ses pieds.
 function ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase) {
   const racine = fournisseur.racine;
   const numeroDe = new Map();
@@ -98,18 +151,28 @@ function ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase) {
     return na - nb;
   });
   const complet = Array.from(avant).concat(tries);
-  const modifies = {};
   // La règle du DOI reste respectée dans le fichier lui-même, pas seulement à la lecture —
   // même raison qu'à la case « pas de DOI » : ausgabe.yaml voyage seul sur SharePoint et se
-  // relit à la main, il doit dire la même chose que l'écran.
-  modifies[cleOrdre()] = trierParDoi(complet, ctx.articlesSansDoi(racine, complet));
+  // relit à la main, il doit dire la même chose que l'écran. C'est cet ordre, après le tri
+  // DOI, qui fixe le rang de chacun : le renommage ci-dessous ne fait que le nommer, il ne
+  // le recalcule pas.
+  const ordreFinal = trierParDoi(complet, ctx.articlesSansDoi(racine, complet));
+  // Les dossiers d'abord, l'ordre ensuite — jamais l'inverse : une interruption entre les
+  // deux laisserait sinon ausgabe.yaml désigner un dossier qui n'existe pas encore sous ce
+  // nom, exactement le risque que renumeroter() évite par la même règle
+  // (lib/renumerotation-fs.js).
+  const renommes = prefixerNouveauxArticles(racine, ordreFinal, nouveaux);
+  const modifies = {};
+  modifies[cleOrdre()] = ordreFinal.map((slug) => renommes.get(slug) || slug);
   // Geste sans session de saisie : on regarde le bail, on ne le prend pas. Si quelqu'un
   // modifie ausgabe.yaml en ce moment, on laisse l'auto-réparation de listerArticles()
   // (repli alphabétique, à la prochaine lecture) faire l'affaire plutôt que d'entrer en
   // conflit avec cette écriture — l'import a déjà réussi, ce n'est pas à lui d'échouer pour
-  // un ordre qui se répare de toute façon.
-  if (ctx.refusCoedition(racine, cheminConfig(racine))) { return; }
+  // un ordre qui se répare de toute façon. Les dossiers, eux, restent renommés dans tous les
+  // cas : l'auto-réparation les retrouvera sous leur nom définitif, jamais sous l'ancien.
+  if (ctx.refusCoedition(racine, cheminConfig(racine))) { return renommes; }
   ctx.ecrireClesAusgabe(racine, modifies);
+  return renommes;
 }
 
 // Appelée pendant que session.importEnCours() est posé, d'où le drapeau de compilation géré
@@ -150,8 +213,13 @@ async function lancerConversion(fournisseur, rafraichirTout) {
     if (nouveaux.length > 0) {
       // Le numéro du Word migre ici, dans ordre-articles/ordre-chapitres : sans cette
       // écriture, l'ordre voulu par le rédacteur se perd en silence dès le prochain
-      // listerArticles() (rafraichirTout() ci-dessous, puis chaque rendu de l'arbre).
-      ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase);
+      // listerArticles() (rafraichirTout() ci-dessous, puis chaque rendu de l'arbre). Cette
+      // même écriture préfixe aussi les dossiers créés par cet import (prefixerNouveauxArticles) :
+      // `nouveaux` porte encore les anciens noms après l'appel, d'où le remplacement qui
+      // suit — tout ce qui parle d'un de ces articles après ce point doit parler du dossier
+      // qui existe réellement sur le disque, pas de celui que « make import » avait posé.
+      const renommes = ecrireOrdreNouveauxArticles(fournisseur, avant, nouveaux, parBase);
+      for (let i = 0; i < nouveaux.length; i++) { nouveaux[i] = renommes.get(nouveaux[i]) || nouveaux[i]; }
       // Avant la compilation : un JPEG d'imprimerie converti après coup laisserait
       // l'opérateur inspecter un PDF bâti sur les couleurs d'origine.
       const aConvertir = [];
@@ -259,7 +327,7 @@ function controleurDepotVue(fournisseur, rafraichirTout) {
 
 module.exports = {
   configurer,
-  numerosOrdreEnAttente, resoudreNumeroOrdre, ecrireOrdreNouveauxArticles,
+  numerosOrdreEnAttente, resoudreNumeroOrdre, prefixerNouveauxArticles, ecrireOrdreNouveauxArticles,
   compilerApresImport, lancerConversion, importerFichiersWord, importerWord,
   controleurDepotVue
 };

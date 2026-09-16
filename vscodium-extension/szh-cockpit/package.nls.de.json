@@ -21,6 +21,7 @@
   "cmd.apercuMetadonnees": "Metadaten der Artikel",
   "cmd.metadonneesArticle": "Metadaten dieses Artikels bearbeiten",
   "cmd.mediasArticle": "Medien dieses Artikels verwalten",
+  "cmd.voirPdfArticle": "PDF dieses Artikels anzeigen (Explorer)",
   "cmd.ressourcesArticle": "Dokumentation dieses Artikels verwalten (Einträge und Rubriken)",
   "cmd.documentation": "Dokumentation der Ausgabe öffnen (News & Ressourcen)",
   "cmd.reserve": "Reserve von Einträgen (Bücher, Vorstösse, …)",

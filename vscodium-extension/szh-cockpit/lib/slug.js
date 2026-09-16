@@ -76,9 +76,13 @@ function numeroOrdreArticle(nomFichier) {
 // Slug d'un article : slugifier, puis retrait du numéro de tête, s'il y en a un — jugé sur
 // le nom brut (aUnNumeroDeTete), jamais sur le slug déjà collapsé, où l'espace d'un titre
 // commençant par un nombre et le séparateur d'un vrai numéro de tête sont devenus le même
-// tiret. Les .docx livrés numérotés sont nommés « 4_Titre.docx », et ce nombre ne nomme
-// plus le dossier (les numéros de dossier ne survivent pas à un déplacement dans l'ordre) —
-// voir numeroOrdreArticle() ci-dessus pour ce qu'il devient.
+// tiret. Les .docx livrés numérotés sont nommés « 4_Titre.docx », et CE nombre-là ne nomme
+// jamais le dossier — voir numeroOrdreArticle() ci-dessus pour ce qu'il devient. Le dossier
+// créé par l'import reçoit malgré tout un préfixe à deux chiffres, mais un autre : celui de
+// son RANG dans l'ordre final (lib/import-hote.js:prefixerNouveauxArticles(), appelé une
+// fois ce nombre déjà migré vers `ordre-articles`). Les deux nombres coïncident rarement —
+// un article sans numéro de tête, ou dont l'ordre a bougé depuis, prend un rang qui n'a
+// plus rien à voir avec ce que le rédacteur avait écrit dans le nom de son Word.
 //
 // La cible « import » du Makefile applique les mêmes règles dans le même ordre, retrait
 // puis borne : si les deux slugs divergent, le badge « déjà converti » de la barre

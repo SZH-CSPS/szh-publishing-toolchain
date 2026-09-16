@@ -255,7 +255,7 @@ test('Makefile : le redépôt d’un Word nomme un geste qui existe', () => {
   //   chapitres d'un livre. Écrite en dur, `indexOf` rendait -1, `slice` prenait tout le
   //   fichier, et le contrôle accusait la cible `import` d'un `reimporter.py` qui vit
   //   ailleurs. Un contrôle qui se trompe de bloc n'est pas plus sûr qu'un contrôle absent.
-  const finBloc = MK.indexOf('while [ -e "$(UNITES_DIR)/$$slug/$$slug.md" ]; do');
+  const finBloc = MK.indexOf('while dossier_existant "$$slug" >/dev/null; do');
   assert.ok(finBloc !== -1, 'la boucle de désambiguïsation a disparu : le bloc n’a plus de fin');
   const bloc = MK.slice(MK.indexOf('venu_de=""'), finBloc);
   assert.ok(bloc.indexOf('reimporter.py') === -1,

@@ -171,4 +171,8 @@ function reprendre(racine, options) {
   }
 }
 
-module.exports = { listerUnites, repriseEnAttente, renumeroter, reprendre };
+// alignerFichiers est exportée pour lib/import-hote.js : l'import préfixe les dossiers
+// nouvellement créés (voir ce module), et un dossier renommé doit voir ses fichiers suivre
+// exactement comme ici — recopier la boucle aurait fait vivre la même règle à deux endroits,
+// avec le risque qu'ils divergent au prochain sidecar ajouté à la chaîne.
+module.exports = { listerUnites, repriseEnAttente, renumeroter, reprendre, alignerFichiers };
