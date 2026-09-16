@@ -115,21 +115,42 @@ test('date : le gabarit ne livre aucune date de publication, pas même plausible
 
 test('barre : le titre d’un numéro sans date de publication garde son année', () => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-titre-'));
-  const poser = (dossier, date) => {
-    const racine = path.join(base, dossier);
+  let compteur = 0;
+  // `revue` : le jeton `revue:` à écrire, ou '' pour omettre la clé. `lang` : repli de
+  // langue à écrire quand aucun jeton n'est fourni.
+  const poser = (dossier, date, revue, lang) => {
+    const racine = path.join(base, dossier + '-' + (compteur++));
     fs.mkdirSync(racine, { recursive: true });
-    fs.writeFileSync(path.join(racine, 'ausgabe.yaml'),
-      ['revue: revue', 'title: "Autodétermination"', 'numero: "03"',
-        'date: "' + date + '"', 'lang: fr', ''].join('\n'));
+    const lignes = [];
+    if (revue !== '') { lignes.push('revue: ' + (revue === undefined ? 'revue' : revue)); }
+    lignes.push('title: "Autodétermination"', 'numero: "03"', 'date: "' + date + '"',
+      'lang: ' + (lang || 'fr'), '');
+    fs.writeFileSync(path.join(racine, 'ausgabe.yaml'), lignes.join('\n'));
     return racine;
   };
-  // Sans date : l'année vient du dossier. Sans ce repli la barre annonçait « R-03 », ce
+  // Sans date : l'année vient du dossier. Sans ce repli la barre annonçait « Revue /03 », ce
   // qu'aucun rédacteur ne reconnaît comme son numéro.
-  assert.strictEqual(yaml.titreNumero(poser('2027-03', '')), 'R2027-03 | Autodétermination');
+  assert.strictEqual(yaml.titreNumero(poser('2027-03', '')), 'Revue 2027/03 | Autodétermination');
   // Avec une date : c'est elle qui fait foi, comme sur la couverture.
-  assert.strictEqual(yaml.titreNumero(poser('2027-04', '2028-01-20')), 'R2028-03 | Autodétermination');
+  assert.strictEqual(yaml.titreNumero(poser('2027-04', '2028-01-20')), 'Revue 2028/03 | Autodétermination');
   // Dossier hors convention : pas d'année inventée, et le titre reste lisible.
-  assert.strictEqual(yaml.titreNumero(poser('numero-de-printemps', '')), 'R-03 | Autodétermination');
+  assert.strictEqual(yaml.titreNumero(poser('numero-de-printemps', '')), 'Revue 03 | Autodétermination');
+  // Le jeton `revue: zeitschrift` décide seul du nom, même en français : c'est le seul
+  // contrôle qui prouve que le nom vient du jeton et non de la langue.
+  assert.strictEqual(yaml.titreNumero(poser('2027-03', '', 'zeitschrift')),
+    'Zeitschrift 2027/03 | Autodétermination');
+  // Sans clé `revue:` du tout (ausgabe.yaml ancien) : repli sur la langue par défaut.
+  assert.strictEqual(yaml.titreNumero(poser('2027-03', '', '', 'de')),
+    'Zeitschrift 2027/03 | Autodétermination');
+  assert.strictEqual(yaml.titreNumero(poser('2027-03', '', '', 'fr')),
+    'Revue 2027/03 | Autodétermination');
+  // Sans numéro : l'année seule, pas de barre oblique orpheline.
+  const sansNumero = path.join(base, 'sans-numero-' + (compteur++));
+  fs.mkdirSync(sansNumero, { recursive: true });
+  fs.writeFileSync(path.join(sansNumero, 'ausgabe.yaml'),
+    ['revue: revue', 'title: "Autodétermination"', 'numero: ""', 'date: "2027-05-01"',
+      'lang: fr', ''].join('\n'));
+  assert.strictEqual(yaml.titreNumero(sansNumero), 'Revue 2027 | Autodétermination');
 });
 
 // ---- la couverture, composée pour de vrai --------------------------------------------
@@ -233,17 +254,29 @@ test('couverture : un dossier hors convention laisse l’année absente, pas fau
     'une année a été inventée pour un dossier qui n’en porte pas');
 });
 
-test('couverture : en allemand, « Nr. » et son insécable, jamais le o en exposant', (t) => {
+test('couverture : en allemand, « Jg. » et « Nr. » avec son insécable, jamais le o en exposant', (t) => {
   const absent = pandocAbsent();
   if (absent) { return sauterSansLua(t, absent); }
-  // L'abréviation allemande finit par un point : elle garde l'espace que le français perd,
-  // « Nr.03 » se lisant comme un nombre décimal. Et pas de <sup> : « Nr. » s'écrit en
-  // lettres pleines.
+  // Le millésime allemand est un Jahrgang, pas un « Vol. » anglicisant. L'abréviation du
+  // numéro, elle, finit par un point et garde l'espace que le français perd, « Nr.03 » se
+  // lisant comme un nombre décimal. Et pas de <sup> : « Nr. » s'écrit en lettres pleines.
   const ligne = ligneCouverture('2027-03', '', 'zeitschrift');
   t.diagnostic('revue: zeitschrift -> « ' + ligne + ' »');
-  assert.strictEqual(ligne, 'Vol. 44 · Nr.' + NBSP + '03/2027',
-    'la forme allemande du numéro a changé');
+  assert.strictEqual(ligne, 'Jg. 44 · Nr.' + NBSP + '03/2027',
+    'la forme allemande du volume ou du numéro a changé');
   assert.ok(!/<sup>/.test(ligne), 'un exposant est parti dans la ligne allemande : ' + ligne);
+});
+
+test('couverture : en français, le millésime reste « Vol. »', (t) => {
+  const absent = pandocAbsent();
+  if (absent) { return sauterSansLua(t, absent); }
+  // Sans ce contrôle, rien n'empêcherait de faire passer TOUTES les langues en « Jg. » — la
+  // forme allemande a sa propre condition dans le filtre, et seul un essai français la met
+  // à l'épreuve.
+  const ligne = ligneCouverture('2027-03', '', 'revue');
+  t.diagnostic('revue: revue -> « ' + ligne + ' »');
+  assert.ok(ligne.startsWith('Vol. 44 · '),
+    'le millésime français a changé de forme : ' + ligne);
 });
 
 // ---- l'export OJS --------------------------------------------------------------------

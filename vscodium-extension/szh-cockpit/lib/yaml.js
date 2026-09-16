@@ -129,15 +129,47 @@ function estVraiYaml(valeur) {
   return VRAIS_YAML.indexOf(v) !== -1;
 }
 
+// ⚠ L'ordre n'est pas cosmétique : c'est lui qui décide de la couleur de l'année suivante
+// (voir couleurAnnuelle, plus bas — l'avance d'un cran se fait dans CET ordre). Réordonner
+// cette liste change donc les couleurs futures des deux revues, pas seulement l'ordre des
+// pastilles à l'écran. L'ordre choisi est l'ordre alphabétique des noms français : Bleu
+// acier, Capucine, Mountbatten, Moutarde, Poireau, Rouge.
 const COULEURS_NUMERO = [
-  { cle: 'rouge',       hex: '#D31932' },
+  { cle: 'bleuacier',   hex: '#5F9FBC' },
   { cle: 'capucine',    hex: '#EB5E51' },
+  { cle: 'mountbatten', hex: '#A98899' },
   { cle: 'moutarde',    hex: '#C7CF1C' },
   { cle: 'poireau',     hex: '#51A66D' },
-  { cle: 'bleuacier',   hex: '#5F9FBC' },
-  { cle: 'mountbatten', hex: '#A98899' }
+  { cle: 'rouge',       hex: '#D31932' }
 ];
 const HEX_COULEURS = COULEURS_NUMERO.map((c) => c.hex.toUpperCase());
+
+// La couleur annuelle d'un numéro : elle avance d'un cran (dans l'ordre de COULEURS_NUMERO
+// ci-dessus) à chaque année civile, en bouclant sur les six teintes. Les ancres ci-dessous
+// sont les deux numéros de 2026 réellement parus (Zeitschrift vol. 32, Revue vol. 16),
+// relevés par la rédaction : tout le reste s'en déduit, et il n'y a donc rien à tenir à
+// jour chaque année. Miroir de Get-SzhCouleurPour dans windows/szh-produits.ps1 — un test
+// (test/js/couleur-annuelle.test.js) compare les deux tables.
+const ANNEE_ANCRE_COULEUR = {
+  zeitschrift: { annee: 2026, cle: 'bleuacier' },
+  revue:       { annee: 2026, cle: 'poireau' }
+};
+
+// couleurAnnuelle(revue, annee) -> '#RRGGBB', ou '' si la revue ou l'année sont illisibles.
+// `((x % n) + n) % n` : le modulo natif de JavaScript rend un reste négatif pour une année
+// antérieure à l'ancre (ex. -1 % 6 === -1), ce qui indexerait hors de la palette.
+function couleurAnnuelle(revue, annee) {
+  const r = normaliserRevue(revue);
+  const ancre = ANNEE_ANCRE_COULEUR[r];
+  if (!ancre) { return ''; }
+  const a = Number(annee);
+  if (!Number.isFinite(a)) { return ''; }
+  const n = COULEURS_NUMERO.length;
+  const depart = COULEURS_NUMERO.findIndex((c) => c.cle === ancre.cle);
+  const ecart = Math.trunc(a) - ancre.annee;
+  const index = ((depart + ecart) % n + n) % n;
+  return COULEURS_NUMERO[index].hex;
+}
 
 // Jeton canonique de revue -> ISSN et langue par défaut, dérivés et jamais stockés
 // séparément. Miroir de derive_revue() dans pipeline/filters/szh-maquette.lua.
@@ -895,17 +927,25 @@ function serialiserMeta(valeurs) {
   return lignes.length > 0 ? lignes.join('\n') + '\n' : '';
 }
 
-// Titre de la vue : « {Z|R}{AAAA}-{numero} | {title} », Z pour une revue allemande et R
-// sinon. Chaque morceau manquant est omis, le préfixe seul ne comptant pas ; à défaut, le
-// nom du dossier sert de titre, qui n'est donc jamais vide.
+// Titre de la vue : « {Revue|Zeitschrift} {AAAA}/{numero} | {title} ». « Revue » et
+// « Zeitschrift » sont les noms des deux publications, identiques dans les deux langues de
+// l'interface : ce sont des littéraux, pas des libellés traduits (ce module ne charge pas
+// i18n.js). Le nom vient du jeton `revue:` (normaliserRevue) ; s'il manque ou est inconnu,
+// repli sur la langue par défaut, pour qu'un ausgabe.yaml ancien sans cette clé garde un
+// titre. Année et numéro se joignent par une barre oblique ; chaque morceau manquant est
+// omis, le préfixe seul ne comptant pas ; à défaut, le nom du dossier sert de titre, qui
+// n'est donc jamais vide.
 function titreNumero(racine) {
   let valeurs = {};
   try { valeurs = analyserAusgabe(fs.readFileSync(cheminConfigDetecte(racine), 'utf8')); }
   catch (e) { /* illisible : replis ci-dessous */ }
-  const prefixe = langueDefaut(valeurs) === 'de' ? 'Z' : 'R';
+  const revueCle = normaliserRevue(valeurs.revue);
+  const nom = revueCle === 'zeitschrift' ? 'Zeitschrift'
+    : revueCle === 'revue' ? 'Revue'
+    : (langueDefaut(valeurs) === 'de' ? 'Zeitschrift' : 'Revue');
   // Année : celle de `date:` si elle y est, sinon celle du nom du dossier (« 2027-03 »).
   // `date:` est la date de publication, vide jusqu'à la parution ; sans ce repli, la barre
-  // d'un numéro neuf s'annoncerait « R-03 ». Même règle que szh-maquette.lua.
+  // d'un numéro neuf s'annoncerait « Revue /03 ». Même règle que szh-maquette.lua.
   let annee = (String(valeurs.date || '').match(/\d{4}/) || [''])[0];
   if (annee === '') {
     annee = (String(path.basename(racine)).match(/^(\d{4})-\d/) || ['', ''])[1];
@@ -913,7 +953,7 @@ function titreNumero(racine) {
   const numero = String(valeurs.numero || '').trim();
   const titre = String(valeurs.title || '').trim();
   const morceaux = [];
-  if (annee || numero) { morceaux.push(prefixe + annee + (numero ? '-' + numero : '')); }
+  if (annee || numero) { morceaux.push(nom + ' ' + (annee && numero ? annee + '/' + numero : annee || numero)); }
   if (titre) { morceaux.push(titre); }
   if (morceaux.length === 0) { return path.basename(racine); }
   return morceaux.join(' | ');
@@ -1146,7 +1186,7 @@ function ecrireAtomique(chemin, contenu) {
 }
 
 module.exports = {
-  CLES_METADONNEES, CLES_BOOLEENNES, CLES_LISTES, CLES_NOMBRES, CLES_JETONS_NUS, CLE_SANS_DOI, COULEURS_NUMERO, HEX_COULEURS, CLES_FRONTMATTER, estVraiYaml,
+  CLES_METADONNEES, CLES_BOOLEENNES, CLES_LISTES, CLES_NOMBRES, CLES_JETONS_NUS, CLE_SANS_DOI, COULEURS_NUMERO, HEX_COULEURS, couleurAnnuelle, CLES_FRONTMATTER, estVraiYaml,
   etatRevue,
   REVUES, normaliserRevue,
   TYPES_ARTICLE, TYPES_DOSSIER, TYPES_HORS, LIBELLES_TYPES, GROUPES_TYPES, LANGUES_META, CHAMPS_AUTEUR,

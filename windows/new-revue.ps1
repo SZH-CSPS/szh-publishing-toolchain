@@ -99,6 +99,16 @@ if (-not $existait) {
   if (($vol -le 0) -and ($annee -gt 0)) { $vol = Get-SzhVolumePour $jetonVolume $annee }
   if ($vol -gt 0) { [void](Set-SzhAusgabeCle $chemin 'volume' ([string]$vol) $true $false) }
   else { [void](Set-SzhAusgabeCle $chemin 'volume' '' $true $true) }
+  # Couleur annuelle : avance d'un cran chaque année (Get-SzhCouleurPour), posée ici comme le
+  # volume juste au-dessus. Revue ou année inconnues -> '' -> rien n'est posé, et le gabarit
+  # (revue-template/ausgabe.yaml, couleur: "#5F9FBC") garde la main.
+  if ($annee -gt 0) {
+    $couleur = Get-SzhCouleurPour $jetonVolume $annee
+    if ($couleur) {
+      [void](Set-SzhAusgabeCle $chemin 'couleur' $couleur $true $false)
+      Write-SzhInfo ('Couleur du numéro posée : {0}.' -f $couleur)
+    }
+  }
   # Numéro sur deux chiffres, comme le nom du dossier et comme l'affiche OJS.
   $rangTexte = ('{0:00}' -f $rang)
   if ($rang -gt 0) { [void](Set-SzhAusgabeCle $chemin 'numero' $rangTexte $true $false) }

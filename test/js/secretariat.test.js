@@ -323,8 +323,8 @@ test('commandeNewsletter : un numéro sans date: produit quand même un DOI, don
       emettre: (e) => evenements.push(e)
     });
     assert.strictEqual(resultat.ok, true);
-    // Le libellé (« fin ») porte l'année reprise du nom du dossier, jamais "-03" tout seul.
-    assert.ok(resultat.texte.indexOf('2027-03') !== -1, resultat.texte);
+    // Le libellé (« fin ») porte l'année reprise du nom du dossier, jamais « /03 » tout seul.
+    assert.ok(resultat.texte.indexOf('2027/03') !== -1, resultat.texte);
     assert.ok(!evenements.some((e) => e.t === 'avert' && e.texte.indexOf('pas de DOI') !== -1),
       'aucun avert "pas de DOI" attendu : le DOI doit se calculer malgré date: vide');
     const dossierThematique = fs.readFileSync(path.join(dossierSortie, 'dossier-thematique.txt'), 'utf8');

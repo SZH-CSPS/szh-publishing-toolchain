@@ -8,6 +8,14 @@
 .szh-champ > label { font-size: var(--t-libelle); font-weight: 700; letter-spacing: .02em; }
 .szh-champ:first-child { margin-top: 0; }
 
+/* Le nom de la revue, affiché plutôt que saisi (media/_numero.js, champLecture) : même
+   encadré qu'un champ désactivé (cf. .fige, media/settings.css), pour qu'on le lise comme
+   un réglage protégé plutôt que comme un champ resté vide. Pas de classe partagée avec
+   settings.css : ce fichier-ci est celui de ce formulaire. */
+.champ-lecture { margin: var(--e1) 0 0; padding: .4em .6em; border: 1px solid
+  var(--vscode-input-border, var(--filet)); border-radius: var(--rayon-mini);
+  background: var(--vscode-input-background); color: var(--encre-2); }
+
 .radios { display: flex; flex-direction: column; gap: var(--e2); margin-top: var(--e1); }
 .radio { display: flex; align-items: flex-start; gap: .5em; margin: 0; font-weight: normal;
   cursor: pointer; width: auto; }

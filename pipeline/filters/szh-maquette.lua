@@ -266,6 +266,15 @@ local ABREV_NUMERO = {
 }
 local ORDRE_LANGUES = { 'de', 'fr', 'it' }
 
+-- Abréviation de « volume » devant le millésime de la couverture, dans la langue de
+-- composition. En allemand, le millésime d'une revue est un *Jahrgang* : « Vol. » y est un
+-- anglicisme qu'aucune revue germanophone n'imprime. Langue hors des trois : repli sur « Vol. ».
+local ABREV_VOLUME = {
+  fr = 'Vol. ',
+  de = 'Jg. ',
+  it = 'Vol. ',
+}
+
 -- Bloc des auteur·e·s : titre localisé. Un seul libellé, quel que soit le nombre de
 -- personnes — l'accord en nombre d'avant obligeait à deux formules par langue pour un
 -- titre que personne ne lit comme une phrase.
@@ -590,7 +599,9 @@ function Meta(meta)
     table.insert(droite, pandoc.Str(annee))
   end
   local vol_ligne = {}
-  if volume ~= '' then table.insert(vol_ligne, pandoc.Str('Vol. ' .. volume)) end
+  if volume ~= '' then
+    table.insert(vol_ligne, pandoc.Str((ABREV_VOLUME[lang] or 'Vol. ') .. volume))
+  end
   if #droite > 0 then
     if #vol_ligne > 0 then table.insert(vol_ligne, pandoc.Str(' · ')) end
     for _, el in ipairs(droite) do table.insert(vol_ligne, el) end

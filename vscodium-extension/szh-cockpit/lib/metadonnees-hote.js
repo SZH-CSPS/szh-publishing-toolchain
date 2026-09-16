@@ -179,7 +179,6 @@ function textesNumero() {
     indiceDate: T('meta.date.indice'),
     rien: T('form.rien'),
     enregistre: T('form.enregistre'),
-    couleurAucune: T('meta.couleur.aucune'),
     couleurs: COULEURS_NUMERO.map((c) => ({ hex: c.hex, nom: T('meta.couleur.' + c.cle) })),
     couverture: T('art.couverture'),
     couvertureAbsente: T('art.couverture.absente'),

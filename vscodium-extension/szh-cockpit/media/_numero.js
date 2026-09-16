@@ -26,7 +26,11 @@
   // ajoute le champ aux deux endroits qui montrent ce formulaire.
   var CHAMPS = [
     { cle: 'title', genre: 'texte', libelle: 'meta.title' },
-    { cle: 'revue', genre: 'radio', libelle: 'meta.revue',
+    // Affiché, plus saisi : le jeton `revue:` est écrit une fois pour toutes à la création
+    // du numéro (windows/new-revue.ps1), et en dérivent l'ISSN, la langue par défaut, le
+    // volume, la couleur annuelle et le lanceur qui liste le numéro. Le changer ici
+    // déplacerait un numéro d'une revue à l'autre sans que rien d'autre ne suive.
+    { cle: 'revue', genre: 'lecture', libelle: 'meta.revue',
       options: [
         { valeur: 'zeitschrift', libelle: 'meta.revue.zeitschrift' },
         { valeur: 'revue', libelle: 'meta.revue.revue' }
@@ -233,6 +237,18 @@
       ctl[champ.cle] = { radios: radios };
     }
 
+    // Le pendant en lecture seule de champRadio, ci-dessus : même intitulé, mais un texte à
+    // la place du groupe de boutons — voir le commentaire de `revue` dans CHAMPS. Le texte
+    // affiché est posé par remplir(), pas ici : à la construction, aucune valeur n'est
+    // encore connue.
+    function champLecture(champ) {
+      var bloc = poser(conteneur, 'div', 'szh-champ');
+      poser(bloc, 'label', null, lib(champ.libelle));
+      var texte = poser(bloc, 'p', 'champ-lecture');
+      texte.dataset.cle = champ.cle;
+      ctl[champ.cle] = { texte: texte };
+    }
+
     function champCase(champ) {
       var l = poser(conteneur, 'label', 'case');
       var c = document.createElement('input');
@@ -270,7 +286,9 @@
       var zone = (ctl.couleur || {}).zone;
       if (!zone) { return; }
       zone.textContent = '';
-      var items = [{ hex: '', nom: TXT.couleurAucune || '' }].concat(couleurs);
+      // Pas de pastille « (aucune) » : un numéro dont `couleur:` est vide ou absente
+      // n'affiche simplement aucune pastille allumée (voir majPastilles, aria-pressed).
+      var items = couleurs;
       for (var i = 0; i < items.length; i++) {
         (function (c) {
           var b = document.createElement('button');
@@ -403,6 +421,19 @@
           for (var r = 0; r < radios.length; r++) { radios[r].checked = (radios[r].value === revueChoisie); }
           continue;
         }
+        if (champ.genre === 'lecture') {
+          // Même jeton canonique que le radio : d'autres parties du formulaire lisent
+          // revueChoisie. Une valeur vide ou hors liste affiche un tiret cadratin, pas un
+          // champ muet — un texte vide se lirait comme un bogue d'affichage.
+          revueChoisie = normaliserRevue(brut);
+          var optionLue = null;
+          for (var o = 0; o < (champ.options || []).length; o++) {
+            if (champ.options[o].valeur === revueChoisie) { optionLue = champ.options[o]; break; }
+          }
+          var texteLu = (ctl[champ.cle] || {}).texte;
+          if (texteLu) { texteLu.textContent = optionLue ? lib(optionLue.libelle) : '—'; }
+          continue;
+        }
         if (champ.genre === 'couleurs') {
           couleurChoisie = brut;
           majPastilles();
@@ -451,6 +482,13 @@
       for (var i = 0; i < champsTable.length; i++) {
         var champ = champsTable[i];
         if (!modifies[champ.cle]) { continue; }
+        // « revue » (genre lecture) n'est jamais touché : champLecture ne pose aucun
+        // gestionnaire, donc modifies['revue'] reste faux et cette rangée ne s'exécute pas
+        // pour lui. Le garde-fou explicite ci-dessous protège quand même le jeton, au cas où
+        // un futur appel marquerait le champ modifié par erreur — le jeton ne doit jamais
+        // pouvoir repartir à l'hôte.
+        if (champ.genre === 'lecture') { continue; }
+        // Le radio restant est « ouvrage » (CHAMPS_LIVRE) : « revue » ne porte plus ce genre.
         if (champ.genre === 'radio') { envoi[champ.cle] = revueChoisie; }
         else if (champ.genre === 'couleurs') { envoi[champ.cle] = couleurChoisie; }
         else if (champ.genre === 'case') { envoi[champ.cle] = ctl[champ.cle].checked ? 'true' : 'false'; }
@@ -515,6 +553,7 @@
       else if (champ.genre === 'nombre') { champTexte(champ, 'number'); }
       else if (champ.genre === 'select') { champSelect(champ); }
       else if (champ.genre === 'radio') { champRadio(champ); }
+      else if (champ.genre === 'lecture') { champLecture(champ); }
       else if (champ.genre === 'case') { champCase(champ); }
       else if (champ.genre === 'couleurs') { champCouleurs(champ); }
       else if (champ.genre === 'hex') { champHexCouleur(champ); }

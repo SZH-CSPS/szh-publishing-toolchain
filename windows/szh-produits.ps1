@@ -422,6 +422,46 @@ $script:SzhVolumeAnneeZero = @{
   zeitschrift = 1994
 }
 
+# ---- Couleur annuelle d'un numéro ----
+# Miroir de couleurAnnuelle() dans vscodium-extension/szh-cockpit/lib/yaml.js : deux calculs
+# qui doivent dire la même chose, et test/js/couleur-annuelle.test.js les compare (il lit ce
+# fichier en texte et extrait les ancres par expression régulière).
+#
+# La palette, dans l'ordre alphabétique des noms français — Bleu acier, Capucine,
+# Mountbatten, Moutarde, Poireau, Rouge — qui décide, dans cet ordre, de la couleur de
+# l'année suivante. Réordonner cette liste change donc les couleurs futures des deux revues.
+$script:SzhCouleursNumero = @(
+  @{ cle = 'bleuacier';   hex = '#5F9FBC' },
+  @{ cle = 'capucine';    hex = '#EB5E51' },
+  @{ cle = 'mountbatten'; hex = '#A98899' },
+  @{ cle = 'moutarde';    hex = '#C7CF1C' },
+  @{ cle = 'poireau';     hex = '#51A66D' },
+  @{ cle = 'rouge';       hex = '#D31932' }
+)
+
+# Les deux numéros de 2026 réellement parus (Zeitschrift vol. 32, Revue vol. 16), relevés par
+# la rédaction : tout le reste s'en déduit, et il n'y a donc rien à tenir à jour chaque année.
+$script:SzhCouleurAnneeAncre = @{
+  zeitschrift = @{ annee = 2026; cle = 'bleuacier' }
+  revue       = @{ annee = 2026; cle = 'poireau' }
+}
+
+# Couleur calculée, ou '' si le produit est inconnu ou l'année illisible. Boucle sur les six
+# teintes ; le modulo de PowerShell (%) peut rendre un reste négatif pour une année antérieure
+# à l'ancre, d'où le double modulo, comme côté cockpit.
+function Get-SzhCouleurPour([string]$Produit, [int]$Annee) {
+  $jeton = Get-SzhJetonRevue $Produit
+  if (-not $jeton) { return '' }
+  if (-not $SzhCouleurAnneeAncre.ContainsKey($jeton)) { return '' }
+  $ancre = $SzhCouleurAnneeAncre[$jeton]
+  $n = $SzhCouleursNumero.Count
+  $depart = 0
+  for ($i = 0; $i -lt $n; $i++) { if ($SzhCouleursNumero[$i].cle -eq $ancre.cle) { $depart = $i } }
+  $ecart = $Annee - $ancre.annee
+  $index = ((($depart + $ecart) % $n) + $n) % $n
+  return $SzhCouleursNumero[$index].hex
+}
+
 # Volume calculé, ou 0 si le produit est inconnu ou l'année antérieure au premier volume.
 function Get-SzhVolumePour([string]$Produit, [int]$Annee) {
   $jeton = Get-SzhJetonRevue $Produit
