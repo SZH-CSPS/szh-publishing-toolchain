@@ -9,9 +9,17 @@
 -- Ce filtre ne décide rien. L'étendue à détacher est décidée par docx-meta.py, qui lit les
 -- STYLES du .docx — le seul signal fiable, mesuré sur les 421 galleys publiés. Il arrive
 -- ici en lignes B de $SZH_META (une clé de comparaison par paragraphe) et BT (le titre de
--- section, qui quitte le corps puisqu'il est reposé à la compilation). Sans lignes B, le
--- document sort inchangé : la liste reste dans le corps, l'article est entier, et c'est
--- docx-meta.py qui a déjà dit au rédacteur pourquoi.
+-- section, qui quitte le corps puisqu'il est reposé à la compilation).
+--
+-- Sans lignes B — l'auteur n'a fourni aucune bibliographie — <slug>.biblio.md se crée
+-- quand même, VIDE, avec son marqueur posé en fin d'article : c'est là qu'une
+-- bibliographie se lit, et c'est là que la rédaction ira l'écrire après coup si le besoin
+-- vient. Un fichier vide n'imprime rien à la compilation (szh-citations.lua, est_vide()) :
+-- l'article sort exactement comme s'il n'avait pas de bibliographie, mais le geste pour en
+-- ajouter une est désormais le même que pour n'importe quel article — ouvrir le fichier
+-- dans l'arborescence du cockpit, jamais un geste à part. ⚠ Ceci ne vaut que pour un import
+-- qui a lieu : un article déjà présent sur le disque, importé avant ce filtre, n'en reçoit
+-- pas un rétroactivement — rien ici ne balaie les numéros existants.
 --
 -- Doit tourner après szh-titres (les titres promus sont des Header) et avant
 -- szh-tabelle-reference (les Table sont encore des Table).
@@ -133,9 +141,33 @@ local function etendue(blocs, bornes)
   return debut, fin, reconnus
 end
 
+-- Le Word n'a pas de bibliographie détectée : le fichier se crée quand même, vide, et le
+-- marqueur rejoint la fin de l'article — voir le commentaire d'en-tête. `io.open(…, 'w')`
+-- écrase un fichier qui existerait déjà sous ce nom ; cela n'arrive jamais ici, la
+-- conversion tournant toujours dans un dossier neuf (le dossier de l'article à l'import,
+-- ou le chantier voisin d'un réimport, voir import-docx.sh et reimporter.py).
+local function creer_biblio_vide(doc)
+  local fichier = slug_article() .. '.biblio.md'
+  local f = io.open(fichier, 'w')
+  if not f then
+    constat('avertissement', 'biblio-fichier-refuse',
+      { 'article « ' .. slug_article() .. ' »', 'fichier « ' .. fichier .. ' »' },
+      'Le fichier de bibliographie de cet article n’a pas pu être créé. L’article '
+      .. 's’imprime normalement, sans bibliographie ; vérifiez que le dossier du numéro '
+      .. 'est accessible en écriture.',
+      'Die Literaturverzeichnis-Datei dieses Artikels konnte nicht angelegt werden. Der '
+      .. 'Artikel wird normal gedruckt, ohne Literaturverzeichnis; prüfen Sie, ob der '
+      .. 'Ordner der Ausgabe beschreibbar ist.')
+    return nil
+  end
+  f:close()
+  doc.blocks:insert(pandoc.Div({}, pandoc.Attr('', { 'szh-biblio' }, { { 'src', fichier } })))
+  return doc
+end
+
 function Pandoc(doc)
   local bornes, cle_titre = charger_meta()
-  if #bornes == 0 then return nil end          -- rien à détacher : document inchangé
+  if #bornes == 0 then return creer_biblio_vide(doc) end
 
   local blocs = doc.blocks
   local debut, fin, reconnus = etendue(blocs, bornes)

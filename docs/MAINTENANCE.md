@@ -891,6 +891,17 @@ découpage deviné dans le corps se trompait sur les entrées à cheval sur deux
 **Manœuvre :** appliquer le style de bibliographie aux références dans le Word, puis
 *Réimporter cet article*.
 
+**Depuis le 16.09.2026**, `szh-biblio-detacher.lua` crée `<slug>.biblio.md` à *tout* import,
+même sans aucune étendue détectée (bornes vides) — vide, avec son marqueur posé en fin
+d'article. But : la rédaction a désormais un endroit où écrire une bibliographie que
+l'auteur n'a pas fournie, exactement comme pour un article qui en avait une. Un fichier
+vide n'imprime rien à la compilation (aucun titre, aucune section : voir `est_vide()` dans
+`szh-citations.lua`) — le cas 1 ci-dessus n'en est donc pas changé pour le lecteur du PDF,
+seulement pour l'arborescence du cockpit, où l'entrée « Bibliographie » apparaît désormais
+même sur un article qui n'en a pas. **Ceci ne vaut que pour un import à venir** : un
+article déjà présent sur le disque, importé avant ce correctif, n'en reçoit pas un
+rétroactivement, et continue de se compiler sans bibliographie ni avertissement.
+
 **2. Un encadré rouge « Bibliographie introuvable » à la place de la liste.**
 Code `biblio-introuvable`. Le corps porte encore sa référence, et le fichier
 `<slug>.biblio.md` a été supprimé ou renommé — l'encadré rouge est le même que celui d'un
@@ -916,6 +927,19 @@ avec le chemin de la version d'avant, sous `.szh-avant-reimport/`. Deux voisins 
 (article importé avant que la chaîne ne note cette empreinte — toute différence est alors
 signalée par prudence). **Manœuvre :** ouvrir la version d'avant que le message nomme et
 recopier ce qui doit revenir ; ou *Annuler le réimport*, qui remet l'article entier.
+
+**5. Le marqueur `::: {.szh-biblio src=…}` nomme un fichier qui n'existe plus, après un
+renommage d'article.** Symptôme observé le 16.09.2026 sur tout un numéro : « Changer
+l'ordre », la suppression d'un article, ou le préfixage à l'import renomment le dossier et
+ses fichiers (`lib/renumerotation-fs.js:alignerFichiers`), mais le `src=` à l'intérieur du
+`.md` visait encore l'ancien nom — `biblio-introuvable` au premier PDF suivant, pour une
+bibliographie pourtant intacte à côté. Corrigé à la racine : tout renommage réécrit
+désormais le marqueur dans le même geste (`reecrireMarqueurBiblio`). Un numéro déjà touché
+guérit seul, sans intervention : `reparerMarqueursOrphelins`, appelée avant chaque
+compilation lancée depuis le cockpit (`lancerBuild`, « Tout exporter », l'export OJS),
+réécrit le marqueur sur l'unique `*.biblio.md` du dossier quand celui qu'il nomme est
+introuvable. Zéro ou plusieurs candidats : elle ne devine pas, et `biblio-introuvable`
+continue de le dire — c'est alors un vrai cas 2 ci-dessus, pas un marqueur périmé.
 
 **À observer.** Après un import, les codes `biblio-non-detachee` et `biblio-dans-le-corps` du
 journal : ils disent qu'un article n'a pas de `<slug>.biblio.md` alors qu'il a bien une liste

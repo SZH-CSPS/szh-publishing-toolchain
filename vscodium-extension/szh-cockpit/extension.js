@@ -1205,8 +1205,13 @@ class FournisseurRevue {
   // temps qu'on est dans la bibliographie, et Ctrl+Alt+P bascule ce rendu-là
   // (basculerApercu, lib/apercu.js).
   //
-  // Pas de fichier : pas d'entrée. Un article sans bibliographie n'a rien à montrer — une
-  // entrée morte ferait croire à une liste vide, ce qui n'est pas la même chose.
+  // Pas de fichier : pas d'entrée. Depuis que l'import crée toujours <slug>.biblio.md —
+  // vide s'il le faut, voir szh-biblio-detacher.lua — un article importé désormais montre
+  // toujours cette entrée, prête à recevoir une bibliographie écrite après coup ; seul un
+  // article importé AVANT ce correctif, jamais rétroactivement complété, en reste privé.
+  // Le test reste sur l'existence, jamais sur le contenu : une entrée morte pour un
+  // fichier absent ferait croire à une liste vide, ce qui n'est pas la même chose — et un
+  // fichier vide n'a besoin d'aucun geste à part pour apparaître ici.
   _itemBiblio(slug) {
     const chemin = cheminBiblio(this.racine, slug, dossierUnites());
     if (!fs.existsSync(chemin)) { return null; }
@@ -1413,7 +1418,7 @@ async function ouvrirApercuLivre(fournisseur) {
     const compiler = T('livre.apercu.compiler');
     const choix = await vscode.window.showInformationMessage(
       T('livre.apercu.absent'), compiler);
-    if (choix === compiler) { await lancerBuild(); }
+    if (choix === compiler) { await lancerBuild(racine); }
     return;
   }
   await ouvrirApercuPdf(vscode.Uri.file(pdf));
@@ -1540,7 +1545,24 @@ async function lancerTache(nomTache) {
   return await attendreFinTache(execution);
 }
 
-function lancerBuild() { return lancerTache(NOM_TACHE_BUILD); }
+// Guérit un marqueur .szh-biblio périmé avant de compiler (lib/renumerotation-fs.js,
+// reparerMarqueursOrphelins) — ici, et dans toutExporter()/exporterXml() plus bas, parce
+// que ce sont les trois chemins par lesquels le cockpit déclenche une vraie compilation,
+// comme reimporter.py --reprise l'est côté pipeline (appelé à chaque `make all`, dans la
+// cible `import`, avant que szh-citations.lua ne lise le marqueur). Jamais bloquant : une
+// exception ici ne doit pas empêcher de compiler ce qui compilait déjà, et un article que
+// la fonction ne peut pas trancher (zéro ou plusieurs *.biblio.md) reste tel quel — la
+// compilation le dira, comme avant ce correctif.
+function reparerBibliosAvantCompilation(racine) {
+  if (!racine) { return; }
+  try { renumerotation.reparerMarqueursOrphelins(racine, { dossier: dossierUnites() }); }
+  catch (e) { /* non bloquant, voir ci-dessus */ }
+}
+
+function lancerBuild(racine) {
+  reparerBibliosAvantCompilation(racine);
+  return lancerTache(NOM_TACHE_BUILD);
+}
 
 // Une tâche s'est terminée en échec. Si le journal porte un point bloquant, la vue des
 // contrôles vient de le nommer et de dire quoi faire : ce message-ci n'ajouterait rien et
@@ -1568,6 +1590,7 @@ async function toutExporter(fournisseur, rafraichirTout) {
     // chaque rafraîchissement : recompiler tout est le bon moment pour s'assurer qu'il est
     // là et à jour. L'écriture ne se fait qu'au changement.
     ecrireDoisCalcules(fournisseur);
+    reparerBibliosAvantCompilation(racine);
     const code = await lancerTache(NOM_TACHE_EXPORT);
     rafraichirTout();
     if (code === null) { return; }                 // tâche introuvable, déjà signalé
@@ -1597,6 +1620,7 @@ async function exporterXml(fournisseur, rafraichirTout) {
   try {
     await fermerOngletsSous(path.join(racine, 'out'));
     session.poserApercuCourantUri(null);                       // « Tout exporter » fait un clean
+    reparerBibliosAvantCompilation(racine);
     let code = await lancerTache(NOM_TACHE_EXPORT);
     rafraichirTout();
     if (code === null) { return; }                 // tâche introuvable, déjà signalé
@@ -1966,7 +1990,7 @@ async function ouvrirArticle(fournisseur, slug, opts) {
     session.poserBuildEnCours(true);
     const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
     try {
-      const code = await lancerBuild();
+      const code = await lancerBuild(racine);
       if (code === null) { return; }               // tâche introuvable, déjà signalé
       if (code !== 0) {
         avertirEchecCompilation('err.build');
@@ -2028,7 +2052,7 @@ async function compilerPuisAfficher(fournisseur, slug, opts) {
   const statut = vscode.window.setStatusBarMessage(T('statut.build.de', [slug]));
   let code = null;
   try {
-    code = await lancerBuild();
+    code = await lancerBuild(fournisseur.racine);
   } finally {
     statut.dispose();
     session.poserBuildEnCours(false);

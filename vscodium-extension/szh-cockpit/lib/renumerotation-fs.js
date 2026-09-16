@@ -23,6 +23,7 @@ const path = require('path');
 const { planRenumerotation, planReprise, PREFIXE_TEMPO, tige } = require('./renumerotation');
 const { serialiserAusgabe, ecrireAtomique } = require('./yaml');
 const { CLE_ORDRE } = require('./articles');
+const { nomFichierBiblio } = require('./citations');
 
 function dossierUnites(racine, options) {
   return path.join(racine, (options && options.dossier) || 'articles');
@@ -65,6 +66,10 @@ function partSlug(nom) {
 // renommage normal comme la reprise, qui ignore l'ancien nom du dossier : un fichier suit
 // si sa part « slug » a la même tige que le dossier mais pas le même préfixe. Un fichier
 // étranger (une note, un Word déposé à la main) n'a pas cette tige et reste tranquille.
+//
+// Une fois les FICHIERS alignés, reste le marqueur — voir reecrireMarqueurBiblio()
+// ci-dessous et le commentaire d'en-tête de lib/renumerotation.js (« CE QUI NE BOUGE
+// PAS ») : lui seul désigne un sidecar par son nom, à l'intérieur du .md.
 function alignerFichiers(base, nom) {
   let renommes = 0;
   const dossier = path.join(base, nom);
@@ -76,7 +81,98 @@ function alignerFichiers(base, nom) {
       path.join(dossier, nom + entree.name.slice(part.length)));
     renommes++;
   }
+  reparerMarqueurApresAlignement(dossier, nom);
   return renommes;
+}
+
+// ---- le marqueur de bibliographie, qui désigne son fichier par un nom portant le slug --
+//
+// alignerFichiers() ci-dessus renomme les FICHIERS d'un dossier ; il n'ouvre jamais aucun
+// fichier pour regarder ce qu'il y a dedans. Un seul contenu échappe donc à la règle : le
+// marqueur que l'import laisse dans le .md à la place de la bibliographie détachée
+// (« ::: {.szh-biblio src="<slug>.biblio.md"} », pipeline/filters/szh-biblio-detacher.lua).
+// <slug>.biblio.md suit comme n'importe quel sidecar — mais le src= qui le NOMME est du
+// texte à l'intérieur du .md, pas un chemin relatif comme media/ ou tables/ (ceux-là ne
+// portent jamais le slug). Sans ce qui suit, la bibliographie d'un article renommé désigne
+// un fichier qui n'existe plus : szh-citations.lua la dit introuvable à la compilation,
+// alors qu'elle est juste à côté, sous son nouveau nom.
+//
+// L'attribut d'un Div pandoc tient toujours sur une seule ligne, jamais coupé en cours de
+// route : chercher `src="…"` sans franchir de retour à la ligne suffit à trouver LE
+// marqueur, et évite de confondre avec un texte qui y ressemblerait ailleurs dans le
+// corps — un extrait cité, une URL. Le motif ne capture QUE la valeur de l'attribut : on
+// ne réécrit jamais le corps de l'article, où le slug peut très bien réapparaître, dans
+// une légende ou un lien.
+const MARQUEUR_BIBLIO_RE = /(\{[^{}\r\n]*\.szh-biblio\b[^{}\r\n]*\bsrc=")([^"]*)(")/;
+
+// Réécrit, dans le .md à `cheminMd`, le src= du marqueur .szh-biblio pour qu'il nomme
+// `versNom`. Rend true si le fichier a été réécrit. Deux gardes contre l'écriture
+// inutile — pas de marqueur, ou marqueur déjà juste — sans quoi la date de modification du
+// .md changerait pour rien à chaque renumérotation, alors que la co-édition la lit.
+function reecrireMarqueurBiblio(cheminMd, versNom) {
+  let texte;
+  try { texte = fs.readFileSync(cheminMd, 'utf8'); } catch (e) { return false; }
+  const m = MARQUEUR_BIBLIO_RE.exec(texte);
+  if (!m || m[2] === versNom) { return false; }
+  const neuf = texte.slice(0, m.index) + m[1] + versNom + m[3]
+    + texte.slice(m.index + m[0].length);
+  ecrireAtomique(cheminMd, neuf);
+  return true;
+}
+
+// Le marqueur d'un dossier qui vient d'être aligné sur `nom` : s'il désigne encore
+// l'ancien fichier, il est réécrit sur nomFichierBiblio(nom) — celui-là existe forcément
+// déjà sous ce nom, la boucle d'alignerFichiers() vient juste de l'y amener. On vérifie
+// quand même son existence : un dossier sans bibliographie n'a ni marqueur ni fichier, et
+// il n'y a alors rien à réparer, ni à inventer.
+function reparerMarqueurApresAlignement(dossier, nom) {
+  const md = path.join(dossier, nom + '.md');
+  const bib = nomFichierBiblio(nom);
+  if (!fs.existsSync(md) || !fs.existsSync(path.join(dossier, bib))) { return; }
+  reecrireMarqueurBiblio(md, bib);
+}
+
+// ---- guérison des marqueurs déjà périmés, sans aucun renommage en cours ---------------
+//
+// Ce que reparerMarqueurApresAlignement() fait ci-dessus n'empêche qu'un NOUVEAU marqueur
+// se périme ; il ne répare pas ceux qu'un numéro entier porte déjà sur le disque —
+// importés, ou renumérotés, avant ce correctif. Cette fonction-là les guérit sans qu'on
+// ait à toucher au numéro : si le marqueur d'un article désigne un fichier absent, et
+// qu'il existe À CÔTÉ, dans le même dossier, exactement UN fichier `*.biblio.md`, c'est
+// forcément lui. Zéro ou plusieurs candidats : on ne devine pas, et le constat existant
+// (« biblio-introuvable », szh-citations.lua) continue de le dire à la compilation,
+// exactement comme avant ce module.
+//
+// Où l'appeler, et pourquoi pas ailleurs : lancerBuild() (extension.js), le chemin unique
+// de toute compilation déclenchée depuis le cockpit — pas reimporter.py --reprise, qui
+// répare un tout autre accident (une bascule de réimport interrompue) et n'a jamais
+// regardé le contenu d'un .md ; les mêler ferait porter à --reprise une responsabilité
+// qui n'est pas la sienne, pour un défaut qu'il ne cause pas. Pas non plus le constat
+// « biblio-inconnue » de lib/constats.js : il ne répare rien, il dit qu'on ne peut pas
+// savoir si une bibliographie a été retouchée depuis l'import — une question différente,
+// qui suppose déjà un marqueur qui se résout.
+function reparerMarqueursOrphelins(racine, options) {
+  const base = dossierUnites(racine, options);
+  let repares = 0;
+  for (const nom of sousDossiers(base)) {
+    if (nom.indexOf(PREFIXE_TEMPO) === 0) { continue; }     // lot en cours : pas son tour
+    const dossier = path.join(base, nom);
+    let texte;
+    try { texte = fs.readFileSync(path.join(dossier, nom + '.md'), 'utf8'); }
+    catch (e) { continue; }
+    const m = MARQUEUR_BIBLIO_RE.exec(texte);
+    if (!m) { continue; }                                  // pas de bibliographie détachée
+    const nomme = m[2];
+    if (nomme !== '' && fs.existsSync(path.join(dossier, nomme))) { continue; }   // marqueur sain
+    let candidats;
+    try {
+      candidats = fs.readdirSync(dossier, { withFileTypes: true })
+        .filter((e) => e.isFile() && /\.biblio\.md$/i.test(e.name)).map((e) => e.name);
+    } catch (e) { continue; }
+    if (candidats.length !== 1) { continue; }                // zéro ou plusieurs : on ne devine pas
+    if (reecrireMarqueurBiblio(path.join(dossier, nom + '.md'), candidats[0])) { repares++; }
+  }
+  return repares;
 }
 
 // Les documents produits sous l'ancien nom : les laisser ferait cohabiter deux PDF pour un
@@ -174,5 +270,12 @@ function reprendre(racine, options) {
 // alignerFichiers est exportée pour lib/import-hote.js : l'import préfixe les dossiers
 // nouvellement créés (voir ce module), et un dossier renommé doit voir ses fichiers suivre
 // exactement comme ici — recopier la boucle aurait fait vivre la même règle à deux endroits,
-// avec le risque qu'ils divergent au prochain sidecar ajouté à la chaîne.
-module.exports = { listerUnites, repriseEnAttente, renumeroter, reprendre, alignerFichiers };
+// avec le risque qu'ils divergent au prochain sidecar ajouté à la chaîne. Le marqueur de
+// bibliographie suit avec elle (reparerMarqueurApresAlignement), pour que les trois
+// appelants — « Terminer », la reprise d'un lot interrompu, et le préfixage à l'import —
+// en profitent sans le réécrire trois fois. reparerMarqueursOrphelins est exportée pour
+// extension.js (lancerBuild) : voir son commentaire ci-dessus.
+module.exports = {
+  listerUnites, repriseEnAttente, renumeroter, reprendre, alignerFichiers,
+  reparerMarqueursOrphelins
+};

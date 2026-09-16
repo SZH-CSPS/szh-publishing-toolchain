@@ -140,6 +140,35 @@ def nom_biblio(slug):
     return slug + '.biblio.md'
 
 
+# Depuis que l'import pose toujours <slug>.biblio.md — même quand le Word n'a pas de
+# bibliographie, voir szh-biblio-detacher.lua — sa seule PRÉSENCE ne dit plus si le Word en
+# apportait une : un fichier vide et un fichier absent doivent se lire pareil partout
+# ci-dessous (fusionner_biblio, rien_a_faire, ecrire_empreintes), sans quoi un article qui
+# n'a jamais eu de bibliographie recevrait un message de réimport qui n'a pas de sens pour
+# lui — c'est le bruit que ce contrôle existe pour empêcher.
+#
+# « Vide » au sens large, comme szh-citations.lua le définit à la compilation (même
+# raisonnement, langage différent) : rien, ou seulement des blancs — espaces, tabulations,
+# retours à la ligne, et les blancs qu'on ne voit pas, que ce dépôt pose partout par ses
+# règles de typographie et qu'un fichier « vidé à la main » en contiendra. str.strip() de
+# Python traite déjà l'insécable (U+00A0) et l'espace fine insécable (U+202F) comme des
+# blancs ; seul le BOM (U+FEFF) ne l'est pas pour lui, et doit être retiré à part.
+def est_vide(chemin):
+    with open(chemin, encoding='utf-8') as f:
+        texte = f.read()
+    return texte.replace('﻿', '').strip() == ''
+
+
+def biblio_absente_ou_vide(chemin):
+    """Absente, illisible, ou vide au sens large : les trois se lisent comme « rien »."""
+    if not os.path.isfile(chemin):
+        return True
+    try:
+        return est_vide(chemin)
+    except OSError:
+        return True
+
+
 # Ce que le Word possède dans le dossier de l'article. Tout le reste survit.
 def possede_par_le_word(slug):
     return {slug + '.md', nom_biblio(slug), 'media', 'tables', NOM_EMPREINTES}
@@ -274,7 +303,10 @@ def ecrire_empreintes(dossier, slug, nom_word, tableaux=None, biblio=None):
     if os.path.isfile(corps):
         lignes.append('corps\t%s\t%s' % (sha(corps), slug + '.md'))
     refs = os.path.join(dossier, nom_biblio(slug))
-    if biblio is None and os.path.isfile(refs):
+    # Vide comme absent (voir est_vide ci-dessus) : sans cela, le fichier toujours créé à
+    # l'import, même sans bibliographie dans le Word, laisserait une empreinte — et le
+    # premier réimport de cet article la comparerait à du vide pour rien.
+    if biblio is None and not biblio_absente_ou_vide(refs):
         biblio = sha(refs)
     if biblio:
         lignes.append('biblio\t%s\t%s' % (biblio, nom_biblio(slug)))
@@ -696,8 +728,13 @@ def fusionner_biblio(vivant, temp, empreintes, slug):
              'inconnue': 0}
     ancien = os.path.join(vivant, nom_biblio(slug))
     neuf = os.path.join(temp, nom_biblio(slug))
-    sha_ancien = sha(ancien) if os.path.isfile(ancien) else None
-    sha_neuf = sha(neuf) if os.path.isfile(neuf) else None
+    # Vide comme absent (voir est_vide en tête de fichier) : depuis que l'import pose
+    # toujours ce fichier, même sans bibliographie dans le Word, sa seule présence ne dit
+    # plus rien — sans ce garde-fou, un article qui n'en a jamais eu recevrait « nouvelle
+    # bibliographie » au premier réimport, pour un fichier qui est resté vide des deux
+    # côtés.
+    sha_ancien = None if biblio_absente_ou_vide(ancien) else sha(ancien)
+    sha_neuf = None if biblio_absente_ou_vide(neuf) else sha(neuf)
     if sha_ancien is None:
         # Rien à arbitrer : soit le Word en apporte une, soit il n'y en a nulle part.
         bilan['nouvelle'] = 1 if sha_neuf else 0
@@ -757,6 +794,23 @@ def memes_octets(a, b):
     return sha(a) == sha(b)
 
 
+# Comme memes_octets(), mais pour <slug>.biblio.md : depuis que l'import pose toujours ce
+# fichier, absent et vide doivent compter pour la même chose des deux côtés, sinon un
+# article qui n'a jamais eu de bibliographie et un Word qui n'en apporte toujours pas
+# feraient échouer « rien à faire » — la comparaison verrait un fichier apparaître d'un
+# côté, là où memes_octets() aurait vu deux absences et conclu « identique ».
+def biblio_inchangee(vivant, temp, slug):
+    a = os.path.join(vivant, nom_biblio(slug))
+    b = os.path.join(temp, nom_biblio(slug))
+    vide_a = biblio_absente_ou_vide(a)
+    vide_b = biblio_absente_ou_vide(b)
+    if vide_a and vide_b:
+        return True
+    if vide_a != vide_b:
+        return False
+    return sha(a) == sha(b)
+
+
 def rien_a_faire(vivant, temp, slug):
     """Vrai si le corps, la bibliographie, les tableaux et les images sortiraient
     identiques.
@@ -767,8 +821,7 @@ def rien_a_faire(vivant, temp, slug):
     if not memes_octets(os.path.join(vivant, slug + '.md'),
                         os.path.join(temp, slug + '.md')):
         return False
-    if not memes_octets(os.path.join(vivant, nom_biblio(slug)),
-                        os.path.join(temp, nom_biblio(slug))):
+    if not biblio_inchangee(vivant, temp, slug):
         return False
     tv, tn = lister_tables(vivant), lister_tables(temp)
     if sorted(tv) != sorted(tn):

@@ -47,7 +47,11 @@ const SLUG = '01-essai';
 test('bibliographie : « rien à faire » la compare, sans quoi la correction est jetée', () => {
   const bloc = PY.slice(PY.indexOf('def rien_a_faire('), PY.indexOf('def pause_eventuelle('));
   assert.ok(bloc.length > 0, 'la comparaison « rien à faire » a disparu');
-  assert.match(bloc, /memes_octets\(os\.path\.join\(vivant, nom_biblio\(slug\)\),\s*os\.path\.join\(temp, nom_biblio\(slug\)\)\)/,
+  // biblio_inchangee(), pas memes_octets() : depuis que l'import pose toujours
+  // <slug>.biblio.md, même sans bibliographie dans le Word, absent et vide doivent
+  // compter pour la même chose des deux côtés (voir son commentaire), sans quoi ce
+  // fichier toujours créé ferait échouer « rien à faire » pour rien.
+  assert.match(bloc, /biblio_inchangee\(vivant, temp, slug\)/,
     'la bibliographie n’est plus comparée : un Word dont seules les références changent '
     + 'serait jugé sans effet, consommé, et la correction de l’auteur jetée — c’est le '
     + 'défaut mesuré, il ne doit pas revenir');
@@ -428,3 +432,54 @@ test('bibliographie : « Annuler le réimport » la remet avec le reste', (t) =>
       'les empreintes revenues ne portent plus la bibliographie');
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
+
+// ---- Depuis que l'import pose TOUJOURS <slug>.biblio.md, même vide -------------------
+//
+// szh-biblio-detacher.lua ne se contente plus de ne rien faire quand le Word n'a pas de
+// bibliographie : il crée le fichier quand même, vide, pour que la rédaction puisse
+// l'écrire après coup. Ce que ces contrôles-ci mesurent : que ce changement ne rend PAS
+// bruyant un cas qui était muet. Un article qui n'a jamais eu de bibliographie, réimporté
+// par un Word qui n'en a toujours pas, ne doit recevoir NI message « nouvelle
+// bibliographie », NI conflit, NI retrait — exactement comme avant, quand le fichier
+// n'existait pas du tout. `biblio: ''` dans les fixtures simule ce que la chaîne réelle
+// produit désormais (fichier vide) sans faire tourner pandoc pour de vrai.
+test('bibliographie : vide comme absent, un Word sans bibliographie reste « rien à faire »',
+  (t) => {
+    assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+    if (!bashCompatible()) { return; }
+    const absent = pandocAbsent();
+    if (absent) { return t.skip(absent); }
+    // L'article n'a jamais eu de bibliographie : pas de fichier vivant (bibliolInstallee
+    // absent), comme le veut « pas de création rétroactive ».
+    const racine = revueImportee(null, null);
+    try {
+      const { r, j } = reimporter(racine, CORPS, '');
+      assert.strictEqual(r.status, 3, 'sortie ' + r.status + ' : un article resté sans '
+        + 'bibliographie, réimporté par un Word qui n’en apporte toujours pas, ne doit pas '
+        + 'être jugé « remplacé » simplement parce que le fichier existe désormais, vide');
+      assert.strictEqual(j.resultat, 'rien');
+    } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+  });
+
+// Même contrôle que « bibliographie retirée » plus haut, mais avec le fichier vide du
+// nouveau Word plutôt qu'absent : la même perte doit être nommée de la même façon,
+// biblio_absente_ou_vide() effaçant la différence entre les deux avant que la décision ne
+// se prenne.
+test('bibliographie : un Word qui livre un fichier vide retire la bibliographie, comme absent',
+  (t) => {
+    assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+    if (!bashCompatible()) { return; }
+    const absent = pandocAbsent();
+    if (absent) { return t.skip(absent); }
+    const racine = revueImportee(REFS_IMPORT, REFS_MAIN);
+    try {
+      const { r, j } = reimporter(racine,
+        ['# Essai', '', 'Un corps.', '', 'Aeschlimann, B. (2020). Un titre.', ''].join(LF),
+        '');
+      assert.strictEqual(r.status, 0, 'sortie ' + r.status);
+      assert.strictEqual(j.biblio.retiree, 1,
+        'le retrait n’est pas compté quand le nouveau fichier est vide plutôt qu’absent');
+      assert.deepStrictEqual(j.avertissements, ['biblio-retiree'],
+        'le fichier de bibliographie s’en va sans que rien ne le nomme');
+    } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+  });

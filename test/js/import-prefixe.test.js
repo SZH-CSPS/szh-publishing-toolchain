@@ -56,21 +56,41 @@ function simulerArticleImporte(slug, titre) {
     ['type: article', 'title:', '  fr: "' + titre + '"', ''].join(LF));
 }
 
+// Même chose, mais avec une bibliographie détachée — la forme que laisse
+// szh-biblio-detacher.lua : le fichier <slug>.biblio.md à côté, et le marqueur
+// « ::: {.szh-biblio src="<slug>.biblio.md"} » dans le .md, à la place de la liste.
+function simulerArticleImporteAvecBiblio(slug, titre) {
+  const dossier = path.join(ARTICLES, slug);
+  fs.mkdirSync(path.join(dossier, 'media'), { recursive: true });
+  fs.writeFileSync(path.join(dossier, slug + '.biblio.md'), 'Dupont, A. (2024). Un titre.' + LF);
+  fs.writeFileSync(path.join(dossier, slug + '.md'),
+    ['Texte importé.', '', '::: {.szh-biblio src="' + slug + '.biblio.md"}', ':::', ''].join(LF));
+  fs.writeFileSync(path.join(dossier, slug + '.meta.yaml'),
+    ['type: article', 'title:', '  fr: "' + titre + '"', ''].join(LF));
+}
+
 function ausgabe() {
   return fs.readFileSync(path.join(REVUE, 'ausgabe.yaml'), 'utf8');
 }
 
+function marqueurSrc(slug) {
+  const texte = fs.readFileSync(path.join(ARTICLES, slug, slug + '.md'), 'utf8');
+  const m = texte.match(/\.szh-biblio\b[^}]*\bsrc="([^"]*)"/);
+  return m ? m[1] : null;
+}
+
 // Dépose un .docx, laisse lancerConversion() démarrer la tâche, simule ce que « make
 // import » aurait produit sous le nom NU (jamais préfixé — ce n'est pas son rôle), et
-// laisse l'import se terminer.
-async function importer(fichierWord, slugSimule, titre) {
+// laisse l'import se terminer. `simuler`, si fourni, remplace simulerArticleImporte() —
+// utilisé pour éprouver un article importé avec une bibliographie détachée.
+async function importer(fichierWord, slugSimule, titre, simuler) {
   fs.writeFileSync(path.join(MOTS, fichierWord), Buffer.alloc(16));
   HOTE.stub.tasks.fetchTasks = () => Promise.resolve([{ name: NOM_IMPORT }, { name: NOM_BUILD }]);
   try {
     const promesse = HOTE.executer('szh.convertirEnAttente');
     await tick();
     fs.rmSync(path.join(MOTS, fichierWord));
-    simulerArticleImporte(slugSimule, titre);
+    (simuler || simulerArticleImporte)(slugSimule, titre);
     await HOTE.finirTache(NOM_IMPORT, 0);
     await tick();
     await HOTE.finirTache(NOM_BUILD, 0);
@@ -175,4 +195,20 @@ test('un nom cible déjà pris fait prendre le prochain numéro libre, sans boug
   assert.strictEqual(HOTE.erreurs.length, avantErreurs,
     'la recherche du numéro libre a fait sortir une erreur alors que l’import doit continuer');
   assert.match(ausgabe(), /"05-zeta"/, 'l’ordre du numéro ne nomme pas le dossier réellement créé');
+});
+
+// Troisième chemin du défaut constaté sur le poste du propriétaire (les deux autres sont
+// dans test/js/renumerotation-fs.test.js) : un article importé avec une bibliographie est
+// préfixé par prefixerNouveauxArticles(), qui appelle déjà alignerFichiers() pour le .md
+// et la fiche — le marqueur doit suivre par le même appel, sans geste séparé ici.
+test('import : le marqueur de bibliographie suit le préfixage à l’import', async () => {
+  fs.rmSync(ARTICLES, { recursive: true, force: true });
+  await importer('Eta.docx', 'eta', 'Eta', simulerArticleImporteAvecBiblio);
+  assert.deepStrictEqual(fs.readdirSync(ARTICLES), ['00-eta'],
+    'décor du test : le premier article importé doit prendre « 00 »');
+  assert.ok(fs.existsSync(path.join(ARTICLES, '00-eta', '00-eta.biblio.md')),
+    'le fichier de bibliographie n’a pas suivi le préfixage');
+  assert.strictEqual(marqueurSrc('00-eta'), '00-eta.biblio.md',
+    'le marqueur désigne encore « eta.biblio.md » : la bibliographie ne se résoudrait '
+    + 'plus à la compilation');
 });

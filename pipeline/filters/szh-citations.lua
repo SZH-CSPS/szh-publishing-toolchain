@@ -930,6 +930,35 @@ local function bloc_manquant(texte)
   )
 end
 
+-- Un fichier de bibliographie « vide au sens large » : depuis que l'import pose toujours
+-- <slug>.biblio.md — même quand le Word n'a pas de bibliographie, voir
+-- szh-biblio-detacher.lua —, sa seule présence ne dit plus s'il y a quelque chose à
+-- imprimer. « Vide » n'est pas seulement zéro octet : rien, ou seulement des blancs —
+-- espaces, tabulations, retours à la ligne, lignes vides répétées, et les blancs qu'on ne
+-- voit pas, que ce dépôt pose partout par ses règles de typographie et qu'un fichier
+-- « vidé à la main » en contiendra — insécable (U+00A0), espace fine insécable (U+202F),
+-- BOM (U+FEFF). `%s` de Lua ne reconnaît que les blancs ASCII : les trois autres sont des
+-- suites d'octets UTF-8 à retirer explicitement, sans quoi pandoc.read() leur ferait un
+-- Para non vide — un cadre de bibliographie sans la moindre référence dedans.
+--
+-- ⚠ Ne pas confondre avec un fichier ABSENT (io.open a déjà échoué à ce moment-là, dans
+-- resoudre_biblio ci-dessous) : c'est l'anomalie que « biblio-introuvable » signale
+-- toujours. Un fichier présent mais vide est un état normal et silencieux — aucun
+-- avertissement, rien à l'écran, exactement comme un article qui n'a jamais eu de
+-- bibliographie.
+local function est_vide(texte)
+  local t = (texte or ''):gsub('[ \t\r\n\f\v]', '')
+  t = t:gsub('\194\160', '')     -- U+00A0, espace insécable
+  t = t:gsub('\226\128\175', '') -- U+202F, espace fine insécable
+  t = t:gsub('\239\187\191', '') -- U+FEFF, BOM
+  return t == ''
+end
+
+-- Exposée après coup (SZH_CITATIONS est déjà construit plus haut) : test/js/biblio-vide.test.js
+-- éprouve cette fonction directement, sur les mêmes blancs que ceux que la typographie
+-- maison pose dans le texte — comparer à l'œil ne prouverait rien du résultat.
+SZH_CITATIONS.est_vide = est_vide
+
 -- Rend (blocs, première entrée, dernière entrée) : la référence de bibliographie est
 -- remplacée par le titre — posé ici, dans la langue de l'article — puis par les entrées du
 -- fichier. Sans référence dans le document, les blocs sortent tels quels et la liste est
@@ -958,6 +987,9 @@ local function resoudre_biblio(doc, slug)
           'Die Literaturverzeichnis-Datei dieses Artikels fehlt: die Literaturliste fehlt '
           .. 'im Dokument. Importieren Sie den Artikel neu, oder entfernen Sie den Verweis '
           .. 'auf das Literaturverzeichnis aus dem Text.')
+      elseif est_vide(contenu) then
+        -- Rien à imprimer, et rien à dire : le bloc marqueur part sans que rien ne le
+        -- remplace, exactement comme si l'article n'avait jamais eu de bibliographie.
       else
         local entrees = pandoc.read(contenu, 'markdown').blocks
         if #entrees > 0 then

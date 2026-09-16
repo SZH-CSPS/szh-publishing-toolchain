@@ -26,6 +26,16 @@
 // dossier, tout fichier dont le nom commence par l'ancien slug : cela attrape aussi les
 // sidecars qu'on ne connaît pas encore, alors qu'une liste écrite ici en oublierait un le
 // jour où la chaîne en ajoute un.
+//
+// ⚠ Ça ne suffit pas pour la bibliographie. Le fichier <slug>.biblio.md suit bien cette
+// règle, comme n'importe quel sidecar — mais le .md de l'article le désigne AUSSI par son
+// NOM, dans le marqueur qu'y laisse l'import (« ::: {.szh-biblio src="<slug>.biblio.md"} »,
+// pipeline/filters/szh-biblio-detacher.lua) : un texte, pas un chemin relatif comme
+// media/ ou tables/, et ce texte contient le slug. Renommer les FICHIERS d'un dossier, ce
+// que ce module décide et que lib/renumerotation-fs.js exécute, ne réécrit donc pas ce
+// marqueur — il faut le faire à part, voir reecrireMarqueurBiblio() dans ce dernier
+// fichier, sans quoi la bibliographie d'un article renommé pointe vers un fichier qui
+// n'existe plus.
 'use strict';
 
 const { prefixeOrdre } = require('./articles');
