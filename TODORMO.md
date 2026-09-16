@@ -336,6 +336,19 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
 - [ ] Ouvrir un `out/<slug>/<slug>.docx` dans Word : tableaux fusionnés, images, bibliographie.
   Les SVG de la maquette sont perdus faute de `rsvg-convert` ; ajouter `librsvg2-bin` au rootfs si
   ça se voit.
+- [ ] Exporter aussi vers Edudoc les mots-clés **hors thésaurus**. Aujourd'hui `commandeEdudoc`
+  (`lib/secretariat.js`) n'écrit en MARC 690 que les descripteurs qu'`apparierDescripteurs`
+  reconnaît dans le vocabulaire moissonné : c'est la décision prise, et les autres sont comptés
+  et listés en fin d'export plutôt que perdus en silence. La proportion n'est pas marginale —
+  sur le numéro d'essai 2027-01, 88 mots-clés saisis donnent 36 descripteurs, et 26 termes
+  distincts restent sur le quai (« différenciation », « compétences », « capabilité »,
+  « besoins spécifiques »…). Piste : une seconde série de colonnes en **653** (sujet non
+  contrôlé), à côté des 690, sur le modèle de largeur variable déjà en place pour les auteur·e·s
+  et les descripteurs (`enTetesDescripteurs`, `export-templates/edudoc.twig`). À vérifier
+  d'abord auprès d'Edudoc : leur import accepte-t-il une colonne 653, et la bibliothécaire
+  veut-elle ces termes libres ou préfère-t-elle les rattacher elle-même à son vocabulaire ?
+  Tant que la réponse n'est pas connue, ne rien écrire : un champ refusé fait échouer l'import
+  entier sans dire pourquoi.
 
 ## Maquette et accessibilité
 

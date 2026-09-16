@@ -73,6 +73,10 @@ async function main() {
     } else if (commande === 'edudoc') {
       opts.cheminCache = args.cache;
       opts.cles = listeCles(args.numeros);
+      // --numero (répétable, comme pour « metadonnees ») : les numéros locaux dont on tire
+      // les mots-clés (690), joints aux lignes OAI par DOI. Optionnel — sans lui, le CSV
+      // sort comme avant, sans colonnes 690.
+      opts.racinesNumeros = Array.isArray(args.numero) ? args.numero : (args.numero ? [args.numero] : []);
       opts.dossierSortie = args.sortie;
       resultat = await secretariat.commandeEdudoc(opts);
     } else if (commande === 'caracteres') {

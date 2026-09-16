@@ -234,17 +234,30 @@ test('mots-clés : œ, æ et majuscules accentuées se plient aussi', (t) => {
     'œ/æ mal repliés : ' + JSON.stringify(res.fr));
 });
 
-test('mots-clés : deux mots-clés identiques ne font pas planter le tri', () => {
+// Ce test vérifiait à l'origine que table.sort ne plantait pas sur deux clés de tri égales
+// (« invalid order function »). Depuis le dédoublonnage posé le 16.09.2026 pour le
+// qualificatif de provenance (voir plus bas « qualificatif de provenance »), deux mots-clés
+// IDENTIQUES dès la saisie ne s'impriment plus deux fois non plus — imprimer « Alpes » deux
+// fois sur une couverture n'a jamais eu de sens, qualificatif masqué ou non — et le doublon
+// est retiré AVANT même d'atteindre le tri, ce qui couvre le même risque autrement.
+test('mots-clés : deux mots-clés identiques sont fondus en un seul, sans planter le tri', () => {
   const res = trierMotscles({ fr: ['Alpes', 'Alpes'] });
-  assert.deepEqual(res.fr, ['Alpes', 'Alpes'], 'doublon perdu ou réordonné : ' + JSON.stringify(res.fr));
+  assert.deepEqual(res.fr, ['Alpes'], 'le doublon aurait dû être fondu : ' + JSON.stringify(res.fr));
 });
 
-test('mots-clés : deux mots pliant sur la même clé mais différents gardent un ordre total', () => {
-  // « École » et « ecole » plient tous deux sur « ecole » : à clé égale, motcle_avant
-  // retombe sur la chaîne brute, sans quoi table.sort peut lever « invalid order
-  // function » selon l'ordre d'entrée.
+// « École » et « ecole » plient tous deux sur « ecole » (casse et accent) : avant le
+// dédoublonnage du 16.09.2026, ce test vérifiait seulement que motcle_avant retombe sur la
+// chaîne brute à clé égale, sans quoi table.sort pouvait lever « invalid order function ».
+// Le dédoublonnage demandé pour le qualificatif de provenance est lui aussi insensible à la
+// casse et aux accents (même cle_tri_motcle) : ces deux formes d'un même mot ne survivent
+// donc plus toutes les deux, la première rencontrée fait foi, et le risque de plantage à clé
+// égale ne se présente même plus au moment du tri — il ne reste qu'une entrée à trier.
+// Dépend du pliage des accents, comme les tests A8 ci-dessus : sauté sur le même défaut de
+// build.
+test('mots-clés : deux mots pliant sur la même clé (casse, accent) sont fondus, le premier fait foi', (t) => {
+  if (sauterSiPliageCasse(t)) { return; }
   const res = trierMotscles({ fr: ['École', 'ecole'] });
-  assert.deepEqual(res.fr, ['ecole', 'École'], 'repli à clé égale incorrect : ' + JSON.stringify(res.fr));
+  assert.deepEqual(res.fr, ['École'], 'repli à clé égale incorrect : ' + JSON.stringify(res.fr));
 });
 
 test('mots-clés : un mot-clé vide ne fait pas planter le tri', () => {
@@ -275,6 +288,93 @@ test('mots-clés : le tri est indépendant par langue', (t) => {
     'liste française altérée : ' + JSON.stringify(res.fr));
   assert.deepEqual(res.de, ['Anlage', 'Österreich', 'Wien'],
     'liste allemande altérée : ' + JSON.stringify(res.de));
+});
+
+// ── Qualificatif de provenance edudoc, masqué à l'affichage (16.09.2026) ───────────────
+// Un descripteur edudoc porte parfois un qualificatif final entre parenthèses qui ne dit
+// rien du terme, seulement d'où il vient dans le thésaurus : « accessibilité (csps) »,
+// « plan d'études (na) ». sans_qualificatif_provenance (szh-maquette.lua) le retire AVANT le
+// tri A8 ci-dessus, dédoublonne APRÈS coup, et ne touche jamais une parenthèse de SENS ni une
+// parenthèse au milieu du libellé. La liste fermée et la fonction sont partagées avec
+// lib/mots-cles-edudoc.js (sansQualificatifDeProvenance, QUALIFICATIFS_PROVENANCE) — voir
+// test/js/mots-cles-provenance.test.js pour l'égalité des deux listes et le comportement de
+// la moitié JS ; ici, c'est le comportement RÉEL du Lua, sous le vrai pandoc, qui est éprouvé.
+//
+// ⚠ AUCUN de ces tests ne se met derrière sauterSiPliageCasse (contrairement aux tests A8
+// ci-dessus), et c'est délibéré, pas un oubli. Ce garde-fou protège des comparaisons qui ont
+// besoin du PLIAGE des accents pour aboutir — deux libellés qui ne diffèrent que par la casse
+// ou les accents, ou un ordre alphabétique qui se déciderait sur une lettre accentuée. Ici :
+//   * le masquage compare le contenu d'une parenthèse à six jetons ASCII purs
+//     (na/ce/szh/csps/spc) — string.lower() ne touche pas un octet ASCII, pliage cassé ou pas ;
+//   * chaque fixture ci-dessous a été choisie pour que l'ordre alphabétique se décide sur une
+//     lettre ASCII qui distingue déjà les libellés (measure directe : accessibilité/
+//     biotechnologie/compensation/inclusion/plan/prévention se décident sur a/b/c/i/p/p puis
+//     l/r, tous ASCII) — jamais sur la lettre accentuée elle-même.
+// Un test qui mêlerait vraiment les deux (masquage ET position décidée par une lettre
+// accentuée) devrait se scinder plutôt que de se cacher derrière la garde ; aucun des cas
+// demandés ne s'y trouve, et les protéger derrière pliageRaison les aurait rendus muets sur
+// le poste même où le PDF de la revue se fabrique.
+// L'apostrophe est ÉCRITE DROITE dans les deux fixtures ci-dessous (« d'études »,
+// « d'évaluation »), pas courbe : trierMotscles fait un aller-retour markdown -> markdown
+// (--standalone) pour relire le bloc YAML, et le writer markdown de pandoc, extension
+// « smart » active par défaut, renormalise une apostrophe typographique (’) en apostrophe
+// simple (') à l'écriture — c'est un comportement de CE HARNAIS, mesuré ici, sans rapport
+// avec sans_qualificatif_provenance (qui ne regarde jamais l'apostrophe) ni avec la vraie
+// chaîne PDF (markdown -> HTML -> WeasyPrint, qui ne repasse jamais par ce writer-là).
+test('qualificatif de provenance : les six jetons sont masqués, sens et casse mêlés', () => {
+  const res = trierMotscles({ fr: ['accessibilité (csps)', 'compensation des désavantages (csps)',
+    "plan d'études (na)", 'inclusion (CSPS)', 'biotechnologie (ce)', 'prévention (SPC)'] });
+  assert.deepEqual(res.fr, ['accessibilité', 'biotechnologie', 'compensation des désavantages',
+    'inclusion', "plan d'études", 'prévention'], JSON.stringify(res.fr));
+});
+
+test('qualificatif de provenance : une parenthèse de SENS reste, deux concepts distincts survivent', () => {
+  const res = trierMotscles({ fr: ['diagnostic (résultat)', 'diagnostic (processus)',
+    "procédure d'évaluation standardisée (PES)",
+    'personne en formation (dans la formation professionnelle)'] });
+  assert.deepEqual(res.fr, ['diagnostic (processus)', 'diagnostic (résultat)',
+    'personne en formation (dans la formation professionnelle)',
+    "procédure d'évaluation standardisée (PES)"], JSON.stringify(res.fr));
+});
+
+test('qualificatif de provenance : le doublon créé par le masquage est fondu', () => {
+  const res = trierMotscles({ fr: ['prévention', 'prévention (na)', 'zèbre'] });
+  assert.deepEqual(res.fr, ['prévention', 'zèbre'],
+    'prévention et prévention (na) auraient dû fondre en un seul mot-clé : ' + JSON.stringify(res.fr));
+});
+
+test('qualificatif de provenance : une parenthèse au MILIEU du libellé n’est jamais touchée', () => {
+  const res = trierMotscles({ fr: ['loi (LHand) fédérale', 'autisme (TSA) et école'] });
+  assert.deepEqual(res.fr, ['autisme (TSA) et école', 'loi (LHand) fédérale'],
+    'une parenthèse médiane a été altérée : ' + JSON.stringify(res.fr));
+});
+
+test('qualificatif de provenance : le tri porte sur la forme AFFICHÉE, qualificatif déjà retiré', () => {
+  const res = trierMotscles({ fr: ['zèbre (na)', 'accessibilité (csps)', 'milieu'] });
+  assert.deepEqual(res.fr, ['accessibilité', 'milieu', 'zèbre'], JSON.stringify(res.fr));
+});
+
+// Cas dégénéré : un mot-clé réduit à son seul qualificatif de provenance devient une chaîne
+// vide une fois masqué. Personne ne tape « (na) » tout seul et aucun descripteur du
+// thésaurus n'a cette forme, mais la saisie manuelle reste ouverte — et un élément vide
+// serait le genre de chose qu'un validateur de bibliothèque refuse sans dire pourquoi.
+// L'entrée disparaît, elle n'est PAS gardée comme un mot-clé vide ordinaire (voir le test
+// « un mot-clé vide ne fait pas planter le tri », plus haut, sur une entrée VRAIMENT vide
+// dès le départ, dont le comportement ne change pas). Comparaison sur des jetons ASCII :
+// aucune dépendance au pliage des accents ici non plus.
+test('qualificatif de provenance : un mot-clé réduit à rien par le masquage disparaît', () => {
+  const res = trierMotscles({ fr: ['(na)', 'accessibilité'] });
+  assert.deepEqual(res.fr, ['accessibilité'],
+    '« (na) » seul aurait dû disparaître après masquage : ' + JSON.stringify(res.fr));
+});
+
+// Même chose avec DEUX entrées dégénérées différentes : elles ne doivent pas non plus se
+// dédoublonner en une seule puce vide (« (na) » et « (szh) » plient tous deux sur la chaîne
+// vide) — les deux disparaissent, purement et simplement.
+test('qualificatif de provenance : deux mots-clés dégénérés différents disparaissent tous les deux', () => {
+  const res = trierMotscles({ fr: ['(na)', '(szh)', 'vrai mot'] });
+  assert.deepEqual(res.fr, ['vrai mot'],
+    '« (na) » et « (szh) » auraient dû disparaître après masquage : ' + JSON.stringify(res.fr));
 });
 
 // ── Détection de langue : le comportement ACTUEL de quatre filtres ─────────────────────

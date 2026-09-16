@@ -391,6 +391,12 @@ const TEXTES_COCKPIT = {
     // Placeholder d'un mot-clé vide (TO BE TRANSLATED, la sentinelle écrite dans le YAML) : affiché dans la langue de l'interface, jamais en anglais figé.
     'mc.aTraduire': 'à traduire',
     'fiches.motscles.suggestions': 'Descripteurs edudoc.ch déjà utilisés dans les deux revues',
+    // La pastille « hors thésaurus » (media/_fiches.js) : posée sur une case non vide dont
+    // la valeur n'est pas un descripteur edudoc.ch. Jamais écrite nulle part, recalculée à
+    // l'affichage — voir son commentaire dans _fiches.js.
+    'mc.horsThesaurus': 'Ce mot-clé n’est pas un descripteur edudoc.ch : il ne partira pas à l’export.',
+    // Le second rideau de la boîte de suggestions, quand aucun descripteur ne correspond.
+    'mc.ajouterHorsThesaurus': 'Ajouter « {0} » hors thésaurus',
     'fiches.ajout.fr': ' + Français (champs FR)',
     'fiches.ajout.de': ' + Allemand (champs DE)',
     'fiches.ajout.it': ' + Italien (champs IT)',
@@ -1864,6 +1870,8 @@ const TEXTES_COCKPIT = {
     'fiches.motcle.retirer': 'Dieses Schlagwort entfernen (in allen Sprachen)',
     'mc.aTraduire': 'zu übersetzen',
     'fiches.motscles.suggestions': 'Bereits in beiden Zeitschriften verwendete edudoc.ch-Schlagwörter',
+    'mc.horsThesaurus': 'Dieses Schlagwort ist kein edudoc.ch-Deskriptor: Es wird nicht mit exportiert.',
+    'mc.ajouterHorsThesaurus': '«{0}» ausserhalb des Thesaurus hinzufügen',
     'fiches.ajout.fr': ' + Französisch (FR-Felder)',
     'fiches.ajout.de': ' + Deutsch (DE-Felder)',
     'fiches.ajout.it': ' + Italienisch (IT-Felder)',

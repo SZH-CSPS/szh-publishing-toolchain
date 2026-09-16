@@ -152,6 +152,44 @@ local function motcle_avant(a, b)
   return a < b
 end
 
+-- ─── Qualificatif de PROVENANCE du thésaurus edudoc, masqué à l'AFFICHAGE (16.09.2026) ────
+-- Un descripteur edudoc porte parfois un qualificatif final entre parenthèses qui ne dit rien
+-- du terme, seulement d'où il vient dans le thésaurus : « Barrierefreiheit (szh) »,
+-- « inclusion (CSPS) », « plan d'études (na) ». La saisie passe désormais par une liste
+-- fermée qui insère la forme canonique d'edudoc, qualificatif compris, dans le .meta.yaml —
+-- et ce qualificatif-là ne doit jamais s'imprimer, ni sur le PDF ni sur le HTML (les deux
+-- sortent de ce même gabarit). Le CSV Edudoc, lui, garde la forme canonique complète : rien
+-- ici n'y touche, le masquage n'a lieu qu'à l'affichage, jamais dans le .meta.yaml.
+--
+-- Liste fermée, partagée avec vscodium-extension/szh-cockpit/lib/mots-cles-edudoc.js
+-- (QUALIFICATIFS_PROVENANCE, sansQualificatifDeProvenance) : le PDF sort de ce filtre-ci, la
+-- page publique d'ojs.szh.ch de ce module JS-là — les deux doivent masquer exactement les
+-- mêmes jetons, sous peine d'afficher deux choses différentes sans que personne ne s'en
+-- aperçoive. test/js/mots-cles-grille.test.js lit les deux fichiers et échoue si l'une des
+-- deux listes bouge sans l'autre.
+--
+-- Seuls ces cinq jetons, comparés en entier et insensibles à la casse (ASCII seul, donc pas
+-- concerné par le défaut de string.lower() sur pandoc Windows natif documenté plus haut pour
+-- PLIAGE_ACCENTS) : tout autre contenu de parenthèse est un SENS et reste intact —
+-- « diagnostic (résultat) » et « diagnostic (processus) » sont deux concepts différents,
+-- « procédure d'évaluation standardisée (PES) » porte son acronyme officiel.
+local QUALIFICATIFS_PROVENANCE = { na = true, ce = true, szh = true, csps = true, spc = true }
+
+-- Un libellé privé de son qualificatif de provenance, s'il en porte un. Le contenu de la
+-- parenthèse finale doit être EXACTEMENT l'un des cinq jetons ci-dessus, jamais une recherche
+-- à l'intérieur : un libellé sans parenthèse finale, ou dont la parenthèse porte autre chose,
+-- ressort inchangé.
+local function sans_qualificatif_provenance(texte)
+  local contenu = texte:match('%(([^()]*)%)%s*$')
+  if contenu then
+    local nu = contenu:match('^%s*(.-)%s*$'):lower()
+    if QUALIFICATIFS_PROVENANCE[nu] then
+      return (texte:gsub('%s*%([^()]*%)%s*$', ''))
+    end
+  end
+  return texte
+end
+
 -- DOI calculé de l'article, lu dans le fichier dérivé dois-calcules.yaml que le cockpit
 -- dépose à côté d'ausgabe.yaml (repéré par SZH_AUSGABE, comme annee_numero). Le calcul
 -- lui-même vit dans le cockpit — le rang de l'article parmi les porteurs du numéro,
@@ -624,8 +662,30 @@ function Meta(meta)
       -- de la langue source de la traduction) ne doit pas se voir à l'impression, et rien
       -- n'oblige les deux langues à s'aligner entre elles.
       local textes = {}
+      local vus_motcles = {}
       for _, mot in ipairs(km[l]) do
-        table.insert(textes, S(mot))
+        -- Masquage AVANT le tri : c'est la forme AFFICHÉE qui doit être triée, jamais la
+        -- forme brute d'edudoc encore porteuse de son qualificatif de provenance — sinon
+        -- « prévention (na) » se rangerait après « Zoothérapie » au lieu de sa place réelle.
+        local brut = S(mot)
+        local affiche = sans_qualificatif_provenance(brut)
+        -- Un mot-clé qui n'était PAS vide au départ mais que le masquage réduit à rien —
+        -- « (na) » tapé seul, aucun descripteur du thésaurus n'a cette forme mais la saisie
+        -- manuelle reste ouverte — n'a plus rien à imprimer : il disparaît plutôt que de
+        -- poser une puce vide sur la couverture. Un vrai champ vide saisi tel quel, lui,
+        -- continue de traverser comme avant (voir le test « un mot-clé vide ne fait pas
+        -- planter le tri ») : seul le passage de « non vide » à « vide » déclenche l'écart.
+        if not (brut ~= '' and affiche == '') then
+          -- Dédoublonnage APRÈS le masquage, sur la clé de tri (casse et accents pliés,
+          -- déjà calculée pour le tri qui suit) : un article portant « prévention » et
+          -- « prévention (na) » ne doit imprimer ce mot-clé qu'une seule fois. Le premier
+          -- rencontré fait foi.
+          local cle = cle_tri_motcle(affiche)
+          if not vus_motcles[cle] then
+            vus_motcles[cle] = true
+            table.insert(textes, affiche)
+          end
+        end
       end
       table.sort(textes, motcle_avant)
       for _, texte in ipairs(textes) do

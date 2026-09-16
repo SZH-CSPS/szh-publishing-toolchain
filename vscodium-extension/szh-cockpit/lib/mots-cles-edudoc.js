@@ -1,7 +1,8 @@
 // Le vocabulaire des descripteurs edudoc.ch (thésaurus bilingue DE/FR appliqué à nos deux
 // revues), moissonné sur l'interface OAI-PMH publique d'edudoc.ch et gardé dans
-// C:\ProgramData\SZH\mots-cles.json. Alimentera plus tard l'autocomplétion de mots clés :
-// ce module ne fait que moissonner, dédoublonner, garder.
+// C:\ProgramData\SZH\mots-cles.json. Alimente l'autocomplétion de mots clés (côté webview,
+// media/_fiches.js) et l'appariement DE/FR vers l'export edudoc (champ MARC 690, plus bas
+// dans ce fichier) : ce module moissonne, dédoublonne, garde — et apparie.
 //
 // Endpoint https://edudoc.ch/oai2d, instance Invenio/TIND sans authentification. Les deux
 // revues y sont des sets dédiés, identifiants exacts (avec espaces, à encodeURIComponent) :
@@ -140,10 +141,23 @@ function recordsEnMotsCles(records) {
 // désaccord entre deux moissons (même allemand, français distinct — ce n'est pas théorique :
 // « Lernschwierigkeit » a deux traductions concurrentes sur l'instance) donne une seconde
 // entrée plutôt qu'un remplacement muet.
+//
+// parDe/parFr ne pointent chacune que vers la PREMIÈRE entrée rencontrée pour une clé
+// donnée (poserSiAbsente-like : jamais réécrites) : après un fork sur désaccord, l'allemand
+// du fork reste donc introuvable via parDe, qui désigne toujours l'entrée d'origine. Sans
+// garde-fou, un troisième descripteur identique au fork (même allemand ET même français)
+// retomberait sur l'entrée d'origine via parDe, redécouvrirait le même désaccord et
+// forkerait à nouveau — un fork de plus par répétition, jamais reconnu comme un doublon.
+// D'où parPaire : la clé COMBINÉE (allemand plié + français plié) de chaque entrée, qui
+// pointe elle vers la bonne entrée quel que soit le nombre de forks déjà accumulés sur le
+// même allemand, et qui coupe court avant toute recherche de candidat — un descripteur
+// rigoureusement identique à une entrée déjà connue ne doit jamais relancer la logique de
+// désaccord/fork, seulement les vrais nouveaux désaccords la déclenchent encore.
 function fusionnerMotsCles(existants, nouveaux) {
   const sortie = [];
-  const parDe = new Map();   // allemand plié (non vide) -> index dans `sortie`
-  const parFr = new Map();   // français plié (non vide) -> index dans `sortie`
+  const parDe = new Map();     // allemand plié (non vide) -> index dans `sortie`
+  const parFr = new Map();     // français plié (non vide) -> index dans `sortie`
+  const parPaire = new Map();  // "allemand pliéfrançais plié" -> index dans `sortie`
 
   const indexer = (i) => {
     const e = sortie[i];
@@ -151,6 +165,8 @@ function fusionnerMotsCles(existants, nouveaux) {
     const kf = plierTexte(e.fr);
     if (kd !== '' && !parDe.has(kd)) { parDe.set(kd, i); }
     if (kf !== '' && !parFr.has(kf)) { parFr.set(kf, i); }
+    const kp = kd + '' + kf;
+    if (!parPaire.has(kp)) { parPaire.set(kp, i); }
   };
 
   const poser = (mc) => {
@@ -159,6 +175,11 @@ function fusionnerMotsCles(existants, nouveaux) {
     if (de === '' && fr === '') { return; }
     const kd = plierTexte(de);
     const kf = plierTexte(fr);
+
+    // Doublon rigoureux (même allemand ET même français, pliés) : rien à ajouter, la
+    // première occurrence fait foi — voir le commentaire au-dessus de la fonction.
+    if (parPaire.has(kd + '' + kf)) { return; }
+
     let i = -1;
     if (kd !== '' && parDe.has(kd)) { i = parDe.get(kd); }
     else if (kf !== '' && parFr.has(kf)) { i = parFr.get(kf); }
@@ -327,10 +348,219 @@ async function rafraichirMotsCles(opts) {
   };
 }
 
+// ---- Export vers edudoc : apparier les mots-clés d'un article avec le thésaurus -------
+//
+// keywords.fr et keywords.de d'un article sont chacune triées alphabétiquement de LEUR
+// côté dans le .meta.yaml (mesuré sur les numéros réels du poste) : la n-ième entrée
+// française n'a donc aucune raison de correspondre à la n-ième allemande. Apparier par
+// position produirait un champ 690 faux sans jamais échouer un test naïf, puisque les deux
+// listes ont la même longueur. La seule paire fiable est celle que porte le thésaurus
+// edudoc lui-même : chaque terme saisi est retrouvé INDÉPENDAMMENT dans l'index, jamais en
+// regardant son vis-à-vis dans l'autre langue.
+//
+// Deuxième écart mesuré : trois mots-clés sur dix portent un qualificatif entre
+// parenthèses dans le thésaurus (« Inklusion (SZH) », « accessibilité (na) »…) que le
+// rédacteur ne tape jamais. Sans le tolérer, on ne reconnaît qu'un mot-clé sur neuf ; en
+// repliant sur la forme sans qualificatif, un sur deux. D'où deux clés par langue et par
+// entrée : la forme exacte, et la forme privée de son unique parenthèse finale — jamais une
+// parenthèse au milieu du libellé, qui fait partie du terme.
+//
+// Troisième écart : le .meta.yaml porte l'apostrophe typographique (’, U+2019), le
+// thésaurus l'apostrophe droite (', U+0027). plierNom (importé sous plierTexte) plie déjà
+// la casse, les accents et les espaces, mais ignore les apostrophes : plierDescripteur lui
+// ajoute cette seule normalisation plutôt que de dupliquer le pliage.
+//
+// Les trois fonctions ci-dessous sont pures : le thésaurus (le tableau motsCles du cache)
+// leur est passé en paramètre, jamais lu sur disque — à charge de l'appelant de le tirer
+// de lireCacheMotsCles() au préalable.
+
+const RE_QUALIFICATIF_FINAL = /\s*\([^()]*\)\s*$/;   // un seul groupe, en fin de chaîne
+
+// Un libellé de thésaurus ou saisi par un rédacteur, privé de son unique qualificatif final
+// (« Inklusion (SZH) » -> « Inklusion »). Un texte sans parenthèse finale ressort inchangé.
+function sansQualificatifFinal(texte) {
+  return String(texte === undefined || texte === null ? '' : texte).replace(RE_QUALIFICATIF_FINAL, '');
+}
+
+// Le pliage de comparaison d'un descripteur : plierTexte (casse, accents, espaces) plus la
+// normalisation des trois apostrophes courbes/obliques vers l'apostrophe droite. Tolérant :
+// null, undefined ou un nombre rendent une chaîne vide plutôt que de lever.
+function plierDescripteur(texte) {
+  if (texte === undefined || texte === null || typeof texte === 'number') { return ''; }
+  return plierTexte(String(texte).replace(/[’‘ʼ]/g, "'"));
+}
+
+// Index opaque motsCles -> Map(clé pliée -> { de, fr }), pour retrouver une entrée du
+// thésaurus depuis un libellé saisi dans l'une ou l'autre langue. Deux passes délibérées :
+// toutes les clés EXACTES d'abord, puis seulement les clés DÉ-QUALIFIÉES, qui ne remplacent
+// jamais une clé exacte déjà posée — sinon « tessin » (libellé exact d'une entrée) se
+// ferait voler sa clé par « Tessin (na) » (une autre entrée, dé-qualifiée en « tessin »)
+// selon l'ordre d'arrivée, ce qui serait arbitraire. Sur une collision entre deux clés de
+// même rang (deux exactes, ou deux dé-qualifiées), la première entrée rencontrée gagne :
+// le cache est ordonné par ancienneté de moisson, cet ordre fait foi comme dans
+// fusionnerMotsCles. Une clé vide (langue manquante) n'est jamais indexée.
+function indexerThesaurus(motsCles) {
+  const entrees = (Array.isArray(motsCles) ? motsCles : []).map((mc) => ({
+    de: String((mc && mc.de) || '').trim(),
+    fr: String((mc && mc.fr) || '').trim()
+  }));
+
+  const index = new Map();
+  const poserSiAbsente = (cle, entree) => {
+    if (cle !== '' && !index.has(cle)) { index.set(cle, entree); }
+  };
+
+  for (const e of entrees) {
+    poserSiAbsente(plierDescripteur(e.de), e);
+    poserSiAbsente(plierDescripteur(e.fr), e);
+  }
+  for (const e of entrees) {
+    poserSiAbsente(plierDescripteur(sansQualificatifFinal(e.de)), e);
+    poserSiAbsente(plierDescripteur(sansQualificatifFinal(e.fr)), e);
+  }
+  return index;
+}
+
+// Un terme saisi -> son entrée du thésaurus, ou null. Exact d'abord, dé-qualifié ensuite
+// (le terme saisi peut lui-même porter un qualificatif que le thésaurus n'a pas retenu).
+function chercherDescripteur(terme, index) {
+  const s = String(terme === undefined || terme === null ? '' : terme).trim();
+  if (s === '') { return null; }
+  const cleExacte = plierDescripteur(s);
+  if (cleExacte !== '' && index.has(cleExacte)) { return index.get(cleExacte); }
+  const cleDequalifiee = plierDescripteur(sansQualificatifFinal(s));
+  if (cleDequalifiee !== '' && index.has(cleDequalifiee)) { return index.get(cleDequalifiee); }
+  return null;
+}
+
+// fusionnerMotsCles garde délibérément deux entrées distinctes quand deux moissons
+// désaccordent sur une traduction (« Lernschwierigkeit » a deux $b concurrents sur
+// l'instance réelle, voir le commentaire de fusionnerMotsCles). Un article peut alors
+// saisir un terme qui tombe sur l'une des deux entrées côté français et un terme qui tombe
+// sur l'autre côté allemand : deux OBJETS distincts du thésaurus, donc invisibles à une
+// déduplication par identité. Sans un second passage, le 690 sortirait avec le même $a et
+// deux $b contradictoires — un doublon pour tout import de bibliothèque. On fond donc après
+// coup les descripteurs déjà collectés dont l'allemand plié OU le français plié coïncide,
+// le premier rencontré gagnant — même règle que partout ailleurs dans ce module.
+function fusionnerDescripteursApparies(descripteurs) {
+  const fondus = [];
+  const parDe = new Map();   // allemand plié (non vide) -> index dans `fondus`
+  const parFr = new Map();   // français plié (non vide) -> index dans `fondus`
+  for (const d of descripteurs) {
+    const kd = plierDescripteur(d.de);
+    const kf = plierDescripteur(d.fr);
+    let i = -1;
+    if (kd !== '' && parDe.has(kd)) { i = parDe.get(kd); }
+    else if (kf !== '' && parFr.has(kf)) { i = parFr.get(kf); }
+    if (i === -1) { i = fondus.length; fondus.push(d); }
+    // Les deux clés du descripteur fondu profitent au survivant, y compris celle qui ne l'a
+    // pas désigné cette fois : un troisième descripteur peut encore s'y raccrocher par elle.
+    if (kd !== '' && !parDe.has(kd)) { parDe.set(kd, i); }
+    if (kf !== '' && !parFr.has(kf)) { parFr.set(kf, i); }
+  }
+  return fondus;
+}
+
+// L'appariement proprement dit. listeFr et listeDe sont les mots-clés saisis par le
+// rédacteur, dans l'ordre du fichier — jamais mis en correspondance l'un avec l'autre,
+// voir l'en-tête de section. Chaque terme est cherché seul ; ce que le thésaurus rend porte
+// LA PAIRE, c'est elle qui part à l'export.
+//   descripteurs : les entrées trouvées et complètes (de et fr non vides), dédoublonnées
+//     par entrée du thésaurus PUIS fondues quand deux entrées distinctes partagent un
+//     allemand ou un français (voir fusionnerDescripteursApparies ci-dessus) — sous leur
+//     forme canonique edudoc, première apparition, liste française d'abord, puis allemande.
+//   nonReconnus : les termes saisis qu'aucune entrée complète n'a captés, dans l'ordre,
+//     sans doublon (comparés sur leur forme pliée), dans leur graphie d'origine. Une entrée
+//     trouvée mais incomplète (l'autre langue manque au thésaurus) compte comme non
+//     reconnue : le champ 690 a besoin de ses deux sous-champs, une moitié de paire n'y a
+//     pas sa place.
+function apparierDescripteurs(listeFr, listeDe, index) {
+  const idx = index instanceof Map ? index : new Map();
+  const descripteurs = [];
+  const entreesVues = new Set();
+  const nonReconnus = [];
+  const nonReconnusVus = new Set();
+
+  const traiter = (liste) => {
+    for (const terme of Array.isArray(liste) ? liste : []) {
+      const s = String(terme === undefined || terme === null ? '' : terme).trim();
+      if (s === '') { continue; }
+      const trouve = chercherDescripteur(s, idx);
+      if (trouve && trouve.de !== '' && trouve.fr !== '') {
+        if (!entreesVues.has(trouve)) {
+          entreesVues.add(trouve);
+          descripteurs.push({ de: trouve.de, fr: trouve.fr });
+        }
+        continue;
+      }
+      const cle = plierDescripteur(s);
+      if (cle !== '' && !nonReconnusVus.has(cle)) {
+        nonReconnusVus.add(cle);
+        nonReconnus.push(s);
+      }
+    }
+  };
+  traiter(listeFr);
+  traiter(listeDe);
+
+  return { descripteurs: fusionnerDescripteursApparies(descripteurs), nonReconnus: nonReconnus };
+}
+
 module.exports = {
   ENDPOINT_EDUDOC_DEFAUT, SETS_EDUDOC_DEFAUT, JOURS_FRAICHEUR, PAGES_MAX,
   cheminCacheMotsCles,
   extraireRecordsMotsCles, recordsEnMotsCles, fusionnerMotsCles,
   lireCacheMotsCles, ecrireCacheMotsCles, cacheFraisMotsCles,
-  configEdudoc, recupererAvecRepli, moissonnerMotsCles, rafraichirMotsCles
+  configEdudoc, recupererAvecRepli, moissonnerMotsCles, rafraichirMotsCles,
+  plierDescripteur, indexerThesaurus, apparierDescripteurs
 };
+
+// ---- Qualificatif de PROVENANCE du thésaurus edudoc, masqué à l'AFFICHAGE (16.09.2026) --
+//
+// Un descripteur edudoc porte parfois un qualificatif final entre parenthèses qui ne dit
+// rien du terme lui-même, seulement d'où il vient dans le thésaurus : « Barrierefreiheit
+// (szh) », « inclusion (CSPS) », « plan d'études (na) ». La saisie passe désormais par une
+// liste fermée qui insère la forme canonique d'edudoc, qualificatif compris, dans le
+// .meta.yaml — et Robin ne veut jamais voir ce qualificatif-là à l'impression : ni sur le
+// PDF, ni sur le HTML, ni sur la page publique d'un article sur ojs.szh.ch. Le CSV Edudoc,
+// lui, garde la forme canonique complète (lib/secretariat.js, export-templates/edudoc.twig) :
+// c'est elle que la bibliothécaire attend, et rien ici n'y touche — le masquage n'a lieu qu'à
+// l'AFFICHAGE, jamais dans le .meta.yaml de l'article.
+//
+// À NE PAS CONFONDRE avec sansQualificatifFinal, plus haut dans ce fichier : celle-ci retire
+// N'IMPORTE QUELLE parenthèse finale, pour reconnaître un terme saisi dans le thésaurus (une
+// parenthèse de SENS n'y gêne pas l'appariement, elle est juste ignorée le temps de la
+// recherche). sansQualificatifDeProvenance fait l'inverse et sert un autre besoin : elle ne
+// retire QUE les cinq jetons de provenance de la liste fermée ci-dessous, et laisse intacte
+// toute autre parenthèse — « diagnostic (résultat) » et « diagnostic (processus) » sont deux
+// concepts différents qui ne doivent jamais se confondre, « procédure d'évaluation
+// standardisée (PES) » et « personne en formation (dans la formation professionnelle) »
+// portent un acronyme ou une précision qui fait partie du terme. Les deux fonctions
+// coexistent donc pour deux besoins différents : reconnaître (large, interne au module) et
+// afficher (étroit, public) — ne pas les fusionner sous prétexte qu'elles se ressemblent.
+//
+// Liste fermée, partagée avec pipeline/filters/szh-maquette.lua (QUALIFICATIFS_PROVENANCE,
+// sans_qualificatif_provenance) : le PDF est composé par ce filtre Lua à partir du même
+// .meta.yaml, la page OJS par ce module JS (via lib/export-ojs.js) — les deux doivent
+// masquer exactement les mêmes jetons, sous peine d'afficher deux choses différentes sans
+// que personne ne s'en aperçoive. test/js/mots-cles-grille.test.js lit les deux fichiers et
+// échoue si l'une des deux listes bouge sans l'autre.
+const QUALIFICATIFS_PROVENANCE = ['na', 'ce', 'szh', 'csps', 'spc'];
+
+// La parenthèse finale ne se retire que si son contenu, espaces ôtés et casse abaissée, est
+// EXACTEMENT l'un des cinq jetons ci-dessus — jamais une recherche à l'intérieur du contenu,
+// qui ferait par exemple sauter une parenthèse dont le texte contient seulement l'un de ces
+// mots au milieu d'autre chose.
+const RE_QUALIFICATIF_PROVENANCE_FINAL = /\s*\(([^()]*)\)\s*$/;
+
+// Un libellé de thésaurus (ou déjà apparié pour l'export), privé de son qualificatif de
+// provenance s'il en porte un. Un libellé sans parenthèse finale, ou dont la parenthèse
+// porte autre chose qu'un des cinq jetons (un sens, un acronyme officiel), ressort inchangé.
+function sansQualificatifDeProvenance(texte) {
+  const s = String(texte === undefined || texte === null ? '' : texte);
+  return s.replace(RE_QUALIFICATIF_PROVENANCE_FINAL, (tout, contenu) =>
+    QUALIFICATIFS_PROVENANCE.indexOf(contenu.trim().toLowerCase()) !== -1 ? '' : tout);
+}
+
+module.exports.QUALIFICATIFS_PROVENANCE = QUALIFICATIFS_PROVENANCE;
+module.exports.sansQualificatifDeProvenance = sansQualificatifDeProvenance;

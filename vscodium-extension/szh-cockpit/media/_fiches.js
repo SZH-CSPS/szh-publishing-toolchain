@@ -54,13 +54,20 @@
   // mots-clés (SZH.motsCles, _commun.js) apparie déjà « diagnostic » et « Diagnose » par
   // position — une rangée est un mot-clé, une colonne par langue — et c'est cette même
   // règle qui gouverne l'autocomplétion : on propose dans la langue du champ où l'on
-  // tape (son data-langue), jamais dans une autre. Choisir une suggestion complète en
-  // plus — seulement si elle est vide — la case de l'autre langue sur la même rangée avec
-  // l'équivalent que le thésaurus bilingue connaît déjà : la paire edudoc.ch (de, fr) est
+  // tape (son data-langue), jamais dans une autre. Choisir une suggestion pose en plus,
+  // dans la case de l'autre langue sur la même rangée, l'équivalent que le thésaurus
+  // bilingue connaît déjà — et ÉCRASE ce qui s'y trouvait : la paire edudoc.ch (de, fr) est
   // justement ce qui relie « Sonderpädagogik » à « pédagogie spécialisée », et la grille du
-  // formulaire relie ses colonnes de la même façon, par position. Une correction déjà
-  // tapée n'est jamais effacée (même règle que les champs enrichis des auteur·e·s,
-  // media/_auteurs.js).
+  // formulaire relie ses colonnes de la même façon, par position. Choisir dans une liste
+  // fermée est un geste délibéré qui vaut pour la rangée entière, pas seulement pour la
+  // case où l'on tapait. Seule exception : si le thésaurus ne connaît pas d'équivalent dans
+  // l'autre langue (paire incomplète, champ `manque` côté hôte), la case de l'autre langue
+  // n'est pas touchée — écraser une saisie par du vide serait une perte pure.
+  // Ceci diverge délibérément de la règle des champs enrichis des auteur·e·s
+  // (media/_auteurs.js), où une correction déjà tapée n'est jamais effacée : là, le champ
+  // complète une fiche que le rédacteur a pu corriger à la main, et cette correction doit
+  // survivre. Ici, il n'y a rien à corriger à la main — un mot-clé edudoc est une paire
+  // indivisible du thésaurus, pas une fiche éditable au champ par champ.
   //
   // Aucun vocabulaire italien : lib/mots-cles-edudoc.js ne moissonne que DE/FR (les deux
   // revues n'y publient pas en italien). Le champ `it` de la grille ne déclenche donc
@@ -75,6 +82,41 @@
   // ou permutation de rangée (voir son commentaire « Reconstruit le DOM depuis le modèle,
   // sans jamais le relire »), et un écouteur posé sur un <input> précis serait perdu à la
   // reconstruction suivante.
+  //
+  // ---- Le thésaurus comme chemin par défaut, et son second rideau (Robin, sept. 2026) ----
+  //
+  // Les suggestions s'ouvrent dès le PREMIER caractère (et non plus deux) : le thésaurus
+  // est le chemin par défaut de la saisie, il doit se présenter tôt. Quand aucun descripteur
+  // ne correspond à ce qui est tapé, la boîte ne montre plus une liste vide mais UNE seule
+  // entrée, séparée par un filet : « Ajouter « … » hors thésaurus ». C'est le geste délibéré
+  // qui permet malgré tout un mot-clé hors vocabulaire — Robin y tient autant qu'au thésaurus
+  // lui-même. La valeur tapée, elle, n'est JAMAIS gatée : ni cette entrée ni rien ici ne
+  // touche au champ tant qu'on ne clique pas dessus (ou qu'on ne l'arme pas au clavier).
+  //
+  // Toute case non vide dont la valeur n'est pas un descripteur porte, en plus, une pastille
+  // discrète (.mc-hors-thesaurus) : « ce mot-clé ne partira pas à l'export ». Ce marqueur
+  // n'est JAMAIS écrit dans la fiche — ni dans le modèle de la grille, ni a fortiori dans le
+  // .meta.yaml — il se recalcule à CHAQUE affichage (voir appliquerMarqueurs et le crochet
+  // opts.surRendu de SZH.motsCles) : un terme qu'edudoc.ch adoptera plus tard cesse ainsi
+  // d'être signalé tout seul, sans la moindre migration. Confirmer « ajouter hors thésaurus »
+  // pour une case éteint sa pastille, mais seulement pour la SESSION (le temps que ce
+  // panneau reste ouvert) : rien de cette confirmation n'est persisté non plus, c'est voulu.
+  // Une case vide n'est jamais marquée (elle porte déjà le placeholder « à traduire »), et
+  // l'italien — sans aucun vocabulaire edudoc.ch, voir plus haut — n'a ni suggestion ni
+  // marqueur : plutôt que de signaler comme fautif tout ce qui s'écrit en italien.
+  //
+  // LE POINT QUI COMPTE : la pastille promet ce que l'export fera. Si sa règle de
+  // reconnaissance divergeait de celle de lib/mots-cles-edudoc.js (indexerThesaurus,
+  // chercherDescripteur, apparierDescripteurs), elle mentirait — pire que pas de pastille du
+  // tout. La webview n'a pas de require() et ne peut donc pas charger ce module Node tel
+  // quel : indexerThesaurusMc/chercherDescripteurMc/pliDescripteurMc, plus bas, le
+  // réimplémentent À L'IDENTIQUE (mêmes deux passes, exactes puis dé-qualifiées ; même
+  // normalisation des apostrophes courbes/obliques). plierMc (SZH.plier) plie déjà casse,
+  // accents et espaces exactement comme plierNom, dont plierDescripteur part (même
+  // algorithme des deux côtés) ; seule la normalisation des apostrophes manquait à plierMc,
+  // d'où un pliage dédié plutôt qu'une retouche de plierMc, qui toucherait l'autocomplétion
+  // des mots-clés et celle des auteur·e·s sans qu'aucune des deux n'en ait besoin.
+  // test/js/mots-cles-grille.test.js compare les deux moteurs sur un corpus de cas coriaces.
 
   // Casse, accents, positions et séparateurs de mot : le même moteur que _auteurs.js pour
   // les noms d'auteur·e·s, partagé depuis _commun.js — les noms Mc restent, les corps
@@ -132,6 +174,58 @@
       return plierMc(ta).localeCompare(plierMc(tb));
     });
     return trouves.slice(0, MC_SUGG_MAX);
+  }
+
+  // ---- Reconnaissance edudoc.ch, à l'identique de lib/mots-cles-edudoc.js ----
+  //
+  // Voir le commentaire de tête du fichier (« LE POINT QUI COMPTE ») : ces quatre fonctions
+  // réimplémentent, terme à terme, plierDescripteur/indexerThesaurus/chercherDescripteur de
+  // lib/mots-cles-edudoc.js, que la webview ne peut pas charger (pas de require()).
+  var RE_QUALIFICATIF_FINAL_MC = /\s*\([^()]*\)\s*$/;   // un seul groupe, en fin de chaîne
+
+  // « Inklusion (SZH) » -> « Inklusion » ; un texte sans parenthèse finale ressort inchangé.
+  function sansQualificatifFinalMc(texte) {
+    return String(texte === undefined || texte === null ? '' : texte).replace(RE_QUALIFICATIF_FINAL_MC, '');
+  }
+
+  // plierMc (=SZH.plier) plie déjà casse, accents et espaces comme plierNom, dont part
+  // plierDescripteur (même algorithme des deux côtés) ; il ne manque que la normalisation
+  // des trois apostrophes courbes/obliques vers l'apostrophe droite, ajoutée ici seule.
+  function pliDescripteurMc(texte) {
+    return plierMc(String(texte === undefined || texte === null ? '' : texte).replace(/[’‘ʼ]/g, "'"));
+  }
+
+  // Deux passes, comme indexerThesaurus : toutes les clés EXACTES d'abord, puis seulement
+  // les clés DÉ-QUALIFIÉES, qui ne remplacent jamais une clé exacte déjà posée. `connus` est
+  // le tableau que construireIndexMotsCles a déjà bâti pour l'autocomplétion — mêmes paires
+  // {de, fr}, même ordre (celui du cache, envoyé tel quel par « mots-cles-connus ») : les
+  // collisions se résolvent donc pareil des deux côtés.
+  function indexerThesaurusMc(connus) {
+    var index = {};
+    function poserSiAbsente(cle, entree) {
+      if (cle !== '' && !Object.prototype.hasOwnProperty.call(index, cle)) { index[cle] = entree; }
+    }
+    var i;
+    for (i = 0; i < connus.length; i++) {
+      poserSiAbsente(pliDescripteurMc(connus[i].de), connus[i]);
+      poserSiAbsente(pliDescripteurMc(connus[i].fr), connus[i]);
+    }
+    for (i = 0; i < connus.length; i++) {
+      poserSiAbsente(pliDescripteurMc(sansQualificatifFinalMc(connus[i].de)), connus[i]);
+      poserSiAbsente(pliDescripteurMc(sansQualificatifFinalMc(connus[i].fr)), connus[i]);
+    }
+    return index;
+  }
+
+  // Exact d'abord, dé-qualifié ensuite — même ordre que chercherDescripteur.
+  function chercherDescripteurMc(terme, index) {
+    var s = String(terme === undefined || terme === null ? '' : terme).trim();
+    if (s === '') { return null; }
+    var exact = pliDescripteurMc(s);
+    if (exact !== '' && Object.prototype.hasOwnProperty.call(index, exact)) { return index[exact]; }
+    var dequalifie = pliDescripteurMc(sansQualificatifFinalMc(s));
+    if (dequalifie !== '' && Object.prototype.hasOwnProperty.call(index, dequalifie)) { return index[dequalifie]; }
+    return null;
   }
 
   // ---- Compteur de caractères du résumé : le seuil de bascule en page 2 ----
@@ -199,7 +293,22 @@
     // Le vocabulaire edudoc.ch (message mots-cles-connus), partagé par toutes les cartes
     // de la page — une seule liste, comme TYPES et LICENCES.
     var motsClesConnus = [];
-    function poserMotsClesConnus(liste) { motsClesConnus = construireIndexMotsCles(liste); }
+    // L'index de RECONNAISSANCE (pastille « hors thésaurus »), distinct de motsClesConnus
+    // ci-dessus qui sert la recherche par préfixe de l'autocomplétion : deux besoins, deux
+    // structures — voir le commentaire de tête du fichier.
+    var indexThesaurusMc = null;
+    // Les grilles de mots-clés actuellement affichées (une par carte) : le vocabulaire peut
+    // arriver APRÈS que les cartes existent déjà (l'hôte envoie « valeurs » avant « mots-
+    // cles-connus », voir envoyerValeurs/envoyerMotsClesConnus, lib/metadonnees-hote.js) —
+    // sans cette liste, les pastilles construites avant l'arrivée du thésaurus resteraient
+    // fausses jusqu'au prochain ajout ou retrait de rangée. Vidée à chaque rendre() complet
+    // (rendre() plus bas, pas celui de SZH.motsCles), qui recrée toutes les cartes.
+    var reappliquerTousLesMarqueurs = [];
+    function poserMotsClesConnus(liste) {
+      motsClesConnus = construireIndexMotsCles(liste);
+      indexThesaurusMc = indexerThesaurusMc(motsClesConnus);
+      for (var i = 0; i < reappliquerTousLesMarqueurs.length; i++) { reappliquerTousLesMarqueurs[i](); }
+    }
 
     // La modale rend l'auteur·e édité ; il n'est pas écrit sur le disque tout de suite,
     // la carte gardant la main sur son enregistrement — c'est la seule chose que cette
@@ -432,7 +541,7 @@
     //
     // En délégation (voir le commentaire de tête du fichier) : un seul écouteur par
     // événement, qui survit à toutes les reconstructions internes de SZH.motsCles.
-    function attacherAutocompletionMotsCles(editeurMots) {
+    function attacherAutocompletionMotsCles(editeurMots, motsClesOpts) {
       var conteneurMc = editeurMots.element;
       var boiteSugg = document.createElement('div');
       boiteSugg.className = 'szh-sugg';
@@ -441,6 +550,80 @@
       boiteSugg.setAttribute('aria-label', TXT.motsClesSuggestions || '');
       var suggEtat = { input: null, items: [], actif: -1 };
       var enSelection = false;               // vrai pendant qu'on écrit nous-mêmes une valeur
+
+      // ---- La pastille « hors thésaurus » : signale sans jamais rien changer ----
+      //
+      // Voir le commentaire de tête du fichier pour le contrat complet. `confirmesHorsThesaurus`
+      // est propre à CETTE grille (une carte) et ne survit pas à un re-rendu complet de la
+      // page — exactement le sens de « la confirmation ne vaut que pour la session ».
+      var confirmesHorsThesaurus = {};   // 'fr::cléPliée' -> true
+
+      function cleConfirmation(langueCode, valeur) { return langueCode + '::' + pliDescripteurMc(valeur); }
+
+      // Une case a besoin du marqueur si : elle porte une langue avec vocabulaire (jamais
+      // l'italien), elle n'est pas vide (déjà le placeholder « à traduire »), elle n'a pas
+      // été confirmée hors thésaurus pour cette session, et — même règle que
+      // apparierDescripteurs à l'export — le descripteur trouvé, s'il y en a un, doit être
+      // COMPLET dans les deux langues : une entrée à moitié renseignée au thésaurus ne suffit
+      // pas plus ici qu'à l'export à faire partir un couple de mots-clés.
+      function marqueurNecessaire(valeur, langueCode) {
+        if (langueCode !== 'fr' && langueCode !== 'de') { return false; }
+        var s = String(valeur === undefined || valeur === null ? '' : valeur).trim();
+        if (s === '') { return false; }
+        if (confirmesHorsThesaurus[cleConfirmation(langueCode, s)]) { return false; }
+        var trouve = chercherDescripteurMc(s, indexThesaurusMc || {});
+        return !(trouve && trouve.de !== '' && trouve.fr !== '');
+      }
+
+      // Repose tous les marqueurs de CETTE grille : les anciens sont retirés puis recréés,
+      // plutôt que mis à jour un par un — rendre() (media/_commun.js) reconstruit tout le DOM
+      // interne à chaque ajout, retrait ou permutation de rangée, et une grille de mots-clés
+      // ne compte jamais assez de lignes pour qu'un repose complet coûte quoi que ce soit.
+      function appliquerMarqueurs() {
+        var anciens = conteneurMc.querySelectorAll('.mc-hors-thesaurus');
+        for (var k = 0; k < anciens.length; k++) { anciens[k].remove(); }
+        // Sous « .mc » et non « .mc-rangee:not(.mc-entete) » : la rangée d'en-tête ne porte
+        // que des <span>, jamais d'<input> — inutile de l'exclure par ailleurs.
+        var champs = conteneurMc.querySelectorAll('.mc input[data-langue]');
+        for (var c = 0; c < champs.length; c++) {
+          var champ = champs[c];
+          if (!marqueurNecessaire(champ.value, champ.dataset.langue)) { continue; }
+          var rangee = champ.closest('.mc-rangee');
+          if (!rangee) { continue; }
+          var marque = document.createElement('span');
+          marque.className = 'mc-hors-thesaurus';
+          // La langue en donnée : une rangée porte plusieurs cases, chacune sa propre
+          // pastille éventuelle — sans ce marqueur, rien ne distinguerait celle de la case
+          // FR de celle de la case DE, posées toutes deux comme enfants de la même rangée.
+          marque.dataset.langue = champ.dataset.langue;
+          marque.setAttribute('role', 'img');
+          marque.setAttribute('aria-label', TXT.motsClesHorsThesaurus || '');
+          marque.title = TXT.motsClesHorsThesaurus || '';
+          // Positionnée comme la boîte de suggestions plus bas (offsetLeft/offsetWidth du
+          // champ) : chaque colonne a une largeur différente selon les langues affichées, il
+          // n'y a pas de coordonnée fixe possible.
+          marque.style.left = (champ.offsetLeft + champ.offsetWidth - 10) + 'px';
+          rangee.appendChild(marque);
+        }
+      }
+
+      function confirmerHorsThesaurus(langueCode, valeur) {
+        var s = String(valeur === undefined || valeur === null ? '' : valeur).trim();
+        if (s === '') { return; }
+        confirmesHorsThesaurus[cleConfirmation(langueCode, s)] = true;
+        fermerSuggestions();
+        appliquerMarqueurs();
+      }
+
+      // Le crochet d'après-rendu (SZH.motsCles, _commun.js) : rendre() efface et reconstruit
+      // tout le DOM interne à chaque ajout/retrait de rangée, à la permutation des langues ou
+      // au changement des colonnes affichées — les marqueurs doivent donc être reposés après
+      // coup. `motsClesOpts` est le MÊME objet que celui passé au constructeur de
+      // SZH.motsCles : le fixer ici plutôt qu'à la construction est nécessaire, le tout
+      // premier rendre() ayant lieu PENDANT la construction, avant que cette fonction
+      // n'existe — l'appel immédiat en fin d'attacherAutocompletionMotsCles couvre ce
+      // premier rendu (et le cas d'un mot-clé hérité déjà hors thésaurus à l'ouverture).
+      motsClesOpts.surRendu = appliquerMarqueurs;
 
       function fermerSuggestions() {
         boiteSugg.hidden = true;
@@ -460,9 +643,11 @@
         suggEtat.actif = idx;
       }
 
-      // Choisir une suggestion écrase toujours le champ où l'on tape, et complète en plus
-      // — seulement si elle est vide — la case de l'autre langue sur la même rangée : voir
-      // le commentaire de tête du fichier pour la justification de ce choix.
+      // Choisir une suggestion écrase toujours le champ où l'on tape, et pose aussi
+      // l'équivalent du thésaurus dans la case de l'autre langue sur la même rangée — en
+      // écrasant ce qui s'y trouvait, sauf si le thésaurus n'a pas d'équivalent (paire
+      // incomplète) : voir le commentaire de tête du fichier pour la justification de ce
+      // choix, et pourquoi il diverge de la règle des auteur·e·s.
       function choisir(trouve, langueCode, input) {
         enSelection = true;
         var e = trouve.entree;
@@ -477,7 +662,7 @@
         var rangee = input.closest('.mc-rangee');
         var champAutre = (valeurAutre !== '' && rangee)
           ? rangee.querySelector('input[data-langue="' + autreCode + '"]') : null;
-        if (champAutre && champAutre.value.trim() === '') {
+        if (champAutre) {
           champAutre.value = valeurAutre;
           champAutre.dispatchEvent(new Event('input', { bubbles: true }));
         }
@@ -491,28 +676,52 @@
         // L'italien n'a pas de vocabulaire edudoc.ch : rien à proposer plutôt que du
         // français, voir le commentaire de tête du fichier.
         if (langueCode !== 'fr' && langueCode !== 'de') { fermerSuggestions(); return; }
+        var saisieBrute = input.value.trim();
         var saisie = plierMc(input.value);
-        if (motsClesConnus.length === 0 || saisie.length < 2) { fermerSuggestions(); return; }
+        // Dès le PREMIER caractère (et non plus deux) : le thésaurus est le chemin par
+        // défaut de la saisie, il doit se présenter tôt — voir le commentaire de tête.
+        if (motsClesConnus.length === 0 || saisie.length < 1) { fermerSuggestions(); return; }
         var trouves = chercherMotsCles(motsClesConnus, langueCode, saisie);
         fermerSuggestions();
-        if (trouves.length === 0) { return; }
         var rangee = input.closest('.mc-rangee');
         if (!rangee) { return; }
         suggEtat = { input: input, items: [], actif: -1 };
-        for (var i = 0; i < trouves.length; i++) {
-          (function (t) {
-            var b = document.createElement('button');
-            b.type = 'button';
-            b.className = 'szh-sugg-item';
-            b.setAttribute('role', 'option');
-            b.setAttribute('aria-selected', 'false');
-            poserAvecGrasMc(b, t.pli, t.zones);
-            // mousedown neutralisé : le clic ne doit pas d'abord voler le focus du champ.
-            b.addEventListener('mousedown', function (e) { e.preventDefault(); });
-            b.addEventListener('click', function () { choisir(t, langueCode, input); });
-            boiteSugg.appendChild(b);
-            suggEtat.items.push({ element: b, trouve: t });
-          })(trouves[i]);
+        if (trouves.length === 0) {
+          // Le second rideau : aucun descripteur ne correspond. La valeur tapée n'est
+          // JAMAIS touchée ici — seuls un clic ou un Entrée sur cette entrée la confirment
+          // hors thésaurus (confirmerHorsThesaurus, plus haut) ; en attendant, la pastille
+          // de la case le dit déjà (appliquerMarqueurs, appelée après cette fonction).
+          var filet = document.createElement('div');
+          filet.className = 'szh-sugg-filet';
+          boiteSugg.appendChild(filet);
+          var horsTh = document.createElement('button');
+          horsTh.type = 'button';
+          horsTh.className = 'szh-sugg-item szh-sugg-item--hors-thesaurus';
+          horsTh.setAttribute('role', 'option');
+          horsTh.setAttribute('aria-selected', 'false');
+          horsTh.textContent = SZH.remplir(TXT, 'motsClesAjouterHorsThesaurus', [saisieBrute]);
+          horsTh.addEventListener('mousedown', function (e) { e.preventDefault(); });
+          horsTh.addEventListener('click', function () {
+            confirmerHorsThesaurus(langueCode, input.value.trim());
+          });
+          boiteSugg.appendChild(horsTh);
+          suggEtat.items.push({ element: horsTh, trouve: null, horsThesaurus: true });
+        } else {
+          for (var i = 0; i < trouves.length; i++) {
+            (function (t) {
+              var b = document.createElement('button');
+              b.type = 'button';
+              b.className = 'szh-sugg-item';
+              b.setAttribute('role', 'option');
+              b.setAttribute('aria-selected', 'false');
+              poserAvecGrasMc(b, t.pli, t.zones);
+              // mousedown neutralisé : le clic ne doit pas d'abord voler le focus du champ.
+              b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+              b.addEventListener('click', function () { choisir(t, langueCode, input); });
+              boiteSugg.appendChild(b);
+              suggEtat.items.push({ element: b, trouve: t });
+            })(trouves[i]);
+          }
         }
         // Positionnée sous la case où l'on tape, pas sous la rangée entière qui couvre
         // plusieurs langues : .mc-rangee est en position relative (_fiches.css), et l'input
@@ -528,9 +737,13 @@
         if (e.key === 'ArrowDown') { e.preventDefault(); poserActif(suggEtat.actif + 1); return; }
         if (e.key === 'ArrowUp') { e.preventDefault(); poserActif(suggEtat.actif - 1); return; }
         if (e.key === 'Enter') {
-          if (suggEtat.actif >= 0 && suggEtat.items[suggEtat.actif]) {
+          var item = suggEtat.actif >= 0 ? suggEtat.items[suggEtat.actif] : null;
+          if (item && item.horsThesaurus) {
             e.preventDefault();
-            choisir(suggEtat.items[suggEtat.actif].trouve, input.dataset.langue, input);
+            confirmerHorsThesaurus(input.dataset.langue, input.value.trim());
+          } else if (item) {
+            e.preventDefault();
+            choisir(item.trouve, input.dataset.langue, input);
           }
           return;
         }
@@ -547,6 +760,11 @@
         var input = e.target;
         if (!input || input.tagName !== 'INPUT' || !input.dataset.langue) { return; }
         majSuggestions(input);
+        // La valeur vient de changer : le marqueur de CETTE case (et d'elle seule aurait
+        // suffi, mais reposer toute la grille est aussi simple et reste bon marché) doit
+        // suivre tout de suite — jamais après coup, jamais au prix d'un aller-retour vers
+        // l'hôte.
+        appliquerMarqueurs();
       });
       conteneurMc.addEventListener('keydown', function (e) {
         var input = e.target;
@@ -557,6 +775,13 @@
       // délégation. Le mousedown neutralisé sur chaque suggestion garde le focus sur le
       // champ le temps du clic, comme pour les auteur·e·s.
       conteneurMc.addEventListener('focusout', function () { fermerSuggestions(); });
+
+      // Cette grille existe désormais : le vocabulaire peut encore arriver après coup (voir
+      // reappliquerTousLesMarqueurs plus haut), et cette carte doit alors suivre comme les
+      // autres. L'appel immédiat couvre le rendu qui vient d'avoir lieu — un mot-clé hérité
+      // déjà hors thésaurus se voit tout de suite, sans attendre une frappe.
+      reappliquerTousLesMarqueurs.push(appliquerMarqueurs);
+      appliquerMarqueurs();
     }
 
     // ---- Construction des cartes ----
@@ -570,6 +795,9 @@
       ctlAuteurs.fermer();                           // re-rendu : la fiche visée disparaît
       conteneur.textContent = '';
       modifies.clear();
+      // Toutes les cartes vont être recréées : les grilles de mots-clés d'avant n'existent
+      // déjà plus, chacune repeuplera cette liste en s'attachant (attacherAutocompletionMotsCles).
+      reappliquerTousLesMarqueurs = [];
       surChangement();
       for (var n = 0; n < articles.length; n++) {
         var carte = construireCarte(articles[n]);
@@ -787,7 +1015,7 @@
       };
       // SZH.motsCles : la grille vit dans _commun.js, un autre IIFE — l'appeler sans le
       // préfixe lève une ReferenceError à chaque carte, sur les deux formulaires.
-      var editeurMots = SZH.motsCles({
+      var motsClesOpts = {
         langues: colonnes(),
         listes: v.keywords || {},
         edition: true,
@@ -799,10 +1027,13 @@
         // seuilResume plus haut) : les compteurs des résumés doivent le suivre en direct,
         // dans les deux sens — un cinquième mot-clé qui disparaît redonne 750.
         onChange: function () { marquer(carte, slug); majTousCompteursResume(); }
-      });
+        // surRendu est posé par attacherAutocompletionMotsCles, juste en dessous : c'est
+        // elle qui sait reposer la pastille « hors thésaurus » après chaque reconstruction.
+      };
+      var editeurMots = SZH.motsCles(motsClesOpts);
       motsClesParCarte.set(carte, editeurMots);
       carte.appendChild(editeurMots.element);
-      attacherAutocompletionMotsCles(editeurMots);
+      attacherAutocompletionMotsCles(editeurMots, motsClesOpts);
       // Une pastille PAR LANGUE et non par mot : le champ traduisible est la liste
       // entière, et c'est elle qu'on propose autrement — une pastille par case en
       // donnerait quinze sur une carte à cinq mots-clés. Posées pour les trois langues et

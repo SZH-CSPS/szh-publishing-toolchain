@@ -824,6 +824,101 @@ test('DOI : un numéro sans nombre ne fabrique aucun DOI, et le refus dit où le
   assert.strictEqual(sortie.xml.indexOf('type="doi"'), -1);
 });
 
+// ---- Mots-clés : le qualificatif de provenance edudoc masqué, et son doublon fondu ----
+//
+// La saisie des mots-clés passe désormais par une liste fermée qui insère la forme
+// canonique d'edudoc, qualificatif compris (« prévention (na) », « inclusion (SZH) »). Ce
+// qualificatif ne doit jamais atteindre la page publique d'ojs.szh.ch — la règle et la
+// liste fermée vivent dans lib/mots-cles-edudoc.js (sansQualificatifDeProvenance,
+// QUALIFICATIFS_PROVENANCE), partagées avec pipeline/filters/szh-maquette.lua pour le PDF et
+// le HTML ; voir test/js/mots-cles-provenance.test.js pour la fonction elle-même et l'accord
+// des deux listes. Ici, on prouve que l'export OJS réel — le seul consommateur de ce module
+// dans ce fichier — applique bien la règle sur l'XML qui part vers l'instance.
+test('mots-clés OJS : le qualificatif de provenance est masqué, une parenthèse de sens survit', () => {
+  const racine = monter({
+    ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '01-edito', fiche: fiche([
+      'type: editorial', 'lang: fr', 'title:', '  fr: "Éditorial"',
+      'keywords:',
+      '  fr:',
+      '  - "inclusion (SZH)"',
+      '  - "diagnostic (résultat)"',
+      'author:', '- nom: "SZH/CSPS"'
+    ]), texte: 'Un mot.' + LF }]
+  });
+  const sortie = exporter(racine, configComplete());
+  const bloc = sortie.xml.slice(sortie.xml.indexOf('<keywords locale="fr">'),
+    sortie.xml.indexOf('</keywords>') + '</keywords>'.length);
+  assert.ok(bloc.indexOf('<name>inclusion</name>') !== -1,
+    'le qualificatif (SZH) n’a pas été masqué : ' + bloc);
+  assert.strictEqual(bloc.indexOf('(SZH)'), -1, 'le qualificatif (SZH) est resté dans l’export : ' + bloc);
+  assert.ok(bloc.indexOf('<name>diagnostic (résultat)</name>') !== -1,
+    'une parenthèse de sens a été effacée à tort : ' + bloc);
+});
+
+test('mots-clés OJS : un mot-clé et sa forme qualifiée ne font plus qu’un, après masquage', () => {
+  const racine = monter({
+    ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '01-edito', fiche: fiche([
+      'type: editorial', 'lang: fr', 'title:', '  fr: "Éditorial"',
+      'keywords:',
+      '  fr:',
+      '  - "prévention"',
+      '  - "prévention (na)"',
+      'author:', '- nom: "SZH/CSPS"'
+    ]), texte: 'Un mot.' + LF }]
+  });
+  const sortie = exporter(racine, configComplete());
+  const bloc = sortie.xml.slice(sortie.xml.indexOf('<keywords locale="fr">'),
+    sortie.xml.indexOf('</keywords>') + '</keywords>'.length);
+  assert.strictEqual((bloc.match(/<keyword>/g) || []).length, 1,
+    'prévention et prévention (na) auraient dû fondre en un seul <keyword> : ' + bloc);
+  assert.ok(bloc.indexOf('<name>prévention</name>') !== -1, bloc);
+});
+
+test('mots-clés OJS : un mot-clé sans qualificatif traverse inchangé', () => {
+  const racine = monter({
+    ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '01-edito', fiche: fiche([
+      'type: editorial', 'lang: fr', 'title:', '  fr: "Éditorial"',
+      'keywords:',
+      '  fr:',
+      '  - "pédagogie spécialisée"',
+      'author:', '- nom: "SZH/CSPS"'
+    ]), texte: 'Un mot.' + LF }]
+  });
+  const sortie = exporter(racine, configComplete());
+  assert.ok(sortie.xml.indexOf('<name>pédagogie spécialisée</name>') !== -1, sortie.xml);
+});
+
+// Cas dégénéré signalé après coup : un mot-clé réduit à son seul qualificatif de provenance
+// (« (na) » tapé seul) devenait une chaîne vide après masquage, mais la garde qui filtre les
+// entrées vides testait la valeur BRUTE, avant masquage — un <keyword><name></name></keyword>
+// vide partait donc dans le XML d'import OJS. Personne ne tape « (na) » seul et aucun
+// descripteur du thésaurus n'a cette forme, mais la saisie manuelle reste ouverte, et un
+// élément vide est le genre de chose qu'un validateur de bibliothèque refuse sans dire
+// pourquoi.
+test('mots-clés OJS : un mot-clé réduit à rien par le masquage n’écrit aucun <keyword> vide', () => {
+  const racine = monter({
+    ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '01-edito', fiche: fiche([
+      'type: editorial', 'lang: fr', 'title:', '  fr: "Éditorial"',
+      'keywords:',
+      '  fr:',
+      '  - "(na)"',
+      '  - "accessibilité"',
+      'author:', '- nom: "SZH/CSPS"'
+    ]), texte: 'Un mot.' + LF }]
+  });
+  const sortie = exporter(racine, configComplete());
+  const bloc = sortie.xml.slice(sortie.xml.indexOf('<keywords locale="fr">'),
+    sortie.xml.indexOf('</keywords>') + '</keywords>'.length);
+  assert.strictEqual(bloc.indexOf('<name></name>'), -1, 'un <name> vide est parti dans le XML : ' + bloc);
+  assert.strictEqual((bloc.match(/<keyword>/g) || []).length, 1,
+    'seul « accessibilité » aurait dû rester : ' + bloc);
+  assert.ok(bloc.indexOf('<name>accessibilité</name>') !== -1, bloc);
+});
+
 test('DOI : le DOI manuel de la fiche part à la place du calculé, et l’écart se dit', () => {
   // Le corpus réel porte des DOI déposés, de la forme de la maison : « 10.57161/r2024-01-01 ».
   // Un doi resté dans la fiche est un DOI MANUEL — c'est le sens de l'échappatoire « Définir

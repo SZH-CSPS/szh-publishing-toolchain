@@ -475,6 +475,10 @@ function textesCarteArticle() {
     motCleAjouter: T('fiches.motcle.ajouter'), motCleRetirer: T('fiches.motcle.retirer'),
     motCleATraduire: T('mc.aTraduire'),
     motsClesSuggestions: T('fiches.motscles.suggestions'),
+    // La pastille « hors thésaurus » et le second rideau de la boîte de suggestions
+    // (media/_fiches.js) : voir le commentaire de ces deux clés dans lib/i18n.js.
+    motsClesHorsThesaurus: T('mc.horsThesaurus'),
+    motsClesAjouterHorsThesaurus: T('mc.ajouterHorsThesaurus'),
     rien: T('form.rien'), enregistre: T('fiches.enregistre'),
     // L'interrupteur des traductions : un libellé fixe, et les deux infobulles qui disent
     // le geste à venir. Il porte aussi l'oeil, ouvert ou fermé — traductions() le reconstruit.

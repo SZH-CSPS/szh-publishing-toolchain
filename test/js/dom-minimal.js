@@ -178,11 +178,31 @@ function element(balise) {
     removeEventListener(t, f) { e._ecouteurs[t] = (e._ecouteurs[t] || []).filter((x) => x !== f); },
     // Déclenche les gestionnaires posés par addEventListener. L'objet passé tient lieu
     // d'événement ; toute exception d'un gestionnaire remonte au test, c'est voulu.
+    //
+    // Bouillonnement : seulement si `ev.bubbles` est vrai (comme `new Event(t, {bubbles:
+    // true})`, jamais un simple `{ type: 'x' }` écrit à la main dans un test) — sans cette
+    // garde, un événement construit sans intention de bouillonner se mettrait à réveiller
+    // des écouteurs délégués sur des ancêtres, dans des tests qui n'ont jamais eu à s'en
+    // soucier. C'est le cas d'une grille dont le DOM interne est reconstruit à chaque ajout
+    // ou retrait de rangée (media/_commun.js, SZH.motsCles) : ses écouteurs sont posés en
+    // délégation sur un conteneur qui survit, et un `input.dispatchEvent(new Event('input',
+    // { bubbles: true }))` posé par la page (par ex. media/_fiches.js, choisir()) doit les
+    // atteindre comme un vrai navigateur le ferait.
     dispatchEvent(evt) {
       const ev = evt || {};
       if (!ev.preventDefault) { ev.preventDefault = () => {}; }
+      const arreterOrigine = ev.stopPropagation;
+      ev.stopPropagation = () => {
+        ev._propagationArretee = true;
+        if (arreterOrigine) { arreterOrigine(); }
+      };
       if (!ev.target) { ev.target = e; }
-      for (const f of (e._ecouteurs[ev.type] || []).slice()) { f.call(e, ev); }
+      let courant = e;
+      while (courant) {
+        for (const f of (courant._ecouteurs[ev.type] || []).slice()) { f.call(courant, ev); }
+        if (!ev.bubbles || ev._propagationArretee) { break; }
+        courant = courant.parent;
+      }
       return true;
     },
     querySelector(s) { return chercher(e, s)[0] || null; },
@@ -243,6 +263,14 @@ function ouvrir(opts) {
     },
     acquireVsCodeApi: () => ({ postMessage: (m) => messages.push(m), setState: () => {}, getState: () => null }),
     FileReader: function () { this.readAsDataURL = () => {}; },
+    // Un événement construit à la main (`new Event('input', { bubbles: true })`), comme le
+    // fait media/_fiches.js pour prévenir un écouteur délégué après une écriture
+    // programmatique. `dispatchEvent` (plus haut) lit `bubbles` sur l'objet qu'on lui passe,
+    // qu'il vienne d'ici ou d'un simple littéral `{ type: 'x' }` posé par un test.
+    Event: function (type, opts) {
+      this.type = type;
+      this.bubbles = !!(opts && opts.bubbles);
+    },
     setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {},
     console: console
   };

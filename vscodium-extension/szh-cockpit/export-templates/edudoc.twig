@@ -9,11 +9,24 @@
    Les colonnes 7001_a-1 … 7001_a-N (une par auteur·e, jusqu'au maximum rencontré dans cet
    export) sont déjà complétées à droite par des cellules vides dans `enTetesAuteurs` et
    dans `articles[].auteursInverses` : ce gabarit n'a qu'à les faire défiler, jamais à
-   compter jusqu'à N lui-même (le moteur ne sait pas faire d'arithmétique).
+   compter jusqu'à N lui-même (le moteur ne sait pas faire d'arithmétique). Les colonnes
+   690__a-1/690__b-1 … 690__a-N/690__b-N (mots-clés MARC, $a = allemand, $b = français)
+   suivent exactement le même principe, en fin de ligne — voir `enTetesDescripteurs` et
+   `articles[].descripteurs` plus bas.
+
+   Mots-clés (690) : décision de Robin, leur source est le .meta.yaml de l'article dans le
+   numéro local, jamais l'OAI (voir lib/secretariat.js, commandeEdudoc) — absents si aucune
+   racine locale n'a été fournie à l'export (--numero), ou si aucun article local ne porte
+   le DOI de la ligne. Seuls les descripteurs reconnus par le thésaurus edudoc partent ici ;
+   ce que la rédaction a saisi sans que le thésaurus le reconnaisse est compté et signalé
+   par la commande (avert), jamais silencieusement perdu.
 
    Variables disponibles ici :
    dateExport              "2026-09-14" (583__c : date du jour, une seule fois pour tout l'export)
    enTetesAuteurs           ["7001_a-1", "7001_a-2"] — les en-têtes des colonnes d'auteur·e·s, déjà nommées
+   enTetesDescripteurs      ["690__a-1", "690__b-1", "690__a-2", "690__b-2"] — les en-têtes des colonnes de
+                             mots-clés MARC 690, déjà nommées ; vide (aucune colonne 690) si aucun article
+                             de l'export ne porte de descripteur
    articles                 une ligne par article, triée par volume puis numéro puis DOI
    articles[].langueMarc            "fre" ou "ger" (041__a)
    articles[].titre                 "Compensation des désavantages et universités en Suisse romande" (245__a-1 ;
@@ -30,12 +43,17 @@
    articles[].urlPdfTelechargement   URL de la galley PDF, "/view/" remplacé par "/download/" (FFT__a)
    articles[].auteursInverses[]      ["Dentz, Amélie", "Frank Baud, Bianca", …] déjà en forme "Nom, Prénom",
                                       complétée à droite jusqu'à la longueur de `enTetesAuteurs`
+   articles[].descripteurs[]         [{de: "Inklusion (SZH)", fr: "inclusion (CSPS)"}, …] forme canonique du
+                                      thésaurus edudoc (jamais celle tapée par la rédaction), complétée à
+                                      droite par {de: "", fr: ""} jusqu'à la longueur de `enTetesDescripteurs`
 #}
 {% block contenu -%}
 "001";"037__a";"041__a";"245__a-1";"245__c-1";"269__a";"336__a";"338__a";"520__a";"583__c";"773__j-1";"773__k-1";"773__q-1";"773__0-2";"773__t-2";"790__a";"910__a-1";"910__u-1";"950__a";"FFT__a";{% for h in enTetesAuteurs -%}
-{{ h|csv }}{% if not loop.last %};{% endif %}{% endfor %}
+{{ h|csv }}{% if not loop.last %};{% endif %}{% endfor %}{% if enTetesDescripteurs is not empty %};{% for h in enTetesDescripteurs -%}
+{{ h|csv }}{% if not loop.last %};{% endif %}{% endfor %}{% endif %}
 {% for a in articles -%}
 "";"ARTICLE";{{ a.langueMarc|csv }};{{ a.titre|csv }};{{ a.signature|csv }};{{ a.annee|csv }};"Article";"Online-Volltext / Plein texte - en ligne";{{ a.resume|csv }};{{ dateExport|csv }};{{ a.volume|csv }};{{ a.numero|csv }};{{ a.pages|csv }};{{ a.revueId|csv }};{{ a.revueTitre|csv }};"SZH-CSPS";"Permalink (Open Access)";{{ a.urlDoi|csv }};"edition@szh.ch";{{ a.urlPdfTelechargement|csv }};{% for n in a.auteursInverses -%}
-{{ n|csv }}{% if not loop.last %};{% endif %}{% endfor %}
+{{ n|csv }}{% if not loop.last %};{% endif %}{% endfor %}{% if enTetesDescripteurs is not empty %};{% for d in a.descripteurs -%}
+{{ d.de|csv }};{{ d.fr|csv }}{% if not loop.last %};{% endif %}{% endfor %}{% endif %}
 {% endfor -%}
 {% endblock %}

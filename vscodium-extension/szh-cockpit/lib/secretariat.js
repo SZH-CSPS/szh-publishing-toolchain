@@ -25,6 +25,9 @@ const auteursOjs = require('./auteurs-ojs');   // normaliserCreator : « Nom, Pr
 const yaml = require('./yaml');
 const articlesLib = require('./articles');     // ordre, rang du DOI, sans-DOI
 const exportOjs = require('./export-ojs');     // doiCalcule, typeSansDoi, RUBRIQUES_DEFAUT, configOjs
+// lireCacheMotsCles, indexerThesaurus, apparierDescripteurs : thésaurus edudoc (mots-clés
+// MARC 690) pour la commande « edudoc » — voir la section dédiée plus bas.
+const motsClesEdudoc = require('./mots-cles-edudoc');
 
 // ---- Petites aides communes ----------------------------------------------------------
 
@@ -633,6 +636,41 @@ function selectionnerNumeros(cache, cles, emettre) {
   return trouves;
 }
 
+// ---- Mots-clés edudoc (MARC 690) : joints par DOI depuis les numéros locaux -----------
+//
+// Décision de Robin : la source des mots-clés edudoc est le .meta.yaml de l'article dans le
+// numéro local, jamais l'OAI (mesuré : l'OAI ne porte pas un meilleur appariement, et le
+// local est la vérité éditoriale, disponible avant publication). On réutilise donc
+// collecterNumeroLocal — déjà écrit pour commandeMetadonnees — plutôt que de relire les
+// fiches à sa façon, et on joint par DOI, exactement la clé de comparerArticle/comparerNumero.
+
+// Les articles de un ou plusieurs numéros locaux, mis à plat et indexés par DOI. Deux
+// racines ne sont pas censées porter le même DOI (double dépôt du même numéro, numéro et
+// son archive...) mais si ça arrive c'est une erreur de manipulation, pas un cas normal —
+// mieux vaut le dire que l'écraser en silence. Tranché : le DERNIER rencontré gagne (ordre
+// des --numero sur la ligne de commande), comportement inchangé, juste rendu visible.
+function indexerArticlesLocauxParDoi(racines, emettre) {
+  const emit = typeof emettre === 'function' ? emettre : () => {};
+  const parDoi = {};
+  const racineParDoi = {};
+  for (const racine of racines) {
+    const { articles } = collecterNumeroLocal(racine, emettre);
+    for (const art of articles) {
+      if (!art.doi) { continue; }
+      if (parDoi[art.doi]) {
+        emit({
+          t: 'avert',
+          texte: art.doi + ' : porté par plusieurs numéros locaux (' + racineParDoi[art.doi] + ' et ' + racine +
+            '), le dernier rencontré est retenu pour les mots-clés'
+        });
+      }
+      parDoi[art.doi] = art;
+      racineParDoi[art.doi] = racine;
+    }
+  }
+  return parDoi;
+}
+
 function construireLigneEdudoc(numero, art) {
   const infos = REVUES_EDUDOC[numero.revue] || REVUES_EDUDOC.revue;
   const titre = art.titres[art.locale] || Object.values(art.titres)[0] || '';
@@ -659,6 +697,32 @@ async function commandeEdudoc(opts) {
   const numeros = selectionnerNumeros(cache, o.cles, emit);
   if (numeros.length === 0) { throw new Error('aucun numéro à exporter (cache vide ou clés inconnues)'); }
 
+  // Mots-clés 690 : seulement si --numero (racines locales) a été fourni au moins une fois —
+  // sans lui, aucun article local à joindre par DOI, le CSV sort exactement comme avant
+  // (aucune colonne 690). L'index du thésaurus se construit UNE SEULE FOIS pour tout
+  // l'export, jamais par article : c'est lui qui coûte (lecture du cache moissonné), pas
+  // l'appariement. `opts.motsClesConnus` permet aux tests d'injecter le thésaurus plutôt
+  // que de lire C:\ProgramData, comme `opts.recuperer` l'évite déjà pour le réseau ailleurs
+  // dans ce fichier.
+  const racinesLocales = (Array.isArray(o.racinesNumeros) ? o.racinesNumeros : []).filter(Boolean);
+  let articlesLocauxParDoi = {};
+  let indexThesaurus = null;
+  let totalDescripteurs = 0;
+  // Dédoublonnée sur la forme pliée (casse, accents, apostrophes — plierDescripteur de
+  // lib/mots-cles-edudoc.js) : un même terme saisi par plusieurs articles (« différenciation »,
+  // « compétences »...) ne doit compter, ni s'afficher, qu'une fois. Sans cela, sur un export
+  // de plusieurs numéros, les 20 places affichées se feraient manger par la répétition d'un
+  // seul terme — un bilan que Robin ne pourrait plus lire pour savoir quoi demander à edudoc.
+  // Première graphie rencontrée gardée, comme partout ailleurs dans ces deux modules.
+  const motsClesNonReconnus = [];
+  const motsClesNonReconnusVus = new Set();
+  if (racinesLocales.length > 0) {
+    emit({ t: 'etape', texte: 'lecture des numéros locaux pour les mots-clés edudoc...' });
+    articlesLocauxParDoi = indexerArticlesLocauxParDoi(racinesLocales, emit);
+    const motsClesConnus = Array.isArray(o.motsClesConnus) ? o.motsClesConnus : motsClesEdudoc.lireCacheMotsCles().motsCles;
+    indexThesaurus = motsClesEdudoc.indexerThesaurus(motsClesConnus);
+  }
+
   // Total connu d'avance : un numéro résolu du cache = un pas de progression, qu'il porte
   // beaucoup ou peu d'articles — c'est le numéro qui est l'unité de travail ici.
   const totalEdudoc = numeros.length;
@@ -668,7 +732,25 @@ async function commandeEdudoc(opts) {
     emit({ t: 'etape', texte: 'numéro ' + numero.cle + ' (' + (i + 1) + '/' + totalEdudoc + ')...' });
     for (const art of numero.articles) {
       if (!art.doi) { emit({ t: 'avert', texte: (art.identifiant || '?') + ' : sans DOI, ignoré pour Edudoc' }); continue; }
-      lignes.push(construireLigneEdudoc(numero, art));
+      const ligne = construireLigneEdudoc(numero, art);
+      ligne.descripteurs = [];
+      if (indexThesaurus) {
+        const local = articlesLocauxParDoi[art.doi];
+        if (local) {
+          const appariement = motsClesEdudoc.apparierDescripteurs(local.motsClesFr, local.motsClesDe, indexThesaurus);
+          ligne.descripteurs = appariement.descripteurs;
+          totalDescripteurs += appariement.descripteurs.length;
+          for (const terme of appariement.nonReconnus) {
+            const cle = motsClesEdudoc.plierDescripteur(terme);
+            if (cle === '' || motsClesNonReconnusVus.has(cle)) { continue; }
+            motsClesNonReconnusVus.add(cle);
+            motsClesNonReconnus.push(terme);
+          }
+        } else {
+          emit({ t: 'avert', texte: art.doi + ' : aucun article local ne porte ce DOI, exporté sans mots-clés' });
+        }
+      }
+      lignes.push(ligne);
     }
     emit({ t: 'progres', fait: i + 1, total: totalEdudoc });
   }
@@ -679,12 +761,44 @@ async function commandeEdudoc(opts) {
   for (let i = 1; i <= maxAuteurs; i++) { enTetesAuteurs.push('7001_a-' + i); }
   for (const l of lignes) { while (l.auteursInverses.length < maxAuteurs) { l.auteursInverses.push(''); } }
 
+  // 690__a-N / 690__b-N (allemand / français) : même façon de faire que les auteur·e·s
+  // ci-dessus — l'hôte calcule le maximum rencontré sur tout l'export et complète à droite,
+  // le gabarit ne fait que dérouler (le moteur de gabarits ne sait pas faire d'arithmétique).
+  // Groupe placé à la fin, après les colonnes d'auteur·e·s, comme le veut la convention du
+  // fichier pour les groupes de largeur variable.
+  const maxDescripteurs = lignes.reduce((m, l) => Math.max(m, l.descripteurs.length), 0);
+  const enTetesDescripteurs = [];
+  for (let i = 1; i <= maxDescripteurs; i++) { enTetesDescripteurs.push('690__a-' + i); enTetesDescripteurs.push('690__b-' + i); }
+  for (const l of lignes) { while (l.descripteurs.length < maxDescripteurs) { l.descripteurs.push({ de: '', fr: '' }); } }
+
   fs.mkdirSync(o.dossierSortie, { recursive: true });
   const gabarit = chargerGabarit(dossierGabarits, 'edudoc.twig');
-  const blocs = gabarit.rendre({ articles: lignes, enTetesAuteurs: enTetesAuteurs, dateExport: formaterDateIso(new Date()) });
+  const blocs = gabarit.rendre({
+    articles: lignes, enTetesAuteurs: enTetesAuteurs, enTetesDescripteurs: enTetesDescripteurs,
+    dateExport: formaterDateIso(new Date())
+  });
   const chemin = path.join(o.dossierSortie, 'edudoc.csv');
   fs.writeFileSync(chemin, versCsvFinal(blocs.contenu || ''));
   emit({ t: 'fichier', chemin: chemin, nom: 'edudoc.csv' });
+
+  // Bilan chiffré des mots-clés : Robin a choisi de n'exporter QUE les descripteurs du
+  // thésaurus, jamais une forme tapée à la main — il doit voir ce qui reste sur le quai
+  // plutôt que de le découvrir chez la bibliothécaire.
+  if (indexThesaurus) {
+    emit({ t: 'etape', texte: totalDescripteurs + ' descripteur(s) 690 exporté(s).' });
+    if (motsClesNonReconnus.length > 0) {
+      const AFFICHES_MAX = 20;
+      const liste = motsClesNonReconnus.slice(0, AFFICHES_MAX).join(', ');
+      const reste = motsClesNonReconnus.length > AFFICHES_MAX
+        ? ' (+' + (motsClesNonReconnus.length - AFFICHES_MAX) + ' autre(s))' : '';
+      emit({
+        t: 'avert',
+        texte: motsClesNonReconnus.length + ' mot(s)-clé(s) distinct(s) saisi(s) non reconnu(s) par le ' +
+          'thésaurus edudoc (chaque terme compté une seule fois, même saisi par plusieurs articles), ' +
+          'exporté(s) nulle part : ' + liste + reste
+      });
+    }
+  }
 
   return { ok: true, texte: lignes.length + ' article(s) exporté(s) vers Edudoc.' };
 }

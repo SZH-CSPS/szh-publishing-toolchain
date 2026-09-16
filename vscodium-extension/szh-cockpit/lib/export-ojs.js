@@ -27,6 +27,13 @@ const { imagesSansAlternative, listerImages } = require('./references');
 const { referencesDuTexte, referencesDuFichier } = require('./citations');
 const archivage = require('./archivage');
 const { T, TEXTES_COCKPIT } = require('./i18n');
+// Masquage du qualificatif de provenance edudoc (« (szh) », « (na) »…) sur les mots-clés
+// publiés : la règle et la liste fermée sont partagées avec pipeline/filters/szh-maquette.lua
+// (qui fait le même travail pour le PDF), voir le commentaire de tête de
+// sansQualificatifDeProvenance dans mots-cles-edudoc.js. plierDescripteur (casse, accents,
+// apostrophes) sert ici au dédoublonnage, pas à l'appariement thésaurus pour lequel il a été
+// écrit — sa normalisation convient aux deux usages.
+const { sansQualificatifDeProvenance, plierDescripteur } = require('./mots-cles-edudoc');
 
 // ---- Configuration de l'OJS cible ---------------------------------------------------
 //
@@ -941,7 +948,28 @@ function genererExportOjs(racine, options) {
       ligne(8, 'copyrightHolder', loc, nomsAuteurs);
       if (numero.annee) { ligne(8, 'copyrightYear', '', numero.annee); }
       for (const l of Object.keys(meta.keywords || {}).sort()) {
-        const mots = (meta.keywords[l] || []).map((m) => String(m).trim()).filter((m) => m !== '');
+        // Masquage AVANT le dédoublonnage, comme côté Lua : la forme affichée (sans
+        // qualificatif de provenance) est celle qui compte pour repérer un doublon —
+        // « prévention » et « prévention (na) » saisis dans le même article ne doivent
+        // donner qu'un seul <keyword> sur la page publique.
+        const vus = new Set();
+        const mots = [];
+        for (const brut of (meta.keywords[l] || [])) {
+          const s = String(brut).trim();
+          if (s === '') { continue; }
+          const affiche = sansQualificatifDeProvenance(s).trim();
+          // Un mot-clé réduit à son seul qualificatif de provenance (« (na) » tapé seul —
+          // aucun descripteur du thésaurus n'a cette forme, mais la saisie manuelle reste
+          // ouverte) devient une chaîne vide une fois masqué : plutôt qu'un
+          // <keyword><name></name></keyword> vide dans le XML d'import OJS — le genre de
+          // chose qu'un validateur refuse sans dire pourquoi — l'entrée est écartée après
+          // masquage, comme côté Lua.
+          if (affiche === '') { continue; }
+          const cle = plierDescripteur(affiche);
+          if (vus.has(cle)) { continue; }        // le premier rencontré fait foi
+          vus.add(cle);
+          mots.push(affiche);
+        }
         if (mots.length === 0) { continue; }
         w('        <keywords locale="' + l + '">\n');
         for (const mot of mots) {

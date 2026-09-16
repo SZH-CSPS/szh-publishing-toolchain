@@ -23,7 +23,8 @@ const {
   ENDPOINT_EDUDOC_DEFAUT, SETS_EDUDOC_DEFAUT, JOURS_FRAICHEUR,
   extraireRecordsMotsCles, recordsEnMotsCles, fusionnerMotsCles,
   lireCacheMotsCles, ecrireCacheMotsCles, cacheFraisMotsCles,
-  configEdudoc, recupererAvecRepli, moissonnerMotsCles, rafraichirMotsCles
+  configEdudoc, recupererAvecRepli, moissonnerMotsCles, rafraichirMotsCles,
+  plierDescripteur, indexerThesaurus, apparierDescripteurs
 } = motsClesEdudoc;
 
 // ---- Fixtures : ce qu'edudoc.ch répond réellement (relevé le 31.08.2026) --------------
@@ -328,6 +329,65 @@ test('fusionnerMotsCles : une entrée sans allemand ni français est écartée',
   assert.deepStrictEqual(fusionnerMotsCles([], [{ de: '', fr: '' }]), []);
 });
 
+// Cas RÉEL, relevé sur C:\ProgramData\SZH\mots-cles.json : 1148 entrées pour 922 paires
+// distinctes, 226 doublons exacts — « Prävention (na) / prévention (na) » y figure 46 fois.
+// La cause : après un fork sur désaccord (même allemand, français distinct), parDe continue
+// de désigner l'entrée D'ORIGINE (jamais réécrite), donc un troisième descripteur identique
+// au FORK ne le retrouve jamais par ce chemin et forke une nouvelle fois — répété à chaque
+// notice qui remoissonne le même terme.
+test('fusionnerMotsCles : un doublon rigoureusement identique, répété après un fork, ne s’empile pas', () => {
+  const moisson = [{ de: 'Prävention (na)', fr: 'prévention', manque: null }];
+  for (let i = 0; i < 5; i++) {
+    moisson.push({ de: 'Prävention (na)', fr: 'prévention (na)', manque: null });
+  }
+  const fusion = fusionnerMotsCles([], moisson);
+  assert.strictEqual(fusion.length, 2, 'la variante, puis le fork une seule fois — pas cinq');
+  assert.deepStrictEqual(fusion.map((m) => m.fr).sort(), ['prévention', 'prévention (na)'].sort());
+  assert.ok(fusion.every((m) => m.de === 'Prävention (na)'));
+});
+
+test('fusionnerMotsCles : le fork sur un vrai désaccord reste préservé (non-régression)', () => {
+  const fusion = fusionnerMotsCles(
+    [{ de: 'Lernschwierigkeit', fr: "difficulté d'apprentissage", manque: null }],
+    [{ de: 'Lernschwierigkeit', fr: "difficulté de l'apprentissage", manque: null }]
+  );
+  assert.strictEqual(fusion.length, 2, 'deux vraies traductions concurrentes doivent survivre');
+});
+
+test('fusionnerMotsCles : une chaîne de trois forks légitimes, chacun redondé plusieurs fois', () => {
+  const moisson = [
+    { de: 'X', fr: 'un', manque: null },
+    { de: 'X', fr: 'deux', manque: null },       // fork n°1 (français différent)
+    { de: 'X', fr: 'trois', manque: null },      // fork n°2 (français différent, encore)
+    { de: 'X', fr: 'deux', manque: null },       // doublon du fork n°1
+    { de: 'X', fr: 'trois', manque: null },      // doublon du fork n°2
+    { de: 'X', fr: 'un', manque: null }          // doublon de la toute première entrée
+  ];
+  const fusion = fusionnerMotsCles([], moisson);
+  assert.strictEqual(fusion.length, 3, 'trois traductions distinctes, aucun doublon supplémentaire');
+  assert.deepStrictEqual(fusion.map((m) => m.fr).sort(), ['deux', 'trois', 'un']);
+  assert.ok(fusion.every((m) => m.de === 'X'));
+});
+
+// Le prochain rafraîchissement appelle fusionnerMotsCles(cache.motsCles, nouveaux) — un
+// cache DÉJÀ pollué (moissonné avant la correction) doit donc se replier tout seul dès qu'il
+// retraverse fusionnerMotsCles, même sans aucun mot-clé neuf à fusionner.
+test('fusionnerMotsCles : un cache déjà pollué se replie de lui-même, même sans rien de neuf à fusionner', () => {
+  const pollue = [
+    { de: 'Prävention (na)', fr: 'prévention', manque: null },
+    { de: 'Prävention (na)', fr: 'prévention (na)', manque: null },
+    { de: 'Prävention (na)', fr: 'prévention (na)', manque: null },
+    { de: 'Prävention (na)', fr: 'prévention (na)', manque: null },
+    { de: 'Sprachentwicklung', fr: 'développement du langage', manque: null },
+    { de: 'Sprachentwicklung', fr: 'développement du langage', manque: null }
+  ];
+  const fusion = fusionnerMotsCles(pollue, []);
+  assert.strictEqual(fusion.length, 3);
+  assert.deepStrictEqual(fusion.map((m) => m.fr).sort(), [
+    'développement du langage', 'prévention', 'prévention (na)'
+  ]);
+});
+
 // ---- Moissonnage (récupération injectée : aucun réseau) --------------------------------
 
 test('moissonnerMotsCles : première requête — set et metadataPrefix, from incrémental', async () => {
@@ -614,4 +674,176 @@ test('rafraichirMotsCles : premier moissonnage sans cache -> pas de from, cache 
     const cache = lireCacheMotsCles();
     assert.deepStrictEqual(cache.motsCles, [{ de: 'Europa', fr: 'Europe', manque: null }]);
   });
+});
+
+// ---- Export vers edudoc : appariement par le thésaurus, jamais par position -------------
+//
+// keywords.fr et keywords.de sont chacune triées alphabétiquement de leur côté dans le
+// .meta.yaml réel : la n-ième entrée française ne correspond pas à la n-ième allemande. Les
+// thésaurus ci-dessous sont construits à la main, jamais le vrai cache, jamais de disque.
+
+test('plierDescripteur : les trois apostrophes courbes/obliques, accents, casse, espaces', () => {
+  assert.strictEqual(plierDescripteur('plan d’études'), plierDescripteur("plan d'etudes"));
+  assert.strictEqual(plierDescripteur('plan d‘études'), plierDescripteur("plan d'etudes"));
+  assert.strictEqual(plierDescripteur('plan dʼétudes'), plierDescripteur("plan d'etudes"));
+  assert.strictEqual(plierDescripteur("plan d'etudes"), "plan d'etudes");
+  assert.strictEqual(plierDescripteur('  Étude   Française  '), 'etude francaise');
+  assert.strictEqual(plierDescripteur(null), '');
+  assert.strictEqual(plierDescripteur(undefined), '');
+  assert.strictEqual(plierDescripteur(1234), '');
+});
+
+test('apparierDescripteurs : le piège positionnel — deux listes triées chacune de leur côté, jamais croisées', () => {
+  // Thésaurus réel condensé : quatre paires, l'appariement fr<->de n'a rien à voir avec
+  // l'ordre alphabétique de chaque liste prise séparément.
+  const index = indexerThesaurus([
+    { de: 'Orientierungsstufe', fr: "cycle d'orientation", manque: null },
+    { de: 'Lernspiel', fr: 'jeu éducatif', manque: null },
+    { de: 'kognitiver Prozess', fr: 'processus cognitif', manque: null },
+    { de: 'Pilotprojekt', fr: 'projet pilote', manque: null }
+  ]);
+  // Triées alphabétiquement chacune de son côté, comme dans un vrai .meta.yaml.
+  const listeFr = ["cycle d'orientation", 'jeu éducatif', 'processus cognitif', 'projet pilote'];
+  const listeDe = ['kognitiver Prozess', 'Lernspiel', 'Orientierungsstufe', 'Pilotprojekt'];
+  const { descripteurs, nonReconnus } = apparierDescripteurs(listeFr, listeDe, index);
+  assert.deepStrictEqual(nonReconnus, []);
+  assert.deepStrictEqual(descripteurs, [
+    { de: 'Orientierungsstufe', fr: "cycle d'orientation" },
+    { de: 'Lernspiel', fr: 'jeu éducatif' },
+    { de: 'kognitiver Prozess', fr: 'processus cognitif' },
+    { de: 'Pilotprojekt', fr: 'projet pilote' }
+  ]);
+  // La protection explicite : aucun descripteur ne doit croiser les deux paires piégeuses.
+  assert.ok(!descripteurs.some((d) => d.fr === "cycle d'orientation" && d.de !== 'Orientierungsstufe'));
+  assert.ok(!descripteurs.some((d) => d.fr === 'processus cognitif' && d.de !== 'kognitiver Prozess'));
+});
+
+test('apparierDescripteurs : qualificatif entre parenthèses — la forme canonique part à l’export', () => {
+  const index = indexerThesaurus([
+    { de: 'Inklusion (SZH)', fr: 'inclusion (CSPS)', manque: null }
+  ]);
+  const { descripteurs, nonReconnus } = apparierDescripteurs(['Inklusion'], [], index);
+  assert.deepStrictEqual(descripteurs, [{ de: 'Inklusion (SZH)', fr: 'inclusion (CSPS)' }]);
+  assert.deepStrictEqual(nonReconnus, []);
+});
+
+test('apparierDescripteurs : qualificatif dans les deux langues, casse mélangée — « (szh) »/« (SZH) », « (na) »', () => {
+  const index = indexerThesaurus([
+    { de: 'Standard (SZH)', fr: 'norme (na)', manque: null }
+  ]);
+  const { descripteurs, nonReconnus } = apparierDescripteurs(['norme (NA)'], ['STANDARD (szh)'], index);
+  assert.deepStrictEqual(descripteurs, [{ de: 'Standard (SZH)', fr: 'norme (na)' }]);
+  assert.strictEqual(descripteurs.length, 1, 'fr et de retombent sur la même entrée, pas deux');
+  assert.deepStrictEqual(nonReconnus, []);
+});
+
+test('apparierDescripteurs : apostrophe typographique — « plan d’études » retrouve « plan d\'études (na) »', () => {
+  const index = indexerThesaurus([
+    { de: 'Studienplan (na)', fr: "plan d'études (na)", manque: null }
+  ]);
+  const { descripteurs, nonReconnus } = apparierDescripteurs(['plan d’études'], [], index);
+  assert.deepStrictEqual(descripteurs, [{ de: 'Studienplan (na)', fr: "plan d'études (na)" }]);
+  assert.deepStrictEqual(nonReconnus, []);
+});
+
+test('apparierDescripteurs : déduplication — fr et de du même terme ne donnent qu’un descripteur', () => {
+  const index = indexerThesaurus([
+    { de: 'Barrierefreiheit', fr: 'accessibilité', manque: null }
+  ]);
+  const { descripteurs, nonReconnus } = apparierDescripteurs(['accessibilité'], ['Barrierefreiheit'], index);
+  assert.strictEqual(descripteurs.length, 1);
+  assert.deepStrictEqual(descripteurs, [{ de: 'Barrierefreiheit', fr: 'accessibilité' }]);
+  assert.deepStrictEqual(nonReconnus, []);
+});
+
+test('apparierDescripteurs : un terme inconnu part en nonReconnus, sans faire échouer les autres', () => {
+  const index = indexerThesaurus([
+    { de: 'Barrierefreiheit', fr: 'accessibilité', manque: null }
+  ]);
+  const { descripteurs, nonReconnus } = apparierDescripteurs(
+    ['accessibilité', 'terme fantaisiste'], [], index);
+  assert.deepStrictEqual(descripteurs, [{ de: 'Barrierefreiheit', fr: 'accessibilité' }]);
+  assert.deepStrictEqual(nonReconnus, ['terme fantaisiste']);
+});
+
+test('apparierDescripteurs : paire incomplète du thésaurus (français manquant) — non reconnue, pas de descripteur', () => {
+  const index = indexerThesaurus([
+    { de: 'Berufsbildung', fr: '', manque: 'fr' }
+  ]);
+  const { descripteurs, nonReconnus } = apparierDescripteurs([], ['Berufsbildung'], index);
+  assert.deepStrictEqual(descripteurs, [], 'le 690 a besoin de ses deux sous-champs');
+  assert.deepStrictEqual(nonReconnus, ['Berufsbildung']);
+});
+
+test('indexerThesaurus + apparierDescripteurs : la clé exacte prime sur la clé dé-qualifiée', () => {
+  // « Tessin (na) » posé AVANT l'entrée exacte, pour prouver que l'ordre d'indexation ne
+  // change rien : la passe des clés exactes est intégralement posée avant celle des
+  // clés dé-qualifiées, quel que soit l'ordre des entrées dans le thésaurus.
+  const index = indexerThesaurus([
+    { de: 'Tessin (na)', fr: 'Tessin (na)', manque: null },
+    { de: 'Ticino', fr: 'Tessin', manque: null }
+  ]);
+  const { descripteurs, nonReconnus } = apparierDescripteurs(['tessin'], [], index);
+  assert.deepStrictEqual(descripteurs, [{ de: 'Ticino', fr: 'Tessin' }]);
+  assert.deepStrictEqual(nonReconnus, []);
+});
+
+// Cas RÉEL rencontré sur 04-les-mesures-individuelles-de-pedagogie : le thésaurus porte deux
+// entrées distinctes pour « Lernschwierigkeit » (deux traductions concurrentes — le même
+// désaccord que fusionnerMotsCles refuse d'écraser, voir son propre test plus haut). Le
+// terme allemand saisi tombe sur l'une, le terme français saisi sur l'autre : sans fusion
+// après coup, un seul concept ressortirait en deux champs 690 avec le même $a et deux $b
+// contradictoires.
+test('apparierDescripteurs : deux entrées du thésaurus qui partagent leur allemand se fondent en un descripteur', () => {
+  const index = indexerThesaurus([
+    { de: 'Lernschwierigkeit', fr: "difficulté d'apprentissage", manque: null },
+    { de: 'Lernschwierigkeit', fr: "difficulté de l'apprentissage", manque: null }
+  ]);
+  // Le fr saisi tombe sur la première entrée, le de saisi sur la seconde (même allemand).
+  const { descripteurs, nonReconnus } = apparierDescripteurs(
+    ["difficulté de l'apprentissage"], ['Lernschwierigkeit'], index);
+  assert.strictEqual(descripteurs.length, 1, 'un seul concept, un seul descripteur');
+  assert.strictEqual(descripteurs[0].de, 'Lernschwierigkeit');
+  assert.deepStrictEqual(nonReconnus, []);
+});
+
+test('apparierDescripteurs : symétrique — deux entrées qui partagent leur français se fondent aussi', () => {
+  const index = indexerThesaurus([
+    { de: 'Lernschwierigkeit', fr: 'difficulté', manque: null },
+    { de: 'Lernbehinderung', fr: 'difficulté', manque: null }
+  ]);
+  const { descripteurs, nonReconnus } = apparierDescripteurs(
+    ['difficulté'], ['Lernbehinderung'], index);
+  assert.strictEqual(descripteurs.length, 1, 'un seul concept, un seul descripteur');
+  assert.strictEqual(descripteurs[0].fr, 'difficulté');
+  assert.deepStrictEqual(nonReconnus, []);
+});
+
+// Garde-fou : deux entrées réellement distinctes (allemand ET français différents) ne
+// doivent jamais se fondre, même saisies dans la même paire d'appel.
+test('apparierDescripteurs : deux entrées vraiment distinctes ne se fondent pas', () => {
+  const index = indexerThesaurus([
+    { de: 'Orientierungsstufe', fr: "cycle d'orientation", manque: null },
+    { de: 'Lernspiel', fr: 'jeu éducatif', manque: null }
+  ]);
+  const { descripteurs } = apparierDescripteurs(
+    ["cycle d'orientation", 'jeu éducatif'], ['Orientierungsstufe', 'Lernspiel'], index);
+  assert.strictEqual(descripteurs.length, 2);
+});
+
+test('apparierDescripteurs et indexerThesaurus : entrées vides, listes absentes, null, non-tableaux — rien ne jette', () => {
+  assert.deepStrictEqual(indexerThesaurus(null).size, 0);
+  assert.deepStrictEqual(indexerThesaurus(undefined).size, 0);
+  assert.deepStrictEqual(indexerThesaurus('pas un tableau').size, 0);
+  const index = indexerThesaurus([
+    { de: '', fr: '', manque: null },
+    null,
+    { de: 'Standard', fr: 'standard', manque: null }
+  ]);
+  assert.doesNotThrow(() => apparierDescripteurs(null, undefined, index));
+  assert.doesNotThrow(() => apparierDescripteurs('pas un tableau', 42, index));
+  assert.deepStrictEqual(apparierDescripteurs(null, undefined, index), { descripteurs: [], nonReconnus: [] });
+  assert.deepStrictEqual(
+    apparierDescripteurs(['', '  ', 'standard'], [], index),
+    { descripteurs: [{ de: 'Standard', fr: 'standard' }], nonReconnus: [] });
 });

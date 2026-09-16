@@ -667,6 +667,228 @@ test('commandeEdudoc : progres monotone, un total connu d’avance (nombre de nu
   assert.deepStrictEqual(progres.map((e) => e.fait), [1, 2]); // strictement croissant, finit à total
 });
 
+// ---- commandeEdudoc + mots-clés (690) : jointure par DOI depuis un numéro local ---------
+//
+// Décision de Robin : la source des mots-clés edudoc est le .meta.yaml de l'article dans le
+// numéro local, jamais l'OAI. Le thésaurus est injecté via opts.motsClesConnus, jamais lu
+// sur C:\ProgramData — même façon de faire que opts.recuperer pour le réseau ailleurs dans
+// ce fichier. Les fonctions d'appariement (indexerThesaurus, apparierDescripteurs) viennent
+// de lib/mots-cles-edudoc.js : ce fichier ne fait que les appeler, jamais les réimplémenter.
+
+const THESAURUS_EDUDOC_ESSAI = [
+  { de: 'Inklusion', fr: 'inclusion' },
+  { de: 'Nachteilsausgleich', fr: 'compensation' },
+  { de: 'Differenzierung', fr: 'differenciation' },
+  { de: 'Heilpaedagogik', fr: 'pedagogie specialisee' },
+  { de: 'Fruehfoerderung', fr: 'intervention precoce' }
+];
+
+// Un numéro local avec deux articles : l'un à deux mots-clés reconnus (+ un non reconnu),
+// l'autre à cinq — bornes mesurées en vrai sur les numéros du poste (« de 3 à 7 »). Le DOI
+// est posé explicitement dans la fiche (`doi:`) : c'est lui, pas le rang, qui doit faire la
+// jointure avec le cache OAI, exactement comme comparerArticle/comparerNumero.
+function ecrireNumeroEdudocMotsCles() {
+  const racine = dossierTemp('szh-secr-edu-local-');
+  fs.writeFileSync(path.join(racine, 'ausgabe.yaml'), [
+    'revue: "Revue suisse de pedagogie specialisee"',
+    'title: "Numero edudoc"',
+    'lang: fr',
+    'volume: "16"',
+    'numero: "03"',
+    'date: "2026-09-01"',
+    ''
+  ].join('\n'));
+
+  const article = (slug, lignes) => {
+    const dossier = path.join(racine, 'articles', slug);
+    fs.mkdirSync(dossier, { recursive: true });
+    fs.writeFileSync(path.join(dossier, slug + '.md'), 'Texte.\n');
+    fs.writeFileSync(path.join(dossier, slug + '.meta.yaml'), lignes.concat(['']).join('\n'));
+  };
+
+  article('a-deux-mots-cles', [
+    'type: varia', 'lang: fr',
+    'doi: "10.57161/r2026-03-01"',
+    'title:', '  fr: "Article a deux mots-cles"',
+    'author:', '- prenom: "Amelie"', '  nom: "Dentz"',
+    'keywords:',
+    '  fr: ["inclusion", "compensation", "terme inconnu du thesaurus"]',
+    '  de: ["Inklusion", "Nachteilsausgleich"]'
+  ]);
+  article('b-cinq-mots-cles', [
+    'type: varia', 'lang: fr',
+    'doi: "10.57161/r2026-03-02"',
+    'title:', '  fr: "Article a cinq mots-cles"',
+    'author:', '- prenom: "Bruno"', '  nom: "Meyer"',
+    'keywords:',
+    '  fr: ["inclusion", "compensation", "differenciation", "pedagogie specialisee", "intervention precoce"]',
+    '  de: ["Inklusion", "Nachteilsausgleich", "Differenzierung", "Heilpaedagogik", "Fruehfoerderung"]'
+  ]);
+  return racine;
+}
+
+// Cache OAI/edudoc avec trois articles : deux ont un pendant local (les DOI ci-dessus), le
+// troisième n'en a aucun — sa ligne doit sortir sans descripteurs, avec un avertissement.
+function cacheEdudocMotsClesEssai(cheminCache) {
+  const art1 = secretariat.decoderRecordOai(secretariat.extraireBlocsRecord(enveloppeOai(recordOaiDc({
+    id: '1', setSpec: 'revue:VA', titreFr: 'Article a deux mots-cles', creators: ['Dentz, Amelie'],
+    doi: '10.57161/r2026-03-01', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numero'
+  })))[0], 'revue');
+  const art2 = secretariat.decoderRecordOai(secretariat.extraireBlocsRecord(enveloppeOai(recordOaiDc({
+    id: '2', setSpec: 'revue:VA', titreFr: 'Article a cinq mots-cles', creators: ['Meyer, Bruno'],
+    doi: '10.57161/r2026-03-02', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numero'
+  })))[0], 'revue');
+  const art3 = secretariat.decoderRecordOai(secretariat.extraireBlocsRecord(enveloppeOai(recordOaiDc({
+    id: '3', setSpec: 'revue:VA', titreFr: 'Article publie mais pas encore rapatrie', creators: ['Inconnu, Personne'],
+    doi: '10.57161/r2026-03-03', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numero'
+  })))[0], 'revue');
+  secretariat.ecrireCacheNumeros(cheminCache, {
+    version: 1, dateRecolte: null,
+    numeros: { '2026-03': [{ cle: '2026-03', revue: 'revue', locale: 'fr', annee: '2026', numero: '03', volume: '16', titre: 'Numero', issn: '', articles: [art1, art2, art3] }] }
+  });
+}
+
+test('commandeEdudoc : avec --numero (racines locales), colonnes 690 en forme canonique du thésaurus, remplissage à droite', async () => {
+  const cheminCache = path.join(dossierTemp('szh-secr-edu-mc-'), 'cache.json');
+  cacheEdudocMotsClesEssai(cheminCache);
+  const racineLocale = ecrireNumeroEdudocMotsCles();
+  const dossierSortie = dossierTemp('szh-secr-edu-mc-sortie-');
+  const evenements = [];
+  const resultat = await secretariat.commandeEdudoc({
+    cheminCache: cheminCache, cles: ['2026-03'], dossierSortie: dossierSortie,
+    racinesNumeros: [racineLocale], motsClesConnus: THESAURUS_EDUDOC_ESSAI,
+    emettre: (e) => evenements.push(e)
+  });
+  assert.strictEqual(resultat.ok, true);
+
+  const csv = fs.readFileSync(path.join(dossierSortie, 'edudoc.csv'), 'utf8');
+  const lignes = csv.replace(/^\uFEFF/, '').split('\r\n').filter((l) => l !== '');
+  assert.strictEqual(lignes.length, 4); // en-tête + 3 articles (dont celui sans pendant local)
+
+  // En-tête : cinq paires 690__a-N/690__b-N — le maximum rencontré, porté par l'article à
+  // cinq mots-clés reconnus.
+  assert.ok(lignes[0].indexOf('"690__a-1"') !== -1 && lignes[0].indexOf('"690__b-1"') !== -1, lignes[0]);
+  assert.ok(lignes[0].indexOf('"690__a-5"') !== -1 && lignes[0].indexOf('"690__b-5"') !== -1, lignes[0]);
+  assert.ok(lignes[0].indexOf('"690__a-6"') === -1, 'pas de sixième paire : le maximum est cinq');
+  const nbColonnesEntete = lignes[0].split(';').length;
+
+  const ligneA = lignes.find((l) => l.indexOf('Article a deux mots-cles') !== -1);
+  const ligneB = lignes.find((l) => l.indexOf('Article a cinq mots-cles') !== -1);
+  const ligneC = lignes.find((l) => l.indexOf('pas encore rapatrie') !== -1);
+  assert.ok(ligneA, 'ligne de l’article à deux mots-clés introuvable : ' + lignes.join('\n'));
+  assert.ok(ligneB, 'ligne de l’article à cinq mots-clés introuvable : ' + lignes.join('\n'));
+  assert.ok(ligneC, 'ligne du troisième article introuvable : ' + lignes.join('\n'));
+
+  // Forme canonique du thésaurus (ici identique à la saisie, mais la colonne allemande
+  // prouve que l'appariement passe bien par l'index, jamais par la position dans la liste).
+  assert.ok(ligneA.indexOf('"Inklusion"') !== -1 && ligneA.indexOf('"inclusion"') !== -1, ligneA);
+  assert.ok(ligneA.indexOf('"Nachteilsausgleich"') !== -1 && ligneA.indexOf('"compensation"') !== -1, ligneA);
+
+  // Remplissage à droite : les trois lignes ont exactement le même nombre de colonnes que
+  // l'en-tête, quel que soit leur nombre réel de descripteurs (2, 5, ou 0).
+  assert.strictEqual(ligneA.split(';').length, nbColonnesEntete);
+  assert.strictEqual(ligneB.split(';').length, nbColonnesEntete);
+  assert.strictEqual(ligneC.split(';').length, nbColonnesEntete);
+
+  // Le troisième article (OAI) n'a pas de pendant local : ligne sans descripteurs, avec un
+  // avertissement explicite — le CSV reste valide (colonnes toutes présentes, vides).
+  assert.ok(evenements.some((e) => e.t === 'avert' &&
+    e.texte.indexOf('10.57161/r2026-03-03') !== -1 && e.texte.indexOf('aucun article local') !== -1),
+    evenements.map((e) => e.texte).join('\n'));
+
+  // Bilan chiffré : 2 + 5 = 7 descripteurs exportés, un mot-clé saisi non reconnu par le
+  // thésaurus, compté et listé plutôt que perdu en silence.
+  assert.ok(evenements.some((e) => e.t === 'etape' && e.texte.indexOf('7 descripteur') !== -1),
+    evenements.map((e) => e.texte).join('\n'));
+  assert.ok(evenements.some((e) => e.t === 'avert' &&
+    e.texte.indexOf('1 mot') !== -1 && e.texte.indexOf('terme inconnu du thesaurus') !== -1),
+    evenements.map((e) => e.texte).join('\n'));
+});
+
+test('commandeEdudoc : un même mot-clé non reconnu saisi par deux articles ne compte, et n’apparaît, qu’une fois dans le bilan', async () => {
+  const cheminCache = path.join(dossierTemp('szh-secr-edu-dup-'), 'cache.json');
+  const art1 = secretariat.decoderRecordOai(secretariat.extraireBlocsRecord(enveloppeOai(recordOaiDc({
+    id: '1', setSpec: 'revue:VA', titreFr: 'Premier article', creators: ['Dentz, Amelie'],
+    doi: '10.57161/r2026-03-01', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numero'
+  })))[0], 'revue');
+  const art2 = secretariat.decoderRecordOai(secretariat.extraireBlocsRecord(enveloppeOai(recordOaiDc({
+    id: '2', setSpec: 'revue:VA', titreFr: 'Second article', creators: ['Meyer, Bruno'],
+    doi: '10.57161/r2026-03-02', volume: '16', numero: '03', annee: '2026', titreNumero: 'Numero'
+  })))[0], 'revue');
+  secretariat.ecrireCacheNumeros(cheminCache, {
+    version: 1, dateRecolte: null,
+    numeros: { '2026-03': [{ cle: '2026-03', revue: 'revue', locale: 'fr', annee: '2026', numero: '03', volume: '16', titre: 'Numero', issn: '', articles: [art1, art2] }] }
+  });
+
+  const racine = dossierTemp('szh-secr-edu-dup-local-');
+  fs.writeFileSync(path.join(racine, 'ausgabe.yaml'), [
+    'revue: "Revue suisse de pedagogie specialisee"',
+    'title: "Numero"', 'lang: fr', 'volume: "16"', 'numero: "03"', 'date: "2026-09-01"', ''
+  ].join('\n'));
+  const article = (slug, lignes) => {
+    const dossier = path.join(racine, 'articles', slug);
+    fs.mkdirSync(dossier, { recursive: true });
+    fs.writeFileSync(path.join(dossier, slug + '.md'), 'Texte.\n');
+    fs.writeFileSync(path.join(dossier, slug + '.meta.yaml'), lignes.concat(['']).join('\n'));
+  };
+  // Même terme, deux graphies différentes (casse) — même clé pliée (plierDescripteur), doit
+  // compter et s'afficher une seule fois, sous la première graphie rencontrée.
+  article('premier', [
+    'type: varia', 'lang: fr', 'doi: "10.57161/r2026-03-01"',
+    'title:', '  fr: "Premier article"',
+    'author:', '- prenom: "Amelie"', '  nom: "Dentz"',
+    'keywords:', '  fr: ["Terme Partage Inconnu"]'
+  ]);
+  article('second', [
+    'type: varia', 'lang: fr', 'doi: "10.57161/r2026-03-02"',
+    'title:', '  fr: "Second article"',
+    'author:', '- prenom: "Bruno"', '  nom: "Meyer"',
+    'keywords:', '  fr: ["terme partage inconnu"]'
+  ]);
+
+  const dossierSortie = dossierTemp('szh-secr-edu-dup-sortie-');
+  const evenements = [];
+  const resultat = await secretariat.commandeEdudoc({
+    cheminCache: cheminCache, cles: ['2026-03'], dossierSortie: dossierSortie,
+    racinesNumeros: [racine], motsClesConnus: THESAURUS_EDUDOC_ESSAI,
+    emettre: (e) => evenements.push(e)
+  });
+  assert.strictEqual(resultat.ok, true);
+
+  // Aucun descripteur (le terme n'est pas dans le thésaurus) : seul le bilan des non reconnus
+  // est en jeu ici.
+  assert.ok(evenements.some((e) => e.t === 'etape' && e.texte.indexOf('0 descripteur') !== -1),
+    evenements.map((e) => e.texte).join('\n'));
+
+  // Un seul avertissement de bilan, et le compte qu'il annonce dit bien « 1 » — le terme
+  // saisi deux fois (une par article, sous deux casses) ne doit compter qu'une fois.
+  const bilans = evenements.filter((e) => e.t === 'avert' && e.texte.indexOf('non reconnu') !== -1);
+  assert.strictEqual(bilans.length, 1, 'un seul avertissement de bilan attendu : ' + evenements.map((e) => e.texte).join('\n'));
+  assert.ok(bilans[0].texte.indexOf('1 mot') !== -1, bilans[0].texte);
+  assert.ok(bilans[0].texte.indexOf('distinct') !== -1, bilans[0].texte);
+
+  // Et il n'apparaît qu'une fois dans la liste affichée, quelle que soit sa casse.
+  const occurrences = bilans[0].texte.toLowerCase().split('terme partage inconnu').length - 1;
+  assert.strictEqual(occurrences, 1, bilans[0].texte);
+  // La première graphie rencontrée est celle qui est gardée.
+  assert.ok(bilans[0].texte.indexOf('Terme Partage Inconnu') !== -1, bilans[0].texte);
+});
+
+test('commandeEdudoc : sans --numero, comportement d’avant — pas de colonnes 690, rien ne casse', async () => {
+  const cheminCache = path.join(dossierTemp('szh-secr-edu-sansmc-'), 'cache.json');
+  cacheEdudocEssai(cheminCache);
+  const dossierSortie = dossierTemp('szh-secr-edu-sansmc-sortie-');
+  const evenements = [];
+  const resultat = await secretariat.commandeEdudoc({
+    cheminCache: cheminCache, cles: ['2026-03'], dossierSortie: dossierSortie,
+    emettre: (e) => evenements.push(e)
+  });
+  assert.strictEqual(resultat.ok, true);
+  const csv = fs.readFileSync(path.join(dossierSortie, 'edudoc.csv'), 'utf8');
+  assert.strictEqual(csv.indexOf('690__'), -1, 'aucune colonne 690 attendue sans --numero (comportement d’avant)');
+  assert.ok(!evenements.some((e) => e.texte && e.texte.indexOf('690') !== -1), 'aucun bilan de mots-clés sans --numero');
+});
+
 // ---- commandeCaracteres : téléchargement (factice), comptage, galley absente -----------
 
 test('commandeCaracteres : compte les caractères de la galley HTML, signale l’absence de galley', async () => {

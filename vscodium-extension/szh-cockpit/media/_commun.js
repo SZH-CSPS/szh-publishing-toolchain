@@ -296,6 +296,10 @@ var SZH = (function () {
   // opts.edition  rangées ajoutables et retirables, ou structure figée pour le panneau de
   //               traduction, où l'on traduit sans inventer de mots-clés
   // opts.onChange appelé à chaque frappe et à chaque ajout ou retrait de rangée
+  // opts.surRendu appelé à la fin de rendre(), une fois le DOM interne (re)construit — pour
+  //               qui doit reposer, après coup, quelque chose que rendre() vient d'effacer
+  //               (_fiches.js s'en sert pour la pastille « hors thésaurus », jamais tenue
+  //               dans le modèle)
   //
   // collecter() rend les listes déjà alignées : chaque langue entamée est complétée par
   // la marque, et une langue dont aucune case n'est remplie rend une liste vide.
@@ -518,6 +522,16 @@ var SZH = (function () {
         pied.appendChild(plus);
         element.appendChild(pied);
       }
+
+      // Crochet d'après-rendu : rendre() vient d'effacer et de reconstruire tout le DOM
+      // interne (voir son commentaire plus haut) — quiconque tenait quelque chose EN DEHORS
+      // du modèle (un marqueur, jamais persisté, recalculé à l'affichage) doit le reposer
+      // maintenant, sans quoi il resterait accroché à des noeuds qui viennent de disparaître.
+      // Un MutationObserver aurait pu jouer ce rôle sans exposer ce crochet, mais il aurait
+      // fallu ignorer ses propres mutations pour ne pas boucler et deviner quand le DOM est
+      // stable ; un appel explicite, en fin de rendre(), sur le modèle d'opts.onChange déjà
+      // là, est plus direct et ne dépend d'aucune API du navigateur hôte.
+      if (opts.surRendu) { opts.surRendu(); }
     }
 
     // Changement des colonnes affichées : là, au contraire, il faut relire l'écran

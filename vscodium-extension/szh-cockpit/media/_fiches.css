@@ -66,3 +66,19 @@ input.doi-verrouille { color: var(--encre-2); background: var(--surface); cursor
    auteur·e·s) sous la case où l'on tape, à l'intérieur de sa rangée — jamais sous la
    grille entière, qui couvre plusieurs langues. */
 .mc-rangee { position: relative; }
+
+/* Le second rideau : quand aucun descripteur ne correspond, la boîte ne montre plus qu'une
+   seule ligne — un geste délibéré, jamais un choix dans la liste. Une police oblique plutôt
+   qu'une couleur : une couleur de plus se perdrait à côté de .szh-sugg-item.actif, qui prend
+   déjà la couleur de sélection de l'éditeur. */
+.szh-sugg-item--hors-thesaurus { font-style: italic; }
+
+/* La pastille « hors thésaurus » (media/_fiches.js, appliquerMarqueurs) : une puce discrète
+   au coin du champ, jamais un fond ni une bordure qui alourdirait la grille — elle signale,
+   elle ne bloque rien. Positionnée en JS (offsetLeft/offsetWidth du champ, comme .szh-sugg
+   juste au-dessus) : chaque colonne a une largeur différente selon les langues affichées, il
+   n'y a pas de coordonnée fixe possible. */
+.mc-hors-thesaurus {
+  position: absolute; top: 2px; width: .5rem; height: .5rem; border-radius: 50%;
+  background: var(--avert);
+}
