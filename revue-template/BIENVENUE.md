@@ -3,7 +3,7 @@
 Cet espace sert à **mettre en page la revue**. Tu n’as **rien à installer ni à configurer** :
 tout est déjà prêt. Tu écris, tu enregistres, le **PDF se fabrique tout seul**.
 
-Tout se pilote depuis **une seule barre à gauche : « Revue SZH »** (son titre affiche le
+Tout se pilote depuis **une seule barre à gauche : « Pronto »** (son titre affiche le
 numéro en cours). Pas besoin de l’explorateur de fichiers.
 
 ---
@@ -12,7 +12,7 @@ numéro en cours). Pas besoin de l’explorateur de fichiers.
 
 ### 1️⃣ Déposer les articles Word
 Glisse les fichiers **Word (`.docx`) finalisés** dans le dossier **`articles-word`**, puis, dans
-la barre « Revue SZH », clique **▶▶ Convertir les Word en attente**.
+la barre « Pronto », clique **▶▶ Convertir les Word en attente**.
 Chaque article devient un dossier de travail dans **`articles`** – texte, images et **tableaux
 fidèles** (fusions de cellules comprises). Une fois converti, le Word disparaît d’`articles-word` :
 le texte de travail devient l’**unique version**.
@@ -39,7 +39,7 @@ PDF + version web). Pour tout régénérer d’un coup : **⬆ Tout exporter**.
 
 ---
 
-## La barre « Revue SZH » en détail
+## La barre « Pronto » en détail
 
 | Élément | À quoi ça sert |
 |---|---|

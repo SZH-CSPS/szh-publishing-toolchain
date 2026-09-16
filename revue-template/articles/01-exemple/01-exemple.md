@@ -2,7 +2,7 @@
 
 Écris ton texte ici. À chaque sauvegarde (`Ctrl+S`), le PDF se régénère et
 l'aperçu se met à jour à droite. Le titre, le sous-titre, le résumé, les auteurs
-et les mots-clés de l'article se saisissent dans la barre « Revue SZH » (bouton
+et les mots-clés de l'article se saisissent dans la barre « Pronto » (bouton
 « Métadonnées des articles ») — jamais dans ce fichier.
 
 Pour mettre en forme, sélectionne du texte puis fais **clic droit → « Mise en

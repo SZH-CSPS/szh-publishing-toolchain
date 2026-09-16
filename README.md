@@ -84,7 +84,7 @@ szh-publishing-toolchain/
 ├── vscodium-user/                  → %APPDATA%\VSCodium\User
 ├── vscodium-extension/
 │   ├── szh-apercu/                 aperçu PDF automatique après compilation
-│   └── szh-cockpit/                barre latérale « Revue SZH »
+│   └── szh-cockpit/                barre latérale « Pronto »
 ├── revue-template/                 copié dans le dossier OneDrive de chaque revue
 └── test/                           banc d'essai : articles témoins, contrôles
 ```
@@ -518,7 +518,7 @@ ou double-clic sur `windows\Désinstaller le poste SZH.cmd`. Détail des options
    l'original est supprimé une fois la conversion réussie.
 4. Écrire, puis **Ctrl+S** : chaque article est régénéré dans `out/<article>/`, en PDF et en HTML.
 
-Tout se fait depuis la barre latérale « Revue SZH », sans explorateur de fichiers : import,
+Tout se fait depuis la barre latérale « Pronto », sans explorateur de fichiers : import,
 compilation, aperçu, métadonnées du numéro et des articles, éditeur de tableau, gestion des
 médias, portraits d'auteurs, suivi des traductions, export OJS, cycle de vie du numéro. Le détail des
 gestes est dans [`userdoc.md`](userdoc.md).

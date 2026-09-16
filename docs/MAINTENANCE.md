@@ -253,7 +253,7 @@ la faire **entre deux numéros**, jamais pendant un bouclage.
 
 ### Une montée de version de VSCodium casse une extension maison
 
-**Symptôme.** La barre « Revue SZH » ne s'affiche plus, ou une commande répond par une
+**Symptôme.** La barre « Pronto » ne s'affiche plus, ou une commande répond par une
 erreur dans la console de l'hôte d'extensions.
 
 **Ce qui protège aujourd'hui.** Les postes sont figés : `vscodium-user/settings.json`
@@ -343,7 +343,7 @@ centrale**, une politique Intune pouvant les réécraser.
 signée : une autre installation (ou l'utilisateur) a repris l'association.
 
 **À observer.** Que `HKCU\Software\Classes\.md\OpenWithProgids` contient toujours
-`SZH.Markdown`, et que « Ouvrir avec » propose « Revue SZH ».
+`SZH.Markdown`, et que « Ouvrir avec » propose « Pronto ».
 
 **Manœuvre.** Relancer `update.ps1` ; le geste « Toujours utiliser cette application »
 reste à faire par l'utilisateur, une fois.
@@ -1020,7 +1020,7 @@ corrigeable. D'ici là, ne pas l'écrire comme réglé.
 **Cause.** Le fichier `tables/table-NN.html` référencé par l'article a été supprimé ou
 renommé. L'article affiche alors un encadré rouge « tableau introuvable » à sa place.
 
-**Manœuvre.** Rouvrir le tableau depuis la barre « Revue SZH » et le réenregistrer, ou
+**Manœuvre.** Rouvrir le tableau depuis la barre « Pronto » et le réenregistrer, ou
 retirer la référence du texte.
 
 ---

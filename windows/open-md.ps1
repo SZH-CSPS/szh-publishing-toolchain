@@ -1,7 +1,7 @@
 ﻿<#
 .SYNOPSIS
   Ouverture d'un .md par double-clic : cible de l'association « Ouvrir avec » →
-  « Revue SZH » (ProgId SZH.Markdown posé par update.ps1). Reçoit le chemin du fichier
+  « Pronto » (ProgId SZH.Markdown posé par update.ps1). Reçoit le chemin du fichier
   en premier argument positionnel, remonte jusqu'au dossier de revue ou de livre (celui qui
   porte buch.yaml ou ausgabe.yaml) et ouvre VSCodium sur le dossier puis sur le fichier.
 
@@ -57,9 +57,9 @@ trap {
   }
   try {
     Add-Type -AssemblyName System.Windows.Forms
-    [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.erreur' @($souci, $SzhSupport)), 'Revue SZH')
+    [void][System.Windows.Forms.MessageBox]::Show((T 'lanceur.erreur' @($souci, $SzhSupport)), 'Pronto')
   } catch {
-    try { [void][System.Windows.Forms.MessageBox]::Show($souci, 'Revue SZH') } catch { }
+    try { [void][System.Windows.Forms.MessageBox]::Show($souci, 'Pronto') } catch { }
   }
   exit 1
 }
@@ -72,7 +72,7 @@ function Show-SzhMessage([string]$Texte) {
   if ($script:SzhSimule) { Write-Host ('[MESSAGE] ' + $Texte); return }
   try {
     Add-Type -AssemblyName System.Windows.Forms
-    [void][System.Windows.Forms.MessageBox]::Show($Texte, 'Revue SZH')
+    [void][System.Windows.Forms.MessageBox]::Show($Texte, 'Pronto')
   } catch { }
 }
 

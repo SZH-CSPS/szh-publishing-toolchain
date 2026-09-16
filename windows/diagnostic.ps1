@@ -378,9 +378,9 @@ if ($absents.Count -eq 0) {
 # ProgId SZH.Markdown ou du schéma szh se répercute ici automatiquement. En l'état, un tel
 # renommage fait annoncer « non enregistré » par ce diagnostic sur un poste pourtant sain.
 if (Test-Path 'HKCU:\Software\Classes\SZH.Markdown\shell\open\command') {
-  Dire 'ok' 'Ouvrir un .md avec Revue SZH' 'enregistré (HKCU)'
+  Dire 'ok' 'Ouvrir un .md avec Pronto' 'enregistré (HKCU)'
 } else {
-  Dire 'manque' 'Ouvrir un .md avec Revue SZH' 'non enregistré pour ce compte'
+  Dire 'manque' 'Ouvrir un .md avec Pronto' 'non enregistré pour ce compte'
 }
 if (Test-Path 'HKCU:\Software\Classes\szh\shell\open\command') {
   Dire 'ok' 'Liens szh:// (traduction)' 'enregistré (HKCU)'

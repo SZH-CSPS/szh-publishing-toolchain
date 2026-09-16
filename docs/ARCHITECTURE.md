@@ -198,7 +198,7 @@ intermédiaire. `pipeline/verifier-ua.sh` porte la logique que la cible `verifie
   (`szh_commun.py`, `filters/szh-commun.lua`, `filters/szh-lire-config.lua`).
 - La **maquette** : `print.css`, `couleurs.css`, `partage-filtres.css`, gabarit de couverture,
   polices, et les feuilles du livre (`styles/livre/*.css`).
-- Les **extensions** : `szh-cockpit` (la barre « Revue SZH ») et `szh-apercu`.
+- Les **extensions** : `szh-cockpit` (la barre « Pronto ») et `szh-apercu`.
 - La **configuration de l'éditeur** : réglages, raccourcis, tâches, snippets.
 - Les **scripts de déploiement** et l'**image WSL**.
 

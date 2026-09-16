@@ -1,4 +1,4 @@
-// Extension « Revue SZH » : la barre latérale du cockpit dans l'Explorateur de VSCodium
+// Extension « Pronto » : la barre latérale du cockpit dans l'Explorateur de VSCodium
 // (articles, Word en attente, traductions) et les commandes associées. La vue n'apparaît
 // que si le dossier ouvert est une publication — un numéro de revue (ausgabe.yaml) ou un
 // livre (buch.yaml) : lib/profil.js dit lequel, et pose la clé de contexte qui va avec.

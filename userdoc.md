@@ -12,11 +12,11 @@ l’avez faite pour de vrai.
 
 Trois façons de l’ouvrir :
 
-- l’icône **🎓** en haut de la barre latérale « Revue SZH » ;
+- l’icône **🎓** en haut de la barre latérale « Pronto » ;
 - **Panneau de commande** → « Prise en main (tutoriel) » ;
 - à la première ouverture d’un numéro, une invitation le propose une fois.
 
-## Ouvrir les fichiers `.md` avec « Revue SZH » (une fois par poste)
+## Ouvrir les fichiers `.md` avec « Pronto » (une fois par poste)
 
 Objectif : double-cliquer un article (fichier `.md`) dans l’Explorateur ou dans OneDrive
 ouvre **toute la revue** – le texte à gauche, l’aperçu à droite – et non le fichier tout seul.
@@ -26,17 +26,17 @@ par l’utilisateur**. Aucun script ne peut le faire proprement à sa place ; c
 mécanisme de sécurité voulu par Microsoft.
 
 1. **Clic droit** sur n’importe quel fichier `.md` → **Ouvrir avec** → **Choisir une autre application**.
-2. Sélectionner **« Revue SZH »** (si absent : « Plus d’applications ↓ » et chercher dans la liste).
+2. Sélectionner **« Pronto »** (si absent : « Plus d’applications ↓ » et chercher dans la liste).
 3. Cocher **« Toujours utiliser cette application pour ouvrir les fichiers .md »** → **OK**.
 
 Le réglage est mémorisé pour cet utilisateur, sur ce poste. À refaire une seule fois
 par personne et par poste.
 
-> ⚠ **Choisir « Revue SZH », pas « VSCodium ».** Les deux noms apparaissent dans la liste,
+> ⚠ **Choisir « Pronto », pas « VSCodium ».** Les deux noms apparaissent dans la liste,
 > mais ils ne font pas la même chose : « VSCodium » ouvre le fichier **seul**, sans la revue
 > autour – donc sans aperçu et sans régénération du PDF. Et une fois « Toujours » coché sur
 > « VSCodium », le réglage est scellé par Windows : il faut refaire la manipulation pour
-> revenir à « Revue SZH ».
+> revenir à « Pronto ».
 
 ### Ce que fait le double-clic
 
@@ -58,11 +58,11 @@ Les deux autres entrées restent disponibles et font exactement la même chose 
 
 ## La barre « Revue » (tout gérer sans l’explorateur)
 
-À l’ouverture d’une revue, une barre **« Revue SZH »** apparaît dans le panneau de
+À l’ouverture d’une revue, une barre **« Pronto »** apparaît dans le panneau de
 gauche (l’Explorateur). Elle regroupe tout le travail courant, sans toucher aux
 fichiers ni au terminal.
 
-[capture : la barre « Revue SZH » avec ses quatre sections]
+[capture : la barre « Pronto » avec ses quatre sections]
 
 Elle a **quatre sections** :
 
@@ -299,7 +299,7 @@ Elle a **quatre sections** :
   Après une conversion réussie, le fichier Word **disparaît de ce dossier** : l’article
   (`.md`) devient l’unique copie de travail – c’est voulu, plus de doublons.
   **Nouveau : on peut aussi glisser-déposer des `.docx` directement sur la barre
-  « Revue SZH »** (depuis l’Explorateur ou le bureau) : ils sont copiés puis convertis,
+  « Pronto »** (depuis l’Explorateur ou le bureau) : ils sont copiés puis convertis,
   exactement comme avec le bouton « Importer des Word ».
 
 Le **titre de la barre** affiche le numéro en cours (p. ex. « R2026-2 | Autodétermination »),
@@ -647,7 +647,7 @@ d’être relues, et le bouton « Ouvrir le dossier » les montre dans l’Exp
 
 Un article naît toujours d’un `.docx` : c’est l’unique geste qui en crée un dans le cockpit.
 
-1. **Glisser les `.docx` finalisés sur la barre « Revue SZH »** (ou dans le dossier
+1. **Glisser les `.docx` finalisés sur la barre « Pronto »** (ou dans le dossier
    **articles-word**, ou via **🚀 Commande → Importer des Word**).
 2. La conversion démarre, puis **les articles sont compilés dans la foulée** (PDF et
    aperçu) : le premier clic sur un article importé affiche son aperçu tout de suite.
@@ -1019,7 +1019,7 @@ parlementaires, des recherches en cours, des reprises d’articles parus dans l�
 l’agenda des manifestations, et des rubriques de prose plus libres – bibliographies, listes
 de liens, brèves.
 
-**Cliquez sur l’en-tête Actualité** (**News** en allemand) dans la barre « Revue SZH »  :
+**Cliquez sur l’en-tête Actualité** (**News** en allemand) dans la barre « Pronto »  :
 le formulaire de la page s’ouvre. Si le numéro n’avait pas encore de page de Documentation,
 elle est créée à cet instant – son dossier, son titre, sa place à la fin du sommaire. Il n’y a
 donc ni Word à déposer, ni type d’article à régler, ni fichier texte à ouvrir : cette page
@@ -1384,7 +1384,7 @@ souvent plusieurs centaines de mégaoctets sur OneDrive pour rien. Le panneau d�
 Ce qui se passe, dans cet ordre, après une confirmation qui **chiffre la place libérée** :
 
 1. le numéro passe en **lecture seule** : le texte ne se laisse plus taper, et tous les
-   gestes de la barre « Revue SZH » (import, métadonnées, suppression, traductions,
+   gestes de la barre « Pronto » (import, métadonnées, suppression, traductions,
    mise en forme…) répondent « Numéro verrouillé » avec un bouton pour le déverrouiller ;
 2. les **documents produits** (dossier `out` : PDF, HTML, Word) sont
    **supprimés**. Vos **sources** – textes, images, tableaux, métadonnées, traductions –
@@ -1565,7 +1565,7 @@ plus la bascule d’aperçu). Le sous-menu propose (chaque raccourci y est rappe
 - **Coller un tableau depuis Excel/Word** (`Ctrl+Alt+V`) : copie les cellules dans
   Excel ou Word, puis `Ctrl+Alt+V` dans l’article. Le tableau est ajouté à l’article
   comme les tableaux venus d’un Word – **cellules fusionnées comprises** – et apparaît
-  aussitôt sous l’article dans la barre « Revue SZH », où un clic permet de le modifier.
+  aussitôt sous l’article dans la barre « Pronto », où un clic permet de le modifier.
   Un tableau collé depuis **Excel** arrive sans gras ni ligne d’en-tête (Excel ne les
   transmet pas) : cela se règle d’un clic dans l’éditeur de tableau.
 
@@ -1627,7 +1627,7 @@ Le reste s’affiche tout seul, et ne se saisit pas :
   2026 au **Vol. 16** ; chaque année ajoute un volume. C’est ce volume qui s’imprime sur la
   couverture et qui part dans OJS.
 - **Dossier** – le nom du dossier, `2026-02`, déduit de l’année et du numéro. Il n’y a rien à
-  choisir : c’est ce nom que la barre « Revue SZH » affiche (`R2026-02`) et que la couverture
+  choisir : c’est ce nom que la barre « Pronto » affiche (`R2026-02`) et que la couverture
   imprime (« 02/2026 »).
 
 Puis **OK**, et le numéro s’ouvre tout prêt : dossiers `articles-word` et `articles`, raccourci

@@ -1150,9 +1150,9 @@ def principal(argv):
     revue = opts['revue']
     if not os.path.isfile(os.path.join(revue, 'ausgabe.yaml')):
         print('[reimport] Ce dossier n\'est pas un numéro de revue : %s. Ouvrez le numéro '
-              'depuis le lanceur « Revues SZH », puis recommencez. '
+              'depuis le lanceur « Pronto », puis recommencez. '
               '[de] Dieser Ordner ist keine Ausgabe: %s. Öffnen Sie die Ausgabe über den '
-              'Starter « Revues SZH » und versuchen Sie es erneut.'
+              'Starter « Pronto » und versuchen Sie es erneut.'
               % (os.path.abspath(revue), os.path.abspath(revue)), file=sys.stderr)
         return 2
     journal = opts['journal']

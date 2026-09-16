@@ -1,6 +1,6 @@
 # SZH — Revue (cockpit)
 
-Extension interne SZH/CSPS. Ajoute une barre latérale « Revue SZH » qui n'apparaît que
+Extension interne SZH/CSPS. Ajoute une barre latérale « Pronto » qui n'apparaît que
 dans un dossier de revue, repéré par la présence d'`ausgabe.yaml`. Elle y liste les
 articles, les Word en attente d'import et le suivi des traductions, et donne accès à
 tout le reste : import Word, compilation et aperçu, métadonnées du numéro et des

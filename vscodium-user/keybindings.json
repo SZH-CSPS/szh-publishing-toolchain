@@ -10,7 +10,7 @@
   },
 
   // Les trois panneaux du cockpit — Commande, Édition, Export — soit les mêmes menus que
-  // les trois boutons de la barre « Revue SZH ». Le panneau d'édition contient toute la
+  // les trois boutons de la barre « Pronto ». Le panneau d'édition contient toute la
   // palette « Mise en forme », qui reste aussi au clic droit.
   { "key": "ctrl+alt+a", "command": "szh.panneauCommande", "when": "szh.estRevue || szh.estLivre" },
   {

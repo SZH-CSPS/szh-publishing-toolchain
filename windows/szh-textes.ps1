@@ -6,7 +6,7 @@ $script:SzhTextes = @{
   fr = @{
     'app.titre'         = 'SZH/CSPS – Toolchain de publication'
     'maj.soustitre'     = 'Mise à jour de l’’outil Revue'
-    'maj.fenetre'       = 'Mise à jour de l’’outil Revue SZH'
+    'maj.fenetre'       = 'Mise à jour de l’’outil Pronto'
     'maj.intro1'        = 'Vos textes et vos revues ne sont pas touchés par cette opération.'
     'maj.intro2'        = 'Vous pouvez continuer à travailler pendant ce temps.'
     'maj.verif'         = 'Vérification de la version disponible…'
@@ -153,9 +153,9 @@ $script:SzhTextes = @{
     # désinstallation, pour reconnaître et retirer l'ancien .lnk d'un poste venu d'une version
     # antérieure (Get-SzhRaccourcisObsoletes, szh-shell.ps1). Ne pas changer sa valeur.
     'raccourci.maj.nom'   = 'Mise à jour de l’’outil Revue'
-    'raccourci.maj.desc'  = 'Installer la dernière version de l’’outil Revue SZH. Une fenêtre s’’ouvre et montre ce qui se passe.'
+    'raccourci.maj.desc'  = 'Installer la dernière version de l’’outil Pronto. Une fenêtre s’’ouvre et montre ce qui se passe.'
     'raccourci.revue.desc' = 'Ouvrir une revue SZH'
-    'raccourci.zs.desc'   = 'Ouvrir une Zeitschrift SZH'
+    'raccourci.zs.desc'   = 'Ouvrir une Pronto'
     'raccourci.livre.desc' = 'Ouvrir un livre SZH-CSPS'
     'raccourci.lanceur.desc' = 'Ouvrir une revue, une Zeitschrift ou un livre SZH'
     # Fenêtre unique à quatre onglets (Revue, Zeitschrift, Book, Paramètres) : titre générique

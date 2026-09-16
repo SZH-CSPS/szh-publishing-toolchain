@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-  Met à jour l'outil Revue SZH dans une fenêtre visible. Lancée d'ordinaire par
+  Met à jour l'outil Pronto dans une fenêtre visible. Lancée d'ordinaire par
   update-launcher.ps1, ou par l'entrée « Pronto (Updater) » du menu Démarrer,
   qui ne passe plus de langue : la fenêtre prend celle du réglage du compte, comme le
   lanceur.
@@ -86,8 +86,8 @@ function Set-SzhProgIdMarkdown {
   # FriendlyTypeName ci-dessous.
   Set-ItemProperty -Path $cleProg -Name '(default)'        -Value 'Article de revue SZH'
   Set-ItemProperty -Path $cleProg -Name 'FriendlyTypeName' -Value 'Article de revue SZH'
-  Set-ItemProperty -Path $cleApp  -Name 'ApplicationName'  -Value 'Revue SZH'
-  Set-ItemProperty -Path $cleApp  -Name 'FriendlyAppName'  -Value 'Revue SZH'
+  Set-ItemProperty -Path $cleApp  -Name 'ApplicationName'  -Value 'Pronto'
+  Set-ItemProperty -Path $cleApp  -Name 'FriendlyAppName'  -Value 'Pronto'
   Set-ItemProperty -Path $cleApp  -Name 'ApplicationCompany' -Value 'SZH / CSPS'
   Set-ItemProperty -Path (Join-Path $cleProg 'shell\open\command') -Name '(default)' -Value $commande
 
@@ -141,7 +141,7 @@ function Set-SzhProtocoleSzh {
   # confiance, clé vide dans HKCU, dont le nom porte le deux-points comme Office l'attend.
   $confiance = 'HKCU:\Software\Microsoft\Office\Common\Security\Trusted Protocols\All Applications\szh:'
   if (-not (Test-Path $confiance)) { New-Item -Path $confiance -Force | Out-Null }
-  Set-ItemProperty -Path $cle -Name '(default)' -Value 'URL:Revue SZH'
+  Set-ItemProperty -Path $cle -Name '(default)' -Value 'URL:Pronto'
   # « URL Protocol », valeur vide, est ce qui fait d'une clé de classe un schéma d'URI.
   Set-ItemProperty -Path $cle -Name 'URL Protocol' -Value ''
   Set-ItemProperty -Path (Join-Path $cle 'shell\open\command') -Name '(default)' -Value $commande
