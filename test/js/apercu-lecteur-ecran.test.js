@@ -27,7 +27,10 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const cp = require('child_process');
+const { sansPandoc } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const FILTRES = path.join(RACINE, 'pipeline', 'filters');
@@ -259,3 +262,75 @@ test('les étiquettes techniques restent en clair et non traduites', () => {
       'ALT= ne doit pas être traduit (' + langue + ')');
   }
 });
+
+// ---- Exécution réelle (C5) : les quatre cas d'image, un seul encadré rouge ----
+//
+// Tout ce qui précède lit le SOURCE du filtre. Ici, on le fait vraiment tourner sous
+// pandoc, sous SZH_APERCU=1, sur les quatre états que encadre_image() distingue : alt
+// renseigné, décoratif (alt=""), alt absent avec légende (repli), alt absent sans légende
+// (le seul cas rouge). Deux petits fichiers Lua, écrits dans un dossier jetable — jamais le
+// vrai szh-numerotation.lua, hors périmètre en écriture ici :
+//   1. marque l'attribut alt de deux images (ce que fait szh-legendes.lua dans la vraie
+//      chaîne, lecture seule, donc hors de portée) ;
+//   2. charge le module par dofile et l'applique à tout le document, exactement comme
+//      szh-numerotation.lua le fait sous la garde SZH_APERCU.
+// Ce sont deux fichiers --lua-filter séparés, et pas un seul filtre à deux fonctions : une
+// mutation d'attribut faite par un filtre ne survit pas à la traversée manuelle d'un AUTRE
+// filtre du même fichier (mesuré) — seule la traversée propre de pandoc, entre deux
+// fichiers --lua-filter, la fait persister.
+test('exécution réelle : sur les quatre cas d’image, un seul encadré est rouge, et c’est le bon',
+  { skip: sansPandoc }, () => {
+    const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-apercu-le-'));
+    try {
+      const marqueur = [
+        "function Image(img)",
+        "  if img.src == 'a.png' then img.attributes['alt'] = 'Alt complet'",
+        "  elseif img.src == 'b.png' then img.attributes['alt'] = '' end",
+        "  return img",
+        "end",
+        ""
+      ].join('\n');
+      const applique = [
+        'local M = dofile(' + JSON.stringify(MODULE) + ')',
+        'function Pandoc(doc)',
+        "  doc.blocks = M.blocs(doc.blocks, 'fr')",
+        '  local style = M.style()',
+        '  if style then doc.blocks:insert(style) end',
+        '  return doc',
+        'end',
+        ''
+      ].join('\n');
+      const fMarqueur = path.join(dossier, 'marqueur.lua');
+      const fApplique = path.join(dossier, 'applique.lua');
+      fs.writeFileSync(fMarqueur, marqueur, 'utf8');
+      fs.writeFileSync(fApplique, applique, 'utf8');
+
+      // Ordre documenté en tête de encadre_image() : alt renseigné, décoratif, repli sur
+      // la légende, puis le seul cas rouge — ni alt ni légende.
+      const entree = ['![Alt complet](a.png)', '', '![](b.png)', '',
+        '![Une legende](c.png)', '', '![](d.png)', ''].join('\n');
+      const r = cp.spawnSync('pandoc',
+        ['--from=markdown', '--to=html', '--lua-filter=' + fMarqueur, '--lua-filter=' + fApplique],
+        { input: entree, encoding: 'utf8',
+          env: Object.assign({}, process.env, { SZH_APERCU: '1' }) });
+      assert.strictEqual(r.status, 0, 'pandoc a échoué : ' + r.stderr);
+      const html = r.stdout;
+
+      const encadres = html.split('<div class="szh-lecteur-ecran').slice(1);
+      assert.strictEqual(encadres.length, 4,
+        'les quatre cas n’ont pas chacun leur encadré : ' + html);
+      const estRouge = (e) => e.slice(0, e.indexOf('>')).indexOf('szh-le-manque') !== -1;
+      const rouges = encadres.filter(estRouge);
+      assert.strictEqual(rouges.length, 1,
+        'un nombre d’encadrés rouges différent de un : ' + html);
+      // Compter ne suffit pas (une permutation entre deux cas garderait le compte à un) :
+      // c'est la POSITION qui doit être la bonne, le cas sans alt ni légende (d.png).
+      assert.ok(!estRouge(encadres[0]), 'alt="Alt complet" (a.png) est rouge à tort');
+      assert.ok(!estRouge(encadres[1]), 'alt="" décoratif (b.png) est rouge à tort');
+      assert.ok(!estRouge(encadres[2]), 'le repli sur la légende (c.png) est rouge à tort');
+      assert.ok(estRouge(encadres[3]),
+        'le seul cas sans alt ni légende (d.png) n’est pas signalé en rouge');
+    } finally {
+      fs.rmSync(dossier, { recursive: true, force: true });
+    }
+  });

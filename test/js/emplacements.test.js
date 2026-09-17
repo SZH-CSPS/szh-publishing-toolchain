@@ -62,7 +62,6 @@ test('un poste qui ne dit rien garde la racine qu’il avait', () => {
   // doit pas bouger, c'est la seule qui ne fasse disparaître aucune revue.
   for (const cfg of [null, undefined, {}, { repo: 'x' }, { basesRevues: { prod: 'P', dev: 'D' } }]) {
     assert.strictEqual(archivage.resoudreEmplacementRevues(cfg), archivage.EMPLACEMENT_TEST);
-    assert.strictEqual(archivage.resoudreEmplacementRevues(cfg) === archivage.EMPLACEMENT_TEST, true);
   }
 });
 
@@ -115,18 +114,9 @@ test('les deux moitiés déclarent les mêmes clés et les mêmes valeurs', () =
 
 // Les deux résolveurs sur les mêmes cas, pour de vrai. Windows seulement : szh-common.ps1
 // vise Windows PowerShell 5.1 et son dot-source touche %LOCALAPPDATA%, absent ailleurs.
-const POWERSHELL = (function () {
-  if (process.platform !== 'win32') { return ''; }
-  const candidats = [path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), 'powershell.exe'];
-  for (const c of candidats) {
-    const essai = spawnSync(c, ['-NoProfile', '-Command', 'exit 0'], { encoding: 'utf8' });
-    if (!essai.error && essai.status === 0) { return c; }
-  }
-  return '';
-})();
+const { POWERSHELL, sansPowerShell } = require('./gardes');
 
-test('PowerShell et JavaScript rendent le même emplacement', { skip: POWERSHELL ? false : 'powershell.exe indisponible' }, () => {
+test('PowerShell et JavaScript rendent le même emplacement', { skip: sansPowerShell }, () => {
   const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-emplacements-'));
   const casJson = path.join(travail, 'cas.json');
   const pilote = path.join(travail, 'resoudre.ps1');

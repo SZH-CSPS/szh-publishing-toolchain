@@ -192,3 +192,66 @@ test('sélection non vide sur plusieurs lignes : les lignes qui suivent restent 
   assert.ok(texte.indexOf('sur deux lignes.') !== -1);
   assert.ok(texte.indexOf('Deuxième paragraphe.') !== -1);
 });
+
+// ---- basculerEnrobage / basculerSouligne / basculerTitre / basculerCitation ----
+//
+// Jusqu'ici ces six fonctions n'étaient vérifiées que par leur PRÉSENCE dans l'inventaire
+// des réexports (test « identité » ci-dessus) : une régression dans leur logique même — par
+// exemple basculerEnrobage qui ne retirerait plus jamais l'enrobage — passait inaperçue.
+
+test('basculerEnrobage (**) : pose, retire, aller-retour', () => {
+  assert.strictEqual(pur.basculerEnrobage('mot', '**'), '**mot**');
+  assert.strictEqual(pur.basculerEnrobage('**mot**', '**'), 'mot');
+  assert.strictEqual(pur.basculerEnrobage(pur.basculerEnrobage('mot', '**'), '**'), 'mot');
+});
+
+test('basculerEnrobage (*) : pose, retire, ne confond jamais gras et italique', () => {
+  assert.strictEqual(pur.basculerEnrobage('mot', '*'), '*mot*');
+  assert.strictEqual(pur.basculerEnrobage('*mot*', '*'), 'mot');
+  // Un texte déjà en gras ne perd pas une étoile pour « faire » de l'italique : l'italique
+  // s'ajoute autour du gras au lieu de l'entamer.
+  assert.strictEqual(pur.basculerEnrobage('**mot**', '*'), '***mot***');
+});
+
+test('basculerSouligne : pose, retire, aller-retour', () => {
+  assert.strictEqual(pur.basculerSouligne('mot'), '[mot]{.underline}');
+  assert.strictEqual(pur.basculerSouligne('[mot]{.underline}'), 'mot');
+  assert.strictEqual(pur.basculerSouligne(pur.basculerSouligne('mot')), 'mot');
+});
+
+test('basculerTitre : les trois niveaux, et rebasculer un titre déjà à ce niveau le retire', () => {
+  assert.strictEqual(pur.basculerTitre('Titre', 1), '# Titre');
+  assert.strictEqual(pur.basculerTitre('Titre', 2), '## Titre');
+  assert.strictEqual(pur.basculerTitre('Titre', 3), '### Titre');
+  // Déjà au niveau demandé : la commande retire le titre plutôt que d'empiler des #.
+  assert.strictEqual(pur.basculerTitre('## Titre', 2), 'Titre');
+  // À un autre niveau : le texte change de niveau, sans empiler de second marqueur.
+  assert.strictEqual(pur.basculerTitre('## Titre', 1), '# Titre');
+});
+
+test('basculerCitation : pose et dépose sur un bloc de plusieurs lignes', () => {
+  const texte = 'Premiere ligne.\nSeconde ligne.';
+  const cite = pur.basculerCitation(texte);
+  assert.strictEqual(cite, '> Premiere ligne.\n> Seconde ligne.');
+  assert.strictEqual(pur.basculerCitation(cite), texte);
+});
+
+test('squeletteTableau : forme exacte, trois colonnes nommées, deux lignes vides', () => {
+  assert.strictEqual(pur.squeletteTableau('Colonne'),
+    '| Colonne 1 | Colonne 2 | Colonne 3 |\n|---|---|---|\n|  |  |  |\n|  |  |  |');
+});
+
+test('tableauVierge : la structure attendue par serialiserTable, en-tête + deux lignes vides', () => {
+  const { serialiserTable } = require(path.join(COCKPIT, 'lib', 'table-model'));
+  const modele = pur.tableauVierge('Colonne');
+  assert.strictEqual(modele.attrs.enteteLignes, 1, 'la première ligne doit être l’en-tête');
+  assert.strictEqual(modele.lignes.length, 3, 'un en-tête et deux lignes vides');
+  assert.deepStrictEqual(modele.lignes[0].cellules.map((c) => c.contenu),
+    ['Colonne 1', 'Colonne 2', 'Colonne 3']);
+  assert.deepStrictEqual(modele.lignes[1].cellules.map((c) => c.contenu), ['', '', '']);
+  assert.deepStrictEqual(modele.lignes[2].cellules.map((c) => c.contenu), ['', '', '']);
+  // Le modèle doit être directement sérialisable, pas juste vraisemblable en apparence.
+  const html = serialiserTable(modele);
+  assert.match(html, /<table/);
+  assert.match(html, /Colonne 1/);
+});

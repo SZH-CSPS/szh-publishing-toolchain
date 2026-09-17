@@ -414,16 +414,7 @@ test('le diagnostic compare les versions posées au verrou', () => {
 // Windows seulement. Rien n'est écrit dans les vrais emplacements du poste : les variables
 // de socle sont réécrites dans la portée du pilote, ce que permet leur portée $script:.
 
-const POWERSHELL = (function () {
-  if (process.platform !== 'win32') { return ''; }
-  const candidats = [path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), 'powershell.exe'];
-  for (const c of candidats) {
-    const essai = spawnSync(c, ['-NoProfile', '-Command', 'exit 0'], { encoding: 'utf8' });
-    if (!essai.error && essai.status === 0) { return c; }
-  }
-  return '';
-})();
+const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 const PILOTE = [
   "$ErrorActionPreference = 'Stop'",
@@ -508,8 +499,6 @@ const bilan = (function () {
   return Object.assign({}, restes, { r: lu });
 })();
 
-const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
-
 test('le dossier de distribution porte le SID du compte qui l’exécute', { skip: sansPowerShell }, () => {
   assert.strictEqual(bilan.status, 0, 'le pilote PowerShell a échoué : ' + bilan.stderr);
   const r = bilan.r;
@@ -562,3 +551,98 @@ test('le verrou de poste est pris une fois, et se rend', { skip: sansPowerShell 
   assert.strictEqual(r.verrouAutreProcessus, 8, 'deux mises à jour tourneraient en même temps');
   assert.strictEqual(r.verrouRendu, 7, 'le verrou rendu n’est pas reprenable');
 });
+
+// ---- Le bloc empreinte/signature, réellement exécuté ----
+//
+// Le test « l'installation vérifie avant de poser, et conclut par le disque », plus haut
+// dans ce fichier, ne lisait que le SOURCE de Install-SzhAppEpinglee : les littéraux
+// HashMismatch/NotSigned étaient là, jamais exécutés. Une sonde qui désactive le rejet de
+// signature laissait les 27 tests verts.
+//
+// On n'exécute jamais la fonction ENTIÈRE (elle installerait pour de vrai, avec Start-
+// Process) : seul le tronçon empreinte + en-tête + signature est extrait par tranche(), sur
+// le modèle de test/js/diagnostic.test.js, puis rejoué contre deux faux .exe fabriqués dans
+// un dossier jetable — jamais de réseau : Get-SzhFichier est remplacée par une fonction qui
+// ne fait rien, le fichier « en cache » reste tel quel après le faux téléchargement.
+function tranche(source, debutMotif, finMotif) {
+  const iDebut = source.indexOf(debutMotif);
+  assert.ok(iDebut !== -1, 'motif de début introuvable dans bootstrap.ps1 : ' + debutMotif);
+  const iFin = source.indexOf(finMotif, iDebut + debutMotif.length);
+  assert.ok(iFin !== -1, 'motif de fin introuvable dans bootstrap.ps1 : ' + finMotif);
+  return source.slice(iDebut, iFin);
+}
+
+const BLOC_EMPREINTE = tranche(BOOTSTRAP, '$exe = Join-Path $SzhStaging',
+  "\r\n  # Un jeu d'arguments");
+
+const PILOTE_EMPREINTE = [
+  "$ErrorActionPreference = 'Stop'",
+  '. "' + COMMUN_PS1 + '"',
+  // Pas de réseau : un « téléchargement » qui ne fait rien laisse le fichier en cache tel
+  // quel, ce qui est justement le cas qu'on veut rejouer (empreinte fausse même après coup).
+  'function Get-SzhFichier { param($Url, $Destination) }',
+  'function Info([string]$m) { }',
+  'function Attention([string]$m) { }',
+  'function essayer($App) {',
+  '  try {',
+  BLOC_EMPREINTE,
+  '    return [ordered]@{ leve = $false; message = "" }',
+  '  } catch {',
+  '    return [ordered]@{ leve = $true; message = $_.Exception.Message }',
+  '  }',
+  '}',
+  '$SzhStaging = $args[0]; $cas = $args[1]; $sortie = $args[2]',
+  'if ($cas -eq "hash") {',
+  '  # Empreinte attendue fausse, et le contenu du fichier ne matchera jamais : le second',
+  '  # essai (après le faux téléchargement) échoue pour la même raison, et doit lever.',
+  '  $App = [pscustomobject]@{ fichier = "faux.exe"; sha256 = ("0" * 64)',
+  '    source = "https://exemple.invalide/faux.exe"; signataire = "" }',
+  '  [IO.File]::WriteAllBytes((Join-Path $SzhStaging $App.fichier), [byte[]](0x4D,0x5A,1,2,3,4))',
+  '  $r = essayer $App',
+  '} elseif ($cas -eq "signature") {',
+  '  # Empreinte CORRECTE (calculée sur le fichier), pour n’atteindre que le contrôle de',
+  '  # signature. Un en-tête MZ à la main donne un « UnknownError » (pas assez d’un PE pour',
+  '  # WinVerifyTrust) : il faut un exécutable RÉEL — trivial, et jamais signé — pour que',
+  '  # Get-AuthenticodeSignature rende NotSigned, le cas que le bloc doit rejeter.',
+  '  $chemin = Join-Path $SzhStaging "faux2.exe"',
+  '  Add-Type -OutputType ConsoleApplication -OutputAssembly $chemin '
+    + '-TypeDefinition "public class P { public static void Main(){} }"',
+  '  $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $chemin).Hash.ToLower()',
+  '  $App = [pscustomobject]@{ fichier = "faux2.exe"; sha256 = $hash',
+  '    source = "https://exemple.invalide/faux2.exe"; signataire = "" }',
+  '  $r = essayer $App',
+  '} else {',
+  '  $r = [ordered]@{ leve = $false; message = "cas inconnu : $cas" }',
+  '}',
+  'Set-SzhJson $sortie $r'
+].join('\r\n') + '\r\n';
+
+function executerBlocEmpreinte(cas) {
+  const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-empreinte-'));
+  const pilote = path.join(travail, 'empreinte.ps1');
+  const sortie = path.join(travail, 'bilan.json');
+  fs.writeFileSync(pilote, PILOTE_EMPREINTE, 'utf8');
+  const run = spawnSync(POWERSHELL, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', pilote,
+    travail, cas, sortie], { encoding: 'utf8', windowsHide: true, timeout: 60000 });
+  const lu = fs.existsSync(sortie) ? JSON.parse(fs.readFileSync(sortie, 'utf8')) : null;
+  const restes = { status: run.status, stderr: run.stderr || '' };
+  fs.rmSync(travail, { recursive: true, force: true });
+  return Object.assign({}, restes, lu || {});
+}
+
+test('le bloc empreinte/signature d’Install-SzhAppEpinglee lève sur une empreinte fausse',
+  { skip: sansPowerShell }, () => {
+    const r = executerBlocEmpreinte('hash');
+    assert.strictEqual(r.status, 0, 'le pilote PowerShell a échoué : ' + r.stderr);
+    assert.strictEqual(r.leve, true,
+      'une empreinte différente de celle attendue n’a pas fait lever l’installation');
+    assert.match(r.message, /Empreinte inattendue/, 'le message ne nomme pas l’empreinte : ' + r.message);
+  });
+
+test('le bloc empreinte/signature d’Install-SzhAppEpinglee lève sur un exécutable non signé',
+  { skip: sansPowerShell }, () => {
+    const r = executerBlocEmpreinte('signature');
+    assert.strictEqual(r.status, 0, 'le pilote PowerShell a échoué : ' + r.stderr);
+    assert.strictEqual(r.leve, true, 'un exécutable non signé n’a pas fait lever l’installation');
+    assert.match(r.message, /NotSigned/, 'le message ne nomme pas l’état de la signature : ' + r.message);
+  });

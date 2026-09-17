@@ -147,41 +147,9 @@ test('Couleurs de maison : CSS vs cmjn.py', () => {
   }
 });
 
-test('Cohérence intra-cmjn.py : sept couleurs et sept CMJN', () => {
-  const toolkitPath = path.join(__dirname, '../../pipeline');
-  const cmykTable = extractCMYKTable(path.join(toolkitPath, 'cmjn.py'));
-
-  // Doit avoir exactement sept entrées
-  const hexList = Object.keys(cmykTable);
-  assert.strictEqual(
-    hexList.length,
-    7,
-    `Table CMJN : attendu 7 couleurs, trouvé ${hexList.length}`
-  );
-
-  // Vérifier que chaque entrée a les 4 composantes
-  for (const [hex, cmyk] of Object.entries(cmykTable)) {
-    assert.strictEqual(
-      Array.isArray(cmyk),
-      true,
-      `CMJN de ${hex} n'est pas un tableau`
-    );
-    assert.strictEqual(
-      cmyk.length,
-      4,
-      `CMJN de ${hex} a ${cmyk.length} composantes au lieu de 4`
-    );
-
-    // Chaque composante doit être en [0, 1]
-    for (let i = 0; i < 4; i++) {
-      assert.ok(
-        cmyk[i] >= 0 && cmyk[i] <= 1,
-        `CMJN[${i}] de ${hex} = ${cmyk[i]}, hors [0, 1]`
-      );
-    }
-  }
-});
-
+// « Cohérence intra-cmjn.py » (sept entrées, quatre composantes en [0,1]) a été retiré :
+// redondant avec le test suivant, qui compare à la table du graphiste (source indépendante)
+// et vérifie donc déjà, en creux, qu'il y a sept couleurs à quatre composantes exploitables.
 test('Valeurs officielles CMJN (graphiste)', () => {
   const toolkitPath = path.join(__dirname, '../../pipeline');
   const cmykTable = extractCMYKTable(path.join(toolkitPath, 'cmjn.py'));
@@ -197,11 +165,17 @@ test('Valeurs officielles CMJN (graphiste)', () => {
     '#A98899': [0.40, 0.50, 0.30, 0.0],  // Mountbatten
   };
 
+  // Table du graphiste et table du script doivent porter exactement les mêmes couleurs :
+  // ni une de plus (résidu), ni une de moins (couleur oubliée dans cmjn.py).
+  assert.strictEqual(Object.keys(cmykTable).length, Object.keys(expectedCMYK).length,
+    `Table CMJN : attendu ${Object.keys(expectedCMYK).length} couleurs, trouvé ${Object.keys(cmykTable).length}`);
+
   for (const [hex, expected] of Object.entries(expectedCMYK)) {
     const normalized = normalizeHex(hex);
     const actual = cmykTable[normalized];
 
     assert.ok(actual, `Couleur ${hex} absente de cmjn.py`);
+    assert.strictEqual(actual.length, 4, `CMJN de ${hex} a ${actual.length} composantes au lieu de 4`);
 
     // Comparaison avec tolérance (PDF arrondit)
     const tolerance = 0.001;

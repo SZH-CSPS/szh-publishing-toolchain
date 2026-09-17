@@ -11,6 +11,7 @@
 // require ne se défont pas. `node --test` donne un processus par fichier, ce qui suffit.
 'use strict';
 
+const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -180,6 +181,15 @@ function activerHote(revue) {
   const reponsesModales = [];
   // Le chemin que showSaveDialog rendra : null = « Annuler ».
   let cibleEnregistrement = null;
+  // Les réponses des trois autres dialogues, même contrat que cibleEnregistrement :
+  // undefined (le défaut) = « Annuler », sans quoi un test qui n'a rien posé verrait le
+  // comportement changer sous lui.
+  let reponseQuickPick;
+  let reponseInput;
+  let reponseOuverture;
+  // Les clés de contexte posées par `setContext` (menus, quand-clauses) : jetées jusqu'ici,
+  // alors qu'un test qui veut savoir si un onglet doit apparaître n'a que ça à lire.
+  const contexteVsCode = {};
   // L'appel entier, pour les contrôles qui portent sur les ISSUES OFFERTES et pas seulement
   // sur la question posée : un bouton perdu ne change rien à la question.
   const modales = [];
@@ -305,9 +315,17 @@ function activerHote(revue) {
       // `setContext` en est exclu : il part à chaque rafraîchissement et noierait le reste.
       _journal: [],
       executeCommand(id, ...a) {
-        if (id === 'setContext') { return Promise.resolve(); }
+        if (id === 'setContext') { contexteVsCode[a[0]] = a[1]; return Promise.resolve(); }
         stub.commands._journal.push({ id: id, args: a });
         if (stub.commands._table[id]) { return Promise.resolve(stub.commands._table[id](...a)); }
+        // Les ids natifs de VS Code (vscode.open, vscode.diff, revealFileInOS,
+        // markdown.showPreviewToSide, workbench.*…) ne sont enregistrés nulle part ici — on
+        // ne peut pas les vérifier, donc on les laisse passer comme avant. Seul un `szh.*`
+        // manquant est une vraie panne : une commande de CE cockpit qui n'existe plus (ou
+        // plus encore) doit faire échouer le geste qui l'appelle, pas disparaître en silence.
+        if (String(id).indexOf('szh.') === 0) {
+          return Promise.reject(new Error('command not found: ' + id));
+        }
         return Promise.resolve();
       },
       getCommands: () => Promise.resolve(Object.keys(stub.commands._table))
@@ -358,7 +376,8 @@ function activerHote(revue) {
       // est allé jusqu'au bout, la plupart écrivant par WorkspaceEdit que ce harnais ne
       // rejoue pas. Retenus dans l'ordre, lisibles par `statutsDits`.
       setStatusBarMessage: (m) => { statuts.push(String(m)); return { dispose() {} }; },
-      showOpenDialog: () => Promise.resolve(undefined),
+      // Posé par le test (`repondreOuverture`) ; undefined = « Annuler », comme avant.
+      showOpenDialog: () => Promise.resolve(reponseOuverture),
       // Le chemin que showSaveDialog rendra, posé par le test (`repondreEnregistrement`).
       // undefined = l'utilisateur a annulé, et c'est le défaut.
       showSaveDialog: () => Promise.resolve(cibleEnregistrement
@@ -368,8 +387,9 @@ function activerHote(revue) {
       onDidChangeTextEditorVisibleRanges: rangesVisibles,
       onDidChangeTextEditorSelection: selectionEditeur,
       showTextDocument: () => Promise.resolve({ document: {}, selection: null, revealRange() {} }),
-      showQuickPick: () => Promise.resolve(undefined),
-      showInputBox: () => Promise.resolve(undefined)
+      // Posés par le test (`repondreQuickPick`/`repondreInput`) ; undefined = « Annuler ».
+      showQuickPick: () => Promise.resolve(reponseQuickPick),
+      showInputBox: () => Promise.resolve(reponseInput)
     },
     workspace: {
       workspaceFolders: [{ uri: { fsPath: revue }, name: path.basename(revue), index: 0 }],
@@ -524,6 +544,16 @@ function activerHote(revue) {
     panneauDeType: (type) => panneaux.filter((x) => x.type === type).pop() || null,
     // Ce que showSaveDialog rendra au prochain appel ; null pour simuler « Annuler ».
     repondreEnregistrement: (chemin) => { cibleEnregistrement = chemin; },
+    // Les trois autres dialogues, même contrat : la valeur posée est rendue TELLE QUELLE
+    // (le test choisit l'item, la chaîne ou le tableau d'URIs exact), et ne rien poser
+    // laisse le comportement d'aujourd'hui — undefined, c'est-à-dire « Annuler ».
+    repondreQuickPick: (valeur) => { reponseQuickPick = valeur; },
+    repondreInput: (valeur) => { reponseInput = valeur; },
+    repondreOuverture: (uris) => { reponseOuverture = uris; },
+    // Les clés `setContext` posées jusqu'ici (menus, quand-clauses) : { 'szh.verrouillee':
+    // true, … }. Un objet neuf à chaque appel pour qu'un test ne puisse pas le modifier par
+    // erreur en pensant lire un instantané.
+    contexte: () => Object.assign({}, contexteVsCode),
     memoire: memoire,
     avertissements: avertissements,
     erreurs: erreurs,
@@ -631,4 +661,18 @@ function sourceExtensionEtLib(cockpit) {
   return morceaux.join('\n');
 }
 
-module.exports = { revueDEssai, livreDEssai, activerHote, sourceExtensionEtLib };
+// Laisse les micro-tâches du démarrage asynchrone (demarrageInitial, rafraîchissements en
+// tâche de fond) s'épuiser, puis VÉRIFIE que rien n'a crié pendant ce temps — jusqu'ici
+// chaque fichier vidait erreurs/avertissements sans jamais les avoir regardés, un « le
+// démarrage se tait » qui ne pouvait pas rougir même si le démarrage hurlait. Remet les
+// deux compteurs à zéro pour ne pas polluer les assertions qui suivent dans le test.
+async function demarrageSeTait(HOTE, ticks = 30) {
+  for (let i = 0; i < ticks; i++) { await new Promise((r) => setImmediate(r)); }
+  assert.ok(HOTE.erreurs.length === 0 && HOTE.avertissements.length === 0,
+    'le démarrage n’est pas resté silencieux — erreurs : ' + JSON.stringify(HOTE.erreurs)
+    + ', avertissements : ' + JSON.stringify(HOTE.avertissements));
+  HOTE.erreurs.length = 0;
+  HOTE.avertissements.length = 0;
+}
+
+module.exports = { revueDEssai, livreDEssai, activerHote, sourceExtensionEtLib, demarrageSeTait };

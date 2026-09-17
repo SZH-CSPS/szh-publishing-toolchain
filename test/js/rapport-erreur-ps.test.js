@@ -44,17 +44,7 @@ const rapportErreurJs = require(path.join(RACINE, 'vscodium-extension', 'szh-coc
 // ---------------------------------------------------------------------------------------
 // PowerShell disponible ? (même détection que partout ailleurs dans le dépôt)
 // ---------------------------------------------------------------------------------------
-const POWERSHELL = (function () {
-  if (process.platform !== 'win32') { return ''; }
-  const candidats = [path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), 'powershell.exe'];
-  for (const c of candidats) {
-    const essai = spawnSync(c, ['-NoProfile', '-Command', 'exit 0'], { encoding: 'utf8' });
-    if (!essai.error && essai.status === 0) { return c; }
-  }
-  return '';
-})();
-const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
+const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 // ---------------------------------------------------------------------------------------
 // Le corps d'une fonction PowerShell, du vrai fichier -- même technique que

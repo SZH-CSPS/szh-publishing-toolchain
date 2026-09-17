@@ -31,6 +31,15 @@ function interpretePython() {
 }
 const PYTHON = interpretePython();
 
+// Abstention nommée et comptée, plutôt qu'un simple `return` : un `return` précoce se
+// compte PASS dans le rapport `node --test`, comme n'importe quel test qui a réellement
+// tourné — `{ skip: sansPython }` le distingue, comme le fait déjà le motif POWERSHELL
+// ailleurs dans le dépôt. sansPython vient de gardes.js, la détection PARTAGÉE ; le PYTHON
+// de ce fichier reste la sienne (utilisée pour lancer réellement les sous-processus
+// ci-dessous), et le test canari qui suit garde son rôle : il échoue fort, jamais un skip,
+// si aucun des deux détecteurs ne trouve d'interprète.
+const { sansPython } = require('./gardes');
+
 // Arguments fixes, mêmes pour les quatre appelants : guillemets français, accents,
 // apostrophe — de quoi voir un octet perdu ou une ré-encodure ratée.
 const CODE = 'test-code';
@@ -116,8 +125,8 @@ for (const [nomFichier, ligneAttendue] of [
   ['docx-tables.py', LIGNE_IMPORT],
   ['livre-scinder.py', LIGNE_SCISSION],
 ]) {
-  test('szh_commun : ' + nomFichier + ' — la ligne sur stderr n’a pas bougé d’un octet', () => {
-    if (!PYTHON) { return; }
+  test('szh_commun : ' + nomFichier + ' — la ligne sur stderr n’a pas bougé d’un octet',
+    { skip: sansPython }, () => {
     const dossier = dossierJetable();
     try {
       const journal = path.join(dossier, 'journal.log');
@@ -132,15 +141,15 @@ for (const [nomFichier, ligneAttendue] of [
     }
   });
 
-  test('szh_commun : ' + nomFichier + ' — sans SZH_IMPORT_LOG, stderr seul, aucun échec', () => {
-    if (!PYTHON) { return; }
+  test('szh_commun : ' + nomFichier + ' — sans SZH_IMPORT_LOG, stderr seul, aucun échec',
+    { skip: sansPython }, () => {
     const r = appelerAvertirModule(nomFichier, null);
     assert.strictEqual(r.status, 0, nomFichier + ' a échoué sans journal : ' + r.stderr);
     assert.strictEqual(r.stderr.trim(), ligneAttendue);
   });
 
-  test('szh_commun : ' + nomFichier + ' — un journal illisible n’interrompt pas l’appel', () => {
-    if (!PYTHON) { return; }
+  test('szh_commun : ' + nomFichier + ' — un journal illisible n’interrompt pas l’appel',
+    { skip: sansPython }, () => {
     // Dossier inexistant : l'écriture échoue (OSError), avalée — l'appelant ne doit
     // jamais planter pour un journal qu'il ne peut pas écrire.
     const journalImpossible = path.join(dossierJetable(), 'dossier-absent', 'journal.log');
@@ -153,8 +162,8 @@ for (const [nomFichier, ligneAttendue] of [
 
 // ---- reimporter.py : Voix.avertir(), journal au constructeur ----
 
-test('szh_commun : reimporter.py — la ligne sur stderr n’a pas bougé d’un octet', () => {
-  if (!PYTHON) { return; }
+test('szh_commun : reimporter.py — la ligne sur stderr n’a pas bougé d’un octet',
+  { skip: sansPython }, () => {
   const dossier = dossierJetable();
   try {
     const journal = path.join(dossier, 'journal.log');
@@ -178,8 +187,8 @@ test('szh_commun : reimporter.py — la ligne sur stderr n’a pas bougé d’un
   }
 });
 
-test('szh_commun : reimporter.py — SZH_IMPORT_LOG posée n’a AUCUN effet (le journal vient du constructeur)', () => {
-  if (!PYTHON) { return; }
+test('szh_commun : reimporter.py — SZH_IMPORT_LOG posée n’a AUCUN effet (le journal vient du constructeur)',
+  { skip: sansPython }, () => {
   const dossier = dossierJetable();
   try {
     const journalConstructeur = path.join(dossier, 'constructeur.log');
@@ -207,8 +216,8 @@ test('szh_commun : reimporter.py — SZH_IMPORT_LOG posée n’a AUCUN effet (le
   }
 });
 
-test('szh_commun : reimporter.py — journal vide (constructeur) : aucune écriture tentée', () => {
-  if (!PYTHON) { return; }
+test('szh_commun : reimporter.py — journal vide (constructeur) : aucune écriture tentée',
+  { skip: sansPython }, () => {
   const r = appelerAvertirVoix('');
   assert.strictEqual(r.status, 0, 'reimporter.py a échoué : ' + r.stderr);
   const premiereLigne = r.stderr.split('\n')[0];
@@ -217,8 +226,8 @@ test('szh_commun : reimporter.py — journal vide (constructeur) : aucune écrit
 
 // ---- Les préfixes des quatre appelants restent DISTINCTS où ils doivent l'être ----
 
-test('szh_commun : docx-meta.py et docx-tables.py partagent le même préfixe que reimporter.py', () => {
-  if (!PYTHON) { return; }
+test('szh_commun : docx-meta.py et docx-tables.py partagent le même préfixe que reimporter.py',
+  { skip: sansPython }, () => {
   const rMeta = appelerAvertirModule('docx-meta.py', null);
   const rTables = appelerAvertirModule('docx-tables.py', null);
   const rVoix = appelerAvertirVoix('');
@@ -227,8 +236,8 @@ test('szh_commun : docx-meta.py et docx-tables.py partagent le même préfixe qu
   assert.strictEqual(rVoix.stderr.split('\n')[0], LIGNE_IMPORT);
 });
 
-test('szh_commun : livre-scinder.py garde son propre préfixe « scission »', () => {
-  if (!PYTHON) { return; }
+test('szh_commun : livre-scinder.py garde son propre préfixe « scission »',
+  { skip: sansPython }, () => {
   const r = appelerAvertirModule('livre-scinder.py', null);
   assert.strictEqual(r.stderr.trim(), LIGNE_SCISSION);
   assert.notStrictEqual(LIGNE_SCISSION, LIGNE_IMPORT);

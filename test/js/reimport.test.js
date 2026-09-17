@@ -490,6 +490,65 @@ test('issue « rien à faire » : sortie 3, et le Word cesse d’attendre', (t) 
   } finally { fs.rmSync(racine, { recursive: true, force: true }); }
 });
 
+// ---- Un sidecar inventé, bout en bout ----
+//
+// Le test plus haut (« seuls le corps, la bibliographie, media/ et tables/ sont
+// remplacés ») ne lit que la liste blanche DANS LE SOURCE : rien n'y prouve que
+// copier_preserves() est réellement appelée, ni que son résultat rejoint le chantier
+// avant la bascule. Une sonde qui vide l'appel (`resultat['preserves'] = []`) laissait les
+// 16 tests du fichier verts. Ici, un fichier que ni le schéma ni le Word ne connaissent est
+// déposé AVANT un réimport réel (via --pipeline, comme le test « rien à faire » ci-dessus),
+// et sa survie est constatée sur le disque, après une vraie bascule.
+test('réimport : un sidecar inventé (tâches) que le Word ne possède pas survit à un réimport réel',
+  (t) => {
+    assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+    if (!bashCompatible()) {
+      assert.ok(SH.indexOf('SZH_IMPORT_DIR') !== -1,
+        'la couture de la conversion a disparu, et ce poste ne peut pas la mesurer');
+      return;
+    }
+    const absent = pandocAbsent();
+    if (absent) { return t.skip(absent); }
+    const slug = '01-essai';
+    const racine = revueJetable(slug);
+    try {
+      const dossierArticle = path.join(racine, 'articles', slug);
+      const CONTENU_SIDECAR = 'taches:\n- corriger la note 3\n';
+      // Un sidecar de la rédaction que ni possede_par_le_word() ni aucun Word ne connaît —
+      // exactement le risque nommé dans l'en-tête de ce fichier.
+      fs.writeFileSync(path.join(dossierArticle, slug + '.taches.yaml'), CONTENU_SIDECAR);
+
+      fs.writeFileSync(path.join(racine, 'articles-word', 'essai.docx'), 'pas un docx');
+      // Une conversion factice qui change RÉELLEMENT le corps : sans quoi « rien à faire »
+      // s'arrête avant la bascule, et le sidecar survivrait pour une mauvaise raison — il
+      // n'aurait simplement jamais été question de le remplacer.
+      const faux = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-pipeline-sidecar-'));
+      fs.writeFileSync(path.join(faux, 'import-docx.sh'), [
+        '#!/bin/bash',
+        'set -u',
+        'DIR="${SZH_IMPORT_DIR:?}"',
+        'mkdir -p "$DIR/media" "$DIR/tables"',
+        'printf "# Essai\\n\\nLe Word corrigé a changé ce corps.\\n" > "$DIR/$2.md"',
+        ''].join('\n'));
+      const r = lancer(racine, ['--article', slug, '--pipeline', faux]);
+      const j = jsonDeLaSortie(r.stdout);
+      assert.strictEqual(r.status, 0, 'le réimport réel n’a pas réussi : ' + r.stderr
+        + ' / stdout=' + r.stdout);
+      assert.strictEqual(j.resultat, 'reussi');
+      // Le corps a bien changé : ce n'est pas un « rien à faire » qui aurait laissé le
+      // sidecar intact pour une mauvaise raison.
+      assert.match(fs.readFileSync(path.join(dossierArticle, slug + '.md'), 'utf8'),
+        /Le Word corrigé a changé ce corps/, 'le corps n’a pas été remplacé par le réimport');
+      // Le sidecar, lui, n'était dans aucune liste blanche : il doit avoir survécu, intact.
+      assert.ok(fs.existsSync(path.join(dossierArticle, slug + '.taches.yaml')),
+        'le sidecar inventé n’a pas survécu au réimport : copier_preserves() n’a pas fait son travail');
+      assert.strictEqual(
+        fs.readFileSync(path.join(dossierArticle, slug + '.taches.yaml'), 'utf8'),
+        CONTENU_SIDECAR, 'le contenu du sidecar a été modifié par le réimport');
+      fs.rmSync(faux, { recursive: true, force: true });
+    } finally { fs.rmSync(racine, { recursive: true, force: true }); }
+  });
+
 test('réimport : Ctrl+C et panne imprévue sortent sur un code, pas sur une trace', () => {
   // KeyboardInterrupt et SystemExit dérivent de BaseException : `except Exception` ne les
   // attrape pas, et le code de sortie de principal() passe intact. C'est la seule raison

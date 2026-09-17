@@ -37,8 +37,46 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # SZH_PYTHON_OBLIGATOIRE=1 : ubuntu-latest fournit python3 de base ; s'il
+      # disparaissait un jour de l'image, les tests Python doivent ÉCHOUER, pas sauter
+      # en silence (même logique que SZH_PS_OBLIGATOIRE plus bas côté Windows).
+      # --test-timeout=120000 : un test qui reste bloqué (attente sans borne côté hôte
+      # factice) sort en `# cancelled`, PAS en `# fail` — mesuré (node --test
+      # --test-timeout=2000 sur un test bloqué : pass 1 / fail 0 / cancelled 1, process
+      # en code 1 malgré tout : rien n'avale ce code ici, `set -o pipefail` le garde).
+      # Reporter TAP explicite : la porte qui suit doit lire un total fiable.
       - name: Vérifier les contrats du cockpit
-        run: node --test test/js/*.test.js
+        env:
+          SZH_PYTHON_OBLIGATOIRE: "1"
+        run: |
+          set -o pipefail
+          node --test --test-timeout=120000 --test-reporter=tap \
+            --test-reporter-destination=stdout test/js/*.test.js | tee contrats.tap
+
+      # Le code de sortie de `node --test` (pipefail ci-dessus) est la première porte :
+      # un process non nul fait déjà échouer ce step. Ce qui suit vérifie que le DÉTAIL
+      # du TAP dit la même chose — un ancien plancher `# pass >= N` aurait laissé passer
+      # la disparition silencieuse de centaines de tests (revue-E.json, constat 1) ; une
+      # égalité stricte sur `# skipped` ne le peut pas. `# cancelled` est vérifié à part
+      # de `# fail` : un blocage coupé par --test-timeout ne lève JAMAIS `# fail`
+      # (REVUE-ADVERSE-PLAN.md, risque « --test-timeout »).
+      - name: Vérifier fail, cancelled et le compte de tests sautés
+        run: |
+          fail="$(grep -E '^# fail [0-9]+$' contrats.tap | tail -n1 | grep -oE '[0-9]+')"
+          cancelled="$(grep -E '^# cancelled [0-9]+$' contrats.tap | tail -n1 | grep -oE '[0-9]+')"
+          skipped="$(grep -E '^# skipped [0-9]+$' contrats.tap | tail -n1 | grep -oE '[0-9]+')"
+          attendu="$(node test/js/compter-gardes.js --attendu ubuntu)"
+          echo "fail=${fail:-?}  cancelled=${cancelled:-?}  skipped=${skipped:-?} (attendu $attendu)"
+          echo "--- histogramme des motifs de skip ---"
+          grep '# SKIP' contrats.tap | sed -E 's/^.*# SKIP ?//' | sort | uniq -c | sort -rn
+          erreur=0
+          [ "${fail:-1}" = "0" ] || { echo "::error::$fail test(s) en échec"; erreur=1; }
+          [ "${cancelled:-1}" = "0" ] || { echo "::error::$cancelled test(s) annulé(s) par --test-timeout (un blocage, pas un échec ordinaire)"; erreur=1; }
+          if [ "$skipped" != "$attendu" ]; then
+            echo "::error::$skipped test(s) sauté(s), $attendu attendu(s) pour ubuntu (compter-gardes.js --attendu ubuntu) — outil apparu/disparu, ou garde changée"
+            erreur=1
+          fi
+          exit $erreur
 
       # Les deux contrôles qui ne demandent que la bibliothèque standard. Ils vivaient
       # hors de la CI, et ne tournaient donc que quand quelqu'un y pensait : le chantier
@@ -85,41 +123,48 @@ jobs:
       # les runners windows-latest) fait le même glob que le job `contrats`. Reporter TAP
       # explicite plutôt que le reporter par défaut (qui dépend de la détection de tty) : la
       # prochaine étape doit lire un total fiable quel que soit le runner.
+      # SZH_PS_OBLIGATOIRE=1 : windows-latest a PowerShell de base ; s'il disparaissait,
+      # les tests PowerShell doivent ÉCHOUER, pas sauter en silence (c'était le trou que
+      # gardait l'ancien plancher `# pass >= 950` — voir plus bas). --test-timeout=120000 :
+      # même raison que côté ubuntu, `contrats` (job précédent) — un blocage sort en
+      # `# cancelled`, pas en `# fail`.
       - name: Vérifier les contrats du cockpit (Windows)
         shell: bash
+        env:
+          SZH_PS_OBLIGATOIRE: "1"
         run: |
           set -o pipefail
-          node --test --test-reporter=tap --test-reporter-destination=stdout \
-            test/js/*.test.js | tee contrats-windows.tap
+          node --test --test-timeout=120000 --test-reporter=tap \
+            --test-reporter-destination=stdout test/js/*.test.js | tee contrats-windows.tap
 
-      # Sans ce plancher, un powershell.exe devenu introuvable sur le runner (image GitHub
-      # changée, PATH modifié) ferait sauter en silence les tests PowerShell et le job
-      # resterait vert avec un total plus bas — jamais un vert par défaut.
-      #
-      # Plancher ESTIMÉ, pas mesuré : ces tests ne reconnaissent aucune bascule du genre
-      # SZH_SANS_POWERSHELL pour rejouer « sans PowerShell » sur ce poste de développement,
-      # qui a PowerShell, la WSL et pandoc tous les trois installés (1018 tests, 1018 pass, 0
-      # sauté). Compte à la lecture des gardes :
-      #   - 44 tests se sautent via `{ skip: sansPowerShell }` / `POWERSHELL ? false : ...`
-      #     (diagnostic, emplacements, installation, lanceur, lien-langue, orphelins-toolkit,
-      #     raccourcis, rythme-maj, socle-decoupage, toolkit-remplacement, volume-numero) —
-      #     absent seulement sur ubuntu (pas de powershell.exe) ; PRÉSENT sur windows-latest.
-      #   - 39 tests se sautent via une vérification réelle de wsl.exe/pandoc, pas seulement
-      #     process.platform (ancrages, biblio, date-numero, fleche-retour,
-      #     import-numerotation-titres, journal-codes, metafichier, lire-config) — absents ici
-      #     COMME sur ubuntu, ce runner n'a pas la distro SZH-Publishing.
-      # D'où : ubuntu ≈ 1018-44-39 = 935 ; windows-latest ≈ 1018-39 = 979. Plancher posé à 950,
-      # au-dessus du compte ubuntu, en dessous du compte Windows attendu.
-      - name: Vérifier le nombre de tests passés
+      # Remplace l'ancien plancher `# pass >= 950` (estimé, jamais mesuré — posé ~725
+      # tests sous la réalité mesurée un jour : revue-E.json, constat 1 ; le commentaire
+      # « 1018 tests, 1018 pass, 0 sauté » qui le justifiait a été retiré avec lui). Un
+      # powershell.exe devenu introuvable sur le runner (image GitHub changée, PATH
+      # modifié) ferait ÉCHOUER les tests PowerShell sous SZH_PS_OBLIGATOIRE=1 — la
+      # porte est déjà tenue par le step précédent (pipefail). Ce qui suit vérifie, comme
+      # côté ubuntu, que le DÉTAIL du TAP dit la même chose qu'un vert par défaut ne
+      # garantit pas : `# cancelled` à part de `# fail` (un blocage coupé par
+      # --test-timeout ne lève jamais `# fail`), et `# skipped` à l'égalité stricte
+      # contre compter-gardes.js --attendu windows plutôt qu'un seuil approximatif.
+      - name: Vérifier fail, cancelled et le compte de tests sautés
         shell: bash
         run: |
-          compte="$(grep -E '^# pass [0-9]+$' contrats-windows.tap | tail -n1 | grep -oE '[0-9]+')"
-          plancher=950
-          echo "tests passés : ${compte:-?} (plancher $plancher)"
-          if [ -z "$compte" ] || [ "$compte" -lt "$plancher" ]; then
-            echo "::error::$compte tests passés sur ce runner, plancher $plancher — les tests PowerShell n'ont peut-être pas tourné"
-            exit 1
+          fail="$(grep -E '^# fail [0-9]+$' contrats-windows.tap | tail -n1 | grep -oE '[0-9]+')"
+          cancelled="$(grep -E '^# cancelled [0-9]+$' contrats-windows.tap | tail -n1 | grep -oE '[0-9]+')"
+          skipped="$(grep -E '^# skipped [0-9]+$' contrats-windows.tap | tail -n1 | grep -oE '[0-9]+')"
+          attendu="$(node test/js/compter-gardes.js --attendu windows)"
+          echo "fail=${fail:-?}  cancelled=${cancelled:-?}  skipped=${skipped:-?} (attendu $attendu)"
+          echo "--- histogramme des motifs de skip ---"
+          grep '# SKIP' contrats-windows.tap | sed -E 's/^.*# SKIP ?//' | sort | uniq -c | sort -rn
+          erreur=0
+          [ "${fail:-1}" = "0" ] || { echo "::error::$fail test(s) en échec"; erreur=1; }
+          [ "${cancelled:-1}" = "0" ] || { echo "::error::$cancelled test(s) annulé(s) par --test-timeout (un blocage, pas un échec ordinaire)"; erreur=1; }
+          if [ "$skipped" != "$attendu" ]; then
+            echo "::error::$skipped test(s) sauté(s), $attendu attendu(s) pour windows (compter-gardes.js --attendu windows) — outil apparu/disparu, ou garde changée"
+            erreur=1
           fi
+          exit $erreur
 
   pdf-ua:
     # Version du runner épinglée : les noms de paquets apt ci-dessous (libffi8) sont liés
@@ -264,6 +309,71 @@ jobs:
         working-directory: test
         run: make -f "$GITHUB_WORKSPACE/pipeline/Makefile" verifier-ua
 
+      # Portes de test/build-render.sh ajoutées ici (lot 6) : avant cela, elles ne
+      # tournaient que si quelqu'un pensait à lancer ce script à la main depuis WSL
+      # (revue-E.json : « ces six contrôles ne tournent QUE si un humain lance bash
+      # test/build-render.sh »). « Ses briques une à une », pas le script entier : il
+      # reconstruit tout le banc par slug (rm -rf puis make) avant de vérifier les
+      # figures, ce qui doublerait le build que l'étape précédente vient de faire, et sa
+      # section livres double « Compiler et valider les livres du banc » plus bas. On ne
+      # rejoue donc que ce que ce job n'a pas déjà : figures, corpus d'accessibilité,
+      # polices, glyphes, métriques du titre — jamais le rendu PNG (pas de pypdfium2 ici,
+      # et de toute façon un PNG se juge à l'œil, pas par une porte automatique).
+      - name: Vérifier les légendes de figure (banc)
+        working-directory: test
+        run: |
+          htmls=()
+          for d in out/*/; do
+            slug="$(basename "$d")"
+            [ -f "$d$slug.html" ] && htmls+=("$d$slug.html")
+          done
+          "$RUNNER_TEMP/weasyprint/bin/python" figures-check.py "${htmls[@]}"
+
+      # Second dossier de NUMÉRO, à part du banc (voir la note de tête de
+      # test/accessibilite/ausgabe.yaml) : sa paire fr/de diverge À DESSEIN d'une légende
+      # de figure, pour que verifier-numerotation ait quelque chose à détecter.
+      - name: Compiler et valider le corpus d’accessibilité
+        working-directory: test/accessibilite
+        run: |
+          rm -rf out
+          make -f "$GITHUB_WORKSPACE/pipeline/Makefile" all
+          make -f "$GITHUB_WORKSPACE/pipeline/Makefile" verifier-ua
+
+      # La paire fr/de du corpus diverge exprès d'une légende de figure :
+      # verifier-numerotation DOIT donc échouer ici. S'il réussit (exit 0), la
+      # comparaison ne compare plus rien — « un contrôle qui ne peut plus échouer est un
+      # contrôle mort » (revue-E.json, même constat).
+      - name: Vérifier que l’écart de numérotation du corpus est bien détecté
+        working-directory: test/accessibilite
+        run: |
+          if make -f "$GITHUB_WORKSPACE/pipeline/Makefile" verifier-numerotation \
+               A=out/participation-fr/participation-fr.html \
+               B=out/teilhabe-de/teilhabe-de.html; then
+            echo "::error::verifier-numerotation n'a RIEN signalé sur le corpus d'accessibilité — contrôle mort (voir accessibilite/ausgabe.yaml)"
+            exit 1
+          fi
+          echo "écart de numérotation détecté comme attendu"
+
+      # Dernier des trois contrôles de police, et sur les DEUX dossiers de sorties :
+      # polices-check.py lit le banc ET le corpus d'accessibilité (qui porte les
+      # diacritiques polonais, turcs et serbes que le banc n'a pas) — même ordre que
+      # test/build-render.sh, mêmes raisons (voir sa note de tête).
+      - name: Vérifier la reproductibilité des polices (banc + accessibilité)
+        working-directory: test
+        run: PYTHONIOENCODING=utf-8 "$RUNNER_TEMP/weasyprint/bin/python" polices-check.py out accessibilite/out
+
+      # Les deux `--verifier` documentés mais appelés par personne avant ce lot
+      # (revue-E.json) : une réinstanciation de la police variable qui perdrait un des
+      # six glyphes suisses, ou une face de titre qui changerait de métrique (effet
+      # d'escalier L3), ne serait vue par rien d'automatique sans eux.
+      - name: Vérifier les glyphes manquants des faces livrées
+        run: "$RUNNER_TEMP/weasyprint/bin/python" pipeline/fonts/glyphes-manquants.py --verifier
+
+      # Sans dépendance (ni fontTools ni WeasyPrint, voir sa note de tête) : le python3
+      # système suffit, pas besoin du venv WeasyPrint.
+      - name: Vérifier la table de métriques du titre
+        run: python3 test/metriques-titre.py --verifier
+
       # Les deux LIVRES du banc. Ils gardent ce qu'un article ne peut pas garder : la
       # numérotation qui court d'un chapitre à l'autre, le sommaire dont les numéros de
       # page sont posés à la pagination, et surtout la conformité PDF/UA d'un document de
@@ -273,7 +383,7 @@ jobs:
       # reproduit SANS le filtre — sans quoi il ne prouverait rien le jour où pandoc
       # changerait de comportement.
       - name: Vérifier les filtres qui demandent pandoc
-        run: node --test test/filtres-pandoc.test.js
+        run: node --test test/filtres-pandoc.test.js test/filtres-import.test.js
 
       # plusieurs chapitres — qu'un tableau mal placé ou une liste lâche suffit à faire
       # tomber SANS ERREUR VISIBLE.

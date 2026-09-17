@@ -23,7 +23,7 @@
 //   3. un blocage reste un blocage — la compilation s'arrête, avec son code de sortie.
 //
 // Le point 3 fait réellement tourner pandoc dans la WSL. S'il est introuvable, le contrôle
-// est déclaré non fait plutôt que vert ; SZH_LUA_OBLIGATOIRE=1 en fait un échec, ce qu'une
+// est déclaré non fait plutôt que vert ; SZH_WSL_OBLIGATOIRE en fait un échec, ce qu'une
 // CI doit faire.
 'use strict';
 
@@ -34,6 +34,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { chargerAvecVscodeFactice } = require('./dom-minimal');
+const { sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
@@ -350,23 +351,10 @@ function wsl(args) {
     { encoding: 'utf8', windowsHide: true, timeout: 120000 });
 }
 
-let pandocVu = null;
-
-function pandocAbsent() {
-  if (pandocVu !== null) { return pandocVu; }
-  let r;
-  try { r = wsl(['sh', '-c', 'command -v pandoc']); }
-  catch (e) { pandocVu = 'wsl.exe injoignable : ' + e.message; return pandocVu; }
-  if (r.error) { pandocVu = 'wsl.exe injoignable : ' + r.error.message; }
-  else if (r.status !== 0) { pandocVu = 'pandoc introuvable dans la distro ' + DISTRO; }
-  else { pandocVu = null; }
-  return pandocVu;
-}
-
 // Saut bruyant : le contrôle n'est pas vert, il est déclaré non fait.
+// SZH_WSL_OBLIGATOIRE via gardes.js en fait un échec au chargement du module.
 function sauterSansLua(t, raison) {
   const msg = 'Filtres non exécutés : ' + raison;
-  if (process.env.SZH_LUA_OBLIGATOIRE) { assert.fail(msg); }
   console.warn('\n*** ' + msg + ' — les blocages du pipeline ne sont PAS vérifiés ***\n');
   t.skip(msg);
 }
@@ -387,8 +375,7 @@ function compiler(nom, filtre, fiche, corps) {
 }
 
 test('filtres : un champ porteur vide arrête la compilation, et le dit par son code', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   // Article déclaré en allemand, titre saisi en français seulement : rien ne s'imprimerait
   // à cette place, et le PDF s'annoncerait conforme.
   const r = compiler('champ-vide', MAQUETTE, 'lang: de\n',
@@ -406,8 +393,7 @@ test('filtres : un champ porteur vide arrête la compilation, et le dit par son 
 });
 
 test('filtres : la marque de traduction arrête la compilation, elle aussi', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   const r = compiler('marque', MAQUETTE, 'lang: fr\n',
     '---\ntitle:\n  fr: "Un titre"\nkeywords:\n  fr:\n  - "inclusion"\n'
     + '  - "TO BE TRANSLATED"\n---\n\nUn corps.\n');
@@ -419,8 +405,7 @@ test('filtres : la marque de traduction arrête la compilation, elle aussi', (t)
 });
 
 test('filtres : une fiche sans langue avertit, et laisse la compilation finir', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   const r = compiler('sans-langue', MAQUETTE, null,
     '---\ntitle:\n  fr: "Un titre"\n---\n\nUn corps.\n');
   assert.strictEqual(r.code, 0, 'un avertissement a arrêté la compilation : ' + r.err);
@@ -431,8 +416,7 @@ test('filtres : une fiche sans langue avertit, et laisse la compilation finir', 
 });
 
 test('filtres : un appel de citation boiteux nomme son article de lui-même', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   const r = compiler('citations', CITATIONS, null,
     'Un appel (Shaw et al., 2023) qui ne mène nulle part.\n\n'
     + '# Bibliographie\n\nBovey, L. (2022). Un titre. Editions SZH.\n');

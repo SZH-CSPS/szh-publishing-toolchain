@@ -193,10 +193,14 @@ test('détacher : la fiche part dans la réserve de la revue ouverte', async () 
     titre: 'À mettre de côté', auteurs: 'Jean Dupont', annee: '2019', editeur: 'XYZ',
     descriptif: 'Un descriptif.', image: ''
   }) + '\n');
+  // La réserve vit dans le dossier PARENT du numéro d'essai, donc dans le tmpdir du poste,
+  // partagé entre toutes les exécutions : une suite interrompue y laisse des fiches. On compte
+  // donc en relatif, et lister() rend la plus récente en tête.
+  const dejaLa = reserve.lister(REVUE, 'revue').length;
   try {
     await p._recepteur({ type: 'detacher', id: 'r-detache' });
     const enReserve = reserve.lister(REVUE, 'revue');
-    assert.strictEqual(enReserve.length, 1, 'rien n’est arrivé dans la réserve de la revue');
+    assert.strictEqual(enReserve.length, dejaLa + 1, 'rien n’est arrivé dans la réserve de la revue');
     assert.strictEqual(enReserve[0].fiche.aTraduire, false,
       'une fiche mise de côté chez soi n’est pas à traduire');
     assert.strictEqual(enReserve[0].fiche.origine, 'revue');
@@ -215,13 +219,15 @@ test('envoyer : une COPIE part dans la réserve de l’autre revue, marquée à 
     titre: 'À traduire', auteurs: 'Jean Dupont', annee: '2019', editeur: 'XYZ',
     descriptif: 'Un descriptif.', image: ''
   }) + '\n');
+  const dejaChezElle = reserve.lister(REVUE, 'revue').length;
+  const dejaChezLautre = reserve.lister(REVUE, 'zeitschrift').length;
   try {
     await p._recepteur({ type: 'envoyer', id: 'r-envoye' });
     // La fixture est une Revue : la copie va donc chez la Zeitschrift, et nulle part ailleurs.
     const chezElle = reserve.lister(REVUE, 'revue');
     const chezLautre = reserve.lister(REVUE, 'zeitschrift');
-    assert.strictEqual(chezElle.length, 0, 'une copie envoyée ne doit pas rester chez soi');
-    assert.strictEqual(chezLautre.length, 1, 'la copie n’est pas arrivée dans l’autre réserve');
+    assert.strictEqual(chezElle.length, dejaChezElle, 'une copie envoyée ne doit pas rester chez soi');
+    assert.strictEqual(chezLautre.length, dejaChezLautre + 1, 'la copie n’est pas arrivée dans l’autre réserve');
     assert.strictEqual(chezLautre[0].fiche.aTraduire, true, 'la copie devrait être à traduire');
     assert.strictEqual(chezLautre[0].fiche.origine, 'revue');
     // Et le bloc RESTE dans l'article : « envoyer » ne retire rien.

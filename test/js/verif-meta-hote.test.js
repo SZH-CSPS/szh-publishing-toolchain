@@ -109,6 +109,48 @@ test('la vue « Articles » offre le bouton, et il tire la feuille de tout le nu
     'la feuille n’a pas été rendue au navigateur');
 });
 
+// ---- Le refus « feuille non enregistrée », jamais exercé (revue adverse) -------------
+//
+// imprimerFeuilleVerifTous() (le bouton de la vue « Articles », ci-dessus) refuse de tirer
+// la feuille tant qu'une carte a été modifiée dans le formulaire des fiches sans être
+// enregistrée — sinon l'empreinte imprimée en pied de page mentirait sur ce qui a vraiment
+// été vérifié. Rien dans le dépôt ne posait l'état modifié (le message MSG.MODIFIE que
+// media/_fiches.js envoie à chaque frappe) avant d'appeler ce bouton : la garde
+// `if (fichesModifie) { … return; }` pouvait être neutralisée sans qu'aucun test ne rougisse.
+test('le bouton de la vue « Articles » refuse la feuille tant qu’une carte n’est pas enregistrée',
+  async () => {
+    const p = await panneauFiches();
+    // Le message que la webview envoie dès qu'un champ change : c'est lui, et lui seul, qui
+    // arme fichesModifie côté hôte (lib/metadonnees-hote.js).
+    await p._recepteur({ type: 'modifie', modifie: true });
+
+    await hote.executer('szh.vueArticles');
+    const vue = hote.panneauDeType('szhVueArticles');
+    await vue._recepteur({ type: 'pret' });
+
+    try { fs.unlinkSync(FEUILLE); } catch (e) { /* pas encore écrite */ }
+    // hote.ouvertures() accumule depuis le début du fichier (aucun oubli entre tests, à la
+    // différence de commandesJouees()/fermetures()) : on compte un AVANT/APRÈS plutôt que
+    // de chercher FEUILLE, déjà ouverte par un test précédent.
+    const ouvertesAvant = hote.ouvertures().length;
+    // hote-factice.js ne journalise pas showInformationMessage() : on l'intercepte ici,
+    // comme le fait déjà hote.test.js (voirPdfEtNoter) pour le même besoin.
+    const infoOriginal = hote.stub.window.showInformationMessage;
+    const infos = [];
+    hote.stub.window.showInformationMessage = (m) => { infos.push(String(m)); return Promise.resolve(undefined); };
+    try {
+      await vue._recepteur({ type: 'commande', id: 'verif-meta' });
+    } finally {
+      hote.stub.window.showInformationMessage = infoOriginal;
+    }
+
+    assert.ok(infos.length > 0, 'le refus n’a provoqué aucune notification');
+    assert.ok(infos[0].length > 0, 'la notification de refus est vide');
+    assert.ok(!fs.existsSync(FEUILLE), 'la feuille a été écrite malgré une carte non enregistrée');
+    assert.strictEqual(hote.ouvertures().length, ouvertesAvant,
+      'la feuille a été rendue au navigateur malgré le refus');
+  });
+
 // ---- Les intitulés viennent du formulaire, sans son gabarit de langue ----------------
 
 test('l’intitulé d’un champ traduisible ne porte pas le trou « ({0}) » du formulaire', async () => {

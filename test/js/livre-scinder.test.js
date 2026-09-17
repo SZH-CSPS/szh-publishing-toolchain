@@ -239,6 +239,45 @@ test('ordre-chapitres en BLOCS (au fer à gauche) se fusionne comme la forme en 
   }
 });
 
+test('ordre-chapitres : le manuscrit déjà listé sous SON PROPRE nom cède sa place aux ' +
+  'chapitres qui en sortent, sans se retrouver ajouté en fin', () => {
+  // Les scénarios ci-dessus ne listent jamais « manuscrit » (l'argv[2] de lancer()) dans
+  // ordre-chapitres avant la scission — seulement un AUTRE chapitre (« 01-avant »). La
+  // branche « remplacement en place » de fusionner_ordre() (slug_remplace in
+  // ordre_existant) n'est donc exercée par aucun test : ce scénario-ci la met en jeu, avec
+  // un slug de part et d'autre pour vérifier que le remplacement respecte la position et
+  // ne se contente pas de tout ajouter en fin.
+  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
+
+  const racine = livreJetable();
+  try {
+    ecrire(racine, 'buch.yaml', 'titre: "Essai"\nordre-chapitres: [\'00-avant\', \'manuscrit\', \'99-apres\']\n');
+    ecrire(racine, 'chapitres', 'manuscrit', 'manuscrit.md',
+      '# Un premier\n\nTexte.\n\n# Un second\n\nTexte.\n');
+
+    const r = lancer(racine, 'manuscrit');
+
+    assert.strictEqual(r.status, 0, r.stderr);
+    const buch = fs.readFileSync(path.join(racine, 'buch.yaml'), 'utf8');
+    const ligne = buch.split('\n').find((l) => l.startsWith('ordre-chapitres:'));
+    // Le nom « manuscrit » lui-même ne doit plus y figurer : il a été REMPLACÉ, pas gardé.
+    assert.ok(!/'manuscrit'/.test(ligne),
+      'le slug du manuscrit scindé est resté dans ordre-chapitres au lieu d’être remplacé');
+    const avant = ligne.indexOf('00-avant');
+    const premier = ligne.indexOf('01-un-premier');
+    const second = ligne.indexOf('02-un-second');
+    const apres = ligne.indexOf('99-apres');
+    assert.ok([avant, premier, second, apres].every((i) => i !== -1),
+      'un des quatre chapitres attendus manque dans ordre-chapitres : ' + ligne);
+    // Les deux nouveaux chapitres prennent EXACTEMENT la place de « manuscrit » : entre
+    // 00-avant et 99-apres, jamais ajoutés en fin de liste.
+    assert.ok(avant < premier && premier < second && second < apres,
+      'les chapitres issus de la scission n’ont pas pris la place du manuscrit remplacé : ' + ligne);
+  } finally {
+    fs.rmSync(racine, { recursive: true, force: true });
+  }
+});
+
 test('idempotence : un chapitre déjà présent au nom visé arrête la scission avant tout dégât', () => {
   assert.ok(PYTHON, 'aucun interprète Python 3 trouvé');
 

@@ -13,7 +13,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { revueDEssai, activerHote } = require('./hote-factice');
+const { revueDEssai, activerHote, demarrageSeTait } = require('./hote-factice');
 
 const LF = String.fromCharCode(10);
 const NOM_IMPORT = 'Importer les articles Word';
@@ -26,9 +26,7 @@ HOTE.arbre().definirRacine(REVUE);
 const MOTS = path.join(REVUE, 'articles-word');
 
 test('mise en route : le démarrage se tait', async () => {
-  for (let i = 0; i < 30; i++) { await tick(); }
-  HOTE.erreurs.length = 0;
-  HOTE.avertissements.length = 0;
+  await demarrageSeTait(HOTE);
   // Le fixture de revueDEssai() dépose déjà un Word en attente (9_Essai.docx, pour les
   // contrôles de l'arbre) : on le retire pour garder la main sur le dépôt de ce fichier.
   fs.rmSync(path.join(MOTS, '9_Essai.docx'), { force: true });

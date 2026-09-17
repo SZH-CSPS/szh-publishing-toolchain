@@ -222,16 +222,7 @@ test('un blocage qui dure finit par ouvrir la fenêtre visible, une fois par sem
 // C:\ProgramData\SZH : la tâche d'essai vit dans un sous-dossier du planificateur, au nom
 // de l'utilisateur courant, et le suivi dans un dossier de travail.
 
-const POWERSHELL = (function () {
-  if (process.platform !== 'win32') { return ''; }
-  const candidats = [path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), 'powershell.exe'];
-  for (const c of candidats) {
-    const essai = spawnSync(c, ['-NoProfile', '-Command', 'exit 0'], { encoding: 'utf8' });
-    if (!essai.error && essai.status === 0) { return c; }
-  }
-  return '';
-})();
+const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 const PILOTE = [
   "$ErrorActionPreference = 'Stop'",
@@ -360,8 +351,6 @@ const bilan = (function () {
   fs.rmSync(travail, { recursive: true, force: true });
   return Object.assign({}, restes, { r: lu });
 })();
-
-const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
 
 test('le jalon hebdomadaire est le dernier mardi 14 h révolu', { skip: sansPowerShell }, () => {
   assert.strictEqual(bilan.status, 0, 'le pilote PowerShell a échoué : ' + bilan.stderr);

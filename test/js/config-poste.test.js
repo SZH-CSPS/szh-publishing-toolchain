@@ -101,6 +101,33 @@ test('ecrireEmplacementRevues écrit désormais atomiquement, et garde le reste 
   }
 });
 
+// Le test ci-dessus n'exerce que la valeur PRODUCTION : ce fichier prétendait garantir
+// ecrireEmplacementRevues() dans son ensemble, mais dépendait en fait de
+// emplacements.test.js pour prouver l'autre branche (TEST) — jamais vérifiée ICI.
+test('ecrireEmplacementRevues : l’autre valeur (test) écrit aussi atomiquement, et garde le reste', () => {
+  const chemin = fichierEssai();
+  process.env.SZH_CONFIG_OJS = chemin;
+  delete require.cache[require.resolve(path.join(COCKPIT, 'lib', 'archivage.js'))];
+  const archivage = require(path.join(COCKPIT, 'lib', 'archivage.js'));
+  try {
+    // Poste déjà en production, avec du contenu à côté : la bascule vers « test » doit le
+    // garder, tout comme l'inverse le fait pour « production » ci-dessus.
+    archivage.ecrireConfigPoste(() => ({ repo: 'w', emplacementRevues: 'production',
+      devMode: false, ojs: { revues: {} } }));
+    const erreur = archivage.ecrireEmplacementRevues(archivage.EMPLACEMENT_TEST);
+    assert.strictEqual(erreur, null, 'échec inattendu : ' + erreur);
+    const relu = archivage.lireConfigPoste();
+    assert.strictEqual(relu.emplacementRevues, 'test');
+    assert.strictEqual(relu.devMode, true);
+    assert.strictEqual(relu.repo, 'w', 'le reste du fichier a été écrasé');
+    assert.deepStrictEqual(relu.ojs, { revues: {} }, 'la config OJS a été écrasée');
+    const fichiers = fs.readdirSync(path.dirname(chemin));
+    assert.ok(!fichiers.some((f) => f.startsWith('~$')), 'un temporaire est resté : ' + fichiers);
+  } finally {
+    delete process.env.SZH_CONFIG_OJS;
+  }
+});
+
 test('export-ojs.js partage désormais le même fichier et le même override qu’archivage.js', () => {
   const chemin = fichierEssai();
   process.env.SZH_CONFIG_OJS = chemin;

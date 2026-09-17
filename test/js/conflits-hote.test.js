@@ -144,6 +144,39 @@ test('« Prendre cette version » refuse tant qu’un autre poste tient le fichi
   }
 });
 
+// ---- Le verrou du numéro, jamais exercé ici (revue adverse) --------------------------
+//
+// refuserSiVerrouille() est LA première garde de la branche « prendre » (avant même le
+// bail de co-édition, cf. le commentaire d'extension.js:573 : « le verrou du numéro
+// d'abord »). Le test précédent ne prouve que le refus de co-édition ; aucun test de ce
+// fichier ne posait un numéro verrouillé (ou archivé, qui verrouille aussi — voir
+// hote-livre.test.js) avant d'appeler « Prendre cette version » : la garde pouvait être
+// neutralisée sans qu'aucun test ne rougisse, alors que c'est le chemin qui ÉCRIT.
+test('« Prendre cette version » refuse sur un numéro verrouillé, sans rien écrire', async () => {
+  await pret;
+  const bloc = poserCopie();
+  const avantYaml = fs.readFileSync(AUSGABE, 'utf8');
+  fs.writeFileSync(AUSGABE, avantYaml + 'locked: "true"\n');
+  await HOTE.executer('szh.cockpit.rafraichir');
+  try {
+    const avantAvert = HOTE.avertissements.length;
+    const numeroAvant = fs.readFileSync(AUSGABE, 'utf8');
+    const copieAvant = fs.readFileSync(COPIE, 'utf8');
+    await P.resoudreBlocConflit(Uri.file(AUSGABE), [bloc], 0, true);
+    const nouveaux = HOTE.avertissements.slice(avantAvert);
+    assert.strictEqual(nouveaux.length, 1, 'aucun refus affiché sur un numéro verrouillé');
+    // Rien n'a bougé : un refus qui n'arrête pas tout serait pire qu'une absence de refus.
+    assert.strictEqual(fs.readFileSync(AUSGABE, 'utf8'), numeroAvant,
+      'le fichier du numéro a été modifié malgré le verrou');
+    assert.strictEqual(fs.readFileSync(COPIE, 'utf8'), copieAvant,
+      'la copie a été modifiée malgré le refus');
+  } finally {
+    fs.writeFileSync(AUSGABE, avantYaml);
+    await HOTE.executer('szh.cockpit.rafraichir');
+    retirerCopie();
+  }
+});
+
 test('sans copie en conflit, la commande le dit au lieu d’agir', async () => {
   await pret;
   const avant = HOTE.avertissements.length;

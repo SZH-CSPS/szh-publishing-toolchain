@@ -303,6 +303,21 @@ test('fusionnerMotsCles : un désaccord réel entre deux moissons donne deux ent
   assert.ok(fusion.every((m) => m.de === 'Lernschwierigkeit'));
 });
 
+// Symétrique du cas ci-dessus : les trois scénarios de désaccord du fichier (lignes
+// précédentes) varient tous sur le FRANÇAIS avec un ALLEMAND identique — la branche
+// « else if (de !== '' && kd !== '' && plierTexte(existant.de) !== kd) » (mots-cles-edudoc.js,
+// juste avant la règle symétrique du français) n'était donc jamais exercée sur un vrai
+// désaccord côté allemand.
+test('fusionnerMotsCles : un désaccord réel sur l’ALLEMAND, français identique, donne deux entrées', () => {
+  const fusion = fusionnerMotsCles(
+    [{ de: 'Lernbehinderung', fr: 'difficulté', manque: null }],
+    [{ de: 'Lernstörung', fr: 'difficulté', manque: null }]
+  );
+  assert.strictEqual(fusion.length, 2, 'les deux allemands concurrents doivent survivre');
+  assert.deepStrictEqual(fusion.map((m) => m.de).sort(), ['Lernbehinderung', 'Lernstörung'].sort());
+  assert.ok(fusion.every((m) => m.fr === 'difficulté'));
+});
+
 test('fusionnerMotsCles : jamais de suppression — rejouer un moissonnage vide garde tout', () => {
   const existants = [
     { de: 'Europa', fr: 'Europe', manque: null },

@@ -302,7 +302,18 @@ const THESAURUS_CORIACE = [
   { de: 'Sonderpädagogik', fr: 'pédagogie spécialisée' },
   { de: 'Elternrechte (na)', fr: 'droits des parents (na)' },
   { de: 'Übergänge (CSPS)', fr: 'transitions (CSPS)' },
-  { de: 'Kinderrechte (na)', fr: 'droits de l’enfant (na)' }
+  { de: 'Kinderrechte (na)', fr: 'droits de l’enfant (na)' },
+  // (a) collision exact / dé-qualifié : la forme DÉ-QUALIFIÉE de cette entrée
+  // (« ressources », une fois « (SZH) » ôté) est aussi, caractère pour caractère, la clé
+  // EXACTE de l'entrée suivante. La priorité exact > dé-qualifié doit départager les
+  // deux dans CE sens précis, jamais dans l'autre — ni par l'ordre d'apparition.
+  { de: 'Ressourcen (SZH)', fr: 'ressources (SZH)' },
+  // (b) entrée incomplète : jamais relevée en allemand (edudoc.ch ne porte pas toujours
+  // les deux langues). C'est aussi l'entrée que la collision ci-dessus vise : un
+  // descripteur TROUVÉ mais dont une langue manque ne doit jamais suffire, ni à la
+  // pastille ni à l'export — et un chercheur qui la trouverait par erreur à la place de
+  // l'entrée complète ci-dessus le prouverait tout de suite.
+  { de: '', fr: 'ressources' }
 ];
 
 const CAS_CORIACES = [
@@ -312,6 +323,11 @@ const CAS_CORIACES = [
   'droits des parents (na)', 'droits des parents', 'droits des parents (NA)',
   'Übergänge', 'ubergange', 'transitions', 'transitions (csps)', 'Transitions (CSPS)',
   "droits de l'enfant (na)", "droits de l'enfant", 'droits de l’enfant', 'droits de l‘enfant',
+  // (a) la clé EXACTE de l'entrée complète (« ressources (SZH) ») doit gagner sur la clé
+  // DÉ-QUALIFIÉE de l'entrée incomplète (« ressources ») — jamais l'inverse.
+  'ressources (SZH)', 'RESSOURCES (Szh)', 'Ressourcen (SZH)',
+  // (b) l'entrée incomplète elle-même, trouvée mais jamais suffisante à elle seule.
+  'ressources', 'RESSOURCES', '  ressources  ',
   'mot totalement inconnu', '   ', ''
 ];
 

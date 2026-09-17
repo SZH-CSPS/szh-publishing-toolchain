@@ -4,11 +4,15 @@
 //
 //   node --test test/js
 //
-// szh-citations.lua posait déjà l'ancre de chaque entrée (ref-nom-annee, sur laquelle
-// pointent les appels) ; il pose désormais aussi l'ancre inverse (appel-ref-nom-annee, sur
-// la première occurrence de l'appel dans le corps) et, dans l'entrée de bibliographie, un
-// lien de retour vers elle. Trois exigences d'accessibilité non négociables encadrent ce
-// lien : un texte accessible EXPLICITE (aria-label, FR/DE — jamais une flèche nue), aucune
+// Ce fichier TESTE le filtre pipeline/filters/szh-citations.lua : sa fonction
+// de gestion des ancres et des liens de retour. wsl.js et portraits.js n'y servent que de
+// plomberie de chemins — ils ont leurs tests ailleurs.
+//
+// szh-citations.lua pose l'ancre de chaque entrée (ref-nom-annee, sur laquelle pointent
+// les appels) ; il pose aussi l'ancre inverse (appel-ref-nom-annee, sur la première
+// occurrence de l'appel dans le corps) et, dans l'entrée de bibliographie, un lien de
+// retour vers elle. Trois exigences d'accessibilité non négociables encadrent ce lien :
+// un texte accessible EXPLICITE (aria-label, FR/DE — jamais une flèche nue), aucune
 // flèche décorative de lien sortant (c'est un lien interne, « #… »), et la conformité
 // PDF/UA-1 doit tenir (vérifiée par compilation réelle + veraPDF, hors de ce fichier).
 //
@@ -17,10 +21,8 @@
 // l'appel a été posé À LA MAIN (« [(Dupont, 2024)](#ref-dupont-2024) »), qui reste actif
 // quel que soit ce réglage et doit donc garder sa flèche retour.
 //
-// Le Lua tourne dans la WSL, comme test/js/ancrages.test.js dont ce fichier reprend
-// l'ossature (même wsl(), même repli de bibliographie « # Références » dans le corps,
-// pour ne dépendre d'aucun autre filtre). S'il est introuvable, les contrôles sont sautés
-// en le disant — jamais verts par défaut. Poser SZH_LUA_OBLIGATOIRE=1 en fait des échecs.
+// Le Lua tourne dans la WSL. S'il est introuvable, les contrôles sont sautés en le disant —
+// jamais verts par défaut. SZH_WSL_OBLIGATOIRE en fait des échecs.
 'use strict';
 
 const test = require('node:test');
@@ -29,6 +31,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
@@ -43,23 +46,11 @@ function wsl(args) {
     { encoding: 'utf8', windowsHide: true, timeout: 120000 });
 }
 
-let pandocVu = null;
-function pandocAbsent() {
-  if (pandocVu !== null) { return pandocVu; }
-  let r;
-  try { r = wsl(['sh', '-c', 'command -v pandoc']); }
-  catch (e) { pandocVu = 'wsl.exe injoignable : ' + e.message; return pandocVu; }
-  if (r.error) { pandocVu = 'wsl.exe injoignable : ' + r.error.message; }
-  else if (r.status !== 0) { pandocVu = 'pandoc introuvable dans la distro ' + DISTRO; }
-  else { pandocVu = null; }
-  return pandocVu;
-}
-
-// Saut bruyant : le contrôle n'est pas vert, il est déclaré non fait.
+// Saut bruyant : le contrôle n’est pas vert, il est déclaré non fait.
+// SZH_WSL_OBLIGATOIRE via gardes.js en fait un échec au chargement du module.
 function sauterSansLua(t, raison) {
-  const msg = 'Lua non vérifié : ' + raison;
-  if (process.env.SZH_LUA_OBLIGATOIRE) { assert.fail(msg); }
-  console.warn('\n*** ' + msg + ' — la flèche retour n’est PAS vérifiée ***\n');
+  const msg = "Lua non vérifié : " + raison;
+  console.warn("\n*** " + msg + " — la flèche retour n’est PAS vérifiée ***\n");
   t.skip(msg);
 }
 
@@ -108,9 +99,8 @@ const CORPS_FR = [
   'Muller, B. (2023). Un autre titre. CSPS. <https://www.csps.ch/rapport-2023>'
 ].join('\n') + '\n';
 
-test('flèche retour : seule la première occurrence de l’appel reçoit une ancre', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+test("flèche retour : seule la première occurrence de l’appel reçoit une ancre", (t) => {
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   const html = compiler('premiere-occurrence', CORPS_FR);
   const ids = [...html.matchAll(/id="(appel-ref-[^"]+)"/g)].map((m) => m[1]);
   t.diagnostic('ancres d’appel posées : ' + ids.join(' '));
@@ -123,10 +113,9 @@ test('flèche retour : seule la première occurrence de l’appel reçoit une an
     'un seul des deux appels vers la même référence doit porter l’ancre');
 });
 
-test('flèche retour : le lien de la bibliographie a un texte accessible explicite, en français',
+test("flèche retour : le lien de la bibliographie a un texte accessible explicite, en français",
   (t) => {
-    const absent = pandocAbsent();
-    if (absent) { return sauterSansLua(t, absent); }
+    if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
     const html = compiler('aria-fr', CORPS_FR);
     // Cible interne (« #appel-… »), classe dédiée, contenu VIDE (l’icône est un fond CSS,
     // print.css) et aria-label explicite — jamais une flèche nue pour le lecteur d’écran.
@@ -138,9 +127,8 @@ test('flèche retour : le lien de la bibliographie a un texte accessible explici
       'lien de retour absent pour la seconde référence : ' + html);
   });
 
-test('flèche retour : en Zeitschrift (allemand), l’aria-label se dit aussi en allemand', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+test("flèche retour : en Zeitschrift (allemand), l’aria-label se dit aussi en allemand", (t) => {
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   // Pas de <slug>.meta.yaml voisin dans ce banc : langue_article() retombe alors sur le
   // jeton de revue, où « zeitschrift » vaut « de » — même règle que le titre de
   // bibliographie (TITRES_BIBLIO_DEFAUT), dont c’est la seule autre consommatrice.
@@ -150,10 +138,9 @@ test('flèche retour : en Zeitschrift (allemand), l’aria-label se dit aussi en
     'l’aria-label devrait basculer en allemand pour la Zeitschrift : ' + html);
 });
 
-test('flèche retour : absente quand szh.desactiverLiensReferences est actif, sans ancre orpheline',
+test("flèche retour : absente quand szh.desactiverLiensReferences est actif, sans ancre orpheline",
   (t) => {
-    const absent = pandocAbsent();
-    if (absent) { return sauterSansLua(t, absent); }
+    if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
     const html = compiler('desactive', CORPS_FR, { desactiverLiensReferences: true });
     // Aucun appel n’est plus un lien : rien ne pointe donc « #appel-… », et un lien de
     // retour vers une ancre qui n’existe pas serait un défaut — il ne doit pas apparaître.
@@ -163,10 +150,9 @@ test('flèche retour : absente quand szh.desactiverLiensReferences est actif, sa
       'un lien de retour est resté malgré le réglage, sans ancre à viser');
   });
 
-test('flèche retour : un lien posé à la main garde son ancre et son retour, même réglage désactivé',
+test("flèche retour : un lien posé à la main garde son ancre et son retour, même réglage désactivé",
   (t) => {
-    const absent = pandocAbsent();
-    if (absent) { return sauterSansLua(t, absent); }
+    if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
     // Un appel écrit à la main (l’action « Lier une référence » du cockpit) fonctionne
     // « quel que soit le réglage » — voir la note de tête de szh-citations.lua : la flèche
     // retour doit donc s’y poser tout autant, ce même réglage actif.

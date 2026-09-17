@@ -20,7 +20,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { revueDEssai, activerHote } = require('./hote-factice');
+const { revueDEssai, activerHote, demarrageSeTait } = require('./hote-factice');
 
 const NOM_IMPORT = 'Importer les articles Word';
 const NOM_BUILD = 'Aperçu / Export PDF';
@@ -33,9 +33,7 @@ const ext = require(path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-
 HOTE.arbre().definirRacine(REVUE);
 
 test('mise en route : le démarrage se tait', async () => {
-  for (let i = 0; i < 30; i++) { await tick(); }
-  HOTE.erreurs.length = 0;
-  HOTE.avertissements.length = 0;
+  await demarrageSeTait(HOTE);
 });
 
 test('un enregistrement de fiche pendant un import qui ne ramène rien finit par recompiler',

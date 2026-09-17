@@ -234,3 +234,35 @@ test('pronto-lire.py : mêmes étiquettes, même nombre de rangées d’auteur, 
   assert.strictEqual(structDocx.blocs.length, 1);
   assert.strictEqual(structDocx.blocs[0].length, 4);
 });
+
+// Test du décodage des noms de style ODT encodés : LibreOffice encode les espaces (_20_),
+// etc. Un style commun sans display-name doit quand même rendre un nom humain via decoder_nom_style().
+// Le test n'a aucun moyen de fabriquer un .odt, donc appelle la fonction directement.
+test('decoder_nom_style() : les noms de style ODT encodés se décodent en noms humains', () => {
+  if (!PYTHON) { assert.ok(false, 'aucun interpreete Python 3 trouve'); }
+
+  // Construction du script Python en tant qu'array de lignes pour éviter les pièges
+  // des guillemets imbriqués et backticks.
+  const pipelineDir = path.join(RACINE, 'pipeline').replace(/\\/g, '\\\\');
+  const script = [
+    'import sys, os',
+    'sys.path.insert(0, "' + pipelineDir + '")',
+    'from pronto_odt import decoder_nom_style',
+    'cases = [',
+    '  ("SZH_20_Important", "SZH Important"),',
+    '  ("Titre_20_1", "Titre 1"),',
+    '  ("P1", "P1"),',
+    '  ("_20_", " "),',
+    ']',
+    'for encoded, expected in cases:',
+    '  result = decoder_nom_style(encoded)',
+    '  if result != expected:',
+    '    print("FAIL: " + encoded + " -> " + result + ", expected " + expected, file=__import__("sys").stderr)',
+    '    sys.exit(1)',
+    'print("OK")'
+  ].join('\n');
+
+  const r = python(['-c', script]);
+  assert.strictEqual(r.status, 0, 'decoder_nom_style a echoue : ' + r.stderr);
+  assert.strictEqual(r.stdout.trim(), 'OK');
+});

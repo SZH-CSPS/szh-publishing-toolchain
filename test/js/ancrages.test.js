@@ -17,8 +17,8 @@
 // dans pandoc.
 //
 // Le Lua tourne dans la WSL : pandoc n'existe pas côté Windows. S'il est introuvable, les
-// contrôles à deux côtés sont sautés en le disant — jamais verts par défaut. Poser
-// SZH_LUA_OBLIGATOIRE=1 en fait des échecs, ce qu'une CI doit faire.
+// contrôles à deux côtés sont sautés en le disant — jamais verts par défaut. SZH_WSL_OBLIGATOIRE
+// en fait des échecs, ce qu'une CI doit faire.
 'use strict';
 
 const test = require('node:test');
@@ -27,6 +27,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
@@ -119,29 +120,10 @@ function wsl(args, options) {
     Object.assign({ encoding: 'utf8', windowsHide: true, timeout: 120000 }, options || {}));
 }
 
-let pandocVu = null;
-
-// Pourquoi pandoc manque, ou null s'il répond.
-function pandocAbsent() {
-  if (pandocVu !== null) { return pandocVu; }
-  let r;
-  try {
-    r = wsl(['sh', '-c', 'command -v pandoc']);
-  } catch (e) {
-    pandocVu = 'wsl.exe injoignable : ' + e.message;
-    return pandocVu;
-  }
-  if (r.error) { pandocVu = 'wsl.exe injoignable : ' + r.error.message; }
-  else if (r.status !== 0) { pandocVu = 'pandoc introuvable dans la distro ' + DISTRO; }
-  else { pandocVu = null; }
-  return pandocVu;
-}
-
-// Saut bruyant : le contrôle n'est pas vert, il est déclaré non fait. Avec
-// SZH_LUA_OBLIGATOIRE=1 il échoue, pour qu'une CI ne se contente pas d'un saut.
+// Saut bruyant : le contrôle n'est pas vert, il est déclaré non fait.
+// SZH_WSL_OBLIGATOIRE via gardes.js en fait un échec au chargement du module.
 function sauterSansLua(t, raison) {
-  const msg = 'Lua non vérifié : ' + raison;
-  if (process.env.SZH_LUA_OBLIGATOIRE) { assert.fail(msg); }
+  const msg = "Lua non vérifié : " + raison;
   console.warn('\n*** ' + msg + ' — les ancrages du pipeline ne sont PAS comparés ***\n');
   t.skip(msg);
 }
@@ -183,8 +165,7 @@ function resultatsLua() {
 // ---- les contrôles ----
 
 test('ancrages : les mêmes noms donnent le même identifiant des deux côtés', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   const lua = resultatsLua().par.NOM;
   const rangees = [];
   const ecarts = [];
@@ -208,8 +189,7 @@ test('ancrages : les mêmes noms donnent le même identifiant des deux côtés',
 });
 
 test('ancrages : tout le latin se replie de la même façon des deux côtés', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   const lua = resultatsLua().par.CP;
   const ecarts = [];
   for (const cp of pointsDeCode()) {
@@ -235,8 +215,7 @@ test('ancrages : un caractère sans repli est consigné, pas avalé', (t) => {
   // Un caractère replié ou volontairement ignoré ne doit pas encombrer le journal.
   cit.aplatir('Zieliński — « Ölmez »');
   assert.doesNotMatch(cit.caracteresSansRepli().join('\n'), /U\+0144|U\+2014|U\+00D6/);
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   // Côté pipeline : stderr, où le journal de compilation le montre au rédacteur.
   const err = resultatsLua().stderr;
   // Sur le CODE du constat, pas sur sa phrase : le filtre écrit « caractere-sans-repli »
@@ -246,9 +225,8 @@ test('ancrages : un caractère sans repli est consigné, pas avalé', (t) => {
   assert.match(err, /U\+4E2D/, 'le filtre a retiré 中 sans le dire : ' + err);
 });
 
-test('ancrages : titres de bibliographie et suites d’entrée, mêmes réponses', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+test("ancrages : titres de bibliographie et suites d’entrée, mêmes réponses", (t) => {
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   const res = resultatsLua().par;
   const ecarts = [];
   for (const titre of TITRES) {
@@ -265,8 +243,7 @@ test('ancrages : titres de bibliographie et suites d’entrée, mêmes réponses
 });
 
 test('ancrages : les ancres posées par pandoc sont celles que le cockpit propose', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   const md = [
     'On le lit chez Zieliński (2019) et ailleurs (Şahin, 2021 ; Đurić, 2020).',
     '',

@@ -7,7 +7,8 @@
 //
 // Ce fichier vit sous test/js/ (le job `contrats` de la CI, sans chaîne PDF) : contrairement
 // à test/filtres-pandoc.test.js, un pandoc absent se SAUTE, il ne fait pas échouer la suite —
-// SZH_LUA_OBLIGATOIRE=1 en fait des échecs, comme test/js/ancrages.test.js.
+// SZH_PANDOC_OBLIGATOIRE en fait des échecs : ce fichier lance le pandoc du PATH (`pandoc lua`),
+// pas celui de la WSL.
 'use strict';
 
 const test = require('node:test');
@@ -16,31 +17,15 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawnSync } = require('child_process');
+const { sansPandoc } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const SCRIPT = path.join(RACINE, 'pipeline', 'filters', 'szh-lire-config.lua');
 
-// pandoc absent, ou trop ancien pour `pandoc lua` (sous-commande apparue en pandoc 3) :
-// mémoïsé, comme pliageCasse() de test/filtres-pandoc.test.js.
-let raisonAbsence;
-function pandocLuaAbsent() {
-  if (raisonAbsence !== undefined) { return raisonAbsence; }
-  const r = spawnSync('pandoc', ['lua', '-e', 'print(1)'], { encoding: 'utf8' });
-  if (r.error) {
-    raisonAbsence = 'pandoc introuvable : ' + r.error.message;
-  } else if (r.status !== 0 || r.stdout.trim() !== '1') {
-    raisonAbsence = 'pandoc sans sous-commande « lua » exploitable (' + (r.stderr || '').trim() + ')';
-  } else {
-    raisonAbsence = null;
-  }
-  return raisonAbsence;
-}
-
+// SZH_PANDOC_OBLIGATOIRE via gardes.js en fait un échec au chargement du module.
 function sauterSiPandocAbsent(t) {
-  const raison = pandocLuaAbsent();
-  if (!raison) { return false; }
-  const msg = 'szh-lire-config.lua non vérifié : ' + raison;
-  if (process.env.SZH_LUA_OBLIGATOIRE) { assert.fail(msg); }
+  if (!sansPandoc) { return false; }
+  const msg = 'szh-lire-config.lua non vérifié : ' + sansPandoc;
   console.warn('\n*** ' + msg + ' ***\n');
   t.skip(msg);
   return true;

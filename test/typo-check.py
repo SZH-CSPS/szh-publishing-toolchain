@@ -403,6 +403,47 @@ def extraire_js_bilingue(lignes, _langue):
                 yield i, m.group(1), m.group(2), _remplacant_intervalle(*m.span(2))
 
 
+# Les 18 webviews de vscodium-extension/szh-cockpit/media/*.js. Forme différente de
+# lib/articles.js et lib/yaml.js : pas de structure fr:/de: (vérifié par grep sur les 18
+# fichiers — RE_JS_LANGUE n'y trouve que des codes courts sans espace ni accent, `fr:
+# 'FR'`, jamais une phrase), donc extraire_js_bilingue NE CONVIENT PAS. Le plus gros du
+# texte visible de ces webviews vient de TXT.xxx, déjà couvert par lib/i18n.js ; ce qui
+# reste ici, ce sont les rares littéraux tapés en clair (repli, libellé de secours) —
+# une seule langue par chaîne, celle du fichier (fr, comme le reste du cockpit).
+RE_JS_STRING = re.compile(r"'((?:[^'\\]|\\.)*)'")
+
+
+def _code_sans_commentaire(l):
+    """Tronque une ligne à son commentaire `//` final (`https://` n'en est pas un)."""
+    i = 0
+    while True:
+        j = l.find('//', i)
+        if j == -1:
+            return l
+        if j > 0 and l[j - 1] == ':':
+            i = j + 2
+            continue
+        return l[:j]
+
+
+def extraire_js_media(lignes, langue):
+    """media/*.js : littéraux JS visibles, hors ce que lib/i18n.js porte déjà.
+
+    Les lignes commentées en entier et les fins de ligne en `// …` sont écartées avant
+    d'y chercher un littéral : sans ça, la prose française des commentaires de code (qui
+    GARDE l'apostrophe droite par convention du dépôt, voir l'en-tête de ce fichier)
+    contamine le repérage — un commentaire n'est jamais un message affiché.
+    """
+    for i, l in enumerate(lignes):
+        if l.lstrip().startswith('//'):
+            continue
+        code = _code_sans_commentaire(l)
+        for m in RE_JS_STRING.finditer(code):
+            v = m.group(1)
+            if _est_prose(v):
+                yield i, langue, v, _remplacant_intervalle(*m.span(1))
+
+
 def _remplacant_intervalle(debut, fin):
     """Recompose la ligne autour d'un seul fragment.
 
@@ -450,13 +491,34 @@ RE_TWIG_TAG = re.compile(r"\{\{.*?\}\}|\{%.*?%\}|\{#.*?#\}")
 
 
 def extraire_twig(lignes, langue):
-    """mail-templates/*.twig : texte brut d'un gabarit, hors constructions Twig.
+    """mail-templates/*.twig, export-templates/*.twig : texte brut d'un gabarit, hors
+    constructions Twig.
 
     {{ expr }}, {% tag %} et {# commentaire #} sont masqués avant contrôle : ce ne sont
-    pas des messages. `langue` vient du nom de fichier (.fr./.de.), un gabarit est écrit
-    dans une seule langue.
+    pas des messages. `langue` vient du nom de fichier (.fr./.de.) quand il le dit, sinon
+    de la surface (export-templates/ n'a pas ce suffixe, voir plus bas).
+
+    Un `{# ... #}` peut s'étendre sur PLUSIEURS lignes (export-templates/ : un bloc de
+    documentation de variables en tête de fichier, 20 lignes ou plus) — RE_TWIG_TAG seul
+    ne le voit pas, il ne matche que dans une ligne. Sans suivi d'état, ces lignes
+    intérieures passeraient pour du texte de gabarit et seraient contrôlées comme si
+    elles s'affichaient à un lectorat, alors que ce sont des commentaires pour
+    développeurs. Une ligne qui OUVRE un commentaire sans le refermer est donc sautée en
+    entier (jusqu'ici, toujours vide de tout sauf `{#` et sa prose) ; toutes les lignes
+    tant que le commentaire n'est pas refermé le sont aussi ; la ligne qui referme l'est
+    encore, sous la même hypothèse (vérifiée sur les 9 fichiers d'export-templates/ :
+    aucun `{#`/`#}` multi-lignes ne partage sa ligne avec autre chose).
     """
+    dans_commentaire = False
     for i, l in enumerate(lignes):
+        if dans_commentaire:
+            if '#}' in l:
+                dans_commentaire = False
+            continue
+        o = l.find('{#')
+        if o != -1 and '#}' not in l[o:]:
+            dans_commentaire = True
+            continue
         codes = []
 
         def masquer(m, codes=codes):
@@ -522,6 +584,21 @@ for _nom in sorted(os.listdir(os.path.join(RACINE, "windows/mail-templates"))):
         else:
             _langue_gabarit = "fr"
         SURFACES.append(("windows/mail-templates/" + _nom, extraire_twig, _langue_gabarit))
+
+# Les gabarits d'export du secrétariat (CSV edudoc, rapports de métadonnées, newsletters
+# Mailchimp) : un seul fichier par usage, pas de suffixe de langue dans le nom — écrits
+# en français (vérifié : aucun `locale == 'de'` ni bloc bilingue dans le corps des 9
+# fichiers, seule la documentation de tête en tête mentionne la locale, jamais un texte
+# affiché dans les deux langues).
+for _nom in sorted(os.listdir(os.path.join(RACINE, "vscodium-extension/szh-cockpit/export-templates"))):
+    if _nom.endswith(".twig"):
+        SURFACES.append(("vscodium-extension/szh-cockpit/export-templates/" + _nom, extraire_twig, "fr"))
+
+# Les 18 webviews du cockpit (voir extraire_js_media ci-dessus pour ce qu'elles portent
+# encore en clair, le reste passant par TXT.xxx/lib/i18n.js).
+for _nom in sorted(os.listdir(os.path.join(RACINE, "vscodium-extension/szh-cockpit/media"))):
+    if _nom.endswith(".js"):
+        SURFACES.append(("vscodium-extension/szh-cockpit/media/" + _nom, extraire_js_media, "fr"))
 
 # L'anglais n'a pas de règle ici : il ne sert qu'au repli des raccourcis Windows, où seuls
 # comptent les caractères ASCII.

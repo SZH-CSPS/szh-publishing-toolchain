@@ -77,17 +77,7 @@ const NOMS_ACTUELS = [NOM_APPLICATION, NOM_MISE_A_JOUR];
 // là. Hissé en tête de fichier (il ne l'était qu'en bas avant) : plusieurs contrôles plus
 // haut exécutent maintenant réellement la fonction, pour un fait (l'ordre des noms selon la
 // langue) qu'une lecture de texte ne peut pas prouver.
-const POWERSHELL = (function () {
-  if (process.platform !== 'win32') { return ''; }
-  const candidats = [path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), 'powershell.exe'];
-  for (const c of candidats) {
-    const essai = spawnSync(c, ['-NoProfile', '-Command', 'exit 0'], { encoding: 'utf8' });
-    if (!essai.error && essai.status === 0) { return c; }
-  }
-  return '';
-})();
-const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
+const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 // ---- Ce que szh-shell.ps1 déclare ----
 

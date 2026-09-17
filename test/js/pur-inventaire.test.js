@@ -58,17 +58,15 @@ const NOMS_ATTENDUS = [
   'versionsDivergent', 'viderCellules'
 ].sort();
 
-test('module.exports._pur d’extension.js compte 118 noms', () => {
-  assert.strictEqual(NOMS_ATTENDUS.length, 118,
-    'la liste figée elle-même a changé de taille : ' + NOMS_ATTENDUS.length);
-});
-
-test('module.exports._pur d’extension.js expose exactement les noms figés, avant tout découpage', () => {
+test('module.exports._pur d’extension.js expose exactement les 118 noms figés, avant tout découpage', () => {
   assert.ok(ext && ext._pur, 'extension.js ne rend pas de module.exports._pur');
   const obtenus = Object.keys(ext._pur).sort();
+  // La taille figée (118) n'a pas besoin d'un test à part : tout désaccord de compte se
+  // lit déjà dans le deepStrictEqual ci-dessous, avec le détail des noms en trop ou
+  // manquants — un simple compte n'y ajoutait rien.
   assert.deepStrictEqual(obtenus, NOMS_ATTENDUS,
-    'la liste des noms exportés par _pur a changé — un module extrait doit RÉ-EXPORTER, ' +
-    'jamais seulement déplacer');
+    'la liste des noms exportés par _pur a changé (attendu ' + NOMS_ATTENDUS.length + ' noms, ' +
+    'trouvé ' + obtenus.length + ') — un module extrait doit RÉ-EXPORTER, jamais seulement déplacer');
 });
 
 test('chaque nom de _pur pointe une valeur définie, jamais un trou laissé par un déplacement', () => {

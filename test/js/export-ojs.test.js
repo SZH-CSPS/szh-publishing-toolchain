@@ -26,26 +26,28 @@ process.env.SZH_LANGUE = 'fr';
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const { ouvrir, libellesHote } = require('./dom-minimal');
+const { revueDEssai, activerHote } = require('./hote-factice');
 const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
 const i18n = require(path.join(COCKPIT, 'lib', 'i18n.js'));
 
-// Ce que l'hôte envoie au panneau des réglages : même forme que donneesOjs() dans
-// extension.js, dont les listes viennent d'ici et de lib/yaml.js.
+// Ce que l'hôte envoie RÉELLEMENT au panneau des réglages (extension.js:donneesOjs),
+// plutôt qu'une copie recopiée à la main qui divergerait dans le dos de ce test le jour
+// où donneesOjs() change : un hôte factice activé (une seule fois, mémoïsé — le crochet
+// Module._load ne se défait pas, voir hote-factice.js), la commande qui ouvre le
+// panneau, puis le message qu'il a réellement posté sur son canal.
+let _panneauOjs = null;
 function messagePanneau() {
-  const revues = {};
-  for (const loc of ojs.LOCALES_REVUE) { revues[loc] = i18n.T('ojs.revue.' + loc); }
-  return {
-    config: ojs.configOjs(),
-    locales: ojs.LOCALES_REVUE,
-    revues: revues,
-    clesDefaut: ojs.RUBRIQUES_DEFAUT.map((r) => r.cle),
-    champs: ojs.CHAMPS_REVUE.map((c) => ({
-      cle: c.cle, requis: c.requis, libelle: i18n.T(c.libelle), ou: i18n.T(c.ou)
-    })),
-    typesArticle: yaml.TYPES_ARTICLE.map((t) => ({
-      valeur: t, libelle: (yaml.LIBELLES_TYPES[t] || {}).fr || t
-    }))
-  };
+  if (_panneauOjs) { return _panneauOjs; }
+  const HOTE = activerHote(revueDEssai());
+  HOTE.executer('szh.reglages');
+  const panneau = HOTE.panneauDeType('szhReglages');
+  // onDidReceiveMessage n'est déclenché qu'à réception du « pret » envoyé par la page ;
+  // sa seule branche pour ce message pose le postMessage sans jamais attendre — l'appel
+  // est donc déjà résolu au retour, sans qu'il faille en attendre la promesse ici.
+  panneau._recepteur({ type: 'pret' });
+  const valeurs = panneau.messages.find((m) => m.type === 'valeurs');
+  _panneauOjs = valeurs.ojs;
+  return _panneauOjs;
 }
 
 // Le config.json du poste n'est jamais touché : SZH_CONFIG_OJS détourne la lecture et
@@ -522,6 +524,79 @@ test('refus : l’erreur porte les points bloquants un par un, pas seulement en 
     assert.ok(e.message.indexOf(point) !== -1,
       'un point de la liste manque au message : les deux chemins divergent');
   }
+});
+
+// ---- Les refus élémentaires : galley manquant, locale, type, numéro vide, couverture --
+
+test('refus : un galley DOCX non produit nomme le fichier attendu, avec le message propre au Word', () => {
+  const racine = monter({ ausgabe: { date: '2026-09-08' } });
+  fs.unlinkSync(path.join(racine, 'out', '02-observation', '02-observation.docx'));
+  const e = refuse(racine, configComplete());
+  assert.match(e.message, /articles\/02-observation/, 'l’article en cause n’est pas nommé');
+  assert.match(e.message, /out\/02-observation\/02-observation\.docx/, 'le fichier attendu n’est pas nommé');
+  assert.match(e.message, /version Word/, 'le message n’est pas celui, spécifique, du DOCX manquant');
+});
+
+test('refus : un galley HTML ou PDF non produit nomme le fichier, avec le message générique', () => {
+  const racine = monter({ ausgabe: { date: '2026-09-08' } });
+  fs.unlinkSync(path.join(racine, 'out', '01-edito', '01-edito.html'));
+  const e = refuse(racine, configComplete());
+  assert.match(e.message, /articles\/01-edito/, 'l’article en cause n’est pas nommé');
+  assert.match(e.message, /out\/01-edito\/01-edito\.html/, 'le fichier attendu n’est pas nommé');
+  assert.match(e.message, /n’a pas encore été produit/, 'le message générique n’est pas celui attendu');
+  assert.match(e.message, /Recompiler toute la revue/, 'le geste de retour n’est pas nommé');
+});
+
+test('refus : une locale hors des deux revues nomme la locale saisie et les deux connues', () => {
+  const racine = monter({ ausgabe: { revue: '', lang: 'it', date: '2026-09-08' } });
+  const e = refuse(racine, configComplete());
+  // Espace insécable normale (U+00A0, pas une espace ordinaire) de part et d’autre du
+  // guillemet : la typographie maison, pas une négligence — voir lib/i18n.js.
+  assert.match(e.message, /« it »/, 'la locale saisie n’est pas nommée');
+  assert.match(e.message, /fr, de/, 'les deux locales connues ne sont pas listées');
+  assert.match(e.message, /Métadonnées du numéro/, 'le geste de retour n’est pas nommé');
+});
+
+test('refus : un type d’article inconnu du cockpit nomme le type et l’article', () => {
+  // Le slug ne porte pas le mot « mystere » : la présence du type dans le message doit
+  // venir de la VALEUR du type, pas d’un nom de dossier qui la contiendrait par coïncidence.
+  const racine = monter({
+    ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '01-brouillon', fiche: fiche(['type: mystere', 'lang: fr',
+      'title:', '  fr: "Sans rubrique"', 'author:', '- nom: "SZH/CSPS"']), texte: 'Texte.' + LF }]
+  });
+  const e = refuse(racine, configComplete());
+  assert.match(e.message, /articles\/01-brouillon/, 'l’article en cause n’est pas nommé');
+  assert.match(e.message, /mystere/, 'le type inconnu n’est pas nommé');
+});
+
+test('refus : une fiche sans type d’article le dit, distinct d’un type inconnu', () => {
+  const racine = monter({
+    ausgabe: { date: '2026-09-08' },
+    articles: [{ slug: '01-sans-type', fiche: fiche(['lang: fr',
+      'title:', '  fr: "Sans type"', 'author:', '- nom: "SZH/CSPS"']), texte: 'Texte.' + LF }]
+  });
+  const e = refuse(racine, configComplete());
+  assert.match(e.message, /articles\/01-sans-type/, 'l’article en cause n’est pas nommé');
+  assert.ok(e.message.indexOf('type d’article absent') !== -1,
+    'le message n’est pas celui, distinct, du type absent : ' + e.message);
+});
+
+test('refus : un numéro sans aucun article le dit, et n’écrit rien', () => {
+  const racine = monter({ ausgabe: { date: '2026-09-08' }, articles: [] });
+  const e = refuse(racine, configComplete());
+  assert.match(e.message, /aucun article/, 'l’absence totale d’article n’est pas dite');
+  assert.deepStrictEqual(fs.readdirSync(racine).filter((f) => f.indexOf('.xml') !== -1), []);
+});
+
+test('avertissement : couverture absente, les trois noms acceptés sont nommés et <covers> est omis', () => {
+  const racine = monter({ ausgabe: { date: '2026-09-08' } });
+  fs.unlinkSync(path.join(racine, 'couverture.jpg'));
+  const sortie = exporter(racine, configComplete());
+  assert.ok(sortie.avertissements.some(
+    (a) => a.indexOf('couverture.jpg, couverture.jpeg, couverture.png') !== -1),
+    'avertissement de couverture absente non trouvé : ' + sortie.avertissements.join(' | '));
+  assert.strictEqual(sortie.xml.indexOf('<covers>'), -1, '<covers> aurait dû être omis');
 });
 
 // ---- La configuration ---------------------------------------------------------------

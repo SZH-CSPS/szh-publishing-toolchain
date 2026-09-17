@@ -20,7 +20,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { revueDEssai, activerHote } = require('./hote-factice');
+const { revueDEssai, activerHote, demarrageSeTait } = require('./hote-factice');
 
 const tick = () => new Promise((r) => setImmediate(r));
 const attendre = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -170,9 +170,7 @@ function blocsDEssai() {
 let PAGE = null;
 
 test('mise en route : le démarrage se tait', async () => {
-  for (let i = 0; i < 30; i++) { await tick(); }
-  HOTE.erreurs.length = 0;
-  HOTE.avertissements.length = 0;
+  await demarrageSeTait(HOTE);
 });
 
 test('la page de l’aperçu se charge sans lever, protocole compris', async () => {

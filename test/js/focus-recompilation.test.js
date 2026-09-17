@@ -25,7 +25,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { revueDEssai, activerHote } = require('./hote-factice');
+const { revueDEssai, activerHote, demarrageSeTait } = require('./hote-factice');
 
 const NOM_BUILD = 'Aperçu / Export PDF';
 const tick = () => new Promise((r) => setImmediate(r));
@@ -42,9 +42,7 @@ const ext = require(path.join(COCKPIT, 'extension.js'));
 HOTE.arbre().definirRacine(REVUE);
 
 test('mise en route : le démarrage se tait', async () => {
-  for (let i = 0; i < 30; i++) { await tick(); }
-  HOTE.erreurs.length = 0;
-  HOTE.avertissements.length = 0;
+  await demarrageSeTait(HOTE);
 });
 
 // ---- A1 : le focus suit le clic, dans les deux formulaires --------------------------

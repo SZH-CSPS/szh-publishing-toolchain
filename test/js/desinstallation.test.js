@@ -88,17 +88,7 @@ test('le .cmd « Désinstaller le poste SZH » s’élève puis appelle uninstal
 
 // ---- Le reste : Windows seulement, sur une arborescence $SZH_BASE jetable ----
 
-const POWERSHELL = (function () {
-  if (process.platform !== 'win32') { return ''; }
-  const candidats = [path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), 'powershell.exe'];
-  for (const c of candidats) {
-    const essai = spawnSync(c, ['-NoProfile', '-Command', 'exit 0'], { encoding: 'utf8' });
-    if (!essai.error && essai.status === 0) { return c; }
-  }
-  return '';
-})();
-const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
+const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 // Même remarque, et même geste, que test/js/orphelins-toolkit.test.js et
 // test/js/toolkit-remplacement.test.js : Windows PowerShell 5.1 lit un .ps1 SANS BOM avec la

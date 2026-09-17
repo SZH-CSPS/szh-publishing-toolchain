@@ -185,6 +185,15 @@ test('erreur : bloc non fermé porte le nom et la ligne', () => {
   });
 });
 
+test('erreur : « for » non fermé porte le nom et la ligne (comme « if » et « block »)', () => {
+  assert.throws(() => compiler('a\nb\n{% for x in liste %}\nc', 'mongabarit'), (e) => {
+    assert.match(e.message, /mongabarit/);
+    assert.match(e.message, /ligne 3/);
+    assert.match(e.message, /for.*non fermé/);
+    return true;
+  });
+});
+
 test('erreur : tag inconnu porte le nom et la ligne', () => {
   assert.throws(() => compiler('a\n{% zorglub %}', 'mongabarit'), (e) => {
     assert.match(e.message, /mongabarit/);

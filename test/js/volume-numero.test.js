@@ -158,16 +158,7 @@ test('formulaire : les deux refus se font la boîte ouverte, et ne suppriment ri
 
 // ---- Le doublon, sur une vraie arborescence -----------------------------------------
 
-const POWERSHELL = (function () {
-  if (process.platform !== 'win32') { return ''; }
-  const candidats = [path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), 'powershell.exe'];
-  for (const c of candidats) {
-    const essai = spawnSync(c, ['-NoProfile', '-Command', 'exit 0'], { encoding: 'utf8' });
-    if (!essai.error && essai.status === 0) { return c; }
-  }
-  return '';
-})();
+const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 // Les quatre dossiers du poste, sous une racine jetable, avec les numéros demandés.
 // `Get-SzhBaseRevuesPour` est remplacée dans le pilote : rien n'est lu de config.json et
@@ -506,7 +497,11 @@ test('lanceur : la racine active s’affiche dans les DEUX racines', () => {
 
 // ---- La forme des fichiers ----------------------------------------------------------
 
-test('forme : les trois scripts gardent leur BOM, leurs CRLF, et s’analysent', () => {
+// Deux contrôles de nature différente, désormais séparés : la forme des fichiers (BOM,
+// CRLF) se vérifie sur TOUT poste, sans outil externe, et doit donc tourner toujours ; seule
+// l'analyse syntaxique a besoin de powershell.exe, et c'est elle seule qui se saute — avec
+// le motif nommé de gardes.js — quand il est absent.
+test('forme : les trois scripts gardent leur BOM et leurs CRLF', () => {
   for (const fichier of [COMMUN, LANCEUR, CREATION]) {
     const octets = fs.readFileSync(fichier);
     assert.deepStrictEqual([...octets.slice(0, 3)], [0xEF, 0xBB, 0xBF],
@@ -517,15 +512,18 @@ test('forme : les trois scripts gardent leur BOM, leurs CRLF, et s’analysent',
     assert.strictEqual(lf, crlf,
       path.basename(fichier) + ' porte des fins de ligne LF : .gitattributes exige CRLF');
   }
-  if (!POWERSHELL) { return; }
-  for (const fichier of [COMMUN, LANCEUR, CREATION]) {
-    const r = spawnSync(POWERSHELL, ['-NoProfile', '-NonInteractive', '-Command',
-      '$e=$null; $t=$null; ' +
-      '[void][System.Management.Automation.Language.Parser]::ParseFile(' +
-      "'" + fichier.replace(/'/g, "''") + "', [ref]$t, [ref]$e); " +
-      'if ($e.Count -gt 0) { $e | ForEach-Object { $_.Message }; exit 1 } else { exit 0 }'],
-    { encoding: 'utf8', windowsHide: true, timeout: 120000 });
-    assert.strictEqual(r.status, 0,
-      path.basename(fichier) + ' ne s’analyse plus : ' + r.stdout + r.stderr);
-  }
 });
+
+test('forme : les trois scripts s’analysent encore avec le parseur PowerShell',
+  { skip: sansPowerShell }, () => {
+    for (const fichier of [COMMUN, LANCEUR, CREATION]) {
+      const r = spawnSync(POWERSHELL, ['-NoProfile', '-NonInteractive', '-Command',
+        '$e=$null; $t=$null; ' +
+        '[void][System.Management.Automation.Language.Parser]::ParseFile(' +
+        "'" + fichier.replace(/'/g, "''") + "', [ref]$t, [ref]$e); " +
+        'if ($e.Count -gt 0) { $e | ForEach-Object { $_.Message }; exit 1 } else { exit 0 }'],
+      { encoding: 'utf8', windowsHide: true, timeout: 120000 });
+      assert.strictEqual(r.status, 0,
+        path.basename(fichier) + ' ne s’analyse plus : ' + r.stdout + r.stderr);
+    }
+  });

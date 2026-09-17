@@ -179,6 +179,21 @@ test('une suggestion de suppression s’écrit sans aucun texte proposé', () =>
   assert.strictEqual(relues[0].schema, 'szh-suggestion-traduction/1');
 });
 
+test('une suppression passe même quand « actuel » est vide (ou égal à « propose ») : ' +
+  'le court-circuit du geste, pas la comparaison générale, doit l’accepter', () => {
+  // Sans commentaire et avec actuel/propose tous deux vides, la comparaison générale
+  // d'estVide() (propose === actuel && commentaire === '') serait vraie elle aussi — ce
+  // cas-ci ne prouverait donc rien de spécifique au geste « supprimer ». C'est justement le
+  // piège : il isole le court-circuit dédié en construisant un scénario où actuel est déjà
+  // vide, là où le test voisin (actuel: 'Alter Titel') passe pour une tout autre raison
+  // (propose et actuel diffèrent).
+  const racine = numeroEssai();
+  const res = sugg.ecrireSuggestion(racine,
+    proposition({ geste: 'supprimer', actuel: '', propose: '', commentaire: '' }));
+  assert.ok(res.ok, 'la suppression a été refusée comme « rien à proposer » : ' + JSON.stringify(res));
+  assert.strictEqual(sugg.listerSuggestions(racine)[0].geste, 'supprimer');
+});
+
 test('une suppression jette le texte que le formulaire avait dans sa zone de saisie', () => {
   // La page cache la zone « Traduction proposée » quand le geste est armé, mais l'hôte ne
   // s'y fie pas : un fichier qui porterait « supprimer » ET une proposition donnerait à

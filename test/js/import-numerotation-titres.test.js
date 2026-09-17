@@ -27,6 +27,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const DISTRO = 'SZH-Publishing';
@@ -46,26 +47,15 @@ function wsl(args) {
     { encoding: 'utf8', windowsHide: true, timeout: 120000 });
 }
 
-let pandocVu = null;
-function pandocAbsent() {
-  if (pandocVu !== null) { return pandocVu; }
-  let r;
-  try { r = wsl(['sh', '-c', 'command -v pandoc && command -v python3']); }
-  catch (e) { pandocVu = 'wsl.exe injoignable : ' + e.message; return pandocVu; }
-  if (r.error) { pandocVu = 'wsl.exe injoignable : ' + r.error.message; }
-  else if (r.status !== 0) { pandocVu = 'pandoc ou python3 introuvable dans la distro ' + DISTRO; }
-  else { pandocVu = null; }
-  return pandocVu;
-}
+// SZH_WSL_OBLIGATOIRE via gardes.js en fait un échec au chargement du module.
 
-test('.docx du modèle : les titres sont numérotés par le style, pas par le texte', (t) => {
+test(".docx du modèle : les titres sont numérotés par le style, pas par le texte", (t) => {
   // Prémisse à ne pas supposer : si le modèle ne numérotait plus ses titres, ce contrôle
   // n'aurait plus d'objet. Un .docx est un zip ; on le lit avec le zipfile de Python, dans
   // la distro WSL de la chaîne — aucune dépendance zip n'existe côté Node de ce dépôt.
-  const absent = pandocAbsent();
-  if (absent) {
-    console.warn('\n*** prémisse non vérifiée : ' + absent + ' ***\n');
-    return t.skip(absent);
+  if (sansPandocWsl) {
+    console.warn("\n*** prémisse non vérifiée : " + sansPandocWsl + " ***\n");
+    return t.skip(sansPandocWsl);
   }
   const programme = [
     'import sys, zipfile',
@@ -86,11 +76,10 @@ test('.docx du modèle : les titres sont numérotés par le style, pas par le te
     'le format de numérotation attendu (« %1. ») a changé dans le modèle');
 });
 
-test('import-docx.sh : la numérotation automatique des titres Word ne survit pas à l’import', (t) => {
-  const absent = pandocAbsent();
-  if (absent) {
-    console.warn('\n*** aller-retour non vérifié : ' + absent + ' ***\n');
-    return t.skip(absent);
+test("import-docx.sh : la numérotation automatique des titres Word ne survit pas à l’import", (t) => {
+  if (sansPandocWsl) {
+    console.warn("\n*** aller-retour non vérifié : " + sansPandocWsl + " ***\n");
+    return t.skip(sansPandocWsl);
   }
   assert.ok(fs.existsSync(MODELE), 'le modèle de chapitre a disparu : ' + MODELE);
 

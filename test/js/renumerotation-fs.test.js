@@ -205,6 +205,31 @@ test('renumeroter : le marqueur de bibliographie suit le dossier renommé', () =
   fs.rmSync(racine, { recursive: true, force: true });
 });
 
+// Le chemin réel renumeroter() -> alignerFichiers() -> reparerMarqueurApresAlignement() ->
+// reecrireMarqueurBiblio() n'exerçait jusqu'ici que le cas d'un marqueur PÉRIMÉ (le test
+// ci-dessus) : reecrireMarqueurBiblio() a pourtant sa propre garde contre un marqueur DÉJÀ
+// juste (ligne « m[2] === versNom »), pour ne pas dater le .md à chaque renumérotation. Ce
+// cas — rare mais réel (une retouche à la main juste avant « Terminer ») — n'était exercé
+// nulle part par ce chemin.
+test('renumeroter : un marqueur déjà pointé sur sa future place n’est pas réécrit', () => {
+  const racine = numero(['00-edito', '01-inclusion']);
+  ajouterBiblio(racine, '01-inclusion');
+  const md = path.join(racine, 'articles', '01-inclusion', '01-inclusion.md');
+  // Le marqueur porte déjà le nom que le fichier de bibliographie prendra APRÈS le
+  // renommage à venir — le fichier lui-même, lui, n'a pas encore bougé.
+  fs.writeFileSync(md, fs.readFileSync(md, 'utf8')
+    .replace('01-inclusion.biblio.md', '00-inclusion.biblio.md'));
+  const avant = fs.statSync(md).mtimeMs;
+  const r = hote.renumeroter(racine, ['01-inclusion', '00-edito']);
+  assert.strictEqual(r.erreur, null, 'renumérotation refusée : ' + r.erreur);
+  const mdApres = path.join(racine, 'articles', '00-inclusion', '00-inclusion.md');
+  assert.ok(fs.existsSync(path.join(racine, 'articles', '00-inclusion', '00-inclusion.biblio.md')));
+  assert.strictEqual(marqueurSrc(racine, '00-inclusion'), '00-inclusion.biblio.md');
+  assert.strictEqual(fs.statSync(mdApres).mtimeMs, avant,
+    'le .md a été réécrit alors que son marqueur pointait déjà sur sa future place');
+  fs.rmSync(racine, { recursive: true, force: true });
+});
+
 test('reprise : le marqueur de bibliographie suit aussi', () => {
   const racine = numero(['00-edito', '01-inclusion']);
   ajouterBiblio(racine, '01-inclusion');

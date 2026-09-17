@@ -19,11 +19,15 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const cp = require('child_process');
+const { PYTHON } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const slug = require(path.join(COCKPIT, 'lib', 'slug.js'));
+const DOCX_META = path.join(RACINE, 'pipeline', 'docx-meta.py');
 
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 
@@ -87,9 +91,17 @@ test('slug d’article : la borne de 39 caractères tient, suffixe compris', () 
 });
 
 test('slug d’article : au-delà de 99 homonymes, on refuse plutôt que d’inventer', () => {
+  // Bornée à 200 tours : une régression qui ne s’arrête plus plante ce test en échec net,
+  // pas en boucle infinie tuée par un délai externe (observé une fois, 120 s pour rien).
   const pris = [];
   let s = slug.slugifierArticleUnique('Titre.docx', pris);
-  while (s) { pris.push(s); s = slug.slugifierArticleUnique('Titre.docx', pris); }
+  let tours = 0;
+  while (s) {
+    tours += 1;
+    assert.ok(tours <= 200, 'slugifierArticleUnique ne s’arrête plus : boucle bornée dépassée');
+    pris.push(s);
+    s = slug.slugifierArticleUnique('Titre.docx', pris);
+  }
   assert.strictEqual(pris.length, slug.MAX_HOMONYMES,
     'le nombre d’homonymes servis ne suit pas MAX_HOMONYMES');
   assert.strictEqual(slug.slugifierArticleUnique('Titre.docx', pris), null);
@@ -308,21 +320,80 @@ test('docx-meta.py : un titre académique composé ne fait plus tomber le tablea
     'une cellule dont la 1re ligne ne porte que des titres reste illisible');
 });
 
+// Un .docx minimal, fabriqué comme dans docx-meta-titre.test.js (mêmes limites : seuls
+// word/document.xml et word/styles.xml sont lus). Étendu aux tableaux — un ou plusieurs
+// paragraphes par cellule — pour fabriquer un bloc auteurs et un encadré de contenu.
+function fabriquerDocxTableaux(chemin, blocs) {
+  const programme = [
+    'import json, sys, zipfile',
+    'W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
+    'def esc(s):',
+    '    return (str(s).replace("&", "&amp;").replace("<", "&lt;")',
+    '            .replace(">", "&gt;").replace(\'"\', "&quot;"))',
+    'def para(style, texte):',
+    '    ppr = ("<w:pPr><w:pStyle w:val=\\"%s\\"/></w:pPr>" % esc(style)) if style else ""',
+    '    r = ("<w:r><w:t xml:space=\\"preserve\\">%s</w:t></w:r>" % esc(texte)) if texte else ""',
+    '    return "<w:p>%s%s</w:p>" % (ppr, r)',
+    'def cell(paras):',
+    '    return "<w:tc><w:tcPr/>%s</w:tc>" % "".join(para(s, t) for s, t in paras)',
+    'def row(cells):',
+    '    return "<w:tr>%s</w:tr>" % "".join(cell(c) for c in cells)',
+    'def table(rows):',
+    '    return "<w:tbl><w:tblPr/>%s</w:tbl>" % "".join(row(r) for r in rows)',
+    'def bloc(b):',
+    '    return table(b["tbl"]) if "tbl" in b else para(*b["p"])',
+    'chemin, blocs = sys.argv[1], json.loads(sys.argv[2])',
+    'corps = "".join(bloc(b) for b in blocs)',
+    'doc = (\'<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="%s"><w:body>%s\'',
+    '       \'</w:body></w:document>\' % (W, corps))',
+    'styles = \'<?xml version="1.0" encoding="UTF-8"?><w:styles xmlns:w="%s">\' % W',
+    'for sid, nom in (("Title", "Title"), ("Normal", "Normal")):',
+    '    styles += \'<w:style w:styleId="%s"><w:name w:val="%s"/></w:style>\' % (sid, nom)',
+    'styles += "</w:styles>"',
+    'with zipfile.ZipFile(chemin, "w") as z:',
+    '    z.writestr("word/document.xml", doc.encode("utf-8"))',
+    '    z.writestr("word/styles.xml", styles.encode("utf-8"))'
+  ].join('\n');
+  const r = cp.spawnSync(PYTHON, ['-c', programme, chemin, JSON.stringify(blocs)],
+    { encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
+}
+
 test('docx-meta.py : un encadré de fin ne masque plus le bloc auteurs', () => {
-  const py = lire('pipeline', 'docx-meta.py');
-  const boucle = py.slice(py.indexOf('for k in range(len(tables) - 1, -1, -1):'),
-    py.indexOf('premier_tbl_consomme = idx_bloc') + 40);
-  assert.ok(boucle, 'la boucle des tableaux de fin a disparu');
-  // Le refus d'un tableau ne clôt plus la recherche : sinon un encadré de contenu placé
-  // après le bloc auteurs le rendait invisible — et l'article partait avec deux auteurs
-  // sur cinq, sans que la ligne de statistiques n'ait l'air anormale.
-  assert.match(boucle, /if not ok:[\s\S]*?continue/,
-    'un tableau refusé arrête à nouveau la remontée : le bloc auteurs derrière est perdu');
-  assert.ok(boucle.indexOf('if not ok:\n            break') === -1,
-    'la boucle s’arrête encore au premier tableau refusé');
-  // Le garde-fou de position reste le seul arrêt : jamais un bloc auteurs si tôt.
-  assert.match(boucle, /if idx_bloc \/ nblocs < 0\.4:[^\n]*\n *break/,
-    'la remontée n’est plus bornée au dernier tiers du document');
+  assert.ok(PYTHON, 'aucun interprète Python 3 trouvé (python, puis python3)');
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-encadre-fin-'));
+  try {
+    const docx = path.join(base, '01-essai.docx');
+    // Corps : titre + un paragraphe, puis DEUX tableaux en fin de document — le bloc
+    // auteurs d'abord, un encadré de contenu (une table des matières) juste après. Les
+    // deux tombent après les 40 % du document exigés par le garde-fou de position.
+    fabriquerDocxTableaux(docx, [
+      { p: ['Title', 'Un titre quelconque'] },
+      { p: ['Normal', 'Le corps du texte commence ici, avec le et la et les et des mots.'] },
+      { tbl: [[[['Normal', 'Anna Muster'], ['Normal', 'anna.muster@example.ch']]]] },
+      { tbl: [[[['Normal', 'Table des matières']]]] }
+    ]);
+    const r = cp.spawnSync(PYTHON, [DOCX_META, docx, '01-essai', base],
+      { encoding: 'utf8', env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }) });
+    assert.strictEqual(r.status, 0, 'docx-meta.py a échoué : ' + r.stderr);
+    const lignes = String(r.stdout).trim().split(/\r?\n/);
+    const stats = JSON.parse(lignes[lignes.length - 1]);
+    const fiche = fs.readFileSync(path.join(base, '01-essai.meta.yaml'), 'utf8');
+
+    // Le refus de l'encadré de contenu (dernier tableau) ne doit pas arrêter la remontée :
+    // le bloc auteurs, placé juste avant lui, doit être atteint et lu — c'est le tableau
+    // n° 1 du document (« tableaux_consommes »), pas un repli sur une byline absente.
+    assert.strictEqual(stats.auteurs.n, 1,
+      'le bloc auteurs derrière l’encadré refusé n’a pas été lu : ' + JSON.stringify(stats.auteurs));
+    assert.strictEqual(stats.auteurs.source, 'tableau');
+    assert.deepStrictEqual(stats.tableaux_consommes, [1],
+      'ce n’est pas le premier tableau (les auteurs) qui a été consommé : '
+      + JSON.stringify(stats.tableaux_consommes));
+    assert.match(fiche, /prenom: "Anna"/, 'le prénom de l’auteur n’a pas été extrait : ' + fiche);
+    assert.match(fiche, /nom: "Muster"/, 'le nom de l’auteur n’a pas été extrait : ' + fiche);
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
 });
 
 test('docx-meta.py : un tableau d’auteurs non lu, et un crédit emporté, se disent', () => {

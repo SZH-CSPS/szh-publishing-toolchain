@@ -46,17 +46,7 @@ const OUVRIR_LIVRE = path.join(RACINE, 'windows', 'open-livre.ps1');
 const OUVRIR_PRODUIT_PS1 = path.join(RACINE, 'windows', 'open-produit.ps1');
 const TEXTES_PS1 = path.join(RACINE, 'windows', 'szh-textes.ps1');
 
-const POWERSHELL = (function () {
-  if (process.platform !== 'win32') { return ''; }
-  const candidats = [path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), 'powershell.exe'];
-  for (const c of candidats) {
-    const essai = spawnSync(c, ['-NoProfile', '-Command', 'exit 0'], { encoding: 'utf8' });
-    if (!essai.error && essai.status === 0) { return c; }
-  }
-  return '';
-})();
-const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
+const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 // ---- Execution isolee : USERPROFILE, LOCALAPPDATA et OneDrive* toujours neutralises -------
 //

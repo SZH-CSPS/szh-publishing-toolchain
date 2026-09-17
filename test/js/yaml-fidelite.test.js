@@ -8,11 +8,15 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+const fs = require('fs');
 const path = require('path');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const yaml = require(path.join(COCKPIT, 'lib', 'yaml.js'));
+const { revueDEssai, activerHote } = require('./hote-factice');
+
+const LF = '\n';
 
 // ---- (a) scalaire de bloc | sur une clé d'ausgabe.yaml / buch.yaml ----
 
@@ -130,4 +134,141 @@ test('tout sérialiseur refuse d’écrire : serialiserMeta lève si _infidele p
   assert.ok(Array.isArray(meta._infidele) && meta._infidele.length > 0,
     'type non signalé infidèle dans une fiche : ' + JSON.stringify(meta._infidele));
   assert.throws(() => yaml.serialiserMeta(meta), /type/);
+});
+
+// ---- (h) frontmatter legacy `author:` en liste de blocs à sous-champs ----------------
+//
+// Format antérieur au .meta.yaml : le frontmatter du <slug>.md porte encore, chez les
+// articles jamais réenregistrés depuis, un bloc `author:` fait de tirets à sous-champs
+// (name/affiliation/orcid — pas prenom/nom, cette distinction n'existait pas) et un bloc
+// `keywords:` en simple liste, sans langue. Personne dans le dépôt ne touchait ces deux
+// lectures (lib/yaml.js:473-528) avant ce lot : elles ne servent qu'à
+// migrerFrontmatterVersMeta (lib/metadonnees-hote.js), éprouvée plus bas.
+
+test('frontmatter legacy : author en liste de blocs se lit champ par champ, dans l’ordre', () => {
+  const SRC = ['---', 'author:', '- name: "Anne Dupont"', '  affiliation: "HEP Vaud"',
+    '  orcid: "0000-0002-1825-0097"', '- name: "Bruno Meyer"', '  affiliation: "SZH/CSPS"',
+    '---', 'Corps.', ''].join(LF);
+  const partie = yaml.separerFrontmatter(SRC);
+  const r = yaml.analyserFrontmatter(partie.fm);
+  assert.strictEqual(r.author.length, 2, 'deux auteurs attendus : ' + JSON.stringify(r.author));
+  assert.deepStrictEqual(r.author[0],
+    { name: 'Anne Dupont', affiliation: 'HEP Vaud', orcid: '0000-0002-1825-0097' },
+    'le premier auteur n’a pas ses trois champs, dans les bonnes cases');
+  assert.deepStrictEqual(r.author[1],
+    { name: 'Bruno Meyer', affiliation: 'SZH/CSPS', orcid: '' },
+    'le second auteur (sans orcid) n’est pas lu tel quel');
+});
+
+test('frontmatter legacy : author réduit à un simple « - Nom » devient un auteur à seul nom', () => {
+  const SRC = ['---', 'author:', '- "Claire Rossi"', '---', 'Corps.', ''].join(LF);
+  const partie = yaml.separerFrontmatter(SRC);
+  const r = yaml.analyserFrontmatter(partie.fm);
+  assert.deepStrictEqual(r.author, [{ name: 'Claire Rossi', affiliation: '', orcid: '' }]);
+});
+
+test('frontmatter legacy : keywords en liste de blocs se lit comme un tableau ordonné', () => {
+  const SRC = ['---', 'keywords:', '- "inclusion"', '- "pédagogie spécialisée"',
+    '---', 'Corps.', ''].join(LF);
+  const partie = yaml.separerFrontmatter(SRC);
+  const r = yaml.analyserFrontmatter(partie.fm);
+  assert.deepStrictEqual(r.keywords, ['inclusion', 'pédagogie spécialisée']);
+});
+
+test('frontmatter legacy : author et keywords réécrits par lignesCleFrontmatter se relisent à l’identique', () => {
+  const SRC = ['---', 'title: "X"', '---', 'Corps.', ''].join(LF);
+  const auteurs = [
+    { name: 'Anne Dupont', affiliation: 'HEP Vaud', orcid: '0000-0002-1825-0097' },
+    { name: 'Bruno Meyer', affiliation: '', orcid: '' }
+  ];
+  const mots = ['inclusion', 'pédagogie spécialisée'];
+  const sortie = yaml.serialiserFrontmatter(SRC, { author: auteurs, keywords: mots });
+  const partie = yaml.separerFrontmatter(sortie);
+  const r = yaml.analyserFrontmatter(partie.fm);
+  assert.deepStrictEqual(r.author, auteurs, 'l’aller-retour des auteurs a changé un champ');
+  assert.deepStrictEqual(r.keywords, mots, 'l’aller-retour des mots-clés a changé la liste');
+});
+
+// ---- La migration réelle : un vieux frontmatter devient un .meta.yaml, via l’hôte -----
+//
+// migrerFrontmatterVersMeta (lib/metadonnees-hote.js:622) est idempotente et destructrice :
+// elle lit le frontmatter legacy, écrit le .meta.yaml, puis EFFACE le frontmatter dans le
+// même appel. Une inversion de champs à la lecture serait donc irréversible sans recours à
+// git — d'où ce test bout-en-bout, et non plus seulement la lecture isolée ci-dessus.
+// « Ouvrir l'arbre » suffit à la déclencher : le panneau « Métadonnées des articles »
+// (szh.apercuMetadonnees) migre chaque article listé avant de construire sa réponse
+// (lireMetadonneesArticles, lib/metadonnees-hote.js:709).
+test('migration : un vieux .md à frontmatter complet migre en .meta.yaml identique, frontmatter effacé', async () => {
+  const revue = revueDEssai();
+  const slug = '03-legacy';
+  const dossier = path.join(revue, 'articles', slug);
+  fs.mkdirSync(dossier, { recursive: true });
+  const CORPS = 'Un paragraphe de corps, jamais touché par la migration.' + LF;
+  const SRC = [
+    '---',
+    'title: "Un vieux titre"',
+    'subtitle: "Un vieux sous-titre"',
+    'doi: "10.57161/x2020-01-05"',
+    'author:',
+    '- name: "Anne Dupont"',
+    '  affiliation: "HEP Vaud"',
+    '  orcid: "0000-0002-1825-0097"',
+    '- name: "Bruno Meyer"',
+    '  affiliation: "SZH/CSPS"',
+    'keywords:',
+    '- "inclusion"',
+    '- "pédagogie spécialisée"',
+    '---',
+    CORPS
+  ].join(LF);
+  fs.writeFileSync(path.join(dossier, slug + '.md'), SRC);
+
+  // L’attendu EN DUR, recopié du SRC ci-dessus à la main — pas relu par
+  // analyserFrontmatter() : comparer le résultat de la migration à une relecture par le
+  // même analyseur qu'elle emploie en interne ne prouverait rien (une inversion de champs
+  // à la lecture tromperait les deux côtés pareil, et resterait invisible). L'oracle doit
+  // être indépendant du code qu'il éprouve, ici comme ailleurs dans ce fichier.
+  const ancien = {
+    title: 'Un vieux titre',
+    subtitle: 'Un vieux sous-titre',
+    doi: '10.57161/x2020-01-05',
+    author: [
+      { name: 'Anne Dupont', affiliation: 'HEP Vaud', orcid: '0000-0002-1825-0097' },
+      { name: 'Bruno Meyer', affiliation: 'SZH/CSPS', orcid: '' }
+    ],
+    keywords: ['inclusion', 'pédagogie spécialisée']
+  };
+
+  const hote = activerHote(revue);
+  hote.arbre().definirRacine(revue);
+  await hote.executer('szh.apercuMetadonnees');
+  const panneau = hote.panneauDeType('szhApercuMetadonnees');
+  assert.ok(panneau, 'le panneau « Métadonnées des articles » ne s’est pas ouvert');
+  // onDidReceiveMessage n'envoie les valeurs (et ne migre) qu'à réception du « pret ».
+  await panneau._recepteur({ type: 'pret' });
+
+  const cheminMeta = path.join(dossier, slug + '.meta.yaml');
+  assert.ok(fs.existsSync(cheminMeta), 'le .meta.yaml n’a pas été créé par la migration');
+  const migre = yaml.analyserMeta(fs.readFileSync(cheminMeta, 'utf8'));
+
+  // Les auteur·e·s : EXACTEMENT les mêmes champs, name -> nom, rien perdu, rien inventé.
+  assert.strictEqual(migre.author.length, ancien.author.length, 'nombre d’auteurs changé');
+  for (let i = 0; i < ancien.author.length; i++) {
+    assert.strictEqual(migre.author[i].nom, ancien.author[i].name, 'nom perdu, auteur ' + i);
+    assert.strictEqual(migre.author[i].affiliation, ancien.author[i].affiliation,
+      'affiliation perdue, auteur ' + i);
+    assert.strictEqual(migre.author[i].orcid, ancien.author[i].orcid, 'orcid perdu, auteur ' + i);
+    assert.strictEqual(migre.author[i].prenom, '', 'prenom inventé, auteur ' + i);
+  }
+  // Les mots-clés : la même liste, dans la langue de la revue d’essai (fr).
+  assert.deepStrictEqual(migre.keywords.fr, ancien.keywords, 'mots-clés changés par la migration');
+  assert.strictEqual(migre.title.fr, ancien.title, 'titre changé par la migration');
+  assert.strictEqual(migre.subtitle.fr, ancien.subtitle, 'sous-titre changé par la migration');
+  assert.strictEqual(migre.doi, ancien.doi, 'DOI changé par la migration');
+
+  // Le frontmatter a disparu, et lui seul : le corps du .md n’a pas bougé d’un caractère.
+  const md = fs.readFileSync(path.join(dossier, slug + '.md'), 'utf8');
+  const partieApres = yaml.separerFrontmatter(md);
+  assert.strictEqual(partieApres.fm, null, 'le frontmatter aurait dû être effacé');
+  assert.strictEqual(partieApres.corps, CORPS, 'le corps a été touché par la migration');
 });

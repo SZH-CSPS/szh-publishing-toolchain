@@ -45,8 +45,7 @@ test('livre : langueRevue lit le fichier du profil (buch.yaml), pas ausgabe.yaml
 // Le défaut que ce contrôle prévient : la vue latérale était gardée par `szh.estRevue` et
 // ne s'affichait tout simplement pas sur un livre — dossier ouvert, aucun cockpit.
 test('livre : les deux clés de contexte sont posées, et elles s’excluent', () => {
-  const ctx = HOTE.contexte ? HOTE.contexte() : null;
-  if (!ctx) { return; }   // l'hôte factice ne les expose pas partout : on ne casse pas pour ça
+  const ctx = HOTE.contexte();
   assert.strictEqual(ctx['szh.estLivre'], true, 'szh.estLivre n’est pas posé sur un livre');
   assert.strictEqual(ctx['szh.estRevue'], false,
     'szh.estRevue reste vrai sur un livre : les deux vues s’afficheraient ensemble');

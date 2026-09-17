@@ -60,17 +60,7 @@ const PRODUITS_SOURCE = fs.readFileSync(PRODUITS_PS1, 'utf8');
 
 // ---- PowerShell, comme dans les autres fichiers du dépôt ----
 
-const POWERSHELL = (function () {
-  if (process.platform !== 'win32') { return ''; }
-  const candidats = [path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), 'powershell.exe'];
-  for (const c of candidats) {
-    const essai = spawnSync(c, ['-NoProfile', '-Command', 'exit 0'], { encoding: 'utf8' });
-    if (!essai.error && essai.status === 0) { return c; }
-  }
-  return '';
-})();
-const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
+const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 // Sans BOM sous PowerShell 5.1, un .ps1 SANS ce préfixe se relit avec la page de code ANSI
 // du poste (mêmes précautions que les autres fichiers de ce dépôt).

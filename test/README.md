@@ -246,3 +246,18 @@ l'œil sur un PNG l'attrapait jusqu'ici. Il tient le plafond de hauteur des imag
 généreuse, une marge de figure qui grossit, ou une légende de six lignes de crédits.
 Utilise `/opt/weasyprint/bin/python3` (`$SZH_FONTTOOLS`), seul interpréteur de la distro
 qui importe `weasyprint` ; ignoré s'il est introuvable.
+
+Sa section « Polices » appelle, dans l'ordre, `polices-check.py`, puis
+`pipeline/fonts/glyphes-manquants.py --verifier` (les six caractères que la maquette
+écrit d'elle-même sont-ils toujours dans les faces livrées) et `metriques-titre.py
+--verifier` (la table de largeurs de `szh-titre-lignes.lua` correspond-elle encore à la
+police du titre) — les deux `--verifier` existaient sans être appelés par rien
+d'automatique avant le lot 6. `metriques-titre.py` n'a besoin que de `python3` (pas de
+fontTools), les deux autres du même interprète que `figures-check.py`.
+
+Depuis le lot 6, `.github/workflows/ci.yml` (job `pdf-ua`) rejoue une partie de
+`build-render.sh` à chaque push/PR — pas le script en entier (il reconstruirait deux
+fois le même banc), mais ses briques qui tiennent sans rendu PNG : les figures du banc,
+le corpus `accessibilite/` (sa porte `verifier-numerotation` DOIT échouer, voir sa note
+de tête), la reproductibilité des polices, et les deux `--verifier` ci-dessus. Le rendu
+PNG lui-même reste hors CI : un PNG se juge à l'œil, jamais par une porte automatique.

@@ -24,6 +24,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync, execFileSync } = require('child_process');
 const { sourceExtensionEtLib } = require('./hote-factice');
+const { sansPandocWsl } = require('./gardes');
 
 process.env.SZH_LANGUE = 'fr';
 
@@ -74,24 +75,11 @@ function wsl(args) {
     { encoding: 'utf8', windowsHide: true, timeout: 120000 });
 }
 
-let pandocVu = null;
-function pandocAbsent() {
-  if (pandocVu !== null) { return pandocVu; }
-  let r;
-  try { r = wsl(['sh', '-c', 'command -v pandoc && command -v python3']); }
-  catch (e) { pandocVu = 'wsl.exe injoignable : ' + e.message; return pandocVu; }
-  if (r.error) { pandocVu = 'wsl.exe injoignable : ' + r.error.message; }
-  else if (r.status !== 0) { pandocVu = 'pandoc ou python3 introuvable dans la distro ' + DISTRO; }
-  else { pandocVu = null; }
-  return pandocVu;
-}
-
-// Saut bruyant : le contrôle n'est pas vert, il est déclaré non fait. Même règle que
-// test/js/ancrages.test.js, et le même interrupteur pour une intégration continue.
+// Saut bruyant : le contrôle n’est pas vert, il est déclaré non fait.
+// SZH_WSL_OBLIGATOIRE via gardes.js en fait un échec au chargement du module.
 function sauterSansLua(t, raison) {
-  const msg = 'Lua non vérifié : ' + raison;
-  if (process.env.SZH_LUA_OBLIGATOIRE) { assert.fail(msg); }
-  console.warn('\n*** ' + msg + ' — la clé d’appariement n’est PAS comparée ***\n');
+  const msg = "Lua non vérifié : " + raison;
+  console.warn("\n*** " + msg + " — la clé d’appariement n’est PAS comparée ***\n");
   t.skip(msg);
 }
 
@@ -106,9 +94,8 @@ const HARNAIS = [
   'end'
 ].join('\n') + '\n';
 
-test('bibliographie : la clé d’appariement est la même en Lua et en Python', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+test("bibliographie : la clé d’appariement est la même en Lua et en Python", (t) => {
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   fs.mkdirSync(TRAVAIL, { recursive: true });
   const fTextes = path.join(TRAVAIL, 'textes.txt');
   fs.writeFileSync(fTextes, TEXTES_CLE.join('\n') + '\n', 'utf8');
@@ -511,8 +498,7 @@ test('intégrité : sur un .docx réel, tout ce que les styles annoncent est dé
     // il le dit plutôt que de passer.
     return t.skip('corpus hors dépôt absent : ' + CORPUS);
   }
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   const docx = trouverUnDocx(CORPUS);
   if (!docx) { return t.skip('aucun .docx dans ' + CORPUS); }
 

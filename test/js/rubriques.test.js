@@ -265,16 +265,11 @@ test('retrait : un identifiant disparu échoue sans toucher au texte', () => {
 // Le formulaire ne doit jamais proposer un jeton que le rendu ne sait pas titrer, ni
 // l'inverse : TYPES_RUBRIQUE (ici) et la table TITRES (szh-rubrique.lua) doivent porter
 // exactement les mêmes jetons, dans le même ordre — même discipline que
-// ressources.test.js pour lib/ressources.js / szh-ressource.lua. La table Lua est écrite
-// par un autre agent en parallèle : si le fichier n'existe pas encore, ce test se
-// contente de le signaler (skip) plutôt que d'échouer.
+// ressources.test.js pour lib/ressources.js / szh-ressource.lua.
 
-test('szh-rubrique.lua : la table TITRES porte exactement les jetons de TYPES_RUBRIQUE, dans le même ordre', (t) => {
+test('szh-rubrique.lua : la table TITRES porte exactement les jetons de TYPES_RUBRIQUE, dans le même ordre', () => {
   const cheminLua = path.join(RACINE, 'pipeline', 'filters', 'szh-rubrique.lua');
-  if (!fs.existsSync(cheminLua)) {
-    t.skip('pipeline/filters/szh-rubrique.lua n’existe pas encore (écrit par un autre agent en parallèle)');
-    return;
-  }
+  assert.ok(fs.existsSync(cheminLua), 'pipeline/filters/szh-rubrique.lua est introuvable');
   const lua = fs.readFileSync(cheminLua, 'utf8');
   const bloc = (lua.match(/local\s+TITRES\s*=\s*\{([\s\S]*?)\n\}/) || [])[1] || '';
   assert.notStrictEqual(bloc, '', 'aucune table locale TITRES trouvée dans szh-rubrique.lua');

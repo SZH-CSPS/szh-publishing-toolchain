@@ -276,6 +276,11 @@ test('un DOI se coupe à la PREMIÈRE barre : préfixe d’un côté, suffixe de
   const r = verif.baliserIdentifiant('10.57161/r2026-03-08', 'doi');
   assert.ok(r.html.indexOf('>10.57161<') !== -1);
   assert.ok(r.html.indexOf('>r2026-03-08<') !== -1);
+  // Une seule barre dans le cas ci-dessus ne distingue pas « première » de « dernière » :
+  // avec une seconde barre, le préfixe doit s’arrêter à la première, pas à la dernière.
+  const r2 = verif.baliserIdentifiant('10.57161/r2026-03-08/v2', 'doi');
+  assert.ok(r2.html.indexOf('>10.57161<') !== -1, 'le préfixe déborde sur la première barre');
+  assert.ok(r2.html.indexOf('>r2026-03-08/v2<') !== -1, 'le suffixe ne garde pas les barres suivantes');
 });
 
 test('un ROR se groupe par trois, et le signale : ce blanc-là n’existe pas dans la valeur', () => {

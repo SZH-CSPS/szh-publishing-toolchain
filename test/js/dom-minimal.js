@@ -12,8 +12,10 @@
 // nœud n'est jamais dupliqué), dataset, classList,
 // value/checked/disabled/readOnly, childNodes/firstChild/nodeType/tagName
 // (l'éditeur de tableau relit ses cellules nœud par nœud), et des sélecteurs réduits
-// (« .classe », « balise », « [data-x] », « [data-x="v"] », « balise[data-x=v] »,
-// combinés par un espace). Les gestionnaires posés par addEventListener sont retenus et
+// (« .classe », « balise », « [data-x] », « [data-x="v"] », « balise[data-x=v] », un
+// attribut HTML ordinaire quelconque — « [name=v] », « [type="radio"] », plusieurs crochets
+// accolés comme « input[name="…"][value="…"] » —, combinés par un espace). Les
+// gestionnaires posés par addEventListener sont retenus et
 // dispatchEvent({ type }) les déclenche : de quoi simuler un changement de <select> ou un
 // clic — le formulaire des métadonnées permute ses langues sur ce geste.
 'use strict';
@@ -51,21 +53,40 @@ function chargerAvecVscodeFactice(chemin) {
   try { return require(chemin); } finally { Module._load = orig; }
 }
 
-function correspond(e, motif) {
-  // « [data-x] », « [data-x="v"] », « select[data-x=v] » : balise facultative devant,
-  // guillemets facultatifs autour de la valeur — les deux formes existent dans les pages.
-  const m = motif.match(/^([a-z]*)\[data-([a-z-]+)(?:=("?)([^"\]]*)\3)?\]$/);
-  if (m) {
-    if (m[1] !== '' && e.balise !== m[1]) { return false; }
-    const cle = m[2].replace(/-([a-z])/g, (x, l) => l.toUpperCase());
-    return m[4] === undefined ? e.dataset[cle] !== undefined : e.dataset[cle] === m[4];
+// Un seul crochet « [data-x] », « [data-x="v"] », « [data-x='v'] » ou attribut ordinaire
+// « [name=v] », « [type="radio"] ». L'attribut posé par setAttribute (table `attributs`,
+// via getAttribute) fait foi en premier ; s'il manque, on retombe sur la propriété de même
+// nom que le script de la page pose souvent directement (name, value, type, checked…),
+// car rendre() écrit couramment `input.name = …` sans jamais appeler setAttribute — c'est
+// le cas du radio de settings.js#cocher(), sélecteur `input[name="…"][value="…"]`.
+function correspondAttribut(e, segment) {
+  const mData = segment.match(/^\[data-([a-z-]+)(?:=("?)([^"\]]*)\2)?\]$/);
+  if (mData) {
+    const cle = mData[1].replace(/-([a-z])/g, (x, l) => l.toUpperCase());
+    return mData[3] === undefined ? e.dataset[cle] !== undefined : e.dataset[cle] === mData[3];
   }
-  // « balise », « .classe », « .a.b », « p.occ.visible » : la balise si elle est nommée,
-  // puis toutes les classes demandées.
-  const parties = motif.split('.');
-  const balise = parties.shift();
+  const m = segment.match(/^\[([a-zA-Z_-]+)(?:=(?:"([^"]*)"|'([^']*)'|([^"'\]]*)))?\]$/);
+  if (!m) { return false; }
+  const attr = m[1];
+  const aValeur = segment.indexOf('=') !== -1;
+  const valeurAttendue = m[2] !== undefined ? m[2] : (m[3] !== undefined ? m[3] : m[4]);
+  const brut = e.getAttribute(attr);
+  const surProps = e[attr] === undefined || e[attr] === '' || e[attr] === false ? undefined : String(e[attr]);
+  const reel = brut !== null ? brut : surProps;
+  return aValeur ? reel === valeurAttendue : reel !== undefined;
+}
+
+function correspond(e, motif) {
+  // Balise facultative devant, puis une suite de « .classe » et « [attribut] » dans
+  // n'importe quel ordre — « balise », « .classe », « .a.b », « p.occ.visible »,
+  // « select[data-x=v] », « input[name="…"][value="…"] » (deux crochets accolés, comme
+  // dans settings.js#cocher()).
+  const m = motif.match(/^([a-z]*)((?:\.[a-zA-Z0-9_-]+|\[[^\]]*\])*)$/);
+  if (!m) { return false; }
+  const balise = m[1];
   if (balise !== '' && e.balise !== balise) { return false; }
-  return parties.every((c) => e.classes.has(c));
+  const segments = m[2].match(/\.[a-zA-Z0-9_-]+|\[[^\]]*\]/g) || [];
+  return segments.every((s) => (s[0] === '.' ? e.classes.has(s.slice(1)) : correspondAttribut(e, s)));
 }
 
 // Une liste de sélecteurs séparés par des virgules — « input, select, button » — rend
@@ -249,7 +270,30 @@ function ouvrir(opts) {
     createTextNode: (t) => Object.assign(element('#texte'), { _texte: String(t) }),
     createDocumentFragment: () => element('#fragment'),
     getElementById: (id) => (parId[id] = parId[id] || element('div')),
-    querySelector: () => null, querySelectorAll: () => [],
+    // Les conteneurs de page (cartes, zones, sections…) ne sont pas rattachés à <body> — la
+    // page les prend par getElementById et les garde en mémoire, comme dans l'éditeur (voir
+    // racineDom() plus bas). Un `document.querySelector` qui ne regardait que sous <body>
+    // (racine quasi toujours vide ici) ne trouvait donc jamais rien : on cherche dans <body>
+    // ET dans chaque racine que la page a demandée par son id, sans doublon.
+    querySelector: (s) => {
+      for (const racine of [document.body].concat(Object.values(parId))) {
+        const trouve = chercher(racine, s)[0];
+        if (trouve) { return trouve; }
+      }
+      return null;
+    },
+    querySelectorAll: (s) => {
+      const vus = new Set();
+      const sortie = [];
+      for (const racine of [document.body].concat(Object.values(parId))) {
+        for (const e of chercher(racine, s)) {
+          if (vus.has(e)) { continue; }
+          vus.add(e);
+          sortie.push(e);
+        }
+      }
+      return sortie;
+    },
     // Le menu contextuel de l'éditeur de tableau pose et retire des gestionnaires
     // globaux : les deux doivent exister, en simples réceptacles.
     addEventListener: () => {}, removeEventListener: () => {},

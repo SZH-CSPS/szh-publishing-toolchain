@@ -18,6 +18,7 @@ const { revueDEssai, activerHote } = require('./hote-factice');
 // Une seule activation par processus : le crochet de Module._load ne se défait pas.
 const REVUE = revueDEssai();
 const HOTE = activerHote(REVUE);
+const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
 
 // Les sections de l'accordéon, sans le raccourci « À corriger » qui les suit : celui-ci
 // n'est pas une section (aucune catégorie, aucun pli), et les contrôles d'accordéon
@@ -28,7 +29,26 @@ function sectionsDe(racine) {
 
 test('l’extension s’active et enregistre ses commandes', () => {
   const ids = HOTE.commandes();
-  assert.ok(ids.length > 30, 'trop peu de commandes enregistrées : ' + ids.length);
+  const pkg = require(path.join(COCKPIT, 'package.json'));
+  const manifeste = (pkg.contributes && pkg.contributes.commands || []).map((c) => c.command);
+
+  // Chaque commande du manifeste (palette, menus) doit être réellement enregistrée : une
+  // entrée de package.json sans registerCommand() lève « command not found » au clic.
+  const manquantes = manifeste.filter((c) => ids.indexOf(c) === -1);
+  assert.deepStrictEqual(manquantes, [],
+    'commande(s) du manifeste jamais enregistrée(s) : ' + manquantes.join(', '));
+
+  // Deux commandes s'enregistrent délibérément hors menu — invoquées par le code lui-même
+  // (TreeItem.command d'un article, clic sur un en-tête d'accordéon), jamais par la palette.
+  // Si cette liste devait grandir, c'est un signal à vérifier à la main, pas à faire
+  // échouer aveuglément ici.
+  const registreesHorsMenu = ['szh.ouvrirArticle', 'szh.ouvrirSection'];
+  const inattendues = ids.filter((id) => id.indexOf('szh.') === 0
+    && manifeste.indexOf(id) === -1 && registreesHorsMenu.indexOf(id) === -1);
+  assert.deepStrictEqual(inattendues, [],
+    'commande(s) « szh.* » enregistrée(s) hors manifeste et hors de la liste documentée : '
+    + inattendues.join(', '));
+
   for (const attendue of ['szh.vueTraductions', 'szh.vueWord', 'szh.mediasArticle',
     'szh.apercuMetadonnees', 'szh.traduction']) {
     assert.ok(ids.indexOf(attendue) !== -1, 'commande absente : ' + attendue);
@@ -51,8 +71,6 @@ test('les en-têtes de section basculent leur section (accordéon)', async () =>
       'l’en-tête doit viser sa propre section : ' + it.contextValue);
   }
 });
-
-const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
 
 // Les quatre sections dans l'ordre du travail, et saillantes : le TreeView natif n'offre ni
 // gras ni taille de police, ce sont les majuscules et la couleur de l'icône qui font
@@ -114,16 +132,21 @@ test('l’arbre : chaque article porte l’icône colorée de son avancement', a
   const art = require(path.join(COCKPIT, 'lib', 'articles.js'));
   const archivage = require(path.join(COCKPIT, 'lib', 'archivage.js'));
   const taches = art.tachesRevue(archivage.lireConfigPoste(), 'revue');
-  assert.ok(taches.length > 0, 'aucune tâche définie, même par défaut');
+  // « En cours » n'a de sens qu'entre deux tâches : une seule tâche ne peut être qu'à zéro
+  // ou à cent pour cent, et le disque bleu ne serait jamais atteignable. La fixture pointe
+  // SZH_CONFIG_OJS vers un config.json vide (hote-factice.js) : tachesRevue() retombe donc
+  // toujours sur TACHES_DEFAUT (4 tâches, lib/articles.js) — si ce n'est plus le cas,
+  // mieux vaut le savoir ici que voir le bloc suivant s'abstenir en silence.
+  assert.ok(taches.length > 1,
+    'le jeu de tâches ne compte qu’une seule tâche (' + taches.length + ') : le disque bleu '
+    + '« en cours » ne peut pas être éprouvé par ce test');
   const fichier = path.join(REVUE, 'articles', '01-essai', '01-essai.taches.yaml');
 
   // Une partie cochée : le disque bleu de l'« en cours ».
-  if (taches.length > 1) {
-    fs.writeFileSync(fichier, art.serialiserTachesFaites({ faites: [taches[0].id] }));
-    const it = (await arbre.getChildren(section)).find((x) => x.slug === '01-essai');
-    assert.strictEqual(it.iconPath.id, 'circle-filled');
-    assert.strictEqual(it.iconPath.color && it.iconPath.color.id, 'charts.blue');
-  }
+  fs.writeFileSync(fichier, art.serialiserTachesFaites({ faites: [taches[0].id] }));
+  const it = (await arbre.getChildren(section)).find((x) => x.slug === '01-essai');
+  assert.strictEqual(it.iconPath.id, 'circle-filled');
+  assert.strictEqual(it.iconPath.color && it.iconPath.color.id, 'charts.blue');
 
   // Tout coché : la coche verte, et le compteur toujours dans la description.
   fs.writeFileSync(fichier,

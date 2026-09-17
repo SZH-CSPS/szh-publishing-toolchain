@@ -24,16 +24,15 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const GABARITS = path.join(RACINE, 'windows', 'mail-templates');
 const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 const { compiler } = require(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'gabarits'));
+const { normaliserRenduCourriel } = require(path.join(RACINE, 'vscodium-extension', 'szh-cockpit', 'lib', 'courriel'));
 
-// Convention sujet/corps du cockpit (lib/courriel.js#rendreCourriel), rejouée ici à la main :
-// le lanceur Windows ne passe jamais par ce module (il n'a pas de Node), mais
-// Get-SzhCourriel applique la MÊME convention -- sujet débarrassé de ses blancs de bord,
-// corps amputé d'un retour à la ligne de chaque côté -- et c'est ce que ce test vérifie.
+// Convention sujet/corps du cockpit, importée de lib/courriel.js#normaliserRenduCourriel
+// plutôt que recopiée ici : le lanceur Windows ne passe jamais par ce module (il n'a pas de
+// Node), mais Get-SzhCourriel applique la MÊME convention -- sujet débarrassé de ses blancs
+// de bord, corps amputé d'un retour à la ligne de chaque côté -- et c'est ce que ce test
+// vérifie, contre la RÉELLE fonction du produit plutôt que contre sa propre copie figée.
 function rendreConvention(source, nom, variables) {
-  const blocs = compiler(source, nom).rendre(variables);
-  const sujet = String(blocs.sujet || '').trim();
-  const corps = String(blocs.corps || '').replace(/^\n/, '').replace(/\n$/, '');
-  return { sujet, corps };
+  return normaliserRenduCourriel(compiler(source, nom).rendre(variables));
 }
 
 function nomsGabarits() {
@@ -135,17 +134,7 @@ const sansVSCodium = (function () {
   return 'VSCodium introuvable sur ce poste';
 })();
 
-const POWERSHELL = (function () {
-  if (process.platform !== 'win32') { return ''; }
-  const candidats = [path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), 'powershell.exe'];
-  for (const c of candidats) {
-    const essai = spawnSync(c, ['-NoProfile', '-Command', 'exit 0'], { encoding: 'utf8' });
-    if (!essai.error && essai.status === 0) { return c; }
-  }
-  return '';
-})();
-const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
+const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 // Le corps d'une fonction PowerShell : de sa ligne de déclaration jusqu'à la première ligne
 // qui n'est QUE « } », en colonne 0 -- identique à l'aide de même nom dans

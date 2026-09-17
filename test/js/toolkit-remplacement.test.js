@@ -33,17 +33,7 @@ const { spawnSync } = require('child_process');
 const RACINE = path.resolve(__dirname, '..', '..');
 const COMMUN_PS1 = path.join(RACINE, 'windows', 'szh-common.ps1');
 
-const POWERSHELL = (function () {
-  if (process.platform !== 'win32') { return ''; }
-  const candidats = [path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), 'powershell.exe'];
-  for (const c of candidats) {
-    const essai = spawnSync(c, ['-NoProfile', '-Command', 'exit 0'], { encoding: 'utf8' });
-    if (!essai.error && essai.status === 0) { return c; }
-  }
-  return '';
-})();
-const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
+const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 // Windows PowerShell 5.1 lit un .ps1 SANS BOM avec la page de code ANSI du poste, pas en
 // UTF-8 : sans ce préfixe, les accents des pilotes ci-dessous ressortiraient mojibake une

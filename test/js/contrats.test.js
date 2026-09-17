@@ -984,6 +984,16 @@ test('les libellés de tâches attendus par le code existent dans tasks.json', (
   }
 });
 
+// Le littéral doit être l'argument d'un VRAI appel d'enregistrement — registerCommand(,
+// cmd( ou cmdEcriture( (les deux raccourcis d'extension.js, ligne ~6582), ou leur pendant
+// à une lettre dans lib/formatting.js et lib/panneaux.js (`const c = (id, fn) => …
+// registerCommand(id, fn)`) — et pas n'importe où dans lib/+extension.js concaténés : un
+// simple `assert.ok(src.includes(...))` reste vert même quand la commande n'est plus
+// enregistrée nulle part, tant que son littéral survit ailleurs (une table de libellés, un
+// commentaire…). Preuve : renommer l'appel réel `registerCommand('szh.vueWord', …)` en
+// 'szh.vueWordCASSE' laissait ce test vert avant ce correctif, le littéral 'szh.vueWord'
+// survivant à la fois dans VUE_SECTION (extension.js) et dans lib/constats.js — seul
+// controles.test.js voyait la casse, via HOTE.executer('szh.vueWord').
 test('chaque commande déclarée dans package.json est enregistrée dans le code', () => {
   const pkg = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
   const src = fs.readdirSync(path.join(COCKPIT, 'lib'))
@@ -991,9 +1001,17 @@ test('chaque commande déclarée dans package.json est enregistrée dans le code
     .map((f) => fs.readFileSync(path.join(COCKPIT, 'lib', f), 'utf8'))
     .concat([lire('vscodium-extension', 'szh-cockpit', 'extension.js')])
     .join('\n');
+  const enregistrees = new Set();
+  for (const m of src.matchAll(/\b(?:registerCommand|cmdEcriture|cmd|c)\(\s*'([^']+)'/g)) {
+    enregistrees.add(m[1]);
+  }
+  assert.ok(enregistrees.size > 30,
+    'trop peu d’appels d’enregistrement détectés (' + enregistrees.size
+    + ') : le motif de repérage a dû se désaccorder de cmd()/cmdEcriture()/registerCommand()');
   for (const c of pkg.contributes.commands) {
-    assert.ok(src.includes("'" + c.command + "'"),
-      'commande déclarée mais jamais citée : ' + c.command);
+    assert.ok(enregistrees.has(c.command),
+      'commande déclarée mais jamais enregistrée au voisinage de registerCommand(/cmd(/'
+      + 'cmdEcriture( : ' + c.command);
   }
 });
 

@@ -328,10 +328,24 @@ const IDENTIQUES_ADMISES = new Set([
 // lib/cantons.js le dit déjà. On la relit plutôt que de recopier les quatre noms, qui
 // deviendraient faux le jour où la table changerait d'avis — sans cesser de faire passer
 // le contrôle, ce qui est le pire des deux mondes.
+//
+// ⚠ Mais relire la table pour REMPLIR le repli, sans jamais vérifier ce qu'elle y verse,
+//   rend ce repli capable de s'auto-admettre n'importe quel résidu : un cinquième canton qui
+//   recevrait PAR ERREUR le même texte dans les deux langues (ex. « Bâle-Campagne » recopié
+//   en allemand) s'ajouterait ici comme les quatre légitimes, et le test « ne garde aucun
+//   libellé français » ne le verrait jamais — repêché, si on a de la chance, par le test
+//   voisin, pour une tout autre raison. D'où ce contrôle : la liste tirée des cantons ne doit
+//   contenir QUE les quatre cas documentés, AVANT de servir de repli.
+const CANTONS_IDENTIQUES = new Set();
 for (const c of require(path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit',
   'lib', 'cantons.js')).CANTONS) {
-  if (c.fr === c.de) { IDENTIQUES_ADMISES.add(c.fr + ' (' + c.code + ')'); }
+  if (c.fr === c.de) { CANTONS_IDENTIQUES.add(c.fr + ' (' + c.code + ')'); }
 }
+assert.deepStrictEqual([...CANTONS_IDENTIQUES].sort(),
+  ['Jura (JU)', 'Neuchâtel (NE)', 'Tessin (TI)', 'Uri (UR)'].sort(),
+  'la liste des cantons au nom identique dans les deux langues a changé : un résidu ' +
+    'accidentel s’ajouterait au repli sans que rien ne le signale — ' + [...CANTONS_IDENTIQUES].sort().join(', '));
+for (const libelle of CANTONS_IDENTIQUES) { IDENTIQUES_ADMISES.add(libelle); }
 
 // Tous les libellés du formulaire d'ACTUALITÉ dans une langue donnée, mis à plat : les
 // textes de la page, les sections et les champs de chaque type de fiche, et les titres des

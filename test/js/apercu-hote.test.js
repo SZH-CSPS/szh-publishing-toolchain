@@ -11,7 +11,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
-const { revueDEssai, activerHote } = require('./hote-factice');
+const { revueDEssai, activerHote, demarrageSeTait } = require('./hote-factice');
 
 const COCKPIT = path.join(__dirname, '..', '..', 'vscodium-extension', 'szh-cockpit');
 const i18n = require(path.join(COCKPIT, 'lib', 'i18n.js'));
@@ -27,9 +27,7 @@ const HOTE = activerHote(REVUE);
 HOTE.arbre().definirRacine(REVUE);
 
 test('mise en route : le démarrage se tait', async () => {
-  for (let i = 0; i < 30; i++) { await tick(); }
-  HOTE.erreurs.length = 0;
-  HOTE.avertissements.length = 0;
+  await demarrageSeTait(HOTE);
 });
 
 // Dépose un aperçu HTML déjà compilé, daté dans le futur : ouvrirArticle ne le juge pas

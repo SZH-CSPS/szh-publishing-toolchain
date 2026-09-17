@@ -59,11 +59,46 @@ test('suppression : l’attribut se retire sur tout l’arbre, pas seulement à 
   const out = path.join(base, 'out');
   const pdf = path.join(out, 'article', 'article.pdf');
   fs.chmodSync(pdf, 0o444);
+  // Assertion explicite avant retrait : le fichier est bien en lecture seule (bit
+  // d'écriture propriétaire absent), sinon le test suivant ne prouverait rien.
+  assert.strictEqual(fs.statSync(pdf).mode & 0o200, 0,
+    'le fichier n’est pas réellement en lecture seule avant le retrait');
   retirerLectureSeule(out);
   // Le fichier est de nouveau inscriptible : c'est ce que Windows lit comme « plus en
-  // lecture seule ».
+  // lecture seule ». Assertion explicite sur le mode, en plus de l'écriture réelle
+  // ci-dessous (qui lèverait si l'attribut tenait encore).
+  assert.notStrictEqual(fs.statSync(pdf).mode & 0o200, 0,
+    'retirerLectureSeule n’a pas redonné le bit d’écriture, à deux niveaux de profondeur');
   fs.appendFileSync(pdf, '!');                    // lèverait si l'attribut tenait encore
   fs.rmSync(base, { recursive: true, force: true });
+});
+
+// Le nombre d'essais avant le retrait de l'attribut lecture-seule n'était verrouillé nulle
+// part : rien n'empêchait un refactor de le déclencher un essai trop tard (ou trop tôt) sans
+// qu'aucun test ne le remarque — seul le résultat final (l'arbre finit par partir) était
+// vérifié, jamais LE MOMENT du retrait.
+test('suppression : l’attribut se retire après le tout PREMIER refus, jamais plus tard', async () => {
+  const base = arbre();
+  const out = path.join(base, 'out');
+  let essaisRm = 0;
+  let essaisAvantChmod = null;
+  const vraiRm = fs.rmSync;
+  const vraiChmod = fs.chmodSync;
+  fs.rmSync = () => { essaisRm++; const e = new Error('EPERM, operation not permitted'); e.code = 'EPERM'; throw e; };
+  fs.chmodSync = (...args) => {
+    if (essaisAvantChmod === null) { essaisAvantChmod = essaisRm; }
+    return vraiChmod.apply(fs, args);
+  };
+  try {
+    await supprimerArbre(out, { attentes: [1, 1, 1], dormir: () => Promise.resolve() });
+    assert.strictEqual(essaisAvantChmod, 1,
+      'l’attribut a été retiré après ' + essaisAvantChmod + ' échec(s) de rmSync, pas 1 : ' +
+      'le retrait ne suit plus le tout premier refus');
+  } finally {
+    fs.rmSync = vraiRm;
+    fs.chmodSync = vraiChmod;
+    fs.rmSync(base, { recursive: true, force: true });
+  }
 });
 
 test('suppression : un refus qui dure rend le message, sans boucler sans fin', async () => {

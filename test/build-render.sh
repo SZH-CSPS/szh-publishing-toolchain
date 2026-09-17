@@ -245,5 +245,25 @@ if [ -z "$only" ]; then
   else
     echo "  (contrôle ignoré : interpréteur fontTools introuvable en $FONTPY)"
   fi
+  # Les deux `--verifier` documentés mais appelés par personne (voir leur en-tête) :
+  # un caractère qui manquerait à nouveau après une réinstanciation des faces, ou une
+  # face de titre qui aurait changé de métrique (effet d'escalier L3), ne serait vu par
+  # rien d'automatique sans eux. Même traitement d'échec que polices-check.py ci-dessus :
+  # journal, préfixe, echec=1, jamais un vert par défaut si l'interprète manque.
+  if [ -x "$FONTPY" ] || command -v "$FONTPY" >/dev/null 2>&1; then
+    journal="out/.glyphes-manquants.log"
+    "$FONTPY" "$REPO/pipeline/fonts/glyphes-manquants.py" --verifier > "$journal" 2>&1 || echec=1
+    sed 's/^/  /' "$journal"
+  else
+    echo "  (glyphes manquants : contrôle ignoré, interpréteur fontTools introuvable en $FONTPY)"
+  fi
+  # Sans dépendance (ni fontTools ni WeasyPrint, voir sa note de tête) : python3 seul.
+  if command -v python3 >/dev/null 2>&1; then
+    journal="out/.metriques-titre.log"
+    python3 metriques-titre.py --verifier > "$journal" 2>&1 || echec=1
+    sed 's/^/  /' "$journal"
+  else
+    echo "  (métriques du titre : contrôle ignoré, python3 introuvable)"
+  fi
 fi
 exit $echec

@@ -152,17 +152,7 @@ test('correctif 3 : les lignes citées d’update.ps1 sont toujours les bonnes',
 // C:\ProgramData : les deux essais ci-dessous travaillent uniquement dans des dossiers
 // jetables sous le dossier temporaire de l'utilisateur, jamais posés au sens du poste.
 
-const POWERSHELL = (function () {
-  if (process.platform !== 'win32') { return ''; }
-  const candidats = [path.join(process.env.WINDIR || 'C:\\Windows',
-    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), 'powershell.exe'];
-  for (const c of candidats) {
-    const essai = spawnSync(c, ['-NoProfile', '-Command', 'exit 0'], { encoding: 'utf8' });
-    if (!essai.error && essai.status === 0) { return c; }
-  }
-  return '';
-})();
-const sansPowerShell = POWERSHELL ? false : 'powershell.exe indisponible';
+const { POWERSHELL, sansPowerShell } = require('./gardes');
 
 // Windows PowerShell 5.1 lit un .ps1 SANS BOM avec la page de code ANSI du poste, pas en
 // UTF-8 : les accents des extraits ci-dessous (« à », « é », « ô »…) en ressortiraient

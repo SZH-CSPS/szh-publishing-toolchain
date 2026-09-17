@@ -18,8 +18,8 @@
 // la couverture — celui-là exécuté pour de vrai, pandoc étant le seul juge de ce qu'il fait.
 //
 // Le Lua tourne dans la WSL : pandoc n'existe pas côté Windows. S'il est introuvable, les
-// contrôles qui en dépendent sont sautés en le disant — jamais verts par défaut. Poser
-// SZH_LUA_OBLIGATOIRE=1 en fait des échecs, ce qu'une CI doit faire.
+// contrôles qui en dépendent sont sautés en le disant — jamais verts par défaut. SZH_WSL_OBLIGATOIRE
+// en fait des échecs, ce qu'une CI doit faire.
 'use strict';
 
 const test = require('node:test');
@@ -28,6 +28,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const { sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
@@ -51,7 +52,10 @@ const { cheminVersWsl } = require(path.join(COCKPIT, 'lib', 'portraits.js'));
 const LANCEUR = path.join(RACINE, 'windows', 'new-revue.ps1');
 const GABARIT = path.join(RACINE, 'revue-template', 'ausgabe.yaml');
 const MAQUETTE = path.join(RACINE, 'pipeline', 'filters', 'szh-maquette.lua');
-const TRAVAIL = path.join(os.tmpdir(), 'szh-date-numero');
+
+function dossierJetable() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-date-numero-'));
+}
 
 // ---- le lanceur ----------------------------------------------------------------------
 
@@ -168,24 +172,9 @@ const TEMPLATE = '$vol-ligne$\n';
 const NBSP = '\u00A0';
 const NO_FR = 'N<sup>o</sup>';
 
-let pandocVu = null;
-
-function pandocAbsent() {
-  if (pandocVu !== null) { return pandocVu; }
-  let r;
-  try { r = spawnSync(cheminWsl(), ['-d', DISTRO, '--', 'sh', '-c', 'command -v pandoc'],
-    { encoding: 'utf8', windowsHide: true, timeout: 120000 }); }
-  catch (e) { pandocVu = 'wsl.exe injoignable : ' + e.message; return pandocVu; }
-  if (r.error) { pandocVu = 'wsl.exe injoignable : ' + r.error.message; }
-  else if (r.status !== 0) { pandocVu = 'pandoc introuvable dans la distro ' + DISTRO; }
-  else { pandocVu = null; }
-  return pandocVu;
-}
-
 function sauterSansLua(t, raison) {
-  const msg = 'Lua non vérifié : ' + raison;
-  if (process.env.SZH_LUA_OBLIGATOIRE) { assert.fail(msg); }
-  console.warn('\n*** ' + msg + ' — la ligne « n°/année » de la couverture n’est PAS composée ***\n');
+  const msg = "Lua non vérifié : " + raison;
+  console.warn("\n*** " + msg + " — la ligne « n°/année » de la couverture n’est PAS composée ***\n");
   t.skip(msg);
 }
 
@@ -194,7 +183,8 @@ function sauterSansLua(t, raison) {
 // `revue` : le jeton de revue, « revue » par défaut. Il porte la langue de composition, dont
 // dépend l'abréviation du numéro — c'est le seul moyen d'éprouver la forme allemande.
 function ligneCouverture(dossier, date, revue) {
-  const numero = path.join(TRAVAIL, dossier);
+  const travail = dossierJetable();
+  const numero = path.join(travail, dossier);
   const article = path.join(numero, 'articles', '01-essai');
   fs.rmSync(numero, { recursive: true, force: true });
   fs.mkdirSync(article, { recursive: true });
@@ -207,7 +197,7 @@ function ligneCouverture(dossier, date, revue) {
     ['type: article', 'title:', '  fr: "Un titre"', '  de: "Ein Titel"',
       ''].join('\n'), 'utf8');
   fs.writeFileSync(path.join(article, '01-essai.md'), 'Un paragraphe.\n', 'utf8');
-  const modele = path.join(TRAVAIL, 'vol-ligne.txt');
+  const modele = path.join(travail, 'vol-ligne.txt');
   fs.writeFileSync(modele, TEMPLATE, 'utf8');
 
   const ausgabe = cheminVersWsl(path.join(numero, 'ausgabe.yaml'));
@@ -224,9 +214,8 @@ function ligneCouverture(dossier, date, revue) {
   return String(r.stdout).replace(/\r/g, '').trim();
 }
 
-test('couverture : sans date de publication, l’année vient du nom du dossier', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+test("couverture : sans date de publication, l’année vient du nom du dossier", (t) => {
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   const ligne = ligneCouverture('2027-03', '');
   t.diagnostic('dossier « 2027-03 », date vide -> « ' + ligne + ' »');
   assert.strictEqual(ligne, 'Vol. 44 · ' + NO_FR + '03/2027',
@@ -234,8 +223,7 @@ test('couverture : sans date de publication, l’année vient du nom du dossier'
 });
 
 test('couverture : une date de publication complète passe devant le dossier', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   // Dossier et date en désaccord : le seul cas où l'on voit laquelle des deux fait loi.
   const ligne = ligneCouverture('2027-03', '2028-01-20');
   t.diagnostic('dossier « 2027-03 », date « 2028-01-20 » -> « ' + ligne + ' »');
@@ -243,9 +231,8 @@ test('couverture : une date de publication complète passe devant le dossier', (
     'la date saisie ne fait plus foi sur la couverture');
 });
 
-test('couverture : un dossier hors convention laisse l’année absente, pas fausse', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+test("couverture : un dossier hors convention laisse l’année absente, pas fausse", (t) => {
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   // « Numero de printemps » ne porte pas d'année : mieux vaut une ligne sans année qu'une
   // année prise ailleurs. Le lanceur laisse aussi le numéro à remplir dans ce cas.
   const ligne = ligneCouverture('numero-de-printemps', '');
@@ -255,8 +242,7 @@ test('couverture : un dossier hors convention laisse l’année absente, pas fau
 });
 
 test('couverture : en allemand, « Jg. » et « Nr. » avec son insécable, jamais le o en exposant', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   // Le millésime allemand est un Jahrgang, pas un « Vol. » anglicisant. L'abréviation du
   // numéro, elle, finit par un point et garde l'espace que le français perd, « Nr.03 » se
   // lisant comme un nombre décimal. Et pas de <sup> : « Nr. » s'écrit en lettres pleines.
@@ -268,8 +254,7 @@ test('couverture : en allemand, « Jg. » et « Nr. » avec son insécable, jama
 });
 
 test('couverture : en français, le millésime reste « Vol. »', (t) => {
-  const absent = pandocAbsent();
-  if (absent) { return sauterSansLua(t, absent); }
+  if (sansPandocWsl) { sauterSansLua(t, sansPandocWsl); return; }
   // Sans ce contrôle, rien n'empêcherait de faire passer TOUTES les langues en « Jg. » — la
   // forme allemande a sa propre condition dans le filtre, et seul un essai français la met
   // à l'épreuve.

@@ -91,18 +91,18 @@ test('revue: revue affiche l’autre nom complet', () => {
     'le nom de l’autre revue apparaît alors que le jeton dit « revue »');
 });
 
-test('une valeur vide ou hors liste affiche un tiret cadratin, pas un champ muet', () => {
+test('une valeur vide ou hors liste affiche un demi-cadratin, pas un champ muet', () => {
   const page = ouvrirNumero();
   page.envoyer({ type: 'valeurs', valeurs: { revue: '', title: 'Un dossier' } });
   const champ = conteneurNumero(page).querySelectorAll('[data-cle="revue"]')[0];
   assert.ok(champ, 'le champ revue (lecture) est introuvable');
-  assert.strictEqual(champ.textContent, '—', 'une revue vide n’affiche pas le tiret cadratin attendu');
+  assert.strictEqual(champ.textContent, '–', 'une revue vide n’affiche pas le demi-cadratin attendu');
 
   const page2 = ouvrirNumero();
   page2.envoyer({ type: 'valeurs', valeurs: { revue: 'quelquechose-hors-liste', title: 'Un dossier' } });
   const champ2 = conteneurNumero(page2).querySelectorAll('[data-cle="revue"]')[0];
-  assert.strictEqual(champ2.textContent, '—',
-    'une revue hors liste n’affiche pas le tiret cadratin attendu');
+  assert.strictEqual(champ2.textContent, '–',
+    'une revue hors liste n’affiche pas le demi-cadratin attendu');
 });
 
 // ---- Le contrôle qui compte : le formulaire ne renvoie plus jamais le jeton ----

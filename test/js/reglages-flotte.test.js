@@ -27,6 +27,7 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const COCKPIT = path.join(RACINE, 'vscodium-extension', 'szh-cockpit');
 const lire = (...p) => fs.readFileSync(path.join(RACINE, ...p), 'utf8');
 const flotte = require(path.join(COCKPIT, 'lib', 'reglages-flotte.js'));
+const { revueDEssai, activerHote, demarrageSeTait } = require('./hote-factice');
 
 const GABARIT = flotte.analyserJsonc(lire('vscodium-user', 'settings.json'));
 const PKG = JSON.parse(lire('vscodium-extension', 'szh-cockpit', 'package.json'));
@@ -124,6 +125,36 @@ test('le cockpit ne repose les réglages que si la valeur voulue a changé', () 
   // Les surcharges par langue sont hors sonde : le point d'extension les accepte toujours.
   assert.match(src, /function clesMesurables/, 'les surcharges par langue ne sont plus écartées');
 });
+
+// ---- L'effet réel, pas seulement la source relue ----
+//
+// Le test précédent ne relit que la SOURCE de poserReglagesMaison() (des motifs de code) ;
+// son EXÉCUTION réelle — un poste jamais démarré, globalState neuf — n'est vérifiée nulle
+// part dans le dépôt, ni ici ni dans hote.test.js : le comportement tourne à chaque
+// activation de toute la suite, sans que rien ne relise son effet. Sonde : vider la boucle
+// `for (const cle of aPoser)` dans extension.js — reste vert partout ailleurs, en silence.
+test('poserReglagesMaison écrit vraiment au moins un défaut, à l’activation d’un poste neuf',
+  async () => {
+    const REVUE = revueDEssai();
+    // Une seule activation par processus (hote-factice.js) : ce fichier n'en fait qu'une.
+    const HOTE = activerHote(REVUE);
+    await demarrageSeTait(HOTE);
+
+    // Une clé « mesurable » du gabarit (poserReglagesMaison écarte les surcharges par
+    // langue, « [markdown] » etc. — clesMesurables, extension.js) : n'importe laquelle
+    // suffit, l'hôte factice ne posant aucun défaut effectif (inspect().defaultValue est
+    // toujours undefined), donc TOUTES les clés du gabarit sont « refusées » et à poser.
+    const mesurable = Object.keys(GABARIT).find((cle) => !/^\[.+\]$/.test(cle));
+    assert.ok(mesurable, 'le gabarit ne porte aucune clé mesurable pour ce test');
+
+    const cfg = HOTE.stub.workspace.getConfiguration();
+    const posee = cfg.get(mesurable);
+    assert.notStrictEqual(posee, undefined,
+      'poserReglagesMaison() n’a rien écrit pour « ' + mesurable + ' » : sur un poste neuf, '
+      + 'la garde d’empreinte ne doit encore rien avoir bloqué');
+    assert.deepStrictEqual(posee, GABARIT[mesurable],
+      'la valeur posée pour « ' + mesurable + ' » ne correspond pas au gabarit');
+  });
 
 // ---- La mise à jour du poste ----
 
