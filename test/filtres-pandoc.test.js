@@ -507,6 +507,60 @@ test('entete-condensee : "false" citée (comme l’écrit le cockpit) -> reste f
     'est_vrai — c’est exactement le cas que ce garde-fou existe pour attraper — ' + r.stdout);
 });
 
+// ── szh-legendes.lua : les blocs `Figure` du lecteur docx ───────────────────────
+//
+// Quand la légende Word porte le style de légende, le lecteur docx ne rend pas deux
+// paragraphes voisins mais UN bloc `Figure` : légende dans le bloc, alt de l’auteur dans
+// la description de l’image. Le writer markdown ne sait écrire cela en `![…](…)` que si
+// les deux sont identiques — sinon il écrit du HTML brut dans le .md, sans un mot.
+//
+// ⚠ L’ENTRÉE EST DU `native`, PAS DU MARKDOWN. C’est la seule façon de reproduire ce que
+//   le lecteur docx produit vraiment : un markdown écrit à la main donnerait une Figure
+//   dont la légende ÉGALE la description, c’est-à-dire justement le cas qui marche.
+//
+// ⚠ LES ASSERTIONS NE REGARDENT PAS UNE BALISE. pandoc 3.9 écrit déjà du markdown ici
+//   quand 3.5 écrit du HTML : un contrôle écrit sur « il y a une <figure> sans le filtre »
+//   passerait en CI (3.5) et tomberait sur un poste de développement (3.9). Ce qu’on
+//   vérifie, c’est le CONTRAT de sortie, le même aux deux versions.
+const FIGURE_DOCX =
+  '[ Figure ("",[],[]) (Caption Nothing [Para [Str "Figure",Space,Str "1",Space,Str ":",'
+  + 'Space,Str "Niveaux"]]) [Plain [Image ("",[],[("width","6.2in")]) '
+  + '[Str "Un",Space,Str "schéma",SoftBreak,Str "décrit",Space,Str "ici."] '
+  + '("media/a.png","")]] ]';
+
+test('legendes : une Figure du lecteur docx sort en markdown, jamais en HTML brut', () => {
+  const r = pandoc(FIGURE_DOCX, { de: 'native', filtres: ['szh-legendes.lua'] });
+  assert.ok(!/<figure|<img/.test(r),
+    'la conversion laisse du HTML brut dans le .md : le rédacteur ne peut plus y toucher '
+    + 'et rien ne sera numéroté à la compilation — ' + r);
+  assert.match(r, /^!\[/m, 'aucune image en syntaxe markdown : ' + r);
+});
+
+test('legendes : la légende de la Figure devient la description de l’image, sans son numéro', () => {
+  const r = pandoc(FIGURE_DOCX, { de: 'native', filtres: ['szh-legendes.lua'] });
+  assert.match(r, /!\[Niveaux\]/,
+    'le numéro manuel du Word reste collé à la légende ; szh-numerotation.lua en reposera '
+    + 'un second à la compilation — ' + r);
+});
+
+test('legendes : l’alt Word d’une Figure passe en {alt="…"}, sur une seule ligne', () => {
+  const r = pandoc(FIGURE_DOCX, { de: 'native', filtres: ['szh-legendes.lua'] });
+  assert.match(r, /alt="Un schéma décrit ici\."/,
+    'la description de l’auteur est perdue, ou elle garde le saut de ligne que Word y met '
+    + '— un attribut n’en admet pas : ' + r);
+});
+
+test('legendes : une Figure irréductible (deux images) est laissée telle quelle', () => {
+  const deux =
+    '[ Figure ("",[],[]) (Caption Nothing [Para [Str "Lég"]]) [Plain ['
+    + 'Image ("",[],[]) [Str "a"] ("a.png",""), Space, '
+    + 'Image ("",[],[]) [Str "b"] ("b.png","")]] ]';
+  const r = pandoc(deux, { de: 'native', filtres: ['szh-legendes.lua'] });
+  assert.match(r, /a\.png/, 'la première image a disparu : ' + r);
+  assert.match(r, /b\.png/, 'la seconde image a disparu — mieux vaut ne rien toucher '
+    + 'que d’en perdre une : ' + r);
+});
+
 // ── szh-numerotation.lua : sa propre langue_fiche()/langue_de(), même ordre de priorité.
 // Sortie observée : le libellé qu'il pose devant une légende de figure — « Figure » ou
 // « Abbildung ».

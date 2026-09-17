@@ -34,6 +34,7 @@
 #                      Word en classe — « Titre 2 (small) » — et pandoc ne sait pas relire
 #                      une parenthèse dans un nom de classe : le bloc d'attributs entier
 #                      s'imprimerait alors dans le livre)
+#   4bis. garde-fou : aucun bloc HTML brut ne doit rester dans le .md (voir plus bas).
 #   5. import-medias.py : les photos du tableau des auteurs quittent media/ pour
 #      portraits/ et passent au détourage ; les images que ni le .md ni tables/*.html ne
 #      citent sont supprimées (Word livre aussi les logos et filigranes du document).
@@ -129,6 +130,21 @@ pandoc "$DOCX_ABS" \
 
 # Pas de tableau dans ce docx : ne pas laisser un tables/ vide.
 rmdir tables 2>/dev/null || true
+
+# Garde-fou : aucun bloc HTML brut ne doit rester dans le .md.
+#
+# Le writer markdown ne renonce pas bruyamment. Quand un bloc ne s'exprime pas dans sa
+# syntaxe — une Figure dont la légende diffère de la description de l'image, par exemple —
+# il écrit du HTML brut au milieu du .md et n'avertit de rien. Le rédacteur hérite alors
+# d'un article qu'il ne peut plus modifier dans l'éditeur, et les filtres de compilation
+# ne reconnaissent pas ce qu'ils doivent numéroter. Le cas connu (Figure venue d'une
+# légende stylée) est traité par szh-legendes.lua ; ce contrôle est là pour le SUIVANT,
+# celui qu'on n'a pas vu venir. Non bloquant : l'article est importé, mais il est dit.
+BRUT="$(grep -c -E '^<(figure|img|table|div)[ />]' "$SLUG.md" 2>/dev/null || true)"
+if [ "${BRUT:-0}" -gt 0 ]; then
+  signaler "[import] ⚠ « $SLUG » contient $BRUT bloc(s) HTML que la conversion n'a pas su écrire en markdown : ces passages ne seront ni modifiables dans l'éditeur ni numérotés à la compilation. Signalez ce document à la maintenance. [de] « $SLUG » enthält $BRUT HTML-Block/Blöcke, die die Konvertierung nicht in Markdown schreiben konnte: diese Stellen sind weder im Editor bearbeitbar noch werden sie beim Kompilieren nummeriert. Melden Sie dieses Dokument der Wartung."
+fi
+
 
 # Les médias vivent à un seul niveau (media/). --extract-media=. produit déjà media/
 # simple (pandoc 3.5) ; cette normalisation idempotente est une ceinture de sécurité.
