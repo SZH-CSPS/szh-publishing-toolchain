@@ -21,7 +21,7 @@ plus si l'on veut que le gabarit serve un jour.
 | `test/js/pronto-lire.test.js` | les contrôles du lecteur |
 | `test/js/pronto-gabarits.test.js` | la parité `.docx` / `.odt` sur les gabarits livrés |
 | `revue-template/Pronto - modele d'article.docx` et `.odt` | les deux gabarits |
-| `tmp/banc-pronto/` | 20 articles réels remis en page, hors git |
+| ~~`tmp/banc-pronto/`~~ | 20 articles réels remis en page — **effacé** au nettoyage du 17.09.2026 |
 
 Le lecteur produit **exactement le contrat de `docx-meta.py`** : `<slug>.meta.yaml` (jamais
 écrasé), les lignes `$SZH_META`, `$SZH_PHOTOS`, et une ligne JSON de stats. C'est ce qui rend le
@@ -135,6 +135,12 @@ aller-retour. Cela prouve que le gabarit, les deux lecteurs et la conversion Lib
 corrompent rien** (401 champs, 43 auteurs, zéro perte). Cela ne dit **rien** de ce qu'une autrice
 saura remplir à la main. Seul un vrai document rempli par une vraie personne le dira.
 
+**Le banc a été effacé le 17.09.2026** avec tout `tmp/`. Le refaire ne coûte rien : les articles
+sources sont sur le partage, `Daten_Allgemein - General\2_Produkte\52_Revue\RV02_Redaction\` et
+`…\53_Zeitschrift\`, et le principe tient en trois pas — choisir des articles d'au moins quatre
+pages, remplir le gabarit depuis leur fiche `.meta.yaml`, relire avec `pronto-lire.py`. Mais
+mieux vaut un seul document rempli à la main qu'un nouveau banc circulaire.
+
 **Le chemin image du lecteur `.odt` n'est éprouvé par aucun contrôle versionné.** Il a été exercé
 par le banc (33 images portées et retrouvées) mais aucun gabarit ne porte d'image, donc rien ne
 garde cette route. **Le contrat `$SZH_PHOTOS` avec `import-medias.py` n'a jamais été vérifié pour
@@ -173,4 +179,4 @@ vaut aussi pour les articles hérités.
 
 ---
 
-*Dernière mise à jour : 16.09.2026, fin de la session où le lecteur a été écrit. À reprendre chaque fois qu'une de ces lignes bouge.*
+*Dernière mise à jour : 17.09.2026, après le nettoyage de `tmp/`. À reprendre chaque fois qu'une de ces lignes bouge.*
