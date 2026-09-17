@@ -6,21 +6,25 @@
 // et par sauterSiPliageCasse (filtres-pandoc.test.js — filtres-import.test.js suit le
 // même patron mais n'a AUCUNE garde : si pandoc manque, ses tests échouent au lieu de
 // sauter, donc rien à y compter ; il est lu quand même pour les motifs résiduels).
-// Sert la CI (.github/workflows/ci.yml, lot 6) à comparer le
-// « # skipped » d'un run TAP réel au nombre ATTENDU sur un runner donné, À L'ÉGALITÉ —
-// pour qu'une garde qui cesse de sauter (régression) ou se met à sauter en plus (outil
-// disparu du runner) se voie tout de suite, au lieu de se perdre dans un plancher
-// approximatif (l'ancien « >= 950 » de ci.yml, posé ~725 tests sous la réalité mesurée :
-// voir revue-E.json, constat 1).
 //
-//   node test/js/compter-gardes.js                  -> JSON sur stdout
-//   node test/js/compter-gardes.js --attendu ubuntu  -> un entier (skips attendus)
-//   node test/js/compter-gardes.js --attendu windows
-//   node test/js/compter-gardes.js --attendu poste
+// PUREMENT INDICATIF — plus un plancher, plus une référence à l'égalité. La CI
+// (.github/workflows/ci.yml) l'appelle et affiche son JSON dans le journal pour donner
+// une idée de ce qui est gardé DÉCLARATIVEMENT (`{ skip: … }` en option de test()), mais
+// la porte qui fait vraiment échouer un job relit le TAP réel ligne à ligne et vérifie
+// que chaque `# SKIP` cite un motif reconnu pour CE runner (voir ci.yml, step « motifs
+// des tests sautés ») — pas ce script. Cette porte-là voit tout ce qui saute pour de
+// vrai, y compris ce que ce compteur ne voit pas (section suivante). Elle remplace une
+// ancienne comparaison à l'égalité stricte entre `# skipped` et un entier « attendu »
+// que rendait ce script (option --attendu <runner>, retirée) : cette égalité supposait
+// à tort que seules des gardes déclaratives existaient, alors que huit fichiers sautent
+// en réalité par `t.skip()` AU CORPS du test (invisibles pour ce script — voir plus bas)
+// et que le comptage mélangeait par endroits des fichiers hors du glob réellement lancé
+// par un job donné (filtres-pandoc.test.js n'entre pas dans test/js/*.test.js).
 //
-// Les motifs résiduels (voir plus bas) sont toujours imprimés sur STDERR, jamais sur
-// stdout : un `attendu="$(node compter-gardes.js --attendu ubuntu)"` en CI doit pouvoir
-// lire un entier seul, sans avoir à le trier d'un journal.
+//   node test/js/compter-gardes.js   -> JSON sur stdout, motifs résiduels sur stderr
+//
+// (compterTout() et listerMotifsResiduels() restent exportés pour qui voudrait rejouer
+// l'analyse statique ailleurs ; rien ne compare plus leur résultat à un total mesuré.)
 //
 // ============================================================================
 // CE QUE CE COMPTEUR NE VOIT PAS (à lire avant de lui faire confiance)
@@ -35,25 +39,20 @@
 //      la famille WSL/pandoc locale (ancrages, biblio, date-numero, fleche-retour,
 //      journal-codes, lire-config, metafichier, reimport, reimport-biblio,
 //      import-numerotation-titres — pas encore migrés vers `{ skip: sansPandocWsl }`,
-//      lot 8) et des 8 `if (!PYTHON) { return; }` de szh-commun.test.js (lot 3). Cette
-//      famille est listée par --motifs-residuels (voir listerMotifsResiduels ci-dessous)
-//      mais N'EST PAS comptée dans le total : la compter reviendrait à deviner, au
-//      moment de l'analyse statique, si l'outil qu'elle teste sera présent ou non sur le
-//      runner qui exécutera le test — exactement ce que gardes.js sait faire et que ce
-//      script ne réimplémente pas.
+//      17.09.2026) et des 8 `if (!PYTHON) { return; }` de szh-commun.test.js. Cette
+//      famille est listée par listerMotifsResiduels() ci-dessous mais N'EST PAS comptée
+//      dans le total : la compter reviendrait à deviner, au moment de l'analyse
+//      statique, si l'outil qu'elle teste sera présent ou non sur le runner qui
+//      exécutera le test — exactement ce que gardes.js sait faire et que ce script ne
+//      réimplémente pas.
 //   2. Un `t.skip()` appelé au corps d'un test pour une raison qui n'est NI PowerShell,
 //      ni Python, ni WSL/pandoc, ni le pliage des accents — par exemple
-//      biblio.test.js:512, sauté quand `tmp/corpus-ojs` (750 Mo, hors dépôt) est absent.
-//      Repéré et compté à part (voir AUTRES_CONNUS plus bas) parce qu'il est trivial à
-//      évaluer sans deviner (une existence de dossier), mais tout NOUVEAU t.skip() de ce
-//      genre échappera au compteur tant qu'il n'aura pas été ajouté ici à la main.
-//
-// Conclusion, à ne pas oublier en lisant --attendu : ce compteur ne garantit l'égalité
-// que pour ce qui est passé par gardes.js (+ sauterSiPliageCasse, + les deux motifs
-// listés dans AUTRES_CONNUS). Tant que les lots 3 et 8 n'ont pas fini leur migration,
-// un écart entre --attendu et un run réel peut venir de là — raison de plus pour que la
-// CI l'affiche (histogramme des motifs SKIP) plutôt que de le cacher derrière un
-// plancher.
+//      biblio.test.js:499 (corpus `tmp/corpus-ojs`, 750 Mo, hors dépôt, absent),
+//      raccourcis.test.js:567 (ACL contournée par un compte élevé — le cas du runner CI
+//      Windows, qui tourne administrateur) ou courriel-support.test.js (VSCodium absent
+//      du runner). Ces sites sont listés par listerMotifsResiduels() (motif RE_T_SKIP)
+//      mais jamais devinés ni comptés : voir ci.yml pour la liste des motifs que la
+//      porte reconnaît vraiment, runner par runner.
 
 const fs = require('fs');
 const path = require('path');
@@ -67,7 +66,7 @@ const FICHIERS_TESTJS = fs.readdirSync(DOSSIER_TESTS)
   .map((n) => path.join('test', 'js', n));
 
 const FICHIER_PLIAGE = path.join('test', 'filtres-pandoc.test.js');
-// filtres-import.test.js (lot 5) : même patron, même emplacement hors test/js/, même
+// filtres-import.test.js : même patron, même emplacement hors test/js/, même
 // convention « aucun saut silencieux, si pandoc manque le test ÉCHOUE » — donc aucune
 // garde `{ skip: … }` à y compter, mais il tourne dans le même pas que filtres-pandoc
 // (job pdf-ua, ci.yml) et doit être lu par les motifs résiduels comme le reste.
@@ -157,7 +156,7 @@ function compterTout() {
 
 // Grep, pas d'exécution : liste ce que le compte ci-dessus NE voit pas, pour que la CI
 // l'affiche plutôt que de laisser croire à une couverture totale. Deux motifs, cités
-// littéralement par le lot 6 : une garde au corps du test (`if (!X) { return; }` près
+// littéralement, un temps, par la CI : une garde au corps du test (`if (!X) { return; }` près
 // d'une détection d'outil), et un `t.skip(` appelé hors de sauterSiPliageCasse.
 const RE_RETURN_GARDE = /if\s*\(\s*!\w+\s*\)\s*\{\s*return;?\s*\}/g;
 const RE_RETURN_SAUTER = /return\s+sauter\w*\(/g;
@@ -184,100 +183,14 @@ function listerMotifsResiduels() {
   return lignes;
 }
 
-// --------------------------------------------------------- « autres » gardes connues
-//
-// Deux motifs hors du système gardes.js, mais suffisamment stables et documentés pour
-// être évalués sans deviner (voir la note de tête). Ni l'un ni l'autre ne relève d'un
-// lot en cours (rapport-erreur.test.js et biblio.test.js n'appartiennent à aucun des
-// lots 3/8) : les compter ici ne se périmera pas au fil des migrations en cours.
-
-// rapport-erreur.test.js : `{ skip: HORS_WINDOWS }`, HORS_WINDOWS = process.platform
-// !== 'win32'. Ces sites sont déjà classés dans `autres` par compterTout() (aucune des
-// 4 gardes de gardes.js n'y correspond) ; attendu() les reconnaît par leur expression
-// littérale (voir la boucle plus bas) plutôt que de les recompter ici séparément.
-
-function corpusOjsAbsent() {
-  // biblio.test.js:509-512 : `if (!fs.existsSync(CORPUS)) { return t.skip(...); }` où
-  // CORPUS = tmp/corpus-ojs (750 Mo, gitignored, jamais dans un checkout CI). Une seule
-  // vérification d'existence, pas une exécution : sûr à faire ici.
-  return !fs.existsSync(path.join(RACINE, 'tmp', 'corpus-ojs'));
-}
-
-// -------------------------------------------------------------------- --attendu <runner>
-
-// Disponibilité des outils par runner : reflète EXACTEMENT ce que ci.yml installe pour
-// les jobs contrats (ubuntu-latest) et contrats-windows (windows-latest) — ni l'un ni
-// l'autre n'installent pandoc ou une distro WSL ; seul contrats-windows a PowerShell
-// (le runner lui-même) ; python3 est présent de base sur ubuntu-latest (Ubuntu le
-// fournit), pas garanti sur windows-latest sans étape dédiée (aucune ici). `poste`
-// reflète un poste de développement complet : mesuré le 17.09.2026 sur CE poste
-// (PowerShell, WSL SZH-Publishing, pandoc et python3 tous présents).
-const RUNNERS = {
-  ubuntu: {
-    inclutPliage: false, // job `contrats` : test/js/*.test.js seulement
-    powershell: false, python: true, wsl: false, pandoc: false,
-    plateforme: 'linux',
-  },
-  windows: {
-    inclutPliage: false, // job `contrats-windows` : test/js/*.test.js seulement
-    powershell: true, python: false, wsl: false, pandoc: false,
-    plateforme: 'win32',
-  },
-  poste: {
-    // Vérification locale (lot 6) : test/js/*.test.js ET test/filtres-pandoc.test.js.
-    inclutPliage: true,
-    powershell: true, python: true, wsl: true, pandoc: true,
-    plateforme: process.platform,
-    // Le pliage des accents dépend du BUILD pandoc, pas seulement de sa présence (voir
-    // filtres-pandoc.test.js, pliageCasse()) : mesuré CASSÉ sur ce poste le 17.09.2026.
-    // À revoir si le pandoc du poste change — ce script ne relance pas pandoc pour le
-    // vérifier lui-même, ce serait dupliquer sauterSiPliageCasse plutôt que le lire.
-    pliageCasseSurCePoste: true,
-  },
-};
-
-function attendu(nomRunner) {
-  const r = RUNNERS[nomRunner];
-  if (!r) {
-    throw new Error('runner inconnu : ' + nomRunner + ' (ubuntu, windows, poste)');
-  }
-  const { total, autres } = compterTout();
-  let n = 0;
-  if (!r.powershell) { n += total.powershell; }
-  if (!r.python) { n += total.python; }
-  if (!r.wsl) { n += total.wsl; }
-  if (!r.pandoc) { n += total.pandoc; }
-  if (r.inclutPliage && r.pliageCasseSurCePoste) { n += total.pliage; }
-  // « autres » : chaque site classé par fichier/expression, évalué un par un plutôt que
-  // par catégorie globale — HORS_WINDOWS ne concerne qu'un fichier, pas tout `autres`.
-  for (const a of autres) {
-    if (/HORS_WINDOWS/.test(a.expr)) {
-      if (r.plateforme !== 'win32') { n += 1; }
-    } else {
-      // Expression non reconnue AILLEURS que rapport-erreur.test.js : on ne sait pas la
-      // trancher, elle reste listée (stderr) mais n'entre pas dans --attendu — mieux
-      // vaut un chiffre légèrement bas et expliqué qu'un chiffre inventé.
-    }
-  }
-  if (corpusOjsAbsent()) { n += 1; } // biblio.test.js : identique sur les trois runners
-  return n;
-}
-
 // -------------------------------------------------------------------------------- main
 
-function main(argv) {
+function main() {
   const motifs = listerMotifsResiduels();
   if (motifs.length) {
     console.error('--- motifs résiduels (abstentions hors gardes.js, non comptés) ---');
     for (const l of motifs) { console.error('  ' + l); }
     console.error('(' + motifs.length + ' ligne(s) — voir l’en-tête de compter-gardes.js)');
-  }
-
-  const ideeAttendu = argv.indexOf('--attendu');
-  if (ideeAttendu !== -1) {
-    const runner = argv[ideeAttendu + 1];
-    console.log(String(attendu(runner)));
-    return 0;
   }
 
   const { total, autres } = compterTout();
@@ -295,12 +208,13 @@ function main(argv) {
     pandoc: total.pandoc,
     pliage: total.pliage,
     total: totalGeneral,
+    indicatif: true,
   }));
   return 0;
 }
 
 if (require.main === module) {
-  process.exit(main(process.argv.slice(2)));
+  process.exit(main());
 }
 
-module.exports = { compterTout, attendu, listerMotifsResiduels };
+module.exports = { compterTout, listerMotifsResiduels };

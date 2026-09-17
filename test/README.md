@@ -252,10 +252,20 @@ Sa section « Polices » appelle, dans l'ordre, `polices-check.py`, puis
 écrit d'elle-même sont-ils toujours dans les faces livrées) et `metriques-titre.py
 --verifier` (la table de largeurs de `szh-titre-lignes.lua` correspond-elle encore à la
 police du titre) — les deux `--verifier` existaient sans être appelés par rien
-d'automatique avant le lot 6. `metriques-titre.py` n'a besoin que de `python3` (pas de
+d'automatique avant le 17 septembre 2026. `metriques-titre.py` n'a besoin que de `python3` (pas de
 fontTools), les deux autres du même interprète que `figures-check.py`.
 
-Depuis le lot 6, `.github/workflows/ci.yml` (job `pdf-ua`) rejoue une partie de
+Les jobs `contrats` et `contrats-windows` de `ci.yml` ne jugent plus la suite Node sur un
+plancher de tests réussis : `test/js/verifier-tap.js` relit le TAP du run et exige `# fail`
+et `# cancelled` à zéro, moins de la moitié des tests sautés, et pour chaque `# SKIP` un
+motif admis sur ce runner (PowerShell absent sur ubuntu, WSL ou pandoc absents partout,
+corpus hors dépôt…) — un saut sans motif ou pour une raison inconnue fait échouer le job.
+`test/js/gardes.js` centralise ces motifs, et `SZH_PS_OBLIGATOIRE`, `SZH_PYTHON_OBLIGATOIRE`,
+`SZH_PANDOC_OBLIGATOIRE`, `SZH_WSL_OBLIGATOIRE` transforment un saut en échec là où l'outil
+est dû (sur ce poste : les quatre à la fois, avant un tag). `compter-gardes.js` compte les
+gardes déclaratives à titre indicatif.
+
+Depuis le 17 septembre 2026, `.github/workflows/ci.yml` (job `pdf-ua`) rejoue une partie de
 `build-render.sh` à chaque push/PR — pas le script en entier (il reconstruirait deux
 fois le même banc), mais ses briques qui tiennent sans rendu PNG : les figures du banc,
 le corpus `accessibilite/` (sa porte `verifier-numerotation` DOIT échouer, voir sa note

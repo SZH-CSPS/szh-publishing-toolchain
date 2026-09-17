@@ -56,27 +56,16 @@ jobs:
       # Le code de sortie de `node --test` (pipefail ci-dessus) est la première porte :
       # un process non nul fait déjà échouer ce step. Ce qui suit vérifie que le DÉTAIL
       # du TAP dit la même chose — un ancien plancher `# pass >= N` aurait laissé passer
-      # la disparition silencieuse de centaines de tests (revue-E.json, constat 1) ; une
-      # égalité stricte sur `# skipped` ne le peut pas. `# cancelled` est vérifié à part
-      # de `# fail` : un blocage coupé par --test-timeout ne lève JAMAIS `# fail`
-      # (REVUE-ADVERSE-PLAN.md, risque « --test-timeout »).
-      - name: Vérifier fail, cancelled et le compte de tests sautés
+      # la disparition silencieuse de centaines de tests. test/js/verifier-tap.js relit le
+      # TAP ligne à ligne : `# fail` et `# cancelled` à 0 (un blocage coupé par
+      # --test-timeout ne lève JAMAIS `# fail`), et chaque `# SKIP` doit citer un motif
+      # admis sur ubuntu (PowerShell, WSL ou pandoc absents, chemins Windows, corpus hors
+      # dépôt) — tout autre saut, ou un saut sans motif, fait échouer. compter-gardes.js
+      # n'est plus qu'indicatif : il ne voit pas les t.skip() posés au corps des tests.
+      - name: Vérifier fail, cancelled et les motifs des tests sautés
         run: |
-          fail="$(grep -E '^# fail [0-9]+$' contrats.tap | tail -n1 | grep -oE '[0-9]+')"
-          cancelled="$(grep -E '^# cancelled [0-9]+$' contrats.tap | tail -n1 | grep -oE '[0-9]+')"
-          skipped="$(grep -E '^# skipped [0-9]+$' contrats.tap | tail -n1 | grep -oE '[0-9]+')"
-          attendu="$(node test/js/compter-gardes.js --attendu ubuntu)"
-          echo "fail=${fail:-?}  cancelled=${cancelled:-?}  skipped=${skipped:-?} (attendu $attendu)"
-          echo "--- histogramme des motifs de skip ---"
-          grep '# SKIP' contrats.tap | sed -E 's/^.*# SKIP ?//' | sort | uniq -c | sort -rn
-          erreur=0
-          [ "${fail:-1}" = "0" ] || { echo "::error::$fail test(s) en échec"; erreur=1; }
-          [ "${cancelled:-1}" = "0" ] || { echo "::error::$cancelled test(s) annulé(s) par --test-timeout (un blocage, pas un échec ordinaire)"; erreur=1; }
-          if [ "$skipped" != "$attendu" ]; then
-            echo "::error::$skipped test(s) sauté(s), $attendu attendu(s) pour ubuntu (compter-gardes.js --attendu ubuntu) — outil apparu/disparu, ou garde changée"
-            erreur=1
-          fi
-          exit $erreur
+          echo "gardes déclaratives (indicatif) : $(node test/js/compter-gardes.js 2>/dev/null)"
+          node test/js/verifier-tap.js contrats.tap --runner ubuntu
 
       # Les deux contrôles qui ne demandent que la bibliothèque standard. Ils vivaient
       # hors de la CI, et ne tournaient donc que quand quelqu'un y pensait : le chantier
@@ -138,33 +127,20 @@ jobs:
             --test-reporter-destination=stdout test/js/*.test.js | tee contrats-windows.tap
 
       # Remplace l'ancien plancher `# pass >= 950` (estimé, jamais mesuré — posé ~725
-      # tests sous la réalité mesurée un jour : revue-E.json, constat 1 ; le commentaire
+      # tests sous la réalité mesurée un jour ; le commentaire
       # « 1018 tests, 1018 pass, 0 sauté » qui le justifiait a été retiré avec lui). Un
       # powershell.exe devenu introuvable sur le runner (image GitHub changée, PATH
       # modifié) ferait ÉCHOUER les tests PowerShell sous SZH_PS_OBLIGATOIRE=1 — la
       # porte est déjà tenue par le step précédent (pipefail). Ce qui suit vérifie, comme
       # côté ubuntu, que le DÉTAIL du TAP dit la même chose qu'un vert par défaut ne
-      # garantit pas : `# cancelled` à part de `# fail` (un blocage coupé par
-      # --test-timeout ne lève jamais `# fail`), et `# skipped` à l'égalité stricte
-      # contre compter-gardes.js --attendu windows plutôt qu'un seuil approximatif.
-      - name: Vérifier fail, cancelled et le compte de tests sautés
+      # garantit pas : `# cancelled` à part de `# fail`, et chaque `# SKIP` porteur d'un
+      # motif admis sur windows-latest (WSL ou pandoc absents, corpus hors dépôt, processus
+      # élevé du runner) — PowerShell y est exigé, un saut PowerShell est donc un échec.
+      - name: Vérifier fail, cancelled et les motifs des tests sautés
         shell: bash
         run: |
-          fail="$(grep -E '^# fail [0-9]+$' contrats-windows.tap | tail -n1 | grep -oE '[0-9]+')"
-          cancelled="$(grep -E '^# cancelled [0-9]+$' contrats-windows.tap | tail -n1 | grep -oE '[0-9]+')"
-          skipped="$(grep -E '^# skipped [0-9]+$' contrats-windows.tap | tail -n1 | grep -oE '[0-9]+')"
-          attendu="$(node test/js/compter-gardes.js --attendu windows)"
-          echo "fail=${fail:-?}  cancelled=${cancelled:-?}  skipped=${skipped:-?} (attendu $attendu)"
-          echo "--- histogramme des motifs de skip ---"
-          grep '# SKIP' contrats-windows.tap | sed -E 's/^.*# SKIP ?//' | sort | uniq -c | sort -rn
-          erreur=0
-          [ "${fail:-1}" = "0" ] || { echo "::error::$fail test(s) en échec"; erreur=1; }
-          [ "${cancelled:-1}" = "0" ] || { echo "::error::$cancelled test(s) annulé(s) par --test-timeout (un blocage, pas un échec ordinaire)"; erreur=1; }
-          if [ "$skipped" != "$attendu" ]; then
-            echo "::error::$skipped test(s) sauté(s), $attendu attendu(s) pour windows (compter-gardes.js --attendu windows) — outil apparu/disparu, ou garde changée"
-            erreur=1
-          fi
-          exit $erreur
+          echo "gardes déclaratives (indicatif) : $(node test/js/compter-gardes.js 2>/dev/null)"
+          node test/js/verifier-tap.js contrats-windows.tap --runner windows
 
   pdf-ua:
     # Version du runner épinglée : les noms de paquets apt ci-dessous (libffi8) sont liés
@@ -309,10 +285,9 @@ jobs:
         working-directory: test
         run: make -f "$GITHUB_WORKSPACE/pipeline/Makefile" verifier-ua
 
-      # Portes de test/build-render.sh ajoutées ici (lot 6) : avant cela, elles ne
-      # tournaient que si quelqu'un pensait à lancer ce script à la main depuis WSL
-      # (revue-E.json : « ces six contrôles ne tournent QUE si un humain lance bash
-      # test/build-render.sh »). « Ses briques une à une », pas le script entier : il
+      # Portes de test/build-render.sh ajoutées ici le 17.09.2026 : avant cela, elles ne
+      # tournaient que si quelqu'un pensait à lancer ce script à la main depuis WSL.
+      # « Ses briques une à une », pas le script entier : il
       # reconstruit tout le banc par slug (rm -rf puis make) avant de vérifier les
       # figures, ce qui doublerait le build que l'étape précédente vient de faire, et sa
       # section livres double « Compiler et valider les livres du banc » plus bas. On ne
@@ -342,7 +317,7 @@ jobs:
       # La paire fr/de du corpus diverge exprès d'une légende de figure :
       # verifier-numerotation DOIT donc échouer ici. S'il réussit (exit 0), la
       # comparaison ne compare plus rien — « un contrôle qui ne peut plus échouer est un
-      # contrôle mort » (revue-E.json, même constat).
+      # contrôle mort ».
       - name: Vérifier que l’écart de numérotation du corpus est bien détecté
         working-directory: test/accessibilite
         run: |
@@ -362,8 +337,8 @@ jobs:
         working-directory: test
         run: PYTHONIOENCODING=utf-8 "$RUNNER_TEMP/weasyprint/bin/python" polices-check.py out accessibilite/out
 
-      # Les deux `--verifier` documentés mais appelés par personne avant ce lot
-      # (revue-E.json) : une réinstanciation de la police variable qui perdrait un des
+      # Les deux `--verifier` documentés mais appelés par personne avant le 17.09.2026 :
+      # une réinstanciation de la police variable qui perdrait un des
       # six glyphes suisses, ou une face de titre qui changerait de métrique (effet
       # d'escalier L3), ne serait vue par rien d'automatique sans eux.
       - name: Vérifier les glyphes manquants des faces livrées
