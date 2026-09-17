@@ -510,6 +510,6 @@ window.addEventListener('message',function(ev){var msg=ev.data||{};
   else if(msg.type===SZH.MSG.ENREGISTRE){autoEnr.confirme();modeleEnregistre=enrEnCours||clone(modele);
     etat(msg.auto?'':(TXT.enregistre||''));majModifie();}
   else if(msg.type===SZH.MSG.ERREUR){autoEnr.confirme();etat('⚠ '+msg.message);}
-  else{console.warn('table-editor : type de message inconnu', msg.type);}});
+  else{console.warn('table-editor : type de message inconnu', msg.type);}});
 SZH.annoncerPret(api,function(){return recu;});
 })();

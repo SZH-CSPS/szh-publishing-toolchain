@@ -37,12 +37,20 @@ function chargerGabarit(nom, langue) {
 // sujet est débarrassé de ses blancs de bord, le corps perd exactement un retour à la
 // ligne après l'ouverture du bloc `corps` et un avant sa fermeture — le gabarit les porte
 // pour rester lisible en édition, ce ne sont pas des blancs du message.
+//
+// Exportée pour que qui compare un AUTRE moteur (le Get-SzhCourriel PowerShell, qui rejoue
+// lib/gabarits.js via VSCodium-en-Node — voir test/js/courriel-support.test.js) applique la
+// même règle sans la recopier une troisième fois : PowerShell, lui, ne peut pas la require,
+// mais le test JS le peut.
+function normaliserRenduCourriel(blocs) {
+  const sujet = String((blocs && blocs.sujet) || '').trim();
+  const corps = String((blocs && blocs.corps) || '').replace(/^\n/, '').replace(/\n$/, '');
+  return { sujet, corps };
+}
+
 function rendreCourriel(nom, langue, variables) {
   const compile = chargerGabarit(nom, String(langue || 'fr'));
-  const blocs = compile.rendre(variables || {});
-  const sujet = String(blocs.sujet || '').trim();
-  const corps = String(blocs.corps || '').replace(/^\n/, '').replace(/\n$/, '');
-  return { sujet, corps };
+  return normaliserRenduCourriel(compile.rendre(variables || {}));
 }
 
 // ---- Les quatre fabriques, déplacées depuis extension.js ------------------------------
@@ -96,6 +104,6 @@ function uriMailto(brouillon) {
 }
 
 module.exports = {
-  rendreCourriel, adressesAuteurs, brouillonAuteur, brouillonTraduction,
+  rendreCourriel, normaliserRenduCourriel, adressesAuteurs, brouillonAuteur, brouillonTraduction,
   LANGUE_MAIL_TRADUCTION, uriMailto
 };

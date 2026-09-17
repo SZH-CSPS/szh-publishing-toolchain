@@ -154,7 +154,8 @@ const {
   verrouillerSeulement, archiverEtVerrouiller, desarchiver, deverrouiller,
   oublierCopiesSignalees, avertirCopiesConflit, comparerConflit,
   SCHEME_CONFLIT, fournisseurContenuConflit, fournisseurDiffConflit,
-  cheminDepuisUriConflit, resoudreBlocConflit, supprimerCopieConflit, rafraichirConflitsScm
+  cheminDepuisUriConflit, fichierConflitVise, resoudreBlocConflit, supprimerCopieConflit,
+  rafraichirConflitsScm
 } = cycleVie;
 // Les rappels vers l'hôte que lib/cycle-vie.js ne peut pas connaître par require (voir son
 // en-tête) : posés une seule fois, ici. Toutes les fonctions visées sont des déclarations de

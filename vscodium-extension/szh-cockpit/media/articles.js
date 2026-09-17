@@ -382,7 +382,7 @@
       if (ctlEtat) { ctlEtat.textContent = msg.message || ''; }
       return;
     }
-    if (!traiteParNumero) { console.warn('articles : type de message inconnu', msg.type); }
+    if (!traiteParNumero) { console.warn('articles : type de message inconnu', msg.type); }
   });
   SZH.annoncerPret(api, function () { return recu; });
 })();

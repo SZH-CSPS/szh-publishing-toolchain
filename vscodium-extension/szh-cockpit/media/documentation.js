@@ -389,7 +389,7 @@ function champ(parent, c, cle, libelle, indice, multiligne, options, saisie) {
     i = document.createElement('select');
     var vide = document.createElement('option');
     vide.value = '';
-    vide.textContent = TXT.optionVide || '—';
+    vide.textContent = TXT.optionVide || '–';
     i.appendChild(vide);
     for (var k = 0; k < options.length; k++) {
       var o = document.createElement('option');
@@ -480,7 +480,7 @@ function majTitreBascule(c) {
   if (!c.ctl.libelle) { return; }
   if (c.famille === 'rubrique') { return; }        // son titre est celui de la rubrique
   var t = c.ctl.titre ? ligne(c.ctl.titre.value) : '';
-  if (t === '') { t = TXT.sansTitre || '—'; }
+  if (t === '') { t = TXT.sansTitre || '–'; }
   c.ctl.libelle.textContent = String(c.position || 1) + ' · ' + t;
 }
 
@@ -959,7 +959,7 @@ window.addEventListener('message', function (ev) {
     }
     return;
   }
-  console.warn('documentation : type de message inconnu', msg.type);
+  console.warn('documentation : type de message inconnu', msg.type);
 });
 SZH.annoncerPret(api, function () { return recu; });
 })();

@@ -643,6 +643,6 @@ module.exports = {
   fermerFenetreApresArchivage,
   oublierCopiesSignalees, avertirCopiesConflit, comparerConflit,
   SCHEME_CONFLIT, fournisseurContenuConflit, fournisseurDiffConflit,
-  cheminDepuisUriConflit, resoudreBlocConflit, supprimerCopieConflit, rafraichirConflitsScm,
-  majConflitsScm
+  cheminDepuisUriConflit, fichierConflitVise, resoudreBlocConflit, supprimerCopieConflit,
+  rafraichirConflitsScm, majConflitsScm
 };

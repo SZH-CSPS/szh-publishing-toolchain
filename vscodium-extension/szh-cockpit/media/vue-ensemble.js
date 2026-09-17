@@ -41,7 +41,7 @@
     recu = true;
     if (msg.type !== SZH.MSG.VALEURS) {
       if (msg.type === SZH.MSG.ETAT) { if (ctlEtat) { ctlEtat.textContent = msg.message || ''; } }
-      else { console.warn('vue d’ensemble : type de message inconnu', msg.type); }
+      else { console.warn('vue d’ensemble : type de message inconnu', msg.type); }
       return;
     }
     if (msg.i18n) { TXT = msg.i18n; }

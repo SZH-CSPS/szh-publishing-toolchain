@@ -233,7 +233,7 @@
       }
       return;
     }
-    console.warn('vérification de l’import : type de message inconnu', msg.type);
+    console.warn('vérification de l’import : type de message inconnu', msg.type);
   });
   SZH.annoncerPret(vscodeApi, function () { return recu; });
 })();

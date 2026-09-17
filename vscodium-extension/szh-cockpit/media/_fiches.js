@@ -351,7 +351,7 @@
       b.type = 'button';
       b.className = 'szh-sugg-trad';
       b.title = TXT.suggPastille || '';
-      b.setAttribute('aria-label', (TXT.suggPastille || '') + ' — ' + champ + ' ' + langue.toUpperCase());
+      b.setAttribute('aria-label', (TXT.suggPastille || '') + ' – ' + champ + ' ' + langue.toUpperCase());
       // Le code de langue en capitales, et non ICONES.traduction : ce dessin à trois tracés
       // est fait pour un bouton de barre, il tombe en bouillie à la taille d'un intitulé. Deux
       // capitales survivent à toute taille ET disent quelle langue la pastille vise — ce que le

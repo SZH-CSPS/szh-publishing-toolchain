@@ -1166,7 +1166,7 @@ window.addEventListener('message', function (ev) {
   }
   // Le composant partagé consomme les réponses photo-*.
   if (ctlAuteurs && ctlAuteurs.message(msg)) { return; }
-  console.warn('médias : type de message inconnu', msg.type);
+  console.warn('médias : type de message inconnu', msg.type);
 });
 SZH.annoncerPret(api, function () { return recu; });
 })();

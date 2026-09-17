@@ -137,7 +137,7 @@
       vscodeApi.postMessage({ type: SZH.MSG.RECHARGEMENT, articles: cartes.modifiees() });
       return;
     }
-    console.warn('métadonnées des articles : type de message inconnu', msg.type);
+    console.warn('métadonnées des articles : type de message inconnu', msg.type);
   });
   SZH.annoncerPret(vscodeApi, function () { return recu; });
 })();

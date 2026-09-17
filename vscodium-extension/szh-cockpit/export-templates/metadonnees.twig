@@ -25,22 +25,22 @@
    rapports[].oaiSansLocal[].doi
    rapports[].oaiSansLocal[].titre
 #}
-{% block contenu %}Comparaison métadonnées locales / OJS — {{ dateComparaison }}
+{% block contenu %}Comparaison métadonnées locales / OJS – {{ dateComparaison }}
 {% for rapport in rapports %}
-=== {{ rapport.cle }} — {{ rapport.titreLocal }} ===
-{% if not rapport.trouveDansOai %}  Aucun numéro OJS correspondant n'a été moissonné pour cette clé.
+=== {{ rapport.cle }} – {{ rapport.titreLocal }} ===
+{% if not rapport.trouveDansOai %}  Aucun numéro OJS correspondant n’a été moissonné pour cette clé.
 {% endif -%}
 {% for article in rapport.articles -%}
-- {{ article.slug }} ({{ article.doi|default('sans DOI') }}) :{% if article.statut == 'localSansDoi' %} pas de DOI local, comparaison impossible
+- {{ article.slug }} ({{ article.doi|default('sans DOI') }}) :{% if article.statut == 'localSansDoi' %} pas de DOI local, comparaison impossible
 {% elseif article.statut == 'absentOai' %} aucun article OJS ne porte ce DOI
 {% elseif article.statut == 'concorde' %} concorde sur tous les champs comparés ({{ article.noteAffiliation }})
 {% else %} {{ article.divergences|length }} divergence(s) ({{ article.noteAffiliation }})
 {% for d in article.divergences -%}
-    * {{ d.champ }} : local = "{{ d.local }}" / OJS = "{{ d.oai }}"
+    * {{ d.champ }} : local = "{{ d.local }}" / OJS = "{{ d.oai }}"
 {% endfor -%}
 {% endif -%}
 {% endfor -%}
 {% for o in rapport.oaiSansLocal -%}
-- (sans correspondance locale) {{ o.doi }} : {{ o.titre }}
+- (sans correspondance locale) {{ o.doi }} : {{ o.titre }}
 {% endfor %}
 {% endfor %}{% endblock %}

@@ -88,7 +88,7 @@
     b.type = 'button';
     b.className = 'szh-sugg-trad';
     b.title = TXT.suggPastille || '';
-    b.setAttribute('aria-label', (TXT.suggPastille || '') + ' — ' + champ + ' ' + langue.toUpperCase());
+    b.setAttribute('aria-label', (TXT.suggPastille || '') + ' – ' + champ + ' ' + langue.toUpperCase());
     // Le code de langue en capitales plutôt que le dessin : voir _fiches.js, même raison —
     // illisible à la taille d'un intitulé, et muet sur la langue visée.
     b.textContent = langue.toUpperCase();
@@ -142,11 +142,11 @@
 
   function champTexte(carte, groupe, champ) {
     const nomSource = TXT.source.split('{0}').join(groupe.langueSource.toUpperCase());
-    for (const el of blocSource(champ.libelle + ' — ' + nomSource, champ.source, groupe.langue)) {
+    for (const el of blocSource(champ.libelle + ' – ' + nomSource, champ.source, groupe.langue)) {
       carte.appendChild(el);
     }
     const lCible = document.createElement('label');
-    lCible.textContent = champ.libelle + ' — ' + TXT.cible.split('{0}').join(groupe.langue.toUpperCase());
+    lCible.textContent = champ.libelle + ' – ' + TXT.cible.split('{0}').join(groupe.langue.toUpperCase());
     lCible.htmlFor = 'cible-' + groupe.cle + '-' + champ.champ;
     carte.appendChild(lCible);
     const zone = document.createElement('textarea');

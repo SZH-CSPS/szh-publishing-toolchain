@@ -359,7 +359,7 @@
         zoneCouverture.nom.textContent = '';
         return;
       }
-      zoneCouverture.nom.textContent = info.nom + (info.description ? ' — ' + info.description : '');
+      zoneCouverture.nom.textContent = info.nom + (info.description ? ' – ' + info.description : '');
       if (!info.apercu) {
         poser(zoneCouverture.visuel, 'p', 'absent', TXT.couvertureApercuAbsent || '');
         return;
@@ -431,7 +431,7 @@
             if (champ.options[o].valeur === revueChoisie) { optionLue = champ.options[o]; break; }
           }
           var texteLu = (ctl[champ.cle] || {}).texte;
-          if (texteLu) { texteLu.textContent = optionLue ? lib(optionLue.libelle) : '—'; }
+          if (texteLu) { texteLu.textContent = optionLue ? lib(optionLue.libelle) : '–'; }
           continue;
         }
         if (champ.genre === 'couleurs') {

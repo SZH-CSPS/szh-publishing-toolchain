@@ -256,17 +256,17 @@
         // Une revue absente de la configuration reçue (poste pas à jour, champ ajouté
         // depuis) se lit vide plutôt que de faire lever tout le panneau.
         g.appendChild(champTexte((ojs.config.revues[loc] || {})[champ.cle],
-          champ.libelle + ' — ' + ojs.revues[loc], { revue: loc, champ: champ.cle }));
+          champ.libelle + ' – ' + ojs.revues[loc], { revue: loc, champ: champ.cle }));
       }
     }
     f.appendChild(g);
-    for (const champ of ojs.champs) { note(f, champ.libelle + ' — ' + champ.ou); }
+    for (const champ of ojs.champs) { note(f, champ.libelle + ' – ' + champ.ou); }
     ojsZone.appendChild(f);
   }
 
   function rangeeRubrique(g, r) {
     const nom = r.cle || TXT.ojsCleNouvelle;
-    const cle = champTexte(r.cle, TXT.ojsColCle + ' — ' + nom, { rubriqueCle: '1' },
+    const cle = champTexte(r.cle, TXT.ojsColCle + ' – ' + nom, { rubriqueCle: '1' },
       TXT.ojsCleNouvelle);
     // La clé ne part pas dans le XML : elle relie la rubrique à un type d'article. Les
     // listes de types se reconstruisent donc dès qu'elle est fixée. Celle d'une rubrique
@@ -281,12 +281,12 @@
     g.appendChild(cle);
     for (const loc of ojs.locales) {
       g.appendChild(champTexte(r.abbrev[loc],
-        TXT.ojsColAbbrev + ' ' + ojs.revues[loc] + ' — ' + nom, { rubriqueAbbrev: loc }));
+        TXT.ojsColAbbrev + ' ' + ojs.revues[loc] + ' – ' + nom, { rubriqueAbbrev: loc }));
       g.appendChild(champTexte(r.titre[loc],
-        TXT.ojsColTitre + ' ' + ojs.revues[loc] + ' — ' + nom, { rubriqueTitre: loc }));
+        TXT.ojsColTitre + ' ' + ojs.revues[loc] + ' – ' + nom, { rubriqueTitre: loc }));
     }
-    g.appendChild(caseACocher(!r.sansResume, TXT.ojsColResume + ' — ' + nom, { rubriqueResume: '1' }));
-    g.appendChild(caseACocher(!r.sansDoi, TXT.ojsColDoi + ' — ' + nom, { rubriqueDoi: '1' }));
+    g.appendChild(caseACocher(!r.sansResume, TXT.ojsColResume + ' – ' + nom, { rubriqueResume: '1' }));
+    g.appendChild(caseACocher(!r.sansDoi, TXT.ojsColDoi + ' – ' + nom, { rubriqueDoi: '1' }));
   }
 
   function rendreRubriques() {
@@ -340,7 +340,7 @@
       g.appendChild(etiquette);
       const select = document.createElement('select');
       select.dataset.type = type.valeur;
-      select.setAttribute('aria-label', TXT.ojsTypes + ' — ' + type.libelle);
+      select.setAttribute('aria-label', TXT.ojsTypes + ' – ' + type.libelle);
       select.addEventListener('change', marquer);
       selectsType.push(select);
       g.appendChild(select);
@@ -358,7 +358,7 @@
       for (const r of rubriques) {
         const opt = document.createElement('option');
         opt.value = r.cle;
-        opt.textContent = r.cle + ' — ' + (r.titre[ojs.locales[0]] || r.titre[ojs.locales[1]] || r.cle);
+        opt.textContent = r.cle + ' – ' + (r.titre[ojs.locales[0]] || r.titre[ojs.locales[1]] || r.cle);
         select.appendChild(opt);
       }
       select.value = rubriques.some((r) => r.cle === choisi) ? choisi
@@ -465,7 +465,7 @@
       i.type = 'text';
       i.value = String(tache[langue] || '');
       i.setAttribute('aria-label',
-        (langue === 'fr' ? TXT.tachesFr : TXT.tachesDe) + ' — ' + revue.libelle + ' ' + String(index + 1));
+        (langue === 'fr' ? TXT.tachesFr : TXT.tachesDe) + ' – ' + revue.libelle + ' ' + String(index + 1));
       i.dataset.tacheRevue = revue.cle;
       i.dataset.tacheLangue = langue;
       i.dataset.tacheId = String(tache.id || '');
@@ -478,7 +478,7 @@
     retirer.className = 'szh-bouton regl-retirer';
     retirer.textContent = '×';
     retirer.title = TXT.tachesRetirer;
-    retirer.setAttribute('aria-label', TXT.tachesRetirer + ' — ' + revue.libelle + ' ' + String(index + 1));
+    retirer.setAttribute('aria-label', TXT.tachesRetirer + ' – ' + revue.libelle + ' ' + String(index + 1));
     retirer.addEventListener('click', function () {
       taches.table = collecterTaches();
       taches.table[revue.cle].splice(index, 1);
@@ -644,7 +644,7 @@
         i.type = 'text';
         i.value = String((biblio.titres[r.cle] || {})[langue.cle] || '');
         i.placeholder = TXT.biblioVide;
-        i.setAttribute('aria-label', TXT.biblioTitre + ' — ' + r.libelle + ' — ' + langue.libelle);
+        i.setAttribute('aria-label', TXT.biblioTitre + ' – ' + r.libelle + ' – ' + langue.libelle);
         i.dataset.biblioRevue = r.cle;
         i.dataset.biblioLangue = langue.cle;
         i.classList.toggle('vide', i.value.trim() === '');
