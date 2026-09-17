@@ -342,7 +342,8 @@ jobs:
       # six glyphes suisses, ou une face de titre qui changerait de métrique (effet
       # d'escalier L3), ne serait vue par rien d'automatique sans eux.
       - name: Vérifier les glyphes manquants des faces livrées
-        run: "$RUNNER_TEMP/weasyprint/bin/python" pipeline/fonts/glyphes-manquants.py --verifier
+        run: |
+          "$RUNNER_TEMP/weasyprint/bin/python" pipeline/fonts/glyphes-manquants.py --verifier
 
       # Sans dépendance (ni fontTools ni WeasyPrint, voir sa note de tête) : le python3
       # système suffit, pas besoin du venv WeasyPrint.
