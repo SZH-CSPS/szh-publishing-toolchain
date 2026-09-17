@@ -33,13 +33,15 @@ const MOTIFS = {
   pandoc: ['pandoc introuvable', 'pandoc ou python3 introuvable'],
   horsWindows: ['chemins Windows'],
   corpus: ['corpus hors dépôt absent', 'aucun .docx dans'],
-  eleve: ['processus élevé']
+  eleve: ['processus élevé'],
+  // courriel-support.test.js rend un gabarit par VSCodium-en-Node : aucun runner ne l'a.
+  vscodium: ['VSCodium introuvable', 'pas Windows']
 };
 const ADMIS = {
   // Pas de PowerShell, pas de WSL, pas de pandoc dans le job contrats ; python est exigé.
-  ubuntu: ['powershell', 'horsWindows', 'wsl', 'pandoc', 'corpus'],
+  ubuntu: ['powershell', 'horsWindows', 'wsl', 'pandoc', 'corpus', 'vscodium'],
   // PowerShell exigé ; le runner tourne élevé, donc l'ACL ne bloque rien.
-  windows: ['wsl', 'pandoc', 'corpus', 'eleve', 'python'],
+  windows: ['wsl', 'pandoc', 'corpus', 'eleve', 'python', 'vscodium'],
   // Un poste complet : ne restent que les accents du pandoc 3.9 et le corpus hors dépôt.
   poste: ['pliage', 'corpus', 'eleve']
 };

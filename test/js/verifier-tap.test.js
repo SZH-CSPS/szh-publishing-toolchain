@@ -26,6 +26,11 @@ test('ubuntu : PowerShell, WSL, pandoc, chemins Windows et corpus absents sont a
   assert.strictEqual(r.histogramme.wsl, 1);
 });
 
+test('windows : VSCodium absent du runner est admis (le premier run réel l’a appris)', () => {
+  const r = verifier(tap(PASSENT.concat(['courriel # SKIP VSCodium introuvable sur ce poste']), { skipped: 1 }), 'windows');
+  assert.deepStrictEqual(r.erreurs, []);
+});
+
 test('windows : un saut PowerShell est refusé (SZH_PS_OBLIGATOIRE le rend impossible)', () => {
   const r = verifier(tap(PASSENT.concat(SKIPS_UBUNTU), { skipped: 5 }), 'windows');
   assert.ok(r.erreurs.some((e) => /powershell\.exe indisponible/.test(e)), r.erreurs.join('\n'));
