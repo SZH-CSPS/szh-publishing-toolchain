@@ -119,7 +119,9 @@ jobs:
             url="$(echo "$e"  | jq -r .source)"
             want="$(echo "$e" | jq -r .sha256)"
             f="vsix-out/${id}-${ver}.vsix"
-            curl -fsSL "$url" -o "$f"
+            # open-vsx rend parfois 503 aux runners GitHub pendant plusieurs minutes (trois
+            # releases de suite le 17.09.2026) : on insiste avant de renoncer.
+            curl -fsSL --retry 8 --retry-delay 20 --retry-all-errors "$url" -o "$f"
             got="$(sha256sum "$f" | cut -d' ' -f1)"
             if [ "$got" != "$want" ]; then
               echo "::error::Empreinte inattendue pour $id $ver (obtenu $got, attendu $want)"
@@ -142,7 +144,7 @@ jobs:
             url="$(echo "$a"  | jq -r .source)"
             want="$(echo "$a" | jq -r .sha256)"
             f="apps-out/$(echo "$a" | jq -r .fichier)"
-            curl -fsSL "$url" -o "$f"
+            curl -fsSL --retry 8 --retry-delay 20 --retry-all-errors "$url" -o "$f"
             got="$(sha256sum "$f" | cut -d' ' -f1)"
             if [ "$got" != "$want" ]; then
               echo "::error::Empreinte inattendue pour $id $ver (obtenu $got, attendu $want)"
