@@ -73,6 +73,9 @@
     // Les baux de co-édition posés par le cockpit pendant qu'un formulaire modifie un
     // fichier (lib/coedition.js) : ils s'effacent seuls, personne n'a à les voir.
     "**/.szh-edition": true,
+    // Priorité de compilation posée par le cockpit pour le Makefile (lib/apercu.js) :
+    // rien à y lire, l'aperçu suffit.
+    "**/.szh-apercu": true,
     "**/Thumbs.db": true,
     "**/~$*": true,
     "**/*.lnk": true,

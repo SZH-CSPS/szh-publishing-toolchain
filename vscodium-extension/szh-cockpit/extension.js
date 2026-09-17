@@ -183,7 +183,8 @@ const {
   pousserSurlignageVersApercu, injecterApercu, revelerPos,
   fermerApercuCourant, fermerApercuHtml, fermerTousLesApercus, echapperTexte,
   ouvrirApercuBiblio,
-  ouvrirApercuHtml, rechargerApercuHtmlSiChange, basculerApercu, cheminApercuHtml
+  ouvrirApercuHtml, rechargerApercuHtmlSiChange, basculerApercu, cheminApercuHtml,
+  noterApercuPrioritaire
 } = apercuLib;
 apercuLib.configurer({
   fermerOnglets: (predicat) => fermerOnglets(predicat),
@@ -6462,6 +6463,9 @@ function activate(context) {
     barreApercu.text = T(modeApercu() === 'html' ? 'apercu.barre.html' : 'apercu.barre.pdf');
     barreApercu.tooltip = T('apercu.barre.tooltip');
     if (fournisseur.racine) { barreApercu.show(); } else { barreApercu.hide(); }
+    // Point de passage unique à chaque changement d'article ou de mode : dit au Makefile
+    // quel aperçu sortir en premier du lot.
+    noterApercuPrioritaire(fournisseur.racine);
   };
 
   // lireModeDeveloppeur() (déjà importé de lib/archivage.js) vaut exactement

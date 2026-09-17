@@ -175,6 +175,19 @@ ACCENT_ABS := $(abspath $(ACCENT_CSS))
 # Sans ceci, make considérerait les .html comme intermédiaires et les supprimerait.
 .SECONDARY: $(HTMLS) $(APERCUS)
 
+# .szh-apercu : fichier d'une ligne écrit par le cockpit, qui nomme l'article que le
+# rédacteur a sous les yeux (slug + html|pdf). La cible qui en sort passe en tête des
+# prérequis de `pdf` : sous -j, l'ordre des prérequis décide de l'ordre de lancement.
+# Slug filtré sur $(SLUGS) : ce fichier vient d'un autre programme, rien de son contenu
+# ne doit devenir une cible make arbitraire. Absent ou non reconnu -> ne priorise rien.
+APERCU_ETAT := $(shell head -n 1 .szh-apercu 2>/dev/null)
+APERCU_SLUG := $(filter $(SLUGS),$(word 1,$(APERCU_ETAT)))
+ifeq ($(filter pdf,$(word 2,$(APERCU_ETAT))),pdf)
+PRIORITAIRE ?= $(if $(APERCU_SLUG),$(OUT)/$(APERCU_SLUG)/$(APERCU_SLUG).pdf)
+else
+PRIORITAIRE ?= $(if $(APERCU_SLUG),$(OUT)/$(APERCU_SLUG)/$(APERCU_SLUG).apercu.html)
+endif
+
 # Dossiers des unités (articles ou chapitres d'un livre) : articles/ par défaut, chapitres/
 # pour un livre. Variables portables à livre.mk, où UNITES_DIR := chapitres.
 # WORD_DIR est spécifique à chaque profil : articles-word (défaut) ou chapitres-word (livre).
@@ -322,7 +335,8 @@ define exiger_titre
 done
 endef
 
-pdf: verifie-dossier $(PDFS) $(APERCUS)
+# Priorité manuelle : make … all PRIORITAIRE=out/<slug>/<slug>.apercu.html
+pdf: verifie-dossier $(PRIORITAIRE) $(PDFS) $(APERCUS)
 
 verifie-dossier:
 	@test -f ausgabe.yaml || { echo "[pipeline] Ce dossier n'est pas une revue (ausgabe.yaml introuvable) : $$PWD"; exit 1; }

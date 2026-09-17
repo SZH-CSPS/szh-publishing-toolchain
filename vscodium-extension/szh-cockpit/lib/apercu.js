@@ -300,6 +300,31 @@ function cheminHtmlComplet(racine, slug) {
   return path.join(profils.chemins(profil, racine, slug).outUnite, slug + '.html');
 }
 
+// Dernière clé (racine|slug|mode) écrite dans .szh-apercu : évite de réécrire à chaque
+// rafraîchissement si rien n'a changé.
+let dernierApercuPrioritaireEcrit = null;
+
+// Priorité de compilation : dit au Makefile quel article regarder d'abord dans le lot,
+// via <racine>/.szh-apercu (une ligne « <slug> <mode> »). Efface le fichier si aucun
+// aperçu n'est ouvert. Jamais bloquant : un numéro verrouillé ou une synchro en cours ne
+// doivent pas gêner l'affichage de l'aperçu.
+function noterApercuPrioritaire(racine) {
+  if (!racine) { return; }
+  const slug = session.apercuCourantSlug();
+  const mode = modeApercu();
+  const cle = racine + '|' + (slug || '') + '|' + mode;
+  if (cle === dernierApercuPrioritaireEcrit) { return; }
+  const fichier = path.join(racine, '.szh-apercu');
+  try {
+    if (slug) {
+      fs.writeFileSync(fichier, slug + ' ' + mode + '\n', 'utf8');
+    } else if (fs.existsSync(fichier)) {
+      fs.unlinkSync(fichier);
+    }
+    dernierApercuPrioritaireEcrit = cle;
+  } catch (e) { /* numéro verrouillé, disque plein, synchro OneDrive en cours : tant pis */ }
+}
+
 // Aperçu HTML en colonne 2 ; si le fichier manque, replie sur le .html du PDF.
 function ouvrirApercuHtml(fournisseur, slug, enAttente) {
   let fichier = cheminApercuHtml(fournisseur.racine, slug);
@@ -418,6 +443,7 @@ module.exports = {
   fermerApercuCourant, fermerApercuHtml, fermerTousLesApercus, echapperTexte,
   estBiblio, apercuMdOuvert, fermerApercuMd, ouvrirApercuBiblio,
   ouvrirApercuHtml, rechargerApercuHtmlSiChange, basculerApercu,
+  noterApercuPrioritaire,
   // Le chemin d'aperçu attendu, seul endroit qui sache choisir entre le chapitre et
   // l'article : ouvrirArticle et compilerPuisAfficher (extension.js) s'y raccrochent au
   // lieu de refaire le calcul avec un path.join littéral, faux sur un livre.

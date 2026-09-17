@@ -258,6 +258,7 @@
         "**/.szh-journal.log": true,
         "**/.import.log": true,
         "**/.szh-edition": true,
+        "**/.szh-apercu": true,
         "**/Thumbs.db": true,
         "**/~$*": true,
         "**/*.lnk": true,
