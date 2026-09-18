@@ -969,6 +969,11 @@ def etendue_biblio(blocs, classeur, type_article):
 
 
 def principal(argv):
+    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
     if len(argv) != 4:
         print('usage : docx-meta.py <fichier.docx> <slug> <dossier-article>',
               file=sys.stderr)

@@ -226,6 +226,11 @@ def traiter(slug, source, dossier, detecteur, session):
 
 
 def principal(argv):
+    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
     if len(argv) < 2 or len(argv) % 2 != 0:
         progression("usage : portraits.py <dossier_sortie> [<slug> <image-source>]...")
         return 2

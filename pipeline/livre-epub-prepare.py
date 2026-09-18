@@ -161,6 +161,11 @@ def prepare_for_epub(html_content):
     return result
 
 def main():
+    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
     if len(sys.argv) != 3:
         print(f"Usage: {sys.argv[0]} <html-in> <html-out>", file=sys.stderr)
         sys.exit(1)

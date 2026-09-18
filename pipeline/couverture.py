@@ -377,6 +377,11 @@ def _illustration_data_uri(chemin):
 
 
 def main(argv):
+    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
     opts = {'css': []}
     i = 1
     cles_simples = ('meta', 'pdf-interieur', 'quatrieme', 'illustration', 'gabarit', 'sortie')

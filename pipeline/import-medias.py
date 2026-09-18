@@ -412,6 +412,11 @@ def renommer(dossier, slug, texte):
 
 
 def principal(argv):
+    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
     if len(argv) not in (3, 4):
         progression('usage : import-medias.py <slug> <dossier-article> [<fichier-photos>]')
         return 2

@@ -353,6 +353,11 @@ def ecrire_buch_yaml(chemin_buch: str, data: dict) -> None:
 # Main
 # --------------------------------------------------------------------------------------
 def main():
+    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
     if len(sys.argv) != 3:
         print("Usage: python3 livre-scinder.py <dossier du livre> <slug du chapitre>")
         sys.exit(1)

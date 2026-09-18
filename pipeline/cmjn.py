@@ -333,6 +333,11 @@ def passe_ghostscript(entree, sortie, profil_icc):
 
 
 def main():
+    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
     if len(sys.argv) < 3:
         print('usage: cmjn.py <entree.pdf> <sortie.pdf> [profil.icc]', file=sys.stderr)
         return 2

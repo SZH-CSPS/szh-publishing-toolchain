@@ -1170,6 +1170,11 @@ def usage():
 
 
 def principal(argv):
+    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except (AttributeError, OSError):  # patron apca.py — pas `except Exception:`, réservé
+        pass                           # plus bas au seul filet BaseException du fichier.
     opts = {'revue': '.', 'article': '', 'word': '', 'journal': None,
             'pipeline': os.path.dirname(os.path.abspath(__file__)), 'dossier': '',
             'slug': ''}

@@ -38,6 +38,11 @@ LECTEURS = {
 
 
 def principal(argv):
+    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
     if len(argv) != 4:
         print('usage : pronto-lire.py <fichier.docx|.odt> <slug> <dossier-article>',
               file=sys.stderr)

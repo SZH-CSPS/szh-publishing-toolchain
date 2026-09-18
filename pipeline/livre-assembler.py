@@ -347,6 +347,11 @@ def main(argv):
     n'existe que pour le HTML web (livre-html-web) : « autonome » y est la promesse — un
     seul fichier qu'on partage ou qu'on ouvre par file:// sans rien à côté — et un <link>
     vers un chemin absolu du poste de compilation ne survivrait pas au voyage."""
+    try:  # console Windows en cp1252 : un accent combinant (nom venu du partage) y plante.
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
     meta_p = gabarit_p = sortie_p = meta_epub = None
     # Dossier de sortie du livre (celui que livre.mk appelle $(OUT), toujours « out » sur ce
     # dépôt) : un argument plutôt qu'un chemin en dur, pour que la recherche des liminaires
