@@ -35,13 +35,16 @@ const MOTIFS = {
   corpus: ['corpus hors dépôt absent', 'aucun .docx dans'],
   eleve: ['processus élevé'],
   // courriel-support.test.js rend un gabarit par VSCodium-en-Node : aucun runner ne l'a.
-  vscodium: ['VSCodium introuvable', 'pas Windows']
+  vscodium: ['VSCodium introuvable', 'pas Windows'],
+  // Aucun runner d'intégration continue n'a d'installation en C:\ProgramData\SZH,
+  // donc les contrôles d'isolement n'y ont rien à mesurer.
+  production: ['installation de production absente']
 };
 const ADMIS = {
   // Pas de PowerShell, pas de WSL, pas de pandoc dans le job contrats ; python est exigé.
-  ubuntu: ['powershell', 'horsWindows', 'wsl', 'pandoc', 'corpus', 'vscodium'],
+  ubuntu: ['powershell', 'horsWindows', 'wsl', 'pandoc', 'corpus', 'vscodium', 'production'],
   // PowerShell exigé ; le runner tourne élevé, donc l'ACL ne bloque rien.
-  windows: ['wsl', 'pandoc', 'corpus', 'eleve', 'python', 'vscodium'],
+  windows: ['wsl', 'pandoc', 'corpus', 'eleve', 'python', 'vscodium', 'production'],
   // Un poste complet : ne restent que les accents du pandoc 3.9 et le corpus hors dépôt.
   poste: ['pliage', 'corpus', 'eleve']
 };

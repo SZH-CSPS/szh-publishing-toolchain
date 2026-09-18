@@ -11,6 +11,11 @@
 # (SZH_OPENMD_SIMULE=1), deux besoins que cette fonction-ci n'a pas. Garder les deux noms
 # distincts et corrects : une redéfinition locale de Start-SzhCodium occulterait celle-ci en
 # silence.
+#
+# $env:SZH_CODIUM_PROFIL, posé par outils-dev/pronto-dev.ps1, fait ouvrir un profil de
+# développement au lieu du profil de production -- vide ou absent, la ligne de commande ne
+# bouge pas d'un caractère. $env:SZH_LANCEUR_SIMULE=1 journalise la ligne calculée sans rien
+# lancer, comme ailleurs dans ce dépôt (szh-ancrage.ps1, szh-rapport.ps1).
 function Start-SzhCodium([string]$Dossier) {
   $codium = Get-VSCodiumExe
   if (-not $codium) {
@@ -18,8 +23,16 @@ function Start-SzhCodium([string]$Dossier) {
     return $false
   }
   if (Test-Path 'Env:ELECTRON_RUN_AS_NODE') { Remove-Item 'Env:ELECTRON_RUN_AS_NODE' -ErrorAction SilentlyContinue }
+  $arguments = @()
+  if ($env:SZH_CODIUM_PROFIL) {
+    $arguments += ('--user-data-dir "{0}"' -f (Join-Path $env:SZH_CODIUM_PROFIL 'data'))
+    $arguments += ('--extensions-dir "{0}"' -f (Join-Path $env:SZH_CODIUM_PROFIL 'extensions'))
+  }
+  $arguments += ('"{0}"' -f $Dossier)
+  Write-SzhLog ('codium : ' + $codium + ' ' + ($arguments -join ' '))
+  if ($env:SZH_LANCEUR_SIMULE -eq '1') { return $true }
   try {
-    Start-Process -FilePath $codium -ArgumentList ('"{0}"' -f $Dossier)
+    Start-Process -FilePath $codium -ArgumentList $arguments
     return $true
   } catch {
     Write-SzhLog ('codium : lancement impossible (' + $_.Exception.Message + ') pour ' + $Dossier)
@@ -377,11 +390,13 @@ function Get-SzhRaccourcisMenu {
 # où elles n'ont pas bougé : un poste francophone et un poste germanophone n'ont pas le
 # même fichier à retirer, et c'est la raison même pour laquelle ces deux entrées ont
 # disparu. Cette liste ne grandit qu'à un renommage, et ne rétrécit jamais : un poste qui
-# saute plusieurs versions doit retrouver ici tout ce qu'il a pu recevoir.
+# saute plusieurs versions doit retrouver ici tout ce qu'il a pu recevoir. « Pronto (dev) »
+# y figure pour une autre raison : aucune mise à jour ne le pose jamais, c'est
+# outils-dev/pronto-dev.ps1 seul qui le fait, sur le poste de développement.
 function Get-SzhRaccourcisObsoletes {
   $noms = New-Object System.Collections.ArrayList
   foreach ($n in @('Revues SZH', 'Zeitschriften SZH', 'Books SZH-CSPS',
-                   'Revue & Zeitschrift', 'Revue & Zeitschrift (Updater)')) { [void]$noms.Add($n) }
+                   'Revue & Zeitschrift', 'Revue & Zeitschrift (Updater)', 'Pronto (dev)')) { [void]$noms.Add($n) }
   foreach ($langue in @('fr', 'de', 'en')) {
     try {
       $nom = [string]$SzhTextes[$langue]['raccourci.maj.nom']

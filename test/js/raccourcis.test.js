@@ -194,6 +194,23 @@ test('le lanceur et sa mise à jour portent chacun leur propre icône, fabriqué
   assert.ok(SHELL.indexOf('elseif ($codium) { $lnk.IconLocation = $codium }') !== -1);
 });
 
+test("la fenetre du lanceur porte l'icone de l'application, pas celle d'un produit", () => {
+  // Defaut garde ici, vu a l'ecran le 18.09.2026 : le renommage en Pronto avait fait passer
+  // le raccourci du menu Demarrer et la mise a jour a pronto.ico, et oublie la fenetre
+  // elle-meme. Elle gardait szh-revue.ico, si bien que la barre de titre et Alt+Tab
+  // montraient l'icone de la Revue, meme sur l'onglet Zeitschrift ou Bucher. Rien ne le
+  // gardait : les deux controles d'icone au-dessus ne regardent que le menu Demarrer.
+  const pose = OUVRIR_PRODUIT.match(/\$fichierIcone = Join-Path \$PSScriptRoot '([^']+)'/);
+  assert.ok(pose, 'open-produit.ps1 ne pose plus $fichierIcone');
+  assert.strictEqual(pose[1], 'pronto.ico',
+    "la fenetre du lanceur porte " + pose[1] + " au lieu de l'icone de l'application");
+  assert.ok(fs.existsSync(path.join(RACINE, 'windows', pose[1])), pose[1] + ' manque au depot');
+  // L'inverse doit rester vrai : les trois icones de produit gardent leur seul emploi
+  // legitime, les boites « Nouveau... », qui n'appartiennent qu'a un produit a la fois.
+  assert.ok(OUVRIR_PRODUIT.indexOf('Set-SzhIconeFenetre $boite (Join-Path $PSScriptRoot $ProduitInfo.icone)') !== -1,
+    "les boites « Nouveau... » ne prennent plus l'icone de leur produit");
+});
+
 test('la barre des tâches reçoit une identité, des deux côtés', () => {
   // Le défaut gardé ici ne change pas : le bouton de la barre des tâches portait l'icône de
   // PowerShell, alors que le raccourci du menu Démarrer et la fenêtre elle-même portaient la
@@ -520,7 +537,7 @@ test('un ancien raccourci mal nommé est retiré, pas doublé', { skip: sansPowe
 // où il pointe, il ne lui reste que le nom (voir test/js/desinstallation.test.js, qui
 // éprouve la seconde moitié du contrat : un nom périmé n'entre dans le plan que si le
 // fichier existe réellement).
-test('Get-SzhRaccourcisObsoletes nomme les huit entrées périmées : trois produits, trois langues de mise à jour, deux anciens noms d\'application',
+test('Get-SzhRaccourcisObsoletes nomme les neuf entrées périmées : trois produits, trois langues de mise à jour, deux anciens noms d\'application, et Pronto (dev)',
   { skip: sansPowerShell }, () => {
     const travail = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-obsoletes-'));
     const sortie = path.join(travail, 'bilan.json');
@@ -543,10 +560,13 @@ test('Get-SzhRaccourcisObsoletes nomme les huit entrées périmées : trois prod
     fs.rmSync(travail, { recursive: true, force: true });
     // Les trois noms de produit, en dur -- disparus avec la fusion des lanceurs -- puis les
     // trois traductions de « raccourci.maj.nom » (fr, de, ET en : un poste dont Windows
-    // résolvait « en » avant qu'un compte n'y touche a pu recevoir cette troisième version), et
-    // enfin les deux anciens noms de l'application avant le renommage en « Pronto ».
-    const attendus = ['Revues SZH', 'Zeitschriften SZH', 'Books SZH-CSPS', r.majFr, r.majDe, r.majEn, 'Revue & Zeitschrift', 'Revue & Zeitschrift (Updater)'];
-    assert.strictEqual(r.obsoletes.length, 8, 'Get-SzhRaccourcisObsoletes doit nommer les huit anciens noms');
+    // résolvait « en » avant qu'un compte n'y touche a pu recevoir cette troisième version),
+    // les deux anciens noms de l'application avant le renommage en « Pronto », et enfin
+    // « Pronto (dev) » -- périmé par rien : aucune mise à jour ne le pose jamais, seul
+    // outils-dev/pronto-dev.ps1 le fait sur un poste de développement.
+    const attendus = ['Revues SZH', 'Zeitschriften SZH', 'Books SZH-CSPS', r.majFr, r.majDe, r.majEn,
+      'Revue & Zeitschrift', 'Revue & Zeitschrift (Updater)', 'Pronto (dev)'];
+    assert.strictEqual(r.obsoletes.length, 9, 'Get-SzhRaccourcisObsoletes doit nommer les neuf anciens noms');
     assert.deepStrictEqual(r.obsoletes.slice().sort(), attendus.slice().sort());
     // Aucune des deux entrées ACTUELLES ne doit s’y glisser : la désinstallation compterait
     // sinon le lanceur ou sa mise à jour, bien réels, parmi ce qui n’existe plus.
