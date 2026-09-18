@@ -706,20 +706,24 @@ test('classer_titres : rien ne convainc -> rien promu, et un constat le dit',
 
 // ---------------------------------------------------------------------------------------
 // 11. La contrainte de trois niveaux : avec QUATRE groupes qualifiants distincts, jamais plus
-// de trois ne sont promus — la lignes directrices plafonnent à MAX_NIVEAUX=3 niveaux de titre,
-// jamais un compromis qui en inventerait un quatrième. Le groupe écarté n'est pas rendu au
-// hasard : il est celui qui, dans l'ordre du §5.1 (taille décroissante, puis gras, puis
-// italique), vient en dernier — et il reste TRACÉ (« groupe_non_retenu »), jamais tu.
+// de trois NIVEAUX DISTINCTS ne sont créés — les lignes directrices plafonnent à MAX_NIVEAUX=3.
+//
+// ⚠ RÉVISION du 19.09.2026 (§5.1) : l'ancien comportement écartait purement et simplement le
+// 4e groupe (« groupe_non_retenu », jamais promu — « l'article sort sans aucun titre » dans le
+// cas dégénéré où aucun autre groupe n'existe). Rabattre l'excédent sur le niveau 3 plutôt que
+// le rejeter : un article qui distingue plus de trois mises en forme de titre existe (glossaire,
+// dossier à rubriques), et le perdre entièrement serait pire qu'un sur-classement au niveau le
+// plus bas. Le 4e groupe (D, souligné, le plus bas dans l'ordre du §5.1) rejoint donc le
+// niveau 3 du 3e groupe (C) — TOUJOURS AU PLUS trois niveaux distincts au total, jamais un
+// compromis qui en inventerait un quatrième.
 //
 // ⚠ Le rejet EN BLOC (« promotion_rejetee_contrainte_niveaux », niveaux_finaux > MAX_NIVEAUX)
-// est un garde-fou distinct, structurellement INATTEIGNABLE avec les données d'aujourd'hui :
+// reste un garde-fou distinct, structurellement INATTEIGNABLE avec les données d'aujourd'hui :
 // niveaux_a_chercher est TOUJOURS un sous-ensemble de {1,2,3} (Paragraphe.niveau_declare ne
-// connaît que ces trois valeurs), donc jamais plus de trois groupes ne peuvent être RETENUS,
-// quel que soit le nombre de groupes qui QUALIFIENT. Ce test-ci vérifie donc le plafond tel
-// qu'il se manifeste réellement : par construction, pas par un rejet en bloc qu'aucune donnée
-// légitime ne peut aujourd'hui déclencher (voir le commentaire de classer_titres()).
+// connaît que ces trois valeurs), et le rabattage ci-dessus ne peut jamais inventer un niveau
+// hors de {1,2,3} non plus (voir le commentaire de classer_titres()).
 
-test('classer_titres : quatre groupes qualifiants -> jamais plus de trois promus, le 4e tracé',
+test('classer_titres : quatre groupes qualifiants -> jamais plus de trois NIVEAUX, le 4e rabattu sur le niveau 3',
   { skip: sansPython }, () => {
     const doc = {
       styles: [],
@@ -739,23 +743,27 @@ test('classer_titres : quatre groupes qualifiants -> jamais plus de trois promus
       ]
     };
     const { titres } = diagnostiquer(doc);
-    assert.strictEqual(titres.stats.promus, 3, 'au plus trois paragraphes promus (un par groupe retenu)');
+    assert.strictEqual(titres.stats.promus, 4, 'les QUATRE paragraphes candidats sont promus '
+      + '(plus aucun groupe n\'est purement et simplement rejeté)');
 
-    const niveauxPromus = new Set();
-    for (const source of [1, 3, 5]) {
-      const ligne = trouver(titres.trace, source);
-      assert.strictEqual(ligne.decision, 'promue', 'groupe ' + source + ' doit être promu');
-      niveauxPromus.add(ligne.niveau_retenu);
-    }
-    assert.strictEqual(niveauxPromus.size, 3, 'les trois groupes retenus portent trois niveaux distincts');
-
+    const l1 = trouver(titres.trace, 1);
+    const l3 = trouver(titres.trace, 3);
+    const l5 = trouver(titres.trace, 5);
     const l7 = trouver(titres.trace, 7);
-    assert.strictEqual(l7.decision, 'non_promue', 'le quatrième groupe (souligné seul) ne '
-      + 'trouve aucun niveau disponible : il reste au corps');
-    assert.strictEqual(l7.niveau_retenu, 0);
+    for (const ligne of [l1, l3, l5, l7]) {
+      assert.strictEqual(ligne.decision, 'promue', 'source=' + ligne.source + ' doit être promu');
+    }
+    assert.strictEqual(l7.niveau_retenu, 3, 'le 4e groupe (souligné, le plus bas) rejoint le '
+      + 'niveau 3 plutôt que d\'être rejeté');
+    assert.strictEqual(l5.niveau_retenu, 3, 'il rejoint le 3e groupe, déjà niveau 3');
 
-    const ecarte = traceDocument(titres.trace, 'groupe_non_retenu');
-    assert.strictEqual(ecarte.length, 1, 'le groupe écarté doit être tracé, jamais tu');
+    const niveaux = new Set([l1, l3, l5, l7].map((l) => l.niveau_retenu));
+    assert.strictEqual(niveaux.size, 3, 'au plus trois niveaux DISTINCTS au total, malgré les '
+      + 'quatre groupes qualifiants');
+
+    const signal = traceDocument(titres.trace, 'groupes_rabattus_niveau3');
+    assert.strictEqual(signal.length, 1, 'le rabattage doit être un signal explicite du rapport');
+    assert.strictEqual(titres.stats.groupes_rabattus_niveau3, 1);
   });
 
 // ---------------------------------------------------------------------------------------
@@ -899,4 +907,352 @@ test('classer_titres : passe 3 bis sur corpus réel (1_Résumé) -> l\'adoption 
     assert.ok(nTitres < nParagraphes * 0.5,
       'moins de la moitié des paragraphes du document ne doivent jamais devenir des titres');
     assert.strictEqual(stats.rejet_contrainte_niveaux, false);
+  });
+
+// =========================================================================================
+// Reprise du 19.09.2026 — signatures effectives, titres en liste numérotée, nouvelles
+// exclusions de la passe 1 et plafond de trois groupes rabattu. Voir le §5.1 du contrat,
+// révision du 19.09.2026, pour la justification complète de chaque règle.
+// =========================================================================================
+
+// ---------------------------------------------------------------------------------------
+// 14. Titres en liste numérotée — décision de Robin, §5.1. Un item de liste NUMÉROTÉE isolé
+// (aucun voisin non vide de la même liste), gras, portant un numéro manuel en tête de texte,
+// est promu titre : le numéro manuel est retiré du premier fragment (le gabarit numérote lui
+// -même les Titre1), et la liste elle-même disparaît (`liste = None`) — mesuré sur « Le
+// coenseignement développemental… », dont les quatre vrais titres de section sont ainsi faits.
+//
+// Sabotage minimal : dans _item_numerote_isole(), remplacer le corps de la fonction par
+// `return False` — plus aucun item de liste n'est jamais candidat, ce contrôle rougit
+// (source=1 reste `exclu_liste`, jamais `promue_liste`).
+
+test('classer_titres : item de liste numérotée isolé, gras, avec numéro manuel -> promu, numéro retiré',
+  { skip: sansPython }, () => {
+    const doc = {
+      styles: [],
+      blocs: [
+        para(0, 'Un paragraphe de corps assez long pour établir la taille dominante '
+          + 'cohérente sur ce document testé ici pour de bon et sans ambiguïté aucune.', { taille: 20 }),
+        para(1, '2.1 Sous-partie numérotée', { gras: true, taille: 20, liste: [7, 0, 'numero'] }),
+        para(2, 'Encore un paragraphe de corps assez long pour établir la même taille '
+          + 'dominante cohérente sur ce document testé encore un peu plus loin ici.', { taille: 20 })
+      ]
+    };
+    const { titres, document: doc2 } = diagnostiquer(doc);
+    const ligne = trouver(titres.trace, 1);
+    assert.strictEqual(ligne.decision, 'promue_liste');
+    assert.strictEqual(ligne.niveau_retenu, 2, 'la profondeur du numéro manuel (« 2.1 ») donne le niveau 2');
+    assert.match(ligne.motif, /liste numérotée/);
+    assert.match(ligne.motif, /« 2\.1 »/, 'la trace doit citer le numéro retiré');
+    assert.strictEqual(titres.stats.promus_liste, 1);
+
+    const p1 = doc2.blocs[1];
+    assert.strictEqual(p1.liste, null, 'la liste doit avoir disparu du paragraphe promu');
+    assert.strictEqual(p1.fragments[0].texte, 'Sous-partie numérotée',
+      'le numéro manuel de tête doit être retiré du premier fragment');
+  });
+
+// ---------------------------------------------------------------------------------------
+// 15. Une suite de trois items numérotés consécutifs (ou plus) est une VRAIE liste, jamais des
+// titres — chacun a, au moins d'un côté, un voisin non vide de la même liste (numId), donc
+// aucun n'est isolé.
+//
+// Sabotage minimal : dans _voisin_non_vide(), faire `return None` immédiatement (aucun voisin
+// jamais trouvé) — les trois items deviennent chacun « isolé » à tort, ce contrôle rougit.
+
+test('classer_titres : trois items numérotés consécutifs -> jamais promus (vraie liste)',
+  { skip: sansPython }, () => {
+    const doc = {
+      styles: [],
+      blocs: [
+        para(0, 'Un paragraphe de corps assez long pour établir la taille dominante '
+          + 'cohérente sur ce document testé ici pour de bon et sans ambiguïté aucune.', { taille: 20 }),
+        para(1, 'Point un', { gras: true, taille: 20, liste: [9, 0, 'numero'] }),
+        para(2, 'Point deux', { gras: true, taille: 20, liste: [9, 0, 'numero'] }),
+        para(3, 'Point trois', { gras: true, taille: 20, liste: [9, 0, 'numero'] }),
+        para(4, 'Encore un paragraphe de corps assez long pour établir la même taille '
+          + 'dominante cohérente sur ce document testé encore un peu plus loin ici.', { taille: 20 })
+      ]
+    };
+    const { titres } = diagnostiquer(doc);
+    for (const source of [1, 2, 3]) {
+      const ligne = trouver(titres.trace, source);
+      assert.strictEqual(ligne.decision, 'exclu_liste',
+        'item ' + source + ' d\'une vraie liste numérotée ne doit jamais être promu');
+      assert.strictEqual(ligne.niveau_retenu, 0);
+    }
+    assert.strictEqual(titres.stats.promus_liste, 0);
+  });
+
+// ---------------------------------------------------------------------------------------
+// 16. Une liste à PUCES n'est jamais candidate, isolée ou non — seule la numérotation porte,
+// en pratique, l'ambiguïté « ceci est peut-être un titre » (§5.1).
+//
+// Sabotage minimal : dans _item_numerote_isole(), retirer la condition `p.liste[2] != 'numero'`
+// (ne garder que `p.liste is None`) — une puce isolée devient candidate, ce contrôle rougit si
+// elle porte en plus une signature de titre (gras).
+
+test('classer_titres : item de liste À PUCES isolé -> jamais promu, même gras',
+  { skip: sansPython }, () => {
+    const doc = {
+      styles: [],
+      blocs: [
+        para(0, 'Un paragraphe de corps assez long pour établir la taille dominante '
+          + 'cohérente sur ce document testé ici pour de bon et sans ambiguïté aucune.', { taille: 20 }),
+        para(1, 'Point isolé en puce', { gras: true, taille: 20, liste: [7, 0, 'puce'] }),
+        para(2, 'Encore un paragraphe de corps assez long pour établir la même taille '
+          + 'dominante cohérente sur ce document testé encore un peu plus loin ici.', { taille: 20 })
+      ]
+    };
+    const { titres } = diagnostiquer(doc);
+    const ligne = trouver(titres.trace, 1);
+    assert.strictEqual(ligne.decision, 'exclu_liste');
+    assert.strictEqual(ligne.niveau_retenu, 0);
+    assert.strictEqual(titres.stats.promus_liste, 0);
+  });
+
+// ---------------------------------------------------------------------------------------
+// 17. Un séparateur visuel (une ligne de tirets, sans aucune lettre) n'est jamais un titre,
+// même gras et à une taille distincte du corps — mesuré sur `4_La méthode Flip Flap.docx` : 5
+// lignes « ──────── » promues en Titre2/Titre3 avant cette exclusion.
+//
+// Sabotage minimal : dans _sans_aucune_lettre(), remplacer le corps par `return False` — la
+// ligne de tirets redevient un candidat ordinaire, ce contrôle rougit (elle se retrouve seule
+// candidate de sa signature, donc au corps... sauf si elle qualifie, auquel cas elle est
+// promue : ici, isolée et distincte, elle qualifie et le contrôle rougit bel et bien).
+
+test('classer_titres : une ligne de tirets (sans aucune lettre) -> jamais promue',
+  { skip: sansPython }, () => {
+    const doc = {
+      styles: [],
+      blocs: [
+        para(0, 'Un paragraphe de corps assez long pour établir la taille dominante '
+          + 'cohérente sur ce document testé ici pour de bon et sans ambiguïté aucune.', { taille: 20 }),
+        para(1, '————————————', { gras: true, taille: 30 }),
+        para(2, 'Encore un paragraphe de corps assez long pour établir la même taille '
+          + 'dominante cohérente sur ce document testé encore un peu plus loin ici.', { taille: 20 })
+      ]
+    };
+    const { titres } = diagnostiquer(doc);
+    const ligne = trouver(titres.trace, 1);
+    assert.strictEqual(ligne.decision, 'exclu_sans_lettre');
+    assert.strictEqual(ligne.niveau_retenu, 0);
+  });
+
+// ---------------------------------------------------------------------------------------
+// 18. Un paragraphe qui porte une adresse courriel n'est jamais un titre — un encadré de
+// coordonnées, pas un intertitre, même mis en gras.
+//
+// Sabotage minimal : dans _porte_des_coordonnees(), remplacer le corps par `return False` —
+// la ligne de coordonnées redevient candidate, ce contrôle rougit.
+
+test('classer_titres : une ligne avec adresse courriel -> jamais promue',
+  { skip: sansPython }, () => {
+    const doc = {
+      styles: [],
+      blocs: [
+        para(0, 'Un paragraphe de corps assez long pour établir la taille dominante '
+          + 'cohérente sur ce document testé ici pour de bon et sans ambiguïté aucune.', { taille: 20 }),
+        para(1, 'Contact : jean.dupont@example.com', { gras: true, taille: 30 }),
+        para(2, 'Encore un paragraphe de corps assez long pour établir la même taille '
+          + 'dominante cohérente sur ce document testé encore un peu plus loin ici.', { taille: 20 })
+      ]
+    };
+    const { titres } = diagnostiquer(doc);
+    const ligne = trouver(titres.trace, 1);
+    assert.strictEqual(ligne.decision, 'exclu_coordonnees');
+    assert.strictEqual(ligne.niveau_retenu, 0);
+  });
+
+// ---------------------------------------------------------------------------------------
+// 19. « Tableau 1 » (le lexique de légende RE_LEGENDE, importé de docx-titres.py) n'est jamais
+// un titre — mesuré sur « Le coenseignement développemental… » : promu Titre3 avant cette
+// exclusion.
+//
+// Sabotage minimal : commenter la branche `elif RE_LEGENDE.match(...)` dans
+// _exclusions_passe1() — « Tableau 1 » redevient candidat, ce contrôle rougit.
+
+test('classer_titres : "Tableau 1" (lexique de légende) -> jamais promu',
+  { skip: sansPython }, () => {
+    const doc = {
+      styles: [],
+      blocs: [
+        para(0, 'Un paragraphe de corps assez long pour établir la taille dominante '
+          + 'cohérente sur ce document testé ici pour de bon et sans ambiguïté aucune.', { taille: 20 }),
+        para(1, 'Tableau 1', { gras: true, taille: 30 }),
+        para(2, 'Encore un paragraphe de corps assez long pour établir la même taille '
+          + 'dominante cohérente sur ce document testé encore un peu plus loin ici.', { taille: 20 })
+      ]
+    };
+    const { titres } = diagnostiquer(doc);
+    const ligne = trouver(titres.trace, 1);
+    assert.strictEqual(ligne.decision, 'exclu_legende_lexique');
+    assert.strictEqual(ligne.niveau_retenu, 0);
+  });
+
+// ---------------------------------------------------------------------------------------
+// 20. Signatures EFFECTIVES (§5.1, révision du 19.09.2026) : un corps qui HÉRITE sa taille
+// (« effectif » rempli par la cascade des styles, `forme` vide) et un faux titre qui la
+// DÉCLARE directement (`forme` rempli, pas d'« effectif » propre — repli sur `forme`, même
+// valeur) doivent être jugés à la MÊME taille effective — et donc, faute d'autre signal,
+// rétrogradé par la longueur (BRIEF-REPRISE §6.2 : « corps sans taille déclarée » et « faux
+// titre déclaré 12 pt » étaient jugés différents avant cette révision).
+//
+// Sabotage minimal : dans _valeur_effective(), remplacer le corps par
+// `return fragment.forme.get(cle)` (ignorer `effectif`, repli sur la mise en forme DIRECTE
+// seule, l'ancien comportement) — le corps (taille directe absente) et le faux titre (taille
+// directe 24) redeviennent « distincts » sans même regarder la longueur, ce contrôle rougit
+// (le faux titre reste conservé au lieu d'être rétrogradé).
+
+function paragrapheAvecEffectif(source, texte, opts = {}) {
+  const { style = '', niveauDeclare = 0, formeDirecte = {}, effectif = null } = opts;
+  return { source, style, niveau_declare: niveauDeclare,
+    fragments: [{ texte, forme: formeDirecte, effectif }], alignement: '', liste: null };
+}
+
+test('classer_titres : signature EFFECTIVE (corps hérite 12pt, faux titre le déclare) -> jugés identiques, rétrogradé par la longueur',
+  { skip: sansPython }, () => {
+    const corpsLong = (n) => 'Un paragraphe de corps assez long pour établir la taille '
+      + 'dominante cohérente sur ce document testé ici pour de bon, numéro ' + n + '.';
+    const doc = {
+      styles: ['heading 2'],
+      blocs: [
+        // Corps : AUCUNE taille directe (`forme` vide), mais un « effectif » de 24 — simule
+        // l'hérédité résolue par la cascade des styles (docDefaults/Normal).
+        paragrapheAvecEffectif(0, corpsLong(1), { effectif: { taille: 24 } }),
+        paragrapheAvecEffectif(1, corpsLong(2), { effectif: { taille: 24 } }),
+        // Faux titre : un H2 DÉCLARÉ, sur un paragraphe de corps ordinaire (40 mots), avec une
+        // taille DIRECTE de 24 (pas d'« effectif » propre : repli sur `forme`, même valeur que
+        // le corps une fois résolue). Aucun gras, aucun italique, aucun autre signal direct.
+        paragrapheAvecEffectif(2,
+          Array.from({ length: 40 }, (_, i) => 'mot' + (i + 1)).join(' ') + '.',
+          { style: 'heading 2', niveauDeclare: 2, formeDirecte: { taille: 24 } }),
+        paragrapheAvecEffectif(3, corpsLong(3), { effectif: { taille: 24 } }),
+        paragrapheAvecEffectif(4, corpsLong(4), { effectif: { taille: 24 } })
+      ]
+    };
+    const { titres } = diagnostiquer(doc);
+    const ligne = trouver(titres.trace, 2);
+    assert.strictEqual(ligne.decision, 'retrogradee_signature_corps',
+      'même taille EFFECTIVE que le corps (24 des deux côtés) et trop long : rétrogradé');
+    assert.strictEqual(ligne.niveau_retenu, 0);
+    assert.match(ligne.motif, /identique à celle du corps/,
+      'une fois résolues, les deux signatures sont bel et bien identiques (24 des deux côtés) '
+      + '— la trace doit le dire sans détour, jamais parler d\'une distinction qui n\'existe plus');
+  });
+
+// 20bis. Garde-fou INVERSE, sur le corpus 2-fabrique (§5.1) : un faux titre fabriqué par un
+// simple remplacement de w:pStyle (AUCUN réglage direct, mais une signature EFFECTIVE qui
+// prend celle de son style de titre, gras+grand) ne doit PAS être protégé pour cette seule
+// raison — sans le garde-fou (exiger la distinction en DIRECT ET en effectif), la révision du
+// test précédent romprait ce corpus-là (mesuré : 21/34 -> 5/34 avant ce garde-fou).
+//
+// Sabotage minimal : dans _passe4_retrogradation(), remplacer la condition
+// `distinct_effectif and distinct_direct` par `distinct_effectif` seul (jamais exiger le
+// direct) — ce contrôle rougit : le faux titre est conservé sans que la longueur soit même
+// regardée.
+
+test('classer_titres : signature distincte SEULEMENT en effectif (pStyle nu, aucun réglage direct) -> pas de conservation inconditionnelle',
+  { skip: sansPython }, () => {
+    const corpsLong = (n) => 'Un paragraphe de corps assez long pour établir la taille '
+      + 'dominante cohérente sur ce document testé ici pour de bon, numéro ' + n + '.';
+    const doc = {
+      styles: ['heading 2'],
+      blocs: [
+        // Corps : aucune mise en forme directe NI effective déclarée (comme un vrai corps sans
+        // aucun réglage propre).
+        paragrapheAvecEffectif(0, corpsLong(1)),
+        paragrapheAvecEffectif(1, corpsLong(2)),
+        // Faux titre « 2-fabrique » : un H2 déclaré, sur 40 mots de corps, SANS AUCUN réglage
+        // direct (`forme` vide, comme le corps) — mais dont l'« effectif » simule ce qu'une
+        // vraie cascade de style « heading 2 » donnerait (gras, 28pt), parce qu'AUCUN réglage
+        // direct ne vient le distinguer de son propre style.
+        paragrapheAvecEffectif(2,
+          Array.from({ length: 40 }, (_, i) => 'mot' + (i + 1)).join(' ') + '.',
+          { style: 'heading 2', niveauDeclare: 2, effectif: { taille: 28, gras: true } }),
+        paragrapheAvecEffectif(3, corpsLong(3)),
+        paragrapheAvecEffectif(4, corpsLong(4))
+      ]
+    };
+    const { titres } = diagnostiquer(doc);
+    const ligne = trouver(titres.trace, 2);
+    assert.notStrictEqual(ligne.decision, 'conserve_signature_distincte',
+      'aucun réglage DIRECT ne distingue ce faux titre du corps : la longueur doit trancher, '
+      + 'pas une conservation inconditionnelle sur la seule foi de la cascade de style');
+    assert.strictEqual(ligne.niveau_retenu, 0, 'trop long (40 mots) : rétrogradé');
+  });
+
+// ---------------------------------------------------------------------------------------
+// 21. Le plafond de trois groupes REJOINT le niveau 3 plutôt que d'être rejeté en bloc — voir
+// aussi le contrôle 11 ci-dessus (mis à jour pour cette révision), qui exerce le même mécanisme
+// avec quatre groupes. Ici, cinq groupes qualifiants : les deux excédentaires (D et E) doivent
+// tous deux rejoindre le niveau 3, aucun n'est perdu.
+
+test('classer_titres : cinq groupes qualifiants -> les deux excédentaires rejoignent tous deux le niveau 3',
+  { skip: sansPython }, () => {
+    const doc = {
+      styles: [],
+      blocs: [
+        para(0, 'Un paragraphe de corps assez long pour etablir la taille dominante '
+          + 'coherente sur ce document teste ici pour de bon et sans ambiguite.', { taille: 20 }),
+        para(1, 'Groupe A', { taille: 32 }),
+        para(2, 'Encore un paragraphe de corps assez long pour etablir la meme taille '
+          + 'dominante coherente sur ce document teste encore un peu plus loin.', { taille: 20 }),
+        para(3, 'Groupe B', { taille: 28, gras: true }),
+        para(4, 'Toujours un paragraphe de corps assez long et banal, sans structure '
+          + 'particuliere a signaler ici non plus vraiment du tout.', { taille: 20 }),
+        para(5, 'Groupe C', { taille: 24, italique: true }),
+        para(6, 'Un autre paragraphe de corps assez long et banal, sans structure '
+          + 'particuliere a signaler ici non plus vraiment du tout non plus.', { taille: 20 }),
+        para(7, 'Groupe D', { souligne: true, taille: 18 }),
+        para(8, 'Un dernier paragraphe de corps assez long pour fermer cette liste sans '
+          + 'ambiguite aucune sur sa nature de texte courant banal ici.', { taille: 20 }),
+        para(9, 'Groupe E', { souligne: true, taille: 16 })
+      ]
+    };
+    const { titres } = diagnostiquer(doc);
+    assert.strictEqual(titres.stats.promus, 5, 'les cinq candidats sont tous promus');
+    const l7 = trouver(titres.trace, 7);
+    const l9 = trouver(titres.trace, 9);
+    assert.strictEqual(l7.niveau_retenu, 3);
+    assert.strictEqual(l9.niveau_retenu, 3, 'les DEUX excédentaires rejoignent le niveau 3');
+    assert.strictEqual(titres.stats.groupes_rabattus_niveau3, 2);
+  });
+
+// ---------------------------------------------------------------------------------------
+// 22. Le niveau « sinon l'ordre des signatures » des titres de liste numérotée (§5.1) groupe
+// sur la signature TYPOGRAPHIQUE, sans l'alignement — mesuré sur « Le coenseignement
+// développemental… » : ses quatre titres de section partagent gras/taille/police, mais deux
+// sur quatre héritent un alignement justifié (« both ») que les deux autres n'ont pas ;
+// grouper sur la signature complète les aurait à tort scindés en deux niveaux pour un
+// attribut hérité incidemment.
+//
+// Sabotage minimal : dans _detecter_titres_liste(), remplacer
+// `cle = _signature_typographique(sig)` par `cle = sig` (grouper sur la signature COMPLÈTE,
+// alignement compris) — les deux candidats d'alignements différents se retrouvent sur deux
+// niveaux distincts, ce contrôle rougit.
+
+test('classer_titres : titres de liste numérotée, même gras/taille mais alignements différents -> même niveau',
+  { skip: sansPython }, () => {
+    const doc = {
+      styles: [],
+      blocs: [
+        para(0, 'Un paragraphe de corps assez long pour établir la taille dominante '
+          + 'cohérente sur ce document testé ici pour de bon et sans ambiguïté aucune.', { taille: 20 }),
+        para(1, 'Premier titre de liste', { gras: true, taille: 24, liste: [3, 0, 'numero'] }),
+        para(2, 'Encore un paragraphe de corps assez long pour établir la même taille '
+          + 'dominante cohérente sur ce document testé encore un peu plus loin ici.', { taille: 20 }),
+        para(3, 'Second titre de liste', { gras: true, taille: 24, alignement: 'both', liste: [3, 0, 'numero'] }),
+        para(4, 'Un dernier paragraphe de corps assez long pour fermer ce document sans '
+          + 'ambiguïté aucune sur sa nature de texte courant banal ici pour de bon.', { taille: 20 })
+      ]
+    };
+    const { titres } = diagnostiquer(doc);
+    const l1 = trouver(titres.trace, 1);
+    const l3 = trouver(titres.trace, 3);
+    assert.strictEqual(l1.decision, 'promue_liste');
+    assert.strictEqual(l3.decision, 'promue_liste');
+    assert.strictEqual(l1.niveau_retenu, l3.niveau_retenu,
+      'un alignement hérité incidemment ne doit jamais, à lui seul, séparer deux titres de '
+      + 'liste par ailleurs identiques (gras, taille, police)');
   });

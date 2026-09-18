@@ -98,13 +98,32 @@
 #                                 // protégé a survécu, jamais seulement le texte d'un motif.
 
 import base64
+import importlib.util
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import szh_commun
 import pronto_modele
+
+
+def _charger_module_a_tiret(nom_fichier, nom_module):
+    """docx-titres.py porte un tiret : pas un module importable par son nom (convention du
+    dépôt, §3 du contrat). Chargé par chemin, comme le fait déjà manuscrit_biblio.py pour
+    docx-meta.py — jamais recopié : la passe 1 (§5.1, révision du 19.09.2026) a besoin du
+    même lexique de légende que le pré-pass d'import (RE_LEGENDE), pour ne jamais promouvoir
+    « Tableau 1 » ou « Figure 2 » en titre."""
+    chemin = os.path.join(os.path.dirname(os.path.abspath(__file__)), nom_fichier)
+    spec = importlib.util.spec_from_file_location(nom_module, chemin)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_docx_titres = _charger_module_a_tiret('docx-titres.py', 'szh_docx_titres_pour_manuscrit_modele')
+RE_LEGENDE = _docx_titres.RE_LEGENDE
 
 
 # ---------------------------------------------------------------------------------
@@ -430,25 +449,43 @@ def _fragments_non_vides(paragraphe):
     return [f for f in paragraphe.fragments if f.texte]
 
 
+# ⚠ Révision du 19.09.2026 (§5.1, BRIEF-REPRISE §6.2) : les signatures se lisaient sur
+# `Fragment.forme` (mise en forme DIRECTE seule), avec ce défaut mesuré sur le corpus réel —
+# « corps sans taille déclarée » (elle hérite du style) et « faux titre déclaré 12 pt » sont
+# jugés DIFFÉRENTS alors qu'ils font tous deux 12 pt à l'écran, ce qui a empêché la passe 3 bis
+# de jamais adopter le moindre paragraphe sur les onze fichiers du corpus. `Fragment.effectif`
+# (ajouté le 19.09.2026, §4) porte la mise en forme EFFECTIVEMENT appliquée — directe, sinon
+# style de caractère, sinon la chaîne des styles de paragraphe, sinon docDefaults. `_valeur_
+# effective` lit `effectif` en priorité, avec repli sur `forme` clé par clé : un Fragment
+# construit sans `effectif` du tout (une fixture de test, un ancien appelant) — `effectif`
+# vaut alors nouvelle_forme(), toutes clés à None — retombe intégralement sur `forme`, sans
+# rien changer pour lui.
+def _valeur_effective(fragment, cle):
+    val = fragment.effectif.get(cle) if fragment.effectif else None
+    return val if val is not None else fragment.forme.get(cle)
+
+
 def _taille_max(fragments_non_vides):
-    tailles = [f.forme.get('taille') for f in fragments_non_vides
-               if f.forme.get('taille') is not None]
+    tailles = [_valeur_effective(f, 'taille') for f in fragments_non_vides]
+    tailles = [t for t in tailles if t is not None]
     return max(tailles) if tailles else None
 
 
 def _tout_forme(fragments_non_vides, cle):
     """True si TOUS les fragments non vides déclarent `cle` (gras/italique/souligne) à
-    True — un paragraphe à la mise en forme mixte (un mot en gras au milieu d'une phrase de
-    corps) n'est jamais « tout gras », donc jamais un candidat sur ce seul critère."""
-    return bool(fragments_non_vides) and all(f.forme.get(cle) is True
+    True, mise en forme EFFECTIVE (voir _valeur_effective) — un paragraphe à la mise en forme
+    mixte (un mot en gras au milieu d'une phrase de corps) n'est jamais « tout gras », donc
+    jamais un candidat sur ce seul critère."""
+    return bool(fragments_non_vides) and all(_valeur_effective(f, cle) is True
                                               for f in fragments_non_vides)
 
 
 def _police_dominante(fragments_non_vides):
-    """La police si TOUS les fragments non vides s'accordent sur une seule ; None sinon
-    (police non déclarée ou mélangée) — un champ de signature de plus qui ne doit jamais
-    être deviné à partir d'un fragment isolé."""
-    polices = {f.forme.get('police') for f in fragments_non_vides if f.forme.get('police')}
+    """La police si TOUS les fragments non vides s'accordent sur une seule (mise en forme
+    EFFECTIVE) ; None sinon (police non déclarée ou mélangée) — un champ de signature de plus
+    qui ne doit jamais être deviné à partir d'un fragment isolé."""
+    polices = {_valeur_effective(f, 'police') for f in fragments_non_vides
+               if _valeur_effective(f, 'police')}
     return next(iter(polices)) if len(polices) == 1 else None
 
 
@@ -465,12 +502,14 @@ def _casse(texte):
 def _signature(paragraphe, fragments_non_vides, texte):
     """La signature de mise en forme d'un paragraphe, telle que le §5.1 passe 3 la définit :
     taille arrondie (déjà un entier en demi-points, rien à arrondir en pratique), gras,
-    italique, souligné, police, alignement, casse. Deux paragraphes de MÊME signature
+    italique, souligné, police, alignement, casse — tous sur la mise en forme EFFECTIVE
+    (révision du 19.09.2026, voir _valeur_effective). Deux paragraphes de MÊME signature
     tombent dans le MÊME groupe — c'est un tuple, comparable par égalité, jamais un score."""
+    alignement = paragraphe.alignement_effectif or paragraphe.alignement
     return (_taille_max(fragments_non_vides), _tout_forme(fragments_non_vides, 'gras'),
             _tout_forme(fragments_non_vides, 'italique'),
             _tout_forme(fragments_non_vides, 'souligne'),
-            _police_dominante(fragments_non_vides), paragraphe.alignement, _casse(texte))
+            _police_dominante(fragments_non_vides), alignement, _casse(texte))
 
 
 def _texte_signature(sig):
@@ -505,6 +544,33 @@ def _est_style_citation(style):
     reste donc local à ce module, sur le nom déjà normalisé (normaliser_nom_style)."""
     n = pronto_modele.normaliser_nom_style(style)
     return bool(n) and ('quote' in n or n == 'citation' or 'zitat' in n)
+
+
+# §5.1 passe 1, révision du 19.09.2026 — trois exclusions nouvelles, mesurées sur le corpus
+# réel : un séparateur visuel (« ──────── », sans aucune lettre) promu Titre2/Titre3 sur
+# `4_La méthode Flip Flap.docx` (cinq lignes) faute d'un tel garde-fou ; une ligne de
+# coordonnées (courriel, téléphone, URL) qui n'a jamais sa place dans un titre de section ; et
+# une légende déjà écrite dans le manuscrit (« Tableau 1 », « Figure 2 ») que le lexique
+# RE_LEGENDE de docx-titres.py reconnaît déjà pour le pré-pass d'import — importé, jamais
+# recopié (voir _charger_module_a_tiret en tête de fichier).
+RE_EMAIL = re.compile(r'[^\s@]+@[^\s@]+\.[^\s@]+')
+RE_TELEPHONE = re.compile(r'\+?\d[\d\s]{8,}')
+RE_URL = re.compile(r'(?:https?://|www\.)\S+', re.I)
+
+
+def _sans_aucune_lettre(texte):
+    """Un paragraphe non vide qui ne porte AUCUNE lettre — une ligne de tirets, d'astérisques
+    ou de soulignés posée comme séparateur visuel, jamais un titre. Le vide pur reste sa
+    propre catégorie ('vide', déjà existante) : ici le texte est non vide mais dépourvu de
+    tout caractère alphabétique."""
+    return bool(texte.strip()) and not any(c.isalpha() for c in texte)
+
+
+def _porte_des_coordonnees(texte):
+    """Un courriel, un numéro de téléphone (au moins 9 chiffres, espaces tolérés) ou une URL
+    — jamais un titre de section, mais fréquent dans un encadré de coordonnées d'autrice que
+    la mise en forme seule ne distingue pas toujours d'un intertitre."""
+    return bool(RE_EMAIL.search(texte) or RE_TELEPHONE.search(texte) or RE_URL.search(texte))
 
 
 def _est_titre_biblio(texte, lexique):
@@ -608,9 +674,25 @@ def _exclusions_passe1(document, paras):
         elif pronto_modele.famille(p.style) == 'caption':
             exclus[idx] = ('legende', 'style de légende « %s »' % p.style)
         elif p.liste is not None:
+            # ⚠ Un item de liste NUMÉROTÉE isolé peut devenir un titre de section (décision de
+            # Robin, §5.1, révision du 19.09.2026 — voir _detecter_titres_liste) : il reste
+            # exclu ICI comme n'importe quel autre paragraphe en liste, _detecter_titres_liste
+            # le repêche ensuite lui-même en relisant cette même catégorie 'liste'. Les puces
+            # ne sont, elles, jamais candidates.
             exclus[idx] = ('liste', 'paragraphe en liste')
         elif not p.texte().strip():
             exclus[idx] = ('vide', 'paragraphe vide')
+        elif _sans_aucune_lettre(p.texte()):
+            exclus[idx] = ('sans_lettre',
+                            'paragraphe sans aucune lettre (séparateur visuel, ex. une ligne '
+                            'de tirets)')
+        elif _porte_des_coordonnees(p.texte()):
+            exclus[idx] = ('coordonnees',
+                            'porte une adresse courriel, un numéro de téléphone ou une URL')
+        elif RE_LEGENDE.match(p.texte().strip()):
+            exclus[idx] = ('legende_lexique',
+                            'commence par le lexique de légende (« Tableau 1 », « Figure 2 »… '
+                            '— RE_LEGENDE de docx-titres.py)')
     for idx in _indices_etendue_bibliographie(document, paras):
         if paras[idx].niveau_declare != 0:
             continue
@@ -692,6 +774,151 @@ def _corps_stats(paras, exclus):
 
 
 # ---------------------------------------------------------------------------------
+# Titres en liste numérotée — décision de Robin, §5.1 (révision du 19.09.2026). Mesuré sur
+# « Le coenseignement développemental… » : ses quatre VRAIS titres de section (Introduction,
+# etc.) sont des paragraphes de liste NUMÉROTÉE (numId décimal, style Listenabsatz, gras) —
+# la passe 1 les excluait tous à 100 %, faute de quoi que ce soit qui distingue « un item de
+# liste qui EST un titre » d'« un item de liste qui n'en est pas un ». Les puces, elles, ne
+# sont JAMAIS candidates : seule la numérotation porte, en pratique, cette ambiguïté.
+#
+# Un numéro manuel en tête de texte (« 2.1 Titre », « I. Titre ») est retiré du premier
+# fragment d'un titre ainsi promu — le gabarit numérote lui-même les Titre1 — et la liste
+# elle-même disparaît du paragraphe (`liste = None`) : ces deux mutations sortent de la seule
+# règle du §4 (« niveau_retenu, seul champ que les décisions écrivent »), en connaissance de
+# cause — voir le §5.1 du contrat, révision du 19.09.2026, et le rapport de chantier.
+RE_NUM_MANUEL = re.compile(r'^\s*(\d+(?:\.\d+)*|[IVX]+)[.)]?\s+')
+
+
+def _voisin_non_vide(paras, idx, pas):
+    """Le paragraphe NON VIDE le plus proche dans la direction `pas` (+1 ou -1), ou None en
+    bout de séquence — sert à juger l'ISOLEMENT d'un item de liste numérotée : ni le
+    paragraphe non vide précédent ni le suivant ne doit être un item de la MÊME liste (§5.1)."""
+    i = idx + pas
+    while 0 <= i < len(paras):
+        if paras[i].texte().strip():
+            return paras[i]
+        i += pas
+    return None
+
+
+def _item_numerote_isole(paras, idx):
+    """Un item de liste NUMÉROTÉE (jamais une puce) dont ni le paragraphe non vide précédent
+    ni le suivant n'est un item de la MÊME liste (numId). Une suite de deux items adjacents ou
+    plus de la même liste échoue déjà ce test sur CHACUN de ses membres (le premier a son
+    SUIVANT dans la même liste, le dernier son PRÉCÉDENT, tout intermédiaire les deux) : c'est
+    ce qui couvre, sans règle séparée, le cas du §5.1 « une suite de 3 items numérotés
+    consécutifs ou plus est une vraie liste, jamais des titres »."""
+    p = paras[idx]
+    if p.liste is None or p.liste[2] != 'numero':
+        return False
+    numid = p.liste[0]
+    for voisin in (_voisin_non_vide(paras, idx, -1), _voisin_non_vide(paras, idx, 1)):
+        if voisin is not None and voisin.liste is not None and voisin.liste[0] == numid:
+            return False
+    return True
+
+
+def _profondeur_numero_manuel(numero):
+    """La profondeur d'un numéro manuel : 1 pour un chiffre romain (jamais de hiérarchie à
+    plusieurs points dans ce format), sinon le nombre de segments séparés par un point
+    (« 2 » → 1, « 2.1 » → 2, « 2.1.3 » → 3)."""
+    if re.fullmatch(r'[IVX]+', numero):
+        return 1
+    return numero.count('.') + 1
+
+
+def _detecter_titres_liste(paras, exclus, corps_sig):
+    """{idx: (niveau, motif, prefixe_numero_a_retirer)} — les items de liste NUMÉROTÉE isolés
+    (§5.1) qui portent en plus une signature de titre : gras, OU taille supérieure à celle du
+    corps, OU italique quand TOUS les autres candidats isolés le sont aussi (un seul mot
+    isolé mis en italique par hasard ne suffit pas, une famille cohérente d'items en italique
+    si). Ne regarde QUE les paragraphes que la passe 1 a exclus pour la seule raison d'être en
+    liste ('liste') : un item par ailleurs en style maison/citation/légende reste exclu tel
+    quel, cette fonction ne le repêche jamais."""
+    def _admissible(idx):
+        texte = paras[idx].texte()
+        # Un item de liste numérotée qui serait AUSSI une légende, un séparateur ou une ligne
+        # de coordonnées reste soumis aux mêmes garde-fous que n'importe quel autre paragraphe
+        # de la passe 1 (§5.1) : « Tableau 1 » ne devient jamais un titre, qu'il soit ou non en
+        # liste.
+        return not (RE_LEGENDE.match(texte.strip()) or _sans_aucune_lettre(texte)
+                    or _porte_des_coordonnees(texte))
+
+    candidats = [idx for idx in range(len(paras))
+                 if exclus.get(idx, (None,))[0] == 'liste' and _item_numerote_isole(paras, idx)
+                 and _admissible(idx)]
+    if not candidats:
+        return {}
+
+    tous_italiques = all(_tout_forme(_fragments_non_vides(paras[i]), 'italique')
+                          for i in candidats)
+    taille_corps = corps_sig[0] if corps_sig is not None else None
+
+    retenus = []
+    for idx in candidats:
+        fragments = _fragments_non_vides(paras[idx])
+        if not fragments:
+            continue
+        gras = _tout_forme(fragments, 'gras')
+        taille = _taille_max(fragments)
+        plus_grand = (taille is not None and taille_corps is not None
+                      and taille > taille_corps)
+        italique = _tout_forme(fragments, 'italique')
+        if gras or plus_grand or (italique and tous_italiques):
+            retenus.append(idx)
+    if not retenus:
+        return {}
+
+    # Niveau : la profondeur du numéro manuel de tête si le manuscrit en porte un, sinon la
+    # profondeur de la liste (ilvl + 1), sinon — faute des deux — l'ordre des signatures
+    # PARMI CES SEULS candidats retenus (même ordre que la passe 3 : taille décroissante,
+    # gras, italique), jamais une hiérarchie inventée à partir de rien.
+    resultats = {}
+    sans_signal = []
+    for idx in retenus:
+        p = paras[idx]
+        texte = p.texte()
+        m = RE_NUM_MANUEL.match(texte)
+        if m:
+            niveau = min(MAX_NIVEAUX, _profondeur_numero_manuel(m.group(1)))
+            resultats[idx] = [niveau, 'numéro manuel « %s » retiré' % m.group(1), m.group(0)]
+        elif p.liste[1]:
+            niveau = min(MAX_NIVEAUX, p.liste[1] + 1)
+            resultats[idx] = [niveau, 'profondeur de liste (niveau %d)' % p.liste[1], None]
+        else:
+            sans_signal.append(idx)
+
+    if sans_signal:
+        # Groupé sur la signature TYPOGRAPHIQUE (sans alignement, voir _signature_typographique)
+        # — mesuré sur « Le coenseignement développemental » : ses quatre titres partagent
+        # exactement gras/taille/police, mais deux sur quatre héritent un alignement justifié
+        # (« both ») que les deux autres n'ont pas ; grouper sur la signature COMPLÈTE les
+        # aurait à tort scindés en deux niveaux pour un attribut hérité incidemment, jamais un
+        # signal délibéré (même principe que la passe 4 et la passe 3 bis).
+        groupes = {}
+        representant = {}
+        for idx in sans_signal:
+            texte = paras[idx].texte().rstrip()
+            sig = _signature(paras[idx], _fragments_non_vides(paras[idx]), texte)
+            cle = _signature_typographique(sig)
+            groupes.setdefault(cle, []).append(idx)
+            representant.setdefault(cle, sig)
+        groupes_pour_ordre = {representant[cle]: indices for cle, indices in groupes.items()}
+        for rang, (sig, indices) in enumerate(_ordonner_groupes(groupes_pour_ordre)):
+            niveau = min(MAX_NIVEAUX, rang + 1)
+            for idx in indices:
+                resultats[idx] = [niveau, 'ordre des signatures parmi les titres de liste '
+                                          'numérotée', None]
+
+    sortie = {}
+    for idx, (niveau, motif_niveau, prefixe) in resultats.items():
+        motif = ('promu titre (niveau %d) depuis une liste numérotée ; %s'
+                 % (niveau, motif_niveau))
+        sortie[idx] = (niveau, motif, prefixe)
+    return sortie
+
+
+# ---------------------------------------------------------------------------------
 # Passe 4 — rétrogradation (§5.1) : un paragraphe DÉCLARÉ titre dont la signature est celle
 # du corps est rétrogradé, quel que soit son nombre de mots. Le seuil absolu de 12 mots et la
 # ponctuation finale de l'ancienne conception ont disparu d'ici : ils détruisaient des
@@ -743,7 +970,55 @@ def _signature_typographique(sig):
     return (taille, gras, italique, souligne, police, casse)
 
 
+def _signature_directe(paragraphe, fragments_non_vides, texte):
+    """La signature sur la mise en forme DIRECTE SEULE (Fragment.forme, jamais la cascade des
+    styles) — la définition d'avant la révision « effectif » du 19.09.2026 (§4 du contrat),
+    conservée pour la SEULE passe 4 (voir son commentaire ci-dessous : mesuré sur le corpus
+    2-fabrique, l'effectif seul y protège à tort 34 faux titres sur 34)."""
+    tailles = [f.forme.get('taille') for f in fragments_non_vides
+               if f.forme.get('taille') is not None]
+    taille = max(tailles) if tailles else None
+    def _tout_direct(cle):
+        return bool(fragments_non_vides) and all(f.forme.get(cle) is True
+                                                  for f in fragments_non_vides)
+    polices = {f.forme.get('police') for f in fragments_non_vides if f.forme.get('police')}
+    police = next(iter(polices)) if len(polices) == 1 else None
+    return (taille, _tout_direct('gras'), _tout_direct('italique'), _tout_direct('souligne'),
+            police, paragraphe.alignement, _casse(texte))
+
+
+def _corps_signature_directe(paras, exclus):
+    """La signature DOMINANTE du corps sur la mise en forme DIRECTE seule — même pool que
+    _corps_stats (non exclus, non déclarés, texte non vide), mais sans la cascade des styles.
+    Sert de référence à la passe 4 SEULE (voir _signature_directe)."""
+    comptes = {}
+    for idx, p in enumerate(paras):
+        if idx in exclus or p.niveau_declare != 0:
+            continue
+        texte = p.texte().rstrip()
+        if not texte:
+            continue
+        sig = _signature_directe(p, _fragments_non_vides(p), texte)
+        comptes[sig] = comptes.get(sig, 0) + 1
+    return max(comptes, key=comptes.get) if comptes else None
+
+
 def _passe4_retrogradation(paras, exclus, corps_sig, corps_mediane):
+    # ⚠ Mesuré ce jour (révision « signatures effectives », §5.1) : substituer partout la
+    # signature EFFECTIVE à la signature DIRECTE fait chuter le corpus 2-fabrique de 21/34 à
+    # 5/34 faux titres rattrapés — une RÉGRESSION, pas une amélioration. Cause : ces 34 faux
+    # titres sont fabriqués par un simple remplacement de w:pStyle, SANS aucun réglage direct
+    # (BRIEF-REPRISE §4) — leur signature EFFECTIVE, une fois la cascade résolue, devient donc
+    # EXACTEMENT celle de leur style de titre, indiscernable en tous points d'un vrai titre du
+    # même niveau. La comparer telle quelle à celle du corps la déclare « distincte » et
+    # court-circuite la longueur qui, seule, aurait pu les démasquer. La correction du
+    # 19.09.2026 (« corps qui hérite 12 pt vs faux titre qui les déclare, jugés différents »)
+    # avait le défaut inverse : une distinction qui n'existe QU'en direct. Exiger les DEUX
+    # (effectif ET direct distincts de leurs pendants du corps) pour conserver SANS regarder
+    # la longueur restaure le bon comportement sur les deux corpus à la fois — l'un ne
+    # protège que d'une fausse ressemblance directe, l'autre que d'une fausse ressemblance
+    # de cascade ; aucun des deux seuls ne suffit.
+    corps_sig_directe = _corps_signature_directe(paras, exclus)
     resultats = {}
     for idx, p in enumerate(paras):
         if idx in exclus or p.niveau_declare not in (1, 2, 3):
@@ -755,31 +1030,40 @@ def _passe4_retrogradation(paras, exclus, corps_sig, corps_mediane):
                 'conservé titre : aucun corps de comparaison n\'a pu être établi dans ce '
                 'document (aucun paragraphe candidat), le niveau déclaré fait foi par défaut')
             continue
-        if _signature_typographique(sig) != _signature_typographique(corps_sig):
+        sig_directe = _signature_directe(p, _fragments_non_vides(p), texte)
+        distinct_effectif = _signature_typographique(sig) != _signature_typographique(corps_sig)
+        distinct_direct = (corps_sig_directe is None or
+                           _signature_typographique(sig_directe) != _signature_typographique(corps_sig_directe))
+        if distinct_effectif and distinct_direct:
             resultats[idx] = (p.niveau_declare, 'conserve_signature_distincte',
                 'conservé titre : signature (%s) typographiquement distincte de celle du '
                 'corps (%s)' % (_texte_signature(sig), _texte_signature(corps_sig)))
             continue
-        # Signature typographiquement identique à celle du corps (l'alignement seul peut
-        # encore différer — voir _signature_typographique ; le cas de loin le plus fréquent
-        # sur un document réel, voir la note ci-dessus) : la longueur décide, relativement au
-        # corps de CE document, jamais un compte de mots absolu.
+        # Pas distinctement ET délibérément différente de celle du corps : soit réellement
+        # identique (y compris en effectif, le cas de loin le plus fréquent faute de réglage
+        # direct), soit distincte SEULEMENT par la cascade de style (aucun réglage direct qui
+        # la démarque — voir le commentaire de cette fonction) : dans les deux cas, c'est la
+        # longueur qui décide, relativement au corps de CE document, jamais un compte de mots
+        # absolu.
+        if distinct_effectif:
+            qualif = ('distincte SEULEMENT par la cascade de style — aucun réglage direct ne '
+                      'la démarque du corps (%s)' % _texte_signature(sig))
+        else:
+            qualif = 'typographiquement identique à celle du corps'
         court = (corps_mediane is not None
                  and len(texte) * RATIO_RETROGRADATION_MIN <= corps_mediane)
         if court:
             resultats[idx] = (p.niveau_declare, 'conserve_signature_corps_mais_court',
-                'conservé titre : signature (%s) typographiquement identique à celle du corps, '
-                'mais sa longueur (%d signes, %d mots) reste dans celle d\'un titre de ce '
-                'document (corps médian %s signes) — la mise en forme directe ne distingue '
-                'rien ici, la longueur si' % (_texte_signature(sig), len(texte),
-                                              len(_mots(texte)), corps_mediane))
+                'conservé titre : signature (%s) %s, mais sa longueur (%d signes, %d mots) '
+                'reste dans celle d\'un titre de ce document (corps médian %s signes) — la '
+                'mise en forme directe ne distingue rien ici, la longueur si'
+                % (_texte_signature(sig), qualif, len(texte), len(_mots(texte)), corps_mediane))
         else:
             resultats[idx] = (0, 'retrogradee_signature_corps',
-                'rétrogradé au corps : signature (%s) typographiquement identique à celle du '
-                'corps de ce document (%s), ET longueur (%d signes, %d mots) qui ne tient plus '
-                'dans celle d\'un titre de ce document (corps médian %s signes)'
-                % (_texte_signature(sig), _texte_signature(corps_sig), len(texte),
-                   len(_mots(texte)), corps_mediane))
+                'rétrogradé au corps : signature (%s) %s de ce document, ET longueur (%d '
+                'signes, %d mots) qui ne tient plus dans celle d\'un titre de ce document '
+                '(corps médian %s signes)'
+                % (_texte_signature(sig), qualif, len(texte), len(_mots(texte)), corps_mediane))
     return resultats
 
 
@@ -948,6 +1232,12 @@ def classer_titres(document):
     # corps de CE document, jamais une valeur absolue importée d'un autre article.
     corps_sig, corps_mediane = _corps_stats(paras, exclus)
 
+    # Titres en liste numérotée (§5.1, décision de Robin, révision du 19.09.2026) : indépendant
+    # des passes 2/3/4 (ces paragraphes ne sont jamais déclarés titre, `niveau_declare == 0`,
+    # donc hors de portée de la passe 4 quel que soit l'ordre) — la trace par paragraphe est
+    # ajoutée avec toutes les autres, plus bas, dans l'ordre du document.
+    assignation_liste = _detecter_titres_liste(paras, exclus, corps_sig)
+
     # Passe 4 — rétrogradation. INDÉPENDANTE de la passe 3 (voir sa docstring) : on la calcule
     # maintenant pour pouvoir, plus bas, évaluer la contrainte globale sur le total RÉEL de
     # titres retenus (déclarés conservés + nouvellement promus), pas sur une borne supérieure.
@@ -971,16 +1261,34 @@ def classer_titres(document):
                                            sum(1 for (n, *_r) in adoptions.values() if n == niveau)))})
 
     # Passe 3 — regroupement par signature, restreint aux niveaux que la passe 2 autorise, et
-    # qui ne revient jamais sur un paragraphe déjà ADOPTÉ ci-dessus.
+    # qui ne revient jamais sur un paragraphe déjà ADOPTÉ ci-dessus NI déjà promu depuis une
+    # liste numérotée.
     groupes_bruts = _grouper_candidats(paras, exclus, niveaux_a_chercher, corps_sig,
-                                        corps_mediane, deja_adoptes=set(adoptions))
+                                        corps_mediane,
+                                        deja_adoptes=set(adoptions) | set(assignation_liste))
     groupes_qualifies = _filtrer_groupes(groupes_bruts, paras)
     groupes_ordonnes = _ordonner_groupes(groupes_qualifies)
     niveaux_disponibles = sorted(niveaux_a_chercher)
 
+    # Plafond de trois groupes (§5.1, révision du 19.09.2026) : au-delà de MAX_NIVEAUX groupes
+    # qualifiants, l'ancien comportement écartait purement et simplement les excédentaires
+    # (« groupe_non_retenu », jamais promus). Rabattre les excédentaires sur le niveau 3 —
+    # plutôt que les rejeter — quand ce niveau reste disponible : un article qui distingue
+    # plus de trois mises en forme de titre existe réellement (glossaire, dossier à rubriques),
+    # et le laisser sans AUCUN de ces titres serait pire qu'un sur-classement au niveau le plus
+    # bas. Seuls les trois groupes les plus « hauts » dans l'ordre du §5.1 (taille décroissante,
+    # gras, italique — _ordonner_groupes) gardent leur niveau propre ; le reste rejoint le
+    # niveau 3, jamais un niveau que la passe 2 n'a pas autorisé à chercher.
+    groupes_rabattus = set()
+    if len(groupes_ordonnes) > MAX_NIVEAUX and 3 in niveaux_a_chercher:
+        groupes_a_niveau, groupes_a_rabattre = (groupes_ordonnes[:MAX_NIVEAUX],
+                                                 groupes_ordonnes[MAX_NIVEAUX:])
+    else:
+        groupes_a_niveau, groupes_a_rabattre = groupes_ordonnes, []
+
     assignation_p3 = {}   # idx -> (niveau, signature)
     groupes_retenus, groupes_ecartes_faute_de_niveau = [], []
-    for i, (sig, indices) in enumerate(groupes_ordonnes):
+    for i, (sig, indices) in enumerate(groupes_a_niveau):
         if i < len(niveaux_disponibles):
             niveau = niveaux_disponibles[i]
             groupes_retenus.append((sig, indices, niveau))
@@ -988,6 +1296,19 @@ def classer_titres(document):
                 assignation_p3[idx] = (niveau, sig)
         else:
             groupes_ecartes_faute_de_niveau.append((sig, indices))
+    for sig, indices in groupes_a_rabattre:
+        groupes_retenus.append((sig, indices, 3))
+        groupes_rabattus.add(sig)
+        for idx in indices:
+            assignation_p3[idx] = (3, sig)
+
+    if groupes_rabattus:
+        trace.append({'portee': 'document', 'source': None, 'style': '',
+                      'decision': 'groupes_rabattus_niveau3',
+                      'motif': ('%d groupe(s) qualifiant(s) au-delà des %d niveaux des lignes '
+                               'directrices : rabattus sur le niveau 3 plutôt que rejetés — '
+                               'vérifiez qu\'il ne s\'agit pas d\'un glossaire ou d\'un dossier '
+                               'à rubriques' % (len(groupes_rabattus), MAX_NIVEAUX))})
 
     # Contrainte globale, CORRIGÉE le 18.09.2026 par Robin pendant ce chantier (à relire dans
     # le message de correction, pas encore répercutée dans le texte figé du §5.1 au moment où
@@ -1031,7 +1352,7 @@ def classer_titres(document):
     # 3 bis comptent aussi : « une adoption qui multiplierait le nombre de titres du document
     # mérite le signal de la passe 3, au même titre qu'un groupe trop nombreux » (Robin,
     # 18.09.2026).
-    total_final = n_conserves_p4 + len(assignation_p3) + len(adoptions)
+    total_final = n_conserves_p4 + len(assignation_p3) + len(adoptions) + len(assignation_liste)
     if total_final > MAX_TITRES:
         # Signal, jamais un rejet (voir le commentaire ci-dessus) : la relectrice tranche,
         # l'outil ne jette rien en silence et n'accepte rien sans le dire.
@@ -1058,11 +1379,12 @@ def classer_titres(document):
     # (§5.1 : « groupe : italique, 11 pt, 3 à 8 mots, 9 occurrences réparties → niveau 2 »).
     for sig, indices, niveau in groupes_retenus:
         mots = [len(_mots(paras[i].texte().rstrip())) for i in indices]
+        rabattu = ' (rabattu, plafond de %d groupes dépassé)' % MAX_NIVEAUX if sig in groupes_rabattus else ''
         trace.append({'portee': 'document', 'source': None, 'style': '',
                       'decision': 'groupe_promu',
                       'motif': 'groupe : %s, %d à %d mots, %d occurrence(s) réparties → '
-                               'niveau %d' % (_texte_signature(sig), min(mots), max(mots),
-                                              len(indices), niveau)})
+                               'niveau %d%s' % (_texte_signature(sig), min(mots), max(mots),
+                                                len(indices), niveau, rabattu)})
     for sig, indices in groupes_ecartes_faute_de_niveau:
         mots = [len(_mots(paras[i].texte().rstrip())) for i in indices]
         trace.append({'portee': 'document', 'source': None, 'style': '',
@@ -1074,9 +1396,27 @@ def classer_titres(document):
 
     # Assemblage final — une ligne de trace par paragraphe, dans l'ordre du document.
     n_promus = n_retrogrades = n_conserves_declares = n_non_promus = n_exclus = n_adoptes = 0
+    n_promus_liste = 0
     stats_exclus = {}
     for idx, p in enumerate(paras):
-        if idx in exclus:
+        if idx in assignation_liste:
+            # Titre en liste numérotée (§5.1, révision du 19.09.2026) : PASSE AVANT le test
+            # `idx in exclus` — ces paragraphes y figurent toujours sous 'liste' (la passe 1
+            # ne les en a jamais retirés, voir _detecter_titres_liste), mais leur promotion
+            # prime. Deux mutations volontaires, hors de la seule règle « niveau_retenu, seul
+            # champ écrit » du §4 (voir le contrat, §5.1, révision du 19.09.2026) : la liste
+            # disparaît (le gabarit numérote lui-même les Titre1) et un numéro manuel de tête
+            # est retiré du premier fragment.
+            niveau, motif, prefixe = assignation_liste[idx]
+            p.niveau_retenu = niveau
+            p.liste = None
+            if prefixe and p.fragments and p.fragments[0].texte.startswith(prefixe):
+                p.fragments[0].texte = p.fragments[0].texte[len(prefixe):]
+            n_promus_liste += 1
+            trace.append({'portee': 'paragraphe', 'source': p.source, 'style': p.style,
+                          'decision': 'promue_liste', 'niveau_declare': 0,
+                          'niveau_retenu': niveau, 'motif': motif})
+        elif idx in exclus:
             categorie, raison = exclus[idx]
             p.niveau_retenu = 0
             n_exclus += 1
@@ -1131,8 +1471,10 @@ def classer_titres(document):
               'promus': n_promus, 'adoptes': n_adoptes, 'retrogrades': n_retrogrades,
               'conserves_declares': n_conserves_declares, 'non_promus': n_non_promus,
               'exclus': n_exclus, 'exclus_par_categorie': stats_exclus,
+              'promus_liste': n_promus_liste,
               'total_titres_retenus': total_final,
               'rejet_contrainte_niveaux': bool(rejet_contrainte),
+              'groupes_rabattus_niveau3': len(groupes_rabattus),
               'signal_nombre_inhabituel': bool(total_final > MAX_TITRES),
               'styles_exclus': []}
     return stats, trace
