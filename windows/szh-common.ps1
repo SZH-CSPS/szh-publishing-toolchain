@@ -403,23 +403,67 @@ function Sort-SzhVersions($Versions) {
   $paires = @()
   foreach ($v in $Versions) {
     $texte = [string]$v
+    # « v1.2.3 » aussi bien que « 1.2.3 ». Get-SzhVersionsPubliees retire déjà le « v » des
+    # tags avant d’appeler ici, mais Get-SzhMediumVersion le tolère, et les deux fonctions
+    # doivent s’accorder : sans cette ligne, « v1.0.1 » tombait dans le seau des
+    # non-numériques, donc en queue de liste, et « 1.0.0 » passait pour plus récente.
+    $nu = $texte -replace '^v', ''
     $num = $null
     $base = ''
     # La partie numérique s'arrête au premier caractère qui n'est ni un chiffre ni un point :
     # « 2026.08.10-rc1 » donne « 2026.08.10 », pas « 2026.08.101 » (l'ancien
     # -replace '[^0-9.]', '' recollait les chiffres du suffixe à la version nue, faisant
     # passer une pré-version pour une version plus récente).
-    if ($texte -match '^([0-9]+(\.[0-9]+)*)') { $base = $Matches[1] }
+    if ($nu -match '^([0-9]+(\.[0-9]+)*)') { $base = $Matches[1] }
     if ($base) { try { $num = [version]$base } catch { $num = $null } }
     # Un suffixe (« -rc1 », « -local »…) se classe sous la version nue de même numéro : ce
     # n'est pas un numéro plus récent, mais une pré-version de celui-là.
-    $suffixe = ($base -and ($base -ne $texte))
+    $suffixe = ($base -and ($base -ne $nu))
     $paires += [pscustomobject]@{ texte = $texte; num = $num; suffixe = $suffixe }
   }
   $avec = @($paires | Where-Object { $null -ne $_.num } |
     Sort-Object -Property @{Expression = 'num'; Descending = $true}, @{Expression = 'suffixe'; Descending = $false})
   $sans = @($paires | Where-Object { $null -eq $_.num } | Sort-Object -Property texte -Descending)
   return @(($avec + $sans) | ForEach-Object { $_.texte })
+}
+
+# Le medium d'un numéro de version — « 1.2 » pour 1.2.13 —, ou une chaîne vide quand ce
+# numéro n'est pas de la nouvelle ère. Depuis le 18.09.2026 le dépôt est en
+# majeure.medium.mineure (1.0.0 et au-delà) ; avant, il était en année.mois.compteur
+# (2026.09.42). Les deux se ressemblent assez pour qu’aucun tri ne les sépare — [version]
+# classe même l’ancienne ère AU-DESSUS de la nouvelle, 2026 étant plus grand que 1. C’est la
+# majeure qui tranche : au-delà de 2000, c’est une année, donc l’ancienne ère. Le
+# « 0.0.0-dev+<sha> » de l’instance de développement est écarté par la même règle, sa
+# majeure étant nulle.
+function Get-SzhMediumVersion([string]$Version) {
+  $texte = ([string]$Version).Trim() -replace '^v', ''
+  if ($texte -notmatch '^([0-9]+)[.]([0-9]+)[.][0-9]+') { return '' }
+  $majeure = [int]$Matches[1]
+  if (($majeure -lt 1) -or ($majeure -ge 2000)) { return '' }
+  return ('{0}.{1}' -f $majeure, [int]$Matches[2])
+}
+
+# Ce que le sélecteur de version propose : une ligne par medium, et seulement la plus
+# récente de ses mineures — 1.2.13 sans 1.2.12 ni les onze d’avant. Revenir à une mineure
+# intermédiaire n’a pas de sens : elle ne se distingue de la suivante que par des
+# correctifs, et personne ne saurait dire laquelle choisir. À plus de deux releases par
+# jour, la liste complète était de toute façon illisible — 41 lignes pour le seul mois de
+# septembre 2026. L’ancienne ère disparaît de la liste par la même occasion : elle n’est
+# plus proposée, et update.ps1 -Version <numéro> reste le seul chemin vers elle.
+function Select-SzhVersionsProposables($Versions) {
+  $vues = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+  $retenues = @()
+  # Sort-SzhVersions d’abord : la plus récente de chaque medium est donc la première vue, et
+  # une pré-version (« 1.2.3-rc1 ») s’y classe déjà sous la version nue de même numéro.
+  foreach ($v in (Sort-SzhVersions $Versions)) {
+    $medium = Get-SzhMediumVersion $v
+    if (-not $medium) { continue }
+    if (-not $vues.Add($medium)) { continue }
+    # Le numéro nu, jamais le tag : la valeur retenue ici part en « update.ps1 -Version X »,
+    # et Get-SzhManifestUrl y recolle le « v » du tag — « vv1.0.1 » ne désignerait rien.
+    $retenues += (([string]$v).Trim() -replace '^v', '')
+  }
+  return @($retenues)
 }
 
 # Releases GitHub, les plus récentes d'abord ; tableau vide si le réseau manque ou refuse
@@ -489,7 +533,7 @@ function Show-SzhVersions($Parent, [string]$FichierIcone) {
   $installee = Get-SzhVersionInstallee
   # Aucun appel réseau ici : la liste est remplie au Shown, plus bas ; le faire avant
   # l'affichage fige la fenêtre jusqu'au bout du timeout.
-  $locales = @(Get-SzhVersionsLocales)
+  $locales = @(Select-SzhVersionsProposables (Get-SzhVersionsLocales))
   $disponibles = New-Object System.Collections.ArrayList
 
   $boite = New-Object System.Windows.Forms.Form
@@ -550,7 +594,10 @@ function Show-SzhVersions($Parent, [string]$FichierIcone) {
   # réseau se voit au lieu de figer l'interface.
   $boite.Add_Shown({
     $boite.Refresh()
-    $publiees = @(Get-SzhVersionsPubliees)
+    # Le réseau d’abord, le filtre ensuite : c’est « GitHub a-t-il répondu ? » qui décide du
+    # message hors ligne, plus bas, et non « reste-t-il quelque chose après le filtre ».
+    $publieesBrutes = @(Get-SzhVersionsPubliees)
+    $publiees = @(Select-SzhVersionsProposables $publieesBrutes)
     foreach ($v in $publiees) { if (-not $disponibles.Contains($v)) { [void]$disponibles.Add($v) } }
     foreach ($v in $locales) { if (-not $disponibles.Contains($v)) { [void]$disponibles.Add($v) } }
     if ($installee -and (-not $disponibles.Contains($installee))) { [void]$disponibles.Insert(0, $installee) }
@@ -559,10 +606,17 @@ function Show-SzhVersions($Parent, [string]$FichierIcone) {
       elseif ($locales -contains $v) { [void]$liVersions.Items.Add((T 'lanceur.versions.locale' @($v))) }
       else { [void]$liVersions.Items.Add($v) }
     }
-    if ($liVersions.Items.Count -gt 0) { $liVersions.SelectedIndex = 0 }
+    # La ligne présélectionnée est la première qui changerait quelque chose. La version
+    # installée ouvre la liste quand elle n’y figure pas — elle dit où l’on en est —, mais
+    # la réinstaller n’est pas le geste qu’on vient chercher ici. Le cas est devenu la règle
+    # au passage à 1.0.0 : toutes les versions d’avant s’insèrent ainsi, sans jamais être
+    # proposables, et le bouton « Installer » aurait proposé de ne rien faire.
+    $premier = 0
+    if (($disponibles.Count -gt 1) -and ($disponibles[0] -eq $installee)) { $premier = 1 }
+    if ($liVersions.Items.Count -gt 0) { $liVersions.SelectedIndex = $premier }
     # Trois états à nommer : liste complète, hors ligne avec un repli réel, hors ligne
     # sans repli (seule la version installée, donc rien à installer).
-    if ($publiees.Count -gt 0) { $note.Text = '' }
+    if ($publieesBrutes.Count -gt 0) { $note.Text = (T 'lanceur.versions.note') }
     elseif ($locales.Count -gt 0) { $note.Text = (T 'lanceur.versions.horsligne') }
     else { $note.Text = (T 'lanceur.versions.horsligne.deja') }
     if ($disponibles.Count -eq 0) { $note.Text = (T 'lanceur.versions.vide') }

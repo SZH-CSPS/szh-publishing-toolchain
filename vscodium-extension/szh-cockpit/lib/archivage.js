@@ -29,12 +29,30 @@ function versionInstallee() {
   } catch (e) { return ''; }
 }
 
-// Faux dès qu'une des deux versions est inconnue. Comparaison textuelle après
-// normalisation, les tags de release étant des chaînes et non des nombres à ordonner.
+// La majeure d'un numéro de version, ou 0 quand ce n'en est pas un — « 0.0.0-dev+<sha> » de
+// l'instance de développement compris, sa majeure étant nulle. Pendant du
+// Get-SzhMediumVersion de windows/szh-common.ps1, qui sépare les mêmes ères.
+function majeureVersion(version) {
+  const trouve = /^v?(\d+)\.\d+\.\d+/.exec(String(version || '').trim());
+  if (!trouve) { return 0; }
+  return Number(trouve[1]);
+}
+
+// La MAJEURE seule, et non le numéro entier. Comparer les chaînes faisait crier
+// l'avertissement à chaque release — quarante et une pour le seul mois de septembre 2026 —,
+// donc il ne disait plus rien et personne ne le lisait. Depuis le passage à
+// majeure.medium.mineure (18.09.2026), la majeure est justement ce qui change quand la
+// maquette change : elle seule mérite d'interrompre quelqu'un. Un numéro estampillé de
+// l'ancienne ère (2026.09.42, majeure 2026) diverge donc de tout numéro de la nouvelle, ce
+// qui est exact — la maquette a bougé entre les deux.
+//
+// Faux dès qu'une des deux versions est inconnue OU illisible : sur un poste de
+// développement (0.0.0-dev), la maquette est celle du dépôt ouvert, et l'avertissement
+// n'aurait rien à désigner.
 function versionsDivergent(versionNumero, versionPoste) {
-  const a = String(versionNumero || '').trim().replace(/^v/i, '');
-  const b = String(versionPoste || '').trim().replace(/^v/i, '');
-  if (a === '' || b === '') { return false; }
+  const a = majeureVersion(versionNumero);
+  const b = majeureVersion(versionPoste);
+  if ((a === 0) || (b === 0)) { return false; }
   return a !== b;
 }
 

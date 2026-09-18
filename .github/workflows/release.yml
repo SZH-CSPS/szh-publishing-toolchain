@@ -180,6 +180,19 @@ jobs:
             done
           fi
 
+      - name: Vérifier que le CHANGELOG porte cette version
+        run: |
+          # Les notes de la Release sont tirées de CHANGELOG.md : sans section, la Release
+          # serait publiée avec un texte générique, et le niveau (majeure / medium / mineure)
+          # ne serait justifié nulle part. Le contrôle est ici, avant les VSIX et le rootfs,
+          # pour échouer en quelques secondes plutôt qu'après dix minutes de construction.
+          V="${{ steps.ver.outputs.v }}"
+          if ! grep -qx "## $V" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md n'a pas de section \"## $V\" -- la release est refusée"
+            exit 1
+          fi
+          echo "CHANGELOG.md : section $V trouvée"
+
       - name: Construire les extensions maison
         run: |
           # vsce est borné à sa version majeure : la suivante pourrait durcir ses règles
@@ -245,10 +258,26 @@ jobs:
           if [ "${{ steps.need.outputs.rootfs }}" = "true" ]; then
             ASSETS+=("szh-publishing-rootfs-$V.tar.gz" "szh-publishing-rootfs-$V.tar.gz.sha256")
           fi
+          # Les notes viennent de CHANGELOG.md, section "## <version>" jusqu'au titre suivant
+          # (la présence de la section est contrôlée bien plus haut). --notes-file et non
+          # --notes : le texte porte des retours à la ligne et des caractères que le shell
+          # relirait.
+          awk -v v="$V" '$0 == "## " v { dedans = 1; next } /^## / { if (dedans) exit } dedans' \
+              CHANGELOG.md > notes.md
+          # Le pied, en echo et non en heredoc : un heredoc se termine sur une ligne sans
+          # indentation, que le scalaire de bloc YAML ne peut pas porter -- « --- » en colonne
+          # 1 ferait même un second document, et ci.yml serait refusé en entier.
+          {
+            echo ""
+            echo "---"
+            echo "Toolkit (pipeline + config + template + scripts) et extensions épinglées."
+            echo "Rootfs WSL : voir \`manifest.json\` (réutilisé si \`image/\` est inchangé)."
+            echo "Déployé automatiquement par \`update.ps1\`."
+          } >> notes.md
           # Crée la Release, ou met à jour ses assets si elle existe déjà.
           gh release create "v$V" "${ASSETS[@]}" \
               --repo "$GITHUB_REPOSITORY" \
               --title "Toolchain v$V" \
-              --notes "Toolkit (pipeline + config + template + scripts) et extensions épinglées. Rootfs WSL : voir manifest.json (réutilisé si image/ inchangé). Déployé automatiquement par update.ps1." \
+              --notes-file notes.md \
           || gh release upload "v$V" "${ASSETS[@]}" \
               --repo "$GITHUB_REPOSITORY" --clobber

@@ -851,7 +851,7 @@ const TEXTES_COCKPIT = {
     'err.exportArticle': 'L’article « {0} » n’a pas pu être produit, et la chaîne n’a rien dit de plus. Réessayez ; si cela se reproduit, signalez-le.',
     'err.article.introuvable': 'Aucun article visé – cliquez d’abord un article dans la barre « Pronto ».',
     'tache.exportArticle': 'Exporter l’article',
-    'version.divergence': 'Vous utilisez la version {0} du logiciel ; ce numéro a été créé avec la version {1}. Vérifiez les documents produits.',
+    'version.divergence': 'Ce numéro a été créé avec la version {1} du logiciel, ce poste a la {0}. La maquette a changé entre les deux : relisez le PDF avant de le publier.',
     'version.divergence.bouton': 'Changer de version…',
     'err.version.lancement': 'La fenêtre de choix de version n’a pas pu s’ouvrir ({0}). Passez par le menu Démarrer, « Pronto », bouton « Version du logiciel… ».',
     // regl.dev / regl.dev.oui / regl.dev.non : parties avec le groupe du formulaire, qui a
@@ -2287,7 +2287,7 @@ const TEXTES_COCKPIT = {
     'err.exportArticle': 'Der Artikel «{0}» konnte nicht erzeugt werden, und die Kette hat nichts weiter gemeldet. Versuchen Sie es erneut; wiederholt sich das, melden Sie es.',
     'err.article.introuvable': 'Kein Artikel ausgewählt – klicken Sie zuerst einen Artikel in der Leiste «Pronto» an.',
     'tache.exportArticle': 'Artikel exportieren',
-    'version.divergence': 'Sie verwenden Version {0} der Software; diese Ausgabe wurde mit Version {1} erstellt. Prüfen Sie die erzeugten Dokumente.',
+    'version.divergence': 'Diese Ausgabe wurde mit Version {1} der Software erstellt, dieser Arbeitsplatz hat Version {0}. Das Layout hat sich dazwischen geändert: Prüfen Sie das PDF vor der Veröffentlichung.',
     'version.divergence.bouton': 'Version wechseln…',
     'err.version.lancement': 'Das Fenster zur Versionsauswahl liess sich nicht öffnen ({0}). Gehen Sie über das Startmenü, «Pronto», Schaltfläche «Version der Software…».',
     // regl.dev / regl.dev.oui / regl.dev.non : dasselbe Feld ist in den Reiter

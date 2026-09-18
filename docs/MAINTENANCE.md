@@ -76,7 +76,7 @@ Ce qui est fait de cela, depuis 2026-08 :
 
 | Quand | Geste | Durée |
 |---|---|---|
-| **À chaque release** | test de fumée + les trois contrôles ci-dessus ; vérifier que `version` a bien été incrémentée dans les deux `package.json` d'extension | 15 min |
+| **À chaque release** | test de fumée + les trois contrôles ci-dessus ; vérifier que `version` a bien été incrémentée dans les deux `package.json` d'extension ; choisir le niveau du tag (majeure / medium / mineure, voir [README](../README.md#numéroter-une-version)) et écrire sa section dans `CHANGELOG.md` | 15 min |
 | **Avant chaque numéro** (≈ 4×/an) | compiler le numéro précédent pour confirmer que rien n'a bougé ; vérifier que les dossiers de revue sont « toujours conservés sur cet appareil » côté OneDrive | 10 min |
 | **Après une mise à jour majeure de Windows** | test de fumée sur un poste ; `wsl --version` et `wsl -l -v` | 15 min |
 | **Après un changement de politique antivirus ou Intune** | re-vérifier les exclusions WSL (elles ne sont pas posées automatiquement, voir § Poste) | 10 min |
@@ -588,9 +588,14 @@ son dossier au tag précédent : s'il a changé et que `version` ne l'a pas suiv
 cas jusqu'ici — plusieurs releases de septembre ont été reconstruites sans être réinstallées
 nulle part, faute de ce contrôle.
 
-**À observer.** Le prochain tag doit porter la version `0.33.0` pour `szh-cockpit` (la
-dernière release publiée portait `0.32.0`). La CI refuse désormais un tag qui l'oublierait ;
-elle ne dispense pas de vérifier soi-même avant de taguer.
+**À observer.** La CI refuse un tag qui oublierait le bump ; elle ne dispense pas de le
+vérifier soi-même avant de taguer, en comparant à `git show <tag précédent>:<…>/package.json`
+et non à ce que le fichier local raconte.
+
+⚠ **La version d'une extension n'est pas celle du toolkit, et ne le devient pas avec
+`1.0.0`.** `szh-cockpit` suit son propre compte (`0.60.0` à la release `1.0.0`), parce que le
+contrôle de bump se fonde sur « ce dossier a-t-il changé ? » : aligner les deux forcerait un
+bump des deux extensions à chaque release, y compris quand elles n'ont pas bougé d'une ligne.
 
 ### Un raccourci du menu Démarrer ne se pose pas
 

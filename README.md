@@ -91,12 +91,42 @@ szh-publishing-toolchain/
 
 ## Runbook
 
+### Numéroter une version
+
+Depuis le 18 septembre 2026, les versions sont en `majeure.medium.mineure`, à partir de
+`1.0.0`. Avant, elles étaient en `année.mois.compteur` (`v2026.09.42`) : un numéro qui ne
+disait rien, pour quarante et une releases dans le seul mois de septembre.
+
+Trois questions, dans l'ordre, au moment de taguer :
+
+| Question | Niveau | Exemples réels de l'ancienne numérotation |
+|---|---|---|
+| Un numéro déjà compilé sortirait-il **différent** ? | **majeure** | en-tête compact par défaut, notes de bas de page refaites (`v2026.09.12`) |
+| Faut-il le **dire à quelqu'un** ? | **medium** | l'application s'appelle Pronto (`.34`), onglet Export et secrétariat (`.30`), un seul lanceur à onglets (`.27`) |
+| Ni l'un ni l'autre | **mineure** | une figure légendée ne sort plus en HTML brut (`.41`), la silhouette prend le bleu nuit (`.24`) |
+
+En cas d'hésitation, c'est une **mineure**. Un medium se mérite par une raison qui tient en
+une phrase : à deux tags par jour, un medium distribué à tout va ne vaudrait pas mieux qu'un
+compteur. C'est la mineure qui sert tous les jours.
+
+Deux mécanismes lisent ces niveaux, et c'est là que le schéma gagne sa place :
+
+- le **sélecteur de version** (lanceur → *Version du logiciel…*) ne propose qu'une ligne par
+  medium, la plus récente de ses mineures, et rien d'avant `1.0.0`. Revenir plus loin en
+  arrière reste possible en ligne de commande : `update.ps1 -Version 2026.09.42` ;
+- l'**avertissement de maquette** du cockpit ne se déclenche que sur un écart de **majeure**
+  entre la version qui a créé le numéro (`version-toolkit:` de `ausgabe.yaml`) et celle du
+  poste. Sur l'égalité des chaînes, il criait à chaque release et plus personne ne le lisait.
+
+Chaque release s'inscrit dans [`CHANGELOG.md`](CHANGELOG.md), dont `release.yml` tire les
+notes publiées.
+
 ### Publier une version
 
 Pousser un tag déclenche [`release.yml`](.github/workflows/release.yml) :
 
 ```bash
-git tag v2026.07.0 && git push origin v2026.07.0
+git tag -a v1.2.0 -m "Release 1.2.0 : <resume en une ligne>" && git push origin v1.2.0
 ```
 
 `release.yml` rejoue d'abord entièrement `ci.yml` (contrats du cockpit, contraste APCA,

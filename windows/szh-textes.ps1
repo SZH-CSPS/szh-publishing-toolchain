@@ -123,6 +123,7 @@ $script:SzhTextes = @{
     'lanceur.versions.installer' = 'Installer'
     'lanceur.versions.horsligne' = "Impossible de lister les versions publiées : pas de connexion, ou trop de demandes vers GitHub depuis ce réseau.`nSeules les versions installables hors ligne sont proposées."
     'lanceur.versions.vide'     = 'Aucune version disponible sur ce poste.'
+    'lanceur.versions.note'     = 'Seule la dernière version de chaque état est proposée.'
     'lanceur.versions.avert'    = "Changer de version remplace la maquette, l'environnement de fabrication du PDF et les extensions de l'éditeur.`n`nFermez les fenêtres de rédaction avant de continuer, puis redémarrez l'éditeur à la fin.`n`nInstaller la version {0} ?"
     # Archivage / désarchivage d'une revue (archive-revue.ps1)
     'arch.titre'                = 'Archivage de la revue'
@@ -380,6 +381,7 @@ $script:SzhTextes = @{
     'lanceur.versions.installer' = 'Installieren'
     'lanceur.versions.horsligne' = "Die veröffentlichten Versionen konnten nicht abgerufen werden: keine Verbindung, oder zu viele Anfragen an GitHub aus diesem Netz.`nEs werden nur die offline installierbaren Versionen angeboten."
     'lanceur.versions.vide'     = 'Keine Version auf diesem Computer verfügbar.'
+    'lanceur.versions.note'     = 'Angeboten wird nur die neueste Version jedes Stands.'
     'lanceur.versions.avert'    = "Ein Versionswechsel ersetzt das Layout, die PDF-Erzeugungsumgebung und die Editor-Erweiterungen.`n`nSchliessen Sie zuerst die Redaktionsfenster und starten Sie den Editor am Ende neu.`n`nVersion {0} installieren?"
     # Archivieren / Dearchivieren (archive-revue.ps1)
     'arch.titre'                = 'Archivierung der Zeitschrift'
@@ -631,6 +633,7 @@ $script:SzhTextes = @{
     'lanceur.versions.installer' = 'Install'
     'lanceur.versions.horsligne' = "Could not list the published versions: no connection, or too many requests to GitHub from this network.`nOnly versions installable offline are offered."
     'lanceur.versions.vide'     = 'No version available on this computer.'
+    'lanceur.versions.note'     = 'Only the latest version of each state is offered.'
     'lanceur.versions.avert'    = "Switching version replaces the layout, the PDF build environment and the editor extensions.`n`nClose the writing windows first, then restart the editor when it is done.`n`nInstall version {0}?"
     # Archiving / unarchiving a journal (archive-revue.ps1)
     'arch.titre'                = 'Archiving the journal'
