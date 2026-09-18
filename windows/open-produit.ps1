@@ -2177,6 +2177,417 @@ $script:boutonSecretariatDossier.Add_Click({
 })
 
 
+# ---- L'onglet « Preprocessing » : le nettoyeur de manuscrit (Article) ----
+# Contrat complet : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md. La CLI appelee est
+# pipeline/manuscrit-nettoyer.py, executee par le python3 de la WSL SZH-Publishing --
+# jamais le Node de VSCodium ici, ce n'est pas un script JS. Le patron reste celui de
+# Invoke-SzhSecretariat (grisage des boutons, sablier, barre de progression, bouton
+# Interrompre), mais les DEUX FLUX SONT INVERSES par rapport au secretariat : le contrat
+# de la CLI (paragraphe 8 de l'architecture) met la progression ligne a ligne sur STDERR
+# et une UNIQUE ligne JSON de statistiques sur STDOUT, a la toute fin. C'est donc stderr
+# qui est pompe en direct (ReadLineAsync + DoEvents, jamais un ReadLine() synchrone), et
+# stdout qui est lu une seule fois en tache de fond -- demarree EN PREMIER, avant la
+# boucle sur stderr, pour la meme raison que Invoke-SzhSecretariat demarre sa tache
+# d'erreur en premier : quel que soit le flux qu'on lit en boucle, l'autre doit avoir un
+# lecteur actif tout de suite, sinon il sature son tube et bloque l'enfant. Jamais
+# add_ErrorDataReceived / BeginErrorReadLine : ce gestionnaire tourne hors pipeline et a
+# deja tue le processus PowerShell entier sur ce poste.
+#
+# Decodage de la sortie de wsl.exe -- au sens strict, les messages de wsl.exe LUI-MEME
+# (wslpath, la liste des distributions), jamais ceux du script Python qu'il lance : une
+# seule fonction plus bas (ConvertFrom-SzhOctetsWsl), et nulle part ailleurs. Mesure du
+# 18.09.2026 : wsl -l -v rend de l'UTF-16 sur ce poste. Le script Python, lui, parle UTF-8
+# sur ses deux flux -- convention deja suivie par le reste du pipeline -- d'ou
+# StandardOutputEncoding/StandardErrorEncoding = UTF8 sur le PROCESSUS PRINCIPAL plus bas,
+# exactement comme Invoke-SzhSecretariat pour son Node.
+#
+# Comme « Journal » et « Reglages » : pas un produit, .Tag reste vide.
+
+# Heuristique UTF-16LE vs UTF-8 sur des octets bruts. Un texte ASCII encode en UTF-16LE
+# alterne un octet de donnee et un octet nul : on regarde la moitie "impaire" d'un
+# echantillon de tete, et au-dela de 60 % de nuls, c'est de l'UTF-16LE.
+function ConvertFrom-SzhOctetsWsl([byte[]]$Octets) {
+  if (-not $Octets -or $Octets.Length -eq 0) { return '' }
+  $echantillonWsl = [Math]::Min($Octets.Length, 128)
+  if ($echantillonWsl -ge 2) {
+    $nulsWsl = 0
+    $pairesWsl = 0
+    for ($i = 1; $i -lt $echantillonWsl; $i += 2) {
+      $pairesWsl++
+      if ($Octets[$i] -eq 0) { $nulsWsl++ }
+    }
+    if (($pairesWsl -gt 0) -and (($nulsWsl / $pairesWsl) -gt 0.6)) {
+      return [System.Text.Encoding]::Unicode.GetString($Octets)
+    }
+  }
+  return [System.Text.Encoding]::UTF8.GetString($Octets)
+}
+
+# $env:SZH_MANUSCRIT_WSL_EXE / _DISTRO / _CLI : trois points d'entree de test, pour viser
+# un faux wsl.exe, une fausse distribution ou un faux script sans dependre d'une vraie
+# installation. Absents en production -- Get-WslExe (szh-common.ps1) et $SzhToolkit font
+# alors foi, comme partout ailleurs dans ce fichier.
+function Get-SzhWslExePreproc {
+  if ($env:SZH_MANUSCRIT_WSL_EXE) { return $env:SZH_MANUSCRIT_WSL_EXE }
+  return (Get-WslExe)
+}
+function Get-SzhDistroPreproc {
+  if ($env:SZH_MANUSCRIT_DISTRO) { return $env:SZH_MANUSCRIT_DISTRO }
+  return $SzhDistro
+}
+function Get-SzhCheminManuscritCli {
+  if ($env:SZH_MANUSCRIT_CLI) { return $env:SZH_MANUSCRIT_CLI }
+  return (Join-Path $SzhToolkit 'pipeline\manuscrit-nettoyer.py')
+}
+
+# wsl.exe pour une commande COURTE (wslpath, liste des distributions) : les deux flux
+# sont lus EN PARALLELE (CopyToAsync), donc ni l'un ni l'autre ne peut saturer son tube
+# pendant qu'on attend l'autre. N'est PAS utilisee pour le processus principal (long, a
+# pomper en direct) -- voir Invoke-SzhManuscrit, plus bas.
+function Invoke-SzhWslBrut {
+  param([Parameter(Mandatory = $true)][string[]]$Arguments, [int]$TimeoutMs = 15000)
+  $psiWslBrut = New-Object System.Diagnostics.ProcessStartInfo
+  $psiWslBrut.FileName = Get-SzhWslExePreproc
+  $psiWslBrut.Arguments = ConvertTo-SzhArguments $Arguments
+  $psiWslBrut.RedirectStandardOutput = $true
+  $psiWslBrut.RedirectStandardError = $true
+  $psiWslBrut.UseShellExecute = $false
+  $psiWslBrut.CreateNoWindow = $true
+  $processusWslBrut = New-Object System.Diagnostics.Process
+  $processusWslBrut.StartInfo = $psiWslBrut
+  [void]$processusWslBrut.Start()
+  $tamponSortieWslBrut = New-Object System.IO.MemoryStream
+  $tamponErreurWslBrut = New-Object System.IO.MemoryStream
+  $tacheSortieWslBrut = $processusWslBrut.StandardOutput.BaseStream.CopyToAsync($tamponSortieWslBrut)
+  $tacheErreurWslBrut = $processusWslBrut.StandardError.BaseStream.CopyToAsync($tamponErreurWslBrut)
+  if (-not $processusWslBrut.WaitForExit($TimeoutMs)) {
+    try { $processusWslBrut.Kill() } catch { }
+    throw 'wsl.exe ne repond pas.'
+  }
+  [System.Threading.Tasks.Task]::WaitAll(@($tacheSortieWslBrut, $tacheErreurWslBrut))
+  return [pscustomobject]@{
+    code   = $processusWslBrut.ExitCode
+    sortie = (ConvertFrom-SzhOctetsWsl $tamponSortieWslBrut.ToArray()).Trim()
+    erreur = (ConvertFrom-SzhOctetsWsl $tamponErreurWslBrut.ToArray()).Trim()
+  }
+}
+
+# Les distributions enregistrees, vues par CE wsl.exe (celui de Get-SzhWslExePreproc, donc
+# testable) -- propre copie de la logique de Get-SzhDistrosEnregistrees (szh-common.ps1),
+# jamais partagee avec elle : celle-ci doit rester substituable par un faux wsl.exe pour
+# les tests, l'autre vise toujours le vrai poste.
+function Get-SzhDistrosEnregistreesPreproc {
+  $nomsDistrosPreproc = New-Object System.Collections.ArrayList
+  try {
+    $resultatListePreproc = Invoke-SzhWslBrut -Arguments @('-l', '-q')
+    foreach ($ligneListePreproc in ($resultatListePreproc.sortie -split "`r?`n")) {
+      $nomVuPreproc = ([string]$ligneListePreproc).Trim()
+      if ($nomVuPreproc) { [void]$nomsDistrosPreproc.Add($nomVuPreproc) }
+    }
+  } catch { }
+  return @($nomsDistrosPreproc)
+}
+
+# wslpath -a (Windows -> Linux) et -w (Linux -> Windows) : conversion "dans les deux
+# sens" (contrat, paragraphe 9) -- les manuscrits viennent de OneDrive, chemins a espaces
+# et accents compris.
+function ConvertTo-SzhCheminWsl([string]$CheminWindows) {
+  $resultatConversionWsl = Invoke-SzhWslBrut -Arguments @('-d', (Get-SzhDistroPreproc), '-e', 'wslpath', '-a', $CheminWindows)
+  if (($resultatConversionWsl.code -ne 0) -or (-not $resultatConversionWsl.sortie)) {
+    throw (T 'lanceur.preproc.chemin.echec' @($CheminWindows))
+  }
+  return $resultatConversionWsl.sortie
+}
+function ConvertTo-SzhCheminWindowsDepuisWsl([string]$CheminWsl) {
+  $resultatConversionWin = Invoke-SzhWslBrut -Arguments @('-d', (Get-SzhDistroPreproc), '-e', 'wslpath', '-w', $CheminWsl)
+  if (($resultatConversionWin.code -ne 0) -or (-not $resultatConversionWin.sortie)) {
+    throw (T 'lanceur.preproc.chemin.echec' @($CheminWsl))
+  }
+  return $resultatConversionWin.sortie
+}
+
+# Verifications d'avance, chacune avec un message clair -- jamais une trace brute (WSL
+# absente, distro eteinte, CLI introuvable sont TROIS causes distinctes, comme err.wsl /
+# err.wsl.dossier / err.wsl.moteur plus haut dans ce meme fichier pour la mise a jour).
+# Rend le chemin Windows de la CLI si tout va bien.
+function Test-SzhManuscritPret {
+  $wslExePreproc = Get-SzhWslExePreproc
+  if (-not (Test-Path -LiteralPath $wslExePreproc)) { throw (T 'lanceur.preproc.wsl.absent' @($SzhSupport)) }
+  $distroPreproc = Get-SzhDistroPreproc
+  if (-not ((Get-SzhDistrosEnregistreesPreproc) -contains $distroPreproc)) {
+    throw (T 'lanceur.preproc.wsl.distro.absente' @($distroPreproc))
+  }
+  $cliPreproc = Get-SzhCheminManuscritCli
+  if (-not (Test-Path -LiteralPath $cliPreproc)) { throw (T 'lanceur.preproc.cli.absent') }
+  return $cliPreproc
+}
+
+# Le seul appelant de manuscrit-nettoyer.py. Voir l'en-tete de cette section pour
+# l'inversion stdout/stderr par rapport a Invoke-SzhSecretariat, et pourquoi.
+function Invoke-SzhManuscrit {
+  param(
+    [Parameter(Mandatory = $true)][string]$CheminManuscrit,
+    [Parameter(Mandatory = $true)][string]$Produit,
+    [Parameter(Mandatory = $true)]$Journal,
+    [string]$NomExport = '',
+    $BarreProgression = $null,
+    $BoutonInterrompre = $null,
+    $EtatAnnulation = $null
+  )
+  Add-SzhEnteteJournal $Journal $NomExport
+  foreach ($boutonGrisePreproc in $script:preprocBoutons) { $boutonGrisePreproc.Enabled = $false }
+  $script:form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor
+  if ($BarreProgression) {
+    $BarreProgression.Style = 'Marquee'
+    $BarreProgression.MarqueeAnimationSpeed = 30
+    $BarreProgression.Value = 0
+  }
+  if ($BoutonInterrompre) { $BoutonInterrompre.Enabled = $true }
+  if ($EtatAnnulation) { $EtatAnnulation.annule = $false }
+
+  $okPreproc = $false
+  $textePreproc = ''
+  $statsPreproc = $null
+  $dossierSortiePreproc = ''
+  $processusPreproc = $null
+  $tacheSortiePreproc = $null
+
+  try {
+    $cliWindowsPreproc = Test-SzhManuscritPret
+    $cliWslPreproc = ConvertTo-SzhCheminWsl $cliWindowsPreproc
+    $manuscritWslPreproc = ConvertTo-SzhCheminWsl $CheminManuscrit
+    $dossierSortiePreproc = Split-Path -Parent $CheminManuscrit
+    $sortieWslPreproc = ConvertTo-SzhCheminWsl $dossierSortiePreproc
+
+    $psiPreproc = New-Object System.Diagnostics.ProcessStartInfo
+    $psiPreproc.FileName = Get-SzhWslExePreproc
+    $psiPreproc.Arguments = ConvertTo-SzhArguments @(
+      '-d', (Get-SzhDistroPreproc), '-e', 'python3', $cliWslPreproc,
+      $manuscritWslPreproc, '--produit', $Produit, '--sortie', $sortieWslPreproc)
+    $psiPreproc.RedirectStandardOutput = $true
+    $psiPreproc.RedirectStandardError = $true
+    $psiPreproc.UseShellExecute = $false
+    $psiPreproc.CreateNoWindow = $true
+    $psiPreproc.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+    $psiPreproc.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+
+    $processusPreproc = New-Object System.Diagnostics.Process
+    $processusPreproc.StartInfo = $psiPreproc
+    [void]$processusPreproc.Start()
+    # La tache de fond sur STDOUT demarre AVANT la boucle sur STDERR -- voir l'en-tete de
+    # cette section : c'est l'inverse de Invoke-SzhSecretariat parce que le contrat de
+    # cette CLI met la progression sur stderr et une seule ligne JSON, a la fin, sur
+    # stdout.
+    $tacheSortiePreproc = $processusPreproc.StandardOutput.ReadToEndAsync()
+
+    $futAnnulePreproc = $false
+    while ($true) {
+      $tacheLignePreproc = $processusPreproc.StandardError.ReadLineAsync()
+      $annulePendantPreproc = $false
+      while (-not $tacheLignePreproc.IsCompleted) {
+        if ($EtatAnnulation -and $EtatAnnulation.annule) { $annulePendantPreproc = $true; break }
+        [System.Windows.Forms.Application]::DoEvents()
+        [System.Threading.Thread]::Sleep(25)
+      }
+      if ($annulePendantPreproc) {
+        try { if (-not $processusPreproc.HasExited) { $processusPreproc.Kill() } } catch { }
+        $okPreproc = $false
+        $textePreproc = (T 'lanceur.preproc.interrompu')
+        $futAnnulePreproc = $true
+        break
+      }
+      $lignePreproc = $null
+      try { $lignePreproc = $tacheLignePreproc.Result } catch { $lignePreproc = $null }
+      if ($null -eq $lignePreproc) { break }
+      $ligneVuePreproc = $lignePreproc.Trim()
+      if ($ligneVuePreproc) { Add-SzhLigneJournal $Journal $ligneVuePreproc }
+    }
+
+    if ($futAnnulePreproc) {
+      try { [void]$processusPreproc.WaitForExit(3000) } catch { }
+    } else {
+      $processusPreproc.WaitForExit()
+      $sortieBrutePreproc = ''
+      try { $sortieBrutePreproc = $tacheSortiePreproc.Result } catch { $sortieBrutePreproc = '' }
+      $sortieVuePreproc = ([string]$sortieBrutePreproc).Trim()
+      if ($sortieVuePreproc) {
+        try { $statsPreproc = $sortieVuePreproc | ConvertFrom-Json -ErrorAction Stop } catch { $statsPreproc = $null }
+      }
+      $okPreproc = ($processusPreproc.ExitCode -eq 0)
+      if (-not $okPreproc) { $textePreproc = (T 'lanceur.preproc.echec.inconnu') }
+    }
+  } catch {
+    $okPreproc = $false
+    $textePreproc = $_.Exception.Message
+    Add-SzhLigneJournal $Journal $textePreproc
+  } finally {
+    try {
+      if ($processusPreproc -and -not $processusPreproc.HasExited) { $processusPreproc.Kill() }
+      if ($processusPreproc) { $processusPreproc.Dispose() }
+    } catch { }
+    $script:form.Cursor = [System.Windows.Forms.Cursors]::Default
+    foreach ($boutonRallumePreproc in $script:preprocBoutons) { $boutonRallumePreproc.Enabled = $true }
+    if ($BarreProgression) {
+      $BarreProgression.Style = 'Marquee'
+      $BarreProgression.MarqueeAnimationSpeed = 0
+      $BarreProgression.Value = 0
+    }
+    if ($BoutonInterrompre) { $BoutonInterrompre.Enabled = $false }
+  }
+  return [pscustomobject]@{
+    ok      = $okPreproc
+    texte   = $textePreproc
+    stats   = $statsPreproc
+    dossier = $dossierSortiePreproc
+  }
+}
+
+function Show-SzhResultatPreproc($Resultat) {
+  if ($Resultat.ok) {
+    Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.ok' @((T 'lanceur.preproc.resultat.termine')))
+    if ($Resultat.stats) {
+      Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.stats' @(($Resultat.stats | ConvertTo-Json -Compress)))
+    }
+    if ($Resultat.dossier) {
+      $script:preprocDossierCourant = $Resultat.dossier
+      $script:boutonPreprocDossier.Enabled = $true
+    }
+  } else {
+    $texteEchecPreproc = $Resultat.texte
+    if (-not $texteEchecPreproc) { $texteEchecPreproc = (T 'lanceur.preproc.echec.inconnu') }
+    Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.resultat.echec' @($texteEchecPreproc))
+  }
+}
+
+$pagePreproc = New-Object System.Windows.Forms.TabPage
+$pagePreproc.Text = (T 'lanceur.preproc')
+$pagePreproc.Tag = ''          # pas un produit : « Ouvrir » n'a rien a ouvrir ici
+$pagePreproc.UseVisualStyleBackColor = $true
+
+$introPreproc = New-Object System.Windows.Forms.Label
+$introPreproc.Text = (T 'lanceur.preproc.intro')
+$introPreproc.Location = New-Object System.Drawing.Point($xPage, 10)
+$introPreproc.AutoSize = $true
+$pagePreproc.Controls.Add($introPreproc)
+
+$etiqProduitPreproc = New-Object System.Windows.Forms.Label
+$etiqProduitPreproc.Text = (T 'lanceur.preproc.produit')
+$etiqProduitPreproc.Location = New-Object System.Drawing.Point($xPage, 37)
+$etiqProduitPreproc.AutoSize = $true
+$pagePreproc.Controls.Add($etiqProduitPreproc)
+
+# Revue / Zeitschrift : deux noms de produit, jamais traduits (comme $SzhProduits.onglet,
+# szh-produits.ps1) -- le choix pilote le jeu de regles et la langue passee a la CLI.
+$script:radioPreprocRevue = New-Object System.Windows.Forms.RadioButton
+$script:radioPreprocRevue.Text = 'Revue'
+$script:radioPreprocRevue.Location = New-Object System.Drawing.Point(($xPage + 70), 34)
+$script:radioPreprocRevue.Size = New-Object System.Drawing.Size(90, 23)
+$script:radioPreprocRevue.Checked = $true
+$pagePreproc.Controls.Add($script:radioPreprocRevue)
+
+$script:radioPreprocZeitschrift = New-Object System.Windows.Forms.RadioButton
+$script:radioPreprocZeitschrift.Text = 'Zeitschrift'
+$script:radioPreprocZeitschrift.Location = New-Object System.Drawing.Point(($xPage + 170), 34)
+$script:radioPreprocZeitschrift.Size = New-Object System.Drawing.Size(120, 23)
+$pagePreproc.Controls.Add($script:radioPreprocZeitschrift)
+
+# Nom de produit fixe par Robin, JAMAIS traduit, dans les trois langues -- ne passe donc
+# pas par T (voir l'en-tete de szh-textes.ps1 pour cette meme regle).
+$script:boutonManuscritPreproc = New-Object System.Windows.Forms.Button
+$script:boutonManuscritPreproc.Text = 'Manuscript cleaner (Article)…'
+$script:boutonManuscritPreproc.Location = New-Object System.Drawing.Point($xPage, 64)
+$script:boutonManuscritPreproc.Size = New-Object System.Drawing.Size(260, 30)
+$pagePreproc.Controls.Add($script:boutonManuscritPreproc)
+
+$script:etiqFichierPreproc = New-Object System.Windows.Forms.Label
+$script:etiqFichierPreproc.Text = (T 'lanceur.preproc.fichier.aucun')
+$script:etiqFichierPreproc.AutoSize = $false
+$script:etiqFichierPreproc.Location = New-Object System.Drawing.Point(($xPage + 270), 64)
+$script:etiqFichierPreproc.Size = New-Object System.Drawing.Size(($largeurPage - 270), 50)
+$script:etiqFichierPreproc.ForeColor = [System.Drawing.Color]::DimGray
+$pagePreproc.Controls.Add($script:etiqFichierPreproc)
+
+# Le journal de progression -- meme gabarit, meme budget vertical que celui du secretariat
+# (Consolas 9, lecture seule, y=162 a $yNouveau, deja eprouve sur tous les paliers de
+# hauteur d'ecran par cet onglet-la).
+$script:journalPreproc = New-Object System.Windows.Forms.TextBox
+$script:journalPreproc.Multiline = $true
+$script:journalPreproc.ReadOnly = $true
+$script:journalPreproc.ScrollBars = 'Vertical'
+$script:journalPreproc.Font = New-Object System.Drawing.Font('Consolas', 9)
+$script:journalPreproc.BackColor = [System.Drawing.Color]::White
+$script:journalPreproc.Location = New-Object System.Drawing.Point($xPage, 162)
+$script:journalPreproc.Size = New-Object System.Drawing.Size($largeurPage, ($yNouveau - 170))
+$pagePreproc.Controls.Add($script:journalPreproc)
+
+$script:preprocDossierCourant = ''
+$script:boutonPreprocDossier = New-Object System.Windows.Forms.Button
+$script:boutonPreprocDossier.Text = (T 'lanceur.preproc.dossier')
+$script:boutonPreprocDossier.Location = New-Object System.Drawing.Point($xPage, $yNouveau)
+$script:boutonPreprocDossier.Size = New-Object System.Drawing.Size(220, 30)
+$script:boutonPreprocDossier.Enabled = $false
+$pagePreproc.Controls.Add($script:boutonPreprocDossier)
+
+# Barre de progression et bouton d'interruption de l'onglet, memes coordonnees que celles
+# du secretariat (242 / 492, largeur 240 / 112) -- meme rangee, jusqu'a $xPage +
+# $largeurPage (604), sans jamais deborder.
+$script:barrePreproc = New-Object System.Windows.Forms.ProgressBar
+$script:barrePreproc.Location = New-Object System.Drawing.Point(242, $yNouveau)
+$script:barrePreproc.Size = New-Object System.Drawing.Size(240, 30)
+$script:barrePreproc.Style = 'Marquee'
+$script:barrePreproc.MarqueeAnimationSpeed = 0
+$pagePreproc.Controls.Add($script:barrePreproc)
+
+$script:etatAnnulationPreproc = @{ annule = $false }
+$script:boutonInterromprePreproc = New-Object System.Windows.Forms.Button
+$script:boutonInterromprePreproc.Text = (T 'lanceur.preproc.interrompre')
+$script:boutonInterromprePreproc.Location = New-Object System.Drawing.Point(492, $yNouveau)
+$script:boutonInterromprePreproc.Size = New-Object System.Drawing.Size(112, 30)
+$script:boutonInterromprePreproc.Enabled = $false
+$script:boutonInterromprePreproc.Add_Click({ $script:etatAnnulationPreproc.annule = $true })
+$pagePreproc.Controls.Add($script:boutonInterromprePreproc)
+
+$script:preprocBoutons = @($script:boutonManuscritPreproc)
+
+$onglets.TabPages.Add($pagePreproc)
+
+$script:cheminManuscritChoisi = ''
+
+$script:boutonManuscritPreproc.Add_Click({
+  $boiteFichierPreproc = New-Object System.Windows.Forms.OpenFileDialog
+  $boiteFichierPreproc.Title = (T 'lanceur.preproc.fichier.titre')
+  $boiteFichierPreproc.Filter = (T 'lanceur.preproc.fichier.filtre')
+  $boiteFichierPreproc.CheckFileExists = $true
+  if ($boiteFichierPreproc.ShowDialog($script:form) -ne [System.Windows.Forms.DialogResult]::OK) { return }
+  $script:cheminManuscritChoisi = $boiteFichierPreproc.FileName
+  $script:etiqFichierPreproc.Text = (T 'lanceur.preproc.fichier.choisi' @((Split-Path -Leaf $script:cheminManuscritChoisi)))
+
+  $produitChoisiPreproc = 'revue'
+  if ($script:radioPreprocZeitschrift.Checked) { $produitChoisiPreproc = 'zeitschrift' }
+
+  try {
+    $resultatPreproc = Invoke-SzhManuscrit -CheminManuscrit $script:cheminManuscritChoisi -Produit $produitChoisiPreproc `
+      -Journal $script:journalPreproc -NomExport 'Manuscript cleaner (Article)' `
+      -BarreProgression $script:barrePreproc -BoutonInterrompre $script:boutonInterromprePreproc `
+      -EtatAnnulation $script:etatAnnulationPreproc
+    Show-SzhResultatPreproc $resultatPreproc
+  } catch {
+    Add-SzhLigneJournal $script:journalPreproc (T 'lanceur.preproc.erreur' @($_.Exception.Message))
+  }
+})
+
+$script:boutonPreprocDossier.Add_Click({
+  if (-not $script:preprocDossierCourant) { return }
+  try {
+    if (Test-Path -LiteralPath $script:preprocDossierCourant) {
+      Start-Process explorer.exe ('"' + $script:preprocDossierCourant + '"')
+    }
+  } catch {
+    Write-SzhLog ('open-produit : ouverture du dossier de sortie (preproc) echouee (' + $_.Exception.Message + ')')
+  }
+})
+
+
 # ---- L'onglet des reglages ----
 # Quatre reglages, pas de bouton « Enregistrer ». Un choix fait dans une liste EST le choix :
 # il part sur le disque au moment ou on le fait. Un bouton de validation n'ajouterait qu'une

@@ -683,6 +683,28 @@ On coche une case quand le résultat annoncé a été constaté, puis on la supp
 - [ ] Dérouler la procédure d'installation complète sur une machine vierge : celle de
   développement ne l'est plus.
 
+- [ ] **Monter pandoc.** Épinglé à `3.5` dans `image/Containerfile` (`ARG PANDOC_VERSION`) depuis
+  le commit initial du 16.06.2026, jamais rouvert depuis ; `ci.yml` épingle la même valeur et doit
+  bouger avec, sinon la CI et la production divergent en silence. Ce n'est pas un changement d'une
+  ligne : il faut reconstruire le rootfs, rediffuser l'image WSL — le plus gros téléchargement de
+  la mise à jour — et reprendre toute la chaîne. Les écarts entre versions sont réels et déjà
+  constatés : le writer markdown de 3.5 bascule en HTML brut sur une `Figure` dont la légende
+  diffère de la description, celui de 3.9 écrit du markdown propre. À vérifier avant de trancher :
+  import identique sur les onze manuscrits de `tmp/corpus-relecture/lot-A/`, les douze filtres Lua
+  toujours verts, et le PDF d'un numéro témoin identique ou l'écart expliqué. Ce qui rend la mesure
+  possible depuis le 18.09.2026 : ce corpus réel et les 34 paragraphes de vérité terrain de
+  `2-fabrique.csv`, qui n'existaient pas avant.
+
+- [ ] **Monter l'image WSL.** Tout y est épinglé, avec empreinte : `DEBIAN_TAG=13-slim`,
+  `VERAPDF_VERSION=1.30.2`, WeasyPrint `69.0` (`image/requirements.txt`), le profil ICC
+  PSOuncoated FOGRA52, et les deux modèles ONNX des portraits (u2net, YuNet). Décider pièce par
+  pièce ce qui bouge : **WeasyPrint commande la maquette** — une montée de version change la
+  composition, et les mesures qui fondent la maquette actuelle portent sur la 69 ; **veraPDF
+  commande le verdict PDF/UA** ; **les deux modèles ONNX commandent le détourage** — les garder
+  identiques, c'est garantir que les portraits ne se recadrent pas autrement du jour au lendemain.
+  À vérifier : PDF d'un numéro témoin identique ou l'écart expliqué, rapport PDF/UA toujours
+  conforme, portraits inchangés.
+
 La maintenance récurrente — compacter le disque WSL, reconstruire le rootfs, surveiller la fin de
 support de Debian, vérifier les extensions épinglées — est décrite dans `docs/MAINTENANCE.md` et
 n'a pas à être suivie ici.
