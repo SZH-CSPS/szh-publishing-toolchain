@@ -31,7 +31,12 @@
 #     "styles": ["heading 1", "heading 2", "SZH Cle", ...],   // noms de word/styles.xml
 #     "langue": "fr",                                          // ou "" si non déclarée
 #     "revisions": 0, "commentaires": 0,
-#     "notes": [ <bloc>, ... ],                                 // notes de bas de page, mêmes classes
+#     "notes": {"3": [ <bloc>, ... ], "12": [ <bloc>, ... ]},   // CHANGÉ le 19.09.2026 (§4) :
+#                                              // dict identifiant -> contenu, jamais plus une
+#                                              // liste plate qui fondait toutes les notes
+#                                              // ensemble. Notes de bas de page ET de fin
+#                                              // cohabitent (une note de fin porte un
+#                                              // identifiant décalé, voir manuscrit_docx.py).
 #     "blocs": [ <bloc>, ... ]                                  // blocs de premier niveau, en ordre
 #   }
 #
@@ -47,18 +52,25 @@
 #                                              // le lecteur (numbering.xml absent, ou format
 #                                              // inconnu), JAMAIS deviné ici
 #     "alignement": "",                  // "" = non déclaré
+#     "alignement_effectif": "",         // AJOUTÉ le 19.09.2026 (§4) : direct sinon cascade
+#                                          // des styles ; "" si non déclaré nulle part
 #     "retrait": 0,
 #     "source": 3                        // index dans le corps ; laissé au décompte si absent
 #   }
 #
 #   <fragment> = {
-#     "texte": "…",                      // "" si le fragment ne porte qu'une image
+#     "texte": "…",                      // "" si le fragment ne porte qu'une image OU une note
 #     "image": <image> | null,
 #     "forme": {                         // dict figé : les 12 clés de FORME_CLES ; une clé
 #       "gras": true, "italique": false, ...  // absente vaut None (« non déclaré »),
 #     },                                  // à distinguer de false (« déclaré éteint »)
+#     "effectif": { ... },                // AJOUTÉ le 19.09.2026 (§4) : même forme que
+#                                          // "forme", mais la mise en forme EFFECTIVEMENT
+#                                          // appliquée (directe, sinon cascade des styles)
 #     "lien": "https://…" | null,
-#     "source": 0
+#     "source": 0,
+#     "note": 3 | null                    // AJOUTÉ le 19.09.2026 (§4) : identifiant de la
+#                                          // note appelée par ce fragment, ou null
 #   }
 #
 #   <image> = {"nom": "image1.png", "surface": 0, "cx": 0, "cy": 0, "largeur_px": 0,
@@ -216,22 +228,38 @@ def nouvelle_forme(**valeurs):
 
 
 class Fragment:
-    """Un fragment de texte (ou une image) au sein d'un paragraphe. `texte` n'est jamais
-    None ('' si le fragment porte une image) ; `forme` est un dict FORME_CLES (voir
-    nouvelle_forme()) ; `lien` une URL ou None."""
+    """Un fragment de texte (ou une image, ou un appel de note) au sein d'un paragraphe.
+    `texte` n'est jamais None ('' si le fragment porte une image OU une note) ; `forme` est
+    un dict FORME_CLES (voir nouvelle_forme()) ; `lien` une URL ou None.
 
-    __slots__ = ('texte', 'image', 'forme', 'lien', 'source')
+    `note` : identifiant de la note appelée par ce fragment (w:footnoteReference/
+    w:endnoteReference), ou None. Ajouté le 19.09.2026 (§4 du contrat) — même convention que
+    `image` : `texte == ''` quand ce champ est rempli. Une note de fin est lue avec un
+    identifiant DÉCALÉ au-delà du plus grand identifiant de note de bas de page (voir
+    manuscrit_docx.py, qui seul sait distinguer les deux familles) : ce champ ne dit jamais
+    lui-même de quelle famille vient la note, `Document.notes` fait foi.
 
-    def __init__(self, texte='', image=None, forme=None, lien=None, source=None):
+    `effectif` : AJOUTÉ le 19.09.2026 (§4 du contrat), même forme que `forme` (les clés de
+    FORME_CLES) mais la mise en forme EFFECTIVEMENT appliquée — directe (`forme`) sinon
+    style de caractère, sinon chaîne des styles de paragraphe, sinon les valeurs par défaut
+    du document. `forme`, elle, reste strictement la mise en forme DIRECTE (§5.2 : jamais la
+    cascade des styles) — les deux champs coexistent, aucun ne remplace l'autre."""
+
+    __slots__ = ('texte', 'image', 'forme', 'lien', 'source', 'note', 'effectif')
+
+    def __init__(self, texte='', image=None, forme=None, lien=None, source=None, note=None,
+                 effectif=None):
         self.texte = texte or ''
         self.image = image
         self.forme = forme if forme is not None else nouvelle_forme()
         self.lien = lien
         self.source = source
+        self.note = note
+        self.effectif = effectif if effectif is not None else nouvelle_forme()
 
     def __repr__(self):
-        return 'Fragment(%r, image=%r, lien=%r, source=%r)' % (
-            self.texte, self.image, self.lien, self.source)
+        return 'Fragment(%r, image=%r, lien=%r, source=%r, note=%r)' % (
+            self.texte, self.image, self.lien, self.source, self.note)
 
 
 class Paragraphe:
@@ -245,10 +273,10 @@ class Paragraphe:
     définition d'un numbering.xml qui n'est pas celui de la sortie."""
 
     __slots__ = ('style', 'niveau_declare', 'niveau_retenu', 'fragments', 'liste',
-                 'alignement', 'retrait', 'source')
+                 'alignement', 'retrait', 'source', 'alignement_effectif')
 
     def __init__(self, style='', niveau_declare=0, niveau_retenu=0, fragments=None,
-                 liste=None, alignement='', retrait=0, source=None):
+                 liste=None, alignement='', retrait=0, source=None, alignement_effectif=''):
         self.style = style or ''
         self.niveau_declare = niveau_declare or 0
         self.niveau_retenu = niveau_retenu or 0
@@ -257,6 +285,11 @@ class Paragraphe:
         self.alignement = alignement or ''
         self.retrait = retrait or 0
         self.source = source
+        # AJOUTÉ le 19.09.2026 (§4 du contrat) : direct (`alignement`) sinon la chaîne des
+        # styles de paragraphe — même principe que Fragment.effectif, pour la même raison
+        # (« corps sans taille déclarée » et « faux titre 12 pt déclaré » doivent pouvoir se
+        # comparer sur ce qui s'affiche VRAIMENT, pas seulement sur ce qui est écrit en dur).
+        self.alignement_effectif = alignement_effectif or ''
 
     def texte(self):
         """Concaténation des fragments — jamais stockée : c'est une dérivée, pas un champ du
@@ -305,7 +338,14 @@ class Tableau:
 class Document:
     """Le document entier. `blocs` : liste de Paragraphe | Tableau, premier niveau, dans
     l'ordre. `styles` : noms des styles présents dans styles.xml — sert au cas A
-    (reconnaitre_gabarit). `notes` : les notes de bas de page, mêmes classes que `blocs`."""
+    (reconnaitre_gabarit).
+
+    `notes` : dict[int, list[Paragraphe | Tableau]], le contenu de CHAQUE note par
+    identifiant — CHANGÉ le 19.09.2026 (§4 du contrat), c'était une liste plate qui fondait
+    toutes les notes ensemble sans dire laquelle appelle quoi. Les notes de bas de page ET
+    les notes de fin y cohabitent : une note de fin porte un identifiant décalé au-delà du
+    plus grand identifiant de note de bas de page (manuscrit_docx.py), pour qu'aucune clé ne
+    se percute jamais entre les deux familles."""
 
     __slots__ = ('blocs', 'styles', 'langue', 'revisions', 'commentaires', 'notes', 'source')
 
@@ -316,7 +356,7 @@ class Document:
         self.langue = langue or ''
         self.revisions = revisions or 0
         self.commentaires = commentaires or 0
-        self.notes = notes if notes is not None else []
+        self.notes = notes if notes is not None else {}
         self.source = source
 
     def __repr__(self):
@@ -1126,14 +1166,29 @@ def _nettoyer_fragments(paragraphe, est_corps):
     """Mute chaque Fragment.forme en place ; rend l'ensemble des clés effectivement retirées
     (pour le motif) et les deux signalements (gras intégral / majuscules intégrales),
     évalués sur la forme D'ORIGINE — avant tout retrait, sans quoi le signal disparaîtrait
-    avec le champ qu'il regarde."""
+    avec le champ qu'il regarde.
+
+    ⚠ Correction du 19.09.2026 (§5.2, décision du superviseur) : « signalé sans être touché »
+    (le texte même du contrat) était violé pour le gras — un paragraphe entièrement gras et
+    non retenu comme titre voyait son gras RETIRÉ dans la même passe qui le SIGNALE (mesuré :
+    16 paragraphes sur 3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP.docx). Décision : le gras d'un
+    paragraphe de corps ENTIÈREMENT gras est conservé (une relectrice doit pouvoir le voir),
+    le signalement reste dans le rapport. Le gras PARTIEL du corps, lui, part normalement —
+    seul le gras intégral déclenche cette exception. Les majuscules forcées, elles, restent
+    retirées dans tous les cas (FORME_RETIREE_TOUJOURS) : la décision du superviseur ne
+    portait que sur le gras."""
     fragments_non_vides = _fragments_non_vides(paragraphe)
     signalements = []
+    gras_integral = False
     if fragments_non_vides and est_corps:
-        if all(f.forme.get('gras') is True for f in fragments_non_vides):
+        gras_integral = all(f.forme.get('gras') is True for f in fragments_non_vides)
+        if gras_integral:
             signalements.append('gras intégral')
         if all(f.forme.get('majuscules') is True for f in fragments_non_vides):
             signalements.append('majuscules intégrales')
+
+    champs_corps_seul = (FORME_RETIREE_CORPS_SEUL if not gras_integral
+                          else tuple(c for c in FORME_RETIREE_CORPS_SEUL if c != 'gras'))
 
     champs_retires = set()
     for f in paragraphe.fragments:
@@ -1142,7 +1197,7 @@ def _nettoyer_fragments(paragraphe, est_corps):
                 champs_retires.add(cle)
             f.forme[cle] = None
         if est_corps:
-            for cle in FORME_RETIREE_CORPS_SEUL:
+            for cle in champs_corps_seul:
                 if f.forme.get(cle) is not None:
                     champs_retires.add(cle)
                 f.forme[cle] = None
@@ -1201,11 +1256,34 @@ def _nettoyer_paragraphe(paragraphe):
                        'signalements': signalements, 'motif': '; '.join(motif_parts)}
 
 
+def _paragraphes_en_profondeur(blocs):
+    """Chaque Paragraphe atteignable depuis `blocs` (Paragraphe | Tableau), à N'IMPORTE
+    QUELLE PROFONDEUR de cellule — jamais les Tableau eux-mêmes. À ne pas confondre avec
+    _paragraphes_premier_niveau() (réservée à classer_titres()/§5.1, qui ne doit statuer QUE
+    sur le premier niveau : un paragraphe de cellule ne peut pas devenir un titre).
+
+    Correction du 19.09.2026 (§5.2) : nettoyer_mise_en_forme() ne bouclait QUE sur
+    document.blocs (premier niveau) — 171 paragraphes en cellule, mesurés sur le corpus réel,
+    gardaient donc taille/police/couleur/gras alors que le §5.2 dit « tout le corps »."""
+    for b in blocs:
+        if isinstance(b, Tableau):
+            for rangee in b.rangees:
+                for c in rangee:
+                    yield from _paragraphes_en_profondeur(c.blocs)
+        else:
+            yield b
+
+
 def nettoyer_mise_en_forme(document):
-    """Applique le §5.2 à chaque Paragraphe de premier niveau de `document` (mutation en
-    place : formes de Fragment, alignement/retrait de Paragraphe, et la liste `blocs` elle-
-    même pour la fusion des paragraphes vides consécutifs). Suppose `classer_titres()` déjà
-    passé : le retrait de gras/souligné dépend de `niveau_retenu`. Rend (stats, trace)."""
+    """Applique le §5.2 à chaque Paragraphe de `document`, à N'IMPORTE QUELLE PROFONDEUR —
+    premier niveau, cellules de tableau (à toute profondeur d'imbrication) ET notes de bas de
+    page / de fin (document.notes) — (mutation en place : formes de Fragment,
+    alignement/retrait de Paragraphe, et la liste `blocs` elle-même pour la fusion des
+    paragraphes vides consécutifs, celle-ci réservée au premier niveau : la notion de
+    « paragraphes vides consécutifs » n'a de sens que dans le fil principal du texte).
+    Suppose `classer_titres()` déjà passé : le retrait de gras/souligné dépend de
+    `niveau_retenu` (toujours 0 pour un paragraphe de cellule ou de note, qui ne peut jamais
+    devenir un titre). Rend (stats, trace)."""
     trace = []
     n_vides_retires = 0
 
@@ -1235,9 +1313,10 @@ def nettoyer_mise_en_forme(document):
     document.blocs = nouveaux_blocs
 
     n_nettoyes = n_inchanges = n_signalements = 0
-    for bloc in document.blocs:
-        if not isinstance(bloc, Paragraphe):
-            continue
+    paragraphes_a_nettoyer = list(_paragraphes_en_profondeur(document.blocs))
+    for blocs_note in document.notes.values():
+        paragraphes_a_nettoyer.extend(_paragraphes_en_profondeur(blocs_note))
+    for bloc in paragraphes_a_nettoyer:
         a_change, ligne = _nettoyer_paragraphe(bloc)
         if a_change:
             n_nettoyes += 1
@@ -1274,8 +1353,10 @@ def image_depuis_json(obj):
 def fragment_depuis_json(obj):
     image = image_depuis_json(obj['image']) if obj.get('image') else None
     forme = nouvelle_forme(**(obj.get('forme') or {}))
+    effectif = nouvelle_forme(**(obj.get('effectif') or {}))
     return Fragment(texte=obj.get('texte', ''), image=image, forme=forme,
-                     lien=obj.get('lien'), source=obj.get('source'))
+                     lien=obj.get('lien'), source=obj.get('source'), note=obj.get('note'),
+                     effectif=effectif)
 
 
 def paragraphe_depuis_json(obj):
@@ -1288,7 +1369,8 @@ def paragraphe_depuis_json(obj):
                        liste=tuple(liste) if liste is not None else None,
                        alignement=obj.get('alignement', ''),
                        retrait=obj.get('retrait', 0) or 0,
-                       source=obj.get('source'))
+                       source=obj.get('source'),
+                       alignement_effectif=obj.get('alignement_effectif', ''))
 
 
 def cellule_depuis_json(obj):
@@ -1308,8 +1390,23 @@ def bloc_depuis_json(obj):
 
 
 def document_depuis_json(obj):
+    """`notes` : dict[int, list[bloc]] (§4, révision du 19.09.2026) — les clés JSON sont des
+    chaînes (contrainte du format), reconverties en int ici. Une entrée dont la clé n'est pas
+    un entier est ignorée en silence, comme le reste de cette désérialisation (voir l'en-tête
+    du fichier) ; une ANCIENNE trace au format liste (avant cette révision) est acceptée en
+    repli, toutes ses notes regroupées sous la clé 0 — mieux qu'une perte totale."""
     blocs = [bloc_depuis_json(b) for b in (obj.get('blocs') or [])]
-    notes = [bloc_depuis_json(b) for b in (obj.get('notes') or [])]
+    notes_brutes = obj.get('notes')
+    notes = {}
+    if isinstance(notes_brutes, dict):
+        for cle, valeur in notes_brutes.items():
+            try:
+                id_note = int(cle)
+            except (TypeError, ValueError):
+                continue
+            notes[id_note] = [bloc_depuis_json(b) for b in (valeur or [])]
+    elif isinstance(notes_brutes, list) and notes_brutes:
+        notes[0] = [bloc_depuis_json(b) for b in notes_brutes]
     return Document(blocs=blocs, styles=list(obj.get('styles') or []),
                      langue=obj.get('langue', ''), revisions=obj.get('revisions', 0) or 0,
                      commentaires=obj.get('commentaires', 0) or 0, notes=notes,
@@ -1334,7 +1431,8 @@ def image_vers_json(image):
 def fragment_vers_json(fragment):
     return {'texte': fragment.texte,
             'image': image_vers_json(fragment.image) if fragment.image is not None else None,
-            'forme': dict(fragment.forme), 'lien': fragment.lien, 'source': fragment.source}
+            'forme': dict(fragment.forme), 'effectif': dict(fragment.effectif),
+            'lien': fragment.lien, 'source': fragment.source, 'note': fragment.note}
 
 
 def paragraphe_vers_json(paragraphe):
@@ -1344,7 +1442,8 @@ def paragraphe_vers_json(paragraphe):
             'fragments': [fragment_vers_json(f) for f in paragraphe.fragments],
             'liste': list(paragraphe.liste) if paragraphe.liste is not None else None,
             'alignement': paragraphe.alignement, 'retrait': paragraphe.retrait,
-            'source': paragraphe.source}
+            'source': paragraphe.source,
+            'alignement_effectif': paragraphe.alignement_effectif}
 
 
 def cellule_vers_json(cellule):
@@ -1362,9 +1461,12 @@ def bloc_vers_json(bloc):
 
 
 def document_vers_json(document):
+    # `notes` : dict[int, list[bloc]] (§4, révision du 19.09.2026) — JSON n'a que des clés
+    # chaîne, converties ici ; document_depuis_json() fait le chemin inverse.
     return {'styles': list(document.styles), 'langue': document.langue,
             'revisions': document.revisions, 'commentaires': document.commentaires,
-            'notes': [bloc_vers_json(b) for b in document.notes],
+            'notes': {str(id_note): [bloc_vers_json(b) for b in blocs]
+                      for id_note, blocs in document.notes.items()},
             'blocs': [bloc_vers_json(b) for b in document.blocs], 'source': document.source}
 
 

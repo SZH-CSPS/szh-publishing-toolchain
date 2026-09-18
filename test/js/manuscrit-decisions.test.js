@@ -358,6 +358,169 @@ test('nettoyer_mise_en_forme : italique, exposant et lien survivent, police/tail
   });
 
 // ---------------------------------------------------------------------------------------
+// 5bis. Ajouté le 19.09.2026 (revue de chantier, §5.2 du contrat) — nettoyer_mise_en_forme()
+// ne bouclait QUE sur document.blocs (premier niveau) : un paragraphe DANS une cellule de
+// tableau gardait taille/police/couleur/gras (171 paragraphes de ce genre, mesurés sur le
+// corpus réel). Elle descend maintenant à toute profondeur de cellule.
+//
+// Sabotage minimal : dans nettoyer_mise_en_forme(), remplacer
+// `paragraphes_a_nettoyer = list(_paragraphes_en_profondeur(document.blocs))` par
+// `paragraphes_a_nettoyer = [b for b in document.blocs if isinstance(b, Paragraphe)]`
+// (l'ancien comportement, premier niveau seulement) — l'assertion sur la cellule rougit.
+
+test('nettoyer_mise_en_forme : descend dans les cellules d\'un tableau, à toute profondeur',
+  { skip: sansPython }, () => {
+    const cellule = (texte) => ({
+      colspan: 1, rowspan: 1, entete: false,
+      blocs: [{
+        type: 'paragraphe', source: 0, style: '', niveau_declare: 0, alignement: '', retrait: 0,
+        fragments: [{ texte, forme: { police: 'Arial', taille: 22, couleur: 'FF0000' } }]
+      }]
+    });
+    const doc = {
+      styles: [],
+      blocs: [
+        para(0, 'Un paragraphe de corps assez long pour etablir la taille dominante du '
+          + 'document, largement suffisant pour ce test.', { taille: 20 }),
+        {
+          type: 'tableau', source: 1, page: null,
+          rangees: [[cellule('Contenu de cellule avec mise en forme manuelle')]]
+        }
+      ]
+    };
+    const { document: doc2 } = diagnostiquer(doc);
+    const fCellule = doc2.blocs[1].rangees[0][0].blocs[0].fragments[0];
+    assert.strictEqual(fCellule.forme.police, null, 'la police doit disparaître en cellule aussi');
+    assert.strictEqual(fCellule.forme.taille, null, 'la taille doit disparaître en cellule aussi');
+    assert.strictEqual(fCellule.forme.couleur, null, 'la couleur doit disparaître en cellule aussi');
+  });
+
+// Même défaut, côté notes (document.notes, devenu un dict{id: [bloc, ...]} le 19.09.2026).
+//
+// Sabotage minimal : dans nettoyer_mise_en_forme(), retirer la boucle
+// `for blocs_note in document.notes.values(): paragraphes_a_nettoyer.extend(...)` — l'assertion
+// sur le fragment de note rougit.
+
+test('nettoyer_mise_en_forme : descend aussi dans document.notes',
+  { skip: sansPython }, () => {
+    const doc = {
+      styles: [],
+      blocs: [
+        para(0, 'Un paragraphe de corps assez long pour etablir la taille dominante du '
+          + 'document, largement suffisant pour ce test.', { taille: 20 })
+      ],
+      notes: {
+        '1': [{
+          type: 'paragraphe', source: 0, style: '', niveau_declare: 0, alignement: '', retrait: 0,
+          fragments: [{ texte: 'Contenu de note avec mise en forme manuelle',
+            forme: { police: 'Arial', taille: 18, couleur: '0000FF' } }]
+        }]
+      }
+    };
+    const { document: doc2 } = diagnostiquer(doc);
+    const fNote = doc2.notes['1'][0].fragments[0];
+    assert.strictEqual(fNote.forme.police, null, 'la police doit disparaître dans une note aussi');
+    assert.strictEqual(fNote.forme.taille, null, 'la taille doit disparaître dans une note aussi');
+  });
+
+// ---------------------------------------------------------------------------------------
+// 5ter. Décision du superviseur (révision du 19.09.2026, §5.2) : « signalé sans être touché »
+// était violé pour le gras — un paragraphe de corps ENTIÈREMENT gras et non retenu comme titre
+// voyait son gras RETIRÉ dans la même passe qui le SIGNALE (mesuré : 16 paragraphes sur
+// 3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP.docx). Le gras intégral est désormais CONSERVÉ (une
+// relectrice doit pouvoir le voir), le signalement reste dans le rapport. Le gras PARTIEL du
+// corps, lui, part normalement — seul l'intégral déclenche l'exception.
+//
+// Sabotage minimal : dans _nettoyer_fragments(), remplacer `champs_corps_seul = (...)` par
+// `champs_corps_seul = FORME_RETIREE_CORPS_SEUL` (toujours retirer, jamais l'exception) —
+// l'assertion sur le gras intégral conservé rougit.
+
+test('nettoyer_mise_en_forme : le gras intégral d\'un paragraphe de corps non retenu comme titre est CONSERVÉ, signalé',
+  { skip: sansPython }, () => {
+    const doc = {
+      styles: [],
+      blocs: [
+        para(0, 'Un paragraphe de corps assez long pour etablir la taille dominante du '
+          + 'document, largement suffisant pour ce test ici present.', { taille: 20 }),
+        // Entièrement gras, mais assez long et sans autre signal : ne sera pas retenu comme
+        // titre (signature = corps une fois le gras ignoré par la comparaison des tailles).
+        para(1, 'Ce paragraphe entierement en gras ressemble a un intertitre manque mais '
+          + 'reste assez long pour ne pas etre retenu comme titre par ce test.',
+          { taille: 20, gras: true })
+      ]
+    };
+    const { titres, formatage, document: doc2 } = diagnostiquer(doc);
+    assert.strictEqual(trouver(titres.trace, 1).niveau_retenu, 0,
+      'condition du contrôle : ce paragraphe ne doit pas être retenu comme titre');
+    const ligne = trouver(formatage.trace, 1);
+    assert.ok(ligne.signalements.includes('gras intégral'), 'le gras intégral doit être signalé');
+    assert.match(ligne.motif, /signalé sans être touché/,
+      'le motif doit dire que ce paragraphe est signalé SANS être touché');
+    const fragment = doc2.blocs[1].fragments[0];
+    assert.strictEqual(fragment.forme.gras, true,
+      'le gras intégral doit être CONSERVÉ après nettoyage, pas retiré malgré le signalement');
+  });
+
+// Le gras PARTIEL du corps, lui, part normalement — sans quoi l'exception ci-dessus serait
+// devenue un blanc-seing qui protège n'importe quel gras, même un simple mot en gras au milieu
+// d'une phrase de corps (jamais l'intention du §5.2).
+//
+// Sabotage minimal : dans _nettoyer_fragments(), calculer `gras_integral` avec `any(...)` au
+// lieu de `all(...)` — un seul fragment gras suffirait à déclencher l'exception, le gras
+// partiel de ce contrôle survivrait aussi (rougit).
+
+test('nettoyer_mise_en_forme : le gras PARTIEL du corps est retiré normalement (l\'exception ne vaut que pour l\'intégral)',
+  { skip: sansPython }, () => {
+    const doc = {
+      styles: [],
+      blocs: [{
+        source: 0, style: '', niveau_declare: 0,
+        fragments: [
+          { texte: 'Un debut de phrase ordinaire, ', forme: {} },
+          { texte: 'un mot en gras', forme: { gras: true } },
+          { texte: ', puis la suite du paragraphe de corps qui reste assez long pour ce test.', forme: {} }
+        ]
+      }]
+    };
+    const { document: doc2 } = diagnostiquer(doc);
+    const fragments = doc2.blocs[0].fragments;
+    assert.strictEqual(fragments[1].forme.gras, null,
+      'le gras PARTIEL (un seul fragment sur trois) doit être retiré, l\'exception ne vaut '
+      + 'que pour un paragraphe ENTIÈREMENT gras');
+  });
+
+// ---------------------------------------------------------------------------------------
+// 5quater. Défaut n°8c de l'en-tête de manuscrit_docx.py : tant que le lecteur rendait '\t'/
+// '\n' comme une simple espace, cette logique de _nettoyer_paragraphe() ne pouvait JAMAIS se
+// déclencher — du code mort. Depuis le 19.09.2026, le lecteur porte les vrais caractères ;
+// ce contrôle prouve que le NETTOYAGE, lui, fonctionnait déjà et fonctionne toujours une fois
+// exercé pour de vrai.
+//
+// Sabotage minimal : dans _nettoyer_paragraphe(), commenter les deux blocs `if
+// dernier.texte.endswith('\n')` et `if premier.texte.startswith('\t')` — les deux assertions
+// ci-dessous rougissent (le \t et le \n restent en place).
+
+test('nettoyer_mise_en_forme : une tabulation en tête et un saut de ligne en fin de paragraphe sont réellement retirés',
+  { skip: sansPython }, () => {
+    const doc = {
+      styles: [],
+      blocs: [{
+        source: 0, style: '', niveau_declare: 0,
+        fragments: [
+          { texte: '\tUn paragraphe de corps assez long pour etablir la taille dominante ' },
+          { texte: 'du document, avec un saut de ligne manuel en fin.\n' }
+        ]
+      }]
+    };
+    const { document: doc2 } = diagnostiquer(doc);
+    const [f0, f1] = doc2.blocs[0].fragments;
+    assert.ok(!f0.texte.startsWith('\t'),
+      'la tabulation d\'indentation en tête doit être retirée');
+    assert.ok(!f1.texte.endsWith('\n'),
+      'le saut de ligne manuel en fin de paragraphe doit être retiré');
+  });
+
+// ---------------------------------------------------------------------------------------
 // 6. Le cas limite qui doit NE RIEN faire : un document d'UN SEUL paragraphe, 11 mots, sans
 // gras, à une taille quelconque, sans style. Étant l'unique candidat du document, sa
 // signature est PAR CONSTRUCTION celle du corps (il EST le corps) : aucun groupe ne peut le

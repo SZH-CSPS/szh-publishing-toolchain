@@ -57,6 +57,7 @@ function dossierJetable() {
 //   media       : {"image1.png": "<base64>", ...} -> écrit sous word/media/ ;
 //   rels        : [[rId, target, external?], ...] -> word/_rels/document.xml.rels ;
 //   footnotes   : XML brut des w:footnote (déjà formés), optionnel ;
+//   endnotes    : XML brut des w:endnote (déjà formés), optionnel (ajouté le 19.09.2026) ;
 //   comments    : nombre de commentaires à fabriquer, optionnel.
 const FABRIQUE = [
   'import base64, json, sys, zipfile',
@@ -108,6 +109,13 @@ const FABRIQUE = [
   '            \'<?xml version="1.0" encoding="UTF-8"?><w:footnotes xmlns:w="%s">%s\'',
   '            \'</w:footnotes>\' % (W, spec["footnotes"]))',
   '        z.writestr("word/footnotes.xml", fn.encode("utf-8"))',
+  '    if spec.get("endnotes"):',
+  '        # Ajouté le 19.09.2026 (§4 du contrat, notes de fin) — purement additif, sur le',
+  '        # même patron que "footnotes" ci-dessus.',
+  '        en = (',
+  '            \'<?xml version="1.0" encoding="UTF-8"?><w:endnotes xmlns:w="%s">%s\'',
+  '            \'</w:endnotes>\' % (W, spec["endnotes"]))',
+  '        z.writestr("word/endnotes.xml", en.encode("utf-8"))',
   '    if spec.get("comments"):',
   '        c = "".join(\'<w:comment w:id="%d"><w:p/></w:comment>\' % i',
   '                     for i in range(spec["comments"]))',
@@ -507,10 +515,17 @@ test('manuscrit_docx.py --diagnostic : cx et cy sont rendus séparément, et leu
 // non nulles — sans quoi rien ne peut se calculer sur leur qualité. Sauté sous un motif
 // nommé si tmp/ (hors git) est absent, jamais en silence.
 //
+// Chiffres révisés le 19.09.2026 : ce fichier réel porte 21 médias DISTINCTS, pas 16 — 5 de
+// plus, récupérés depuis les mc:Fallback VML de 4 de ses 10 ancrages flottants (voir le
+// contrôle suivant). Mesuré : ces 5 médias (rId20-24) sont référencés IDENTIQUEMENT par les 4
+// ancrages (le même groupe de 5 photos redit 4 fois, une structure réelle de ce fichier, pas
+// un artefact de comptage — vérifié XML en main) : 16 images modernes + 5 images VML × 4
+// occurrences = 36 Image rendues au total, mais 21 noms de fichier distincts.
+//
 // Sabotage minimal : ajouter `return 0, 0` en toute première ligne de _dimensions_image() —
-// toutes les images du document, y compris ces 16 images réelles, rendraient 0,0.
+// toutes les images du document, y compris ces 36, rendraient 0,0.
 
-test('manuscrit_docx.py --images : les 16 images incorporées du corpus réel (lot-A/4_*.docx) ont toutes des dimensions en pixels non nulles',
+test('manuscrit_docx.py --images : le corpus réel (lot-A/4_*.docx) rend 36 occurrences pour 21 médias distincts, toutes avec des dimensions en pixels non nulles',
   { skip: sansPython }, (t) => {
     if (!fs.existsSync(CORPUS_LOT_A)) {
       t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
@@ -526,71 +541,139 @@ test('manuscrit_docx.py --images : les 16 images incorporées du corpus réel (l
     const r = python([MANUSCRIT_DOCX, '--images', chemin]);
     assert.strictEqual(r.status, 0, '--images a échoué sur ' + chemin + ' : ' + r.stderr);
     const images = JSON.parse(r.stdout);
-    assert.strictEqual(images.length, 16,
-      'ce fichier réel porte 16 images incorporées (mesuré le 18.09.2026)');
+    assert.strictEqual(images.length, 36,
+      'ce fichier réel rend 36 occurrences d\'image (16 modernes + 5 VML récupérées x 4 '
+      + 'ancrages, mesuré le 19.09.2026)');
+    const noms = new Set(images.map((img) => img.nom));
+    assert.strictEqual(noms.size, 21, 'ces 36 occurrences pointent vers 21 médias distincts');
     const sansDimensions = images.filter((img) => img.largeur_px === 0 || img.hauteur_px === 0);
     assert.deepStrictEqual(sansDimensions.map((img) => img.nom), [],
-      'toutes les images incorporées de ce fichier réel doivent avoir des dimensions en '
-      + 'pixels non nulles');
+      'toutes les images incorporées de ce fichier réel, modernes ou VML récupérées, doivent '
+      + 'avoir des dimensions en pixels non nulles');
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle ajouté le 18.09.2026 (revue adverse, sur le relevé chiffré du corpus réel) — le
-// compteur d'images héritées (VML, w:pict) incrémentait de 1 par w:pict RENCONTRÉ, jamais par
-// image qu'il contient réellement : un w:pict groupant plusieurs v:imagedata (v:group imbriqué,
-// ce que Word écrit pour un collage de plusieurs images en une seule forme héritée) était donc
-// sous-compté. Un tel chiffre est lu par une relectrice pour juger si elle doit aller chercher
-// une image à la main — un sous-comptage la trompe sur le nombre réel d'images perdues.
+// Contrôle réécrit le 19.09.2026 (revue de chantier) : compter les OCCURRENCES de
+// v:imagedata (comme avant cette date) surcomptait d'un facteur mesuré de 5 sur lot-A/4_La
+// méthode Flip Flap.docx (un même r:id peut être répété plusieurs fois dans un même groupe).
+// Ce lecteur compte désormais les r:id DISTINCTS, et RÉCUPÈRE les images correspondantes
+// (5 des 21 médias de ce fichier réel n'apparaissaient dans AUCUNE sortie avant cette
+// révision) plutôt que de se contenter de les compter comme perdues.
 //
-// Sabotage minimal : dans _fragments_de_run(), remplacer
-// `recensement['image_vml_ignoree'] += n_images_vml if n_images_vml else 1` par
-// `recensement['image_vml_ignoree'] += 1` (l'ancien comportement) — l'avertissement annoncerait
-// « occurrences 1 » au lieu de 2, l'assertion sur le message rougit.
+// Sabotage minimal : dans _images_depuis_vml(), retirer la ligne `if rid and rid in vus:
+// continue` (le dédoublonnage) — la seconde des deux assertions ci-dessous (rId répété deux
+// fois ne donne qu'UNE image) rougit : deux Image identiques seraient rendues.
 
-test('manuscrit_docx.py --diagnostic : un w:pict groupant plusieurs v:imagedata compte chaque image, pas l\'enveloppe',
+test('manuscrit_docx.py --diagnostic : un w:pict groupant 2 images VML DISTINCTES les récupère toutes les deux',
   { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
+      const octets1 = fabriquerPng(30, 20);
+      const octets2 = fabriquerPng(40, 25);
       const corps =
         '<w:p><w:r><w:pict><v:group>' +
-        '<v:shape><v:imagedata/></v:shape>' +
-        '<v:shape><v:imagedata/></v:shape>' +
+        '<v:shape><v:imagedata r:id="rId1"/></v:shape>' +
+        '<v:shape><v:imagedata r:id="rId2"/></v:shape>' +
         '</v:group></w:pict></w:r></w:p>';
+      fabriquerDocx(docx, {
+        corps,
+        media: { 'image1.png': octets1.toString('base64'), 'image2.png': octets2.toString('base64') },
+        rels: [['rId1', 'media/image1.png'], ['rId2', 'media/image2.png']]
+      });
+      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx]);
+      assert.strictEqual(r.status, 0, '--diagnostic a échoué : ' + r.stderr);
+      assert.ok(!/images-vml-ignorees/.test(r.stderr),
+        'les deux images sont récupérées : aucune ne doit rester "ignorée". stderr obtenu : '
+        + r.stderr);
+      const { document } = JSON.parse(r.stdout.trim().split('\n').pop());
+      const images = document.blocs[0].fragments.filter((f) => f.image).map((f) => f.image);
+      assert.strictEqual(images.length, 2, 'les 2 images VML distinctes doivent être récupérées');
+      const parNom = Object.fromEntries(images.map((img) => [img.nom, img]));
+      assert.strictEqual(parNom['image1.png'].largeur_px, 30);
+      assert.strictEqual(parNom['image2.png'].largeur_px, 40);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+test('manuscrit_docx.py --diagnostic : un w:pict qui référence deux fois le MÊME r:id ne récupère l\'image qu\'une fois',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const docx = path.join(base, 'essai.docx');
+      const octets = fabriquerPng(50, 60);
+      const corps =
+        '<w:p><w:r><w:pict><v:group>' +
+        '<v:shape><v:imagedata r:id="rId1"/></v:shape>' +
+        '<v:shape><v:imagedata r:id="rId1"/></v:shape>' +
+        '</v:group></w:pict></w:r></w:p>';
+      fabriquerDocx(docx, {
+        corps,
+        media: { 'image1.png': octets.toString('base64') },
+        rels: [['rId1', 'media/image1.png']]
+      });
+      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx]);
+      assert.strictEqual(r.status, 0, '--diagnostic a échoué : ' + r.stderr);
+      const { document } = JSON.parse(r.stdout.trim().split('\n').pop());
+      const images = document.blocs[0].fragments.filter((f) => f.image).map((f) => f.image);
+      assert.strictEqual(images.length, 1,
+        'le même r:id répété deux fois dans le même groupe est UNE seule image, pas deux');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// Régression : un w:pict SANS AUCUNE image (pure forme vectorielle héritée — rectangle,
+// connecteur…) doit toujours être compté 1 fois dans 'images-vml-ignorees', jamais 0 (rien ne
+// doit disparaître du décompte) et jamais récupéré (rien à récupérer).
+//
+// Sabotage minimal : dans _images_depuis_vml(), remplacer `if not trouve_imagedata:
+// recensement['image_vml_ignoree'] += 1` par `pass` — l'avertissement ne apparaît plus du
+// tout, l'assertion ci-dessous rougit.
+
+test('manuscrit_docx.py --diagnostic : un w:pict sans aucune image reste compté comme ignoré, jamais 0',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const docx = path.join(base, 'essai.docx');
+      const corps = '<w:p><w:r><w:pict><v:rect/></w:pict></w:r></w:p>';
       fabriquerDocx(docx, { corps });
       const r = python([MANUSCRIT_DOCX, '--diagnostic', docx]);
       assert.strictEqual(r.status, 0, '--diagnostic a échoué : ' + r.stderr);
       assert.ok(
-        /\[import-avertissement\] images-vml-ignorees \| article \| occurrences 2 \|/.test(r.stderr),
-        'un seul w:pict portant 2 v:imagedata doit annoncer 2 images ignorées, pas 1 enveloppe. ' +
-        'stderr obtenu : ' + r.stderr);
+        /\[import-avertissement\] images-vml-ignorees \| article \| occurrences 1 \|/.test(r.stderr),
+        'une pure forme vectorielle héritée doit compter pour 1 forme ignorée. stderr obtenu : '
+        + r.stderr);
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle ajouté le 18.09.2026 (revue adverse, défaut trouvé par recoupement direct sur
-// lot-A/4_La méthode Flip Flap.docx, PAS par sabotage) — _enfants_utiles() ne regarde que la
-// branche mc:Choice d'un mc:AlternateContent, pour ne pas compter deux fois LA MÊME forme
-// redite en VML dans mc:Fallback (voir le point 2 de l'en-tête du module). Mais sur ce fichier
-// réel, 4 des 10 ancrages flottants ont une branche Choice qui est un pur groupe de formes SANS
-// image (recensé, correctement, en 'forme_vectorielle_ignoree') — et une branche Fallback qui,
-// elle, porte un VRAI groupe d'images embarquées (<v:imagedata>). Avant correction, ces images
-// n'apparaissaient dans AUCUN recensement : ni ici (Fallback jamais visité), ni sous
-// 'forme_vectorielle_ignoree' (qui ne dit que « c'est une forme sans image », faux dès qu'elle
-// porte des photos dans son repli) — le silence que le §10 du contrat interdit.
+// Contrôle du 18.09.2026 (revue adverse, défaut trouvé par recoupement direct sur
+// lot-A/4_La méthode Flip Flap.docx, PAS par sabotage), RÉÉCRIT le 19.09.2026 pour vérifier la
+// RÉCUPÉRATION et non plus seulement le comptage — _enfants_utiles() ne regarde que la branche
+// mc:Choice d'un mc:AlternateContent, pour ne pas compter deux fois LA MÊME forme redite en
+// VML dans mc:Fallback (voir le point 2 de l'en-tête du module). Mais sur ce fichier réel, 4
+// des 10 ancrages flottants ont une branche Choice qui est un pur groupe de formes SANS image
+// (recensé, correctement, en 'forme_vectorielle_ignoree') — et une branche Fallback qui, elle,
+// porte un VRAI groupe d'images embarquées (<v:imagedata>). Avant la toute première correction,
+// ces images n'apparaissaient dans AUCUN recensement ; avant celle du 19.09.2026, elles étaient
+// comptées comme "ignorées" sans être RÉCUPÉRÉES.
 //
-// Sabotage minimal : dans _images_fantomes_du_repli(), retirer l'appel à cette fonction (ou son
-// corps) — l'avertissement 'images-vml-ignorees' redescend à « occurrences 1 » (le seul w:pict
-// direct de cette fixture, sans rapport avec l'AlternateContent), et les 2 images du Fallback
-// disparaissent de tout recensement.
+// Sabotage minimal : dans _images_du_repli_fantome(), retirer l'appel à _images_depuis_vml()
+// (ou son corps) — les 2 images du Fallback disparaissent de la sortie ET l'avertissement
+// 'images-vml-ignorees' cesse d'apparaître pour une raison différente (rien à ignorer non
+// plus) : la première assertion (2 images récupérées) rougit dans les deux cas.
 
-test('manuscrit_docx.py --diagnostic : les vraies images d\'un mc:Fallback ne disparaissent plus derrière une forme Choice sans image',
+test('manuscrit_docx.py --diagnostic : les vraies images d\'un mc:Fallback sont RÉCUPÉRÉES, pas seulement comptées, même quand le Choice n\'a aucune image',
   { skip: sansPython }, () => {
     const base = dossierJetable();
     try {
       const docx = path.join(base, 'essai.docx');
+      const octets1 = fabriquerPng(12, 18);
+      const octets2 = fabriquerPng(22, 28);
       // Choice : un dessin flottant SANS <a:blip> (pure forme, comme les 10 ancrages réels).
       // Fallback : la même forme en VML, mais avec un groupe de 2 v:imagedata — les vraies
       // images que le Choice moderne ne porte pas.
@@ -603,18 +686,29 @@ test('manuscrit_docx.py --diagnostic : les vraies images d\'un mc:Fallback ne di
         '</mc:Choice>' +
         '<mc:Fallback>' +
         '<w:pict><v:group>' +
-        '<v:shape><v:imagedata/></v:shape>' +
-        '<v:shape><v:imagedata/></v:shape>' +
+        '<v:shape><v:imagedata r:id="rId1"/></v:shape>' +
+        '<v:shape><v:imagedata r:id="rId2"/></v:shape>' +
         '</v:group></w:pict>' +
         '</mc:Fallback>' +
         '</mc:AlternateContent></w:r></w:p>';
-      fabriquerDocx(docx, { corps });
+      fabriquerDocx(docx, {
+        corps,
+        media: { 'image1.png': octets1.toString('base64'), 'image2.png': octets2.toString('base64') },
+        rels: [['rId1', 'media/image1.png'], ['rId2', 'media/image2.png']]
+      });
       const r = python([MANUSCRIT_DOCX, '--diagnostic', docx]);
       assert.strictEqual(r.status, 0, '--diagnostic a échoué : ' + r.stderr);
-      assert.ok(
-        /\[import-avertissement\] images-vml-ignorees \| article \| occurrences 2 \|/.test(r.stderr),
-        'les 2 images du Fallback doivent être recensées, alors même que le Choice n\'en a ' +
-        'aucune. stderr obtenu : ' + r.stderr);
+      const { document } = JSON.parse(r.stdout.trim().split('\n').pop());
+      const images = document.blocs[0].fragments.filter((f) => f.image).map((f) => f.image);
+      assert.strictEqual(images.length, 2,
+        'les 2 images du Fallback doivent être RÉCUPÉRÉES, alors même que le Choice n\'en a '
+        + 'aucune');
+      const parNom = Object.fromEntries(images.map((img) => [img.nom, img]));
+      assert.strictEqual(parNom['image1.png'].largeur_px, 12);
+      assert.strictEqual(parNom['image2.png'].largeur_px, 22);
+      assert.ok(!/images-vml-ignorees/.test(r.stderr),
+        'les deux images étant récupérées, elles ne doivent plus être comptées comme '
+        + '"ignorées". stderr obtenu : ' + r.stderr);
       assert.ok(
         /\[import-avertissement\] formes-vectorielles-ignorees \| article \| occurrences 1 \|/
           .test(r.stderr),
@@ -928,4 +1022,502 @@ test('manuscrit_docx.py --diagnostic : sur le corpus réel, 3_ et 3bis_ résolve
 
     assert.strictEqual(total, 20,
       'mesure figée le 18.09.2026 : 20 paragraphes de liste au total sur ces trois manuscrits');
+  });
+
+// ===================================================================================
+// Contrôles ajoutés le 19.09.2026 (revue de chantier) — un par défaut du relevé, chacun
+// prouvé par un sabotage minimal décrit dans son commentaire (rejoué à la main, voir le
+// rapport de chantier pour le tableau sabotage -> rouge/vert).
+
+// ---------------------------------------------------------------------------------
+// Les tirets ne sont plus détruits à la lecture (défaut n°1) : cadratin, demi-cadratin ET
+// trait d'union insécable (w:noBreakHyphen) doivent tous trois traverser _texte_depuis_enfants
+// intacts — jamais réduits à un simple '-'.
+//
+// Sabotage minimal : dans _texte_depuis_enfants(), remplacer
+// `morceaux.append('‑')` par `morceaux.append('-')` pour noBreakHyphen, ET réintroduire
+// une boucle `for a, b in (('–', '-'), ('—', '-'), ('‑', '-')):
+// t = t.replace(a, b)` avant le `return`. Les trois assertions ci-dessous rougissent.
+
+test('manuscrit_docx.py --diagnostic : cadratin, demi-cadratin et trait d\'union insécable traversent la lecture intacts',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const docx = path.join(base, 'essai.docx');
+      const corps =
+        '<w:p><w:r><w:t xml:space="preserve">pp. 12–25 (cadratin—ici)</w:t></w:r>' +
+        '<w:r><w:t>avant</w:t></w:r><w:r><w:noBreakHyphen/></w:r><w:r><w:t>apres</w:t></w:r></w:p>';
+      fabriquerDocx(docx, { corps });
+      const { document } = diagnostiquer('--diagnostic', docx);
+      const texte = document.blocs[0].fragments.map((f) => f.texte).join('');
+      assert.ok(texte.includes('–'), 'le demi-cadratin (–) doit survivre tel quel');
+      assert.ok(texte.includes('—'), 'le cadratin (—) doit survivre tel quel');
+      assert.ok(texte.includes('avant‑apres'),
+        'w:noBreakHyphen doit rendre le VRAI trait d\'union insécable (U+2011), jamais un '
+        + 'simple trait d\'union');
+      assert.ok(!texte.includes('avant-apres'),
+        'le trait d\'union insécable ne doit jamais être dégradé en trait d\'union banal');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// w:tab et w:br rendent désormais de VRAIS caractères ('\t' / '\n'), plus une simple espace
+// (défaut n°8c — condition pour que nettoyer_mise_en_forme() puisse un jour les nettoyer pour
+// de vrai). projeter_pronto() reste inchangé malgré ça (contrôle n°7 plus haut) : normaliser()
+// traite '\t'/'\n' comme un blanc, exactement comme l'espace qu'ils remplaçaient avant.
+//
+// Sabotage minimal : dans _texte_depuis_enfants(), remplacer les deux branches w:tab/w:br par
+// `elif e.tag in (W + 'tab', W + 'br', W + 'cr'): morceaux.append(' ')` (l'ancien comportement)
+// — les deux assertions ci-dessous rougissent.
+
+test('manuscrit_docx.py --diagnostic : w:tab rend une vraie tabulation, w:br un vrai saut de ligne, jamais une simple espace',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const docx = path.join(base, 'essai.docx');
+      const corps =
+        '<w:p><w:r><w:t xml:space="preserve">Avant</w:t></w:r><w:r><w:tab/></w:r>' +
+        '<w:r><w:t xml:space="preserve">Apres</w:t></w:r></w:p>' +
+        '<w:p><w:r><w:t xml:space="preserve">Ligne1</w:t></w:r><w:r><w:br/></w:r>' +
+        '<w:r><w:t xml:space="preserve">Ligne2</w:t></w:r></w:p>';
+      fabriquerDocx(docx, { corps });
+      const { document } = diagnostiquer('--diagnostic', docx);
+      const t0 = document.blocs[0].fragments.map((f) => f.texte).join('');
+      const t1 = document.blocs[1].fragments.map((f) => f.texte).join('');
+      assert.strictEqual(t0, 'Avant\tApres', 'w:tab doit rendre une vraie tabulation');
+      assert.strictEqual(t1, 'Ligne1\nLigne2', 'w:br doit rendre un vrai saut de ligne');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// w:sym (Insertion > Symbole, défaut n°2) : une puce Wingdings/Symbol courante (U+F0B7) est
+// convertie en puce Unicode réelle ; tout autre caractère d'une police à correspondance
+// spéciale est rendu tel quel ET signalé (jamais un silence total sur un caractère visible).
+//
+// Sabotage minimal : dans _rendu_sym(), remplacer tout le corps par `return ''` — les deux
+// assertions de texte rougissent (plus rien n'apparaît du tout), ET l'avertissement
+// 'symboles-police-speciale' disparaît (rien à signaler si rien n'est jamais rendu).
+
+test('manuscrit_docx.py --diagnostic : w:sym rend la puce Wingdings usuelle en Unicode, et signale le reste sans le taire',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const docx = path.join(base, 'essai.docx');
+      const corps =
+        '<w:p><w:r><w:t xml:space="preserve">Avant </w:t></w:r>' +
+        '<w:r><w:sym w:font="Wingdings" w:char="F0B7"/></w:r>' +
+        '<w:r><w:t xml:space="preserve"> Apres</w:t></w:r></w:p>' +
+        '<w:p><w:r><w:sym w:font="Wingdings" w:char="F0C8"/></w:r></w:p>';
+      fabriquerDocx(docx, { corps });
+      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx]);
+      assert.strictEqual(r.status, 0, '--diagnostic a échoué : ' + r.stderr);
+      const { document } = JSON.parse(r.stdout.trim().split('\n').pop());
+      const t0 = document.blocs[0].fragments.map((f) => f.texte).join('');
+      assert.strictEqual(t0, 'Avant • Apres',
+        'U+F0B7 en police Wingdings doit devenir la puce Unicode réelle (•)');
+      const t1 = document.blocs[1].fragments.map((f) => f.texte).join('');
+      assert.strictEqual(t1, '',
+        'un autre caractère Wingdings, sans correspondance connue, est repris tel quel');
+      assert.ok(
+        /\[import-avertissement\] symboles-police-speciale \| article \| occurrences 1 \|/
+          .test(r.stderr),
+        'le caractère non mappé doit être signalé, jamais en silence. stderr obtenu : '
+        + r.stderr);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// w:fldSimple (défaut n°2/n°5 de l'en-tête) : sa valeur affichée, mise en cache par Word dans
+// un w:r ordinaire enfant, doit être lue comme du texte normal — l'avertissement
+// 'champs-word-non-resolus' l'affirmait déjà avant cette correction, à tort.
+//
+// Sabotage minimal : retirer `W + 'fldSimple'` de _CONTENEURS_PASSE_PLAT — le texte
+// « 3 » du champ disparaît de la lecture (le paragraphe ne rend plus que « Page  sur 10 »).
+
+test('manuscrit_docx.py --diagnostic : la valeur mise en cache d\'un w:fldSimple est lue comme du texte normal',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const docx = path.join(base, 'essai.docx');
+      const corps =
+        '<w:p><w:r><w:t xml:space="preserve">Page </w:t></w:r>' +
+        '<w:fldSimple w:instr="PAGE"><w:r><w:t>3</w:t></w:r></w:fldSimple>' +
+        '<w:r><w:t xml:space="preserve"> sur 10</w:t></w:r></w:p>';
+      fabriquerDocx(docx, { corps });
+      const { document } = diagnostiquer('--diagnostic', docx);
+      const texte = document.blocs[0].fragments.map((f) => f.texte).join('');
+      assert.strictEqual(texte, 'Page 3 sur 10',
+        'la valeur en cache du champ (« 3 ») doit apparaître dans le texte lu');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// w:sdt de niveau BLOC (défaut n°2/n°5 de l'en-tête) : un contrôle de contenu enveloppant un
+// w:p ENTIER, enfant direct du corps, ne doit plus faire disparaître ce paragraphe.
+//
+// Sabotage minimal : dans _deplier_sdt_niveau_bloc(), remplacer le corps de la fonction par
+// `return container` (rien à déplier) — le paragraphe encapsulé disparaît de document.blocs.
+
+test('manuscrit_docx.py --diagnostic : un w:sdt de niveau bloc ne fait plus disparaître le paragraphe qu\'il enveloppe',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const docx = path.join(base, 'essai.docx');
+      const corps =
+        '<w:p><w:r><w:t xml:space="preserve">Avant le controle</w:t></w:r></w:p>' +
+        '<w:sdt><w:sdtPr/><w:sdtContent>' +
+        '<w:p><w:r><w:t xml:space="preserve">Dans le controle de contenu</w:t></w:r></w:p>' +
+        '</w:sdtContent></w:sdt>' +
+        '<w:p><w:r><w:t xml:space="preserve">Apres le controle</w:t></w:r></w:p>';
+      fabriquerDocx(docx, { corps });
+      const { document } = diagnostiquer('--diagnostic', docx);
+      const textes = document.blocs.map((b) => b.fragments.map((f) => f.texte).join(''));
+      assert.deepStrictEqual(textes,
+        ['Avant le controle', 'Dans le controle de contenu', 'Apres le controle'],
+        'les trois paragraphes doivent apparaître, y compris celui enveloppé par le sdt');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Notes de bas de page ET de fin, cohabitation sans collision d'identifiant (défaut n°2/n°5,
+// §4 du contrat) : Document.notes devient dict{id: contenu} ; une note de fin reçoit son
+// identifiant brut PLUS le plus grand identifiant de footnote (ici 2), jamais le même que la
+// footnote 1 ou 2.
+//
+// Sabotage minimal : dans lire(), remplacer `decalage=decalage` par `decalage=0` sur l'appel à
+// _notes_depuis_racine() pour les endnotes — la note de fin (id brut 1) écrase alors la
+// footnote 1 dans le dict : il n'en reste plus que 2 clés au lieu de 3.
+
+test('manuscrit_docx.py --diagnostic : notes de bas de page et de fin cohabitent, la note de fin reçoit un identifiant décalé',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const docx = path.join(base, 'essai.docx');
+      const corps =
+        '<w:p><w:r><w:t xml:space="preserve">Appel un</w:t></w:r>' +
+        '<w:r><w:rPr/><w:footnoteReference w:id="1"/></w:r>' +
+        '<w:r><w:t xml:space="preserve"> et deux</w:t></w:r>' +
+        '<w:r><w:rPr/><w:footnoteReference w:id="2"/></w:r>' +
+        '<w:r><w:t xml:space="preserve"> et une fin</w:t></w:r>' +
+        '<w:r><w:rPr/><w:endnoteReference w:id="1"/></w:r></w:p>';
+      const footnotes =
+        '<w:footnote w:id="1"><w:p><w:r><w:t xml:space="preserve">Contenu footnote un</w:t></w:r></w:p></w:footnote>' +
+        '<w:footnote w:id="2"><w:p><w:r><w:t xml:space="preserve">Contenu footnote deux</w:t></w:r></w:p></w:footnote>';
+      fabriquerDocx(docx, { corps, footnotes, endnotes: '<w:endnote w:id="1"><w:p>'
+        + '<w:r><w:t xml:space="preserve">Contenu endnote un</w:t></w:r></w:p></w:endnote>' });
+      const { document } = diagnostiquer('--diagnostic', docx);
+      const cles = Object.keys(document.notes).map(Number).sort((a, b) => a - b);
+      assert.deepStrictEqual(cles, [1, 2, 3],
+        'footnote 1, footnote 2, et endnote 1 décalée à 1+2=3 : trois clés distinctes, '
+        + 'jamais de collision');
+      assert.strictEqual(document.notes['3'][0].fragments[0].texte, 'Contenu endnote un',
+        'la note d\'identifiant final 3 doit être le contenu de l\'endnote, pas une footnote');
+      const fragments = document.blocs[0].fragments;
+      const idsAppeles = fragments.filter((f) => f.note !== null).map((f) => f.note);
+      assert.deepStrictEqual(idsAppeles.sort((a, b) => a - b), [1, 2, 3],
+        'les trois appels de note (deux footnoteReference, un endnoteReference décalé) '
+        + 'doivent apparaître dans les fragments du paragraphe qui les porte');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Notes ORPHELINES (ajout du superviseur, 19.09.2026, sur mesure de l'agent de l'écrivain) :
+// une note présente dans footnotes.xml mais qu'AUCUN w:footnoteReference n'appelle dans
+// document.xml n'est pas une vraie note de ce document. Mesuré : 1bis, 2-dense, 2-grappes et
+// 5bis portaient chacun une note technique 'continuationNotice' orpheline (aucun renvoi) —
+// document.notes doit désormais y être vide sur ces quatre fichiers réels ; ce contrôle-ci
+// prouve le mécanisme GÉNÉRAL (pas seulement le filtre par type) avec une note ORDINAIRE
+// jamais appelée.
+//
+// Sabotage minimal : dans lire(), remplacer `notes = {i: c for i, c in notes.items() if i in
+// ids_appelees}` par `pass` (ne rien filtrer) — la note orpheline (id 5) réapparaît dans
+// document.notes, la première assertion rougit.
+
+test('manuscrit_docx.py --diagnostic : une note jamais appelée par un renvoi (footnoteReference) est retirée, signalée',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const docx = path.join(base, 'essai.docx');
+      const corps =
+        '<w:p><w:r><w:t xml:space="preserve">Un appel</w:t></w:r>' +
+        '<w:r><w:rPr/><w:footnoteReference w:id="1"/></w:r></w:p>';
+      const footnotes =
+        '<w:footnote w:id="1"><w:p><w:r><w:t xml:space="preserve">Contenu appele</w:t></w:r></w:p></w:footnote>' +
+        '<w:footnote w:id="5"><w:p><w:r><w:t xml:space="preserve">Contenu jamais appele</w:t></w:r></w:p></w:footnote>';
+      fabriquerDocx(docx, { corps, footnotes });
+      const r = python([MANUSCRIT_DOCX, '--diagnostic', docx]);
+      assert.strictEqual(r.status, 0, '--diagnostic a échoué : ' + r.stderr);
+      const { document } = JSON.parse(r.stdout.trim().split('\n').pop());
+      assert.deepStrictEqual(Object.keys(document.notes), ['1'],
+        'seule la note 1 (appelée) doit rester ; la note 5 (jamais appelée) doit disparaître');
+      assert.ok(
+        /\[import-avertissement\] notes-orphelines \| article \| occurrences 1 \|/.test(r.stderr),
+        'la note orpheline retirée doit être signalée, jamais en silence. stderr obtenu : '
+        + r.stderr);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// Régression sur le corpus réel (défaut n°2/n°5) : 2-fin-de-document_Article_RSPS.docx porte
+// 12 footnotes réelles (word/endnotes.xml, lui, est absent de ce fichier précis — mesuré le
+// 19.09.2026 : le nom du fichier trompe, ce sont bien des NOTES DE BAS DE PAGE ici). Avant
+// cette révision, Document.notes existait déjà pour les footnotes (elles n'étaient pas
+// « jamais lues ») mais en LISTE PLATE, sans savoir laquelle appelle quoi ; ce contrôle fige
+// la nouvelle forme (dict par identifiant) sur un fichier réel.
+//
+// Sabotage minimal : dans lire(), remplacer l'appel à _notes_depuis_racine() pour les
+// footnotes par `notes = {}` — la clé 'notes' rend un dict vide, l'assertion rougit (12 -> 0).
+
+test('manuscrit_docx.py --diagnostic : sur le corpus réel, 2-fin-de-document_Article_RSPS.docx porte 12 notes distinctes',
+  { skip: sansPython }, (t) => {
+    if (!fs.existsSync(CORPUS_LOT_A)) {
+      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      return;
+    }
+    const nom = fs.readdirSync(CORPUS_LOT_A).find((n) => n.startsWith('2-fin'));
+    if (!nom) {
+      t.skip('aucun fichier "2-fin*.docx" dans lot-A (corpus incomplet)');
+      return;
+    }
+    const { document } = diagnostiquer('--diagnostic', path.join(CORPUS_LOT_A, nom));
+    assert.strictEqual(Object.keys(document.notes).length, 12,
+      'mesuré le 19.09.2026 : 12 notes distinctes sur ce fichier réel (0 avant cette révision '
+      + 'si la lecture des notes était coupée)');
+  });
+
+// Ajout du superviseur (19.09.2026, sur mesure de l'agent de l'écrivain) : 1bis, 2-dense,
+// 2-grappes et 5bis portent chacun, dans footnotes.xml ET endnotes.xml, une note de type
+// 'continuationNotice' SANS AUCUN renvoi correspondant dans document.xml — des notes
+// fantômes. Sur ces quatre fichiers réels, document.notes doit être vide.
+//
+// ⚠ Ce contrôle exerce en réalité le filtre ORPHELINES GÉNÉRAL (voir le contrôle précédent),
+// pas spécifiquement l'ajout de 'continuationNotice' à _TYPES_NOTE_TECHNIQUES : vérifié par
+// sabotage (retirer 'continuationNotice' de la liste, SANS toucher au filtre orphelines) —
+// ce contrôle-ci reste VERT, parce qu'une note 'continuationNotice' n'est de toute façon
+// jamais appelée par un renvoi et se fait retirer par le filtre général. L'entrée dans
+// _TYPES_NOTE_TECHNIQUES reste utile en documentation et en défense en profondeur (si le
+// filtre général devait un jour changer de forme), mais n'est plus, à elle seule, ce qui fait
+// ce test. Le contrôle qui, lui, exerce VRAIMENT le filtre général avec une note ORDINAIRE
+// (jamais technique) est celui juste au-dessus.
+
+test('manuscrit_docx.py --diagnostic : sur le corpus réel, 1bis/2-dense/2-grappes/5bis n\'ont AUCUNE vraie note (continuationNotice fantôme)',
+  { skip: sansPython }, (t) => {
+    if (!fs.existsSync(CORPUS_LOT_A)) {
+      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      return;
+    }
+    for (const prefixe of ['1bis', '2-dense', '2-grappes', '5bis']) {
+      const nom = fs.readdirSync(CORPUS_LOT_A).find((n) => n.startsWith(prefixe));
+      if (!nom) {
+        t.skip('fichier "' + prefixe + '*.docx" absent de lot-A (corpus incomplet)');
+        continue;
+      }
+      const { document } = diagnostiquer('--diagnostic', path.join(CORPUS_LOT_A, nom));
+      assert.strictEqual(Object.keys(document.notes).length, 0,
+        'mesuré le 19.09.2026 : ' + nom + ' ne porte aucune vraie note (seulement une '
+        + 'continuationNotice fantôme, jamais appelée)');
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Régression hyperliens sur le corpus réel — non touché par ce chantier, mais couvert ici
+// faute de l'être ailleurs (§11 : un mécanisme sans le moindre contrôle n'est pas prouvé).
+//
+// Sabotage minimal : dans _resoudre_lien_hyperlink(), `return None` en première ligne — les
+// 24 liens de ce fichier réel disparaissent tous, l'assertion rougit (24 -> 0).
+
+test('manuscrit_docx.py --diagnostic : sur le corpus réel, 5bis_...BEP.docx porte 24 hyperliens',
+  { skip: sansPython }, (t) => {
+    if (!fs.existsSync(CORPUS_LOT_A)) {
+      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      return;
+    }
+    const nom = fs.readdirSync(CORPUS_LOT_A).find((n) => n.startsWith('5bis'));
+    if (!nom) {
+      t.skip('aucun fichier "5bis*.docx" dans lot-A (corpus incomplet)');
+      return;
+    }
+    const { document } = diagnostiquer('--diagnostic', path.join(CORPUS_LOT_A, nom));
+    let liens = 0;
+    (function creuser(blocs) {
+      for (const b of blocs) {
+        if (b.type === 'tableau') {
+          for (const rangee of b.rangees) { for (const c of rangee) creuser(c.blocs); }
+        } else {
+          for (const f of b.fragments) { if (f.lien) liens++; }
+        }
+      }
+    })(document.blocs);
+    assert.strictEqual(liens, 24, 'mesuré le 19.09.2026 : 24 hyperliens sur ce fichier réel');
+  });
+
+// ---------------------------------------------------------------------------------
+// numId="0" signifie « pas de liste », jamais une liste de format indéterminé (défaut n°5).
+//
+// Sabotage minimal : dans _liste_depuis(), retirer la clause `if numid_brut == '0': return
+// None` — le paragraphe rendrait [0, 0, ''] au lieu de null.
+
+test('manuscrit_docx.py --diagnostic : numId="0" rend liste=null, jamais une liste de format indéterminé',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const docx = path.join(base, 'essai.docx');
+      const corps =
+        '<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="0"/></w:numPr></w:pPr>'
+        + '<w:r><w:t xml:space="preserve">numerotation explicitement retiree</w:t></w:r></w:p>';
+      fabriquerDocx(docx, { corps });
+      const { document } = diagnostiquer('--diagnostic', docx);
+      assert.strictEqual(document.blocs[0].liste, null,
+        'numId="0" doit rendre null : "pas de liste", jamais un format indéterminé');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Un numPr HÉRITÉ D'UN STYLE (jamais posé directement sur le paragraphe) doit résoudre la
+// liste — défaut n°4 : une autrice qui applique un style de liste sans reposer numPr sur
+// chaque paragraphe voyait sa liste disparaître.
+//
+// Sabotage minimal : dans _liste_depuis(), retirer les deux lignes qui appellent
+// _numpr_depuis_style() en repli — le paragraphe rendrait liste=null au lieu de [7, 0, 'puce'].
+
+test('manuscrit_docx.py --diagnostic : un numPr hérité du STYLE (jamais posé sur le paragraphe) résout la liste',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const docx = path.join(base, 'essai.docx');
+      const numbering =
+        '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/>'
+        + '<w:lvlText w:val="•"/></w:lvl></w:abstractNum>'
+        + '<w:num w:numId="7"><w:abstractNumId w:val="0"/></w:num>';
+      const corps =
+        '<w:p><w:pPr><w:pStyle w:val="ListeStyle"/></w:pPr>'
+        + '<w:r><w:t xml:space="preserve">item sans numPr direct</w:t></w:r></w:p>';
+      fabriquerDocx(docx, {
+        corps, numbering,
+        styles: [['ListeStyle', 'Liste a puces maison']]
+      });
+      // fabriquerDocx() n'a pas de clé dédiée pour le pPr d'un style : on l'écrit ici en
+      // réouvrant l'archive, plus simple que d'étendre FABRIQUE pour ce seul contrôle.
+      const patch = [
+        'import re, zipfile, sys',
+        'chemin = sys.argv[1]',
+        'with zipfile.ZipFile(chemin) as z:',
+        '    noms = {n: z.read(n) for n in z.namelist()}',
+        'styles = noms["word/styles.xml"].decode("utf-8")',
+        'ppr = (\'<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="7"/></w:numPr></w:pPr>\')',
+        'styles = styles.replace(\'<w:name w:val="Liste a puces maison"/></w:style>\',',
+        '                        \'<w:name w:val="Liste a puces maison"/>\' + ppr + \'</w:style>\')',
+        'noms["word/styles.xml"] = styles.encode("utf-8")',
+        'with zipfile.ZipFile(chemin, "w") as z:',
+        '    for n, d in noms.items():',
+        '        z.writestr(n, d)'
+      ].join('\n');
+      const rp = python(['-c', patch, docx]);
+      assert.strictEqual(rp.status, 0, 'patch du styles.xml impossible : ' + rp.stderr);
+      const { document } = diagnostiquer('--diagnostic', docx);
+      assert.deepStrictEqual(document.blocs[0].liste, [7, 0, 'puce'],
+        'le numPr du STYLE (jamais posé sur le paragraphe lui-même) doit résoudre la liste');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Image.source porte l'indice du PARAGRAPHE porteur dans le corps, jamais celui du w:r
+// (défaut n°3) : l'image est le PREMIER run (indice 0) du TROISIÈME paragraphe (indice 2) —
+// run-index et paragraphe-index divergent délibérément, pour qu'une confusion entre les deux
+// se voie (un premier jet de ce contrôle, où l'image était le second run d'un paragraphe
+// d'indice 1, laissait le sabotage vert par coïncidence : 1 == 1).
+//
+// Sabotage minimal : dans _fragments_de_run(), remplacer `img.source = indice_paragraphe` par
+// `img.source = indice` — l'image rendrait source=0 (l'indice de son run, puisqu'elle est le
+// PREMIER run de son paragraphe), pas 2 (l'indice de son paragraphe dans le corps).
+
+test('manuscrit_docx.py --diagnostic : Image.source porte l\'indice du paragraphe porteur, jamais celui du run',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const docx = path.join(base, 'essai.docx');
+      const drawing =
+        '<w:drawing><wp:inline><wp:extent cx="100" cy="100"/><wp:docPr descr="alt"/>'
+        + '<a:graphic><a:graphicData><pic:pic><pic:blipFill><a:blip r:embed="rId1"/>'
+        + '</pic:blipFill></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>';
+      const corps =
+        '<w:p><w:r><w:t xml:space="preserve">Premier paragraphe sans image.</w:t></w:r></w:p>'
+        + '<w:p><w:r><w:t xml:space="preserve">Second paragraphe sans image non plus.</w:t></w:r></w:p>'
+        + '<w:p><w:r>' + drawing + '</w:r>'
+        + '<w:r><w:t xml:space="preserve"> texte apres l\'image</w:t></w:r></w:p>';
+      fabriquerDocx(docx, {
+        corps,
+        media: { 'image1.png': fabriquerPng(5, 5).toString('base64') },
+        rels: [['rId1', 'media/image1.png']]
+      });
+      const { document } = diagnostiquer('--diagnostic', docx);
+      const img = document.blocs[2].fragments.find((f) => f.image).image;
+      assert.strictEqual(img.source, 2,
+        'l\'image est dans le troisième paragraphe (indice 2 dans le corps) : Image.source '
+        + 'doit valoir 2, jamais l\'indice de son run (0, puisqu\'elle est le premier run de '
+        + 'ce paragraphe)');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Fragment.effectif (§4 du contrat, défaut listé) : directe sinon style de caractère sinon
+// chaîne des styles de paragraphe sinon docDefaults. Un run SANS mise en forme directe, dont
+// le style de PARAGRAPHE porte le gras, doit voir `forme.gras` rester None (jamais deviné)
+// alors que `effectif.gras` vaut True.
+//
+// Sabotage minimal : dans _forme_effective(), `return dict(forme_directe)` en première ligne
+// (jamais consulter aucun style) — `effectif.gras` resterait None comme `forme.gras`.
+
+test('manuscrit_docx.py --diagnostic : Fragment.effectif remonte le gras du style de paragraphe, forme reste None',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const docx = path.join(base, 'essai.docx');
+      const corps =
+        '<w:p><w:pPr><w:pStyle w:val="TitreGras"/></w:pPr>'
+        + '<w:r><w:t xml:space="preserve">Texte sans mise en forme directe</w:t></w:r></w:p>';
+      fabriquerDocx(docx, { corps, styles: [['TitreGras', 'Titre gras maison']] });
+      const patch = [
+        'import zipfile, sys',
+        'chemin = sys.argv[1]',
+        'with zipfile.ZipFile(chemin) as z:',
+        '    noms = {n: z.read(n) for n in z.namelist()}',
+        'styles = noms["word/styles.xml"].decode("utf-8")',
+        'rpr = "<w:rPr><w:b/></w:rPr>"',
+        'styles = styles.replace(\'<w:name w:val="Titre gras maison"/></w:style>\',',
+        '                        \'<w:name w:val="Titre gras maison"/>\' + rpr + \'</w:style>\')',
+        'noms["word/styles.xml"] = styles.encode("utf-8")',
+        'with zipfile.ZipFile(chemin, "w") as z:',
+        '    for n, d in noms.items(): z.writestr(n, d)'
+      ].join('\n');
+      const rp = python(['-c', patch, docx]);
+      assert.strictEqual(rp.status, 0, 'patch du styles.xml impossible : ' + rp.stderr);
+      const { document } = diagnostiquer('--diagnostic', docx);
+      const f = document.blocs[0].fragments[0];
+      assert.strictEqual(f.forme.gras, null,
+        '`forme` reste la mise en forme DIRECTE : aucun w:b sur ce run, donc None');
+      assert.strictEqual(f.effectif.gras, true,
+        '`effectif` doit remonter le gras déclaré par le style de paragraphe');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
   });
