@@ -394,8 +394,26 @@ test('le plan porte le profil - variables contient SZH_CODIUM_PROFIL sur <baseDe
       'SZH_CODIUM_PROFIL ne vaut pas <baseDev>\\codium - ' + s.variables.SZH_CODIUM_PROFIL);
   });
 
+// Start-SzhCodium (szh-shell.ps1) sort AVANT de composer sa ligne de commande quand
+// Get-VSCodiumExe ne trouve rien : il trace « codium : introuvable » et rend $false. Les deux
+// tests qui suivent lisent cette ligne de commande dans le journal ; sans VSCodium sur le
+// poste, l'un échoue et l'autre passe pour la mauvaise raison — il vérifie une ABSENCE, que
+// le journal vide satisfait sans rien prouver. Le runner windows-latest n'a pas VSCodium, et
+// c'est ce qui a fait échouer la release v1.0.0. Mêmes deux chemins que Get-VSCodiumExe, et
+// même motif de saut que courriel-support.test.js — « VSCodium introuvable » est admis sur ce
+// runner (test/js/verifier-tap.js, famille vscodium).
+const sansVSCodiumExe = (function () {
+  if (process.platform !== 'win32') { return 'pas Windows'; }
+  const candidats = [
+    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'VSCodium', 'VSCodium.exe'),
+    path.join(process.env.LOCALAPPDATA || '', 'Programs', 'VSCodium', 'VSCodium.exe')
+  ];
+  for (const c of candidats) { if (fs.existsSync(c)) { return false; } }
+  return 'VSCodium introuvable sur ce poste';
+})();
+
 test('avec SZH_CODIUM_PROFIL, Start-SzhCodium passe --user-data-dir et --extensions-dir',
-  { skip: sansPowerShell }, () => {
+  { skip: sansPowerShell || sansVSCodiumExe }, () => {
     const baseJetable = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-dev-profil-base-'));
     const profilJetable = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-dev-profil-'));
     const env = envIsole({ SZH_BASE: baseJetable, SZH_LANCEUR_SIMULE: '1', SZH_CODIUM_PROFIL: profilJetable });
@@ -411,7 +429,7 @@ test('avec SZH_CODIUM_PROFIL, Start-SzhCodium passe --user-data-dir et --extensi
   });
 
 test('sans SZH_CODIUM_PROFIL, la ligne de commande ne change pas',
-  { skip: sansPowerShell }, () => {
+  { skip: sansPowerShell || sansVSCodiumExe }, () => {
     const baseJetable = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-dev-sansprofil-base-'));
     const env = envIsole({ SZH_BASE: baseJetable, SZH_LANCEUR_SIMULE: '1' });
     const r = executerStartSzhCodium(env, baseJetable);
