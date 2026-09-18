@@ -1,12 +1,26 @@
 // pipeline/manuscrit_typo.py : le pont typographique du nettoyeur de manuscrit (§6 de
-// outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md). Ce fichier éprouve les cinq contrôles
-// posés au §11 pour manuscrit-typo.test.js :
+// outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md). Ce fichier éprouve, depuis la révision du
+// 19.09.2026 :
 //   1. un run coupé au milieu d'un mot -> texte exact, aucun caractère perdu ;
 //   2. un mot en italique reste en italique après réinjection ;
-//   3. un paragraphe irreconstructible est abandonné et signalé, jamais rendu de travers ;
-//   4. sans wsl.exe, la fonction rend les paragraphes inchangés et une trace qui le dit ;
-//   5. la même phrase en fr puis en de donne deux espacements différents (preuve que
-//      `-M lang=` part bien jusqu'au filtre).
+//   3. un caractère AJOUTÉ par le filtre est accepté sans abandon, hérite du fragment voisin ;
+//   4. sous Windows sans wsl.exe joignable, le repli est signalé (jamais un silence) ;
+//   5. la même phrase en fr puis en de donne deux espacements différents (`-M lang=` part
+//      bien jusqu'au filtre) ;
+//   6. une lettre SUPPRIMÉE par le filtre n'est plus un motif d'abandon : le pont fait
+//      confiance au filtre, il ne rejuge plus ses corrections ;
+//   7. un écart purement typographique (apostrophe, chevrons) n'abandonne rien ;
+//   8. les quatre corrections réelles qui abandonnaient à tort avant cette révision (mesurées
+//      sur lot-A) passent désormais sans abandon ;
+//   9. la garde d'ENTRÉE (le texte des fragments a divergé de celui envoyé au filtre) abandonne
+//      proprement, motif à l'appui ;
+//   10. la garde de SORTIE (la reconstruction ne reproduit pas le texte rendu par le filtre)
+//       abandonne proprement — éprouvée en sabotant directement les opcodes du diff, seule
+//       façon de l'atteindre puisqu'aucune entrée réelle ne peut la déclencher ;
+//   11. les avertissements [typo-avertissement] d'un appel RÉUSSI remontent désormais
+//       (avant : capturés puis jetés en silence sur un succès) ;
+//   12. sous Linux (sys.platform != 'win32', le cas de production), pandoc est appelé
+//       directement, JAMAIS via wsl.exe/wslpath — la panne mesurée avant cette révision.
 //
 //   node --test "test/js/*.test.js"
 //
@@ -14,7 +28,10 @@
 // binaire, via un petit programme Python écrit au vol) et test/js/biblio-vide.test.js (qui
 // fait déjà tourner un filtre Lua pour de vrai plutôt que de deviner son comportement).
 // Gardes de test/js/gardes.js : PYTHON (jamais `python3` en dur, qui tombe sur l'alias
-// WindowsApps et fige toute la suite) et sansPandocWsl (pandoc + WSL SZH-Publishing).
+// WindowsApps et fige toute la suite), sansPandocWsl (pandoc + WSL SZH-Publishing) et
+// sansPandoc (pandoc du PATH Windows — utilisé UNIQUEMENT par le contrôle n°12, qui a besoin
+// d'un vrai pandoc joignable SANS passer par wsl.exe pour prouver que la branche Linux ne le
+// touche jamais).
 //
 // manuscrit_typo.py travaille en duck-typing contre les signatures du §4 du contrat
 // (Fragment/Paragraphe) : il n'importe PAS pipeline/manuscrit_modele.py, qui est écrit EN
@@ -29,14 +46,27 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
-const { PYTHON, sansPython, sansPandocWsl } = require('./gardes');
+const { PYTHON, sansPython, sansPandocWsl, sansPandoc } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 
+// process.platform de CE poste (Windows) : le contrôle n°4 (repli sans wsl.exe) n'a de sens
+// que là où wsl.exe est la voie normale — sous Linux, _executer_pandoc ne le regarde jamais.
+const sansWindows = process.platform !== 'win32'
+  ? 'contrôle valable uniquement sous Windows (repli via wsl.exe)' : false;
+
 // Le harnais : construit des Fragment/Paragraphe locaux depuis une « recette » JSON, appelle
-// normaliser_paragraphes(), rend le résultat en JSON. Les points d'injection `saboter` et
-// `sans_wsl` remplacent une fonction interne du module par une doublure de test AVANT
-// l'appel — jamais en modifiant manuscrit_typo.py lui-même.
+// normaliser_paragraphes(), rend le résultat en JSON. Les points d'injection remplacent une
+// fonction/un attribut interne du module par une doublure de test AVANT l'appel — jamais en
+// modifiant manuscrit_typo.py lui-même :
+//   - `sortie_sabotee` : _appeler_pandoc rend exactement le texte fourni, sans toucher à pandoc ;
+//   - `sans_wsl` : _chemin_wsl_exe rend un exécutable inexistant (repli, contrôle n°4) ;
+//   - `forcer_linux` : sys.platform devient 'linux' et wsl.exe/wslpath explosent s'ils sont
+//     appelés — pandoc, lui, tourne pour de vrai (celui du PATH Windows, contrôle n°12) ;
+//   - `appel_direct` : appelle _reconstruire_unite() SANS passer par pandoc, pour éprouver les
+//     deux gardes internes (entrée/sortie, contrôles n°9-10) sans dépendre de la WSL ; son
+//     sous-champ `opcodes_bogues` remplace difflib.SequenceMatcher par une doublure dont
+//     get_opcodes() rend une couverture délibérément incomplète.
 const HARNAIS = [
   'import json, os, sys',
   'racine, chemin_entree, chemin_sortie = sys.argv[1], sys.argv[2], sys.argv[3]',
@@ -60,25 +90,39 @@ const HARNAIS = [
   '',
   "recette = json.load(open(chemin_entree, encoding='utf-8'))",
   '',
-  "if recette.get('saboter'):",
-  '    def _appel_sabote(textes, langue, racine_depot):',
-  '        # Le point d\u2019injection prévu par le contrat pour le contrôle « abandon',
-  '        # propre » : un texte volontairement différent, sans toucher à pandoc ni à la WSL.',
-  '        sortie = []',
-  '        for t in textes:',
-  "            sortie.append(t.replace('e', 'X', 1) if 'e' in t else t + 'X')",
-  '        return sortie',
-  '    MT._appeler_pandoc = _appel_sabote',
+  "if recette.get('appel_direct'):",
+  "    ad = recette['appel_direct']",
+  "    if ad.get('opcodes_bogues') is not None:",
+  '        class _FauxMatcher:',
+  '            def __init__(self, *a, **k):',
+  '                pass',
+  '            def get_opcodes(self):',
+  "                return [tuple(o) for o in ad['opcodes_bogues']]",
+  '        MT.difflib.SequenceMatcher = _FauxMatcher',
+  "    frags = [Fragment(t, None, None, None, i) for i, t in enumerate(ad['fragments'])]",
+  '    try:',
+  "        resultat = MT._reconstruire_unite(frags, ad['texte_envoye'], ad['texte_normalise'])",
+  "        sortie = {'ok': True, 'texte': ''.join(f.texte for f in resultat)}",
+  '    except MT._EchecReconstruction as e:',
+  "        sortie = {'ok': False, 'motif': str(e)}",
+  "    json.dump(sortie, open(chemin_sortie, 'w', encoding='utf-8'), ensure_ascii=False)",
+  "    print('OK')",
+  '    sys.exit(0)',
+  '',
+  "if recette.get('forcer_linux'):",
+  "    MT.sys.platform = 'linux'",
+  '    def _explose(*a, **k):',
+  "        raise AssertionError('la branche Linux a touche wsl.exe/wslpath')",
+  '    MT._chemin_wsl_exe = _explose',
+  '    MT._chemin_pour_wsl = _explose',
   '',
   "if recette.get('sortie_sabotee') is not None:",
-  '    # Point d’injection à contrôle EXACT, caractère par caractère (contrôles 6 et 7) :',
-  '    # renvoie précisément le texte fourni par la recette, plutôt qu’une altération',
-  '    # générique — c’est ce qui permet de viser le garde-fou ligne à ligne, dans un sens',
-  '    # (un caractère non typographique perdu ou ajouté) puis dans l’autre (rien que du',
-  '    # typographique, qui ne doit surtout pas être abandonné).',
+  '    # Point d’injection à contrôle EXACT, caractère par caractère : renvoie précisément le',
+  '    # texte fourni par la recette, plutôt qu’une altération générique — c’est ce qui permet',
+  '    # de simuler n’importe quelle correction du filtre, y compris une lettre supprimée.',
   '    _fixe = recette[\'sortie_sabotee\']',
   '    def _appel_fixe(textes, langue, racine_depot):',
-  '        return list(_fixe)',
+  '        return list(_fixe), []',
   '    MT._appeler_pandoc = _appel_fixe',
   '',
   "if recette.get('sans_wsl'):",
@@ -93,10 +137,12 @@ const HARNAIS = [
   "                                   p.get('alignement', ''), p.get('retrait', 0),",
   "                                   p.get('source', 0)))",
   '',
-  "resultat, traces, abandons = MT.normaliser_paragraphes(paragraphes, recette['langue'], racine)",
+  'resultat, traces, abandons, avertissements, statut = MT.normaliser_paragraphes(',
+  "    paragraphes, recette['langue'], racine)",
   '',
   'sortie = {',
-  "    'traces': traces, 'abandons': abandons,",
+  "    'traces': traces, 'abandons': abandons, 'avertissements': avertissements,",
+  "    'statut': statut,",
   "    'paragraphes': [",
   "        {'source': p.source,",
   "         'fragments': [{'texte': f.texte, 'forme': f.forme, 'lien': f.lien} for f in p.fragments]}",
@@ -111,9 +157,7 @@ function dossierJetable() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'szh-manuscrittypo-'));
 }
 
-// Lance le harnais sur une recette, rend l'objet JSON de sortie. `recette.paragraphes[].fragments[]`
-// est `[{ texte, forme }]` — un seul paragraphe suffit à tous les contrôles de ce fichier.
-function normaliser(recette) {
+function lancerHarnais(recette) {
   const dossier = dossierJetable();
   try {
     const fHarnais = path.join(dossier, 'harnais.py');
@@ -129,6 +173,19 @@ function normaliser(recette) {
   } finally {
     fs.rmSync(dossier, { recursive: true, force: true });
   }
+}
+
+// Lance le harnais sur une recette de normalisation, rend l'objet JSON de sortie. `recette.
+// paragraphes[].fragments[]` est `[{ texte, forme }]` — un seul paragraphe suffit à la plupart
+// des contrôles de ce fichier.
+function normaliser(recette) {
+  return lancerHarnais(recette);
+}
+
+// Lance le harnais sur un `appel_direct` (voir le commentaire du HARNAIS ci-dessus), rend
+// { ok, texte } ou { ok: false, motif }.
+function appelDirect(appelDirectRecette) {
+  return lancerHarnais({ appel_direct: appelDirectRecette });
 }
 
 function texteAPlat(paragraphe) {
@@ -152,6 +209,7 @@ test('manuscrit-typo : un run coupé au milieu du mot « important » ne perd au
       }]
     });
     assert.deepStrictEqual(sortie.abandons, [], 'le paragraphe a été abandonné : ' + JSON.stringify(sortie.abandons));
+    assert.strictEqual(sortie.statut, 'appliquee');
     const texte = texteAPlat(sortie.paragraphes[0]);
     assert.match(texte, /important/, 'le mot « important » n\u2019a pas survécu intact à la coupure de run');
     assert.match(texte, /^Voici/, 'le début du paragraphe a été perdu');
@@ -200,36 +258,35 @@ test('manuscrit-typo : un mot en italique reste en italique malgré les insécab
     assert.match(texte, /[\u00a0\u202f]/, 'aucune insécable posée : le filtre n\u2019a rien changé');
   });
 
-// ---- 3. L'abandon est propre : paragraphe intact, motif inscrit, aucune exception -----
+// ---- 3. Un caractère AJOUTÉ par le filtre est accepté sans abandon ---------------------
+//
+// Avant la révision du 19.09.2026, ce même sabotage (un caractère ajouté, rien perdu) était
+// traité comme un échec de reconstruction dès que le caractère ajouté n'était pas sur la
+// liste blanche « typographique ». Le filtre est désormais la vérité : un ajout de contenu
+// (ici un « X » qui ne ressemble à rien de typographique) doit simplement être accepté et
+// rattaché au fragment voisin de gauche, jamais provoquer un abandon.
 
-test('manuscrit-typo : une reconstruction impossible abandonne le paragraphe proprement',
+test('manuscrit-typo : un caractère ajouté par le filtre est accepté sans abandon, hérite du fragment voisin',
   { skip: sansPython }, () => {
     const original = 'Un texte tout simple.';
     const sortie = normaliser({
       langue: 'fr',
-      // Insertion pure d'un caractere non typographique en fin de texte (rien n'est
-      // perdu : perdu == '', ajoute == 'X') -- isole la moitie << ajoute >> du garde-fou,
-      // complementaire du controle n°6 qui isole la moitie << perdu >>. Un ancien
-      // sabotage (remplacer 'e' par 'X') declenchait les DEUX moities a la fois et ne
-      // prouvait donc rien de plus que le controle n°6 -- corrige.
       sortie_sabotee: [original + 'X'],
       paragraphes: [{
         source: 5,
         fragments: [{ texte: original, forme: { italique: false } }]
       }]
     });
-    assert.strictEqual(sortie.abandons.length, 1, 'l\u2019abandon attendu n\u2019a pas été inscrit');
-    assert.strictEqual(sortie.abandons[0].source, 5);
-    assert.ok(sortie.abandons[0].motif && sortie.abandons[0].motif.length > 0,
-      'l\u2019abandon n\u2019a pas de motif');
-    assert.strictEqual(texteAPlat(sortie.paragraphes[0]), original,
-      'le paragraphe abandonné n\u2019est pas rendu intact');
+    assert.deepStrictEqual(sortie.abandons, [],
+      'un ajout de caractère a été abandonné à tort : ' + JSON.stringify(sortie.abandons));
+    assert.strictEqual(texteAPlat(sortie.paragraphes[0]), original + 'X',
+      'le caractère ajouté par le filtre doit être conservé tel quel');
   });
 
 // ---- 4. Le repli sans WSL : inchangé, une trace, jamais d'exception -------------------
 
-test('manuscrit-typo : sans wsl.exe joignable, les paragraphes ressortent inchangés',
-  { skip: sansPython }, () => {
+test('manuscrit-typo : sans wsl.exe joignable, le repli est signalé et les paragraphes ressortent inchangés',
+  { skip: sansPython || sansWindows }, () => {
     const original = 'Un texte tout simple.';
     const sortie = normaliser({
       langue: 'fr',
@@ -241,8 +298,12 @@ test('manuscrit-typo : sans wsl.exe joignable, les paragraphes ressortent inchan
     });
     assert.deepStrictEqual(sortie.abandons, [],
       'un repli sans outillage n\u2019est pas un abandon de paragraphe');
+    assert.strictEqual(sortie.statut, 'repli',
+      'le statut doit dire "repli", pas seulement une trace enfouie');
     assert.ok(sortie.traces.some((t) => /repli|indisponible/i.test(t)),
       'aucune trace n\u2019explique le repli : ' + JSON.stringify(sortie.traces));
+    assert.deepStrictEqual(sortie.avertissements, [],
+      'aucun avertissement typo ne peut venir d\u2019un appel qui n\u2019a jamais eu lieu');
     assert.strictEqual(texteAPlat(sortie.paragraphes[0]), original,
       'le paragraphe a été modifié malgré l\u2019absence de wsl.exe');
   });
@@ -269,49 +330,35 @@ test('manuscrit-typo : la même phrase en fr et en de donne deux espacements dif
     assert.doesNotMatch(texteDe, /Attention[\u00a0\u202f]:/, 'l\u2019allemand pose une insécable qu\u2019il ne devrait pas poser');
   });
 
-// ---- 6. Le garde-fou n'est pas trop permissif : une lettre PERDUE (pas ajoutee) --------
+// ---- 6. Une lettre SUPPRIMÉE par le filtre n'est plus un motif d'abandon ---------------
 //
-// Le controle n°3 ci-dessus ne suffit PAS a eprouver le garde-fou de _reconstruire_unite :
-// son sabotage (« saboter ») remplace un caractere d'origine PAR un caractere ajoute non
-// typographique ('X'), ce qui declenche la moitie « ajoute » du test aux lignes 273-274 de
-// manuscrit_typo.py, jamais sa moitie « perdu ». Une neutralisation de la seule moitie
-// « perdu » (par exemple `if False and any(... perdu ...) or any(... ajoute ...)`, ou la
-// precedence de `and` sur `or` ne laisse subsister QUE le test sur les caracteres ajoutes)
-// laisse alors passer, SANS ABANDON, un texte qui a perdu une vraie lettre -- tant que rien
-// n'est ajoute a sa place. Verifie a la main (18.09.2026) : avec ce sabotage exact applique
-// a manuscrit_typo.py, les 5 controles precedents restent tous verts -- la preuve du trou.
-// C'est exactement le scenario ici : pandoc (simule via le point d'injection
-// `sortie_sabotee`) rend “Un texte imple.” pour “Un texte simple.” -- le 's' de
-// « simple » a disparu, rien ne l'a remplace (un pur « delete », ajoute == '').
-test('manuscrit-typo : une lettre perdue (jamais remplacee) abandonne le paragraphe, motif a l\u2019appui',
+// Avant la révision du 19.09.2026, ce scénario (un pur « delete », rien pour le remplacer)
+// déclenchait systématiquement un abandon dès que la lettre perdue n'était pas sur la liste
+// blanche « typographique ». C'était le bug mesuré sur lot-A : le filtre corrige parfois du
+// contenu réel (3ème -> 3e, une espace fine -> une insécable fine...) et ce module n'a plus
+// à en juger. Ici, pandoc est simulé (`sortie_sabotee`) pour isoler la décision : la lettre
+// « s » de « simple » disparaît, rien ne la remplace — et ça ne doit PLUS abandonner.
+
+test('manuscrit-typo : une lettre supprimée par le filtre n\u2019est plus un motif d\u2019abandon (le filtre a raison)',
   { skip: sansPython }, () => {
     const original = 'Un texte simple.';
     const sortie = normaliser({
       langue: 'fr',
-      sortie_sabotee: ['Un texte imple.'],   // le 's' de "simple" a disparu, non remplace
+      sortie_sabotee: ['Un texte imple.'],   // le 's' de "simple" a disparu, non remplacé
       paragraphes: [{
         source: 9,
         fragments: [{ texte: original, forme: { italique: false } }]
       }]
     });
-    assert.strictEqual(sortie.abandons.length, 1,
-      'la lettre perdue n\u2019a pas déclenché d\u2019abandon : ' + JSON.stringify(sortie));
-    assert.strictEqual(sortie.abandons[0].source, 9);
-    // Le motif doit CITER le caractere fautif, pas juste dire << echec >> en general.
-    assert.match(sortie.abandons[0].motif, /'s'/,
-      'le motif ne cite pas le caractere perdu : ' + sortie.abandons[0].motif);
-    assert.strictEqual(texteAPlat(sortie.paragraphes[0]), original,
-      'le paragraphe abandonne n\u2019est pas rendu intact malgre la lettre perdue');
+    assert.deepStrictEqual(sortie.abandons, [],
+      'une lettre supprimée par le filtre ne doit plus provoquer d\u2019abandon : '
+      + JSON.stringify(sortie));
+    assert.strictEqual(texteAPlat(sortie.paragraphes[0]), 'Un texte imple.',
+      'le pont doit faire confiance au filtre, pas rendre le texte d\u2019origine');
   });
 
 // ---- 7. Le garde-fou n'est pas trop strict : rien que du typographique ----------------
-//
-// Symetrique du controle precedent : un texte qui ne differe de l'original QUE par des
-// caracteres de CARACTERES_TYPOGRAPHIQUES (une apostrophe droite devenue courbe, des
-// guillemets droits devenus chevrons) ne doit PAS etre abandonne. Sans ce controle, une
-// version du garde-fou qui abandonnerait TOUT ecart (au lieu de distinguer les deux listes)
-// resterait indetectee par le controle n°6 -- et la typographie ne s'appliquerait plus
-// jamais a aucun paragraphe modifie, en silence.
+
 test('manuscrit-typo : un ecart purement typographique (apostrophe, chevrons) n\u2019abandonne rien',
   { skip: sansPython }, () => {
     const original = "C'est le \"terme\" exact.";
@@ -328,4 +375,132 @@ test('manuscrit-typo : un ecart purement typographique (apostrophe, chevrons) n\
       'un ecart purement typographique a ete abandonne a tort : ' + JSON.stringify(sortie.abandons));
     assert.strictEqual(texteAPlat(sortie.paragraphes[0]), 'C\u2019est le \u00abterme\u00bb exact.',
       'la normalisation purement typographique n\u2019a pas ete acceptee telle quelle');
+  });
+
+// ---- 8. Les quatre corrections réelles qui abandonnaient à tort avant cette révision ---
+//
+// Mesurées sur tmp/corpus-relecture/lot-A avant le correctif : 4 paragraphes sur 845
+// abandonnés À TORT, tous pour la même raison (un caractère hors de l'ancienne liste
+// blanche). Régression directe : chacune doit désormais passer sans abandon.
+
+test('manuscrit-typo : les quatre corrections mesurées sur lot-A (A->À, 3ème->3e, espace fine, apostrophe->chevron) ne sont plus abandonnées',
+  { skip: sansPython }, () => {
+    const cas = [
+      { original: 'A la suite de cet essai.', sabote: '\u00c0 la suite de cet essai.' },
+      { original: 'Voir le 3ème exemple.', sabote: 'Voir le 3e exemple.' },
+      { original: 'Un texte\u2009espace fine.', sabote: 'Un texte\u202fespace fine.' },
+      { original: 'Il a dit \u2018bonjour\u2019 gentiment.', sabote: 'Il a dit \u2039bonjour\u2019 gentiment.' }
+    ];
+    for (const { original, sabote } of cas) {
+      const sortie = normaliser({
+        langue: 'fr',
+        sortie_sabotee: [sabote],
+        paragraphes: [{ source: 3, fragments: [{ texte: original, forme: { italique: false } }] }]
+      });
+      assert.deepStrictEqual(sortie.abandons, [],
+        'abandonné à tort pour ' + JSON.stringify({ original, sabote }) + ' : '
+        + JSON.stringify(sortie.abandons));
+      assert.strictEqual(texteAPlat(sortie.paragraphes[0]), sabote,
+        'le texte corrigé par le filtre doit être repris tel quel pour ' + JSON.stringify({ original, sabote }));
+    }
+  });
+
+// ---- 9. La garde d'ENTRÉE : le texte des fragments a divergé de celui envoyé au filtre -
+
+test('manuscrit-typo : la garde d\u2019entrée abandonne si le texte des fragments a divergé de celui envoyé au filtre',
+  { skip: sansPython }, () => {
+    const sortie = appelDirect({
+      fragments: ['Un texte simple.'],
+      texte_envoye: 'Un texte AUTRE CHOSE.',   // ne correspond plus a la concatenation des fragments
+      texte_normalise: 'Un texte simple.'
+    });
+    assert.strictEqual(sortie.ok, false, 'la divergence d\u2019entrée aurait dû abandonner');
+    assert.match(sortie.motif, /texte des fragments/,
+      'le motif ne cite pas la garde d\u2019entrée : ' + sortie.motif);
+  });
+
+test('manuscrit-typo : la garde d\u2019entrée ne se déclenche PAS quand rien n\u2019a divergé',
+  { skip: sansPython }, () => {
+    const sortie = appelDirect({
+      fragments: ['Un texte simple.'],
+      texte_envoye: 'Un texte simple.',
+      texte_normalise: 'Un texte corrigé.'
+    });
+    assert.strictEqual(sortie.ok, true, 'un appel cohérent ne doit pas être abandonné : ' + JSON.stringify(sortie));
+    assert.strictEqual(sortie.texte, 'Un texte corrigé.');
+  });
+
+// ---- 10. La garde de SORTIE : la reconstruction doit reproduire EXACTEMENT le texte du -
+//          filtre. Aucune entrée réelle ne peut la déclencher (les opcodes de
+//          difflib.SequenceMatcher couvrent toujours tout `texte_normalise` par construction)
+//          — la seule façon de l'éprouver est de saboter le diff lui-même, pour prouver que
+//          le filet de sécurité EXISTE et fonctionne si l'algorithme se corrompait un jour.
+
+test('manuscrit-typo : la garde de sortie abandonne si le diff (sabote) ne couvre pas tout le texte normalisé',
+  { skip: sansPython }, () => {
+    const sortie = appelDirect({
+      fragments: ['abc'],
+      texte_envoye: 'abc',
+      texte_normalise: 'abcd',
+      // Opcodes tronqués : ne couvrent que 'abc' de 'abcd', le 'd' final est passé sous silence.
+      opcodes_bogues: [['equal', 0, 3, 0, 3]]
+    });
+    assert.strictEqual(sortie.ok, false, 'une reconstruction incomplète aurait dû abandonner');
+    assert.match(sortie.motif, /reconstruction/,
+      'le motif ne cite pas la garde de sortie : ' + sortie.motif);
+  });
+
+// ---- 11. Les avertissements [typo-avertissement] d'un appel RÉUSSI remontent ----------
+//
+// Avant la révision du 19.09.2026, _appeler_pandoc() ne lisait stderr QUE sur l'échec :
+// sur un succès, les avertissements du filtre (ici C2, guillemet droit non apparié) étaient
+// capturés puis jetés en silence. Mesuré sur lot-A : 7 documents sur 10 en émettent.
+
+test('manuscrit-typo : les avertissements [typo-avertissement] d\u2019un appel réussi remontent désormais',
+  { skip: sansPython || sansPandocWsl }, () => {
+    const sortie = normaliser({
+      langue: 'fr',
+      paragraphes: [{
+        source: 0,
+        // Un guillemet droit non apparié : le filtre le signale (code C2) sans le corriger,
+        // sur un appel qui réussit par ailleurs (returncode 0).
+        fragments: [{ texte: 'Il a dit "bonjour sans jamais refermer.', forme: { italique: false } }]
+      }]
+    });
+    assert.strictEqual(sortie.statut, 'appliquee');
+    assert.ok(sortie.avertissements.length > 0,
+      'aucun avertissement remonté alors que le guillemet droit est non apparié : '
+      + JSON.stringify(sortie));
+    for (const ligne of sortie.avertissements) {
+      assert.match(ligne, /^\[typo-avertissement\]/,
+        'une ligne d\u2019avertissement ne porte pas le préfixe attendu : ' + JSON.stringify(ligne));
+    }
+  });
+
+// ---- 12. Sous Linux, pandoc est appelé DIRECTEMENT, jamais via wsl.exe/wslpath --------
+//
+// La panne mesurée avant cette révision : la CLI de production tourne DANS la WSL (le
+// lanceur fait `wsl -d SZH-Publishing -e python3 ...`), où wsl.exe n'existe pas —
+// `_appeler_pandoc` l'invoquait quand même, sans erreur visible, et retombait en repli
+// silencieux (845 paragraphes sur 845 inchangés, code de sortie 0). Ce contrôle force
+// `sys.platform` à 'linux' SANS changer le poste réel : wsl.exe/_chemin_pour_wsl explosent
+// s'ils sont appelés (la preuve que la branche ne les touche jamais), et pandoc tourne pour
+// de vrai — celui du PATH Windows (gardes.sansPandoc), pas celui de la WSL.
+
+test('manuscrit-typo : sous Linux (sys.platform != win32), pandoc est appelé directement, jamais via wsl.exe',
+  { skip: sansPython || sansPandoc }, () => {
+    const sortie = normaliser({
+      langue: 'fr',
+      forcer_linux: true,
+      paragraphes: [{
+        source: 0,
+        fragments: [{ texte: 'Attention : ceci compte vraiment.', forme: { italique: false } }]
+      }]
+    });
+    assert.strictEqual(sortie.statut, 'appliquee',
+      'pandoc direct doit réussir sans jamais toucher wsl.exe : ' + JSON.stringify(sortie));
+    assert.deepStrictEqual(sortie.abandons, []);
+    const texte = texteAPlat(sortie.paragraphes[0]);
+    assert.match(texte, /Attention[\u00a0\u202f]:/,
+      'la typographie française (insécable devant « : ») n\u2019a pas été appliquée par le pandoc direct');
   });

@@ -1,7 +1,7 @@
 // pipeline/manuscrit-nettoyer.py : la CLI du nettoyeur de manuscrit (article), §8 de
 // outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md — le CHAÎNON qui branche les six modules
 // (manuscrit_docx, manuscrit_modele, manuscrit_typo, manuscrit_regles, manuscrit_gabarit).
-// Ce fichier éprouve les huit contrôles demandés pour ce chantier :
+// Ce fichier éprouve les contrôles demandés pour ce chantier :
 //   1. le refus du suivi de modifications (w:ins) : message clair, RIEN écrit sur le disque ;
 //   2. le code de sortie : non nul dès qu'une alerte `error` existe, nul sinon ;
 //   3. la chaîne complète sur un manuscrit fabriqué : le .docx produit se relit par
@@ -13,13 +13,27 @@
 //   6. les flux ne se mélangent pas : une seule ligne sur stdout, la progression sur stderr ;
 //   7. un nom de fichier accentué traverse toute la chaîne sans plantage d'encodage ;
 //   8. les onze manuscrits réels de tmp/corpus-relecture/lot-A/ passent la chaîne complète
-//      sans exception — sauté sous un motif nommé si le corpus (hors git) est absent.
+//      sans exception — sauté sous un motif nommé si le corpus (hors git) est absent ;
+//   9. révision du 19.09.2026 — un fichier verrou `~$*.docx` est refusé proprement (code 2,
+//      code_refus='fichier-verrou'), avant toute lecture ;
+//   10. révision du 19.09.2026 — la langue de traitement vient du PRODUIT, jamais du document
+//       déclaré ; un désaccord (ex. `de-CH` sur un article de la Revue) lève une alerte
+//       warning, sans jamais changer la langue réellement utilisée ;
+//   11. révision du 19.09.2026 — un repli typographique (pandoc/WSL indisponible) lève une
+//       alerte warning ET porte `typographie: "repli"` sur la ligne stdout ; --sans-typo porte
+//       aussi "repli" sur cette ligne, mais SANS lever l'alerte (choix explicite, pas une
+//       panne) ;
+//   12. LE test de production (révision du 19.09.2026) : la CLI tourne réellement DANS la WSL
+//       (comme le lanceur en production), sur un manuscrit dont la typographie doit être
+//       appliquée — la panne mesurée avant cette révision (repli silencieux car wsl.exe
+//       n'existe pas dans la distro) ne peut être vue que là.
 //
 //   node --test test/js/manuscrit-nettoyer.test.js
 //
 // Patron : test/js/manuscrit-gabarit.test.js (fabrication de fixtures .docx via un petit
 // programme Python écrit au vol, jamais figées en binaire). Gardes de test/js/gardes.js :
-// PYTHON (jamais `python3` en dur, voir son en-tête).
+// PYTHON (jamais `python3` en dur, voir son en-tête) et sansPandocWsl/SZH_WSL_OBLIGATOIRE
+// (pandoc + WSL SZH-Publishing, contrôle n°12 seulement).
 'use strict';
 
 const test = require('node:test');
@@ -28,12 +42,58 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
-const { PYTHON, sansPython } = require('./gardes');
+const { PYTHON, sansPython, sansPandocWsl } = require('./gardes');
 
 const RACINE = path.resolve(__dirname, '..', '..');
 const PIPELINE = path.join(RACINE, 'pipeline');
 const NETTOYEUR = path.join(PIPELINE, 'manuscrit-nettoyer.py');
 const PRONTO_LIRE = path.join(PIPELINE, 'pronto-lire.py');
+
+// ---- WSL, pour LE test de production (n°12) — patron de test/js/manuscrit-gabarit.test.js
+// et de pipeline/manuscrit_typo.py (même piège des antislashs : wsl.exe les avale dans un
+// argument de tableau, on convertit en barres obliques AVANT l'appel).
+const WSL_EXE = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wsl.exe');
+const DISTRO_WSL = 'SZH-Publishing';
+
+function versCheminWsl(cheminWindows) {
+  const p = cheminWindows.replace(/\\/g, '/');
+  const m = /^([A-Za-z]):\/(.*)$/.exec(p);
+  return m ? '/mnt/' + m[1].toLowerCase() + '/' + m[2] : p;
+}
+
+function versCheminWindows(cheminWsl) {
+  const m = /^\/mnt\/([a-zA-Z])\/(.*)$/.exec(cheminWsl);
+  return m ? m[1].toUpperCase() + ':\\' + m[2].replace(/\//g, '\\') : cheminWsl;
+}
+
+// Lit word/document.xml tel quel (XML brut), avec le Python de CE poste (Windows) — le
+// fichier produit DANS la WSL reste lisible tel quel depuis Windows, même système de
+// fichiers (patron de test/js/manuscrit-gabarit.test.js).
+const LIRE_DOCUMENT_XML = 'import sys, zipfile\n'
+  + 'z = zipfile.ZipFile(sys.argv[1])\n'
+  + 'sys.stdout.write(z.read("word/document.xml").decode("utf-8"))\n';
+
+function lireDocumentXml(chemin) {
+  return cp.execFileSync(PYTHON, ['-c', LIRE_DOCUMENT_XML, chemin],
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: ENV_UTF8 });
+}
+
+// Aplatit tout le texte visible de word/document.xml (concaténation de tous les <w:t>), pour
+// des contrôles qui ne dépendent pas de la façon dont la typographie a redécoupé les runs.
+function extraireTexteBrut(xml) {
+  const morceaux = [];
+  // (?:\s[^>]*)? borne le nom de balise : sans elle, `<w:t[^>]*>` reconnait aussi
+  // `<w:tcPr>`, `<w:tblPr>`, `<w:tab/>`... (tout ce qui commence par les 4 memes caracteres)
+  // et avale tout le XML jusqu'au PROCHAIN `</w:t>` comme s'il s'agissait de texte -- mesure
+  // en ecrivant ce test : le texte extrait contenait alors des fragments de balises entieres.
+  const re = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g;
+  let m;
+  while ((m = re.exec(xml)) !== null) {
+    morceaux.push(m[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&apos;/g, "'").replace(/&quot;/g, '"'));
+  }
+  return morceaux.join('');
+}
 const CORPUS_LOT_A = path.join(RACINE, 'tmp', 'corpus-relecture', 'lot-A');
 
 // PYTHONIOENCODING=utf-8 : même piège que test/js/manuscrit-gabarit.test.js (voir son
@@ -56,9 +116,12 @@ function dossierJetable(prefixe) {
 // étendu d'un champ `revision` par paragraphe : true l'enveloppe dans un <w:ins>, comme un
 // texte accepté en suivi de modifications par Word. `paragraphes` :
 //   [{ texte, style|undefined, gras|false, taille|undefined, revision|false }, ...]
+// Le 3e argument optionnel `langue` (ex. 'de-CH') pose w:docDefaults/w:rPrDefault/w:rPr/w:lang
+// dans styles.xml — ce que manuscrit_docx._langue_declaree() lit (contrôle n°10, langue).
 const FABRIQUER_DOCX = [
   'import json, sys, zipfile',
   'chemin, paras = sys.argv[1], json.loads(sys.argv[2])',
+  'langue = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None',
   'W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
   'def para_xml(p):',
   '    pStyle = (\'<w:pStyle w:val="%s"/>\' % p["style"]) if p.get("style") else ""',
@@ -78,6 +141,9 @@ const FABRIQUER_DOCX = [
   'doc = (\'<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="%s">\'',
   '       \'<w:body>%s</w:body></w:document>\') % (W, corps)',
   'styles = \'<?xml version="1.0" encoding="UTF-8"?><w:styles xmlns:w="%s">\' % W',
+  'if langue:',
+  '    styles += (\'<w:docDefaults><w:rPrDefault><w:rPr><w:lang w:val="%s"/>\'',
+  '               \'</w:rPr></w:rPrDefault></w:docDefaults>\') % langue',
   'for sid, nom in (("Heading1", "heading 1"), ("Normal", "Normal")):',
   '    styles += \'<w:style w:styleId="%s"><w:name w:val="%s"/></w:style>\' % (sid, nom)',
   'styles += "</w:styles>"',
@@ -89,8 +155,8 @@ const FABRIQUER_DOCX = [
   '    z.writestr("[Content_Types].xml", ct)',
 ].join('\n');
 
-function fabriquerDocx(chemin, paragraphes) {
-  const r = python(['-c', FABRIQUER_DOCX, chemin, JSON.stringify(paragraphes)]);
+function fabriquerDocx(chemin, paragraphes, langue) {
+  const r = python(['-c', FABRIQUER_DOCX, chemin, JSON.stringify(paragraphes), langue || '']);
   assert.strictEqual(r.status, 0, 'fabrication du .docx impossible : ' + r.stderr);
 }
 
@@ -430,6 +496,210 @@ test('manuscrit-nettoyer.py : les onze manuscrits réels de lot-A passent la cha
       t.diagnostic('lot-A : ' + fichiers.length + ' fichier(s) en ' + dureeMs + ' ms ; résumés : '
         + JSON.stringify(resumes));
       assert.deepStrictEqual(echecs, [], 'ces manuscrits ont fait planter la chaîne complète');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°9 — fichier verrou `~$*.docx` : refus propre AVANT toute lecture, jamais
+// l'exception « File is not a zip file » d'avant cette révision (code 2, pas 3).
+//
+// Sabotage minimal : dans principal(), retirer le bloc `if os.path.basename(entree).
+// startswith('~$'): return refuser(...)` — le test rougit sur `obj.code_refus`.
+
+test('manuscrit-nettoyer.py : refuse un fichier verrou ~$*.docx avant toute lecture',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const entree = path.join(base, '~$verrou.docx');
+      // Un vrai verrou Word n'est pas un zip valide : quelques octets suffisent, le refus
+      // doit intervenir avant que quiconque n'essaie de l'ouvrir.
+      fs.writeFileSync(entree, Buffer.from([0, 1, 2, 3]));
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie]);
+      assert.notStrictEqual(r.status, 0, 'le code de sortie doit être non nul');
+      const obj = ligneUniqueJson(r.stdout);
+      assert.strictEqual(obj.refus, true);
+      assert.strictEqual(obj.code_refus, 'fichier-verrou');
+      assert.strictEqual(obj.code_sortie, 2);
+      assert.ok(obj.message && obj.message.length > 0, 'le message de refus doit être clair');
+      assert.deepStrictEqual(fs.readdirSync(sortie), [],
+        'le dossier de sortie doit rester VIDE — aucun .docx, aucun rapport');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°10 — la langue de traitement vient du PRODUIT, pas du document déclaré ; un
+// désaccord lève une alerte warning SANS changer la langue réellement utilisée.
+//
+// Sabotage minimal : dans principal(), remplacer
+// `langue = 'fr' if args['produit'] == 'revue' else 'de'` par `langue = document.langue or 'fr'`
+// — un document déclaré `de-CH` reçoit la typographie/les règles allemandes sur un article
+// de la Revue, et aucune alerte Langue.DesaccordProduit n'apparaît plus jamais (elle dépend
+// justement de la comparaison entre les deux).
+
+test('manuscrit-nettoyer.py : la langue de traitement vient du produit ; un désaccord lève une alerte warning sans changer la langue utilisée',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      // Document déclaré en allemand (de-CH) mais traité comme un article de la Revue (fr).
+      const entree = path.join(base, 'article.docx');
+      fabriquerDocx(entree, manuscritMinimal(false), 'de-CH');
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+      // --sans-typo : ce contrôle porte sur la langue et l'alerte, pas sur le filtre —
+      // l'isoler évite toute dépendance à pandoc/WSL ici.
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-typo']);
+      const obj = ligneUniqueJson(r.stdout);
+      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      assert.strictEqual(rapport.langue, 'fr',
+        'la langue UTILISÉE doit rester celle du produit (fr), jamais celle du document');
+      const alerteLangue = rapport.alertes.liste.find((a) => a.rule === 'Langue.DesaccordProduit');
+      assert.ok(alerteLangue, 'aucune alerte de désaccord de langue : ' + JSON.stringify(rapport.alertes.liste));
+      assert.strictEqual(alerteLangue.severity, 'warning');
+      assert.ok(alerteLangue.message && alerteLangue.message.length > 0);
+
+      // Négatif : un document déclaré cohérent avec le produit ne lève rien.
+      const entreeCoherente = path.join(base, 'coherent.docx');
+      fabriquerDocx(entreeCoherente, manuscritMinimal(false), 'fr-CH');
+      const sortieCoherente = path.join(base, 'sortie-coherente');
+      fs.mkdirSync(sortieCoherente);
+      const rCoherent = nettoyer([entreeCoherente, '--produit', 'revue', '--sortie', sortieCoherente, '--sans-typo']);
+      const objCoherent = ligneUniqueJson(rCoherent.stdout);
+      const rapportCoherent = JSON.parse(fs.readFileSync(objCoherent.sortie_rapport, 'utf8'));
+      assert.ok(!rapportCoherent.alertes.liste.some((a) => a.rule === 'Langue.DesaccordProduit'),
+        'fr-CH sur un article de la Revue ne doit lever aucune alerte de langue');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°11 — un repli typographique lève une alerte warning ET porte
+// `typographie: "repli"` sur la ligne stdout ; --sans-typo porte aussi "repli" sur cette
+// ligne mais SANS lever l'alerte (choix explicite, pas une panne d'outillage).
+//
+// Le seul levier sûr pour forcer un VRAI repli de bout en bout sans toucher wsl.exe ni au
+// PATH du poste (qui casserait aussi le lancement de python lui-même) : une copie isolée du
+// pipeline PRIVÉE du filtre typographique — pandoc, alors joignable pour de vrai, échoue
+// réellement sur `--lua-filter <introuvable>`. sansPandocWsl garantit que l'échec vient bien
+// du filtre manquant, pas d'une WSL absente sur ce poste.
+//
+// Sabotage minimal, deux volets : (a) dans principal(), retirer
+// `if statut_typo == 'repli': alertes_manuelles.append(_alerte_repli_typo())` — le repli
+// reste invisible dans les alertes ; (b) ajouter `statut_typo = 'appliquee'` juste avant la
+// ligne stdout — la ligne ment sur ce qui s'est vraiment passé.
+
+test('manuscrit-nettoyer.py : un repli typographique réel lève une alerte warning et porte typographie: "repli"',
+  { skip: sansPython || sansPandocWsl }, () => {
+    const base = dossierJetable();
+    try {
+      const pipelineCopie = path.join(base, 'pipeline');
+      fs.cpSync(PIPELINE, pipelineCopie, { recursive: true });
+      fs.rmSync(path.join(pipelineCopie, 'filters', 'szh-typographie.lua'));
+      const nettoyeurCopie = path.join(pipelineCopie, 'manuscrit-nettoyer.py');
+
+      const entree = path.join(base, 'article.docx');
+      fabriquerDocx(entree, manuscritMinimal(false));
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+      // --analyse-seule : ce contrôle porte sur le repli, pas sur l'écriture du gabarit
+      // (qui a besoin de revue-template/, non copié ici).
+      const r = python([nettoyeurCopie, entree, '--produit', 'revue', '--sortie', sortie, '--analyse-seule']);
+      const obj = ligneUniqueJson(r.stdout);
+      assert.strictEqual(obj.typographie, 'repli',
+        'la ligne stdout doit porter typographie: "repli" : ' + JSON.stringify(obj));
+      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      assert.strictEqual(rapport.decisions.typographie.statut, 'repli');
+      const alerteRepli = rapport.alertes.liste.find((a) => a.rule === 'Typo.ApplicationImpossible');
+      assert.ok(alerteRepli, 'aucune alerte de repli typographique : ' + JSON.stringify(rapport.alertes.liste));
+      assert.strictEqual(alerteRepli.severity, 'warning');
+      assert.ok(alerteRepli.message
+        && !/wsl|\.py\b|\.lua\b|code de sortie|stderr|stdout/i.test(alerteRepli.message),
+        'le message ne doit nommer aucune plomberie : ' + alerteRepli.message);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+test('manuscrit-nettoyer.py : --sans-typo porte "repli" sur la ligne stdout mais ne lève PAS l’alerte (choix explicite, pas une panne)',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const entree = path.join(base, 'article.docx');
+      fabriquerDocx(entree, manuscritMinimal(false));
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+      const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie, '--sans-typo']);
+      const obj = ligneUniqueJson(r.stdout);
+      assert.strictEqual(obj.typographie, 'repli');
+      const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
+      assert.strictEqual(rapport.sans_typo, true);
+      assert.ok(!rapport.alertes.liste.some((a) => a.rule === 'Typo.ApplicationImpossible'),
+        '--sans-typo ne doit pas produire l’alerte de repli : ' + JSON.stringify(rapport.alertes.liste));
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°12 — LE test de production : la CLI tourne réellement DANS la WSL, comme le
+// lanceur en production (`wsl -d SZH-Publishing -e python3 pipeline/manuscrit-nettoyer.py`),
+// sur un manuscrit dont la typographie française doit être appliquée. C'est la panne mesurée
+// avant cette révision (repli silencieux, wsl.exe absent de la distro) qu'AUCUN autre test de
+// ce fichier ne peut voir, puisqu'ils tournent tous depuis le Python de Windows.
+//
+// Sabotage minimal, vérifié rouge SEULEMENT ici (vert à tort partout ailleurs dans ce
+// fichier, puisqu'ils passent par le Python de Windows) : dans
+// pipeline/manuscrit_typo.py::_executer_pandoc, retirer la condition `sys.platform !=
+// 'win32'` et appeler INCONDITIONNELLEMENT la branche wsl.exe — DANS la WSL, `wsl.exe`
+// n'existe pas : `subprocess.run` lève `FileNotFoundError`, capturée comme
+// `_PandocIndisponible`, repli silencieux, `typographie: "repli"` au lieu de "appliquee".
+
+test('manuscrit-nettoyer.py : LE test de production — la CLI tourne DANS la WSL et applique la typographie française',
+  { skip: sansPython || sansPandocWsl }, () => {
+    const base = dossierJetable();
+    try {
+      const entree = path.join(base, 'article.docx');
+      fabriquerDocx(entree, [
+        { texte: "Titre de l'article", style: 'Heading1' },
+        // Guillemets COURBES en entree (ce que l'autocorrection de Word produit reellement,
+        // pas des guillemets droits) : le filtre ne construit jamais de noeud Quoted pandoc
+        // lui-meme (voir l'en-tete de manuscrit_typo.py, point 3) -- des guillemets droits,
+        // meme apparies, restent inchanges. Mesure en ecrivant ce test.
+        { texte: 'Voir p. 5 : l\'exemple “cité” ?', taille: 24 },
+        { texte: 'References', style: 'Heading1' },
+        { texte: 'Dupont, J. (2020). Un ouvrage important. Editions Test.' }
+      ]);
+      const sortie = path.join(base, 'sortie');
+      fs.mkdirSync(sortie);
+
+      const entreeWsl = versCheminWsl(entree);
+      const nettoyeurWsl = versCheminWsl(NETTOYEUR);
+      const sortieWsl = versCheminWsl(sortie);
+
+      const r = cp.spawnSync(WSL_EXE, ['-d', DISTRO_WSL, '--', 'python3', nettoyeurWsl,
+        entreeWsl, '--produit', 'revue', '--sortie', sortieWsl],
+        { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 120000 });
+      assert.strictEqual(r.status, 0,
+        'la CLI doit réussir dans la WSL : ' + r.stderr + ' / ' + r.stdout);
+      const obj = ligneUniqueJson(r.stdout);
+      assert.strictEqual(obj.typographie, 'appliquee',
+        'la typographie doit vraiment s’appliquer DANS la WSL, pas un repli silencieux : '
+        + JSON.stringify(obj));
+
+      const cheminDocxWindows = versCheminWindows(obj.sortie_docx);
+      const xml = lireDocumentXml(cheminDocxWindows);
+      const texte = extraireTexteBrut(xml);
+      assert.match(texte, /[  ]:/, 'aucune insécable devant « : »');
+      assert.match(texte, /[  ]\?/, 'aucune insécable devant « ? »');
+      assert.match(texte, /l’exemple/, 'l’apostrophe n’a pas été rendue typographique');
+      assert.match(texte, /«[  ]cité[  ]»/,
+        'les chevrons français avec insécables sont absents : ' + JSON.stringify(texte));
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }

@@ -50,17 +50,11 @@
 #    NB_AUTEURS_TRONCATURE : APA.NombreAuteursListes ne se déclenche donc jamais — sûr, pas
 #    utile pour cette règle précise, signalé ici plutôt que tu.
 #
-# 3. avertissements_typo est TOUJOURS []. manuscrit_typo.normaliser_paragraphes() ne rend que
-#    (paragraphes, traces, abandons) — des chaînes déjà résumées pour un humain, jamais les
-#    lignes brutes stderr [typo-avertissement] que pipeline/filters/szh-typographie.lua émet
-#    (vérifié : sa fonction interne _appeler_pandoc() capture r.stderr mais ne le LIT que sur
-#    l'ÉCHEC de l'appel — sur un succès, ces lignes sont capturées puis jetées). Le contrat
-#    (§7, §8 de la mission) suppose que manuscrit_typo.py les rend : CE N'EST PAS LE CAS
-#    aujourd'hui. Contourner ceci en rappelant pandoc une seconde fois depuis cette CLI
-#    dupliquerait l'appel (double coût, deux sources de vérité) et n'est pas fait ici — voir
-#    le rapport de chantier. Les codes C1 (ß) et C2 (guillemets droits) ne remontent donc
-#    JAMAIS comme alertes du rapport pour l'instant ; ils restent visibles sur stderr, mêlés
-#    aux lignes de progression, si un humain lit le journal du lanceur en direct.
+# 3. Révision du 19.09.2026 : ce point est corrigé. manuscrit_typo.normaliser_paragraphes()
+#    rend maintenant aussi les lignes stderr [typo-avertissement] d'un appel pandoc RÉUSSI
+#    (avant : cette lecture ne se faisait que sur l'échec, et les lignes d'un succès étaient
+#    capturées puis jetées en silence). Elles alimentent avertissements_typo du contexte passé
+#    aux règles — plus jamais une liste vide codée en dur ici.
 #
 # 4. Cas A (§1) : aucun document réel n'existe pour l'éprouver (contrat, 18.09.2026). classer_
 #    titres() n'est PAS appelé — niveau_retenu := niveau_declare, sans heuristique de
@@ -77,6 +71,24 @@
 #    avec sa propre rangée de métadonnées ajoutée), EN PLUS des deux tableaux fixes, VIDES,
 #    que ecrire() insère lui-même. Signalé au rapport de chantier, non trafiqué en silence
 #    ici : aucun document réel n'existe pour vérifier quelle correction serait la bonne.
+#
+# 5. Révision du 19.09.2026, trois décisions prises seul :
+#    - la langue de traitement ('fr'/'de', passée au filtre ET aux règles ET au rapport) vient
+#      DÉSORMAIS du produit (--produit revue -> fr, zeitschrift -> de), plus jamais de
+#      `document.langue or 'fr'` : un article français déclaré `de-CH` recevait la
+#      typographie allemande (mesuré sur lot-A). La langue déclarée du document ne sert plus
+#      qu'à une alerte warning (Langue.DesaccordProduit) quand sa sous-étiquette primaire
+#      (« fr » de « fr-CH ») diffère de celle du produit ;
+#    - un repli typographique (pandoc/WSL indisponible) produit maintenant une alerte warning
+#      (Typo.ApplicationImpossible) en plus de la trace enfouie dans le rapport, et la ligne
+#      stdout porte `typographie: "appliquee" | "repli"`. --sans-typo compte aussi comme
+#      "repli" sur cette ligne (rien n'a été tenté), mais ne lève PAS cette alerte : c'est un
+#      choix explicite déjà visible via `sans_typo` dans le rapport, pas une panne d'outillage
+#      à signaler à la rédaction ;
+#    - un fichier `~$*.docx` (verrou temporaire de Word, un document ouvert dans Word en pose
+#      un à côté) est désormais refusé proprement (code 2, code_refus='fichier-verrou') avant
+#      toute lecture. Avant cette révision, `md.lire()` levait « File is not a zip file » et
+#      le code de sortie était 3, sans message pour la rédaction.
 
 import json
 import os
@@ -163,6 +175,47 @@ def _analyser_args(argv):
 
 USAGE = ('usage : manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitschrift '
          '--sortie <dossier> [--rapport <fichier.json>] [--analyse-seule] [--sans-typo]')
+
+
+# ---------------------------------------------------------------------------------
+# Langue de traitement et ses deux alertes manuelles (point 5 de l'en-tête) — pas dans le
+# catalogue de manuscrit_regles.py (hors des fichiers de ce chantier) : construites ici et
+# simplement concaténées aux alertes du moteur avant mr.grouper().
+
+NOMS_LANGUE_FR = {'fr': 'français', 'de': 'allemand', 'en': 'anglais', 'it': 'italien'}
+NOMS_LANGUE_DE = {'fr': 'Französisch', 'de': 'Deutsch', 'en': 'Englisch', 'it': 'Italienisch'}
+
+
+def _alerte_langue_produit(document_langue, langue):
+    """Avertit quand la sous-étiquette primaire de la langue DÉCLARÉE du document (« fr » de
+    « fr-CH ») diffère de `langue` (celle du produit, qui seule pilote le traitement — voir
+    le point 5 de l'en-tête). Rend None si rien à signaler."""
+    if not document_langue:
+        return None
+    primaire = document_langue.split('-')[0].lower()
+    if primaire == langue:
+        return None
+    if langue == 'fr':
+        nom = NOMS_LANGUE_FR.get(primaire, primaire)
+        message = ("Le document est déclaré en %s alors qu'il est traité comme un article de "
+                    "la Revue : vérifiez la langue de correction dans Word." % nom)
+    else:
+        nom = NOMS_LANGUE_DE.get(primaire, primaire)
+        message = ("Das Dokument ist als %s markiert, wird aber als Artikel der Zeitschrift "
+                    "behandelt: überprüfen Sie die Korrektursprache in Word." % nom)
+    return {'rule': 'Langue.DesaccordProduit', 'severity': 'warning', 'action': 'report',
+            'para': None, 'span': None, 'found': document_langue, 'suggested': langue,
+            'message': message}
+
+
+def _alerte_repli_typo():
+    """La typographie n'a pas pu être appliquée (pandoc/WSL indisponible) : une alerte visible
+    dans le rapport, pas seulement une trace enfouie (point 5 de l'en-tête). Jamais levée pour
+    --sans-typo, qui est un choix explicite et déjà visible via `sans_typo`, pas une panne."""
+    return {'rule': 'Typo.ApplicationImpossible', 'severity': 'warning', 'action': 'report',
+            'para': None, 'span': None, 'found': None, 'suggested': None,
+            'message': "La typographie n'a pas pu être appliquée à ce document ; le texte "
+                       "est rendu tel quel."}
 
 
 # ---------------------------------------------------------------------------------
@@ -370,6 +423,14 @@ def principal(argv):
 
     progres('entrée : %s (produit=%s)' % (entree, args['produit']))
 
+    # Refus, avant tout travail, sans rien écrire sur le disque (§8) : un verrou temporaire de
+    # Word (le document est ouvert ailleurs), avant même de tenter une lecture qui échouerait
+    # de façon opaque (§10, point 5 de l'en-tête).
+    if os.path.basename(entree).startswith('~$'):
+        return refuser('fichier-verrou',
+                        "Ce fichier est un verrou temporaire de Word, pas un manuscrit. "
+                        "Ouvrez le document original.")
+
     # Refus, avant tout travail, sans rien écrire sur le disque (§8) : extension inconnue,
     # ou .odt pour l'instant (pipeline/manuscrit_odt.py n'existe pas encore).
     if extension == '.odt':
@@ -418,20 +479,34 @@ def principal(argv):
     progres('nettoyage de la mise en forme...')
     stats_formatage, trace_formatage = mm.nettoyer_mise_en_forme(document)
 
-    langue = document.langue or 'fr'
+    # La langue de traitement vient du PRODUIT, jamais du document (point 5 de l'en-tête) :
+    # c'est elle qui part au filtre (-M lang=), aux règles et au rapport.
+    langue = 'fr' if args['produit'] == 'revue' else 'de'
+    alertes_manuelles = []
+    alerte_langue = _alerte_langue_produit(document.langue, langue)
+    if alerte_langue:
+        alertes_manuelles.append(alerte_langue)
+        progres(alerte_langue['message'])
+
     if args['sans_typo']:
         progres('typographie désactivée (--sans-typo)')
-        traces_typo, abandons_typo = ['typographie désactivée (--sans-typo)'], []
+        traces_typo = ['typographie désactivée (--sans-typo)']
+        abandons_typo, avertissements_typo = [], []
+        # "repli" sur la ligne stdout (rien n'a été tenté), mais SANS l'alerte de repli : un
+        # choix explicite, déjà visible via sans_typo au rapport, pas une panne d'outillage.
+        statut_typo = 'repli'
     else:
         progres('normalisation typographique (langue=%s)...' % langue)
         refs = _recueillir_refs_paragraphes(document.blocs)
         paras = [conteneur[i] for conteneur, i in refs]
-        nouveaux, traces_typo, abandons_typo = mt.normaliser_paragraphes(
-            paras, langue, RACINE_DEPOT)
+        nouveaux, traces_typo, abandons_typo, avertissements_typo, statut_typo = (
+            mt.normaliser_paragraphes(paras, langue, RACINE_DEPOT))
         for (conteneur, i), p in zip(refs, nouveaux):
             conteneur[i] = p
         for ligne in traces_typo:
             progres(ligne)
+        if statut_typo == 'repli':
+            alertes_manuelles.append(_alerte_repli_typo())
 
     progres('évaluation des règles éditoriales...')
     sources_biblio, entrees_biblio = _construire_bibliographie(document)
@@ -443,9 +518,9 @@ def principal(argv):
         'paragraphes': paragraphes_ctx, 'bibliographie': entrees_biblio,
         'images': [{'alt': i['alt'], 'source': i['source']} for i in images],
         'tableaux': tableaux_ctx,
-        'avertissements_typo': [],  # voir le point 3 de l'en-tête : gap constaté, non corrigé
+        'avertissements_typo': avertissements_typo,
     }
-    alertes = mr.evaluer(contexte)
+    alertes = mr.evaluer(contexte) + alertes_manuelles
     groupes = mr.grouper(alertes)
     n_error = sum(1 for a in alertes if a['severity'] == 'error')
     n_warning = sum(1 for a in alertes if a['severity'] == 'warning')
@@ -491,7 +566,8 @@ def principal(argv):
         'decisions': {
             'titres': {'stats': stats_titres, 'trace': trace_titres},
             'formatage': {'stats': stats_formatage, 'trace': trace_formatage},
-            'typographie': {'traces': traces_typo, 'abandons': abandons_typo},
+            'typographie': {'traces': traces_typo, 'abandons': abandons_typo,
+                             'avertissements': avertissements_typo, 'statut': statut_typo},
             'ecriture': resultat_ecriture,
         },
         'alertes': {'total': len(alertes), 'error': n_error, 'warning': n_warning,
@@ -510,6 +586,7 @@ def principal(argv):
 
     _ligne_stdout({'entree': entree, 'produit': args['produit'], 'gabarit': gabarit,
                    'sortie_docx': sortie_docx, 'sortie_rapport': sortie_rapport,
+                   'typographie': statut_typo,
                    'alertes_total': len(alertes), 'alertes_error': n_error,
                    'alertes_warning': n_warning, 'alertes_suggestion': n_suggestion,
                    'duree_ms': round(duree_ms, 1), 'code_sortie': code_sortie})
