@@ -169,17 +169,175 @@ function image(nom, octetsB64, extra) {
     flottante: false }, extra || {});
 }
 
-function cellule(texte) {
-  return { colspan: 1, rowspan: 1, entete: false,
-    blocs: [paragraphe([fragment(texte)])] };
+function cellule(texte, extra) {
+  return Object.assign({ colspan: 1, rowspan: 1, entete: false,
+    blocs: [paragraphe([fragment(texte)])] }, extra || {});
 }
 
 function tableau(rangees, extra) {
   return Object.assign({ type: 'tableau', page: null, rangees }, extra || {});
 }
 
-function specDocument(blocs) {
-  return { styles: [], langue: 'fr', revisions: 0, commentaires: 0, notes: [], blocs };
+function specDocument(blocs, notes) {
+  return { styles: [], langue: 'fr', revisions: 0, commentaires: 0, notes: notes || {}, blocs };
+}
+
+// ---------------------------------------------------------------------------------
+// Lecture des enfants DIRECTS du corps (<w:p>, <w:tbl>, <w:sectPr>), dans l'ordre — par
+// comptage de PROFONDEUR sur la balise elle-même (jamais un indexOf('</w:tbl>') naïf : un
+// bloc figure/tableau contient lui-même un <w:tbl> IMBRIQUÉ, un </w:tbl> non-greedy s'arrête
+// sur le mauvais, voir le piège documenté au §11 sur un test antérieur de ce fichier). Sert au
+// contrôle de la table de correspondance ET au contrôle « au plus un paragraphe vide entre
+// deux blocs ».
+const ENFANTS_CORPS_PY = [
+  'import sys, zipfile, re, json',
+  'z = zipfile.ZipFile(sys.argv[1])',
+  'doc = z.read("word/document.xml").decode("utf-8")',
+  'i_body = doc.index("<w:body>")',
+  'i_fin = doc.rindex("</w:body>")',
+  'interieur = doc[i_body + len("<w:body>"):i_fin]',
+  'def enfants(xml):',
+  '    i, n = 0, len(xml)',
+  '    resultat = []',
+  '    depart_tag = re.compile(r"<(w:p|w:tbl|w:sectPr)\\b")',
+  '    while i < n:',
+  '        m = depart_tag.search(xml, i)',
+  '        if not m:',
+  '            break',
+  '        tag, debut = m.group(1), m.start()',
+  '        fin_ouvrante = xml.index(">", debut)',
+  '        if xml[fin_ouvrante - 1] == "/":',
+  '            resultat.append((tag, xml[debut:fin_ouvrante + 1]))',
+  '            i = fin_ouvrante + 1',
+  '            continue',
+  '        profondeur = 1',
+  '        j = fin_ouvrante + 1',
+  '        motif = re.compile(r"<" + tag + r"\\b[^>]*?(/?)>|</" + tag + ">")',
+  '        while profondeur > 0:',
+  '            mm = motif.search(xml, j)',
+  '            if not mm:',
+  '                raise ValueError("balise non fermee : " + tag)',
+  '            if mm.group(0).startswith("</"):',
+  '                profondeur -= 1',
+  '            elif mm.group(1) != "/":',
+  '                profondeur += 1',
+  '            j = mm.end()',
+  '        resultat.append((tag, xml[debut:j]))',
+  '        i = j',
+  '    return resultat',
+  'def deseChapper(t):',
+  '    return (t.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")',
+  '            .replace("&quot;", chr(34)).replace("&apos;", chr(39)))',
+  'sortie = []',
+  'for tag, xml in enfants(interieur):',
+  '    texte = (deseChapper("".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", xml, re.S)))',
+  '             if tag == "w:p" else None)',
+  '    sortie.append({"tag": tag, "texte": texte})',
+  'print(json.dumps(sortie, ensure_ascii=False))',
+].join('\n');
+
+function enfantsCorps(chemin) {
+  const r = python(['-c', ENFANTS_CORPS_PY, chemin]);
+  assert.strictEqual(r.status, 0, 'lecture des enfants du corps a échoué : ' + r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+function textesWp(enfants) {
+  return enfants.filter((e) => e.tag === 'w:p').map((e) => e.texte);
+}
+
+// ---------------------------------------------------------------------------------
+// Validation XML — chaque partie .xml/.rels de l'archive doit être bien formée (ET.fromstring
+// plutôt qu'un simple statut de sortie 0 : §11, « pronto-lire.py rend 0 même sur un XML
+// illisible »), et quelques contrôles structurels ciblés sur les défauts mesurés.
+const VALIDER_PARTIES_XML_PY = [
+  'import sys, zipfile, json',
+  'import xml.etree.ElementTree as ET',
+  'z = zipfile.ZipFile(sys.argv[1])',
+  'erreurs = []',
+  'for nom in z.namelist():',
+  '    if nom.endswith(".xml") or nom.endswith(".rels"):',
+  '        try:',
+  '            ET.fromstring(z.read(nom))',
+  '        except Exception as e:',
+  '            erreurs.append(nom + " : " + str(e))',
+  'print(json.dumps(erreurs))',
+].join('\n');
+
+function validerPartiesXml(chemin) {
+  const r = python(['-c', VALIDER_PARTIES_XML_PY, chemin]);
+  assert.strictEqual(r.status, 0, 'validation XML a échoué : ' + r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+const VALIDER_STRUCTURE_PY = [
+  'import sys, zipfile, json, re',
+  'chemin = sys.argv[1]',
+  'z = zipfile.ZipFile(chemin)',
+  'noms = z.namelist()',
+  'erreurs = []',
+  'doc = z.read("word/document.xml").decode("utf-8")',
+  'if not re.search(r"<w:sectPr\\b[^>]*>.*?</w:sectPr>\\s*</w:body>", doc, re.S) '
+  + 'and not re.search(r"<w:sectPr\\b[^>]*/>\\s*</w:body>", doc):',
+  '    erreurs.append("sectPr absent ou pas en tout dernier enfant du corps")',
+  'def rels_ids(nom):',
+  '    if nom not in noms:',
+  '        return set()',
+  '    return set(re.findall(r\'<Relationship\\s+Id="([^"]+)"\', z.read(nom).decode("utf-8")))',
+  'def rels_externes_sans_targetmode(nom):',
+  '    if nom not in noms:',
+  '        return []',
+  '    xml = z.read(nom).decode("utf-8")',
+  '    return [m.group(0) for m in re.finditer(r\'<Relationship\\b[^>]*Type="[^"]*hyperlink"[^>]*/>\', xml)'
+  + ' if \'TargetMode="External"\' not in m.group(0)]',
+  'rid_doc = rels_ids("word/_rels/document.xml.rels")',
+  'rid_notes = rels_ids("word/_rels/footnotes.xml.rels")',
+  'for nom_partie, rids in (("word/document.xml", rid_doc), ("word/footnotes.xml", rid_notes)):',
+  '    if nom_partie not in noms:',
+  '        continue',
+  '    xml = z.read(nom_partie).decode("utf-8")',
+  '    for m in re.finditer(r\'r:(?:embed|id)="([^"]+)"\', xml):',
+  '        if m.group(1) not in rids:',
+  '            erreurs.append(nom_partie + " : r:id/r:embed " + m.group(1) + " non résolu")',
+  'erreurs += ["hyperlien externe (document) sans TargetMode : " + m'
+  + ' for m in rels_externes_sans_targetmode("word/_rels/document.xml.rels")]',
+  'erreurs += ["hyperlien externe (note) sans TargetMode : " + m'
+  + ' for m in rels_externes_sans_targetmode("word/_rels/footnotes.xml.rels")]',
+  'ct = z.read("[Content_Types].xml").decode("utf-8")',
+  'extensions_ct = {e.lower() for e in re.findall(r\'Extension="([^"]+)"\', ct)}',
+  'for nom in noms:',
+  '    if nom.startswith("word/media/"):',
+  '        ext = nom.rsplit(".", 1)[-1].lower()',
+  '        if ext not in extensions_ct:',
+  '            erreurs.append("media " + nom + " : extension " + ext + " non déclarée")',
+  'print(json.dumps(erreurs, ensure_ascii=False))',
+].join('\n');
+
+function validerStructure(chemin) {
+  const r = python(['-c', VALIDER_STRUCTURE_PY, chemin]);
+  assert.strictEqual(r.status, 0, 'validation de structure a échoué : ' + r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+function paragraphesTextuels(document) {
+  const textes = [];
+  function creuser(blocs) {
+    for (const b of blocs || []) {
+      if (b.type === 'tableau') {
+        for (const rangee of b.rangees) { for (const c of rangee) { creuser(c.blocs); } }
+      } else {
+        const t = (b.fragments || []).map((f) => f.texte).join('').trim();
+        if (t) { textes.push(t); }
+      }
+    }
+  }
+  creuser(document.blocs);
+  for (const id of Object.keys(document.notes || {})) { creuser(document.notes[id]); }
+  return textes;
+}
+
+function normaliserEspaces(s) {
+  return s.replace(/\s+/g, ' ').trim();
 }
 
 // ---------------------------------------------------------------------------------
@@ -792,6 +950,773 @@ test('manuscrit_gabarit.ecrire : les trois manuscrits réels à listes (3_, 3bis
       }
       assert.strictEqual(total, 20,
         'mesure figée le 18.09.2026 : 20 paragraphes de liste au total sur ces trois manuscrits');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ===================================================================================
+// Revue adverse du 19.09.2026 — dix défauts mesurés dans manuscrit_gabarit.py, chacun avec
+// son sabotage minimal noté en commentaire (rejoué et consigné dans le rapport de chantier).
+
+// ---------------------------------------------------------------------------------
+// Défaut n°1 — XML malformé dans un ATTRIBUT : `_echapper` n'échappait pas `"`, utilisée à
+// tort pour `descr="%s"` (texte alternatif) et `Target="%s"` (URL de lien). Un lien avec un
+// `&` non échappé, ou un alt avec un guillemet droit, produisait un fichier que Word refuse
+// (code de sortie 0 malgré tout). Contrôle : CHAQUE partie XML de la sortie doit rester bien
+// formée (ET.fromstring), pas seulement le fichier lui-même.
+//
+// Sabotage minimal : dans _echapper_attribut, retirer `.replace('"', '&quot;')` — le
+// guillemet de « Schéma "A" » referme l'attribut descr en plein milieu, word/document.xml
+// devient un XML malformé.
+
+test('manuscrit_gabarit.ecrire : un lien avec "&" et un texte alternatif avec des guillemets produisent un XML valide partout',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const octets = Buffer.from('IMAGE-AVEC-ALT-GUILLEMETS');
+      const spec = specDocument([
+        paragraphe([
+          fragment('Voir la référence ', {}, { lien: 'https://doi.org/10.1000/x?q=a&r=b' }),
+          fragment('ici', {}, { lien: 'https://doi.org/10.1000/x?q=a&r=b' }),
+        ]),
+        paragraphe([fragment('', {}, { image: image('capture.png', octets.toString('base64'),
+          { alt: 'Schéma "A"' }) })]),
+      ]);
+      ecrireDepuisSpec(spec, sortie);
+      const erreurs = validerPartiesXml(sortie);
+      assert.deepStrictEqual(erreurs, [], 'chaque partie XML doit être bien formée');
+
+      const xml = lireDocumentXml(sortie);
+      assert.ok(xml.includes('descr="Schéma &quot;A&quot;"'),
+        'le guillemet du texte alternatif doit être échappé dans l\'attribut descr');
+      const rels = cp.execFileSync(PYTHON, ['-c',
+        'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); '
+        + 'sys.stdout.write(z.read("word/_rels/document.xml.rels").decode("utf-8"))', sortie],
+        { encoding: 'utf8', env: ENV_UTF8 });
+      assert.ok(rels.includes('q=a&amp;r=b'),
+        'le "&" du lien doit être échappé (&amp;) dans word/_rels/document.xml.rels');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Défaut n°3 — puce illisible dans Word : `_niveau_puce_xml` écrivait `lvlText="•"`
+// (U+2022) en police Symbol, un glyphe que Symbol ne connaît pas (case vide ☐ à l'affichage).
+// Word écrit U+F0B7 pour une puce Symbol.
+//
+// Sabotage minimal : dans _niveau_puce_xml, remplacer `&#xF0B7;` par `•` (U+2022) — le
+// numbering.xml injecté reprend le glyphe que Symbol n'affiche pas.
+
+test('manuscrit_gabarit.ecrire : une définition de puce injectée porte le glyphe U+F0B7 (jamais U+2022) en police Symbol',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([paragrapheListe('Un élément à puces', 7, 0, 'puce')]);
+      ecrireDepuisSpec(spec, sortie);
+      const numbering = cp.execFileSync(PYTHON, ['-c',
+        'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); '
+        + 'sys.stdout.write(z.read("word/numbering.xml").decode("utf-8"))', sortie],
+        { encoding: 'utf8', env: ENV_UTF8 });
+      assert.ok(numbering.includes('w:lvlText w:val="&#xF0B7;"') || numbering.includes(''),
+        'le glyphe de puce doit être U+F0B7 (celui que Symbol affiche), pas "•" (U+2022)');
+      assert.ok(!numbering.includes('•'),
+        'U+2022 ("•") ne doit jamais apparaître : Symbol ne l\'affiche pas (case vide)');
+      assert.ok(/w:ascii="Symbol"/.test(numbering), 'la police Symbol doit être posée sur ce niveau');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Défaut n°4 — toutes les images en boîte 4:3 : `_extent_depuis_surface` ignorait cx/cy et le
+// rapport largeur_px/hauteur_px, pourtant renseignés par le lecteur depuis le 18.09.2026.
+//
+// Sabotage minimal : dans _extent_depuis_surface, retirer la clause `if image.cx and
+// image.cy:` (tomber directement sur le repli surface/4:3) — une image dont cx/cy valent
+// 3000000x500000 (ratio 6:1) ressort en 4:3.
+
+test('manuscrit_gabarit.ecrire : le rapport largeur/hauteur d\'une image (cx/cy) est conservé, pas écrasé en 4:3',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const octets = Buffer.from('IMAGE-PANORAMIQUE');
+      const spec = specDocument([
+        paragraphe([fragment('', {}, { image: image('pano.png', octets.toString('base64'),
+          { cx: 3000000, cy: 500000, surface: 1500000000000 }) })]),
+      ]);
+      ecrireDepuisSpec(spec, sortie);
+      const xml = lireDocumentXml(sortie);
+      const m = xml.match(/<wp:extent cx="(\d+)" cy="(\d+)"\/>/);
+      assert.ok(m, 'wp:extent introuvable');
+      const ratio = Number(m[1]) / Number(m[2]);
+      assert.ok(Math.abs(ratio - 6) < 0.05,
+        'le ratio cx/cy (6:1) doit être conservé, obtenu ' + ratio + ' (4:3 = 1.33 serait le défaut)');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+test('manuscrit_gabarit.ecrire : à défaut de cx/cy, le rapport largeur_px/hauteur_px du fichier est utilisé',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const octets = Buffer.from('IMAGE-HAUTE');
+      const spec = specDocument([
+        paragraphe([fragment('', {}, { image: image('haute.png', octets.toString('base64'),
+          { cx: 0, cy: 0, surface: 0, largeur_px: 200, hauteur_px: 800 }) })]),
+      ]);
+      ecrireDepuisSpec(spec, sortie);
+      const xml = lireDocumentXml(sortie);
+      const m = xml.match(/<wp:extent cx="(\d+)" cy="(\d+)"\/>/);
+      const ratio = Number(m[1]) / Number(m[2]);
+      assert.ok(Math.abs(ratio - 0.25) < 0.02,
+        'le ratio pixels (200/800 = 0.25) doit décider faute de cx/cy, obtenu ' + ratio);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+test('manuscrit_gabarit.ecrire : une image plus large que la page est plafonnée à la largeur utile du gabarit',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const octets = Buffer.from('IMAGE-ENORME');
+      const spec = specDocument([
+        paragraphe([fragment('', {}, { image: image('enorme.png', octets.toString('base64'),
+          { cx: 50000000, cy: 10000000 }) })]),
+      ]);
+      ecrireDepuisSpec(spec, sortie);
+      const xml = lireDocumentXml(sortie);
+      const m = xml.match(/<wp:extent cx="(\d+)" cy="(\d+)"\/>/);
+      const cx = Number(m[1]);
+      // Largeur A4 courante (~11906 dxa) moins marges : bien en-dessous de 50 000 000 EMU
+      // (50000000/635 ≈ 78 740 dxa) — la valeur exacte dépend du gabarit, seul le PLAFOND
+      // compte ici, pas un dxa précis.
+      assert.ok(cx < 50000000, 'l\'image ne doit plus dépasser la largeur utile de la page, obtenu cx=' + cx);
+      const ratio = cx / Number(m[2]);
+      assert.ok(Math.abs(ratio - 5) < 0.1, 'le rapport (5:1) doit survivre au plafonnage, obtenu ' + ratio);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Défaut n°5 — rangée plus large que la première : `_grille_ecriture` fixait `ncols` sur la
+// rangée 0, les cellules en trop des rangées suivantes étaient jetées.
+//
+// Sabotage minimal : dans _grille_ecriture, remplacer le calcul du max par
+// `ncols = sum(c.colspan for c in rangees[0]) or 1` (l'ancienne version) — la 3e colonne de
+// la seconde rangée disparaît du document produit.
+
+test('manuscrit_gabarit.ecrire : une rangée plus large que la première ne perd aucune cellule',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([
+        tableau([
+          [cellule('A1'), cellule('B1')],
+          [cellule('A2'), cellule('B2'), cellule('C2')],
+        ]),
+      ]);
+      ecrireDepuisSpec(spec, sortie);
+      const { document } = diagnostiquerManuscritDocx('--diagnostic', sortie);
+      // Les DEUX premiers <w:tbl> du corps sont les tableaux FIXES du gabarit (métadonnées,
+      // autrices et auteurs) : document.blocs les porte aussi (le lecteur ne les distingue
+      // pas). Le tableau du TEST, imbriqué dans son bloc figure/tableau, se retrouve à
+      // l'intérieur de la cellule du bloc — jamais au premier niveau de document.blocs.
+      const blocTableau = document.blocs.find((b) => b.type === 'tableau'
+        && b.rangees[0][0].blocs.some((p) => p.fragments && p.fragments.some((f) => f.texte === 'Légende : ')));
+      assert.ok(blocTableau, 'le bloc tableau du test doit être retrouvé');
+      const tbl = blocTableau.rangees[1][0].blocs.find((b) => b.type === 'tableau');
+      assert.ok(tbl, 'le tableau imbriqué (celui du manuscrit) doit être relu');
+      assert.strictEqual(tbl.rangees[1].length, 3,
+        'la seconde rangée (3 cellules) ne doit perdre aucune cellule');
+      const c2Textes = tbl.rangees[1].map((c) => c.blocs.map((b) => b.fragments.map((f) => f.texte).join('')).join(''));
+      assert.deepStrictEqual(c2Textes, ['A2', 'B2', 'C2']);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Défaut n°6 — fusion verticale ET horizontale à la fois : les rangées de continuation
+// perdaient leur gridSpan (une continuation par colonne au lieu d'une seule, large de
+// `colspan`), désynchronisant le tblGrid.
+//
+// Sabotage minimal : dans _ligne_xml, pour le cas 'continue', retirer `gridspan` de la
+// balise <w:tc> (revenir à une continuation systématiquement large d'UNE colonne) — avec un
+// rowspan=2/colspan=2, la ligne de continuation compte alors 2 <w:tc> au lieu d'1.
+
+const RANGEES_TABLEAU_IMBRIQUE_PY = [
+  'import sys, zipfile, json, re',
+  'def enfants_directs(xml, tags):',
+  '    depart_tag = re.compile("<(" + "|".join(tags) + r")\\b")',
+  '    i, n = 0, len(xml)',
+  '    resultat = []',
+  '    while i < n:',
+  '        m = depart_tag.search(xml, i)',
+  '        if not m:',
+  '            break',
+  '        tag, debut = m.group(1), m.start()',
+  '        fin_ouvrante = xml.index(">", debut)',
+  '        if xml[fin_ouvrante - 1] == "/":',
+  '            resultat.append((tag, xml[debut:fin_ouvrante + 1]))',
+  '            i = fin_ouvrante + 1',
+  '            continue',
+  '        profondeur = 1',
+  '        j = fin_ouvrante + 1',
+  '        motif = re.compile("<" + tag + r"\\b[^>]*?(/?)>|</" + tag + ">")',
+  '        while profondeur > 0:',
+  '            mm = motif.search(xml, j)',
+  '            if not mm:',
+  '                raise ValueError("balise non fermee : " + tag)',
+  '            if mm.group(0).startswith("</"):',
+  '                profondeur -= 1',
+  '            elif mm.group(1) != "/":',
+  '                profondeur += 1',
+  '            j = mm.end()',
+  '        resultat.append((tag, xml[debut:j]))',
+  '        i = j',
+  '    return resultat',
+  'z = zipfile.ZipFile(sys.argv[1])',
+  'doc = z.read("word/document.xml").decode("utf-8")',
+  'interieur = doc[doc.index("<w:body>") + len("<w:body>"):doc.rindex("</w:body>")]',
+  'tbls = [xml for tag, xml in enfants_directs(interieur, ["w:p", "w:tbl", "w:sectPr"]) if tag == "w:tbl"]',
+  '# le DERNIER <w:tbl> de premier niveau est le bloc tableau de ce test (les deux premiers',
+  '# sont les tableaux fixes du gabarit) — son contenu (rangee 1) enveloppe le tableau du',
+  '# MANUSCRIT, imbriqué, qu\'il faut isoler à son tour avant d\'en lire les <w:tr>.',
+  'bloc = tbls[-1]',
+  'interieur_bloc = bloc[bloc.index(">") + 1:bloc.rindex("</w:tbl>")]',
+  'nested = [xml for tag, xml in enfants_directs(interieur_bloc, ["w:tbl"])]',
+  'tbl_manuscrit = nested[0]',
+  'interieur_tbl = tbl_manuscrit[tbl_manuscrit.index(">") + 1:tbl_manuscrit.rindex("</w:tbl>")]',
+  'lignes = [xml for tag, xml in enfants_directs(interieur_tbl, ["w:tr"])]',
+  'print(json.dumps(lignes))',
+].join('\n');
+
+function rangeesTableauImbrique(chemin) {
+  const r = python(['-c', RANGEES_TABLEAU_IMBRIQUE_PY, chemin]);
+  assert.strictEqual(r.status, 0, 'lecture des rangées du tableau imbriqué a échoué : ' + r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+test('manuscrit_gabarit.ecrire : une fusion verticale ET horizontale à la fois garde son gridSpan sur la ligne de continuation',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([
+        tableau([
+          [cellule('Fusion', { colspan: 2, rowspan: 2 }), cellule('C1')],
+          [cellule('C2')],
+        ]),
+      ]);
+      ecrireDepuisSpec(spec, sortie);
+      const lignes = rangeesTableauImbrique(sortie);
+      assert.strictEqual(lignes.length, 2, 'deux rangées attendues dans le tableau du manuscrit');
+      const nCellulesContinuation = (lignes[1].match(/<w:tc>/g) || []).length;
+      assert.strictEqual(nCellulesContinuation, 2,
+        'la ligne de continuation doit porter DEUX <w:tc> (une continuation de largeur 2, '
+        + 'plus C2), jamais trois');
+      const continuation = lignes[1].match(/<w:tc>[\s\S]*?<w:vMerge\/>[\s\S]*?<\/w:tc>/);
+      assert.ok(continuation, 'la cellule de continuation (vMerge sans "restart") doit exister');
+      assert.ok(/<w:gridSpan w:val="2"\/>/.test(continuation[0]),
+        'la cellule de continuation doit porter gridSpan=2, comme la cellule de départ');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Défaut n°7 — wp:docPr id="0" partout : Word répare les identifiants dupliqués en silence à
+// l'ouverture, un défaut invisible tant qu'on n'inspecte pas le XML produit.
+//
+// Sabotage minimal : dans _Registre.nouveau_docpr_id, remplacer `self._docpr_id += 1; return
+// self._docpr_id` par `return 0` — les deux images ressortent avec wp:docPr id="0".
+
+test('manuscrit_gabarit.ecrire : chaque wp:docPr porte un identifiant unique',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([
+        paragraphe([fragment('', {}, { image: image('un.png', Buffer.from('UN').toString('base64')) })]),
+        paragraphe([fragment('', {}, { image: image('deux.png', Buffer.from('DEUX').toString('base64')) })]),
+      ]);
+      ecrireDepuisSpec(spec, sortie);
+      const xml = lireDocumentXml(sortie);
+      const ids = [...xml.matchAll(/<wp:docPr id="(\d+)"/g)].map((m) => m[1]);
+      assert.strictEqual(ids.length, 2, 'deux wp:docPr attendus');
+      assert.notStrictEqual(ids[0], ids[1], 'les deux wp:docPr doivent avoir des identifiants DIFFÉRENTS');
+      assert.ok(ids.every((id) => id !== '0'), 'aucun wp:docPr ne doit rester à "0"');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Défaut n°8 — l'exposant d'une légende est détruit : la légende déjà écrite dans le
+// manuscrit était aplatie en texte plat avant d'être posée dans le champ « Légende : »,
+// perdant toute mise en forme (mesuré : 2 exposants sur 2 du corpus).
+//
+// Sabotage minimal : dans _rangee_meta_xml, remplacer la branche `isinstance(valeur, list)`
+// par un aplatissement (`''.join(f.texte for f in valeur)`) systématique — l'exposant d'une
+// légende ressort en texte normal.
+
+test('manuscrit_gabarit.ecrire : une légende déjà écrite dans le manuscrit garde son exposant',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const octets = Buffer.from('IMAGE-AVEC-LEGENDE-EXPOSANT');
+      const spec = specDocument([
+        paragraphe([fragment('', {}, { image: image('fig.png', octets.toString('base64')) })]),
+        paragraphe([fragment('Figure 1. Résultat au m'), fragment('2', { exposant: true }),
+          fragment(' du test.')]),
+      ]);
+      const resultat = ecrireDepuisSpec(spec, sortie);
+      assert.strictEqual(resultat.stats.blocs_figure, 1);
+      const xml = lireDocumentXml(sortie);
+      assert.ok(/<w:vertAlign w:val="superscript"\/>/.test(xml),
+        'un vertAlign superscript doit survivre quelque part dans le document');
+      // La légende ne doit PAS être dupliquée comme paragraphe de corps ordinaire, ET son
+      // exposant doit être RETROUVÉ précisément dans le bloc figure (pas ailleurs par hasard).
+      const { document } = diagnostiquerManuscritDocx('--diagnostic', sortie);
+      const corpsOrdinaire = document.blocs.filter((b) => b.type !== 'tableau'
+        && b.fragments.some((f) => f.texte.includes('Résultat au m')));
+      assert.strictEqual(corpsOrdinaire.length, 0,
+        'la légende ne doit pas rester EN PLUS comme paragraphe de corps');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Défaut n°9 — légende de tableau sur DEUX paragraphes (« Tableau 1 » en gras, seul, puis le
+// texte de la légende sur le paragraphe suivant, puis le tableau) : l'ancienne version ne
+// regardait qu'un seul paragraphe voisin, le titre restait alors dans le corps ET la légende
+// n'était jamais associée au tableau.
+//
+// Sabotage minimal : dans _cherche_legende, retirer tout le bloc « cas à deux paragraphes »
+// (revenir à la seule recherche à un paragraphe) — la légende du tableau ci-dessous n'est
+// alors plus trouvée du tout (aucun des deux paragraphes ne matche RE_LEGENDE seul... le
+// second parce qu'il n'a pas le préfixe « Tableau »).
+
+test('manuscrit_gabarit.ecrire : une légende de tableau répartie sur deux paragraphes (titre gras + texte) est retrouvée',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([
+        paragraphe([fragment('Un paragraphe de corps avant.')]),
+        paragraphe([fragment('Tableau 1', { gras: true })]),
+        paragraphe([fragment('Comparaison des résultats obtenus sur les deux groupes.')]),
+        tableau([[cellule('A1'), cellule('B1')]]),
+      ]);
+      const resultat = ecrireDepuisSpec(spec, sortie);
+      assert.strictEqual(resultat.stats.blocs_tableau, 1);
+
+      const dossierPronto = path.join(base, 'article');
+      fs.mkdirSync(dossierPronto);
+      const stats = prontoLire(sortie, 'essai', dossierPronto);
+      const blocTableau = stats.blocs.find((b) => b.nature === 'table');
+      assert.ok(blocTableau, 'le bloc tableau doit être reconnu');
+      assert.ok(blocTableau.legende && blocTableau.legende.includes('Tableau 1')
+        && blocTableau.legende.includes('Comparaison des résultats'),
+        'la légende doit réunir le titre ET le texte : obtenu ' + JSON.stringify(blocTableau.legende));
+
+      const { document } = diagnostiquerManuscritDocx('--diagnostic', sortie);
+      const resteTitre = document.blocs.some((b) => b.type !== 'tableau'
+        && b.fragments.some((f) => f.texte === 'Tableau 1'));
+      const resteTexte = document.blocs.some((b) => b.type !== 'tableau'
+        && b.fragments.some((f) => f.texte.includes('Comparaison des résultats')));
+      assert.strictEqual(resteTitre, false, 'le titre « Tableau 1 » ne doit plus rester dans le corps');
+      assert.strictEqual(resteTexte, false, 'le texte de la légende ne doit plus rester dans le corps');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Défaut n°10 — paragraphes vides consécutifs autour d'un bloc : plusieurs paragraphes vides
+// du manuscrit, collés à un bloc, s'ajoutaient au séparateur injecté au lieu de s'y
+// substituer (jusqu'à trois <w:p> vides entre deux tableaux).
+//
+// Sabotage minimal : dans _convertir_niveau_racine, ne PAS fondre les segments vides
+// consécutifs (retirer le bloc `segments_reduits`, réassigner `segments_reduits = segments`)
+// — trois paragraphes vides entre les deux tableaux ci-dessous ressortent tous les trois,
+// PLUS un éventuel séparateur injecté.
+
+test('manuscrit_gabarit.ecrire : au plus un paragraphe vide sépare deux blocs, même si le manuscrit en portait plusieurs',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([
+        tableau([[cellule('A1')]]),
+        paragraphe([]), paragraphe([]), paragraphe([]),
+        tableau([[cellule('B1')]]),
+      ]);
+      ecrireDepuisSpec(spec, sortie);
+      const enfants = enfantsCorps(sortie);
+      // Isole la zone entre les DEUX tableaux produits par CE test (après les deux tableaux
+      // fixes du gabarit) : les indices des <w:tbl> de premier niveau.
+      const indicesTbl = enfants.map((e, i) => (e.tag === 'w:tbl' ? i : -1)).filter((i) => i >= 0);
+      assert.ok(indicesTbl.length >= 4, 'au moins 4 tableaux attendus (2 fixes + 2 du test)');
+      const [, , iTbl3, iTbl4] = indicesTbl;
+      const entreDeux = enfants.slice(iTbl3 + 1, iTbl4);
+      assert.strictEqual(entreDeux.length, 1,
+        'exactement UN paragraphe doit séparer les deux tableaux du test, obtenu '
+        + JSON.stringify(entreDeux));
+      assert.strictEqual(entreDeux[0].tag, 'w:p');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+test('manuscrit_gabarit.ecrire : deux tableaux directement adjacents (rien entre eux) reçoivent quand même exactement un séparateur',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([
+        tableau([[cellule('A1')]]),
+        tableau([[cellule('B1')]]),
+      ]);
+      ecrireDepuisSpec(spec, sortie);
+      const enfants = enfantsCorps(sortie);
+      const indicesTbl = enfants.map((e, i) => (e.tag === 'w:tbl' ? i : -1)).filter((i) => i >= 0);
+      const [, , iTbl3, iTbl4] = indicesTbl;
+      const entreDeux = enfants.slice(iTbl3 + 1, iTbl4);
+      assert.strictEqual(entreDeux.length, 1, 'exactement un séparateur injecté');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ===================================================================================
+// Contrat partagé du 19.09.2026 — notes de bas de page. Fragment.note / Document.notes
+// (dict[int, list[bloc]]) sont désormais livrés par manuscrit_modele.py/manuscrit_docx.py :
+// ces contrôles passent par le JSON réel (document_depuis_json), jamais un objet fabriqué à
+// la main qui contournerait le contrat.
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°1 — une note appelée par un fragment du corps est écrite dans footnotes.xml,
+// renumérotée à partir de 1, et retrouvée par le lecteur de production avec sa mise en forme.
+//
+// Sabotage minimal : dans _RegistreNotes._resoudre, ne jamais appeler `_contenu_note_xml`
+// (poser `self._xml_par_id[id_sortie] = ''`) — la note existe mais reste vide, son italique
+// disparaît.
+
+test('manuscrit_gabarit.ecrire : une note appelée est écrite dans footnotes.xml et relue avec sa mise en forme',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([
+        paragraphe([
+          fragment('Un appel de note'),
+          fragment('', {}, { note: 5 }),
+          fragment(' termine la phrase.'),
+        ]),
+      ], { 5: [paragraphe([
+        fragment('Contenu de la note, '),
+        fragment('en italique', { italique: true }),
+        fragment('.'),
+      ])] });
+      const resultat = ecrireDepuisSpec(spec, sortie);
+      assert.strictEqual(resultat.stats.notes_ecrites, 1);
+
+      const xml = lireDocumentXml(sortie);
+      assert.ok(/<w:footnoteReference w:id="1"\/>/.test(xml),
+        'la note doit être renumérotée à 1 (le gabarit livré n\'a que ses deux notes '
+        + 'techniques, id -1 et 0)');
+
+      const { document } = diagnostiquerManuscritDocx('--diagnostic', sortie);
+      const p = document.blocs.find((b) => b.type !== 'tableau'
+        && b.fragments.some((f) => f.note));
+      assert.ok(p, 'le paragraphe portant l\'appel de note doit être retrouvé');
+      assert.strictEqual(p.fragments.find((f) => f.note).note, 1);
+
+      assert.ok(document.notes && document.notes['1'], 'la note 1 doit être relisible');
+      const fragItalique = document.notes['1'][0].fragments.find((f) => f.texte.includes('italique'));
+      assert.ok(fragItalique, 'le fragment en italique de la note doit être retrouvé');
+      assert.strictEqual(fragItalique.forme.italique, true, 'l\'italique DANS une note doit survivre');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°2 — une note présente dans document.notes mais jamais appelée par un fragment
+// n'est PAS écrite (elle serait sans ancre), et c'est tracé.
+//
+// Sabotage minimal : dans ecrire(), retirer la condition `if orphelines:` (toujours ajouter
+// la ligne de trace même vide) — un test qui chercherait juste « une ligne de trace existe »
+// resterait vert à tort ; celui-ci vérifie le CONTENU de la trace, pas sa seule présence.
+
+test('manuscrit_gabarit.ecrire : une note jamais appelée n\'est pas écrite, et c\'est tracé',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([
+        paragraphe([fragment('Un paragraphe sans aucun appel de note.')]),
+      ], { 9: [paragraphe([fragment('Note jamais appelée.')])] });
+      const resultat = ecrireDepuisSpec(spec, sortie);
+      assert.strictEqual(resultat.stats.notes_ecrites, 0);
+      const ligne = resultat.trace.find((l) => l.decision === 'notes_orphelines');
+      assert.ok(ligne, 'une ligne de trace notes_orphelines est attendue');
+      assert.ok(ligne.motif.includes('9'), 'la trace doit nommer l\'identifiant orphelin (9)');
+      const xml = lireDocumentXml(sortie);
+      assert.ok(!/<w:footnoteReference/.test(xml), 'aucun appel de note ne doit apparaître');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°3 — un appel de note sans contenu correspondant (ne devrait jamais arriver
+// depuis un vrai lecteur) reçoit un contenu vide plutôt qu'un document invalide, et c'est
+// tracé comme anomalie.
+
+test('manuscrit_gabarit.ecrire : un appel de note sans contenu correspondant écrit une note vide, tracée',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([
+        paragraphe([fragment('Appel orphelin'), fragment('', {}, { note: 42 })]),
+      ]); // pas de clé "42" dans notes
+      const resultat = ecrireDepuisSpec(spec, sortie);
+      assert.strictEqual(resultat.stats.notes_ecrites, 1);
+      const ligne = resultat.trace.find((l) => l.decision === 'note_introuvable');
+      assert.ok(ligne, 'une ligne de trace note_introuvable est attendue');
+      const erreurs = validerPartiesXml(sortie);
+      assert.deepStrictEqual(erreurs, [], 'le document reste un XML valide malgré la note manquante');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°4 — le gabarit livré ne définit ni style d'appel de note ni style de texte de
+// note : le renvoi se pose en simple exposant (vertAlign), le paragraphe de note en
+// Corpsdetexte — jamais une exception, jamais un renvoi sans mise en forme du tout.
+
+test('manuscrit_gabarit.ecrire : sans style de note dans le gabarit, le renvoi est un simple exposant et la note est en Corps de texte',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([
+        paragraphe([fragment('Texte'), fragment('', {}, { note: 1 })]),
+      ], { 1: [paragraphe([fragment('Contenu.')])] });
+      ecrireDepuisSpec(spec, sortie);
+      const xml = lireDocumentXml(sortie);
+      assert.ok(/<w:footnoteReference w:id="1"\/>/.test(xml));
+      const rIdxFootnoteRef = xml.indexOf('<w:footnoteReference');
+      const runAvant = xml.lastIndexOf('<w:r>', rIdxFootnoteRef);
+      assert.ok(xml.slice(runAvant, rIdxFootnoteRef).includes('vertAlign w:val="superscript"'),
+        'le run d\'appel doit porter un exposant (le gabarit livré n\'a pas de style dédié)');
+
+      const footnotes = cp.execFileSync(PYTHON, ['-c',
+        'import sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); '
+        + 'sys.stdout.write(z.read("word/footnotes.xml").decode("utf-8"))', sortie],
+        { encoding: 'utf8', env: ENV_UTF8 });
+      assert.ok(/<w:footnote w:id="1">.*?Corpsdetexte/s.test(footnotes),
+        'le paragraphe de la note doit porter le style Corpsdetexte, faute de style dédié');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°5 (corpus) — chiffre mesuré le 19.09.2026 : 12 notes sur `2-fin-de-document`
+// (12 vrais w:footnoteReference, vérifiés à la main dans le XML brut). Les quatre autres
+// fichiers cités par le brief de départ (`1bis`, `2-dense`, `2-grappes`, `5bis`, 1 note
+// « attendue » chacun) mesurent en réalité ZÉRO appel de note dans leur document.xml — vérifié
+// octet pour octet : ni <w:footnoteReference>, ni <w:endnoteReference>, nulle part. Ce que
+// document.notes contenait pour eux (clés 1 et 2) n'était pas une vraie note : c'est le
+// type technique `continuationNotice` (« suite à la page suivante »), absent de
+// `_TYPES_NOTE_TECHNIQUES = ('separator', 'continuationSeparator')` dans manuscrit_docx.py
+// (fichier HORS du périmètre de cet agent, non corrigé ici, voir le rapport de chantier) —
+// mal filtré, il est lu comme un contenu de note réel. N'étant jamais appelé nulle part dans
+// le corps, cet écrivain le classe correctement en note ORPHELINE (voir le contrôle n°2
+// ci-dessus) et n'écrit rien pour lui : 0 est donc la valeur CORRECTE ici, pas 1.
+
+test('manuscrit_gabarit.ecrire : les notes de bas de page du corpus réel sont écrites en nombre attendu',
+  { skip: sansPython }, (t) => {
+    if (!fs.existsSync(CORPUS_LOT_A)) {
+      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      return;
+    }
+    const attendu = {
+      '2-fin-de-document_Article_RSPS.docx': 12,
+      // Les quatre lignes suivantes valent 0, pas 1 : voir le commentaire ci-dessus (défaut
+      // de manuscrit_docx.py, hors périmètre, qui fait passer une note technique
+      // 'continuationNotice' pour une vraie note — jamais appelée, donc jamais écrite ici).
+      '1bis_Booms Article.docx': 0,
+      '2-dense_20250404_Quelle inclusion pour les personnes en situation de handicap.docx': 0,
+      '2-grappes_En Route pour Apprendre.docx': 0,
+      '5bis_20250208_Vers un enseignement superieur inclusif_identifier et repondre aux defis des etudiantes et etudiants BEP.docx': 0,
+    };
+    const base = dossierJetable();
+    try {
+      const ecarts = [];
+      for (const [nom, n] of Object.entries(attendu)) {
+        const entree = path.join(CORPUS_LOT_A, nom);
+        if (!fs.existsSync(entree)) { ecarts.push(nom + ' : fichier introuvable dans lot-A'); continue; }
+        const sortie = path.join(base, nom.replace(/\.docx$/i, '') + '-gabarit.docx');
+        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie]);
+        assert.strictEqual(r.status, 0, nom + ' : ' + r.stderr);
+        const resultat = JSON.parse(r.stdout);
+        if (resultat.stats.notes_ecrites !== n) {
+          ecarts.push(nom + ' : attendu ' + n + ', obtenu ' + resultat.stats.notes_ecrites);
+        }
+      }
+      assert.deepStrictEqual(ecarts, []);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ===================================================================================
+// Table de correspondance (ajout du 19.09.2026, demandé par le superviseur pour un futur
+// module d'annotation) : ecrire() rend `correspondance`, une entrée par paragraphe de CORPS
+// écrit comme <w:p> de premier niveau — jamais pour un bloc figure/tableau.
+
+test('manuscrit_gabarit.ecrire : la table de correspondance pointe, pour chaque paragraphe de corps, le bon <w:p> de la sortie',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const spec = specDocument([
+        paragraphe([fragment('Premier paragraphe.')]),
+        paragraphe([fragment('Second paragraphe.')]),
+        tableau([[cellule('A1')]]),
+        paragraphe([fragment('Troisième paragraphe.')]),
+      ]);
+      const resultat = ecrireDepuisSpec(spec, sortie);
+      assert.strictEqual(resultat.correspondance.length, 3,
+        'un tableau ne doit jamais recevoir d\'entrée de correspondance (3 paragraphes, 1 tableau)');
+
+      const attendus = { 0: 'Premier paragraphe.', 1: 'Second paragraphe.',
+                          3: 'Troisième paragraphe.' };
+      const textes = textesWp(enfantsCorps(sortie));
+      for (const c of resultat.correspondance) {
+        assert.strictEqual(textes[c.sortie], attendus[c.source],
+          'source ' + c.source + ' -> sortie ' + c.sortie + ' : texte attendu '
+          + JSON.stringify(attendus[c.source]) + ', obtenu ' + JSON.stringify(textes[c.sortie]));
+      }
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, 100% de la table de correspondance pointe un texte identique',
+  { skip: sansPython }, (t) => {
+    if (!fs.existsSync(CORPUS_LOT_A)) {
+      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      return;
+    }
+    const fichiers = fs.readdirSync(CORPUS_LOT_A).filter((n) => n.toLowerCase().endsWith('.docx'));
+    const base = dossierJetable();
+    try {
+      let total = 0;
+      const echecs = [];
+      for (const nom of fichiers) {
+        const entree = path.join(CORPUS_LOT_A, nom);
+        const sortie = path.join(base, nom.replace(/\.docx$/i, '') + '-gabarit.docx');
+        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie]);
+        assert.strictEqual(r.status, 0, nom + ' : ' + r.stderr);
+        const resultat = JSON.parse(r.stdout);
+        const docEntree = diagnostiquerManuscritDocx('--diagnostic', entree).document;
+        const textesSortie = textesWp(enfantsCorps(sortie));
+        for (const c of resultat.correspondance) {
+          total += 1;
+          const blocSource = docEntree.blocs[c.source];
+          if (!blocSource || blocSource.type === 'tableau') {
+            echecs.push(nom + ' : source ' + c.source + ' n\'est pas un paragraphe'); continue;
+          }
+          const texteSource = blocSource.fragments.map((f) => f.texte).join('');
+          if (textesSortie[c.sortie] !== texteSource) {
+            echecs.push(nom + ' : source ' + c.source + ' -> sortie ' + c.sortie
+              + ' : attendu ' + JSON.stringify(texteSource) + ', obtenu '
+              + JSON.stringify(textesSortie[c.sortie]));
+          }
+        }
+      }
+      assert.ok(total > 0, 'au moins une correspondance attendue sur le corpus');
+      assert.deepStrictEqual(echecs, [], (total - echecs.length) + '/' + total + ' correctes');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+// ===================================================================================
+// Contrôles renforcés du corpus réel (§11 : « les tests ne gardent rien aujourd'hui ») —
+// validité XML de chaque partie, structure (sectPr en dernier, Content_Types, relations
+// résolues, TargetMode externe), et aucun texte perdu (corps + notes) par rapport à l'entrée.
+
+test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, chaque partie XML de la sortie est valide et la structure est cohérente',
+  { skip: sansPython }, (t) => {
+    if (!fs.existsSync(CORPUS_LOT_A)) {
+      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      return;
+    }
+    const fichiers = fs.readdirSync(CORPUS_LOT_A).filter((n) => n.toLowerCase().endsWith('.docx'));
+    const base = dossierJetable();
+    try {
+      const echecs = [];
+      for (const nom of fichiers) {
+        const entree = path.join(CORPUS_LOT_A, nom);
+        const sortie = path.join(base, nom.replace(/\.docx$/i, '') + '-gabarit.docx');
+        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie]);
+        if (r.status !== 0) { echecs.push(nom + ' (écriture) : ' + r.stderr); continue; }
+        for (const e of validerPartiesXml(sortie)) { echecs.push(nom + ' (XML) : ' + e); }
+        for (const e of validerStructure(sortie)) { echecs.push(nom + ' (structure) : ' + e); }
+      }
+      assert.deepStrictEqual(echecs, []);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, aucun texte (corps ou note) n\'est perdu par rapport à l\'entrée',
+  { skip: sansPython }, (t) => {
+    if (!fs.existsSync(CORPUS_LOT_A)) {
+      t.skip('corpus tmp/corpus-relecture/lot-A absent (tmp/ est hors git, effacé sans prévenir)');
+      return;
+    }
+    const fichiers = fs.readdirSync(CORPUS_LOT_A).filter((n) => n.toLowerCase().endsWith('.docx'));
+    const base = dossierJetable();
+    try {
+      const echecs = [];
+      for (const nom of fichiers) {
+        const entree = path.join(CORPUS_LOT_A, nom);
+        const sortie = path.join(base, nom.replace(/\.docx$/i, '') + '-gabarit.docx');
+        const r = python(['-c', ECRIRE_DEPUIS_DOCX, PIPELINE, entree, GABARIT_LIVRE, sortie]);
+        assert.strictEqual(r.status, 0, nom + ' : ' + r.stderr);
+        const docEntree = diagnostiquerManuscritDocx('--diagnostic', entree).document;
+        const docSortie = diagnostiquerManuscritDocx('--diagnostic', sortie).document;
+        const blobSortie = paragraphesTextuels(docSortie).map(normaliserEspaces).join('');
+        for (const texte of paragraphesTextuels(docEntree)) {
+          const t2 = normaliserEspaces(texte);
+          if (!blobSortie.includes(t2)) {
+            echecs.push(nom + ' : texte introuvable en sortie : ' + JSON.stringify(t2).slice(0, 140));
+          }
+        }
+      }
+      assert.deepStrictEqual(echecs, []);
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
