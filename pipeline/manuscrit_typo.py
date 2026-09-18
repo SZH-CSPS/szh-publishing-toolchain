@@ -10,11 +10,18 @@
 # Ce module ne connaît RIEN des décisions (titres, formatage à retirer, blocs figure/tableau
 # — tout ça vit dans manuscrit_modele.py, jamais ici) et n'importe PAS les classes Fragment /
 # Paragraphe : il travaille en duck-typing contre les signatures exactes du §4 du contrat
-# (Fragment(texte, image, forme, lien, source), Paragraphe(style, niveau_declare,
+# (Fragment(texte, image, forme, lien, source, note), Paragraphe(style, niveau_declare,
 # niveau_retenu, fragments, liste, alignement, retrait, source)) et reconstruit ses objets de
 # sortie par `type(paragraphe)(...)` / `type(fragment)(...)` — la classe réelle n'a donc
 # jamais besoin d'exister au moment où CE fichier est écrit ; elle doit seulement exister
 # À L'EXÉCUTION, avec cette forme.
+#
+# Révision du 19.09.2026 (§4 du contrat) : `Fragment.note` (int|None, `texte == ''` quand
+# rempli) porte l'appel de note (w:footnoteReference/w:endnoteReference). Un fragment à note
+# est une unité OPAQUE, au même titre qu'une image : jamais envoyé au filtre, jamais reconstruit,
+# réinséré tel quel à sa place (voir _partitionner, _fragment_depuis). Lu via `getattr(...,
+# 'note', None)`, jamais un accès direct `f.note` : un Fragment-like plus ancien qui ne le
+# porterait pas encore ne doit pas lever `AttributeError` ici.
 #
 # ── Ce qui a été mesuré avant d'écrire une ligne (18.09.2026, WSL SZH-Publishing) ──────────
 #
@@ -335,24 +342,36 @@ def _fragment_depuis(original, caracteres):
     """Un nouveau fragment texte, même classe et même forme/lien/source que `original`,
     portant `caracteres` comme texte. `type(original)(...)` plutôt qu'un import de Fragment :
     voir l'en-tête du fichier — ce module ne dépend jamais de l'existence du module qui
-    définit la classe réelle, seulement de sa signature."""
+    définit la classe réelle, seulement de sa signature.
+
+    Révision du 19.09.2026 : recopie aussi `note` (via `getattr`, jamais un accès direct — voir
+    l'en-tête). `original` est toujours un fragment de TEXTE ici (un fragment à note est opaque,
+    voir _partitionner : il ne traverse jamais _fragment_depuis), donc `note` vaut déjà None en
+    pratique — recopié quand même explicitement plutôt que supposé : un filet, pas une devinette."""
     return type(original)(''.join(caracteres), None, original.forme, original.lien,
-                           original.source)
+                           original.source, note=getattr(original, 'note', None))
 
 
 def _partitionner(fragments):
-    """Découpe la liste de fragments d'un paragraphe en unités : soit ('image', fragment)
-    pour un fragment qui porte une image (jamais touché ici), soit ('texte', [fragments...])
-    pour un run maximal de fragments consécutifs SANS image. Une image coupe le fil du texte
-    : la typographie ne doit jamais faire comme si le texte de part et d'autre se touchait."""
+    """Découpe la liste de fragments d'un paragraphe en unités : soit ('opaque', fragment) pour
+    un fragment qui porte une image OU une note (jamais touché ici, réinséré tel quel à sa
+    place), soit ('texte', [fragments...]) pour un run maximal de fragments consécutifs SANS
+    image ni note. Une image ou une note coupe le fil du texte : la typographie ne doit jamais
+    faire comme si le texte de part et d'autre se touchait.
+
+    Révision du 19.09.2026 (§4 du contrat) : un fragment à note (`getattr(f, 'note', None) is
+    not None`) est désormais traité comme une image — avant cette révision, il retombait dans
+    le run de texte courant, `_partitionner` ne sachant rien de `note` : mesuré sur
+    2-fin-de-document_Article_RSPS.docx, 11 notes sur 12 disparaissaient (le lecteur en rend 12,
+    la sortie n'en portait plus qu'1)."""
     unites = []
     courant = []
     for f in fragments:
-        if f.image is not None:
+        if f.image is not None or getattr(f, 'note', None) is not None:
             if courant:
                 unites.append(('texte', courant))
                 courant = []
-            unites.append(('image', f))
+            unites.append(('opaque', f))
         else:
             courant.append(f)
     if courant:
@@ -435,7 +454,7 @@ def normaliser_paragraphes(paragraphes, langue, racine_depot):
         try:
             nouveaux_fragments = []
             for iu, (nature, contenu) in enumerate(unites):
-                if nature == 'image':
+                if nature == 'opaque':
                     nouveaux_fragments.append(contenu)
                     continue
                 texte_norm = normalise_par_cle.get((ip, iu))

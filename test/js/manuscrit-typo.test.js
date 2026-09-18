@@ -20,7 +20,13 @@
 //   11. les avertissements [typo-avertissement] d'un appel RÉUSSI remontent désormais
 //       (avant : capturés puis jetés en silence sur un succès) ;
 //   12. sous Linux (sys.platform != 'win32', le cas de production), pandoc est appelé
-//       directement, JAMAIS via wsl.exe/wslpath — la panne mesurée avant cette révision.
+//       directement, JAMAIS via wsl.exe/wslpath — la panne mesurée avant cette révision ;
+//   13. régression du 19.09.2026 (§4 du contrat révisé, Fragment.note) : un fragment porteur
+//       de note, au milieu d'un mot coupé en trois runs texte/note/texte, ressort avec sa note
+//       intacte au même rang et le texte alentour normalisé — avant correction, _partitionner
+//       ne savait rien de `note` et le fragment retombait dans le run de texte courant,
+//       perdant sa note à la reconstruction (mesuré : 11 notes sur 12 disparaissaient sur
+//       2-fin-de-document_Article_RSPS.docx).
 //
 //   node --test "test/js/*.test.js"
 //
@@ -74,10 +80,14 @@ const HARNAIS = [
   'import manuscrit_typo as MT',
   '',
   'class Fragment:',
-  "    __slots__ = ('texte', 'image', 'forme', 'lien', 'source')",
-  '    def __init__(self, texte, image, forme, lien, source):',
+  "    __slots__ = ('texte', 'image', 'forme', 'lien', 'source', 'note')",
+  '    # `note` SANS valeur par défaut, comme les cinq champs précédents : un appelant qui',
+  '    # omettrait de le fournir explicitement doit planter ici, jamais retomber en silence',
+  '    # sur une valeur par défaut qui masquerait l’oubli (contrairement à la vraie classe',
+  '    # Fragment, qui accepte note=None — voir le rapport de chantier du 19.09.2026).',
+  '    def __init__(self, texte, image, forme, lien, source, note):',
   '        self.texte, self.image, self.forme = texte, image, forme',
-  '        self.lien, self.source = lien, source',
+  '        self.lien, self.source, self.note = lien, source, note',
   '',
   'class Paragraphe:',
   "    __slots__ = ('style', 'niveau_declare', 'niveau_retenu', 'fragments', 'liste',",
@@ -99,7 +109,7 @@ const HARNAIS = [
   '            def get_opcodes(self):',
   "                return [tuple(o) for o in ad['opcodes_bogues']]",
   '        MT.difflib.SequenceMatcher = _FauxMatcher',
-  "    frags = [Fragment(t, None, None, None, i) for i, t in enumerate(ad['fragments'])]",
+  "    frags = [Fragment(t, None, None, None, i, None) for i, t in enumerate(ad['fragments'])]",
   '    try:',
   "        resultat = MT._reconstruire_unite(frags, ad['texte_envoye'], ad['texte_normalise'])",
   "        sortie = {'ok': True, 'texte': ''.join(f.texte for f in resultat)}",
@@ -130,7 +140,8 @@ const HARNAIS = [
   '',
   'paragraphes = []',
   "for p in recette['paragraphes']:",
-  '    fragments = [Fragment(f[\'texte\'], None, f.get(\'forme\'), f.get(\'lien\'), i)',
+  '    fragments = [Fragment(f[\'texte\'], None, f.get(\'forme\'), f.get(\'lien\'), i,',
+  "                          f.get('note'))",
   "                 for i, f in enumerate(p['fragments'])]",
   "    paragraphes.append(Paragraphe(p.get('style', ''), p.get('niveau_declare', 0),",
   "                                   p.get('niveau_retenu', 0), fragments, p.get('liste'),",
@@ -145,7 +156,8 @@ const HARNAIS = [
   "    'statut': statut,",
   "    'paragraphes': [",
   "        {'source': p.source,",
-  "         'fragments': [{'texte': f.texte, 'forme': f.forme, 'lien': f.lien} for f in p.fragments]}",
+  "         'fragments': [{'texte': f.texte, 'forme': f.forme, 'lien': f.lien, 'note': f.note}",
+  '                       for f in p.fragments]}',
   '        for p in resultat',
   '    ],',
   '}',
@@ -503,4 +515,56 @@ test('manuscrit-typo : sous Linux (sys.platform != win32), pandoc est appelé di
     const texte = texteAPlat(sortie.paragraphes[0]);
     assert.match(texte, /Attention[\u00a0\u202f]:/,
       'la typographie française (insécable devant « : ») n\u2019a pas été appliquée par le pandoc direct');
+  });
+
+
+// ---- 13. Un fragment a NOTE, au milieu d'un mot, ressort intact au meme rang -----------
+//
+// Regression du 19.09.2026 (§4 du contrat revise) : le lecteur pose desormais
+// `Fragment.note` (int|None, texte == '' quand rempli) sur le fragment qui porte un appel de
+// note -- meme convention qu'une image. AVANT correction, `_partitionner` ne savait rien de
+// `note` : ce fragment retombait dans le run de texte courant, et `_reconstruire_unite` le
+// redecoupait comme du texte ordinaire, perdant sa note. Mesure sur
+// 2-fin-de-document_Article_RSPS.docx : le lecteur rend 12 fragments a note, la sortie n'en
+// portait plus qu'1.
+
+test('manuscrit-typo : un fragment a note (texte/note/texte), coupe en plein mot, ressort avec sa note intacte au meme rang',
+  { skip: sansPython || sansPandocWsl }, () => {
+    const sortie = normaliser({
+      langue: 'fr',
+      paragraphes: [{
+        source: 0,
+        fragments: [
+          // << important >> coupe en deux runs de texte par un appel de note plante en plein
+          // mot -- cas limite reel (Word autorise un appel de note n'importe ou dans un run).
+          { texte: 'Voici “impor', forme: { italique: false } },
+          { texte: '', note: 7 },
+          { texte: 'tant” vraiment.', forme: { italique: false } }
+        ]
+      }]
+    });
+    assert.deepStrictEqual(sortie.abandons, [],
+      'le paragraphe a ete abandonne : ' + JSON.stringify(sortie.abandons));
+
+    const frags = sortie.paragraphes[0].fragments;
+    const indexNote = frags.findIndex((f) => f.note === 7);
+    assert.notStrictEqual(indexNote, -1,
+      'la note a disparu de la sortie : ' + JSON.stringify(frags));
+    assert.strictEqual(frags[indexNote].texte, '',
+      'un fragment a note doit garder un texte vide, comme une image');
+    assert.strictEqual(frags.filter((f) => f.note === 7).length, 1,
+      'la note ne doit etre portee que par UN SEUL fragment, jamais dupliquee');
+    assert.ok(frags.slice(0, indexNote).every((f) => f.note == null),
+      'un fragment AVANT la note porte lui aussi une note : structure corrompue');
+    assert.ok(frags.slice(indexNote + 1).every((f) => f.note == null),
+      'un fragment APRES la note porte lui aussi une note : structure corrompue');
+
+    // Le texte de part et d'autre de la note a survecu ET a ete normalise (la note a coupe le
+    // fil du texte, comme une image : chaque cote est traite comme sa propre unite).
+    const texteAvant = frags.slice(0, indexNote).map((f) => f.texte).join('');
+    const texteApres = frags.slice(indexNote + 1).map((f) => f.texte).join('');
+    assert.match(texteAvant, /^Voici/, 'le debut du texte avant la note a ete perdu');
+    assert.match(texteApres, /vraiment\.$/, 'la fin du texte apres la note a ete perdue');
+    assert.match(texteAvant + texteApres, /impor/, 'le mot coupe a perdu du contenu');
+    assert.match(texteAvant + texteApres, /tant/, 'le mot coupe a perdu du contenu');
   });
