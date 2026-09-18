@@ -168,7 +168,24 @@ vale --config .vale.ini --output=JSON /tmp/corps-fr.txt
 ```
 
 Le fichier de test DOIT se nommer `corps-fr.txt`, `biblio-fr.txt`, `corps-de.txt` ou
-`biblio-de.txt` — c'est ce nom qui décide quel style Vale applique.
+`biblio-de.txt` — c'est ce nom qui décide quel style Vale applique. **Une règle de
+bibliographie (`DoiForme`, `Esperluette`) ne se déclenchera JAMAIS sur un fichier nommé
+`corps-fr.txt`**, même si son contenu est une vraie référence — ce n'est pas un bug, c'est
+exactement le but de la séparation (voir plus haut). Pour tester une entrée bibliographique,
+nommez le fichier `biblio-fr.txt` :
+
+```
+cd pipeline/vale
+printf 'Dupont, A., et Martin, B. (2020). Titre. Revue, 3(2), 1-10. doi:10.1000/xyz\n' \
+  > /tmp/biblio-fr.txt
+vale --config .vale.ini --output=JSON /tmp/biblio-fr.txt
+```
+
+Cette ligne lève à la fois `CSPS-Biblio.APA.DoiForme` (le DOI) et `CSPS-Biblio.APA.Esperluette`
+(le « , et Martin » avant le dernier auteur). Si vous testez depuis Python
+(`manuscrit_vale.analyser()` ou son mode `--analyser`), le même principe s'applique côté
+paragraphe : une entrée de bibliographie doit porter `"role": "bibliographie"`, jamais `""` —
+un rôle vide est toujours traité comme du corps, même si le texte est une référence.
 
 ## Le piège auquel il faut penser avant de modifier une règle du handicap ou de l'épicène
 

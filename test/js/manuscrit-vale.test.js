@@ -8,7 +8,7 @@
 // Ce fichier éprouve :
 //   1. la configuration Vale se charge (vale ls-config), les trois styles (CSPS,
 //      CSPS-Biblio, SZH) sont bien attachés à leurs quatre fichiers ;
-//   2. un positif et un négatif pour chacune des treize règles du catalogue ;
+//   2. un positif et un négatif pour chacune des quatorze règles du catalogue ;
 //   3. LE PIÈGE OQLF/CSPS, nommé comme critère d'acceptation : « personne en situation de
 //      handicap » ne lève jamais rien ;
 //   4. LE FAIT QUI COMMANDE TOUT (l'inversion épicène) : chaque produit proscrit
@@ -163,10 +163,10 @@ test('la configuration Vale se charge : CSPS, CSPS-Biblio et SZH sont attachés'
   });
 
 // ---------------------------------------------------------------------------------
-// Contrôle n°2 — un positif et un négatif pour chacune des treize règles du catalogue.
+// Contrôle n°2 — un positif et un négatif pour chacune des quatorze règles du catalogue.
 // Chaque cas nomme la fonction d'analyse (corps/biblio) et la langue, comme le fait le
 // contexte réel. Les sabotages minimaux sont documentés dans le rapport (une ligne YAML par
-// règle), pas ici : les répéter treize fois ici serait le bruit que le contrat proscrit.
+// règle), pas ici : les répéter quatorze fois ici serait le bruit que le contrat proscrit.
 
 const CAS = [
   { regle: 'CSPS.Epicene.FormesContractees',
@@ -194,6 +194,10 @@ const CAS = [
   { regle: 'CSPS.Editions.SZH',
     positif: () => analyserCorps('Les Editions SZH/CSPS ont publié cet ouvrage.', 'fr'),
     negatif: () => analyserCorps('Les éditions SZH/CSPS ont publié cet ouvrage.', 'fr'),
+    severitePositif: 'warning' },
+  { regle: 'CSPS.Vocabulaire.Cf',
+    positif: () => analyserCorps('Voir cf. le rapport pour plus de détails.', 'fr'),
+    negatif: () => analyserCorps('Voir le rapport pour plus de détails.', 'fr'),
     severitePositif: 'warning' },
   { regle: 'CSPS.APA.EtDansParentheses',
     positif: () => analyserCorps('Ils le montrent (Dupont et Martin, 2020).', 'fr'),
@@ -246,6 +250,64 @@ for (const cas of CAS) {
         + JSON.stringify(sansFaute.alertes));
     });
 }
+
+// ---------------------------------------------------------------------------------
+// Contrôle complémentaire — CSPS.Vocabulaire.Cf : « cf. » en tête de phrase devient « Voir »
+// (majuscule), jamais « voir » minuscule ; un mot qui contiendrait la séquence « cf » sans
+// en être l'abréviation isolée ne doit jamais être touché. Le cas positif générique (mi-
+// phrase) est déjà couvert par le tableau CAS ci-dessus.
+//
+// Sabotage minimal : dans pipeline/vale/styles/CSPS/Vocabulaire/Cf.yml, retirer
+// `nonword: true` — chaque motif finit sur un point (non-mot), le \b que Vale ajoute par
+// défaut en fin de motif échoue alors systématiquement : la règle entière cesse de se
+// déclencher, les deux premières assertions rougissent.
+
+test('CSPS.Vocabulaire.Cf : « Cf. » en tête de phrase devient « Voir », jamais « voir »',
+  { skip: sansVale }, () => {
+    const { sortie: enTete } = analyserCorps('Cf. le rapport pour plus de détails.', 'fr');
+    const trouve = enTete.alertes.filter((a) => a.rule === 'CSPS.Vocabulaire.Cf');
+    assert.strictEqual(trouve.length, 1);
+    assert.strictEqual(trouve[0].found, 'Cf.');
+    assert.strictEqual(trouve[0].suggested, 'Voir',
+      'en tête de phrase, la suggestion doit garder la majuscule');
+
+    const { sortie: motOrdinaire } = analyserCorps(
+      'On y trouve une confection artisanale et un scfumage rare.', 'fr');
+    assert.deepStrictEqual(
+      motOrdinaire.alertes.filter((a) => a.rule === 'CSPS.Vocabulaire.Cf'), [],
+      '« cf » à l\'intérieur d\'un autre mot ne doit jamais être touché');
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle complémentaire — une entrée bibliographique réelle lève BIEN les deux règles
+// CSPS-Biblio à la fois (DoiForme et Esperluette) sur la MÊME ligne. Signalé par le
+// superviseur : un essai manuel avait conclu que ni l'une ni l'autre ne se déclenchaient —
+// en fait le mécanisme fonctionne (vérifié par `vale --output=JSON` directement sur cette
+// ligne, voir le rapport), l'essai manuel avait dû passer par un fichier nommé
+// `corps-fr.txt` (le seul exemple donné par LISEZMOI.md avant sa mise à jour) au lieu de
+// `biblio-fr.txt`, ou par le rôle de paragraphe '' au lieu de 'bibliographie' : dans les deux
+// cas, c'est le style CSPS (corps) qui s'applique, où ces deux règles n'existent pas. Ce
+// test fixe noir sur blanc le cas correct, avec le rôle 'bibliographie' explicite.
+//
+// Sabotage minimal : dans manuscrit_vale.extraire(), changer
+// `cible = lignes_biblio if role == 'bibliographie' else lignes_corps` en
+// `cible = lignes_corps` (le rôle n'est plus lu) — la ligne partirait alors dans le fichier
+// corps-fr.txt (style CSPS, sans APA.DoiForme ni APA.Esperluette), les deux assertions
+// rougissent.
+
+test('une entrée bibliographique réelle lève DoiForme ET Esperluette sur la même ligne',
+  { skip: sansVale }, () => {
+    const { sortie } = analyserBiblio(
+      'Dupont, A., et Martin, B. (2020). Titre. Revue, 3(2), 1-10. doi:10.1000/xyz', 'fr');
+    const regles = sortie.alertes.map((a) => a.rule).sort();
+    assert.deepStrictEqual(regles,
+      ['CSPS-Biblio.APA.DoiForme', 'CSPS-Biblio.APA.Esperluette'].sort(),
+      'les deux règles doivent se déclencher sur cette entrée : ' + JSON.stringify(sortie.alertes));
+    const doi = sortie.alertes.find((a) => a.rule === 'CSPS-Biblio.APA.DoiForme');
+    assert.strictEqual(doi.suggested, 'https://doi.org/10.1000/xyz');
+    const esperluette = sortie.alertes.find((a) => a.rule === 'CSPS-Biblio.APA.Esperluette');
+    assert.strictEqual(esperluette.suggested, ', & Martin, B.');
+  });
 
 // ---------------------------------------------------------------------------------
 // Contrôle n°3 — LE PIÈGE OQLF/CSPS, nommé comme critère d'acceptation par le brief : déjà

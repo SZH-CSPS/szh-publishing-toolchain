@@ -220,11 +220,23 @@ def _raffiner_esperluette_biblio(constat, ligne_texte):
     return {'found': texte, 'suggested': texte.replace(' et ', ' & ', 1), 'action': 'fix'}
 
 
+def _raffiner_cf(constat, ligne_texte):
+    # ⚠ Vale (extends: substitution) ne peut pas capturer le point de « cf. » — borné au
+    # token de mot par son propre analyseur, la ponctuation en est toujours exclue, quel que
+    # soit le motif régulier demandé (mesuré : « cf\.? » ne rend jamais que "cf"). D'où
+    # l'existence + ce raffinage : la majuscule d'origine décide seule de la forme suggérée,
+    # jamais l'inverse.
+    texte = constat['Match']  # "cf." ou "Cf."
+    suggere = 'Voir' if texte[:1] == 'C' else 'voir'
+    return {'found': texte, 'suggested': suggere, 'action': 'fix'}
+
+
 RAFFINEURS = {
     'CSPS.APA.EtDansParentheses': _raffiner_et_dans_parentheses,
     'CSPS.APA.EsperluetteHorsParentheses': _raffiner_esperluette_hors_parentheses,
     'CSPS-Biblio.APA.DoiForme': _raffiner_doi_forme,
     'CSPS-Biblio.APA.Esperluette': _raffiner_esperluette_biblio,
+    'CSPS.Vocabulaire.Cf': _raffiner_cf,
 }
 
 
