@@ -126,10 +126,11 @@ trap {
 # fenetre s'inscrit a la barre, et ne la relit jamais ensuite. Sans objet en simulation :
 # aucune fenetre ne s'inscrit nulle part.
 #
-# L'icone de la fenetre principale est celle de la revue, faute d'une image propre a
-# l'application. Les trois icones de produit servent encore, elles, aux boites « Nouveau... »
-# ouvertes depuis un onglet : la seule fenetre du lanceur qui appartienne a un seul produit.
-$fichierIcone = Join-Path $PSScriptRoot 'szh-revue.ico'
+# L'icone de la fenetre principale est celle de l'application, pronto.ico -- la meme que le
+# raccourci du menu Demarrer (szh-shell.ps1) et que la mise a jour. Les trois icones de
+# produit servent encore, elles, aux boites « Nouveau... » ouvertes depuis un onglet : la
+# seule fenetre du lanceur qui appartienne a un seul produit.
+$fichierIcone = Join-Path $PSScriptRoot 'pronto.ico'
 if (-not $script:SzhSimule) {
   [void](Set-SzhAppUserModelId (Get-SzhAppId 'suite'))
 }
