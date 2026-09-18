@@ -25,7 +25,7 @@ partout, 220 parties XML valides, 21/34 faux titres rattrapés, 0 vrai titre dé
 pseudo-titres 6/17, 1/20, 2/16 (le lot titres v3 était en cours, voir ci-dessous).
 
 ## En cours au moment de l'arrêt (travail NON commité, présent dans l'arbre)
-- **Titres v3** (`manuscrit_modele.py`, `classer_titres` seul, `manuscrit-decisions.test.js`) :
+- **Titres v3** : COMMITÉ (31 tests verts) — 25/34 rattrapés, 0 détruit, 0 séparateur promu, coenseignement 4/4 ; pseudo-titres d'un manuscrit tout en gras (`3bis_`) toujours 1/17, à reprendre. Était :
   signatures sur la mise en forme effective, titres en liste numérotée isolés promus et numéro
   retiré, exclusions `────`/e-mail/téléphone/URL/légendes, plafond 3 niveaux rabattu. Cibles :
   ≥ 29/33, 0 détruit, ≥ 14/17, ≥ 15/20, ≥ 12/16, « coenseignement » 4/4.
