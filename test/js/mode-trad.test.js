@@ -604,7 +604,12 @@ const PANNEAUX_SANS_MODE_TRAD = {
     'allumerait le mode sans pouvoir l’éteindre.',
   montrerPanneauSuggestion:
     'le formulaire de suggestion : c’est lui que le mode ouvre. Le détourner le rendrait ' +
-    'incapable de recevoir la suggestion qu’il demande.'
+    'incapable de recevoir la suggestion qu’il demande.',
+  montrerNouveautes:
+    '« Quoi de neuf » : son texte ne vient pas de l’i18n mais de nouveautes.json, livré ' +
+    'avec le toolkit. Une suggestion de traduction prise ici n’aurait aucune clé où ' +
+    'aller. La page n’a d’ailleurs aucun libellé cliquable — elle se lit, et son seul ' +
+    'message vers l’hôte est « je suis prête ».'
 };
 
 // Les sources de l'hôte : extension.js et lib/. media/ est le côté page, il a ses propres

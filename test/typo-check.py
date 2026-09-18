@@ -403,6 +403,51 @@ def extraire_js_bilingue(lignes, _langue):
                 yield i, m.group(1), m.group(2), _remplacant_intervalle(*m.span(2))
 
 
+# nouveautes.json : la note que « Quoi de neuf » montre à la rédaction après une mise à
+# jour, livrée à la racine du toolkit. C'est du texte lu par les deux rédactions, dans les
+# deux langues, et personne ne le relit avant qu'une fenêtre ne s'ouvre dessus — d'où sa
+# place ici. Le fichier est plat et régulier (JSON.stringify à deux espaces) : un automate
+# de lignes suffit, et il garde l'intervalle exact que `--corriger` doit réécrire.
+#
+# La langue vient du bloc englobant, "fr" ou "de" ; les clés de service ("_lisez-moi") et
+# les en-têtes de medium ("1.1") la remettent à zéro, pour qu'une prose de service ne soit
+# jamais jugée dans la langue du bloc précédent.
+RE_JSON_LANGUE = re.compile(r'^\s*"(fr|de)"\s*:\s*\{')
+RE_JSON_TITRE = re.compile(r'^\s*"titre"\s*:\s*"((?:[^"\\]|\\.)*)"')
+RE_JSON_POINTS = re.compile(r'^\s*"points"\s*:')
+RE_JSON_AUTRE_CLE = re.compile(r'^\s*"[^"]*"\s*:')
+RE_JSON_POINT = re.compile(r'^\s*"((?:[^"\\]|\\.)*)"\s*,?\s*$')
+
+
+def extraire_json_nouveautes(lignes, _langue):
+    langue = None
+    for i, l in enumerate(lignes):
+        m = RE_JSON_LANGUE.match(l)
+        if m:
+            langue = m.group(1)
+            continue
+        m = RE_JSON_TITRE.match(l)
+        if m:
+            # Le titre porte sa valeur sur la même ligne que sa clé.
+            if langue and _est_prose(m.group(1)):
+                yield i, langue, m.group(1), _remplacant_intervalle(*m.span(1))
+            continue
+        # « points » ouvre un tableau : la langue court jusqu'à la clé suivante. C'est le
+        # défaut qui a failli livrer quatre phrases sur cinq sans contrôle — seul le titre
+        # était lu, parce que « "points": [ » remettait la langue à zéro comme n'importe
+        # quelle autre clé.
+        if RE_JSON_POINTS.match(l):
+            continue
+        if RE_JSON_AUTRE_CLE.match(l):
+            langue = None
+            continue
+        if langue is None:
+            continue
+        m = RE_JSON_POINT.match(l)
+        if m and _est_prose(m.group(1)):
+            yield i, langue, m.group(1), _remplacant_intervalle(*m.span(1))
+
+
 # Les 18 webviews de vscodium-extension/szh-cockpit/media/*.js. Forme différente de
 # lib/articles.js et lib/yaml.js : pas de structure fr:/de: (vérifié par grep sur les 18
 # fichiers — RE_JS_LANGUE n'y trouve que des codes courts sans espace ni accent, `fr:
@@ -549,6 +594,8 @@ SURFACES = [
     ("revue-template/ausgabe.yaml", extraire_texte, "fr"),
     ("revue-template/articles-word/LISEZ-MOI.txt", extraire_texte, "fr"),
     ("userdoc.md", extraire_texte, "fr"),
+    # Bilingue dans un seul fichier : la langue vient du bloc, pas de cette colonne.
+    ("nouveautes.json", extraire_json_nouveautes, None),
     # La note qui pose les règles s'y tient elle-même : c'est le seul document de docs/
     # sous contrôle, les autres suivent la convention développeur du dépôt.
     ("docs/TYPOGRAPHIE.md", extraire_texte, "fr"),

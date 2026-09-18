@@ -68,6 +68,7 @@
   "config.controlePdfUa": "Valider l’accessibilité PDF/UA en arrière-plan après chaque compilation.",
   "cmd.lierReference": "Lier un appel à une référence",
   "cmd.tutoriel": "Prise en main (tutoriel)",
+  "cmd.nouveautes": "Quoi de neuf",
   "tuto.titre": "Prendre en main la chaîne SZH",
   "tuto.intro": "Neuf étapes, dans l’ordre d’un numéro : du premier Word reçu au PDF archivé. Chaque étape se coche quand vous l’avez faite pour de vrai.",
   "tuto.ouvrir.titre": "Ouvrir un numéro",

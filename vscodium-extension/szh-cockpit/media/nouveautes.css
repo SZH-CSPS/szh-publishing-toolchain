@@ -1,0 +1,36 @@
+/* « Quoi de neuf » : une page qui se lit, rien à y remplir. Le socle (_design.css) pose
+   body, h1 et la largeur ; il ne reste ici que la colonne — plus étroite que les
+   formulaires, parce qu'une ligne de texte courant se lit mal au-delà — et les deux
+   niveaux de la liste. */
+body { --page-max: 44rem; }
+
+.szh-version {
+  margin: -0.4rem 0 1.6rem;
+  opacity: 0.75;
+  font-size: 0.95em;
+}
+
+.szh-note { margin: 0 0 1.8rem; }
+
+.szh-note h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05em;
+}
+
+/* Le medium en regard du titre : on n'annonce jamais une mineure, la ligne dirait donc
+   toujours deux nombres — « 1.2 », pas « 1.2.13 ». */
+.szh-note .szh-medium {
+  margin-left: 0.5rem;
+  opacity: 0.6;
+  font-weight: normal;
+  font-size: 0.9em;
+}
+
+.szh-note ul {
+  margin: 0;
+  padding-left: 1.3rem;
+}
+
+.szh-note li { margin: 0.35rem 0; }
+
+.szh-rien { opacity: 0.75; }

@@ -1255,7 +1255,8 @@ test('chaque webview reçoit le socle visuel, et ses fragments existent', () => 
   // page ajoutée correctement fait échouer ce chiffre, et c'est le moment de relire les
   // assertions ci-dessous plutôt que de bumper le nombre sans regarder. Douzième page :
   // « suggestion », le formulaire du mode vérificateur de traduction (14.09.2026).
-  assert.strictEqual(appels.length, 12, 'appels à construireHtml : ' + appels.length);
+  // Treizième : « nouveautes », la fenêtre « Quoi de neuf » (18.09.2026).
+  assert.strictEqual(appels.length, 13, 'appels à construireHtml : ' + appels.length);
   for (const [, page, corps] of appels) {
     assert.ok(/cssPartage:\s*\[[^\]]*'_design\.css'/.test(corps), 'page sans le socle : ' + page);
     for (const m of corps.matchAll(/'(_[a-z]+\.(?:css|js))'/g)) {

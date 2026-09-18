@@ -2,7 +2,7 @@
   "name": "szh-cockpit",
   "displayName": "SZH – Revue (cockpit)",
   "description": "Barre latérale « Pronto » : articles, métadonnées du numéro, import des Word, suivi des traductions, aperçu et réglages.",
-  "version": "0.60.0",
+  "version": "0.61.0",
   "publisher": "szh-csps",
   "license": "MIT",
   "engines": {
@@ -476,6 +476,12 @@
         "icon": "$(mortar-board)"
       },
       {
+        "command": "szh.nouveautes",
+        "title": "%cmd.nouveautes%",
+        "category": "SZH/CSPS",
+        "icon": "$(megaphone)"
+      },
+      {
         "command": "szh.vueArticles",
         "title": "%cmd.vueArticles%",
         "category": "SZH/CSPS",
@@ -804,6 +810,10 @@
         },
         {
           "command": "szh.tutoriel",
+          "when": "szh.estRevue || szh.estLivre"
+        },
+        {
+          "command": "szh.nouveautes",
           "when": "szh.estRevue || szh.estLivre"
         },
         {

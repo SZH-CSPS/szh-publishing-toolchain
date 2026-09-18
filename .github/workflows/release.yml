@@ -209,6 +209,11 @@ jobs:
           # introuvable » sur tous les postes — le gabarit ne vit que dans le toolkit
           # déployé, jamais dans le dépôt d'un poste.
           cp -r pipeline vscodium-user revue-template livre-template windows toolkit/
+          # nouveautes.json : la note que « Quoi de neuf » montre à la rédaction. Livrée avec
+          # le TOOLKIT et non dans le VSIX du cockpit — elle est indexée par version du
+          # toolkit, et la loger dans l'extension forcerait un bump du cockpit à chaque
+          # release, y compris quand pas une ligne de son code n'a bougé.
+          cp nouveautes.json toolkit/
           echo "$V" > toolkit/VERSION
           (cd toolkit && zip -qr "../toolkit-$V.zip" .)
           sha256sum "toolkit-$V.zip" | tee "toolkit-$V.zip.sha256"

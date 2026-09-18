@@ -1491,14 +1491,38 @@ bouton **« Changer de version… »** du lanceur fait la même chose.
 
 ## La version du logiciel
 
-Le lanceur **« Pronto »** affiche en bas **« Version : … »** : la version installée
-sur ce poste. Chaque numéro, lui, retient la version avec laquelle il a été **créé**.
+Le lanceur **« Pronto »** affiche en bas **« Version : … »** : la version
+installée sur ce poste. Chaque numéro, lui, retient la version avec laquelle il a été
+**créé**.
 
-Si vous ouvrez un ancien numéro et que les deux ne correspondent pas, un message
-apparaît à la première compilation : *« Vous utilisez la version X ; ce numéro a été créé
-avec la version Y. Vérifiez les documents produits. »* Ce n’est pas une erreur – la
-maquette a simplement pu évoluer entre-temps. Regardez le PDF : si tout va bien, il n’y a
-rien à faire.
+Le numéro se lit en trois nombres, **`1.2.3`** :
+
+| | Ce qui change | À quelle fréquence |
+|---|---|---|
+| **1** – le premier | **la maquette** : un numéro recompilé peut sortir différent | une à deux fois par an |
+| **2** – le deuxième | **une fonction arrive** : un panneau, un bouton, une manière de faire | quelques fois par an |
+| **3** – le troisième | **une correction** : le logiciel fait mieux ce qu’il faisait déjà | souvent, parfois deux fois par jour |
+
+### « Quoi de neuf »
+
+Quand le **deuxième** nombre change, une invitation apparaît à la première ouverture
+d’un numéro : *« Pronto a été mis à jour. Voulez-vous voir ce qui a changé ? »* La
+fenêtre liste en quelques phrases ce que la nouvelle version apporte. Les corrections
+courantes – le troisième nombre – ne l’ouvrent jamais.
+
+Elle ne s’affiche qu’une fois. Pour la rouvrir : **Panneau de commande** → *« Quoi
+de neuf »*.
+
+### Quand un numéro n’a pas été fait avec cette maquette
+
+Si vous ouvrez un ancien numéro et que le **premier** nombre diffère, un message
+apparaît à la première compilation : *« Ce numéro a été créé avec la version Y du
+logiciel, ce poste a la X. La maquette a changé entre les deux : relisez le PDF avant
+de le publier. »* Ce n’est pas une erreur – la maquette a simplement évolué entre-temps.
+Regardez le PDF : si tout va bien, il n’y a rien à faire.
+
+Un écart sur le deuxième ou le troisième nombre ne déclenche rien : ces versions-là
+ne touchent pas à la mise en page.
 
 S’il faut vraiment retrouver le rendu d’origine, le bouton **« Changer de version… »** du
 message (ou du lanceur) liste les versions publiées et installe celle que vous choisissez.

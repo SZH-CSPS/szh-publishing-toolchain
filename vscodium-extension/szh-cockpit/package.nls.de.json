@@ -68,6 +68,7 @@
   "config.controlePdfUa": "PDF/UA-Barrierefreiheit nach jeder Kompilierung im Hintergrund prüfen.",
   "cmd.lierReference": "Verweis mit einer Referenz verknüpfen",
   "cmd.tutoriel": "Einstieg (Tutorial)",
+  "cmd.nouveautes": "Was ist neu",
   "tuto.titre": "Die SZH-Publikationskette kennenlernen",
   "tuto.intro": "Neun Schritte in der Reihenfolge einer Ausgabe: vom ersten eingegangenen Word bis zum archivierten PDF. Jeder Schritt wird abgehakt, sobald Sie ihn wirklich ausgeführt haben.",
   "tuto.ouvrir.titre": "Eine Ausgabe öffnen",

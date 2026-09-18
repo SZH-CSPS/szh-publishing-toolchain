@@ -1,0 +1,39 @@
+{
+  "_lisez-moi": [
+    "Ce que la rédaction lit dans « Quoi de neuf » après une mise à jour. Ce n'est PAS",
+    "CHANGELOG.md : celui-ci est le journal du dépôt, il nomme des fonctions et n'existe",
+    "qu'en français. Ici, on écrit pour qui fabrique un numéro, et dans les DEUX langues.",
+    "",
+    "Une entrée par MEDIUM (« 1.1 »), jamais par mineure : une mineure corrige et ne",
+    "s'annonce pas. Sans cette règle, la fenêtre s'ouvrirait deux fois par jour et plus",
+    "personne ne la lirait.",
+    "",
+    "Trois à cinq points par entrée, une phrase chacun, au présent, du point de vue du",
+    "geste : « vous pouvez désormais… », « le bouton X se trouve maintenant… ». Pas de nom",
+    "de fichier, pas de nom de fonction, pas de numéro de version dans le texte — le medium",
+    "est affiché à côté du titre.",
+    "",
+    "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
+  ],
+
+  "1.1": {
+    "fr": {
+      "titre": "Les nouveautés s’affichent",
+      "points": [
+        "Après chaque mise à jour importante, cette fenêtre vous montre ce qui a changé. Les corrections courantes ne l’ouvrent pas : vous ne la verrez que quelques fois par an.",
+        "Vous pouvez la rouvrir quand vous voulez par le panneau de commande, entrée « Quoi de neuf ».",
+        "Le numéro de version du logiciel suit désormais trois niveaux : le premier change quand la maquette change, le deuxième quand une fonction arrive, le troisième pour les corrections.",
+        "Le choix « Version du logiciel… » ne propose plus qu’une ligne par état du logiciel, la plus récente : la liste tenait sur un écran au lieu de quarante."
+      ]
+    },
+    "de": {
+      "titre": "Neuerungen werden angezeigt",
+      "points": [
+        "Nach jeder wichtigen Aktualisierung zeigt Ihnen dieses Fenster, was sich geändert hat. Gewöhnliche Korrekturen öffnen es nicht: Sie werden es nur einige Male pro Jahr sehen.",
+        "Sie können es jederzeit über die Befehlspalette wieder öffnen, Eintrag «Was ist neu».",
+        "Die Versionsnummer der Software hat neu drei Stufen: die erste ändert sich, wenn sich das Layout ändert, die zweite, wenn eine Funktion dazukommt, die dritte bei Korrekturen.",
+        "Die Auswahl «Software-Version…» bietet nur noch eine Zeile pro Stand an, die jeweils neuste: die Liste passt auf einen Bildschirm statt auf vierzig Zeilen."
+      ]
+    }
+  }
+}

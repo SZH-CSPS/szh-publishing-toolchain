@@ -76,7 +76,7 @@ Ce qui est fait de cela, depuis 2026-08 :
 
 | Quand | Geste | Durée |
 |---|---|---|
-| **À chaque release** | test de fumée + les trois contrôles ci-dessus ; vérifier que `version` a bien été incrémentée dans les deux `package.json` d'extension ; choisir le niveau du tag (majeure / medium / mineure, voir [README](../README.md#numéroter-une-version)) et écrire sa section dans `CHANGELOG.md` | 15 min |
+| **À chaque release** | test de fumée + les trois contrôles ci-dessus ; vérifier que `version` a bien été incrémentée dans les deux `package.json` d'extension ; choisir le niveau du tag (majeure / medium / mineure, voir [README](../README.md#numéroter-une-version)) et écrire sa section dans `CHANGELOG.md` ; **pour un medium ou une majeure**, écrire aussi sa note bilingue dans `nouveautes.json` — c'est elle que les rédactions liront | 15 min |
 | **Avant chaque numéro** (≈ 4×/an) | compiler le numéro précédent pour confirmer que rien n'a bougé ; vérifier que les dossiers de revue sont « toujours conservés sur cet appareil » côté OneDrive | 10 min |
 | **Après une mise à jour majeure de Windows** | test de fumée sur un poste ; `wsl --version` et `wsl -l -v` | 15 min |
 | **Après un changement de politique antivirus ou Intune** | re-vérifier les exclusions WSL (elles ne sont pas posées automatiquement, voir § Poste) | 10 min |

@@ -56,6 +56,19 @@ function versionsDivergent(versionNumero, versionPoste) {
   return a !== b;
 }
 
+// Le medium d'un numéro de version — « 1.2 » pour 1.2.13 —, ou une chaîne vide quand ce n'en
+// est pas un. C'est l'unité d'annonce du dépôt : une mineure ne s'annonce pas, un medium se
+// dit, et lib/nouveautes.js range ses notes sous cette clé. Même règle, au caractère près,
+// que Get-SzhMediumVersion (windows/szh-common.ps1) : la majeure doit valoir au moins 1 et
+// rester sous 2000, au-delà c'est une année, donc l'ancienne numérotation.
+function mediumVersion(version) {
+  const trouve = /^v?(\d+)\.(\d+)\.\d+/.exec(String(version || '').trim());
+  if (!trouve) { return ''; }
+  const majeure = Number(trouve[1]);
+  if ((majeure < 1) || (majeure >= 2000)) { return ''; }
+  return majeure + '.' + Number(trouve[2]);
+}
+
 function tailleDossier(chemin) {
   let total = 0;
   let entrees;
@@ -362,6 +375,6 @@ module.exports = {
   lireVerifTraduction, ecrireVerifTraduction,
   CLE_MODE_TRAD, resoudreModeTrad, configAvecModeTrad,
   lireModeTrad, ecrireModeTrad,
-  versionInstallee, versionsDivergent, tailleDossier,
+  versionInstallee, versionsDivergent, mediumVersion, tailleDossier,
   lancerArchivage, lancerChoixVersion
 };

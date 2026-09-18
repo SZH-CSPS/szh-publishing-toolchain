@@ -26,6 +26,11 @@ const ID_VUE = 'szhCockpitVue';
 // À garder identiques aux labels de vscodium-user/tasks.json, qui les nomme.
 const NOM_TACHE_IMPORT = 'Importer les articles Word';
 const CLE_TUTORIEL_VU = 'szh.tutoriel.propose';   // invitation au tutoriel : une seule fois
+// Le dernier MEDIUM dont cette personne a vu les nouveautés (« 1.1 »), et non la version
+// complète : une mineure ne s'annonce pas, sans quoi la fenêtre s'ouvrirait deux fois par
+// jour. globalState et non un fichier du poste : le toolkit est commun à la machine, mais
+// « l'ai-je lu ? » est propre à chaque compte.
+const CLE_NOUVEAUTES_VU = 'szh.nouveautes.medium';
 const NOM_TACHE_BUILD = 'Aperçu / Export PDF';
 const NOM_TACHE_EXPORT = 'Tout exporter';
 const NOM_TACHE_DOCX = 'Galleys DOCX (OJS)';
@@ -67,6 +72,9 @@ const {
   // versionsDivergent n'est plus appelée ici (voir lib/cycle-vie.js) mais reste exposée
   // par module.exports._pur, qui la veut en liaison de module — pas seulement ré-exportée.
   versionsDivergent,
+  // La version du toolkit posée sur ce poste : « Quoi de neuf » la met en sous-titre, pour
+  // que la personne puisse la citer telle quelle quand elle appelle.
+  versionInstallee,
   // ecrireModeDeveloppeur n'est plus appelée ici : l'écriture se fait désormais depuis
   // l'onglet « Paramètres » du lanceur Windows. Elle reste exportée par lib/archivage.js.
   lireModeDeveloppeur, lireConfigPoste, ecrireConfigPoste,
@@ -126,6 +134,9 @@ const {
 } = require('./lib/table-model');
 // ---- Assemblage des webviews -> lib/webviews/util.js -----------------------------
 const { construireHtml } = require('./lib/webviews/util');
+// ---- « Quoi de neuf » -> lib/nouveautes.js ---------------------------------------
+// Les notes livrées avec le toolkit, et la décision de ce qu'il y a à montrer.
+const nouveautes = require('./lib/nouveautes');
 // ---- Ce qu'est le dossier ouvert -> lib/profil.js --------------------------------
 // Numéro de revue ou livre : la table qui le dit, et les chemins qui en découlent.
 const profils = require('./lib/profil');
@@ -6632,6 +6643,12 @@ function activate(context) {
     // dessiner sur la barre latérale ni sur les onglets.
     vscode.commands.registerCommand('szh.tutoriel', () => vscode.commands.executeCommand(
       'workbench.action.openWalkthrough', 'szh-csps.szh-cockpit#szhDemarrage', false)),
+    // « Quoi de neuf » : la fenêtre s’ouvre seule après une mise à jour qui change de
+    // medium, mais elle doit rester atteignable ensuite — sans quoi une note refusée d’un
+    // clic serait perdue pour toujours. Demandée à la main, elle montre la note du medium
+    // installé, jamais tout l’historique.
+    vscode.commands.registerCommand('szh.nouveautes',
+      () => montrerNouveautes(nouveautes.mediumInstalle())),
     vscode.commands.registerCommand('szh.vueTraductions',
       () => ouvrirVueEnsemble(fournisseur, rafraichirTout, 'traductions')),
     cmd('szh.vueArticles', () => ouvrirVueArticles(fournisseur, rafraichirTout)),
@@ -6838,6 +6855,7 @@ function activate(context) {
         });
     } finally { barre.dispose(); }
     proposerTutoriel(context);
+    proposerNouveautes(context);
   };
   // La liste des auteur·e·s publiés (OAI-PMH public d'ojs.szh.ch) se rafraîchit en tâche
   // de fond, au plus une fois par semaine — sans bloquer l'activation, et sans un mot en
@@ -6868,6 +6886,81 @@ async function proposerTutoriel(context) {
     const choix = await vscode.window.showInformationMessage(T('tuto.invite'), ouvrir);
     if (choix === ouvrir) { await vscode.commands.executeCommand('szh.tutoriel'); }
   } catch (e) { /* invitation ratée : la commande et l'icône restent */ }
+}
+
+// ---- « Quoi de neuf » ------------------------------------------------------------
+// La fenêtre s'ouvre seule après une mise à jour qui a changé de MEDIUM, une fois par
+// personne et par medium ; une mineure ne dit jamais rien. Le texte vient de
+// nouveautes.json, livré à la racine du toolkit, et il est écrit pour la rédaction — pas
+// de CHANGELOG.md, qui nomme des fonctions et n'existe qu'en français.
+
+let panneauNouveautes = null;
+
+function htmlNouveautes(nonce) {
+  return construireHtml('nouveautes', nonce, {
+    cssPartage: ['_design.css'], jsPartage: ['_messages.js'], titre: T('nouv.titre')
+  });
+}
+
+function valeursNouveautes(medium) {
+  const installee = versionInstallee();
+  return {
+    type: MSG.VALEURS,
+    titre: T('nouv.titre'),
+    version: installee ? T('nouv.version', [installee]) : '',
+    notes: nouveautes.notesPour(medium, langueCockpit()),
+    i18n: { rien: T('nouv.rien') }
+  };
+}
+
+// $medium : ce que la personne avait déjà vu. La fenêtre ouverte à la main depuis le
+// panneau de commande passe le medium installé — elle montre alors la note du jour, et non
+// tout ce qui a été manqué.
+function montrerNouveautes(medium) {
+  if (panneauNouveautes) {
+    panneauNouveautes.reveal(vscode.ViewColumn.One);
+    repondrePanneau(panneauNouveautes, valeursNouveautes(medium));
+    return;
+  }
+  const panneau = vscode.window.createWebviewPanel(
+    'szhNouveautes', T('nouv.titre'), vscode.ViewColumn.One,
+    { enableScripts: true, localResourceRoots: [] }
+  );
+  panneauNouveautes = panneau;
+  panneau.onDidDispose(() => { if (panneauNouveautes === panneau) { panneauNouveautes = null; } });
+  panneau.webview.onDidReceiveMessage((recu) => {
+    if (!recu) { return; }
+    if (recu.type === MSG.PRET) { repondrePanneau(panneau, valeursNouveautes(medium)); return; }
+    console.warn('nouveautés : type de message inconnu', recu.type);
+  });
+  panneau.webview.html = htmlNouveautes(crypto.randomBytes(16).toString('hex'));
+}
+
+// Rien n'est montré sans un clic : la fenêtre s'ouvre seule, mais elle ne s'ouvre qu'après
+// une invitation acceptée — une page qui surgit par-dessus le travail en cours se ferme
+// sans être lue. Le medium est enregistré dans tous les cas, refus compris : reposer la
+// question à chaque ouverture de numéro serait pire que de ne rien dire.
+async function proposerNouveautes(context) {
+  try {
+    const installe = nouveautes.mediumInstalle();
+    if (!installe) { return; }                       // version illisible, ou poste de dev
+    const vu = String(context.globalState.get(CLE_NOUVEAUTES_VU) || '');
+    if (vu === installe) { return; }
+    // Personne n'a encore rien vu. Sur un poste NEUF, tout est nouveau et l'invitation au
+    // tutoriel dit déjà ce qu'il faut : on enregistre en silence. Sur un poste qui tournait
+    // avant cette version, le tutoriel a déjà été proposé — c'est le seul signe fiable que
+    // quelqu'un travaillait ici avant la mise à jour, et c'est à lui qu'on doit la note.
+    const dejaLa = Boolean(context.globalState.get(CLE_TUTORIEL_VU));
+    if (!vu && !dejaLa) { await context.globalState.update(CLE_NOUVEAUTES_VU, installe); return; }
+    if (nouveautes.notesPour(vu, langueCockpit()).length === 0) {
+      await context.globalState.update(CLE_NOUVEAUTES_VU, installe);
+      return;
+    }
+    await context.globalState.update(CLE_NOUVEAUTES_VU, installe);
+    const ouvrir = T('nouv.invite.bouton');
+    const choix = await vscode.window.showInformationMessage(T('nouv.invite'), ouvrir);
+    if (choix === ouvrir) { montrerNouveautes(vu); }
+  } catch (e) { /* invitation ratée : la commande du panneau reste */ }
 }
 
 function deactivate() { arreterDormeurWsl(); }

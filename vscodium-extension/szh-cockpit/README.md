@@ -106,6 +106,10 @@ lib/
   mots-cles-edudoc.js   descripteurs bilingues DE/FR des deux revues, moissonnés en OAI-PMH
                         public sur edudoc.ch (marcxml, champ MARC 690) et cachés dans
                         mots-cles.json — pas encore branché sur une autocomplétion
+  nouveautes.js         « Quoi de neuf » : les notes livrées à la racine du toolkit
+                        (nouveautes.json), indexées par MEDIUM de version — jamais par
+                        mineure —, et la décision de ce qu'il y a à montrer. Écrites pour
+                        la rédaction et dans les deux langues, à l'inverse de CHANGELOG.md
   oai-pmh.js            client https et parseur OAI-PMH communs à auteurs-ojs.js et
                         mots-cles-edudoc.js : redirections même-hôte, réponse bornée,
                         délai total, resumptionToken, repli sur 503 — SZH_RESEAU_INTERDIT

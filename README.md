@@ -121,6 +121,27 @@ Deux mécanismes lisent ces niveaux, et c'est là que le schéma gagne sa place 
 Chaque release s'inscrit dans [`CHANGELOG.md`](CHANGELOG.md), dont `release.yml` tire les
 notes publiées.
 
+### Écrire la note d'un medium
+
+Un medium — et lui seul — demande une note dans [`nouveautes.json`](nouveautes.json), la
+fenêtre « Quoi de neuf » que le cockpit ouvre sur les postes après la mise à jour.
+
+**Ce n'est pas le `CHANGELOG`, et ce n'est pas facultatif.** Deux textes, deux publics :
+`CHANGELOG.md` nomme des fonctions, s'adresse à qui tient le code et n'existe qu'en
+français ; `nouveautes.json` s'adresse à qui fabrique un numéro, ne parle que de gestes, et
+existe **dans les deux langues** — la Zeitschrift est germanophone, une note qui n'existe
+qu'en français laisse la moitié de la rédaction devant un texte qu'elle ne lit pas. Trois à
+cinq points, une phrase chacun, sans nom de fichier ni numéro de version dans le texte.
+
+La clé est le medium (`"1.1"`), jamais la version complète : une mineure ne s'annonce pas.
+La fenêtre ne s'ouvre donc que quelques fois par an, ce qui est la condition pour qu'elle
+soit encore lue.
+
+Deux garde-fous : `test/js/nouveautes.test.js` refuse une note qui manque dans une langue,
+qui n'a pas le même nombre de points des deux côtés, ou qui ne part pas dans le toolkit ; et
+`test/typo-check.py` tient la typographie du fichier — insécables à la française en `fr`,
+collées en `de`. Il se corrige tout seul : `python3 test/typo-check.py --corriger`.
+
 ### Publier une version
 
 Pousser un tag déclenche [`release.yml`](.github/workflows/release.yml) :
