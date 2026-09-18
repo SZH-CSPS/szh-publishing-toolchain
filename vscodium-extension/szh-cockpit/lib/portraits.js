@@ -9,18 +9,17 @@
 
 const { spawn } = require('child_process');
 const { reveillerWsl, DISTRO, cheminWsl } = require('./wsl');
+const { versWsl, toolkitWsl } = require('./chemins-poste');
 
 const INTERPRETE_DEFAUT = '/opt/portraits/bin/python';
-const SCRIPT_DEFAUT = '/mnt/c/ProgramData/SZH/toolkit/pipeline/portraits.py';
+const SCRIPT_DEFAUT = toolkitWsl('pipeline', 'portraits.py');
 // Large, car le premier appel paie le réveil de la VM et le chargement du modèle
 // u2net_human_seg ; les images suivantes de la même session sont bien plus rapides.
 const TIMEOUT_DEFAUT = 180000;
 
+// Conservée sous ce nom : lib/cmyk.js (et d'autres) l'importent d'ici. Délègue à versWsl().
 function cheminVersWsl(chemin) {
-  const c = String(chemin || '');
-  const m = c.match(/^([A-Za-z]):[\\/](.*)$/);
-  if (!m) { return c.replace(/\\/g, '/'); }
-  return '/mnt/' + m[1].toLowerCase() + '/' + m[2].replace(/\\/g, '/');
+  return versWsl(chemin);
 }
 
 // -> Promise<[{slug, ok, visage, recadre, fichiers, erreur}]>. Une invocation traite

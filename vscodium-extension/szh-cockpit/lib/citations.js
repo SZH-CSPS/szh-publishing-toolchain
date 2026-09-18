@@ -17,6 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const { REVUES, LANGUES_META } = require('./yaml');
 const { lireConfigPoste } = require('./archivage');
+const { basePoste } = require('./chemins-poste');
 
 // Les deux revues et les trois langues du titre de bibliographie, dans l'ordre où le
 // panneau les affiche. Une seule définition des unes et des autres, celle des fiches.
@@ -39,7 +40,7 @@ const LANGUES_BIBLIO = LANGUES_META.slice();
 // Mêmes chemins que lib/archivage.js et windows/szh-common.ps1.
 const FILTRES = [
   path.resolve(__dirname, '..', '..', '..', 'pipeline', 'filters', 'szh-citations.lua'),
-  path.join('C:\\ProgramData\\SZH', 'toolkit', 'pipeline', 'filters', 'szh-citations.lua')
+  path.join(basePoste(), 'toolkit', 'pipeline', 'filters', 'szh-citations.lua')
 ];
 
 function emplacements() {

@@ -7,10 +7,11 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { ecrireAtomique } = require('./yaml');
+const { basePoste } = require('./chemins-poste');
 
 // Mêmes chemins que szh-common.ps1 ($SzhBase et $SzhToolkit) et que lib/portraits.js,
 // qui vise le même toolkit depuis WSL.
-const BASE_SZH = 'C:\\ProgramData\\SZH';
+const BASE_SZH = basePoste();
 const TOOLKIT = path.join(BASE_SZH, 'toolkit');
 const SCRIPT_ARCHIVAGE = path.join(TOOLKIT, 'windows', 'archive-revue.ps1');
 const SCRIPT_LANCEUR = path.join(TOOLKIT, 'windows', 'open-revue.ps1');

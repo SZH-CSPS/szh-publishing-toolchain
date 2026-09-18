@@ -42,12 +42,13 @@
 
 const fs = require('fs');
 const path = require('path');
+const { basePoste } = require('./chemins-poste');
 
 // Mêmes chemins que lib/archivage.js et lib/i18n.js. La surcharge d'environnement suit la
 // même règle que partout : une fonction, jamais une constante, pour voir une surcharge
 // posée après le chargement du module — c'est ainsi que les tests travaillent sans jamais
 // toucher au fichier du poste.
-const BASE_POSTE = 'C:\\ProgramData\\SZH';
+const BASE_POSTE = basePoste();
 const NOM_FICHIER = 'settings-protected.json';
 
 function cheminReglagesProteges() {

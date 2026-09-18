@@ -15,8 +15,9 @@ const { spawn } = require('child_process');
 const { reveillerWsl, DISTRO, cheminWsl } = require('./wsl');
 const { cheminVersWsl, INTERPRETE_DEFAUT } = require('./portraits');
 const { sofJpeg } = require('./medias');
+const { toolkitWsl } = require('./chemins-poste');
 
-const SCRIPT_DEFAUT = '/mnt/c/ProgramData/SZH/toolkit/pipeline/cmyk-rgb.py';
+const SCRIPT_DEFAUT = toolkitWsl('pipeline', 'cmyk-rgb.py');
 // Pillow est déjà chargé par le venv : sans le réveil de la VM, quelques secondes suffisent.
 const TIMEOUT_DEFAUT = 60000;
 

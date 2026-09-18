@@ -39,6 +39,8 @@ lib/
   cantons.js            les 26 cantons et la Confédération : la liste fermée du champ
                         « canton » d'une fiche d'intervention parlementaire — le code est
                         stocké et imprimé, le nom complet ne sert qu'à la liste déroulante
+  chemins-poste.js      point de passage unique des chemins du poste : base, toolkit,
+                        forme WSL
   citations.js          liste de références d'un article et liage manuel d'un appel
   cmyk.js               detection des JPEG CMJN et appel du convertisseur, dans WSL
   codes-erreur.js       table des 9 codes d'erreur applicatifs et schéma v1 des rapports

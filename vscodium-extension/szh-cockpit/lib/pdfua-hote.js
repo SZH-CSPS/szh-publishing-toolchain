@@ -48,12 +48,12 @@ const profils = require('./profil');
 const coedition = require('./coedition');
 const { ecrireAtomique } = require('./yaml');
 const { verdictsPdfUa } = require('./journal');
+const { toolkitWsl } = require('./chemins-poste');
 
 const NOM_CACHE = '.szh-pdfua.json';
 
-// ⚠ Doit correspondre au Makefile réel du toolkit déployé (voir extension.js, même
-// littéral) : ce module ne peut pas l'importer sans dépendre d'extension.js lui-même.
-const MAKEFILE_WSL = '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile';
+// Même source que MAKEFILE_WSL d'extension.js : lib/chemins-poste.js.
+const MAKEFILE_WSL = toolkitWsl('pipeline', 'Makefile');
 const VERIFIER_UA_WSL = path.posix.dirname(MAKEFILE_WSL) + '/verifier-ua.sh';
 
 // Large, comme lancerReimporter() (extension.js) : le premier appel paie le réveil de la

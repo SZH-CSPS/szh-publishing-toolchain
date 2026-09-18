@@ -34,12 +34,15 @@ const NOM_TACHE_LIVRE_IMPRIMEUR = 'Livre : PDF imprimeur';
 const NOM_TACHE_LIVRE_COUVERTURE = 'Livre : couverture';
 const NOM_TACHE_LIVRE_EPUB = 'Livre : EPUB';
 const NOM_TACHE_LIVRE_WEB = 'Livre : HTML web';
-// À garder alignés avec vscodium-user/tasks.json, lib/wsl.js et lib/portraits.js.
+// ---- Chemins du poste -> lib/chemins-poste.js -------------------------------------
+const { toolkitWsl } = require('./lib/chemins-poste');
+
+// À garder alignés avec vscodium-user/tasks.json et lib/wsl.js.
 const DISTRO_WSL = 'SZH-Publishing';
-const MAKEFILE_WSL = '/mnt/c/ProgramData/SZH/toolkit/pipeline/Makefile';
+const MAKEFILE_WSL = toolkitWsl('pipeline', 'Makefile');
 // Le réimport d'un article corrigé. Seul maillon que le cockpit appelle sans passer par
 // une tâche : il rend une ligne JSON qu'il faut lire, et une tâche n'en rapporte rien.
-const REIMPORTER_WSL = '/mnt/c/ProgramData/SZH/toolkit/pipeline/reimporter.py';
+const REIMPORTER_WSL = toolkitWsl('pipeline', 'reimporter.py');
 
 // ---- i18n du cockpit -> lib/i18n.js ----------------------------------------------
 const { TEXTES_COCKPIT, T, TL, langueCockpit, oublierLanguePoste } = require('./lib/i18n');

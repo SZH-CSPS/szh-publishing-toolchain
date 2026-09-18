@@ -10,22 +10,23 @@
 // contexte du cockpit et l'ÉCRITURE (résolution de l'ancrage, anti-inondation, file
 // d'attente, disque) — la moitié impure que codes-erreur.js n'a pas.
 //
-// Dépendances volontairement limitées à fs/path/os (plus codes-erreur.js, le contrat déjà
-// livré) : jamais `require('vscode')`, jamais un autre module de lib/ (archivage.js,
-// yaml.js…). Deux raisons : ce module doit rester chargeable par le banc de test hors de
-// l'éditeur (test/js/rapport-erreur.test.js le requiert directement), et un futur écrivain
-// PowerShell (lanceur, autre jalon) doit pouvoir reproduire cette moitié-ci de la même façon
-// qu'il reproduit déjà celle de codes-erreur.js — sans avoir à traduire des dépendances
-// propres au cockpit (mailsTraduction, emplacementRevues…) qui n'ont rien à voir avec un
-// rapport d'erreur. Là où un motif du dépôt est réutile (lecture tolérante de config.json,
-// écriture atomique), il est repris ICI localement plutôt que requis depuis lib/archivage.js
-// — voir les commentaires plus bas à chaque endroit concerné.
+// Dépendances volontairement limitées à fs/path/os (plus codes-erreur.js, le contrat déjà livré,
+// et chemins-poste.js, qui ne dépend lui aussi que de fs/path) : jamais `require('vscode')`,
+// jamais un autre module de lib/ (archivage.js, yaml.js…). Deux raisons : ce module doit rester
+// chargeable par le banc de test hors de l'éditeur (test/js/rapport-erreur.test.js le requiert
+// directement), et un futur écrivain PowerShell doit pouvoir reproduire cette moitié-ci comme il
+// reproduit déjà codes-erreur.js — sans avoir à traduire des dépendances propres au cockpit
+// (mailsTraduction, emplacementRevues…) qui n'ont rien à voir avec un rapport d'erreur. Là où un
+// motif du dépôt est réutile (lecture tolérante de config.json, écriture atomique), il est repris
+// ICI localement plutôt que requis depuis lib/archivage.js — voir les commentaires plus bas à
+// chaque endroit concerné.
 'use strict';
 
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const codesErreur = require('./codes-erreur');
+const { basePoste } = require('./chemins-poste');
 
 // ---------------------------------------------------------------------------------------
 // 1. Racines et chemins — dérivés, jamais en dur, surchargeables pour les tests
@@ -59,8 +60,7 @@ const codesErreur = require('./codes-erreur');
 // après le require (comme le fait chaque test) doit être vue au prochain appel (même motif
 // que lib/archivage.js#cheminConfigPoste).
 function racineProgramData() {
-  const v = String(process.env.SZH_BASE || '').trim();
-  return v || 'C:\\ProgramData\\SZH';
+  return basePoste();
 }
 function racineUtilisateur() {
   const v = String(process.env.LOCALAPPDATA || '').trim();

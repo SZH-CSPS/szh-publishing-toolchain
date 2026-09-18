@@ -9,6 +9,7 @@
 // main. La langue retombe alors sur SZH_LANGUE, puis sur le français.
 const fs = require('fs');
 const path = require('path');
+const { basePoste } = require('./chemins-poste');
 let vscode = null;
 try { vscode = require('vscode'); } catch (e) { /* hors éditeur */ }
 
@@ -2937,7 +2938,7 @@ const TEXTES_COCKPIT = {
 //   6. Windows           sa langue d'affichage, par la locale du système.
 //
 // … et le français en dernier recours, faute de mieux.
-const BASE_POSTE = 'C:\\ProgramData\\SZH';
+const BASE_POSTE = basePoste();
 
 // Mêmes surcharges que partout ailleurs dans le cockpit : SZH_CONFIG_OJS pour config.json
 // (lib/archivage.js l'emploie déjà), SZH_ETAT_POSTE pour state.json. Des fonctions et non
