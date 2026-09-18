@@ -37,9 +37,41 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Vale épinglé, mêmes ARG que image/Containerfile (VALE_VERSION/VALE_SHA256) : sans
+      # lui test/js/manuscrit-vale.test.js sauterait au lieu de s'exécuter réellement — ce
+      # job est le seul, avec pdf-ua, qui installe un outil externe pour la CI. Mis en cache
+      # comme la chaîne PDF (pdf-ua) : le job entier tourne à chaque push, un cache évite de
+      # retélécharger le même binaire à chaque run.
+      - name: Mettre en cache vale
+        id: cache-vale
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/vale
+          key: vale-3.22.0-linux64
+
+      - name: Installer vale
+        if: steps.cache-vale.outputs.cache-hit != 'true'
+        env:
+          VALE_VERSION: "3.22.0"
+          VALE_SHA256: "52f5cd0314a1b7384cac6aa102a68193977312f6ba9c9f3ae001b5deec8e3a10"
+        run: |
+          curl -fsSL "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" \
+            -o /tmp/vale.tar.gz
+          printf '%s  %s\n' "${VALE_SHA256}" /tmp/vale.tar.gz | sha256sum -c -
+          sudo tar -xzf /tmp/vale.tar.gz -C /usr/local/bin vale
+          sudo chmod +x /usr/local/bin/vale
+          rm /tmp/vale.tar.gz
+
+      - name: Vérifier vale
+        run: vale --version | grep -m1 "^vale version"
+
       # SZH_PYTHON_OBLIGATOIRE=1 : ubuntu-latest fournit python3 de base ; s'il
       # disparaissait un jour de l'image, les tests Python doivent ÉCHOUER, pas sauter
       # en silence (même logique que SZH_PS_OBLIGATOIRE plus bas côté Windows).
+      # SZH_VALE_OBLIGATOIRE=1 : vale vient d'être installé juste au-dessus dans CE job —
+      # s'il disparaissait de l'installation, test/js/manuscrit-vale.test.js doit échouer,
+      # pas sauter en silence (détection faite dans le fichier de test lui-même, pas dans
+      # test/js/gardes.js).
       # --test-timeout=120000 : un test qui reste bloqué (attente sans borne côté hôte
       # factice) sort en `# cancelled`, PAS en `# fail` — mesuré (node --test
       # --test-timeout=2000 sur un test bloqué : pass 1 / fail 0 / cancelled 1, process
@@ -48,6 +80,7 @@ jobs:
       - name: Vérifier les contrats du cockpit
         env:
           SZH_PYTHON_OBLIGATOIRE: "1"
+          SZH_VALE_OBLIGATOIRE: "1"
         run: |
           set -o pipefail
           node --test --test-timeout=120000 --test-reporter=tap \

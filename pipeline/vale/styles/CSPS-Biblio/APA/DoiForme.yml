@@ -1,0 +1,17 @@
+# Revue : normes APA 7e révision (voir aussi les exemples du chapitre 3.2.2, tous en
+# https://doi.org/xxxx). La forme moderne d'un DOI en bibliographie est
+# https://doi.org/<identifiant>, jamais « doi:xxxx », « dx.doi.org/xxxx » ni un lien http://
+# non sécurisé vers doi.org.
+#
+# Un swap littéral ne peut pas reconstruire l'identifiant du DOI (il change à chaque
+# référence) : ce fichier repère les trois formes fautives (net large), et
+# pipeline/manuscrit_vale.py recompose la forme correcte en Python à partir du texte du
+# constat.
+extends: existence
+message: "DOI à réécrire en https://doi.org/... (normes APA) : « %s »."
+level: warning
+ignorecase: true
+tokens:
+  - 'doi\s*:\s*10\.\d{4,}\S*'
+  - 'dx\.doi\.org/10\.\d{4,}\S*'
+  - 'http://(?:dx\.)?doi\.org/10\.\d{4,}\S*'

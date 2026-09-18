@@ -1,0 +1,24 @@
+# Revue : 2.2 Langage épicène — « à proscrire (en cas de recours au langage épicène) : la
+# barre oblique, la parenthèse et/ou la majuscule (p. ex. "éducateur/trice" ;
+# "enseignant(e)" ; "représentantEs") ». SEULES ces trois formes sont citées par le PDF —
+# ni le deux-points ni le trait d'union n'y figurent, voir Epicene.FormesNonListees pour
+# les formes que le PDF ne tranche pas.
+extends: existence
+message: "Forme épicène contractée proscrite par les lignes directrices de la Revue : « %s »."
+level: error
+ignorecase: false
+tokens:
+  # barre oblique : éducateur/trice, étudiant/e, professeur/e, directeur/trice.
+  # ⚠ Mesuré sur le corpus réel (19.09.2026) : un second groupe libre (`[a-zà-öø-ÿ]{1,8}`)
+  # attrape n'importe quel « mot/mot » sans rapport avec l'épicène — « papier/crayon »,
+  # « inclus/exclu » — six et un faux positifs sur onze manuscrits. Le second groupe est
+  # donc restreint aux suffixes de féminisation RÉELLEMENT possibles après une barre
+  # oblique, le même répertoire que la forme entre parenthèses juste en dessous.
+  - '\b[a-zà-öø-ÿ]{3,}/(?:e|ne|le|trice|euse|esse|ère|ienne|enne)s?\b'
+  # parenthèse : enseignant(e), moniteur(trice), acteur(euse). Pas de \b final : ")" n'est
+  # pas un caractère de mot, un \b y échouerait dès que le mot est suivi d'une espace ou
+  # d'un point — bug mesuré dans l'ancien détecteur Python (RE_FORME_PARENTHESE), qui ne
+  # relevait donc JAMAIS "enseignant(e) " en fin de proposition, seulement au pluriel.
+  - '\b[a-zà-öø-ÿ]{3,}\((?:e|ne|le|trice|euse)\)s?'
+  # majuscule intérieure (Binnen-I à la française) : représentantEs, lesÉlèves
+  - '\b[a-zà-öø-ÿ]{2,}[A-ZÉÈ][a-zà-öø-ÿ]*s?\b'

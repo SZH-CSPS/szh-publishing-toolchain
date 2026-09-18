@@ -158,6 +158,23 @@ RUN curl -fsSL "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION
     && dpkg -i /tmp/pandoc.deb \
     && rm /tmp/pandoc.deb
 
+# ---- Vale : binaire statique, version épinglée (pipeline/vale/, §7 du contrat) ----
+# Décidé avec Robin le 18.09.2026 : les règles lexicales et éditoriales du nettoyeur de
+# manuscrit (langage épicène, vocabulaire du handicap, casse maison, citations APA) sont des
+# données YAML que la rédaction édite sans coder — voir pipeline/vale/LISEZMOI.md. Vale
+# lui-même entre ici comme un binaire épinglé, même patron que pandoc ci-dessus : URL
+# versionnée (jamais /latest/), sha256 vérifié contre le fichier de sommes de la release,
+# jamais un binaire nu sans preuve. Aucune entrée windows/apps.lock : le nettoyeur tourne
+# dans la WSL, pas sur le poste Windows.
+ARG VALE_VERSION=3.22.0
+ARG VALE_SHA256=52f5cd0314a1b7384cac6aa102a68193977312f6ba9c9f3ae001b5deec8e3a10
+RUN curl -fsSL "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" \
+        -o /tmp/vale.tar.gz \
+    && printf '%s  %s\n' "${VALE_SHA256}" /tmp/vale.tar.gz | sha256sum -c - \
+    && tar -xzf /tmp/vale.tar.gz -C /usr/local/bin vale \
+    && chmod +x /usr/local/bin/vale \
+    && rm /tmp/vale.tar.gz
+
 # ---- Portraits : venv isolé /opt/portraits ----
 # rembg pour le détourage, OpenCV YuNet pour la détection de visage, au service de
 # pipeline/portraits.py, que le cockpit appelle directement sans passer par le Makefile.
@@ -212,4 +229,5 @@ RUN fc-cache -f
 # amont n'existe pas — la vérification donnait donc son quitus à une image cassée.
 RUN pandoc --version | grep -m1 "^pandoc" \
     && weasyprint --info | grep -m1 -i "weasyprint" \
-    && verapdf --version | grep -m1 "^veraPDF"
+    && verapdf --version | grep -m1 "^veraPDF" \
+    && vale --version | grep -m1 "^vale version"

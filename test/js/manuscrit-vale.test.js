@@ -1,0 +1,429 @@
+// test/js/manuscrit-vale.test.js : le pont Vale du nettoyeur de manuscrit (article), §7 de
+// outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md. Les familles lexicales et éditoriales
+// (langage épicène, vocabulaire du handicap, casse maison, liaison et/&, citation directe,
+// nom des éditions) vivent en YAML dans pipeline/vale/styles/, portées par Vale — jamais
+// réimplémentées ici ni dans pipeline/manuscrit_regles.py, qui ne garde que le structurel
+// (voir test/js/manuscrit-regles.test.js).
+//
+// Ce fichier éprouve :
+//   1. la configuration Vale se charge (vale ls-config), les trois styles (CSPS,
+//      CSPS-Biblio, SZH) sont bien attachés à leurs quatre fichiers ;
+//   2. un positif et un négatif pour chacune des treize règles du catalogue ;
+//   3. LE PIÈGE OQLF/CSPS, nommé comme critère d'acceptation : « personne en situation de
+//      handicap » ne lève jamais rien ;
+//   4. LE FAIT QUI COMMANDE TOUT (l'inversion épicène) : chaque produit proscrit
+//      exactement le contraire de l'autre ;
+//   5. les URL et DOI ne déclenchent jamais Epicene dans le corps, alors qu'un DOI reste
+//      lisible (et donc réécrit) dans la bibliographie — le masquage est CORPS SEULEMENT ;
+//   6. extraire() rend une ligne par paragraphe et un index exact, et refuse un mélange
+//      corps/bibliographie plutôt que de rendre un index ambigu en silence ;
+//   7. analyser() rend indisponible=True proprement (jamais une exception) quand vale ne
+//      peut pas tourner — configuration cassée ou règle YAML mal formée.
+//
+//   node --test test/js/manuscrit-vale.test.js
+//
+// Détection de vale FAITE ICI (jamais dans test/js/gardes.js, hors périmètre de ce
+// chantier) : PATH d'abord, puis wsl.exe -d SZH-Publishing en repli — même distro que
+// gardes.js. Sans vale : t.skip('vale absent'), sauf SZH_VALE_OBLIGATOIRE=1 qui transforme
+// le saut en échec, comme les autres gardes du dépôt. Le motif du saut cite volontairement
+// « wsl.exe » ET « dans la distro », les deux fragments que test/js/verifier-tap.js admet
+// déjà pour la famille `wsl` sur ubuntu ET sur windows — aucune modification de ce fichier
+// n'est donc nécessaire pour que ce test saute proprement en CI tant que vale n'y est pas
+// installé (le job `contrats` l'installe : voir .github/workflows/ci.yml).
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const cp = require('child_process');
+const { PYTHON, sansPython } = require('./gardes');
+
+const RACINE = path.resolve(__dirname, '..', '..');
+const MANUSCRIT_VALE = path.join(RACINE, 'pipeline', 'manuscrit_vale.py');
+const DISTRO = 'SZH-Publishing';
+
+function python(args, entree) {
+  return cp.spawnSync(PYTHON, args,
+    { encoding: 'utf8', input: entree, maxBuffer: 64 * 1024 * 1024 });
+}
+
+// ---------------------------------------------------------------------------------
+// Détection de vale — PATH d'abord, wsl.exe en repli. Jamais bloquante : un délai borne
+// chaque tentative, comme gardes.js le fait pour python3.
+
+function detecterValeSurPath() {
+  try {
+    const r = cp.spawnSync('vale', ['--version'],
+      { encoding: 'utf8', timeout: 5000, windowsHide: true });
+    return !r.error && r.status === 0 && /vale version/i.test(String(r.stdout || ''));
+  } catch (e) {
+    return false;
+  }
+}
+
+function detecterValeSurWsl() {
+  const wslExe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wsl.exe');
+  const exe = fs.existsSync(wslExe) ? wslExe : 'wsl.exe';
+  try {
+    // bash -lc : un poste de développement sans sudo installe vale dans ~/.local/bin, qui
+    // n'entre sur le PATH que via .profile (jamais sourcé par une commande `wsl -- ...` nue).
+    const r = cp.spawnSync(exe, ['-d', DISTRO, '--', 'bash', '-lc', 'vale --version'],
+      { encoding: 'utf8', timeout: 15000, windowsHide: true });
+    return !r.error && r.status === 0 && /vale version/i.test(String(r.stdout || ''));
+  } catch (e) {
+    return false;
+  }
+}
+
+const _valeOk = detecterValeSurPath() || detecterValeSurWsl();
+
+function exiger(variable, motif) {
+  if (motif && process.env[variable]) {
+    throw new Error(motif + ' — ' + variable + ' est posé : cet outil est déclaré '
+      + 'obligatoire, sauter le contrôle est refusé.');
+  }
+  return motif;
+}
+// Motif choisi pour recouper les familles DÉJÀ admises par test/js/verifier-tap.js
+// (`wsl.exe`, `dans la distro`) sans y toucher — voir l'en-tête.
+const sansVale = exiger('SZH_VALE_OBLIGATOIRE',
+  _valeOk ? false : 'vale introuvable (ni sur le PATH, ni dans la distro ' + DISTRO
+    + ' via wsl.exe)');
+
+// ---------------------------------------------------------------------------------
+// Appels à manuscrit_vale.py — jamais d'import direct depuis Node (même patron que
+// manuscrit_regles.py) : trois modes CLI, JSON sur stdin/stdout.
+
+function analyser(paragraphesCorps, paragraphesBiblio, langue) {
+  const r = python([MANUSCRIT_VALE, '--analyser'], JSON.stringify({
+    paragraphes_corps: paragraphesCorps, paragraphes_biblio: paragraphesBiblio, langue
+  }));
+  assert.ok(r.status === 0 || r.status === 1,
+    '--analyser devait rendre 0 ou 1, a rendu ' + r.status + ' : ' + r.stderr);
+  let sortie;
+  try {
+    sortie = JSON.parse(r.stdout);
+  } catch (e) {
+    throw new Error('--analyser n\'a pas rendu de JSON exploitable : ' + e.message
+      + '\nstdout: ' + r.stdout + '\nstderr: ' + r.stderr);
+  }
+  return { code: r.status, sortie, stderr: r.stderr };
+}
+
+function analyserCorps(texte, langue, role) {
+  return analyser([{ source: 0, texte, role: role || '' }], [], langue);
+}
+
+function analyserBiblio(texte, langue) {
+  return analyser([], [{ source: 0, texte, role: 'bibliographie' }], langue);
+}
+
+function extraire(paragraphes, langue) {
+  const r = python([MANUSCRIT_VALE, '--extraire'], JSON.stringify({ paragraphes, langue }));
+  return { code: r.status, stderr: r.stderr,
+    sortie: r.status === 0 ? JSON.parse(r.stdout) : null };
+}
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°1 — la configuration Vale se charge : les trois styles sont attachés à leurs
+// quatre fichiers, sans erreur de configuration.
+//
+// Sabotage minimal : dans pipeline/vale/.vale.ini, retirer l'étoile en tête d'une section
+// (`[*corps-fr.txt]` -> `[corps-fr.txt]`) — mesuré le 18.09.2026 (Vale 3.22.0) : un nom de
+// fichier littéral, sans caractère générique, ne déclenche JAMAIS aucune règle. La
+// deuxième assertion du contrôle n°2 sur CSPS.Epicene.FormesContractees rougirait alors
+// (aucune alerte au lieu d'une).
+
+test('la configuration Vale se charge : CSPS, CSPS-Biblio et SZH sont attachés',
+  { skip: sansVale }, () => {
+    const wslExe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'wsl.exe');
+    const exe = fs.existsSync(wslExe) ? wslExe : 'wsl.exe';
+    const cheminIni = path.join(RACINE, 'pipeline', 'vale', '.vale.ini');
+    let r;
+    if (detecterValeSurPath()) {
+      r = cp.spawnSync('vale', ['--config', cheminIni, 'ls-config'], { encoding: 'utf8' });
+    } else {
+      // wslpath : conversion du chemin Windows, même piège que pipeline/manuscrit_vale.py
+      // (wsl.exe avale les antislashs d'un argument en tableau).
+      const versWsl = (c) => cp.spawnSync(exe, ['-d', DISTRO, '--', 'wslpath', '-a',
+        c.replace(/\\/g, '/')], { encoding: 'utf8' }).stdout.trim();
+      r = cp.spawnSync(exe, ['-d', DISTRO, '--', 'bash', '-lc',
+        'vale --config ' + versWsl(cheminIni) + ' ls-config'], { encoding: 'utf8' });
+    }
+    assert.strictEqual(r.status, 0, 'vale ls-config a échoué : ' + r.stderr);
+    const config = JSON.parse(r.stdout);
+    assert.ok(!config.Code, 'la configuration ne doit porter aucune erreur : '
+      + JSON.stringify(config));
+    const base = config.SBaseStyles || {};
+    assert.deepStrictEqual(base['*corps-fr.txt'], ['CSPS']);
+    assert.deepStrictEqual(base['*biblio-fr.txt'], ['CSPS-Biblio']);
+    assert.deepStrictEqual(base['*corps-de.txt'], ['SZH']);
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°2 — un positif et un négatif pour chacune des treize règles du catalogue.
+// Chaque cas nomme la fonction d'analyse (corps/biblio) et la langue, comme le fait le
+// contexte réel. Les sabotages minimaux sont documentés dans le rapport (une ligne YAML par
+// règle), pas ici : les répéter treize fois ici serait le bruit que le contrat proscrit.
+
+const CAS = [
+  { regle: 'CSPS.Epicene.FormesContractees',
+    positif: () => analyserCorps("L'éducateur/trice accompagne les élèves.", 'fr'),
+    negatif: () => analyserCorps("L'éducatrice et l'éducateur accompagnent les élèves.", 'fr'),
+    severitePositif: 'error' },
+  { regle: 'CSPS.Epicene.FormesNonListees',
+    positif: () => analyserCorps('Les étudiant-e-s sont attendus.', 'fr'),
+    negatif: () => analyserCorps('Les étudiants sont attendus.', 'fr'),
+    severitePositif: 'suggestion' },
+  { regle: 'CSPS.Epicene.FormuleGenerique',
+    positif: () => analyserCorps(
+      'Le masculin est utilisé à titre générique dans ce texte.', 'fr'),
+    negatif: () => analyserCorps('Le masculin est un genre grammatical courant.', 'fr'),
+    severitePositif: 'error' },
+  { regle: 'CSPS.Vocabulaire.Handicap',
+    positif: () => analyserCorps('Cette personne handicapée participe pleinement.', 'fr'),
+    negatif: () => analyserCorps(
+      'Cette personne en situation de handicap participe pleinement.', 'fr'),
+    severitePositif: 'suggestion' },
+  { regle: 'CSPS.Casse.Internet',
+    positif: () => analyserCorps('On consulte internet régulièrement.', 'fr'),
+    negatif: () => analyserCorps('On consulte Internet régulièrement.', 'fr'),
+    severitePositif: 'warning' },
+  { regle: 'CSPS.Editions.SZH',
+    positif: () => analyserCorps('Les Editions SZH/CSPS ont publié cet ouvrage.', 'fr'),
+    negatif: () => analyserCorps('Les éditions SZH/CSPS ont publié cet ouvrage.', 'fr'),
+    severitePositif: 'warning' },
+  { regle: 'CSPS.APA.EtDansParentheses',
+    positif: () => analyserCorps('Ils le montrent (Dupont et Martin, 2020).', 'fr'),
+    negatif: () => analyserCorps('Ils le montrent (Dupont et al., 2020).', 'fr'),
+    severitePositif: 'warning' },
+  { regle: 'CSPS.APA.EsperluetteHorsParentheses',
+    positif: () => analyserCorps('Dupont & Martin le montrent clairement.', 'fr'),
+    negatif: () => analyserCorps('Ils le montrent (Dupont & Martin, 2020).', 'fr'),
+    severitePositif: 'warning' },
+  { regle: 'CSPS.APA.CitationDirectePage',
+    positif: () => analyserCorps('« Une citation directe » (Fougeyrollas, 2010).', 'fr'),
+    negatif: () => analyserCorps('« Une citation directe » (Fougeyrollas, 2010, p. 9).', 'fr'),
+    severitePositif: 'warning' },
+  { regle: 'CSPS-Biblio.APA.DoiForme',
+    positif: () => analyserBiblio(
+      'Muster, E. (2010). Un article. Revue X, 3, 1-10. doi:10.1000/xyz123', 'fr'),
+    negatif: () => analyserBiblio(
+      'Muster, E. (2010). Un article. Revue X, 3, 1-10. https://doi.org/10.1000/xyz123', 'fr'),
+    severitePositif: 'warning' },
+  { regle: 'CSPS-Biblio.APA.Esperluette',
+    positif: () => analyserBiblio(
+      'Bissonnette, S., Richard, M., et Bouchard, C. (2010). Un titre.', 'fr'),
+    negatif: () => analyserBiblio(
+      'Bissonnette, S., Richard, M., & Bouchard, C. (2010). Un titre.', 'fr'),
+    severitePositif: 'warning' },
+  { regle: 'SZH.Epicene.Paarform',
+    positif: () => analyserCorps('Die Schülerinnen und Schüler kommen morgen.', 'de'),
+    negatif: () => analyserCorps('Die Schüler:innen kommen morgen.', 'de'),
+    severitePositif: 'error' },
+  { regle: 'SZH.Vokabular.Behinderung',
+    positif: () => analyserCorps('Wir sprechen über behinderte Menschen im Alltag.', 'de'),
+    negatif: () => analyserCorps('Wir sprechen über Menschen mit Behinderung im Alltag.', 'de'),
+    severitePositif: 'warning' },
+];
+
+for (const cas of CAS) {
+  test('règle ' + cas.regle + ' : positif signalé, négatif silencieux',
+    { skip: sansVale }, () => {
+      const { sortie: avecFaute } = cas.positif();
+      const trouves = avecFaute.alertes.filter((a) => a.rule === cas.regle);
+      assert.strictEqual(trouves.length, 1,
+        cas.regle + ' aurait dû lever exactement une alerte sur le cas positif : '
+        + JSON.stringify(avecFaute.alertes));
+      assert.strictEqual(trouves[0].severity, cas.severitePositif);
+
+      const { sortie: sansFaute } = cas.negatif();
+      const trouvesNeg = sansFaute.alertes.filter((a) => a.rule === cas.regle);
+      assert.deepStrictEqual(trouvesNeg, [],
+        cas.regle + ' n\'aurait dû lever aucune alerte sur le cas négatif : '
+        + JSON.stringify(sansFaute.alertes));
+    });
+}
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°3 — LE PIÈGE OQLF/CSPS, nommé comme critère d'acceptation par le brief : déjà
+// couvert par le cas CSPS.Vocabulaire.Handicap ci-dessus, mais répété ici EXPLICITEMENT,
+// sans filtrer sur une règle précise — c'est TOUTE alerte (n'importe laquelle) que la forme
+// recommandée ne doit jamais lever, pas seulement celle-ci.
+//
+// Sabotage minimal : dans pipeline/vale/styles/CSPS/Vocabulaire/Handicap.yml, élargir le
+// motif `personnes? handicap[ée]e?s?` en `personnes?.{0,30}handicap[ée]?e?s?` — le motif
+// traverserait alors « en situation de » et attraperait la forme recommandée elle-même :
+// la première assertion rougit.
+
+test('le piège OQLF/CSPS : "personne en situation de handicap" ne lève absolument rien',
+  { skip: sansVale }, () => {
+    const { sortie } = analyserCorps(
+      'Cette personne en situation de handicap participe pleinement.', 'fr');
+    assert.deepStrictEqual(sortie.alertes, [],
+      'la forme recommandée par la CSPS/MDH-PPH ne doit jamais être signalée, par aucune '
+      + 'règle : ' + JSON.stringify(sortie.alertes));
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°4 — L'INVERSION ÉPICÈNE, le fait qui commande tout : les deux revues
+// prescrivent des solutions opposées. Migré depuis l'ancien test/js/manuscrit-regles.test.js
+// (la règle a déménagé vers Vale, le contrôle avec elle).
+//
+// Sabotage minimal : dans pipeline/vale/styles/SZH/Epicene/Paarform.yml, ajouter un motif
+// qui reconnaît le deux-points (`Schüler:innen`) — la forme prescrite côté allemand se
+// mettrait à être signalée, la deuxième assertion rougit.
+
+test('l\'inversion épicène : chaque produit proscrit exactement le contraire de l\'autre',
+  { skip: sansVale }, () => {
+    const { sortie: revueSlash } = analyserCorps("L'éducateur/trice accompagne les élèves.", 'fr');
+    assert.deepStrictEqual(revueSlash.alertes.map((a) => a.rule),
+      ['CSPS.Epicene.FormesContractees'],
+      '« éducateur/trice » doit lever une alerte en français');
+
+    const { sortie: zeitschriftDeuxPoints } = analyserCorps('Die Schüler:innen kommen morgen.', 'de');
+    assert.deepStrictEqual(zeitschriftDeuxPoints.alertes, [],
+      '« Schüler:innen » est la solution PRESCRITE côté allemand : aucune alerte');
+
+    const { sortie: zeitschriftPaarform } = analyserCorps(
+      'Die Schülerinnen und Schüler kommen morgen.', 'de');
+    assert.deepStrictEqual(zeitschriftPaarform.alertes.map((a) => a.rule),
+      ['SZH.Epicene.Paarform'], 'la Paarform avec "und" doit être signalée côté allemand');
+
+    const { sortie: revueFormeDouble } = analyserCorps(
+      "L'éducatrice et l'éducateur accompagnent les élèves.", 'fr');
+    assert.deepStrictEqual(revueFormeDouble.alertes, [],
+      'la forme double complète, équivalente à la Paarform allemande, n\'est PAS proscrite '
+      + 'en français : c\'est au contraire la solution de repli prescrite par ce document');
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°5 — les URL et DOI ne déclenchent jamais Epicene dans le CORPS (masquage), et
+// un DOI reste lisible (et donc réécrit) dans la BIBLIOGRAPHIE (pas de masquage là).
+//
+// Sabotage minimal : dans manuscrit_vale._masquer_urls ou son emploi dans analyser(), ne
+// plus appeler le masquage sur les lignes de corps — la première assertion (aucune alerte
+// sur l'URL) rougit : mesuré le 18.09.2026, `downloads/sections` lève Epicene sans lui.
+
+test('une URL ne déclenche jamais Epicene dans le corps ; un DOI reste corrigible en bibliographie',
+  { skip: sansVale }, () => {
+    const { sortie: corps } = analyserCorps(
+      'Voir https://www.exemple.ch/downloads/sections et https://vaud/documents ici.', 'fr');
+    assert.deepStrictEqual(corps.alertes, [],
+      'une URL masquée ne doit déclencher aucune règle du corps : '
+      + JSON.stringify(corps.alertes));
+
+    const { sortie: biblio } = analyserBiblio(
+      'Muster, E. (2010). Un article. Revue X, 3, 1-10. doi:10.1000/xyz123', 'fr');
+    assert.strictEqual(biblio.alertes.length, 1,
+      'un DOI en bibliographie doit rester lisible pour être corrigé : jamais masqué');
+    assert.strictEqual(biblio.alertes[0].rule, 'CSPS-Biblio.APA.DoiForme');
+    assert.strictEqual(biblio.alertes[0].suggested, 'https://doi.org/10.1000/xyz123');
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°6 — extraire() rend une ligne par paragraphe et un index EXACT ; un mélange de
+// rôles corps/bibliographie dans le même appel est refusé plutôt que de rendre un index
+// ambigu en silence.
+//
+// Sabotage minimal : dans extraire(), remplacer `index[len(cible)] = p.get('source')` par
+// `index[len(cible) - 1] = p.get('source')` (décalage d'un cran) — la deuxième assertion
+// (index exact par ligne 1-based) rougit : la ligne 1 pointerait alors vers rien (index[0]
+// n'est jamais lu) et la ligne 3 vers la source de la ligne 2.
+
+test('extraire() : une ligne par paragraphe, un index exact, jamais de mélange de rôles',
+  { skip: sansPython }, () => {
+    const { sortie } = extraire([
+      { source: 10, texte: 'Premier paragraphe.', role: '' },
+      { source: 20, texte: 'Deuxième paragraphe.', role: 'titre' },
+      { source: 30, texte: 'Troisième paragraphe.', role: '' },
+    ], 'fr');
+    assert.strictEqual(sortie.texte_corps,
+      'Premier paragraphe.\nDeuxième paragraphe.\nTroisième paragraphe.');
+    assert.strictEqual(sortie.texte_biblio, '');
+    assert.deepStrictEqual(sortie.index, { '1': 10, '2': 20, '3': 30 });
+
+    const { sortie: biblioSeule } = extraire([
+      { source: 40, texte: 'Une référence.', role: 'bibliographie' },
+    ], 'fr');
+    assert.strictEqual(biblioSeule.texte_corps, '');
+    assert.strictEqual(biblioSeule.texte_biblio, 'Une référence.');
+    assert.deepStrictEqual(biblioSeule.index, { '1': 40 });
+
+    // Un mélange corps + bibliographie dans le MÊME appel produirait un index ambigu
+    // (ligne 1 côté corps ET ligne 1 côté bibliographie partageant la même clé) : extraire()
+    // le refuse plutôt que de choisir en silence.
+    const melange = extraire([
+      { source: 1, texte: 'Corps.', role: '' },
+      { source: 2, texte: 'Référence.', role: 'bibliographie' },
+    ], 'fr');
+    assert.notStrictEqual(melange.code, 0,
+      'un mélange de rôles doit être refusé, jamais accepté avec un index ambigu');
+  });
+
+// ---------------------------------------------------------------------------------
+// Contrôle n°7 — analyser() rend indisponible=True PROPREMENT (jamais une exception, jamais
+// un plantage) quand vale ne peut pas tourner. Deux causes distinctes, mesurées le
+// 19.09.2026 (corrigeant une mesure du 18.09.2026, qui plaçait à tort l'erreur sur stdout) :
+// une configuration introuvable (exit 0) et une règle YAML mal formée dans un style par
+// ailleurs valide (exit 2). Dans les DEUX cas, le diagnostic (un objet JSON portant "Code",
+// ex. "E100") atterrit sur STDERR et stdout reste VIDE — le code de sortie, lui, varie sans
+// motif fiable entre les deux causes. Les deux doivent aboutir au même indisponible=True.
+//
+// Sabotage minimal : dans _executer(), retirer le `try/except ValueError` autour de
+// `json.loads(brut)` — sur stdout vide, `json.loads('')` lève ValueError NON CAPTURÉE, qui
+// remonte jusqu'au processus Python (traceback sur stderr, code de sortie non nul) au lieu
+// de devenir un indisponible=True propre. Vérifié réellement le 19.09.2026 : ce sabotage
+// fait rougir CE contrôle, et lui seul.
+
+test('analyser() : indisponible=True proprement, jamais un plantage, config cassée',
+  { skip: sansPython }, () => {
+    const racineFactice = fs.mkdtempSync(path.join(os.tmpdir(), 'szh-vale-factice-'));
+    // Aucun pipeline/vale/.vale.ini sous cette racine : --config pointera vers un chemin
+    // qui n'existe pas, exactement la panne mesurée sur une configuration cassée.
+    const r = cp.spawnSync(PYTHON, [MANUSCRIT_VALE, '--analyser'], {
+      encoding: 'utf8',
+      input: JSON.stringify({
+        paragraphes_corps: [{ source: 0, texte: 'Un texte quelconque.', role: '' }],
+        paragraphes_biblio: [], langue: 'fr',
+      }),
+      env: Object.assign({}, process.env, { SZH_RACINE_VALE_FACTICE: racineFactice }),
+    });
+    // On ne peut pas passer racine_depot en argument de la CLI (elle se calcule depuis
+    // __file__) : on monkey-patche donc un fichier manuscrit_vale.py TEMPORAIRE qui importe
+    // le vrai module et force racine_depot vers un dossier sans pipeline/vale/.vale.ini.
+    const pontFactice = path.join(racineFactice, 'pont_vale_factice.py');
+    fs.writeFileSync(pontFactice, [
+      'import json, sys',
+      'sys.path.insert(0, ' + JSON.stringify(path.dirname(MANUSCRIT_VALE)) + ')',
+      'import manuscrit_vale',
+      'entree = json.loads(sys.stdin.read())',
+      'alertes, indisponible = manuscrit_vale.analyser(',
+      '    entree["paragraphes_corps"], entree["paragraphes_biblio"], entree["langue"],',
+      '    ' + JSON.stringify(racineFactice) + ')',
+      'print(json.dumps({"alertes": alertes, "indisponible": indisponible}))',
+    ].join('\n'), 'utf8');
+
+    const r2 = cp.spawnSync(PYTHON, [pontFactice], {
+      encoding: 'utf8',
+      input: JSON.stringify({
+        paragraphes_corps: [{ source: 0, texte: 'Un texte quelconque.', role: '' }],
+        paragraphes_biblio: [], langue: 'fr',
+      }),
+    });
+    assert.strictEqual(r2.status, 0,
+      'analyser() ne doit jamais faire planter le processus, même config cassée : '
+      + r2.stderr);
+    let sortie;
+    try {
+      sortie = JSON.parse(r2.stdout);
+    } catch (e) {
+      throw new Error('analyser() a laissé filer une exception au lieu de indisponible=True :'
+        + ' stdout=' + r2.stdout + ' stderr=' + r2.stderr);
+    }
+    assert.strictEqual(sortie.indisponible, true,
+      'une configuration introuvable doit rendre indisponible=True');
+    assert.deepStrictEqual(sortie.alertes, [], 'aucune alerte quand vale est indisponible');
+  });

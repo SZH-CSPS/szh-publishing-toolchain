@@ -1,0 +1,15 @@
+# Revue : 3.1.1 — « les citations directes sont écrites entre guillemets [...] la référence
+# mentionne le nom des autrices et auteurs, l'année et le numéro de page ». Un guillemet
+# fermant suivi d'une parenthèse avec une année mais sans « p. » est donc suspect.
+#
+# Net large en RE2 (pas de lookahead pour exclure « contient déjà p. X ») ; le filtrage fin
+# (rejeter les constats dont la parenthèse porte bien un numéro de page) se fait en Python
+# dans pipeline/manuscrit_vale.py, sur le texte même du constat.
+extends: existence
+message: "Citation directe sans numéro de page (Revue : 3.1.1) : « %s »."
+level: warning
+ignorecase: false
+# Le motif commence par un guillemet, non-mot : même piège que APA/EtDansParentheses.yml.
+nonword: true
+tokens:
+  - '(?:«[^»\n]{3,200}»|“[^”\n]{3,200}”)\s*\([^()\n]{0,120}(?:19|20)\d{2}[a-z]?\)'

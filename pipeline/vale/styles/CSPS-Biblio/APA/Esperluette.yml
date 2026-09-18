@@ -1,0 +1,15 @@
+# Revue : 3.2.1 — « pour les références ayant plusieurs co-autrices ou co-auteurs [...] les
+# deux derniers noms sont liés avec l'esperluette (&) ». Une entrée bibliographique qui
+# écrit encore ", et Nom, X." avant le dernier auteur devrait porter « & » à la place.
+#
+# Net large en RE2 (même limite que APA/EtDansParentheses.yml côté corps) ; le remplacement
+# précis (", et " -> " & ", sans toucher au reste du nom) se fait en Python dans
+# pipeline/manuscrit_vale.py.
+extends: existence
+message: "« , et » avant le dernier auteur (Revue : 3.2.1, à remplacer par « & ») : « %s »."
+level: warning
+ignorecase: false
+# Le motif commence par une virgule, non-mot : même piège que APA/EtDansParentheses.yml.
+nonword: true
+tokens:
+  - ',\s+et\s+[\p{L}][\p{L}.\x27-]*,\s*[\p{L}]\.'

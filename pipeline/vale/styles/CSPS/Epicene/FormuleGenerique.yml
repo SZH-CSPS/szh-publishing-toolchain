@@ -1,0 +1,13 @@
+# Revue : 2.2 Langage épicène — « à proscrire : [...] ainsi que la formule (en début de
+# texte ou en note de bas de page) indiquant que le masculin est utilisé à titre générique ».
+# On cherche la co-occurrence, dans un même paragraphe, du mot « masculin », d'un verbe
+# d'emploi (utilisé/employé) et de la formule « à titre générique » ou « générique » — la
+# formule exacte varie d'une autrice à l'autre, mais ces trois éléments ensemble ne
+# décrivent que cette clause-là.
+extends: existence
+message: "Formule proscrite par la Revue (masculin générique) : « %s »."
+level: error
+ignorecase: true
+tokens:
+  - '\bmasculin\b[^.\n]{0,80}\b(utilis[ée][a-zà-öø-ÿ]*|emplo[iy][a-zà-öø-ÿ]*)\b[^.\n]{0,80}\bg[ée]n[ée]rique\b'
+  - '\bg[ée]n[ée]rique\b[^.\n]{0,80}\bmasculin\b'

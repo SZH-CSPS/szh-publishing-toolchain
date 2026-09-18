@@ -1,0 +1,11 @@
+# Zeitschrift : Sprachliche Richtlinien / Keine stigmatisierende Sprache — « Verwenden Sie
+# durchgehend Begriffe wie "Menschen mit Behinderungen" anstelle von "behinderte Menschen" ».
+extends: substitution
+message: "%s statt « %s » (Zeitschrift: Keine stigmatisierende Sprache)."
+level: warning
+ignorecase: true
+action:
+  name: replace
+swap:
+  'behinderte[nrs]? (Mensch\w*|Kind\w*|Person\w*|Schüler\w*)': Menschen mit Behinderung(en)
+  'die Behinderten': Menschen mit Behinderung(en)

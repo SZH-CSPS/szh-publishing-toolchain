@@ -50,11 +50,20 @@ semaine du 22.09.2026, aura produit un document rempli à la main.
 | Binaire externe | `pandoc` 3.5 de la WSL, et lui seul |
 | Rapport HTML | rendu par `lib/gabarits.js` via `outils/rendre-gabarit.js`, comme les courriels et les exports |
 
-**Pas de Vale.** Le binaire existe en version Windows, il n'imposait donc pas la WSL — mais il
-coûterait une entrée `windows/apps.lock` (installeur, sha256, signataire, contrôle d'URL en CI)
-pour un jeu de règles entièrement maison, sans écosystème à emprunter. Les règles lexicales sont
-des **données Python** (voir §7). On pourra les rouvrir à l'édition par la rédaction plus tard
-sans rien casser : ce sont des données, pas du code.
+⚠ **Révision du 19.09.2026, tranchée par Robin.** Le §2 disait ici « pas de Vale », au motif
+qu'il coûterait une entrée `windows/apps.lock`. Cet argument supposait un déploiement
+Windows — faux : le nettoyeur tourne **dans la WSL** (voir ci-dessus), où Vale entre comme un
+**binaire épinglé de l'image**, exactement comme pandoc et veraPDF (URL versionnée GitHub
+releases, `sha256sum -c`, `vale --version` vérifié en fin de build dans `image/Containerfile`)
+— **zéro entrée `windows/apps.lock`**. Ce que le §7 (18.09.2026) affirmait aussi à tort :
+« les règles lexicales sont des données Python ». C'est faux pour la détection — `Regle.
+detecter` est une référence de fonction Python, pas une donnée — mais ça devient vrai pour de
+bon avec Vale : les motifs lexicaux et éditoriaux (langage épicène, vocabulaire du handicap,
+casse maison, citation directe, liaison et/&) sont maintenant des fichiers **YAML**, dans
+`pipeline/vale/styles/`, que la rédaction édite sans coder. Vale lui-même ne réimplémente
+aucune règle qu'on pourrait emprunter d'un écosystème existant : le catalogue reste
+entièrement maison, Vale n'en est que le moteur d'exécution. Voir §7 pour les trois couches
+et `pipeline/vale/LISEZMOI.md` pour ce que la rédaction peut modifier.
 
 **Pourquoi la WSL et pas le Python de Windows** : `windows/apps.lock` ne pose que VSCodium
 (`requis: true`) et SumatraPDF. Aucun Python n'est garanti côté Windows. La WSL, elle, est posée
@@ -177,8 +186,10 @@ Document(blocs, styles, langue, revisions, commentaires, notes, source)
     notes         les notes de bas de page, mêmes classes
 ```
 
-`texte` est **déjà normalisé** par le lecteur, comme le fait déjà `pronto_modele`. Un lecteur ne
-rend jamais de texte brut.
+`texte` est **déjà normalisé** par le lecteur, comme le fait déjà `pronto_modele` — ⚠ **sauf les
+trois substitutions de tiret**, retirées le 19.09.2026 (voir la révision ci-dessous) : le VRAI
+tiret du document (cadratin, demi-cadratin, insécable) doit survivre dans le modèle riche. Un
+lecteur ne rend jamais de texte brut pour autant : le compactage d'espaces, lui, reste appliqué.
 
 ⚠ Correction du 18.09.2026 : `normaliser()` **ne vit pas dans `szh_commun.py`**, contrairement à
 ce que ce contrat affirmait d'abord. Elle est recopiée à l'identique dans `pronto_modele.py`,
@@ -186,6 +197,105 @@ ce que ce contrat affirmait d'abord. Elle est recopiée à l'identique dans `pro
 qui ne connaît ni Word ni OpenDocument — l'import ne franchit aucune frontière du §3. Seule
 `avertir()` vient bien de `szh_commun`. Cette quadruple copie est un défaut du dépôt, antérieur à
 ce chantier ; elle n'est pas à corriger ici.
+
+### ⚠ Révision du 19.09.2026
+
+Défauts constatés sur le corpus réel en préparant l'écriture (`manuscrit_gabarit.py`) et le pont
+typographique : le lecteur détruisait les tirets à la source, perdait plusieurs sources de texte
+en silence, et le modèle ne distinguait pas la mise en forme DIRECTE de celle EFFECTIVEMENT
+appliquée par la cascade des styles — une distinction dont `classer_titres()` (§5.1) a besoin
+pour comparer un vrai titre stylé (mise en forme portée par le style, jamais par le run) à un
+faux titre habillé de mise en forme directe. Corrigés dans `manuscrit_docx.py` :
+
+- **Les tirets ne sont plus détruits.** Les trois substitutions de `pronto_modele.normaliser()`
+  (–, —, ‑ → `-`) ne s'appliquent plus à `Fragment.texte` (mesuré : 4 cadratins et 89
+  demi-cadratins du corpus réel dégradés en simple trait d'union avant cette correction, avant
+  même que la règle typographique T2, qui décide justement entre eux, ait pu les voir).
+  `projeter_pronto()` reste, lui, l'exact miroir de `pronto_docx.lire()` (§3, dette assumée) :
+  c'est SEULEMENT dans la projection que `normaliser()` continue de s'appliquer.
+- **`w:noBreakHyphen`** rend désormais U+2011 (le vrai trait d'union insécable), plus un simple
+  `-`. **`w:tab`** rend `'\t'`, **`w:br`/`w:cr`** rendent `'\n'` — plus une simple espace : c'est
+  ce qui rend enfin utile le nettoyage en tête/queue de paragraphe du §5.2 (mesuré mort avant
+  cette date, ces caractères étant déjà des espaces à son arrivée). Sans effet sur
+  `projeter_pronto()` : `pronto_modele.normaliser()` traite `'\t'`/`'\n'` comme un blanc,
+  exactement comme l'espace qu'ils remplaçaient.
+- **`w:sym`** (Insertion > Symbole) est maintenant lu : le caractère de `w:char` est rendu, avec
+  une correspondance vers l'Unicode réel pour la puce Wingdings/Symbol usuelle (U+F0B7 → •) ;
+  tout le reste est repris tel quel et signalé (`symboles-police-speciale`), jamais en silence.
+- **`w:fldSimple`** est déplié (ajouté à la liste des conteneurs « passe-plat ») : sa valeur
+  affichée, mise en cache par Word dans un `w:r` enfant, est désormais lue comme du texte normal
+  — l'avertissement `champs-word-non-resolus` l'affirmait déjà, à tort, avant cette date.
+- **`w:sdt` de niveau BLOC** (un contrôle de contenu enveloppant un ou plusieurs `w:p` entiers,
+  enfant direct du corps ou d'une cellule) est déplié avant tout parcours : il faisait
+  disparaître ces paragraphes sans le moindre avertissement (`blocs_du_corps()` de
+  `pronto_docx.py`, repris tel quel, ne reconnaît que `w:p`/`w:tbl`). Le niveau RUN était déjà
+  couvert.
+- **`word/endnotes.xml`** est lu, comme les notes de bas de page (voir `Document.notes`
+  ci-dessous).
+- **Les notes ORPHELINES** — présentes dans `footnotes.xml`/`endnotes.xml` mais qu'AUCUN
+  `w:footnoteReference`/`w:endnoteReference` n'appelle dans `document.xml` — n'entrent PAS dans
+  `Document.notes` (signalées, jamais en silence : `notes-orphelines`). Ajout du superviseur,
+  sur mesure de l'agent de l'écrivain : `'continuationNotice'` (le texte « … suite » que Word
+  pose en bas d'une page où une note continue) manquait à la liste des types techniques déjà
+  exclus (`separator`, `continuationSeparator`) — mesuré sur 4 fichiers réels (`1bis`,
+  `2-dense`, `2-grappes`, `5bis`), chacun ne portant QUE ce type de note fantôme dans ses deux
+  fichiers de notes, sans un seul renvoi correspondant : ces quatre fichiers n'ont, après
+  filtrage, plus AUCUNE note. Le filtre orphelines est GÉNÉRAL (toute note jamais appelée, pas
+  seulement les types techniques) : une note ordinaire mal reportée ou orpheline d'une
+  suppression manuelle du renvoi tombe dans le même filet.
+- **Le décompte d'images VML héritées** (w:pict / mc:Fallback) comptait les OCCURRENCES de
+  `v:imagedata`, pas les identifiants DISTINCTS (mesuré : facteur 5 en trop sur un fichier réel,
+  un même r:id répété plusieurs fois dans un groupe). Corrigé, ET ces images sont maintenant
+  **récupérées** quand leur relation résout vers un média présent dans l'archive — jusque-là,
+  cinq médias sur vingt-et-un d'un même fichier réel n'apparaissaient dans AUCUNE sortie.
+- **`Image.source`** porte désormais l'indice du `w:p` PORTEUR dans le corps — avant cette
+  correction, il recevait par erreur l'indice du `w:r` (celui de `Fragment.source`, qui lui reste
+  inchangé, §4 : « index du w:r dans son paragraphe »), donnant `source=0` pour la quasi-totalité
+  des images d'un document réel.
+- **La liste d'un paragraphe** (§5.4) se résout aussi depuis un `numPr` HÉRITÉ du style de
+  paragraphe (chaîne `w:pStyle → w:basedOn → …`), plus seulement depuis un `numPr` posé
+  directement. **`numId="0"`** (convention Word : « retire explicitement la numérotation
+  héritée ») rend `None` (« pas de liste »), plus une liste de format indéterminé.
+- **`_compter_revisions()`** compte aussi `footnotes.xml` et `endnotes.xml` : un suivi de
+  modifications confiné aux notes n'était pas détecté avant cette date.
+
+Deux champs ajoutés au modèle riche, à la fin de `__slots__` et de la signature (même convention
+que les quatre champs d'`Image` ajoutés le 18.09.2026 : l'ordre positionnel des champs d'origine
+ne bouge pas) :
+
+```
+Fragment(texte, image, forme, lien, source, note, effectif)
+    note        identifiant de la note appelée par ce fragment (w:footnoteReference /
+                w:endnoteReference), ou None. texte == '' quand ce champ est rempli — même
+                convention que `image`. Une note de fin porte un identifiant DÉCALÉ au-delà du
+                plus grand identifiant de note de bas de page (manuscrit_docx.py le calcule ;
+                ce champ ne dit pas lui-même de quelle famille vient la note).
+    effectif    dict figé, mêmes clés que `forme` (FORME_CLES) : la mise en forme
+                EFFECTIVEMENT appliquée — directe (= `forme`) sinon style de caractère
+                (w:rStyle) sinon chaîne des styles de paragraphe (w:pStyle → w:basedOn → …, y
+                compris leur w:rPr) sinon w:docDefaults/w:rPrDefault. None seulement si rien
+                n'est déclaré nulle part. `forme` reste inchangée : jamais la cascade des
+                styles pour le NETTOYAGE (§5.2). Motivé par le §5.1 : « corps sans taille
+                déclarée » et « faux titre déclaré 12 pt » sont aujourd'hui jugés différents
+                par la forme DIRECTE alors qu'ils font tous deux 12 pt une fois la cascade
+                résolue.
+
+Paragraphe(…, alignement, retrait, source, alignement_effectif)
+    alignement_effectif   direct (= `alignement`) sinon la chaîne des styles de paragraphe ;
+                          '' si non déclaré nulle part. Même principe que Fragment.effectif.
+
+Document(blocs, styles, langue, revisions, commentaires, notes, source)
+    notes       CHANGÉ : dict[int, list[Paragraphe | Tableau]], le contenu de CHAQUE note par
+                identifiant — c'était une liste plate qui fondait toutes les notes ensemble,
+                sans dire laquelle appelle quoi. Notes de bas de page ET de fin cohabitent
+                (identifiants disjoints, voir plus haut).
+```
+
+`pronto_docx.resoudre_style`/`charger_styles` ne remontent PAS une chaîne `w:basedOn` — ils ne
+résolvent qu'un `styleId` vers son nom humain (un seul niveau). La résolution de `Fragment.effectif`
+et du `numPr` hérité (ci-dessus) lit `styles.xml` une seconde fois dans `manuscrit_docx.py`
+(`_index_styles_complet`), pour la chaîne `basedOn` et les `w:rPr`/`w:pPr` de chaque style —
+`pronto_docx.charger_styles` reste, lui, inchangé et sert toujours à résoudre le NOM affiché.
 
 ---
 
@@ -383,6 +493,20 @@ Ce qui est **signalé sans être touché** : un paragraphe entièrement en gras 
 majuscules qui n'a pas été retenu comme titre. C'est peut-être un intertitre que l'heuristique a
 raté ; ce n'est pas à l'outil d'en décider.
 
+⚠ **Révision du 19.09.2026, décision du superviseur.** « Signalé sans être touché » était violé
+pour le gras : un paragraphe de corps ENTIÈREMENT gras et non retenu comme titre voyait son gras
+RETIRÉ dans la même passe qui le SIGNALE (mesuré : 16 paragraphes sur un fichier réel). Le gras
+**intégral** d'un paragraphe de corps est désormais **conservé** (une relectrice doit pouvoir le
+voir), le signalement reste dans le rapport. Le gras **partiel** du corps, lui, **part**
+normalement — l'exception ne vaut que pour un paragraphe entièrement gras, jamais pour un simple
+mot en gras au milieu d'une phrase, sous peine de protéger n'importe quel gras. Les majuscules
+forcées, elles, restent retirées dans tous les cas : cette décision ne portait que sur le gras.
+
+Descend à **toute profondeur** — cellules de tableau (à n'importe quelle imbrication) et notes
+de bas de page / de fin (`Document.notes`) — depuis le 19.09.2026 : le nettoyage ne bouclait
+avant cette date que sur les paragraphes de premier niveau (171 paragraphes de cellule, mesurés
+sur le corpus réel, gardaient encore taille/police/couleur/gras).
+
 Tout le corps reçoit le style **« Corps de texte »**. ⚠ Deux noms pour un seul style : `Body Text`
 côté Word (`styleId` = `Corpsdetexte`), **`Text body`** côté LibreOffice. Toute règle qui
 reconnaît le corps par son nom teste les deux formes.
@@ -400,6 +524,30 @@ reconnaît le corps par son nom teste les deux formes.
   lexique est celui de `RE_LEGENDE` dans `docx-titres.py`.
 - Une **image flottante ou dans une zone de texte** est extraite si possible, **signalée
   toujours** : sa place dans le fil du texte n'est pas fiable.
+
+⚠ **Révision du 19.09.2026, écrivain (`manuscrit_gabarit.py`).** Deux défauts mesurés sur le champ
+`Légende :`, corrigés :
+
+- la légende reprise du manuscrit **garde sa mise en forme** (italique, exposant…) au lieu d'être
+  aplatie en texte plat avant d'être posée — mesuré : 2 exposants sur 2 du corpus perdus par
+  l'ancienne version, tous dans des légendes (`docx-tables.py`, un tableau de résultats en m²) ;
+- une **légende répartie sur deux paragraphes** — un titre bref en gras qui matche `RE_LEGENDE` à
+  lui seul (« Tableau 1 », sans texte), suivi du texte de la légende proprement dit sur le
+  paragraphe suivant — est reconnue comme UNE seule légende et les deux paragraphes sont retirés
+  du corps. Mesuré sur un manuscrit réel (`outils-dev/Le coenseignement développemental_revue
+  Suisse_10082026.docx`) : c'est exactement ce que fait son gabarit d'origine.
+
+⚠ **Révision du 19.09.2026 — contrat partagé, notes de bas de page.** `Fragment.note : int | None`
+porte l'identifiant de la note appelée par ce fragment (`texte == ''` dans ce cas, comme pour une
+image) ; `Document.notes : dict[int, list[Paragraphe | Tableau]]` porte le contenu de chaque note,
+par identifiant — les notes de fin sont lues comme des notes de bas de page, avec des identifiants
+uniques. L'écrivain reporte chaque note APPELÉE (jamais celles qui ne le sont pas — orphelines,
+tracées et non écrites) dans `word/footnotes.xml`, renumérotées à partir de 1 : le style de renvoi
+et le style de paragraphe de note sont ceux du gabarit s'il en définit (recherche par le nom
+canonique anglais du style, comme `heading 1`/`Body Text` ailleurs dans ce document), sinon un
+simple exposant et `Corpsdetexte` — le gabarit livré n'a aujourd'hui ni l'un ni l'autre. Une note
+appelée mais absente de `document.notes` (ne devrait jamais arriver depuis un vrai lecteur) reçoit
+un contenu vide, tracé, plutôt qu'un document invalide.
 
 ### 5.4 Les listes
 
@@ -460,10 +608,34 @@ Le filtre émet en plus, sur stderr, ses propres avertissements `[typo-avertisse
 (le `ß`) et C2 (guillemets droits non appariés), qu'il signale sans jamais les corriger. Ces lignes
 deviennent des alertes du rapport telles quelles : rien à réécrire.
 
-La langue se passe en `-M lang=` : `resoudre_langue()` du filtre la prend comme **premier**
-candidat.
+⚠ Révision du 19.09.2026 : ce paragraphe décrivait une intention non tenue. `_appeler_pandoc()` ne
+lisait stderr QUE sur l'échec de l'appel — sur un succès, ces lignes étaient capturées puis jetées
+en silence, et `avertissements_typo` du contexte passé aux règles restait `[]` codé en dur dans la
+CLI. Mesuré sur lot-A avant correction : 0 avertissement remonté sur 10 documents, dont 7 en
+émettaient réellement (majuscule accentuée, guillemets droits). Corrigé : `normaliser_paragraphes()`
+rend maintenant `(paragraphes, traces, abandons, avertissements, statut)` — l'avant-dernier élément
+porte ces lignes brutes sur un appel réussi, la CLI les place dans `contexte['avertissements_typo']`.
 
-### Ce qui reste à écrire : la réinjection
+La langue se passe en `-M lang=` : `resoudre_langue()` du filtre la prend comme **premier**
+candidat. ⚠ Révision du 19.09.2026 (voir §8) : cette langue vient désormais STRICTEMENT du produit
+(`revue` → `fr`, `zeitschrift` → `de`), plus jamais de `document.langue` — un article français
+déclaré `de-CH` recevait la typographie allemande.
+
+### Sous Linux (production), pandoc est appelé directement — révision du 19.09.2026
+
+Le pont appelait TOUJOURS `wsl.exe -d SZH-Publishing -- pandoc ...`, même quand cette CLI tourne
+DÉJÀ dans la WSL (le lanceur l'exécute via `wsl -d SZH-Publishing -e python3 ...`). Or `wsl.exe`
+n'existe pas dans la distro, et son absence ne lève **aucune exception explicite** :
+`subprocess.run(['wsl.exe', ...])` échoue comme n'importe quel exécutable introuvable, capturée
+comme une indisponibilité de pandoc — un repli **silencieux**. Mesuré sur lot-A avant correction :
+845 paragraphes sur 845 rendus inchangés, code de sortie 0, aucun signe visible de la panne.
+
+Une seule fonction décide désormais, `_executer_pandoc()`, testée dans les deux branches :
+`sys.platform != 'win32'` → pandoc du PATH, appelé directement, avec le chemin **Linux natif** du
+filtre (sans `wslpath`, sans `wsl.exe` — ces deux-là n'existent pas dans la distro) ; sous Windows
+(le poste de développement), le chemin `wsl.exe` + `wslpath -a` de toujours, inchangé.
+
+### La réinjection
 
 Word découpe le texte d'un paragraphe en `w:r` de façon imprévisible, parfois au milieu d'un mot.
 Le texte revient normalisé **en un bloc** ; il faut le redistribuer dans les runs d'origine sans
@@ -474,9 +646,21 @@ et le texte normalisé. Les corrections typographiques sont locales et petites (
 insertions d'espaces insécables), donc le diff l'est aussi. Chaque segment conservé garde le
 `forme` de son run d'origine ; un caractère inséré prend celui de son voisin de gauche.
 
-Contrôle d'arrêt, non négociable : **si la réinjection perd ou ajoute un caractère non
-typographique, on abandonne la normalisation de ce paragraphe** et on le signale. On ne rend
-jamais un texte qu'on n'a pas su reconstruire.
+⚠ **Révision du 19.09.2026 — le garde-fou a changé de nature.** L'ancienne version comparait
+chaque caractère perdu/ajouté par la réinjection à une liste blanche « typographique », et
+abandonnait le paragraphe dès qu'un caractère en sortait. Mesuré sur lot-A : **4 paragraphes sur
+845 abandonnés à tort**, parce que le filtre corrigeait du contenu réel que la liste ne connaissait
+pas (`A` → `À` en début de phrase, `3ème` → `3e`, une espace fine U+2009 → l'insécable fine U+202F,
+une apostrophe courbe ouvrante U+2018 → un chevron simple U+2039). **Le filtre a raison dans les
+quatre cas : ce pont n'a pas à le rejuger.**
+
+Le vrai invariant, désormais le seul : **le texte réinjecté dans les fragments doit être
+identique, caractère pour caractère, au texte que le filtre a rendu** — vérifié explicitement (une
+« garde de sortie »), jamais supposé, même si l'algorithme du diff le garantit déjà par
+construction. Une seconde garde, symétrique, vérifie que le texte envoyé au filtre pour une unité
+n'a pas divergé de la concaténation de ses fragments d'origine entre les deux passes (« garde
+d'entrée »). Les deux échecs restent réels, mais deviennent des bugs de CE module — jamais un
+verdict sur une correction du filtre. On ne rend jamais un texte qu'on n'a pas su reconstruire.
 
 ---
 
@@ -485,16 +669,55 @@ jamais un texte qu'on n'a pas su reconstruire.
 Le catalogue vient des deux PDF `outils-dev/Redaktionsrichtlinien {Revue,Zeitschrift} 2025.pdf`
 — eux seuls font foi. Le brief en propose une liste : c'est une **proposition**, pas une source.
 
-Chaque règle est une donnée, pas une fonction :
+⚠ **Révision du 19.09.2026, tranchée par Robin.** Ce paragraphe affirmait « chaque règle est
+une donnée, pas une fonction » pour justifier l'absence de Vale. C'était vrai pour les
+**métadonnées** (id, sévérité, chapitre...), FAUX pour la **détection** : `Regle.detecter`
+est une référence de fonction Python (`_detecter_*`), jamais une donnée — sortir une règle en
+YAML sans réécrire ce champ n'était donc pas un simple export. Trois couches, chacune avec un
+**seul propriétaire**, remplacent l'ancien « tout est un `Regle` Python » :
 
-```
-Regle(id, famille, langue, produit, severite, action, chapitre, detecter, message_fr, message_de)
-    id        'Typo.Insecable', 'Epicene.FormeContractee', 'APA.CitationPage'
-    produit   'revue' | 'zeitschrift' | '' (les deux)
-    severite  'error' | 'warning' | 'suggestion'
-    action    'fix' | 'track' | 'comment' | 'report'
-    chapitre  la référence dans le PDF dont elle découle — obligatoire
-```
+| Couche | Propriétaire | Édité par |
+|---|---|---|
+| Typographie (espace insécable, apostrophe, guillemets, tiret…) | `pipeline/filters/szh-typographie.lua` (§6) | qui code, en Lua |
+| **Lexicale et éditoriale** (langage épicène, vocabulaire du handicap, casse maison, liaison et/&, citation directe, nom des éditions) | **`pipeline/vale/styles/*.yml`**, exécutées par **Vale** | la rédaction, en YAML |
+| **Structurelle** (longueurs, niveaux de titre, cohérence d'une bibliographie, accessibilité) | `pipeline/manuscrit_regles.py`, ce module | qui code, en Python |
+
+La frontière entre la deuxième et la troisième couche : un motif de texte (« ce mot-là est
+proscrit ») est lexical, Vale ; une comparaison entre plusieurs éléments du document (« ce
+titre saute un niveau », « ces deux références ne sont pas dans l'ordre ») est structurelle,
+Python — un motif seul ne peut pas la voir.
+
+**Vale entre dans l'image WSL comme binaire épinglé**, exactement comme pandoc et veraPDF :
+URL versionnée GitHub releases, `sha256sum -c`, `vale --version` vérifié en fin de build
+(`image/Containerfile`) — **aucune entrée `windows/apps.lock`**, puisque le nettoyeur tourne
+dans la WSL (§2). Le catalogue lexical reste entièrement maison : Vale n'en est que le moteur
+d'exécution (`existence`/`substitution`), jamais un jeu de règles emprunté à un écosystème.
+Voir `pipeline/vale/LISEZMOI.md` pour ce que la rédaction peut modifier elle-même, et
+`pipeline/manuscrit_vale.py` pour le pont (extraction, appel de `vale`, conversion des
+constats en alertes du contrat).
+
+**Ce qui a migré vers Vale**, retiré de `pipeline/manuscrit_regles.py` : toute la famille
+`Epicene.*`, toute la famille `Vocabulaire.*`, `Structure.MajusculeReference`,
+`APA.DeuxAuteurs.*` (liaison et/&), `APA.CitationSecondeMain.*`, `APA.CitationDirectePage`.
+Le catalogue Python ne garde que le structurel : longueurs, niveaux de titre (un **saut** de
+niveau, pas un niveau impossible — voir plus bas), cohérence d'une bibliographie déjà
+extraite (ordre, troncature, année dupliquée), accessibilité, style nominal allemand.
+
+⚠ **Trois pièges Vale mesurés le 18.09.2026 (Vale 3.22.0), à ne pas repayer :**
+
+- **un nom de fichier LITTÉRAL en tête de section d'un `.vale.ini` (`[corps-fr.txt]`) ne
+  déclenche JAMAIS aucune règle**, silencieusement — Vale exige un caractère générique en
+  tête (`[*corps-fr.txt]`) pour reconnaître la portée d'un fichier. Aucune erreur, aucun
+  avertissement : zéro alerte, comme si le style n'était pas chargé ;
+- **un motif dont le premier ou le dernier caractère n'est pas un caractère de mot** (`&`,
+  `(`, un guillemet) **ne matche jamais** sous une règle `existence` sans `nonword: true` —
+  Vale entoure chaque motif d'un `\b` implicite, qui échoue contre un symbole des deux côtés ;
+- **RE2 (le moteur régulier de Vale/Go) ne supporte ni lookahead ni lookbehind.** Une règle
+  qui a besoin de viser un mot précis à l'intérieur d'un contexte plus large (un « et » dans
+  une parenthèse de citation, un DOI mal formé) capture le contexte entier ; la précision
+  finale (found/suggested exacts, rejet d'un faux positif comme « et al. ») se calcule
+  ensuite en Python dans `manuscrit_vale.RAFFINEURS` — jamais en resserrant le motif YAML, ce
+  qui ne suffit pas sans lookaround.
 
 Une alerte porte les champs du brief, inchangés : `rule`, `severity`, `action`, `para`, `span`,
 `found`, `suggested`, `message`. `action` n'est pas utilisée au lot 1 mais toujours renseignée :
@@ -516,7 +739,137 @@ qui porte les seuils. Zéro duplication, et une seule vérité sur ce qui est «
 handicapée » ; les lignes directrices CSPS, adossées au MDH-PPH, privilégient « personne en
 situation de handicap ». Un import brut du vocabulaire OQLF signalerait donc comme déconseillé un
 terme que la rédaction recommande. **« personne en situation de handicap » ne lève aucune
-alerte.**
+alerte.** (Depuis le 19.09.2026 : la règle qui le garantit, `CSPS.Vocabulaire.Handicap`, vit
+dans `pipeline/vale/styles/CSPS/Vocabulaire/Handicap.yml` — le test nommé, lui, a migré vers
+`test/js/manuscrit-vale.test.js`.)
+
+---
+
+## 7 bis. Bibliographie — contrôle, DOI, mise en forme
+
+*Révision du 19.09.2026.*
+
+`pipeline/manuscrit_biblio.py`. Module **pur** comme `manuscrit_regles.py` : il ne sait rien de
+Word ni d'OpenDocument, il reçoit du texte de paragraphe déjà extrait (`{'texte':…,
+'source':…}`, le schéma déjà en usage pour le Contexte de `manuscrit_regles.py`) et rend des
+alertes au même format à huit champs (`rule`, `severity`, `action`, `para`, `span`, `found`,
+`suggested`, `message`).
+
+**Ne recopie rien** de ce qui existe déjà : `pronto_modele.normaliser()`/`aplatir()`/
+`lire_titres_bib()`/`_titre_est_biblio()` (repérage de l'étendue d'une bibliographie, identique
+à celui de `manuscrit-nettoyer.py`) ; `docx-meta.py` — chargé par chemin, il porte un tiret —
+pour `nettoyer_doi()`, `RE_DOI`, `langue_du_doi()`, `decouper_prenom_nom()`, `nom_plausible()`,
+`PARTICULES`.
+
+### Ce que le module fait
+
+1. `analyser_reference(texte)` découpe UNE entrée APA 7 (fr/de) en `auteurs` (liste de
+   `{nom, initiales}`), `nb_auteurs`, `annee`/`suffixe`, `titre`, `conteneur`, `volume`,
+   `numero`, `pages`, `editeur`, `doi` (canonique), `url`, `type`
+   (`article|chapitre|ouvrage|rapport|web|inconnu`) et `confiance` (`haute|moyenne|basse`).
+   Mesuré sur les 117 références réelles du corpus `tmp/corpus-relecture/lot-A` : **88/117
+   (75 %) en confiance haute** ; en excluant les 9 entrées d'un fichier où l'extension de
+   bibliographie s'est trompée de section (§ »Ce qui n'a pas pu être fait« ci-dessous, pas un
+   défaut de ce module), **88/108 = 81,5 %**, au-dessus de la cible du chantier.
+2. `citations_du_corps(paragraphes)` — chaque appel dans le texte, narratif
+   (`Tremblay (2023b)`) ou parenthétique (`(Bacharach et al., 2010)`,
+   `(Bullough et al., 2003 ; Wenzlaff, 2002)`), avec `nom_premier_auteur`, `annee`, `suffixe`,
+   `para`, `span`. Une année isolée hors citation (« en 2010, ») n'est jamais retenue.
+3. `croiser(citations, references)` — citée mais absente (`APA.CitationAbsente`, error), en
+   bibliographie mais jamais citée (`APA.ReferenceNonCitee`, warning), suffixe incohérent
+   (`APA.Suffixe`), « et al. » manquant dès trois auteurs ou de trop pour un ou deux
+   (`APA.EtAl`, `action='fix'`, `suggested` rempli).
+4. `verifier_ordre(references)` — alphabétique puis chronologique, suffixes a/b requis dès que
+   deux références partagent auteur et année.
+5. `doi_normaliser(ref)` — `doi:`, `DOI :`, `dx.doi.org/…`, `http://doi.org/…` →
+   `https://doi.org/10.…`, `action='fix'`.
+6. `resoudre_crossref(ref, delai=4)` / `retrouver_doi(ref, delai=4)` — seul point réseau,
+   `GET https://api.crossref.org/works/<doi>` ou `…/works?query.bibliographic=…`. **Seules les
+   métadonnées de la référence partent** (auteur, année, titre, DOI) — jamais le texte de
+   l'article. `retrouver_doi()` n'accepte qu'une similarité de titre ≥ 0,9 avec auteur et année
+   concordants, et ne rend qu'une **suggestion** (`action='comment'`) : il n'insère jamais un
+   DOI deviné. `_requete(url, delai)` est le seul point qui touche réellement le réseau — les
+   tests le remplacent, jamais un vrai appel.
+7. `mise_en_forme_apa(ref, metadonnees_crossref=None)` — la chaîne canonique, italique marquée
+   par `*…*`. Deux différences fr/de relevées dans les PDF Redaktionsrichtlinien (extraits par
+   `pypdf`, faute de `pdftotext` dans la WSL — voir plus bas) : volume(numéro) collé en français
+   (`12(3)`), espacé en allemand (`27 (3)`) ; éditeur d'un ouvrage collectif `(Éd.)`/`(Éds.)` en
+   français, `(Hrsg.)` en allemand. Rendue seulement si `confiance == 'haute'` ou Crossref
+   confirmé ; sinon `None`, jamais une reformulation devinée à la place de la rédaction.
+8. `analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau=True)`
+   enchaîne tout et rend `(alertes, stats)`. `reseau=False` : `stats['crossref']['indisponible']
+   = True`, et **aucune tentative réseau** — la CLI d'essai (`--sans-reseau`) comme les tests
+   l'utilisent.
+
+### Comment le titre se sépare du conteneur — et pourquoi ':' n'est qu'un repli
+
+Le titre finit sur `.`, `?` ou `!` (fréquent en français : « Quelle inclusion ? Revue X,
+12(3), 45-67. »). `:` n'est **pas** dans ce jeu principal, delibérément : un titre à sous-titre
+(très fréquent dans ce corpus, « Titre : sous-titre ? Revue, 12(3), 45-67. ») porte lui-même un
+`:`, et comme le titre se capture en non-gourmand, le PREMIER `:` rencontré l'emporterait à tort
+sur le vrai séparateur qui suit — mesuré : « Hétérogénéité, diversité, différences : Vers quelle
+égalité des élèves ? Nouvelle revue de psychosociologie… » coupait sur le `:` et avalait tout le
+sous-titre dans le nom de la revue. `:` ne sert qu'en **repli**, tenté seulement si `.?!`
+échouent partout dans la chaîne — le cas, plus rare, d'une référence qui a perdu toute
+ponctuation entre le titre et le nom de la revue (vu sur le corpus réel : « … adapté : La
+nouvelle revue - Éducation et société inclusives, 97(1), 203-221. »).
+
+### Les particules — deux graphies, une seule normalisation
+
+`de Chambrier`, `van der Berg` : `_normaliser_nom()` ôte les particules de tête (liste
+`PARTICULES` de `docx-meta.py`) avant de comparer, pour qu'une citation qui les omet
+(`(Chambrier, 2020)`) apparie quand même une référence qui les porte. Un **second** cas, non
+couvert par cette seule règle et **construit** pour le chantier (aucun exemple dans les 117
+références réelles) : l'écriture APA de classement qui place la particule **après** les
+initiales (`Chambrier, A.-F. de`, pour classer sous C plutôt que sous D — voir le guide
+Zeitschrift, « Namen mit Namenszusatz »). `_decouper_initiales_et_particule()` la détecte et
+recompose `{nom: 'de Chambrier', initiales: 'A.-F.'}` ; sans elle, ce test tombe sur DEUX faux
+auteurs au lieu d'un — sabotage vérifié, voir le rapport de chantier.
+
+### Le faux positif des acronymes et noms propres devant une parenthèse à année
+
+Un mot capitalisé immédiatement suivi de `(année…)` n'est PAS forcément une citation narrative :
+mesuré sur le corpus réel, « … du MPA (Booms et al., 2023) » prenait l'acronyme « MPA » pour le
+nom cité, la vraie citation « Booms et al. » étant DANS la parenthèse, sans rapport avec le mot
+qui précède. Correctif retenu : le contenu de la parenthèse doit **commencer** par l'année pour
+que la forme narrative s'applique ; un contenu qui commence par un nom (`Booms et al., 2023`)
+n'est jamais narratif, il revient à la passe parenthétique, qui lit le bon premier auteur.
+
+⚠ **Limite connue, non résolue** : la même ambiguïté existe quand le mot qui précède N'EST PAS
+un acronyme mais un nom propre ordinaire suivi directement de plusieurs années (`Fribourg
+(2022 ; 2025)` pour deux événements distincts survenus à Fribourg, pas deux publications d'un
+auteur nommé Fribourg). Aucune règle de casse ne distingue un nom de lieu d'un nom d'autrice ou
+auteur : ce cas reste un faux positif possible, à signaler dans le rapport de chantier plutôt
+qu'à corriger ici — le corriger demanderait de connaître un lexique de noms propres non-auteurs,
+hors de portée d'un module qui ne lit que du texte.
+
+### Ce qui n'a pas pu être fait ici (à couvrir ailleurs, jamais en silence)
+
+- **Un auteur institutionnel cité par son SIGLE** (`OFS, 2022`) ne s'apparie pas à la référence
+  qui porte le nom développé (`Office fédérale de la statistique [OFS]. (2022)…`) :
+  `analyser_reference()` ne sépare pas le sigle entre crochets du nom qui le porte. Mesuré :
+  deux faux `APA.CitationAbsente`/`APA.ReferenceNonCitee` sur le corpus réel pour ce seul motif.
+  Le correctif (extraire le sigle, l'ajouter comme clé d'appariement alternative) est identifié,
+  borné, non fait — pas dans le périmètre de ce lot.
+- **L'extraction de l'étendue de bibliographie**, utilisée par la CLI d'essai
+  (`_extraire_paragraphes()`) et par le harnais de mesure, hérite du même repérage par titre que
+  `manuscrit-nettoyer.py`. Sur le fichier fabriqué `2-fin-de-document_Article_RSPS.docx` (les 8
+  derniers paragraphes du corps posés en Titre 2, bibliographie comprise — voir le LISEZMOI du
+  corpus), ce repérage retrouve un bloc qui contient le PARAGRAPHE DE COORDONNÉES DE L'AUTRICE
+  et non les vraies références : les 9 « références » qui en sortent ne sont pas des références,
+  et leurs 9 échecs de confiance ne disent rien de ce module. C'est un défaut de l'extension de
+  bibliographie (hors de `manuscrit_biblio.py`, qui ne fait que lire ce qu'on lui donne), déjà
+  documenté comme risque pour le cas fabriqué au § »Les titres« — signalé de nouveau ici parce
+  que c'est ce fichier précis qui l'a fait apparaître pendant ce lot.
+
+### La mesure fr/de sans `pdftotext`
+
+La WSL `SZH-Publishing` ne porte pas `poppler-utils` (`pdftotext` introuvable, mesuré le
+19.09.2026) — contrairement à ce qu'un chantier PDF supposerait disponible. Les deux PDF
+`Redaktionsrichtlinien {Revue,Zeitschrift} 2025.pdf` ont donc été lus avec `pypdf` (Python de
+Windows, où il est installé) au lieu de `pdftotext -layout` comme le prévoyait la consigne — la
+extraction est fidèle (page par page, texte complet), seul l'outil diffère. Sans conséquence sur
+le contenu lu, à signaler pour qui refera cette extraction plus tard dans la WSL.
 
 ---
 
@@ -538,16 +891,34 @@ manuscrit-nettoyer.py <entree.docx|.odt> --produit revue|zeitschrift --sortie <d
   abîmés dans le journal du lanceur et personne ne sait à qui la faute ;
 - **la sortie est écrite à côté du manuscrit d'entrée**, sans rien demander à la personne. Un
   manuscrit arrive dans un dossier de travail déjà choisi ; ouvrir une boîte de dossier à chaque
-  nettoyage serait un geste de plus pour rien. Le bouton « Ouvrir le dossier » y mène.
+  nettoyage serait un geste de plus pour rien. Le bouton « Ouvrir le dossier » y mène ;
+- révision du 19.09.2026 — la ligne JSON de stdout porte aussi `typographie: "appliquee" |
+  "repli"` : la CLI dit explicitement si le filtre a vraiment tourné, jamais seulement une trace
+  enfouie dans le rapport. `--sans-typo` porte aussi `"repli"` sur cette ligne (rien n'a été
+  tenté), mais un repli involontaire (pandoc/WSL indisponible) lève EN PLUS une alerte `warning`
+  (`Typo.ApplicationImpossible`) dans le rapport — `--sans-typo`, choix explicite déjà visible via
+  `sans_typo` au rapport, n'en lève aucune.
 
 **Refus explicites**, jamais un devinement :
 
 - le document porte des `w:ins` / `w:del` → refus, message clair. Un texte en suivi de
   modifications n'a pas de contenu univoque ;
-- extension inconnue → refus.
+- extension inconnue → refus ;
+- révision du 19.09.2026 — un fichier `~$*.docx` (verrou temporaire de Word, posé à côté d'un
+  document ouvert ailleurs) → refus (`code_refus: 'fichier-verrou'`), avant toute tentative de
+  lecture. Avant cette révision, `md.lire()` levait « File is not a zip file » (code de sortie 3
+  au lieu de 2, sans message pour la rédaction).
 
 Un document porteur de **commentaires** n'est pas refusé : les commentaires sont comptés et
 signalés, mais ils ne survivent pas au nettoyage et le rapport doit le dire.
+
+**La langue de traitement (révision du 19.09.2026)** : `'fr'` pour `--produit revue`, `'de'` pour
+`--produit zeitschrift` — jamais `document.langue or 'fr'`. C'est cette langue courte qui part au
+filtre (`-M lang=`), aux règles (`contexte['langue']`) et au rapport (`rapport['langue']`). La
+langue déclarée du document ne sert plus qu'à une alerte `warning`
+(`Langue.DesaccordProduit`) quand sa sous-étiquette primaire (`fr` de `fr-CH`) diffère de celle du
+produit — jamais à choisir le traitement. Mesuré avant correction : un article français déclaré
+`de-CH` recevait la typographie allemande ; cinq manuscrits du corpus lot-A sont déclarés `en-US`.
 
 ---
 
@@ -601,10 +972,29 @@ chaînes selon le format.
 `.docx`, 3 côté `.odt`. L'écrivain doit donc **toujours poser un paragraphe vide entre deux
 blocs**, sans quoi le document qu'il produit se dégrade dès qu'il passe par LibreOffice.
 
+⚠ **Révision du 19.09.2026 : « toujours un » n'est pas « au plus un ».** Mesuré : un ou plusieurs
+paragraphes vides déjà présents dans le manuscrit, collés à un bloc, s'AJOUTAIENT au séparateur que
+l'écrivain injecte lui-même, au lieu de s'y substituer — jusqu'à trois `<w:p/>` consécutifs entre
+deux tableaux. Le contrat exige EXACTEMENT un paragraphe vide entre deux blocs, pas « au moins
+un ». Corrigé dans `manuscrit_gabarit._convertir_niveau_racine()` : les paragraphes vides
+consécutifs sont fondus à un seul avant l'insertion des séparateurs, et un séparateur n'est plus
+injecté quand un paragraphe vide existe déjà de part ou d'autre du bloc.
+
 **Le numéro de page n'existe que si Word a repaginé** (`w:lastRenderedPageBreak`). Absent d'un
 fichier fabriqué par script, sans équivalent OpenDocument. **Ne jamais estimer une page depuis un
 nombre de signes** : une page fausse envoie chercher au mauvais endroit et l'outil passe pour
 menteur. `page = None` est une réponse acceptable, une page inventée ne l'est pas.
+
+**`wsl.exe` n'existe pas DANS la WSL — et son absence ne lève aucune exception explicite.**
+Mesuré le 19.09.2026 : le pont typographique appelait TOUJOURS `wsl.exe -d SZH-Publishing --
+pandoc ...`, y compris quand cette CLI tourne déjà DANS la distro (le lanceur l'exécute via
+`wsl -d SZH-Publishing -e python3 ...`). `subprocess.run(['wsl.exe', ...])` y échoue comme
+n'importe quel exécutable introuvable — capturé comme une indisponibilité de pandoc, un repli
+**silencieux** : 845 paragraphes sur 845 rendus inchangés, code de sortie 0, rien qui le
+signale. La décision (§6) : `sys.platform != 'win32'` → pandoc du PATH, direct, chemin Linux
+natif du filtre ; seulement sous Windows → `wsl.exe` + `wslpath -a`. Ne jamais supposer qu'un
+code qui tourne « dans la CI/les tests sur le poste de dev » tourne dans les mêmes conditions
+qu'en production : ici c'était l'inverse (Windows) de la production (WSL).
 
 **`wsl.exe` avale les antislashs d'un argument passé en tableau.** Mesuré le 18.09.2026 :
 `subprocess.run(['wsl.exe', ..., 'C:\Users\robin\...\filtre.lua'])` fait arriver
@@ -637,6 +1027,29 @@ test.
 rapport groupe par famille, compte par règle, et au-delà de dix occurrences d'une même règle
 affiche les dix premières et le total.
 
+**Un même r:id VML peut être répété plusieurs fois dans le même groupe.** Mesuré le 19.09.2026
+sur `4_La methode Flip Flap.docx` : un décompte qui compte les OCCURRENCES de `v:imagedata`
+plutôt que les identifiants DISTINCTS surcompte d'un facteur 5 (24 occurrences pour 5 images
+réelles). Dédoublonner par `r:id`, jamais par position.
+
+**Un `w:sdt` de niveau BLOC est invisible à `blocs_du_corps()`.** Ce dernier (repris tel quel de
+`pronto_docx.py`, §3) ne reconnaît que `w:p`/`w:tbl` comme enfants directs du corps — un contrôle
+de contenu qui enveloppe un `w:p` ENTIER (formulaire Word, citation Zotero) fait disparaître ce
+paragraphe SANS AVERTISSEMENT, contrairement au niveau RUN (couvert de longue date). Le déplier
+dans l'arbre XML avant tout parcours, jamais essayer de le reconnaître au niveau du bloc lui-même.
+
+**Le nom d'un fichier ment.** `2-fin-de-document_Article_RSPS.docx` (corpus réel) porte des
+NOTES DE BAS DE PAGE (`word/footnotes.xml`), pas des notes de fin — mesuré le 19.09.2026 en
+vérifiant l'archive avant d'écrire le contrôle qui s'appuie dessus. Ne jamais nommer un fichier
+de test sur la foi d'un nom de fichier réel sans avoir ouvert l'archive.
+
+**Deux Word/pandoc différents peuvent lire un tiret différemment sans corruption.** Un caractère
+U+2011 (trait d'union insécable) peut arriver dans `<w:t>` de DEUX façons distinctes sur le même
+corpus : l'élément dédié `w:noBreakHyphen`, OU un `w:sym` dont `w:char="2011"` (une autrice qui
+passe par Insertion > Symbole plutôt que par le raccourci clavier). Un lecteur qui n'en couvre
+qu'une seule perd l'autre en silence — mesuré sur `1bis_Booms Article.docx` (6 occurrences par
+`w:sym`, aucune par `w:noBreakHyphen`).
+
 ---
 
 ## 11. Les contrôles de validité
@@ -651,10 +1064,11 @@ fixtures `.docx` **fabriquées dans le test** et non figées en binaire — patr
 | `manuscrit-titres.test.js` | Le H2 sur trois paragraphes rend **un** titre et deux corps. Un style porté par plus de la moitié du document est ignoré. Un document correctement stylé ressort **inchangé** — zéro faux positif. Un document sans aucun style voit ses titres retrouvés par taille et graisse. |
 | `manuscrit-typo.test.js` | Sur un paragraphe dont les runs sont coupés **au milieu d'un mot**, le texte normalisé est réinjecté sans perdre un caractère, et un mot en italique reste en italique. Un paragraphe irreconstructible est abandonné **et signalé**, jamais rendu de travers. |
 | `manuscrit-formatage.test.js` | Tailles, polices, couleurs partent ; italique, exposant, indice et liens restent. Chaque suppression apparaît dans le rapport. ⚠ Le contrôle porte sur l'ÉTAT DES FRAGMENTS EN SORTIE, jamais sur le seul texte du motif : un test qui se contente de lire le motif reste vert quand l'italique est détruit — mesuré le 18.09.2026. |
-| `manuscrit-gabarit.test.js` | La sortie relue par `pronto-lire.py` rend les champs attendus. Chaque image est dans un bloc figure, chaque tableau coiffé de sa rangée fusionnée, un paragraphe vide sépare toujours deux blocs. Aucun signe du corps perdu, typographie mise à part. |
+| `manuscrit-gabarit.test.js` | La sortie relue par `pronto-lire.py` rend les champs attendus. Chaque image est dans un bloc figure, chaque tableau coiffé de sa rangée fusionnée, EXACTEMENT un paragraphe vide sépare toujours deux blocs (jamais deux, jamais zéro). Aucun signe du corps perdu, typographie mise à part. Chaque partie XML de la sortie (`word/*.xml`, `word/_rels/*.rels`) est bien formée, `sectPr` en dernier enfant du corps, chaque média déclaré dans `[Content_Types].xml`, chaque `r:embed`/`r:id` résolu, tout hyperlien externe porte `TargetMode="External"` — vérifié sur les onze manuscrits réels. Un lien/alt portant `&`/`"` produit un document valide (échappement d'attribut). Le rapport largeur/hauteur d'une image (cx/cy, puis pixels, puis surface en dernier recours) est conservé, plafonné à la largeur utile de la page. Une rangée plus large que la première, et une fusion verticale ET horizontale à la fois, ne perdent aucune cellule. Chaque `wp:docPr` est unique. Les notes de bas de page appelées sont écrites dans `word/footnotes.xml` (contrat partagé, notes orphelines et introuvables tracées, jamais écrites en silence) et la table de correspondance `{source, sortie}` rendue par `ecrire()` pointe, pour 100 % des paragraphes du corpus réel, le bon `<w:p>` de la sortie. |
 | `manuscrit-cas-a.test.js` | Un document au gabarit n'est pas restructuré, et **nettoyer deux fois donne le même résultat que nettoyer une fois**. |
 | `manuscrit-refus.test.js` | Un `.docx` en suivi de modifications est refusé avec un message clair, et **rien n'est écrit**. Extension inconnue de même. |
-| `manuscrit-regles.test.js` | « personne en situation de handicap » ne lève **aucune** alerte. Chaque règle porte sa référence de chapitre. Le code de sortie est non nul dès la première alerte `error`. |
+| `manuscrit-regles.test.js` | Le catalogue **structurel** seul (depuis le 19.09.2026, §7) : chaque règle porte sa référence de chapitre, un saut de niveau de titre (H1 → H3) est détecté, une bibliographie mal ordonnée l'est aussi sans jamais citer un « None (None) », le code de sortie est non nul dès la première alerte `error`. |
+| `manuscrit-vale.test.js` | Le catalogue **lexical et éditorial**, porté par Vale (§7) : « personne en situation de handicap » ne lève **aucune** alerte, l'inversion épicène FR/DE, une URL ne déclenche jamais Epicene, `analyser()` rend `indisponible=True` proprement quand Vale ne peut pas tourner. |
 | `manuscrit-parite-lecteur.test.js` | `projeter_pronto()` et `pronto_docx.lire()` s'accordent sur les deux gabarits livrés. **Ce fichier disparaît avec la dette du §3.** |
 | `manuscrit-odt.test.js` | Le même manuscrit en `.docx` et en `.odt` rend le même modèle riche, modulo les écarts connus du §10. |
 

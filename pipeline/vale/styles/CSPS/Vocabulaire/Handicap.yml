@@ -1,0 +1,26 @@
+# Revue : 2.3 Vocabulaire — « personnes en situation de handicap », et renvoi explicite du
+# PDF à la liste de l'OQLF pour les autres termes. LE PIÈGE OQLF/CSPS : l'OQLF privilégie
+# « personne handicapée », la Revue (RIPPH/MDH-PPH) privilégie « personne en situation de
+# handicap ». Le motif ci-dessous cible EXCLUSIVEMENT l'adjectif « (personne) handicapée » —
+# la locution « en situation de » qui sépare « personne » de « handicap » dans la forme
+# recommandée le rend structurellement inatteignable par ce motif : ne JAMAIS élargir ce
+# motif pour « couvrir plus de cas », c'est exactement l'erreur que le PDF met en garde.
+extends: substitution
+message: "%s est préférable à « %s » (Revue : 2.3 Vocabulaire, cf. liste OQLF)."
+level: suggestion
+ignorecase: true
+action:
+  name: replace
+swap:
+  # personne(s) handicapée(s) -> forme recommandée (jamais « en situation de handicap »,
+  # structurellement hors d'atteinte de ce motif)
+  "personnes? handicap[ée]e?s?": "personne(s) en situation de handicap"
+  # places (réservées) pour (les) handicapés -> places accessibles (exemple exact du PDF)
+  "places? (?:réservées? )?pour (?:les )?handicapés?": "places accessibles"
+  # élèves à besoin(s) éducatif(s) particulier(s) -> exemple exact du PDF, vocabulaire positif
+  "élèves? à besoins? éducatifs? particuliers?": "élèves bénéficiant d'un soutien éducatif"
+  # trois formes stigmatisantes usuelles, hors du PDF mais couvertes par son renvoi explicite
+  # à la liste OQLF (2.3, dernier paragraphe)
+  "souffre d[e’']": "vit avec"
+  "atteint(?:e)?s? d[e’']": "présentant"
+  "confiné(?:e)?s? (?:au|dans un) fauteuil roulant": "se déplace en fauteuil roulant"

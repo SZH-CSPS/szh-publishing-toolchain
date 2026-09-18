@@ -1,0 +1,20 @@
+# Revue : 3.1.3 — « deux autrices ou auteurs, les deux noms sont liés avec un "et" dans le
+# texte et par l'esperluette "&" dans la référence entre parenthèses ». Donc un « et » à
+# l'intérieur d'une parenthèse de citation (qui porte une année) devrait être « & ».
+#
+# RE2 (le moteur régulier de Vale/Go) ne supporte ni lookahead ni lookbehind : impossible de
+# viser directement le seul mot « et » sans capturer la parenthèse entière qui l'entoure. Ce
+# fichier détecte donc la PARENTHÈSE DE CITATION QUI CONTIENT UN "et"+année (net large) ;
+# pipeline/manuscrit_vale.py affine ensuite found/suggested/action en ré-examinant le texte
+# du constat en Python — jamais un second moteur de règles, juste la précision qu'un motif
+# figé ne peut pas rendre. Le filtre exclut aussi « et al. » dans ce second passage : « al »
+# ressemble à un nom d'autrice ou d'auteur pour ce motif RE2, RE2 ne peut pas l'exclure ici.
+extends: existence
+message: "Citation à corriger (Revue : 3.1.3, « et » -> « & » entre parenthèses) : « %s »."
+level: warning
+ignorecase: false
+# Le motif commence par « ( », un caractère non-mot : sans nonword, le \b que Vale ajoute par
+# défaut autour du token échouerait dès qu'une espace le précède (mesuré).
+nonword: true
+tokens:
+  - '\([\p{L}][\p{L}.\x27-]*(?:,\s*[\p{L}][\p{L}.\x27-]*)*\s+et\s+[\p{L}][\p{L}.\x27-]*,\s*(?:19|20)\d{2}[a-z]?\)'

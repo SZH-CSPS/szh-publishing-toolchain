@@ -1,0 +1,17 @@
+# Revue : 3.1.3 — l'esperluette « & » n'a sa place QU'entre parenthèses ; dans le texte
+# courant, deux autrices ou auteurs sont liés par « et ». RE2 ne sait pas exclure « à
+# l'intérieur d'une parenthèse » par lookaround : ce fichier repère TOUT « & », et
+# pipeline/manuscrit_vale.py rejette ensuite (sans émettre d'alerte) les occurrences qui
+# tombent dans une parenthèse de la même ligne — la même logique de détection de parenthèses
+# que l'ancien détecteur Python retiré de manuscrit_regles.py, simplement déplacée après
+# Vale au lieu d'avant.
+extends: existence
+message: "« & » hors parenthèse (Revue : 3.1.3, à remplacer par « et »)."
+level: warning
+ignorecase: false
+# Vale entoure par défaut chaque token de \b — mortel pour un symbole seul comme « & », qui
+# n'est un caractère de mot d'aucun côté : \b n'y matcherait jamais. `nonword: true` retire
+# cet habillage automatique (mesuré : sans lui, cette règle ne déclenchait JAMAIS).
+nonword: true
+tokens:
+  - '&'

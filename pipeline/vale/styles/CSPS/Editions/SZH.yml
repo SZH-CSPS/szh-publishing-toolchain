@@ -1,0 +1,21 @@
+# Revue : 4.5 Autres aspects typographiques — « EDITION SZH/CSPS est le nom de nos éditions.
+# Elles sont mentionnées dans les textes français comme les éditions SZH/CSPS pour assurer
+# la fluidité ». Le nom du logo est en capitales (EDITION SZH/CSPS), mais dans un texte
+# courant on écrit « éditions SZH/CSPS », minuscule et accentué.
+#
+# ⚠ Décision prise seule (revue de chantier) : le brief de départ décrivait la correction en
+# sens inverse (minuscule -> majuscule). C'est l'inverse de ce que dit le PDF lui-même — son
+# unique exemple de phrase, "Les éditions SZH/CSPS produisent...", montre bien "éditions" en
+# minuscule hors début de phrase. On corrige donc uniquement les deux formes toujours
+# fautives, qu'elles soient en tête de phrase ou non : la forme logo tout capitales, et la
+# forme sans l'accent sur le É (qui ne peut jamais être correcte, même en début de phrase, où
+# l'accent se garde sur une majuscule).
+extends: substitution
+message: "%s (Revue : 4.5, nom des éditions) au lieu de « %s »."
+level: warning
+ignorecase: false
+action:
+  name: replace
+swap:
+  '\bEditions? SZH/CSPS\b': éditions SZH/CSPS
+  '\bEDITIONS? SZH/CSPS\b': éditions SZH/CSPS

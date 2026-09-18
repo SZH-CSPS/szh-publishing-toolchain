@@ -1,0 +1,27 @@
+# Revue : 4.4 Mots et abréviations particulières — tableau de casse : Internet (toujours
+# majuscule), site web (minuscule), canton de XYZ (canton toujours minuscule), Confédération
+# (toujours majuscule).
+#
+# « canton » : le PDF dit « canton toujours en minuscule », y compris devant un nom propre
+# de canton («canton de Vaud»). Sans lookbehind (RE2 ne les supporte pas), on ne peut pas
+# distinguer un « Canton » fautif d'un « Canton » légitime en tête de phrase — on restreint
+# donc le motif aux tournures qui ne peuvent JAMAIS être un début de phrase (précédées d'un
+# article ou d'une préposition), pour ne jamais signaler un « Canton » réellement initial.
+extends: substitution
+message: "%s au lieu de « %s » (Revue : 4.4 Mots et abréviations particulières)."
+level: warning
+ignorecase: false
+action:
+  name: replace
+swap:
+  '\binternet\b': Internet
+  '\bSite [Ww]eb\b': site web
+  '\bSITE WEB\b': site web
+  '\ble Canton de\b': le canton de
+  '\bdu Canton de\b': du canton de
+  '\bau Canton de\b': au canton de
+  '\baux Cantons? de\b': aux cantons de
+  '\bdans le Canton de\b': dans le canton de
+  '\bles Cantons? de\b': les cantons de
+  "\\bd['’]un Canton\\b": "d'un canton"
+  '\bconfédération\b': Confédération

@@ -1,0 +1,23 @@
+# Zeitschrift : Sprachliche Richtlinien / Geschlechtergerechte und inklusive Sprache — « Zu
+# vermeiden sind weitere Genderzeichen (z. B. Genderstern, Gendergap), Paarformeln (z. B.
+# der/die Lehrer/in ; LehrerInnen ; die Schülerinnen und Schüler) [...] ». LE FAIT QUI
+# COMMANDE TOUT : la forme prescrite ici (Doppelpunkt, « Schüler:innen ») est justement celle
+# que le français proscrit — aucun motif ci-dessous ne reconnaît le deux-points, et c'est
+# volontaire : voir CSPS/Epicene/FormesContractees.yml pour le sens inverse.
+extends: existence
+message: "Form vermeiden (Zeitschrift: Geschlechtergerechte und inklusive Sprache), Doppelpunkt bevorzugen: « %s »."
+level: error
+ignorecase: false
+tokens:
+  # Paarform mit "und" : die Schülerinnen und Schüler, Lehrerinnen und Lehrer
+  - '\b[\p{L}]+innen\s+und\s+[\p{Lu}][\p{Ll}]*\b'
+  # Schrägstrich-Paarform : der/die Lehrer/in, Lehrer/in
+  - '\b[\p{L}]{3,}/in\b'
+  # Binnen-I : LehrerInnen. Le nom commence normalement par une majuscule allemande — le motif
+  # exige donc au moins une lettre AVANT le I intérieur (initiale + minuscules), pour ne
+  # signaler que le I supplémentaire, jamais l'initiale normale du mot.
+  - '\b[\p{Lu}][\p{Ll}]+I[\p{Ll}]*\b'
+  # Genderstern : Lehrer*in, Lehrer*innen
+  - '\b[\p{L}]+\*(?:in|innen)\b'
+  # Gendergap : Lehrer_in, Lehrer_innen
+  - '\b[\p{L}]+_(?:in|innen)\b'

@@ -1,0 +1,16 @@
+# Revue : 2.2 Langage épicène. Le PDF ne tranche QUE la barre oblique, la parenthèse et la
+# majuscule (voir Epicene/FormesContractees.yml) : trait d'union, point médian et point ne
+# sont mentionnés nulle part dans ce document. On les signale quand même — la rédaction les
+# rencontre dans les manuscrits — mais jamais comme une faute que le PDF ne prononce pas :
+# `suggestion` seulement, jamais `error`.
+extends: existence
+message: "Forme épicène à vérifier, absente des lignes directrices de la Revue : « %s »."
+level: suggestion
+ignorecase: false
+tokens:
+  # trait d'union : étudiant-e-s, étudiant-e
+  - '\b[a-zà-öø-ÿ]{3,}-e(?:-s)?\b'
+  # point médian : étudiant·e·s
+  - '\b[a-zà-öø-ÿ]{3,}·[a-zà-öø-ÿ]{1,8}(?:·s)?\b'
+  # point : étudiant.e, étudiant.es
+  - '\b[a-zà-öø-ÿ]{3,}\.(?:e|es)\b'

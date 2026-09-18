@@ -1,41 +1,43 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# manuscrit_regles.py — le catalogue de règles et le moteur d'alertes du nettoyeur de
-# manuscrit (article). Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §7.
+# manuscrit_regles.py — le catalogue de règles STRUCTURELLES et le moteur d'alertes du
+# nettoyeur de manuscrit (article). Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md,
+# §7.
 #
-# Source unique du catalogue : les deux PDF Redaktionsrichtlinien {Revue,Zeitschrift} 2025 —
-# EUX SEULS font foi. Le fichier d'extraction (69 prescriptions, colonne « mécanisable »)
-# n'est qu'une aide de travail ; les références de chapitre données ici les recopient.
+# ⚠ Révision du 19.09.2026 : les familles LEXICALES et ÉDITORIALES (langage épicène,
+# vocabulaire du handicap, casse maison, liaison et/&, citation directe, nom des éditions)
+# ont déménagé vers Vale — pipeline/vale/ (règles YAML) et pipeline/manuscrit_vale.py (le
+# pont). Ce module ne garde que le STRUCTUREL, ce qu'un motif lexical ne peut pas voir :
+# longueurs (article, résumé, titres), niveaux de titre, cohérence d'une bibliographie déjà
+# extraite (ordre, troncature, année dupliquée), accessibilité, style nominal allemand. La
+# frontière est la même que celle du §7 du contrat : « chaque couche de règles, un seul
+# propriétaire ». Voir pipeline/vale/LISEZMOI.md pour ce qui a déménagé et pourquoi.
 #
 # Ce module ne connaît NI Word NI OpenDocument (§3 : « Ne sait rien de : les formats »). Il
 # reçoit un Contexte — un dict JSON simple, jamais les classes de manuscrit_modele.py — et ne
 # regarde que des chaînes et des nombres déjà extraits par l'appelant. C'est délibéré : ce
 # module ne devine JAMAIS quel paragraphe est le titre, le sous-titre ou le résumé de
-# l'article — voir le schéma du Contexte plus bas, et la remarque du rapport de chantier sur
-# ce trou du contrat.
+# l'article — voir le schéma du Contexte plus bas.
 #
 # stdlib seule : re, json, collections.namedtuple. Aucune dépendance nouvelle.
 #
 # ── Ce que ce module NE fait PAS, et pourquoi (§7 et §10 du contrat) ───────────────────────
 #
-# 1. AUCUNE règle de typographie (famille Typo.* du fichier d'extraction : espace insécable,
-#    apostrophe, guillemets, chevrons, nombres, tiret/cadratin, statistiques APA, raccourcis
-#    clavier). C'est le travail de pipeline/filters/szh-typographie.lua, déjà écrit, déjà
-#    éprouvé : en écrire une version Python serait un second moteur, que le contrat interdit
-#    explicitement (§6). Les avertissements C1 (ß) et C2 (guillemets droits non appariés) que
-#    ce filtre émet déjà sur stderr sont REPRIS tels quels comme alertes par
-#    _reprendre_avertissements_typo() plus bas — jamais réimplémentés.
+# 1. AUCUNE règle de typographie (espace insécable, apostrophe, guillemets, chevrons,
+#    nombres, tiret/cadratin, statistiques APA, raccourcis clavier). C'est le travail de
+#    pipeline/filters/szh-typographie.lua, déjà écrit, déjà éprouvé. Les avertissements C1
+#    (le ß) et C2 (guillemets droits non appariés) que ce filtre émet déjà sur stderr sont
+#    REPRIS tels quels comme alertes par _reprendre_avertissements_typo() plus bas — jamais
+#    réimplémentés.
 #
-# 2. APA.SousTitre (extraction : « auto ») est écarté pour la MÊME raison bien qu'il ne soit
-#    pas dans la famille Typo : la règle porte sur l'espace insécable avant « : », strictement
-#    le métier du filtre lua.
+# 2. AUCUNE règle LEXICALE ou ÉDITORIALE (langage épicène, vocabulaire du handicap, casse,
+#    liaison et/&, citation directe, nom des éditions) : voir pipeline/vale/ ci-dessus.
 #
-# 3. Media.ResolutionImage et Media.TaillePortrait (extraction : « auto » côté allemand) sont
-#    INMÉCANISABLES avec le modèle actuel : la classe Image du §4 du contrat ne porte qu'une
-#    `surface` (EMU², une AIRE) et jamais une largeur/hauteur séparées ni le nombre de pixels
-#    du fichier — impossible de calculer une résolution (px / pouce) à partir d'une aire seule
-#    sans supposer un rapport largeur/hauteur qu'on ne connaît pas. C'est un trou du modèle
-#    riche, pas de ce module ; signalé dans le rapport de chantier.
+# 3. Media.ResolutionImage et Media.TaillePortrait sont INMÉCANISABLES avec le modèle actuel :
+#    la classe Image du §4 du contrat ne porte qu'une `surface` (EMU², une AIRE) et jamais une
+#    largeur/hauteur séparées ni le nombre de pixels du fichier — impossible de calculer une
+#    résolution (px / pouce) à partir d'une aire seule sans supposer un rapport largeur/
+#    hauteur qu'on ne connaît pas. C'est un trou du modèle riche, pas de ce module.
 #
 # 4. Ce qui exige un jugement sémantique plutôt qu'un motif (accord grammatical de proximité,
 #    style passif/actif, choix d'un terme neutre vs un terme genré, contraste WCAG d'une
@@ -48,7 +50,7 @@
 #
 #   {
 #     "produit": "revue" | "zeitschrift",
-#     "langue": "fr" | "de",
+#     "langue": "fr" | "de" | "fr-CH" | "de-CH" ...,
 #     "paragraphes": [
 #       {"source": 0, "texte": "…", "role": "titre", "niveau_retenu": 0}, ...
 #     ],
@@ -60,12 +62,16 @@
 #     "avertissements_typo": [ "[typo-avertissement] eszett | article « … » | … | [de] …", ... ]
 #   }
 #
+# `langue` : la CLI passera des codes courts (fr/de) après le lot en cours, mais ce module
+# reste robuste à une sous-étiquette longue (fr-CH, de-CH) — voir _langue_courte() plus bas.
+# `regle.langue`, lui, est TOUJOURS court ('fr', 'de', '') : c'est la comparaison qui
+# normalise le côté Contexte, jamais le côté Regle.
+#
 # `role` sur un paragraphe : '' (corps, valeur par défaut), 'titre', 'sous_titre', 'resume',
-# 'bibliographie'. AUCUNE règle de ce module ne déduit ce rôle depuis le texte ou le style —
-# c'est à l'appelant (manuscrit-nettoyer.py, ou le gabarit qui connaît les styles maison) de
-# le fournir. Un rôle absent équivaut à '' : le paragraphe compte comme corps, jamais comme
-# titre/sous-titre/résumé par défaut — un faux résumé mesuré serait pire qu'un résumé non
-# mesuré.
+# 'auteurs', 'mots_cles', 'bibliographie'. AUCUNE règle de ce module ne déduit ce rôle depuis
+# le texte ou le style — c'est à l'appelant de le fournir. Un rôle absent équivaut à '' : le
+# paragraphe compte comme corps, jamais comme titre/sous-titre/résumé/auteurs/mots-clés par
+# défaut.
 #
 # `niveau_retenu` reprend tel quel le champ de même nom rempli par
 # manuscrit_modele.classer_titres() (0 = corps, 1..3 = titre). `bibliographie[i].texte` sert
@@ -92,7 +98,11 @@ from collections import namedtuple
 
 # Forme.LongueurArticle : identique dans les deux documents, mais le PÉRIMÈTRE diffère —
 # voir _signes_article_revue()/_signes_article_zeitschrift() : l'allemand inclut le résumé
-# dans ce total, le français le traite à part (sa propre fourchette, ci-dessous).
+# dans ce total, le français le traite à part (sa propre fourchette, ci-dessous). Les rôles
+# 'titre', 'sous_titre', 'auteurs' et 'mots_cles' sont TOUJOURS hors du compte, des deux
+# côtés — c'est l'effet du filtre par ALLOWLIST de _signes_par_role() : seuls les rôles
+# explicitement nommés dans le tuple entrent dans le total, tout le reste (y compris un rôle
+# qui n'existe pas encore) en est exclu par construction, jamais par un oubli à maintenir ici.
 LONGUEUR_ARTICLE_MAX = 18000
 
 # Forme.LongueurResume : fourchette AVEC minimum en français, plafond SEUL en allemand.
@@ -106,9 +116,6 @@ RESUME_MAX_ZEITSCHRIFT = 700
 TITRE_MAX_ZEITSCHRIFT = 100
 SOUS_TITRE_MAX_ZEITSCHRIFT = 120
 TITRE_CHAPITRE_MAX_ZEITSCHRIFT = 80
-
-# Structure.NiveauxTitre : IDENTIQUE dans les deux documents (1.1 Mise en page / Checkliste).
-NIVEAUX_TITRE_MAX = 3
 
 # APA.NombreAuteursListes : identique (jusqu'à 20 nommés) ; au-delà, seul le français précise
 # la procédure de troncature (19 premiers + « … » + dernier) — l'allemand ne dit rien, d'où
@@ -130,6 +137,14 @@ SEUIL_STYLE_NOMINAL = 3
 # tout le catalogue par une seule boucle, sans distinguer les familles.
 Regle = namedtuple('Regle', ['id', 'famille', 'langue', 'produit', 'severite', 'action',
                               'chapitre', 'detecter', 'message_fr', 'message_de'])
+
+
+# ---------------------------------------------------------------------------------
+# Langue — la sous-étiquette PRIMAIRE seule compte (fr de fr-CH, de de de-CH). `regle.langue`
+# est toujours courte ; c'est le côté Contexte qu'on normalise, jamais l'inverse.
+
+def _langue_courte(langue):
+    return (langue or '').split('-')[0].strip().lower()
 
 
 # ---------------------------------------------------------------------------------
@@ -240,231 +255,41 @@ def _detecter_longueur_titre_chapitre_zeitschrift(contexte):
 
 
 # ---------------------------------------------------------------------------------
-# Structure — niveaux de titre (identique FR/DE) et majuscule de renvoi (FR seul, chapitre
-# 1.3 absent du document allemand).
+# Structure — un saut de niveau de titre (identique FR/DE, 1.1 Mise en page / Checkliste).
+#
+# ⚠ Révision du 19.09.2026 : l'ancienne version signalait un `niveau_retenu > 3`, un cas
+# QUI NE PEUT PAS ARRIVER — manuscrit_modele.classer_titres() borne déjà `niveau_retenu` à
+# 0..3 par construction (§4 du contrat). Ce contrôle était donc du code mort, qui ne pouvait
+# jamais s'allumer. Ce qui EST un vrai problème structurel, et que celui-ci ne voyait pas :
+# un document qui passe directement d'un titre de niveau 1 à un titre de niveau 3, sans
+# jamais poser de niveau 2 entre les deux — la table des matières en devient trompeuse même
+# si chaque niveau prIs isolément est valide.
 
-def _detecter_niveaux_titre(contexte):
+def _detecter_saut_niveau_titre(contexte):
     constats = []
+    niveau_max_vu = 0
     for p in _paragraphes(contexte):
         niveau = p.get('niveau_retenu') or 0
-        if niveau > NIVEAUX_TITRE_MAX:
+        if niveau == 0:
+            continue
+        # Le tout premier titre du document fixe son propre niveau de départ : commencer à
+        # H2 (jamais de H1) n'est pas un saut, c'est un choix éditorial valide.
+        if niveau_max_vu > 0 and niveau > niveau_max_vu + 1:
             constats.append({'para': p.get('source'), 'span': None,
-                              'found': 'niveau %d' % niveau,
-                              'suggested': 'au plus %d niveaux de titre' % NIVEAUX_TITRE_MAX})
-    return constats
-
-
-# Renvoi à une figure/un tableau/un chapitre/une annexe : la première lettre est TOUJOURS en
-# majuscule. Le motif est volontairement en minuscules littérales (sans re.IGNORECASE) : il
-# ne doit matcher QUE la forme fautive, jamais « Figure 3 » déjà correct.
-RE_RENVOI_MINUSCULE = re.compile(r'\b(figure|tableau|chapitre|annexe)\s+(\d+|[A-Z])\b')
-
-
-def _detecter_majuscule_reference(contexte):
-    constats = []
-    for p in _paragraphes(contexte):
-        texte = p.get('texte') or ''
-        for m in RE_RENVOI_MINUSCULE.finditer(texte):
-            constats.append({'para': p.get('source'), 'span': [m.start(), m.end()],
-                              'found': m.group(0),
-                              'suggested': m.group(1).capitalize() + ' ' + m.group(2)})
+                              'found': 'niveau %d après %d (aucun niveau %d)'
+                                       % (niveau, niveau_max_vu, niveau_max_vu + 1),
+                              'suggested': 'ajouter les niveaux intermédiaires, ou '
+                                           'renuméroter ce titre au niveau %d'
+                                           % (niveau_max_vu + 1)})
+        niveau_max_vu = max(niveau_max_vu, niveau)
     return constats
 
 
 # ---------------------------------------------------------------------------------
-# Épicène — LE FAIT QUI COMMANDE TOUT (voir le brief) : les deux revues prescrivent des
-# solutions EXACTEMENT opposées. Une seule règle appliquée aux deux serait fausse à l'envers
-# pour l'une des deux. Voici pourquoi le catalogue porte deux jeux de motifs disjoints,
-# jamais un seul « forme contractée = faute » générique.
-#
-# Côté français (Revue, 2.2) : la barre oblique, la parenthèse et la majuscule intérieure
-# sont explicitement proscrites — ET le deux-points, qui n'a pas d'exception dans ce
-# document, tombe donc sous l'interdiction générale des « formes contractées ».
-RE_FORME_SLASH = re.compile(r'\b([a-zà-öø-ÿ]{3,})/([a-zà-öø-ÿ]{1,8}s?)\b', re.IGNORECASE)
-RE_FORME_PARENTHESE = re.compile(r'\b[a-zà-öø-ÿ]{3,}\((?:e|ne|le|trice|euse)\)s?\b',
-                                  re.IGNORECASE)
-RE_FORME_MAJUSCULE_INTERIEURE = re.compile(r'\b[a-zà-öø-ÿ]{2,}[A-ZÉÈ][a-zà-öø-ÿ]*s?\b')
-RE_FORME_DEUXPOINTS = re.compile(r'\b[a-zà-öø-ÿ]{3,}(?::[a-zà-öø-ÿ]{1,6}){1,3}\b', re.IGNORECASE)
+# APA — références bibliographiques et cohérence de la liste, ce qui ne relève pas d'un
+# motif lexical mais d'une COMPARAISON entre entrées (ordre, troncature, doublon d'année).
 
-FORMES_INTERDITES_FR = (
-    (RE_FORME_SLASH, 'barre oblique'),
-    (RE_FORME_PARENTHESE, 'parenthèse'),
-    (RE_FORME_MAJUSCULE_INTERIEURE, 'majuscule intérieure'),
-    (RE_FORME_DEUXPOINTS,
-     'deux-points (proscrit aussi en français : à la différence de l’allemand, ce '
-     'document ne l’excepte pas de l’interdiction générale des formes contractées)'),
-)
-
-
-def _detecter_formes_contractees_fr(contexte):
-    constats = []
-    for p in _paragraphes(contexte):
-        texte = p.get('texte') or ''
-        for regex, nature in FORMES_INTERDITES_FR:
-            for m in regex.finditer(texte):
-                constats.append(
-                    {'para': p.get('source'), 'span': [m.start(), m.end()], 'found': m.group(0),
-                     'suggested': 'forme double complète, en toutes lettres, féminin en '
-                                  'premier (ex. « éducatrice et éducateur ») — %s proscrite'
-                                  % nature})
-    return constats
-
-
-# Trait d'union, point médian, point : ABSENTS des lignes directrices françaises. Détectables,
-# jamais en `error` — on n'invente pas une interdiction que le PDF ne porte pas (brief, §
-# épicène). Toujours en `suggestion`.
-RE_FORME_TIRET = re.compile(r'\b[a-zà-öø-ÿ]{3,}-e(?:-s)?\b', re.IGNORECASE)
-RE_FORME_POINT_MEDIAN = re.compile(r'\b[a-zà-öø-ÿ]{3,}·[a-zà-öø-ÿ]{1,8}(?:·s)?\b',
-                                    re.IGNORECASE)
-RE_FORME_POINT = re.compile(r'\b[a-zà-öø-ÿ]{3,}\.(?:e|es)\b')
-
-FORMES_NON_LISTEES_FR = (
-    (RE_FORME_TIRET, 'trait d’union'),
-    (RE_FORME_POINT_MEDIAN, 'point médian'),
-    (RE_FORME_POINT, 'point'),
-)
-
-
-def _detecter_formes_non_listees_fr(contexte):
-    constats = []
-    for p in _paragraphes(contexte):
-        texte = p.get('texte') or ''
-        for regex, nature in FORMES_NON_LISTEES_FR:
-            for m in regex.finditer(texte):
-                constats.append(
-                    {'para': p.get('source'), 'span': [m.start(), m.end()], 'found': m.group(0),
-                     'suggested': 'forme à %s : absente des lignes directrices françaises — '
-                                  'à discuter avec la rédaction, jamais imposée comme faute'
-                                  % nature})
-    return constats
-
-
-# Côté allemand (Zeitschrift, Geschlechtergerechte und inklusive Sprache) : le deux-points
-# est la solution PRESCRITE (Schüler:innen) — aucun motif ci-dessous ne le reconnaît, donc
-# aucune règle de ce module ne peut jamais le signaler en produit zeitschrift. Ce qui EST
-# proscrit ici : la forme double avec « und », la forme à barre oblique, la majuscule
-# intérieure (Binnen-I, motif volontairement SANS re.IGNORECASE : seul le grand I compte),
-# l'astérisque de genre et le tiret bas de genre.
-RE_PAARFORM_UND = re.compile(r'\bdie\s+[a-zäöüß]+innen\s+und\s+[a-zäöüß]+\b', re.IGNORECASE)
-RE_PAARFORM_SLASH = re.compile(
-    r'\b(?:der|die|des|dem|den)/(?:der|die|des|dem|den)\s+[a-zäöüß]+/in\b', re.IGNORECASE)
-RE_PAARFORM_BINNEN_I = re.compile(r'\b[A-ZÄÖÜ][a-zäöüß]+I[a-zäöüß]*\b')
-RE_PAARFORM_GENDERSTERN = re.compile(r'\b[a-zäöüßA-ZÄÖÜ]+\*(?:in|innen)\b')
-RE_PAARFORM_GENDERGAP = re.compile(r'\b[a-zäöüßA-ZÄÖÜ]+_(?:in|innen)\b')
-
-FORMES_INTERDITES_DE = (
-    (RE_PAARFORM_UND, 'Paarform mit "und"'),
-    (RE_PAARFORM_SLASH, 'Schrägstrich-Paarform'),
-    (RE_PAARFORM_BINNEN_I, 'Binnen-I'),
-    (RE_PAARFORM_GENDERSTERN, 'Genderstern'),
-    (RE_PAARFORM_GENDERGAP, 'Gendergap'),
-)
-
-
-def _detecter_paarform_de(contexte):
-    constats = []
-    for p in _paragraphes(contexte):
-        texte = p.get('texte') or ''
-        for regex, nature in FORMES_INTERDITES_DE:
-            for m in regex.finditer(texte):
-                constats.append(
-                    {'para': p.get('source'), 'span': [m.start(), m.end()], 'found': m.group(0),
-                     'suggested': 'Schreibweise mit Doppelpunkt (z. B. « Schüler:innen ») '
-                                  'statt %s' % nature})
-    return constats
-
-
-# ---------------------------------------------------------------------------------
-# Vocabulaire — LE PIÈGE OQLF/CSPS nommé par le brief : « personne en situation de
-# handicap » (recommandé par les lignes directrices CSPS/MDH-PPH) ne doit JAMAIS lever
-# d'alerte. Le motif ci-dessous cible EXCLUSIVEMENT « personne(s) handicapée(s) » (le terme
-# que l'OQLF privilégie) — la locution « en situation de » qui sépare « personne » de
-# « handicap » dans la forme recommandée le rend structurellement inatteignable par ce motif.
-
-RE_HANDICAP_OQLF = re.compile(r'\bpersonnes?\s+handicap[ée]e?s?\b', re.IGNORECASE)
-RE_BESOIN_PARTICULIER = re.compile(
-    r'\bélèves?\s+à\s+besoins?\s+éducatifs?\s+particuliers?\b', re.IGNORECASE)
-RE_PLACE_HANDICAPES = re.compile(
-    r'\bplaces?\s+(?:réservées?\s+)?pour\s+(?:les\s+)?handicapés?\b', re.IGNORECASE)
-
-VOCABULAIRE_FR = (
-    (RE_HANDICAP_OQLF, 'personne(s) en situation de handicap'),
-    (RE_BESOIN_PARTICULIER, 'élèves bénéficiant d’un soutien éducatif'),
-    (RE_PLACE_HANDICAPES, 'places accessibles'),
-)
-
-
-def _detecter_vocabulaire_handicap_fr(contexte):
-    constats = []
-    for p in _paragraphes(contexte):
-        texte = p.get('texte') or ''
-        for regex, suggestion in VOCABULAIRE_FR:
-            for m in regex.finditer(texte):
-                constats.append({'para': p.get('source'), 'span': [m.start(), m.end()],
-                                  'found': m.group(0), 'suggested': suggestion})
-    return constats
-
-
-RE_BEHINDERT = re.compile(r'\bbehinderte[nrs]?\s+(Mensch\w*|Kind\w*|Person\w*|Schüler\w*)\b',
-                           re.IGNORECASE)
-
-
-def _detecter_non_stigmatisant_de(contexte):
-    constats = []
-    for p in _paragraphes(contexte):
-        texte = p.get('texte') or ''
-        for m in RE_BEHINDERT.finditer(texte):
-            constats.append({'para': p.get('source'), 'span': [m.start(), m.end()],
-                              'found': m.group(0), 'suggested': 'Menschen mit Behinderung(en)'})
-    return constats
-
-
-# ---------------------------------------------------------------------------------
-# APA — références bibliographiques. Beaucoup de « auto » ici : ce sont des motifs textuels
-# étroits, choisis pour ne jamais confondre une citation avec de la prose ordinaire.
-
-RE_PARENTHESE = re.compile(r'\([^()]*\)')
 RE_ANNEE = re.compile(r'(?:19|20)\d{2}')
-
-
-def _spans_parentheses(texte):
-    return [m.span() for m in RE_PARENTHESE.finditer(texte)]
-
-
-def _dans_une_span(position, spans):
-    return any(s[0] <= position < s[1] for s in spans)
-
-
-def _fabriquer_detecteur_apa_liaison(mot_liaison):
-    """APA.DeuxAuteurs : « et »/« und » dans le texte courant, « & » entre parenthèses —
-    jamais l'inverse. Un seul détecteur, paramétré par le mot de liaison de la langue, pour
-    ne pas dupliquer la logique entre le français et l'allemand."""
-    motif_mot = re.compile(r'\b%s\b' % mot_liaison, re.IGNORECASE)
-
-    def _detecter(contexte):
-        constats = []
-        for p in _paragraphes(contexte):
-            texte = p.get('texte') or ''
-            spans = _spans_parentheses(texte)
-            for m in re.finditer(r'&', texte):
-                if not _dans_une_span(m.start(), spans):
-                    constats.append({'para': p.get('source'), 'span': [m.start(), m.end()],
-                                      'found': '&', 'suggested': mot_liaison})
-            for s in spans:
-                sous = texte[s[0]:s[1]]
-                if RE_ANNEE.search(sous):
-                    for m in motif_mot.finditer(sous):
-                        constats.append({'para': p.get('source'),
-                                          'span': [s[0] + m.start(), s[0] + m.end()],
-                                          'found': m.group(0), 'suggested': '&'})
-        return constats
-
-    return _detecter
-
-
-_detecter_apa_liaison_fr = _fabriquer_detecteur_apa_liaison('et')
-_detecter_apa_liaison_de = _fabriquer_detecteur_apa_liaison('und')
-
 
 # APA.TroisAuteursPlus, restreint à ce qui est mécanisable SANS connaître le nombre réel
 # d'auteurs (donnée absente du texte courant) : la FORME de « et al. », qui doit porter son
@@ -498,50 +323,6 @@ def _detecter_annee_lettre_espacee(contexte):
     return constats
 
 
-# APA.CitationSecondeMain : la formule fixe, dans chaque langue.
-RE_CITE_MAUVAIS_FR = re.compile(r'\bcité\s+(?:dans|in|chez)\b', re.IGNORECASE)
-RE_ZIT_MAUVAIS_DE = re.compile(r'\bzit\.?\s*(?:in|bei)\b', re.IGNORECASE)
-
-
-def _detecter_seconde_main_fr(contexte):
-    constats = []
-    for p in _paragraphes(contexte):
-        texte = p.get('texte') or ''
-        for m in RE_CITE_MAUVAIS_FR.finditer(texte):
-            constats.append({'para': p.get('source'), 'span': [m.start(), m.end()],
-                              'found': m.group(0), 'suggested': 'cité par'})
-    return constats
-
-
-def _detecter_seconde_main_de(contexte):
-    constats = []
-    for p in _paragraphes(contexte):
-        texte = p.get('texte') or ''
-        for m in RE_ZIT_MAUVAIS_DE.finditer(texte):
-            constats.append({'para': p.get('source'), 'span': [m.start(), m.end()],
-                              'found': m.group(0), 'suggested': 'zit. nach'})
-    return constats
-
-
-# APA.CitationDirectePage : une citation directe entre guillemets, suivie d'une référence
-# parenthétique qui porte une année mais aucun numéro de page (p./S.).
-RE_CITATION_DIRECTE = re.compile(
-    r'(«[^»]{3,200}»|“[^”]{3,200}”)\s*\(([^()]{0,120})\)')
-
-
-def _detecter_citation_directe_page(contexte):
-    constats = []
-    for p in _paragraphes(contexte):
-        texte = p.get('texte') or ''
-        for m in RE_CITATION_DIRECTE.finditer(texte):
-            interieur = m.group(2)
-            if RE_ANNEE.search(interieur) and not re.search(r'\b[pS]\.\s*\d', interieur):
-                constats.append({'para': p.get('source'), 'span': [m.start(), m.end()],
-                                  'found': m.group(0),
-                                  'suggested': 'ajouter le numéro de page (p. / S.)'})
-    return constats
-
-
 # APA.OrdreAlphabetiqueBiblio / APA.NombreAuteursListes : nécessitent une bibliographie déjà
 # extraite (nom, année, nombre d'auteurs) — donnée que ce module ne devine jamais, fournie
 # par l'appelant dans contexte['bibliographie'].
@@ -549,14 +330,26 @@ def _detecter_citation_directe_page(contexte):
 def _detecter_ordre_biblio(contexte):
     constats = []
     precedent = None
+    precedent_repr = None
     for e in _bibliographie(contexte):
-        cle = (str(e.get('nom') or '').lower(), e.get('annee') or 0)
+        nom = e.get('nom')
+        annee = e.get('annee')
+        cle = (str(nom or '').lower(), annee or 0)
+        # ⚠ Bug corrigé le 19.09.2026 : une entrée sans nom/année produisait littéralement
+        # « None (None) » dans le message — jamais utile à une relectrice. Une entrée
+        # incomplète n'entre plus dans la comparaison (elle ne peut pas être mal classée par
+        # rapport à ce qu'on ne connaît pas), et n'est jamais citée par un texte inventé.
+        if nom is None or annee is None:
+            continue
+        repr_lisible = '%s (%s)' % (nom, annee)
         if precedent is not None and cle < precedent:
             constats.append({'para': e.get('source'), 'span': None,
-                              'found': '%s (%s)' % (e.get('nom'), e.get('annee')),
+                              'found': repr_lisible,
                               'suggested': 'reclasser par ordre alphabétique, puis '
-                                           'chronologique pour un même auteur'})
+                                           'chronologique pour un même auteur (après %s)'
+                                           % precedent_repr})
         precedent = cle
+        precedent_repr = repr_lisible
     return constats
 
 
@@ -632,6 +425,8 @@ def _detecter_style_nominal_de(contexte):
 # ---------------------------------------------------------------------------------
 # LE CATALOGUE. Chaque `chapitre` recopie la colonne du fichier d'extraction (elle-même
 # recopiée des PDF) — c'est la référence qui permet à la rédaction de contester une alerte.
+# Les familles lexicales (Epicene, Vocabulaire, Casse, la liaison et/& et la citation
+# directe) vivent maintenant dans pipeline/vale/ — voir l'en-tête de ce fichier.
 
 CATALOGUE = [
     Regle('Forme.LongueurArticle.Revue', 'Forme', 'fr', 'revue', 'error', 'report',
@@ -657,42 +452,12 @@ CATALOGUE = [
     Regle('Forme.LongueurTitreChapitre.Zeitschrift', 'Forme', 'de', 'zeitschrift', 'error',
           'report', 'Zeitschrift: Checkliste', _detecter_longueur_titre_chapitre_zeitschrift,
           '', 'Kapitelüberschrift zu lang: %(found)s.'),
-    Regle('Structure.NiveauxTitre', 'Structure', '', '', 'error', 'report',
-          'Revue: 1.1 Mise en page / Zeitschrift: Checkliste', _detecter_niveaux_titre,
-          'Niveau de titre non autorisé : %(found)s.',
-          'Nicht erlaubte Titelebene: %(found)s.'),
-    Regle('Structure.MajusculeReference', 'Structure', 'fr', 'revue', 'warning', 'fix',
-          'Revue: 1.3 Références', _detecter_majuscule_reference,
-          'Un renvoi commence par une majuscule : « %(found)s ».', ''),
 
-    Regle('Epicene.FormesContracteesProscrites', 'Epicene', 'fr', 'revue', 'error', 'comment',
-          'Revue: 2.2 Langage épicène', _detecter_formes_contractees_fr,
-          'Forme épicène contractée proscrite : « %(found)s ».', ''),
-    Regle('Epicene.FormesNonListeesSuggestion', 'Epicene', 'fr', 'revue', 'suggestion', 'comment',
-          'Revue: 2.2 Langage épicène (forme non explicitement listée par le PDF)',
-          _detecter_formes_non_listees_fr,
-          'Forme épicène à vérifier (non listée par les lignes directrices) : « %(found)s ».',
-          ''),
-    Regle('Epicene.PaarformProscrites', 'Epicene', 'de', 'zeitschrift', 'error', 'comment',
-          'Zeitschrift: Sprachliche Richtlinien / Geschlechtergerechte und inklusive Sprache',
-          _detecter_paarform_de,
-          '', 'Nicht empfohlene Paarform/Symbol: « %(found)s ».'),
+    Regle('Structure.NiveauxTitre', 'Structure', '', '', 'warning', 'report',
+          'Revue: 1.1 Mise en page / Zeitschrift: Checkliste', _detecter_saut_niveau_titre,
+          'Saut de niveau de titre : %(found)s.',
+          'Sprung in der Titelebene: %(found)s.'),
 
-    Regle('Vocabulaire.HandicapTermePreferentiel', 'Vocabulaire', 'fr', 'revue', 'suggestion',
-          'comment', 'Revue: 2.3 Vocabulaire', _detecter_vocabulaire_handicap_fr,
-          'Terme à reconsidérer : « %(found)s » (voir %(suggested)s).', ''),
-    Regle('Vocabulaire.NonStigmatisantZeitschrift', 'Vocabulaire', 'de', 'zeitschrift',
-          'warning', 'comment',
-          'Zeitschrift: Sprachliche Richtlinien / Keine stigmatisierende Sprache',
-          _detecter_non_stigmatisant_de,
-          '', 'Stigmatisierende Formulierung: « %(found)s ».'),
-
-    Regle('APA.DeuxAuteurs.Revue', 'APA', 'fr', 'revue', 'warning', 'fix',
-          'Revue: 3.1.3', _detecter_apa_liaison_fr,
-          '« %(found)s » à remplacer par « %(suggested)s » (citation à deux auteurs).', ''),
-    Regle('APA.DeuxAuteurs.Zeitschrift', 'APA', 'de', 'zeitschrift', 'warning', 'fix',
-          'Zeitschrift: Weitere Regeln', _detecter_apa_liaison_de,
-          '', '« %(found)s » durch « %(suggested)s » ersetzen (Zitat mit zwei Autoren).'),
     Regle('APA.TroisAuteursPlus', 'APA', '', '', 'warning', 'fix',
           'Revue: 3.1.3 / Zeitschrift: Weitere Regeln', _detecter_et_al,
           '« et al. » doit porter son point final : « %(found)s ».',
@@ -702,17 +467,6 @@ CATALOGUE = [
           _detecter_annee_lettre_espacee,
           'La lettre colle à l’année, sans espace : « %(found)s ».',
           'Der Buchstabe klebt am Jahr, ohne Leerzeichen: « %(found)s ».'),
-    Regle('APA.CitationSecondeMain.Revue', 'APA', 'fr', 'revue', 'warning', 'fix',
-          'Revue: 3.1.3', _detecter_seconde_main_fr,
-          'Formule de citation de seconde main non conforme : « %(found)s ».', ''),
-    Regle('APA.CitationSecondeMain.Zeitschrift', 'APA', 'de', 'zeitschrift', 'warning', 'fix',
-          'Zeitschrift: Weitere Regeln', _detecter_seconde_main_de,
-          '', 'Nicht konforme Formel für Sekundärzitate: « %(found)s ».'),
-    Regle('APA.CitationDirectePage', 'APA', '', '', 'warning', 'comment',
-          'Revue: 3.1.1 / Zeitschrift: Wörtliche Zitate im Text',
-          _detecter_citation_directe_page,
-          'Citation directe sans numéro de page : « %(found)s ».',
-          'Wörtliches Zitat ohne Seitenangabe: « %(found)s ».'),
     Regle('APA.OrdreAlphabetiqueBiblio', 'APA', '', '', 'warning', 'report',
           'Revue: 3.2.1 / Zeitschrift: Literaturverzeichnis / Anordnung',
           _detecter_ordre_biblio,
@@ -760,14 +514,14 @@ RE_TYPO_AVERTISSEMENT = re.compile(
     r'^\[typo-avertissement\]\s+(\S+)\s+\|\s+article\s+«[^»]*»\s+\|\s+(.*?)\s+\|\s+\[de\]\s+(.*)$')
 
 
-def _reprendre_avertissements_typo(contexte, langue):
+def _reprendre_avertissements_typo(contexte, langue_courte):
     alertes = []
     for ligne in contexte.get('avertissements_typo') or []:
         m = RE_TYPO_AVERTISSEMENT.match(ligne)
         if not m:
             continue
         code, phrase_fr, phrase_de = m.groups()
-        message = phrase_de if langue == 'de' and phrase_de else phrase_fr
+        message = phrase_de if langue_courte == 'de' and phrase_de else phrase_fr
         alertes.append({'rule': 'Typo.' + code, 'severity': 'warning', 'action': 'report',
                          'para': None, 'span': None, 'found': code, 'suggested': None,
                          'message': message})
@@ -777,19 +531,21 @@ def _reprendre_avertissements_typo(contexte, langue):
 # ---------------------------------------------------------------------------------
 # Le moteur. Une règle ne s'exécute que si son `produit`/sa `langue` correspond au Contexte
 # (chaîne vide = les deux) — c'est LE mécanisme qui rend le sens d'une règle réversible entre
-# les deux revues sans jamais faire tourner un motif hors de son produit.
+# les deux revues sans jamais faire tourner un motif hors de son produit. La comparaison de
+# langue se fait sur la SOUS-ÉTIQUETTE PRIMAIRE du Contexte (fr-CH -> fr) : `regle.langue`
+# est toujours court, c'est le seul côté qui a besoin d'être normalisé.
 
 def evaluer(contexte):
     produit = contexte.get('produit') or ''
-    langue = contexte.get('langue') or ''
+    langue_courte = _langue_courte(contexte.get('langue'))
     alertes = []
     for regle in CATALOGUE:
         if regle.produit and regle.produit != produit:
             continue
-        if regle.langue and regle.langue != langue:
+        if regle.langue and regle.langue != langue_courte:
             continue
         for constat in (regle.detecter(contexte) or []):
-            gabarit_message = regle.message_de if (langue == 'de' and regle.message_de) \
+            gabarit_message = regle.message_de if (langue_courte == 'de' and regle.message_de) \
                 else regle.message_fr
             champs = {'found': constat.get('found'), 'suggested': constat.get('suggested')}
             try:
@@ -806,7 +562,7 @@ def evaluer(contexte):
                 'suggested': constat.get('suggested'),
                 'message': message,
             })
-    alertes.extend(_reprendre_avertissements_typo(contexte, langue))
+    alertes.extend(_reprendre_avertissements_typo(contexte, langue_courte))
     return alertes
 
 
