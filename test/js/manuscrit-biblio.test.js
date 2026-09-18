@@ -1,0 +1,562 @@
+// pipeline/manuscrit_biblio.py — vérification de bibliographie APA 7 (nettoyeur de
+// manuscrit, contrat §7 bis). Module PUR : pas de .docx ici, seulement du texte de paragraphe
+// déjà extrait — les fonctions s'appellent depuis le Python de Windows (PYTHON de gardes.js),
+// jamais la WSL, exactement comme docx-meta-titre.test.js pour docx-meta.py.
+//
+//   node --test test/js/manuscrit-biblio.test.js
+//
+// Le réseau n'est JAMAIS appelé ici : chaque contrôle Crossref remplace
+// manuscrit_biblio._requete par une fonction Python injectée dans le programme -c, avant
+// d'appeler resoudre_crossref()/retrouver_doi(). `reseau=False` est éprouvé séparément :
+// aucune tentative, et crossref.indisponible vaut True.
+//
+// La fixture FR vient du corpus réel (tmp/corpus-relecture/lot-A, voir son LISEZMOI) —
+// 12 références passées une à une dans la WSL avant d'être recopiées ici. La fixture DE n'a
+// PAS de corpus réel équivalent (§12 du contrat : « L'allemand n'est calibré par rien ») :
+// ses 6 références sont les exemples travaillés du guide Redaktionsrichtlinien Zeitschrift
+// (Muster, Meier, Bonaparte...), seule source allemande faisant autorité dans ce dépôt.
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert');
+const path = require('path');
+const cp = require('child_process');
+const { PYTHON, sansPython } = require('./gardes');
+
+const RACINE = path.resolve(__dirname, '..', '..');
+const PIPELINE = path.join(RACINE, 'pipeline');
+
+function python(programme, args) {
+  return cp.spawnSync(PYTHON, ['-c', programme].concat(args || []), {
+    encoding: 'utf8',
+    env: Object.assign({}, process.env, { PYTHONIOENCODING: 'utf-8' }),
+    maxBuffer: 1024 * 1024 * 16,
+  });
+}
+
+const PREAMBULE = [
+  'import sys, os, json',
+  'sys.path.insert(0, ' + JSON.stringify(PIPELINE) + ')',
+  'import manuscrit_biblio as mb',
+].join('\n');
+
+function executer(corps) {
+  const r = python(PREAMBULE + '\n' + corps, []);
+  assert.strictEqual(r.status, 0, 'le script Python a échoué : ' + r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+// ---------------------------------------------------------------------------------
+// 1. La fixture — 12 fr (corpus réel) + 6 de (guide Zeitschrift) — vérité champ par champ.
+
+const FIXTURE_FR = [
+  {
+    texte: "Bacquelé, V. (2024). L’insertion des aides numériques dans des démarches "
+      + "d’aménagements pédagogiques. Revue suisse de pédagogie spécialisée, 14(03), "
+      + "26-31. https://doi.org/10.57161/r2024-03-04",
+    attendu: {
+      nb_auteurs: 1, auteurs: [{ nom: 'Bacquelé', initiales: 'V.' }], annee: 2024,
+      suffixe: '', titre: "L’insertion des aides numériques dans des démarches "
+        + "d’aménagements pédagogiques",
+      conteneur: 'Revue suisse de pédagogie spécialisée', volume: '14', numero: '03',
+      pages: '26-31', editeur: '', doi: 'https://doi.org/10.57161/r2024-03-04', url: '',
+      type: 'article', confiance: 'haute',
+    },
+  },
+  {
+    texte: "Booms, A., Brau-Antony, S., & Emprin, F. (2023). Bifurcations didactiques lors "
+      + "de l’inclusion d’un élève équipé d’un matériel pédagogique adapté : "
+      + "La nouvelle revue - Éducation et société inclusives, N° 97(1), 203-221. "
+      + "https://doi.org/10.3917/nresi.097.0203",
+    attendu: {
+      nb_auteurs: 3,
+      auteurs: [{ nom: 'Booms', initiales: 'A.' }, { nom: 'Brau-Antony', initiales: 'S.' },
+        { nom: 'Emprin', initiales: 'F.' }],
+      annee: 2023, suffixe: '',
+      conteneur: 'La nouvelle revue - Éducation et société inclusives', volume: '97',
+      numero: '1', pages: '203-221', editeur: '',
+      doi: 'https://doi.org/10.3917/nresi.097.0203', url: '', type: 'article',
+      confiance: 'haute',
+    },
+  },
+  {
+    texte: "Vaivre-Douret, L., Lalanne, C., Cabrol, D., Ingster-Moati, I., Falissard, B., "
+      + "& Golse, B. (2011). Identification de critères diagnostiques des sous-types de "
+      + "troubles de l’acquisition de la coordination (TAC) ou dyspraxie "
+      + "développementale. Neuropsychiatrie de l’Enfance et de l’Adolescence, "
+      + "59(8), 443-453. https://doi.org/10.1016/j.neurenf.2011.07.006",
+    attendu: {
+      nb_auteurs: 6, annee: 2011, conteneur: "Neuropsychiatrie de l’Enfance et de "
+        + "l’Adolescence", volume: '59', numero: '8', pages: '443-453', type: 'article',
+      confiance: 'haute',
+      doi: 'https://doi.org/10.1016/j.neurenf.2011.07.006',
+    },
+  },
+  {
+    texte: "Toullec-Théry, M. (2020). L’AESH, aide ou écran à l’inclusion "
+      + "scolaire. Ressources, 22, 64-72.",
+    attendu: {
+      nb_auteurs: 1, auteurs: [{ nom: 'Toullec-Théry', initiales: 'M.' }], annee: 2020,
+      conteneur: 'Ressources', volume: '', numero: '22', pages: '64-72', doi: '',
+      type: 'article', confiance: 'haute',
+    },
+  },
+  {
+    texte: "Le Prévost, M. (2010). Hétérogénéité, diversité, différences : Vers quelle "
+      + "égalité des élèves ? Nouvelle revue de psychosociologie, (9), 55-66.",
+    attendu: {
+      nb_auteurs: 1, annee: 2010, conteneur: 'Nouvelle revue de psychosociologie',
+      volume: '', numero: '9', pages: '55-66', type: 'article', confiance: 'haute',
+    },
+  },
+  {
+    texte: "Pelgrims, G. (2016). De l'intégration scolaire à l'école inclusive : accès aux "
+      + "structures scolaires ou au rôle d'élève et aux savoirs ? Revue suisse de "
+      + "pédagogie spécialisée, 3, 20-29.",
+    attendu: {
+      nb_auteurs: 1, annee: 2016, conteneur: 'Revue suisse de pédagogie spécialisée',
+      volume: '', numero: '3', pages: '20-29', type: 'article', confiance: 'haute',
+    },
+  },
+  {
+    // « et » (sans esperluette) entre deux auteurs, un des tours de la Revue.
+    texte: "Vial, M. et Caparros-Mencacci, N. (2007) L’accompagnement professionnel "
+      + "? Méthode à l’usage des praticiens exerçant une fonction éducative. "
+      + "Bruxelles, De Boeck.",
+    attendu: {
+      nb_auteurs: 2,
+      auteurs: [{ nom: 'Vial', initiales: 'M.' }, { nom: 'Caparros-Mencacci', initiales: 'N.' }],
+      annee: 2007, conteneur: '', editeur: 'Bruxelles, De Boeck', type: 'ouvrage',
+      confiance: 'haute',
+    },
+  },
+  {
+    // Ponctuation absente après l'année (« (2022) Quels… », pas de point) — mesuré tel
+    // quel sur le corpus, 4 auteurs séparés par virgules et un « et » final sans virgule.
+    texte: "Allenbach, M, Gabola, P., Leblanc, M. et Rebetez, F. (2022) Quels soutiens au "
+      + "développement de pratiques inclusives? La nouvelle revue - Education et société "
+      + "inclusives, 95, 91-109. Editions Inshea",
+    attendu: {
+      nb_auteurs: 4,
+      auteurs: [{ nom: 'Allenbach', initiales: 'M' }, { nom: 'Gabola', initiales: 'P.' },
+        { nom: 'Leblanc', initiales: 'M.' }, { nom: 'Rebetez', initiales: 'F.' }],
+      annee: 2022, editeur: 'Editions Inshea', type: 'ouvrage', confiance: 'haute',
+    },
+  },
+  {
+    // Le genre entre crochets porte l'institution : rien après le crochet fermant.
+    texte: "Booms, A. (2022). Les pratiques enseignantes auprès d’un élève présentant "
+      + "des troubles de l’acquisition des coordinations et équipé de matériel "
+      + "pédagogique adapté [Thèse de doctorat, Université de Reims Champagne-Ardenne]. "
+      + "https://theses.hal.science/tel-03887749/document",
+    attendu: {
+      nb_auteurs: 1, annee: 2022, editeur: 'Université de Reims Champagne-Ardenne',
+      url: 'https://theses.hal.science/tel-03887749/document', type: 'rapport',
+      confiance: 'haute',
+    },
+  },
+  {
+    // « habilitation », pas « thèse » — même famille de genre entre crochets.
+    texte: "Margolinas, C. (2004). Points de vue de l’élève et du professeur. Essai "
+      + "de développement de la théorie des situations didactiques [Note de synthèse pour "
+      + "l’habilitation à diriger des recherches, Université de Provence - "
+      + "Aix-Marseille I].",
+    attendu: {
+      nb_auteurs: 1, annee: 2004,
+      editeur: 'Université de Provence - Aix-Marseille I', type: 'rapport',
+      confiance: 'haute',
+    },
+  },
+  {
+    // Auteur institutionnel, sans initiales, avec URL — pas de DOI.
+    texte: "Comité des droits des personnes handicapées. (2022). Observations finales "
+      + "concernant le rapport initial de la Suisse. Nations Unies. "
+      + "https://www.ebgb.admin.ch/fr/presentation-du-rapport-cdph",
+    attendu: {
+      nb_auteurs: 1,
+      auteurs: [{ nom: 'Comité des droits des personnes handicapées', initiales: '' }],
+      annee: 2022, editeur: 'Nations Unies',
+      url: 'https://www.ebgb.admin.ch/fr/presentation-du-rapport-cdph', doi: '',
+      type: 'web', confiance: 'haute',
+    },
+  },
+  {
+    // Construite (aucun exemple trouvé dans les 117 références réelles du corpus lot-A) :
+    // particule APRÈS les initiales, convention de classement APA des noms composés
+    // (« Chambrier, A.-F. de » — le nom de famille seul, « Chambrier », commande le
+    // classement alphabétique ; « de » n'est qu'un complément écrit à la suite). Sans
+    // _decouper_initiales_et_particule(), le sabotage minimal §... du rapport prouve que
+    // ce cas retombe sur DEUX faux auteurs au lieu d'un.
+    texte: 'Chambrier, A.-F. de. (2020). Un titre encore. Revue Z, 2(1), 1-9.',
+    attendu: {
+      nb_auteurs: 1, auteurs: [{ nom: 'de Chambrier', initiales: 'A.-F.' }], annee: 2020,
+      conteneur: 'Revue Z', volume: '2', numero: '1', pages: '1-9', type: 'article',
+      confiance: 'haute',
+    },
+  },
+];
+
+const FIXTURE_DE = [
+  {
+    // volume(numéro) ESPACÉ en allemand (« 27 (3) »), collé en français (« 12(3) »).
+    texte: 'Muster, E. (2010). Über die Plausibilität von Schmetterlingseffekten. '
+      + 'Zeitschrift für Umweltfragen, 27 (3), 56–78.',
+    attendu: {
+      nb_auteurs: 1, auteurs: [{ nom: 'Muster', initiales: 'E.' }], annee: 2010,
+      conteneur: 'Zeitschrift für Umweltfragen', volume: '27', numero: '3',
+      pages: '56-78', type: 'article', confiance: 'haute',
+    },
+  },
+  {
+    // « & » sans virgule devant (« Schneider, H. & Hugentobler, G. ») — 4 auteurs.
+    texte: 'Muster, E., Meier, T., Schneider, H. & Hugentobler, G. (2009). Von '
+      + 'Schmetterlingen und Wirbelstürmen. Musterverlag.',
+    attendu: {
+      nb_auteurs: 4,
+      auteurs: [{ nom: 'Muster', initiales: 'E.' }, { nom: 'Meier', initiales: 'T.' },
+        { nom: 'Schneider', initiales: 'H.' }, { nom: 'Hugentobler', initiales: 'G.' }],
+      annee: 2009, editeur: 'Musterverlag', type: 'ouvrage', confiance: 'haute',
+    },
+  },
+  {
+    // « (Hrsg.) » collé, sans virgule ni point avant l'année.
+    texte: 'Meier, T. (Hrsg.) (2010). Ökosysteme im Wandel. Musterverlag.',
+    attendu: {
+      nb_auteurs: 1, auteurs: [{ nom: 'Meier', initiales: 'T.' }], annee: 2010,
+      editeur: 'Musterverlag', type: 'ouvrage', confiance: 'haute',
+    },
+  },
+  {
+    // Deux éditeurs, marqueur anglais « (Eds.) » dans une référence par ailleurs allemande.
+    texte: "Bonaparte, A. & Marchand, D. (Eds.) (2012). L'effet papillon. Editions "
+      + 'Papillon.',
+    attendu: {
+      nb_auteurs: 2,
+      auteurs: [{ nom: 'Bonaparte', initiales: 'A.' }, { nom: 'Marchand', initiales: 'D.' }],
+      annee: 2012, editeur: 'Editions Papillon', type: 'ouvrage', confiance: 'haute',
+    },
+  },
+  {
+    // Particule EN TÊTE, classée sous sa lettre propre au Literaturverzeichnis allemand.
+    texte: 'von Arx, R. (2014). Der Schmetterlingseffekt. Musterverlag.',
+    attendu: {
+      nb_auteurs: 1, auteurs: [{ nom: 'von Arx', initiales: 'R.' }], annee: 2014,
+      editeur: 'Musterverlag', type: 'ouvrage', confiance: 'haute',
+    },
+  },
+  {
+    // Auteur institutionnel avec sigle EN TÊTE et développement entre parenthèses (sans
+    // chiffre : le repérage de l'année ne doit pas s'y arrêter).
+    texte: 'GbS (Gesellschaft für bedrohte Schmetterlinge) (2015). Länderbericht über '
+      + 'erneuerbare Energie durch Flügelschläge von Schmetterlingen. Musterverlag.',
+    attendu: {
+      nb_auteurs: 1,
+      auteurs: [{ nom: 'GbS (Gesellschaft für bedrohte Schmetterlinge)', initiales: '' }],
+      annee: 2015, editeur: 'Musterverlag', type: 'ouvrage', confiance: 'haute',
+    },
+  },
+];
+
+function verifierChamps(t, resultat, attendu, libelle) {
+  for (const cle of Object.keys(attendu)) {
+    assert.deepStrictEqual(resultat[cle], attendu[cle],
+      libelle + ' : champ "' + cle + '" — obtenu ' + JSON.stringify(resultat[cle])
+      + ', attendu ' + JSON.stringify(attendu[cle]));
+  }
+}
+
+test('analyser_reference : 12 références fr du corpus réel, vérité champ par champ',
+  { skip: sansPython }, (t) => {
+    const programme = 'cas = json.loads(sys.argv[1])\n'
+      + 'print(json.dumps([mb.analyser_reference(c) for c in cas]))';
+    const r = python(PREAMBULE + '\n' + programme,
+      [JSON.stringify(FIXTURE_FR.map((c) => c.texte))]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const resultats = JSON.parse(r.stdout);
+    FIXTURE_FR.forEach((cas, i) => {
+      verifierChamps(t, resultats[i], cas.attendu, 'fr #' + i);
+    });
+  });
+
+test('analyser_reference : 6 références de du guide Zeitschrift (pas de corpus allemand)',
+  { skip: sansPython }, (t) => {
+    const programme = 'cas = json.loads(sys.argv[1])\n'
+      + 'print(json.dumps([mb.analyser_reference(c) for c in cas]))';
+    const r = python(PREAMBULE + '\n' + programme,
+      [JSON.stringify(FIXTURE_DE.map((c) => c.texte))]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const resultats = JSON.parse(r.stdout);
+    FIXTURE_DE.forEach((cas, i) => {
+      verifierChamps(t, resultats[i], cas.attendu, 'de #' + i);
+    });
+  });
+
+test('analyser_reference : au moins 80% de confiance haute sur les 18 références de la '
+  + 'fixture (cible du brief)', { skip: sansPython }, () => {
+  const programme = 'cas = json.loads(sys.argv[1])\n'
+    + 'print(json.dumps([mb.analyser_reference(c)["confiance"] for c in cas]))';
+  const tous = FIXTURE_FR.concat(FIXTURE_DE).map((c) => c.texte);
+  const r = python(PREAMBULE + '\n' + programme, [JSON.stringify(tous)]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const confiances = JSON.parse(r.stdout);
+  const haute = confiances.filter((c) => c === 'haute').length;
+  assert.ok(haute / confiances.length >= 0.8,
+    'taux de confiance haute trop bas : ' + haute + '/' + confiances.length);
+});
+
+// ---------------------------------------------------------------------------------
+// 2. citations_du_corps() — narrative, parenthétique, et al., plusieurs années, particule,
+//    année isolée hors citation exclue.
+
+test('citations_du_corps : les formes narrative et parenthétique, dont "et al." et les '
+  + 'particules', { skip: sansPython }, () => {
+  const programme = [
+    "paras = [",
+    "  {'source': 5, 'texte': 'Comme le montre Tremblay (2023b), la question reste ouverte.'},",
+    "  {'source': 7, 'texte': 'Plusieurs travaux (Bacharach et al., 2010) le confirment.'},",
+    "  {'source': 9, 'texte': 'Deux sources (Bullough et al., 2003 ; Wenzlaff, 2002) divergent.'},",
+    "  {'source': 11, 'texte': 'En 2010, la situation a change, sans lien avec une citation.'},",
+    "  {'source': 13, 'texte': 'Pelgrims (2001, 2006) le montre aussi.'},",
+    "  {'source': 15, 'texte': 'De Chambrier (2020) confirme, tout comme (de Chambrier, 2020).'},",
+    "]",
+    'print(json.dumps(mb.citations_du_corps(paras)))',
+  ].join('\n');
+  const citations = executer(programme);
+  assert.strictEqual(citations.length, 8, JSON.stringify(citations));
+
+  const parNom = {};
+  citations.forEach((c) => { (parNom[c.nom_premier_auteur] = parNom[c.nom_premier_auteur] || []).push(c); });
+  assert.strictEqual(parNom.Tremblay[0].annee, 2023);
+  assert.strictEqual(parNom.Tremblay[0].suffixe, 'b');
+  assert.strictEqual(parNom.Bacharach[0].et_al, true);
+  assert.strictEqual(parNom.Wenzlaff[0].et_al, false);
+  assert.strictEqual(parNom.Pelgrims.length, 2, 'Pelgrims (2001, 2006) : deux citations');
+  assert.deepStrictEqual(parNom.Pelgrims.map((c) => c.annee).sort(), [2001, 2006]);
+  // Aucune citation sur « En 2010, » : une année isolée hors parenthèse de citation.
+  assert.ok(!citations.some((c) => c.annee === 2010 && c.para === 11));
+  // Particule : narrative « De Chambrier » (majuscule de phrase) ET parenthétique minuscule.
+  assert.ok(parNom['De Chambrier'], 'particule en tête de phrase perdue');
+  assert.ok(parNom['de Chambrier'], 'particule en parenthèse perdue');
+});
+
+// ---------------------------------------------------------------------------------
+// 3. croiser() — absente/non citée/suffixe/et al.
+
+test('croiser : citation absente de la bibliographie -> error', { skip: sansPython }, () => {
+  const programme = [
+    "citations = [{'nom_premier_auteur': 'Fantome', 'annee': 2020, 'suffixe': '', "
+      + "'para': 1, 'span': [0, 5], 'et_al': False, 'texte': 'Fantome (2020)'}]",
+    'references = []',
+    'print(json.dumps(mb.croiser(citations, references)))',
+  ].join('\n');
+  const alertes = executer(programme);
+  assert.strictEqual(alertes.length, 1);
+  assert.strictEqual(alertes[0].rule, 'APA.CitationAbsente');
+  assert.strictEqual(alertes[0].severity, 'error');
+});
+
+// Trouvaille du superviseur sur le manuscrit « coenseignement » (27 références, 49
+// citations) : « Bullough Jr, R. V., Young, J., … (2002) » en bibliographie contre
+// « Bullough et al., 2002 » dans le texte — la citation ne répète jamais le suffixe
+// générationnel du premier auteur, la bibliographie si. Sans le retirer de la clé
+// d'appariement, ces 3 citations ressortaient comme absentes à tort.
+test('croiser : un suffixe générationnel (Jr/Sr/II/III) ne casse pas l\'appariement',
+  { skip: sansPython }, () => {
+    const programme = [
+      "citations = [",
+      "  {'nom_premier_auteur': 'Bullough', 'annee': 2002, 'suffixe': '', 'para': 5, "
+        + "'span': [0, 5], 'et_al': True, 'texte': 'Bullough et al., 2002'},",
+      "]",
+      "references = [",
+      "  {'auteurs': [{'nom': 'Bullough Jr', 'initiales': 'R. V.'}, "
+        + "{'nom': 'Young', 'initiales': 'J.'}, {'nom': 'Clark', 'initiales': 'D. C.'}], "
+        + "'nb_auteurs': 3, 'annee': 2002, 'para': 50, "
+        + "'texte': 'Bullough Jr, R. V., Young, J., Clark, D. C. (2002). Un titre.'},",
+      "]",
+      'print(json.dumps(mb.croiser(citations, references)))',
+    ].join('\n');
+    const alertes = executer(programme);
+    assert.deepStrictEqual(alertes, [],
+      '« Jr » aurait dû être ignoré dans la clé d\'appariement : ' + JSON.stringify(alertes));
+  });
+
+test('croiser : référence jamais citée -> warning', { skip: sansPython }, () => {
+  const programme = [
+    'citations = []',
+    "references = [{'auteurs': [{'nom': 'Personne', 'initiales': 'N.'}], 'annee': 2099, "
+      + "'nb_auteurs': 1, 'para': 42, 'texte': 'Personne, N. (2099). Jamais cité.'}]",
+    'print(json.dumps(mb.croiser(citations, references)))',
+  ].join('\n');
+  const alertes = executer(programme);
+  assert.strictEqual(alertes.length, 1);
+  assert.strictEqual(alertes[0].rule, 'APA.ReferenceNonCitee');
+  assert.strictEqual(alertes[0].severity, 'warning');
+  assert.strictEqual(alertes[0].para, 42);
+});
+
+test('croiser : "et al." manquant dès trois auteurs, et posé à tort pour deux',
+  { skip: sansPython }, () => {
+    const programme = [
+      "citations = [",
+      "  {'nom_premier_auteur': 'Trois', 'annee': 2020, 'suffixe': '', 'para': 1, "
+        + "'span': [0, 5], 'et_al': False, 'texte': 'Trois (2020)'},",
+      "  {'nom_premier_auteur': 'Deux', 'annee': 2021, 'suffixe': '', 'para': 2, "
+        + "'span': [0, 5], 'et_al': True, 'texte': 'Deux et al. (2021)'},",
+      "]",
+      "references = [",
+      "  {'auteurs': [{'nom': 'Trois', 'initiales': 'A.'}, {'nom': 'B', 'initiales': 'B.'}, "
+        + "{'nom': 'C', 'initiales': 'C.'}], 'nb_auteurs': 3, 'annee': 2020, 'para': 10, "
+        + "'texte': 'Trois, A., B., B., & C., C. (2020).'},",
+      "  {'auteurs': [{'nom': 'Deux', 'initiales': 'A.'}, {'nom': 'Autre', 'initiales': 'B.'}], "
+        + "'nb_auteurs': 2, 'annee': 2021, 'para': 11, 'texte': 'Deux, A., & Autre, B. (2021).'},",
+      "]",
+      'print(json.dumps(mb.croiser(citations, references)))',
+    ].join('\n');
+    const alertes = executer(programme);
+    const etAl = alertes.filter((a) => a.rule === 'APA.EtAl');
+    assert.strictEqual(etAl.length, 2);
+    const manquant = etAl.find((a) => a.found === 'Trois (2020)');
+    assert.ok(manquant, 'et al. manquant sur 3 auteurs non signalé');
+    assert.match(manquant.suggested, /et al\./);
+    const trop = etAl.find((a) => a.found === 'Deux et al. (2021)');
+    assert.ok(trop, 'et al. de trop sur 2 auteurs non signalé');
+    assert.match(trop.suggested, /Deux & Autre/);
+  });
+
+// ---------------------------------------------------------------------------------
+// 4. verifier_ordre() — alphabétique/chronologique, suffixes a/b requis.
+
+test('verifier_ordre : ordre alphabétique rompu, et suffixes manquants sur même '
+  + 'auteur/année', { skip: sansPython }, () => {
+  const programme = [
+    "references = [",
+    "  {'auteurs': [{'nom': 'Zorro', 'initiales': 'A.'}], 'annee': 2020, 'suffixe': '', "
+      + "'para': 1, 'texte': 'Zorro (2020)'},",
+    "  {'auteurs': [{'nom': 'Abeille', 'initiales': 'B.'}], 'annee': 2019, 'suffixe': '', "
+      + "'para': 2, 'texte': 'Abeille (2019)'},",
+    "  {'auteurs': [{'nom': 'Muster', 'initiales': 'E.'}], 'annee': 2015, 'suffixe': '', "
+      + "'para': 3, 'texte': 'Muster (2015) un'},",
+    "  {'auteurs': [{'nom': 'Muster', 'initiales': 'E.'}], 'annee': 2015, 'suffixe': '', "
+      + "'para': 4, 'texte': 'Muster (2015) deux'},",
+    "]",
+    'print(json.dumps(mb.verifier_ordre(references)))',
+  ].join('\n');
+  const alertes = executer(programme);
+  assert.ok(alertes.some((a) => a.rule === 'APA.OrdreBiblio'),
+    'Zorro avant Abeille non signalé');
+  assert.ok(alertes.some((a) => a.rule === 'APA.Suffixe'),
+    'deux Muster (2015) sans suffixe a/b non signalés');
+});
+
+// ---------------------------------------------------------------------------------
+// 5. doi_normaliser() — toutes les formes ramenées à https://doi.org/10....
+
+test('doi_normaliser : doi:, DOI :, dx.doi.org/, http:// -> forme canonique ; déjà '
+  + 'canonique -> rien', { skip: sansPython }, () => {
+  const programme = [
+    "cas = [",
+    "  {'texte': 'Doi: 10.1234/abcd.5678', 'para': 1},",
+    "  {'texte': 'DOI : 10.1234/abcd.5678', 'para': 2},",
+    "  {'texte': 'dx.doi.org/10.1234/abcd.5678', 'para': 3},",
+    "  {'texte': 'http://doi.org/10.1234/abcd.5678', 'para': 4},",
+    "  {'texte': 'https://doi.org/10.1234/abcd.5678', 'para': 5},",
+    "]",
+    'print(json.dumps([mb.doi_normaliser(c) for c in cas]))',
+  ].join('\n');
+  const [a, b, c, d, e] = executer(programme);
+  for (const alertes of [a, b, c, d]) {
+    assert.strictEqual(alertes.length, 1, JSON.stringify(alertes));
+    assert.strictEqual(alertes[0].rule, 'APA.DoiForme');
+    assert.strictEqual(alertes[0].action, 'fix');
+    assert.strictEqual(alertes[0].suggested, 'https://doi.org/10.1234/abcd.5678');
+  }
+  assert.strictEqual(e.length, 0, 'un DOI déjà canonique ne doit lever aucune alerte');
+});
+
+// ---------------------------------------------------------------------------------
+// 6. resoudre_crossref() / retrouver_doi() — réseau TOUJOURS injecté, jamais réel.
+
+test('resoudre_crossref : confirme quand auteur/année/titre concordent, divergent sinon',
+  { skip: sansPython }, () => {
+  const programme = [
+    "def fausse_requete(url, delai):",
+    "    return json.dumps({'message': {",
+    "        'author': [{'family': 'Tremblay'}], 'title': ['Un titre'],",
+    "        'issued': {'date-parts': [[2023]]},",
+    "    }}).encode('utf-8')",
+    'mb._requete = fausse_requete',
+    "ref = {'doi': 'https://doi.org/10.1/x', 'auteurs': [{'nom': 'Tremblay', 'initiales': 'A.'}],",
+    "       'annee': 2023, 'titre': 'Un titre'}",
+    'confirme = mb.resoudre_crossref(ref)',
+    "def fausse_requete_2(url, delai):",
+    "    return json.dumps({'message': {",
+    "        'author': [{'family': 'Quelqu\\'un-Autre'}], 'title': ['Titre sans rapport'],",
+    "        'issued': {'date-parts': [[1990]]},",
+    "    }}).encode('utf-8')",
+    'mb._requete = fausse_requete_2',
+    'divergent = mb.resoudre_crossref(ref)',
+    'print(json.dumps({"confirme": confirme, "divergent": divergent}))',
+  ].join('\n');
+  const r = executer(programme);
+  assert.strictEqual(r.confirme.confirme, true);
+  assert.strictEqual(r.divergent.confirme, false);
+});
+
+test('resoudre_crossref : sans DOI, ne consulte jamais le réseau (rend None)',
+  { skip: sansPython }, () => {
+  const programme = [
+    'appele = []',
+    "def requete_espionne(url, delai):",
+    "    appele.append(url)",
+    "    raise AssertionError('ne doit jamais être appelée sans DOI')",
+    'mb._requete = requete_espionne',
+    "ref = {'doi': '', 'auteurs': [{'nom': 'X', 'initiales': 'A.'}], 'annee': 2020, 'titre': 'T'}",
+    'resultat = mb.resoudre_crossref(ref)',
+    'print(json.dumps({"resultat": resultat, "appele": appele}))',
+  ].join('\n');
+  const r = executer(programme);
+  assert.strictEqual(r.resultat, null);
+  assert.deepStrictEqual(r.appele, []);
+});
+
+test('retrouver_doi : accepte seulement une similarité de titre >= 0.9 avec auteur et '
+  + 'année concordants', { skip: sansPython }, () => {
+  const programme = [
+    "def fausse_requete(url, delai):",
+    "    return json.dumps({'message': {'items': [",
+    "        {'title': ['Un titre totalement different'], 'author': [{'family': 'Tremblay'}],",
+    "         'issued': {'date-parts': [[2023]]}, 'DOI': '10.1/mauvais'},",
+    "        {'title': ['Un titre presque identique ici'], 'author': [{'family': 'Tremblay'}],",
+    "         'issued': {'date-parts': [[2023]]}, 'DOI': '10.1/bon'},",
+    "    ]}}).encode('utf-8')",
+    'mb._requete = fausse_requete',
+    "ref = {'doi': '', 'type': 'article', 'auteurs': [{'nom': 'Tremblay', 'initiales': 'A.'}],",
+    "       'annee': 2023, 'titre': 'Un titre presque identique la'}",
+    'trouve = mb.retrouver_doi(ref)',
+    'print(json.dumps(trouve))',
+  ].join('\n');
+  const r = executer(programme);
+  assert.ok(r, 'aucun DOI retrouvé alors qu\'un candidat suffisamment proche existait');
+  assert.strictEqual(r[0], 'https://doi.org/10.1/bon');
+});
+
+// ---------------------------------------------------------------------------------
+// 7. analyser_bibliographie() — reseau=False : aucune tentative, indisponible=True.
+
+test('analyser_bibliographie : reseau=False ne tente jamais Crossref', { skip: sansPython }, () => {
+  const programme = [
+    'appele = []',
+    "def requete_espionne(url, delai):",
+    "    appele.append(url)",
+    "    return b'{}'",
+    'mb._requete = requete_espionne',
+    "corps = [{'source': 1, 'texte': 'Tremblay (2020) le montre.'}]",
+    "biblio = [{'source': 10, 'texte': 'Tremblay, A. (2020). Un titre. Revue X, 1(1), 1-2. "
+      + "https://doi.org/10.1234/abcd.5678'}]",
+    "alertes, stats = mb.analyser_bibliographie(corps, biblio, 'fr', reseau=False)",
+    'print(json.dumps({"stats": stats, "appele": appele}))',
+  ].join('\n');
+  const r = executer(programme);
+  assert.strictEqual(r.stats.crossref.indisponible, true);
+  assert.deepStrictEqual(r.appele, []);
+});

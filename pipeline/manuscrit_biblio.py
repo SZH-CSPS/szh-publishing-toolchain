@@ -1,0 +1,984 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# manuscrit_biblio.py — vérification de bibliographie APA 7 (contrôle, DOI, mise en forme).
+# Contrat : outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md, §7 bis.
+#
+# Module PUR : ne sait rien de Word ni d'OpenDocument. Il reçoit du texte déjà extrait
+# (paragraphes de corps et de bibliographie, sous la forme {'texte':.., 'source':..} — le même
+# schéma que la Contexte de manuscrit_regles.py) et rend des alertes au même format que le
+# reste du nettoyeur : rule, severity, action, para, span, found, suggested, message.
+#
+# Le réseau est FACULTATIF et borné à Crossref, et seules des métadonnées de référence y
+# partent (auteur, année, titre, DOI) — jamais le texte de l'article. `_requete()` est le seul
+# point qui touche réellement le réseau : les tests l'injectent pour ne jamais appeler
+# api.crossref.org.
+#
+# Réutilisé, jamais recopié : pronto_modele.normaliser()/aplatir()/lire_titres_bib()/
+# _titre_est_biblio() ; docx-meta.py (chargé par chemin, il porte un tiret) pour
+# nettoyer_doi()/RE_DOI/langue_du_doi()/decouper_prenom_nom()/nom_plausible().
+#
+# stdlib seule : re, json, difflib, urllib.request. Délai réseau court (défaut 4 s) — un
+# Crossref lent ne doit jamais bloquer le nettoyage d'un manuscrit.
+
+import difflib
+import importlib.util
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+_ICI = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _ICI)
+import pronto_modele
+
+
+def _charger_module_a_tiret(nom_fichier, nom_module):
+    """docx-meta.py porte un tiret : pas un module importable par son nom (convention du
+    dépôt, §3 du contrat). Chargé par chemin, comme le font déjà les tests
+    (test/js/docx-meta-titre.test.js)."""
+    chemin = os.path.join(_ICI, nom_fichier)
+    spec = importlib.util.spec_from_file_location(nom_module, chemin)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+dm = _charger_module_a_tiret('docx-meta.py', 'szh_docx_meta_pour_biblio')
+
+# ---------------------------------------------------------------------------------
+# Contact générique du dépôt pour le User-Agent Crossref (poli et identifiable, comme le
+# demande leur documentation). Ni lib/export-ojs.js ni secretariat.js n'en portent un : repli
+# sur l'adresse de rédaction commune, déjà publique (guide Revue, §"Envoi").
+CONTACT_DEPOT = 'redaction@csps.ch'
+USER_AGENT = 'SZH-Publishing-manuscrit-biblio/1.0 (mailto:%s)' % CONTACT_DEPOT
+
+CROSSREF_BASE = 'https://api.crossref.org'
+DELAI_RESEAU_DEFAUT = 4
+
+SEUIL_TITRE_VERIFICATION = 0.8   # resoudre_crossref() : le DOI donné pointe-t-il la bonne ref
+SEUIL_TITRE_RETROUVE = 0.9       # retrouver_doi() : plus strict, on va PROPOSER un DOI absent
+
+
+# ---------------------------------------------------------------------------------
+# Normalisation de nom — tolérante aux particules (« de », « van der »...), pour apparier une
+# citation du corps (qui omet souvent la particule : « Chambrier, 2020 ») à une entrée de
+# bibliographie qui la porte (« de Chambrier, A.-F. »). PARTICULES vient de docx-meta.py : une
+# seule liste pour tout le dépôt.
+#
+# Même tolérance pour un suffixe générationnel (« Jr », « Jr. », « Sr », « II », « III » —
+# mesuré sur un manuscrit réel : « Bullough Jr, R. V. (2002) » en bibliographie contre
+# « Bullough et al., 2002 » dans le texte, qui n'a jamais de raison de le répéter). Il se
+# retire à la fin du nom, jamais en tête — un « Jr » de tête ne serait qu'un nom de famille
+# comme un autre.
+SUFFIXES_GENERATIONNELS = {'jr', 'sr', 'ii', 'iii', 'iv'}
+
+
+def _normaliser_nom(nom):
+    mots = (nom or '').split()
+    while mots and mots[0].strip('.,').lower() in dm.PARTICULES:
+        mots.pop(0)
+    while mots and mots[-1].strip('.,').lower() in SUFFIXES_GENERATIONNELS:
+        mots.pop()
+    reste = ' '.join(mots) or (nom or '')
+    return pronto_modele.aplatir(reste)
+
+
+def _ressemble_initiales(segment):
+    """« I. », « I.-F. », « AB », « M » : ni un nom (que des majuscules), ni trop long."""
+    s = (segment or '').strip()
+    if not s or len(s) > 12:
+        return False
+    coeur = s.replace('.', '').replace('-', '').replace(' ', '').replace('’', '')
+    return bool(coeur) and coeur.isalpha() and coeur.isupper()
+
+
+# ---------------------------------------------------------------------------------
+# 1. analyser_reference() — découpe une entrée APA 7 (fr et de) en champs structurés.
+
+MARQUEUR_EDITEUR_RE = re.compile(
+    r'\(\s*(?:[EÉ]d\.?s?\.?|[Ee]ds?\.?|dir\.?|coord\.?|Hrsg\.?|Übers\.?|trad\.?|adapt\.?)\s*\)',
+    re.UNICODE)
+
+RE_ANNEE = re.compile(r'\((\d{4})([a-z]?)[^)]*\)')
+# « en préparation »/« sous presse »/« in press » (Revue, §3.2.2.4/.3.2.3.3) et « im
+# Erscheinen » (Zeitschrift, Spezialfälle) valent « pas encore d'année » — pas un échec de
+# lecture, une forme prévue par les deux guides.
+RE_SANS_DATE = re.compile(
+    r'\((?:s\.?\s?d\.?|n\.?d\.?|o\.?\s?[jJ]\.?|sans\s+date|ohne\s+Jahr|'
+    r'en\s+pr[ée]paration|sous\s+presse|in\s+press|im\s+Erscheinen)\)', re.IGNORECASE)
+
+RE_ET_AL_FIN = re.compile(r'\bet\s*al\.?\s*$', re.IGNORECASE)
+RE_CONNECTEUR_SANS_VIRGULE = re.compile(r'([A-ZÀ-ÞŒ]\.?)\s+(?:&|et|und)\s+')
+
+# La forme sans schéma (« www.zeitschriftfürumweltfragen.ch », exemple du guide allemand)
+# est aussi une URL : la reconnaître évite qu'elle échoue dans le titre faute de schéma.
+RE_URL = re.compile(r'(?:https?://\S+|\bwww\.[^\s,;]+)')
+# Le titre finit sur '.', mais aussi sur '?' ou '!' — fréquent en français (« Quelle
+# inclusion ? Revue X, 12(3), 45-67. »). ':' n'est PAS dans ce jeu principal : un titre à
+# sous-titre (très fréquent ici, « Titre : sous-titre ? Revue, 12(3), 45-67. ») porte
+# lui-même un ':', et comme .+? est non gourmand, le premier ':' rencontré l'emporterait à
+# tort sur le VRAI séparateur qui suit (mesuré : « Hétérogénéité […] différences : Vers
+# quelle égalité des élèves ? Nouvelle revue de … » coupait sur le ':' et avalait le
+# sous-titre entier dans le conteneur). ':' ne sert qu'en REPLI, seulement si .?! échouent
+# partout — c'est le cas, plus rare, d'une revue qui a oublié toute ponctuation entre le
+# titre et le nom de la revue (vu sur le corpus : «… adapté : La nouvelle revue - Éducation
+# et société inclusives, 97(1), 203-221. »).
+_SEP_TITRE = r'[.?!]'
+_SEP_TITRE_REPLI = r'[.?!:]'
+RE_CHAPITRE = re.compile(_SEP_TITRE + r'\s+(?:Dans|In)\s+(.+)$', re.S)
+RE_CHAPITRE_REPLI = re.compile(_SEP_TITRE_REPLI + r'\s+(?:Dans|In)\s+(.+)$', re.S)
+RE_PAGES_PARENTHESE = re.compile(
+    r'\(\s*(?:pp?\.|S\.)\s*([\d–‒\-]+(?:\s*[–‒\-]\s*\d+)?)\s*\)')
+
+
+def _regles_article(sep):
+    avec_vol = re.compile(
+        r'^(?P<titre>.+?)' + sep + r'\s+(?P<conteneur>[^,]+?),\s*(?:[Nn]°\s*)?(?P<vol>\d+)\s*'
+        r'\((?P<num>[^)]+)\)\s*,\s*'
+        r'(?P<pages>[\d–‒\-]+(?:\s*[–‒\-]\s*\d+)?)\.?\s*$')
+    sans_vol = re.compile(
+        r'^(?P<titre>.+?)' + sep + r'\s+(?P<conteneur>[^,]+?),\s*\(?(?:[Nn]°\s*)?'
+        r'(?P<num>\d+[a-zA-Z]?)\)?\s*,\s*'
+        r'(?P<pages>[\d–‒\-]+(?:\s*[–‒\-]\s*\d+)?)\.?\s*$')
+    return avec_vol, sans_vol
+
+
+RE_ARTICLE_AVEC_VOL, RE_ARTICLE_SANS_VOL = _regles_article(_SEP_TITRE)
+RE_ARTICLE_AVEC_VOL_REPLI, RE_ARTICLE_SANS_VOL_REPLI = _regles_article(_SEP_TITRE_REPLI)
+RE_GENRE_ENTRE_CROCHETS = re.compile(
+    r'\[([^\]]*(?:th[eè]se|m[ée]moire|rapport|masterarbeit|dissertation|arbeit|'
+    r'habilitation)[^\]]*)\]', re.IGNORECASE)
+
+
+def _preparer_entete_auteurs(entete_brute):
+    """(entête préparée pour le découpage, et_al) : « et al. » de tête est ôté et signalé
+    (rare en bibliographie, mais vu sur des manuscrits mal formatés) ; un connecteur
+    (« & »/« et »/« und ») posé sans virgule devant (« M. et Rebetez ») en reçoit une, pour
+    que le découpage sur la virgule, plus bas, traite tous les cas pareil."""
+    e = (entete_brute or '').strip()
+    et_al = False
+    m = RE_ET_AL_FIN.search(e)
+    if m:
+        et_al = True
+        e = e[:m.start()].rstrip(' ,&.')
+    e = RE_CONNECTEUR_SANS_VIRGULE.sub(lambda mo: mo.group(1) + ', ', e)
+    # Un point final ne se retire que pour un auteur institutionnel à un seul segment
+    # (« American Psychological Association. » -> sans le point) : sur plusieurs auteurs, ce
+    # point clôt les initiales du dernier (« … & Untel, B. ») et doit rester.
+    if ',' not in e:
+        e = e.rstrip('.').strip()
+    return e, et_al
+
+
+def _decouper_initiales_et_particule(segment):
+    """« A.-F. de », « H. van der » : la particule d'un nom composé écrite APRÈS les
+    initiales (convention APA de classement des noms néerlandais/allemands — « Van der Berg »
+    classé sous B, cité « Berg, A. van der »). (initiales, particule) ou (None, None) si le
+    segment ne s'y prête pas."""
+    mots = segment.split()
+    particule = []
+    while mots and mots[-1].strip('.,').lower() in dm.PARTICULES:
+        # strip('.,') RETIRÉ du mot gardé, pas seulement testé : sinon le point final d'une
+        # référence (« … A.-F. de. ») se retrouve collé au milieu du nom reconstruit.
+        particule.insert(0, mots.pop().strip('.,'))
+    reste = ' '.join(mots)
+    if particule and _ressemble_initiales(reste):
+        return reste, ' '.join(particule)
+    return None, None
+
+
+def _parser_auteurs(entete_brute):
+    """[{nom, initiales}], et_al — découpage par paires (Nom, Initiales) sur la virgule.
+    Un auteur institutionnel (« OCDE », « Ministère de l'Éducation nationale & DEPP ») ne
+    porte pas d'initiales : le segment entier devient son nom."""
+    entete, et_al = _preparer_entete_auteurs(entete_brute)
+    if not entete:
+        return [], et_al
+    segments = [s.strip() for s in entete.split(',') if s.strip()]
+    auteurs = []
+    i = 0
+    while i < len(segments):
+        seg = segments[i]
+        nom = re.sub(r'^(?:&|et|und)\s+', '', seg, flags=re.IGNORECASE).strip()
+        suivant = segments[i + 1] if i + 1 < len(segments) else None
+        if suivant is not None and _ressemble_initiales(suivant):
+            auteurs.append({'nom': nom, 'initiales': suivant.strip()})
+            i += 2
+            continue
+        if suivant is not None:
+            initiales_dec, particule_dec = _decouper_initiales_et_particule(suivant)
+            if initiales_dec is not None:
+                auteurs.append({'nom': (particule_dec + ' ' + nom).strip(),
+                                 'initiales': initiales_dec})
+                i += 2
+                continue
+        if nom:
+            auteurs.append({'nom': nom, 'initiales': ''})
+        i += 1
+    return auteurs, et_al
+
+
+def _trouver_annee(texte):
+    """(annee|None, suffixe, debut, fin) du PREMIER « (YYYY[x]…) » ou repli « (s.d.) »/« (n.d.) »
+    — même logique que annee_de_reference() de szh-citations.lua, réécrite ici (elle est en
+    Lua, pas partageable telle quelle)."""
+    m = RE_ANNEE.search(texte)
+    if m:
+        return int(m.group(1)), m.group(2) or '', m.start(), m.end()
+    m = RE_SANS_DATE.search(texte)
+    if m:
+        return None, '', m.start(), m.end()
+    return None, '', None, None
+
+
+def _nettoyer_titre(t):
+    return pronto_modele.normaliser(t or '').strip(' .').strip()
+
+
+def _nettoyer_pages(t):
+    return pronto_modele.normaliser(t or '').strip()
+
+
+def _calculer_confiance(champs, annee, auteurs, entete_brute):
+    if annee is None:
+        return 'basse'
+    if not auteurs and not (entete_brute or '').strip():
+        return 'basse'
+    t = champs['type']
+    if t == 'article' and champs['titre'] and champs['conteneur']:
+        return 'haute'
+    if t == 'chapitre' and champs['titre'] and champs['conteneur']:
+        return 'haute'
+    if t == 'ouvrage' and champs['titre'] and champs['editeur']:
+        return 'haute'
+    if t in ('rapport', 'web') and champs['titre'] and champs['editeur']:
+        return 'haute'
+    if t in ('rapport', 'web') and champs['titre']:
+        return 'moyenne'
+    if t == 'inconnu':
+        return 'basse'
+    return 'moyenne' if champs['titre'] else 'basse'
+
+
+def analyser_reference(texte):
+    """Découpe une entrée APA 7 (fr/de) en dict structuré — voir l'en-tête du module pour les
+    champs. Jamais d'exception : une entrée illisible rend une confiance 'basse', pas un
+    plantage — le rapport doit pouvoir lister TOUTES les références, même ratées."""
+    brut = texte or ''
+    texte_n = pronto_modele.normaliser(brut)
+    champs = {'auteurs': [], 'nb_auteurs': 0, 'annee': None, 'suffixe': '', 'titre': '',
+              'conteneur': '', 'volume': '', 'numero': '', 'pages': '', 'editeur': '',
+              'doi': '', 'url': '', 'type': 'inconnu', 'confiance': 'basse'}
+    if not texte_n.strip():
+        return champs
+
+    try:
+        annee, suffixe, deb, fin = _trouver_annee(texte_n)
+        champs['annee'] = annee
+        champs['suffixe'] = suffixe
+        if deb is not None:
+            entete_brute = texte_n[:deb]
+            reste = texte_n[fin:].strip()
+        else:
+            # Aucune année ni forme « s.d. » repérable (référence tronquée, ou un cas que ce
+            # module ne couvre pas — un acte législatif, par exemple) : pas de frontière
+            # fiable pour découper les auteurs. Se limiter au premier segment évite de
+            # fabriquer une liste d'« auteurs » absurde à partir de 120 caractères de prose.
+            entete_brute = texte_n.split(',', 1)[0]
+            reste = ''
+
+        entete_sans_marque = MARQUEUR_EDITEUR_RE.sub('', entete_brute).strip()
+        auteurs, _et_al_entete = _parser_auteurs(entete_sans_marque)
+        champs['auteurs'] = auteurs
+        champs['nb_auteurs'] = len(auteurs)
+
+        # DOI d'abord : sinon ses chiffres se font happer par un motif de pages ou d'année.
+        m_doi = dm.RE_DOI.search(reste)
+        if m_doi:
+            champs['doi'] = 'https://doi.org/' + dm.nettoyer_doi(reste)
+            reste = (reste[:m_doi.start()] + reste[m_doi.end():])
+            # Ce qui précède le DOI (« doi: », « DOI :», « dx.doi.org/ »…) est du bruit,
+            # déjà repris dans le champ 'doi' ci-dessus : on l'ôte du texte restant.
+            reste = re.sub(
+                r'(?:https?://(?:dx\.)?doi\.org/|doi\s*:?\s*)?\s*$', '', reste,
+                flags=re.IGNORECASE).strip()
+            reste = re.sub(r'\s*(?:https?://(?:dx\.)?doi\.org/|doi\s*:)\s*$', '', reste,
+                            flags=re.IGNORECASE).strip()
+
+        m_url = RE_URL.search(reste)
+        if m_url:
+            champs['url'] = m_url.group(0).rstrip('.,;)»')
+            reste = (reste[:m_url.start()] + reste[m_url.end():]).strip()
+
+        reste = reste.strip().strip('.').strip()
+
+        m_chap = RE_CHAPITRE.search(reste) or RE_CHAPITRE_REPLI.search(reste)
+        if m_chap:
+            champs['type'] = 'chapitre'
+            champs['titre'] = _nettoyer_titre(reste[:m_chap.start() + 1])
+            apres = MARQUEUR_EDITEUR_RE.sub('', m_chap.group(1))
+            m_pages = RE_PAGES_PARENTHESE.search(apres)
+            if m_pages:
+                champs['pages'] = _nettoyer_pages(m_pages.group(1))
+                avant, apres_pages = apres[:m_pages.start()], apres[m_pages.end():]
+            else:
+                avant, apres_pages = apres, ''
+            segments_avant = [s.strip() for s in avant.split(',') if s.strip()]
+            champs['conteneur'] = _nettoyer_titre(segments_avant[-1]) if segments_avant else ''
+            champs['editeur'] = _nettoyer_titre(apres_pages)
+        else:
+            m_art = (RE_ARTICLE_AVEC_VOL.match(reste) or RE_ARTICLE_SANS_VOL.match(reste)
+                     or RE_ARTICLE_AVEC_VOL_REPLI.match(reste)
+                     or RE_ARTICLE_SANS_VOL_REPLI.match(reste))
+            if m_art:
+                gd = m_art.groupdict()
+                champs['type'] = 'article'
+                champs['titre'] = _nettoyer_titre(gd['titre'])
+                champs['conteneur'] = _nettoyer_titre(gd['conteneur'])
+                champs['volume'] = gd.get('vol') or ''
+                champs['numero'] = gd.get('num') or ''
+                champs['pages'] = _nettoyer_pages(gd['pages'])
+            else:
+                m_genre = RE_GENRE_ENTRE_CROCHETS.search(reste)
+                if m_genre:
+                    champs['type'] = 'rapport'
+                    champs['titre'] = _nettoyer_titre(reste[:m_genre.start()])
+                    apres_crochet = _nettoyer_titre(reste[m_genre.end():])
+                    if apres_crochet:
+                        champs['editeur'] = apres_crochet
+                    else:
+                        # Rien après le crochet : l'institution est DEDANS
+                        # (« [Thèse de doctorat, Université de Reims] ») — le genre lui-même
+                        # (avant la première virgule) n'est pas un éditeur, le reste l'est.
+                        morceaux_genre = m_genre.group(1).split(',', 1)
+                        if len(morceaux_genre) == 2:
+                            champs['editeur'] = _nettoyer_titre(morceaux_genre[1])
+                elif champs['url'] and not champs['doi']:
+                    champs['type'] = 'web'
+                    morceaux = reste.split('. ', 1)
+                    champs['titre'] = _nettoyer_titre(morceaux[0])
+                    if len(morceaux) > 1:
+                        champs['editeur'] = _nettoyer_titre(morceaux[1])
+                elif reste:
+                    champs['type'] = 'ouvrage'
+                    morceaux = reste.split('. ', 1)
+                    champs['titre'] = _nettoyer_titre(morceaux[0])
+                    champs['editeur'] = _nettoyer_titre(morceaux[1]) if len(morceaux) > 1 else ''
+                else:
+                    champs['type'] = 'inconnu'
+
+        champs['confiance'] = _calculer_confiance(champs, annee, auteurs, entete_brute)
+    except Exception:
+        # Une entrée qu'on ne sait pas lire reste visible dans le rapport, en confiance
+        # basse, plutôt que de faire tomber toute l'analyse de la bibliographie.
+        champs['confiance'] = 'basse'
+    return champs
+
+
+# ---------------------------------------------------------------------------------
+# 2. citations_du_corps() — chaque appel de citation dans le texte.
+#
+# Deux formes, jamais confondues : narrative (« Tremblay (2023b) », le nom est HORS
+# parenthèse) et parenthétique (« (Bacharach et al., 2010) », « (Bullough et al., 2003 ;
+# Wenzlaff, 2002) »). Une fois qu'un appel narratif a consommé son « (année) », le passage en
+# parenthèse n'est plus repris comme une citation supplémentaire.
+
+_PARTICULE_ALTERNATIVE = '|'.join(sorted(dm.PARTICULES, key=len, reverse=True))
+
+# Le contenu de la parenthèse est capturé EN ENTIER (pas juste une année) : une citation
+# narrative peut porter plusieurs années pour le même auteur (« Pelgrims (2001, 2006) »),
+# exactement comme en bibliographie — chaque année de `contenu` devient sa propre citation,
+# voir citations_du_corps(). Le préfixe de particule est comparé sans égard à la casse
+# ((?i:...) scopé, pas re.IGNORECASE global) : « De Chambrier (2020) » en tête de phrase
+# ne doit pas perdre son « D » majuscule.
+#  \b devant la particule : sans lui, un mot ORDINAIRE finissant par une des lettres seules
+# de PARTICULES (« e », « a », « y » — portugais/espagnol : « Silva e Costa ») déclenchait un
+# faux départ de nom AU MILIEU du mot qui précède (« comme le montre Tremblay » a été vu
+# amorcer un nom sur le « e » de « montre »). \b n'existe qu'entre un caractère de mot et un
+# non-mot : impossible entre deux lettres d'un même mot.
+# ⚠ Le contenu de la parenthèse DOIT COMMENCER par l'année (espaces mis à part), pas
+# n'importe où la contenir : mesuré sur le corpus réel, « … du MPA (Booms et al., 2023) »
+# faisait passer l'acronyme « MPA » (une majuscule, suivie d'une parenthèse à année) pour le
+# nom cité, alors que la parenthèse est sa PROPRE citation parenthétique, sans rapport avec
+# le mot qui la précède. Un contenu qui commence par un nom (« Booms et al., 2023 ») n'est
+# JAMAIS narratif : il est laissé à la passe B (parenthétique), qui lit le bon premier auteur.
+RE_NARRATIF = re.compile(
+    r'(\b(?:(?i:' + _PARTICULE_ALTERNATIVE + r')\s+)?'
+    r'[A-ZÀ-ÞŒ][\w\'’\-]*(?:\s+et\s*al\.?)?'
+    r'(?:\s*(?:&|,|et|und)\s*[A-ZÀ-ÞŒ][\w\'’\-]*)*)'
+    r'\s*\(\s*((?:19|20)\d{2}[^()]*)\)')
+
+# Petits mots qui ouvrent une parenthèse de citation sans en faire partie (« voir »,
+# « cf. », l'allemand « vgl. »/« siehe ») — un sous-ensemble minimal d'OUVREURS de
+# szh-citations.lua, suffisant pour ne pas prendre un nombre en prose (« voir tableau 2020 »)
+# pour une citation : le nom qui suit doit de toute façon commencer par une majuscule.
+_OUVREURS_LOCAUX = ('voir', 'cf', 'vgl', 'siehe', 'selon', 'nach', 'gemäss')
+RE_OUVREUR = re.compile(r'^\s*(?:' + '|'.join(_OUVREURS_LOCAUX) + r')\.?\s+', re.IGNORECASE)
+
+
+def _premier_auteur(zone):
+    """Le premier nom d'une zone d'auteurs (« Bullough et al. », « de Chambrier & Nom »),
+    particule comprise. Vide si la zone ne commence pas par une majuscule (donc pas un nom) —
+    exclut « voir tableau », « en 2010 », etc."""
+    z = re.sub(r'\bet\s*al\.?', '', zone or '', flags=re.IGNORECASE).strip(' ,;&')
+    if not z:
+        return ''
+    m = re.match(r'^(\b(?:(?i:' + _PARTICULE_ALTERNATIVE + r')\s+)?[A-ZÀ-ÞŒ][\w\'’\-]*)', z)
+    return m.group(1) if m else ''
+
+
+def _citations_du_fragment(frag, source, decalage_absolu):
+    """Une citation parenthétique peut porter PLUSIEURS années pour le même auteur
+    (« Pelgrims, 2001, 2006 ») : chaque année devient sa propre citation, même premier
+    auteur. Un fragment sans nom reconnaissable (pas de majuscule en tête) est ignoré."""
+    out = []
+    m_ouv = RE_OUVREUR.match(frag)
+    decalage_ouvreur = m_ouv.end() if m_ouv else 0
+    travail = frag[decalage_ouvreur:]
+    et_al = bool(re.search(r'\bet\s*al\.?', travail, re.IGNORECASE))
+    annees = list(re.finditer(r'(?:19|20)\d{2}([a-z]?)', travail))
+    if not annees:
+        return out
+    premier = _premier_auteur(travail[:annees[0].start()])
+    if not premier:
+        return out
+    for am in annees:
+        deb = decalage_absolu + decalage_ouvreur + am.start()
+        fin = decalage_absolu + decalage_ouvreur + am.end()
+        out.append({'nom_premier_auteur': premier, 'annee': int(am.group(0)[:4]),
+                     'suffixe': am.group(1) or '', 'para': source, 'span': [deb, fin],
+                     'et_al': et_al, 'texte': frag.strip()})
+    return out
+
+
+def citations_du_corps(paragraphes):
+    citations = []
+    for p in paragraphes or []:
+        texte = p.get('texte') or ''
+        source = p.get('source')
+        occupes = []
+        for m in RE_NARRATIF.finditer(texte):
+            nom_brut, contenu = m.group(1), m.group(2)
+            et_al = bool(re.search(r'\bet\s*al\.?', nom_brut, re.IGNORECASE))
+            premier = _premier_auteur(nom_brut)
+            if not premier:
+                continue
+            contenu_debut = m.start(2)
+            trouve = False
+            for am in re.finditer(r'(?:19|20)\d{2}([a-z]?)', contenu):
+                trouve = True
+                citations.append({
+                    'nom_premier_auteur': premier, 'annee': int(am.group(0)[:4]),
+                    'suffixe': am.group(1) or '', 'para': source,
+                    'span': [contenu_debut + am.start(), contenu_debut + am.end()],
+                    'et_al': et_al, 'texte': m.group(0)})
+            if trouve:
+                occupes.append((m.start(), m.end()))
+        for m in re.finditer(r'\(([^()]*(?:19|20)\d{2}[^()]*)\)', texte):
+            if any(a <= m.start() and m.end() <= b for a, b in occupes):
+                continue
+            contenu_debut = m.start(1)
+            for fm in re.finditer(r'[^;]+', m.group(1)):
+                citations.extend(
+                    _citations_du_fragment(fm.group(0), source, contenu_debut + fm.start()))
+    return citations
+
+
+# ---------------------------------------------------------------------------------
+# 3. croiser() — citations vs bibliographie.
+#
+# `references` : une liste de dicts, chacun le résultat de analyser_reference() AUGMENTÉ d'un
+# champ 'para' (le Paragraphe.source de l'entrée) — c'est analyser_bibliographie() qui fait
+# cet ajout, cette fonction-ci reste générale.
+
+def _cle(nom, annee):
+    return (_normaliser_nom(nom), annee)
+
+
+def croiser(citations, references):
+    alertes = []
+    refs_par_cle = {}
+    for r in references or []:
+        if not r.get('auteurs') or r.get('annee') is None:
+            continue
+        cle = _cle(r['auteurs'][0]['nom'], r['annee'])
+        refs_par_cle.setdefault(cle, []).append(r)
+
+    citees = set()
+    for c in citations or []:
+        cle = _cle(c['nom_premier_auteur'], c['annee'])
+        correspondances = refs_par_cle.get(cle)
+        if not correspondances:
+            alertes.append({
+                'rule': 'APA.CitationAbsente', 'severity': 'error', 'action': 'comment',
+                'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
+                'suggested': None,
+                'message': 'Cette citation ne correspond à aucune référence de la '
+                           'bibliographie : « %s ».' % c.get('texte'),
+            })
+            continue
+        citees.add(cle)
+        # Suffixe incohérent : la citation porte une lettre (2020a) qu'aucune référence de
+        # ce nom/cette année ne porte, alors qu'au moins une référence existe.
+        suffixes_refs = {r.get('suffixe') or '' for r in correspondances}
+        if c.get('suffixe') and c['suffixe'] not in suffixes_refs:
+            alertes.append({
+                'rule': 'APA.Suffixe', 'severity': 'warning', 'action': 'comment',
+                'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
+                'suggested': None,
+                'message': 'Le suffixe « %s » de cette citation ne correspond à aucune '
+                           'référence du même auteur et de la même année.' % c['suffixe'],
+            })
+        # « et al. » : manquant dès trois auteurs, posé à tort pour un ou deux.
+        ref = correspondances[0]
+        nb = ref.get('nb_auteurs') or 0
+        if nb >= 3 and not c.get('et_al'):
+            suggere = '%s et al. (%d%s)' % (c['nom_premier_auteur'], c['annee'],
+                                             c.get('suffixe') or '')
+            alertes.append({
+                'rule': 'APA.EtAl', 'severity': 'warning', 'action': 'fix',
+                'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
+                'suggested': suggere,
+                'message': 'Cette référence compte %d auteurs : la citation doit porter '
+                           '« et al. » (« %s »).' % (nb, suggere),
+            })
+        elif 1 <= nb <= 2 and c.get('et_al'):
+            if nb == 2 and len(ref.get('auteurs') or []) == 2:
+                second = ref['auteurs'][1]['nom']
+                suggere = '%s & %s (%d%s)' % (c['nom_premier_auteur'], second, c['annee'],
+                                               c.get('suffixe') or '')
+            else:
+                suggere = '%s (%d%s)' % (c['nom_premier_auteur'], c['annee'],
+                                          c.get('suffixe') or '')
+            alertes.append({
+                'rule': 'APA.EtAl', 'severity': 'warning', 'action': 'fix',
+                'para': c.get('para'), 'span': c.get('span'), 'found': c.get('texte'),
+                'suggested': suggere,
+                'message': 'Cette référence ne compte que %d auteur(s) : « et al. » est de '
+                           'trop (« %s »).' % (nb, suggere),
+            })
+
+    for cle, lot in refs_par_cle.items():
+        if cle in citees:
+            continue
+        for r in lot:
+            alertes.append({
+                'rule': 'APA.ReferenceNonCitee', 'severity': 'warning', 'action': 'comment',
+                'para': r.get('para'), 'span': None,
+                'found': r.get('texte') or (r['auteurs'][0]['nom'] if r.get('auteurs') else None),
+                'suggested': None,
+                'message': 'Cette référence ne semble jamais citée dans le texte.',
+            })
+    return alertes
+
+
+# ---------------------------------------------------------------------------------
+# 4. verifier_ordre() — alphabétique puis chronologique, suffixes a/b requis.
+
+def verifier_ordre(references):
+    alertes = []
+    avec_cle = []
+    for r in references or []:
+        if not r.get('auteurs'):
+            continue
+        nom = _normaliser_nom(r['auteurs'][0]['nom'])
+        annee = r.get('annee') if r.get('annee') is not None else 9999
+        avec_cle.append((nom, annee, r.get('suffixe') or '', r))
+
+    ordre_attendu = sorted(range(len(avec_cle)), key=lambda i: avec_cle[i][:3])
+    for position, i in enumerate(ordre_attendu):
+        if i != position:
+            r = avec_cle[i][3]
+            alertes.append({
+                'rule': 'APA.OrdreBiblio', 'severity': 'warning', 'action': 'report',
+                'para': r.get('para'), 'span': None,
+                'found': r.get('texte') or avec_cle[i][3].get('titre'), 'suggested': None,
+                'message': 'Référence mal classée : l\'ordre alphabétique puis '
+                           'chronologique n\'est pas respecté.',
+            })
+
+    # Même auteur, même année, plusieurs entrées : les suffixes a/b/c doivent les distinguer.
+    par_auteur_annee = {}
+    for nom, annee, suffixe, r in avec_cle:
+        par_auteur_annee.setdefault((nom, annee), []).append((suffixe, r))
+    for (nom, annee), lot in par_auteur_annee.items():
+        if len(lot) < 2 or annee == 9999:
+            continue
+        suffixes = [s for s, _ in lot]
+        attendus = [chr(ord('a') + i) for i in range(len(lot))]
+        if sorted(suffixes) != attendus:
+            for s, r in lot:
+                alertes.append({
+                    'rule': 'APA.Suffixe', 'severity': 'warning', 'action': 'fix',
+                    'para': r.get('para'), 'span': None,
+                    'found': r.get('texte') or r.get('titre'), 'suggested': None,
+                    'message': 'Plusieurs références du même auteur et de la même année '
+                               '(%d) ne sont pas distinguées par a/b/c.' % annee,
+                })
+    return alertes
+
+
+# ---------------------------------------------------------------------------------
+# 5. doi_normaliser() — toute forme de DOI ramenée à https://doi.org/10....
+
+RE_DOI_ECRIT = re.compile(
+    r'(?:doi\s*:?\s*|(?:https?:)?//(?:dx\.)?doi\.org/|(?:https?:)?//doi\.org/)?'
+    r'(10\.\d{4,9}/[^\s<>"\')\]]+)', re.IGNORECASE)
+FORME_CANONIQUE = re.compile(r'^https://doi\.org/10\.\d{4,9}/\S+$')
+
+
+def doi_normaliser(ref):
+    """Alertes 'fix' pour un DOI dont l'écriture n'est pas la forme canonique
+    'https://doi.org/10....' — 'doi:', 'DOI :', 'dx.doi.org/', 'http://doi.org/'."""
+    alertes = []
+    texte = ref.get('texte') or ''
+    m = RE_DOI_ECRIT.search(texte)
+    if not m:
+        return alertes
+    trouve = m.group(0).strip().rstrip('.,;)')
+    numero = dm.nettoyer_doi(m.group(1))
+    canonique = 'https://doi.org/' + numero
+    if FORME_CANONIQUE.match(trouve):
+        return alertes
+    alertes.append({
+        'rule': 'APA.DoiForme', 'severity': 'warning', 'action': 'fix',
+        'para': ref.get('para'), 'span': None, 'found': trouve, 'suggested': canonique,
+        'message': 'Le DOI n\'est pas écrit sous sa forme normalisée « %s ».' % canonique,
+    })
+    return alertes
+
+
+# ---------------------------------------------------------------------------------
+# 6. resoudre_crossref() / retrouver_doi() — le seul endroit qui touche le réseau.
+#
+# `_requete` est le point d'injection : les tests le remplacent, jamais un vrai appel.
+
+def _requete(url, delai):
+    req = urllib.request.Request(url, headers={'User-Agent': USER_AGENT, 'Accept': 'application/json'})
+    with urllib.request.urlopen(req, timeout=delai) as reponse:
+        return reponse.read()
+
+
+def _annee_crossref(message):
+    for champ in ('published-print', 'published-online', 'issued', 'published'):
+        d = message.get(champ)
+        if d and d.get('date-parts') and d['date-parts'][0]:
+            annee = d['date-parts'][0][0]
+            if annee:
+                return int(annee)
+    return None
+
+
+def _similarite_titre(a, b):
+    na = pronto_modele.aplatir(a or '')
+    nb = pronto_modele.aplatir(b or '')
+    if not na or not nb:
+        return 0.0
+    return difflib.SequenceMatcher(None, na, nb).ratio()
+
+
+def resoudre_crossref(ref, delai=DELAI_RESEAU_DEFAUT):
+    """Contrôle de cohérence entre le DOI d'une référence et ses métadonnées Crossref :
+    (dict de constat) ou None si le DOI est absent ou la requête a échoué. Ne lève jamais."""
+    doi = (ref.get('doi') or '').strip()
+    if not doi:
+        return None
+    numero = re.sub(r'^https?://(?:dx\.)?doi\.org/', '', doi, flags=re.IGNORECASE)
+    url = CROSSREF_BASE + '/works/' + urllib.parse.quote(numero, safe='/')
+    try:
+        brut = _requete(url, delai)
+    except Exception:
+        return None
+    try:
+        message = json.loads(brut)['message']
+    except Exception:
+        return None
+
+    auteurs_cr = message.get('author') or []
+    premier_cr = auteurs_cr[0].get('family', '') if auteurs_cr else \
+        (message.get('container-title', [''])[0] if not auteurs_cr else '')
+    annee_cr = _annee_crossref(message)
+    titre_cr = (message.get('title') or [''])[0]
+
+    auteur_ok = None
+    if ref.get('auteurs') and premier_cr:
+        auteur_ok = _normaliser_nom(ref['auteurs'][0]['nom']) == _normaliser_nom(premier_cr)
+    annee_ok = None
+    if ref.get('annee') is not None and annee_cr is not None:
+        annee_ok = abs(ref['annee'] - annee_cr) <= 1   # ±1 admis (online-first)
+    ratio_titre = _similarite_titre(ref.get('titre'), titre_cr) if titre_cr else 0.0
+    titre_ok = ratio_titre >= SEUIL_TITRE_VERIFICATION if titre_cr else None
+
+    confirme = (auteur_ok is not False) and (annee_ok is not False) and (titre_ok is not False)
+    return {
+        'auteur_ok': auteur_ok, 'annee_ok': annee_ok, 'titre_ok': titre_ok,
+        'ratio_titre': ratio_titre, 'crossref_auteur': premier_cr,
+        'crossref_annee': annee_cr, 'crossref_titre': titre_cr, 'confirme': confirme,
+    }
+
+
+def retrouver_doi(ref, delai=DELAI_RESEAU_DEFAUT):
+    """(doi, score) pour une référence SANS DOI (article/chapitre), ou None. N'accepte que si
+    titre très proche (>= 0.9) ET auteur ET année concordent — un DOI deviné à tort est pire
+    qu'aucun DOI, ce module ne l'insère de toute façon jamais tout seul (action='comment')."""
+    if ref.get('doi') or ref.get('type') not in ('article', 'chapitre'):
+        return None
+    if not ref.get('titre') or not ref.get('auteurs') or ref.get('annee') is None:
+        return None
+    requete = '%s %s %s' % (ref['titre'], ref['auteurs'][0]['nom'], ref['annee'])
+    url = CROSSREF_BASE + '/works?' + urllib.parse.urlencode(
+        {'query.bibliographic': requete, 'rows': 3})
+    try:
+        brut = _requete(url, delai)
+    except Exception:
+        return None
+    try:
+        items = json.loads(brut)['message']['items']
+    except Exception:
+        return None
+
+    for item in items:
+        titre_cr = (item.get('title') or [''])[0]
+        ratio = _similarite_titre(ref['titre'], titre_cr)
+        if ratio < SEUIL_TITRE_RETROUVE:
+            continue
+        auteurs_cr = item.get('author') or []
+        if not auteurs_cr:
+            continue
+        if _normaliser_nom(ref['auteurs'][0]['nom']) != _normaliser_nom(auteurs_cr[0].get('family', '')):
+            continue
+        annee_cr = _annee_crossref(item)
+        if annee_cr is None or abs(ref['annee'] - annee_cr) > 1:
+            continue
+        doi = item.get('DOI')
+        if not doi:
+            continue
+        return 'https://doi.org/' + doi, ratio
+    return None
+
+
+# ---------------------------------------------------------------------------------
+# 7. mise_en_forme_apa() — la chaîne APA 7 canonique, fr et de.
+#
+# Différences relevées dans les deux PDF Redaktionsrichtlinien (extraits par pypdf, faute de
+# pdftotext dans la WSL — voir le rapport de chantier) :
+#   - volume(numéro) : collé en français « 12(3) », espacé en allemand « 12 (3) » ;
+#   - éditeur d'ouvrage collectif : « (Éd.) »/« (Éds.) » en français, « (Hrsg.) » en allemand ;
+#   - le chapitre s'introduit par « In » dans les DEUX langues (bien que le corps du texte
+#     français reste rédigé en français — c'est ce que les Lignes directrices Revue montrent
+#     dans leurs propres exemples, page 13).
+# Rendue seulement si la confiance est haute ou si Crossref a confirmé — une référence
+# 'moyenne'/'basse' n'est jamais reformulée à la place de la rédaction.
+
+def _auteurs_en_chaine(auteurs, langue):
+    if not auteurs:
+        return ''
+    parties = ['%s, %s' % (a['nom'], a['initiales']) if a['initiales'] else a['nom']
+               for a in auteurs]
+    if len(parties) == 1:
+        return parties[0]
+    dernier = parties[-1]
+    reste = parties[:-1]
+    return ', '.join(reste) + ', & ' + dernier
+
+
+def mise_en_forme_apa(ref, metadonnees_crossref=None):
+    confirme_crossref = bool(metadonnees_crossref and metadonnees_crossref.get('confirme'))
+    if ref.get('confiance') != 'haute' and not confirme_crossref:
+        return None
+    langue = ref.get('_langue') or 'fr'
+    auteurs = _auteurs_en_chaine(ref.get('auteurs') or [], langue)
+    annee_texte = str(ref['annee']) + (ref.get('suffixe') or '') if ref.get('annee') else 's. d.'
+    morceaux = [auteurs, '(%s).' % annee_texte if auteurs else '(%s)' % annee_texte]
+    titre = ref.get('titre') or ''
+    t = ref.get('type')
+    if t == 'article':
+        volnum = ref.get('volume') or ''
+        if ref.get('numero'):
+            volnum += (' (' if langue == 'de' else '(') + ref['numero'] + ')'
+        conteneur = '*%s*' % ref['conteneur'] if ref.get('conteneur') else ''
+        queue = ', '.join(x for x in (conteneur, '*%s*' % volnum if volnum else '',
+                                       ref.get('pages') or '') if x)
+        corps = '%s. %s.' % (titre, queue) if queue else '%s.' % titre
+    elif t == 'chapitre':
+        marqueur_editeur = '(Hrsg.)' if langue == 'de' else '(Éd.)'
+        dans = 'In' if True else 'Dans'   # les deux revues introduisent le chapitre par « In »
+        pages = ' (pp. %s)' % ref['pages'] if ref.get('pages') else ''
+        corps = '%s. %s %s%s, *%s*%s. %s.' % (
+            titre, dans, marqueur_editeur, '', ref.get('conteneur') or '', pages,
+            ref.get('editeur') or '')
+    elif t in ('ouvrage', 'rapport', 'web'):
+        corps = '*%s*. %s.' % (titre, ref['editeur']) if ref.get('editeur') else '*%s*.' % titre
+    else:
+        corps = '%s.' % titre if titre else ''
+    if ref.get('doi'):
+        corps = corps.rstrip('.') + '. ' + ref['doi']
+    elif ref.get('url'):
+        corps = corps.rstrip('.') + '. ' + ref['url']
+    rendu = ' '.join(x for x in morceaux if x) + ' ' + corps
+    return re.sub(r'\s+', ' ', rendu).strip()
+
+
+# ---------------------------------------------------------------------------------
+# 8. analyser_bibliographie() — enchaîne tout.
+
+def analyser_bibliographie(paragraphes_corps, paragraphes_biblio, langue, reseau=True):
+    alertes = []
+    stats = {'references': 0, 'analysees_haute': 0, 'analysees_moyenne': 0,
+             'analysees_basse': 0, 'citations': 0, 'citees_absentes': 0, 'non_citees': 0,
+             'doi_normalises': 0, 'doi_retrouves': 0,
+             'crossref': {'consultes': 0, 'confirmes': 0, 'divergents': 0, 'indisponible': not reseau}}
+
+    references = []
+    for p in paragraphes_biblio or []:
+        r = analyser_reference(p.get('texte') or '')
+        r['para'] = p.get('source')
+        r['texte'] = (p.get('texte') or '').strip()
+        r['_langue'] = langue
+        references.append(r)
+        stats['references'] += 1
+        stats['analysees_' + r['confiance']] += 1
+
+    citations = citations_du_corps(paragraphes_corps or [])
+    stats['citations'] = len(citations)
+
+    alertes_croisement = croiser(citations, references)
+    alertes.extend(alertes_croisement)
+    stats['citees_absentes'] = sum(1 for a in alertes_croisement if a['rule'] == 'APA.CitationAbsente')
+    stats['non_citees'] = sum(1 for a in alertes_croisement if a['rule'] == 'APA.ReferenceNonCitee')
+
+    alertes.extend(verifier_ordre(references))
+
+    for r in references:
+        alertes_doi = doi_normaliser(r)
+        alertes.extend(alertes_doi)
+        stats['doi_normalises'] += len(alertes_doi)
+
+        meta_crossref = None
+        if reseau and r.get('doi'):
+            stats['crossref']['consultes'] += 1
+            meta_crossref = resoudre_crossref(r)
+            if meta_crossref is None:
+                stats['crossref']['indisponible'] = True
+            elif meta_crossref['confirme']:
+                stats['crossref']['confirmes'] += 1
+            else:
+                stats['crossref']['divergents'] += 1
+                champs_divergents = [c for c in ('auteur', 'annee', 'titre')
+                                      if meta_crossref.get(c + '_ok') is False]
+                alertes.append({
+                    'rule': 'APA.DoiDivergent', 'severity': 'warning', 'action': 'comment',
+                    'para': r.get('para'), 'span': None, 'found': r.get('doi'),
+                    'suggested': None,
+                    'message': 'Le DOI renvoie à une autre publication (%s).'
+                               % ', '.join(champs_divergents) if champs_divergents else
+                               'Le DOI renvoie à une autre publication.',
+                })
+        elif reseau and not r.get('doi'):
+            trouve = retrouver_doi(r)
+            if trouve:
+                doi, score = trouve
+                stats['doi_retrouves'] += 1
+                alertes.append({
+                    'rule': 'APA.DoiRetrouve', 'severity': 'suggestion', 'action': 'comment',
+                    'para': r.get('para'), 'span': None, 'found': None, 'suggested': doi,
+                    'message': 'Un DOI correspondant a été trouvé pour cette référence : '
+                               '%s (à confirmer avant de l\'ajouter).' % doi,
+                })
+
+        rendu = mise_en_forme_apa(r, meta_crossref)
+        if rendu:
+            # Retirer l'astérisque D'ABORD, séparément du tassement des espaces : le
+            # remplacer par une espace (comme le ferait un seul passage [\s*]+ -> ' ')
+            # introduit une espace parasite juste avant la virgule qui le suit souvent
+            # (« *Revue X*, » -> « Revue X , » à tort).
+            attendu = re.sub(r'\s+', ' ', rendu.replace('*', '')).strip()
+            original = re.sub(r'\s+', ' ', (r.get('texte') or '').replace('*', '')).strip()
+            if attendu and original and attendu != original:
+                alertes.append({
+                    'rule': 'APA.MiseEnForme', 'severity': 'warning', 'action': 'track',
+                    'para': r.get('para'), 'span': None, 'found': r.get('texte'),
+                    'suggested': rendu,
+                    'message': 'La mise en forme APA 7 de cette référence diffère de '
+                               'l\'original — révision proposée.',
+                })
+
+    return alertes, stats
+
+
+# ---------------------------------------------------------------------------------
+# 9. CLI d'essai — manuscrit_biblio.py <fichier.docx> --langue fr [--sans-reseau]
+#
+# Import de manuscrit_docx/manuscrit_modele fait ICI, pas en tête de module : les fonctions
+# pures ci-dessus s'importent et se testent sans lecteur .docx (consigne du chantier).
+
+def _extraire_paragraphes(chemin):
+    import manuscrit_docx as md
+    import manuscrit_modele as mm
+
+    document = md.lire(chemin)
+    mm.classer_titres(document)
+    lexique = pronto_modele.lire_titres_bib()
+
+    indice_titre = None
+    for i, bloc in enumerate(document.blocs):
+        if not isinstance(bloc, mm.Paragraphe) or bloc.niveau_retenu not in (1, 2, 3):
+            continue
+        t = bloc.texte().strip()
+        if t and pronto_modele._titre_est_biblio(t, lexique):
+            indice_titre = i
+
+    corps, biblio = [], []
+    limite = indice_titre if indice_titre is not None else len(document.blocs)
+    for i, bloc in enumerate(document.blocs):
+        if not isinstance(bloc, mm.Paragraphe):
+            continue
+        t = bloc.texte()
+        if not t.strip():
+            continue
+        if i < limite:
+            corps.append({'source': bloc.source, 'texte': t})
+        elif indice_titre is not None and i > indice_titre:
+            if isinstance(document.blocs[i], mm.Tableau):
+                break
+            biblio.append({'source': bloc.source, 'texte': t})
+    return corps, biblio
+
+
+def principal(argv):
+    args = argv[1:]
+    if not args or args[0].startswith('--'):
+        print('usage : manuscrit_biblio.py <fichier.docx> --langue fr|de [--sans-reseau]',
+              file=sys.stderr)
+        return 2
+    chemin = args[0]
+    langue = 'fr'
+    reseau = True
+    i = 1
+    while i < len(args):
+        if args[i] == '--langue' and i + 1 < len(args):
+            langue = args[i + 1]
+            i += 2
+        elif args[i] == '--sans-reseau':
+            reseau = False
+            i += 1
+        else:
+            i += 1
+
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
+    corps, biblio = _extraire_paragraphes(chemin)
+    alertes, stats = analyser_bibliographie(corps, biblio, langue, reseau=reseau)
+    print(json.dumps({'alertes': alertes, 'stats': stats}, ensure_ascii=True, default=str))
+    return 1 if any(a['severity'] == 'error' for a in alertes) else 0
+
+
+if __name__ == '__main__':
+    sys.exit(principal(sys.argv))
