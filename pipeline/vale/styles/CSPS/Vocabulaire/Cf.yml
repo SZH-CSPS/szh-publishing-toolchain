@@ -1,0 +1,26 @@
+# Revue : 4 Normes typographiques / 4.4 Mots et abréviations particulières — tableau de
+# casse : « Voir | utiliser "voir" plutôt que "cf." (voir Figure 1, voir chap. 2, voir
+# Fougeyrollas, 2010) ». Deux formes, jamais confondues : « cf. » en cours de phrase devient
+# « voir » (minuscule) ; « Cf. » en tête de phrase devient « Voir » (majuscule) — jamais
+# l'inverse.
+#
+# ⚠ Mesuré le 19.09.2026 : une règle `substitution` NE PEUT PAS capturer le point de « cf. »
+# — Vale borne un remplacement de substitution au token de MOT reconnu par son propre
+# analyseur (ponctuation exclue d'office), quel que soit ce que le motif régulier demande
+# lui-même (`cf\.` ou même `cf\.?` ne rendent jamais que "cf", le point disparaît sans aucun
+# message d'erreur). Cette règle est donc une `existence` (aucune limite de ce genre) ; le
+# raffinage exact (found/suggested/majuscule) se fait dans
+# pipeline/manuscrit_vale.RAFFINEURS['CSPS.Vocabulaire.Cf'], même patron que les quatre
+# règles APA qui ont besoin d'un contexte que RE2 ne sait pas viser seul.
+extends: existence
+message: "« cf. » à remplacer par « voir » (Revue : 4.4 Mots et abréviations particulières)."
+level: warning
+ignorecase: false
+# Chaque motif FINIT sur un point, un caractère non-mot : sans nonword, le \b que Vale
+# ajoute par défaut en fin de motif échouerait dès que le point est suivi d'une espace —
+# même piège que EsperluetteHorsParentheses.yml, qui documente le cas symétrique (motif
+# commençant par un symbole). Mesuré : sans cette ligne, "cf." et "Cf." ne déclenchent JAMAIS.
+nonword: true
+tokens:
+  - '\bcf\.'
+  - '\bCf\.'
