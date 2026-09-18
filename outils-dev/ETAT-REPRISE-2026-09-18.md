@@ -34,7 +34,7 @@ pseudo-titres 6/17, 1/20, 2/16 (le lot titres v3 était en cours, voir ci-dessou
   relus par `pronto-lire.py` ; rôles passés aux règles ; en-tête retiré du corps AVANT
   `classer_titres`. Doit aussi remplacer dans `manuscrit-nettoyer.test.js` les deux attentes
   sur `Epicene.FormesContracteesProscrites` (règle passée à Vale).
-- **Annotation Word** (`manuscrit_annoter.py` nouveau, `manuscrit-annoter.test.js`) :
+- **Annotation Word** : COMMITÉ (13 tests verts), non branché dans la CLI.
   révisions `w:ins`/`w:del` auteur dédié, commentaires ancrés via `correspondance`, plafond
   25 et 5 par règle, preuve par `pandoc --track-changes`.
 
