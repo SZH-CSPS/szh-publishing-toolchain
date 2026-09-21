@@ -74,6 +74,15 @@ Divergence ouverte : `score.py` du harnais compte 22/34 faux titres rattrapés, 
 25/34 (mesure directe `lire()+classer_titres()`, sans retrait d'en-tête) — méthode de comptage,
 à trancher avant de citer un chiffre.
 
+## 22.09.2026 — release 1.3.0 (medium)
+Blocs figure/tableau par paragraphes « SZH Cle Abb/Tab » (décision Robin, cadre validé dans
+Word), lecteur Pronto v2 adapté (ancienne forme en repli), écrivain du nettoyeur idem ;
+correspondance exacte (76 % d'entrées fausses avant) ; notes de bas de page : commentaire sur le
+mot avant l'appel, révision dans la note ; audit de 257 alertes, replis paragraphe entier 33 → 0.
+Reste signalé : 6 alertes d'alt sur une image liée à l'en-tête ; l'import Word ne déballe pas
+encore les blocs (TODO-BRANCHEMENT-PARSER-V2) ; le filtre typographique de compilation pose une
+insécable dans un titre anglais de référence.
+
 ## Reste à faire ensuite
 1. **Branchement CLI** : appeler `manuscrit_vale.analyser()` (rôles `bibliographie` sur les
    paragraphes de biblio) et `manuscrit_biblio.analyser_bibliographie()` depuis
