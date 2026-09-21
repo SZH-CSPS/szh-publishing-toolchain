@@ -479,6 +479,122 @@ déjà prises, toutes reproductibles :
 ⚠ Elle vit dans le nettoyeur **seul**. `pipeline/docx-titres.py` est en service sur la chaîne
 d'import et ne bouge pas tant que celle-ci n'a pas fait ses preuves.
 
+### ⚠ Révision du 19.09.2026 — signatures effectives, titres en liste numérotée
+
+Le défaut connu depuis le BRIEF de reprise : les signatures se lisaient sur `Fragment.forme`
+(mise en forme DIRECTE seule), avec ce trou mesuré sur le corpus réel — un corps qui HÉRITE sa
+taille (par la cascade des styles) et un faux titre qui la DÉCLARE directement étaient jugés
+différents, alors qu'ils font la même taille une fois résolus. Depuis que le lecteur livre
+`Fragment.effectif` et `Paragraphe.alignement_effectif` (mise en forme EFFECTIVEMENT appliquée
+— directe, style de caractère, chaîne des styles de paragraphe, docDefaults), les signatures des
+passes 3, 3 bis et de la comparaison « corps » lisent `effectif`/`alignement_effectif` en
+priorité, avec repli sur `forme` clé par clé quand `effectif` n'a rien de propre (une fixture de
+test, un ancien appelant).
+
+⚠ **Ce correctif a un effet de bord inverse, mesuré et corrigé dans la même révision.** Le
+corpus `2-fabrique` (34 faux titres, vérité terrain de `2-fabrique.csv`) fabrique ses faux
+titres par un simple remplacement de `w:pStyle`, **sans aucun réglage direct** — mesuré : une
+fois la cascade des styles résolue, un tel faux titre prend la signature EXACTE de son style de
+titre, indiscernable en tous points d'un vrai titre du même niveau. Substituer partout la
+signature effective à la signature directe faisait donc chuter ce corpus de 21/34 à 5/34 faux
+titres rattrapés — une régression, pas une amélioration : la comparaison « distincte du corps,
+donc conservée sans regarder la longueur » (passe 4) se déclenchait à tort sur la seule foi de
+la cascade de style. La passe 4, **seule**, exige désormais que la signature soit distincte à
+la fois en EFFECTIF et en DIRECT pour conserver un titre déclaré sans regarder sa longueur ;
+si la distinction n'existe qu'en effectif (un `pStyle` nu, sans réglage direct) ou qu'en direct
+(le cas d'ouverture du chantier, `1_Résumé-article-revue-CSPS.docx`), c'est la longueur,
+relative au corps de CE document, qui tranche — exactement comme quand les deux signatures sont
+identiques. Mesuré après ce garde-fou : **25/34** faux titres rattrapés sur le corpus
+`2-fabrique` (vs 21/34 avant toute révision de ce jour), **0** vrai titre détruit. La cible de
+**29/33** du tableau ci-dessus n'est pas atteinte ; les faux titres restants (`RésuméL'indice…`
+sur `2-dense`, des paragraphes qui mêlent un intitulé de rubrique et le texte qui suit en un
+seul `w:p`) portent une signature réellement distincte du corps sur les DEUX bases à la fois —
+aucun garde-fou de signature ne peut les rattraper sans aussi en attraper de vrais, et ce
+chantier n'a pas cherché à resserrer les critères pour un chiffre plus flatteur (§5.1, principe
+« en cas de doute, rien, et on le dit »).
+
+**Titres en liste numérotée** (décision de Robin) : un paragraphe de liste au format `numero`
+(jamais `puce`) devient candidat quand il est **isolé** — ni le paragraphe non vide précédent ni
+le suivant n'est un item de la même liste (`numId`) ; une suite de deux items adjacents ou plus
+échoue déjà ce test sur chacun de ses membres, ce qui couvre sans règle séparée le cas « une
+suite de 3 items numérotés consécutifs ou plus est une vraie liste, jamais des titres ». Un
+candidat isolé porte une signature de titre quand il est gras, OU quand sa taille EFFECTIVE
+dépasse celle du corps, OU quand il est en italique ET que tous les autres candidats isolés du
+document le sont aussi (un mot isolé en italique par hasard ne suffit pas, une famille cohérente
+d'items en italique si). Exclusions générales de la passe 1 (légende, séparateur sans lettre,
+coordonnées — voir plus bas) : un item de liste numérotée isolé qui les porte reste exclu tel
+quel, jamais repêché.
+
+Un titre ainsi promu **perd sa liste** (`liste = None` — le gabarit numérote lui-même les
+Titre1) et un numéro manuel en tête de texte (`^\s*(\d+(\.\d+)*|[IVX]+)[.)]?\s+`) est retiré du
+premier fragment. Le niveau : la profondeur du numéro manuel (`2.1` → 2) s'il y en a un, sinon
+`ilvl + 1` de la liste, sinon l'ordre des signatures **TYPOGRAPHIQUES** (sans alignement — un
+alignement hérité incidemment, comme sur `Le coenseignement développemental…`, où deux titres
+sur quatre héritent un alignement justifié que les deux autres n'ont pas, ne doit jamais, à lui
+seul, séparer des titres par ailleurs identiques) parmi les seuls candidats retenus. Mesuré sur
+« Le coenseignement développemental… » (douzième manuscrit, ses quatre titres de section sont
+des paragraphes de liste numérotée en gras) : **4/4** titres de liste promus, tous au niveau 1,
+numéros absents (il n'y en avait pas), « Tableau 1 » (un paragraphe de légende, hors liste ici)
+jamais promu, aucune ligne d'auteur promue depuis une liste.
+
+⚠ **Exception au §4 du contrat** (« `niveau_retenu`... le SEUL champ que les décisions écrivent
+sur cette classe ») : un titre promu depuis une liste numérotée écrit aussi `liste` et le texte
+du premier `Fragment` de son paragraphe. Décision du superviseur de ce chantier, faute d'un
+autre endroit pour porter ces deux mutations sans réintroduire un second passage sur le
+document ; le §4 lui-même n'a pas été mis à jour (hors du périmètre autorisé de ce chantier) et
+reste, à ce jour, inexact sur ce point précis.
+
+**Nouvelles exclusions de la passe 1** : un paragraphe sans aucune lettre (une ligne de tirets,
+d'astérisques, de soulignés — mesuré sur `4_La méthode Flip Flap.docx`, cinq lignes
+`────────` promues en Titre2/Titre3 avant cette exclusion) ; un paragraphe qui porte une adresse
+courriel, un numéro de téléphone ou une URL ; un paragraphe qui commence par le lexique de
+légende `RE_LEGENDE` de `docx-titres.py` (« Tableau 1 », « Figure 2 »…), importé par chemin
+(le fichier porte un tiret), jamais recopié — mesuré sur le douzième manuscrit : « Tableau 1 »
+promu Titre3 avant cette exclusion.
+
+**Plafond de trois groupes** (passe 3) : au-delà de `MAX_NIVEAUX` (3) groupes qualifiants, les
+excédentaires ne sont plus purement et simplement écartés (« groupe_non_retenu », jamais
+promus) mais **rabattus sur le niveau 3** — seuls les trois groupes les plus « hauts » dans
+l'ordre du §5.1 (taille décroissante, gras, italique) gardent leur niveau propre, quand ce
+niveau reste disponible pour la passe 2 (`3 in niveaux_a_chercher`) ; sinon, comportement
+inchangé (les excédentaires restent écartés, faute de pouvoir inventer un niveau que la passe 2
+n'a pas autorisé à chercher). Un signal explicite (`groupes_rabattus_niveau3`) l'indique dans le
+rapport — jamais une décision silencieuse.
+
+**Passe 3 bis (adoption)** : elle n'avait jamais adopté le moindre paragraphe sur le corpus
+réel (signatures directes qui ne se rejoignaient jamais), mesuré ce jour avec les signatures
+effectives : elle « mord » désormais sur **2 des 12** manuscrits du corpus (`2-fin-de-document`,
+`2-grappes`, un paragraphe adopté chacun) — un progrès mesurable, mais loin d'être systématique :
+la plupart des documents réels n'ont soit aucun titre déclaré du tout (candidature à la passe 3
+aveugle, jamais à l'adoption), soit des titres déclarés dont la signature effective est déjà
+homogène avec eux-mêmes sans qu'aucun paragraphe non stylé ne la reprenne.
+
+### ⚠ Révision du 21.09.2026 — le plancher du critère d'homogénéité
+
+`3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP.docx` rendait **0 titre** (1/17 pseudo-titres retrouvés,
+`pseudo.py`) malgré son LISEZMOI de corpus : « tout le document en style Normal 11 pt, 20
+pseudo-titres, aucun changement de corps — la hiérarchie n'est portée QUE par le gras ». Une
+première hypothèse (« le corps lui-même est gras ») s'est révélée **fausse une fois mesurée** :
+3 paragraphes longs (≥60 signes) sur 44 seulement sont intégralement gras, direct comme effectif
+— le corps de ce document N'EST PAS gras, ni par le style (`styles.xml` ne définit aucun style
+nommé sur ce fichier — tous les paragraphes portent `style=''`), ni par `docDefaults`, ni par des
+runs directs répandus. La vraie cause : le critère d'homogénéité de la passe 3
+(`SEUIL_HOMOGENEITE_MOTS`, « le plus long candidat ne dépasse pas 3× le plus court ») avait son
+plancher fixé à **1 mot** — et ce document a de vrais titres à un seul mot (« Résumé »,
+« Perspectives », « Références ») mêlés à d'autres de 6 à 10 mots : `10 > 3×1`, le seul groupe
+qualifiant (14 des 15 vrais titres, gras, 11 pt, alignement non centré) était rejeté EN BLOC.
+
+Corrigé par un plancher nommé, `PLANCHER_HOMOGENEITE_MOTS = 4` : le ratio ne s'applique plus au
+nombre de mots BRUT du membre le plus court, mais à `max(plus_court, 4)` — un titre à un seul mot
+ne peut plus, à lui seul, imposer un ratio que même deux vrais titres ordinaires ne tiendraient
+pas. Le danger que ce garde-fou protège reste couvert (« un titre de 3 mots mélangé à une phrase
+de corps de 30 » échoue toujours : `30 > 3×4=12`) ; seul le cas d'un dénominateur pathologiquement
+petit cesse de faire échouer un groupe par ailleurs cohérent. Mesuré : **15/17** pseudo-titres
+retrouvés sur `3bis_` (0 promotion hors vérité terrain), et **14/16** sur `4_La méthode Flip
+Flap.docx` en prime (même mécanisme, non ciblé mais bénéficiaire — ce fichier a aussi des titres
+« Résumé »/« Abstract » à un seul mot) ; aucune régression mesurée sur le reste du corpus
+(25/34 sur `2-fabrique`, 0 vrai titre détruit, inchangés).
+
 ### 5.2 Le formatage manuel
 
 Ce qui **part** : police, taille, couleur, surlignage, petites capitales, majuscules forcées,
@@ -576,6 +692,146 @@ Le gabarit livré ne définit **aucune** liste (seul `Aucuneliste` y figure, qui
 L'écrivain emploie donc la définition du gabarit **si elle existe**, et **injecte la sienne**
 sinon, en le disant dans la trace. Ce choix découple le code du gabarit, qui n'est pas figé :
 Robin le retouchera et le fera traduire, et le nettoyeur ne doit pas casser ce jour-là.
+
+---
+
+## 5.5 L'en-tête
+
+*Ajouté le 19.09.2026, révisé le 21.09.2026 après mesure du superviseur sur le corpus réel.*
+
+Avant ce chantier, le titre, le sous-titre, les lignes d'auteurs, le résumé et les mots-clés
+restaient dans le corps du manuscrit — les deux tableaux fixes du gabarit ressortaient **vides**
+sur 12 manuscrits sur 12 (§6.1 du brief de reprise). `pipeline/manuscrit_entete.py` (module PUR,
+comme `manuscrit_modele.py` : ne sait rien de Word ni d'OpenDocument) répare cela : il reconnaît
+la zone d'en-tête d'un manuscrit **avant** le classement des titres du corps, et
+`manuscrit_gabarit.ecrire()` la porte jusqu'aux deux tableaux fixes.
+
+### Où ça s'accroche dans la chaîne (§8)
+
+`manuscrit-nettoyer.py`, en **cas B seulement** (§1 : en cas A le gabarit est déjà rempli, rien
+de tout ceci) :
+
+1. `entete, indices_consommes, trace = manuscrit_entete.extraire_entete(document, langue)` —
+   `langue` est la langue du PRODUIT ('fr'/'de'), jamais `document.langue` (même règle que le
+   reste de la CLI, §8) ;
+2. les paragraphes de premier niveau dont l'indice est dans `indices_consommes` sont retirés de
+   `document.blocs` — **avant** `classer_titres()`, qui ne juge donc plus que ce qui reste ;
+3. les paragraphes retirés sont remis dans `contexte['paragraphes']` (moteur de règles), avec
+   leur rôle, pour les cinq rôles que `manuscrit_regles.py` reconnaît (`titre`, `sous_titre`,
+   `resume`, `mots_cles`, `auteurs` — `doi`/`ligne_revue` n'en font pas partie, ils ne servent
+   qu'à exclure ces deux paragraphes du corps) ;
+4. `compteurs.signes_total` exclut tout paragraphe dont le rôle est un rôle d'en-tête ;
+5. `manuscrit_gabarit.ecrire(..., entete=entete)` remplit les deux tableaux fixes ;
+6. le rapport porte `decisions.entete` (`donnees`, `indices_consommes`, `trace`).
+
+### La zone d'en-tête
+
+Du début du document jusqu'au premier paragraphe « de corps » : le premier paragraphe **long**
+(≥ `SEUIL_CORPS_ENTETE` = 300 signes) qui ne porte pas un marqueur reconnu, ou le premier
+intertitre connu (`RE_INTERTITRE_CONNU` : « Introduction », « Einleitung », « Einführung », un
+numéro de section `\d+[.\)]\s`). Un document qui commence directement par un intertitre connu ne
+consomme **rien** — `indices_consommes` vide, `EnTete` entièrement vide.
+
+Dans cette zone, seul ce qui est **positivement reconnu** est consommé ; un paragraphe court non
+reconnu reste en place, sans faire cesser le balayage (§5.5 : la coupure est un intertitre connu
+ou un paragraphe long, jamais un paragraphe simplement non reconnu).
+
+### Titre et sous-titre
+
+Le titre est le premier paragraphe non vide. Deux lignes consécutives de **même signature**
+(taille/gras/italique effectifs, §4) dont la première finit par « : » ou ne porte aucune
+ponctuation finale valent titre + sous-titre — **sauf** si la seconde ressemble à une ligne
+d'auteurs ou porte un marqueur connu (résumé/mots-clés/DOI/revue) ou l'intertitre qui clôt la
+zone : mesuré, sans cette garde une byline ou un premier « Introduction » sans style propre,
+partageant par défaut la même signature (aucune des deux n'a de mise en forme déclarée), étaient
+avalés comme sous-titre. À défaut de ce motif à deux lignes, `docx-meta.scinder_titre()` scinde
+une ligne unique sur son premier deux-points suivi d'un espace.
+
+### Auteurs
+
+Trois motifs de reconnaissance, essayés dans cet ordre sur chaque paragraphe candidat :
+
+1. **byline groupée** — « Prénom Nom, Prénom Nom et Prénom Nom » : chaque segment (coupé par
+   `docx-meta.CONNECTEURS`) doit **individuellement** passer `nom_plausible()`. Ouvre autant de
+   fiches que de segments ;
+2. **« Nom, Prénom »**, ajouté le 21.09.2026 (mesuré sur `1_Résumé-article-revue-CSPS.docx`,
+   « Protti, Delphine, HEP-VD, +41 79 507 58 10, delphine.protti@edu-vd.ch ») — essayé
+   **seulement** après l'échec du motif 1 : les deux premiers segments, **chacun un seul mot**
+   capitalisé, valent Nom puis Prénom (ordre inversé par rapport au motif 1, c'est ce qui les
+   distingue : une byline a toujours 2+ mots par segment). Les segments qui suivent, sur la
+   **même ligne**, sont l'info de cette seule personne ;
+3. une ligne qui ne porte aucun nom mais un e-mail, un ORCID ou un mot d'institution
+   (`RE_INSTITUTION`) se rattache à la **dernière** fiche ouverte, seulement si un seul nom a été
+   introduit juste avant (`ambigu_courant` retombe à faux) — jamais à plusieurs fiches à la fois,
+   faute de pouvoir départager. Un numéro de téléphone (`RE_TELEPHONE`) est reconnu et **écarté**
+   sans être écrit nulle part : le schéma `EnTete.auteurs` n'a pas de champ téléphone.
+
+`ROR` n'est jamais rempli (décision du brief : c'est la rédaction qui le choisit dans le cockpit).
+
+### Résumé — capture bornée, jamais un pouvoir d'absorption illimité
+
+*Révision du 21.09.2026, superviseur : mesuré sur
+`3bis_CSPS_Revue3_2026_FLOW_Piloting_OFP.docx` (aucun titre promu, ses intertitres sont des
+pseudo-titres en gras que `classer_titres()` — qui tourne **après** ce module — n'a pas encore pu
+voir) : sans plafond, la capture du résumé s'enchaînait du marqueur jusqu'à la fin du document
+(63 paragraphes de corps amputés à 29).*
+
+Un résumé commence à un marqueur reconnu (`docx-meta.RE_RESUME` : « Résumé », « Zusammenfassung »,
+« Riassunto », « Abstract ») et se poursuit sur les paragraphes suivants jusqu'à ce que l'une de
+ces conditions, **la première atteinte**, l'arrête :
+
+- un nouveau marqueur reconnu (résumé/mots-clés/DOI/revue) — le résumé s'arrête, ce paragraphe
+  est classé normalement à son tour ;
+- l'intertitre qui clôt la zone d'en-tête — le résumé s'arrête, **et** la zone d'en-tête entière
+  se termine là (ce paragraphe n'est jamais consommé) ;
+- un paragraphe **court** (< `SEUIL_PSEUDO_TITRE_COURT` = 120 signes) et **entièrement gras**
+  (mise en forme effective, §4) — un pseudo-titre que `classer_titres()` n'a pas encore vu ;
+- le plafond dur : `PLAFOND_RESUME_PARAGRAPHES` = 4 paragraphes **ou**
+  `PLAFOND_RESUME_SIGNES` = 1500 signes cumulés, selon ce qui vient en premier — au-delà, le
+  paragraphe qui aurait fait déborder n'est **jamais** absorbé, et une ligne de trace
+  `resume_interrompu` le dit : « résumé interrompu : longueur inhabituelle, vérifiez ».
+
+Le résumé peut porter une lettre de langue isolée collée au marqueur par un saut de ligne
+manuel (« Résumé F\n… », mesuré sur `2-fin-de-document_Article_RSPS.docx`) — retirée avant
+capture, mais **seulement** devant un vrai saut de ligne (`w:br`, jamais une simple espace : une
+phrase qui commence par « À l'école… » ne doit jamais perdre son « À »).
+
+Un résumé en langue étrangère au produit (un « Abstract » anglais sous un article français) est
+conservé à part dans `EnTete.resumes_autres`, jamais confondu avec le résumé principal.
+
+### Mots-clés
+
+Une ligne `docx-meta.RE_KEYWORDS` (« Mots-clés », « Keywords », « Schlüsselwörter »…), découpée
+par `decouper_keywords()`. Le gabarit livré ne porte **aucun** champ mots-clés (mesuré,
+`revue-template/Pronto - modele d'article.docx`) : ils sont donc écrits en premier paragraphe du
+corps, en style `Corpsdetexte`, sous la forme « Mots-clés : a, b, c » — et signalés dans le
+rapport (`decision: entete_mots_cles_corps`), jamais un champ inventé dans le tableau des
+métadonnées.
+
+### DOI et ligne de revue
+
+Reconnus (`docx-meta.RE_DOI_LIGNE`/`RE_DOI`, `RE_JOURNAL`) et retirés du corps, mais ne portent
+aucun rôle dans le vocabulaire de `manuscrit_regles.py` — `EnTete.doi` n'est aujourd'hui affiché
+nulle part dans le gabarit (aucun champ DOI dans les deux tableaux fixes livrés).
+
+### Écriture dans le gabarit (`manuscrit_gabarit.ecrire(..., entete=None)`)
+
+Les deux tableaux fixes sont recopiés depuis le gabarit puis remplis par regex sur leur XML brut
+(même style d'écriture que le reste de ce module) :
+
+- **métadonnées** : la cellule « valeur » de chaque étiquette reconnue (`Titre (FR)`,
+  `Sous-titre (FR)`, `Résumé (FR)`, `Langue de l'article`) reçoit un nouveau `<w:r>` — le gabarit
+  livré ne porte qu'une ligne étiquetée « (FR) » pour ces trois champs, quel que soit le produit ;
+  `Langue de l'article` reçoit `français`/`deutsch` selon le produit (`EnTete.langue_produit`,
+  jamais `document.langue`) ; `Type d'article` reste toujours vide ;
+- **autrices et auteurs** : une fiche par auteur reconnu, à l'endroit exact où
+  `pronto_modele.extraire_table_auteurs()` va la relire (une ligne « Étiquette : » par champ).
+  Plus d'auteurs que de fiches livrées par le gabarit → la **dernière** fiche est dupliquée
+  autant de fois que nécessaire (jamais une fiche perdue) ; moins d'auteurs → les fiches en trop
+  restent vides, comme livrées.
+
+`entete=None` (cas A, ou appelant qui ne le fournit pas) laisse les deux tableaux **vides**,
+comportement inchangé d'avant ce chantier.
 
 ---
 
@@ -873,6 +1129,135 @@ le contenu lu, à signaler pour qui refera cette extraction plus tard dans la WS
 
 ---
 
+## 7 ter. Annotation — révisions et commentaires Word
+
+### ⚠ Révision du 19.09.2026
+
+Le §12 disait « les révisions natives et les commentaires ancrés » **non faits**, la carte de
+positions étant posée pour ça (`source` sur chaque classe du §4, `correspondance` de
+`manuscrit_gabarit.ecrire()`, §3). C'est maintenant fait, dans un nouveau module qui n'écrit
+JAMAIS l'original et n'invente AUCUNE décision : `pipeline/manuscrit_annoter.py` prend un
+`.docx` déjà au gabarit (la sortie de `ecrire()`) et les alertes du §7/§7 bis (huit champs,
+inchangés), et rend un `.docx` porteur de suivi de modifications et de commentaires Word.
+
+Décidé par Robin (propriétaire, absent au moment de trancher) : **révisions Word** (auteur
+dédié, la rédaction accepte tout d'un clic) pour ce qui est déterministe (`action` `fix`/`track`
+avec un `suggested`) ; **commentaires Word ancrés** pour ce qui demande un jugement (`action`
+`comment`, ou un `fix`/`track` que le texte ne permet pas de localiser) ; **plafonnés** — « je ne
+veux pas 4 000 commentaires » — le reste part au rapport HTML (hors de ce module).
+
+### Signature
+
+```
+annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, langue='fr',
+        auteur='Relecture automatique', plafond_commentaires=25) -> stats
+```
+
+`chemin_docx_sortie` peut être IDENTIQUE à l'entrée : écriture dans un fichier temporaire puis
+remplacement atomique (`os.replace`), jamais d'écriture directe sur l'entrée — le fichier lu au
+tout début de l'appel est intégralement chargé en mémoire avant la première modification.
+
+### Ancrage — jamais un run coupé au hasard
+
+Pour chaque alerte avec `para` non nul, le `<w:p>` de sortie est retrouvé via `correspondance`
+(le couple `{source, sortie}` de `ecrire()`, §3 : `sortie` compte les `<w:p>` enfants DIRECTS de
+`w:body`, les `<w:tbl>` ne comptent pas — l'indexation est portée du patron JS
+`ENFANTS_CORPS_PY` de `manuscrit-gabarit.test.js`, en comptant l'imbrication d'un tableau plutôt
+qu'une regex non gourmande, qui s'arrêterait sur la fermeture d'un tableau IMBRIQUÉ). Ses
+`<w:t>` sont concaténés (jamais `w:tab`/`w:br`/une image, §7 ter du contrat lui-même) pour
+obtenir le texte du paragraphe. Si `span` est donné ET que `found` s'y trouve exactement, il
+fait foi ; sinon la première occurrence de `found` ailleurs dans le paragraphe est prise ; sinon
+l'alerte ancre sur le paragraphe ENTIER (jamais rejetée pour autant). Une alerte sans `para`, ou
+dont le paragraphe n'existe plus dans `correspondance`, est **non ancrée** — comptée dans
+`stats['non_ancrees']`, jamais perdue en silence.
+
+⚠ **Toutes les alertes d'un même paragraphe se localisent contre le MÊME texte figé**, lu une
+seule fois avant toute écriture — jamais recalculé après une première modification. Une révision
+transforme du texte en `w:ins`/`w:del` ; si une seconde alerte du même paragraphe recalculait sa
+position sur le texte déjà modifié, ses offsets glisseraient. Le paragraphe se découpe en
+« atomes » (un segment de texte entre deux bornes d'alerte ou de run consécutives, portant le
+`w:rPr` du run d'origine) avant la moindre écriture ; une révision fusionne les atomes qu'elle
+couvre en un seul remplacement, un commentaire ne fait qu'entourer les siens de marqueurs — sans
+jamais perdre le XML qui ne vient pas d'un `<w:r>` (ouverture/fermeture d'un `<w:hyperlink>`
+autour d'un lien bibliographique, par exemple) : ce XML « de collage » est toujours recopié tel
+quel depuis l'original, jamais régénéré.
+
+### Révisions et commentaires
+
+Une révision (`action` `fix`/`track`, `suggested` non nul, `found` localisé) pose un `<w:del>` et
+un `<w:ins>` avec un `w:id` chacun, uniques et croissants dans tout le document (révisions ET
+commentaires **partagent** le même compteur, §7 ter du contrat, point 2), `w:date` en ISO 8601
+UTC. `suggested` peut porter de l'italique `*…*` (utile pour la remise en forme APA de la
+bibliographie, §7 bis) : chaque segment devient un run avec `<w:i/>`, jamais les astérisques
+eux-mêmes ; le run inséré hérite du `w:rPr` du premier run supprimé, **hors italique**.
+
+⚠ **Hypothèse qui tient parce que l'entrée est toujours une sortie de `manuscrit_gabarit.py`** :
+un `w:rPr` rencontré ne porte jamais que {`w:b`, `w:i`, `w:u`, `w:vertAlign`} — exactement ce que
+`_rpr_xml()` de l'écrivain sait produire (§5.2). L'italique se manipule donc par un jeu de
+DRAPEAUX reconstruits, jamais par une manipulation XML générique — plus court, et suffisant pour
+la seule entrée que ce module doit jamais lire.
+
+Un commentaire (`action == 'comment'`, ou un `fix`/`track` non localisable ou sans `suggested`)
+pose `<w:commentRangeStart>`/`<w:commentRangeEnd>` autour du passage (ou de tout le paragraphe),
+puis un `<w:commentReference>` portant le styleId de la marque de commentaire du gabarit s'il en
+définit un (recherche par nom canonique anglais, `annotation reference`/`comment reference` —
+même convention que `heading 1`/`Body Text` ailleurs dans ce contrat), sinon sans style.
+`word/comments.xml` est créé au besoin, avec sa relation (`.../relationships/comments`) et son
+`Override` dans `[Content_Types].xml`. Le texte du commentaire : le message, puis « Suggestion :
+… » (« Vorschlag : … » en allemand) si `suggested`, puis `[code.de.la.regle]` en fin de message —
+toujours en dernier, y compris sur un commentaire de synthèse (voir plus bas).
+
+### Le plafond
+
+Les commentaires (jamais les révisions, qui s'acceptent d'un clic et n'ont donc aucun plafond)
+sont triés `error` > `warning` > `suggestion` puis par ordre d'apparition dans `alertes`. **Au
+plus 5 par règle** : la 6ᵉ occurrence d'une même règle n'est plus écrite, et le 5ᵉ commentaire
+ÉCRIT de cette règle reçoit une phrase de synthèse (« … et *N* autres occurrences de cette règle,
+voir le rapport. ») — ajoutée à la fin de son MESSAGE, pas après le `[code.de.la.regle]`, pour
+que celui-ci reste toujours la dernière ligne. *N* compte les occurrences AU-DELÀ de 5 parmi les
+commentaires candidats, indépendamment du plafond global qui suit. **Puis le plafond global**
+(`plafond_commentaires`, 25 par défaut) : au-delà, les commentaires restants ne sont pas écrits.
+Dans les deux cas, l'alerte écartée est ajoutée telle quelle à `stats['renvoyees_au_rapport']` —
+jamais tue. ⚠ Décision du 19.09.2026 : si le plafond global coupe AVANT que le 5ᵉ commentaire
+d'une règle n'ait pu être écrit, aucune phrase de synthèse n'est posée (il n'y a alors aucun
+commentaire écrit pour la porter) — les occurrences en trop restent visibles dans
+`renvoyees_au_rapport`, ce que le rapport HTML peut déjà montrer sans ce texte.
+
+`action == 'report'` n'est jamais écrite dans le document — comptée par règle
+(`stats['par_regle'][regle]['signalees']`), jamais silencieuse pour autant.
+
+### `stats`
+
+`{revisions, commentaires, commentaires_synthese, renvoyees_au_rapport, non_ancrees, par_regle}`
+— les deux champs `renvoyees_au_rapport` et `non_ancrees` portent la liste des alertes
+elles-mêmes (pas seulement un compte), pour qu'un rapport HTML puisse les montrer sans les
+retrouver ailleurs. `par_regle` est un surensemble du contrat d'origine — pas seulement un
+compteur par sévérité mais `{revisions, commentes, renvoyees, signalees}` par règle, décision
+prise ici faute de forme imposée par le brief.
+
+### Un piège mesuré en écrivant le harnais de test
+
+**Un manuscrit RÉEL produit un `document.xml` de plusieurs centaines de Ko** — largement
+au-delà de la limite de ligne de commande Windows (32 Ko environ). Un banc qui repasserait le
+XML produit en argument d'un second appel Python (pour le valider, par exemple) échoue
+silencieusement sur le corpus réel tout en réussissant sur toute fixture fabriquée à la main,
+plus petite. La validation (`ET.fromstring` sur chaque partie) doit se faire dans le MÊME
+processus qui vient d'écrire le `.docx`, jamais dans un second qui recevrait son contenu en
+ligne de commande.
+
+### Ce qui reste hors de ce module
+
+L'écriture d'un rapport HTML groupé (§10 : « deux cents signalements rendent l'outil détestable
+») reste dans `lib/gabarits.js`/`rendre-gabarit.js`, comme le reste des rapports du produit —
+`renvoyees_au_rapport` et `non_ancrees` sont pensés pour l'alimenter, jamais pour le remplacer.
+Le branchement dans la CLI (`manuscrit-nettoyer.py`) et dans l'onglet du lanceur n'est pas fait
+ici : ce module expose une fonction pure et une CLI d'essai
+(`manuscrit_annoter.py <sortie.docx> --alertes … --correspondance … [--plafond 25]`, qui accepte
+aussi bien le tableau/la liste bruts que le rapport JSON complet du nettoyeur pour ces deux
+options, afin de pouvoir passer le MÊME fichier aux deux).
+
+---
+
 ## 8. La CLI
 
 ```
@@ -1071,6 +1456,7 @@ fixtures `.docx` **fabriquées dans le test** et non figées en binaire — patr
 | `manuscrit-vale.test.js` | Le catalogue **lexical et éditorial**, porté par Vale (§7) : « personne en situation de handicap » ne lève **aucune** alerte, l'inversion épicène FR/DE, une URL ne déclenche jamais Epicene, `analyser()` rend `indisponible=True` proprement quand Vale ne peut pas tourner. |
 | `manuscrit-parite-lecteur.test.js` | `projeter_pronto()` et `pronto_docx.lire()` s'accordent sur les deux gabarits livrés. **Ce fichier disparaît avec la dette du §3.** |
 | `manuscrit-odt.test.js` | Le même manuscrit en `.docx` et en `.odt` rend le même modèle riche, modulo les écarts connus du §10. |
+| `manuscrit-entete.test.js` | Titre + sous-titre sur deux lignes ou sur une seule (deux-points) ; 1, 2 et 3 auteurs (byline groupée, lignes séparées avec institution/e-mail/ORCID, « Nom, Prénom » avec info sur la même ligne, téléphone écarté) ; résumé capturé jusqu'au marqueur suivant, plafonné en paragraphes et en signes, arrêté par un pseudo-titre gras ; résumé absent -> rien inventé ; mots-clés ; DOI ; un document qui commence par un intertitre connu ne consomme rien. Un test de bout en bout compare la sortie relue par `pronto-lire.py` aux valeurs attendues, et prouve que le texte de l'en-tête n'apparaît plus qu'UNE FOIS dans la sortie (jamais une seconde fois comme paragraphe du corps). |
 
 **Le contrôle qui compte plus que tous les autres** n'est pas dans cette table, parce qu'il
 demande le corpus : passer l'outil sur des manuscrits **déjà publiés**, qui ont traversé quatre
@@ -1101,9 +1487,10 @@ gabarit.
 
 - **Écrire dans le `.docx` de l'autrice.** L'outil rend un fichier neuf ; il ne touche jamais
   l'original.
-- **Les révisions natives et les commentaires ancrés** (étapes 2 et 3 du brief). L'architecture
-  ne les empêche pas : la carte de positions (`source` sur chaque classe) est posée dès
-  maintenant pour ça.
+- ~~Les révisions natives et les commentaires ancrés~~ **Fait le 19.09.2026** (§7 ter) :
+  `pipeline/manuscrit_annoter.py`. Reste à faire : le brancher dans `manuscrit-nettoyer.py` et
+  dans l'onglet du lanceur — ce module n'expose aujourd'hui qu'une fonction pure et une CLI
+  d'essai, voir §7 ter.
 - **Le nettoyeur des livres.** D'où le `(Article)` dans le nom.
 - **L'allemand calibré.** Les règles allemandes sont écrites, mais leur taux de faux positifs ne
   sera mesuré qu'avec le lot C du corpus.

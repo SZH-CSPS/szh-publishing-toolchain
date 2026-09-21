@@ -161,18 +161,21 @@ function fabriquerDocx(chemin, paragraphes, langue) {
 }
 
 // Un manuscrit minimal : un titre, un corps propre, une bibliographie de deux entrées — sert
-// de base à plusieurs contrôles. `avecAlerte` ajoute un paragraphe qui contient une forme
-// épicène contractée proscrite en français (« lecteur/lectrice », RE_FORME_SLASH de
-// manuscrit_regles.py : premier groupe >= 3 lettres, second <= 8 — vérifié avant d'écrire ce
-// fichier, voir le rapport final) : Epicene.FormesContracteesProscrites, sévérité `error`.
+// de base à plusieurs contrôles. `avecAlerte` ajoute, juste sous le titre, un résumé bien en
+// dessous de la fourchette attendue (400-600 signes en Revue) : Forme.LongueurResume.Revue,
+// sévérité `error`. Un « Mots-cles » suit immédiatement pour borner la capture du résumé à
+// cette seule ligne (pipeline/manuscrit_entete.py, §5.5 : un résumé se poursuit jusqu'au
+// marqueur suivant). Remplace Epicene.FormesContracteesProscrites (migré vers Vale,
+// pipeline/manuscrit_vale.py, commit 6ddd429 : ce module ne le détecte plus).
 function manuscritMinimal(avecAlerte) {
   const paras = [
     { texte: "Titre de l'article sur la pedagogie specialisee", style: 'Heading1' },
-    { texte: 'Un premier paragraphe de corps tout a fait ordinaire et sans probleme.', taille: 24 },
   ];
   if (avecAlerte) {
-    paras.push({ texte: 'Ce paragraphe parle du lecteur/lectrice de cet article.', taille: 24 });
+    paras.push({ texte: 'Resume : Un texte beaucoup trop court pour la fourchette attendue.' });
+    paras.push({ texte: 'Mots-cles : pedagogie, inclusion.' });
   }
+  paras.push({ texte: 'Un premier paragraphe de corps tout a fait ordinaire et sans probleme.', taille: 24 });
   paras.push({ texte: 'References', style: 'Heading1' });
   paras.push({ texte: 'Dupont, J. (2020). Un ouvrage important. Editions Test.' });
   paras.push({ texte: 'Martin, A. (2018). Un autre ouvrage. Editions Test.' });
@@ -224,8 +227,8 @@ test('manuscrit-nettoyer.py : refuse un .docx en suivi de modifications, sans ri
 
 // ---------------------------------------------------------------------------------
 // Contrôle n°2 — le code de sortie : non nul dès qu'une alerte `error` existe (ici
-// Epicene.FormesContracteesProscrites, déclenchée par « lecteur/lectrice »), nul sur un
-// manuscrit qui n'en déclenche aucune.
+// Forme.LongueurResume.Revue, déclenchée par un résumé trop court), nul sur un manuscrit
+// qui n'en déclenche aucune (aucun paragraphe de rôle 'resume' du tout).
 //
 // Sabotage minimal : dans principal(), remplacer
 // `code_sortie = CODE_ALERTE_ERROR if n_error > 0 else CODE_OK` par `code_sortie = CODE_OK`
@@ -302,8 +305,8 @@ test('manuscrit-nettoyer.py : chaîne complète — le .docx produit se relit pa
       assert.ok(rapport.decisions.ecriture && rapport.decisions.ecriture.stats,
         'les stats de l\'écrivain doivent être recopiées dans le rapport');
       assert.strictEqual(rapport.compteurs.nb_references, 2);
-      assert.ok(rapport.alertes.total >= 1, 'au moins une alerte (le paragraphe épicène) est attendue');
-      assert.ok(rapport.alertes.liste.some((a) => a.rule === 'Epicene.FormesContracteesProscrites'));
+      assert.ok(rapport.alertes.total >= 1, 'au moins une alerte (le résumé trop court) est attendue');
+      assert.ok(rapport.alertes.liste.some((a) => a.rule === 'Forme.LongueurResume.Revue'));
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
@@ -340,6 +343,9 @@ test('manuscrit-nettoyer.py : --analyse-seule n\'écrit aucun .docx, mais bien u
 // Contrôle n°5 — le repli de seuil : au-delà de dix occurrences d'une même règle, dix sont
 // détaillées et le total est donné (§7/§10 du contrat — relayé par
 // manuscrit_regles.grouper(), ici on prouve que la CLI le porte tel quel jusqu'au rapport).
+// APA.TroisAuteursPlus (sévérité `warning`, « et al » sans point final) remplace
+// Epicene.FormesContracteesProscrites (migré vers Vale, hors de ce module) : le mécanisme
+// éprouvé ici (grouper() par identifiant de règle) ne dépend d'aucune sévérité particulière.
 //
 // Sabotage minimal : dans principal(), construire `groupes` à la main avec
 // `{'par_famille': {}, 'par_regle': {r['rule']: {'total': 1, 'exemples': [r]} for r in
@@ -352,7 +358,7 @@ test('manuscrit-nettoyer.py : au-delà de dix occurrences d\'une même règle, d
     try {
       const paras = [{ texte: "Titre de l'article", style: 'Heading1' }];
       for (let i = 0; i < 12; i += 1) {
-        paras.push({ texte: 'Un paragraphe qui mentionne lecteur/lectrice numero ' + i + ' dans le texte.', taille: 24 });
+        paras.push({ texte: 'Selon Dupont et al ' + (2000 + i) + ', ceci est le paragraphe numero ' + i + '.', taille: 24 });
       }
       const entree = path.join(base, 'seuil.docx');
       fabriquerDocx(entree, paras);
@@ -360,9 +366,9 @@ test('manuscrit-nettoyer.py : au-delà de dix occurrences d\'une même règle, d
       fs.mkdirSync(sortie);
       const r = nettoyer([entree, '--produit', 'revue', '--sortie', sortie]);
       const obj = ligneUniqueJson(r.stdout);
-      assert.strictEqual(obj.alertes_error, 12, 'les douze occurrences doivent toutes être comptées');
+      assert.strictEqual(obj.alertes_warning, 12, 'les douze occurrences doivent toutes être comptées');
       const rapport = JSON.parse(fs.readFileSync(obj.sortie_rapport, 'utf8'));
-      const groupe = rapport.alertes.groupes.par_regle['Epicene.FormesContracteesProscrites'];
+      const groupe = rapport.alertes.groupes.par_regle['APA.TroisAuteursPlus'];
       assert.ok(groupe, 'le groupe de cette règle doit exister');
       assert.strictEqual(groupe.total, 12, 'le TOTAL doit rester 12');
       assert.strictEqual(groupe.exemples.length, 10, 'AU PLUS dix exemples détaillés');

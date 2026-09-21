@@ -1721,3 +1721,138 @@ test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, aucun texte (co
       fs.rmSync(base, { recursive: true, force: true });
     }
   });
+
+// ===================================================================================
+// Ajout du 19.09.2026 — §5.5 du contrat : ecrire() reçoit désormais un paramètre `entete`
+// (l'EnTete que pipeline/manuscrit_entete.py a reconnue) et remplit les DEUX tableaux fixes
+// avec — Titre/Sous-titre/Résumé/Langue de l'article, et une fiche par autrice ou auteur.
+// Patron : ECRIRE_DEPUIS_JSON ci-dessus, étendu d'un cinquième argument (l'EnTete en JSON,
+// reconstruite côté Python par `manuscrit_entete.EnTete(**...)` — mêmes noms de champs que
+// entete_vers_json()). La sortie est relue par pronto-lire.py, LE lecteur de production :
+// « bien rempli » ne veut rien dire d'autre que « au bon endroit pour ce lecteur-là ».
+
+const ECRIRE_DEPUIS_JSON_AVEC_ENTETE = [
+  'import json, sys',
+  'sys.path.insert(0, sys.argv[1])',
+  'import manuscrit_modele as mm',
+  'import manuscrit_entete as me',
+  'import manuscrit_gabarit as mg',
+  'chemin_gabarit, chemin_sortie, json_doc, json_entete = (sys.argv[2], sys.argv[3], '
+  + 'sys.argv[4], sys.argv[5])',
+  'document = mm.document_depuis_json(json.loads(json_doc))',
+  'entete = me.EnTete(**json.loads(json_entete))',
+  'resultat = mg.ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=entete)',
+  'print(json.dumps(resultat, ensure_ascii=True))',
+].join('\n');
+
+function ecrireAvecEntete(spec, entete, cheminSortie, cheminGabarit) {
+  const r = python(['-c', ECRIRE_DEPUIS_JSON_AVEC_ENTETE, PIPELINE, cheminGabarit || GABARIT_LIVRE,
+    cheminSortie, JSON.stringify(spec), JSON.stringify(entete)]);
+  assert.strictEqual(r.status, 0, 'ecrire() avec entete a échoué : ' + r.stderr);
+  return JSON.parse(r.stdout);
+}
+
+// Un EnTete minimal, tous les champs présents (EnTete.__init__ n'accepte que ceux-là — un nom
+// en trop lèverait un TypeError, un manquant prendrait le défaut '' / [] / {}).
+function entete(valeurs) {
+  return Object.assign({
+    titre: '', sous_titre: '', auteurs: [], resume: '', langue_resume: '',
+    resumes_autres: {}, mots_cles: [], doi: '', ligne_revue: '', langue_produit: 'fr',
+  }, valeurs);
+}
+
+function auteur(valeurs) {
+  return Object.assign({ prenom: '', nom: '', fonction: '', institution: '', email: '',
+    orcid: '', texte_source: '' }, valeurs);
+}
+
+const DOC_UN_PARAGRAPHE = { blocs: [{ fragments: [{ texte: 'Un corps de texte ordinaire.' }] }] };
+
+test('manuscrit_gabarit.ecrire (entete) : Titre/Sous-titre/Résumé/Langue remplis, relus par pronto-lire.py',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      const e = entete({
+        titre: 'Un titre reconnu', sous_titre: 'un sous-titre reconnu',
+        resume: 'Un texte de résumé suffisamment explicite pour ce contrôle.',
+        langue_resume: 'fr', mots_cles: ['pedagogie', 'inclusion'],
+        auteurs: [auteur({ prenom: 'Jean', nom: 'Dupont', fonction: 'Professeur',
+          institution: 'HEP Vaud', email: 'jean.dupont@hepvd.ch' })],
+      });
+      const resultat = ecrireAvecEntete(DOC_UN_PARAGRAPHE, e, sortie);
+      assert.ok(resultat.stats, 'ecrire() doit rendre ses stats même avec un entete');
+
+      const dossierPronto = path.join(base, 'pronto');
+      fs.mkdirSync(dossierPronto);
+      const stats = prontoLire(sortie, 'essai', dossierPronto);
+      assert.strictEqual(stats.tableau1_consomme, true,
+        'le tableau des métadonnées, une fois rempli, doit rester reconnu par le lecteur');
+      assert.strictEqual(stats.tableau2_consomme, true,
+        'le tableau des auteurs, une fois rempli, doit rester reconnu par le lecteur');
+      assert.deepStrictEqual(stats.avertissements, [],
+        'un tableau bien rempli ne doit lever aucun avertissement de lecture');
+
+      const meta = fs.readFileSync(path.join(dossierPronto, 'essai.meta.yaml'), 'utf8');
+      assert.match(meta, /title:\s*\n\s*fr: "Un titre reconnu"/);
+      assert.match(meta, /subtitle:\s*\n\s*fr: "un sous-titre reconnu"/);
+      assert.match(meta, /resume:\s*\n\s*fr: "Un texte de résumé suffisamment explicite pour ce contrôle\."/);
+      assert.match(meta, /lang: fr/);
+      assert.match(meta, /prenom: "Jean"/);
+      assert.match(meta, /nom: "Dupont"/);
+      assert.match(meta, /affiliation: "HEP Vaud"/);
+      assert.match(meta, /email: "jean\.dupont@hepvd\.ch"/);
+
+      // Les mots-clés n'ont aucun champ dans le gabarit livré (§5.5) : repli en premier
+      // paragraphe du corps, en Corpsdetexte — jamais un champ inventé dans les métadonnées.
+      const xml = lireDocumentXml(sortie);
+      assert.match(xml, /Mots-clés : pedagogie, inclusion/);
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+test('manuscrit_gabarit.ecrire (entete) : plus d\'auteurs que de fiches -> la dernière fiche est dupliquée, aucun auteur perdu',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      // Le gabarit livré ne porte que 3 fiches (mesuré) : 4 auteurs doivent en dupliquer une.
+      const e = entete({
+        titre: 'Un titre', langue_produit: 'fr',
+        auteurs: ['A', 'B', 'C', 'D'].map((lettre) => auteur({ prenom: lettre, nom: 'Nom' + lettre })),
+      });
+      ecrireAvecEntete(DOC_UN_PARAGRAPHE, e, sortie);
+      const dossierPronto = path.join(base, 'pronto');
+      fs.mkdirSync(dossierPronto);
+      const stats = prontoLire(sortie, 'essai', dossierPronto);
+      assert.strictEqual(stats.tableau2_consomme, true);
+      const meta = fs.readFileSync(path.join(dossierPronto, 'essai.meta.yaml'), 'utf8');
+      for (const lettre of ['A', 'B', 'C', 'D']) {
+        assert.match(meta, new RegExp('prenom: "' + lettre + '"'),
+          'auteur ' + lettre + ' doit être présent — aucun ne doit se perdre au-delà des '
+          + 'trois fiches livrées par le gabarit');
+      }
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+test('manuscrit_gabarit.ecrire : sans entete (None), les deux tableaux fixes restent vides comme avant ce chantier',
+  { skip: sansPython }, () => {
+    const base = dossierJetable();
+    try {
+      const sortie = path.join(base, 'sortie.docx');
+      ecrireDepuisSpec(DOC_UN_PARAGRAPHE, sortie);
+      const dossierPronto = path.join(base, 'pronto');
+      fs.mkdirSync(dossierPronto);
+      prontoLire(sortie, 'essai', dossierPronto);
+      // meta.yaml existe TOUJOURS (lang/source y sont écrits même sans aucune valeur), mais
+      // sans entete aucun des DEUX tableaux fixes ne doit avoir livré la moindre valeur.
+      const meta = fs.readFileSync(path.join(dossierPronto, 'essai.meta.yaml'), 'utf8');
+      assert.ok(!/^title:/m.test(meta), 'aucun titre sans entete');
+      assert.ok(!/^author:/m.test(meta), 'aucun auteur sans entete');
+    } finally {
+      fs.rmSync(base, { recursive: true, force: true });
+    }
+  });

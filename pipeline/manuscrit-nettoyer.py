@@ -100,6 +100,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pronto_modele
 import manuscrit_docx as md
 import manuscrit_modele as mm
+import manuscrit_entete as me
 import manuscrit_typo as mt
 import manuscrit_regles as mr
 import manuscrit_gabarit as mg
@@ -354,20 +355,51 @@ def _construire_bibliographie(document):
 
 # ---------------------------------------------------------------------------------
 # Rôle des paragraphes — voir le point 1 de l'en-tête : deux cas seulement, '' sinon.
+#
+# Révision du 19.09.2026 (§5.5) : le repli « premier bloc du document = titre » ne vaut plus
+# qu'en CAS A. En cas B, le titre est désormais retiré du corps par
+# manuscrit_entete.extraire_entete() AVANT cette fonction — le premier bloc restant n'est
+# alors qu'un paragraphe de corps ordinaire (ou un intertitre), jamais LE titre de l'article ;
+# le rôle 'titre' de cas B vient exclusivement de _paragraphes_entete_contexte() ci-dessous.
 
-def _construire_paragraphes_contexte(document, sources_biblio):
+def _construire_paragraphes_contexte(document, sources_biblio, gabarit):
     paras = [b for b in document.blocs if isinstance(b, mm.Paragraphe)]
     premier_bloc = document.blocs[0] if document.blocs else None
     resultat = []
     for p in paras:
         if p.source in sources_biblio:
             role = 'bibliographie'
-        elif p is premier_bloc and p.niveau_retenu > 0:
+        elif gabarit == 'A' and p is premier_bloc and p.niveau_retenu > 0:
             role = 'titre'
         else:
             role = ''
         resultat.append({'source': p.source, 'texte': p.texte(), 'role': role,
                           'niveau_retenu': p.niveau_retenu})
+    return resultat
+
+
+# ---------------------------------------------------------------------------------
+# En-tête (§5.5) — cas B seulement. Les paragraphes que manuscrit_entete.extraire_entete() a
+# retirés du corps sont remis dans le contexte des règles, avec leur rôle : c'est ce dont
+# Forme.LongueurResume/LongueurTitre ont besoin pour juger (ils lisent contexte['paragraphes'],
+# jamais l'EnTete elle-même). 'doi'/'ligne_revue' n'appartiennent pas au vocabulaire de rôle
+# que manuscrit_regles.py reconnaît (voir son en-tête) : ces deux-là ne sont donc jamais
+# ajoutés ici — ils restent simplement absents du corps, sans qu'aucune règle les juge.
+ROLES_ENTETE_POUR_REGLES = ('titre', 'sous_titre', 'resume', 'mots_cles', 'auteurs')
+
+
+def _paragraphes_entete_contexte(document, indices_consommes):
+    """Appelée AVANT le retrait des indices de document.blocs — elle a besoin des
+    paragraphes encore en place pour lire leur texte."""
+    resultat = []
+    for i, role in indices_consommes.items():
+        if role not in ROLES_ENTETE_POUR_REGLES:
+            continue
+        bloc = document.blocs[i]
+        if not isinstance(bloc, mm.Paragraphe):
+            continue
+        resultat.append({'source': bloc.source, 'texte': bloc.texte(), 'role': role,
+                          'niveau_retenu': 0})
     return resultat
 
 
@@ -473,15 +505,34 @@ def principal(argv):
     gabarit = mm.reconnaitre_gabarit(document)
     progres('gabarit reconnu : cas %s' % gabarit)
 
+    # La langue de traitement vient du PRODUIT, jamais du document (point 5 de l'en-tête) :
+    # c'est elle qui part au filtre (-M lang=), à l'en-tête (§5.5), aux règles et au rapport.
+    # Calculée ICI (avant classer_titres) : extraire_entete() en a besoin.
+    langue = 'fr' if args['produit'] == 'revue' else 'de'
+
+    # En-tête (§5.5) — cas B seulement (§1 : « en cas A, rien de tout ceci, le gabarit est
+    # déjà rempli »). Retire le titre/sous-titre/auteurs/résumé/mots-clés/DOI/ligne de revue
+    # du corps AVANT le classement des titres de section, qui ne doit juger que ce qui reste.
+    entete = None
+    trace_entete = []
+    indices_entete = {}
+    paragraphes_entete_ctx = []
+    if gabarit == 'B':
+        progres("reconnaissance de l'en-tête...")
+        entete, indices_entete, trace_entete = me.extraire_entete(document, langue)
+        paragraphes_entete_ctx = _paragraphes_entete_contexte(document, indices_entete)
+        document.blocs = [b for idx, b in enumerate(document.blocs)
+                           if idx not in indices_entete]
+        progres('en-tête : titre=%r, %d auteur(s), résumé=%d signe(s), %d mot(s)-clé(s)'
+                % (entete.titre, len(entete.auteurs), len(entete.resume),
+                   len(entete.mots_cles)))
+
     progres('classement des titres...')
     stats_titres, trace_titres = _classer_titres_selon_le_cas(document, gabarit)
 
     progres('nettoyage de la mise en forme...')
     stats_formatage, trace_formatage = mm.nettoyer_mise_en_forme(document)
 
-    # La langue de traitement vient du PRODUIT, jamais du document (point 5 de l'en-tête) :
-    # c'est elle qui part au filtre (-M lang=), aux règles et au rapport.
-    langue = 'fr' if args['produit'] == 'revue' else 'de'
     alertes_manuelles = []
     alerte_langue = _alerte_langue_produit(document.langue, langue)
     if alerte_langue:
@@ -510,7 +561,8 @@ def principal(argv):
 
     progres('évaluation des règles éditoriales...')
     sources_biblio, entrees_biblio = _construire_bibliographie(document)
-    paragraphes_ctx = _construire_paragraphes_contexte(document, sources_biblio)
+    paragraphes_ctx = (paragraphes_entete_ctx
+                        + _construire_paragraphes_contexte(document, sources_biblio, gabarit))
     images = _collecter_images(document)
     tableaux_ctx = _collecter_tableaux(document)
     contexte = {
@@ -541,9 +593,14 @@ def principal(argv):
         decisions = {'titres': {'stats': stats_titres, 'trace': trace_titres},
                      'formatage': {'stats': stats_formatage, 'trace': trace_formatage}}
         resultat_ecriture = mg.ecrire(document, CHEMIN_GABARIT, sortie_docx,
-                                       decisions=decisions)
+                                       decisions=decisions, entete=entete)
 
-    signes_total = sum(len(p['texte']) for p in paragraphes_ctx)
+    # §5.5 : l'en-tête (titre, sous-titre, résumé, mots-clés, auteurs) n'est plus dans le
+    # corps de l'article — signes_total ne doit pas le recompter. La bibliographie, elle,
+    # reste comptée dans ce total, comme avant ce chantier (signes_bibliographie n'en est
+    # qu'une VENTILATION, jamais une exclusion).
+    signes_total = sum(len(p['texte']) for p in paragraphes_ctx
+                        if p['role'] not in ROLES_ENTETE_POUR_REGLES)
     signes_biblio = sum(len(p['texte']) for p in paragraphes_ctx if p['role'] == 'bibliographie')
     images_sans_alt = sum(1 for i in images if not (i['alt'] or '').strip())
 
@@ -564,6 +621,9 @@ def principal(argv):
                                    for i in images]},
         },
         'decisions': {
+            'entete': ({'donnees': me.entete_vers_json(entete),
+                        'indices_consommes': {str(k): v for k, v in indices_entete.items()},
+                        'trace': trace_entete} if entete is not None else None),
             'titres': {'stats': stats_titres, 'trace': trace_titres},
             'formatage': {'stats': stats_formatage, 'trace': trace_formatage},
             'typographie': {'traces': traces_typo, 'abandons': abandons_typo,

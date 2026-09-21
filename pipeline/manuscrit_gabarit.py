@@ -1165,16 +1165,185 @@ def _ajouter_types_contenu(ct_xml, extensions):
 
 
 # ---------------------------------------------------------------------------------
+# En-tête (§5.5 du contrat, ajouté le 19.09.2026) — remplissage des DEUX tableaux fixes
+# (métadonnées, autrices et auteurs) depuis l'EnTete que manuscrit_entete.extraire_entete()
+# a reconnue. Ce module reste un écrivain pur : `entete` arrive déjà TRANCHÉE, comme
+# `decisions` — aucune reconnaissance ici, seulement la traduction en XML, exactement à
+# l'endroit où pronto_docx.lire()/pronto_modele.extraire_table_metadonnees()/
+# extraire_table_auteurs() vont la relire (mesuré sur le gabarit livré, 19.09.2026 :
+# étiquettes « Titre (FR) », « Sous-titre (FR) », « Résumé (FR) » — une seule langue, quel
+# que soit le produit — et sept lignes « Étiquette : » par fiche d'autrice ou auteur).
+
+_RE_TR_XML = re.compile(r'<w:tr\b.*?</w:tr>', re.S)
+_RE_TC_XML = re.compile(r'<w:tc\b.*?</w:tc>', re.S)
+_RE_P_XML = re.compile(r'<w:p\b.*?</w:p>', re.S)
+_RE_T_XML = re.compile(r'<w:t\b[^>]*>(.*?)</w:t>', re.S)
+
+_RE_LABEL_TYPE = re.compile(r"^Type d.article", re.I)
+_RE_LABEL_LANGUE = re.compile(r"^Langue de l.article", re.I)
+_RE_LABEL_TITRE = re.compile(r"^Titre\s*\(", re.I)
+_RE_LABEL_SOUS_TITRE = re.compile(r"^Sous-titre\s*\(", re.I)
+_RE_LABEL_RESUME = re.compile(r"^R[ée]sum[ée]\s*\(", re.I)
+
+# « Type d'article » et « ROR » ne figurent PAS ici : jamais déduits du texte du manuscrit
+# (décision du brief de chantier — la relectrice les choisit dans le cockpit).
+_CHAMPS_AUTEUR_GABARIT = (
+    (re.compile(r'^Pr[ée]nom\s*:', re.I), 'prenom'),
+    (re.compile(r'^Nom\s*:', re.I), 'nom'),
+    (re.compile(r'^Fonction\s*:', re.I), 'fonction'),
+    (re.compile(r'^Institution\s*:', re.I), 'institution'),
+    (re.compile(r'^ORCID\s*:', re.I), 'orcid'),
+    (re.compile(r'^Email\s*:', re.I), 'email'),
+)
+
+LANGUE_PRODUIT_TEXTE = {'fr': 'français', 'de': 'deutsch'}
+
+
+def _texte_xml_brut(fragment_xml):
+    """Concatène tous les <w:t> d'un fragment XML brut (cellule ou paragraphe isolé),
+    décodé au minimum — sert UNIQUEMENT à reconnaître une étiquette, jamais réinjecté."""
+    texte = ''.join(_RE_T_XML.findall(fragment_xml))
+    return (texte.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+            .replace('&apos;', "'").replace('&quot;', '"'))
+
+
+def _inserer_dans_paragraphe(p_xml, valeur):
+    """Ajoute un <w:r> portant `valeur` juste avant le </w:p> qui referme `p_xml` — le
+    paragraphe reste par ailleurs inchangé (style, langue). `p_xml` peut être un paragraphe
+    isolé ou une cellule qui n'en contient qu'un seul (le tableau des métadonnées, mesuré :
+    chaque cellule « valeur » est un unique paragraphe vide)."""
+    if not valeur:
+        return p_xml
+    i = p_xml.rindex('</w:p>')
+    run = '<w:r><w:t xml:space="preserve">%s</w:t></w:r>' % _echapper(valeur)
+    return p_xml[:i] + run + p_xml[i:]
+
+
+def _remplir_table_metadonnees(table_xml, entete):
+    """Remplit les cellules « valeur » du tableau de métadonnées : Titre, Sous-titre, Résumé
+    (dans la langue du PRODUIT — le gabarit livré ne porte qu'une ligne « (FR) » pour ces
+    trois champs, quel que soit le produit) et Langue de l'article (français/deutsch).
+    « Type d'article » reste toujours vide. Rend (xml, trace)."""
+    trace = []
+    lignes = _RE_TR_XML.findall(table_xml)
+    if not lignes:
+        return table_xml, trace
+    nouveau_xml = table_xml
+    for ligne in lignes[1:]:                 # [0] = rangée d'en-tête « Champ »/« Valeur »
+        cellules = _RE_TC_XML.findall(ligne)
+        if len(cellules) != 2:
+            continue
+        etiquette = _texte_xml_brut(cellules[0])
+        if _RE_LABEL_LANGUE.match(etiquette):
+            champ, valeur = 'langue', LANGUE_PRODUIT_TEXTE.get(entete.langue_produit, '')
+        elif _RE_LABEL_TITRE.match(etiquette):
+            champ, valeur = 'titre', entete.titre
+        elif _RE_LABEL_SOUS_TITRE.match(etiquette):
+            champ, valeur = 'sous_titre', entete.sous_titre
+        elif _RE_LABEL_RESUME.match(etiquette):
+            champ, valeur = 'resume', entete.resume
+        elif _RE_LABEL_TYPE.match(etiquette):
+            continue                          # jamais rempli (décision du brief)
+        else:
+            continue
+        if not valeur:
+            continue
+        nouvelle_cellule = _inserer_dans_paragraphe(cellules[1], valeur)
+        nouvelle_ligne = ligne.replace(cellules[1], nouvelle_cellule, 1)
+        nouveau_xml = nouveau_xml.replace(ligne, nouvelle_ligne, 1)
+        trace.append({'portee': 'document', 'source': None, 'decision': 'entete_meta',
+                      'motif': "champ « %s » du tableau de métadonnées rempli depuis "
+                               "l'en-tête reconnu" % champ})
+    return nouveau_xml, trace
+
+
+def _remplir_fiche_auteur(cellule_xml, auteur):
+    """(cellule remplie, nombre de champs remplis) — une ligne « Étiquette : » par champ,
+    ROR jamais rempli (décision du brief). Ne modifie QUE les paragraphes dont l'étiquette
+    est reconnue ; toute ligne inconnue du gabarit reste telle quelle."""
+    paragraphes = _RE_P_XML.findall(cellule_xml)
+    nouvelle_cellule = cellule_xml
+    rempli = 0
+    for p_xml in paragraphes:
+        etiquette = _texte_xml_brut(p_xml)
+        for motif, champ in _CHAMPS_AUTEUR_GABARIT:
+            if motif.match(etiquette):
+                valeur = (auteur.get(champ) or '').strip()
+                if valeur:
+                    nouveau_p = _inserer_dans_paragraphe(p_xml, valeur)
+                    nouvelle_cellule = nouvelle_cellule.replace(p_xml, nouveau_p, 1)
+                    rempli += 1
+                break
+    return nouvelle_cellule, rempli
+
+
+def _remplir_table_auteurs(table_xml, entete):
+    """Une fiche par auteur reconnu, à l'endroit exact où pronto_modele.extraire_table_
+    auteurs() va les relire. Plus d'auteurs que de fiches dans le gabarit : la DERNIÈRE fiche
+    est dupliquée autant de fois que nécessaire (décision du brief). Moins d'auteurs : les
+    fiches en trop restent vides, comme livrées. Rend (xml, trace)."""
+    trace = []
+    lignes = _RE_TR_XML.findall(table_xml)
+    if len(lignes) < 2:
+        return table_xml, trace
+    entete_ligne, fiches_gabarit = lignes[0], lignes[1:]
+    auteurs = list(entete.auteurs or [])
+    if not auteurs:
+        return table_xml, trace
+
+    fiches_modele = list(fiches_gabarit)
+    if fiches_gabarit and len(auteurs) > len(fiches_modele):
+        n_manquantes = len(auteurs) - len(fiches_modele)
+        fiches_modele = fiches_modele + [fiches_gabarit[-1]] * n_manquantes
+        trace.append({'portee': 'document', 'source': None,
+                      'decision': 'entete_fiche_dupliquee',
+                      'motif': '%d fiche(s) supplémentaire(s) dupliquée(s) depuis la '
+                               'dernière du gabarit (%d auteur(s) reconnu(s) pour %d '
+                               'fiche(s) livrée(s))'
+                               % (n_manquantes, len(auteurs), len(fiches_gabarit))})
+    elif len(auteurs) > len(fiches_modele):
+        trace.append({'portee': 'document', 'source': None,
+                      'decision': 'entete_auteurs_sans_fiche',
+                      'motif': "le gabarit ne porte aucune fiche d'autrice ou d'auteur : "
+                               "%d auteur(s) reconnu(s) non écrits" % len(auteurs)})
+
+    nouvelles_fiches = []
+    for i, ligne in enumerate(fiches_modele):
+        if i >= len(auteurs):
+            nouvelles_fiches.append(ligne)
+            continue
+        cellules = _RE_TC_XML.findall(ligne)
+        if len(cellules) != 2:
+            nouvelles_fiches.append(ligne)
+            continue
+        nouvelle_cellule, rempli = _remplir_fiche_auteur(cellules[1], auteurs[i])
+        if rempli:
+            ligne = ligne.replace(cellules[1], nouvelle_cellule, 1)
+            trace.append({'portee': 'document', 'source': None, 'decision': 'entete_auteur',
+                          'motif': 'fiche %d remplie depuis l\'en-tête reconnu (%d champ(s))'
+                                   % (i + 1, rempli)})
+        nouvelles_fiches.append(ligne)
+
+    ancien_bloc = ''.join(lignes)
+    nouveau_bloc = entete_ligne + ''.join(nouvelles_fiches)
+    return table_xml.replace(ancien_bloc, nouveau_bloc, 1), trace
+
+
+# ---------------------------------------------------------------------------------
 # Point d'entrée.
 
-def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None):
+def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None):
     """Écrit un .docx au gabarit Pronto depuis un Document du §4, en PARTANT d'une copie du
     gabarit livré (`chemin_gabarit`) — jamais un .docx fabriqué de zéro (§5.3). `decisions` :
     les (stats, trace) déjà produits par manuscrit_modele.classer_titres()/
     nettoyer_mise_en_forme() sur CE document (facultatif, non réinterprété ici — voir l'en-
     tête : ce module ne prend AUCUNE décision, il ne fait que les traduire en styles Word) ;
     simplement recopié dans le retour, pour qu'un seul objet porte tout l'historique d'un
-    document au moment d'écrire le rapport. Rend un dict {'stats', 'trace', 'decisions',
+    document au moment d'écrire le rapport. `entete` : l'EnTete que manuscrit_entete.
+    extraire_entete() a reconnue (§5.5 du contrat), déjà tranchée elle aussi — None en cas A
+    (§1 : le gabarit est déjà rempli, rien à écrire ici) ou si l'appelant ne la fournit pas ;
+    remplit alors les DEUX tableaux fixes (titre/sous-titre/résumé/langue, fiches d'autrices
+    et auteurs) au lieu de les recopier vides. Rend un dict {'stats', 'trace', 'decisions',
     'correspondance'} — voir la docstring de _convertir_niveau_racine pour ce dernier champ.
     """
     with zipfile.ZipFile(chemin_gabarit) as zin:
@@ -1207,6 +1376,12 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None):
     table1_xml = tables_fixes[0].group(0)
     table2_xml = tables_fixes[1].group(0)
 
+    trace_entete = []
+    if entete is not None:
+        table1_xml, trace_meta = _remplir_table_metadonnees(table1_xml, entete)
+        table2_xml, trace_auteurs = _remplir_table_auteurs(table2_xml, entete)
+        trace_entete = trace_meta + trace_auteurs
+
     i_sect = interieur.rindex('<w:sectPr')
     sect_xml = interieur[i_sect:]
 
@@ -1217,18 +1392,34 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None):
 
     trace = []
     corps_xml, correspondance_relative = _convertir_niveau_racine(document.blocs, registre, trace)
+    trace.extend(trace_entete)
+
+    # §5.5 : le gabarit livré ne porte AUCUN champ mots-clés (mesuré, revue-template/Pronto -
+    # modele d'article.docx) — repli documenté par le brief de chantier : un paragraphe
+    # Corpsdetexte en tête du corps, jamais un champ inventé dans le tableau des métadonnées.
+    prefixe_mots_cles_xml = ''
+    if entete is not None and entete.mots_cles:
+        ligne_mc = 'Mots-clés : ' + ', '.join(entete.mots_cles)
+        prefixe_mots_cles_xml = (
+            '<w:p><w:pPr><w:pStyle w:val="%s"/></w:pPr><w:r><w:t xml:space="preserve">%s'
+            '</w:t></w:r></w:p>') % (STYLE_CORPS, _echapper(ligne_mc))
+        trace.append({'portee': 'document', 'source': None,
+                      'decision': 'entete_mots_cles_corps',
+                      'motif': "aucun champ mots-clés dans le gabarit : écrits en premier "
+                               "paragraphe du corps (« %s »)" % ligne_mc})
 
     # Décision n°7 de l'en-tête : les deux <w:p/> qui séparent les deux tableaux fixes du
     # gabarit précèdent le corps — d'où le décalage entre l'indice RELATIF que rend
     # _convertir_niveau_racine (qui ignore tout ce qu'elle n'écrit pas elle-même) et
     # l'indice ABSOLU, parmi tous les <w:p> enfants directs de w:body, que demande le futur
-    # module d'annotation.
-    PREFIXE_WP_TABLEAUX_FIXES = 2
+    # module d'annotation. Le paragraphe des mots-clés, quand il existe, s'ajoute à ce
+    # décalage : c'est un <w:p> de plus AVANT le premier paragraphe du corps proprement dit.
+    PREFIXE_WP_TABLEAUX_FIXES = 2 + (1 if prefixe_mots_cles_xml else 0)
     correspondance = [{'source': c['source'], 'sortie': c['sortie'] + PREFIXE_WP_TABLEAUX_FIXES}
                        for c in correspondance_relative]
 
     nouveau_corps = (table1_xml + PARAGRAPHE_VIDE + table2_xml + PARAGRAPHE_VIDE
-                      + corps_xml + sect_xml)
+                      + prefixe_mots_cles_xml + corps_xml + sect_xml)
     nouveau_doc_xml = preambule + nouveau_corps + queue
 
     nouvelles_relations = [
