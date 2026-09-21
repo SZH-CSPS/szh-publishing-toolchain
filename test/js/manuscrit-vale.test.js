@@ -287,6 +287,44 @@ for (const cas of CAS) {
 }
 
 // ---------------------------------------------------------------------------------
+// Audit des ancrages (demande du coordinateur, 22.09.2026) — défaut RÉEL mesuré sur le
+// corpus : _raffiner_et_dans_parentheses()/_raffiner_und_in_klammern() NARROWENT `found` à
+// « et »/« und » seul (2-3 caractères), mais laissaient `span` sur le motif Vale ENTIER (toute
+// la parenthèse) — `manuscrit_annoter._localizar()` exige `texto[d:f] == found` pour un span
+// exact, refusait donc ce span-là, ET refusait aussi son propre repli (found < 4 caractères) :
+// l'alerte finissait TOUJOURS en commentaire sur le PARAGRAPHE ENTIER, jamais sur « et »/
+// « und ». Mesuré : 9/9 occurrences de CSPS.APA.EtDansParentheses sur le corpus réel
+// (tmp/corpus-relecture/lot-A + outils-dev, chaîne complète WSL). `_convertir_alerte()` narrow
+// désormais `span` avec le raffineur, quand celui-ci en fournit un.
+//
+// Sabotage minimal : dans _convertir_alerte(), remplacer `span0 = resultat.get('span', span0)`
+// par `pass` (ignorer le span du raffineur) — les deux contrôles ci-dessous rougissent
+// (span redevient celui de toute la parenthèse, plus égal à « et »/« und »).
+
+test('CSPS.APA.EtDansParentheses : `span` vise EXACTEMENT « et », jamais toute la parenthèse',
+  { skip: sansVale }, () => {
+    const { sortie } = analyserCorps('Ils le montrent (Dupont et Martin, 2020).', 'fr');
+    const a = sortie.alertes.find((x) => x.rule === 'CSPS.APA.EtDansParentheses');
+    assert.ok(a, 'alerte introuvable : ' + JSON.stringify(sortie.alertes));
+    assert.strictEqual(a.found, 'et');
+    assert.ok(Array.isArray(a.span) && a.span.length === 2, 'span absent : ' + JSON.stringify(a));
+    const texte = 'Ils le montrent (Dupont et Martin, 2020).';
+    assert.strictEqual(texte.slice(a.span[0], a.span[1]), 'et',
+      'span devrait viser exactement « et », pas toute la parenthèse : ' + JSON.stringify(a));
+  });
+
+test('SZH.APA.UndInKlammern : `span` vise EXACTEMENT « und », jamais toute la parenthèse',
+  { skip: sansVale }, () => {
+    const { sortie } = analyserCorps('Das zeigen sie deutlich (Muster und Meier, 2015).', 'de');
+    const a = sortie.alertes.find((x) => x.rule === 'SZH.APA.UndInKlammern');
+    assert.ok(a, 'alerte introuvable : ' + JSON.stringify(sortie.alertes));
+    assert.strictEqual(a.found, 'und');
+    const texte = 'Das zeigen sie deutlich (Muster und Meier, 2015).';
+    assert.strictEqual(texte.slice(a.span[0], a.span[1]), 'und',
+      'span devrait viser exactement « und », pas toute la parenthèse : ' + JSON.stringify(a));
+  });
+
+// ---------------------------------------------------------------------------------
 // Contrôle complémentaire — CSPS.Vocabulaire.Cf : « cf. » en tête de phrase devient « Voir »
 // (majuscule), jamais « voir » minuscule ; un mot qui contiendrait la séquence « cf » sans
 // en être l'abréviation isolée ne doit jamais être touché. Le cas positif générique (mi-

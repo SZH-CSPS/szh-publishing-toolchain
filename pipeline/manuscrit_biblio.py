@@ -716,12 +716,21 @@ def _citations_du_fragment(frag, source, decalage_absolu):
     premier = _premier_auteur(zone_brute)
     if not premier:
         return out
+    # `span` doit viser EXACTEMENT `texte` (= frag.strip(), ce que porte l'alerte comme
+    # `found`), jamais seulement l'année : sinon `manuscrit_annoter._localizar()` refuse le
+    # span (`texto[d:f] != found`) et retombe sur son repli « found unique dans le
+    # paragraphe » — qui échoue à son tour dès que la MÊME citation apparaît deux fois dans
+    # le même paragraphe (mesuré sur le corpus réel : « Akerson et Montgomery, 2017 » cité
+    # deux fois dans le même paragraphe, APA.CitationAbsente retombait alors sur un
+    # commentaire du paragraphe entier, faute de pouvoir désambiguïser). Position absolue du
+    # texte STRIPPÉ (espaces de tête exclus, jamais recalculée depuis l'année).
+    texte = frag.strip()
+    debut_texte = decalage_absolu + (len(frag) - len(frag.lstrip()))
+    span_texte = [debut_texte, debut_texte + len(texte)]
     for am in annees:
-        deb = decalage_absolu + decalage_ouvreur + am.start()
-        fin = decalage_absolu + decalage_ouvreur + am.end()
         out.append({'nom_premier_auteur': premier, 'annee': int(am.group(0)[:4]),
-                     'suffixe': am.group(1) or '', 'para': source, 'span': [deb, fin],
-                     'et_al': et_al, 'texte': frag.strip(), 'nom_brut': zone_brute})
+                     'suffixe': am.group(1) or '', 'para': source, 'span': span_texte,
+                     'et_al': et_al, 'texte': texte, 'nom_brut': zone_brute})
     return out
 
 
@@ -737,14 +746,17 @@ def citations_du_corps(paragraphes):
             premier = _premier_auteur(nom_brut)
             if not premier:
                 continue
-            contenu_debut = m.start(2)
             trouve = False
+            # `span` = l'étendue du match ENTIER (m.start()/m.end()), pas seulement l'année :
+            # `found`/`texte` ci-dessous est TOUJOURS m.group(0) (nom narratif + parenthèse
+            # d'année), même raison et même correctif que _citations_du_fragment() ci-dessus.
+            span_texte = [m.start(), m.end()]
             for am in re.finditer(r'(?:19|20)\d{2}([a-z]?)', contenu):
                 trouve = True
                 citations.append({
                     'nom_premier_auteur': premier, 'annee': int(am.group(0)[:4]),
                     'suffixe': am.group(1) or '', 'para': source,
-                    'span': [contenu_debut + am.start(), contenu_debut + am.end()],
+                    'span': span_texte,
                     'et_al': et_al, 'texte': m.group(0), 'nom_brut': nom_brut})
             if trouve:
                 occupes.append((m.start(), m.end()))

@@ -231,7 +231,16 @@ def _raffiner_et_dans_parentheses(constat, ligne_texte):
     if not m:
         return None  # net large sans "et" isolé : rien à corriger (garde, ne devrait pas arriver)
     corrige = texte[:m.start()] + '&' + texte[m.end():]
+    # `found` ('et', 2 caractères) est plus ÉTROIT que le motif Vale entier ('_span0' vise la
+    # parenthèse complète) : sans un `span` RECALCULÉ sur ce seul mot, manuscrit_annoter.py
+    # reçoit un span qui ne colle plus à `found` (`texto[d:f] != 'et'`) ET un `found` trop
+    # court (< 4 caractères) pour le repli « recherche dans tout le paragraphe » — l'alerte
+    # retombait donc TOUJOURS sur un commentaire couvrant le paragraphe entier (mesuré :
+    # 9/9 occurrences de cette règle sur le corpus réel, audit du 22.09.2026). Position
+    # ABSOLUE de « et » dans le paragraphe, pas seulement dans `texte` (le motif capturé).
+    debut_motif = constat['_span0'][0]
     return {'found': 'et', 'suggested': '&', 'action': 'fix',
+            'span': [debut_motif + m.start(), debut_motif + m.end()],
             'message': 'Citation à corriger (Revue : 3.1.3) : « %s » devient « %s ».'
                        % (texte, corrige)}
 
@@ -270,7 +279,11 @@ def _raffiner_und_in_klammern(constat, ligne_texte):
     if not m:
         return None
     corrige = texte[:m.start()] + '&' + texte[m.end():]
+    # Même défaut que _raffiner_et_dans_parentheses (voir son commentaire) : `found` = 'und'
+    # (3 caractères) est plus étroit que le motif Vale entier — span RECALCULÉ sur ce seul mot.
+    debut_motif = constat['_span0'][0]
     return {'found': 'und', 'suggested': '&', 'action': 'fix',
+            'span': [debut_motif + m.start(), debut_motif + m.end()],
             'message': 'Zitation korrigieren (Zeitschrift: Literaturverzeichnis) : « %s » wird'
                        ' « %s ».' % (texte, corrige)}
 
@@ -405,6 +418,16 @@ def _convertir_alerte(constat, index, lignes):
         suggested = resultat.get('suggested', suggested)
         action = resultat.get('action', action)
         message = resultat.get('message', message)
+        # Un raffineur qui NARROWS `found` (ex. « et »/« und » dans toute une parenthèse,
+        # voir _raffiner_et_dans_parentheses/_raffiner_und_in_klammern) doit aussi narrower
+        # `span0` — sinon `span` continue de viser le motif Vale ENTIER, ne correspond plus
+        # à ce `found`-là, et manuscrit_annoter.py (qui exige `texto[d:f] == found` pour un
+        # span exact) retombe sur son repli, refusé à son tour par un `found` trop court
+        # (< 4 caractères) : la révision devient TOUJOURS un commentaire sur le paragraphe
+        # entier (mesuré : 9/9 occurrences de CSPS.APA.EtDansParentheses sur le corpus réel,
+        # audit du 22.09.2026). Un raffineur qui NE fournit PAS ce champ garde `span0` tel
+        # quel — zéro changement de comportement pour tous les autres raffineurs.
+        span0 = resultat.get('span', span0)
 
     return {
         'rule': check,

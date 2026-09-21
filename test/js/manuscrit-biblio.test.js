@@ -395,6 +395,69 @@ test('citations_du_corps : les formes narrative et parenthétique, dont "et al."
   assert.ok(parNom['de Chambrier'], 'particule en parenthèse perdue');
 });
 
+// Audit des ancrages (demande du coordinateur, 22.09.2026) — défaut RÉEL mesuré sur le
+// corpus (« Le coenseignement développemental… », citation « Akerson et Montgomery, 2017 »
+// répétée deux fois dans le même paragraphe) : `span` ne visait que l'ANNÉE (4 caractères),
+// jamais toute la citation portée par `texte`/`found` — `manuscrit_annoter._localizar()`
+// refusait alors ce span (`texto[d:f] != found`) ET son propre repli (found ambigu, deux
+// occurrences dans le paragraphe, sans span pour départager) : APA.CitationAbsente retombait
+// TOUJOURS sur un commentaire du paragraphe entier dans ce cas. `span` doit désormais couvrir
+// EXACTEMENT `texte`, forme narrative ET parenthétique, pour que `texto[d:f] == found` motive
+// une localisation exacte même quand la citation se répète.
+//
+// Sabotage minimal : dans citations_du_corps(), remplacer `span_texte = [m.start(), m.end()]`
+// par `span_texte = [m.start(2), m.start(2) + 4]` (repro l'ancien "année seule") — la
+// vérification narrative ci-dessous rougit.
+
+test('citations_du_corps : `span` couvre EXACTEMENT `texte`, formes narrative et '
+  + 'parenthétique (jamais seulement l\'année)', { skip: sansPython }, () => {
+  const programme = [
+    "paras = [",
+    "  {'source': 1, 'texte': 'Comme le montre Tremblay (2023b), la question reste ouverte.'},",
+    "  {'source': 2, 'texte': 'On le sait (Akerson et Montgomery, 2017 ; Bashan, 2012).'},",
+    "]",
+    'print(json.dumps(mb.citations_du_corps(paras)))',
+  ].join('\n');
+  const citations = executer(programme);
+  const textes = ["Comme le montre Tremblay (2023b), la question reste ouverte.",
+    'On le sait (Akerson et Montgomery, 2017 ; Bashan, 2012).'];
+  for (const c of citations) {
+    const texteParagraphe = textes[c.para - 1];
+    const [d, f] = c.span;
+    assert.strictEqual(texteParagraphe.slice(d, f), c.texte,
+      'span devrait couvrir exactement `texte` (' + JSON.stringify(c) + ')');
+  }
+});
+
+// Cas réel qui a déclenché ce correctif : la MÊME citation répétée deux fois dans le même
+// paragraphe ne peut se désambiguïser que par un span EXACT (le repli « found unique dans le
+// paragraphe » échoue par construction dès qu'il y a deux occurrences).
+test('citations_du_corps + croiser : une citation répétée deux fois dans le même paragraphe '
+  + 'reste localisable (span exact, pas de repli sur found seul)', { skip: sansPython }, () => {
+  const programme = [
+    "paras = [{'source': 7, 'texte': "
+      + "'Le stage (Akerson et Montgomery, 2017 ; Bashan, 2012) est riche. "
+      + "Les occasions sont plus riches (Akerson et Montgomery, 2017 ; Simons, 2020).'}]",
+    'citations = mb.citations_du_corps(paras)',
+    'references = []',
+    'alertes = mb.croiser(citations, references)',
+    'print(json.dumps({"citations": citations, "alertes": alertes}))',
+  ].join('\n');
+  const r = executer(programme);
+  const akerson = r.citations.filter((c) => c.nom_premier_auteur === 'Akerson');
+  assert.strictEqual(akerson.length, 2, 'les deux occurrences doivent être vues');
+  assert.notDeepStrictEqual(akerson[0].span, akerson[1].span,
+    'les deux occurrences de la même citation doivent porter des span DISTINCTS : '
+    + JSON.stringify(akerson));
+  const texteParagraphe = r.citations[0]
+    ? 'Le stage (Akerson et Montgomery, 2017 ; Bashan, 2012) est riche. '
+      + 'Les occasions sont plus riches (Akerson et Montgomery, 2017 ; Simons, 2020).'
+    : '';
+  for (const c of akerson) {
+    assert.strictEqual(texteParagraphe.slice(c.span[0], c.span[1]), c.texte);
+  }
+});
+
 // ---------------------------------------------------------------------------------
 // 3. croiser() — absente/non citée/suffixe/et al.
 

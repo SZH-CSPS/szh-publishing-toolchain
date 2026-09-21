@@ -186,6 +186,14 @@ test('A11y.TexteAlternatif : actif en Revue, hérité en suggestion pour la Zeit
     assert.strictEqual(cotéRevue.alertes.length, 1);
     assert.strictEqual(cotéRevue.alertes[0].rule, 'A11y.TexteAlternatif.Revue');
     assert.strictEqual(cotéRevue.alertes[0].severity, 'warning');
+    // Audit du 22.09.2026 (coordinateur) : `found` reste None, jamais un placeholder texte
+    // (« texte alternatif absent ») qui n'apparaît nulle part dans le document écrit — sur
+    // le corpus réel, ce placeholder faisait TOUJOURS échouer la localisation et retombait
+    // en repli, parfois sur un paragraphe sans rapport avec l'image (un bloc figure n'a pas
+    // de correspondance dédiée). Un `found` absent évite la recherche vouée à l'échec ;
+    // manuscrit_annoter.py pose alors honnêtement un commentaire de paragraphe, sans prétendre
+    // avoir localisé un passage qui n'a jamais existé.
+    assert.strictEqual(cotéRevue.alertes[0].found, null);
 
     const { sortie: cotéZeitschrift } = diagnostiquer({
       produit: 'zeitschrift', langue: 'de', paragraphes: [], images: [image]

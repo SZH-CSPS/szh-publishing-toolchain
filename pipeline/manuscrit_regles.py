@@ -369,8 +369,18 @@ def _detecter_alt_manquant(contexte):
     constats = []
     for img in _images(contexte):
         if not (img.get('alt') or '').strip():
+            # `found` reste None (audit du 22.09.2026, coordinateur) : un texte alternatif
+            # ABSENT n'a, par définition, aucun passage réel à citer — l'ancien placeholder
+            # « texte alternatif absent » n'apparaît jamais dans le texte écrit et ne fait
+            # QUE simuler une recherche vouée à l'échec (mesuré sur le corpus réel : 30/30
+            # occurrences finissaient en repli, certaines sur un paragraphe SANS AUCUN
+            # rapport avec l'image, faute d'un `para` ancrable — un bloc figure/tableau n'a
+            # pas de correspondance dédiée, §3 du contrat). `manuscrit_annoter.py` pose alors
+            # honnêtement un commentaire sur le paragraphe voisin (ou le rapport si même
+            # celui-là n'est pas ancrable), au lieu de chercher une phrase qui n'existera
+            # jamais.
             constats.append({'para': img.get('source'), 'span': None,
-                              'found': 'texte alternatif absent', 'suggested': None})
+                              'found': None, 'suggested': None})
     return constats
 
 
