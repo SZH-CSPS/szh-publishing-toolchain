@@ -11,6 +11,28 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 1.2.3
+
+**Le lanceur ne prend plus un manuscrit nettoyé avec des points bloquants pour un échec.**
+Le nettoyeur sort avec un code de sortie non nul dès qu'une alerte bloquante subsiste — mais le
+`.docx` a bien été écrit, annoté, et le rapport existe. L'onglet Préprocessing traitait ce cas
+comme un échec technique et affichait « Raison inconnue » à la place.
+
+- Ce cas (alerte bloquante, pas un refus du nettoyeur) est désormais un succès : le message
+  donne les trois nombres qui comptent (points à traiter, révisions et commentaires posés dans
+  le document), et le rapport se rend et s'ouvre exactement comme pour un nettoyage sans alerte.
+- Un vrai échec (document illisible, environnement absent…) affiche maintenant les dernières
+  lignes utiles du journal au lieu de « Raison inconnue » — jamais un code de sortie.
+
+**Bibliographie : des révisions ciblées et justes.** Une remise en forme APA 7 ne barre plus la
+référence entière : seuls les segments qui changent partent en supprimé/inséré. Chaque référence
+porte sa langue (un titre anglais garde « Title: Subtitle » sans espace, un titre français son
+insécable), seul le volume passe en italique, et un DOI retrouvé par Crossref s'insère en fin de
+référence en révision au lieu d'un commentaire. À sévérité égale, la révision la plus large gagne
+sur un chevauchement — 19 remises en forme sur 19 sortent en révision sur un manuscrit réel, contre
+15 avant. Plus aucun astérisque dans un commentaire, et le rapport dit ce que chaque alerte est
+réellement devenue dans le document.
+
 ## 1.2.2
 
 **Orthographe rectifiée et trait d'union des préfixes dans le nettoyeur.** La Revue écrit en
