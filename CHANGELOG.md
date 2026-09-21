@@ -11,6 +11,39 @@ Avant la `1.0.0`, les versions étaient en `année.mois.compteur` (`v2026.06.1` 
 113 étiquettes). Elles ne sont pas reprises ici : leur histoire est dans les messages de tag
 (`git tag -l --format='%(contents)' 'v2026.*'`) et dans les Releases GitHub.
 
+## 1.2.0
+
+**Le nettoyeur de manuscrit : un onglet « Préprocessing » dans le lanceur.** Un manuscrit
+d'autrice arrive tel qu'il a été écrit ; l'outil rend un `.docx` au gabarit Pronto, plus un
+rapport HTML, et il tourne à la réception, avant toute relecture humaine.
+
+- **Le mécanique est appliqué tel quel** : styles du gabarit sur tout le corps, titres retrouvés
+  d'après la mise en forme effective (un titre numéroté par une liste Word est reconnu, son
+  numéro retiré), formatage manuel retiré (l'italique, l'exposant, l'indice et les liens restent),
+  typographie de la maison par le filtre `szh-typographie.lua` déjà en service, notes de bas de
+  page, images et tableaux replacés dans leurs blocs. Titre, sous-titre, résumé, mots-clés et
+  fiches d'autrices et d'auteurs remplissent les deux tableaux du gabarit, y compris le bloc
+  « Informations sur les autrices et auteurs » de fin de manuscrit.
+- **Les lignes directrices deviennent des révisions et des commentaires Word**, sous un auteur
+  dédié : les corrections textuelles déterministes en suivi de modifications (tout s'accepte d'un
+  clic), les points de jugement en commentaires ancrés, plafonnés à vingt-cinq par document et
+  cinq par règle, le reste dans le rapport.
+- **Vale porte les règles lexicales**, en YAML éditables par la rédaction dans `pipeline/vale/`
+  (langage épicène, vocabulaire du handicap, casse, « cf. », et/&, DOI…), tirées des deux
+  Redaktionsrichtlinien 2025 et mesurées sur 288 articles publiés. Vale 3.22.0 entre dans l'image
+  WSL comme binaire épinglé ; les règles structurelles (longueurs, niveaux de titre, alt,
+  tableaux) restent en Python.
+- **La bibliographie est vérifiée** : citations sans référence et références jamais citées,
+  ordre alphabétique puis chronologique, suffixes a/b, DOI normalisés en `https://doi.org/`,
+  cohérence par Crossref (seul le DOI ou la référence part sur le réseau), DOI manquant retrouvé
+  et proposé en commentaire, remise en forme APA 7 proposée en révision quand la lecture est sûre.
+- **Un lexique maison** tiré des articles publiés des deux dernières années :
+  `pipeline/vale/lexique/*.csv` (source de vérité, éditable au tableur), exports Excel et TBX
+  générés, règles Vale de cohérence et de sigles générées depuis le CSV.
+- Le contrat du chantier est `outils-dev/ARCHITECTURE-nettoyeur-manuscrit.md` ; l'état et le
+  reste à faire dans `outils-dev/ETAT-REPRISE-2026-09-18.md`. Le corpus de mise au point
+  (onze manuscrits réels, trente-quatre paragraphes truqués) n'est pas versionné.
+
 ## 1.1.0
 
 **« Quoi de neuf » : les postes apprennent ce qui a changé.** Jusqu'ici, une mise à jour

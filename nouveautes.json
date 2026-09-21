@@ -16,6 +16,29 @@
     "Les clés commençant par « _ » sont ignorées par lib/nouveautes.js."
   ],
 
+  "1.2": {
+    "fr": {
+      "titre": "Un manuscrit se nettoie tout seul",
+      "points": [
+        "Dans le lanceur, l’onglet « Préprocessing » prend le manuscrit reçu d’une autrice et rend un document au gabarit Pronto : titres retrouvés, styles posés, mise en forme manuelle retirée, typographie de la maison appliquée.",
+        "Le titre, le sous-titre, le résumé, les mots-clés et les fiches des autrices et auteurs sont placés dans les tableaux du gabarit ; ce qui n’a pas été trouvé est dit dans le rapport.",
+        "Les lignes directrices s’appliquent en suivi de modifications pour ce qui est certain, en commentaires pour ce qui demande votre jugement, et le rapport qui s’ouvre à la fin regroupe le reste.",
+        "La bibliographie est contrôlée : citations sans référence, références jamais citées, ordre, DOI manquants ou mal formés, et une remise en forme APA proposée quand elle est sûre.",
+        "Les règles de vocabulaire et de langage se lisent et se modifient dans des fichiers texte, sans programmer : un mode d’emploi les accompagne."
+      ]
+    },
+    "de": {
+      "titre": "Ein Manuskript bereinigt sich selbst",
+      "points": [
+        "Im Startfenster nimmt der Reiter «Preprocessing» das Manuskript einer Autorin entgegen und liefert ein Dokument in der Pronto-Vorlage: Titel erkannt, Formatvorlagen gesetzt, manuelle Formatierung entfernt, Haustypografie angewendet.",
+        "Titel, Untertitel, Zusammenfassung, Schlagwörter und die Angaben zu den Autor:innen landen in den Tabellen der Vorlage; was nicht gefunden wurde, steht im Bericht.",
+        "Die Redaktionsrichtlinien greifen als nachverfolgte Änderungen, wo sie sicher sind, als Kommentare, wo Ihr Urteil gefragt ist; der Bericht, der sich zum Schluss öffnet, fasst den Rest zusammen.",
+        "Das Literaturverzeichnis wird geprüft: Zitate ohne Eintrag, nie zitierte Einträge, Reihenfolge, fehlende oder falsch geschriebene DOI, und ein APA-Vorschlag, wo er sicher ist.",
+        "Die Regeln zu Wortschatz und Sprache stehen in Textdateien, die sich ohne Programmieren lesen und ändern lassen; eine Anleitung liegt bei."
+      ]
+    }
+  },
+
   "1.1": {
     "fr": {
       "titre": "Les nouveautés s’affichent",
