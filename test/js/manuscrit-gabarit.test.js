@@ -228,11 +228,15 @@ const ENFANTS_CORPS_PY = [
   'def deseChapper(t):',
   '    return (t.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")',
   '            .replace("&quot;", chr(34)).replace("&apos;", chr(39)))',
+  'def style_de(xml):',
+  '    m = re.search(r"<w:pStyle\\s+w:val=\\"([^\\"]*)\\"", xml)',
+  '    return m.group(1) if m else None',
   'sortie = []',
   'for tag, xml in enfants(interieur):',
   '    texte = (deseChapper("".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", xml, re.S)))',
   '             if tag == "w:p" else None)',
-  '    sortie.append({"tag": tag, "texte": texte})',
+  '    sortie.append({"tag": tag, "texte": texte,',
+  '                    "style": style_de(xml) if tag == "w:p" else None})',
   'print(json.dumps(sortie, ensure_ascii=False))',
 ].join('\n');
 
@@ -244,6 +248,20 @@ function enfantsCorps(chemin) {
 
 function textesWp(enfants) {
   return enfants.filter((e) => e.tag === 'w:p').map((e) => e.texte);
+}
+
+function stylesWp(enfants) {
+  return enfants.filter((e) => e.tag === 'w:p').map((e) => e.style);
+}
+
+// Sépare les entrées `correspondance` normales des entrées `bloc` (ajout du 22.09.2026,
+// ancrage de A11y.TexteAlternatif.* sur la clé « Texte alternatif : » d'un bloc figure/
+// tableau) — les tests d'exactitude texte-à-texte plus anciens ne portent que sur les
+// premières, jamais sur les secondes (le paragraphe-clé ne porte pas le texte de `source`).
+function separerCorrespondance(correspondance) {
+  const normales = correspondance.filter((c) => !c.bloc);
+  const blocs = correspondance.filter((c) => c.bloc);
+  return { normales, blocs };
 }
 
 // ---------------------------------------------------------------------------------
@@ -1668,6 +1686,11 @@ test('manuscrit_gabarit.ecrire : les notes de bas de page du corpus réel sont �
 // écrit lui-même (ses quatre clés, son image), qui n'ont pas de source unique évidente, mais
 // qui COMPTENT bien dans l'indice `sortie` des paragraphes qui les suivent (révision du
 // 21.09.2026, alertée par l'agent de l'annotation : voir le contrôle dédié juste après).
+//
+// Révision du 22.09.2026 (demande du coordinateur) : un tableau reçoit désormais EN PLUS une
+// entrée `bloc` (ancrage de A11y.TexteAlternatif.* sur sa clé « Texte alternatif : ») — ce
+// contrôle ne porte que sur les entrées NORMALES (séparerCorrespondance), le contrôle dédié
+// aux entrées `bloc` est plus bas.
 
 test('manuscrit_gabarit.ecrire : la table de correspondance pointe, pour chaque paragraphe de corps, le bon <w:p> de la sortie',
   { skip: sansPython }, () => {
@@ -1681,13 +1704,17 @@ test('manuscrit_gabarit.ecrire : la table de correspondance pointe, pour chaque 
         paragraphe([fragment('Troisième paragraphe.')], { source: 3 }),
       ]);
       const resultat = ecrireDepuisSpec(spec, sortie);
-      assert.strictEqual(resultat.correspondance.length, 3,
-        'un tableau ne doit jamais recevoir d\'entrée de correspondance (3 paragraphes, 1 tableau)');
+      const { normales, blocs } = separerCorrespondance(resultat.correspondance);
+      assert.strictEqual(normales.length, 3,
+        'un tableau ne doit jamais recevoir d\'entrée de correspondance NORMALE (3 paragraphes, 1 tableau)');
+      assert.strictEqual(blocs.length, 1, 'le tableau doit recevoir une entrée `bloc`');
+      assert.strictEqual(blocs[0].source, 2, 'la source de l\'entrée `bloc` doit être celle du tableau');
+      assert.strictEqual(blocs[0].bloc, 'tableau');
 
       const attendus = { 0: 'Premier paragraphe.', 1: 'Second paragraphe.',
                           3: 'Troisième paragraphe.' };
       const textes = textesWp(enfantsCorps(sortie));
-      for (const c of resultat.correspondance) {
+      for (const c of normales) {
         assert.strictEqual(textes[c.sortie], attendus[c.source],
           'source ' + c.source + ' -> sortie ' + c.sortie + ' : texte attendu '
           + JSON.stringify(attendus[c.source]) + ', obtenu ' + JSON.stringify(textes[c.sortie]));
@@ -1725,18 +1752,35 @@ test('manuscrit_gabarit.ecrire : la correspondance reste exacte de part et d\'au
       ]);
       const resultat = ecrireDepuisSpec(spec, sortie);
       // Quatre paragraphes de corps RÉELS (0, 2, 4, 6) : les deux images et le tableau sont
-      // des blocs, jamais une entrée de correspondance à eux-mêmes.
-      assert.strictEqual(resultat.correspondance.length, 4,
-        'quatre paragraphes de corps attendus dans la correspondance, obtenu '
-        + JSON.stringify(resultat.correspondance));
+      // des blocs, jamais une entrée de correspondance NORMALE à eux-mêmes (mais une entrée
+      // `bloc` chacun, voir plus bas — révision du 22.09.2026).
+      const { normales, blocs } = separerCorrespondance(resultat.correspondance);
+      assert.strictEqual(normales.length, 4,
+        'quatre paragraphes de corps attendus dans la correspondance normale, obtenu '
+        + JSON.stringify(normales));
+      assert.strictEqual(blocs.length, 3, 'un bloc par image (2) et par tableau (1)');
+      assert.deepStrictEqual(blocs.map((b) => b.source).sort((a, b) => a - b), [1, 3, 5],
+        'les entrées `bloc` doivent porter la source des DEUX images et du tableau');
+      assert.deepStrictEqual(blocs.map((b) => b.bloc).sort(), ['figure', 'figure', 'tableau']);
 
       const attendus = { 0: 'Avant tout.', 2: 'Entre les deux figures.',
                           4: 'Avant le tableau.', 6: 'Après tout.' };
-      const textes = textesWp(enfantsCorps(sortie));
-      for (const c of resultat.correspondance) {
+      const enfants = enfantsCorps(sortie);
+      const textes = textesWp(enfants);
+      const styles = stylesWp(enfants);
+      for (const c of normales) {
         assert.strictEqual(textes[c.sortie], attendus[c.source],
           'source ' + c.source + ' -> sortie ' + c.sortie + ' : texte attendu '
           + JSON.stringify(attendus[c.source]) + ', obtenu ' + JSON.stringify(textes[c.sortie]));
+      }
+      // Chaque entrée `bloc` doit viser un <w:p> en style SZHCleAbbTab qui commence par
+      // « Texte alternatif » — jamais le texte de `source` (l'image/le tableau n'en a pas).
+      for (const b of blocs) {
+        assert.strictEqual(styles[b.sortie], 'SZHCleAbbTab',
+          'bloc ' + JSON.stringify(b) + ' devrait viser un <w:p> SZHCleAbbTab');
+        assert.ok((textes[b.sortie] || '').startsWith('Texte alternatif'),
+          'bloc ' + JSON.stringify(b) + ' devrait viser la clé « Texte alternatif : », '
+          + 'obtenu ' + JSON.stringify(textes[b.sortie]));
       }
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
@@ -1761,10 +1805,16 @@ test('manuscrit_gabarit.ecrire : correspondance.source est Paragraphe.source, pa
         paragraphe([fragment('Après le tableau.')], { source: 9 }),
       ]);
       const resultat = ecrireDepuisSpec(spec, sortie);
-      const sources = resultat.correspondance.map((c) => c.source).sort((a, b) => a - b);
+      const { normales, blocs } = separerCorrespondance(resultat.correspondance);
+      const sources = normales.map((c) => c.source).sort((a, b) => a - b);
       assert.deepStrictEqual(sources, [5, 9],
         'correspondance.source doit porter les Paragraphe.source 5 et 9, jamais des positions '
         + 'de liste (0 et 2) : obtenu ' + JSON.stringify(sources));
+      // Le tableau (source RÉELLE 6, position de liste 1) reçoit sa propre entrée `bloc` — même
+      // exigence « source, pas position de liste » que ci-dessus, sur l'entrée `bloc` cette fois.
+      assert.deepStrictEqual(blocs.map((b) => b.source), [6],
+        'l\'entrée `bloc` du tableau doit porter Paragraphe.source (6), jamais une position '
+        + 'de liste (1)');
     } finally {
       fs.rmSync(base, { recursive: true, force: true });
     }
@@ -1788,9 +1838,25 @@ test('manuscrit_gabarit.ecrire : sur les onze manuscrits réels, 100% de la tabl
         assert.strictEqual(r.status, 0, nom + ' : ' + r.stderr);
         const resultat = JSON.parse(r.stdout);
         const docEntree = diagnostiquerManuscritDocx('--diagnostic', entree).document;
-        const textesSortie = textesWp(enfantsCorps(sortie));
+        const enfants = enfantsCorps(sortie);
+        const textesSortie = textesWp(enfants);
+        const stylesSortie = stylesWp(enfants);
         for (const c of resultat.correspondance) {
           total += 1;
+          if (c.bloc) {
+            // Entrée `bloc` (22.09.2026) : le paragraphe `sortie` ne porte JAMAIS le texte de
+            // `source` (l'image/le tableau n'en a pas) — vérifié à la place : style
+            // SZHCleAbbTab, texte qui commence par « Texte alternatif ».
+            const styleOk = stylesSortie[c.sortie] === 'SZHCleAbbTab';
+            const texteOk = (textesSortie[c.sortie] || '').startsWith('Texte alternatif');
+            if (!styleOk || !texteOk) {
+              echecs.push(nom + ' : bloc (' + c.bloc + ') source ' + c.source + ' -> sortie '
+                + c.sortie + ' : attendu style SZHCleAbbTab + texte « Texte alternatif… », '
+                + 'obtenu style=' + JSON.stringify(stylesSortie[c.sortie]) + ' texte='
+                + JSON.stringify(textesSortie[c.sortie]));
+            }
+            continue;
+          }
           const blocSource = docEntree.blocs[c.source];
           if (!blocSource || blocSource.type === 'tableau') {
             echecs.push(nom + ' : source ' + c.source + ' n\'est pas un paragraphe'); continue;

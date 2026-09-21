@@ -864,9 +864,21 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
 
     indices_p = [(d, f) for (tag, d, f) in _hijos_directos_cuerpo(interior) if tag == 'w:p']
 
+    # `origen_a_bloc` (ajout du 22.09.2026, demande du coordinateur) : les entrées de
+    # `correspondance` marquées `'bloc'` (manuscrit_gabarit.py, _convertir_niveau_racine)
+    # visent le paragraphe-clé « Texte alternatif : » d'un bloc figure/tableau, jamais le
+    # texte de `source` lui-même (l'image/le tableau n'a pas de texte à comparer) — une table
+    # SÉPARÉE, jamais mélangée à `origen_a_salida` : une alerte dont le `para` a une entrée
+    # `bloc` doit toujours s'ancrer LÀ (c'est le seul endroit où la relectrice peut écrire un
+    # texte alternatif), même si CE MÊME `para` porte AUSSI une entrée normale (un paragraphe
+    # qui porte à la fois du texte et une image) — le bloc l'emporte, voir le point 1 plus bas.
     origen_a_salida = {}
+    origen_a_bloc = {}
     for c in (correspondance or []):
-        origen_a_salida.setdefault(c['source'], c['sortie'])
+        if 'bloc' in c:
+            origen_a_bloc.setdefault(c['source'], c['sortie'])
+        else:
+            origen_a_salida.setdefault(c['source'], c['sortie'])
 
     contador = itertools.count(_proximo_contador(doc_xml, comments_previos_xml, footnotes_xml))
     fecha = _fecha_iso()
@@ -890,15 +902,20 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
              'notes': {'revisions': 0, 'commentaires': 0, 'repli_paragraphe_entier': 0}}
 
     # 1. Ancrage — quel <w:p> de sortie, si aucun jamais perdu en silence (§7 ter, point 1).
+    # Une entrée `bloc` (voir origen_a_bloc ci-dessus) l'emporte TOUJOURS sur une entrée
+    # normale pour le même `para` : c'est le seul point d'ancrage réel qu'un bloc figure/
+    # tableau puisse offrir (ni l'image ni le tableau n'a de texte propre à comparer).
     por_salida = {}
     for idx, alerta in enumerate(alertes):
         para = alerta.get('para')
-        salida = origen_a_salida.get(para) if para is not None else None
+        es_bloc = para is not None and para in origen_a_bloc
+        salida = origen_a_bloc.get(para) if es_bloc else (
+            origen_a_salida.get(para) if para is not None else None)
         if salida is None or not (0 <= salida < len(indices_p)):
             stats['non_ancrees'].append(alerta)
             devenir[idx] = 'non_ancree'
             continue
-        por_salida.setdefault(salida, []).append((idx, alerta))
+        por_salida.setdefault(salida, []).append((idx, alerta, es_bloc))
 
     # 2. Localisation + classement révision/commentaire, texte figé PAR PARAGRAPHE (voir
     # l'en-tête : jamais recalculé après une première modification du même paragraphe).
@@ -912,7 +929,16 @@ def annoter(chemin_docx_entree, chemin_docx_sortie, alertes, correspondance, lan
             p_xml_tmp = p_xml_tmp[:-2] + '></w:p>'
         runs_tmp = _leer_runs(p_xml_tmp)
         texto_tmp = ''.join(r['texto'] for r in runs_tmp)
-        for idx, alerta in lista:
+        for idx, alerta, es_bloc in lista:
+            if es_bloc:
+                # Ancrage sur la clé « Texte alternatif : » d'un bloc figure/tableau (§22.09.2026,
+                # demande du coordinateur) : ce paragraphe-clé ne porte JAMAIS le texte de
+                # l'alerte (l'image/le tableau n'a pas de texte propre) — jamais de recherche de
+                # `found`, jamais une révision (rien à remplacer) : un commentaire sur le
+                # paragraphe ENTIER, directement, comme le repli existant, mais ici c'est
+                # l'ancrage VOULU, pas un échec de localisation.
+                candidatos_comentario.append((idx, alerta, salida, None))
+                continue
             note_numero = alerta.get('note_numero')
             if note_numero is not None:
                 # Alerte de NOTE (§7 ter du contrat) : `found`/`span` visent le texte de la

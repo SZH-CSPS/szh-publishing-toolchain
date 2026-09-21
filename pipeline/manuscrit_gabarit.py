@@ -106,6 +106,12 @@ RE_LEGENDE = re.compile(
 CHAMPS_BLOC = (('legende', 'Légende'), ('alt', 'Texte alternatif'),
                ('credit', 'Crédit'), ('source', 'Source'))
 
+# Position de la clé « Texte alternatif : » parmi les quatre paragraphes de clé d'un bloc
+# (ajout du 22.09.2026, ancrage de A11y.TexteAlternatif.* dans `correspondance`, voir
+# _convertir_niveau_racine) — calculée depuis CHAMPS_BLOC, jamais un « 1 » écrit en dur : un
+# futur réordonnancement de CHAMPS_BLOC ne peut alors pas désaccorder les deux silencieusement.
+_INDICE_CLE_ALT = [cle for cle, _ in CHAMPS_BLOC].index('alt')
+
 # Largeur par défaut d'un tableau de contenu d'un bloc tableau (le tableau du manuscrit
 # lui-même — depuis le 21.09.2026, posé directement au premier niveau, plus jamais imbriqué
 # dans une cellule d'enveloppe) ou d'un tableau imbriqué ailleurs (note, cellule) — mesurée sur
@@ -976,20 +982,36 @@ def _convertir_niveau_racine(blocs, registre, trace):
     `correspondance` (ajout du 19.09.2026, pour un module d'annotation) : une liste de
     {'source': Paragraphe.source du bloc d'ORIGINE, 'sortie': indice RELATIF, parmi les <w:p>
     écrits ICI, du <w:p> qui le porte} — un couple par paragraphe de CORPS effectivement écrit
-    comme <w:p> de premier niveau (jamais pour les paragraphes de clé ou l'image d'un bloc
-    figure/tableau, même s'ils produisent eux aussi des <w:p> depuis la nouvelle forme du
-    21.09.2026 — ils n'ont pas de source unique évidente ; jamais non plus pour un paragraphe
-    consommé comme légende ou fondu comme vide surnuméraire, qui ne produit rien). `source` est
-    le vrai `Paragraphe.source` du bloc, pas sa position dans `blocs` : les deux ne coïncident plus dès que
-    l'appelant a retiré des blocs de la liste avant d'appeler cette fonction (l'en-tête, §5.5)
-    — un `para` d'alerte porte toujours `Paragraphe.source`, jamais une position de liste.
-    L'indice `sortie` est RELATIF à ce que cette fonction écrit seule : ecrire() y ajoute le
-    nombre de <w:p> qui la précèdent dans le document final pour obtenir l'indice ABSOLU
-    demandé.
+    comme <w:p> de premier niveau ; jamais pour un paragraphe consommé comme légende ou fondu
+    comme vide surnuméraire, qui ne produit rien. `source` est le vrai `Paragraphe.source` du
+    bloc, pas sa position dans `blocs` : les deux ne coïncident plus dès que l'appelant a retiré
+    des blocs de la liste avant d'appeler cette fonction (l'en-tête, §5.5) — un `para` d'alerte
+    porte toujours `Paragraphe.source`, jamais une position de liste. L'indice `sortie` est
+    RELATIF à ce que cette fonction écrit seule : ecrire() y ajoute le nombre de <w:p> qui la
+    précèdent dans le document final pour obtenir l'indice ABSOLU demandé.
+
+    Entrée `'bloc'` (ajout du 22.09.2026, demande du coordinateur — ancrage de
+    A11y.TexteAlternatif.*) : EN PLUS des entrées ci-dessus, une entrée par bloc figure/tableau,
+    {'source': Paragraphe.source du paragraphe PORTEUR de l'image (bloc figure) ou
+    Tableau.source (bloc tableau), 'sortie': indice du <w:p> de la clé « Texte alternatif : »,
+    'bloc': 'figure'|'tableau'} — CE paragraphe-clé, lui, N'A PAS le texte de `source` (c'est le
+    seul point d'ancrage réel qu'un bloc puisse offrir : ni l'image ni le tableau qu'il
+    enveloppe ne sont eux-mêmes un texte). `manuscrit_annoter.py` reconnaît cette entrée à la
+    présence de la clé `'bloc'` et ancre alors sur CE paragraphe entier (c'est l'endroit où la
+    relectrice écrira l'alt), sans jamais y chercher un `found` littéral. Une entrée normale et
+    une entrée `bloc` peuvent partager le même `source` (un paragraphe qui porte À LA FOIS du
+    texte et une image) : la RÉSOLUTION entre les deux revient à l'appelant (manuscrit_annoter.
+    py), pas à cette fonction, qui se contente de rendre les deux, honnêtement.
     """
     n = len(blocs)
     legendes, consommes = _associer_legendes(blocs)
-    segments = []          # (est_bloc, xml, idx_source_ou_None, est_vide, n_wp)
+    segments = []          # (est_bloc, xml, idx_source_ou_None, est_vide, n_wp, type_bloc)
+    # `type_bloc` (ajout du 22.09.2026) : None pour un paragraphe de corps ordinaire,
+    # 'figure'/'tableau' pour un bloc — c'est lui qui distingue, dans la boucle de
+    # construction de `correspondance` plus bas, une entrée normale (`idx_source` = SA propre
+    # source, `sortie` = SA position) d'une entrée `bloc` (`idx_source` = la source du
+    # paragraphe/tableau qui porte le bloc, `sortie` = la position de sa clé « Texte
+    # alternatif : », toujours DEUXIÈME des quatre clés — voir CHAMPS_BLOC/_INDICE_CLE_ALT).
     # `n_wp` (ajouté le 21.09.2026, avec la nouvelle forme des blocs) : le nombre de <w:p>
     # RÉELLEMENT écrits par ce segment au premier niveau du corps — 1 pour un paragraphe de
     # corps ordinaire, comme avant ; pour un bloc, ce n'est PLUS zéro comme du temps de
@@ -1012,7 +1034,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
             fragments_legende = legendes.get(idx)
             champs = {'legende': fragments_legende or '', 'alt': '', 'credit': '', 'source': ''}
             xml = _meta_et_contenu_xml(champs, _tableau_xml(bloc, registre), registre)
-            segments.append((True, xml, None, False, 4))
+            segments.append((True, xml, bloc.source, False, 4, 'tableau'))
             texte_legende = _texte_legende_trace(fragments_legende)
             trace.append({'portee': 'bloc', 'source': bloc.source, 'decision': 'bloc_tableau',
                           'motif': 'tableau posé dans un bloc tableau ; légende %s'
@@ -1029,7 +1051,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
                                              fragments=fragments_texte, source=bloc.source)
                     style_id = _style_pour_paragraphe(p_texte)
                     segments.append((False, _paragraphe_xml(p_texte, style_id, registre),
-                                      bloc.source, False, 1))
+                                      bloc.source, False, 1, None))
                 # La légende éventuellement trouvée pour ce paragraphe ne va QUE sur la
                 # première image : un paragraphe portant plusieurs images est rare, et le
                 # contrat n'envisage pas d'en répartir une seule légende entre plusieurs blocs.
@@ -1039,7 +1061,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
                               'alt': image.alt, 'credit': '', 'source': ''}
                     xml = _meta_et_contenu_xml(champs, _image_paragraphe_xml(image, registre),
                                                 registre)
-                    segments.append((True, xml, None, False, 5))
+                    segments.append((True, xml, bloc.source, False, 5, 'figure'))
                     champs_vides = [label for cle, label in CHAMPS_BLOC if not champs.get(cle)]
                     trace.append({'portee': 'bloc', 'source': bloc.source,
                                   'decision': 'bloc_figure',
@@ -1067,7 +1089,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
                                   'motif': motif})
                 style_id = _style_pour_paragraphe(bloc)
                 segments.append((False, _paragraphe_xml(bloc, style_id, registre),
-                                  bloc.source, est_vide, 1))
+                                  bloc.source, est_vide, 1, None))
         idx += 1
 
     # Défaut mesuré (§10, décision n°2 de l'en-tête) : des paragraphes vides consécutifs —
@@ -1085,7 +1107,7 @@ def _convertir_niveau_racine(blocs, registre, trace):
     compteur_wp = 0
     precedent_est_bloc = False
     precedent_est_vide = False
-    for i, (est_bloc, xml, idx_source, est_vide, n_wp) in enumerate(segments_reduits):
+    for i, (est_bloc, xml, idx_source, est_vide, n_wp, type_bloc) in enumerate(segments_reduits):
         if (i > 0 and _separateur_requis(est_bloc, precedent_est_bloc)
                 and not precedent_est_vide and not est_vide):
             morceaux.append(PARAGRAPHE_VIDE)
@@ -1093,6 +1115,13 @@ def _convertir_niveau_racine(blocs, registre, trace):
         morceaux.append(xml)
         if not est_bloc and idx_source is not None:
             correspondance.append({'source': idx_source, 'sortie': compteur_wp})
+        elif est_bloc and idx_source is not None:
+            # La clé « Texte alternatif : » est la DEUXIÈME des quatre paragraphes de clé
+            # (CHAMPS_BLOC : légende, alt, crédit, source) — `compteur_wp` vise ici le premier
+            # <w:p> du bloc (« Légende : »), +1 pour atteindre celui-ci. Vrai pour un bloc
+            # figure ET un bloc tableau : les deux partagent _meta_paragraphes_xml().
+            correspondance.append({'source': idx_source, 'sortie': compteur_wp + _INDICE_CLE_ALT,
+                                    'bloc': type_bloc})
         compteur_wp += n_wp
         precedent_est_bloc = est_bloc
         precedent_est_vide = est_vide
@@ -1393,8 +1422,12 @@ def ecrire(document, chemin_gabarit, chemin_sortie, decisions=None, entete=None)
     # module d'annotation. Le paragraphe des mots-clés, quand il existe, s'ajoute à ce
     # décalage : c'est un <w:p> de plus AVANT le premier paragraphe du corps proprement dit.
     PREFIXE_WP_TABLEAUX_FIXES = 2 + (1 if prefixe_mots_cles_xml else 0)
-    correspondance = [{'source': c['source'], 'sortie': c['sortie'] + PREFIXE_WP_TABLEAUX_FIXES}
-                       for c in correspondance_relative]
+    correspondance = []
+    for c in correspondance_relative:
+        entree = {'source': c['source'], 'sortie': c['sortie'] + PREFIXE_WP_TABLEAUX_FIXES}
+        if 'bloc' in c:  # entrée de bloc (§22.09.2026) : propagée telle quelle, jamais perdue.
+            entree['bloc'] = c['bloc']
+        correspondance.append(entree)
 
     nouveau_corps = (table1_xml + PARAGRAPHE_VIDE + table2_xml + PARAGRAPHE_VIDE
                       + prefixe_mots_cles_xml + corps_xml + sect_xml)

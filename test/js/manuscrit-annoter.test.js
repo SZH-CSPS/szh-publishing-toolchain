@@ -1100,3 +1100,70 @@ test('essai réel : une sortie du nettoyeur, annotée puis relue par pandoc rée
     fs.rmSync(base, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------------
+// 12. Ancrage sur une entrée `bloc` (demande du coordinateur, 22.09.2026) : une alerte
+// A11y.TexteAlternatif.* (para = source du paragraphe porteur de l'image, jamais un vrai
+// passage à citer) doit s'ancrer sur le paragraphe ENTIER de la clé « Texte alternatif : »
+// qu'une entrée `correspondance` marquée `bloc` désigne — manuscrit_gabarit.py, lu en
+// LECTURE seule ici (fichier hors de ce lot), écrit désormais cette entrée pour chaque bloc
+// figure/tableau. Jamais de recherche de `found` (rien à y trouver), jamais une révision.
+
+test('bloc : une alerte dont `para` a une entrée `correspondance.bloc` s\'ancre sur le '
+  + 'paragraphe ENTIER de la clé, jamais une recherche de `found`', { skip: sansPython }, () => {
+    const paragraphes = [
+      { texte: 'Légende : ' },
+      { texte: 'Texte alternatif : ' },
+    ];
+    // source=5 : la source du paragraphe PORTEUR de l'image dans le modèle (jamais un <w:p>
+    // réel de ce document, voir la docstring de _convertir_niveau_racine) — aucune entrée
+    // NORMALE ne le référence ici, seule l'entrée `bloc` le fait.
+    const correspondance = [{ source: 5, sortie: 3, bloc: 'figure' }];
+    const alertes = [{
+      rule: 'A11y.TexteAlternatif.Revue', severity: 'warning', action: 'comment', para: 5,
+      span: null, found: null, suggested: null, message: 'Image sans texte alternatif.',
+    }];
+    const resultat = anotar(paragraphes, alertes, correspondance, {});
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.commentaires, 1);
+    assert.strictEqual(resultat.stats.revisions, 0);
+    assert.strictEqual(resultat.stats.non_ancrees.length, 0, 'para=5 doit résoudre via `bloc`');
+    const m = resultat.documentXml.match(
+      /<w:commentRangeStart w:id="\d+"\/>(.*?)<w:commentRangeEnd/s);
+    assert.ok(m, 'commentaire introuvable');
+    const texteEncercle = (m[1].match(/<w:t[^>]*>([^<]*)<\/w:t>/) || [])[1];
+    assert.strictEqual(texteEncercle, 'Texte alternatif : ',
+      'le commentaire doit encercler tout le paragraphe de la clé, pas un passage : ' + m[1]);
+    assert.match(resultat.commentsXml, /Image sans texte alternatif\./);
+  });
+
+test('bloc : l\'entrée `bloc` l\'emporte sur une entrée NORMALE qui partagerait la même '
+  + '`source` (un paragraphe qui porte à la fois du texte et une image)', { skip: sansPython }, () => {
+    const paragraphes = [
+      { texte: 'Paragraphe de corps ordinaire, avec texte ET image.' },
+      { texte: 'Texte alternatif : ' },
+    ];
+    // Les DEUX entrées partagent la MÊME source (5) : une normale (le texte du paragraphe
+    // porteur), une `bloc` (la clé de son image). L'alerte doit résoudre vers la seconde.
+    const correspondance = [
+      { source: 5, sortie: 2 },
+      { source: 5, sortie: 3, bloc: 'figure' },
+    ];
+    const alertes = [{
+      rule: 'A11y.TexteAlternatif.Revue', severity: 'warning', action: 'comment', para: 5,
+      span: null, found: null, suggested: null, message: 'Image sans texte alternatif.',
+    }];
+    const resultat = anotar(paragraphes, alertes, correspondance, {});
+    validerBienFormees(resultat);
+    assert.strictEqual(resultat.stats.commentaires, 1);
+    const m = resultat.documentXml.match(
+      /<w:commentRangeStart w:id="\d+"\/>(.*?)<w:commentRangeEnd/s);
+    const texteEncercle = (m[1].match(/<w:t[^>]*>([^<]*)<\/w:t>/) || [])[1];
+    assert.strictEqual(texteEncercle, 'Texte alternatif : ',
+      'la clé du bloc doit l\'emporter sur le paragraphe de texte ordinaire : ' + m[1]);
+    // Un seul commentaire au total (déjà vérifié ci-dessus) et il encercle la clé : le
+    // paragraphe de texte ordinaire ne peut donc porter aucune marque, sans avoir besoin de
+    // le revérifier par une recherche de texte (son propre texte apparaît de toute façon
+    // ailleurs dans le document, comme tout paragraphe écrit).
+    assert.strictEqual((resultat.documentXml.match(/<w:commentRangeStart/g) || []).length, 1);
+  });
