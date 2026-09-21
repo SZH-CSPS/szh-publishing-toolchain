@@ -71,6 +71,14 @@ concernés, puis la chaîne complète dans la WSL.
    exploité par Vale : vocabulaire accepté (`Vocab`), variantes à unifier (`Vocabulaire.Coherence`),
    sigles à développer (`Vocabulaire.Sigle`), termes privilégiés vs déconseillés mesurés sur
    l'usage réel, pas supposés. Mesure de faux positifs sur ces mêmes articles publiés.
+   **Format (demande de Robin, 21.09)** : le lexique doit être exploitable humainement. Source de
+   vérité versionnée en CSV/TSV (une ligne par terme : terme, langue, catégorie, forme privilégiée,
+   variantes, fréquence corpus, exemples, sigle/développement, statut privilégié/déconseillé/neutre,
+   source normative) ; exports générés par script : un classeur **.xlsx** pour la rédaction (un
+   onglet par langue, filtres, mise en forme) et un **TBX** (TermBase eXchange, ISO 30042, format
+   ouvert lu par les outils de terminologie et de TAO libres comme OmegaT) ; les règles Vale
+   (`Vocab`, `Vocabulaire.Coherence`, `Vocabulaire.Sigle`) sont **générées** depuis le CSV, jamais
+   éditées à la main — un seul endroit à corriger.
 Supervision seule, tout délégué.
 
 ## Pièges payés ce soir
